@@ -333,7 +333,7 @@ export default function EditorHeader({
 
   return (
     <TooltipProvider>
-      <nav className="h-12 bg-editor-panel border-t-[3px] border-t-[var(--color-primary)] border-b border-b-editor-border flex items-center px-4 z-[100]">
+      <nav className="h-12 bg-gradient-to-b from-[#7c3aed] from-30% to-white border-b border-b-editor-border flex items-center px-4 z-[100]">
         {/* 왼쪽: 작업 제목 + 자동저장 상태 */}
         <div className="flex items-center gap-4">
           <input
