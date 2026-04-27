@@ -12,6 +12,7 @@ import SidePanel from '@/components/editor/SidePanel'
 import EditorHeader from '@/components/editor/EditorHeader'
 import { PagePanel } from '@/components/PagePanel/PagePanel'
 import { SpreadPagePanel } from '@/components/PagePanel/SpreadPagePanel'
+import { BookNavigation } from '@/components/PageNavigation/BookNavigation'
 import { productsApi } from '@/api'
 
 // Screen mode type
@@ -493,6 +494,9 @@ export default function EditorView() {
           {isSpreadMode && <SpreadPagePanel />}
         </div>
       </div>
+
+      {/* 책자 페이지 네비게이션 (스프레드 모드가 아닐 때) */}
+      {!isSpreadMode && <BookNavigation />}
 
       {/* Loading Overlay */}
       {isLoading && (

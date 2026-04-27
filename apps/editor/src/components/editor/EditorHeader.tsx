@@ -23,6 +23,7 @@ import {
 } from '@phosphor-icons/react'
 import { AutoSaveIndicator } from './AutoSaveIndicator'
 import { BookMockup3D } from '../Mockup3D/BookMockup3D'
+import { useUiPrefStore, type PageNavPosition } from '@/stores/useUiPrefStore'
 
 interface EditorHeaderProps {
   screenMode?: 'mobile' | 'tablet' | 'desktop'
@@ -48,6 +49,10 @@ export default function EditorHeader({
   const [saving, setSaving] = useState(false)
   const [finishing, setFinishing] = useState(false)
   const [show3DMockup, setShow3DMockup] = useState(false)
+
+  // 페이지 네비게이션 위치 선호 (auto/right/bottom)
+  const pageNavPosition = useUiPrefStore((s) => s.pageNavPosition)
+  const setPageNavPosition = useUiPrefStore((s) => s.setPageNavPosition)
 
   // Stores
   const { ready, canvas, allCanvas, allEditors, getPlugin, setPage, isSpreadMode } = useAppStore()
@@ -469,6 +474,23 @@ export default function EditorHeader({
           <div className="w-px h-6 bg-editor-border" />
 
           {/* 레이어 패널 토글 - 숨김 처리 */}
+
+          {/* 페이지 네비게이션 위치 선택 */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <select
+                value={pageNavPosition}
+                onChange={(e) => setPageNavPosition(e.target.value as PageNavPosition)}
+                className="hidden md:block text-xs px-2 py-1 rounded-md border border-editor-border bg-white/80 hover:bg-white transition-colors cursor-pointer"
+                aria-label="페이지 네비 위치"
+              >
+                <option value="auto">네비: 자동</option>
+                <option value="right">네비: 우측</option>
+                <option value="bottom">네비: 하단</option>
+              </select>
+            </TooltipTrigger>
+            <TooltipContent>페이지 네비 위치 (PC에서만 표시)</TooltipContent>
+          </Tooltip>
 
           {/* 도움말 */}
           <Tooltip>
