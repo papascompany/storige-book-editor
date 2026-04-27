@@ -9,15 +9,17 @@ services:
       - "443:443"
     volumes:
       - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./docker/nginx/ssl:/etc/nginx/ssl:ro
       - ./storage:/app/storage:ro
       - ./apps/editor/dist-embed:/app/editor-embed:ro
+      # Let's Encrypt 인증서 (host의 /etc/letsencrypt 직접 마운트)
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      # certbot HTTP-01 챌린지 webroot
+      - ./docker/nginx/certbot-webroot:/var/www/certbot
     depends_on:
       - api
-      - editor
-      - admin
     networks:
       - storige-network
+    restart: unless-stopped
 
   api:
     build:
