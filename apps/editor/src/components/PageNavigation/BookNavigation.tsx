@@ -100,6 +100,19 @@ export const BookNavigation = memo(function BookNavigation({
 
   const pageCount = meta.length || allCanvasLength
 
+  // 진단 로그 — 운영 트래픽 받기 전 임시
+  useEffect(() => {
+    console.log('[BookNavigation:diag]', {
+      templateSetId,
+      editorStorePages_length: editorStorePages.length,
+      fetched_length: fetched?.length ?? 'null',
+      allCanvas_length: allCanvasLength,
+      meta_length: meta.length,
+      pageCount,
+      currentPageIndex,
+    })
+  }, [templateSetId, editorStorePages.length, fetched, allCanvasLength, meta.length, pageCount, currentPageIndex])
+
   const handleSelect = useCallback(
     (idx: number) => {
       if (idx < 0 || idx >= pageCount) return
