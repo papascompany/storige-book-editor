@@ -66,8 +66,12 @@ COPY packages ./packages
 COPY --from=builder /app/apps/worker/dist ./apps/worker/dist
 COPY --from=builder /app/apps/worker/package.json ./apps/worker/
 
-# Install production dependencies only
-RUN pnpm install --prod 
+# Install production dependencies (canvas는 native 컴파일 필요 → 빌드 도구 임시 설치 후 삭제)
+RUN apk add --no-cache --virtual .build-deps \
+    python3 make g++ \
+    cairo-dev pango-dev jpeg-dev giflib-dev librsvg-dev pixman-dev \
+ && pnpm install --prod \
+ && apk del .build-deps
 
 # Create storage directory
 RUN mkdir -p /app/storage
