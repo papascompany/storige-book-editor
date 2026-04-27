@@ -1,6 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "framework": "vite",
+  "framework": null,
   "installCommand": "cd ../.. && pnpm install --no-frozen-lockfile --filter @storige/editor... --ignore-scripts",
   "buildCommand": "cd ../.. && pnpm --filter @storige/types build && pnpm --filter @storige/canvas-core build && pnpm --filter @storige/editor build",
   "outputDirectory": "dist",
