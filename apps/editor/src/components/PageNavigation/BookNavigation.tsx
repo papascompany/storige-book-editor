@@ -1,68 +1,56 @@
-import { memo, useCallback, useMemo } from 'react'
+import { memo, useCallback, useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { CaretLeft, CaretRight } from '@phosphor-icons/react'
-import { useEditorStore, usePageCount } from '@/stores/useEditorStore'
+import { useEditorStore } from '@/stores/useEditorStore'
 import { useAppStore } from '@/stores/useAppStore'
 import { useUiPrefStore, type PageNavPosition } from '@/stores/useUiPrefStore'
 import { useBreakpoint } from '@/hooks/useBreakpoint'
-import { TemplateType, type EditPage } from '@storige/types'
+import { templateSetsApi } from '@/api'
+import { TemplateType } from '@storige/types'
 import { cn } from '@/lib/utils'
 
 /**
  * 책자(BOOK) 페이지 네비게이션
- * - 표지(COVER/SPREAD/WING) → 내지(PAGE) 1, 2, ... 순서
- * - 위치는 우측(데스크톱 기본) 또는 하단(모바일 기본)
- * - 우/하단 사용자 토글 가능 (헤더에서 변경)
+ * - 표지(COVER/SPREAD/WING) → 내지(PAGE) 1, 2, ... 순서로 라벨링
+ * - 위치는 우측(데스크톱 기본) 또는 하단(모바일 기본), 사용자 강제 가능
+ *
+ * 페이지 정보 우선순위:
+ *   1. useEditorStore.pages (spread mode에서 채워짐)
+ *   2. ?templateSetId=... 가 있으면 직접 API fetch (single mode)
+ *   3. allCanvas 길이로 폴백 (이름 없이 page#)
  *
  * 표지 편집 모드별 view 분기는 후속 작업 (agents/12-cover-edit-modes.md)
  */
 
 interface PageMeta {
-  page: EditPage
-  index: number          // 전체 pages 배열에서의 index
+  index: number          // useAppStore.setPage 호출 시 사용
   label: string
   isCover: boolean
+  id: string
 }
 
-function buildPageMeta(pages: EditPage[]): PageMeta[] {
-  // sortOrder 기준 정렬 (안전)
-  const sorted = [...pages].sort((a, b) => a.sortOrder - b.sortOrder)
-  // PAGE 카운터: 표지·날개·책등은 카운트에서 제외, "1쪽"은 첫 PAGE 부터
+function buildPageMetaFromTemplateDetails(details: Array<{ id: string; type?: string }>): PageMeta[] {
   let pageCounter = 0
-  return sorted.map((p, i) => {
+  return details.map((t, i) => {
+    const type = (t.type as TemplateType) || TemplateType.PAGE
     let label = ''
     let isCover = false
-    switch (p.templateType) {
-      case TemplateType.COVER:
-        label = '표지'
-        isCover = true
-        break
-      case TemplateType.SPREAD:
-        label = '표지(펼침면)'
-        isCover = true
-        break
-      case TemplateType.WING:
-        label = '날개'
-        isCover = true
-        break
-      case TemplateType.SPINE:
-        label = '책등'
-        isCover = true
-        break
+    switch (type) {
+      case TemplateType.COVER:  label = '표지';        isCover = true; break
+      case TemplateType.SPREAD: label = '표지(펼침면)'; isCover = true; break
+      case TemplateType.WING:   label = '날개';        isCover = true; break
+      case TemplateType.SPINE:  label = '책등';        isCover = true; break
       case TemplateType.PAGE:
       default:
         pageCounter += 1
         label = `${pageCounter}쪽`
-        break
     }
-    return { page: p, index: i, label, isCover }
+    return { index: i, label, isCover, id: `${t.id}-${i}` }
   })
 }
 
 function resolvePosition(prefer: PageNavPosition, bp: ReturnType<typeof useBreakpoint>): 'right' | 'bottom' {
-  if (prefer === 'auto') {
-    // 데스크톱: 우측, 태블릿/모바일: 하단
-    return bp === 'desktop' ? 'right' : 'bottom'
-  }
+  if (prefer === 'auto') return bp === 'desktop' ? 'right' : 'bottom'
   return prefer
 }
 
@@ -71,25 +59,61 @@ interface BookNavigationProps {
 }
 
 export const BookNavigation = memo(function BookNavigation({ className }: BookNavigationProps) {
-  const pages = useEditorStore((s) => s.pages)
+  const [params] = useSearchParams()
+  const templateSetId = params.get('templateSetId')
+
+  // 1) 우선: useEditorStore.pages (spread/book mode에서 채워짐)
+  const editorStorePages = useEditorStore((s) => s.pages)
+
+  // 2) 폴백: templateSetId로 직접 fetch
+  const [fetched, setFetched] = useState<Array<{ id: string; type?: string }> | null>(null)
+  useEffect(() => {
+    if (!templateSetId) return
+    if (editorStorePages.length > 0) return
+    let cancelled = false
+    templateSetsApi
+      .getTemplateSetWithTemplates(templateSetId)
+      .then((res) => {
+        if (cancelled) return
+        const list = (res as any)?.templateDetails as Array<{ id: string; type?: string }> | undefined
+        if (Array.isArray(list)) setFetched(list)
+      })
+      .catch(() => {/* silent */})
+    return () => { cancelled = true }
+  }, [templateSetId, editorStorePages.length])
+
+  // 페이지 메타 결정
+  const meta = useMemo<PageMeta[]>(() => {
+    if (editorStorePages.length > 0) {
+      return buildPageMetaFromTemplateDetails(
+        editorStorePages.map((p) => ({ id: p.id, type: p.templateType }))
+      )
+    }
+    if (fetched && fetched.length > 0) {
+      return buildPageMetaFromTemplateDetails(fetched)
+    }
+    return []
+  }, [editorStorePages, fetched])
+
+  // 현재 페이지 인덱스 — useAppStore의 canvas 인덱스 (단일 모드 기준)
+  // useEditorStore.currentPageIndex와 setPage가 동기화됨
+  const allCanvasLength = useAppStore((s) => s.allCanvas.length)
   const currentPageIndex = useEditorStore((s) => s.currentPageIndex)
-  const goToPage = useEditorStore((s) => s.goToPage)
   const setPage = useAppStore((s) => s.setPage)
-  const pageCount = usePageCount()
+  const goToPage = useEditorStore((s) => s.goToPage)
 
-  const prefer = useUiPrefStore((s) => s.pageNavPosition)
-  const bp = useBreakpoint()
-  const position = resolvePosition(prefer, bp)
-
-  const meta = useMemo(() => buildPageMeta(pages), [pages])
+  // pageCount는 meta 기준 (없으면 allCanvas 폴백)
+  const pageCount = meta.length || allCanvasLength
 
   const handleSelect = useCallback(
     (idx: number) => {
-      goToPage(idx)
+      if (idx < 0 || idx >= pageCount) return
       setPage(idx)
+      goToPage(idx)
     },
-    [goToPage, setPage]
+    [pageCount, setPage, goToPage]
   )
+
   const handlePrev = useCallback(() => {
     if (currentPageIndex > 0) handleSelect(currentPageIndex - 1)
   }, [currentPageIndex, handleSelect])
@@ -97,10 +121,23 @@ export const BookNavigation = memo(function BookNavigation({ className }: BookNa
     if (currentPageIndex < pageCount - 1) handleSelect(currentPageIndex + 1)
   }, [currentPageIndex, pageCount, handleSelect])
 
+  const prefer = useUiPrefStore((s) => s.pageNavPosition)
+  const bp = useBreakpoint()
+  const position = resolvePosition(prefer, bp)
+  const orientation = position === 'right' ? 'vertical' : 'horizontal'
+
   if (pageCount === 0) return null
 
-  // 위치별 래퍼 스타일
-  const orientation = position === 'right' ? 'vertical' : 'horizontal'
+  // meta가 비어있고 allCanvas만 있을 때 — fallback 라벨 (1쪽, 2쪽 …)
+  const items: PageMeta[] =
+    meta.length > 0
+      ? meta
+      : Array.from({ length: pageCount }, (_, i) => ({
+          index: i,
+          label: `${i + 1}쪽`,
+          isCover: false,
+          id: `canvas-${i}`,
+        }))
 
   return (
     <nav
@@ -117,8 +154,7 @@ export const BookNavigation = memo(function BookNavigation({ className }: BookNa
         onClick={handlePrev}
         disabled={currentPageIndex === 0}
         className={cn(
-          'flex items-center justify-center rounded-md hover:bg-gray-100 transition-colors',
-          'h-8 w-8',
+          'flex items-center justify-center rounded-md hover:bg-gray-100 transition-colors h-8 w-8',
           currentPageIndex === 0 && 'opacity-40 cursor-not-allowed'
         )}
         title="이전"
@@ -132,11 +168,11 @@ export const BookNavigation = memo(function BookNavigation({ className }: BookNa
           orientation === 'vertical' ? 'flex-col py-1' : 'flex-row px-1'
         )}
       >
-        {meta.map((m) => {
+        {items.map((m) => {
           const active = m.index === currentPageIndex
           return (
             <button
-              key={m.page.id}
+              key={m.id}
               onClick={() => handleSelect(m.index)}
               title={m.label}
               className={cn(
@@ -159,8 +195,7 @@ export const BookNavigation = memo(function BookNavigation({ className }: BookNa
         onClick={handleNext}
         disabled={currentPageIndex >= pageCount - 1}
         className={cn(
-          'flex items-center justify-center rounded-md hover:bg-gray-100 transition-colors',
-          'h-8 w-8',
+          'flex items-center justify-center rounded-md hover:bg-gray-100 transition-colors h-8 w-8',
           currentPageIndex >= pageCount - 1 && 'opacity-40 cursor-not-allowed'
         )}
         title="다음"
