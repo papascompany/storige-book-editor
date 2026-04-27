@@ -37,8 +37,12 @@ RUN npm install -g pnpm@9.15.0
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml* ./
 COPY turbo.json ./
 
-# Copy packages
+# Copy packages (소스)
 COPY packages ./packages
+
+# Copy built workspace packages from builder
+# (@storige/types 등 — production stage에는 tsc가 없으므로 dist를 builder에서 가져옴)
+COPY --from=builder /app/packages/types/dist ./packages/types/dist
 
 # Copy built API
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
