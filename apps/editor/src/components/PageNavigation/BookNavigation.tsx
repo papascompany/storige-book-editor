@@ -7,6 +7,7 @@ import { useUiPrefStore, type PageNavPosition } from '@/stores/useUiPrefStore'
 import { useBreakpoint } from '@/hooks/useBreakpoint'
 import { templateSetsApi } from '@/api'
 import { TemplateType } from '@storige/types'
+import { PageThumbnail } from './PageThumbnail'
 import { cn } from '@/lib/utils'
 
 /**
@@ -97,7 +98,8 @@ export const BookNavigation = memo(function BookNavigation({ className }: BookNa
 
   // 현재 페이지 인덱스 — useAppStore의 canvas 인덱스 (단일 모드 기준)
   // useEditorStore.currentPageIndex와 setPage가 동기화됨
-  const allCanvasLength = useAppStore((s) => s.allCanvas.length)
+  const allCanvas = useAppStore((s) => s.allCanvas)
+  const allCanvasLength = allCanvas.length
   const currentPageIndex = useEditorStore((s) => s.currentPageIndex)
   const setPage = useAppStore((s) => s.setPage)
   const goToPage = useEditorStore((s) => s.goToPage)
@@ -164,31 +166,21 @@ export const BookNavigation = memo(function BookNavigation({ className }: BookNa
 
       <div
         className={cn(
-          'flex gap-1.5 overflow-auto scrollbar-hide',
+          'flex gap-2 overflow-auto scrollbar-hide',
           orientation === 'vertical' ? 'flex-col py-1' : 'flex-row px-1'
         )}
       >
-        {items.map((m) => {
-          const active = m.index === currentPageIndex
-          return (
-            <button
-              key={m.id}
-              onClick={() => handleSelect(m.index)}
-              title={m.label}
-              className={cn(
-                'flex-shrink-0 rounded-md text-xs font-medium px-2 py-1 transition-all border',
-                orientation === 'vertical' ? 'min-w-[72px]' : 'min-w-[56px]',
-                active
-                  ? 'bg-violet-100 border-violet-300 text-violet-700'
-                  : m.isCover
-                    ? 'bg-amber-50 border-amber-200 text-amber-800 hover:bg-amber-100'
-                    : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'
-              )}
-            >
-              {m.label}
-            </button>
-          )
-        })}
+        {items.map((m) => (
+          <PageThumbnail
+            key={m.id}
+            canvas={allCanvas[m.index]}
+            label={m.label}
+            active={m.index === currentPageIndex}
+            isCover={m.isCover}
+            onClick={() => handleSelect(m.index)}
+            orientation={orientation}
+          />
+        ))}
       </div>
 
       <button
