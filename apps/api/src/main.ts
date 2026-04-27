@@ -52,6 +52,11 @@ async function bootstrap() {
     ? corsOrigin.split(',').map(o => o.trim())
     : defaultOrigins;
 
+  // Vercel preview/production 도메인 패턴 허용 (예: storige-editor-XYZ-yohans-projects-de3234df.vercel.app)
+  const VERCEL_PATTERN = /\.vercel\.app$/;
+  // 운영 도메인 서브도메인 wildcard
+  const PAPAS_PATTERN = /\.papascompany\.co\.kr$/;
+
   app.enableCors({
     origin: (origin, callback) => {
       // Allow requests with no origin (like mobile apps, curl, etc.)
@@ -59,12 +64,23 @@ async function bootstrap() {
         callback(null, true);
         return;
       }
+      // 정적 화이트리스트 매칭
       if (allowedOrigins.includes(origin)) {
         callback(null, origin);
-      } else {
-        console.log(`CORS blocked for origin: ${origin}`);
-        callback(null, false);
+        return;
       }
+      // Vercel preview / *.papascompany.co.kr 동적 매칭
+      try {
+        const url = new URL(origin);
+        if (VERCEL_PATTERN.test(url.hostname) || PAPAS_PATTERN.test(url.hostname)) {
+          callback(null, origin);
+          return;
+        }
+      } catch {
+        // origin 파싱 실패는 차단
+      }
+      console.log(`CORS blocked for origin: ${origin}`);
+      callback(null, false);
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
