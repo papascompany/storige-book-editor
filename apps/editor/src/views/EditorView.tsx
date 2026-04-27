@@ -13,6 +13,7 @@ import EditorHeader from '@/components/editor/EditorHeader'
 import { PagePanel } from '@/components/PagePanel/PagePanel'
 import { SpreadPagePanel } from '@/components/PagePanel/SpreadPagePanel'
 import { BookNavigation } from '@/components/PageNavigation/BookNavigation'
+import { useResolvedPageNavPosition } from '@/hooks/useResolvedPageNavPosition'
 import { productsApi } from '@/api'
 
 // Screen mode type
@@ -50,6 +51,9 @@ export default function EditorView() {
   const [screenMode, setScreenMode] = useState<ScreenMode>('desktop')
   const [isLoading, setIsLoading] = useState(false)
   const [loadingMessage, setLoadingMessage] = useState('')
+
+  // 페이지 네비게이션 위치 — 'right' (우측 패널) | 'bottom' (하단 패널)
+  const navPosition = useResolvedPageNavPosition()
 
   // Query parameters
   const productId = searchParams.get('productId')
@@ -461,7 +465,7 @@ export default function EditorView() {
 
         {/* Content area - flex-col로 캔버스 영역 + 하단 패널 배치 */}
         <div className="flex-1 flex flex-col relative overflow-hidden">
-          {/* Upper row: sidebar + canvas */}
+          {/* Upper row: sidebar + canvas + (옵션) 우측 페이지 네비 */}
           <div className="flex-1 flex flex-row relative overflow-hidden">
             {/* Feature Sidebar or Control Bar - mutually exclusive */}
             <FeatureSidebar />
@@ -487,16 +491,21 @@ export default function EditorView() {
               </div>
             </main>
 
-            {/* Side Panel 숨김 처리 */}
+            {/* 우측 페이지 네비 (스프레드 모드가 아닐 때만) */}
+            {!isSpreadMode && navPosition === 'right' && (
+              <BookNavigation orientation="vertical" />
+            )}
           </div>
 
           {/* 스프레드 모드 전용 하단 페이지 패널 */}
           {isSpreadMode && <SpreadPagePanel />}
+
+          {/* 하단 페이지 네비 (스프레드 모드가 아닐 때만) */}
+          {!isSpreadMode && navPosition === 'bottom' && (
+            <BookNavigation orientation="horizontal" />
+          )}
         </div>
       </div>
-
-      {/* 책자 페이지 네비게이션 (스프레드 모드가 아닐 때) */}
-      {!isSpreadMode && <BookNavigation />}
 
       {/* Loading Overlay */}
       {isLoading && (

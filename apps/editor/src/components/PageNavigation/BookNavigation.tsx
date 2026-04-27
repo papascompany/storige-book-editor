@@ -1,36 +1,36 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { CaretLeft, CaretRight } from '@phosphor-icons/react'
+import { CaretLeft, CaretRight, CaretUp, CaretDown } from '@phosphor-icons/react'
 import { useEditorStore } from '@/stores/useEditorStore'
 import { useAppStore } from '@/stores/useAppStore'
-import { useUiPrefStore, type PageNavPosition } from '@/stores/useUiPrefStore'
-import { useBreakpoint } from '@/hooks/useBreakpoint'
+import { useResolvedPageNavPosition } from '@/hooks/useResolvedPageNavPosition'
 import { templateSetsApi } from '@/api'
 import { TemplateType } from '@storige/types'
 import { PageThumbnail } from './PageThumbnail'
 import { cn } from '@/lib/utils'
 
 /**
- * 책자(BOOK) 페이지 네비게이션
- * - 표지(COVER/SPREAD/WING) → 내지(PAGE) 1, 2, ... 순서로 라벨링
- * - 위치는 우측(데스크톱 기본) 또는 하단(모바일 기본), 사용자 강제 가능
+ * 책자(BOOK) 페이지 네비게이션 — Canva 스타일 썸네일 리스트
+ *
+ * 레이아웃:
+ *   - inline (fixed 아님). 부모 EditorView가 layout에 placement.
+ *   - orientation: 'vertical' (우측 패널) | 'horizontal' (하단 패널)
+ *   - 가로/세로 모두 동일 카드 컴포넌트(PageThumbnail) 사용
  *
  * 페이지 정보 우선순위:
- *   1. useEditorStore.pages (spread mode에서 채워짐)
- *   2. ?templateSetId=... 가 있으면 직접 API fetch (single mode)
- *   3. allCanvas 길이로 폴백 (이름 없이 page#)
- *
- * 표지 편집 모드별 view 분기는 후속 작업 (agents/12-cover-edit-modes.md)
+ *   1. useEditorStore.pages (single/spread mode 모두 setPages 호출됨)
+ *   2. ?templateSetId= API fetch (폴백)
+ *   3. useAppStore.allCanvas 길이만 (최후 폴백, "1쪽","2쪽"…)
  */
 
 interface PageMeta {
-  index: number          // useAppStore.setPage 호출 시 사용
+  index: number
   label: string
   isCover: boolean
   id: string
 }
 
-function buildPageMetaFromTemplateDetails(details: Array<{ id: string; type?: string }>): PageMeta[] {
+function buildPageMeta(details: Array<{ id: string; type?: string }>): PageMeta[] {
   let pageCounter = 0
   return details.map((t, i) => {
     const type = (t.type as TemplateType) || TemplateType.PAGE
@@ -50,23 +50,20 @@ function buildPageMetaFromTemplateDetails(details: Array<{ id: string; type?: st
   })
 }
 
-function resolvePosition(prefer: PageNavPosition, bp: ReturnType<typeof useBreakpoint>): 'right' | 'bottom' {
-  if (prefer === 'auto') return bp === 'desktop' ? 'right' : 'bottom'
-  return prefer
-}
-
 interface BookNavigationProps {
+  orientation?: 'vertical' | 'horizontal'  // caller가 결정. 없으면 hook으로 자체 결정
   className?: string
 }
 
-export const BookNavigation = memo(function BookNavigation({ className }: BookNavigationProps) {
+export const BookNavigation = memo(function BookNavigation({
+  orientation: forcedOrientation,
+  className,
+}: BookNavigationProps) {
   const [params] = useSearchParams()
   const templateSetId = params.get('templateSetId')
 
-  // 1) 우선: useEditorStore.pages (spread/book mode에서 채워짐)
   const editorStorePages = useEditorStore((s) => s.pages)
 
-  // 2) 폴백: templateSetId로 직접 fetch
   const [fetched, setFetched] = useState<Array<{ id: string; type?: string }> | null>(null)
   useEffect(() => {
     if (!templateSetId) return
@@ -79,32 +76,28 @@ export const BookNavigation = memo(function BookNavigation({ className }: BookNa
         const list = (res as any)?.templateDetails as Array<{ id: string; type?: string }> | undefined
         if (Array.isArray(list)) setFetched(list)
       })
-      .catch(() => {/* silent */})
+      .catch((err) => {
+        console.warn('[BookNavigation] templateSet fetch failed:', err?.message ?? err)
+      })
     return () => { cancelled = true }
   }, [templateSetId, editorStorePages.length])
 
-  // 페이지 메타 결정
   const meta = useMemo<PageMeta[]>(() => {
     if (editorStorePages.length > 0) {
-      return buildPageMetaFromTemplateDetails(
-        editorStorePages.map((p) => ({ id: p.id, type: p.templateType }))
-      )
+      return buildPageMeta(editorStorePages.map((p) => ({ id: p.id, type: p.templateType })))
     }
     if (fetched && fetched.length > 0) {
-      return buildPageMetaFromTemplateDetails(fetched)
+      return buildPageMeta(fetched)
     }
     return []
   }, [editorStorePages, fetched])
 
-  // 현재 페이지 인덱스 — useAppStore의 canvas 인덱스 (단일 모드 기준)
-  // useEditorStore.currentPageIndex와 setPage가 동기화됨
   const allCanvas = useAppStore((s) => s.allCanvas)
   const allCanvasLength = allCanvas.length
   const currentPageIndex = useEditorStore((s) => s.currentPageIndex)
   const setPage = useAppStore((s) => s.setPage)
   const goToPage = useEditorStore((s) => s.goToPage)
 
-  // pageCount는 meta 기준 (없으면 allCanvas 폴백)
   const pageCount = meta.length || allCanvasLength
 
   const handleSelect = useCallback(
@@ -115,7 +108,6 @@ export const BookNavigation = memo(function BookNavigation({ className }: BookNa
     },
     [pageCount, setPage, goToPage]
   )
-
   const handlePrev = useCallback(() => {
     if (currentPageIndex > 0) handleSelect(currentPageIndex - 1)
   }, [currentPageIndex, handleSelect])
@@ -123,14 +115,12 @@ export const BookNavigation = memo(function BookNavigation({ className }: BookNa
     if (currentPageIndex < pageCount - 1) handleSelect(currentPageIndex + 1)
   }, [currentPageIndex, pageCount, handleSelect])
 
-  const prefer = useUiPrefStore((s) => s.pageNavPosition)
-  const bp = useBreakpoint()
-  const position = resolvePosition(prefer, bp)
-  const orientation = position === 'right' ? 'vertical' : 'horizontal'
+  const autoOrientation = useResolvedPageNavPosition() === 'right' ? 'vertical' : 'horizontal'
+  const orientation = forcedOrientation ?? autoOrientation
 
   if (pageCount === 0) return null
 
-  // meta가 비어있고 allCanvas만 있을 때 — fallback 라벨 (1쪽, 2쪽 …)
+  // meta 없을 때(어디서도 못 받음) — 캔버스 개수만큼 단순 라벨
   const items: PageMeta[] =
     meta.length > 0
       ? meta
@@ -141,33 +131,42 @@ export const BookNavigation = memo(function BookNavigation({ className }: BookNa
           id: `canvas-${i}`,
         }))
 
+  // 화살표 아이콘 — 가로면 좌/우, 세로면 위/아래
+  const PrevIcon = orientation === 'vertical' ? CaretUp : CaretLeft
+  const NextIcon = orientation === 'vertical' ? CaretDown : CaretRight
+
   return (
     <nav
       className={cn(
-        'pointer-events-auto bg-white/95 backdrop-blur border border-editor-border shadow-md rounded-xl',
+        'pointer-events-auto bg-white shrink-0',
         orientation === 'vertical'
-          ? 'fixed right-3 top-1/2 -translate-y-1/2 z-[90] flex flex-col items-stretch gap-2 p-2 max-h-[80vh]'
-          : 'fixed left-1/2 -translate-x-1/2 bottom-3 z-[90] flex flex-row items-center gap-2 p-2 max-w-[92vw] overflow-x-auto',
+          ? 'h-full w-[112px] flex flex-col items-center gap-2 py-2 border-l border-editor-border'
+          : 'w-full h-[100px] flex flex-row items-center gap-2 px-3 border-t border-editor-border',
         className
       )}
       aria-label="페이지 네비게이션"
     >
+      {/* 이전 버튼 */}
       <button
         onClick={handlePrev}
         disabled={currentPageIndex === 0}
         className={cn(
-          'flex items-center justify-center rounded-md hover:bg-gray-100 transition-colors h-8 w-8',
+          'flex-shrink-0 flex items-center justify-center rounded-md hover:bg-gray-100 transition-colors',
+          orientation === 'vertical' ? 'w-10 h-7' : 'w-7 h-10',
           currentPageIndex === 0 && 'opacity-40 cursor-not-allowed'
         )}
         title="이전"
       >
-        <CaretLeft className="h-4 w-4" />
+        <PrevIcon className="h-4 w-4" />
       </button>
 
+      {/* 카드 리스트 — 가로/세로 모두 같은 PageThumbnail 사용 */}
       <div
         className={cn(
-          'flex gap-2 overflow-auto scrollbar-hide',
-          orientation === 'vertical' ? 'flex-col py-1' : 'flex-row px-1'
+          'flex-1 flex gap-2 overflow-auto scrollbar-hide',
+          orientation === 'vertical'
+            ? 'flex-col items-center w-full px-1'
+            : 'flex-row items-center px-1'
         )}
       >
         {items.map((m) => (
@@ -183,16 +182,18 @@ export const BookNavigation = memo(function BookNavigation({ className }: BookNa
         ))}
       </div>
 
+      {/* 다음 버튼 */}
       <button
         onClick={handleNext}
         disabled={currentPageIndex >= pageCount - 1}
         className={cn(
-          'flex items-center justify-center rounded-md hover:bg-gray-100 transition-colors h-8 w-8',
+          'flex-shrink-0 flex items-center justify-center rounded-md hover:bg-gray-100 transition-colors',
+          orientation === 'vertical' ? 'w-10 h-7' : 'w-7 h-10',
           currentPageIndex >= pageCount - 1 && 'opacity-40 cursor-not-allowed'
         )}
         title="다음"
       >
-        <CaretRight className="h-4 w-4" />
+        <NextIcon className="h-4 w-4" />
       </button>
     </nav>
   )

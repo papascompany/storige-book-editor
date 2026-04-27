@@ -1301,6 +1301,27 @@ export function useEditorContents(): UseEditorContentsReturn {
         await initWorkspace()
       }
 
+      // useEditorStore.pages 동기화 — BookNavigation 등 페이지 정보 참조 컴포넌트용
+      // 단일 모드에서도 책자 네비를 위해 pages 정보 채움
+      try {
+        if (templateDetails.length > 0) {
+          useEditorStore.getState().setPages(
+            templateDetails.map((t, idx) => ({
+              id: `${t.id}-${idx}`,
+              templateId: t.id,
+              templateType: ((t as any).type ?? 'page') as any,
+              canvasData: t.canvasData,
+              sortOrder: idx,
+              required: !(t.deleteable ?? true),
+              deleteable: (t.deleteable as any) !== false,
+            })) as any
+          )
+          console.log(`[EditorContents] useEditorStore.setPages with ${templateDetails.length} pages`)
+        }
+      } catch (err) {
+        console.warn('[EditorContents] setPages sync failed:', err)
+      }
+
       console.log('[EditorContents] Template set editor loaded successfully')
     } catch (error) {
       console.error('[EditorContents] Template set editor load error:', error)
