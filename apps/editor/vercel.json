@@ -4,5 +4,10 @@
   "buildCommand": "cd ../.. && pnpm install --no-frozen-lockfile && pnpm --filter @storige/types build && pnpm --filter @storige/canvas-core build && pnpm --filter @storige/editor build",
   "installCommand": "echo 'install handled in buildCommand'",
   "outputDirectory": "dist",
-  "ignoreCommand": "git diff --quiet HEAD^ HEAD ./ ../../packages/types ../../packages/canvas-core ../../packages/ui"
+  "ignoreCommand": "git diff --quiet HEAD^ HEAD ./ ../../packages/types ../../packages/canvas-core ../../packages/ui",
+  "build": {
+    "env": {
+      "VITE_API_BASE_URL": "https://api.papascompany.co.kr/api"
+    }
+  }
 }
