@@ -69,7 +69,7 @@ export interface UseWorkSaveReturn {
 /**
  * Work Save Hook
  * 작업 저장 및 로드를 위한 React Hook
- * REST API 사용
+ * REST API 사용 (외부 점검 정합화 — 8c383de + 5c4145a 반영)
  */
 export function useWorkSave(): UseWorkSaveReturn {
   // 로컬 상태
