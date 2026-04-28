@@ -202,13 +202,53 @@ export class TemplateSetsService {
   }
 
   /**
-   * 템플릿셋 삭제 (소프트 삭제)
+   * 템플릿셋 삭제 (소프트 삭제) — 사용 중이면 차단
+   *
+   * 사용 여부 체크:
+   * 1. products 테이블 — templateSetId FK 참조 중인 상품 (RelationId 기반)
+   * 2. edit_sessions 테이블 — templateSetId 사용 중인 active 세션
+   *
+   * 어느 하나라도 > 0이면 BadRequestException, usage 카운트와 상품 ID 반환.
+   * 운영 중 잘못된 삭제로 FK 위반/주문 깨짐을 방지.
    */
   async remove(id: string): Promise<{ affected: number; usedByProducts: string[] }> {
     const templateSet = await this.findOne(id);
 
-    // TODO: 상품에서 사용 중인지 확인
-    const usedByProducts: string[] = [];
+    // 1. 이 템플릿셋을 사용 중인 상품 (활성 상품만)
+    //    Product entity는 title + isActive (isDeleted 없음, name 대신 title)
+    const usingProducts = await this.productRepository
+      .createQueryBuilder('product')
+      .leftJoin('product.templateSet', 'ts')
+      .where('ts.id = :id', { id })
+      .andWhere('product.isActive = :active', { active: true })
+      .select(['product.id', 'product.title'])
+      .getMany();
+
+    // 2. 이 템플릿셋을 참조하는 활성 edit_sessions (legacy editor 모듈 테이블)
+    //    소프트 삭제된 세션은 제외
+    const activeSessionCount = await this.templateSetRepository.manager
+      .createQueryBuilder()
+      .select('COUNT(*)', 'cnt')
+      .from('edit_sessions', 'es')
+      .where('es.template_set_id = :id', { id })
+      .andWhere("es.status != 'submitted'") // 완료된 세션은 자료 보존
+      .getRawOne<{ cnt: string }>();
+
+    const activeSessions = Number(activeSessionCount?.cnt ?? 0);
+    const usedByProducts = usingProducts.map((p) => p.id);
+
+    if (usingProducts.length > 0 || activeSessions > 0) {
+      throw new BadRequestException({
+        code: 'TEMPLATE_SET_IN_USE',
+        message: '이 템플릿셋은 사용 중입니다. 먼저 상품/편집 세션을 정리하세요.',
+        usage: {
+          products: usingProducts.length,
+          activeSessions,
+          productIds: usedByProducts,
+          productTitles: usingProducts.map((p) => p.title),
+        },
+      });
+    }
 
     templateSet.isDeleted = true;
     templateSet.isActive = false;
