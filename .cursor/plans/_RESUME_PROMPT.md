@@ -1,19 +1,19 @@
-# 새 세션 시작용 프롬프트 (v5)
+# 새 세션 시작용 프롬프트 (v6)
 
 > 새 Claude Code 세션을 열고 아래 블록을 그대로 복사해서 입력하면 됩니다.
 > 이 문서는 지우지 말고 보관하세요.
 >
-> **버전**: v5 (2026-04-28, P1+P5 완료 시점)
-> **이전 버전**: v4 (P5 직전) → v3 (P1 직전) → v2 (Day 1-1 시점) — git history에 보존
+> **버전**: v6 (2026-04-28 PM, 외부 점검 정합화 완료 시점)
+> **이전 버전**: v5 (P1+P5 완료) → v4 → v3 → v2 — git history에 보존
 
 ---
 
 ## 복사용 프롬프트 (이 줄 아래부터 끝까지)
 
-[Storige 인수 프로젝트 재개 — 2026-04-28 이후, P1+P5 완료, P4 직전]
+[Storige 인수 프로젝트 재개 — 2026-04-28 이후, P1+P5+외부 점검 정합화 완료, Day 5 직전]
 
 # 한 줄 요약
-인프라 Phase 1\~3 + Day 1 정리 + 디자인 D1/D4 + CORS 동적 허용 + **P1 EditSession 완료 API 연동(`f4c5129`)** + **P5 PDF 내보내기 worker 잡 발행(`971b0e9`)** 모두 master에 머지된 상태. 다음은 **Day 5 PHP staging 회귀**(우선) 또는 **P4 중철 imposition**(선택).
+인프라 Phase 1\~3 + Day 1 정리 + 디자인 D1/D4 + CORS 동적 허용 + **P1 EditSession 완료 API 연동(`f4c5129`)** + **P5 PDF 내보내기 worker 잡 발행(`971b0e9`)** + **외부 점검 정합화 5건(`ddb780b` ~ `190daf0`)** 모두 master에 머지된 상태. 다음은 **Day 5 PHP staging 회귀**.
 
 # 환경 (사실 — 변경 시 갱신)
 - **레포**: `https://github.com/papascompany/storige-book-editor` (PUBLIC, master). 옛 fork(`papascompany/storige`)는 archived.
@@ -58,7 +58,12 @@
   - `editor.service.exportToPdf`가 `workerJobsService.createSynthesisJob` 호출
   - EditorModule에 EditSessionsModule + WorkerJobsModule import
   - 응답 `{ jobId, status }`로 확장
-- 🔵 **다음**: Day 5 PHP staging 회귀 4종 (우선) 또는 P4 중철 imposition (선택)
+- ✅ **외부 점검(GPT-5 + 추가 분석) 정합화 5건** (2026-04-28 PM)
+  - `ddb780b` worker PATCH 경로 `/external/` 통일 (synthesis + conversion 401 차단)
+  - `5c4145a` FileType enum 백엔드 일치 (design/output 제거 → cover/content/template/other)
+  - `8c383de` 스프레드 모드 완료 흐름 정합 (storageApi → filesApi.upload + 내지 multi-page 병합 + spread 시 자동 검증 잡 스킵)
+  - `190daf0` spread webhook을 WebhookService 단일 채널로 통일 (sendSpreadWebhook 제거)
+- 🔵 **다음**: Day 5 PHP staging 회귀 4종
 - ⬜ Day 5 PHP staging 회귀 4종
 - ⬜ Day 6 운영 컷오버
 - ⬜ Week 2+ P2 썸네일, P3 안전장치, P6/P7
