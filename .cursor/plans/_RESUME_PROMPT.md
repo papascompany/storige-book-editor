@@ -22,6 +22,19 @@
 - **북모아 서버** `bookmoa.noriter.co.kr` (Ubuntu 22.04 + Apache + PHP 8.1 + Node 20). 우리 storige 레포의 `test-php/php/` 그대로 `/editor/`에 배포 (`index.php`, `editor.php`, `callback.php`, `webhook.php`). worker-test.php는 북모아 자체 추가본.
 
 # 환경 (사실 — 변경 시 갱신)
+
+## Admin 두 종류 동시 가동 중 (혼동 주의)
+- **Vercel admin** `https://admin.papascompany.co.kr` — papascompany 인수팀이 새로 배포한 admin (우리 git의 apps/admin 빌드)
+- **북모아 정적 admin** `https://bookmoa.noriter.co.kr/storige-admin/` — 북모아 서버의 Apache 정적 호스팅, Vite 빌드물 (옛 storige 개발자가 배포). JS 번들 내부에 `baseURL="/storige-api"` 상대 경로 사용 → Apache `ProxyPass /storige-api/`가 forward
+- **VPS docker admin** ❌ 제거됨 — 한 번도 빌드/가동된 적 없음. 운영 영향 0. (52947ca에서 docker-compose 정의에서 제외)
+- **컷오버 시** — bookmoa Apache vhost의 `ProxyPass /storige-api/` 한 줄 변경 → 북모아 정적 admin도 자동으로 새 인프라 연동. 빌드 다시 안 함.
+
+## 운영 중인 7개 페이지 (모두 `/storige-api` proxy 사용)
+- `bookmoa.noriter.co.kr/editor/{index,editor,callback,webhook,worker-test}.php`
+- `bookmoa.noriter.co.kr/storige-admin/` (정적 SPA)
+- nimda 모듈 (Apache `SetEnv STORIGE_API_URL` 직접 사용)
+- 모두 `proxy_pass.html` §04 두 줄 변경으로 일괄 전환
+
 - **레포**: `https://github.com/papascompany/storige-book-editor` (PUBLIC, master). 옛 fork(`papascompany/storige`)는 archived.
 - **VPS**: `158.247.235.202` (Vultr Seoul, 4vCPU/8GB/160GB, Ubuntu 22.04, KST 시간대). SSH `ssh deploy@158.247.235.202` (key-only, NOPASSWD sudo, root 차단).
 - **API HTTPS**: `https://api.papascompany.co.kr/api/health` (Let's Encrypt, deploy hook 등록).

@@ -402,6 +402,14 @@
           PHP 코드, .htaccess, DB는 0줄 변경.
         </div>
       </div>
+      <div class="notice brand" style="margin-top: 12px; margin-bottom: 0;">
+        <span class="notice-icon">🔁</span>
+        <div>
+          <strong>이 한 번의 ProxyPass 변경으로 자동 전환되는 모든 페이지:</strong><br>
+          ✓ <code>/editor/index.php</code> · <code>/editor/editor.php</code> · <code>/editor/callback.php</code> · <code>/editor/worker-test.php</code> · <code>/storige-admin/</code> · nimda 모듈의 storige_common.php<br>
+          모두 같은 <code>/storige-api</code> 경로를 사용하므로 ProxyPass 한 줄 변경으로 일괄 적용. 정적 admin SPA 빌드물도 다시 빌드할 필요 없음.
+        </div>
+      </div>
     </div>
   </div>
 </header>
@@ -753,6 +761,28 @@
         Step 1에서 staging의 ProxyPass를 변경하면 즉시 새 인프라로 흐릅니다.
       </div>
     </div>
+
+    <h3 style="margin-top: 24px;">staging에서 운영 중인 모든 페이지 (실측)</h3>
+    <table class="t">
+      <thead><tr><th>URL</th><th>위치</th><th>storige API 호출 방식</th></tr></thead>
+      <tbody>
+        <tr><td><code>/editor/index.php</code></td><td>북모아 Apache PHP</td><td><code>/storige-api</code> proxy</td></tr>
+        <tr><td><code>/editor/editor.php</code></td><td>북모아 Apache PHP</td><td><code>/storige-api</code> proxy</td></tr>
+        <tr><td><code>/editor/callback.php</code></td><td>북모아 Apache PHP</td><td>(webhook 수신만)</td></tr>
+        <tr><td><code>/editor/webhook.php</code></td><td>북모아 Apache PHP</td><td>(webhook 수신만)</td></tr>
+        <tr><td><code>/editor/worker-test.php</code></td><td>북모아 Apache PHP (자체 추가본)</td><td><code>/storige-api</code> proxy</td></tr>
+        <tr><td><code>/storige-admin/</code></td><td>북모아 Apache 정적 호스팅 (Vite 빌드)</td><td>JS 번들의 <code>baseURL="/storige-api"</code> → proxy</td></tr>
+        <tr><td>nimda 모듈 (별도 위치)</td><td>북모아 nimda PHP</td><td><code>SetEnv STORIGE_API_URL</code> 직접 호출</td></tr>
+      </tbody>
+    </table>
+    <div class="notice brand">
+      <span class="notice-icon">🎯</span>
+      <div>
+        <strong>핵심</strong> — 7개 페이지 모두 <code>/storige-api</code> proxy(또는 SetEnv URL)를 거칩니다.
+        따라서 §04의 두 줄 변경만으로 7개 페이지가 일괄 새 인프라로 전환됩니다.
+        admin SPA를 다시 빌드/배포할 필요도, PHP 코드를 수정할 필요도 없습니다.
+      </div>
+    </div>
   </div>
 </section>
 
@@ -967,6 +997,35 @@ curl -sS https://api.papascompany.co.kr/api/health | python3 -m json.tool</pre>
         <p style="color:var(--c-text-soft); font-size:0.88rem;">
           ⚠️ 합성 잡(<code>POST /worker-jobs/synthesize/external</code>)이 PHP 결제/접수 흐름에서 자동 호출된다면, 그 단계도 정상인지 (callbackUrl로 webhook 수신) 확인.
         </p>
+      </div>
+    </div>
+
+    <div class="step">
+      <span class="step-num">3.5</span>
+      <h3>storige-admin SPA 동작 (관리자 콘솔)</h3>
+      <div class="step-body">
+        <p>브라우저로 <code>https://bookmoa.noriter.co.kr/storige-admin/</code> 접속.</p>
+        <p><strong>동작 원리:</strong></p>
+        <ul>
+          <li>이 admin SPA는 북모아 서버의 정적 파일(<code>/var/www/html/storige-admin/</code> 또는 동등 위치)에 호스팅된 Vite 빌드물</li>
+          <li>JS 번들 내부에 <code>baseURL = "/storige-api"</code> 상대 경로로 storige API 호출</li>
+          <li>따라서 <strong>Step 1의 ProxyPass 변경만으로 자동 새 인프라 연동</strong> — 빌드 다시 할 필요 0</li>
+        </ul>
+        <p><strong>확인 사항:</strong></p>
+        <ul>
+          <li>로그인 페이지 정상 표시</li>
+          <li>로그인 후 admin 콘솔(템플릿/카테고리/주문 등) 데이터 정상 로드 (Network 탭에서 <code>/storige-api/...</code> 호출 200)</li>
+          <li>이미지/썸네일 정상 표시 (Vercel admin과 같은 storage URL 사용)</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="step">
+      <span class="step-num">3.7</span>
+      <h3>worker-test.php 동작 (Worker 잡 관리 페이지)</h3>
+      <div class="step-body">
+        <p>브라우저로 <code>https://bookmoa.noriter.co.kr/editor/worker-test.php</code> 접속.</p>
+        <p>역시 <code>/storige-api/</code> proxy를 사용하므로 자동 새 인프라 연동. worker job 발행/조회/상태 확인 모두 정상이어야 함.</p>
       </div>
     </div>
 
