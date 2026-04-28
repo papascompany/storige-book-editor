@@ -42,12 +42,13 @@ export class EditSessionsService {
    * 편집 세션 생성
    */
   async create(dto: CreateEditSessionDto): Promise<EditSessionEntity> {
+    // coverFileId/contentFileId는 @RelationId(read-only). ManyToOne relation을 통해 set.
     const session = this.sessionRepository.create({
       orderSeqno: dto.orderSeqno,
       memberSeqno: dto.memberSeqno,
       mode: dto.mode,
-      coverFileId: dto.coverFileId,
-      contentFileId: dto.contentFileId,
+      coverFile: dto.coverFileId ? ({ id: dto.coverFileId } as any) : null,
+      contentFile: dto.contentFileId ? ({ id: dto.contentFileId } as any) : null,
       templateSetId: dto.templateSetId,
       canvasData: dto.canvasData,
       metadata: dto.metadata,
@@ -225,12 +226,13 @@ export class EditSessionsService {
       }
     }
 
-    // 파일 ID 업데이트
+    // 파일 ID 업데이트 — coverFileId/contentFileId는 @RelationId(read-only)이므로
+    // ManyToOne relation을 통해 set해야 실제 cover_file_id/content_file_id 칼럼이 갱신됨.
     if (dto.coverFileId !== undefined) {
-      session.coverFileId = dto.coverFileId;
+      session.coverFile = dto.coverFileId ? ({ id: dto.coverFileId } as any) : null;
     }
     if (dto.contentFileId !== undefined) {
-      session.contentFileId = dto.contentFileId;
+      session.contentFile = dto.contentFileId ? ({ id: dto.contentFileId } as any) : null;
     }
 
     const updated = await this.sessionRepository.save(session);
