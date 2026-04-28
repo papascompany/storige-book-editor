@@ -1,0 +1,1640 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Storige 인수·마이그레이션 진행 가이드 — 2026-04-28</title>
+<style>
+  :root {
+    --c-bg: #fafaf9;
+    --c-surface: #ffffff;
+    --c-border: #e7e5e4;
+    --c-text: #1c1917;
+    --c-text-soft: #57534e;
+    --c-muted: #a8a29e;
+
+    --c-brand: #7c3aed;       /* violet-600 */
+    --c-brand-soft: #ede9fe;  /* violet-100 */
+    --c-brand-deep: #5b21b6;  /* violet-800 */
+
+    --c-done: #10b981;        /* emerald-500 */
+    --c-done-soft: #d1fae5;
+    --c-prog: #3b82f6;        /* blue-500 */
+    --c-prog-soft: #dbeafe;
+    --c-wait: #94a3b8;        /* slate-400 */
+    --c-wait-soft: #f1f5f9;
+    --c-warn: #f59e0b;        /* amber-500 */
+    --c-warn-soft: #fef3c7;
+    --c-danger: #ef4444;      /* red-500 */
+    --c-danger-soft: #fee2e2;
+
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
+    --shadow-md: 0 4px 12px rgba(0,0,0,0.06);
+    --shadow-lg: 0 12px 32px rgba(0,0,0,0.08);
+
+    --radius: 12px;
+    --radius-lg: 16px;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Pretendard", "Apple SD Gothic Neo",
+                 "Noto Sans KR", system-ui, sans-serif;
+    background: var(--c-bg);
+    color: var(--c-text);
+    line-height: 1.6;
+    font-size: 15px;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3, h4 { color: var(--c-text); margin: 0; font-weight: 700; letter-spacing: -0.01em; }
+  h1 { font-size: 2.2rem; line-height: 1.2; }
+  h2 { font-size: 1.6rem; margin-bottom: 0.5rem; }
+  h3 { font-size: 1.15rem; margin-bottom: 0.5rem; }
+  h4 { font-size: 1rem; }
+  p { margin: 0.4rem 0; }
+  code, .mono {
+    font-family: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.85em;
+    background: #f5f5f4;
+    padding: 1px 6px;
+    border-radius: 4px;
+    color: var(--c-brand-deep);
+  }
+  a { color: var(--c-brand); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* ================== Layout ================== */
+  .wrap { max-width: 1280px; margin: 0 auto; padding: 0 24px; }
+
+  header.hero {
+    background: linear-gradient(135deg, #ede9fe 0%, #ffffff 60%, #f0fdf4 100%);
+    border-bottom: 1px solid var(--c-border);
+    padding: 36px 0 28px;
+  }
+  .hero-grid {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 24px;
+    align-items: end;
+  }
+  .hero-meta {
+    color: var(--c-text-soft);
+    font-size: 0.95rem;
+  }
+  .hero-meta .pill {
+    display: inline-block;
+    background: var(--c-brand);
+    color: #fff;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-weight: 600;
+    font-size: 0.78rem;
+    margin-right: 6px;
+  }
+  .hero-tagline {
+    margin-top: 12px;
+    font-size: 1.05rem;
+    color: var(--c-text-soft);
+    max-width: 760px;
+  }
+
+  /* metrics cards */
+  .metrics {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-top: 28px;
+  }
+  .metric {
+    background: var(--c-surface);
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius);
+    padding: 16px 18px;
+    box-shadow: var(--shadow-sm);
+  }
+  .metric .num { font-size: 2rem; font-weight: 800; line-height: 1; letter-spacing: -0.02em; }
+  .metric .label { font-size: 0.85rem; color: var(--c-text-soft); margin-top: 6px; }
+  .metric.done .num { color: var(--c-done); }
+  .metric.prog .num { color: var(--c-prog); }
+  .metric.wait .num { color: var(--c-wait); }
+  .metric.warn .num { color: var(--c-warn); }
+
+  /* TOC sticky */
+  nav.toc {
+    position: sticky;
+    top: 0;
+    background: rgba(255,255,255,0.95);
+    backdrop-filter: saturate(180%) blur(8px);
+    border-bottom: 1px solid var(--c-border);
+    z-index: 100;
+  }
+  .toc-inner {
+    display: flex;
+    gap: 4px;
+    overflow-x: auto;
+    padding: 8px 0;
+  }
+  .toc-inner a {
+    display: inline-block;
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    color: var(--c-text-soft);
+    white-space: nowrap;
+    font-weight: 500;
+  }
+  .toc-inner a:hover { background: var(--c-brand-soft); color: var(--c-brand-deep); text-decoration: none; }
+
+  /* sections */
+  section.s {
+    padding: 48px 0 16px;
+    border-bottom: 1px dashed var(--c-border);
+  }
+  section.s:last-of-type { border-bottom: none; }
+  .s-head {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  .s-head .num {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--c-brand);
+    letter-spacing: 0.05em;
+  }
+  .s-head .desc {
+    color: var(--c-text-soft);
+    font-size: 0.95rem;
+    flex: 1;
+  }
+
+  /* Status chips */
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1.3;
+    white-space: nowrap;
+  }
+  .chip.done { background: var(--c-done-soft); color: #065f46; }
+  .chip.prog { background: var(--c-prog-soft); color: #1e40af; }
+  .chip.wait { background: var(--c-wait-soft); color: #475569; }
+  .chip.warn { background: var(--c-warn-soft); color: #92400e; }
+  .chip.danger { background: var(--c-danger-soft); color: #991b1b; }
+  .chip.brand { background: var(--c-brand-soft); color: var(--c-brand-deep); }
+  .chip.priority-h { background: #fef2f2; color: #b91c1c; }
+  .chip.priority-m { background: #fffbeb; color: #b45309; }
+  .chip.priority-l { background: #f0fdf4; color: #166534; }
+
+  /* Architecture diagram */
+  .diagram {
+    background: var(--c-surface);
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius-lg);
+    padding: 28px;
+    box-shadow: var(--shadow-md);
+    overflow-x: auto;
+  }
+  .diagram svg { display: block; max-width: 100%; height: auto; min-width: 880px; }
+
+  /* Timeline */
+  .timeline { position: relative; padding-left: 28px; }
+  .timeline::before {
+    content: "";
+    position: absolute;
+    left: 8px; top: 6px; bottom: 6px;
+    width: 2px;
+    background: linear-gradient(to bottom, var(--c-done) 0%, var(--c-done) 60%, var(--c-wait) 60%, var(--c-wait) 100%);
+  }
+  .tl-item {
+    position: relative;
+    padding: 12px 18px 14px 22px;
+    background: var(--c-surface);
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius);
+    margin-bottom: 12px;
+    box-shadow: var(--shadow-sm);
+  }
+  .tl-item::before {
+    content: "";
+    position: absolute;
+    left: -27px; top: 18px;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: var(--c-wait);
+    border: 3px solid var(--c-bg);
+  }
+  .tl-item.done::before { background: var(--c-done); }
+  .tl-item.prog::before { background: var(--c-prog); animation: pulse 2s infinite; }
+  .tl-item.next::before { background: var(--c-warn); }
+  @keyframes pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(59,130,246,0.45); }
+    50% { box-shadow: 0 0 0 8px rgba(59,130,246,0); }
+  }
+  .tl-item .tl-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 4px;
+    flex-wrap: wrap;
+  }
+  .tl-item .tl-title { font-weight: 700; }
+  .tl-item .tl-meta { font-size: 0.8rem; color: var(--c-text-soft); }
+  .tl-item .tl-body { color: var(--c-text-soft); font-size: 0.9rem; margin-top: 4px; }
+
+  /* Modules grid */
+  .modules {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 16px;
+  }
+  .module {
+    background: var(--c-surface);
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius);
+    padding: 16px 18px;
+    box-shadow: var(--shadow-sm);
+  }
+  .module-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--c-border);
+  }
+  .module-head h3 { font-size: 1.05rem; }
+  .module-head .badge {
+    font-size: 0.75rem;
+    color: var(--c-text-soft);
+    font-weight: 500;
+  }
+  .module ul { margin: 0; padding-left: 0; list-style: none; }
+  .module li {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 5px 0;
+    font-size: 0.88rem;
+    border-bottom: 1px dashed #f5f5f4;
+  }
+  .module li:last-child { border-bottom: none; }
+  .module li .dot {
+    flex-shrink: 0;
+    width: 8px; height: 8px; border-radius: 50%;
+    margin-top: 7px;
+    background: var(--c-wait);
+  }
+  .module li.done .dot { background: var(--c-done); }
+  .module li.warn .dot { background: var(--c-warn); }
+  .module li .file {
+    color: var(--c-muted);
+    font-family: "JetBrains Mono", monospace;
+    font-size: 0.7rem;
+    margin-left: 6px;
+  }
+
+  /* Agent cards */
+  .agents {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(310px, 1fr));
+    gap: 14px;
+  }
+  .agent {
+    background: var(--c-surface);
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    box-shadow: var(--shadow-sm);
+    border-left: 4px solid var(--c-wait);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .agent.done { border-left-color: var(--c-done); }
+  .agent.next { border-left-color: var(--c-warn); }
+  .agent.prog { border-left-color: var(--c-prog); }
+  .agent .a-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .agent .a-num {
+    font-size: 0.7rem;
+    font-weight: 800;
+    color: var(--c-muted);
+    background: #f5f5f4;
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+  .agent .a-title { font-weight: 700; font-size: 0.95rem; flex: 1; }
+  .agent .a-target { color: var(--c-text-soft); font-size: 0.85rem; }
+  .agent .a-file {
+    color: var(--c-muted);
+    font-family: "JetBrains Mono", monospace;
+    font-size: 0.7rem;
+  }
+
+  /* Checklist */
+  .check-group {
+    background: var(--c-surface);
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius);
+    padding: 18px 22px;
+    margin-bottom: 16px;
+    box-shadow: var(--shadow-sm);
+  }
+  .check-group h3 {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+  .check-list { list-style: none; padding: 0; margin: 0; }
+  .check-list li {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px dashed #f5f5f4;
+  }
+  .check-list li:last-child { border-bottom: none; }
+  .check-list .cb {
+    flex-shrink: 0;
+    margin-top: 2px;
+    width: 18px; height: 18px;
+    border: 2px solid var(--c-wait);
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 12px;
+    font-weight: 800;
+  }
+  .check-list li.done .cb { background: var(--c-done); border-color: var(--c-done); }
+  .check-list li.done .cb::after { content: "✓"; }
+  .check-list .ck-body { flex: 1; }
+  .check-list .ck-body .sub { display: block; color: var(--c-text-soft); font-size: 0.83rem; margin-top: 2px; }
+
+  /* Tables */
+  table.t {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--c-surface);
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    box-shadow: var(--shadow-sm);
+    font-size: 0.88rem;
+  }
+  table.t th, table.t td {
+    padding: 10px 14px;
+    text-align: left;
+    border-bottom: 1px solid var(--c-border);
+    vertical-align: top;
+  }
+  table.t thead th {
+    background: #fafaf9;
+    color: var(--c-text-soft);
+    font-weight: 600;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  table.t tbody tr:last-child td { border-bottom: none; }
+  table.t tbody tr:hover { background: #fafaf9; }
+
+  /* Notice boxes */
+  .notice {
+    border-radius: var(--radius);
+    padding: 14px 18px;
+    margin: 14px 0;
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+  }
+  .notice-icon { flex-shrink: 0; font-size: 1.2rem; }
+  .notice.brand { background: var(--c-brand-soft); border-left: 3px solid var(--c-brand); color: var(--c-brand-deep); }
+  .notice.warn { background: var(--c-warn-soft); border-left: 3px solid var(--c-warn); color: #78350f; }
+  .notice.done { background: var(--c-done-soft); border-left: 3px solid var(--c-done); color: #065f46; }
+  .notice.danger { background: var(--c-danger-soft); border-left: 3px solid var(--c-danger); color: #7f1d1d; }
+
+  /* Two col */
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+  }
+  @media (max-width: 900px) {
+    .two-col { grid-template-columns: 1fr; }
+    .metrics { grid-template-columns: repeat(2, 1fr); }
+    .hero-grid { grid-template-columns: 1fr; }
+  }
+
+  footer {
+    background: #1c1917;
+    color: #d6d3d1;
+    padding: 32px 0;
+    margin-top: 48px;
+    font-size: 0.85rem;
+  }
+  footer .wrap { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; }
+  footer code { background: #292524; color: #c4b5fd; }
+
+  @media print {
+    nav.toc { display: none; }
+    section.s { page-break-inside: avoid; }
+    .agent, .module, .tl-item, .check-group { page-break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ============================================== -->
+<!-- HERO                                             -->
+<!-- ============================================== -->
+<header class="hero">
+  <div class="wrap">
+    <div class="hero-grid">
+      <div>
+        <div class="hero-meta">
+          <span class="pill">v5</span>
+          <span>2026-04-28 (P1+P5 완료 시점)</span>
+        </div>
+        <h1 style="margin-top:8px">Storige 인수·마이그레이션 진행 가이드</h1>
+        <p class="hero-tagline">
+          PHP bookmoa의 온라인 책자 편집기를 React+NestJS 스택으로 인수받아
+          <strong>Vultr VPS + Vercel 하이브리드 인프라</strong>로 마이그레이션하고,
+          편집 완료 → 워커 합성 파이프라인을 end-to-end 동작시킨 상태입니다.
+          이 문서는 모든 개발 문서를 종합해 <strong>완료 / 진행 / 대기 / 의존성</strong>을
+          한 화면에서 추적하기 위한 시각화 가이드입니다.
+        </p>
+      </div>
+    </div>
+
+    <div class="metrics">
+      <div class="metric done">
+        <div class="num">11</div>
+        <div class="label">완료된 핵심 작업 (Phase 1~3 + Day 1 + D1/D4 + P1/P5)</div>
+      </div>
+      <div class="metric prog">
+        <div class="num">2</div>
+        <div class="label">즉시 다음 (Day 5 PHP 회귀, Day 6 컷오버)</div>
+      </div>
+      <div class="metric wait">
+        <div class="num">9</div>
+        <div class="label">대기 중 (P2/P3/P4/P6/P7, R2, D2/D3/D5)</div>
+      </div>
+      <div class="metric warn">
+        <div class="num">4</div>
+        <div class="label">기술 부채·확인 필요</div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ============================================== -->
+<!-- TOC                                              -->
+<!-- ============================================== -->
+<nav class="toc">
+  <div class="wrap">
+    <div class="toc-inner">
+      <a href="#sec-overview">개요</a>
+      <a href="#sec-arch">시스템 아키텍처</a>
+      <a href="#sec-timeline">Phase 타임라인</a>
+      <a href="#sec-modules">모듈별 진행</a>
+      <a href="#sec-agents">에이전트 12개</a>
+      <a href="#sec-checklist">컷오버 체크리스트</a>
+      <a href="#sec-design">디자인 트랙</a>
+      <a href="#sec-env">환경·시크릿</a>
+      <a href="#sec-decisions">폐기·채택 결정</a>
+      <a href="#sec-debt">기술 부채</a>
+      <a href="#sec-next">다음 우선순위</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ============================================== -->
+<!-- 0. OVERVIEW                                      -->
+<!-- ============================================== -->
+<section class="s" id="sec-overview">
+  <div class="wrap">
+    <div class="s-head">
+      <span class="num">00</span>
+      <h2>현재 상태 한 눈에</h2>
+    </div>
+
+    <div class="notice done">
+      <span class="notice-icon">✅</span>
+      <div>
+        <strong>합성 파이프라인 end-to-end 동작 완료 (2026-04-28)</strong><br>
+        에디터에서 편집 완료 → API의 <code>EditSessions.complete</code> →
+        worker validation/synthesis 잡 자동 발행 →
+        <code>session.callbackUrl</code>로 PHP webhook 송신까지 모두 연결되었습니다.
+        다음은 PHP staging 회귀(Day 5) → 운영 컷오버(Day 6) 단계.
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div>
+        <h3 style="margin-bottom:8px">최근 머지된 커밋 (master)</h3>
+        <table class="t">
+          <thead><tr><th>커밋</th><th>내용</th></tr></thead>
+          <tbody>
+            <tr><td><code>01fb342</code></td><td>docs: _RESUME_PROMPT v5 — P5 완료 표시</td></tr>
+            <tr><td><code>971b0e9</code></td><td><strong>feat(api/P5)</strong>: exportToPdf placeholder 제거 — worker 합성 잡 발행</td></tr>
+            <tr><td><code>4175cf4</code></td><td>docs: _RESUME_PROMPT v4 — P1 완료 표시</td></tr>
+            <tr><td><code>f4c5129</code></td><td><strong>feat(editor/P1)</strong>: completeSpreadWork EditSession 완료 API 연동</td></tr>
+            <tr><td><code>03237cf</code></td><td>docs: _RESUME_PROMPT v3 갱신 — D1+D4 머지</td></tr>
+            <tr><td><code>14d0944</code></td><td>merge: feat/design-refresh — D1 헤더 + D4 페이지 네비 + CORS 패턴</td></tr>
+            <tr><td><code>133570c</code></td><td>fix(api/cors): Vercel preview / *.papascompany.co.kr 동적 origin 허용</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div>
+        <h3 style="margin-bottom:8px">즉시 다음 (우선순위)</h3>
+        <div class="check-group" style="margin-bottom:0">
+          <ul class="check-list">
+            <li>
+              <div class="cb"></div>
+              <div class="ck-body">
+                <strong>Day 5 — PHP staging 회귀 4종</strong>
+                <span class="sub">01-php-integrator.md · 회원 세션 / 파일 업로드 / 검증·합성 잡 webhook / 실패 흐름</span>
+              </div>
+            </li>
+            <li>
+              <div class="cb"></div>
+              <div class="ck-body">
+                <strong>Day 6 — 운영 컷오버 (PHP 4상수 deploy + 첫 주문 + 24h)</strong>
+                <span class="sub">09-cutover-runbook.md §4</span>
+              </div>
+            </li>
+            <li>
+              <div class="cb"></div>
+              <div class="ck-body">
+                <strong>(선택) P4 중철 imposition</strong>
+                <span class="sub">06-saddle-stitch-orderer.md · 중철 주문을 받을 거면 필수</span>
+              </div>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================== -->
+<!-- 1. ARCHITECTURE                                  -->
+<!-- ============================================== -->
+<section class="s" id="sec-arch">
+  <div class="wrap">
+    <div class="s-head">
+      <span class="num">01</span>
+      <h2>시스템 아키텍처 & 의존성</h2>
+      <span class="desc">호스팅·기술 스택·요청 흐름</span>
+    </div>
+
+    <div class="diagram">
+      <svg viewBox="0 0 1100 560" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system, sans-serif" font-size="13">
+        <defs>
+          <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+            <path d="M0,0 L0,6 L9,3 z" fill="#7c3aed"/>
+          </marker>
+          <marker id="arrow-soft" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+            <path d="M0,0 L0,6 L9,3 z" fill="#94a3b8"/>
+          </marker>
+          <linearGradient id="g-vercel" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#ede9fe"/><stop offset="100%" stop-color="#ffffff"/>
+          </linearGradient>
+          <linearGradient id="g-vps" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#dbeafe"/><stop offset="100%" stop-color="#ffffff"/>
+          </linearGradient>
+          <linearGradient id="g-php" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#fef3c7"/><stop offset="100%" stop-color="#ffffff"/>
+          </linearGradient>
+        </defs>
+
+        <!-- bookmoa PHP (외부) -->
+        <g>
+          <rect x="40" y="40" width="220" height="120" rx="14" fill="url(#g-php)" stroke="#f59e0b" stroke-width="1.5"/>
+          <text x="150" y="72" text-anchor="middle" font-weight="700" font-size="14">bookmoa-php</text>
+          <text x="150" y="92" text-anchor="middle" fill="#78350f" font-size="11">외부 서버 · PHP 7.x</text>
+          <text x="150" y="112" text-anchor="middle" fill="#57534e" font-size="11">X-API-Key 로 호출</text>
+          <text x="150" y="128" text-anchor="middle" fill="#57534e" font-size="11">callback URL 수신</text>
+          <text x="150" y="146" text-anchor="middle" fill="#57534e" font-size="11">iframe (postMessage)</text>
+        </g>
+
+        <!-- Vercel cluster -->
+        <g>
+          <rect x="320" y="20" width="280" height="180" rx="14" fill="url(#g-vercel)" stroke="#7c3aed" stroke-width="1.5"/>
+          <text x="460" y="42" text-anchor="middle" font-weight="700" fill="#5b21b6" font-size="13">Vercel (CDN, 자동 빌드)</text>
+
+          <rect x="340" y="62" width="115" height="60" rx="8" fill="#ffffff" stroke="#c4b5fd"/>
+          <text x="397" y="84" text-anchor="middle" font-weight="700">editor</text>
+          <text x="397" y="100" text-anchor="middle" font-size="10" fill="#57534e">React+Vite+Fabric</text>
+          <text x="397" y="114" text-anchor="middle" font-size="10" fill="#57534e">editor.papascompany.co.kr</text>
+
+          <rect x="465" y="62" width="115" height="60" rx="8" fill="#ffffff" stroke="#c4b5fd"/>
+          <text x="522" y="84" text-anchor="middle" font-weight="700">admin</text>
+          <text x="522" y="100" text-anchor="middle" font-size="10" fill="#57534e">React+AntD+RQ</text>
+          <text x="522" y="114" text-anchor="middle" font-size="10" fill="#57534e">admin.papascompany.co.kr</text>
+
+          <text x="460" y="148" text-anchor="middle" font-size="11" fill="#5b21b6">CORS 동적 (preview + *.papascompany)</text>
+          <text x="460" y="166" text-anchor="middle" font-size="11" fill="#5b21b6">git push master → 자동 배포</text>
+          <text x="460" y="184" text-anchor="middle" font-size="11" fill="#5b21b6">CNAME → Vercel</text>
+        </g>
+
+        <!-- VPS cluster -->
+        <g>
+          <rect x="660" y="20" width="400" height="450" rx="14" fill="url(#g-vps)" stroke="#3b82f6" stroke-width="1.5"/>
+          <text x="860" y="42" text-anchor="middle" font-weight="700" fill="#1e40af" font-size="13">Vultr VPS · Seoul (158.247.235.202)</text>
+          <text x="860" y="58" text-anchor="middle" font-size="10" fill="#57534e">Ubuntu 22.04 · 4vCPU · 8GB · 160GB · Docker Compose</text>
+
+          <!-- nginx -->
+          <rect x="690" y="80" width="340" height="50" rx="8" fill="#ffffff" stroke="#93c5fd"/>
+          <text x="860" y="100" text-anchor="middle" font-weight="700">nginx (1.25-alpine)</text>
+          <text x="860" y="118" text-anchor="middle" font-size="10" fill="#57534e">Let's Encrypt + reverse proxy → :4000 / :4001</text>
+
+          <!-- api -->
+          <rect x="690" y="148" width="160" height="80" rx="8" fill="#ffffff" stroke="#93c5fd"/>
+          <text x="770" y="170" text-anchor="middle" font-weight="700">api :4000</text>
+          <text x="770" y="186" text-anchor="middle" font-size="10" fill="#57534e">NestJS 10 + TypeORM</text>
+          <text x="770" y="200" text-anchor="middle" font-size="10" fill="#57534e">JWT + X-API-Key</text>
+          <text x="770" y="214" text-anchor="middle" font-size="10" fill="#57534e">Anthropic SDK</text>
+
+          <!-- worker -->
+          <rect x="870" y="148" width="160" height="80" rx="8" fill="#ffffff" stroke="#93c5fd"/>
+          <text x="950" y="170" text-anchor="middle" font-weight="700">worker :4001</text>
+          <text x="950" y="186" text-anchor="middle" font-size="10" fill="#57534e">NestJS + Bull processors</text>
+          <text x="950" y="200" text-anchor="middle" font-size="10" fill="#57534e">pdf-lib + sharp + GS</text>
+          <text x="950" y="214" text-anchor="middle" font-size="10" fill="#57534e">callback POST → api</text>
+
+          <!-- DB / Redis / Storage row -->
+          <rect x="690" y="246" width="100" height="70" rx="8" fill="#ffffff" stroke="#93c5fd"/>
+          <text x="740" y="270" text-anchor="middle" font-weight="700">mariadb</text>
+          <text x="740" y="286" text-anchor="middle" font-size="10" fill="#57534e">11.2</text>
+          <text x="740" y="300" text-anchor="middle" font-size="10" fill="#57534e">edit_sessions</text>
+
+          <rect x="800" y="246" width="100" height="70" rx="8" fill="#ffffff" stroke="#93c5fd"/>
+          <text x="850" y="270" text-anchor="middle" font-weight="700">redis</text>
+          <text x="850" y="286" text-anchor="middle" font-size="10" fill="#57534e">7.2</text>
+          <text x="850" y="300" text-anchor="middle" font-size="10" fill="#57534e">Bull 큐 ×3</text>
+
+          <rect x="910" y="246" width="120" height="70" rx="8" fill="#ffffff" stroke="#93c5fd"/>
+          <text x="970" y="270" text-anchor="middle" font-weight="700">/app/storage</text>
+          <text x="970" y="286" text-anchor="middle" font-size="10" fill="#57534e">PDF · 이미지</text>
+          <text x="970" y="300" text-anchor="middle" font-size="10" fill="#57534e">Docker volume</text>
+
+          <!-- Backup -->
+          <rect x="690" y="334" width="340" height="50" rx="8" fill="#fefce8" stroke="#facc15"/>
+          <text x="860" y="354" text-anchor="middle" font-weight="700">자동 백업 — cron 03:00 KST · 7일 보존</text>
+          <text x="860" y="372" text-anchor="middle" font-size="10" fill="#57534e">~/backup.sh → DB + storage + .env tar.gz</text>
+
+          <!-- TLS -->
+          <rect x="690" y="402" width="340" height="50" rx="8" fill="#f0fdf4" stroke="#22c55e"/>
+          <text x="860" y="422" text-anchor="middle" font-weight="700">Let's Encrypt — 자동 갱신 (~2026-07-26)</text>
+          <text x="860" y="440" text-anchor="middle" font-size="10" fill="#57534e">certbot timer + deploy hook (nginx reload)</text>
+        </g>
+
+        <!-- DNS / Domain -->
+        <g>
+          <rect x="40" y="220" width="220" height="100" rx="14" fill="#fafaf9" stroke="#d6d3d1" stroke-width="1.5"/>
+          <text x="150" y="244" text-anchor="middle" font-weight="700" font-size="13">DNS · 도메인</text>
+          <text x="150" y="262" text-anchor="middle" font-size="11" fill="#57534e">papascompany.co.kr (가비아)</text>
+          <text x="150" y="278" text-anchor="middle" font-size="11" fill="#57534e">NS → DNSEver (5개)</text>
+          <text x="150" y="294" text-anchor="middle" font-size="11" fill="#57534e">A api → 158.247.235.202</text>
+          <text x="150" y="310" text-anchor="middle" font-size="11" fill="#57534e">CNAME editor/admin → Vercel</text>
+        </g>
+
+        <!-- GitHub -->
+        <g>
+          <rect x="40" y="340" width="220" height="80" rx="14" fill="#fafaf9" stroke="#d6d3d1" stroke-width="1.5"/>
+          <text x="150" y="364" text-anchor="middle" font-weight="700" font-size="13">GitHub (papascompany)</text>
+          <text x="150" y="382" text-anchor="middle" font-size="11" fill="#57534e">storige-book-editor (PUBLIC)</text>
+          <text x="150" y="400" text-anchor="middle" font-size="11" fill="#57534e">push master → Vercel + 수동 deploy</text>
+        </g>
+
+        <!-- Arrows: bookmoa -> Vercel apps (editor iframe) -->
+        <line x1="260" y1="100" x2="320" y2="80" stroke="#7c3aed" stroke-width="2" marker-end="url(#arrow)"/>
+        <text x="282" y="78" font-size="9" fill="#5b21b6">iframe load</text>
+
+        <!-- bookmoa -> api (X-API-Key) -->
+        <path d="M 260 130 Q 460 290 690 180" stroke="#7c3aed" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+        <text x="500" y="220" font-size="10" fill="#5b21b6">X-API-Key</text>
+
+        <!-- Vercel editor -> api -->
+        <line x1="397" y1="122" x2="690" y2="170" stroke="#7c3aed" stroke-width="1.5" marker-end="url(#arrow)" stroke-dasharray="4 3"/>
+        <text x="470" y="138" font-size="10" fill="#5b21b6">REST</text>
+
+        <!-- api -> mariadb -->
+        <line x1="770" y1="228" x2="740" y2="246" stroke="#3b82f6" stroke-width="1.5" marker-end="url(#arrow)"/>
+        <!-- api -> redis -->
+        <line x1="800" y1="225" x2="830" y2="246" stroke="#3b82f6" stroke-width="1.5" marker-end="url(#arrow)"/>
+        <!-- worker -> redis -->
+        <line x1="900" y1="228" x2="870" y2="246" stroke="#3b82f6" stroke-width="1.5" marker-end="url(#arrow)"/>
+        <!-- worker -> mariadb -->
+        <line x1="900" y1="220" x2="780" y2="246" stroke="#3b82f6" stroke-width="1" marker-end="url(#arrow-soft)" stroke-dasharray="3 2"/>
+        <!-- worker -> storage -->
+        <line x1="950" y1="228" x2="970" y2="246" stroke="#3b82f6" stroke-width="1.5" marker-end="url(#arrow)"/>
+        <!-- worker -> api callback -->
+        <path d="M 870 188 Q 850 245 850 188" stroke="#94a3b8" stroke-width="1.5" fill="none" marker-end="url(#arrow-soft)" stroke-dasharray="3 2"/>
+        <text x="800" y="245" font-size="9" fill="#57534e">callback</text>
+
+        <!-- api -> bookmoa webhook -->
+        <path d="M 690 200 Q 460 340 260 130" stroke="#94a3b8" stroke-width="1.5" fill="none" marker-end="url(#arrow-soft)" stroke-dasharray="4 3"/>
+        <text x="430" y="320" font-size="10" fill="#57534e">webhook 콜백</text>
+
+        <!-- nginx -> api/worker -->
+        <line x1="770" y1="130" x2="770" y2="148" stroke="#3b82f6" stroke-width="1.5" marker-end="url(#arrow)"/>
+        <line x1="950" y1="130" x2="950" y2="148" stroke="#3b82f6" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+        <!-- DNS -> Vercel and api -->
+        <line x1="260" y1="260" x2="320" y2="100" stroke="#94a3b8" stroke-width="1" marker-end="url(#arrow-soft)" stroke-dasharray="2 2"/>
+        <line x1="260" y1="290" x2="690" y2="105" stroke="#94a3b8" stroke-width="1" marker-end="url(#arrow-soft)" stroke-dasharray="2 2"/>
+
+        <!-- GitHub -> Vercel -->
+        <line x1="260" y1="380" x2="320" y2="120" stroke="#a8a29e" stroke-width="1" marker-end="url(#arrow-soft)" stroke-dasharray="2 2"/>
+
+        <!-- Legend -->
+        <g transform="translate(40, 470)">
+          <rect width="600" height="80" rx="8" fill="#ffffff" stroke="#e7e5e4"/>
+          <text x="14" y="22" font-weight="700" font-size="11">범례</text>
+          <line x1="14" y1="40" x2="50" y2="40" stroke="#7c3aed" stroke-width="2" marker-end="url(#arrow)"/>
+          <text x="58" y="44" font-size="11">동기 호출 (REST/SDK)</text>
+          <line x1="220" y1="40" x2="256" y2="40" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="3 2" marker-end="url(#arrow-soft)"/>
+          <text x="262" y="44" font-size="11">비동기 콜백 / 이벤트</text>
+          <line x1="14" y1="62" x2="50" y2="62" stroke="#3b82f6" stroke-width="1.5" marker-end="url(#arrow)"/>
+          <text x="58" y="66" font-size="11">VPS 내부 통신</text>
+          <rect x="220" y="55" width="14" height="14" fill="#fef3c7" stroke="#f59e0b"/>
+          <text x="240" y="66" font-size="11">외부 시스템 (PHP)</text>
+          <rect x="380" y="55" width="14" height="14" fill="#ede9fe" stroke="#7c3aed"/>
+          <text x="400" y="66" font-size="11">Vercel</text>
+          <rect x="470" y="55" width="14" height="14" fill="#dbeafe" stroke="#3b82f6"/>
+          <text x="490" y="66" font-size="11">VPS Docker</text>
+        </g>
+      </svg>
+    </div>
+
+    <h3 style="margin-top:24px">컴포넌트 요약</h3>
+    <table class="t">
+      <thead><tr><th>컴포넌트</th><th>호스팅</th><th>기술 스택</th><th>의존</th></tr></thead>
+      <tbody>
+        <tr><td><strong>editor</strong></td><td>Vercel</td><td>React 18 + Vite 6 + Fabric.js 5.5 + Zustand</td><td>canvas-core, types, ui, api</td></tr>
+        <tr><td><strong>admin</strong></td><td>Vercel</td><td>React 18 + Ant Design 5 + React Query 5</td><td>types, ui, api</td></tr>
+        <tr><td><strong>api</strong></td><td>VPS Docker</td><td>NestJS 10 + TypeORM + Bull + Anthropic SDK</td><td>mariadb, redis, /storage</td></tr>
+        <tr><td><strong>worker</strong></td><td>VPS Docker</td><td>NestJS + Bull + pdf-lib + sharp + Ghostscript</td><td>redis, mariadb, /storage, api(callback)</td></tr>
+        <tr><td><strong>canvas-core</strong></td><td>npm workspace</td><td>Fabric.js 5.5 + jsPDF + svg2pdf + opentype</td><td>types</td></tr>
+        <tr><td><strong>types</strong></td><td>npm workspace</td><td>TypeScript 5.7 (CJS+ESM 이중 산출)</td><td>—</td></tr>
+        <tr><td><strong>nginx</strong></td><td>VPS Docker</td><td>nginx 1.25-alpine + Let's Encrypt</td><td>api, worker</td></tr>
+        <tr><td><strong>php-bookmoa</strong></td><td>외부</td><td>PHP 7.x + Nexmotion</td><td>api (X-API-Key, webhook)</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============================================== -->
+<!-- 2. TIMELINE                                      -->
+<!-- ============================================== -->
+<section class="s" id="sec-timeline">
+  <div class="wrap">
+    <div class="s-head">
+      <span class="num">02</span>
+      <h2>Phase 타임라인</h2>
+      <span class="desc">인프라 셋업 → 디자인 → 핵심 기능 → 컷오버</span>
+    </div>
+
+    <div class="timeline">
+      <div class="tl-item done">
+        <div class="tl-head">
+          <span class="tl-title">Phase 1~3 — 인프라 (Vultr + Docker + Vercel + DNS + HTTPS)</span>
+          <span class="tl-meta"><span class="chip done">✅ 완료</span></span>
+        </div>
+        <div class="tl-body">
+          VPS 셋업, Docker Compose 5개 서비스, DNSEver NS 위임, Let's Encrypt 발급 + 자동 갱신, Vercel 2개 프로젝트 연결.
+        </div>
+      </div>
+
+      <div class="tl-item done">
+        <div class="tl-head">
+          <span class="tl-title">Day 1 — 자동 백업 + 디자인 D1/D4 + CORS</span>
+          <span class="tl-meta"><span class="chip done">✅ 완료</span> <span class="chip brand">14d0944</span></span>
+        </div>
+        <div class="tl-body">
+          cron 03:00 KST 백업(7일 보존), 6개 메뉴 활성화 검증, 헤더 그라데이션, BookNavigation 책자 페이지 네비, CORS 동적 패턴 매칭.
+        </div>
+      </div>
+
+      <div class="tl-item done">
+        <div class="tl-head">
+          <span class="tl-title">Day 2-4 P1 — EditSession 완료 API 연동</span>
+          <span class="tl-meta"><span class="chip done">✅ 완료</span> <span class="chip brand">f4c5129</span></span>
+        </div>
+        <div class="tl-body">
+          <code>useWorkSave.completeSpreadWork</code> → <code>editSessionsApi.update</code> + <code>complete</code>.
+          서버 측 <code>validateSpreadSnapshot</code> → <code>createValidationJobs</code> 자동 트리거.
+          iframe <code>parent.postMessage({type:'storige:completed'})</code> 추가.
+        </div>
+      </div>
+
+      <div class="tl-item done">
+        <div class="tl-head">
+          <span class="tl-title">Day 2-4 P5 — PDF 내보내기 placeholder 제거</span>
+          <span class="tl-meta"><span class="chip done">✅ 완료</span> <span class="chip brand">971b0e9</span></span>
+        </div>
+        <div class="tl-body">
+          <code>editor.service.exportToPdf</code>가 <code>workerJobsService.createSynthesisJob</code> 호출. EditorModule에 EditSessionsModule + WorkerJobsModule import. 응답 <code>{ jobId, status }</code> 확장. 합성 파이프라인 end-to-end.
+        </div>
+      </div>
+
+      <div class="tl-item next">
+        <div class="tl-head">
+          <span class="tl-title">Day 5 — PHP staging 회귀 4종</span>
+          <span class="tl-meta"><span class="chip warn">🔵 다음 (우선)</span></span>
+        </div>
+        <div class="tl-body">
+          가이드: <code>v2/agents/01-php-integrator.md</code> · 회원세션 / 파일업로드 / 검증·합성 잡 webhook 수신 / 실패 흐름 검증.
+          PHP 측 webhook 핸들러 매핑 사전 검토 필요.
+        </div>
+      </div>
+
+      <div class="tl-item">
+        <div class="tl-head">
+          <span class="tl-title">Day 6 — 운영 컷오버 (PHP 4상수 deploy + 첫 주문 + 24h)</span>
+          <span class="tl-meta"><span class="chip wait">대기</span></span>
+        </div>
+        <div class="tl-body">
+          가이드: <code>v2/agents/09-cutover-runbook.md §4</code> · STORIGE_API_BASE, EDITOR_URL, API_KEY, WEBHOOK_VERIFY_HEADER 변경 → 첫 실주문 1건 → 24시간 모니터링.
+        </div>
+      </div>
+
+      <div class="tl-item">
+        <div class="tl-head">
+          <span class="tl-title">Week 2+ — P2 썸네일 / P3 안전장치 / P6/P7 모니터링</span>
+          <span class="tl-meta"><span class="chip wait">대기</span></span>
+        </div>
+        <div class="tl-body">
+          P2: Sharp 썸네일 실제 구현. P3: 템플릿 삭제 전 사용 검증. P6/P7: 테스트 자동화 + Sentry/Vercel 모니터링 + 큐 적체 알람.
+        </div>
+      </div>
+
+      <div class="tl-item">
+        <div class="tl-head">
+          <span class="tl-title">Week 3+ — Cloudflare R2 백업 이중화</span>
+          <span class="tl-meta"><span class="chip wait">대기</span></span>
+        </div>
+        <div class="tl-body">
+          가이드: <code>v2/agents/02-backup-automation.md §3</code> · 매일 23:00 KST R2 동기 + 로컬 손실 시 fallback 검증.
+        </div>
+      </div>
+
+      <div class="tl-item">
+        <div class="tl-head">
+          <span class="tl-title">컷오버 후 — D2-NEW (메뉴 아이콘 PNG 업로드) + D3 (눈금자) + D5 (표지 모드 분기)</span>
+          <span class="tl-meta"><span class="chip wait">대기</span></span>
+        </div>
+        <div class="tl-body">
+          가이드: <code>10-menu-icon-asset-system.md</code> · <code>11-ruler-style-refresh.md</code> · <code>12-cover-edit-modes.md</code>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================== -->
+<!-- 3. MODULES                                       -->
+<!-- ============================================== -->
+<section class="s" id="sec-modules">
+  <div class="wrap">
+    <div class="s-head">
+      <span class="num">03</span>
+      <h2>모듈별 작업 매트릭스</h2>
+      <span class="desc">각 모듈의 완료 / 진행 / 대기 항목과 관련 파일</span>
+    </div>
+
+    <div class="modules">
+
+      <div class="module">
+        <div class="module-head">
+          <h3>📐 editor (Vercel)</h3>
+          <span class="badge">React + Fabric.js</span>
+        </div>
+        <ul>
+          <li class="done"><span class="dot"></span><div>useWorkSave.completeSpreadWork (P1)<span class="file">apps/editor/src/hooks/useWorkSave.ts:666</span></div></li>
+          <li class="done"><span class="dot"></span><div>BookNavigation 페이지 네비 (D4)<span class="file">apps/editor/src/components/BookNavigation.tsx</span></div></li>
+          <li class="done"><span class="dot"></span><div>EditorHeader 그라데이션 (D1)<span class="file">apps/editor/src/components/EditorHeader.tsx</span></div></li>
+          <li class="done"><span class="dot"></span><div>useEditorStore.setPages 동기화<span class="file">apps/editor/src/stores/useEditorStore.ts</span></div></li>
+          <li class="warn"><span class="dot"></span><div>GraphQL 콘텐츠 로드 (TODO)<span class="file">apps/editor/src/hooks/useEditorContents.ts:824</span></div></li>
+          <li class="warn"><span class="dot"></span><div>CMYK 색공간 런타임 스텁 (폐기 검토?)<span class="file">apps/editor/vite.config.ts</span></div></li>
+        </ul>
+      </div>
+
+      <div class="module">
+        <div class="module-head">
+          <h3>🛠️ admin (Vercel)</h3>
+          <span class="badge">React + Ant Design</span>
+        </div>
+        <ul>
+          <li class="warn"><span class="dot"></span><div>승인자 ID 하드코딩 제거 (P0-A)<span class="file">apps/admin/src/pages/Reviews/ReviewDetail.tsx:84</span></div></li>
+          <li><span class="dot"></span><div>D2-NEW 메뉴 아이콘 PNG 업로드 (컷오버 후)<span class="file">agents/10-menu-icon-asset-system.md</span></div></li>
+        </ul>
+      </div>
+
+      <div class="module">
+        <div class="module-head">
+          <h3>⚙️ api (VPS Docker)</h3>
+          <span class="badge">NestJS + TypeORM + Bull</span>
+        </div>
+        <ul>
+          <li class="done"><span class="dot"></span><div>editor.service.exportToPdf (P5)<span class="file">apps/api/src/editor/editor.service.ts:692</span></div></li>
+          <li class="done"><span class="dot"></span><div>EditSessions.complete (P1)<span class="file">apps/api/src/edit-sessions/edit-sessions.service.ts:245</span></div></li>
+          <li class="done"><span class="dot"></span><div>WorkerJobs.createSynthesisJob<span class="file">apps/api/src/worker-jobs/worker-jobs.service.ts:262</span></div></li>
+          <li class="done"><span class="dot"></span><div>Webhook.sendCallback (콜백 송신)<span class="file">apps/api/src/webhook/webhook.service.ts</span></div></li>
+          <li class="done"><span class="dot"></span><div>CORS 동적 패턴 매칭<span class="file">apps/api/src/main.ts</span></div></li>
+          <li><span class="dot"></span><div>P2 썸네일 Sharp 통합<span class="file">apps/api/src/storage/storage.service.ts:163</span></div></li>
+          <li><span class="dot"></span><div>P3 템플릿 사용 검증<span class="file">apps/api/src/templates/template-sets.service.ts:210</span></div></li>
+        </ul>
+      </div>
+
+      <div class="module">
+        <div class="module-head">
+          <h3>🔧 worker (VPS Docker)</h3>
+          <span class="badge">NestJS + pdf-lib + Sharp + GS</span>
+        </div>
+        <ul>
+          <li class="done"><span class="dot"></span><div>validation 프로세서<span class="file">apps/worker/src/processors/validation.processor.ts</span></div></li>
+          <li class="done"><span class="dot"></span><div>synthesis 프로세서 (merge/split)<span class="file">apps/worker/src/processors/synthesis.processor.ts</span></div></li>
+          <li class="done"><span class="dot"></span><div>conversion 프로세서 (이미지)<span class="file">apps/worker/src/processors/conversion.processor.ts</span></div></li>
+          <li><span class="dot"></span><div>P4 중철 페이지 순서 (4페이지 단위)<span class="file">apps/worker/src/services/pdf-synthesizer.service.ts:259</span></div></li>
+        </ul>
+      </div>
+
+      <div class="module">
+        <div class="module-head">
+          <h3>📦 packages</h3>
+          <span class="badge">canvas-core, types, ui</span>
+        </div>
+        <ul>
+          <li class="done"><span class="dot"></span><div>canvas-core ServicePlugin (save/load/export)</div></li>
+          <li class="done"><span class="dot"></span><div>플러그인 체인 (18개)<span class="file">apps/editor/src/utils/createCanvas.ts</span></div></li>
+          <li class="done"><span class="dot"></span><div>types CJS+ESM 이중 산출<span class="file">packages/types/tsconfig.cjs.json</span></div></li>
+          <li><span class="dot"></span><div>D3 ruler 스타일 리프레시<span class="file">packages/canvas-core/src/ruler/ruler.plugin.ts</span></div></li>
+        </ul>
+      </div>
+
+      <div class="module">
+        <div class="module-head">
+          <h3>🌐 인프라</h3>
+          <span class="badge">VPS · DNS · TLS · 백업</span>
+        </div>
+        <ul>
+          <li class="done"><span class="dot"></span><div>VPS Vultr Seoul (4vCPU/8GB) + Ubuntu 22.04</div></li>
+          <li class="done"><span class="dot"></span><div>Docker Compose 5개 서비스</div></li>
+          <li class="done"><span class="dot"></span><div>DNSEver NS + 가비아 도메인</div></li>
+          <li class="done"><span class="dot"></span><div>Let's Encrypt + certbot timer (deploy hook)</div></li>
+          <li class="done"><span class="dot"></span><div>cron 03:00 KST 백업 (7일 보존)</div></li>
+          <li><span class="dot"></span><div>Cloudflare R2 백업 이중화 (Week 3+)</div></li>
+        </ul>
+      </div>
+
+      <div class="module">
+        <div class="module-head">
+          <h3>🔌 PHP 연동</h3>
+          <span class="badge">bookmoa-php → api</span>
+        </div>
+        <ul>
+          <li class="done"><span class="dot"></span><div>외부 API 8개 엔드포인트</div></li>
+          <li class="done"><span class="dot"></span><div>Webhook 페이로드 + 시그니처</div></li>
+          <li class="done"><span class="dot"></span><div>iframe + postMessage (saved/completed/error)</div></li>
+          <li class="warn"><span class="dot"></span><div>Day 5 회귀 4종 (PHP staging)</div></li>
+          <li class="warn"><span class="dot"></span><div>PHP 4가지 상수 (config.php) 주입</div></li>
+        </ul>
+      </div>
+
+      <div class="module">
+        <div class="module-head">
+          <h3>🎨 디자인 트랙</h3>
+          <span class="badge">D1 ~ D5</span>
+        </div>
+        <ul>
+          <li class="done"><span class="dot"></span><div>D1 헤더 그라데이션</div></li>
+          <li class="done"><span class="dot"></span><div>D4 책자 페이지 네비</div></li>
+          <li><span class="dot"></span><div>D2-NEW 메뉴 아이콘 PNG 업로드</div></li>
+          <li><span class="dot"></span><div>D3 눈금자 스타일 리프레시</div></li>
+          <li><span class="dot"></span><div>D5 표지 편집 모드별 view 분기</div></li>
+        </ul>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ============================================== -->
+<!-- 4. AGENTS                                        -->
+<!-- ============================================== -->
+<section class="s" id="sec-agents">
+  <div class="wrap">
+    <div class="s-head">
+      <span class="num">04</span>
+      <h2>에이전트 12개 (v2/agents/)</h2>
+      <span class="desc">서브에이전트 워크플로우 — 각 P? 작업의 구체 가이드</span>
+    </div>
+
+    <div class="agents">
+      <div class="agent">
+        <div class="a-head">
+          <span class="a-num">00</span>
+          <span class="a-title">orchestrator</span>
+          <span class="chip brand">진행 마스터</span>
+        </div>
+        <div class="a-target">DoD 검증 후 하위 에이전트 순차 호출</div>
+        <div class="a-file">.cursor/plans/v2/agents/00-orchestrator.md</div>
+      </div>
+
+      <div class="agent next">
+        <div class="a-head">
+          <span class="a-num">01</span>
+          <span class="a-title">php-integrator</span>
+          <span class="chip priority-h">P0</span>
+          <span class="chip warn">다음</span>
+        </div>
+        <div class="a-target">PHP bookmoa 연동 + Day 5 staging 회귀 4종</div>
+        <div class="a-file">.cursor/plans/v2/agents/01-php-integrator.md</div>
+      </div>
+
+      <div class="agent done">
+        <div class="a-head">
+          <span class="a-num">02</span>
+          <span class="a-title">backup-automation</span>
+          <span class="chip done">✅</span>
+        </div>
+        <div class="a-target">cron + logrotate (Day 1 완료) + R2 이중화 (Week 3+)</div>
+        <div class="a-file">.cursor/plans/v2/agents/02-backup-automation.md</div>
+      </div>
+
+      <div class="agent done">
+        <div class="a-head">
+          <span class="a-num">03</span>
+          <span class="a-title">edit-session-completer</span>
+          <span class="chip priority-h">P1</span>
+          <span class="chip done">✅ f4c5129</span>
+        </div>
+        <div class="a-target">EditSession 완료 API 연동 — 편집 완료 흐름 end-to-end</div>
+        <div class="a-file">.cursor/plans/v2/agents/03-edit-session-completer.md</div>
+      </div>
+
+      <div class="agent">
+        <div class="a-head">
+          <span class="a-num">04</span>
+          <span class="a-title">thumbnail-implementer</span>
+          <span class="chip priority-m">P2</span>
+          <span class="chip wait">대기</span>
+        </div>
+        <div class="a-target">Sharp로 썸네일 실제 구현 — 관리 UX</div>
+        <div class="a-file">.cursor/plans/v2/agents/04-thumbnail-implementer.md</div>
+      </div>
+
+      <div class="agent">
+        <div class="a-head">
+          <span class="a-num">05</span>
+          <span class="a-title">template-usage-checker</span>
+          <span class="chip priority-l">P3</span>
+          <span class="chip wait">대기</span>
+        </div>
+        <div class="a-target">템플릿 삭제 전 사용 여부 검증 — 데이터 안전망</div>
+        <div class="a-file">.cursor/plans/v2/agents/05-template-usage-checker.md</div>
+      </div>
+
+      <div class="agent">
+        <div class="a-head">
+          <span class="a-num">06</span>
+          <span class="a-title">saddle-stitch-orderer</span>
+          <span class="chip priority-h">P4</span>
+          <span class="chip wait">선택</span>
+        </div>
+        <div class="a-target">중철 페이지 순서 (4페이지 단위) — 중철 주문 시 필수</div>
+        <div class="a-file">.cursor/plans/v2/agents/06-saddle-stitch-orderer.md</div>
+      </div>
+
+      <div class="agent done">
+        <div class="a-head">
+          <span class="a-num">07</span>
+          <span class="a-title">pdf-export-implementer</span>
+          <span class="chip priority-h">P5</span>
+          <span class="chip done">✅ 971b0e9</span>
+        </div>
+        <div class="a-target">PDF 내보내기 placeholder 제거 — 합성 파이프라인 발행</div>
+        <div class="a-file">.cursor/plans/v2/agents/07-pdf-export-implementer.md</div>
+      </div>
+
+      <div class="agent">
+        <div class="a-head">
+          <span class="a-num">08</span>
+          <span class="a-title">test-monitoring-setup</span>
+          <span class="chip priority-l">P6+P7</span>
+          <span class="chip wait">대기</span>
+        </div>
+        <div class="a-target">테스트 자동화 + Sentry / Vercel 모니터링 + 큐 적체 알람</div>
+        <div class="a-file">.cursor/plans/v2/agents/08-test-monitoring-setup.md</div>
+      </div>
+
+      <div class="agent next">
+        <div class="a-head">
+          <span class="a-num">09</span>
+          <span class="a-title">cutover-runbook</span>
+          <span class="chip priority-h">D6</span>
+          <span class="chip warn">예정</span>
+        </div>
+        <div class="a-target">운영 컷오버 매뉴얼 (admin 비번 ~ 첫 주문 + 24h)</div>
+        <div class="a-file">.cursor/plans/v2/agents/09-cutover-runbook.md</div>
+      </div>
+
+      <div class="agent">
+        <div class="a-head">
+          <span class="a-num">10</span>
+          <span class="a-title">menu-icon-asset-system</span>
+          <span class="chip brand">D2-NEW</span>
+          <span class="chip wait">컷오버 후</span>
+        </div>
+        <div class="a-target">Admin에서 메뉴 아이콘 PNG 동적 업로드</div>
+        <div class="a-file">.cursor/plans/v2/agents/10-menu-icon-asset-system.md</div>
+      </div>
+
+      <div class="agent">
+        <div class="a-head">
+          <span class="a-num">11</span>
+          <span class="a-title">ruler-style-refresh</span>
+          <span class="chip brand">D3</span>
+          <span class="chip wait">예정</span>
+        </div>
+        <div class="a-target">눈금자 스타일 (밝은 헤더 + 그레이 80%)</div>
+        <div class="a-file">.cursor/plans/v2/agents/11-ruler-style-refresh.md</div>
+      </div>
+
+      <div class="agent">
+        <div class="a-head">
+          <span class="a-num">12</span>
+          <span class="a-title">cover-edit-modes</span>
+          <span class="chip brand">D5</span>
+          <span class="chip wait">운영 후</span>
+        </div>
+        <div class="a-target">표지 편집 모드별 view 분기 (펼침/분할/날개+spine)</div>
+        <div class="a-file">.cursor/plans/v2/agents/12-cover-edit-modes.md</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================== -->
+<!-- 5. CHECKLIST                                     -->
+<!-- ============================================== -->
+<section class="s" id="sec-checklist">
+  <div class="wrap">
+    <div class="s-head">
+      <span class="num">05</span>
+      <h2>컷오버까지 남은 체크리스트</h2>
+      <span class="desc">Day 5 → Day 6 → Week 2+ → Week 3+</span>
+    </div>
+
+    <div class="check-group">
+      <h3><span class="chip warn">Day 5</span> PHP Staging 회귀 4종</h3>
+      <ul class="check-list">
+        <li><div class="cb"></div><div class="ck-body"><strong>① 회원 세션</strong> — <code>POST /auth/shop-session</code> → JWT 쿠키 발급 검증<span class="sub">memberSeqno + role + permissions 매핑 확인</span></div></li>
+        <li><div class="cb"></div><div class="ck-body"><strong>② 더미 PDF 업로드</strong> — <code>POST /files/upload/external</code> → /storage 저장 검증</div></li>
+        <li><div class="cb"></div><div class="ck-body"><strong>③ 검증 잡 + webhook</strong> — <code>POST /worker-jobs/validate/external</code> → 워커 처리 → 콜백 수신 + 시그니처 검증</div></li>
+        <li><div class="cb"></div><div class="ck-body"><strong>④ 합성 잡 + webhook</strong> — <code>POST /worker-jobs/synthesize/external</code> → 워커 합성 → 콜백 수신 + 출력 파일 경로 확인</div></li>
+        <li><div class="cb"></div><div class="ck-body"><strong>PHP 측 상수 주입 (config.php)</strong> — <code>STORIGE_API_BASE</code>, <code>EDITOR_URL</code>, <code>API_KEY</code>, <code>WEBHOOK_VERIFY_HEADER</code></div></li>
+        <li><div class="cb"></div><div class="ck-body"><strong>bookmoa PHP webhook 핸들러 매핑 검토</strong> — callbackUrl 수신처 sessionId 추출 로직</div></li>
+        <li><div class="cb"></div><div class="ck-body"><strong>실패 흐름 검증</strong> — 파일 누락 시 BadRequest + 에러 응답 표시</div></li>
+      </ul>
+    </div>
+
+    <div class="check-group">
+      <h3><span class="chip danger">Day 6</span> 운영 컷오버</h3>
+      <ul class="check-list">
+        <li><div class="cb"></div><div class="ck-body"><strong>Admin 초기 비번 변경</strong> — <code>admin@storige.com / admin123</code> 즉시 교체 (Day 1-3 보류 → 컷오버 직전)</div></li>
+        <li><div class="cb"></div><div class="ck-body"><strong>PHP staging → production deploy</strong> — 4가지 상수 git 커밋 → bookmoa 서버 반영</div></li>
+        <li><div class="cb"></div><div class="ck-body"><strong>첫 실주문 1건 직접 수행</strong> — 결과 PDF 확인 + worker 로그 확인</div></li>
+        <li><div class="cb"></div><div class="ck-body"><strong>24시간 무사고 모니터링</strong> — API 에러 0건, 큐 적체 없음, webhook 시그니처 실패 0건</div></li>
+        <li><div class="cb"></div><div class="ck-body"><strong>롤백 시나리오 사전 점검</strong> — 09-cutover-runbook.md §롤백 절차</div></li>
+      </ul>
+    </div>
+
+    <div class="check-group">
+      <h3><span class="chip prog">Week 2+</span> 사용성 & 안정화</h3>
+      <ul class="check-list">
+        <li><div class="cb"></div><div class="ck-body"><strong>P2 썸네일 구현</strong> — Sharp 통합, 관리 페이지 썸네일 로드<span class="sub">apps/api/src/storage/storage.service.ts:163</span></div></li>
+        <li><div class="cb"></div><div class="ck-body"><strong>P3 템플릿 안전장치</strong> — 사용 중 상품 검증, "이미 사용 중" 메시지<span class="sub">apps/api/src/templates/template-sets.service.ts:210</span></div></li>
+        <li><div class="cb"></div><div class="ck-body"><strong>P6/P7 모니터링</strong> — 테스트 자동화 CI + Sentry/Vercel 추적 + 큐 적체 알람</div></li>
+        <li><div class="cb"></div><div class="ck-body"><strong>P4 중철 imposition</strong> (중철 주문 받을 거면) — 4페이지 단위 페이지 정렬</div></li>
+      </ul>
+    </div>
+
+    <div class="check-group">
+      <h3><span class="chip prog">Week 3+</span> 백업 이중화</h3>
+      <ul class="check-list">
+        <li><div class="cb"></div><div class="ck-body"><strong>Cloudflare R2 동기</strong> — 매일 23:00 KST /app/storage 업로드</div></li>
+        <li><div class="cb"></div><div class="ck-body"><strong>R2 액세스 키 발급 + .env</strong></div></li>
+        <li><div class="cb"></div><div class="ck-body"><strong>Fallback 테스트</strong> — 로컬 손실 시 R2에서 복구 검증</div></li>
+      </ul>
+    </div>
+
+    <div class="check-group">
+      <h3><span class="chip wait">컷오버 후</span> 디자인 D2/D3/D5</h3>
+      <ul class="check-list">
+        <li><div class="cb"></div><div class="ck-body"><strong>D2-NEW 메뉴 아이콘 PNG 업로드</strong> — Admin에서 동적 업로드 시스템</div></li>
+        <li><div class="cb"></div><div class="ck-body"><strong>D3 눈금자 스타일 리프레시</strong> — 밝은 헤더 + 그레이 80%</div></li>
+        <li><div class="cb"></div><div class="ck-body"><strong>D5 표지 편집 모드별 view 분기</strong> — 펼침/분할/날개 포함 spine 케이스별</div></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================== -->
+<!-- 6. DESIGN                                        -->
+<!-- ============================================== -->
+<section class="s" id="sec-design">
+  <div class="wrap">
+    <div class="s-head">
+      <span class="num">06</span>
+      <h2>디자인 트랙 (D1~D5)</h2>
+      <span class="desc">UI/UX 개선 항목 5종</span>
+    </div>
+
+    <table class="t">
+      <thead><tr><th style="width:60px">#</th><th>항목</th><th>완성도</th><th>상태</th><th>가이드</th><th>주요 파일</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>D1</strong></td>
+          <td>헤더 그라데이션 (violet-200 → white)</td>
+          <td><strong>100%</strong></td>
+          <td><span class="chip done">완료</span></td>
+          <td>—</td>
+          <td><code>EditorHeader.tsx</code></td>
+        </tr>
+        <tr>
+          <td><strong>D2</strong></td>
+          <td>관리자 메뉴 아이콘 PNG 동적 업로드 (재정의)</td>
+          <td>0%</td>
+          <td><span class="chip wait">컷오버 후</span></td>
+          <td><code>10-menu-icon-asset-system.md</code></td>
+          <td>—</td>
+        </tr>
+        <tr>
+          <td><strong>D3</strong></td>
+          <td>눈금자 스타일 (밝은 헤더 + 그레이 80%)</td>
+          <td>0%</td>
+          <td><span class="chip wait">진행 예정</span></td>
+          <td><code>11-ruler-style-refresh.md</code></td>
+          <td><code>ruler.plugin.ts</code></td>
+        </tr>
+        <tr>
+          <td><strong>D4</strong></td>
+          <td>페이지 네비 (책자/낭장 분기 + 우/하단 토글 + 반응형)</td>
+          <td><strong>100%</strong></td>
+          <td><span class="chip done">완료</span></td>
+          <td>—</td>
+          <td><code>BookNavigation.tsx</code>, <code>useEditorStore</code></td>
+        </tr>
+        <tr>
+          <td><strong>D5</strong></td>
+          <td>표지 편집 모드별 view 분기 (펼침/분할/날개 + spine)</td>
+          <td>0%</td>
+          <td><span class="chip wait">운영 후</span></td>
+          <td><code>12-cover-edit-modes.md</code></td>
+          <td>(미정의)</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============================================== -->
+<!-- 7. ENV                                           -->
+<!-- ============================================== -->
+<section class="s" id="sec-env">
+  <div class="wrap">
+    <div class="s-head">
+      <span class="num">07</span>
+      <h2>환경 · 시크릿 · 외부 계정</h2>
+      <span class="desc">도메인, VPS, 비밀, 계정 — 운영자 인수인계용</span>
+    </div>
+
+    <div class="two-col">
+      <div>
+        <h3>도메인 & DNS</h3>
+        <table class="t">
+          <thead><tr><th>항목</th><th>값</th><th>상태</th></tr></thead>
+          <tbody>
+            <tr><td>Root</td><td><code>papascompany.co.kr</code> (가비아)</td><td><span class="chip done">활성</span></td></tr>
+            <tr><td>API</td><td><code>api.papascompany.co.kr</code> → 158.247.235.202</td><td><span class="chip done">활성</span></td></tr>
+            <tr><td>Editor</td><td><code>editor.papascompany.co.kr</code> → Vercel CNAME</td><td><span class="chip done">활성</span></td></tr>
+            <tr><td>Admin</td><td><code>admin.papascompany.co.kr</code> → Vercel CNAME</td><td><span class="chip done">활성</span></td></tr>
+            <tr><td>NS</td><td>DNSEver 5개</td><td><span class="chip done">위임</span></td></tr>
+            <tr><td>HTTPS</td><td>Let's Encrypt (auto-renew)</td><td><span class="chip done">~2026-07-26</span></td></tr>
+            <tr><td>MX</td><td>smtp.google.com (Workspace)</td><td><span class="chip done">설정</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div>
+        <h3>VPS & 인프라</h3>
+        <table class="t">
+          <thead><tr><th>항목</th><th>값</th></tr></thead>
+          <tbody>
+            <tr><td>IP</td><td><code>158.247.235.202</code></td></tr>
+            <tr><td>Provider</td><td>Vultr Cloud Compute · Seoul (ICN)</td></tr>
+            <tr><td>스펙</td><td>4 vCPU · 8GB RAM · 160GB NVMe</td></tr>
+            <tr><td>OS</td><td>Ubuntu 22.04 LTS</td></tr>
+            <tr><td>SSH</td><td><code>ssh deploy@158.247.235.202</code> (key-only, NOPASSWD sudo, root 차단)</td></tr>
+            <tr><td>비용</td><td>$48/mo · 프로모션 $300 → 약 6개월 무료 (~2026-10)</td></tr>
+            <tr><td>백업</td><td>cron 03:00 KST · ~/backup.sh · 7일 보존</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <h3 style="margin-top:24px">시크릿 (VPS의 ~/storige/.env, chmod 600)</h3>
+    <div class="notice danger">
+      <span class="notice-icon">🔒</span>
+      <div>
+        <strong>절대 깃 커밋 금지.</strong> 노출 시 즉시 회전 필요.
+        Admin 초기 비번 <code>admin@storige.com / admin123</code>은 컷오버 직전 반드시 변경.
+      </div>
+    </div>
+    <table class="t">
+      <thead><tr><th>키</th><th>용도</th><th>등급</th></tr></thead>
+      <tbody>
+        <tr><td><code>JWT_SECRET</code></td><td>Storige JWT 서명</td><td><span class="chip danger">🔴 critical</span></td></tr>
+        <tr><td><code>MYSQL_ROOT_PASSWORD</code></td><td>MariaDB root</td><td><span class="chip danger">🔴 critical</span></td></tr>
+        <tr><td><code>DATABASE_PASSWORD</code></td><td>MariaDB storige 사용자</td><td><span class="chip danger">🔴 critical</span></td></tr>
+        <tr><td><code>WORKER_API_KEY</code></td><td>worker → API 콜백 (X-API-Key)</td><td><span class="chip danger">🔴 critical</span></td></tr>
+        <tr><td><code>API_KEYS</code></td><td>콤마 목록: WORKER_API_KEY + PHP_API_KEY</td><td><span class="chip danger">🔴 critical</span></td></tr>
+        <tr><td><code>WEBHOOK_SECRET</code></td><td>(예약, P6에서 HMAC 도입)</td><td><span class="chip warn">🟠 향후</span></td></tr>
+        <tr><td>Admin 비번</td><td>admin@storige.com / admin123 (시드)</td><td><span class="chip warn">🟠 변경 필수</span></td></tr>
+      </tbody>
+    </table>
+
+    <h3 style="margin-top:24px">외부 계정 & 콘솔</h3>
+    <table class="t">
+      <thead><tr><th>서비스</th><th>계정</th><th>권한</th><th>상태</th></tr></thead>
+      <tbody>
+        <tr><td>GitHub</td><td>papascompany (yohan@papascompany.co.kr)</td><td>storige-book-editor owner</td><td><span class="chip done">활성</span></td></tr>
+        <tr><td>Vercel</td><td>papas-yohan / Yohan's projects</td><td>Hobby plan, 2 프로젝트 owner</td><td><span class="chip done">활성</span></td></tr>
+        <tr><td>Vultr</td><td>yohan73@gmail.com Personal Org</td><td>owner</td><td><span class="chip done">활성</span></td></tr>
+        <tr><td>가비아</td><td>papascompany</td><td>도메인 owner</td><td><span class="chip done">활성</span></td></tr>
+        <tr><td>DNSEver</td><td>papascompany</td><td>NS 관리</td><td><span class="chip done">활성</span></td></tr>
+        <tr><td>Google Workspace</td><td>yohan@papascompany.co.kr</td><td>admin</td><td><span class="chip done">활성</span></td></tr>
+        <tr><td>Supabase (구)</td><td>tktucpwqxoqtlorahmod</td><td>—</td><td><span class="chip warn">⏸ Pause/Delete 권장</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============================================== -->
+<!-- 8. DECISIONS                                     -->
+<!-- ============================================== -->
+<section class="s" id="sec-decisions">
+  <div class="wrap">
+    <div class="s-head">
+      <span class="num">08</span>
+      <h2>폐기 · 채택 결정</h2>
+      <span class="desc">시도 후 폐기된 시나리오와 채택된 인프라 결정</span>
+    </div>
+
+    <div class="two-col">
+      <div>
+        <h3>❌ 폐기된 시나리오</h3>
+        <table class="t">
+          <thead><tr><th>항목</th><th>이유</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><strong>Supabase 마이그레이션</strong> (Cloud Run + pg-boss)</td>
+              <td>인수자가 Vultr + Docker Compose 채택. <code>migration/</code> 폴더 archived.</td>
+            </tr>
+            <tr>
+              <td><strong>D2 원래 계획</strong> (Phosphor → Lucide 일괄 교체)</td>
+              <td>UI 개선 폭이 커서 PNG 동적 업로드(D2-NEW)로 재정의.</td>
+            </tr>
+            <tr>
+              <td><strong>GraphQL 콘텐츠 로드</strong></td>
+              <td>미구현 상태 지속. REST API 구조 유지. <code>useEditorContents.ts:824</code> TODO.</td>
+            </tr>
+            <tr>
+              <td><strong>CMYK 색공간 기능</strong></td>
+              <td>런타임 스텁 상태. 실제 수요 불명확 → 폐기 검토 필요.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div>
+        <h3>✅ 채택된 결정</h3>
+        <table class="t">
+          <thead><tr><th>항목</th><th>채택</th><th>이유</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>호스팅</td>
+              <td><strong>Vultr VPS</strong></td>
+              <td>인수자 VPS 경험 + 전체 제어권 + 저비용 ($48/mo)</td>
+            </tr>
+            <tr>
+              <td>에디터/Admin 배포</td>
+              <td><strong>Vercel</strong></td>
+              <td>CDN + 자동 빌드 + git 연동, 무료 Hobby plan</td>
+            </tr>
+            <tr>
+              <td>Worker 큐</td>
+              <td><strong>Bull + Redis</strong></td>
+              <td>Node.js 스택 일관성 (vs pg-boss)</td>
+            </tr>
+            <tr>
+              <td>백업 자동화</td>
+              <td><strong>cron + logrotate</strong></td>
+              <td>수동 → 자동, 7일 보존</td>
+            </tr>
+            <tr>
+              <td>백업 이중화 (예정)</td>
+              <td><strong>Cloudflare R2</strong></td>
+              <td>S3 호환 + 트래픽 무료 (vs AWS S3)</td>
+            </tr>
+            <tr>
+              <td>인증서</td>
+              <td><strong>Let's Encrypt</strong></td>
+              <td>certbot + 자동 갱신</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================== -->
+<!-- 9. TECH DEBT                                     -->
+<!-- ============================================== -->
+<section class="s" id="sec-debt">
+  <div class="wrap">
+    <div class="s-head">
+      <span class="num">09</span>
+      <h2>기술 부채 · 확인 필요</h2>
+      <span class="desc">컷오버 전·후로 정리할 항목들</span>
+    </div>
+
+    <div class="check-group">
+      <h3><span class="chip warn">⚠️</span> 확인 / 정리 필요</h3>
+      <ul class="check-list">
+        <li>
+          <div class="cb"></div>
+          <div class="ck-body">
+            <strong>Admin 승인자 ID 하드코딩 제거 (P0-A)</strong>
+            <span class="sub"><code>apps/admin/src/pages/Reviews/ReviewDetail.tsx:84,101</code> · 컷오버 전 우선순위</span>
+          </div>
+        </li>
+        <li>
+          <div class="cb"></div>
+          <div class="ck-body">
+            <strong>GraphQL 콘텐츠 로드 — 미구현 vs 폐기 결정 (P0-C)</strong>
+            <span class="sub"><code>apps/editor/src/hooks/useEditorContents.ts:824</code> · TODO 주석 정리</span>
+          </div>
+        </li>
+        <li>
+          <div class="cb"></div>
+          <div class="ck-body">
+            <strong>CMYK 색공간 런타임 스텁 — 기능 폐기 여부</strong>
+            <span class="sub"><code>apps/editor/vite.config.ts</code> · throw new Error 상태</span>
+          </div>
+        </li>
+        <li>
+          <div class="cb"></div>
+          <div class="ck-body">
+            <strong>Worker callback 경로 통일</strong>
+            <span class="sub"><code>/external</code> vs 비-<code>/external</code> 혼재 — Day 5 회귀 시 정리</span>
+          </div>
+        </li>
+        <li>
+          <div class="cb"></div>
+          <div class="ck-body">
+            <strong>node_modules 미설치로 로컬 typecheck 불가 (canvas native 빌드 실패)</strong>
+            <span class="sub">CI/Vercel 빌드 환경에서는 정상. 로컬 dev 시 <code>pnpm install</code> 후 canvas 패키지 빌드 의존성 점검 필요</span>
+          </div>
+        </li>
+        <li>
+          <div class="cb"></div>
+          <div class="ck-body">
+            <strong>EditSession entity 이중 매핑</strong>
+            <span class="sub"><code>editor/entities/edit-session.entity.ts</code>와 <code>edit-sessions/entities/edit-session.entity.ts</code>가 같은 DB 테이블을 다른 컬럼셋으로 매핑. 향후 통합 검토.</span>
+          </div>
+        </li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================== -->
+<!-- 10. NEXT                                         -->
+<!-- ============================================== -->
+<section class="s" id="sec-next">
+  <div class="wrap">
+    <div class="s-head">
+      <span class="num">10</span>
+      <h2>다음 우선순위</h2>
+      <span class="desc">2026-04-28 이후 가장 먼저 할 일</span>
+    </div>
+
+    <div class="notice brand">
+      <span class="notice-icon">🎯</span>
+      <div>
+        <strong>합성 파이프라인이 end-to-end 동작합니다.</strong> 다음은 실 PHP와 묶어서 검증 → 컷오버 → 안정화 순서.
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="check-group">
+        <h3><span class="chip warn">우선순위 A</span> Day 5 PHP staging 회귀</h3>
+        <p style="color:var(--c-text-soft); margin-top:0">가이드: <code>v2/agents/01-php-integrator.md</code></p>
+        <ul class="check-list">
+          <li><div class="cb"></div><div class="ck-body">시나리오 ① 회원 세션</div></li>
+          <li><div class="cb"></div><div class="ck-body">시나리오 ② 파일 업로드</div></li>
+          <li><div class="cb"></div><div class="ck-body">시나리오 ③ 검증 잡 + webhook</div></li>
+          <li><div class="cb"></div><div class="ck-body">시나리오 ④ 합성 잡 + webhook</div></li>
+          <li><div class="cb"></div><div class="ck-body">PHP 측 4상수 (config.php) 확정</div></li>
+        </ul>
+      </div>
+
+      <div class="check-group">
+        <h3><span class="chip prog">우선순위 B</span> 옵션 — VPS 직접 검증</h3>
+        <p style="color:var(--c-text-soft); margin-top:0">PHP 회귀 전, 새로 머지된 P5의 동작을 VPS에서 직접 확인할 수 있음.</p>
+        <ul class="check-list">
+          <li><div class="cb"></div><div class="ck-body"><code>git pull && docker compose up -d --build</code></div></li>
+          <li><div class="cb"></div><div class="ck-body"><code>POST /api/editor/export</code> with sessionId</div></li>
+          <li><div class="cb"></div><div class="ck-body"><code>SELECT FROM worker_jobs ORDER BY created_at DESC LIMIT 5</code></div></li>
+          <li><div class="cb"></div><div class="ck-body"><code>redis-cli LLEN bull:pdf-synthesis:wait</code></div></li>
+          <li><div class="cb"></div><div class="ck-body"><code>docker logs storige-worker | grep synthesis</code></div></li>
+        </ul>
+      </div>
+    </div>
+
+    <h3 style="margin-top:24px">자주 쓰는 명령</h3>
+    <pre style="background:#1c1917; color:#e7e5e4; padding:18px; border-radius:var(--radius); overflow-x:auto; font-size:13px; line-height:1.5;">
+<span style="color:#a8a29e"># SSH</span>
+ssh deploy@158.247.235.202
+
+<span style="color:#a8a29e"># 코드 갱신 + 재배포</span>
+ssh deploy@158.247.235.202 'cd ~/storige &amp;&amp; git pull &amp;&amp; docker compose up -d --build'
+
+<span style="color:#a8a29e"># 로그</span>
+docker logs --tail 200 -f storige-api
+docker logs --tail 200 -f storige-worker
+
+<span style="color:#a8a29e"># 큐 적체</span>
+docker exec storige-redis redis-cli LLEN bull:pdf-synthesis:wait
+
+<span style="color:#a8a29e"># 헬스체크</span>
+curl https://api.papascompany.co.kr/api/health
+
+<span style="color:#a8a29e"># 백업 즉시 실행</span>
+ssh deploy@158.247.235.202 ~/backup.sh
+
+<span style="color:#a8a29e"># DB: 최근 세션 / 워커잡</span>
+docker exec storige-mariadb mariadb -ustorige -p$DATABASE_PASSWORD storige \
+  -e "SELECT id, status, completed_at FROM edit_sessions ORDER BY updated_at DESC LIMIT 5;"
+docker exec storige-mariadb mariadb -ustorige -p$DATABASE_PASSWORD storige \
+  -e "SELECT id, job_type, status, edit_session_id, created_at FROM worker_jobs ORDER BY created_at DESC LIMIT 5;"
+
+<span style="color:#a8a29e"># P5 동작 확인 (sessionId 필요)</span>
+curl -X POST https://api.papascompany.co.kr/api/editor/export \
+  -H "Content-Type: application/json" \
+  -d '{"sessionId":"&lt;UUID&gt;","exportOptions":{"outputFormat":"merged"}}'
+</pre>
+  </div>
+</section>
+
+<!-- ============================================== -->
+<!-- FOOTER                                           -->
+<!-- ============================================== -->
+<footer>
+  <div class="wrap">
+    <div>
+      <strong style="color:#fafaf9">Storige · papascompany</strong> · 마이그레이션 진행 가이드 v5
+      <br>
+      <span style="color:#a8a29e">생성: 2026-04-28 · 기준 커밋 <code>01fb342</code></span>
+    </div>
+    <div style="text-align:right; color:#a8a29e;">
+      자료 출처: <code>storige/.cursor/plans/v2/</code><br>
+      마지막 진행: <code>P1 · P5 master 머지 완료</code>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>
