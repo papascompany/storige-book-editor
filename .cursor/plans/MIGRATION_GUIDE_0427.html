@@ -496,8 +496,8 @@
         <div class="label">대기 중 (P2/P3/P4/P6/P7, R2, D2/D3/D5)</div>
       </div>
       <div class="metric warn">
-        <div class="num">4</div>
-        <div class="label">기술 부채·확인 필요</div>
+        <div class="num">3</div>
+        <div class="label">🔴 차단 이슈 (Day 5 시작 전 필수)</div>
       </div>
     </div>
   </div>
@@ -518,6 +518,7 @@
       <a href="#sec-design">디자인 트랙</a>
       <a href="#sec-env">환경·시크릿</a>
       <a href="#sec-decisions">폐기·채택 결정</a>
+      <a href="#sec-issues" style="background: #fef2f2; color: #b91c1c; font-weight: 700;">🔴 외부 점검 이슈</a>
       <a href="#sec-debt">기술 부채</a>
       <a href="#sec-next">다음 우선순위</a>
     </div>
@@ -1476,6 +1477,158 @@
         </table>
       </div>
     </div>
+  </div>
+</section>
+
+<!-- ============================================== -->
+<!-- 8.5. EXTERNAL REVIEW ISSUES (NEW 2026-04-28 PM) -->
+<!-- ============================================== -->
+<section class="s" id="sec-issues" style="background: linear-gradient(180deg, #fff5f5 0%, transparent 100%);">
+  <div class="wrap">
+    <div class="s-head">
+      <span class="num" style="color: #b91c1c;">🔴 점검</span>
+      <h2>외부 점검에서 발견된 이슈와 수정 계획</h2>
+      <span class="desc">GPT-5 + 외부 분석 + 코드 직접 검증 (2026-04-28 PM 추가)</span>
+    </div>
+
+    <div class="notice danger">
+      <span class="notice-icon">⚠️</span>
+      <div>
+        <strong>P1 + P5 머지된 코드가 마이그레이션 정책의 정식 계약을 부분적으로 어겨, 운영 흐름에서 즉시 깨지는 지점 3개 발견.</strong><br>
+        모든 수정안은 <strong>PHP 무변경 정책</strong>(NEW_DEV_PLAN §3.5 "이 섹션의 계약은 변경 불가")과 정합. PHP 측 코드 변경 없음.
+      </div>
+    </div>
+
+    <h3 style="margin-top:18px">정합성 매트릭스 — 마이그레이션 정책 vs 수정안</h3>
+    <table class="t">
+      <thead><tr><th style="width:50px">#</th><th>이슈</th><th>심각도</th><th>PHP 영향</th><th>의미</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>1</td>
+          <td><strong>스프레드 모드 storageApi.uploadDesign</strong> — useWorkSave가 designs 카테고리(파일명 uuid)로 PDF 올림</td>
+          <td><span class="chip danger">🔴 차단</span></td>
+          <td><span class="chip done">없음</span></td>
+          <td>계약 복원 (정식 계약은 files.id)</td>
+        </tr>
+        <tr>
+          <td>2</td>
+          <td><strong>synthesis/conversion PATCH 401</strong> — `/worker-jobs/:id/status` 호출 시 JWT 가드에 막힘</td>
+          <td><span class="chip danger">🔴 차단</span></td>
+          <td><span class="chip done">없음</span></td>
+          <td>worker→API 내부 통신 버그</td>
+        </tr>
+        <tr style="background:#fef9c3;">
+          <td>★</td>
+          <td><strong>FileType enum 불일치</strong> (신규) — 프론트 'design'/'output' 보내지만 백엔드 enum에 없음</td>
+          <td><span class="chip danger">🔴 차단</span></td>
+          <td><span class="chip done">없음</span></td>
+          <td>both/template 모드 즉시 깨짐</td>
+        </tr>
+        <tr>
+          <td>5</td>
+          <td><strong>spread webhook 비표준/중복</strong> — 워커가 직접 axios로 송신 (signature/timestamp 누락)</td>
+          <td><span class="chip warn">🟠 정합화</span></td>
+          <td><span class="chip done">없음</span></td>
+          <td>WebhookService 단일 채널화</td>
+        </tr>
+        <tr style="background:#fef9c3;">
+          <td>★</td>
+          <td><strong>complete() 자동 검증 잡 트리거 정책</strong> (신규) — PHP가 별도 synthesize 호출 시 중복 위험</td>
+          <td><span class="chip warn">🟠 검증</span></td>
+          <td><span class="chip done">없음</span></td>
+          <td>멱등성 확인 후 결정</td>
+        </tr>
+        <tr>
+          <td>3</td>
+          <td><strong>webhook payload sessionId 누락</strong> — additive 추가 (PHP는 jobId만 사용 중)</td>
+          <td><span class="chip prog">🔵 선택</span></td>
+          <td><span class="chip done">없음 (additive)</span></td>
+          <td>계약 보존 추가 필드</td>
+        </tr>
+        <tr>
+          <td>4</td>
+          <td><strong>webhook retry signature 누락</strong></td>
+          <td><span class="chip warn">🟡 P6</span></td>
+          <td>P6에서 양측 (HMAC 강화 시)</td>
+          <td>현재 PHP는 signature 검증 안 함</td>
+        </tr>
+        <tr>
+          <td>6</td>
+          <td><strong>P4 saddle stitch (중철 imposition)</strong></td>
+          <td><span class="chip prog">🔵 운영</span></td>
+          <td><span class="chip done">없음</span></td>
+          <td>비즈니스 결정 후 구현</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3 style="margin-top:24px">정책 출처 — "PHP 무변경" 명시 위치</h3>
+    <table class="t">
+      <thead><tr><th>문서</th><th>위치</th><th>명시 내용</th></tr></thead>
+      <tbody>
+        <tr><td><code>NEW_DEV_PLAN.md</code></td><td>§3.5 (308-318줄)</td><td><strong>"이 섹션의 계약은 변경 불가. 새 인프라가 같은 계약을 그대로 만족시켜야 함."</strong></td></tr>
+        <tr><td><code>NEW_DEV_PLAN.md</code></td><td>§3.1 (186-194줄)</td><td>PHP 변경은 4가지 상수만: STORIGE_API_BASE, EDITOR_URL, API_KEY, WEBHOOK_VERIFY_HEADER</td></tr>
+        <tr><td><code>01-php-integrator.md</code></td><td>Step 3 (91-98줄)</td><td>webhook/storige.php는 점검만, 변경 금지</td></tr>
+        <tr><td><code>HANDOFF_GUIDE.md</code></td><td>§8.1 (281-308줄)</td><td>운영 PHP는 별도, test-php는 테스트 하네스</td></tr>
+      </tbody>
+    </table>
+
+    <h3 style="margin-top:24px">수정 액션 시퀀스 (재정렬)</h3>
+
+    <div class="check-group">
+      <h3><span class="chip danger">🔴 차단</span> Day 5 시작 전 필수</h3>
+      <ul class="check-list">
+        <li><div class="cb"></div><div class="ck-body"><strong>1. #2 worker URL 통일</strong> — synthesis.processor.ts:854 + conversion.processor.ts:102 → `/external/`<span class="sub">5분, 안전. PHP 영향 없음</span></div></li>
+        <li><div class="cb"></div><div class="ck-body"><strong>2. FileType enum 일치화 (신규)</strong> — 프론트 'design'/'output' 정리 또는 백엔드 enum 확장<span class="sub">10분 + 정책 결정. embed.tsx의 both/template 모드 영향</span></div></li>
+        <li><div class="cb"></div><div class="ck-body"><strong>3. #1 + 스프레드 모드 정합</strong> — useWorkSave.completeSpreadWork → filesApi.upload + metadata에 generatedBy/editSessionId/mode/orderSeqno<span class="sub">60분, 내지 N개 처리 설계 결정 포함</span></div></li>
+      </ul>
+    </div>
+
+    <div class="check-group">
+      <h3><span class="chip warn">🟠 정합화</span> Day 5 회귀 직전</h3>
+      <ul class="check-list">
+        <li><div class="cb"></div><div class="ck-body"><strong>4. #5 sendSpreadWebhook 제거</strong> — synthesis.processor.ts:802 → API의 sendSynthesisCallback이 단일 채널<span class="sub">15분</span></div></li>
+        <li><div class="cb"></div><div class="ck-body"><strong>5. complete() 자동 검증 잡 정책 검증</strong> — PHP가 별도 /synthesize/external 호출 시 중복 처리 안 되는지 확인 + 멱등성 보장<span class="sub">검증 후 결정. 옵션성 유지 권장</span></div></li>
+      </ul>
+    </div>
+
+    <div class="check-group">
+      <h3><span class="chip prog">🔵 선택 / 후속</span></h3>
+      <ul class="check-list">
+        <li><div class="cb"></div><div class="ck-body"><strong>6. #3 sessionId additive 추가</strong> — 기존 필드 유지, 새 필드만 추가 (계약 보존)</div></li>
+        <li><div class="cb"></div><div class="ck-body"><strong>7. #4 retry signature</strong> — P6 HMAC 도입 시 양측 함께</div></li>
+        <li><div class="cb"></div><div class="ck-body"><strong>8. #6 P4 saddle stitch</strong> — 운영 정책 결정 후</div></li>
+      </ul>
+    </div>
+
+    <h3 style="margin-top:24px">핵심 인사이트 — "정식 계약 복원" 작업</h3>
+    <div class="notice brand">
+      <span class="notice-icon">💡</span>
+      <div>
+        <strong>이 수정 작업들은 "PHP 측 신규 요구"가 아닌 "Storige 코드가 정식 계약을 지키도록 정렬"하는 작업입니다.</strong><br>
+        NEW_DEV_PLAN §3 (PHP 연동안)는 변경 불가 계약으로 명시됐고, 그 계약에는 이미 <code>files.id</code> 사용, <code>sessionId</code> 필드, signature 검증 등이 포함됨.
+        현재 Storige 코드(P1+P5 포함)가 그 계약을 부분적으로 어기고 있어, 위 수정은 모두 <strong>코드 → 계약 정합화</strong> 작업.
+        PHP 코드는 0줄도 변경되지 않습니다.
+      </div>
+    </div>
+
+    <h3 style="margin-top:24px">발견된 코드 위치 정리</h3>
+    <table class="t">
+      <thead><tr><th>이슈</th><th>파일:라인</th><th>현 상태</th></tr></thead>
+      <tbody>
+        <tr><td>#1 storageApi 잘못 사용</td><td><code>useWorkSave.ts:611, 644</code></td><td>storageApi.uploadDesign → files entity 안 만들어짐</td></tr>
+        <tr><td>#2 synthesis PATCH</td><td><code>synthesis.processor.ts:854</code></td><td>/worker-jobs/:id/status (JWT 가드)</td></tr>
+        <tr><td>#2 conversion PATCH</td><td><code>conversion.processor.ts:102</code></td><td>/worker-jobs/:id/status (JWT 가드)</td></tr>
+        <tr><td>★ FileType enum 백</td><td><code>file.entity.ts:11-16</code></td><td>COVER/CONTENT/TEMPLATE/OTHER</td></tr>
+        <tr><td>★ FileType enum 프론트</td><td><code>files.ts:6</code></td><td>'cover'/'content'/'design'/'output' (백엔드와 불일치)</td></tr>
+        <tr><td>★ embed.tsx fileType 분기</td><td><code>embed.tsx:684</code></td><td>both/template 모드 시 'design' 전송</td></tr>
+        <tr><td>#3 sessionId 누락</td><td><code>worker-jobs.service.ts:822-841</code></td><td>payload에 jobId만, sessionId 없음</td></tr>
+        <tr><td>#4 retry signature</td><td><code>webhook.service.ts:57-64</code></td><td>X-Storige-Retry만, signature 누락</td></tr>
+        <tr><td>#5 spread webhook</td><td><code>synthesis.processor.ts:802-823</code></td><td>WebhookService 우회, 헤더 누락</td></tr>
+        <tr><td>★ complete 자동 트리거</td><td><code>edit-sessions.service.ts:267</code></td><td>createValidationJobs() 자동 호출 — PHP 이중 처리 가능성</td></tr>
+        <tr><td>#6 P4 TODO</td><td><code>pdf-synthesizer.service.ts:259</code></td><td>'Saddle stitch ordering not yet implemented'</td></tr>
+      </tbody>
+    </table>
   </div>
 </section>
 
