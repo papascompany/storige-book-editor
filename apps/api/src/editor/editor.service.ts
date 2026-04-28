@@ -710,10 +710,8 @@ export class EditorService {
       outputFormat?: 'merged' | 'separate';
     },
   ): Promise<{ jobId: string; status: string }> {
-    // 1) editor 모듈 측 EditSession 존재 확인 (legacy 호환)
-    await this.findOne(sessionId);
-
-    // 2) edit-sessions 모듈에서 파일 ID / 메타데이터 조회
+    // edit-sessions 모듈(file_edit_sessions 테이블)에서 파일 ID / 메타데이터 조회.
+    // editor 모듈의 EditSession(edit_sessions 테이블)은 별개 entity이므로 검증 불필요.
     const session = await this.editSessionsService.findById(sessionId);
 
     if (!session.coverFileId) {
