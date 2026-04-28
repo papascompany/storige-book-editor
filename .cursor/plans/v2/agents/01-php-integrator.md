@@ -14,20 +14,35 @@ model: sonnet
 - 북모아 운영 PHP 페이지: `bookmoa.noriter.co.kr/editor/{index,editor,callback,worker-test}.php` — storige 레포 `test-php/php/` 그대로 배포 (worker-test.php는 북모아 자체 추가)
 - 외부 계약은 `NEW_DEV_PLAN.md §3` 참조
 
-## Step 1. PHP 측 환경변수 — `STORIGE_API_URL` 1줄만 변경 ★
+## Step 1. PHP 측 — Apache vhost 2줄만 변경 ★
 
-bookmoa Apache vhost 설정 (운영 PHP는 코드 변경 없이 환경변수만):
+> **사용자 → bookmoa PHP 서버 개발자 전달용 자료**: [`.cursor/plans/proxy_pass.html`](../../proxy_pass.html)
+> 위 HTML 파일을 PHP 개발자에게 전달하면 staging→검증→운영 절차를 자체 수행 가능 (시각화 + Step별 명령어 + FAQ + 롤백 포함).
+
+bookmoa Apache vhost 변경 (PHP 코드 0줄 변경):
 ```apache
+# ① 고객용 편집기 ProxyPass (1줄 변경)
+ProxyPass /storige-api/ https://api.papascompany.co.kr/api/
+ProxyPassReverse /storige-api/ https://api.papascompany.co.kr/api/
+
+# ② nimda PHP가 사용하는 STORIGE_API_URL (1줄 변경)
 SetEnv STORIGE_API_URL "https://api.papascompany.co.kr/api"
+
+# ③ API 키는 변경 없음 (새 인프라가 이미 이 키 인식)
 SetEnv STORIGE_API_KEY "sk-storige-l3YVceH0sB739pgTfxRAxZAmLJROcMtgdKPIDYdVG0g"
+
+# ④ 편집기 URL은 새 값으로 (기존에 있다면)
 SetEnv STORIGE_EDITOR_URL "https://editor.papascompany.co.kr"
+
+# ⑤ webhook 검증 헤더 변경 없음
 SetEnv STORIGE_WEBHOOK_VERIFY_HEADER "X-Storige-Signature"
 ```
 
-**핵심 단순화**:
-- `STORIGE_API_KEY`는 **변경 없음** — 기존 `sk-storige-...` 값 그대로 사용. 새 인프라가 이미 이 키를 인식하도록 등록 완료.
-- 사실상 변경할 필요가 있는 건 `STORIGE_API_URL` 1줄. 나머지 3개는 기존 값 유지 가능.
-- PHP 코드 변경 없음 (NEW_DEV_PLAN §3.5 정합).
+**핵심**:
+- bookmoa 서버 토폴로지: Apache가 `/editor/`를 PHP로 처리 + `/storige-api/`를 ProxyPass로 storige API에 forward + nimda PHP는 SetEnv로 storige base URL 주입
+- 변경할 것은 ProxyPass URL + SetEnv STORIGE_API_URL **딱 2줄**
+- PHP 코드, .htaccess, DB는 0줄 변경
+- 적용: `apachectl -t && apachectl graceful` (다운타임 0)
 
 **검증**: `apachectl -t -D DUMP_RUN_CFG | grep STORIGE_` 로 환경변수가 새 값으로 적용됐는지.
 
