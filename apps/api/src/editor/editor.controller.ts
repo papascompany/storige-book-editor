@@ -327,7 +327,7 @@ export class EditorController {
 
   @Post('export')
   @Public()
-  @ApiOperation({ summary: 'PDF 내보내기' })
+  @ApiOperation({ summary: 'PDF 내보내기 (worker 합성 잡 발행)' })
   @ApiResponse({
     status: 200,
     description: '내보내기 작업 생성됨',
@@ -335,11 +335,15 @@ export class EditorController {
       type: 'object',
       properties: {
         jobId: { type: 'string' },
+        status: { type: 'string' },
       },
     },
   })
+  @ApiResponse({ status: 400, description: '표지/내지 파일 누락 (편집 완료 필요)' })
   @ApiResponse({ status: 404, description: '세션을 찾을 수 없음' })
-  async exportToPdf(@Body() dto: ExportPdfDto): Promise<{ jobId: string }> {
+  async exportToPdf(
+    @Body() dto: ExportPdfDto,
+  ): Promise<{ jobId: string; status: string }> {
     return this.editorService.exportToPdf(dto.sessionId, dto.exportOptions);
   }
 }

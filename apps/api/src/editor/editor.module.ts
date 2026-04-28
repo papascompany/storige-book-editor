@@ -5,6 +5,8 @@ import { EditorService } from './editor.service';
 import { EditSession, EditHistory } from './entities/edit-session.entity';
 import { TemplateSet } from '../templates/entities/template-set.entity';
 import { Template } from '../templates/entities/template.entity';
+import { EditSessionsModule } from '../edit-sessions/edit-sessions.module';
+import { WorkerJobsModule } from '../worker-jobs/worker-jobs.module';
 
 @Module({
   imports: [
@@ -14,6 +16,8 @@ import { Template } from '../templates/entities/template.entity';
       TemplateSet,
       Template,
     ]),
+    EditSessionsModule,
+    WorkerJobsModule,
   ],
   controllers: [EditorController],
   providers: [EditorService],
