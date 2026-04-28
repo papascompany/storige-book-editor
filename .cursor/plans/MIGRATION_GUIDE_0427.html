@@ -484,8 +484,8 @@
 
     <div class="metrics">
       <div class="metric done">
-        <div class="num">17</div>
-        <div class="label">완료 (인프라 + Day 1 + D1/D4 + P1/P5 + 외부 점검 5건 + VPS 운영 검증)</div>
+        <div class="num">19</div>
+        <div class="label">완료 (인프라 + Day 1 + D1/D4 + P1/P5 + 외부 점검 5건 + VPS 운영 검증 + nimda PHP 통합)</div>
       </div>
       <div class="metric prog">
         <div class="num">2</div>
@@ -519,6 +519,7 @@
       <a href="#sec-env">환경·시크릿</a>
       <a href="#sec-decisions">폐기·채택 결정</a>
       <a href="#sec-issues" style="background: #fef2f2; color: #b91c1c; font-weight: 700;">🔴 외부 점검 이슈</a>
+      <a href="#sec-nimda" style="background: #ede9fe; color: #5b21b6; font-weight: 700;">🟣 nimda PHP 통합</a>
       <a href="#sec-debt">기술 부채</a>
       <a href="#sec-next">다음 우선순위</a>
     </div>
@@ -1653,6 +1654,167 @@
         <tr><td>#6 P4 TODO</td><td><code>pdf-synthesizer.service.ts:259</code></td><td>'Saddle stitch ordering not yet implemented'</td></tr>
       </tbody>
     </table>
+  </div>
+</section>
+
+<!-- ============================================== -->
+<!-- 8.7. NIMDA PHP INTEGRATION (NEW 2026-04-28 야간) -->
+<!-- ============================================== -->
+<section class="s" id="sec-nimda" style="background: linear-gradient(180deg, #faf5ff 0%, transparent 100%);">
+  <div class="wrap">
+    <div class="s-head">
+      <span class="num" style="color: #5b21b6;">🟣 nimda</span>
+      <h2>nimda PHP 통합 분석 + 컷오버 단순화</h2>
+      <span class="desc">첨부 안내 + 원본 레포 정독 + 두 운영 인프라 비교 (2026-04-28 야간 추가)</span>
+    </div>
+
+    <div class="notice brand">
+      <span class="notice-icon">🎯</span>
+      <div>
+        <strong>컷오버가 1줄 변경으로 단순화됨.</strong> bookmoa Apache vhost의
+        <code>SetEnv STORIGE_API_URL</code> 한 줄만 새 주소로 변경하면 PHP 코드 0줄 변경으로 컷오버 가능.
+        nimda PHP 키(<code>sk-storige-l3YV...</code>)도 새 인프라가 인식하도록 등록 완료.
+      </div>
+    </div>
+
+    <h3 style="margin-top:18px">두 storige 운영 인프라 동시 가동 중</h3>
+    <table class="t">
+      <thead><tr><th>인프라</th><th>주소</th><th>상태</th><th>트래픽</th><th>접근</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>옛 (인수 전)</strong></td>
+          <td><code>http://58.229.105.98:4000</code></td>
+          <td>uptime 62일, 큐 처리 106건</td>
+          <td>nimda PHP 운영 호출 중</td>
+          <td><span class="chip danger">❌ 불가</span></td>
+        </tr>
+        <tr>
+          <td><strong>새 (우리 인프라)</strong></td>
+          <td><code>https://api.papascompany.co.kr</code></td>
+          <td>P1+P5+정합화 모두 가동</td>
+          <td>외부 0</td>
+          <td><span class="chip done">✓ 운영 권한</span></td>
+        </tr>
+      </tbody>
+    </table>
+    <p style="font-size:0.88rem; color:var(--c-text-soft);">
+      옛 인프라는 북모아 운영 서버(Ubuntu 22.04 + Apache + PHP 8.1 + Node.js v20)의 Node.js 위에서 가동되는 것으로 추정. 인수자도 접근 불가.
+      검증은 응답 schema 수준 비교만 가능.
+    </p>
+
+    <h3 style="margin-top:24px">레포 매핑 — 우리 fork ↔ 원본 ↔ 북모아 운영</h3>
+    <div class="diagram" style="font-size: 0.85rem;">
+<pre style="margin:0; white-space: pre; font-family: 'JetBrains Mono', monospace; line-height:1.5;">
+[blueamethyst/storige] ─ fork ─→ [papascompany/storige-book-editor]
+       │ master 동기화                  │ + 인수자 추가 작업
+       │ (모든 최근 커밋 일치)            │ (P1, P5, 정합화 등)
+       │                              │
+       ▼                              ▼
+test-php/php/                  test-php/php/ (동일)
+  ├─ index.php (홈)             ├─ index.php
+  ├─ editor.php (편집)          ├─ editor.php
+  ├─ callback.php               ├─ callback.php
+  ├─ webhook.php                ├─ webhook.php
+  ├─ products.php               ├─ products.php
+  └─ config.php                 └─ config.php
+       │
+       │ 그대로 북모아 운영 PHP에 배포
+       ▼
+[bookmoa.noriter.co.kr/editor/]
+  ├─ index.php          ← test-php/php/index.php와 동일 (Storige 에디터 연동 테스트 - 쇼핑몰)
+  ├─ editor.php         ← test-php/php/editor.php와 동일
+  ├─ callback.php       ← test-php/php/callback.php와 동일
+  └─ worker-test.php    ← 북모아 자체 추가본 (storige 레포에 없음, Worker 테스트 - Job 관리)
+
+[bookmoa nimda 관리자 모듈]
+  └─ load_storige_files.php ← 별도 첨부 안내 (storige 레포에 없음)
+       └─ GET /edit-sessions/external?orderSeqno=...  ← X-API-Key (sk-storige-...)
+</pre>
+    </div>
+
+    <h3 style="margin-top:24px">두 가지 PHP 통합 패턴</h3>
+    <table class="t">
+      <thead><tr><th>패턴</th><th>인증</th><th>사용처</th><th>주요 호출</th><th>우리 검증</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>고객용 편집</strong></td>
+          <td>Admin/사용자 JWT (PHP가 <code>/auth/login</code>으로 발급)</td>
+          <td>bookmoa <code>/editor/editor.php</code>, <code>callback.php</code></td>
+          <td>JWT를 storige editor JS 번들에 전달 → 에디터가 직접 JWT로 호출</td>
+          <td><span class="chip done">✓</span></td>
+        </tr>
+        <tr>
+          <td><strong>nimda 관리자 조회</strong></td>
+          <td>X-API-Key (<code>sk-storige-...</code>)</td>
+          <td>nimda <code>load_storige_files.php</code></td>
+          <td><code>GET /edit-sessions/external</code>, <code>POST /worker-jobs/synthesize/external</code></td>
+          <td><span class="chip done">✓</span></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3 style="margin-top:24px">nimda PHP 키 호환 — `.env` 변경</h3>
+    <table class="t">
+      <thead><tr><th>변경 전</th><th>변경 후</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><code>API_KEYS=7e0f40be...,31e2717e...</code><br>(워커용 + 신규 PHP용)</td>
+          <td><code>API_KEYS=7e0f40be...,31e2717e...,sk-storige-l3YVceH0sB739pgTfxRAxZAmLJROcMtgdKPIDYdVG0g</code><br>(nimda 키 추가)</td>
+        </tr>
+      </tbody>
+    </table>
+    <p style="font-size:0.88rem; color:var(--c-text-soft);">
+      <code>docker compose restart</code>는 .env 재로드 안 함 — <code>docker compose up -d --force-recreate api</code> 필요. 검증 후 두 인프라가 동일 schema(<code>{"success":true,"data":[]}</code>) 응답 확인.
+    </p>
+
+    <h3 style="margin-top:24px">컷오버 절차 (단순화 확정)</h3>
+    <div class="check-group">
+      <h3><span class="chip warn">컷오버</span> bookmoa 운영 PHP 1줄 변경</h3>
+      <ul class="check-list">
+        <li><div class="cb"></div><div class="ck-body"><strong>① bookmoa Apache vhost 설정</strong> — <code>SetEnv STORIGE_API_URL "https://api.papascompany.co.kr/api"</code> 변경 (옛 값: <code>http://58.229.105.98:4000/api</code>)<span class="sub">PHP 코드는 변경 없음. STORIGE_API_KEY/EDITOR_URL/WEBHOOK_VERIFY_HEADER 모두 기존 값 유지 가능</span></div></li>
+        <li><div class="cb"></div><div class="ck-body"><strong>② Apache reload</strong> (graceful, 다운타임 0)</div></li>
+        <li><div class="cb"></div><div class="ck-body"><strong>③ 첫 실주문 + 24시간 모니터링</strong></div></li>
+        <li><div class="cb"></div><div class="ck-body"><strong>④ 옛 storige(58.229.105.98) 폐기 결정</strong> — 즉시 vs 1주일 fallback</div></li>
+      </ul>
+    </div>
+
+    <h3 style="margin-top:24px">Day 5 자체 시뮬레이션 시퀀스 (옵션 A)</h3>
+    <pre style="background:#1c1917; color:#e7e5e4; padding:18px; border-radius:var(--radius); overflow-x:auto; font-size:13px; line-height:1.5;">
+<span style="color:#a8a29e"># 환경</span>
+BASE="https://api.papascompany.co.kr/api"
+PHP_KEY="sk-storige-l3YVceH0sB739pgTfxRAxZAmLJROcMtgdKPIDYdVG0g"
+
+<span style="color:#a8a29e"># 1. JWT 발급 (PHP getEditorToken 패턴)</span>
+TOKEN=$(curl -sS -X POST $BASE/auth/login \
+  -d '{"email":"admin@storige.com","password":"admin123"}' | jq -r .accessToken)
+
+<span style="color:#a8a29e"># 2. EditSession 생성</span>
+SESSION=$(curl -sS -X POST $BASE/edit-sessions \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"orderSeqno":99999100,"memberSeqno":1,"mode":"both","callbackUrl":"&lt;WEBHOOK_URL&gt;"}' | jq -r .id)
+
+<span style="color:#a8a29e"># 3-4. PDF 업로드 (외부 X-API-Key)</span>
+COVER=$(curl -sS -X POST $BASE/files/upload/external \
+  -H "X-API-Key: $PHP_KEY" -F "file=@cover.pdf" -F "type=cover" -F "orderSeqno=99999100" | jq -r .id)
+CONTENT=$(... type=content ...)
+
+<span style="color:#a8a29e"># 5. update + complete</span>
+curl -sS -X PATCH $BASE/edit-sessions/$SESSION \
+  -H "Authorization: Bearer $TOKEN" \
+  -d "{\"coverFileId\":\"$COVER\",\"contentFileId\":\"$CONTENT\"}"
+curl -sS -X PATCH $BASE/edit-sessions/$SESSION/complete \
+  -H "Authorization: Bearer $TOKEN"
+
+<span style="color:#a8a29e"># 6. 합성 잡 (nimda 패턴)</span>
+curl -sS -X POST $BASE/worker-jobs/synthesize/external \
+  -H "X-API-Key: $PHP_KEY" \
+  -d "{...editSessionId, coverFileId, contentFileId, callbackUrl...}"
+
+<span style="color:#a8a29e"># 7. nimda 조회 — 첨부 명세 schema 검증</span>
+curl -sS -H "X-API-Key: $PHP_KEY" \
+  "$BASE/edit-sessions/external?orderSeqno=99999100"
+<span style="color:#a8a29e"># → files{cover, content, merged} 정상 반환</span>
+</pre>
   </div>
 </section>
 
