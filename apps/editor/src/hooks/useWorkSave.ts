@@ -4,7 +4,7 @@ import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useAuthStore } from '@/stores/useAuthStore'
 import { useEditorStore } from '@/stores/useEditorStore'
 import { ServicePlugin, core } from '@storige/canvas-core'
-import { designsApi, editSessionsApi, storageApi } from '@/api'
+import { designsApi, editSessionsApi, filesApi, storageApi } from '@/api'
 import type { SpreadSynthesisJobData } from '@storige/types'
 
 // Fabric.js 타입 (런타임에 로드됨)
@@ -90,6 +90,7 @@ export function useWorkSave(): UseWorkSaveReturn {
 
   const me = useAuthStore((state) => state.me)
   const sessionId = useEditorStore((state) => state.sessionId)
+  const session = useEditorStore((state) => state.session)
 
   // 현재 작업 상태
   const currentWorkState = useMemo(() => ({
@@ -588,102 +589,117 @@ export function useWorkSave(): UseWorkSaveReturn {
         throw new Error('캔버스가 없습니다.')
       }
 
+      if (!sessionId) {
+        throw new Error('편집 세션이 없습니다. (sessionId 누락)')
+      }
+
+      const orderSeqnoFromSession = (session as any)?.orderSeqno as number | undefined
+      const innerWidthMm = (artwork as any)?.sizeInfo?.width ?? 210
+      const innerHeightMm = (artwork as any)?.sizeInfo?.height ?? 297
+      const cutSize = 3
+
       // ========================================================================
-      // 1. 스프레드 캔버스 (allCanvas[0]) → cover.pdf
+      // 1. 스프레드 표지 (allCanvas[0]) → 단일 PDF → filesApi.upload(type='cover')
       // ========================================================================
       const spreadCanvas = allCanvas[0]
       const spreadEditor = allEditors[0]
 
       if (!spreadCanvas || !spreadEditor) {
-        throw new Error('스프레드 캔버스를 찾을 수 없습니다.')
+        throw new Error('스프레드 표지 캔버스를 찾을 수 없습니다.')
       }
 
-      console.log('[useWorkSave:Spread] 1. 스프레드 캔버스 → PDF 생성 중...')
+      console.log('[useWorkSave:Spread] 1. 스프레드 표지 PDF 생성 + 업로드 중...')
 
       const spreadPlugin = spreadEditor.getPlugin<ServicePlugin>('ServicePlugin')
       if (!spreadPlugin) {
-        throw new Error('스프레드 캔버스의 ServicePlugin을 찾을 수 없습니다.')
+        throw new Error('스프레드 표지의 ServicePlugin을 찾을 수 없습니다.')
       }
 
       const coverPdfBlob = await spreadPlugin.exportToPDF()
-      const coverPdfFileName = `spread_cover_${Date.now()}.pdf`
-
-      const coverUploadResult = await storageApi.uploadDesign(coverPdfBlob, coverPdfFileName)
-      const coverPdfFileId = coverUploadResult.data?.id || ''
-
-      if (!coverPdfFileId) {
-        throw new Error('스프레드 PDF 업로드 실패')
-      }
-
-      console.log('[useWorkSave:Spread] 스프레드 PDF 업로드 완료:', coverPdfFileId)
-
-      // ========================================================================
-      // 2. 내지 캔버스들 (allCanvas[1~N]) → 개별 PDF 업로드
-      // ========================================================================
-      const innerPageCanvases = allCanvas.slice(1)
-      const contentPdfFileIds: string[] = []
-
-      console.log(`[useWorkSave:Spread] 2. 내지 ${innerPageCanvases.length}개 → PDF 생성 중...`)
-
-      for (let i = 0; i < innerPageCanvases.length; i++) {
-        const innerCanvas = innerPageCanvases[i]
-        const innerEditor = allEditors[i + 1]
-
-        if (!innerCanvas || !innerEditor) {
-          console.warn(`[useWorkSave:Spread] 내지 캔버스 ${i + 1} 누락, 스킵`)
-          continue
-        }
-
-        const plugin = innerEditor.getPlugin<ServicePlugin>('ServicePlugin')
-        if (!plugin) {
-          console.warn(`[useWorkSave:Spread] 내지 캔버스 ${i + 1}의 ServicePlugin 없음, 스킵`)
-          continue
-        }
-
-        const contentPdfBlob = await plugin.exportToPDF()
-        const contentPdfFileName = `spread_content_${i + 1}_${Date.now()}.pdf`
-
-        const contentUploadResult = await storageApi.uploadDesign(contentPdfBlob, contentPdfFileName)
-        const contentPdfFileId = contentUploadResult.data?.id || ''
-
-        if (contentPdfFileId) {
-          contentPdfFileIds.push(contentPdfFileId)
-          console.log(`[useWorkSave:Spread] 내지 ${i + 1} PDF 업로드 완료:`, contentPdfFileId)
-        } else {
-          console.warn(`[useWorkSave:Spread] 내지 ${i + 1} PDF 업로드 실패, 스킵`)
-        }
-      }
-
-      if (contentPdfFileIds.length === 0) {
-        throw new Error('내지 PDF가 하나도 업로드되지 않았습니다.')
-      }
-
-      console.log(`[useWorkSave:Spread] 내지 PDF ${contentPdfFileIds.length}개 업로드 완료`)
+      const coverFile = new File(
+        [coverPdfBlob],
+        `spread_cover_${Date.now()}.pdf`,
+        { type: 'application/pdf' },
+      )
+      const coverUploadResult = await filesApi.upload({
+        file: coverFile,
+        type: 'cover',
+        orderSeqno: orderSeqnoFromSession,
+        metadata: {
+          generatedBy: 'editor',
+          editSessionId: sessionId,
+          mode: 'spread',
+          isSpreadCover: true,
+        },
+      })
+      const coverPdfFileId = coverUploadResult.id
+      console.log('[useWorkSave:Spread] 표지 업로드 완료:', coverPdfFileId)
 
       // ========================================================================
-      // 3. EditSession 완료 API 호출 (→ Worker Job 자동 생성)
+      // 2. 내지 N개 (allCanvas[1~N]) → 단일 multi-page PDF → filesApi.upload(type='content')
+      // ========================================================================
+      const innerCanvases = allCanvas.slice(1)
+      const innerEditors = allEditors.slice(1)
+
+      if (innerCanvases.length === 0 || innerEditors.length === 0) {
+        throw new Error('내지 캔버스가 없습니다.')
+      }
+
+      console.log(`[useWorkSave:Spread] 2. 내지 ${innerCanvases.length}개 → multi-page PDF 합성 중...`)
+
+      const firstInnerEditor = innerEditors[0]
+      const firstInnerPlugin = firstInnerEditor.getPlugin<ServicePlugin>('ServicePlugin')
+      if (!firstInnerPlugin) {
+        throw new Error('내지의 ServicePlugin을 찾을 수 없습니다.')
+      }
+
+      const contentPdfBlob = await firstInnerPlugin.saveMultiPagePDFAsBlob(
+        innerCanvases as any,
+        innerEditors,
+        `spread_content_${Date.now()}`,
+        { width: innerWidthMm, height: innerHeightMm, cutSize },
+        undefined,
+        300,
+      )
+
+      const contentFile = new File(
+        [contentPdfBlob],
+        `spread_content_${Date.now()}.pdf`,
+        { type: 'application/pdf' },
+      )
+      const contentUploadResult = await filesApi.upload({
+        file: contentFile,
+        type: 'content',
+        orderSeqno: orderSeqnoFromSession,
+        metadata: {
+          generatedBy: 'editor',
+          editSessionId: sessionId,
+          mode: 'spread',
+          pageCount: innerCanvases.length,
+        },
+      })
+      const contentPdfFileId = contentUploadResult.id
+      console.log('[useWorkSave:Spread] 내지 multi-page PDF 업로드 완료:', contentPdfFileId)
+
+      // ========================================================================
+      // 3. EditSession 갱신 + 완료
+      //    spread 모드는 서버측에서 자동 검증 잡 발행을 스킵 (펼침면 사이즈 검증 충돌 방지)
+      //    실제 합성은 PHP가 별도로 worker-jobs/synthesize/external 호출 시점에 수행
       // ========================================================================
       console.log('[useWorkSave:Spread] 3. EditSession 완료 API 호출 중...')
 
-      if (!sessionId) {
-        throw new Error('편집 세션이 없습니다. (sessionId 누락)')
-      }
-
-      // 3-1. 파일 ID + metadata 갱신 (complete 호출 전 필수)
       await editSessionsApi.update(sessionId, {
         coverFileId: coverPdfFileId,
-        contentFileId: contentPdfFileIds[0],
+        contentFileId: contentPdfFileId,
         metadata: {
-          contentPdfFileIds,
-          contentPdfCount: contentPdfFileIds.length,
+          spreadContentPageCount: innerCanvases.length,
         },
       })
 
-      // 3-2. 완료 처리 (서버에서 worker validation jobs 자동 생성)
       const completedSession = await editSessionsApi.complete(sessionId)
       console.log('[useWorkSave:Spread] EditSession 완료:', completedSession.id)
 
-      // 3-3. 부모(PHP) 윈도우에 완료 알림 (iframe 임베드 환경)
+      // 4. 부모(PHP) 윈도우에 완료 알림 (iframe 임베드 환경)
       if (typeof window !== 'undefined' && window.parent && window.parent !== window) {
         window.parent.postMessage(
           {
@@ -696,7 +712,6 @@ export function useWorkSave(): UseWorkSaveReturn {
               files: {
                 coverFileId: completedSession.coverFileId,
                 contentFileId: completedSession.contentFileId,
-                contentPdfFileIds,
               },
             },
           },
@@ -720,7 +735,7 @@ export function useWorkSave(): UseWorkSaveReturn {
     } finally {
       setSaving(false)
     }
-  }, [saving, allCanvas, allEditors, sessionId])
+  }, [saving, allCanvas, allEditors, sessionId, session, artwork])
 
   return {
     saving,

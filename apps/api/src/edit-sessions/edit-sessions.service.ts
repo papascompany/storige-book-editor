@@ -263,8 +263,17 @@ export class EditSessionsService {
     const completed = await this.sessionRepository.save(session);
     this.logger.log(`Completed edit session ${id}`);
 
-    // Create Worker validation jobs for associated files
-    await this.createValidationJobs(completed);
+    // 스프레드 모드는 자동 검증 잡 발행을 스킵.
+    // 표지(펼침면)는 일반 사이즈 검증(±1mm)에서 SIZE_MISMATCH가 나기 때문이며,
+    // 실제 합성/검증은 PHP가 worker-jobs/synthesize/external 또는 spread 전용
+    // 흐름을 호출하는 시점에 수행 (NEW_DEV_PLAN §3 PHP 무변경 정책과 정합).
+    if (completed.mode !== SessionMode.SPREAD) {
+      await this.createValidationJobs(completed);
+    } else {
+      this.logger.log(
+        `Skipping auto validation jobs for SPREAD session ${id} (PHP-driven synthesis flow)`,
+      );
+    }
 
     return completed;
   }
