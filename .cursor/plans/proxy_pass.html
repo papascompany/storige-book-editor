@@ -1,0 +1,1338 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Storige API 인프라 전환 — bookmoa PHP 개발자 안내</title>
+<style>
+  :root {
+    --c-bg: #fafaf9;
+    --c-surface: #ffffff;
+    --c-border: #e7e5e4;
+    --c-text: #1c1917;
+    --c-text-soft: #57534e;
+    --c-muted: #a8a29e;
+    --c-brand: #7c3aed;
+    --c-brand-soft: #ede9fe;
+    --c-brand-deep: #5b21b6;
+    --c-done: #10b981;
+    --c-done-soft: #d1fae5;
+    --c-prog: #3b82f6;
+    --c-prog-soft: #dbeafe;
+    --c-warn: #f59e0b;
+    --c-warn-soft: #fef3c7;
+    --c-danger: #ef4444;
+    --c-danger-soft: #fee2e2;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
+    --shadow-md: 0 4px 12px rgba(0,0,0,0.06);
+    --radius: 12px;
+    --radius-lg: 16px;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Pretendard", "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif;
+    background: var(--c-bg);
+    color: var(--c-text);
+    line-height: 1.65;
+    font-size: 15px;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3, h4 { color: var(--c-text); margin: 0; font-weight: 700; letter-spacing: -0.01em; }
+  h1 { font-size: 2.2rem; line-height: 1.2; }
+  h2 { font-size: 1.6rem; margin-bottom: 0.5rem; }
+  h3 { font-size: 1.15rem; margin-bottom: 0.5rem; }
+  h4 { font-size: 1rem; }
+  p { margin: 0.5rem 0; }
+  code, .mono {
+    font-family: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.85em;
+    background: #f5f5f4;
+    padding: 1px 6px;
+    border-radius: 4px;
+    color: var(--c-brand-deep);
+  }
+  pre code { background: transparent; padding: 0; color: inherit; }
+  a { color: var(--c-brand); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .wrap { max-width: 1200px; margin: 0 auto; padding: 0 24px; }
+
+  header.hero {
+    background: linear-gradient(135deg, #ede9fe 0%, #ffffff 60%, #f0fdf4 100%);
+    border-bottom: 1px solid var(--c-border);
+    padding: 36px 0 28px;
+  }
+  .hero-meta {
+    color: var(--c-text-soft);
+    font-size: 0.95rem;
+  }
+  .hero-meta .pill {
+    display: inline-block;
+    background: var(--c-brand);
+    color: #fff;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-weight: 600;
+    font-size: 0.78rem;
+    margin-right: 6px;
+  }
+
+  .summary-card {
+    margin-top: 24px;
+    background: var(--c-surface);
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius-lg);
+    padding: 24px;
+    box-shadow: var(--shadow-md);
+  }
+  .summary-card h3 { margin-bottom: 14px; font-size: 1.2rem; }
+  .summary-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 18px;
+    margin-top: 14px;
+  }
+  .summary-item {
+    background: #fafaf9;
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    border-left: 3px solid var(--c-brand);
+  }
+  .summary-item strong { color: var(--c-brand-deep); display: block; margin-bottom: 4px; }
+  .summary-item code { display: block; margin-top: 4px; padding: 4px 8px; background: #fff; border: 1px solid var(--c-border); }
+
+  nav.toc {
+    position: sticky;
+    top: 0;
+    background: rgba(255,255,255,0.95);
+    backdrop-filter: saturate(180%) blur(8px);
+    border-bottom: 1px solid var(--c-border);
+    z-index: 100;
+  }
+  .toc-inner {
+    display: flex;
+    gap: 4px;
+    overflow-x: auto;
+    padding: 8px 0;
+  }
+  .toc-inner a {
+    display: inline-block;
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    color: var(--c-text-soft);
+    white-space: nowrap;
+    font-weight: 500;
+  }
+  .toc-inner a:hover { background: var(--c-brand-soft); color: var(--c-brand-deep); text-decoration: none; }
+
+  section.s {
+    padding: 48px 0 16px;
+    border-bottom: 1px dashed var(--c-border);
+  }
+  section.s:last-of-type { border-bottom: none; }
+  .s-head {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  .s-head .num {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--c-brand);
+    letter-spacing: 0.05em;
+  }
+
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1.3;
+    white-space: nowrap;
+  }
+  .chip.done { background: var(--c-done-soft); color: #065f46; }
+  .chip.prog { background: var(--c-prog-soft); color: #1e40af; }
+  .chip.warn { background: var(--c-warn-soft); color: #92400e; }
+  .chip.danger { background: var(--c-danger-soft); color: #991b1b; }
+  .chip.brand { background: var(--c-brand-soft); color: var(--c-brand-deep); }
+
+  .diagram {
+    background: var(--c-surface);
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius-lg);
+    padding: 28px;
+    box-shadow: var(--shadow-md);
+    overflow-x: auto;
+  }
+  .diagram svg { display: block; max-width: 100%; height: auto; min-width: 760px; }
+  .diagram-caption {
+    text-align: center;
+    color: var(--c-text-soft);
+    font-size: 0.9rem;
+    margin-top: 12px;
+  }
+
+  .step {
+    background: var(--c-surface);
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius-lg);
+    padding: 24px 26px;
+    margin-bottom: 20px;
+    box-shadow: var(--shadow-sm);
+    position: relative;
+  }
+  .step .step-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    background: var(--c-brand);
+    color: #fff;
+    font-weight: 800;
+    font-size: 1.1rem;
+    margin-right: 12px;
+    vertical-align: middle;
+  }
+  .step h3 { display: inline-block; vertical-align: middle; font-size: 1.2rem; }
+  .step .step-meta {
+    margin-top: 6px;
+    margin-left: 48px;
+    color: var(--c-text-soft);
+    font-size: 0.9rem;
+  }
+  .step-body { margin-top: 18px; padding-left: 48px; }
+  .step-body h4 { margin: 14px 0 6px; }
+
+  pre.code {
+    background: #1c1917;
+    color: #e7e5e4;
+    padding: 16px 18px;
+    border-radius: var(--radius);
+    overflow-x: auto;
+    font-size: 13px;
+    line-height: 1.6;
+    margin: 8px 0;
+  }
+  pre.code .com { color: #a8a29e; }
+  pre.code .add { color: #6ee7b7; }
+  pre.code .del { color: #fca5a5; text-decoration: line-through; }
+  pre.code .key { color: #fcd34d; }
+
+  .diff-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--c-surface);
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    box-shadow: var(--shadow-sm);
+    font-size: 0.92rem;
+    margin: 16px 0;
+  }
+  .diff-table th, .diff-table td {
+    padding: 12px 16px;
+    text-align: left;
+    border-bottom: 1px solid var(--c-border);
+    vertical-align: top;
+  }
+  .diff-table thead th {
+    background: #fafaf9;
+    color: var(--c-text-soft);
+    font-weight: 600;
+    font-size: 0.82rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .diff-table tbody tr:last-child td { border-bottom: none; }
+  .diff-table .label { font-weight: 700; color: var(--c-text-soft); width: 130px; }
+  .diff-table .old { background: #fee2e2; color: #991b1b; }
+  .diff-table .new { background: #d1fae5; color: #065f46; }
+  .diff-table code { background: rgba(255,255,255,0.7); }
+
+  .notice {
+    border-radius: var(--radius);
+    padding: 14px 18px;
+    margin: 14px 0;
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+  }
+  .notice-icon { flex-shrink: 0; font-size: 1.4rem; }
+  .notice.brand { background: var(--c-brand-soft); border-left: 3px solid var(--c-brand); color: var(--c-brand-deep); }
+  .notice.warn { background: var(--c-warn-soft); border-left: 3px solid var(--c-warn); color: #78350f; }
+  .notice.done { background: var(--c-done-soft); border-left: 3px solid var(--c-done); color: #065f46; }
+  .notice.danger { background: var(--c-danger-soft); border-left: 3px solid var(--c-danger); color: #7f1d1d; }
+  .notice strong { color: inherit; }
+
+  .checklist {
+    list-style: none;
+    padding: 0;
+    margin: 12px 0;
+  }
+  .checklist li {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 0;
+    border-bottom: 1px dashed #f5f5f4;
+  }
+  .checklist li:last-child { border-bottom: none; }
+  .checklist .cb {
+    flex-shrink: 0;
+    margin-top: 2px;
+    width: 20px; height: 20px;
+    border: 2px solid var(--c-wait, #94a3b8);
+    border-radius: 4px;
+  }
+  .checklist .body strong { display: block; margin-bottom: 4px; }
+  .checklist .body .sub { display: block; color: var(--c-text-soft); font-size: 0.88rem; margin-top: 4px; }
+
+  .faq-item {
+    background: var(--c-surface);
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius);
+    padding: 16px 20px;
+    margin-bottom: 12px;
+    box-shadow: var(--shadow-sm);
+  }
+  .faq-item .q {
+    font-weight: 700;
+    color: var(--c-brand-deep);
+    margin-bottom: 8px;
+  }
+  .faq-item .q::before { content: "Q. "; color: var(--c-brand); }
+  .faq-item .a {
+    color: var(--c-text-soft);
+    font-size: 0.94rem;
+  }
+  .faq-item .a::before { content: "A. "; font-weight: 700; color: var(--c-text); }
+
+  table.t {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--c-surface);
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    box-shadow: var(--shadow-sm);
+    font-size: 0.9rem;
+  }
+  table.t th, table.t td {
+    padding: 10px 14px;
+    text-align: left;
+    border-bottom: 1px solid var(--c-border);
+    vertical-align: top;
+  }
+  table.t thead th {
+    background: #fafaf9;
+    color: var(--c-text-soft);
+    font-weight: 600;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  table.t tbody tr:last-child td { border-bottom: none; }
+
+  footer {
+    background: #1c1917;
+    color: #d6d3d1;
+    padding: 32px 0;
+    margin-top: 48px;
+    font-size: 0.85rem;
+  }
+  footer .wrap { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; }
+  footer code { background: #292524; color: #c4b5fd; }
+
+  @media (max-width: 900px) {
+    .summary-grid { grid-template-columns: 1fr; }
+  }
+  @media print {
+    nav.toc { display: none; }
+    section.s { page-break-inside: avoid; }
+    .step, .faq-item { page-break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ============================================== -->
+<!-- HERO                                             -->
+<!-- ============================================== -->
+<header class="hero">
+  <div class="wrap">
+    <div class="hero-meta">
+      <span class="pill">PHP 개발자 전달용</span>
+      <span>2026-04-28 · 작성자: papascompany 인수팀</span>
+    </div>
+    <h1 style="margin-top:8px">Storige API 인프라 전환 안내</h1>
+    <p style="margin-top:10px; font-size:1.05rem; color:var(--c-text-soft); max-width: 800px;">
+      북모아(bookmoa) 사이트의 storige 에디터/워커 API가 새 인프라(<code>api.papascompany.co.kr</code>)로 이전되었습니다.
+      <strong>PHP 코드는 변경 없이</strong>, 북모아 서버의 <strong>Apache 설정 2곳만 변경</strong>하면 전환이 완료됩니다.
+    </p>
+
+    <div class="summary-card">
+      <h3>한 줄 요약 — 변경할 것</h3>
+      <p style="margin-top: 8px; font-size:1rem;">
+        북모아 서버(Ubuntu 22.04 + Apache + Nginx)의 <strong>Apache vhost 설정에서 다음 두 가지를 변경</strong>하시면 됩니다.
+        나머지는 모두 기존 그대로 (PHP 코드, Nginx, .htaccess, DB, 환경변수 등 전부 변경 없음).
+      </p>
+      <div class="summary-grid">
+        <div class="summary-item">
+          <strong>① ProxyPass URL 1줄 변경</strong>
+          <span>북모아 고객용 편집기 페이지(<code>/editor/*</code>)가 사용하는 reverse proxy 대상</span>
+          <code>ProxyPass /storige-api/  https://api.papascompany.co.kr/api/</code>
+        </div>
+        <div class="summary-item">
+          <strong>② SetEnv STORIGE_API_URL 1줄 변경</strong>
+          <span>nimda 관리자 모듈의 storige_common.php가 사용하는 API base URL</span>
+          <code>SetEnv STORIGE_API_URL "https://api.papascompany.co.kr/api"</code>
+        </div>
+      </div>
+      <div class="notice done" style="margin-top: 18px; margin-bottom: 0;">
+        <span class="notice-icon">✅</span>
+        <div>
+          <strong><code>STORIGE_API_KEY</code> 변경 없음</strong> — 기존 키 <code>sk-storige-l3YV...</code>를 새 인프라가 그대로 인식하도록 등록 완료.
+          PHP 코드, .htaccess, DB는 0줄 변경.
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ============================================== -->
+<!-- TOC                                              -->
+<!-- ============================================== -->
+<nav class="toc">
+  <div class="wrap">
+    <div class="toc-inner">
+      <a href="#sec-why">왜 변경하나</a>
+      <a href="#sec-arch">시스템 구성도</a>
+      <a href="#sec-current">현재 상태</a>
+      <a href="#sec-change">변경 사항</a>
+      <a href="#sec-step1">Step 1 staging</a>
+      <a href="#sec-step2">Step 2 검증</a>
+      <a href="#sec-step3">Step 3 운영</a>
+      <a href="#sec-rollback">롤백</a>
+      <a href="#sec-faq">FAQ</a>
+      <a href="#sec-appendix">기술 부록</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ============================================== -->
+<!-- 1. WHY                                           -->
+<!-- ============================================== -->
+<section class="s" id="sec-why">
+  <div class="wrap">
+    <div class="s-head">
+      <span class="num">01</span>
+      <h2>왜 이 변경이 필요한가</h2>
+    </div>
+
+    <p>
+      papascompany 측에서 기존 storige 시스템을 <strong>인수받아 새 클라우드 인프라로 마이그레이션</strong>하는 작업을 진행했습니다.
+      마이그레이션의 핵심 원칙은:
+    </p>
+
+    <div class="notice brand">
+      <span class="notice-icon">🎯</span>
+      <div>
+        <strong>"기존 PHP 연동 방식은 절대 변경하지 않는다"</strong> —
+        북모아의 PHP 코드, DB, nginx, .htaccess는 일체 손대지 않고, <strong>storige API/Editor/Worker 시스템만 새 인프라로 옮긴다</strong>는 원칙입니다.
+      </div>
+    </div>
+
+    <h3 style="margin-top: 24px;">변경 배경</h3>
+    <table class="t">
+      <thead><tr><th>구분</th><th>옛 인프라 (기존)</th><th>새 인프라 (이전 후)</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>위치</strong></td>
+          <td>북모아 운영 서버 내부 (Node.js v20 위에 storige 가동)<br>접근 IP: <code>http://58.229.105.98:4000</code></td>
+          <td>papascompany 별도 클라우드 (Vultr Seoul VPS, Docker)<br>도메인: <code>https://api.papascompany.co.kr</code></td>
+        </tr>
+        <tr>
+          <td><strong>운영 책임</strong></td>
+          <td>인수 전 storige 개발자 (blueamethyst)</td>
+          <td>papascompany 인수팀</td>
+        </tr>
+        <tr>
+          <td><strong>HTTPS</strong></td>
+          <td>없음 (HTTP)</td>
+          <td>Let's Encrypt 자동 갱신</td>
+        </tr>
+        <tr>
+          <td><strong>DB</strong></td>
+          <td>북모아 서버 내 MariaDB</td>
+          <td>VPS 내 별도 MariaDB (Docker volume)</td>
+        </tr>
+        <tr>
+          <td><strong>파일 저장소</strong></td>
+          <td>북모아 서버 디스크</td>
+          <td>VPS 디스크 + (예정) Cloudflare R2 백업</td>
+        </tr>
+        <tr>
+          <td><strong>자동 백업</strong></td>
+          <td>설정 미상</td>
+          <td>매일 03:00 KST cron (DB + 파일 + .env, 7일 보존)</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3 style="margin-top: 24px;">왜 PHP 측 변경이 최소화되는가</h3>
+    <ul>
+      <li>
+        <strong>API 계약(스펙) 동일</strong> — 새 인프라는 옛 인프라와 동일한 endpoint/path/payload schema를 그대로 제공.
+        bookmoa PHP가 호출하는 모든 endpoint(<code>/auth/shop-session</code>, <code>/files/upload/external</code>, <code>/edit-sessions/external</code>, <code>/worker-jobs/synthesize/external</code> 등)는 같은 입력에 같은 응답.
+      </li>
+      <li>
+        <strong>API Key 그대로</strong> — 기존 nimda PHP가 쓰는 <code>STORIGE_API_KEY</code>(<code>sk-storige-l3YV...</code>)를 새 인프라 측 <code>API_KEYS</code> 환경변수에 추가 등록 완료. 따라서 PHP 측 키 값도 변경 불필요.
+      </li>
+      <li>
+        <strong>Webhook payload 동일</strong> — synthesis.completed/failed 이벤트의 field 구조(<code>jobId</code>, <code>orderId</code>, <code>status</code>, <code>outputFileUrl</code>, <code>outputFiles</code>, <code>outputFormat</code>, <code>errorMessage</code>, <code>timestamp</code>)는 그대로. <code>X-Storige-Signature</code>, <code>X-Storige-Event</code> 헤더도 동일.
+      </li>
+      <li>
+        <strong>차이는 호스트 주소뿐</strong> — 따라서 PHP가 storige API를 어떤 호스트로 호출할지만 바꾸면 됩니다 (Apache의 ProxyPass + SetEnv 두 군데).
+      </li>
+    </ul>
+
+    <h3 style="margin-top: 24px;">검증 결과 (papascompany 측에서 사전 완료)</h3>
+    <ul class="checklist">
+      <li>
+        <div class="cb" style="background:var(--c-done); border-color:var(--c-done); color:white; display:flex; align-items:center; justify-content:center; font-weight:bold;">✓</div>
+        <div class="body">
+          <strong>새 인프라가 옛 인프라와 동일 응답 schema 검증</strong>
+          <span class="sub">기존 nimda PHP 키 <code>sk-storige-l3YV...</code>로 양쪽 호출 시 동일 schema (<code>{"success":true,"data":[...]}</code>)</span>
+        </div>
+      </li>
+      <li>
+        <div class="cb" style="background:var(--c-done); border-color:var(--c-done); color:white; display:flex; align-items:center; justify-content:center; font-weight:bold;">✓</div>
+        <div class="body">
+          <strong>PHP 흐름 7단계 시뮬레이션 통과</strong>
+          <span class="sub">JWT 발급 → 세션 생성 → 파일 업로드 → 완료 → 합성 잡 발행 → nimda external 조회 + worker→API 정합 + webhook 송신 모두 검증</span>
+        </div>
+      </li>
+      <li>
+        <div class="cb" style="background:var(--c-done); border-color:var(--c-done); color:white; display:flex; align-items:center; justify-content:center; font-weight:bold;">✓</div>
+        <div class="body">
+          <strong>합성 결과 webhook 정상 송신</strong>
+          <span class="sub"><code>X-Storige-Signature</code> 포함, payload schema 옛 인프라와 동일</span>
+        </div>
+      </li>
+    </ul>
+  </div>
+</section>
+
+<!-- ============================================== -->
+<!-- 2. ARCHITECTURE                                  -->
+<!-- ============================================== -->
+<section class="s" id="sec-arch">
+  <div class="wrap">
+    <div class="s-head">
+      <span class="num">02</span>
+      <h2>시스템 구성도 — 변경 전 / 변경 후</h2>
+    </div>
+
+    <h3 style="margin-bottom: 16px;">변경 전 (현재 상태)</h3>
+    <div class="diagram">
+      <svg viewBox="0 0 900 420" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system, sans-serif" font-size="13">
+        <defs>
+          <marker id="arrow1" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+            <path d="M0,0 L0,6 L9,3 z" fill="#94a3b8"/>
+          </marker>
+        </defs>
+
+        <!-- 고객 / 관리자 -->
+        <g>
+          <rect x="40" y="40" width="180" height="60" rx="10" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.5"/>
+          <text x="130" y="65" text-anchor="middle" font-weight="700">👤 고객 (편집)</text>
+          <text x="130" y="84" text-anchor="middle" font-size="11" fill="#78350f">bookmoa.noriter.co.kr/editor/</text>
+
+          <rect x="40" y="120" width="180" height="60" rx="10" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.5"/>
+          <text x="130" y="145" text-anchor="middle" font-weight="700">👤 관리자 (nimda)</text>
+          <text x="130" y="164" text-anchor="middle" font-size="11" fill="#78350f">주문 상세 → 에디터파일 탭</text>
+        </g>
+
+        <!-- 북모아 서버 -->
+        <g>
+          <rect x="280" y="20" width="320" height="240" rx="14" fill="#fafaf9" stroke="#a8a29e" stroke-width="1.5"/>
+          <text x="440" y="45" text-anchor="middle" font-weight="700" font-size="14">북모아 서버 (Ubuntu 22.04)</text>
+          <text x="440" y="62" text-anchor="middle" font-size="10" fill="#57534e">Apache 2.4 + Nginx 1.18 + PHP 8.1 + Node.js 20</text>
+
+          <rect x="300" y="80" width="280" height="50" rx="8" fill="#fff" stroke="#d6d3d1"/>
+          <text x="440" y="100" text-anchor="middle" font-weight="700" font-size="12">Apache (mod_proxy)</text>
+          <text x="440" y="118" text-anchor="middle" font-size="10" fill="#57534e">/editor/ → PHP, /storige-api/ → ProxyPass</text>
+
+          <rect x="300" y="140" width="135" height="50" rx="8" fill="#fff" stroke="#d6d3d1"/>
+          <text x="367" y="160" text-anchor="middle" font-weight="700" font-size="12">PHP (편집기)</text>
+          <text x="367" y="178" text-anchor="middle" font-size="10" fill="#57534e">/editor/index.php 외</text>
+
+          <rect x="445" y="140" width="135" height="50" rx="8" fill="#fff" stroke="#d6d3d1"/>
+          <text x="512" y="160" text-anchor="middle" font-weight="700" font-size="12">PHP (nimda)</text>
+          <text x="512" y="178" text-anchor="middle" font-size="10" fill="#57534e">load_storige_files.php</text>
+
+          <rect x="300" y="200" width="280" height="50" rx="8" fill="#fef9c3" stroke="#facc15"/>
+          <text x="440" y="220" text-anchor="middle" font-weight="700" font-size="12">Storige (Node.js v20) 🔄 옛 인프라</text>
+          <text x="440" y="238" text-anchor="middle" font-size="10" fill="#78350f">localhost:4000 (= 58.229.105.98:4000)</text>
+        </g>
+
+        <!-- 화살표: 고객 -> Apache -->
+        <line x1="220" y1="70" x2="280" y2="80" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrow1)"/>
+        <text x="240" y="58" font-size="10" fill="#57534e">HTTPS</text>
+
+        <line x1="220" y1="150" x2="280" y2="155" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrow1)"/>
+
+        <!-- 화살표: PHP -> Storige -->
+        <line x1="367" y1="190" x2="367" y2="200" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrow1)"/>
+        <text x="320" y="200" font-size="9" fill="#57534e">/storige-api/ ProxyPass</text>
+
+        <line x1="512" y1="190" x2="512" y2="200" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrow1)"/>
+        <text x="540" y="200" font-size="9" fill="#57534e">SetEnv URL</text>
+
+        <!-- 자료 흐름 -->
+        <text x="440" y="290" text-anchor="middle" font-size="11" fill="#57534e">Storige 가 Worker로 PDF 합성 → webhook으로 PHP에 결과 전송</text>
+
+        <!-- 라벨 -->
+        <rect x="280" y="320" width="320" height="60" rx="10" fill="#fff" stroke="#a8a29e" stroke-dasharray="3 2"/>
+        <text x="440" y="343" text-anchor="middle" font-size="11" font-weight="600">🔄 옛 storige가 북모아 서버에 함께 가동 중</text>
+        <text x="440" y="361" text-anchor="middle" font-size="10" fill="#57534e">localhost 호출이라 빠르지만, 운영 책임이 분산됨</text>
+      </svg>
+      <div class="diagram-caption">변경 전: 옛 storige가 북모아 서버 내부 Node.js 위에서 가동. PHP는 localhost로 호출.</div>
+    </div>
+
+    <h3 style="margin-top: 32px; margin-bottom: 16px;">변경 후 (이전 완료 상태)</h3>
+    <div class="diagram">
+      <svg viewBox="0 0 900 420" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system, sans-serif" font-size="13">
+        <defs>
+          <marker id="arrow2" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+            <path d="M0,0 L0,6 L9,3 z" fill="#7c3aed"/>
+          </marker>
+          <marker id="arrow2s" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+            <path d="M0,0 L0,6 L9,3 z" fill="#94a3b8"/>
+          </marker>
+        </defs>
+
+        <!-- 고객 / 관리자 -->
+        <g>
+          <rect x="40" y="40" width="180" height="60" rx="10" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.5"/>
+          <text x="130" y="65" text-anchor="middle" font-weight="700">👤 고객 (편집)</text>
+          <text x="130" y="84" text-anchor="middle" font-size="11" fill="#78350f">bookmoa.noriter.co.kr/editor/</text>
+
+          <rect x="40" y="120" width="180" height="60" rx="10" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.5"/>
+          <text x="130" y="145" text-anchor="middle" font-weight="700">👤 관리자 (nimda)</text>
+          <text x="130" y="164" text-anchor="middle" font-size="11" fill="#78350f">주문 상세 → 에디터파일 탭</text>
+        </g>
+
+        <!-- 북모아 서버 -->
+        <g>
+          <rect x="280" y="20" width="280" height="200" rx="14" fill="#fafaf9" stroke="#a8a29e" stroke-width="1.5"/>
+          <text x="420" y="45" text-anchor="middle" font-weight="700" font-size="14">북모아 서버 (변경 없음)</text>
+          <text x="420" y="62" text-anchor="middle" font-size="10" fill="#57534e">PHP / Apache / Nginx 그대로</text>
+
+          <rect x="300" y="80" width="240" height="50" rx="8" fill="#fff" stroke="#d6d3d1"/>
+          <text x="420" y="100" text-anchor="middle" font-weight="700" font-size="12">Apache (설정 2줄만 변경)</text>
+          <text x="420" y="118" text-anchor="middle" font-size="10" fill="#57534e">ProxyPass + SetEnv 새 주소로</text>
+
+          <rect x="300" y="140" width="115" height="50" rx="8" fill="#fff" stroke="#d6d3d1"/>
+          <text x="357" y="160" text-anchor="middle" font-weight="700" font-size="12">PHP (편집기)</text>
+          <text x="357" y="178" text-anchor="middle" font-size="10" fill="#57534e">코드 무변경</text>
+
+          <rect x="425" y="140" width="115" height="50" rx="8" fill="#fff" stroke="#d6d3d1"/>
+          <text x="482" y="160" text-anchor="middle" font-weight="700" font-size="12">PHP (nimda)</text>
+          <text x="482" y="178" text-anchor="middle" font-size="10" fill="#57534e">코드 무변경</text>
+        </g>
+
+        <!-- 새 storige 클라우드 -->
+        <g>
+          <rect x="620" y="20" width="240" height="380" rx="14" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+          <text x="740" y="45" text-anchor="middle" font-weight="700" font-size="14" fill="#5b21b6">papascompany 클라우드 ✨</text>
+          <text x="740" y="62" text-anchor="middle" font-size="10" fill="#5b21b6">Vultr Seoul VPS + Docker</text>
+
+          <rect x="640" y="80" width="200" height="60" rx="8" fill="#fff" stroke="#a78bfa"/>
+          <text x="740" y="100" text-anchor="middle" font-weight="700" font-size="12">Storige API</text>
+          <text x="740" y="118" text-anchor="middle" font-size="10" fill="#57534e">api.papascompany.co.kr</text>
+          <text x="740" y="132" text-anchor="middle" font-size="9" fill="#5b21b6">HTTPS · Let's Encrypt</text>
+
+          <rect x="640" y="155" width="200" height="50" rx="8" fill="#fff" stroke="#a78bfa"/>
+          <text x="740" y="175" text-anchor="middle" font-weight="700" font-size="12">Worker (PDF 합성)</text>
+          <text x="740" y="193" text-anchor="middle" font-size="10" fill="#57534e">Bull queue + pdf-lib</text>
+
+          <rect x="640" y="220" width="200" height="50" rx="8" fill="#fff" stroke="#a78bfa"/>
+          <text x="740" y="240" text-anchor="middle" font-weight="700" font-size="12">MariaDB</text>
+          <text x="740" y="258" text-anchor="middle" font-size="10" fill="#57534e">file_edit_sessions, files 등</text>
+
+          <rect x="640" y="285" width="200" height="50" rx="8" fill="#fff" stroke="#a78bfa"/>
+          <text x="740" y="305" text-anchor="middle" font-weight="700" font-size="12">파일 저장소</text>
+          <text x="740" y="323" text-anchor="middle" font-size="10" fill="#57534e">/app/storage/{uploads,outputs}</text>
+
+          <rect x="640" y="350" width="200" height="40" rx="8" fill="#fef9c3" stroke="#facc15"/>
+          <text x="740" y="368" text-anchor="middle" font-size="11">매일 03:00 자동 백업</text>
+          <text x="740" y="382" text-anchor="middle" font-size="10" fill="#78350f">DB + 파일 + .env (7일 보존)</text>
+        </g>
+
+        <!-- 화살표 -->
+        <line x1="220" y1="70" x2="280" y2="80" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrow2s)"/>
+        <line x1="220" y1="150" x2="280" y2="155" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrow2s)"/>
+
+        <!-- Apache -> 새 storige -->
+        <line x1="540" y1="105" x2="640" y2="105" stroke="#7c3aed" stroke-width="2" marker-end="url(#arrow2)"/>
+        <text x="555" y="98" font-size="10" fill="#5b21b6">HTTPS</text>
+
+        <!-- webhook back -->
+        <path d="M 640 130 Q 580 130 540 130" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="3 2" fill="none" marker-end="url(#arrow2s)"/>
+        <text x="555" y="146" font-size="10" fill="#57534e">webhook</text>
+
+        <text x="420" y="350" text-anchor="middle" font-size="11" fill="#5b21b6">PHP 코드 0줄 변경 · Apache 2줄만 새 주소로 · 운영 책임 분리</text>
+      </svg>
+      <div class="diagram-caption">변경 후: storige가 별도 클라우드로 분리. 북모아는 단순히 호출 대상만 변경. PHP/DB/storage는 모두 그대로.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================== -->
+<!-- 3. CURRENT STATE                                 -->
+<!-- ============================================== -->
+<section class="s" id="sec-current">
+  <div class="wrap">
+    <div class="s-head">
+      <span class="num">03</span>
+      <h2>현재 상태 — papascompany 측에서 검증한 것</h2>
+    </div>
+
+    <table class="t">
+      <thead><tr><th>확인 항목</th><th>결과</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>새 인프라 가동 + 헬스체크</td>
+          <td><span class="chip done">✓</span> <code>https://api.papascompany.co.kr/api/health</code> 200 OK</td>
+        </tr>
+        <tr>
+          <td>옛 nimda PHP 키 호환</td>
+          <td><span class="chip done">✓</span> 새 인프라가 <code>sk-storige-l3YV...</code> 키 그대로 인식</td>
+        </tr>
+        <tr>
+          <td>옛 인프라와 응답 schema 동일</td>
+          <td><span class="chip done">✓</span> 같은 키로 양쪽 호출 시 같은 schema</td>
+        </tr>
+        <tr>
+          <td>PHP 7단계 흐름 시뮬레이션</td>
+          <td><span class="chip done">✓</span> JWT 발급 → 세션 생성 → 파일 업로드 → 완료 → 합성 잡 발행 → nimda 조회</td>
+        </tr>
+        <tr>
+          <td>worker → API status 콜백</td>
+          <td><span class="chip done">✓</span> PROCESSING → COMPLETED/FAILED 정상 전이</td>
+        </tr>
+        <tr>
+          <td>webhook 송신 (synthesis.completed/failed)</td>
+          <td><span class="chip done">✓</span> X-Storige-Signature 헤더 포함, payload schema 동일</td>
+        </tr>
+        <tr>
+          <td>nimda <code>/edit-sessions/external</code> 응답</td>
+          <td><span class="chip done">✓</span> <code>files{cover, content, merged}</code> 첨부 명세 schema 100% 일치</td>
+        </tr>
+        <tr>
+          <td>실 PDF 합성 (1페이지 valid PDF)</td>
+          <td><span class="chip warn">⏳</span> 운영 PHP 환경 검증으로 보완 필요 (Phase B-1)</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3 style="margin-top: 24px;">현재 staging이 가리키는 곳</h3>
+    <div class="notice warn">
+      <span class="notice-icon">⚠️</span>
+      <div>
+        <strong>staging의 <code>/storige-api/*</code>는 여전히 옛 인프라(<code>58.229.105.98:4000</code>)로 ProxyPass 중.</strong><br>
+        <code>https://bookmoa.noriter.co.kr/storige-api/health</code>를 호출하면 <code>uptime</code>이 새 인프라(<code>~hours</code>)와 다른 옛 인프라(<code>62일+</code>) 값이 나옵니다.<br>
+        Step 1에서 staging의 ProxyPass를 변경하면 즉시 새 인프라로 흐릅니다.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================== -->
+<!-- 4. CHANGE OVERVIEW                               -->
+<!-- ============================================== -->
+<section class="s" id="sec-change">
+  <div class="wrap">
+    <div class="s-head">
+      <span class="num">04</span>
+      <h2>변경 사항 — 두 줄 요약</h2>
+    </div>
+
+    <table class="diff-table">
+      <thead><tr><th>위치</th><th>옛 값 (지금)</th><th>새 값 (변경 후)</th></tr></thead>
+      <tbody>
+        <tr>
+          <td class="label">① Apache vhost ProxyPass<br><small>(고객용 편집기 페이지가 사용)</small></td>
+          <td class="old"><code>ProxyPass /storige-api/ http://58.229.105.98:4000/api/</code></td>
+          <td class="new"><code>ProxyPass /storige-api/ https://api.papascompany.co.kr/api/</code></td>
+        </tr>
+        <tr>
+          <td class="label">② Apache vhost SetEnv<br><small>(nimda PHP가 직접 호출)</small></td>
+          <td class="old"><code>SetEnv STORIGE_API_URL "http://58.229.105.98:4000/api"</code></td>
+          <td class="new"><code>SetEnv STORIGE_API_URL "https://api.papascompany.co.kr/api"</code></td>
+        </tr>
+        <tr>
+          <td class="label">③ STORIGE_API_KEY</td>
+          <td colspan="2" style="text-align:center;"><strong>변경 없음</strong> — 기존 <code>sk-storige-l3YVceH0sB739pgTfxRAxZAmLJROcMtgdKPIDYdVG0g</code> 그대로</td>
+        </tr>
+        <tr>
+          <td class="label">④ STORIGE_EDITOR_URL</td>
+          <td colspan="2" style="text-align:center;">기존에 어떤 값이었는지 확인 후, 새 값 <code>https://editor.papascompany.co.kr</code>로 변경 (있다면)</td>
+        </tr>
+        <tr>
+          <td class="label">⑤ STORIGE_WEBHOOK_VERIFY_HEADER</td>
+          <td colspan="2" style="text-align:center;"><strong>변경 없음</strong> — 기존 <code>X-Storige-Signature</code> 그대로</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3 style="margin-top: 24px;">예시 vhost (참고)</h3>
+    <p style="color:var(--c-text-soft);">실제 vhost 설정 위치와 형태는 환경마다 다릅니다. 아래는 일반적인 패턴 예시입니다.</p>
+    <pre class="code"><span class="com"># /etc/apache2/sites-enabled/bookmoa.conf (예시)</span>
+&lt;VirtualHost *:443&gt;
+    ServerName bookmoa.noriter.co.kr
+    DocumentRoot /var/www/html
+
+    <span class="com"># [기존, 변경 X] PHP/SSL/문서 루트 설정 등은 그대로</span>
+    SetEnv INC /var/www/html/inc
+    SetEnv SELL_SITE bookmoa
+    SetEnv SiteHome /var/www/html
+
+    <span class="com"># --- ① ProxyPass 변경 ---</span>
+    <span class="del">ProxyPass /storige-api/ http://58.229.105.98:4000/api/</span>
+    <span class="add">ProxyPass /storige-api/ https://api.papascompany.co.kr/api/</span>
+    <span class="del">ProxyPassReverse /storige-api/ http://58.229.105.98:4000/api/</span>
+    <span class="add">ProxyPassReverse /storige-api/ https://api.papascompany.co.kr/api/</span>
+
+    <span class="com"># --- ② SetEnv 변경 ---</span>
+    <span class="del">SetEnv STORIGE_API_URL "http://58.229.105.98:4000/api"</span>
+    <span class="add">SetEnv STORIGE_API_URL "https://api.papascompany.co.kr/api"</span>
+
+    <span class="com"># [기존, 변경 X] API 키는 그대로</span>
+    SetEnv STORIGE_API_KEY "sk-storige-l3YVceH0sB739pgTfxRAxZAmLJROcMtgdKPIDYdVG0g"
+
+    <span class="com"># [기존, 변경 X] 편집기 URL 있다면 새 값으로 (있을 때만)</span>
+    SetEnv STORIGE_EDITOR_URL "https://editor.papascompany.co.kr"
+
+    <span class="com"># [기존, 변경 X] webhook 검증 헤더</span>
+    SetEnv STORIGE_WEBHOOK_VERIFY_HEADER "X-Storige-Signature"
+&lt;/VirtualHost&gt;</pre>
+
+    <div class="notice brand">
+      <span class="notice-icon">💡</span>
+      <div>
+        <strong>HTTPS 기반 ProxyPass에 필요한 모듈</strong> — Apache가 HTTPS 백엔드로 ProxyPass하려면 <code>mod_ssl</code>이 활성화돼 있어야 합니다.
+        대부분 환경에 이미 활성화돼 있지만, 혹시 비활성화 상태라면 <code>a2enmod ssl proxy proxy_http</code> 후 reload가 추가로 필요합니다.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================== -->
+<!-- 5. STEP 1 — STAGING                              -->
+<!-- ============================================== -->
+<section class="s" id="sec-step1">
+  <div class="wrap">
+    <div class="s-head">
+      <span class="num">05</span>
+      <h2>Step 1. Staging 환경 변경 + 검증</h2>
+    </div>
+
+    <div class="step">
+      <span class="step-num">1</span>
+      <h3>bookmoa staging vhost 백업</h3>
+      <div class="step-meta">소요: 1분 · 위험도: 0</div>
+      <div class="step-body">
+        <pre class="code"><span class="com"># vhost 파일 백업 (롤백 대비)</span>
+sudo cp /etc/apache2/sites-enabled/bookmoa.conf \
+        /etc/apache2/sites-enabled/bookmoa.conf.bak.$(date +%Y%m%d_%H%M%S)</pre>
+      </div>
+    </div>
+
+    <div class="step">
+      <span class="step-num">2</span>
+      <h3>ProxyPass + SetEnv 두 줄 변경</h3>
+      <div class="step-meta">소요: 2분 · 위험도: 1줄 변경 (롤백 즉시 가능)</div>
+      <div class="step-body">
+        <p>vhost 파일을 편집기로 열어 §04에 정리한 <strong>두 줄</strong>을 새 값으로 변경합니다.</p>
+        <pre class="code">sudo nano /etc/apache2/sites-enabled/bookmoa.conf</pre>
+        <p style="color:var(--c-text-soft); font-size:0.9rem;">변경 위치는 <code>ProxyPass /storige-api/ ...</code>와 <code>SetEnv STORIGE_API_URL ...</code> 두 줄.</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <span class="step-num">3</span>
+      <h3>설정 문법 검증 + Apache reload</h3>
+      <div class="step-meta">소요: 30초 · 다운타임: 0 (graceful)</div>
+      <div class="step-body">
+        <pre class="code"><span class="com"># 1) 문법 검증 (저장 전 반드시)</span>
+sudo apachectl -t
+<span class="com"># 출력: Syntax OK 가 나와야 함</span>
+
+<span class="com"># 2) graceful reload (현재 요청은 옛 설정으로 끝내고, 새 요청부터 새 설정 적용)</span>
+sudo apachectl graceful
+
+<span class="com"># 3) 환경변수 적용 확인</span>
+echo "&lt;?php echo getenv('STORIGE_API_URL'); ?&gt;" | sudo tee /var/www/html/_storige_check.php
+curl -sS https://bookmoa.noriter.co.kr/_storige_check.php
+<span class="com"># 출력: https://api.papascompany.co.kr/api 이어야 함</span>
+sudo rm /var/www/html/_storige_check.php  <span class="com"># 검증 후 즉시 삭제</span></pre>
+      </div>
+    </div>
+
+    <div class="step">
+      <span class="step-num">4</span>
+      <h3>ProxyPass가 새 인프라로 가는지 확인</h3>
+      <div class="step-meta">소요: 30초</div>
+      <div class="step-body">
+        <pre class="code"><span class="com"># 변경 전: uptime이 5,000,000초+ (옛 인프라, ~62일)</span>
+<span class="com"># 변경 후: uptime이 작은 값 (새 인프라)</span>
+curl -sS https://bookmoa.noriter.co.kr/storige-api/health | python3 -m json.tool
+
+<span class="com"># 새 인프라 uptime 확인 (변경 후 같아야 함)</span>
+curl -sS https://api.papascompany.co.kr/api/health | python3 -m json.tool</pre>
+      </div>
+    </div>
+
+    <div class="notice done">
+      <span class="notice-icon">✅</span>
+      <div>
+        <strong>Step 1 완료 시</strong> — staging의 PHP가 모든 storige API 호출을 새 인프라로 보내게 됩니다. PHP 코드는 그대로 동작.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================== -->
+<!-- 6. STEP 2 — VERIFY                               -->
+<!-- ============================================== -->
+<section class="s" id="sec-step2">
+  <div class="wrap">
+    <div class="s-head">
+      <span class="num">06</span>
+      <h2>Step 2. Staging에서 동작 검증 (4종 시나리오)</h2>
+    </div>
+
+    <p>Step 1 변경 후 다음 4종 시나리오를 staging에서 실행해 모든 흐름이 정상인지 확인합니다.</p>
+
+    <div class="step">
+      <span class="step-num">1</span>
+      <h3>고객용 편집기 진입</h3>
+      <div class="step-body">
+        <p>브라우저로 staging 페이지 접속:</p>
+        <pre class="code">https://bookmoa.noriter.co.kr/editor/index.php
+<span class="com"># 임의 상품 클릭 → /editor/editor.php 진입</span></pre>
+        <p><strong>확인 사항:</strong></p>
+        <ul>
+          <li>편집기가 정상 로드 (Vercel 새 editor 번들 사용 가능)</li>
+          <li>브라우저 개발자 도구 Network 탭에서 <code>/storige-api/edit-sessions</code> 호출이 200 응답</li>
+          <li>JWT가 정상 발급 (storige API의 <code>/auth/login</code> 또는 PHP 측 토큰 발급 흐름)</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="step">
+      <span class="step-num">2</span>
+      <h3>편집 완료 + 파일 업로드</h3>
+      <div class="step-body">
+        <p>편집기에서 페이지 1~2개 편집 후 "편집완료" 버튼 클릭.</p>
+        <p><strong>확인 사항:</strong></p>
+        <ul>
+          <li>표지/내지 PDF가 정상 업로드 (Network 탭에서 <code>/files/upload</code> 200)</li>
+          <li>EditSession 완료 응답 (<code>status: complete</code>)</li>
+          <li>callback.php로 정상 redirect (sessionId 파라미터 포함)</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="step">
+      <span class="step-num">3</span>
+      <h3>nimda "에디터파일" 탭 동작</h3>
+      <div class="step-body">
+        <p>nimda 관리자 페이지에서 위에서 만든 주문(orderSeqno)의 상세 팝업 → "에디터파일" 탭 클릭.</p>
+        <p><strong>확인 사항:</strong></p>
+        <ul>
+          <li>AJAX로 <code>load_storige_files.php</code> 호출 → 200 응답</li>
+          <li>응답 schema가 <code>files{cover, content, merged}</code> 포함</li>
+          <li>표지/내지 PDF 다운로드 링크 클릭 시 정상 다운로드</li>
+        </ul>
+        <p style="color:var(--c-text-soft); font-size:0.88rem;">
+          ⚠️ 합성 잡(<code>POST /worker-jobs/synthesize/external</code>)이 PHP 결제/접수 흐름에서 자동 호출된다면, 그 단계도 정상인지 (callbackUrl로 webhook 수신) 확인.
+        </p>
+      </div>
+    </div>
+
+    <div class="step">
+      <span class="step-num">4</span>
+      <h3>webhook 수신 확인</h3>
+      <div class="step-body">
+        <p>storige Worker가 PDF 합성 완료 시 PHP의 webhook 핸들러로 콜백을 보냅니다.</p>
+        <pre class="code"><span class="com"># PHP webhook 수신 로그 확인</span>
+sudo tail -f /var/log/apache2/access.log | grep -i webhook
+
+<span class="com"># 또는 PHP 웹훅 핸들러 자체 로그 위치 (보통 /var/www/html/.../logs/)</span>
+sudo tail -f /var/www/html/.../webhook.log</pre>
+        <p><strong>확인 사항:</strong></p>
+        <ul>
+          <li>웹훅 핸들러가 <code>synthesis.completed</code> 또는 <code>synthesis.failed</code> 이벤트 수신</li>
+          <li>요청 헤더에 <code>X-Storige-Signature</code>, <code>X-Storige-Event</code> 포함</li>
+          <li>payload field 구조가 옛 인프라 시절과 동일</li>
+        </ul>
+      </div>
+    </div>
+
+    <h3 style="margin-top: 24px;">검증 통과 기준</h3>
+    <ul class="checklist">
+      <li><div class="cb"></div><div class="body"><strong>고객용 편집기 진입 + 편집 완료 정상</strong></div></li>
+      <li><div class="cb"></div><div class="body"><strong>nimda "에디터파일" 탭에서 PDF 다운로드 정상</strong></div></li>
+      <li><div class="cb"></div><div class="body"><strong>webhook 수신 정상 (헤더 + payload)</strong></div></li>
+      <li><div class="cb"></div><div class="body"><strong>24시간 staging 운영하며 에러 0건</strong></div></li>
+    </ul>
+
+    <div class="notice warn">
+      <span class="notice-icon">📞</span>
+      <div>
+        <strong>문제 발견 시</strong> — papascompany 인수팀에 다음 정보를 함께 전달해 주세요:
+        <ul style="margin: 8px 0;">
+          <li>호출한 storige endpoint URL과 응답 status</li>
+          <li>응답 body 또는 에러 메시지</li>
+          <li>해당 시점의 sessionId / orderSeqno</li>
+          <li>PHP 측 로그 + Apache error.log 발췌</li>
+        </ul>
+        새 인프라 측에서 즉시 점검 + 수정 가능.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================== -->
+<!-- 7. STEP 3 — PROD                                 -->
+<!-- ============================================== -->
+<section class="s" id="sec-step3">
+  <div class="wrap">
+    <div class="s-head">
+      <span class="num">07</span>
+      <h2>Step 3. 운영(Production) 컷오버</h2>
+    </div>
+
+    <div class="notice warn">
+      <span class="notice-icon">⏰</span>
+      <div>
+        <strong>전제: Step 2의 staging 검증 4종이 모두 통과한 후 진행.</strong>
+        가급적 트래픽 최저 시간대(한국 새벽 03:00~04:00 KST 권장)에 수행.
+      </div>
+    </div>
+
+    <h3 style="margin-bottom: 16px;">컷오버 절차</h3>
+
+    <div class="step">
+      <span class="step-num">1</span>
+      <h3>운영 vhost 백업 + 변경</h3>
+      <div class="step-meta">소요: 2분 · 다운타임: 0</div>
+      <div class="step-body">
+        <pre class="code"><span class="com"># 운영 vhost 파일 백업</span>
+sudo cp /etc/apache2/sites-enabled/bookmoa-prod.conf \
+        /etc/apache2/sites-enabled/bookmoa-prod.conf.bak.$(date +%Y%m%d_%H%M%S)
+
+<span class="com"># Step 1과 동일하게 ProxyPass + SetEnv 두 줄 새 값으로 변경</span>
+sudo nano /etc/apache2/sites-enabled/bookmoa-prod.conf</pre>
+      </div>
+    </div>
+
+    <div class="step">
+      <span class="step-num">2</span>
+      <h3>문법 검증 + graceful reload</h3>
+      <div class="step-body">
+        <pre class="code">sudo apachectl -t                <span class="com"># Syntax OK</span>
+sudo apachectl graceful          <span class="com"># 다운타임 0</span></pre>
+      </div>
+    </div>
+
+    <div class="step">
+      <span class="step-num">3</span>
+      <h3>첫 5분 모니터링</h3>
+      <div class="step-body">
+        <pre class="code"><span class="com"># 변경 즉시 확인</span>
+curl -sS https://bookmoa.com/storige-api/health   <span class="com"># 새 인프라 uptime이어야 함</span>
+
+<span class="com"># Apache 에러 로그</span>
+sudo tail -f /var/log/apache2/error.log | grep -i storige
+
+<span class="com"># PHP 에러 로그</span>
+sudo tail -f /var/log/apache2/php-error.log</pre>
+      </div>
+    </div>
+
+    <div class="step">
+      <span class="step-num">4</span>
+      <h3>임시 주문 1건 테스트</h3>
+      <div class="step-body">
+        <p>운영 환경에서 본인 계정으로 테스트 주문 1건을 진행해 전체 흐름이 정상인지 확인.</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <span class="step-num">5</span>
+      <h3>24시간 모니터링</h3>
+      <div class="step-body">
+        <ul>
+          <li>API 에러율 0% 유지</li>
+          <li>worker 큐 적체 없음 (papascompany 인수팀이 모니터링)</li>
+          <li>webhook 수신 성공률 100%</li>
+          <li>nimda 측 PDF 다운로드 정상</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="notice done">
+      <span class="notice-icon">🎉</span>
+      <div>
+        <strong>24시간 무사고면 컷오버 완료.</strong> 옛 storige(<code>58.229.105.98:4000</code>)는 더 이상 트래픽을 받지 않으므로 정리 가능.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================== -->
+<!-- 8. ROLLBACK                                      -->
+<!-- ============================================== -->
+<section class="s" id="sec-rollback">
+  <div class="wrap">
+    <div class="s-head">
+      <span class="num">08</span>
+      <h2>롤백 절차 — 만약 문제 발생 시</h2>
+    </div>
+
+    <div class="notice danger">
+      <span class="notice-icon">↩️</span>
+      <div>
+        <strong>옛 storige(<code>58.229.105.98:4000</code>)가 그대로 가동 중이므로 즉시 롤백 가능.</strong>
+        북모아 운영 서버에서 옛 storige를 종료하거나 삭제하지 않은 상태이므로, vhost 한 줄을 다시 옛 값으로 되돌리면 즉시 복구됩니다.
+      </div>
+    </div>
+
+    <pre class="code"><span class="com"># 1. 백업 파일로 즉시 복원</span>
+sudo cp /etc/apache2/sites-enabled/bookmoa-prod.conf.bak.YYYYMMDD_HHMMSS \
+        /etc/apache2/sites-enabled/bookmoa-prod.conf
+
+<span class="com"># 2. 문법 검증 + reload</span>
+sudo apachectl -t
+sudo apachectl graceful
+
+<span class="com"># 3. 옛 인프라로 복귀 확인</span>
+curl -sS https://bookmoa.com/storige-api/health
+<span class="com"># uptime이 큰 값(옛 인프라)이면 복구 완료</span></pre>
+
+    <h3 style="margin-top: 24px;">컷오버 후 새 인프라에 들어간 데이터</h3>
+    <p style="color:var(--c-text-soft);">
+      롤백 시점까지 새 인프라에 들어간 세션/파일은 옛 인프라로 자동 동기화되지 않습니다.
+      이 경우 papascompany 인수팀이 다음 옵션 중 하나를 결정합니다:
+    </p>
+    <ul>
+      <li>새 인프라의 새 세션 데이터를 옛 인프라로 수동 동기화</li>
+      <li>해당 사용자에게 재편집 요청</li>
+      <li>새 인프라가 받은 것 그대로 처리하고 옛 인프라는 fallback으로만 활용</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ============================================== -->
+<!-- 9. FAQ                                           -->
+<!-- ============================================== -->
+<section class="s" id="sec-faq">
+  <div class="wrap">
+    <div class="s-head">
+      <span class="num">09</span>
+      <h2>자주 묻는 질문 (FAQ)</h2>
+    </div>
+
+    <div class="faq-item">
+      <div class="q">PHP 코드는 정말 한 줄도 안 바꿔도 되나요?</div>
+      <div class="a">
+        네. 모든 storige 호출이 <code>STORIGE_API_URL</code> 환경변수 또는 <code>/storige-api/</code> proxy 경로를 거치도록 되어 있어,
+        Apache vhost 두 줄만 새 주소로 바꾸면 PHP 측 호출 코드는 그대로 동작합니다.
+        nimda의 <code>storige_common.php</code>도 <code>getenv('STORIGE_API_URL')</code>를 그대로 읽으므로 코드 변경 없이 새 URL을 사용합니다.
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <div class="q">STORIGE_API_KEY도 바꿔야 하나요?</div>
+      <div class="a">
+        <strong>아니요.</strong> 기존 키 <code>sk-storige-l3YVceH0sB739pgTfxRAxZAmLJROcMtgdKPIDYdVG0g</code>를 새 인프라가 인식하도록
+        papascompany 측에서 미리 등록 완료했습니다. 변경 없이 그대로 사용하시면 됩니다.
+        (보안상 키 갱신을 원하시면 papascompany 측에 요청 → 새 키 발급 → 양측 동시 교체)
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <div class="q">webhook 수신 URL은 그대로 두어도 되나요?</div>
+      <div class="a">
+        네. webhook 수신처는 PHP 측이 결정하는 값이고, storige가 호출할 callbackUrl은 <strong>storige API 호출 시 PHP가 함께 보내는 파라미터</strong>입니다.
+        새 인프라도 같은 callbackUrl 파라미터를 받으므로 PHP 코드 변경 없이 동일하게 동작합니다.
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <div class="q">webhook signature 검증 코드도 그대로?</div>
+      <div class="a">
+        네. <code>X-Storige-Signature</code> 헤더의 생성 알고리즘이 동일합니다 (옛/새 인프라 모두 base64 기반).
+        다만 향후 P6 단계에서 HMAC으로 강화할 계획이 있으며, 그때는 양측 협업으로 동시 변경 예정입니다.
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <div class="q">다운타임이 발생하나요?</div>
+      <div class="a">
+        <code>apachectl graceful</code>은 진행 중인 요청은 옛 설정으로 마무리하고 새 요청부터 새 설정을 적용합니다. 따라서 다운타임 0초.
+        다만 변경 직후 잠시 동안 (아주 짧게) 옛 인프라로 가던 요청과 새 인프라로 가는 요청이 혼재할 수 있습니다.
+        이는 정상 동작이며, 두 인프라 모두 동일한 응답을 내므로 사용자 체감 영향 없습니다.
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <div class="q">옛 storige(58.229.105.98:4000)는 언제 끄나요?</div>
+      <div class="a">
+        컷오버 후 24시간 무사고를 확인한 다음 papascompany 인수팀과 협의해서 결정합니다.
+        보통은 1주일 정도 fallback용으로 유지한 후 종료하는 방식이 안전합니다.
+        옛 storige를 끄기 전에 그 안의 데이터(파일, DB)를 새 인프라로 옮길지도 결정 필요.
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <div class="q">새 인프라에서 합성된 PDF는 어디에 저장되나요?</div>
+      <div class="a">
+        새 인프라(Vultr Seoul VPS)의 Docker volume <code>/app/storage/outputs/{jobId}/</code>에 저장됩니다.
+        nimda PHP가 받는 응답의 <code>files.cover</code> 등은 <strong>상대 경로</strong>(<code>/storage/outputs/{jobId}/cover.pdf</code>)이므로,
+        다운로드 시 새 storige base URL(<code>https://api.papascompany.co.kr</code>)을 prefix로 붙이면 됩니다.
+        nimda의 기존 코드도 <code>STORIGE_API_URL</code>에서 base를 추출해 사용하므로 자동 처리됩니다.
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <div class="q">테스트 페이지(<code>bookmoa.noriter.co.kr/editor/worker-test.php</code>)도 영향 받나요?</div>
+      <div class="a">
+        네, 같은 <code>/storige-api/</code> proxy를 거치므로 자동으로 새 인프라와 통신하게 됩니다.
+        worker-test.php에서 발행하는 잡은 새 인프라의 worker가 처리합니다.
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <div class="q">CORS 문제는 없나요?</div>
+      <div class="a">
+        없습니다. PHP는 server-to-server 호출이라 CORS 무관.
+        브라우저 측 호출(에디터 JS 번들 → API)은 새 인프라가 <code>*.bookmoa.noriter.co.kr</code> 도메인을 자동 허용하도록 설정 가능합니다.
+        필요 시 papascompany 측에 도메인 알려주시면 CORS_ORIGIN에 추가합니다.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================== -->
+<!-- 10. APPENDIX                                     -->
+<!-- ============================================== -->
+<section class="s" id="sec-appendix">
+  <div class="wrap">
+    <div class="s-head">
+      <span class="num">10</span>
+      <h2>기술 부록</h2>
+    </div>
+
+    <h3>새 인프라 정보</h3>
+    <table class="t">
+      <thead><tr><th>항목</th><th>값</th></tr></thead>
+      <tbody>
+        <tr><td>API base URL</td><td><code>https://api.papascompany.co.kr/api</code></td></tr>
+        <tr><td>Editor URL (Vercel)</td><td><code>https://editor.papascompany.co.kr</code></td></tr>
+        <tr><td>Admin URL (Vercel)</td><td><code>https://admin.papascompany.co.kr</code></td></tr>
+        <tr><td>Health check</td><td><code>GET /api/health</code> → <code>{"status":"ok",...}</code></td></tr>
+        <tr><td>Swagger 문서</td><td><code>https://api.papascompany.co.kr/api/docs</code></td></tr>
+        <tr><td>호스팅</td><td>Vultr Cloud Compute, Seoul (ICN)</td></tr>
+        <tr><td>HTTPS 인증서</td><td>Let's Encrypt 자동 갱신 (~3개월마다)</td></tr>
+        <tr><td>운영 책임</td><td>papascompany 인수팀 (yohan@papascompany.co.kr)</td></tr>
+      </tbody>
+    </table>
+
+    <h3 style="margin-top: 24px;">PHP가 호출하는 storige endpoint 목록</h3>
+    <p style="color:var(--c-text-soft); font-size:0.9rem;">변경 전과 동일. 단지 base URL만 바뀜.</p>
+    <table class="t">
+      <thead><tr><th>endpoint</th><th>인증</th><th>용도</th></tr></thead>
+      <tbody>
+        <tr><td><code>POST /auth/shop-session</code></td><td>X-API-Key</td><td>고객용 사용자 JWT 발급</td></tr>
+        <tr><td><code>POST /edit-sessions</code></td><td>JWT</td><td>편집 세션 생성</td></tr>
+        <tr><td><code>PATCH /edit-sessions/:id</code></td><td>JWT</td><td>세션 갱신 (coverFileId, contentFileId 등)</td></tr>
+        <tr><td><code>PATCH /edit-sessions/:id/complete</code></td><td>JWT</td><td>편집 완료 처리</td></tr>
+        <tr><td><code>POST /files/upload/external</code></td><td>X-API-Key</td><td>PDF 파일 업로드</td></tr>
+        <tr><td><code>POST /worker-jobs/synthesize/external</code></td><td>X-API-Key</td><td>합성 잡 발행 (PDF 결합)</td></tr>
+        <tr><td><code>GET /edit-sessions/external?orderSeqno=...</code></td><td>X-API-Key</td><td>nimda "에디터파일" 탭 조회</td></tr>
+      </tbody>
+    </table>
+
+    <h3 style="margin-top: 24px;">webhook payload 예시 (변경 없음)</h3>
+    <pre class="code"><span class="com"># synthesis.completed</span>
+{
+  "event": "synthesis.completed",
+  "jobId": "uuid-xxx",
+  "orderId": "12345",
+  "status": "completed",
+  "outputFileUrl": "/storage/outputs/job-uuid/merged.pdf",
+  "outputFiles": [
+    { "type": "cover",   "url": "/storage/outputs/job-uuid/cover.pdf" },
+    { "type": "content", "url": "/storage/outputs/job-uuid/content.pdf" }
+  ],
+  "outputFormat": "merged",
+  "timestamp": "2026-04-28T10:30:00.000Z"
+}
+
+<span class="com"># Headers</span>
+Content-Type:        application/json
+X-Storige-Event:     synthesis.completed
+X-Storige-Signature: &lt;base64 signature&gt;</pre>
+
+    <h3 style="margin-top: 24px;">PHP 쪽 자료 (참고)</h3>
+    <ul>
+      <li>storige 레포: <code>https://github.com/papascompany/storige-book-editor</code></li>
+      <li>PHP 통합 코드 위치: <code>storige-book-editor/test-php/php/</code> (이미 북모아 <code>/editor/</code>에 배포된 코드와 동일)</li>
+      <li>nimda 첨부 안내: <code>nimda_storige_연동_안내.md</code> (이전 작성본)</li>
+      <li>전체 마이그레이션 가이드: <code>storige-book-editor/.cursor/plans/MIGRATION_GUIDE_0427.html</code></li>
+    </ul>
+
+    <h3 style="margin-top: 24px;">papascompany 측 연락 채널</h3>
+    <table class="t">
+      <thead><tr><th>이슈 유형</th><th>처리</th></tr></thead>
+      <tbody>
+        <tr><td>새 인프라가 응답 안 함 / 5xx 에러</td><td>papascompany 인수팀 즉시 점검</td></tr>
+        <tr><td>특정 endpoint 응답이 옛 인프라와 다름</td><td>endpoint URL + 응답 함께 전달</td></tr>
+        <tr><td>webhook 수신 안 됨</td><td>jobId + 시각 + Apache access.log 발췌</td></tr>
+        <tr><td>API 키 401 에러</td><td>호출 헤더 + 정확한 키 값 일부 (앞 8자리만) 전달</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============================================== -->
+<!-- FOOTER                                           -->
+<!-- ============================================== -->
+<footer>
+  <div class="wrap">
+    <div>
+      <strong style="color:#fafaf9">papascompany Storige 인수팀</strong>
+      <br>
+      <span style="color:#a8a29e">작성: 2026-04-28 · 문서 위치: <code>storige/.cursor/plans/proxy_pass.html</code></span>
+    </div>
+    <div style="text-align:right; color:#a8a29e;">
+      문의: <code>yohan@papascompany.co.kr</code><br>
+      git 저장소: <code>papascompany/storige-book-editor</code>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

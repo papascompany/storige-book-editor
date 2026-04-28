@@ -1,10 +1,10 @@
-# 새 세션 시작용 프롬프트 (v9)
+# 새 세션 시작용 프롬프트 (v10)
 
 > 새 Claude Code 세션을 열고 아래 블록을 그대로 복사해서 입력하면 됩니다.
 > 이 문서는 지우지 말고 보관하세요.
 >
-> **버전**: v9 (2026-04-28 늦은 야간, 옵션 A 자체 시뮬레이션 완료 + 신규 버그 2건 수정)
-> **이전 버전**: v8 (nimda 통합 분석) → v7 (VPS 검증) → v6 (정합화) → v5 (P1+P5) → ... — git history
+> **버전**: v10 (2026-04-28 자정 직전, PHP 개발자 안내서 작성 + 옵션 3 진입)
+> **이전 버전**: v9 (옵션 A) → v8 (nimda 통합) → v7 (VPS 검증) → v6 (정합화) → ... — git history
 
 ---
 
@@ -99,7 +99,16 @@
 - ✅ **컷오버 분담 정책 결정** (2026-04-28 늦은 야간)
   - 사용자: 본 작업 완료 후 **bookmoa Apache vhost의 `STORIGE_API_URL` 변경**을 북모아 PHP 서버 개발자에게 전달
   - 우리: Phase B(bookmoa staging 협조 검증)까지 진행, 컷오버 자체는 미수행
-- 🔵 **다음**: Phase B — bookmoa staging의 STORIGE_API_URL을 임시로 새 인프라로 변경하고 4종 시나리오 운영 가까이 검증
+- ✅ **bookmoa 서버 토폴로지 정확 확인 + PHP 개발자 안내서 작성** (2026-04-28 자정 직전)
+  - bookmoa staging의 `/storige-api/`는 Apache `ProxyPass`로 옛 인프라(58.229.105.98:4000)에 forward 중 (uptime 일치 검증)
+  - nimda PHP는 Apache `SetEnv STORIGE_API_URL`로 storige base URL 주입 (첨부 안내 명시)
+  - 변경 대상 = Apache vhost 2줄: ① ProxyPass URL ② SetEnv STORIGE_API_URL
+  - PHP 개발자 안내서 작성: `.cursor/plans/proxy_pass.html` (시각화 + Step별 절차 + FAQ + 기술 부록)
+- ✅ **Phase B 결정 — 옵션 3(컷오버 직행) 진행**
+  - 이유: 옵션 A 자체 시뮬레이션으로 핵심 흐름 모두 검증됨. bookmoa staging nginx 변경 권한이 별도 PHP 개발자에게 있어 검증 시점 미정
+  - 사용자가 proxy_pass.html을 PHP 개발자에게 전달 → PHP 개발자가 staging→운영 순으로 실행
+  - 우리는 다음 우선순위 작업으로 이동
+- 🔵 **다음**: 옵션 3 진행 — 사용자 결정 작업 우선순위에 따라 후속 작업 진행
 - ⬜ Day 5 PHP staging 회귀 4종
 - ⬜ Day 6 운영 컷오버
 - ⬜ Week 2+ P2 썸네일, P3 안전장치, P6/P7
@@ -235,3 +244,8 @@ curl -sS -H "Origin: https://storige-editor-XYZ.vercel.app" \
   - 신규 차단 버그 2건 수정·머지 (RelationId, docker-compose worker env)
   - 컷오버 분담 정책: 사용자가 PHP 서버 개발자에게 전달, 우리는 Phase B까지
   - 다음은 bookmoa staging 협조 검증
+- v10에서 변경된 점 (v9 대비):
+  - bookmoa 서버 토폴로지 정확 확인 (Apache ProxyPass + SetEnv 두 곳)
+  - PHP 개발자 전달용 안내서 작성: `.cursor/plans/proxy_pass.html`
+  - Phase B 결정: 옵션 3(컷오버 직행 — PHP 개발자에게 위임) 진행
+  - 다음은 사용자 결정 작업 우선순위에 따라 후속 진행
