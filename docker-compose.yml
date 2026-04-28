@@ -88,15 +88,10 @@ services:
     networks:
       - storige-network
 
-  admin:
-    build:
-      context: .
-      dockerfile: docker/admin/Dockerfile
-    container_name: storige-admin
-    ports:
-      - "3001:80"
-    networks:
-      - storige-network
+  # admin 서비스는 Vercel(admin.papascompany.co.kr)에 별도 배포되어 운영됨.
+  # VPS docker admin은 빌드 의존성 미해결로 빌드 실패하지만 운영 영향 0이라
+  # docker-compose에서 제외해 `--build` 시 차단되는 문제를 방지.
+  # 향후 admin을 VPS로 이전하려면 packages/types build 선행 + Dockerfile 수정 필요.
 
   mariadb:
     image: mariadb:11.2
