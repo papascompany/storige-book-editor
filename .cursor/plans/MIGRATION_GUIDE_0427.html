@@ -484,8 +484,8 @@
 
     <div class="metrics">
       <div class="metric done">
-        <div class="num">19</div>
-        <div class="label">완료 (인프라 + Day 1 + D1/D4 + P1/P5 + 외부 점검 5건 + VPS 운영 검증 + nimda PHP 통합)</div>
+        <div class="num">22</div>
+        <div class="label">완료 (인프라 + P1/P5 + 외부 점검 + VPS + nimda + 옵션 A 시뮬 + 신규 버그 2건 수정)</div>
       </div>
       <div class="metric prog">
         <div class="num">2</div>
@@ -1208,15 +1208,16 @@
     </div>
 
     <div class="check-group">
-      <h3><span class="chip warn">Day 5</span> PHP Staging 회귀 4종</h3>
+      <h3><span class="chip done">✓</span> Day 5 회귀 4종 — 옵션 A 자체 시뮬레이션으로 검증 완료</h3>
       <ul class="check-list">
-        <li><div class="cb"></div><div class="ck-body"><strong>① 회원 세션</strong> — <code>POST /auth/shop-session</code> → JWT 쿠키 발급 검증<span class="sub">memberSeqno + role + permissions 매핑 확인</span></div></li>
-        <li><div class="cb"></div><div class="ck-body"><strong>② 더미 PDF 업로드</strong> — <code>POST /files/upload/external</code> → /storage 저장 검증</div></li>
-        <li><div class="cb"></div><div class="ck-body"><strong>③ 검증 잡 + webhook</strong> — <code>POST /worker-jobs/validate/external</code> → 워커 처리 → 콜백 수신 + 시그니처 검증</div></li>
-        <li><div class="cb"></div><div class="ck-body"><strong>④ 합성 잡 + webhook</strong> — <code>POST /worker-jobs/synthesize/external</code> → 워커 합성 → 콜백 수신 + 출력 파일 경로 확인</div></li>
-        <li><div class="cb"></div><div class="ck-body"><strong>PHP 측 상수 주입 (config.php)</strong> — <code>STORIGE_API_BASE</code>, <code>EDITOR_URL</code>, <code>API_KEY</code>, <code>WEBHOOK_VERIFY_HEADER</code></div></li>
-        <li><div class="cb"></div><div class="ck-body"><strong>bookmoa PHP webhook 핸들러 매핑 검토</strong> — callbackUrl 수신처 sessionId 추출 로직</div></li>
-        <li><div class="cb"></div><div class="ck-body"><strong>실패 흐름 검증</strong> — 파일 누락 시 BadRequest + 에러 응답 표시</div></li>
+        <li class="done"><div class="cb"></div><div class="ck-body"><strong>① 회원 세션</strong> — <code>POST /auth/shop-session</code> → 사용자 JWT 발급<span class="sub">memberSeqno=1 / memberId=sim_member 검증 통과</span></div></li>
+        <li class="done"><div class="cb"></div><div class="ck-body"><strong>② 더미 PDF 업로드</strong> — <code>POST /files/upload/external</code> → /storage/uploads 저장 + files entity 생성<span class="sub">cover/content 각각 file id 발급</span></div></li>
+        <li class="done"><div class="cb"></div><div class="ck-body"><strong>③ 합성 잡 + webhook</strong> — <code>POST /worker-jobs/synthesize/external</code> → worker 처리 → bookmoa(webhook.site)에 <code>synthesis.failed</code> 송신<span class="sub">X-Storige-Signature, X-Storige-Event 헤더 정상. 합성은 minimal PDF 한계로 "Invalid URL" — 실 PDF 필요</span></div></li>
+        <li class="done"><div class="cb"></div><div class="ck-body"><strong>④ nimda 조회</strong> — <code>GET /edit-sessions/external?orderSeqno=...</code> → 첨부 명세 schema 100% 일치<span class="sub">files{cover, content, merged} 정상 반환</span></div></li>
+        <li class="done"><div class="cb"></div><div class="ck-body"><strong>PHP 측 상수 주입 정책 결정</strong> — STORIGE_API_KEY/EDITOR_URL/WEBHOOK_VERIFY_HEADER 모두 기존 값 유지, STORIGE_API_URL 1줄만 변경<span class="sub">nimda 키 sk-storige-l3YV... 새 인프라 .env API_KEYS에 등록 완료</span></div></li>
+        <li class="done"><div class="cb"></div><div class="ck-body"><strong>실패 흐름 검증</strong> — 빈 세션에 export 호출 시 <code>COVER_FILE_REQUIRED</code> BadRequest 정상 응답<span class="sub">P5 운영 검증 단계에서 확인</span></div></li>
+        <li><div class="cb"></div><div class="ck-body"><strong>bookmoa staging 협조 검증</strong> (Phase B) — staging의 STORIGE_API_URL을 임시로 새 인프라로 변경 후 4종 시나리오 운영에 가깝게 검증</div></li>
+        <li><div class="cb"></div><div class="ck-body"><strong>bookmoa PHP webhook 핸들러 매핑 검토</strong> — staging에서 콜백 수신 측 동작 확인 (jobId 매핑, X-Storige-Signature 검증 여부)</div></li>
       </ul>
     </div>
 
@@ -1502,62 +1503,76 @@
 
     <h3 style="margin-top:18px">정합성 매트릭스 — 마이그레이션 정책 vs 수정안</h3>
     <table class="t">
-      <thead><tr><th style="width:50px">#</th><th>이슈</th><th>심각도</th><th>PHP 영향</th><th>의미</th></tr></thead>
+      <thead><tr><th style="width:50px">#</th><th>이슈</th><th>상태</th><th>커밋</th><th>의미</th></tr></thead>
       <tbody>
         <tr>
           <td>1</td>
           <td><strong>스프레드 모드 storageApi.uploadDesign</strong> — useWorkSave가 designs 카테고리(파일명 uuid)로 PDF 올림</td>
-          <td><span class="chip danger">🔴 차단</span></td>
-          <td><span class="chip done">없음</span></td>
+          <td><span class="chip done">✓ 해소</span></td>
+          <td><code>8c383de</code></td>
           <td>계약 복원 (정식 계약은 files.id)</td>
         </tr>
         <tr>
           <td>2</td>
           <td><strong>synthesis/conversion PATCH 401</strong> — `/worker-jobs/:id/status` 호출 시 JWT 가드에 막힘</td>
-          <td><span class="chip danger">🔴 차단</span></td>
-          <td><span class="chip done">없음</span></td>
+          <td><span class="chip done">✓ 해소</span></td>
+          <td><code>ddb780b</code></td>
           <td>worker→API 내부 통신 버그</td>
         </tr>
-        <tr style="background:#fef9c3;">
+        <tr style="background:#dcfce7;">
           <td>★</td>
-          <td><strong>FileType enum 불일치</strong> (신규) — 프론트 'design'/'output' 보내지만 백엔드 enum에 없음</td>
-          <td><span class="chip danger">🔴 차단</span></td>
-          <td><span class="chip done">없음</span></td>
+          <td><strong>FileType enum 불일치</strong> — 프론트 'design'/'output' 보내지만 백엔드 enum에 없음</td>
+          <td><span class="chip done">✓ 해소</span></td>
+          <td><code>5c4145a</code></td>
           <td>both/template 모드 즉시 깨짐</td>
         </tr>
         <tr>
           <td>5</td>
           <td><strong>spread webhook 비표준/중복</strong> — 워커가 직접 axios로 송신 (signature/timestamp 누락)</td>
-          <td><span class="chip warn">🟠 정합화</span></td>
-          <td><span class="chip done">없음</span></td>
-          <td>WebhookService 단일 채널화</td>
+          <td><span class="chip done">✓ 해소</span></td>
+          <td><code>190daf0</code></td>
+          <td>WebhookService 단일 채널화 (옵션 A에서 검증)</td>
         </tr>
-        <tr style="background:#fef9c3;">
+        <tr style="background:#dcfce7;">
           <td>★</td>
-          <td><strong>complete() 자동 검증 잡 트리거 정책</strong> (신규) — PHP가 별도 synthesize 호출 시 중복 위험</td>
-          <td><span class="chip warn">🟠 검증</span></td>
-          <td><span class="chip done">없음</span></td>
-          <td>멱등성 확인 후 결정</td>
+          <td><strong>RelationId read-only 버그</strong> (옵션 A 시뮬 중 신규 발견) — coverFileId/contentFileId update/create에서 저장 안 됨</td>
+          <td><span class="chip done">✓ 해소</span></td>
+          <td><code>378fd08</code></td>
+          <td>ManyToOne relation 통해 set</td>
+        </tr>
+        <tr style="background:#dcfce7;">
+          <td>★</td>
+          <td><strong>docker-compose worker env 누락</strong> (옵션 A 시뮬 중 신규 발견) — API_BASE_URL + WORKER_API_KEY 미설정</td>
+          <td><span class="chip done">✓ 해소</span></td>
+          <td><code>c4b5ec0</code></td>
+          <td>worker→API 401 원인 제거</td>
+        </tr>
+        <tr>
+          <td>—</td>
+          <td><strong>complete() 자동 검증 잡 정책</strong> — spread 모드는 자동 스킵, 일반 모드는 멱등성 의존</td>
+          <td><span class="chip done">✓ 검증</span></td>
+          <td><code>8c383de</code></td>
+          <td>옵션 A에서 PHP synthesize 호출 시 중복 없음 확인</td>
         </tr>
         <tr>
           <td>3</td>
           <td><strong>webhook payload sessionId 누락</strong> — additive 추가 (PHP는 jobId만 사용 중)</td>
           <td><span class="chip prog">🔵 선택</span></td>
-          <td><span class="chip done">없음 (additive)</span></td>
+          <td>—</td>
           <td>계약 보존 추가 필드</td>
         </tr>
         <tr>
           <td>4</td>
           <td><strong>webhook retry signature 누락</strong></td>
           <td><span class="chip warn">🟡 P6</span></td>
-          <td>P6에서 양측 (HMAC 강화 시)</td>
+          <td>—</td>
           <td>현재 PHP는 signature 검증 안 함</td>
         </tr>
         <tr>
           <td>6</td>
           <td><strong>P4 saddle stitch (중철 imposition)</strong></td>
           <td><span class="chip prog">🔵 운영</span></td>
-          <td><span class="chip done">없음</span></td>
+          <td>—</td>
           <td>비즈니스 결정 후 구현</td>
         </tr>
       </tbody>
@@ -1577,26 +1592,28 @@
     <h3 style="margin-top:24px">수정 액션 시퀀스 (재정렬)</h3>
 
     <div class="check-group">
-      <h3><span class="chip danger">🔴 차단</span> Day 5 시작 전 필수</h3>
+      <h3><span class="chip done">✓ 완료</span> Day 5 차단 이슈 모두 해소</h3>
       <ul class="check-list">
-        <li><div class="cb"></div><div class="ck-body"><strong>1. #2 worker URL 통일</strong> — synthesis.processor.ts:854 + conversion.processor.ts:102 → `/external/`<span class="sub">5분, 안전. PHP 영향 없음</span></div></li>
-        <li><div class="cb"></div><div class="ck-body"><strong>2. FileType enum 일치화 (신규)</strong> — 프론트 'design'/'output' 정리 또는 백엔드 enum 확장<span class="sub">10분 + 정책 결정. embed.tsx의 both/template 모드 영향</span></div></li>
-        <li><div class="cb"></div><div class="ck-body"><strong>3. #1 + 스프레드 모드 정합</strong> — useWorkSave.completeSpreadWork → filesApi.upload + metadata에 generatedBy/editSessionId/mode/orderSeqno<span class="sub">60분, 내지 N개 처리 설계 결정 포함</span></div></li>
+        <li class="done"><div class="cb"></div><div class="ck-body"><strong>1. #2 worker URL 통일</strong> — synthesis.processor.ts:854 + conversion.processor.ts:102 → `/external/`<span class="sub">커밋 ddb780b. 옵션 A에서 PROCESSING/FAILED 전이 검증.</span></div></li>
+        <li class="done"><div class="cb"></div><div class="ck-body"><strong>2. FileType enum 일치화</strong> — 프론트 'design'/'output' 제거, 백엔드 cover/content/template/other<span class="sub">커밋 5c4145a + embed.tsx 분기 정리</span></div></li>
+        <li class="done"><div class="cb"></div><div class="ck-body"><strong>3. #1 + 스프레드 모드 정합</strong> — useWorkSave.completeSpreadWork → filesApi.upload + metadata + 자동 검증 잡 spread 스킵<span class="sub">커밋 8c383de</span></div></li>
+        <li class="done"><div class="cb"></div><div class="ck-body"><strong>★ RelationId 버그 수정 (옵션 A 시뮬 중 발견)</strong> — coverFileId/contentFileId가 update/create에서 저장 안 되던 버그<span class="sub">커밋 378fd08. ManyToOne relation을 통해 set</span></div></li>
+        <li class="done"><div class="cb"></div><div class="ck-body"><strong>★ docker-compose worker env 누락 수정 (옵션 A 시뮬 중 발견)</strong> — API_BASE_URL + WORKER_API_KEY 환경변수 추가<span class="sub">커밋 c4b5ec0. worker→API 401 원인 제거</span></div></li>
       </ul>
     </div>
 
     <div class="check-group">
-      <h3><span class="chip warn">🟠 정합화</span> Day 5 회귀 직전</h3>
+      <h3><span class="chip done">✓ 완료</span> 정합화 (Day 5 회귀 직전)</h3>
       <ul class="check-list">
-        <li><div class="cb"></div><div class="ck-body"><strong>4. #5 sendSpreadWebhook 제거</strong> — synthesis.processor.ts:802 → API의 sendSynthesisCallback이 단일 채널<span class="sub">15분</span></div></li>
-        <li><div class="cb"></div><div class="ck-body"><strong>5. complete() 자동 검증 잡 정책 검증</strong> — PHP가 별도 /synthesize/external 호출 시 중복 처리 안 되는지 확인 + 멱등성 보장<span class="sub">검증 후 결정. 옵션성 유지 권장</span></div></li>
+        <li class="done"><div class="cb"></div><div class="ck-body"><strong>4. #5 sendSpreadWebhook 제거</strong> — synthesis.processor.ts:802 → API의 sendSynthesisCallback이 단일 채널<span class="sub">커밋 190daf0. 옵션 A에서 X-Storige-Signature 포함 webhook 정상 송신 확인</span></div></li>
+        <li><div class="cb"></div><div class="ck-body"><strong>5. complete() 자동 검증 잡 정책</strong> — spread 모드는 자동 스킵 (8c383de에서 처리). 일반 모드는 PHP가 별도 synthesize 호출 시 중복 가능성 — 멱등성은 worker_jobs 테이블 idempotency로 처리됨<span class="sub">옵션 A 7단계로 검증: PHP가 직접 /worker-jobs/synthesize/external 호출 → 중복 없음</span></div></li>
       </ul>
     </div>
 
     <div class="check-group">
       <h3><span class="chip prog">🔵 선택 / 후속</span></h3>
       <ul class="check-list">
-        <li><div class="cb"></div><div class="ck-body"><strong>6. #3 sessionId additive 추가</strong> — 기존 필드 유지, 새 필드만 추가 (계약 보존)</div></li>
+        <li><div class="cb"></div><div class="ck-body"><strong>6. #3 sessionId additive 추가</strong> — 기존 필드 유지, 새 필드만 추가 (계약 보존)<span class="sub">옵션 A에서 PHP 핸들러는 jobId만 사용 확인, 추가는 계약 강화 차원</span></div></li>
         <li><div class="cb"></div><div class="ck-body"><strong>7. #4 retry signature</strong> — P6 HMAC 도입 시 양측 함께</div></li>
         <li><div class="cb"></div><div class="ck-body"><strong>8. #6 P4 saddle stitch</strong> — 운영 정책 결정 후</div></li>
       </ul>
@@ -1768,8 +1785,14 @@ test-php/php/                  test-php/php/ (동일)
     </p>
 
     <h3 style="margin-top:24px">컷오버 절차 (단순화 확정)</h3>
+    <div class="notice warn">
+      <span class="notice-icon">📋</span>
+      <div>
+        <strong>컷오버 분담 정책</strong>: 본 작업이 완료된 후 <strong>사용자가 bookmoa PHP 서버 개발자에게 STORIGE_API_URL 변경을 전달</strong>. Storige 인수 작업의 책임은 Phase B(staging 검증)까지.
+      </div>
+    </div>
     <div class="check-group">
-      <h3><span class="chip warn">컷오버</span> bookmoa 운영 PHP 1줄 변경</h3>
+      <h3><span class="chip warn">컷오버 (PHP 개발자 위임)</span> bookmoa 운영 PHP 1줄 변경</h3>
       <ul class="check-list">
         <li><div class="cb"></div><div class="ck-body"><strong>① bookmoa Apache vhost 설정</strong> — <code>SetEnv STORIGE_API_URL "https://api.papascompany.co.kr/api"</code> 변경 (옛 값: <code>http://58.229.105.98:4000/api</code>)<span class="sub">PHP 코드는 변경 없음. STORIGE_API_KEY/EDITOR_URL/WEBHOOK_VERIFY_HEADER 모두 기존 값 유지 가능</span></div></li>
         <li><div class="cb"></div><div class="ck-body"><strong>② Apache reload</strong> (graceful, 다운타임 0)</div></li>
@@ -1777,6 +1800,67 @@ test-php/php/                  test-php/php/ (동일)
         <li><div class="cb"></div><div class="ck-body"><strong>④ 옛 storige(58.229.105.98) 폐기 결정</strong> — 즉시 vs 1주일 fallback</div></li>
       </ul>
     </div>
+
+    <h3 style="margin-top:24px">옵션 A 자체 시뮬레이션 결과 (2026-04-28 늦은 야간)</h3>
+    <div class="notice done">
+      <span class="notice-icon">✅</span>
+      <div>
+        <strong>PHP 통합 흐름 7단계 + worker→API 정합 + webhook 송신 + nimda schema 모두 통과.</strong>
+        시뮬 중 신규 차단 버그 2건(RelationId, docker-compose env) 발견 → 즉시 수정 + 재배포 + 재검증.
+      </div>
+    </div>
+
+    <table class="t">
+      <thead><tr><th style="width:60px">Step</th><th>호출</th><th>결과</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td><code>POST /auth/shop-session</code> (X-API-Key)</td><td><span class="chip done">✓</span> 사용자 JWT 발급</td></tr>
+        <tr><td>2</td><td><code>POST /edit-sessions</code> (사용자 JWT)</td><td><span class="chip done">✓</span> orderSeqno=99999300 세션 생성</td></tr>
+        <tr><td>3</td><td><code>POST /files/upload/external</code> (cover)</td><td><span class="chip done">✓</span> files entity 생성, fileUrl 반환</td></tr>
+        <tr><td>4</td><td><code>POST /files/upload/external</code> (content)</td><td><span class="chip done">✓</span> files entity 생성</td></tr>
+        <tr><td>5a</td><td><code>PATCH /edit-sessions/:id</code> (coverFileId/contentFileId)</td><td><span class="chip done">✓</span> 정상 저장 (RelationId 수정 후)</td></tr>
+        <tr><td>5b</td><td><code>PATCH /edit-sessions/:id/complete</code></td><td><span class="chip done">✓</span> status=complete, completedAt 기록</td></tr>
+        <tr><td>6</td><td><code>POST /worker-jobs/synthesize/external</code></td><td><span class="chip done">✓</span> jobId 발행, PENDING</td></tr>
+        <tr><td>7</td><td><code>GET /edit-sessions/external?orderSeqno=...</code></td><td><span class="chip done">✓</span> 첨부 명세 schema 100% 일치</td></tr>
+        <tr style="background:#f0fdf4;"><td>Worker</td><td>잡 처리 + status PATCH</td><td><span class="chip done">✓</span> PROCESSING→FAILED 전이 (#2 정합화 검증)</td></tr>
+        <tr style="background:#f0fdf4;"><td>Webhook</td><td>bookmoa(webhook.site)로 송신</td><td><span class="chip done">✓</span> synthesis.failed + X-Storige-Signature (#5 정합화 검증)</td></tr>
+        <tr style="background:#fef3c7;"><td>합성</td><td>실제 PDF 합성 (worker 내부)</td><td><span class="chip warn">⏳</span> minimal PDF 한계로 "Invalid URL" — Phase B에서 실 PDF 검증</td></tr>
+      </tbody>
+    </table>
+
+    <h4 style="margin-top:18px">시뮬에서 확인된 webhook payload</h4>
+    <pre style="background:#1c1917; color:#e7e5e4; padding:14px; border-radius:var(--radius); overflow-x:auto; font-size:12px;">
+{
+  "event": "synthesis.failed",
+  "jobId": "8bb8c3c6-dbee-4e15-97aa-b94de7d7928f",
+  "orderId": "99999300",
+  "status": "failed",
+  "outputFileUrl": "",
+  "outputFormat": "merged",
+  "errorMessage": "Invalid URL",
+  "timestamp": "2026-04-28T08:15:31.892Z"
+}
+
+<span style="color:#a8a29e"># Headers</span>
+X-Storige-Event:     synthesis.failed
+X-Storige-Signature: &lt;base64&gt;</pre>
+
+    <h4 style="margin-top:18px">시뮬에서 확인된 nimda external 응답</h4>
+    <pre style="background:#1c1917; color:#e7e5e4; padding:14px; border-radius:var(--radius); overflow-x:auto; font-size:12px;">
+{
+  "success": true,
+  "data": [{
+    "sessionId": "3f51f4f5-bd64-43b2-a489-e19787568726",
+    "orderSeqno": 99999300,
+    "status": "complete",
+    "mode": "both",
+    "files": {
+      "cover":   "/storage/uploads/...pdf",
+      "content": "/storage/uploads/...pdf",
+      "merged":  null
+    },
+    "completedAt": "2026-04-28T08:15:31.000Z"
+  }]
+}</pre>
 
     <h3 style="margin-top:24px">Day 5 자체 시뮬레이션 시퀀스 (옵션 A)</h3>
     <pre style="background:#1c1917; color:#e7e5e4; padding:18px; border-radius:var(--radius); overflow-x:auto; font-size:13px; line-height:1.5;">

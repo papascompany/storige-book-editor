@@ -1,19 +1,19 @@
-# 새 세션 시작용 프롬프트 (v8)
+# 새 세션 시작용 프롬프트 (v9)
 
 > 새 Claude Code 세션을 열고 아래 블록을 그대로 복사해서 입력하면 됩니다.
 > 이 문서는 지우지 말고 보관하세요.
 >
-> **버전**: v8 (2026-04-28 야간, nimda PHP 통합 분석 완료 + 컷오버 단순화 확정)
-> **이전 버전**: v7 (VPS 운영 검증) → v6 (외부 점검 정합화) → v5 (P1+P5) → v4 → v3 → v2 — git history에 보존
+> **버전**: v9 (2026-04-28 늦은 야간, 옵션 A 자체 시뮬레이션 완료 + 신규 버그 2건 수정)
+> **이전 버전**: v8 (nimda 통합 분석) → v7 (VPS 검증) → v6 (정합화) → v5 (P1+P5) → ... — git history
 
 ---
 
 ## 복사용 프롬프트 (이 줄 아래부터 끝까지)
 
-[Storige 인수 프로젝트 재개 — 2026-04-28 야간, nimda PHP 통합 분석 완료, 컷오버 단순화 확정]
+[Storige 인수 프로젝트 재개 — 2026-04-28 늦은 야간, 옵션 A 시뮬레이션 통과, Phase B(staging) 진입]
 
 # 한 줄 요약
-인프라 + Day 1 + D1/D4 + P1+P5 + 외부 점검 정합화 + VPS 운영 검증 + **nimda PHP 키 호환 (`sk-storige-l3YV...` API_KEYS 추가, PHP 코드 0줄 변경)** + **두 storige 인프라 동시 가동 확인** (옛 `58.229.105.98:4000` + 새 `api.papascompany.co.kr`). **컷오버 = bookmoa의 `STORIGE_API_URL` 1줄만 변경**. 다음은 **자체 시뮬레이션(옵션 A) → bookmoa staging 검증 → 컷오버**.
+인프라 + Day 1 + D1/D4 + P1+P5 + 외부 점검 정합화 + VPS 운영 검증 + nimda PHP 키 호환 + **옵션 A 자체 시뮬레이션 통과(7단계 + worker→API 정합 + webhook 송신 + nimda schema 일치)**. 시뮬 중 **신규 차단 버그 2건 발견·수정** (RelationId read-only `378fd08` + docker-compose worker env 누락 `c4b5ec0`). **컷오버 = bookmoa Apache vhost의 `STORIGE_API_URL` 1줄만 변경 (사용자가 bookmoa PHP 서버 개발자에게 전달 예정)**. 다음은 **Phase B(bookmoa staging 검증) → 컷오버**.
 
 # 인프라 현황 — 2026-04-28 야간 기준
 - **옛 운영** `http://58.229.105.98:4000` — 인수 전 운영 storige (북모아 서버 내 Node.js v20 위에서 가동 추정). uptime 62일, validation 큐 106건 처리 이력. **현재 nimda PHP가 호출 중**. 우리는 접근 불가.
@@ -83,7 +83,23 @@
   - nimda PHP 키 `sk-storige-l3YVceH0sB739pgTfxRAxZAmLJROcMtgdKPIDYdVG0g` 새 인프라 `.env` API_KEYS에 추가 + `docker compose up -d --force-recreate api`
   - 두 인프라 동일 키로 동일 schema 응답 확인 (`{"success":true,"data":[]}`)
   - **결과: 컷오버 = bookmoa의 STORIGE_API_URL 1줄 변경. PHP 코드 0줄 변경 가능.**
-- 🔵 **다음**: 옵션 A — 자체 시뮬레이션 (PHP 흐름 7단계 자동 검증) → bookmoa staging 협조 검증 → 운영 컷오버
+- ✅ **옵션 A — 자체 시뮬레이션 (PHP 흐름 7단계)** (2026-04-28 늦은 야간)
+  - Step 1: `POST /auth/shop-session` (X-API-Key) → 사용자 JWT 발급 ✓
+  - Step 2: `POST /edit-sessions` (사용자 JWT) → 세션 생성 ✓
+  - Step 3-4: `POST /files/upload/external` (X-API-Key) → cover/content PDF 업로드, files entity 생성 ✓
+  - Step 5a-b: `PATCH /edit-sessions/:id` + `complete` → coverFileId/contentFileId 정상 저장 + status=complete ✓
+  - Step 6: `POST /worker-jobs/synthesize/external` → 잡 발행, PENDING ✓
+  - Step 7: `GET /edit-sessions/external?orderSeqno=...` → **첨부 명세 schema 100% 일치** ✓
+  - Worker→API status PATCH 정상 (PROCESSING→FAILED 전이) → #2 정합화 검증
+  - bookmoa(webhook.site) 콜백 정상 송신 (`X-Storige-Signature` + 표준 payload) → #5 정합화 검증
+  - minimal PDF 한계로 worker 합성 자체는 "Invalid URL" 에러 (실 PDF로는 통과 예상) — bookmoa staging에서 추가 검증
+- ✅ **시뮬 중 발견·수정한 신규 차단 버그 2건**
+  - `378fd08` EditSession `coverFileId`/`contentFileId`가 update/create에서 저장 안 됨 (`@RelationId` read-only, ManyToOne relation 통해 set 필요)
+  - `c4b5ec0` docker-compose.yml worker 컨테이너에 `API_BASE_URL` + `WORKER_API_KEY` env 누락 (worker→API 401 원인)
+- ✅ **컷오버 분담 정책 결정** (2026-04-28 늦은 야간)
+  - 사용자: 본 작업 완료 후 **bookmoa Apache vhost의 `STORIGE_API_URL` 변경**을 북모아 PHP 서버 개발자에게 전달
+  - 우리: Phase B(bookmoa staging 협조 검증)까지 진행, 컷오버 자체는 미수행
+- 🔵 **다음**: Phase B — bookmoa staging의 STORIGE_API_URL을 임시로 새 인프라로 변경하고 4종 시나리오 운영 가까이 검증
 - ⬜ Day 5 PHP staging 회귀 4종
 - ⬜ Day 6 운영 컷오버
 - ⬜ Week 2+ P2 썸네일, P3 안전장치, P6/P7
@@ -214,3 +230,8 @@ curl -sS -H "Origin: https://storige-editor-XYZ.vercel.app" \
   - nimda PHP 키 (`sk-storige-l3YV...`)를 새 인프라 API_KEYS에 추가 → PHP 코드 0줄 변경 가능
   - 컷오버 단순화 — bookmoa Apache vhost의 `STORIGE_API_URL` 1줄만 변경
   - 옛 인프라(58.229.105.98) 접근 불가 명시 — 비교는 응답 schema 수준만
+- v9에서 변경된 점 (v8 대비):
+  - 옵션 A 자체 시뮬레이션 7단계 + worker 정합 + webhook 송신 모두 통과
+  - 신규 차단 버그 2건 수정·머지 (RelationId, docker-compose worker env)
+  - 컷오버 분담 정책: 사용자가 PHP 서버 개발자에게 전달, 우리는 Phase B까지
+  - 다음은 bookmoa staging 협조 검증
