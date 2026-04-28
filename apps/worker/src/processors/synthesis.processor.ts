@@ -746,16 +746,10 @@ export class SynthesisProcessor {
         queueJobId,
       });
 
-      // 5. 웹훅 콜백 (spread 모드 페이로드)
-      const callbackUrl = job.data.callbackUrl;
-      if (callbackUrl) {
-        await this.sendSpreadWebhook(
-          callbackUrl,
-          jobId,
-          outputFiles,
-          mergedStoragePath ? `/storage/${storageKeyBase}/merged.pdf` : null,
-        );
-      }
+      // 5. 웹훅 콜백은 API의 WebhookService가 단일 채널로 송신.
+      //    (updateJobStatus 호출 시 sendSynthesisCallback이 자동 트리거되며,
+      //     X-Storige-Signature, X-Storige-Event 등 표준 헤더와 동일 payload schema 보장)
+      //    워커가 직접 axios로 보내던 sendSpreadWebhook은 중복/비표준이므로 제거.
 
       // 6. 임시 파일 정리
       await this.cleanupSpreadTempFiles(localResult, jobTempDir);
@@ -793,32 +787,6 @@ export class SynthesisProcessor {
       await fs.rm(jobTempDir, { recursive: true, force: true }).catch(() => {});
 
       throw error;
-    }
-  }
-
-  /**
-   * Spread 웹훅 전송
-   */
-  private async sendSpreadWebhook(
-    callbackUrl: string,
-    jobId: string,
-    outputFiles: OutputFile[],
-    outputFileUrl: string | null,
-  ): Promise<void> {
-    try {
-      await axios.post(callbackUrl, {
-        event: 'synthesis.completed',
-        jobId,
-        outputFormat: 'separate',
-        outputFiles,
-        outputFileUrl, // null이면 null로 전송
-        spreadMode: true,
-      });
-      this.logger.log(`Spread webhook sent to ${callbackUrl}`);
-    } catch (error: any) {
-      this.logger.warn(
-        `Failed to send spread webhook to ${callbackUrl}: ${error.message}`,
-      );
     }
   }
 
