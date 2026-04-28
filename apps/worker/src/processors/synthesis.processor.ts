@@ -851,7 +851,7 @@ export class SynthesisProcessor {
     },
   ): Promise<void> {
     await axios.patch(
-      `${this.apiBaseUrl}/worker-jobs/${jobId}/status`,
+      `${this.apiBaseUrl}/worker-jobs/external/${jobId}/status`,
       payload,
       { headers: { 'X-API-Key': process.env.WORKER_API_KEY } },
     );
