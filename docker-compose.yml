@@ -68,6 +68,8 @@ services:
       - STORAGE_PATH=/app/storage
       - GHOSTSCRIPT_PATH=/usr/bin/gs
       - MAX_RETRY_ATTEMPTS=3
+      - API_BASE_URL=http://api:4000/api
+      - WORKER_API_KEY=${WORKER_API_KEY}
     volumes:
       - ./storage:/app/storage
     depends_on:
