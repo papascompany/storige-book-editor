@@ -24,6 +24,8 @@ import {
 } from './dto/edit-session.dto';
 import { TemplateType } from '@storige/types';
 import type { EditPage, EditStatus, PaginatedResponse } from '@storige/types';
+import { EditSessionsService } from '../edit-sessions/edit-sessions.service';
+import { WorkerJobsService } from '../worker-jobs/worker-jobs.service';
 
 // 잠금 만료 시간 (30분)
 const LOCK_EXPIRY_MS = 30 * 60 * 1000;
@@ -39,6 +41,8 @@ export class EditorService {
     private templateSetRepository: Repository<TemplateSet>,
     @InjectRepository(Template)
     private templateRepository: Repository<Template>,
+    private editSessionsService: EditSessionsService,
+    private workerJobsService: WorkerJobsService,
   ) {}
 
   /**
@@ -690,14 +694,62 @@ export class EditorService {
   }
 
   /**
-   * PDF 내보내기 (placeholder)
+   * PDF 내보내기 — worker 합성 잡 발행
+   *
+   * EditSession에 업로드된 cover/content PDF 파일을 worker queue로 보내
+   * 합성/병합 작업을 트리거한다. 합성 완료 시 session.callbackUrl 또는
+   * exportOptions.callbackUrl 로 webhook이 송신된다.
    */
   async exportToPdf(
     sessionId: string,
-    exportOptions?: any,
-  ): Promise<{ jobId: string }> {
+    exportOptions?: {
+      spineWidth?: number;
+      orderId?: string;
+      priority?: 'high' | 'normal' | 'low';
+      callbackUrl?: string;
+      outputFormat?: 'merged' | 'separate';
+    },
+  ): Promise<{ jobId: string; status: string }> {
+    // 1) editor 모듈 측 EditSession 존재 확인 (legacy 호환)
     await this.findOne(sessionId);
-    return { jobId: 'placeholder-job-id' };
+
+    // 2) edit-sessions 모듈에서 파일 ID / 메타데이터 조회
+    const session = await this.editSessionsService.findById(sessionId);
+
+    if (!session.coverFileId) {
+      throw new BadRequestException({
+        code: 'COVER_FILE_REQUIRED',
+        message: '표지 PDF 파일이 업로드되지 않았습니다. 먼저 편집 완료를 진행해 주세요.',
+      });
+    }
+    if (!session.contentFileId) {
+      throw new BadRequestException({
+        code: 'CONTENT_FILE_REQUIRED',
+        message: '내지 PDF 파일이 업로드되지 않았습니다. 먼저 편집 완료를 진행해 주세요.',
+      });
+    }
+
+    const spineWidth = Number(
+      session.metadata?.spine?.spineWidthMm ??
+        exportOptions?.spineWidth ??
+        0,
+    );
+
+    const job = await this.workerJobsService.createSynthesisJob({
+      editSessionId: session.id,
+      coverFileId: session.coverFileId,
+      contentFileId: session.contentFileId,
+      spineWidth,
+      orderId:
+        session.orderSeqno != null
+          ? String(session.orderSeqno)
+          : exportOptions?.orderId,
+      callbackUrl: session.callbackUrl ?? exportOptions?.callbackUrl,
+      outputFormat: exportOptions?.outputFormat ?? 'merged',
+      priority: exportOptions?.priority,
+    });
+
+    return { jobId: job.id, status: job.status };
   }
 
   // ==================== Private Methods ====================
