@@ -1242,12 +1242,17 @@
       </ul>
     </div>
 
-    <div class="check-group">
-      <h3><span class="chip prog">Week 3+</span> 백업 이중화</h3>
+    <div class="check-group" style="background:#fef3c7; border-color:#f59e0b;">
+      <h3><span class="chip warn">⏸ 보류 (서비스 오픈 후 선택적)</span></h3>
+      <p style="color:#78350f; font-size:0.9rem; margin-top:6px; margin-bottom:10px;">
+        운영 안정화 + 후속 기능 모두 끝난 뒤 마무리로 진행. 서비스 오픈 후 필요 시 선택적으로 도입.
+      </p>
       <ul class="check-list">
-        <li><div class="cb"></div><div class="ck-body"><strong>Cloudflare R2 동기</strong> — 매일 23:00 KST /app/storage 업로드</div></li>
-        <li><div class="cb"></div><div class="ck-body"><strong>R2 액세스 키 발급 + .env</strong></div></li>
-        <li><div class="cb"></div><div class="ck-body"><strong>Fallback 테스트</strong> — 로컬 손실 시 R2에서 복구 검증</div></li>
+        <li><div class="cb"></div><div class="ck-body"><strong>R2 백업 이중화</strong> — Cloudflare R2 매일 23:00 KST /app/storage 동기 + R2 액세스 키 발급 + Fallback 테스트<span class="sub">현재는 VPS 로컬 cron 03:00 7일 보존만 운영. 추가 안전망 차원의 옵션</span></div></li>
+        <li><div class="cb"></div><div class="ck-body"><strong>Admin 비번 변경</strong> — <code>admin@storige.com / admin123</code> → 운영 비번<span class="sub">컷오버 직전·직후 사용자 결정으로 변경</span></div></li>
+        <li><div class="cb"></div><div class="ck-body"><strong>A-3 Sentry 에러 추적</strong> — <code>@sentry/node</code>로 NestJS api+worker unhandled exception 자동 추적<span class="sub">무료 티어(5k events/mo) 또는 GlitchTip self-host 옵션. 자체 monitor.sh가 1차, Sentry는 2차 정밀 추적</span></div></li>
+        <li><div class="cb"></div><div class="ck-body"><strong>A-4 외부 Uptime Monitor</strong> — UptimeRobot 등으로 <code>/api/health</code> 외부 점검<span class="sub">VPS 자체 장애로 self-monitor가 못 도는 상황도 감지. 5분 셋업, 무료</span></div></li>
+        <li><div class="cb"></div><div class="ck-body"><strong>Discord webhook 알림</strong> — 자체 monitor.sh 알림을 Discord 채널로<span class="sub">사용자가 webhook URL 발급 후 .env에 <code>DISCORD_WEBHOOK_URL</code> 추가하면 즉시 활성</span></div></li>
       </ul>
     </div>
 

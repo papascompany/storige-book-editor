@@ -1,8 +1,9 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
+import sharp from 'sharp';
 
 export interface UploadedFile {
   id: string;
@@ -16,9 +17,17 @@ export interface UploadedFile {
 
 @Injectable()
 export class StorageService {
+  private readonly logger = new Logger(StorageService.name);
   private readonly storagePath: string;
   private readonly maxFileSize: number;
   private readonly allowedMimeTypes: string[];
+  private readonly imageMimeTypes = [
+    'image/jpeg',
+    'image/jpg',
+    'image/png',
+    'image/gif',
+    'image/webp',
+  ];
 
   constructor(private configService: ConfigService) {
     const configuredPath = this.configService.get<string>('STORAGE_PATH', './storage');
@@ -158,10 +167,54 @@ export class StorageService {
     return path.join(this.storagePath, relativePath);
   }
 
-  // Generate thumbnail for images (placeholder - requires image processing library)
+  /**
+   * 이미지 파일의 썸네일 생성 (Sharp 사용).
+   * - 입력 파일이 raster 이미지(jpg/png/gif/webp)인 경우만 동작.
+   * - SVG/PDF/기타 형식은 원본 경로 그대로 반환 (호출자가 별도 처리).
+   * - 결과는 `{원본경로}.thumb-{width}.jpg` 형태로 같은 디렉토리에 저장.
+   * - 멱등: 이미 존재하면 다시 만들지 않음.
+   *
+   * @param filePath  원본 파일 절대 경로
+   * @param width     리사이즈 가로 기준 (기본 200px, fit:'inside'로 비율 유지)
+   * @returns 생성된 썸네일 절대 경로 (실패/스킵 시 원본 경로)
+   */
   async generateThumbnail(filePath: string, width: number = 200): Promise<string> {
-    // TODO: Implement thumbnail generation using Sharp
-    // For now, return original file path
-    return filePath;
+    try {
+      // 원본 존재 확인
+      if (!(await this.fileExists(filePath))) {
+        this.logger.warn(`generateThumbnail: source not found ${filePath}`);
+        return filePath;
+      }
+
+      // raster 이미지가 아니면 원본 경로 그대로 반환
+      const ext = path.extname(filePath).toLowerCase();
+      const rasterExts = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
+      if (!rasterExts.includes(ext)) {
+        return filePath;
+      }
+
+      const dir = path.dirname(filePath);
+      const base = path.basename(filePath, ext);
+      const thumbPath = path.join(dir, `${base}.thumb-${width}.jpg`);
+
+      // 이미 생성됐으면 스킵
+      if (await this.fileExists(thumbPath)) {
+        return thumbPath;
+      }
+
+      await sharp(filePath)
+        .rotate() // EXIF orientation 자동 보정
+        .resize(width, width, { fit: 'inside', withoutEnlargement: true })
+        .jpeg({ quality: 80, progressive: true })
+        .toFile(thumbPath);
+
+      this.logger.log(`Thumbnail generated: ${thumbPath}`);
+      return thumbPath;
+    } catch (error: any) {
+      this.logger.error(
+        `generateThumbnail failed for ${filePath}: ${error?.message ?? error}`,
+      );
+      return filePath; // 실패 시 원본 경로 fallback (호출자에게 에러 안 던짐)
+    }
   }
 }

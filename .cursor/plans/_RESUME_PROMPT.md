@@ -123,10 +123,13 @@
   - 우리는 다음 우선순위 작업으로 이동
 - 🔵 **다음**: A 운영 안정화 진행 (모니터링 + admin 빌드 정리). R2/Admin 비번은 마지막 단계로 보류
 
-# 보류 목록 (제일 마지막 단계)
-> 운영 안정화 + 후속 기능 모두 끝난 뒤 마무리로 진행
+# 보류 목록 (제일 마지막 단계 — 서비스 오픈 후 선택적)
+> 운영 안정화 + 후속 기능 모두 끝난 뒤 마무리로 진행. 서비스 오픈 후 필요 시 선택적으로 도입.
 - ⏸ **R2 백업 이중화** (원래 Week 3+) — Cloudflare R2 동기화. 현재는 VPS 로컬 cron 03:00 7일 보존
 - ⏸ **Admin 비번 변경** (`admin@storige.com / admin123`) — 운영 컷오버 직전·직후 사용자 결정으로 변경
+- ⏸ **A-3 Sentry 에러 추적** — `@sentry/node`로 NestJS api+worker unhandled exception 자동 추적. 무료 티어(5k events/mo) 또는 GlitchTip self-host 옵션
+- ⏸ **A-4 외부 Uptime Monitor** — UptimeRobot 등으로 `/api/health` 1~5분 간격 외부 점검 (VPS 자체 장애 시 알림 수신용, 자체 monitor.sh와 보완 관계)
+- ⏸ **Discord webhook 알림** — 자체 monitor.sh의 알림을 Discord 채널로 받기 (사용자가 webhook URL 발급 후 .env에 `DISCORD_WEBHOOK_URL` 추가하면 즉시 활성)
 - ⬜ Day 5 PHP staging 회귀 4종
 - ⬜ Day 6 운영 컷오버
 - ⬜ Week 2+ P2 썸네일, P3 안전장치, P6/P7
