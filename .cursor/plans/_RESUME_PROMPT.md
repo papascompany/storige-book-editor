@@ -1,19 +1,25 @@
-# 새 세션 시작용 프롬프트 (v7)
+# 새 세션 시작용 프롬프트 (v8)
 
 > 새 Claude Code 세션을 열고 아래 블록을 그대로 복사해서 입력하면 됩니다.
 > 이 문서는 지우지 말고 보관하세요.
 >
-> **버전**: v7 (2026-04-28 저녁, VPS 운영 검증 완료 + P5 추가 버그 수정)
-> **이전 버전**: v6 (외부 점검 정합화) → v5 (P1+P5) → v4 → v3 → v2 — git history에 보존
+> **버전**: v8 (2026-04-28 야간, nimda PHP 통합 분석 완료 + 컷오버 단순화 확정)
+> **이전 버전**: v7 (VPS 운영 검증) → v6 (외부 점검 정합화) → v5 (P1+P5) → v4 → v3 → v2 — git history에 보존
 
 ---
 
 ## 복사용 프롬프트 (이 줄 아래부터 끝까지)
 
-[Storige 인수 프로젝트 재개 — 2026-04-28 저녁, VPS 운영 검증 완료, Day 5 PHP 회귀 직전]
+[Storige 인수 프로젝트 재개 — 2026-04-28 야간, nimda PHP 통합 분석 완료, 컷오버 단순화 확정]
 
 # 한 줄 요약
-인프라 Phase 1\~3 + Day 1 정리 + 디자인 D1/D4 + CORS 동적 허용 + **P1 EditSession 완료 API 연동(`f4c5129`)** + **P5 PDF 내보내기 worker 잡 발행(`971b0e9`)** + **외부 점검 정합화 5건(`ddb780b` ~ `190daf0`)** + **P5 추가 버그 수정(`70bb9be`)** + **VPS 운영 배포·검증 완료**. 다음은 **Day 5 PHP staging 회귀** (사용자 환경 정보 필요).
+인프라 + Day 1 + D1/D4 + P1+P5 + 외부 점검 정합화 + VPS 운영 검증 + **nimda PHP 키 호환 (`sk-storige-l3YV...` API_KEYS 추가, PHP 코드 0줄 변경)** + **두 storige 인프라 동시 가동 확인** (옛 `58.229.105.98:4000` + 새 `api.papascompany.co.kr`). **컷오버 = bookmoa의 `STORIGE_API_URL` 1줄만 변경**. 다음은 **자체 시뮬레이션(옵션 A) → bookmoa staging 검증 → 컷오버**.
+
+# 인프라 현황 — 2026-04-28 야간 기준
+- **옛 운영** `http://58.229.105.98:4000` — 인수 전 운영 storige (북모아 서버 내 Node.js v20 위에서 가동 추정). uptime 62일, validation 큐 106건 처리 이력. **현재 nimda PHP가 호출 중**. 우리는 접근 불가.
+- **신규 운영** `https://api.papascompany.co.kr` — Vultr VPS, P1+P5+정합화 모두 가동. nimda PHP 키도 등록 완료. 외부 트래픽 0.
+- **Vercel editor** `https://editor.papascompany.co.kr` — 새 useWorkSave/FileType 정합화 반영(`ozrgut9x1` Ready).
+- **북모아 서버** `bookmoa.noriter.co.kr` (Ubuntu 22.04 + Apache + PHP 8.1 + Node 20). 우리 storige 레포의 `test-php/php/` 그대로 `/editor/`에 배포 (`index.php`, `editor.php`, `callback.php`, `webhook.php`). worker-test.php는 북모아 자체 추가본.
 
 # 환경 (사실 — 변경 시 갱신)
 - **레포**: `https://github.com/papascompany/storige-book-editor` (PUBLIC, master). 옛 fork(`papascompany/storige`)는 archived.
@@ -70,7 +76,14 @@
   - nginx upstream 캐시 → restart로 502 해결
   - `POST /api/editor/export` 운영 테스트: 빈 세션에 호출 → `COVER_FILE_REQUIRED` 정확 응답 (P5 합성 파이프라인 정상 동작 확인)
   - Vercel editor 빌드 성공 (ozrgut9x1) — useWorkSave + FileType 정합화 모두 반영
-- 🔵 **다음**: Day 5 PHP staging 회귀 4종 (사용자 환경 정보 필요)
+- ✅ **nimda PHP 통합 분석 + API 키 호환** (2026-04-28 야간)
+  - 첨부 안내(`nimda_storige_연동_안내.md`) 분석: nimda 측 `load_storige_files.php`가 `GET /api/edit-sessions/external?orderSeqno=...` 호출, 응답 `files{cover,content,merged}`에 STORIGE_API_URL prefix 붙여 다운로드
+  - 원본 레포(`blueamethyst/storige`) clone → 우리 fork master와 100% 동기화 확인 (모든 최근 커밋 동일)
+  - 북모아 PHP 운영 `bookmoa.noriter.co.kr/editor/` = storige 레포의 `test-php/php/` 그대로 배포 확인
+  - nimda PHP 키 `sk-storige-l3YVceH0sB739pgTfxRAxZAmLJROcMtgdKPIDYdVG0g` 새 인프라 `.env` API_KEYS에 추가 + `docker compose up -d --force-recreate api`
+  - 두 인프라 동일 키로 동일 schema 응답 확인 (`{"success":true,"data":[]}`)
+  - **결과: 컷오버 = bookmoa의 STORIGE_API_URL 1줄 변경. PHP 코드 0줄 변경 가능.**
+- 🔵 **다음**: 옵션 A — 자체 시뮬레이션 (PHP 흐름 7단계 자동 검증) → bookmoa staging 협조 검증 → 운영 컷오버
 - ⬜ Day 5 PHP staging 회귀 4종
 - ⬜ Day 6 운영 컷오버
 - ⬜ Week 2+ P2 썸네일, P3 안전장치, P6/P7
@@ -79,45 +92,49 @@
 - ⬜ (컷오버 후) D3 눈금자 스타일 (`agents/11-...md`)
 - ⬜ (운영 후) 표지 편집 모드별 view 분기 (`agents/12-...md`)
 
-# 즉시 다음 작업: 우선순위 결정
-P1 + P5 가 모두 끝나서 **합성 파이프라인이 end-to-end 로 동작**한다.
-다음은 두 갈래:
-
-## 옵션 A — Day 5 PHP staging 회귀 4종 (★ 권장)
+# 즉시 다음 작업: 옵션 A — 자체 시뮬레이션 (PHP 흐름 7단계)
 가이드: `.cursor/plans/v2/agents/01-php-integrator.md`
-- 컷오버(Day 6) 직전에 반드시 통과해야 하는 4종 시나리오
-  - editor 신규 세션 → 완료 → worker 합성 → bookmoa webhook 수신
-  - 기존 주문에서 sessionId 조회 (external API)
-  - 표지/내지 분리 다운로드
-  - 실패 케이스(파일 누락) 에러 흐름
-- bookmoa PHP 측 webhook 핸들러 / external API 호출부 검토
 
-## 옵션 B — P4 중철 imposition (선택)
-가이드: `.cursor/plans/v2/agents/06-saddle-stitch-orderer.md`
-- 4페이지 단위로 페이지 정렬 (1-N, 2-N+1...)
-- 컷오버 후로 미뤄도 무방
+## 컷오버 단순화 — 결정 사항
+- bookmoa nimda PHP는 운영에서 변경 없음 (NEW_DEV_PLAN §3.5 정합)
+- 변경하는 것: bookmoa Apache vhost의 `SetEnv STORIGE_API_URL` 1줄
+  - 옛 값: `http://58.229.105.98:4000/api`
+  - 새 값: `https://api.papascompany.co.kr/api`
+- `STORIGE_API_KEY` (`sk-storige-l3YVceH0sB739pgTfxRAxZAmLJROcMtgdKPIDYdVG0g`)는 변경 없음 — 새 인프라가 이 키를 인식하도록 등록 완료
 
-## 검증 명령 (P1 + P5 통합)
+## PHP 흐름 7단계 (자체 시뮬레이션)
+1. JWT 발급 (admin 로그인) — 에디터용 토큰
+2. EditSession 생성 (orderSeqno + memberSeqno + mode + callbackUrl)
+3. 표지 PDF 업로드 (`POST /files/upload/external`, X-API-Key)
+4. 내지 PDF 업로드 (동일)
+5. EditSession update (coverFileId/contentFileId) + complete
+6. 합성 잡 발행 (`POST /worker-jobs/synthesize/external`, X-API-Key)
+7. nimda 조회 endpoint (`GET /edit-sessions/external?orderSeqno=...`) → `files{cover,content,merged}` 검증
+- + worker → callbackUrl webhook 수신 확인 (webhook.site 등)
+
+## 검증 명령 (운영 점검)
 ```bash
-# DB: 세션 + worker_job 동시 확인
-ssh deploy@158.247.235.202
-docker exec storige-mariadb mariadb -ustorige -p$DATABASE_PASSWORD storige \
-  -e "SELECT id, status, completed_at FROM edit_sessions ORDER BY updated_at DESC LIMIT 5;"
-docker exec storige-mariadb mariadb -ustorige -p$DATABASE_PASSWORD storige \
-  -e "SELECT id, job_type, status, edit_session_id, created_at FROM worker_jobs ORDER BY created_at DESC LIMIT 5;"
+# 두 인프라 동일 응답 비교 (nimda 키)
+PHP_KEY="sk-storige-l3YVceH0sB739pgTfxRAxZAmLJROcMtgdKPIDYdVG0g"
+curl -sS -H "X-API-Key: $PHP_KEY" "http://58.229.105.98:4000/api/edit-sessions/external?orderSeqno=1"
+curl -sS -H "X-API-Key: $PHP_KEY" "https://api.papascompany.co.kr/api/edit-sessions/external?orderSeqno=1"
 
-# Bull 큐
-docker exec storige-redis redis-cli LLEN bull:pdf-synthesis:wait
-docker exec storige-redis redis-cli LLEN bull:pdf-validation:wait
+# DB 세션/잡
+ssh deploy@158.247.235.202 'source ~/storige/.env && docker exec storige-mariadb mariadb -ustorige -p"$DATABASE_PASSWORD" storige -e "SELECT id, order_seqno, mode, status, completed_at FROM file_edit_sessions ORDER BY created_at DESC LIMIT 5;"'
+
+ssh deploy@158.247.235.202 'docker exec storige-redis redis-cli LLEN bull:pdf-synthesis:wait'
 
 # 워커 로그
-docker logs --tail 200 storige-worker | grep -iE "synthesis|validate|webhook"
-
-# editor /export API 직접 호출 (sessionId 필요)
-curl -X POST https://api.papascompany.co.kr/api/editor/export \
-  -H "Content-Type: application/json" \
-  -d '{"sessionId":"<UUID>","exportOptions":{"outputFormat":"merged"}}'
+ssh deploy@158.247.235.202 'docker logs --tail 200 storige-worker | grep -iE "synthesis|validate|webhook"'
 ```
+
+## 환경변수 메모 (nimda PHP에 주입할 값)
+| 키 | 값 |
+|---|---|
+| `STORIGE_API_URL` | `https://api.papascompany.co.kr/api` |
+| `STORIGE_EDITOR_URL` | `https://editor.papascompany.co.kr` |
+| `STORIGE_API_KEY` | `sk-storige-l3YVceH0sB739pgTfxRAxZAmLJROcMtgdKPIDYdVG0g` (기존 값 유지) |
+| `STORIGE_WEBHOOK_VERIFY_HEADER` | `X-Storige-Signature` |
 
 # 더미 테스트 데이터 (이미 삽입됨, 그대로 사용 가능)
 - templateSet: `ts-test` (book, single mode, 5페이지)
@@ -192,3 +209,8 @@ curl -sS -H "Origin: https://storige-editor-XYZ.vercel.app" \
   - P5 PDF 내보내기 placeholder 제거 완료 (`971b0e9`)
   - 합성 파이프라인이 end-to-end 동작 (P1 + P5 통합)
   - 다음 우선순위가 Day 5 PHP staging 회귀로 이동
+- v8에서 변경된 점 (v7 대비):
+  - nimda PHP 통합 분석 완료 — 첨부 안내 + 원본 레포 + 북모아 운영 페이지 매핑
+  - nimda PHP 키 (`sk-storige-l3YV...`)를 새 인프라 API_KEYS에 추가 → PHP 코드 0줄 변경 가능
+  - 컷오버 단순화 — bookmoa Apache vhost의 `STORIGE_API_URL` 1줄만 변경
+  - 옛 인프라(58.229.105.98) 접근 불가 명시 — 비교는 응답 schema 수준만

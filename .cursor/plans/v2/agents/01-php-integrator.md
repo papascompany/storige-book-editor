@@ -6,23 +6,71 @@ model: sonnet
 
 # 01. PHP Integrator (★ 가장 중요)
 
-## 전제 사실
+## 전제 사실 (2026-04-28 야간 갱신)
 - 새 API: `https://api.papascompany.co.kr/api`
 - 새 Editor: `https://editor.papascompany.co.kr`
-- PHP 측 API 키 = VPS `~/storige/.env`의 `API_KEYS` 두 번째 값 (이하 `PHP_API_KEY`)
+- 옛 운영 storige: `http://58.229.105.98:4000` — 북모아 서버 내부 Node.js v20 위 가동 추정. 인수자 접근 불가. 비교는 응답 schema만.
+- nimda PHP 키: `sk-storige-l3YVceH0sB739pgTfxRAxZAmLJROcMtgdKPIDYdVG0g` — **새 인프라 `.env` API_KEYS에 추가 완료**
+- 북모아 운영 PHP 페이지: `bookmoa.noriter.co.kr/editor/{index,editor,callback,worker-test}.php` — storige 레포 `test-php/php/` 그대로 배포 (worker-test.php는 북모아 자체 추가)
 - 외부 계약은 `NEW_DEV_PLAN.md §3` 참조
 
-## Step 1. PHP 측 변수 4개 주입
+## Step 1. PHP 측 환경변수 — `STORIGE_API_URL` 1줄만 변경 ★
 
-`bookmoa` 운영 코드의 `config.php` (또는 동등 파일)에:
-```php
-define('STORIGE_API_BASE',   'https://api.papascompany.co.kr/api');
-define('STORIGE_EDITOR_URL', 'https://editor.papascompany.co.kr');
-define('STORIGE_API_KEY',    'PHP_API_KEY 값 (커밋 금지)');
-// (기존 변수명을 그대로 쓰면 새 변수와 매핑하는 어댑터를 둘 것)
+bookmoa Apache vhost 설정 (운영 PHP는 코드 변경 없이 환경변수만):
+```apache
+SetEnv STORIGE_API_URL "https://api.papascompany.co.kr/api"
+SetEnv STORIGE_API_KEY "sk-storige-l3YVceH0sB739pgTfxRAxZAmLJROcMtgdKPIDYdVG0g"
+SetEnv STORIGE_EDITOR_URL "https://editor.papascompany.co.kr"
+SetEnv STORIGE_WEBHOOK_VERIFY_HEADER "X-Storige-Signature"
 ```
 
-**검증**: `grep -rn 'STORIGE_API_BASE\|기존변수명' .` 로 모든 호출처가 새 값으로 통일됐는지 확인.
+**핵심 단순화**:
+- `STORIGE_API_KEY`는 **변경 없음** — 기존 `sk-storige-...` 값 그대로 사용. 새 인프라가 이미 이 키를 인식하도록 등록 완료.
+- 사실상 변경할 필요가 있는 건 `STORIGE_API_URL` 1줄. 나머지 3개는 기존 값 유지 가능.
+- PHP 코드 변경 없음 (NEW_DEV_PLAN §3.5 정합).
+
+**검증**: `apachectl -t -D DUMP_RUN_CFG | grep STORIGE_` 로 환경변수가 새 값으로 적용됐는지.
+
+## Step 1.5. 자체 시뮬레이션 (운영 변경 전 권장)
+
+bookmoa staging 권한 없이도 PHP 흐름을 우리 인프라에서 흉내낼 수 있음. test-php/php/config.php의 패턴 그대로:
+
+```bash
+BASE="https://api.papascompany.co.kr/api"
+PHP_KEY="sk-storige-l3YVceH0sB739pgTfxRAxZAmLJROcMtgdKPIDYdVG0g"
+
+# 1. JWT 발급 (PHP getEditorToken 패턴)
+TOKEN=$(curl -sS -X POST $BASE/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"admin@storige.com","password":"admin123"}' | jq -r .accessToken)
+
+# 2. EditSession 생성
+SESSION=$(curl -sS -X POST $BASE/edit-sessions \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"orderSeqno":99999100,"memberSeqno":1,"mode":"both","callbackUrl":"<WEBHOOK>"}' | jq -r .id)
+
+# 3-4. PDF 업로드 (외부 X-API-Key)
+COVER=$(curl -sS -X POST $BASE/files/upload/external \
+  -H "X-API-Key: $PHP_KEY" \
+  -F "file=@cover.pdf" -F "type=cover" -F "orderSeqno=99999100" | jq -r .id)
+# (content 동일)
+
+# 5. update + complete
+curl -sS -X PATCH $BASE/edit-sessions/$SESSION \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d "{\"coverFileId\":\"$COVER\",\"contentFileId\":\"$CONTENT\"}"
+curl -sS -X PATCH $BASE/edit-sessions/$SESSION/complete \
+  -H "Authorization: Bearer $TOKEN"
+
+# 6. 합성 잡 (nimda 패턴)
+curl -sS -X POST $BASE/worker-jobs/synthesize/external \
+  -H "X-API-Key: $PHP_KEY" -H "Content-Type: application/json" \
+  -d "{\"editSessionId\":\"$SESSION\",\"coverFileId\":\"$COVER\",\"contentFileId\":\"$CONTENT\",\"spineWidth\":3,\"orderId\":\"99999100\",\"callbackUrl\":\"<WEBHOOK>\"}"
+
+# 7. nimda 조회 (첨부 명세 schema)
+curl -sS -H "X-API-Key: $PHP_KEY" \
+  "$BASE/edit-sessions/external?orderSeqno=99999100"
+```
 
 ## Step 2. PHP staging에서 4개 회귀 테스트
 
