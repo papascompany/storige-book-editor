@@ -1,19 +1,19 @@
-# 새 세션 시작용 프롬프트 (v4)
+# 새 세션 시작용 프롬프트 (v5)
 
 > 새 Claude Code 세션을 열고 아래 블록을 그대로 복사해서 입력하면 됩니다.
 > 이 문서는 지우지 말고 보관하세요.
 >
-> **버전**: v4 (2026-04-28, P1 완료 시점)
-> **이전 버전**: v3 (2026-04-28, P1 직전) → v2 (2026-04-27, Day 1-1 시점) — git history에 보존
+> **버전**: v5 (2026-04-28, P1+P5 완료 시점)
+> **이전 버전**: v4 (P5 직전) → v3 (P1 직전) → v2 (Day 1-1 시점) — git history에 보존
 
 ---
 
 ## 복사용 프롬프트 (이 줄 아래부터 끝까지)
 
-[Storige 인수 프로젝트 재개 — 2026-04-28 이후, P1 완료, P5 직전]
+[Storige 인수 프로젝트 재개 — 2026-04-28 이후, P1+P5 완료, P4 직전]
 
 # 한 줄 요약
-인프라 Phase 1\~3 + Day 1 정리 + 디자인 D1/D4 + CORS 동적 허용 + **P1 EditSession 완료 API 연동(`f4c5129`)** 모두 master에 머지된 상태. 다음은 **P5 (PDF 내보내기 placeholder 제거)** 진입.
+인프라 Phase 1\~3 + Day 1 정리 + 디자인 D1/D4 + CORS 동적 허용 + **P1 EditSession 완료 API 연동(`f4c5129`)** + **P5 PDF 내보내기 worker 잡 발행(`971b0e9`)** 모두 master에 머지된 상태. 다음은 **Day 5 PHP staging 회귀**(우선) 또는 **P4 중철 imposition**(선택).
 
 # 환경 (사실 — 변경 시 갱신)
 - **레포**: `https://github.com/papascompany/storige-book-editor` (PUBLIC, master). 옛 fork(`papascompany/storige`)는 archived.
@@ -31,9 +31,10 @@
 1. `.cursor/plans/v2/NEW_DEV_PLAN.md` — 마스터 계획 (PHP 연동안 §3 포함)
 2. `.cursor/plans/v2/NEW_DEV_GUIDE.html` — 시각화 가이드
 3. `.cursor/plans/v2/agents/00-orchestrator.md` — 진행 마스터
-4. `.cursor/plans/v2/agents/07-pdf-export-implementer.md` — **다음 작업(P5) 가이드**
-5. `.cursor/plans/v2/agents/03-edit-session-completer.md` — P1 완료 가이드 (참고용)
-6. `.cursor/plans/v2/agents/01-php-integrator.md` — PHP 연동 (★)
+4. `.cursor/plans/v2/agents/01-php-integrator.md` — PHP 연동 (★, Day 5 회귀 + 컷오버 대비)
+5. `.cursor/plans/v2/agents/06-saddle-stitch-orderer.md` — P4 중철 imposition (선택)
+6. `.cursor/plans/v2/agents/03-edit-session-completer.md` — P1 완료 가이드 (참고용)
+7. `.cursor/plans/v2/agents/07-pdf-export-implementer.md` — P5 완료 가이드 (참고용)
 
 > 옛 자료(`.cursor/plans/*.md`, `*.html`, `migration/`)는 **참고 보관**. 진행은 v2/만 따라간다.
 > `migration/` 폴더(Supabase+Cloud Run 시나리오)는 채택 안 함.
@@ -53,8 +54,11 @@
   - `useWorkSave.completeSpreadWork`에서 `editSessionsApi.update` + `complete` 호출
   - server `validateSpreadSnapshot` → `createValidationJobs` 자동 트리거
   - iframe `parent.postMessage({type:'storige:completed'})` 추가
-- 🔵 **다음: Day 2-4 P5 PDF 내보내기 (placeholder 제거)** ⬅ 바로 시작
-- ⬜ Day 2-4 P4 중철 imposition (선택)
+- ✅ Day 2-4 **P5 PDF 내보내기 placeholder 제거** (커밋 `971b0e9`, 2026-04-28)
+  - `editor.service.exportToPdf`가 `workerJobsService.createSynthesisJob` 호출
+  - EditorModule에 EditSessionsModule + WorkerJobsModule import
+  - 응답 `{ jobId, status }`로 확장
+- 🔵 **다음**: Day 5 PHP staging 회귀 4종 (우선) 또는 P4 중철 imposition (선택)
 - ⬜ Day 5 PHP staging 회귀 4종
 - ⬜ Day 6 운영 컷오버
 - ⬜ Week 2+ P2 썸네일, P3 안전장치, P6/P7
@@ -63,38 +67,44 @@
 - ⬜ (컷오버 후) D3 눈금자 스타일 (`agents/11-...md`)
 - ⬜ (운영 후) 표지 편집 모드별 view 분기 (`agents/12-...md`)
 
-# 즉시 다음 작업: P5 PDF 내보내기 (placeholder 제거)
-가이드: `.cursor/plans/v2/agents/07-pdf-export-implementer.md`
+# 즉시 다음 작업: 우선순위 결정
+P1 + P5 가 모두 끝나서 **합성 파이프라인이 end-to-end 로 동작**한다.
+다음은 두 갈래:
 
-## 무엇을 하는가
-`apps/api/src/editor/editor.service.ts:693~700`에서 PDF 내보내기 API가 `jobId: 'placeholder-job-id'`만 반환함. 실제 worker 합성 잡을 발행하도록 교체해야 PDF 합성 흐름이 동작.
+## 옵션 A — Day 5 PHP staging 회귀 4종 (★ 권장)
+가이드: `.cursor/plans/v2/agents/01-php-integrator.md`
+- 컷오버(Day 6) 직전에 반드시 통과해야 하는 4종 시나리오
+  - editor 신규 세션 → 완료 → worker 합성 → bookmoa webhook 수신
+  - 기존 주문에서 sessionId 조회 (external API)
+  - 표지/내지 분리 다운로드
+  - 실패 케이스(파일 누락) 에러 흐름
+- bookmoa PHP 측 webhook 핸들러 / external API 호출부 검토
 
-## 위치
-- `apps/api/src/editor/editor.service.ts:693~700` — placeholder
+## 옵션 B — P4 중철 imposition (선택)
+가이드: `.cursor/plans/v2/agents/06-saddle-stitch-orderer.md`
+- 4페이지 단위로 페이지 정렬 (1-N, 2-N+1...)
+- 컷오버 후로 미뤄도 무방
 
-## 작업
-1. `WorkerJobsService` 주입 (또는 BullQueue 직접 사용)
-2. `createSynthesisJob({ sessionId, mode, items, callbackUrl, requestId })` 호출
-3. 응답 스키마는 placeholder와 동일 형태(`{ jobId, status }`) 유지
-
-## 검증
+## 검증 명령 (P1 + P5 통합)
 ```bash
-# DB에 worker_jobs 신규 행
+# DB: 세션 + worker_job 동시 확인
 ssh deploy@158.247.235.202
 docker exec storige-mariadb mariadb -ustorige -p$DATABASE_PASSWORD storige \
-  -e "SELECT id, job_type, status, created_at FROM worker_jobs ORDER BY created_at DESC LIMIT 5;"
+  -e "SELECT id, status, completed_at FROM edit_sessions ORDER BY updated_at DESC LIMIT 5;"
+docker exec storige-mariadb mariadb -ustorige -p$DATABASE_PASSWORD storige \
+  -e "SELECT id, job_type, status, edit_session_id, created_at FROM worker_jobs ORDER BY created_at DESC LIMIT 5;"
 
-# Bull 큐 등록 확인
+# Bull 큐
 docker exec storige-redis redis-cli LLEN bull:pdf-synthesis:wait
+docker exec storige-redis redis-cli LLEN bull:pdf-validation:wait
 
 # 워커 로그
-docker logs --tail 100 storige-worker | grep -i synthesis
-```
+docker logs --tail 200 storige-worker | grep -iE "synthesis|validate|webhook"
 
-## P1(완료) 검증 (참고)
-```bash
-docker exec storige-mariadb mariadb -ustorige -p$DATABASE_PASSWORD storige \
-  -e "SELECT id, status, completed_at FROM edit_sessions ORDER BY updated_at DESC LIMIT 5;"
+# editor /export API 직접 호출 (sessionId 필요)
+curl -X POST https://api.papascompany.co.kr/api/editor/export \
+  -H "Content-Type: application/json" \
+  -d '{"sessionId":"<UUID>","exportOptions":{"outputFormat":"merged"}}'
 ```
 
 # 더미 테스트 데이터 (이미 삽입됨, 그대로 사용 가능)
@@ -108,8 +118,8 @@ docker exec storige-mariadb mariadb -ustorige -p$DATABASE_PASSWORD storige \
 
 # 부탁
 1. 먼저 `.cursor/plans/v2/NEW_DEV_PLAN.md` 와 위 Phase 진행 상황 확인.
-2. 마지막으로 끝낸 단계(P1 완료, 커밋 `f4c5129`) 다음부터 이어서 진행.
-3. P5 작업 후 worker 측 `synthesis.processor.ts`의 결과 페이로드와 PHP webhook 핸들러 매핑이 일치하는지 확인.
+2. 마지막으로 끝낸 단계(P5 완료, 커밋 `971b0e9`) 다음부터 이어서 진행.
+3. Day 5 회귀 시 worker 측 `synthesis.processor.ts`의 webhook payload와 bookmoa PHP 핸들러 매핑이 일치하는지 사전 검토.
 4. 파괴적 작업(DB 마이그레이션, DNS 변경, 운영 컷오버 등)은 사전 승인.
 5. 모든 대화 한글, 코드 명령은 영문.
 6. 진행 상황은 TodoWrite로 추적.
@@ -163,10 +173,10 @@ curl -sS -H "Origin: https://storige-editor-XYZ.vercel.app" \
 ## 사용 팁
 
 - 이 프롬프트는 **자기완결적**입니다. 이전 대화를 안 봐도 새 세션이 그대로 이어받습니다.
-- 새 세션이 막히면 "**v2/NEW_DEV_PLAN.md과 v2/NEW_DEV_GUIDE.html과 v2/agents/07-pdf-export-implementer.md 먼저 읽어줘**"라고 한 번 더 요청하세요.
+- 새 세션이 막히면 "**v2/NEW_DEV_PLAN.md과 v2/NEW_DEV_GUIDE.html과 v2/agents/01-php-integrator.md 먼저 읽어줘**"라고 한 번 더 요청하세요.
 - 단계가 진행될 때마다 위 "Phase 진행 상황" 체크박스를 갱신하세요.
 - 이 문서는 git 추적 — 변경할 때 반드시 commit (커밋 메시지: `docs: resume prompt 갱신 — Day X 완료`).
-- v4에서 변경된 점 (v3 대비):
-  - P1 EditSession 완료 API 연동 완료 (`f4c5129`)
-  - 다음 작업이 P5로 명시됨
-  - 가이드 핵심 자료에 P5 가이드 문서 추가
+- v5에서 변경된 점 (v4 대비):
+  - P5 PDF 내보내기 placeholder 제거 완료 (`971b0e9`)
+  - 합성 파이프라인이 end-to-end 동작 (P1 + P5 통합)
+  - 다음 우선순위가 Day 5 PHP staging 회귀로 이동
