@@ -2,8 +2,9 @@ import { useCallback, useState, useMemo } from 'react'
 import { useAppStore } from '@/stores/useAppStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useAuthStore } from '@/stores/useAuthStore'
+import { useEditorStore } from '@/stores/useEditorStore'
 import { ServicePlugin, core } from '@storige/canvas-core'
-import { designsApi, storageApi } from '@/api'
+import { designsApi, editSessionsApi, storageApi } from '@/api'
 import type { SpreadSynthesisJobData } from '@storige/types'
 
 // Fabric.js 타입 (런타임에 로드됨)
@@ -88,6 +89,7 @@ export function useWorkSave(): UseWorkSaveReturn {
   const updateArtworkStore = useSettingsStore((state) => state.updateArtwork)
 
   const me = useAuthStore((state) => state.me)
+  const sessionId = useEditorStore((state) => state.sessionId)
 
   // 현재 작업 상태
   const currentWorkState = useMemo(() => ({
@@ -663,25 +665,50 @@ export function useWorkSave(): UseWorkSaveReturn {
       // ========================================================================
       console.log('[useWorkSave:Spread] 3. EditSession 완료 API 호출 중...')
 
-      // TODO: API 연동 (EditSession 완료 엔드포인트)
-      // const sessionId = ... (현재 세션 ID)
-      // const completeResult = await editSessionApi.complete(sessionId, {
-      //   spreadPdfFileId: coverPdfFileId,
-      //   contentPdfFileIds,
-      // })
+      if (!sessionId) {
+        throw new Error('편집 세션이 없습니다. (sessionId 누락)')
+      }
 
-      // 임시: 모의 결과
-      const mockJobId = `job_${Date.now()}`
-      console.log('[useWorkSave:Spread] TODO: EditSession 완료 API 호출 (실제 구현 필요)')
-      console.log('[useWorkSave:Spread] - spreadPdfFileId:', coverPdfFileId)
-      console.log('[useWorkSave:Spread] - contentPdfFileIds:', contentPdfFileIds)
-      console.log('[useWorkSave:Spread] - mockJobId:', mockJobId)
+      // 3-1. 파일 ID + metadata 갱신 (complete 호출 전 필수)
+      await editSessionsApi.update(sessionId, {
+        coverFileId: coverPdfFileId,
+        contentFileId: contentPdfFileIds[0],
+        metadata: {
+          contentPdfFileIds,
+          contentPdfCount: contentPdfFileIds.length,
+        },
+      })
+
+      // 3-2. 완료 처리 (서버에서 worker validation jobs 자동 생성)
+      const completedSession = await editSessionsApi.complete(sessionId)
+      console.log('[useWorkSave:Spread] EditSession 완료:', completedSession.id)
+
+      // 3-3. 부모(PHP) 윈도우에 완료 알림 (iframe 임베드 환경)
+      if (typeof window !== 'undefined' && window.parent && window.parent !== window) {
+        window.parent.postMessage(
+          {
+            type: 'storige:completed',
+            payload: {
+              sessionId: completedSession.id,
+              orderSeqno: Number(completedSession.orderSeqno),
+              status: completedSession.status,
+              completedAt: completedSession.completedAt,
+              files: {
+                coverFileId: completedSession.coverFileId,
+                contentFileId: completedSession.contentFileId,
+                contentPdfFileIds,
+              },
+            },
+          },
+          '*',
+        )
+      }
 
       console.log('[useWorkSave:Spread] 스프레드 작업 완료!')
 
       return {
         success: true,
-        jobId: mockJobId,
+        jobId: completedSession.id,
       }
     } catch (error) {
       console.error('[useWorkSave:Spread] 오류:', error)
@@ -693,7 +720,7 @@ export function useWorkSave(): UseWorkSaveReturn {
     } finally {
       setSaving(false)
     }
-  }, [saving, allCanvas, allEditors])
+  }, [saving, allCanvas, allEditors, sessionId])
 
   return {
     saving,
