@@ -681,13 +681,21 @@ function EmbeddedEditor({
             if (pdfBlob) {
               // Upload PDF to server
               setLoadingMessage('PDF를 업로드하는 중...')
-              const fileType = mode === 'cover' ? 'cover' : mode === 'content' ? 'content' : 'design'
+              // 백엔드 FileType enum: cover/content/template/other
+              // both 모드는 표지+내지 합본 → 'other'(이후 split synthesis 입력)
+              // template 모드는 'template'
+              const fileType: 'cover' | 'content' | 'template' | 'other' =
+                mode === 'cover' ? 'cover'
+                : mode === 'content' ? 'content'
+                : mode === 'template' ? 'template'
+                : 'other'
               const uploadResponse = await filesApi.upload({
                 file: pdfBlob,
                 type: fileType,
                 orderSeqno: orderSeqno,
                 metadata: {
-                  sessionId: currentSessionId,
+                  generatedBy: 'editor',
+                  editSessionId: currentSessionId,
                   mode,
                 },
               })
