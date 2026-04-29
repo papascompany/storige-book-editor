@@ -26,10 +26,13 @@ import {
   Undo2,
   Redo2,
   ChevronDown,
+  Sun,
+  Moon,
+  Monitor,
 } from 'lucide-react'
 import { AutoSaveIndicator } from './AutoSaveIndicator'
 import { BookMockup3D } from '../Mockup3D/BookMockup3D'
-import { useUiPrefStore, type PageNavPosition } from '@/stores/useUiPrefStore'
+import { useUiPrefStore, type PageNavPosition, type Theme } from '@/stores/useUiPrefStore'
 
 const SIZE_PRESETS: { label: string; width: number; height: number }[] = [
   { label: '정사각', width: 100, height: 100 },
@@ -75,6 +78,13 @@ export default function EditorHeader({
   // 룰러 토글 (기본 OFF, 사용자 선호로 영속)
   const showRuler = useUiPrefStore((s) => s.showRuler)
   const toggleRuler = useUiPrefStore((s) => s.toggleRuler)
+  // 테마 (light/dark/system)
+  const theme = useUiPrefStore((s) => s.theme)
+  const setTheme = useUiPrefStore((s) => s.setTheme)
+  const cycleTheme = useCallback(() => {
+    const next: Record<Theme, Theme> = { light: 'dark', dark: 'system', system: 'light' }
+    setTheme(next[theme])
+  }, [theme, setTheme])
 
   // Stores
   const { ready, canvas, allCanvas, allEditors, getPlugin, setPage, isSpreadMode, updateAllWorkspaceSettings } = useAppStore()
@@ -617,6 +627,26 @@ export default function EditorHeader({
               </Button>
             </TooltipTrigger>
             <TooltipContent>룰러 {showRuler ? '끄기' : '켜기'}</TooltipContent>
+          </Tooltip>
+
+          {/* 테마 토글 (light → dark → system → light) */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={cycleTheme}
+                aria-label={`테마 변경 (현재: ${theme === 'light' ? '라이트' : theme === 'dark' ? '다크' : '시스템'})`}
+                className="h-9 w-9 text-gray-600 hover:bg-gray-100"
+              >
+                {theme === 'light' && <Sun className="h-5 w-5" />}
+                {theme === 'dark' && <Moon className="h-5 w-5" />}
+                {theme === 'system' && <Monitor className="h-5 w-5" />}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              테마: {theme === 'light' ? '라이트' : theme === 'dark' ? '다크' : '시스템'} (클릭하여 변경)
+            </TooltipContent>
           </Tooltip>
 
           {/* 3D 미리보기 (스프레드 모드 전용) */}
