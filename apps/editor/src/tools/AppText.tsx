@@ -100,11 +100,11 @@ export default function AppText() {
 
   return (
     <div className="w-full h-full flex flex-col">
-      <div className="tool-header p-4 gap-6 flex flex-col">
-        <span className="title text-editor-text font-medium">텍스트</span>
+      {/* Primary action — FeatureSidebar 헤더에 이미 라벨 있음, title 중복 제거 */}
+      <div className="px-4 pt-4 pb-3">
         <Button
-          variant="secondary"
-          className="w-full h-10"
+          variant="default"
+          className="w-full h-10 rounded-md shadow-sm"
           onClick={addText}
         >
           <Plus className="h-4 w-4 mr-2" />
@@ -112,18 +112,14 @@ export default function AppText() {
         </Button>
       </div>
 
-      <hr className="border-editor-border" />
-
-      <div className="sections flex flex-col overflow-y-auto">
+      <div className="sections flex flex-col">
         {isCustomer && (
           <AppSection title="추천 콘텐츠" onDetail={showMore}>
-            <div className="px-4 py-8 text-center text-editor-text-muted text-sm">
+            <div className="py-8 text-center text-gray-400 text-xs">
               추천 콘텐츠가 없습니다.
             </div>
           </AppSection>
         )}
-
-        <div className="h-10 w-1 p-10" />
       </div>
     </div>
   )

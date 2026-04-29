@@ -68,8 +68,7 @@ export default function AppElement() {
 
   return (
     <div className="w-full h-full flex flex-col">
-      <div className="tool-header p-4 gap-6 flex flex-col">
-        <span className="title text-editor-text font-medium">요소</span>
+      <div className="px-4 pt-4 pb-3">
         <Button
           variant="secondary"
           className="w-full h-10"
@@ -80,9 +79,6 @@ export default function AppElement() {
           {isLoading ? '업로드 중...' : '업로드'}
         </Button>
       </div>
-
-      <hr className="border-editor-border" />
-
       <div className="sections flex flex-col overflow-y-auto">
         {isCustomer && (
           <AppSection title="추천 콘텐츠" onDetail={showMore}>
@@ -91,7 +87,7 @@ export default function AppElement() {
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-editor-accent" />
               </div>
             ) : contents.length === 0 ? (
-              <div className="px-4 py-8 text-center text-editor-text-muted text-sm">
+              <div className="px-4 py-8 text-center text-gray-400 text-xs">
                 추천 콘텐츠가 없습니다.
               </div>
             ) : (
