@@ -2,23 +2,7 @@ import { useMemo } from 'react'
 import { useAppStore, useSelectionType } from '@/stores/useAppStore'
 import { GroupPlugin, ObjectPlugin, SelectionType } from '@storige/canvas-core'
 
-import {
-  Image,
-  TextT,
-  SquaresFour,
-  FrameCorners,
-  QrCode,
-  Stack,
-  Hexagon,
-  LockSimple,
-  LockSimpleOpen,
-  Eye,
-  EyeSlash,
-  Trash,
-  Link,
-  LinkBreak,
-  Scissors,
-} from '@phosphor-icons/react'
+import { Image, Type as TextT, LayoutGrid as SquaresFour, Frame as FrameCorners, QrCode, Layers as Stack, Hexagon, Lock as LockSimple, Unlock as LockSimpleOpen, Eye, EyeOff as EyeSlash, Trash2 as Trash, Link, Unlink as LinkBreak, Scissors } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import ObjectSize from '@/controls/ObjectSize'
 import ObjectFill from '@/controls/ObjectFill'

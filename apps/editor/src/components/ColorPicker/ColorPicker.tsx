@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback } from 'react'
-import { Square } from '@phosphor-icons/react'
+import { Square } from 'lucide-react'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Button } from '@/components/ui/button'
 import ColorPickerModal from './ColorPickerModal'

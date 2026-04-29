@@ -1,5 +1,5 @@
 import { memo } from 'react'
-import { Check } from '@phosphor-icons/react'
+import { Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { TemplateType } from '@storige/types'
 

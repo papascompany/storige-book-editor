@@ -1,6 +1,6 @@
 import { lazy, Suspense } from 'react'
 import { useAppStore } from '@/stores/useAppStore'
-import { X } from '@phosphor-icons/react'
+import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 // Feature flag for image processing (OpenCV) features

@@ -1,10 +1,5 @@
 import { useState, useEffect } from 'react';
-import {
-  ThumbsUp,
-  ThumbsDown,
-  Sparkle,
-  ArrowsClockwise,
-} from '@phosphor-icons/react';
+import { ThumbsUp, ThumbsDown, Sparkles as Sparkle, RefreshCw as ArrowsClockwise } from 'lucide-react';
 import { Button } from '../ui/button';
 import {
   aiApi,

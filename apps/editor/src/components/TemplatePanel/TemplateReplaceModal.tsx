@@ -1,5 +1,5 @@
 import { memo, useState, useCallback } from 'react'
-import { X, Warning, ArrowsClockwise } from '@phosphor-icons/react'
+import { X, AlertTriangle as Warning, RefreshCw as ArrowsClockwise } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 type ReplaceMode = 'template' | 'templateSet'

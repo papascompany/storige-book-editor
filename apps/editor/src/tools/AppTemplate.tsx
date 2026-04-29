@@ -1,5 +1,5 @@
 import { useCallback, useState, useMemo } from 'react'
-import { UploadSimple } from '@phosphor-icons/react'
+import { Upload as UploadSimple } from 'lucide-react'
 import { useAppStore, useHasCutlineTemplate } from '@/stores/useAppStore'
 import { useSettingsStore, useEditorTemplates } from '@/stores/useSettingsStore'
 import { useIsCustomer } from '@/stores/useAuthStore'

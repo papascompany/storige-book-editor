@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { CaretLeft, CaretRight, CaretUp, CaretDown } from '@phosphor-icons/react'
+import { ChevronLeft as CaretLeft, ChevronRight as CaretRight, ChevronUp as CaretUp, ChevronDown as CaretDown } from 'lucide-react'
 import { useEditorStore } from '@/stores/useEditorStore'
 import { useAppStore } from '@/stores/useAppStore'
 import { useResolvedPageNavPosition } from '@/hooks/useResolvedPageNavPosition'

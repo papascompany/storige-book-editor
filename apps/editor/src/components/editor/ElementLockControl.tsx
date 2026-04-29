@@ -1,5 +1,5 @@
 import { memo, useCallback, useMemo } from 'react'
-import { LockSimple, LockSimpleOpen } from '@phosphor-icons/react'
+import { Lock as LockSimple, Unlock as LockSimpleOpen } from 'lucide-react'
 import { useActiveSelection, useHasSelection } from '@/stores/useAppStore'
 import { cn } from '@/lib/utils'
 

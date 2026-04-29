@@ -1,5 +1,5 @@
 import { memo } from 'react'
-import { WarningCircle, X } from '@phosphor-icons/react'
+import { AlertCircle as WarningCircle, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface PageLimitModalProps {

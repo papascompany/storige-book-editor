@@ -2,22 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { useAppStore, useCurrentIndex } from '@/stores/useAppStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { type CanvasObject, ObjectPlugin, SelectionType } from '@storige/canvas-core'
-import {
-  Image,
-  TextT,
-  Hexagon,
-  FrameCorners,
-  QrCode,
-  Stack,
-  X,
-  Trash,
-  LockSimple,
-  LockSimpleOpen,
-  Eye,
-  EyeSlash,
-  DotsSixVertical,
-  Plus,
-} from '@phosphor-icons/react'
+import { Image, Type as TextT, Hexagon, Frame as FrameCorners, QrCode, Layers as Stack, X, Trash2 as Trash, Lock as LockSimple, Unlock as LockSimpleOpen, Eye, EyeOff as EyeSlash, GripVertical as DotsSixVertical, Plus } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 

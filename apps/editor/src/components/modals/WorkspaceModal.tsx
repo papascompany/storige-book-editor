@@ -1,13 +1,5 @@
 import { memo, useState, useEffect, useCallback } from 'react'
-import {
-  FolderOpen,
-  X,
-  CircleNotch,
-  FileText,
-  Clock,
-  Trash,
-  WarningCircle,
-} from '@phosphor-icons/react'
+import { FolderOpen, X, Loader as CircleNotch, FileText, Clock, Trash2 as Trash, AlertCircle as WarningCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { editSessionsApi, type EditSessionResponse } from '@/api'
 

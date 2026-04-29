@@ -4,7 +4,7 @@ import AppSection from '@/components/AppSection'
 import ControlInput from '@/components/ControlInput'
 import { Button } from '@/components/ui/button'
 import { parseColorValue, rgbaToHex8 } from '@storige/canvas-core'
-import { ArrowsHorizontal, ArrowsVertical, RadioButton } from '@phosphor-icons/react'
+import { MoveHorizontal as ArrowsHorizontal, MoveVertical as ArrowsVertical, Circle as RadioButton } from 'lucide-react'
 
 // Debounce helper
 function debounce<T extends (...args: Parameters<T>) => void>(

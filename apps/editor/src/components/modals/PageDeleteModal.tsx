@@ -1,5 +1,5 @@
 import { memo } from 'react'
-import { Trash, Warning, X } from '@phosphor-icons/react'
+import { Trash2 as Trash, AlertTriangle as Warning, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface PageDeleteModalProps {

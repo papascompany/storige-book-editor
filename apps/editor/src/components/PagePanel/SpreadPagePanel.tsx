@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useRef } from 'react'
-import { Plus } from '@phosphor-icons/react'
+import { Plus } from 'lucide-react'
 import { SpreadThumbnailItem } from './SpreadThumbnailItem'
 import { PageItem } from './PageItem'
 import { useEditorStore, useCanAddPage } from '@/stores/useEditorStore'

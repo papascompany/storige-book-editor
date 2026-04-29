@@ -1,5 +1,5 @@
 import { memo, useState } from 'react'
-import { X } from '@phosphor-icons/react'
+import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface BookMockup3DProps {
