@@ -95,6 +95,8 @@
 
 ✅ **opacity modifier 지원 (2026-04-30)**: `bg-editor-accent/10`, `text-editor-accent/50`, `ring-editor-accent/30` 등 Tailwind opacity 표기법을 그대로 사용 가능. CSS 변수에 RGB triplet (`127 191 52`)을 함께 정의하고 Tailwind에서 `<alpha-value>` 자리표시자 패턴을 채용한 결과. arbitrary 값 (`bg-[rgba(127,191,52,0.12)]`) 더는 사용하지 말 것.
 
+✅ **다크 모드 (2026-04-30, 트랙 D Phase 1)**: `:root[data-theme="dark"]` 셀렉터로 전체 토큰 재정의. RGB triplet 패턴 그대로 사용해 opacity modifier도 다크 모드에서 자동 작동. `useUiPrefStore.theme` (`'light' | 'dark' | 'system'`) + `useThemeSync()` hook이 `<html data-theme>` 동기화. EditorHeader의 Sun/Moon/Monitor 아이콘 토글로 사이클.
+
 ### 2.2 폰트
 
 ```css
@@ -358,7 +360,14 @@ interface UiPrefState {
   expandedSections: Record<string, boolean>
   setSectionExpanded: (id, expanded) => void
   toggleSectionExpanded: (id) => void
+
+  // 2026-04-30 추가: UI 테마 (트랙 D)
+  theme: 'light' | 'dark' | 'system'
+  setTheme: (theme) => void
 }
+
+// useThemeSync(): <html data-theme>를 store와 동기화하는 hook (App.tsx에서 호출)
+// resolveTheme(theme): 'system'을 prefers-color-scheme 기준으로 'light'/'dark'로 해석
 
 export const SIDEBAR_WIDTH_MIN = 240
 export const SIDEBAR_WIDTH_MAX = 480
@@ -366,7 +375,7 @@ export const SIDEBAR_WIDTH_DEFAULT = 300
 ```
 
 - localStorage key: `storige-ui-pref`
-- version: **5** (expandedSections 추가 마이그레이션, 기본 `{}`)
+- version: **6** (theme 추가 마이그레이션, 기본 'light')
 - 새 사용자 선호 추가 시 version 증가 + persist 마이그레이션 처리
 - `sidebarWidth`는 setter에서 자동 clamp (240~480)되므로 호출처에서 별도 검증 불필요
 
@@ -648,6 +657,13 @@ rm -rf apps/editor/node_modules/.vite
   - 도구 패널 5개에 sectionId 부여 — `app-text-recommended`, `app-element-recommended`, `app-frame-recommended`, `app-template-recommended`, `app-background-{image,color,cap,recommended}`. controls/ 6개는 이미 id 부여되어 있어 자동 영속 활성화
   - localStorage v4 → v5 마이그레이션 (`expandedSections: {}` 초기값)
   - 사이드바 드래그 핸들 더블클릭 → 기본 폭(300) 복원 (`onDoubleClick` 핸들러 추가, title hint 추가)
+- ✅ **트랙 D — 다크 모드 인프라 (§8.3 진척)**
+  - `index.css`에 `:root[data-theme="dark"]` 토큰 셋 추가 — bookmoa green 다크 톤(`#8ecf45`) + 어두운 surface 계층(`#15171a` ~ `rgb(60 66 72)`)
+  - 트랙 A의 RGB triplet 인프라 재사용 → `bg-editor-accent/10` 같은 opacity modifier가 다크 모드에서도 자동 작동
+  - `useUiPrefStore.theme` 추가 (`'light' | 'dark' | 'system'`) + version 5→6 마이그레이션
+  - `useThemeSync()` hook — `<html data-theme>` 속성 동기화. system 모드에서 `prefers-color-scheme` 변경 자동 감지. App.tsx 루트에서 1회 호출
+  - `EditorHeader`에 테마 토글 버튼 — Sun/Moon/Monitor 아이콘 + 클릭 시 light → dark → system 사이클
+  - 캔버스 영역 색상(WorkspacePlugin 배경) 다크 호환은 향후 Phase 2 (현재는 chrome 영역만)
 
 > 후속 작업 §8.2의 **D2-NEW** (메뉴 아이콘 PNG 업로드)는 2026-04-30 개발 계획에서 **취소**됨.
 
@@ -669,7 +685,8 @@ rm -rf apps/editor/node_modules/.vite
 - **반응형 레이아웃** — 모바일(≤768) 슬라이드아웃 사이드바, 태블릿(769-1024) 헤더 wrap, 데스크톱(1025+) 풀 레이아웃. 사이드바 가변 폭 도입으로 모바일 대응 시 `min-width` 제약을 깰 수 있는 분기 처리 필요
 - **콘텐츠 패널 그리드 카탈로그** — 미리캔버스 풍 카테고리 탭 + 그리드 + 크라운 아이콘 등 본격 카탈로그 UI (D2-NEW 취소됨에 따라 별도 트랙으로 검토)
 - **AI 패널 정합** — 현재는 ToolBar에 없음. AI 도구 메뉴 추가 + 패널 통합
-- **다크 모드** — `:root` 외 `[data-theme="dark"]` 셀렉터로 전체 토큰 재정의. RGB triplet 도입했으니 토큰 셋만 갈아끼면 opacity 변형도 자동 작동
+- ~~다크 모드~~ ✅ Phase 1 완료 (2026-04-30, 트랙 D). chrome 영역(헤더/툴바/사이드바/패널) 다크 적용
+- **다크 모드 Phase 2** — 캔버스 워크스페이스 배경 (WorkspacePlugin), 룰러 색상, fabric 캔버스 chrome (선택 핸들 색상 등) 다크 호환
 
 ---
 

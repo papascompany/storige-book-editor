@@ -43,6 +43,39 @@
   --editor-accent: var(--color-primary);
 }
 
+/* Dark theme — :root[data-theme="dark"] 셀렉터로 동일 토큰 셋 재정의.
+   RGB triplet 패턴을 그대로 사용하므로 bg-editor-accent/10 같은 opacity modifier도 자동 작동. */
+:root[data-theme="dark"] {
+  /* bookmoa green — 다크 모드에서도 브랜드 그린 유지하되 살짝 톤다운 */
+  --color-primary: #8ecf45;
+  --color-primary-rgb: 142 207 69;
+  --color-primary-darker: #7fbf34;
+  --color-primary-darker-rgb: 127 191 52;
+  --color-surface-tint: #8ecf45;
+  --color-on-primary: rgb(0 32 0);
+  --color-primary-container: #2e4a14;
+  --color-on-primary-container: #d4ecbc;
+  --color-secondary: rgb(180 200 180);
+  --color-on-secondary: rgb(20 35 20);
+  --color-secondary-container: rgb(45 65 45);
+  --color-on-secondary-container: rgb(220 235 210);
+
+  /* surface 계층 — 어두운 회색 톤. 살짝 따뜻한 그린 기운 유지 */
+  --color-background: #15171a;
+  --color-on-background: #e6e6e6;
+  --color-surface: rgb(28 32 35);
+  --color-on-surface: #e8e8e8;
+  --color-surface-variant: rgb(48 56 50);
+  --color-on-surface-variant: rgb(190 200 190);
+  --color-outline: rgb(140 150 145);
+  --color-outline-variant: #2a2e33;
+  --color-surface-container-lowest: rgb(20 23 26);
+  --color-surface-container-low: rgb(28 32 35);
+  --color-surface-container: rgb(36 41 45);
+  --color-surface-container-high: rgb(48 54 58);
+  --color-surface-container-highest: rgb(60 66 72);
+}
+
 *,
 *::before,
 *::after {
@@ -68,7 +101,7 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Custom scrollbar - light theme */
+/* Custom scrollbar — surface-container 토큰 사용으로 다크 모드 자동 호환 */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;

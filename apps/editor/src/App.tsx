@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { lazy, Suspense } from 'react'
+import { useThemeSync } from '@/stores/useUiPrefStore'
 
 // Lazy load views
 const EditorView = lazy(() => import('./views/EditorView'))
@@ -17,6 +18,9 @@ function LoadingFallback() {
 }
 
 function App() {
+  // 테마 (light/dark/system)를 <html data-theme> 속성에 동기화
+  useThemeSync()
+
   return (
     <Suspense fallback={<LoadingFallback />}>
       <Routes>

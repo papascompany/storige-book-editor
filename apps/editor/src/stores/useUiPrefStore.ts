@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 
@@ -15,6 +16,14 @@ export type PageNavPosition = 'auto' | 'right' | 'bottom'
  * - composite: 페이지 네비 그룹화 + 향후 합쳐진 미니맵 (Phase 1: 그룹화만)
  */
 export type CoverEditMode = 'auto' | 'separated' | 'composite'
+
+/**
+ * UI 테마 (트랙 D)
+ * - light: 명시적 라이트 (default)
+ * - dark: 명시적 다크
+ * - system: prefers-color-scheme 따라 자동
+ */
+export type Theme = 'light' | 'dark' | 'system'
 
 export const SIDEBAR_WIDTH_MIN = 240
 export const SIDEBAR_WIDTH_MAX = 480
@@ -50,6 +59,46 @@ interface UiPrefState {
   expandedSections: Record<string, boolean>
   setSectionExpanded: (id: string, expanded: boolean) => void
   toggleSectionExpanded: (id: string) => void
+  /** UI 테마 (light/dark/system). 기본 'light' */
+  theme: Theme
+  setTheme: (theme: Theme) => void
+}
+
+/**
+ * theme 값을 실제 적용 모드(light/dark)로 해석.
+ * - 'system'이면 prefers-color-scheme 매체 쿼리 따름
+ */
+export function resolveTheme(theme: Theme): 'light' | 'dark' {
+  if (theme === 'system') {
+    if (typeof window !== 'undefined' && window.matchMedia) {
+      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+    }
+    return 'light'
+  }
+  return theme
+}
+
+/**
+ * 테마를 <html data-theme> 속성에 동기화하는 hook.
+ * - 사용자 토글 시 즉시 반영
+ * - 'system' 모드일 땐 OS 테마 변경 자동 반영
+ * App 루트에서 한 번만 호출.
+ */
+export function useThemeSync() {
+  const theme = useUiPrefStore((s) => s.theme)
+  useEffect(() => {
+    const apply = () => {
+      const mode = resolveTheme(theme)
+      document.documentElement.setAttribute('data-theme', mode)
+    }
+    apply()
+    // 'system'이면 OS 변경 감지
+    if (theme === 'system' && typeof window !== 'undefined' && window.matchMedia) {
+      const mq = window.matchMedia('(prefers-color-scheme: dark)')
+      mq.addEventListener('change', apply)
+      return () => mq.removeEventListener('change', apply)
+    }
+  }, [theme])
 }
 
 export const useUiPrefStore = create<UiPrefState>()(
@@ -78,11 +127,13 @@ export const useUiPrefStore = create<UiPrefState>()(
           const next = current === undefined ? false : !current
           return { expandedSections: { ...s.expandedSections, [id]: next } }
         }),
+      theme: 'light',
+      setTheme: (theme) => set({ theme }),
     }),
     {
       name: 'storige-ui-pref',
       storage: createJSONStorage(() => localStorage),
-      version: 5,
+      version: 6,
       migrate: (persistedState, version) => {
         const state = (persistedState ?? {}) as Partial<UiPrefState>
         if (version < 3) {
@@ -94,6 +145,9 @@ export const useUiPrefStore = create<UiPrefState>()(
         }
         if (version < 5) {
           state.expandedSections = {}
+        }
+        if (version < 6) {
+          state.theme = 'light'
         }
         // sidebarWidth가 범위를 벗어난 경우 보정
         if (typeof state.sidebarWidth === 'number') {
