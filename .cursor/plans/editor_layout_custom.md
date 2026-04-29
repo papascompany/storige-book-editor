@@ -663,6 +663,13 @@ rm -rf apps/editor/node_modules/.vite
   - `useUiPrefStore.theme` 추가 (`'light' | 'dark' | 'system'`) + version 5→6 마이그레이션
   - `useThemeSync()` hook — `<html data-theme>` 속성 동기화. system 모드에서 `prefers-color-scheme` 변경 자동 감지. App.tsx 루트에서 1회 호출
   - `EditorHeader`에 테마 토글 버튼 — Sun/Moon/Monitor 아이콘 + 클릭 시 light → dark → system 사이클
+- ✅ **트랙 F — 키보드 단축키 도움말 모달 + Cmd+S 저장 단축키**
+  - `KeyboardShortcutsModal.tsx` 신규 — 백드롭 + 카드 + 4 카테고리(작업/객체/이동·정렬/UI) × 19개 단축키 KeyCap 디자인
+  - 카탈로그는 canvas-core plugins(HistoryPlugin/CopyPlugin/GroupPlugin/ObjectPlugin/LockPlugin) + editor 측 단축키(FeatureSidebar Cmd+\\) 수동 정리. 새 단축키 추가 시 카탈로그 함께 갱신
+  - 열기: EditorHeader 도움말 버튼 클릭 또는 글로벌 `?` 키 (입력 필드 포커스 시 무시)
+  - 닫기: 백드롭 클릭 / ESC / X 버튼 / `?` 토글
+  - 신규 단축키: `Cmd/Ctrl+S` → 편집완료 (브라우저 저장 다이얼로그 차단), 입력 필드 무시, ready+!finishing 가드
+  - 검증: 모달 열기/닫기 4가지 시나리오 + 입력 포커스 시 ? · Cmd+S 무시 + EditorHeader TDZ 회피(useCallback 정의 후 useEffect 등록)
 - ✅ **트랙 E Phase 1 — 모바일/태블릿 반응형 레이아웃**
   - FeatureSidebar `mobileOverlay` prop 추가: 모바일에선 fixed 포지셔닝(`top-0 bottom-0 left-0 z-[110]`) + 280px 고정 폭 + shadow-2xl
   - EditorView가 `screenMode === 'mobile' && currentMenu`일 때 백드롭(`fixed inset-0 bg-black/40 z-[105]`) 렌더, 클릭 시 `tapMenu(null)`로 사이드바 닫기
@@ -694,6 +701,7 @@ rm -rf apps/editor/node_modules/.vite
 - ~~Undo/Redo disable 로직~~ ✅ 완료 (2026-04-30, 트랙 A) — 캔버스 `canUndo/canRedo` + `historyUpdate` 이벤트 구독
 - ~~사이드바 collapse 단축키~~ ✅ 완료 (2026-04-30, 트랙 A) — `Cmd+\` / `Ctrl+\` 윈도우 키리스너
 - ~~편집완료 hover 검증~~ ✅ 완료 (2026-04-30, 트랙 A) — `.hover\:bg-editor-accent-hover:hover` 규칙이 `rgb(var(--color-primary-darker-rgb))` = `#6ba82d`로 정확히 컴파일됨
+- ~~키보드 단축키 도움말~~ ✅ 완료 (2026-04-30, 트랙 F) — `?` 키 / 도움말 버튼으로 모달 열기, 19개 단축키 카테고리별 표시, Cmd+S 저장 추가
 - **빈 상태 재진입 시 Undo 버튼 미동기 보정** — `HistoryPlugin.afterLoad`가 `clearHistory` 후 `historyUpdate`를 호출하지만, 사용자 첫 클릭 전에 캔버스 내부 스택이 0/0인데 React state가 stale인 케이스가 드물게 발생. 첫 액션 후 자동 보정되므로 critical 아님
 
 ### 8.2 중간 작업 (1~3시간)

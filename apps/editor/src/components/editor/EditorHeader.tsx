@@ -32,6 +32,7 @@ import {
 } from 'lucide-react'
 import { AutoSaveIndicator } from './AutoSaveIndicator'
 import { BookMockup3D } from '../Mockup3D/BookMockup3D'
+import KeyboardShortcutsModal from './KeyboardShortcutsModal'
 import { useUiPrefStore, type PageNavPosition, type Theme } from '@/stores/useUiPrefStore'
 
 const SIZE_PRESETS: { label: string; width: number; height: number }[] = [
@@ -85,6 +86,9 @@ export default function EditorHeader({
     const next: Record<Theme, Theme> = { light: 'dark', dark: 'system', system: 'light' }
     setTheme(next[theme])
   }, [theme, setTheme])
+
+  // 단축키 도움말 모달 — 키 리스너는 handleFinish/handleSaveForAdmin 정의 후 useEffect로 등록
+  const [shortcutsOpen, setShortcutsOpen] = useState(false)
 
   // Stores
   const { ready, canvas, allCanvas, allEditors, getPlugin, setPage, isSpreadMode, updateAllWorkspaceSettings } = useAppStore()
@@ -407,6 +411,40 @@ export default function EditorHeader({
     }
   }, [onOpenWorkspace])
 
+  // ? 키 + Cmd/Ctrl+S 글로벌 리스너 — handleFinish/handleSaveForAdmin 정의 후 등록
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null
+      const inInput = !!target && (
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.tagName === 'SELECT' ||
+        target.isContentEditable
+      )
+
+      // ? 키 → 단축키 도움말 토글
+      if (e.key === '?' && !inInput) {
+        e.preventDefault()
+        setShortcutsOpen((v) => !v)
+        return
+      }
+
+      // Cmd/Ctrl+S → 편집완료 (브라우저 저장 다이얼로그 차단)
+      if ((e.metaKey || e.ctrlKey) && (e.key === 's' || e.key === 'S')) {
+        e.preventDefault()
+        if (inInput) return
+        if (!ready || finishing) return
+        if (isAdmin) {
+          handleSaveForAdmin(false)
+        } else {
+          handleFinish()
+        }
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [ready, finishing, isAdmin, handleFinish, handleSaveForAdmin])
+
   // Undo/Redo (HistoryPlugin)
   const handleUndo = useCallback(() => {
     const plugin = getPlugin<HistoryPlugin>('HistoryPlugin')
@@ -684,14 +722,20 @@ export default function EditorHeader({
             <TooltipContent>페이지 네비 위치 (PC에서만 표시)</TooltipContent>
           </Tooltip>
 
-          {/* 도움말 */}
+          {/* 도움말 — 단축키 모달 열기 (또는 ? 키) */}
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-9 w-9 text-editor-text-muted hover:bg-editor-hover">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setShortcutsOpen(true)}
+                aria-label="키보드 단축키 도움말"
+                className="h-9 w-9 text-editor-text-muted hover:bg-editor-hover"
+              >
                 <HelpCircle className="h-5 w-5" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>도움말</TooltipContent>
+            <TooltipContent>키보드 단축키 (?)</TooltipContent>
           </Tooltip>
 
           {/* 구분선 */}
@@ -742,6 +786,9 @@ export default function EditorHeader({
           )}
         </div>
       </nav>
+
+      {/* 단축키 도움말 모달 */}
+      <KeyboardShortcutsModal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
 
       {/* 3D 미리보기 모달 */}
       {show3DMockup && spreadConfig && (
