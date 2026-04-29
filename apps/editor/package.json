@@ -38,6 +38,7 @@
     "clsx": "^2.1.1",
     "fabric": "^5.5.2",
     "lodash-es": "^4.17.21",
+    "lucide-react": "^0.400.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.28.1",

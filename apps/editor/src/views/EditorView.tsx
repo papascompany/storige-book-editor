@@ -462,6 +462,41 @@ export default function EditorView() {
     })
   }, [showRuler, ready])
 
+  // 컨테이너 크기 변화 감지 → 모든 캔버스 dim 동기화 (마운트 시점 좁은 컨테이너로 캔버스가 치우치는 문제 해결)
+  useEffect(() => {
+    if (!ready || !canvasContainerRef.current) return
+    const el = canvasContainerRef.current
+    const resize = () => {
+      const w = el.clientWidth
+      const h = el.clientHeight
+      if (w <= 0 || h <= 0) return
+      const canvases = useAppStore.getState().allCanvas
+      canvases.forEach((cvs) => {
+        try {
+          if (!cvs || (cvs as any).disposed) return
+          cvs.setDimensions({ width: w, height: h })
+          cvs.requestRenderAll?.()
+        } catch (e) {
+          console.warn('[EditorView] canvas resize error:', e)
+        }
+      })
+      // workspace 위치 재계산 — sizeChange 이벤트로 WorkspacePlugin 등 알림
+      const editors = useAppStore.getState().allEditors
+      editors.forEach((ed) => {
+        try { ed?.emit?.('sizeChange', { width: w, height: h }) } catch {}
+      })
+    }
+    // 초기 1회 동기화 (마운트 시 컨테이너가 막 늘어났을 수 있음)
+    resize()
+    const ro = new ResizeObserver(() => resize())
+    ro.observe(el)
+    window.addEventListener('resize', resize)
+    return () => {
+      ro.disconnect()
+      window.removeEventListener('resize', resize)
+    }
+  }, [ready])
+
   // Toggle side panel
   const toggleSidePanel = () => {
     setShowSidePanel(!showSidePanel)

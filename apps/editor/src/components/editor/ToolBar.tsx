@@ -4,17 +4,17 @@ import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useImageStore } from '@/stores/useImageStore'
 import { SelectionType, ImageProcessingPlugin } from '@storige/canvas-core'
 import {
-  UploadSimple,
-  Layout,
+  Upload,
+  LayoutTemplate,
   Image,
-  TextT,
-  SquaresFour,
+  Type,
+  Shapes,
   PaintBucket,
-  FrameCorners,
+  Frame,
   QrCode,
-  PencilSimple,
+  Pencil,
   Scissors,
-} from '@phosphor-icons/react'
+} from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { AppMenu } from '@/types/menu'
 
@@ -33,15 +33,15 @@ const ENABLE_SMART_CODE_MENU = import.meta.env.VITE_ENABLE_SMART_CODE_MENU !== '
 const ALL_MENUS: AppMenu[] = [
   // CLIPPING menu is only shown when image processing is enabled
   ...(ENABLE_IMAGE_PROCESSING ? [{ type: 'CLIPPING' as const, label: '모양컷', icon: Scissors }] : []),
-  ...(ENABLE_TEMPLATE_MENU ? [{ type: 'TEMPLATE' as const, label: '템플릿', icon: Layout }] : []),
+  ...(ENABLE_TEMPLATE_MENU ? [{ type: 'TEMPLATE' as const, label: '템플릿', icon: LayoutTemplate }] : []),
   { type: 'IMAGE', label: '이미지', icon: Image },
-  { type: 'TEXT', label: '텍스트', icon: TextT },
-  // { type: 'SHAPE', label: '요소', icon: SquaresFour },
+  { type: 'TEXT', label: '텍스트', icon: Type },
+  // { type: 'SHAPE', label: '요소', icon: Shapes },
   { type: 'BACKGROUND', label: '배경', icon: PaintBucket },
-  ...(ENABLE_FRAME_MENU ? [{ type: 'FRAME' as const, label: '프레임', icon: FrameCorners }] : []),
+  ...(ENABLE_FRAME_MENU ? [{ type: 'FRAME' as const, label: '프레임', icon: Frame }] : []),
   ...(ENABLE_SMART_CODE_MENU ? [{ type: 'SMART_CODE' as const, label: 'QR/바코드', icon: QrCode }] : []),
   // EDIT menu uses ImageProcessingPlugin for some features
-  ...(ENABLE_IMAGE_PROCESSING ? [{ type: 'EDIT' as const, label: '편집도구', icon: PencilSimple }] : []),
+  ...(ENABLE_IMAGE_PROCESSING ? [{ type: 'EDIT' as const, label: '편집도구', icon: Pencil }] : []),
 ]
 
 interface ToolBarProps {
@@ -68,7 +68,7 @@ export default function ToolBar({ horizontal = false }: ToolBarProps) {
     const uploadMenu: AppMenu = {
       type: 'upload',
       label: '업로드',
-      icon: UploadSimple,
+      icon: Upload,
       onTap: async () => {
         if (!ready || !canvas) return
 

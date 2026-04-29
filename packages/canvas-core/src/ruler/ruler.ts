@@ -254,11 +254,18 @@ class CanvasRuler {
 
     this._options.enabled = false
     this._isGuidelineDragging = false // 상태 초기화
-    
+
     if (this._animationFrameId) {
       cancelAnimationFrame(this._animationFrameId)
       this._animationFrameId = null
     }
+
+    // 룰러 끄기: 별도 ruler 캔버스에 그려진 픽셀을 즉시 지워야 시각적으로 사라짐
+    // (이전엔 이벤트 리스너만 해제해서 화면에 잔상 남는 버그)
+    if (this._rulerCtx && this._rulerCanvas) {
+      this._rulerCtx.clearRect(0, 0, this._rulerCanvas.width, this._rulerCanvas.height)
+    }
+    this._lastRenderState = ''
   }
 
   private scheduleRender() {
