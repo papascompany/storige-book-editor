@@ -125,6 +125,15 @@ export class CreateSynthesisJobDto {
   @IsOptional()
   @IsIn(['merged', 'separate'])
   outputFormat?: 'merged' | 'separate';
+
+  @ApiPropertyOptional({
+    enum: ['perfect', 'saddle', 'hardcover'],
+    default: 'perfect',
+    description: '제본 방식 (saddle: 중철 — 표지 펼침면 2-up 자동 합성)',
+  })
+  @IsOptional()
+  @IsIn(['perfect', 'saddle', 'hardcover'])
+  bindingType?: 'perfect' | 'saddle' | 'hardcover';
 }
 
 export class UpdateJobStatusDto {
