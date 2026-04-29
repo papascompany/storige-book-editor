@@ -28,6 +28,7 @@ import {
 } from '@ant-design/icons';
 import { EditStatus, TemplateType } from '@storige/types';
 import { reviewsApi } from '../../api/reviews';
+import { useAuthStore } from '../../stores/authStore';
 
 const { Title, Text, Paragraph } = Typography;
 const { TextArea } = Input;
@@ -57,6 +58,12 @@ export const ReviewDetail = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
+  // 현재 로그인한 admin 사용자 — 승인/반려 시 누가 했는지 기록.
+  // 옛 코드는 'admin' 문자열을 하드코딩해서 모든 승인이 같은 사용자로
+  // 기록됐음. 이제 실제 로그인한 사용자 id 사용.
+  const currentUser = useAuthStore((s) => s.user);
+  const reviewerId = currentUser?.id ?? 'admin';
+
   const [rejectModalOpen, setRejectModalOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
   const [previewImage, setPreviewImage] = useState<string | null>(null);
@@ -81,7 +88,7 @@ export const ReviewDetail = () => {
       reviewsApi.changeStatus(
         id!,
         { status: EditStatus.SUBMITTED },
-        'admin' // TODO: get from auth
+        reviewerId
       ),
     onSuccess: () => {
       message.success('승인되었습니다.');
@@ -98,7 +105,7 @@ export const ReviewDetail = () => {
       reviewsApi.changeStatus(
         id!,
         { status: EditStatus.DRAFT, comment: rejectReason },
-        'admin' // TODO: get from auth
+        reviewerId
       ),
     onSuccess: () => {
       message.success('반려되었습니다.');
