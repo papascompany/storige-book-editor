@@ -60,21 +60,65 @@ export const PageThumbnail = memo(function PageThumbnail({
     }
   }, [canvas])
 
+  // PDF 시안 매칭 (cover.md §5.4):
+  //   - 표지 카드는 둥근 그레이 박스 외곽 (라벨은 카드 외부 하단)
+  //   - 내지 카드는 흰 배경 + 카드 내부 하단 라벨 (기존 유지)
+  //   - 활성 카드는 editor-accent 강조 (브랜드 일관성, 기존 violet 대체)
+  if (isCover) {
+    return (
+      <button
+        onClick={onClick}
+        title={label}
+        className={cn(
+          'group flex-shrink-0 flex flex-col items-center gap-1 transition-all',
+          orientation === 'vertical' ? 'w-[88px]' : 'w-[88px]'
+        )}
+      >
+        <div
+          className={cn(
+            'relative w-full overflow-hidden rounded-lg bg-gray-100 border-2 transition-colors',
+            orientation === 'vertical' ? 'h-[64px]' : 'h-[64px]',
+            active
+              ? 'border-editor-accent ring-2 ring-editor-accent/30 shadow-md bg-white'
+              : 'border-gray-200 hover:border-gray-400 hover:bg-white'
+          )}
+        >
+          {dataUrl ? (
+            <img
+              src={dataUrl}
+              alt={label}
+              className="w-full h-full object-contain"
+              draggable={false}
+            />
+          ) : (
+            <div className="w-full h-full" />
+          )}
+        </div>
+        <span
+          className={cn(
+            'text-[10px] font-medium leading-none truncate w-full text-center',
+            active ? 'text-editor-accent font-semibold' : 'text-gray-600'
+          )}
+        >
+          {label}
+        </span>
+      </button>
+    )
+  }
+
+  // 내지 카드 — 기존 디자인 유지 + 활성 강조만 editor-accent로 통일
   return (
     <button
       onClick={onClick}
       title={label}
       className={cn(
         'group relative flex-shrink-0 rounded-md overflow-hidden bg-white border-2 transition-all',
-        orientation === 'vertical' ? 'w-[88px] h-[60px]' : 'w-[104px] h-[72px]',
+        orientation === 'vertical' ? 'w-[88px] h-[60px]' : 'w-[88px] h-[72px]',
         active
-          ? 'border-violet-500 ring-2 ring-violet-200 shadow-md'
-          : isCover
-            ? 'border-amber-200 hover:border-amber-400'
-            : 'border-gray-200 hover:border-gray-400'
+          ? 'border-editor-accent ring-2 ring-editor-accent/30 shadow-md'
+          : 'border-gray-200 hover:border-gray-400'
       )}
     >
-      {/* 썸네일 이미지 */}
       {dataUrl ? (
         <img
           src={dataUrl}
@@ -85,25 +129,14 @@ export const PageThumbnail = memo(function PageThumbnail({
       ) : (
         <div className="w-full h-full bg-gradient-to-br from-gray-50 to-gray-100" />
       )}
-
-      {/* 표지 배지 (좌상단) */}
-      {isCover && (
-        <span className="absolute top-0.5 left-0.5 px-1 py-px text-[9px] font-bold rounded bg-amber-200 text-amber-900">
-          {label.includes('표지') ? '표지' : label}
-        </span>
-      )}
-
-      {/* 라벨 (하단) — 활성 시 violet, 표지 시 표시 안 함(이미 배지) */}
-      {!isCover && (
-        <span
-          className={cn(
-            'absolute bottom-0 left-0 right-0 text-[10px] font-semibold py-px px-1 text-center',
-            active ? 'bg-violet-100/95 text-violet-700' : 'bg-white/85 text-gray-700'
-          )}
-        >
-          {label}
-        </span>
-      )}
+      <span
+        className={cn(
+          'absolute bottom-0 left-0 right-0 text-[10px] font-semibold py-px px-1 text-center',
+          active ? 'bg-editor-accent/10 text-editor-accent' : 'bg-white/85 text-gray-700'
+        )}
+      >
+        {label}
+      </span>
     </button>
   )
 })
