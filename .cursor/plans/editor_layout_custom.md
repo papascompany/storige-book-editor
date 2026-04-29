@@ -1,6 +1,6 @@
 # Storige Editor — 레이아웃 / 디자인 커스터마이징 가이드
 
-> 2026-04-29 작성. 본 문서는 에디터(`apps/editor`)의 UI/UX 구조, 디자인 토큰,
+> 2026-04-29 작성, 2026-04-30 갱신. 본 문서는 에디터(`apps/editor`)의 UI/UX 구조, 디자인 토큰,
 > 최근 커스터마이징 변경, 그리고 후속 작업을 위한 가이드라인을 정리한다.
 >
 > 참고 문서:
@@ -52,6 +52,9 @@
 :root {
   /* bookmoa green theme */
   --color-primary:                #7fbf34;  /* 브랜드 녹색 (CTA, 강조) */
+  --color-primary-rgb:            127 191 52;  /* triplet — rgb(... / <alpha>) 패턴용 (2026-04-30) */
+  --color-primary-darker:         #6ba82d;  /* hover/active 한 단계 진한 톤 (2026-04-30) */
+  --color-primary-darker-rgb:     107 168 45;
   --color-surface-tint:           #7fbf34;
   --color-on-primary:             rgb(255 255 255);
   --color-primary-container:      #e8f5d4;
@@ -82,12 +85,14 @@
 ```
 
 **Tailwind 매핑** (`apps/editor/tailwind.config.js`):
-- `bg-editor-accent` → `--color-primary` (#7fbf34)
+- `bg-editor-accent` → `rgb(var(--color-primary-rgb) / <alpha-value>)` — opacity modifier 지원
+- `bg-editor-accent-hover` → `rgb(var(--color-primary-darker-rgb) / <alpha-value>)` — hover 한 단계 진함
+- `bg-primary` (shadcn/ui) → `rgb(var(--color-primary-rgb) / <alpha-value>)`
 - `bg-editor-panel` → 흰색
 - `text-editor-text-muted` → 회색계
 - 그 외 모든 `editor-*` 클래스가 CSS 변수로 매핑됨
 
-⚠️ **알려진 한계**: Tailwind opacity modifier (`bg-editor-accent/10`)는 CSS 변수 색상에서 작동하지 않음. 투명도가 필요하면 arbitrary 값(`bg-[rgba(127,191,52,0.12)]`) 사용. 후속 개선 시 Tailwind config의 RGB-triplet 변환 + `rgb(var(--color-primary-rgb) / <alpha>)` 패턴 도입 가능.
+✅ **opacity modifier 지원 (2026-04-30)**: `bg-editor-accent/10`, `text-editor-accent/50`, `ring-editor-accent/30` 등 Tailwind opacity 표기법을 그대로 사용 가능. CSS 변수에 RGB triplet (`127 191 52`)을 함께 정의하고 Tailwind에서 `<alpha-value>` 자리표시자 패턴을 채용한 결과. arbitrary 값 (`bg-[rgba(127,191,52,0.12)]`) 더는 사용하지 말 것.
 
 ### 2.2 폰트
 
@@ -183,7 +188,7 @@ import {
 **파일**: `apps/editor/src/components/editor/ToolBar.tsx`
 
 ```
-업로드 | 모양컷 | 템플릿 | 이미지 | 텍스트 | 배경 | 프레임 | QR/바코드 | 편집도구
+업로드 | 모양컷 | 템플릿 | 이미지 | 텍스트 | 요소 | 배경 | 프레임 | QR/바코드 | 편집도구
 ```
 
 **구성**:
@@ -206,22 +211,28 @@ import {
 **파일**: `apps/editor/src/components/editor/FeatureSidebar.tsx`
 
 ```
-┌─────────────────┐
-│ 텍스트       ✕ │  ← 헤더 (배경 gray-50/50)
+┌─────────────────┐ ┊ ← 우측 가장자리 4px 드래그 핸들 (240~480px)
+│ 텍스트   ≪  ✕ │  ← 헤더 (배경 gray-50/50, 접기/닫기 버튼)
 ├─────────────────┤
 │  [+ 텍스트 추가]│  ← Primary CTA (녹색)
 ├─────────────────┤
 │ ▽ 추천 콘텐츠   │  ← AppSection
 │   ...           │
-├─────────────────┤
-│ ▽ 다른 섹션    │
 └─────────────────┘
 ```
 
-- 폭 고정 `w-[300px]` (min/max 동일)
+- **폭 가변** (2026-04-30): `useUiPrefStore.sidebarWidth` (240~480px, 기본 300, localStorage 영속)
+- **드래그 리사이즈**: 우측 4px 핸들 (`role="separator"`), invisible 12px hit area, hover 시 `bg-editor-accent/30`
+- **collapse 토글**: `ChevronsLeft` 아이콘 클릭 → 28px 폭으로 접힘 (펼침 버튼만 노출, `ChevronsRight`)
+- 닫기(X) 시 `setSidebarCollapsed(false)` 자동 호출 — 다음 도구 열 때 펼친 상태로 시작
 - `bg-white border-r border-gray-200 shadow-sm`
-- 헤더: `border-b border-gray-100 bg-gray-50/50`, X 닫기 (gray-400 → gray-700)
+- 헤더: `border-b border-gray-100 bg-gray-50/50`, 접기/닫기 (gray-400 → gray-700)
 - 콘텐츠는 `overflow-y-auto`
+
+**중요 구현 디테일**:
+- 드래그 중에는 `draftWidth` local state로만 폭을 갱신 → mouseup 시점에만 `setSidebarWidth()` 호출 (zustand persist 과호출 방지)
+- 드래그 중에는 `transition` 클래스 제거 (즉시 반응) / 토글 시에만 150ms 트랜지션
+- 캔버스 폭 동기화는 `EditorView`의 `ResizeObserver`가 `canvasContainerRef`를 관찰하므로 자동 처리
 
 **중요 컨벤션**:
 - 각 `tools/App*.tsx`는 **자체 title 표시 안 함** (FeatureSidebar 헤더가 라벨 표시)
@@ -330,12 +341,24 @@ interface UiPrefState {
   showRuler: boolean                              // 룰러 표시 (기본 false)
   setShowRuler: (show: boolean) => void
   toggleRuler: () => void
+
+  // 2026-04-30 추가: FeatureSidebar 폭 / collapse
+  sidebarWidth: number                            // 240 ~ 480 clamp (기본 300)
+  setSidebarWidth: (w: number) => void
+  sidebarCollapsed: boolean                       // 접힘 여부 (기본 false)
+  setSidebarCollapsed: (v: boolean) => void
+  toggleSidebarCollapsed: () => void
 }
+
+export const SIDEBAR_WIDTH_MIN = 240
+export const SIDEBAR_WIDTH_MAX = 480
+export const SIDEBAR_WIDTH_DEFAULT = 300
 ```
 
 - localStorage key: `storige-ui-pref`
-- version: 2 (showRuler 추가 마이그레이션)
+- version: **3** (sidebarWidth/sidebarCollapsed 추가 마이그레이션)
 - 새 사용자 선호 추가 시 version 증가 + persist 마이그레이션 처리
+- `sidebarWidth`는 setter에서 자동 clamp (240~480)되므로 호출처에서 별도 검증 불필요
 
 ---
 
@@ -371,7 +394,30 @@ useEffect(() => {
 
 ---
 
-## 6. 2026-04-29 세션 변경 이력
+## 6. 세션 변경 이력
+
+### 6.0 2026-04-30 세션 (디자인 토큰 / 사이드바 가변 / 요소 메뉴 복원)
+
+| 항목 | 영향 |
+|---|---|
+| RGB triplet 도입 | `--color-primary-rgb`, `--color-primary-darker-rgb` 추가 + Tailwind `<alpha-value>` 패턴 |
+| `editor-accent-hover` 분리 | hover 한 단계 진한 톤 (`#6ba82d`) — 기존엔 hover 차이 없음 |
+| arbitrary RGB 정리 | `EditorHeader` 룰러 토글의 `bg-[rgba(127,191,52,0.12)]` → `bg-editor-accent/10` |
+| 사이드바 가변 폭 | `useUiPrefStore.sidebarWidth` (240~480, 기본 300) — localStorage version 3 |
+| 사이드바 collapse | `ChevronsLeft/Right` 토글, 접힘 28px |
+| 드래그 리사이즈 | 우측 4px 핸들, `draftWidth` local state로 persist 과호출 방지 |
+| **요소(클립아트) 메뉴 복원** | `ToolBar.tsx`에서 주석처리된 SHAPE 메뉴 복원 + `AppElement.tsx` 실제 API 로드 구현 |
+
+**검증**: opacity modifier (`bg-editor-accent/10`)가 정확히 `rgba(127,191,52,0.1)`로 렌더링됨. localStorage version 2 → 3 마이그레이션 정상. 드래그 300→400px 시 캔버스 자동 재정렬. "요소" 메뉴 노출 및 클립아트 그리드 렌더링 확인.
+
+**요소 메뉴 복원 상세**:
+- 원인: `ToolBar.tsx`의 `ALL_MENUS`에서 SHAPE 메뉴가 주석처리되어 있었음
+- `AppElement.tsx`가 `useState([])` 플레이스홀더로만 구성되어 실제 콘텐츠가 없었음
+- 복원: `{ type: 'SHAPE', label: '요소', icon: Shapes }` 주석 해제
+- 기능 구현: `contentsApi.getElements()` REST API 호출 + 디바운스 검색 + 그리드 렌더링 (`AppFrame.tsx` 패턴 참고)
+- 관리자 페이지의 "클립아트 관리"에서 등록한 리소스가 `isCustomer` 권한으로 표시됨
+
+### 6.1 2026-04-29 세션
 
 총 8건 커밋 머지 + Vercel 배포 (`editor.papascompany.co.kr`).
 
@@ -386,7 +432,7 @@ useEffect(() => {
 | `ec03fa9` | tools/App polish + FeatureSidebar 다듬기 |
 | `1b162b8` | 문서 갱신 |
 
-### 6.1 디자인 변경 요약
+### 6.2 2026-04-29 디자인 변경 요약
 
 **헤더**
 - 보라 그라데이션 (`from-violet-200 to-white`) → 화이트 + `border-b gray-200 + shadow-sm`
@@ -469,13 +515,16 @@ import { ChevronDown as CaretDown } from 'lucide-react'
 import { CaretDown } from '@phosphor-icons/react'
 ```
 
-### 7.4 색상 사용
+### 7.4 색상 사용 (2026-04-30 갱신)
 
 ```tsx
-// ✅ 브랜드 색 — 디자인 토큰
+// ✅ 브랜드 색 — 디자인 토큰 (opacity modifier 모두 지원)
 className="bg-editor-accent text-white"           // 솔리드 CTA
-className="text-[#7fbf34]"                        // 브랜드 텍스트 (CSS 변수 opacity 미지원 시)
-className="bg-[rgba(127,191,52,0.12)]"            // 브랜드 투명도 (arbitrary)
+className="bg-editor-accent/10 text-editor-accent" // 10% 배경 + 솔리드 텍스트
+className="bg-editor-accent/20"                   // 20% 배경 (hover 등)
+className="ring-editor-accent/50"                 // 50% 링
+className="hover:bg-editor-accent-hover"          // 한 단계 진한 hover (#6ba82d)
+className="text-editor-accent"                    // 솔리드 텍스트
 
 // ✅ 그레이 스케일 — Tailwind preset
 className="text-gray-400 text-xs"                 // muted
@@ -483,8 +532,9 @@ className="text-gray-700 font-semibold"           // 본문
 className="border-gray-100"                       // 가벼운 구분선
 className="border-gray-200 shadow-sm"             // 표준 보더
 
-// ❌ 사용 자제
-className="bg-editor-accent/10"                   // CSS 변수 opacity 미지원 (회색으로 표시됨)
+// ❌ 더는 사용 금지 (arbitrary RGB)
+className="bg-[rgba(127,191,52,0.12)]"            // → bg-editor-accent/10
+className="text-[#7fbf34]"                        // → text-editor-accent
 ```
 
 ### 7.5 새 사용자 선호 추가
@@ -560,21 +610,31 @@ rm -rf apps/editor/node_modules/.vite
 
 ## 8. 알려진 한계 / 후속 작업 후보
 
-### 8.1 즉시 처리 가능
-- **Tailwind opacity modifier** — `bg-editor-accent/10` 미작동. 후속 개선 시 RGB-triplet (`--color-primary-rgb: 127 191 52`) 도입 + Tailwind config의 `rgb(var(--color-primary-rgb) / <alpha-value>)` 패턴
-- **사이드바 너비** — 300px 고정. 사용자 드래그 리사이즈 또는 collapse 토글 가능
-- **편집완료 hover 색상** — `bg-editor-accent-hover`가 `--color-surface-tint` (= primary와 동일)이라 hover 차이 없음. `--color-primary-darker: #6ba82d` 정의 필요
+### 8.0 완료 (2026-04-30)
+- ✅ **Tailwind opacity modifier 지원** — RGB-triplet (`--color-primary-rgb`) + `<alpha-value>` 패턴 적용
+- ✅ **편집완료 hover 색상 분리** — `--color-primary-darker: #6ba82d` 신규 + `editor-accent-hover` 매핑
+- ✅ **사이드바 너비 가변** — 240~480px 드래그 리사이즈 + collapse 토글, localStorage 영속
+- ✅ **요소(클립아트) 메뉴 복원** — ToolBar SHAPE 메뉴 주석 해제 + AppElement.tsx REST API 로드 구현
 
-### 8.2 중간 작업 (1-3시간)
-- **D2-NEW** — Admin에서 메뉴 아이콘 PNG 업로드 시스템 (`agents/10-menu-icon-asset-system.md`)
+> 후속 작업 §8.2의 **D2-NEW** (메뉴 아이콘 PNG 업로드)는 2026-04-30 개발 계획에서 **취소**됨.
+
+### 8.1 즉시 처리 가능 (1시간 이내)
+- **사이즈 pill 인터랙티브화** — 헤더 중앙 사이즈 표시(`100 × 100 mm`)를 클릭 가능 dropdown으로 전환 → 자주 쓰는 프리셋(A4, B5, 정사각 등) + 사용자 입력
+- **Undo/Redo disable 로직** — `HistoryPlugin`에 `canUndo()/canRedo()` 노출 + EditorHeader 버튼 `disabled` 바인딩 (현재는 항상 활성)
+- **사이드바 collapse 단축키** — `[`, `]` 또는 `Cmd+\`로 토글 (KeyboardPlugin에 등록)
+- **편집완료 hover 검증** — 빌드 후 운영 배포 환경에서 실제 hover 색상이 `#6ba82d`로 변하는지 시각 확인
+
+### 8.2 중간 작업 (1~3시간)
 - **D5** — 표지 편집 모드별 view 분기 (펼침면/분할/날개 케이스, `agents/12-cover-edit-modes.md`)
-- **사이즈 pill 인터랙티브화** — 클릭 시 사이즈 변경 dropdown
-- **Undo/Redo disable 로직** — `HistoryPlugin.canUndo()` / `canRedo()` 노출 후 버튼 disabled 처리
+- **AppSection 외부 제어 통일** — 각 도구 패널의 섹션이 어느 것이 펼쳐졌는지 store 영속 (`useUiPrefStore.expandedSections: Record<string, boolean>`) → 새로고침 후에도 사용자가 마지막에 펼친 섹션 유지
+- **드래그 핸들 더블 클릭 → 기본값 복원** — 사이드바 폭을 정확히 300으로 되돌리는 일반적 UX 패턴
+- **lucide tree-shaking 점검** — 현재 45개 파일에서 import. 빌드 결과 번들에서 미사용 아이콘 제거되는지 `vite build --mode analyze` 확인
 
 ### 8.3 대형 작업 (1일+)
-- **반응형** — 모바일(≤768) 슬라이드아웃 사이드바, 태블릿(769-1024) 헤더 wrap, 데스크톱(1025+) 풀 레이아웃
-- **D2-NEW + 콘텐츠 패널 그리드** — 미리캔버스 풍 카테고리 탭 + 그리드 + 크라운 아이콘 등 본격 카탈로그 UI
+- **반응형 레이아웃** — 모바일(≤768) 슬라이드아웃 사이드바, 태블릿(769-1024) 헤더 wrap, 데스크톱(1025+) 풀 레이아웃. 사이드바 가변 폭 도입으로 모바일 대응 시 `min-width` 제약을 깰 수 있는 분기 처리 필요
+- **콘텐츠 패널 그리드 카탈로그** — 미리캔버스 풍 카테고리 탭 + 그리드 + 크라운 아이콘 등 본격 카탈로그 UI (D2-NEW 취소됨에 따라 별도 트랙으로 검토)
 - **AI 패널 정합** — 현재는 ToolBar에 없음. AI 도구 메뉴 추가 + 패널 통합
+- **다크 모드** — `:root` 외 `[data-theme="dark"]` 셀렉터로 전체 토큰 재정의. RGB triplet 도입했으니 토큰 셋만 갈아끼면 opacity 변형도 자동 작동
 
 ---
 
@@ -607,6 +667,20 @@ pnpm install --filter "@storige/editor..." --prefer-offline --ignore-scripts
 
 ### 9.6 로컬에서 Storige API 호출 실패 (FontManager 등)
 → 로컬 dev는 `https://api.papascompany.co.kr` (운영) 호출. 인증 토큰 없으면 일부 API 실패 (FontManager/EditSession 등). 콘솔 에러 무시 가능, 시각/동작 검증에는 영향 없음.
+
+### 9.7 사이드바 폭이 저장되지 않음 / 이상한 값으로 복원
+→ localStorage `storige-ui-pref` 의 `version: 3` 미만이면 마이그레이션 진입. 저장 폭이 240~480 범위를 벗어나면 setter에서 자동 clamp.
+```js
+// 강제 초기화
+localStorage.removeItem('storige-ui-pref')
+window.location.reload()
+```
+
+### 9.8 드래그 중 사이드바가 깜빡임
+→ `transition` 클래스가 드래그 중에도 적용되면 발생. `FeatureSidebar.tsx`에서 `draftWidth == null`일 때만 transition 클래스를 부여하는지 확인.
+
+### 9.9 `bg-editor-accent/N` opacity가 회색으로 표시
+→ Tailwind config에서 RGB triplet 패턴이 누락된 상태. `tailwind.config.js`의 `editor.accent` 정의가 `'rgb(var(--color-primary-rgb) / <alpha-value>)'` 인지 확인. `--color-primary-rgb: 127 191 52` (공백 구분, 콤마 X) 도 함께 확인.
 
 ---
 

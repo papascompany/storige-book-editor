@@ -419,7 +419,7 @@ export default function EditorHeader({
                 onClick={toggleRuler}
                 aria-label={showRuler ? '룰러 끄기' : '룰러 켜기'}
                 aria-pressed={showRuler}
-                className={`h-9 w-9 ${showRuler ? 'bg-[rgba(127,191,52,0.12)] text-[#7fbf34] hover:bg-[rgba(127,191,52,0.18)] hover:text-[#7fbf34]' : 'text-gray-600 hover:bg-gray-100'}`}
+                className={`h-9 w-9 ${showRuler ? 'bg-editor-accent/10 text-editor-accent hover:bg-editor-accent/20 hover:text-editor-accent' : 'text-gray-600 hover:bg-gray-100'}`}
               >
                 <Ruler className="h-5 w-5" />
               </Button>
