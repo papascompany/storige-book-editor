@@ -1,33 +1,13 @@
-import { defineConfig, loadEnv, Plugin } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import { visualizer } from 'rollup-plugin-visualizer'
 import path from 'path'
 
-// @pf/color-runtime optional dependency를 스텁으로 대체하는 플러그인
-function colorRuntimeStubPlugin(): Plugin {
-  const virtualModuleId = '@pf/color-runtime'
-  const resolvedVirtualModuleId = '\0' + virtualModuleId
-  const stubCode = `
-    export const cmykToRgb = async () => { throw new Error('not available') }
-    export const rgbToCmyk = async () => { throw new Error('not available') }
-    export const transformImageDataToProfile = async () => { throw new Error('not available') }
-    export default { cmykToRgb, rgbToCmyk, transformImageDataToProfile }
-  `
-  return {
-    name: 'color-runtime-stub',
-    enforce: 'pre',
-    resolveId(id, importer, options) {
-      if (id === virtualModuleId) {
-        return { id: resolvedVirtualModuleId, moduleSideEffects: false }
-      }
-    },
-    load(id) {
-      if (id === resolvedVirtualModuleId) {
-        return stubCode
-      }
-    },
-  }
-}
+// 이전 colorRuntimeStubPlugin은 제거됨 (2026-04-29).
+// 이유: @pf/color-runtime import가 레포 전체에 0건이고 package.json
+// 의존성도 없으며, canvas-core/utils/colors.ts의 cmykToRgb/rgbToCmyk가
+// 이미 내부적으로 legacy 알고리즘만 사용하도록 정리되어 있어 stub이
+// 작동할 일이 없는 dead code였음. ICC 정확도가 필요해지면 보류 목록 참조.
 
 // Check if building as library (embed mode)
 // Note: process.env is available in Node.js context (vite.config.ts runs in Node)
@@ -44,7 +24,6 @@ export default defineConfig(({ mode }) => {
   return {
     base,
     plugins: [
-    colorRuntimeStubPlugin(),
     react(),
     visualizer({
       filename: 'dist/stats.html',
@@ -139,7 +118,4 @@ export default defineConfig(({ mode }) => {
           },
         },
       },
-  optimizeDeps: {
-    exclude: ['@pf/color-runtime'],
-  },
 }})

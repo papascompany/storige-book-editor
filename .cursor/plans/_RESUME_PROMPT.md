@@ -130,6 +130,8 @@
 - ⏸ **A-3 Sentry 에러 추적** — `@sentry/node`로 NestJS api+worker unhandled exception 자동 추적. 무료 티어(5k events/mo) 또는 GlitchTip self-host 옵션
 - ⏸ **A-4 외부 Uptime Monitor** — UptimeRobot 등으로 `/api/health` 1~5분 간격 외부 점검 (VPS 자체 장애 시 알림 수신용, 자체 monitor.sh와 보완 관계)
 - ⏸ **Discord webhook 알림** — 자체 monitor.sh의 알림을 Discord 채널로 받기 (사용자가 webhook URL 발급 후 .env에 `DISCORD_WEBHOOK_URL` 추가하면 즉시 활성)
+- ⏸ **GraphQL TODO 폐기** — `apps/editor/src/hooks/useEditorContents.ts:824` `loadContentEditor`(EditorView.tsx의 `'content-edit'` 모드 전용, bookmoa 운영 흐름과 무관 — embed.tsx는 `loadTemplateSetEditor`만 사용) + `apps/editor/src/generated/graphql.ts` stub 파일. 서비스 운영 후 문제 없으면 제거. 코드 grep으로 호출자 0건 확인됨.
+- ⏸ **CMYK ICC 도입** — `@pf/color-runtime` 같은 외부 라이브러리로 CMYK↔RGB 변환을 ICC 프로파일 기반으로 정확화. 인쇄 정확도가 운영 이슈가 되면 그때 도입. 현재는 legacy 단순 수식 변환으로 동작.
 - ⬜ Day 5 PHP staging 회귀 4종
 - ⬜ Day 6 운영 컷오버
 - ⬜ Week 2+ P2 썸네일, P3 안전장치, P6/P7

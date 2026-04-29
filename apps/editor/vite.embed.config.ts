@@ -2,31 +2,9 @@ import { defineConfig, Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
 
-// @pf/color-runtime optional dependency를 스텁으로 대체하는 플러그인
-function colorRuntimeStubPlugin(): Plugin {
-  const virtualModuleId = '@pf/color-runtime'
-  const resolvedVirtualModuleId = '\0' + virtualModuleId
-  const stubCode = `
-    export const cmykToRgb = async () => { throw new Error('not available') }
-    export const rgbToCmyk = async () => { throw new Error('not available') }
-    export const transformImageDataToProfile = async () => { throw new Error('not available') }
-    export default { cmykToRgb, rgbToCmyk, transformImageDataToProfile }
-  `
-  return {
-    name: 'color-runtime-stub',
-    enforce: 'pre',
-    resolveId(id, importer, options) {
-      if (id === virtualModuleId) {
-        return { id: resolvedVirtualModuleId, moduleSideEffects: false }
-      }
-    },
-    load(id) {
-      if (id === resolvedVirtualModuleId) {
-        return stubCode
-      }
-    },
-  }
-}
+// 이전 colorRuntimeStubPlugin은 제거됨 (2026-04-29).
+// @pf/color-runtime import 0건 + canvas-core가 이미 legacy 알고리즘만 사용해
+// dead code였음. ICC 도입은 보류 목록 참조.
 
 // @imgly/background-removal을 스텁으로 대체하는 플러그인 (WASM 모델 포함하여 큰 사이즈)
 function backgroundRemovalStubPlugin(): Plugin {
@@ -108,7 +86,7 @@ function opencvStubPlugin(): Plugin {
 
 // Embed/Library build configuration for PHP integration
 export default defineConfig({
-  plugins: [colorRuntimeStubPlugin(), backgroundRemovalStubPlugin(), opencvStubPlugin(), react()],
+  plugins: [backgroundRemovalStubPlugin(), opencvStubPlugin(), react()],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
@@ -152,8 +130,5 @@ export default defineConfig({
     minify: 'esbuild',
     // Increase chunk size warning limit for single bundle
     chunkSizeWarningLimit: 20000,
-  },
-  optimizeDeps: {
-    exclude: ['@pf/color-runtime'],
   },
 })
