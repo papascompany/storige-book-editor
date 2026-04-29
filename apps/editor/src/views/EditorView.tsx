@@ -3,8 +3,10 @@ import { useSearchParams } from 'react-router-dom'
 import { useAuthStore, useIsCustomer } from '@/stores/useAuthStore'
 import { useAppStore } from '@/stores/useAppStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
+import { useUiPrefStore } from '@/stores/useUiPrefStore'
 import { useEditorContents } from '@/hooks/useEditorContents'
 import { createCanvas } from '@/utils/createCanvas'
+import type { RulerPlugin } from '@storige/canvas-core'
 import ToolBar from '@/components/editor/ToolBar'
 import FeatureSidebar from '@/components/editor/FeatureSidebar'
 import ControlBar from '@/components/editor/ControlBar'
@@ -81,6 +83,7 @@ export default function EditorView() {
     isSpreadMode,
   } = useAppStore()
   const { getUseCaseFromParams } = useSettingsStore()
+  const showRuler = useUiPrefStore((s) => s.showRuler)
 
   // Editor contents hook
   const {
@@ -438,6 +441,26 @@ export default function EditorView() {
     // ref를 통해 최신 함수 호출
     loadContentRef.current?.(params)
   }, [productId, contentId, contentType, editMode, size, templateSetId, pageCount, paperType, bindingType, ready])
+
+  // 룰러 표시 토글 — useUiPrefStore.showRuler 변화에 반응해 모든 캔버스의 RulerPlugin enable/disable
+  useEffect(() => {
+    if (!ready) return
+    const editors = useAppStore.getState().allEditors
+    editors.forEach((ed) => {
+      if (!ed) return
+      try {
+        const ruler = ed.getPlugin<RulerPlugin>('RulerPlugin')
+        if (!ruler) return
+        if (showRuler) {
+          ruler.enable()
+        } else {
+          ruler.rulerDisable()
+        }
+      } catch (e) {
+        console.warn('[EditorView] ruler toggle error:', e)
+      }
+    })
+  }, [showRuler, ready])
 
   // Toggle side panel
   const toggleSidePanel = () => {

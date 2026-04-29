@@ -3,7 +3,7 @@ import { useAppStore } from '@/stores/useAppStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useIsAdmin } from '@/stores/useAuthStore'
 import { useWorkSave } from '@/hooks/useWorkSave'
-import { ServicePlugin, PreviewPlugin } from '@storige/canvas-core'
+import { ServicePlugin, PreviewPlugin, HistoryPlugin } from '@storige/canvas-core'
 import { Button } from '@/components/ui/button'
 import {
   Tooltip,
@@ -12,14 +12,13 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import {
-  Stack,
   Question,
   FloppyDisk,
-  DownloadSimple,
-  UploadSimple,
-  Monitor,
   Check,
   Cube,
+  Ruler,
+  ArrowUUpLeft,
+  ArrowUUpRight,
 } from '@phosphor-icons/react'
 import { AutoSaveIndicator } from './AutoSaveIndicator'
 import { BookMockup3D } from '../Mockup3D/BookMockup3D'
@@ -53,6 +52,9 @@ export default function EditorHeader({
   // 페이지 네비게이션 위치 선호 (auto/right/bottom)
   const pageNavPosition = useUiPrefStore((s) => s.pageNavPosition)
   const setPageNavPosition = useUiPrefStore((s) => s.setPageNavPosition)
+  // 룰러 토글 (기본 OFF, 사용자 선호로 영속)
+  const showRuler = useUiPrefStore((s) => s.showRuler)
+  const toggleRuler = useUiPrefStore((s) => s.toggleRuler)
 
   // Stores
   const { ready, canvas, allCanvas, allEditors, getPlugin, setPage, isSpreadMode } = useAppStore()
@@ -336,152 +338,120 @@ export default function EditorHeader({
     }
   }, [onOpenWorkspace])
 
+  // Undo/Redo (HistoryPlugin)
+  const handleUndo = useCallback(() => {
+    const plugin = getPlugin<HistoryPlugin>('HistoryPlugin')
+    plugin?.undo()
+  }, [getPlugin])
+  const handleRedo = useCallback(() => {
+    const plugin = getPlugin<HistoryPlugin>('HistoryPlugin')
+    plugin?.redo()
+  }, [getPlugin])
+
+  // 작업 사이즈 표시 (mm 단위)
+  const sizeLabel = `${Math.round(size.width)} × ${Math.round(size.height)} mm`
+
   return (
     <TooltipProvider>
-      <nav className="h-12 bg-gradient-to-b from-violet-200 to-white border-b border-b-editor-border flex items-center px-4 z-[100]">
-        {/* 왼쪽: 작업 제목 + 자동저장 상태 */}
-        <div className="flex items-center gap-4">
+      <nav className="h-14 bg-white border-b border-gray-200 shadow-sm flex items-center px-4 z-[100]">
+        {/* 좌측: 로고 + Undo/Redo + 자동저장 인디케이터 */}
+        <div className="flex items-center gap-2">
+          <span className="font-bold text-base tracking-tight text-editor-accent select-none mr-2">
+            Storige
+          </span>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={handleUndo}
+                disabled={!ready}
+                aria-label="실행 취소"
+                className="h-9 w-9 text-gray-600 hover:bg-gray-100"
+              >
+                <ArrowUUpLeft className="h-5 w-5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>실행 취소 (⌘Z)</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={handleRedo}
+                disabled={!ready}
+                aria-label="다시 실행"
+                className="h-9 w-9 text-gray-600 hover:bg-gray-100"
+              >
+                <ArrowUUpRight className="h-5 w-5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>다시 실행 (⌘⇧Z)</TooltipContent>
+          </Tooltip>
+          {/* 자동 저장 상태 (클라우드 인디케이터 역할) */}
+          <AutoSaveIndicator className="hidden sm:flex ml-1" />
+        </div>
+
+        {/* 중앙: 작업명 + 사이즈 표시 */}
+        <div className="flex-1 flex items-center justify-center gap-3">
           <input
             type="text"
             defaultValue={artwork.name || '새로운 작업 1'}
-            placeholder="새로운 작업 1"
-            className="bg-transparent border-none outline-none text-editor-text text-base font-medium w-40 md:w-auto focus:ring-1 focus:ring-editor-accent rounded px-2 py-1"
+            placeholder="제목을 입력해주세요"
+            className="bg-transparent border-none outline-none text-gray-700 text-sm font-medium text-center min-w-[140px] max-w-[280px] focus:ring-1 focus:ring-editor-accent/50 rounded px-2 py-1"
             onBlur={handleNameChange}
             onKeyDown={handleNameChange}
           />
-          {/* 자동 저장 상태 표시 */}
-          <AutoSaveIndicator className="hidden sm:flex" />
+          <span className="hidden md:inline-flex items-center px-2 py-1 text-xs text-gray-500 border border-gray-200 rounded-md bg-gray-50">
+            {sizeLabel}
+          </span>
         </div>
 
-        {/* 오른쪽: 액션 버튼들 */}
-        <div className="ml-auto flex items-center gap-2 md:gap-4">
-          {/* 데스크톱/태블릿 버튼들 */}
-          <div className="hidden md:flex items-center gap-2">
-            {/* 인쇄 미리보기 - 숨김 처리 */}
-            {/* <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant={previewMode ? 'default' : 'ghost'}
-                  size="icon"
-                  onClick={handlePreview}
-                  disabled={!ready}
-                >
-                  <Monitor className="h-5 w-5" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>인쇄 미리보기</TooltipContent>
-            </Tooltip> */}
+        {/* 우측: 보기 옵션 + 불러오기 + 편집완료 + 도움말 */}
+        <div className="flex items-center gap-1 md:gap-2">
+          {/* 룰러 토글 */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={toggleRuler}
+                aria-label={showRuler ? '룰러 끄기' : '룰러 켜기'}
+                aria-pressed={showRuler}
+                className={`h-9 w-9 ${showRuler ? 'bg-[rgba(127,191,52,0.12)] text-[#7fbf34] hover:bg-[rgba(127,191,52,0.18)] hover:text-[#7fbf34]' : 'text-gray-600 hover:bg-gray-100'}`}
+              >
+                <Ruler className="h-5 w-5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>룰러 {showRuler ? '끄기' : '켜기'}</TooltipContent>
+          </Tooltip>
 
-            {/* 3D 미리보기 (스프레드 모드 전용) */}
-            {isSpreadMode && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => setShow3DMockup(true)}
-                    disabled={!ready}
-                  >
-                    <Cube className="h-5 w-5" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>3D 미리보기</TooltipContent>
-              </Tooltip>
-            )}
-
-            {/* PDF 저장 - 숨김 처리 */}
-            {/* <Tooltip>
+          {/* 3D 미리보기 (스프레드 모드 전용) */}
+          {isSpreadMode && (
+            <Tooltip>
               <TooltipTrigger asChild>
                 <Button
                   variant="ghost"
                   size="icon"
-                  onClick={saveAllPagesToSinglePDF}
+                  onClick={() => setShow3DMockup(true)}
                   disabled={!ready}
+                  className="h-9 w-9 text-gray-600 hover:bg-gray-100"
                 >
-                  <DownloadSimple className="h-5 w-5" />
+                  <Cube className="h-5 w-5" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>PDF 저장</TooltipContent>
-            </Tooltip> */}
-
-            {/* 내 작업에 저장 - 숨김 처리 */}
-            {/* <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={isAdmin ? () => handleSaveForAdmin(false) : handleSaveWork}
-                  disabled={!ready || saving}
-                >
-                  {saving ? (
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-editor-text" />
-                  ) : (
-                    <UploadSimple className="h-5 w-5" />
-                  )}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>내 작업에 저장</TooltipContent>
-            </Tooltip> */}
-          </div>
-
-          {/* 구분선 */}
-          <div className="hidden md:block w-px h-6 bg-editor-border" />
-
-          {/* 불러오기 */}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleOpenWorkspace}
-            className="hidden md:flex rounded-full"
-          >
-            <FloppyDisk className="h-4 w-4 mr-2" />
-            불러오기
-          </Button>
-
-          {/* 편집완료 버튼 */}
-          {!isAdmin && (
-            <Button
-              onClick={handleFinish}
-              disabled={!ready || finishing}
-              className="bg-editor-accent hover:bg-editor-accent-hover text-white rounded-full"
-            >
-              {finishing ? (
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
-              ) : (
-                <Check className="h-4 w-4 mr-2" />
-              )}
-              편집완료
-            </Button>
+              <TooltipContent>3D 미리보기</TooltipContent>
+            </Tooltip>
           )}
 
-          {/* 관리자용 편집완료 버튼 */}
-          {isAdmin && (
-            <Button
-              onClick={() => handleSaveForAdmin(true)}
-              disabled={!ready || finishing}
-              className="bg-editor-accent hover:bg-editor-accent-hover text-white rounded-full"
-            >
-              {finishing ? (
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
-              ) : (
-                <Check className="h-4 w-4 mr-2" />
-              )}
-              편집완료
-            </Button>
-          )}
-
-          {/* 구분선 */}
-          <div className="w-px h-6 bg-editor-border" />
-
-          {/* 레이어 패널 토글 - 숨김 처리 */}
-
-          {/* 페이지 네비게이션 위치 선택 */}
+          {/* 페이지 네비 위치 */}
           <Tooltip>
             <TooltipTrigger asChild>
               <select
                 value={pageNavPosition}
                 onChange={(e) => setPageNavPosition(e.target.value as PageNavPosition)}
-                className="hidden md:block text-xs px-2 py-1 rounded-md border border-editor-border bg-white/80 hover:bg-white transition-colors cursor-pointer"
+                className="hidden md:block text-xs px-2 py-1 rounded-md border border-gray-200 bg-white hover:bg-gray-50 transition-colors cursor-pointer text-gray-600"
                 aria-label="페이지 네비 위치"
               >
                 <option value="auto">네비: 자동</option>
@@ -495,18 +465,63 @@ export default function EditorHeader({
           {/* 도움말 */}
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon">
+              <Button variant="ghost" size="icon" className="h-9 w-9 text-gray-600 hover:bg-gray-100">
                 <Question className="h-5 w-5" />
               </Button>
             </TooltipTrigger>
             <TooltipContent>도움말</TooltipContent>
           </Tooltip>
+
+          {/* 구분선 */}
+          <div className="hidden md:block w-px h-6 bg-gray-200 mx-1" />
+
+          {/* 불러오기 */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleOpenWorkspace}
+            className="hidden md:flex rounded-full border-gray-300 text-gray-700 hover:bg-gray-50"
+          >
+            <FloppyDisk className="h-4 w-4 mr-2" />
+            불러오기
+          </Button>
+
+          {/* 편집완료 (고객용) */}
+          {!isAdmin && (
+            <Button
+              onClick={handleFinish}
+              disabled={!ready || finishing}
+              className="bg-editor-accent hover:bg-editor-accent-hover text-white rounded-full shadow-sm"
+            >
+              {finishing ? (
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+              ) : (
+                <Check className="h-4 w-4 mr-2" />
+              )}
+              편집완료
+            </Button>
+          )}
+
+          {/* 편집완료 (관리자용) */}
+          {isAdmin && (
+            <Button
+              onClick={() => handleSaveForAdmin(true)}
+              disabled={!ready || finishing}
+              className="bg-editor-accent hover:bg-editor-accent-hover text-white rounded-full shadow-sm"
+            >
+              {finishing ? (
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+              ) : (
+                <Check className="h-4 w-4 mr-2" />
+              )}
+              편집완료
+            </Button>
+          )}
         </div>
 
-        {/* 모바일 버튼들 */}
+        {/* 모바일 - 편집완료만 */}
         {screenMode === 'mobile' && (
           <div className="flex md:hidden items-center gap-2">
-            {/* 편집완료 */}
             <Button
               variant="ghost"
               size="icon"

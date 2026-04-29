@@ -151,7 +151,13 @@
   - `packages/canvas-core/src/utils/ruler.ts` `drawText` 폰트를 monospace 스택(`ui-monospace, "SFMono-Regular", "Menlo", monospace`)으로 (라벨 정렬 안정화). drawText는 ruler 외 사용처 0건.
   - 영역(safe/bleed/trim) 시각화는 변경 없음 (가이드 §D 명시)
   - canvas-core 타입체크 통과. 빌드는 Vercel editor가 다음 deploy에 반영
-- 🔵 **다음**: 사용자 결정 — D2-NEW 메뉴 아이콘 PNG 업로드 시스템(3시간) 등
+- ✅ **D3 후속 — 룰러 절제 + 토글 + 헤더 미리캔버스 풍** (2026-04-29 사용자 피드백)
+  - **룰러 절제**: D3 변경(`#404040` + monospace)이 너무 도드라진다는 피드백 → 더 옅게: `BACKGROUND_COLOR #FFFFFF`, `TEXT_COLOR #9CA3AF` (gray-400), `BORDER_COLOR #F3F4F6`, `TICK_COLOR #D1D5DB`, `MAJOR_TICK_COLOR #9CA3AF`, `HIGHLIGHT_COLOR #ff2d55 → #7fbf34` (브랜드 녹색). 폰트 monospace → sans-serif 복귀, 폰트 사이즈 10 → 9
+  - **룰러 토글**: 시작 시 자동 enable 제거 → 기본 OFF. `useUiPrefStore.showRuler` (localStorage 영속, `version: 2`로 마이그레이션) + `toggleRuler()`. `EditorView`가 `showRuler` 변화 감지해 모든 캔버스의 `RulerPlugin.enable()/rulerDisable()` 호출. `EditorHeader`에 Ruler 아이콘 버튼 (`aria-pressed`, 활성 시 `bg-[rgba(127,191,52,0.12)] text-[#7fbf34]`)
+  - **헤더 미리캔버스 풍**: 보라 그라데이션 → 화이트 + `border-b gray-200 + shadow-sm`. 좌측 [Storige 로고 + Undo/Redo + AutoSaveIndicator] / 중앙 [작업명 + 사이즈 pill `100 × 100 mm`] / 우측 [룰러 토글 + 페이지 네비 select + 도움말 + 구분선 + 불러오기 + 편집완료 녹색 CTA]. Undo/Redo는 `HistoryPlugin.undo/redo` 연결. 청록 CTA 결정 안 했으나 기존 `bg-editor-accent`가 이미 `--color-primary: #7fbf34`(브랜드 녹색)로 매핑되어 있어 그라데이션 제거만으로 자동 녹색 CTA 적용
+  - **알려진 한계**: `bg-editor-accent/10` 같은 opacity modifier가 CSS 변수 기반 색상에서 작동 안 함 → 토글 활성 색만 arbitrary 값(`bg-[rgba(127,191,52,0.12)]`) 사용. 필요 시 후속으로 tailwind config의 RGB-triplet 변환 + `rgb(var(--color-primary-rgb) / <alpha>)` 패턴 도입
+  - 검증: localhost:3000에서 헤더 화이트/녹색 CTA/룰러 토글 정상 (편집완료 RGB 127,191,52 확인 + showRuler localStorage 영속 + RulerPlugin.enabled 전이 확인)
+- 🔵 **다음**: 사용자 결정 — D2-NEW 메뉴 아이콘 PNG 업로드 시스템(3시간) 등. 미리캔버스 풍 "전체 레이아웃" (좌측 메뉴 카테고리 재편 + 콘텐츠 패널 그리드)은 별도 1일+ 작업
 
 # 보류 목록 (제일 마지막 단계 — 서비스 오픈 후 선택적)
 > 운영 안정화 + 후속 기능 모두 끝난 뒤 마무리로 진행. 서비스 오픈 후 필요 시 선택적으로 도입.

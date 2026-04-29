@@ -4,17 +4,17 @@ export const UNIT_CONVERSIONS = {
   DEFAULT_DPI: 150
 } as const
 
-// D3 ruler palette (Ps/Ai 스타일): 옅은 헤더 + 그레이 80% 눈금
-// 기존 hardcoded 값(`#fff`, `#888`, `#ddd`, `#ff2d55`)을 정렬, 단일 소스화
+// D3 ruler palette: 절제된 톤 (사용자 피드백 — 너무 도드라짐 → 더 옅게)
+// 영역(safe/bleed/trim) 시각화 색상은 별도, 영향 없음
 export const RULER_DEFAULTS = {
   RULE_SIZE: 20,
-  FONT_SIZE: 10,
-  BACKGROUND_COLOR: '#FAFAFA',
-  TEXT_COLOR: '#404040',
-  BORDER_COLOR: '#E5E5E5',
-  HIGHLIGHT_COLOR: '#ff2d55',
-  TICK_COLOR: '#A3A3A3',
-  MAJOR_TICK_COLOR: '#525252',
+  FONT_SIZE: 9,
+  BACKGROUND_COLOR: '#FFFFFF',
+  TEXT_COLOR: '#9CA3AF',
+  BORDER_COLOR: '#F3F4F6',
+  HIGHLIGHT_COLOR: '#7fbf34',
+  TICK_COLOR: '#D1D5DB',
+  MAJOR_TICK_COLOR: '#9CA3AF',
   UNIT: 'mm',
   DPI: UNIT_CONVERSIONS.DEFAULT_DPI
 } as const
