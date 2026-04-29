@@ -1,5 +1,5 @@
 import { memo, useCallback } from 'react'
-import { CaretLeft, CaretRight } from '@phosphor-icons/react'
+import { ChevronLeft as CaretLeft, ChevronRight as CaretRight } from 'lucide-react'
 import { useEditorStore, usePageCount } from '@/stores/useEditorStore'
 import { useAppStore } from '@/stores/useAppStore'
 import { cn } from '@/lib/utils'

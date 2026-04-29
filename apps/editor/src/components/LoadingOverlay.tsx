@@ -1,4 +1,4 @@
-import { CircleNotch } from '@phosphor-icons/react'
+import { Loader as CircleNotch } from 'lucide-react'
 
 interface LoadingOverlayProps {
   visible: boolean

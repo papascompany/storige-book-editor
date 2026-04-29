@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback } from 'react'
 import { useAppStore, useActiveSelection } from '@/stores/useAppStore'
 import AppSection from '@/components/AppSection'
 import { FilterPlugin } from '@storige/canvas-core'
-import { Check } from '@phosphor-icons/react'
+import { Check } from 'lucide-react'
 
 // Import effect images
 import embossingImage from '@/assets/image/embossing.png'

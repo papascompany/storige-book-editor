@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Sparkle, MagicWand } from '@phosphor-icons/react';
+import { Sparkles as Sparkle, Wand2 as MagicWand } from 'lucide-react';
 import { RecommendationPanel } from './RecommendationPanel';
 import { GenerationPanel } from './GenerationPanel';
 

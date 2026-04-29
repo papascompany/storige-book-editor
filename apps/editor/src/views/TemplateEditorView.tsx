@@ -20,12 +20,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import {
-  Stack,
-  FloppyDisk,
-  X,
-  Check,
-} from '@phosphor-icons/react'
+import { Layers as Stack, Save as FloppyDisk, X, Check } from 'lucide-react'
 
 // PostMessage 이벤트 타입
 interface TemplateEditorMessage {

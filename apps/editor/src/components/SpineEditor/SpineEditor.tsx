@@ -1,11 +1,5 @@
 import { memo, useState, useCallback, useMemo } from 'react'
-import {
-  X,
-  Eye,
-  EyeSlash,
-  GearSix,
-  Calculator,
-} from '@phosphor-icons/react'
+import { X, Eye, EyeOff as EyeSlash, Settings as GearSix, Calculator } from 'lucide-react'
 import {
   PaperType,
   BindingType,

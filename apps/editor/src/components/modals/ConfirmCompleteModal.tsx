@@ -1,11 +1,5 @@
 import { memo, useState } from 'react'
-import {
-  CheckCircle,
-  Warning,
-  X,
-  FileDashed,
-  CircleNotch,
-} from '@phosphor-icons/react'
+import { CheckCircle, AlertTriangle as Warning, X, FileText as FileDashed, Loader as CircleNotch } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface ConfirmCompleteModalProps {

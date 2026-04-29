@@ -1,5 +1,5 @@
 import { memo, useMemo } from 'react'
-import { Warning, Info } from '@phosphor-icons/react'
+import { AlertTriangle as Warning, Info } from 'lucide-react'
 import {
   PaperType,
   BindingType,

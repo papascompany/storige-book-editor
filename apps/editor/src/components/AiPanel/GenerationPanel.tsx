@@ -1,11 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import {
-  MagicWand,
-  CircleNotch,
-  Check,
-  X,
-  ArrowsClockwise,
-} from '@phosphor-icons/react';
+import { Wand2 as MagicWand, Loader as CircleNotch, Check, X, RefreshCw as ArrowsClockwise } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import {

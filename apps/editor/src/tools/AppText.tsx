@@ -1,6 +1,6 @@
 import { useCallback } from 'react'
 import { v4 as uuid } from 'uuid'
-import { Plus } from '@phosphor-icons/react'
+import { Plus } from 'lucide-react'
 import { useAppStore } from '@/stores/useAppStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useIsCustomer } from '@/stores/useAuthStore'

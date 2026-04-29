@@ -1,5 +1,5 @@
 import { useCallback, useState, useMemo, useEffect } from 'react'
-import { UploadSimple, Question } from '@phosphor-icons/react'
+import { Upload as UploadSimple, HelpCircle as Question } from 'lucide-react'
 import { useAppStore } from '@/stores/useAppStore'
 import { useImageStore } from '@/stores/useImageStore'
 import { useSettingsStore, useSettingsSize, useSettingsUnit } from '@/stores/useSettingsStore'

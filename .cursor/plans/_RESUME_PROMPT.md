@@ -154,10 +154,17 @@
 - ✅ **D3 후속 — 룰러 절제 + 토글 + 헤더 미리캔버스 풍** (2026-04-29 사용자 피드백)
   - **룰러 절제**: D3 변경(`#404040` + monospace)이 너무 도드라진다는 피드백 → 더 옅게: `BACKGROUND_COLOR #FFFFFF`, `TEXT_COLOR #9CA3AF` (gray-400), `BORDER_COLOR #F3F4F6`, `TICK_COLOR #D1D5DB`, `MAJOR_TICK_COLOR #9CA3AF`, `HIGHLIGHT_COLOR #ff2d55 → #7fbf34` (브랜드 녹색). 폰트 monospace → sans-serif 복귀, 폰트 사이즈 10 → 9
   - **룰러 토글**: 시작 시 자동 enable 제거 → 기본 OFF. `useUiPrefStore.showRuler` (localStorage 영속, `version: 2`로 마이그레이션) + `toggleRuler()`. `EditorView`가 `showRuler` 변화 감지해 모든 캔버스의 `RulerPlugin.enable()/rulerDisable()` 호출. `EditorHeader`에 Ruler 아이콘 버튼 (`aria-pressed`, 활성 시 `bg-[rgba(127,191,52,0.12)] text-[#7fbf34]`)
-  - **헤더 미리캔버스 풍**: 보라 그라데이션 → 화이트 + `border-b gray-200 + shadow-sm`. 좌측 [Storige 로고 + Undo/Redo + AutoSaveIndicator] / 중앙 [작업명 + 사이즈 pill `100 × 100 mm`] / 우측 [룰러 토글 + 페이지 네비 select + 도움말 + 구분선 + 불러오기 + 편집완료 녹색 CTA]. Undo/Redo는 `HistoryPlugin.undo/redo` 연결. 청록 CTA 결정 안 했으나 기존 `bg-editor-accent`가 이미 `--color-primary: #7fbf34`(브랜드 녹색)로 매핑되어 있어 그라데이션 제거만으로 자동 녹색 CTA 적용
+  - **헤더 미리캔버스 풍**: 보라 그라데이션 → 화이트 + `border-b gray-200 + shadow-sm`. 좌측 [Storige 로고 + Undo/Redo + AutoSaveIndicator] / 중앙 [작업명 + 사이즈 pill `100 × 100 mm`] / 우측 [룰러 토글 + 페이지 네비 select + 도움말 + 구분선 + 불러오기 + 편집완료 녹색 CTA]. Undo/Redo는 `HistoryPlugin.undo/redo` 연결
   - **알려진 한계**: `bg-editor-accent/10` 같은 opacity modifier가 CSS 변수 기반 색상에서 작동 안 함 → 토글 활성 색만 arbitrary 값(`bg-[rgba(127,191,52,0.12)]`) 사용. 필요 시 후속으로 tailwind config의 RGB-triplet 변환 + `rgb(var(--color-primary-rgb) / <alpha>)` 패턴 도입
-  - 검증: localhost:3000에서 헤더 화이트/녹색 CTA/룰러 토글 정상 (편집완료 RGB 127,191,52 확인 + showRuler localStorage 영속 + RulerPlugin.enabled 전이 확인)
-- 🔵 **다음**: 사용자 결정 — D2-NEW 메뉴 아이콘 PNG 업로드 시스템(3시간) 등. 미리캔버스 풍 "전체 레이아웃" (좌측 메뉴 카테고리 재편 + 콘텐츠 패널 그리드)은 별도 1일+ 작업
+- ✅ **D3 후속 2 — 룰러 닫기 버그 + 캐버스 정렬 + Pretendard + lucide + 텍스트 패널** (2026-04-29 사용자 피드백)
+  - **룰러 닫기 안 되던 버그**: `canvas-core/ruler.ts` `disable()` 끝에 `_rulerCtx.clearRect()` 추가. 이전엔 이벤트 리스너만 해제하고 별도 `_rulerCanvas` 픽셀이 남아 잔상 유지
+  - **편집/불러오기 버튼 높이 통일**: 둘 다 `size="sm"` (h-9, 36px) + `px-4`
+  - **Pretendard 한글 기본 폰트**: `index.css`에 Pretendard Variable CDN import + body font-family 우선순위 변경 (Pretendard → Pretendard → Noto Sans KR), `letter-spacing -0.01em`
+  - **캐버스 가운데 정렬 버그**: `EditorView`에 ResizeObserver 추가, 컨테이너 크기 변화 시 모든 캔버스 `setDimensions` + `sizeChange` emit. 마운트 시점 컨테이너가 좁은 상태로 dim 고정되던 문제 해결
+  - **lucide-react 아이콘 교체** (사용자 요청): `apps/editor`에 `lucide-react@0.400.0` 의존성 추가. `types/menu.ts` `AppMenu.icon: phosphor Icon → LucideIcon`. ToolBar 9개 + EditorHeader 7개 + AppSection 4개 + FontPreviewDropdown 3개 + TextAttributes 8개 모두 lucide로 (UploadSimple→Upload, TextT→Type, FrameCorners→Frame, Question→HelpCircle, FloppyDisk→FolderOpen, Cube→Box, ArrowUUpLeft/Right→Undo2/Redo2, CaretDown→ChevronDown 등)
+  - **AppSection 다듬기**: 섹션 사이 `border-b border-gray-100` 추가 (시각 구분), 헤더 padding/typography 정리, 카레트 절제 (`text-gray-400`), 제목 `font-semibold tracking-tight`
+  - **FontPreviewDropdown 다듬기**: trigger `min-h-10 → h-9`, `border-gray-200 + rounded-md`, hover `bg-gray-50`, open 시 `border-editor-accent` (브랜드 녹색)
+- 🔵 **다음**: D2-NEW 메뉴 아이콘 PNG 업로드 시스템(3시간) 또는 후속 polish (반응형 — 모바일/태블릿 슬라이드아웃 사이드바 등은 별도 1일+ 작업으로 분리). 진행 중: ① 나머지 phosphor → lucide 교체 (일관성), ② tools/App*.tsx 내부 폼/카드 polish
 
 # 보류 목록 (제일 마지막 단계 — 서비스 오픈 후 선택적)
 > 운영 안정화 + 후속 기능 모두 끝난 뒤 마무리로 진행. 서비스 오픈 후 필요 시 선택적으로 도입.

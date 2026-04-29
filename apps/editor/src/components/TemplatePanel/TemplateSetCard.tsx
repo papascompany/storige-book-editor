@@ -1,5 +1,5 @@
 import { memo } from 'react'
-import { Check, Stack } from '@phosphor-icons/react'
+import { Check, Layers as Stack } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { TemplateSetType } from '@storige/types'
 

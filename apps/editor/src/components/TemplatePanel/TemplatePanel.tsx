@@ -1,12 +1,5 @@
 import { memo, useState, useEffect, useCallback } from 'react'
-import {
-  Stack,
-  FileText,
-  X,
-  ArrowsClockwise,
-  CaretRight,
-  CaretLeft,
-} from '@phosphor-icons/react'
+import { Layers as Stack, FileText, X, RefreshCw as ArrowsClockwise, ChevronRight as CaretRight, ChevronLeft as CaretLeft } from 'lucide-react'
 import { TemplateCard } from './TemplateCard'
 import { TemplateSetCard } from './TemplateSetCard'
 import { TemplateReplaceModal } from './TemplateReplaceModal'

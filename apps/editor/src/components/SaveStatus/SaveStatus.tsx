@@ -1,11 +1,5 @@
 import { memo, useMemo } from 'react'
-import {
-  Cloud,
-  CloudSlash,
-  Check,
-  WarningCircle,
-  CircleNotch,
-} from '@phosphor-icons/react'
+import { Cloud, CloudOff as CloudSlash, Check, AlertCircle as WarningCircle, Loader as CircleNotch } from 'lucide-react'
 import {
   useSaveStore,
   useSaveStatus,

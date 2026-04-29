@@ -1,5 +1,5 @@
 import { useCallback, useState, useEffect, useRef } from 'react'
-import { Crop, Trash } from '@phosphor-icons/react'
+import { Crop, Trash2 as Trash } from 'lucide-react'
 import { useAppStore } from '@/stores/useAppStore'
 import { useImageStore } from '@/stores/useImageStore'
 import { useRenderType } from '@/stores/useSettingsStore'

@@ -1,10 +1,5 @@
 import { memo, useCallback } from 'react'
-import {
-  Warning,
-  ArrowsClockwise,
-  X,
-  DownloadSimple,
-} from '@phosphor-icons/react'
+import { AlertTriangle as Warning, RefreshCw as ArrowsClockwise, X, Download as DownloadSimple } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface SaveFailedModalProps {

@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react'
-import { UploadSimple } from '@phosphor-icons/react'
+import { Upload as UploadSimple } from 'lucide-react'
 import { useAppStore } from '@/stores/useAppStore'
 import { useImageStore } from '@/stores/useImageStore'
 import { useIsCustomer } from '@/stores/useAuthStore'

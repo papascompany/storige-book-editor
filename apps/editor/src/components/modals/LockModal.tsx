@@ -1,10 +1,5 @@
 import { memo } from 'react'
-import {
-  LockSimple,
-  Eye,
-  X,
-  ArrowsClockwise,
-} from '@phosphor-icons/react'
+import { Lock as LockSimple, Eye, X, RefreshCw as ArrowsClockwise } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatLockInfo } from '@/hooks/useEditLock'
 
