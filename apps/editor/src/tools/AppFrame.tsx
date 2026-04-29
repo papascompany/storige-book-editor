@@ -124,6 +124,7 @@ export default function AppFrame() {
       <div className="sections flex flex-col overflow-y-auto">
         {isCustomer && (
           <AppSection
+            id="app-frame-recommended"
             title="추천 콘텐츠"
             onDetail={showMore}
             searchSlot={

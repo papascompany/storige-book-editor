@@ -204,6 +204,7 @@ export default function AppTemplate() {
       <div className="sections flex flex-col overflow-y-auto">
         {isCustomer && (
           <AppSection
+            id="app-template-recommended"
             title="추천 콘텐츠"
             onDetail={showMore}
             searchSlot={

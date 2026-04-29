@@ -353,6 +353,11 @@ interface UiPrefState {
   // 2026-04-30 추가: 표지 편집 모드 (cover.md §3)
   coverEditMode: 'auto' | 'separated' | 'composite'
   setCoverEditMode: (mode) => void
+
+  // 2026-04-30 추가: AppSection 펼침 상태 영속 (id별)
+  expandedSections: Record<string, boolean>
+  setSectionExpanded: (id, expanded) => void
+  toggleSectionExpanded: (id) => void
 }
 
 export const SIDEBAR_WIDTH_MIN = 240
@@ -361,7 +366,7 @@ export const SIDEBAR_WIDTH_DEFAULT = 300
 ```
 
 - localStorage key: `storige-ui-pref`
-- version: **4** (coverEditMode 추가 마이그레이션, 기본 'auto')
+- version: **5** (expandedSections 추가 마이그레이션, 기본 `{}`)
 - 새 사용자 선호 추가 시 version 증가 + persist 마이그레이션 처리
 - `sidebarWidth`는 setter에서 자동 clamp (240~480)되므로 호출처에서 별도 검증 불필요
 
@@ -638,6 +643,11 @@ rm -rf apps/editor/node_modules/.vite
   - 클릭 → `setPage(idx) + goToPage(idx)`로 해당 캔버스 포커싱
   - 활성 페이지가 표지 그룹이 아니거나 표지 1개 이하면 자동 hide
   - `BookNavigation.buildPageMeta`/`isCoverType` 헬퍼 export로 재사용
+- ✅ **트랙 C — UX 폴리싱 (§8.2 묶음)**
+  - `AppSection` 외부 제어 통일: `id` prop 있으면 `useUiPrefStore.expandedSections`에 펼침 상태 영속 (새로고침 후 유지). 외부 `expanded`/`onExpand` prop이 우선이라 후방 호환 유지
+  - 도구 패널 5개에 sectionId 부여 — `app-text-recommended`, `app-element-recommended`, `app-frame-recommended`, `app-template-recommended`, `app-background-{image,color,cap,recommended}`. controls/ 6개는 이미 id 부여되어 있어 자동 영속 활성화
+  - localStorage v4 → v5 마이그레이션 (`expandedSections: {}` 초기값)
+  - 사이드바 드래그 핸들 더블클릭 → 기본 폭(300) 복원 (`onDoubleClick` 핸들러 추가, title hint 추가)
 
 > 후속 작업 §8.2의 **D2-NEW** (메뉴 아이콘 PNG 업로드)는 2026-04-30 개발 계획에서 **취소**됨.
 
@@ -651,8 +661,8 @@ rm -rf apps/editor/node_modules/.vite
 ### 8.2 중간 작업 (1~3시간)
 - ~~D5 Phase 2 — CoverFocusBar~~ ✅ 완료 (2026-04-30, 트랙 B Phase 2). `cover.md §6` 상세 구현 기록
 - **D5 Phase 3** — 객체 region 인식 (Composite 모드 cross-region 이동, 펼침면→분리 자동 변환). 상세는 `cover.md §7-8`
-- **AppSection 외부 제어 통일** — 각 도구 패널의 섹션이 어느 것이 펼쳐졌는지 store 영속 (`useUiPrefStore.expandedSections: Record<string, boolean>`) → 새로고침 후에도 사용자가 마지막에 펼친 섹션 유지
-- **드래그 핸들 더블 클릭 → 기본값 복원** — 사이드바 폭을 정확히 300으로 되돌리는 일반적 UX 패턴
+- ~~AppSection 외부 제어 통일~~ ✅ 완료 (2026-04-30, 트랙 C). `id` prop으로 `useUiPrefStore.expandedSections` 자동 영속
+- ~~드래그 핸들 더블 클릭 → 기본값 복원~~ ✅ 완료 (2026-04-30, 트랙 C). 더블클릭 시 `SIDEBAR_WIDTH_DEFAULT(300)`로 리셋
 - **lucide tree-shaking 점검** — 현재 45개 파일에서 import. 빌드 결과 번들에서 미사용 아이콘 제거되는지 `vite build --mode analyze` 확인
 
 ### 8.3 대형 작업 (1일+)
