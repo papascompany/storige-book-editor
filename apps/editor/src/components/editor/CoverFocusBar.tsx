@@ -74,8 +74,8 @@ const CoverThumb = memo(function CoverThumb({
       className={cn(
         'group relative h-full overflow-hidden rounded-md border transition-all',
         active
-          ? 'border-editor-accent ring-2 ring-editor-accent/30 bg-white z-[1]'
-          : 'border-gray-300 bg-gray-100 hover:bg-white hover:border-gray-400'
+          ? 'border-editor-accent ring-2 ring-editor-accent/30 bg-editor-panel z-[1]'
+          : 'border-editor-border bg-editor-surface-low hover:bg-editor-panel hover:border-editor-border'
       )}
       style={{ flex: `${flexBasis} ${flexBasis} 0%`, minWidth: 16 }}
     >
@@ -95,7 +95,7 @@ const CoverThumb = memo(function CoverThumb({
           'absolute top-0 left-0 right-0 text-[9px] font-semibold text-center py-px px-1 truncate transition-opacity',
           active
             ? 'bg-editor-accent/10 text-editor-accent opacity-100'
-            : 'bg-white/85 text-gray-600 opacity-0 group-hover:opacity-100'
+            : 'bg-editor-panel/85 text-editor-text-muted opacity-0 group-hover:opacity-100'
         )}
       >
         {label}
@@ -159,12 +159,12 @@ export const CoverFocusBar = memo(function CoverFocusBar() {
 
   return (
     <div
-      className="cover-focus-bar bg-white border-b border-gray-100 shadow-sm flex items-center gap-2 px-4 py-2 z-[99]"
+      className="cover-focus-bar bg-editor-panel border-b border-editor-border shadow-sm flex items-center gap-2 px-4 py-2 z-[99]"
       style={{ height: BAR_HEIGHT }}
       role="toolbar"
       aria-label="표지 영역 포커스"
     >
-      <span className="text-[11px] font-semibold text-gray-500 select-none flex-shrink-0">
+      <span className="text-[11px] font-semibold text-editor-text-muted select-none flex-shrink-0">
         표지
       </span>
       <div className="flex-1 flex items-stretch gap-1 h-full py-0.5 max-w-[640px]">

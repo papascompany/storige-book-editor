@@ -227,7 +227,7 @@ export const BookNavigation = memo(function BookNavigation({
   return (
     <nav
       className={cn(
-        'pointer-events-auto bg-white shrink-0',
+        'pointer-events-auto bg-editor-panel shrink-0',
         orientation === 'vertical'
           ? 'h-full w-[112px] flex flex-col items-center gap-2 py-2 border-l border-editor-border'
           : 'w-full h-[100px] flex flex-row items-center gap-2 px-3 border-t border-editor-border',
@@ -240,7 +240,7 @@ export const BookNavigation = memo(function BookNavigation({
         onClick={handlePrev}
         disabled={currentPageIndex === 0}
         className={cn(
-          'flex-shrink-0 flex items-center justify-center rounded-md hover:bg-gray-100 transition-colors',
+          'flex-shrink-0 flex items-center justify-center rounded-md hover:bg-editor-hover transition-colors',
           orientation === 'vertical' ? 'w-10 h-7' : 'w-7 h-10',
           currentPageIndex === 0 && 'opacity-40 cursor-not-allowed'
         )}
@@ -268,7 +268,7 @@ export const BookNavigation = memo(function BookNavigation({
                 <span
                   aria-hidden
                   className={cn(
-                    'flex-shrink-0 bg-gray-300',
+                    'flex-shrink-0 bg-editor-border',
                     orientation === 'vertical'
                       ? 'h-px w-12 my-1'
                       : 'w-px h-12 mx-1'
@@ -293,7 +293,7 @@ export const BookNavigation = memo(function BookNavigation({
         onClick={handleNext}
         disabled={currentPageIndex >= pageCount - 1}
         className={cn(
-          'flex-shrink-0 flex items-center justify-center rounded-md hover:bg-gray-100 transition-colors',
+          'flex-shrink-0 flex items-center justify-center rounded-md hover:bg-editor-hover transition-colors',
           orientation === 'vertical' ? 'w-10 h-7' : 'w-7 h-10',
           currentPageIndex >= pageCount - 1 && 'opacity-40 cursor-not-allowed'
         )}
