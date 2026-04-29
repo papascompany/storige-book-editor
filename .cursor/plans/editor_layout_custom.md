@@ -630,6 +630,14 @@ rm -rf apps/editor/node_modules/.vite
   - 표지/내지 그룹 시각 구분선 — 표지 마지막 카드와 첫 내지 사이에 세로/가로 구분선 (PDF 시안 매칭)
   - `PageThumbnail` 시각 개선 — 표지 카드는 둥근 그레이 박스 외곽 + 카드 외부 라벨, 활성 강조는 `editor-accent`로 통일 (기존 violet → 브랜드 컬러)
   - `useUiPrefStore.coverEditMode` 추가 (`'auto' | 'separated' | 'composite'`) — localStorage version 4 마이그레이션
+- ✅ **트랙 B — 표지 편집 모드 Phase 2 (CoverFocusBar)**
+  - `CoverFocusBar.tsx` 신규 — EditorHeader 아래 표지 영역 합친 미니맵 (height 56px)
+  - 박스 width = 캔버스 실제 width 비례 분배 (책등 가변폭 자동 반영, CSS flex `grow:N`)
+  - 박스 내부에 `canvas.toDataURL(0.1x)` 라이브 미리보기 (250ms throttle, `after:render` 구독)
+  - 활성 region 강조 (`border-editor-accent + ring-editor-accent/30`) + 호버 시 라벨 표시
+  - 클릭 → `setPage(idx) + goToPage(idx)`로 해당 캔버스 포커싱
+  - 활성 페이지가 표지 그룹이 아니거나 표지 1개 이하면 자동 hide
+  - `BookNavigation.buildPageMeta`/`isCoverType` 헬퍼 export로 재사용
 
 > 후속 작업 §8.2의 **D2-NEW** (메뉴 아이콘 PNG 업로드)는 2026-04-30 개발 계획에서 **취소**됨.
 
@@ -641,7 +649,7 @@ rm -rf apps/editor/node_modules/.vite
 - **빈 상태 재진입 시 Undo 버튼 미동기 보정** — `HistoryPlugin.afterLoad`가 `clearHistory` 후 `historyUpdate`를 호출하지만, 사용자 첫 클릭 전에 캔버스 내부 스택이 0/0인데 React state가 stale인 케이스가 드물게 발생. 첫 액션 후 자동 보정되므로 critical 아님
 
 ### 8.2 중간 작업 (1~3시간)
-- **D5 Phase 2** — CoverFocusBar 구현 (표지 활성 시 헤더 아래 합쳐진 미니맵 + 영역 클릭 포커싱). 상세 설계는 `cover.md §6`
+- ~~D5 Phase 2 — CoverFocusBar~~ ✅ 완료 (2026-04-30, 트랙 B Phase 2). `cover.md §6` 상세 구현 기록
 - **D5 Phase 3** — 객체 region 인식 (Composite 모드 cross-region 이동, 펼침면→분리 자동 변환). 상세는 `cover.md §7-8`
 - **AppSection 외부 제어 통일** — 각 도구 패널의 섹션이 어느 것이 펼쳐졌는지 store 영속 (`useUiPrefStore.expandedSections: Record<string, boolean>`) → 새로고침 후에도 사용자가 마지막에 펼친 섹션 유지
 - **드래그 핸들 더블 클릭 → 기본값 복원** — 사이드바 폭을 정확히 300으로 되돌리는 일반적 UX 패턴

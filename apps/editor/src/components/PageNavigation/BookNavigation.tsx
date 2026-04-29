@@ -23,7 +23,7 @@ import { cn } from '@/lib/utils'
  *   3. useAppStore.allCanvas 길이만 (최후 폴백, "1쪽","2쪽"…)
  */
 
-interface PageMeta {
+export interface PageMeta {
   index: number
   label: string
   isCover: boolean
@@ -92,7 +92,7 @@ function inferCoverLabel(
     : { label: '앞표지', position: 'front-cover' }
 }
 
-function isCoverType(type: TemplateType): boolean {
+export function isCoverType(type: TemplateType): boolean {
   return (
     type === TemplateType.COVER ||
     type === TemplateType.SPINE ||
@@ -101,7 +101,7 @@ function isCoverType(type: TemplateType): boolean {
   )
 }
 
-function buildPageMeta(details: Array<{ id: string; type?: string }>): PageMeta[] {
+export function buildPageMeta(details: Array<{ id: string; type?: string }>): PageMeta[] {
   // 1차 패스: 표지 관련 페이지 개수 계산 (SPREAD는 단독 1개로 취급)
   const coverIndices: number[] = []
   details.forEach((t, i) => {
