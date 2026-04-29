@@ -82,6 +82,8 @@ export default function EditorView() {
     cancelInitialization,
     updateObjects,
     isSpreadMode,
+    currentMenu,
+    tapMenu,
   } = useAppStore()
   const { getUseCaseFromParams } = useSettingsStore()
   const showRuler = useUiPrefStore((s) => s.showRuler)
@@ -529,8 +531,17 @@ export default function EditorView() {
         <div className="flex-1 flex flex-col relative overflow-hidden">
           {/* Upper row: sidebar + canvas + (옵션) 우측 페이지 네비 */}
           <div className="flex-1 flex flex-row relative overflow-hidden">
-            {/* Feature Sidebar or Control Bar - mutually exclusive */}
-            <FeatureSidebar />
+            {/* Feature Sidebar
+                - mobile: 오버레이 (캔버스 위로) + 백드롭
+                - tablet/desktop: 기존 inline 배치 */}
+            {screenMode === 'mobile' && currentMenu && (
+              <div
+                className="fixed inset-0 z-[105] bg-black/40 backdrop-blur-[1px]"
+                onClick={() => tapMenu(null)}
+                aria-hidden="true"
+              />
+            )}
+            <FeatureSidebar mobileOverlay={screenMode === 'mobile'} />
             {ready && <ControlBar />}
 
             {/* Canvas Area */}

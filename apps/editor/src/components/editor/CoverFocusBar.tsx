@@ -167,7 +167,7 @@ export const CoverFocusBar = memo(function CoverFocusBar() {
       <span className="text-[11px] font-semibold text-editor-text-muted select-none flex-shrink-0">
         표지
       </span>
-      <div className="flex-1 flex items-stretch gap-1 h-full py-0.5 max-w-[640px]">
+      <div className="flex-1 flex items-stretch gap-1 h-full py-0.5 max-w-[640px] overflow-x-auto scrollbar-hide">
         {activeGroup.map((m, i) => (
           <CoverThumb
             key={m.id}

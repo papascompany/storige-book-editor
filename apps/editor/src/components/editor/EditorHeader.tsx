@@ -520,7 +520,7 @@ export default function EditorHeader({
             type="text"
             defaultValue={artwork.name || '새로운 작업 1'}
             placeholder="제목을 입력해주세요"
-            className="bg-transparent border-none outline-none text-editor-text text-sm font-medium text-center min-w-[140px] max-w-[280px] focus:ring-1 focus:ring-editor-accent/50 rounded px-2 py-1"
+            className="bg-transparent border-none outline-none text-editor-text text-sm font-medium text-center min-w-[80px] max-w-[140px] sm:max-w-[200px] md:max-w-[280px] focus:ring-1 focus:ring-editor-accent/50 rounded px-2 py-1"
             onBlur={handleNameChange}
             onKeyDown={handleNameChange}
           />
@@ -741,20 +741,6 @@ export default function EditorHeader({
             </Button>
           )}
         </div>
-
-        {/* 모바일 - 편집완료만 */}
-        {screenMode === 'mobile' && (
-          <div className="flex md:hidden items-center gap-2">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={isAdmin ? () => handleSaveForAdmin(true) : handleFinish}
-              disabled={!ready || finishing}
-            >
-              <Check className="h-5 w-5" />
-            </Button>
-          </div>
-        )}
       </nav>
 
       {/* 3D 미리보기 모달 */}

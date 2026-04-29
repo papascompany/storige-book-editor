@@ -40,9 +40,14 @@ const COLLAPSED_WIDTH = 28
 
 interface FeatureSidebarProps {
   className?: string
+  /**
+   * 모바일 오버레이 모드 — `true`면 fixed 포지셔닝 + 좁은 폭으로 캔버스 위에 떠있음.
+   * 백드롭은 EditorView가 별도로 그린다.
+   */
+  mobileOverlay?: boolean
 }
 
-export default function FeatureSidebar({ className }: FeatureSidebarProps) {
+export default function FeatureSidebar({ className, mobileOverlay = false }: FeatureSidebarProps) {
   const currentMenu = useAppStore((state) => state.currentMenu)
   const tapMenu = useAppStore((state) => state.tapMenu)
   const activeSelection = useAppStore((state) => state.activeSelection)
@@ -212,18 +217,27 @@ export default function FeatureSidebar({ className }: FeatureSidebarProps) {
     }
   }
 
-  // 실제 렌더 폭 (드래그 중이면 draft 사용, collapsed면 좁은 폭)
-  const effectiveWidth = sidebarCollapsed
+  // 실제 렌더 폭 (드래그 중이면 draft 사용, collapsed면 좁은 폭, 모바일 오버레이는 고정 폭)
+  const MOBILE_OVERLAY_WIDTH = 280
+  const effectiveWidth = mobileOverlay
+    ? MOBILE_OVERLAY_WIDTH
+    : sidebarCollapsed
     ? COLLAPSED_WIDTH
     : (draftWidth ?? sidebarWidth)
   const widthStyle = { width: effectiveWidth, minWidth: effectiveWidth, maxWidth: effectiveWidth }
 
-  // Collapsed view: 얇은 세로 바 + 펼치기 버튼
-  if (sidebarCollapsed) {
+  // 모바일 오버레이 모드 클래스 (fixed positioning, 캔버스 위에 떠있음, 백드롭은 EditorView가 그림)
+  const overlayPositioning = mobileOverlay
+    ? 'fixed top-0 bottom-0 left-0 z-[110] shadow-2xl'
+    : 'relative h-full z-[100] shadow-sm'
+
+  // Collapsed view: 얇은 세로 바 + 펼치기 버튼 (모바일 오버레이일 땐 collapsed 없음 — 그냥 닫기)
+  if (sidebarCollapsed && !mobileOverlay) {
     return (
       <div
         className={cn(
-          'feature-sidebar relative bg-editor-panel border-r border-editor-border flex flex-col items-center shadow-sm h-full overflow-hidden z-[100]',
+          'feature-sidebar bg-editor-panel border-r border-editor-border flex flex-col items-center overflow-hidden',
+          'relative h-full z-[100] shadow-sm',
           className
         )}
         style={widthStyle}
@@ -243,10 +257,11 @@ export default function FeatureSidebar({ className }: FeatureSidebarProps) {
   return (
     <div
       className={cn(
-        'feature-sidebar relative bg-editor-panel border-r border-editor-border flex flex-col shadow-sm',
-        'h-full overflow-hidden z-[100] scrollbar-hide',
+        'feature-sidebar bg-editor-panel border-r border-editor-border flex flex-col',
+        'overflow-hidden scrollbar-hide',
+        overlayPositioning,
         // 드래그 중에는 transition 끄기 (성능 + 즉시 반응)
-        draftWidth == null && 'transition-[width,min-width,max-width] duration-150',
+        !mobileOverlay && draftWidth == null && 'transition-[width,min-width,max-width] duration-150',
         className
       )}
       style={widthStyle}
@@ -280,22 +295,23 @@ export default function FeatureSidebar({ className }: FeatureSidebarProps) {
         {renderToolPanel()}
       </div>
 
-      {/* Resize handle (right edge) — 더블클릭 시 기본 폭 복원 */}
-      <div
-        role="separator"
-        aria-orientation="vertical"
-        aria-label="사이드바 크기 조절"
-        title="드래그하여 너비 조절 · 더블클릭으로 기본값 복원"
-        onMouseDown={handleResizeStart}
-        onDoubleClick={handleResizeDoubleClick}
-        className={cn(
-          'absolute top-0 right-0 h-full w-1 cursor-col-resize select-none group',
-          'hover:bg-editor-accent/30 active:bg-editor-accent/50 transition-colors'
-        )}
-      >
-        {/* 드래그 영역을 좀 더 넓게 잡기 위한 invisible hit area */}
-        <span className="absolute top-0 -right-1 w-3 h-full" />
-      </div>
+      {/* Resize handle (right edge) — 모바일 오버레이에선 숨김 */}
+      {!mobileOverlay && (
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="사이드바 크기 조절"
+          title="드래그하여 너비 조절 · 더블클릭으로 기본값 복원"
+          onMouseDown={handleResizeStart}
+          onDoubleClick={handleResizeDoubleClick}
+          className={cn(
+            'absolute top-0 right-0 h-full w-1 cursor-col-resize select-none group',
+            'hover:bg-editor-accent/30 active:bg-editor-accent/50 transition-colors'
+          )}
+        >
+          <span className="absolute top-0 -right-1 w-3 h-full" />
+        </div>
+      )}
     </div>
   )
 }
