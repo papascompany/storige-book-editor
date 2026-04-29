@@ -663,6 +663,13 @@ rm -rf apps/editor/node_modules/.vite
   - `useUiPrefStore.theme` 추가 (`'light' | 'dark' | 'system'`) + version 5→6 마이그레이션
   - `useThemeSync()` hook — `<html data-theme>` 속성 동기화. system 모드에서 `prefers-color-scheme` 변경 자동 감지. App.tsx 루트에서 1회 호출
   - `EditorHeader`에 테마 토글 버튼 — Sun/Moon/Monitor 아이콘 + 클릭 시 light → dark → system 사이클
+- ✅ **트랙 I — 최근 사용 색상 (자동 LRU stack)**
+  - `useRecentColorsStore` (zustand + persist v1) — 최근 16개 색상 자동 누적, LRU 정책
+  - `normalizeToHex()` 유틸 — `#rrggbb`/`#rgb`/`rgb(...)`/`rgba(...)` → 6자리 hex 정규화. `mixed`/`transparent`/빈 문자열은 null로 무시
+  - ColorPickerModal `emitColor()` 훅 → 색상 적용 시마다 자동 push (opacity는 무시, hex만 추적)
+  - UI: 모달 하단 divider 위에 "최근 사용" 섹션 (16개 swatches × 6×6, 클릭으로 즉시 적용)
+  - 기존 사용자 저장 색상(`color-presets`)은 그대로 유지 — "+" 버튼으로 명시적 저장하는 별도 기능
+  - 다크 모드 호환 (`border-editor-border`, `text-editor-text-muted`)
 - ✅ **트랙 H — AutoSaveIndicator 리팩토링 + 토스트 연동**
   - inline SVG → lucide 아이콘 (Check/AlertTriangle/CloudOff/Loader2/HardDrive/Clock)
   - 하드코딩 컬러(`text-green-600`, `text-yellow-500` 등) → 테마 토큰(`text-editor-accent`/`text-amber-500`/`text-editor-text-muted`) — 다크 모드 자동 호환
