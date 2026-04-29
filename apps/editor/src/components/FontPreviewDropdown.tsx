@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
-import { CaretDown, MagnifyingGlass, WarningCircle } from '@phosphor-icons/react'
+import { ChevronDown, Search, AlertCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { FontSource } from '@/utils/fonts'
 import { useFontPreview, isFontLoaded, SAMPLE_TEXT } from '@/hooks/useFontPreview'
@@ -166,7 +166,7 @@ function FontPreviewItem({ font, selected, onClick }: FontPreviewItemProps) {
         <div className="flex flex-col gap-1">
           <div className="text-sm font-medium text-editor-text">{font.name}</div>
           <div className="flex items-center gap-1 text-xs text-red-500">
-            <WarningCircle className="h-3.5 w-3.5" />
+            <AlertCircle className="h-3.5 w-3.5" />
             <span>로딩 실패</span>
           </div>
         </div>
@@ -384,9 +384,9 @@ export default function FontPreviewDropdown({
       {/* Trigger */}
       <div
         className={cn(
-          'min-h-10 px-3 border border-editor-border rounded cursor-pointer flex items-center justify-between bg-editor-surface transition-all',
-          'hover:border-editor-text-muted hover:bg-editor-hover',
-          isOpen && 'border-primary shadow-sm rounded-b-none',
+          'h-9 px-3 border border-gray-200 rounded-md cursor-pointer flex items-center justify-between bg-white transition-all',
+          'hover:border-gray-300 hover:bg-gray-50',
+          isOpen && 'border-editor-accent shadow-sm rounded-b-none',
           disabled && 'opacity-50 cursor-not-allowed'
         )}
         onClick={toggleDropdown}
@@ -395,14 +395,14 @@ export default function FontPreviewDropdown({
         aria-expanded={isOpen}
       >
         <span
-          className="flex-1 text-sm text-editor-text truncate"
+          className="flex-1 text-sm text-gray-700 truncate"
           style={selectedFontStyle}
         >
           {selectedFontName || placeholder}
         </span>
-        <CaretDown
+        <ChevronDown
           className={cn(
-            'h-4 w-4 text-editor-text-muted transition-transform flex-shrink-0',
+            'h-4 w-4 text-gray-400 transition-transform flex-shrink-0',
             isOpen && 'rotate-180'
           )}
         />
@@ -415,10 +415,10 @@ export default function FontPreviewDropdown({
           className="bg-editor-panel border border-editor-border border-t-0 rounded-b-lg shadow-lg overflow-hidden"
           style={panelStyle}
         >
-          {/* MagnifyingGlass input */}
+          {/* Search input */}
           <div className="border-b border-editor-border bg-editor-surface">
             <div className="flex items-center px-3 py-2 gap-2">
-              <MagnifyingGlass className="h-4 w-4 text-editor-text-muted flex-shrink-0" />
+              <Search className="h-4 w-4 text-editor-text-muted flex-shrink-0" />
               <input
                 ref={searchInputRef}
                 type="text"
@@ -465,7 +465,7 @@ export default function FontPreviewDropdown({
             </div>
           ) : (
             <div className="flex flex-col items-center gap-2 py-8 text-editor-text-muted">
-              <MagnifyingGlass className="h-6 w-6" />
+              <Search className="h-6 w-6" />
               <span className="text-sm">검색 결과가 없습니다.</span>
             </div>
           )}
