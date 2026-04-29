@@ -1,12 +1,24 @@
-import React from 'react'
-import { useSaveStore, getSaveStatusText, getSaveStatusColor, type SaveStatus } from '@/stores/useSaveStore'
+import { useEffect, useRef } from 'react'
+import {
+  Check,
+  AlertTriangle,
+  CloudOff,
+  Loader2,
+  HardDrive,
+  Clock,
+} from 'lucide-react'
+import { useSaveStore, getSaveStatusText, type SaveStatus } from '@/stores/useSaveStore'
+import { showToast } from '@/stores/useToastStore'
+import { cn } from '@/lib/utils'
 
 interface AutoSaveIndicatorProps {
   className?: string
 }
 
 /**
- * 자동 저장 상태 표시 컴포넌트
+ * 자동 저장 상태 표시 컴포넌트.
+ * - lucide 아이콘 + 테마 토큰 (다크 모드 호환)
+ * - 상태 변화 감지: saved/failed/offline 전환 시 토스트 알림
  */
 export function AutoSaveIndicator({ className = '' }: AutoSaveIndicatorProps) {
   const status = useSaveStore((state) => state.status)
@@ -15,171 +27,102 @@ export function AutoSaveIndicator({ className = '' }: AutoSaveIndicatorProps) {
   const hasLocalBackup = useSaveStore((state) => state.hasLocalBackup)
   const error = useSaveStore((state) => state.error)
 
+  // 상태 변화 감지 → 토스트 (saved 직후, failed, offline 전환만)
+  const prevStatusRef = useRef<SaveStatus>(status)
+  useEffect(() => {
+    const prev = prevStatusRef.current
+    if (prev !== status) {
+      // saving → saved 만 알림 (idle 시작 시 saved는 무시)
+      if (status === 'saved' && prev === 'saving') {
+        // 자동저장 성공은 너무 자주 떠서 노이즈가 됨 — 표시하지 않음 (인디케이터로 충분)
+      }
+      if (status === 'failed' && prev !== 'failed') {
+        showToast(
+          error ? `자동 저장 실패: ${error}` : '자동 저장에 실패했습니다.',
+          'error',
+          5000
+        )
+      }
+      if (status === 'offline' && prev !== 'offline') {
+        showToast('오프라인 상태로 전환됐습니다. 작업은 로컬에 백업됩니다.', 'warning', 4000)
+      }
+      prevStatusRef.current = status
+    }
+  }, [status, error])
+
   const statusText = getSaveStatusText(status)
-  const statusColor = getSaveStatusColor(status)
 
   const formatTime = (date: Date | null): string => {
     if (!date) return ''
     const now = new Date()
     const diff = now.getTime() - date.getTime()
-
-    if (diff < 60000) {
-      return '방금 전'
-    } else if (diff < 3600000) {
-      const minutes = Math.floor(diff / 60000)
-      return `${minutes}분 전`
-    } else {
-      return date.toLocaleTimeString('ko-KR', {
-        hour: '2-digit',
-        minute: '2-digit',
-      })
-    }
+    if (diff < 60000) return '방금 전'
+    if (diff < 3600000) return `${Math.floor(diff / 60000)}분 전`
+    return date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
   }
 
   return (
-    <div className={`flex items-center gap-2 text-xs ${className}`}>
-      {/* 상태 아이콘 */}
+    <div className={cn('flex items-center gap-1.5 text-xs', className)}>
       <StatusIcon status={status} />
+      <span className={statusTextClass(status)}>{statusText}</span>
 
-      {/* 상태 텍스트 */}
-      <span className={statusColor}>{statusText}</span>
-
-      {/* 마지막 저장 시간 */}
       {status === 'saved' && lastSavedAt && (
-        <span className="text-gray-400">({formatTime(lastSavedAt)})</span>
+        <span className="text-editor-text-muted/70 inline-flex items-center gap-0.5">
+          <Clock className="h-3 w-3" />
+          {formatTime(lastSavedAt)}
+        </span>
       )}
 
-      {/* 오프라인 표시 */}
       {!isOnline && (
-        <span className="text-orange-500 ml-1" title="오프라인 상태입니다">
-          <svg className="w-3 h-3 inline-block" fill="currentColor" viewBox="0 0 20 20">
-            <path
-              fillRule="evenodd"
-              d="M3.707 2.293a1 1 0 00-1.414 1.414l14 14a1 1 0 001.414-1.414l-1.473-1.473A10.014 10.014 0 0019.542 10C18.268 5.943 14.478 3 10 3a9.958 9.958 0 00-4.512 1.074l-1.78-1.781zm4.261 4.26l1.514 1.515a2.003 2.003 0 012.45 2.45l1.514 1.514a4 4 0 00-5.478-5.478z"
-              clipRule="evenodd"
-            />
-            <path d="M12.454 16.697L9.75 13.992a4 4 0 01-3.742-3.742L2.335 6.578A9.98 9.98 0 00.458 10c1.274 4.057 5.065 7 9.542 7 .847 0 1.669-.105 2.454-.303z" />
-          </svg>
+        <span className="text-amber-500 inline-flex items-center" title="오프라인 상태">
+          <CloudOff className="h-3.5 w-3.5" />
         </span>
       )}
 
-      {/* 로컬 백업 표시 */}
       {hasLocalBackup && (
-        <span
-          className="text-yellow-500 ml-1"
-          title="로컬에 백업이 저장되어 있습니다"
-        >
-          <svg className="w-3 h-3 inline-block" fill="currentColor" viewBox="0 0 20 20">
-            <path d="M4 4a2 2 0 00-2 2v1h16V6a2 2 0 00-2-2H4z" />
-            <path
-              fillRule="evenodd"
-              d="M18 9H2v5a2 2 0 002 2h12a2 2 0 002-2V9zM4 13a1 1 0 011-1h1a1 1 0 110 2H5a1 1 0 01-1-1zm5-1a1 1 0 100 2h1a1 1 0 100-2H9z"
-              clipRule="evenodd"
-            />
-          </svg>
+        <span className="text-amber-500 inline-flex items-center" title="로컬에 백업이 있습니다">
+          <HardDrive className="h-3.5 w-3.5" />
         </span>
       )}
 
-      {/* 에러 메시지 (툴팁) */}
       {error && (
         <span className="text-red-500 cursor-help" title={error}>
-          <svg className="w-3 h-3 inline-block" fill="currentColor" viewBox="0 0 20 20">
-            <path
-              fillRule="evenodd"
-              d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
-              clipRule="evenodd"
-            />
-          </svg>
+          <AlertTriangle className="h-3.5 w-3.5" />
         </span>
       )}
     </div>
   )
 }
 
-/**
- * 상태 아이콘 컴포넌트
- */
+function statusTextClass(status: SaveStatus): string {
+  switch (status) {
+    case 'saved':
+      return 'text-editor-accent'
+    case 'saving':
+      return 'text-blue-500'
+    case 'failed':
+      return 'text-red-500'
+    case 'unsaved':
+      return 'text-amber-500'
+    case 'offline':
+      return 'text-editor-text-muted'
+    default:
+      return 'text-editor-text-muted'
+  }
+}
+
 function StatusIcon({ status }: { status: SaveStatus }) {
   switch (status) {
     case 'saving':
-      return (
-        <svg
-          className="w-3 h-3 animate-spin text-blue-500"
-          fill="none"
-          viewBox="0 0 24 24"
-        >
-          <circle
-            className="opacity-25"
-            cx="12"
-            cy="12"
-            r="10"
-            stroke="currentColor"
-            strokeWidth="4"
-          />
-          <path
-            className="opacity-75"
-            fill="currentColor"
-            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-          />
-        </svg>
-      )
+      return <Loader2 className="h-3.5 w-3.5 text-blue-500 animate-spin" />
     case 'saved':
-      return (
-        <svg
-          className="w-3 h-3 text-green-500"
-          fill="currentColor"
-          viewBox="0 0 20 20"
-        >
-          <path
-            fillRule="evenodd"
-            d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-            clipRule="evenodd"
-          />
-        </svg>
-      )
+      return <Check className="h-3.5 w-3.5 text-editor-accent" />
     case 'failed':
-      return (
-        <svg
-          className="w-3 h-3 text-red-500"
-          fill="currentColor"
-          viewBox="0 0 20 20"
-        >
-          <path
-            fillRule="evenodd"
-            d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
-            clipRule="evenodd"
-          />
-        </svg>
-      )
+      return <AlertTriangle className="h-3.5 w-3.5 text-red-500" />
     case 'unsaved':
-      return (
-        <svg
-          className="w-3 h-3 text-yellow-500"
-          fill="currentColor"
-          viewBox="0 0 20 20"
-        >
-          <path
-            fillRule="evenodd"
-            d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z"
-            clipRule="evenodd"
-          />
-        </svg>
-      )
+      return <Clock className="h-3.5 w-3.5 text-amber-500" />
     case 'offline':
-      return (
-        <svg
-          className="w-3 h-3 text-gray-500"
-          fill="currentColor"
-          viewBox="0 0 20 20"
-        >
-          <path
-            fillRule="evenodd"
-            d="M3.707 2.293a1 1 0 00-1.414 1.414l14 14a1 1 0 001.414-1.414l-1.473-1.473A10.014 10.014 0 0019.542 10C18.268 5.943 14.478 3 10 3a9.958 9.958 0 00-4.512 1.074l-1.78-1.781zm4.261 4.26l1.514 1.515a2.003 2.003 0 012.45 2.45l1.514 1.514a4 4 0 00-5.478-5.478z"
-            clipRule="evenodd"
-          />
-          <path d="M12.454 16.697L9.75 13.992a4 4 0 01-3.742-3.742L2.335 6.578A9.98 9.98 0 00.458 10c1.274 4.057 5.065 7 9.542 7 .847 0 1.669-.105 2.454-.303z" />
-        </svg>
-      )
+      return <CloudOff className="h-3.5 w-3.5 text-editor-text-muted" />
     default:
       return null
   }

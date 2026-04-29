@@ -663,6 +663,13 @@ rm -rf apps/editor/node_modules/.vite
   - `useUiPrefStore.theme` 추가 (`'light' | 'dark' | 'system'`) + version 5→6 마이그레이션
   - `useThemeSync()` hook — `<html data-theme>` 속성 동기화. system 모드에서 `prefers-color-scheme` 변경 자동 감지. App.tsx 루트에서 1회 호출
   - `EditorHeader`에 테마 토글 버튼 — Sun/Moon/Monitor 아이콘 + 클릭 시 light → dark → system 사이클
+- ✅ **트랙 H — AutoSaveIndicator 리팩토링 + 토스트 연동**
+  - inline SVG → lucide 아이콘 (Check/AlertTriangle/CloudOff/Loader2/HardDrive/Clock)
+  - 하드코딩 컬러(`text-green-600`, `text-yellow-500` 등) → 테마 토큰(`text-editor-accent`/`text-amber-500`/`text-editor-text-muted`) — 다크 모드 자동 호환
+  - 상태 변화 감지 useEffect: failed/offline 전환 시 토스트 자동 발생 (saving→saved는 노이즈 방지로 표시 안 함, 인디케이터로 충분)
+  - "마지막 저장 시간"에 Clock 아이콘 추가로 시각 명확성 ↑
+  - 에러 메시지는 AlertTriangle 호버 툴팁
+  - 검증: setSaving→setSaved 토스트 0개 ✓, setFailed → error 토스트 ✓, setOnline(false) → warning 토스트 ✓, 다크 모드 표시 정상 ✓
 - ✅ **트랙 G — 토스트 알림 시스템**
   - `useToastStore` (zustand) — 큐 기반 토스트 관리 (push/dismiss/clear), `showToast(message, type, duration)` 헬퍼 export
   - `ToastViewport` 컴포넌트 — 우측 하단 stack, 4 타입(success/info/warning/error) × 좌측 컬러 띠로 시각 구분, 라이브 영역(aria-live=polite)
