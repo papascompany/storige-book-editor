@@ -6,6 +6,7 @@
 > 참고 문서:
 > - `.cursor/plans/_RESUME_PROMPT.md` — 프로젝트 전체 진행 상황
 > - `.cursor/plans/v2/NEW_DEV_PLAN.md` — 마스터 계획
+> - `.cursor/plans/cover.md` — 표지 편집 모드(separated/composite/spread) 설계 및 view 분기
 > - `apps/editor/src/index.css` — 디자인 토큰 (CSS 변수) 정의
 > - `apps/editor/tailwind.config.js` — Tailwind 색상 매핑
 
@@ -348,6 +349,10 @@ interface UiPrefState {
   sidebarCollapsed: boolean                       // 접힘 여부 (기본 false)
   setSidebarCollapsed: (v: boolean) => void
   toggleSidebarCollapsed: () => void
+
+  // 2026-04-30 추가: 표지 편집 모드 (cover.md §3)
+  coverEditMode: 'auto' | 'separated' | 'composite'
+  setCoverEditMode: (mode) => void
 }
 
 export const SIDEBAR_WIDTH_MIN = 240
@@ -356,7 +361,7 @@ export const SIDEBAR_WIDTH_DEFAULT = 300
 ```
 
 - localStorage key: `storige-ui-pref`
-- version: **3** (sidebarWidth/sidebarCollapsed 추가 마이그레이션)
+- version: **4** (coverEditMode 추가 마이그레이션, 기본 'auto')
 - 새 사용자 선호 추가 시 version 증가 + persist 마이그레이션 처리
 - `sidebarWidth`는 setter에서 자동 clamp (240~480)되므로 호출처에서 별도 검증 불필요
 
@@ -619,6 +624,12 @@ rm -rf apps/editor/node_modules/.vite
   - 사이즈 pill 인터랙티브화 (Popover + 8개 프리셋 + 직접 입력, 10~1500mm 범위, `updateAllWorkspaceSettings()`로 캔버스 동기화)
   - Undo/Redo disabled 바인딩 — 캔버스의 `canUndo()/canRedo()` + Editor `historyUpdate` 이벤트 구독으로 버튼 disabled 상태 자동 갱신
   - 사이드바 collapse 단축키 — `Cmd+\` (Mac) / `Ctrl+\` (Win) 윈도우 키리스너, 입력 필드 포커스 시 자동 무시
+- ✅ **트랙 B — 표지 편집 모드 Phase 1 (D5 진척)**
+  - `cover.md` 신규 작성 — 표지 편집 모드 3종(separated/composite/spread) 설계 문서 + view 분기 결정 트리 + Phase 1/2/3 로드맵
+  - `BookNavigation.buildPageMeta` 정밀화 — 위치별 라벨 추론 (N=1/3/5 패턴 + fallback): 뒷날개/뒷표지/책등/앞표지/앞날개로 정확히 라벨링, `coverPosition` 메타(`SpreadRegionPosition`) 함께 부여
+  - 표지/내지 그룹 시각 구분선 — 표지 마지막 카드와 첫 내지 사이에 세로/가로 구분선 (PDF 시안 매칭)
+  - `PageThumbnail` 시각 개선 — 표지 카드는 둥근 그레이 박스 외곽 + 카드 외부 라벨, 활성 강조는 `editor-accent`로 통일 (기존 violet → 브랜드 컬러)
+  - `useUiPrefStore.coverEditMode` 추가 (`'auto' | 'separated' | 'composite'`) — localStorage version 4 마이그레이션
 
 > 후속 작업 §8.2의 **D2-NEW** (메뉴 아이콘 PNG 업로드)는 2026-04-30 개발 계획에서 **취소**됨.
 
@@ -630,7 +641,8 @@ rm -rf apps/editor/node_modules/.vite
 - **빈 상태 재진입 시 Undo 버튼 미동기 보정** — `HistoryPlugin.afterLoad`가 `clearHistory` 후 `historyUpdate`를 호출하지만, 사용자 첫 클릭 전에 캔버스 내부 스택이 0/0인데 React state가 stale인 케이스가 드물게 발생. 첫 액션 후 자동 보정되므로 critical 아님
 
 ### 8.2 중간 작업 (1~3시간)
-- **D5** — 표지 편집 모드별 view 분기 (펼침면/분할/날개 케이스, `agents/12-cover-edit-modes.md`)
+- **D5 Phase 2** — CoverFocusBar 구현 (표지 활성 시 헤더 아래 합쳐진 미니맵 + 영역 클릭 포커싱). 상세 설계는 `cover.md §6`
+- **D5 Phase 3** — 객체 region 인식 (Composite 모드 cross-region 이동, 펼침면→분리 자동 변환). 상세는 `cover.md §7-8`
 - **AppSection 외부 제어 통일** — 각 도구 패널의 섹션이 어느 것이 펼쳐졌는지 store 영속 (`useUiPrefStore.expandedSections: Record<string, boolean>`) → 새로고침 후에도 사용자가 마지막에 펼친 섹션 유지
 - **드래그 핸들 더블 클릭 → 기본값 복원** — 사이드바 폭을 정확히 300으로 되돌리는 일반적 UX 패턴
 - **lucide tree-shaking 점검** — 현재 45개 파일에서 import. 빌드 결과 번들에서 미사용 아이콘 제거되는지 `vite build --mode analyze` 확인

@@ -8,6 +8,14 @@ import { persist, createJSONStorage } from 'zustand/middleware'
 
 export type PageNavPosition = 'auto' | 'right' | 'bottom'
 
+/**
+ * 표지 편집 모드 (cover.md §3 / §5.1)
+ * - auto: 시스템이 템플릿 메타로 결정 (default — 안전)
+ * - separated: 분리 캔버스로 편집 (현재 동작 강제)
+ * - composite: 페이지 네비 그룹화 + 향후 합쳐진 미니맵 (Phase 1: 그룹화만)
+ */
+export type CoverEditMode = 'auto' | 'separated' | 'composite'
+
 export const SIDEBAR_WIDTH_MIN = 240
 export const SIDEBAR_WIDTH_MAX = 480
 export const SIDEBAR_WIDTH_DEFAULT = 300
@@ -30,6 +38,9 @@ interface UiPrefState {
   sidebarCollapsed: boolean
   setSidebarCollapsed: (v: boolean) => void
   toggleSidebarCollapsed: () => void
+  /** 표지 편집 모드 (cover.md §3) — 기본 'auto' */
+  coverEditMode: CoverEditMode
+  setCoverEditMode: (mode: CoverEditMode) => void
 }
 
 export const useUiPrefStore = create<UiPrefState>()(
@@ -46,16 +57,21 @@ export const useUiPrefStore = create<UiPrefState>()(
       setSidebarCollapsed: (sidebarCollapsed) => set({ sidebarCollapsed }),
       toggleSidebarCollapsed: () =>
         set({ sidebarCollapsed: !get().sidebarCollapsed }),
+      coverEditMode: 'auto',
+      setCoverEditMode: (coverEditMode) => set({ coverEditMode }),
     }),
     {
       name: 'storige-ui-pref',
       storage: createJSONStorage(() => localStorage),
-      version: 3,
+      version: 4,
       migrate: (persistedState, version) => {
         const state = (persistedState ?? {}) as Partial<UiPrefState>
         if (version < 3) {
           state.sidebarWidth = SIDEBAR_WIDTH_DEFAULT
           state.sidebarCollapsed = false
+        }
+        if (version < 4) {
+          state.coverEditMode = 'auto'
         }
         // sidebarWidth가 범위를 벗어난 경우 보정
         if (typeof state.sidebarWidth === 'number') {
