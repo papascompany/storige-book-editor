@@ -663,6 +663,14 @@ rm -rf apps/editor/node_modules/.vite
   - `useUiPrefStore.theme` 추가 (`'light' | 'dark' | 'system'`) + version 5→6 마이그레이션
   - `useThemeSync()` hook — `<html data-theme>` 속성 동기화. system 모드에서 `prefers-color-scheme` 변경 자동 감지. App.tsx 루트에서 1회 호출
   - `EditorHeader`에 테마 토글 버튼 — Sun/Moon/Monitor 아이콘 + 클릭 시 light → dark → system 사이클
+- ✅ **트랙 E Phase 1 — 모바일/태블릿 반응형 레이아웃**
+  - FeatureSidebar `mobileOverlay` prop 추가: 모바일에선 fixed 포지셔닝(`top-0 bottom-0 left-0 z-[110]`) + 280px 고정 폭 + shadow-2xl
+  - EditorView가 `screenMode === 'mobile' && currentMenu`일 때 백드롭(`fixed inset-0 bg-black/40 z-[105]`) 렌더, 클릭 시 `tapMenu(null)`로 사이드바 닫기
+  - 모바일 오버레이에선 사이드바 collapse 모드 비활성 + 드래그 리사이즈 핸들 숨김 (UX 단순화)
+  - EditorHeader 작업명 input 반응형 폭: `max-w-[140px] sm:max-w-[200px] md:max-w-[280px]` (작은 화면에서 자연스럽게 좁아짐)
+  - 중복 편집완료 버튼 제거 (md:hidden 모바일 전용 영역이 우측 영역과 중복)
+  - CoverFocusBar 박스 영역에 `overflow-x-auto scrollbar-hide` 추가 (좁은 화면에서 가로 스크롤로 5개 region 모두 접근)
+  - 검증: mobile(527px), tablet(768px), desktop(1280px) 3 사이즈 모두 시각·동작 확인. 백드롭 클릭 시 사이드바·백드롭 동시 사라짐 ✓
 - ✅ **트랙 D Phase 2 v2 — 공통/controls/tools 토큰 스윕 (다크 모드 완성)**
   - 공통 컴포넌트: `AppSection`, `AppSectionSearch`, `FontPreviewDropdown`의 잔여 하드코딩 그레이 토큰화
   - `controls/ObjectShadow`: 색상 미리보기 박스 border 토큰
@@ -696,7 +704,8 @@ rm -rf apps/editor/node_modules/.vite
 - **lucide tree-shaking 점검** — 현재 45개 파일에서 import. 빌드 결과 번들에서 미사용 아이콘 제거되는지 `vite build --mode analyze` 확인
 
 ### 8.3 대형 작업 (1일+)
-- **반응형 레이아웃** — 모바일(≤768) 슬라이드아웃 사이드바, 태블릿(769-1024) 헤더 wrap, 데스크톱(1025+) 풀 레이아웃. 사이드바 가변 폭 도입으로 모바일 대응 시 `min-width` 제약을 깰 수 있는 분기 처리 필요
+- ~~반응형 레이아웃 Phase 1~~ ✅ 완료 (2026-04-30, 트랙 E). 모바일(<768) FeatureSidebar 슬라이드오버 + 백드롭, 헤더 작업명 input 반응형 폭, 중복 편집완료 버튼 제거, CoverFocusBar 가로 스크롤
+- **반응형 레이아웃 Phase 2** — 태블릿(768~1024)에서 헤더 도구 묶음 wrap 처리, FeatureSidebar 폭을 더 좁게 분기, 페이지 네비 터치 친화 (큰 히트박스), 사이드바 가변 폭 핸들 터치 이벤트 대응
 - **콘텐츠 패널 그리드 카탈로그** — 미리캔버스 풍 카테고리 탭 + 그리드 + 크라운 아이콘 등 본격 카탈로그 UI (D2-NEW 취소됨에 따라 별도 트랙으로 검토)
 - **AI 패널 정합** — 현재는 ToolBar에 없음. AI 도구 메뉴 추가 + 패널 통합
 - ~~다크 모드~~ ✅ Phase 1+2 v1+v2 완료 (2026-04-30, 트랙 D). chrome 영역 + 상위 5개 컴포넌트 + 공통 컴포넌트 + controls/ + tools/ 일괄 토큰 스윕
