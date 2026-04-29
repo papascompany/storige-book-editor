@@ -609,16 +609,32 @@ export class PdfSynthesizerService {
   // ============================================================================
 
   /**
-   * Download file from URL
+   * Download file from URL or read from local storage.
+   *
+   * 처리 분기:
+   * - `/` 또는 `./` 절대/명시적 로컬 경로 → fs.readFile
+   * - `storage/...` 상대 경로 → STORAGE_PATH 기준 절대 경로로 변환 후 fs.readFile
+   *   (files 테이블의 filePath 가 'storage/uploads/...' 형태로 저장돼 axios.get에
+   *    그대로 넘기면 Invalid URL 에러. 이 분기로 운영 차단 버그 해소)
+   * - 그 외 → axios.get HTTP 다운로드
    */
   async downloadFile(url: string): Promise<Uint8Array> {
-    // Check if it's a local file path
+    // 절대/명시적 로컬 경로
     if (url.startsWith('/') || url.startsWith('./')) {
       const buffer = await fs.readFile(url);
       return new Uint8Array(buffer);
     }
 
-    // Download from URL
+    // storige 내부 storage 상대 경로 (예: 'storage/uploads/abc.pdf')
+    // this.storagePath = STORAGE_PATH 환경변수 (보통 '/app/storage')
+    if (url.startsWith('storage/')) {
+      const relative = url.replace(/^storage\//, '');
+      const absPath = path.join(this.storagePath, relative);
+      const buffer = await fs.readFile(absPath);
+      return new Uint8Array(buffer);
+    }
+
+    // 그 외: HTTP/HTTPS URL
     const response = await axios.get(url, {
       responseType: 'arraybuffer',
     });
