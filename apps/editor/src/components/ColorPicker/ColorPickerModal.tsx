@@ -342,14 +342,10 @@ export default function ColorPickerModal({
       setCmykInput({ c, m, y, k })
 
       // CMYK → RGB conversion
-      let color
-      try {
-        color = await cmykToRgb(c / 100, m / 100, y / 100, k / 100, 'JAPAN_COLOR_2001')
-      } catch (error) {
-        console.warn('CMYK → RGB conversion failed:', error)
-        const { cmykToRgbLegacy } = await import('@storige/canvas-core')
-        color = cmykToRgbLegacy(c / 100, m / 100, y / 100, k / 100)
-      }
+      // canvas-core 의 cmykToRgb 는 이미 내부에서 legacy 알고리즘으로 안전 fallback.
+      // 추가 ICC 정확도가 필요해지면 (보류 목록) `@pf/color-runtime` 도입 시점에
+      // canvas-core 만 교체하면 본 컴포넌트 변경 불필요.
+      const color = await cmykToRgb(c / 100, m / 100, y / 100, k / 100, 'JAPAN_COLOR_2001')
 
       const newR = Math.max(0, Math.min(255, Math.round(color.r)))
       const newG = Math.max(0, Math.min(255, Math.round(color.g)))
