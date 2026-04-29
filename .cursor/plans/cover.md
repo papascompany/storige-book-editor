@@ -99,8 +99,8 @@ PDF 6페이지에서 두 가지 케이스를 도시:
 **Phase 별 구현 범위**:
 | Phase | 내용 | 시점 |
 |---|---|---|
-| **1** | 페이지 네비 표지 그룹화 + 위치별 라벨 (뒷날개/뒷표지/책등/앞표지/앞날개) + 그룹 구분선 + thumbnail 시각 개선 | 트랙 B (지금) |
-| **2** | CoverFocusBar (활성 페이지가 표지일 때 헤더 아래 합쳐진 미니맵) + 영역 클릭 포커스 | 향후 |
+| **1** | ✅ 페이지 네비 표지 그룹화 + 위치별 라벨 (뒷날개/뒷표지/책등/앞표지/앞날개) + 그룹 구분선 + thumbnail 시각 개선 | 2026-04-30 완료 |
+| **2** | ✅ CoverFocusBar (활성 페이지가 표지일 때 헤더 아래 합쳐진 미니맵) + 영역 클릭 포커스 | 2026-04-30 완료 |
 | **3** | 표지 모드 토글 — Composite vs Spread 사용자 선택 + 객체 cross-region 이동 | 장기 |
 
 ### 3.3 Spread 모드 (펼침면 단일 캔버스)
@@ -192,16 +192,16 @@ type CoverEditMode = 'separated' | 'composite' | 'auto'
 
 표지 카드는 amber 톤 → **회색 배경 + 둥근 사각형** (PDF 시안의 그레이 박스 외곽 매칭). 활성 시는 기존 violet 강조 유지.
 
-### 5.5 트랙 B에서는 하지 않는 것 (= Phase 2/3로 미룸)
+### 5.5 트랙 B 적용 후 남은 항목 (Phase 3)
 
-- ❌ 합쳐진 표지 미니맵 (CoverFocusBar) — Phase 2
+- ✅ 합쳐진 표지 미니맵 (CoverFocusBar) — Phase 2 완료
 - ❌ Composite 모드 객체 cross-region 이동 — Phase 3
 - ❌ Spread 모드 EditorView 자동 진입 분기 강화 — Phase 2 (현재도 SpreadPagePanel이 분기는 한다)
 - ❌ 영역 클릭으로 객체 추가 위치 결정 — Phase 3
 
 ---
 
-## 6. Phase 2 — CoverFocusBar 설계 메모 (향후)
+## 6. Phase 2 — CoverFocusBar 구현 (2026-04-30 완료)
 
 활성 페이지가 표지 그룹일 때, 헤더(`EditorHeader`) 바로 아래에 작은 가로 미니맵을 띄운다.
 
@@ -209,22 +209,32 @@ type CoverEditMode = 'separated' | 'composite' | 'auto'
 ┌──────────────────────────────────────────┐
 │ EditorHeader                             │
 ├──────────────────────────────────────────┤
-│  [뒷표지│책등│앞표지]  ← active region 강조│  ← CoverFocusBar (height ~64px)
+│  [뒷표지│책등│앞표지]  ← active region 강조│  ← CoverFocusBar (height 56px)
 ├────────┬─────────────────────────────────┤
 │  Tools │  메인 캔버스                     │
 └────────┴─────────────────────────────────┘
 ```
 
-**구현 포인트**:
-- 각 region 박스 = `<button>`, 클릭 시 `setPage(targetIdx)`.
-- 박스 내부에 해당 캔버스의 `toDataURL(0.1x)` 미리보기 (PageThumbnail과 동일 패턴).
-- 활성 region은 `border-editor-accent + ring-2`.
-- 책등 가변폭은 `Template.spreadConfig.spec.spineWidthMm` 또는 `useSettingsStore.spineConfig.calculatedSpineWidth`에서 계산해 박스 width를 비례 분배.
-- 표지가 아닌 페이지에서는 hide.
+**구현 위치**: `apps/editor/src/components/editor/CoverFocusBar.tsx`
 
-**책등 너비 계산 의존성**:
-- 소프트커버: `calculateSpineWidth(pageCount, paperType, bindingType)` — 동적
-- 양장 / Spread mode: `spreadConfig.spec.spineWidthMm` — 정적
+**핵심 동작**:
+- 각 region 박스 = `<button>`, 클릭 시 `setPage(targetIdx) + goToPage(targetIdx)`로 이동.
+- 박스 내부에 해당 캔버스의 `toDataURL({ multiplier: 0.1, format: 'png' })` 실시간 미리보기 (250ms throttle).
+- 활성 region은 `border-editor-accent + ring-2 ring-editor-accent/30 + bg-white`.
+- 비활성 region은 `bg-gray-100` + hover 시 `bg-white`.
+- 박스 width = 캔버스 실제 width(`canvas.getWidth()`) 비례 분배 → CSS flex `grow:N`로 자동. 책등 가변폭이 자동 반영됨 (`SpineEditor`가 spine 캔버스 width를 갱신하면 다음 렌더에서 반영).
+- 활성 페이지가 표지가 아닐 때(내지) 또는 표지 그룹이 1개 이하일 때 (`activeGroup.length < 2`) `null` 반환 → 자동 hide.
+- 활성 페이지를 중심으로 좌우로 인접한 표지 페이지를 그룹으로 묶음 (한 책에 표지 그룹이 여러 개여도 안전).
+
+**책등 너비 계산 의존성** (자동):
+- 소프트커버: `SpineEditor` + `calculateSpineWidth(pageCount, paperType, bindingType)` → spine 캔버스 width 갱신 → CoverFocusBar 박스 비율 자동 갱신
+- 양장 / Spread mode: `spreadConfig.spec.spineWidthMm` 정적
+
+**검증**:
+- N=5 (날개 있음) 시뮬레이션 → 5개 박스 정확한 라벨 (뒷날개/뒷표지/책등/앞표지/앞날개) + flex 비례 분배 ✓
+- 책등 박스 클릭 → currentPageIndex=2로 이동, aria-pressed가 새 활성 박스로 자동 전환 ✓
+- 내지 페이지로 이동 → CoverFocusBar 자동 숨김 ✓
+- 라이브 캔버스 미리보기 250ms throttle 정상 (after:render 이벤트 구독) ✓
 
 ---
 

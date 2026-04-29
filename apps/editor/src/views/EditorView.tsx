@@ -12,6 +12,7 @@ import FeatureSidebar from '@/components/editor/FeatureSidebar'
 import ControlBar from '@/components/editor/ControlBar'
 import SidePanel from '@/components/editor/SidePanel'
 import EditorHeader from '@/components/editor/EditorHeader'
+import { CoverFocusBar } from '@/components/editor/CoverFocusBar'
 import { PagePanel } from '@/components/PagePanel/PagePanel'
 import { SpreadPagePanel } from '@/components/PagePanel/SpreadPagePanel'
 import { BookNavigation } from '@/components/PageNavigation/BookNavigation'
@@ -515,6 +516,9 @@ export default function EditorView() {
         screenMode={screenMode}
         onLoadingChange={handleLoadingChange}
       />
+
+      {/* CoverFocusBar — 활성 페이지가 표지 그룹일 때만 표시 (cover.md §6) */}
+      {!isSpreadMode && <CoverFocusBar />}
 
       {/* Main Layout */}
       <div className={`flex-1 flex ${screenMode !== 'desktop' ? 'flex-col' : 'flex-row'} relative overflow-hidden`}>
