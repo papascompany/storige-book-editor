@@ -168,8 +168,7 @@ export default function SmartCodes() {
 
   return (
     <div className="w-full h-full flex flex-col">
-      <div className="tool-header p-4 gap-6 flex flex-col">
-        <span className="title text-editor-text font-medium">QR/바코드</span>
+      <div className="px-4 pt-4 pb-3">
       </div>
 
       <Tabs defaultValue="qr" className="w-full">

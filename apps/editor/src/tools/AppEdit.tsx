@@ -340,8 +340,7 @@ export default function AppEdit() {
 
   return (
     <div className="w-full h-full flex flex-col">
-      <div className="tool-header p-4 gap-6 flex flex-col">
-        <span className="title text-editor-text font-medium">편집도구</span>
+      <div className="px-4 pt-4 pb-3">
         <div className="flex flex-col gap-2">
           {renderType !== 'mockup' ? (
             <Button
@@ -390,9 +389,6 @@ export default function AppEdit() {
           )}
         </div>
       </div>
-
-      <hr className="border-editor-border" />
-
       <div className="sections flex flex-col overflow-y-auto">
         <div className="h-10 w-1 p-10" />
       </div>

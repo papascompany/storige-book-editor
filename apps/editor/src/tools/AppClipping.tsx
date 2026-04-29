@@ -392,8 +392,7 @@ export default function AppClipping() {
 
   return (
     <div className="w-full h-full flex flex-col">
-      <div className="tool-header p-4 gap-6 flex flex-col">
-        <span className="title text-editor-text font-medium">모양컷</span>
+      <div className="px-4 pt-4 pb-3">
         <Button
           variant="secondary"
           className="w-full h-10"
@@ -404,9 +403,6 @@ export default function AppClipping() {
           {isLoading ? '처리 중...' : '업로드'}
         </Button>
       </div>
-
-      <hr className="border-editor-border" />
-
       <div className="sections flex flex-col overflow-y-auto">
         {/* Effects Section */}
         <AppSection title="효과">

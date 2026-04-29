@@ -92,8 +92,7 @@ export default function AppImage() {
 
   return (
     <div className="w-full h-full flex flex-col">
-      <div className="tool-header p-4 gap-6 flex flex-col">
-        <span className="title text-editor-text font-medium">이미지</span>
+      <div className="px-4 pt-4 pb-3">
         <Button
           variant="secondary"
           className="w-full h-10"
@@ -104,9 +103,6 @@ export default function AppImage() {
           {isLoading ? '업로드 중...' : '업로드'}
         </Button>
       </div>
-
-      <hr className="border-editor-border" />
-
       <div className="flex-1 overflow-y-auto">
         {/* My Contents (Uploaded Images) */}
         {uploaded.length > 0 && (

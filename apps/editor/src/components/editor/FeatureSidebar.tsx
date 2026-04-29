@@ -98,24 +98,25 @@ export default function FeatureSidebar({ className }: FeatureSidebarProps) {
   return (
     <div
       className={cn(
-        'feature-sidebar bg-editor-panel border-r border-editor-border flex flex-col',
+        'feature-sidebar bg-white border-r border-gray-200 flex flex-col shadow-sm',
         'w-[300px] min-w-[300px] max-w-[300px] h-full overflow-hidden z-[100] scrollbar-hide',
         className
       )}
     >
       {/* Header with close button */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-editor-border bg-[var(--color-surface-container)]">
-        <h2 className="text-sm font-semibold text-editor-text">{currentMenu.label}</h2>
+      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-gray-50/50">
+        <h2 className="text-[13px] font-semibold tracking-tight text-gray-700">{currentMenu.label}</h2>
         <button
           onClick={handleClose}
-          className="p-1 rounded hover:bg-editor-hover text-editor-text-muted hover:text-editor-text transition-colors"
+          aria-label="닫기"
+          className="p-1 rounded-md hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-colors"
         >
           <X className="h-4 w-4" />
         </button>
       </div>
 
       {/* Tool panel content */}
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 overflow-y-auto">
         {renderToolPanel()}
       </div>
     </div>

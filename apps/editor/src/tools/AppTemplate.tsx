@@ -166,8 +166,7 @@ export default function AppTemplate() {
 
   return (
     <div className="w-full h-full flex flex-col">
-      <div className="tool-header p-4 gap-6 flex flex-col">
-        <span className="title text-editor-text font-medium">템플릿</span>
+      <div className="px-4 pt-4 pb-3">
         <div className="flex items-end flex-col gap-2 w-full">
           <Button
             variant="secondary"
@@ -202,9 +201,6 @@ export default function AppTemplate() {
           )}
         </div>
       </div>
-
-      <hr className="border-editor-border" />
-
       <div className="sections flex flex-col overflow-y-auto">
         {isCustomer && (
           <AppSection
@@ -225,7 +221,7 @@ export default function AppTemplate() {
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-editor-accent" />
               </div>
             ) : filteredTemplates.length === 0 ? (
-              <div className="px-4 py-8 text-center text-editor-text-muted text-sm">
+              <div className="px-4 py-8 text-center text-gray-400 text-xs">
                 {searchKeyword ? '검색 결과가 없습니다.' : '추천 콘텐츠가 없습니다.'}
               </div>
             ) : (
