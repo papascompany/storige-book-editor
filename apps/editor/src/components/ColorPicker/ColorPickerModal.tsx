@@ -18,6 +18,7 @@ import {
   rgbToCmyk,
   getEyeDropColor,
 } from '@storige/canvas-core'
+import { useRecentColorsStore } from '@/stores/useRecentColorsStore'
 
 type InputType = 'HEX' | 'RGB' | 'CMYK'
 
@@ -92,13 +93,19 @@ export default function ColorPickerModal({
     }
   }, [])
 
+  // Recent colors (자동 LRU 큐)
+  const recentColors = useRecentColorsStore((s) => s.recent)
+  const pushRecentColor = useRecentColorsStore((s) => s.push)
+
   // Emit color
   const emitColor = useCallback(
     (r: number, g: number, b: number, o: number) => {
       const rgbaString = `rgba(${r}, ${g}, ${b}, ${o / 100})`
       onUpdateValue(rgbaString)
+      // 최근 사용 색상에 자동 추가 (opacity는 무시, hex 단위로만 추적)
+      pushRecentColor(rgb2Hex(r, g, b))
     },
-    [onUpdateValue]
+    [onUpdateValue, pushRecentColor]
   )
 
   // Sync input fields from RGB
@@ -622,12 +629,39 @@ export default function ColorPickerModal({
       </div>
 
       {/* Divider */}
-      <hr className="my-2 border-gray-200" />
+      <hr className="my-2 border-editor-border" />
 
-      {/* Color presets */}
+      {/* Recent colors — 자동 누적 (가장 최근 사용 16개) */}
+      {recentColors.length > 0 && (
+        <div className="mb-2">
+          <div className="text-[11px] font-semibold text-editor-text-muted mb-1">최근 사용</div>
+          <div className="flex gap-1 flex-wrap">
+            {recentColors.map((color, index) => (
+              <div
+                key={`recent-${color}-${index}`}
+                role="button"
+                tabIndex={0}
+                title={color}
+                aria-label={`최근 색상 ${color}`}
+                className="w-6 h-6 rounded border border-editor-border cursor-pointer transition-transform hover:scale-110"
+                style={{ backgroundColor: color }}
+                onClick={() => handlePresetClick(color)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Color presets — 사용자가 명시적으로 저장한 색상 */}
       <div className="flex gap-2 items-start">
         <div className="pt-0.5">
-          <Button variant="outline" size="icon" className="h-6 w-6 rounded-full" onClick={addToPreset}>
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-6 w-6 rounded-full"
+            onClick={addToPreset}
+            title="현재 색상을 저장 색상에 추가"
+          >
             <Plus className="h-4 w-4" />
           </Button>
         </div>
@@ -635,7 +669,11 @@ export default function ColorPickerModal({
           {colorPresets.map((color, index) => (
             <div
               key={index}
-              className="w-6 h-6 rounded border border-gray-200 cursor-pointer transition-transform hover:scale-110"
+              role="button"
+              tabIndex={0}
+              title={color}
+              aria-label={`저장 색상 ${color}`}
+              className="w-6 h-6 rounded border border-editor-border cursor-pointer transition-transform hover:scale-110"
               style={{ backgroundColor: color }}
               onClick={() => handlePresetClick(color)}
             />
