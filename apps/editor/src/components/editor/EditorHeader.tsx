@@ -1,10 +1,16 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
 import { useAppStore } from '@/stores/useAppStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useIsAdmin } from '@/stores/useAuthStore'
 import { useWorkSave } from '@/hooks/useWorkSave'
 import { ServicePlugin, PreviewPlugin, HistoryPlugin } from '@storige/canvas-core'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
 import {
   Tooltip,
   TooltipContent,
@@ -19,10 +25,24 @@ import {
   Ruler,
   Undo2,
   Redo2,
+  ChevronDown,
 } from 'lucide-react'
 import { AutoSaveIndicator } from './AutoSaveIndicator'
 import { BookMockup3D } from '../Mockup3D/BookMockup3D'
 import { useUiPrefStore, type PageNavPosition } from '@/stores/useUiPrefStore'
+
+const SIZE_PRESETS: { label: string; width: number; height: number }[] = [
+  { label: '정사각', width: 100, height: 100 },
+  { label: '명함', width: 90, height: 54 },
+  { label: '엽서', width: 148, height: 100 },
+  { label: 'A6', width: 105, height: 148 },
+  { label: 'A5', width: 148, height: 210 },
+  { label: 'A4', width: 210, height: 297 },
+  { label: 'B6', width: 125, height: 176 },
+  { label: 'B5', width: 176, height: 250 },
+]
+const SIZE_MIN_MM = 10
+const SIZE_MAX_MM = 1500
 
 interface EditorHeaderProps {
   screenMode?: 'mobile' | 'tablet' | 'desktop'
@@ -57,9 +77,48 @@ export default function EditorHeader({
   const toggleRuler = useUiPrefStore((s) => s.toggleRuler)
 
   // Stores
-  const { ready, canvas, allCanvas, allEditors, getPlugin, setPage, isSpreadMode } = useAppStore()
-  const { artwork, currentSettings, spreadConfig } = useSettingsStore()
+  const { ready, canvas, allCanvas, allEditors, getPlugin, setPage, isSpreadMode, updateAllWorkspaceSettings } = useAppStore()
+  const { artwork, currentSettings, spreadConfig, updateSettings } = useSettingsStore()
   const isAdmin = useIsAdmin()
+
+  // Undo/Redo 가능 여부 (HistoryPlugin의 historyUpdate 이벤트 + canvas.canUndo/canRedo 사용)
+  const [canUndo, setCanUndo] = useState(false)
+  const [canRedo, setCanRedo] = useState(false)
+
+  useEffect(() => {
+    if (!ready || allEditors.length === 0) {
+      setCanUndo(false)
+      setCanRedo(false)
+      return
+    }
+
+    const refresh = () => {
+      const cv = useAppStore.getState().canvas
+      if (!cv || (cv as any).disposed) return
+      try {
+        setCanUndo(cv.canUndo?.() ?? false)
+        setCanRedo(cv.canRedo?.() ?? false)
+      } catch {
+        // ignore
+      }
+    }
+
+    refresh()
+
+    const handlers: Array<{ editor: any; fn: () => void }> = []
+    allEditors.forEach((editor: any) => {
+      if (!editor?.on) return
+      const fn = () => refresh()
+      editor.on('historyUpdate', fn)
+      handlers.push({ editor, fn })
+    })
+
+    return () => {
+      handlers.forEach(({ editor, fn }) => {
+        try { editor.off?.('historyUpdate', fn) } catch {}
+      })
+    }
+  }, [ready, allEditors, canvas])
 
   // Work save hook for admin
   const { saveWorkForAdmin, saving: workSaving } = useWorkSave()
@@ -351,6 +410,58 @@ export default function EditorHeader({
   // 작업 사이즈 표시 (mm 단위)
   const sizeLabel = `${Math.round(size.width)} × ${Math.round(size.height)} mm`
 
+  // 사이즈 변경 (프리셋/직접 입력) — currentSettings를 갱신하고 모든 WorkspacePlugin에 전파
+  const applySize = useCallback(
+    (nextWidth: number, nextHeight: number) => {
+      const w = Math.min(SIZE_MAX_MM, Math.max(SIZE_MIN_MM, Math.round(nextWidth)))
+      const h = Math.min(SIZE_MAX_MM, Math.max(SIZE_MIN_MM, Math.round(nextHeight)))
+      const nextSettings = {
+        ...currentSettings,
+        size: {
+          ...currentSettings.size,
+          width: w,
+          height: h,
+        },
+      }
+      // store 업데이트는 비동기지만 직접 만든 nextSettings를 전파해서 동기화
+      updateSettings({ size: { ...currentSettings.size, width: w, height: h } })
+      try {
+        updateAllWorkspaceSettings(nextSettings as any)
+      } catch (e) {
+        console.warn('[EditorHeader] applySize: workspace update failed', e)
+      }
+    },
+    [currentSettings, updateSettings, updateAllWorkspaceSettings]
+  )
+
+  // 사이즈 popover 내부 입력 상태
+  const [sizeOpen, setSizeOpen] = useState(false)
+  const [draftWidth, setDraftWidth] = useState<string>(String(Math.round(size.width)))
+  const [draftHeight, setDraftHeight] = useState<string>(String(Math.round(size.height)))
+
+  // popover 열릴 때 현재 값으로 동기화
+  useEffect(() => {
+    if (sizeOpen) {
+      setDraftWidth(String(Math.round(size.width)))
+      setDraftHeight(String(Math.round(size.height)))
+    }
+  }, [sizeOpen, size.width, size.height])
+
+  // 현재 사이즈가 어떤 프리셋인지 매칭 (선택 강조용)
+  const matchedPreset = useMemo(() => {
+    return SIZE_PRESETS.find(
+      (p) => p.width === Math.round(size.width) && p.height === Math.round(size.height)
+    )
+  }, [size.width, size.height])
+
+  const handleApplyDraft = useCallback(() => {
+    const w = Number(draftWidth)
+    const h = Number(draftHeight)
+    if (!Number.isFinite(w) || !Number.isFinite(h)) return
+    applySize(w, h)
+    setSizeOpen(false)
+  }, [draftWidth, draftHeight, applySize])
+
   return (
     <TooltipProvider>
       <nav className="h-14 bg-white border-b border-gray-200 shadow-sm flex items-center px-4 z-[100]">
@@ -365,9 +476,9 @@ export default function EditorHeader({
                 variant="ghost"
                 size="icon"
                 onClick={handleUndo}
-                disabled={!ready}
+                disabled={!ready || !canUndo}
                 aria-label="실행 취소"
-                className="h-9 w-9 text-gray-600 hover:bg-gray-100"
+                className="h-9 w-9 text-gray-600 hover:bg-gray-100 disabled:opacity-40"
               >
                 <Undo2 className="h-5 w-5" />
               </Button>
@@ -380,9 +491,9 @@ export default function EditorHeader({
                 variant="ghost"
                 size="icon"
                 onClick={handleRedo}
-                disabled={!ready}
+                disabled={!ready || !canRedo}
                 aria-label="다시 실행"
-                className="h-9 w-9 text-gray-600 hover:bg-gray-100"
+                className="h-9 w-9 text-gray-600 hover:bg-gray-100 disabled:opacity-40"
               >
                 <Redo2 className="h-5 w-5" />
               </Button>
@@ -403,9 +514,90 @@ export default function EditorHeader({
             onBlur={handleNameChange}
             onKeyDown={handleNameChange}
           />
-          <span className="hidden md:inline-flex items-center px-2 py-1 text-xs text-gray-500 border border-gray-200 rounded-md bg-gray-50">
-            {sizeLabel}
-          </span>
+          <Popover open={sizeOpen} onOpenChange={setSizeOpen}>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                aria-label="작업 사이즈 변경"
+                className="hidden md:inline-flex items-center gap-1 px-2 py-1 text-xs text-gray-600 border border-gray-200 rounded-md bg-gray-50 hover:bg-gray-100 hover:border-gray-300 transition-colors"
+              >
+                <span>{sizeLabel}</span>
+                <ChevronDown className="h-3 w-3 text-gray-400" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="center" sideOffset={6} className="w-72 p-3">
+              <div className="text-[12px] font-semibold text-gray-700 mb-2">
+                작업 사이즈
+              </div>
+              <div className="grid grid-cols-2 gap-1.5 mb-3">
+                {SIZE_PRESETS.map((preset) => {
+                  const active = matchedPreset?.label === preset.label
+                  return (
+                    <button
+                      key={preset.label}
+                      type="button"
+                      onClick={() => {
+                        applySize(preset.width, preset.height)
+                        setSizeOpen(false)
+                      }}
+                      className={`flex flex-col items-start px-2.5 py-1.5 rounded-md border text-left transition-colors ${
+                        active
+                          ? 'border-editor-accent bg-editor-accent/10 text-editor-accent'
+                          : 'border-gray-200 hover:bg-gray-50 text-gray-700'
+                      }`}
+                    >
+                      <span className="text-[12px] font-medium">{preset.label}</span>
+                      <span className="text-[11px] text-gray-500">
+                        {preset.width} × {preset.height} mm
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+              <div className="border-t border-gray-100 pt-3">
+                <div className="text-[11px] text-gray-500 mb-1.5">직접 입력 (mm)</div>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="number"
+                    inputMode="numeric"
+                    min={SIZE_MIN_MM}
+                    max={SIZE_MAX_MM}
+                    value={draftWidth}
+                    onChange={(e) => setDraftWidth(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleApplyDraft()
+                    }}
+                    className="h-8 text-xs"
+                    aria-label="너비"
+                  />
+                  <span className="text-xs text-gray-400">×</span>
+                  <Input
+                    type="number"
+                    inputMode="numeric"
+                    min={SIZE_MIN_MM}
+                    max={SIZE_MAX_MM}
+                    value={draftHeight}
+                    onChange={(e) => setDraftHeight(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleApplyDraft()
+                    }}
+                    className="h-8 text-xs"
+                    aria-label="높이"
+                  />
+                  <Button
+                    size="sm"
+                    onClick={handleApplyDraft}
+                    className="h-8 px-3 bg-editor-accent hover:bg-editor-accent-hover text-white"
+                  >
+                    적용
+                  </Button>
+                </div>
+                <div className="mt-1.5 text-[10px] text-gray-400">
+                  {SIZE_MIN_MM}~{SIZE_MAX_MM} mm 범위. 재단/안전 영역은 유지됩니다.
+                </div>
+              </div>
+            </PopoverContent>
+          </Popover>
         </div>
 
         {/* 우측: 보기 옵션 + 불러오기 + 편집완료 + 도움말 */}

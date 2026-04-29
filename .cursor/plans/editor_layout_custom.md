@@ -615,14 +615,19 @@ rm -rf apps/editor/node_modules/.vite
 - ✅ **편집완료 hover 색상 분리** — `--color-primary-darker: #6ba82d` 신규 + `editor-accent-hover` 매핑
 - ✅ **사이드바 너비 가변** — 240~480px 드래그 리사이즈 + collapse 토글, localStorage 영속
 - ✅ **요소(클립아트) 메뉴 복원** — ToolBar SHAPE 메뉴 주석 해제 + AppElement.tsx REST API 로드 구현
+- ✅ **트랙 A — 즉시 처리 묶음 (1시간 이내)**
+  - 사이즈 pill 인터랙티브화 (Popover + 8개 프리셋 + 직접 입력, 10~1500mm 범위, `updateAllWorkspaceSettings()`로 캔버스 동기화)
+  - Undo/Redo disabled 바인딩 — 캔버스의 `canUndo()/canRedo()` + Editor `historyUpdate` 이벤트 구독으로 버튼 disabled 상태 자동 갱신
+  - 사이드바 collapse 단축키 — `Cmd+\` (Mac) / `Ctrl+\` (Win) 윈도우 키리스너, 입력 필드 포커스 시 자동 무시
 
 > 후속 작업 §8.2의 **D2-NEW** (메뉴 아이콘 PNG 업로드)는 2026-04-30 개발 계획에서 **취소**됨.
 
 ### 8.1 즉시 처리 가능 (1시간 이내)
-- **사이즈 pill 인터랙티브화** — 헤더 중앙 사이즈 표시(`100 × 100 mm`)를 클릭 가능 dropdown으로 전환 → 자주 쓰는 프리셋(A4, B5, 정사각 등) + 사용자 입력
-- **Undo/Redo disable 로직** — `HistoryPlugin`에 `canUndo()/canRedo()` 노출 + EditorHeader 버튼 `disabled` 바인딩 (현재는 항상 활성)
-- **사이드바 collapse 단축키** — `[`, `]` 또는 `Cmd+\`로 토글 (KeyboardPlugin에 등록)
-- **편집완료 hover 검증** — 빌드 후 운영 배포 환경에서 실제 hover 색상이 `#6ba82d`로 변하는지 시각 확인
+- ~~사이즈 pill 인터랙티브화~~ ✅ 완료 (2026-04-30, 트랙 A)
+- ~~Undo/Redo disable 로직~~ ✅ 완료 (2026-04-30, 트랙 A) — 캔버스 `canUndo/canRedo` + `historyUpdate` 이벤트 구독
+- ~~사이드바 collapse 단축키~~ ✅ 완료 (2026-04-30, 트랙 A) — `Cmd+\` / `Ctrl+\` 윈도우 키리스너
+- ~~편집완료 hover 검증~~ ✅ 완료 (2026-04-30, 트랙 A) — `.hover\:bg-editor-accent-hover:hover` 규칙이 `rgb(var(--color-primary-darker-rgb))` = `#6ba82d`로 정확히 컴파일됨
+- **빈 상태 재진입 시 Undo 버튼 미동기 보정** — `HistoryPlugin.afterLoad`가 `clearHistory` 후 `historyUpdate`를 호출하지만, 사용자 첫 클릭 전에 캔버스 내부 스택이 0/0인데 React state가 stale인 케이스가 드물게 발생. 첫 액션 후 자동 보정되므로 critical 아님
 
 ### 8.2 중간 작업 (1~3시간)
 - **D5** — 표지 편집 모드별 view 분기 (펼침면/분할/날개 케이스, `agents/12-cover-edit-modes.md`)

@@ -115,6 +115,33 @@ export default function FeatureSidebar({ className }: FeatureSidebarProps) {
     }
   }, [setSidebarWidth])
 
+  // 키보드 단축키: Cmd/Ctrl+\ 로 사이드바 collapse 토글
+  // 입력 요소(input/textarea/contenteditable) 포커스 중에는 무시
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey)) return
+      if (e.key !== '\\') return
+
+      const target = e.target as HTMLElement | null
+      if (target) {
+        const tag = target.tagName
+        if (
+          tag === 'INPUT' ||
+          tag === 'TEXTAREA' ||
+          tag === 'SELECT' ||
+          target.isContentEditable
+        ) {
+          return
+        }
+      }
+
+      e.preventDefault()
+      toggleSidebarCollapsed()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [toggleSidebarCollapsed])
+
   // If no menu selected, or if object is selected (show ControlBar instead), don't render
   if (!currentMenu || isNonBackgroundSelection) {
     return null
@@ -184,7 +211,7 @@ export default function FeatureSidebar({ className }: FeatureSidebarProps) {
         <button
           onClick={toggleSidebarCollapsed}
           aria-label="사이드바 펼치기"
-          title="사이드바 펼치기"
+          title="사이드바 펼치기 (⌘\\)"
           className="mt-2 p-1 rounded-md hover:bg-gray-100 text-gray-500 hover:text-gray-700 transition-colors"
         >
           <ChevronsRight className="h-4 w-4" />
@@ -213,7 +240,7 @@ export default function FeatureSidebar({ className }: FeatureSidebarProps) {
           <button
             onClick={toggleSidebarCollapsed}
             aria-label="사이드바 접기"
-            title="사이드바 접기"
+            title="사이드바 접기 (⌘\\)"
             className="p-1 rounded-md hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-colors"
           >
             <ChevronsLeft className="h-4 w-4" />
