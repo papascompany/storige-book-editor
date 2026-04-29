@@ -8,6 +8,8 @@ export default {
     extend: {
       colors: {
         // Editor theme colors (mapping to CSS variables in index.css)
+        // accent/accent-hover use rgb(var(--..) / <alpha-value>) so Tailwind
+        // opacity modifiers work (e.g. bg-editor-accent/10).
         editor: {
           bg: 'var(--color-background)',
           panel: 'var(--color-surface-container-lowest)',
@@ -16,8 +18,8 @@ export default {
           border: 'var(--color-outline-variant)',
           text: 'var(--color-on-surface)',
           'text-muted': 'var(--color-on-surface-variant)',
-          accent: 'var(--color-primary)',
-          'accent-hover': 'var(--color-surface-tint)',
+          accent: 'rgb(var(--color-primary-rgb) / <alpha-value>)',
+          'accent-hover': 'rgb(var(--color-primary-darker-rgb) / <alpha-value>)',
           hover: 'var(--color-surface-container)',
           workspace: 'var(--color-surface-container)',
           surface: {
@@ -41,7 +43,7 @@ export default {
           foreground: 'var(--color-on-surface)',
         },
         primary: {
-          DEFAULT: 'var(--color-primary)',
+          DEFAULT: 'rgb(var(--color-primary-rgb) / <alpha-value>)',
           foreground: 'var(--color-on-primary)',
         },
         secondary: {

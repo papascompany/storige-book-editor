@@ -36,7 +36,7 @@ const ALL_MENUS: AppMenu[] = [
   ...(ENABLE_TEMPLATE_MENU ? [{ type: 'TEMPLATE' as const, label: '템플릿', icon: LayoutTemplate }] : []),
   { type: 'IMAGE', label: '이미지', icon: Image },
   { type: 'TEXT', label: '텍스트', icon: Type },
-  // { type: 'SHAPE', label: '요소', icon: Shapes },
+  { type: 'SHAPE', label: '요소', icon: Shapes },
   { type: 'BACKGROUND', label: '배경', icon: PaintBucket },
   ...(ENABLE_FRAME_MENU ? [{ type: 'FRAME' as const, label: '프레임', icon: Frame }] : []),
   ...(ENABLE_SMART_CODE_MENU ? [{ type: 'SMART_CODE' as const, label: 'QR/바코드', icon: QrCode }] : []),

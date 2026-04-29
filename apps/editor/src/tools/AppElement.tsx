@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Upload as UploadSimple } from 'lucide-react'
 import { useAppStore } from '@/stores/useAppStore'
 import { useImageStore } from '@/stores/useImageStore'
@@ -6,11 +6,14 @@ import { useIsCustomer } from '@/stores/useAuthStore'
 import { useEditorContents } from '@/hooks/useEditorContents'
 import { Button } from '@/components/ui/button'
 import AppSection from '@/components/AppSection'
+import AppSectionSearch from '@/components/AppSectionSearch'
 import { ImageProcessingPlugin, SelectionType } from '@storige/canvas-core'
+import { contentsApi } from '@/api'
 import type { EditorContent } from '@/generated/graphql'
 
 export default function AppElement() {
   const canvas = useAppStore((state) => state.canvas)
+  const ready = useAppStore((state) => state.ready)
   const getPlugin = useAppStore((state) => state.getPlugin)
   const setContentsBrowser = useAppStore((state) => state.setContentsBrowser)
   const upload = useImageStore((state) => state.upload)
@@ -19,21 +22,55 @@ export default function AppElement() {
 
   const [isLoading, setIsLoading] = useState(false)
 
-  // Search state (for future GraphQL implementation)
-  const [_searchType, _setSearchType] = useState('name')
-  const [_searchKeyword, _setSearchKeyword] = useState('')
+  // Search state
+  const [searchType, setSearchType] = useState('name')
+  const [searchKeyword, setSearchKeyword] = useState('')
+  const [debouncedKeyword, setDebouncedKeyword] = useState('')
 
-  // Placeholder for recommended contents (will be loaded via GraphQL)
-  const [contents] = useState<Array<{
-    id: string
-    name: string
-    image?: { image?: { url?: string } }
-  }>>([])
-  const loadingContents = false
+  // Contents state
+  const [contents, setContents] = useState<EditorContent[]>([])
+  const [loadingContents, setLoadingContents] = useState(false)
+
+  // Debounce search keyword
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedKeyword(searchKeyword)
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [searchKeyword])
+
+  // Fetch elements (clipart) using REST API
+  useEffect(() => {
+    if (!isCustomer) return
+
+    const fetchElements = async () => {
+      setLoadingContents(true)
+      try {
+        const keyword = debouncedKeyword.trim()
+        const result = await contentsApi.getElements({
+          pageSize: 20,
+          search: keyword.length >= 2 ? keyword : undefined,
+        })
+
+        if (result.success && result.data) {
+          setContents(result.data.items as EditorContent[])
+        } else {
+          setContents([])
+        }
+      } catch (error) {
+        console.error('요소 콘텐츠 로드 오류:', error)
+        setContents([])
+      } finally {
+        setLoadingContents(false)
+      }
+    }
+
+    fetchElements()
+  }, [isCustomer, debouncedKeyword])
 
   // Handle upload (SVG elements)
   const handleUpload = useCallback(async () => {
-    if (!canvas) return
+    if (!ready || !canvas) return
 
     const imagePlugin = getPlugin<ImageProcessingPlugin>('ImageProcessingPlugin')
 
@@ -50,13 +87,13 @@ export default function AppElement() {
     } finally {
       setIsLoading(false)
     }
-  }, [canvas, getPlugin, upload])
+  }, [ready, canvas, getPlugin, upload])
 
   // Add content to canvas
-  const addContentToCanvas = useCallback(async (content: unknown) => {
+  const addContentToCanvas = useCallback(async (content: EditorContent) => {
     if (!content) return
     try {
-      await setupAsset(content as EditorContent, 'element')
+      await setupAsset(content, 'element')
     } catch (error) {
       console.error('요소 콘텐츠 추가 오류:', error)
     }
@@ -66,6 +103,17 @@ export default function AppElement() {
     setContentsBrowser('element')
   }, [setContentsBrowser])
 
+  // Search handlers
+  const handleSearch = useCallback(({ type, keyword }: { type: string; keyword: string }) => {
+    setSearchType(type)
+    setSearchKeyword(keyword)
+  }, [])
+
+  const handleClearSearch = useCallback(() => {
+    setSearchType('name')
+    setSearchKeyword('')
+  }, [])
+
   return (
     <div className="w-full h-full flex flex-col">
       <div className="px-4 pt-4 pb-3">
@@ -73,7 +121,7 @@ export default function AppElement() {
           variant="secondary"
           className="w-full h-10"
           onClick={handleUpload}
-          disabled={isLoading}
+          disabled={isLoading || !ready}
         >
           <UploadSimple className="h-4 w-4 mr-2" />
           {isLoading ? '업로드 중...' : '업로드'}
@@ -81,14 +129,26 @@ export default function AppElement() {
       </div>
       <div className="sections flex flex-col overflow-y-auto">
         {isCustomer && (
-          <AppSection title="추천 콘텐츠" onDetail={showMore}>
+          <AppSection
+            title="추천 콘텐츠"
+            onDetail={showMore}
+            searchSlot={
+              <AppSectionSearch
+                searchType={searchType}
+                searchKeyword={searchKeyword}
+                isSearching={loadingContents}
+                onSearch={handleSearch}
+                onClear={handleClearSearch}
+              />
+            }
+          >
             {loadingContents ? (
               <div className="flex justify-center items-center min-h-[200px]">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-editor-accent" />
               </div>
             ) : contents.length === 0 ? (
               <div className="px-4 py-8 text-center text-gray-400 text-xs">
-                추천 콘텐츠가 없습니다.
+                {searchKeyword ? '검색 결과가 없습니다.' : '추천 콘텐츠가 없습니다.'}
               </div>
             ) : (
               <div className="w-full grid grid-cols-2 gap-2 px-4">
@@ -99,16 +159,16 @@ export default function AppElement() {
                     onClick={() => addContentToCanvas(content)}
                   >
                     <div className="bg-gray-50 p-2 flex items-center justify-center w-full rounded hover:bg-gray-100 aspect-square overflow-hidden">
-                      {content.image?.image?.url && (
+                      {content?.image?.image?.url && (
                         <img
                           src={content.image.image.url}
-                          alt={content.name}
+                          alt={content?.name || ''}
                           className="object-contain w-full h-full"
                         />
                       )}
                     </div>
                     <div className="mt-1 px-1 text-left text-xs text-gray-600 truncate">
-                      {content.name || '이름 없음'}
+                      {content?.name || '이름 없음'}
                     </div>
                   </div>
                 ))}

@@ -9,6 +9,9 @@
 :root {
   /* bookmoa green theme */
   --color-primary: #7fbf34;
+  --color-primary-rgb: 127 191 52; /* triplet for rgb(... / <alpha>) */
+  --color-primary-darker: #6ba82d; /* hover/active state */
+  --color-primary-darker-rgb: 107 168 45;
   --color-surface-tint: #7fbf34;
   --color-on-primary: rgb(255 255 255);
   --color-primary-container: #e8f5d4;
