@@ -6,15 +6,15 @@ import ControlInput from '@/components/ControlInput'
 import FontPreviewDropdown from '@/components/FontPreviewDropdown'
 import { Button } from '@/components/ui/button'
 import {
-  TextB,
-  TextUnderline,
-  TextAlignLeft,
-  TextAlignCenter,
-  TextAlignRight,
-  TextAa,
-  ArrowsVertical,
-  ArrowsHorizontal,
-} from '@phosphor-icons/react'
+  Bold as TextB,
+  Underline as TextUnderline,
+  AlignLeft as TextAlignLeft,
+  AlignCenter as TextAlignCenter,
+  AlignRight as TextAlignRight,
+  CaseSensitive as TextAa,
+  MoveVertical as ArrowsVertical,
+  MoveHorizontal as ArrowsHorizontal,
+} from 'lucide-react'
 import { FontPlugin, ptToPx, pxToPt } from '@storige/canvas-core'
 import { getFontListAsSource, findFontByName, type FontSource } from '@/utils/fontManager'
 
