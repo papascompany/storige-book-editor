@@ -4,7 +4,7 @@ import { fabric } from 'fabric'
 import { PluginOption } from '../plugin'
 import { drawLine, drawMask, drawRect, drawText, getZoomGap } from '../utils/ruler'
 import { pxToMmDisplay, snapToGrid } from '../utils/math'
-import { UNIT_CONVERSIONS, DPI_ADAPTIVE_GAPS } from './constants'
+import { UNIT_CONVERSIONS, DPI_ADAPTIVE_GAPS, RULER_DEFAULTS } from './constants'
 
 export interface RulerOptions extends PluginOption {
   ruleSize?: number
@@ -88,15 +88,16 @@ class CanvasRuler {
 
   constructor(_canvas: fabric.Canvas, _options: RulerOptions) {
     this._canvas = _canvas
+    // D3: RULER_DEFAULTS 단일 소스 참조 (constants.ts에서 색상 토큰 변경 시 자동 반영)
     this._options = Object.assign(
       {
-        ruleSize: 20,
-        fontSize: 10,
+        ruleSize: RULER_DEFAULTS.RULE_SIZE,
+        fontSize: RULER_DEFAULTS.FONT_SIZE,
         enabled: false,
-        backgroundColor: '#fff',
-        borderColor: '#ddd',
-        highlightColor: '#ff2d55',
-        textColor: '#888'
+        backgroundColor: RULER_DEFAULTS.BACKGROUND_COLOR,
+        borderColor: RULER_DEFAULTS.BORDER_COLOR,
+        highlightColor: RULER_DEFAULTS.HIGHLIGHT_COLOR,
+        textColor: RULER_DEFAULTS.TEXT_COLOR
       },
       _options
     )

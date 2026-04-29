@@ -58,7 +58,8 @@ export const drawText = (
   fill && (ctx.fillStyle = fill)
   ctx.textAlign = align ?? 'left'
   ctx.textBaseline = 'top'
-  ctx.font = `${fontSize ?? 10}px sans-serif`
+  // D3: 숫자 라벨에 monospace 폰트 사용 (Ps/Ai 스타일, 라벨 정렬 안정화)
+  ctx.font = `${fontSize ?? 10}px ui-monospace, "SFMono-Regular", "Menlo", monospace`
   if (angle) {
     ctx.translate(left, top)
     ctx.rotate((Math.PI / 180) * angle)
