@@ -145,7 +145,13 @@
   - `SynthesisWebhookPayload`에 `sessionId?: string` optional 필드 추가 (계약 보존, PHP 핸들러는 jobId만 사용 중이라 영향 0)
   - `worker-jobs.service.ts:826` 합성 콜백 payload에 `sessionId: job.editSessionId || undefined` 추가
   - `webhook.service.ts:80` `generateSignature` 판별식을 `'sessionId' in payload` → `'jobId' in payload` 우선으로 재정렬 (SynthesisWebhookPayload에 sessionId가 추가되며 모호해진 디스크리미네이터 정정, 시그니처 동작 보존)
-- 🔵 **다음**: 사용자 결정 — D3 ruler 스타일 리프레시(1-2시간), D2-NEW 메뉴 아이콘 PNG 업로드 시스템(3시간) 등
+- ✅ **D3 ruler 스타일 리프레시** (2026-04-29)
+  - `packages/canvas-core/src/ruler/constants.ts` `RULER_DEFAULTS` 팔레트 D3 갱신: `BACKGROUND_COLOR #fff → #FAFAFA`, `TEXT_COLOR #888 → #404040` (그레이 80%), `BORDER_COLOR #ddd → #E5E5E5`, `TICK_COLOR #ccc → #A3A3A3`, `MAJOR_TICK_COLOR #888 → #525252` (Ps/Ai 스타일)
+  - `packages/canvas-core/src/ruler/ruler.ts` 생성자가 `RULER_DEFAULTS`를 단일 소스로 참조 (이전 hardcoded `#fff`/`#888`/`#ddd`와 constants 값 불일치 정합화)
+  - `packages/canvas-core/src/utils/ruler.ts` `drawText` 폰트를 monospace 스택(`ui-monospace, "SFMono-Regular", "Menlo", monospace`)으로 (라벨 정렬 안정화). drawText는 ruler 외 사용처 0건.
+  - 영역(safe/bleed/trim) 시각화는 변경 없음 (가이드 §D 명시)
+  - canvas-core 타입체크 통과. 빌드는 Vercel editor가 다음 deploy에 반영
+- 🔵 **다음**: 사용자 결정 — D2-NEW 메뉴 아이콘 PNG 업로드 시스템(3시간) 등
 
 # 보류 목록 (제일 마지막 단계 — 서비스 오픈 후 선택적)
 > 운영 안정화 + 후속 기능 모두 끝난 뒤 마무리로 진행. 서비스 오픈 후 필요 시 선택적으로 도입.
