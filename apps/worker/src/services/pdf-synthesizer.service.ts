@@ -255,10 +255,27 @@ export class PdfSynthesizerService {
     try {
       // 표지 구조에 따라 병합 순서 결정
       if (bindingType === 'saddle') {
-        // 중철 제본: 특별한 페이지 순서 필요
-        // TODO: Implement saddle stitch page ordering
-        this.logger.warn('Saddle stitch ordering not yet implemented');
-        await mergePdfs([coverPath, contentPath], outputPath);
+        // 중철 제본 (P4 v1, 2026-04-29):
+        //  - 표지: 입력 4 페이지 [앞표지, 앞표지 안쪽, 뒷표지 안쪽, 뒷표지]
+        //          → 출력 펼침면 2 페이지 (외부 [뒷|앞], 내부 [뒷안 |앞안])
+        //  - 내지: 변경 없음 (단일 페이지 그대로)
+        //  - saddle stitch 페이지 재배열은 추후 고객 요청 시 별도 작업
+        // 자세한 spec: .cursor/plans/saddle-stitch-spec.md
+
+        const composedCoverPath = path.join(
+          this.storagePath,
+          `saddle_cover_${uuidv4()}.pdf`,
+        );
+        tempFiles.push(composedCoverPath);
+
+        await this.composeSaddleCover(
+          coverPath,
+          composedCoverPath,
+          coverPageCount,
+        );
+
+        // 합성된 표지 + 내지 (단일 페이지) 병합
+        await mergePdfs([composedCoverPath, contentPath], outputPath);
       } else {
         // Perfect binding 또는 hardcover
         if (coverPageCount >= 2) {
@@ -357,6 +374,62 @@ export class PdfSynthesizerService {
     await fs.writeFile(outputPath, mergedPdfBytes);
 
     return mergedDoc.getPageCount();
+  }
+
+  /**
+   * Saddle stitch (중철) 표지 펼침면 2-up 합성 — P4 v1
+   *
+   * 입력 cover.pdf 4 페이지를 펼침면 2 페이지로 합성.
+   * 자세한 spec: `.cursor/plans/saddle-stitch-spec.md`
+   *
+   * 입력 페이지 순서 가정: [p1=앞표지, p2=앞표지 안쪽, p3=뒷표지 안쪽, p4=뒷표지]
+   * 출력:
+   *  - PDF p1 (외부면) = [뒷표지 | 앞표지] = [input.p4 | input.p1]
+   *  - PDF p2 (내부면) = [뒷표지 안쪽 | 앞표지 안쪽] = [input.p3 | input.p2]
+   * 출력 페이지 크기 = (입력 W × 2, 입력 H)
+   *
+   * 폴백: 입력 페이지 수가 4가 아니면 원본 그대로 복사 (warn 로그).
+   */
+  private async composeSaddleCover(
+    inputCoverPath: string,
+    outputPath: string,
+    pageCount: number,
+  ): Promise<void> {
+    if (pageCount !== 4) {
+      this.logger.warn(
+        `Saddle cover expects 4 pages but got ${pageCount}; copying as-is`,
+      );
+      await fs.copyFile(inputCoverPath, outputPath);
+      return;
+    }
+
+    const inputBytes = await fs.readFile(inputCoverPath);
+    const inputDoc = await PDFDocument.load(inputBytes);
+    const inputPages = inputDoc.getPages();
+    const W = inputPages[0].getWidth();
+    const H = inputPages[0].getHeight();
+
+    const outDoc = await PDFDocument.create();
+    // 입력 4페이지를 모두 임베드 (인덱스 0..3)
+    const [eFront, eInsideFront, eInsideBack, eBack] =
+      await outDoc.embedPdf(inputDoc, [0, 1, 2, 3]);
+
+    // p1 외부면: [뒷표지 | 앞표지]
+    const outerSheet = outDoc.addPage([W * 2, H]);
+    outerSheet.drawPage(eBack, { x: 0, y: 0, width: W, height: H });
+    outerSheet.drawPage(eFront, { x: W, y: 0, width: W, height: H });
+
+    // p2 내부면: [뒷표지 안쪽 | 앞표지 안쪽]
+    const innerSheet = outDoc.addPage([W * 2, H]);
+    innerSheet.drawPage(eInsideBack, { x: 0, y: 0, width: W, height: H });
+    innerSheet.drawPage(eInsideFront, { x: W, y: 0, width: W, height: H });
+
+    const outBytes = await outDoc.save();
+    await fs.writeFile(outputPath, outBytes);
+
+    this.logger.log(
+      `Saddle cover composed: 4 pages → 2 spread pages (${W * 2}×${H})`,
+    );
   }
 
   /**
