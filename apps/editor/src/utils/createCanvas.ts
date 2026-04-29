@@ -276,10 +276,8 @@ function initPlugins(
     spread.init()
   }
 
-  // RulerPlugin은 VITE_ENABLE_RULER 환경변수로 제어
-  if (ruler) {
-    ruler.enable()
-  }
+  // 룰러는 사용자 토글 기반 — 시작 시 자동 enable 안 함
+  // 토글은 EditorView가 useUiPrefStore.showRuler 변화에 반응해 ruler.enable()/disable() 호출
 
   // 앱 스토어에 등록 (initId 전달)
   appStore.init(canvas, editor, initId)
