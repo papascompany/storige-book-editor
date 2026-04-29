@@ -112,7 +112,7 @@ export default function AppImage() {
               {uploaded.map((image, index) => (
                 <div
                   key={index}
-                  className="aspect-square rounded-lg overflow-hidden cursor-pointer bg-gray-50 border border-gray-200 hover:border-editor-accent hover:scale-105 transition-all"
+                  className="aspect-square rounded-lg overflow-hidden cursor-pointer bg-editor-surface-low border border-editor-border hover:border-editor-accent hover:scale-105 transition-all"
                   onClick={() => addToCanvas(image)}
                 >
                   <img

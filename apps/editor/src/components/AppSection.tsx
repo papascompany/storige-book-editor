@@ -53,26 +53,26 @@ export default function AppSection({
   }
 
   return (
-    <section id={id} className="app-section w-full border-b border-gray-100 last:border-b-0">
+    <section id={id} className="app-section w-full border-b border-editor-border last:border-b-0">
       {/* Header */}
       <div
-        className="section-header flex items-center justify-between px-4 py-2.5 cursor-pointer hover:bg-gray-50 transition-colors"
+        className="section-header flex items-center justify-between px-4 py-2.5 cursor-pointer hover:bg-editor-hover transition-colors"
         onClick={handleToggle}
       >
         <div className="flex items-center gap-1.5">
           {isExpanded ? (
-            <ChevronDown className="h-3.5 w-3.5 text-gray-400" />
+            <ChevronDown className="h-3.5 w-3.5 text-editor-text-muted" />
           ) : (
-            <ChevronRight className="h-3.5 w-3.5 text-gray-400" />
+            <ChevronRight className="h-3.5 w-3.5 text-editor-text-muted" />
           )}
-          <span className="text-[13px] font-semibold tracking-tight text-gray-700">{title}</span>
+          <span className="text-[13px] font-semibold tracking-tight text-editor-text">{title}</span>
         </div>
         <div className="flex items-center gap-1">
           {onDetail && (
             <Button
               variant="ghost"
               size="sm"
-              className="h-6 px-2 text-xs text-gray-500 hover:text-gray-700 hover:bg-transparent"
+              className="h-6 px-2 text-xs text-editor-text-muted hover:text-editor-text hover:bg-transparent"
               onClick={(e) => {
                 e.stopPropagation()
                 onDetail()
@@ -86,7 +86,7 @@ export default function AppSection({
             <Button
               variant="ghost"
               size="icon"
-              className="h-6 w-6 text-gray-400 hover:text-red-500 hover:bg-transparent"
+              className="h-6 w-6 text-editor-text-muted hover:text-red-500 hover:bg-transparent"
               onClick={(e) => {
                 e.stopPropagation()
                 onDelete()
