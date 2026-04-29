@@ -78,14 +78,10 @@ export class WebhookService {
    * 간단한 시그니처 생성 (실제 환경에서는 HMAC 등 사용)
    */
   private generateSignature(payload: WebhookPayload): string {
-    let identifier: string;
-    if ('sessionId' in payload) {
-      identifier = payload.sessionId;
-    } else if ('jobId' in payload) {
-      identifier = payload.jobId;
-    } else {
-      identifier = 'unknown';
-    }
+    // SynthesisWebhookPayload는 jobId 우선 (sessionId는 additive optional이므로 둘 다 존재 가능).
+    // SessionWebhookPayload는 jobId 없음 → sessionId 사용. 기존 시그니처 동작 보존.
+    const identifier =
+      'jobId' in payload ? payload.jobId : payload.sessionId;
     const data = `${identifier}:${payload.event}:${payload.timestamp}`;
     return Buffer.from(data).toString('base64');
   }

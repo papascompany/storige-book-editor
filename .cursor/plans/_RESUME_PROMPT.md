@@ -141,7 +141,11 @@
 - ✅ **Admin 승인자 ID 하드코딩 제거 (P0-A)** (2026-04-29)
   - `apps/admin/src/pages/Reviews/ReviewDetail.tsx:84,101`의 `'admin'` 문자열 하드코딩을 `useAuthStore` 통한 실제 로그인 사용자 ID로 교체
   - 승인/반려 시 `reviewerId = currentUser?.id ?? 'admin'` 사용 → 검토 이력에 정확한 승인자 추적 가능
-- 🔵 **다음**: 사용자 결정 — `#3 sessionId additive` webhook payload 보강(10분), D3 ruler 스타일 리프레시(1-2시간), D2-NEW 메뉴 아이콘 PNG 업로드 시스템(3시간) 등
+- ✅ **#3 sessionId additive (webhook payload 계약 보강)** (2026-04-29)
+  - `SynthesisWebhookPayload`에 `sessionId?: string` optional 필드 추가 (계약 보존, PHP 핸들러는 jobId만 사용 중이라 영향 0)
+  - `worker-jobs.service.ts:826` 합성 콜백 payload에 `sessionId: job.editSessionId || undefined` 추가
+  - `webhook.service.ts:80` `generateSignature` 판별식을 `'sessionId' in payload` → `'jobId' in payload` 우선으로 재정렬 (SynthesisWebhookPayload에 sessionId가 추가되며 모호해진 디스크리미네이터 정정, 시그니처 동작 보존)
+- 🔵 **다음**: 사용자 결정 — D3 ruler 스타일 리프레시(1-2시간), D2-NEW 메뉴 아이콘 PNG 업로드 시스템(3시간) 등
 
 # 보류 목록 (제일 마지막 단계 — 서비스 오픈 후 선택적)
 > 운영 안정화 + 후속 기능 모두 끝난 뒤 마무리로 진행. 서비스 오픈 후 필요 시 선택적으로 도입.
