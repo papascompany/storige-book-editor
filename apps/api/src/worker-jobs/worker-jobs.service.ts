@@ -336,6 +336,7 @@ export class WorkerJobsService {
         orderId: createSynthesisJobDto.orderId,
         callbackUrl: createSynthesisJobDto.callbackUrl,
         outputFormat, // 출력 형식 전달
+        bindingType: createSynthesisJobDto.bindingType, // 제본 방식 (saddle 등) — synthesizer가 분기 처리
       },
       jobOptions,
     );
