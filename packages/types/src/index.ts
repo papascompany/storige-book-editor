@@ -597,6 +597,7 @@ export interface SynthesisResult {
 export interface SynthesisWebhookPayload {
   event: 'synthesis.completed' | 'synthesis.failed';
   jobId: string;
+  sessionId?: string; // EditSession ID (additive, NEW_DEV_PLAN §3.5 계약 보강)
   orderId?: string;
   status: 'completed' | 'failed';
 

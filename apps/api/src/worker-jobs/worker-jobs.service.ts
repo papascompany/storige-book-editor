@@ -823,6 +823,7 @@ export class WorkerJobsService {
       const payload: SynthesisWebhookPayload = {
         event: isCompleted ? 'synthesis.completed' : 'synthesis.failed',
         jobId: job.id, // domain ID (worker_jobs.id)
+        sessionId: job.editSessionId || undefined, // additive (계약 보강)
         orderId: job.options?.orderId,
         status: isCompleted ? 'completed' : 'failed',
 
