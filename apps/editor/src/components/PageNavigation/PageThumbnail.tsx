@@ -76,11 +76,11 @@ export const PageThumbnail = memo(function PageThumbnail({
       >
         <div
           className={cn(
-            'relative w-full overflow-hidden rounded-lg bg-gray-100 border-2 transition-colors',
+            'relative w-full overflow-hidden rounded-lg bg-editor-surface-low border-2 transition-colors',
             orientation === 'vertical' ? 'h-[64px]' : 'h-[64px]',
             active
-              ? 'border-editor-accent ring-2 ring-editor-accent/30 shadow-md bg-white'
-              : 'border-gray-200 hover:border-gray-400 hover:bg-white'
+              ? 'border-editor-accent ring-2 ring-editor-accent/30 shadow-md bg-editor-panel'
+              : 'border-editor-border hover:border-editor-text-muted hover:bg-editor-panel'
           )}
         >
           {dataUrl ? (
@@ -97,7 +97,7 @@ export const PageThumbnail = memo(function PageThumbnail({
         <span
           className={cn(
             'text-[10px] font-medium leading-none truncate w-full text-center',
-            active ? 'text-editor-accent font-semibold' : 'text-gray-600'
+            active ? 'text-editor-accent font-semibold' : 'text-editor-text-muted'
           )}
         >
           {label}
@@ -112,27 +112,27 @@ export const PageThumbnail = memo(function PageThumbnail({
       onClick={onClick}
       title={label}
       className={cn(
-        'group relative flex-shrink-0 rounded-md overflow-hidden bg-white border-2 transition-all',
+        'group relative flex-shrink-0 rounded-md overflow-hidden bg-editor-panel border-2 transition-all',
         orientation === 'vertical' ? 'w-[88px] h-[60px]' : 'w-[88px] h-[72px]',
         active
           ? 'border-editor-accent ring-2 ring-editor-accent/30 shadow-md'
-          : 'border-gray-200 hover:border-gray-400'
+          : 'border-editor-border hover:border-editor-text-muted'
       )}
     >
       {dataUrl ? (
         <img
           src={dataUrl}
           alt={label}
-          className="w-full h-full object-contain bg-gray-50"
+          className="w-full h-full object-contain bg-editor-surface-low"
           draggable={false}
         />
       ) : (
-        <div className="w-full h-full bg-gradient-to-br from-gray-50 to-gray-100" />
+        <div className="w-full h-full bg-gradient-to-br from-editor-surface-low to-editor-surface" />
       )}
       <span
         className={cn(
           'absolute bottom-0 left-0 right-0 text-[10px] font-semibold py-px px-1 text-center',
-          active ? 'bg-editor-accent/10 text-editor-accent' : 'bg-white/85 text-gray-700'
+          active ? 'bg-editor-accent/10 text-editor-accent' : 'bg-editor-panel/85 text-editor-text'
         )}
       >
         {label}

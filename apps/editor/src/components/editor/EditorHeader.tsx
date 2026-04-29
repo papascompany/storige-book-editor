@@ -474,7 +474,7 @@ export default function EditorHeader({
 
   return (
     <TooltipProvider>
-      <nav className="h-14 bg-white border-b border-gray-200 shadow-sm flex items-center px-4 z-[100]">
+      <nav className="h-14 bg-editor-panel border-b border-editor-border shadow-sm flex items-center px-4 z-[100]">
         {/* 좌측: 로고 + Undo/Redo + 자동저장 인디케이터 */}
         <div className="flex items-center gap-2">
           <span className="font-bold text-base tracking-tight text-editor-accent select-none mr-2">
@@ -488,7 +488,7 @@ export default function EditorHeader({
                 onClick={handleUndo}
                 disabled={!ready || !canUndo}
                 aria-label="실행 취소"
-                className="h-9 w-9 text-gray-600 hover:bg-gray-100 disabled:opacity-40"
+                className="h-9 w-9 text-editor-text-muted hover:bg-editor-hover disabled:opacity-40"
               >
                 <Undo2 className="h-5 w-5" />
               </Button>
@@ -503,7 +503,7 @@ export default function EditorHeader({
                 onClick={handleRedo}
                 disabled={!ready || !canRedo}
                 aria-label="다시 실행"
-                className="h-9 w-9 text-gray-600 hover:bg-gray-100 disabled:opacity-40"
+                className="h-9 w-9 text-editor-text-muted hover:bg-editor-hover disabled:opacity-40"
               >
                 <Redo2 className="h-5 w-5" />
               </Button>
@@ -520,7 +520,7 @@ export default function EditorHeader({
             type="text"
             defaultValue={artwork.name || '새로운 작업 1'}
             placeholder="제목을 입력해주세요"
-            className="bg-transparent border-none outline-none text-gray-700 text-sm font-medium text-center min-w-[140px] max-w-[280px] focus:ring-1 focus:ring-editor-accent/50 rounded px-2 py-1"
+            className="bg-transparent border-none outline-none text-editor-text text-sm font-medium text-center min-w-[140px] max-w-[280px] focus:ring-1 focus:ring-editor-accent/50 rounded px-2 py-1"
             onBlur={handleNameChange}
             onKeyDown={handleNameChange}
           />
@@ -529,14 +529,14 @@ export default function EditorHeader({
               <button
                 type="button"
                 aria-label="작업 사이즈 변경"
-                className="hidden md:inline-flex items-center gap-1 px-2 py-1 text-xs text-gray-600 border border-gray-200 rounded-md bg-gray-50 hover:bg-gray-100 hover:border-gray-300 transition-colors"
+                className="hidden md:inline-flex items-center gap-1 px-2 py-1 text-xs text-editor-text-muted border border-editor-border rounded-md bg-editor-surface-low hover:bg-editor-hover hover:border-editor-border transition-colors"
               >
                 <span>{sizeLabel}</span>
-                <ChevronDown className="h-3 w-3 text-gray-400" />
+                <ChevronDown className="h-3 w-3 text-editor-text-muted" />
               </button>
             </PopoverTrigger>
             <PopoverContent align="center" sideOffset={6} className="w-72 p-3">
-              <div className="text-[12px] font-semibold text-gray-700 mb-2">
+              <div className="text-[12px] font-semibold text-editor-text mb-2">
                 작업 사이즈
               </div>
               <div className="grid grid-cols-2 gap-1.5 mb-3">
@@ -553,19 +553,19 @@ export default function EditorHeader({
                       className={`flex flex-col items-start px-2.5 py-1.5 rounded-md border text-left transition-colors ${
                         active
                           ? 'border-editor-accent bg-editor-accent/10 text-editor-accent'
-                          : 'border-gray-200 hover:bg-gray-50 text-gray-700'
+                          : 'border-editor-border hover:bg-editor-surface-low text-editor-text'
                       }`}
                     >
                       <span className="text-[12px] font-medium">{preset.label}</span>
-                      <span className="text-[11px] text-gray-500">
+                      <span className="text-[11px] text-editor-text-muted">
                         {preset.width} × {preset.height} mm
                       </span>
                     </button>
                   )
                 })}
               </div>
-              <div className="border-t border-gray-100 pt-3">
-                <div className="text-[11px] text-gray-500 mb-1.5">직접 입력 (mm)</div>
+              <div className="border-t border-editor-border pt-3">
+                <div className="text-[11px] text-editor-text-muted mb-1.5">직접 입력 (mm)</div>
                 <div className="flex items-center gap-2">
                   <Input
                     type="number"
@@ -580,7 +580,7 @@ export default function EditorHeader({
                     className="h-8 text-xs"
                     aria-label="너비"
                   />
-                  <span className="text-xs text-gray-400">×</span>
+                  <span className="text-xs text-editor-text-muted">×</span>
                   <Input
                     type="number"
                     inputMode="numeric"
@@ -602,7 +602,7 @@ export default function EditorHeader({
                     적용
                   </Button>
                 </div>
-                <div className="mt-1.5 text-[10px] text-gray-400">
+                <div className="mt-1.5 text-[10px] text-editor-text-muted">
                   {SIZE_MIN_MM}~{SIZE_MAX_MM} mm 범위. 재단/안전 영역은 유지됩니다.
                 </div>
               </div>
@@ -621,7 +621,7 @@ export default function EditorHeader({
                 onClick={toggleRuler}
                 aria-label={showRuler ? '룰러 끄기' : '룰러 켜기'}
                 aria-pressed={showRuler}
-                className={`h-9 w-9 ${showRuler ? 'bg-editor-accent/10 text-editor-accent hover:bg-editor-accent/20 hover:text-editor-accent' : 'text-gray-600 hover:bg-gray-100'}`}
+                className={`h-9 w-9 ${showRuler ? 'bg-editor-accent/10 text-editor-accent hover:bg-editor-accent/20 hover:text-editor-accent' : 'text-editor-text-muted hover:bg-editor-hover'}`}
               >
                 <Ruler className="h-5 w-5" />
               </Button>
@@ -637,7 +637,7 @@ export default function EditorHeader({
                 size="icon"
                 onClick={cycleTheme}
                 aria-label={`테마 변경 (현재: ${theme === 'light' ? '라이트' : theme === 'dark' ? '다크' : '시스템'})`}
-                className="h-9 w-9 text-gray-600 hover:bg-gray-100"
+                className="h-9 w-9 text-editor-text-muted hover:bg-editor-hover"
               >
                 {theme === 'light' && <Sun className="h-5 w-5" />}
                 {theme === 'dark' && <Moon className="h-5 w-5" />}
@@ -658,7 +658,7 @@ export default function EditorHeader({
                   size="icon"
                   onClick={() => setShow3DMockup(true)}
                   disabled={!ready}
-                  className="h-9 w-9 text-gray-600 hover:bg-gray-100"
+                  className="h-9 w-9 text-editor-text-muted hover:bg-editor-hover"
                 >
                   <Box className="h-5 w-5" />
                 </Button>
@@ -673,7 +673,7 @@ export default function EditorHeader({
               <select
                 value={pageNavPosition}
                 onChange={(e) => setPageNavPosition(e.target.value as PageNavPosition)}
-                className="hidden md:block text-xs px-2 py-1 rounded-md border border-gray-200 bg-white hover:bg-gray-50 transition-colors cursor-pointer text-gray-600"
+                className="hidden md:block text-xs px-2 py-1 rounded-md border border-editor-border bg-editor-panel hover:bg-editor-hover transition-colors cursor-pointer text-editor-text-muted"
                 aria-label="페이지 네비 위치"
               >
                 <option value="auto">네비: 자동</option>
@@ -687,7 +687,7 @@ export default function EditorHeader({
           {/* 도움말 */}
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-9 w-9 text-gray-600 hover:bg-gray-100">
+              <Button variant="ghost" size="icon" className="h-9 w-9 text-editor-text-muted hover:bg-editor-hover">
                 <HelpCircle className="h-5 w-5" />
               </Button>
             </TooltipTrigger>
@@ -695,14 +695,14 @@ export default function EditorHeader({
           </Tooltip>
 
           {/* 구분선 */}
-          <div className="hidden md:block w-px h-6 bg-gray-200 mx-1" />
+          <div className="hidden md:block w-px h-6 bg-editor-border mx-1" />
 
           {/* 불러오기 */}
           <Button
             variant="outline"
             size="sm"
             onClick={handleOpenWorkspace}
-            className="hidden md:flex rounded-full border-gray-300 text-gray-700 hover:bg-gray-50 px-4"
+            className="hidden md:flex rounded-full border-editor-border text-editor-text hover:bg-editor-surface-low px-4"
           >
             <FolderOpen className="h-4 w-4 mr-2" />
             불러오기

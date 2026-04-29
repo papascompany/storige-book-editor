@@ -223,7 +223,7 @@ export default function FeatureSidebar({ className }: FeatureSidebarProps) {
     return (
       <div
         className={cn(
-          'feature-sidebar relative bg-white border-r border-gray-200 flex flex-col items-center shadow-sm h-full overflow-hidden z-[100]',
+          'feature-sidebar relative bg-editor-panel border-r border-editor-border flex flex-col items-center shadow-sm h-full overflow-hidden z-[100]',
           className
         )}
         style={widthStyle}
@@ -232,7 +232,7 @@ export default function FeatureSidebar({ className }: FeatureSidebarProps) {
           onClick={toggleSidebarCollapsed}
           aria-label="사이드바 펼치기"
           title="사이드바 펼치기 (⌘\\)"
-          className="mt-2 p-1 rounded-md hover:bg-gray-100 text-gray-500 hover:text-gray-700 transition-colors"
+          className="mt-2 p-1 rounded-md hover:bg-editor-hover text-editor-text-muted hover:text-editor-text transition-colors"
         >
           <ChevronsRight className="h-4 w-4" />
         </button>
@@ -243,7 +243,7 @@ export default function FeatureSidebar({ className }: FeatureSidebarProps) {
   return (
     <div
       className={cn(
-        'feature-sidebar relative bg-white border-r border-gray-200 flex flex-col shadow-sm',
+        'feature-sidebar relative bg-editor-panel border-r border-editor-border flex flex-col shadow-sm',
         'h-full overflow-hidden z-[100] scrollbar-hide',
         // 드래그 중에는 transition 끄기 (성능 + 즉시 반응)
         draftWidth == null && 'transition-[width,min-width,max-width] duration-150',
@@ -252,8 +252,8 @@ export default function FeatureSidebar({ className }: FeatureSidebarProps) {
       style={widthStyle}
     >
       {/* Header with collapse + close buttons */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-gray-50/50">
-        <h2 className="text-[13px] font-semibold tracking-tight text-gray-700 truncate">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-editor-border bg-editor-surface-low/50">
+        <h2 className="text-[13px] font-semibold tracking-tight text-editor-text truncate">
           {currentMenu.label}
         </h2>
         <div className="flex items-center gap-0.5">
@@ -261,14 +261,14 @@ export default function FeatureSidebar({ className }: FeatureSidebarProps) {
             onClick={toggleSidebarCollapsed}
             aria-label="사이드바 접기"
             title="사이드바 접기 (⌘\\)"
-            className="p-1 rounded-md hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-colors"
+            className="p-1 rounded-md hover:bg-editor-hover text-editor-text-muted hover:text-editor-text transition-colors"
           >
             <ChevronsLeft className="h-4 w-4" />
           </button>
           <button
             onClick={handleClose}
             aria-label="닫기"
-            className="p-1 rounded-md hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-colors"
+            className="p-1 rounded-md hover:bg-editor-hover text-editor-text-muted hover:text-editor-text transition-colors"
           >
             <X className="h-4 w-4" />
           </button>
