@@ -12,14 +12,14 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import {
-  Question,
-  FloppyDisk,
+  HelpCircle,
+  FolderOpen,
   Check,
-  Cube,
+  Box,
   Ruler,
-  ArrowUUpLeft,
-  ArrowUUpRight,
-} from '@phosphor-icons/react'
+  Undo2,
+  Redo2,
+} from 'lucide-react'
 import { AutoSaveIndicator } from './AutoSaveIndicator'
 import { BookMockup3D } from '../Mockup3D/BookMockup3D'
 import { useUiPrefStore, type PageNavPosition } from '@/stores/useUiPrefStore'
@@ -369,7 +369,7 @@ export default function EditorHeader({
                 aria-label="실행 취소"
                 className="h-9 w-9 text-gray-600 hover:bg-gray-100"
               >
-                <ArrowUUpLeft className="h-5 w-5" />
+                <Undo2 className="h-5 w-5" />
               </Button>
             </TooltipTrigger>
             <TooltipContent>실행 취소 (⌘Z)</TooltipContent>
@@ -384,7 +384,7 @@ export default function EditorHeader({
                 aria-label="다시 실행"
                 className="h-9 w-9 text-gray-600 hover:bg-gray-100"
               >
-                <ArrowUUpRight className="h-5 w-5" />
+                <Redo2 className="h-5 w-5" />
               </Button>
             </TooltipTrigger>
             <TooltipContent>다시 실행 (⌘⇧Z)</TooltipContent>
@@ -438,7 +438,7 @@ export default function EditorHeader({
                   disabled={!ready}
                   className="h-9 w-9 text-gray-600 hover:bg-gray-100"
                 >
-                  <Cube className="h-5 w-5" />
+                  <Box className="h-5 w-5" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent>3D 미리보기</TooltipContent>
@@ -466,7 +466,7 @@ export default function EditorHeader({
           <Tooltip>
             <TooltipTrigger asChild>
               <Button variant="ghost" size="icon" className="h-9 w-9 text-gray-600 hover:bg-gray-100">
-                <Question className="h-5 w-5" />
+                <HelpCircle className="h-5 w-5" />
               </Button>
             </TooltipTrigger>
             <TooltipContent>도움말</TooltipContent>
@@ -480,18 +480,19 @@ export default function EditorHeader({
             variant="outline"
             size="sm"
             onClick={handleOpenWorkspace}
-            className="hidden md:flex rounded-full border-gray-300 text-gray-700 hover:bg-gray-50"
+            className="hidden md:flex rounded-full border-gray-300 text-gray-700 hover:bg-gray-50 px-4"
           >
-            <FloppyDisk className="h-4 w-4 mr-2" />
+            <FolderOpen className="h-4 w-4 mr-2" />
             불러오기
           </Button>
 
           {/* 편집완료 (고객용) */}
           {!isAdmin && (
             <Button
+              size="sm"
               onClick={handleFinish}
               disabled={!ready || finishing}
-              className="bg-editor-accent hover:bg-editor-accent-hover text-white rounded-full shadow-sm"
+              className="bg-editor-accent hover:bg-editor-accent-hover text-white rounded-full shadow-sm px-4"
             >
               {finishing ? (
                 <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
