@@ -270,6 +270,7 @@ export default function AppBackground() {
         {/* Background Image */}
         {bgObject && (
           <AppSection
+            id="app-background-image"
             title="배경이미지"
             onDelete={deleteBg}
           >
@@ -306,7 +307,7 @@ export default function AppBackground() {
         )}
 
         {/* Background Color */}
-        <AppSection title="배경색">
+        <AppSection id="app-background-color" title="배경색">
           <div className="flex flex-row gap-2 items-center px-4">
             <div className="flex-1 flex items-center gap-2 h-10 px-3 rounded-lg bg-editor-surface-lowest">
               <input
@@ -333,7 +334,7 @@ export default function AppBackground() {
 
         {/* Lid Color (if lid object exists) */}
         {lidObject && (
-          <AppSection title="뚜껑색 변경">
+          <AppSection id="app-background-cap" title="뚜껑색 변경">
             <div className="flex flex-row gap-2 items-center px-4">
               <div className="flex-1 flex items-center gap-2 h-10 px-3 rounded-lg bg-editor-surface-lowest">
                 <input
@@ -361,7 +362,7 @@ export default function AppBackground() {
 
         {/* Recommended Contents */}
         {isCustomer && (
-        <AppSection title="추천 콘텐츠" onDetail={showMore}>
+        <AppSection id="app-background-recommended" title="추천 콘텐츠" onDetail={showMore}>
           {loadingContents ? (
             <div className="flex justify-center items-center min-h-[200px]">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-editor-accent" />

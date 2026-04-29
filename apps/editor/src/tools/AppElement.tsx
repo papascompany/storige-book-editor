@@ -130,6 +130,7 @@ export default function AppElement() {
       <div className="sections flex flex-col overflow-y-auto">
         {isCustomer && (
           <AppSection
+            id="app-element-recommended"
             title="추천 콘텐츠"
             onDetail={showMore}
             searchSlot={

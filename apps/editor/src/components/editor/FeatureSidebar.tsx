@@ -4,6 +4,7 @@ import {
   useUiPrefStore,
   SIDEBAR_WIDTH_MIN,
   SIDEBAR_WIDTH_MAX,
+  SIDEBAR_WIDTH_DEFAULT,
 } from '@/stores/useUiPrefStore'
 import { ChevronsLeft, ChevronsRight, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -83,6 +84,25 @@ export default function FeatureSidebar({ className }: FeatureSidebarProps) {
       document.body.style.userSelect = 'none'
     },
     [sidebarWidth, sidebarCollapsed]
+  )
+
+  // 드래그 핸들 더블클릭 → 기본 폭 복원
+  const handleResizeDoubleClick = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      if (sidebarCollapsed) return
+      e.preventDefault()
+      e.stopPropagation()
+      // 진행 중이던 드래그 상태가 있으면 정리
+      if (isResizingRef.current) {
+        isResizingRef.current = false
+        document.body.style.cursor = ''
+        document.body.style.userSelect = ''
+      }
+      draftWidthRef.current = null
+      setDraftWidth(null)
+      setSidebarWidth(SIDEBAR_WIDTH_DEFAULT)
+    },
+    [sidebarCollapsed, setSidebarWidth]
   )
 
   // 글로벌 mousemove/mouseup 리스너 (드래그 중에만 부착)
@@ -260,12 +280,14 @@ export default function FeatureSidebar({ className }: FeatureSidebarProps) {
         {renderToolPanel()}
       </div>
 
-      {/* Resize handle (right edge) */}
+      {/* Resize handle (right edge) — 더블클릭 시 기본 폭 복원 */}
       <div
         role="separator"
         aria-orientation="vertical"
         aria-label="사이드바 크기 조절"
+        title="드래그하여 너비 조절 · 더블클릭으로 기본값 복원"
         onMouseDown={handleResizeStart}
+        onDoubleClick={handleResizeDoubleClick}
         className={cn(
           'absolute top-0 right-0 h-full w-1 cursor-col-resize select-none group',
           'hover:bg-editor-accent/30 active:bg-editor-accent/50 transition-colors'

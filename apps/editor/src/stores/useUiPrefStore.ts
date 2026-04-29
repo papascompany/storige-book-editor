@@ -41,6 +41,15 @@ interface UiPrefState {
   /** 표지 편집 모드 (cover.md §3) — 기본 'auto' */
   coverEditMode: CoverEditMode
   setCoverEditMode: (mode: CoverEditMode) => void
+  /**
+   * AppSection 펼침 상태 (id별).
+   * - undefined = 기본값(true) 사용
+   * - true/false = 사용자가 명시적으로 토글한 상태
+   * 새로고침 후에도 유지됨.
+   */
+  expandedSections: Record<string, boolean>
+  setSectionExpanded: (id: string, expanded: boolean) => void
+  toggleSectionExpanded: (id: string) => void
 }
 
 export const useUiPrefStore = create<UiPrefState>()(
@@ -59,11 +68,21 @@ export const useUiPrefStore = create<UiPrefState>()(
         set({ sidebarCollapsed: !get().sidebarCollapsed }),
       coverEditMode: 'auto',
       setCoverEditMode: (coverEditMode) => set({ coverEditMode }),
+      expandedSections: {},
+      setSectionExpanded: (id, expanded) =>
+        set((s) => ({ expandedSections: { ...s.expandedSections, [id]: expanded } })),
+      toggleSectionExpanded: (id) =>
+        set((s) => {
+          const current = s.expandedSections[id]
+          // undefined → 기본값 true에서 첫 토글이므로 false로
+          const next = current === undefined ? false : !current
+          return { expandedSections: { ...s.expandedSections, [id]: next } }
+        }),
     }),
     {
       name: 'storige-ui-pref',
       storage: createJSONStorage(() => localStorage),
-      version: 4,
+      version: 5,
       migrate: (persistedState, version) => {
         const state = (persistedState ?? {}) as Partial<UiPrefState>
         if (version < 3) {
@@ -72,6 +91,9 @@ export const useUiPrefStore = create<UiPrefState>()(
         }
         if (version < 4) {
           state.coverEditMode = 'auto'
+        }
+        if (version < 5) {
+          state.expandedSections = {}
         }
         // sidebarWidth가 범위를 벗어난 경우 보정
         if (typeof state.sidebarWidth === 'number') {

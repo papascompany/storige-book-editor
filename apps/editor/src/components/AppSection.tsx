@@ -1,8 +1,13 @@
 import { useState, type ReactNode } from 'react'
 import { ChevronDown, ChevronRight, ArrowRight, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { useUiPrefStore } from '@/stores/useUiPrefStore'
 
 interface AppSectionProps {
+  /**
+   * 섹션 식별자. 지정하면 펼침 상태가 useUiPrefStore.expandedSections에 영속됨
+   * (새로고침 후에도 유지). 명시적 외부 제어(`expanded`/`onExpand`)가 우선.
+   */
   id?: string
   title: string
   expanded?: boolean
@@ -25,11 +30,23 @@ export default function AppSection({
 }: AppSectionProps) {
   const [internalExpanded, setInternalExpanded] = useState(true)
 
-  const isExpanded = externalExpanded !== undefined ? externalExpanded : internalExpanded
+  // store 연동: id가 있고 외부 제어가 아닐 때만 활성화
+  const usesStore = id !== undefined && externalExpanded === undefined && !onExpand
+  const storedValue = useUiPrefStore((s) => (id ? s.expandedSections[id] : undefined))
+  const toggleStored = useUiPrefStore((s) => s.toggleSectionExpanded)
+
+  // 우선순위: 외부 expanded prop > store(있으면) > internal state
+  const isExpanded = externalExpanded !== undefined
+    ? externalExpanded
+    : usesStore
+      ? storedValue ?? true // 기본값 true (현재 동작 유지)
+      : internalExpanded
 
   const handleToggle = () => {
     if (onExpand) {
       onExpand()
+    } else if (usesStore && id) {
+      toggleStored(id)
     } else {
       setInternalExpanded(!internalExpanded)
     }
