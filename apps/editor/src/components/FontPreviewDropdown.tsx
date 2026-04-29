@@ -384,8 +384,8 @@ export default function FontPreviewDropdown({
       {/* Trigger */}
       <div
         className={cn(
-          'h-9 px-3 border border-gray-200 rounded-md cursor-pointer flex items-center justify-between bg-white transition-all',
-          'hover:border-gray-300 hover:bg-gray-50',
+          'h-9 px-3 border border-editor-border rounded-md cursor-pointer flex items-center justify-between bg-editor-panel transition-all',
+          'hover:border-editor-border hover:bg-editor-hover',
           isOpen && 'border-editor-accent shadow-sm rounded-b-none',
           disabled && 'opacity-50 cursor-not-allowed'
         )}
@@ -395,14 +395,14 @@ export default function FontPreviewDropdown({
         aria-expanded={isOpen}
       >
         <span
-          className="flex-1 text-sm text-gray-700 truncate"
+          className="flex-1 text-sm text-editor-text truncate"
           style={selectedFontStyle}
         >
           {selectedFontName || placeholder}
         </span>
         <ChevronDown
           className={cn(
-            'h-4 w-4 text-gray-400 transition-transform flex-shrink-0',
+            'h-4 w-4 text-editor-text-muted transition-transform flex-shrink-0',
             isOpen && 'rotate-180'
           )}
         />

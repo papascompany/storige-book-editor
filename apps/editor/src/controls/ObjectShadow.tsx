@@ -339,7 +339,7 @@ export default function ObjectShadow() {
               {/* Color Picker */}
               <div className="flex-1 min-w-[50%] flex items-center gap-2 h-10 px-3 rounded-lg bg-editor-surface-lowest">
                 <div
-                  className="w-7 h-7 rounded cursor-pointer border border-gray-300 flex-shrink-0"
+                  className="w-7 h-7 rounded cursor-pointer border border-editor-border flex-shrink-0"
                   style={{ backgroundColor: localColor || effectiveValue }}
                   onClick={() => {
                     const input = document.getElementById('shadow-color-input') as HTMLInputElement

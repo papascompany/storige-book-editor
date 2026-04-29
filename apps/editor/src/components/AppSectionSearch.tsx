@@ -128,31 +128,31 @@ export default function AppSectionSearch({
 
   return (
     <div className="app-section-search w-full">
-      <div className="search-container bg-white w-full">
+      <div className="search-container bg-editor-panel w-full">
         <div
           ref={rootRef}
-          className="search-field relative flex items-center bg-white border border-black/10 rounded-lg px-2 py-1"
+          className="search-field relative flex items-center bg-editor-panel border border-black/10 rounded-lg px-2 py-1"
         >
           {/* Type selector */}
           <button
             type="button"
-            className="prefix inline-flex items-center gap-1.5 h-7 px-2 border-none bg-transparent text-gray-700 cursor-pointer rounded-md text-xs hover:bg-black/5"
+            className="prefix inline-flex items-center gap-1.5 h-7 px-2 border-none bg-transparent text-editor-text cursor-pointer rounded-md text-xs hover:bg-black/5"
             aria-expanded={isDropdownOpen}
             onClick={toggleDropdown}
           >
             <span className="prefix-label min-w-[32px]">{currentSearchTypeLabel}</span>
-            <span className="chevron text-[10px] leading-none text-gray-500" aria-hidden="true">▾</span>
+            <span className="chevron text-[10px] leading-none text-editor-text-muted" aria-hidden="true">▾</span>
           </button>
 
           {/* Dropdown */}
           {isDropdownOpen && (
-            <div className="dropdown absolute top-full left-0 mt-1.5 bg-white border border-black/10 rounded-lg shadow-lg z-20 min-w-[140px] py-1.5 px-1">
+            <div className="dropdown absolute top-full left-0 mt-1.5 bg-editor-panel border border-black/10 rounded-lg shadow-lg z-20 min-w-[140px] py-1.5 px-1">
               <ul className="list-none p-0 m-0">
                 {searchOptions.map(opt => (
                   <li
                     key={opt.value}
                     className={cn(
-                      'dropdown-item py-2 px-2.5 rounded-md cursor-pointer text-sm text-gray-700',
+                      'dropdown-item py-2 px-2.5 rounded-md cursor-pointer text-sm text-editor-text',
                       'hover:bg-black/5',
                       opt.value === localType && 'bg-black/[0.06] font-semibold'
                     )}
@@ -173,7 +173,7 @@ export default function AppSectionSearch({
           {/* Input */}
           <input
             type="text"
-            className="input-el flex-1 min-w-0 h-7 border-none outline-none text-sm text-gray-800 bg-transparent"
+            className="input-el flex-1 min-w-0 h-7 border-none outline-none text-sm text-editor-text bg-transparent"
             placeholder="검색어를 입력하세요"
             value={localKeyword}
             onChange={(e) => handleInput(e.target.value)}
@@ -183,7 +183,7 @@ export default function AppSectionSearch({
           {localKeyword && localKeyword.length > 0 && (
             <button
               type="button"
-              className="clear-btn border-none bg-transparent text-gray-500 cursor-pointer h-6 w-6 rounded hover:bg-black/[0.06] hover:text-gray-600"
+              className="clear-btn border-none bg-transparent text-editor-text-muted cursor-pointer h-6 w-6 rounded hover:bg-black/[0.06] hover:text-editor-text-muted"
               aria-label="clear"
               onClick={handleClear}
             >
@@ -202,7 +202,7 @@ export default function AppSectionSearch({
 
         {/* Min length warning */}
         {localKeyword && localKeyword.length > 0 && localKeyword.length < minSearchLength && (
-          <div className="text-xs text-gray-500 mt-1 px-1">
+          <div className="text-xs text-editor-text-muted mt-1 px-1">
             최소 {minSearchLength}자 이상 입력해주세요
           </div>
         )}

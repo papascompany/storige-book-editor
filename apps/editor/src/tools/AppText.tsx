@@ -115,7 +115,7 @@ export default function AppText() {
       <div className="sections flex flex-col">
         {isCustomer && (
           <AppSection id="app-text-recommended" title="추천 콘텐츠" onDetail={showMore}>
-            <div className="py-8 text-center text-gray-400 text-xs">
+            <div className="py-8 text-center text-editor-text-muted text-xs">
               추천 콘텐츠가 없습니다.
             </div>
           </AppSection>

@@ -148,7 +148,7 @@ export default function AppElement() {
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-editor-accent" />
               </div>
             ) : contents.length === 0 ? (
-              <div className="px-4 py-8 text-center text-gray-400 text-xs">
+              <div className="px-4 py-8 text-center text-editor-text-muted text-xs">
                 {searchKeyword ? '검색 결과가 없습니다.' : '추천 콘텐츠가 없습니다.'}
               </div>
             ) : (
@@ -159,7 +159,7 @@ export default function AppElement() {
                     className="w-full cursor-pointer"
                     onClick={() => addContentToCanvas(content)}
                   >
-                    <div className="bg-gray-50 p-2 flex items-center justify-center w-full rounded hover:bg-gray-100 aspect-square overflow-hidden">
+                    <div className="bg-editor-surface-low p-2 flex items-center justify-center w-full rounded hover:bg-editor-hover aspect-square overflow-hidden">
                       {content?.image?.image?.url && (
                         <img
                           src={content.image.image.url}
@@ -168,7 +168,7 @@ export default function AppElement() {
                         />
                       )}
                     </div>
-                    <div className="mt-1 px-1 text-left text-xs text-gray-600 truncate">
+                    <div className="mt-1 px-1 text-left text-xs text-editor-text-muted truncate">
                       {content?.name || '이름 없음'}
                     </div>
                   </div>

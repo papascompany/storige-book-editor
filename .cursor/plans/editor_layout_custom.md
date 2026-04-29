@@ -663,6 +663,12 @@ rm -rf apps/editor/node_modules/.vite
   - `useUiPrefStore.theme` 추가 (`'light' | 'dark' | 'system'`) + version 5→6 마이그레이션
   - `useThemeSync()` hook — `<html data-theme>` 속성 동기화. system 모드에서 `prefers-color-scheme` 변경 자동 감지. App.tsx 루트에서 1회 호출
   - `EditorHeader`에 테마 토글 버튼 — Sun/Moon/Monitor 아이콘 + 클릭 시 light → dark → system 사이클
+- ✅ **트랙 D Phase 2 v2 — 공통/controls/tools 토큰 스윕 (다크 모드 완성)**
+  - 공통 컴포넌트: `AppSection`, `AppSectionSearch`, `FontPreviewDropdown`의 잔여 하드코딩 그레이 토큰화
+  - `controls/ObjectShadow`: 색상 미리보기 박스 border 토큰
+  - tools/ 6개 (`AppText/Image/Element/Frame/Template/Background`): 빈 상태 메시지, 콘텐츠 카드 배경/호버, 라벨 텍스트 모두 토큰화
+  - 토큰 매핑은 v1과 동일 규약 적용 (`text-gray-*→text-editor-text*`, `bg-gray-50→bg-editor-surface-low`, `bg-gray-100→bg-editor-hover` 등)
+  - 검증: 다크 모드에서 텍스트 패널/사이드바/그린 CTA 모두 일관, 라이트 복귀 정상
 - ✅ **트랙 D Phase 2 v1 — 상위 chrome 토큰 스윕**
   - 5개 컴포넌트의 하드코딩 그레이를 테마 토큰으로 일괄 교체
     · `EditorHeader.tsx` — `bg-white/text-gray-X/border-gray-X/hover:bg-gray-X` 모두 `bg-editor-panel/text-editor-text*/border-editor-border/hover:bg-editor-hover`로 교체
@@ -693,8 +699,7 @@ rm -rf apps/editor/node_modules/.vite
 - **반응형 레이아웃** — 모바일(≤768) 슬라이드아웃 사이드바, 태블릿(769-1024) 헤더 wrap, 데스크톱(1025+) 풀 레이아웃. 사이드바 가변 폭 도입으로 모바일 대응 시 `min-width` 제약을 깰 수 있는 분기 처리 필요
 - **콘텐츠 패널 그리드 카탈로그** — 미리캔버스 풍 카테고리 탭 + 그리드 + 크라운 아이콘 등 본격 카탈로그 UI (D2-NEW 취소됨에 따라 별도 트랙으로 검토)
 - **AI 패널 정합** — 현재는 ToolBar에 없음. AI 도구 메뉴 추가 + 패널 통합
-- ~~다크 모드~~ ✅ Phase 1+2 v1 완료 (2026-04-30, 트랙 D). chrome 영역 + 상위 5개 컴포넌트 하드코딩 그레이 → 테마 토큰 스윕
-- **다크 모드 Phase 2 v2** — controls/ (ObjectSize/Fill/Stroke/Shadow/TextAttributes 등), tools/ 전 도구 패널의 잔여 하드코딩 그레이 스윕
+- ~~다크 모드~~ ✅ Phase 1+2 v1+v2 완료 (2026-04-30, 트랙 D). chrome 영역 + 상위 5개 컴포넌트 + 공통 컴포넌트 + controls/ + tools/ 일괄 토큰 스윕
 - **다크 모드 Phase 3** — 룰러 색상 (canvas-core RULER_DEFAULTS 분기), 캔버스 워크스페이스 배경 (WorkspacePlugin), 객체 선택 핸들 토큰화
 
 ---
