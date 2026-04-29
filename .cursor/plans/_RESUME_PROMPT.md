@@ -164,7 +164,13 @@
   - **lucide-react 아이콘 교체** (사용자 요청): `apps/editor`에 `lucide-react@0.400.0` 의존성 추가. `types/menu.ts` `AppMenu.icon: phosphor Icon → LucideIcon`. ToolBar 9개 + EditorHeader 7개 + AppSection 4개 + FontPreviewDropdown 3개 + TextAttributes 8개 모두 lucide로 (UploadSimple→Upload, TextT→Type, FrameCorners→Frame, Question→HelpCircle, FloppyDisk→FolderOpen, Cube→Box, ArrowUUpLeft/Right→Undo2/Redo2, CaretDown→ChevronDown 등)
   - **AppSection 다듬기**: 섹션 사이 `border-b border-gray-100` 추가 (시각 구분), 헤더 padding/typography 정리, 카레트 절제 (`text-gray-400`), 제목 `font-semibold tracking-tight`
   - **FontPreviewDropdown 다듬기**: trigger `min-h-10 → h-9`, `border-gray-200 + rounded-md`, hover `bg-gray-50`, open 시 `border-editor-accent` (브랜드 녹색)
-- 🔵 **다음**: D2-NEW 메뉴 아이콘 PNG 업로드 시스템(3시간) 또는 후속 polish (반응형 — 모바일/태블릿 슬라이드아웃 사이드바 등은 별도 1일+ 작업으로 분리). 진행 중: ① 나머지 phosphor → lucide 교체 (일관성), ② tools/App*.tsx 내부 폼/카드 polish
+- ✅ **D3 후속 3 — phosphor → lucide 일괄 교체 + tools/App polish** (2026-04-29)
+  - **phosphor 일괄 마이그레이션**: 45개 파일에 남아있던 `@phosphor-icons/react` import를 `lucide-react`로 일괄 교체. `Lucide as Phosphor` alias 패턴으로 사용처(JSX) 변경 0건. 매핑 200+개(CaretDown→ChevronDown, MagnifyingGlass→Search, FloppyDisk→Save, Stack→Layers 등). `IconContext.Provider` 제거 (lucide 미지원). 미상 매핑(Eyedropper→Pipette, FileDashed→FileText, RadioButton→Circle, CloudSlash→CloudOff)은 수동 처리. 시각/동작 변화 없음
+  - **FeatureSidebar 다듬기**: `bg-editor-panel` → `bg-white + shadow-sm`, 헤더 `bg-gray-50/50 + font-semibold tracking-tight`, X 버튼 rounded + aria-label
+  - **tools/App*.tsx 9개 파일 boilerplate 정리**: 중복 title 제거 (FeatureSidebar 헤더에 라벨 있음), `tool-header p-4 gap-6` → `px-4 pt-4 pb-3`, hr 제거 (AppSection 자체 border-b), placeholder 톤 `gray-400 text-xs`. `AppText` 추가 버튼 `secondary → default` (브랜드 녹색 CTA + rounded-md + shadow-sm)
+  - 검증: localhost:3000 텍스트/이미지 패널 깔끔한 헤더 + 녹색 CTA, 컨솔 lucide 에러 0건
+  - 커밋: `5fe2ad5` (phosphor 일괄), `ec03fa9` (tools polish)
+- 🔵 **다음**: 사용자 결정 — **반응형 작업** (모바일 ≤768 / 태블릿 769-1024 / 데스크톱 1025+ 분기, 모바일 슬라이드아웃 사이드바, 헤더 wrap 등 1일+ 작업) 또는 D2-NEW 메뉴 아이콘 PNG 업로드 시스템(3시간), 또는 추가 polish (스크롤바/트랜지션/그림자 등)
 
 # 보류 목록 (제일 마지막 단계 — 서비스 오픈 후 선택적)
 > 운영 안정화 + 후속 기능 모두 끝난 뒤 마무리로 진행. 서비스 오픈 후 필요 시 선택적으로 도입.
