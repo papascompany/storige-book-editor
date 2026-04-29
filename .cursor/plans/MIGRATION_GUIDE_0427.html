@@ -484,16 +484,16 @@
 
     <div class="metrics">
       <div class="metric done">
-        <div class="num">23</div>
-        <div class="label">완료 (인프라 + P1/P5 + 외부 점검 + VPS + nimda + 옵션 A + 버그 2건 + PHP 개발자 안내서)</div>
+        <div class="num">30</div>
+        <div class="label">완료 (인프라 + P1~P5 + 외부 점검 + VPS + nimda + A 안정화 + CMYK 정리 + P0-A)</div>
       </div>
       <div class="metric prog">
-        <div class="num">2</div>
-        <div class="label">즉시 다음 (Day 5 PHP 회귀, Day 6 컷오버)</div>
+        <div class="num">1</div>
+        <div class="label">PHP 개발자 작업 대기 (proxy_pass.html 전달 후 Apache vhost 변경)</div>
       </div>
       <div class="metric wait">
-        <div class="num">9</div>
-        <div class="label">대기 (P2/P3/P4/P6/P7, R2, D2/D3/D5)</div>
+        <div class="num">8</div>
+        <div class="label">대기 (D2/D3/D5, P6/P7, sessionId additive, R2, Sentry, Uptime, Discord, Admin 비번)</div>
       </div>
       <div class="metric done" style="background: linear-gradient(135deg, #d1fae5 0%, #ffffff 100%);">
         <div class="num" style="color: #065f46;">0</div>
@@ -935,8 +935,8 @@
           <li class="done"><span class="dot"></span><div>BookNavigation 페이지 네비 (D4)<span class="file">apps/editor/src/components/BookNavigation.tsx</span></div></li>
           <li class="done"><span class="dot"></span><div>EditorHeader 그라데이션 (D1)<span class="file">apps/editor/src/components/EditorHeader.tsx</span></div></li>
           <li class="done"><span class="dot"></span><div>useEditorStore.setPages 동기화<span class="file">apps/editor/src/stores/useEditorStore.ts</span></div></li>
-          <li class="warn"><span class="dot"></span><div>GraphQL 콘텐츠 로드 (TODO)<span class="file">apps/editor/src/hooks/useEditorContents.ts:824</span></div></li>
-          <li class="warn"><span class="dot"></span><div>CMYK 색공간 런타임 스텁 (폐기 검토?)<span class="file">apps/editor/vite.config.ts</span></div></li>
+          <li><span class="dot"></span><div>GraphQL 콘텐츠 로드 TODO (보류 — 서비스 운영 후 폐기 검토)<span class="file">apps/editor/src/hooks/useEditorContents.ts:824</span></div></li>
+          <li class="done"><span class="dot"></span><div>CMYK 색공간 dead code 정리 (72177cf)<span class="file">vite.config.ts + ColorPickerModal + colorRuntimeStub.ts 삭제</span></div></li>
         </ul>
       </div>
 
@@ -946,7 +946,7 @@
           <span class="badge">React + Ant Design</span>
         </div>
         <ul>
-          <li class="warn"><span class="dot"></span><div>승인자 ID 하드코딩 제거 (P0-A)<span class="file">apps/admin/src/pages/Reviews/ReviewDetail.tsx:84</span></div></li>
+          <li class="done"><span class="dot"></span><div>승인자 ID 하드코딩 제거 (P0-A) — useAuthStore 통한 실제 사용자 ID<span class="file">apps/admin/src/pages/Reviews/ReviewDetail.tsx:84,101</span></div></li>
           <li><span class="dot"></span><div>D2-NEW 메뉴 아이콘 PNG 업로드 (컷오버 후)<span class="file">agents/10-menu-icon-asset-system.md</span></div></li>
         </ul>
       </div>
@@ -1968,27 +1968,27 @@ curl -sS -H "X-API-Key: $PHP_KEY" \
     </div>
 
     <div class="check-group">
-      <h3><span class="chip warn">⚠️</span> 확인 / 정리 필요</h3>
+      <h3><span class="chip done">✓</span> 정리 완료 / <span class="chip warn">⚠️</span> 확인 필요</h3>
       <ul class="check-list">
-        <li>
+        <li class="done">
           <div class="cb"></div>
           <div class="ck-body">
-            <strong>Admin 승인자 ID 하드코딩 제거 (P0-A)</strong>
-            <span class="sub"><code>apps/admin/src/pages/Reviews/ReviewDetail.tsx:84,101</code> · 컷오버 전 우선순위</span>
+            <strong>Admin 승인자 ID 하드코딩 제거 (P0-A)</strong> — 2026-04-29
+            <span class="sub"><code>apps/admin/src/pages/Reviews/ReviewDetail.tsx:84,101</code>의 <code>'admin'</code> 문자열을 <code>useAuthStore</code> 통한 실제 로그인 사용자 ID로 교체. 검토 이력에 정확한 승인자 추적 가능.</span>
+          </div>
+        </li>
+        <li class="done">
+          <div class="cb"></div>
+          <div class="ck-body">
+            <strong>CMYK 색공간 런타임 스텁 — dead code 정리 완료</strong> — 2026-04-29 (72177cf)
+            <span class="sub"><code>@pf/color-runtime</code> import 0건 + canvas-core가 이미 legacy fallback만 사용 → stub 작동 불가능 검증. <code>vite.config</code>의 <code>colorRuntimeStubPlugin</code> + <code>optimizeDeps.exclude</code> 제거, <code>colorRuntimeStub.ts</code> 삭제, ColorPickerModal dead catch fallback 제거. ICC 도입은 보류 목록.</span>
           </div>
         </li>
         <li>
           <div class="cb"></div>
           <div class="ck-body">
-            <strong>GraphQL 콘텐츠 로드 — 미구현 vs 폐기 결정 (P0-C)</strong>
-            <span class="sub"><code>apps/editor/src/hooks/useEditorContents.ts:824</code> · TODO 주석 정리</span>
-          </div>
-        </li>
-        <li>
-          <div class="cb"></div>
-          <div class="ck-body">
-            <strong>CMYK 색공간 런타임 스텁 — 기능 폐기 여부</strong>
-            <span class="sub"><code>apps/editor/vite.config.ts</code> · throw new Error 상태</span>
+            <strong>GraphQL 콘텐츠 로드 — 보류 (서비스 운영 후 폐기 검토)</strong>
+            <span class="sub"><code>apps/editor/src/hooks/useEditorContents.ts:824</code> · bookmoa 운영은 embed.tsx의 <code>loadTemplateSetEditor</code>만 사용해 영향 0건 검증. 운영 후 문제 없으면 폐기.</span>
           </div>
         </li>
         <li>

@@ -1,10 +1,10 @@
-# 새 세션 시작용 프롬프트 (v10)
+# 새 세션 시작용 프롬프트 (v11)
 
 > 새 Claude Code 세션을 열고 아래 블록을 그대로 복사해서 입력하면 됩니다.
 > 이 문서는 지우지 말고 보관하세요.
 >
-> **버전**: v10 (2026-04-28 자정 직전, PHP 개발자 안내서 작성 + 옵션 3 진입)
-> **이전 버전**: v9 (옵션 A) → v8 (nimda 통합) → v7 (VPS 검증) → v6 (정합화) → ... — git history
+> **버전**: v11 (2026-04-29, P4 + 운영 안정화 + P2/P3 + CMYK 정리 + Admin 하드코딩 제거 완료)
+> **이전 버전**: v10 (PHP 안내서) → v9 (옵션 A) → v8 (nimda 통합) → ... — git history
 
 ---
 
@@ -121,7 +121,27 @@
   - 이유: 옵션 A 자체 시뮬레이션으로 핵심 흐름 모두 검증됨. bookmoa staging nginx 변경 권한이 별도 PHP 개발자에게 있어 검증 시점 미정
   - 사용자가 proxy_pass.html을 PHP 개발자에게 전달 → PHP 개발자가 staging→운영 순으로 실행
   - 우리는 다음 우선순위 작업으로 이동
-- 🔵 **다음**: A 운영 안정화 진행 (모니터링 + admin 빌드 정리). R2/Admin 비번은 마지막 단계로 보류
+- ✅ **A 운영 안정화** (2026-04-28 야간)
+  - A-1 self-monitor: `scripts/monitor.sh` cron 5분마다 (헬스/큐/컨테이너/디스크) → 로그 + (옵션 Discord webhook) (`52947ca`)
+  - A-2 admin docker-compose 제거: VPS docker admin은 한 번도 가동 안 됨, Vercel admin이 운영 (`52947ca`)
+  - admin SPA 정합성 명시 — bookmoa.noriter.co.kr/storige-admin/는 북모아 정적 호스팅 + JS 번들의 `baseURL="/storige-api"` (실측), Apache ProxyPass 변경 시 자동 새 인프라 연동 (`fb91ce3`)
+- ✅ **B 트랙 P2 + P3** (2026-04-28 야간)
+  - P2 sharp 이미지 썸네일 구현: `storage.service.generateThumbnail` placeholder → 실제 sharp 리사이즈 + EXIF 회전 + JPEG quality 80 (`5bad19e`)
+  - P3 템플릿셋 삭제 안전장치: `template-sets.service.remove` 사용 중 검증 (활성 상품 + active 세션 카운트, 사용 중이면 BadRequest with usage details) (`5820713`). 운영 검증 통과
+- ✅ **P4 saddle stitch (중철 imposition)** (2026-04-29)
+  - `composeSaddleCover` + `composeSaddleContent` 구현 (`3739a00`)
+  - bindingType propagation 수정 (`b107805`)
+  - downloadFile 운영 차단 버그 수정 (`f0fc02e`)
+  - VPS 운영 4페이지 더미 PDF로 검증 통과
+- ✅ **CMYK 스텁 dead code 정리** (2026-04-29) (`72177cf`)
+  - `@pf/color-runtime` import 0건 + canvas-core가 이미 legacy fallback만 사용 → stub 작동할 일 없는 dead code였음을 grep으로 검증
+  - vite.config + vite.embed.config의 `colorRuntimeStubPlugin` + `optimizeDeps.exclude` 제거
+  - `apps/editor/src/lib/colorRuntimeStub.ts` 파일 삭제
+  - ColorPickerModal CMYK→RGB의 dead `await import` catch fallback 제거
+- ✅ **Admin 승인자 ID 하드코딩 제거 (P0-A)** (2026-04-29)
+  - `apps/admin/src/pages/Reviews/ReviewDetail.tsx:84,101`의 `'admin'` 문자열 하드코딩을 `useAuthStore` 통한 실제 로그인 사용자 ID로 교체
+  - 승인/반려 시 `reviewerId = currentUser?.id ?? 'admin'` 사용 → 검토 이력에 정확한 승인자 추적 가능
+- 🔵 **다음**: 사용자 결정 — `#3 sessionId additive` webhook payload 보강(10분), D3 ruler 스타일 리프레시(1-2시간), D2-NEW 메뉴 아이콘 PNG 업로드 시스템(3시간) 등
 
 # 보류 목록 (제일 마지막 단계 — 서비스 오픈 후 선택적)
 > 운영 안정화 + 후속 기능 모두 끝난 뒤 마무리로 진행. 서비스 오픈 후 필요 시 선택적으로 도입.
@@ -272,3 +292,10 @@ curl -sS -H "Origin: https://storige-editor-XYZ.vercel.app" \
   - PHP 개발자 전달용 안내서 작성: `.cursor/plans/proxy_pass.html`
   - Phase B 결정: 옵션 3(컷오버 직행 — PHP 개발자에게 위임) 진행
   - 다음은 사용자 결정 작업 우선순위에 따라 후속 진행
+- v11에서 변경된 점 (v10 대비):
+  - A 운영 안정화 완료 (A-1 monitor.sh + A-2 admin 정리 + admin SPA 정합성)
+  - B 트랙 P2(썸네일) + P3(템플릿 삭제 안전장치) 완료 + 운영 검증
+  - P4 saddle stitch 중철 imposition 완료 (composeSaddleCover/Content + 2-up 합치기 + 운영 검증)
+  - CMYK 스텁 dead code 정리 완료
+  - Admin 승인자 ID 하드코딩(P0-A) 제거 완료
+  - A-3 Sentry, A-4 Uptime monitor, Discord webhook, GraphQL TODO 폐기, CMYK ICC 도입 모두 보류 목록
