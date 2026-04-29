@@ -663,6 +663,14 @@ rm -rf apps/editor/node_modules/.vite
   - `useUiPrefStore.theme` 추가 (`'light' | 'dark' | 'system'`) + version 5→6 마이그레이션
   - `useThemeSync()` hook — `<html data-theme>` 속성 동기화. system 모드에서 `prefers-color-scheme` 변경 자동 감지. App.tsx 루트에서 1회 호출
   - `EditorHeader`에 테마 토글 버튼 — Sun/Moon/Monitor 아이콘 + 클릭 시 light → dark → system 사이클
+- ✅ **트랙 G — 토스트 알림 시스템**
+  - `useToastStore` (zustand) — 큐 기반 토스트 관리 (push/dismiss/clear), `showToast(message, type, duration)` 헬퍼 export
+  - `ToastViewport` 컴포넌트 — 우측 하단 stack, 4 타입(success/info/warning/error) × 좌측 컬러 띠로 시각 구분, 라이브 영역(aria-live=polite)
+  - App 루트에 ToastViewport 1회 마운트 — 모든 라우트에서 동일하게 동작
+  - EditorHeader 곳곳의 `console.log`/`alert` 호출(편집완료/PDF저장/내작업저장/관리자저장/불러오기/미리보기 토글)을 toast로 교체
+  - 자동 제거(duration ms) + 수동 닫기(X 버튼) + duration 0이면 영구 표시
+  - 다크 모드 자동 호환 (테마 토큰 사용)
+  - 외부 의존성 없음 (sonner/react-hot-toast 등 추가 안 함)
 - ✅ **트랙 F — 키보드 단축키 도움말 모달 + Cmd+S 저장 단축키**
   - `KeyboardShortcutsModal.tsx` 신규 — 백드롭 + 카드 + 4 카테고리(작업/객체/이동·정렬/UI) × 19개 단축키 KeyCap 디자인
   - 카탈로그는 canvas-core plugins(HistoryPlugin/CopyPlugin/GroupPlugin/ObjectPlugin/LockPlugin) + editor 측 단축키(FeatureSidebar Cmd+\\) 수동 정리. 새 단축키 추가 시 카탈로그 함께 갱신

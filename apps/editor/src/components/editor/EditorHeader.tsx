@@ -33,6 +33,7 @@ import {
 import { AutoSaveIndicator } from './AutoSaveIndicator'
 import { BookMockup3D } from '../Mockup3D/BookMockup3D'
 import KeyboardShortcutsModal from './KeyboardShortcutsModal'
+import { showToast } from '@/stores/useToastStore'
 import { useUiPrefStore, type PageNavPosition, type Theme } from '@/stores/useUiPrefStore'
 
 const SIZE_PRESETS: { label: string; width: number; height: number }[] = [
@@ -179,9 +180,9 @@ export default function EditorHeader({
         await plugin.setPreview(newPreviewMode, currentSettings.colorMode)
       }
 
-      // TODO: 토스트 메시지 추가
-      console.log(
-        '인쇄 미리보기 모드가 ' + (newPreviewMode ? '활성화' : '비활성화') + '되었습니다.'
+      showToast(
+        '인쇄 미리보기 모드가 ' + (newPreviewMode ? '활성화' : '비활성화') + '되었습니다.',
+        'info'
       )
     } catch (error) {
       console.error('미리보기 전환 중 오류:', error)
@@ -244,11 +245,14 @@ export default function EditorHeader({
         setPage(originalCanvasIndex)
       }
 
-      // TODO: 토스트 메시지 추가
-      console.log('모든 페이지가 포함된 PDF가 성공적으로 저장되었습니다.')
+      showToast('모든 페이지가 PDF로 저장되었습니다.', 'success')
     } catch (error) {
       console.error('PDF 저장 중 오류:', error)
-      alert(`PDF 저장 중 오류가 발생했습니다: ${error instanceof Error ? error.message : String(error)}`)
+      showToast(
+        `PDF 저장 중 오류가 발생했습니다: ${error instanceof Error ? error.message : String(error)}`,
+        'error',
+        6000
+      )
     } finally {
       setLoading(false)
     }
@@ -286,11 +290,17 @@ export default function EditorHeader({
       // onSaveWork 콜백이 있으면 해당 콜백 호출
       if (onSaveWork) {
         await onSaveWork()
+        showToast('내 작업에 저장됐습니다.', 'success')
       } else {
-        console.log('내 작업에 저장: 세션 없음 (독립 실행 모드)')
+        showToast('독립 실행 모드 — 외부 저장 콜백 없음', 'info')
       }
     } catch (error) {
       console.error('저장 중 오류:', error)
+      showToast(
+        `저장 중 오류: ${error instanceof Error ? error.message : String(error)}`,
+        'error',
+        6000
+      )
     } finally {
       setSaving(false)
       setLoading(false)
@@ -317,12 +327,17 @@ export default function EditorHeader({
       // onFinish 콜백이 있으면 (bookmoa 연동 모드) 해당 콜백 호출
       if (onFinish) {
         await onFinish()
+        showToast('편집이 완료되었습니다.', 'success')
       } else {
-        // 독립 실행 모드 - 로컬 저장만 수행
-        console.log('편집완료: 독립 실행 모드 (세션 없음)')
+        showToast('독립 실행 모드 — 편집완료 콜백 없음', 'info')
       }
     } catch (error) {
       console.error('디자인 저장 실패:', error)
+      showToast(
+        `저장 실패: ${error instanceof Error ? error.message : String(error)}`,
+        'error',
+        6000
+      )
     } finally {
       setFinishing(false)
       setLoading(false)
@@ -364,7 +379,7 @@ export default function EditorHeader({
         // 관리자용 저장 실행 (useWorkSave 훅 사용)
         await saveWorkForAdmin()
 
-        console.log('관리자 작업이 성공적으로 저장되었습니다.')
+        showToast('저장됐습니다.', 'success')
 
         // CMS에 저장 완료 메시지 전송
         sendMessageToCMS({
@@ -389,6 +404,8 @@ export default function EditorHeader({
         console.error('디자인 저장 실패:', error)
         const errorMessage = error instanceof Error ? error.message : '알 수 없는 오류'
 
+        showToast(`저장 실패: ${errorMessage}`, 'error', 6000)
+
         // CMS에 에러 메시지 전송
         sendMessageToCMS({
           type: 'ADMIN_EDITOR_ERROR',
@@ -407,7 +424,7 @@ export default function EditorHeader({
     if (onOpenWorkspace) {
       onOpenWorkspace()
     } else {
-      console.log('불러오기: 세션 없음 (독립 실행 모드)')
+      showToast('독립 실행 모드 — 불러오기 콜백 없음', 'info')
     }
   }, [onOpenWorkspace])
 
