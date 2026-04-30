@@ -34,6 +34,7 @@ import { AutoSaveIndicator } from './AutoSaveIndicator'
 import { BookMockup3D } from '../Mockup3D/BookMockup3D'
 import KeyboardShortcutsModal from './KeyboardShortcutsModal'
 import CommandPaletteModal from './CommandPaletteModal'
+import HistoryPanel from './HistoryPanel'
 import { showToast } from '@/stores/useToastStore'
 import { useUiPrefStore, type PageNavPosition, type Theme } from '@/stores/useUiPrefStore'
 
@@ -570,6 +571,9 @@ export default function EditorHeader({
           </Tooltip>
           {/* 자동 저장 상태 (클라우드 인디케이터 역할) */}
           <AutoSaveIndicator className="hidden sm:flex ml-1" />
+
+          {/* 변경 이력 요약 popover */}
+          <HistoryPanel />
         </div>
 
         {/* 중앙: 작업명 + 사이즈 표시 */}
