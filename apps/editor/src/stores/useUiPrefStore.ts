@@ -62,6 +62,10 @@ interface UiPrefState {
   /** UI 테마 (light/dark/system). 기본 'light' */
   theme: Theme
   setTheme: (theme: Theme) => void
+  /** 자동저장 성공 시 짧은 토스트 표시 여부. 기본 false (인디케이터로 충분, 노이즈 방지) */
+  autoSaveToastEnabled: boolean
+  setAutoSaveToastEnabled: (enabled: boolean) => void
+  toggleAutoSaveToast: () => void
 }
 
 /**
@@ -129,11 +133,15 @@ export const useUiPrefStore = create<UiPrefState>()(
         }),
       theme: 'light',
       setTheme: (theme) => set({ theme }),
+      autoSaveToastEnabled: false,
+      setAutoSaveToastEnabled: (autoSaveToastEnabled) => set({ autoSaveToastEnabled }),
+      toggleAutoSaveToast: () =>
+        set((s) => ({ autoSaveToastEnabled: !s.autoSaveToastEnabled })),
     }),
     {
       name: 'storige-ui-pref',
       storage: createJSONStorage(() => localStorage),
-      version: 6,
+      version: 7,
       migrate: (persistedState, version) => {
         const state = (persistedState ?? {}) as Partial<UiPrefState>
         if (version < 3) {
@@ -148,6 +156,9 @@ export const useUiPrefStore = create<UiPrefState>()(
         }
         if (version < 6) {
           state.theme = 'light'
+        }
+        if (version < 7) {
+          state.autoSaveToastEnabled = false
         }
         // sidebarWidth가 범위를 벗어난 경우 보정
         if (typeof state.sidebarWidth === 'number') {

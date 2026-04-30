@@ -278,6 +278,17 @@ function buildActions(props: Pick<CommandPaletteModalProps, 'onFinish' | 'onOpen
         close()
       },
     },
+    {
+      id: 'autosave-toast-toggle',
+      group: 'UI',
+      label: '자동저장 토스트 켜기/끄기',
+      keywords: ['autosave', 'toast', '자동저장', '알림'],
+      icon: Cog,
+      run: ({ close }) => {
+        useUiPrefStore.getState().toggleAutoSaveToast()
+        close()
+      },
+    },
   ]
 
   return [...tools, ...editing, ...ui]
