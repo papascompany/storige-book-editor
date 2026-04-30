@@ -178,9 +178,21 @@ let throttleTimeout: ReturnType<typeof setTimeout> | null = null
 
 // Debounced 함수들 (cancel 가능하도록 외부에 선언)
  
+// 터치 디바이스에서는 toDataURL 이 retina(DPR=3) 캔버스에서 매우 비싸 메모리 폭발 → iOS
+// Safari 페이지 크래시 유발. coarse pointer 환경에서는 디바운스를 길게(800ms) 잡고
+// multiplier 를 0.4 로 줄여 데이터 양 약 1/8 로 축소.
+function isTouchEnv(): boolean {
+  if (typeof window === 'undefined' || !window.matchMedia) return false
+  try { return window.matchMedia('(pointer: coarse)').matches } catch { return false }
+}
+
+const SCREENSHOT_DEBOUNCE_MS = isTouchEnv() ? 800 : 200
+const SCREENSHOT_MULTIPLIER_TOUCH = 0.4
+
 const debouncedTakeScreenshot = debounce((allCanvas: any[], set: any) => {
   // 캔버스가 유효한지 확인
   if (!allCanvas || allCanvas.length === 0) return
+  const touchEnv = isTouchEnv()
 
   const newScreenshots: string[] = []
   allCanvas.forEach((cvs: FabricCanvas, index: number) => {
@@ -198,12 +210,14 @@ const debouncedTakeScreenshot = debounce((allCanvas: any[], set: any) => {
             top: bound.top,
             width: bound.width,
             height: bound.height,
+            // 모바일에서는 다운샘플 — 썸네일은 작게 표시되므로 충분
+            ...(touchEnv ? { multiplier: SCREENSHOT_MULTIPLIER_TOUCH } : {}),
           })
         } else {
           newScreenshots[index] = cvs.toDataURL({
             format: 'png',
             quality: 0.8,
-            multiplier: 0.2
+            multiplier: touchEnv ? SCREENSHOT_MULTIPLIER_TOUCH : 0.2
           })
         }
       }
@@ -212,7 +226,7 @@ const debouncedTakeScreenshot = debounce((allCanvas: any[], set: any) => {
     }
   })
   set({ screenshots: newScreenshots })
-}, 200)
+}, SCREENSHOT_DEBOUNCE_MS)
 
  
 const debouncedRenderFn = debounce((canvas: any) => {
