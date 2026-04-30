@@ -456,8 +456,12 @@ useEffect(() => {
 | **H** | `fc34354` | AutoSaveIndicator 리팩토링 | inline SVG → lucide, 하드코딩 컬러 → 토큰, failed/offline 진입 시 자동 토스트 |
 | **I** | `b568de8` | 최근 사용 색상 LRU | `useRecentColorsStore` (16개 LRU + persist), `normalizeToHex()`, ColorPickerModal "최근 사용" 섹션 |
 | **J** | `c8e4054` | 커맨드 팔레트 (Cmd+K) | `CommandPaletteModal` (22 정적 + 동적 페이지 액션, 검색 + 키보드 nav), 단축키 카탈로그 갱신 |
+| **K** | `11c8877` | 작업명 동기화 + Empty State + Undo 보정 | `setArtworkName` 추가 + uncontrolled input(key+onBlur) 패턴, `EmptyCanvasHint` 신규(중앙 카드 + Cmd+K 힌트), Undo state stale 보정(setTimeout 100/500ms) |
+| **L** | `da60703` | 객체 정렬 도구 가시화 | ControlBar에 6버튼 정렬 그리드(가로 좌/중/우 + 세로 상/중/하), 단일=workspace 기준 / 다중=그룹 자체 기준, AlignBtn 헬퍼 |
+| **M** | `5213782` | 표지 편집 모드 사용자 토글 (D5 Phase 3a) | CommandPaletteModal에 auto/separated/composite 액션 3개 추가, cover.md Phase 3a 완료 / 3b 미래 |
+| **N** | (docs) | lucide tree-shaking 정적 분석 | v0.400.0 `sideEffects:false` + 79개 named import 확인 → 자동 tree-shake. 추가 조치 불필요 |
 
-총 13개 커밋, 모두 `origin/master`에 반영되어 Vercel 자동 배포 완료 (`editor.papascompany.co.kr`).
+총 17개 커밋, 모두 `origin/master`에 반영되어 Vercel 자동 배포 완료 (`editor.papascompany.co.kr`).
 
 ### 6.1 2026-04-29 세션
 
@@ -686,6 +690,25 @@ rm -rf apps/editor/node_modules/.vite
   - `useUiPrefStore.theme` 추가 (`'light' | 'dark' | 'system'`) + version 5→6 마이그레이션
   - `useThemeSync()` hook — `<html data-theme>` 속성 동기화. system 모드에서 `prefers-color-scheme` 변경 자동 감지. App.tsx 루트에서 1회 호출
   - `EditorHeader`에 테마 토글 버튼 — Sun/Moon/Monitor 아이콘 + 클릭 시 light → dark → system 사이클
+- ✅ **트랙 N — lucide tree-shaking 정적 분석**
+  - lucide-react v0.400.0의 `package.json`에 `"sideEffects": false` 명시 → Rollup/Vite tree-shaking 자동 활성화
+  - 코드베이스: 53개 tsx 파일에서 `from 'lucide-react'` import, 79개 고유 named import 사용
+  - 결론: 79개만 production 번들에 포함, lucide 전체(1500+ 아이콘)는 제외됨 → 추가 조치 불필요
+- ✅ **트랙 M — 표지 편집 모드 사용자 토글 (D5 Phase 3a)**
+  - cover.md §3 정의된 `coverEditMode` (auto/separated/composite)는 store에 영속됐으나 UI 토글 부재
+  - CommandPaletteModal에 액션 3개 추가 — `Cmd+K → "표지 편집"` 검색으로 모드 전환
+  - cover.md Phase 표 세분화: 3a 완료(사용자 토글) / 3b 장기(객체 region 인식)
+- ✅ **트랙 L — 객체 정렬 도구 가시화 (AlignPlugin 노출)**
+  - canvas-core `AlignPlugin.setH/setV`는 이미 등록돼 있었으나 UI 부재
+  - ControlBar(객체 선택 시 우측 패널)에 6버튼 정렬 그리드 추가 (헤더 아래, 그룹 액션 위)
+  - 단일 선택: 워크스페이스 기준 정렬 / 다중 선택: 객체 그룹 자체 기준 (AlignPlugin 자동 분기)
+  - `AlignStartVertical/CenterVertical/EndVertical` (가로) + `AlignStartHorizontal/CenterHorizontal/EndHorizontal` (세로) lucide 아이콘
+  - `AlignBtn` 헬퍼 + Tooltip 라벨 (왼쪽/가로 가운데/오른쪽/위/세로 가운데/아래)
+  - 라벨도 컨텍스트 인식 ("워크스페이스 기준 정렬" vs "그룹 정렬")
+- ✅ **트랙 K — 작업명 동기화 + Empty State + Undo 미동기 보정**
+  - K-1 작업명 input store 동기화: `useSettingsStore.setArtworkName(name)` 추가, EditorHeader input은 `key={artwork.name}` uncontrolled + onBlur/Enter commit + Escape 복원 (이전엔 `defaultValue`+placeholder onBlur로 변경이 store에 반영 안 되던 버그)
+  - K-2 빈 캔버스 Empty State: `EmptyCanvasHint.tsx` 신규 — 캔버스 중앙 카드(Sparkles + "디자인을 시작해보세요" + Cmd+K 힌트), 시스템 객체(workspace/cut-border/safe-zone-border/guideline) 제외하고 사용자 객체 0개일 때만, `canvas.on('object:added','object:removed','after:render')` 자동 갱신, `pointer-events-none`로 클릭 통과
+  - K-3 Undo 미동기 보정: `HistoryPlugin.afterLoad`가 stale 상태로 끝나는 케이스 방어 — useEffect에 `setTimeout(refresh, 100)` + `setTimeout(refresh, 500)` 추가 호출
 - ✅ **트랙 J — 커맨드 팔레트 (Cmd+K)**
   - `CommandPaletteModal.tsx` 신규 — 백드롭 + 검색 input + 그룹별 결과 리스트 + 키보드 navigation (↑↓ Enter ESC)
   - 액션 카탈로그 22개 (도구 9개 + 작업 5개 + UI 8개) + 동적 페이지 이동 액션
@@ -766,7 +789,7 @@ rm -rf apps/editor/node_modules/.vite
 - **D5 Phase 3** — 객체 region 인식 (Composite 모드 cross-region 이동, 펼침면→분리 자동 변환). 상세는 `cover.md §7-8`
 - ~~AppSection 외부 제어 통일~~ ✅ 완료 (2026-04-30, 트랙 C). `id` prop으로 `useUiPrefStore.expandedSections` 자동 영속
 - ~~드래그 핸들 더블 클릭 → 기본값 복원~~ ✅ 완료 (2026-04-30, 트랙 C). 더블클릭 시 `SIDEBAR_WIDTH_DEFAULT(300)`로 리셋
-- **lucide tree-shaking 점검** — 현재 45개 파일에서 import. 빌드 결과 번들에서 미사용 아이콘 제거되는지 `vite build --mode analyze` 확인
+- ~~lucide tree-shaking 점검~~ ✅ 완료 (2026-04-30, 트랙 N). lucide-react v0.400.0이 `sideEffects: false` 명시 + 53개 파일 × 79개 고유 named import. Vite/Rollup이 자동 tree-shake → 번들에 79개만 포함 (lucide 전체 1500+ 아이콘은 제외됨). 추가 조치 불필요
 
 ### 8.3 대형 작업 (1일+)
 - ~~반응형 레이아웃 Phase 1~~ ✅ 완료 (2026-04-30, 트랙 E). 모바일(<768) FeatureSidebar 슬라이드오버 + 백드롭, 헤더 작업명 input 반응형 폭, 중복 편집완료 버튼 제거, CoverFocusBar 가로 스크롤
