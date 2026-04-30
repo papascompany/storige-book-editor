@@ -1,8 +1,36 @@
 import { useMemo } from 'react'
 import { useAppStore, useSelectionType } from '@/stores/useAppStore'
-import { GroupPlugin, ObjectPlugin, SelectionType } from '@storige/canvas-core'
+import { AlignPlugin, GroupPlugin, ObjectPlugin, SelectionType } from '@storige/canvas-core'
 
-import { Image, Type as TextT, LayoutGrid as SquaresFour, Frame as FrameCorners, QrCode, Layers as Stack, Hexagon, Lock as LockSimple, Unlock as LockSimpleOpen, Eye, EyeOff as EyeSlash, Trash2 as Trash, Link, Unlink as LinkBreak, Scissors } from 'lucide-react'
+import {
+  Image,
+  Type as TextT,
+  LayoutGrid as SquaresFour,
+  Frame as FrameCorners,
+  QrCode,
+  Layers as Stack,
+  Hexagon,
+  Lock as LockSimple,
+  Unlock as LockSimpleOpen,
+  Eye,
+  EyeOff as EyeSlash,
+  Trash2 as Trash,
+  Link,
+  Unlink as LinkBreak,
+  Scissors,
+  AlignStartVertical,
+  AlignCenterVertical,
+  AlignEndVertical,
+  AlignStartHorizontal,
+  AlignCenterHorizontal,
+  AlignEndHorizontal,
+} from 'lucide-react'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import { Button } from '@/components/ui/button'
 import ObjectSize from '@/controls/ObjectSize'
 import ObjectFill from '@/controls/ObjectFill'
@@ -34,6 +62,33 @@ const getIconByType = (type: SelectionType) => {
     default:
       return SquaresFour
   }
+}
+
+// 정렬 버튼 헬퍼 (Tooltip + 작은 icon-only 버튼)
+function AlignBtn({
+  label,
+  icon: Icon,
+  onClick,
+}: {
+  label: string
+  icon: React.ComponentType<{ className?: string }>
+  onClick: () => void
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          onClick={onClick}
+          aria-label={label}
+          className="h-8 w-full flex items-center justify-center rounded-md text-editor-text-muted hover:bg-editor-hover hover:text-editor-text transition-colors"
+        >
+          <Icon className="h-4 w-4" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">{label}</TooltipContent>
+    </Tooltip>
+  )
 }
 
 // Object name mapping
@@ -165,6 +220,14 @@ export default function ControlBar() {
     canvas?.requestRenderAll()
   }
 
+  // 정렬 — 단일: workspace 기준, 다중: 객체 그룹 자체 기준 (AlignPlugin 동작)
+  const alignH = (type: 'left' | 'center' | 'right') => {
+    getPlugin<AlignPlugin>('AlignPlugin')?.setH(type)
+  }
+  const alignV = (type: 'top' | 'center' | 'bottom') => {
+    getPlugin<AlignPlugin>('AlignPlugin')?.setV(type)
+  }
+
   const Icon = selectionType ? getIconByType(selectionType) : SquaresFour
 
   if (!showBar || !selectionType) {
@@ -220,6 +283,25 @@ export default function ControlBar() {
         </div>
 
         <hr className="border-editor-border" />
+
+        {/* 정렬 도구 — workspace 기준 (단일) 또는 그룹 자체 기준 (다중) */}
+        {selectionType !== SelectionType.background && (
+          <div className="align-tools px-3 pb-2">
+            <div className="text-[11px] font-semibold text-editor-text-muted mb-1.5 px-1">
+              {(activeSelection?.length ?? 0) > 1 ? '그룹 정렬' : '워크스페이스 기준 정렬'}
+            </div>
+            <TooltipProvider>
+              <div className="grid grid-cols-6 gap-1">
+                <AlignBtn label="왼쪽" icon={AlignStartVertical} onClick={() => alignH('left')} />
+                <AlignBtn label="가로 가운데" icon={AlignCenterVertical} onClick={() => alignH('center')} />
+                <AlignBtn label="오른쪽" icon={AlignEndVertical} onClick={() => alignH('right')} />
+                <AlignBtn label="위" icon={AlignStartHorizontal} onClick={() => alignV('top')} />
+                <AlignBtn label="세로 가운데" icon={AlignCenterHorizontal} onClick={() => alignV('center')} />
+                <AlignBtn label="아래" icon={AlignEndHorizontal} onClick={() => alignV('bottom')} />
+              </div>
+            </TooltipProvider>
+          </div>
+        )}
 
         {/* Actions */}
         <div className="actions px-3">
