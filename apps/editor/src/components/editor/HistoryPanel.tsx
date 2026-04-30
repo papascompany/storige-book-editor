@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
-import { History, Clock, RotateCcw, Save } from 'lucide-react'
+import { History, Clock, RotateCcw, Save, FileText } from 'lucide-react'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Button } from '@/components/ui/button'
 import { useAppStore } from '@/stores/useAppStore'
 import { useSaveStore } from '@/stores/useSaveStore'
+import { useAutoSaveSnapshotsStore } from '@/stores/useAutoSaveSnapshotsStore'
 import { HistoryPlugin } from '@storige/canvas-core'
 import { cn } from '@/lib/utils'
 
@@ -39,6 +40,8 @@ export default function HistoryPanel() {
   const lastSavedAt = useSaveStore((s) => s.lastSavedAt)
   const isDirty = useSaveStore((s) => s.isDirty)
   const allEditors = useAppStore((s) => s.allEditors)
+  const snapshots = useAutoSaveSnapshotsStore((s) => s.snapshots)
+  const clearSnapshots = useAutoSaveSnapshotsStore((s) => s.clearSnapshots)
 
   // 스택 길이 — historyUpdate 이벤트 구독으로 갱신
   const [undoLen, setUndoLen] = useState(0)
@@ -104,7 +107,7 @@ export default function HistoryPanel() {
           <History className="h-5 w-5" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" sideOffset={8} className="w-72 p-3">
+      <PopoverContent align="end" sideOffset={8} className="w-80 p-3">
         <div className="text-[12px] font-semibold text-editor-text mb-2 flex items-center gap-2">
           <History className="h-4 w-4 text-editor-accent" />
           변경 이력 요약
@@ -128,8 +131,53 @@ export default function HistoryPanel() {
             <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
             모든 변경 되돌리기 ({undoLen}단계)
           </Button>
+        </div>
+
+        {/* 자동저장 스냅샷 list (트랙 BB — Phase 2 minimal) */}
+        <div className="border-t border-editor-border mt-3 pt-2">
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-[11px] font-semibold text-editor-text-muted flex items-center gap-1">
+              <FileText className="h-3.5 w-3.5" />
+              최근 자동저장 ({snapshots.length})
+            </span>
+            {snapshots.length > 0 && (
+              <button
+                type="button"
+                onClick={clearSnapshots}
+                className="text-[10px] text-editor-text-muted hover:text-editor-text underline-offset-2 hover:underline"
+                title="스냅샷 list 지우기"
+              >
+                지우기
+              </button>
+            )}
+          </div>
+          {snapshots.length === 0 ? (
+            <p className="text-[11px] text-editor-text-muted leading-snug py-1">
+              아직 자동저장 기록이 없습니다.
+            </p>
+          ) : (
+            <ul className="space-y-1 max-h-40 overflow-y-auto scrollbar-hide">
+              {snapshots.map((s) => {
+                const date = new Date(s.savedAt)
+                return (
+                  <li
+                    key={s.id}
+                    className="flex items-center justify-between gap-2 px-2 py-1 rounded hover:bg-editor-hover"
+                    title={date.toLocaleString('ko-KR')}
+                  >
+                    <span className="text-[11px] text-editor-text">
+                      {formatRelative(date)}
+                    </span>
+                    <span className="text-[10px] text-editor-text-muted">
+                      {s.pageCount}페이지
+                    </span>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
           <p className="mt-1.5 text-[10px] text-editor-text-muted leading-snug">
-            자동저장 스냅샷 시점별 복원은 향후 추가 예정입니다.
+            시점별 복원은 백엔드 versions API 연동 후 활성화 예정입니다.
           </p>
         </div>
 
