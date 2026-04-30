@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useAuthStore, useIsCustomer } from '@/stores/useAuthStore'
 import { useAppStore } from '@/stores/useAppStore'
@@ -92,18 +92,6 @@ export default function EditorView() {
   } = useAppStore()
   const { getUseCaseFromParams } = useSettingsStore()
   const showRuler = useUiPrefStore((s) => s.showRuler)
-  // 활성 선택 — 모바일에서 ControlBar(하단 시트) 표시 여부 판단용
-  const activeSelection = useAppStore((state) => state.activeSelection)
-  const hasUserSelection = useMemo(() => {
-    if (!activeSelection || !Array.isArray(activeSelection) || activeSelection.length === 0) return false
-    const first = activeSelection[0] as { extensionType?: string; id?: string } | undefined
-    return (
-      first?.extensionType !== 'background' &&
-      first?.extensionType !== 'clipping' &&
-      first?.id !== 'workspace' &&
-      first?.extensionType !== 'guideline'
-    )
-  }, [activeSelection])
 
   // Editor contents hook
   const {
@@ -681,12 +669,14 @@ export default function EditorView() {
             {ready && <ControlBar mobileOverlay={screenMode === 'mobile'} />}
 
             {/* Canvas Area — 이미지 드래그 앤 드롭 영역 (트랙 S)
-                모바일에서 객체 선택 시 ControlBar 가 하단 시트(45vh) 로 떠 있으므로,
-                캔버스 영역 자체를 45vh 만큼 줄여 워크스페이스가 가려지지 않도록 함. */}
+                NOTE: ControlBar 가 모바일에서 fixed bottom 시트(45vh) 로 떠 있지만,
+                이전에 pb-[45vh] 로 main 을 줄이면 selection 마다 ResizeObserver →
+                setDimensions → 캔버스 재렌더 → 다시 selection 이벤트의 캐스케이드가
+                iOS Safari 메모리 한계와 만나 크래시. 캔버스를 그대로 두고 시트가
+                하단을 덮게 하는 편이 안전. 워크스페이스가 가려지면 사용자가 캔버스를
+                두 손가락으로 패닝해서 보거나, 미래에 자동 viewport-pan 으로 보정. */}
             <main
-              className={`flex-1 relative overflow-hidden bg-editor-workspace ${
-                screenMode === 'mobile' && hasUserSelection ? 'pb-[45vh]' : ''
-              }`}
+              className="flex-1 relative overflow-hidden bg-editor-workspace"
               onDragOver={handleDragOver}
               onDragEnter={handleDragEnter}
               onDragLeave={handleDragLeave}
