@@ -1024,3 +1024,104 @@ export namespace core {
     return canvas.toJSON(propertiesToInclude || defaultProps)
   }
 }
+
+// ============================================================================
+// Cross-canvas object move (cover.md §7 / D5 Phase 3b-v)
+// ============================================================================
+
+export interface MoveObjectToCanvasOptions {
+  /** target canvas 좌표계 left (미지정 시 source 좌표 유지) */
+  left?: number
+  /** target canvas 좌표계 top (미지정 시 source 좌표 유지) */
+  top?: number
+  /** id 보존 여부 (기본 true) */
+  preserveId?: boolean
+  /** meta(예: regionRef/anchor) 보존 여부 (기본 true). 호출 측이 새 region에 맞게 추가 갱신 필요 */
+  preserveMeta?: boolean
+  /** atomic history 트랜잭션 사용 (기본 true). false면 fabric 자동 history만 사용 */
+  atomicHistory?: boolean
+}
+
+/**
+ * 객체를 한 캔버스에서 다른 캔버스로 이동 (cross-canvas move).
+ *
+ * fabric 객체는 한 캔버스에만 속하므로 다음 순서로 처리:
+ *   1) source.clone(obj) → 보존 속성 array 명시 (core.extendFabricOption 재사용)
+ *   2) target.add(cloned)
+ *   3) source.remove(obj)
+ *
+ * 각 캔버스에 대해 offHistory/onHistory로 atomic 1 step씩 등록 (기본).
+ * 두 캔버스의 history가 분리되어 있어 user-visible Undo는 active canvas만
+ * 영향 받음 — Phase 3b-v 1차는 이 정책을 받아들이고, 호출 측이 active canvas를
+ * target으로 두어 직관적 Undo를 보장한다.
+ *
+ * 시스템 객체(workspace/cut-border/safe-zone-border/guideline 등)는 이동하지 않음.
+ *
+ * cover.md §7 / D5 Phase 3b-v — Composite 모드 cross-canvas 객체 이동.
+ *
+ * @returns target canvas의 새 객체. 실패/미이동 시 null.
+ */
+export function moveObjectToCanvas(
+  obj: fabric.Object,
+  source: fabric.Canvas,
+  target: fabric.Canvas,
+  options: MoveObjectToCanvasOptions = {}
+): Promise<fabric.Object | null> {
+  const {
+    left,
+    top,
+    preserveId = true,
+    preserveMeta = true,
+    atomicHistory = true,
+  } = options
+
+  return new Promise((resolve) => {
+    if (!obj || !source || !target) return resolve(null)
+    if (source === target) return resolve(obj)
+    if ((obj as any).meta?.system) return resolve(null)
+    if ((obj as any).id === 'workspace') return resolve(null)
+
+    const origId = (obj as any).id
+    const origMeta = (obj as any).meta
+
+    // fabric clone — 두 번째 인자로 보존 속성 array 전달 (core.extendFabricOption 재사용)
+    obj.clone(
+      (cloned: fabric.Object) => {
+        try {
+          if (preserveId && origId) (cloned as any).id = origId
+          if (preserveMeta && origMeta) {
+            try {
+              ;(cloned as any).meta = JSON.parse(JSON.stringify(origMeta))
+            } catch {
+              ;(cloned as any).meta = origMeta
+            }
+          }
+          if (left !== undefined) cloned.set('left', left)
+          if (top !== undefined) cloned.set('top', top)
+          cloned.set('evented', true)
+          cloned.setCoords()
+
+          // source: offHistory → discard + remove → onHistory
+          if (atomicHistory && (source as any).offHistory) (source as any).offHistory()
+          source.discardActiveObject()
+          source.remove(obj)
+          source.requestRenderAll()
+          if (atomicHistory && (source as any).onHistory) (source as any).onHistory()
+
+          // target: offHistory → add + setActive → onHistory
+          if (atomicHistory && (target as any).offHistory) (target as any).offHistory()
+          target.add(cloned)
+          target.setActiveObject(cloned)
+          target.requestRenderAll()
+          if (atomicHistory && (target as any).onHistory) (target as any).onHistory()
+
+          resolve(cloned)
+        } catch (e) {
+          console.error('[moveObjectToCanvas] move failed:', e)
+          resolve(null)
+        }
+      },
+      core.extendFabricOption
+    )
+  })
+}
