@@ -173,6 +173,10 @@
       <a href="#ops"><span class="num">10</span>운영 트랙</a>
       <a href="#roadmap"><span class="num">11</span>로드맵</a>
       <a href="#agents"><span class="num">12</span>에이전트</a>
+      <div class="group">에디터 폴리싱 (★)</div>
+      <a href="#frontend-tracks"><span class="num">13</span>프론트엔드 트랙 0~BB</a>
+      <a href="#frontend-coverage"><span class="num">14</span>카테고리별 커버리지</a>
+      <a href="#frontend-checklist"><span class="num">15</span>완료 체크리스트</a>
       <div class="group">참조</div>
       <a href="#trouble"><span class="num">T</span>트러블슈팅</a>
       <a href="#cheatsheet"><span class="num">C</span>치트시트</a>
@@ -188,9 +192,12 @@
         전 단계 인프라 구축이 끝났고, PHP 연동과 코드 보완(P1—P7)이 다음 작업입니다.
       </div>
       <div class="meta">
-        <b>기준 시점</b> 2026-04-27 KST · 커밋 <code>0bdbe62</code> 이후 ·
-        <b>레포</b> <a style="color:#bae6fd" href="https://github.com/papascompany/storige-book-editor">papascompany/storige-book-editor</a> ·
-        <b>옛 fork</b> archived
+        <b>기준 시점</b> 2026-04-30 KST · 인프라 커밋 <code>0bdbe62</code> 이후 · 에디터 폴리싱 <code>~386c37b</code>까지 ·
+        <b>레포</b> <a style="color:#bae6fd" href="https://github.com/papascompany/storige-book-editor">papascompany/storige-book-editor</a>
+      </div>
+      <div class="meta" style="margin-top:8px;background:rgba(34,197,94,.18)">
+        <b style="color:#bbf7d0">에디터 프론트엔드 폴리싱</b> 트랙 0~BB <b>30개 commit</b> 완료 + Vercel 배포 + 시각 검증 7/7 통과 →
+        <a style="color:#bae6fd" href="#frontend-tracks">§13—15 참고</a>
       </div>
     </div>
 
@@ -200,13 +207,14 @@
 
       <div class="row">
         <div class="card card-success" style="padding:18px">
-          <h3 style="margin-top:0">✅ 완료 (Phase 1—3)</h3>
+          <h3 style="margin-top:0">✅ 완료 (Phase 1—3 + 에디터 폴리싱)</h3>
           <ul style="margin:0">
             <li>VPS Seoul 4vCPU/8GB</li>
             <li>Docker stack (5 컨테이너)</li>
             <li>DNS · HTTPS · Let's Encrypt</li>
             <li>Vercel Editor + Admin 빌드 정상</li>
             <li>DB 23 테이블 + 시드</li>
+            <li><b>에디터 트랙 0~BB · 30 commit</b> (다크 모드, 반응형, 표지 편집, UX 폴리싱)</li>
           </ul>
         </div>
         <div class="card card-warn" style="padding:18px">
@@ -254,6 +262,14 @@
           </div>
           <div class="row"><div class="dot done"></div>
             <b>Phase 3</b> · nginx · Let's Encrypt · Vercel 빌드 정상 &nbsp;<span class="badge b-success">DONE</span>
+          </div>
+          <div class="row"><div class="dot done"></div>
+            <b>에디터 폴리싱 1차 (트랙 0~T)</b> · 디자인 토큰 + 다크 인프라 + 표지 편집 + UX + 도구 가시화 · 23 commit &nbsp;<span class="badge b-success">DONE</span>
+            <div class="mono" style="color:var(--muted)">2026-04-29 ~ 04-30</div>
+          </div>
+          <div class="row"><div class="dot done"></div>
+            <b>에디터 폴리싱 2차 (트랙 U~BB)</b> · D5 Phase 3b 마무리 + 다크 Phase 3 + 반응형 Phase 2 + 그라디언트 + 스냅샷 list · 7 commit · 시각 검증 7/7 ✓ &nbsp;<span class="badge b-success">DONE</span>
+            <div class="mono" style="color:var(--muted)">2026-04-30 KST</div>
           </div>
           <div class="row"><div class="dot now"></div>
             <b>Day 1 정리</b> · 자동 백업 · admin 비번 · Supabase Pause · 문서 보수 &nbsp;<span class="badge b-primary">NOW</span>
@@ -847,6 +863,223 @@ $p = <span class="k">json_decode</span>($rawBody, <span class="k">true</span>);
           <tr><td>07</td><td><a href="./agents/07-pdf-export-implementer.md">pdf-export-implementer</a></td><td>sonnet</td><td>P5</td></tr>
           <tr><td>08</td><td><a href="./agents/08-test-monitoring-setup.md">test-monitoring-setup</a></td><td>sonnet</td><td>P6 · P7</td></tr>
           <tr><td>09</td><td><a href="./agents/09-cutover-runbook.md">cutover-runbook</a></td><td>sonnet</td><td>컷오버 · 정리 · 문서 보수</td></tr>
+        </table>
+      </div>
+    </section>
+
+    <!-- ============ 13. 프론트엔드 폴리싱 트랙 (A~BB) ============ -->
+    <section id="frontend-tracks">
+      <h2>13 · 프론트엔드 폴리싱 트랙 (0 → BB · 30 commit)</h2>
+
+      <div class="card card-success">
+        <h3 style="margin-top:0">📦 요약</h3>
+        <div class="row" style="margin-top:10px">
+          <div style="text-align:center">
+            <div style="font-size:32px;font-weight:800;color:#16a34a;line-height:1">30</div>
+            <div style="font-size:12px;color:var(--muted)">commits</div>
+          </div>
+          <div style="text-align:center">
+            <div style="font-size:32px;font-weight:800;color:#2563eb;line-height:1">28</div>
+            <div style="font-size:12px;color:var(--muted)">트랙 (0 + A~T + U~BB)</div>
+          </div>
+          <div style="text-align:center">
+            <div style="font-size:32px;font-weight:800;color:#7c3aed;line-height:1">7/7</div>
+            <div style="font-size:12px;color:var(--muted)">시각 검증 통과</div>
+          </div>
+          <div style="text-align:center">
+            <div style="font-size:32px;font-weight:800;color:#0891b2;line-height:1">100%</div>
+            <div style="font-size:12px;color:var(--muted)">origin/master + Vercel 배포</div>
+          </div>
+        </div>
+        <p style="margin-top:14px;margin-bottom:0;font-size:13.5px">
+          마지막 커밋 <code>386c37b</code> (트랙 BB · 버전 히스토리 패널 Phase 2 minimal · 2026-04-30 KST).
+          상세 히스토리: <code>.cursor/plans/_RESUME_EDITOR_TRACKS.md</code> · 설계: <code>editor_layout_custom.md</code> · 표지: <code>cover.md</code>.
+        </p>
+      </div>
+    </section>
+
+    <!-- ============ 14. 카테고리별 커버리지 ============ -->
+    <section id="frontend-coverage">
+      <h2>14 · 카테고리별 커버리지</h2>
+
+      <div class="card">
+        <div class="diagram">
+          <svg viewBox="0 0 980 280" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,sans-serif" font-size="12">
+            <!-- 도넛 (단순화: 5개 카테고리 비례 stack bar) -->
+            <text x="490" y="22" text-anchor="middle" font-weight="700" font-size="14">5 카테고리 × 28 트랙</text>
+
+            <!-- 좌측 도넛 -->
+            <g transform="translate(140,150)">
+              <!-- 도넛 외곽 -->
+              <circle r="80" fill="#f3f4f6"/>
+              <!-- 다크모드 4 (D-1, D-2v1, D-2v2, W) - 14.3% -->
+              <path d="M 0,-80 A 80,80 0 0,1 56.6,-56.6 L 28.3,-28.3 A 40,40 0 0,0 0,-40 Z" fill="#1f2937" opacity=".9"/>
+              <!-- 표지 5 (B-1, B-2, M, U, V) - 17.9% -->
+              <path d="M 56.6,-56.6 A 80,80 0 0,1 80,0 L 40,0 A 40,40 0 0,0 28.3,-28.3 Z" fill="#7c3aed"/>
+              <!-- UX/도구 12 (A,C,F,G,H,I,J,K,L,Q,R,T) - 42.9% -->
+              <path d="M 80,0 A 80,80 0 0,1 0,80 L 0,40 A 40,40 0 0,0 40,0 Z" fill="#2563eb"/>
+              <path d="M 0,80 A 80,80 0 0,1 -80,0 L -40,0 A 40,40 0 0,0 0,40 Z" fill="#2563eb"/>
+              <!-- 반응형 3 (E-1, X, Z) - 10.7% -->
+              <path d="M -80,0 A 80,80 0 0,1 -56.6,-56.6 L -28.3,-28.3 A 40,40 0 0,0 -40,0 Z" fill="#0891b2"/>
+              <!-- 도구 신규/확장 4 (0, S, AA, BB) - 14.3% -->
+              <path d="M -56.6,-56.6 A 80,80 0 0,1 0,-80 L 0,-40 A 40,40 0 0,0 -28.3,-28.3 Z" fill="#16a34a"/>
+              <!-- 가운데 -->
+              <circle r="40" fill="#fff" stroke="#e5e7eb"/>
+              <text y="-2" text-anchor="middle" font-weight="800" font-size="22">28</text>
+              <text y="14" text-anchor="middle" font-size="10" fill="#64748b">트랙</text>
+            </g>
+
+            <!-- 우측 범례 -->
+            <g transform="translate(310,80)">
+              <rect x="0" y="0" width="14" height="14" fill="#1f2937" opacity=".9" rx="3"/>
+              <text x="22" y="11" font-weight="600">다크 모드 (D-1, D-2v1, D-2v2, W)</text>
+              <text x="500" y="11" font-weight="700" fill="#16a34a">4 / 28 ✅</text>
+
+              <rect x="0" y="26" width="14" height="14" fill="#7c3aed" rx="3"/>
+              <text x="22" y="37" font-weight="600">표지 편집 모드 (B-1, B-2, M, U, V)</text>
+              <text x="500" y="37" font-weight="700" fill="#16a34a">5 / 28 ✅</text>
+
+              <rect x="0" y="52" width="14" height="14" fill="#2563eb" rx="3"/>
+              <text x="22" y="63" font-weight="600">UX / 도구 (A, C, F, G, H, I, J, K, L, Q, R, T)</text>
+              <text x="500" y="63" font-weight="700" fill="#16a34a">12 / 28 ✅</text>
+
+              <rect x="0" y="78" width="14" height="14" fill="#0891b2" rx="3"/>
+              <text x="22" y="89" font-weight="600">반응형 레이아웃 (E-1, X, Z)</text>
+              <text x="500" y="89" font-weight="700" fill="#16a34a">3 / 28 ✅</text>
+
+              <rect x="0" y="104" width="14" height="14" fill="#16a34a" rx="3"/>
+              <text x="22" y="115" font-weight="600">도구 신규/확장 (0, S, AA, BB)</text>
+              <text x="500" y="115" font-weight="700" fill="#16a34a">4 / 28 ✅</text>
+
+              <line x1="0" y1="135" x2="600" y2="135" stroke="#e5e7eb"/>
+              <text x="0" y="155" font-size="11" fill="#64748b">N (lucide 분석)은 docs-only 트랙으로 위 카테고리에서 제외 (28+1=29).</text>
+            </g>
+          </svg>
+        </div>
+
+        <div class="row-3" style="margin-top:14px">
+          <div class="card card-info" style="padding:14px">
+            <h4 style="margin:0 0 6px;color:#0e7490">🌗 다크 모드</h4>
+            <ul style="margin:0;font-size:13px">
+              <li>D-1 인프라 (data-theme + theme store + useThemeSync)</li>
+              <li>D-2v1 chrome 토큰 스윕 (5 컴포넌트)</li>
+              <li>D-2v2 controls/tools 토큰 스윕</li>
+              <li><b>W Phase 3</b> — 룰러 + 객체 선택 핸들 다크 (canvas-core)</li>
+            </ul>
+          </div>
+          <div class="card card-purple" style="padding:14px">
+            <h4 style="margin:0 0 6px;color:#5b21b6">📔 표지 편집 모드</h4>
+            <ul style="margin:0;font-size:13px">
+              <li>B-1 Phase 1 (페이지 네비 위치별 라벨)</li>
+              <li>B-2 Phase 2 (CoverFocusBar)</li>
+              <li>M Phase 3a (사용자 토글 Cmd+K)</li>
+              <li><b>U Phase 3b-ii/iii</b> — 객체 region 인식</li>
+              <li><b>V Phase 3b-iv</b> — 책등 가변 후 이탈 toast</li>
+            </ul>
+          </div>
+          <div class="card card-warn" style="padding:14px">
+            <h4 style="margin:0 0 6px;color:#92400e">📐 반응형</h4>
+            <ul style="margin:0;font-size:13px">
+              <li>E-1 Phase 1 (모바일 사이드바 슬라이드오버)</li>
+              <li><b>X</b> — 사이드바 핸들 Pointer Events + 페이지 네비 44×44</li>
+              <li><b>Z (X-2)</b> — 태블릿 헤더 도구 분기</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 15. 완료 체크리스트 ============ -->
+    <section id="frontend-checklist">
+      <h2>15 · 완료 체크리스트 (트랙 0 → BB)</h2>
+
+      <div class="card">
+        <h3 style="margin-top:0">디자인 토큰 / 다크 모드</h3>
+        <ul style="list-style:none;padding-left:0;margin:0;font-size:13.5px">
+          <li>☑ 트랙 0 — 디자인 토큰 정비 (RGB triplet, sidebar 가변, 요소 메뉴 복원) <code>f4960c6</code></li>
+          <li>☑ 트랙 D-1 — 다크 모드 인프라 (data-theme + theme store + useThemeSync) <code>f4b8630</code></li>
+          <li>☑ 트랙 D-2v1 — chrome 토큰 스윕 (EditorHeader/CoverFocusBar/PageThumbnail/BookNavigation/FeatureSidebar) <code>540a2aa</code></li>
+          <li>☑ 트랙 D-2v2 — controls/tools 토큰 스윕 (~10 파일) <code>aadffa5</code></li>
+          <li>☑ 트랙 W — 다크 모드 Phase 3 (RULER_DEFAULTS_DARK + RulerPlugin.setTheme + defaultControlsDark + useCanvasThemeSync) <code>846d5e9</code></li>
+        </ul>
+
+        <h3>헤더 / 상태 / 모달</h3>
+        <ul style="list-style:none;padding-left:0;margin:0;font-size:13.5px">
+          <li>☑ 트랙 A — 헤더 UX (사이즈 픽커 8 프리셋, Undo/Redo canUndo/Redo 바인딩, Cmd+\ 사이드바, hover 검증) <code>8ea4e07</code></li>
+          <li>☑ 트랙 F — 키보드 단축키 도움말 모달 (4 카테고리 × 19 단축키, ?/Cmd+S 추가) <code>ce2d854</code></li>
+          <li>☑ 트랙 G — 토스트 알림 시스템 (자체 구현, 4 타입 × 좌측 컬러 띠) <code>3f1adcb</code></li>
+          <li>☑ 트랙 H — AutoSaveIndicator 리팩토링 (lucide + 토큰 + 상태 변화 토스트) <code>fc34354</code></li>
+          <li>☑ 트랙 J — 커맨드 팔레트 (Cmd+K, 22 정적 + 동적 페이지 액션) <code>c8e4054</code></li>
+          <li>☑ 트랙 Q — 변경 이력 요약 패널 (HistoryPanel popover) <code>13a1dbe</code></li>
+          <li>☑ 트랙 BB — 버전 히스토리 Phase 2 minimal (자동저장 스냅샷 LRU 5 + UI) <code>386c37b</code></li>
+        </ul>
+
+        <h3>표지 편집 모드 (D5)</h3>
+        <ul style="list-style:none;padding-left:0;margin:0;font-size:13.5px">
+          <li>☑ 트랙 B-1 — Phase 1 (페이지 네비 위치별 라벨 N=1/3/5, 표지/내지 구분선) <code>1748fab</code></li>
+          <li>☑ 트랙 B-2 — Phase 2 (CoverFocusBar 56px 미니맵 + flex 비례 + 라이브 toDataURL) <code>308bb1f</code></li>
+          <li>☑ 트랙 M — Phase 3a (사용자 토글 Cmd+K auto/separated/composite) <code>5213782</code></li>
+          <li>☑ 트랙 O — Phase 3b 인프라 (useCoverRegion / useIsCoverContext) <code>36471bc</code></li>
+          <li>☑ 트랙 U — Phase 3b-ii + iii (useSpreadAutoAnchor object:added → resolveRegionRef) <code>a8e1558</code></li>
+          <li>☑ 트랙 V — Phase 3b-iv (spreadObjectsOutOfBounds 이벤트 + useSpreadOutOfBoundsToast) <code>af79102</code></li>
+        </ul>
+
+        <h3>객체 도구 / 컬러</h3>
+        <ul style="list-style:none;padding-left:0;margin:0;font-size:13.5px">
+          <li>☑ 트랙 I — 최근 사용 색상 LRU 16개 (useRecentColorsStore) <code>b568de8</code></li>
+          <li>☑ 트랙 K — 작업명 store 동기화 + Empty State + Undo 보정 <code>11c8877</code></li>
+          <li>☑ 트랙 L — 객체 정렬 도구 가시화 (ControlBar 6버튼 그리드) <code>da60703</code></li>
+          <li>☑ 트랙 R — 빠른 색상 팔레트 (ColorPicker 8 swatch row) <code>7af39fa</code></li>
+          <li>☑ 트랙 T — 멀티 선택 분포 도구 (3+ 선택 시 가로/세로 분포) <code>37bb181</code></li>
+          <li>☑ 트랙 AA — ObjectFill 그라디언트 프리셋 8개 (linear 90°) <code>0cf72fb</code></li>
+        </ul>
+
+        <h3>UX 폴리싱 / 작은 묶음</h3>
+        <ul style="list-style:none;padding-left:0;margin:0;font-size:13.5px">
+          <li>☑ 트랙 C — AppSection 펼침 영속 + 드래그 핸들 더블클릭 복원 <code>d812361</code></li>
+          <li>☑ 트랙 P — 자동저장 토스트 옵션 (autoSaveToastEnabled v6→v7) <code>0db61b0</code></li>
+          <li>☑ 트랙 S — 드래그 앤 드롭 이미지 업로드 (useImageStore.uploadFile) <code>3d67d85</code></li>
+          <li>☑ 트랙 Y — 멀티파일 드롭 (cascade 20px) + Shift+화살표 10px nudge 카탈로그 <code>1d07e00</code></li>
+          <li>☑ 트랙 N — lucide tree-shaking 정적 분석 (조치 불필요) docs-only</li>
+        </ul>
+
+        <h3>반응형 레이아웃</h3>
+        <ul style="list-style:none;padding-left:0;margin:0;font-size:13.5px">
+          <li>☑ 트랙 E-1 — Phase 1 (모바일 사이드바 슬라이드오버 + 백드롭) <code>309fea2</code></li>
+          <li>☑ 트랙 X — Phase 2 (사이드바 핸들 Pointer Events + 페이지 네비 44×44 hit) <code>43a6ba0</code></li>
+          <li>☑ 트랙 Z — Phase 2 X-2 (태블릿 헤더 작업명 max-w 단계 + 페이지네비 select lg+) <code>4fefa91</code></li>
+        </ul>
+      </div>
+
+      <div class="card card-info">
+        <h3 style="margin-top:0">🔍 시각 검증 결과 (2026-04-30)</h3>
+        <p style="margin:0 0 8px">Preview MCP 재시작 후 미검증 트랙 4개를 시각·DOM 측정으로 모두 통과 확인:</p>
+        <table>
+          <tr><th>트랙</th><th>검증 항목</th><th>결과</th></tr>
+          <tr><td>W</td><td>다크 토글 → 룰러 배경 #1f2937, tick/text 다크 셋, 워크스페이스 흰 페이지 유지</td><td><span class="badge b-success">✅ 스크린샷</span></td></tr>
+          <tr><td>W (후속)</td><td>다크 모드 객체 선택 핸들: borderColor rgba(142,207,69,0.7), cornerColor #1f2937, cornerStrokeColor rgb(142,207,69)</td><td><span class="badge b-success">✅ inspect</span></td></tr>
+          <tr><td>X</td><td>페이지 네비 화살표 44×44px, 사이드바 핸들 visible 4px + invisible 20px hit + touch-action none + Pointer Events</td><td><span class="badge b-success">✅ inspect</span></td></tr>
+          <tr><td>Z</td><td>900px viewport에서 페이지네비 select 숨김(display:none), 작업명 max-w 200px (md:200)</td><td><span class="badge b-success">✅ getComputedStyle</span></td></tr>
+          <tr><td>AA</td><td>rect 선택 시 8개 swatch 노출 + Sunset 클릭 → fill이 fabric.Gradient (colorStops [#f093fb, #f5576c], coords linear)</td><td><span class="badge b-success">✅ DOM + inspect</span></td></tr>
+          <tr><td>BB</td><td>HistoryPanel popover에 "최근 자동저장 (0)" 섹션 + 빈 list + 향후 활성화 안내</td><td><span class="badge b-success">✅ a11y snapshot</span></td></tr>
+        </table>
+
+        <div class="alert alert-warn" style="margin-top:12px">
+          <b>⚠ 정정 메모</b>
+          트랙 X commit 메시지의 "5px hit area" 표기는 부정확. 실제 코드는 Tailwind <code>w-5</code> = 20px (이전 <code>w-3</code> = 12px).
+          모바일/펜에 더 친화적인 20px로 의도보다 잘 적용됨. git history는 보수적 정책상 수정 안 함, 본 가이드와 RESUME 문서에서 정확한 값으로 반영됨.
+        </div>
+      </div>
+
+      <div class="card card-warn">
+        <h3 style="margin-top:0">⏭ 다음 후보</h3>
+        <table>
+          <tr><th>트랙</th><th>주제</th><th>위험도</th></tr>
+          <tr><td><b>CC</b></td><td>D5 Phase 3b-v — Composite 모드 cross-canvas 객체 이동 (canvas-core API + 데이터 마이그레이션)</td><td><span class="badge b-danger">상</span></td></tr>
+          <tr><td>DD-3</td><td>그라디언트 옵션 확장 (angle/radial, 커스텀 색상)</td><td><span class="badge b-warn">중</span></td></tr>
+          <tr><td>DD-4</td><td>도구 패널 즐겨찾기 (자주 쓰는 텍스트 스타일/도형 핀, localStorage)</td><td><span class="badge b-warn">중</span></td></tr>
+          <tr><td>DD-5</td><td>페이지 썸네일 drag-to-reorder (Pointer Events 트랙 X 패턴 재사용)</td><td><span class="badge b-warn">중상</span></td></tr>
+          <tr><td>BB-Phase 3</td><td>버전 히스토리 백엔드 versions API 연동 + 시점별 thumbnail + "여기로 복원"</td><td><span class="badge b-warn">중상 (백엔드)</span></td></tr>
         </table>
       </div>
     </section>
