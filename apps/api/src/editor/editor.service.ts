@@ -8,6 +8,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
 import { EditSession, EditHistory } from './entities/edit-session.entity';
+import { EditSessionVersion } from './entities/edit-session-version.entity';
 import { TemplateSet } from '../templates/entities/template-set.entity';
 import { Template } from '../templates/entities/template.entity';
 import {
@@ -37,6 +38,8 @@ export class EditorService {
     private editSessionRepository: Repository<EditSession>,
     @InjectRepository(EditHistory)
     private editHistoryRepository: Repository<EditHistory>,
+    @InjectRepository(EditSessionVersion)
+    private editSessionVersionRepository: Repository<EditSessionVersion>,
     @InjectRepository(TemplateSet)
     private templateSetRepository: Repository<TemplateSet>,
     @InjectRepository(Template)
@@ -44,6 +47,12 @@ export class EditorService {
     private editSessionsService: EditSessionsService,
     private workerJobsService: WorkerJobsService,
   ) {}
+
+  // BB-Phase 3 ─ 자동저장 시점 push 정책
+  private static readonly VERSION_DEBOUNCE_MS = 60_000  // 1분
+  private static readonly VERSION_LRU_LIMIT = 20         // 세션당 최근 20개
+  /** sessionId → 마지막 push 시각 (Date.now()) — 메모리 캐시, 인스턴스 재시작 시 초기화 */
+  private lastVersionPushAt: Map<string, number> = new Map()
 
   /**
    * 편집 세션 생성 (템플릿셋 기반)
@@ -180,7 +189,119 @@ export class EditorService {
     session.modifiedBy = userId || null;
     session.modifiedAt = new Date();
 
-    return this.editSessionRepository.save(session);
+    const saved = await this.editSessionRepository.save(session);
+
+    // BB-Phase 3 ─ 자동저장 시점 스냅샷 push (debounce 1분 + LRU trim)
+    if (dto.pages) {
+      try {
+        await this.maybePushVersion(saved.id, dto.pages, userId)
+      } catch (e) {
+        // versions 실패는 자동저장 자체를 깨면 안 됨 — 로깅만
+        console.warn('[autoSave] version push 실패 (무시):', e)
+      }
+    }
+
+    return saved
+  }
+
+  /**
+   * BB-Phase 3 ─ 자동저장 시점 스냅샷 push (debounce + LRU)
+   * - 같은 세션의 마지막 push 후 VERSION_DEBOUNCE_MS 미만이면 skip
+   * - push 후 LRU 한도(VERSION_LRU_LIMIT) 초과 시 가장 오래된 것부터 삭제
+   */
+  private async maybePushVersion(
+    sessionId: string,
+    pages: EditPage[],
+    userId?: string,
+  ): Promise<void> {
+    const now = Date.now()
+    const last = this.lastVersionPushAt.get(sessionId) ?? 0
+    if (now - last < EditorService.VERSION_DEBOUNCE_MS) return
+    this.lastVersionPushAt.set(sessionId, now)
+
+    const version = this.editSessionVersionRepository.create({
+      session: { id: sessionId } as EditSession,
+      pages: pages,
+      pageCount: pages.length,
+      createdBy: userId || null,
+      thumbnailUrl: null,
+    })
+    await this.editSessionVersionRepository.save(version)
+    await this.trimVersions(sessionId)
+  }
+
+  /** LRU 한도 초과분을 가장 오래된 것부터 삭제 */
+  private async trimVersions(sessionId: string): Promise<void> {
+    const all = await this.editSessionVersionRepository.find({
+      where: { session: { id: sessionId } as any },
+      order: { savedAt: 'ASC' },
+      select: ['id'],
+    })
+    const excess = all.length - EditorService.VERSION_LRU_LIMIT
+    if (excess <= 0) return
+    const ids = all.slice(0, excess).map((v) => v.id)
+    await this.editSessionVersionRepository.delete(ids)
+  }
+
+  /**
+   * 세션의 자동저장 시점 list 조회 (메타만, pages 제외)
+   */
+  async listVersions(sessionId: string, userId?: string): Promise<Array<{
+    id: string
+    savedAt: Date
+    pageCount: number
+    createdBy: string | null
+    thumbnailUrl: string | null
+  }>> {
+    const session = await this.findOne(sessionId)
+    this.checkLock(session, userId)
+    const versions = await this.editSessionVersionRepository.find({
+      where: { session: { id: sessionId } as any },
+      order: { savedAt: 'DESC' },
+      select: ['id', 'savedAt', 'pageCount', 'createdBy', 'thumbnailUrl'],
+    })
+    return versions
+  }
+
+  /**
+   * 특정 시점의 pages JSON 조회 (복원 미리보기용)
+   */
+  async getVersion(sessionId: string, versionId: string, userId?: string): Promise<EditSessionVersion> {
+    const session = await this.findOne(sessionId)
+    this.checkLock(session, userId)
+    const version = await this.editSessionVersionRepository.findOne({
+      where: { id: versionId, session: { id: sessionId } as any },
+    })
+    if (!version) {
+      throw new NotFoundException(`시점을 찾을 수 없습니다: ${versionId}`)
+    }
+    return version
+  }
+
+  /**
+   * 시점으로 복원 — 현재 session.pages를 시점의 pages로 교체 + 새 시점 push (round-trip log)
+   */
+  async restoreVersion(sessionId: string, versionId: string, userId?: string): Promise<EditSession> {
+    const session = await this.findOne(sessionId)
+    this.checkLock(session, userId)
+    const version = await this.editSessionVersionRepository.findOne({
+      where: { id: versionId, session: { id: sessionId } as any },
+    })
+    if (!version) {
+      throw new NotFoundException(`시점을 찾을 수 없습니다: ${versionId}`)
+    }
+    session.pages = version.pages
+    session.modifiedBy = userId || null
+    session.modifiedAt = new Date()
+    const saved = await this.editSessionRepository.save(session)
+    // 복원 시점도 새 version으로 push (debounce 우회 — 명시적 사용자 액션이므로)
+    this.lastVersionPushAt.set(sessionId, 0) // 다음 push 즉시 허용
+    try {
+      await this.maybePushVersion(sessionId, version.pages, userId)
+    } catch (e) {
+      console.warn('[restoreVersion] version push 실패 (무시):', e)
+    }
+    return saved
   }
 
   /**
