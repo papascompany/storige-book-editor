@@ -39,11 +39,12 @@
 | `_RESUME_EDITOR_TRACKS.md` (이 파일) | 트랙 누적 + 컨벤션 + 향후 후보 |
 | `_RESUME_PROMPT.md` (별도 흐름) | 인프라·PHP·운영 컷오버 작업용 — 본 트랙과 무관 |
 
-# 누적 트랙 — 2026-04-30 (총 30 커밋, 모두 origin/master 반영, Vercel 배포 완료)
+# 누적 트랙 — 2026-04-30 (총 32 커밋, 모두 origin/master 반영, Vercel 배포 완료)
 
 > 트랙 0~T(23 커밋) — 1차 폴리싱 사이클 완료
 > 트랙 U~BB(7 커밋, `a8e1558 → 386c37b`) — 2차 사이클 (D5 Phase 3b 마무리, 다크 Phase 3, 반응형 Phase 2, 작은 묶음, 그라디언트, 스냅샷 list)
-> 시각 검증: 트랙 W/X/Z/AA/BB 모두 preview MCP 재시작 후 7/7 통과 (2026-04-30 16:30 KST)
+> 트랙 CC-1/CC-2(2 커밋, `ee69dda → d54489c`) — 3차 사이클: D5 Phase 3b-v Composite cross-canvas 객체 이동 (canvas-core helper + ControlBar UI)
+> 시각 검증: 트랙 W/X/Z/AA/BB 모두 preview MCP 재시작 후 7/7 통과 (2026-04-30 16:30 KST). CC-1 helper 단위 시뮬 통과, CC-2 빌드 클린 + 비-표지 페이지 early return 검증
 
 | 트랙 | 커밋 | 주제 |
 |---|---|---|
@@ -78,7 +79,9 @@
 | **Y** | `1d07e00` | 작은 묶음 — 멀티파일 드롭 (이미지 N개 순차 업로드 + cascade 20px offset + 일괄 success/partial/fail toast), Shift+화살표 10px nudge 단축키 카탈로그 등록(코드는 `ControlsPlugin`에 이미 존재) |
 | **Z** | `4fefa91` | 반응형 Phase 2 X-2 — 헤더 작업명 max-w 단계 추가(`sm:180/md:200/lg:280`), 페이지네비 select를 `lg:block`로 좁힘(태블릿에서 헤더 도구 폭 여유 확보) + tooltip 안내 갱신 |
 | **AA** | `0cf72fb` | ObjectFill 그라디언트 프리셋 8개 (Brand/Sunset/Ocean/Mint/Sunrise/Lush/Mono/Cherry) — 7×7px 미니 swatch 클릭 1회로 linear 90° 그라디언트 적용 (fabric.Gradient + object:modified 발행). 텍스트 객체는 fabric setSelectionStyles 한계로 미지원(자동 hide) |
-| **BB** | _이번_ | 버전 히스토리 패널 Phase 2 minimal — `useAutoSaveSnapshotsStore` (LRU 5 + zustand persist), `useAutoSave.saveToServer` 성공 시 메타 push, `HistoryPanel`에 "최근 자동저장 N" list (시각/페이지수, 지우기 액션). 시점별 복원은 백엔드 versions API 연동 후 별도 트랙 |
+| **BB** | `386c37b` | 버전 히스토리 패널 Phase 2 minimal — `useAutoSaveSnapshotsStore` (LRU 5 + zustand persist), `useAutoSave.saveToServer` 성공 시 메타 push, `HistoryPanel`에 "최근 자동저장 N" list (시각/페이지수, 지우기 액션). 시점별 복원은 백엔드 versions API 연동 후 별도 트랙 |
+| **CC-1** | `ee69dda` | D5 Phase 3b-v 인프라 — canvas-core `moveObjectToCanvas(obj, src, tgt, opts)` helper (fabric clone w/ core.extendFabricOption + meta deep clone, atomic dual-canvas history offHistory/onHistory, 시스템 객체/same-canvas 가드). 두 캔버스 history 분리 정책 — Phase 2에서 atomic 통합 검토 |
+| **CC-2** | `d54489c` | D5 Phase 3b-v UI — `MoveToCoverRegion` 컴포넌트 ControlBar에 추가 (표지 컨텍스트 + 객체 선택 + 표지 그룹 ≥2 + 단일 선택 가드). 클릭 시 target 워크스페이스 중심에 cross-canvas move + target SpreadPlugin 있으면 resolveRegionRef 자동 갱신 / 없으면 coverPosition 단순 설정 + 페이지 자동 전환 + toast |
 
 # 코드베이스 컨벤션 (트랙 진행하며 정착됨)
 
