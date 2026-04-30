@@ -460,8 +460,14 @@ useEffect(() => {
 | **L** | `da60703` | 객체 정렬 도구 가시화 | ControlBar에 6버튼 정렬 그리드(가로 좌/중/우 + 세로 상/중/하), 단일=workspace 기준 / 다중=그룹 자체 기준, AlignBtn 헬퍼 |
 | **M** | `5213782` | 표지 편집 모드 사용자 토글 (D5 Phase 3a) | CommandPaletteModal에 auto/separated/composite 액션 3개 추가, cover.md Phase 3a 완료 / 3b 미래 |
 | **N** | (docs) | lucide tree-shaking 정적 분석 | v0.400.0 `sideEffects:false` + 79개 named import 확인 → 자동 tree-shake. 추가 조치 불필요 |
+| **O** | `36471bc` | D5 Phase 3b 인프라 (3b-i) | `useCoverRegion` hook (canvasX → SpreadRegion), `useIsCoverContext`, cover.md §7 정교화(인프라 표 + 4단계 로드맵) |
+| **P** | `0db61b0` | 자동저장 토스트 옵션 | `useUiPrefStore.autoSaveToastEnabled` (v6→v7), AutoSaveIndicator saved 시 짧은 toast 1.2s, CommandPalette 토글 액션 |
+| **Q** | `13a1dbe` | 변경 이력 요약 패널 | `HistoryPanel` (헤더 popover): undo/redo 단계 + 마지막 자동저장 + dirty + "모든 변경 되돌리기" 액션 |
+| **R** | `7af39fa` | 빠른 색상 팔레트 | ColorPicker 위에 8개 recent swatch row (모달 안 열고 한 클릭 적용, opacity 유지) |
+| **S** | `3d67d85` | 드래그 앤 드롭 이미지 | `useImageStore.uploadFile(canvas,file)` 신규, EditorView main onDrop/Over/Enter/Leave + 드래그 시각 안내 + 성공/실패 toast |
+| **T** | `37bb181` | 멀티 선택 분포 도구 | ControlBar에 3+ 선택 시 "가로/세로 균등 분포" 2버튼 (canvas-core 변경 없이 editor 자체 구현) |
 
-총 17개 커밋, 모두 `origin/master`에 반영되어 Vercel 자동 배포 완료 (`editor.papascompany.co.kr`).
+총 23개 커밋, 모두 `origin/master`에 반영되어 Vercel 자동 배포 완료 (`editor.papascompany.co.kr`).
 
 ### 6.1 2026-04-29 세션
 
@@ -690,6 +696,39 @@ rm -rf apps/editor/node_modules/.vite
   - `useUiPrefStore.theme` 추가 (`'light' | 'dark' | 'system'`) + version 5→6 마이그레이션
   - `useThemeSync()` hook — `<html data-theme>` 속성 동기화. system 모드에서 `prefers-color-scheme` 변경 자동 감지. App.tsx 루트에서 1회 호출
   - `EditorHeader`에 테마 토글 버튼 — Sun/Moon/Monitor 아이콘 + 클릭 시 light → dark → system 사이클
+- ✅ **트랙 T — 객체 멀티 선택 분포 도구**
+  - 3개 이상 객체 선택 시 ControlBar에 "균등 분포" 섹션 활성 (가로/세로 2버튼)
+  - canvas-core `AlignPlugin`에는 distribute가 없어 ControlBar에서 직접 구현 (canvas-core 변경 회피)
+  - 알고리즘: axis 기준 중심 정렬 후 첫/마지막 고정 + 중간 객체 균등 간격 step. `canvas.offHistory()` → 처리 → 새 ActiveSelection + `object:modified` → `onHistory()`로 atomic history 1단계
+  - lucide `AlignHorizontalDistributeCenter` / `AlignVerticalDistributeCenter` 아이콘
+- ✅ **트랙 S — 드래그 앤 드롭 이미지 업로드**
+  - `useImageStore.uploadFile(canvas, file: File)` 신규 — file picker 없이 File 객체로 바로 업로드, workspace 중앙 배치 + mm/dpi 스케일
+  - EditorView `<main>`에 onDragOver/Enter/Leave/Drop 핸들러 + dragCounterRef로 nested element 정확 감지
+  - 드래그 활성 시 시각 안내: 점선 보더 + bg/5 dim + 안내 카드
+  - 드롭 처리: `image/*` 필터 (다른 파일 warning), 첫 1개만 (Phase 1, N개는 향후), 성공/실패 toast
+- ✅ **트랙 R — 빠른 색상 팔레트 (ColorPicker swatch row)**
+  - ColorPicker 위에 `useRecentColorsStore.recent` 처음 8개 swatch (5×5px)
+  - 클릭 → 현재 opacity 유지하며 rgba로 변환 후 적용 + LRU 갱신
+  - ObjectFill/Stroke/Shadow 등 ColorPicker 사용처 모두에 자동 노출
+  - recentColors 비어있으면 row 자체 숨김
+- ✅ **트랙 Q — 변경 이력 요약 패널 (HistoryPanel)**
+  - 헤더에 History 아이콘 버튼 → Popover로 변경 이력 요약 4행 표시
+    · 되돌릴 수 있는 단계 (`canvas.historyUndo.length`)
+    · 다시 실행 가능 (`canvas.historyRedo.length`)
+    · 마지막 자동저장 (lastSavedAt 상대 시간)
+    · 현재 변경됨 (isDirty)
+  - 액션: "모든 변경 되돌리기 (N단계)" — `HistoryPlugin.undo()` 반복
+  - editor `historyUpdate` 이벤트 + `setTimeout(refresh, 200)` 보정으로 갱신
+  - 향후 Phase 2 — 자동저장 스냅샷 list, thumbnail 미리보기, "여기로 복원" 액션
+- ✅ **트랙 P — 자동저장 토스트 미세 정책 (옵션 토글)**
+  - `useUiPrefStore.autoSaveToastEnabled` 추가 (default false), localStorage v6→v7 마이그레이션
+  - AutoSaveIndicator saving→saved 시 옵션 활성이면 짧은 toast 1.2초
+  - CommandPaletteModal "자동저장 토스트 켜기/끄기" 액션 추가
+- ✅ **트랙 O — D5 Phase 3b 인프라 (3b-i)**
+  - `useCoverRegion()` hook — canvas X 좌표 → `SpreadRegion` 매핑 (spread 모드일 때만)
+  - `useIsCoverContext()` — `isSpreadMode + spreadConfig` 검사
+  - 내부적으로 `SpreadPlugin.getRegionAtX(x)` 호출 (canvas-core public API 활용)
+  - `cover.md §7` 정교화: 인프라 표 6개 항목 + 4단계 로드맵 (3b-ii ~ 3b-v 향후)
 - ✅ **트랙 N — lucide tree-shaking 정적 분석**
   - lucide-react v0.400.0의 `package.json`에 `"sideEffects": false` 명시 → Rollup/Vite tree-shaking 자동 활성화
   - 코드베이스: 53개 tsx 파일에서 `from 'lucide-react'` import, 79개 고유 named import 사용
