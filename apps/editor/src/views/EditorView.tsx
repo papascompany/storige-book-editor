@@ -13,6 +13,7 @@ import ControlBar from '@/components/editor/ControlBar'
 import SidePanel from '@/components/editor/SidePanel'
 import EditorHeader from '@/components/editor/EditorHeader'
 import { CoverFocusBar } from '@/components/editor/CoverFocusBar'
+import EmptyCanvasHint from '@/components/editor/EmptyCanvasHint'
 import { PagePanel } from '@/components/PagePanel/PagePanel'
 import { SpreadPagePanel } from '@/components/PagePanel/SpreadPagePanel'
 import { BookNavigation } from '@/components/PageNavigation/BookNavigation'
@@ -546,6 +547,9 @@ export default function EditorView() {
 
             {/* Canvas Area */}
             <main className="flex-1 relative overflow-hidden bg-editor-workspace">
+              {/* 빈 캔버스 안내 (사용자 객체 없을 때) */}
+              <EmptyCanvasHint />
+
               {/* Canvas Container */}
               <div
                 id="canvas-wrapper"

@@ -270,6 +270,9 @@ interface SettingsActions {
   getEffectiveValue: (value: number) => number
   showAsVisibleUnit: (value: number, isPixelValue?: boolean) => number
 
+  // 작업명 (artwork.name) 단순 setter — 헤더 input 동기화용
+  setArtworkName: (name: string) => void
+
   // Editor templates management
   setEditorTemplates: (templates: EditorTemplate[]) => void
 
@@ -651,6 +654,12 @@ export const useSettingsStore = create<SettingsState & SettingsActions>()((set, 
     return isMM
       ? isPixelValue ? pxToMmDisplay(value) : value
       : isPixelValue ? value : mmToPxDisplay(value)
+  },
+
+  setArtworkName: (name) => {
+    set((state) => ({
+      artwork: { ...state.artwork, name },
+    }))
   },
 
   setEditorTemplates: (templates) => {
