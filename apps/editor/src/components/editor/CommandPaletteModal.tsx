@@ -21,11 +21,13 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Cog,
+  Star,
   type LucideIcon,
 } from 'lucide-react'
 import { useAppStore } from '@/stores/useAppStore'
 import { useUiPrefStore } from '@/stores/useUiPrefStore'
 import { useEditorStore } from '@/stores/useEditorStore'
+import { useCommandFavoritesStore } from '@/stores/useCommandFavoritesStore'
 import { HistoryPlugin } from '@storige/canvas-core'
 import type { AppMenu } from '@/types/menu'
 import { cn } from '@/lib/utils'
@@ -338,15 +340,24 @@ export default function CommandPaletteModal(props: CommandPaletteModalProps) {
     [allActions, query]
   )
 
-  // 그룹별 정렬
-  const grouped = useMemo(() => {
-    const groups: Record<string, CommandAction[]> = {}
+  // 즐겨찾기 store (DD-4)
+  const favoriteIds = useCommandFavoritesStore((s) => s.ids)
+  const toggleFavorite = useCommandFavoritesStore((s) => s.toggle)
+
+  // 그룹별 정렬 — 즐겨찾기 그룹을 최상단에 별도 추가 (액션은 일반 그룹에도 그대로 노출)
+  // grouped 순회 순서 유지 위해 entries 방식
+  const groupedEntries = useMemo<[string, CommandAction[]][]>(() => {
+    const favoritesItems = filtered.filter((a) => favoriteIds.includes(a.id))
+    const baseGroups: Record<string, CommandAction[]> = {}
     filtered.forEach((a) => {
-      if (!groups[a.group]) groups[a.group] = []
-      groups[a.group].push(a)
+      if (!baseGroups[a.group]) baseGroups[a.group] = []
+      baseGroups[a.group].push(a)
     })
-    return groups
-  }, [filtered])
+    const entries: [string, CommandAction[]][] = []
+    if (favoritesItems.length > 0) entries.push(['★ 즐겨찾기', favoritesItems])
+    Object.entries(baseGroups).forEach((e) => entries.push(e))
+    return entries
+  }, [filtered, favoriteIds])
 
   // 모달 열림 시 input focus + 인덱스 reset
   useEffect(() => {
@@ -363,6 +374,12 @@ export default function CommandPaletteModal(props: CommandPaletteModalProps) {
     setActiveIndex(0)
   }, [query])
 
+  // 즐겨찾기 그룹은 액션을 중복 노출하므로 keyboard nav는 flat 순서 기준
+  const flatNav = useMemo(
+    () => groupedEntries.flatMap(([, items]) => items),
+    [groupedEntries]
+  )
+
   // 키보드 navigation
   useEffect(() => {
     if (!open) return
@@ -374,19 +391,19 @@ export default function CommandPaletteModal(props: CommandPaletteModalProps) {
       }
       if (e.key === 'ArrowDown') {
         e.preventDefault()
-        setActiveIndex((i) => Math.min(filtered.length - 1, i + 1))
+        setActiveIndex((i) => Math.min(flatNav.length - 1, i + 1))
       } else if (e.key === 'ArrowUp') {
         e.preventDefault()
         setActiveIndex((i) => Math.max(0, i - 1))
       } else if (e.key === 'Enter') {
         e.preventDefault()
-        const action = filtered[activeIndex]
+        const action = flatNav[activeIndex]
         if (action) action.run({ close: onClose })
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [open, filtered, activeIndex, onClose])
+  }, [open, flatNav, activeIndex, onClose])
 
   // active index 항목으로 스크롤
   useEffect(() => {
@@ -441,8 +458,8 @@ export default function CommandPaletteModal(props: CommandPaletteModalProps) {
               일치하는 명령이 없습니다.
             </div>
           ) : (
-            Object.entries(grouped).map(([group, items]) => (
-              <div key={group} className="mb-1">
+            groupedEntries.map(([group, items], groupIdx) => (
+              <div key={`${group}-${groupIdx}`} className="mb-1">
                 <div className="px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-editor-text-muted">
                   {group}
                 </div>
@@ -450,35 +467,58 @@ export default function CommandPaletteModal(props: CommandPaletteModalProps) {
                   const idx = runningIndex++
                   const active = idx === activeIndex
                   const Icon = a.icon
+                  const isFav = favoriteIds.includes(a.id)
                   return (
-                    <button
-                      key={a.id}
-                      type="button"
+                    <div
+                      key={`${group}-${a.id}`}
                       data-action-index={idx}
-                      onMouseEnter={() => setActiveIndex(idx)}
-                      onClick={() => a.run({ close: onClose })}
                       className={cn(
-                        'w-full flex items-center gap-2 px-3 py-2 text-left text-sm transition-colors',
+                        'group relative flex items-center transition-colors',
                         active
                           ? 'bg-editor-accent/10 text-editor-accent'
                           : 'text-editor-text hover:bg-editor-hover'
                       )}
+                      onMouseEnter={() => setActiveIndex(idx)}
                     >
-                      {Icon && (
-                        <Icon
-                          className={cn(
-                            'h-4 w-4 flex-shrink-0',
-                            active ? 'text-editor-accent' : 'text-editor-text-muted'
-                          )}
-                        />
-                      )}
-                      <span className="flex-1 truncate">{a.label}</span>
-                      {a.hint && (
-                        <span className="flex-shrink-0 text-[11px] text-editor-text-muted">
-                          {a.hint}
-                        </span>
-                      )}
-                    </button>
+                      <button
+                        type="button"
+                        onClick={() => a.run({ close: onClose })}
+                        className="flex-1 flex items-center gap-2 px-3 py-2 text-left text-sm min-w-0"
+                      >
+                        {Icon && (
+                          <Icon
+                            className={cn(
+                              'h-4 w-4 flex-shrink-0',
+                              active ? 'text-editor-accent' : 'text-editor-text-muted'
+                            )}
+                          />
+                        )}
+                        <span className="flex-1 truncate">{a.label}</span>
+                        {a.hint && (
+                          <span className="flex-shrink-0 text-[11px] text-editor-text-muted">
+                            {a.hint}
+                          </span>
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          toggleFavorite(a.id)
+                        }}
+                        title={isFav ? '즐겨찾기에서 제거' : '즐겨찾기에 추가'}
+                        aria-label={isFav ? `즐겨찾기에서 제거: ${a.label}` : `즐겨찾기에 추가: ${a.label}`}
+                        aria-pressed={isFav}
+                        className={cn(
+                          'flex-shrink-0 p-1.5 mr-1 rounded hover:bg-editor-surface-low transition-colors',
+                          isFav
+                            ? 'text-amber-500 opacity-100'
+                            : 'text-editor-text-muted opacity-0 group-hover:opacity-100 focus:opacity-100'
+                        )}
+                      >
+                        <Star className={cn('h-3.5 w-3.5', isFav && 'fill-amber-500')} />
+                      </button>
+                    </div>
                   )
                 })}
               </div>
