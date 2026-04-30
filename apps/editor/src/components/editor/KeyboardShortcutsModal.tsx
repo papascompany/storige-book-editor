@@ -58,6 +58,7 @@ const GROUPS: ShortcutGroup[] = [
     title: '이동·정렬',
     items: [
       { keys: ['←', '→', '↑', '↓'], description: '객체 이동 (1px)' },
+      { keys: ['⇧', '←', '→', '↑', '↓'], description: '객체 이동 (10px)' },
       { keys: ['['], description: '한 단계 뒤로' },
       { keys: [']'], description: '한 단계 앞으로' },
       { keys: ['⌘', '['], description: '가장 뒤로 보내기' },

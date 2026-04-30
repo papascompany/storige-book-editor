@@ -565,12 +565,48 @@ export default function EditorView() {
         showToast('캔버스가 준비되지 않았습니다.', 'error', 3000)
         return
       }
-      // 여러 파일이면 첫 1개만 (단순화). 향후 N개 처리는 Phase 2
-      const result = await uploadFile(cv, imageFiles[0])
-      if (result) {
-        showToast(`이미지 추가됨: ${imageFiles[0].name}`, 'success', 2500)
+      // 여러 파일 순차 업로드 + cascade 오프셋(겹쳐 쌓이지 않도록 i*20px씩 어긋나게)
+      const CASCADE_STEP = 20
+      let successCount = 0
+      let failCount = 0
+      for (let i = 0; i < imageFiles.length; i++) {
+        const file = imageFiles[i]
+        try {
+          const obj = await uploadFile(cv, file)
+          if (obj) {
+            if (i > 0) {
+              const off = i * CASCADE_STEP
+              obj.set({ left: (obj.left ?? 0) + off, top: (obj.top ?? 0) + off })
+              obj.setCoords?.()
+            }
+            successCount++
+          } else {
+            failCount++
+          }
+        } catch (err) {
+          console.warn('[EditorView] multi-drop upload failed:', file.name, err)
+          failCount++
+        }
+      }
+      cv.requestRenderAll?.()
+      if (successCount > 0 && failCount === 0) {
+        showToast(
+          imageFiles.length === 1
+            ? `이미지 추가됨: ${imageFiles[0].name}`
+            : `이미지 ${successCount}개 추가됨`,
+          'success',
+          2500
+        )
+      } else if (successCount > 0) {
+        showToast(`이미지 ${successCount}개 추가 / ${failCount}개 실패`, 'warning', 4000)
       } else {
-        showToast(`이미지 추가 실패: ${imageFiles[0].name}`, 'error', 3000)
+        showToast(
+          imageFiles.length === 1
+            ? `이미지 추가 실패: ${imageFiles[0].name}`
+            : `이미지 ${imageFiles.length}개 모두 실패`,
+          'error',
+          3000
+        )
       }
     },
     [uploadFile]
