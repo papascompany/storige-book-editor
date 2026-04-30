@@ -41,6 +41,7 @@ import ObjectShadow from '@/controls/ObjectShadow'
 import ObjectStroke from '@/controls/ObjectStroke'
 import TextAttributes from '@/controls/TextAttributes'
 import TextEffect from '@/controls/TextEffect'
+import MoveToCoverRegion from '@/controls/MoveToCoverRegion'
 // import SpecialEffect from '@/controls/SpecialEffect'
 
 // Icon mapping by selection type
@@ -378,6 +379,9 @@ export default function ControlBar() {
             </TooltipProvider>
           </div>
         )}
+
+        {/* 다른 표지 영역으로 이동 (cover.md §7 / D5 Phase 3b-v) */}
+        <MoveToCoverRegion />
 
         {/* Actions */}
         <div className="actions px-3">
