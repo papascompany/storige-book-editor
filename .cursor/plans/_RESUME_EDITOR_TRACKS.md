@@ -71,7 +71,8 @@
 | **V** | `af79102` | D5 Phase 3b-iv — `SpreadPlugin`에 `spreadObjectsOutOfBounds` 이벤트(canvas-core 빌드), `useSpreadOutOfBoundsToast` hook이 구독해 책등 가변 후 이탈 객체 N개 warning toast 표시 |
 | **W** | `846d5e9` | 다크 모드 Phase 3 — `RULER_DEFAULTS_DARK`+`RulerPlugin.setTheme()` (canvas-core), `defaultControlsDark`+`getDefaultControls()` (editor), `useCanvasThemeSync(ready)` hook이 테마 변경 시 ruler+선택 핸들 일괄 적용. 워크스페이스 흰 페이지 유지 |
 | **X** | `43a6ba0` | 반응형 Phase 2 (부분) — 사이드바 핸들 Pointer Events 통합(마우스/터치/펜) + setPointerCapture + 5px hit area, BookNavigation 화살표 44×44 터치 타겟 + aria-label. 태블릿 헤더 wrap은 후속(X-2) |
-| **Y** | _이번_ | 작은 묶음 — 멀티파일 드롭 (이미지 N개 순차 업로드 + cascade 20px offset + 일괄 success/partial/fail toast), Shift+화살표 10px nudge 단축키 카탈로그 등록(코드는 `ControlsPlugin`에 이미 존재) |
+| **Y** | `1d07e00` | 작은 묶음 — 멀티파일 드롭 (이미지 N개 순차 업로드 + cascade 20px offset + 일괄 success/partial/fail toast), Shift+화살표 10px nudge 단축키 카탈로그 등록(코드는 `ControlsPlugin`에 이미 존재) |
+| **Z** | _이번_ | 반응형 Phase 2 X-2 — 헤더 작업명 max-w 단계 추가(`sm:180/md:200/lg:280`), 페이지네비 select를 `lg:block`로 좁힘(태블릿에서 헤더 도구 폭 여유 확보) + tooltip 안내 갱신 |
 
 # 코드베이스 컨벤션 (트랙 진행하며 정착됨)
 
@@ -184,11 +185,11 @@ cover.md §7.3 단계별 난이도 표:
 - 통합 동기화: `useCanvasThemeSync(ready)` hook이 테마 변경 시 모든 ruler + 사용자 객체 controls 일괄 갱신 (시스템 객체 가드 강화: workspace/cut-border/safe-zone-border/guideline 등)
 - 워크스페이스 흰 페이지 배경은 가이드대로 유지 (인쇄용지)
 
-## 🟡 반응형 Phase 2 (X-2 잔여 — 시각 검증 필요)
+## ✅ 반응형 Phase 2 — 트랙 X + Z 완료
 
-- ~~사이드바 가변 폭 핸들 터치 이벤트~~ ✅ 트랙 X (Pointer Events 통합)
-- ~~페이지 네비 큰 히트박스~~ ✅ 트랙 X (44×44)
-- **태블릿(768~1024) 헤더 도구 wrap/숨김 미세 분기** — 768px에서 우측 도구가 한 줄에 안 들어올 가능성. 시각 측정 후 (a) 작업명 max-w 추가 분기 또는 (b) 비핵심 도구 (페이지네비 select 등)를 lg 미만에서 숨김
+- ~~사이드바 가변 폭 핸들 터치 이벤트~~ ✅ 트랙 X
+- ~~페이지 네비 큰 히트박스~~ ✅ 트랙 X
+- ~~태블릿(768~1024) 헤더 도구 미세 분기~~ ✅ 트랙 Z (작업명 max-w `sm:180/md:200/lg:280` + 페이지네비 select `lg:block` 으로 좁힘)
 
 ## 🟢 작은 후속 (1시간 이내)
 
