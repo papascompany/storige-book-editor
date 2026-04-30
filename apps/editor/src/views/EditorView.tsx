@@ -20,7 +20,7 @@ import { PagePanel } from '@/components/PagePanel/PagePanel'
 import { SpreadPagePanel } from '@/components/PagePanel/SpreadPagePanel'
 import { BookNavigation } from '@/components/PageNavigation/BookNavigation'
 import { useResolvedPageNavPosition } from '@/hooks/useResolvedPageNavPosition'
-import { useSpreadAutoAnchor } from '@/hooks/useCoverRegion'
+import { useSpreadAutoAnchor, useSpreadOutOfBoundsToast } from '@/hooks/useCoverRegion'
 import { productsApi } from '@/api'
 
 // Screen mode type
@@ -451,6 +451,8 @@ export default function EditorView() {
 
   // Spread 모드 신규 객체 region 메타 자동 부여 (cover.md §7 / D5 Phase 3b-ii)
   useSpreadAutoAnchor(ready)
+  // 책등 폭 변경 후 캔버스 밖 객체 toast (cover.md §7 / D5 Phase 3b-iv)
+  useSpreadOutOfBoundsToast(ready)
 
   // 룰러 표시 토글 — useUiPrefStore.showRuler 변화에 반응해 모든 캔버스의 RulerPlugin enable/disable
   useEffect(() => {

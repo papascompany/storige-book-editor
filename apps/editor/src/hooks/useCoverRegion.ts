@@ -1,6 +1,7 @@
 import { useCallback, useEffect } from 'react'
 import { useAppStore } from '@/stores/useAppStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
+import { showToast } from '@/stores/useToastStore'
 import { resolveRegionRef, type SpreadPlugin, type SpreadRegion } from '@storige/canvas-core'
 
 /**
@@ -89,4 +90,35 @@ export function useSpreadAutoAnchor(ready: boolean): void {
       canvas.off('object:added', handler)
     }
   }, [ready, isSpreadMode, canvas, editor])
+}
+
+/**
+ * 책등 폭 변경 후 캔버스 밖으로 이탈한 객체가 있을 때 toast 알림
+ * (cover.md §7 / D5 Phase 3b-iv).
+ *
+ * `SpreadPlugin.checkObjectsOutOfBounds`가 `resizeSpine` 마지막에 발행하는
+ * `spreadObjectsOutOfBounds` 이벤트를 구독해 사용자에게 warning toast 표시.
+ */
+export function useSpreadOutOfBoundsToast(ready: boolean): void {
+  const isSpreadMode = useAppStore((s) => s.isSpreadMode)
+  const editor = useAppStore((s) => s.editor)
+
+  useEffect(() => {
+    if (!ready || !isSpreadMode || !editor) return
+
+    const handler = (payload: { count: number }) => {
+      const count = payload?.count ?? 0
+      if (count <= 0) return
+      showToast(
+        `책등 폭이 변경되어 ${count}개 객체가 작업 영역을 벗어났습니다. 위치를 확인해 주세요.`,
+        'warning',
+        5000
+      )
+    }
+
+    editor.on('spreadObjectsOutOfBounds', handler)
+    return () => {
+      editor.off?.('spreadObjectsOutOfBounds', handler)
+    }
+  }, [ready, isSpreadMode, editor])
 }

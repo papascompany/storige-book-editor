@@ -45,7 +45,7 @@ interface SpreadPluginOptions extends PluginOption {
 
 class SpreadPlugin extends PluginBase {
   name = 'SpreadPlugin'
-  events = ['spineWidthChange', 'spreadLayoutUpdate']
+  events = ['spineWidthChange', 'spreadLayoutUpdate', 'spreadObjectsOutOfBounds']
   hotkeys = []
 
   private currentSpec: SpreadSpec
@@ -319,6 +319,10 @@ class SpreadPlugin extends PluginBase {
 
   /**
    * 캔버스 밖 객체 경고
+   *
+   * 책등 폭 변경(`resizeSpine`) 후 작업 영역을 벗어난 객체가 있으면
+   * `spreadObjectsOutOfBounds` 이벤트를 발행한다. editor가 이를 구독해
+   * 사용자에게 toast로 알린다.
    */
   private checkObjectsOutOfBounds(layout: SpreadLayout): void {
     const origin = this.getContentOrigin()
@@ -334,7 +338,10 @@ class SpreadPlugin extends PluginBase {
 
     if (outOfBounds.length > 0) {
       console.warn(`SpreadPlugin: ${outOfBounds.length} objects are out of bounds`)
-      // TODO: 토스트 알림 or 이벤트 발행
+      this._editor.emit('spreadObjectsOutOfBounds', {
+        count: outOfBounds.length,
+        objects: outOfBounds,
+      })
     }
   }
 
