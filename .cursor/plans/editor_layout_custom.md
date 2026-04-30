@@ -1,6 +1,7 @@
 # Storige Editor — 레이아웃 / 디자인 커스터마이징 가이드
 
-> 2026-04-29 작성, 2026-04-30 갱신. 본 문서는 에디터(`apps/editor`)의 UI/UX 구조, 디자인 토큰,
+> 2026-04-29 작성, 2026-04-30 갱신 (트랙 A~J 누적, §6.0 후속 트랙 표 참조).
+> 본 문서는 에디터(`apps/editor`)의 UI/UX 구조, 디자인 토큰,
 > 최근 커스터마이징 변경, 그리고 후속 작업을 위한 가이드라인을 정리한다.
 >
 > 참고 문서:
@@ -435,6 +436,28 @@ useEffect(() => {
 - 복원: `{ type: 'SHAPE', label: '요소', icon: Shapes }` 주석 해제
 - 기능 구현: `contentsApi.getElements()` REST API 호출 + 디바운스 검색 + 그리드 렌더링 (`AppFrame.tsx` 패턴 참고)
 - 관리자 페이지의 "클립아트 관리"에서 등록한 리소스가 `isCustomer` 권한으로 표시됨
+
+#### 후속 트랙 A~J — 2026-04-30 누적 요약
+
+> §8.0에 각 트랙의 상세 항목이 있고, 본 표는 한눈에 훑기 위한 요약.
+
+| 트랙 | 커밋 | 주제 | 핵심 산출물 |
+|---|---|---|---|
+| **A** | `8ea4e07` | 헤더 UX | 사이즈 픽커(8 프리셋+커스텀), Undo/Redo `canUndo/canRedo` 바인딩, `Cmd+\` 사이드바 토글, 편집완료 hover 색상 검증 |
+| **B-1** | `1748fab` | 표지 편집 모드 Phase 1 | `cover.md` 설계 문서, `BookNavigation.buildPageMeta` 위치별 라벨 추론(N=1/3/5), 표지/내지 구분선, 둥근 그레이 카드 디자인 |
+| **B-2** | `308bb1f` | 표지 편집 모드 Phase 2 | `CoverFocusBar` (헤더 아래 56px 표지 미니맵, 캔버스 width 비례, 라이브 toDataURL 프리뷰, 영역 클릭 포커싱) |
+| **C** | `d812361` | UX 폴리싱 | `AppSection` 펼침 영속 (id 있을 때 `expandedSections`), 드래그 핸들 더블클릭 → 기본 폭 복원, localStorage v5 |
+| **D-1** | `f4b8630` | 다크 모드 인프라 | `:root[data-theme="dark"]` 토큰 셋, `theme: light\|dark\|system`, `useThemeSync()`, 헤더 Sun/Moon/Monitor 토글 |
+| **D-2v1** | `540a2aa` | 다크 모드 chrome 스윕 | EditorHeader/CoverFocusBar/PageThumbnail/BookNavigation/FeatureSidebar의 하드코딩 그레이 → `editor-*` 토큰 |
+| **D-2v2** | `aadffa5` | 다크 모드 controls/tools 스윕 | AppSection/AppSectionSearch/FontPreviewDropdown + ObjectShadow + 6개 tools/* 토큰화 |
+| **E-1** | `309fea2` | 반응형 레이아웃 Phase 1 | 모바일 FeatureSidebar `mobileOverlay` (fixed 280px + 백드롭), 작업명 input 반응형 폭, CoverFocusBar 가로 스크롤 |
+| **F** | `ce2d854` | 키보드 단축키 도움말 모달 | `KeyboardShortcutsModal` (4 카테고리 × 19 단축키), `?` / 도움말 버튼 / `Cmd+S` 저장 |
+| **G** | `3f1adcb` | 토스트 알림 시스템 | `useToastStore` + `ToastViewport` (4 타입, 자동 제거, X 닫기), EditorHeader 7개 console.log/alert → toast |
+| **H** | `fc34354` | AutoSaveIndicator 리팩토링 | inline SVG → lucide, 하드코딩 컬러 → 토큰, failed/offline 진입 시 자동 토스트 |
+| **I** | `b568de8` | 최근 사용 색상 LRU | `useRecentColorsStore` (16개 LRU + persist), `normalizeToHex()`, ColorPickerModal "최근 사용" 섹션 |
+| **J** | `c8e4054` | 커맨드 팔레트 (Cmd+K) | `CommandPaletteModal` (22 정적 + 동적 페이지 액션, 검색 + 키보드 nav), 단축키 카탈로그 갱신 |
+
+총 13개 커밋, 모두 `origin/master`에 반영되어 Vercel 자동 배포 완료 (`editor.papascompany.co.kr`).
 
 ### 6.1 2026-04-29 세션
 
