@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { useAppStore, useSelectionType } from '@/stores/useAppStore'
+import { useIsCoarsePointer } from '@/hooks/useIsCoarsePointer'
 import { AlignPlugin, GroupPlugin, ObjectPlugin, SelectionType } from '@storige/canvas-core'
 
 import {
@@ -127,6 +128,7 @@ export default function ControlBar() {
   const selectionType = useSelectionType()
   const getPlugin = useAppStore((state) => state.getPlugin)
   const updateObjects = useAppStore((state) => state.updateObjects)
+  const isCoarsePointer = useIsCoarsePointer()
 
   // Check if bar should be shown
   const showBar = useMemo(() => {
@@ -290,11 +292,22 @@ export default function ControlBar() {
     return null
   }
 
+  // 터치 디바이스에서는 ControlBar 를 하단 시트(bottom sheet) 로 렌더링.
+  // 280px 고정 폭으로 좌측에 두면 작은 화면에서 캔버스를 80% 가리는 문제 회피.
+  // - 좌우 폭 100% / 화면 높이의 50% 까지 / 하단 고정 / 자체 스크롤
+  // - z-[102] 로 토스트(z-200) 보다 낮고 헤더(z-101)보다 높게
+  const containerClassName = isCoarsePointer
+    ? 'control-bar control-bar--mobile fixed left-0 right-0 bottom-0 z-[102] bg-editor-panel border-t border-editor-border flex flex-col h-[50vh] max-h-[50vh] overflow-hidden shadow-[0_-2px_12px_rgba(0,0,0,0.08)]'
+    : 'control-bar bg-editor-panel border-r border-editor-border flex flex-col w-[280px] min-w-[280px] max-w-[280px] h-full overflow-hidden'
+
   return (
-    <div
-      id="control-bar"
-      className="control-bar bg-editor-panel border-r border-editor-border flex flex-col w-[280px] min-w-[280px] max-w-[280px] h-full overflow-hidden"
-    >
+    <div id="control-bar" className={containerClassName}>
+      {/* 모바일: 드래그 핸들 (시각적 hint, 실제 드래그는 미구현) */}
+      {isCoarsePointer && (
+        <div className="flex justify-center pt-2 pb-1 shrink-0" aria-hidden="true">
+          <div className="h-1 w-10 rounded-full bg-editor-border" />
+        </div>
+      )}
       <div className="control-inner w-full h-full flex flex-col gap-1 overflow-y-auto">
         {/* Header */}
         <div className="control-header flex flex-row p-4 gap-3">
