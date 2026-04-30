@@ -14,6 +14,8 @@ import SidePanel from '@/components/editor/SidePanel'
 import EditorHeader from '@/components/editor/EditorHeader'
 import { CoverFocusBar } from '@/components/editor/CoverFocusBar'
 import EmptyCanvasHint from '@/components/editor/EmptyCanvasHint'
+import { useImageStore } from '@/stores/useImageStore'
+import { showToast } from '@/stores/useToastStore'
 import { PagePanel } from '@/components/PagePanel/PagePanel'
 import { SpreadPagePanel } from '@/components/PagePanel/SpreadPagePanel'
 import { BookNavigation } from '@/components/PageNavigation/BookNavigation'
@@ -512,6 +514,59 @@ export default function EditorView() {
     setLoadingMessage(message || '')
   }, [])
 
+  // 드래그 앤 드롭 이미지 업로드 (트랙 S)
+  const [dragActive, setDragActive] = useState(false)
+  const uploadFile = useImageStore((s) => s.uploadFile)
+  const dragCounterRef = useRef(0)
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    if (e.dataTransfer.types.includes('Files')) {
+      e.preventDefault()
+      e.dataTransfer.dropEffect = 'copy'
+    }
+  }, [])
+
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    if (e.dataTransfer.types.includes('Files')) {
+      e.preventDefault()
+      dragCounterRef.current += 1
+      setDragActive(true)
+    }
+  }, [])
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    dragCounterRef.current = Math.max(0, dragCounterRef.current - 1)
+    if (dragCounterRef.current === 0) setDragActive(false)
+  }, [])
+
+  const handleDrop = useCallback(
+    async (e: React.DragEvent) => {
+      e.preventDefault()
+      dragCounterRef.current = 0
+      setDragActive(false)
+      const files = Array.from(e.dataTransfer.files || [])
+      const imageFiles = files.filter((f) => f.type.startsWith('image/'))
+      if (imageFiles.length === 0) {
+        if (files.length > 0) showToast('이미지 파일만 지원됩니다.', 'warning', 3000)
+        return
+      }
+      const cv = useAppStore.getState().canvas
+      if (!cv) {
+        showToast('캔버스가 준비되지 않았습니다.', 'error', 3000)
+        return
+      }
+      // 여러 파일이면 첫 1개만 (단순화). 향후 N개 처리는 Phase 2
+      const result = await uploadFile(cv, imageFiles[0])
+      if (result) {
+        showToast(`이미지 추가됨: ${imageFiles[0].name}`, 'success', 2500)
+      } else {
+        showToast(`이미지 추가 실패: ${imageFiles[0].name}`, 'error', 3000)
+      }
+    },
+    [uploadFile]
+  )
+
   return (
     <div id="editor" className="flex flex-col h-full w-full absolute">
       {/* Top Navigation Bar */}
@@ -545,8 +600,26 @@ export default function EditorView() {
             <FeatureSidebar mobileOverlay={screenMode === 'mobile'} />
             {ready && <ControlBar />}
 
-            {/* Canvas Area */}
-            <main className="flex-1 relative overflow-hidden bg-editor-workspace">
+            {/* Canvas Area — 이미지 드래그 앤 드롭 영역 (트랙 S) */}
+            <main
+              className="flex-1 relative overflow-hidden bg-editor-workspace"
+              onDragOver={handleDragOver}
+              onDragEnter={handleDragEnter}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+            >
+              {/* 드래그 활성 시 시각 안내 — 화면 전체 dim + 그린 보더 */}
+              {dragActive && (
+                <div
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-2 z-[50] rounded-lg border-2 border-dashed border-editor-accent bg-editor-accent/5 flex items-center justify-center"
+                >
+                  <div className="px-4 py-2 rounded-md bg-editor-panel border border-editor-border shadow-sm text-sm text-editor-text">
+                    이미지를 놓으면 캔버스에 추가됩니다
+                  </div>
+                </div>
+              )}
+
               {/* 빈 캔버스 안내 (사용자 객체 없을 때) */}
               <EmptyCanvasHint />
 

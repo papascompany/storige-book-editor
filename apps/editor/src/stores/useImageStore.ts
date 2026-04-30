@@ -45,6 +45,12 @@ interface ImageActions {
     accept?: string
   ) => Promise<FabricObject | undefined>
 
+  // 이미 가지고 있는 File 객체로 업로드 (드래그앤드롭, 클립보드 paste 등)
+  uploadFile: (
+    canvas: FabricCanvas,
+    file: File
+  ) => Promise<FabricObject | undefined>
+
   // 이미지 채우기
   fillImage: (
     canvas: FabricCanvas,
@@ -215,6 +221,61 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
     } catch (e) {
       console.log(e)
       throw e
+    } finally {
+      set({ uploading: false })
+    }
+  },
+
+  // 이미 가지고 있는 File로 업로드 (드래그앤드롭 등)
+  // uploadSimple과 동일한 로직이지만 file picker 단계 생략
+  uploadFile: async (
+    canvas: FabricCanvas,
+    file: File
+  ): Promise<FabricObject | undefined> => {
+    const { uploading, uploaded } = get()
+    if (uploading) return undefined
+
+    try {
+      set({ uploading: true })
+      const workspace = canvas.getObjects().find((obj: FabricObject) => obj.id === 'workspace')
+      if (!workspace) return undefined
+
+      // 벡터 파일은 지원 안 함 (uploadSimple과 동일)
+      const ext = file.name.split('.').pop()?.toLowerCase()
+      if (['ai', 'eps', 'pdf'].includes(ext || '')) return undefined
+
+      const item = await core.fileToImageSimple(canvas, file)
+      if (!item) return undefined
+
+      const workspaceWidth = workspace.width! * workspace.scaleX!
+      const workspaceHeight = workspace.height! * workspace.scaleY!
+      const workspaceCenter = workspace.getCenterPoint()
+      const scale = canvas.unitOptions?.unit === 'mm' ? (canvas.unitOptions.dpi || 150) / 72 : 1
+
+      item.set({
+        originX: 'center',
+        originY: 'center',
+        left: workspaceCenter.x,
+        top: workspaceCenter.y,
+      })
+
+      const actualW = item.width! * scale
+      const actualH = item.height! * scale
+      if (actualW > workspaceWidth || actualH > workspaceHeight) {
+        const sx = workspaceWidth / actualW
+        const sy = workspaceHeight / actualH
+        item.scale(Math.min(sx, sy) * scale)
+      } else {
+        item.scale(scale)
+      }
+
+      canvas.add(item)
+      canvas.setActiveObject(item)
+      set({ uploaded: [...uploaded, item] })
+      return item
+    } catch (e) {
+      console.error('[useImageStore.uploadFile]', e)
+      return undefined
     } finally {
       set({ uploading: false })
     }
