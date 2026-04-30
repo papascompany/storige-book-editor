@@ -257,6 +257,8 @@ type CoverEditMode = 'separated' | 'composite' | 'auto'
 | `useSpreadAutoAnchor(ready)` hook | 동상 | spread 모드 신규 객체에 region 메타 자동 부여 (3b-ii 완료) |
 | `useSpreadOutOfBoundsToast(ready)` hook | 동상 | `spreadObjectsOutOfBounds` 이벤트 → warning toast 표시 (3b-iv 완료) |
 | `SpreadPlugin.events: 'spreadObjectsOutOfBounds'` | `packages/canvas-core/src/plugins/SpreadPlugin.ts:48` | `{ count: number; objects: fabric.Object[] }` 페이로드, `resizeSpine` 마지막에 발행 (3b-iv 완료) |
+| `moveObjectToCanvas(obj, src, tgt, opts)` | `packages/canvas-core/src/utils/canvas.ts` | cross-canvas move helper (fabric clone + atomic dual-canvas history). 시스템 객체/same-canvas 가드 (3b-v 완료) |
+| `MoveToCoverRegion` 컴포넌트 | `apps/editor/src/controls/MoveToCoverRegion.tsx` | ControlBar row, 표지 컨텍스트 + 객체 선택 시 region 후보 버튼 → moveObjectToCanvas 호출 + 메타 재계산 + 페이지 전환 (3b-v 완료) |
 
 ### 7.2 향후 구현 단계
 
@@ -273,7 +275,7 @@ type CoverEditMode = 'separated' | 'composite' | 'auto'
 | **3b-ii** ✅ | 객체 추가 시 region 메타 자동 부여 — `useSpreadAutoAnchor` hook이 `object:added` 구독 + `resolveRegionRef` 한 번 적용 (도구별 wiring 불필요) | 중간 (완료, canvas-core 변경 없음) |
 | **3b-iii** ✅ | `object:modified` 시 region 메타 갱신 — `SpreadPlugin.handleObjectModified`가 이미 처리 (히스테리시스 90%/70%) + 신규 객체도 3b-ii로 첫 add 시 동일 로직 적용 | 중간 (완료, 검증) |
 | **3b-iv** ✅ | 책등 가변 시 객체 재배치 — `SpreadPlugin.repositionObjects`가 front-cover/front-wing/spine 처리(완료), `checkObjectsOutOfBounds`가 `spreadObjectsOutOfBounds` 이벤트 발행 → editor의 `useSpreadOutOfBoundsToast`가 warning toast 표시 | 중상 (완료, canvas-core 빌드 + dist commit) |
-| **3b-v** | Composite 모드 cross-canvas 이동 API | 상 (canvas-core 빌드 + 데이터 마이그레이션) |
+| **3b-v** ✅ | Composite 모드 cross-canvas 이동 — `moveObjectToCanvas` helper(canvas-core, fabric clone + atomic dual-canvas history) + `MoveToCoverRegion` UI(editor ControlBar row, 표지 컨텍스트 + 객체 선택 시만 노출, region 후보 버튼). target 워크스페이스 중심 배치 + target SpreadPlugin이 있으면 resolveRegionRef 자동 메타 갱신, 없으면 coverPosition 단순 설정. 자동 페이지 전환 + toast | 상 (완료, 1차 — 정밀 좌표 매핑은 향후 Phase 2) |
 
 ---
 
