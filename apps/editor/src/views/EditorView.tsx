@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useAuthStore, useIsCustomer } from '@/stores/useAuthStore'
 import { useAppStore } from '@/stores/useAppStore'
@@ -92,6 +92,18 @@ export default function EditorView() {
   } = useAppStore()
   const { getUseCaseFromParams } = useSettingsStore()
   const showRuler = useUiPrefStore((s) => s.showRuler)
+  // 활성 선택 — 모바일에서 ControlBar(하단 시트) 표시 여부 판단용
+  const activeSelection = useAppStore((state) => state.activeSelection)
+  const hasUserSelection = useMemo(() => {
+    if (!activeSelection || !Array.isArray(activeSelection) || activeSelection.length === 0) return false
+    const first = activeSelection[0] as { extensionType?: string; id?: string } | undefined
+    return (
+      first?.extensionType !== 'background' &&
+      first?.extensionType !== 'clipping' &&
+      first?.id !== 'workspace' &&
+      first?.extensionType !== 'guideline'
+    )
+  }, [activeSelection])
 
   // Editor contents hook
   const {
@@ -481,34 +493,57 @@ export default function EditorView() {
   useEffect(() => {
     if (!ready || !canvasContainerRef.current) return
     const el = canvasContainerRef.current
-    const resize = () => {
+    // ResizeObserver 무한 루프 방지용 — 마지막 적용 크기 기억해서 변동 없으면 스킵.
+    // setDimensions 가 캔버스 DOM 크기를 바꾸면 ResizeObserver 가 다시 발화 → 동일 호출이
+    // 무한 반복되어 iOS Safari 가 페이지를 크래시시킴.
+    let lastW = 0
+    let lastH = 0
+    let rafId: number | null = null
+
+    const apply = () => {
+      rafId = null
       const w = el.clientWidth
       const h = el.clientHeight
       if (w <= 0 || h <= 0) return
+      // 1px 미만 변동은 무시 — 모바일 viewport 지터 흡수
+      if (Math.abs(w - lastW) < 1 && Math.abs(h - lastH) < 1) return
+      lastW = w
+      lastH = h
+
       const canvases = useAppStore.getState().allCanvas
       canvases.forEach((cvs) => {
         try {
           if (!cvs || (cvs as any).disposed) return
+          // 현재 fabric 캔버스 크기와 같으면 스킵 (불필요한 setDimensions 방지)
+          if (cvs.getWidth?.() === w && cvs.getHeight?.() === h) return
           cvs.setDimensions({ width: w, height: h })
           cvs.requestRenderAll?.()
         } catch (e) {
           console.warn('[EditorView] canvas resize error:', e)
         }
       })
-      // workspace 위치 재계산 — sizeChange 이벤트로 WorkspacePlugin 등 알림
       const editors = useAppStore.getState().allEditors
       editors.forEach((ed) => {
         try { ed?.emit?.('sizeChange', { width: w, height: h }) } catch {}
       })
     }
-    // 초기 1회 동기화 (마운트 시 컨테이너가 막 늘어났을 수 있음)
-    resize()
-    const ro = new ResizeObserver(() => resize())
+
+    // RAF 로 합쳐 한 프레임에 한 번만 실행 — ResizeObserver 가 동일 프레임에서 여러 번
+    // 발화해도 마지막 값으로 1회만 적용.
+    const schedule = () => {
+      if (rafId != null) return
+      rafId = window.requestAnimationFrame(apply)
+    }
+
+    // 초기 1회 동기화
+    apply()
+    const ro = new ResizeObserver(schedule)
     ro.observe(el)
-    window.addEventListener('resize', resize)
+    window.addEventListener('resize', schedule)
     return () => {
       ro.disconnect()
-      window.removeEventListener('resize', resize)
+      window.removeEventListener('resize', schedule)
+      if (rafId != null) window.cancelAnimationFrame(rafId)
     }
   }, [ready])
 
@@ -643,11 +678,15 @@ export default function EditorView() {
               />
             )}
             <FeatureSidebar mobileOverlay={screenMode === 'mobile'} />
-            {ready && <ControlBar />}
+            {ready && <ControlBar mobileOverlay={screenMode === 'mobile'} />}
 
-            {/* Canvas Area — 이미지 드래그 앤 드롭 영역 (트랙 S) */}
+            {/* Canvas Area — 이미지 드래그 앤 드롭 영역 (트랙 S)
+                모바일에서 객체 선택 시 ControlBar 가 하단 시트(45vh) 로 떠 있으므로,
+                캔버스 영역 자체를 45vh 만큼 줄여 워크스페이스가 가려지지 않도록 함. */}
             <main
-              className="flex-1 relative overflow-hidden bg-editor-workspace"
+              className={`flex-1 relative overflow-hidden bg-editor-workspace ${
+                screenMode === 'mobile' && hasUserSelection ? 'pb-[45vh]' : ''
+              }`}
               onDragOver={handleDragOver}
               onDragEnter={handleDragEnter}
               onDragLeave={handleDragLeave}

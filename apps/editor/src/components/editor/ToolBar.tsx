@@ -134,7 +134,10 @@ export default function ToolBar({ horizontal = false }: ToolBarProps) {
             key={menu.type}
             className={cn(
               'menu-item relative flex flex-col items-center justify-center gap-0.5 rounded-xl transition-colors',
-              horizontal ? 'h-10 w-10 min-w-[40px]' : 'h-14 w-14',
+              // 터치 디바이스(pointer:coarse) 에서는 Apple HIG 44pt / Material 48dp 충족
+              horizontal
+                ? 'h-11 w-11 min-w-[44px] [@media(pointer:coarse)]:h-12 [@media(pointer:coarse)]:w-12 [@media(pointer:coarse)]:min-w-[48px]'
+                : 'h-14 w-14',
               isSelected
                 ? 'bg-editor-accent/10 text-editor-accent'
                 : 'text-editor-text-muted hover:bg-editor-hover hover:text-editor-text'

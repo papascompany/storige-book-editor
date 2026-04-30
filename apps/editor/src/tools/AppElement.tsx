@@ -4,6 +4,7 @@ import { useAppStore } from '@/stores/useAppStore'
 import { useImageStore } from '@/stores/useImageStore'
 import { useIsCustomer } from '@/stores/useAuthStore'
 import { useEditorContents } from '@/hooks/useEditorContents'
+import { useIsCoarsePointer } from '@/hooks/useIsCoarsePointer'
 import { Button } from '@/components/ui/button'
 import AppSection from '@/components/AppSection'
 import AppSectionSearch from '@/components/AppSectionSearch'
@@ -16,9 +17,11 @@ export default function AppElement() {
   const ready = useAppStore((state) => state.ready)
   const getPlugin = useAppStore((state) => state.getPlugin)
   const setContentsBrowser = useAppStore((state) => state.setContentsBrowser)
+  const tapMenu = useAppStore((state) => state.tapMenu)
   const upload = useImageStore((state) => state.upload)
   const isCustomer = useIsCustomer()
   const { setupAsset } = useEditorContents()
+  const isCoarsePointer = useIsCoarsePointer()
 
   const [isLoading, setIsLoading] = useState(false)
 
@@ -94,10 +97,18 @@ export default function AppElement() {
     if (!content) return
     try {
       await setupAsset(content, 'element')
+      // setupAsset 내부에서 add 후 렌더링까지 처리되지만, 캔버스가 idle 상태일 때를
+      // 대비해 명시적으로 한 번 더 렌더 요청.
+      const cv = useAppStore.getState().canvas
+      cv?.requestRenderAll?.()
+      // 터치 디바이스에서는 추가 후 사이드바 닫기.
+      if (isCoarsePointer) {
+        tapMenu(null)
+      }
     } catch (error) {
       console.error('요소 콘텐츠 추가 오류:', error)
     }
-  }, [setupAsset])
+  }, [setupAsset, isCoarsePointer, tapMenu])
 
   const showMore = useCallback(() => {
     setContentsBrowser('element')

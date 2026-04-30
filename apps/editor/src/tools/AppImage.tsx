@@ -2,14 +2,17 @@ import { useCallback, useState } from 'react'
 import { Upload as UploadSimple } from 'lucide-react'
 import { useAppStore } from '@/stores/useAppStore'
 import { useImageStore, useUploaded } from '@/stores/useImageStore'
+import { useIsCoarsePointer } from '@/hooks/useIsCoarsePointer'
 import { Button } from '@/components/ui/button'
 import { ImageProcessingPlugin, SelectionType } from '@storige/canvas-core'
 
 export default function AppImage() {
   const canvas = useAppStore((state) => state.canvas)
   const getPlugin = useAppStore((state) => state.getPlugin)
+  const tapMenu = useAppStore((state) => state.tapMenu)
   const upload = useImageStore((state) => state.upload)
   const uploaded = useUploaded()
+  const isCoarsePointer = useIsCoarsePointer()
 
   const [isLoading, setIsLoading] = useState(false)
 
@@ -70,7 +73,7 @@ export default function AppImage() {
         // core API를 사용하여 이미지 로드 및 캔버스에 추가
         const { core } = await import('@storige/canvas-core')
 
-        const img = await core.addImageFromURL(canvas, src, {
+        await core.addImageFromURL(canvas, src, {
           left: workspaceCenter.x,
           top: workspaceCenter.y,
           originX: 'center',
@@ -83,12 +86,17 @@ export default function AppImage() {
 
         canvas.onHistory()
         canvas.requestRenderAll()
+
+        // 터치 디바이스에서는 객체 추가 직후 사이드바를 닫아 캔버스를 노출.
+        if (isCoarsePointer) {
+          tapMenu(null)
+        }
       }
     } catch (error) {
       console.error('이미지 추가 중 오류:', error)
       canvas.onHistory()
     }
-  }, [canvas])
+  }, [canvas, isCoarsePointer, tapMenu])
 
   return (
     <div className="w-full h-full flex flex-col">
