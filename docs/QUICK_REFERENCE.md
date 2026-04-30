@@ -99,3 +99,4 @@ docker-compose exec mysql mysqldump -u root -p storige > backup.sql
 - [IMPLEMENTATION_STATUS.md](./IMPLEMENTATION_STATUS.md) - Current status
 - [Architecture Plan](./.claude/plans/snuggly-soaring-piglet.md) - Detailed architecture
 - [PRD.md](./PRD.md) - Product requirements
+- [MOBILE_TOUCH_UI.md](./MOBILE_TOUCH_UI.md) - 모바일/터치 UX 구현 가이드
