@@ -249,9 +249,12 @@ type CoverEditMode = 'separated' | 'composite' | 'auto'
 |---|---|---|
 | `SpreadPlugin.getRegionAtX(canvasX)` | `packages/canvas-core/src/plugins/SpreadPlugin.ts:526` | canvas X 좌표 → 해당하는 `SpreadRegion` 반환 (back-wing/back-cover/spine/front-cover/front-wing) |
 | `SpreadPlugin.computeResizedLayout(spec)` | 동상 | 책등 폭 변경 시 region 좌표 재계산 |
+| `SpreadPlugin.handleObjectModified` | 동상:435 | object:modified 자동 구독 → `resolveRegionRef`로 메타 갱신 (3b-iii 완료) |
+| `resolveRegionRef(regions, boundingRect, currentRegionRef)` | `packages/canvas-core/src/spread/SpreadLayoutEngine.ts:280` | 히스테리시스(승격 ≥90%, 강등 <70%) 판정 + anchor 계산. canvas-core public export |
 | `ObjectAnchor` 타입 | `packages/types/src/index.ts:1053` | `{ kind: 'region', xNorm, yNorm } \| { kind: 'canvas', x, y }` |
-| `useCoverRegion()` hook | `apps/editor/src/hooks/useCoverRegion.ts` (신규) | spread 모드일 때 X 좌표 → region 매핑. 비-spread는 null |
+| `useCoverRegion()` hook | `apps/editor/src/hooks/useCoverRegion.ts` | spread 모드일 때 X 좌표 → region 매핑. 비-spread는 null |
 | `useIsCoverContext()` hook | 동상 | 활성 페이지가 표지 그룹 + `spreadConfig` 있는지 |
+| `useSpreadAutoAnchor(ready)` hook | 동상 | spread 모드 신규 객체에 region 메타 자동 부여 (3b-ii 완료) |
 
 ### 7.2 향후 구현 단계
 
@@ -265,9 +268,9 @@ type CoverEditMode = 'separated' | 'composite' | 'auto'
 | 단계 | 변경 위치 | 난이도 |
 |---|---|---|
 | **3b-i** ✅ | `useCoverRegion` hook export (인프라 노출만) | 낮음 (완료) |
-| **3b-ii** | 객체 추가 위치 region 매핑 — 도구별 연결 (각 tools/App*.tsx) | 중간 (canvas-core 변경 없음) |
-| **3b-iii** | object:modified 시 region 메타 갱신 | 중간 |
-| **3b-iv** | computeResizedLayout 활용한 책등 가변 시 객체 재배치 | 중상 (canvas-core 빌드 필요) |
+| **3b-ii** ✅ | 객체 추가 시 region 메타 자동 부여 — `useSpreadAutoAnchor` hook이 `object:added` 구독 + `resolveRegionRef` 한 번 적용 (도구별 wiring 불필요) | 중간 (완료, canvas-core 변경 없음) |
+| **3b-iii** ✅ | `object:modified` 시 region 메타 갱신 — `SpreadPlugin.handleObjectModified`가 이미 처리 (히스테리시스 90%/70%) + 신규 객체도 3b-ii로 첫 add 시 동일 로직 적용 | 중간 (완료, 검증) |
+| **3b-iv** | computeResizedLayout 활용한 책등 가변 시 객체 재배치 — `SpreadPlugin.repositionObjects`가 이미 front-cover/front-wing/spine 처리, 남은 격차는 캔버스 밖 이탈 객체 토스트 알림 | 중상 (canvas-core 일부) |
 | **3b-v** | Composite 모드 cross-canvas 이동 API | 상 (canvas-core 빌드 + 데이터 마이그레이션) |
 
 ---

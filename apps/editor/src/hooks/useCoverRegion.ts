@@ -1,7 +1,7 @@
-import { useCallback } from 'react'
+import { useCallback, useEffect } from 'react'
 import { useAppStore } from '@/stores/useAppStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
-import type { SpreadPlugin, SpreadRegion } from '@storige/canvas-core'
+import { resolveRegionRef, type SpreadPlugin, type SpreadRegion } from '@storige/canvas-core'
 
 /**
  * 표지 region 인식 helper (cover.md §7-8 / D5 Phase 3b 인프라).
@@ -43,4 +43,50 @@ export function useIsCoverContext(): boolean {
   const isSpreadMode = useAppStore((s) => s.isSpreadMode)
   const spreadConfig = useSettingsStore((s) => s.spreadConfig)
   return isSpreadMode && spreadConfig != null
+}
+
+/**
+ * Spread 모드에서 신규 객체에 region 앵커 메타를 자동 부여 (cover.md §7 / D5 Phase 3b-ii).
+ *
+ * SpreadPlugin은 object:modified로 메타를 갱신하지만(3b-iii), 객체가 막 추가된 직후에는
+ * meta.regionRef/anchor가 비어 있다. 이 훅이 object:added를 구독해
+ * SpreadLayoutEngine.resolveRegionRef로 동일한 히스테리시스 로직을 한 번 적용해
+ * 첫 add 시점부터 region 메타가 정확히 부여되도록 보장한다.
+ *
+ * 비-spread 모드 / SpreadPlugin 미장착 / 시스템 객체에 대해서는 무동작.
+ */
+export function useSpreadAutoAnchor(ready: boolean): void {
+  const isSpreadMode = useAppStore((s) => s.isSpreadMode)
+  const editor = useAppStore((s) => s.editor)
+  const canvas = useAppStore((s) => s.canvas)
+
+  useEffect(() => {
+    if (!ready || !isSpreadMode || !canvas || !editor) return
+
+    const spreadPlugin = editor.getPlugin<SpreadPlugin>('SpreadPlugin')
+    if (!spreadPlugin) return
+
+    const handler = (e: { target?: any }) => {
+      const target = e?.target
+      if (!target) return
+      if (target.meta?.system) return
+      if (target.meta?.regionRef !== undefined) return
+
+      const layout = spreadPlugin.getLayout()
+      if (!layout) return
+
+      const boundingRect = target.getBoundingRect()
+      const result = resolveRegionRef(layout.regions, boundingRect, null)
+
+      if (!target.meta) target.meta = {}
+      target.meta.regionRef = result.regionRef
+      target.meta.primaryRegionHint = result.primaryRegionHint
+      target.meta.anchor = result.anchor
+    }
+
+    canvas.on('object:added', handler)
+    return () => {
+      canvas.off('object:added', handler)
+    }
+  }, [ready, isSpreadMode, canvas, editor])
 }
