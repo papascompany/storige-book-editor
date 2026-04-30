@@ -5,7 +5,7 @@ import AppSection from '@/components/AppSection'
 import { Button } from '@/components/ui/button'
 import { parseColorValue, rgbaToHex8, SelectionType } from '@storige/canvas-core'
 
-// 그라디언트 프리셋 (좌→우 90도 linear). 트랙 AA — ObjectFill 빠른 적용
+// 그라디언트 프리셋 (트랙 AA, DD-3에서 angle/radial 확장)
 const GRADIENT_PRESETS: ReadonlyArray<{ name: string; from: string; to: string }> = [
   { name: 'Brand', from: '#7fbf34', to: '#6ba82d' },
   { name: 'Sunset', from: '#f093fb', to: '#f5576c' },
@@ -17,8 +17,33 @@ const GRADIENT_PRESETS: ReadonlyArray<{ name: string; from: string; to: string }
   { name: 'Cherry', from: '#ff7e5f', to: '#feb47b' },
 ] as const
 
+// 각도 프리셋 (CSS 표준: 0deg = bottom→top, 90deg = left→right). DD-3
+const ANGLE_PRESETS = [0, 45, 90, 135] as const
+type GradientAngle = typeof ANGLE_PRESETS[number]
+
+// 각도 → fabric linear coords (객체 width/height 기반)
+function angleToLinearCoords(angle: GradientAngle, w: number, h: number) {
+  switch (angle) {
+    case 0:
+      // 아래→위 (CSS 0deg)
+      return { x1: w / 2, y1: h, x2: w / 2, y2: 0 }
+    case 45:
+      // 좌하→우상
+      return { x1: 0, y1: h, x2: w, y2: 0 }
+    case 90:
+      // 좌→우 (트랙 AA의 기본)
+      return { x1: 0, y1: h / 2, x2: w, y2: h / 2 }
+    case 135:
+      // 좌상→우하
+      return { x1: 0, y1: 0, x2: w, y2: h }
+  }
+}
+
 export default function ObjectFill() {
   const [expanded, setExpanded] = useState(true)
+  const [gradientAngle, setGradientAngle] = useState<GradientAngle>(90)
+  const [gradientRadial, setGradientRadial] = useState(false)
+  const [lastGradient, setLastGradient] = useState<{ from: string; to: string } | null>(null)
   const activeSelection = useActiveSelection()
   const selectionType = useSelectionType()
   const canvas = useAppStore((state) => state.canvas)
@@ -148,33 +173,68 @@ export default function ObjectFill() {
     [activeSelection, effectiveOpacity, canvas]
   )
 
-  // 그라디언트 프리셋 적용 (linear 90deg, 좌→우)
+  // 그라디언트 적용 — angle 4개 프리셋 + linear/radial 모드 (DD-3)
   // 텍스트 객체는 fabric의 setSelectionStyles가 string fill만 받으므로 미지원
   const isTextSelection = selectionType === SelectionType.text
   const applyGradient = useCallback(
-    (from: string, to: string) => {
+    (from: string, to: string, opts?: { angle?: GradientAngle; radial?: boolean }) => {
       if (!activeSelection || !Array.isArray(activeSelection) || activeSelection.length === 0) return
       const obj = activeSelection[0] as any
       if (!obj) return
       if (obj.type === 'i-text' || obj.type === 'textbox' || obj.type === 'text') return
+      const angle = opts?.angle ?? gradientAngle
+      const radial = opts?.radial ?? gradientRadial
       const w = (obj.width ?? 100) * (obj.scaleX ?? 1)
-      const grad = new fabric.Gradient({
-        type: 'linear',
-        coords: { x1: 0, y1: 0, x2: w, y2: 0 },
-        colorStops: [
-          { offset: 0, color: from },
-          { offset: 1, color: to },
-        ],
-      })
+      const h = (obj.height ?? 100) * (obj.scaleY ?? 1)
+      const grad = radial
+        ? new fabric.Gradient({
+            type: 'radial',
+            coords: {
+              x1: w / 2,
+              y1: h / 2,
+              r1: 0,
+              x2: w / 2,
+              y2: h / 2,
+              r2: Math.max(w, h) / 2,
+            },
+            colorStops: [
+              { offset: 0, color: from },
+              { offset: 1, color: to },
+            ],
+          })
+        : new fabric.Gradient({
+            type: 'linear',
+            coords: angleToLinearCoords(angle, w, h),
+            colorStops: [
+              { offset: 0, color: from },
+              { offset: 1, color: to },
+            ],
+          })
       obj.set('fill', grad)
       obj.dirty = true
       canvas?.requestRenderAll()
-      // 일관성을 위해 modified 이벤트 발행 (history 등록)
       try {
         canvas?.fire?.('object:modified', { target: obj })
       } catch {}
+      setLastGradient({ from, to })
     },
-    [activeSelection, selectionType, canvas]
+    [activeSelection, selectionType, canvas, gradientAngle, gradientRadial]
+  )
+
+  // angle/radial 변경 시 마지막 그라디언트가 적용된 객체에 즉시 재적용
+  // (사용자가 다시 swatch 클릭하지 않아도 옵션 변화가 시각적으로 반영됨)
+  const reapplyIfActive = useCallback(
+    (nextAngle: GradientAngle, nextRadial: boolean) => {
+      if (!lastGradient) return
+      if (!activeSelection || !Array.isArray(activeSelection) || activeSelection.length === 0) return
+      const obj = activeSelection[0] as any
+      if (!obj) return
+      // 현재 fill이 그라디언트 객체인 경우만 재적용 (단색으로 변경된 객체는 건들지 않음)
+      const fill = obj.fill
+      if (!fill || typeof fill !== 'object' || !fill.colorStops) return
+      applyGradient(lastGradient.from, lastGradient.to, { angle: nextAngle, radial: nextRadial })
+    },
+    [lastGradient, activeSelection, applyGradient]
   )
 
   // Handle opacity change
@@ -303,7 +363,7 @@ export default function ObjectFill() {
             </div>
           )}
 
-          {/* 그라디언트 프리셋 row (트랙 AA) — 비-텍스트 객체에서만 노출 */}
+          {/* 그라디언트 프리셋 row (트랙 AA + DD-3 angle/radial 옵션) — 비-텍스트 객체에서만 노출 */}
           {!hideFill && hasFill && !isTextSelection && (
             <div className="w-full flex flex-col gap-1.5">
               <span className="text-[11px] text-editor-text-muted leading-none">그라디언트</span>
@@ -316,9 +376,62 @@ export default function ObjectFill() {
                     title={`${p.name} (${p.from} → ${p.to})`}
                     aria-label={`그라디언트 적용: ${p.name}`}
                     className="w-7 h-7 rounded border border-editor-border hover:ring-2 hover:ring-editor-accent/50 transition-all"
-                    style={{ background: `linear-gradient(90deg, ${p.from}, ${p.to})` }}
+                    style={{
+                      background: gradientRadial
+                        ? `radial-gradient(circle, ${p.from}, ${p.to})`
+                        : `linear-gradient(${gradientAngle === 0 ? 0 : gradientAngle === 45 ? 45 : gradientAngle === 90 ? 90 : 135}deg, ${p.from}, ${p.to})`,
+                    }}
                   />
                 ))}
+              </div>
+
+              {/* DD-3: angle 프리셋 + radial 토글 */}
+              <div className="flex items-center justify-between gap-2 mt-0.5">
+                <div className="flex items-center gap-1">
+                  <span className="text-[10px] text-editor-text-muted mr-0.5">방향</span>
+                  {ANGLE_PRESETS.map((a) => (
+                    <button
+                      key={a}
+                      type="button"
+                      onClick={() => {
+                        setGradientAngle(a)
+                        reapplyIfActive(a, gradientRadial)
+                      }}
+                      disabled={gradientRadial}
+                      aria-pressed={!gradientRadial && gradientAngle === a}
+                      aria-label={`각도 ${a}도`}
+                      className={
+                        'text-[10px] w-7 h-6 rounded border transition-colors ' +
+                        (gradientRadial
+                          ? 'opacity-40 cursor-not-allowed border-editor-border text-editor-text-muted'
+                          : !gradientRadial && gradientAngle === a
+                          ? 'border-editor-accent bg-editor-accent/10 text-editor-accent font-semibold'
+                          : 'border-editor-border bg-editor-surface-low hover:bg-editor-hover text-editor-text-muted')
+                      }
+                    >
+                      {a}°
+                    </button>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = !gradientRadial
+                    setGradientRadial(next)
+                    reapplyIfActive(gradientAngle, next)
+                  }}
+                  aria-pressed={gradientRadial}
+                  aria-label="원형 그라디언트 토글"
+                  title="원형 그라디언트 (radial)"
+                  className={
+                    'text-[10px] px-2 h-6 rounded border transition-colors ' +
+                    (gradientRadial
+                      ? 'border-editor-accent bg-editor-accent/10 text-editor-accent font-semibold'
+                      : 'border-editor-border bg-editor-surface-low hover:bg-editor-hover text-editor-text-muted')
+                  }
+                >
+                  원형
+                </button>
               </div>
             </div>
           )}
