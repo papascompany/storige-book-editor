@@ -122,7 +122,33 @@ const getEventPoint = (e: any) => {
 }
 ```
 
-### 3-6. 객체 추가 직후 모바일 사이드바 자동 닫기
+### 3-6. ResizeObserver 무한 루프 차단 (iOS Safari 크래시 방지)
+
+**`apps/editor/src/views/EditorView.tsx`**
+
+기존 코드:
+```ts
+const ro = new ResizeObserver(() => resize())
+ro.observe(el)
+// resize() 내부에서 cvs.setDimensions({...}) 호출
+```
+
+`setDimensions()` 가 캔버스 DOM 크기를 변경 → 같은 element 를 관찰하는
+ResizeObserver 가 다시 발화 → `resize()` 재호출 → 동일 사이클이
+무한 반복되어 iOS Safari 의 WebContent 프로세스가 크래시 → 누적되면
+**'이 사이트에서 문제가 반복적으로 발생했습니다'** 오류 페이지 표시.
+
+수정 후:
+- `lastW/lastH` 캐시로 1px 미만 변동은 스킵 (모바일 viewport 지터 흡수)
+- `cvs.getWidth()/getHeight()` 와 비교해 동일하면 `setDimensions()` 생략
+- `requestAnimationFrame` 으로 합쳐 한 프레임 당 1회만 실행
+
+이 수정 전에는 첫 응답의 터치 UI 패치(`touch-action`, hit-area 확대 등)가
+적용되어도 **JS 가 죽어 있어서** 객체 선택이 안 되는 것처럼 보였음 —
+무한 루프가 메인 스레드를 점유해 모든 이벤트가 처리되지 않았던 것이
+실제 원인.
+
+### 3-7. 객체 추가 직후 모바일 사이드바 자동 닫기
 
 **`apps/editor/src/tools/AppText.tsx`** / **AppImage.tsx** / **AppElement.tsx**
 
@@ -198,6 +224,10 @@ if (isCoarsePointer) {
 
 ## 7. 관련 PR / 커밋
 
-- 커밋 `d341af7` — fix(editor): improve mobile touch UI for canvas editor
-- 브랜치: `claude/fix-mobile-touch-ui-91nuI`
-- 변경: 8 files / +153 / −15
+브랜치: `claude/fix-mobile-touch-ui-91nuI`
+
+| 커밋 | 내용 |
+|---|---|
+| `d341af7` | 모바일 터치 1차 — viewport meta, touch-action CSS, allowTouchScrolling, touchCornerSize, DraggingPlugin TouchEvent 호환, 사이드바 자동 닫기 |
+| `a9f8be9` | docs: 모바일 터치 UI 대응 내용 반영 |
+| `59097da` | **ResizeObserver 무한 루프 차단** — iOS Safari 페이지 반복 크래시 해결. 1차 패치만으로는 JS 가 죽어 있어 터치 이벤트가 처리되지 않던 근본 원인 제거 |
