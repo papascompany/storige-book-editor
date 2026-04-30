@@ -584,7 +584,7 @@ export default function EditorHeader({
             defaultValue={artwork.name || ''}
             placeholder="제목을 입력해주세요"
             aria-label="작업명"
-            className="bg-transparent border-none outline-none text-editor-text text-sm font-medium text-center min-w-[80px] max-w-[140px] sm:max-w-[200px] md:max-w-[280px] focus:ring-1 focus:ring-editor-accent/50 rounded px-2 py-1"
+            className="bg-transparent border-none outline-none text-editor-text text-sm font-medium text-center min-w-[80px] max-w-[140px] sm:max-w-[180px] md:max-w-[200px] lg:max-w-[280px] focus:ring-1 focus:ring-editor-accent/50 rounded px-2 py-1"
             onBlur={(e) => {
               const value = (e.target as HTMLInputElement).value.trim()
               if (!value) {
@@ -755,7 +755,7 @@ export default function EditorHeader({
               <select
                 value={pageNavPosition}
                 onChange={(e) => setPageNavPosition(e.target.value as PageNavPosition)}
-                className="hidden md:block text-xs px-2 py-1 rounded-md border border-editor-border bg-editor-panel hover:bg-editor-hover transition-colors cursor-pointer text-editor-text-muted"
+                className="hidden lg:block text-xs px-2 py-1 rounded-md border border-editor-border bg-editor-panel hover:bg-editor-hover transition-colors cursor-pointer text-editor-text-muted"
                 aria-label="페이지 네비 위치"
               >
                 <option value="auto">네비: 자동</option>
@@ -763,7 +763,7 @@ export default function EditorHeader({
                 <option value="bottom">네비: 하단</option>
               </select>
             </TooltipTrigger>
-            <TooltipContent>페이지 네비 위치 (PC에서만 표시)</TooltipContent>
+            <TooltipContent>페이지 네비 위치 (1024px 이상에서만 표시 · ⌘K로도 변경)</TooltipContent>
           </Tooltip>
 
           {/* 도움말 — 단축키 모달 열기 (또는 ? 키) */}
