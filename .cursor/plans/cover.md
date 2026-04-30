@@ -239,13 +239,36 @@ type CoverEditMode = 'separated' | 'composite' | 'auto'
 
 ---
 
-## 7. Phase 3 — 객체 region 인식 (장기)
+## 7. Phase 3b — 객체 region 인식 (인프라 정리, 장기 구현)
 
-`SpreadPlugin.resolveRegionAtX(x)` + `ObjectAnchor` 메타를 활용해 다음을 구현 가능:
+`SpreadPlugin.getRegionAtX(x)` (canvas-core public API) + `ObjectAnchor` 메타를 활용해 구현.
 
-- 객체 추가 시 mouseEvent의 캔버스 좌표를 region으로 변환 → `meta.anchor = {kind:'region', xNorm, yNorm}` 저장.
-- 책등 폭이 바뀌어도 region 객체는 자동으로 시각 위치 재계산 (`SpreadPlugin.computeResizedLayout()` 사용).
-- Composite 모드에서 사용자가 한 region에 객체를 드롭하면 해당 region 캔버스(`allCanvas[i]`)에 등록 (cross-canvas write API 필요).
+### 7.1 인프라 (이미 존재)
+
+| API | 위치 | 역할 |
+|---|---|---|
+| `SpreadPlugin.getRegionAtX(canvasX)` | `packages/canvas-core/src/plugins/SpreadPlugin.ts:526` | canvas X 좌표 → 해당하는 `SpreadRegion` 반환 (back-wing/back-cover/spine/front-cover/front-wing) |
+| `SpreadPlugin.computeResizedLayout(spec)` | 동상 | 책등 폭 변경 시 region 좌표 재계산 |
+| `ObjectAnchor` 타입 | `packages/types/src/index.ts:1053` | `{ kind: 'region', xNorm, yNorm } \| { kind: 'canvas', x, y }` |
+| `useCoverRegion()` hook | `apps/editor/src/hooks/useCoverRegion.ts` (신규) | spread 모드일 때 X 좌표 → region 매핑. 비-spread는 null |
+| `useIsCoverContext()` hook | 동상 | 활성 페이지가 표지 그룹 + `spreadConfig` 있는지 |
+
+### 7.2 향후 구현 단계
+
+1. **객체 추가 위치 자동 결정**: spread 모드에서 도구로 새 객체 생성 시 마우스 좌표를 `useCoverRegion()`로 region 매핑 → `obj.set('meta', { anchor: { kind: 'region', xNorm, yNorm } })`.
+2. **객체 드래그 종료(modified) 메타 갱신**: 객체가 region 경계를 넘어가면 새 region으로 anchor 갱신. fabric `object:modified` 이벤트 구독.
+3. **책등 가변 시 자동 재배치**: SpineEditor가 `setSpreadSpec()` 호출 → `SpreadPlugin.computeResizedLayout()` → region 객체들의 시각 위치를 `xNorm`로 재계산.
+4. **Composite 모드 cross-region 이동**: 분리 캔버스 N개 → 활성 region에서 다른 region으로 객체 이동 시 cross-canvas remove + add (현재 분리 캔버스라 객체 자체는 한 캔버스에 종속).
+
+### 7.3 구현 로드맵
+
+| 단계 | 변경 위치 | 난이도 |
+|---|---|---|
+| **3b-i** ✅ | `useCoverRegion` hook export (인프라 노출만) | 낮음 (완료) |
+| **3b-ii** | 객체 추가 위치 region 매핑 — 도구별 연결 (각 tools/App*.tsx) | 중간 (canvas-core 변경 없음) |
+| **3b-iii** | object:modified 시 region 메타 갱신 | 중간 |
+| **3b-iv** | computeResizedLayout 활용한 책등 가변 시 객체 재배치 | 중상 (canvas-core 빌드 필요) |
+| **3b-v** | Composite 모드 cross-canvas 이동 API | 상 (canvas-core 빌드 + 데이터 마이그레이션) |
 
 ---
 
