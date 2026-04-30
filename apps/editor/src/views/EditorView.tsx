@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useAuthStore, useIsCustomer } from '@/stores/useAuthStore'
 import { useAppStore } from '@/stores/useAppStore'
@@ -92,6 +92,18 @@ export default function EditorView() {
   } = useAppStore()
   const { getUseCaseFromParams } = useSettingsStore()
   const showRuler = useUiPrefStore((s) => s.showRuler)
+  // 활성 선택 — 모바일에서 ControlBar(하단 시트) 표시 여부 판단용
+  const activeSelection = useAppStore((state) => state.activeSelection)
+  const hasUserSelection = useMemo(() => {
+    if (!activeSelection || !Array.isArray(activeSelection) || activeSelection.length === 0) return false
+    const first = activeSelection[0] as { extensionType?: string; id?: string } | undefined
+    return (
+      first?.extensionType !== 'background' &&
+      first?.extensionType !== 'clipping' &&
+      first?.id !== 'workspace' &&
+      first?.extensionType !== 'guideline'
+    )
+  }, [activeSelection])
 
   // Editor contents hook
   const {
@@ -668,9 +680,13 @@ export default function EditorView() {
             <FeatureSidebar mobileOverlay={screenMode === 'mobile'} />
             {ready && <ControlBar />}
 
-            {/* Canvas Area — 이미지 드래그 앤 드롭 영역 (트랙 S) */}
+            {/* Canvas Area — 이미지 드래그 앤 드롭 영역 (트랙 S)
+                모바일에서 객체 선택 시 ControlBar 가 하단 시트(50vh) 로 떠 있으므로,
+                캔버스 영역 자체를 50vh 만큼 줄여 워크스페이스가 가려지지 않도록 함. */}
             <main
-              className="flex-1 relative overflow-hidden bg-editor-workspace"
+              className={`flex-1 relative overflow-hidden bg-editor-workspace ${
+                screenMode === 'mobile' && hasUserSelection ? 'pb-[50vh]' : ''
+              }`}
               onDragOver={handleDragOver}
               onDragEnter={handleDragEnter}
               onDragLeave={handleDragLeave}
