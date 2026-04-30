@@ -836,7 +836,7 @@ rm -rf apps/editor/node_modules/.vite
 - **콘텐츠 패널 그리드 카탈로그** — 미리캔버스 풍 카테고리 탭 + 그리드 + 크라운 아이콘 등 본격 카탈로그 UI (D2-NEW 취소됨에 따라 별도 트랙으로 검토)
 - **AI 패널 정합** — 현재는 ToolBar에 없음. AI 도구 메뉴 추가 + 패널 통합
 - ~~다크 모드~~ ✅ Phase 1+2 v1+v2 완료 (2026-04-30, 트랙 D). chrome 영역 + 상위 5개 컴포넌트 + 공통 컴포넌트 + controls/ + tools/ 일괄 토큰 스윕
-- **다크 모드 Phase 3** — 룰러 색상 (canvas-core RULER_DEFAULTS 분기), 캔버스 워크스페이스 배경 (WorkspacePlugin), 객체 선택 핸들 토큰화
+- ~~다크 모드 Phase 3~~ ✅ 완료 (2026-04-30, 트랙 W) — 룰러 색상 다크 분기 (`RULER_DEFAULTS_DARK` + `RulerPlugin.setTheme()`, canvas-core 빌드) + 객체 선택 핸들 다크 분기 (`defaultControlsDark` + `getDefaultControls(theme)` editor) + `useCanvasThemeSync(ready)` hook이 테마 변경 시 모든 캔버스의 ruler/handle 일괄 갱신. 워크스페이스 흰 페이지 배경은 인쇄용지 가이드대로 유지
 
 ---
 

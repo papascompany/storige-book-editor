@@ -6,7 +6,7 @@ export const UNIT_CONVERSIONS = {
 
 // D3 ruler palette: 절제된 톤 (사용자 피드백 — 너무 도드라짐 → 더 옅게)
 // 영역(safe/bleed/trim) 시각화 색상은 별도, 영향 없음
-export const RULER_DEFAULTS = {
+export const RULER_DEFAULTS_LIGHT = {
   RULE_SIZE: 20,
   FONT_SIZE: 9,
   BACKGROUND_COLOR: '#FFFFFF',
@@ -18,6 +18,30 @@ export const RULER_DEFAULTS = {
   UNIT: 'mm',
   DPI: UNIT_CONVERSIONS.DEFAULT_DPI
 } as const
+
+// 다크 모드 룰러 팔레트 (cover.md / editor_layout_custom.md §8.3 다크 모드 Phase 3).
+// 어두운 surface 위에서 충분한 명암 + HIGHLIGHT는 다크 브랜드 그린으로 동기화.
+export const RULER_DEFAULTS_DARK = {
+  RULE_SIZE: 20,
+  FONT_SIZE: 9,
+  BACKGROUND_COLOR: '#1f2937',
+  TEXT_COLOR: '#9ca3af',
+  BORDER_COLOR: '#374151',
+  HIGHLIGHT_COLOR: '#8ecf45',
+  TICK_COLOR: '#4b5563',
+  MAJOR_TICK_COLOR: '#6b7280',
+  UNIT: 'mm',
+  DPI: UNIT_CONVERSIONS.DEFAULT_DPI
+} as const
+
+// 후방 호환: 기존 import { RULER_DEFAULTS }는 light 셋을 가리킴
+export const RULER_DEFAULTS = RULER_DEFAULTS_LIGHT
+
+export type RulerTheme = 'light' | 'dark'
+
+export function getRulerDefaults(theme: RulerTheme = 'light') {
+  return theme === 'dark' ? RULER_DEFAULTS_DARK : RULER_DEFAULTS_LIGHT
+}
 
 // DPI에 따른 적응형 눈금 간격 설정 (mm 단위)
 export const DPI_ADAPTIVE_GAPS = {

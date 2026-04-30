@@ -3,6 +3,7 @@ import CanvasRuler, { RulerOptions } from '../ruler/ruler'
 import Editor from '../Editor'
 import { PluginBase } from '../plugin'
 import { setupGuideLine } from '../ruler/guideline'
+import { getRulerDefaults, type RulerTheme } from '../ruler/constants'
 
 class RulerPlugin extends PluginBase {
   events = []
@@ -55,6 +56,26 @@ class RulerPlugin extends PluginBase {
     // 센터 가이드라인이 없으면 다시 초기화
     if (!this.centerGuidelineH || !this.centerGuidelineV) {
       this.initCenterGuidelines()
+    }
+  }
+
+  /**
+   * 룰러 색상 팔레트를 light/dark 테마로 전환.
+   * editor의 useCanvasThemeSync hook이 테마 변경 시 호출.
+   * (cover.md / editor_layout_custom.md §8.3 다크 모드 Phase 3)
+   */
+  setTheme(theme: RulerTheme): void {
+    if (!this.ruler) return
+    const defaults = getRulerDefaults(theme)
+    const opts = (this.ruler as any)._options
+    if (!opts) return
+    opts.backgroundColor = defaults.BACKGROUND_COLOR
+    opts.textColor = defaults.TEXT_COLOR
+    opts.borderColor = defaults.BORDER_COLOR
+    opts.highlightColor = defaults.HIGHLIGHT_COLOR
+    // 새 색상으로 즉시 다시 그리기
+    if (typeof (this.ruler as any).forceReset === 'function') {
+      ;(this.ruler as any).forceReset()
     }
   }
 
