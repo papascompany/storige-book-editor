@@ -1,12 +1,23 @@
-import { useEffect, useState } from 'react'
-import { History, Clock, RotateCcw, Save, FileText } from 'lucide-react'
+import { useEffect, useState, useCallback } from 'react'
+import { History, Clock, RotateCcw, Save, FileText, Undo2 } from 'lucide-react'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Button } from '@/components/ui/button'
 import { useAppStore } from '@/stores/useAppStore'
 import { useSaveStore } from '@/stores/useSaveStore'
+import { useEditorStore } from '@/stores/useEditorStore'
 import { useAutoSaveSnapshotsStore } from '@/stores/useAutoSaveSnapshotsStore'
+import { showToast } from '@/stores/useToastStore'
+import { sessionsApi } from '@/api/sessions'
 import { HistoryPlugin } from '@storige/canvas-core'
 import { cn } from '@/lib/utils'
+
+interface BackendVersion {
+  id: string
+  savedAt: string
+  pageCount: number
+  createdBy: string | null
+  thumbnailUrl: string | null
+}
 
 /**
  * 히스토리 요약 패널 (트랙 Q — 작은 진척)
@@ -42,6 +53,11 @@ export default function HistoryPanel() {
   const allEditors = useAppStore((s) => s.allEditors)
   const snapshots = useAutoSaveSnapshotsStore((s) => s.snapshots)
   const clearSnapshots = useAutoSaveSnapshotsStore((s) => s.clearSnapshots)
+  // BB-Phase 3 — sessionId가 있으면 백엔드 versions 페치, 없으면 localStorage snapshots 사용
+  const sessionId = useEditorStore((s) => s.sessionId)
+  const userId = useEditorStore((s) => s.userId)
+  const [backendVersions, setBackendVersions] = useState<BackendVersion[] | null>(null)
+  const [restoringId, setRestoringId] = useState<string | null>(null)
 
   // 스택 길이 — historyUpdate 이벤트 구독으로 갱신
   const [undoLen, setUndoLen] = useState(0)
@@ -92,6 +108,51 @@ export default function HistoryPanel() {
     setOpen(false)
   }
 
+  // BB-Phase 3 — popover 열릴 때 백엔드 versions 페치 (sessionId 있을 때만)
+  useEffect(() => {
+    if (!open || !sessionId) {
+      setBackendVersions(null)
+      return
+    }
+    let cancelled = false
+    sessionsApi
+      .listVersions(sessionId, userId || undefined)
+      .then((list) => {
+        if (cancelled) return
+        setBackendVersions(list)
+      })
+      .catch((err) => {
+        console.warn('[HistoryPanel] listVersions 실패:', err?.message ?? err)
+        if (!cancelled) setBackendVersions([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [open, sessionId, userId])
+
+  // BB-Phase 3 — "여기로 복원" 액션
+  const handleRestore = useCallback(
+    async (versionId: string) => {
+      if (!sessionId) return
+      setRestoringId(versionId)
+      try {
+        await sessionsApi.restoreVersion(sessionId, versionId, userId || undefined)
+        showToast(
+          '시점으로 복원되었습니다. 변경된 내용을 확인하려면 페이지를 새로고침해 주세요.',
+          'success',
+          5000
+        )
+        setOpen(false)
+      } catch (err: any) {
+        console.error('[HistoryPanel] restore 실패:', err)
+        showToast(`복원 실패: ${err?.response?.data?.message ?? err?.message ?? '알 수 없음'}`, 'error', 4000)
+      } finally {
+        setRestoringId(null)
+      }
+    },
+    [sessionId, userId]
+  )
+
   const dirtyDots = isDirty ? '●' : '○'
 
   return (
@@ -133,52 +194,112 @@ export default function HistoryPanel() {
           </Button>
         </div>
 
-        {/* 자동저장 스냅샷 list (트랙 BB — Phase 2 minimal) */}
+        {/* 자동저장 스냅샷 list — BB-Phase 3 백엔드 versions 우선, 없으면 localStorage minimal */}
         <div className="border-t border-editor-border mt-3 pt-2">
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-[11px] font-semibold text-editor-text-muted flex items-center gap-1">
-              <FileText className="h-3.5 w-3.5" />
-              최근 자동저장 ({snapshots.length})
-            </span>
-            {snapshots.length > 0 && (
-              <button
-                type="button"
-                onClick={clearSnapshots}
-                className="text-[10px] text-editor-text-muted hover:text-editor-text underline-offset-2 hover:underline"
-                title="스냅샷 list 지우기"
-              >
-                지우기
-              </button>
-            )}
-          </div>
-          {snapshots.length === 0 ? (
-            <p className="text-[11px] text-editor-text-muted leading-snug py-1">
-              아직 자동저장 기록이 없습니다.
-            </p>
+          {/* 백엔드 versions가 로드된 경우 (sessionId 있음 + 페치 성공) */}
+          {sessionId && backendVersions !== null ? (
+            <>
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-[11px] font-semibold text-editor-text-muted flex items-center gap-1">
+                  <FileText className="h-3.5 w-3.5" />
+                  자동저장 시점 ({backendVersions.length})
+                </span>
+              </div>
+              {backendVersions.length === 0 ? (
+                <p className="text-[11px] text-editor-text-muted leading-snug py-1">
+                  아직 시점 기록이 없습니다. 1분 이상 편집 후 자동저장되면 시점이 만들어집니다.
+                </p>
+              ) : (
+                <ul className="space-y-1 max-h-48 overflow-y-auto scrollbar-hide">
+                  {backendVersions.map((v) => {
+                    const date = new Date(v.savedAt)
+                    const restoring = restoringId === v.id
+                    return (
+                      <li
+                        key={v.id}
+                        className="flex items-center justify-between gap-2 px-2 py-1 rounded hover:bg-editor-hover"
+                        title={date.toLocaleString('ko-KR')}
+                      >
+                        <div className="flex flex-col min-w-0 flex-1">
+                          <span className="text-[11px] text-editor-text truncate">
+                            {formatRelative(date)}
+                          </span>
+                          <span className="text-[10px] text-editor-text-muted">
+                            {v.pageCount}페이지
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleRestore(v.id)}
+                          disabled={restoring}
+                          className={cn(
+                            'text-[10px] px-1.5 py-1 rounded border border-editor-border bg-editor-surface-low hover:bg-editor-hover hover:border-editor-accent text-editor-text-muted transition-colors flex items-center gap-1',
+                            restoring && 'opacity-50 cursor-wait'
+                          )}
+                          title="이 시점으로 복원"
+                          aria-label={`${formatRelative(date)} 시점으로 복원`}
+                        >
+                          <Undo2 className="h-3 w-3" />
+                          {restoring ? '복원 중…' : '복원'}
+                        </button>
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+              <p className="mt-1.5 text-[10px] text-editor-text-muted leading-snug">
+                자동저장은 1분에 한 번 시점을 기록하고 최근 20개를 유지합니다.
+              </p>
+            </>
           ) : (
-            <ul className="space-y-1 max-h-40 overflow-y-auto scrollbar-hide">
-              {snapshots.map((s) => {
-                const date = new Date(s.savedAt)
-                return (
-                  <li
-                    key={s.id}
-                    className="flex items-center justify-between gap-2 px-2 py-1 rounded hover:bg-editor-hover"
-                    title={date.toLocaleString('ko-KR')}
+            <>
+              {/* sessionId 없는 경우(임베드 미연결) — 트랙 BB minimal localStorage 메타 표시 */}
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-[11px] font-semibold text-editor-text-muted flex items-center gap-1">
+                  <FileText className="h-3.5 w-3.5" />
+                  최근 자동저장 ({snapshots.length})
+                </span>
+                {snapshots.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={clearSnapshots}
+                    className="text-[10px] text-editor-text-muted hover:text-editor-text underline-offset-2 hover:underline"
+                    title="스냅샷 list 지우기"
                   >
-                    <span className="text-[11px] text-editor-text">
-                      {formatRelative(date)}
-                    </span>
-                    <span className="text-[10px] text-editor-text-muted">
-                      {s.pageCount}페이지
-                    </span>
-                  </li>
-                )
-              })}
-            </ul>
+                    지우기
+                  </button>
+                )}
+              </div>
+              {snapshots.length === 0 ? (
+                <p className="text-[11px] text-editor-text-muted leading-snug py-1">
+                  아직 자동저장 기록이 없습니다.
+                </p>
+              ) : (
+                <ul className="space-y-1 max-h-40 overflow-y-auto scrollbar-hide">
+                  {snapshots.map((s) => {
+                    const date = new Date(s.savedAt)
+                    return (
+                      <li
+                        key={s.id}
+                        className="flex items-center justify-between gap-2 px-2 py-1 rounded hover:bg-editor-hover"
+                        title={date.toLocaleString('ko-KR')}
+                      >
+                        <span className="text-[11px] text-editor-text">
+                          {formatRelative(date)}
+                        </span>
+                        <span className="text-[10px] text-editor-text-muted">
+                          {s.pageCount}페이지
+                        </span>
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+              <p className="mt-1.5 text-[10px] text-editor-text-muted leading-snug">
+                시점별 복원은 세션 컨텍스트(sessionId)가 있을 때만 활성화됩니다.
+              </p>
+            </>
           )}
-          <p className="mt-1.5 text-[10px] text-editor-text-muted leading-snug">
-            시점별 복원은 백엔드 versions API 연동 후 활성화 예정입니다.
-          </p>
         </div>
 
         <span className="hidden">{dirtyDots}</span>

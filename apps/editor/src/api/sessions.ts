@@ -174,6 +174,52 @@ export const sessionsApi = {
     return response.data
   },
 
+  // BB-Phase 3 ─ 자동저장 시점 versions
+  listVersions: async (
+    id: string,
+    userId?: string
+  ): Promise<Array<{
+    id: string
+    savedAt: string
+    pageCount: number
+    createdBy: string | null
+    thumbnailUrl: string | null
+  }>> => {
+    const headers: Record<string, string> = {}
+    if (userId) headers['X-User-Id'] = userId
+    const response = await apiClient.get(`/editor/sessions/${id}/versions`, { headers })
+    return response.data
+  },
+
+  getVersion: async (
+    id: string,
+    versionId: string,
+    userId?: string
+  ): Promise<{ id: string; savedAt: string; pages: any[]; pageCount: number }> => {
+    const headers: Record<string, string> = {}
+    if (userId) headers['X-User-Id'] = userId
+    const response = await apiClient.get(
+      `/editor/sessions/${id}/versions/${versionId}`,
+      { headers }
+    )
+    return response.data
+  },
+
+  restoreVersion: async (
+    id: string,
+    versionId: string,
+    userId?: string
+  ): Promise<EditSession> => {
+    const headers: Record<string, string> = {}
+    if (userId) headers['X-User-Id'] = userId
+    const response = await apiClient.post<EditSession>(
+      `/editor/sessions/${id}/versions/${versionId}/restore`,
+      {},
+      { headers }
+    )
+    return response.data
+  },
+
   /**
    * 페이지 추가
    */

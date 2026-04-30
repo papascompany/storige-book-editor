@@ -125,6 +125,46 @@ export class EditorController {
   }
 
   // ============================================================================
+  // BB-Phase 3 ─ 자동저장 시점 versions (HistoryPanel 시점 list + 복원)
+  // ============================================================================
+
+  @Get('sessions/:id/versions')
+  @Public()
+  @ApiOperation({ summary: '자동저장 시점 list (메타만)' })
+  @ApiHeader({ name: 'X-User-Id', required: false })
+  @ApiResponse({ status: 200, description: '시점 list (savedAt DESC)' })
+  async listVersions(
+    @Param('id') id: string,
+    @Headers('X-User-Id') userId?: string,
+  ) {
+    return this.editorService.listVersions(id, userId);
+  }
+
+  @Get('sessions/:id/versions/:vid')
+  @Public()
+  @ApiOperation({ summary: '특정 시점의 pages JSON 조회' })
+  @ApiHeader({ name: 'X-User-Id', required: false })
+  async getVersion(
+    @Param('id') id: string,
+    @Param('vid') vid: string,
+    @Headers('X-User-Id') userId?: string,
+  ) {
+    return this.editorService.getVersion(id, vid, userId);
+  }
+
+  @Post('sessions/:id/versions/:vid/restore')
+  @Public()
+  @ApiOperation({ summary: '시점으로 복원 (현재 pages 교체)' })
+  @ApiHeader({ name: 'X-User-Id', required: false })
+  async restoreVersion(
+    @Param('id') id: string,
+    @Param('vid') vid: string,
+    @Headers('X-User-Id') userId?: string,
+  ): Promise<EditSession> {
+    return this.editorService.restoreVersion(id, vid, userId);
+  }
+
+  // ============================================================================
   // Page Management
   // ============================================================================
 
