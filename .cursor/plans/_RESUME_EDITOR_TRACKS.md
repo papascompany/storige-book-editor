@@ -70,7 +70,8 @@
 | **U** | `a8e1558` | D5 Phase 3b-ii + 3b-iii — `useSpreadAutoAnchor` (object:added → resolveRegionRef → meta 부여), 3b-iii는 `SpreadPlugin.handleObjectModified`가 이미 처리(검증 완료) |
 | **V** | `af79102` | D5 Phase 3b-iv — `SpreadPlugin`에 `spreadObjectsOutOfBounds` 이벤트(canvas-core 빌드), `useSpreadOutOfBoundsToast` hook이 구독해 책등 가변 후 이탈 객체 N개 warning toast 표시 |
 | **W** | `846d5e9` | 다크 모드 Phase 3 — `RULER_DEFAULTS_DARK`+`RulerPlugin.setTheme()` (canvas-core), `defaultControlsDark`+`getDefaultControls()` (editor), `useCanvasThemeSync(ready)` hook이 테마 변경 시 ruler+선택 핸들 일괄 적용. 워크스페이스 흰 페이지 유지 |
-| **X** | _이번_ | 반응형 Phase 2 (부분) — 사이드바 핸들 Pointer Events 통합(마우스/터치/펜) + setPointerCapture + 5px hit area, BookNavigation 화살표 44×44 터치 타겟 + aria-label. 태블릿 헤더 wrap은 후속(X-2) |
+| **X** | `43a6ba0` | 반응형 Phase 2 (부분) — 사이드바 핸들 Pointer Events 통합(마우스/터치/펜) + setPointerCapture + 5px hit area, BookNavigation 화살표 44×44 터치 타겟 + aria-label. 태블릿 헤더 wrap은 후속(X-2) |
+| **Y** | _이번_ | 작은 묶음 — 멀티파일 드롭 (이미지 N개 순차 업로드 + cascade 20px offset + 일괄 success/partial/fail toast), Shift+화살표 10px nudge 단축키 카탈로그 등록(코드는 `ControlsPlugin`에 이미 존재) |
 
 # 코드베이스 컨벤션 (트랙 진행하며 정착됨)
 
@@ -192,10 +193,10 @@ cover.md §7.3 단계별 난이도 표:
 ## 🟢 작은 후속 (1시간 이내)
 
 - 버전 히스토리 패널 Phase 2 — 자동저장 스냅샷 list (백엔드 versions API 또는 localStorage)
-- 멀티 파일 드롭 (현재 첫 1개만 처리)
+- ~~멀티 파일 드롭~~ ✅ 트랙 Y (cascade 20px offset, 일괄 toast)
 - ObjectFill에 그라디언트 추천 프리셋
-- 멀티 선택 시 정렬·분포·잠금·삭제 floating bar (canvas 위)
-- 키보드 nudge step 옵션 (1px / 10px)
+- 멀티 선택 시 정렬·분포·잠금·삭제 floating bar (canvas 위) — ControlBar에 이미 정렬/분포 있어 우선순위 낮음
+- ~~키보드 nudge step (1px / 10px)~~ ✅ 트랙 Y — 코드는 `ControlsPlugin.handleArrowKeyMovement:130`에 이미 존재(Shift+Arrow), 카탈로그 등록
 
 ## 🔴 §8.3 대형 작업 (1일+)
 
