@@ -244,6 +244,40 @@ function buildActions(props: Pick<CommandPaletteModalProps, 'onFinish' | 'onOpen
         close()
       },
     },
+    // 표지 편집 모드 (cover.md §3) — auto/separated/composite
+    {
+      id: 'cover-mode-auto',
+      group: 'UI',
+      label: '표지 편집: 자동 (기본)',
+      keywords: ['cover', '표지', 'auto', '자동'],
+      icon: Cog,
+      run: ({ close }) => {
+        useUiPrefStore.getState().setCoverEditMode('auto')
+        close()
+      },
+    },
+    {
+      id: 'cover-mode-separated',
+      group: 'UI',
+      label: '표지 편집: 분리 (페이지별 캔버스)',
+      keywords: ['cover', '표지', 'separated', '분리'],
+      icon: Cog,
+      run: ({ close }) => {
+        useUiPrefStore.getState().setCoverEditMode('separated')
+        close()
+      },
+    },
+    {
+      id: 'cover-mode-composite',
+      group: 'UI',
+      label: '표지 편집: 합쳐서 보기 (CoverFocusBar)',
+      keywords: ['cover', '표지', 'composite', '합쳐서'],
+      icon: Cog,
+      run: ({ close }) => {
+        useUiPrefStore.getState().setCoverEditMode('composite')
+        close()
+      },
+    },
   ]
 
   return [...tools, ...editing, ...ui]

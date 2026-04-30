@@ -101,7 +101,8 @@ PDF 6페이지에서 두 가지 케이스를 도시:
 |---|---|---|
 | **1** | ✅ 페이지 네비 표지 그룹화 + 위치별 라벨 (뒷날개/뒷표지/책등/앞표지/앞날개) + 그룹 구분선 + thumbnail 시각 개선 | 2026-04-30 완료 |
 | **2** | ✅ CoverFocusBar (활성 페이지가 표지일 때 헤더 아래 합쳐진 미니맵) + 영역 클릭 포커스 | 2026-04-30 완료 |
-| **3** | 표지 모드 토글 — Composite vs Spread 사용자 선택 + 객체 cross-region 이동 | 장기 |
+| **3a** | ✅ 표지 편집 모드 사용자 토글 — CommandPaletteModal(`Cmd+K`)에서 auto/separated/composite 직접 선택 | 2026-04-30 완료 |
+| **3b** | 객체 region 인식 (composite 모드 객체 추가 위치 자동 결정 + cross-region 이동) — `SpreadPlugin.resolveRegionAtX` + `ObjectAnchor` 메타 활용 | 장기 |
 
 ### 3.3 Spread 모드 (펼침면 단일 캔버스)
 
