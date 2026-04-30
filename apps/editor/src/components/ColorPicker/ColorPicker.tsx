@@ -4,6 +4,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Button } from '@/components/ui/button'
 import ColorPickerModal from './ColorPickerModal'
 import { useColorMode } from '@/stores/useSettingsStore'
+import { useRecentColorsStore } from '@/stores/useRecentColorsStore'
 
 interface ColorPickerProps {
   value: string
@@ -92,8 +93,46 @@ export default function ColorPicker({
     [onUpdateValue, onUpdateCmykValue]
   )
 
+  // 빠른 색상 팔레트 — 최근 사용 8개 (트랙 R)
+  const recentColors = useRecentColorsStore((s) => s.recent).slice(0, 8)
+  const pushRecentColor = useRecentColorsStore((s) => s.push)
+
+  const applyQuickColor = useCallback(
+    (hex: string) => {
+      // hex → rgba (alpha는 현재 opacity 유지)
+      const o = opacityValue ?? 100
+      const m = hex.match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i)
+      if (!m) return
+      const r = parseInt(m[1], 16)
+      const g = parseInt(m[2], 16)
+      const b = parseInt(m[3], 16)
+      onUpdateValue(`rgba(${r}, ${g}, ${b}, ${o / 100})`)
+      onUpdateCmykValue?.(null)
+      pushRecentColor(hex)
+    },
+    [onUpdateValue, onUpdateCmykValue, opacityValue, pushRecentColor]
+  )
+
   return (
-    <div className="w-full h-10 box-border bg-editor-surface-lowest rounded relative">
+    <div className="w-full box-border">
+      {/* 빠른 색상 swatch row — 최근 사용 0~8개 */}
+      {recentColors.length > 0 && (
+        <div className="flex flex-wrap gap-1 mb-2 px-1">
+          {recentColors.map((hex) => (
+            <button
+              key={hex}
+              type="button"
+              onClick={() => applyQuickColor(hex)}
+              title={hex}
+              aria-label={`최근 색상 ${hex}`}
+              className="w-5 h-5 rounded border border-editor-border cursor-pointer transition-transform hover:scale-110"
+              style={{ backgroundColor: hex }}
+            />
+          ))}
+        </div>
+      )}
+
+      <div className="w-full h-10 box-border bg-editor-surface-lowest rounded relative">
       <div className="flex-1 h-full rounded border-0 w-full relative flex flex-row items-center justify-between px-3 gap-4">
         <Popover open={showColorPicker} onOpenChange={setShowColorPicker}>
           <PopoverTrigger asChild>
@@ -130,6 +169,7 @@ export default function ColorPicker({
           onKeyDown={handleInputKeyDown}
           className="flex-[3] text-center w-full bg-transparent text-sm text-editor-text outline-none"
         />
+      </div>
       </div>
     </div>
   )
