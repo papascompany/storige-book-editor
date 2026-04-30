@@ -122,13 +122,17 @@ const getObjectName = (type: SelectionType, selectionCount: number) => {
   }
 }
 
-export default function ControlBar() {
+export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: boolean } = {}) {
   const canvas = useAppStore((state) => state.canvas)
   const activeSelection = useAppStore((state) => state.activeSelection)
   const selectionType = useSelectionType()
   const getPlugin = useAppStore((state) => state.getPlugin)
   const updateObjects = useAppStore((state) => state.updateObjects)
   const isCoarsePointer = useIsCoarsePointer()
+  // 폭 기반 mobileOverlay (EditorView 가 screenMode 로 결정) 또는 coarse pointer 감지 —
+  // 어느 한쪽이라도 true 면 모바일 레이아웃. 두 신호를 모두 보아야 외장 키보드/마우스가
+  // 연결된 태블릿 + 작은 viewport 같은 케이스에도 안전.
+  const isMobile = mobileOverlay || isCoarsePointer
 
   // Check if bar should be shown
   const showBar = useMemo(() => {
@@ -292,18 +296,22 @@ export default function ControlBar() {
     return null
   }
 
-  // 터치 디바이스에서는 ControlBar 를 하단 시트(bottom sheet) 로 렌더링.
+  // 모바일에서는 ControlBar 를 하단 시트(bottom sheet) 로 렌더링.
   // 280px 고정 폭으로 좌측에 두면 작은 화면에서 캔버스를 80% 가리는 문제 회피.
-  // - 좌우 폭 100% / 화면 높이의 50% 까지 / 하단 고정 / 자체 스크롤
+  // - 좌우 폭 100% / 화면 높이의 45vh / 하단 고정 / 자체 스크롤
   // - z-[102] 로 토스트(z-200) 보다 낮고 헤더(z-101)보다 높게
-  const containerClassName = isCoarsePointer
-    ? 'control-bar control-bar--mobile fixed left-0 right-0 bottom-0 z-[102] bg-editor-panel border-t border-editor-border flex flex-col h-[50vh] max-h-[50vh] overflow-hidden shadow-[0_-2px_12px_rgba(0,0,0,0.08)]'
+  // - paddingBottom 으로 iOS 홈 인디케이터 영역(safe-area-inset-bottom) 회피
+  const containerClassName = isMobile
+    ? 'control-bar control-bar--mobile fixed left-0 right-0 bottom-0 z-[102] bg-editor-panel border-t border-editor-border flex flex-col h-[45vh] max-h-[45vh] overflow-hidden shadow-[0_-2px_12px_rgba(0,0,0,0.08)]'
     : 'control-bar bg-editor-panel border-r border-editor-border flex flex-col w-[280px] min-w-[280px] max-w-[280px] h-full overflow-hidden'
+  const containerStyle = isMobile
+    ? { paddingBottom: 'env(safe-area-inset-bottom, 0px)' }
+    : undefined
 
   return (
-    <div id="control-bar" className={containerClassName}>
+    <div id="control-bar" className={containerClassName} style={containerStyle}>
       {/* 모바일: 드래그 핸들 (시각적 hint, 실제 드래그는 미구현) */}
-      {isCoarsePointer && (
+      {isMobile && (
         <div className="flex justify-center pt-2 pb-1 shrink-0" aria-hidden="true">
           <div className="h-1 w-10 rounded-full bg-editor-border" />
         </div>
