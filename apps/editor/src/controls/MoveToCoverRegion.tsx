@@ -7,22 +7,46 @@ import { showToast } from '@/stores/useToastStore'
 import { buildPageMeta, type PageMeta } from '@/components/PageNavigation/BookNavigation'
 
 /**
- * 표지 영역 사이로 객체 이동 (cover.md §7 / D5 Phase 3b-v).
+ * 표지 영역 사이로 객체 이동 (cover.md §7 / D5 Phase 3b-v + Phase 2-A 정밀 좌표).
  *
  * 활성 페이지가 표지 그룹이고, 표지 그룹에 다른 region이 있을 때만 노출.
  * 클릭 시:
  *   1) source canvas(active) 객체를 target canvas(다른 region)로 이동
  *      (canvas-core moveObjectToCanvas helper, fabric clone + atomic history)
- *   2) target region에 맞춰 좌표/메타 갱신 (target 워크스페이스 중심 배치)
+ *   2) **target 워크스페이스 기준 xNorm/yNorm 비례 변환**으로 좌표 결정 —
+ *      source 워크스페이스 내부 상대 위치를 target 워크스페이스에서 그대로 유지
  *   3) target region 페이지로 자동 전환
  *
- * 1차 정책 메모
- * - 위치 매핑은 target 워크스페이스 중심 (정밀 좌표 매핑은 향후 Phase 2)
- * - 두 캔버스 history 분리 (각각 1 step씩) — Undo는 target 페이지에서 add를,
- *   source 페이지에서 remove를 각각 1번씩 되돌려야 양쪽 동기화
- * - meta.regionRef/anchor는 target SpreadPlugin이 있으면 자동 재계산,
- *   없으면 (separated 모드) regionRef를 target의 coverPosition으로 단순 설정
+ * 좌표 매핑 정책 (Phase 2-A)
+ * - 객체 중심점을 source 워크스페이스 좌상단 기준 정규화 (0~1, 범위 외 허용)
+ * - target 워크스페이스 크기에 비례해서 역변환 → target 캔버스 좌표
+ * - 객체 자체 크기(width/height/scale)는 그대로 유지 — 같은 mm/dpi 환경 가정
+ * - 워크스페이스 미발견 시 fallback: target 중심
+ *
+ * 두 캔버스 history는 분리 (각각 1 step씩) — Undo는 target 페이지에서 add를,
+ * source 페이지에서 remove를 각각 1번씩 되돌려야 양쪽 동기화. cross-canvas
+ * atomic history는 Phase 2-B로 분리.
+ *
+ * meta.regionRef/anchor는 target SpreadPlugin이 있으면 자동 재계산,
+ * 없으면 (separated 모드) regionRef를 target의 coverPosition으로 단순 설정.
  */
+
+/** 워크스페이스 객체에서 중심점/크기 추출 (id='workspace' 기준) */
+function getWorkspaceBox(canvas: any): { centerX: number; centerY: number; width: number; height: number } | null {
+  if (!canvas?.getObjects) return null
+  try {
+    const ws = canvas.getObjects().find((o: any) => o?.id === 'workspace')
+    if (!ws) return null
+    const center = ws.getCenterPoint?.()
+    if (!center) return null
+    const width = (ws.width ?? 0) * (ws.scaleX ?? 1)
+    const height = (ws.height ?? 0) * (ws.scaleY ?? 1)
+    if (width <= 0 || height <= 0) return null
+    return { centerX: center.x, centerY: center.y, width, height }
+  } catch {
+    return null
+  }
+}
 export default function MoveToCoverRegion() {
   const activeSelection = useActiveSelection()
   const pages = useEditorStore((s) => s.pages)
@@ -72,20 +96,34 @@ export default function MoveToCoverRegion() {
     }
     if (source === target) return
 
-    // target 워크스페이스 중심 좌표 계산 (1차: 단순 중심)
+    // target 좌표 계산 (Phase 2-A: 워크스페이스 기준 xNorm/yNorm 비례 변환)
+    // - 객체의 source 워크스페이스 내부 상대 위치를 target 워크스페이스에서 동일 비율로 유지
+    // - 워크스페이스 미발견 시 fallback: target 중심
     let targetLeft: number | undefined
     let targetTop: number | undefined
-    try {
-      const ws = target.getObjects?.().find((o: any) => o.id === 'workspace')
-      if (ws) {
-        const center = ws.getCenterPoint?.()
-        if (center) {
-          targetLeft = center.x
-          targetTop = center.y
+    const srcBox = getWorkspaceBox(source)
+    const tgtBox = getWorkspaceBox(target)
+    if (srcBox && tgtBox) {
+      try {
+        const objCenter = (obj as any).getCenterPoint?.()
+        if (objCenter) {
+          const srcLeftEdge = srcBox.centerX - srcBox.width / 2
+          const srcTopEdge = srcBox.centerY - srcBox.height / 2
+          const xNorm = (objCenter.x - srcLeftEdge) / srcBox.width
+          const yNorm = (objCenter.y - srcTopEdge) / srcBox.height
+          // target 좌표 (워크스페이스 좌상단 + 비례 offset). xNorm/yNorm은 0~1 범위 외도 허용
+          // (객체가 워크스페이스 외부일 때 target에서도 동일 외부 비율 유지)
+          targetLeft = tgtBox.centerX - tgtBox.width / 2 + xNorm * tgtBox.width
+          targetTop = tgtBox.centerY - tgtBox.height / 2 + yNorm * tgtBox.height
         }
+      } catch (e) {
+        console.warn('[MoveToCoverRegion] coord ratio calc failed:', e)
       }
-    } catch (e) {
-      console.warn('[MoveToCoverRegion] target workspace center calc failed:', e)
+    }
+    // fallback: target 워크스페이스 중심 (Phase 1 정책)
+    if (targetLeft === undefined && tgtBox) {
+      targetLeft = tgtBox.centerX
+      targetTop = tgtBox.centerY
     }
 
     const moved = await moveObjectToCanvas(obj, source, target, {
