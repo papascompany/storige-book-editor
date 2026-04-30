@@ -678,14 +678,14 @@ export default function EditorView() {
               />
             )}
             <FeatureSidebar mobileOverlay={screenMode === 'mobile'} />
-            {ready && <ControlBar />}
+            {ready && <ControlBar mobileOverlay={screenMode === 'mobile'} />}
 
             {/* Canvas Area — 이미지 드래그 앤 드롭 영역 (트랙 S)
-                모바일에서 객체 선택 시 ControlBar 가 하단 시트(50vh) 로 떠 있으므로,
-                캔버스 영역 자체를 50vh 만큼 줄여 워크스페이스가 가려지지 않도록 함. */}
+                모바일에서 객체 선택 시 ControlBar 가 하단 시트(45vh) 로 떠 있으므로,
+                캔버스 영역 자체를 45vh 만큼 줄여 워크스페이스가 가려지지 않도록 함. */}
             <main
               className={`flex-1 relative overflow-hidden bg-editor-workspace ${
-                screenMode === 'mobile' && hasUserSelection ? 'pb-[50vh]' : ''
+                screenMode === 'mobile' && hasUserSelection ? 'pb-[45vh]' : ''
               }`}
               onDragOver={handleDragOver}
               onDragEnter={handleDragEnter}
