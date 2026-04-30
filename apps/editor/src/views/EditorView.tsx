@@ -20,6 +20,7 @@ import { PagePanel } from '@/components/PagePanel/PagePanel'
 import { SpreadPagePanel } from '@/components/PagePanel/SpreadPagePanel'
 import { BookNavigation } from '@/components/PageNavigation/BookNavigation'
 import { useResolvedPageNavPosition } from '@/hooks/useResolvedPageNavPosition'
+import { useSpreadAutoAnchor } from '@/hooks/useCoverRegion'
 import { productsApi } from '@/api'
 
 // Screen mode type
@@ -447,6 +448,9 @@ export default function EditorView() {
     // ref를 통해 최신 함수 호출
     loadContentRef.current?.(params)
   }, [productId, contentId, contentType, editMode, size, templateSetId, pageCount, paperType, bindingType, ready])
+
+  // Spread 모드 신규 객체 region 메타 자동 부여 (cover.md §7 / D5 Phase 3b-ii)
+  useSpreadAutoAnchor(ready)
 
   // 룰러 표시 토글 — useUiPrefStore.showRuler 변화에 반응해 모든 캔버스의 RulerPlugin enable/disable
   useEffect(() => {
