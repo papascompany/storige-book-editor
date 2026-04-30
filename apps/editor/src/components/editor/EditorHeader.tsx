@@ -96,8 +96,10 @@ export default function EditorHeader({
 
   // Stores
   const { ready, canvas, allCanvas, allEditors, getPlugin, setPage, isSpreadMode, updateAllWorkspaceSettings } = useAppStore()
-  const { artwork, currentSettings, spreadConfig, updateSettings } = useSettingsStore()
+  const { artwork, currentSettings, spreadConfig, updateSettings, setArtworkName } = useSettingsStore()
   const isAdmin = useIsAdmin()
+
+  // (작업명 핸들러는 commitArtworkName/handleNameKeyDown으로 정의 — 아래)
 
   // Undo/Redo 가능 여부 (HistoryPlugin의 historyUpdate 이벤트 + canvas.canUndo/canRedo 사용)
   const [canUndo, setCanUndo] = useState(false)
@@ -122,17 +124,22 @@ export default function EditorHeader({
     }
 
     refresh()
+    // afterLoad 직후 stale 케이스 방어 — 100ms / 500ms 후 한 번 더 동기화
+    const stale1 = setTimeout(refresh, 100)
+    const stale2 = setTimeout(refresh, 500)
 
-    const handlers: Array<{ editor: any; fn: () => void }> = []
+    const editorHandlers: Array<{ editor: any; fn: () => void }> = []
     allEditors.forEach((editor: any) => {
       if (!editor?.on) return
       const fn = () => refresh()
       editor.on('historyUpdate', fn)
-      handlers.push({ editor, fn })
+      editorHandlers.push({ editor, fn })
     })
 
     return () => {
-      handlers.forEach(({ editor, fn }) => {
+      clearTimeout(stale1)
+      clearTimeout(stale2)
+      editorHandlers.forEach(({ editor, fn }) => {
         try { editor.off?.('historyUpdate', fn) } catch {}
       })
     }
@@ -152,21 +159,7 @@ export default function EditorHeader({
     [onLoadingChange]
   )
 
-  // 작업 이름 변경
-  const handleNameChange = useCallback(
-    (e: React.FocusEvent<HTMLInputElement> | React.KeyboardEvent<HTMLInputElement>) => {
-      if ('key' in e && e.key !== 'Enter') return
-
-      const target = e.target as HTMLInputElement
-      if (e.type === 'keydown') {
-        target.blur()
-      }
-
-      // useSettingsStore의 artwork.name은 이미 바인딩되어 있으므로 추가 처리 불필요
-      // 필요시 여기에 저장 로직 추가
-    },
-    []
-  )
+  // K-1: 작업명 핸들러는 input JSX 인라인 (closure 단순화)
 
   // 인쇄 미리보기 토글
   const handlePreview = useCallback(async () => {
@@ -582,12 +575,32 @@ export default function EditorHeader({
         {/* 중앙: 작업명 + 사이즈 표시 */}
         <div className="flex-1 flex items-center justify-center gap-3">
           <input
+            key={artwork.name || 'untitled'}
             type="text"
-            defaultValue={artwork.name || '새로운 작업 1'}
+            defaultValue={artwork.name || ''}
             placeholder="제목을 입력해주세요"
+            aria-label="작업명"
             className="bg-transparent border-none outline-none text-editor-text text-sm font-medium text-center min-w-[80px] max-w-[140px] sm:max-w-[200px] md:max-w-[280px] focus:ring-1 focus:ring-editor-accent/50 rounded px-2 py-1"
-            onBlur={handleNameChange}
-            onKeyDown={handleNameChange}
+            onBlur={(e) => {
+              const value = (e.target as HTMLInputElement).value.trim()
+              if (!value) {
+                ;(e.target as HTMLInputElement).value = artwork.name || ''
+                return
+              }
+              if (value !== artwork.name) {
+                useSettingsStore.getState().setArtworkName(value)
+              }
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                ;(e.target as HTMLInputElement).blur()
+              } else if (e.key === 'Escape') {
+                e.preventDefault()
+                ;(e.target as HTMLInputElement).value = artwork.name || ''
+                ;(e.target as HTMLInputElement).blur()
+              }
+            }}
           />
           <Popover open={sizeOpen} onOpenChange={setSizeOpen}>
             <PopoverTrigger asChild>
