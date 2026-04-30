@@ -99,6 +99,28 @@ body {
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* iOS bounce / pull-to-refresh 차단 — 캔버스 터치 인터랙션과 충돌 방지 */
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: touch;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Fabric.js 캔버스 컨테이너 — 브라우저의 기본 터치 제스처 차단.
+   touch-action: none 으로 pinch-zoom, pan 을 캔버스가 직접 처리하게 함.
+   user-select: none 으로 텍스트 객체 길게 누를 때 시스템 선택 메뉴 방지. */
+.canvas-container,
+.canvas-container canvas,
+#canvas-containers,
+#canvas-wrapper {
+  touch-action: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Fabric upper-canvas는 인터랙션 레이어 — 항상 터치 캡처 */
+.canvas-container .upper-canvas {
+  touch-action: none;
 }
 
 /* Custom scrollbar — surface-container 토큰 사용으로 다크 모드 자동 호환 */

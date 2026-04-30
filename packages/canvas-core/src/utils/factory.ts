@@ -48,10 +48,23 @@ export interface FabricCanvasOptions {
   enableRetinaScaling?: boolean
   renderOnAddRemove?: boolean
   skipOffscreen?: boolean
+  allowTouchScrolling?: boolean
   index?: number
   unitOptions?: {
     unit?: string
     dpi?: number
+  }
+}
+
+/**
+ * coarse pointer (모바일/태블릿 터치) 디바이스 여부 — SSR 안전.
+ */
+function isCoarsePointer(): boolean {
+  if (typeof window === 'undefined' || !window.matchMedia) return false
+  try {
+    return window.matchMedia('(pointer: coarse)').matches
+  } catch {
+    return false
   }
 }
 
@@ -73,7 +86,9 @@ export async function createFabricCanvas(
     imageSmoothingEnabled: true,
     enableRetinaScaling: true,
     renderOnAddRemove: false,
-    skipOffscreen: true
+    skipOffscreen: true,
+    // 터치에서 브라우저가 페이지 스크롤을 가로채는 것 방지 (CSS touch-action과 함께 동작)
+    allowTouchScrolling: false
   }
 
   const canvas = new fb.Canvas(canvasId, {
@@ -113,6 +128,15 @@ export function configureFabricDefaults(): void {
     'backgroundColor',
     'clipPath'
   ]
+
+  // 터치 디바이스에서는 컨트롤 핸들의 hit-area를 키워 손가락으로 잡기 쉽게.
+  // touchCornerSize 는 fabric 5+ 에서 터치 입력에 한해 사용되는 corner hit-area.
+  if (isCoarsePointer()) {
+    fabric.Object.prototype.cornerSize = 16
+    ;(fabric.Object.prototype as any).touchCornerSize = 36
+    fabric.Object.prototype.padding = 8
+    fabric.Object.prototype.borderScaleFactor = 2
+  }
 
   defaultsConfigured = true
 }

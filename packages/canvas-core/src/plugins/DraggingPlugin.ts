@@ -120,10 +120,23 @@ class DraggingPlugin extends PluginBase {
     window.addEventListener('keydown', this.setDragMode)
     window.addEventListener('keyup', this.setDragMode)
 
+    // mouse/pointer/touch 이벤트에서 좌표/altKey 를 안전하게 추출.
+    // TouchEvent 는 clientX/clientY/altKey 가 직접 없고 touches[0] 에 있다.
+    const getEventPoint = (e: any): { x: number; y: number; altKey: boolean } => {
+      if (!e) return { x: 0, y: 0, altKey: false }
+      if (typeof e.clientX === 'number') {
+        return { x: e.clientX, y: e.clientY, altKey: !!e.altKey }
+      }
+      const t = e.touches?.[0] ?? e.changedTouches?.[0]
+      if (t) return { x: t.clientX, y: t.clientY, altKey: !!e.altKey }
+      return { x: 0, y: 0, altKey: false }
+    }
+
     // 핸들러 참조 저장 (cleanup을 위해)
     this._boundMouseDown = function (this: ExtCanvas, opt: fabric.IEvent) {
-      const evt = opt.e as MouseEvent
-      if (evt.altKey || vm.dragMode) {
+      const { x, y, altKey } = getEventPoint(opt.e)
+      // 터치에서는 altKey 가 항상 false → dragMode 일 때만 panning 시작
+      if (altKey || vm.dragMode) {
         vm._canvas!.offHistory()
 
         vm._canvas.defaultCursor = 'grabbing'
@@ -131,8 +144,8 @@ class DraggingPlugin extends PluginBase {
         vm.setDragging()
 
         this.isDragging = true
-        this.lastPosX = evt.clientX
-        this.lastPosY = evt.clientY
+        this.lastPosX = x
+        this.lastPosY = y
         this.requestRenderAll()
         vm._canvas!.onHistory()
       }
@@ -142,13 +155,13 @@ class DraggingPlugin extends PluginBase {
       if (this.isDragging) {
         //vm._canvas.discardActiveObject();
         vm._canvas.defaultCursor = 'grabbing'
-        const e = opt.e as MouseEvent
+        const { x, y } = getEventPoint(opt.e)
         if (!this.viewportTransform) return
         const vpt = this.viewportTransform
-        vpt[4] += e.clientX - this.lastPosX
-        vpt[5] += e.clientY - this.lastPosY
-        this.lastPosX = e.clientX
-        this.lastPosY = e.clientY
+        vpt[4] += x - this.lastPosX
+        vpt[5] += y - this.lastPosY
+        this.lastPosX = x
+        this.lastPosY = y
         this.requestRenderAll()
       }
     }
