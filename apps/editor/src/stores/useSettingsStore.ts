@@ -117,7 +117,7 @@ export type EditorRenderType =
   | 'envelope'
   | 'reduced'
 
-// Default controls configuration
+// Default controls configuration (light theme)
 const defaultControls: CanvasControls = {
   transparentCorners: false,
   borderColor: 'rgba(39,99,138,0.66)',
@@ -126,6 +126,24 @@ const defaultControls: CanvasControls = {
   cornerStyle: 'rect',
   cornerStrokeColor: 'rgb(39 99 138)',
   borderOpacityWhenMoving: 0.8,
+}
+
+// 다크 모드 객체 선택 핸들 (editor_layout_custom.md §8.3 다크 모드 Phase 3).
+// 어두운 surface 위 가독성: 브랜드 그린 보더 + 어두운 코너 + 같은 그린 코너 stroke.
+export const defaultControlsDark: CanvasControls = {
+  transparentCorners: false,
+  borderColor: 'rgba(142, 207, 69, 0.7)',
+  cornerColor: '#1f2937',
+  borderScaleFactor: 1,
+  cornerStyle: 'rect',
+  cornerStrokeColor: 'rgb(142, 207, 69)',
+  borderOpacityWhenMoving: 0.8,
+}
+
+export const defaultControlsLight: CanvasControls = defaultControls
+
+export function getDefaultControls(theme: 'light' | 'dark'): CanvasControls {
+  return theme === 'dark' ? defaultControlsDark : defaultControlsLight
 }
 
 // Use case configurations

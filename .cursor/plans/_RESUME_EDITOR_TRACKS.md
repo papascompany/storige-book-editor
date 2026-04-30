@@ -68,7 +68,8 @@
 | **S** | `3d67d85` | 드래그 앤 드롭 이미지 업로드 (`useImageStore.uploadFile`) |
 | **T** | `37bb181` | 객체 멀티 선택 분포 도구 (3+ 선택 시 가로/세로 분포) |
 | **U** | `a8e1558` | D5 Phase 3b-ii + 3b-iii — `useSpreadAutoAnchor` (object:added → resolveRegionRef → meta 부여), 3b-iii는 `SpreadPlugin.handleObjectModified`가 이미 처리(검증 완료) |
-| **V** | _이번_ | D5 Phase 3b-iv — `SpreadPlugin`에 `spreadObjectsOutOfBounds` 이벤트(canvas-core 빌드 + dist commit), `useSpreadOutOfBoundsToast` hook이 구독해 책등 가변 후 이탈 객체 N개 warning toast 표시 |
+| **V** | `af79102` | D5 Phase 3b-iv — `SpreadPlugin`에 `spreadObjectsOutOfBounds` 이벤트(canvas-core 빌드), `useSpreadOutOfBoundsToast` hook이 구독해 책등 가변 후 이탈 객체 N개 warning toast 표시 |
+| **W** | _이번_ | 다크 모드 Phase 3 — `RULER_DEFAULTS_DARK`+`RulerPlugin.setTheme()` (canvas-core), `defaultControlsDark`+`getDefaultControls()` (editor), `useCanvasThemeSync(ready)` hook이 테마 변경 시 ruler+선택 핸들 일괄 적용. 워크스페이스 흰 페이지 유지 |
 
 # 코드베이스 컨벤션 (트랙 진행하며 정착됨)
 
@@ -174,12 +175,12 @@ cover.md §7.3 단계별 난이도 표:
 - ~~**3b-iv** 책등 가변 시 캔버스 밖 이탈 토스트~~ ✅ 트랙 V (2026-04-30) — `SpreadPlugin`에 `spreadObjectsOutOfBounds` 이벤트 + `useSpreadOutOfBoundsToast` hook (warning 5s)
 - **3b-v** Composite 모드 cross-canvas 이동 — 분리 캔버스 N개 사이 객체 이동 API. canvas-core 빌드 + 데이터 마이그레이션. **상**
 
-## 🔴 다크 모드 Phase 3 (canvas-core 빌드 필요)
+## ~~🔴 다크 모드 Phase 3~~ ✅ 트랙 W 완료 (2026-04-30)
 
-- 룰러 색상 (`packages/canvas-core/src/ruler/constants.ts:RULER_DEFAULTS` 다크 분기)
-- WorkspacePlugin 캔버스 배경
-- fabric 객체 선택 핸들 (`useSettingsStore.defaultControls`의 borderColor/cornerColor)
-- canvas-core src 변경 + `tsc`로 dist 재빌드 + dist commit
+- 룰러 색상: `RULER_DEFAULTS_LIGHT/DARK` + `getRulerDefaults()` + `RulerPlugin.setTheme()`
+- 객체 선택 핸들: `defaultControlsLight/Dark` + `getDefaultControls(theme)` (editor `useSettingsStore`)
+- 통합 동기화: `useCanvasThemeSync(ready)` hook이 테마 변경 시 모든 ruler + 사용자 객체 controls 일괄 갱신 (시스템 객체 가드 강화: workspace/cut-border/safe-zone-border/guideline 등)
+- 워크스페이스 흰 페이지 배경은 가이드대로 유지 (인쇄용지)
 
 ## 🔴 반응형 Phase 2
 
