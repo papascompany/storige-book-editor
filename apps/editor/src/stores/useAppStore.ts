@@ -83,6 +83,8 @@ interface AppActions {
   // 페이지 관리
   setPageName: (name: string) => void
   setPage: (index: number) => void
+  /** 페이지 순서 재배열 (DD-5) — newIndices는 0..N-1의 순열 (예: [2,0,1] = 새 순서[0]=기존[2]) */
+  reorderByIndex: (newIndices: number[]) => void
   addPage: () => Promise<void>
   addInnerPage: () => Promise<void>     // 내지 추가 → debouncedRecalcSpine()
   deletePage: (canvasId: string) => void
@@ -604,6 +606,49 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
 
     // 객체 목록 업데이트
     updateObjects()
+  },
+
+  reorderByIndex: (newIndices: number[]) => {
+    // DD-5: 페이지 순서 재배열 (drag-to-reorder 트리거)
+    const { allCanvas, allEditors, canvas: currentCanvas } = get()
+    if (newIndices.length !== allCanvas.length) {
+      console.warn('[reorderByIndex] length mismatch', newIndices.length, allCanvas.length)
+      return
+    }
+    // 유효한 순열인지 검사 (0..N-1 한 번씩)
+    const sorted = [...newIndices].sort((a, b) => a - b)
+    const valid = sorted.every((v, i) => v === i)
+    if (!valid) {
+      console.warn('[reorderByIndex] invalid permutation', newIndices)
+      return
+    }
+    // identity 순열이면 no-op
+    const isIdentity = newIndices.every((v, i) => v === i)
+    if (isIdentity) return
+
+    const newCanvases = newIndices.map((i) => allCanvas[i])
+    const newEditors = newIndices.map((i) => allEditors[i])
+
+    // useEditorStore.pages 동기화 (1:1 인덱스 매핑)
+    const ed = useEditorStore.getState()
+    const newPageIds: string[] = []
+    for (const i of newIndices) {
+      const p = ed.pages[i]
+      if (p) newPageIds.push(p.id)
+    }
+
+    set({ allCanvas: newCanvases, allEditors: newEditors })
+    if (newPageIds.length === ed.pages.length) {
+      ed.reorderPages(newPageIds)
+    }
+
+    // 사용자가 보던 페이지의 새 인덱스로 setPage 보정
+    if (currentCanvas) {
+      const newCurrentIdx = newCanvases.findIndex((c: FabricCanvas) => c.id === currentCanvas.id)
+      if (newCurrentIdx >= 0 && newCurrentIdx < newCanvases.length) {
+        get().setPage(newCurrentIdx)
+      }
+    }
   },
 
   deletePage: (canvasId: string) => {
