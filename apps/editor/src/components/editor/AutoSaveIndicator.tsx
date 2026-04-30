@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import { useSaveStore, getSaveStatusText, type SaveStatus } from '@/stores/useSaveStore'
 import { showToast } from '@/stores/useToastStore'
+import { useUiPrefStore } from '@/stores/useUiPrefStore'
 import { cn } from '@/lib/utils'
 
 interface AutoSaveIndicatorProps {
@@ -27,14 +28,15 @@ export function AutoSaveIndicator({ className = '' }: AutoSaveIndicatorProps) {
   const hasLocalBackup = useSaveStore((state) => state.hasLocalBackup)
   const error = useSaveStore((state) => state.error)
 
-  // 상태 변화 감지 → 토스트 (saved 직후, failed, offline 전환만)
+  // 상태 변화 감지 → 토스트 (saved/failed/offline 전환)
   const prevStatusRef = useRef<SaveStatus>(status)
+  const autoSaveToastEnabled = useUiPrefStore((s) => s.autoSaveToastEnabled)
   useEffect(() => {
     const prev = prevStatusRef.current
     if (prev !== status) {
-      // saving → saved 만 알림 (idle 시작 시 saved는 무시)
-      if (status === 'saved' && prev === 'saving') {
-        // 자동저장 성공은 너무 자주 떠서 노이즈가 됨 — 표시하지 않음 (인디케이터로 충분)
+      // saving → saved: 사용자 옵션이 켜져있을 때만 짧은 toast (1.2초, 노이즈 최소화)
+      if (status === 'saved' && prev === 'saving' && autoSaveToastEnabled) {
+        showToast('저장됨', 'success', 1200)
       }
       if (status === 'failed' && prev !== 'failed') {
         showToast(
@@ -48,7 +50,7 @@ export function AutoSaveIndicator({ className = '' }: AutoSaveIndicatorProps) {
       }
       prevStatusRef.current = status
     }
-  }, [status, error])
+  }, [status, error, autoSaveToastEnabled])
 
   const statusText = getSaveStatusText(status)
 
