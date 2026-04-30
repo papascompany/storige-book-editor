@@ -39,12 +39,15 @@
 | `_RESUME_EDITOR_TRACKS.md` (이 파일) | 트랙 누적 + 컨벤션 + 향후 후보 |
 | `_RESUME_PROMPT.md` (별도 흐름) | 인프라·PHP·운영 컷오버 작업용 — 본 트랙과 무관 |
 
-# 누적 트랙 — 2026-04-30 (총 32 커밋, 모두 origin/master 반영, Vercel 배포 완료)
+# 누적 트랙 — 2026-04-30 (총 41 커밋, 모두 origin/master 반영, Vercel 배포 완료)
 
 > 트랙 0~T(23 커밋) — 1차 폴리싱 사이클 완료
 > 트랙 U~BB(7 커밋, `a8e1558 → 386c37b`) — 2차 사이클 (D5 Phase 3b 마무리, 다크 Phase 3, 반응형 Phase 2, 작은 묶음, 그라디언트, 스냅샷 list)
 > 트랙 CC-1/CC-2(2 커밋, `ee69dda → d54489c`) — 3차 사이클: D5 Phase 3b-v Composite cross-canvas 객체 이동 (canvas-core helper + ControlBar UI)
-> 시각 검증: 트랙 W/X/Z/AA/BB 모두 preview MCP 재시작 후 7/7 통과 (2026-04-30 16:30 KST). CC-1 helper 단위 시뮬 통과, CC-2 빌드 클린 + 비-표지 페이지 early return 검증
+> 트랙 CC-Phase 2(2 커밋, `f3c8e41 → 16031c9`) — cross-canvas 정밀 좌표 매핑 + atomic move log "방금 이동 되돌리기"
+> 트랙 DD-3/DD-4/DD-5-A(3 커밋, `e37f148 → 2717a00 → ac3402a`) — 그라디언트 angle/radial, 커맨드 팔레트 즐겨찾기, 페이지 reorderByIndex 액션
+> 트랙 BB-Phase 3(1 커밋, `b366042`) — 풀 스택 자동저장 시점 versions: 백엔드 EditSessionVersion 엔티티 + LRU 20 + debounce 1분 + 3 endpoints + editor HistoryPanel 분기 통합
+> 시각 검증: 트랙 W/X/Z/AA/BB 모두 preview MCP 재시작 후 7/7 통과 (2026-04-30 16:30 KST). CC-1 helper 단위 시뮬 통과, CC-2 빌드 클린, BB-Phase 3 sessionless 분기 a11y 정확
 
 | 트랙 | 커밋 | 주제 |
 |---|---|---|
@@ -82,6 +85,12 @@
 | **BB** | `386c37b` | 버전 히스토리 패널 Phase 2 minimal — `useAutoSaveSnapshotsStore` (LRU 5 + zustand persist), `useAutoSave.saveToServer` 성공 시 메타 push, `HistoryPanel`에 "최근 자동저장 N" list (시각/페이지수, 지우기 액션). 시점별 복원은 백엔드 versions API 연동 후 별도 트랙 |
 | **CC-1** | `ee69dda` | D5 Phase 3b-v 인프라 — canvas-core `moveObjectToCanvas(obj, src, tgt, opts)` helper (fabric clone w/ core.extendFabricOption + meta deep clone, atomic dual-canvas history offHistory/onHistory, 시스템 객체/same-canvas 가드). 두 캔버스 history 분리 정책 — Phase 2에서 atomic 통합 검토 |
 | **CC-2** | `d54489c` | D5 Phase 3b-v UI — `MoveToCoverRegion` 컴포넌트 ControlBar에 추가 (표지 컨텍스트 + 객체 선택 + 표지 그룹 ≥2 + 단일 선택 가드). 클릭 시 target 워크스페이스 중심에 cross-canvas move + target SpreadPlugin 있으면 resolveRegionRef 자동 갱신 / 없으면 coverPosition 단순 설정 + 페이지 자동 전환 + toast |
+| **CC-Ph2A** | `f3c8e41` | cross-canvas 정밀 좌표 매핑 — `getWorkspaceBox` helper + xNorm/yNorm 정규화로 source 워크스페이스 상대 위치를 target에서 동일 비율 유지 (단순 중심 fallback) |
+| **CC-Ph2B** | `16031c9` | cross-canvas atomic undo 보조 — `useCrossCanvasMoveStore` (LRU 1, TTL 30s), MoveToCoverRegion에 "방금 이동 되돌리기" 버튼 (target 페이지 + 30s 윈도우, 양 캔버스 동기 undo) |
+| **DD-3** | `e37f148` | 그라디언트 옵션 확장 — angle 4 프리셋 (0/45/90/135°) + radial 토글 + lastGradient 보관 + 옵션 변경 시 즉시 재적용 (8 swatch 미리보기도 동기화) |
+| **DD-4** | `2717a00` | CommandPalette 즐겨찾기 ★ — `useCommandFavoritesStore` (zustand persist v1) + 모든 액션에 ★ hover 토글 + filtered 결과 최상단 "★ 즐겨찾기" 그룹 + flat keyboard nav 보정 |
+| **DD-5-A** | `ac3402a` | useAppStore.reorderByIndex 액션 (페이지 순서 재배열 인프라) — 0..N-1 순열 검증, allCanvas/allEditors/pages 동기 재배열, currentPageIndex 보정. UI(BookNavigation drag)는 1차 시도 후 안전상 별도 트랙(DD-5-B-v2)으로 분리 |
+| **BB-Phase 3** | `b366042` | 풀 스택 자동저장 시점 versions — 백엔드 `EditSessionVersion` 엔티티(LRU 20) + autoSave debounce 1분 push + listVersions/getVersion/restoreVersion 3 endpoints + editor `sessionsApi` 클라이언트 + `HistoryPanel` 분기 통합("자동저장 시점 N" + ★ 복원 버튼, sessionless 시 트랙 BB minimal fallback) |
 
 # 코드베이스 컨벤션 (트랙 진행하며 정착됨)
 

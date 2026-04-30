@@ -275,7 +275,9 @@ type CoverEditMode = 'separated' | 'composite' | 'auto'
 | **3b-ii** ✅ | 객체 추가 시 region 메타 자동 부여 — `useSpreadAutoAnchor` hook이 `object:added` 구독 + `resolveRegionRef` 한 번 적용 (도구별 wiring 불필요) | 중간 (완료, canvas-core 변경 없음) |
 | **3b-iii** ✅ | `object:modified` 시 region 메타 갱신 — `SpreadPlugin.handleObjectModified`가 이미 처리 (히스테리시스 90%/70%) + 신규 객체도 3b-ii로 첫 add 시 동일 로직 적용 | 중간 (완료, 검증) |
 | **3b-iv** ✅ | 책등 가변 시 객체 재배치 — `SpreadPlugin.repositionObjects`가 front-cover/front-wing/spine 처리(완료), `checkObjectsOutOfBounds`가 `spreadObjectsOutOfBounds` 이벤트 발행 → editor의 `useSpreadOutOfBoundsToast`가 warning toast 표시 | 중상 (완료, canvas-core 빌드 + dist commit) |
-| **3b-v** ✅ | Composite 모드 cross-canvas 이동 — `moveObjectToCanvas` helper(canvas-core, fabric clone + atomic dual-canvas history) + `MoveToCoverRegion` UI(editor ControlBar row, 표지 컨텍스트 + 객체 선택 시만 노출, region 후보 버튼). target 워크스페이스 중심 배치 + target SpreadPlugin이 있으면 resolveRegionRef 자동 메타 갱신, 없으면 coverPosition 단순 설정. 자동 페이지 전환 + toast | 상 (완료, 1차 — 정밀 좌표 매핑은 향후 Phase 2) |
+| **3b-v** ✅ | Composite 모드 cross-canvas 이동 — `moveObjectToCanvas` helper(canvas-core, fabric clone + atomic dual-canvas history) + `MoveToCoverRegion` UI(editor ControlBar row, 표지 컨텍스트 + 객체 선택 시만 노출, region 후보 버튼). target 워크스페이스 중심 배치 + target SpreadPlugin이 있으면 resolveRegionRef 자동 메타 갱신, 없으면 coverPosition 단순 설정. 자동 페이지 전환 + toast | 상 (완료, 1차) |
+| **3b-v Phase 2A** ✅ | 정밀 좌표 매핑 — `getWorkspaceBox` helper로 source/target 워크스페이스 비교 + xNorm/yNorm 비례 변환으로 객체 상대 위치를 target에서 동일 비율 유지. 워크스페이스 미발견 시 fallback target 중심 배치 | 중상 (완료) |
+| **3b-v Phase 2B** ✅ | atomic undo 보조 — `useCrossCanvasMoveStore` (LRU 1, TTL 30s) + MoveToCoverRegion에 "방금 이동 되돌리기" 버튼(target 페이지 + 30s 윈도우 노출, 양 캔버스 동기 undo 호출) | 중 (완료) |
 
 ---
 
