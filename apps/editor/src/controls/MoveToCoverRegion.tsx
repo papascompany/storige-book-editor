@@ -1,9 +1,10 @@
 import { useMemo } from 'react'
-import { ArrowRightLeft } from 'lucide-react'
+import { ArrowRightLeft, Undo2 } from 'lucide-react'
 import { moveObjectToCanvas, resolveRegionRef, type SpreadPlugin } from '@storige/canvas-core'
 import { useAppStore, useActiveSelection } from '@/stores/useAppStore'
 import { useEditorStore } from '@/stores/useEditorStore'
 import { showToast } from '@/stores/useToastStore'
+import { useCrossCanvasMoveStore } from '@/stores/useCrossCanvasMoveStore'
 import { buildPageMeta, type PageMeta } from '@/components/PageNavigation/BookNavigation'
 
 /**
@@ -55,6 +56,9 @@ export default function MoveToCoverRegion() {
   const setPage = useAppStore((s) => s.setPage)
   const allCanvas = useAppStore((s) => s.allCanvas)
   const allEditors = useAppStore((s) => s.allEditors)
+  const lastCrossMove = useCrossCanvasMoveStore((s) => s.last)
+  const pushCrossMove = useCrossCanvasMoveStore((s) => s.pushMove)
+  const clearLastCrossMove = useCrossCanvasMoveStore((s) => s.clearLast)
 
   const meta = useMemo<PageMeta[]>(() => {
     if (pages.length === 0) return []
@@ -171,8 +175,50 @@ export default function MoveToCoverRegion() {
     goToPage(targetIdx)
 
     const targetLabel = activeGroup.find((m) => m.index === targetIdx)?.label ?? '대상 영역'
-    showToast(`"${targetLabel}"(으)로 이동했습니다.`, 'success', 2500)
+
+    // cross-canvas move log push (Phase 2-B — "방금 이동 되돌리기" 액션 활성화)
+    pushCrossMove({
+      id: (moved as any).id ?? `move-${Date.now()}`,
+      sourceIdx: currentPageIndex,
+      targetIdx,
+      targetLabel,
+    })
+
+    showToast(`"${targetLabel}"(으)로 이동했습니다. 30초 안에 "되돌리기"로 복구 가능.`, 'success', 3500)
   }
+
+  // "방금 이동 되돌리기" — Phase 2-B
+  // 양 캔버스의 history undo를 동기 호출 (target에서 add 되돌림 + source에서 remove 되돌림)
+  const handleUndoLastMove = () => {
+    const last = lastCrossMove
+    if (!last) return
+    const src = allCanvas[last.sourceIdx] as any
+    const tgt = allCanvas[last.targetIdx] as any
+    try {
+      // target 먼저 (add 되돌림 → 객체 사라짐)
+      tgt?.undo?.()
+      // source (remove 되돌림 → 객체 복원)
+      src?.undo?.()
+      // source 페이지로 자동 전환
+      setPage(last.sourceIdx)
+      goToPage(last.sourceIdx)
+      showToast('영역 이동을 되돌렸습니다.', 'info', 2500)
+    } catch (e) {
+      console.warn('[MoveToCoverRegion] undo cross-canvas failed:', e)
+      showToast('되돌리기에 실패했습니다.', 'error', 3000)
+    } finally {
+      clearLastCrossMove()
+    }
+  }
+
+  // "방금 이동 되돌리기" 버튼 노출 조건:
+  // 1) lastCrossMove 존재 (TTL 30초 내)
+  // 2) 현재 페이지가 target — 즉 이동 직후 사용자가 옮긴 영역에 있음
+  // 3) (UX) 만료된 이전 move가 보일 수 있어 ts 30초 가드 추가
+  const showUndoBtn =
+    lastCrossMove != null &&
+    lastCrossMove.targetIdx === currentPageIndex &&
+    Date.now() - lastCrossMove.ts < 30_000
 
   return (
     <div className="move-to-cover-region px-3 pb-2">
@@ -194,6 +240,20 @@ export default function MoveToCoverRegion() {
           </button>
         ))}
       </div>
+
+      {/* 방금 영역 이동 되돌리기 — Phase 2-B (cross-canvas atomic undo) */}
+      {showUndoBtn && (
+        <button
+          type="button"
+          onClick={handleUndoLastMove}
+          className="mt-2 w-full text-[11px] px-2 py-1.5 rounded-md border border-editor-border bg-editor-surface-low hover:bg-editor-hover text-editor-text-muted hover:text-editor-text transition-colors flex items-center justify-center gap-1"
+          title="방금 이동을 되돌리고 원래 영역으로 객체 복구"
+          aria-label="방금 이동 되돌리기"
+        >
+          <Undo2 className="h-3 w-3" />
+          방금 이동 되돌리기
+        </button>
+      )}
     </div>
   )
 }
