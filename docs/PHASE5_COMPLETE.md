@@ -327,12 +327,24 @@ switch (tool) {
 
 ## 반응형 디자인
 
-현재 구현은 데스크톱 중심이지만, TailwindCSS를 사용하여 향후 쉽게 반응형으로 확장 가능합니다.
+데스크톱 중심으로 시작했으나 이후 모바일/태블릿 대응이 추가되었습니다.
+
+**현재 구현 (2026-04-30 기준)**:
+- 폭 기반 `screenMode` 분기 (`mobile` < 768px, `tablet` < 1024px, `desktop` ≥ 1024px)
+- 모바일: ToolBar 가로 배치 + FeatureSidebar 오버레이 (백드롭 포함)
+- 태블릿: ToolBar 가로 배치 + FeatureSidebar inline
+- 데스크톱: ToolBar 세로 배치 + FeatureSidebar inline
+
+**터치 입력 (`(pointer: coarse)` 디바이스)**:
+- 캔버스 컨테이너 `touch-action: none` 으로 브라우저 제스처 차단
+- Fabric 핸들 hit-area 확대 (`touchCornerSize: 36`)
+- 객체 추가 직후 사이드바 자동 닫기
+- 자세한 내용 → [`MOBILE_TOUCH_UI.md`](./MOBILE_TOUCH_UI.md)
 
 **향후 개선**:
-- 모바일: 세로 레이아웃 (Toolbar → Canvas → Sidebar)
-- 태블릿: 사이드바 오버레이 방식
-- 터치 제스처 지원
+- 캔버스 핀치-투-줌
+- 두 손가락 패닝
+- 모바일 전용 컨텍스트 메뉴 (long-press 대체)
 
 ---
 

@@ -514,8 +514,13 @@ POST   /api/editor/export          # PDF Export
    - 썸네일 캐싱
 
 4. **반응형 UI**
-   - 모바일 대응
-   - 터치 제스처 지원
+   - 데스크톱/태블릿/모바일 레이아웃 ✅ (`screenMode` 분기)
+   - 터치 제스처 1차 지원 ✅ (2026-04-30, `claude/fix-mobile-touch-ui-91nuI`)
+     - `touch-action: none` + `(pointer: coarse)` 기반 핸들 hit-area 확대
+     - 객체 추가 직후 모바일 사이드바 자동 닫기
+     - DraggingPlugin TouchEvent 좌표 호환
+     - 자세한 내용은 [`MOBILE_TOUCH_UI.md`](./MOBILE_TOUCH_UI.md)
+   - 잔여: 핀치-투-줌, 두 손가락 패닝, 모바일 컨텍스트 메뉴 대체 UI
 
 ### 우선순위 2 (권장)
 
@@ -568,7 +573,7 @@ POST   /api/editor/export          # PDF Export
 1. **PDF Export 미구현**: exportPDF() 메소드가 아직 구현되지 않음
 2. **이미지 업로드 미구현**: 이미지 추가 기능이 플레이스홀더
 3. **폰트 로딩**: 커스텀 폰트 로딩 기능 없음
-4. **모바일 미대응**: 터치 제스처 미구현
+4. **모바일 부분 대응**: 기본 터치 인터랙션은 정상 동작 (텍스트/이미지/요소 추가, 선택, 드래그, 리사이즈). 핀치-투-줌, 두 손가락 패닝, 모바일용 컨텍스트 메뉴 대체 UI는 미구현. → [`MOBILE_TOUCH_UI.md`](./MOBILE_TOUCH_UI.md)
 5. **협업 기능 없음**: 실시간 동시 편집 불가
 
 ---
