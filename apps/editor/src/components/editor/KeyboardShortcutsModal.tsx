@@ -33,6 +33,7 @@ const GROUPS: ShortcutGroup[] = [
   {
     title: '작업',
     items: [
+      { keys: ['⌘', 'K'], description: '커맨드 팔레트 (모든 명령 검색)' },
       { keys: ['⌘', 'S'], description: '편집 완료 (저장)' },
       { keys: ['⌘', 'Z'], description: '실행 취소' },
       { keys: ['⌘', '⇧', 'Z'], description: '다시 실행' },
