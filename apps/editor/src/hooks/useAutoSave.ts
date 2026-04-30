@@ -3,6 +3,7 @@ import { debounce } from 'lodash-es'
 import { useEditorStore } from '@/stores/useEditorStore'
 import { useSaveStore } from '@/stores/useSaveStore'
 import { useAppStore } from '@/stores/useAppStore'
+import { useAutoSaveSnapshotsStore } from '@/stores/useAutoSaveSnapshotsStore'
 import { sessionsApi } from '@/api/sessions'
 import { ServicePlugin } from '@storige/canvas-core'
 import type { EditPage, CanvasData } from '@storige/types'
@@ -161,6 +162,17 @@ export function useAutoSave() {
       setSaved()
       resetRetry()
       deleteLocalBackup()
+
+      // 자동저장 시점 스냅샷 메타 push (트랙 BB — Phase 2 minimal, LRU 5개)
+      try {
+        useAutoSaveSnapshotsStore.getState().pushSnapshot({
+          savedAt: new Date().toISOString(),
+          pageCount: updatedPages.length,
+          sessionId: sessionId ?? undefined,
+        })
+      } catch (e) {
+        console.warn('[AutoSave] snapshot push 실패:', e)
+      }
 
       console.log('[AutoSave] 서버 저장 성공')
       return true
