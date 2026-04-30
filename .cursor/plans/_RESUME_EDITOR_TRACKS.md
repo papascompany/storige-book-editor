@@ -67,7 +67,8 @@
 | **R** | `7af39fa` | 빠른 색상 팔레트 (ColorPicker 위 8개 swatch row) |
 | **S** | `3d67d85` | 드래그 앤 드롭 이미지 업로드 (`useImageStore.uploadFile`) |
 | **T** | `37bb181` | 객체 멀티 선택 분포 도구 (3+ 선택 시 가로/세로 분포) |
-| **U** | _이번_ | D5 Phase 3b-ii + 3b-iii — `useSpreadAutoAnchor` (object:added → resolveRegionRef → meta 부여), 3b-iii는 `SpreadPlugin.handleObjectModified`가 이미 처리(검증 완료) |
+| **U** | `a8e1558` | D5 Phase 3b-ii + 3b-iii — `useSpreadAutoAnchor` (object:added → resolveRegionRef → meta 부여), 3b-iii는 `SpreadPlugin.handleObjectModified`가 이미 처리(검증 완료) |
+| **V** | _이번_ | D5 Phase 3b-iv — `SpreadPlugin`에 `spreadObjectsOutOfBounds` 이벤트(canvas-core 빌드 + dist commit), `useSpreadOutOfBoundsToast` hook이 구독해 책등 가변 후 이탈 객체 N개 warning toast 표시 |
 
 # 코드베이스 컨벤션 (트랙 진행하며 정착됨)
 
@@ -170,7 +171,7 @@ git push origin master   # → Vercel 자동 배포
 cover.md §7.3 단계별 난이도 표:
 - ~~**3b-ii** 객체 추가 위치 region 매핑~~ ✅ 트랙 U (2026-04-30) — `useSpreadAutoAnchor` hook이 EditorView에서 `object:added` 한 곳 구독으로 모든 도구에 자동 적용 (도구별 wiring 불필요)
 - ~~**3b-iii** object:modified 시 region 메타 갱신~~ ✅ 트랙 U (검증) — `SpreadPlugin.handleObjectModified`가 히스테리시스(90%/70%)로 이미 처리. 신규 객체도 3b-ii로 첫 add 시 동일 로직 적용 → 일관성 보장
-- **3b-iv** computeResizedLayout 활용한 책등 가변 시 객체 재배치 — `SpreadPlugin.repositionObjects`가 front-cover/front-wing/spine 처리. 남은 격차는 캔버스 밖 이탈 토스트. **중상** (canvas-core 일부)
+- ~~**3b-iv** 책등 가변 시 캔버스 밖 이탈 토스트~~ ✅ 트랙 V (2026-04-30) — `SpreadPlugin`에 `spreadObjectsOutOfBounds` 이벤트 + `useSpreadOutOfBoundsToast` hook (warning 5s)
 - **3b-v** Composite 모드 cross-canvas 이동 — 분리 캔버스 N개 사이 객체 이동 API. canvas-core 빌드 + 데이터 마이그레이션. **상**
 
 ## 🔴 다크 모드 Phase 3 (canvas-core 빌드 필요)
