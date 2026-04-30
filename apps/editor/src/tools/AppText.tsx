@@ -4,6 +4,7 @@ import { Plus } from 'lucide-react'
 import { useAppStore } from '@/stores/useAppStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useIsCustomer } from '@/stores/useAuthStore'
+import { useIsCoarsePointer } from '@/hooks/useIsCoarsePointer'
 import { Button } from '@/components/ui/button'
 import AppSection from '@/components/AppSection'
 import { FontPlugin, ptToPx } from '@storige/canvas-core'
@@ -14,8 +15,10 @@ const DEFAULT_FONT_FAMILY = 'Noto Sans KR'
 export default function AppText() {
   const canvas = useAppStore((state) => state.canvas)
   const getPlugin = useAppStore((state) => state.getPlugin)
+  const tapMenu = useAppStore((state) => state.tapMenu)
   const isCustomer = useIsCustomer()
   const currentSettings = useSettingsStore((state) => state.currentSettings)
+  const isCoarsePointer = useIsCoarsePointer()
 
   // Convert 120pt to pixels based on current DPI
   const getDefaultFontSizeInPixels = useCallback(() => {
@@ -92,7 +95,14 @@ export default function AppText() {
     canvas.onHistory()
     canvas.add(text)
     canvas.setActiveObject(text)
-  }, [canvas, getPlugin, getDefaultFontSizeInPixels])
+    // renderOnAddRemove: false 인 캔버스에서 add 후 명시적 렌더링 필수.
+    canvas.requestRenderAll()
+
+    // 터치 디바이스에서는 객체 추가 직후 사이드바를 닫아 캔버스를 노출 — 추가된 객체를 즉시 만질 수 있게.
+    if (isCoarsePointer) {
+      tapMenu(null)
+    }
+  }, [canvas, getPlugin, getDefaultFontSizeInPixels, isCoarsePointer, tapMenu])
 
   const showMore = useCallback(() => {
     console.log('showMore')
