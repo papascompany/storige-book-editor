@@ -75,11 +75,15 @@ export default function FeatureSidebar({ className, mobileOverlay = false }: Fea
              obj?.extensionType !== 'guideline'
   )
 
-  // 드래그 핸들 mousedown
+  // 드래그 핸들 시작 (Pointer Events로 마우스/터치/펜 통합)
   const handleResizeStart = useCallback(
-    (e: React.MouseEvent<HTMLDivElement>) => {
+    (e: React.PointerEvent<HTMLDivElement>) => {
       if (sidebarCollapsed) return
       e.preventDefault()
+      // 핸들 element가 포인터 캡처를 가져 viewport 밖으로 나가도 move/up 수신
+      try {
+        ;(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId)
+      } catch {}
       isResizingRef.current = true
       startXRef.current = e.clientX
       startWidthRef.current = sidebarWidth
@@ -87,6 +91,7 @@ export default function FeatureSidebar({ className, mobileOverlay = false }: Fea
       setDraftWidth(sidebarWidth)
       document.body.style.cursor = 'col-resize'
       document.body.style.userSelect = 'none'
+      document.body.style.touchAction = 'none'
     },
     [sidebarWidth, sidebarCollapsed]
   )
@@ -110,9 +115,11 @@ export default function FeatureSidebar({ className, mobileOverlay = false }: Fea
     [sidebarCollapsed, setSidebarWidth]
   )
 
-  // 글로벌 mousemove/mouseup 리스너 (드래그 중에만 부착)
+  // 글로벌 pointermove/pointerup/pointercancel 리스너 (드래그 중에만 부착)
+  // Pointer Events가 마우스/터치/펜 모두 처리. 핸들 element의 setPointerCapture로
+  // viewport 밖 이동도 수신.
   useEffect(() => {
-    const onMove = (e: MouseEvent) => {
+    const onMove = (e: PointerEvent) => {
       if (!isResizingRef.current) return
       const delta = e.clientX - startXRef.current
       const next = Math.min(
@@ -127,16 +134,19 @@ export default function FeatureSidebar({ className, mobileOverlay = false }: Fea
       isResizingRef.current = false
       document.body.style.cursor = ''
       document.body.style.userSelect = ''
+      document.body.style.touchAction = ''
       const finalWidth = draftWidthRef.current
       draftWidthRef.current = null
       setDraftWidth(null)
       if (finalWidth != null) setSidebarWidth(finalWidth)
     }
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('mouseup', onUp)
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onUp)
     return () => {
-      window.removeEventListener('mousemove', onMove)
-      window.removeEventListener('mouseup', onUp)
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onUp)
     }
   }, [setSidebarWidth])
 
@@ -302,14 +312,16 @@ export default function FeatureSidebar({ className, mobileOverlay = false }: Fea
           aria-orientation="vertical"
           aria-label="사이드바 크기 조절"
           title="드래그하여 너비 조절 · 더블클릭으로 기본값 복원"
-          onMouseDown={handleResizeStart}
+          onPointerDown={handleResizeStart}
           onDoubleClick={handleResizeDoubleClick}
+          style={{ touchAction: 'none' }}
           className={cn(
             'absolute top-0 right-0 h-full w-1 cursor-col-resize select-none group',
             'hover:bg-editor-accent/30 active:bg-editor-accent/50 transition-colors'
           )}
         >
-          <span className="absolute top-0 -right-1 w-3 h-full" />
+          {/* 터치 친화 hit area 확장 — 보이는 핸들은 1px이지만 5px 폭으로 잡힘 */}
+          <span className="absolute top-0 -right-2 w-5 h-full" />
         </div>
       )}
     </div>

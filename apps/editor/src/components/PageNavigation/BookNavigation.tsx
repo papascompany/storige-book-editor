@@ -235,15 +235,17 @@ export const BookNavigation = memo(function BookNavigation({
       )}
       aria-label="페이지 네비게이션"
     >
-      {/* 이전 버튼 */}
+      {/* 이전 버튼 — 터치 타겟 44px+ 보장 (반응형 Phase 2) */}
       <button
         onClick={handlePrev}
         disabled={currentPageIndex === 0}
         className={cn(
           'flex-shrink-0 flex items-center justify-center rounded-md hover:bg-editor-hover transition-colors',
-          orientation === 'vertical' ? 'w-10 h-7' : 'w-7 h-10',
+          'min-w-[44px] min-h-[44px]',
+          orientation === 'vertical' ? 'w-11 h-11' : 'w-11 h-11',
           currentPageIndex === 0 && 'opacity-40 cursor-not-allowed'
         )}
+        aria-label="이전 페이지"
         title="이전"
       >
         <PrevIcon className="h-4 w-4" />
@@ -288,15 +290,17 @@ export const BookNavigation = memo(function BookNavigation({
         })}
       </div>
 
-      {/* 다음 버튼 */}
+      {/* 다음 버튼 — 터치 타겟 44px+ 보장 (반응형 Phase 2) */}
       <button
         onClick={handleNext}
         disabled={currentPageIndex >= pageCount - 1}
         className={cn(
           'flex-shrink-0 flex items-center justify-center rounded-md hover:bg-editor-hover transition-colors',
-          orientation === 'vertical' ? 'w-10 h-7' : 'w-7 h-10',
+          'min-w-[44px] min-h-[44px]',
+          orientation === 'vertical' ? 'w-11 h-11' : 'w-11 h-11',
           currentPageIndex >= pageCount - 1 && 'opacity-40 cursor-not-allowed'
         )}
+        aria-label="다음 페이지"
         title="다음"
       >
         <NextIcon className="h-4 w-4" />
