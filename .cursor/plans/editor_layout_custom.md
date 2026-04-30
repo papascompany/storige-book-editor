@@ -663,6 +663,18 @@ rm -rf apps/editor/node_modules/.vite
   - `useUiPrefStore.theme` 추가 (`'light' | 'dark' | 'system'`) + version 5→6 마이그레이션
   - `useThemeSync()` hook — `<html data-theme>` 속성 동기화. system 모드에서 `prefers-color-scheme` 변경 자동 감지. App.tsx 루트에서 1회 호출
   - `EditorHeader`에 테마 토글 버튼 — Sun/Moon/Monitor 아이콘 + 클릭 시 light → dark → system 사이클
+- ✅ **트랙 J — 커맨드 팔레트 (Cmd+K)**
+  - `CommandPaletteModal.tsx` 신규 — 백드롭 + 검색 input + 그룹별 결과 리스트 + 키보드 navigation (↑↓ Enter ESC)
+  - 액션 카탈로그 22개 (도구 9개 + 작업 5개 + UI 8개) + 동적 페이지 이동 액션
+    · 도구: 텍스트/이미지/요소/배경/템플릿/프레임/모양컷/QR바코드/편집도구
+    · 작업: 실행취소/다시실행/편집완료(⌘S)/내작업 불러오기/단축키 도움말
+    · UI: 사이드바 토글/룰러 토글/테마(light·dark·system)/페이지네비 위치(auto·right·bottom)
+  - 검색: case-insensitive substring (label + group + keywords). 예) "텍스트" → 1개 결과
+  - 키보드: ↑↓ active 이동, Enter 실행, ESC 닫기, 마우스 hover로도 active 변경
+  - Cmd/Ctrl+K 글로벌 리스너 (입력 필드에서도 동작 — 디자이너 워크플로우)
+  - 실행 시 자동 닫힘. 단축키 도움말 액션 선택 시 팔레트 닫고 도움말 모달 열기
+  - 단축키 카탈로그(`KeyboardShortcutsModal`)에 Cmd+K 항목 추가
+  - 다크 모드 자동 호환 (테마 토큰)
 - ✅ **트랙 I — 최근 사용 색상 (자동 LRU stack)**
   - `useRecentColorsStore` (zustand + persist v1) — 최근 16개 색상 자동 누적, LRU 정책
   - `normalizeToHex()` 유틸 — `#rrggbb`/`#rgb`/`rgb(...)`/`rgba(...)` → 6자리 hex 정규화. `mixed`/`transparent`/빈 문자열은 null로 무시

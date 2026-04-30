@@ -33,6 +33,7 @@ import {
 import { AutoSaveIndicator } from './AutoSaveIndicator'
 import { BookMockup3D } from '../Mockup3D/BookMockup3D'
 import KeyboardShortcutsModal from './KeyboardShortcutsModal'
+import CommandPaletteModal from './CommandPaletteModal'
 import { showToast } from '@/stores/useToastStore'
 import { useUiPrefStore, type PageNavPosition, type Theme } from '@/stores/useUiPrefStore'
 
@@ -90,6 +91,8 @@ export default function EditorHeader({
 
   // 단축키 도움말 모달 — 키 리스너는 handleFinish/handleSaveForAdmin 정의 후 useEffect로 등록
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
+  // 커맨드 팔레트 모달 (Cmd+K)
+  const [paletteOpen, setPaletteOpen] = useState(false)
 
   // Stores
   const { ready, canvas, allCanvas, allEditors, getPlugin, setPage, isSpreadMode, updateAllWorkspaceSettings } = useAppStore()
@@ -443,6 +446,13 @@ export default function EditorHeader({
       if (e.key === '?' && !inInput) {
         e.preventDefault()
         setShortcutsOpen((v) => !v)
+        return
+      }
+
+      // Cmd/Ctrl+K → 커맨드 팔레트 토글 (입력 필드에서도 동작)
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault()
+        setPaletteOpen((v) => !v)
         return
       }
 
@@ -806,6 +816,18 @@ export default function EditorHeader({
 
       {/* 단축키 도움말 모달 */}
       <KeyboardShortcutsModal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+
+      {/* 커맨드 팔레트 (Cmd+K) */}
+      <CommandPaletteModal
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        onFinish={isAdmin ? () => handleSaveForAdmin(false) : handleFinish}
+        onOpenWorkspace={handleOpenWorkspace}
+        onOpenShortcuts={() => {
+          setPaletteOpen(false)
+          setShortcutsOpen(true)
+        }}
+      />
 
       {/* 3D 미리보기 모달 */}
       {show3DMockup && spreadConfig && (
