@@ -1,8 +1,21 @@
 import { useCallback, useState, useMemo } from 'react'
+import { fabric } from 'fabric'
 import { useAppStore, useActiveSelection, useSelectionType } from '@/stores/useAppStore'
 import AppSection from '@/components/AppSection'
 import { Button } from '@/components/ui/button'
 import { parseColorValue, rgbaToHex8, SelectionType } from '@storige/canvas-core'
+
+// 그라디언트 프리셋 (좌→우 90도 linear). 트랙 AA — ObjectFill 빠른 적용
+const GRADIENT_PRESETS: ReadonlyArray<{ name: string; from: string; to: string }> = [
+  { name: 'Brand', from: '#7fbf34', to: '#6ba82d' },
+  { name: 'Sunset', from: '#f093fb', to: '#f5576c' },
+  { name: 'Ocean', from: '#4facfe', to: '#00f2fe' },
+  { name: 'Mint', from: '#84fab0', to: '#8fd3f4' },
+  { name: 'Sunrise', from: '#ff9a9e', to: '#fecfef' },
+  { name: 'Lush', from: '#56ab2f', to: '#a8e063' },
+  { name: 'Mono', from: '#2c3e50', to: '#4a5568' },
+  { name: 'Cherry', from: '#ff7e5f', to: '#feb47b' },
+] as const
 
 export default function ObjectFill() {
   const [expanded, setExpanded] = useState(true)
@@ -135,6 +148,35 @@ export default function ObjectFill() {
     [activeSelection, effectiveOpacity, canvas]
   )
 
+  // 그라디언트 프리셋 적용 (linear 90deg, 좌→우)
+  // 텍스트 객체는 fabric의 setSelectionStyles가 string fill만 받으므로 미지원
+  const isTextSelection = selectionType === SelectionType.text
+  const applyGradient = useCallback(
+    (from: string, to: string) => {
+      if (!activeSelection || !Array.isArray(activeSelection) || activeSelection.length === 0) return
+      const obj = activeSelection[0] as any
+      if (!obj) return
+      if (obj.type === 'i-text' || obj.type === 'textbox' || obj.type === 'text') return
+      const w = (obj.width ?? 100) * (obj.scaleX ?? 1)
+      const grad = new fabric.Gradient({
+        type: 'linear',
+        coords: { x1: 0, y1: 0, x2: w, y2: 0 },
+        colorStops: [
+          { offset: 0, color: from },
+          { offset: 1, color: to },
+        ],
+      })
+      obj.set('fill', grad)
+      obj.dirty = true
+      canvas?.requestRenderAll()
+      // 일관성을 위해 modified 이벤트 발행 (history 등록)
+      try {
+        canvas?.fire?.('object:modified', { target: obj })
+      } catch {}
+    },
+    [activeSelection, selectionType, canvas]
+  )
+
   // Handle opacity change
   const handleOpacityChange = useCallback(
     (e: React.FocusEvent<HTMLInputElement> | React.KeyboardEvent<HTMLInputElement>) => {
@@ -258,6 +300,26 @@ export default function ObjectFill() {
                   </div>
                 </>
               )}
+            </div>
+          )}
+
+          {/* 그라디언트 프리셋 row (트랙 AA) — 비-텍스트 객체에서만 노출 */}
+          {!hideFill && hasFill && !isTextSelection && (
+            <div className="w-full flex flex-col gap-1.5">
+              <span className="text-[11px] text-editor-text-muted leading-none">그라디언트</span>
+              <div className="flex flex-wrap gap-1.5">
+                {GRADIENT_PRESETS.map((p) => (
+                  <button
+                    key={p.name}
+                    type="button"
+                    onClick={() => applyGradient(p.from, p.to)}
+                    title={`${p.name} (${p.from} → ${p.to})`}
+                    aria-label={`그라디언트 적용: ${p.name}`}
+                    className="w-7 h-7 rounded border border-editor-border hover:ring-2 hover:ring-editor-accent/50 transition-all"
+                    style={{ background: `linear-gradient(90deg, ${p.from}, ${p.to})` }}
+                  />
+                ))}
+              </div>
             </div>
           )}
         </div>

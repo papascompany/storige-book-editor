@@ -72,7 +72,8 @@
 | **W** | `846d5e9` | 다크 모드 Phase 3 — `RULER_DEFAULTS_DARK`+`RulerPlugin.setTheme()` (canvas-core), `defaultControlsDark`+`getDefaultControls()` (editor), `useCanvasThemeSync(ready)` hook이 테마 변경 시 ruler+선택 핸들 일괄 적용. 워크스페이스 흰 페이지 유지 |
 | **X** | `43a6ba0` | 반응형 Phase 2 (부분) — 사이드바 핸들 Pointer Events 통합(마우스/터치/펜) + setPointerCapture + 5px hit area, BookNavigation 화살표 44×44 터치 타겟 + aria-label. 태블릿 헤더 wrap은 후속(X-2) |
 | **Y** | `1d07e00` | 작은 묶음 — 멀티파일 드롭 (이미지 N개 순차 업로드 + cascade 20px offset + 일괄 success/partial/fail toast), Shift+화살표 10px nudge 단축키 카탈로그 등록(코드는 `ControlsPlugin`에 이미 존재) |
-| **Z** | _이번_ | 반응형 Phase 2 X-2 — 헤더 작업명 max-w 단계 추가(`sm:180/md:200/lg:280`), 페이지네비 select를 `lg:block`로 좁힘(태블릿에서 헤더 도구 폭 여유 확보) + tooltip 안내 갱신 |
+| **Z** | `4fefa91` | 반응형 Phase 2 X-2 — 헤더 작업명 max-w 단계 추가(`sm:180/md:200/lg:280`), 페이지네비 select를 `lg:block`로 좁힘(태블릿에서 헤더 도구 폭 여유 확보) + tooltip 안내 갱신 |
+| **AA** | _이번_ | ObjectFill 그라디언트 프리셋 8개 (Brand/Sunset/Ocean/Mint/Sunrise/Lush/Mono/Cherry) — 7×7px 미니 swatch 클릭 1회로 linear 90° 그라디언트 적용 (fabric.Gradient + object:modified 발행). 텍스트 객체는 fabric setSelectionStyles 한계로 미지원(자동 hide) |
 
 # 코드베이스 컨벤션 (트랙 진행하며 정착됨)
 
@@ -195,7 +196,7 @@ cover.md §7.3 단계별 난이도 표:
 
 - 버전 히스토리 패널 Phase 2 — 자동저장 스냅샷 list (백엔드 versions API 또는 localStorage)
 - ~~멀티 파일 드롭~~ ✅ 트랙 Y (cascade 20px offset, 일괄 toast)
-- ObjectFill에 그라디언트 추천 프리셋
+- ~~ObjectFill에 그라디언트 추천 프리셋~~ ✅ 트랙 AA (8개 linear 90°, 비-텍스트만)
 - 멀티 선택 시 정렬·분포·잠금·삭제 floating bar (canvas 위) — ControlBar에 이미 정렬/분포 있어 우선순위 낮음
 - ~~키보드 nudge step (1px / 10px)~~ ✅ 트랙 Y — 코드는 `ControlsPlugin.handleArrowKeyMovement:130`에 이미 존재(Shift+Arrow), 카탈로그 등록
 
