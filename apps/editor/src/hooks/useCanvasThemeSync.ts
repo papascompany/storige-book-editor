@@ -4,6 +4,13 @@ import { useAppStore } from '@/stores/useAppStore'
 import { useUiPrefStore, resolveTheme } from '@/stores/useUiPrefStore'
 import { getDefaultControls } from '@/stores/useSettingsStore'
 
+// 모바일/터치 환경 감지 (iOS Safari 메모리 한계 회피용 — 모바일은 객체 set 스킵)
+function isTouchEnv(): boolean {
+  if (typeof window === 'undefined' || !window.matchMedia) return false
+  try { return window.matchMedia('(pointer: coarse)').matches } catch { return false }
+}
+const TOUCH_ENV = isTouchEnv()
+
 // 시스템 객체 식별 패턴 (EmptyCanvasHint와 동일 정책 + SpreadPlugin 가이드)
 const SYSTEM_IDS = new Set(['workspace', 'cut-border', 'safe-zone-border', 'template-background'])
 const SYSTEM_EXTENSION_TYPES = new Set([
@@ -60,6 +67,10 @@ export function useCanvasThemeSync(ready: boolean): void {
       })
 
       // 2. 객체 선택 핸들 색상 적용 (사용자 객체에만)
+      // 모바일 가드: TOUCH_ENV에서는 모든 객체 순회 + obj.set + requestRenderAll이
+      // iOS Safari 메모리 한계(~384MB) 위협 가능. 모바일은 fabric default 핸들로
+      // 충분 — 다크 모드 핸들 색상은 desktop 전용으로 한정.
+      if (TOUCH_ENV) return
       const controls = getDefaultControls(mode)
       canvases.forEach((cv) => {
         if (!cv || (cv as any).disposed) return
