@@ -191,6 +191,8 @@ export default function AppBackground() {
   }, [canvas, bgObject])
 
   // Handle background color change
+  // 모바일 안전: renderAll(동기) → requestRenderAll(다음 frame, throttle) — 빠른 색상 swipe
+  // 시 한 번만 그려 retina backing store 메모리 hit 회피.
   const onBgColorChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value
     setBgColor(value)
@@ -205,9 +207,9 @@ export default function AppBackground() {
 
     workspace.fill = rgbaString
     workspace.dirty = true
-    canvas.renderAll()
-    updateObjects()
-  }, [workspace, canvas, updateObjects])
+    canvas.requestRenderAll()
+    // updateObjects는 selection list 갱신 — 배경 색상 변경엔 불필요. skip.
+  }, [workspace, canvas])
 
   // Handle lid color change
   const onLidColorChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -222,10 +224,9 @@ export default function AppBackground() {
     const rgbaString = `rgba(${rgba.r}, ${rgba.g}, ${rgba.b}, 1)`
     lidObject.fill = rgbaString
     lidObject.dirty = true
-    canvas.renderAll()
+    canvas.requestRenderAll()
     canvas.fire('object:modified', { target: lidObject })
-    updateObjects()
-  }, [lidObject, canvas, updateObjects])
+  }, [lidObject, canvas])
 
   // Add content to canvas
   const addContentToCanvas = useCallback(async (content: unknown) => {
