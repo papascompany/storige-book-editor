@@ -2,7 +2,8 @@ import { useCallback, useEffect } from 'react'
 import { useAppStore } from '@/stores/useAppStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { showToast } from '@/stores/useToastStore'
-import { resolveRegionRef, type SpreadPlugin, type SpreadRegion } from '@storige/canvas-core'
+import { resolveRegionRef, type SpreadPlugin } from '@storige/canvas-core'
+import type { SpreadRegion } from '@storige/types'
 
 /**
  * 표지 region 인식 helper (cover.md §7-8 / D5 Phase 3b 인프라).

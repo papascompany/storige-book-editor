@@ -518,8 +518,13 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
           safeSize: spreadConfig.spec.safeSizeMm,
         }
       } else {
-        // 일반 모드: 현재 설정 사용
-        pageSize = currentSettings.size
+        // 일반 모드: 현재 설정 사용 (safeSize default 5)
+        pageSize = {
+          width: currentSettings.size.width,
+          height: currentSettings.size.height,
+          cutSize: currentSettings.size.cutSize,
+          safeSize: currentSettings.size.safeSize ?? 5,
+        }
       }
 
       const workspaceOptions = {
@@ -546,7 +551,7 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
         id: canvasId,
         templateId: canvasId,
         templateType: TemplateType.PAGE,
-        canvasData: { version: '5.3.0', objects: [] },
+        canvasData: { version: '5.3.0', objects: [], width: pageSize.width, height: pageSize.height },
         sortOrder: editorStore.pages.length,
         required: false,
         deleteable: true,

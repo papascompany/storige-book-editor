@@ -631,7 +631,11 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
       throw new Error('No item')
     }
 
-    const imageURL = imagePlugin.processImage(segmented.getElement() as HTMLImageElement)
+    const imageURLResult = imagePlugin.processImage(segmented.getElement() as HTMLImageElement)
+    // processImage가 Promise<string>인 경우 await로 풀어줌
+    const imageURL = typeof (imageURLResult as any)?.then === 'function'
+      ? await (imageURLResult as Promise<string>)
+      : (imageURLResult as unknown as string)
     const center = image.getCenterPoint()
 
     // core API를 사용하여 이미지 로드
