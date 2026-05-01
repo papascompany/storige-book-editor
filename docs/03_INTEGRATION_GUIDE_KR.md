@@ -366,8 +366,22 @@ flowchart LR
 | `paperType` | ❌ | string | 용지 코드 | `mojo_80g` |
 | `bindingType` | ❌ | string | 제본 코드 | `perfect` |
 | `orderSeqno` | ❌ | number | 주문 번호 | `12345` |
+| `productId` | ❌ | UUID | 상품 ID (옵션 B/C 시 사용) | `aaaa-bbbb-...` |
+| `size` | ❌ | number | **(옵션 B)** product_sizes 의 sizeNo 인덱스 | `0`, `1` |
+| `width` | ❌ | number | **(옵션 C)** 인쇄물 가로 (mm). product.allowCustomSize 필요 | `148` |
+| `height` | ❌ | number | **(옵션 C)** 인쇄물 세로 (mm). product.allowCustomSize 필요 | `210` |
 | `sessionId` | ❌ | UUID | 기존 세션 ID (재편집) | `660e8400-...` |
 | `returnUrl` | ❌ | string | 완료 후 리다이렉트 URL | `/mypage/...` |
+
+#### 인쇄물 사이즈 전달 옵션
+
+| 옵션 | 파라미터 조합 | 사용 케이스 | 관리자 설정 |
+|---|---|---|---|
+| **A** | `templateSetId` 만 | 사이즈가 templateSet 에 종속 (기본) | 없음 |
+| **B** | `productId + size=N` | product_sizes 의 N번째 등록 사이즈 사용 | product_sizes 사전 등록 |
+| **C** | `productId + width=W&height=H` | 자유 사이즈 입력 (mm) | 상품에 `allowCustomSize=true` 토글 |
+
+옵션 C 보안 검증: `product.allowCustomSize === true && 0 < w/h ≤ 2000mm` 모두 충족 시만 적용. 미충족 시 무시 + console.warn. 자세한 내용은 [`BOOKMOA_INTEGRATION_DIFF.md`](./BOOKMOA_INTEGRATION_DIFF.md) §6 참조.
 
 ### 3.5 에디터 JavaScript API
 
