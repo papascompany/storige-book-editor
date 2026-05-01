@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { ThumbsUp, ThumbsDown, Sparkles as Sparkle, RefreshCw as ArrowsClockwise } from 'lucide-react';
+import { TemplateSetType } from '@storige/types';
 import { Button } from '../ui/button';
 import {
   aiApi,
@@ -9,7 +10,7 @@ import {
 } from '../../api/ai';
 
 interface RecommendationPanelProps {
-  templateType?: 'book' | 'leaflet';
+  templateType?: TemplateSetType;
   onSelectTemplate?: (templateSetId: string) => void;
 }
 

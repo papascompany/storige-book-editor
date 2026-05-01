@@ -56,7 +56,10 @@ export default function AppElement() {
         })
 
         if (result.success && result.data) {
-          setContents(result.data.items as EditorContent[])
+          // contentsApi 반환은 @storige/types EditorContent (createdAt: Date)이고
+          // 로컬 import는 @/generated/graphql EditorContent (createdAt: string)이라 형태가 다름.
+          // 런타임 사용처는 추가 필드만 보고 createdAt은 직접 참조 안 함 → unknown 캐스팅으로 정합.
+          setContents(result.data.items as unknown as EditorContent[])
         } else {
           setContents([])
         }

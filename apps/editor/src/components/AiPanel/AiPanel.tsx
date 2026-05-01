@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { Sparkles as Sparkle, Wand2 as MagicWand } from 'lucide-react';
+import { TemplateSetType } from '@storige/types';
 import { RecommendationPanel } from './RecommendationPanel';
 import { GenerationPanel } from './GenerationPanel';
 
 interface AiPanelProps {
-  templateType?: 'book' | 'leaflet';
+  templateType?: TemplateSetType;
   dimensions?: { width: number; height: number };
   onSelectTemplate?: (templateSetId: string) => void;
   onGenerated?: (templateSetId: string) => void;
@@ -16,7 +17,7 @@ type Tab = 'recommend' | 'generate';
  * AI 기능 통합 패널
  */
 export function AiPanel({
-  templateType = 'book',
+  templateType = TemplateSetType.BOOK,
   dimensions = { width: 210, height: 297 },
   onSelectTemplate,
   onGenerated,
