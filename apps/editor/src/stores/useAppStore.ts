@@ -186,8 +186,11 @@ function isTouchEnv(): boolean {
   try { return window.matchMedia('(pointer: coarse)').matches } catch { return false }
 }
 
-const SCREENSHOT_DEBOUNCE_MS = isTouchEnv() ? 800 : 200
-const SCREENSHOT_MULTIPLIER_TOUCH = 0.4
+// 모바일은 더 공격적으로 — iOS Safari 메모리 한계 회피.
+// 디바운스 1500ms 로 길게 (사용자 인터랙션 멈춘 후에만 캡처),
+// multiplier 0.25 로 데이터 양을 약 1/16 로 축소.
+const SCREENSHOT_DEBOUNCE_MS = isTouchEnv() ? 1500 : 200
+const SCREENSHOT_MULTIPLIER_TOUCH = 0.25
 
 const debouncedTakeScreenshot = debounce((allCanvas: any[], set: any) => {
   // 캔버스가 유효한지 확인
