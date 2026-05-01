@@ -114,6 +114,24 @@ bookmoa/front/storige/
 | cover_file_id | X | 표지 파일 ID |
 | content_file_id | X | 내지 파일 ID |
 | return_url | X | 편집 완료 후 리다이렉트 URL |
+| pageCount | X | 내지 페이지 수 (예: `50`) |
+| paperType | X | 용지 코드 (예: `mojo_80g`) |
+| bindingType | X | 제본 코드 (예: `perfect`) |
+| size | X | **(옵션 B)** product_sizes 의 sizeNo 인덱스 (예: `0`, `1`, `2`) |
+| width | X | **(옵션 C)** 인쇄물 가로 (mm). `product.allowCustomSize=true` 일 때만 적용 |
+| height | X | **(옵션 C)** 인쇄물 세로 (mm). `product.allowCustomSize=true` 일 때만 적용 |
+
+### 5.1.1 인쇄물 사이즈 전달 — 3 가지 옵션
+
+상품의 사이즈를 결정하는 방법은 다음 3가지 중 선택. 자세한 비교/PHP 예시: [`docs/BOOKMOA_INTEGRATION_DIFF.md`](./BOOKMOA_INTEGRATION_DIFF.md) §6.
+
+| 옵션 | 사이즈 결정 | 사용 케이스 |
+|---|---|---|
+| **A** | `template_set_id` 가 사이즈를 보유 | 사이즈가 templateSet 별로 사전 등록 (기본) |
+| **B** | `product_id + size` (sizeNo 인덱스) | 상품에 `product_sizes` 가 사전 등록되어 있고 폼에서 선택 |
+| **C** | `product_id + width + height` (mm) | 자유 사이즈 입력 상품 — 관리자가 `allowCustomSize=true` 설정 필요 |
+
+옵션 C 사용 시 **Storige Admin 의 상품 편집 폼**에서 "외부 쇼핑몰 사이즈 override 허용" Switch 를 활성화해야 합니다. 활성화 안 된 상품에는 width/height 가 무시됩니다 (보안: 임의 사이즈 강제 방지).
 
 ### 5.2 에디터 열기 예시
 
