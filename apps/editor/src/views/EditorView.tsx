@@ -472,6 +472,8 @@ export default function EditorView() {
       pageCount,
       paperType,
       bindingType,
+      width,
+      height,
     }
 
     // ref를 통해 최신 함수 호출
