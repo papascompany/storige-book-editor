@@ -32,6 +32,7 @@ SHOW COLUMNS FROM products LIKE 'allowCustomSize';
 | 일자 | 파일 | 내용 |
 |---|---|---|
 | 2026-05-01 | [`20260501_add_products_allowCustomSize.sql`](./20260501_add_products_allowCustomSize.sql) | `products.allowCustomSize` BOOLEAN 컬럼 추가 (옵션 C — 외부 쇼핑몰 사이즈 override 허용) |
+| 2026-05-01 | [`20260501_add_edit_session_versions.sql`](./20260501_add_edit_session_versions.sql) | `edit_session_versions` 테이블 신규 (BB-Phase 3 — 자동저장 시점 versions LRU 20) |
 
 ## 신규 환경 셋업
 
