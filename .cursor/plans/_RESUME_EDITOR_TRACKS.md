@@ -98,6 +98,7 @@
 | **P0-1·P0-2 docs** | `ed4e08b` | `apps/api/migrations/20260501_add_edit_session_versions.sql` 신규 + README 갱신 + `docs/P0_OPERATIONS_CHECKLIST.md`(운영 마이그 가이드 + 모바일 8 시나리오 체크리스트) |
 | **migration fix** | `ce082ef` | `edit_session_versions` FK COLLATE 누락 보정 — 운영 적용 시 errno 150(`edit_sessions.id`가 `utf8mb4_unicode_ci`인데 신규 테이블 default가 다름) 발견 후 명시적 `COLLATE=utf8mb4_unicode_ci` 추가 + 코멘트로 향후 동일 issue 방지 |
 | **mobile crash fix** | `60efb05` | iOS Safari 페이지 크래시 회피 — `AppBackground.onBgColorChange/onLidColorChange`: `canvas.renderAll()`(sync) → `canvas.requestRenderAll()`(다음 frame, frame skip) + `updateObjects()` 호출 제거(배경은 selection 무관). `useCanvasThemeSync`: TOUCH_ENV 가드 추가(모바일에선 객체 set 스킵, 룰러 setTheme만 적용) |
+| **DD-5-B-v2** | (이번 트랙) | 페이지 drag-to-reorder UI — `PageThumbnail`에 drag props (`draggable`, `onDragStart/Over/Leave/Drop/End`, `isDragSource`, `insertHint`) + insert bar(4px accent edge) + grab/grabbing cursor. `BookNavigation`에서 native HTML5 DnD로 wiring: 표지(isCover) 제외 + 모바일/스프레드/`pageCount !== allCanvasLength` 가드, source/target 모두 내지일 때만 활성. `computeInnerReorder` helper로 0..N-1 순열 빌드 후 `reorderByIndex` 호출 + 성공 toast. 의존성 추가 0건 (dnd-kit 미사용) |
 
 # 코드베이스 컨벤션 (트랙 진행하며 정착됨)
 
@@ -215,7 +216,7 @@ git push origin master   # → Vercel 자동 배포
 
 ## 🟢 P2 (중기 — 폴리시 / 확장)
 
-- **DD-5-B-v2** — 페이지 순서 재배열 UI 재구현 (store 액션은 `reorderByIndex`로 준비됨)
+- ~~**DD-5-B-v2**~~ ✅ 완료 — 페이지 drag-to-reorder UI (BookNavigation native HTML5 DnD + 표지/모바일/스프레드 가드)
 - **fabric 객체 색상 다크모드 통일** — 현재 desktop 핸들만 적용, 모바일은 fabric default 유지 정책
 - **CC-Phase 3** — multi-select cross-region 정밀 매핑
 - **AI 패널 정합** (AI 도구 메뉴 + 패널 통합)

@@ -8,6 +8,18 @@ import { templateSetsApi } from '@/api'
 import { TemplateType } from '@storige/types'
 import { PageThumbnail } from './PageThumbnail'
 import { cn } from '@/lib/utils'
+import { showToast } from '@/stores/useToastStore'
+
+// 모바일/터치 환경에서는 native HTML5 drag가 불안정 + long-press와 충돌 → drag 비활성
+function isTouchEnv(): boolean {
+  if (typeof window === 'undefined' || !window.matchMedia) return false
+  try {
+    return window.matchMedia('(pointer: coarse)').matches
+  } catch {
+    return false
+  }
+}
+const TOUCH_ENV = isTouchEnv()
 
 /**
  * 책자(BOOK) 페이지 네비게이션 — Canva 스타일 썸네일 리스트
@@ -186,6 +198,8 @@ export const BookNavigation = memo(function BookNavigation({
   const currentPageIndex = useEditorStore((s) => s.currentPageIndex)
   const setPage = useAppStore((s) => s.setPage)
   const goToPage = useEditorStore((s) => s.goToPage)
+  const reorderByIndex = useAppStore((s) => s.reorderByIndex)
+  const isSpreadMode = useAppStore((s) => s.isSpreadMode)
 
   const pageCount = meta.length || allCanvasLength
 
@@ -207,6 +221,15 @@ export const BookNavigation = memo(function BookNavigation({
   const autoOrientation = useResolvedPageNavPosition() === 'right' ? 'vertical' : 'horizontal'
   const orientation = forcedOrientation ?? autoOrientation
 
+  // DD-5-B-v2: drag-to-reorder 상태 — sourceIdx는 allCanvas 기준 인덱스
+  const [dragSourceIdx, setDragSourceIdx] = useState<number | null>(null)
+  const [dragOver, setDragOver] = useState<{ idx: number; before: boolean } | null>(null)
+
+  // 드래그 가능 조건 — 모바일/터치 + 스프레드 모드 + 메타 미동기화 시 비활성
+  // (items.length !== allCanvasLength면 reorderByIndex가 length mismatch로 거절하므로 사전 차단)
+  const dragEnabled =
+    !TOUCH_ENV && !isSpreadMode && allCanvasLength > 1 && pageCount === allCanvasLength
+
   if (pageCount === 0) return null
 
   // meta 없을 때(어디서도 못 받음) — 캔버스 개수만큼 단순 라벨
@@ -219,6 +242,59 @@ export const BookNavigation = memo(function BookNavigation({
           isCover: false,
           id: `canvas-${i}`,
         }))
+
+  // drag handler 모음 — 내지(non-cover) 카드에만 부여
+  const handleDragStart = (idx: number) => (e: React.DragEvent<HTMLButtonElement>) => {
+    if (!dragEnabled) return
+    setDragSourceIdx(idx)
+    // dataTransfer는 일부 브라우저에서 setData 호출 안 하면 dragstart 자체가 무시됨
+    try {
+      e.dataTransfer.effectAllowed = 'move'
+      e.dataTransfer.setData('text/plain', String(idx))
+    } catch {
+      // 무시
+    }
+  }
+
+  const handleDragOver = (idx: number) => (e: React.DragEvent<HTMLButtonElement>) => {
+    if (!dragEnabled || dragSourceIdx === null) return
+    if (idx === dragSourceIdx) return
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    // 포인터 위치로 before/after 결정 (orientation 별로 X 또는 Y 축 사용)
+    const rect = e.currentTarget.getBoundingClientRect()
+    const before =
+      orientation === 'vertical'
+        ? e.clientY < rect.top + rect.height / 2
+        : e.clientX < rect.left + rect.width / 2
+    setDragOver((prev) =>
+      prev && prev.idx === idx && prev.before === before ? prev : { idx, before }
+    )
+  }
+
+  const handleDragLeave = (idx: number) => () => {
+    setDragOver((prev) => (prev && prev.idx === idx ? null : prev))
+  }
+
+  const handleDrop = (idx: number) => (e: React.DragEvent<HTMLButtonElement>) => {
+    if (!dragEnabled || dragSourceIdx === null) return
+    e.preventDefault()
+    const before =
+      orientation === 'vertical'
+        ? e.clientY < e.currentTarget.getBoundingClientRect().top + e.currentTarget.getBoundingClientRect().height / 2
+        : e.clientX < e.currentTarget.getBoundingClientRect().left + e.currentTarget.getBoundingClientRect().width / 2
+    const newIndices = computeInnerReorder(items, dragSourceIdx, idx, before)
+    setDragSourceIdx(null)
+    setDragOver(null)
+    if (!newIndices) return
+    reorderByIndex(newIndices)
+    showToast('페이지 순서가 변경되었습니다', 'success', 2000)
+  }
+
+  const handleDragEnd = () => {
+    setDragSourceIdx(null)
+    setDragOver(null)
+  }
 
   // 화살표 아이콘 — 가로면 좌/우, 세로면 위/아래
   const PrevIcon = orientation === 'vertical' ? CaretUp : CaretLeft
@@ -284,6 +360,16 @@ export const BookNavigation = memo(function BookNavigation({
                 isCover={m.isCover}
                 onClick={() => handleSelect(m.index)}
                 orientation={orientation}
+                draggable={dragEnabled && !m.isCover}
+                onDragStart={!m.isCover ? handleDragStart(m.index) : undefined}
+                onDragOver={!m.isCover ? handleDragOver(m.index) : undefined}
+                onDragLeave={!m.isCover ? handleDragLeave(m.index) : undefined}
+                onDrop={!m.isCover ? handleDrop(m.index) : undefined}
+                onDragEnd={!m.isCover ? handleDragEnd : undefined}
+                isDragSource={dragSourceIdx === m.index}
+                insertHint={
+                  dragOver && dragOver.idx === m.index ? (dragOver.before ? 'before' : 'after') : null
+                }
               />
             </Fragment>
           )
@@ -308,3 +394,46 @@ export const BookNavigation = memo(function BookNavigation({
     </nav>
   )
 })
+
+/**
+ * DD-5-B-v2: 내지 페이지간 reorder 순열 계산.
+ * 표지(isCover)는 원래 인덱스를 유지하고, 내지(PAGE)만 source→target 위치로 이동.
+ * 표지를 source/target으로 받으면 null 반환 (drag 막기 위함).
+ *
+ * @param items 표시 순서의 PageMeta 배열 (m.index === allCanvas 인덱스)
+ * @param sourceIdx allCanvas 기준 source 인덱스
+ * @param targetIdx allCanvas 기준 target(드롭 위치) 인덱스
+ * @param insertBefore target의 앞쪽 vs 뒤쪽에 삽입
+ * @returns reorderByIndex에 넘길 0..N-1 순열, no-op이거나 invalid면 null
+ */
+export function computeInnerReorder(
+  items: PageMeta[],
+  sourceIdx: number,
+  targetIdx: number,
+  insertBefore: boolean
+): number[] | null {
+  // 내지 인덱스만 추출 (allCanvas 기준)
+  const innerIndices = items.filter((m) => !m.isCover).map((m) => m.index)
+  const srcInner = innerIndices.indexOf(sourceIdx)
+  const tgtInner = innerIndices.indexOf(targetIdx)
+  if (srcInner < 0 || tgtInner < 0) return null
+
+  // 삽입 위치 계산 (source 제거에 따른 인덱스 보정)
+  let insertAt = insertBefore ? tgtInner : tgtInner + 1
+  if (srcInner < insertAt) insertAt -= 1
+  if (insertAt === srcInner) return null // no-op
+
+  const reordered = [...innerIndices]
+  const [moved] = reordered.splice(srcInner, 1)
+  reordered.splice(insertAt, 0, moved)
+
+  // 전체 순열 조립 — 표지 위치는 원본 유지, 내지 위치는 새 순서로
+  const newIndices: number[] = items.map((m) => m.index)
+  let r = 0
+  for (let i = 0; i < items.length; i++) {
+    if (!items[i].isCover) {
+      newIndices[i] = reordered[r++]
+    }
+  }
+  return newIndices
+}
