@@ -98,7 +98,8 @@
 | **P0-1·P0-2 docs** | `ed4e08b` | `apps/api/migrations/20260501_add_edit_session_versions.sql` 신규 + README 갱신 + `docs/P0_OPERATIONS_CHECKLIST.md`(운영 마이그 가이드 + 모바일 8 시나리오 체크리스트) |
 | **migration fix** | `ce082ef` | `edit_session_versions` FK COLLATE 누락 보정 — 운영 적용 시 errno 150(`edit_sessions.id`가 `utf8mb4_unicode_ci`인데 신규 테이블 default가 다름) 발견 후 명시적 `COLLATE=utf8mb4_unicode_ci` 추가 + 코멘트로 향후 동일 issue 방지 |
 | **mobile crash fix** | `60efb05` | iOS Safari 페이지 크래시 회피 — `AppBackground.onBgColorChange/onLidColorChange`: `canvas.renderAll()`(sync) → `canvas.requestRenderAll()`(다음 frame, frame skip) + `updateObjects()` 호출 제거(배경은 selection 무관). `useCanvasThemeSync`: TOUCH_ENV 가드 추가(모바일에선 객체 set 스킵, 룰러 setTheme만 적용) |
-| **DD-5-B-v2** | (이번 트랙) | 페이지 drag-to-reorder UI — `PageThumbnail`에 drag props (`draggable`, `onDragStart/Over/Leave/Drop/End`, `isDragSource`, `insertHint`) + insert bar(4px accent edge) + grab/grabbing cursor. `BookNavigation`에서 native HTML5 DnD로 wiring: 표지(isCover) 제외 + 모바일/스프레드/`pageCount !== allCanvasLength` 가드, source/target 모두 내지일 때만 활성. `computeInnerReorder` helper로 0..N-1 순열 빌드 후 `reorderByIndex` 호출 + 성공 toast. 의존성 추가 0건 (dnd-kit 미사용) |
+| **DD-5-B-v2** | `aff4396` | 페이지 drag-to-reorder UI — `PageThumbnail`에 drag props (`draggable`, `onDragStart/Over/Leave/Drop/End`, `isDragSource`, `insertHint`) + insert bar(4px accent edge) + grab/grabbing cursor. `BookNavigation`에서 native HTML5 DnD로 wiring: 표지(isCover) 제외 + 모바일/스프레드/`pageCount !== allCanvasLength` 가드, source/target 모두 내지일 때만 활성. `computeInnerReorder` helper로 0..N-1 순열 빌드 후 `reorderByIndex` 호출 + 성공 toast. 의존성 추가 0건 (dnd-kit 미사용) |
+| **P1-3** | (이번 트랙) | 잔여 type 에러 12건 + cascading 4건 정리 — embed.tsx (templateSet `.data` 폴백 제거 + safeSize 키 제거 + 중복 `export type` 제거), useEditorStore.test.ts (EditPage `name` 필드 미존재 → `sortOrder`로 교체, `editable` 제거), AppElement.tsx (graphql codegen vs @storige/types EditorContent 불일치 → `as unknown as` 캐스팅 + 주석), AiPanel/RecommendationPanel/GenerationPanel/LazyAiPanel (`'book' \| 'leaflet'` 문자열 union → `TemplateSetType` enum 통일). `pnpm tsc --noEmit` clean 0 errors |
 
 # 코드베이스 컨벤션 (트랙 진행하며 정착됨)
 
@@ -223,7 +224,7 @@ git push origin master   # → Vercel 자동 배포
 - **번들 크기 최적화** (vendor-opencv lazy-load 강화)
 - **Playwright E2E 시나리오 작성**
 - **Sentry/Datadog 에러 추적 연결**
-- **잔여 type 에러 12건 follow-up PR** — `chore/type-cleanup-embed` / `chore/type-cleanup-test` / `chore/type-cleanup-graphql`
+- ~~**잔여 type 에러 12건 follow-up PR**~~ ✅ 완료 — embed/test/graphql + AiPanel cascading 정리 (tsc clean)
 - **BB-Phase 3 follow-up** — 시점 썸네일 자동 생성(R2 업로드) + hover 미리보기
 
 ## ⚠️ 모바일 / 안전성 메모

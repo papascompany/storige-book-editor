@@ -359,10 +359,7 @@ function EmbeddedEditor({
           throw new Error('템플릿셋 ID가 필요합니다. (templateSetId)')
         }
         setLoadingMessage('템플릿셋 정보를 불러오는 중...')
-        const templateSetResponse = await templatesApi.getTemplateSet(templateSetId)
-
-        // API returns { success, data, error } or direct data
-        const templateSet = templateSetResponse.data ?? templateSetResponse
+        const templateSet = await templatesApi.getTemplateSet(templateSetId)
         if (!templateSet || !templateSet.id) {
           throw new Error('템플릿셋을 찾을 수 없습니다.')
         }
@@ -671,7 +668,6 @@ function EmbeddedEditor({
                 width: options?.size?.width || 210,
                 height: options?.size?.height || 297,
                 cutSize: options?.bleed || 3,
-                safeSize: 3,
               },
               undefined, // cutLine
               300 // DPI
@@ -998,5 +994,5 @@ function create(config: EditorConfig): StorigeEditorInstance {
 const version = '1.0.0'
 
 // Export for IIFE bundle - these become window.StorigeEditor.create and window.StorigeEditor.version
+// (EditorConfig/EditorResult/SaveResult/EditorState은 이미 위에서 export interface로 노출됨)
 export { StorigeEditorInstance, EmbeddedEditor, create, version }
-export type { EditorConfig, EditorResult, SaveResult, EditorState }

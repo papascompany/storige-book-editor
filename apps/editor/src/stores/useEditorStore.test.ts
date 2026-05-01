@@ -43,12 +43,10 @@ describe('useEditorStore', () => {
     id: 'page-' + Math.random().toString(36).substr(2, 9),
     templateId: 'template-1',
     templateType: TemplateType.PAGE,
-    name: 'Test Page',
     sortOrder: 0,
     canvasData: { version: '5.3.0', width: 210, height: 297, objects: [] },
     required: false,
     deleteable: true,
-    editable: true,
     ...overrides,
   });
 
@@ -199,12 +197,12 @@ describe('useEditorStore', () => {
     });
 
     it('updatePage should update page data', () => {
-      const page = createMockPage({ id: 'page-1', name: 'Original' });
+      const page = createMockPage({ id: 'page-1', sortOrder: 5 });
       useEditorStore.getState().setPages([page]);
 
-      useEditorStore.getState().updatePage('page-1', { name: 'Updated' });
+      useEditorStore.getState().updatePage('page-1', { sortOrder: 10 });
 
-      expect(useEditorStore.getState().pages[0].name).toBe('Updated');
+      expect(useEditorStore.getState().pages[0].sortOrder).toBe(10);
     });
 
     it('updatePageCanvasData should update canvas data', () => {

@@ -1,10 +1,11 @@
 import { lazy, Suspense } from 'react';
+import type { TemplateSetType } from '@storige/types';
 
 /**
  * AI 패널 Props
  */
 interface AiPanelProps {
-  templateType?: 'book' | 'leaflet';
+  templateType?: TemplateSetType;
   dimensions?: { width: number; height: number };
   onSelectTemplate?: (templateSetId: string) => void;
   onGenerated?: (templateSetId: string) => void;

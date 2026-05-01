@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Wand2 as MagicWand, Loader as CircleNotch, Check, X, RefreshCw as ArrowsClockwise } from 'lucide-react';
+import { TemplateSetType } from '@storige/types';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import {
@@ -11,7 +12,7 @@ import {
 
 interface GenerationPanelProps {
   defaultDimensions?: { width: number; height: number };
-  defaultTemplateType?: 'book' | 'leaflet';
+  defaultTemplateType?: TemplateSetType;
   onGenerated?: (templateSetId: string) => void;
 }
 
@@ -41,7 +42,7 @@ const PAGE_COUNT_OPTIONS = [4, 8, 12, 16, 20, 24, 32];
  */
 export function GenerationPanel({
   defaultDimensions = { width: 210, height: 297 },
-  defaultTemplateType = 'book',
+  defaultTemplateType = TemplateSetType.BOOK,
   onGenerated,
 }: GenerationPanelProps) {
   // 입력 상태
