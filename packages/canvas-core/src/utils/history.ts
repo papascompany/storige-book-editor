@@ -401,9 +401,13 @@ fabric.Canvas.prototype._historyInit = function (): void {
   this._svgElements = {}
   this._guideElements = []
 
-  // 히스토리 제한 설정
+  // 히스토리 제한 설정 — 모바일은 더 작게 (메모리 절감, iOS Safari 크래시 방지)
   this.historyLimitedMode = true
-  this.historyMaxSteps = 50 // 충분히 큰 값으로 조정
+  const isCoarsePointer = (() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return false
+    try { return window.matchMedia('(pointer: coarse)').matches } catch { return false }
+  })()
+  this.historyMaxSteps = isCoarsePointer ? 15 : 50
 
   // 이벤트 연결
   this.on(this._historyEvents())
@@ -424,24 +428,17 @@ fabric.Canvas.prototype._historySaveAction = function (e?: fabric.IEvent): void 
 
   // 첫번째 액션 또는 이전 상태와 다른 경우만 저장
   if (!this.historyNextState || json !== this.historyNextState) {
-    console.log('History save action:', {
-      hasCurrentState: !!this.historyNextState,
-      undoStackLength: this.historyUndo.length,
-      action: e?.type || 'unknown'
-    })
+    // 디버그 로그는 production 에서 메모리/console 압박 — 제거
+    // (필요 시 historyDebug 플래그 도입)
 
     // 이전 상태가 있는 경우에만 undo 스택에 저장
     if (this.historyNextState) {
       this.historyUndo.push(this.historyNextState)
-      console.log('Pushed previous state to undo stack, new length:', this.historyUndo.length)
-    } else {
-      console.log('First action - no previous state to save')
     }
 
     // 히스토리 제한 로직
     if (this.historyLimitedMode && this.historyUndo.length > this.historyMaxSteps) {
       this.historyUndo.shift() // 가장 오래된 히스토리 제거
-      console.log('Removed oldest history entry, new length:', this.historyUndo.length)
     }
 
     // Redo 스택 초기화 (새 액션이 발생하면 이전 redo는 무효화)
