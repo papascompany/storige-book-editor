@@ -142,9 +142,9 @@
 
 <div class="stats">
   <div class="stat-card red"><div class="num">5</div><div class="lbl">🔴 Breaking 변경 (PHP 코드 수정 필수)</div></div>
-  <div class="stat-card amber"><div class="num">5</div><div class="lbl">🟡 신규 API/파라미터 (활용 권장)</div></div>
+  <div class="stat-card amber"><div class="num">7</div><div class="lbl">🟡 신규 API/파라미터 (활용 권장)</div></div>
   <div class="stat-card blue"><div class="num">2</div><div class="lbl">🔵 Changed (의미/방식 변경)</div></div>
-  <div class="stat-card green"><div class="num">12</div><div class="lbl">총 변경 항목</div></div>
+  <div class="stat-card green"><div class="num">15</div><div class="lbl">총 변경 항목 (사이즈 옵션 B/C 추가)</div></div>
 </div>
 
 <h2>1. 변경 12개 카드뷰</h2>
@@ -439,7 +439,80 @@ echo json_encode(['received' => true]);</pre>
   </div>
 </div>
 
-<h2>5. PHP 개발자 대응 우선순위</h2>
+<h2>5. 인쇄물 사이즈 전달 방식 (3가지 옵션)</h2>
+
+<p class="meta">기존 가이드에는 <code>pageCount/paperType/bindingType</code> 만 있고 <strong>내지 사이즈 파라미터는 누락</strong>되어 있었습니다. 사이즈 전달 옵션 비교:</p>
+
+<table>
+  <thead>
+    <tr>
+      <th style="width:60px">옵션</th>
+      <th>방식</th>
+      <th>PHP 측 작업</th>
+      <th>Storige 측 작업</th>
+      <th>적합 시나리오</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>A</strong></td>
+      <td><code>templateSetId</code> 매핑</td>
+      <td>(상품, 사이즈) → templateSetId 매핑 테이블 관리</td>
+      <td>없음</td>
+      <td>사이즈 가짓수 적고 사전 등록 가능</td>
+    </tr>
+    <tr style="background:#fffbeb;">
+      <td><strong>B</strong></td>
+      <td><code>?size=N</code> (sizeno 인덱스)</td>
+      <td>폼 select → URL <code>size</code> 파라미터</td>
+      <td>이미 코드에 존재 — 가이드만 보충</td>
+      <td>상품별 사이즈가 정해져 있음 (북모아 product_sizes 테이블 사용)</td>
+    </tr>
+    <tr style="background:#ecfdf5;">
+      <td><strong>C</strong></td>
+      <td><code>?width=148&height=210</code> (mm)</td>
+      <td>폼 input(자유 입력) → URL <code>width/height</code></td>
+      <td>Product 엔티티/Admin/Editor 수정 (<strong>이번 PR 에서 완료</strong>)</td>
+      <td>자유 사이즈 입력 상품 (정사각형 크기 자유 등)</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>옵션 C 흐름 — 신규 구현</h3>
+
+<div class="flow current">
+  <div class="flow-step"><div class="num">1</div><div class="text"><strong>관리자</strong>: Storige Admin → 상품 편집 → "외부 쇼핑몰 사이즈 override 허용" Switch 활성화 → 저장</div></div>
+  <div class="flow-arrow">↓</div>
+  <div class="flow-step"><div class="num">2</div><div class="text"><strong>PHP</strong>: 주문 폼에서 사용자가 사이즈 입력 → <code>?width=148&height=210</code> URL 생성</div></div>
+  <div class="flow-arrow">↓</div>
+  <div class="flow-step"><div class="num">3</div><div class="text"><strong>Editor</strong>: Product API 응답의 <code>allowCustomSize === true</code> 확인 후 URL <code>width/height</code> 적용</div></div>
+  <div class="flow-arrow">↓</div>
+  <div class="flow-step"><div class="num">4</div><div class="text"><strong>검증</strong>: 0 &lt; w/h ≤ 2000mm, Number.isFinite — 미충족 시 무시 + console.warn (보안: 임의 사이즈 강제 방지)</div></div>
+  <div class="flow-arrow">↓</div>
+  <div class="flow-step"><div class="num">5</div><div class="text"><strong>적용</strong>: <code>useSettingsStore.setupProductBased</code> 가 templateSet 의 사이즈를 customSize 로 덮어씀</div></div>
+</div>
+
+<h3>옵션 C — PHP URL 생성 예시</h3>
+
+<div class="diff">
+  <div class="diff-side after" style="grid-column: 1 / -1;">
+    <div class="head">✅ 옵션 C — width/height 직접 전달</div>
+<pre><span class="com">// 사용자가 폼에서 가로 148mm, 세로 210mm 입력했다고 가정</span>
+$editorUrl = '/storige/edit.php'
+    . '?productId='   . $productId
+    . '&<span class="add">width</span>='       . $userInputWidthMm   <span class="com">// 예: 148</span>
+    . '&<span class="add">height</span>='      . $userInputHeightMm  <span class="com">// 예: 210</span>
+    . '&pageCount='   . $pageCount
+    . '&paperType='   . $paperType
+    . '&bindingType=' . $bindingType
+    . '&return_url='  . urlencode('/mypage/order_detail.php');
+
+<span class="com">// 주의: Storige Admin 에서 해당 상품의 allowCustomSize 가 true 여야 작동</span>
+<span class="com">//   - false 면 width/height 는 무시되고 templateSet 의 사이즈 사용</span></pre>
+  </div>
+</div>
+
+<h2>6. PHP 개발자 대응 우선순위</h2>
 
 <div class="priority">
 

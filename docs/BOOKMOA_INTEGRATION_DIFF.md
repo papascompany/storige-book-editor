@@ -28,6 +28,9 @@ PHP 개발자가 **반드시** 알아야 할 12개 변경:
 | 10 | **`mode`** | 없음 | `'both' \| 'cover' \| 'content'` | 🟡 Added |
 | 11 | **`returnUrl`** | 없음 | PHP 가 명시적 지정 → 완료 후 리다이렉트 대상 | 🟡 Added |
 | 12 | **`apiBaseUrl`** | 암묵적 (디폴트) | 명시적 전달 필수 | 🟡 Changed |
+| 13 | **`size` (sizeno) 파라미터** | 가이드 누락 | 기존 코드 존재 — `productId + size=N` 으로 sizeNo 인덱스 적용 (옵션 B) | 🟢 Doc-only |
+| 14 | **`width` + `height` 파라미터 override** | 없음 | `?width=148&height=210` (mm) 로 사이즈 직접 지정 — `product.allowCustomSize=true` 일 때만 적용 (옵션 C) | 🟡 Added |
+| 15 | **Product `allowCustomSize` 토글** | 없음 | Admin 의 상품 편집 폼에서 토글로 제어 | 🟡 Added |
 
 > 🔴 = Breaking (PHP 코드 수정 필수, 안 하면 동작 안 함)
 > 🟡 = Added/Changed (신규 기능 도입 또는 확장 — 호환은 되지만 활용 권장)
@@ -363,7 +366,93 @@ POST /storige/proc/synthesis_callback.php
 
 ---
 
-## 6. 관련 문서
+## 6. 인쇄물 사이즈 전달 방식 (보충 — 2026-05-01)
+
+기존 가이드(`pageCount`/`paperType`/`bindingType`)에는 **내지 사이즈** 가 명시 누락되어 있었습니다. 사이즈는 다음 3가지 방식 중 하나로 전달:
+
+### 6-1. 옵션 A: `templateSetId` 매핑 (기본)
+
+PHP 가 `(상품, 사이즈) → templateSetId` 매핑 테이블을 관리. 사이즈 셀렉트 변경 시 다른 templateSetId 로 전환. **사이즈 가짓수 만큼 templateSet 사전 등록 필요**.
+
+```php
+$templateSetId = $sizeMap[$productCode][$sizeCode]; // 사전 매핑 테이블
+$editorUrl = '/storige/edit.php?template_set_id=' . $templateSetId . '&...';
+```
+
+### 6-2. 옵션 B: `size` (sizeno 인덱스) 파라미터 — 기존 코드에 존재, 가이드 누락
+
+`productId + size` 조합 시, Storige 가 `product_sizes` 테이블의 sizeNo 와 매칭해 자동 사이즈 적용. 이미 `EditorView.tsx` 에 구현되어 있음:
+
+```ts
+const size = searchParams.get('size')                          // 예: '0', '1', '2' (sizeNo)
+await loadProductBasedEditor({ product, sizeno: Number(size ?? 0) })
+```
+
+PHP 측:
+
+```php
+$editorUrl = '/storige/edit.php'
+           . '?productId=' . $productId
+           . '&size=' . $sizenoFromForm     // 폼에서 선택된 사이즈의 sizeNo
+           . '&pageCount=' . $pageCount
+           . '&paperType=' . $paperType
+           . '&bindingType=' . $bindingType
+           . '&return_url=' . urlencode('/mypage/order_detail.php');
+```
+
+장점: Storige 측 추가 개발 불필요. 단점: 상품에 `product_sizes` 사전 등록 필요.
+
+### 6-3. 옵션 C: `width` + `height` URL 파라미터로 직접 override (신규)
+
+사이즈가 사전 등록되지 않은 경우 (자유 사이즈 입력 상품), Storige 가 mm 단위로 받아 워크스페이스를 동적 생성:
+
+| 측 | 변경 | 파일 |
+|---|---|---|
+| **API (Storige)** | `Product` 엔티티에 `allowCustomSize: boolean` 컬럼 추가 (default `false`) | `apps/api/src/products/entities/product.entity.ts` |
+| **API DTO** | `CreateProductDto`/`UpdateProductDto` 에 `allowCustomSize` 추가 | `apps/api/src/products/dto/` |
+| **Admin (Storige)** | 상품 편집 폼에 "외부 쇼핑몰 사이즈 override 허용" Switch 추가 | `apps/admin/src/pages/Products/ProductList.tsx` |
+| **Editor (Storige)** | `?width=148&height=210` URL 파라미터 수신 → `product.allowCustomSize=true` 일 때만 사이즈 override | `apps/editor/src/views/EditorView.tsx`, `useSettingsStore.setupProductBased` |
+
+#### 사용 흐름
+
+1. **관리자**: Storige Admin → 상품 목록 → 해당 상품 편집 → **"외부 쇼핑몰 사이즈 override 허용"** Switch 활성화 → 저장
+2. **PHP**: 주문 페이지 폼에서 사용자가 사이즈 입력 → URL 생성:
+   ```php
+   $editorUrl = '/storige/edit.php'
+              . '?productId=' . $productId
+              . '&width='     . $userInputWidthMm    // 예: 148
+              . '&height='    . $userInputHeightMm   // 예: 210
+              . '&pageCount=' . $pageCount
+              . '&paperType=' . $paperType
+              . '&bindingType=' . $bindingType
+              . '&return_url=' . urlencode('/mypage/order_detail.php');
+   ```
+3. **Editor**: Product API 응답의 `allowCustomSize` 가 `true` 면 `width/height` 적용. `false` 면 무시 (보안: 임의 사이즈 강제 방지).
+
+#### 검증 규칙 (Editor 측)
+
+```ts
+const isValidCustomSize =
+  product.allowCustomSize === true &&
+  Number.isFinite(width) && width > 0 && width <= 2000 &&
+  Number.isFinite(height) && height > 0 && height <= 2000
+```
+
+- `width/height` 둘 다 있어야 적용 (한쪽만 있으면 무시)
+- 0 이하, NaN, 2000mm 초과는 무시 + console.warn
+- `allowCustomSize=false` 면 무시 + console.warn
+
+#### 옵션 비교
+
+| 옵션 | PHP 작업 | Storige 추가 작업 | 적합 시나리오 |
+|---|---|---|---|
+| A. templateSetId | 매핑 테이블 관리 | 없음 | 사이즈 가짓수 적고 사전 등록 가능 |
+| B. `size` (sizeno) | 폼 select → URL `size` | `size` 파라미터 가이드 명세 추가 | 상품별 사이즈가 정해져 있음 |
+| C. `width/height` | 폼 input → URL | Product 엔티티/DTO/Admin/Editor 수정 (이번 PR 에서 완료) | **자유 사이즈 입력 상품** |
+
+---
+
+## 7. 관련 문서
 
 - [`docs/PHP_EDITOR_INTEGRATION_PLAN.md`](./PHP_EDITOR_INTEGRATION_PLAN.md) — 원본 PHP 개발자 제안
 - [`docs/BOOKMOA_INTEGRATION_GUIDE.md`](./BOOKMOA_INTEGRATION_GUIDE.md) — 현재 북모아 연동 가이드

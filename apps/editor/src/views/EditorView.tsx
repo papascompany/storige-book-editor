@@ -28,6 +28,9 @@ interface QueryParams {
   pageCount: string | null
   paperType: string | null
   bindingType: string | null
+  /** 옵션 C: 인쇄 사이즈 직접 지정 (mm). product.allowCustomSize=true 일 때만 적용 */
+  width: string | null
+  height: string | null
 }
 
 const MOBILE_BREAKPOINT = 768
@@ -61,6 +64,10 @@ export default function EditorView() {
   const pageCount = searchParams.get('pageCount')
   const paperType = searchParams.get('paperType')
   const bindingType = searchParams.get('bindingType')
+  // 옵션 C: 외부 쇼핑몰의 동적 사이즈 override (mm 단위)
+  // product.allowCustomSize=true 일 때만 적용. 둘 다 있어야 적용 (한쪽만이면 무시).
+  const width = searchParams.get('width')
+  const height = searchParams.get('height')
 
   // Stores
   const { setToken, initializeFromStorage } = useAuthStore()
@@ -102,7 +109,7 @@ export default function EditorView() {
 
   // 매 렌더링마다 최신 함수를 ref에 저장
   loadContentRef.current = async (params: QueryParams) => {
-    const { productId, contentId, contentType, editMode, size, templateSetId, pageCount, paperType, bindingType } = params
+    const { productId, contentId, contentType, editMode, size, templateSetId, pageCount, paperType, bindingType, width, height } = params
 
     // 캔버스 유효성 검사
     const currentCanvas = useAppStore.getState().canvas
@@ -186,10 +193,28 @@ export default function EditorView() {
             const product = result.data
             console.log('[EditorView] Product loaded:', product.title)
 
+            // 옵션 C: 상품이 customSize 를 허용하고 width/height 가 둘 다 전달되면 override
+            // 정수/실수 모두 허용. 비합리한 값(<=0, NaN, 너무 큰 값)은 무시.
+            const customWidthMm = Number(width)
+            const customHeightMm = Number(height)
+            const productAllowsCustomSize = (product as { allowCustomSize?: boolean })?.allowCustomSize === true
+            const isValidCustomSize =
+              productAllowsCustomSize &&
+              Number.isFinite(customWidthMm) && customWidthMm > 0 && customWidthMm <= 2000 &&
+              Number.isFinite(customHeightMm) && customHeightMm > 0 && customHeightMm <= 2000
+            if (width != null && height != null && !isValidCustomSize) {
+              console.warn('[EditorView] custom size ignored — product.allowCustomSize=false 또는 값 검증 실패', {
+                productAllowsCustomSize,
+                width,
+                height,
+              })
+            }
+
             await loadProductBasedEditor({
-               
+
               product: product as any,
               sizeno: Number(size ?? 0),
+              customSize: isValidCustomSize ? { width: customWidthMm, height: customHeightMm } : undefined,
             })
           } finally {
             setIsLoading(false)
@@ -329,6 +354,8 @@ export default function EditorView() {
           pageCount,
           paperType,
           bindingType,
+          width,
+          height,
         }
 
         await loadContentRef.current?.(params)
@@ -432,7 +459,7 @@ export default function EditorView() {
 
     // ref를 통해 최신 함수 호출
     loadContentRef.current?.(params)
-  }, [productId, contentId, contentType, editMode, size, templateSetId, pageCount, paperType, bindingType, ready])
+  }, [productId, contentId, contentType, editMode, size, templateSetId, pageCount, paperType, bindingType, width, height, ready])
 
   // Toggle side panel
   const toggleSidePanel = () => {
