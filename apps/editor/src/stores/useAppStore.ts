@@ -186,16 +186,24 @@ function isTouchEnv(): boolean {
   try { return window.matchMedia('(pointer: coarse)').matches } catch { return false }
 }
 
-// 모바일은 더 공격적으로 — iOS Safari 메모리 한계 회피.
-// 디바운스 1500ms 로 길게 (사용자 인터랙션 멈춘 후에만 캡처),
-// multiplier 0.25 로 데이터 양을 약 1/16 로 축소.
-const SCREENSHOT_DEBOUNCE_MS = isTouchEnv() ? 1500 : 200
-const SCREENSHOT_MULTIPLIER_TOUCH = 0.25
+// 모바일은 toDataURL 자체를 스킵 — iOS Safari 메모리 한계 회피.
+// 썸네일은 모바일에서 보조적이고, 이걸 위해 retina 캔버스 전체를 PNG 로 인코딩하는
+// 비용이 크래시 트리거. 모바일에선 빈 placeholder 만 set.
+const TOUCH_ENV = isTouchEnv()
+const SCREENSHOT_DEBOUNCE_MS = TOUCH_ENV ? 2000 : 200
 
 const debouncedTakeScreenshot = debounce((allCanvas: any[], set: any) => {
   // 캔버스가 유효한지 확인
   if (!allCanvas || allCanvas.length === 0) return
-  const touchEnv = isTouchEnv()
+
+  // 모바일/터치 디바이스에서는 썸네일 생성을 스킵 — toDataURL 비용이 iOS Safari
+  // 메모리 한계와 만나 페이지 크래시를 유발. 썸네일이 필요한 PagePanel 등은
+  // empty 문자열을 받아 placeholder 표시.
+  if (TOUCH_ENV) {
+    const placeholders: string[] = allCanvas.map(() => '')
+    set({ screenshots: placeholders })
+    return
+  }
 
   const newScreenshots: string[] = []
   allCanvas.forEach((cvs: FabricCanvas, index: number) => {
@@ -213,14 +221,12 @@ const debouncedTakeScreenshot = debounce((allCanvas: any[], set: any) => {
             top: bound.top,
             width: bound.width,
             height: bound.height,
-            // 모바일에서는 다운샘플 — 썸네일은 작게 표시되므로 충분
-            ...(touchEnv ? { multiplier: SCREENSHOT_MULTIPLIER_TOUCH } : {}),
           })
         } else {
           newScreenshots[index] = cvs.toDataURL({
             format: 'png',
             quality: 0.8,
-            multiplier: touchEnv ? SCREENSHOT_MULTIPLIER_TOUCH : 0.2
+            multiplier: 0.2
           })
         }
       }
