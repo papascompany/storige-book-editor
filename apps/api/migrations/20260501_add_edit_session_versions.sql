@@ -47,4 +47,7 @@ CREATE TABLE IF NOT EXISTS edit_session_versions (
   CONSTRAINT fk_edit_session_version_session
     FOREIGN KEY (session_id) REFERENCES edit_sessions(id)
     ON DELETE CASCADE ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='BB-Phase 3: 자동저장 시점 versions (LRU 20)';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='BB-Phase 3: 자동저장 시점 versions (LRU 20)';
+-- 주의: COLLATE=utf8mb4_unicode_ci 필수 — edit_sessions.id collation과 일치해야
+-- FK 제약(errno 150)이 정상 형성됨. MariaDB 11.2 server default collation
+-- (utf8mb4_uca1400_ai_ci)와 다르므로 명시적 지정 필수.
