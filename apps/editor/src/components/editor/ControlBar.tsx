@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { useAppStore, useSelectionType } from '@/stores/useAppStore'
 import { useIsCoarsePointer } from '@/hooks/useIsCoarsePointer'
 import { AlignPlugin, GroupPlugin, ObjectPlugin, SelectionType } from '@storige/canvas-core'
@@ -133,6 +133,13 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
   // 어느 한쪽이라도 true 면 모바일 레이아웃. 두 신호를 모두 보아야 외장 키보드/마우스가
   // 연결된 태블릿 + 작은 viewport 같은 케이스에도 안전.
   const isMobile = mobileOverlay || isCoarsePointer
+
+  // 모바일 시트는 기본 collapsed (헤더만 표시) — 캔버스 가림 최소화.
+  // 사용자가 헤더 / 드래그 핸들 탭하면 expand. 새 객체 선택 시마다 collapsed 로 리셋.
+  const [expanded, setExpanded] = useState(false)
+  useEffect(() => {
+    setExpanded(false)
+  }, [activeSelection])
 
   // Check if bar should be shown
   const showBar = useMemo(() => {
@@ -297,12 +304,15 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
   }
 
   // 모바일에서는 ControlBar 를 하단 시트(bottom sheet) 로 렌더링.
-  // 280px 고정 폭으로 좌측에 두면 작은 화면에서 캔버스를 80% 가리는 문제 회피.
-  // - 좌우 폭 100% / 화면 높이의 45vh / 하단 고정 / 자체 스크롤
+  // - collapsed: 헤더만 (~80px) — 캔버스 거의 풀로 보임
+  // - expanded: 70vh — 사용자가 헤더/핸들 탭해서 펼침
+  // - 좌우 폭 100% / 하단 고정 / 자체 스크롤
   // - z-[102] 로 토스트(z-200) 보다 낮고 헤더(z-101)보다 높게
-  // - paddingBottom 으로 iOS 홈 인디케이터 영역(safe-area-inset-bottom) 회피
+  // - paddingBottom 으로 iOS 홈 인디케이터 영역 회피
   const containerClassName = isMobile
-    ? 'control-bar control-bar--mobile fixed left-0 right-0 bottom-0 z-[102] bg-editor-panel border-t border-editor-border flex flex-col h-[45vh] max-h-[45vh] overflow-hidden shadow-[0_-2px_12px_rgba(0,0,0,0.08)]'
+    ? `control-bar control-bar--mobile fixed left-0 right-0 bottom-0 z-[102] bg-editor-panel border-t border-editor-border flex flex-col overflow-hidden shadow-[0_-2px_12px_rgba(0,0,0,0.08)] transition-[height,max-height] duration-200 ${
+        expanded ? 'h-[70vh] max-h-[70vh]' : 'h-[88px] max-h-[88px]'
+      }`
     : 'control-bar bg-editor-panel border-r border-editor-border flex flex-col w-[280px] min-w-[280px] max-w-[280px] h-full overflow-hidden'
   const containerStyle = isMobile
     ? { paddingBottom: 'env(safe-area-inset-bottom, 0px)' }
@@ -310,11 +320,19 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
 
   return (
     <div id="control-bar" className={containerClassName} style={containerStyle}>
-      {/* 모바일: 드래그 핸들 (시각적 hint, 실제 드래그는 미구현) */}
+      {/* 모바일: 드래그 핸들 — 탭으로 collapsed/expanded 토글 */}
       {isMobile && (
-        <div className="flex justify-center pt-2 pb-1 shrink-0" aria-hidden="true">
+        <button
+          type="button"
+          aria-label={expanded ? '컨트롤 접기' : '컨트롤 펼치기'}
+          onClick={() => setExpanded((v) => !v)}
+          className="flex flex-col items-center pt-2 pb-1 shrink-0 cursor-pointer hover:bg-editor-hover/50 transition-colors"
+        >
           <div className="h-1 w-10 rounded-full bg-editor-border" />
-        </div>
+          <span className="text-[10px] text-editor-text-muted mt-1">
+            {expanded ? '접기' : '펼치기'}
+          </span>
+        </button>
       )}
       <div className="control-inner w-full h-full flex flex-col gap-1 overflow-y-auto">
         {/* Header */}

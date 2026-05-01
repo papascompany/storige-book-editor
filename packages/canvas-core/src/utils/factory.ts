@@ -77,6 +77,11 @@ export async function createFabricCanvas(
 ): Promise<fabric.Canvas> {
   const fb = await getFabric()
 
+  // 모바일/터치 디바이스에서는 retina scaling 을 끔 (iOS Safari 메모리 한계 회피).
+  // DPR=3 (iPhone) 시 내부 캔버스가 9배 크기 → toDataURL/렌더링 비용 9배. 이걸 끄면
+  // 시각 선명도가 약간 떨어지지만 메모리 절감이 훨씬 큼. 워크스페이스가 보통
+  // CSS px 단위로 100~400px 크기라 1x 렌더로도 화면상 충분히 선명함.
+  const isCoarse = isCoarsePointer()
   const defaultOptions = {
     fireRightClick: false,
     stopContextMenu: true,
@@ -84,7 +89,7 @@ export async function createFabricCanvas(
     selection: true,
     preserveObjectStacking: true,
     imageSmoothingEnabled: true,
-    enableRetinaScaling: true,
+    enableRetinaScaling: !isCoarse,
     renderOnAddRemove: false,
     skipOffscreen: true,
     // 터치에서 브라우저가 페이지 스크롤을 가로채는 것 방지 (CSS touch-action과 함께 동작)
