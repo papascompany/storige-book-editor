@@ -88,7 +88,7 @@ export default function TextAttributes() {
         if (text[s + i] === '\n') continue
         const style = arr[i] || {}
         if (Object.prototype.hasOwnProperty.call(style, prop)) {
-          explicitValues.add(style[prop] as T)
+          explicitValues.add(style[prop as string] as T)
         }
       }
 

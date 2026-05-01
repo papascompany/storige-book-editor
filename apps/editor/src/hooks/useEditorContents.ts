@@ -1363,6 +1363,7 @@ export function useEditorContents(): UseEditorContentsReturn {
       // 3. computeLayout으로 완전한 SpreadConfig 계산
       const spreadLayout = computeLayout(spreadSpec)
       const spreadConfig: SpreadConfig = {
+        version: 1,
         spec: spreadSpec,
         regions: spreadLayout.regions,
         totalWidthMm: spreadLayout.totalWidthMm,
@@ -1563,7 +1564,7 @@ export function useEditorContents(): UseEditorContentsReturn {
         id: spreadTemplate.id,
         templateId: spreadTemplate.id,
         templateType: TemplateType.SPREAD,
-        canvasData: { version: '5.3.0', objects: [] },
+        canvasData: { version: '5.3.0', objects: [], width: spreadConfig.totalWidthMm, height: spreadConfig.totalHeightMm },
         sortOrder: 0,
         required: true,
         deleteable: false,
@@ -1576,7 +1577,7 @@ export function useEditorContents(): UseEditorContentsReturn {
           id: pt.id,
           templateId: pt.id,
           templateType: TemplateType.PAGE,
-          canvasData: { version: '5.3.0', objects: [] },
+          canvasData: { version: '5.3.0', objects: [], width: spreadSpec.coverWidthMm, height: spreadSpec.coverHeightMm },
           sortOrder: i + 1,
           required: pt.required !== false,
           deleteable: pt.required === false,
