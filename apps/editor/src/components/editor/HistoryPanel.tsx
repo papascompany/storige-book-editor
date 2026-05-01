@@ -58,6 +58,8 @@ export default function HistoryPanel() {
   const userId = useEditorStore((s) => s.userId)
   const [backendVersions, setBackendVersions] = useState<BackendVersion[] | null>(null)
   const [restoringId, setRestoringId] = useState<string | null>(null)
+  /** P0-4: 복원 confirm 대기 중인 versionId (실수 클릭 방지). null이면 일반 list 모드 */
+  const [confirmingId, setConfirmingId] = useState<string | null>(null)
 
   // 스택 길이 — historyUpdate 이벤트 구독으로 갱신
   const [undoLen, setUndoLen] = useState(0)
@@ -130,28 +132,42 @@ export default function HistoryPanel() {
     }
   }, [open, sessionId, userId])
 
-  // BB-Phase 3 — "여기로 복원" 액션
-  const handleRestore = useCallback(
+  // P0-4 — 복원 클릭 시 confirm 단계 enter (즉시 API 호출하지 않음)
+  const handleRestoreClick = useCallback((versionId: string) => {
+    setConfirmingId(versionId)
+  }, [])
+
+  // P0-4 — confirm 후 실제 복원 수행 + 성공 시 자동 페이지 reload
+  const handleRestoreConfirm = useCallback(
     async (versionId: string) => {
       if (!sessionId) return
       setRestoringId(versionId)
       try {
         await sessionsApi.restoreVersion(sessionId, versionId, userId || undefined)
-        showToast(
-          '시점으로 복원되었습니다. 변경된 내용을 확인하려면 페이지를 새로고침해 주세요.',
-          'success',
-          5000
-        )
-        setOpen(false)
+        showToast('시점으로 복원되었습니다. 페이지를 새로고침합니다…', 'success', 2500)
+        // 캔버스 / store / 모든 객체를 깨끗이 다시 로드 — 가장 안전한 방법은 페이지 새로고침
+        // (in-place reload는 useEditorStore + 모든 캔버스 plugin reload 흐름이 복잡)
+        setTimeout(() => {
+          try { window.location.reload() } catch {}
+        }, 500)
       } catch (err: any) {
         console.error('[HistoryPanel] restore 실패:', err)
-        showToast(`복원 실패: ${err?.response?.data?.message ?? err?.message ?? '알 수 없음'}`, 'error', 4000)
-      } finally {
+        showToast(
+          `복원 실패: ${err?.response?.data?.message ?? err?.message ?? '알 수 없음'}`,
+          'error',
+          4000
+        )
         setRestoringId(null)
+        setConfirmingId(null)
       }
     },
     [sessionId, userId]
   )
+
+  // P0-4 — confirm 취소
+  const handleRestoreCancel = useCallback(() => {
+    setConfirmingId(null)
+  }, [])
 
   const dirtyDots = isDirty ? '●' : '○'
 
@@ -214,34 +230,82 @@ export default function HistoryPanel() {
                   {backendVersions.map((v) => {
                     const date = new Date(v.savedAt)
                     const restoring = restoringId === v.id
+                    const confirming = confirmingId === v.id
                     return (
                       <li
                         key={v.id}
-                        className="flex items-center justify-between gap-2 px-2 py-1 rounded hover:bg-editor-hover"
-                        title={date.toLocaleString('ko-KR')}
+                        className={cn(
+                          'rounded transition-colors',
+                          confirming
+                            ? 'bg-editor-accent/5 border border-editor-accent/30'
+                            : 'hover:bg-editor-hover'
+                        )}
+                        title={confirming ? undefined : date.toLocaleString('ko-KR')}
                       >
-                        <div className="flex flex-col min-w-0 flex-1">
-                          <span className="text-[11px] text-editor-text truncate">
-                            {formatRelative(date)}
-                          </span>
-                          <span className="text-[10px] text-editor-text-muted">
-                            {v.pageCount}페이지
-                          </span>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => handleRestore(v.id)}
-                          disabled={restoring}
-                          className={cn(
-                            'text-[10px] px-1.5 py-1 rounded border border-editor-border bg-editor-surface-low hover:bg-editor-hover hover:border-editor-accent text-editor-text-muted transition-colors flex items-center gap-1',
-                            restoring && 'opacity-50 cursor-wait'
-                          )}
-                          title="이 시점으로 복원"
-                          aria-label={`${formatRelative(date)} 시점으로 복원`}
-                        >
-                          <Undo2 className="h-3 w-3" />
-                          {restoring ? '복원 중…' : '복원'}
-                        </button>
+                        {confirming ? (
+                          // P0-4 — confirm 카드 (실수 클릭 방지)
+                          <div className="px-2 py-2 flex flex-col gap-1.5">
+                            <p className="text-[11px] text-editor-text leading-snug">
+                              <span className="font-semibold text-editor-accent">
+                                {formatRelative(date)}
+                              </span>{' '}
+                              시점으로 복원합니다.
+                            </p>
+                            <p className="text-[10px] text-amber-600 leading-snug">
+                              ⚠ 현재 편집 중인 내용은 덮어씌워집니다. 페이지가 자동으로 새로고침됩니다.
+                            </p>
+                            <div className="flex gap-1.5 mt-0.5">
+                              <button
+                                type="button"
+                                onClick={() => handleRestoreConfirm(v.id)}
+                                disabled={restoring}
+                                className={cn(
+                                  'flex-1 text-[10px] px-2 py-1.5 rounded border border-editor-accent bg-editor-accent text-white hover:bg-editor-accent-hover transition-colors flex items-center justify-center gap-1',
+                                  restoring && 'opacity-60 cursor-wait'
+                                )}
+                                aria-label="복원 확인"
+                              >
+                                <Undo2 className="h-3 w-3" />
+                                {restoring ? '복원 중…' : '확인 후 복원'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={handleRestoreCancel}
+                                disabled={restoring}
+                                className="flex-1 text-[10px] px-2 py-1.5 rounded border border-editor-border bg-editor-surface-low hover:bg-editor-hover text-editor-text-muted transition-colors"
+                                aria-label="복원 취소"
+                              >
+                                취소
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          // 일반 list item (복원 버튼 → confirm 단계로)
+                          <div className="flex items-center justify-between gap-2 px-2 py-1">
+                            <div className="flex flex-col min-w-0 flex-1">
+                              <span className="text-[11px] text-editor-text truncate">
+                                {formatRelative(date)}
+                              </span>
+                              <span className="text-[10px] text-editor-text-muted">
+                                {v.pageCount}페이지
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleRestoreClick(v.id)}
+                              disabled={restoring || confirmingId !== null}
+                              className={cn(
+                                'text-[10px] px-1.5 py-1 rounded border border-editor-border bg-editor-surface-low hover:bg-editor-hover hover:border-editor-accent text-editor-text-muted transition-colors flex items-center gap-1',
+                                (restoring || confirmingId !== null) && 'opacity-50 cursor-not-allowed'
+                              )}
+                              title="이 시점으로 복원"
+                              aria-label={`${formatRelative(date)} 시점으로 복원`}
+                            >
+                              <Undo2 className="h-3 w-3" />
+                              복원
+                            </button>
+                          </div>
+                        )}
                       </li>
                     )
                   })}
