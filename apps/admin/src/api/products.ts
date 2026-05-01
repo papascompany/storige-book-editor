@@ -9,6 +9,8 @@ export interface Product {
   templateSet?: any;
   price: number;
   isActive: boolean;
+  /** 외부 쇼핑몰이 width/height URL 파라미터로 사이즈 override 허용 (옵션 C) */
+  allowCustomSize?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -20,6 +22,7 @@ export interface CreateProductDto {
   templateSetId?: string;
   price: number;
   isActive?: boolean;
+  allowCustomSize?: boolean;
 }
 
 export interface UpdateProductDto {
@@ -29,6 +32,7 @@ export interface UpdateProductDto {
   templateSetId?: string;
   price?: number;
   isActive?: boolean;
+  allowCustomSize?: boolean;
 }
 
 export interface ProductQueryParams {

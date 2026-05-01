@@ -170,6 +170,8 @@ export const ProductList = () => {
       code: product.code,
       categoryId: product.categoryId,
       price: product.price,
+      isActive: product.isActive,
+      allowCustomSize: product.allowCustomSize ?? false,
     });
     setFormModalOpen(true);
   };
@@ -442,6 +444,20 @@ export const ProductList = () => {
               formatter={(value) => `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
               parser={(value) => Number(value?.replace(/,/g, '') || 0) as 0}
             />
+          </Form.Item>
+
+          {/* 옵션 C: 외부 쇼핑몰의 동적 사이즈 override 허용
+              북모아 등 외부 PHP 쇼핑몰이 width/height URL 파라미터로 워크스페이스
+              사이즈를 직접 지정할 수 있게 함. 사이즈가 templateSet 에 묶여있지
+              않고 사용자가 폼에서 자유 입력할 수 있는 상품에 사용.
+              docs/BOOKMOA_INTEGRATION_DIFF.md §3 참조. */}
+          <Form.Item
+            name="allowCustomSize"
+            label="외부 쇼핑몰 사이즈 override 허용"
+            valuePropName="checked"
+            tooltip="활성화하면 ?width=148&height=210 (mm) URL 파라미터로 인쇄 사이즈를 직접 지정할 수 있습니다. (북모아 등 외부 쇼핑몰 연동용)"
+          >
+            <Switch checkedChildren="허용" unCheckedChildren="금지" />
           </Form.Item>
 
           <Form.Item>
