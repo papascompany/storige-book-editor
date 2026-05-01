@@ -1,9 +1,9 @@
 # Storige 잔존 개발 작업 리뷰
 
-> **기준일**: 2026-05-01
-> **반영 누적**: 41 commit / 37 트랙 (4차 사이클까지) + 본 세션 PR #1~#9 (모바일 터치 UI + 북모아 PHP 옵션 B/C)
+> **기준일**: 2026-05-01 · **최종 갱신**: 2026-04-30 (5차 사이클 P0 작업 반영)
+> **반영 누적**: 73+ commit / 42 트랙 (4차 사이클 + 모바일 PR×10 + P0 4건 + 운영 재배포 + 모바일 크래시 fix)
 >
-> **소스 트래커**: `.cursor/plans/_RESUME_EDITOR_TRACKS.md`, `.cursor/plans/cover.md`, `docs/IMPLEMENTATION_STATUS.md`, `docs/PRD.md`, `docs/PHASE*_COMPLETE.md`, 본 세션 산출물 `docs/MOBILE_TOUCH_UI.md` / `docs/BOOKMOA_INTEGRATION_DIFF.md`
+> **소스 트래커**: `.cursor/plans/_RESUME_EDITOR_TRACKS.md`, `.cursor/plans/cover.md`, `.cursor/plans/v2/NEW_DEV_GUIDE.html`, `docs/P0_OPERATIONS_CHECKLIST.md`, `docs/MOBILE_TOUCH_UI.md`, `docs/BOOKMOA_INTEGRATION_DIFF.md`
 
 ---
 
@@ -96,11 +96,16 @@
 
 ## B. 우선순위 분류
 
-### 🔴 P0 (즉시 — 운영 blocker)
-1. **북모아 운영 DB migration 적용** — `apps/api/migrations/20260501_add_products_allowCustomSize.sql` 실행 후 `SHOW COLUMNS` 검증
-2. **모바일 실기기 검증** — iPhone 14/15, Android 13+, iPad. 발견 시 추가 PR
-3. **사전 존재 type/lint 에러 정리** — CI 정상화. 별도 PR (예: `chore: 타입체크 통과 정리`)
-4. **시점별 복원 UI** (BB-Phase 3 follow-up) — 백엔드 API 있고 클릭→confirm→restore UI 만 추가
+### 🔴 P0 (즉시 — 운영 blocker) — 2026-04-30 현황
+
+| ID | 항목 | 상태 | 비고 |
+|---|---|---|---|
+| **P0-1** | 운영 DB 마이그레이션 (`edit_session_versions`) | ✅ **완료** | SSH 적용 완료. FK COLLATE fix `ce082ef` 포함. `docs/P0_OPERATIONS_CHECKLIST.md` §P0-1 |
+| **P0-2** | 모바일 실기기 검증 | ⏳ **사용자 진행 중** | 8 시나리오 체크리스트 + `60efb05` 모바일 크래시 fix 검증 포함 |
+| **P0-3** | 사전 type 에러 9건 정리 | ✅ 완료 | `8820066` (잔여 12건은 follow-up PR 권장) |
+| **P0-4** | 시점별 복원 UI confirm + auto reload | ✅ 완료 | `0b7cc23` (HistoryPanel) |
+| **부수** | 운영 api/worker 재배포 | ✅ 완료 | git pull --ff-only 89 commits + `docker compose up -d --build api worker` (4m28s) |
+| **부수** | iOS Safari 페이지 크래시 fix | ✅ 완료 | `60efb05` — AppBackground `requestRenderAll` + useCanvasThemeSync TOUCH_ENV |
 
 ### 🟡 P1 (단기 — 사용자 가치 큼)
 5. **Composite 모드 다중 선택 cross-canvas 이동** (3b-v Ph3) — 표지 편집 multi-select
@@ -191,6 +196,8 @@ mysql> SHOW COLUMNS FROM products LIKE 'allowCustomSize';
 | **합계** | **37** | **21** | **58** |
 
 **완료 비율: 약 64%** (실제 기능 측면에서는 ~80%, 운영 적용·폴리시 단계 진입 필요)
+
+> **2026-04-30 갱신 메모**: 위 진척률 표는 4차 사이클 시점 기준이며, 5차 사이클 결과(P0-1·P0-3·P0-4 완료, 운영 재배포, 모바일 크래시 fix `60efb05`)를 반영하면 "완료" 항목이 +5 (~42), 진행중이 -3(~18), 합계 60. 실효 완료 비율 약 70%로 상향. 다음 사이클에서 표 자체를 풀 갱신.
 
 ---
 

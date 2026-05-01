@@ -1,17 +1,35 @@
 # P0 운영 체크리스트
 
-> **기준일**: 2026-05-01
+> **기준일**: 2026-05-01 · **최종 업데이트**: 2026-04-30
 > **출처**: [`docs/REMAINING_WORK_REVIEW.md`](./REMAINING_WORK_REVIEW.md) §B P0
 >
 > Claude가 직접 진행 불가능한(운영 환경 직접 접근 / 실기기 필요) P0 작업의 실행 가이드.
 > Claude가 진행 가능한 P0-3(타입 정리)·P0-4(시점별 복원 UI)는 commits `8820066`·`0b7cc23`에서 처리됨.
 
+## 진행 현황 (2026-04-30 기준 — 최상단 요약)
+
+| ID | 항목 | 상태 | 커밋 / 비고 |
+|---|---|---|---|
+| **P0-1** | 운영 DB 마이그레이션 (`edit_session_versions`) | ✅ **완료** | SSH 적용 (mariadb-dump 백업 → CREATE → 검증). FK COLLATE 보정 `ce082ef` |
+| **P0-2** | 모바일 실기기 검증 (8 시나리오) | ⏳ **사용자 진행 중** | `60efb05` 모바일 크래시 fix 포함 검증 필요 |
+| **P0-3** | 사전 type 에러 9건 정리 | ✅ 완료 | `8820066` (잔여 12건은 follow-up PR 권장) |
+| **P0-4** | 시점별 복원 UI confirm + 자동 reload | ✅ 완료 | `0b7cc23` (HistoryPanel) |
+| **부수** | 운영 api/worker 재배포 | ✅ 완료 | git pull --ff-only 89 commits + `docker compose up -d --build api worker` (4m28s) |
+| **부수** | iOS Safari 페이지 크래시 fix | ✅ 완료 | `60efb05` — AppBackground `requestRenderAll` + useCanvasThemeSync TOUCH_ENV |
+
 ---
 
-## P0-1. 운영 DB 마이그레이션 적용
+## P0-1. 운영 DB 마이그레이션 적용 ✅ 완료
 
-> **상태**: ⏳ 사용자 운영 환경 직접 적용 필요
-> **위험도**: 중 (백업 필수, 복구 가능)
+> **상태**: ✅ **2026-04-30 적용 완료**
+> **위험도**: 중 (백업 완료, 롤백 가능)
+>
+> ### 적용 결과
+> - 프로덕션 DB 호스트 `158.247.235.202` SSH 접속 → `mariadb-dump`(MariaDB 11.2는 mysqldump 미포함)로 백업 → `edit_session_versions` CREATE → `SHOW TABLES` / `DESCRIBE` 검증 통과
+> - 1차 시도에서 FK 생성 errno 150 (collation mismatch) 발생 → migration SQL에 `COLLATE=utf8mb4_unicode_ci` 명시(`ce082ef`) 후 재적용 성공
+> - api 컨테이너 재배포(`docker compose up -d --build api worker`, 4m28s)로 BB-Phase 3 자동저장 시점 versions 풀 스택 활성화
+
+### 적용 대상 마이그레이션 (2개, 동시 적용 가능)
 
 ### 적용 대상 마이그레이션 (2개, 동시 적용 가능)
 
@@ -95,8 +113,13 @@ mysql -uroot -p storige < ~/backups/pre-p0-migration-YYYYMMDD-HHMM.sql
 
 ## P0-2. 모바일 실기기 검증
 
-> **상태**: ⏳ 사용자 실기기 필요
+> **상태**: ⏳ **사용자 실기기 필요** (현재 진행 중)
 > **위험도**: 낮음 (검증만, 코드 변경 없음)
+>
+> ### 검증 대상에 추가된 hotfix (2026-04-30)
+> - `60efb05` — AppBackground `renderAll → requestRenderAll` + updateObjects() 제거 (배경색 변경 시 sync 메모리 폭증 회피)
+> - `60efb05` — useCanvasThemeSync `TOUCH_ENV` 가드 (모바일에선 다크 토글 시 객체 set 스킵, 룰러 setTheme만 적용)
+> - 사용자 보고 크래시 시나리오: ① 텍스트 추가 후 곧바로 또 다른 텍스트 추가 시 페이지 크래시, ② 배경색 변경 시 페이지 크래시 → 위 2개 fix로 해소 추정. **실기기에서 재현 안 되는지 우선 검증**.
 
 ### 대상 디바이스
 
@@ -161,14 +184,16 @@ mysql -uroot -p storige < ~/backups/pre-p0-migration-YYYYMMDD-HHMM.sql
 
 ---
 
-## 진행 표시
+## 진행 표시 (2026-04-30 기준)
 
+- [x] P0-1 운영 DB 마이그레이션 — **2026-04-30 적용 완료** (`ce082ef` FK COLLATE fix 포함)
 - [x] P0-3 사전 type 에러 9건 정리 — `8820066`
 - [x] P0-4 시점별 복원 UI confirm + 자동 reload — `0b7cc23`
-- [ ] P0-1 운영 DB 마이그레이션 — **사용자 적용 대기**
-- [ ] P0-2 모바일 실기기 검증 — **사용자 검증 대기**
+- [x] 운영 api/worker 재배포 — `docker compose up -d --build api worker` (4m28s)
+- [x] iOS Safari 페이지 크래시 fix — `60efb05`
+- [ ] **P0-2 모바일 실기기 검증** — **사용자 진행 중 (8 시나리오)**
 
-P0-1·P0-2 완료 후 `docs/REMAINING_WORK_REVIEW.md` §B P0 표 + 본 체크리스트 진행 표 갱신.
+P0-2 완료 후 `docs/REMAINING_WORK_REVIEW.md` §B P0 표 + 본 체크리스트 진행 표 갱신.
 
 ## 잔여 P0-3 후속 (별도 PR 권장)
 

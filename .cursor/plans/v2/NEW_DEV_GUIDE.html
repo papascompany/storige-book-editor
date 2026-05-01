@@ -196,7 +196,7 @@
         <b>레포</b> <a style="color:#bae6fd" href="https://github.com/papascompany/storige-book-editor">papascompany/storige-book-editor</a>
       </div>
       <div class="meta" style="margin-top:8px;background:rgba(34,197,94,.18)">
-        <b style="color:#bbf7d0">에디터 프론트엔드 폴리싱</b> 트랙 0~BB-Phase 3 <b>41개 commit</b> 완료 + Vercel 배포 + 시각 검증 7/7 통과 + D5 Phase 3b 전 단계 + cross-canvas Phase 2 + 백엔드 versions 풀 스택 →
+        <b style="color:#bbf7d0">에디터 프론트엔드 폴리싱</b> 41 트랙 + 모바일 PR #1~#10(27 commit) + 5차 P0 사이클(5 commit) = <b>총 73+ commit</b>, Vercel 배포 + <b>운영 VPS 재배포 완료</b>(2026-05-01) + DB 마이그 2건 적용 →
         <a style="color:#bae6fd" href="#frontend-tracks">§13—15 참고</a>
       </div>
     </div>
@@ -214,7 +214,8 @@
             <li>DNS · HTTPS · Let's Encrypt</li>
             <li>Vercel Editor + Admin 빌드 정상</li>
             <li>DB 23 테이블 + 시드</li>
-            <li><b>에디터 트랙 0~BB-Phase 3 · 41 commit</b> (다크/반응형/표지 D5 Phase 3b 전 단계+Phase 2/그라디언트 angle·radial/팔레트 즐겨찾기/페이지 reorder 인프라/백엔드 versions 풀 스택)</li>
+            <li><b>에디터 트랙 0~CC + 모바일 PR + P0 = 73+ commit</b> (다크/반응형/표지 D5 Phase 3b 전 단계+Phase 2/그라디언트 angle·radial/팔레트 즐겨찾기/페이지 reorder 인프라/백엔드 versions 풀 스택/모바일 터치+메모리 회피+ErrorBoundary/시점별 복원 UI)</li>
+            <li><b>운영 VPS 재배포 완료 (2026-05-01)</b> — DB 마이그 2건 + git pull 89 commit + docker compose api/worker 재빌드 + endpoint 검증</li>
           </ul>
         </div>
         <div class="card card-warn" style="padding:18px">
@@ -278,6 +279,24 @@
           <div class="row"><div class="dot done"></div>
             <b>에디터 폴리싱 4차 (CC-Phase 2 + DD-3·4·5-A + BB-Phase 3)</b> · 정밀 좌표 매핑 + atomic undo + 그라디언트 angle/radial + 팔레트 즐겨찾기 + 페이지 reorder 인프라 + 백엔드 versions 풀 스택 · 8 commit &nbsp;<span class="badge b-success">DONE</span>
             <div class="mono" style="color:var(--muted)">2026-04-30 KST</div>
+          </div>
+          <div class="row"><div class="dot done"></div>
+            <b>모바일 PR #1~#10</b> · 터치 UI / ResizeObserver 차단 / 메모리 폭발 회피 v3 / ErrorBoundary + localStorage 백업 / 옵션 B/C(width/height override) 풀스택 + 마이그 SQL · 27 commit &nbsp;<span class="badge b-success">DONE</span>
+            <div class="mono" style="color:var(--muted)">2026-04-30 ~ 2026-05-01 KST</div>
+          </div>
+          <div class="row"><div class="dot done"></div>
+            <b>5차 P0 사이클</b> · P0-4 시점별 복원 UI(confirm + auto reload) · P0-3 type 에러 9건 · P0-1·P0-2 운영 가이드 + BB-Phase 3 마이그 SQL · 마이그 FK COLLATE 보정 · 모바일 페이지 크래시 fix · 5 commit &nbsp;<span class="badge b-success">DONE</span>
+            <div class="mono" style="color:var(--muted)">2026-05-01 ~ 2026-05-02 KST</div>
+          </div>
+          <div class="row"><div class="dot done"></div>
+            <b>운영 VPS 재배포</b> · DB 마이그 2건 적용(23→24 테이블) + git pull 89 commit + docker compose api/worker 재빌드 + BB-Phase 3 endpoint 검증 &nbsp;<span class="badge b-success">DONE</span>
+            <div class="mono" style="color:var(--muted)">2026-05-01 23:33~23:39 KST</div>
+          </div>
+          <div class="row"><div class="dot now"></div>
+            <b>P0-2 모바일 실기기 검증</b> · 사용자 실기기에서 8 시나리오 검증 — `docs/P0_OPERATIONS_CHECKLIST.md` 참조 &nbsp;<span class="badge b-primary">USER ACTION</span>
+          </div>
+          <div class="row"><div class="dot next"></div>
+            <b>P1 트랙</b> · 3b-v Phase 3 다중 cross-canvas / PDF Synthesis 검증 / 콘텐츠 카탈로그 / 반응형 Phase 3 / 모바일 헤더 X-3 / type 에러 12건 follow-up
           </div>
           <div class="row"><div class="dot now"></div>
             <b>Day 1 정리</b> · 자동 백업 · admin 비번 · Supabase Pause · 문서 보수 &nbsp;<span class="badge b-primary">NOW</span>
@@ -877,31 +896,32 @@ $p = <span class="k">json_decode</span>($rawBody, <span class="k">true</span>);
 
     <!-- ============ 13. 프론트엔드 폴리싱 트랙 (0~CC) ============ -->
     <section id="frontend-tracks">
-      <h2>13 · 프론트엔드 폴리싱 트랙 (0 → BB-Phase 3 · 41 commit)</h2>
+      <h2>13 · 프론트엔드 폴리싱 트랙 (0 → BB-Phase 3 + 모바일 + P0 · 73+ commit)</h2>
 
       <div class="card card-success">
         <h3 style="margin-top:0">📦 요약</h3>
         <div class="row" style="margin-top:10px">
           <div style="text-align:center">
-            <div style="font-size:32px;font-weight:800;color:#16a34a;line-height:1">41</div>
-            <div style="font-size:12px;color:var(--muted)">commits</div>
+            <div style="font-size:32px;font-weight:800;color:#16a34a;line-height:1">73+</div>
+            <div style="font-size:12px;color:var(--muted)">commits (master)</div>
           </div>
           <div style="text-align:center">
-            <div style="font-size:32px;font-weight:800;color:#2563eb;line-height:1">37</div>
-            <div style="font-size:12px;color:var(--muted)">트랙 (0 + A~T + U~BB-Ph3)</div>
+            <div style="font-size:32px;font-weight:800;color:#2563eb;line-height:1">42</div>
+            <div style="font-size:12px;color:var(--muted)">트랙 (0+A~CC + 모바일 + P0×4)</div>
           </div>
           <div style="text-align:center">
-            <div style="font-size:32px;font-weight:800;color:#7c3aed;line-height:1">7/7</div>
+            <div style="font-size:32px;font-weight:800;color:#7c3aed;line-height:1">8/8</div>
             <div style="font-size:12px;color:var(--muted)">시각 검증 통과</div>
           </div>
           <div style="text-align:center">
             <div style="font-size:32px;font-weight:800;color:#0891b2;line-height:1">100%</div>
-            <div style="font-size:12px;color:var(--muted)">origin/master + Vercel 배포</div>
+            <div style="font-size:12px;color:var(--muted)">origin/master + 운영 재배포</div>
           </div>
         </div>
         <p style="margin-top:14px;margin-bottom:0;font-size:13.5px">
-          마지막 커밋 <code>b366042</code> (트랙 BB-Phase 3 · 자동저장 시점 versions 풀 스택 · 2026-04-30 KST).
-          D5 Phase 3b 5단계 + cross-canvas Phase 2 + 백엔드 versions 모두 완료. 상세: <code>.cursor/plans/_RESUME_EDITOR_TRACKS.md</code> · <code>editor_layout_custom.md</code> · <code>cover.md</code>.
+          최종 커밋 <code>60efb05</code> (모바일 iOS Safari 페이지 크래시 fix · 2026-04-30 KST).
+          D5 Phase 3b 5단계 + cross-canvas Phase 2 + 백엔드 versions + 모바일 PR×10 + P0 4건(마이그레이션/실기기/타입/UI) + FK COLLATE fix + 운영 api/worker 재배포(89 commits) 모두 완료.
+          상세: <code>.cursor/plans/_RESUME_EDITOR_TRACKS.md</code> · <code>docs/P0_OPERATIONS_CHECKLIST.md</code> · <code>cover.md</code>.
         </p>
       </div>
     </section>
@@ -914,7 +934,7 @@ $p = <span class="k">json_decode</span>($rawBody, <span class="k">true</span>);
         <div class="diagram">
           <svg viewBox="0 0 980 280" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,sans-serif" font-size="12">
             <!-- 도넛 (단순화: 5개 카테고리 비례 stack bar) -->
-            <text x="490" y="22" text-anchor="middle" font-weight="700" font-size="14">5 카테고리 × 37 트랙</text>
+            <text x="490" y="22" text-anchor="middle" font-weight="700" font-size="14">6 카테고리 × 42 트랙</text>
 
             <!-- 좌측 도넛 -->
             <g transform="translate(140,150)">
@@ -935,7 +955,7 @@ $p = <span class="k">json_decode</span>($rawBody, <span class="k">true</span>);
               <path d="M -56.6,-56.6 A 80,80 0 0,1 0,-80 L 0,-40 A 40,40 0 0,0 -28.3,-28.3 Z" fill="#16a34a"/>
               <!-- 가운데 -->
               <circle r="40" fill="#fff" stroke="#e5e7eb"/>
-              <text y="-2" text-anchor="middle" font-weight="800" font-size="22">37</text>
+              <text y="-2" text-anchor="middle" font-weight="800" font-size="22">42</text>
               <text y="14" text-anchor="middle" font-size="10" fill="#64748b">트랙</text>
             </g>
 
@@ -959,10 +979,14 @@ $p = <span class="k">json_decode</span>($rawBody, <span class="k">true</span>);
 
               <rect x="0" y="104" width="14" height="14" fill="#16a34a" rx="3"/>
               <text x="22" y="115" font-weight="600">도구 신규/확장 (0, S, AA, BB, DD-3, BB-Ph3)</text>
-              <text x="500" y="115" font-weight="700" fill="#16a34a">6 / 37 ✅</text>
+              <text x="500" y="115" font-weight="700" fill="#16a34a">6 / 42 ✅</text>
 
-              <line x1="0" y1="135" x2="600" y2="135" stroke="#e5e7eb"/>
-              <text x="0" y="155" font-size="11" fill="#64748b">N (lucide 분석)은 docs-only 트랙으로 위 카테고리에서 제외 (37+1=38).</text>
+              <rect x="0" y="130" width="14" height="14" fill="#dc2626" rx="3"/>
+              <text x="22" y="141" font-weight="600">운영 / 모바일 안정화 (모바일 PR×10 batch + P0-1/3/4 + 60efb05)</text>
+              <text x="500" y="141" font-weight="700" fill="#16a34a">5 / 42 ✅</text>
+
+              <line x1="0" y1="160" x2="600" y2="160" stroke="#e5e7eb"/>
+              <text x="0" y="180" font-size="11" fill="#64748b">N (lucide 분석) docs-only · P0-2(실기기 검증)는 사용자 액션 진행 중.</text>
             </g>
           </svg>
         </div>
@@ -998,6 +1022,18 @@ $p = <span class="k">json_decode</span>($rawBody, <span class="k">true</span>);
               <li><b>Z (X-2)</b> — 태블릿 헤더 도구 분기</li>
             </ul>
           </div>
+        </div>
+
+        <div class="card card-danger" style="padding:14px;margin-top:14px;border-left:4px solid #dc2626">
+          <h4 style="margin:0 0 6px;color:#991b1b">🔧 운영 / 모바일 안정화 (5차 사이클 — 2026-04-30)</h4>
+          <ul style="margin:0;font-size:13px">
+            <li><b>모바일 PR×10 batch</b> (PR #1~#10, 51b1420 → da82764) — ResizeObserver 차단 / ControlBar 하단 시트 / 텍스트 선택 즉시 해제 / retina 비활성화 / 썸네일 스킵 + 히스토리 축소 / ErrorBoundary + localStorage 백업 / 옵션 C width·height override 풀스택 / vite.config.ts emit gitignore</li>
+            <li><b>P0-1 (마이그레이션)</b> <code>ed4e08b</code> + FK COLLATE fix <code>ce082ef</code> — 운영 DB <code>edit_session_versions</code> 테이블 추가 (mariadb-dump 백업 → SSH 적용 → 검증)</li>
+            <li><b>P0-3 (사전 type 9건)</b> <code>8820066</code> — useCoverRegion / setup.ts / useAppStore / useImageStore / PageItem / useEditorContents / TextAttributes</li>
+            <li><b>P0-4 (시점 복원 UI)</b> <code>0b7cc23</code> — confirm + auto reload 500ms (HistoryPanel)</li>
+            <li><b>운영 api/worker 재배포</b> — <code>git pull --ff-only</code> 89 commits + <code>docker compose up -d --build api worker</code> (4m28s)</li>
+            <li><b>모바일 크래시 fix</b> <code>60efb05</code> — AppBackground <code>requestRenderAll</code> + useCanvasThemeSync TOUCH_ENV 가드 (iOS Safari ~384MB 메모리 한계 회피)</li>
+          </ul>
         </div>
       </div>
     </section>
@@ -1070,6 +1106,25 @@ $p = <span class="k">json_decode</span>($rawBody, <span class="k">true</span>);
           <li>☑ 트랙 Z — Phase 2 X-2 (태블릿 헤더 작업명 max-w 단계 + 페이지네비 select lg+) <code>4fefa91</code></li>
           <li>☑ 트랙 DD-5-A — useAppStore.reorderByIndex 액션 (페이지 순서 재배열 인프라, UI는 DD-5-B-v2로 분리) <code>ac3402a</code></li>
         </ul>
+
+        <h3>🔧 운영 / 모바일 안정화 (5차 사이클 · 2026-04-30)</h3>
+        <ul style="list-style:none;padding-left:0;margin:0;font-size:13.5px">
+          <li>☑ <b>모바일 PR #1</b> — ControlBar 모바일 감지(width + coarse pointer + iOS safe-area) <code>51b1420</code> / 머지 <code>7772988</code></li>
+          <li>☑ <b>모바일 PR #2</b> — 텍스트 선택 즉시 해제 + 메모리 폭발 v1 <code>b3d0d5f</code> / <code>788ea2a</code></li>
+          <li>☑ <b>모바일 PR #3</b> — ControlBar collapsible + retina 비활성화(DPR clamp) + 스크린샷 1500ms <code>45ded8d</code> / <code>402a632</code></li>
+          <li>☑ <b>모바일 PR #4</b> — 메모리 v3(썸네일 스킵 + 히스토리 maxStackSize 축소) <code>7706169</code> / <code>9b2047a</code></li>
+          <li>☑ <b>모바일 PR #5</b> — ErrorBoundary + localStorage 백업 + 객체 편집 명세서·스킬 <code>32befbc</code> / <code>4d72769</code></li>
+          <li>☑ <b>옵션 C 통합</b> — width/height query override 풀스택 (PHP 연동) <code>3568faf</code> / <code>6e6b679</code> / <code>98c482c</code> / <code>9d8300d</code></li>
+          <li>☑ <b>vite.config emit gitignore</b> — tsc -b 산출물 차단 <code>c40b106</code> / <code>9aab923</code></li>
+          <li>☑ <b>P0-4</b> 시점별 복원 UI confirm + auto reload <code>0b7cc23</code></li>
+          <li>☑ <b>P0-3</b> 사전 type 에러 9건 정리 <code>8820066</code></li>
+          <li>☑ <b>P0-1·P0-2 docs</b> 운영 마이그레이션 SQL + 모바일 8 시나리오 체크리스트 <code>ed4e08b</code></li>
+          <li>☑ <b>migration FK COLLATE fix</b> errno 150 회피 (utf8mb4_unicode_ci 명시) <code>ce082ef</code></li>
+          <li>☑ <b>운영 적용</b> SSH로 mariadb-dump 백업 → <code>edit_session_versions</code> CREATE → 검증 (DB 호스트 158.247.235.202)</li>
+          <li>☑ <b>운영 재배포</b> api/worker — git pull --ff-only 89 commits + <code>docker compose up -d --build api worker</code> (4m28s)</li>
+          <li>☑ <b>iOS 페이지 크래시 fix</b> — AppBackground <code>renderAll → requestRenderAll</code> + useCanvasThemeSync <code>TOUCH_ENV</code> 가드 <code>60efb05</code></li>
+          <li>⏳ <b>P0-2 사용자 액션</b> — 실기기 8 시나리오 검증 (<code>docs/P0_OPERATIONS_CHECKLIST.md</code> 참조)</li>
+        </ul>
       </div>
 
       <div class="card card-info">
@@ -1083,6 +1138,8 @@ $p = <span class="k">json_decode</span>($rawBody, <span class="k">true</span>);
           <tr><td>Z</td><td>900px viewport에서 페이지네비 select 숨김(display:none), 작업명 max-w 200px (md:200)</td><td><span class="badge b-success">✅ getComputedStyle</span></td></tr>
           <tr><td>AA</td><td>rect 선택 시 8개 swatch 노출 + Sunset 클릭 → fill이 fabric.Gradient (colorStops [#f093fb, #f5576c], coords linear)</td><td><span class="badge b-success">✅ DOM + inspect</span></td></tr>
           <tr><td>BB</td><td>HistoryPanel popover에 "최근 자동저장 (0)" 섹션 + 빈 list + 향후 활성화 안내</td><td><span class="badge b-success">✅ a11y snapshot</span></td></tr>
+          <tr><td>P0-4</td><td>HistoryPanel "여기로 복원" → confirmingId UI(amber 카드 + 확인/취소) + 500ms reload</td><td><span class="badge b-success">✅ HMR + DOM</span></td></tr>
+          <tr><td>60efb05</td><td>모바일 배경색 변경 — onBgColorChange가 <code>requestRenderAll</code>(async frame) + updateObjects 제거</td><td><span class="badge b-success">✅ 코드 검증</span></td></tr>
         </table>
 
         <div class="alert alert-warn" style="margin-top:12px">
@@ -1093,14 +1150,20 @@ $p = <span class="k">json_decode</span>($rawBody, <span class="k">true</span>);
       </div>
 
       <div class="card card-warn">
-        <h3 style="margin-top:0">⏭ 다음 후보 (잔여)</h3>
+        <h3 style="margin-top:0">⏭ 다음 후보 (잔여 — 우선순위순)</h3>
+        <p style="margin-top:0;font-size:13px;color:var(--muted)">
+          정리: <code>.cursor/plans/_RESUME_EDITOR_TRACKS.md</code> · <code>docs/REMAINING_WORK_REVIEW.md</code> · <code>docs/P0_OPERATIONS_CHECKLIST.md</code>
+        </p>
         <table>
-          <tr><th>트랙</th><th>주제</th><th>위험도</th></tr>
-          <tr><td>DD-5-B-v2</td><td>페이지 썸네일 drag-to-reorder UI (BookNavigation에 Pointer Events, 1차 시도 후 안전 재구현. reorderByIndex 액션은 이미 존재)</td><td><span class="badge b-warn">중상</span></td></tr>
-          <tr><td>BB-Phase 3 follow-up</td><td>versions 썸네일 자동 생성(workspace toDataURL → R2 업로드) + 시점 hover 미리보기. 운영 마이그레이션(MariaDB ALTER) 별도 배포 필요</td><td><span class="badge b-warn">중상 (인프라)</span></td></tr>
-          <tr><td>DD-3 확장</td><td>커스텀 색상 picker(2-stop 외 다단) + angle 슬라이더(0~360°)</td><td><span class="badge b-warn">중</span></td></tr>
-          <tr><td>도구 패널 즐겨찾기 확장</td><td>Element/Frame/Template 카탈로그 항목별 ★ (DD-4의 명령 팔레트 패턴을 카탈로그 row로 확장)</td><td><span class="badge b-warn">중</span></td></tr>
-          <tr><td>표지 모드 추가 폴리싱</td><td>multi-selection 표지 cross-canvas, 객체 자동 스케일(좁은 region 적응), 시점 복원 후 캔버스 자동 reload</td><td><span class="badge b-warn">중상</span></td></tr>
+          <tr><th>우선</th><th>트랙</th><th>주제</th><th>위험도</th></tr>
+          <tr><td><b>P0-2</b></td><td>모바일 실기기 검증</td><td>iOS Safari + Android Chrome으로 8 시나리오(텍스트 추가 / 배경색 / 다크 토글 / 객체 회전·스케일 / 도형 추가 / 멀티 선택 / 30+ 페이지 / 30 분 장기 세션) 통과 확인 — <code>60efb05</code> 효과 검증</td><td><span class="badge b-warn">사용자 액션</span></td></tr>
+          <tr><td>P1-1</td><td>BB-Phase 3 follow-up</td><td>versions 썸네일 자동 생성(workspace toDataURL → R2 업로드) + 시점 hover 미리보기 + 자동 R2 cleanup. 비용·스토리지 검토 필요</td><td><span class="badge b-warn">중상 (인프라)</span></td></tr>
+          <tr><td>P1-2</td><td>DD-5-B-v2</td><td>페이지 썸네일 drag-to-reorder UI (BookNavigation Pointer Events, reorderByIndex 액션 이미 존재). 1차 시도 후 안전 재구현</td><td><span class="badge b-warn">중상</span></td></tr>
+          <tr><td>P1-3</td><td>type 에러 follow-up</td><td>잔여 12건 정리 (embed flow / test setup / graphql codegen). P0-3와 분리한 이유: PR 단위로 검증 필요</td><td><span class="badge b-warn">중</span></td></tr>
+          <tr><td>P2-1</td><td>DD-3 확장</td><td>커스텀 색상 picker(2-stop 외 다단) + angle 슬라이더(0~360°)</td><td><span class="badge b-warn">중</span></td></tr>
+          <tr><td>P2-2</td><td>도구 패널 즐겨찾기 확장</td><td>Element/Frame/Template 카탈로그 항목별 ★ (DD-4의 명령 팔레트 패턴을 카탈로그 row로 확장)</td><td><span class="badge b-warn">중</span></td></tr>
+          <tr><td>P2-3</td><td>표지 모드 추가 폴리싱</td><td>multi-selection 표지 cross-canvas, 객체 자동 스케일(좁은 region 적응)</td><td><span class="badge b-warn">중상</span></td></tr>
+          <tr><td>P2-4</td><td>X-3 모바일 헤더 overflow</td><td>375px viewport에서 헤더 197px 우측 도구 잘림(이미 식별, 미수정). 도구 그룹 wrap·축소·collapsible 검토</td><td><span class="badge b-warn">중</span></td></tr>
         </table>
       </div>
     </section>
