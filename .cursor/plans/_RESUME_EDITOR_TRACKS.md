@@ -1,20 +1,20 @@
 # Storige Editor 프론트엔드 트랙 — 새 세션 RESUME 프롬프트
 
 > **사용법**: 새 Claude Code 세션을 열고 아래 "복사용 프롬프트" 블록 전체(line 13 이후)를 첫 메시지로 붙여넣으세요.
-> 이 문서는 지우지 말고 보관하세요. 새 트랙이 추가될 때 §"누적 트랙" + §"이번 세션 직전까지 진척" 두 곳을 갱신하면 됩니다.
+> 이 문서는 지우지 말고 보관하세요. 새 트랙이 추가될 때 §"누적 트랙" + §"향후 작업 후보" 두 곳을 갱신하면 됩니다.
 >
-> **버전**: v1 (2026-04-30) — 트랙 A~T 누적(23 커밋) 완료 직후 작성. 프론트엔드 UI/UX 트랙 전용.
+> **버전**: v2 (2026-05-02) — 누적 트랙 0~CC + 모바일 PR + 5차 P0 사이클 완료 + 운영 적용까지 반영.
 > **이전 가이드**: `_RESUME_PROMPT.md` (인프라·PHP·운영 컷오버 작업용 — 별도 흐름)
 
 ---
 
 ## 복사용 프롬프트 (이 줄 아래부터 끝까지 복사)
 
-[Storige Editor 프론트엔드 트랙 재개 — 2026-04-30 야간 기준]
+[Storige Editor 트랙 재개 — 2026-05-02 기준 / master `60efb05` / 운영 배포 완료]
 
 # 한 줄 요약
 
-`apps/editor` (React + Vite + Fabric.js + Zustand + TailwindCSS) 의 UI/UX 폴리싱 트랙 A~T(20개 트랙, 23 커밋) 완료 + Vercel 배포(`editor.papascompany.co.kr`) 정상. 다음 단계는 cover.md §7-8의 D5 Phase 3b-ii 이후 + 다크 모드 Phase 3(canvas-core) + 반응형 Phase 2 등 잔여 후보. 작업 컨벤션·디자인 토큰·검증 흐름은 모두 정착됨.
+`apps/editor`(React + Vite + Fabric.js + Zustand + TailwindCSS) 41 트랙 + 모바일 27 commit + P0 5 commit = **누적 73+ commit**, Vercel 자동 배포 + **운영 VPS 재배포 완료**(2026-05-01). DB 마이그 2건 운영 적용(`products.allowCustomSize` + `edit_session_versions` LRU 20). 다음 후보는 P0-2 모바일 실기기 검증(사용자 작업), P1 트랙(다중 cross-canvas 이동/PDF Synthesis 검증/콘텐츠 카탈로그/반응형 Phase 3) 또는 잔여 type 에러 follow-up PR. 작업 컨벤션·디자인 토큰·검증 흐름·운영 배포 절차 모두 정착됨.
 
 # 작업 디렉토리·환경
 
@@ -39,15 +39,16 @@
 | `_RESUME_EDITOR_TRACKS.md` (이 파일) | 트랙 누적 + 컨벤션 + 향후 후보 |
 | `_RESUME_PROMPT.md` (별도 흐름) | 인프라·PHP·운영 컷오버 작업용 — 본 트랙과 무관 |
 
-# 누적 트랙 — 2026-04-30 (총 41 커밋, 모두 origin/master 반영, Vercel 배포 완료)
+# 누적 트랙 — 2026-05-02 (master `60efb05`, origin/master 반영 + 운영 배포 완료)
 
 > 트랙 0~T(23 커밋) — 1차 폴리싱 사이클 완료
-> 트랙 U~BB(7 커밋, `a8e1558 → 386c37b`) — 2차 사이클 (D5 Phase 3b 마무리, 다크 Phase 3, 반응형 Phase 2, 작은 묶음, 그라디언트, 스냅샷 list)
-> 트랙 CC-1/CC-2(2 커밋, `ee69dda → d54489c`) — 3차 사이클: D5 Phase 3b-v Composite cross-canvas 객체 이동 (canvas-core helper + ControlBar UI)
-> 트랙 CC-Phase 2(2 커밋, `f3c8e41 → 16031c9`) — cross-canvas 정밀 좌표 매핑 + atomic move log "방금 이동 되돌리기"
-> 트랙 DD-3/DD-4/DD-5-A(3 커밋, `e37f148 → 2717a00 → ac3402a`) — 그라디언트 angle/radial, 커맨드 팔레트 즐겨찾기, 페이지 reorderByIndex 액션
-> 트랙 BB-Phase 3(1 커밋, `b366042`) — 풀 스택 자동저장 시점 versions: 백엔드 EditSessionVersion 엔티티 + LRU 20 + debounce 1분 + 3 endpoints + editor HistoryPanel 분기 통합
-> 시각 검증: 트랙 W/X/Z/AA/BB 모두 preview MCP 재시작 후 7/7 통과 (2026-04-30 16:30 KST). CC-1 helper 단위 시뮬 통과, CC-2 빌드 클린, BB-Phase 3 sessionless 분기 a11y 정확
+> 트랙 U~BB(7 커밋) — 2차 사이클 (D5 Phase 3b 마무리, 다크 Phase 3, 반응형 Phase 2, 그라디언트, 스냅샷 list)
+> 트랙 CC-1/CC-2(2 커밋) — 3차: D5 Phase 3b-v Composite cross-canvas 객체 이동
+> 트랙 CC-Phase 2A/B + DD-3/4/5-A + BB-Phase 3(7 커밋) — 4차: 정밀 좌표 매핑 + 그라디언트 angle/radial + ★ 즐겨찾기 + 페이지 reorder 인프라 + 백엔드 versions 풀 스택
+> **모바일 사이클 — PR #1~#10(27 커밋, `d341af7 → da82764`)** — 모바일 터치 UI 전반 / ResizeObserver 차단 / 메모리 폭발 v3 / ErrorBoundary + localStorage 백업 / 옵션 B/C 풀스택 + 마이그 SQL / 잔존 작업 종합 리뷰
+> **5차 P0 사이클(5 커밋, `0b7cc23 → 60efb05`)** — P0-4 시점별 복원 UI(confirm + auto reload) / P0-3 사전 type 에러 9건 정리 / P0-1·P0-2 운영 가이드 + BB-Phase 3 마이그 SQL / 마이그 FK COLLATE 보정 / **모바일 페이지 크래시 fix(배경색 + 다크 핸들)**
+> **운영 적용 (2026-05-01 23:33~23:39 KST)**: DB 마이그 2건 적용(`products.allowCustomSize` + `edit_session_versions` LRU 20) + git pull(89 commit) + docker compose up -d --build api worker 완료 + endpoint 검증 (BB-Phase 3 활성화)
+> 시각 검증: 4차까지 W/X/Z/AA/BB 7/7 통과 + P0-4 popover 분기 정확 + 모바일 fix 후 desktop 메모리 118MB 정상
 
 | 트랙 | 커밋 | 주제 |
 |---|---|---|
@@ -91,6 +92,12 @@
 | **DD-4** | `2717a00` | CommandPalette 즐겨찾기 ★ — `useCommandFavoritesStore` (zustand persist v1) + 모든 액션에 ★ hover 토글 + filtered 결과 최상단 "★ 즐겨찾기" 그룹 + flat keyboard nav 보정 |
 | **DD-5-A** | `ac3402a` | useAppStore.reorderByIndex 액션 (페이지 순서 재배열 인프라) — 0..N-1 순열 검증, allCanvas/allEditors/pages 동기 재배열, currentPageIndex 보정. UI(BookNavigation drag)는 1차 시도 후 안전상 별도 트랙(DD-5-B-v2)으로 분리 |
 | **BB-Phase 3** | `b366042` | 풀 스택 자동저장 시점 versions — 백엔드 `EditSessionVersion` 엔티티(LRU 20) + autoSave debounce 1분 push + listVersions/getVersion/restoreVersion 3 endpoints + editor `sessionsApi` 클라이언트 + `HistoryPanel` 분기 통합("자동저장 시점 N" + ★ 복원 버튼, sessionless 시 트랙 BB minimal fallback) |
+| 모바일 PR #1~#10 | `d341af7 → da82764` (27) | 모바일 터치 UI 전반 / ResizeObserver 무한 루프 차단 / 텍스트 선택 즉시 해제 / 메모리 폭발 v3 (썸네일 스킵+히스토리 축소) / ErrorBoundary + localStorage 백업 / 옵션 B/C(width/height override) 풀스택 + 마이그 SQL + 전수 테스트 / `vite.config` 산출물 gitignore / EditorView width/height 누락 fix / `REMAINING_WORK_REVIEW.md`(P0/P1/P2 통합 우선순위) |
+| **P0-4** | `0b7cc23` | 시점별 복원 UI confirm 단계 — `confirmingId` state + inline confirm 카드(amber 경고 + 확인/취소) + 성공 시 setTimeout(500ms) → `window.location.reload()` (가장 안전한 캔버스 재초기화) |
+| **P0-3** | `8820066` | 사전 type 에러 9건 정리 — `useCoverRegion` SpreadRegion 위치 / `setup.ts` vi import / `useAppStore` safeSize+CanvasData / `useImageStore` Promise<string> / `PageItem` SPREAD case / `useEditorContents` SpreadConfig.version + width/height / `TextAttributes` symbol cast. 잔여 12건은 follow-up PR 권장 (embed/test/graphql codegen) |
+| **P0-1·P0-2 docs** | `ed4e08b` | `apps/api/migrations/20260501_add_edit_session_versions.sql` 신규 + README 갱신 + `docs/P0_OPERATIONS_CHECKLIST.md`(운영 마이그 가이드 + 모바일 8 시나리오 체크리스트) |
+| **migration fix** | `ce082ef` | `edit_session_versions` FK COLLATE 누락 보정 — 운영 적용 시 errno 150(`edit_sessions.id`가 `utf8mb4_unicode_ci`인데 신규 테이블 default가 다름) 발견 후 명시적 `COLLATE=utf8mb4_unicode_ci` 추가 + 코멘트로 향후 동일 issue 방지 |
+| **mobile crash fix** | `60efb05` | iOS Safari 페이지 크래시 회피 — `AppBackground.onBgColorChange/onLidColorChange`: `canvas.renderAll()`(sync) → `canvas.requestRenderAll()`(다음 frame, frame skip) + `updateObjects()` 호출 제거(배경은 selection 무관). `useCanvasThemeSync`: TOUCH_ENV 가드 추가(모바일에선 객체 set 스킵, 룰러 setTheme만 적용) |
 
 # 코드베이스 컨벤션 (트랙 진행하며 정착됨)
 
@@ -186,41 +193,44 @@ git push origin master   # → Vercel 자동 배포
 - 1 트랙 = 1 커밋 (가능하면). K 같이 명시적으로 묶인 다중 변경은 1 커밋
 - 문서 갱신은 마지막에 별도 docs 커밋
 
-# 향후 작업 후보 (우선순위 순)
+# 향후 작업 후보 (우선순위 — 단일 진실 표는 `docs/REMAINING_WORK_REVIEW.md`)
 
-## 🟡 D5 Phase 3b-ii ~ 3b-v (cover.md §7.2 참조)
+## 🔴 P0 (즉시 — 운영 blocker / 사용자 책임)
 
-cover.md §7.3 단계별 난이도 표:
-- ~~**3b-ii** 객체 추가 위치 region 매핑~~ ✅ 트랙 U (2026-04-30) — `useSpreadAutoAnchor` hook이 EditorView에서 `object:added` 한 곳 구독으로 모든 도구에 자동 적용 (도구별 wiring 불필요)
-- ~~**3b-iii** object:modified 시 region 메타 갱신~~ ✅ 트랙 U (검증) — `SpreadPlugin.handleObjectModified`가 히스테리시스(90%/70%)로 이미 처리. 신규 객체도 3b-ii로 첫 add 시 동일 로직 적용 → 일관성 보장
-- ~~**3b-iv** 책등 가변 시 캔버스 밖 이탈 토스트~~ ✅ 트랙 V (2026-04-30) — `SpreadPlugin`에 `spreadObjectsOutOfBounds` 이벤트 + `useSpreadOutOfBoundsToast` hook (warning 5s)
-- **3b-v** Composite 모드 cross-canvas 이동 — 분리 캔버스 N개 사이 객체 이동 API. canvas-core 빌드 + 데이터 마이그레이션. **상**
+| # | 항목 | 상태 |
+|---|---|---|
+| 1 | 운영 DB 마이그레이션 | ✅ **2026-05-01 23:33 KST 적용 완료** (옵션 C + BB-Phase 3 마이그 2건, 23→24 테이블, 데이터 0건이라 매우 안전) |
+| 2 | **모바일 실기기 검증** | ⏳ **사용자 실기기 필요** — `docs/P0_OPERATIONS_CHECKLIST.md` §P0-2 8 시나리오 체크리스트 + 새로 추가된 commit `60efb05`(iOS Safari 페이지 크래시 fix) 검증 우선 |
+| 3 | 사전 type 에러 정리 | ✅ 9건 정리(commit `8820066`), 12건 follow-up PR 권장(embed/test/graphql codegen) |
+| 4 | 시점별 복원 UI | ✅ commit `0b7cc23` (confirm + auto reload + 운영 배포) |
 
-## ~~🔴 다크 모드 Phase 3~~ ✅ 트랙 W 완료 (2026-04-30)
+## 🟡 P1 (단기 — 사용자 가치 큼)
 
-- 룰러 색상: `RULER_DEFAULTS_LIGHT/DARK` + `getRulerDefaults()` + `RulerPlugin.setTheme()`
-- 객체 선택 핸들: `defaultControlsLight/Dark` + `getDefaultControls(theme)` (editor `useSettingsStore`)
-- 통합 동기화: `useCanvasThemeSync(ready)` hook이 테마 변경 시 모든 ruler + 사용자 객체 controls 일괄 갱신 (시스템 객체 가드 강화: workspace/cut-border/safe-zone-border/guideline 등)
-- 워크스페이스 흰 페이지 배경은 가이드대로 유지 (인쇄용지)
+- **3b-v Phase 3 다중 선택 cross-canvas 이동** — 우리 `moveObjectToCanvas` helper + `MoveToCoverRegion` 패턴 확장. canvas-core 추가 변경
+- **PDF Synthesis 본 워커 동작 검증** — `POST /synthesize/external` end-to-end. 운영 worker 이미 재배포됨, 실 PDF 흐름 검증 필요
+- **PHP 측 코드 적용 검증** — 옵션 B/C URL override + 웹훅 콜백 양측 통합 테스트
+- **반응형 Phase 3** — 태블릿 세로 모드 drawer 최적화
+- **콘텐츠 패널 그리드 카탈로그** — 미리캔버스 풍 카테고리 탭 + 그리드
+- **모바일 헤더 overflow X-3** — viewport 375에서 nav 가로 197px overflow (현 모바일 fix와 별개로 잔존, 우선순위 P1로 승격 검토)
 
-## ✅ 반응형 Phase 2 — 트랙 X + Z 완료
+## 🟢 P2 (중기 — 폴리시 / 확장)
 
-- ~~사이드바 가변 폭 핸들 터치 이벤트~~ ✅ 트랙 X
-- ~~페이지 네비 큰 히트박스~~ ✅ 트랙 X
-- ~~태블릿(768~1024) 헤더 도구 미세 분기~~ ✅ 트랙 Z (작업명 max-w `sm:180/md:200/lg:280` + 페이지네비 select `lg:block` 으로 좁힘)
+- **DD-5-B-v2** — 페이지 순서 재배열 UI 재구현 (store 액션은 `reorderByIndex`로 준비됨)
+- **fabric 객체 색상 다크모드 통일** — 현재 desktop 핸들만 적용, 모바일은 fabric default 유지 정책
+- **CC-Phase 3** — multi-select cross-region 정밀 매핑
+- **AI 패널 정합** (AI 도구 메뉴 + 패널 통합)
+- **번들 크기 최적화** (vendor-opencv lazy-load 강화)
+- **Playwright E2E 시나리오 작성**
+- **Sentry/Datadog 에러 추적 연결**
+- **잔여 type 에러 12건 follow-up PR** — `chore/type-cleanup-embed` / `chore/type-cleanup-test` / `chore/type-cleanup-graphql`
+- **BB-Phase 3 follow-up** — 시점 썸네일 자동 생성(R2 업로드) + hover 미리보기
 
-## 🟢 작은 후속 (1시간 이내)
+## ⚠️ 모바일 / 안전성 메모
 
-- ~~버전 히스토리 패널 Phase 2 minimal~~ ✅ 트랙 BB (LRU 5 메타 list, localStorage). 시점별 실제 복원은 백엔드 versions API 연동 후 별도 트랙
-- ~~멀티 파일 드롭~~ ✅ 트랙 Y (cascade 20px offset, 일괄 toast)
-- ~~ObjectFill에 그라디언트 추천 프리셋~~ ✅ 트랙 AA (8개 linear 90°, 비-텍스트만)
-- 멀티 선택 시 정렬·분포·잠금·삭제 floating bar (canvas 위) — ControlBar에 이미 정렬/분포 있어 우선순위 낮음
-- ~~키보드 nudge step (1px / 10px)~~ ✅ 트랙 Y — 코드는 `ControlsPlugin.handleArrowKeyMovement:130`에 이미 존재(Shift+Arrow), 카탈로그 등록
-
-## 🔴 §8.3 대형 작업 (1일+)
-
-- 콘텐츠 패널 그리드 카탈로그 (미리캔버스 풍 카테고리 탭 + 그리드)
-- AI 패널 정합 (AI 도구 메뉴 + 패널 통합)
+- **iOS Safari 메모리 한계 ~384MB** — fabric retina(DPR 3 = 9x 픽셀) backing store 매우 비쌈
+- 새 코드 작성 시 모바일 가드 필수: `canvas.renderAll()`(sync) 대신 `canvas.requestRenderAll()`(async, frame skip), `updateObjects()`는 selection 관련일 때만, 모든 객체 순회는 `TOUCH_ENV` 가드(`useAppStore.ts:184` 또는 `useCanvasThemeSync.ts` 참고)
+- 운영 데이터 0건 상태(컷오버 전) — 큰 변경 적용에 매우 안전
+- 모바일은 PR #5 `EditorErrorBoundary` + `useCanvasLocalBackup`로 크래시 시 자동 복구 — 새 흐름 추가 시 호환 확인
 
 # 첫 동작 권장
 
