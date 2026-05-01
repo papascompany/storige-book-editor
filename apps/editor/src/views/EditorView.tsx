@@ -22,6 +22,7 @@ import { BookNavigation } from '@/components/PageNavigation/BookNavigation'
 import { useResolvedPageNavPosition } from '@/hooks/useResolvedPageNavPosition'
 import { useSpreadAutoAnchor, useSpreadOutOfBoundsToast } from '@/hooks/useCoverRegion'
 import { useCanvasThemeSync } from '@/hooks/useCanvasThemeSync'
+import { useCanvasLocalBackup } from '@/hooks/useCanvasLocalBackup'
 import { productsApi } from '@/api'
 
 // Screen mode type
@@ -456,6 +457,9 @@ export default function EditorView() {
   useSpreadOutOfBoundsToast(ready)
   // 캔버스 측 다크 모드 동기화 — 룰러 + 객체 선택 핸들 (§8.3 다크 모드 Phase 3)
   useCanvasThemeSync(ready)
+  // 5초마다 캔버스를 localStorage 에 백업 — iOS Safari WebContent 크래시 후 reload 시
+  // 사용자 작업 회복용. sessionKey 는 contentId/templateSetId/'session-default' 우선순위.
+  useCanvasLocalBackup(contentId || templateSetId || (productId ? `product-${productId}` : 'default'), ready)
 
   // 룰러 표시 토글 — useUiPrefStore.showRuler 변화에 반응해 모든 캔버스의 RulerPlugin enable/disable
   useEffect(() => {

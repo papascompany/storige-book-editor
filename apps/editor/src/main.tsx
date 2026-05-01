@@ -2,6 +2,7 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import App from './App'
+import { EditorErrorBoundary } from './components/EditorErrorBoundary'
 import './index.css'
 
 // Production에서는 /storige-editor 경로에서 배포됨
@@ -11,8 +12,10 @@ const basename = import.meta.env.VITE_ROUTER_BASE || ''
 // 기본 lucide 아이콘 size=24 (phosphor와 동일)
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <BrowserRouter basename={basename}>
-      <App />
-    </BrowserRouter>
+    <EditorErrorBoundary>
+      <BrowserRouter basename={basename}>
+        <App />
+      </BrowserRouter>
+    </EditorErrorBoundary>
   </React.StrictMode>,
 )
