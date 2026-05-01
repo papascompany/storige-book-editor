@@ -62,3 +62,10 @@ docker-compose.override.yml
 *.tsbuildinfo
 .vercel
 .env*.local
+
+# Vite/Tooling configs that get emitted by tsc -b runs
+# (소스는 .ts 만 추적; .js/.d.ts 는 tsc 가 생성하므로 무시)
+apps/*/vite.config.js
+apps/*/vite.config.d.ts
+apps/*/vite.embed.config.js
+apps/*/vite.embed.config.d.ts
