@@ -202,6 +202,9 @@ CREATE TABLE IF NOT EXISTS products (
   template         JSON,
   editorTemplates  JSON,
   isActive         BOOLEAN NOT NULL DEFAULT TRUE,
+  -- 옵션 C: 외부 쇼핑몰의 width/height URL 파라미터로 사이즈 override 허용 여부
+  --   docs/BOOKMOA_INTEGRATION_DIFF.md §6-3 참조
+  allowCustomSize  BOOLEAN NOT NULL DEFAULT FALSE,
   template_set_id  VARCHAR(36),
   createdAt        TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updatedAt        TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
