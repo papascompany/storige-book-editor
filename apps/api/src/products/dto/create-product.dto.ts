@@ -63,4 +63,11 @@ export class CreateProductDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  /**
+   * 옵션 C — 외부 쇼핑몰이 width/height URL 파라미터로 사이즈 override 허용 여부.
+   */
+  @IsOptional()
+  @IsBoolean()
+  allowCustomSize?: boolean;
 }

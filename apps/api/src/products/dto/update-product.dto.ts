@@ -8,4 +8,5 @@ export class UpdateProductDto implements Partial<CreateProductDto> {
   wowPressProduct?: CreateProductDto['wowPressProduct'];
   editorTemplates?: CreateProductDto['editorTemplates'];
   isActive?: boolean;
+  allowCustomSize?: boolean;
 }

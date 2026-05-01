@@ -65,6 +65,18 @@ export class Product {
   @Column({ default: true })
   isActive: boolean;
 
+  /**
+   * 북모아 등 외부 쇼핑몰에서 에디터 진입 시 `width`, `height` URL 파라미터로
+   * 인쇄물 사이즈를 동적으로 override 할 수 있도록 허용. (옵션 C)
+   * - false (기본): templateSetId / sizeno 로만 사이즈 결정
+   * - true: ?width=148&height=210 (mm) 으로 워크스페이스 사이즈를 직접 지정 가능
+   *
+   * Storige 가 모든 사이즈 디자인을 사전 등록하지 않고도 쇼핑몰의 동적 사이즈
+   * 옵션 (예: 정사각형 자유 입력) 을 받을 수 있게 함.
+   */
+  @Column({ default: false })
+  allowCustomSize: boolean;
+
   @ManyToOne(() => TemplateSet, { nullable: true })
   @JoinColumn({ name: 'template_set_id' })
   templateSet: TemplateSet;

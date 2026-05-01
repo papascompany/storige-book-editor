@@ -77,6 +77,12 @@ export interface ProductBasedSetupConfig {
   product: WowPressLinkedProduct
   sizeno?: number
   work?: EditorDesign
+  /**
+   * 옵션 C: 외부 쇼핑몰의 동적 사이즈 override (mm).
+   * `product.allowCustomSize === true` 인 경우에만 EditorView 가 전달.
+   * 두 값 모두 양수일 때 templateSet/sizeno 의 사이즈 대신 사용.
+   */
+  customSize?: { width: number; height: number }
 }
 
 export interface ContentEditSetupConfig {
@@ -500,6 +506,25 @@ export const useSettingsStore = create<SettingsState & SettingsActions>()((set, 
     console.log('[SettingsStore] Calling setup() with product:', config.product.title || config.product.id)
     get().setup(config.product, config.sizeno, config.work)
     set({ currentUseCase: 'product-based' })
+
+    // 옵션 C: customSize 가 있으면 setup() 의 sizeno 기반 결과를 덮어쓰기
+    // (templateSet 의 사이즈를 무시하고 외부 쇼핑몰의 동적 사이즈 사용)
+    if (config.customSize) {
+      const { width, height } = config.customSize
+      const { currentSettings } = get()
+      set({
+        currentSettings: {
+          ...currentSettings,
+          size: {
+            ...currentSettings.size,
+            width,
+            height,
+          },
+        },
+      })
+      console.log('[SettingsStore] Applied customSize override:', { width, height })
+    }
+
     console.log('[SettingsStore] setupProductBased completed')
   },
 
