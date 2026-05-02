@@ -49,6 +49,13 @@ module.exports = [
     },
   },
   {
-    ignores: ['dist/**', 'node_modules/**', '*.js'],
+    ignores: [
+      'dist/**',
+      'node_modules/**',
+      '*.js',
+      // tsconfig.json include 외 테스트 fixture/integration — parserOptions.project 매칭 안 됨
+      'test/fixtures/**',
+      'test/integration/**',
+    ],
   },
 ];

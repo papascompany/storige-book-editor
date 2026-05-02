@@ -524,7 +524,7 @@ export class GenerationService {
           textAlign: section.style?.align || 'left',
         } as FabricObject;
 
-      case 'image':
+      case 'image': {
         const imageKey = `page_${pageNumber}_section_${sectionIndex}`;
         const imageUrl = images.get(imageKey);
 
@@ -537,6 +537,7 @@ export class GenerationService {
           scaleX: 1,
           scaleY: 1,
         } as FabricObject;
+      }
 
       case 'shape':
         return {

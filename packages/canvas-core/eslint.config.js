@@ -124,6 +124,10 @@ module.exports = [
         afterAll: 'readonly',
         vi: 'readonly',
         test: 'readonly',
+        // Browser styling/computed style
+        getComputedStyle: 'readonly',
+        // Node (debugLog용 — typeof 검사로 가드되어 있음)
+        process: 'readonly',
       },
     },
     plugins: {

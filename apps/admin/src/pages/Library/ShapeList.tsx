@@ -136,7 +136,7 @@ export const ShapeList = () => {
         categoryId: values.categoryId,
         tags,
       });
-    } catch (error) {
+    } catch (_error) {
       message.error('파일 업로드에 실패했습니다.');
     }
   };

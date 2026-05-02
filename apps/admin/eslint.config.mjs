@@ -91,6 +91,18 @@ export default [
       'react-hooks/exhaustive-deps': 'warn',
     },
   },
+  // Node 환경 (Vite config 등) — process, __dirname 등 허용
+  {
+    files: ['vite.config.ts', 'vite.*.config.ts'],
+    languageOptions: {
+      globals: {
+        process: 'readonly',
+        __dirname: 'readonly',
+        __filename: 'readonly',
+        Buffer: 'readonly',
+      },
+    },
+  },
   {
     ignores: ['dist/**', 'node_modules/**', '*.js', '*.cjs', '*.mjs'],
   },
