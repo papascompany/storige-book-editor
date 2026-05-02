@@ -1,9 +1,14 @@
 # Storige × Bookmoa 시스템 통합 문서
 
 > **작성일**: 2026-05-02  
-> **최종 수정**: 2026-05-02 (v2.1 — 파일 업로드 type 필드 명시, Admin 테스트 플로우 추가, 상품 API 응답 형태 추가)  
-> **버전**: v2.1  
+> **최종 수정**: 2026-05-02 (v2.2 — 워커 `/storage/` 경로 정규화 버그 수정 반영)  
+> **버전**: v2.2  
 > **대상**: PHP 개발자, 운영자, 기술 검토자
+
+> ### 🔄 v2.2 변경 이력 (2026-05-02)
+> - **워커 파일 경로 정규화 버그 수정**: API가 반환하는 `fileUrl` (`/storage/...` 선행 슬래시 형태) 을 워커가 절대경로로 오인하여 `ENOENT` 오류 발생하던 버그를 검증/합성/변환 3개 서비스 모두 수정
+> - **Admin 테스트 페이지 안전장치**: 업로드 후 `fileId`를 우선 전달하도록 변경 (API가 자동으로 올바른 `filePath` 사용)
+> - **VPS 재배포 필수**: 워커 컨테이너 재빌드 필요 (Vercel admin 배포만으로는 미적용)
 
 ---
 
@@ -862,6 +867,50 @@ Effective DPI = (이미지 픽셀 수 × 25.4) / 표시 크기(mm)
 
 - **70점 이상** → 스프레드로 판정
 - **신뢰도**: 80점↑ = high / 60~79 = medium / 그 외 = low
+
+---
+
+## 5.10 워커 파일 경로 정규화 (v2.2 추가)
+
+> 본 절은 v2.2 버그 수정 후의 동작을 명시합니다. 새로 통합하는 PHP 개발자도 알아두어야 할 내용입니다.
+
+### 5.10.1 경로 형태별 해석 규칙
+
+워커 (`pdf-validator`, `pdf-synthesizer`, `pdf-converter`) 의 `downloadFile()` 메서드는 입력 URL/경로를 다음 우선순위로 해석합니다:
+
+| 우선순위 | 입력 형태 | 해석 결과 (Docker 환경, `WORKER_STORAGE_PATH=/app`) | 비고 |
+|--------|-----------|-----------------------------------------|------|
+| 1 | `/storage/uploads/abc.pdf` | `/app/storage/uploads/abc.pdf` | API의 `fileUrl` (HTTP 서빙 형태) |
+| 2 | `storage/uploads/abc.pdf` | `/app/storage/uploads/abc.pdf` | DB의 `filePath` (선행 슬래시 없음) |
+| 3 | `/app/storage/abc.pdf` | `/app/storage/abc.pdf` (그대로) | 일반 절대 경로 |
+| 4 | `./tmp/abc.pdf` | `./tmp/abc.pdf` (그대로) | 상대 경로 |
+| 5 | `https://example.com/abc.pdf` | axios 다운로드 | 외부 URL |
+
+> ⚠️ **v2.1 이전의 버그**: 우선순위 1번이 누락되어 `/storage/...`가 절대경로(우선순위 3번)로 잘못 처리됨 → `fs.readFile('/storage/uploads/...')` → ENOENT 발생.
+
+### 5.10.2 권장 사용법
+
+| 호출 주체 | 권장 입력 | 이유 |
+|----------|----------|------|
+| Bookmoa PHP | `fileId` (UUID) 사용 | API가 DB에서 `filePath` 조회 → 안전 |
+| Admin 테스트 | `fileId` (UUID) 사용 | 동일 이유 (v2.2부터 자동 변경) |
+| 직접 fileUrl 전달 | `/storage/...` 또는 `storage/...` 모두 가능 | v2.2부터 양쪽 모두 정규화 |
+
+```php
+// ✅ 권장: fileId로 검증 요청
+$uploadResp = uploadPdfFile($pdfPath, 'cover', $orderSeqno);
+requestValidation(
+    fileId: $uploadResp['id'],     // ← 권장 (UUID)
+    fileType: 'cover',
+    orderOptions: $orderOptions
+);
+
+// ⚠️ 가능하지만 비권장: fileUrl 직접 전달
+requestValidation(
+    fileUrl: $uploadResp['fileUrl'],  // '/storage/uploads/...' (v2.2 이상 필요)
+    ...
+);
+```
 
 ---
 

@@ -392,7 +392,7 @@
 <div class="top-header">
   <div class="badge-row">
     <span class="badge blue">📄 기술 문서</span>
-    <span class="badge green">v2.1</span>
+    <span class="badge green">v2.2</span>
     <span class="badge">2026-05-02</span>
     <span class="badge">PHP 개발자용</span>
   </div>
@@ -430,6 +430,7 @@
   <a href="#s4-3" class="sub">경고 코드</a>
   <a href="#s4-4" class="sub">CMYK 검증</a>
   <a href="#s4-5" class="sub">해상도 기준</a>
+  <a href="#s4-6" class="sub" style="color:var(--red)">워커 경로 정규화 ⚡</a>
   <a href="#s5">⑤ 환경 변수</a>
 </nav>
 
@@ -1261,6 +1262,46 @@ window.<span class="type">StorigeEditor</span>.<span class="func">init</span>({
       </tbody>
     </table>
   </div>
+
+  <!-- 워커 파일 경로 정규화 (v2.2 신규) -->
+  <h3 class="sub-title" id="s4-6" style="margin-top:36px"><span style="background:var(--red)"></span>워커 파일 경로 정규화 <span style="font-size:11px;background:rgba(239,68,68,.15);color:var(--red);border:1px solid var(--red);border-radius:4px;padding:2px 6px;vertical-align:middle;margin-left:6px">v2.2 핫픽스</span></h3>
+
+  <p style="color:var(--text2);margin-bottom:14px;font-size:13px">
+    v2.1 이전 워커는 API의 <code class="inline">fileUrl</code> ('/storage/...' 형식)을 절대경로로 잘못 처리해 <strong style="color:var(--red)">ENOENT</strong> 오류 발생. v2.2부터 검증/합성/변환 3개 워커 서비스 모두 정규화.
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>입력 형태</th><th>해석 결과 (Docker)</th><th>설명</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><code class="inline">/storage/uploads/abc.pdf</code></td>
+          <td><code class="inline">/app/storage/uploads/abc.pdf</code></td>
+          <td>API의 <code class="inline">fileUrl</code> 형식 — v2.2부터 정상 처리</td>
+        </tr>
+        <tr>
+          <td><code class="inline">storage/uploads/abc.pdf</code></td>
+          <td><code class="inline">/app/storage/uploads/abc.pdf</code></td>
+          <td>DB의 <code class="inline">filePath</code> 형식</td>
+        </tr>
+        <tr>
+          <td><code class="inline">/app/storage/abc.pdf</code></td>
+          <td><code class="inline">/app/storage/abc.pdf</code> (그대로)</td>
+          <td>일반 절대 경로</td>
+        </tr>
+        <tr>
+          <td><code class="inline">https://...</code></td>
+          <td>axios 다운로드</td>
+          <td>외부 URL</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div style="background:rgba(52,211,153,.08);border-left:3px solid var(--green);padding:10px 14px;border-radius:0 6px 6px 0;margin-top:12px;font-size:13px">
+    <strong style="color:var(--green)">✅ PHP 권장 사용법:</strong>&nbsp;
+    파일 업로드 응답의 <code class="inline">fileId</code> (UUID) 를 검증/합성 요청에 전달하세요. API가 DB에서 안전한 <code class="inline">filePath</code>를 자동 조회합니다.
+  </div>
 </section>
 
 <!-- ─────────────── ⑤ 환경 변수 ─────────────── -->
@@ -1323,7 +1364,7 @@ window.<span class="type">StorigeEditor</span>.<span class="func">init</span>({
 
 <!-- 푸터 -->
 <div style="border-top:1px solid var(--border);margin-top:48px;padding:24px 0;color:var(--text3);font-size:12px">
-  <div style="margin-bottom:6px"><strong style="color:var(--text2)">Storige × Bookmoa 시스템 통합 문서</strong> · v2.1 · 2026-05-02</div>
+  <div style="margin-bottom:6px"><strong style="color:var(--text2)">Storige × Bookmoa 시스템 통합 문서</strong> · v2.2 · 2026-05-02</div>
   <div>저장 경로: <code style="font-family:monospace;color:var(--text3)">docs/SYSTEM_INTEGRATION_OVERVIEW.md</code> · <code style="font-family:monospace;color:var(--text3)">docs/SYSTEM_INTEGRATION_OVERVIEW.html</code></div>
   <div style="margin-top:6px">최신 API 스펙: <code style="font-family:monospace;color:var(--text3)">http://localhost:4000/api/docs</code> (Swagger UI)</div>
 </div>
