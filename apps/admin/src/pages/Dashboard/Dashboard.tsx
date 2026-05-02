@@ -14,6 +14,7 @@ import { categoriesApi } from '../../api/categories';
 import { workerJobsApi } from '../../api/worker-jobs';
 import { templateSetsApi } from '../../api/template-sets';
 import { productTemplateSetsApi } from '../../api/product-template-sets';
+import { QueueMonitorWidget } from '../../components/QueueMonitorWidget';
 
 const { Title } = Typography;
 
@@ -184,6 +185,13 @@ export const Dashboard = () => {
                   valueStyle={{ color: processingJobs > 0 ? '#3f8600' : undefined }}
                 />
               </Card>
+            </Col>
+          </Row>
+
+          {/* 워커 큐 실시간 모니터링 (5초 폴링) */}
+          <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
+            <Col span={24}>
+              <QueueMonitorWidget />
             </Col>
           </Row>
 

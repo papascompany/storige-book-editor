@@ -1,8 +1,10 @@
-import { Controller, Get } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { Controller, Get, UseGuards } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
 import { Public } from '../auth/decorators/public.decorator';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { QueueMonitorService } from './queue-monitor.service';
 
 @ApiTags('Health')
 @Controller('health')
@@ -11,6 +13,7 @@ export class HealthController {
     @InjectQueue('pdf-validation') private validationQueue: Queue,
     @InjectQueue('pdf-conversion') private conversionQueue: Queue,
     @InjectQueue('pdf-synthesis') private synthesisQueue: Queue,
+    private readonly queueMonitor: QueueMonitorService,
   ) {}
 
   @Public()
@@ -80,6 +83,22 @@ export class HealthController {
     } catch {
       return { status: 'not_ready', error: 'Redis connection failed' };
     }
+  }
+
+  /**
+   * Admin 대시보드용 큐 상태 스냅샷
+   * (JWT 인증 필요 - 관리자만 접근)
+   */
+  @Get('queues')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Admin: 큐 상태 + 임계치 스냅샷' })
+  @ApiResponse({
+    status: 200,
+    description: '큐별 카운트 + status (ok/warning/critical) + 모니터 임계치',
+  })
+  @UseGuards(JwtAuthGuard)
+  async queueDashboard() {
+    return this.queueMonitor.getDashboardSnapshot();
   }
 
   @Public()
