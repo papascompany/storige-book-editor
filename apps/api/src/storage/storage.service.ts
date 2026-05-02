@@ -60,7 +60,7 @@ export class StorageService {
 
   async saveFile(
     file: Express.Multer.File,
-    category: 'templates' | 'library' | 'uploads' | 'temp' | 'designs' = 'uploads',
+    category: 'templates' | 'library' | 'uploads' | 'temp' | 'designs' | 'thumbnails' = 'uploads',
   ): Promise<UploadedFile> {
     console.log('[StorageService] saveFile called', {
       originalname: file?.originalname,

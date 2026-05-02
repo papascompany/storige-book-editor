@@ -194,7 +194,7 @@ export class EditorService {
     // BB-Phase 3 ─ 자동저장 시점 스냅샷 push (debounce 1분 + LRU trim)
     if (dto.pages) {
       try {
-        await this.maybePushVersion(saved.id, dto.pages, userId)
+        await this.maybePushVersion(saved.id, dto.pages, userId, dto.thumbnailUrl)
       } catch (e) {
         // versions 실패는 자동저장 자체를 깨면 안 됨 — 로깅만
         console.warn('[autoSave] version push 실패 (무시):', e)
@@ -208,11 +208,13 @@ export class EditorService {
    * BB-Phase 3 ─ 자동저장 시점 스냅샷 push (debounce + LRU)
    * - 같은 세션의 마지막 push 후 VERSION_DEBOUNCE_MS 미만이면 skip
    * - push 후 LRU 한도(VERSION_LRU_LIMIT) 초과 시 가장 오래된 것부터 삭제
+   * - thumbnailUrl: editor가 캡처/업로드한 썸네일 URL (없으면 null)
    */
   private async maybePushVersion(
     sessionId: string,
     pages: EditPage[],
     userId?: string,
+    thumbnailUrl?: string | null,
   ): Promise<void> {
     const now = Date.now()
     const last = this.lastVersionPushAt.get(sessionId) ?? 0
@@ -224,7 +226,7 @@ export class EditorService {
       pages: pages,
       pageCount: pages.length,
       createdBy: userId || null,
-      thumbnailUrl: null,
+      thumbnailUrl: thumbnailUrl || null,
     })
     await this.editSessionVersionRepository.save(version)
     await this.trimVersions(sessionId)

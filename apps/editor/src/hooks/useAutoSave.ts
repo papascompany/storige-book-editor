@@ -4,6 +4,7 @@ import { useEditorStore } from '@/stores/useEditorStore'
 import { useSaveStore } from '@/stores/useSaveStore'
 import { useAppStore } from '@/stores/useAppStore'
 import { useAutoSaveSnapshotsStore } from '@/stores/useAutoSaveSnapshotsStore'
+import { useAutoSaveThumbnail } from '@/hooks/useAutoSaveThumbnail'
 import { sessionsApi } from '@/api/sessions'
 import { ServicePlugin } from '@storige/canvas-core'
 import type { EditPage, CanvasData } from '@storige/types'
@@ -49,6 +50,9 @@ export function useAutoSave() {
   // App Store
   const allCanvas = useAppStore((state) => state.allCanvas)
   const allEditors = useAppStore((state) => state.allEditors)
+
+  // BB-Phase 3 follow-up — 시점 썸네일 캡처/업로드 helper (모바일 자동 스킵)
+  const { captureAndUpload: captureThumbnail } = useAutoSaveThumbnail()
 
   /**
    * 현재 캔버스 데이터 수집
@@ -148,11 +152,18 @@ export function useAutoSave() {
     try {
       const updatedPages = await collectCanvasData()
 
+      // BB-Phase 3 follow-up — 시점 썸네일 캡처/업로드는 autoSave POST와 병렬로 진행.
+      // (실패해도 null로 fallback해 자동저장 자체는 그대로 성공)
+      // 백엔드 maybePushVersion은 1분 debounce로 묶여 매번 push되지 않으므로
+      // 매번 캡처되는 썸네일도 일부는 사용 안 됨 — 비용은 0.25x JPEG라 미미.
+      const thumbnailUrl = await captureThumbnail()
+
       await sessionsApi.autoSave(
         sessionId,
         {
           pages: updatedPages,
           currentPageIndex,
+          thumbnailUrl,
         },
         userId || undefined
       )
@@ -207,6 +218,7 @@ export function useAutoSave() {
     canRetry,
     saveToLocal,
     deleteLocalBackup,
+    captureThumbnail,
   ])
 
   /**
