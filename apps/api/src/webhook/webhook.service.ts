@@ -2,6 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import axios from 'axios';
 import { SynthesisWebhookPayload } from '@storige/types';
 
+export { SynthesisWebhookPayload };
+
 export interface SessionWebhookPayload {
   event: 'session.validated' | 'session.failed';
   sessionId: string;
