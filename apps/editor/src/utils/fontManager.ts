@@ -61,7 +61,9 @@ export const loadFonts = async (): Promise<LibraryFont[]> => {
   try {
     fontList = await libraryApi.getFonts()
     isLoaded = true
-    console.log(`[FontManager] ${fontList.length}개 폰트 로드 완료`)
+    if (import.meta.env.DEV) {
+      console.log(`[FontManager] ${fontList.length}개 폰트 로드 완료`)
+    }
   } catch (error) {
     console.error('[FontManager] 폰트 목록 로드 실패:', error)
     fontList = []

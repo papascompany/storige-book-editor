@@ -6,6 +6,7 @@ import { jsPDF } from 'jspdf'
 import { svg2pdf } from 'svg2pdf.js'
 import FontPlugin from './FontPlugin'
 import { convertFabricObjectToSVGString, core, mmToPx, pxToMm } from '../utils'
+import { dlog } from '../utils/debugLog'
 
 class ServicePlugin extends PluginBase {
   name = 'ServicePlugin'
@@ -318,7 +319,7 @@ class ServicePlugin extends PluginBase {
       try {
         // 필요한 폰트 목록 추출
         const requiredFonts = extractFontsFromJSON(jsonStr)
-        console.log('📋 필요한 폰트 목록:', Array.from(requiredFonts))
+        dlog('font', '📋 필요한 폰트 목록:', Array.from(requiredFonts))
 
         // FontPlugin 가져오기
         const fontPlugin = this._editor.getPlugin<FontPlugin>('FontPlugin')
@@ -326,11 +327,11 @@ class ServicePlugin extends PluginBase {
         if (fontPlugin && requiredFonts.size > 0) {
           // 모든 폰트 리소스를 병렬로 로드 (객체 적용 없이)
           const fontLoadPromises = Array.from(requiredFonts).map((fontName) => {
-            console.log(`🔄 폰트 리소스 로드 시작: ${fontName}`)
+            dlog('font', `🔄 폰트 리소스 로드 시작: ${fontName}`)
             return fontPlugin
               .ensureFontLoaded(fontName)
               .then(() => {
-                console.log(`✅ 폰트 리소스 로드 완료: ${fontName}`)
+                dlog('font', `✅ 폰트 리소스 로드 완료: ${fontName}`)
               })
               .catch((err) => {
                 console.warn(`⚠️ 폰트 리소스 로드 실패 (계속 진행): ${fontName}`, err)
@@ -340,7 +341,7 @@ class ServicePlugin extends PluginBase {
 
           // 모든 폰트 로드 대기
           await Promise.all(fontLoadPromises)
-          console.log('✅ 모든 폰트 리소스 로드 완료')
+          dlog('font', '✅ 모든 폰트 리소스 로드 완료')
         }
 
         // 폰트 로드 완료 후 JSON 로드
@@ -382,7 +383,7 @@ class ServicePlugin extends PluginBase {
           this._editor.hooks.get('afterLoad').callAsync(jsonStr, async () => {
             // afterLoad: 로드된 객체에 폰트 적용
             if (fontPlugin && requiredFonts.size > 0) {
-              console.log('🎨 객체에 폰트 적용 시작')
+              dlog('font', '🎨 객체에 폰트 적용 시작')
 
               // 모든 텍스트 객체를 재귀적으로 수집 (그룹 내부 포함)
               const collectTextObjects = (obj: fabric.Object): fabric.Object[] => {
@@ -419,7 +420,7 @@ class ServicePlugin extends PluginBase {
                 if (baseFontFamily && typeof baseFontFamily === 'string' && requiredFonts.has(baseFontFamily)) {
                   try {
                     await fontPlugin.applyFontToObject(obj, baseFontFamily)
-                    console.log(`✅ 객체에 폰트 적용 완료 (기본): ${baseFontFamily}`)
+                    dlog('font', `✅ 객체에 폰트 적용 완료 (기본): ${baseFontFamily}`)
                   } catch (err) {
                     console.warn(`⚠️ 객체에 폰트 적용 실패 (기본): ${baseFontFamily}`, err)
                   }
@@ -445,11 +446,11 @@ class ServicePlugin extends PluginBase {
                   for (const styleFont of stylesFontsSet) {
                     if (requiredFonts.has(styleFont)) {
                       try {
-                        console.log(`🔄 객체에 폰트 적용 (styles): ${styleFont}`)
+                        dlog('font', `🔄 객체에 폰트 적용 (styles): ${styleFont}`)
                         // styles 폰트는 이미 ensureFontLoaded로 로드되었지만,
                         // 명시적으로 한 번 더 적용하여 폰트 메트릭 보장
                         await fontPlugin.applyFontToObject(obj, styleFont)
-                        console.log(`✅ 객체에 폰트 적용 완료 (styles): ${styleFont}`)
+                        dlog('font', `✅ 객체에 폰트 적용 완료 (styles): ${styleFont}`)
                       } catch (err) {
                         console.warn(`⚠️ 객체에 폰트 적용 실패 (styles): ${styleFont}`, err)
                       }
@@ -458,7 +459,7 @@ class ServicePlugin extends PluginBase {
                 }
               }
 
-              console.log('✅ 모든 객체에 폰트 적용 완료')
+              dlog('font', '✅ 모든 객체에 폰트 적용 완료')
             }
 
             this._canvas.requestRenderAll()
@@ -522,7 +523,7 @@ class ServicePlugin extends PluginBase {
           // PDF 저장 전 모든 텍스트 객체에 대한 글리프 검증
           console.log('🔍 PDF 저장 시작 - processPages 함수 실행됨')
           const fontPlugin = this._editor.getPlugin<FontPlugin>('FontPlugin')
-          console.log('🔍 fontPlugin:', fontPlugin, 'validateTextGlyphs 존재:', typeof fontPlugin?.validateTextGlyphs)
+          dlog('font', '🔍 fontPlugin:', fontPlugin, 'validateTextGlyphs 존재:', typeof fontPlugin?.validateTextGlyphs)
           
           if (fontPlugin && typeof fontPlugin.validateTextGlyphs === 'function') {
             console.log('🔍 PDF 저장 전 글리프 검증 시작...')
@@ -600,7 +601,7 @@ class ServicePlugin extends PluginBase {
                 throw new Error('사용자가 PDF 저장을 취소했습니다 (미지원 문자 발견)')
               }
             } else {
-              console.log('✅ 모든 텍스트가 폰트에서 지원됩니다')
+              dlog('font', '✅ 모든 텍스트가 폰트에서 지원됩니다')
             }
           }
           
@@ -1796,7 +1797,7 @@ class ServicePlugin extends PluginBase {
         )
 
         if (pathObj) {
-          console.log(`✅ FontPlugin으로 텍스트 path 변환 성공: "${(textObj as any).text}"`)
+          dlog('font', `✅ FontPlugin으로 텍스트 path 변환 성공: "${(textObj as any).text}"`)
           return pathObj
         }
       }
@@ -1821,7 +1822,7 @@ class ServicePlugin extends PluginBase {
    */
   private async _vectorizeTextInGroup(group: fabric.Group): Promise<fabric.Object[]> {
     try {
-      console.log(`🔄 그룹 내 텍스트 추출 및 벡터화 시작: ${group.id}`)
+      dlog('plugin', `🔄 그룹 내 텍스트 추출 및 벡터화 시작: ${group.id}`)
 
       if (!group._objects || group._objects.length === 0) {
         console.log('⚠️ 그룹 내 객체가 없음')
