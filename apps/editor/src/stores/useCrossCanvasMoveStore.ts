@@ -27,6 +27,8 @@ export interface CrossCanvasMoveRecord {
   ts: number
   /** 이동된 객체의 라벨/이름 (toast 등에 사용) */
   targetLabel?: string
+  /** 이동된 객체 수 — 되돌리기 시 undo 횟수 결정 */
+  count?: number
 }
 
 interface State {
