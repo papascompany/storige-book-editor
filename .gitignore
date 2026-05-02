@@ -21,6 +21,11 @@ build/
 .env.test.local
 .env.production.local
 
+# Claude Code local memory (operational secrets — SSH/VPS/API keys)
+# 세션 간 자동 로드되는 로컬 메모리 — 절대 커밋 금지
+CLAUDE.local.md
+.claude/CLAUDE.local.md
+
 # Logs
 logs
 *.log
