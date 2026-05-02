@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { History, Clock, RotateCcw, Save, FileText, Undo2 } from 'lucide-react'
+import { History, Clock, RotateCcw, Save, FileText, Undo2, ImageOff } from 'lucide-react'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Button } from '@/components/ui/button'
 import { useAppStore } from '@/stores/useAppStore'
@@ -10,6 +10,17 @@ import { showToast } from '@/stores/useToastStore'
 import { sessionsApi } from '@/api/sessions'
 import { HistoryPlugin } from '@storige/canvas-core'
 import { cn } from '@/lib/utils'
+
+// 썸네일 URL 정규화 — 백엔드는 `/storage/files/...` 상대 경로를 반환하므로
+// VITE_API_BASE_URL을 prefix해 절대 경로로 만든다 (apiClient base와 동일 경로 규칙).
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000/api'
+function resolveThumbnailUrl(url: string | null | undefined): string | null {
+  if (!url) return null
+  if (/^https?:\/\//.test(url)) return url
+  // /storage/files/thumbnails/abc.jpg → {API_BASE_URL}/storage/files/thumbnails/abc.jpg
+  // API_BASE_URL이 /api로 끝나면 그대로 prefix
+  return `${API_BASE_URL.replace(/\/$/, '')}${url.startsWith('/') ? '' : '/'}${url}`
+}
 
 interface BackendVersion {
   id: string
@@ -60,6 +71,8 @@ export default function HistoryPanel() {
   const [restoringId, setRestoringId] = useState<string | null>(null)
   /** P0-4: 복원 confirm 대기 중인 versionId (실수 클릭 방지). null이면 일반 list 모드 */
   const [confirmingId, setConfirmingId] = useState<string | null>(null)
+  /** BB-Phase 3 follow-up: hover 시 큰 썸네일 미리보기 표시할 versionId */
+  const [hoverPreviewId, setHoverPreviewId] = useState<string | null>(null)
 
   // 스택 길이 — historyUpdate 이벤트 구독으로 갱신
   const [undoLen, setUndoLen] = useState(0)
@@ -281,7 +294,13 @@ export default function HistoryPanel() {
                           </div>
                         ) : (
                           // 일반 list item (복원 버튼 → confirm 단계로)
-                          <div className="flex items-center justify-between gap-2 px-2 py-1">
+                          <div
+                            className="relative flex items-center gap-2 px-2 py-1"
+                            onMouseEnter={() => v.thumbnailUrl && setHoverPreviewId(v.id)}
+                            onMouseLeave={() => setHoverPreviewId((prev) => (prev === v.id ? null : prev))}
+                          >
+                            {/* 썸네일 mini (28x40) — null이면 placeholder */}
+                            <ThumbnailMini url={resolveThumbnailUrl(v.thumbnailUrl)} />
                             <div className="flex flex-col min-w-0 flex-1">
                               <span className="text-[11px] text-editor-text truncate">
                                 {formatRelative(date)}
@@ -304,6 +323,19 @@ export default function HistoryPanel() {
                               <Undo2 className="h-3 w-3" />
                               복원
                             </button>
+                            {/* hover 큰 미리보기 — popover 우측에 floating */}
+                            {hoverPreviewId === v.id && v.thumbnailUrl && (
+                              <div
+                                className="absolute left-full top-0 ml-2 z-50 pointer-events-none rounded border border-editor-border bg-editor-panel shadow-lg p-1"
+                                aria-hidden
+                              >
+                                <img
+                                  src={resolveThumbnailUrl(v.thumbnailUrl) || ''}
+                                  alt=""
+                                  className="block w-[160px] h-auto max-h-[220px] object-contain"
+                                />
+                              </div>
+                            )}
                           </div>
                         )}
                       </li>
@@ -391,5 +423,32 @@ function Row({
       </span>
       <span className="text-[12px] font-medium text-editor-text">{value}</span>
     </div>
+  )
+}
+
+/**
+ * BB-Phase 3 follow-up — 시점 list item에 표시하는 썸네일 mini.
+ * - 28x40 (A4 portrait 비율 근사)
+ * - URL이 null이면 placeholder 아이콘 (모바일에서 캡처 스킵된 시점)
+ */
+function ThumbnailMini({ url }: { url: string | null }) {
+  if (!url) {
+    return (
+      <div
+        className="flex-shrink-0 w-7 h-10 rounded border border-editor-border bg-editor-surface-low flex items-center justify-center"
+        aria-label="썸네일 없음"
+        title="이 시점은 썸네일이 없습니다 (모바일 캡처 스킵 또는 업로드 실패)"
+      >
+        <ImageOff className="h-3 w-3 text-editor-text-muted opacity-50" />
+      </div>
+    )
+  }
+  return (
+    <img
+      src={url}
+      alt=""
+      className="flex-shrink-0 w-7 h-10 rounded border border-editor-border object-cover bg-editor-surface-low"
+      loading="lazy"
+    />
   )
 }

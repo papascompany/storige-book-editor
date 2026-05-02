@@ -239,4 +239,35 @@ export class StorageController {
       message: 'Design file deleted successfully',
     };
   }
+
+  // ============================================================================
+  // BB-Phase 3 follow-up — 자동저장 시점 썸네일
+  //
+  // editor의 autoSave 흐름과 동일한 인증 모델(@Public + X-User-Id 헤더 trust)을 사용한다.
+  // editor가 fabric.toDataURL(0.25x JPEG)로 캡처한 ~10-50KB 이미지를 업로드하고
+  // EditSessionVersion.thumbnailUrl에 URL을 저장한다.
+  //
+  // 모바일은 TOUCH_ENV 가드로 캡처를 스킵하므로 이 엔드포인트는 데스크톱에서만 호출됨.
+  // 별도 cleanup cron은 1차 도입 안 함 (LRU 20 trim과 함께 orphan 허용 — P2 follow-up).
+  // ============================================================================
+  @Post('upload/thumbnails')
+  @Public()
+  @UseInterceptors(FileInterceptor('file', multerOptions))
+  @ApiOperation({ summary: 'Upload a version thumbnail (autosave snapshot)' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: { type: 'string', format: 'binary' },
+      },
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Thumbnail uploaded successfully' })
+  async uploadThumbnail(@UploadedFile() file: Express.Multer.File) {
+    if (!file) {
+      throw new BadRequestException('No file provided');
+    }
+    return await this.storageService.saveFile(file, 'thumbnails');
+  }
 }

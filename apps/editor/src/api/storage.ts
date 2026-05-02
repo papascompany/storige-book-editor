@@ -61,6 +61,26 @@ export const storageApi = {
     return response.data;
   },
 
+  /**
+   * BB-Phase 3 follow-up — 시점 썸네일 업로드.
+   * 전용 엔드포인트(/storage/upload/thumbnails) — @Public + 'thumbnails' 카테고리 고정.
+   * 호출자: useAutoSaveThumbnail 훅 (TOUCH_ENV에선 호출되지 않음).
+   */
+  uploadThumbnail: async (file: File | Blob, filename = 'thumb.jpg'): Promise<UploadedFile> => {
+    const formData = new FormData();
+    formData.append('file', file, filename);
+    const response = await apiClient.post<UploadedFile>(
+      '/storage/upload/thumbnails',
+      formData,
+      {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      }
+    );
+    return response.data;
+  },
+
   getFileUrl: (category: string, filename: string) => {
     return `${API_BASE_URL}/storage/files/${category}/${filename}`;
   },

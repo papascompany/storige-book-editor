@@ -30,6 +30,8 @@ export interface UpdateSessionRequest {
 export interface AutoSavePayload {
   pages?: EditPage[]
   currentPageIndex?: number
+  /** BB-Phase 3 follow-up — 시점 스냅샷 썸네일 URL (없으면 null/생략) */
+  thumbnailUrl?: string | null
 }
 
 /**
