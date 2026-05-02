@@ -1,5 +1,5 @@
 import { useCallback, useState, useEffect } from 'react'
-import { Upload as UploadSimple, Trash2 as Trash } from 'lucide-react'
+import { Upload as UploadSimple, Trash2 as Trash, Check } from 'lucide-react'
 import { useAppStore } from '@/stores/useAppStore'
 import { useImageStore } from '@/stores/useImageStore'
 import { useIsCustomer } from '@/stores/useAuthStore'
@@ -8,6 +8,14 @@ import { Button } from '@/components/ui/button'
 import AppSection from '@/components/AppSection'
 import { ImageProcessingPlugin, SelectionType, parseColorValue, rgbaToHex8 } from '@storige/canvas-core'
 import type { EditorContent } from '@/generated/graphql'
+
+// 모바일/터치 환경 감지 — iOS native <input type="color">는 picker dismiss(X 버튼) 시점에
+// change 이벤트가 발화되며 사용자가 "적용 UI 없음"으로 혼동. 모바일 안내 + 명시적 "적용" 버튼 노출.
+function isTouchEnv(): boolean {
+  if (typeof window === 'undefined' || !window.matchMedia) return false
+  try { return window.matchMedia('(pointer: coarse)').matches } catch { return false }
+}
+const TOUCH_ENV = isTouchEnv()
 
 // Fabric types
  
@@ -190,43 +198,61 @@ export default function AppBackground() {
     canvas.renderAll()
   }, [canvas, bgObject])
 
-  // Handle background color change
-  // 모바일 안전: renderAll(동기) → requestRenderAll(다음 frame, throttle) — 빠른 색상 swipe
-  // 시 한 번만 그려 retina backing store 메모리 hit 회피.
-  const onBgColorChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value
-    setBgColor(value)
-
-    if (!workspace || !canvas) return
-
+  // 배경색 적용 핵심 로직 — 색상 문자열을 받아 workspace.fill에 즉시 반영.
+  // input change 이벤트와 명시적 "적용" 버튼 클릭에서 공통 사용.
+  // 모바일 안전: renderAll(동기) → requestRenderAll(다음 frame) — 메모리 hit 회피.
+  const applyBgColor = useCallback((value: string) => {
+    if (!workspace || !canvas) return false
     const rgba = parseColorValue(value)
-    if (!rgba) return
-
+    if (!rgba) return false
     rgba.a = 1
     const rgbaString = `rgba(${rgba.r}, ${rgba.g}, ${rgba.b}, ${rgba.a})`
-
     workspace.fill = rgbaString
     workspace.dirty = true
     canvas.requestRenderAll()
-    // updateObjects는 selection list 갱신 — 배경 색상 변경엔 불필요. skip.
+    return true
   }, [workspace, canvas])
 
-  // Handle lid color change
-  const onLidColorChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+  // Handle background color change — input change 이벤트(color picker dismiss 시점)에서 호출
+  const onBgColorChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value
-    setLidColor(value)
+    setBgColor(value)
+    applyBgColor(value)
+  }, [applyBgColor])
 
-    if (!lidObject || !canvas) return
+  // 명시적 "적용" 버튼 — iOS native color picker가 dismiss를 놓치는 경우 또는
+  // 사용자가 텍스트 input으로 hex 직접 입력 후 즉시 적용하고 싶을 때 사용.
+  const handleApplyBgColor = useCallback(() => {
+    if (applyBgColor(bgColor)) {
+      // 시각적 confirm — workspace 업데이트 후 명시적 안내 (모바일 사용자 혼동 방지)
+      // showToast 호출은 stores/useToastStore에서 import 필요하지만 BB-Phase 3 외 트랙에서
+      // 이미 등록된 useToastStore를 사용. 여기는 silent로 두고 시각적 변화로만 확인.
+    }
+  }, [applyBgColor, bgColor])
 
+  // 뚜껑색 적용 핵심 로직 — 색상 문자열을 받아 lidObject.fill에 즉시 반영.
+  const applyLidColor = useCallback((value: string) => {
+    if (!lidObject || !canvas) return false
     const rgba = parseColorValue(value)
-    if (!rgba) return
-
+    if (!rgba) return false
     const rgbaString = `rgba(${rgba.r}, ${rgba.g}, ${rgba.b}, 1)`
     lidObject.fill = rgbaString
     lidObject.dirty = true
     canvas.requestRenderAll()
     canvas.fire('object:modified', { target: lidObject })
+    return true
   }, [lidObject, canvas])
+
+  // Handle lid color change
+  const onLidColorChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value
+    setLidColor(value)
+    applyLidColor(value)
+  }, [applyLidColor])
+
+  const handleApplyLidColor = useCallback(() => {
+    applyLidColor(lidColor)
+  }, [applyLidColor, lidColor])
 
   // Add content to canvas
   const addContentToCanvas = useCallback(async (content: unknown) => {
@@ -309,54 +335,92 @@ export default function AppBackground() {
 
         {/* Background Color */}
         <AppSection id="app-background-color" title="배경색">
-          <div className="flex flex-row gap-2 items-center px-4">
-            <div className="flex-1 flex items-center gap-2 h-10 px-3 rounded-lg bg-editor-surface-lowest">
-              <input
-                type="color"
-                value={bgColor}
-                onChange={onBgColorChange}
-                className="w-8 h-8 rounded cursor-pointer border-0"
-              />
-              <input
-                type="text"
-                value={bgColor.toUpperCase()}
-                onChange={(e) => {
-                  const val = e.target.value
-                  if (/^#[0-9A-Fa-f]{0,6}$/.test(val)) {
-                    setBgColor(val)
-                  }
-                }}
-                onBlur={onBgColorChange as unknown as React.FocusEventHandler<HTMLInputElement>}
-                className="flex-1 bg-transparent text-sm text-editor-text outline-none uppercase"
-              />
+          <div className="flex flex-col gap-1.5 px-4">
+            <div className="flex flex-row gap-2 items-center">
+              <div className="flex-1 flex items-center gap-2 h-10 px-3 rounded-lg bg-editor-surface-lowest">
+                <input
+                  type="color"
+                  value={bgColor}
+                  onChange={onBgColorChange}
+                  className="w-8 h-8 rounded cursor-pointer border-0"
+                  aria-label="배경색 선택"
+                />
+                <input
+                  type="text"
+                  value={bgColor.toUpperCase()}
+                  onChange={(e) => {
+                    const val = e.target.value
+                    if (/^#[0-9A-Fa-f]{0,6}$/.test(val)) {
+                      setBgColor(val)
+                    }
+                  }}
+                  onBlur={onBgColorChange as unknown as React.FocusEventHandler<HTMLInputElement>}
+                  className="flex-1 bg-transparent text-sm text-editor-text outline-none uppercase"
+                  aria-label="배경색 hex 코드"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={handleApplyBgColor}
+                className="flex items-center justify-center gap-1 h-10 min-w-[64px] px-3 rounded-lg bg-editor-accent text-white text-xs font-medium hover:bg-editor-accent-hover transition-colors"
+                aria-label="배경색 적용"
+                title="현재 색상을 배경에 적용"
+              >
+                <Check className="h-4 w-4" />
+                적용
+              </button>
             </div>
+            {TOUCH_ENV && (
+              <p className="text-[10px] text-editor-text-muted leading-snug px-1">
+                팝업에서 색상 선택 후 X(닫기)를 누르면 자동 적용됩니다. 적용이 안 되면 위 "적용" 버튼을 누르세요.
+              </p>
+            )}
           </div>
         </AppSection>
 
         {/* Lid Color (if lid object exists) */}
         {lidObject && (
           <AppSection id="app-background-cap" title="뚜껑색 변경">
-            <div className="flex flex-row gap-2 items-center px-4">
-              <div className="flex-1 flex items-center gap-2 h-10 px-3 rounded-lg bg-editor-surface-lowest">
-                <input
-                  type="color"
-                  value={lidColor}
-                  onChange={onLidColorChange}
-                  className="w-8 h-8 rounded cursor-pointer border-0"
-                />
-                <input
-                  type="text"
-                  value={lidColor.toUpperCase()}
-                  onChange={(e) => {
-                    const val = e.target.value
-                    if (/^#[0-9A-Fa-f]{0,6}$/.test(val)) {
-                      setLidColor(val)
-                    }
-                  }}
-                  onBlur={onLidColorChange as unknown as React.FocusEventHandler<HTMLInputElement>}
-                  className="flex-1 bg-transparent text-sm text-editor-text outline-none uppercase"
-                />
+            <div className="flex flex-col gap-1.5 px-4">
+              <div className="flex flex-row gap-2 items-center">
+                <div className="flex-1 flex items-center gap-2 h-10 px-3 rounded-lg bg-editor-surface-lowest">
+                  <input
+                    type="color"
+                    value={lidColor}
+                    onChange={onLidColorChange}
+                    className="w-8 h-8 rounded cursor-pointer border-0"
+                    aria-label="뚜껑색 선택"
+                  />
+                  <input
+                    type="text"
+                    value={lidColor.toUpperCase()}
+                    onChange={(e) => {
+                      const val = e.target.value
+                      if (/^#[0-9A-Fa-f]{0,6}$/.test(val)) {
+                        setLidColor(val)
+                      }
+                    }}
+                    onBlur={onLidColorChange as unknown as React.FocusEventHandler<HTMLInputElement>}
+                    className="flex-1 bg-transparent text-sm text-editor-text outline-none uppercase"
+                    aria-label="뚜껑색 hex 코드"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={handleApplyLidColor}
+                  className="flex items-center justify-center gap-1 h-10 min-w-[64px] px-3 rounded-lg bg-editor-accent text-white text-xs font-medium hover:bg-editor-accent-hover transition-colors"
+                  aria-label="뚜껑색 적용"
+                  title="현재 색상을 뚜껑에 적용"
+                >
+                  <Check className="h-4 w-4" />
+                  적용
+                </button>
               </div>
+              {TOUCH_ENV && (
+                <p className="text-[10px] text-editor-text-muted leading-snug px-1">
+                  팝업에서 색상 선택 후 X(닫기)를 누르면 자동 적용됩니다.
+                </p>
+              )}
             </div>
           </AppSection>
         )}
