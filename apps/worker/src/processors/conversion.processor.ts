@@ -5,6 +5,7 @@ import { PdfConverterService } from '../services/pdf-converter.service';
 import axios from 'axios';
 import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
+import { captureJobException } from '../sentry/sentry.init';
 
 interface ConversionJobData {
   jobId: string;
@@ -62,6 +63,14 @@ export class ConversionProcessor {
         `Conversion job ${job.data.jobId} error: ${error.message}`,
         error.stack,
       );
+
+      // Sentry에 잡 컨텍스트와 함께 전송
+      captureJobException(error, {
+        jobId: job.data.jobId,
+        jobType: 'convert',
+        queueName: 'pdf-conversion',
+        fileUrl: job.data.fileUrl,
+      });
 
       // Update job status to FAILED
       await this.updateJobStatus(

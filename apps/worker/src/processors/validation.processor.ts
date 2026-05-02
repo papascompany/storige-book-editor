@@ -4,6 +4,7 @@ import { Job } from 'bull';
 import { PdfValidatorService } from '../services/pdf-validator.service';
 import { ValidationOptions, ValidationResultDto } from '../dto/validation-result.dto';
 import axios from 'axios';
+import { captureJobException } from '../sentry/sentry.init';
 
 interface ValidationJobData {
   jobId: string;
@@ -80,6 +81,15 @@ export class ValidationProcessor {
         `Validation job ${job.data.jobId} error: ${error.message}`,
         error.stack,
       );
+
+      // Sentry에 잡 컨텍스트와 함께 전송
+      captureJobException(error, {
+        jobId: job.data.jobId,
+        jobType: 'validate',
+        queueName: 'pdf-validation',
+        fileUrl: job.data.fileUrl,
+        fileType: job.data.fileType,
+      });
 
       // Update job status to FAILED
       await this.updateJobStatus(

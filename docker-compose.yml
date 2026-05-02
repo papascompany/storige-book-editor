@@ -41,6 +41,11 @@ services:
       - API_KEYS=${API_KEYS}
       - CORS_ORIGIN=${CORS_ORIGIN}
       - STORAGE_PATH=/app/storage
+      # Sentry (DSN 미설정 시 silent 동작)
+      - SENTRY_DSN=${SENTRY_DSN_API:-}
+      - SENTRY_ENVIRONMENT=${SENTRY_ENVIRONMENT:-production}
+      - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE:-0.1}
+      - SENTRY_RELEASE=${SENTRY_RELEASE:-}
     volumes:
       - ./storage:/app/storage
     depends_on:
@@ -71,6 +76,11 @@ services:
       - MAX_RETRY_ATTEMPTS=3
       - API_BASE_URL=http://api:4000/api
       - WORKER_API_KEY=${WORKER_API_KEY}
+      # Sentry (DSN 미설정 시 silent 동작)
+      - SENTRY_DSN=${SENTRY_DSN_WORKER:-}
+      - SENTRY_ENVIRONMENT=${SENTRY_ENVIRONMENT:-production}
+      - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE:-0.1}
+      - SENTRY_RELEASE=${SENTRY_RELEASE:-}
     volumes:
       - ./storage:/app/storage
     depends_on:

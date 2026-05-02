@@ -18,6 +18,7 @@
     "@nestjs/core": "^10.4.15",
     "@nestjs/platform-express": "^10.4.15",
     "@nestjs/typeorm": "^10.0.2",
+    "@sentry/node": "^7.119.2",
     "@storige/types": "workspace:*",
     "axios": "^1.7.9",
     "bull": "^4.16.4",

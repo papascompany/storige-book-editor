@@ -4,6 +4,10 @@ import { BrowserRouter } from 'react-router-dom'
 import App from './App'
 import { EditorErrorBoundary } from './components/EditorErrorBoundary'
 import './index.css'
+import { initSentry, Sentry } from './lib/sentry'
+
+// Sentry 초기화 (다른 코드보다 먼저)
+initSentry()
 
 // 전역 unhandled promise rejection 핸들러 — fabric.js loadImage 등의 비동기 throw가
 // React 트리 freeze를 유발하는 것을 방지 (사용자 보고: SVG 업로드 후 어떤 메뉴도
@@ -12,6 +16,8 @@ import './index.css'
 if (typeof window !== 'undefined') {
   window.addEventListener('unhandledrejection', (event) => {
     console.error('[unhandledrejection] caught:', event.reason)
+    // Sentry로 전송 (DSN 설정된 경우만)
+    Sentry.captureException(event.reason)
     event.preventDefault()
   })
 }
