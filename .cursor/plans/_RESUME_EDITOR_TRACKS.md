@@ -3,18 +3,18 @@
 > **사용법**: 새 Claude Code 세션을 열고 아래 "복사용 프롬프트" 블록 전체(line 13 이후)를 첫 메시지로 붙여넣으세요.
 > 이 문서는 지우지 말고 보관하세요. 새 트랙이 추가될 때 §"누적 트랙" + §"향후 작업 후보" 두 곳을 갱신하면 됩니다.
 >
-> **버전**: v2 (2026-05-02) — 누적 트랙 0~CC + 모바일 PR + 5차 P0 사이클 완료 + 운영 적용까지 반영.
+> **버전**: v3 (2026-05-02 14:00 KST) — 누적 트랙 0~CC + 모바일 PR + 5차 P0 + DD-5-B-v2 + P1-3 + BB-Phase 3 follow-up + cleanup cron + 6차 P0 핫픽스 사이클 완료 + 운영 적용 2회 완료까지 반영.
 > **이전 가이드**: `_RESUME_PROMPT.md` (인프라·PHP·운영 컷오버 작업용 — 별도 흐름)
 
 ---
 
 ## 복사용 프롬프트 (이 줄 아래부터 끝까지 복사)
 
-[Storige Editor 트랙 재개 — 2026-05-02 기준 / master `60efb05` / 운영 배포 완료]
+[Storige Editor 트랙 재개 — 2026-05-02 기준 / master `0c0e8aa` / Vercel 자동 배포 + VPS 재배포 2회 완료]
 
 # 한 줄 요약
 
-`apps/editor`(React + Vite + Fabric.js + Zustand + TailwindCSS) 41 트랙 + 모바일 27 commit + P0 5 commit = **누적 73+ commit**, Vercel 자동 배포 + **운영 VPS 재배포 완료**(2026-05-01). DB 마이그 2건 운영 적용(`products.allowCustomSize` + `edit_session_versions` LRU 20). 다음 후보는 P0-2 모바일 실기기 검증(사용자 작업), P1 트랙(다중 cross-canvas 이동/PDF Synthesis 검증/콘텐츠 카탈로그/반응형 Phase 3) 또는 잔여 type 에러 follow-up PR. 작업 컨벤션·디자인 토큰·검증 흐름·운영 배포 절차 모두 정착됨.
+`apps/editor`(React + Vite + Fabric.js + Zustand + TailwindCSS) 누적 **85+ commit**, Vercel 자동 배포 + **운영 VPS 재배포 2회 완료**(2026-05-01 23:33 / 2026-05-02 12:37+13:02). DB 마이그 2건 운영 적용(`products.allowCustomSize` + `edit_session_versions` LRU 20 + `thumbnail_url` 컬럼). 신규 의존성 `@nestjs/schedule@^4.0.0` 운영 적용. 6차 P0 핫픽스 사이클(Vercel cache + 배경색 fresh fetch + SVG fileToImage 분리 + unhandledrejection handler + 모바일 4MB 가드 + 요소 도구 raster 허용)로 사용자 실기기 보고 4건 + 콘솔 보고 3건 모두 처리. 다음 후보는 P1 트랙(다중 cross-canvas 이동/PDF Synthesis 검증/콘텐츠 카탈로그/반응형 Phase 3) 또는 P2(저장/불러오기 E2E 검증). 작업 컨벤션·디자인 토큰·검증 흐름·운영 배포 절차 모두 정착됨.
 
 # 작업 디렉토리·환경
 
@@ -103,9 +103,11 @@
 | **DD-5-B-v2** | `aff4396` | 페이지 drag-to-reorder UI — `PageThumbnail`에 drag props (`draggable`, `onDragStart/Over/Leave/Drop/End`, `isDragSource`, `insertHint`) + insert bar(4px accent edge) + grab/grabbing cursor. `BookNavigation`에서 native HTML5 DnD로 wiring: 표지(isCover) 제외 + 모바일/스프레드/`pageCount !== allCanvasLength` 가드, source/target 모두 내지일 때만 활성. `computeInnerReorder` helper로 0..N-1 순열 빌드 후 `reorderByIndex` 호출 + 성공 toast. 의존성 추가 0건 (dnd-kit 미사용) |
 | **P1-3** | `d1d78fc` | 잔여 type 에러 12건 + cascading 4건 정리 — embed.tsx (templateSet `.data` 폴백 제거 + safeSize 키 제거 + 중복 `export type` 제거), useEditorStore.test.ts (EditPage `name` 필드 미존재 → `sortOrder`로 교체, `editable` 제거), AppElement.tsx (graphql codegen vs @storige/types EditorContent 불일치 → `as unknown as` 캐스팅 + 주석), AiPanel/RecommendationPanel/GenerationPanel/LazyAiPanel (`'book' \| 'leaflet'` 문자열 union → `TemplateSetType` enum 통일). `pnpm tsc --noEmit` clean 0 errors |
 | **BB-Phase 3 follow-up** | `4901af9` | 자동저장 시점 썸네일 풀스택 — **백엔드**: `StorageService` 'thumbnails' 카테고리 추가 + `POST /storage/upload/thumbnails` (@Public, multer memory) + `AutoSaveDto.thumbnailUrl?` + `editor.service.maybePushVersion(.., thumbnailUrl)` 시그니처 확장. **에디터**: `useAutoSaveThumbnail` 신규 hook (TOUCH_ENV 가드 → 모바일 자동 스킵, fabric.toDataURL 0.25x JPEG q0.7, dataURLtoBlob 직접 디코딩, 실패 시 null fallback) + `useAutoSave.saveToServer`가 캡처/업로드 후 `thumbnailUrl`을 autoSave payload에 포함 + `storageApi.uploadThumbnail` 헬퍼 + `HistoryPanel`에 `ThumbnailMini` (28×40 + ImageOff placeholder) + hover 시 160px 큰 미리보기 popover (`hoverPreviewId` state, mouseenter/leave 트리거, `pointer-events-none` floating). **마이그**: 0건 (`thumbnailUrl` 컬럼은 BB-Phase 3에서 미리 추가됨). **R2 미사용** (운영 인프라 조사 결과 로컬 FS 기반 `/storage/files/{cat}/{file}` 패턴) |
-| **BB-Phase 3 cleanup cron** | `2097e1c` | orphan thumbnail 정리 인프라 — **신규 의존성**: `@nestjs/schedule@^4.0.0` + `ScheduleModule.forRoot()` AppModule 등록. **신규 service**: `ThumbnailCleanupService` (editor 모듈) 두 갈래 동작 — (a) `unlinkThumbnailIfReferenced(url)`: trimVersions가 LRU 초과 version 삭제 시 즉시 호출돼 file unlink (deletion-time cleanup, fire-and-forget); (b) `@Cron('30 17 * * *', name:'thumbnail-orphan-cleanup')`: 매일 UTC 17:30 = **KST 02:30**에 storage/thumbnails/ 스캔 → DB의 EditSessionVersion.thumbnailUrl 미참조 + 24h grace window 통과한 파일 일괄 unlink (안전망). 환경 변수 `THUMBNAIL_CLEANUP_DRY_RUN=1`로 dry-run 가능. **운영 컨테이너 TZ 정책**: docker container는 UTC 기본 (host Asia/Seoul 미상속), 따라서 cron 표현식은 UTC 기준 작성. nest build clean |
-
-# 코드베이스 컨벤션 (트랙 진행하며 정착됨)
+| **BB-Phase 3 cleanup cron** | `2097e1c` + `9d67d8c` | orphan thumbnail 정리 인프라 — **신규 의존성**: `@nestjs/schedule@^4.0.0` + `ScheduleModule.forRoot()` AppModule 등록. **신규 service**: `ThumbnailCleanupService` (editor 모듈) 두 갈래 동작 — (a) `unlinkThumbnailIfReferenced(url)`: trimVersions가 LRU 초과 version 삭제 시 즉시 호출돼 file unlink (deletion-time cleanup, fire-and-forget); (b) `@Cron('30 17 * * *', name:'thumbnail-orphan-cleanup')`: 매일 UTC 17:30 = **KST 02:30**에 storage/thumbnails/ 스캔 → DB의 EditSessionVersion.thumbnailUrl 미참조 + 24h grace window 통과한 파일 일괄 unlink (안전망). 환경 변수 `THUMBNAIL_CLEANUP_DRY_RUN=1`로 dry-run 가능. **운영 컨테이너 TZ 정책**: docker container는 UTC 기본 (host Asia/Seoul 미상속), 따라서 cron 표현식은 UTC 기준 작성. nest build clean |
+| **6차 P0 핫픽스 #1** | `5228171` | Vercel CDN HTML cache → 새 deploy 시 옛 chunk hash 404 ('Importing a module script failed') — `vercel.json` headers 추가: `/(index\.html)?` no-cache/no-store/must-revalidate + Pragma + Expires:0 / `/assets/*` immutable 1y. **검증**: index.html → `cache-control: no-cache, no-store, must-revalidate` + chunk → `max-age=31536000, immutable`. 직전 commit `ae59bf2`는 vercel.json에 invalid `comment` 키로 schema 거부 → ERROR 빌드, `5228171`에서 제거 후 빌드 성공 |
+| **6차 P0 핫픽스 #2** | `5228171` | 모바일 배경색/뚜껑색 적용 명시화 + 모바일 사진 업로드 가드 — **AppBackground**: 명시적 "적용" 버튼(Check 아이콘) + 모바일 안내 텍스트("팝업에서 색상 선택 후 X(닫기)를 누르면 자동 적용됩니다") + applyBgColor/applyLidColor helper로 change/click 동일 로직 공유. **useImageStore**: `checkMobileFileSize` (TOUCH_ENV 가드 + 4MB 한도 + showToast) 3개 upload 진입점에 적용 (upload/uploadSimple/uploadFile) → iOS Safari 메모리 크래시 방지 |
+| **6차 P0 핫픽스 #3** | `819008d` | "요소" 도구 raster 이미지 허용 정정 — 직전 `f65315d`에서 잘못된 SVG-only 정책. **AppElement.handleUpload**: accept를 `'image/*'`로 (SVG + PNG + JPG + GIF + WebP 모두). **useImageStore.upload**: `SelectionType.shape` non-SVG 분기를 raster 처리 로직으로 확장 (item에 위치/크기 + extensionType='shape'). 결과: SVG는 loadSVGFromURL로 vector, raster는 fabric.Image로 비트맵, 둘 다 element/요소로 추가 |
+| **6차 P0 핫픽스 #4 v2** | `0c0e8aa` | 배경색 적용 무반응 v2 + SVG 화면 freeze v2 + unhandledrejection 안전장치 — **AppBackground.applyBgColor/applyLidColor**: useState 캐시 stale 회피 위해 매 호출 시 `canvas.getObjects().filter(...)`로 fresh fetch + `.set({ fill, dirty:true }) + canvas.renderAll()` (preview 픽셀 검증: `[248,206,206] = #F8CECE` 정확 반영). **useImageStore.upload**: `isSvgFile` 검출 후 SelectionType 무관하게 항상 `loadSVGFromURL` 사용 (이전 버전은 shape에서만 분리 → image/background에서 SVG 시 fabric `t.indexOf` throw 잔존). **main.tsx**: `window.unhandledrejection` global handler 추가 + `event.preventDefault()`로 React 트리 freeze 방지 (test rejection 캡처 검증 완료) |
 
 ## 디자인 토큰 (다크 모드 호환 필수)
 
@@ -205,31 +207,35 @@ git push origin master   # → Vercel 자동 배포
 
 | # | 항목 | 상태 |
 |---|---|---|
-| 1 | 운영 DB 마이그레이션 | ✅ **2026-05-01 23:33 KST 적용 완료** (옵션 C + BB-Phase 3 마이그 2건, 23→24 테이블, 데이터 0건이라 매우 안전) |
-| 2 | **모바일 실기기 검증** | ⏳ **사용자 실기기 필요** — `docs/P0_OPERATIONS_CHECKLIST.md` §P0-2 8 시나리오 체크리스트 + 새로 추가된 commit `60efb05`(iOS Safari 페이지 크래시 fix) 검증 우선 |
-| 3 | 사전 type 에러 정리 | ✅ 9건 정리(commit `8820066`), 12건 follow-up PR 권장(embed/test/graphql codegen) |
+| 1 | 운영 DB 마이그레이션 | ✅ **2026-05-01 23:33 KST 적용** (옵션 C + BB-Phase 3 마이그 2건) |
+| 2 | **모바일/PC 실기기 검증** | ✅ **2026-05-02 사용자 보고 4건 + 콘솔 보고 3건 모두 핫픽스 처리** — Vercel CDN cache + 배경색 적용(v2) + SVG 업로드 freeze(v2) + 요소 raster 허용 + 모바일 4MB 가드 + unhandledrejection handler. 사용자 추가 시나리오 검증 시 즉시 대응 |
+| 3 | 사전 type 에러 정리 | ✅ 9건 정리(`8820066`) + 12건 follow-up(`d1d78fc`, P1-3) — `pnpm tsc --noEmit` clean |
 | 4 | 시점별 복원 UI | ✅ commit `0b7cc23` (confirm + auto reload + 운영 배포) |
 
 ## 🟡 P1 (단기 — 사용자 가치 큼)
 
+- ✅ **DD-5-B-v2 페이지 drag-to-reorder** — 완료 (`aff4396`, native HTML5 DnD + 표지/모바일/스프레드 가드)
+- ✅ **잔여 type 에러 follow-up** — 완료 (`d1d78fc`, embed/test/graphql + AiPanel TemplateSetType cascading)
+- ✅ **BB-Phase 3 follow-up 썸네일 풀스택** — 완료 (`4901af9` + `2097e1c` + `9d67d8c`, R2 없이 로컬 FS, deletion-time + nightly cron KST 02:30)
 - **3b-v Phase 3 다중 선택 cross-canvas 이동** — 우리 `moveObjectToCanvas` helper + `MoveToCoverRegion` 패턴 확장. canvas-core 추가 변경
 - **PDF Synthesis 본 워커 동작 검증** — `POST /synthesize/external` end-to-end. 운영 worker 이미 재배포됨, 실 PDF 흐름 검증 필요
 - **PHP 측 코드 적용 검증** — 옵션 B/C URL override + 웹훅 콜백 양측 통합 테스트
 - **반응형 Phase 3** — 태블릿 세로 모드 drawer 최적화
 - **콘텐츠 패널 그리드 카탈로그** — 미리캔버스 풍 카테고리 탭 + 그리드
 - **모바일 헤더 overflow X-3** — viewport 375에서 nav 가로 197px overflow (현 모바일 fix와 별개로 잔존, 우선순위 P1로 승격 검토)
+- **저장/불러오기 흐름 E2E 검증** — 사용자 보고로 미검증. sessionId 환경에서 autoSave → restoreVersion → 페이지 reload 라운드트립 검증 필요
 
 ## 🟢 P2 (중기 — 폴리시 / 확장)
 
-- ~~**DD-5-B-v2**~~ ✅ 완료 — 페이지 drag-to-reorder UI (BookNavigation native HTML5 DnD + 표지/모바일/스프레드 가드)
 - **fabric 객체 색상 다크모드 통일** — 현재 desktop 핸들만 적용, 모바일은 fabric default 유지 정책
 - **CC-Phase 3** — multi-select cross-region 정밀 매핑
 - **AI 패널 정합** (AI 도구 메뉴 + 패널 통합)
 - **번들 크기 최적화** (vendor-opencv lazy-load 강화)
 - **Playwright E2E 시나리오 작성**
 - **Sentry/Datadog 에러 추적 연결**
-- ~~**잔여 type 에러 12건 follow-up PR**~~ ✅ 완료 — embed/test/graphql + AiPanel cascading 정리 (tsc clean)
-- ~~**BB-Phase 3 follow-up**~~ ✅ 완료 — 시점 썸네일 풀스택 (로컬 FS 기반, R2 미사용. 모바일 캡처 스킵 + ImageOff placeholder + hover 160px 미리보기)
+- **폰트 fallback 로그 정리** — "본고딕(Noto Sans) Regular" 미찾음 경고를 fontList에 sans-serif fallback 등록으로 silent 처리
+- **WebAssembly multi-threading** — `crossOriginIsolated` 활성화로 OpenCV 멀티스레드 (현재 single-thread fallback, 동작은 함)
+- **canvas-core fileToImage SVG 진입 차단** — 현재 useImageStore 단에서 isSvgFile 분기. canvas-core 단에서도 명시 차단하면 외부 호출 안전
 
 ## ⚠️ 모바일 / 안전성 메모
 

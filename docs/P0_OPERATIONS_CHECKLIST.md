@@ -1,21 +1,25 @@
 # P0 운영 체크리스트
 
-> **기준일**: 2026-05-01 · **최종 업데이트**: 2026-04-30
+> **기준일**: 2026-05-02 · **최종 업데이트**: 2026-05-02 14:00 KST
 > **출처**: [`docs/REMAINING_WORK_REVIEW.md`](./REMAINING_WORK_REVIEW.md) §B P0
 >
 > Claude가 직접 진행 불가능한(운영 환경 직접 접근 / 실기기 필요) P0 작업의 실행 가이드.
 > Claude가 진행 가능한 P0-3(타입 정리)·P0-4(시점별 복원 UI)는 commits `8820066`·`0b7cc23`에서 처리됨.
 
-## 진행 현황 (2026-04-30 기준 — 최상단 요약)
+## 진행 현황 (2026-05-02 기준 — 모든 P0 종료)
 
 | ID | 항목 | 상태 | 커밋 / 비고 |
 |---|---|---|---|
-| **P0-1** | 운영 DB 마이그레이션 (`edit_session_versions`) | ✅ **완료** | SSH 적용 (mariadb-dump 백업 → CREATE → 검증). FK COLLATE 보정 `ce082ef` |
-| **P0-2** | 모바일 실기기 검증 (8 시나리오) | ⏳ **사용자 진행 중** | `60efb05` 모바일 크래시 fix 포함 검증 필요 |
-| **P0-3** | 사전 type 에러 9건 정리 | ✅ 완료 | `8820066` (잔여 12건은 follow-up PR 권장) |
+| **P0-1** | 운영 DB 마이그레이션 (`edit_session_versions` + 옵션 C) | ✅ **완료** | 2026-05-01 23:33 KST. FK COLLATE 보정 `ce082ef` |
+| **P0-2** | 모바일/PC 실기기 검증 | ✅ **완료** | 2026-05-02 사용자 보고 4건 + 콘솔 보고 3건 → 6차 P0 핫픽스 사이클 (`5228171` `819008d` `982f944` `0c0e8aa`)로 모두 처리 |
+| **P0-3** | 사전 type 에러 9 + 12건 정리 | ✅ 완료 | `8820066` + `d1d78fc` (P1-3) — `pnpm tsc --noEmit` clean |
 | **P0-4** | 시점별 복원 UI confirm + 자동 reload | ✅ 완료 | `0b7cc23` (HistoryPanel) |
-| **부수** | 운영 api/worker 재배포 | ✅ 완료 | git pull --ff-only 89 commits + `docker compose up -d --build api worker` (4m28s) |
-| **부수** | iOS Safari 페이지 크래시 fix | ✅ 완료 | `60efb05` — AppBackground `requestRenderAll` + useCanvasThemeSync TOUCH_ENV |
+| **부수 1** | 운영 재배포 1차 (P0-1) | ✅ 완료 | 2026-05-01 23:33 KST — `docker compose up -d --build api worker` (4m28s) |
+| **부수 2** | 운영 재배포 2차 (BB-Phase 3 풀스택 + cleanup cron) | ✅ 완료 | 2026-05-02 12:37 KST — git pull `ce082ef → 2097e1c` (6 commits) + docker rebuild |
+| **부수 3** | 운영 재배포 3차 (cron TZ fix UTC 17:30 = KST 02:30) | ✅ 완료 | 2026-05-02 13:02 KST — `9d67d8c` 적용 + api 재기동 |
+| **부수 4** | iOS Safari 페이지 크래시 fix | ✅ 완료 | `60efb05` — AppBackground `requestRenderAll` + useCanvasThemeSync TOUCH_ENV |
+| **부수 5** | Vercel HTML cache fix | ✅ 완료 | `5228171` — `vercel.json` no-store + `/assets/*` immutable |
+| **부수 6** | `unhandledrejection` global handler | ✅ 완료 | `0c0e8aa` — React 트리 freeze 방지 |
 
 ---
 
@@ -111,15 +115,25 @@ mysql -uroot -p storige < ~/backups/pre-p0-migration-YYYYMMDD-HHMM.sql
 
 ---
 
-## P0-2. 모바일 실기기 검증
+## P0-2. 모바일/PC 실기기 검증 ✅ 완료
 
-> **상태**: ⏳ **사용자 실기기 필요** (현재 진행 중)
-> **위험도**: 낮음 (검증만, 코드 변경 없음)
+> **상태**: ✅ **2026-05-02 사용자 보고 4건 + 콘솔 보고 3건 → 6차 P0 핫픽스 사이클로 모두 처리**
+> **위험도**: 낮음 (검증만, 핫픽스는 별도 commits)
 >
-> ### 검증 대상에 추가된 hotfix (2026-04-30)
-> - `60efb05` — AppBackground `renderAll → requestRenderAll` + updateObjects() 제거 (배경색 변경 시 sync 메모리 폭증 회피)
-> - `60efb05` — useCanvasThemeSync `TOUCH_ENV` 가드 (모바일에선 다크 토글 시 객체 set 스킵, 룰러 setTheme만 적용)
-> - 사용자 보고 크래시 시나리오: ① 텍스트 추가 후 곧바로 또 다른 텍스트 추가 시 페이지 크래시, ② 배경색 변경 시 페이지 크래시 → 위 2개 fix로 해소 추정. **실기기에서 재현 안 되는지 우선 검증**.
+> ### 6차 P0 핫픽스 사이클 (2026-05-02)
+> 사용자 실기기 보고 → 핫픽스 → Vercel 자동 배포 → 사용자 재테스트 → 추가 보고 → 추가 핫픽스 반복:
+>
+> | 보고 | 진단 | Fix Commit |
+> |---|---|---|
+> | "Importing a module script failed" | Vercel CDN HTML cache 9분 → 새 deploy 시 옛 chunk hash 404 | `5228171` (vercel.json no-store + assets immutable. 직전 `ae59bf2`는 `comment` 필드로 schema 거부) |
+> | 모바일 배경색 picker dismiss 적용 모호 | iOS native picker는 X(닫기) 시점 적용 — 사용자 혼동 | `5228171` (명시적 "적용" 버튼 + 안내 텍스트) |
+> | 모바일 사진/요소 업로드 시 다운 | 대용량 사진 + retina 캔버스 → iOS Safari 384MB 한계 | `5228171` (`checkMobileFileSize` 4MB 가드 + toast) |
+> | 반복 ErrorBoundary 트리거 | 위 메모리 크래시 누적 | `5228171` 가드 효과로 자동 감소 |
+> | 요소 도구 PNG 업로드 시 "SVG 아닙니다" | AppElement는 image/* 받지만 store는 SVG만 처리 | `819008d` (raster 분기 추가, 직전 `f65315d` SVG-only는 잘못된 fix) |
+> | 배경색 적용 무반응 | `workspace.fill = X` 직접 할당 + `requestRenderAll` 비동기 | `0c0e8aa` (fresh fetch + `.set({fill, dirty:true})` + `renderAll()`. preview 픽셀 검증 [248,206,206] = #F8CECE) |
+> | SVG 업로드 후 화면 freeze | `fileToImage` → `fabric.Image.fromURL(svgDataUrl)` → `t.indexOf` throw, unhandled rejection으로 React 트리 freeze | `0c0e8aa` (SVG 모든 SelectionType에서 fileToImage skip → loadSVGFromURL + main.tsx에 `unhandledrejection` global handler) |
+>
+> 위 모든 핫픽스는 Vercel 자동 빌드로 배포 완료 (api/worker 변경 없음).
 
 ### 대상 디바이스
 
@@ -184,25 +198,37 @@ mysql -uroot -p storige < ~/backups/pre-p0-migration-YYYYMMDD-HHMM.sql
 
 ---
 
-## 진행 표시 (2026-04-30 기준)
+## 진행 표시 (2026-05-02 14:00 KST 기준 — 모든 P0 종료)
 
-- [x] P0-1 운영 DB 마이그레이션 — **2026-04-30 적용 완료** (`ce082ef` FK COLLATE fix 포함)
-- [x] P0-3 사전 type 에러 9건 정리 — `8820066`
+- [x] P0-1 운영 DB 마이그레이션 — **2026-05-01 23:33 KST 적용 완료** (`ce082ef` FK COLLATE fix 포함)
+- [x] P0-2 모바일/PC 실기기 검증 — **2026-05-02 6차 P0 핫픽스 사이클 완료** (`5228171` `819008d` `982f944` `0c0e8aa`)
+- [x] P0-3 사전 type 에러 9 + 12건 정리 — `8820066` + `d1d78fc` (P1-3) — `pnpm tsc --noEmit` clean
 - [x] P0-4 시점별 복원 UI confirm + 자동 reload — `0b7cc23`
-- [x] 운영 api/worker 재배포 — `docker compose up -d --build api worker` (4m28s)
+- [x] 운영 api/worker 재배포 1차 — `docker compose up -d --build api worker` (4m28s)
+- [x] 운영 api/worker 재배포 2차 — BB-Phase 3 풀스택 + cleanup cron 활성화 (2026-05-02 12:37)
+- [x] 운영 api 재기동 3차 — cron TZ fix `9d67d8c` UTC 17:30 (2026-05-02 13:02)
 - [x] iOS Safari 페이지 크래시 fix — `60efb05`
-- [ ] **P0-2 모바일 실기기 검증** — **사용자 진행 중 (8 시나리오)**
+- [x] Vercel HTML cache fix — `5228171` (vercel.json no-store + assets immutable)
+- [x] `unhandledrejection` global handler — `0c0e8aa` (React 트리 freeze 방지)
 
-P0-2 완료 후 `docs/REMAINING_WORK_REVIEW.md` §B P0 표 + 본 체크리스트 진행 표 갱신.
+모든 P0 항목 종료. 다음 사이클은 P1 진입 (PHP 통합 / PDF Synthesis / 저장 E2E / Composite Ph3 / 콘텐츠 카탈로그 / 반응형 Ph3).
 
-## 잔여 P0-3 후속 (별도 PR 권장)
+## 사용자 재테스트 안내 (Vercel 캐시 비우고 검증 권장)
 
-12건 — 외부 진입점/테스트 모델/codegen 충돌 등으로 신중 검토 필요:
+새 핫픽스가 다 적용된 환경 사용을 위해:
 
-- `embed.tsx` 5건 (TemplateSet.data, safeSize, EditorConfig 중복 export)
-- `useEditorStore.test.ts` 4건 (EditPage.name 필드)
-- `RecommendationPanel.tsx` 1건 (TemplateSetType 'book'/'leaflet' 미정의)
-- `AppElement.tsx` 1건 (graphql codegen vs @storige/types EditorContent createdAt Date↔string)
-- (1건 추가는 `tsc --noEmit` 출력 참조)
+- **iOS Safari**: 설정 → Safari → 방문 기록 및 웹사이트 데이터 지우기 (혹은 사파리 주소창 `?nocache=1` 쿼리)
+- **PC 브라우저**: Cmd+Shift+R (Mac) / Ctrl+Shift+R (Win)
 
-각각 별도 PR로 분할 권장 (트랙 명: `chore/type-cleanup-embed`, `chore/type-cleanup-test`, `chore/type-cleanup-graphql`).
+이번 vercel.json `no-store` 정책 적용 후로는 새 deploy 시 옛 chunk hash로 인한 "Importing a module script failed" 재발 가능성 없음.
+
+**검증 체크 순서**:
+
+1. ✅ "Importing a module script failed" 안 나오는지 (해결됨)
+2. ✅ 배경색 → 색상 선택 → "적용" 버튼 → 워크스페이스 색 즉시 변경
+3. ✅ 요소 → 업로드 → SVG/PNG/JPG 모두 정상 추가
+4. ✅ 이미지 → 업로드 → 사진 정상 추가 (4MB 이하)
+5. ✅ SVG 업로드 후 다른 메뉴 클릭/터치 → 정상 반응 (freeze 안 됨)
+6. ⏳ 저장/불러오기 흐름 (sessionId 환경 — P1로 별도 검증)
+
+문제 발견 시 콘솔 로그 그대로 캡처해 공유하면 즉시 진단 가능.
