@@ -438,6 +438,44 @@ sleep 10
 docker-compose up -d editor admin
 ```
 
+### v2.2 핫픽스 — 워커 경로 정규화 재배포 (2026-05-02)
+
+> 이 핫픽스는 `apps/worker/src/services/` 의 3개 파일과 `apps/admin/src/pages/WorkerTest/WorkerTestPage.tsx` 만 수정합니다.  
+> Vercel은 admin/editor만 자동 배포하므로 **VPS의 워커 컨테이너만 수동 재빌드** 가 필요합니다.
+
+```bash
+# VPS에서 실행
+cd /path/to/storige
+git pull origin master   # commit daeb2b7 이상 포함
+
+# 워커만 재빌드 + 재기동 (다른 서비스 무영향)
+docker-compose build worker
+docker-compose up -d worker
+
+# 로그로 정상 기동 확인
+docker-compose logs -f worker
+# → "Validating PDF: storage/uploads/..." 로그 보이면 정상
+```
+
+#### 배포 검증 체크리스트
+
+| 항목 | 검증 방법 | 기대 결과 |
+|------|-----------|-----------|
+| 워커 기동 | `docker-compose ps worker` | `Up` 상태 |
+| Bull 큐 연결 | 워커 로그 첫 줄 | `Bull queue connected` |
+| 검증 동작 | Admin 워커 테스트 페이지에서 PDF 업로드 | `COMPLETED` / `FIXABLE` 결과 |
+| 합성 동작 (있다면) | bookmoa 주문 합성 | `synthesis.completed` Webhook |
+
+#### 롤백 (문제 발생 시)
+
+```bash
+# 직전 커밋으로 되돌리고 워커 재기동
+git revert daeb2b7 --no-edit
+git push origin master
+docker-compose build worker
+docker-compose up -d worker
+```
+
 ---
 
 ## 문제 해결
