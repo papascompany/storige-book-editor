@@ -99,7 +99,7 @@ export default function AppBackground() {
           })
           setAvailableTags(Array.from(tagSet).sort((a, b) => a.localeCompare(b, 'ko')))
         }
-      } catch {}
+      } catch { /* noop */ }
     }
     discoverTags()
   }, [isCustomer])

@@ -105,7 +105,7 @@ export default function HistoryPanel() {
     return () => {
       clearTimeout(id)
       handlers.forEach(({ editor, fn }) => {
-        try { editor.off?.('historyUpdate', fn) } catch {}
+        try { editor.off?.('historyUpdate', fn) } catch { /* noop */ }
       })
     }
   }, [ready, allEditors, canvas])
@@ -161,7 +161,7 @@ export default function HistoryPanel() {
         // 캔버스 / store / 모든 객체를 깨끗이 다시 로드 — 가장 안전한 방법은 페이지 새로고침
         // (in-place reload는 useEditorStore + 모든 캔버스 plugin reload 흐름이 복잡)
         setTimeout(() => {
-          try { window.location.reload() } catch {}
+          try { window.location.reload() } catch { /* noop */ }
         }, 500)
       } catch (err: any) {
         console.error('[HistoryPanel] restore 실패:', err)

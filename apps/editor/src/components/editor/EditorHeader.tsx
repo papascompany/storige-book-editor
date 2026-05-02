@@ -141,7 +141,7 @@ export default function EditorHeader({
       clearTimeout(stale1)
       clearTimeout(stale2)
       editorHandlers.forEach(({ editor, fn }) => {
-        try { editor.off?.('historyUpdate', fn) } catch {}
+        try { editor.off?.('historyUpdate', fn) } catch { /* noop */ }
       })
     }
   }, [ready, allEditors, canvas])

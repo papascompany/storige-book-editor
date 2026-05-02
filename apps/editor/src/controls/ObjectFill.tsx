@@ -215,7 +215,7 @@ export default function ObjectFill() {
       canvas?.requestRenderAll()
       try {
         canvas?.fire?.('object:modified', { target: obj })
-      } catch {}
+      } catch { /* noop */ }
       setLastGradient({ from, to })
     },
     [activeSelection, selectionType, canvas, gradientAngle, gradientRadial]

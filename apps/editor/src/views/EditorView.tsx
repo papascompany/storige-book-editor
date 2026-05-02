@@ -545,7 +545,7 @@ export default function EditorView() {
       })
       const editors = useAppStore.getState().allEditors
       editors.forEach((ed) => {
-        try { ed?.emit?.('sizeChange', { width: w, height: h }) } catch {}
+        try { ed?.emit?.('sizeChange', { width: w, height: h }) } catch { /* noop */ }
       })
     }
 

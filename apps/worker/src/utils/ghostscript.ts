@@ -426,7 +426,7 @@ export async function detectSpotColors(
 
     // Separation 컬러스페이스에서 별색 이름 추출
     // 패턴: /ColorSpace [/Separation /SpotColorName ...]
-    const separationPattern = /\/Separation\s*\/([^\s\/\[\]]+)/g;
+    const separationPattern = /\/Separation\s*\/([^\s/[\]]+)/g;
     let match;
     while ((match = separationPattern.exec(pdfContent)) !== null) {
       const colorName = decodeSpotColorName(match[1]);
@@ -440,7 +440,7 @@ export async function detectSpotColors(
     const deviceNPattern = /\/DeviceN\s*\[\s*([^\]]+)\]/g;
     while ((match = deviceNPattern.exec(pdfContent)) !== null) {
       const colorList = match[1];
-      const colorNames = colorList.match(/\/([^\s\/\[\]]+)/g);
+      const colorNames = colorList.match(/\/([^\s/[\]]+)/g);
       if (colorNames) {
         for (const name of colorNames) {
           const colorName = decodeSpotColorName(name.substring(1)); // Remove leading /
@@ -798,16 +798,16 @@ export async function detectFonts(
     // Font 객체 패턴
     // /Type /Font /Subtype /TrueType /BaseFont /FontName
     const fontPattern =
-      /<<[^>]*\/Type\s*\/Font[^>]*\/Subtype\s*\/([A-Za-z0-9]+)[^>]*\/BaseFont\s*\/([^\s\/\[\]>]+)[^>]*>>/gi;
+      /<<[^>]*\/Type\s*\/Font[^>]*\/Subtype\s*\/([A-Za-z0-9]+)[^>]*\/BaseFont\s*\/([^\s/[\]>]+)[^>]*>>/gi;
 
     // 대체 패턴: BaseFont가 먼저 오는 경우
     const altFontPattern =
-      /<<[^>]*\/BaseFont\s*\/([^\s\/\[\]>]+)[^>]*\/Subtype\s*\/([A-Za-z0-9]+)[^>]*\/Type\s*\/Font[^>]*>>/gi;
+      /<<[^>]*\/BaseFont\s*\/([^\s/[\]>]+)[^>]*\/Subtype\s*\/([A-Za-z0-9]+)[^>]*\/Type\s*\/Font[^>]*>>/gi;
 
     // FontDescriptor에서 임베딩 정보 찾기
     // /FontFile, /FontFile2 (TrueType), /FontFile3 (OpenType/CFF)
     const fontDescriptorPattern =
-      /<<[^>]*\/Type\s*\/FontDescriptor[^>]*\/FontName\s*\/([^\s\/\[\]>]+)[^>]*(\/FontFile[23]?\s+\d+\s+\d+\s+R)?[^>]*>>/gi;
+      /<<[^>]*\/Type\s*\/FontDescriptor[^>]*\/FontName\s*\/([^\s/[\]>]+)[^>]*(\/FontFile[23]?\s+\d+\s+\d+\s+R)?[^>]*>>/gi;
 
     // 임베딩된 폰트 이름 수집
     const embeddedFontNames = new Set<string>();
@@ -883,7 +883,7 @@ export async function detectFonts(
 
     // CIDFont 패턴 (CJK 폰트)
     const cidFontPattern =
-      /<<[^>]*\/Type\s*\/Font[^>]*\/Subtype\s*\/Type0[^>]*\/BaseFont\s*\/([^\s\/\[\]>]+)[^>]*>>/gi;
+      /<<[^>]*\/Type\s*\/Font[^>]*\/Subtype\s*\/Type0[^>]*\/BaseFont\s*\/([^\s/[\]>]+)[^>]*>>/gi;
 
     while ((match = cidFontPattern.exec(pdfContent)) !== null) {
       const fontName = decodeFontName(match[1]);

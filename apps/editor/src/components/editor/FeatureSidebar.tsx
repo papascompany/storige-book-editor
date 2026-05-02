@@ -83,7 +83,7 @@ export default function FeatureSidebar({ className, mobileOverlay = false }: Fea
       // 핸들 element가 포인터 캡처를 가져 viewport 밖으로 나가도 move/up 수신
       try {
         ;(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId)
-      } catch {}
+      } catch { /* noop */ }
       isResizingRef.current = true
       startXRef.current = e.clientX
       startWidthRef.current = sidebarWidth
