@@ -11,6 +11,8 @@ import {
   Row,
   Col,
   Statistic,
+  Modal,
+  Descriptions,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { ReloadOutlined, EyeOutlined } from '@ant-design/icons';
@@ -43,6 +45,7 @@ const jobTypeLabels: Record<WorkerJobType, string> = {
 export const WorkerJobList = () => {
   const [filterStatus, setFilterStatus] = useState<WorkerJobStatus | undefined>();
   const [filterJobType, setFilterJobType] = useState<WorkerJobType | undefined>();
+  const [selectedJob, setSelectedJob] = useState<WorkerJob | null>(null);
 
   const { data: jobs, isLoading, refetch } = useQuery({
     queryKey: ['worker-jobs', filterStatus, filterJobType],
@@ -139,7 +142,7 @@ export const WorkerJobList = () => {
         <Button
           type="link"
           icon={<EyeOutlined />}
-          onClick={() => console.log('Show details:', record)}
+          onClick={() => setSelectedJob(record)}
         >
           상세
         </Button>
@@ -240,6 +243,63 @@ export const WorkerJobList = () => {
           showTotal: (total) => `총 ${total}개`,
         }}
       />
+
+      {/* 작업 상세 모달 */}
+      <Modal
+        title="워커 작업 상세"
+        open={!!selectedJob}
+        onCancel={() => setSelectedJob(null)}
+        footer={<Button onClick={() => setSelectedJob(null)}>닫기</Button>}
+        width={700}
+      >
+        {selectedJob && (
+          <>
+            <Descriptions bordered column={1} size="small">
+              <Descriptions.Item label="Job ID">
+                <Typography.Text code copyable>{selectedJob.id}</Typography.Text>
+              </Descriptions.Item>
+              <Descriptions.Item label="작업 유형">
+                <Tag color="blue">{jobTypeLabels[selectedJob.jobType]}</Tag>
+              </Descriptions.Item>
+              <Descriptions.Item label="상태">
+                <Tag color={statusColors[selectedJob.status]}>{statusLabels[selectedJob.status]}</Tag>
+              </Descriptions.Item>
+              <Descriptions.Item label="입력 파일">
+                {selectedJob.inputFileUrl ? (
+                  <a href={resolveStorageUrl(selectedJob.inputFileUrl)} target="_blank" rel="noopener noreferrer">
+                    {selectedJob.inputFileUrl}
+                  </a>
+                ) : '-'}
+              </Descriptions.Item>
+              <Descriptions.Item label="출력 파일">
+                {selectedJob.outputFileUrl ? (
+                  <a href={resolveStorageUrl(selectedJob.outputFileUrl)} target="_blank" rel="noopener noreferrer">
+                    {selectedJob.outputFileUrl}
+                  </a>
+                ) : '-'}
+              </Descriptions.Item>
+              <Descriptions.Item label="에러 메시지">
+                {selectedJob.errorMessage ? (
+                  <Typography.Text type="danger">{selectedJob.errorMessage}</Typography.Text>
+                ) : '-'}
+              </Descriptions.Item>
+              <Descriptions.Item label="생성일">
+                {new Date(selectedJob.createdAt).toLocaleString('ko-KR')}
+              </Descriptions.Item>
+              <Descriptions.Item label="완료일">
+                {selectedJob.completedAt ? new Date(selectedJob.completedAt).toLocaleString('ko-KR') : '-'}
+              </Descriptions.Item>
+            </Descriptions>
+            {selectedJob.result && (
+              <Card title="처리 결과" size="small" style={{ marginTop: 16 }}>
+                <pre style={{ maxHeight: 300, overflow: 'auto', fontSize: 12, background: '#f5f5f5', padding: 8, borderRadius: 4 }}>
+                  {JSON.stringify(selectedJob.result, null, 2)}
+                </pre>
+              </Card>
+            )}
+          </>
+        )}
+      </Modal>
     </div>
   );
 };

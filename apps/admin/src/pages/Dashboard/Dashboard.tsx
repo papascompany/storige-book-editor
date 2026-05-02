@@ -6,10 +6,14 @@ import {
   FolderOutlined,
   PictureOutlined,
   CloudServerOutlined,
+  AppstoreOutlined,
+  LinkOutlined,
 } from '@ant-design/icons';
 import { templatesApi } from '../../api/templates';
 import { categoriesApi } from '../../api/categories';
 import { workerJobsApi } from '../../api/worker-jobs';
+import { templateSetsApi } from '../../api/template-sets';
+import { productTemplateSetsApi } from '../../api/product-template-sets';
 
 const { Title } = Typography;
 
@@ -28,6 +32,16 @@ export const Dashboard = () => {
   const { data: workerJobs, isLoading: jobsLoading } = useQuery({
     queryKey: ['worker-jobs'],
     queryFn: () => workerJobsApi.getAll(),
+  });
+
+  const { data: templateSets, isLoading: templateSetsLoading } = useQuery({
+    queryKey: ['template-sets-dashboard'],
+    queryFn: () => templateSetsApi.getAll(),
+  });
+
+  const { data: productTemplateSets, isLoading: ptsLoading } = useQuery({
+    queryKey: ['product-template-sets-dashboard'],
+    queryFn: () => productTemplateSetsApi.getAll({ limit: 1 }),
   });
 
   // Count categories recursively
@@ -96,7 +110,7 @@ export const Dashboard = () => {
     },
   ];
 
-  const isLoading = templatesLoading || categoriesLoading || jobsLoading;
+  const isLoading = templatesLoading || categoriesLoading || jobsLoading || templateSetsLoading || ptsLoading;
 
   return (
     <div>
@@ -122,13 +136,35 @@ export const Dashboard = () => {
             <Col xs={24} sm={12} lg={6}>
               <Card>
                 <Statistic
+                  title="템플릿셋"
+                  value={templateSets?.length || 0}
+                  prefix={<AppstoreOutlined />}
+                />
+              </Card>
+            </Col>
+
+            <Col xs={24} sm={12} lg={6}>
+              <Card>
+                <Statistic
+                  title="상품-템플릿 연결"
+                  value={productTemplateSets?.total || 0}
+                  prefix={<LinkOutlined />}
+                />
+              </Card>
+            </Col>
+
+            <Col xs={24} sm={12} lg={6}>
+              <Card>
+                <Statistic
                   title="카테고리"
                   value={totalCategories}
                   prefix={<FolderOutlined />}
                 />
               </Card>
             </Col>
+          </Row>
 
+          <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
             <Col xs={24} sm={12} lg={6}>
               <Card>
                 <Statistic

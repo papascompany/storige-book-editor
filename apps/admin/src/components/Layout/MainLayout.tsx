@@ -92,6 +92,12 @@ export const MainLayout = () => {
           label: '상품-템플릿 연결',
           onClick: () => navigate('/product-template-sets'),
         },
+        {
+          key: '/products',
+          icon: <AppstoreOutlined />,
+          label: '상품관리',
+          onClick: () => navigate('/products'),
+        },
       ],
     },
     {
@@ -189,7 +195,7 @@ export const MainLayout = () => {
 
     if (pathname.startsWith('/library')) {
       openKeys.push('/library');
-    } else if (pathname.startsWith('/templates') || pathname.startsWith('/template-sets') || pathname.startsWith('/categories') || pathname.startsWith('/product-template-sets')) {
+    } else if (pathname.startsWith('/templates') || pathname.startsWith('/template-sets') || pathname.startsWith('/categories') || pathname.startsWith('/product-template-sets') || pathname.startsWith('/products')) {
       openKeys.push('/templates-group');
     } else if (pathname.startsWith('/edit-sessions') || pathname.startsWith('/reviews')) {
       openKeys.push('/edit-management');

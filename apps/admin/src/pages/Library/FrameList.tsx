@@ -21,6 +21,7 @@ import {
   PlusOutlined,
   DeleteOutlined,
   UploadOutlined,
+  EditOutlined,
 } from '@ant-design/icons';
 import { LibraryFrame, LibraryCategory } from '@storige/types';
 import { libraryApi } from '../../api/library';
@@ -31,7 +32,10 @@ const { Title } = Typography;
 export const FrameList = () => {
   const queryClient = useQueryClient();
   const [form] = Form.useForm();
+  const [editForm] = Form.useForm();
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingFrame, setEditingFrame] = useState<LibraryFrame | null>(null);
   const [fileList, setFileList] = useState<UploadFile[]>([]);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | undefined>(undefined);
 
@@ -45,6 +49,22 @@ export const FrameList = () => {
   const { data: categories } = useQuery({
     queryKey: ['library-categories', 'frame'],
     queryFn: () => libraryApi.getCategories('frame'),
+  });
+
+  // Update mutation
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<LibraryFrame> }) =>
+      libraryApi.updateFrame(id, data),
+    onSuccess: () => {
+      message.success('사진틀이 수정되었습니다.');
+      queryClient.invalidateQueries({ queryKey: ['frames'] });
+      setIsEditModalOpen(false);
+      setEditingFrame(null);
+      editForm.resetFields();
+    },
+    onError: () => {
+      message.error('사진틀 수정에 실패했습니다.');
+    },
   });
 
   // Delete mutation
@@ -80,6 +100,22 @@ export const FrameList = () => {
     setIsModalOpen(false);
     form.resetFields();
     setFileList([]);
+  };
+
+  const handleOpenEditModal = (frame: LibraryFrame) => {
+    setEditingFrame(frame);
+    editForm.setFieldsValue({
+      name: frame.name,
+      categoryId: frame.categoryId || undefined,
+      tags: (frame.tags || []).join(', '),
+    });
+    setIsEditModalOpen(true);
+  };
+
+  const handleEditSubmit = (values: any) => {
+    if (!editingFrame) return;
+    const tags = values.tags ? values.tags.split(',').map((t: string) => t.trim()).filter(Boolean) : [];
+    updateMutation.mutate({ id: editingFrame.id, data: { name: values.name, categoryId: values.categoryId || undefined, tags } });
   };
 
   const handleSubmit = async (values: any) => {
@@ -163,9 +199,12 @@ export const FrameList = () => {
     {
       title: '작업',
       key: 'actions',
-      width: 120,
+      width: 160,
       render: (_, record) => (
         <Space>
+          <Button type="link" icon={<EditOutlined />} onClick={() => handleOpenEditModal(record)}>
+            수정
+          </Button>
           <Popconfirm
             title="사진틀을 삭제하시겠습니까?"
             onConfirm={() => handleDelete(record.id)}
@@ -268,6 +307,31 @@ export const FrameList = () => {
                 </div>
               )}
             </Upload>
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* 수정 모달 */}
+      <Modal
+        title="사진틀 수정"
+        open={isEditModalOpen}
+        onOk={() => editForm.submit()}
+        onCancel={() => { setIsEditModalOpen(false); setEditingFrame(null); editForm.resetFields(); }}
+        confirmLoading={updateMutation.isPending}
+      >
+        <Form form={editForm} layout="vertical" onFinish={handleEditSubmit}>
+          <Form.Item name="name" label="사진틀 이름" rules={[{ required: true, message: '이름을 입력해주세요' }]}>
+            <Input />
+          </Form.Item>
+          <Form.Item name="categoryId" label="카테고리">
+            <Select
+              placeholder="카테고리 선택"
+              allowClear
+              options={categories?.map((c: LibraryCategory) => ({ label: c.name, value: c.id }))}
+            />
+          </Form.Item>
+          <Form.Item name="tags" label="태그" extra="쉼표로 구분">
+            <Input placeholder="예: 둥근, 사진" />
           </Form.Item>
         </Form>
       </Modal>

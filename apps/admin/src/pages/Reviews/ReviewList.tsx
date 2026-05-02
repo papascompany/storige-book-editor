@@ -26,6 +26,8 @@ import {
 import { EditSession, EditStatus } from '@storige/types';
 import { reviewsApi } from '../../api/reviews';
 
+const EDITOR_URL = import.meta.env.VITE_EDITOR_URL || 'http://localhost:3000';
+
 const { Title, Text } = Typography;
 
 const statusLabels: Record<EditStatus, string> = {
@@ -74,8 +76,8 @@ export const ReviewList = () => {
   };
 
   const handleOpenEditor = (id: string) => {
-    // Open in new tab or iframe
-    window.open(`/editor?sessionId=${id}&mode=review`, '_blank');
+    // 외부 에디터 앱에서 검토 모드로 세션 열기
+    window.open(`${EDITOR_URL}/?sessionId=${id}&mode=review`, '_blank');
   };
 
   const columns: ColumnsType<EditSession> = [

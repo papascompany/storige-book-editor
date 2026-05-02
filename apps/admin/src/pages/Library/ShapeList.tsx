@@ -21,6 +21,7 @@ import {
   PlusOutlined,
   DeleteOutlined,
   UploadOutlined,
+  EditOutlined,
 } from '@ant-design/icons';
 import { LibraryShape, LibraryCategory } from '@storige/types';
 import { libraryApi } from '../../api/library';
@@ -31,7 +32,10 @@ const { Title } = Typography;
 export const ShapeList = () => {
   const queryClient = useQueryClient();
   const [form] = Form.useForm();
+  const [editForm] = Form.useForm();
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingShape, setEditingShape] = useState<LibraryShape | null>(null);
   const [fileList, setFileList] = useState<UploadFile[]>([]);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | undefined>(undefined);
 
@@ -45,6 +49,22 @@ export const ShapeList = () => {
   const { data: categories } = useQuery({
     queryKey: ['library-categories', 'shape'],
     queryFn: () => libraryApi.getCategories('shape'),
+  });
+
+  // Update mutation
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<LibraryShape> }) =>
+      libraryApi.updateShape(id, data),
+    onSuccess: () => {
+      message.success('도형이 수정되었습니다.');
+      queryClient.invalidateQueries({ queryKey: ['shapes'] });
+      setIsEditModalOpen(false);
+      setEditingShape(null);
+      editForm.resetFields();
+    },
+    onError: () => {
+      message.error('도형 수정에 실패했습니다.');
+    },
   });
 
   // Delete mutation
@@ -80,6 +100,22 @@ export const ShapeList = () => {
     setIsModalOpen(false);
     form.resetFields();
     setFileList([]);
+  };
+
+  const handleOpenEditModal = (shape: LibraryShape) => {
+    setEditingShape(shape);
+    editForm.setFieldsValue({
+      name: shape.name,
+      categoryId: shape.categoryId || undefined,
+      tags: (shape.tags || []).join(', '),
+    });
+    setIsEditModalOpen(true);
+  };
+
+  const handleEditSubmit = (values: any) => {
+    if (!editingShape) return;
+    const tags = values.tags ? values.tags.split(',').map((t: string) => t.trim()).filter(Boolean) : [];
+    updateMutation.mutate({ id: editingShape.id, data: { name: values.name, categoryId: values.categoryId || undefined, tags } });
   };
 
   const handleSubmit = async (values: any) => {
@@ -163,9 +199,12 @@ export const ShapeList = () => {
     {
       title: '작업',
       key: 'actions',
-      width: 120,
+      width: 160,
       render: (_, record) => (
         <Space>
+          <Button type="link" icon={<EditOutlined />} onClick={() => handleOpenEditModal(record)}>
+            수정
+          </Button>
           <Popconfirm
             title="도형을 삭제하시겠습니까?"
             onConfirm={() => handleDelete(record.id)}
@@ -268,6 +307,31 @@ export const ShapeList = () => {
                 </div>
               )}
             </Upload>
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* 수정 모달 */}
+      <Modal
+        title="도형 수정"
+        open={isEditModalOpen}
+        onOk={() => editForm.submit()}
+        onCancel={() => { setIsEditModalOpen(false); setEditingShape(null); editForm.resetFields(); }}
+        confirmLoading={updateMutation.isPending}
+      >
+        <Form form={editForm} layout="vertical" onFinish={handleEditSubmit}>
+          <Form.Item name="name" label="도형 이름" rules={[{ required: true, message: '이름을 입력해주세요' }]}>
+            <Input />
+          </Form.Item>
+          <Form.Item name="categoryId" label="카테고리">
+            <Select
+              placeholder="카테고리 선택"
+              allowClear
+              options={categories?.map((c: LibraryCategory) => ({ label: c.name, value: c.id }))}
+            />
+          </Form.Item>
+          <Form.Item name="tags" label="태그" extra="쉼표로 구분">
+            <Input placeholder="예: 원, 기본도형" />
           </Form.Item>
         </Form>
       </Modal>
