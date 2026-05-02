@@ -429,10 +429,23 @@ function EmbeddedEditor({
         if (!isMounted) return
 
         // 기존 세션의 canvasData가 있으면 복원 (재편집)
-        if (editSession?.canvasData && fabricCanvas) {
+        // canvasData가 배열이면 멀티페이지 복원, 객체면 단일 캔버스 복원
+        if (editSession?.canvasData) {
           setLoadingMessage('저장된 작업을 복원하는 중...')
-          await core.loadFromJSON(fabricCanvas, editSession.canvasData)
-          console.log('[EmbeddedEditor] Session canvasData restored:', editSession.id)
+          const saved = editSession.canvasData
+          const { allCanvas: canvases } = useAppStore.getState()
+
+          if (Array.isArray(saved) && saved.length > 0) {
+            // 멀티페이지: 각 페이지 canvasData를 대응 캔버스에 로드
+            for (let i = 0; i < saved.length && i < canvases.length; i++) {
+              if (saved[i]) await core.loadFromJSON(canvases[i], saved[i])
+            }
+            console.log('[EmbeddedEditor] Multi-page canvasData restored:', saved.length, 'pages')
+          } else if (!Array.isArray(saved) && fabricCanvas) {
+            // 단일 캔버스 (legacy 및 cover 전용 세션)
+            await core.loadFromJSON(fabricCanvas, saved)
+            console.log('[EmbeddedEditor] Single canvasData restored:', editSession.id)
+          }
         }
 
         if (!isMounted) return
