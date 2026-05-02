@@ -27,7 +27,6 @@
     "@nestjs/swagger": "^8.0.5",
     "@nestjs/typeorm": "^10.0.2",
     "@sentry/node": "^7.119.2",
-    "@sentry/profiling-node": "^7.119.2",
     "@storige/ai": "workspace:*",
     "@storige/types": "workspace:*",
     "axios": "^1.13.2",
