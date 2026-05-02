@@ -35,6 +35,7 @@ export function useEmbedAutoSave(config: AutoSaveConfig) {
 
   // App Store
   const canvas = useAppStore((state) => state.canvas)
+  const allCanvas = useAppStore((state) => state.allCanvas)
 
   // Save Store
   const isDirty = useSaveStore((state) => state.isDirty)
@@ -54,12 +55,18 @@ export function useEmbedAutoSave(config: AutoSaveConfig) {
   const clearLocalBackup = useSaveStore((state) => state.clearLocalBackup)
 
   /**
-   * 현재 캔버스 데이터 수집
+   * 캔버스 데이터 수집 — 멀티페이지면 배열, 단일이면 객체
+   * allCanvas가 2+이면 각 캔버스를 JSON 배열로 직렬화 (내지 N페이지 완전 보존)
    */
   const collectCanvasData = useCallback(() => {
+    if (allCanvas.length >= 2) {
+      return allCanvas.map((cvs) => {
+        try { return cvs.toJSON(core.extendFabricOption) } catch { return null }
+      }).filter(Boolean)
+    }
     if (!canvas) return null
     return canvas.toJSON(core.extendFabricOption)
-  }, [canvas])
+  }, [canvas, allCanvas])
 
   /**
    * 로컬 백업 저장
