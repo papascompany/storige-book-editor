@@ -572,8 +572,10 @@ export default function EditorHeader({
           {/* 자동 저장 상태 (클라우드 인디케이터 역할) */}
           <AutoSaveIndicator className="hidden sm:flex ml-1" />
 
-          {/* 변경 이력 요약 popover */}
-          <HistoryPanel />
+          {/* 변경 이력 요약 popover — 모바일(< sm) 에서 숨김 */}
+          <span className="hidden sm:contents">
+            <HistoryPanel />
+          </span>
         </div>
 
         {/* 중앙: 작업명 + 사이즈 표시 */}
@@ -694,7 +696,7 @@ export default function EditorHeader({
 
         {/* 우측: 보기 옵션 + 불러오기 + 편집완료 + 도움말 */}
         <div className="flex items-center gap-1 md:gap-2">
-          {/* 룰러 토글 */}
+          {/* 룰러 토글 — 모바일(< sm) 에서 숨김 */}
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -703,7 +705,7 @@ export default function EditorHeader({
                 onClick={toggleRuler}
                 aria-label={showRuler ? '룰러 끄기' : '룰러 켜기'}
                 aria-pressed={showRuler}
-                className={`h-9 w-9 ${showRuler ? 'bg-editor-accent/10 text-editor-accent hover:bg-editor-accent/20 hover:text-editor-accent' : 'text-editor-text-muted hover:bg-editor-hover'}`}
+                className={`hidden sm:inline-flex h-9 w-9 ${showRuler ? 'bg-editor-accent/10 text-editor-accent hover:bg-editor-accent/20 hover:text-editor-accent' : 'text-editor-text-muted hover:bg-editor-hover'}`}
               >
                 <Ruler className="h-5 w-5" />
               </Button>
@@ -711,7 +713,7 @@ export default function EditorHeader({
             <TooltipContent>룰러 {showRuler ? '끄기' : '켜기'}</TooltipContent>
           </Tooltip>
 
-          {/* 테마 토글 (light → dark → system → light) */}
+          {/* 테마 토글 — 모바일(< sm) 에서 숨김 */}
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -719,7 +721,7 @@ export default function EditorHeader({
                 size="icon"
                 onClick={cycleTheme}
                 aria-label={`테마 변경 (현재: ${theme === 'light' ? '라이트' : theme === 'dark' ? '다크' : '시스템'})`}
-                className="h-9 w-9 text-editor-text-muted hover:bg-editor-hover"
+                className="hidden sm:inline-flex h-9 w-9 text-editor-text-muted hover:bg-editor-hover"
               >
                 {theme === 'light' && <Sun className="h-5 w-5" />}
                 {theme === 'dark' && <Moon className="h-5 w-5" />}
@@ -766,7 +768,7 @@ export default function EditorHeader({
             <TooltipContent>페이지 네비 위치 (1024px 이상에서만 표시 · ⌘K로도 변경)</TooltipContent>
           </Tooltip>
 
-          {/* 도움말 — 단축키 모달 열기 (또는 ? 키) */}
+          {/* 도움말 — 모바일(< sm) 에서 숨김 */}
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -774,7 +776,7 @@ export default function EditorHeader({
                 size="icon"
                 onClick={() => setShortcutsOpen(true)}
                 aria-label="키보드 단축키 도움말"
-                className="h-9 w-9 text-editor-text-muted hover:bg-editor-hover"
+                className="hidden sm:inline-flex h-9 w-9 text-editor-text-muted hover:bg-editor-hover"
               >
                 <HelpCircle className="h-5 w-5" />
               </Button>
@@ -796,36 +798,38 @@ export default function EditorHeader({
             불러오기
           </Button>
 
-          {/* 편집완료 (고객용) */}
+          {/* 편집완료 (고객용) — 모바일에서 아이콘 전용, sm+ 에서 텍스트 포함 */}
           {!isAdmin && (
             <Button
               size="sm"
               onClick={handleFinish}
               disabled={!ready || finishing}
-              className="bg-editor-accent hover:bg-editor-accent-hover text-white rounded-full shadow-sm px-4"
+              aria-label="편집완료"
+              className="bg-editor-accent hover:bg-editor-accent-hover text-white rounded-full shadow-sm px-2 sm:px-4"
             >
               {finishing ? (
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white sm:mr-2" />
               ) : (
-                <Check className="h-4 w-4 mr-2" />
+                <Check className="h-4 w-4 sm:mr-2" />
               )}
-              편집완료
+              <span className="sr-only sm:not-sr-only">편집완료</span>
             </Button>
           )}
 
-          {/* 편집완료 (관리자용) */}
+          {/* 편집완료 (관리자용) — 모바일에서 아이콘 전용 */}
           {isAdmin && (
             <Button
               onClick={() => handleSaveForAdmin(true)}
               disabled={!ready || finishing}
-              className="bg-editor-accent hover:bg-editor-accent-hover text-white rounded-full shadow-sm"
+              aria-label="편집완료"
+              className="bg-editor-accent hover:bg-editor-accent-hover text-white rounded-full shadow-sm px-2 sm:px-4"
             >
               {finishing ? (
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white sm:mr-2" />
               ) : (
-                <Check className="h-4 w-4 mr-2" />
+                <Check className="h-4 w-4 sm:mr-2" />
               )}
-              편집완료
+              <span className="sr-only sm:not-sr-only">편집완료</span>
             </Button>
           )}
         </div>
