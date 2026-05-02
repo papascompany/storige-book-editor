@@ -1,7 +1,8 @@
 # Storige × Bookmoa 시스템 통합 문서
 
 > **작성일**: 2026-05-02  
-> **버전**: v2.0  
+> **최종 수정**: 2026-05-02 (v2.1 — 파일 업로드 type 필드 명시, Admin 테스트 플로우 추가, 상품 API 응답 형태 추가)  
+> **버전**: v2.1  
 > **대상**: PHP 개발자, 운영자, 기술 검토자
 
 ---
@@ -11,7 +12,13 @@
 1. [시스템 구성도](#1-시스템-구성도)
 2. [서비스 인프라 구성](#2-서비스-인프라-구성)
 3. [Worker 데이터 플로우](#3-worker-데이터-플로우)
+   - 3.1 PDF 검증 플로우 (파일 업로드 시)
+   - 3.2 PDF 합성 플로우 (주문 완료 시)
+   - 3.3 Admin 워커 테스트 플로우 *(v2.1 신규)*
+   - 3.4 에디터 세션 플로우 (편집기 사용 시)
 4. [Bookmoa PHP 연동안](#4-bookmoa-php-연동안)
+   - 4.4 Breaking Changes *(v2.1: type 필드 항목 추가)*
+   - 4.7 상품 목록 API 응답 형태 *(v2.1 신규)*
 5. [PDF 파일 검증 세부 항목](#5-pdf-파일-검증-세부-항목)
 6. [환경 변수 레퍼런스](#6-환경-변수-레퍼런스)
 7. [에러 코드 레퍼런스](#7-에러-코드-레퍼런스)
@@ -122,6 +129,12 @@
 │  └── X-API-Key 헤더                                  │
 │      - WORKER_API_KEY 환경변수                        │
 │      - PATCH /worker-jobs/external/{id}/status       │
+│                                                     │
+│  Admin 관리자 (Vercel)                               │
+│  └── JWT Bearer Token                               │
+│      - POST /auth/login → JWT 발급                   │
+│      - 일반 /files/upload, /worker-jobs/* 사용        │
+│      - /external 엔드포인트 사용 안 함                │
 └─────────────────────────────────────────────────────┘
 ```
 
@@ -257,7 +270,71 @@ PROCESSING
         │  주문 상태 업데이트
 ```
 
-### 3.3 에디터 세션 플로우 (편집기 사용 시)
+### 3.3 Admin 워커 테스트 플로우
+
+> Admin 관리자 페이지 (워커관리 > 테스트) 에서 PDF 파일을 직접 업로드해 검증 기능을 테스트하는 플로우.  
+> 외부 PHP 연동과 **인증 방식만 다르며** 처리 로직은 동일함.
+
+```
+[Admin 관리자 (Vercel)]
+        │
+        │  ① POST /files/upload          ← 주의: /external 없는 일반 엔드포인트
+        │     Headers: Authorization: Bearer {JWT}
+        │     Body: multipart/form-data {
+        │       file:  (PDF 바이너리)
+        │       type:  'cover' | 'content'    ← ❗ 필수 (없으면 400 오류)
+        │     }
+        │     → 응답: { id, fileUrl, fileName, fileSize, ... }
+        ▼
+[Storige API]
+        │  파일 저장 → fileUrl: '/storage/uploads/{uuid}.pdf'
+        │
+        │  ② POST /worker-jobs/validate
+        │     Headers: Authorization: Bearer {JWT}
+        │     Body: { fileUrl, fileType, orderOptions }
+        ▼
+[Bull Queue: pdf-validation]
+        │
+        ▼
+[Storige Worker] — 동일한 15단계 검증 실행
+        │
+        │  ③ Admin UI → GET /worker-jobs/{id} (1초 폴링)
+        │     status: PENDING → PROCESSING → COMPLETED | FIXABLE | FAILED
+        ▼
+[Admin UI] — 검증 결과 표시
+```
+
+#### 파일 업로드 엔드포인트 비교
+
+| 엔드포인트 | 인증 | 사용 주체 | `type` 필드 | 응답 |
+|-----------|------|----------|-------------|------|
+| `POST /files/upload` | JWT Bearer | Admin / Editor | **필수** | `FileResponseDto` |
+| `POST /files/upload/external` | X-API-Key | Bookmoa PHP | **필수** | `FileResponseDto` |
+
+> ⚠️ **`type` 필드 누락 시 400 Bad Request** — 두 엔드포인트 모두 `type` 값이 없으면 DTO 검증 실패로 즉시 거부됨.
+
+##### FileResponseDto 응답 필드
+
+```json
+{
+  "id":           "550e8400-e29b-41d4-a716-446655440000",
+  "fileName":     "1746123456789_abc123.pdf",
+  "originalName": "커버.pdf",
+  "fileUrl":      "/storage/uploads/1746123456789_abc123.pdf",
+  "filePath":     "storage/uploads/1746123456789_abc123.pdf",
+  "thumbnailUrl": null,
+  "fileSize":     2097152,
+  "mimeType":     "application/pdf",
+  "fileType":     "cover",
+  "orderSeqno":   12345,
+  "memberSeqno":  678,
+  "createdAt":    "2026-05-02T10:00:00.000Z"
+}
+```
+
+---
+
+### 3.4 에디터 세션 플로우 (편집기 사용 시)
 
 ```
 [bookmoa PHP (server-side)]
@@ -360,6 +437,7 @@ SetEnv STORIGE_EDITOR_CSS   "https://cdn.yourdomain.com/editor-bundle.css"
 | 10 | 편집 모드 | 없음 | `mode`: `both` / `cover` / `content` | 🟡 신규 |
 | 11 | 완료 후 URL | 없음 | `returnUrl` 파라미터 | 🟡 신규 |
 | 12 | API 주소 | 암묵적 (하드코딩) | `apiBaseUrl` 명시적 전달 필수 | 🟡 변경 |
+| 13 | 파일 업로드 `type` 필드 | 없음 | `type: 'cover'\|'content'` **필수** (없으면 400) | 🔴 Breaking |
 
 ### 4.5 인쇄물 사이즈 전달 — 3가지 방법
 
@@ -401,6 +479,8 @@ function getShopSessionToken(int $orderSeqno, int $memberSeqno, string $template
 
 // ───────────────────────────────────────────────────────────────────────
 // ② PDF 파일 업로드 (표지/내지)
+// ⚠️  POSTFIELDS에 'type' 필드가 반드시 있어야 합니다.
+//     없으면 API가 400 Bad Request를 반환합니다.
 // ───────────────────────────────────────────────────────────────────────
 function uploadPdfFile(string $filePath, string $fileType, int $orderSeqno): array {
     $ch = curl_init(STORIGE_API_URL . '/files/upload/external');
@@ -411,13 +491,15 @@ function uploadPdfFile(string $filePath, string $fileType, int $orderSeqno): arr
         CURLOPT_HTTPHEADER => ['X-API-Key: ' . STORIGE_API_KEY],
         CURLOPT_POSTFIELDS => [
             'file'       => $cFile,
-            'type'       => $fileType,  // 'cover' 또는 'content'
+            'type'       => $fileType,  // ❗ 필수: 'cover' 또는 'content'
             'orderSeqno' => $orderSeqno,
         ],
     ]);
     $res = json_decode(curl_exec($ch), true);
     curl_close($ch);
-    return $res; // { id, fileUrl, fileSize, ... }
+    // 응답: { id, fileUrl, fileName, fileSize, mimeType, fileType, orderSeqno, createdAt }
+    // 다음 단계에서 $res['id'] (fileId) 와 $res['fileUrl'] 을 사용
+    return $res;
 }
 
 // ───────────────────────────────────────────────────────────────────────
@@ -529,7 +611,50 @@ function handleValidationWebhook(): void {
 }
 ```
 
-### 4.7 edit.php 핵심 구조
+### 4.7 상품 목록 API 응답 형태
+
+> Bookmoa PHP 서버에서 `GET /products`를 호출할 경우 응답은 **페이지네이션 래퍼** 형태로 반환됩니다.  
+> 응답의 최상위 키를 배열로 오인하면 오류가 발생하므로 주의하세요.
+
+```json
+// GET /api/products?page=1&pageSize=20
+{
+  "success": true,
+  "data": {
+    "items": [
+      {
+        "id":              "uuid",
+        "name":            "A4 책자 20p",
+        "code":            "BOOK-A4-20P",
+        "categoryId":      "uuid",
+        "templateSetId":   "uuid",
+        "templateSet":     { "id": "uuid", "name": "A4 책자 기본", "type": "book" },
+        "price":           15000,
+        "isActive":        true,
+        "allowCustomSize": false,
+        "createdAt":       "2026-05-02T10:00:00.000Z"
+      }
+    ],
+    "total":       100,
+    "page":        1,
+    "pageSize":    20,
+    "totalPages":  5
+  }
+}
+```
+
+```php
+// ✅ 올바른 파싱
+$res   = json_decode($response, true);
+$items = $res['data']['items'];      // 상품 배열
+
+// ❌ 잘못된 파싱 (배열이 아님 → foreach 오류)
+// $items = $res['data'];
+```
+
+---
+
+### 4.8 edit.php 핵심 구조
 
 ```php
 <?php

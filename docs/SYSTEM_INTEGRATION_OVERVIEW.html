@@ -392,7 +392,7 @@
 <div class="top-header">
   <div class="badge-row">
     <span class="badge blue">📄 기술 문서</span>
-    <span class="badge green">v2.0</span>
+    <span class="badge green">v2.1</span>
     <span class="badge">2026-05-02</span>
     <span class="badge">PHP 개발자용</span>
   </div>
@@ -417,9 +417,12 @@
   <a href="#s2-1" class="sub">PDF 검증 플로우</a>
   <a href="#s2-2" class="sub">PDF 합성 플로우</a>
   <a href="#s2-3" class="sub">편집기 세션 플로우</a>
+  <a href="#s2-4" class="sub" style="color:var(--green)">Admin 테스트 플로우 ✦</a>
+  <a href="#s2-5" class="sub">파일 업로드 비교</a>
   <a href="#s3">③ Bookmoa PHP 연동안</a>
   <a href="#s3-1" class="sub">Breaking Changes</a>
   <a href="#s3-2" class="sub">API 호출 코드</a>
+  <a href="#s3-api-products" class="sub" style="color:var(--green)">상품 API 응답 형태 ✦</a>
   <a href="#s3-3" class="sub">edit.php 구조</a>
   <a href="#s4">④ PDF 검증 세부 항목</a>
   <a href="#s4-1" class="sub">15단계 파이프라인</a>
@@ -694,6 +697,79 @@
       </div>
     </div>
   </div>
+
+  <!-- Admin 워커 테스트 플로우 -->
+  <h3 class="sub-title" id="s2-4" style="margin-top:36px"><span style="background:var(--green)"></span>Admin 워커 테스트 플로우 <span style="font-size:11px;background:rgba(52,211,153,.15);color:var(--green);border:1px solid var(--green);border-radius:4px;padding:2px 6px;vertical-align:middle;margin-left:6px">v2.1 신규</span></h3>
+
+  <p style="color:var(--text2);margin-bottom:16px;font-size:13px">Admin 관리자 페이지 <strong>워커관리 → 테스트</strong> 에서 직접 PDF를 업로드해 검증을 테스트하는 플로우. 외부 PHP 연동과 인증 방식만 다르며 Worker 처리 로직은 동일합니다.</p>
+
+  <div class="flow-steps">
+    <div class="flow-step flow-blue">
+      <div class="step-left"><div class="step-num">1</div><div class="step-line"></div></div>
+      <div class="step-body">
+        <div class="step-title">파일 업로드 (Admin JWT 인증)</div>
+        <div class="step-detail"><code>POST /files/upload</code>&nbsp;&nbsp;<span style="color:var(--text3)">Authorization: Bearer {JWT}</span><br><code>multipart/form-data { file: (PDF), type: 'cover'|'content' }</code><br><span style="color:var(--red);font-weight:600">⚠️ type 필드 필수 — 없으면 400 Bad Request</span><br>응답: <code>{ id, fileUrl, fileName, fileSize, ... }</code></div>
+      </div>
+    </div>
+    <div class="flow-step flow-blue">
+      <div class="step-left"><div class="step-num">2</div><div class="step-line"></div></div>
+      <div class="step-body">
+        <div class="step-title">검증 작업 생성</div>
+        <div class="step-detail"><code>POST /worker-jobs/validate</code>&nbsp;&nbsp;<span style="color:var(--text3)">Authorization: Bearer {JWT}</span><br><code>{ fileUrl, fileType, orderOptions: { size, pages, binding, bleed } }</code></div>
+      </div>
+    </div>
+    <div class="flow-step flow-green">
+      <div class="step-left"><div class="step-num">3</div><div class="step-line"></div></div>
+      <div class="step-body">
+        <div class="step-title">Worker 15단계 검증 (동일 로직)</div>
+        <div class="step-detail">pdf-validation 큐에서 처리 — PHP 연동 플로우와 동일한 Worker 코드 실행</div>
+      </div>
+    </div>
+    <div class="flow-step flow-blue">
+      <div class="step-left"><div class="step-num">4</div></div>
+      <div class="step-body">
+        <div class="step-title">Admin UI 1초 폴링 → 결과 표시</div>
+        <div class="step-detail"><code>GET /worker-jobs/{id}</code>&nbsp;&nbsp;1초 간격 반복<br>상태: <span class="badge" style="background:rgba(234,179,8,.2);color:var(--yellow2)">PENDING</span> → <span class="badge" style="background:rgba(59,130,246,.2);color:#93c5fd">PROCESSING</span> → <span class="badge" style="background:rgba(52,211,153,.2);color:var(--green)">COMPLETED</span> / <span class="badge" style="background:rgba(251,191,36,.2);color:#fbbf24">FIXABLE</span> / <span class="badge" style="background:rgba(239,68,68,.2);color:var(--red)">FAILED</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 파일 업로드 엔드포인트 비교 -->
+  <h3 class="sub-title" id="s2-5" style="margin-top:36px"><span style="background:var(--yellow)"></span>파일 업로드 엔드포인트 비교</h3>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>엔드포인트</th><th>인증 방식</th><th>사용 주체</th><th>type 필드</th><th>응답</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><code class="inline">POST /files/upload</code></td>
+          <td>JWT Bearer</td>
+          <td>Admin / Editor</td>
+          <td><strong style="color:var(--red)">필수 ❗</strong></td>
+          <td><code class="inline">FileResponseDto</code></td>
+        </tr>
+        <tr>
+          <td><code class="inline">POST /files/upload/external</code></td>
+          <td>X-API-Key</td>
+          <td>Bookmoa PHP</td>
+          <td><strong style="color:var(--red)">필수 ❗</strong></td>
+          <td><code class="inline">FileResponseDto</code></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div style="background:rgba(239,68,68,.08);border-left:3px solid var(--red);padding:10px 14px;border-radius:0 6px 6px 0;margin-top:12px;font-size:13px">
+    <strong>FileResponseDto 주요 필드:</strong>&nbsp;
+    <code class="inline">id</code> (UUID) &nbsp;·&nbsp;
+    <code class="inline">fileUrl</code> (저장 URL) &nbsp;·&nbsp;
+    <code class="inline">filePath</code> (서버 경로) &nbsp;·&nbsp;
+    <code class="inline">fileSize</code> (bytes) &nbsp;·&nbsp;
+    <code class="inline">fileType</code> ('cover'|'content') &nbsp;·&nbsp;
+    <code class="inline">createdAt</code><br>
+    ⚠️ 응답 필드명은 <code class="inline">url</code>이 아니라 <strong><code class="inline">fileUrl</code></strong> 입니다.
+  </div>
+
 </section>
 
 <!-- ─────────────── ③ Bookmoa PHP 연동안 ─────────────── -->
@@ -739,6 +815,13 @@
       <div class="cl-body">
         <div class="cl-title">#5 날개(Wing) 파라미터 제거</div>
         <div class="cl-detail"><code class="inline">wingFront, wingBack</code> 제거 → <code class="inline">paperType + bindingType</code> 코드로 대체</div>
+      </div>
+    </div>
+    <div class="cl-item breaking">
+      <div class="cl-icon">🔴</div>
+      <div class="cl-body">
+        <div class="cl-title">#13 파일 업로드 <code class="inline">type</code> 필드 필수 <span style="font-size:11px;background:rgba(52,211,153,.15);color:var(--green);border:1px solid var(--green);border-radius:4px;padding:1px 5px;margin-left:4px">v2.1</span></div>
+        <div class="cl-detail"><code class="inline">POST /files/upload/external</code> 호출 시 <code class="inline">type: 'cover'|'content'</code> 필드 반드시 포함 — 없으면 <strong>400 Bad Request</strong> 반환. 응답 필드는 <code class="inline">url</code>이 아닌 <code class="inline">fileUrl</code></div>
       </div>
     </div>
   </div>
@@ -847,8 +930,51 @@
 }</pre>
   </div>
 
+  <!-- 상품 목록 API 응답 형태 -->
+  <h3 class="sub-title" id="s3-api-products" style="margin-top:36px"><span style="background:var(--cyan)"></span>상품 목록 API 응답 형태 <span style="font-size:11px;background:rgba(52,211,153,.15);color:var(--green);border:1px solid var(--green);border-radius:4px;padding:2px 6px;vertical-align:middle;margin-left:6px">v2.1 신규</span></h3>
+
+  <p style="color:var(--text2);margin-bottom:14px;font-size:13px"><code class="inline">GET /api/products</code>는 페이지네이션 래퍼로 반환됩니다. 응답의 <code class="inline">data</code>를 배열로 오인하면 오류가 발생합니다.</p>
+
+  <div class="code-block">
+    <div class="cb-header">
+      <div class="cb-dots"><div class="cb-dot" style="background:#ff5f57"></div><div class="cb-dot" style="background:#ffbd2e"></div><div class="cb-dot" style="background:#28c840"></div></div>
+      <div class="cb-lang">JSON · GET /api/products 응답</div>
+    </div>
+    <pre>{
+  <span class="string">"success"</span>: <span class="keyword">true</span>,
+  <span class="string">"data"</span>: {
+    <span class="string">"items"</span>: [
+      {
+        <span class="string">"id"</span>:              <span class="string">"uuid"</span>,
+        <span class="string">"name"</span>:            <span class="string">"A4 책자 20p"</span>,
+        <span class="string">"code"</span>:            <span class="string">"BOOK-A4-20P"</span>,
+        <span class="string">"templateSetId"</span>:   <span class="string">"uuid"</span>,
+        <span class="string">"price"</span>:           <span class="type">15000</span>,
+        <span class="string">"isActive"</span>:        <span class="keyword">true</span>,
+        <span class="string">"allowCustomSize"</span>: <span class="keyword">false</span>
+      }
+    ],
+    <span class="string">"total"</span>:      <span class="type">100</span>,
+    <span class="string">"page"</span>:       <span class="type">1</span>,
+    <span class="string">"pageSize"</span>:   <span class="type">20</span>,
+    <span class="string">"totalPages"</span>: <span class="type">5</span>
+  }
+}</pre>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px;font-size:13px">
+    <div style="background:rgba(52,211,153,.08);border-left:3px solid var(--green);padding:10px 14px;border-radius:0 6px 6px 0">
+      <strong style="color:var(--green)">✅ 올바른 파싱 (PHP)</strong><br>
+      <code class="inline">$items = $res['data']['items'];</code>
+    </div>
+    <div style="background:rgba(239,68,68,.08);border-left:3px solid var(--red);padding:10px 14px;border-radius:0 6px 6px 0">
+      <strong style="color:var(--red)">❌ 잘못된 파싱</strong><br>
+      <code class="inline">$items = $res['data']; // 배열 아님!</code>
+    </div>
+  </div>
+
   <!-- edit.php 구조 -->
-  <h3 class="sub-title" id="s3-3"><span style="background:var(--purple)"></span>edit.php 핵심 구조</h3>
+  <h3 class="sub-title" id="s3-3" style="margin-top:36px"><span style="background:var(--purple)"></span>edit.php 핵심 구조</h3>
   <div class="code-block">
     <div class="cb-header">
       <div class="cb-dots"><div class="cb-dot" style="background:#ff5f57"></div><div class="cb-dot" style="background:#ffbd2e"></div><div class="cb-dot" style="background:#28c840"></div></div>
@@ -1197,7 +1323,7 @@ window.<span class="type">StorigeEditor</span>.<span class="func">init</span>({
 
 <!-- 푸터 -->
 <div style="border-top:1px solid var(--border);margin-top:48px;padding:24px 0;color:var(--text3);font-size:12px">
-  <div style="margin-bottom:6px"><strong style="color:var(--text2)">Storige × Bookmoa 시스템 통합 문서</strong> · v2.0 · 2026-05-02</div>
+  <div style="margin-bottom:6px"><strong style="color:var(--text2)">Storige × Bookmoa 시스템 통합 문서</strong> · v2.1 · 2026-05-02</div>
   <div>저장 경로: <code style="font-family:monospace;color:var(--text3)">docs/SYSTEM_INTEGRATION_OVERVIEW.md</code> · <code style="font-family:monospace;color:var(--text3)">docs/SYSTEM_INTEGRATION_OVERVIEW.html</code></div>
   <div style="margin-top:6px">최신 API 스펙: <code style="font-family:monospace;color:var(--text3)">http://localhost:4000/api/docs</code> (Swagger UI)</div>
 </div>
