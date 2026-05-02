@@ -192,11 +192,11 @@
         전 단계 인프라 구축이 끝났고, PHP 연동과 코드 보완(P1—P7)이 다음 작업입니다.
       </div>
       <div class="meta">
-        <b>기준 시점</b> 2026-04-30 KST · 인프라 커밋 <code>0bdbe62</code> 이후 · 에디터 폴리싱 <code>~386c37b</code>까지 ·
+        <b>기준 시점</b> 2026-05-02 14:00 KST · 인프라 커밋 <code>0bdbe62</code> 이후 · 에디터 폴리싱 <code>~0c0e8aa</code>까지 ·
         <b>레포</b> <a style="color:#bae6fd" href="https://github.com/papascompany/storige-book-editor">papascompany/storige-book-editor</a>
       </div>
       <div class="meta" style="margin-top:8px;background:rgba(34,197,94,.18)">
-        <b style="color:#bbf7d0">에디터 프론트엔드 폴리싱</b> 41 트랙 + 모바일 PR #1~#10(27 commit) + 5차 P0 사이클(5 commit) = <b>총 73+ commit</b>, Vercel 배포 + <b>운영 VPS 재배포 완료</b>(2026-05-01) + DB 마이그 2건 적용 →
+        <b style="color:#bbf7d0">에디터 프론트엔드 폴리싱</b> 41 트랙 + 모바일 PR #1~#10(27 commit) + 5차 P0(5 commit) + DD-5-B-v2 + P1-3 + BB-Phase 3 follow-up + cleanup cron + 6차 P0 핫픽스 사이클(7 commit) = <b>총 85+ commit</b>, Vercel 배포 + <b>운영 VPS 재배포 3회 완료</b>(2026-05-01 23:33 + 2026-05-02 12:37 + 13:02) + DB 마이그 2건 적용 →
         <a style="color:#bae6fd" href="#frontend-tracks">§13—15 참고</a>
       </div>
     </div>
@@ -214,8 +214,8 @@
             <li>DNS · HTTPS · Let's Encrypt</li>
             <li>Vercel Editor + Admin 빌드 정상</li>
             <li>DB 23 테이블 + 시드</li>
-            <li><b>에디터 트랙 0~CC + 모바일 PR + P0 = 73+ commit</b> (다크/반응형/표지 D5 Phase 3b 전 단계+Phase 2/그라디언트 angle·radial/팔레트 즐겨찾기/페이지 reorder 인프라/백엔드 versions 풀 스택/모바일 터치+메모리 회피+ErrorBoundary/시점별 복원 UI)</li>
-            <li><b>운영 VPS 재배포 완료 (2026-05-01)</b> — DB 마이그 2건 + git pull 89 commit + docker compose api/worker 재빌드 + endpoint 검증</li>
+            <li><b>에디터 트랙 0~CC + 모바일 PR + P0 + DD-5-B-v2 + P1-3 + BB-Phase 3 follow-up + cleanup cron + 6차 P0 핫픽스 사이클 = 85+ commit</b> (다크/반응형/표지 D5 Phase 3b 전 단계+Phase 2/그라디언트 angle·radial/팔레트 즐겨찾기/페이지 reorder 풀 UI/백엔드 versions 풀 스택+썸네일+cleanup cron/모바일 터치+메모리 회피+ErrorBoundary+4MB 가드/시점별 복원 UI/Vercel cache fix/배경색 fresh fetch/SVG fileToImage 분리/unhandledrejection handler)</li>
+            <li><b>운영 VPS 재배포 3회 완료</b> — 2026-05-01 23:33 (DB 마이그 2건 + 1차 재빌드) / 2026-05-02 12:37 (BB-Phase 3 풀스택 + cleanup cron 활성화) / 2026-05-02 13:02 (cron TZ fix UTC 17:30 = KST 02:30)</li>
           </ul>
         </div>
         <div class="card card-warn" style="padding:18px">
@@ -289,14 +289,27 @@
             <div class="mono" style="color:var(--muted)">2026-05-01 ~ 2026-05-02 KST</div>
           </div>
           <div class="row"><div class="dot done"></div>
-            <b>운영 VPS 재배포</b> · DB 마이그 2건 적용(23→24 테이블) + git pull 89 commit + docker compose api/worker 재빌드 + BB-Phase 3 endpoint 검증 &nbsp;<span class="badge b-success">DONE</span>
+            <b>운영 VPS 재배포 1차</b> · DB 마이그 2건 적용(23→24 테이블) + git pull 89 commit + docker compose api/worker 재빌드 + BB-Phase 3 endpoint 검증 &nbsp;<span class="badge b-success">DONE</span>
             <div class="mono" style="color:var(--muted)">2026-05-01 23:33~23:39 KST</div>
           </div>
-          <div class="row"><div class="dot now"></div>
-            <b>P0-2 모바일 실기기 검증</b> · 사용자 실기기에서 8 시나리오 검증 — `docs/P0_OPERATIONS_CHECKLIST.md` 참조 &nbsp;<span class="badge b-primary">USER ACTION</span>
+          <div class="row"><div class="dot done"></div>
+            <b>DD-5-B-v2 + P1-3 + BB-Phase 3 follow-up + cleanup cron</b> · 페이지 drag-to-reorder UI(native HTML5 DnD) · 잔여 type 에러 12+4건 정리(tsc clean) · 자동저장 시점 썸네일 풀스택(R2 없이 로컬 FS) · @nestjs/schedule cleanup cron 매일 KST 02:30 (deletion-time + nightly) · 5 commit &nbsp;<span class="badge b-success">DONE</span>
+            <div class="mono" style="color:var(--muted)">2026-05-02 KST</div>
+          </div>
+          <div class="row"><div class="dot done"></div>
+            <b>운영 VPS 재배포 2차</b> · git pull <code>ce082ef → 2097e1c</code> (6 commits) + docker compose api/worker 재빌드 + ScheduleModule 로드 + thumbnails endpoint 검증 + DB thumbnail_url 컬럼 확인 &nbsp;<span class="badge b-success">DONE</span>
+            <div class="mono" style="color:var(--muted)">2026-05-02 12:37 KST</div>
+          </div>
+          <div class="row"><div class="dot done"></div>
+            <b>운영 재배포 3차 (cron TZ fix)</b> · 컨테이너 TZ=UTC 발견 → cron 표현식 <code>30 17 * * *</code> = KST 02:30로 수정 + api 재기동 (`9d67d8c`) &nbsp;<span class="badge b-success">DONE</span>
+            <div class="mono" style="color:var(--muted)">2026-05-02 13:02 KST</div>
+          </div>
+          <div class="row"><div class="dot done"></div>
+            <b>6차 P0 핫픽스 사이클 (사용자 실기기/콘솔 보고 7건 처리)</b> · Vercel CDN HTML cache(no-store + assets immutable) + 배경색 fresh fetch + 모바일 4MB 가드 + 요소 도구 raster 허용 + SVG 모든 SelectionType에서 fileToImage skip + main.tsx unhandledrejection global handler · 5 commit &nbsp;<span class="badge b-success">DONE</span>
+            <div class="mono" style="color:var(--muted)">2026-05-02 13:30~14:00 KST</div>
           </div>
           <div class="row"><div class="dot next"></div>
-            <b>P1 트랙</b> · 3b-v Phase 3 다중 cross-canvas / PDF Synthesis 검증 / 콘텐츠 카탈로그 / 반응형 Phase 3 / 모바일 헤더 X-3 / type 에러 12건 follow-up
+            <b>P1 트랙</b> · 3b-v Phase 3 다중 cross-canvas / PDF Synthesis 검증 / PHP 측 통합 테스트 / 저장 E2E / 콘텐츠 카탈로그 / 반응형 Phase 3 / 모바일 헤더 X-3
           </div>
           <div class="row"><div class="dot now"></div>
             <b>Day 1 정리</b> · 자동 백업 · admin 비번 · Supabase Pause · 문서 보수 &nbsp;<span class="badge b-primary">NOW</span>
@@ -1120,11 +1133,37 @@ $p = <span class="k">json_decode</span>($rawBody, <span class="k">true</span>);
           <li>☑ <b>P0-3</b> 사전 type 에러 9건 정리 <code>8820066</code></li>
           <li>☑ <b>P0-1·P0-2 docs</b> 운영 마이그레이션 SQL + 모바일 8 시나리오 체크리스트 <code>ed4e08b</code></li>
           <li>☑ <b>migration FK COLLATE fix</b> errno 150 회피 (utf8mb4_unicode_ci 명시) <code>ce082ef</code></li>
-          <li>☑ <b>운영 적용</b> SSH로 mariadb-dump 백업 → <code>edit_session_versions</code> CREATE → 검증 (DB 호스트 158.247.235.202)</li>
-          <li>☑ <b>운영 재배포</b> api/worker — git pull --ff-only 89 commits + <code>docker compose up -d --build api worker</code> (4m28s)</li>
+          <li>☑ <b>운영 적용 1차</b> SSH로 mariadb-dump 백업 → <code>edit_session_versions</code> CREATE → 검증 (DB 호스트 158.247.235.202)</li>
+          <li>☑ <b>운영 재배포 1차</b> api/worker — git pull --ff-only 89 commits + <code>docker compose up -d --build api worker</code> (4m28s)</li>
           <li>☑ <b>iOS 페이지 크래시 fix</b> — AppBackground <code>renderAll → requestRenderAll</code> + useCanvasThemeSync <code>TOUCH_ENV</code> 가드 <code>60efb05</code></li>
-          <li>⏳ <b>P0-2 사용자 액션</b> — 실기기 8 시나리오 검증 (<code>docs/P0_OPERATIONS_CHECKLIST.md</code> 참조)</li>
         </ul>
+
+        <h3>🚀 DD-5-B-v2 / P1-3 / BB-Phase 3 follow-up / cleanup cron (2026-05-02)</h3>
+        <ul style="list-style:none;padding-left:0;margin:0;font-size:13.5px">
+          <li>☑ <b>DD-5-B-v2</b> 페이지 drag-to-reorder UI — `PageThumbnail` drag props + insert bar + grab cursor / `BookNavigation` native HTML5 DnD + 표지/모바일/스프레드 가드 + `computeInnerReorder` helper (의존성 0 추가, dnd-kit 미사용) <code>aff4396</code></li>
+          <li>☑ <b>P1-3 잔여 type 에러 12 + cascading 4건 정리</b> — embed.tsx (data 폴백/safeSize/중복 export) / useEditorStore.test.ts (EditPage.name 미존재→sortOrder) / AppElement.tsx (graphql vs types 불일치) / AiPanel/Recommendation/Generation/LazyAi (string union → TemplateSetType enum). `pnpm tsc --noEmit` clean <code>d1d78fc</code></li>
+          <li>☑ <b>BB-Phase 3 follow-up 자동저장 시점 썸네일 풀스택</b> — 백엔드 `'thumbnails'` 카테고리 + `POST /storage/upload/thumbnails` (@Public) + AutoSaveDto.thumbnailUrl + maybePushVersion 시그니처 확장. 에디터 `useAutoSaveThumbnail` 훅 (TOUCH_ENV 모바일 스킵, 0.25x JPEG q0.7) + useAutoSave 통합 + HistoryPanel `ThumbnailMini` (28×40 + ImageOff placeholder) + hover 160px 미리보기. R2 미사용 (운영 인프라 조사: 로컬 FS 기반). 마이그 0건 <code>4901af9</code></li>
+          <li>☑ <b>BB-Phase 3 cleanup cron</b> — 신규 의존성 `@nestjs/schedule@^4.0.0` + `ScheduleModule.forRoot()` + 신규 `ThumbnailCleanupService` (a) deletion-time `unlinkThumbnailIfReferenced` (trimVersions에서 LRU 초과 시 즉시 unlink) + (b) nightly `@Cron('30 17 * * *')` UTC = KST 02:30 storage 스캔 + 24h grace window. `THUMBNAIL_CLEANUP_DRY_RUN=1`로 dry-run 가능. 컨테이너 TZ=UTC 정책 명시 <code>2097e1c</code> + <code>9d67d8c</code></li>
+          <li>☑ <b>운영 재배포 2차</b> 2026-05-02 12:37 KST — `git pull` (ce082ef→2097e1c, 6 commits) + `docker compose up -d --build api worker`. 검증: ScheduleModule 로드 + `/api/storage/upload/thumbnails` POST endpoint 매핑 + health 200 + thumbnail_url 컬럼 존재 + 운영 데이터 0건 안전</li>
+          <li>☑ <b>운영 재배포 3차</b> 2026-05-02 13:02 KST — cron TZ fix `9d67d8c` 적용 + api 재기동. 컨테이너 TZ=UTC 확인 (`Sat May 2 04:02:56 UTC 2026`)</li>
+        </ul>
+
+        <h3>🔥 6차 P0 핫픽스 사이클 (사용자 실기기/콘솔 보고 → 즉시 핫픽스 · 2026-05-02 13:30~14:00 KST)</h3>
+        <ul style="list-style:none;padding-left:0;margin:0;font-size:13.5px">
+          <li>☑ <b>Vercel HTML cache fix</b> — `index.html`이 `cache-control: max-age=0`인데 `x-vercel-cache: HIT, age: 552` (CDN edge가 9분+ 캐시) → 새 deploy 시 옛 chunk hash 404 ('Importing a module script failed'). vercel.json에 `/(index\.html)?` no-cache/no-store/must-revalidate + Pragma + Expires:0 / `/assets/*` immutable 1y. 검증: `cache-control: no-cache, no-store, must-revalidate` 정확 적용. 직전 `ae59bf2`는 vercel.json `comment` invalid 필드로 schema 거부 → ERROR 빌드, `5228171`에서 정정 <code>5228171</code></li>
+          <li>☑ <b>모바일 배경색/뚜껑색 적용 명시화</b> — iOS native `<input type=color>`는 X(닫기) 시점 적용, 사용자 혼동. AppBackground에 명시적 "적용" 버튼 + Check 아이콘 + 모바일 안내 텍스트 + applyBgColor/applyLidColor helper로 change/click 동일 로직 공유 <code>5228171</code></li>
+          <li>☑ <b>모바일 4MB 업로드 가드</b> — 대용량 사진 + retina(DPR=3) → iOS Safari 384MB 한계. useImageStore 3 진입점(upload/uploadSimple/uploadFile)에 `checkMobileFileSize` (TOUCH_ENV + 4MB 한도 + showToast 안내) <code>5228171</code></li>
+          <li>☑ <b>요소 도구 raster 이미지 허용 정정</b> — 직전 `f65315d` SVG-only는 잘못된 정책. AppElement.handleUpload accept를 `image/*`로 (SVG + PNG + JPG + GIF + WebP). useImageStore `SelectionType.shape` non-SVG 분기에 raster 처리 (`extensionType='shape'`) 추가 <code>819008d</code></li>
+          <li>☑ <b>배경색 적용 v2 (fresh fetch)</b> — `useState(workspace)` 캐시 stale 회피. applyBgColor가 매 호출 시 `canvas.getObjects().filter(...)`로 fresh fetch + `.set({fill, dirty:true}) + canvas.renderAll()`. preview 픽셀 검증 통과 ([248,206,206] = #F8CECE) <code>0c0e8aa</code></li>
+          <li>☑ <b>SVG 업로드 화면 freeze fix</b> — `core.fileToImage` → `fabric.Image.fromURL(svgDataUrl)` → `t.indexOf` throw → unhandled rejection으로 React 트리 freeze. `isSvgFile` 검출 후 SelectionType 무관하게 항상 `loadSVGFromURL` 사용. SelectionType.shape 분기는 SVG/raster 공통 setup으로 통합 <code>0c0e8aa</code></li>
+          <li>☑ <b>main.tsx unhandledrejection global handler</b> — `event.preventDefault()`로 React 트리 freeze 방지. preview 검증: test rejection 캡처 정상 작동 <code>0c0e8aa</code></li>
+        </ul>
+
+        <h3>✅ P0 종료 + P1 진입 (2026-05-02 14:00 KST 기준)</h3>
+        <p style="margin:8px 0 0;font-size:13.5px">
+          모든 P0 항목 종료(P0-1~4 + 6차 핫픽스 사이클). 사용자 추가 시나리오 검증 시 즉시 대응 가능.
+          다음 우선순위는 <b>P1: PHP 통합 검증 / PDF Synthesis E2E / 저장 E2E / Composite Ph3 / 콘텐츠 카탈로그 / 반응형 Ph3</b>.
+        </p>
       </div>
 
       <div class="card card-info">
@@ -1150,21 +1189,29 @@ $p = <span class="k">json_decode</span>($rawBody, <span class="k">true</span>);
       </div>
 
       <div class="card card-warn">
-        <h3 style="margin-top:0">⏭ 다음 후보 (잔여 — 우선순위순)</h3>
+        <h3 style="margin-top:0">⏭ 다음 후보 (잔여 — 우선순위순) · 2026-05-02 갱신</h3>
         <p style="margin-top:0;font-size:13px;color:var(--muted)">
           정리: <code>.cursor/plans/_RESUME_EDITOR_TRACKS.md</code> · <code>docs/REMAINING_WORK_REVIEW.md</code> · <code>docs/P0_OPERATIONS_CHECKLIST.md</code>
         </p>
         <table>
           <tr><th>우선</th><th>트랙</th><th>주제</th><th>위험도</th></tr>
-          <tr><td><b>P0-2</b></td><td>모바일 실기기 검증</td><td>iOS Safari + Android Chrome으로 8 시나리오(텍스트 추가 / 배경색 / 다크 토글 / 객체 회전·스케일 / 도형 추가 / 멀티 선택 / 30+ 페이지 / 30 분 장기 세션) 통과 확인 — <code>60efb05</code> 효과 검증</td><td><span class="badge b-warn">사용자 액션</span></td></tr>
-          <tr><td>P1-1</td><td>BB-Phase 3 follow-up</td><td>versions 썸네일 자동 생성(workspace toDataURL → R2 업로드) + 시점 hover 미리보기 + 자동 R2 cleanup. 비용·스토리지 검토 필요</td><td><span class="badge b-warn">중상 (인프라)</span></td></tr>
-          <tr><td>P1-2</td><td>DD-5-B-v2</td><td>페이지 썸네일 drag-to-reorder UI (BookNavigation Pointer Events, reorderByIndex 액션 이미 존재). 1차 시도 후 안전 재구현</td><td><span class="badge b-warn">중상</span></td></tr>
-          <tr><td>P1-3</td><td>type 에러 follow-up</td><td>잔여 12건 정리 (embed flow / test setup / graphql codegen). P0-3와 분리한 이유: PR 단위로 검증 필요</td><td><span class="badge b-warn">중</span></td></tr>
+          <tr><td><b>P1-A</b></td><td>PHP 측 통합 검증</td><td>옵션 B/C URL override + 웹훅 콜백 양측 통합 테스트. PHP 운영팀과 협업 필요</td><td><span class="badge b-warn">사용자/PHP 액션</span></td></tr>
+          <tr><td><b>P1-B</b></td><td>PDF Synthesis E2E</td><td><code>POST /synthesize/external</code> end-to-end. 운영 worker 이미 재배포됨, 실 PDF 흐름 검증 필요</td><td><span class="badge b-warn">중상</span></td></tr>
+          <tr><td><b>P1-C</b></td><td>저장/불러오기 E2E</td><td>sessionId 환경에서 autoSave → restoreVersion → 페이지 reload 라운드트립 검증</td><td><span class="badge b-warn">중</span></td></tr>
+          <tr><td>P1-D</td><td>Composite Ph3 (multi-select cross-canvas)</td><td>3b-v Phase 3 — 다중 선택 표지 region 간 이동. canvas-core 추가 변경</td><td><span class="badge b-warn">중상</span></td></tr>
+          <tr><td>P1-E</td><td>콘텐츠 패널 그리드 카탈로그</td><td>미리캔버스 풍 카테고리 탭 + 그리드 뷰</td><td><span class="badge b-warn">중상</span></td></tr>
+          <tr><td>P1-F</td><td>반응형 Phase 3</td><td>태블릿 세로 모드 drawer 최적화</td><td><span class="badge b-warn">중</span></td></tr>
+          <tr><td>P1-G</td><td>모바일 헤더 X-3</td><td>375px viewport에서 nav 가로 197px overflow (이미 식별). 도구 그룹 wrap·축소 검토</td><td><span class="badge b-warn">중</span></td></tr>
           <tr><td>P2-1</td><td>DD-3 확장</td><td>커스텀 색상 picker(2-stop 외 다단) + angle 슬라이더(0~360°)</td><td><span class="badge b-warn">중</span></td></tr>
           <tr><td>P2-2</td><td>도구 패널 즐겨찾기 확장</td><td>Element/Frame/Template 카탈로그 항목별 ★ (DD-4의 명령 팔레트 패턴을 카탈로그 row로 확장)</td><td><span class="badge b-warn">중</span></td></tr>
-          <tr><td>P2-3</td><td>표지 모드 추가 폴리싱</td><td>multi-selection 표지 cross-canvas, 객체 자동 스케일(좁은 region 적응)</td><td><span class="badge b-warn">중상</span></td></tr>
-          <tr><td>P2-4</td><td>X-3 모바일 헤더 overflow</td><td>375px viewport에서 헤더 197px 우측 도구 잘림(이미 식별, 미수정). 도구 그룹 wrap·축소·collapsible 검토</td><td><span class="badge b-warn">중</span></td></tr>
+          <tr><td>P2-3</td><td>canvas-core SVG 차단</td><td>현재 useImageStore 단에서 isSvgFile 분기. canvas-core fileToImage 진입점에서도 명시 차단으로 안전성 강화</td><td><span class="badge b-warn">중</span></td></tr>
+          <tr><td>P2-4</td><td>폰트 fallback / WebAssembly</td><td>"본고딕" 미찾음 경고 silent 처리 + crossOriginIsolated 활성화로 OpenCV 멀티스레드</td><td><span class="badge b-warn">낮음</span></td></tr>
+          <tr><td>P2-5</td><td>Sentry/Datadog</td><td>에러 추적 외부 서비스 연결 (unhandledrejection handler에서 dispatch)</td><td><span class="badge b-warn">중</span></td></tr>
+          <tr><td>P2-6</td><td>번들 크기 최적화</td><td>vendor-opencv 10MB / vendor-onnx 24MB lazy-load 강화</td><td><span class="badge b-warn">중</span></td></tr>
         </table>
+        <p style="margin:12px 0 0;font-size:12.5px;color:var(--muted)">
+          ✅ <b>완료된 항목</b>: P0-2 모바일 실기기 검증(6차 P0 핫픽스 사이클 처리) / P1 BB-Phase 3 follow-up + cleanup cron(3 commits) / P1 DD-5-B-v2 / P1-3 type cleanup
+        </p>
       </div>
     </section>
 
