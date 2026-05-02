@@ -691,15 +691,15 @@ export default function EditorView() {
             {/* Feature Sidebar
                 - mobile: 오버레이 (캔버스 위로) + 백드롭
                 - tablet/desktop: 기존 inline 배치 */}
-            {screenMode === 'mobile' && currentMenu && (
+            {screenMode !== 'desktop' && currentMenu && (
               <div
                 className="fixed inset-0 z-[105] bg-black/40 backdrop-blur-[1px]"
                 onClick={() => tapMenu(null)}
                 aria-hidden="true"
               />
             )}
-            <FeatureSidebar mobileOverlay={screenMode === 'mobile'} />
-            {ready && <ControlBar mobileOverlay={screenMode === 'mobile'} />}
+            <FeatureSidebar mobileOverlay={screenMode !== 'desktop'} />
+            {ready && <ControlBar mobileOverlay={screenMode !== 'desktop'} />}
 
             {/* Canvas Area — 이미지 드래그 앤 드롭 영역 (트랙 S)
                 NOTE: ControlBar 가 모바일에서 fixed bottom 시트(45vh) 로 떠 있지만,
