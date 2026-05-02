@@ -386,9 +386,9 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
           }
           throw error
         }
-      } else if (isSvgFile && type === SelectionType.shape) {
-        // SVG + 요소 도구: fabric.Image fromURL은 SVG dataURL을 indexOf 호출 시 throw.
-        // 직접 loadSVGFromURL 사용 (vector 그대로 로드).
+      } else if (isSvgFile) {
+        // SVG는 모든 SelectionType에서 fabric.Image.fromURL이 indexOf throw 유발.
+        // 항상 loadSVGFromURL로 vector 그대로 로드 (image/background/shape/frame 무관).
         try {
           const dataUrl = await core.fileToURL(file)
           const svgItem = await core.loadSVGFromURL(dataUrl)
