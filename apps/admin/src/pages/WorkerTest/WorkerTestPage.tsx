@@ -142,7 +142,11 @@ export const WorkerTestPage = () => {
     // 파일이 선택된 경우 먼저 업로드 후 URL 획득
     if (fileList.length > 0 && fileList[0].originFileObj) {
       try {
-        const uploadResult = await workerJobsApi.uploadTestFile(fileList[0].originFileObj as File);
+        // fileType을 API에 전달해야 400 오류를 방지할 수 있음
+        const uploadResult = await workerJobsApi.uploadTestFile(
+          fileList[0].originFileObj as File,
+          values.fileType as 'cover' | 'content',
+        );
         fileUrl = uploadResult.fileUrl;
       } catch (err: any) {
         message.error(`파일 업로드 실패: ${err?.response?.data?.message || err.message}`);
