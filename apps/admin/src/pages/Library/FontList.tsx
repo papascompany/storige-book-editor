@@ -74,15 +74,23 @@ export const FontList = () => {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Partial<CreateFontDto> }) =>
-      libraryApi.updateFont(id, data),
+    mutationFn: async ({ id, data, newFile }: { id: string; data: Partial<CreateFontDto>; newFile?: File }) => {
+      let updateData = { ...data };
+      // 파일이 새로 선택된 경우 먼저 업로드
+      if (newFile) {
+        const uploadResult = await libraryApi.uploadFile(newFile);
+        const fileFormat = getFileFormat(newFile.name);
+        updateData = { ...updateData, fileUrl: uploadResult.url, fileFormat };
+      }
+      return libraryApi.updateFont(id, updateData);
+    },
     onSuccess: () => {
       message.success('폰트가 수정되었습니다.');
       queryClient.invalidateQueries({ queryKey: ['fonts'] });
       handleCloseModal();
     },
-    onError: () => {
-      message.error('폰트 수정에 실패했습니다.');
+    onError: (error: any) => {
+      message.error(error?.response?.data?.message || '폰트 수정에 실패했습니다.');
     },
   });
 
@@ -121,13 +129,12 @@ export const FontList = () => {
 
   const handleSubmit = async (values: any) => {
     if (editingFont) {
-      // 수정 시에는 이름과 활성 상태만 변경 가능
+      // 수정: 이름, 활성상태 + 새 파일 선택 시 파일 교체
+      const newFile = fileList.length > 0 ? (fileList[0].originFileObj as File | undefined) : undefined;
       updateMutation.mutate({
         id: editingFont.id,
-        data: {
-          name: values.name,
-          isActive: values.isActive,
-        },
+        data: { name: values.name, isActive: values.isActive },
+        newFile,
       });
     } else {
       // 새 폰트 추가 시 파일 필수
@@ -273,9 +280,27 @@ export const FontList = () => {
           )}
 
           {editingFont && (
-            <Form.Item label="현재 파일">
-              <Input value={editingFont.fileUrl} disabled />
-            </Form.Item>
+            <>
+              <Form.Item label="현재 파일">
+                <Input value={editingFont.fileUrl} disabled />
+              </Form.Item>
+              <Form.Item
+                label="파일 교체 (선택사항)"
+                extra="새 파일을 선택하면 기존 파일이 교체됩니다. TTF, OTF, WOFF, WOFF2 지원"
+              >
+                <Upload
+                  fileList={fileList}
+                  onChange={({ fileList }) => setFileList(fileList)}
+                  beforeUpload={() => false}
+                  maxCount={1}
+                  accept=".ttf,.otf,.woff,.woff2"
+                >
+                  {fileList.length < 1 && (
+                    <Button icon={<UploadOutlined />}>새 파일 선택</Button>
+                  )}
+                </Upload>
+              </Form.Item>
+            </>
           )}
 
           <Form.Item name="isActive" label="활성 상태" valuePropName="checked">

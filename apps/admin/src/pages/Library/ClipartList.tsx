@@ -13,6 +13,7 @@ import {
   Popconfirm,
   Image,
   Tag,
+  Switch,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import type { UploadFile } from 'antd/es/upload';
@@ -20,6 +21,7 @@ import {
   PlusOutlined,
   DeleteOutlined,
   UploadOutlined,
+  EditOutlined,
 } from '@ant-design/icons';
 import { LibraryClipart } from '@storige/types';
 import { libraryApi } from '../../api/library';
@@ -30,13 +32,32 @@ const { Title } = Typography;
 export const ClipartList = () => {
   const queryClient = useQueryClient();
   const [form] = Form.useForm();
+  const [editForm] = Form.useForm();
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingClipart, setEditingClipart] = useState<LibraryClipart | null>(null);
   const [fileList, setFileList] = useState<UploadFile[]>([]);
 
   // Fetch cliparts
   const { data: cliparts, isLoading } = useQuery({
     queryKey: ['cliparts'],
     queryFn: () => libraryApi.getCliparts(),
+  });
+
+  // Update mutation
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<LibraryClipart> }) =>
+      libraryApi.updateClipart(id, data),
+    onSuccess: () => {
+      message.success('클립아트가 수정되었습니다.');
+      queryClient.invalidateQueries({ queryKey: ['cliparts'] });
+      setIsEditModalOpen(false);
+      setEditingClipart(null);
+      editForm.resetFields();
+    },
+    onError: () => {
+      message.error('클립아트 수정에 실패했습니다.');
+    },
   });
 
   // Delete mutation
@@ -91,6 +112,26 @@ export const ClipartList = () => {
     setIsModalOpen(false);
     form.resetFields();
     setFileList([]);
+  };
+
+  const handleOpenEditModal = (clipart: LibraryClipart) => {
+    setEditingClipart(clipart);
+    editForm.setFieldsValue({
+      name: clipart.name,
+      category: clipart.category || '',
+      tags: clipart.tags?.join(', ') || '',
+      isActive: clipart.isActive ?? true,
+    });
+    setIsEditModalOpen(true);
+  };
+
+  const handleEditSubmit = (values: any) => {
+    if (!editingClipart) return;
+    const tags = values.tags ? values.tags.split(',').map((t: string) => t.trim()).filter(Boolean) : [];
+    updateMutation.mutate({
+      id: editingClipart.id,
+      data: { name: values.name, category: values.category || undefined, tags, isActive: values.isActive },
+    });
   };
 
   const handleSubmit = async (values: any) => {
@@ -168,9 +209,12 @@ export const ClipartList = () => {
     {
       title: '작업',
       key: 'actions',
-      width: 120,
+      width: 160,
       render: (_, record) => (
         <Space>
+          <Button type="link" icon={<EditOutlined />} onClick={() => handleOpenEditModal(record)}>
+            수정
+          </Button>
           <Popconfirm
             title="클립아트를 삭제하시겠습니까?"
             onConfirm={() => handleDelete(record.id)}
@@ -259,6 +303,30 @@ export const ClipartList = () => {
                 </div>
               )}
             </Upload>
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* 수정 모달 */}
+      <Modal
+        title="클립아트 수정"
+        open={isEditModalOpen}
+        onOk={() => editForm.submit()}
+        onCancel={() => { setIsEditModalOpen(false); setEditingClipart(null); editForm.resetFields(); }}
+        confirmLoading={updateMutation.isPending}
+      >
+        <Form form={editForm} layout="vertical" onFinish={handleEditSubmit}>
+          <Form.Item name="name" label="클립아트 이름" rules={[{ required: true, message: '이름을 입력해주세요' }]}>
+            <Input />
+          </Form.Item>
+          <Form.Item name="category" label="카테고리">
+            <Input placeholder="예: 아이콘" />
+          </Form.Item>
+          <Form.Item name="tags" label="태그" extra="쉼표로 구분">
+            <Input placeholder="예: 하트, 사랑" />
+          </Form.Item>
+          <Form.Item name="isActive" label="활성 상태" valuePropName="checked">
+            <Switch checkedChildren="활성" unCheckedChildren="비활성" />
           </Form.Item>
         </Form>
       </Modal>

@@ -12,6 +12,7 @@ import {
   Input,
   Popconfirm,
   Image,
+  Switch,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import type { UploadFile } from 'antd/es/upload';
@@ -19,6 +20,7 @@ import {
   PlusOutlined,
   DeleteOutlined,
   UploadOutlined,
+  EditOutlined,
 } from '@ant-design/icons';
 import { LibraryBackground } from '@storige/types';
 import { libraryApi } from '../../api/library';
@@ -29,13 +31,32 @@ const { Title } = Typography;
 export const BackgroundList = () => {
   const queryClient = useQueryClient();
   const [form] = Form.useForm();
+  const [editForm] = Form.useForm();
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingBackground, setEditingBackground] = useState<LibraryBackground | null>(null);
   const [fileList, setFileList] = useState<UploadFile[]>([]);
 
   // Fetch backgrounds
   const { data: backgrounds, isLoading } = useQuery({
     queryKey: ['backgrounds'],
     queryFn: () => libraryApi.getBackgrounds(),
+  });
+
+  // Update mutation
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<LibraryBackground> }) =>
+      libraryApi.updateBackground(id, data),
+    onSuccess: () => {
+      message.success('배경이 수정되었습니다.');
+      queryClient.invalidateQueries({ queryKey: ['backgrounds'] });
+      setIsEditModalOpen(false);
+      setEditingBackground(null);
+      editForm.resetFields();
+    },
+    onError: () => {
+      message.error('배경 수정에 실패했습니다.');
+    },
   });
 
   // Delete mutation
@@ -86,6 +107,17 @@ export const BackgroundList = () => {
     setIsModalOpen(false);
     form.resetFields();
     setFileList([]);
+  };
+
+  const handleOpenEditModal = (bg: LibraryBackground) => {
+    setEditingBackground(bg);
+    editForm.setFieldsValue({ name: bg.name, category: bg.category || '', isActive: bg.isActive ?? true });
+    setIsEditModalOpen(true);
+  };
+
+  const handleEditSubmit = (values: any) => {
+    if (!editingBackground) return;
+    updateMutation.mutate({ id: editingBackground.id, data: { name: values.name, category: values.category || undefined, isActive: values.isActive } });
   };
 
   const handleSubmit = async (values: any) => {
@@ -150,9 +182,12 @@ export const BackgroundList = () => {
     {
       title: '작업',
       key: 'actions',
-      width: 120,
+      width: 160,
       render: (_, record) => (
         <Space>
+          <Button type="link" icon={<EditOutlined />} onClick={() => handleOpenEditModal(record)}>
+            수정
+          </Button>
           <Popconfirm
             title="배경을 삭제하시겠습니까?"
             onConfirm={() => handleDelete(record.id)}
@@ -236,6 +271,31 @@ export const BackgroundList = () => {
                 </div>
               )}
             </Upload>
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* 수정 모달 */}
+      <Modal
+        title="배경 수정"
+        open={isEditModalOpen}
+        onOk={() => editForm.submit()}
+        onCancel={() => { setIsEditModalOpen(false); setEditingBackground(null); editForm.resetFields(); }}
+        confirmLoading={updateMutation.isPending}
+      >
+        <Form form={editForm} layout="vertical" onFinish={handleEditSubmit}>
+          <Form.Item
+            name="name"
+            label="배경 이름"
+            rules={[{ required: true, message: '배경 이름을 입력해주세요' }]}
+          >
+            <Input />
+          </Form.Item>
+          <Form.Item name="category" label="카테고리">
+            <Input placeholder="예: 파스텔" />
+          </Form.Item>
+          <Form.Item name="isActive" label="활성 상태" valuePropName="checked">
+            <Switch checkedChildren="활성" unCheckedChildren="비활성" />
           </Form.Item>
         </Form>
       </Modal>

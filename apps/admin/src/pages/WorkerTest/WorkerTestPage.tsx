@@ -139,11 +139,15 @@ export const WorkerTestPage = () => {
 
     let fileUrl = values.fileUrl;
 
-    // If file is uploaded, create a data URL or use the file directly
+    // 파일이 선택된 경우 먼저 업로드 후 URL 획득
     if (fileList.length > 0 && fileList[0].originFileObj) {
-      // For now, we'll require a URL since file upload needs an endpoint
-      message.warning('파일 업로드 기능은 URL 입력을 사용해주세요');
-      return;
+      try {
+        const uploadResult = await workerJobsApi.uploadTestFile(fileList[0].originFileObj as File);
+        fileUrl = uploadResult.fileUrl;
+      } catch (err: any) {
+        message.error(`파일 업로드 실패: ${err?.response?.data?.message || err.message}`);
+        return;
+      }
     }
 
     const dto: CreateValidationJobDto = {
