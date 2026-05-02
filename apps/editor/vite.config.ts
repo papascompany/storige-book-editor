@@ -37,6 +37,15 @@ export default defineConfig(({ mode }) => {
       '@': path.resolve(__dirname, './src'),
     },
   },
+  // Vite dev pre-bundling 제외 — 사용자가 배경 제거 기능을 안 쓰면 로드 자체 안 됨
+  // (dynamic import는 이미 적용되어 있고, 여기는 dev pre-bundle 회피 추가 최적화)
+  optimizeDeps: {
+    exclude: [
+      '@techstark/opencv-js',  // 10MB (CV 작업 시에만 로드)
+      'onnxruntime-web',       // 24MB (배경 제거 시에만 로드)
+      '@imgly/background-removal',
+    ],
+  },
   server: {
     port: 3000,
     proxy: {
