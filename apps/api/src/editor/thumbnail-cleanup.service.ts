@@ -68,12 +68,15 @@ export class ThumbnailCleanupService {
   }
 
   /**
-   * 매일 02:30 KST — orphan thumbnail 일괄 삭제.
-   * Cron 표현식: `30 2 * * *` (매일 02:30)
-   * 운영 시간대(KST) 기준이며 서버 TZ가 UTC면 17:30 UTC에 동작.
-   * (필요 시 cron 표현식을 운영 TZ에 맞게 조정)
+   * 매일 KST 02:30 — orphan thumbnail 일괄 삭제.
+   *
+   * Cron 표현식 정책:
+   * - 운영 docker 컨테이너의 TZ는 **UTC** (host는 Asia/Seoul이지만 컨테이너는 미상속)
+   * - 따라서 cron 표현식은 UTC 기준으로 작성: KST 02:30 = UTC 17:30
+   * - `@Cron('30 17 * * *')` → 매일 UTC 17:30 = KST 다음날 02:30 발동
+   * - 만약 컨테이너에 `TZ=Asia/Seoul` env를 추가한다면 표현식을 `30 2 * * *`로 변경 필요
    */
-  @Cron('30 2 * * *', { name: 'thumbnail-orphan-cleanup' })
+  @Cron('30 17 * * *', { name: 'thumbnail-orphan-cleanup' })
   async runOrphanCleanup(): Promise<{ scanned: number; deleted: number; protected: number }> {
     const dir = path.join(this.storagePath, 'thumbnails');
     const result = { scanned: 0, deleted: 0, protected: 0 };
