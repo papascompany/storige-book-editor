@@ -14,6 +14,7 @@ import {
   QrCode,
   Pencil,
   Scissors,
+  Sparkles,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { AppMenu } from '@/types/menu'
@@ -28,6 +29,8 @@ const ENABLE_TEMPLATE_MENU = import.meta.env.VITE_ENABLE_TEMPLATE_MENU !== 'fals
 const ENABLE_FRAME_MENU = import.meta.env.VITE_ENABLE_FRAME_MENU !== 'false'
 // Feature flag for smart code (QR/barcode) menu
 const ENABLE_SMART_CODE_MENU = import.meta.env.VITE_ENABLE_SMART_CODE_MENU !== 'false'
+// Feature flag for AI panel (recommend + generate)
+const ENABLE_AI_PANEL = import.meta.env.VITE_ENABLE_AI_PANEL !== 'false'
 
 // Tool definitions - CLIPPING requires ImageProcessingPlugin (OpenCV)
 const ALL_MENUS: AppMenu[] = [
@@ -42,6 +45,8 @@ const ALL_MENUS: AppMenu[] = [
   ...(ENABLE_SMART_CODE_MENU ? [{ type: 'SMART_CODE' as const, label: 'QR/바코드', icon: QrCode }] : []),
   // EDIT menu uses ImageProcessingPlugin for some features
   ...(ENABLE_IMAGE_PROCESSING ? [{ type: 'EDIT' as const, label: '편집도구', icon: Pencil }] : []),
+  // AI 패널 (추천 + 생성) — 다른 메뉴 끝에 배치
+  ...(ENABLE_AI_PANEL ? [{ type: 'AI' as const, label: 'AI', icon: Sparkles }] : []),
 ]
 
 interface ToolBarProps {

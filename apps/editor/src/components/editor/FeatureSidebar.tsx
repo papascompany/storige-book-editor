@@ -20,6 +20,7 @@ import AppBackground from '@/tools/AppBackground'
 import AppTemplate from '@/tools/AppTemplate'
 import AppFrame from '@/tools/AppFrame'
 import SmartCodes from '@/tools/SmartCodes'
+import { LazyAiPanel } from '@/components/AiPanel'
 
 // Conditionally import image processing tools (requires OpenCV)
 // Using lazy loading for proper ESM compatibility
@@ -218,6 +219,25 @@ export default function FeatureSidebar({ className, mobileOverlay = false }: Fea
             <AppEdit />
           </Suspense>
         ) : null
+      case 'AI':
+        return (
+          <LazyAiPanel
+            templateType={undefined}
+            dimensions={undefined}
+            onSelectTemplate={(templateSetId: string) => {
+              // 추천 받은 템플릿셋 선택 시: 페이지 새로고침으로 templateSetId 적용
+              const url = new URL(window.location.href)
+              url.searchParams.set('templateSetId', templateSetId)
+              window.location.href = url.toString()
+            }}
+            onGenerated={(templateSetId: string) => {
+              // AI 생성 결과를 새 templateSet으로 적용
+              const url = new URL(window.location.href)
+              url.searchParams.set('templateSetId', templateSetId)
+              window.location.href = url.toString()
+            }}
+          />
+        )
       default:
         return (
           <div className="p-4 text-editor-text-muted text-sm">
