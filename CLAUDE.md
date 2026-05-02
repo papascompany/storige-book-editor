@@ -2,6 +2,25 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+> ## 🔒 Operational Memory (Local-Only)
+>
+> **At session start, also read `CLAUDE.local.md`** in the project root if it exists.
+> It contains operational context that must NOT be committed to git:
+> - VPS SSH details (`deploy@158.247.235.202`)
+> - Vercel CLI account / projects
+> - Production domains and Docker service map
+> - Common deployment recipes (worker-only redeploy, log inspection, DB queries)
+> - Active MCP servers / plugins in use
+>
+> **First-action checklist for new sessions** (before any SSH call):
+> ```bash
+> ssh-add -l 2>&1 | head -1
+> # If "The agent has no identities." → run: ssh-add ~/.ssh/id_ed25519
+> ```
+>
+> ⚠️ Never attempt SSH with arbitrary usernames (`root`, `ubuntu`, etc.) — fail2ban will ban this Mac's IP.
+> Always use exactly `ssh deploy@158.247.235.202`.
+
 ## Project Overview
 
 Storige is a print shopping mall system with an online editor for creating print products. It consists of a React-based canvas editor (using Fabric.js), NestJS REST API, and a PDF processing worker service.
