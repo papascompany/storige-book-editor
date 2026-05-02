@@ -1,4 +1,4 @@
-import { useCallback, useState, useEffect } from 'react'
+import { useCallback, useState, useEffect, useRef } from 'react'
 import { Upload as UploadSimple, Trash2 as Trash, Check } from 'lucide-react'
 import { useAppStore } from '@/stores/useAppStore'
 import { useImageStore } from '@/stores/useImageStore'
@@ -8,6 +8,8 @@ import { Button } from '@/components/ui/button'
 import AppSection from '@/components/AppSection'
 import { ImageProcessingPlugin, SelectionType, parseColorValue, rgbaToHex8 } from '@storige/canvas-core'
 import type { EditorContent } from '@/generated/graphql'
+import { contentsApi } from '@/api'
+import { cn } from '@/lib/utils'
 
 // 모바일/터치 환경 감지 — iOS native <input type="color">는 picker dismiss(X 버튼) 시점에
 // change 이벤트가 발화되며 사용자가 "적용 UI 없음"으로 혼동. 모바일 안내 + 명시적 "적용" 버튼 노출.
@@ -39,17 +41,14 @@ export default function AppBackground() {
   const [bgColor, setBgColor] = useState('#FFFFFF')
   const [lidColor, setLidColor] = useState('#FFFFFF')
 
-  // Search state (for future GraphQL implementation)
-  const [_searchType, _setSearchType] = useState('name')
-  const [_searchKeyword, _setSearchKeyword] = useState('')
+  // Category tabs state
+  const [availableTags, setAvailableTags] = useState<string[]>([])
+  const [selectedTag, setSelectedTag] = useState<string | null>(null)
+  const tagsDiscoveredRef = useRef(false)
 
-  // Placeholder for recommended contents (will be loaded via GraphQL)
-  const [contents] = useState<Array<{
-    id: string
-    name: string
-    image?: { image?: { url?: string } }
-  }>>([])
-  const loadingContents = false
+  // Contents state
+  const [contents, setContents] = useState<EditorContent[]>([])
+  const [loadingContents, setLoadingContents] = useState(false)
 
   // Compute effective background color
   useEffect(() => {
@@ -82,6 +81,54 @@ export default function AppBackground() {
       }
     }
   }, [lidObject?.fill, bgColor])
+
+  // Discover available tags once on mount
+  useEffect(() => {
+    if (!isCustomer || tagsDiscoveredRef.current) return
+    tagsDiscoveredRef.current = true
+
+    const discoverTags = async () => {
+      try {
+        const result = await contentsApi.getBackgrounds({ pageSize: 100 })
+        if (result.success && result.data) {
+          const tagSet = new Set<string>()
+          result.data.items.forEach((item: any) => {
+            if (Array.isArray(item.tags)) {
+              item.tags.forEach((t: string) => { if (t) tagSet.add(t) })
+            }
+          })
+          setAvailableTags(Array.from(tagSet).sort((a, b) => a.localeCompare(b, 'ko')))
+        }
+      } catch {}
+    }
+    discoverTags()
+  }, [isCustomer])
+
+  // Fetch background contents
+  useEffect(() => {
+    if (!isCustomer) return
+
+    const fetchBackgrounds = async () => {
+      setLoadingContents(true)
+      try {
+        const result = await contentsApi.getBackgrounds({
+          pageSize: 20,
+          tags: selectedTag ? [selectedTag] : undefined,
+        })
+        if (result.success && result.data) {
+          setContents(result.data.items as unknown as EditorContent[])
+        } else {
+          setContents([])
+        }
+      } catch (error) {
+        console.error('배경 콘텐츠 로드 오류:', error)
+        setContents([])
+      } finally {
+        setLoadingContents(false)
+      }
+    }
+    fetchBackgrounds()
+  }, [isCustomer, selectedTag])
 
   // Initialize and setup canvas event listeners
   useEffect(() => {
@@ -437,36 +484,73 @@ export default function AppBackground() {
         {/* Recommended Contents */}
         {isCustomer && (
         <AppSection id="app-background-recommended" title="추천 콘텐츠" onDetail={showMore}>
+          {/* Category tag tabs */}
+          {availableTags.length > 0 && (
+            <div
+              className="flex gap-1.5 overflow-x-auto pb-3 -mx-4 px-4"
+              style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+            >
+              <button
+                className={cn(
+                  'whitespace-nowrap text-xs px-3 py-1 rounded-full border transition-colors flex-shrink-0',
+                  !selectedTag
+                    ? 'bg-editor-accent border-editor-accent text-white'
+                    : 'border-editor-border text-editor-text-muted hover:text-editor-text hover:border-editor-text-muted'
+                )}
+                onClick={() => setSelectedTag(null)}
+              >
+                전체
+              </button>
+              {availableTags.map((tag) => (
+                <button
+                  key={tag}
+                  className={cn(
+                    'whitespace-nowrap text-xs px-3 py-1 rounded-full border transition-colors flex-shrink-0',
+                    selectedTag === tag
+                      ? 'bg-editor-accent border-editor-accent text-white'
+                      : 'border-editor-border text-editor-text-muted hover:text-editor-text hover:border-editor-text-muted'
+                  )}
+                  onClick={() => setSelectedTag(tag)}
+                >
+                  {tag}
+                </button>
+              ))}
+            </div>
+          )}
+
           {loadingContents ? (
-            <div className="flex justify-center items-center min-h-[200px]">
+            <div className="flex justify-center items-center min-h-[160px]">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-editor-accent" />
             </div>
           ) : contents.length === 0 ? (
-            <div className="px-4 py-8 text-center text-editor-text-muted text-xs">
-              추천 콘텐츠가 없습니다.
+            <div className="py-8 text-center text-editor-text-muted text-xs">
+              {selectedTag ? '검색 결과가 없습니다.' : '추천 콘텐츠가 없습니다.'}
             </div>
           ) : (
-            <div className="w-full grid grid-cols-2 gap-2 px-4">
-              {contents.map((content, index) => (
-                <div
-                  key={index}
-                  className="w-full cursor-pointer"
-                  onClick={() => addContentToCanvas(content)}
-                >
-                  <div className="bg-editor-surface-low p-2 flex items-center justify-center w-full rounded hover:bg-editor-hover aspect-square overflow-hidden">
-                    {content.image?.image?.url && (
-                      <img
-                        src={content.image.image.url}
-                        alt={content.name}
-                        className="object-contain w-full h-full"
-                      />
-                    )}
+            <div className="w-full grid grid-cols-2 gap-2">
+              {contents.map((content, index) => {
+                const imageUrl = (content as any).imageUrl || content?.image?.image?.url
+                return (
+                  <div
+                    key={index}
+                    className="w-full cursor-pointer"
+                    onClick={() => addContentToCanvas(content)}
+                  >
+                    <div className="bg-editor-surface-low p-2 flex items-center justify-center w-full rounded hover:bg-editor-hover aspect-square overflow-hidden">
+                      {imageUrl && (
+                        <img
+                          src={imageUrl}
+                          alt={(content as any).name || ''}
+                          className="object-contain w-full h-full"
+                        />
+                      )}
+                    </div>
+                    <div className="mt-1 px-1 text-left text-xs text-editor-text-muted truncate">
+                      {(content as any).name || '이름 없음'}
+                    </div>
                   </div>
-                  <div className="mt-1 px-1 text-left text-xs text-editor-text-muted truncate">
-                    {content.name || '이름 없음'}
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </AppSection>
