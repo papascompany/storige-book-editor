@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>Storige 다음 개발 계획 (2026-05-02)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg: #0f172a; --bg2: #1e293b; --bg3: #334155;
+    --text: #f1f5f9; --text2: #cbd5e1; --text3: #94a3b8;
+    --red: #ef4444; --red2: #f87171;
+    --yellow: #eab308; --yellow2: #fbbf24;
+    --green: #22c55e; --green2: #4ade80;
+    --blue: #3b82f6; --blue2: #60a5fa;
+    --purple: #a855f7; --purple2: #c084fc;
+    --cyan: #06b6d4; --cyan2: #22d3ee;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "Pretendard", "Apple SD Gothic Neo", sans-serif;
+    background: var(--bg); color: var(--text);
+    line-height: 1.65; padding: 0;
+  }
+  .container { max-width: 1200px; margin: 0 auto; padding: 40px 24px 80px; }
+  h1 { font-size: 32px; font-weight: 700; margin-bottom: 8px; }
+  h2 { font-size: 22px; font-weight: 700; margin: 40px 0 16px; padding-bottom: 8px; border-bottom: 2px solid var(--bg3); }
+  h3 { font-size: 17px; font-weight: 600; margin: 20px 0 10px; color: var(--text2); }
+  p { color: var(--text2); margin-bottom: 12px; }
+  code { font-family: "SF Mono", Menlo, monospace; background: rgba(255,255,255,.06); padding: 2px 6px; border-radius: 4px; font-size: 12px; }
+
+  .header {
+    background: linear-gradient(135deg, rgba(59,130,246,.1), rgba(168,85,247,.1));
+    padding: 32px 24px; margin-bottom: 24px;
+    border-radius: 16px; border: 1px solid var(--bg3);
+  }
+  .header .badge-row { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+  .badge {
+    font-size: 11px; padding: 4px 10px; border-radius: 4px;
+    font-weight: 600; letter-spacing: .03em;
+  }
+  .badge.green { background: rgba(34,197,94,.15); color: var(--green2); border: 1px solid var(--green); }
+  .badge.blue { background: rgba(59,130,246,.15); color: var(--blue2); border: 1px solid var(--blue); }
+  .badge.yellow { background: rgba(234,179,8,.15); color: var(--yellow2); border: 1px solid var(--yellow); }
+  .badge.red { background: rgba(239,68,68,.15); color: var(--red2); border: 1px solid var(--red); }
+
+  .summary-card {
+    background: rgba(34,197,94,.08); border-left: 4px solid var(--green);
+    padding: 16px 20px; border-radius: 0 8px 8px 0; margin-bottom: 28px;
+    font-size: 16px;
+  }
+
+  .priority-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
+    margin: 24px 0;
+  }
+  @media (max-width: 720px) { .priority-grid { grid-template-columns: 1fr; } }
+  .pcard {
+    background: var(--bg2); border-radius: 12px; padding: 20px;
+    border-top: 3px solid var(--bg3);
+  }
+  .pcard.p0 { border-top-color: var(--red); }
+  .pcard.p1 { border-top-color: var(--yellow); }
+  .pcard.p2 { border-top-color: var(--green); }
+  .pcard.p3 { border-top-color: var(--purple); }
+  .pcard h3 { color: var(--text); margin: 0 0 8px; font-size: 18px; }
+  .pcard .desc { color: var(--text3); font-size: 13px; margin-bottom: 12px; }
+  .pcard ul { list-style: none; padding: 0; margin: 0; }
+  .pcard li { padding: 6px 0; font-size: 13px; color: var(--text2); border-bottom: 1px dashed rgba(255,255,255,.06); }
+  .pcard li:last-child { border: 0; }
+  .pcard li .mark { color: var(--red2); font-weight: 700; margin-right: 6px; }
+
+  .task-card {
+    background: var(--bg2); border-radius: 10px; padding: 18px 20px;
+    margin: 12px 0; border-left: 3px solid var(--bg3);
+  }
+  .task-card.critical { border-left-color: var(--red); }
+  .task-card.high { border-left-color: var(--yellow); }
+  .task-card.medium { border-left-color: var(--green); }
+  .task-card .title { font-weight: 700; font-size: 15px; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }
+  .task-card .meta { font-size: 12px; color: var(--text3); margin-bottom: 8px; }
+  .task-card .body { color: var(--text2); font-size: 13px; }
+  .task-card .body ul { padding-left: 18px; margin-top: 6px; }
+  .task-card .body li { padding: 2px 0; }
+  .status-ico { font-size: 12px; padding: 2px 8px; border-radius: 4px; }
+  .status-ico.wait { background: rgba(234,179,8,.15); color: var(--yellow2); }
+  .status-ico.todo { background: rgba(239,68,68,.15); color: var(--red2); }
+  .status-ico.partial { background: rgba(168,85,247,.15); color: var(--purple2); }
+
+  table {
+    width: 100%; border-collapse: collapse; margin: 12px 0;
+    background: var(--bg2); border-radius: 8px; overflow: hidden;
+    font-size: 13px;
+  }
+  th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--bg3); }
+  th { background: var(--bg3); font-weight: 700; color: var(--text); }
+  tr:hover { background: rgba(255,255,255,.03); }
+  td.center { text-align: center; }
+
+  .progress-bar {
+    background: var(--bg3); border-radius: 8px; height: 8px;
+    overflow: hidden; position: relative;
+  }
+  .progress-bar > .fill {
+    background: linear-gradient(90deg, var(--green), var(--cyan));
+    height: 100%; border-radius: 8px;
+  }
+  .progress-row { display: grid; grid-template-columns: 130px 1fr 60px; gap: 12px; align-items: center; padding: 6px 0; font-size: 13px; }
+
+  .sprint-day {
+    display: grid; grid-template-columns: 80px 1fr 80px;
+    gap: 14px; padding: 10px 14px; margin: 6px 0;
+    background: var(--bg2); border-radius: 8px;
+    border-left: 3px solid var(--blue);
+    font-size: 13px;
+  }
+  .sprint-day.critical { border-left-color: var(--red); }
+  .sprint-day.high { border-left-color: var(--yellow); }
+  .sprint-day.medium { border-left-color: var(--green); }
+  .sprint-day .day { font-weight: 700; color: var(--text); }
+  .sprint-day .task { color: var(--text2); }
+  .sprint-day .pri { font-size: 11px; padding: 2px 6px; border-radius: 4px; text-align: center; align-self: center; }
+
+  .commit-list { background: var(--bg2); border-radius: 8px; padding: 16px 20px; font-family: "SF Mono", monospace; font-size: 12px; }
+  .commit-list .commit { padding: 4px 0; color: var(--text2); }
+  .commit-list .hash { color: var(--cyan2); font-weight: 700; }
+
+  .warn-box {
+    background: rgba(239,68,68,.08); border-left: 4px solid var(--red);
+    padding: 14px 18px; border-radius: 0 8px 8px 0; margin: 10px 0;
+    font-size: 13px;
+  }
+  .warn-box .warn-title { font-weight: 700; color: var(--red2); margin-bottom: 4px; }
+  .warn-box .warn-body { color: var(--text2); }
+
+  .matrix {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 0; margin: 24px 0; border-radius: 12px;
+    overflow: hidden; border: 1px solid var(--bg3);
+    font-size: 12px;
+  }
+  .matrix .quad {
+    padding: 16px 20px; min-height: 120px;
+    border-right: 1px solid var(--bg3); border-bottom: 1px solid var(--bg3);
+  }
+  .matrix .quad:nth-child(2), .matrix .quad:nth-child(4) { border-right: 0; }
+  .matrix .quad:nth-child(3), .matrix .quad:nth-child(4) { border-bottom: 0; }
+  .matrix .quad-title { font-weight: 700; font-size: 13px; margin-bottom: 8px; }
+  .matrix .quad.q-tl { background: rgba(234,179,8,.06); }
+  .matrix .quad.q-tr { background: rgba(239,68,68,.06); }
+  .matrix .quad.q-bl { background: rgba(168,85,247,.06); }
+  .matrix .quad.q-br { background: rgba(34,197,94,.06); }
+</style>
+</head>
+<body>
+
+<div class="container">
+
+<div class="header">
+  <h1>🚀 Storige 다음 개발 계획</h1>
+  <p style="color: var(--text2); margin-top: 8px; margin-bottom: 0;">2026-05-02 기준 · v2.2 워커 ENOENT 핫픽스 배포 직후 · 누적 진척률 약 73%</p>
+  <div class="badge-row">
+    <span class="badge green">v2.2 배포 완료</span>
+    <span class="badge blue">P0 3건</span>
+    <span class="badge yellow">P1 4건</span>
+    <span class="badge red">긴급: PHP 통합 검증</span>
+  </div>
+</div>
+
+<div class="summary-card">
+  📌 <strong>한 줄 요약:</strong> 인프라/코드 90% 완료. 남은 핵심은 ① bookmoa PHP 양측 통합 검증 ② AI 기능 통합 ③ 운영 모니터링/품질 폴리시.
+</div>
+
+<!-- ───────────── 우선순위 매트릭스 ───────────── -->
+<h2>🎯 우선순위 매트릭스</h2>
+<p style="color: var(--text3); font-size: 13px;">중요도(세로) × 시급도(가로) 4사분면 분류</p>
+
+<div class="matrix">
+  <div class="quad q-tl">
+    <div class="quad-title" style="color: var(--yellow2)">🟡 중요O 시급도▼ — P1 단기</div>
+    <ul style="list-style: none; padding: 0; font-size: 12px; color: var(--text2);">
+      <li>④ Before/After 미리보기</li>
+      <li>⑤ 운영 모니터링 (Sentry/큐 알람)</li>
+      <li>⑥ Composite 정밀 좌표 (multi-region)</li>
+      <li>⑦ AI 패널 UI 통합</li>
+    </ul>
+  </div>
+  <div class="quad q-tr">
+    <div class="quad-title" style="color: var(--red2)">🔴 중요O 시급○ — P0 즉시</div>
+    <ul style="list-style: none; padding: 0; font-size: 12px; color: var(--text2);">
+      <li>① <strong>PHP 양측 통합 검증 (E2E)</strong></li>
+      <li>② Admin 비번 강제 교체 (admin123)</li>
+      <li>③ Sentry/Datadog 에러 추적 연결</li>
+    </ul>
+  </div>
+  <div class="quad q-bl">
+    <div class="quad-title" style="color: var(--purple2)">🟣 중요△ 시급▼ — P3 장기</div>
+    <ul style="list-style: none; padding: 0; font-size: 12px; color: var(--text2);">
+      <li>핀치-투-줌 / 두 손가락 패닝</li>
+      <li>iText visualViewport 보정</li>
+      <li>모바일 long-press 컨텍스트 메뉴</li>
+      <li>멀티 선택 floating action bar</li>
+    </ul>
+  </div>
+  <div class="quad q-br">
+    <div class="quad-title" style="color: var(--green2)">🟢 중요△ 시급○ — P2 폴리시</div>
+    <ul style="list-style: none; padding: 0; font-size: 12px; color: var(--text2);">
+      <li>Playwright E2E 시나리오</li>
+      <li>번들 크기 최적화 (vendor-opencv lazy)</li>
+      <li>lint 에러 정리, 폰트 fallback</li>
+      <li>R2 백업 이중화, 로그 일원화</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ───────────── P0 즉시 처리 ───────────── -->
+<h2>🔴 P0 — 즉시 처리 (운영 blocker)</h2>
+
+<div class="task-card critical">
+  <div class="title">① PHP ↔ Storige 양측 통합 검증 <span class="status-ico wait">⏳ 대기</span></div>
+  <div class="meta">예상 작업량: PHP 측 1~2일 + 양측 통합 0.5일</div>
+  <div class="body">
+    <strong>검증 대상:</strong>
+    <ul>
+      <li><code>width</code>/<code>height</code> URL 파라미터 → 옵션 C 동작 확인</li>
+      <li><code>/files/upload/external</code> 호출 시 <code>type</code> 필드 (v2.1 명시됨)</li>
+      <li><code>/worker-jobs/synthesize/external</code> Webhook 콜백 처리</li>
+      <li><code>validation.completed</code> / <code>synthesis.completed</code> 양측 수신</li>
+    </ul>
+    <strong>참조:</strong> <code>SYSTEM_INTEGRATION_OVERVIEW.md (v2.2)</code>, <code>PHP_INTEGRATION_VERIFICATION.md</code>, <code>BOOKMOA_INTEGRATION_DIFF.md</code>
+  </div>
+</div>
+
+<div class="task-card critical">
+  <div class="title">② Admin 비밀번호 강제 교체 <span class="status-ico todo">❌ 미진행</span></div>
+  <div class="meta">예상 작업량: 30분</div>
+  <div class="body">
+    현재 시드값 <code>admin@storige.com</code> / <code>admin123</code> 그대로. 운영 트래픽 받기 전 반드시 교체.<br>
+    VPS에서 비번 변경 후 <code>CLAUDE.local.md</code>의 시크릿 위치 메모만 업데이트 (값은 비포함).
+  </div>
+</div>
+
+<div class="task-card critical">
+  <div class="title">③ 운영 에러 추적 연결 (Sentry / Datadog) <span class="status-ico todo">❌ 미진행</span></div>
+  <div class="meta">예상 작업량: 0.5~1일</div>
+  <div class="body">
+    이번 ENOENT 버그 같은 운영 사고가 워커 로그를 직접 봐야만 파악 가능. 자동 알림 필수.<br>
+    <strong>작업:</strong> SDK 통합 (API/Worker/Editor/Admin 4개 앱) → DSN 환경변수 → Slack/이메일 채널 연결
+  </div>
+</div>
+
+<!-- ───────────── P1 단기 ───────────── -->
+<h2>🟡 P1 — 단기 (사용자 가치 큼)</h2>
+
+<div class="task-card high">
+  <div class="title">④ PDF 검증 결과 Before/After 미리보기 <span class="status-ico wait">⏳ 부분</span></div>
+  <div class="meta">예상 작업량: 1~2일</div>
+  <div class="body">
+    현재 검증 결과 표시까지만 완료. autoFix 적용 후 결과 미구현.<br>
+    Worker autoFix 결과 저장 → API <code>/files/{id}/preview?fix=before|after</code> 엔드포인트 → Admin Before/After 토글 UI
+  </div>
+</div>
+
+<div class="task-card high">
+  <div class="title">⑤ Composite 모드 multi-region 정밀 좌표 <span class="status-ico partial">⚠️ 부분</span></div>
+  <div class="meta">예상 작업량: 1일</div>
+  <div class="body">
+    multi-select cross-canvas 이동은 완료(`3d05608`)되었으나 region 매핑 미세 조정 필요. 책등 가변 시 다중 객체 동시 재배치.
+  </div>
+</div>
+
+<div class="task-card high">
+  <div class="title">⑥ AI 패널 정합 / 추천 UI 통합 <span class="status-ico todo">❌ 미진행</span></div>
+  <div class="meta">예상 작업량: 2~3일 · 참조: <code>docs/AI_FEATURES_PLAN.md</code></div>
+  <div class="body">
+    AI 모듈 PoC 완료되었으나 메인 에디터 사이드바와 미통합.<br>
+    AI 추천 패널 → 사이드바 탭으로 통합, "AI 자동 배치" 1-click 버튼
+  </div>
+</div>
+
+<div class="task-card high">
+  <div class="title">⑦ 워커 잡 모니터링 (Bull 큐 적체 알람) <span class="status-ico todo">❌ 미진행</span></div>
+  <div class="meta">예상 작업량: 1일</div>
+  <div class="body">
+    waiting 큐가 N개 이상 1분 이상 적체 시 알림 / failed 잡 발생 시 즉시 알림 / Admin 대시보드에 큐 실시간 위젯
+  </div>
+</div>
+
+<!-- ───────────── P2 폴리시 ───────────── -->
+<h2>🟢 P2 — 중기 (폴리시 / 확장)</h2>
+
+<table>
+  <thead>
+    <tr><th>#</th><th>항목</th><th>예상</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>8</td><td>Playwright E2E 시나리오 작성 (현재 설정만)</td><td>2~3일</td></tr>
+    <tr><td>9</td><td>사전 존재 lint 에러 정리 (admin/canvas-core/ai/editor/worker)</td><td>0.5일</td></tr>
+    <tr><td>10</td><td>번들 크기 최적화 (vendor-opencv 10MB / vendor-onnx 24MB lazy-load)</td><td>1~2일</td></tr>
+    <tr><td>11</td><td>fabric 객체 색상 다크모드 통일 (hover/selection)</td><td>0.5일</td></tr>
+    <tr><td>12</td><td>폰트 fallback 로그 silent 처리 (본고딕 미찾음 경고)</td><td>0.5일</td></tr>
+    <tr><td>13</td><td>WebAssembly multi-threading (<code>crossOriginIsolated</code>)</td><td>1일</td></tr>
+    <tr><td>14</td><td>DB + storage Cloudflare R2 백업 이중화</td><td>1일</td></tr>
+    <tr><td>15</td><td>로그 일원화 (Pino + Loki 또는 Datadog Logs)</td><td>1~2일</td></tr>
+  </tbody>
+</table>
+
+<!-- ───────────── 권장 Sprint ───────────── -->
+<h2>🗓 권장 다음 1~2주 Sprint</h2>
+
+<div class="sprint-day critical">
+  <div class="day">Day 1</div>
+  <div class="task">PHP 측 코드 적용 + 양측 통합 테스트 (P0 #1)</div>
+  <div class="pri" style="background:rgba(239,68,68,.2); color:var(--red2)">🔴 P0</div>
+</div>
+<div class="sprint-day critical">
+  <div class="day">Day 2</div>
+  <div class="task">Admin 비번 강제 교체 (P0 #2)</div>
+  <div class="pri" style="background:rgba(239,68,68,.2); color:var(--red2)">🔴 P0</div>
+</div>
+<div class="sprint-day critical">
+  <div class="day">Day 3</div>
+  <div class="task">Sentry 통합 (4개 앱 SDK + DSN 환경변수) (P0 #3)</div>
+  <div class="pri" style="background:rgba(239,68,68,.2); color:var(--red2)">🔴 P0</div>
+</div>
+<div class="sprint-day high">
+  <div class="day">Day 4~5</div>
+  <div class="task">PDF Before/After 미리보기 (P1 #4)</div>
+  <div class="pri" style="background:rgba(234,179,8,.2); color:var(--yellow2)">🟡 P1</div>
+</div>
+<div class="sprint-day high">
+  <div class="day">Day 6</div>
+  <div class="task">Bull 큐 알람 + Admin 위젯 (P1 #7)</div>
+  <div class="pri" style="background:rgba(234,179,8,.2); color:var(--yellow2)">🟡 P1</div>
+</div>
+<div class="sprint-day high">
+  <div class="day">Day 7~9</div>
+  <div class="task">AI 패널 UI 통합 (P1 #6)</div>
+  <div class="pri" style="background:rgba(234,179,8,.2); color:var(--yellow2)">🟡 P1</div>
+</div>
+<div class="sprint-day high">
+  <div class="day">Day 10</div>
+  <div class="task">Composite multi-region 정밀화 (P1 #5)</div>
+  <div class="pri" style="background:rgba(234,179,8,.2); color:var(--yellow2)">🟡 P1</div>
+</div>
+<div class="sprint-day medium">
+  <div class="day">Day 11~14</div>
+  <div class="task">P2 폴리시 (lint/번들/E2E 중 우선순위 결정)</div>
+  <div class="pri" style="background:rgba(34,197,94,.2); color:var(--green2)">🟢 P2</div>
+</div>
+
+<!-- ───────────── 진척률 ───────────── -->
+<h2>📊 카테고리별 진척률</h2>
+
+<div class="progress-row">
+  <span>모바일/터치</span>
+  <div class="progress-bar"><div class="fill" style="width: 69%"></div></div>
+  <span style="text-align:right; color:var(--text3)">69%</span>
+</div>
+<div class="progress-row">
+  <span>표지 편집</span>
+  <div class="progress-bar"><div class="fill" style="width: 88%"></div></div>
+  <span style="text-align:right; color:var(--text3)">88%</span>
+</div>
+<div class="progress-row">
+  <span>다크/반응형</span>
+  <div class="progress-bar"><div class="fill" style="width: 75%"></div></div>
+  <span style="text-align:right; color:var(--text3)">75%</span>
+</div>
+<div class="progress-row">
+  <span>도구 확장</span>
+  <div class="progress-bar"><div class="fill" style="width: 92%"></div></div>
+  <span style="text-align:right; color:var(--text3)">92%</span>
+</div>
+<div class="progress-row">
+  <span>카탈로그/AI</span>
+  <div class="progress-bar"><div class="fill" style="width: 67%"></div></div>
+  <span style="text-align:right; color:var(--text3)">67%</span>
+</div>
+<div class="progress-row">
+  <span>북모아 통합</span>
+  <div class="progress-bar"><div class="fill" style="width: 88%"></div></div>
+  <span style="text-align:right; color:var(--text3)">88%</span>
+</div>
+<div class="progress-row">
+  <span>PDF/워커</span>
+  <div class="progress-bar"><div class="fill" style="width: 60%"></div></div>
+  <span style="text-align:right; color:var(--text3)">60%</span>
+</div>
+<div class="progress-row">
+  <span>인프라/품질</span>
+  <div class="progress-bar"><div class="fill" style="width: 57%"></div></div>
+  <span style="text-align:right; color:var(--text3)">57%</span>
+</div>
+<div class="progress-row" style="margin-top: 16px; font-weight: 700; font-size: 14px;">
+  <span style="color:var(--green2)">전체</span>
+  <div class="progress-bar"><div class="fill" style="width: 74%"></div></div>
+  <span style="text-align:right; color:var(--green2)">74%</span>
+</div>
+
+<!-- ───────────── 이번 세션 성과 ───────────── -->
+<h2>📦 이번 세션까지의 누적 성과 (2026-05-02)</h2>
+
+<div class="commit-list">
+  <div class="commit"><span class="hash">22e926f</span> · admin: products filter 오류 + 배경/클립아트 카테고리 필터</div>
+  <div class="commit"><span class="hash">c4d183c</span> · admin: 워커 테스트 파일 업로드 400 오류 수정 (type 필드 누락)</div>
+  <div class="commit"><span class="hash">daeb2b7</span> · <strong>worker: /storage/ 절대경로 ENOENT 오류 수정 (검증/합성/변환 3개)</strong></div>
+  <div class="commit"><span class="hash">1e67acd</span> · docs: SYSTEM_INTEGRATION_OVERVIEW v2.2 (워커 경로 정규화 섹션)</div>
+  <div class="commit"><span class="hash">8d0c7f2</span> · chore(claude): 세션 간 운영 정보 보존 — CLAUDE.local.md 시스템</div>
+</div>
+
+<!-- ───────────── 위험 요소 ───────────── -->
+<h2>🚨 위험 요소 / 주의사항</h2>
+
+<div class="warn-box">
+  <div class="warn-title">1. Admin 시드 비밀번호 (admin123)</div>
+  <div class="warn-body">⚠️ 운영 트래픽 받기 전 반드시 교체 (P0 #2). 이미 깃 히스토리/문서에 노출되어 있음.</div>
+</div>
+<div class="warn-box">
+  <div class="warn-title">2. 자동 에러 감지 부재</div>
+  <div class="warn-body">현재 워커 ENOENT 같은 사고는 사용자 보고로만 파악. Sentry 통합(P0 #3) 시급.</div>
+</div>
+<div class="warn-box">
+  <div class="warn-title">3. PHP 측 검증 미완료</div>
+  <div class="warn-body">storige 측은 모든 변경 완료, PHP 측 적용 미검증. 운영 컷오버 전 양측 통합 테스트 필수 (P0 #1).</div>
+</div>
+<div class="warn-box">
+  <div class="warn-title">4. fail2ban + IP 변동</div>
+  <div class="warn-body">이 Mac 공인 IP가 변경되면 다시 SSH 차단 가능. <code>CLAUDE.local.md</code>에 IP 기록되어 있으나 만료 시 갱신 필요.</div>
+</div>
+
+<!-- ───────────── 참조 문서 ───────────── -->
+<h2>🔗 참조 문서</h2>
+
+<table>
+  <thead><tr><th>문서</th><th>역할</th></tr></thead>
+  <tbody>
+    <tr><td><code>docs/SYSTEM_INTEGRATION_OVERVIEW.md</code> (v2.2)</td><td>시스템 통합 레퍼런스 (PHP 연동 마스터 문서)</td></tr>
+    <tr><td><code>docs/REMAINING_WORK_REVIEW.md</code></td><td>트랙별 잔존 작업 (마스터 트래커)</td></tr>
+    <tr><td><code>docs/DEPLOYMENT.md</code></td><td>배포 가이드 + v2.2 핫픽스 절차</td></tr>
+    <tr><td><code>docs/AI_FEATURES_PLAN.md</code></td><td>AI 기능 상세 계획</td></tr>
+    <tr><td><code>.cursor/plans/v2/NEW_DEV_PLAN.md</code></td><td>인프라/PHP 연동 큰 그림</td></tr>
+    <tr><td><code>CLAUDE.local.md</code></td><td>운영 정보 (gitignored)</td></tr>
+  </tbody>
+</table>
+
+<p style="text-align: center; color: var(--text3); font-size: 12px; margin-top: 60px; padding-top: 20px; border-top: 1px solid var(--bg3);">
+  Storige 다음 개발 계획 · 2026-05-02 · v2.2 핫픽스 배포 직후 · 누적 진척률 74%
+</p>
+
+</div>
+</body>
+</html>
