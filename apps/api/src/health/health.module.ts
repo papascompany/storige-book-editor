@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bull';
 import { HealthController } from './health.controller';
+import { QueueMonitorService } from './queue-monitor.service';
 
 @Module({
   imports: [
@@ -11,5 +12,7 @@ import { HealthController } from './health.controller';
     ),
   ],
   controllers: [HealthController],
+  providers: [QueueMonitorService],
+  exports: [QueueMonitorService],
 })
 export class HealthModule {}
