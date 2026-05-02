@@ -49,6 +49,7 @@
 > **5차 P0 사이클(5 커밋, `0b7cc23 → 60efb05`)** — P0-4 시점별 복원 UI(confirm + auto reload) / P0-3 사전 type 에러 9건 정리 / P0-1·P0-2 운영 가이드 + BB-Phase 3 마이그 SQL / 마이그 FK COLLATE 보정 / **모바일 페이지 크래시 fix(배경색 + 다크 핸들)**
 > **운영 적용 (2026-05-01 23:33~23:39 KST)**: DB 마이그 2건 적용(`products.allowCustomSize` + `edit_session_versions` LRU 20) + git pull(89 commit) + docker compose up -d --build api worker 완료 + endpoint 검증 (BB-Phase 3 활성화)
 > **운영 적용 (2026-05-02 12:37 KST, ssh deploy@158.247.235.202)**: `git pull origin master` (ce082ef→2097e1c, 6 commits — 모바일 크래시 fix `60efb05` 포함 미배포분 + DD-5-B-v2 + P1-3 type cleanup + BB-Phase 3 썸네일 풀스택 + cleanup cron) + `docker compose up -d --build api worker` 완료. 검증: ScheduleModule 로드 + `/api/storage/upload/thumbnails` POST endpoint 매핑 + health 200 + thumbnail_url 컬럼 존재 + 운영 데이터 0건 안전
+> **운영 P0 사용자 보고 (2026-05-02 13:30 KST)**: 실기기 테스트에서 4개 이슈 발생 — (1) 모바일/PC "Importing a module script failed" → Vercel CDN HTML cache 9분(age:552) → 새 deploy 시 옛 chunk hash 404 (2) 모바일 배경색 picker dismiss 시점에 적용되는데 사용자 혼동 (3) 모바일 사진/요소 업로드 시 페이지 다운 (4) 반복 ErrorBoundary 트리거. 핫픽스 commit/배포: `vercel.json` headers 추가(index.html no-store + assets immutable 1y) + AppBackground에 명시적 "적용" 버튼 + 모바일 안내 텍스트 + useImageStore에 모바일 4MB 가드(checkMobileFileSize → showToast). canvas-core 변경 없음. 운영 적용은 Vercel 자동 빌드만으로 충분 (api/worker 변경 0건)
 > 시각 검증: 4차까지 W/X/Z/AA/BB 7/7 통과 + P0-4 popover 분기 정확 + 모바일 fix 후 desktop 메모리 118MB 정상
 
 | 트랙 | 커밋 | 주제 |

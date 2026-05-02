@@ -4,9 +4,37 @@ import { core, ImageProcessingPlugin, selectFiles, SelectionType } from '@storig
 import { useAppStore } from '@/stores/useAppStore'
 import { storageApi } from '@/api'
 import { CUTTING_LINE_CONFIG } from '@/constants/cutting'
+import { showToast } from '@/stores/useToastStore'
 
 // Feature flag for image processing (OpenCV) features
 const ENABLE_IMAGE_PROCESSING = import.meta.env.VITE_ENABLE_IMAGE_PROCESSING !== 'false'
+
+// 모바일/터치 환경에서는 retina(DPR=3) 캔버스에 대용량 이미지 추가 시 메모리 hit이 매우 큼.
+// 4MB 이상 파일은 사전 차단해 iOS Safari 페이지 크래시 방지 (P0-2 사용자 보고 대응).
+function isTouchEnv(): boolean {
+  if (typeof window === 'undefined' || !window.matchMedia) return false
+  try { return window.matchMedia('(pointer: coarse)').matches } catch { return false }
+}
+const TOUCH_ENV = isTouchEnv()
+const MOBILE_MAX_FILE_BYTES = 4 * 1024 * 1024 // 4MB
+const MOBILE_MAX_FILE_LABEL = '4MB'
+
+/**
+ * 모바일 환경에서 파일 크기 사전 가드.
+ * - 데스크톱: 항상 허용
+ * - 모바일: MOBILE_MAX_FILE_BYTES 초과 시 toast 안내 + false 반환 (호출자가 abort)
+ */
+function checkMobileFileSize(file: File): boolean {
+  if (!TOUCH_ENV) return true
+  if (file.size <= MOBILE_MAX_FILE_BYTES) return true
+  const sizeMb = (file.size / 1024 / 1024).toFixed(1)
+  showToast(
+    `이미지가 너무 큽니다 (${sizeMb}MB). 모바일에선 ${MOBILE_MAX_FILE_LABEL} 이하만 지원합니다. 갤러리에서 더 작은 파일을 선택해주세요.`,
+    'error',
+    5000
+  )
+  return false
+}
 
 // Fabric.js 타입 (실제 fabric 타입은 런타임에 로드됨)
 // canvas-core API를 통해 fabric 객체를 다루므로 타입만 정의
@@ -178,6 +206,9 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
         return undefined
       }
 
+      // 모바일 메모리 가드 — 4MB 초과 차단 (P0-2 사용자 보고: iOS Safari 크래시)
+      if (!checkMobileFileSize(file)) return undefined
+
       // 간단한 이미지 로드 (OpenCV 미사용)
       const item = await core.fileToImageSimple(canvas, file)
 
@@ -243,6 +274,9 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
       // 벡터 파일은 지원 안 함 (uploadSimple과 동일)
       const ext = file.name.split('.').pop()?.toLowerCase()
       if (['ai', 'eps', 'pdf'].includes(ext || '')) return undefined
+
+      // 모바일 메모리 가드
+      if (!checkMobileFileSize(file)) return undefined
 
       const item = await core.fileToImageSimple(canvas, file)
       if (!item) return undefined
@@ -318,6 +352,10 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
       }
 
       const file = files[0]
+
+      // 모바일 메모리 가드 — 4MB 초과 차단 (P0-2 사용자 보고: iOS Safari 크래시)
+      if (!checkMobileFileSize(file)) return undefined
+
       let item: FabricObject | undefined
 
       // 파일 타입 체크
