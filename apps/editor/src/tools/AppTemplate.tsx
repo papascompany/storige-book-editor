@@ -9,6 +9,7 @@ import AppSection from '@/components/AppSection'
 import AppSectionSearch from '@/components/AppSectionSearch'
 import { selectFiles, TemplatePlugin } from '@storige/canvas-core'
 import type { EditorTemplate } from '@/generated/graphql'
+import { cn } from '@/lib/utils'
 
 export default function AppTemplate() {
   const canvas = useAppStore((state) => state.canvas)
@@ -26,29 +27,49 @@ export default function AppTemplate() {
   const [isLoading, setIsLoading] = useState(false)
   const [searchType, setSearchType] = useState('name')
   const [searchKeyword, setSearchKeyword] = useState('')
+  const [selectedTag, setSelectedTag] = useState<string | null>(null)
 
-  // Filtered templates based on search
+  // Derive available tag names from all templates
+  const availableTags = useMemo(() => {
+    if (!editorTemplates) return []
+    const tagSet = new Set<string>()
+    editorTemplates.forEach((template) => {
+      const tags = template.tags as Array<{ id?: string; name?: string | null }> | undefined
+      tags?.forEach((tag) => { if (tag.name) tagSet.add(tag.name) })
+    })
+    return Array.from(tagSet).sort((a, b) => a.localeCompare(b, 'ko'))
+  }, [editorTemplates])
+
+  // Filtered templates based on search + selected tag
   const filteredTemplates = useMemo(() => {
     if (!editorTemplates) return null
 
-    // Return all if no search keyword or too short
-    if (!searchKeyword.trim() || searchKeyword.trim().length < 2) {
-      return editorTemplates
+    let result = editorTemplates
+
+    // Tag filter
+    if (selectedTag) {
+      result = result.filter((template) => {
+        const tags = template.tags as Array<{ id?: string; name?: string | null }> | undefined
+        return tags?.some((tag) => tag.name === selectedTag) ?? false
+      })
     }
 
-    const keyword = searchKeyword.trim().toLowerCase()
+    // Search filter
+    if (searchKeyword.trim().length >= 2) {
+      const keyword = searchKeyword.trim().toLowerCase()
+      result = result.filter((template) => {
+        if (searchType === 'name') {
+          return template.name?.toLowerCase().includes(keyword) || false
+        } else if (searchType === 'tags') {
+          const tags = template.tags as Array<{ id?: string; name?: string | null }> | undefined
+          return tags?.some((tag) => tag.name?.toLowerCase().includes(keyword)) ?? false
+        }
+        return false
+      })
+    }
 
-    return editorTemplates.filter((template) => {
-      if (searchType === 'name') {
-        return template.name?.toLowerCase().includes(keyword) || false
-      } else if (searchType === 'tags') {
-        return template.tags?.some((tag: { id?: string; name?: string | null }) =>
-          tag.name?.toLowerCase().includes(keyword)
-        ) || false
-      }
-      return false
-    })
-  }, [editorTemplates, searchKeyword, searchType])
+    return result
+  }, [editorTemplates, searchKeyword, searchType, selectedTag])
 
   // Add template content to canvas
   const addContentToCanvas = useCallback((content: EditorTemplate) => {
@@ -217,16 +238,50 @@ export default function AppTemplate() {
               />
             }
           >
+            {/* Category tag tabs */}
+            {availableTags.length > 0 && (
+              <div
+                className="flex gap-1.5 overflow-x-auto pb-3 -mx-4 px-4"
+                style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+              >
+                <button
+                  className={cn(
+                    'whitespace-nowrap text-xs px-3 py-1 rounded-full border transition-colors flex-shrink-0',
+                    !selectedTag
+                      ? 'bg-editor-accent border-editor-accent text-white'
+                      : 'border-editor-border text-editor-text-muted hover:text-editor-text hover:border-editor-text-muted'
+                  )}
+                  onClick={() => setSelectedTag(null)}
+                >
+                  전체
+                </button>
+                {availableTags.map((tag) => (
+                  <button
+                    key={tag}
+                    className={cn(
+                      'whitespace-nowrap text-xs px-3 py-1 rounded-full border transition-colors flex-shrink-0',
+                      selectedTag === tag
+                        ? 'bg-editor-accent border-editor-accent text-white'
+                        : 'border-editor-border text-editor-text-muted hover:text-editor-text hover:border-editor-text-muted'
+                    )}
+                    onClick={() => setSelectedTag(tag)}
+                  >
+                    {tag}
+                  </button>
+                ))}
+              </div>
+            )}
+
             {!filteredTemplates ? (
-              <div className="flex justify-center items-center min-h-[200px]">
+              <div className="flex justify-center items-center min-h-[160px]">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-editor-accent" />
               </div>
             ) : filteredTemplates.length === 0 ? (
-              <div className="px-4 py-8 text-center text-editor-text-muted text-xs">
-                {searchKeyword ? '검색 결과가 없습니다.' : '추천 콘텐츠가 없습니다.'}
+              <div className="py-8 text-center text-editor-text-muted text-xs">
+                {searchKeyword || selectedTag ? '검색 결과가 없습니다.' : '추천 콘텐츠가 없습니다.'}
               </div>
             ) : (
-              <div className="w-full grid grid-cols-2 gap-2 px-4">
+              <div className="w-full grid grid-cols-2 gap-2">
                 {filteredTemplates.map((content, index) => (
                   <div
                     key={index}
