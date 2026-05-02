@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { fabric } from 'fabric'
 import { type RulerPlugin } from '@storige/canvas-core'
 import { useAppStore } from '@/stores/useAppStore'
 import { useUiPrefStore, resolveTheme } from '@/stores/useUiPrefStore'
@@ -72,9 +73,29 @@ export function useCanvasThemeSync(ready: boolean): void {
       // 충분 — 다크 모드 핸들 색상은 desktop 전용으로 한정.
       if (TOUCH_ENV) return
       const controls = getDefaultControls(mode)
+
+      // 2-A. fabric.Object.prototype 기본값 갱신 — 이후 추가되는 모든 새 객체에 자동 적용
+      // (기존엔 시작 시점의 light theme 색상이 prototype에 박혀있어 테마 전환 후
+      // 추가된 객체는 hover/selection 색상이 light로 남아있는 버그 수정)
+      try {
+        ;(fabric.Object.prototype as any).borderColor = controls.borderColor
+        ;(fabric.Object.prototype as any).cornerColor = controls.cornerColor
+        ;(fabric.Object.prototype as any).cornerStrokeColor = controls.cornerStrokeColor
+      } catch (e) {
+        console.warn('[useCanvasThemeSync] prototype update error:', e)
+      }
+
+      // 2-B. 기존 캔버스의 사용자 객체에도 즉시 적용
       canvases.forEach((cv) => {
         if (!cv || (cv as any).disposed) return
         try {
+          // selectionColor는 캔버스 단위 (drag-rectangle 색상)
+          ;(cv as any).selectionColor = mode === 'dark'
+            ? 'rgba(142, 207, 69, 0.18)'
+            : 'rgba(39, 99, 138, 0.18)'
+          ;(cv as any).selectionBorderColor = controls.borderColor
+          ;(cv as any).selectionLineWidth = 1
+
           const objs = cv.getObjects?.() ?? []
           for (const obj of objs) {
             if (isSystemObject(obj)) continue
