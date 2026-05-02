@@ -48,6 +48,7 @@
 > **모바일 사이클 — PR #1~#10(27 커밋, `d341af7 → da82764`)** — 모바일 터치 UI 전반 / ResizeObserver 차단 / 메모리 폭발 v3 / ErrorBoundary + localStorage 백업 / 옵션 B/C 풀스택 + 마이그 SQL / 잔존 작업 종합 리뷰
 > **5차 P0 사이클(5 커밋, `0b7cc23 → 60efb05`)** — P0-4 시점별 복원 UI(confirm + auto reload) / P0-3 사전 type 에러 9건 정리 / P0-1·P0-2 운영 가이드 + BB-Phase 3 마이그 SQL / 마이그 FK COLLATE 보정 / **모바일 페이지 크래시 fix(배경색 + 다크 핸들)**
 > **운영 적용 (2026-05-01 23:33~23:39 KST)**: DB 마이그 2건 적용(`products.allowCustomSize` + `edit_session_versions` LRU 20) + git pull(89 commit) + docker compose up -d --build api worker 완료 + endpoint 검증 (BB-Phase 3 활성화)
+> **운영 적용 (2026-05-02 12:37 KST, ssh deploy@158.247.235.202)**: `git pull origin master` (ce082ef→2097e1c, 6 commits — 모바일 크래시 fix `60efb05` 포함 미배포분 + DD-5-B-v2 + P1-3 type cleanup + BB-Phase 3 썸네일 풀스택 + cleanup cron) + `docker compose up -d --build api worker` 완료. 검증: ScheduleModule 로드 + `/api/storage/upload/thumbnails` POST endpoint 매핑 + health 200 + thumbnail_url 컬럼 존재 + 운영 데이터 0건 안전
 > 시각 검증: 4차까지 W/X/Z/AA/BB 7/7 통과 + P0-4 popover 분기 정확 + 모바일 fix 후 desktop 메모리 118MB 정상
 
 | 트랙 | 커밋 | 주제 |
