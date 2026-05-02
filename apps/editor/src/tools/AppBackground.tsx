@@ -199,21 +199,26 @@ export default function AppBackground() {
   }, [canvas, bgObject])
 
   // 배경색 적용 핵심 로직 — 색상 문자열을 받아 workspace.fill에 즉시 반영.
-  // input change 이벤트와 명시적 "적용" 버튼 클릭에서 공통 사용.
   //
-  // 사용자 보고: 직접 .fill = X 할당 + requestRenderAll로는 화면 갱신 안 됨.
-  // fabric의 dirty 트래킹은 .set() 메서드를 거쳐야 안정적이고, 색상 변경은
-  // 단발성 사용자 액션이라 모바일에서도 renderAll() 한 번 정도는 안전.
+  // 사용자 보고: React state로 캐싱한 workspace 참조가 stale일 수 있음 (fabric 재초기화,
+  // 캔버스 dispose/재생성, 페이지 전환 등으로). 매 호출 시 canvas에서 fresh fetch.
+  // 또한 안전 차원에서 모든 workspace 객체에 적용 (preview HMR 중복도 회피).
   const applyBgColor = useCallback((value: string) => {
-    if (!workspace || !canvas) return false
+    if (!canvas) return false
+    const targets = canvas.getObjects().filter((obj: FabricObject) =>
+      obj.id === 'workspace' || obj.id === 'template-background'
+    )
+    if (targets.length === 0) return false
     const rgba = parseColorValue(value)
     if (!rgba) return false
     rgba.a = 1
     const rgbaString = `rgba(${rgba.r}, ${rgba.g}, ${rgba.b}, ${rgba.a})`
-    workspace.set({ fill: rgbaString, dirty: true })
+    targets.forEach((t: FabricObject) => t.set({ fill: rgbaString, dirty: true }))
     canvas.renderAll()
+    // workspace state도 동기화 (다음 useEffect 의존성 트리거 위함)
+    if (targets[0]) setWorkspace(targets[0])
     return true
-  }, [workspace, canvas])
+  }, [canvas])
 
   // Handle background color change — input change 이벤트(color picker dismiss 시점)에서 호출
   const onBgColorChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -232,18 +237,20 @@ export default function AppBackground() {
     }
   }, [applyBgColor, bgColor])
 
-  // 뚜껑색 적용 핵심 로직 — 색상 문자열을 받아 lidObject.fill에 즉시 반영.
-  // (배경색과 동일한 .set + renderAll 패턴 — fabric dirty 트래킹 안정성)
+  // 뚜껑색 적용 — 동일 패턴: 매 호출 시 canvas에서 fresh fetch (stale state 회피)
   const applyLidColor = useCallback((value: string) => {
-    if (!lidObject || !canvas) return false
+    if (!canvas) return false
+    const target = canvas.getObjects().find((obj: FabricObject) => obj.extensionType === 'lid')
+    if (!target) return false
     const rgba = parseColorValue(value)
     if (!rgba) return false
     const rgbaString = `rgba(${rgba.r}, ${rgba.g}, ${rgba.b}, 1)`
-    lidObject.set({ fill: rgbaString, dirty: true })
+    target.set({ fill: rgbaString, dirty: true })
     canvas.renderAll()
-    canvas.fire('object:modified', { target: lidObject })
+    canvas.fire('object:modified', { target })
+    setLidObject(target)
     return true
-  }, [lidObject, canvas])
+  }, [canvas])
 
   // Handle lid color change
   const onLidColorChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
