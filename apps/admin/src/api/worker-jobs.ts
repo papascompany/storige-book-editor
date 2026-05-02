@@ -117,15 +117,19 @@ export const workerJobsApi = {
   },
 
   // Upload file for testing
-  uploadTestFile: async (file: File): Promise<{ fileId: string; fileUrl: string }> => {
+  // fileType: 'cover' | 'content' — required by the API UploadFileDto
+  uploadTestFile: async (file: File, fileType: 'cover' | 'content' = 'content'): Promise<{ fileId: string; fileUrl: string }> => {
     const formData = new FormData();
     formData.append('file', file);
+    // /files/upload requires a `type` field (FileType enum: 'cover'|'content'|'template'|'other')
+    formData.append('type', fileType);
 
-    const response = await axiosInstance.post<{ id: string; url: string }>('/files/upload', formData, {
+    const response = await axiosInstance.post<{ id: string; fileUrl: string }>('/files/upload', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
     });
-    return { fileId: response.data.id, fileUrl: response.data.url };
+    // API returns FileResponseDto: { id, fileUrl, ... }
+    return { fileId: response.data.id, fileUrl: response.data.fileUrl };
   },
 };
