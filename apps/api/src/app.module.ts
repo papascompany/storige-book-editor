@@ -3,6 +3,7 @@ import { APP_FILTER } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BullModule } from '@nestjs/bull';
+import { ScheduleModule } from '@nestjs/schedule';
 import { AuthModule } from './auth/auth.module';
 import { TemplatesModule } from './templates/templates.module';
 import { LibraryModule } from './library/library.module';
@@ -68,6 +69,9 @@ if (process.env.BOOKMOA_DB_PASSWORD) {
         },
       }),
     }),
+
+    // Cron schedules (BB-Phase 3 follow-up: 시점 썸네일 orphan cleanup 등)
+    ScheduleModule.forRoot(),
 
     // Feature modules
     HealthModule,

@@ -9,6 +9,7 @@ import { Repository } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
 import { EditSession, EditHistory } from './entities/edit-session.entity';
 import { EditSessionVersion } from './entities/edit-session-version.entity';
+import { ThumbnailCleanupService } from './thumbnail-cleanup.service';
 import { TemplateSet } from '../templates/entities/template-set.entity';
 import { Template } from '../templates/entities/template.entity';
 import {
@@ -46,6 +47,7 @@ export class EditorService {
     private templateRepository: Repository<Template>,
     private editSessionsService: EditSessionsService,
     private workerJobsService: WorkerJobsService,
+    private thumbnailCleanupService: ThumbnailCleanupService,
   ) {}
 
   // BB-Phase 3 ─ 자동저장 시점 push 정책
@@ -232,17 +234,28 @@ export class EditorService {
     await this.trimVersions(sessionId)
   }
 
-  /** LRU 한도 초과분을 가장 오래된 것부터 삭제 */
+  /**
+   * LRU 한도 초과분을 가장 오래된 것부터 삭제.
+   * BB-Phase 3 follow-up: DB row 삭제와 함께 thumbnail 파일도 즉시 unlink (deletion-time cleanup).
+   * 매일 02:30 KST의 cron(`ThumbnailCleanupService.runOrphanCleanup`)은 이를 보완하는 안전망.
+   */
   private async trimVersions(sessionId: string): Promise<void> {
     const all = await this.editSessionVersionRepository.find({
       where: { session: { id: sessionId } as any },
       order: { savedAt: 'ASC' },
-      select: ['id'],
+      select: ['id', 'thumbnailUrl'],
     })
     const excess = all.length - EditorService.VERSION_LRU_LIMIT
     if (excess <= 0) return
-    const ids = all.slice(0, excess).map((v) => v.id)
+    const expired = all.slice(0, excess)
+    const ids = expired.map((v) => v.id)
     await this.editSessionVersionRepository.delete(ids)
+    // 파일 unlink는 비동기 fire-and-forget (실패해도 cron이 회수)
+    for (const v of expired) {
+      this.thumbnailCleanupService
+        .unlinkThumbnailIfReferenced(v.thumbnailUrl)
+        .catch((e) => console.warn('[trimVersions] thumbnail unlink 실패 (cron이 회수):', e))
+    }
   }
 
   /**

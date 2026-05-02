@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { EditorController } from './editor.controller';
 import { EditorService } from './editor.service';
+import { ThumbnailCleanupService } from './thumbnail-cleanup.service';
 import { EditSession, EditHistory } from './entities/edit-session.entity';
 import { EditSessionVersion } from './entities/edit-session-version.entity';
 import { TemplateSet } from '../templates/entities/template-set.entity';
@@ -22,7 +23,7 @@ import { WorkerJobsModule } from '../worker-jobs/worker-jobs.module';
     WorkerJobsModule,
   ],
   controllers: [EditorController],
-  providers: [EditorService],
+  providers: [EditorService, ThumbnailCleanupService],
   exports: [EditorService],
 })
 export class EditorModule {}
