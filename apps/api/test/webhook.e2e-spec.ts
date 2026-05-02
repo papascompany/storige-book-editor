@@ -81,10 +81,6 @@ describe('WebhookService (e2e)', () => {
         orderId: 'ORD-2024-12345',
         status: 'completed',
         outputFileUrl: '/storage/temp/synthesized_xxx.pdf',
-        result: {
-          totalPages: 52,
-          previewUrl: '/storage/temp/synthesized_xxx_preview.png',
-        },
         timestamp: new Date().toISOString(),
       };
 
@@ -103,6 +99,44 @@ describe('WebhookService (e2e)', () => {
             'X-Storige-Event': 'synthesis.completed',
           }),
         }),
+      );
+    });
+
+    it('PDF 병합 완료 웹훅 — sessionId + outputFiles (separate 모드) 포함', async () => {
+      mockedAxios.post.mockResolvedValueOnce({ status: 200, data: { received: true } });
+
+      const payload: SynthesisWebhookPayload = {
+        event: 'synthesis.completed',
+        jobId: 'job-uuid-789',
+        sessionId: 'edit-session-uuid-abc', // NEW_DEV_PLAN §3.5 additive
+        orderId: 'ORD-2024-SEP',
+        status: 'completed',
+        outputFileUrl: '/storage/outputs/merged.pdf',
+        outputFiles: [
+          { type: 'cover', url: '/storage/outputs/cover.pdf' },
+          { type: 'content', url: '/storage/outputs/content.pdf' },
+        ],
+        outputFormat: 'separate',
+        timestamp: new Date().toISOString(),
+      };
+
+      const result = await webhookService.sendCallback(
+        'https://bookmoa.com/api/webhook/synthesis',
+        payload,
+      );
+
+      expect(result).toBe(true);
+      expect(mockedAxios.post).toHaveBeenCalledWith(
+        'https://bookmoa.com/api/webhook/synthesis',
+        expect.objectContaining({
+          sessionId: 'edit-session-uuid-abc',
+          outputFiles: expect.arrayContaining([
+            expect.objectContaining({ type: 'cover' }),
+            expect.objectContaining({ type: 'content' }),
+          ]),
+          outputFormat: 'separate',
+        }),
+        expect.any(Object),
       );
     });
 
@@ -169,6 +203,7 @@ describe('WebhookService (e2e)', () => {
         jobId: 'job-uuid-456',
         orderId: 'ORD-2024-12345',
         status: 'failed',
+        outputFileUrl: '', // 실패 시 빈 문자열 (하위호환 계약)
         errorMessage: 'Cover PDF is corrupted',
         timestamp: new Date().toISOString(),
       };
@@ -354,6 +389,7 @@ describe('WebhookService (e2e)', () => {
         event: 'synthesis.completed',
         jobId: 'job-uuid-456',
         status: 'completed',
+        outputFileUrl: '/storage/outputs/merged.pdf',
         timestamp: '2025-12-28T10:00:00Z',
       };
 
@@ -411,7 +447,6 @@ describe('WebhookService (e2e)', () => {
         orderId: 'ORD-2024-12345',
         status: 'completed',
         outputFileUrl: '/storage/output.pdf',
-        result: { totalPages: 52 },
         timestamp: '2025-12-28T10:00:00Z',
       };
 
@@ -424,7 +459,6 @@ describe('WebhookService (e2e)', () => {
         orderId: 'ORD-2024-12345',
         status: 'completed',
         outputFileUrl: '/storage/output.pdf',
-        result: { totalPages: 52 },
         timestamp: '2025-12-28T10:00:00Z',
       });
     });
@@ -437,6 +471,7 @@ describe('WebhookService (e2e)', () => {
         jobId: 'job-uuid',
         orderId: 'ORD-2024-12345',
         status: 'failed',
+        outputFileUrl: '', // 실패 시 빈 문자열 (하위호환 계약)
         errorMessage: 'Cover PDF is corrupted',
         timestamp: '2025-12-28T10:00:00Z',
       };
@@ -445,7 +480,7 @@ describe('WebhookService (e2e)', () => {
 
       const sentPayload = mockedAxios.post.mock.calls[0][1] as Record<string, unknown>;
       expect(sentPayload.errorMessage).toBe('Cover PDF is corrupted');
-      expect(sentPayload.outputFileUrl).toBeUndefined();
+      expect(sentPayload.outputFileUrl).toBe('');
     });
   });
 
