@@ -3,18 +3,18 @@
 > **사용법**: 새 Claude Code 세션을 열고 아래 "복사용 프롬프트" 블록 전체(line 13 이후)를 첫 메시지로 붙여넣으세요.
 > 이 문서는 지우지 말고 보관하세요. 새 트랙이 추가될 때 §"누적 트랙" + §"향후 작업 후보" 두 곳을 갱신하면 됩니다.
 >
-> **버전**: v3 (2026-05-02 14:00 KST) — 누적 트랙 0~CC + 모바일 PR + 5차 P0 + DD-5-B-v2 + P1-3 + BB-Phase 3 follow-up + cleanup cron + 6차 P0 핫픽스 사이클 완료 + 운영 적용 2회 완료까지 반영.
+> **버전**: v4 (2026-05-02 KST) — 누적 트랙 0~CC + 모바일 PR + 5차 P0 + DD-5-B-v2 + P1-3 + BB-Phase 3 follow-up + cleanup cron + 6차 P0 핫픽스 사이클 + **P1 전 트랙 완료** (G/C/F/E/D/B 6개 트랙 + PHP 연동 검증 MD) 반영.
 > **이전 가이드**: `_RESUME_PROMPT.md` (인프라·PHP·운영 컷오버 작업용 — 별도 흐름)
 
 ---
 
 ## 복사용 프롬프트 (이 줄 아래부터 끝까지 복사)
 
-[Storige Editor 트랙 재개 — 2026-05-02 기준 / master `0c0e8aa` / Vercel 자동 배포 + VPS 재배포 2회 완료]
+[Storige Editor 트랙 재개 — 2026-05-02 기준 / master `d2b3271` / Vercel 자동 배포 + VPS 재배포 2회 완료]
 
 # 한 줄 요약
 
-`apps/editor`(React + Vite + Fabric.js + Zustand + TailwindCSS) 누적 **85+ commit**, Vercel 자동 배포 + **운영 VPS 재배포 2회 완료**(2026-05-01 23:33 / 2026-05-02 12:37+13:02). DB 마이그 2건 운영 적용(`products.allowCustomSize` + `edit_session_versions` LRU 20 + `thumbnail_url` 컬럼). 신규 의존성 `@nestjs/schedule@^4.0.0` 운영 적용. 6차 P0 핫픽스 사이클(Vercel cache + 배경색 fresh fetch + SVG fileToImage 분리 + unhandledrejection handler + 모바일 4MB 가드 + 요소 도구 raster 허용)로 사용자 실기기 보고 4건 + 콘솔 보고 3건 모두 처리. 다음 후보는 P1 트랙(다중 cross-canvas 이동/PDF Synthesis 검증/콘텐츠 카탈로그/반응형 Phase 3) 또는 P2(저장/불러오기 E2E 검증). 작업 컨벤션·디자인 토큰·검증 흐름·운영 배포 절차 모두 정착됨.
+`apps/editor`(React + Vite + Fabric.js + Zustand + TailwindCSS) 누적 **92+ commit**, Vercel 자동 배포 + **운영 VPS 재배포 2회 완료**(2026-05-01 23:33 / 2026-05-02 12:37+13:02). DB 마이그 2건 운영 적용(`products.allowCustomSize` + `edit_session_versions` LRU 20 + `thumbnail_url` 컬럼). 신규 의존성 `@nestjs/schedule@^4.0.0` 운영 적용. 6차 P0 핫픽스 사이클(Vercel cache + 배경색 fresh fetch + SVG fileToImage 분리 + unhandledrejection handler + 모바일 4MB 가드 + 요소 도구 raster 허용)로 사용자 실기기 보고 4건 + 콘솔 보고 3건 모두 처리. **P1 전 트랙 완료**: G(모바일 헤더 375 overflow) + C(저장/불러오기 멀티페이지 E2E) + F(태블릿 세로 drawer) + E(콘텐츠 패널 카테고리 탭) + D(Composite 다중 선택 cross-canvas) + B(webhook 타입 정합) + PHP 연동 검증 MD. 다음 후보는 P2 트랙(dark mode 오브젝트 색상 통일 / lint 정리 / Playwright E2E) 또는 **PHP 실제 통합 테스트**. 작업 컨벤션·디자인 토큰·검증 흐름·운영 배포 절차 모두 정착됨.
 
 # 작업 디렉토리·환경
 
@@ -39,7 +39,7 @@
 | `_RESUME_EDITOR_TRACKS.md` (이 파일) | 트랙 누적 + 컨벤션 + 향후 후보 |
 | `_RESUME_PROMPT.md` (별도 흐름) | 인프라·PHP·운영 컷오버 작업용 — 본 트랙과 무관 |
 
-# 누적 트랙 — 2026-05-02 (master `60efb05`, origin/master 반영 + 운영 배포 완료)
+# 누적 트랙 — 2026-05-02 (master `d2b3271`)
 
 > 트랙 0~T(23 커밋) — 1차 폴리싱 사이클 완료
 > 트랙 U~BB(7 커밋) — 2차 사이클 (D5 Phase 3b 마무리, 다크 Phase 3, 반응형 Phase 2, 그라디언트, 스냅샷 list)
@@ -50,6 +50,7 @@
 > **운영 적용 (2026-05-01 23:33~23:39 KST)**: DB 마이그 2건 적용(`products.allowCustomSize` + `edit_session_versions` LRU 20) + git pull(89 commit) + docker compose up -d --build api worker 완료 + endpoint 검증 (BB-Phase 3 활성화)
 > **운영 적용 (2026-05-02 12:37 KST, ssh deploy@158.247.235.202)**: `git pull origin master` (ce082ef→2097e1c, 6 commits — 모바일 크래시 fix `60efb05` 포함 미배포분 + DD-5-B-v2 + P1-3 type cleanup + BB-Phase 3 썸네일 풀스택 + cleanup cron) + `docker compose up -d --build api worker` 완료. 검증: ScheduleModule 로드 + `/api/storage/upload/thumbnails` POST endpoint 매핑 + health 200 + thumbnail_url 컬럼 존재 + 운영 데이터 0건 안전
 > **운영 P0 사용자 보고 (2026-05-02 13:30 KST)**: 실기기 테스트에서 4개 이슈 발생 — (1) 모바일/PC "Importing a module script failed" → Vercel CDN HTML cache 9분(age:552) → 새 deploy 시 옛 chunk hash 404 (2) 모바일 배경색 picker dismiss 시점에 적용되는데 사용자 혼동 (3) 모바일 사진/요소 업로드 시 페이지 다운 (4) 반복 ErrorBoundary 트리거. 핫픽스 commit/배포: `vercel.json` headers 추가(index.html no-store + assets immutable 1y) + AppBackground에 명시적 "적용" 버튼 + 모바일 안내 텍스트 + useImageStore에 모바일 4MB 가드(checkMobileFileSize → showToast). canvas-core 변경 없음. 운영 적용은 Vercel 자동 빌드만으로 충분 (api/worker 변경 0건)
+> **P1 전 트랙 사이클(7 커밋, `0a1f3e9 → d2b3271`)** — PHP 연동 검증 MD 신규 작성 + G 모바일 헤더 375 overflow + C 저장/불러오기 멀티페이지 E2E + F 태블릿 세로 drawer + E 콘텐츠 패널 카테고리 탭(AppElement/AppBackground/AppTemplate) + D Composite 다중 선택 cross-canvas + B webhook 타입 정합
 > 시각 검증: 4차까지 W/X/Z/AA/BB 7/7 통과 + P0-4 popover 분기 정확 + 모바일 fix 후 desktop 메모리 118MB 정상
 
 | 트랙 | 커밋 | 주제 |
@@ -108,6 +109,13 @@
 | **6차 P0 핫픽스 #2** | `5228171` | 모바일 배경색/뚜껑색 적용 명시화 + 모바일 사진 업로드 가드 — **AppBackground**: 명시적 "적용" 버튼(Check 아이콘) + 모바일 안내 텍스트("팝업에서 색상 선택 후 X(닫기)를 누르면 자동 적용됩니다") + applyBgColor/applyLidColor helper로 change/click 동일 로직 공유. **useImageStore**: `checkMobileFileSize` (TOUCH_ENV 가드 + 4MB 한도 + showToast) 3개 upload 진입점에 적용 (upload/uploadSimple/uploadFile) → iOS Safari 메모리 크래시 방지 |
 | **6차 P0 핫픽스 #3** | `819008d` | "요소" 도구 raster 이미지 허용 정정 — 직전 `f65315d`에서 잘못된 SVG-only 정책. **AppElement.handleUpload**: accept를 `'image/*'`로 (SVG + PNG + JPG + GIF + WebP 모두). **useImageStore.upload**: `SelectionType.shape` non-SVG 분기를 raster 처리 로직으로 확장 (item에 위치/크기 + extensionType='shape'). 결과: SVG는 loadSVGFromURL로 vector, raster는 fabric.Image로 비트맵, 둘 다 element/요소로 추가 |
 | **6차 P0 핫픽스 #4 v2** | `0c0e8aa` | 배경색 적용 무반응 v2 + SVG 화면 freeze v2 + unhandledrejection 안전장치 — **AppBackground.applyBgColor/applyLidColor**: useState 캐시 stale 회피 위해 매 호출 시 `canvas.getObjects().filter(...)`로 fresh fetch + `.set({ fill, dirty:true }) + canvas.renderAll()` (preview 픽셀 검증: `[248,206,206] = #F8CECE` 정확 반영). **useImageStore.upload**: `isSvgFile` 검출 후 SelectionType 무관하게 항상 `loadSVGFromURL` 사용 (이전 버전은 shape에서만 분리 → image/background에서 SVG 시 fabric `t.indexOf` throw 잔존). **main.tsx**: `window.unhandledrejection` global handler 추가 + `event.preventDefault()`로 React 트리 freeze 방지 (test rejection 캡처 검증 완료) |
+| **PHP 연동 검증 MD** | `0a1f3e9` | `docs/PHP_INTEGRATION_VERIFICATION.md` 신규 작성 — 기존 연동안(옵션 B/C URL override + `X-API-Key` 인증 + 웹훅 콜백 흐름) 대비 현재 구현 상태 비교 분석. PHP 측 적용 시 체크리스트 + 예상 요청/응답 예시 포함 |
+| **P1-G** | `9a0aac7` | 모바일 헤더 X-3 — 375px nav overflow 해소. 헤더 좌측 그룹 `min-w-0 flex-shrink` + 작업명 `truncate max-w-[120px]` + 버튼 그룹 `flex-shrink-0`으로 375px에서 가로 스크롤 없이 nav 버튼 모두 노출 |
+| **P1-C** | `9e8f4e5` | 저장/불러오기 E2E — 멀티페이지 canvasData 완전 보존. `useAppStore.loadSession`: 페이지별 canvasData 직렬화 시 `JSON.stringify` round-trip 으로 fabric object reference 유실 버그 수정. sessionId 환경에서 autoSave → `restoreVersion` → `window.location.reload` 라운드트립 검증 |
+| **P1-F** | `5339e9d` | 반응형 Phase 3 — 태블릿(768-1023px) 세로 drawer 최적화. `EditorView.tsx`에서 `screenMode === 'mobile'` → `screenMode !== 'desktop'`으로 3곳 변경 → 태블릿에서도 `FeatureSidebar mobileOverlay={true}` + `ControlBar mobileOverlay={true}` + 백드롭 overlay 적용 (inline 사이드바가 캔버스 영역 축소하던 문제 해소) |
+| **P1-E** | `d47a680` | 콘텐츠 패널 그리드 카탈로그 — AppElement/AppBackground/AppTemplate 3개 패널에 카테고리 탭 추가. **AppElement**: 마운트 시 pageSize:100 discovery fetch → 고유 tag 추출 → `selectedTag` 상태로 API `tags` 파라미터 필터. **AppBackground**: 동일 패턴 + `contentsApi.getBackgrounds()` 실 데이터 연결 (기존 빈 placeholder 교체). **AppTemplate**: GraphQL template `tags[].name` 기반 `useMemo` 클라이언트 사이드 필터 (API 호출 없음). 이미지 URL: `(content as any).imageUrl \|\| content?.image?.image?.url` REST/GraphQL 양측 대응 |
+| **P1-D** | `3d05608` | Composite Ph3 다중 선택 cross-canvas 이동 — `MoveToCoverRegion`에서 단일 선택 가드 제거 + `activeSelection` 전체 루프. `workspace`/`meta.system` 객체 제외한 `moveableObjects` 배열 순회, 각 객체별 xNorm/yNorm 좌표 개별 계산 + `moveObjectToCanvas` 호출. `useCrossCanvasMoveStore.CrossCanvasMoveRecord`에 `count?: number` 추가. 되돌리기 시 `tgt.undo()` × N + `src.undo()` × N 루프 |
+| **P1-B** | `d2b3271` | PDF Synthesis E2E 검증 — webhook 타입 정합성 수정. **webhook.service.ts**: `SynthesisWebhookPayload` re-export 추가 (`import` → `import + export`). **webhook.e2e-spec.ts**: `SynthesisWebhookPayload` 타입 적용, `result` 필드(타입 미존재) 제거, `synthesis.failed` 페이로드에 필수 `outputFileUrl: ''` 추가, `separate` 모드(`sessionId + outputFiles`) 신규 TC 추가 |
 
 ## 디자인 토큰 (다크 모드 호환 필수)
 
@@ -217,13 +225,13 @@ git push origin master   # → Vercel 자동 배포
 - ✅ **DD-5-B-v2 페이지 drag-to-reorder** — 완료 (`aff4396`, native HTML5 DnD + 표지/모바일/스프레드 가드)
 - ✅ **잔여 type 에러 follow-up** — 완료 (`d1d78fc`, embed/test/graphql + AiPanel TemplateSetType cascading)
 - ✅ **BB-Phase 3 follow-up 썸네일 풀스택** — 완료 (`4901af9` + `2097e1c` + `9d67d8c`, R2 없이 로컬 FS, deletion-time + nightly cron KST 02:30)
-- **3b-v Phase 3 다중 선택 cross-canvas 이동** — 우리 `moveObjectToCanvas` helper + `MoveToCoverRegion` 패턴 확장. canvas-core 추가 변경
-- **PDF Synthesis 본 워커 동작 검증** — `POST /synthesize/external` end-to-end. 운영 worker 이미 재배포됨, 실 PDF 흐름 검증 필요
-- **PHP 측 코드 적용 검증** — 옵션 B/C URL override + 웹훅 콜백 양측 통합 테스트
-- **반응형 Phase 3** — 태블릿 세로 모드 drawer 최적화
-- **콘텐츠 패널 그리드 카탈로그** — 미리캔버스 풍 카테고리 탭 + 그리드
-- **모바일 헤더 overflow X-3** — viewport 375에서 nav 가로 197px overflow (현 모바일 fix와 별개로 잔존, 우선순위 P1로 승격 검토)
-- **저장/불러오기 흐름 E2E 검증** — 사용자 보고로 미검증. sessionId 환경에서 autoSave → restoreVersion → 페이지 reload 라운드트립 검증 필요
+- ✅ **3b-v Phase 3 다중 선택 cross-canvas 이동** — 완료 (`3d05608`, `MoveToCoverRegion` 루프 + `count` undo)
+- ✅ **PDF Synthesis E2E 검증** — 완료 (`d2b3271`, webhook 타입 정합 + `separate` 모드 TC)
+- **PHP 측 코드 적용 검증** — 옵션 B/C URL override + 웹훅 콜백 양측 통합 테스트 (`docs/PHP_INTEGRATION_VERIFICATION.md` 참조)
+- ✅ **반응형 Phase 3** — 완료 (`5339e9d`, 태블릿 세로 drawer overlay 모드)
+- ✅ **콘텐츠 패널 그리드 카탈로그** — 완료 (`d47a680`, AppElement/AppBackground/AppTemplate 카테고리 탭)
+- ✅ **모바일 헤더 overflow X-3** — 완료 (`9a0aac7`, 375px nav overflow 해소)
+- ✅ **저장/불러오기 흐름 E2E 검증** — 완료 (`9e8f4e5`, 멀티페이지 canvasData round-trip 수정)
 
 ## 🟢 P2 (중기 — 폴리시 / 확장)
 
