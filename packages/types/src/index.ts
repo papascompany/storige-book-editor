@@ -425,6 +425,8 @@ export enum WorkerJobStatus {
   PENDING = 'PENDING',
   PROCESSING = 'PROCESSING',
   COMPLETED = 'COMPLETED',
+  /** 오류가 있으나 모두 자동 수정 가능한 경우 (예: 블리드 미설정, 여백 페이지 부족) */
+  FIXABLE = 'FIXABLE',
   FAILED = 'FAILED',
 }
 
@@ -589,6 +591,25 @@ export interface SynthesisResult {
   outputFiles?: OutputFile[]; // separate 모드에서만 추가 (cover → content 순서)
   previewUrl?: string;
   totalPages?: number; // merged PDF 기준 총 페이지 수
+}
+
+/**
+ * 검증 완료 웹훅 페이로드
+ * POST /worker-jobs/validate/external 의 callbackUrl로 전송
+ */
+export interface ValidationWebhookPayload {
+  event: 'validation.completed' | 'validation.fixable' | 'validation.failed';
+  jobId: string;
+  /** 검증 대상 파일 타입 */
+  fileType: 'cover' | 'content' | 'post_process';
+  /** 연결된 주문 번호 */
+  orderSeqno?: number;
+  status: 'completed' | 'fixable' | 'failed';
+  /** 검증 결과 상세 (errors, warnings, metadata) */
+  result?: any;
+  /** 실패/수정필요 시 에러 메시지 요약 */
+  errorMessage?: string;
+  timestamp: string;
 }
 
 /**

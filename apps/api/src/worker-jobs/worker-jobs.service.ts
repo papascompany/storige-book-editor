@@ -14,6 +14,7 @@ import {
   WorkerJobType,
   WorkerJobStatus,
   SynthesisWebhookPayload,
+  ValidationWebhookPayload,
   TemplateType,
   PageTypes,
 } from '@storige/types';
@@ -196,6 +197,7 @@ export class WorkerJobsService {
       options: {
         fileType: createValidationJobDto.fileType,
         orderOptions: createValidationJobDto.orderOptions,
+        callbackUrl: createValidationJobDto.callbackUrl || undefined,
       },
     });
 
@@ -781,6 +783,7 @@ export class WorkerJobsService {
 
     if (
       updateJobStatusDto.status === WorkerJobStatus.COMPLETED ||
+      updateJobStatusDto.status === WorkerJobStatus.FIXABLE ||
       updateJobStatusDto.status === WorkerJobStatus.FAILED
     ) {
       job.completedAt = new Date();
@@ -801,6 +804,17 @@ export class WorkerJobsService {
         updateJobStatusDto.status === WorkerJobStatus.FAILED)
     ) {
       await this.sendSynthesisCallback(savedJob);
+    }
+
+    // Validation 작업 완료/수정필요/실패 시 직접 콜백 전송 (editSessionId 없이 callbackUrl만 있는 경우)
+    if (
+      job.jobType === WorkerJobType.VALIDATE &&
+      job.options?.callbackUrl &&
+      (updateJobStatusDto.status === WorkerJobStatus.COMPLETED ||
+        updateJobStatusDto.status === WorkerJobStatus.FIXABLE ||
+        updateJobStatusDto.status === WorkerJobStatus.FAILED)
+    ) {
+      await this.sendValidationCallback(savedJob);
     }
 
     return savedJob;
@@ -857,6 +871,56 @@ export class WorkerJobsService {
   }
 
   /**
+   * Validation 작업 완료/수정필요/실패 시 직접 콜백 전송
+   * editSessionId 없이 callbackUrl만 있는 경우 사용 (bookmoa 서버 간 통신)
+   */
+  private async sendValidationCallback(job: WorkerJob): Promise<void> {
+    const callbackUrl = job.options?.callbackUrl;
+    if (!callbackUrl) {
+      return;
+    }
+
+    try {
+      const statusMap: Record<string, ValidationWebhookPayload['status']> = {
+        [WorkerJobStatus.COMPLETED]: 'completed',
+        [WorkerJobStatus.FIXABLE]: 'fixable',
+        [WorkerJobStatus.FAILED]: 'failed',
+      };
+      const eventMap: Record<string, ValidationWebhookPayload['event']> = {
+        [WorkerJobStatus.COMPLETED]: 'validation.completed',
+        [WorkerJobStatus.FIXABLE]: 'validation.fixable',
+        [WorkerJobStatus.FAILED]: 'validation.failed',
+      };
+
+      const status = statusMap[job.status] ?? 'failed';
+      const event = eventMap[job.status] ?? 'validation.failed';
+
+      const payload: ValidationWebhookPayload = {
+        event,
+        jobId: job.id,
+        fileType: job.options?.fileType ?? 'cover',
+        orderSeqno: job.options?.orderOptions?.orderSeqno,
+        status,
+        result: job.result,
+        errorMessage: job.errorMessage || undefined,
+        timestamp: new Date().toISOString(),
+      };
+
+      const success = await this.webhookService.sendCallback(callbackUrl, payload);
+
+      if (success) {
+        this.logger.log(
+          `Validation callback sent successfully for job ${job.id}, status=${status}`,
+        );
+      } else {
+        this.logger.warn(`Validation callback failed for job ${job.id}`);
+      }
+    } catch (error) {
+      this.logger.error(`Failed to send validation callback: ${error.message}`);
+    }
+  }
+
+  /**
    * EditSession의 workerStatus를 업데이트하고 웹훅 콜백 전송
    */
   private async updateEditSessionWorkerStatus(
@@ -882,8 +946,12 @@ export class WorkerJobsService {
 
     if (updateDto.status === WorkerJobStatus.PROCESSING) {
       newWorkerStatus = WorkerStatus.PROCESSING;
-    } else if (updateDto.status === WorkerJobStatus.COMPLETED) {
-      // Check if all jobs for this session are completed
+    } else if (
+      updateDto.status === WorkerJobStatus.COMPLETED ||
+      updateDto.status === WorkerJobStatus.FIXABLE
+    ) {
+      // FIXABLE: 자동 수정 가능한 오류 → VALIDATED로 처리 (수정 후 진행 가능)
+      // Check if all jobs for this session are completed/fixable
       const allJobsCompleted = await this.areAllSessionJobsCompleted(job.editSessionId);
       newWorkerStatus = allJobsCompleted ? WorkerStatus.VALIDATED : WorkerStatus.PROCESSING;
     } else if (updateDto.status === WorkerJobStatus.FAILED) {
@@ -916,7 +984,9 @@ export class WorkerJobsService {
 
     return jobs.every(
       (j) =>
-        j.status === WorkerJobStatus.COMPLETED || j.status === WorkerJobStatus.FAILED,
+        j.status === WorkerJobStatus.COMPLETED ||
+        j.status === WorkerJobStatus.FIXABLE ||
+        j.status === WorkerJobStatus.FAILED,
     );
   }
 
