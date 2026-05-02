@@ -74,7 +74,10 @@ export default function AppElement() {
     fetchElements()
   }, [isCustomer, debouncedKeyword])
 
-  // Handle upload (SVG elements)
+  // Handle upload (SVG elements only — 일반 이미지는 '이미지' 도구 사용)
+  // P0-2 사용자 보고: 요소 패널에서 PNG/JPG 업로드 시 'SVG 파일이 아닙니다' 오류.
+  // 원인: file picker가 'image/*' 받지만 store가 SelectionType.shape에서 SVG만 허용.
+  // fix: file picker accept를 SVG만으로 명시 → 사용자가 SVG 외 파일 선택 자체 불가.
   const handleUpload = useCallback(async () => {
     if (!ready || !canvas) return
 
@@ -86,7 +89,8 @@ export default function AppElement() {
       await upload(
         canvas,
         imagePlugin!,
-        SelectionType.shape
+        SelectionType.shape,
+        'image/svg+xml,.svg'
       )
     } catch (error) {
       console.error('요소 업로드 오류:', error)
