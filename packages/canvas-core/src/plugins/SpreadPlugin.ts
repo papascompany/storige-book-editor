@@ -318,29 +318,75 @@ class SpreadPlugin extends PluginBase {
   }
 
   /**
-   * 캔버스 밖 객체 경고
+   * 캔버스 밖 객체 경고 + 자동 재배치 (P1-5)
    *
-   * 책등 폭 변경(`resizeSpine`) 후 작업 영역을 벗어난 객체가 있으면
-   * `spreadObjectsOutOfBounds` 이벤트를 발행한다. editor가 이를 구독해
-   * 사용자에게 toast로 알린다.
+   * 책등 폭 변경(`resizeSpine`) 후 작업 영역을 벗어난 객체가 있으면:
+   *  1. 영역 안으로 위치 자동 클립 (multi-region 정밀 좌표)
+   *  2. `spreadObjectsOutOfBounds` 이벤트를 발행해 toast 표시
+   *
+   * 옵션: autoRelocate=false 로 비활성화 가능 (resizeSpine 호출 시 전달)
    */
-  private checkObjectsOutOfBounds(layout: SpreadLayout): void {
+  private checkObjectsOutOfBounds(layout: SpreadLayout, autoRelocate: boolean = true): void {
     const origin = this.getContentOrigin()
     const objects = this._canvas.getObjects()
-    const outOfBounds = objects.filter((obj) => {
-      if (obj.meta?.system) return false
-      const boundingRect = obj.getBoundingRect()
-      return boundingRect.left + boundingRect.width > origin.x + layout.totalWidthPx ||
-             boundingRect.left < origin.x ||
-             boundingRect.top + boundingRect.height > origin.y + layout.totalHeightPx ||
-             boundingRect.top < origin.y
-    })
+    const minX = origin.x
+    const minY = origin.y
+    const maxX = origin.x + layout.totalWidthPx
+    const maxY = origin.y + layout.totalHeightPx
+
+    const outOfBounds: any[] = []
+    for (const obj of objects) {
+      if (obj.meta?.system) continue
+      const br = obj.getBoundingRect()
+      const overflowRight = br.left + br.width > maxX
+      const overflowLeft = br.left < minX
+      const overflowBottom = br.top + br.height > maxY
+      const overflowTop = br.top < minY
+
+      if (!overflowLeft && !overflowRight && !overflowTop && !overflowBottom) continue
+
+      outOfBounds.push(obj)
+
+      if (!autoRelocate) continue
+
+      // 자동 재배치: 객체를 영역 안으로 클립
+      // - 가로/세로 모두 영역보다 큰 경우 좌상단 정렬
+      // - 단순히 left/top 보정 (scale 변경 없음)
+      let newLeft = obj.left ?? 0
+      let newTop = obj.top ?? 0
+
+      if (overflowRight) {
+        const delta = (br.left + br.width) - maxX
+        newLeft -= delta
+      }
+      if (overflowLeft) {
+        const delta = minX - br.left
+        newLeft += delta
+      }
+      if (overflowBottom) {
+        const delta = (br.top + br.height) - maxY
+        newTop -= delta
+      }
+      if (overflowTop) {
+        const delta = minY - br.top
+        newTop += delta
+      }
+
+      obj.set({ left: newLeft, top: newTop })
+      obj.setCoords()
+    }
 
     if (outOfBounds.length > 0) {
-      console.warn(`SpreadPlugin: ${outOfBounds.length} objects are out of bounds`)
+      if (autoRelocate) {
+        this._canvas.requestRenderAll()
+      }
+      console.warn(
+        `SpreadPlugin: ${outOfBounds.length} objects out of bounds${autoRelocate ? ' (auto-relocated)' : ''}`,
+      )
       this._editor.emit('spreadObjectsOutOfBounds', {
         count: outOfBounds.length,
         objects: outOfBounds,
+        autoRelocated: autoRelocate,
       })
     }
   }

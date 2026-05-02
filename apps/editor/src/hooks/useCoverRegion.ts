@@ -107,14 +107,13 @@ export function useSpreadOutOfBoundsToast(ready: boolean): void {
   useEffect(() => {
     if (!ready || !isSpreadMode || !editor) return
 
-    const handler = (payload: { count: number }) => {
+    const handler = (payload: { count: number; autoRelocated?: boolean }) => {
       const count = payload?.count ?? 0
       if (count <= 0) return
-      showToast(
-        `책등 폭이 변경되어 ${count}개 객체가 작업 영역을 벗어났습니다. 위치를 확인해 주세요.`,
-        'warning',
-        5000
-      )
+      const msg = payload.autoRelocated
+        ? `책등 폭 변경: ${count}개 객체를 작업 영역 안으로 자동 재배치했습니다. 위치를 확인해 주세요.`
+        : `책등 폭이 변경되어 ${count}개 객체가 작업 영역을 벗어났습니다. 위치를 확인해 주세요.`
+      showToast(msg, payload.autoRelocated ? 'info' : 'warning', 5000)
     }
 
     editor.on('spreadObjectsOutOfBounds', handler)
