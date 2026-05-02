@@ -7,6 +7,7 @@ import { DomainError, ErrorCodes } from '../common/errors';
 import axios from 'axios';
 import * as path from 'path';
 import * as fs from 'fs/promises';
+import { captureJobException } from '../sentry/sentry.init';
 import {
   SynthesisLocalResult,
   SynthesisResult,
@@ -194,6 +195,13 @@ export class SynthesisProcessor {
         `Synthesis job ${jobId} error: ${error.message}`,
         error.stack,
       );
+
+      // Sentry에 잡 컨텍스트와 함께 전송
+      captureJobException(error, {
+        jobId,
+        jobType: 'synthesize',
+        queueName: 'pdf-synthesis',
+      });
 
       // 임시 파일 정리 시도
       if (localResult) {

@@ -7,7 +7,12 @@ const nodeEnv = process.env.NODE_ENV || 'development';
 config({ path: resolve(__dirname, `../.env.${nodeEnv}`) });
 config({ path: resolve(__dirname, '../.env') });
 
-import { NestFactory } from '@nestjs/core';
+// Sentry 초기화는 다른 모듈 import 보다 먼저 실행되어야 함
+// (instrumentation 동작 기반이라 import 시점에 hook이 걸려야 모든 트랜잭션이 추적됨)
+import { initSentry, Sentry } from './sentry/sentry.init';
+initSentry('storige-api');
+
+import { NestFactory, HttpAdapterHost } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
@@ -15,6 +20,7 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 import { PayloadTooLargeResponseDto } from './common/dto/error-response.dto';
+import { SentryExceptionFilter } from './sentry/sentry.filter';
 
 // Prevent unhandled rejections from crashing the process
 process.on('unhandledRejection', (reason: any) => {
@@ -25,6 +31,8 @@ process.on('unhandledRejection', (reason: any) => {
     return;
   }
   console.error('Unhandled Rejection:', reason);
+  // Sentry로 전송 (DSN 설정된 경우만)
+  Sentry.captureException(reason);
 });
 
 async function bootstrap() {
@@ -95,6 +103,11 @@ async function bootstrap() {
       forbidNonWhitelisted: true,
     }),
   );
+
+  // Global Sentry exception filter (5xx 자동 전송)
+  // BaseExceptionFilter가 HttpAdapterHost를 필요로 함
+  const httpAdapterHost = app.get(HttpAdapterHost);
+  app.useGlobalFilters(new SentryExceptionFilter(httpAdapterHost.httpAdapter));
 
   // API prefix
   app.setGlobalPrefix('api');
