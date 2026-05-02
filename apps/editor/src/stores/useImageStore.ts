@@ -361,6 +361,9 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
       // 파일 타입 체크
       const fileExtension = file.name.split('.').pop()?.toLowerCase()
       const isVectorFile = ['ai', 'eps', 'pdf'].includes(fileExtension || '')
+      // SVG는 fabric.Image로 처리 불가 (loadImage indexOf TypeError 유발).
+      // SelectionType.shape에서 SVG는 loadSVGFromURL로 별도 로드.
+      const isSvgFile = file.type === 'image/svg+xml' || fileExtension === 'svg'
 
       if (isVectorFile) {
         if (onVectorStart) {
@@ -382,6 +385,20 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
             onVectorEnd(false)
           }
           throw error
+        }
+      } else if (isSvgFile && type === SelectionType.shape) {
+        // SVG + 요소 도구: fabric.Image fromURL은 SVG dataURL을 indexOf 호출 시 throw.
+        // 직접 loadSVGFromURL 사용 (vector 그대로 로드).
+        try {
+          const dataUrl = await core.fileToURL(file)
+          const svgItem = await core.loadSVGFromURL(dataUrl)
+          if (svgItem) {
+            item = svgItem as FabricObject
+          }
+        } catch (error) {
+          console.error('SVG 로드 실패:', error)
+          showToast('SVG 파일 로드에 실패했습니다.', 'error', 4000)
+          return undefined
         }
       } else {
         item = await core.fileToImage(canvas, file, imagePlugin)
@@ -504,57 +521,26 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
         } else if (type === SelectionType.background) {
           item = addBackground(item, canvas)
         } else if (type === SelectionType.shape) {
-          if (file.type === 'image/svg+xml') {
-            // core API를 사용하여 SVG 로드
-            const dataUrl = await core.fileToURL(file)
-            const svgItem = await core.loadSVGFromURL(dataUrl)
+          // SVG/raster 모두 위에서 item이 이미 로드 완료. 여기선 위치/크기/extensionType만.
+          item.set({
+            id: uuid(),
+            originX: 'center',
+            originY: 'center',
+            left: workspaceCenter.x,
+            top: workspaceCenter.y,
+            extensionType: 'shape',
+          })
 
-            if (svgItem) {
-              item = svgItem as FabricObject
-              item.set({
-                id: uuid(),
-                extensionType: 'shape',
-                left: workspaceCenter.x,
-                top: workspaceCenter.y,
-                originX: 'center',
-                originY: 'center'
-              })
+          const actualItemWidth = item.width! * scale
+          const actualItemHeight = item.height! * scale
 
-              const actualItemWidth = item.width! * scale
-              const actualItemHeight = item.height! * scale
-
-              if (actualItemWidth > workspaceWidth || actualItemHeight > workspaceHeight) {
-                const scaleX = workspaceWidth / actualItemWidth
-                const scaleY = workspaceHeight / actualItemHeight
-                const itemScale = Math.min(scaleX, scaleY)
-                item.scale(itemScale * scale)
-              } else {
-                item.scale(scale)
-              }
-            }
+          if (actualItemWidth > workspaceWidth || actualItemHeight > workspaceHeight) {
+            const scaleX = workspaceWidth / actualItemWidth
+            const scaleY = workspaceHeight / actualItemHeight
+            const itemScale = Math.min(scaleX, scaleY)
+            item.scale(itemScale * scale)
           } else {
-            // 정정된 정책: raster 이미지(PNG/JPG/GIF/WebP)도 element/요소로 추가 가능.
-            // item은 이미 createFabricImage로 생성된 fabric.Image. 위치/크기 조정 후
-            // extensionType='shape'으로 마크해 일반 이미지와 구분.
-            item.set({
-              originX: 'center',
-              originY: 'center',
-              left: workspaceCenter.x,
-              top: workspaceCenter.y,
-              extensionType: 'shape',
-            })
-
-            const actualItemWidth = item.width! * scale
-            const actualItemHeight = item.height! * scale
-
-            if (actualItemWidth > workspaceWidth || actualItemHeight > workspaceHeight) {
-              const scaleX = workspaceWidth / actualItemWidth
-              const scaleY = workspaceHeight / actualItemHeight
-              const itemScale = Math.min(scaleX, scaleY)
-              item.scale(itemScale * scale)
-            } else {
-              item.scale(scale)
-            }
+            item.scale(scale)
           }
         } else {
           // 일반 이미지

@@ -200,16 +200,18 @@ export default function AppBackground() {
 
   // 배경색 적용 핵심 로직 — 색상 문자열을 받아 workspace.fill에 즉시 반영.
   // input change 이벤트와 명시적 "적용" 버튼 클릭에서 공통 사용.
-  // 모바일 안전: renderAll(동기) → requestRenderAll(다음 frame) — 메모리 hit 회피.
+  //
+  // 사용자 보고: 직접 .fill = X 할당 + requestRenderAll로는 화면 갱신 안 됨.
+  // fabric의 dirty 트래킹은 .set() 메서드를 거쳐야 안정적이고, 색상 변경은
+  // 단발성 사용자 액션이라 모바일에서도 renderAll() 한 번 정도는 안전.
   const applyBgColor = useCallback((value: string) => {
     if (!workspace || !canvas) return false
     const rgba = parseColorValue(value)
     if (!rgba) return false
     rgba.a = 1
     const rgbaString = `rgba(${rgba.r}, ${rgba.g}, ${rgba.b}, ${rgba.a})`
-    workspace.fill = rgbaString
-    workspace.dirty = true
-    canvas.requestRenderAll()
+    workspace.set({ fill: rgbaString, dirty: true })
+    canvas.renderAll()
     return true
   }, [workspace, canvas])
 
@@ -231,14 +233,14 @@ export default function AppBackground() {
   }, [applyBgColor, bgColor])
 
   // 뚜껑색 적용 핵심 로직 — 색상 문자열을 받아 lidObject.fill에 즉시 반영.
+  // (배경색과 동일한 .set + renderAll 패턴 — fabric dirty 트래킹 안정성)
   const applyLidColor = useCallback((value: string) => {
     if (!lidObject || !canvas) return false
     const rgba = parseColorValue(value)
     if (!rgba) return false
     const rgbaString = `rgba(${rgba.r}, ${rgba.g}, ${rgba.b}, 1)`
-    lidObject.fill = rgbaString
-    lidObject.dirty = true
-    canvas.requestRenderAll()
+    lidObject.set({ fill: rgbaString, dirty: true })
+    canvas.renderAll()
     canvas.fire('object:modified', { target: lidObject })
     return true
   }, [lidObject, canvas])
