@@ -533,15 +533,28 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
               }
             }
           } else {
-            // SVG가 아니면 throw 대신 친절한 toast 안내 (옛 캐시 클라이언트 보호)
-            // file picker accept를 'image/svg+xml'로 좁힌 AppElement에선 도달 불가지만,
-            // 신규 캐시 fix(no-store) 적용 전 클라이언트가 옛 코드로 PNG 선택할 수 있음.
-            showToast(
-              '"요소" 도구는 SVG 파일만 지원합니다. 일반 사진은 좌측 "이미지" 도구를 사용해주세요.',
-              'warning',
-              4500
-            )
-            return undefined
+            // 정정된 정책: raster 이미지(PNG/JPG/GIF/WebP)도 element/요소로 추가 가능.
+            // item은 이미 createFabricImage로 생성된 fabric.Image. 위치/크기 조정 후
+            // extensionType='shape'으로 마크해 일반 이미지와 구분.
+            item.set({
+              originX: 'center',
+              originY: 'center',
+              left: workspaceCenter.x,
+              top: workspaceCenter.y,
+              extensionType: 'shape',
+            })
+
+            const actualItemWidth = item.width! * scale
+            const actualItemHeight = item.height! * scale
+
+            if (actualItemWidth > workspaceWidth || actualItemHeight > workspaceHeight) {
+              const scaleX = workspaceWidth / actualItemWidth
+              const scaleY = workspaceHeight / actualItemHeight
+              const itemScale = Math.min(scaleX, scaleY)
+              item.scale(itemScale * scale)
+            } else {
+              item.scale(scale)
+            }
           }
         } else {
           // 일반 이미지
