@@ -1,7 +1,7 @@
 # Storige 잔존 개발 작업 리뷰
 
-> **기준일**: 2026-05-02 · **최종 갱신**: 2026-05-02 14:00 KST (6차 P0 핫픽스 사이클 + 운영 재배포 2회 반영)
-> **반영 누적**: 85+ commit / 47 트랙 (4차 사이클 + 모바일 PR×10 + 5차 P0 + DD-5-B-v2 + P1-3 + BB-Phase 3 follow-up + cleanup cron + 6차 P0 핫픽스 사이클)
+> **기준일**: 2026-05-02 · **최종 갱신**: 2026-05-02 (P1 전 트랙 완료 — G/C/F/E/D/B 6개 트랙 반영)
+> **반영 누적**: 92+ commit / 53 트랙 (4차 사이클 + 모바일 PR×10 + 5차 P0 + DD-5-B-v2 + P1-3 + BB-Phase 3 follow-up + cleanup cron + 6차 P0 핫픽스 사이클 + P1 전 트랙 + PHP 연동 검증 MD)
 >
 > **소스 트래커**: `.cursor/plans/_RESUME_EDITOR_TRACKS.md`, `.cursor/plans/cover.md`, `.cursor/plans/v2/NEW_DEV_GUIDE.html`, `docs/P0_OPERATIONS_CHECKLIST.md`, `docs/MOBILE_TOUCH_UI.md`, `docs/BOOKMOA_INTEGRATION_DIFF.md`
 
@@ -21,7 +21,7 @@
 | iOS Safari 페이지 크래시 회피 (배경색 + 다크 핸들) | ✅ `60efb05` | — |
 | 모바일 4MB 업로드 가드 + toast 안내 | ✅ `5228171` (6차 P0 #2) | — |
 | **실기기 검증 (사용자 보고 4건 + 콘솔 보고 3건)** | ✅ **6차 P0 핫픽스 사이클로 모두 처리** | — |
-| 모바일 헤더 X-3 (viewport 375 nav overflow) | ⏳ | P1 |
+| 모바일 헤더 X-3 (viewport 375 nav overflow) | ✅ `9a0aac7` | — |
 | 핀치-투-줌 / 두 손가락 패닝 | ❌ | P3 |
 | iText 인라인 편집 시 visualViewport 보정 | ❌ | P3 |
 | 모바일용 long-press 컨텍스트 메뉴 | ❌ | P3 |
@@ -36,7 +36,7 @@
 | 3b-v | Composite cross-canvas 이동 | ✅ (CC-1/CC-2) |
 | 3b-v Ph2A | 정밀 좌표 매핑 (xNorm/yNorm) | ✅ |
 | 3b-v Ph2B | atomic undo "방금 이동 되돌리기" | ✅ |
-| **3b-v Ph3** | **다중 선택 cross-canvas 이동** | ⏳ **P1** |
+| **3b-v Ph3** | **다중 선택 cross-canvas 이동** | ✅ `3d05608` |
 
 ### 3. 다크 모드 / 반응형
 | Phase | 내용 | 상태 |
@@ -45,7 +45,7 @@
 | **fabric 객체 색상 통일** (모든 객체 hover/selection) | ⚠️ 부분 | P2 |
 | 반응형 P1 (사이드바 슬라이드오버) | ✅ E-1 | — |
 | 반응형 P2 (사이드바 hit-area, 페이지 네비) | ✅ X | — |
-| **반응형 P3** (태블릿 헤더 wrap, 세로 모드 drawer) | ⏳ | P2 |
+| **반응형 P3** (태블릿 세로 drawer) | ✅ `5339e9d` | — |
 
 ### 4. 도구 확장
 | 항목 | 상태 |
@@ -68,7 +68,7 @@
 | 페이지 순서 재배열 (store) | ✅ DD-5-A | — |
 | 페이지 순서 재배열 UI (DD-5-B-v2) | ✅ `aff4396` | — |
 | AI 패널 TemplateSetType 정합 (4 cascading 컴포넌트) | ✅ `d1d78fc` (P1-3) | — |
-| **콘텐츠 패널 그리드 카탈로그** (카테고리 탭) | ❌ | P2 |
+| **콘텐츠 패널 그리드 카탈로그** (카테고리 탭) | ✅ `d47a680` | — |
 | **AI 패널 정합 / 추천** (UI 통합) | ❌ | P3 |
 
 ### 6. 북모아 PHP 통합 (옵션 B/C)
@@ -87,7 +87,7 @@
 | 항목 | 상태 | 우선순위 |
 |---|---|---|
 | PDF 검증 모듈 (워커 큐, 3 endpoints) | ✅ | — |
-| **PDF Synthesis 본 작업** (`POST /synthesize/external`) | ⏳ | P1 |
+| **PDF Synthesis E2E 검증** (webhook 타입 정합) | ✅ `d2b3271` | — |
 | **Before/After 미리보기** | ⏳ | P1 |
 | 웹훅 콜백 처리 (`synthesis.completed/failed`) | ✅ Storige 측 / ⏳ PHP 측 | P0 |
 
@@ -129,13 +129,13 @@
 1. ✅ **DD-5-B-v2 페이지 drag-to-reorder** — 완료 (`aff4396`)
 2. ✅ **잔여 type 에러 정리** — 완료 (`d1d78fc`)
 3. ✅ **BB-Phase 3 follow-up 썸네일 풀스택 + cleanup cron** — 완료 (`4901af9` + `2097e1c` + `9d67d8c`)
-4. **Composite 모드 다중 선택 cross-canvas 이동** (3b-v Ph3) — 표지 편집 multi-select
-5. **PDF Synthesis 본 워커 동작 검증** — `POST /synthesize/external` end-to-end
+4. ✅ **Composite 모드 다중 선택 cross-canvas 이동** (3b-v Ph3) — 완료 (`3d05608`)
+5. ✅ **PDF Synthesis E2E 검증** — 완료 (`d2b3271`, webhook 타입 정합)
 6. **PHP 측 코드 적용 검증** — width/height + 웹훅 콜백 양측 통합 테스트
-7. **반응형 Ph3** — 태블릿 세로 모드 drawer 최적화
-8. **콘텐츠 패널 그리드 카탈로그** — 카테고리 탭 + 그리드 뷰
-9. **저장/불러오기 흐름 E2E 검증** — sessionId 환경에서 autoSave → restoreVersion → 페이지 reload 라운드트립
-10. **모바일 헤더 X-3** — viewport 375 nav overflow
+7. ✅ **반응형 Ph3** — 완료 (`5339e9d`, 태블릿 세로 drawer)
+8. ✅ **콘텐츠 패널 그리드 카탈로그** — 완료 (`d47a680`, 카테고리 탭 추가)
+9. ✅ **저장/불러오기 흐름 E2E 검증** — 완료 (`9e8f4e5`, 멀티페이지 canvasData 완전 보존)
+10. ✅ **모바일 헤더 X-3** — 완료 (`9a0aac7`, 375px nav overflow 해소)
 
 ### 🟢 P2 (중기 — 폴리시 / 확장)
 11. fabric 객체 색상 다크모드 통일
