@@ -619,18 +619,20 @@ export class PdfSynthesizerService {
    * - 그 외 → axios.get HTTP 다운로드
    */
   async downloadFile(url: string): Promise<Uint8Array> {
-    // 절대/명시적 로컬 경로
-    if (url.startsWith('/') || url.startsWith('./')) {
-      const buffer = await fs.readFile(url);
+    // ⚠️ 중요: '/storage/...' 와 'storage/...' 를 일반 절대경로보다 먼저 처리해야 함
+    // API가 반환하는 fileUrl은 HTTP 서빙용 '/storage/...' 형태이며,
+    // 이를 그대로 fs.readFile()에 넘기면 ENOENT 발생.
+    // this.storagePath = STORAGE_PATH 환경변수 (보통 '/app/storage')
+    if (url.startsWith('/storage/') || url.startsWith('storage/')) {
+      const relative = url.replace(/^\/?storage\//, '');
+      const absPath = path.join(this.storagePath, relative);
+      const buffer = await fs.readFile(absPath);
       return new Uint8Array(buffer);
     }
 
-    // storige 내부 storage 상대 경로 (예: 'storage/uploads/abc.pdf')
-    // this.storagePath = STORAGE_PATH 환경변수 (보통 '/app/storage')
-    if (url.startsWith('storage/')) {
-      const relative = url.replace(/^storage\//, '');
-      const absPath = path.join(this.storagePath, relative);
-      const buffer = await fs.readFile(absPath);
+    // 일반 절대/명시적 로컬 경로 (예: '/app/storage/...', './tmp/...')
+    if (url.startsWith('/') || url.startsWith('./')) {
+      const buffer = await fs.readFile(url);
       return new Uint8Array(buffer);
     }
 
