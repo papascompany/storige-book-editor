@@ -141,9 +141,6 @@ importers:
       '@sentry/node':
         specifier: ^7.119.2
         version: 7.120.4
-      '@sentry/profiling-node':
-        specifier: ^7.119.2
-        version: 7.120.4
       '@storige/ai':
         specifier: workspace:*
         version: link:../../packages/ai
@@ -2722,11 +2719,6 @@ packages:
   '@sentry/node@7.120.4':
     resolution: {integrity: sha512-qq3wZAXXj2SRWhqErnGCSJKUhPSlZ+RGnCZjhfjHpP49KNpcd9YdPTIUsFMgeyjdh6Ew6aVCv23g1hTP0CHpYw==}
     engines: {node: '>=8'}
-
-  '@sentry/profiling-node@7.120.4':
-    resolution: {integrity: sha512-2Eb/LcYk7ohUx1KNnxcrN6hiyFTbD8Q9ffAvqtx09yJh1JhasvA+XCAcY72ONI5Aia4rCVkql9eEPSyhkmhsbA==}
-    engines: {node: '>=8.0.0'}
-    hasBin: true
 
   '@sentry/react@7.120.4':
     resolution: {integrity: sha512-Pj1MSezEncE+5riuwsk8peMncuz5HR72Yr1/RdZhMZvUxoxAR/tkwD3aPcK6ddQJTagd2TGwhdr9SHuDLtONew==}
@@ -9827,11 +9819,6 @@ snapshots:
       '@sentry/integrations': 7.120.4
       '@sentry/types': 7.120.4
       '@sentry/utils': 7.120.4
-
-  '@sentry/profiling-node@7.120.4':
-    dependencies:
-      detect-libc: 2.1.2
-      node-abi: 3.85.0
 
   '@sentry/react@7.120.4(react@18.3.1)':
     dependencies:
