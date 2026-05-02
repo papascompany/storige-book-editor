@@ -12,7 +12,6 @@
   },
   "headers": [
     {
-      "comment": "index.html은 절대 캐시 안 함 — 새 deploy 시 옛 chunk hash 참조로 'Importing a module script failed' 발생 방지. /index.html과 / 모두 매칭.",
       "source": "/(index\\.html)?",
       "headers": [
         { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
@@ -21,7 +20,6 @@
       ]
     },
     {
-      "comment": "/assets/* 의 hashed 파일은 immutable로 1년 캐시 (파일명에 hash가 박혀 있어 안전)",
       "source": "/assets/(.*)",
       "headers": [
         { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
