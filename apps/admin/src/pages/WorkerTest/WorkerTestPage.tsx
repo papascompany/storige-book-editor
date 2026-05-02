@@ -33,6 +33,7 @@ import {
 import type { UploadFile } from 'antd/es/upload/interface';
 import type { ColumnsType } from 'antd/es/table';
 import { workerJobsApi, CreateValidationJobDto, ValidationError, ValidationWarning } from '../../api/worker-jobs';
+import { PdfBeforeAfterPreview } from '../../components/PdfBeforeAfterPreview';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -304,6 +305,19 @@ export const WorkerTestPage = () => {
               size="small"
             />
           </Card>
+        )}
+
+        {/* Before/After 자동 수정 미리보기 — FIXABLE 상태에서만 표시 */}
+        {(currentJob.status as string) === 'FIXABLE' && currentJob.inputFileUrl && (
+          <PdfBeforeAfterPreview
+            originalFileUrl={currentJob.inputFileUrl}
+            metadata={metadata}
+            errors={errors}
+            orderOptions={{
+              pages: form.getFieldValue('pages') || 4,
+              bleed: form.getFieldValue('bleed') || 3,
+            }}
+          />
         )}
       </div>
     );
