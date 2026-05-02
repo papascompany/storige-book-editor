@@ -13,6 +13,7 @@ import {
   Popconfirm,
   Image,
   Switch,
+  Select,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import type { UploadFile } from 'antd/es/upload';
@@ -36,11 +37,23 @@ export const BackgroundList = () => {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingBackground, setEditingBackground] = useState<LibraryBackground | null>(null);
   const [fileList, setFileList] = useState<UploadFile[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<string | undefined>(undefined);
 
-  // Fetch backgrounds
-  const { data: backgrounds, isLoading } = useQuery({
-    queryKey: ['backgrounds'],
+  // Fetch all backgrounds (no filter) to compute unique category list
+  const { data: allBackgrounds } = useQuery({
+    queryKey: ['backgrounds-all'],
     queryFn: () => libraryApi.getBackgrounds(),
+  });
+
+  // Derive unique categories from all backgrounds
+  const categoryOptions = Array.from(
+    new Set((allBackgrounds || []).map((b) => b.category).filter(Boolean))
+  ).map((cat) => ({ label: cat as string, value: cat as string }));
+
+  // Fetch backgrounds with optional category filter
+  const { data: backgrounds, isLoading } = useQuery({
+    queryKey: ['backgrounds', selectedCategory],
+    queryFn: () => libraryApi.getBackgrounds(selectedCategory),
   });
 
   // Update mutation
@@ -219,6 +232,17 @@ export const BackgroundList = () => {
         >
           배경 업로드
         </Button>
+      </div>
+
+      <div style={{ marginBottom: 16 }}>
+        <Select
+          placeholder="카테고리 필터"
+          allowClear
+          style={{ width: 200 }}
+          value={selectedCategory}
+          onChange={setSelectedCategory}
+          options={categoryOptions}
+        />
       </div>
 
       <Table

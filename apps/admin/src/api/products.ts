@@ -43,13 +43,30 @@ export interface ProductQueryParams {
   pageSize?: number;
 }
 
+interface PaginatedResponse<T> {
+  success: boolean;
+  data: {
+    items: T[];
+    total: number;
+    page: number;
+    pageSize: number;
+    totalPages: number;
+  };
+}
+
 export const productsApi = {
   /**
    * 상품 목록 조회
    */
   getAll: async (params?: ProductQueryParams): Promise<Product[]> => {
-    const response = await axiosInstance.get<Product[]>('/products', { params });
-    return response.data;
+    const response = await axiosInstance.get<PaginatedResponse<Product>>('/products', { params });
+    // API returns { success, data: { items, total, page, pageSize, totalPages } }
+    const payload = response.data;
+    if (payload && typeof payload === 'object' && 'data' in payload && Array.isArray((payload as any).data?.items)) {
+      return (payload as any).data.items as Product[];
+    }
+    // Fallback: if server returns a plain array directly
+    return Array.isArray(payload) ? (payload as unknown as Product[]) : [];
   },
 
   /**

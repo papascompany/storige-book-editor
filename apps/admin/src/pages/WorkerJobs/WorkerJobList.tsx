@@ -26,6 +26,7 @@ const statusColors: Record<WorkerJobStatus, string> = {
   [WorkerJobStatus.PENDING]: 'default',
   [WorkerJobStatus.PROCESSING]: 'processing',
   [WorkerJobStatus.COMPLETED]: 'success',
+  [WorkerJobStatus.FIXABLE]: 'warning',
   [WorkerJobStatus.FAILED]: 'error',
 };
 
@@ -33,6 +34,7 @@ const statusLabels: Record<WorkerJobStatus, string> = {
   [WorkerJobStatus.PENDING]: '대기 중',
   [WorkerJobStatus.PROCESSING]: '처리 중',
   [WorkerJobStatus.COMPLETED]: '완료',
+  [WorkerJobStatus.FIXABLE]: '자동수정 가능',
   [WorkerJobStatus.FAILED]: '실패',
 };
 
