@@ -19,10 +19,10 @@ export class CreateValidationJobDto {
   @IsNotEmpty()
   fileUrl?: string;
 
-  @ApiProperty({ example: 'cover', enum: ['cover', 'content'] })
+  @ApiProperty({ example: 'cover', enum: ['cover', 'content', 'post_process'] })
   @IsString()
   @IsNotEmpty()
-  fileType: 'cover' | 'content';
+  fileType: 'cover' | 'content' | 'post_process';
 
   @ApiProperty({
     example: {
@@ -42,6 +42,14 @@ export class CreateValidationJobDto {
     bleed: number;
     paperThickness?: number;
   };
+
+  @ApiPropertyOptional({
+    example: 'https://bookmoa.com/api/webhook/validation',
+    description: '검증 완료/실패 시 콜백 URL (editSessionId 없이 서버 간 통신에 사용)',
+  })
+  @IsOptional()
+  @IsString()
+  callbackUrl?: string;
 }
 
 export class CreateConversionJobDto {
@@ -137,7 +145,7 @@ export class CreateSynthesisJobDto {
 }
 
 export class UpdateJobStatusDto {
-  @ApiPropertyOptional({ example: 'COMPLETED', enum: ['PENDING', 'PROCESSING', 'FIXABLE', 'COMPLETED', 'FAILED'] })
+  @ApiPropertyOptional({ example: 'COMPLETED', enum: ['PENDING', 'PROCESSING', 'COMPLETED', 'FIXABLE', 'FAILED'] })
   @IsOptional()
   @IsString()
   status?: string;

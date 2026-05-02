@@ -66,6 +66,7 @@ services:
       - DATABASE_PASSWORD=${DATABASE_PASSWORD}
       - DATABASE_NAME=${DATABASE_NAME:-storige}
       - STORAGE_PATH=/app/storage
+      - WORKER_STORAGE_PATH=/app
       - GHOSTSCRIPT_PATH=/usr/bin/gs
       - MAX_RETRY_ATTEMPTS=3
       - API_BASE_URL=http://api:4000/api

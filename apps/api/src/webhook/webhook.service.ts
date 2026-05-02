@@ -1,8 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import axios from 'axios';
-import { SynthesisWebhookPayload } from '@storige/types';
+import { SynthesisWebhookPayload, ValidationWebhookPayload } from '@storige/types';
 
-export { SynthesisWebhookPayload };
+export { SynthesisWebhookPayload, ValidationWebhookPayload };
 
 export interface SessionWebhookPayload {
   event: 'session.validated' | 'session.failed';
@@ -15,8 +15,8 @@ export interface SessionWebhookPayload {
   timestamp: string;
 }
 
-// SynthesisWebhookPayload는 @storige/types에서 import
-export type WebhookPayload = SessionWebhookPayload | SynthesisWebhookPayload;
+// WebhookPayload: 모든 웹훅 페이로드 유형의 합집합
+export type WebhookPayload = SessionWebhookPayload | SynthesisWebhookPayload | ValidationWebhookPayload;
 
 @Injectable()
 export class WebhookService {
