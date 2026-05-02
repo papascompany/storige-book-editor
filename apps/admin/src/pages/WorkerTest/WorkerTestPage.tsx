@@ -138,8 +138,9 @@ export const WorkerTestPage = () => {
     }
 
     let fileUrl = values.fileUrl;
+    let fileId: string | undefined;
 
-    // 파일이 선택된 경우 먼저 업로드 후 URL 획득
+    // 파일이 선택된 경우 먼저 업로드 후 fileId 획득
     if (fileList.length > 0 && fileList[0].originFileObj) {
       try {
         // fileType을 API에 전달해야 400 오류를 방지할 수 있음
@@ -147,7 +148,10 @@ export const WorkerTestPage = () => {
           fileList[0].originFileObj as File,
           values.fileType as 'cover' | 'content',
         );
-        fileUrl = uploadResult.fileUrl;
+        // fileId 우선 사용 — API가 자동으로 filePath(선행슬래시 없는 경로)로 해결
+        // 워커가 /storage/... 절대경로를 ENOENT로 실패하는 것을 방지
+        fileId = uploadResult.fileId;
+        fileUrl = uploadResult.fileUrl; // fallback용 보존
       } catch (err: any) {
         message.error(`파일 업로드 실패: ${err?.response?.data?.message || err.message}`);
         return;
@@ -155,7 +159,8 @@ export const WorkerTestPage = () => {
     }
 
     const dto: CreateValidationJobDto = {
-      fileUrl: fileUrl,
+      // fileId가 있으면 fileId를 우선 사용, 없으면 사용자가 입력한 fileUrl 사용
+      ...(fileId ? { fileId } : { fileUrl }),
       fileType: values.fileType,
       orderOptions: {
         size: { width: values.width, height: values.height },

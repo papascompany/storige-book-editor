@@ -251,9 +251,27 @@ export class PdfConverterService {
 
   /**
    * Download file from URL
+   *
+   * 경로 처리 우선순위:
+   *  1. '/storage/...' 또는 'storage/...' → WORKER_STORAGE_PATH 기준 정규화 (API의 fileUrl 형식)
+   *  2. 일반 절대/상대 경로 → 그대로 읽기
+   *  3. HTTP/HTTPS URL → axios로 다운로드
+   *
+   * ⚠️ 1번 체크가 2번보다 먼저 와야 함. 그렇지 않으면 '/storage/...' 가
+   *    절대경로로 처리되어 ENOENT 발생.
    */
   private async downloadFile(url: string): Promise<Uint8Array> {
-    // Check if it's a local file path
+    // storige 내부 storage 경로 (API에서 받는 fileUrl이 보통 이 형태)
+    if (url.startsWith('/storage/') || url.startsWith('storage/')) {
+      const storageBase = process.env.WORKER_STORAGE_PATH || '../api';
+      const filePath = url.startsWith('/storage/')
+        ? `${storageBase}${url}`           // '/app' + '/storage/...' = '/app/storage/...'
+        : `${storageBase}/${url}`;         // '/app' + '/' + 'storage/...' = '/app/storage/...'
+      const buffer = await fs.readFile(filePath);
+      return new Uint8Array(buffer);
+    }
+
+    // 일반 절대/상대 경로
     if (url.startsWith('/') || url.startsWith('./')) {
       const buffer = await fs.readFile(url);
       return new Uint8Array(buffer);

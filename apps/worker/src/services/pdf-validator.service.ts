@@ -152,12 +152,8 @@ export class PdfValidatorService {
       }
 
       // 12. CMYK 2단계 검증 (WBS 3.0)
-      // 파일 경로 계산 (Ghostscript inkcov용)
-      let inputPath = fileUrl;
-      if (fileUrl.startsWith('storage/')) {
-        const storagePath = process.env.WORKER_STORAGE_PATH || '../api';
-        inputPath = `${storagePath}/${fileUrl}`;
-      }
+      // 파일 경로 계산 (Ghostscript inkcov용) — `/storage/`, `storage/` 양쪽 모두 정규화
+      const inputPath = this.resolveLocalPath(fileUrl);
 
       const colorModeResult = await this.detectColorMode(
         pdfBytes,
@@ -499,20 +495,36 @@ export class PdfValidatorService {
   }
 
   /**
+   * 로컬 파일 경로 정규화
+   *
+   * 입력 URL/경로 종류:
+   *  - "storage/uploads/..."   → ${WORKER_STORAGE_PATH}/storage/uploads/...
+   *  - "/storage/uploads/..."  → ${WORKER_STORAGE_PATH}/storage/uploads/...  (선행 슬래시 제거 후 동일)
+   *  - "/app/storage/..."      → 그대로 (이미 절대 경로)
+   *  - "./relative/..."        → 그대로
+   *
+   * API가 반환하는 fileUrl은 HTTP 서빙용 `/storage/...` 형태이므로 워커가 받으면 ENOENT가 발생.
+   * 본 메서드가 두 형태(`/storage/...`, `storage/...`)를 모두 WORKER_STORAGE_PATH 기준으로 정규화.
+   */
+  resolveLocalPath(url: string): string {
+    const storageBase = process.env.WORKER_STORAGE_PATH || '../api';
+    // /storage/... 또는 storage/... 양쪽 모두 처리
+    if (url.startsWith('/storage/')) {
+      return `${storageBase}${url}`; // /app + /storage/... → /app/storage/...
+    }
+    if (url.startsWith('storage/')) {
+      return `${storageBase}/${url}`;
+    }
+    return url;
+  }
+
+  /**
    * 파일 다운로드
    */
   private async downloadFile(url: string): Promise<Uint8Array> {
-    // 로컬 파일 경로인 경우 (절대 경로, 상대 경로, storage/ 경로)
+    // 로컬 파일 경로인 경우 (절대 경로, 상대 경로, storage/ 또는 /storage/ 경로)
     if (url.startsWith('/') || url.startsWith('./') || url.startsWith('storage/')) {
-      // storage/ 경로는 API 서비스의 storage 디렉토리 기준으로 처리
-      // Worker는 apps/worker에서 실행되므로 ../api/storage로 접근
-      let filePath = url;
-      if (url.startsWith('storage/')) {
-        // Worker는 apps/worker에서 실행되므로 API의 storage 디렉토리 접근 필요
-        // WORKER_STORAGE_PATH가 설정되어 있으면 사용, 없으면 상대 경로로 접근
-        const storagePath = process.env.WORKER_STORAGE_PATH || '../api';
-        filePath = `${storagePath}/${url}`;
-      }
+      const filePath = this.resolveLocalPath(url);
       this.logger.log(`Reading local file: ${filePath}`);
       const buffer = await fs.readFile(filePath);
       return new Uint8Array(buffer);
