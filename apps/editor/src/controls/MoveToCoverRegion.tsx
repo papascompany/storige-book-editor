@@ -79,14 +79,12 @@ export default function MoveToCoverRegion() {
   // 노출 조건
   if (!activeGroup || activeGroup.length < 2) return null
   if (!activeSelection || !Array.isArray(activeSelection) || activeSelection.length === 0) return null
-  // 멀티 선택은 1차에서 미지원 (clone 정확성 이슈) — 향후 별도 처리
-  if (activeSelection.length > 1) return null
 
-  const obj = activeSelection[0]
-  if (!obj) return null
-  // 시스템 객체는 ControlBar showBar 조건에서 이미 걸러지지만 안전 가드 추가
-  if ((obj as any).id === 'workspace') return null
-  if ((obj as any).meta?.system) return null
+  // 시스템/워크스페이스 객체를 제외한 이동 가능한 객체 목록
+  const moveableObjects = activeSelection.filter(
+    (o: any) => o && o.id !== 'workspace' && !o.meta?.system
+  )
+  if (moveableObjects.length === 0) return null
 
   const targets = activeGroup.filter((m) => m.index !== currentPageIndex)
   if (targets.length === 0) return null
@@ -100,109 +98,116 @@ export default function MoveToCoverRegion() {
     }
     if (source === target) return
 
-    // target 좌표 계산 (Phase 2-A: 워크스페이스 기준 xNorm/yNorm 비례 변환)
-    // - 객체의 source 워크스페이스 내부 상대 위치를 target 워크스페이스에서 동일 비율로 유지
-    // - 워크스페이스 미발견 시 fallback: target 중심
-    let targetLeft: number | undefined
-    let targetTop: number | undefined
     const srcBox = getWorkspaceBox(source)
     const tgtBox = getWorkspaceBox(target)
-    if (srcBox && tgtBox) {
-      try {
-        const objCenter = (obj as any).getCenterPoint?.()
-        if (objCenter) {
-          const srcLeftEdge = srcBox.centerX - srcBox.width / 2
-          const srcTopEdge = srcBox.centerY - srcBox.height / 2
-          const xNorm = (objCenter.x - srcLeftEdge) / srcBox.width
-          const yNorm = (objCenter.y - srcTopEdge) / srcBox.height
-          // target 좌표 (워크스페이스 좌상단 + 비례 offset). xNorm/yNorm은 0~1 범위 외도 허용
-          // (객체가 워크스페이스 외부일 때 target에서도 동일 외부 비율 유지)
-          targetLeft = tgtBox.centerX - tgtBox.width / 2 + xNorm * tgtBox.width
-          targetTop = tgtBox.centerY - tgtBox.height / 2 + yNorm * tgtBox.height
-        }
-      } catch (e) {
-        console.warn('[MoveToCoverRegion] coord ratio calc failed:', e)
-      }
-    }
-    // fallback: target 워크스페이스 중심 (Phase 1 정책)
-    if (targetLeft === undefined && tgtBox) {
-      targetLeft = tgtBox.centerX
-      targetTop = tgtBox.centerY
-    }
-
-    const moved = await moveObjectToCanvas(obj, source, target, {
-      left: targetLeft,
-      top: targetTop,
-      preserveId: true,
-      preserveMeta: true,
-    })
-
-    if (!moved) {
-      showToast('객체 이동에 실패했습니다.', 'error', 3000)
-      return
-    }
-
-    // target SpreadPlugin이 있으면 (spread 모드) regionRef/anchor 자동 갱신
     const targetEditor = allEditors[targetIdx] as any
     const targetSpread = targetEditor?.getPlugin?.('SpreadPlugin') as SpreadPlugin | undefined
-    if (targetSpread?.getLayout) {
-      try {
-        const layout = targetSpread.getLayout()
-        if (layout) {
-          const br = (moved as any).getBoundingRect?.()
-          if (br) {
-            const result = resolveRegionRef(layout.regions, br, null)
-            if (!(moved as any).meta) (moved as any).meta = {}
-            ;(moved as any).meta.regionRef = result.regionRef
-            ;(moved as any).meta.primaryRegionHint = result.primaryRegionHint
-            ;(moved as any).meta.anchor = result.anchor
+    const targetMeta = activeGroup.find((m) => m.index === targetIdx)
+
+    let movedCount = 0
+
+    for (const obj of moveableObjects) {
+      // target 좌표 계산 (Phase 2-A: 워크스페이스 기준 xNorm/yNorm 비례 변환)
+      let targetLeft: number | undefined
+      let targetTop: number | undefined
+      if (srcBox && tgtBox) {
+        try {
+          const objCenter = (obj as any).getCenterPoint?.()
+          if (objCenter) {
+            const srcLeftEdge = srcBox.centerX - srcBox.width / 2
+            const srcTopEdge = srcBox.centerY - srcBox.height / 2
+            const xNorm = (objCenter.x - srcLeftEdge) / srcBox.width
+            const yNorm = (objCenter.y - srcTopEdge) / srcBox.height
+            targetLeft = tgtBox.centerX - tgtBox.width / 2 + xNorm * tgtBox.width
+            targetTop = tgtBox.centerY - tgtBox.height / 2 + yNorm * tgtBox.height
           }
+        } catch (e) {
+          console.warn('[MoveToCoverRegion] coord ratio calc failed:', e)
         }
-      } catch (e) {
-        console.warn('[MoveToCoverRegion] target spread meta recompute failed:', e)
       }
-    } else {
-      // Separated 모드: target의 coverPosition을 regionRef로 단순 설정
-      const targetMeta = activeGroup.find((m) => m.index === targetIdx)
-      if (targetMeta?.coverPosition) {
-        if (!(moved as any).meta) (moved as any).meta = {}
-        ;(moved as any).meta.regionRef = targetMeta.coverPosition
+      if (targetLeft === undefined && tgtBox) {
+        targetLeft = tgtBox.centerX
+        targetTop = tgtBox.centerY
       }
+
+      const moved = await moveObjectToCanvas(obj, source, target, {
+        left: targetLeft,
+        top: targetTop,
+        preserveId: true,
+        preserveMeta: true,
+      })
+
+      if (!moved) continue
+      movedCount++
+
+      // target SpreadPlugin이 있으면 (spread 모드) regionRef/anchor 자동 갱신
+      if (targetSpread?.getLayout) {
+        try {
+          const layout = targetSpread.getLayout()
+          if (layout) {
+            const br = (moved as any).getBoundingRect?.()
+            if (br) {
+              const result = resolveRegionRef(layout.regions, br, null)
+              if (!(moved as any).meta) (moved as any).meta = {}
+              ;(moved as any).meta.regionRef = result.regionRef
+              ;(moved as any).meta.primaryRegionHint = result.primaryRegionHint
+              ;(moved as any).meta.anchor = result.anchor
+            }
+          }
+        } catch (e) {
+          console.warn('[MoveToCoverRegion] target spread meta recompute failed:', e)
+        }
+      } else {
+        // Separated 모드: target의 coverPosition을 regionRef로 단순 설정
+        if (targetMeta?.coverPosition) {
+          if (!(moved as any).meta) (moved as any).meta = {}
+          ;(moved as any).meta.regionRef = targetMeta.coverPosition
+        }
+      }
+    }
+
+    if (movedCount === 0) {
+      showToast('이동할 수 있는 객체가 없습니다.', 'error', 3000)
+      return
     }
 
     // target 페이지로 자동 전환
     setPage(targetIdx)
     goToPage(targetIdx)
 
-    const targetLabel = activeGroup.find((m) => m.index === targetIdx)?.label ?? '대상 영역'
+    const targetLabel = targetMeta?.label ?? '대상 영역'
 
     // cross-canvas move log push (Phase 2-B — "방금 이동 되돌리기" 액션 활성화)
     pushCrossMove({
-      id: (moved as any).id ?? `move-${Date.now()}`,
+      id: `move-${Date.now()}`,
       sourceIdx: currentPageIndex,
       targetIdx,
       targetLabel,
+      count: movedCount,
     })
 
-    showToast(`"${targetLabel}"(으)로 이동했습니다. 30초 안에 "되돌리기"로 복구 가능.`, 'success', 3500)
+    const objWord = movedCount === 1 ? '객체' : `${movedCount}개 객체`
+    showToast(`${objWord}를 "${targetLabel}"(으)로 이동했습니다. 30초 안에 "되돌리기"로 복구 가능.`, 'success', 3500)
   }
 
   // "방금 이동 되돌리기" — Phase 2-B
-  // 양 캔버스의 history undo를 동기 호출 (target에서 add 되돌림 + source에서 remove 되돌림)
+  // 양 캔버스의 history undo를 count만큼 호출 (target N add 되돌림 + source N remove 되돌림)
   const handleUndoLastMove = () => {
     const last = lastCrossMove
     if (!last) return
     const src = allCanvas[last.sourceIdx] as any
     const tgt = allCanvas[last.targetIdx] as any
+    const count = last.count ?? 1
     try {
-      // target 먼저 (add 되돌림 → 객체 사라짐)
-      tgt?.undo?.()
+      // target 먼저 (add 되돌림 → 객체 사라짐) — 이동한 객체 수만큼
+      for (let i = 0; i < count; i++) tgt?.undo?.()
       // source (remove 되돌림 → 객체 복원)
-      src?.undo?.()
+      for (let i = 0; i < count; i++) src?.undo?.()
       // source 페이지로 자동 전환
       setPage(last.sourceIdx)
       goToPage(last.sourceIdx)
-      showToast('영역 이동을 되돌렸습니다.', 'info', 2500)
+      const objWord = count === 1 ? '영역 이동을' : `${count}개 객체 이동을`
+      showToast(`${objWord} 되돌렸습니다.`, 'info', 2500)
     } catch (e) {
       console.warn('[MoveToCoverRegion] undo cross-canvas failed:', e)
       showToast('되돌리기에 실패했습니다.', 'error', 3000)
@@ -233,7 +238,7 @@ export default function MoveToCoverRegion() {
             type="button"
             onClick={() => handleMove(m.index)}
             className="text-[11px] px-2 py-1.5 rounded-md border border-editor-border bg-editor-surface-low hover:bg-editor-hover hover:border-editor-accent text-editor-text transition-colors"
-            title={`이 객체를 "${m.label}"(으)로 이동`}
+            title={moveableObjects.length === 1 ? `이 객체를 "${m.label}"(으)로 이동` : `선택한 ${moveableObjects.length}개 객체를 "${m.label}"(으)로 이동`}
             aria-label={`${m.label}로 이동`}
           >
             {m.label}
