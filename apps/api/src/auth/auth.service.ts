@@ -104,7 +104,20 @@ export class AuthService {
   async createShopSession(
     dto: CreateShopSessionDto,
   ): Promise<{ accessToken: string; refreshToken: string }> {
-    const payload = {
+    // Patch D (2026-05-03): orderSeqno 또는 allowedOrderSeqnos를 JWT에 포함하면
+    // 후속 EditSession 생성 시 JWT.allowedOrderSeqnos 검증으로 강한 격리 가능.
+    // 둘 다 없으면 기존 동작 유지 (DTO 값 신뢰, PHP 측 호환성 보장).
+    const allowedOrderSeqnos: number[] = [];
+    if (dto.orderSeqno !== undefined && dto.orderSeqno !== null) {
+      allowedOrderSeqnos.push(dto.orderSeqno);
+    }
+    if (Array.isArray(dto.allowedOrderSeqnos) && dto.allowedOrderSeqnos.length > 0) {
+      for (const o of dto.allowedOrderSeqnos) {
+        if (!allowedOrderSeqnos.includes(o)) allowedOrderSeqnos.push(o);
+      }
+    }
+
+    const payload: Record<string, any> = {
       sub: dto.memberSeqno.toString(),
       email: dto.memberId,
       name: dto.memberName,
@@ -113,6 +126,10 @@ export class AuthService {
       phpSessionId: dto.phpSessionId,
       permissions: dto.permissions || ['edit', 'upload', 'validate'],
     };
+    // 주문 컨텍스트 명시 시 JWT에 포함 (없으면 누락 — 호환성 유지)
+    if (allowedOrderSeqnos.length > 0) {
+      payload.allowedOrderSeqnos = allowedOrderSeqnos;
+    }
 
     const accessToken = this.jwtService.sign(payload, { expiresIn: '1h' });
     const refreshToken = this.jwtService.sign(
@@ -123,6 +140,7 @@ export class AuthService {
         role: payload.role,
         source: 'shop',
         permissions: payload.permissions,
+        ...(allowedOrderSeqnos.length > 0 && { allowedOrderSeqnos }),
       },
       { expiresIn: '30d' },
     );

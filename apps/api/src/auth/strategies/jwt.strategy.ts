@@ -13,6 +13,8 @@ export interface JwtPayload {
   source?: string; // 'shop' for bookmoa shop sessions
   name?: string;
   permissions?: string[];
+  /** Patch D (2026-05-03): 주문 컨텍스트 — 명시 시 EditSession 생성 시 검증 */
+  allowedOrderSeqnos?: number[];
 }
 
 // Shop session 사용자 타입
@@ -23,6 +25,8 @@ export interface ShopUser {
   role: string;
   source: 'shop';
   permissions: string[];
+  /** JWT에 명시된 허용 주문 번호 목록 (없으면 undefined — 모든 주문 허용 = 기존 호환) */
+  allowedOrderSeqnos?: number[];
 }
 
 @Injectable()
@@ -49,6 +53,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         role: payload.role,
         source: 'shop',
         permissions: payload.permissions || ['edit', 'upload', 'validate'],
+        allowedOrderSeqnos: payload.allowedOrderSeqnos,
       };
     }
 
