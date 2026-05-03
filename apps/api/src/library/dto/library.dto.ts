@@ -324,7 +324,7 @@ export class UpdateFrameDto {
 }
 
 // Category DTOs
-export type LibraryCategoryType = 'background' | 'shape' | 'frame' | 'clipart';
+export type LibraryCategoryType = 'background' | 'shape' | 'frame' | 'clipart' | 'font';
 
 export class CreateCategoryDto {
   @ApiProperty({ example: '기본 도형' })
@@ -332,9 +332,9 @@ export class CreateCategoryDto {
   @IsNotEmpty()
   name: string;
 
-  @ApiProperty({ enum: ['background', 'shape', 'frame', 'clipart'] })
+  @ApiProperty({ enum: ['background', 'shape', 'frame', 'clipart', 'font'] })
   @IsString()
-  @IsIn(['background', 'shape', 'frame', 'clipart'])
+  @IsIn(['background', 'shape', 'frame', 'clipart', 'font'])
   type: LibraryCategoryType;
 
   @ApiPropertyOptional()
