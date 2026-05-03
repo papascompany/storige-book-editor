@@ -392,7 +392,7 @@
 <div class="top-header">
   <div class="badge-row">
     <span class="badge blue">📄 기술 문서</span>
-    <span class="badge green">v2.2</span>
+    <span class="badge green">v2.3</span>
     <span class="badge">2026-05-02</span>
     <span class="badge">PHP 개발자용</span>
   </div>
@@ -430,6 +430,7 @@
   <a href="#s4-3" class="sub">경고 코드</a>
   <a href="#s4-4" class="sub">CMYK 검증</a>
   <a href="#s4-5" class="sub">해상도 기준</a>
+  <a href="#s4-7" class="sub" style="color:var(--green)">운영 모니터링 ✦</a>
   <a href="#s4-6" class="sub" style="color:var(--red)">워커 경로 정규화 ⚡</a>
   <a href="#s5">⑤ 환경 변수</a>
 </nav>
@@ -1263,6 +1264,49 @@ window.<span class="type">StorigeEditor</span>.<span class="func">init</span>({
     </table>
   </div>
 
+  <!-- 운영 모니터링 (v2.3 신규) -->
+  <h3 class="sub-title" id="s4-7" style="margin-top:36px"><span style="background:var(--green)"></span>운영 모니터링 / 디버깅 <span style="font-size:11px;background:rgba(52,211,153,.15);color:var(--green);border:1px solid var(--green);border-radius:4px;padding:2px 6px;vertical-align:middle;margin-left:6px">v2.3 신규</span></h3>
+
+  <p style="color:var(--text2);margin-bottom:14px;font-size:13px">
+    PHP 측 통합 검증 시 storige 측 동작을 가시화할 수 있는 도구. PHP 팀이 직접 활용 가능.
+  </p>
+
+  <div style="display:grid;grid-template-columns:1fr;gap:12px;margin-bottom:16px">
+    <!-- Sentry -->
+    <div style="background:rgba(168,85,247,.08);border-left:3px solid var(--purple);padding:14px 18px;border-radius:0 8px 8px 0">
+      <div style="font-weight:700;color:var(--purple2);font-size:14px;margin-bottom:6px">🔍 Sentry 운영 에러 추적</div>
+      <div style="color:var(--text2);font-size:13px;line-height:1.7">
+        <strong>활성화</strong>: 2026-05-03 · 4개 앱 모두 (API/Worker/Editor/Admin)<br>
+        <strong>대시보드</strong>: <code class="inline">sentry.io/organizations/papascompany/issues/</code><br>
+        <strong>PHP 측 도움</strong>: <code class="inline">/files/upload/external</code> 또는 <code class="inline">/worker-jobs/*/external</code> 호출 시 storige 내부 5xx 에러는 자동 캡처됨<br>
+        <strong>마스킹</strong>: Authorization · Cookie · X-API-Key · password · token 자동 처리<br>
+        <strong>자동 필터</strong>: 4xx 정상 흐름 / <code class="inline">/health</code> / 노이즈 (ResizeObserver 등) 제외
+      </div>
+    </div>
+
+    <!-- Bull Queue -->
+    <div style="background:rgba(59,130,246,.08);border-left:3px solid var(--blue);padding:14px 18px;border-radius:0 8px 8px 0">
+      <div style="font-weight:700;color:var(--blue2);font-size:14px;margin-bottom:6px">📊 Bull 큐 모니터링</div>
+      <div style="color:var(--text2);font-size:13px;line-height:1.7">
+        <strong>endpoint</strong>: <code class="inline">GET /api/health/queues</code> (JWT 인증)<br>
+        <strong>응답</strong>: 3개 큐 (validation/conversion/synthesis) waiting/active/failed/completed 카운트 + status<br>
+        <strong>status</strong>: <span class="badge" style="background:rgba(34,197,94,.15);color:var(--green)">ok</span> (backlog &lt;5) · <span class="badge" style="background:rgba(234,179,8,.15);color:var(--yellow2)">warning</span> (5~9) · <span class="badge" style="background:rgba(239,68,68,.15);color:var(--red2)">critical</span> (≥10)<br>
+        <strong>자동 알람</strong>: critical 1분 이상 지속 → Sentry warning 발송 (5분 쿨다운)<br>
+        <strong>Admin Dashboard</strong>: 5초 자동 갱신 위젯 표시
+      </div>
+    </div>
+
+    <!-- Public Health -->
+    <div style="background:rgba(6,182,212,.08);border-left:3px solid var(--cyan);padding:14px 18px;border-radius:0 8px 8px 0">
+      <div style="font-weight:700;color:var(--cyan2);font-size:14px;margin-bottom:6px">💓 Public Health Check</div>
+      <div style="color:var(--text2);font-size:13px;line-height:1.7">
+        <strong>endpoint</strong>: <code class="inline">GET /api/health</code> (인증 불필요)<br>
+        <strong>PHP cron 활용</strong>: 5분마다 호출해 storige API 가용성 + 큐 적체 자동 모니터링 가능<br>
+        <strong>응답 포함</strong>: status / uptime / environment / version / queues 요약
+      </div>
+    </div>
+  </div>
+
   <!-- 워커 파일 경로 정규화 (v2.2 신규) -->
   <h3 class="sub-title" id="s4-6" style="margin-top:36px"><span style="background:var(--red)"></span>워커 파일 경로 정규화 <span style="font-size:11px;background:rgba(239,68,68,.15);color:var(--red);border:1px solid var(--red);border-radius:4px;padding:2px 6px;vertical-align:middle;margin-left:6px">v2.2 핫픽스</span></h3>
 
@@ -1364,7 +1408,7 @@ window.<span class="type">StorigeEditor</span>.<span class="func">init</span>({
 
 <!-- 푸터 -->
 <div style="border-top:1px solid var(--border);margin-top:48px;padding:24px 0;color:var(--text3);font-size:12px">
-  <div style="margin-bottom:6px"><strong style="color:var(--text2)">Storige × Bookmoa 시스템 통합 문서</strong> · v2.2 · 2026-05-02</div>
+  <div style="margin-bottom:6px"><strong style="color:var(--text2)">Storige × Bookmoa 시스템 통합 문서</strong> · v2.3 · 2026-05-03</div>
   <div>저장 경로: <code style="font-family:monospace;color:var(--text3)">docs/SYSTEM_INTEGRATION_OVERVIEW.md</code> · <code style="font-family:monospace;color:var(--text3)">docs/SYSTEM_INTEGRATION_OVERVIEW.html</code></div>
   <div style="margin-top:6px">최신 API 스펙: <code style="font-family:monospace;color:var(--text3)">http://localhost:4000/api/docs</code> (Swagger UI)</div>
 </div>

@@ -1,9 +1,22 @@
 # Storige × Bookmoa 시스템 통합 문서
 
 > **작성일**: 2026-05-02  
-> **최종 수정**: 2026-05-02 (v2.2 — 워커 `/storage/` 경로 정규화 버그 수정 반영)  
-> **버전**: v2.2  
+> **최종 수정**: 2026-05-03 (v2.3 — Sentry 운영 추적 활성화 + Bull 큐 모니터링 + AI 패널 UI 통합 + Before/After 미리보기)  
+> **버전**: v2.3  
 > **대상**: PHP 개발자, 운영자, 기술 검토자
+
+> ### 🔄 v2.3 변경 이력 (2026-05-03)
+> - **Sentry 운영 에러 추적 활성화**: 4개 앱(API/Worker/Editor/Admin) 모두 DSN 등록 + production 배포 완료
+>   - 자동 마스킹: `password`/`token`/`secret`/`api-key` + `Authorization`/`Cookie` 헤더
+>   - 자동 필터: 4xx 정상 비즈니스 흐름 / `/health` / `ResizeObserver` 노이즈
+>   - PHP 측 webhook 호출 실패도 storige 측에서 자동 추적됨 (Sentry 대시보드)
+> - **Bull 큐 적체/실패 자동 알람**: 1분 폴링 → 10건 이상 적체 시 Sentry warning 발송
+>   - 새 endpoint `GET /api/health/queues` (Admin JWT 인증) — 큐 상태 스냅샷
+>   - Admin Dashboard 5초 자동 갱신 위젯
+> - **Editor AI 패널 통합**: 사이드바 'AI' 탭 추가 (추천 + 생성)
+> - **PDF 검증 Before/After 미리보기**: FIXABLE 결과에 자동 수정 시각화
+> - **Composite 책등 가변 시 객체 자동 재배치**
+> - **다크모드 fabric 객체 색상 통일**
 
 > ### 🔄 v2.2 변경 이력 (2026-05-02)
 > - **워커 파일 경로 정규화 버그 수정**: API가 반환하는 `fileUrl` (`/storage/...` 선행 슬래시 형태) 을 워커가 절대경로로 오인하여 `ENOENT` 오류 발생하던 버그를 검증/합성/변환 3개 서비스 모두 수정
@@ -867,6 +880,56 @@ Effective DPI = (이미지 픽셀 수 × 25.4) / 표시 크기(mm)
 
 - **70점 이상** → 스프레드로 판정
 - **신뢰도**: 80점↑ = high / 60~79 = medium / 그 외 = low
+
+---
+
+## 5.11 운영 모니터링 / 디버깅 (v2.3 추가)
+
+> PHP 측 통합 검증 시 storige 측 동작을 가시화할 수 있는 도구들. PHP 팀이 직접 사용 가능.
+
+### 5.11.1 Sentry 운영 에러 추적
+- **상태**: ✅ 활성화 (2026-05-03)
+- **PHP 측 도움**: PHP가 `/files/upload/external` 또는 `/worker-jobs/*/external` 호출 시 storige 내부에서 5xx 에러가 발생하면 자동으로 Sentry에 캡처됨
+- **확인 방법**:
+  1. https://sentry.io/organizations/papascompany/issues/
+  2. 좌측 프로젝트 드롭다운에서 `storige-api` 또는 `storige-worker` 선택
+  3. 에러 발생 시점/스택트레이스/요청 헤더(마스킹된) 확인
+- **자동 필터링** (전송 안 됨):
+  - 400/401/403/404 (정상 비즈니스 흐름)
+  - `/health` 엔드포인트
+  - 클라이언트 연결 끊김 (ECONNRESET/AbortError)
+- **마스킹**: Authorization, Cookie, X-API-Key, password, token 자동 처리
+
+### 5.11.2 Bull 큐 상태 조회 (Admin)
+- **endpoint**: `GET /api/health/queues` (JWT 인증 필요 — admin 계정)
+- **응답 예시**:
+  ```json
+  {
+    "queues": {
+      "pdf-validation": { "waiting": 0, "active": 0, "completed": 12, "failed": 0, "backlog": 0, "status": "ok" },
+      "pdf-conversion": { "waiting": 0, "active": 0, "completed": 5,  "failed": 0, "backlog": 0, "status": "ok" },
+      "pdf-synthesis":  { "waiting": 2, "active": 1, "completed": 8,  "failed": 1, "backlog": 3, "status": "ok" }
+    },
+    "thresholds": { "backlog": 10, "intervalMs": 60000, "cooldownMs": 300000 },
+    "timestamp": "2026-05-03T..."
+  }
+  ```
+- **status 필드**: `ok` (backlog < 5) / `warning` (5~9) / `critical` (>= 10)
+- **자동 알람**: status === 'critical' 1분 이상 지속 시 Sentry warning 발송
+
+### 5.11.3 Public Health Check
+- **endpoint**: `GET /api/health` (인증 불필요 — `Public` 데코레이터)
+- **PHP 측 모니터링 활용**: cron으로 5분마다 호출해 storige API 가용성 확인 가능
+- **응답에 큐 카운트 포함** (요약):
+  ```json
+  {
+    "status": "ok",
+    "uptime": 22034.08,
+    "environment": "production",
+    "version": "1.0.0",
+    "queues": { "validation": {...}, "conversion": {...}, "synthesis": {...} }
+  }
+  ```
 
 ---
 
