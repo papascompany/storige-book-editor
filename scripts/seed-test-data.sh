@@ -81,7 +81,7 @@ for ts in '{"name":"A4 무선제본 책자 (16P)","type":"book","width":210,"hei
           '{"name":"A4 사철제본 책자 (8P)","type":"book","width":210,"height":297,"editorMode":"single","canAddPage":true}' \
           '{"name":"A5 스프링제본 책자 (4P)","type":"book","width":148,"height":210,"editorMode":"single","canAddPage":true}' \
           '{"name":"A4 3단 리플렛","type":"leaflet","width":297,"height":210,"editorMode":"single","canAddPage":false}' \
-          '{"name":"스프레드 책자 표지","type":"book","width":420,"height":297,"editorMode":"spread","canAddPage":false}'; do
+          '{"name":"스프레드 책자 표지 (책 펼침면)","type":"book","width":420,"height":297,"editorMode":"book","canAddPage":false}'; do
   result=$(curl -sX POST "$API/template-sets" -H "$H" -H "$HJ" -d "$ts" 2>&1)
   name=$(echo "$ts" | python3 -c "import json,sys;print(json.load(sys.stdin)['name'])")
   if echo "$result" | grep -q '"id"'; then
