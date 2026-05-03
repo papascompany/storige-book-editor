@@ -55,6 +55,9 @@ export default [
         sessionStorage: 'readonly',
         React: 'readonly',
         prompt: 'readonly',
+        alert: 'readonly',
+        confirm: 'readonly',
+        Notification: 'readonly',
         __dirname: 'readonly',
         __filename: 'readonly',
         // Vitest globals
@@ -91,9 +94,9 @@ export default [
       'react-hooks/exhaustive-deps': 'warn',
     },
   },
-  // Node 환경 (Vite config 등) — process, __dirname 등 허용
+  // Node 환경 (Vite/Playwright config 등) — process, __dirname 등 허용
   {
-    files: ['vite.config.ts', 'vite.*.config.ts'],
+    files: ['vite.config.ts', 'vite.*.config.ts', 'playwright.config.ts'],
     languageOptions: {
       globals: {
         process: 'readonly',
@@ -104,6 +107,16 @@ export default [
     },
   },
   {
-    ignores: ['dist/**', 'node_modules/**', '*.js', '*.cjs', '*.mjs'],
+    ignores: [
+      'dist/**',
+      'node_modules/**',
+      '*.js',
+      '*.cjs',
+      '*.mjs',
+      // Playwright E2E 테스트 — 자체 환경에서 실행, 별도 lint 불필요
+      'tests/**',
+      'playwright-report/**',
+      'test-results/**',
+    ],
   },
 ];
