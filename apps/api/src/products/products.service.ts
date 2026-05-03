@@ -14,8 +14,26 @@ export class ProductsService {
   ) {}
 
   async create(dto: CreateProductDto): Promise<Product> {
-    const product = this.productRepository.create(dto);
+    // 2026-05-03: Admin UI 호환 — name을 title로 자동 매핑 (둘 중 하나만 있어도 OK)
+    const normalized = this.normalizeProductDto(dto);
+    const product = this.productRepository.create(normalized as Partial<Product>);
     return this.productRepository.save(product);
+  }
+
+  /**
+   * Admin UI (`name`)와 Storige API (`title`) 양쪽 모델 호환을 위한 정규화.
+   * - title 누락 + name 있음 → title = name
+   * - name 누락 + title 있음 → name 그대로 (DB 컬럼 추가됨, nullable)
+   * - 둘 다 누락 → 검증은 DTO에서 처리하되 둘 다 optional이라 service에서 가드 권장
+   *
+   * 반환 타입: Partial<Product> 호환 plain object (TypeORM repository.create() 입력용)
+   */
+  private normalizeProductDto(dto: CreateProductDto | UpdateProductDto): Record<string, any> {
+    const result: Record<string, any> = { ...dto };
+    if (!result.title && result.name) {
+      result.title = result.name;
+    }
+    return result;
   }
 
   async findAll(query: QueryProductDto) {

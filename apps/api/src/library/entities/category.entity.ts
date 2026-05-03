@@ -11,7 +11,7 @@ import {
 } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
 
-export type LibraryCategoryType = 'background' | 'shape' | 'frame' | 'clipart';
+export type LibraryCategoryType = 'background' | 'shape' | 'frame' | 'clipart' | 'font';
 
 @Entity('library_categories')
 export class LibraryCategory {

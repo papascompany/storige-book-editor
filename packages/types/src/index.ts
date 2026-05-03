@@ -334,7 +334,7 @@ export interface OrderOptions {
 /**
  * 라이브러리 카테고리 타입
  */
-export type LibraryCategoryType = 'background' | 'shape' | 'frame' | 'clipart';
+export type LibraryCategoryType = 'background' | 'shape' | 'frame' | 'clipart' | 'font';
 
 /**
  * 라이브러리 카테고리 (계층형)

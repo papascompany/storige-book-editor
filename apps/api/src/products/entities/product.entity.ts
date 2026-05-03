@@ -20,6 +20,23 @@ export class Product {
   @Column({ length: 255 })
   title: string;
 
+  // ─── Bookmoa-style 메타 (2026-05-03 추가) ─────────────────────────
+  // Admin UI에서 사용하는 사용자 노출용 필드. title과 별도로 관리되며,
+  // 누락 시 title을 fallback으로 사용. bookmoa 외부 쇼핑몰 매핑용.
+
+  /** 상품 코드 (Bookmoa 측 식별자, 예: BOOK-A4-20P) */
+  @Column({ length: 100, nullable: true })
+  code: string | null;
+
+  /** 카테고리 ID (Bookmoa 카테고리 트리) */
+  @Column({ name: 'category_id', length: 36, nullable: true })
+  categoryId: string | null;
+
+  /** 가격 (원) */
+  @Column({ type: 'int', nullable: true })
+  price: number | null;
+  // ──────────────────────────────────────────────────────────────────
+
   @Column({ length: 255, nullable: true })
   productId: string; // External product ID (e.g., WowPress)
 
