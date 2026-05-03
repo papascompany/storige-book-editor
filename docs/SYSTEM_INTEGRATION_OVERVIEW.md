@@ -1,9 +1,22 @@
 # Storige × Bookmoa 시스템 통합 문서
 
 > **작성일**: 2026-05-02  
-> **최종 수정**: 2026-05-03 (v2.3 — Sentry 운영 추적 활성화 + Bull 큐 모니터링 + AI 패널 UI 통합 + Before/After 미리보기)  
-> **버전**: v2.3  
+> **최종 수정**: 2026-05-03 (v2.4 — 사용자 격리 보안 패치 A-E 반영)  
+> **버전**: v2.4  
 > **대상**: PHP 개발자, 운영자, 기술 검토자
+
+> ### 🔄 v2.4 변경 이력 (2026-05-03 후반)
+> - **사용자 격리 보안 패치 (Patch A-E)** 적용 — 5개 결함 수정
+>   - Patch A: EditSession + Files findOne 권한 검증 추가
+>   - Patch B: File download `@Public()` 제거 + `/external` endpoint 분리 (X-API-Key)
+>   - Patch C: File list 강제 memberSeqno 필터 (admin 외)
+>   - Patch D: JWT 페이로드에 `allowedOrderSeqnos` 옵션 확장 (호환 유지)
+>   - Patch E: Webhook callbackUrl SSRF 방어 (allowlist)
+> - **PHP 측 영향**:
+>   - 🔴 합성 결과 PDF 다운로드는 `/files/:id/download/external` (신규 endpoint) + X-API-Key 사용
+>   - 🟡 fileId/sessionId 클라이언트 노출 검수 권장
+>   - 🟢 shop-session에 orderSeqno 추가 권장 (호환 유지)
+> - **참조 문서**: `SECURITY_PATCH_PHP_NOTICE_2026-05-03.md`, `USER_IDENTITY_AUDIT_2026-05-03.md`
 
 > ### 🔄 v2.3 변경 이력 (2026-05-03)
 > - **Sentry 운영 에러 추적 활성화**: 4개 앱(API/Worker/Editor/Admin) 모두 DSN 등록 + production 배포 완료

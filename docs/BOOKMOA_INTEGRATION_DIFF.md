@@ -4,15 +4,21 @@
 >
 > **기준 문서**:
 > - 원본 제안: [`docs/PHP_EDITOR_INTEGRATION_PLAN.md`](./PHP_EDITOR_INTEGRATION_PLAN.md)
-> - 현재 상태: [`docs/BOOKMOA_INTEGRATION_GUIDE.md`](./BOOKMOA_INTEGRATION_GUIDE.md), [`docs/EDITOR_INTEGRATION_GUIDE.md`](./EDITOR_INTEGRATION_GUIDE.md), [`docs/03_INTEGRATION_GUIDE_KR.md`](./03_INTEGRATION_GUIDE_KR.md), [`docs/WORKER_MERGE_PLAN.md`](./WORKER_MERGE_PLAN.md), [`docs/worker-ux-plan.md`](./worker-ux-plan.md)
+> - 현재 상태: [`docs/BOOKMOA_INTEGRATION_GUIDE.md`](./BOOKMOA_INTEGRATION_GUIDE.md), [`docs/EDITOR_INTEGRATION_GUIDE.md`](./EDITOR_INTEGRATION_GUIDE.md), [`docs/03_INTEGRATION_GUIDE_KR.md`](./03_INTEGRATION_GUIDE_KR.md), [`docs/WORKER_MERGE_PLAN.md`](./WORKER_MERGE_PLAN.md)
+> - **PHP 팀 통보 (2026-05-03)**: [`docs/SECURITY_PATCH_PHP_NOTICE_2026-05-03.md`](./SECURITY_PATCH_PHP_NOTICE_2026-05-03.md) ⚡
 >
-> **작성일**: 2026-05-01
+> **작성일**: 2026-05-01 / **최종 수정**: 2026-05-03 (보안 패치 A-E 항목 #16~#19 추가)
+
+> ## ⚠️ 2026-05-03 보안 패치 추가 — 4개 항목 (#16~#19)
+>
+> 사용자 격리 권한 검증 강화. PHP 측 **기존 코드는 그대로 작동**하지만 1가지 endpoint 변경 필요.
+> 자세한 내용은 [SECURITY_PATCH_PHP_NOTICE_2026-05-03](./SECURITY_PATCH_PHP_NOTICE_2026-05-03.md) 참조.
 
 ---
 
 ## 0. 핵심 요약 (TL;DR)
 
-PHP 개발자가 **반드시** 알아야 할 12개 변경:
+PHP 개발자가 **반드시** 알아야 할 19개 변경 (15개 기본 + 4개 보안 패치):
 
 | # | 항목 | 원본 | 현재 | 심각도 |
 |---|---|---|---|---|
@@ -31,6 +37,10 @@ PHP 개발자가 **반드시** 알아야 할 12개 변경:
 | 13 | **`size` (sizeno) 파라미터** | 가이드 누락 | 기존 코드 존재 — `productId + size=N` 으로 sizeNo 인덱스 적용 (옵션 B) | 🟢 Doc-only |
 | 14 | **`width` + `height` 파라미터 override** | 없음 | `?width=148&height=210` (mm) 로 사이즈 직접 지정 — `product.allowCustomSize=true` 일 때만 적용 (옵션 C) | 🟡 Added |
 | 15 | **Product `allowCustomSize` 토글** | 없음 | Admin 의 상품 편집 폼에서 토글로 제어 | 🟡 Added |
+| **16** | **PDF 다운로드 endpoint** (2026-05-03 신규) | `/files/:id/download` (Public) | 🔐 JWT 강제 — PHP 서버는 `/files/:id/download/external` (X-API-Key) 사용 | 🔴 Breaking (보안 패치) |
+| **17** | **`fileId`/`sessionId` 클라이언트 노출 검수** (2026-05-03) | 노출 시 위험 인지 부족 | PHP 마이페이지에서 UUID 직접 노출 금지 — PHP 서버에서 X-API-Key로 호출 후 결과만 전달 | 🟡 점검 필요 |
+| **18** | **`shop-session` 호출 시 `orderSeqno` 추가** (2026-05-03) | 미전달 | 권장 — JWT 페이로드에 `allowedOrderSeqnos` 포함되어 자동 검증 | 🟢 호환 (선택) |
+| **19** | **`callbackUrl` 호스트 화이트리스트** (2026-05-03) | 임의 URL 허용 | 자동 — `papascompany.co.kr`/`bookmoa.com`/localhost만 허용 | 🟢 자동 |
 
 > 🔴 = Breaking (PHP 코드 수정 필수, 안 하면 동작 안 함)
 > 🟡 = Added/Changed (신규 기능 도입 또는 확장 — 호환은 되지만 활용 권장)

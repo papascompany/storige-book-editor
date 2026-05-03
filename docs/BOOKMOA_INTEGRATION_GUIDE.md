@@ -2,6 +2,17 @@
 
 이 문서는 bookmoa PHP 쇼핑몰과 storige 에디터의 연동 방법을 설명합니다.
 
+> ## ⚠️ 2026-05-03 보안 패치 적용 — PHP 팀 통보
+>
+> Storige API에 사용자 격리 권한 검증을 강화했습니다. **기존 PHP 코드는 그대로 작동**하지만 1가지 endpoint 변경 + 점진적 보강이 권장됩니다.
+>
+> **반드시 확인하세요**:
+> - 🔴 [`SECURITY_PATCH_PHP_NOTICE_2026-05-03.md`](./SECURITY_PATCH_PHP_NOTICE_2026-05-03.md) — PHP 팀 전용 통보 문서
+> - 🟡 [`PHP_INTEGRATION_VERIFICATION.md`](./PHP_INTEGRATION_VERIFICATION.md) §11 — 보안 패치 PHP 측 작업 가이드
+> - 🟢 [`USER_IDENTITY_AUDIT_2026-05-03.md`](./USER_IDENTITY_AUDIT_2026-05-03.md) — 결함 분석 + 패치 상세
+>
+> **핵심 변경**: `/files/:id/download` (이전 Public) → `/files/:id/download/external` (X-API-Key 인증) 신규 endpoint 사용 권장.
+
 ## 1. 개요
 
 storige 에디터는 JavaScript 번들로 빌드되어 bookmoa 페이지에 임베딩됩니다.
