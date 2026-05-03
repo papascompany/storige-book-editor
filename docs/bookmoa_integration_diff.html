@@ -134,17 +134,32 @@
     <strong>기준 문서</strong>:
     <code>PHP_EDITOR_INTEGRATION_PLAN.md</code> (원본) ↔
     <code>BOOKMOA_INTEGRATION_GUIDE.md</code>, <code>EDITOR_INTEGRATION_GUIDE.md</code>,
-    <code>03_INTEGRATION_GUIDE_KR.md</code>, <code>WORKER_MERGE_PLAN.md</code>, <code>worker-ux-plan.md</code> (현재).
+    <code>03_INTEGRATION_GUIDE_KR.md</code>, <code>WORKER_MERGE_PLAN.md</code> (현재).
     <br>
-    상세 분석: <a href="./BOOKMOA_INTEGRATION_DIFF.md">BOOKMOA_INTEGRATION_DIFF.md</a> · 작성일 2026-05-01
+    상세 분석: <a href="./BOOKMOA_INTEGRATION_DIFF.md">BOOKMOA_INTEGRATION_DIFF.md</a> · 작성일 2026-05-01 · 최종 수정 2026-05-03
   </p>
 </header>
 
+<!-- 보안 패치 안내 박스 (2026-05-03) -->
+<div style="background:#fef2f2;border:2px solid #fca5a5;padding:16px 20px;border-radius:10px;margin-bottom:20px">
+  <div style="font-weight:700;color:#dc2626;font-size:15px;margin-bottom:8px">⚠️ 2026-05-03 보안 패치 추가 — PHP 팀 통보</div>
+  <div style="font-size:13px;color:#475569;line-height:1.6">
+    사용자 격리 권한 검증 강화. PHP 측 <strong>기존 코드는 그대로 작동</strong>하지만 1가지 endpoint 변경 필요:
+    <ul style="margin:8px 0 8px 18px;padding:0">
+      <li>🔴 <strong>#16 PDF 다운로드</strong>: <code>/files/:id/download</code> → <code>/files/:id/download/external</code> (X-API-Key 인증, 5분 작업)</li>
+      <li>🟡 <strong>#17 fileId/sessionId 클라이언트 노출 검수</strong> (1~2시간 검수)</li>
+      <li>🟢 <strong>#18 shop-session에 orderSeqno 추가</strong> (선택, 한 줄, 호환 유지)</li>
+      <li>🟢 <strong>#19 callbackUrl 호스트 화이트리스트</strong> (자동 적용, 작업 0)</li>
+    </ul>
+    👉 자세한 내용: <a href="./SECURITY_PATCH_PHP_NOTICE_2026-05-03.html" style="color:#dc2626;font-weight:600">SECURITY_PATCH_PHP_NOTICE_2026-05-03.html</a>
+  </div>
+</div>
+
 <div class="stats">
-  <div class="stat-card red"><div class="num">5</div><div class="lbl">🔴 Breaking 변경 (PHP 코드 수정 필수)</div></div>
-  <div class="stat-card amber"><div class="num">7</div><div class="lbl">🟡 신규 API/파라미터 (활용 권장)</div></div>
+  <div class="stat-card red"><div class="num">6</div><div class="lbl">🔴 Breaking (PHP 코드 수정 필수)</div></div>
+  <div class="stat-card amber"><div class="num">8</div><div class="lbl">🟡 신규 API/파라미터 + 검수</div></div>
   <div class="stat-card blue"><div class="num">2</div><div class="lbl">🔵 Changed (의미/방식 변경)</div></div>
-  <div class="stat-card green"><div class="num">15</div><div class="lbl">총 변경 항목 (사이즈 옵션 B/C 추가)</div></div>
+  <div class="stat-card green"><div class="num">19</div><div class="lbl">총 변경 항목 (보안 패치 4건 포함)</div></div>
 </div>
 
 <h2>1. 변경 12개 카드뷰</h2>
@@ -601,7 +616,7 @@ $editorUrl = '/storige/edit.php'
 <footer>
   본 시각화 자료는 <a href="./BOOKMOA_INTEGRATION_DIFF.md">BOOKMOA_INTEGRATION_DIFF.md</a> 와 짝을 이룹니다.
   변경 항목/우선순위/스니펫의 출처는 모두 해당 MD 의 §1~§4 참조.
-  · 작성: Storige 팀 · 2026-05-01
+  · 작성: Storige 팀 · 2026-05-01 · 보안 패치 v2 갱신: 2026-05-03
 </footer>
 
 </div>
