@@ -152,7 +152,7 @@ export class ProductsService {
   }
 
   async unlinkTemplateSet(productId: string): Promise<Product> {
-    await this.productRepository.update(productId, { templateSet: null });
+    await this.productRepository.update(productId, { templateSet: null as any });
     return this.findOne(productId);
   }
 }
