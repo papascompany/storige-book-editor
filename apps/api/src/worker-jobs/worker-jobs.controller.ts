@@ -7,8 +7,14 @@ import {
   Patch,
   Query,
   UseGuards,
+  Res,
+  NotFoundException,
+  BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery, ApiSecurity } from '@nestjs/swagger';
+import { Response } from 'express';
+import * as fs from 'fs';
+import * as path from 'path';
 import { WorkerJobsService } from './worker-jobs.service';
 import {
   CreateValidationJobDto,
@@ -220,6 +226,91 @@ export class WorkerJobsController {
   @ApiResponse({ status: 401, description: 'Invalid API key' })
   async findOneExternal(@Param('id') id: string): Promise<WorkerJob> {
     return await this.workerJobsService.findOne(id);
+  }
+
+  /**
+   * 워커 잡 결과 파일 다운로드
+   * - 변환(convert) 잡: outputFileUrl로 저장된 수정 PDF
+   * - 합성(synthesize) 잡: outputFileUrl로 저장된 합성 PDF
+   * 호출 위치: Admin Before/After 미리보기에서 "수정된 PDF 다운로드"
+   */
+  @Get(':id/output')
+  @ApiOperation({ summary: 'Download worker job output file (PDF)' })
+  @ApiResponse({ status: 200, description: 'PDF file stream' })
+  @ApiResponse({ status: 404, description: 'Job not found or no output file' })
+  @ApiResponse({ status: 400, description: 'Job not completed or no output' })
+  async downloadOutput(@Param('id') id: string, @Res() res: Response): Promise<void> {
+    const job = await this.workerJobsService.findOne(id);
+    if (!job) {
+      throw new NotFoundException({
+        code: 'JOB_NOT_FOUND',
+        message: `Worker job ${id} not found`,
+      });
+    }
+
+    if (job.status !== WorkerJobStatus.COMPLETED && job.status !== WorkerJobStatus.FIXABLE) {
+      throw new BadRequestException({
+        code: 'JOB_NOT_COMPLETED',
+        message: `Job status is ${job.status}, output not available`,
+      });
+    }
+
+    // result에서 outputFileUrl 추출 — convert 잡: result.outputFileUrl, synthesize: result.outputFileUrl
+    const result: any = job.result;
+    const outputFileUrl: string | undefined =
+      result?.outputFileUrl || result?.result?.outputFileUrl;
+
+    if (!outputFileUrl) {
+      throw new NotFoundException({
+        code: 'OUTPUT_NOT_FOUND',
+        message: 'No output file URL in job result',
+      });
+    }
+
+    // outputFileUrl 형식: '/storage/temp/converted_xxx.pdf' 또는 'storage/...'
+    // 파일시스템 절대경로로 변환
+    const storageBase = process.env.STORAGE_PATH || '/app/storage';
+    let absolutePath: string;
+    if (outputFileUrl.startsWith('/storage/')) {
+      // /storage/temp/x.pdf → /app/storage/temp/x.pdf
+      absolutePath = path.join(storageBase, outputFileUrl.replace(/^\/storage\//, ''));
+    } else if (outputFileUrl.startsWith('storage/')) {
+      absolutePath = path.join(storageBase, outputFileUrl.replace(/^storage\//, ''));
+    } else if (path.isAbsolute(outputFileUrl)) {
+      absolutePath = outputFileUrl; // 이미 절대경로
+    } else {
+      absolutePath = path.join(storageBase, outputFileUrl);
+    }
+
+    // 보안: storage 디렉토리 밖으로 path traversal 방지
+    const resolvedPath = path.resolve(absolutePath);
+    const resolvedBase = path.resolve(storageBase);
+    if (!resolvedPath.startsWith(resolvedBase)) {
+      throw new BadRequestException({
+        code: 'INVALID_PATH',
+        message: 'Output path is outside storage root',
+      });
+    }
+
+    // 파일 존재 확인
+    if (!fs.existsSync(resolvedPath)) {
+      throw new NotFoundException({
+        code: 'FILE_NOT_ON_DISK',
+        message: `Output file not found on disk: ${outputFileUrl}`,
+      });
+    }
+
+    const filename = path.basename(resolvedPath);
+    const stat = fs.statSync(resolvedPath);
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${encodeURIComponent(filename)}"`,
+    );
+    res.setHeader('Content-Length', stat.size);
+
+    fs.createReadStream(resolvedPath).pipe(res);
   }
 
   @Get(':id')

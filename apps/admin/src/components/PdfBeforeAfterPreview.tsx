@@ -29,6 +29,7 @@ import {
   CheckCircleOutlined,
   PlayCircleOutlined,
   LoadingOutlined,
+  DownloadOutlined,
 } from '@ant-design/icons';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { workerJobsApi, ValidationError } from '../api/worker-jobs';
@@ -149,7 +150,35 @@ export const PdfBeforeAfterPreview = ({
             변환 중...
           </Tag>
         ) : conversionJob?.status === 'COMPLETED' ? (
-          <Tag color="success" icon={<CheckCircleOutlined />}>완료</Tag>
+          <Space>
+            <Tag color="success" icon={<CheckCircleOutlined />}>완료</Tag>
+            <Button
+              type="primary"
+              icon={<DownloadOutlined />}
+              onClick={async () => {
+                // GET /api/worker-jobs/:id/output (JWT 인증, blob 응답)
+                try {
+                  const response = await axiosInstance.get(
+                    `/worker-jobs/${conversionJobId}/output`,
+                    { responseType: 'blob' },
+                  );
+                  const blob = new Blob([response.data], { type: 'application/pdf' });
+                  const url = window.URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `fixed_${conversionJobId.substring(0, 8)}.pdf`;
+                  document.body.appendChild(a);
+                  a.click();
+                  document.body.removeChild(a);
+                  window.URL.revokeObjectURL(url);
+                } catch (err: any) {
+                  alert(`다운로드 실패: ${err?.response?.data?.message || err.message}`);
+                }
+              }}
+            >
+              수정된 PDF 다운로드
+            </Button>
+          </Space>
         ) : null
       }
     >
