@@ -51,6 +51,9 @@ services:
       - QUEUE_MONITOR_BACKLOG_THRESHOLD=${QUEUE_MONITOR_BACKLOG_THRESHOLD:-10}
       - QUEUE_MONITOR_INTERVAL_MS=${QUEUE_MONITOR_INTERVAL_MS:-60000}
       - QUEUE_MONITOR_COOLDOWN_MS=${QUEUE_MONITOR_COOLDOWN_MS:-300000}
+      # Webhook callbackUrl SSRF 방어 (Patch E, 2026-05-03)
+      # 콤마 구분 호스트명 — '*'로 설정 시 모든 URL 허용 (개발용), 비우면 기본값 사용
+      - WEBHOOK_ALLOWED_HOSTS=${WEBHOOK_ALLOWED_HOSTS:-papascompany.co.kr,bookmoa.com}
     volumes:
       - ./storage:/app/storage
     depends_on:

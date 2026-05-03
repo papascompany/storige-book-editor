@@ -10,6 +10,7 @@ import {
   UseGuards,
   ParseUUIDPipe,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -70,6 +71,20 @@ export class EditSessionsController {
       throw new BadRequestException({
         code: 'MEMBER_REQUIRED',
         message: '회원 정보가 필요합니다.',
+      });
+    }
+
+    // Patch D (2026-05-03): JWT에 allowedOrderSeqnos가 있으면 dto.orderSeqno 검증
+    // 없으면 (호환 모드) 기존 동작 유지 — DTO 값 신뢰
+    if (
+      Array.isArray(user?.allowedOrderSeqnos) &&
+      user.allowedOrderSeqnos.length > 0 &&
+      !user.allowedOrderSeqnos.includes(Number(dto.orderSeqno))
+    ) {
+      throw new ForbiddenException({
+        code: 'ORDER_NOT_ALLOWED',
+        message: `이 토큰은 주문 ${dto.orderSeqno}에 대한 작업 권한이 없습니다.`,
+        details: { allowedOrderSeqnos: user.allowedOrderSeqnos, requestedOrderSeqno: dto.orderSeqno },
       });
     }
 
@@ -176,20 +191,36 @@ export class EditSessionsController {
   }
 
   /**
-   * 세션 상세 조회
+   * 세션 상세 조회 (소유자 또는 admin/manager만)
    */
   @Get(':id')
-  @ApiOperation({ summary: '편집 세션 상세 조회' })
+  @ApiOperation({ summary: '편집 세션 상세 조회 — 소유자 또는 관리자만 접근 가능' })
   @ApiResponse({
     status: 200,
     description: '세션 상세 정보',
     type: EditSessionResponseDto,
   })
+  @ApiResponse({ status: 403, description: '권한 없음 (다른 사용자의 세션)' })
   @ApiResponse({ status: 404, description: '세션을 찾을 수 없음' })
   async findOne(
     @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: any,
   ): Promise<EditSessionResponseDto> {
     const session = await this.editSessionsService.findById(id);
+
+    // 권한 확인: 세션 소유자 (memberSeqno 일치) 또는 admin/manager 역할
+    const userId = user?.userId ? parseInt(user.userId) : 0;
+    const userRole = user?.role || '';
+    const isOwner = Number(session.memberSeqno) === userId;
+    const isStaff = userRole === 'admin' || userRole === 'manager';
+
+    if (!isOwner && !isStaff) {
+      throw new ForbiddenException({
+        code: 'PERMISSION_DENIED',
+        message: '이 세션에 접근할 권한이 없습니다.',
+      });
+    }
+
     return this.editSessionsService.toResponseDto(session);
   }
 

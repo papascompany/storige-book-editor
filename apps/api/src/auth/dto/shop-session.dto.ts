@@ -19,6 +19,30 @@ export class CreateShopSessionDto {
   @IsString()
   phpSessionId?: string;
 
+  /**
+   * 주문 컨텍스트 (선택, 2026-05-03 Patch D 도입)
+   *
+   * 전달되면 JWT 페이로드에 포함되어 EditSession 생성 시 추가 검증에 활용.
+   * - 단일 주문 시나리오: orderSeqno 한 개
+   * - 복수 주문 (장바구니): allowedOrderSeqnos 배열
+   * - 둘 다 없으면 기존 동작 유지 (DTO 값 신뢰, 호환성 보장)
+   *
+   * 권장: PHP 측에서 사용자가 진입한 주문 컨텍스트가 명확하면 전달.
+   */
+  @ApiPropertyOptional({ description: '단일 주문 번호 — JWT 포함', example: 12345 })
+  @IsOptional()
+  @IsNumber()
+  orderSeqno?: number;
+
+  @ApiPropertyOptional({
+    description: '복수 주문 번호 목록 — JWT 포함 (장바구니/관리자)',
+    example: [12345, 12346],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsNumber({}, { each: true })
+  allowedOrderSeqnos?: number[];
+
   @ApiPropertyOptional({
     description: '권한 목록',
     example: ['edit', 'upload', 'validate'],

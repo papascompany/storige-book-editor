@@ -23,11 +23,68 @@ export class WebhookService {
   private readonly logger = new Logger(WebhookService.name);
 
   /**
+   * 허용된 webhook 호스트 목록 (Patch E, 2026-05-03)
+   *
+   * 환경변수 `WEBHOOK_ALLOWED_HOSTS` (콤마 구분) 우선, 없으면 기본값 사용.
+   * SSRF 방어 — 임의 URL로 webhook 전송 금지.
+   * 빈 문자열로 명시적 비활성화 가능 (`WEBHOOK_ALLOWED_HOSTS=*` — 호환 모드).
+   */
+  private readonly allowedHosts: string[] = (() => {
+    const env = process.env.WEBHOOK_ALLOWED_HOSTS;
+    if (env === '*') return []; // 와일드카드 = 검증 비활성화
+    if (env && env.length > 0) {
+      return env.split(',').map((s) => s.trim()).filter(Boolean);
+    }
+    // 기본값: 운영/스테이징/로컬
+    return [
+      'papascompany.co.kr',
+      'bookmoa.com',
+      'localhost',
+      '127.0.0.1',
+      'host.docker.internal',
+    ];
+  })();
+
+  /**
+   * URL이 허용된 호스트인지 검증.
+   * - allowedHosts가 빈 배열이면 (=`*`) 모든 URL 허용 (호환 모드)
+   * - 그 외엔 hostname이 정확히 일치하거나 .서브도메인 매칭
+   */
+  private isAllowedCallbackUrl(callbackUrl: string): boolean {
+    if (this.allowedHosts.length === 0) return true; // 와일드카드 모드
+
+    let url: URL;
+    try {
+      url = new URL(callbackUrl);
+    } catch {
+      return false;
+    }
+
+    // 프로토콜 제한: http/https만
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
+
+    const host = url.hostname.toLowerCase();
+    return this.allowedHosts.some(
+      (allowed) =>
+        host === allowed.toLowerCase() ||
+        host.endsWith('.' + allowed.toLowerCase()),
+    );
+  }
+
+  /**
    * 웹훅 콜백 전송
    */
   async sendCallback(callbackUrl: string, payload: WebhookPayload): Promise<boolean> {
     if (!callbackUrl) {
       this.logger.warn('No callback URL provided, skipping webhook');
+      return false;
+    }
+
+    // Patch E (2026-05-03): SSRF 방어 — 허용 호스트 검증
+    if (!this.isAllowedCallbackUrl(callbackUrl)) {
+      this.logger.error(
+        `[Webhook] Blocked callback URL not in allowlist: ${callbackUrl} (allowed: ${this.allowedHosts.join(', ')})`,
+      );
       return false;
     }
 

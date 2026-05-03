@@ -12,6 +12,7 @@ import {
   Res,
   ParseUUIDPipe,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
@@ -184,43 +185,91 @@ export class FilesController {
   }
 
   /**
-   * 파일 정보 조회
+   * 파일 정보 조회 (소유자 또는 관리자만)
    */
   @Get(':id')
   @ApiBearerAuth()
-  @ApiOperation({ summary: '파일 정보 조회' })
+  @ApiOperation({ summary: '파일 정보 조회 — 소유자 또는 관리자만 접근 가능' })
   @ApiResponse({ status: 200, description: '파일 정보', type: FileResponseDto })
+  @ApiResponse({ status: 403, description: '권한 없음 (다른 사용자의 파일)' })
   @ApiResponse({ status: 404, description: '파일을 찾을 수 없음' })
   async getFile(
     @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: any,
   ): Promise<FileResponseDto> {
     const file = await this.filesService.findById(id);
+
+    // 권한 확인: 파일 소유자 (memberSeqno 일치) 또는 admin/manager 역할
+    // 단, file.memberSeqno가 null인 경우 (외부 업로드)는 staff만 허용
+    const userId = user?.userId ? parseInt(user.userId) : 0;
+    const userRole = user?.role || '';
+    const isOwner = file.memberSeqno !== null && Number(file.memberSeqno) === userId;
+    const isStaff = userRole === 'admin' || userRole === 'manager';
+
+    if (!isOwner && !isStaff) {
+      throw new ForbiddenException({
+        code: 'PERMISSION_DENIED',
+        message: '이 파일에 접근할 권한이 없습니다.',
+      });
+    }
+
     return this.filesService.toResponseDto(file);
   }
 
   /**
-   * 주문별 파일 목록 조회
+   * 파일 목록 조회 — 소유자 본인 또는 관리자만
+   *
+   * SECURITY: 이전엔 임의 orderSeqno/memberSeqno로 타인 파일 조회 가능하던 결함.
+   * 2026-05-03 패치 — admin/manager가 아니면 JWT.memberSeqno 강제.
+   *
+   * 동작:
+   *  - admin/manager: 임의 orderSeqno / memberSeqno 조회 가능
+   *  - 일반 사용자: JWT의 memberSeqno로 강제 필터, 다른 회원 조회 차단
+   *  - 일반 사용자가 orderSeqno로 조회 시 — 그 주문이 본인 것인지 추가 검증
    */
   @Get()
   @ApiBearerAuth()
-  @ApiOperation({ summary: '파일 목록 조회' })
+  @ApiOperation({ summary: '파일 목록 조회 — 소유자 본인 또는 관리자만' })
   @ApiResponse({
     status: 200,
     description: '파일 목록',
     type: FileListResponseDto,
   })
+  @ApiResponse({ status: 403, description: '권한 없음 (다른 회원의 파일 조회 시도)' })
   async getFiles(
+    @CurrentUser() user: any,
     @Query('orderSeqno') orderSeqno?: string,
     @Query('memberSeqno') memberSeqno?: string,
   ): Promise<FileListResponseDto> {
+    const userId = user?.userId ? parseInt(user.userId) : 0;
+    const userRole = user?.role || '';
+    const isStaff = userRole === 'admin' || userRole === 'manager';
+
     let files;
 
     if (orderSeqno) {
       files = await this.filesService.findByOrderSeqno(parseInt(orderSeqno));
+      // 일반 사용자: 결과 중 본인 소유 파일만 노출 (다른 회원의 같은 주문 추적 방지)
+      if (!isStaff) {
+        files = files.filter((f) => Number(f.memberSeqno) === userId);
+      }
     } else if (memberSeqno) {
-      files = await this.filesService.findByMemberSeqno(parseInt(memberSeqno));
+      const requestedMember = parseInt(memberSeqno);
+      // 일반 사용자: 본인 memberSeqno만 조회 가능
+      if (!isStaff && requestedMember !== userId) {
+        throw new ForbiddenException({
+          code: 'PERMISSION_DENIED',
+          message: '다른 회원의 파일 목록은 조회할 수 없습니다.',
+        });
+      }
+      files = await this.filesService.findByMemberSeqno(requestedMember);
     } else {
-      files = [];
+      // 파라미터 없으면: 일반 사용자는 본인 파일 자동 조회, admin은 빈 결과 (전체 조회 막기)
+      if (!isStaff && userId > 0) {
+        files = await this.filesService.findByMemberSeqno(userId);
+      } else {
+        files = [];
+      }
     }
 
     return {
@@ -230,14 +279,61 @@ export class FilesController {
   }
 
   /**
-   * 파일 다운로드
+   * 파일 다운로드 (소유자 또는 관리자만)
+   *
+   * SECURITY: 이전 @Public() 노출은 UUID 유출 시 누구나 다운로드 가능하던 결함이었음.
+   * 2026-05-03 패치 — JWT 인증 + 소유자 검증 강제.
    */
   @Get(':id/download')
-  @Public()
-  @ApiOperation({ summary: '파일 다운로드' })
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '파일 다운로드 — 소유자 또는 관리자만 접근 가능' })
   @ApiResponse({ status: 200, description: 'PDF 파일' })
+  @ApiResponse({ status: 403, description: '권한 없음 (다른 사용자의 파일)' })
   @ApiResponse({ status: 404, description: '파일을 찾을 수 없음' })
   async downloadFile(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Res() res: Response,
+    @CurrentUser() user: any,
+  ): Promise<void> {
+    const file = await this.filesService.findById(id);
+
+    // 권한 확인: 파일 소유자 또는 admin/manager
+    const userId = user?.userId ? parseInt(user.userId) : 0;
+    const userRole = user?.role || '';
+    const isOwner = file.memberSeqno !== null && Number(file.memberSeqno) === userId;
+    const isStaff = userRole === 'admin' || userRole === 'manager';
+
+    if (!isOwner && !isStaff) {
+      throw new ForbiddenException({
+        code: 'PERMISSION_DENIED',
+        message: '이 파일을 다운로드할 권한이 없습니다.',
+      });
+    }
+
+    const { buffer } = await this.filesService.getFileBuffer(id);
+
+    res.setHeader('Content-Type', file.mimeType);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${encodeURIComponent(file.originalName)}"`,
+    );
+    res.setHeader('Content-Length', buffer.length);
+    res.send(buffer);
+  }
+
+  /**
+   * 외부 연동용 파일 다운로드 (API Key 인증)
+   * bookmoa 등 외부 시스템에서 합성 결과 PDF를 가져갈 때 사용.
+   */
+  @Get(':id/download/external')
+  @Public()
+  @UseGuards(ApiKeyGuard)
+  @ApiSecurity('api-key')
+  @ApiOperation({ summary: '파일 다운로드 (외부 API Key 인증)' })
+  @ApiResponse({ status: 200, description: 'PDF 파일' })
+  @ApiResponse({ status: 401, description: 'Invalid API key' })
+  @ApiResponse({ status: 404, description: '파일을 찾을 수 없음' })
+  async downloadFileExternal(
     @Param('id', ParseUUIDPipe) id: string,
     @Res() res: Response,
   ): Promise<void> {
