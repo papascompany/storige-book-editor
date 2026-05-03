@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>Storige 다음 개발 이슈 (2026-05-03)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg: #0f172a; --bg2: #1e293b; --bg3: #334155;
+    --text: #f1f5f9; --text2: #cbd5e1; --text3: #94a3b8;
+    --red: #ef4444; --red2: #f87171;
+    --yellow: #eab308; --yellow2: #fbbf24;
+    --green: #22c55e; --green2: #4ade80;
+    --blue: #3b82f6; --blue2: #60a5fa;
+    --purple: #a855f7; --purple2: #c084fc;
+    --cyan: #06b6d4; --cyan2: #22d3ee;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "Pretendard", "Apple SD Gothic Neo", sans-serif;
+    background: var(--bg); color: var(--text);
+    line-height: 1.65;
+  }
+  .container { max-width: 1200px; margin: 0 auto; padding: 40px 24px 80px; }
+  h1 { font-size: 32px; font-weight: 700; margin-bottom: 8px; }
+  h2 { font-size: 22px; font-weight: 700; margin: 40px 0 16px; padding-bottom: 8px; border-bottom: 2px solid var(--bg3); }
+  h3 { font-size: 17px; font-weight: 600; margin: 20px 0 10px; color: var(--text2); }
+  p { color: var(--text2); margin-bottom: 12px; }
+  code { font-family: "SF Mono", Menlo, monospace; background: rgba(255,255,255,.06); padding: 2px 6px; border-radius: 4px; font-size: 12px; }
+
+  .header {
+    background: linear-gradient(135deg, rgba(34,197,94,.1), rgba(6,182,212,.1));
+    padding: 32px 24px; margin-bottom: 24px;
+    border-radius: 16px; border: 1px solid var(--bg3);
+  }
+  .header .badge-row { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+  .badge {
+    font-size: 11px; padding: 4px 10px; border-radius: 4px;
+    font-weight: 600; letter-spacing: .03em;
+  }
+  .badge.green { background: rgba(34,197,94,.15); color: var(--green2); border: 1px solid var(--green); }
+  .badge.blue { background: rgba(59,130,246,.15); color: var(--blue2); border: 1px solid var(--blue); }
+  .badge.yellow { background: rgba(234,179,8,.15); color: var(--yellow2); border: 1px solid var(--yellow); }
+  .badge.red { background: rgba(239,68,68,.15); color: var(--red2); border: 1px solid var(--red); }
+  .badge.purple { background: rgba(168,85,247,.15); color: var(--purple2); border: 1px solid var(--purple); }
+
+  .summary-card {
+    background: rgba(34,197,94,.08); border-left: 4px solid var(--green);
+    padding: 16px 20px; border-radius: 0 8px 8px 0; margin-bottom: 28px;
+    font-size: 16px;
+  }
+  .session-result {
+    background: rgba(59,130,246,.08); border-left: 4px solid var(--blue);
+    padding: 14px 18px; border-radius: 0 8px 8px 0; margin-bottom: 24px;
+    font-size: 13px; color: var(--text2);
+  }
+  .session-result strong { color: var(--blue2); }
+
+  .task-card {
+    background: var(--bg2); border-radius: 10px; padding: 18px 20px;
+    margin: 12px 0; border-left: 3px solid var(--bg3);
+  }
+  .task-card.critical { border-left-color: var(--red); }
+  .task-card.high { border-left-color: var(--yellow); }
+  .task-card.medium { border-left-color: var(--green); }
+  .task-card .title { font-weight: 700; font-size: 15px; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }
+  .task-card .meta { font-size: 12px; color: var(--text3); margin-bottom: 8px; }
+  .task-card .body { color: var(--text2); font-size: 13px; }
+  .task-card .body ul { padding-left: 18px; margin-top: 6px; }
+  .task-card .body li { padding: 2px 0; }
+
+  table {
+    width: 100%; border-collapse: collapse; margin: 12px 0;
+    background: var(--bg2); border-radius: 8px; overflow: hidden;
+    font-size: 13px;
+  }
+  th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--bg3); }
+  th { background: var(--bg3); font-weight: 700; color: var(--text); }
+  tr:hover { background: rgba(255,255,255,.03); }
+
+  .progress-bar {
+    background: var(--bg3); border-radius: 8px; height: 8px;
+    overflow: hidden; position: relative;
+  }
+  .progress-bar > .fill {
+    background: linear-gradient(90deg, var(--green), var(--cyan));
+    height: 100%; border-radius: 8px;
+  }
+  .progress-row { display: grid; grid-template-columns: 130px 1fr 80px; gap: 12px; align-items: center; padding: 6px 0; font-size: 13px; }
+  .delta { font-size: 11px; color: var(--green2); }
+
+  .sprint-day {
+    display: grid; grid-template-columns: 80px 1fr 80px;
+    gap: 14px; padding: 10px 14px; margin: 6px 0;
+    background: var(--bg2); border-radius: 8px;
+    border-left: 3px solid var(--blue);
+    font-size: 13px;
+  }
+  .sprint-day.critical { border-left-color: var(--red); }
+  .sprint-day.high { border-left-color: var(--yellow); }
+  .sprint-day.medium { border-left-color: var(--green); }
+  .sprint-day .day { font-weight: 700; color: var(--text); }
+  .sprint-day .task { color: var(--text2); }
+  .sprint-day .pri { font-size: 11px; padding: 2px 6px; border-radius: 4px; text-align: center; align-self: center; }
+
+  .warn-box {
+    background: rgba(239,68,68,.08); border-left: 4px solid var(--red);
+    padding: 14px 18px; border-radius: 0 8px 8px 0; margin: 10px 0;
+    font-size: 13px;
+  }
+  .warn-box.solved {
+    background: rgba(34,197,94,.08); border-left-color: var(--green);
+  }
+  .warn-box .warn-title { font-weight: 700; margin-bottom: 4px; }
+  .warn-box.solved .warn-title { color: var(--green2); }
+  .warn-box:not(.solved) .warn-title { color: var(--red2); }
+  .warn-box .warn-body { color: var(--text2); }
+
+  .completed-list {
+    background: var(--bg2); border-radius: 8px; padding: 14px 20px; font-size: 13px;
+  }
+  .completed-list .item { padding: 4px 0; color: var(--text2); display: flex; gap: 10px; }
+  .completed-list .item .arrow { color: var(--green2); font-weight: 700; min-width: 80px; }
+</style>
+</head>
+<body>
+
+<div class="container">
+
+<div class="header">
+  <h1>📋 Storige 다음 개발 이슈</h1>
+  <p style="color: var(--text2); margin-top: 8px; margin-bottom: 0;">2026-05-03 기준 · 직전 세션(P0-3+P1×4+P2×5+Sentry 활성화) 완료 · 누적 진척률 ~92%</p>
+  <div class="badge-row">
+    <span class="badge green">v2.3 배포 완료</span>
+    <span class="badge purple">Sentry 활성화</span>
+    <span class="badge red">P0 잔존: 2건</span>
+    <span class="badge yellow">P1 잔존: 4건</span>
+    <span class="badge green">P2 잔존: 6건</span>
+  </div>
+</div>
+
+<div class="summary-card">
+  📌 <strong>한 줄 요약:</strong> 인프라/코드 92% 완료 + Sentry 운영 추적 활성화. 남은 핵심 4개: PHP 통합, Admin 비번, Slack 알림, E2E 보강.
+</div>
+
+<div class="session-result">
+  🎉 <strong>이전 세션 (2026-05-02~03) 완료 항목 (12개)</strong>:
+  P0-3 Sentry SDK + DSN 활성화 / P1-4 Before/After / P1-5 Composite 자동 재배치 / P1-6 AI 패널 / P1-7 큐 모니터링 /
+  P2-8 Playwright smoke / P2-9 lint 0건 / P2-10 번들 최적화 / P2-11 다크모드 / P2-12 폰트 silent /
+  Node engines 완화 / FUTURE_UPDATES 트래커
+</div>
+
+<!-- ───────────── P0 ───────────── -->
+<h2>🔴 P0 — 즉시 처리 (운영 blocker, 잔존 2건)</h2>
+
+<div class="task-card critical">
+  <div class="title">1. PHP ↔ Storige 양측 통합 검증</div>
+  <div class="meta">⏳ 대기 (PHP 팀 영역) · 차단: PHP 일정 · 자동화 ❌ · 예상: 1.5~2.5일</div>
+  <div class="body">
+    <strong>storige 측</strong>: 모든 변경 100% 완료 (v2.3 + Sentry 활성화)<br>
+    <strong>PHP 측</strong>: 미적용<br>
+    <strong>검증 대상</strong>:
+    <ul>
+      <li><code>width</code>/<code>height</code> URL 파라미터 → 옵션 C 동작</li>
+      <li><code>/files/upload/external</code> <code>type</code> 필드 (v2.1 명시)</li>
+      <li><code>/worker-jobs/synthesize/external</code> Webhook</li>
+      <li><code>validation.completed</code> / <code>synthesis.completed</code> 양측 수신</li>
+    </ul>
+    <strong>참조</strong>: SYSTEM_INTEGRATION_OVERVIEW v2.3, BOOKMOA_INTEGRATION_DIFF, PHP_INTEGRATION_VERIFICATION
+  </div>
+</div>
+
+<div class="task-card critical">
+  <div class="title">2. Admin 비밀번호 강제 교체</div>
+  <div class="meta">❌ 미진행 · 차단: 없음 · 자동화 ✅ · 예상: 30분</div>
+  <div class="body">
+    <strong>위험도</strong>: 🔴 (시드값 <code>admin@storige.com</code> / <code>admin123</code> 깃 히스토리/문서에 노출)<br>
+    <strong>작업</strong>: VPS DB UPDATE 또는 admin UI에서 직접 변경 + CLAUDE.local.md 메모 갱신 (위치만)<br>
+    <strong>즉시 가능</strong>: 자동화 가능 (사용자 결정만 있으면 진행)
+  </div>
+</div>
+
+<!-- ───────────── P1 ───────────── -->
+<h2>🟡 P1 — 단기 (사용자 가치 큼, 잔존 4건)</h2>
+
+<div class="task-card high">
+  <div class="title">3. PDF Synthesis E2E 검증 <span class="badge yellow">P0-1 의존</span></div>
+  <div class="meta">⏳ 대기 · 차단: P0-1 (PHP 통합) · 예상: 1일</div>
+  <div class="body">
+    bookmoa PHP에서 <code>POST /worker-jobs/synthesize/external</code> → storige Worker 합성 → <code>synthesis.completed</code> Webhook → outputFileUrl 다운로드 검증 (storige 측은 <code>d2b3271</code>로 webhook 타입 정합 완료)
+  </div>
+</div>
+
+<div class="task-card high">
+  <div class="title">4. 저장/불러오기 멀티페이지 E2E</div>
+  <div class="meta">⏳ 대기 · 차단: P0-1 후/별도 · 예상: 0.5일</div>
+  <div class="body">
+    코드는 <code>9e8f4e5</code>로 완료. 운영 검증만 남음. editor에서 멀티페이지 작업 → 저장 → 다시 로드 시 canvasData 완전 보존 시나리오.
+  </div>
+</div>
+
+<div class="task-card high">
+  <div class="title">5. Sentry Slack 알림 채널 연결 <span class="badge purple">진행 중</span></div>
+  <div class="meta">⏳ 부분 (이메일 활성화됨, Slack 미연결) · 차단: 사용자 Slack 인증 · 예상: 30분</div>
+  <div class="body">
+    <ul>
+      <li>Sentry → Settings → Integrations → Slack 연결 (사용자 OAuth)</li>
+      <li>Alert Rules: <strong>10분 내 동일 에러 10건 이상</strong>, <strong>새 에러 발생 즉시</strong>, <strong><code>tag:job.queue</code> 있는 에러</strong></li>
+    </ul>
+  </div>
+</div>
+
+<div class="task-card high">
+  <div class="title">6. 워커 자동 수정 결과 PDF 다운로드 endpoint <span class="badge purple">진행 중</span></div>
+  <div class="meta">❌ 미진행 · 차단: 없음 · 자동화 ✅ · 예상: 0.5일</div>
+  <div class="body">
+    P1-4 Before/After 미리보기는 iframe 표시까지 완료. <strong>"수정된 PDF 다운로드"</strong> 버튼 추가 + storage/processed/{jobId}/fixed.pdf endpoint 노출.
+  </div>
+</div>
+
+<!-- ───────────── P2 ───────────── -->
+<h2>🟢 P2 — 중기 (폴리시 / 확장, 잔존 6건)</h2>
+
+<table>
+  <thead><tr><th>#</th><th>항목</th><th>상태</th><th>예상</th></tr></thead>
+  <tbody>
+    <tr><td>7</td><td><strong>Admin Playwright E2E 셋업 <span class="badge purple">진행 중</span></strong></td><td>❌ 미설정</td><td>1~2일</td></tr>
+    <tr><td>8</td><td>운영 메트릭 대시보드 (Sentry Performance / Grafana)</td><td>❌</td><td>1~2일</td></tr>
+    <tr><td>9</td><td>R2 / S3 백업 이중화</td><td>❌</td><td>1일</td></tr>
+    <tr><td>10</td><td>로그 일원화 (Pino + Loki / Datadog Logs)</td><td>❌</td><td>1~2일</td></tr>
+    <tr><td>11</td><td>WebAssembly multi-threading (<code>crossOriginIsolated</code>)</td><td>❌</td><td>1일</td></tr>
+    <tr><td>12</td><td>폰트 fallback 잔여 로그 정리</td><td>⚠️ 부분</td><td>0.5일</td></tr>
+  </tbody>
+</table>
+
+<!-- ───────────── 진척률 ───────────── -->
+<h2>📊 카테고리별 진척률 변화 (이전 → 현재)</h2>
+
+<div class="progress-row">
+  <span>도구 확장</span>
+  <div class="progress-bar"><div class="fill" style="width: 92%"></div></div>
+  <span style="text-align:right; color:var(--text3)">92%</span>
+</div>
+<div class="progress-row">
+  <span>표지 편집</span>
+  <div class="progress-bar"><div class="fill" style="width: 88%"></div></div>
+  <span style="text-align:right; color:var(--text3)">88%</span>
+</div>
+<div class="progress-row">
+  <span>다크/반응형 <span class="delta">+13%p</span></span>
+  <div class="progress-bar"><div class="fill" style="width: 88%"></div></div>
+  <span style="text-align:right; color:var(--green2)">88%</span>
+</div>
+<div class="progress-row">
+  <span>북모아 통합</span>
+  <div class="progress-bar"><div class="fill" style="width: 88%"></div></div>
+  <span style="text-align:right; color:var(--text3)">88%</span>
+</div>
+<div class="progress-row">
+  <span>카탈로그/AI <span class="delta">+17%p</span></span>
+  <div class="progress-bar"><div class="fill" style="width: 84%"></div></div>
+  <span style="text-align:right; color:var(--green2)">84%</span>
+</div>
+<div class="progress-row">
+  <span>인프라/품질 <span class="delta">+21%p</span></span>
+  <div class="progress-bar"><div class="fill" style="width: 78%"></div></div>
+  <span style="text-align:right; color:var(--green2)">78%</span>
+</div>
+<div class="progress-row">
+  <span>PDF/워커 <span class="delta">+28%p</span></span>
+  <div class="progress-bar"><div class="fill" style="width: 88%"></div></div>
+  <span style="text-align:right; color:var(--green2)">88%</span>
+</div>
+<div class="progress-row">
+  <span>모바일/터치</span>
+  <div class="progress-bar"><div class="fill" style="width: 69%"></div></div>
+  <span style="text-align:right; color:var(--text3)">69%</span>
+</div>
+<div class="progress-row" style="margin-top: 16px; font-weight: 700; font-size: 14px;">
+  <span style="color:var(--green2)">전체 <span class="delta">+18%p</span></span>
+  <div class="progress-bar"><div class="fill" style="width: 92%"></div></div>
+  <span style="text-align:right; color:var(--green2)">92%</span>
+</div>
+
+<!-- ───────────── Sprint ───────────── -->
+<h2>🗓 권장 다음 1~2주 Sprint</h2>
+
+<div class="sprint-day critical">
+  <div class="day">Day 1</div>
+  <div class="task">Admin 비번 교체 (P0-2, 자동화)</div>
+  <div class="pri" style="background:rgba(239,68,68,.2); color:var(--red2)">🔴 P0</div>
+</div>
+<div class="sprint-day high">
+  <div class="day">Day 2</div>
+  <div class="task">Sentry Slack 연결 + Alert Rules (P1-5)</div>
+  <div class="pri" style="background:rgba(234,179,8,.2); color:var(--yellow2)">🟡 P1</div>
+</div>
+<div class="sprint-day high">
+  <div class="day">Day 3</div>
+  <div class="task">자동 수정 PDF 다운로드 endpoint (P1-6)</div>
+  <div class="pri" style="background:rgba(234,179,8,.2); color:var(--yellow2)">🟡 P1</div>
+</div>
+<div class="sprint-day medium">
+  <div class="day">Day 4~5</div>
+  <div class="task">Admin Playwright E2E 셋업 (P2-7)</div>
+  <div class="pri" style="background:rgba(34,197,94,.2); color:var(--green2)">🟢 P2</div>
+</div>
+<div class="sprint-day medium">
+  <div class="day">Day 6~7</div>
+  <div class="task">R2 백업 이중화 (P2-9)</div>
+  <div class="pri" style="background:rgba(34,197,94,.2); color:var(--green2)">🟢 P2</div>
+</div>
+<div class="sprint-day medium">
+  <div class="day">Day 8~10</div>
+  <div class="task">로그 일원화 + 메트릭 대시보드 (P2-8/10)</div>
+  <div class="pri" style="background:rgba(34,197,94,.2); color:var(--green2)">🟢 P2</div>
+</div>
+<div class="sprint-day critical">
+  <div class="day">(별도)</div>
+  <div class="task">PHP 통합 검증 (P0-1, PHP 팀 협업)</div>
+  <div class="pri" style="background:rgba(239,68,68,.2); color:var(--red2)">🔴 P0</div>
+</div>
+
+<!-- ───────────── 위험 요소 ───────────── -->
+<h2>🚨 위험 요소 / 주의사항</h2>
+
+<div class="warn-box">
+  <div class="warn-title">🔴 1. Admin 시드 비밀번호 (admin123) — 가장 시급</div>
+  <div class="warn-body">⚠️ 깃 히스토리/문서에 노출. 운영 트래픽 받기 전 반드시 교체 (P0-2). <strong>30분 내 자동화 처리 가능</strong>.</div>
+</div>
+
+<div class="warn-box solved">
+  <div class="warn-title">✅ 2. 자동 에러 감지 — 해결됨</div>
+  <div class="warn-body">이전 세션에서 우려했던 부분, 이제 Sentry로 자동 추적 중 (2026-05-03 활성화 완료).</div>
+</div>
+
+<div class="warn-box">
+  <div class="warn-title">🔴 3. PHP 통합 미완료</div>
+  <div class="warn-body">storige 측은 100% 준비 완료, PHP 팀과 협업 필요. 일정 동기화 필요.</div>
+</div>
+
+<div class="warn-box">
+  <div class="warn-title">🟡 4. fail2ban + IP 변동</div>
+  <div class="warn-body">이 Mac IP 변경 시 SSH 차단 가능. CLAUDE.local.md에 IP 기록되어 있으나 만료 시 갱신 필요.</div>
+</div>
+
+<!-- ───────────── 향후 인프라 ───────────── -->
+<h2>📅 향후 예약된 인프라 업데이트 (FUTURE_UPDATES)</h2>
+
+<div class="task-card medium">
+  <div class="title">Node 20 → 22 LTS 마이그레이션</div>
+  <div class="meta">권장 일정: 2026-06~07 (P0-1 완료 후) · 위험도: 🟡 중</div>
+  <div class="body">
+    Docker 4개 Dockerfile + Vercel 프로젝트 설정 + native deps 검증. Node 20 LTS는 2026-04-30 EOL이라 곧 마이그레이션 필요.<br>
+    임시 조치 (2026-05-03 적용): root <code>package.json</code> engines를 <code>"20.x"</code> → <code>">=20"</code> 으로 완화.
+  </div>
+</div>
+
+<!-- ───────────── 액션 ───────────── -->
+<h2>💡 가장 ROI 높은 다음 액션</h2>
+
+<table>
+  <thead><tr><th>우선순위</th><th>액션</th><th>차단 요소</th><th>예상 시간</th></tr></thead>
+  <tbody>
+    <tr><td>🥇 1순위</td><td><strong>Admin 비번 교체</strong> (자동화)</td><td>없음</td><td>30분</td></tr>
+    <tr><td>🥈 2순위</td><td>Sentry Slack 연결</td><td>사용자 Slack OAuth</td><td>30분</td></tr>
+    <tr><td>🥉 3순위</td><td>PHP 통합 일정 조율</td><td>외부 (PHP 팀)</td><td>비동기</td></tr>
+    <tr><td>4순위</td><td>다운로드 endpoint + Playwright</td><td>없음</td><td>2~3일</td></tr>
+  </tbody>
+</table>
+
+<!-- ───────────── 관련 문서 ───────────── -->
+<h2>🔗 관련 문서</h2>
+
+<table>
+  <thead><tr><th>문서</th><th>역할</th></tr></thead>
+  <tbody>
+    <tr><td><a href="./SYSTEM_INTEGRATION_OVERVIEW.html" style="color:var(--blue2)">SYSTEM_INTEGRATION_OVERVIEW.html</a> (v2.3)</td><td>시스템 통합 (Sentry/큐 모니터 가이드 포함)</td></tr>
+    <tr><td><a href="./PHP_INTEGRATION_VERIFICATION.html" style="color:var(--blue2)">PHP_INTEGRATION_VERIFICATION.html</a></td><td>PHP 측 10개 체크리스트</td></tr>
+    <tr><td><a href="./SENTRY_SETUP.md" style="color:var(--blue2)">SENTRY_SETUP.md</a></td><td>Sentry 운영 가이드 (활성화 완료 상태)</td></tr>
+    <tr><td><a href="./FUTURE_UPDATES.md" style="color:var(--blue2)">FUTURE_UPDATES.md</a></td><td>인프라 예약 업데이트 트래커</td></tr>
+    <tr><td><a href="./AUTOPILOT_SESSION_2026-05-02.md" style="color:var(--blue2)">AUTOPILOT_SESSION_2026-05-02.md</a></td><td>직전 사이클 11개 트랙 결과</td></tr>
+    <tr><td><a href="./REMAINING_WORK_REVIEW.md" style="color:var(--blue2)">REMAINING_WORK_REVIEW.md</a></td><td>트랙 마스터 트래커</td></tr>
+    <tr><td><code>CLAUDE.local.md</code></td><td>운영 정보 (gitignored)</td></tr>
+  </tbody>
+</table>
+
+<p style="text-align: center; color: var(--text3); font-size: 12px; margin-top: 60px; padding-top: 20px; border-top: 1px solid var(--bg3);">
+  Storige 다음 개발 이슈 · 2026-05-03 · v2.3 + Sentry 활성화 완료 · 누적 진척률 92%
+</p>
+
+</div>
+</body>
+</html>

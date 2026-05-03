@@ -87,7 +87,7 @@
 | Migration SQL + 신규 init.sql | ✅ PR #7 |
 | 운영 DB ALTER TABLE 적용 (옵션 C + edit_session_versions) | ✅ **2026-05-01 23:33 KST 적용 완료** |
 | 운영 api/worker 재배포 (BB-Phase 3 + 썸네일 풀스택 + cleanup cron) | ✅ **2026-05-02 12:37 + 13:02 KST** |
-| **PHP 측 코드 적용 검증** (양측 통합 테스트) | ⏳ **P1** |
+| **PHP 측 코드 적용 검증** (양측 통합 테스트) | ⏳ **P0** (Sentry 활성화로 디버깅 용이) |
 | BB-Phase 3 follow-up (썸네일 / cleanup cron) | ✅ `4901af9` + `2097e1c` + `9d67d8c` |
 
 ### 7. PDF / 워커
@@ -102,16 +102,22 @@
 | 항목 | 상태 | 우선순위 |
 |---|---|---|
 | 단위/통합/컴포넌트/플러그인 테스트 | ✅ 376 통과 | — |
-| Playwright E2E | ⚠️ 설정만 | P2 |
+| Playwright E2E | ✅ Editor smoke (P2-8 `4a12091`) / ❌ Admin 미설정 | P2 |
 | 사전 존재 type 에러 (9 + 12 = 21건) 정리 | ✅ `8820066` (P0-3, 9건) + `d1d78fc` (P1-3, 12 + cascading 4건). `pnpm tsc --noEmit` clean | — |
 | Vercel CDN HTML cache fix (`Importing a module script failed` 방지) | ✅ `5228171` (vercel.json headers + ae59bf2 schema 거부 정정) | — |
 | `unhandledrejection` global handler (React 트리 freeze 방지) | ✅ `0c0e8aa` (main.tsx) | — |
 | 신규 의존성 `@nestjs/schedule@^4.0.0` 운영 적용 (cleanup cron 기반) | ✅ docker compose --build api 자동 처리 | — |
-| **사전 존재 lint 에러 정리** (admin/process, canvas-core/getComputedStyle, ai/no-case-declarations, editor/no-empty, worker/no-useless-escape) | ⏳ | P2 |
-| 번들 크기 최적화 (vendor-opencv 10MB, vendor-onnx 24MB) | ❌ | P2 |
-| Sentry/Datadog 등 에러 추적 | ❌ | P2 |
-| 폰트 fallback 로그 정리 (본고딕 미찾음 경고) | ❌ | P2 |
+| **사전 존재 lint 에러 정리** | ✅ 5개 모듈 모두 0 errors (P2-9 `987d83f`) | — |
+| 번들 크기 최적화 (vendor-opencv 10MB, vendor-onnx 24MB) | ✅ optimizeDeps.exclude (P2-10 `921fe49`) | — |
+| **Sentry 운영 에러 추적** | ✅ **활성화 완료 (2026-05-03)** — 4개 앱 DSN 등록 + production 배포 | — |
+| 폰트 fallback 로그 정리 | ✅ dlog 헬퍼 + 12개 console.log silent (P2-12 `98fedf0`) | — |
 | WebAssembly multi-threading (`crossOriginIsolated`) | ❌ | P2 |
+| **Bull 큐 적체/실패 자동 알람 + Admin 위젯** | ✅ 1분 폴링 + Sentry warning + 5초 Admin 위젯 (P1-7 `466740a`) | — |
+| **PDF Before/After 미리보기** | ✅ FIXABLE 자동 수정 카드 (P1-4 `eae0220`) | — |
+| **Composite multi-region 자동 재배치** | ✅ 책등 가변 시 객체 영역 클립 (P1-5 `8108d05`) | — |
+| **AI 패널 사이드바 통합** | ✅ 'AI' 탭 추가 (P1-6 `3d15530`) | — |
+| **다크모드 fabric 객체 색상** | ✅ Object.prototype + selection 색상 (P2-11 `220d61f`) | — |
+| Node engines 완화 (20.x → >=20) | ✅ root package.json (`c04889b`) — Node 22 마이그레이션은 별도 사이클 (FUTURE_UPDATES.md) | — |
 
 ---
 
