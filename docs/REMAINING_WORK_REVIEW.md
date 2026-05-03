@@ -8,6 +8,8 @@
 > - 🟡 P1-4 PDF Before/After 미리보기 / P1-5 Composite multi-region 자동 재배치 / P1-6 AI 패널 UI 통합 / P1-7 Bull 큐 모니터링
 > - 🟢 P2-8 Playwright smoke / P2-9 lint 에러 정리 / P2-10 번들 최적화 / P2-11 fabric 다크모드 / P2-12 폰트 로그 silent
 >
+> **별도 트래커**: 향후 업데이트 이슈는 [`docs/FUTURE_UPDATES.md`](./FUTURE_UPDATES.md) 참조 (Node 22 마이그레이션 등)
+>
 > **소스 트래커**: `.cursor/plans/_RESUME_EDITOR_TRACKS.md`, `.cursor/plans/cover.md`, `.cursor/plans/v2/NEW_DEV_GUIDE.html`, `docs/P0_OPERATIONS_CHECKLIST.md`, `docs/MOBILE_TOUCH_UI.md`, `docs/BOOKMOA_INTEGRATION_DIFF.md`
 
 ---
