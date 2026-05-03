@@ -102,7 +102,7 @@
 | 항목 | 상태 | 우선순위 |
 |---|---|---|
 | 단위/통합/컴포넌트/플러그인 테스트 | ✅ 376 통과 | — |
-| Playwright E2E | ✅ Editor smoke (P2-8 `4a12091`) / ❌ Admin 미설정 | P2 |
+| Playwright E2E | ✅ Editor smoke (P2-8 `4a12091`) + ✅ **Admin smoke (`4cf5922`)** | — |
 | 사전 존재 type 에러 (9 + 12 = 21건) 정리 | ✅ `8820066` (P0-3, 9건) + `d1d78fc` (P1-3, 12 + cascading 4건). `pnpm tsc --noEmit` clean | — |
 | Vercel CDN HTML cache fix (`Importing a module script failed` 방지) | ✅ `5228171` (vercel.json headers + ae59bf2 schema 거부 정정) | — |
 | `unhandledrejection` global handler (React 트리 freeze 방지) | ✅ `0c0e8aa` (main.tsx) | — |
@@ -113,7 +113,8 @@
 | 폰트 fallback 로그 정리 | ✅ dlog 헬퍼 + 12개 console.log silent (P2-12 `98fedf0`) | — |
 | WebAssembly multi-threading (`crossOriginIsolated`) | ❌ | P2 |
 | **Bull 큐 적체/실패 자동 알람 + Admin 위젯** | ✅ 1분 폴링 + Sentry warning + 5초 Admin 위젯 (P1-7 `466740a`) | — |
-| **PDF Before/After 미리보기** | ✅ FIXABLE 자동 수정 카드 (P1-4 `eae0220`) | — |
+| **PDF Before/After 미리보기** | ✅ FIXABLE 자동 수정 카드 (P1-4 `eae0220`) + 다운로드 endpoint (`cd6d2f3`) | — |
+| **Sentry Slack 알림 채널** | ⏳ 가이드 문서 (`fbae695`) — 사용자 OAuth 인증 대기 | P1 |
 | **Composite multi-region 자동 재배치** | ✅ 책등 가변 시 객체 영역 클립 (P1-5 `8108d05`) | — |
 | **AI 패널 사이드바 통합** | ✅ 'AI' 탭 추가 (P1-6 `3d15530`) | — |
 | **다크모드 fabric 객체 색상** | ✅ Object.prototype + selection 색상 (P2-11 `220d61f`) | — |
