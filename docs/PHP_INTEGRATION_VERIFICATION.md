@@ -1,9 +1,31 @@
 # PHP 측 통합 검증 가이드
 
 > **목적**: Storige 에디터 연동에서 PHP 개발자가 검증·구현해야 할 항목을 Storige 측 현재 구현 기준으로 정리.  
-> Storige 측은 이미 운영 배포 완료 (`2910a46`). PHP 측 작업 준비가 되는 시점에 이 문서를 기준으로 진행할 것.  
-> **기준일**: 2026-05-02 (Storige master `2910a46`)  
-> **관련 문서**: `docs/BOOKMOA_INTEGRATION_DIFF.md`, `docs/BOOKMOA_INTEGRATION_GUIDE.md`, `docs/03_INTEGRATION_GUIDE_KR.md`
+> Storige 측은 이미 운영 배포 완료 (`726389f`). PHP 측 작업 준비가 되는 시점에 이 문서를 기준으로 진행할 것.  
+> **기준일**: 2026-05-03 (Storige master `726389f`, 보안 패치 A-E 반영)  
+> **관련 문서**: `docs/BOOKMOA_INTEGRATION_DIFF.md`, `docs/BOOKMOA_INTEGRATION_GUIDE.md`, `docs/USER_IDENTITY_AUDIT_2026-05-03.md`
+
+> ## ⚠️ 2026-05-03 보안 패치 — PHP 측 영향 요약
+>
+> 사용자 격리 권한 검증을 강화했습니다. PHP 측 **기존 코드는 그대로 작동**하지만, 다음 사항을 반드시 알고 진행해야 합니다:
+>
+> ### 🔴 즉시 영향 (운영 자동 적용)
+> 1. **`/files/:id/download` 인증 강제**: 이전엔 누구나 다운로드 가능 → 이제 **JWT 인증 + 소유자 검증** 필요
+>    - PHP 서버에서 합성 결과 PDF를 가져갈 때는 **`/files/:id/download/external` (X-API-Key)** 사용 (신규)
+>    - 브라우저에서 직접 다운로드 시도하면 401
+> 2. **`/files`, `/files/:id`, `/edit-sessions/:id` 모두 소유자 검증**
+>    - JWT의 `memberSeqno`가 리소스의 `memberSeqno`와 일치해야 접근 가능
+>    - PHP 마이페이지에서 사용자별 작업 목록 조회 시 PHP 서버에서 X-API-Key로 호출 권장 (브라우저 직접 호출 금지)
+> 3. **`/edit-sessions/:id` 소유자 외 접근 시 403 ForbiddenException** 반환
+>
+> ### 🟡 권장 보강 (PHP 측 선택)
+> 4. **shop-session 호출 시 `orderSeqno` 또는 `allowedOrderSeqnos` 전달 권장 (호환 유지)**
+>    - 전달하면 JWT에 포함되어 EditSession 생성 시 자동 검증
+>    - 미전달 시 기존 동작 유지 (DTO 값 신뢰)
+> 5. **`callbackUrl` 호스트 화이트리스트**: `papascompany.co.kr`, `bookmoa.com`만 자동 허용
+>    - 다른 호스트는 거부됨 — 운영 시 `WEBHOOK_ALLOWED_HOSTS` 환경변수로 추가 가능
+>
+> 자세한 내용은 [USER_IDENTITY_AUDIT_2026-05-03.md](./USER_IDENTITY_AUDIT_2026-05-03.md) 참조.
 
 ---
 
@@ -21,6 +43,9 @@
 | 8 | 옵션 C: `allowCustomSize` 토글 + URL | 🟡 P1 | Admin + URL 파라미터 | width/height 적용 확인 |
 | 9 | 재편집: `sessionId` 전달 | 🟡 P1 | 기존 세션 ID 전달 | 캔버스 복원 확인 |
 | 10 | `onSave` / `onReady` 콜백 활용 | 🟢 P2 | 선택적 UX 개선 | — |
+| 11 | **합성 결과 PDF 다운로드: `/external` endpoint 사용** | 🔴 P0 | PHP 서버에서 `X-API-Key` 헤더로 호출 | curl 200 OK |
+| 12 | **fileId/sessionId 클라이언트 노출 금지** | 🔴 P0 | PHP 마이페이지 코드 검수 | 브라우저 DevTools에서 노출 X |
+| 13 | **shop-session 호출 시 `orderSeqno` 추가** (권장) | 🟡 P1 | 기존 코드에 한 필드 추가 | JWT 페이로드에 `allowedOrderSeqnos` 포함 |
 
 ---
 
@@ -642,3 +667,160 @@ A. 원본 `pages`는 표지 포함 전체 페이지 수였으나, Storige의 내
 | 기존 연동 차이 비교 | `docs/BOOKMOA_INTEGRATION_DIFF.md` |
 | 북모아 연동 가이드 | `docs/BOOKMOA_INTEGRATION_GUIDE.md` |
 | 종합 통합 가이드 | `docs/03_INTEGRATION_GUIDE_KR.md` |
+| 사용자 식별 감사 보고 | `docs/USER_IDENTITY_AUDIT_2026-05-03.md` |
+| 보안 패치 (Patch A-E) | commit `726389f` |
+
+---
+
+## 11. 보안 패치 (2026-05-03) — PHP 측 작업 가이드
+
+### 11-1. 합성 결과 PDF 다운로드 — `/external` endpoint 사용
+
+**Before** (이전 — 인증 없이 다운로드 가능, 결함):
+```php
+// ❌ 더 이상 작동 안 함 (401 반환)
+$pdfData = file_get_contents("https://api.papascompany.co.kr/api/files/{$fileId}/download");
+```
+
+**After** (보안 패치 후 — X-API-Key 인증 필수):
+```php
+// ✅ PHP 서버에서 합성 결과 다운로드
+function downloadSynthesizedPdf(string $fileId): string {
+    $ch = curl_init("https://api.papascompany.co.kr/api/files/{$fileId}/download/external");
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HTTPHEADER => ['X-API-Key: ' . STORIGE_API_KEY],
+    ]);
+    $pdfData = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    if ($httpCode !== 200) {
+        throw new Exception("PDF 다운로드 실패: HTTP $httpCode");
+    }
+    return $pdfData;
+}
+```
+
+> ⚠️ **브라우저(클라이언트)에서 직접 다운로드 시도하면 401**. 사용자에게 직접 보여줄 필요가 있다면 PHP 서버에서 받아서 PHP가 다시 사용자에게 스트림으로 전달.
+
+### 11-2. fileId / sessionId 클라이언트 노출 금지
+
+**잘못된 패턴** (❌ 결함과 결합 시 위험):
+```html
+<!-- ❌ HTML에 fileId 직접 노출 -->
+<a href="https://api.papascompany.co.kr/api/files/<?= $fileId ?>/download">다운로드</a>
+
+<!-- ❌ JavaScript 변수로 노출 -->
+<script>const sessionId = '<?= $sessionId ?>';</script>
+```
+
+**올바른 패턴**:
+```php
+// ✅ PHP 서버에서 받아서 PHP가 응답 (사용자에게 fileId 노출 X)
+// /mypage/download.php?orderSeqno=12345
+$orderSeqno = $_GET['orderSeqno'];
+// 1. 본인 주문 검증
+if (!isOrderOwnedByUser($orderSeqno, $_SESSION['memberSeqno'])) {
+    http_response_code(403);
+    exit('Forbidden');
+}
+// 2. PHP 서버가 storige API 호출
+$fileId = getOrderResultFileId($orderSeqno); // DB에서 조회
+$pdfData = downloadSynthesizedPdf($fileId);
+// 3. 사용자에게 스트림으로 전달
+header('Content-Type: application/pdf');
+header('Content-Disposition: attachment; filename="결과.pdf"');
+echo $pdfData;
+```
+
+### 11-3. shop-session 호출 시 orderSeqno 추가 (권장)
+
+**Before** (이전 — 호환 동작):
+```php
+function getShopSessionToken(int $orderSeqno, int $memberSeqno, string $templateSetId): string {
+    $body = [
+        'memberSeqno' => $memberSeqno,
+        'memberId'    => $memberId,
+        'memberName'  => $memberName,
+    ];
+    // ...
+}
+```
+
+**After** (권장 — JWT에 주문 컨텍스트 포함):
+```php
+function getShopSessionToken(int $orderSeqno, int $memberSeqno, string $templateSetId): string {
+    $body = [
+        'memberSeqno'  => $memberSeqno,
+        'memberId'     => $memberId,
+        'memberName'   => $memberName,
+        'orderSeqno'   => $orderSeqno,  // ✅ 권장 추가 — 단일 주문 컨텍스트
+        // 또는 장바구니에서 여러 주문 가능 시:
+        // 'allowedOrderSeqnos' => [$orderSeqno1, $orderSeqno2],
+    ];
+    // ...
+}
+```
+
+**효과**:
+- JWT 페이로드에 `allowedOrderSeqnos` 포함됨
+- 사용자가 다른 주문번호로 EditSession 생성 시도 시 자동 차단 (403 ORDER_NOT_ALLOWED)
+- **호환성 유지**: 미전달 시 기존 동작 그대로
+
+### 11-4. PHP 마이페이지 — 사용자 작업 목록 조회
+
+**상황**: 사용자가 마이페이지에서 자기 주문/작업 목록을 보고 싶을 때
+
+**잘못된 패턴** (❌ JS에서 직접 호출):
+```javascript
+// ❌ 브라우저에서 직접 호출 — JWT 만료/탈취 위험
+fetch(`https://api.papascompany.co.kr/api/files?memberSeqno=${memberSeqno}`)
+```
+
+**올바른 패턴**:
+```php
+// ✅ PHP 서버에서 X-API-Key로 호출 후 사용자에게 결과만 전달
+function getMyFiles(int $memberSeqno): array {
+    $ch = curl_init("https://api.papascompany.co.kr/api/files?memberSeqno={$memberSeqno}");
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HTTPHEADER => ['X-API-Key: ' . STORIGE_API_KEY],
+    ]);
+    $res = json_decode(curl_exec($ch), true);
+    curl_close($ch);
+    return $res['files'] ?? [];
+}
+```
+
+> 💡 **참고**: 위 endpoint는 일반 JWT 기반에선 본인 외 조회 차단됨. PHP 서버는 X-API-Key로 admin/manager 권한 호출 → 임의 memberSeqno 조회 가능.
+
+### 11-5. Webhook callbackUrl 호스트 검증 (운영 변경 사항)
+
+PHP 측 webhook 수신 URL은 다음 호스트여야 함 (자동 허용):
+- `*.papascompany.co.kr` (서브도메인 포함)
+- `*.bookmoa.com`
+- `localhost`, `127.0.0.1` (개발 환경)
+
+다른 호스트로 webhook 호출 시도 시 storige API에서 거부 + 로그:
+```
+[Webhook] Blocked callback URL not in allowlist: https://evil.com/...
+```
+
+**운영 시 추가 호스트가 필요하면** VPS `~/storige/.env`:
+```bash
+WEBHOOK_ALLOWED_HOSTS=papascompany.co.kr,bookmoa.com,my-test.example.com
+```
+
+---
+
+## 12. 변경 이력
+
+- **v1 (2026-05-02)** — 최초 작성. 10개 PHP 체크리스트.
+- **v2 (2026-05-03)** — 보안 패치 (Patch A-E) 반영:
+  - 체크리스트 #11/12/13 추가
+  - §11 보안 패치 PHP 측 작업 가이드 신규
+  - 다운로드 endpoint 변경 (`/external` 사용) + 코드 예시
+  - shop-session orderSeqno 권장 + JWT 강화
+  - Webhook 호스트 화이트리스트
+

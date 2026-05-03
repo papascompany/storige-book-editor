@@ -304,6 +304,7 @@
     <a href="#flow" class="nav-link">전체 흐름 다이어그램</a>
     <a href="#scenarios" class="nav-link">검증 시나리오</a>
     <a href="#faq" class="nav-link">FAQ</a>
+    <a href="#sec-security" class="nav-link" style="color:#dc2626">11. 보안 패치 가이드 ⚡</a>
   </div>
 </nav>
 
@@ -331,6 +332,22 @@
       <strong>대시보드</strong>: <a href="https://sentry.io/organizations/papascompany/issues/" target="_blank">sentry.io/organizations/papascompany/issues/</a><br>
       <strong>유용한 endpoint</strong>: <code>GET /api/health</code> (인증 불필요, 큐 상태 포함) — PHP cron으로 5분마다 호출해 가용성 모니터링 가능<br>
       자세한 내용은 <a href="./SYSTEM_INTEGRATION_OVERVIEW.html#s4-7">시스템 통합 문서 §운영 모니터링</a> 참조.
+    </div>
+  </div>
+
+  <!-- ⚠️ 보안 패치 안내 (2026-05-03 Patch A-E) -->
+  <div style="background:rgba(239,68,68,.08);border-left:4px solid #ef4444;padding:14px 18px;border-radius:0 8px 8px 0;margin-bottom:24px">
+    <div style="font-weight:700;color:#ef4444;margin-bottom:8px">⚠️ 2026-05-03 사용자 격리 보안 패치 — PHP 측 영향</div>
+    <div style="font-size:13px;color:#475569;line-height:1.7">
+      <strong>PHP 측 기존 코드는 그대로 작동</strong>하지만 다음 사항을 반드시 알고 진행해야 합니다:
+      <ul style="margin:8px 0 0 18px;padding:0">
+        <li>🔴 <strong><code>/files/:id/download</code> 인증 강제</strong> — 합성 결과 PDF 다운로드는 <code>/files/:id/download/external</code> (X-API-Key) 사용</li>
+        <li>🔴 <strong><code>fileId</code> / <code>sessionId</code> 클라이언트 노출 금지</strong> — 모든 storige API 호출은 PHP 서버에서</li>
+        <li>🔴 <strong><code>/edit-sessions/:id</code>, <code>/files/:id</code> 소유자 검증</strong> — JWT.memberSeqno 일치 시만 접근</li>
+        <li>🟡 <strong>shop-session 호출 시 <code>orderSeqno</code> 추가 권장</strong> — JWT에 포함되어 자동 검증 (호환 유지)</li>
+        <li>🟡 <strong><code>callbackUrl</code> 호스트 화이트리스트</strong>: <code>papascompany.co.kr</code>, <code>bookmoa.com</code>만 자동 허용</li>
+      </ul>
+      체크리스트 항목 #11~13 + §11 PHP 코드 예시 참조.
     </div>
   </div>
 
@@ -407,6 +424,27 @@
         <div>
           <div class="meta"><span class="badge p2">🟢 P2 선택</span> <span class="title">10. <code>onSave</code> / <code>onReady</code> 콜백 활용</span></div>
           <div class="desc">에디터 자동저장 완료, 로드 완료 이벤트 수신 시 UX 개선 (선택 사항)</div>
+        </div>
+      </li>
+      <li>
+        <span class="icon">⬜</span>
+        <div>
+          <div class="meta"><span class="badge p0">🔴 P0 신규 (2026-05-03)</span> <span class="title">11. 합성 결과 PDF 다운로드: <code>/external</code> endpoint 사용</span></div>
+          <div class="desc">기존 <code>/files/:id/download</code>는 JWT 인증 강제 — PHP 서버에서 합성 결과 가져갈 때는 <code>/files/:id/download/external</code> + <code>X-API-Key</code> 헤더 사용 (신규 endpoint)</div>
+        </div>
+      </li>
+      <li>
+        <span class="icon">⬜</span>
+        <div>
+          <div class="meta"><span class="badge p0">🔴 P0 신규 (2026-05-03)</span> <span class="title">12. <code>fileId</code> / <code>sessionId</code> 클라이언트 노출 금지</span></div>
+          <div class="desc">PHP 마이페이지/주문 화면에서 storige UUID를 HTML/JS에 직접 노출하지 말 것. 모든 storige API 호출은 PHP 서버에서 X-API-Key로 처리 후 사용자에게 결과만 전달</div>
+        </div>
+      </li>
+      <li>
+        <span class="icon">⬜</span>
+        <div>
+          <div class="meta"><span class="badge p1">🟡 P1 권장 (2026-05-03)</span> <span class="title">13. shop-session 호출 시 <code>orderSeqno</code> 추가</span></div>
+          <div class="desc">기존 코드에 한 필드만 추가하면 JWT 페이로드에 <code>allowedOrderSeqnos</code> 포함됨 → EditSession 생성 시 자동 검증. 미전달 시 기존 동작 유지 (호환).</div>
         </div>
       </li>
     </ul>
@@ -1046,9 +1084,86 @@
           <tr><td>기존 연동 차이 비교</td><td><code>docs/BOOKMOA_INTEGRATION_DIFF.md</code></td></tr>
           <tr><td>북모아 연동 가이드</td><td><code>docs/BOOKMOA_INTEGRATION_GUIDE.md</code></td></tr>
           <tr><td>종합 통합 가이드</td><td><code>docs/03_INTEGRATION_GUIDE_KR.md</code></td></tr>
+          <tr><td><strong>사용자 식별 감사 보고</strong></td><td><code>docs/USER_IDENTITY_AUDIT_2026-05-03.md</code></td></tr>
+          <tr><td><strong>보안 패치 (Patch A-E) 커밋</strong></td><td><code>726389f</code></td></tr>
         </tbody>
       </table>
     </div>
+  </section>
+
+  <!-- 11. 보안 패치 PHP 가이드 -->
+  <section id="sec-security">
+    <h2><span class="section-num">11</span> 보안 패치 (2026-05-03) — PHP 측 작업 가이드</h2>
+
+    <h3 style="margin-top:24px;color:#dc2626">11-1. 합성 결과 PDF 다운로드 — <code>/external</code> endpoint 사용</h3>
+    <p style="font-size:13px;color:#475569">기존 <code>/files/:id/download</code>는 인증 강제 — PHP 서버에서 합성 결과 PDF 가져갈 때는 신규 endpoint 사용:</p>
+    <div style="background:#1e293b;color:#cbd5e1;padding:14px 18px;border-radius:8px;font-family:'SF Mono',monospace;font-size:12px;margin:8px 0;line-height:1.6">
+<span style="color:#94a3b8">// ✅ PHP 서버에서 합성 결과 다운로드 (X-API-Key 인증)</span><br>
+<span style="color:#c084fc">function</span> <span style="color:#fbbf24">downloadSynthesizedPdf</span>(<span style="color:#60a5fa">string</span> $fileId): <span style="color:#60a5fa">string</span> {<br>
+&nbsp;&nbsp;$ch = <span style="color:#fbbf24">curl_init</span>(<span style="color:#a3e635">"https://api.papascompany.co.kr/api/files/{$fileId}/download/external"</span>);<br>
+&nbsp;&nbsp;<span style="color:#fbbf24">curl_setopt_array</span>($ch, [<br>
+&nbsp;&nbsp;&nbsp;&nbsp;CURLOPT_RETURNTRANSFER => <span style="color:#a3e635">true</span>,<br>
+&nbsp;&nbsp;&nbsp;&nbsp;CURLOPT_HTTPHEADER => [<span style="color:#a3e635">'X-API-Key: '</span> . STORIGE_API_KEY],<br>
+&nbsp;&nbsp;]);<br>
+&nbsp;&nbsp;$pdfData = <span style="color:#fbbf24">curl_exec</span>($ch); <span style="color:#94a3b8">// 200 OK 시 PDF 바이너리</span><br>
+&nbsp;&nbsp;<span style="color:#fbbf24">curl_close</span>($ch);<br>
+&nbsp;&nbsp;<span style="color:#c084fc">return</span> $pdfData;<br>
+}
+    </div>
+    <div style="background:rgba(239,68,68,.08);border-left:3px solid #ef4444;padding:10px 14px;border-radius:0 6px 6px 0;font-size:12px;color:#475569">
+      ⚠️ 브라우저(클라이언트)에서 직접 다운로드 시도 → 401. 사용자에게 보여줄 때 PHP 서버에서 받아 다시 스트림으로 전달.
+    </div>
+
+    <h3 style="margin-top:24px;color:#dc2626">11-2. fileId / sessionId 클라이언트 노출 금지</h3>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px;font-size:12px">
+      <div style="background:rgba(239,68,68,.08);border-left:3px solid #ef4444;padding:10px 14px;border-radius:0 6px 6px 0">
+        <strong style="color:#ef4444">❌ 잘못된 패턴</strong><br>
+        <code>&lt;a href="...api/files/{$fileId}/download"&gt;</code><br>
+        <code>&lt;script&gt;const sid = '{$sessionId}'&lt;/script&gt;</code>
+      </div>
+      <div style="background:rgba(34,197,94,.08);border-left:3px solid #22c55e;padding:10px 14px;border-radius:0 6px 6px 0">
+        <strong style="color:#22c55e">✅ 올바른 패턴</strong><br>
+        PHP 서버에서 <code>/mypage/download.php?orderSeqno=N</code><br>
+        → 본인 검증 → DB에서 fileId 조회 → API 호출 → 스트림 응답
+      </div>
+    </div>
+
+    <h3 style="margin-top:24px;color:#0891b2">11-3. shop-session 호출 시 orderSeqno 추가 (권장)</h3>
+    <div style="background:#1e293b;color:#cbd5e1;padding:14px 18px;border-radius:8px;font-family:'SF Mono',monospace;font-size:12px;margin:8px 0;line-height:1.6">
+$body = [<br>
+&nbsp;&nbsp;<span style="color:#a3e635">'memberSeqno'</span>  => $memberSeqno,<br>
+&nbsp;&nbsp;<span style="color:#a3e635">'memberId'</span>     => $memberId,<br>
+&nbsp;&nbsp;<span style="color:#a3e635">'memberName'</span>   => $memberName,<br>
+&nbsp;&nbsp;<span style="color:#a3e635">'orderSeqno'</span>   => $orderSeqno,&nbsp;&nbsp;<span style="color:#94a3b8">// ✅ 추가 — JWT.allowedOrderSeqnos 포함</span><br>
+&nbsp;&nbsp;<span style="color:#94a3b8">// 또는 장바구니: 'allowedOrderSeqnos' => [12345, 12346]</span><br>
+];
+    </div>
+    <div style="background:rgba(34,197,94,.08);border-left:3px solid #22c55e;padding:10px 14px;border-radius:0 6px 6px 0;font-size:12px;color:#475569;margin-top:8px">
+      ✅ 효과: 다른 주문번호로 EditSession 생성 시도 시 403 ORDER_NOT_ALLOWED 자동 차단. 호환성 유지 (미전달 시 기존 동작).
+    </div>
+
+    <h3 style="margin-top:24px;color:#0891b2">11-4. 사용자별 작업 목록 — PHP 서버에서 X-API-Key 호출</h3>
+    <p style="font-size:13px;color:#475569">PHP 마이페이지에서 사용자 본인 파일 목록 조회는 PHP 서버에서 X-API-Key로 (브라우저 직접 호출 X):</p>
+    <div style="background:#1e293b;color:#cbd5e1;padding:14px 18px;border-radius:8px;font-family:'SF Mono',monospace;font-size:12px;margin:8px 0;line-height:1.6">
+<span style="color:#c084fc">function</span> <span style="color:#fbbf24">getMyFiles</span>(<span style="color:#60a5fa">int</span> $memberSeqno): <span style="color:#60a5fa">array</span> {<br>
+&nbsp;&nbsp;$ch = <span style="color:#fbbf24">curl_init</span>(<span style="color:#a3e635">"https://api.papascompany.co.kr/api/files?memberSeqno={$memberSeqno}"</span>);<br>
+&nbsp;&nbsp;<span style="color:#fbbf24">curl_setopt_array</span>($ch, [<br>
+&nbsp;&nbsp;&nbsp;&nbsp;CURLOPT_RETURNTRANSFER => <span style="color:#a3e635">true</span>,<br>
+&nbsp;&nbsp;&nbsp;&nbsp;CURLOPT_HTTPHEADER => [<span style="color:#a3e635">'X-API-Key: '</span> . STORIGE_API_KEY],<br>
+&nbsp;&nbsp;]);<br>
+&nbsp;&nbsp;$res = <span style="color:#fbbf24">json_decode</span>(<span style="color:#fbbf24">curl_exec</span>($ch), <span style="color:#a3e635">true</span>);<br>
+&nbsp;&nbsp;<span style="color:#c084fc">return</span> $res[<span style="color:#a3e635">'files'</span>] ?? [];<br>
+}
+    </div>
+
+    <h3 style="margin-top:24px;color:#7c3aed">11-5. Webhook callbackUrl 호스트 검증</h3>
+    <p style="font-size:13px;color:#475569">PHP 측 webhook 수신 URL은 다음 호스트여야 함 (자동 허용):</p>
+    <ul style="font-size:13px;color:#475569;padding-left:20px">
+      <li><code>*.papascompany.co.kr</code> (서브도메인 포함)</li>
+      <li><code>*.bookmoa.com</code></li>
+      <li><code>localhost</code>, <code>127.0.0.1</code> (개발 환경)</li>
+    </ul>
+    <p style="font-size:12px;color:#475569;margin-top:8px">다른 호스트로 webhook 호출 시 storige API에서 거부 + 로그 기록. 운영 시 추가 호스트 필요하면 VPS <code>~/storige/.env</code>에 <code>WEBHOOK_ALLOWED_HOSTS=papascompany.co.kr,bookmoa.com,my-test.example.com</code> 형식으로 추가.</p>
   </section>
 
 </main>
