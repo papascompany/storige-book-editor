@@ -46,7 +46,9 @@ export class ProductsService {
       sortOrder = 'desc',
     } = query;
 
-    const queryBuilder = this.productRepository.createQueryBuilder('product');
+    const queryBuilder = this.productRepository
+      .createQueryBuilder('product')
+      .leftJoinAndSelect('product.templateSet', 'templateSet');
 
     // Search filter
     if (search) {
@@ -82,7 +84,7 @@ export class ProductsService {
   async findOne(id: string): Promise<Product> {
     const product = await this.productRepository.findOne({
       where: { id },
-      relations: ['sizes'],
+      relations: ['sizes', 'templateSet'],
     });
 
     if (!product) {
@@ -95,7 +97,7 @@ export class ProductsService {
   async findByProductId(productId: string): Promise<Product> {
     const product = await this.productRepository.findOne({
       where: { productId },
-      relations: ['sizes'],
+      relations: ['sizes', 'templateSet'],
     });
 
     if (!product) {
