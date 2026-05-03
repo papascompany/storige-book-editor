@@ -1,8 +1,16 @@
 # Sentry 운영 에러 추적 설정 가이드
 
-> **상태**: SDK 통합 완료 (`commit ?`), DSN 발급 + 환경변수 설정 후 즉시 활성화
+> **상태**: ✅ **활성화 완료 (2026-05-03)** — 4개 앱 모두 Sentry로 에러 전송 중
 > **적용 앱**: API / Worker / Editor / Admin (4개)
 > **DSN 미설정 시 동작**: silent (로그만 출력, 에러 전송 X)
+>
+> ## 활성화 이력
+> - 2026-05-02: SDK 통합 완료 (커밋 `64b1a14`, `f5e22d9`)
+> - 2026-05-03: DSN 4개 발급 + VPS/Vercel env 등록 + 재배포 완료
+>   - VPS API: `[Sentry/storige-api] Initialized for production` 로그 확인
+>   - VPS Worker: `[Sentry/storige-worker] Initialized for production` 로그 확인
+>   - Vercel admin/editor: bundle에 DSN inject 검증 완료
+>   - Sentry 조직: papascompany / 4개 프로젝트 (storige-api, -worker, -editor, -admin)
 
 ---
 
