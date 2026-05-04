@@ -22,7 +22,6 @@
     "@storige/types": "workspace:*",
     "axios": "^1.7.9",
     "bull": "^4.16.4",
-    "canvas": "^2.11.2",
     "dotenv": "^17.2.3",
     "mysql2": "^3.12.0",
     "nestjs-pino": "^4",
