@@ -21,6 +21,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 > ⚠️ Never attempt SSH with arbitrary usernames (`root`, `ubuntu`, etc.) — fail2ban will ban this Mac's IP.
 > Always use exactly `ssh deploy@158.247.235.202`.
 
+> ## 📋 Sprint State (Versioned Handoff)
+>
+> **At session start, after reading `CLAUDE.local.md`, also check the latest sprint handoff:**
+> ```bash
+> ls -t .cursor/plans/RESUME_PROMPT_*.md 2>/dev/null | head -1
+> git log --oneline -10
+> ```
+>
+> The most recent `.cursor/plans/RESUME_PROMPT_<YYYY-MM-DD>.md` is the canonical
+> "what we're working on now" pointer — sprint goals, recent commits, pending tasks.
+> Always read it before continuing in-flight work, unless the user is reporting a
+> specific bug or asking for a one-off task.
+>
+> Other handoff documents in `.cursor/plans/`:
+> - `_RESUME_PROMPT.md` — project-onboarding prompt (do not delete)
+> - `_RESUME_EDITOR_TRACKS.md` — editor track handoff
+> - `HANDOFF_GUIDE.md` — general handoff guide
+
 ## Project Overview
 
 Storige is a print shopping mall system with an online editor for creating print products. It consists of a React-based canvas editor (using Fabric.js), NestJS REST API, and a PDF processing worker service.

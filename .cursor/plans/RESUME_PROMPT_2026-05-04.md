@@ -331,3 +331,32 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 ## 📅 변경 이력
 
 - 2026-05-04 v1 — 초안 작성. P0-1/P0-2/P1-5/P1-6 완료 후 다음 사이클 인수인계용.
+- 2026-05-04 v1.1 — 후속 세션 작업 로그 append (아래 §11 참조).
+
+---
+
+## 📝 §11. 후속 세션 작업 로그
+
+### 2026-05-04 (후속 세션) — `linkTemplateSet` @RelationId 버그 수정
+
+**제보**: 사용자가 직접 코드 분석 후 제보. `apps/api/src/products/products.service.ts:151` 의 `product.templateSetId = templateSetId` 가 `@RelationId` 가상 필드(읽기 전용)에 대입하는 코드라서 `save()` 시 silent fail. `PUT /api/products/:id/template-set` 호출 시 DB 가 변경되지 않음.
+
+**수정 커밋**:
+- `96d4235` — `linkTemplateSet`/`unlinkTemplateSet` 을 `repository.update({ templateSet: { id } as any })` 패턴으로 교체
+- `da02a9f` — `unlinkTemplateSet` 의 `null` cast 추가 (TypeORM `_QueryDeepPartialEntity` 타입 회피)
+
+**검증**:
+- VPS 빌드/재배포 완료 (`docker compose build api && docker compose up -d api`)
+- API health check 정상
+- 운영 DB 의 products 테이블에 `template_set_id` 가 이미 채워져 있어 데이터 손상 없음 (시드 또는 직접 SQL 로 삽입된 것으로 추정)
+
+**관련 패턴 주의**: `_RESUME_PROMPT.md` v11 에 동일 종류의 `@RelationId` 버그 (`378fd08`) 가 이미 한 번 기록되어 있음. **TypeORM `@RelationId` 가상 필드는 읽기 전용** 이라는 패턴이 이 코드베이스에서 2회 발생했으므로, 향후 entity 의 `*Id` 필드에 값을 쓰는 코드는 의심하고 검증할 것.
+
+### 인수인계 자동화 정비 (이 세션 추가 작업)
+- `CLAUDE.md` — Sprint State (Versioned Handoff) 섹션 추가. 새 세션이 자동으로 `RESUME_PROMPT_*.md` 의 최신본을 읽도록 지시.
+- Claude Code 메모리(`~/.claude/projects/.../memory/`) 초기화 — user_profile / project_state / handoff_docs / external_systems / `@RelationId` feedback / session_start protocol 6개 메모리 파일 등록.
+
+### 작업 1·2·3 진행 상태 (이 세션 시점)
+- ✅ 작업 1: `commit e8d0132` 로 이미 완료 (Products findAll relation join)
+- 🔶 작업 2: `commit 8632669` 에 합성 E2E 검증 보고서 추가됨. 실제 합성 잡 E2E 가 끝났는지는 보고서 본문 확인 필요.
+- 🔶 작업 3: `commit 8632669` 에 PHP 팀 킥오프 문서 추가됨. 실제 PHP 팀 컨택은 사용자가 직접 진행.
