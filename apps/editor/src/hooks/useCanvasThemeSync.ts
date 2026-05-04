@@ -74,13 +74,29 @@ export function useCanvasThemeSync(ready: boolean): void {
       if (TOUCH_ENV) return
       const controls = getDefaultControls(mode)
 
-      // 2-A. fabric.Object.prototype 기본값 갱신 — 이후 추가되는 모든 새 객체에 자동 적용
+      // 2-A. fabric.Object.prototype + 특수 prototype 기본값 갱신
       // (기존엔 시작 시점의 light theme 색상이 prototype에 박혀있어 테마 전환 후
       // 추가된 객체는 hover/selection 색상이 light로 남아있는 버그 수정)
+      // P2-13: ActiveSelection (다중 선택 그룹) + IText caret color 동기화 추가
       try {
         ;(fabric.Object.prototype as any).borderColor = controls.borderColor
         ;(fabric.Object.prototype as any).cornerColor = controls.cornerColor
         ;(fabric.Object.prototype as any).cornerStrokeColor = controls.cornerStrokeColor
+
+        // ActiveSelection: 다중 선택 시 wrapping group이 별도 prototype 사용
+        const ActiveSelection = (fabric as any).ActiveSelection
+        if (ActiveSelection?.prototype) {
+          ActiveSelection.prototype.borderColor = controls.borderColor
+          ActiveSelection.prototype.cornerColor = controls.cornerColor
+          ActiveSelection.prototype.cornerStrokeColor = controls.cornerStrokeColor
+        }
+
+        // IText / Textbox: 텍스트 편집 시 caret(커서) 색상 — prototype의 cursorColor
+        const caretColor = mode === 'dark' ? '#e5e7eb' : '#1f2937'
+        const IText = (fabric as any).IText
+        const Textbox = (fabric as any).Textbox
+        if (IText?.prototype) IText.prototype.cursorColor = caretColor
+        if (Textbox?.prototype) Textbox.prototype.cursorColor = caretColor
       } catch (e) {
         console.warn('[useCanvasThemeSync] prototype update error:', e)
       }

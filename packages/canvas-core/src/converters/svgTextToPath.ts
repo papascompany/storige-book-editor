@@ -5,6 +5,8 @@
  * Supports mixed styles (runs), transforms, underline, and fontWeight
  */
 
+import { dlog, dwarn } from '../utils/debugLog';
+
 export interface ConvertSvgTextToPathResult {
   svg: string;
   font: any; // OpenType.js Font object for baseline correction
@@ -31,7 +33,7 @@ export async function convertSvgTextToPath(
 
   // Parse TTF buffer to get font
   const font = opentype.parse(ttfBuffer);
-  console.log(`✅ Font parsed: ${font.names.fullName?.en || 'Unknown'}`);
+  dlog('font', `✅ Font parsed: ${font.names.fullName?.en || 'Unknown'}`);
 
   // Parse SVG string
   const parser = new DOMParser();
@@ -45,10 +47,10 @@ export async function convertSvgTextToPath(
 
   // Find all <text> elements (not tspan - they will be handled within text elements)
   const textElements = svgDoc.querySelectorAll('text');
-  console.log(`🔍 Found ${textElements.length} text elements to convert`);
+  dlog('font', `🔍 Found ${textElements.length} text elements to convert`);
 
   if (textElements.length === 0) {
-    console.warn('⚠️  No text elements found in SVG');
+    dwarn('font', '⚠️  No text elements found in SVG');
     return { svg: svgString, font };
   }
 
@@ -58,7 +60,7 @@ export async function convertSvgTextToPath(
   const outerG = svgDoc.querySelector('g[transform]');
   if (outerG) {
     const transformAttr = outerG.getAttribute('transform');
-    console.log(`🔄 Parent transform will be preserved: ${transformAttr}`);
+    dlog('font', `🔄 Parent transform will be preserved: ${transformAttr}`);
   }
 
   // Convert each <text> element
@@ -68,8 +70,8 @@ export async function convertSvgTextToPath(
 
       if (tspans.length > 0) {
         // Case 1: <text> with <tspan> children (multi-line or styled text / mixed styles)
-        console.log(`📝 Converting <text> with ${tspans.length} tspan children`);
-        console.log('textElement', textElement);
+        dlog('font', `📝 Converting <text> with ${tspans.length} tspan children`);
+        dlog('font', 'textElement', textElement);
         // Create a group to hold all converted paths
         const groupElement = document.createElementNS(svgNS, 'g');
 
@@ -115,14 +117,14 @@ export async function convertSvgTextToPath(
 
           const finalFill = tspanFill || fill;
 
-          console.log(`  📝 tspan: "${text}" at (${x.toFixed(2)}, ${y.toFixed(2)}), fontSize: ${style.fontSize}, fontWeight: ${style.fontWeight}, underline: ${style.textDecoration.includes('underline')}, fill: ${finalFill}`);
+          dlog('font', `  📝 tspan: "${text}" at (${x.toFixed(2)}, ${y.toFixed(2)}), fontSize: ${style.fontSize}, fontWeight: ${style.fontWeight}, underline: ${style.textDecoration.includes('underline')}, fill: ${finalFill}`);
 
           // Generate path using OpenType.js at original coordinates
           const path = font.getPath(text, x, y, style.fontSize);
           const pathData = path.toPathData(2);
 
           if (!pathData || pathData.trim().length === 0) {
-            console.warn(`  ⚠️  Empty path for: "${text}"`);
+            dwarn('font', `  ⚠️  Empty path for: "${text}"`);
             continue;
           }
 
@@ -152,7 +154,7 @@ export async function convertSvgTextToPath(
             groupElement.appendChild(underlinePath);
           }
 
-          console.log(`  ✅ Path added with fill: ${finalFill}`);
+          dlog('font', `  ✅ Path added with fill: ${finalFill}`);
         }
 
         // Copy attributes from text element to group
@@ -164,7 +166,7 @@ export async function convertSvgTextToPath(
 
         // Replace text element with group
         textElement.parentNode?.replaceChild(groupElement, textElement);
-        console.log(`✅ Converted <text> with ${tspans.length} tspans to <g> with paths`);
+        dlog('font', `✅ Converted <text> with ${tspans.length} tspans to <g> with paths`);
 
       } else {
         // Case 2: Simple <text> without tspan children
@@ -183,9 +185,9 @@ export async function convertSvgTextToPath(
   const serializer = new XMLSerializer();
   const resultSvg = serializer.serializeToString(svgDoc);
 
-  console.log('✅ SVG text elements converted to paths');
-  console.log('📄 CONVERTED SVG STRING:');
-  console.log('📄 END OF CONVERTED SVG STRING');
+  dlog('font', '✅ SVG text elements converted to paths');
+  dlog('font', '📄 CONVERTED SVG STRING:');
+  dlog('font', '📄 END OF CONVERTED SVG STRING');
 
   return { svg: resultSvg, font };
 }
@@ -225,14 +227,14 @@ function convertTextElementToPath(
   const strokeWidth = textElement.getAttribute('stroke-width') || '0';
   const transform = textElement.getAttribute('transform') || '';
 
-  console.log(`📝 Converting text: "${text}" at (${x}, ${y}), fontSize: ${style.fontSize}, fontWeight: ${style.fontWeight}, underline: ${style.textDecoration.includes('underline')}, fill: ${fill}`);
+  dlog('font', `📝 Converting text: "${text}" at (${x}, ${y}), fontSize: ${style.fontSize}, fontWeight: ${style.fontWeight}, underline: ${style.textDecoration.includes('underline')}, fill: ${fill}`);
 
   // Generate path data using OpenType.js
   const path = font.getPath(text, x, y, style.fontSize);
   const pathData = path.toPathData(2);
 
   if (!pathData || pathData.trim().length === 0) {
-    console.warn(`Empty path data for text: "${text}"`);
+    dwarn('font', `Empty path data for text: "${text}"`);
     return null;
   }
 
@@ -481,6 +483,6 @@ function createUnderlinePath(
  */
 function logFontWeight(fontWeight: number, text: string): void {
   if (fontWeight >= 600) {
-    console.warn(`⚠️ fontWeight ${fontWeight} detected for "${text}" but not applied - requires actual bold font file`);
+    dwarn('font', `⚠️ fontWeight ${fontWeight} detected for "${text}" but not applied - requires actual bold font file`);
   }
 }

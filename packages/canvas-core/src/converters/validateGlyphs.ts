@@ -5,6 +5,8 @@
  * Checks if text characters are supported by a given font
  */
 
+import { dlog, dwarn } from '../utils/debugLog';
+
 export interface GlyphValidationResult {
   hasMissingGlyphs: boolean
   missingChars: string[]
@@ -27,13 +29,13 @@ export async function validateTextGlyphs(
   const opentypeModule = await import('opentype.js')
   const opentype = opentypeModule.default
 
-  console.log('🔍 Starting client-side glyph validation')
-  console.log(`  Text length: ${text.length} characters`)
+  dlog('font', '🔍 Starting client-side glyph validation')
+  dlog('font', `  Text length: ${text.length} characters`)
 
   // Parse TTF buffer
   const font = opentype.parse(ttfBuffer)
-  console.log(`✅ Font parsed: ${font.names.fontFamily?.en || font.names.fullName?.en || 'Unknown'}`)
-  console.log(`  Total glyphs: ${font.numGlyphs}`)
+  dlog('font', `✅ Font parsed: ${font.names.fontFamily?.en || font.names.fullName?.en || 'Unknown'}`)
+  dlog('font', `  Total glyphs: ${font.numGlyphs}`)
 
   // Validate each unique character
   const missingChars: string[] = []
@@ -69,19 +71,19 @@ export async function validateTextGlyphs(
         missingChars.push(char)
       }
     } catch (error) {
-      console.warn(`Glyph check failed for character: ${char}`, error)
+      dwarn('font', `Glyph check failed for character: ${char}`, error)
       // On error, consider character as unsupported
       missingChars.push(char)
     }
   }
 
-  console.log('✅ Glyph validation complete')
-  console.log(`  Total characters: ${text.length}`)
-  console.log(`  Unique characters checked: ${checkedChars.size}`)
-  console.log(`  Missing glyphs: ${missingChars.length}`)
+  dlog('font', '✅ Glyph validation complete')
+  dlog('font', `  Total characters: ${text.length}`)
+  dlog('font', `  Unique characters checked: ${checkedChars.size}`)
+  dlog('font', `  Missing glyphs: ${missingChars.length}`)
 
   if (missingChars.length > 0) {
-    console.log(
+    dlog('font', 
       `  Unsupported characters: ${missingChars
         .map((c) => `'${c}' (U+${c.codePointAt(0)?.toString(16).toUpperCase().padStart(4, '0')})`)
         .join(', ')}`
