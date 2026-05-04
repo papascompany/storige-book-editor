@@ -3,6 +3,7 @@ import { Logger } from '@nestjs/common';
 import { Job } from 'bull';
 import { PdfConverterService } from '../services/pdf-converter.service';
 import axios from 'axios';
+import * as fs from 'fs/promises';
 import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { captureJobException } from '../sentry/sentry.init';
@@ -26,7 +27,8 @@ export class ConversionProcessor {
   private readonly apiBaseUrl =
     process.env.API_BASE_URL || 'http://localhost:4000/api';
   private readonly storagePath =
-    process.env.STORAGE_PATH || '/app/storage/temp';
+    process.env.STORAGE_PATH || '/app/storage';
+  private readonly convertedDir = 'converted';
 
   constructor(private readonly converterService: PdfConverterService) {}
 
@@ -38,20 +40,22 @@ export class ConversionProcessor {
       // Update job status to PROCESSING
       await this.updateJobStatus(job.data.jobId, 'PROCESSING');
 
-      // Generate output path
+      // Generate output path under STORAGE_PATH/converted/ (synthesis의 /outputs/ 패턴과 정렬)
+      const outputDir = path.join(this.storagePath, this.convertedDir);
+      await fs.mkdir(outputDir, { recursive: true });
       const outputFilename = `converted_${uuidv4()}.pdf`;
-      const outputPath = path.join(this.storagePath, outputFilename);
+      const outputPath = path.join(outputDir, outputFilename);
 
-      // Convert PDF
+      // Convert PDF (service는 /storage/converted/... 형식의 상대 URL 반환)
       const result = await this.converterService.convert(
         job.data.fileUrl,
         job.data.convertOptions,
         outputPath,
       );
 
-      // Update job status to COMPLETED
+      // Update job status to COMPLETED — top-level outputFileUrl과 result 내부 URL 모두 일관성 유지
       await this.updateJobStatus(job.data.jobId, 'COMPLETED', {
-        outputFileUrl: `/storage/temp/${outputFilename}`,
+        outputFileUrl: result.outputFileUrl,
         result,
       });
 

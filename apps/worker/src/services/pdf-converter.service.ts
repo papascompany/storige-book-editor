@@ -34,8 +34,21 @@ export interface ConversionResult {
 export class PdfConverterService {
   private readonly logger = new Logger(PdfConverterService.name);
   private readonly storagePath =
-    process.env.STORAGE_PATH || '/app/storage/temp';
+    process.env.STORAGE_PATH || '/app/storage';
   private gsAvailable: boolean | null = null;
+
+  /**
+   * 절대 파일시스템 경로(/app/storage/...)를 nginx에서 서빙 가능한
+   * 상대 URL(/storage/...)로 변환. STORAGE_PATH 외부 경로는 그대로 반환.
+   */
+  private toStorageUrl(absPath: string): string {
+    const base = this.storagePath.replace(/\/$/, '');
+    if (absPath === base) return '/storage';
+    if (absPath.startsWith(base + '/')) {
+      return '/storage/' + absPath.substring(base.length + 1);
+    }
+    return absPath;
+  }
 
   /**
    * Convert PDF (add pages, apply bleed)
@@ -149,10 +162,10 @@ export class PdfConverterService {
 
       return {
         success: true,
-        outputFileUrl: outputPath,
+        outputFileUrl: this.toStorageUrl(outputPath),
         pagesAdded,
         bleedApplied,
-        previewUrl,
+        previewUrl: previewUrl ? this.toStorageUrl(previewUrl) : undefined,
         finalPageCount,
         finalSize: {
           width: Math.round(width / 2.83465), // points to mm
