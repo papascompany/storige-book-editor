@@ -3,29 +3,8 @@ import * as d3 from 'd3'
 import { v4 as uuid } from 'uuid'
 import { fabric } from 'fabric'
 import { PluginBase } from '../plugin'
-
-// Lazy-loaded OpenCV instance
-let cv: any = null
-let cvLoadingPromise: Promise<any> | null = null
-
-// Lazy load OpenCV
-async function getCv(): Promise<any> {
-  if (cv) return cv
-  if (cvLoadingPromise) return cvLoadingPromise
-
-  cvLoadingPromise = import('@techstark/opencv-js').then((module) => {
-    // @techstark/opencv-js exports cv as default
-    cv = module.default || module
-    return cv
-  })
-  return cvLoadingPromise
-}
-
-// Lazy load background removal functions
-async function getBackgroundRemoval() {
-  const { preload, removeBackground } = await import('@imgly/background-removal')
-  return { preload, removeBackground }
-}
+// P2-11/A — OpenCV/배경제거 lazy-loader 분리. 같은 module-level 캐시 공유.
+import { getCv, getBackgroundRemoval } from '../utils/openCv'
 
 // Config type for background removal (inline to avoid static import)
 interface BgRemovalConfig {

@@ -6,6 +6,7 @@ import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useUiPrefStore } from '@/stores/useUiPrefStore'
 import { useEditorContents } from '@/hooks/useEditorContents'
 import { createCanvas } from '@/utils/createCanvas'
+import { warmupOpenCv } from '@storige/canvas-core'
 import type { RulerPlugin } from '@storige/canvas-core'
 import ToolBar from '@/components/editor/ToolBar'
 import FeatureSidebar from '@/components/editor/FeatureSidebar'
@@ -279,6 +280,14 @@ export default function EditorView() {
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
   }, [handleResize])
+
+  // P2-11/A — OpenCV WASM background warmup (idle 시간 활용)
+  // 이미지/요소 업로드 시 PNG alpha 처리(processImage) 단계에서 WASM 첫 컴파일이
+  // 5초+ 메인 스레드를 점유해 브라우저 unresponsive 모달이 뜨던 문제 해소.
+  // mount 1회만, 사용자 입력 idle 시간에 백그라운드 다운로드/컴파일.
+  useEffect(() => {
+    warmupOpenCv()
+  }, [])
 
   // ============================================================
   // 마운트 시 캔버스 초기화 + 콘텐츠 로드 (단일 useEffect)

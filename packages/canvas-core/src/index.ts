@@ -45,5 +45,7 @@ export * as SvgUtils from './utils/svg'
 
 export * from './utils/eyeDrop'
 export * from './utils/logger'
+// P2-11/A — OpenCV/배경제거 lazy-loader + warmup helpers
+export { getCv, getBackgroundRemoval, warmupOpenCv, warmupBackgroundRemoval } from './utils/openCv'
 
 export default Editor
