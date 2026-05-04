@@ -1,0 +1,1391 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Storige × bookmoa PHP 연동 가이드 v3.0</title>
+<style>
+  :root {
+    --primary: #4F46E5;
+    --primary-light: #EEF2FF;
+    --success: #059669;
+    --success-light: #D1FAE5;
+    --warning: #D97706;
+    --warning-light: #FEF3C7;
+    --danger: #DC2626;
+    --danger-light: #FEE2E2;
+    --gray-50: #F9FAFB;
+    --gray-100: #F3F4F6;
+    --gray-200: #E5E7EB;
+    --gray-400: #9CA3AF;
+    --gray-600: #4B5563;
+    --gray-800: #1F2937;
+    --gray-900: #111827;
+    --sidebar-width: 260px;
+    --code-bg: #1E1E2E;
+    --code-fg: #CDD6F4;
+    --code-keyword: #CBA6F7;
+    --code-string: #A6E3A1;
+    --code-comment: #6C7086;
+    --code-function: #89B4FA;
+    --code-number: #FAB387;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--gray-800);
+    background: var(--gray-50);
+  }
+
+  /* ── LAYOUT ── */
+  .layout { display: flex; min-height: 100vh; }
+
+  /* ── SIDEBAR ── */
+  .sidebar {
+    width: var(--sidebar-width);
+    background: white;
+    border-right: 1px solid var(--gray-200);
+    position: fixed;
+    top: 0; left: 0; bottom: 0;
+    overflow-y: auto;
+    z-index: 100;
+  }
+
+  .sidebar-header {
+    padding: 20px 16px 16px;
+    border-bottom: 1px solid var(--gray-200);
+    background: var(--primary);
+    color: white;
+  }
+
+  .sidebar-header h1 { font-size: 13px; font-weight: 700; }
+  .sidebar-header p { font-size: 11px; opacity: 0.8; margin-top: 2px; }
+
+  .sidebar-badge {
+    display: inline-block;
+    background: rgba(255,255,255,0.25);
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-size: 10px;
+    margin-top: 6px;
+    font-weight: 600;
+  }
+
+  .sidebar nav { padding: 8px 0; }
+  .sidebar nav a {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 16px;
+    font-size: 12px;
+    color: var(--gray-600);
+    text-decoration: none;
+    border-left: 3px solid transparent;
+    transition: all 0.15s;
+  }
+  .sidebar nav a:hover { background: var(--primary-light); color: var(--primary); border-left-color: var(--primary); }
+  .sidebar nav a .num {
+    width: 18px; height: 18px;
+    background: var(--gray-100);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: 700; flex-shrink: 0;
+    color: var(--gray-600);
+  }
+  .sidebar nav a:hover .num { background: var(--primary); color: white; }
+
+  .sidebar-section-label {
+    padding: 12px 16px 4px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: var(--gray-400);
+    letter-spacing: 0.5px;
+  }
+
+  /* ── MAIN ── */
+  .main {
+    margin-left: var(--sidebar-width);
+    flex: 1;
+    max-width: 900px;
+    padding: 32px 40px;
+  }
+
+  /* ── HEADER BANNER ── */
+  .page-header {
+    background: linear-gradient(135deg, var(--primary) 0%, #7C3AED 100%);
+    color: white;
+    border-radius: 12px;
+    padding: 28px 32px;
+    margin-bottom: 32px;
+  }
+  .page-header h1 { font-size: 22px; font-weight: 800; }
+  .page-header p { opacity: 0.85; margin-top: 6px; font-size: 13px; }
+  .meta-row {
+    display: flex; gap: 12px; margin-top: 14px; flex-wrap: wrap;
+  }
+  .meta-chip {
+    background: rgba(255,255,255,0.2);
+    border: 1px solid rgba(255,255,255,0.35);
+    border-radius: 20px;
+    padding: 3px 12px;
+    font-size: 11px;
+    font-weight: 500;
+  }
+  .meta-chip a { color: white; }
+
+  /* ── SECTIONS ── */
+  .section { margin-bottom: 48px; }
+  .section-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--gray-900);
+    margin-bottom: 20px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid var(--gray-200);
+  }
+  .section-title .section-num {
+    width: 28px; height: 28px;
+    background: var(--primary);
+    color: white;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 800; flex-shrink: 0;
+  }
+
+  h3 { font-size: 14px; font-weight: 700; color: var(--gray-900); margin: 20px 0 10px; }
+
+  /* ── BADGES ── */
+  .badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    border-radius: 4px; padding: 2px 8px;
+    font-size: 11px; font-weight: 700;
+  }
+  .badge-p0 { background: #FEE2E2; color: #991B1B; }
+  .badge-p1 { background: #FEF3C7; color: #92400E; }
+  .badge-p2 { background: #D1FAE5; color: #065F46; }
+  .badge-done { background: var(--success-light); color: var(--success); }
+
+  /* ── CHECKLIST CARD ── */
+  .checklist-card {
+    background: white;
+    border: 1px solid var(--gray-200);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .checklist-item {
+    display: grid;
+    grid-template-columns: 32px 1fr auto auto;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--gray-100);
+    transition: background 0.1s;
+  }
+  .checklist-item:last-child { border-bottom: none; }
+  .checklist-item:hover { background: var(--gray-50); }
+  .checklist-item .step-num {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: 12px; flex-shrink: 0;
+  }
+  .step-p0 { background: #FEE2E2; color: #991B1B; }
+  .step-p1 { background: #FEF3C7; color: #92400E; }
+  .item-title { font-size: 13px; font-weight: 600; }
+  .item-time { font-size: 11px; color: var(--gray-400); white-space: nowrap; }
+
+  /* ── STATUS TABLE ── */
+  .status-table { width: 100%; border-collapse: collapse; }
+  .status-table th {
+    text-align: left;
+    padding: 8px 12px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: var(--gray-400);
+    background: var(--gray-50);
+    border-bottom: 1px solid var(--gray-200);
+  }
+  .status-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--gray-100);
+    font-size: 13px;
+  }
+  .status-table tr:last-child td { border-bottom: none; }
+  .status-done { color: var(--success); font-weight: 600; }
+
+  /* ── FLOW DIAGRAM ── */
+  .flow-diagram {
+    background: #1E1E2E;
+    border-radius: 10px;
+    padding: 24px;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+    font-size: 12px;
+    line-height: 1.8;
+    color: #CDD6F4;
+    overflow-x: auto;
+  }
+  .flow-diagram .flow-actor { color: #89DCEB; font-weight: 700; }
+  .flow-diagram .flow-arrow { color: #A6E3A1; }
+  .flow-diagram .flow-msg { color: #F9E2AF; }
+  .flow-diagram .flow-step { color: #CBA6F7; font-weight: 600; }
+  .flow-diagram .flow-comment { color: #6C7086; }
+
+  /* ── CODE BLOCKS ── */
+  .code-container {
+    background: var(--code-bg);
+    border-radius: 10px;
+    overflow: hidden;
+    margin: 12px 0;
+  }
+  .code-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 16px;
+    background: rgba(255,255,255,0.06);
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+  .code-lang {
+    font-size: 11px;
+    font-weight: 700;
+    color: #89B4FA;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .code-file {
+    font-size: 11px;
+    color: #6C7086;
+    font-family: monospace;
+  }
+  pre {
+    padding: 16px;
+    overflow-x: auto;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+    font-size: 12.5px;
+    line-height: 1.7;
+    color: var(--code-fg);
+    margin: 0;
+  }
+  .kw { color: #CBA6F7; }          /* keyword */
+  .str { color: #A6E3A1; }         /* string */
+  .cm { color: #6C7086; font-style: italic; }  /* comment */
+  .fn { color: #89B4FA; }          /* function */
+  .num { color: #FAB387; }         /* number */
+  .cn { color: #F38BA8; }          /* constant */
+  .var { color: #CDD6F4; }         /* variable */
+
+  /* ── CALLOUT BOXES ── */
+  .callout {
+    display: flex;
+    gap: 12px;
+    padding: 14px 16px;
+    border-radius: 8px;
+    margin: 12px 0;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .callout-warn { background: #FFFBEB; border: 1px solid #FDE68A; }
+  .callout-info { background: #EEF2FF; border: 1px solid #C7D2FE; }
+  .callout-tip  { background: #F0FDF4; border: 1px solid #BBF7D0; }
+  .callout-icon { font-size: 18px; flex-shrink: 0; line-height: 1.2; }
+  .callout-body strong { font-weight: 700; }
+
+  /* ── TABLE ── */
+  .data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  .data-table th {
+    text-align: left;
+    padding: 8px 12px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: var(--gray-400);
+    background: var(--gray-50);
+    border-bottom: 2px solid var(--gray-200);
+  }
+  .data-table td {
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--gray-100);
+    vertical-align: top;
+  }
+  .data-table tr:last-child td { border-bottom: none; }
+  .data-table .mono { font-family: monospace; font-size: 12px; }
+  .data-table .badge { vertical-align: middle; }
+
+  /* ── ENDPOINT CARDS ── */
+  .endpoint-group { margin-bottom: 16px; }
+  .endpoint-group h3 { margin-bottom: 8px; }
+  .endpoint-row {
+    display: grid;
+    grid-template-columns: 56px 1fr auto;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    background: white;
+    border: 1px solid var(--gray-200);
+    border-radius: 7px;
+    margin-bottom: 6px;
+    font-size: 13px;
+  }
+  .method {
+    font-size: 11px; font-weight: 800;
+    padding: 2px 0;
+    border-radius: 4px;
+    text-align: center;
+  }
+  .method-post { background: #FEF3C7; color: #92400E; }
+  .method-get  { background: #D1FAE5; color: #065F46; }
+  .method-put  { background: #EEF2FF; color: #3730A3; }
+  .endpoint-path { font-family: monospace; font-size: 12px; }
+  .endpoint-desc { font-size: 12px; color: var(--gray-600); }
+  .auth-chip {
+    font-size: 10px; font-weight: 700;
+    padding: 2px 8px; border-radius: 12px;
+    white-space: nowrap;
+  }
+  .auth-apikey { background: #FEE2E2; color: #991B1B; }
+  .auth-jwt    { background: #EDE9FE; color: #5B21B6; }
+
+  /* ── TIMELINE ── */
+  .timeline { position: relative; }
+  .timeline::before {
+    content: '';
+    position: absolute;
+    left: 100px;
+    top: 0; bottom: 0;
+    width: 2px;
+    background: var(--gray-200);
+  }
+  .timeline-row {
+    display: grid;
+    grid-template-columns: 90px 1fr;
+    gap: 20px;
+    margin-bottom: 20px;
+    position: relative;
+  }
+  .timeline-week {
+    text-align: right;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--primary);
+    padding-top: 4px;
+  }
+  .timeline-week span { display: block; color: var(--gray-400); font-weight: 400; font-size: 10px; }
+  .timeline-content {
+    background: white;
+    border: 1px solid var(--gray-200);
+    border-radius: 8px;
+    padding: 12px 16px;
+    position: relative;
+  }
+  .timeline-content::before {
+    content: '';
+    position: absolute;
+    left: -7px; top: 14px;
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    background: var(--primary);
+    border: 2px solid white;
+    box-shadow: 0 0 0 2px var(--primary);
+  }
+  .timeline-content h4 { font-size: 13px; font-weight: 700; margin-bottom: 6px; }
+  .timeline-tasks { font-size: 12px; color: var(--gray-600); }
+  .timeline-tasks li { margin-bottom: 2px; padding-left: 12px; list-style: none; position: relative; }
+  .timeline-tasks li::before { content: '•'; position: absolute; left: 0; color: var(--primary); }
+
+  /* ── FAQ ── */
+  .faq-item {
+    background: white;
+    border: 1px solid var(--gray-200);
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin-bottom: 10px;
+  }
+  .faq-q { font-weight: 700; color: var(--primary); margin-bottom: 6px; font-size: 13px; }
+  .faq-a { font-size: 13px; color: var(--gray-600); line-height: 1.5; }
+
+  /* ── SCENARIO STEPS ── */
+  .scenario-card {
+    background: white;
+    border: 1px solid var(--gray-200);
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 16px;
+  }
+  .scenario-header {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 16px;
+    background: var(--primary-light);
+    border-bottom: 1px solid var(--gray-200);
+  }
+  .scenario-num {
+    width: 24px; height: 24px;
+    background: var(--primary); color: white;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 800; flex-shrink: 0;
+  }
+  .scenario-title { font-weight: 700; font-size: 13px; }
+  .scenario-time { font-size: 11px; color: var(--gray-400); margin-left: auto; }
+  .scenario-steps { padding: 12px 16px; }
+  .scenario-step {
+    display: flex; align-items: flex-start; gap: 10px;
+    margin-bottom: 8px; font-size: 13px;
+  }
+  .scenario-step:last-child { margin-bottom: 0; }
+  .step-dot {
+    width: 20px; height: 20px; border-radius: 50%;
+    background: var(--gray-100); color: var(--gray-600);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: 700; flex-shrink: 0; margin-top: 1px;
+  }
+
+  /* ── SECURITY PATTERNS ── */
+  .pattern-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .pattern-bad, .pattern-good {
+    border-radius: 8px; overflow: hidden;
+  }
+  .pattern-label {
+    padding: 6px 12px;
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+  }
+  .pattern-bad .pattern-label { background: #FEE2E2; color: #991B1B; }
+  .pattern-good .pattern-label { background: #D1FAE5; color: #065F46; }
+
+  /* ── MISC ── */
+  .card {
+    background: white;
+    border: 1px solid var(--gray-200);
+    border-radius: 10px;
+    padding: 20px;
+    margin: 12px 0;
+  }
+  .tag { font-family: monospace; font-size: 12px; background: var(--gray-100); padding: 1px 6px; border-radius: 4px; }
+  .version-badge { display: inline-block; background: var(--primary); color: white; border-radius: 4px; padding: 2px 8px; font-size: 11px; font-weight: 700; }
+  .changelog-row { display: flex; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--gray-100); font-size: 13px; }
+  .changelog-row:last-child { border-bottom: none; }
+  .changelog-date { color: var(--gray-400); width: 80px; flex-shrink: 0; }
+  .changelog-version { width: 50px; flex-shrink: 0; }
+
+  @media (max-width: 768px) {
+    .sidebar { display: none; }
+    .main { margin-left: 0; padding: 20px; }
+    .pattern-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+
+<!-- ══════════════════════════════ SIDEBAR ══════════════════════════════ -->
+<aside class="sidebar">
+  <div class="sidebar-header">
+    <h1>Storige × bookmoa</h1>
+    <p>PHP 연동 최종 가이드</p>
+    <span class="sidebar-badge">v3.0 · 2026-05-04</span>
+  </div>
+  <nav>
+    <div class="sidebar-section-label">필수 시작</div>
+    <a href="#quick-start"><span class="num">0</span> 빠른 시작 체크리스트</a>
+    <a href="#status"><span class="num">1</span> 현재 상태 및 흐름</a>
+
+    <div class="sidebar-section-label">구현 가이드</div>
+    <a href="#api-key"><span class="num">2</span> 환경 설정 &amp; API Key</a>
+    <a href="#editor-url"><span class="num">3</span> 에디터 URL 파라미터</a>
+    <a href="#callback"><span class="num">4</span> 편집 완료 콜백</a>
+    <a href="#synthesis"><span class="num">5</span> PDF 합성 Worker API</a>
+    <a href="#webhook"><span class="num">6</span> Webhook 수신</a>
+    <a href="#download"><span class="num">7</span> 합성 결과 다운로드</a>
+    <a href="#reedit"><span class="num">8</span> 재편집 흐름</a>
+
+    <div class="sidebar-section-label">참고</div>
+    <a href="#security"><span class="num">9</span> 보안 가이드</a>
+    <a href="#scenarios"><span class="num">10</span> 검증 시나리오</a>
+    <a href="#schedule"><span class="num">11</span> 통합 일정</a>
+    <a href="#kickoff"><span class="num">12</span> 킥오프 정보</a>
+    <a href="#faq"><span class="num">?</span> FAQ</a>
+    <a href="#endpoints"><span class="num">→</span> 엔드포인트 레퍼런스</a>
+  </nav>
+</aside>
+
+<!-- ══════════════════════════════ MAIN ══════════════════════════════ -->
+<main class="main">
+
+  <!-- HEADER -->
+  <div class="page-header">
+    <h1>Storige × bookmoa PHP 연동 가이드</h1>
+    <p>PHP 개발팀을 위한 최종 통합 연동 가이드 — 에디터 진입부터 합성 PDF 다운로드까지</p>
+    <div class="meta-row">
+      <span class="meta-chip">v3.0 · 2026-05-04</span>
+      <span class="meta-chip">Storige 측 준비 완료</span>
+      <span class="meta-chip">PHP 측 작업 2일 예상</span>
+      <span class="meta-chip"><a href="https://api.papascompany.co.kr/api/docs" target="_blank">Swagger API 문서 →</a></span>
+    </div>
+  </div>
+
+  <!-- ─────────────────────── §0 QUICK START ─────────────────────── -->
+  <section class="section" id="quick-start">
+    <h2 class="section-title"><span class="section-num">0</span> 빠른 시작 — 5분 체크리스트</h2>
+    <div class="checklist-card">
+      <div class="checklist-item">
+        <div class="step-num step-p0">①</div>
+        <div>
+          <div class="item-title">API Key 환경변수 등록</div>
+          <div style="font-size:12px;color:var(--gray-400);margin-top:2px;"><span class="tag">define('STORIGE_API_KEY', '...')</span></div>
+        </div>
+        <span class="badge badge-p0">🔴 즉시</span>
+        <span class="item-time">5분</span>
+      </div>
+      <div class="checklist-item">
+        <div class="step-num step-p0">②</div>
+        <div>
+          <div class="item-title">PDF 다운로드 endpoint 변경</div>
+          <div style="font-size:12px;color:var(--gray-400);margin-top:2px;"><span class="tag">/download</span> → <span class="tag">/download/external</span> + X-API-Key 헤더 추가</div>
+        </div>
+        <span class="badge badge-p0">🔴 즉시</span>
+        <span class="item-time">5분</span>
+      </div>
+      <div class="checklist-item">
+        <div class="step-num step-p0">③</div>
+        <div>
+          <div class="item-title">에디터 URL 파라미터 수정</div>
+          <div style="font-size:12px;color:var(--gray-400);margin-top:2px;"><span class="tag">pages</span> → <span class="tag">pageCount</span>, <span class="tag">wingFront/Back</span> → <span class="tag">paperType/bindingType</span></div>
+        </div>
+        <span class="badge badge-p0">🔴 P0</span>
+        <span class="item-time">1~2시간</span>
+      </div>
+      <div class="checklist-item">
+        <div class="step-num step-p0">④</div>
+        <div>
+          <div class="item-title">onComplete 콜백 fileId 처리</div>
+          <div style="font-size:12px;color:var(--gray-400);margin-top:2px;"><span class="tag">coverFileId</span> / <span class="tag">contentFileId</span> DB 저장 (UUID, URL 아님)</div>
+        </div>
+        <span class="badge badge-p0">🔴 P0</span>
+        <span class="item-time">1~2시간</span>
+      </div>
+      <div class="checklist-item">
+        <div class="step-num step-p1">⑤</div>
+        <div>
+          <div class="item-title">Worker synthesize/external 구현</div>
+          <div style="font-size:12px;color:var(--gray-400);margin-top:2px;">결제 완료 시 <span class="tag">POST /worker-jobs/synthesize/external</span></div>
+        </div>
+        <span class="badge badge-p1">🟡 P1</span>
+        <span class="item-time">2~3시간</span>
+      </div>
+      <div class="checklist-item">
+        <div class="step-num step-p1">⑥</div>
+        <div>
+          <div class="item-title">Webhook 수신 PHP 파일 작성</div>
+          <div style="font-size:12px;color:var(--gray-400);margin-top:2px;"><span class="tag">synthesis_callback.php</span> 신규 작성</div>
+        </div>
+        <span class="badge badge-p1">🟡 P1</span>
+        <span class="item-time">2~3시간</span>
+      </div>
+      <div class="checklist-item">
+        <div class="step-num step-p1">⑦</div>
+        <div>
+          <div class="item-title">합성 결과 PDF 다운로드 구현</div>
+          <div style="font-size:12px;color:var(--gray-400);margin-top:2px;">JWT 발급 → <span class="tag">GET /worker-jobs/{jobId}/output</span></div>
+        </div>
+        <span class="badge badge-p1">🟡 P1</span>
+        <span class="item-time">1시간</span>
+      </div>
+      <div class="checklist-item">
+        <div class="step-num step-p1">⑧</div>
+        <div>
+          <div class="item-title">보안 검수</div>
+          <div style="font-size:12px;color:var(--gray-400);margin-top:2px;">fileId/sessionId 클라이언트 노출 점검</div>
+        </div>
+        <span class="badge badge-p1">🟡 점검</span>
+        <span class="item-time">1~2시간</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────────────────── §1 STATUS ─────────────────────── -->
+  <section class="section" id="status">
+    <h2 class="section-title"><span class="section-num">1</span> 현재 상태 요약</h2>
+
+    <h3>Storige 측 완료 항목</h3>
+    <div class="card" style="padding:0;overflow:hidden;">
+      <table class="status-table">
+        <thead><tr><th>항목</th><th>상태</th><th>날짜</th></tr></thead>
+        <tbody>
+          <tr><td>API 운영 배포</td><td class="status-done">✅ 완료</td><td>2026-05-03</td></tr>
+          <tr><td>보안 패치 A-E (사용자 격리)</td><td class="status-done">✅ 완료</td><td>2026-05-03</td></tr>
+          <tr><td>PHP 팀용 외부 endpoint 분리 (<span class="tag">/external</span>)</td><td class="status-done">✅ 완료</td><td>2026-05-03</td></tr>
+          <tr><td>Worker 합성 E2E 검증 (3 시나리오)</td><td class="status-done">✅ 완료</td><td>2026-05-04</td></tr>
+          <tr><td>Sentry 모니터링 활성화</td><td class="status-done">✅ 완료</td><td>2026-05-03</td></tr>
+          <tr><td>Swagger API 문서</td><td class="status-done">✅ 운영 중</td><td>—</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 style="margin-top:24px;">전체 연동 흐름</h3>
+    <div class="flow-diagram">
+<span class="flow-actor">[bookmoa PHP]</span>                    <span class="flow-actor">[Storige Editor]</span>        <span class="flow-actor">[Storige API/Worker]</span>
+     │                                   │                           │
+     │<span class="flow-step">① JWT 발급</span> (X-API-Key) ──────────────────────────────────────▶│
+     │◀── accessToken ───────────────────────────────────────────────│
+     │                                   │                           │
+     │<span class="flow-step">② 에디터 URL로 이동</span> ──────────────▶│                           │
+     │   ?template_set_id=&amp;order_seqno=  │── GET /templates ─────────▶│
+     │                                   │── POST /edit-sessions ────▶│
+     │                                   │                           │
+     │                              [고객 편집 중...]                  │
+     │                                   │── 자동저장 (1분) ──────────▶│
+     │                                   │                           │
+     │                              [편집 완료 클릭]                   │
+     │                                   │── POST /complete ──────────▶│
+     │◀── returnUrl 리다이렉트 + onComplete ─│                           │
+     │    <span class="flow-msg">{ coverFileId, contentFileId }</span>   │                           │
+     │                                   │                           │
+     │<span class="flow-step">③ check-mergeable</span> (선택) ──────────────────────────────────────▶│
+     │◀── <span class="flow-msg">{ mergeable: true }</span> ────────────────────────────────────────│
+     │                                   │                           │
+     │<span class="flow-step">④ synthesize/external</span> (결제 시) ────────────────────────────────▶│
+     │◀── <span class="flow-msg">{ jobId, status: PENDING }</span> ─────────────────────────────────│
+     │                                   │      [Worker PDF 합성 중...]│
+     │<span class="flow-step">⑤ Webhook 수신</span> ◀───────────────────────────────────────────────│
+     │   <span class="flow-msg">synthesis.completed / jobId</span>       │                           │
+     │                                   │                           │
+     │<span class="flow-step">⑥ 합성 PDF 다운로드</span> ────────────────────────────────────────────▶│
+     │   <span class="flow-comment">(JWT + GET /worker-jobs/{jobId}/output)</span>                      │
+     │◀── <span class="flow-msg">PDF 바이너리</span> ──────────────────────────────────────────────│
+    </div>
+  </section>
+
+  <!-- ─────────────────────── §2 API KEY ─────────────────────── -->
+  <section class="section" id="api-key">
+    <h2 class="section-title"><span class="section-num">2</span> 환경 설정 — API Key</h2>
+
+    <h3>2-1. PHP 서버 설정</h3>
+    <div class="callout callout-warn">
+      <span class="callout-icon">⚠️</span>
+      <div class="callout-body">
+        API Key는 <strong>절대 클라이언트(JS/HTML)</strong>에 노출하지 마세요. 서버 사이드에서만 사용.
+      </div>
+    </div>
+    <div class="code-container">
+      <div class="code-header"><span class="code-lang">PHP</span><span class="code-file">storige/config.php</span></div>
+      <pre><span class="kw">define</span>(<span class="str">'STORIGE_API_KEY'</span>,  <span class="str">'sk-storige-l3YVceH0sB739pgTfxRAxZAmLJROcMtgdKPIDYdVG0g'</span>);
+<span class="kw">define</span>(<span class="str">'STORIGE_API_BASE'</span>, <span class="str">'https://api.papascompany.co.kr/api'</span>);
+<span class="kw">define</span>(<span class="str">'STORIGE_EDITOR_URL'</span>, <span class="str">'https://editor.papascompany.co.kr'</span>);
+
+<span class="cm">// Webhook 서명 키 (Storige 팀과 합의 후 설정)</span>
+<span class="cm">// define('STORIGE_WEBHOOK_SECRET', '***');</span></pre>
+    </div>
+
+    <h3>2-2. Shop Session JWT 발급 헬퍼</h3>
+    <div class="code-container">
+      <div class="code-header"><span class="code-lang">PHP</span><span class="code-file">공통 헬퍼 함수</span></div>
+      <pre><span class="kw">function</span> <span class="fn">getStorigeJWT</span>(<span class="kw">int</span> $memberSeqno, <span class="kw">string</span> $memberId, <span class="kw">string</span> $memberName, <span class="kw">int</span> $orderSeqno = <span class="num">0</span>): <span class="kw">string</span> {
+    $body = [
+        <span class="str">'memberSeqno'</span> => $memberSeqno,
+        <span class="str">'memberId'</span>    => $memberId,
+        <span class="str">'memberName'</span>  => $memberName,
+    ];
+    <span class="kw">if</span> ($orderSeqno > <span class="num">0</span>) {
+        $body[<span class="str">'orderSeqno'</span>] = $orderSeqno;  <span class="cm">// 주문 교차 접근 자동 차단</span>
+    }
+
+    $ch = <span class="fn">curl_init</span>(STORIGE_API_BASE . <span class="str">'/auth/shop-session'</span>);
+    <span class="fn">curl_setopt_array</span>($ch, [
+        CURLOPT_POST           => <span class="kw">true</span>,
+        CURLOPT_RETURNTRANSFER => <span class="kw">true</span>,
+        CURLOPT_HTTPHEADER     => [
+            <span class="str">'X-API-Key: '</span>    . STORIGE_API_KEY,
+            <span class="str">'Content-Type: application/json'</span>,
+        ],
+        CURLOPT_POSTFIELDS => <span class="fn">json_encode</span>($body),
+        CURLOPT_TIMEOUT    => <span class="num">10</span>,
+    ]);
+
+    $resp     = <span class="fn">json_decode</span>(<span class="fn">curl_exec</span>($ch), <span class="kw">true</span>);
+    $httpCode = <span class="fn">curl_getinfo</span>($ch, CURLINFO_HTTP_CODE);
+    <span class="fn">curl_close</span>($ch);
+
+    <span class="kw">if</span> ($httpCode !== <span class="num">201</span> || <span class="fn">empty</span>($resp[<span class="str">'accessToken'</span>])) {
+        <span class="kw">throw new</span> <span class="fn">RuntimeException</span>(<span class="str">'[Storige] JWT 발급 실패: HTTP '</span> . $httpCode);
+    }
+    <span class="kw">return</span> $resp[<span class="str">'accessToken'</span>];
+}</pre>
+    </div>
+  </section>
+
+  <!-- ─────────────────────── §3 EDITOR URL ─────────────────────── -->
+  <section class="section" id="editor-url">
+    <h2 class="section-title"><span class="section-num">3</span> 에디터 URL 파라미터</h2>
+
+    <h3>3-1. Breaking Changes (기존 코드 수정 필수)</h3>
+    <div class="card" style="padding:0;overflow:hidden;">
+      <table class="data-table">
+        <thead><tr><th>원본 파라미터</th><th>현재</th><th>비고</th></tr></thead>
+        <tbody>
+          <tr>
+            <td class="mono">pages=20</td>
+            <td class="mono"><strong>pageCount=20</strong></td>
+            <td><span class="badge badge-p0">🔴 Breaking</span> 내지 기준 페이지 수</td>
+          </tr>
+          <tr>
+            <td class="mono">wingFront=10&amp;wingBack=5</td>
+            <td class="mono"><strong>paperType=mojo_80g&amp;bindingType=perfect</strong></td>
+            <td><span class="badge badge-p0">🔴 Deprecated</span></td>
+          </tr>
+          <tr>
+            <td class="mono">productId=Y</td>
+            <td class="mono">orderSeqno=12345 (권장)</td>
+            <td><span class="badge badge-p1">🟡</span> 기존도 동작</td>
+          </tr>
+          <tr>
+            <td class="mono">(없음)</td>
+            <td class="mono">mode=both|cover|content</td>
+            <td><span class="badge badge-p2">🟢 Added</span></td>
+          </tr>
+          <tr>
+            <td class="mono">(없음)</td>
+            <td class="mono">return_url=/mypage/...</td>
+            <td><span class="badge badge-p2">🟢 Added</span></td>
+          </tr>
+          <tr>
+            <td class="mono">(없음)</td>
+            <td class="mono">session_id=&lt;uuid&gt;</td>
+            <td><span class="badge badge-p2">🟢 Added</span> 재편집 시 사용</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>3-2. PHP URL 생성 코드</h3>
+    <div class="code-container">
+      <div class="code-header"><span class="code-lang">PHP</span></div>
+      <pre><span class="kw">function</span> <span class="fn">buildStorigeEditorUrl</span>(<span class="kw">array</span> $params): <span class="kw">string</span> {
+    $query = [
+        <span class="str">'template_set_id'</span> => $params[<span class="str">'templateSetId'</span>],
+        <span class="str">'api_base_url'</span>    => STORIGE_API_BASE,
+    ];
+
+    <span class="kw">if</span> (!<span class="fn">empty</span>($params[<span class="str">'orderSeqno'</span>])) {
+        $query[<span class="str">'order_seqno'</span>] = $params[<span class="str">'orderSeqno'</span>];
+    }
+
+    $query[<span class="str">'mode'</span>] = $params[<span class="str">'mode'</span>] ?? <span class="str">'both'</span>;  <span class="cm">// both | cover | content</span>
+
+    <span class="kw">if</span> (!<span class="fn">empty</span>($params[<span class="str">'pageCount'</span>])) {
+        $query[<span class="str">'page_count'</span>] = $params[<span class="str">'pageCount'</span>];  <span class="cm">// ⚠️ 'pages' 아님!</span>
+    }
+    <span class="kw">if</span> (!<span class="fn">empty</span>($params[<span class="str">'paperType'</span>])) {
+        $query[<span class="str">'paper_type'</span>]   = $params[<span class="str">'paperType'</span>];   <span class="cm">// e.g. 'mojo_80g'</span>
+        $query[<span class="str">'binding_type'</span>] = $params[<span class="str">'bindingType'</span>]; <span class="cm">// e.g. 'perfect'</span>
+    }
+    <span class="kw">if</span> (!<span class="fn">empty</span>($params[<span class="str">'returnUrl'</span>])) {
+        $query[<span class="str">'return_url'</span>] = $params[<span class="str">'returnUrl'</span>];
+    }
+    <span class="kw">if</span> (!<span class="fn">empty</span>($params[<span class="str">'sessionId'</span>])) {
+        $query[<span class="str">'session_id'</span>] = $params[<span class="str">'sessionId'</span>];  <span class="cm">// 재편집</span>
+    }
+
+    <span class="kw">return</span> STORIGE_EDITOR_URL . <span class="str">'/?' </span>. <span class="fn">http_build_query</span>($query);
+}
+
+<span class="cm">// 사용 예시</span>
+$editorUrl = <span class="fn">buildStorigeEditorUrl</span>([
+    <span class="str">'templateSetId'</span> => <span class="str">'ts-perfect-a5-50p'</span>,
+    <span class="str">'orderSeqno'</span>    => $order[<span class="str">'seqno'</span>],
+    <span class="str">'mode'</span>          => <span class="str">'both'</span>,
+    <span class="str">'pageCount'</span>     => <span class="num">50</span>,
+    <span class="str">'paperType'</span>     => <span class="str">'mojo_80g'</span>,
+    <span class="str">'bindingType'</span>   => <span class="str">'perfect'</span>,
+    <span class="str">'returnUrl'</span>     => <span class="str">'/mypage/order_edit.php?order_seqno='</span> . $order[<span class="str">'seqno'</span>],
+]);</pre>
+    </div>
+
+    <h3>3-3. paperType / bindingType 코드 매핑</h3>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+      <div class="card" style="padding:0;overflow:hidden;">
+        <table class="data-table">
+          <thead><tr><th>북모아 UI</th><th>paperType</th></tr></thead>
+          <tbody>
+            <tr><td>모조지 80g</td><td class="mono">mojo_80g</td></tr>
+            <tr><td>모조지 100g</td><td class="mono">mojo_100g</td></tr>
+            <tr><td>아트지 100g</td><td class="mono">art_100g</td></tr>
+            <tr><td>아트지 150g</td><td class="mono">art_150g</td></tr>
+            <tr><td>스노우 100g</td><td class="mono">snow_100g</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="card" style="padding:0;overflow:hidden;">
+        <table class="data-table">
+          <thead><tr><th>제본 방식</th><th>bindingType</th></tr></thead>
+          <tbody>
+            <tr><td>무선 제본</td><td class="mono">perfect</td></tr>
+            <tr><td>중철 제본</td><td class="mono">saddle</td></tr>
+            <tr><td>스프링 제본</td><td class="mono">spring</td></tr>
+            <tr><td>양장</td><td class="mono">hardcover</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────────────────── §4 CALLBACK ─────────────────────── -->
+  <section class="section" id="callback">
+    <h2 class="section-title"><span class="section-num">4</span> 편집 완료 콜백 처리</h2>
+
+    <div class="callout callout-warn">
+      <span class="callout-icon">⚠️</span>
+      <div class="callout-body">
+        <strong>coverFileId / contentFileId는 UUID (파일 ID)</strong>입니다. URL이 아닙니다.<br>
+        이 시점에 synthesize 요청하지 마세요 — 결제 완료 시점에 요청.
+      </div>
+    </div>
+
+    <div class="code-container">
+      <div class="code-header"><span class="code-lang">PHP</span><span class="code-file">/storige/proc/save_edit_result.php</span></div>
+      <pre>$data = <span class="fn">json_decode</span>(<span class="fn">file_get_contents</span>(<span class="str">'php://input'</span>), <span class="kw">true</span>);
+
+$orderSeqno    = (<span class="kw">int</span>)$data[<span class="str">'order_seqno'</span>];
+$sessionId     = $data[<span class="str">'session_id'</span>];
+$coverFileId   = $data[<span class="str">'cover_file_id'</span>];    <span class="cm">// ⚠️ UUID (URL 아님)</span>
+$contentFileId = $data[<span class="str">'content_file_id'</span>];  <span class="cm">// ⚠️ UUID (URL 아님)</span>
+$thumbnailUrl  = $data[<span class="str">'thumbnail_url'</span>];    <span class="cm">// 이것만 URL (썸네일)</span>
+
+<span class="cm">// DB에 저장 (다운로드는 §7 참조)</span>
+$sql = <span class="str">"UPDATE bookmoa_orders SET
+    storige_session_id     = ?,
+    storige_cover_file_id  = ?,
+    storige_content_file_id = ?,
+    storige_thumbnail_url  = ?
+WHERE order_seqno = ?"</span>;
+
+<span class="fn">http_response_code</span>(<span class="num">200</span>);
+<span class="kw">echo</span> <span class="fn">json_encode</span>([<span class="str">'ok'</span> => <span class="kw">true</span>]);</pre>
+    </div>
+  </section>
+
+  <!-- ─────────────────────── §5 SYNTHESIS ─────────────────────── -->
+  <section class="section" id="synthesis">
+    <h2 class="section-title"><span class="section-num">5</span> PDF 합성 Worker API</h2>
+
+    <h3>5-1. 합성 요청 (결제 완료 시)</h3>
+    <div class="code-container">
+      <div class="code-header"><span class="code-lang">PHP</span></div>
+      <pre><span class="kw">function</span> <span class="fn">requestSynthesis</span>(<span class="kw">array</span> $params): <span class="kw">array</span> {
+    $payload = [
+        <span class="str">'editSessionId'</span> => $params[<span class="str">'sessionId'</span>],
+        <span class="str">'coverFileId'</span>   => $params[<span class="str">'coverFileId'</span>],
+        <span class="str">'contentFileId'</span> => $params[<span class="str">'contentFileId'</span>],
+        <span class="str">'spineWidth'</span>    => $params[<span class="str">'spineWidthMm'</span>],    <span class="cm">// mm 단위 (필수)</span>
+        <span class="str">'orderId'</span>       => <span class="str">'ORD-'</span> . $params[<span class="str">'orderSeqno'</span>],
+        <span class="str">'priority'</span>      => $params[<span class="str">'priority'</span>] ?? <span class="str">'high'</span>,
+        <span class="str">'callbackUrl'</span>   => <span class="str">'https://www.bookmoa.co.kr/storige/proc/synthesis_callback.php'</span>,
+        <span class="cm">// outputFormat: 'merged'(기본) | 'separate'(표지/내지 분리)</span>
+        <span class="cm">// bindingType: 'perfect'(기본) | 'saddle' | 'hardcover'</span>
+    ];
+
+    $ch = <span class="fn">curl_init</span>(STORIGE_API_BASE . <span class="str">'/worker-jobs/synthesize/external'</span>);
+    <span class="fn">curl_setopt_array</span>($ch, [
+        CURLOPT_POST           => <span class="kw">true</span>,
+        CURLOPT_RETURNTRANSFER => <span class="kw">true</span>,
+        CURLOPT_HTTPHEADER     => [
+            <span class="str">'X-API-Key: '</span> . STORIGE_API_KEY,
+            <span class="str">'Content-Type: application/json'</span>,
+        ],
+        CURLOPT_POSTFIELDS => <span class="fn">json_encode</span>($payload),
+        CURLOPT_TIMEOUT    => <span class="num">30</span>,
+    ]);
+    $resp     = <span class="fn">json_decode</span>(<span class="fn">curl_exec</span>($ch), <span class="kw">true</span>);
+    $httpCode = <span class="fn">curl_getinfo</span>($ch, CURLINFO_HTTP_CODE);
+    <span class="fn">curl_close</span>($ch);
+
+    <span class="kw">if</span> ($httpCode !== <span class="num">201</span>) {
+        <span class="kw">throw new</span> <span class="fn">RuntimeException</span>(<span class="str">'[Storige] 합성 요청 실패: HTTP '</span> . $httpCode);
+    }
+
+    <span class="cm">// 응답: { id: "job-uuid", status: "PENDING", ... }</span>
+    <span class="kw">return</span> $resp[<span class="str">'data'</span>] ?? $resp;
+}</pre>
+    </div>
+
+    <h3>5-2. 잡 상태 폴링 (Webhook 없이 운영 시)</h3>
+    <div class="code-container">
+      <div class="code-header"><span class="code-lang">PHP</span></div>
+      <pre><span class="kw">function</span> <span class="fn">getJobStatus</span>(<span class="kw">string</span> $jobId): <span class="kw">array</span> {
+    $ch = <span class="fn">curl_init</span>(STORIGE_API_BASE . <span class="str">'/worker-jobs/external/'</span> . $jobId);
+    <span class="fn">curl_setopt_array</span>($ch, [
+        CURLOPT_RETURNTRANSFER => <span class="kw">true</span>,
+        CURLOPT_HTTPHEADER     => [<span class="str">'X-API-Key: '</span> . STORIGE_API_KEY],
+        CURLOPT_TIMEOUT        => <span class="num">10</span>,
+    ]);
+    $resp = <span class="fn">json_decode</span>(<span class="fn">curl_exec</span>($ch), <span class="kw">true</span>);
+    <span class="fn">curl_close</span>($ch);
+    <span class="kw">return</span> $resp[<span class="str">'data'</span>] ?? $resp;
+}
+
+<span class="cm">// status 값: PENDING → PROCESSING → COMPLETED / FAILED</span></pre>
+    </div>
+  </section>
+
+  <!-- ─────────────────────── §6 WEBHOOK ─────────────────────── -->
+  <section class="section" id="webhook">
+    <h2 class="section-title"><span class="section-num">6</span> Webhook 수신 구현</h2>
+
+    <div class="callout callout-warn">
+      <span class="callout-icon">⚠️</span>
+      <div class="callout-body">
+        <strong>중요</strong>: Webhook의 <code>outputFileUrl</code>은 <strong>내부 저장소 경로</strong>
+        (<code>/storage/outputs/{jobId}/merged.pdf</code>)입니다.<br>
+        이 경로로 직접 HTTP 요청하지 마세요. 다운로드는 §7 방법을 따르세요.
+      </div>
+    </div>
+
+    <h3>6-1. Webhook 페이로드 형식</h3>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+      <div>
+        <div style="font-size:12px;font-weight:700;color:var(--success);margin-bottom:6px;">synthesis.completed</div>
+        <div class="code-container">
+          <pre style="font-size:11.5px;">{
+  <span class="str">"event"</span>: <span class="str">"synthesis.completed"</span>,
+  <span class="str">"jobId"</span>: <span class="str">"dcc5d57b-..."</span>,
+  <span class="str">"sessionId"</span>: <span class="str">"편집-세션-uuid"</span>,
+  <span class="str">"orderId"</span>: <span class="str">"ORD-12345"</span>,
+  <span class="str">"status"</span>: <span class="str">"completed"</span>,
+  <span class="str">"outputFileUrl"</span>: <span class="str">"/storage/outputs/...</span>
+<span class="str">             .../merged.pdf"</span>,
+  <span class="str">"outputFormat"</span>: <span class="str">"merged"</span>
+}</pre>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:12px;font-weight:700;color:var(--danger);margin-bottom:6px;">synthesis.failed</div>
+        <div class="code-container">
+          <pre style="font-size:11.5px;">{
+  <span class="str">"event"</span>: <span class="str">"synthesis.failed"</span>,
+  <span class="str">"jobId"</span>: <span class="str">"uuid"</span>,
+  <span class="str">"orderId"</span>: <span class="str">"ORD-12345"</span>,
+  <span class="str">"status"</span>: <span class="str">"FAILED"</span>,
+  <span class="str">"errorMessage"</span>: <span class="str">"..."</span>,
+  <span class="str">"failedAt"</span>: <span class="str">"2026-05-04T10:00:00Z"</span>
+}</pre>
+        </div>
+      </div>
+    </div>
+
+    <h3>6-2. PHP 수신 구현</h3>
+    <div class="code-container">
+      <div class="code-header"><span class="code-lang">PHP</span><span class="code-file">/storige/proc/synthesis_callback.php</span></div>
+      <pre>$rawBody = <span class="fn">file_get_contents</span>(<span class="str">'php://input'</span>);
+$payload = <span class="fn">json_decode</span>($rawBody, <span class="kw">true</span>);
+$event   = $_SERVER[<span class="str">'HTTP_X_STORIGE_EVENT'</span>] ?? $payload[<span class="str">'event'</span>] ?? <span class="str">''</span>;
+
+<span class="kw">if</span> ($event === <span class="str">'synthesis.completed'</span>) {
+    $jobId      = $payload[<span class="str">'jobId'</span>];
+    $orderId    = $payload[<span class="str">'orderId'</span>];
+    $orderSeqno = (<span class="kw">int</span>)<span class="fn">str_replace</span>(<span class="str">'ORD-'</span>, <span class="str">''</span>, $orderId);
+
+    <span class="fn">saveCompletedJobId</span>($orderSeqno, $jobId);
+    <span class="fn">updateOrderStatus</span>($orderSeqno, <span class="num">210</span>);
+
+    <span class="kw">try</span> {
+        <span class="fn">downloadAndStorePdf</span>($orderSeqno, $jobId);  <span class="cm">// §7 방식</span>
+    } <span class="kw">catch</span> (Exception $e) {
+        <span class="fn">error_log</span>(<span class="str">'[storige_webhook] PDF 다운로드 실패: '</span> . $e-><span class="fn">getMessage</span>());
+    }
+
+} <span class="kw">elseif</span> ($event === <span class="str">'synthesis.failed'</span>) {
+    $orderSeqno = (<span class="kw">int</span>)<span class="fn">str_replace</span>(<span class="str">'ORD-'</span>, <span class="str">''</span>, $payload[<span class="str">'orderId'</span>]);
+    <span class="fn">updateOrderStatus</span>($orderSeqno, <span class="num">-1</span>);
+    <span class="fn">notifyAdminOfSynthesisFailure</span>($orderSeqno, $payload[<span class="str">'errorMessage'</span>] ?? <span class="str">''</span>);
+}
+
+<span class="cm">// ⚠️ 반드시 200 응답 (미응답 시 3회 재시도)</span>
+<span class="fn">http_response_code</span>(<span class="num">200</span>);
+<span class="kw">echo</span> <span class="fn">json_encode</span>([<span class="str">'received'</span> => <span class="kw">true</span>]);
+<span class="kw">exit</span>;</pre>
+    </div>
+
+    <div class="callout callout-tip">
+      <span class="callout-icon">💡</span>
+      <div class="callout-body">
+        무거운 처리(PDF 다운로드/저장)는 큐에 비동기로 넣고 <strong>즉시 200 반환</strong> 권장.
+        미응답 시 Storige가 지수 백오프로 최대 3회 재시도합니다.
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────────────────── §7 DOWNLOAD ─────────────────────── -->
+  <section class="section" id="download">
+    <h2 class="section-title"><span class="section-num">7</span> 합성 결과 PDF 다운로드</h2>
+
+    <div class="callout callout-info">
+      <span class="callout-icon">ℹ️</span>
+      <div class="callout-body">
+        Webhook의 <code>outputFileUrl</code>은 내부 경로 — 직접 HTTP 요청 불가.<br>
+        <strong>전용 API: <code>GET /api/worker-jobs/{jobId}/output</code></strong> (인증: Bearer JWT)
+      </div>
+    </div>
+
+    <div class="code-container">
+      <div class="code-header"><span class="code-lang">PHP</span></div>
+      <pre><span class="kw">function</span> <span class="fn">downloadAndStorePdf</span>(<span class="kw">int</span> $orderSeqno, <span class="kw">string</span> $jobId): <span class="kw">string</span> {
+    <span class="cm">// 1. 회원 정보 조회</span>
+    $member = <span class="fn">getMemberByOrderSeqno</span>($orderSeqno);
+
+    <span class="cm">// 2. Storige JWT 발급</span>
+    $jwt = <span class="fn">getStorigeJWT</span>($member[<span class="str">'seqno'</span>], $member[<span class="str">'id'</span>], $member[<span class="str">'name'</span>], $orderSeqno);
+
+    <span class="cm">// 3. Storige에서 합성 PDF 다운로드</span>
+    $ch = <span class="fn">curl_init</span>(STORIGE_API_BASE . <span class="str">'/worker-jobs/'</span> . $jobId . <span class="str">'/output'</span>);
+    <span class="fn">curl_setopt_array</span>($ch, [
+        CURLOPT_RETURNTRANSFER => <span class="kw">true</span>,
+        CURLOPT_HTTPHEADER     => [<span class="str">'Authorization: Bearer '</span> . $jwt],
+        CURLOPT_TIMEOUT        => <span class="num">60</span>,
+    ]);
+    $pdfBytes = <span class="fn">curl_exec</span>($ch);
+    $httpCode = <span class="fn">curl_getinfo</span>($ch, CURLINFO_HTTP_CODE);
+    <span class="fn">curl_close</span>($ch);
+
+    <span class="kw">if</span> ($httpCode !== <span class="num">200</span>) {
+        <span class="kw">throw new</span> <span class="fn">RuntimeException</span>(<span class="str">'[Storige] PDF 다운로드 실패: HTTP '</span> . $httpCode);
+    }
+
+    <span class="cm">// 4. bookmoa 서버에 저장</span>
+    $savePath = <span class="str">'/path/to/bookmoa/pdfs/order_'</span> . $orderSeqno . <span class="str">'_final.pdf'</span>;
+    <span class="fn">file_put_contents</span>($savePath, $pdfBytes);
+    <span class="fn">updateOrderFilePath</span>($orderSeqno, $savePath);
+
+    <span class="kw">return</span> $savePath;
+}
+
+<span class="kw">function</span> <span class="fn">streamPdfToCustomer</span>(<span class="kw">int</span> $orderSeqno): <span class="kw">void</span> {
+    $memberSeqno = $_SESSION[<span class="str">'memberSeqno'</span>];
+
+    <span class="kw">if</span> (!<span class="fn">isOrderOwnedByMember</span>($orderSeqno, $memberSeqno)) {
+        <span class="fn">http_response_code</span>(<span class="num">403</span>); <span class="kw">exit</span>;
+    }
+
+    $filePath = <span class="fn">getOrderFilePath</span>($orderSeqno);
+    <span class="kw">if</span> (!$filePath || !<span class="fn">file_exists</span>($filePath)) {
+        <span class="fn">http_response_code</span>(<span class="num">404</span>); <span class="kw">exit</span>(<span class="str">'PDF가 아직 준비되지 않았습니다.'</span>);
+    }
+
+    <span class="fn">header</span>(<span class="str">'Content-Type: application/pdf'</span>);
+    <span class="fn">header</span>(<span class="str">'Content-Disposition: attachment; filename="order_'</span> . $orderSeqno . <span class="str">'.pdf"'</span>);
+    <span class="fn">header</span>(<span class="str">'Content-Length: '</span> . <span class="fn">filesize</span>($filePath));
+    <span class="fn">readfile</span>($filePath);
+}</pre>
+    </div>
+  </section>
+
+  <!-- ─────────────────────── §8 RE-EDIT ─────────────────────── -->
+  <section class="section" id="reedit">
+    <h2 class="section-title"><span class="section-num">8</span> 재편집 흐름</h2>
+    <div class="code-container">
+      <div class="code-header"><span class="code-lang">PHP</span></div>
+      <pre><span class="kw">function</span> <span class="fn">buildReEditUrl</span>(<span class="kw">int</span> $orderSeqno): <span class="kw">string</span> {
+    $sessionId = <span class="fn">getSessionIdByOrder</span>($orderSeqno);  <span class="cm">// DB 조회</span>
+
+    <span class="kw">return</span> <span class="fn">buildStorigeEditorUrl</span>([
+        <span class="str">'templateSetId'</span> => <span class="fn">getTemplateSetIdForOrder</span>($orderSeqno),
+        <span class="str">'orderSeqno'</span>    => $orderSeqno,
+        <span class="str">'sessionId'</span>     => $sessionId,  <span class="cm">// ⚠️ 기존 세션 전달 → 캔버스 자동 복원</span>
+        <span class="str">'pageCount'</span>     => <span class="fn">getPageCountForOrder</span>($orderSeqno),
+        <span class="str">'paperType'</span>     => <span class="fn">getPaperTypeForOrder</span>($orderSeqno),
+        <span class="str">'bindingType'</span>   => <span class="fn">getBindingTypeForOrder</span>($orderSeqno),
+        <span class="str">'returnUrl'</span>     => <span class="str">'/mypage/order_edit.php?order_seqno='</span> . $orderSeqno,
+    ]);
+}</pre>
+    </div>
+    <div class="callout callout-tip">
+      <span class="callout-icon">💡</span>
+      <div class="callout-body">
+        <code>session_id</code> 전달 시 에디터가 기존 캔버스 데이터를 자동 복원합니다.
+        세션이 없으면 신규 생성.
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────────────────── §9 SECURITY ─────────────────────── -->
+  <section class="section" id="security">
+    <h2 class="section-title"><span class="section-num">9</span> 보안 가이드</h2>
+
+    <h3>9-1. fileId 클라이언트 노출 금지</h3>
+    <div class="pattern-grid">
+      <div class="pattern-bad">
+        <div class="pattern-label">❌ 잘못된 패턴 (보안 취약)</div>
+        <div class="code-container" style="border-radius:0;margin:0;">
+          <pre style="font-size:11px;"><span class="cm">&lt;!-- 브라우저에 UUID 직접 노출 — 금지 --&gt;</span>
+<span class="kw">&lt;a</span> <span class="fn">href</span>=<span class="str">"...files/&lt;?= $fileId ?&gt;/download"</span><span class="kw">&gt;</span>
+  다운로드
+<span class="kw">&lt;/a&gt;</span>
+
+<span class="kw">&lt;a</span> <span class="fn">href</span>=<span class="str">"/download.php?fileId=&lt;?= $fileId ?&gt;"</span><span class="kw">&gt;</span>
+  다운로드
+<span class="kw">&lt;/a&gt;</span></pre>
+        </div>
+      </div>
+      <div class="pattern-good">
+        <div class="pattern-label">✅ 올바른 패턴 (PHP 프록시)</div>
+        <div class="code-container" style="border-radius:0;margin:0;">
+          <pre style="font-size:11px;"><span class="cm">// /download.php?order_seqno=12345
+// orderSeqno만 URL에 노출</span>
+$orderSeqno  = (<span class="kw">int</span>)$_GET[<span class="str">'order_seqno'</span>];
+$memberSeqno = (<span class="kw">int</span>)$_SESSION[<span class="str">'memberSeqno'</span>];
+
+<span class="kw">if</span> (!<span class="fn">isOrderOwnedByMember</span>(...)) {
+    <span class="fn">http_response_code</span>(<span class="num">403</span>); <span class="kw">exit</span>;
+}
+<span class="fn">streamPdfToCustomer</span>($orderSeqno);</pre>
+        </div>
+      </div>
+    </div>
+
+    <h3 style="margin-top:20px;">9-2. API 호출은 서버 사이드에서만</h3>
+    <div class="callout callout-warn">
+      <span class="callout-icon">🔒</span>
+      <div class="callout-body">
+        브라우저 JS에서 <code>X-API-Key</code>나 <code>fileId</code>를 직접 사용하는 코드는 모두 보안 취약점입니다.
+        모든 Storige API 호출은 PHP 서버를 통해 프록시해야 합니다.
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────────────────── §10 SCENARIOS ─────────────────────── -->
+  <section class="section" id="scenarios">
+    <h2 class="section-title"><span class="section-num">10</span> 검증 시나리오</h2>
+
+    <div class="scenario-card">
+      <div class="scenario-header">
+        <span class="scenario-num">1</span>
+        <span class="scenario-title">에디터 진입 및 기본 편집</span>
+        <span class="scenario-time">1~2시간</span>
+      </div>
+      <div class="scenario-steps">
+        <div class="scenario-step"><span class="step-dot">1</span> buildStorigeEditorUrl() 호출, URL 생성 확인</div>
+        <div class="scenario-step"><span class="step-dot">2</span> 브라우저에서 에디터 URL 진입</div>
+        <div class="scenario-step"><span class="step-dot">3</span> 콘솔 "[EmbeddedEditor] New session created: {uuid}" 출력 확인</div>
+        <div class="scenario-step"><span class="step-dot">4</span> 간단한 텍스트 추가 후 "편집 완료" 클릭</div>
+        <div class="scenario-step"><span class="step-dot">5</span> returnUrl 리다이렉트 확인</div>
+        <div class="scenario-step"><span class="step-dot">6</span> PHP DB: storige_session_id, cover_file_id 저장 확인</div>
+      </div>
+    </div>
+
+    <div class="scenario-card">
+      <div class="scenario-header">
+        <span class="scenario-num">2</span>
+        <span class="scenario-title">재편집</span>
+        <span class="scenario-time">30분</span>
+      </div>
+      <div class="scenario-steps">
+        <div class="scenario-step"><span class="step-dot">1</span> 기존 sessionId를 URL에 추가 (session_id 파라미터)</div>
+        <div class="scenario-step"><span class="step-dot">2</span> 에디터 로드 시 캔버스 복원 확인 — "[EmbeddedEditor] Existing session loaded"</div>
+        <div class="scenario-step"><span class="step-dot">3</span> 수정 후 완료 → 세션 업데이트 확인</div>
+      </div>
+    </div>
+
+    <div class="scenario-card">
+      <div class="scenario-header">
+        <span class="scenario-num">3</span>
+        <span class="scenario-title">PDF 합성 E2E</span>
+        <span class="scenario-time">2~3시간</span>
+      </div>
+      <div class="scenario-steps">
+        <div class="scenario-step"><span class="step-dot">1</span> 편집 완료 → coverFileId / contentFileId 수신 확인</div>
+        <div class="scenario-step"><span class="step-dot">2</span> POST /synthesize/external 호출 → jobId 응답 확인</div>
+        <div class="scenario-step"><span class="step-dot">3</span> Webhook synthesis_callback.php 수신 확인 또는 상태 폴링</div>
+        <div class="scenario-step"><span class="step-dot">4</span> status = COMPLETED 확인</div>
+        <div class="scenario-step"><span class="step-dot">5</span> §7 방식으로 PDF 다운로드 확인</div>
+        <div class="scenario-step"><span class="step-dot">6</span> 고객에게 streamPdfToCustomer() 스트림 확인</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────────────────── §11 SCHEDULE ─────────────────────── -->
+  <section class="section" id="schedule">
+    <h2 class="section-title"><span class="section-num">11</span> 권장 통합 일정</h2>
+
+    <div class="timeline">
+      <div class="timeline-row">
+        <div class="timeline-week">1주차<span>~5/11</span></div>
+        <div class="timeline-content">
+          <h4>환경 설정 + 에디터 진입 테스트</h4>
+          <ul class="timeline-tasks">
+            <li>API Key 환경변수 등록</li>
+            <li>endpoint 변경 (5분)</li>
+            <li>에디터 URL 파라미터 수정</li>
+            <li>편집 완료 콜백 처리</li>
+          </ul>
+        </div>
+      </div>
+      <div class="timeline-row">
+        <div class="timeline-week">2주차<span>5/12~18</span></div>
+        <div class="timeline-content">
+          <h4>합성 E2E + Webhook + 다운로드</h4>
+          <ul class="timeline-tasks">
+            <li>synthesize/external 구현</li>
+            <li>synthesis_callback.php 작성</li>
+            <li>PDF 다운로드 구현</li>
+            <li>Storige: Sentry 모니터링 대응</li>
+          </ul>
+        </div>
+      </div>
+      <div class="timeline-row">
+        <div class="timeline-week">3주차<span>5/19~25</span></div>
+        <div class="timeline-content">
+          <h4>보안 검수 + 운영 컷오버</h4>
+          <ul class="timeline-tasks">
+            <li>fileId 클라이언트 노출 점검</li>
+            <li>운영 컷오버 진행</li>
+            <li>Storige: 24시간 대응 준비</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────────────────── §12 KICKOFF ─────────────────────── -->
+  <section class="section" id="kickoff">
+    <h2 class="section-title"><span class="section-num">12</span> 킥오프 요청 정보</h2>
+
+    <h3>Storige 팀에 공유해 주세요</h3>
+    <div class="card" style="padding:0;overflow:hidden;">
+      <table class="data-table">
+        <tbody>
+          <tr><td style="width:40px;font-weight:700;color:var(--primary);">1</td><td>담당자 연락처 (이름, 이메일)</td></tr>
+          <tr><td style="font-weight:700;color:var(--primary);">2</td><td>킥오프 미팅 가능 일정 (30분)</td></tr>
+          <tr><td style="font-weight:700;color:var(--primary);">3</td><td>Webhook 수신 URL (<span class="tag">synthesis_callback.php</span> 전체 경로)</td></tr>
+          <tr><td style="font-weight:700;color:var(--primary);">4</td><td>통합 테스트 환경 (운영 직접 / 별도 스테이징)</td></tr>
+          <tr><td style="font-weight:700;color:var(--primary);">5</td><td>예상 일 주문 볼륨 (Worker 큐 사이즈 조정용)</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 style="margin-top:20px;">킥오프 메일 템플릿</h3>
+    <div class="code-container">
+      <div class="code-header"><span class="code-lang">Email</span></div>
+      <pre style="color:#CDD6F4;font-family:sans-serif;font-size:13px;line-height:1.7;white-space:pre-wrap;">제목: [Storige × bookmoa] 통합 킥오프 요청 — Storige 측 준비 완료
+
+안녕하세요 bookmoa PHP 팀 담당자님,
+
+Storige 운영팀입니다.
+Storige × bookmoa 인쇄 워크플로 통합 준비가 완료되었습니다.
+
+▶ PHP 측 필수 변경 (즉시, 5분)
+  - PDF 다운로드 endpoint: /files/:id/download → /files/:id/download/external
+  - 상세 가이드: PHP_INTEGRATION_FINAL_v3.html 첨부
+
+▶ 운영 현황
+  - API: https://api.papascompany.co.kr/api
+  - Worker 합성 E2E 검증 완료 (3 시나리오)
+  - Sentry 모니터링 활성화
+
+킥오프 미팅(30분) 가능한 일정을 알려 주시면 빠르게 진행하겠습니다.
+
+감사합니다.
+Storige 운영팀 드림</pre>
+    </div>
+  </section>
+
+  <!-- ─────────────────────── FAQ ─────────────────────── -->
+  <section class="section" id="faq">
+    <h2 class="section-title"><span class="section-num">?</span> FAQ</h2>
+
+    <div class="faq-item">
+      <div class="faq-q">Q. API Key는 어떻게 발급받나요?</div>
+      <div class="faq-a">Storige 운영팀에서 직접 전달. 개발/운영 환경별 별도 Key 사용 권장.</div>
+    </div>
+    <div class="faq-item">
+      <div class="faq-q">Q. sessionId 없이 orderSeqno만 전달하면?</div>
+      <div class="faq-a">해당 orderSeqno로 기존 세션 검색 → 없으면 신규 생성, 있으면 기존 사용 (재편집 자동).</div>
+    </div>
+    <div class="faq-item">
+      <div class="faq-q">Q. Webhook 없이 운영 가능한가요?</div>
+      <div class="faq-a">가능 — <span class="tag">GET /api/worker-jobs/external/{jobId}</span> 폴링으로 상태 확인. 단 실시간성 부족.</div>
+    </div>
+    <div class="faq-item">
+      <div class="faq-q">Q. 합성 결과 PDF URL을 고객에게 바로 줄 수 없나요?</div>
+      <div class="faq-a">Storige 결과 파일은 내부 저장소라 직접 URL 제공 불가. PHP 서버가 받아서 고객에게 스트림으로 전달해야 합니다 (§7 참조).</div>
+    </div>
+    <div class="faq-item">
+      <div class="faq-q">Q. pages 파라미터가 pageCount로 바뀐 이유는?</div>
+      <div class="faq-a">원본 pages는 표지 포함 전체 페이지 기준이었으나 Storige는 내지(본문) 기준으로 계산. 혼선 방지를 위해 명칭 변경.</div>
+    </div>
+    <div class="faq-item">
+      <div class="faq-q">Q. 합성 실패 시 고객에게 재편집 요청을 자동화할 수 있나요?</div>
+      <div class="faq-a">synthesis.failed Webhook 수신 후 PHP에서 재편집 URL을 생성해 고객 이메일/SMS로 발송하면 됩니다.</div>
+    </div>
+  </section>
+
+  <!-- ─────────────────────── ENDPOINTS ─────────────────────── -->
+  <section class="section" id="endpoints">
+    <h2 class="section-title"><span class="section-num">→</span> API 엔드포인트 레퍼런스</h2>
+    <div style="margin-bottom:8px;font-size:12px;color:var(--gray-400);">
+      베이스 URL: <span class="tag">https://api.papascompany.co.kr/api</span>
+    </div>
+
+    <div class="endpoint-group">
+      <h3>PHP 서버 → Storige (X-API-Key 인증)</h3>
+      <div class="endpoint-row"><span class="method method-post">POST</span><span class="endpoint-path">/auth/shop-session</span><span class="endpoint-desc">JWT 발급</span><span class="auth-chip auth-apikey">X-API-Key</span></div>
+      <div class="endpoint-row"><span class="method method-post">POST</span><span class="endpoint-path">/worker-jobs/check-mergeable/external</span><span class="endpoint-desc">병합 가능 체크</span><span class="auth-chip auth-apikey">X-API-Key</span></div>
+      <div class="endpoint-row"><span class="method method-post">POST</span><span class="endpoint-path">/worker-jobs/validate/external</span><span class="endpoint-desc">검증 잡 생성</span><span class="auth-chip auth-apikey">X-API-Key</span></div>
+      <div class="endpoint-row"><span class="method method-post">POST</span><span class="endpoint-path">/worker-jobs/synthesize/external</span><span class="endpoint-desc">합성 잡 생성</span><span class="auth-chip auth-apikey">X-API-Key</span></div>
+      <div class="endpoint-row"><span class="method method-get">GET</span><span class="endpoint-path">/worker-jobs/external/{id}</span><span class="endpoint-desc">잡 상태 조회</span><span class="auth-chip auth-apikey">X-API-Key</span></div>
+      <div class="endpoint-row"><span class="method method-get">GET</span><span class="endpoint-path">/files/{id}/download/external</span><span class="endpoint-desc">원본 파일 다운로드</span><span class="auth-chip auth-apikey">X-API-Key</span></div>
+    </div>
+
+    <div class="endpoint-group">
+      <h3>PHP 서버 → Storige (JWT 인증)</h3>
+      <div class="endpoint-row"><span class="method method-get">GET</span><span class="endpoint-path">/worker-jobs/{id}/output</span><span class="endpoint-desc">합성 결과 PDF 다운로드</span><span class="auth-chip auth-jwt">Bearer JWT</span></div>
+    </div>
+
+    <h3>공통 요청 헤더</h3>
+    <div class="code-container">
+      <div class="code-header"><span class="code-lang">HTTP</span></div>
+      <pre><span class="cm"># X-API-Key 인증 (서버 간)</span>
+<span class="fn">X-API-Key</span>: sk-storige-l3YVceH0sB739pgTfxRAxZAmLJROcMtgdKPIDYdVG0g
+<span class="fn">Content-Type</span>: application/json
+
+<span class="cm"># JWT 인증</span>
+<span class="fn">Authorization</span>: Bearer {accessToken}
+<span class="fn">Content-Type</span>: application/json</pre>
+    </div>
+  </section>
+
+  <!-- ─────────────────────── CHANGELOG ─────────────────────── -->
+  <section class="section">
+    <h2 class="section-title" style="border:none;padding:0;margin-bottom:12px;">변경 이력</h2>
+    <div class="card" style="padding:16px;">
+      <div class="changelog-row">
+        <span class="changelog-date">2026-05-04</span>
+        <span class="changelog-version"><span class="version-badge">v3.0</span></span>
+        <span>KICKOFF 문서 통합 / Webhook outputFileUrl 형식 수정 (상대경로) / 합성 결과 다운로드 JWT 방식 정확화 / Worker E2E 검증 완료</span>
+      </div>
+      <div class="changelog-row">
+        <span class="changelog-date">2026-05-03</span>
+        <span class="changelog-version">v2.0</span>
+        <span>보안 패치 A-E 반영 (체크리스트 #11~13 추가)</span>
+      </div>
+      <div class="changelog-row">
+        <span class="changelog-date">2026-05-02</span>
+        <span class="changelog-version">v1.0</span>
+        <span>PHP_INTEGRATION_VERIFICATION 최초 작성 (10개 체크리스트)</span>
+      </div>
+    </div>
+  </section>
+
+</main>
+</div>
+</body>
+</html>
