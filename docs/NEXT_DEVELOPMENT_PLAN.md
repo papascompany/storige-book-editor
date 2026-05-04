@@ -1,5 +1,7 @@
 # Storige 다음 개발 계획 (2026-05-02 기준)
 
+> ⚠️ **이 문서는 2026-05-02 스냅샷입니다. 현재 마스터 트래커는 [`MASTER_STATUS_2026-05-04.md`](./MASTER_STATUS_2026-05-04.md) ([HTML](./MASTER_STATUS_2026-05-04.html))로 통합됐습니다.**
+
 > **작성일**: 2026-05-02 (v2.2 워커 ENOENT 핫픽스 배포 직후)
 > **참조**: `docs/REMAINING_WORK_REVIEW.md`, `.cursor/plans/v2/NEW_DEV_PLAN.md`, `docs/AI_FEATURES_PLAN.md`
 > **누적 진척률**: 약 73% (실효 기능 ~88%)

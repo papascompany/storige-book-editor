@@ -1,5 +1,7 @@
 # Storige Deployment Guide
 
+> 🔄 **갱신**: 2026-05-04 — Node 22 LTS 마이그레이션, Grafana + Prometheus, Loki + Promtail 모니터링 스택 반영
+
 ## 📋 목차
 
 1. [시스템 요구사항](#시스템-요구사항)
@@ -19,16 +21,32 @@
 | 구성 요소 | 최소 사양 | 권장 사양 |
 |----------|----------|----------|
 | **CPU** | 4 Core | 8 Core |
-| **RAM** | 8 GB | 16 GB |
+| **RAM** | 8 GB (모니터링 스택 +400MB 포함) | 16 GB |
 | **Storage** | 50 GB SSD | 200 GB SSD |
-| **OS** | Ubuntu 20.04+ | Ubuntu 22.04+ |
+| **OS** | Ubuntu 22.04+ | Ubuntu 22.04+ |
 
 ### 필수 소프트웨어
 
 - **Docker**: 24.0+
 - **Docker Compose**: 2.20+
-- **Node.js**: 20.x (로컬 개발용)
-- **pnpm**: 8.x (로컬 개발용)
+- **Node.js**: **22.x LTS** (Jod, EOL 2027-04-30)
+- **pnpm**: 9.x
+
+### Docker 컨테이너 구성 (총 11개)
+
+| 카테고리 | 컨테이너 | 이미지 |
+|----------|----------|--------|
+| **App** | `storige-api` | NestJS (자체 빌드, node:22-alpine) |
+| App | `storige-worker` | NestJS Bull worker (자체 빌드) |
+| App | `storige-nginx` | nginx:1.25-alpine (리버스 프록시) |
+| **Data** | `storige-mariadb` | mariadb:11.2 |
+| Data | `storige-redis` | redis:7.2-alpine |
+| **Monitoring** (P2-8) | `storige-prometheus` | prom/prometheus:v2.55.1 |
+| Monitoring | `storige-grafana` | grafana/grafana:11.2.2 |
+| Monitoring | `storige-node-exporter` | prom/node-exporter:v1.8.2 |
+| Monitoring | `storige-redis-exporter` | oliver006/redis_exporter:v1.66.0-alpine |
+| **Logging** (P2-10) | `storige-loki` | grafana/loki:3.2.1 |
+| Logging | `storige-promtail` | grafana/promtail:3.2.1 |
 
 ---
 
@@ -341,24 +359,51 @@ server {
 
 ## 모니터링 및 로깅
 
-### 로그 확인
+### 🌐 통합 대시보드 (P2-8 + P2-10)
+
+| 도구 | URL | 인증 | 설명 |
+|------|-----|------|------|
+| **Grafana** | https://api.papascompany.co.kr/grafana/ | admin / `GRAFANA_ADMIN_PASSWORD` | 메트릭 + 로그 통합 |
+| Sentry | https://papascompany.sentry.io | OAuth | 에러 추적 + Performance |
+| Admin Dashboard 큐 위젯 | https://admin.papascompany.co.kr | JWT | 5초 폴링 |
+
+### 📊 Grafana 대시보드 (자동 등록됨)
+
+- **Storige 운영 메트릭** (uid `storige-overview`)
+  - VPS 시스템: CPU/메모리/디스크/네트워크
+  - API Node.js: heap, RSS, event loop lag
+  - Worker Bull 큐: backlog, completed, failed delta
+  - Redis: 메모리, 명령 처리량
+- **Storige 로그** (uid `storige-logs`)
+  - API/Worker 라이브 로그 (level multi-select 변수: info/warn/error/fatal/debug)
+  - 에러 발생률 / 전체 로그 처리량
+  - Nginx 액세스 로그 (collapsed row)
+
+### 📝 로그 검색 (LogQL)
+
+운영자는 **Grafana > Storige 로그 > Explore** 에서 LogQL 쿼리:
+
+```
+{service="api"} | json | level="error"
+{service="worker"} | json |~ "synthesis"
+{service="api"} | json | url=~"/worker-jobs/.*"
+```
+
+### 🐳 Docker 로그 직접 확인 (디버깅용)
 
 ```bash
 # 전체 로그
-docker-compose logs -f
+docker compose logs -f
 
 # 특정 서비스 로그
-docker-compose logs -f api
-docker-compose logs -f worker
+docker compose logs -f api
+docker compose logs -f worker
 
 # 최근 100줄만
-docker-compose logs --tail=100 api
-
-# 실시간 로그 (타임스탬프 포함)
-docker-compose logs -f --timestamps api
+docker compose logs --tail=100 api
 ```
 
-### 리소스 모니터링
+### 💻 리소스 모니터링
 
 ```bash
 # 컨테이너 리소스 사용량
@@ -366,11 +411,28 @@ docker stats
 
 # 특정 컨테이너만
 docker stats storige-api storige-worker
+
+# 모니터링 스택 메모리 사용량 (~400MB)
+docker stats storige-prometheus storige-grafana storige-loki storige-promtail
 ```
 
-### Bull Queue 모니터링
+### 🚨 알림 채널
 
-Bull Board를 사용하여 큐 상태를 모니터링할 수 있습니다 (향후 추가 예정).
+- **Sentry → Slack**: 새 에러 / 빈도 급증 / Worker 실패 / 큐 적체 (가이드: [`SENTRY_SLACK_SETUP.md`](./SENTRY_SLACK_SETUP.md))
+- **Bull 큐 알람**: API의 `QueueMonitorService`가 1분마다 폴링 → Sentry로 전송 (`alert.type=backlog/failed`)
+
+### 🔄 모니터링 스택 환경변수
+
+```bash
+# .env (VPS)
+GRAFANA_ADMIN_USER=admin
+GRAFANA_ADMIN_PASSWORD=<강한 비번>
+QUEUE_MONITOR_ENABLED=true
+QUEUE_MONITOR_BACKLOG_THRESHOLD=10
+QUEUE_MONITOR_INTERVAL_MS=60000
+QUEUE_MONITOR_COOLDOWN_MS=300000
+LOG_LEVEL=info  # debug 시 상세 로그 (Loki로 push됨)
+```
 
 ---
 

@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Storige 전체 개발 상태 마스터 (2026-05-04)</title>
+<style>
+  :root {
+    --primary: #4F46E5;
+    --primary-light: #EEF2FF;
+    --success: #059669;
+    --success-light: #D1FAE5;
+    --warning: #D97706;
+    --warning-light: #FEF3C7;
+    --danger: #DC2626;
+    --danger-light: #FEE2E2;
+    --info: #0891B2;
+    --info-light: #CFFAFE;
+    --gray-50: #F9FAFB;
+    --gray-100: #F3F4F6;
+    --gray-200: #E5E7EB;
+    --gray-400: #9CA3AF;
+    --gray-600: #4B5563;
+    --gray-800: #1F2937;
+    --gray-900: #111827;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--gray-800);
+    background: var(--gray-50);
+  }
+  .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
+
+  /* Hero */
+  .hero {
+    background: linear-gradient(135deg, var(--primary) 0%, #7C3AED 100%);
+    color: white;
+    border-radius: 14px;
+    padding: 32px;
+    margin-bottom: 28px;
+  }
+  .hero h1 { font-size: 24px; font-weight: 800; }
+  .hero p { opacity: 0.85; margin-top: 6px; font-size: 14px; }
+  .meta-row { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+  .meta-chip {
+    background: rgba(255,255,255,0.2);
+    border: 1px solid rgba(255,255,255,0.35);
+    border-radius: 20px;
+    padding: 4px 14px;
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  /* Progress big number */
+  .progress-block {
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    gap: 24px;
+    margin-bottom: 28px;
+    background: white;
+    border: 1px solid var(--gray-200);
+    border-radius: 12px;
+    padding: 24px;
+  }
+  .progress-num {
+    text-align: center;
+    border-right: 1px solid var(--gray-200);
+    padding-right: 24px;
+  }
+  .progress-num .pct {
+    font-size: 64px;
+    font-weight: 800;
+    color: var(--primary);
+    line-height: 1;
+  }
+  .progress-num .label {
+    font-size: 13px;
+    color: var(--gray-600);
+    margin-top: 8px;
+  }
+  .progress-num .stats {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    margin-top: 12px;
+    font-size: 12px;
+  }
+  .progress-num .stats span { padding: 2px 8px; border-radius: 10px; }
+  .stats-done { background: var(--success-light); color: var(--success); }
+  .stats-todo { background: var(--warning-light); color: var(--warning); }
+
+  .progress-bars { display: flex; flex-direction: column; gap: 10px; }
+  .pbar-row { display: grid; grid-template-columns: 140px 1fr 80px; align-items: center; gap: 12px; font-size: 13px; }
+  .pbar-name { font-weight: 600; }
+  .pbar-track {
+    background: var(--gray-100);
+    border-radius: 4px;
+    height: 8px;
+    overflow: hidden;
+    position: relative;
+  }
+  .pbar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--primary), #7C3AED);
+    border-radius: 4px;
+  }
+  .pbar-fill.full { background: var(--success); }
+  .pbar-fill.warn { background: var(--warning); }
+  .pbar-stats { font-size: 12px; color: var(--gray-600); text-align: right; }
+
+  /* Section */
+  .section { margin-bottom: 32px; }
+  .section h2 {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--gray-900);
+    margin-bottom: 16px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid var(--gray-200);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  /* Cards */
+  .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
+  .card {
+    background: white;
+    border: 1px solid var(--gray-200);
+    border-radius: 10px;
+    padding: 16px;
+    transition: box-shadow 0.15s;
+  }
+  .card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
+  .card-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+  .card-title { font-weight: 700; font-size: 14px; flex: 1; }
+  .card-body { font-size: 13px; color: var(--gray-600); line-height: 1.5; }
+  .card-body small { color: var(--gray-400); font-size: 11px; display: block; margin-top: 4px; }
+
+  /* Badges */
+  .badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    border-radius: 4px; padding: 2px 8px;
+    font-size: 11px; font-weight: 700;
+    white-space: nowrap;
+  }
+  .badge-done { background: var(--success-light); color: var(--success); }
+  .badge-p0 { background: #FEE2E2; color: #991B1B; }
+  .badge-p1 { background: var(--warning-light); color: #92400E; }
+  .badge-p2 { background: var(--info-light); color: #155E75; }
+  .badge-p3 { background: var(--gray-100); color: var(--gray-600); }
+  .badge-ext { background: #FEF3C7; color: #92400E; }
+
+  /* Status table */
+  .status-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: white;
+    border: 1px solid var(--gray-200);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .status-table th {
+    text-align: left;
+    padding: 10px 14px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: var(--gray-400);
+    background: var(--gray-50);
+    border-bottom: 1px solid var(--gray-200);
+  }
+  .status-table td {
+    padding: 11px 14px;
+    border-bottom: 1px solid var(--gray-100);
+    font-size: 13px;
+    vertical-align: top;
+  }
+  .status-table tr:last-child td { border-bottom: none; }
+  .status-done { color: var(--success); font-weight: 600; }
+  .status-pending { color: var(--warning); font-weight: 600; }
+  .mono { font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 12px; }
+
+  /* Operations bar */
+  .ops-bar {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 10px;
+    margin-bottom: 24px;
+  }
+  .ops-cell {
+    background: white;
+    border: 1px solid var(--gray-200);
+    border-radius: 8px;
+    padding: 12px 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .ops-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    flex-shrink: 0;
+  }
+  .ops-icon.ok { background: var(--success-light); color: var(--success); }
+  .ops-icon.warn { background: var(--warning-light); color: var(--warning); }
+  .ops-info { font-size: 12px; }
+  .ops-info strong { display: block; font-size: 13px; color: var(--gray-900); }
+
+  /* Timeline */
+  .timeline {
+    background: white;
+    border: 1px solid var(--gray-200);
+    border-radius: 10px;
+    padding: 0;
+    overflow: hidden;
+  }
+  .timeline-row {
+    display: grid;
+    grid-template-columns: 60px 1fr;
+    border-bottom: 1px solid var(--gray-100);
+    transition: background 0.1s;
+  }
+  .timeline-row:last-child { border-bottom: none; }
+  .timeline-row:hover { background: var(--gray-50); }
+  .timeline-num {
+    background: var(--primary-light);
+    color: var(--primary);
+    font-weight: 800;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .timeline-body { padding: 14px 16px; }
+  .timeline-body h4 { font-size: 13px; font-weight: 700; margin-bottom: 4px; }
+  .timeline-body p { font-size: 12px; color: var(--gray-600); }
+
+  /* Stack */
+  .stack-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 10px;
+  }
+  .stack-item {
+    background: white;
+    border: 1px solid var(--gray-200);
+    border-radius: 8px;
+    padding: 10px 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+  }
+  .stack-status { font-size: 16px; }
+
+  /* Doc grid */
+  .doc-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 10px;
+  }
+  .doc-item {
+    display: block;
+    padding: 10px 12px;
+    background: white;
+    border: 1px solid var(--gray-200);
+    border-radius: 8px;
+    font-size: 13px;
+    color: var(--gray-800);
+    text-decoration: none;
+    transition: all 0.1s;
+  }
+  .doc-item:hover { border-color: var(--primary); background: var(--primary-light); }
+  .doc-item .icon { font-size: 14px; margin-right: 6px; }
+  .doc-item small { color: var(--gray-400); font-size: 11px; display: block; margin-top: 2px; }
+
+  /* Update log */
+  .update-log {
+    background: white;
+    border: 1px solid var(--gray-200);
+    border-radius: 10px;
+    padding: 0;
+    overflow: hidden;
+  }
+  .ul-row {
+    display: grid;
+    grid-template-columns: 80px 1fr 100px;
+    gap: 12px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--gray-100);
+    font-size: 13px;
+    align-items: center;
+  }
+  .ul-row:last-child { border-bottom: none; }
+  .ul-date { color: var(--gray-400); font-family: monospace; font-size: 11px; }
+  .ul-title { font-weight: 600; }
+  .ul-status { text-align: right; font-size: 11px; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<!-- HERO -->
+<div class="hero">
+  <h1>Storige 전체 개발 상태 마스터</h1>
+  <p>Bookmoa 인쇄 쇼핑몰 에디터 시스템 — 통합 개발 진척률 + 잔여 이슈 + 운영 스택</p>
+  <div class="meta-row">
+    <span class="meta-chip">📅 갱신일: 2026-05-04</span>
+    <span class="meta-chip">📦 110+ commits / 80+ tracks</span>
+    <span class="meta-chip">📈 누적 진척률 ~96%</span>
+    <span class="meta-chip">🚀 PHP 통합만 잔여</span>
+  </div>
+</div>
+
+<!-- PROGRESS BLOCK -->
+<div class="progress-block">
+  <div class="progress-num">
+    <div class="pct">96%</div>
+    <div class="label">전체 진척률 (실효 ~98%)</div>
+    <div class="stats">
+      <span class="stats-done">완료 67</span>
+      <span class="stats-todo">잔여 10</span>
+    </div>
+  </div>
+  <div class="progress-bars">
+    <div class="pbar-row">
+      <div class="pbar-name">모바일/터치</div>
+      <div class="pbar-track"><div class="pbar-fill" style="width: 69%"></div></div>
+      <div class="pbar-stats">9 / 13</div>
+    </div>
+    <div class="pbar-row">
+      <div class="pbar-name">표지 편집</div>
+      <div class="pbar-track"><div class="pbar-fill full" style="width: 100%"></div></div>
+      <div class="pbar-stats">8 / 8</div>
+    </div>
+    <div class="pbar-row">
+      <div class="pbar-name">다크/반응형</div>
+      <div class="pbar-track"><div class="pbar-fill full" style="width: 100%"></div></div>
+      <div class="pbar-stats">8 / 8</div>
+    </div>
+    <div class="pbar-row">
+      <div class="pbar-name">도구 확장</div>
+      <div class="pbar-track"><div class="pbar-fill" style="width: 92%"></div></div>
+      <div class="pbar-stats">11 / 12</div>
+    </div>
+    <div class="pbar-row">
+      <div class="pbar-name">카탈로그/AI</div>
+      <div class="pbar-track"><div class="pbar-fill" style="width: 84%"></div></div>
+      <div class="pbar-stats">5 / 6</div>
+    </div>
+    <div class="pbar-row">
+      <div class="pbar-name">북모아 PHP 통합</div>
+      <div class="pbar-track"><div class="pbar-fill warn" style="width: 88%"></div></div>
+      <div class="pbar-stats">7 / 8</div>
+    </div>
+    <div class="pbar-row">
+      <div class="pbar-name">PDF/워커</div>
+      <div class="pbar-track"><div class="pbar-fill full" style="width: 100%"></div></div>
+      <div class="pbar-stats">5 / 5</div>
+    </div>
+    <div class="pbar-row">
+      <div class="pbar-name">인프라/품질</div>
+      <div class="pbar-track"><div class="pbar-fill" style="width: 82%"></div></div>
+      <div class="pbar-stats">14 / 17</div>
+    </div>
+  </div>
+</div>
+
+<!-- 운영 시작 가능 여부 -->
+<div class="section">
+  <h2>🚦 운영 시작 가능 여부</h2>
+  <div class="ops-bar">
+    <div class="ops-cell">
+      <div class="ops-icon warn">🟡</div>
+      <div class="ops-info">
+        <strong>Bookmoa PHP 통합</strong>
+        PHP 측 작업만 남음
+      </div>
+    </div>
+    <div class="ops-cell">
+      <div class="ops-icon ok">✅</div>
+      <div class="ops-info">
+        <strong>사용자 에디터</strong>
+        정상 운영
+      </div>
+    </div>
+    <div class="ops-cell">
+      <div class="ops-icon ok">✅</div>
+      <div class="ops-info">
+        <strong>Admin 콘텐츠</strong>
+        정상 운영
+      </div>
+    </div>
+    <div class="ops-cell">
+      <div class="ops-icon ok">✅</div>
+      <div class="ops-info">
+        <strong>Worker E2E</strong>
+        검증/변환/합성 모두
+      </div>
+    </div>
+    <div class="ops-cell">
+      <div class="ops-icon ok">✅</div>
+      <div class="ops-info">
+        <strong>모니터링</strong>
+        Grafana + Loki + Sentry
+      </div>
+    </div>
+    <div class="ops-cell">
+      <div class="ops-icon ok">✅</div>
+      <div class="ops-info">
+        <strong>보안 패치</strong>
+        A-E 완료
+      </div>
+    </div>
+    <div class="ops-cell">
+      <div class="ops-icon ok">✅</div>
+      <div class="ops-info">
+        <strong>자동화 검증</strong>
+        Playwright 12 passed
+      </div>
+    </div>
+    <div class="ops-cell">
+      <div class="ops-icon ok">✅</div>
+      <div class="ops-info">
+        <strong>런타임</strong>
+        Node 22 LTS
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 운영 스택 -->
+<div class="section">
+  <h2>🛠 운영 스택 (현재)</h2>
+  <div class="stack-grid">
+    <div class="stack-item"><span class="stack-status">✅</span><div><strong>Node 22 LTS</strong><br><small>Jod, EOL 2027-04-30</small></div></div>
+    <div class="stack-item"><span class="stack-status">✅</span><div><strong>NestJS + Pino</strong><br><small>JSON 구조화 로깅</small></div></div>
+    <div class="stack-item"><span class="stack-status">✅</span><div><strong>MariaDB 11.2</strong><br><small>Docker</small></div></div>
+    <div class="stack-item"><span class="stack-status">✅</span><div><strong>Redis 7.2 + Bull</strong><br><small>큐 처리</small></div></div>
+    <div class="stack-item"><span class="stack-status">✅</span><div><strong>Vercel</strong><br><small>admin / editor / homepage</small></div></div>
+    <div class="stack-item"><span class="stack-status">✅</span><div><strong>VPS Vultr Seoul</strong><br><small>Docker compose</small></div></div>
+    <div class="stack-item"><span class="stack-status">✅</span><div><strong>Sentry</strong><br><small>4 프로젝트 (Slack OAuth 대기)</small></div></div>
+    <div class="stack-item"><span class="stack-status">✅</span><div><strong>Grafana + Prometheus</strong><br><small>node + redis exporter</small></div></div>
+    <div class="stack-item"><span class="stack-status">✅</span><div><strong>Loki + Promtail</strong><br><small>로그 일원화 14일 보존</small></div></div>
+    <div class="stack-item"><span class="stack-status">⚠️</span><div><strong>VPS 로컬 cron 백업</strong><br><small>R2/S3 이중화 잔여</small></div></div>
+    <div class="stack-item"><span class="stack-status">✅</span><div><strong>Let's Encrypt + nginx</strong><br><small>HTTPS</small></div></div>
+  </div>
+</div>
+
+<!-- 잔여 이슈 -->
+<div class="section">
+  <h2>⏳ 잔여 개발 이슈</h2>
+
+  <h3 style="margin-top: 16px; margin-bottom: 10px; font-size: 14px; color: #991B1B;">🔴 외부 의존 (사용자 또는 외부 팀)</h3>
+  <div class="card-grid">
+    <div class="card">
+      <div class="card-header">
+        <span class="badge badge-p0">P0-1</span>
+        <span class="card-title">PHP ↔ Storige 통합 cutover</span>
+      </div>
+      <div class="card-body">
+        Storige 측 100% 준비 완료. 가이드 v3.0 전달 가능.
+        <small>차단: PHP 팀 일정 + 킥오프 미팅</small>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <span class="badge badge-p1">P1-2</span>
+        <span class="card-title">Sentry Slack 연결</span>
+      </div>
+      <div class="card-body">
+        가이드 + smoke test 스크립트 완비. OAuth 인증만 남음.
+        <small>차단: Slack workspace 관리자 권한</small>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <span class="badge badge-ext">사용자 결정</span>
+        <span class="card-title">Admin 비번 본인 비번으로 교체</span>
+      </div>
+      <div class="card-body">
+        강한 비번(<code class="mono">r46e...</code>) 자동 생성됨, 운영 가능.
+        <small>차단: 사용자 결정</small>
+      </div>
+    </div>
+  </div>
+
+  <h3 style="margin-top: 20px; margin-bottom: 10px; font-size: 14px; color: #92400E;">🟡 자동화 가능 (Storige 측)</h3>
+  <div class="card-grid">
+    <div class="card">
+      <div class="card-header">
+        <span class="badge badge-p2">P2-9</span>
+        <span class="card-title">R2/S3 백업 이중화</span>
+      </div>
+      <div class="card-body">현재 VPS 로컬 cron(03:00 KST)만. 외부 이중 백업 필요.<small>예상: 1일</small></div>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <span class="badge badge-p2">P2-11</span>
+        <span class="card-title">crossOriginIsolated + Worker 분리</span>
+      </div>
+      <div class="card-body">
+        PNG 업로드 hang 근본 fix. <strong>2026-05-04 시도 후 운영 회귀로 revert.</strong>
+        <small>예상: 1~2일 (사전 검증 사이클 필요)</small>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <span class="badge badge-p2">자산</span>
+        <span class="card-title">운영 라이브러리 자산 큐레이션</span>
+      </div>
+      <div class="card-body">현재 13개 더미 SVG. 디자인팀 자산으로 교체.<small>외부 협업</small></div>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <span class="badge badge-p2">P2-7 후속</span>
+        <span class="card-title">Library E2E dropdown DOM 정교화</span>
+      </div>
+      <div class="card-body">현재 2건 skip. portal 렌더 매칭 보강 필요.<small>예상: 0.5일</small></div>
+    </div>
+  </div>
+
+  <h3 style="margin-top: 20px; margin-bottom: 10px; font-size: 14px; color: var(--gray-600);">🟣 장기 / 선택</h3>
+  <div class="card-grid">
+    <div class="card">
+      <div class="card-header"><span class="badge badge-p3">P3</span><span class="card-title">모바일 UX 폴리시</span></div>
+      <div class="card-body">핀치-투-줌, iText visualViewport(iOS), long-press 컨텍스트 메뉴, 다중 선택 floating bar</div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="badge badge-p3">P3</span><span class="card-title">AI 패널 추천 통합</span></div>
+      <div class="card-body">현재 4 cascading 컴포넌트 정합 완료, 추천 알고리즘 통합 잔여</div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="badge badge-p3">선택</span><span class="card-title">Sentry profiling-node 재도입</span></div>
+      <div class="card-body">Alpine native build 이슈로 제거(<code class="mono">f5e22d9</code>). Node 22 환경에서 재시도 검토</div>
+    </div>
+  </div>
+</div>
+
+<!-- 권장 다음 액션 -->
+<div class="section">
+  <h2>🚀 다음 권장 액션 순서</h2>
+  <div class="timeline">
+    <div class="timeline-row">
+      <div class="timeline-num">①</div>
+      <div class="timeline-body">
+        <h4>PHP 팀 킥오프 메일 발송 + 미팅 일정</h4>
+        <p>담당: <strong>사용자 직접</strong> · 기간: 즉시 · Storige 측 가이드 v3.0 / 시나리오 전달 가능</p>
+      </div>
+    </div>
+    <div class="timeline-row">
+      <div class="timeline-num">②</div>
+      <div class="timeline-body">
+        <h4>Sentry Slack OAuth 인증</h4>
+        <p>담당: <strong>사용자 직접</strong> · 기간: 30분 · 가이드 SENTRY_SLACK_SETUP.md + smoke test 스크립트 준비됨</p>
+      </div>
+    </div>
+    <div class="timeline-row">
+      <div class="timeline-num">③</div>
+      <div class="timeline-body">
+        <h4>(선택, 병행) P2-9 R2/S3 백업 이중화</h4>
+        <p>담당: Storige 자동화 · 기간: 1일</p>
+      </div>
+    </div>
+    <div class="timeline-row">
+      <div class="timeline-num">④</div>
+      <div class="timeline-body">
+        <h4>PHP 1주차 코드 적용 지원 (질의응답)</h4>
+        <p>담당: Storige 대응 · 기간: 1주</p>
+      </div>
+    </div>
+    <div class="timeline-row">
+      <div class="timeline-num">⑤</div>
+      <div class="timeline-body">
+        <h4>PHP 2주차 통합 테스트 + Sentry 모니터링</h4>
+        <p>담당: Storige 대응 · 기간: 1주</p>
+      </div>
+    </div>
+    <div class="timeline-row">
+      <div class="timeline-num">⑥</div>
+      <div class="timeline-body">
+        <h4>PHP 3주차 운영 컷오버 + 모니터링</h4>
+        <p>담당: 양측 · 기간: 1주</p>
+      </div>
+    </div>
+    <div class="timeline-row">
+      <div class="timeline-num">⑦</div>
+      <div class="timeline-body">
+        <h4>(컷오버 후) 운영 라이브러리 자산 큐레이션</h4>
+        <p>담당: 디자인팀 + Storige · 별도 사이클</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 최근 사이클 갱신 로그 -->
+<div class="section">
+  <h2>📋 최근 사이클 갱신 로그</h2>
+  <div class="update-log">
+    <div class="ul-row">
+      <div class="ul-date">2026-05-04</div>
+      <div class="ul-title">PNG 업로드 hang fix 시도 → B revert (옵션 ① 안정 운영 유지)</div>
+      <div class="ul-status"><span class="badge badge-done">완료</span></div>
+    </div>
+    <div class="ul-row">
+      <div class="ul-date">2026-05-04</div>
+      <div class="ul-title">Node 20 → 22 LTS 마이그레이션 + canvas dead dep 제거</div>
+      <div class="ul-status"><span class="badge badge-done">완료</span></div>
+    </div>
+    <div class="ul-row">
+      <div class="ul-date">2026-05-04</div>
+      <div class="ul-title">P2-12 + P2-13: 폰트 fallback 로그 + 다크모드 활성선택/caret</div>
+      <div class="ul-status"><span class="badge badge-done">완료</span></div>
+    </div>
+    <div class="ul-row">
+      <div class="ul-date">2026-05-04</div>
+      <div class="ul-title">P2-10: 로그 일원화 — Pino + Loki + Promtail (Grafana 통합)</div>
+      <div class="ul-status"><span class="badge badge-done">완료</span></div>
+    </div>
+    <div class="ul-row">
+      <div class="ul-date">2026-05-04</div>
+      <div class="ul-title">P2-8: 운영 메트릭 대시보드 — Grafana + Prometheus 옵션 C 하이브리드</div>
+      <div class="ul-status"><span class="badge badge-done">완료</span></div>
+    </div>
+    <div class="ul-row">
+      <div class="ul-date">2026-05-04</div>
+      <div class="ul-title">P2-7: Admin Playwright E2E 확장 (15 spec, 12 passed)</div>
+      <div class="ul-status"><span class="badge badge-done">완료</span></div>
+    </div>
+    <div class="ul-row">
+      <div class="ul-date">2026-05-04</div>
+      <div class="ul-title">Sentry Slack 가이드 + smoke test 스크립트</div>
+      <div class="ul-status"><span class="badge badge-done">완료</span></div>
+    </div>
+    <div class="ul-row">
+      <div class="ul-date">2026-05-04</div>
+      <div class="ul-title">PHP 통합 가이드 v3.0 (md+html 통합)</div>
+      <div class="ul-status"><span class="badge badge-done">완료</span></div>
+    </div>
+    <div class="ul-row">
+      <div class="ul-date">2026-05-04</div>
+      <div class="ul-title">결함 #13: Conversion outputFileUrl `/storage/converted/...` 정규화</div>
+      <div class="ul-status"><span class="badge badge-done">완료</span></div>
+    </div>
+    <div class="ul-row">
+      <div class="ul-date">2026-05-04</div>
+      <div class="ul-title">결함 #12 + linkTemplateSet 버그 + Worker 합성 E2E 3 시나리오</div>
+      <div class="ul-status"><span class="badge badge-done">완료</span></div>
+    </div>
+    <div class="ul-row">
+      <div class="ul-date">2026-05-03</div>
+      <div class="ul-title">통합 검증 audit + 옵션 A 8건 + 보안 패치 A-E + Sentry 활성화</div>
+      <div class="ul-status"><span class="badge badge-done">완료</span></div>
+    </div>
+    <div class="ul-row">
+      <div class="ul-date">~2026-05-02</div>
+      <div class="ul-title">6차 P0 핫픽스 + 모바일 실기기 검증 + 운영 DB 마이그레이션</div>
+      <div class="ul-status"><span class="badge badge-done">완료</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- 핵심 문서 -->
+<div class="section">
+  <h2>📚 핵심 문서 (현재 사용중)</h2>
+  <h3 style="margin-bottom: 10px; font-size: 14px;">📖 운영 가이드</h3>
+  <div class="doc-grid">
+    <a class="doc-item" href="PHP_INTEGRATION_FINAL_v3.html"><span class="icon">🤝</span>PHP 통합 최종 가이드 v3.0<small>HTML 시각화</small></a>
+    <a class="doc-item" href="PHP_INTEGRATION_FINAL_v3.md"><span class="icon">📝</span>PHP 통합 최종 가이드 v3.0<small>Markdown</small></a>
+    <a class="doc-item" href="SYSTEM_INTEGRATION_OVERVIEW.html"><span class="icon">🏗️</span>시스템 통합 개요<small>HTML / v2.4</small></a>
+    <a class="doc-item" href="SENTRY_SETUP.md"><span class="icon">🔔</span>Sentry 운영 가이드</a>
+    <a class="doc-item" href="SENTRY_SLACK_SETUP.md"><span class="icon">💬</span>Sentry Slack 연결</a>
+    <a class="doc-item" href="P2_8_METRICS_DASHBOARD_2026-05-04.md"><span class="icon">📊</span>P2-8 메트릭 대시보드</a>
+    <a class="doc-item" href="P2_10_LOG_AGGREGATION_2026-05-04.md"><span class="icon">📋</span>P2-10 로그 일원화</a>
+    <a class="doc-item" href="DEPLOYMENT.md"><span class="icon">🚀</span>운영 배포 가이드</a>
+  </div>
+
+  <h3 style="margin-top: 20px; margin-bottom: 10px; font-size: 14px;">📊 사이클 보고서</h3>
+  <div class="doc-grid">
+    <a class="doc-item" href="PHASE2_FIX_REPORT_2026-05-04.md"><span class="icon">✅</span>Phase 2 P0/P1 결함 수정 + Worker E2E</a>
+    <a class="doc-item" href="SYNTHESIS_E2E_REPORT_2026-05-04.md"><span class="icon">🔧</span>Worker 합성 E2E 검증</a>
+    <a class="doc-item" href="DEFECT_13_FIX_REPORT_2026-05-04.md"><span class="icon">🐛</span>결함 #13 수정 검증</a>
+    <a class="doc-item" href="P2_7_E2E_REPORT_2026-05-04.md"><span class="icon">🧪</span>Admin Playwright E2E 확장</a>
+    <a class="doc-item" href="PNG_UPLOAD_HANG_FIX_2026-05-04.md"><span class="icon">⚠️</span>PNG 업로드 hang 분석 + revert</a>
+    <a class="doc-item" href="AUDIT_FIX_REPORT_2026-05-03.md"><span class="icon">📑</span>통합 검증 audit + 옵션 A</a>
+    <a class="doc-item" href="SECURITY_PATCH_PHP_NOTICE_2026-05-03.html"><span class="icon">🔒</span>보안 패치 A-E PHP 통보</a>
+    <a class="doc-item" href="USER_IDENTITY_AUDIT_2026-05-03.md"><span class="icon">👤</span>사용자 식별 / 주문 추적 감사</a>
+  </div>
+
+  <h3 style="margin-top: 20px; margin-bottom: 10px; font-size: 14px;">🗂️ 트래커</h3>
+  <div class="doc-grid">
+    <a class="doc-item" href="MASTER_STATUS_2026-05-04.md"><span class="icon">⭐</span>마스터 트래커 (이 문서)</a>
+    <a class="doc-item" href="FUTURE_UPDATES.md"><span class="icon">📅</span>향후 인프라 업데이트</a>
+    <a class="doc-item" href="REMAINING_WORK_REVIEW.md"><span class="icon">📂</span>잔존 작업 리뷰<small>마스터로 흡수됨</small></a>
+    <a class="doc-item" href="NEXT_DEVELOPMENT_PLAN.md"><span class="icon">📂</span>다음 개발 계획<small>마스터로 흡수됨</small></a>
+    <a class="doc-item" href="NEXT_ISSUES_2026-05-03.md"><span class="icon">📂</span>다음 이슈 정리<small>마스터로 흡수됨</small></a>
+  </div>
+</div>
+
+<div style="text-align: center; padding: 24px; color: var(--gray-400); font-size: 12px;">
+  Storige 마스터 트래커 · 갱신: 2026-05-04 · 본 문서는 <a href="MASTER_STATUS_2026-05-04.md" style="color: var(--primary)">MASTER_STATUS_2026-05-04.md</a>의 시각화 버전입니다.
+</div>
+
+</div>
+</body>
+</html>
