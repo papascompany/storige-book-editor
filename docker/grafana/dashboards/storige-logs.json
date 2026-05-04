@@ -1,0 +1,164 @@
+{
+  "annotations": { "list": [] },
+  "description": "Storige 로그 일원화 대시보드 (P2-10)",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "type": "row",
+      "title": "📋 라이브 로그",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 200,
+      "panels": []
+    },
+    {
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 14, "w": 24, "x": 0, "y": 1 },
+      "id": 201,
+      "title": "API 로그 (level filter: $level)",
+      "type": "logs",
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": false,
+        "enableLogDetails": true,
+        "dedupStrategy": "none",
+        "sortOrder": "Descending"
+      },
+      "targets": [
+        {
+          "expr": "{service=\"api\"} | json | level=~\"$level\"",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 14, "w": 24, "x": 0, "y": 15 },
+      "id": 202,
+      "title": "Worker 로그 (level filter: $level)",
+      "type": "logs",
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": false,
+        "enableLogDetails": true,
+        "dedupStrategy": "none",
+        "sortOrder": "Descending"
+      },
+      "targets": [
+        {
+          "expr": "{service=\"worker\"} | json | level=~\"$level\"",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "📊 로그 메트릭",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 29 },
+      "id": 203,
+      "panels": []
+    },
+    {
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 30 },
+      "id": 204,
+      "title": "에러 발생률 (errors/min, 서비스별)",
+      "type": "timeseries",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "red" },
+          "unit": "cpm"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (service) (rate({service=~\"api|worker\"} | json | level=\"error\" [1m]))",
+          "legendFormat": "{{service}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 30 },
+      "id": 205,
+      "title": "전체 로그 처리량 (lines/sec)",
+      "type": "timeseries",
+      "fieldConfig": { "defaults": { "unit": "logs" } },
+      "targets": [
+        {
+          "expr": "sum by (service) (rate({service=~\"api|worker|nginx\"}[1m]))",
+          "legendFormat": "{{service}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "🌐 Nginx 액세스 로그",
+      "collapsed": true,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 38 },
+      "id": 206,
+      "panels": [
+        {
+          "datasource": { "type": "loki", "uid": "loki" },
+          "gridPos": { "h": 12, "w": 24, "x": 0, "y": 39 },
+          "id": 207,
+          "title": "Nginx 라이브",
+          "type": "logs",
+          "options": {
+            "showTime": true,
+            "wrapLogMessage": true,
+            "sortOrder": "Descending"
+          },
+          "targets": [
+            {
+              "expr": "{service=\"nginx\"}",
+              "refId": "A"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["storige", "p2-10", "logs"],
+  "templating": {
+    "list": [
+      {
+        "name": "level",
+        "label": "Log level",
+        "type": "custom",
+        "query": "info,warn,error,debug,fatal",
+        "current": { "text": ["info", "warn", "error", "fatal"], "value": ["info", "warn", "error", "fatal"] },
+        "options": [
+          { "text": "info", "value": "info", "selected": true },
+          { "text": "warn", "value": "warn", "selected": true },
+          { "text": "error", "value": "error", "selected": true },
+          { "text": "fatal", "value": "fatal", "selected": true },
+          { "text": "debug", "value": "debug", "selected": false }
+        ],
+        "multi": true,
+        "includeAll": true
+      }
+    ]
+  },
+  "time": { "from": "now-30m", "to": "now" },
+  "timezone": "browser",
+  "title": "Storige 로그",
+  "uid": "storige-logs",
+  "version": 1,
+  "weekStart": ""
+}

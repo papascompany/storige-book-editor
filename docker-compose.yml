@@ -220,6 +220,34 @@ services:
     depends_on:
       - redis
 
+  # ─────────────────────────────────────────────────────────────────
+  # P2-10 로그 일원화 (Loki + Promtail, Grafana로 통합)
+  # ─────────────────────────────────────────────────────────────────
+  loki:
+    image: grafana/loki:3.2.1
+    container_name: storige-loki
+    restart: unless-stopped
+    command: -config.file=/etc/loki/local-config.yml
+    volumes:
+      - ./docker/loki/loki-config.yml:/etc/loki/local-config.yml:ro
+      - loki_data:/loki
+    networks:
+      - storige-network
+
+  promtail:
+    image: grafana/promtail:3.2.1
+    container_name: storige-promtail
+    restart: unless-stopped
+    command: -config.file=/etc/promtail/config.yml
+    volumes:
+      - ./docker/promtail/promtail-config.yml:/etc/promtail/config.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - storige-network
+    depends_on:
+      - loki
+
 volumes:
   mariadb_data:
     driver: local
@@ -228,6 +256,8 @@ volumes:
   prometheus_data:
     driver: local
   grafana_data:
+    driver: local
+  loki_data:
     driver: local
 
 networks:

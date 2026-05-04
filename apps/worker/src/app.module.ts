@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BullModule } from '@nestjs/bull';
+import { LoggerModule } from 'nestjs-pino';
 
 // Services
 import { PdfValidatorService } from './services/pdf-validator.service';
@@ -25,6 +26,23 @@ import { HealthController } from './health/health.controller';
         `.env.${process.env.NODE_ENV || 'development'}`,
         '.env',
       ],
+    }),
+
+    // P2-10 구조화 로깅 (Pino → JSON stdout → Promtail → Loki)
+    // Worker는 HTTP 서버가 거의 없고 잡 처리 중심이라 autoLogging 비활성
+    LoggerModule.forRoot({
+      pinoHttp: {
+        autoLogging: false,
+        transport:
+          process.env.NODE_ENV === 'production'
+            ? undefined
+            : {
+                target: 'pino-pretty',
+                options: { singleLine: true, translateTime: 'SYS:HH:MM:ss' },
+              },
+        level: process.env.LOG_LEVEL || (process.env.NODE_ENV === 'production' ? 'info' : 'debug'),
+        base: { app: 'storige-worker', env: process.env.NODE_ENV || 'development' },
+      },
     }),
 
     // Database (MariaDB - for job status updates)
