@@ -8,32 +8,26 @@
 
 ## 🟡 진행 중 / 대기 중
 
-### 1. Node 20 → Node 22 LTS 마이그레이션
-- **상태**: ⏳ 대기 (현재 로컬은 22, Docker/Vercel은 20)
-- **발견 시점**: 2026-05-03
-- **컨텍스트**:
-  - 로컬 개발 환경은 이미 Node `22.22.2` LTS 사용 중
-  - 운영 환경 (Docker/Vercel)은 Node `20.x` 유지
-  - **Node 20 LTS EOL: 2026-04-30** (지난주 만료) — 곧 보안 업데이트 종료
-  - **Node 22 LTS EOL: 2027-04-30**
-- **임시 조치 (2026-05-03)**:
-  - root `package.json` engines를 `"20.x"` → `">=20"` 으로 완화 (커밋 미정 시 갱신)
-  - 로컬 Node 22 사용 시 pnpm warning 제거됨
-- **마이그레이션 작업 (별도 사이클)**:
-  - [ ] `docker/api/Dockerfile`: `FROM node:20-alpine` → `FROM node:22-alpine`
-  - [ ] `docker/worker/Dockerfile`: 동일
-  - [ ] `docker/editor/Dockerfile`: 동일
-  - [ ] `docker/admin/Dockerfile`: 동일
-  - [ ] Vercel 프로젝트 설정 (admin/editor): Node Version 20.x → 22.x
-  - [ ] CI/CD 환경 (있다면): GH Actions setup-node 22로 변경
-  - [ ] native 의존성 재빌드 검증
-    - `canvas@2.11.2`: Node 22 prebuild 제공됨 ✅
-    - `sharp`: 0.33+ Node 22 prebuild 제공됨 ✅
-    - `@sentry/profiling-node`: Alpine에서 native build 실패 → 이미 제거됨 (`f5e22d9`)
-  - [ ] 운영 검증: API/Worker 정상 기동, 큐 처리, Webhook 송수신 등
-  - [ ] 다운그레이드 롤백 시나리오 작성
-- **권장 일정**: 2026-06 ~ 2026-07 (PHP 통합 완료 후)
-- **위험도**: 🟡 중 (운영 환경 변경 — 별도 검증 사이클 필요)
+### 1. Node 20 → Node 22 LTS 마이그레이션 ✅ 완료 (2026-05-04)
+- **상태**: ✅ **완료** (커밋 `4d0bf1d`)
+- **이력**:
+  - 2026-05-03: 이슈 등록 (Node 20 LTS EOL 2026-04-30)
+  - 2026-05-04: PHP 통합 컷오버 전 안전화 — Node 22 마이그레이션 진행
+- **수행 작업**:
+  - ✅ Docker base 6곳 `node:20-alpine` → `node:22-alpine` (api builder/runtime, worker builder/runtime, editor builder, admin builder)
+  - ✅ root engines.node `">=20"` → `">=22"` (Vercel 자동 22.x 사용)
+  - ✅ canvas dead dep 제거 (worker — import 0건, 실제 미사용 확인)
+  - ✅ native deps 호환 검증
+    - sharp@0.33.5 engines `>=21.0.0` 포함 → OK
+    - bcrypt@5.1.1 N-API ABI 3 prebuild → OK
+    - better-sqlite3@12.5.0 / sqlite3@5.1.7 → OK
+- **운영 검증**:
+  - VPS storige-api / storige-worker `node --version` = `v22.22.2` ✅
+  - API health 정상, JWT 발급(bcrypt) 정상, Bull 큐 처리 정상
+  - Prometheus storige-api target up
+- **남은 사항**:
+  - Vercel admin/editor: ignoreCommand로 build skip 됨(변경 없음). 다음 editor/admin 코드 변경 시 root engines로 자동 Node 22 빌드.
+  - Sentry profiling-node 재도입 검토 (Alpine native build 이슈로 제거됨, `f5e22d9`)는 별도 사이클
 
 ---
 
