@@ -1,0 +1,1491 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Storige × Bookmoa 시스템 통합 문서</title>
+  <style>
+    /* ─── 기본 ─────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0f1117;
+      --bg2: #161b27;
+      --bg3: #1e2536;
+      --card: #1a2133;
+      --border: #2a3450;
+      --blue:   #3b82f6;
+      --blue2:  #60a5fa;
+      --green:  #22c55e;
+      --green2: #4ade80;
+      --red:    #ef4444;
+      --red2:   #f87171;
+      --yellow: #f59e0b;
+      --yellow2:#fcd34d;
+      --purple: #a855f7;
+      --purple2:#c084fc;
+      --cyan:   #06b6d4;
+      --cyan2:  #22d3ee;
+      --gray:   #64748b;
+      --text:   #e2e8f0;
+      --text2:  #94a3b8;
+      --text3:  #64748b;
+    }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.65;
+      font-size: 15px;
+    }
+
+    /* ─── 상단 헤더 ────────────────────────────────── */
+    .top-header {
+      background: linear-gradient(135deg, #1e3a5f 0%, #0f2340 40%, #1a0e2e 100%);
+      border-bottom: 1px solid var(--border);
+      padding: 48px 40px 40px;
+      position: relative;
+      overflow: hidden;
+    }
+    .top-header::before {
+      content: '';
+      position: absolute; inset: 0;
+      background: radial-gradient(ellipse 70% 80% at 80% 50%, rgba(59,130,246,.12) 0%, transparent 70%);
+    }
+    .top-header .badge-row { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+    .badge {
+      display: inline-flex; align-items: center; gap: 5px;
+      background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12);
+      border-radius: 20px; padding: 4px 12px; font-size: 12px; color: var(--text2);
+    }
+    .badge.blue { background: rgba(59,130,246,.15); border-color: rgba(59,130,246,.3); color: var(--blue2); }
+    .badge.green { background: rgba(34,197,94,.12); border-color: rgba(34,197,94,.3); color: var(--green2); }
+    .top-header h1 { font-size: 32px; font-weight: 700; color: #fff; margin-bottom: 10px; position: relative; }
+    .top-header h1 span { color: var(--blue2); }
+    .top-header .subtitle { color: var(--text2); font-size: 15px; position: relative; max-width: 600px; }
+    .top-header .meta { margin-top: 24px; display: flex; gap: 24px; flex-wrap: wrap; }
+    .top-header .meta-item { font-size: 13px; color: var(--text3); }
+    .top-header .meta-item span { color: var(--text2); margin-left: 4px; }
+
+    /* ─── 레이아웃 ──────────────────────────────────── */
+    .layout { display: flex; min-height: calc(100vh - 200px); }
+
+    /* ─── 사이드바 ──────────────────────────────────── */
+    .sidebar {
+      width: 240px; flex-shrink: 0;
+      background: var(--bg2);
+      border-right: 1px solid var(--border);
+      padding: 24px 0;
+      position: sticky; top: 0; height: 100vh; overflow-y: auto;
+    }
+    .sidebar-title { font-size: 11px; font-weight: 700; color: var(--text3); letter-spacing: .08em; text-transform: uppercase; padding: 0 20px 12px; }
+    .sidebar a {
+      display: block; padding: 8px 20px;
+      color: var(--text2); text-decoration: none; font-size: 13px;
+      border-left: 3px solid transparent;
+      transition: all .15s;
+    }
+    .sidebar a:hover { color: var(--text); background: rgba(255,255,255,.04); border-left-color: var(--blue); }
+    .sidebar a.active { color: var(--blue2); background: rgba(59,130,246,.08); border-left-color: var(--blue); }
+    .sidebar .sub { padding-left: 32px; font-size: 12px; }
+
+    /* ─── 콘텐츠 ────────────────────────────────────── */
+    .content { flex: 1; max-width: 960px; padding: 40px 48px; overflow-x: hidden; }
+
+    /* ─── 섹션 헤더 ─────────────────────────────────── */
+    .section { margin-bottom: 64px; }
+    .section-title {
+      font-size: 24px; font-weight: 700; color: #fff;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 32px;
+      display: flex; align-items: center; gap: 12px;
+    }
+    .section-title .num {
+      width: 36px; height: 36px; border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 15px; font-weight: 700;
+    }
+    .sub-title { font-size: 18px; font-weight: 600; color: var(--text); margin: 32px 0 16px; display: flex; align-items: center; gap: 8px; }
+    .sub-title::before { content: ''; width: 3px; height: 18px; border-radius: 2px; display: block; flex-shrink: 0; }
+    p.desc { color: var(--text2); margin-bottom: 20px; }
+
+    /* ─── 아키텍처 다이어그램 ───────────────────────── */
+    .arch-diagram {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 32px;
+      margin-bottom: 24px;
+      font-family: monospace;
+    }
+    .arch-boxes { display: grid; gap: 20px; }
+
+    /* 레이어 카드 */
+    .layer {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .layer-header {
+      padding: 10px 16px;
+      font-size: 12px; font-weight: 700; letter-spacing: .06em;
+      text-transform: uppercase;
+    }
+    .layer-body { padding: 16px; display: flex; gap: 12px; flex-wrap: wrap; }
+
+    .service-box {
+      border-radius: 8px;
+      padding: 12px 16px;
+      flex: 1; min-width: 130px;
+    }
+    .service-box .name { font-size: 13px; font-weight: 700; margin-bottom: 4px; }
+    .service-box .port { font-size: 11px; opacity: .7; margin-bottom: 4px; }
+    .service-box .desc { font-size: 11px; opacity: .65; color: var(--text2); }
+
+    /* 레이어 색상 */
+    .layer.external { border-color: rgba(168,85,247,.3); }
+    .layer.external .layer-header { background: rgba(168,85,247,.12); color: var(--purple2); }
+    .layer.external .service-box { background: rgba(168,85,247,.08); border: 1px solid rgba(168,85,247,.2); }
+    .layer.external .service-box .name { color: var(--purple2); }
+
+    .layer.api { border-color: rgba(59,130,246,.3); }
+    .layer.api .layer-header { background: rgba(59,130,246,.12); color: var(--blue2); }
+    .layer.api .service-box { background: rgba(59,130,246,.08); border: 1px solid rgba(59,130,246,.2); }
+    .layer.api .service-box .name { color: var(--blue2); }
+
+    .layer.worker { border-color: rgba(34,197,94,.3); }
+    .layer.worker .layer-header { background: rgba(34,197,94,.1); color: var(--green2); }
+    .layer.worker .service-box { background: rgba(34,197,94,.06); border: 1px solid rgba(34,197,94,.2); }
+    .layer.worker .service-box .name { color: var(--green2); }
+
+    .layer.infra { border-color: rgba(245,158,11,.3); }
+    .layer.infra .layer-header { background: rgba(245,158,11,.1); color: var(--yellow2); }
+    .layer.infra .service-box { background: rgba(245,158,11,.06); border: 1px solid rgba(245,158,11,.2); }
+    .layer.infra .service-box .name { color: var(--yellow2); }
+
+    /* 화살표 커넥터 */
+    .connector {
+      display: flex; align-items: center; justify-content: center;
+      gap: 8px; padding: 6px; color: var(--text3); font-size: 12px;
+    }
+    .connector .line { flex: 1; height: 1px; background: var(--border); }
+    .connector .arrow { font-size: 16px; }
+
+    /* ─── 플로우 다이어그램 ─────────────────────────── */
+    .flow-diagram { margin-bottom: 24px; }
+    .flow-steps { display: flex; flex-direction: column; gap: 0; }
+    .flow-step {
+      display: flex; gap: 0; position: relative;
+    }
+    .flow-step .step-left {
+      width: 48px; flex-shrink: 0;
+      display: flex; flex-direction: column; align-items: center;
+    }
+    .step-num {
+      width: 32px; height: 32px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 13px; font-weight: 700; flex-shrink: 0;
+      position: relative; z-index: 1;
+    }
+    .step-line { width: 2px; flex: 1; min-height: 24px; }
+    .flow-step .step-body {
+      flex: 1; padding: 0 0 24px 16px;
+    }
+    .step-title { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 6px; line-height: 32px; }
+    .step-detail {
+      background: var(--bg2); border: 1px solid var(--border);
+      border-radius: 8px; padding: 12px 16px;
+      font-size: 13px; color: var(--text2);
+    }
+    .step-detail code {
+      background: rgba(255,255,255,.07); border-radius: 4px;
+      padding: 1px 6px; font-family: monospace; font-size: 12px; color: var(--cyan2);
+    }
+
+    /* 플로우 색상 */
+    .flow-blue .step-num { background: rgba(59,130,246,.2); border: 2px solid var(--blue); color: var(--blue2); }
+    .flow-blue .step-line { background: linear-gradient(to bottom, var(--blue), transparent); opacity: .3; }
+    .flow-green .step-num { background: rgba(34,197,94,.2); border: 2px solid var(--green); color: var(--green2); }
+    .flow-green .step-line { background: linear-gradient(to bottom, var(--green), transparent); opacity: .3; }
+    .flow-purple .step-num { background: rgba(168,85,247,.2); border: 2px solid var(--purple); color: var(--purple2); }
+    .flow-purple .step-line { background: linear-gradient(to bottom, var(--purple), transparent); opacity: .3; }
+
+    /* ─── 상태 전이 ─────────────────────────────────── */
+    .state-flow { display: flex; align-items: center; gap: 0; flex-wrap: wrap; margin-bottom: 20px; }
+    .state-box {
+      border-radius: 8px; padding: 10px 16px; text-align: center;
+      border: 2px solid;
+    }
+    .state-box .s-name { font-size: 14px; font-weight: 700; }
+    .state-box .s-desc { font-size: 11px; opacity: .8; margin-top: 2px; }
+    .state-arrow { font-size: 20px; color: var(--text3); padding: 0 8px; }
+    .state-box.pending { background: rgba(100,116,139,.12); border-color: var(--gray); color: #94a3b8; }
+    .state-box.processing { background: rgba(59,130,246,.12); border-color: var(--blue); color: var(--blue2); }
+    .state-box.completed { background: rgba(34,197,94,.12); border-color: var(--green); color: var(--green2); }
+    .state-box.fixable { background: rgba(245,158,11,.12); border-color: var(--yellow); color: var(--yellow2); }
+    .state-box.failed { background: rgba(239,68,68,.12); border-color: var(--red); color: var(--red2); }
+
+    /* ─── 파이프라인 ────────────────────────────────── */
+    .pipeline-grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 12px; margin-bottom: 24px;
+    }
+    .pipeline-item {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px; padding: 14px 16px;
+      position: relative; overflow: hidden;
+    }
+    .pipeline-item::before {
+      content: '';
+      position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+    }
+    .pipeline-item .step-no { font-size: 11px; color: var(--text3); margin-bottom: 6px; font-weight: 600; }
+    .pipeline-item .step-name { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
+    .pipeline-item .step-tech { font-size: 11px; color: var(--text3); }
+
+    .pipeline-item.basic::before { background: var(--blue); }
+    .pipeline-item.structure::before { background: var(--green); }
+    .pipeline-item.color::before { background: var(--purple); }
+    .pipeline-item.quality::before { background: var(--cyan); }
+
+    /* ─── 표 ────────────────────────────────────────── */
+    .table-wrap { overflow-x: auto; margin-bottom: 24px; border-radius: 10px; border: 1px solid var(--border); }
+    table { width: 100%; border-collapse: collapse; }
+    thead th {
+      background: var(--bg3); padding: 12px 16px;
+      text-align: left; font-size: 12px; font-weight: 700;
+      color: var(--text2); letter-spacing: .04em; text-transform: uppercase;
+      border-bottom: 1px solid var(--border);
+    }
+    tbody tr { border-bottom: 1px solid rgba(255,255,255,.04); }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: rgba(255,255,255,.02); }
+    tbody td { padding: 11px 16px; font-size: 13px; color: var(--text2); vertical-align: top; }
+    tbody td:first-child { color: var(--text); font-weight: 500; }
+    code.inline {
+      background: rgba(255,255,255,.07); border-radius: 4px;
+      padding: 1px 7px; font-family: 'Consolas', monospace; font-size: 12px; color: var(--cyan2);
+      white-space: nowrap;
+    }
+
+    /* 배지 */
+    .tag {
+      display: inline-flex; align-items: center;
+      border-radius: 4px; padding: 2px 8px;
+      font-size: 11px; font-weight: 600; white-space: nowrap;
+    }
+    .tag.breaking { background: rgba(239,68,68,.15); color: var(--red2); border: 1px solid rgba(239,68,68,.3); }
+    .tag.added    { background: rgba(245,158,11,.12); color: var(--yellow2); border: 1px solid rgba(245,158,11,.3); }
+    .tag.new      { background: rgba(34,197,94,.12); color: var(--green2); border: 1px solid rgba(34,197,94,.25); }
+    .tag.auto     { background: rgba(34,197,94,.12); color: var(--green2); }
+    .tag.manual   { background: rgba(239,68,68,.12); color: var(--red2); }
+    .tag.warn     { background: rgba(245,158,11,.12); color: var(--yellow2); }
+    .tag.error    { background: rgba(239,68,68,.12); color: var(--red2); }
+    .tag.info     { background: rgba(59,130,246,.12); color: var(--blue2); }
+
+    /* ─── 코드 블록 ──────────────────────────────────── */
+    .code-block {
+      background: #0d1117; border: 1px solid var(--border);
+      border-radius: 10px; overflow: hidden; margin-bottom: 20px;
+    }
+    .code-block .cb-header {
+      background: var(--bg3); padding: 10px 16px;
+      display: flex; align-items: center; gap: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+    .code-block .cb-lang { font-size: 11px; color: var(--text3); font-weight: 600; letter-spacing: .05em; }
+    .code-block .cb-dots { display: flex; gap: 5px; }
+    .code-block .cb-dot { width: 10px; height: 10px; border-radius: 50%; }
+    .code-block pre { padding: 20px; overflow-x: auto; font-family: 'Consolas', 'Fira Code', monospace; font-size: 12.5px; line-height: 1.7; color: #e2e8f0; }
+    .code-block pre .comment { color: #6b7280; }
+    .code-block pre .keyword { color: #60a5fa; }
+    .code-block pre .string  { color: #86efac; }
+    .code-block pre .func    { color: #fde68a; }
+    .code-block pre .num     { color: #fb923c; }
+    .code-block pre .type    { color: #c084fc; }
+
+    /* ─── 정보 박스 ──────────────────────────────────── */
+    .info-box {
+      border-radius: 8px; padding: 14px 18px; margin-bottom: 20px;
+      display: flex; gap: 12px; align-items: flex-start;
+    }
+    .info-box .icon { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
+    .info-box .ib-content { font-size: 13px; }
+    .info-box .ib-title { font-weight: 700; margin-bottom: 4px; }
+    .info-box.blue  { background: rgba(59,130,246,.08); border: 1px solid rgba(59,130,246,.2); }
+    .info-box.blue .ib-title { color: var(--blue2); }
+    .info-box.green { background: rgba(34,197,94,.08); border: 1px solid rgba(34,197,94,.2); }
+    .info-box.green .ib-title { color: var(--green2); }
+    .info-box.red   { background: rgba(239,68,68,.08); border: 1px solid rgba(239,68,68,.2); }
+    .info-box.red .ib-title { color: var(--red2); }
+    .info-box.yellow { background: rgba(245,158,11,.08); border: 1px solid rgba(245,158,11,.2); }
+    .info-box.yellow .ib-title { color: var(--yellow2); }
+
+    /* ─── 통계/메트릭 카드 ───────────────────────────── */
+    .metric-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; margin-bottom: 24px; }
+    .metric-card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 10px; padding: 16px;
+    }
+    .metric-card .m-label { font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 8px; }
+    .metric-card .m-value { font-size: 26px; font-weight: 700; }
+    .metric-card .m-unit  { font-size: 12px; color: var(--text3); margin-top: 2px; }
+
+    /* ─── 검증 시각화 ────────────────────────────────── */
+    .validation-category {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 10px; overflow: hidden; margin-bottom: 12px;
+    }
+    .vc-header {
+      padding: 12px 16px; display: flex; align-items: center; gap: 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    .vc-header .vc-icon { font-size: 18px; }
+    .vc-header .vc-name { font-weight: 700; font-size: 14px; }
+    .vc-header .vc-count { margin-left: auto; font-size: 12px; color: var(--text3); }
+    .vc-body { padding: 12px; display: flex; flex-wrap: wrap; gap: 8px; }
+    .vc-item {
+      border-radius: 6px; padding: 8px 12px; flex: 1; min-width: 160px;
+    }
+    .vc-item .vi-code { font-size: 11px; font-family: monospace; margin-bottom: 3px; }
+    .vc-item .vi-name { font-size: 12px; font-weight: 600; margin-bottom: 3px; }
+    .vc-item .vi-fix  { font-size: 11px; opacity: .7; }
+    .vc-item.error-item { background: rgba(239,68,68,.08); border: 1px solid rgba(239,68,68,.2); }
+    .vc-item.error-item .vi-code { color: var(--red2); }
+    .vc-item.error-item .vi-name { color: var(--text); }
+    .vc-item.warn-item { background: rgba(245,158,11,.07); border: 1px solid rgba(245,158,11,.2); }
+    .vc-item.warn-item .vi-code { color: var(--yellow2); }
+    .vc-item.warn-item .vi-name { color: var(--text); }
+
+    /* ─── PHP 연동 체크리스트 ────────────────────────── */
+    .checklist { margin-bottom: 20px; }
+    .cl-item {
+      display: flex; align-items: flex-start; gap: 12px;
+      padding: 12px 16px; border-radius: 8px; margin-bottom: 6px;
+    }
+    .cl-item .cl-icon { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+    .cl-item .cl-body { flex: 1; }
+    .cl-item .cl-title { font-size: 14px; font-weight: 600; margin-bottom: 3px; }
+    .cl-item .cl-detail { font-size: 12px; color: var(--text3); }
+    .cl-item.breaking { background: rgba(239,68,68,.07); border: 1px solid rgba(239,68,68,.18); }
+    .cl-item.breaking .cl-title { color: var(--red2); }
+    .cl-item.added    { background: rgba(245,158,11,.06); border: 1px solid rgba(245,158,11,.18); }
+    .cl-item.added    .cl-title { color: var(--yellow2); }
+
+    /* ─── 반응형 ─────────────────────────────────────── */
+    @media (max-width: 900px) {
+      .sidebar { display: none; }
+      .content { padding: 24px 20px; }
+      .top-header { padding: 32px 20px; }
+    }
+    @media (max-width: 600px) {
+      .top-header h1 { font-size: 22px; }
+      .pipeline-grid { grid-template-columns: 1fr 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ══════════════════════════════ 헤더 ══════════════════════════════ -->
+<div class="top-header">
+  <div class="badge-row">
+    <span class="badge blue">📄 기술 문서</span>
+    <span class="badge green">v2.4</span>
+    <span class="badge">2026-05-02</span>
+    <span class="badge">PHP 개발자용</span>
+  </div>
+  <h1>Storige <span>×</span> Bookmoa<br>시스템 통합 문서</h1>
+  <p class="subtitle">워커 데이터 플로우 · PHP 연동안 · 시스템 구성도 · PDF 검증 세부 항목</p>
+  <div class="meta">
+    <div class="meta-item">기술 스택 <span>NestJS + React + Bull Queue + Ghostscript</span></div>
+    <div class="meta-item">인증 <span>JWT (Editor) / X-API-Key (Server)</span></div>
+    <div class="meta-item">DB <span>MariaDB 11.2 + Redis 7.2</span></div>
+  </div>
+</div>
+
+<div class="layout">
+
+<!-- ══════════════════════════════ 사이드바 ══════════════════════════ -->
+<nav class="sidebar">
+  <div class="sidebar-title">목차</div>
+  <a href="#s1" class="active">① 시스템 구성도</a>
+  <a href="#s1-2" class="sub">서비스 목록</a>
+  <a href="#s1-3" class="sub">인증 방식</a>
+  <a href="#s2">② Worker 데이터 플로우</a>
+  <a href="#s2-1" class="sub">PDF 검증 플로우</a>
+  <a href="#s2-2" class="sub">PDF 합성 플로우</a>
+  <a href="#s2-3" class="sub">편집기 세션 플로우</a>
+  <a href="#s2-4" class="sub" style="color:var(--green)">Admin 테스트 플로우 ✦</a>
+  <a href="#s2-5" class="sub">파일 업로드 비교</a>
+  <a href="#s3">③ Bookmoa PHP 연동안</a>
+  <a href="#s3-1" class="sub">Breaking Changes</a>
+  <a href="#s3-2" class="sub">API 호출 코드</a>
+  <a href="#s3-api-products" class="sub" style="color:var(--green)">상품 API 응답 형태 ✦</a>
+  <a href="#s3-3" class="sub">edit.php 구조</a>
+  <a href="#s4">④ PDF 검증 세부 항목</a>
+  <a href="#s4-1" class="sub">15단계 파이프라인</a>
+  <a href="#s4-2" class="sub">에러 코드</a>
+  <a href="#s4-3" class="sub">경고 코드</a>
+  <a href="#s4-4" class="sub">CMYK 검증</a>
+  <a href="#s4-5" class="sub">해상도 기준</a>
+  <a href="#s4-7" class="sub" style="color:var(--green)">운영 모니터링 ✦</a>
+  <a href="#s4-8" class="sub" style="color:var(--red)">사용자 격리 보안 패치 🔐</a>
+  <a href="#s4-6" class="sub" style="color:var(--red)">워커 경로 정규화 ⚡</a>
+  <a href="#s5">⑤ 환경 변수</a>
+</nav>
+
+<!-- ══════════════════════════════ 콘텐츠 ══════════════════════════════ -->
+<main class="content">
+
+<!-- ─────────────── ① 시스템 구성도 ─────────────── -->
+<section class="section" id="s1">
+  <h2 class="section-title">
+    <span class="num" style="background:rgba(59,130,246,.2);color:var(--blue2)">①</span>
+    시스템 구성도
+  </h2>
+
+  <div class="arch-boxes" id="s1">
+    <!-- 외부 레이어 -->
+    <div class="layer external">
+      <div class="layer-header">🌐 외부 시스템 (Bookmoa)</div>
+      <div class="layer-body">
+        <div class="service-box">
+          <div class="name">Bookmoa Web (고객)</div>
+          <div class="desc">에디터 번들 로드<br>캔버스 편집 UI</div>
+        </div>
+        <div class="service-box">
+          <div class="name">Bookmoa PHP 서버</div>
+          <div class="desc">주문 처리 · 파일 업로드<br>JWT 토큰 발급 · Webhook 수신</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="connector"><div class="line"></div><div class="arrow" style="color:var(--blue2)">↕</div><div style="font-size:12px;color:var(--blue2)">X-API-Key / JWT</div><div class="line"></div></div>
+
+    <!-- API 레이어 -->
+    <div class="layer api">
+      <div class="layer-header">⚙️ Storige API Layer</div>
+      <div class="layer-body">
+        <div class="service-box">
+          <div class="name">Nginx</div>
+          <div class="port">:80 / :443</div>
+          <div class="desc">리버스 프록시<br>SSL 종료</div>
+        </div>
+        <div class="service-box">
+          <div class="name">Storige API</div>
+          <div class="port">:4000</div>
+          <div class="desc">NestJS REST API<br>인증 · 파일 · 큐 관리</div>
+        </div>
+        <div class="service-box">
+          <div class="name">Storige Editor</div>
+          <div class="port">:3000</div>
+          <div class="desc">React + Fabric.js<br>JS 번들로 배포</div>
+        </div>
+        <div class="service-box">
+          <div class="name">Storige Admin</div>
+          <div class="port">:3001</div>
+          <div class="desc">Ant Design 관리자<br>템플릿 · 리소스 관리</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="connector"><div class="line"></div><div class="arrow" style="color:var(--yellow2)">↕</div><div style="font-size:12px;color:var(--yellow2)">Bull Queue (Redis)</div><div class="line"></div></div>
+
+    <!-- Worker 레이어 -->
+    <div class="layer worker">
+      <div class="layer-header">⚡ Worker Layer (PDF 처리)</div>
+      <div class="layer-body">
+        <div class="service-box">
+          <div class="name">검증 프로세서</div>
+          <div class="port">pdf-validation 큐</div>
+          <div class="desc">15단계 PDF 검증<br>pdf-lib + Ghostscript</div>
+        </div>
+        <div class="service-box">
+          <div class="name">합성 프로세서</div>
+          <div class="port">pdf-synthesis 큐</div>
+          <div class="desc">표지 + 내지 병합<br>분리 출력 지원</div>
+        </div>
+        <div class="service-box">
+          <div class="name">변환 프로세서</div>
+          <div class="port">pdf-conversion 큐</div>
+          <div class="desc">블리드 추가<br>크기 조정</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="connector"><div class="line"></div><div class="arrow" style="color:var(--yellow2)">↕</div><div style="font-size:12px;color:var(--yellow2)">공유 스토리지 볼륨</div><div class="line"></div></div>
+
+    <!-- 인프라 레이어 -->
+    <div class="layer infra">
+      <div class="layer-header">🗄️ 인프라 (Infrastructure)</div>
+      <div class="layer-body">
+        <div class="service-box">
+          <div class="name">MariaDB</div>
+          <div class="port">:3306</div>
+          <div class="desc">메인 DB<br>MariaDB 11.2</div>
+        </div>
+        <div class="service-box">
+          <div class="name">Redis</div>
+          <div class="port">:6379</div>
+          <div class="desc">Bull Queue 백엔드<br>Redis 7.2</div>
+        </div>
+        <div class="service-box">
+          <div class="name">공유 스토리지</div>
+          <div class="port">/app/storage</div>
+          <div class="desc">uploads/ outputs/<br>thumbnails/</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 서비스 목록 표 -->
+  <h3 class="sub-title" id="s1-2" style="margin-top:40px"><span style="background:var(--blue)"></span>서비스별 역할</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>서비스</th><th>포트</th><th>기술</th><th>주요 역할</th></tr></thead>
+      <tbody>
+        <tr><td>Nginx</td><td>80 / 443</td><td>Nginx 1.25</td><td>리버스 프록시, SSL, 정적 파일 서빙</td></tr>
+        <tr><td>Storige API</td><td>4000</td><td>NestJS + TypeORM</td><td>REST API, 인증, 파일 관리, Bull 큐 등록, Webhook 발송</td></tr>
+        <tr><td>Storige Worker</td><td>4001</td><td>NestJS + Bull</td><td>PDF 검증 / 합성 / 변환 비동기 처리</td></tr>
+        <tr><td>Storige Editor</td><td>3000</td><td>React + Fabric.js</td><td>캔버스 편집기 (JS 번들로도 배포)</td></tr>
+        <tr><td>Storige Admin</td><td>3001</td><td>React + Ant Design 5</td><td>템플릿 / 리소스 / 상품 관리 대시보드</td></tr>
+        <tr><td>MariaDB</td><td>3306</td><td>MariaDB 11.2</td><td>메인 데이터베이스 (동기화 ORM)</td></tr>
+        <tr><td>Redis</td><td>6379</td><td>Redis 7.2 Alpine</td><td>Bull Queue 백엔드, 세션 캐시</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- 인증 방식 -->
+  <h3 class="sub-title" id="s1-3"><span style="background:var(--green)"></span>인증 방식 매트릭스</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>호출 주체</th><th>인증 방식</th><th>헤더</th><th>대상 엔드포인트</th></tr></thead>
+      <tbody>
+        <tr><td>고객 브라우저 (Editor)</td><td><span class="tag info">JWT Bearer</span></td><td><code class="inline">Authorization: Bearer {token}</code></td><td>일반 API 엔드포인트</td></tr>
+        <tr><td>Bookmoa PHP 서버</td><td><span class="tag new">API Key</span></td><td><code class="inline">X-API-Key: {key}</code></td><td><code class="inline">/external</code> 접미사 엔드포인트</td></tr>
+        <tr><td>Worker → API 콜백</td><td><span class="tag new">API Key</span></td><td><code class="inline">X-API-Key: {WORKER_API_KEY}</code></td><td><code class="inline">PATCH /worker-jobs/external/{id}/status</code></td></tr>
+        <tr><td>Storige → Bookmoa Webhook</td><td><span class="tag info">Signature</span></td><td><code class="inline">X-Storige-Signature: base64(...)</code></td><td>Bookmoa callbackUrl</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ─────────────── ② Worker 데이터 플로우 ─────────────── -->
+<section class="section" id="s2">
+  <h2 class="section-title">
+    <span class="num" style="background:rgba(34,197,94,.2);color:var(--green2)">②</span>
+    Worker 데이터 플로우
+  </h2>
+
+  <!-- 검증 플로우 -->
+  <h3 class="sub-title" id="s2-1"><span style="background:var(--blue)"></span>PDF 검증 플로우 (파일 업로드 시)</h3>
+
+  <div class="flow-steps">
+    <div class="flow-step flow-blue">
+      <div class="step-left"><div class="step-num">1</div><div class="step-line"></div></div>
+      <div class="step-body">
+        <div class="step-title">파일 업로드 (Bookmoa PHP → Storige API)</div>
+        <div class="step-detail"><code>POST /files/upload/external</code>&nbsp;&nbsp;<span style="color:var(--text3)">X-API-Key 인증</span><br>multipart/form-data (PDF) → <code>/app/storage/uploads/{uuid}.pdf</code><br>응답: <code>{ id: fileId, fileUrl, fileSize }</code></div>
+      </div>
+    </div>
+    <div class="flow-step flow-blue">
+      <div class="step-left"><div class="step-num">2</div><div class="step-line"></div></div>
+      <div class="step-body">
+        <div class="step-title">검증 작업 생성 (Bookmoa PHP → Storige API)</div>
+        <div class="step-detail"><code>POST /worker-jobs/validate/external</code>&nbsp;&nbsp;<span style="color:var(--text3)">X-API-Key 인증</span><br><code>{ fileId, fileType: 'cover'|'content', orderOptions, callbackUrl? }</code><br>DB에 <code>worker_jobs (status: PENDING)</code> 저장 → Bull Queue 등록</div>
+      </div>
+    </div>
+    <div class="flow-step flow-green">
+      <div class="step-left"><div class="step-num">3</div><div class="step-line"></div></div>
+      <div class="step-body">
+        <div class="step-title">Worker 처리 (pdf-validation 큐)</div>
+        <div class="step-detail">WORKER_STORAGE_PATH + filePath 로 파일 읽기<br>15단계 PDF 검증 실행 (pdf-lib + Ghostscript inkcov)</div>
+      </div>
+    </div>
+    <div class="flow-step flow-green">
+      <div class="step-left"><div class="step-num">4</div><div class="step-line"></div></div>
+      <div class="step-body">
+        <div class="step-title">상태 업데이트 (Worker → Storige API)</div>
+        <div class="step-detail"><code>PATCH /worker-jobs/external/{id}/status</code>&nbsp;&nbsp;<span style="color:var(--text3)">X-API-Key 인증</span><br><code>{ status: COMPLETED | FIXABLE | FAILED, result }</code></div>
+      </div>
+    </div>
+    <div class="flow-step flow-blue">
+      <div class="step-left"><div class="step-num">5</div></div>
+      <div class="step-body">
+        <div class="step-title">Webhook 발송 (Storige → Bookmoa)</div>
+        <div class="step-detail"><code>POST {callbackUrl}</code><br>이벤트: <code>validation.completed</code> / <code>validation.fixable</code> / <code>validation.failed</code><br>폴링 대안: <code>GET /worker-jobs/external/{jobId}</code></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 상태 전이 -->
+  <div class="state-flow" style="margin:20px 0 32px">
+    <div class="state-box pending"><div class="s-name">PENDING</div><div class="s-desc">대기 중</div></div>
+    <div class="state-arrow">→</div>
+    <div class="state-box processing"><div class="s-name">PROCESSING</div><div class="s-desc">처리 중</div></div>
+    <div class="state-arrow">→</div>
+    <div class="state-box completed"><div class="s-name">COMPLETED</div><div class="s-desc">검증 통과</div></div>
+    <div style="color:var(--text3);font-size:18px;padding:0 6px;align-self:center">|</div>
+    <div class="state-box fixable"><div class="s-name">FIXABLE</div><div class="s-desc">자동수정 가능</div></div>
+    <div style="color:var(--text3);font-size:18px;padding:0 6px;align-self:center">|</div>
+    <div class="state-box failed"><div class="s-name">FAILED</div><div class="s-desc">수동수정 필요</div></div>
+  </div>
+
+  <!-- 합성 플로우 -->
+  <h3 class="sub-title" id="s2-2"><span style="background:var(--purple)"></span>PDF 합성 플로우 (주문 완료 시)</h3>
+
+  <div class="flow-steps">
+    <div class="flow-step flow-purple">
+      <div class="step-left"><div class="step-num">1</div><div class="step-line"></div></div>
+      <div class="step-body">
+        <div class="step-title">(선택) 합성 가능 여부 사전 확인</div>
+        <div class="step-detail"><code>POST /worker-jobs/check-mergeable/external</code><br><code>{ editSessionId, coverFileId, contentFileId, spineWidth }</code><br>응답: <code>{ mergeable: true|false, issues?: [...] }</code></div>
+      </div>
+    </div>
+    <div class="flow-step flow-purple">
+      <div class="step-left"><div class="step-num">2</div><div class="step-line"></div></div>
+      <div class="step-body">
+        <div class="step-title">합성 작업 요청</div>
+        <div class="step-detail"><code>POST /worker-jobs/synthesize/external</code><br><code>{ coverFileId, contentFileId, spineWidth, orderId, priority: 'high', callbackUrl, outputFormat: 'merged' }</code><br>우선순위: high=1 / normal=5 / low=10</div>
+      </div>
+    </div>
+    <div class="flow-step flow-green">
+      <div class="step-left"><div class="step-num">3</div><div class="step-line"></div></div>
+      <div class="step-body">
+        <div class="step-title">Worker 합성 처리 (pdf-synthesis 큐)</div>
+        <div class="step-detail">mode 분기: <code>normal</code>(병합) / <code>split</code>(분리) / <code>spread</code>(펼침면)<br>결과: <code>/app/storage/outputs/{jobId}/merged.pdf</code></div>
+      </div>
+    </div>
+    <div class="flow-step flow-purple">
+      <div class="step-left"><div class="step-num">4</div></div>
+      <div class="step-body">
+        <div class="step-title">합성 완료 Webhook</div>
+        <div class="step-detail"><code>POST {callbackUrl}</code>&nbsp;&nbsp;헤더: <code>X-Storige-Event: synthesis.completed</code><br><code>{ event, jobId, orderId, status, outputFileUrl, outputFiles? }</code></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 에디터 세션 플로우 -->
+  <h3 class="sub-title" id="s2-3"><span style="background:var(--cyan)"></span>편집기 세션 플로우 (에디터 사용 시)</h3>
+
+  <div class="flow-steps">
+    <div class="flow-step flow-blue">
+      <div class="step-left"><div class="step-num">1</div><div class="step-line"></div></div>
+      <div class="step-body">
+        <div class="step-title">PHP 서버에서 JWT 토큰 발급</div>
+        <div class="step-detail"><code>POST /auth/shop-session</code>&nbsp;&nbsp;<span style="color:var(--text3)">X-API-Key 인증</span><br><code>{ orderSeqno, memberSeqno, templateSetId }</code> → JWT 토큰 (유효 1시간)</div>
+      </div>
+    </div>
+    <div class="flow-step flow-blue">
+      <div class="step-left"><div class="step-num">2</div><div class="step-line"></div></div>
+      <div class="step-body">
+        <div class="step-title">edit.php에서 에디터 초기화</div>
+        <div class="step-detail"><code>window.StorigeEditor.init({ token, apiBaseUrl, orderSeqno, templateSetId, mode, ... })</code><br>editor-bundle.iife.js + editor-bundle.css 로드</div>
+      </div>
+    </div>
+    <div class="flow-step flow-green">
+      <div class="step-left"><div class="step-num">3</div><div class="step-line"></div></div>
+      <div class="step-body">
+        <div class="step-title">에디터 내부 초기화 (브라우저)</div>
+        <div class="step-detail"><code>POST /edit-sessions</code> → EditSession 생성<br><code>GET /template-sets/{id}</code> → 템플릿 데이터 로드<br>자동 저장: 30초 주기 <code>PATCH /edit-sessions/{id}</code></div>
+      </div>
+    </div>
+    <div class="flow-step flow-green">
+      <div class="step-left"><div class="step-num">4</div></div>
+      <div class="step-body">
+        <div class="step-title">편집 완료 → PHP 콜백</div>
+        <div class="step-detail"><code>PATCH /edit-sessions/{id}/complete</code><br>onComplete 콜백: <code>{ sessionId, coverFileId, contentFileId }</code><br>PHP에서 이 fileId로 합성 요청 또는 주문 처리</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Admin 워커 테스트 플로우 -->
+  <h3 class="sub-title" id="s2-4" style="margin-top:36px"><span style="background:var(--green)"></span>Admin 워커 테스트 플로우 <span style="font-size:11px;background:rgba(52,211,153,.15);color:var(--green);border:1px solid var(--green);border-radius:4px;padding:2px 6px;vertical-align:middle;margin-left:6px">v2.1 신규</span></h3>
+
+  <p style="color:var(--text2);margin-bottom:16px;font-size:13px">Admin 관리자 페이지 <strong>워커관리 → 테스트</strong> 에서 직접 PDF를 업로드해 검증을 테스트하는 플로우. 외부 PHP 연동과 인증 방식만 다르며 Worker 처리 로직은 동일합니다.</p>
+
+  <div class="flow-steps">
+    <div class="flow-step flow-blue">
+      <div class="step-left"><div class="step-num">1</div><div class="step-line"></div></div>
+      <div class="step-body">
+        <div class="step-title">파일 업로드 (Admin JWT 인증)</div>
+        <div class="step-detail"><code>POST /files/upload</code>&nbsp;&nbsp;<span style="color:var(--text3)">Authorization: Bearer {JWT}</span><br><code>multipart/form-data { file: (PDF), type: 'cover'|'content' }</code><br><span style="color:var(--red);font-weight:600">⚠️ type 필드 필수 — 없으면 400 Bad Request</span><br>응답: <code>{ id, fileUrl, fileName, fileSize, ... }</code></div>
+      </div>
+    </div>
+    <div class="flow-step flow-blue">
+      <div class="step-left"><div class="step-num">2</div><div class="step-line"></div></div>
+      <div class="step-body">
+        <div class="step-title">검증 작업 생성</div>
+        <div class="step-detail"><code>POST /worker-jobs/validate</code>&nbsp;&nbsp;<span style="color:var(--text3)">Authorization: Bearer {JWT}</span><br><code>{ fileUrl, fileType, orderOptions: { size, pages, binding, bleed } }</code></div>
+      </div>
+    </div>
+    <div class="flow-step flow-green">
+      <div class="step-left"><div class="step-num">3</div><div class="step-line"></div></div>
+      <div class="step-body">
+        <div class="step-title">Worker 15단계 검증 (동일 로직)</div>
+        <div class="step-detail">pdf-validation 큐에서 처리 — PHP 연동 플로우와 동일한 Worker 코드 실행</div>
+      </div>
+    </div>
+    <div class="flow-step flow-blue">
+      <div class="step-left"><div class="step-num">4</div></div>
+      <div class="step-body">
+        <div class="step-title">Admin UI 1초 폴링 → 결과 표시</div>
+        <div class="step-detail"><code>GET /worker-jobs/{id}</code>&nbsp;&nbsp;1초 간격 반복<br>상태: <span class="badge" style="background:rgba(234,179,8,.2);color:var(--yellow2)">PENDING</span> → <span class="badge" style="background:rgba(59,130,246,.2);color:#93c5fd">PROCESSING</span> → <span class="badge" style="background:rgba(52,211,153,.2);color:var(--green)">COMPLETED</span> / <span class="badge" style="background:rgba(251,191,36,.2);color:#fbbf24">FIXABLE</span> / <span class="badge" style="background:rgba(239,68,68,.2);color:var(--red)">FAILED</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 파일 업로드 엔드포인트 비교 -->
+  <h3 class="sub-title" id="s2-5" style="margin-top:36px"><span style="background:var(--yellow)"></span>파일 업로드 엔드포인트 비교</h3>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>엔드포인트</th><th>인증 방식</th><th>사용 주체</th><th>type 필드</th><th>응답</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><code class="inline">POST /files/upload</code></td>
+          <td>JWT Bearer</td>
+          <td>Admin / Editor</td>
+          <td><strong style="color:var(--red)">필수 ❗</strong></td>
+          <td><code class="inline">FileResponseDto</code></td>
+        </tr>
+        <tr>
+          <td><code class="inline">POST /files/upload/external</code></td>
+          <td>X-API-Key</td>
+          <td>Bookmoa PHP</td>
+          <td><strong style="color:var(--red)">필수 ❗</strong></td>
+          <td><code class="inline">FileResponseDto</code></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div style="background:rgba(239,68,68,.08);border-left:3px solid var(--red);padding:10px 14px;border-radius:0 6px 6px 0;margin-top:12px;font-size:13px">
+    <strong>FileResponseDto 주요 필드:</strong>&nbsp;
+    <code class="inline">id</code> (UUID) &nbsp;·&nbsp;
+    <code class="inline">fileUrl</code> (저장 URL) &nbsp;·&nbsp;
+    <code class="inline">filePath</code> (서버 경로) &nbsp;·&nbsp;
+    <code class="inline">fileSize</code> (bytes) &nbsp;·&nbsp;
+    <code class="inline">fileType</code> ('cover'|'content') &nbsp;·&nbsp;
+    <code class="inline">createdAt</code><br>
+    ⚠️ 응답 필드명은 <code class="inline">url</code>이 아니라 <strong><code class="inline">fileUrl</code></strong> 입니다.
+  </div>
+
+</section>
+
+<!-- ─────────────── ③ Bookmoa PHP 연동안 ─────────────── -->
+<section class="section" id="s3">
+  <h2 class="section-title">
+    <span class="num" style="background:rgba(245,158,11,.2);color:var(--yellow2)">③</span>
+    Bookmoa PHP 연동안
+  </h2>
+
+  <h3 class="sub-title" id="s3-1"><span style="background:var(--red)"></span>Breaking Changes — 반드시 수정 필요</h3>
+
+  <div class="checklist">
+    <div class="cl-item breaking">
+      <div class="cl-icon">🔴</div>
+      <div class="cl-body">
+        <div class="cl-title">#1 주문 식별자 파라미터 변경</div>
+        <div class="cl-detail"><code class="inline">productId</code> → <code class="inline">orderSeqno</code> (주문번호로 변경)</div>
+      </div>
+    </div>
+    <div class="cl-item breaking">
+      <div class="cl-icon">🔴</div>
+      <div class="cl-body">
+        <div class="cl-title">#2 페이지수 파라미터 이름 변경</div>
+        <div class="cl-detail"><code class="inline">pages</code> → <code class="inline">pageCount</code> (내지 기준)</div>
+      </div>
+    </div>
+    <div class="cl-item breaking">
+      <div class="cl-icon">🔴</div>
+      <div class="cl-body">
+        <div class="cl-title">#3 Worker 인증 방식 변경</div>
+        <div class="cl-detail">JWT Bearer Token → <code class="inline">X-API-Key: {key}</code> 헤더</div>
+      </div>
+    </div>
+    <div class="cl-item breaking">
+      <div class="cl-icon">🔴</div>
+      <div class="cl-body">
+        <div class="cl-title">#4 완료 콜백 파일 정보 변경</div>
+        <div class="cl-detail">직접 URL 반환 → <code class="inline">fileId</code> (UUID) 반환 후 API로 별도 조회</div>
+      </div>
+    </div>
+    <div class="cl-item breaking">
+      <div class="cl-icon">🔴</div>
+      <div class="cl-body">
+        <div class="cl-title">#5 날개(Wing) 파라미터 제거</div>
+        <div class="cl-detail"><code class="inline">wingFront, wingBack</code> 제거 → <code class="inline">paperType + bindingType</code> 코드로 대체</div>
+      </div>
+    </div>
+    <div class="cl-item breaking">
+      <div class="cl-icon">🔴</div>
+      <div class="cl-body">
+        <div class="cl-title">#13 파일 업로드 <code class="inline">type</code> 필드 필수 <span style="font-size:11px;background:rgba(52,211,153,.15);color:var(--green);border:1px solid var(--green);border-radius:4px;padding:1px 5px;margin-left:4px">v2.1</span></div>
+        <div class="cl-detail"><code class="inline">POST /files/upload/external</code> 호출 시 <code class="inline">type: 'cover'|'content'</code> 필드 반드시 포함 — 없으면 <strong>400 Bad Request</strong> 반환. 응답 필드는 <code class="inline">url</code>이 아닌 <code class="inline">fileUrl</code></div>
+      </div>
+    </div>
+  </div>
+
+  <h3 class="sub-title" style="margin-top:28px"><span style="background:var(--yellow)"></span>신규 기능 — 활용 권장</h3>
+  <div class="checklist">
+    <div class="cl-item added">
+      <div class="cl-icon">🟡</div>
+      <div class="cl-body"><div class="cl-title">PDF 검증 API 추가 — <code class="inline">POST /worker-jobs/validate/external</code></div><div class="cl-detail">파일 업로드 후 검증 작업 생성. callbackUrl로 결과 Push 수신 가능</div></div>
+    </div>
+    <div class="cl-item added">
+      <div class="cl-icon">🟡</div>
+      <div class="cl-body"><div class="cl-title">PDF 합성 API 추가 — <code class="inline">POST /worker-jobs/synthesize/external</code></div><div class="cl-detail">표지+내지 병합, 우선순위 지정, 완료 Webhook 수신</div></div>
+    </div>
+    <div class="cl-item added">
+      <div class="cl-icon">🟡</div>
+      <div class="cl-body"><div class="cl-title">Webhook 콜백 3종</div><div class="cl-detail">검증: <code class="inline">validation.completed/fixable/failed</code> · 합성: <code class="inline">synthesis.completed/failed</code></div></div>
+    </div>
+    <div class="cl-item added">
+      <div class="cl-icon">🟡</div>
+      <div class="cl-body"><div class="cl-title">편집 모드 파라미터 — <code class="inline">mode</code></div><div class="cl-detail"><code class="inline">'both'</code>(표지+내지) / <code class="inline">'cover'</code>(표지만) / <code class="inline">'content'</code>(내지만)</div></div>
+    </div>
+  </div>
+
+  <!-- 사이즈 전달 방법 -->
+  <h3 class="sub-title" style="margin-top:32px"><span style="background:var(--cyan)"></span>인쇄물 사이즈 전달 3가지 방법</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>방법</th><th>파라미터</th><th>동작 방식</th><th>비고</th></tr></thead>
+      <tbody>
+        <tr><td><strong>A. 템플릿셋 기반</strong></td><td><code class="inline">template_set_id</code></td><td>템플릿셋에 사이즈 사전 등록</td><td>기본 방법</td></tr>
+        <tr><td><strong>B. sizeNo 인덱스</strong></td><td><code class="inline">template_set_id + size=0</code></td><td>상품의 <code class="inline">product_sizes[0]</code> 적용</td><td>사이즈 옵션 상품</td></tr>
+        <tr><td><strong>C. 직접 입력</strong></td><td><code class="inline">width=148 + height=210</code> (mm)</td><td>직접 크기 지정</td><td>Admin에서 <code class="inline">allowCustomSize=true</code> 필요</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- PHP 코드 예시 -->
+  <h3 class="sub-title" id="s3-2"><span style="background:var(--blue)"></span>PHP API 호출 코드 예시</h3>
+
+  <div class="code-block">
+    <div class="cb-header">
+      <div class="cb-dots"><div class="cb-dot" style="background:#ff5f57"></div><div class="cb-dot" style="background:#ffbd2e"></div><div class="cb-dot" style="background:#28c840"></div></div>
+      <div class="cb-lang">PHP · storige_common.php</div>
+    </div>
+    <pre><span class="comment">&lt;?php
+// ① JWT 토큰 발급 (PHP 서버에서 호출)</span>
+<span class="keyword">function</span> <span class="func">getShopSessionToken</span>(<span class="type">int</span> $orderSeqno, <span class="type">int</span> $memberSeqno, <span class="type">string</span> $templateSetId): <span class="type">string</span> {
+    $ch = <span class="func">curl_init</span>(STORIGE_API_URL . <span class="string">'/auth/shop-session'</span>);
+    <span class="func">curl_setopt_array</span>($ch, [
+        CURLOPT_POST            =&gt; <span class="keyword">true</span>,
+        CURLOPT_RETURNTRANSFER  =&gt; <span class="keyword">true</span>,
+        CURLOPT_HTTPHEADER      =&gt; [<span class="string">'Content-Type: application/json'</span>, <span class="string">'X-API-Key: '</span> . STORIGE_API_KEY],
+        CURLOPT_POSTFIELDS      =&gt; <span class="func">json_encode</span>([
+            <span class="string">'orderSeqno'</span>    =&gt; $orderSeqno,
+            <span class="string">'memberSeqno'</span>   =&gt; $memberSeqno,
+            <span class="string">'templateSetId'</span> =&gt; $templateSetId,
+        ]),
+    ]);
+    $res = <span class="func">json_decode</span>(<span class="func">curl_exec</span>($ch), <span class="keyword">true</span>);
+    <span class="func">curl_close</span>($ch);
+    <span class="keyword">return</span> $res[<span class="string">'token'</span>] ?? <span class="string">''</span>;
+}
+
+<span class="comment">// ② PDF 파일 업로드</span>
+<span class="keyword">function</span> <span class="func">uploadPdfFile</span>(<span class="type">string</span> $filePath, <span class="type">string</span> $fileType, <span class="type">int</span> $orderSeqno): <span class="type">array</span> {
+    $cFile = <span class="keyword">new</span> <span class="type">CURLFile</span>($filePath, <span class="string">'application/pdf'</span>, <span class="func">basename</span>($filePath));
+    $ch = <span class="func">curl_init</span>(STORIGE_API_URL . <span class="string">'/files/upload/external'</span>);
+    <span class="func">curl_setopt_array</span>($ch, [
+        CURLOPT_POST           =&gt; <span class="keyword">true</span>,
+        CURLOPT_RETURNTRANSFER =&gt; <span class="keyword">true</span>,
+        CURLOPT_HTTPHEADER     =&gt; [<span class="string">'X-API-Key: '</span> . STORIGE_API_KEY],
+        CURLOPT_POSTFIELDS     =&gt; [<span class="string">'file'</span> =&gt; $cFile, <span class="string">'type'</span> =&gt; $fileType, <span class="string">'orderSeqno'</span> =&gt; $orderSeqno],
+    ]);
+    $res = <span class="func">json_decode</span>(<span class="func">curl_exec</span>($ch), <span class="keyword">true</span>);
+    <span class="func">curl_close</span>($ch);
+    <span class="keyword">return</span> $res; <span class="comment">// { id, fileUrl, fileSize }</span>
+}
+
+<span class="comment">// ③ PDF 검증 요청</span>
+<span class="keyword">function</span> <span class="func">requestValidation</span>(<span class="type">string</span> $fileId, <span class="type">string</span> $fileType, <span class="type">array</span> $orderOptions, <span class="type">string</span> $callbackUrl = <span class="string">''</span>): <span class="type">array</span> {
+    $body = [<span class="string">'fileId'</span> =&gt; $fileId, <span class="string">'fileType'</span> =&gt; $fileType, <span class="string">'orderOptions'</span> =&gt; $orderOptions];
+    <span class="keyword">if</span> ($callbackUrl) $body[<span class="string">'callbackUrl'</span>] = $callbackUrl;
+    $ch = <span class="func">curl_init</span>(STORIGE_API_URL . <span class="string">'/worker-jobs/validate/external'</span>);
+    <span class="func">curl_setopt_array</span>($ch, [
+        CURLOPT_POST           =&gt; <span class="keyword">true</span>,
+        CURLOPT_RETURNTRANSFER =&gt; <span class="keyword">true</span>,
+        CURLOPT_HTTPHEADER     =&gt; [<span class="string">'Content-Type: application/json'</span>, <span class="string">'X-API-Key: '</span> . STORIGE_API_KEY],
+        CURLOPT_POSTFIELDS     =&gt; <span class="func">json_encode</span>($body),
+    ]);
+    $res = <span class="func">json_decode</span>(<span class="func">curl_exec</span>($ch), <span class="keyword">true</span>);
+    <span class="func">curl_close</span>($ch);
+    <span class="keyword">return</span> $res; <span class="comment">// { id: jobId, status: 'PENDING' }</span>
+}
+
+<span class="comment">// ④ Webhook 수신 처리 (validation_callback.php)</span>
+<span class="keyword">function</span> <span class="func">handleValidationWebhook</span>(): <span class="type">void</span> {
+    $payload = <span class="func">json_decode</span>(<span class="func">file_get_contents</span>(<span class="string">'php://input'</span>), <span class="keyword">true</span>);
+    <span class="keyword">switch</span> ($payload[<span class="string">'event'</span>] ?? <span class="string">''</span>) {
+        <span class="keyword">case</span> <span class="string">'validation.completed'</span>:  <span class="func">updateOrderValidationStatus</span>($payload[<span class="string">'jobId'</span>], <span class="string">'PASS'</span>); <span class="keyword">break</span>;
+        <span class="keyword">case</span> <span class="string">'validation.fixable'</span>:    <span class="func">updateOrderValidationStatus</span>($payload[<span class="string">'jobId'</span>], <span class="string">'FIXABLE'</span>, $payload[<span class="string">'result'</span>]); <span class="keyword">break</span>;
+        <span class="keyword">case</span> <span class="string">'validation.failed'</span>:     <span class="func">notifyCustomerReupload</span>($payload[<span class="string">'jobId'</span>], $payload[<span class="string">'errorMessage'</span>]); <span class="keyword">break</span>;
+    }
+    <span class="func">http_response_code</span>(<span class="num">200</span>);
+    <span class="keyword">echo</span> <span class="func">json_encode</span>([<span class="string">'received'</span> =&gt; <span class="keyword">true</span>]);
+}</pre>
+  </div>
+
+  <!-- 상품 목록 API 응답 형태 -->
+  <h3 class="sub-title" id="s3-api-products" style="margin-top:36px"><span style="background:var(--cyan)"></span>상품 목록 API 응답 형태 <span style="font-size:11px;background:rgba(52,211,153,.15);color:var(--green);border:1px solid var(--green);border-radius:4px;padding:2px 6px;vertical-align:middle;margin-left:6px">v2.1 신규</span></h3>
+
+  <p style="color:var(--text2);margin-bottom:14px;font-size:13px"><code class="inline">GET /api/products</code>는 페이지네이션 래퍼로 반환됩니다. 응답의 <code class="inline">data</code>를 배열로 오인하면 오류가 발생합니다.</p>
+
+  <div class="code-block">
+    <div class="cb-header">
+      <div class="cb-dots"><div class="cb-dot" style="background:#ff5f57"></div><div class="cb-dot" style="background:#ffbd2e"></div><div class="cb-dot" style="background:#28c840"></div></div>
+      <div class="cb-lang">JSON · GET /api/products 응답</div>
+    </div>
+    <pre>{
+  <span class="string">"success"</span>: <span class="keyword">true</span>,
+  <span class="string">"data"</span>: {
+    <span class="string">"items"</span>: [
+      {
+        <span class="string">"id"</span>:              <span class="string">"uuid"</span>,
+        <span class="string">"name"</span>:            <span class="string">"A4 책자 20p"</span>,
+        <span class="string">"code"</span>:            <span class="string">"BOOK-A4-20P"</span>,
+        <span class="string">"templateSetId"</span>:   <span class="string">"uuid"</span>,
+        <span class="string">"price"</span>:           <span class="type">15000</span>,
+        <span class="string">"isActive"</span>:        <span class="keyword">true</span>,
+        <span class="string">"allowCustomSize"</span>: <span class="keyword">false</span>
+      }
+    ],
+    <span class="string">"total"</span>:      <span class="type">100</span>,
+    <span class="string">"page"</span>:       <span class="type">1</span>,
+    <span class="string">"pageSize"</span>:   <span class="type">20</span>,
+    <span class="string">"totalPages"</span>: <span class="type">5</span>
+  }
+}</pre>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px;font-size:13px">
+    <div style="background:rgba(52,211,153,.08);border-left:3px solid var(--green);padding:10px 14px;border-radius:0 6px 6px 0">
+      <strong style="color:var(--green)">✅ 올바른 파싱 (PHP)</strong><br>
+      <code class="inline">$items = $res['data']['items'];</code>
+    </div>
+    <div style="background:rgba(239,68,68,.08);border-left:3px solid var(--red);padding:10px 14px;border-radius:0 6px 6px 0">
+      <strong style="color:var(--red)">❌ 잘못된 파싱</strong><br>
+      <code class="inline">$items = $res['data']; // 배열 아님!</code>
+    </div>
+  </div>
+
+  <!-- edit.php 구조 -->
+  <h3 class="sub-title" id="s3-3" style="margin-top:36px"><span style="background:var(--purple)"></span>edit.php 핵심 구조</h3>
+  <div class="code-block">
+    <div class="cb-header">
+      <div class="cb-dots"><div class="cb-dot" style="background:#ff5f57"></div><div class="cb-dot" style="background:#ffbd2e"></div><div class="cb-dot" style="background:#28c840"></div></div>
+      <div class="cb-lang">PHP + HTML · edit.php</div>
+    </div>
+    <pre><span class="comment">&lt;?php</span>
+$token = <span class="func">getShopSessionToken</span>($orderSeqno, $memberSeqno, $templateSetId);
+<span class="comment">?&gt;
+&lt;link rel="stylesheet" href="&lt;?= getenv('STORIGE_EDITOR_CSS') ?&gt;"&gt;
+&lt;div id="storige-editor"&gt;&lt;/div&gt;
+&lt;script src="&lt;?= getenv('STORIGE_EDITOR_JS') ?&gt;"&gt;&lt;/script&gt;</span>
+&lt;script&gt;
+window.<span class="type">StorigeEditor</span>.<span class="func">init</span>({
+    container   : <span class="string">'#storige-editor'</span>,
+    apiBaseUrl  : <span class="string">'&lt;?= getenv("STORIGE_API_URL") ?&gt;'</span>,
+    token       : <span class="string">'&lt;?= htmlspecialchars($token) ?&gt;'</span>,
+    orderSeqno  : &lt;?= <span class="func">intval</span>($orderSeqno) ?&gt;,
+    templateSetId: <span class="string">'&lt;?= htmlspecialchars($templateSetId) ?&gt;'</span>,
+    mode        : <span class="string">'both'</span>,          <span class="comment">// 'both' | 'cover' | 'content'</span>
+    pageCount   : &lt;?= <span class="func">intval</span>($pageCount) ?&gt;,
+    paperType   : <span class="string">'&lt;?= $paperType ?&gt;'</span>,
+    bindingType : <span class="string">'&lt;?= $bindingType ?&gt;'</span>,
+    returnUrl   : <span class="string">'&lt;?= htmlspecialchars($returnUrl) ?&gt;'</span>,
+    onComplete  : <span class="keyword">function</span>(result) {
+        <span class="comment">// result.sessionId, result.coverFileId, result.contentFileId</span>
+        <span class="func">fetch</span>(<span class="string">'/storige/proc/complete_edit.php'</span>, {
+            method: <span class="string">'POST'</span>, headers: {<span class="string">'Content-Type'</span>: <span class="string">'application/json'</span>},
+            body: <span class="type">JSON</span>.<span class="func">stringify</span>(result)
+        });
+    }
+});
+&lt;/script&gt;</pre>
+  </div>
+</section>
+
+<!-- ─────────────── ④ PDF 검증 세부 항목 ─────────────── -->
+<section class="section" id="s4">
+  <h2 class="section-title">
+    <span class="num" style="background:rgba(168,85,247,.2);color:var(--purple2)">④</span>
+    PDF 파일 검증 세부 항목
+  </h2>
+
+  <!-- 메트릭 -->
+  <div class="metric-grid">
+    <div class="metric-card">
+      <div class="m-label">검증 단계</div>
+      <div class="m-value" style="color:var(--blue2)">15</div>
+      <div class="m-unit">Steps</div>
+    </div>
+    <div class="metric-card">
+      <div class="m-label">에러 코드</div>
+      <div class="m-value" style="color:var(--red2)">10</div>
+      <div class="m-unit">차단 항목</div>
+    </div>
+    <div class="metric-card">
+      <div class="m-label">경고 코드</div>
+      <div class="m-value" style="color:var(--yellow2)">9</div>
+      <div class="m-unit">안내 항목</div>
+    </div>
+    <div class="metric-card">
+      <div class="m-label">자동수정 가능</div>
+      <div class="m-value" style="color:var(--green2)">3</div>
+      <div class="m-unit">에러 항목</div>
+    </div>
+    <div class="metric-card">
+      <div class="m-label">최대 파일 크기</div>
+      <div class="m-value" style="color:var(--cyan2)">100</div>
+      <div class="m-unit">MB</div>
+    </div>
+    <div class="metric-card">
+      <div class="m-label">GS 타임아웃</div>
+      <div class="m-value" style="color:var(--purple2)">5</div>
+      <div class="m-unit">초</div>
+    </div>
+  </div>
+
+  <!-- 15단계 파이프라인 -->
+  <h3 class="sub-title" id="s4-1"><span style="background:var(--blue)"></span>15단계 검증 파이프라인</h3>
+
+  <div class="pipeline-grid">
+    <div class="pipeline-item basic">
+      <div class="step-no">STEP 1</div>
+      <div class="step-name">파일 다운로드/읽기</div>
+      <div class="step-tech">로컬 경로 / HTTP URL</div>
+    </div>
+    <div class="pipeline-item basic">
+      <div class="step-no">STEP 2</div>
+      <div class="step-name">파일 크기 검증</div>
+      <div class="step-tech">100MB 초과 시 즉시 FAILED</div>
+    </div>
+    <div class="pipeline-item basic">
+      <div class="step-no">STEP 3</div>
+      <div class="step-name">PDF 무결성 검증</div>
+      <div class="step-tech">pdf-lib 로드 (손상 감지)</div>
+    </div>
+    <div class="pipeline-item basic">
+      <div class="step-no">STEP 4</div>
+      <div class="step-name">메타데이터 추출</div>
+      <div class="step-tech">페이지수 · 크기 mm 변환</div>
+    </div>
+    <div class="pipeline-item structure">
+      <div class="step-no">STEP 5</div>
+      <div class="step-name">페이지 수 검증</div>
+      <div class="step-tech">제본 방식별 규칙 적용</div>
+    </div>
+    <div class="pipeline-item structure">
+      <div class="step-no">STEP 6</div>
+      <div class="step-name">페이지 크기 검증</div>
+      <div class="step-tech">±1mm 오차 허용</div>
+    </div>
+    <div class="pipeline-item structure">
+      <div class="step-no">STEP 7</div>
+      <div class="step-name">재단 여백(블리드)</div>
+      <div class="step-tech">3mm 기준 경고</div>
+    </div>
+    <div class="pipeline-item structure">
+      <div class="step-no">STEP 8</div>
+      <div class="step-name">책등 크기 검증</div>
+      <div class="step-tech">표지 파일만 · 페이지수×두께</div>
+    </div>
+    <div class="pipeline-item structure">
+      <div class="step-no">STEP 9</div>
+      <div class="step-name">가로형 페이지 감지</div>
+      <div class="step-tech">전 페이지 orientation 검사</div>
+    </div>
+    <div class="pipeline-item structure">
+      <div class="step-no">STEP 10</div>
+      <div class="step-name">사철 제본 규칙</div>
+      <div class="step-tech">4의 배수 · 최대 64페이지</div>
+    </div>
+    <div class="pipeline-item structure">
+      <div class="step-no">STEP 11</div>
+      <div class="step-name">스프레드(펼침면) 감지</div>
+      <div class="step-tech">점수 기반 (70점 이상 = 스프레드)</div>
+    </div>
+    <div class="pipeline-item color">
+      <div class="step-no">STEP 12</div>
+      <div class="step-name">CMYK 2단계 검증</div>
+      <div class="step-tech">구조 스캔 → GS inkcov</div>
+    </div>
+    <div class="pipeline-item color">
+      <div class="step-no">STEP 13</div>
+      <div class="step-name">별색(Spot Color) 감지</div>
+      <div class="step-tech">PDF 바이너리 /Separation 파싱</div>
+    </div>
+    <div class="pipeline-item color">
+      <div class="step-no">STEP 14</div>
+      <div class="step-name">투명도/오버프린트 감지</div>
+      <div class="step-tech">ExtGState /ca /CA /SMask</div>
+    </div>
+    <div class="pipeline-item quality">
+      <div class="step-no">STEP 15</div>
+      <div class="step-name">이미지 해상도 감지</div>
+      <div class="step-tech">XObject · Effective DPI 계산</div>
+    </div>
+  </div>
+
+  <!-- 파이프라인 범례 -->
+  <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:32px">
+    <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2)">
+      <div style="width:12px;height:12px;border-radius:2px;background:var(--blue)"></div>기본 검증
+    </div>
+    <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2)">
+      <div style="width:12px;height:12px;border-radius:2px;background:var(--green)"></div>구조/규격 검증
+    </div>
+    <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2)">
+      <div style="width:12px;height:12px;border-radius:2px;background:var(--purple)"></div>색상 검증
+    </div>
+    <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2)">
+      <div style="width:12px;height:12px;border-radius:2px;background:var(--cyan)"></div>품질 검증
+    </div>
+  </div>
+
+  <!-- 에러 코드 -->
+  <h3 class="sub-title" id="s4-2"><span style="background:var(--red)"></span>에러 코드 (접수 차단)</h3>
+
+  <div class="validation-category">
+    <div class="vc-header"><div class="vc-icon">📁</div><div class="vc-name">파일 기본 검증</div><div class="vc-count">3개</div></div>
+    <div class="vc-body">
+      <div class="vc-item error-item"><div class="vi-code">FILE_TOO_LARGE</div><div class="vi-name">파일 크기 초과</div><div class="vi-fix"><span class="tag manual">수동</span> 100MB 이하로 압축</div></div>
+      <div class="vc-item error-item"><div class="vi-code">FILE_CORRUPTED</div><div class="vi-name">손상된 PDF</div><div class="vi-fix"><span class="tag manual">수동</span> 파일 재생성</div></div>
+      <div class="vc-item error-item"><div class="vi-code">UNSUPPORTED_FORMAT</div><div class="vi-name">PDF가 아닌 파일</div><div class="vi-fix"><span class="tag manual">수동</span> PDF로 재저장</div></div>
+    </div>
+  </div>
+
+  <div class="validation-category">
+    <div class="vc-header"><div class="vc-icon">📐</div><div class="vc-name">페이지 구조 검증</div><div class="vc-count">4개</div></div>
+    <div class="vc-body">
+      <div class="vc-item error-item"><div class="vi-code">PAGE_COUNT_INVALID</div><div class="vi-name">페이지 수 오류</div><div class="vi-fix"><span class="tag auto">자동</span> 빈 페이지 추가</div></div>
+      <div class="vc-item error-item"><div class="vi-code">PAGE_COUNT_EXCEEDED</div><div class="vi-name">페이지 수 초과 (사철 64)</div><div class="vi-fix"><span class="tag manual">수동</span> 무선제본 변경</div></div>
+      <div class="vc-item error-item"><div class="vi-code">SIZE_MISMATCH</div><div class="vi-name">페이지 크기 불일치</div><div class="vi-fix"><span class="tag auto">자동</span> 패딩으로 조정</div></div>
+      <div class="vc-item error-item"><div class="vi-code">SADDLE_STITCH_INVALID</div><div class="vi-name">사철 규격 오류</div><div class="vi-fix"><span class="tag manual">수동</span> 4의 배수로 조정</div></div>
+    </div>
+  </div>
+
+  <div class="validation-category">
+    <div class="vc-header"><div class="vc-icon">📏</div><div class="vc-name">표지/책등 검증</div><div class="vc-count">2개</div></div>
+    <div class="vc-body">
+      <div class="vc-item error-item"><div class="vi-code">SPINE_SIZE_MISMATCH</div><div class="vi-name">책등 크기 불일치</div><div class="vi-fix"><span class="tag auto">자동</span> 책등 자동 조정</div></div>
+      <div class="vc-item error-item"><div class="vi-code">SPREAD_SIZE_MISMATCH</div><div class="vi-name">스프레드 크기 불일치</div><div class="vi-fix"><span class="tag manual">수동</span> 정확한 크기로 조정</div></div>
+    </div>
+  </div>
+
+  <div class="validation-category">
+    <div class="vc-header"><div class="vc-icon">🎨</div><div class="vc-name">색상 검증</div><div class="vc-count">1개</div></div>
+    <div class="vc-body">
+      <div class="vc-item error-item"><div class="vi-code">POST_PROCESS_CMYK</div><div class="vi-name">후가공 파일 CMYK 사용</div><div class="vi-fix"><span class="tag manual">수동</span> Spot Color만 사용</div></div>
+    </div>
+  </div>
+
+  <!-- 경고 코드 -->
+  <h3 class="sub-title" id="s4-3" style="margin-top:32px"><span style="background:var(--yellow)"></span>경고 코드 (접수 허용, 고객 안내)</h3>
+
+  <div class="validation-category">
+    <div class="vc-header"><div class="vc-icon">⚠️</div><div class="vc-name">품질 경고</div><div class="vc-count">9개</div></div>
+    <div class="vc-body">
+      <div class="vc-item warn-item"><div class="vi-code">BLEED_MISSING</div><div class="vi-name">재단 여백 없음</div><div class="vi-fix">3mm 여백 추가 권장</div></div>
+      <div class="vc-item warn-item"><div class="vi-code">RESOLUTION_LOW</div><div class="vi-name">해상도 낮음 (150DPI↓)</div><div class="vi-fix">300DPI 이상 이미지 교체</div></div>
+      <div class="vc-item warn-item"><div class="vi-code">PAGE_COUNT_MISMATCH</div><div class="vi-name">주문 페이지수 불일치</div><div class="vi-fix">고객 확인 요청</div></div>
+      <div class="vc-item warn-item"><div class="vi-code">LANDSCAPE_PAGE</div><div class="vi-name">가로형 페이지 포함</div><div class="vi-fix">의도 여부 확인</div></div>
+      <div class="vc-item warn-item"><div class="vi-code">CENTER_OBJECT_CHECK</div><div class="vi-name">접지 부분 객체</div><div class="vi-fix">사철 중앙 배치 확인</div></div>
+      <div class="vc-item warn-item"><div class="vi-code">CMYK_STRUCTURE_DETECTED</div><div class="vi-name">CMYK 색상 감지</div><div class="vi-fix">RGB 변환 검토</div></div>
+      <div class="vc-item warn-item"><div class="vi-code">TRANSPARENCY_DETECTED</div><div class="vi-name">투명도 효과 포함</div><div class="vi-fix">Flatten(평면화) 권장</div></div>
+      <div class="vc-item warn-item"><div class="vi-code">OVERPRINT_DETECTED</div><div class="vi-name">오버프린트 설정</div><div class="vi-fix">인쇄 결과 사전 확인</div></div>
+      <div class="vc-item warn-item"><div class="vi-code">MIXED_PDF</div><div class="vi-name">혼합 PDF 구조</div><div class="vi-fix">분리 업로드 권장</div></div>
+    </div>
+  </div>
+
+  <!-- CMYK 검증 상세 -->
+  <h3 class="sub-title" id="s4-4" style="margin-top:32px"><span style="background:var(--purple)"></span>CMYK 2단계 검증 상세</h3>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px">
+    <div class="info-box blue">
+      <div class="icon">⚡</div>
+      <div class="ib-content">
+        <div class="ib-title">1단계: 구조 스캔 (빠름)</div>
+        PDF 바이너리에서 <code class="inline">/DeviceCMYK</code>, <code class="inline">/ICCBased /N 4</code> 검색<br>
+        CMYK 구조 없음 → RGB 확정, GS 단계 생략
+      </div>
+    </div>
+    <div class="info-box purple" style="background:rgba(168,85,247,.08);border-color:rgba(168,85,247,.2)">
+      <div class="icon">🔬</div>
+      <div class="ib-content">
+        <div class="ib-title" style="color:var(--purple2)">2단계: GS inkcov (정확함)</div>
+        Ghostscript inkcov 디바이스로 페이지별 C/M/Y/K 잉크 커버리지 측정<br>
+        CMY &gt; 0.001 → CMYK 사용 확정. 타임아웃: 5초, 최대 50페이지
+      </div>
+    </div>
+  </div>
+
+  <!-- 해상도 기준 -->
+  <h3 class="sub-title" id="s4-5"><span style="background:var(--cyan)"></span>이미지 해상도 기준</h3>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>유효 해상도 (Effective DPI)</th><th>인쇄 품질</th><th>판정</th></tr></thead>
+      <tbody>
+        <tr><td>300 DPI 이상</td><td>최상 — 인쇄 권장 품질</td><td><span class="tag new">정상</span></td></tr>
+        <tr><td>150 ~ 299 DPI</td><td>양호 — 인쇄 가능</td><td><span class="tag info">경고 없음</span></td></tr>
+        <tr><td>72 ~ 149 DPI</td><td>낮음 — 흐릿하게 인쇄됨</td><td><span class="tag warn">RESOLUTION_LOW 경고</span></td></tr>
+        <tr><td>72 DPI 미만</td><td>매우 낮음 — 교체 필요</td><td><span class="tag error">RESOLUTION_LOW 경고</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="info-box yellow">
+    <div class="icon">💡</div>
+    <div class="ib-content">
+      <div class="ib-title">Effective DPI 계산 공식</div>
+      <strong>Effective DPI</strong> = (이미지 픽셀 수 × 25.4) / 표시 크기(mm)<br>
+      예시: 2480px 이미지를 A4(210mm)에 표시 → (2480 × 25.4) / 210 ≈ <strong>300 DPI</strong>
+    </div>
+  </div>
+
+  <!-- 제본 방식별 규칙 -->
+  <h3 class="sub-title" style="margin-top:28px"><span style="background:var(--green)"></span>제본 방식별 검증 규칙</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>제본 방식</th><th>표지 페이지</th><th>내지 페이지</th><th>책등</th><th>최대 페이지</th></tr></thead>
+      <tbody>
+        <tr><td><strong>무선 제본</strong> (perfect)</td><td>1 또는 4 (펼침)</td><td>4의 배수 필수</td><td><span class="tag new">✅ 필수</span></td><td>제한 없음</td></tr>
+        <tr><td><strong>사철 제본</strong> (saddle)</td><td>1 또는 4 (펼침)</td><td>4의 배수 필수</td><td><span class="tag info">❌ 없음</span></td><td>64페이지</td></tr>
+        <tr><td><strong>스프링 제본</strong> (spring)</td><td>1</td><td>제한 없음</td><td><span class="tag info">❌ 없음</span></td><td>제한 없음</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- 운영 모니터링 (v2.3 신규) -->
+  <h3 class="sub-title" id="s4-7" style="margin-top:36px"><span style="background:var(--green)"></span>운영 모니터링 / 디버깅 <span style="font-size:11px;background:rgba(52,211,153,.15);color:var(--green);border:1px solid var(--green);border-radius:4px;padding:2px 6px;vertical-align:middle;margin-left:6px">v2.3 신규</span></h3>
+
+  <p style="color:var(--text2);margin-bottom:14px;font-size:13px">
+    PHP 측 통합 검증 시 storige 측 동작을 가시화할 수 있는 도구. PHP 팀이 직접 활용 가능.
+  </p>
+
+  <div style="display:grid;grid-template-columns:1fr;gap:12px;margin-bottom:16px">
+    <!-- Sentry -->
+    <div style="background:rgba(168,85,247,.08);border-left:3px solid var(--purple);padding:14px 18px;border-radius:0 8px 8px 0">
+      <div style="font-weight:700;color:var(--purple2);font-size:14px;margin-bottom:6px">🔍 Sentry 운영 에러 추적</div>
+      <div style="color:var(--text2);font-size:13px;line-height:1.7">
+        <strong>활성화</strong>: 2026-05-03 · 4개 앱 모두 (API/Worker/Editor/Admin)<br>
+        <strong>대시보드</strong>: <code class="inline">sentry.io/organizations/papascompany/issues/</code><br>
+        <strong>PHP 측 도움</strong>: <code class="inline">/files/upload/external</code> 또는 <code class="inline">/worker-jobs/*/external</code> 호출 시 storige 내부 5xx 에러는 자동 캡처됨<br>
+        <strong>마스킹</strong>: Authorization · Cookie · X-API-Key · password · token 자동 처리<br>
+        <strong>자동 필터</strong>: 4xx 정상 흐름 / <code class="inline">/health</code> / 노이즈 (ResizeObserver 등) 제외
+      </div>
+    </div>
+
+    <!-- Bull Queue -->
+    <div style="background:rgba(59,130,246,.08);border-left:3px solid var(--blue);padding:14px 18px;border-radius:0 8px 8px 0">
+      <div style="font-weight:700;color:var(--blue2);font-size:14px;margin-bottom:6px">📊 Bull 큐 모니터링</div>
+      <div style="color:var(--text2);font-size:13px;line-height:1.7">
+        <strong>endpoint</strong>: <code class="inline">GET /api/health/queues</code> (JWT 인증)<br>
+        <strong>응답</strong>: 3개 큐 (validation/conversion/synthesis) waiting/active/failed/completed 카운트 + status<br>
+        <strong>status</strong>: <span class="badge" style="background:rgba(34,197,94,.15);color:var(--green)">ok</span> (backlog &lt;5) · <span class="badge" style="background:rgba(234,179,8,.15);color:var(--yellow2)">warning</span> (5~9) · <span class="badge" style="background:rgba(239,68,68,.15);color:var(--red2)">critical</span> (≥10)<br>
+        <strong>자동 알람</strong>: critical 1분 이상 지속 → Sentry warning 발송 (5분 쿨다운)<br>
+        <strong>Admin Dashboard</strong>: 5초 자동 갱신 위젯 표시
+      </div>
+    </div>
+
+    <!-- Public Health -->
+    <div style="background:rgba(6,182,212,.08);border-left:3px solid var(--cyan);padding:14px 18px;border-radius:0 8px 8px 0">
+      <div style="font-weight:700;color:var(--cyan2);font-size:14px;margin-bottom:6px">💓 Public Health Check</div>
+      <div style="color:var(--text2);font-size:13px;line-height:1.7">
+        <strong>endpoint</strong>: <code class="inline">GET /api/health</code> (인증 불필요)<br>
+        <strong>PHP cron 활용</strong>: 5분마다 호출해 storige API 가용성 + 큐 적체 자동 모니터링 가능<br>
+        <strong>응답 포함</strong>: status / uptime / environment / version / queues 요약
+      </div>
+    </div>
+  </div>
+
+  <!-- 사용자 격리 보안 패치 (v2.4 신규) -->
+  <h3 class="sub-title" id="s4-8" style="margin-top:36px"><span style="background:var(--red)"></span>사용자 격리 보안 패치 <span style="font-size:11px;background:rgba(239,68,68,.15);color:var(--red);border:1px solid var(--red);border-radius:4px;padding:2px 6px;vertical-align:middle;margin-left:6px">v2.4 보안</span></h3>
+
+  <p style="color:var(--text2);margin-bottom:14px;font-size:13px">
+    2026-05-03 사용자 격리 권한 검증 강화. PHP 측 <strong>기존 코드는 그대로 작동</strong>하지만 1가지 endpoint 변경 + 점진적 보강 권장.
+  </p>
+
+  <div style="background:rgba(239,68,68,.08);border:2px solid var(--red);padding:14px 18px;border-radius:8px;margin-bottom:16px">
+    <div style="font-weight:700;color:var(--red);margin-bottom:8px;font-size:14px">⚠️ PHP 팀 액션 — 4개 항목</div>
+    <table style="width:100%;font-size:12px">
+      <thead>
+        <tr style="border-bottom:1px solid var(--bg3)">
+          <th style="text-align:left;padding:6px;color:var(--text)">#</th>
+          <th style="text-align:left;padding:6px;color:var(--text)">항목</th>
+          <th style="text-align:left;padding:6px;color:var(--text)">시급도</th>
+          <th style="text-align:left;padding:6px;color:var(--text)">작업량</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td style="padding:6px">16</td><td style="padding:6px"><strong>PDF 다운로드</strong>: <code class="inline">/files/:id/download</code> → <code class="inline">/files/:id/download/external</code></td><td style="padding:6px;color:var(--red)">🔴 즉시</td><td style="padding:6px">5분</td></tr>
+        <tr><td style="padding:6px">17</td><td style="padding:6px"><code class="inline">fileId</code>/<code class="inline">sessionId</code> 클라이언트 노출 검수</td><td style="padding:6px;color:var(--yellow2)">🟡 단기</td><td style="padding:6px">1~2시간</td></tr>
+        <tr><td style="padding:6px">18</td><td style="padding:6px">shop-session에 <code class="inline">orderSeqno</code> 추가</td><td style="padding:6px;color:var(--green)">🟢 호환</td><td style="padding:6px">5분</td></tr>
+        <tr><td style="padding:6px">19</td><td style="padding:6px"><code class="inline">callbackUrl</code> 호스트 화이트리스트</td><td style="padding:6px;color:var(--green)">🟢 자동</td><td style="padding:6px">0분</td></tr>
+      </tbody>
+    </table>
+    <div style="margin-top:10px;font-size:12px;color:var(--text2)">
+      👉 자세한 가이드: <a href="./SECURITY_PATCH_PHP_NOTICE_2026-05-03.html" style="color:var(--red)">SECURITY_PATCH_PHP_NOTICE_2026-05-03.html</a>
+    </div>
+  </div>
+
+  <h4 style="font-size:14px;margin-top:18px;margin-bottom:8px;color:var(--text)">변경된 API endpoint 매트릭스</h4>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>경로</th><th>변경</th><th>인증</th><th>호출 위치</th></tr></thead>
+      <tbody>
+        <tr style="background:rgba(239,68,68,.05)">
+          <td><code class="inline">GET /api/files/:id/download</code></td>
+          <td>🔴 JWT 강제 (이전 Public)</td>
+          <td>JWT Bearer</td>
+          <td>사용자 브라우저</td>
+        </tr>
+        <tr style="background:rgba(52,211,153,.05)">
+          <td><code class="inline">GET /api/files/:id/download/external</code></td>
+          <td>🆕 신규</td>
+          <td>X-API-Key</td>
+          <td>PHP 서버</td>
+        </tr>
+        <tr><td><code class="inline">GET /api/files/:id</code></td><td>🟡 소유자 검증</td><td>JWT Bearer</td><td>본인만</td></tr>
+        <tr><td><code class="inline">GET /api/edit-sessions/:id</code></td><td>🟡 소유자 검증</td><td>JWT Bearer</td><td>본인만</td></tr>
+        <tr><td><code class="inline">GET /api/files?orderSeqno=</code></td><td>🟡 본인 필터 강제</td><td>JWT / X-API-Key</td><td>—</td></tr>
+        <tr><td><code class="inline">POST /api/auth/shop-session</code></td><td>🟢 orderSeqno 옵션 (호환)</td><td>X-API-Key</td><td>PHP 서버</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- 워커 파일 경로 정규화 (v2.2 신규) -->
+  <h3 class="sub-title" id="s4-6" style="margin-top:36px"><span style="background:var(--red)"></span>워커 파일 경로 정규화 <span style="font-size:11px;background:rgba(239,68,68,.15);color:var(--red);border:1px solid var(--red);border-radius:4px;padding:2px 6px;vertical-align:middle;margin-left:6px">v2.2 핫픽스</span></h3>
+
+  <p style="color:var(--text2);margin-bottom:14px;font-size:13px">
+    v2.1 이전 워커는 API의 <code class="inline">fileUrl</code> ('/storage/...' 형식)을 절대경로로 잘못 처리해 <strong style="color:var(--red)">ENOENT</strong> 오류 발생. v2.2부터 검증/합성/변환 3개 워커 서비스 모두 정규화.
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>입력 형태</th><th>해석 결과 (Docker)</th><th>설명</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><code class="inline">/storage/uploads/abc.pdf</code></td>
+          <td><code class="inline">/app/storage/uploads/abc.pdf</code></td>
+          <td>API의 <code class="inline">fileUrl</code> 형식 — v2.2부터 정상 처리</td>
+        </tr>
+        <tr>
+          <td><code class="inline">storage/uploads/abc.pdf</code></td>
+          <td><code class="inline">/app/storage/uploads/abc.pdf</code></td>
+          <td>DB의 <code class="inline">filePath</code> 형식</td>
+        </tr>
+        <tr>
+          <td><code class="inline">/app/storage/abc.pdf</code></td>
+          <td><code class="inline">/app/storage/abc.pdf</code> (그대로)</td>
+          <td>일반 절대 경로</td>
+        </tr>
+        <tr>
+          <td><code class="inline">https://...</code></td>
+          <td>axios 다운로드</td>
+          <td>외부 URL</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div style="background:rgba(52,211,153,.08);border-left:3px solid var(--green);padding:10px 14px;border-radius:0 6px 6px 0;margin-top:12px;font-size:13px">
+    <strong style="color:var(--green)">✅ PHP 권장 사용법:</strong>&nbsp;
+    파일 업로드 응답의 <code class="inline">fileId</code> (UUID) 를 검증/합성 요청에 전달하세요. API가 DB에서 안전한 <code class="inline">filePath</code>를 자동 조회합니다.
+  </div>
+</section>
+
+<!-- ─────────────── ⑤ 환경 변수 ─────────────── -->
+<section class="section" id="s5">
+  <h2 class="section-title">
+    <span class="num" style="background:rgba(6,182,212,.2);color:var(--cyan2)">⑤</span>
+    환경 변수 레퍼런스
+  </h2>
+
+  <h3 class="sub-title"><span style="background:var(--blue)"></span>Storige API</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>변수명</th><th>기본값</th><th>필수</th><th>설명</th></tr></thead>
+      <tbody>
+        <tr><td><code class="inline">JWT_SECRET</code></td><td>-</td><td><span class="tag error">필수</span></td><td>JWT 서명 키 (32자 이상)</td></tr>
+        <tr><td><code class="inline">API_KEYS</code></td><td>-</td><td><span class="tag error">필수</span></td><td>외부 API Key 목록 (쉼표 구분)</td></tr>
+        <tr><td><code class="inline">DATABASE_PASSWORD</code></td><td>-</td><td><span class="tag error">필수</span></td><td>MariaDB 패스워드</td></tr>
+        <tr><td><code class="inline">CORS_ORIGIN</code></td><td>*</td><td><span class="tag warn">권장</span></td><td>허용 도메인 (bookmoa 도메인 추가)</td></tr>
+        <tr><td><code class="inline">JWT_EXPIRES_IN</code></td><td>1h</td><td>-</td><td>JWT 유효 시간</td></tr>
+        <tr><td><code class="inline">UPLOAD_PATH</code></td><td>./storage/uploads</td><td>-</td><td>파일 업로드 경로</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3 class="sub-title"><span style="background:var(--green)"></span>Storige Worker</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>변수명</th><th>docker-compose 설정값</th><th>필수</th><th>설명</th></tr></thead>
+      <tbody>
+        <tr><td><code class="inline">API_BASE_URL</code></td><td>http://api:4000/api</td><td><span class="tag error">필수</span></td><td>Storige API 주소 (컨테이너 네임)</td></tr>
+        <tr><td><code class="inline">WORKER_API_KEY</code></td><td>${WORKER_API_KEY}</td><td><span class="tag error">필수</span></td><td>Worker → API 인증 키 (.env 설정 필수)</td></tr>
+        <tr><td><code class="inline">WORKER_STORAGE_PATH</code></td><td>/app</td><td><span class="tag error">필수</span></td><td>스토리지 루트 경로 (파일 읽기 기준점)</td></tr>
+        <tr><td><code class="inline">GHOSTSCRIPT_PATH</code></td><td>/usr/bin/gs</td><td>-</td><td>Ghostscript 실행 경로</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3 class="sub-title"><span style="background:var(--purple)"></span>Bookmoa PHP (Apache/Nginx)</h3>
+  <div class="code-block">
+    <div class="cb-header">
+      <div class="cb-dots"><div class="cb-dot" style="background:#ff5f57"></div><div class="cb-dot" style="background:#ffbd2e"></div><div class="cb-dot" style="background:#28c840"></div></div>
+      <div class="cb-lang">Apache · httpd.conf 또는 .htaccess</div>
+    </div>
+    <pre><span class="comment"># Storige 연동 설정</span>
+<span class="keyword">SetEnv</span> <span class="type">STORIGE_API_URL</span>       <span class="string">"https://storige.yourdomain.com/api"</span>
+<span class="keyword">SetEnv</span> <span class="type">STORIGE_API_KEY</span>       <span class="string">"your-secure-api-key-here"</span>
+<span class="keyword">SetEnv</span> <span class="type">STORIGE_EDITOR_JS</span>     <span class="string">"https://cdn.yourdomain.com/editor-bundle.iife.js"</span>
+<span class="keyword">SetEnv</span> <span class="type">STORIGE_EDITOR_CSS</span>    <span class="string">"https://cdn.yourdomain.com/editor-bundle.css"</span></pre>
+  </div>
+
+  <div class="info-box green" style="margin-top:8px">
+    <div class="icon">✅</div>
+    <div class="ib-content">
+      <div class="ib-title">API_KEYS와 WORKER_API_KEY는 동일한 .env 파일에 관리</div>
+      <code class="inline">API_KEYS</code>에 bookmoa용 키와 WORKER_API_KEY 모두 등록 필요.<br>
+      예: <code class="inline">API_KEYS=bookmoa_prod_key_xxx,worker_internal_key_yyy</code>
+    </div>
+  </div>
+</section>
+
+<!-- 푸터 -->
+<div style="border-top:1px solid var(--border);margin-top:48px;padding:24px 0;color:var(--text3);font-size:12px">
+  <div style="margin-bottom:6px"><strong style="color:var(--text2)">Storige × Bookmoa 시스템 통합 문서</strong> · v2.4 · 2026-05-03 (보안 패치 A-E 반영)</div>
+  <div>저장 경로: <code style="font-family:monospace;color:var(--text3)">docs/SYSTEM_INTEGRATION_OVERVIEW.md</code> · <code style="font-family:monospace;color:var(--text3)">docs/SYSTEM_INTEGRATION_OVERVIEW.html</code></div>
+  <div style="margin-top:6px">최신 API 스펙: <code style="font-family:monospace;color:var(--text3)">http://localhost:4000/api/docs</code> (Swagger UI)</div>
+</div>
+
+</main>
+</div>
+
+<script>
+  // 사이드바 활성화
+  const sections = document.querySelectorAll('section[id], h3[id]');
+  const links = document.querySelectorAll('.sidebar a');
+  const obs = new IntersectionObserver(entries => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        links.forEach(l => l.classList.remove('active'));
+        const match = document.querySelector(`.sidebar a[href="#${e.target.id}"]`);
+        if (match) match.classList.add('active');
+      }
+    });
+  }, { rootMargin: '-20% 0px -70% 0px' });
+  sections.forEach(s => obs.observe(s));
+</script>
+</body>
+</html>

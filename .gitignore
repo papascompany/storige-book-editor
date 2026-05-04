@@ -74,3 +74,6 @@ apps/*/vite.config.js
 apps/*/vite.config.d.ts
 apps/*/vite.embed.config.js
 apps/*/vite.embed.config.d.ts
+
+# DB init script 운영 백업 (별도 백업 위치에 보관, git 추적 X)
+docker/mysql/init.sql.bak.*
