@@ -1,9 +1,22 @@
 # Storige × Bookmoa 시스템 통합 문서
 
 > **작성일**: 2026-05-02  
-> **최종 수정**: 2026-05-03 (v2.4 — 사용자 격리 보안 패치 A-E 반영)  
-> **버전**: v2.4  
+> **최종 수정**: 2026-05-04 (v2.5 — 운영 인프라 + 모니터링 스택 + Node 22 추가)  
+> **버전**: v2.5  
 > **대상**: PHP 개발자, 운영자, 기술 검토자
+
+> ### 🔄 v2.5 변경 이력 (2026-05-04)
+> - **런타임 통일**: Node 20 → **Node 22 LTS** (Jod, EOL 2027-04-30) + canvas dead dep 제거
+> - **모니터링 스택 추가** (P2-8 옵션 C 하이브리드)
+>   - Prometheus + Grafana + node-exporter + redis-exporter
+>   - 대시보드: `https://api.papascompany.co.kr/grafana/`
+> - **로그 일원화 추가** (P2-10): Pino + Loki + Promtail (14일 보존)
+> - **Worker 합성 E2E 검증 완료**: perfect/merged · perfect/separate · saddle 3 시나리오
+> - **결함 #12 수정**: Products `findAll/findOne/findByProductId` templateSet relation join
+> - **결함 #13 수정**: Conversion `outputFileUrl` `/storage/converted/...` 형식 정규화
+> - **Admin Playwright E2E 확장** (P2-7): 5 spec / 15 테스트 (12 passed / 3 skipped)
+> - **PHP 통합 가이드 v3.0** 통합 ([`PHP_INTEGRATION_FINAL_v3.md`](./PHP_INTEGRATION_FINAL_v3.md) · [HTML](./PHP_INTEGRATION_FINAL_v3.html))
+> - 종합 마스터 트래커 신설: [`MASTER_STATUS_2026-05-04.md`](./MASTER_STATUS_2026-05-04.md) ([HTML](./MASTER_STATUS_2026-05-04.html))
 
 > ### 🔄 v2.4 변경 이력 (2026-05-03 후반)
 > - **사용자 격리 보안 패치 (Patch A-E)** 적용 — 5개 결함 수정

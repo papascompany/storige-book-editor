@@ -29,7 +29,7 @@ storige/
 
 ### 필수 요구사항
 
-- Node.js >= 20.0.0
+- **Node.js >= 22.0.0** (Node 22 LTS Jod, EOL 2027-04-30)
 - pnpm >= 9.0.0
 - Docker & Docker Compose (프로덕션 배포용)
 
@@ -81,13 +81,37 @@ docker-compose logs -f
 | Admin | 3001 | 관리자 (개발) |
 | API | 4000 | REST API |
 | Worker | 4001 | PDF 워커 |
-| MySQL | 3306 | 데이터베이스 |
+| MariaDB | 3306 | 데이터베이스 |
 | Redis | 6379 | 큐 & 캐시 |
+| Prometheus | (내부) | 메트릭 수집 (P2-8) |
+| Grafana | nginx `/grafana/` | 메트릭 + 로그 대시보드 |
+| Loki | (내부) | 로그 일원화 (P2-10) |
 
 ## 📚 문서
 
-- [Architecture Plan](./.claude/plans/snuggly-soaring-piglet.md)
-- [PRD](./PRD.md)
+### ⭐ 마스터 트래커
+- [**MASTER_STATUS_2026-05-04.md**](./docs/MASTER_STATUS_2026-05-04.md) — 전체 개발 상태 통합 (96% 완료)
+- [**MASTER_STATUS_2026-05-04.html**](./docs/MASTER_STATUS_2026-05-04.html) — 한 화면 시각화 대시보드
+
+### 🤝 PHP 통합
+- [PHP_INTEGRATION_FINAL_v3.md](./docs/PHP_INTEGRATION_FINAL_v3.md) / [HTML](./docs/PHP_INTEGRATION_FINAL_v3.html) — PHP 팀 전달용 최종 가이드 v3.0
+
+### 🏗️ 시스템 설계
+- [SYSTEM_INTEGRATION_OVERVIEW.md](./docs/SYSTEM_INTEGRATION_OVERVIEW.md) — 시스템 통합 개요 v2.5
+- [PRD.md](./docs/PRD.md) — 제품 요구사항
+- [SYSTEM_ARCHITECTURE.md](./docs/SYSTEM_ARCHITECTURE.md) — 아키텍처 명세
+
+### 🚀 운영
+- [DEPLOYMENT.md](./docs/DEPLOYMENT.md) — 배포 가이드 + 모니터링 스택
+- [SENTRY_SETUP.md](./docs/SENTRY_SETUP.md) — Sentry 설정
+- [SENTRY_SLACK_SETUP.md](./docs/SENTRY_SLACK_SETUP.md) — Slack 알림 연결
+- [P2_8_METRICS_DASHBOARD_2026-05-04.md](./docs/P2_8_METRICS_DASHBOARD_2026-05-04.md) — Grafana 대시보드
+- [P2_10_LOG_AGGREGATION_2026-05-04.md](./docs/P2_10_LOG_AGGREGATION_2026-05-04.md) — Loki 로그 일원화
+- [FUTURE_UPDATES.md](./docs/FUTURE_UPDATES.md) — 향후 인프라 업데이트 트래커
+
+### 🔒 보안
+- [SECURITY_PATCH_PHP_NOTICE_2026-05-03.md](./docs/SECURITY_PATCH_PHP_NOTICE_2026-05-03.md) — 보안 패치 A-E PHP 통보
+- [USER_IDENTITY_AUDIT_2026-05-03.md](./docs/USER_IDENTITY_AUDIT_2026-05-03.md) — 사용자 식별 감사
 
 ## 🛠️ 개발 스택
 
@@ -101,19 +125,26 @@ docker-compose logs -f
 - TailwindCSS
 
 ### Backend
-- NestJS 10
-- TypeORM
-- MySQL 8.0
-- Redis
+- NestJS 10 (Node 22 LTS)
+- TypeORM + MariaDB 11.2
+- Redis 7.2
 - Bull (Queue)
 - JWT Authentication
+- Pino logger (구조화 JSON)
+- prom-client (Prometheus metrics)
 
 ### Worker
-- NestJS 10
+- NestJS 10 (Node 22 LTS)
 - Bull (Consumer)
 - pdf-lib
 - Sharp
 - Ghostscript
+
+### Monitoring (P2-8 + P2-10)
+- Prometheus 2.55.1 + Grafana 11.2.2
+- Loki 3.2.1 + Promtail 3.2.1 (Docker json-file 수집)
+- Sentry (4 프로젝트, Slack 알림 연동 가능)
+- node-exporter / redis-exporter
 
 ## 📝 라이센스
 
