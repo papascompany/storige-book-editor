@@ -18,6 +18,7 @@ import { ConfigService } from '@nestjs/config';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import cookieParser from 'cookie-parser';
+import { Logger as PinoLogger } from 'nestjs-pino';
 import { AppModule } from './app.module';
 import { PayloadTooLargeResponseDto } from './common/dto/error-response.dto';
 import { SentryExceptionFilter } from './sentry/sentry.filter';
@@ -36,7 +37,13 @@ process.on('unhandledRejection', (reason: any) => {
 });
 
 async function bootstrap() {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    bufferLogs: true, // pino logger 등록 전까지 NestJS 기본 로그 버퍼링
+  });
+
+  // P2-10 Pino logger를 NestJS 전역 logger로 사용 (AppModule LoggerModule.forRoot 결과)
+  const pinoLogger = app.get(PinoLogger);
+  app.useLogger(pinoLogger);
 
   // Body parser size limit (캔버스 데이터 등 대용량 JSON 허용)
   const configService = app.get(ConfigService);
@@ -87,7 +94,7 @@ async function bootstrap() {
       } catch {
         // origin 파싱 실패는 차단
       }
-      console.log(`CORS blocked for origin: ${origin}`);
+      pinoLogger.warn({ origin }, 'CORS blocked');
       callback(null, false);
     },
     credentials: true,
@@ -131,9 +138,10 @@ async function bootstrap() {
   const port = process.env.PORT || 4000;
   await app.listen(port);
 
-  console.log(`🚀 API Server running on http://localhost:${port}`);
-  console.log(`📚 API Documentation: http://localhost:${port}/api/docs`);
-  console.log(`📦 Max body size: ${maxBodySize}`);
+  pinoLogger.log(
+    { port, docsUrl: `http://localhost:${port}/api/docs`, maxBodySize },
+    `🚀 API Server running on http://localhost:${port}`,
+  );
 }
 
 bootstrap();

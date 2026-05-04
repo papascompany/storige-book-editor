@@ -1,0 +1,60 @@
+# Promtail 설정 (P2-10)
+# Docker json-file logs 수집 → Loki 푸시
+# 컨테이너 라벨로 service 구분
+
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+  log_level: warn
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  # Docker json-file logs (storige-* 컨테이너만)
+  - job_name: storige-containers
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 10s
+        filters:
+          - name: name
+            values:
+              - storige-api
+              - storige-worker
+              - storige-nginx
+              - storige-mariadb
+              - storige-redis
+    relabel_configs:
+      # 컨테이너 이름 → service 라벨
+      - source_labels: [__meta_docker_container_name]
+        regex: '/?(.*)'
+        target_label: container
+      - source_labels: [__meta_docker_container_name]
+        regex: '/?storige-(.*)'
+        target_label: service
+      # 이미지명 라벨
+      - source_labels: [__meta_docker_container_log_stream]
+        target_label: stream
+    pipeline_stages:
+      # API/Worker는 pino JSON → 파싱해서 level/msg 분리
+      - match:
+          selector: '{service=~"api|worker"}'
+          stages:
+            - json:
+                expressions:
+                  level: level
+                  msg: msg
+                  time: time
+                  app: app
+            - labels:
+                level:
+                app:
+            - timestamp:
+                source: time
+                format: UnixMs
+                fallback_formats:
+                  - RFC3339Nano
+                  - UnixMs

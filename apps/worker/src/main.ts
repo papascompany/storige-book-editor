@@ -12,6 +12,7 @@ import { initSentry, Sentry } from './sentry/sentry.init';
 initSentry('storige-worker');
 
 import { NestFactory } from '@nestjs/core';
+import { Logger as PinoLogger } from 'nestjs-pino';
 import { AppModule } from './app.module';
 
 // Unhandled rejection 캐치 + Sentry 전송
@@ -26,13 +27,19 @@ process.on('uncaughtException', (err) => {
 });
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+
+  // P2-10 Pino logger를 NestJS 전역 logger로 사용
+  const pinoLogger = app.get(PinoLogger);
+  app.useLogger(pinoLogger);
 
   const port = process.env.PORT || 4001;
   await app.listen(port);
 
-  console.log(`🔧 Worker Service running on http://localhost:${port}`);
-  console.log(`📋 Waiting for jobs from Redis queue...`);
+  pinoLogger.log(
+    { port },
+    `🔧 Worker Service running on http://localhost:${port} — waiting for Bull jobs`,
+  );
 }
 
 bootstrap();

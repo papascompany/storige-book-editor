@@ -4,6 +4,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BullModule } from '@nestjs/bull';
 import { ScheduleModule } from '@nestjs/schedule';
+import { LoggerModule } from 'nestjs-pino';
 import { AuthModule } from './auth/auth.module';
 import { TemplatesModule } from './templates/templates.module';
 import { LibraryModule } from './library/library.module';
@@ -25,6 +26,7 @@ if (process.env.BOOKMOA_DB_PASSWORD) {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { BookmoaModule } = require('./bookmoa/bookmoa.module');
   conditionalModules.push(BookmoaModule);
+  // pino logger는 모듈 로드 시점에 아직 초기화 전이라 console로 emit (1회성 startup info)
   console.log('[AppModule] Bookmoa integration enabled');
 } else {
   console.log('[AppModule] Bookmoa integration disabled (BOOKMOA_DB_PASSWORD not set)');
@@ -39,6 +41,43 @@ if (process.env.BOOKMOA_DB_PASSWORD) {
         `.env.${process.env.NODE_ENV || 'development'}`,
         '.env',
       ],
+    }),
+
+    // P2-10 구조화 로깅 (Pino → JSON stdout → Promtail → Loki)
+    LoggerModule.forRoot({
+      pinoHttp: {
+        // production: JSON 한 줄, development: pretty
+        transport:
+          process.env.NODE_ENV === 'production'
+            ? undefined
+            : {
+                target: 'pino-pretty',
+                options: { singleLine: true, translateTime: 'SYS:HH:MM:ss' },
+              },
+        level: process.env.LOG_LEVEL || (process.env.NODE_ENV === 'production' ? 'info' : 'debug'),
+        // 헬스체크 / 메트릭 / static 요청 로그 제외 (소음 감소)
+        autoLogging: {
+          ignore: (req) => {
+            const url = (req as any).url || '';
+            return (
+              url.startsWith('/api/health/metrics') ||
+              url === '/api/health' ||
+              url === '/api/health/live' ||
+              url === '/api/health/ready'
+            );
+          },
+        },
+        // 운영에서 식별용 base label (Loki 파싱 시 활용)
+        base: { app: 'storige-api', env: process.env.NODE_ENV || 'development' },
+        serializers: {
+          // req/res에서 민감 헤더 제거
+          req: (req) => ({
+            method: req.method,
+            url: req.url,
+            id: req.id,
+          }),
+        },
+      },
     }),
 
     // Database (MariaDB)
