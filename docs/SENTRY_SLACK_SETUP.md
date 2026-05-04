@@ -6,6 +6,17 @@
 
 ---
 
+## 🚀 자동화 가능 여부
+
+| 단계 | 자동화 | 담당 |
+|------|--------|------|
+| Step 1: Slack OAuth 인증 | ❌ | **사용자 직접** (Sentry/Slack 관리자 권한 필요) |
+| Step 2: Alert Rules 추가 | ❌ | **사용자 직접** (Sentry UI에서 4개 룰 등록) |
+| Step 3: smoke test 실행 | ✅ | `scripts/sentry-slack-smoke-test.sh` |
+| 코드 사이드 태그 정합성 | ✅ 검증 완료 | `alert.type=backlog/failed`, `job.type/queue/id` 모두 운영 코드와 일치 |
+
+---
+
 ## 📋 사전 준비
 
 - ✅ Sentry 계정 (활성화 완료)
@@ -107,26 +118,39 @@ Then:
 
 ## Step 3: 테스트 (smoke test)
 
-각 프로젝트 알림이 정상 작동하는지 확인:
+### 🤖 자동 스크립트 (권장)
 
-### API 테스트
+`CLAUDE.local.md` 의 admin 비밀번호를 환경변수로 전달해 한 번에 실행:
+
 ```bash
-# 의도적 5xx 에러 — Sentry 캡처되어야 함
-curl -X POST https://api.papascompany.co.kr/api/some-trigger-error
+ADMIN_PASS='r46e...TLK1' ./scripts/sentry-slack-smoke-test.sh
 ```
-→ 1~2초 내 Slack 채널에 알림 도착해야 함
 
-### 큐 적체 테스트 (시뮬레이션)
-1. Admin 워커 테스트 페이지에서 잘못된 PDF 10개 연속 업로드
-2. Bull 큐 적체 발생 → 1분 후 QueueMonitorService가 알람 전송
-3. Slack에 `[QueueAlert] pdf-validation backlog: waiting=10` 메시지 도착
+스크립트가 자동 발사하는 이벤트:
+1. **Worker conversion 잡 실패** — 잘못된 fileUrl로 잡 생성 → ENOENT → Sentry `storige-worker` 프로젝트로 전송
+   - 태그: `alert.type=failed`, `job.type=convert`, `job.queue=pdf-conversion`, `job.id=<uuid>`
+   - **Rule 3 트리거**
+2. 콘솔에 발사 결과 출력 + Slack 도착 확인 안내
 
-### 프론트엔드 테스트 (브라우저 콘솔)
+### 🖱 프론트엔드 수동 테스트 (브라우저 콘솔)
+
+OAuth + Rules 설정 후 다음 사이트 콘솔에 입력:
+
 ```javascript
-// editor 또는 admin에서
-throw new Error('Sentry Slack test from editor')
+// https://editor.papascompany.co.kr 콘솔
+throw new Error('Sentry Slack smoke test - editor')
+
+// https://admin.papascompany.co.kr 콘솔
+throw new Error('Sentry Slack smoke test - admin')
 ```
-→ Slack에 storige-editor 이슈 알림 도착
+→ Slack에 storige-editor / storige-admin 이슈 알림 도착 (**Rule 1 트리거**)
+
+### 📈 큐 적체 테스트 (선택, 시간 오래 걸림)
+
+운영 worker는 처리 속도가 빨라 자연 적체가 어려움. 강제 검증 필요 시:
+- Admin 워커 테스트 페이지에서 잘못된 PDF 11개+ 동시 업로드
+- 1분 후 QueueMonitorService가 backlog 감지 → `[QueueAlert] pdf-validation backlog: waiting=11`
+- **Rule 4 트리거** (`alert.type=backlog`)
 
 ---
 
