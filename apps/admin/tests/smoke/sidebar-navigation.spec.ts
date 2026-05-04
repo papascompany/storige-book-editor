@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { ADMIN_PASSWORD, loginAsAdmin } from '../_support/auth';
 
 /**
  * Smoke test — 사이드바 메뉴 네비게이션
@@ -9,20 +10,14 @@ import { test, expect } from '@playwright/test';
  *
  * Skip: 로그인 인증 필요 (E2E_ADMIN_PASSWORD 미설정 시 전체 skip)
  */
-const ADMIN_EMAIL = process.env.E2E_ADMIN_EMAIL || 'admin@storige.com';
-const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD || '';
 
 test.describe('Sidebar Navigation', () => {
-  test.beforeEach(async ({ page }) => {
+  test.beforeEach(async ({ page }, testInfo) => {
     if (!ADMIN_PASSWORD) {
-      test.skip(true, 'E2E_ADMIN_PASSWORD env 미설정');
+      testInfo.skip(true, 'E2E_ADMIN_PASSWORD env 미설정');
       return;
     }
-    await page.goto('/login');
-    await page.fill('input[type="email"], input[name="email"]', ADMIN_EMAIL);
-    await page.fill('input[type="password"]', ADMIN_PASSWORD);
-    await page.getByRole('button', { name: /로그인|login/i }).first().click();
-    await page.waitForLoadState('networkidle');
+    await loginAsAdmin(page);
   });
 
   test('navigates to library shapes page', async ({ page }) => {
@@ -55,7 +50,9 @@ test.describe('Sidebar Navigation', () => {
     if (await bgItem.isVisible().catch(() => false)) {
       await bgItem.click();
       // 배경 관리 페이지에 카테고리 필터 Select 존재 확인
-      await expect(page.getByPlaceholder('카테고리 필터').first()).toBeVisible({ timeout: 5000 });
+      await expect(
+        page.locator('.ant-select-selection-placeholder', { hasText: '카테고리 필터' }).first(),
+      ).toBeVisible({ timeout: 5000 });
     }
   });
 
