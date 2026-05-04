@@ -49,6 +49,11 @@ scrape_configs:
                   msg: msg
                   time: time
                   app: app
+            # Pino 숫자 level → 문자열 변환 (대시보드 multi-select 변수와 정합)
+            # 10=trace 20=debug 30=info 40=warn 50=error 60=fatal
+            - template:
+                source: level
+                template: '{{ if eq .Value "60" }}fatal{{ else if eq .Value "50" }}error{{ else if eq .Value "40" }}warn{{ else if eq .Value "30" }}info{{ else if eq .Value "20" }}debug{{ else if eq .Value "10" }}trace{{ else }}{{ .Value }}{{ end }}'
             - labels:
                 level:
                 app:
