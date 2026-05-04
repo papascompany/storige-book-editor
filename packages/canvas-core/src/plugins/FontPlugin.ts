@@ -5,6 +5,7 @@ import { PluginBase } from '../plugin'
 import { parseColorValue } from '../utils'
 import { convertSvgTextToPath } from '../converters/svgTextToPath'
 import { validateTextGlyphs as validateGlyphs } from '../converters/validateGlyphs'
+import { dlog, dwarn } from '../utils/debugLog'
 
 // FontSource 인터페이스 정의 (src 사용)
 interface FontSource {
@@ -17,7 +18,7 @@ const normalizeToNFC = (text: string): string => {
   try {
     return text.normalize('NFC')
   } catch (e) {
-    console.warn('NFC 정규화 실패:', text, e)
+    dwarn('font', 'NFC 정규화 실패:', text, e)
     return text
   }
 }
@@ -26,7 +27,7 @@ const normalizeToNFD = (text: string): string => {
   try {
     return text.normalize('NFD')
   } catch (e) {
-    console.warn('NFD 정규화 실패:', text, e)
+    dwarn('font', 'NFD 정규화 실패:', text, e)
     return text
   }
 }
@@ -45,7 +46,7 @@ const normalizeFontName = (fontName: string): string => {
   try {
     return normalizeToNFD(fontName.trim())
   } catch (e) {
-    console.warn('폰트명 정규화 실패:', fontName, e)
+    dwarn('font', '폰트명 정규화 실패:', fontName, e)
     return fontName.trim()
   }
 }
@@ -78,7 +79,7 @@ const findFontVariantMatch = (targetName: string, loadedFonts: Map<string, any>)
     for (const targetVar of targetVariants) {
       for (const loadedVar of loadedVariants) {
         if (targetVar === loadedVar) {
-          console.log(`✅ 폰트 매칭 성공: ${targetName} → ${loadedName}`)
+          dlog('font', `✅ 폰트 매칭 성공: ${targetName} → ${loadedName}`)
           return loadedName
         }
       }
@@ -108,7 +109,7 @@ class FontPlugin extends PluginBase {
   constructor(canvas: fabric.Canvas, editor: Editor, fontList: FontSource[], defaultFont: string) {
     super(canvas, editor, {})
 
-    console.log('create fonts', fontList.length)
+    dlog('font', 'create fonts', fontList.length)
     this.createFontCSS(fontList)
       .then(() => {
         // CSS 적용 후 기본 폰트와 주요 폰트들을 실제로 로드
@@ -163,7 +164,7 @@ class FontPlugin extends PluginBase {
   private async loadFontNative(fontName: string): Promise<void> {
     if (!document.fonts) {
       // CSS Font Loading API 미지원 브라우저 (폴백)
-      console.warn('CSS Font Loading API 미지원, FontFaceObserver 사용')
+      dwarn('font', 'CSS Font Loading API 미지원, FontFaceObserver 사용')
       const fontFaceObserver = new FontFaceObserver(fontName)
       const testText = createNormalizedTestText()
       await fontFaceObserver.load(testText, 5000)
@@ -242,7 +243,7 @@ class FontPlugin extends PluginBase {
 
     // 폰트가 로드되지 않았으면 먼저 로드
     if (this.fontLoadingStatus.get(targetFont) !== 'loaded') {
-      console.warn(`폰트가 로드되지 않음, 먼저 로드 시도: ${targetFont}`)
+      dwarn('font', `폰트가 로드되지 않음, 먼저 로드 시도: ${targetFont}`)
       await this.ensureFontLoaded(targetFont)
     }
 
@@ -284,11 +285,11 @@ class FontPlugin extends PluginBase {
   private async getTtfBuffer(fontFamily: string): Promise<ArrayBuffer> {
     // 캐시 확인
     if (this.ttfBufferCache.has(fontFamily)) {
-      console.log(`✅ TTF buffer cache hit: ${fontFamily}`)
+      dlog('font', `✅ TTF buffer cache hit: ${fontFamily}`)
       return this.ttfBufferCache.get(fontFamily)!
     }
 
-    console.log(`📥 TTF buffer cache miss, fetching: ${fontFamily}`)
+    dlog('font', `📥 TTF buffer cache miss, fetching: ${fontFamily}`)
 
     // WOFF2 URL 가져오기
     const fontUrl = this._getWoff2FontUrl(fontFamily)
@@ -312,7 +313,7 @@ class FontPlugin extends PluginBase {
     }
 
     const ttfBuffer = await response.arrayBuffer()
-    console.log(`✅ TTF buffer received: ${ttfBuffer.byteLength} bytes`)
+    dlog('font', `✅ TTF buffer received: ${ttfBuffer.byteLength} bytes`)
 
     // 캐시에 저장
     this.ttfBufferCache.set(fontFamily, ttfBuffer)
@@ -336,7 +337,7 @@ class FontPlugin extends PluginBase {
     textObj: fabric.Text | fabric.IText | fabric.Textbox
   ): Promise<fabric.Object | null> {
     try {
-      console.log(`🔄 SVG 기반 텍스트 벡터화 시작: "${textObj.text}" (${textObj.fontFamily})`)
+      dlog('font', `🔄 SVG 기반 텍스트 벡터화 시작: "${textObj.text}" (${textObj.fontFamily})`)
 
       // 1. textObj를 SVG로 변환
       const svgString = textObj.toSVG()
@@ -359,7 +360,7 @@ class FontPlugin extends PluginBase {
         })
       }
 
-      console.log(`📦 벡터화에 필요한 폰트: ${Array.from(fontsToLoad).join(', ')}`)
+      dlog('font', `📦 벡터화에 필요한 폰트: ${Array.from(fontsToLoad).join(', ')}`)
 
       // 3. 모든 폰트의 TTF buffer를 미리 로드 (캐싱됨)
       // 이렇게 하면 toSVG()에서 생성된 SVG 내의 각 tspan의 font-family가
@@ -367,9 +368,9 @@ class FontPlugin extends PluginBase {
       for (const font of fontsToLoad) {
         try {
           await this.getTtfBuffer(font)
-          console.log(`✅ TTF buffer loaded for vectorization: ${font}`)
+          dlog('font', `✅ TTF buffer loaded for vectorization: ${font}`)
         } catch (err) {
-          console.warn(`⚠️ TTF buffer 로드 실패, 스킵: ${font}`, err)
+          dwarn('font', `⚠️ TTF buffer 로드 실패, 스킵: ${font}`, err)
         }
       }
 
@@ -380,7 +381,7 @@ class FontPlugin extends PluginBase {
       // 주의: convertSvgTextToPath는 현재 단일 폰트만 지원
       // styles 속성의 다른 폰트들은 SVG의 tspan 요소에 font-family로 인라인 포함되며,
       // 브라우저 렌더링 시 이미 로드된 폰트가 사용됨
-      console.log('🔄 Converting SVG text to paths...')
+      dlog('font', '🔄 Converting SVG text to paths...')
       const { svg: pathSvg } = await convertSvgTextToPath(mainTtfBuffer, svgString)
 
       // 4. Fabric.js로 로드
@@ -393,7 +394,7 @@ class FontPlugin extends PluginBase {
           }
 
           const group = new fabric.Group(objects)
-          console.log(`✅ 텍스트 벡터화 완료: "${textObj.text}"`)
+          dlog('font', `✅ 텍스트 벡터화 완료: "${textObj.text}"`)
           resolve(group)
         })
       })
@@ -437,7 +438,7 @@ class FontPlugin extends PluginBase {
         // 기본 폰트를 실제로 로드
         await this.loadFont(defaultFontInfo)
       } else {
-        console.warn(`❌ 기본 폰트를 fontList에서 찾을 수 없음: ${defaultFont}`)
+        dwarn('font', `❌ 기본 폰트를 fontList에서 찾을 수 없음: ${defaultFont}`)
       }
     } catch (err) {
       console.error('필수 폰트 로딩 중 오류:', err)
@@ -507,7 +508,7 @@ class FontPlugin extends PluginBase {
         await this.processLoadingQueue(name, true)
         return
       } catch (err) {
-        console.warn(`폰트 로딩 시도 ${i + 1}/${retries} 실패:`, name, err)
+        dwarn('font', `폰트 로딩 시도 ${i + 1}/${retries} 실패:`, name, err)
 
         if (i === retries - 1) {
           // 최종 실패 시 처리
@@ -569,13 +570,13 @@ class FontPlugin extends PluginBase {
 
       style.textContent = code
 
-      console.log('📝 폰트 CSS 생성 완료 (NFD 기본 사용)')
+      dlog('font', '📝 폰트 CSS 생성 완료 (NFD 기본 사용)')
 
       // CSS가 완전히 적용될 시간을 충분히 제공
       requestAnimationFrame(() => {
         // 브라우저가 CSS를 파싱하고 폰트 정보를 준비할 시간 제공
         setTimeout(() => {
-          console.log('📝 폰트 CSS 적용 대기 완료')
+          dlog('font', '📝 폰트 CSS 적용 대기 완료')
           resolve()
         }, 300) // 100ms에서 300ms로 증가
       })
@@ -593,18 +594,18 @@ class FontPlugin extends PluginBase {
     fontFamily: string
   ): Promise<{ hasMissingGlyphs: boolean; missingChars: string[] }> {
     try {
-      console.log(`🔍 [validateTextGlyphs] 시작 - 폰트: "${fontFamily}", 텍스트 길이: ${text.length}`)
+      dlog('font', `🔍 [validateTextGlyphs] 시작 - 폰트: "${fontFamily}", 텍스트 길이: ${text.length}`)
 
       // 1. TTF buffer 가져오기 (캐싱됨)
       const ttfBuffer = await this.getTtfBuffer(fontFamily)
-      console.log(`✅ TTF buffer retrieved: ${ttfBuffer.byteLength} bytes`)
+      dlog('font', `✅ TTF buffer retrieved: ${ttfBuffer.byteLength} bytes`)
 
       // 2. 클라이언트 측 글리프 검증 실행
       const result = await validateGlyphs(ttfBuffer, text)
 
-      console.log(`✅ [validateTextGlyphs] 검증 완료 - 미지원 문자 수: ${result.missingChars.length}`)
+      dlog('font', `✅ [validateTextGlyphs] 검증 완료 - 미지원 문자 수: ${result.missingChars.length}`)
       if (result.missingChars.length > 0) {
-        console.log(`⚠️ [validateTextGlyphs] 미지원 문자:`, result.missingChars)
+        dlog('font', `⚠️ [validateTextGlyphs] 미지원 문자:`, result.missingChars)
       }
 
       return {
