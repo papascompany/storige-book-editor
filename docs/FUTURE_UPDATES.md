@@ -59,7 +59,33 @@
 
 ---
 
-### 4. (예약) Admin 비밀번호 강제 교체
+### 4. PNG 업로드 시 hang / unresponsive 모달 — 부분 fix 완료, 본 fix 별도 사이클
+- **상태**: ⏳ 잠재 이슈 (현재 비활성, 별도 사이클 예정)
+- **발견**: 2026-05-04 운영 사용자 보고 (Sentry `a894a16e84c141f19fb12a7697ac398f`)
+- **시나리오**: 맥북 에디터 → 요소 → PNG 업로드 → "이 페이지를 나가겠습니까?" 모달
+- **원인**:
+  1. OpenCV WASM 첫 다운로드/컴파일 (~5초 메인 스레드 점유)
+  2. onnxruntime-web COOP/COEP 미설정 → single-threading fallback (~10× 느림)
+- **시도 + 회귀**:
+  - A) `warmupOpenCv()` mount 호출 — 무영향, 안전
+  - B) COOP `same-origin` + COEP `credentialless` — **운영 메뉴 클릭 차단** 발생, 즉시 revert
+    · Chrome 확장(Leap) inject script가 credentialless로 차단되어 페이지 이벤트 시스템 깨짐 추정
+  - C) Web Worker 분리 — 미진행
+- **회귀 분석 후속 작업**:
+  - [ ] 시크릿 모드 / 다양한 브라우저에서 COEP 사전 검증
+  - [ ] COEP `require-corp` 변형 시도 (외부 자원 차단 명확히 — 진단 용이)
+  - [ ] 또는 OpenCV/onnxruntime을 Web Worker로 분리 (옵션 C, 1~2일)
+  - [ ] 또는 자동 다운스케일 (workspace ÷ 2 초과 PNG 사전 리사이즈, 반나절)
+  - [ ] `useUploading` selector를 EditorView에 구독해서 spinner 표시 (현재 export만 됐고 import 0건)
+- **임시 조치**:
+  - canvas-core의 `warmupOpenCv` / `warmupBackgroundRemoval` export 유지 (재시도 시 import 1줄로 활성)
+  - nginx `/storage/*` 응답 CORP 헤더 유지 (B 재활성 시 통과 보장)
+- **권장 일정**: PHP 통합 컷오버 + 안정화 후 (2026-Q3)
+- **위험도**: 🟡 중 (일부 사용자가 큰 PNG 첫 업로드 시 hang 경험, 작은 파일/두 번째 업로드는 정상)
+
+---
+
+### 5. (예약) Admin 비밀번호 강제 교체
 - 상태: ❌ 미진행 (P0-2)
 - 핵심: 시드값 `admin@storige.com` / `admin123` → 강한 값
 - 별도 트래커: `NEXT_DEVELOPMENT_PLAN.md`
