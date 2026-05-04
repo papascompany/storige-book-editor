@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bull';
 import { HealthController } from './health.controller';
 import { QueueMonitorService } from './queue-monitor.service';
+import { MetricsService } from './metrics.service';
 
 @Module({
   imports: [
@@ -12,7 +13,7 @@ import { QueueMonitorService } from './queue-monitor.service';
     ),
   ],
   controllers: [HealthController],
-  providers: [QueueMonitorService],
-  exports: [QueueMonitorService],
+  providers: [QueueMonitorService, MetricsService],
+  exports: [QueueMonitorService, MetricsService],
 })
 export class HealthModule {}

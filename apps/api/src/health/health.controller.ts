@@ -1,10 +1,12 @@
-import { Controller, Get, UseGuards } from '@nestjs/common';
+import { Controller, Get, Header, Res, UseGuards } from '@nestjs/common';
+import type { Response } from 'express';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
 import { Public } from '../auth/decorators/public.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { QueueMonitorService } from './queue-monitor.service';
+import { MetricsService } from './metrics.service';
 
 @ApiTags('Health')
 @Controller('health')
@@ -14,7 +16,22 @@ export class HealthController {
     @InjectQueue('pdf-conversion') private conversionQueue: Queue,
     @InjectQueue('pdf-synthesis') private synthesisQueue: Queue,
     private readonly queueMonitor: QueueMonitorService,
+    private readonly metricsService: MetricsService,
   ) {}
+
+  /**
+   * Prometheus scrape endpoint (P2-8)
+   * 내부 docker network 의 prometheus 컨테이너에서만 접근.
+   * nginx 외부 노출 X — `/api/metrics` 경로는 운영 nginx 에서 deny 또는 IP 화이트리스트 권장.
+   */
+  @Public()
+  @Get('metrics')
+  @Header('Cache-Control', 'no-store')
+  @ApiOperation({ summary: 'Prometheus metrics (text/plain)' })
+  async metrics(@Res() res: Response): Promise<void> {
+    res.set('Content-Type', this.metricsService.getContentType());
+    res.send(await this.metricsService.getMetrics());
+  }
 
   @Public()
   @Get()
