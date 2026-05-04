@@ -1,0 +1,1463 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>PapasCompany — 세상의 모든이야기를 기억하세요...</title>
+<meta name="description" content="파파스컴퍼니 — 사람의 이야기를 기록하고, 출판하고, POD솔루션을 보급합니다. AI 자서전 '나의이야기', POD 통합솔루션, Storywork Editor, 전시·공간 콘텐츠." />
+
+<!-- Pretendard Variable (CDN) with system font fallback -->
+<link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css" />
+
+<!-- Image preconnect for Unsplash -->
+<link rel="preconnect" href="https://picsum.photos" crossorigin />
+
+<style>
+/* ====================================================================
+   PAPAS COMPANY — AI POD Studio v3.0
+   3-surface channel: Black masthead → White editorial → Blue footer
+   Pretendard 200/300 display · 999px pills · scale(1.2) hover signature
+   ==================================================================== */
+
+:root{
+  /* Surface */
+  --paper:#ffffff;
+  --ice:#f5f7fa;
+  --divider:#f3f3f3;
+  --black:#000000;
+  --shadow-black:#121314;
+
+  /* Brand */
+  --papas:#0058d4;        /* Papas Blue — primary anchor */
+  --papas-deep:#003f9c;
+  --cyan:#1eaedb;         /* hover/focus signature */
+  --link-hover:#1883fd;
+  --link-rest-light:#0068bd;
+  --link-rest-dark:#53b1ff;
+  --commerce:#d53b00;     /* sparingly */
+
+  /* Ink */
+  --ink:#000000;
+  --charcoal:#1f1f1f;
+  --gray:#6b6b6b;
+  --mute:#cccccc;
+
+  /* Shadows (4 strict tiers) */
+  --sh-1:rgba(0,0,0,0.06) 0 5px 9px 0;
+  --sh-2:rgba(0,0,0,0.08) 0 5px 9px 0;
+  --sh-3:rgba(0,0,0,0.16) 0 5px 9px 0;
+  --sh-4:rgba(0,0,0,0.8) 0 5px 9px 0;
+  --ring:0 0 0 2px var(--papas);
+
+  /* Type */
+  --sans:'Pretendard Variable','Pretendard',-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Noto Sans KR','Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+  --mono:'JetBrains Mono','SF Mono',Menlo,Consolas,monospace;
+}
+
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:var(--paper);color:var(--charcoal);font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+body{overflow-x:hidden;line-height:1.5;letter-spacing:-0.01em;font-weight:400}
+a{color:var(--link-rest-light);text-decoration:none;transition:color .18s ease}
+a:hover{color:var(--link-hover)}
+button{font-family:inherit;cursor:pointer;border:0;background:none}
+img{display:block;max-width:100%;height:auto}
+
+::selection{background:var(--papas);color:#fff}
+
+/* ============== NAV (always black, never inverts) ============== */
+.nav{
+  position:fixed;top:0;left:0;right:0;z-index:60;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:14px 32px;
+  background:rgba(0,0,0,0.92);
+  backdrop-filter:saturate(180%) blur(14px);
+  -webkit-backdrop-filter:saturate(180%) blur(14px);
+  border-bottom:1px solid rgba(255,255,255,0.08);
+}
+.nav-brand{display:flex;align-items:center;gap:10px;color:#fff;font-weight:700;letter-spacing:-0.01em;font-size:15px}
+.nav-brand .logo-mark{
+  width:28px;height:28px;border-radius:6px;
+  background:var(--papas);
+  display:flex;align-items:center;justify-content:center;
+  color:#fff;font-weight:800;font-size:13px;letter-spacing:-0.5px;
+}
+.nav-brand .ko{color:rgba(255,255,255,0.6);font-weight:500;margin-left:4px;font-size:13px}
+.nav-links{display:flex;gap:28px;font-size:14px;color:#fff;font-weight:500}
+.nav-links a{color:#fff;transition:color .18s ease}
+.nav-links a:hover{color:var(--link-hover)}
+.nav-links a.active{color:var(--link-rest-dark)}
+.nav-actions{display:flex;align-items:center;gap:10px}
+.nav-search{
+  width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,0.08);
+  display:flex;align-items:center;justify-content:center;color:#fff;
+  transition:all .18s ease;
+}
+.nav-search:hover{background:#fff;color:var(--ink);transform:scale(1.06)}
+.btn{
+  font-family:var(--sans);font-weight:600;font-size:14px;letter-spacing:0.04em;
+  padding:11px 22px;border-radius:999px;cursor:pointer;
+  display:inline-flex;align-items:center;gap:8px;
+  transition:background .18s ease, color .18s ease, transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+  border:0;
+}
+.btn-primary{background:var(--papas);color:#fff}
+.btn-primary:hover{background:var(--cyan);box-shadow:inset 0 0 0 2px #fff, var(--ring);transform:scale(1.06)}
+.btn-primary:active{opacity:0.7}
+.btn-ghost-dark{background:transparent;color:#fff;border:1px solid rgba(255,255,255,0.32)}
+.btn-ghost-dark:hover{background:var(--cyan);border-color:#fff;box-shadow:inset 0 0 0 2px #fff, var(--ring);transform:scale(1.06)}
+.btn-ghost-light{background:transparent;color:var(--charcoal);border:1px solid #dedede}
+.btn-ghost-light:hover{background:var(--cyan);color:#fff;border-color:#fff;box-shadow:inset 0 0 0 2px #fff, var(--ring);transform:scale(1.06)}
+.btn-light-on-dark{background:#fff;color:var(--ink)}
+.btn-light-on-dark:hover{background:var(--cyan);color:#fff;box-shadow:inset 0 0 0 2px #fff, var(--ring);transform:scale(1.06)}
+.btn-sm{font-size:13px;padding:9px 18px}
+
+@media(max-width:880px){.nav-links{display:none}.nav{padding:12px 20px}}
+
+/* ============== HERO ============== */
+.hero{
+  position:relative;min-height:88vh;background:#000;color:#fff;
+  display:flex;align-items:flex-end;overflow:hidden;
+  padding:120px 0 96px;
+}
+.hero-bg{
+  position:absolute;inset:0;z-index:0;background:linear-gradient(180deg,#121314,#000);
+}
+.hero-bg img{
+  width:100%;height:100%;object-fit:cover;object-position:center 30%;opacity:0.55;
+}
+.hero-bg::after{
+  content:"";position:absolute;inset:0;
+  background:
+    linear-gradient(90deg,rgba(0,0,0,0.85) 0%,rgba(0,0,0,0.55) 45%,rgba(0,0,0,0.25) 100%),
+    linear-gradient(180deg,rgba(0,0,0,0.4) 0%,transparent 30%,rgba(0,0,0,0.85) 100%);
+}
+.hero-inner{position:relative;z-index:2;max-width:1280px;margin:0 auto;padding:0 32px;width:100%}
+.hero-eyebrow{
+  display:inline-flex;align-items:center;gap:10px;
+  font-size:13px;color:var(--link-rest-dark);font-weight:600;letter-spacing:-0.01em;
+  margin-bottom:28px;padding:7px 14px;background:rgba(0,114,206,0.18);
+  border-radius:999px;border:1px solid rgba(83,177,255,0.3);
+}
+.hero-eyebrow .pulse{width:6px;height:6px;border-radius:50%;background:#34d399;box-shadow:0 0 10px #34d399;animation:pulse 2s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.5}}
+.hero h1{
+  font-size:clamp(40px,6.5vw,86px);
+  line-height:1.05;letter-spacing:-0.045em;font-weight:300;margin:0 0 24px;
+  max-width:880px;
+}
+.hero h1 strong{font-weight:600;color:#fff}
+.hero h1 .en-tag{
+  display:block;font-size:0.32em;color:rgba(255,255,255,0.5);font-weight:500;
+  letter-spacing:0;margin-top:18px;line-height:1.4;
+}
+.hero-sub{
+  font-size:clamp(15px,1.4vw,18px);color:rgba(255,255,255,0.72);
+  max-width:580px;margin:0 0 36px;line-height:1.7;font-weight:400;
+}
+.hero-actions{display:flex;flex-wrap:wrap;gap:10px}
+
+/* ============== THUMB TRAY (PS-style scroll thumbs) ============== */
+.thumb-tray-wrap{background:var(--paper);border-bottom:1px solid var(--divider);position:relative}
+.thumb-tray{
+  display:flex;gap:10px;padding:24px 32px;max-width:1280px;margin:0 auto;
+  overflow-x:auto;scroll-behavior:smooth;
+}
+.thumb-tray::-webkit-scrollbar{display:none}
+.thumb-tray{scrollbar-width:none}
+.thumb{
+  flex:0 0 auto;
+  display:flex;flex-direction:column;align-items:center;
+  width:120px;cursor:pointer;text-decoration:none;color:inherit;
+  transition:transform .18s ease;
+}
+.thumb:hover{transform:translateY(-2px)}
+.thumb-img{
+  width:120px;height:72px;border-radius:6px;overflow:hidden;
+  background:var(--divider);position:relative;
+  box-shadow:var(--sh-2);transition:box-shadow .18s, outline .18s;
+  outline:2px solid transparent;outline-offset:2px;
+}
+.thumb.active .thumb-img{outline-color:var(--papas);box-shadow:var(--sh-3)}
+.thumb-img img{width:100%;height:100%;object-fit:cover}
+.thumb-label{font-size:12px;color:var(--charcoal);font-weight:500;margin-top:8px;text-align:center;line-height:1.3}
+.thumb.active .thumb-label{color:var(--papas);font-weight:600}
+
+/* ============== SECTION FRAME ============== */
+section.editorial{padding:96px 0}
+@media(max-width:880px){section.editorial{padding:64px 0}}
+@media(max-width:560px){section.editorial{padding:48px 0}}
+.container{max-width:1280px;margin:0 auto;padding:0 32px}
+@media(max-width:560px){.container{padding:0 20px}}
+.surface-soft{background:linear-gradient(180deg,var(--paper),var(--ice))}
+.surface-dark{background:linear-gradient(180deg,var(--shadow-black),var(--black));color:#fff}
+
+.section-eyebrow{font-size:14px;color:var(--papas);font-weight:600;margin-bottom:14px;letter-spacing:-0.005em}
+.surface-dark .section-eyebrow{color:var(--link-rest-dark)}
+.section-title{font-size:clamp(28px,3.6vw,44px);line-height:1.2;letter-spacing:-0.025em;font-weight:300;margin:0 0 24px;color:var(--ink);max-width:760px}
+.surface-dark .section-title{color:#fff}
+.section-title strong{font-weight:600}
+.section-lead{font-size:17px;color:var(--gray);max-width:680px;line-height:1.7;margin:0 0 36px}
+.surface-dark .section-lead{color:rgba(255,255,255,0.7)}
+.section-head-row{display:flex;justify-content:space-between;align-items:flex-end;gap:32px;margin-bottom:48px;flex-wrap:wrap}
+
+/* ============== INTRO PANEL (PS5-style hero block) ============== */
+.intro-block{
+  display:grid;grid-template-columns:1fr 1.2fr;gap:48px;align-items:center;
+}
+@media(max-width:880px){.intro-block{grid-template-columns:1fr}}
+.intro-block .copy h2{font-size:clamp(28px,3.6vw,44px);line-height:1.18;letter-spacing:-0.025em;font-weight:300;margin:0 0 16px;color:var(--ink)}
+.intro-block .copy h2 strong{font-weight:600}
+.intro-block .copy .lead-sub{font-size:17px;color:var(--charcoal);font-weight:500;margin:0 0 6px;letter-spacing:-0.005em}
+.intro-block .copy p{color:var(--gray);font-size:15px;line-height:1.7;margin:0 0 28px;max-width:480px}
+.intro-image{
+  position:relative;border-radius:24px;overflow:hidden;box-shadow:var(--sh-1);
+  aspect-ratio:16/10;background:var(--divider);
+}
+.intro-image img{width:100%;height:100%;object-fit:cover}
+
+/* ============== SOLUTION CAROUSEL CARDS ============== */
+.sol-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:20px}
+@media(max-width:880px){.sol-grid{grid-template-columns:1fr}}
+.sol-card{
+  position:relative;background:#fff;border-radius:19px;overflow:hidden;
+  box-shadow:var(--sh-2);cursor:pointer;
+  transition:transform .25s ease, box-shadow .25s ease;
+}
+.sol-card:hover{transform:translateY(-4px);box-shadow:var(--sh-3)}
+.sol-card-img{
+  position:relative;aspect-ratio:16/9;overflow:hidden;background:var(--divider);
+}
+.sol-card-img img{width:100%;height:100%;object-fit:cover;transition:transform .6s ease}
+.sol-card:hover .sol-card-img img{transform:scale(1.04)}
+.sol-card-img::after{
+  content:"";position:absolute;inset:0;
+  background:linear-gradient(180deg,transparent 50%,rgba(0,0,0,0.65) 100%);
+}
+.sol-card-tag{
+  position:absolute;top:16px;left:16px;z-index:2;
+  background:rgba(255,255,255,0.94);color:var(--ink);
+  font-size:12px;font-weight:600;padding:5px 12px;border-radius:999px;letter-spacing:-0.005em;
+}
+.sol-card-body{padding:24px 28px 28px}
+.sol-card h3{font-size:24px;font-weight:600;letter-spacing:-0.025em;margin:0 0 6px;color:var(--ink);line-height:1.2}
+.sol-card .sol-card-en{font-size:13px;color:var(--gray);margin-bottom:14px;font-weight:500}
+.sol-card-desc{color:var(--gray);font-size:14.5px;line-height:1.65;margin-bottom:18px;min-height:48px}
+.sol-card-tags{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:20px}
+.sol-card-tags span{font-size:11.5px;font-weight:500;color:var(--charcoal);background:#f3f3f3;padding:4px 10px;border-radius:999px;letter-spacing:-0.005em}
+.sol-card-cta{display:flex;align-items:center;justify-content:space-between;padding-top:18px;border-top:1px solid var(--divider)}
+.sol-card-cta .more{font-size:13px;color:var(--link-rest-light);font-weight:600;display:flex;align-items:center;gap:6px;letter-spacing:-0.005em}
+.sol-card:hover .sol-card-cta .more{color:var(--cyan)}
+.sol-card-cta .more svg{transition:transform .25s}
+.sol-card:hover .sol-card-cta .more svg{transform:translateX(4px)}
+
+/* ============== DARK LINEUP GRID ============== */
+.lineup-tabs{display:inline-flex;gap:4px;background:rgba(255,255,255,0.06);padding:4px;border-radius:999px;margin-bottom:36px}
+.lineup-tabs button{
+  font-size:13px;font-weight:600;padding:9px 18px;border-radius:999px;
+  color:rgba(255,255,255,0.65);transition:all .2s;
+}
+.lineup-tabs button.on{background:#fff;color:var(--ink)}
+.lineup-tabs button:hover:not(.on){color:#fff}
+
+.lineup-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:20px}
+@media(max-width:1024px){.lineup-grid{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:760px){.lineup-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:420px){.lineup-grid{grid-template-columns:1fr 1fr;gap:12px}}
+.tile{
+  background:transparent;border-radius:12px;
+  display:flex;flex-direction:column;cursor:pointer;
+  transition:transform .25s ease;
+}
+.tile:hover{transform:translateY(-4px)}
+.tile-poster{
+  position:relative;aspect-ratio:3/4;border-radius:12px;overflow:hidden;
+  box-shadow:var(--sh-2);background:var(--shadow-black);
+}
+.tile:hover .tile-poster{box-shadow:var(--sh-3)}
+.tile-poster img{width:100%;height:100%;object-fit:cover;transition:transform .8s ease}
+.tile:hover .tile-poster img{transform:scale(1.05)}
+.tile-poster::after{
+  content:"";position:absolute;inset:0;background:linear-gradient(180deg,transparent 60%,rgba(0,0,0,0.55));
+}
+.tile-platform{
+  position:absolute;top:12px;left:12px;
+  background:#fff;color:var(--ink);font-size:11px;font-weight:600;
+  padding:4px 10px;border-radius:999px;letter-spacing:-0.005em;
+}
+.tile-info{padding:14px 4px 6px}
+.tile-info h4{font-size:15px;font-weight:600;color:#fff;margin:0 0 4px;letter-spacing:-0.015em;line-height:1.25}
+.tile-info p{font-size:12.5px;color:rgba(255,255,255,0.5);margin:0;line-height:1.4;font-weight:400}
+
+/* ============== PIPELINE ============== */
+.pipeline{
+  display:grid;grid-template-columns:repeat(5,1fr);
+  background:#fff;border-radius:24px;overflow:hidden;box-shadow:var(--sh-1);
+  border:1px solid var(--divider);
+}
+@media(max-width:1024px){.pipeline{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:540px){.pipeline{grid-template-columns:1fr}}
+.pl-step{padding:0;border-right:1px solid var(--divider);display:flex;flex-direction:column}
+.pl-step:last-child{border-right:0}
+@media(max-width:1024px){.pl-step{border-right:0;border-bottom:1px solid var(--divider)}}
+.pl-thumb{aspect-ratio:5/3;overflow:hidden;background:var(--divider);position:relative}
+.pl-thumb img{width:100%;height:100%;object-fit:cover}
+.pl-thumb .pl-num-badge{
+  position:absolute;top:12px;left:12px;
+  background:var(--ink);color:#fff;font-size:12px;font-weight:600;
+  padding:5px 11px;border-radius:999px;letter-spacing:-0.005em;
+}
+.pl-body{padding:24px 22px 28px;flex:1;display:flex;flex-direction:column}
+.pl-body h4{font-size:18px;font-weight:600;letter-spacing:-0.02em;color:var(--ink);margin:0 0 8px}
+.pl-body p{font-size:13.5px;color:var(--gray);line-height:1.65;margin:0 0 14px;flex:1}
+.pl-stack{font-size:12px;color:var(--charcoal);font-weight:500;font-family:var(--mono);letter-spacing:-0.005em;line-height:1.7;border-top:1px dashed var(--divider);padding-top:12px}
+
+/* ============== STATS ============== */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--divider);border-radius:24px;overflow:hidden;border:1px solid var(--divider);box-shadow:var(--sh-1)}
+@media(max-width:780px){.stats{grid-template-columns:repeat(2,1fr)}}
+.stat{padding:36px 28px;background:#fff;position:relative}
+.stat-label{font-size:13px;color:var(--gray);font-weight:500;margin-bottom:14px;letter-spacing:-0.005em}
+.stat-num{
+  font-size:clamp(40px,5vw,64px);font-weight:200;letter-spacing:-0.045em;
+  line-height:1;color:var(--ink);font-variant-numeric:tabular-nums;
+  display:flex;align-items:baseline;gap:4px;
+}
+.stat-num .unit{font-size:0.4em;color:var(--papas);font-weight:600;letter-spacing:-0.005em}
+.stat-desc{margin-top:14px;color:var(--charcoal);font-size:13.5px;line-height:1.55}
+
+/* ============== MARKET ============== */
+.market{display:grid;grid-template-columns:1.1fr 1fr;gap:20px}
+@media(max-width:880px){.market{grid-template-columns:1fr}}
+.market-card{background:#fff;border-radius:24px;padding:36px;border:1px solid var(--divider);box-shadow:var(--sh-1)}
+.market-card h4{font-size:13px;color:var(--gray);font-weight:600;margin:0 0 24px;letter-spacing:-0.005em}
+.market-card h4.spaced{margin-top:32px}
+.bar-row{margin-bottom:16px}
+.bar-label{display:flex;justify-content:space-between;font-size:14px;margin-bottom:8px;color:var(--charcoal)}
+.bar-label strong{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
+.bar-track{height:6px;background:var(--divider);border-radius:3px;overflow:hidden}
+.bar-fill{height:100%;background:var(--papas);border-radius:3px;width:0;transition:width 1.4s cubic-bezier(.2,.8,.2,1)}
+.bar-row.alt .bar-fill{background:var(--cyan)}
+.donut-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;padding:8px 0}
+.donut-wrap svg{width:240px;height:240px}
+.donut-legend{margin-top:24px;width:100%;display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:13px;color:var(--charcoal);font-weight:500}
+.donut-legend span{display:flex;align-items:center;gap:8px}
+.donut-legend i{width:10px;height:10px;border-radius:2px}
+.donut-legend strong{margin-left:auto;color:var(--gray);font-weight:600;font-size:12px}
+
+/* ============== ANNIVERSARY / IDENTITY BLOCK ============== */
+.anni-block{
+  position:relative;padding:80px 56px;border-radius:24px;overflow:hidden;
+  background:linear-gradient(180deg,var(--paper),var(--ice));border:1px solid var(--divider);
+  box-shadow:var(--sh-1);
+}
+.anni-block::before{
+  content:"";position:absolute;inset:0;pointer-events:none;
+  background:
+    radial-gradient(circle 800px at 90% 50%,rgba(0,88,212,0.05),transparent 60%),
+    radial-gradient(circle 600px at 10% 50%,rgba(30,174,219,0.04),transparent 60%);
+}
+.anni-grid{display:grid;grid-template-columns:1fr 1.1fr;gap:48px;align-items:center;position:relative;z-index:2}
+@media(max-width:880px){.anni-grid{grid-template-columns:1fr}}
+.anni-mark{
+  font-size:clamp(60px,9vw,128px);font-weight:200;line-height:1;letter-spacing:-0.06em;
+  color:var(--ink);
+}
+.anni-mark .small{font-size:0.32em;font-weight:500;color:var(--papas);display:block;margin-top:8px;letter-spacing:0.04em}
+.anni-text h3{font-size:clamp(24px,2.6vw,32px);font-weight:300;letter-spacing:-0.025em;line-height:1.3;margin:0 0 14px;color:var(--ink)}
+.anni-text h3 strong{font-weight:600}
+.anni-text p{color:var(--gray);font-size:15px;line-height:1.75;margin:0 0 28px}
+.anni-actions{display:flex;gap:10px;flex-wrap:wrap}
+
+/* ============== NEWS / ROADMAP CARDS ============== */
+.news-row{position:relative}
+.news-track{display:grid;grid-template-columns:repeat(4,1fr);gap:20px}
+@media(max-width:1024px){.news-track{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:560px){.news-track{grid-template-columns:1fr}}
+.news-card{
+  background:#fff;border-radius:19px;overflow:hidden;
+  box-shadow:var(--sh-2);transition:transform .25s ease, box-shadow .25s ease;
+  display:flex;flex-direction:column;
+}
+.news-card:hover{transform:translateY(-4px);box-shadow:var(--sh-3)}
+.news-card-img{aspect-ratio:16/10;overflow:hidden;background:var(--divider);position:relative}
+.news-card-img img{width:100%;height:100%;object-fit:cover;transition:transform .8s ease}
+.news-card:hover .news-card-img img{transform:scale(1.04)}
+.news-card-img .qbadge{
+  position:absolute;top:14px;left:14px;
+  background:var(--ink);color:#fff;font-size:12px;font-weight:600;
+  padding:5px 11px;border-radius:999px;letter-spacing:-0.005em;
+}
+.news-card.now .news-card-img .qbadge{background:var(--papas)}
+.news-card-body{padding:22px 24px 24px;flex:1;display:flex;flex-direction:column}
+.news-card-tag{font-size:12px;color:var(--papas);font-weight:600;margin-bottom:8px;letter-spacing:-0.005em}
+.news-card h4{font-size:18px;font-weight:600;letter-spacing:-0.02em;color:var(--ink);margin:0 0 10px;line-height:1.3}
+.news-card p{font-size:13.5px;color:var(--gray);line-height:1.65;margin:0 0 18px;flex:1}
+.news-author{display:flex;align-items:center;gap:10px;margin-top:auto;padding-top:14px;border-top:1px solid var(--divider)}
+.news-author .av{width:30px;height:30px;border-radius:50%;background:var(--divider);overflow:hidden}
+.news-author .av img{width:100%;height:100%;object-fit:cover}
+.news-author .meta{font-size:12px;color:var(--gray);line-height:1.4}
+.news-author .meta strong{color:var(--charcoal);display:block;font-weight:600;font-size:12.5px}
+
+/* ============== IDENTITY VALUES ============== */
+.identity-grid{display:grid;grid-template-columns:1fr 1.2fr;gap:48px;align-items:start}
+@media(max-width:880px){.identity-grid{grid-template-columns:1fr}}
+.identity-quote{
+  font-size:clamp(24px,2.6vw,30px);line-height:1.45;letter-spacing:-0.025em;
+  font-weight:300;color:var(--ink);
+}
+.identity-quote em{font-style:normal;color:var(--papas);font-weight:600}
+.values{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--divider);border-radius:24px;overflow:hidden;border:1px solid var(--divider);box-shadow:var(--sh-1)}
+.value-cell{padding:28px 26px;background:#fff}
+.value-cell .v-num{font-size:13px;color:var(--papas);font-weight:600;margin-bottom:14px;letter-spacing:-0.005em}
+.value-cell h5{font-size:17px;margin:0 0 8px;font-weight:600;letter-spacing:-0.02em;color:var(--ink)}
+.value-cell p{color:var(--gray);font-size:13.5px;margin:0;line-height:1.65}
+
+/* ============== PROMO BAR (PS Plus banner-inspired) ============== */
+.promo{
+  position:relative;padding:64px 48px;border-radius:24px;overflow:hidden;
+  background:linear-gradient(135deg,#0a3a8a,#0058d4 50%,#1eaedb);color:#fff;
+  box-shadow:var(--sh-3);
+}
+.promo::before{
+  content:"";position:absolute;right:-100px;top:-100px;width:500px;height:500px;
+  background:radial-gradient(circle,rgba(255,255,255,0.18),transparent 60%);
+  pointer-events:none;
+}
+.promo-inner{position:relative;z-index:2;display:grid;grid-template-columns:1fr auto;gap:32px;align-items:center}
+@media(max-width:780px){.promo-inner{grid-template-columns:1fr;text-align:left}}
+.promo h3{font-size:clamp(24px,3vw,34px);font-weight:300;letter-spacing:-0.025em;margin:0 0 12px;line-height:1.25}
+.promo h3 strong{font-weight:600}
+.promo p{margin:0;color:rgba(255,255,255,0.85);font-size:15px;line-height:1.65;max-width:560px}
+
+/* ============== CTA ============== */
+.cta-block{
+  padding:72px 56px;border-radius:24px;background:var(--ink);color:#fff;
+  text-align:center;position:relative;overflow:hidden;box-shadow:var(--sh-3);
+}
+.cta-block::before{
+  content:"";position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(ellipse 50% 60% at 50% 0%,rgba(0,88,212,0.4),transparent 70%);
+}
+.cta-block .inner{position:relative;z-index:2}
+.cta-block .eyebrow{font-size:13px;color:var(--link-rest-dark);font-weight:600;letter-spacing:-0.005em;margin-bottom:18px;display:inline-block}
+.cta-block h3{font-size:clamp(28px,4vw,44px);font-weight:300;letter-spacing:-0.03em;margin:0 0 14px;line-height:1.15}
+.cta-block h3 strong{font-weight:600}
+.cta-block p{color:rgba(255,255,255,0.7);max-width:520px;margin:0 auto 32px;font-size:15px;line-height:1.7}
+.cta-row{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+
+/* ============== FOOTER (Papas Blue anchor) ============== */
+.footer{background:var(--papas);color:#fff;padding:56px 0 36px}
+.footer .container{max-width:1280px}
+.footer-top{display:flex;align-items:center;gap:14px;margin-bottom:36px}
+.footer-logo{
+  width:42px;height:42px;border-radius:8px;background:#fff;display:flex;align-items:center;justify-content:center;
+  font-weight:800;color:var(--papas);font-size:15px;letter-spacing:-0.5px;
+}
+.footer-brand-name{font-size:18px;font-weight:700;letter-spacing:-0.015em}
+.footer-brand-ko{font-size:13px;color:rgba(255,255,255,0.7);font-weight:500}
+.footer-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:32px;border-top:1px solid rgba(255,255,255,0.18);padding-top:36px}
+@media(max-width:1024px){.footer-grid{grid-template-columns:repeat(3,1fr);gap:24px}}
+@media(max-width:560px){.footer-grid{grid-template-columns:repeat(2,1fr)}}
+.footer-col h6{font-size:13px;font-weight:700;color:#fff;margin:0 0 16px;letter-spacing:-0.005em}
+.footer-col ul{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:11px}
+.footer-col a{color:rgba(255,255,255,0.78);font-size:13px;font-weight:500;transition:color .18s}
+.footer-col a:hover{color:#fff}
+.footer-bottom{margin-top:36px;padding-top:24px;border-top:1px solid rgba(255,255,255,0.18);display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:16px}
+.footer-bottom .copy{font-size:12px;color:rgba(255,255,255,0.65);line-height:1.7;font-family:var(--mono);font-weight:500;letter-spacing:0}
+.footer-bottom .copy strong{color:#fff;font-weight:600}
+.footer-bottom .legal{font-size:12px;color:rgba(255,255,255,0.55);line-height:1.7}
+
+/* ============== REVEAL ============== */
+.reveal{opacity:0;transform:translateY(18px);transition:opacity .8s ease, transform .8s cubic-bezier(.2,.8,.2,1)}
+.reveal.in{opacity:1;transform:none}
+.reveal-stagger > *{opacity:0;transform:translateY(16px);transition:opacity .7s ease, transform .7s cubic-bezier(.2,.8,.2,1)}
+.reveal-stagger.in > *{opacity:1;transform:none}
+.reveal-stagger.in > *:nth-child(1){transition-delay:.04s}
+.reveal-stagger.in > *:nth-child(2){transition-delay:.10s}
+.reveal-stagger.in > *:nth-child(3){transition-delay:.16s}
+.reveal-stagger.in > *:nth-child(4){transition-delay:.22s}
+.reveal-stagger.in > *:nth-child(5){transition-delay:.28s}
+.reveal-stagger.in > *:nth-child(6){transition-delay:.34s}
+.reveal-stagger.in > *:nth-child(7){transition-delay:.40s}
+.reveal-stagger.in > *:nth-child(8){transition-delay:.46s}
+
+/* ============== MODAL ============== */
+.modal-backdrop{
+  position:fixed;inset:0;z-index:200;background:rgba(0,0,0,0.65);
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  display:none;align-items:center;justify-content:center;padding:24px;
+  opacity:0;transition:opacity .25s;
+}
+.modal-backdrop.show{display:flex;opacity:1}
+.modal{
+  width:min(880px,100%);max-height:88vh;overflow-y:auto;
+  background:#fff;border-radius:24px;
+  position:relative;box-shadow:var(--sh-3);
+  transform:translateY(20px) scale(0.98);transition:transform .3s cubic-bezier(.2,.8,.2,1);
+}
+.modal-backdrop.show .modal{transform:translateY(0) scale(1)}
+.modal-hero{aspect-ratio:21/9;overflow:hidden;border-radius:24px 24px 0 0;background:var(--divider);position:relative}
+.modal-hero img{width:100%;height:100%;object-fit:cover}
+.modal-hero::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,transparent 50%,rgba(0,0,0,0.5))}
+.modal-eyebrow{font-size:12.5px;color:var(--papas);font-weight:600;letter-spacing:-0.005em}
+.modal-body{padding:36px 44px 44px}
+@media(max-width:560px){.modal-body{padding:28px 24px}.modal-hero{aspect-ratio:16/10}}
+.modal h3{font-size:30px;font-weight:300;letter-spacing:-0.03em;margin:8px 0 6px;line-height:1.2;color:var(--ink)}
+.modal h3 strong{font-weight:600}
+.modal .modal-en{font-size:13px;color:var(--gray);margin-bottom:24px;font-weight:500}
+.modal .modal-lead{color:var(--charcoal);font-size:15px;line-height:1.75;margin:0 0 32px}
+.modal h4{font-size:13px;color:var(--papas);font-weight:600;margin:32px 0 14px;letter-spacing:-0.005em}
+.modal ul.feat{list-style:none;padding:0;margin:0;display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--divider);border-radius:12px;overflow:hidden;border:1px solid var(--divider)}
+@media(max-width:560px){.modal ul.feat{grid-template-columns:1fr}}
+.modal ul.feat li{padding:18px 20px;background:#fff;font-size:13.5px;color:var(--gray);line-height:1.65}
+.modal ul.feat li strong{display:block;color:var(--ink);font-size:14.5px;margin-bottom:6px;font-weight:600;letter-spacing:-0.015em}
+.modal-meta{display:flex;flex-wrap:wrap;gap:24px;margin-top:32px;padding:20px 24px;background:var(--ice);border-radius:12px;font-size:12px;color:var(--gray)}
+.modal-meta strong{display:block;color:var(--ink);font-size:12px;font-weight:700;margin-bottom:4px;letter-spacing:0.02em}
+.modal-close{
+  position:absolute;top:18px;right:18px;width:38px;height:38px;border-radius:50%;
+  background:rgba(0,0,0,0.45);color:#fff;display:flex;align-items:center;justify-content:center;
+  transition:all .18s;font-size:14px;backdrop-filter:blur(8px);z-index:3;
+}
+.modal-close:hover{background:#fff;color:var(--ink);transform:scale(1.1)}
+
+/* ============== Section gradients (always-on illustration backdrop) ============== */
+/* These render on every photo container as a base layer.
+   When the <img> on top loads, photos win. When it fails, this beautiful
+   gradient + SVG illustration remains. */
+
+.bg-memoir{background:linear-gradient(135deg,#3d2418 0%,#8c4a1f 45%,#d6863f 100%)}
+.bg-pod    {background:linear-gradient(135deg,#0a1f4a 0%,#0058d4 55%,#3aaad4 100%)}
+.bg-author {background:linear-gradient(135deg,#1a2e3d 0%,#2d5a8c 50%,#4ba3c9 100%)}
+.bg-exhibit{background:linear-gradient(135deg,#321a3d 0%,#6b2e7a 50%,#b366c4 100%)}
+.bg-warm   {background:linear-gradient(135deg,#3d1f1a 0%,#8c2e3a 45%,#d96b6b 100%)}
+.bg-cool   {background:linear-gradient(135deg,#0d1f2e 0%,#1f4d6f 50%,#3aaad4 100%)}
+.bg-mint   {background:linear-gradient(135deg,#0a3a3a 0%,#0a7a6f 50%,#34d399 100%)}
+.bg-dust   {background:linear-gradient(135deg,#2a1f3d 0%,#3d3a6f 50%,#7a8cd4 100%)}
+.bg-quarter1{background:linear-gradient(135deg,#0a1f4a 0%,#0058d4 60%,#1eaedb 100%)}
+.bg-quarter2{background:linear-gradient(135deg,#1a2e3d 0%,#2d5a8c 50%,#34d3a3 100%)}
+.bg-quarter3{background:linear-gradient(135deg,#2a1f3d 0%,#5a2e9e 60%,#a366d4 100%)}
+.bg-quarter4{background:linear-gradient(135deg,#3d1f1a 0%,#8c2e3a 50%,#d96b6b 100%)}
+
+/* SVG illustration — centered icon visible behind/under photos */
+.card-art{
+  position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  pointer-events:none;z-index:0;
+}
+.card-art svg{width:36%;height:36%;max-width:140px;max-height:140px;opacity:0.32;color:#fff}
+.tile-poster .card-art svg{width:42%;height:42%;max-width:80px;opacity:0.26}
+.pl-thumb .card-art svg{width:36%;max-width:60px;opacity:0.28}
+.news-card-img .card-art svg{width:36%;max-width:80px;opacity:0.28}
+.thumb-img .card-art svg{width:42%;max-width:32px;opacity:0.32}
+.intro-image .card-art svg{width:30%;max-width:180px;opacity:0.26}
+.modal-hero .card-art svg{width:24%;max-width:160px;opacity:0.24}
+
+/* Decorative dot pattern overlay on backdrops */
+.card-art::after{
+  content:"";position:absolute;inset:0;pointer-events:none;
+  background-image:radial-gradient(circle,rgba(255,255,255,0.08) 1px,transparent 1.5px);
+  background-size:18px 18px;
+  mask-image:radial-gradient(ellipse at center,#000 30%,transparent 70%);
+  -webkit-mask-image:radial-gradient(ellipse at center,#000 30%,transparent 70%);
+  opacity:0.5;
+}
+
+/* PAPAS micro-mark in corner */
+.card-art .markwm{
+  position:absolute;top:auto;bottom:10px;right:12px;
+  font-family:var(--sans);font-size:9px;font-weight:600;letter-spacing:0.18em;
+  color:rgba(255,255,255,0.42);text-transform:uppercase;
+}
+.tile-poster .card-art .markwm{font-size:8px;bottom:8px;right:8px}
+.thumb-img .card-art .markwm{display:none}
+.pl-thumb .card-art .markwm{font-size:8px}
+
+/* image-fallback retained but rarely needed now since base bg always present */
+.img-fallback{position:relative}
+</style>
+</head>
+<body>
+
+<!-- ============== NAV ============== -->
+<nav class="nav" id="nav">
+  <a href="#top" class="nav-brand">
+    <span class="logo-mark">P</span>
+    PAPAS
+    <span class="ko">(주)파파스컴퍼니</span>
+  </a>
+  <div class="nav-links">
+    <a href="#solutions" class="active">솔루션</a>
+    <a href="#pipeline">파이프라인</a>
+    <a href="#stats">실적</a>
+    <a href="#roadmap">로드맵</a>
+    <a href="#identity">브랜드</a>
+    <a href="#contact">문의</a>
+  </div>
+  <div class="nav-actions">
+    <button class="nav-search" aria-label="검색">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+    </button>
+    <button class="btn btn-primary btn-sm" onclick="document.getElementById('contact').scrollIntoView({behavior:'smooth'})">
+      문의하기
+    </button>
+  </div>
+</nav>
+
+<!-- ============== HERO ============== -->
+<section class="hero" id="top">
+  <div class="hero-bg bg-pod">
+    <div class="card-art" style="opacity:0.5"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5a2 2 0 0 1 2-2h12v18H6a2 2 0 0 1-2-2z"/><path d="M8 7h8M8 11h8M8 15h5"/></svg><span class="markwm">PAPAS</span></div>
+    <img src="https://picsum.photos/seed/papas-01/2000/1125" alt="" loading="eager" onerror="this.style.display='none';this.parentElement&&this.parentElement.classList.add('img-fallback')" />
+  </div>
+  <div class="hero-inner">
+    <div class="hero-eyebrow">
+      <span class="pulse"></span>
+      Papas Company · IP × Memoir × Print Tech
+    </div>
+    <h1>
+      기억은 사라지지만<br/>
+      이야기는 <strong>남습니다.</strong>
+      <span class="en-tag">Memory fades — but story stays. Papas builds the engines that turn human memory into legacy.</span>
+    </h1>
+    <p class="hero-sub">
+      파파스컴퍼니는 사람의 이야기를 기록하고, 출판하고, POD솔루션을 보급하는 컴퍼니입니다.
+      AI 자서전 엔진, POD 통합 솔루션, Storywork Editor, 그리고 전시·공간 콘텐츠를 하나의 흐름으로 연결합니다.
+    </p>
+    <div class="hero-actions">
+      <button class="btn btn-primary" onclick="document.getElementById('solutions').scrollIntoView({behavior:'smooth'})">
+        솔루션 살펴보기
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+      </button>
+      <button class="btn btn-ghost-dark" onclick="document.getElementById('story-intro').scrollIntoView({behavior:'smooth'})">회사 소개</button>
+    </div>
+  </div>
+</section>
+
+<!-- ============== THUMB TRAY ============== -->
+<div class="thumb-tray-wrap">
+  <div class="thumb-tray" id="thumbTray">
+    <a href="#story-intro" class="thumb active">
+      <div class="thumb-img bg-pod"><div class="card-art"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l3 7 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1z"/></svg></div><img src="https://picsum.photos/seed/papas-01/240/144" alt="" loading="lazy" onerror="this.style.display='none';this.parentElement&&this.parentElement.classList.add('img-fallback')"></div>
+      <div class="thumb-label">회사 소개</div>
+    </a>
+    <a href="#solutions" class="thumb">
+      <div class="thumb-img bg-author"><div class="card-art"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></div><img src="https://picsum.photos/seed/papas-02/240/144" alt="" loading="lazy" onerror="this.style.display='none';this.parentElement&&this.parentElement.classList.add('img-fallback')"></div>
+      <div class="thumb-label">POD & AI솔루션</div>
+    </a>
+    <a href="#lineup" class="thumb">
+      <div class="thumb-img bg-exhibit"><div class="card-art"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></div><img src="https://picsum.photos/seed/papas-03/240/144" alt="" loading="lazy" onerror="this.style.display='none';this.parentElement&&this.parentElement.classList.add('img-fallback')"></div>
+      <div class="thumb-label">제품 라인업</div>
+    </a>
+    <a href="#pipeline" class="thumb">
+      <div class="thumb-img bg-mint"><div class="card-art"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="2.2"/><circle cx="19" cy="6" r="2.2"/><circle cx="19" cy="18" r="2.2"/><path d="M7 11l10-4M7 13l10 4"/></svg></div><img src="https://picsum.photos/seed/papas-04/240/144" alt="" loading="lazy" onerror="this.style.display='none';this.parentElement&&this.parentElement.classList.add('img-fallback')"></div>
+      <div class="thumb-label">파이프라인</div>
+    </a>
+    <a href="#stats" class="thumb">
+      <div class="thumb-img bg-cool"><div class="card-art"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="20" x2="21" y2="20"/><rect x="6" y="12" width="3" height="8"/><rect x="11" y="6" width="3" height="14"/><rect x="16" y="9" width="3" height="11"/></svg></div><img src="https://picsum.photos/seed/papas-05/240/144" alt="" loading="lazy" onerror="this.style.display='none';this.parentElement&&this.parentElement.classList.add('img-fallback')"></div>
+      <div class="thumb-label">실적·시장</div>
+    </a>
+    <a href="#anniversary" class="thumb">
+      <div class="thumb-img bg-warm"><div class="card-art"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l3 7 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1z"/></svg></div><img src="https://picsum.photos/seed/papas-06/240/144" alt="" loading="lazy" onerror="this.style.display='none';this.parentElement&&this.parentElement.classList.add('img-fallback')"></div>
+      <div class="thumb-label">브랜드 스토리</div>
+    </a>
+    <a href="#roadmap" class="thumb">
+      <div class="thumb-img bg-pod"><div class="card-art"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M8 6h6a4 4 0 0 1 4 4v2a4 4 0 0 1-4 4h-4a4 4 0 0 0-4 4"/></svg></div><img src="https://picsum.photos/seed/papas-07/240/144" alt="" loading="lazy" onerror="this.style.display='none';this.parentElement&&this.parentElement.classList.add('img-fallback')"></div>
+      <div class="thumb-label">2026 로드맵</div>
+    </a>
+    <a href="#contact" class="thumb">
+      <div class="thumb-img bg-exhibit"><div class="card-art"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 7 9-7"/></svg></div><img src="https://picsum.photos/seed/papas-08/240/144" alt="" loading="lazy" onerror="this.style.display='none';this.parentElement&&this.parentElement.classList.add('img-fallback')"></div>
+      <div class="thumb-label">문의</div>
+    </a>
+  </div>
+</div>
+
+<!-- ============== STORY INTRO (PS5-intro style) ============== -->
+<section class="editorial" id="story-intro">
+  <div class="container">
+    <div class="intro-block">
+      <div class="copy reveal">
+        <div class="section-eyebrow">파파스컴퍼니 소개</div>
+        <h2>사람의 이야기를<br/>기술로 <strong>이어 갑니다.</strong></h2>
+        <p class="lead-sub">Memoir × IP × Print Technology Studio</p>
+        <p>
+          시간이 지나면 가장 먼저 잊히는 것은 평범한 일상입니다.
+          파파스컴퍼니는 사라질 이야기를 기록하고, 출판하고, 공간으로 펼치는
+          IP 콘텐츠 컴퍼니입니다. 하나의 인터뷰가 한 권의 자서전이 되고,
+          한 권의 자서전이 전시와 공간으로 확장되는 흐름을 자체 기술로 운영합니다.
+        </p>
+        <button class="btn btn-primary" onclick="document.getElementById('solutions').scrollIntoView({behavior:'smooth'})">
+          자세히 보기
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+        </button>
+      </div>
+      <div class="intro-image reveal bg-pod"><div class="card-art"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5a2 2 0 0 1 2-2h12v18H6a2 2 0 0 1-2-2z"/><path d="M8 7h8M8 11h8M8 15h5"/></svg><span class="markwm">PAPAS</span></div><img src="https://picsum.photos/seed/papas-09/1400/875" alt="기억과 이야기" loading="lazy" onerror="this.style.display='none';this.parentElement&&this.parentElement.classList.add('img-fallback')" />
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============== SOLUTION CARDS ============== -->
+<section class="editorial surface-soft" id="solutions">
+  <div class="container">
+    <div class="section-head-row reveal">
+      <div>
+        <div class="section-eyebrow">Solutions</div>
+        <h2 class="section-title">네 개의 솔루션,<br/>하나의 <strong>스토리 시스템.</strong></h2>
+      </div>
+      <p class="section-lead">각 카드를 클릭하면 기능, 기술 스택, 고객 가치가 자세히 펼쳐집니다.</p>
+    </div>
+
+    <div class="sol-grid reveal-stagger">
+      <article class="sol-card" data-modal="m1">
+        <div class="sol-card-img bg-memoir"><div class="card-art"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5a2 2 0 0 1 2-2h12v18H6a2 2 0 0 1-2-2z"/><path d="M8 7h8M8 11h8M8 15h5"/></svg><span class="markwm">PAPAS</span></div><span class="sol-card-tag">AI Memoir</span>
+          <img src="https://picsum.photos/seed/papas-02/1400/875" alt="AI 자서전" loading="lazy" onerror="this.style.display='none';this.parentElement&&this.parentElement.classList.add('img-fallback')" />
+        </div>
+        <div class="sol-card-body">
+          <h3>AI 자서전 '나의이야기'</h3>
+          <div class="sol-card-en">AI Memoir Engine for Senior Life</div>
+          <p class="sol-card-desc">AI 인터뷰가 어르신의 기억을 끌어내고, 사진을 복원하고, 한 권의 자서전과 전시 콘텐츠로 자동 편집합니다.</p>
+          <div class="sol-card-tags">
+            <span>AI Interview</span><span>Real-ESRGAN</span><span>B2C · B2B · B2G</span>
+          </div>
+          <div class="sol-card-cta">
+            <span class="more">자세히 보기 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12h14M13 5l7 7-7 7"/></svg></span>
+          </div>
+        </div>
+      </article>
+
+      <article class="sol-card" data-modal="m2">
+        <div class="sol-card-img bg-pod"><div class="card-art"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="9" width="18" height="9" rx="1.5"/><path d="M6 9V4h12v5M6 18v3h12v-3"/><circle cx="17" cy="13" r="0.7" fill="currentColor"/></svg><span class="markwm">PAPAS</span></div><span class="sol-card-tag">POD Suite</span>
+          <img src="https://picsum.photos/seed/papas-03/1400/875" alt="POD 통합 솔루션" loading="lazy" onerror="this.style.display='none';this.parentElement&&this.parentElement.classList.add('img-fallback')" />
+        </div>
+        <div class="sol-card-body">
+          <h3>POD 통합 솔루션</h3>
+          <div class="sol-card-en">Print-On-Demand Operating Stack</div>
+          <p class="sol-card-desc">자동견적·웹투프린트·온디맨드·인쇄 전용 MES·자동화까지 묶은 통합 인쇄 운영 스택. 인쇄소를 SaaS급으로 운영합니다.</p>
+          <div class="sol-card-tags">
+            <span>Auto Quote</span><span>Web2Print</span><span>MES</span><span>Ondemand</span>
+          </div>
+          <div class="sol-card-cta">
+            <span class="more">자세히 보기 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12h14M13 5l7 7-7 7"/></svg></span>
+          </div>
+        </div>
+      </article>
+
+      <article class="sol-card" data-modal="m3">
+        <div class="sol-card-img bg-author"><div class="card-art"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l7 18 2-9 9-2L3 3z"/><line x1="13" y1="13" x2="20" y2="20"/></svg><span class="markwm">PAPAS</span></div><span class="sol-card-tag">Authoring</span>
+          <img src="https://picsum.photos/seed/papas-04/1400/875" alt="Storywork Editor" loading="lazy" onerror="this.style.display='none';this.parentElement&&this.parentElement.classList.add('img-fallback')" />
+        </div>
+        <div class="sol-card-body">
+          <h3>Storywork Editor</h3>
+          <div class="sol-card-en">Authoring Engine for Story IP</div>
+          <p class="sol-card-desc">POD출판·전시·인쇄물 콘텐츠를 한 워크스페이스에서 편집·렌더·출판. Editor / Admin / API / AI Worker 풀스택 IP 저작 엔진.</p>
+          <div class="sol-card-tags">
+            <span>WYSIWYG</span><span>Print-Ready Render</span><span>Multi-Surface</span>
+          </div>
+          <div class="sol-card-cta">
+            <span class="more">자세히 보기 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12h14M13 5l7 7-7 7"/></svg></span>
+          </div>
+        </div>
+      </article>
+
+      <article class="sol-card" data-modal="m4">
+        <div class="sol-card-img bg-exhibit"><div class="card-art"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="1.5"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg><span class="markwm">PAPAS</span></div><span class="sol-card-tag">Exhibition</span>
+          <img src="https://picsum.photos/seed/papas-08/1400/875" alt="전시·공간 콘텐츠" loading="lazy" onerror="this.style.display='none';this.parentElement&&this.parentElement.classList.add('img-fallback')" />
+        </div>
+        <div class="sol-card-body">
+          <h3>전시 · 공간 콘텐츠</h3>
+          <div class="sol-card-en">IP-driven Offline Experience</div>
+          <p class="sol-card-desc">갤러리누리 등 IP 기반 오프라인 전시·공간 사업. 자서전 콘텐츠를 큐레이션·미디어·POD인쇄 출판 서적으로 공간과 함께 합니다.</p>
+          <div class="sol-card-tags">
+            <span>Curation</span><span>Print Kit</span><span>Media · Space</span>
+          </div>
+          <div class="sol-card-cta">
+            <span class="more">자세히 보기 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12h14M13 5l7 7-7 7"/></svg></span>
+          </div>
+        </div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ============== DARK LINEUP GRID ============== -->
+<section class="editorial surface-dark" id="lineup">
+  <div class="container">
+    <div class="section-head-row reveal">
+      <div>
+        <div class="section-eyebrow">Product Lineup</div>
+        <h2 class="section-title">파파스의 <strong>제품 라인업</strong>을 만나보세요</h2>
+      </div>
+      <p class="section-lead">Printabel POD Studio 솔루션 4종과 POD 통합 AI 솔루션의 5개 서브 제품을 한눈에 살펴봅니다.</p>
+    </div>
+
+    <div class="lineup-tabs reveal">
+      <button class="on">전체 라인업</button>
+      <button>주력 제품</button>
+      <button>Printable Base Solutions</button>
+    </div>
+
+    <div class="lineup-grid reveal-stagger">
+      <a class="tile" href="#" data-modal-tile="m1">
+        <div class="tile-poster bg-memoir"><div class="card-art"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5a2 2 0 0 1 2-2h12v18H6a2 2 0 0 1-2-2z"/><path d="M8 7h8M8 11h8M8 15h5"/></svg><span class="markwm">PAPAS</span></div><span class="tile-platform">AI Memoir</span>
+          <img src="https://picsum.photos/seed/papas-02/800/600" alt="AI 자서전" loading="lazy" onerror="this.style.display='none';this.parentElement&&this.parentElement.classList.add('img-fallback')" />
+        </div>
+        <div class="tile-info"><h4>AI 자서전 '나의이야기'</h4><p>대화형 AI 인터뷰 → 자서전 자동 생성</p></div>
+      </a>
+      <a class="tile" href="#" data-modal-tile="m2">
+        <div class="tile-poster bg-cool"><div class="card-art"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h4"/></svg><span class="markwm">PAPAS</span></div><span class="tile-platform">POD</span>
+          <img src="https://picsum.photos/seed/papas-10/800/600" alt="POD 자동견적" loading="lazy" onerror="this.style.display='none';this.parentElement&&this.parentElement.classList.add('img-fallback')" />
+        </div>
+        <div class="tile-info"><h4>POD 자동견적 솔루션</h4><p>판형·페이지·후가공별 실시간 견적 API</p></div>
+      </a>
+      <a class="tile" href="#" data-modal-tile="m2">
+        <div class="tile-poster bg-pod"><div class="card-art"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><circle cx="6.5" cy="6.5" r="0.5" fill="currentColor"/><circle cx="9" cy="6.5" r="0.5" fill="currentColor"/><path d="M8 13h6"/></svg><span class="markwm">PAPAS</span></div><span class="tile-platform">POD</span>
+          <img src="https://picsum.photos/seed/papas-11/800/600" alt="HTML5 Web2Print" loading="lazy" onerror="this.style.display='none';this.parentElement&&this.parentElement.classList.add('img-fallback')" />
+        </div>
+        <div class="tile-info"><h4>HTML5 Web2Print</h4><p>브라우저 디자인 → 인쇄용 PDF 자동 생성</p></div>
+      </a>
+      <a class="tile" href="#" data-modal-tile="m2">
+        <div class="tile-poster bg-mint"><div class="card-art"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8L12 3 3 8v8l9 5 9-5V8z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg><span class="markwm">PAPAS</span></div><span class="tile-platform">POD</span>
+          <img src="https://picsum.photos/seed/papas-12/800/600" alt="Ondemand Solution" loading="lazy" onerror="this.style.display='none';this.parentElement&&this.parentElement.classList.add('img-fallback')" />
+        </div>
+        <div class="tile-info"><h4>Ondemand Solution</h4><p>주문-발주-출고를 1권 단위로 자동화</p></div>
+      </a>
+      <a class="tile" href="#" data-modal-tile="m2">
+        <div class="tile-poster bg-author"><div class="card-art"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="20" x2="21" y2="20"/><rect x="6" y="12" width="3" height="8"/><rect x="11" y="6" width="3" height="14"/><rect x="16" y="9" width="3" height="11"/></svg><span class="markwm">PAPAS</span></div><span class="tile-platform">POD</span>
+          <img src="https://picsum.photos/seed/papas-13/800/600" alt="인쇄·출판 MES" loading="lazy" onerror="this.style.display='none';this.parentElement&&this.parentElement.classList.add('img-fallback')" />
+        </div>
+        <div class="tile-info"><h4>인쇄·출판 전용 MES</h4><p>장비 가동률·납기를 실시간 가시화</p></div>
+      </a>
+      <a class="tile" href="#" data-modal-tile="m2">
+        <div class="tile-poster bg-dust"><div class="card-art"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.93 4.93l2.12 2.12M16.95 16.95l2.12 2.12M2 12h3M19 12h3M4.93 19.07l2.12-2.12M16.95 7.05l2.12-2.12"/></svg><span class="markwm">PAPAS</span></div><span class="tile-platform">POD</span>
+          <img src="https://picsum.photos/seed/papas-14/800/600" alt="기타 자동화 솔루션" loading="lazy" onerror="this.style.display='none';this.parentElement&&this.parentElement.classList.add('img-fallback')" />
+        </div>
+        <div class="tile-info"><h4>기타 자동화 솔루션</h4><p>대량 메일링 · 데이터 정합 검증 · 라우팅</p></div>
+      </a>
+      <a class="tile" href="#" data-modal-tile="m3">
+        <div class="tile-poster bg-author"><div class="card-art"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l7 18 2-9 9-2L3 3z"/><line x1="13" y1="13" x2="20" y2="20"/></svg><span class="markwm">PAPAS</span></div><span class="tile-platform">Authoring</span>
+          <img src="https://picsum.photos/seed/papas-15/800/600" alt="Storywork Editor" loading="lazy" onerror="this.style.display='none';this.parentElement&&this.parentElement.classList.add('img-fallback')" />
+        </div>
+        <div class="tile-info"><h4>Storywork Editor</h4><p>웹툰,스토리보드,콘티북·전시·웹·POD Service</p></div>
+      </a>
+      <a class="tile" href="#" data-modal-tile="m4">
+        <div class="tile-poster bg-exhibit"><div class="card-art"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="1.5"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg><span class="markwm">PAPAS</span></div><span class="tile-platform">Exhibition</span>
+          <img src="https://picsum.photos/seed/papas-16/800/600" alt="전시·공간 콘텐츠" loading="lazy" onerror="this.style.display='none';this.parentElement&&this.parentElement.classList.add('img-fallback')" />
+        </div>
+        <div class="tile-info"><h4>전시 · 공간 콘텐츠</h4><p>IP를 큐레이션 전시로 펼치는 오프라인 채널</p></div>
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- ============== PIPELINE ============== -->
+<section class="editorial" id="pipeline">
+  <div class="container">
+    <div class="section-head-row reveal">
+      <div>
+        <div class="section-eyebrow">Pipeline</div>
+        <h2 class="section-title">5단계로 흐르는<br/><strong>스토리 → 출판 파이프라인.</strong></h2>
+      </div>
+      <p class="section-lead">인터뷰부터 전시·공간 출현까지, 한 줄의 IP가 다섯 단계의 자동화를 통과합니다.</p>
+    </div>
+
+    <div class="pipeline reveal">
+      <div class="pl-step">
+        <div class="pl-thumb bg-warm"><div class="card-art"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8"/></svg><span class="markwm">PAPAS</span></div><span class="pl-num-badge">01 · Interview</span>
+          <img src="https://picsum.photos/seed/papas-17/800/600" alt="" loading="lazy" onerror="this.style.display='none';this.parentElement&&this.parentElement.classList.add('img-fallback')" />
+        </div>
+        <div class="pl-body">
+          <h4>AI 인터뷰</h4>
+          <p>대화형 음성 인터뷰로 어르신의 생애 기억과 감정을 끌어냅니다.</p>
+          <div class="pl-stack">STT · LLM Question Tree<br/>Emotion Tagging</div>
+        </div>
+      </div>
+      <div class="pl-step">
+        <div class="pl-thumb bg-pod"><div class="card-art"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.7 6.3L20 11l-6.3 1.7L12 19l-1.7-6.3L4 11l6.3-1.7L12 3zM18 4l.5 1.5L20 6l-1.5.5L18 8l-.5-1.5L16 6l1.5-.5L18 4z"/></svg><span class="markwm">PAPAS</span></div><span class="pl-num-badge">02 · Restore</span>
+          <img src="https://picsum.photos/seed/papas-18/800/600" alt="" loading="lazy" onerror="this.style.display='none';this.parentElement&&this.parentElement.classList.add('img-fallback')" />
+        </div>
+        <div class="pl-body">
+          <h4>AI 가공</h4>
+          <p>오래된 사진을 복원하고, 인터뷰 텍스트를 챕터·문장으로 정제합니다.</p>
+          <div class="pl-stack">Real-ESRGAN<br/>Chapter Generator</div>
+        </div>
+      </div>
+      <div class="pl-step">
+        <div class="pl-thumb bg-author"><div class="card-art"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3l4 4-13 13H4v-4L17 3zM14 6l4 4"/></svg><span class="markwm">PAPAS</span></div><span class="pl-num-badge">03 · Edit</span>
+          <img src="https://picsum.photos/seed/papas-19/800/600" alt="" loading="lazy" onerror="this.style.display='none';this.parentElement&&this.parentElement.classList.add('img-fallback')" />
+        </div>
+        <div class="pl-body">
+          <h4>편집</h4>
+          <p>Storywork Editor에서 사진·문장·디자인을 한 화면에서 다듬습니다.</p>
+          <div class="pl-stack">Storywork WYSIWYG<br/>Template Engine</div>
+        </div>
+      </div>
+      <div class="pl-step">
+        <div class="pl-thumb bg-mint"><div class="card-art"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="9" width="18" height="9" rx="1.5"/><path d="M6 9V4h12v5M6 18v3h12v-3"/><circle cx="17" cy="13" r="0.7" fill="currentColor"/></svg><span class="markwm">PAPAS</span></div><span class="pl-num-badge">04 · Print</span>
+          <img src="https://picsum.photos/seed/papas-20/800/600" alt="" loading="lazy" onerror="this.style.display='none';this.parentElement&&this.parentElement.classList.add('img-fallback')" />
+        </div>
+        <div class="pl-body">
+          <h4>인쇄·출판</h4>
+          <p>POD 통합 솔루션이 견적·생산·납품까지 자동 처리합니다.</p>
+          <div class="pl-stack">Auto Quote · Web2Print<br/>MES · Ondemand</div>
+        </div>
+      </div>
+      <div class="pl-step">
+        <div class="pl-thumb bg-exhibit"><div class="card-art"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="1.5"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg><span class="markwm">PAPAS</span></div><span class="pl-num-badge">05 · Exhibit</span>
+          <img src="https://picsum.photos/seed/papas-21/800/600" alt="" loading="lazy" onerror="this.style.display='none';this.parentElement&&this.parentElement.classList.add('img-fallback')" />
+        </div>
+        <div class="pl-body">
+          <h4>전시·공간화</h4>
+          <p>완성된 자서전이 갤러리·전시·공간 경험으로 확장됩니다.</p>
+          <div class="pl-stack">Curation Kit<br/>Media Wall · IP Show</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============== STATS ============== -->
+<section class="editorial surface-soft" id="stats">
+  <div class="container">
+    <div class="section-head-row reveal">
+      <div>
+        <div class="section-eyebrow">Metrics</div>
+        <h2 class="section-title">숫자로 보는<br/>파파스의 <strong>임팩트.</strong></h2>
+      </div>
+      <p class="section-lead">전통적 자서전 제작 대비 비용·기간을 줄이고, 시니어 IP 시장의 성장을 직접 만듭니다.</p>
+    </div>
+
+    <div class="stats reveal-stagger">
+      <div class="stat">
+        <div class="stat-label">Cost Down</div>
+        <div class="stat-num"><span class="count" data-target="70">0</span><span class="unit">% ↓</span></div>
+        <div class="stat-desc">기존 자서전 제작 대비 비용 절감</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Faster</div>
+        <div class="stat-num"><span class="count" data-target="50">0</span><span class="unit">% ↓</span></div>
+        <div class="stat-desc">기획-출판 기간 단축</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">2026 Revenue</div>
+        <div class="stat-num"><span class="count" data-target="25">0</span><span class="unit">억 원</span></div>
+        <div class="stat-desc">2026 매출 목표</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Market Size</div>
+        <div class="stat-num"><span class="count" data-target="1.2" data-decimal="1">0</span><span class="unit">조 원</span></div>
+        <div class="stat-desc">글로벌 시니어 플랫폼 시장</div>
+      </div>
+    </div>
+
+    <div style="margin-top:24px" class="market reveal">
+      <div class="market-card">
+        <h4>Revenue Mix · 2026 Plan</h4>
+        <div class="bar-row"><div class="bar-label"><span>B2C — AI 자서전 / 전시 굿즈</span><strong>40%</strong></div><div class="bar-track"><div class="bar-fill" data-w="40"></div></div></div>
+        <div class="bar-row alt"><div class="bar-label"><span>B2B — POD 통합 솔루션 SaaS</span><strong>35%</strong></div><div class="bar-track"><div class="bar-fill" data-w="35"></div></div></div>
+        <div class="bar-row"><div class="bar-label"><span>B2G — 시·구 시니어 사업</span><strong>20%</strong></div><div class="bar-track"><div class="bar-fill" data-w="20"></div></div></div>
+        <div class="bar-row alt"><div class="bar-label"><span>전시 · 공간 IP 라이센싱</span><strong>5%</strong></div><div class="bar-track"><div class="bar-fill" data-w="5"></div></div></div>
+
+        <h4 class="spaced">Market Tailwind</h4>
+        <div class="bar-row"><div class="bar-label"><span>국내 65세 이상 인구 (2030E)</span><strong>1,300만</strong></div><div class="bar-track"><div class="bar-fill" data-w="78"></div></div></div>
+        <div class="bar-row alt"><div class="bar-label"><span>글로벌 POD 인쇄 시장 CAGR</span><strong>8.4%</strong></div><div class="bar-track"><div class="bar-fill" data-w="62"></div></div></div>
+        <div class="bar-row"><div class="bar-label"><span>국내 자서전·기록 콘텐츠 수요</span><strong>YoY +24%</strong></div><div class="bar-track"><div class="bar-fill" data-w="70"></div></div></div>
+      </div>
+      <div class="market-card">
+        <h4>IP Utilization</h4>
+        <div class="donut-wrap">
+          <svg viewBox="0 0 120 120">
+            <circle cx="60" cy="60" r="48" fill="none" stroke="#f3f3f3" stroke-width="14"/>
+            <circle class="don-seg" cx="60" cy="60" r="48" fill="none" stroke="#0058d4" stroke-width="14" stroke-dasharray="0 301.6" transform="rotate(-90 60 60)" style="transition:stroke-dasharray 1.6s cubic-bezier(.2,.8,.2,1)" data-target="105.5"/>
+            <circle class="don-seg" cx="60" cy="60" r="48" fill="none" stroke="#1eaedb" stroke-width="14" stroke-dasharray="0 301.6" stroke-dashoffset="-105.5" transform="rotate(-90 60 60)" style="transition:stroke-dasharray 1.6s cubic-bezier(.2,.8,.2,1) 0.2s" data-target="84.5"/>
+            <circle class="don-seg" cx="60" cy="60" r="48" fill="none" stroke="#1f1f1f" stroke-width="14" stroke-dasharray="0 301.6" stroke-dashoffset="-190" transform="rotate(-90 60 60)" style="transition:stroke-dasharray 1.6s cubic-bezier(.2,.8,.2,1) 0.4s" data-target="66.4"/>
+            <circle class="don-seg" cx="60" cy="60" r="48" fill="none" stroke="#cccccc" stroke-width="14" stroke-dasharray="0 301.6" stroke-dashoffset="-256.4" transform="rotate(-90 60 60)" style="transition:stroke-dasharray 1.6s cubic-bezier(.2,.8,.2,1) 0.6s" data-target="45.2"/>
+            <text x="60" y="58" text-anchor="middle" fill="#000" font-size="14" font-weight="700">PAPAS</text>
+            <text x="60" y="73" text-anchor="middle" fill="#6b6b6b" font-size="7" font-weight="600">IP CORE</text>
+          </svg>
+          <div class="donut-legend">
+            <span><i style="background:#0058d4"></i>AI Memoir <strong>35%</strong></span>
+            <span><i style="background:#1eaedb"></i>POD Suite <strong>28%</strong></span>
+            <span><i style="background:#1f1f1f"></i>Storywork <strong>22%</strong></span>
+            <span><i style="background:#cccccc"></i>Exhibition <strong>15%</strong></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============== ANNIVERSARY / BRAND BLOCK ============== -->
+<section class="editorial" id="anniversary">
+  <div class="container">
+    <div class="anni-block reveal">
+      <div class="anni-grid">
+        <div class="anni-mark">
+          PAPAS<sup style="font-size:0.35em;color:var(--papas);font-weight:600;letter-spacing:-0.02em">©</sup>
+          <span class="small">Stories+Storage "Storige" · Est. 2024</span>
+        </div>
+        <div class="anni-text">
+          <h3>한 사람의 이야기를<br/><strong>한 권, 한 공간으로 잇습니다.</strong></h3>
+          <p>
+            파파스컴퍼니는 인터뷰 한 번에서 시작해 책·전시·공간으로 확장되는
+            모든 단계를 자체 기술로 운영하는 IP 스튜디오입니다. AI 인터뷰 엔진,
+            인쇄 자동화 스택, 저작 엔진, 전시 큐레이션이 하나의 흐름 안에 묶여 있습니다.
+          </p>
+          <div class="anni-actions">
+            <button class="btn btn-primary" onclick="document.getElementById('identity').scrollIntoView({behavior:'smooth'})">
+              우리가 믿는 것
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+            </button>
+            <button class="btn btn-ghost-light" onclick="document.getElementById('roadmap').scrollIntoView({behavior:'smooth'})">로드맵 보기</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============== ROADMAP NEWS-CARDS ============== -->
+<section class="editorial surface-soft" id="roadmap">
+  <div class="container">
+    <div class="section-head-row reveal">
+      <div>
+        <div class="section-eyebrow">2026 Roadmap</div>
+        <h2 class="section-title">2026 — 한 해의<br/>네 가지 <strong>분기.</strong></h2>
+      </div>
+      <p class="section-lead">IP를 만들고, 솔루션을 정식 런칭하고, 전시로 펼치고, 글로벌·시리즈A로 확장합니다.</p>
+    </div>
+
+    <div class="news-row reveal-stagger">
+      <div class="news-track">
+        <article class="news-card now">
+          <div class="news-card-img bg-quarter1"><div class="card-art"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M9.5 13.5L20 3"/><path d="M5 13l5 1 1 5-6-6zM3 21l3-3"/></svg><span class="markwm">PAPAS</span></div><span class="qbadge">Q1 · NOW</span>
+            <img src="https://picsum.photos/seed/papas-07/900/675" alt="" loading="lazy" onerror="this.style.display='none';this.parentElement&&this.parentElement.classList.add('img-fallback')" />
+          </div>
+          <div class="news-card-body">
+            <div class="news-card-tag">Foundation</div>
+            <h4>AI 자서전 베타 런칭과 솔루션 v1</h4>
+            <p>AI 자서전 '나의이야기' 베타 런칭, POD 자동견적 PoC 가동, Storywork Editor v1, 고양아람누리 전시 준비.</p>
+            <div class="news-author">
+              <div class="av bg-pod"><div class="card-art"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 22a8 8 0 0 1 16 0"/></svg></div><img src="https://picsum.photos/seed/papas-22/80/80" alt="" loading="lazy" onerror="this.style.display='none';this.parentElement&&this.parentElement.classList.add('img-fallback')"></div>
+              <div class="meta"><strong>조요한 · CEO</strong>2026.04 · Foundation Phase</div>
+            </div>
+          </div>
+        </article>
+
+        <article class="news-card">
+          <div class="news-card-img bg-quarter2"><div class="card-art"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="1.5"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg><span class="markwm">PAPAS</span></div><span class="qbadge">Q2 · 2026</span>
+            <img src="https://picsum.photos/seed/papas-16/900/675" alt="" loading="lazy" onerror="this.style.display='none';this.parentElement&&this.parentElement.classList.add('img-fallback')" />
+          </div>
+          <div class="news-card-body">
+            <div class="news-card-tag">Launch</div>
+            <h4>갤러리누리 전시 OPEN과 정식 런칭</h4>
+            <p>갤러리누리 전시 OPEN, Web2Print 정식 런칭, 자서전 200권 양산, HTML5 에디터 통합.</p>
+            <div class="news-author">
+              <div class="av bg-pod"><div class="card-art"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 22a8 8 0 0 1 16 0"/></svg></div><img src="https://picsum.photos/seed/papas-23/80/80" alt="" loading="lazy" onerror="this.style.display='none';this.parentElement&&this.parentElement.classList.add('img-fallback')"></div>
+              <div class="meta"><strong>강동현 · Tech Lead</strong>2026.07 · Launch Phase</div>
+            </div>
+          </div>
+        </article>
+
+        <article class="news-card">
+          <div class="news-card-img bg-quarter3"><div class="card-art"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="20" x2="21" y2="20"/><rect x="6" y="12" width="3" height="8"/><rect x="11" y="6" width="3" height="14"/><rect x="16" y="9" width="3" height="11"/></svg><span class="markwm">PAPAS</span></div><span class="qbadge">Q3 · 2026</span>
+            <img src="https://picsum.photos/seed/papas-13/900/675" alt="" loading="lazy" onerror="this.style.display='none';this.parentElement&&this.parentElement.classList.add('img-fallback')" />
+          </div>
+          <div class="news-card-body">
+            <div class="news-card-tag">Expansion</div>
+            <h4>인쇄 MES 상용화와 B2G 확장</h4>
+            <p>인쇄·출판 MES 상용화, B2G 시·구 사업 3건, Ondemand·자동화 확장, 전시 IP 라이센싱 1건.</p>
+            <div class="news-author">
+              <div class="av bg-pod"><div class="card-art"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 22a8 8 0 0 1 16 0"/></svg></div><img src="https://picsum.photos/seed/papas-24/80/80" alt="" loading="lazy" onerror="this.style.display='none';this.parentElement&&this.parentElement.classList.add('img-fallback')"></div>
+              <div class="meta"><strong>Papas Studio</strong>2026.10 · Expansion Phase</div>
+            </div>
+          </div>
+        </article>
+
+        <article class="news-card">
+          <div class="news-card-img bg-quarter4"><div class="card-art"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg><span class="markwm">PAPAS</span></div><span class="qbadge">Q4 · 2026</span>
+            <img src="https://picsum.photos/seed/papas-25/900/675" alt="" loading="lazy" onerror="this.style.display='none';this.parentElement&&this.parentElement.classList.add('img-fallback')" />
+          </div>
+          <div class="news-card-body">
+            <div class="news-card-tag">Scale</div>
+            <h4>글로벌 진출과 시리즈A 클로즈</h4>
+            <p>글로벌 시니어 시장 진출, 시리즈A 라운드 클로즈, 매출 25억 달성, '나의이야기' IP 영상화 시작.</p>
+            <div class="news-author">
+              <div class="av bg-pod"><div class="card-art"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 22a8 8 0 0 1 16 0"/></svg></div><img src="https://picsum.photos/seed/papas-26/80/80" alt="" loading="lazy" onerror="this.style.display='none';this.parentElement&&this.parentElement.classList.add('img-fallback')"></div>
+              <div class="meta"><strong>Papas Investor Relations</strong>2027.01 · Scale Phase</div>
+            </div>
+          </div>
+        </article>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============== IDENTITY / VALUES ============== -->
+<section class="editorial" id="identity">
+  <div class="container">
+    <div class="section-head-row reveal">
+      <div>
+        <div class="section-eyebrow">Identity</div>
+        <h2 class="section-title">우리가 <strong>믿는 것.</strong></h2>
+      </div>
+    </div>
+
+    <div class="identity-grid reveal">
+      <div class="identity-quote">
+        이야기는 사라지지만<br/>
+        <em>기록된 이야기</em>는<br/>
+        세대를 가로질러<br/>
+        <em>유산</em>이 됩니다.
+      </div>
+      <div class="values">
+        <div class="value-cell"><div class="v-num">Value 01</div><h5>Human-First AI</h5><p>AI는 도구이고, 주인공은 사람의 기억과 목소리입니다.</p></div>
+        <div class="value-cell"><div class="v-num">Value 02</div><h5>Single IP, Multi Surface</h5><p>하나의 이야기를 책 · 전시 · 디지털 · 공간으로 확장합니다.</p></div>
+        <div class="value-cell"><div class="v-num">Value 03</div><h5>Print is a Platform</h5><p>인쇄는 끝이 아니라 IP가 세상에 출현하는 플랫폼입니다.</p></div>
+        <div class="value-cell"><div class="v-num">Value 04</div><h5>Legacy over Likes</h5><p>좋아요가 아니라 다음 세대에 남길 유산을 만듭니다.</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============== PROMO BANNER ============== -->
+<section class="editorial">
+  <div class="container">
+    <div class="promo reveal">
+      <div class="promo-inner">
+        <div>
+          <h3>Papas <strong>Studio Membership.</strong></h3>
+          <p>제휴사·출판사·자체 인쇄소를 위한 통합 멤버십. POD 통합 솔루션 + Storywork Editor + 전시 IP 라이센싱을 한 계정으로 운영하세요.</p>
+        </div>
+        <button class="btn btn-light-on-dark" onclick="document.getElementById('contact').scrollIntoView({behavior:'smooth'})">
+          멤버십 알아보기
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============== CTA / CONTACT ============== -->
+<section class="editorial" id="contact">
+  <div class="container">
+    <div class="cta-block reveal">
+      <div class="inner">
+        <span class="eyebrow">Contact · 2026</span>
+        <h3>이야기를 가진 모든 분과<br/><strong>함께합니다.</strong></h3>
+        <p>제휴, 솔루션 도입, 전시 협업, 투자 제안 — 어떤 형태든 환영합니다. 한 줄의 이야기를 보내주세요. 24시간 안에 회신드리겠습니다.</p>
+        <div class="cta-row">
+          <button class="btn btn-primary" onclick="alert('연결: contact@papas.company')">
+            contact@papas.company
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+          </button>
+          <button class="btn btn-ghost-dark" onclick="window.print()">Deck 다운로드</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============== FOOTER ============== -->
+<footer class="footer">
+  <div class="container">
+    <div class="footer-top">
+      <div class="footer-logo">P</div>
+      <div>
+        <div class="footer-brand-name">PapasCompany</div>
+        <div class="footer-brand-ko">(주)파파스컴퍼니</div>
+      </div>
+    </div>
+    <div class="footer-grid">
+      <div class="footer-col">
+        <h6>회사</h6>
+        <ul>
+          <li><a href="#story-intro">소개</a></li>
+          <li><a href="#identity">브랜드</a></li>
+          <li><a href="#contact">채용</a></li>
+          <li><a href="#contact">파트너십</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h6>솔루션</h6>
+        <ul>
+          <li><a href="#solutions">AI 자서전 '나의이야기'</a></li>
+          <li><a href="#solutions">POD 통합 솔루션</a></li>
+          <li><a href="#solutions">Storywork Editor</a></li>
+          <li><a href="#solutions">전시 · 공간 콘텐츠</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h6>POD 서브</h6>
+        <ul>
+          <li><a href="#lineup">자동견적 솔루션</a></li>
+          <li><a href="#lineup">HTML5 Web2Print</a></li>
+          <li><a href="#lineup">Ondemand</a></li>
+          <li><a href="#lineup">인쇄·출판 MES</a></li>
+          <li><a href="#lineup">자동화 솔루션</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h6>리소스</h6>
+        <ul>
+          <li><a href="#roadmap">로드맵</a></li>
+          <li><a href="#stats">실적·시장</a></li>
+          <li><a href="#pipeline">기술 스택</a></li>
+          <li><a href="#contact">투자자 자료</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h6>연결</h6>
+        <ul>
+          <li><a href="#contact">contact@papas.company</a></li>
+          <li><a href="#">LinkedIn</a></li>
+          <li><a href="#">Brunch</a></li>
+          <li><a href="#">Newsletter</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <div class="copy">
+        © 2026 <strong>PAPAS COMPANY Inc.</strong> All Stories Reserved.<br/>
+        v3.0 · Memoir & Print Tech Studio · Built for global IP delivery.
+      </div>
+      <div class="legal">
+        대표: 조요한 · 사업자등록번호: 000-00-00000<br/>
+        주소: Republic of Korea · contact@papas.company
+      </div>
+    </div>
+  </div>
+</footer>
+
+<!-- ============== MODALS ============== -->
+<div class="modal-backdrop" id="modal-backdrop">
+  <!-- Modal 1: AI Memoir -->
+  <div class="modal" data-modal-id="m1" style="display:none">
+    <button class="modal-close" data-close>✕</button>
+    <div class="modal-hero bg-memoir"><div class="card-art"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5a2 2 0 0 1 2-2h12v18H6a2 2 0 0 1-2-2z"/><path d="M8 7h8M8 11h8M8 15h5"/></svg><span class="markwm">PAPAS</span></div><img src="https://picsum.photos/seed/papas-02/1600/900" alt="AI 자서전" loading="lazy" onerror="this.style.display='none';this.parentElement&&this.parentElement.classList.add('img-fallback')" />
+    </div>
+    <div class="modal-body">
+      <div class="modal-eyebrow">AI Memoir Engine</div>
+      <h3>AI 자서전 <strong>'나의이야기'</strong></h3>
+      <div class="modal-en">AI-Powered Memoir Engine for Senior Life</div>
+      <p class="modal-lead">대화형 AI 인터뷰가 어르신의 기억을 차분히 꺼내고, 흐릿한 옛 사진은 화질을 복원하고, 흩어진 이야기는 챕터로 묶여 한 권의 자서전이자 전시 콘텐츠로 자동 완성됩니다. 1인당 평균 12분의 인터뷰 데이터로 7편의 챕터를 생성하는 IP 엔진입니다.</p>
+
+      <h4>Core Features</h4>
+      <ul class="feat">
+        <li><strong>대화형 AI 인터뷰</strong>고령자 친화 음성 UI · 감정 태깅 · 질문 트리 자동 분기</li>
+        <li><strong>사진 복원 (Real-ESRGAN)</strong>흑백·저해상도 옛 사진을 출판 가능 해상도로 복원</li>
+        <li><strong>챕터 자동 생성</strong>인터뷰 → 7편 챕터 자동 구성 · 한국어 자연스러움 LLM 튜닝</li>
+        <li><strong>출판 가능 렌더</strong>인쇄 · 전시 · 디지털 3-surface 동시 출력</li>
+      </ul>
+
+      <h4>Value Proposition</h4>
+      <ul class="feat">
+        <li><strong>비용 70% 절감</strong>전통 자서전 출판 대비 1/3 비용</li>
+        <li><strong>기간 50% 단축</strong>3-6개월 → 6-8주로 단축</li>
+        <li><strong>B2C · B2B · B2G</strong>요양원 · 복지관 · 지자체 등 다채널</li>
+        <li><strong>IP 재활용</strong>책 → 전시 → 영상으로 확장 가능</li>
+      </ul>
+
+      <div class="modal-meta">
+        <span><strong>STAGE</strong>BETA · 2026 Q1</span>
+        <span><strong>TARGET</strong>65+ Senior · 요양원 · 지자체</span>
+        <span><strong>SAMPLE</strong>12분 인터뷰 · 7편 챕터</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 2: POD Suite -->
+  <div class="modal" data-modal-id="m2" style="display:none">
+    <button class="modal-close" data-close>✕</button>
+    <div class="modal-hero bg-pod"><div class="card-art"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="9" width="18" height="9" rx="1.5"/><path d="M6 9V4h12v5M6 18v3h12v-3"/><circle cx="17" cy="13" r="0.7" fill="currentColor"/></svg><span class="markwm">PAPAS</span></div><img src="https://picsum.photos/seed/papas-03/1600/900" alt="POD" loading="lazy" onerror="this.style.display='none';this.parentElement&&this.parentElement.classList.add('img-fallback')" />
+    </div>
+    <div class="modal-body">
+      <div class="modal-eyebrow">POD Suite</div>
+      <h3>POD <strong>통합 솔루션</strong></h3>
+      <div class="modal-en">Print-On-Demand Operating Stack</div>
+      <p class="modal-lead">견적부터 생산, 발송까지 인쇄 사업의 모든 워크플로우를 하나의 스택으로 통합합니다. 인쇄소를 SaaS급으로 운영할 수 있게 만드는 5종 솔루션 묶음 — 자동견적·웹투프린트·온디맨드·MES·자동화.</p>
+
+      <h4>5 Sub-Solutions</h4>
+      <ul class="feat">
+        <li><strong>POD 자동견적 솔루션</strong>판형·페이지·용지·후가공별 실시간 견적 · API 제공</li>
+        <li><strong>HTML5 Web2Print Solution</strong>브라우저에서 표지·내지 디자인 → 인쇄 가능 PDF 자동 생성</li>
+        <li><strong>Ondemand Solution</strong>주문-발주-출고를 1권 단위로 자동화 · 지연 0%</li>
+        <li><strong>인쇄·출판 전용 MES</strong>장비 가동, 작업 큐, 손실률, 납기를 실시간 가시화</li>
+        <li><strong>기타 자동화 솔루션</strong>대량 메일링, 인쇄용 데이터 정합 검증, 후가공 라우팅 자동화</li>
+      </ul>
+
+      <h4>Why It Matters</h4>
+      <ul class="feat">
+        <li><strong>SaaS 전환</strong>인쇄소 운영을 사람-의존에서 시스템-의존으로</li>
+        <li><strong>실시간 가시성</strong>견적부터 출고까지 단일 대시보드</li>
+        <li><strong>오픈 API</strong>외부 ERP · 쇼핑몰 · 자서전 엔진과 연동</li>
+        <li><strong>1권 단위 효율</strong>대량 인쇄 없이 한 권도 수익으로</li>
+      </ul>
+
+      <div class="modal-meta">
+        <span><strong>STAGE</strong>PoC → Q2 정식 런칭</span>
+        <span><strong>TARGET</strong>중·대형 POD · 출판사 · 자체 인쇄</span>
+        <span><strong>STACK</strong>HTML5 · Node · MariaDB · Redis · Worker</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 3: Storywork Editor -->
+  <div class="modal" data-modal-id="m3" style="display:none">
+    <button class="modal-close" data-close>✕</button>
+    <div class="modal-hero bg-author"><div class="card-art"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l7 18 2-9 9-2L3 3z"/><line x1="13" y1="13" x2="20" y2="20"/></svg><span class="markwm">PAPAS</span></div><img src="https://picsum.photos/seed/papas-04/1600/900" alt="Storywork Editor" loading="lazy" onerror="this.style.display='none';this.parentElement&&this.parentElement.classList.add('img-fallback')" />
+    </div>
+    <div class="modal-body">
+      <div class="modal-eyebrow">Authoring Engine</div>
+      <h3>Storywork <strong>Editor</strong></h3>
+      <div class="modal-en">Authoring Engine for Story IP</div>
+      <p class="modal-lead">자서전, 전시 그래픽, 인쇄물, 디지털 콘텐츠를 하나의 워크스페이스에서 편집하고 동시 렌더링합니다. WYSIWYG으로 디자인하고, 한 번의 출판으로 책 · 전시 · 웹 · POD까지 일관된 결과물을 만듭니다.</p>
+
+      <h4>Core Features</h4>
+      <ul class="feat">
+        <li><strong>WYSIWYG 저작</strong>사진 · 문장 · 디자인 컴포넌트를 직관적으로 조합</li>
+        <li><strong>Multi-Surface 출판</strong>책 · 전시 · 웹 · POD 한 번에 출력</li>
+        <li><strong>Print-Ready 엔진</strong>CMYK · 재단선 · 해상도 자동 보정</li>
+        <li><strong>풀스택 아키텍처</strong>Editor · Admin · API · Worker · MariaDB · Redis · Storage</li>
+      </ul>
+
+      <h4>Use Cases</h4>
+      <ul class="feat">
+        <li><strong>자서전 자동 조판</strong>인터뷰 결과를 챕터·표지로 자동 변환</li>
+        <li><strong>전시 그래픽 제작</strong>전시 패널 · 캡션 · 도록을 동일 데이터로</li>
+        <li><strong>POD 연동</strong>편집 완료 → POD 큐로 즉시 인입</li>
+        <li><strong>템플릿 마켓</strong>외부 디자이너 · 작가용 마켓플레이스 확장</li>
+      </ul>
+
+      <div class="modal-meta">
+        <span><strong>STAGE</strong>v1 · 2026 Q1</span>
+        <span><strong>TARGET</strong>내부 · B2B 출판사 · 디자이너</span>
+        <span><strong>STACK</strong>React · Node · MariaDB · Redis · Worker</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 4: Exhibition -->
+  <div class="modal" data-modal-id="m4" style="display:none">
+    <button class="modal-close" data-close>✕</button>
+    <div class="modal-hero bg-exhibit"><div class="card-art"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="1.5"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg><span class="markwm">PAPAS</span></div><img src="https://picsum.photos/seed/papas-08/1600/900" alt="Exhibition" loading="lazy" onerror="this.style.display='none';this.parentElement&&this.parentElement.classList.add('img-fallback')" />
+    </div>
+    <div class="modal-body">
+      <div class="modal-eyebrow">Exhibition & Space</div>
+      <h3>전시 · 공간 <strong>콘텐츠</strong></h3>
+      <div class="modal-en">IP-driven Offline Experience</div>
+      <p class="modal-lead">자서전 IP를 책에서 멈추지 않고 전시·공간·미디어 경험으로 펼칩니다. 갤러리누리 · 아람누리 등 공공 문화 공간과 협력해 시니어 라이프 스토리를 큐레이션 전시로 구현하는 오프라인 IP 채널입니다.</p>
+
+      <h4>Format</h4>
+      <ul class="feat">
+        <li><strong>큐레이션 전시</strong>인터뷰 → 사진 → 인쇄물 → 미디어월</li>
+        <li><strong>전시 키트</strong>지자체 · 복지관용 표준화된 전시 모듈</li>
+        <li><strong>공간 디자인</strong>스토리 동선 기반 공간 설계</li>
+        <li><strong>IP 라이센싱</strong>완성된 전시 IP를 타 기관에 라이센스</li>
+      </ul>
+
+      <h4>Pipeline</h4>
+      <ul class="feat">
+        <li><strong>2026 Q2</strong>고양아람누리 · 갤러리누리 OPEN</li>
+        <li><strong>2026 Q3</strong>지자체 시·구 3개 기관 확장</li>
+        <li><strong>2026 Q4</strong>전시 IP 1건 외부 라이센싱</li>
+        <li><strong>2027</strong>아카이브 전시 → 영상 IP 전환</li>
+      </ul>
+
+      <div class="modal-meta">
+        <span><strong>STAGE</strong>2026 Q2 OPEN</span>
+        <span><strong>VENUE</strong>고양아람누리 갤러리누리</span>
+        <span><strong>FORMAT</strong>전시 + 인쇄물 + 미디어</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ============== Reveal observer ============== */
+const io = new IntersectionObserver((entries) => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      e.target.classList.add('in');
+      e.target.querySelectorAll('.count').forEach(runCount);
+      e.target.querySelectorAll('.bar-fill').forEach(b => { b.style.width = b.dataset.w + '%'; });
+      e.target.querySelectorAll('.don-seg').forEach(d => {
+        const t = parseFloat(d.dataset.target);
+        d.setAttribute('stroke-dasharray', t + ' ' + (301.6 - t));
+      });
+      io.unobserve(e.target);
+    }
+  });
+}, { threshold: 0.16 });
+document.querySelectorAll('.reveal, .reveal-stagger').forEach(el => io.observe(el));
+
+/* ============== Counter ============== */
+function runCount(el){
+  const target = parseFloat(el.dataset.target);
+  const dec = parseInt(el.dataset.decimal || '0', 10);
+  const dur = 1400, start = performance.now();
+  function step(now){
+    const p = Math.min(1, (now - start)/dur);
+    const eased = 1 - Math.pow(1 - p, 3);
+    el.textContent = (target * eased).toFixed(dec);
+    if (p < 1) requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+
+/* ============== Modal ============== */
+const backdrop = document.getElementById('modal-backdrop');
+const modals = backdrop.querySelectorAll('.modal');
+function openModal(id){
+  modals.forEach(m => m.style.display = (m.dataset.modalId === id ? 'block' : 'none'));
+  backdrop.classList.add('show');
+  document.body.style.overflow = 'hidden';
+}
+function closeModal(){
+  backdrop.classList.remove('show');
+  document.body.style.overflow = '';
+  setTimeout(() => modals.forEach(m => m.style.display = 'none'), 250);
+}
+document.querySelectorAll('[data-modal]').forEach(card => card.addEventListener('click', () => openModal(card.dataset.modal)));
+document.querySelectorAll('[data-modal-tile]').forEach(t => t.addEventListener('click', e => { e.preventDefault(); openModal(t.dataset.modalTile); }));
+backdrop.addEventListener('click', (e) => {
+  if (e.target === backdrop || e.target.hasAttribute('data-close')) closeModal();
+});
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && backdrop.classList.contains('show')) closeModal(); });
+
+/* ============== Smooth scroll ============== */
+document.querySelectorAll('a[href^="#"]').forEach(a => {
+  a.addEventListener('click', e => {
+    const id = a.getAttribute('href').slice(1);
+    const t = document.getElementById(id);
+    if (t){ e.preventDefault(); t.scrollIntoView({behavior:'smooth', block:'start'}); }
+  });
+});
+
+/* ============== Active section in nav + thumb tray ============== */
+const sections = ['story-intro','solutions','lineup','pipeline','stats','anniversary','roadmap','identity','contact'];
+const navLinks = document.querySelectorAll('.nav-links a');
+const thumbs = document.querySelectorAll('.thumb');
+function updateActive(){
+  const y = window.scrollY + 200;
+  let active = null;
+  sections.forEach(id => {
+    const el = document.getElementById(id);
+    if (el && el.offsetTop <= y) active = id;
+  });
+  navLinks.forEach(a => {
+    a.classList.toggle('active', a.getAttribute('href') === '#' + active);
+  });
+  thumbs.forEach(t => {
+    t.classList.toggle('active', t.getAttribute('href') === '#' + active);
+  });
+}
+window.addEventListener('scroll', updateActive, { passive: true });
+
+/* ============== Lineup tabs (decorative interaction) ============== */
+document.querySelectorAll('.lineup-tabs button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.lineup-tabs button').forEach(b => b.classList.remove('on'));
+    btn.classList.add('on');
+  });
+});
+</script>
+</body>
+</html>
