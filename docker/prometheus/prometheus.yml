@@ -1,0 +1,36 @@
+# Prometheus 설정 (P2-8 옵션 C 하이브리드)
+# - storige-api `/api/health/metrics` (NestJS prom-client)
+# - node-exporter (VPS 시스템 메트릭)
+# - redis-exporter (Bull 큐 백엔드 Redis)
+# 내부 docker network 만 사용, 외부 접근 X.
+
+global:
+  scrape_interval: 15s
+  scrape_timeout: 10s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: storige-prod
+    region: kr-seoul
+
+scrape_configs:
+  # storige-api Node.js + Bull 큐 메트릭
+  - job_name: storige-api
+    metrics_path: /api/health/metrics
+    static_configs:
+      - targets: ['api:4000']
+        labels:
+          service: api
+
+  # 시스템 메트릭 (CPU, 메모리, 디스크, 네트워크)
+  - job_name: node
+    static_configs:
+      - targets: ['node-exporter:9100']
+        labels:
+          service: vps
+
+  # Redis (Bull 큐 백엔드)
+  - job_name: redis
+    static_configs:
+      - targets: ['redis-exporter:9121']
+        labels:
+          service: redis

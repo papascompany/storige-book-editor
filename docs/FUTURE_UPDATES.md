@@ -37,14 +37,35 @@
 
 ---
 
-### 2. (예약) PHP 양측 통합 검증 후 후속 정리
+### 2. P2-8 풀 Grafana + Prometheus 셋업 (옵션 B 확장)
+- **상태**: ⏳ 대기 (P2-8 옵션 C 하이브리드 완료 후 검토)
+- **발견 시점**: 2026-05-04
+- **컨텍스트**:
+  - 2026-05-04 P2-8 옵션 C(하이브리드) 셋업 완료 — 시스템/큐 메트릭은 Grafana, HTTP latency는 Sentry Performance.
+  - 현재 운영 트래픽 규모(VPS 1대, 일 주문 수십~수백 예상)에는 충분.
+- **본 작업 (별도 사이클)**:
+  - [ ] Sentry Performance에 의존 중인 부분(API endpoint p50/p95, top slow endpoints)을 Grafana로 흡수
+  - [ ] OpenTelemetry tracer 추가 (현재 Sentry SDK가 자동 transaction 발생 → otel-collector로 전환)
+  - [ ] Tempo/Jaeger 도입 검토 (분산 트레이싱)
+  - [ ] Loki 로그 수집 (현재 Docker logs만)
+  - [ ] alertmanager 추가 + Slack 알림 일원화 (현재 Sentry Slack과 분리)
+  - [ ] Grafana 사용자 정책 (Viewer / Editor) + LDAP 또는 OAuth 연계
+- **권장 일정**: PHP 통합 운영 안정화 후 (2026-Q3 이후), 또는 다음 조건 만족 시 즉시:
+  - 일 주문 1000건 초과
+  - VPS 단일 → 다중 인스턴스 전환
+  - 외부 SLO 약속 (계약상 99.9% 등)
+- **위험도**: 🟡 중 (운영 인프라 추가 — VPS 메모리 +400MB 예상, 모니터링 시스템 자체 운영 부담)
+
+---
+
+### 3. (예약) PHP 양측 통합 검증 후 후속 정리
 - 상태: ⏳ 대기 (P0-1)
 - 핵심: bookmoa PHP 측 코드 적용 + 양측 E2E
 - 별도 트래커: `REMAINING_WORK_REVIEW.md` §B
 
 ---
 
-### 3. (예약) Admin 비밀번호 강제 교체
+### 4. (예약) Admin 비밀번호 강제 교체
 - 상태: ❌ 미진행 (P0-2)
 - 핵심: 시드값 `admin@storige.com` / `admin123` → 강한 값
 - 별도 트래커: `NEXT_DEVELOPMENT_PLAN.md`
