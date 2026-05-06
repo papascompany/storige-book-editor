@@ -494,7 +494,7 @@
   <div class="sidebar-header">
     <h1>Storige × bookmoa</h1>
     <p>PHP 연동 최종 가이드</p>
-    <span class="sidebar-badge">v3.0 · 2026-05-04</span>
+    <span class="sidebar-badge">v3.1 · 2026-05-06</span>
   </div>
   <nav>
     <div class="sidebar-section-label">필수 시작</div>
@@ -528,7 +528,7 @@
     <h1>Storige × bookmoa PHP 연동 가이드</h1>
     <p>PHP 개발팀을 위한 최종 통합 연동 가이드 — 에디터 진입부터 합성 PDF 다운로드까지</p>
     <div class="meta-row">
-      <span class="meta-chip">v3.0 · 2026-05-04</span>
+      <span class="meta-chip">v3.1 · 2026-05-06</span>
       <span class="meta-chip">Storige 측 준비 완료</span>
       <span class="meta-chip">PHP 측 작업 2일 예상</span>
       <span class="meta-chip"><a href="https://api.papascompany.co.kr/api/docs" target="_blank">Swagger API 문서 →</a></span>
@@ -670,6 +670,14 @@
   <!-- ─────────────────────── §2 API KEY ─────────────────────── -->
   <section class="section" id="api-key">
     <h2 class="section-title"><span class="section-num">2</span> 환경 설정 — API Key</h2>
+
+    <div class="callout callout-info">
+      <span class="callout-icon">🆕</span>
+      <div class="callout-body">
+        <strong>v3.1 (2026-05-06) — 멀티사이트 안내</strong> · PHP 측 영향 0<br>
+        Storige가 단일 시스템에서 여러 외부 사이트(북모아 / 점보포토 / 스튜디오북 / Storywork / Printcard studio / MD2Books / 100p Books)의 편집기·워커 연동을 동시 지원합니다. <strong>북모아 측 변경 0</strong> — 기존 <code>STORIGE_API_KEY</code>는 자동 DB 마이그레이션으로 그대로 작동. 새 사이트 추가 시 Storige 운영팀이 admin에서 키 발급 → 안전 채널로 전달 → 그 사이트 PHP <code>.env</code>에 입력. 코드는 동일.
+      </div>
+    </div>
 
     <h3>2-1. PHP 서버 설정</h3>
     <div class="callout callout-warn">
@@ -1367,6 +1375,11 @@ Storige 운영팀 드림</pre>
   <section class="section">
     <h2 class="section-title" style="border:none;padding:0;margin-bottom:12px;">변경 이력</h2>
     <div class="card" style="padding:16px;">
+      <div class="changelog-row">
+        <span class="changelog-date">2026-05-06</span>
+        <span class="changelog-version"><span class="version-badge">v3.1</span></span>
+        <span>Phase A 멀티사이트 안내 추가 (§2). PHP 측 코드/.env 변경 0. 기존 키 자동 DB 마이그레이션. 새 사이트 추가는 admin에서 키 발급.</span>
+      </div>
       <div class="changelog-row">
         <span class="changelog-date">2026-05-04</span>
         <span class="changelog-version"><span class="version-badge">v3.0</span></span>
