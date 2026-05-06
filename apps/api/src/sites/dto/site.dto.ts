@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
-import { IsIn, IsOptional, IsString, IsUrl, Length } from 'class-validator';
+import { IsBoolean, IsIn, IsOptional, IsString, IsUrl, Length } from 'class-validator';
 
 export class CreateSiteDto {
   @ApiProperty({ example: '북모아 메인', description: '사이트명' })
@@ -43,6 +43,38 @@ export class CreateSiteDto {
   @IsOptional()
   @IsIn(['active', 'suspended'])
   status?: 'active' | 'suspended';
+
+  // ── Phase B 워커 옵션 default ───────────────────────────────
+
+  @ApiPropertyOptional({ default: true, description: 'PDF 자동 변환(addPages/applyBleed) 사용' })
+  @IsOptional()
+  @IsBoolean()
+  pdfConversionEnabled?: boolean;
+
+  @ApiPropertyOptional({ description: 'Before/After 미리보기 비교 URL' })
+  @IsOptional()
+  @IsUrl({ require_tld: false })
+  beforeAfterUrl?: string;
+
+  @ApiPropertyOptional({ enum: ['mm', 'inch'], default: 'mm' })
+  @IsOptional()
+  @IsIn(['mm', 'inch'])
+  defaultUnit?: 'mm' | 'inch';
+
+  @ApiPropertyOptional({ default: true })
+  @IsOptional()
+  @IsBoolean()
+  checkWorkorder?: boolean;
+
+  @ApiPropertyOptional({ default: true })
+  @IsOptional()
+  @IsBoolean()
+  checkCutting?: boolean;
+
+  @ApiPropertyOptional({ default: true })
+  @IsOptional()
+  @IsBoolean()
+  checkSafezone?: boolean;
 }
 
 export class UpdateSiteDto extends PartialType(CreateSiteDto) {}

@@ -13,6 +13,8 @@ import {
   Switch,
   Tooltip,
   Dropdown,
+  Select,
+  Divider,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
@@ -151,6 +153,12 @@ export default function SiteList() {
       returnUrlBase: site.returnUrlBase ?? undefined,
       uploadCallbackUrl: site.uploadCallbackUrl ?? undefined,
       status: site.status,
+      pdfConversionEnabled: site.pdfConversionEnabled,
+      beforeAfterUrl: site.beforeAfterUrl ?? undefined,
+      defaultUnit: site.defaultUnit,
+      checkWorkorder: site.checkWorkorder,
+      checkCutting: site.checkCutting,
+      checkSafezone: site.checkSafezone,
     });
     setIsModalOpen(true);
   };
@@ -356,6 +364,61 @@ export default function SiteList() {
           <Form.Item name="uploadCallbackUrl" label="업로드 콜백 URL (Webhook)">
             <Input placeholder="https://www.bookmoa.co.kr/storige/proc/synthesis_callback.php" />
           </Form.Item>
+
+          <Divider orientation="left" plain>
+            워커 옵션 (default)
+          </Divider>
+
+          <Form.Item
+            name="pdfConversionEnabled"
+            label="PDF 자동 변환 사용 (addPages/applyBleed)"
+            valuePropName="checked"
+            initialValue={true}
+          >
+            <Switch checkedChildren="사용" unCheckedChildren="사용안함" />
+          </Form.Item>
+          <Form.Item name="beforeAfterUrl" label="Before/After 미리보기 URL">
+            <Input placeholder="https://example.com/before-after" />
+          </Form.Item>
+          <Form.Item
+            name="defaultUnit"
+            label="단위 구분"
+            initialValue="mm"
+          >
+            <Select
+              options={[
+                { value: 'mm', label: '밀리미터 (mm)' },
+                { value: 'inch', label: '인치 (inch)' },
+              ]}
+            />
+          </Form.Item>
+          <Space size="large">
+            <Form.Item
+              name="checkWorkorder"
+              label="작업서 체크"
+              valuePropName="checked"
+              initialValue={true}
+            >
+              <Switch checkedChildren="사용" unCheckedChildren="사용안함" />
+            </Form.Item>
+            <Form.Item
+              name="checkCutting"
+              label="재단선 체크"
+              valuePropName="checked"
+              initialValue={true}
+            >
+              <Switch checkedChildren="사용" unCheckedChildren="사용안함" />
+            </Form.Item>
+            <Form.Item
+              name="checkSafezone"
+              label="안전선 체크"
+              valuePropName="checked"
+              initialValue={true}
+            >
+              <Switch checkedChildren="사용" unCheckedChildren="사용안함" />
+            </Form.Item>
+          </Space>
+
           {!editingSite && (
             <Text type="secondary" style={{ display: 'block', marginTop: 8 }}>
               💡 인증코드(편집기/워커)는 자동 생성됩니다. 등록 후 모달에서 복사해

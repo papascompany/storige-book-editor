@@ -50,6 +50,11 @@ export class CreateValidationJobDto {
   @IsOptional()
   @IsString()
   callbackUrl?: string;
+
+  /** Phase C — 호출 컨트롤러에서 자동 주입 */
+  @IsOptional()
+  @IsUUID()
+  siteId?: string;
 }
 
 export class CreateConversionJobDto {
@@ -75,6 +80,11 @@ export class CreateConversionJobDto {
   @IsObject()
   @IsNotEmpty()
   convertOptions: any;
+
+  /** Phase C — 호출 컨트롤러에서 자동 주입 */
+  @IsOptional()
+  @IsUUID()
+  siteId?: string;
 }
 
 export class CreateSynthesisJobDto {
@@ -142,6 +152,11 @@ export class CreateSynthesisJobDto {
   @IsOptional()
   @IsIn(['perfect', 'saddle', 'hardcover'])
   bindingType?: 'perfect' | 'saddle' | 'hardcover';
+
+  /** Phase C — 호출 컨트롤러에서 자동 주입 (X-API-Key 사용 시 req.user.siteId) */
+  @IsOptional()
+  @IsUUID()
+  siteId?: string;
 }
 
 export class UpdateJobStatusDto {
