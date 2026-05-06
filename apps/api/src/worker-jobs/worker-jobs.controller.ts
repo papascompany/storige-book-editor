@@ -204,12 +204,14 @@ export class WorkerJobsController {
   @ApiOperation({ summary: 'Get all worker jobs with optional filters' })
   @ApiQuery({ name: 'status', required: false, enum: WorkerJobStatus })
   @ApiQuery({ name: 'jobType', required: false, enum: WorkerJobType })
+  @ApiQuery({ name: 'siteId', required: false, description: '사이트 ID (Phase C-3)' })
   @ApiResponse({ status: 200, description: 'List of worker jobs', type: [WorkerJob] })
   async findAll(
     @Query('status') status?: WorkerJobStatus,
     @Query('jobType') jobType?: WorkerJobType,
+    @Query('siteId') siteId?: string, // Phase C-3
   ): Promise<WorkerJob[]> {
-    return await this.workerJobsService.findAll(status, jobType);
+    return await this.workerJobsService.findAll(status, jobType, siteId);
   }
 
   @Get('stats')

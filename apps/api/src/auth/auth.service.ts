@@ -103,6 +103,7 @@ export class AuthService {
    */
   async createShopSession(
     dto: CreateShopSessionDto,
+    siteContext?: { siteId: string; siteName: string }, // Phase C-2 — 호출 컨트롤러에서 주입
   ): Promise<{ accessToken: string; refreshToken: string }> {
     // Patch D (2026-05-03): orderSeqno 또는 allowedOrderSeqnos를 JWT에 포함하면
     // 후속 EditSession 생성 시 JWT.allowedOrderSeqnos 검증으로 강한 격리 가능.
@@ -129,6 +130,11 @@ export class AuthService {
     // 주문 컨텍스트 명시 시 JWT에 포함 (없으면 누락 — 호환성 유지)
     if (allowedOrderSeqnos.length > 0) {
       payload.allowedOrderSeqnos = allowedOrderSeqnos;
+    }
+    // Phase C-2 — 사이트 컨텍스트를 JWT 페이로드에 포함 (있을 때만)
+    if (siteContext?.siteId) {
+      payload.siteId = siteContext.siteId;
+      payload.siteName = siteContext.siteName;
     }
 
     const accessToken = this.jwtService.sign(payload, { expiresIn: '1h' });

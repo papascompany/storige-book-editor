@@ -18,6 +18,7 @@ import type { ColumnsType } from 'antd/es/table';
 import { ReloadOutlined, EyeOutlined } from '@ant-design/icons';
 import { WorkerJob, WorkerJobStatus, WorkerJobType } from '@storige/types';
 import { workerJobsApi } from '../../api/worker-jobs';
+import { sitesApi } from '../../api/sites';
 import { resolveStorageUrl } from '../../lib/axios';
 
 const { Title } = Typography;
@@ -47,11 +48,23 @@ const jobTypeLabels: Record<WorkerJobType, string> = {
 export const WorkerJobList = () => {
   const [filterStatus, setFilterStatus] = useState<WorkerJobStatus | undefined>();
   const [filterJobType, setFilterJobType] = useState<WorkerJobType | undefined>();
+  const [selectedSiteId, setSelectedSiteId] = useState<string | undefined>(undefined);
   const [selectedJob, setSelectedJob] = useState<WorkerJob | null>(null);
 
+  // Phase C-3 — 사이트 dropdown
+  const { data: sites = [] } = useQuery({
+    queryKey: ['sites'],
+    queryFn: () => sitesApi.list(),
+  });
+  const siteOptions = sites.map((s) => ({ value: s.id, label: s.name }));
+  const siteNameById: Record<string, string> = sites.reduce(
+    (acc, s) => ({ ...acc, [s.id]: s.name }),
+    {} as Record<string, string>,
+  );
+
   const { data: jobs, isLoading, refetch } = useQuery({
-    queryKey: ['worker-jobs', filterStatus, filterJobType],
-    queryFn: () => workerJobsApi.getAll(filterStatus, filterJobType),
+    queryKey: ['worker-jobs', filterStatus, filterJobType, selectedSiteId],
+    queryFn: () => workerJobsApi.getAll(filterStatus, filterJobType, selectedSiteId),
     refetchInterval: 5000, // Auto-refresh every 5 seconds
   });
 
@@ -62,6 +75,18 @@ export const WorkerJobList = () => {
   });
 
   const columns: ColumnsType<WorkerJob> = [
+    {
+      title: '사이트',
+      dataIndex: 'siteId',
+      key: 'siteId',
+      width: 130,
+      render: (siteId: string | null) =>
+        siteId ? (
+          <Tag color="geekblue">{siteNameById[siteId] || siteId.slice(0, 8)}</Tag>
+        ) : (
+          <span style={{ color: '#9CA3AF' }}>—</span>
+        ),
+    },
     {
       title: 'ID',
       dataIndex: 'id',
@@ -207,6 +232,14 @@ export const WorkerJobList = () => {
       </Row>
 
       <Space style={{ marginBottom: 16 }}>
+        <Select
+          placeholder="사이트 필터"
+          style={{ width: 200 }}
+          value={selectedSiteId}
+          onChange={setSelectedSiteId}
+          allowClear
+          options={siteOptions}
+        />
         <Select
           placeholder="상태 필터"
           style={{ width: 150 }}

@@ -36,6 +36,7 @@ import axios from 'axios';
 import { FilesService } from '../files/files.service';
 import { WebhookService } from '../webhook/webhook.service';
 import { EditSessionEntity, WorkerStatus } from '../edit-sessions/entities/edit-session.entity';
+import { SitesService } from '../sites/sites.service';
 
 @Injectable()
 export class WorkerJobsService {
@@ -51,7 +52,36 @@ export class WorkerJobsService {
     @InjectQueue('pdf-synthesis') private synthesisQueue: Queue,
     private filesService: FilesService,
     private webhookService: WebhookService,
+    private sitesService: SitesService,
   ) {}
+
+  /**
+   * Phase B-2 — site 조회 + 잡 옵션 default 머지.
+   * 호출자 옵션이 명시되어 있으면 우선, 누락된 항목만 site default로 채움.
+   */
+  private async mergeSiteWorkerDefaults(
+    siteId: string | null | undefined,
+    options: Record<string, any> | null | undefined,
+  ): Promise<Record<string, any>> {
+    const opts = { ...(options || {}) };
+    if (!siteId) return opts;
+
+    try {
+      const site = await this.sitesService.findOne(siteId);
+      // 누락 항목만 site default로 채움 (호출자 명시값 보존)
+      if (opts.applyBleed === undefined) opts.applyBleed = site.pdfConversionEnabled;
+      if (opts.unit === undefined) opts.unit = site.defaultUnit;
+      if (opts.checkWorkorder === undefined) opts.checkWorkorder = site.checkWorkorder;
+      if (opts.checkCutting === undefined) opts.checkCutting = site.checkCutting;
+      if (opts.checkSafezone === undefined) opts.checkSafezone = site.checkSafezone;
+    } catch (e) {
+      // site 조회 실패 시 silent (잡은 그대로 진행)
+      this.logger.debug(
+        `mergeSiteWorkerDefaults skip: ${(e as Error).message}`,
+      );
+    }
+    return opts;
+  }
 
   // ============================================================================
   // Merge Check (Dry-run)
@@ -187,6 +217,12 @@ export class WorkerJobsService {
       fileUrl = file.filePath; // 로컬 파일 경로 사용
     }
 
+    // Phase B-2 — site default 머지 (호출자 명시값 보존)
+    const orderOptions = await this.mergeSiteWorkerDefaults(
+      createValidationJobDto.siteId,
+      createValidationJobDto.orderOptions,
+    );
+
     // Create job record in database
     const job = this.workerJobRepository.create({
       jobType: WorkerJobType.VALIDATE,
@@ -197,7 +233,7 @@ export class WorkerJobsService {
       siteId: createValidationJobDto.siteId || null, // Phase C
       options: {
         fileType: createValidationJobDto.fileType,
-        orderOptions: createValidationJobDto.orderOptions,
+        orderOptions,
         callbackUrl: createValidationJobDto.callbackUrl || undefined,
       },
     });
@@ -238,13 +274,19 @@ export class WorkerJobsService {
       fileUrl = file.filePath;
     }
 
+    // Phase B-2 — site default 머지
+    const convertOptions = await this.mergeSiteWorkerDefaults(
+      createConversionJobDto.siteId,
+      createConversionJobDto.convertOptions,
+    );
+
     const job = this.workerJobRepository.create({
       jobType: WorkerJobType.CONVERT,
       status: WorkerJobStatus.PENDING,
       fileId,
       inputFileUrl: fileUrl,
       siteId: createConversionJobDto.siteId || null, // Phase C
-      options: createConversionJobDto.convertOptions,
+      options: convertOptions,
     });
 
     const savedJob = await this.workerJobRepository.save(job);
@@ -748,7 +790,11 @@ export class WorkerJobsService {
   // Job Management
   // ============================================================================
 
-  async findAll(status?: WorkerJobStatus, jobType?: WorkerJobType): Promise<WorkerJob[]> {
+  async findAll(
+    status?: WorkerJobStatus,
+    jobType?: WorkerJobType,
+    siteId?: string, // Phase C-3
+  ): Promise<WorkerJob[]> {
     const query = this.workerJobRepository.createQueryBuilder('job');
 
     if (status) {
@@ -757,6 +803,10 @@ export class WorkerJobsService {
 
     if (jobType) {
       query.andWhere('job.jobType = :jobType', { jobType });
+    }
+
+    if (siteId) {
+      query.andWhere('job.siteId = :siteId', { siteId });
     }
 
     return await query.orderBy('job.createdAt', 'DESC').getMany();

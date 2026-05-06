@@ -88,9 +88,11 @@ export class EditSessionsController {
       });
     }
 
+    // Phase C-2 — JWT의 siteId 자동 주입 (없으면 NULL — 기존 호환)
     const session = await this.editSessionsService.create({
       ...dto,
       memberSeqno,
+      siteId: user?.siteId,
     });
 
     return this.editSessionsService.toResponseDto(session);
@@ -155,6 +157,7 @@ export class EditSessionsController {
   @ApiOperation({ summary: '편집 세션 목록 조회' })
   @ApiQuery({ name: 'orderSeqno', required: false, description: '주문 번호' })
   @ApiQuery({ name: 'memberSeqno', required: false, description: '회원 번호' })
+  @ApiQuery({ name: 'siteId', required: false, description: '사이트 ID (Phase C-3)' })
   @ApiResponse({
     status: 200,
     description: '세션 목록',
@@ -163,6 +166,7 @@ export class EditSessionsController {
   async findSessions(
     @Query('orderSeqno') orderSeqno?: string,
     @Query('memberSeqno') memberSeqno?: string,
+    @Query('siteId') siteId?: string, // Phase C-3
     @CurrentUser() user?: any,
   ): Promise<EditSessionListResponseDto> {
     let sessions;
@@ -175,6 +179,8 @@ export class EditSessionsController {
       sessions = await this.editSessionsService.findByMemberSeqno(
         parseInt(memberSeqno),
       );
+    } else if (siteId) {
+      sessions = await this.editSessionsService.findBySiteId(siteId);
     } else if (user?.userId) {
       // 본인 세션만 조회
       sessions = await this.editSessionsService.findByMemberSeqno(
@@ -182,6 +188,11 @@ export class EditSessionsController {
       );
     } else {
       sessions = [];
+    }
+
+    // siteId가 다른 필터와 함께 들어오면 사후 필터링
+    if (siteId && (orderSeqno || memberSeqno)) {
+      sessions = sessions.filter((s: any) => s.siteId === siteId);
     }
 
     return {

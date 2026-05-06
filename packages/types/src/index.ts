@@ -441,6 +441,8 @@ export interface WorkerJob {
   errorMessage?: string;
   createdAt: Date;
   completedAt?: Date;
+  /** Phase C — 사이트 컨텍스트 (외부 X-API-Key 호출 시 자동 주입) */
+  siteId?: string | null;
 }
 
 // Validation

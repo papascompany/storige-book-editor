@@ -15,6 +15,9 @@ export interface JwtPayload {
   permissions?: string[];
   /** Patch D (2026-05-03): 주문 컨텍스트 — 명시 시 EditSession 생성 시 검증 */
   allowedOrderSeqnos?: number[];
+  /** Phase C-2: 사이트 컨텍스트 — shop-session 발급 시 X-API-Key의 site 정보를 토큰에 포함 */
+  siteId?: string;
+  siteName?: string;
 }
 
 // Shop session 사용자 타입
@@ -27,6 +30,9 @@ export interface ShopUser {
   permissions: string[];
   /** JWT에 명시된 허용 주문 번호 목록 (없으면 undefined — 모든 주문 허용 = 기존 호환) */
   allowedOrderSeqnos?: number[];
+  /** Phase C-2: JWT 페이로드 siteId 패스스루 — EditSession 자동 site_id 주입에 사용 */
+  siteId?: string;
+  siteName?: string;
 }
 
 @Injectable()
@@ -54,6 +60,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         source: 'shop',
         permissions: payload.permissions || ['edit', 'upload', 'validate'],
         allowedOrderSeqnos: payload.allowedOrderSeqnos,
+        // Phase C-2 — JWT 페이로드의 siteId/siteName 패스스루
+        siteId: payload.siteId,
+        siteName: payload.siteName,
       };
     }
 

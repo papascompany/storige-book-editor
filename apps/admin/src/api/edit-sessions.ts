@@ -28,6 +28,8 @@ export interface EditSessionResponse {
   completedAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
+  // Phase C-2 — 사이트 컨텍스트 (자동 주입)
+  siteId?: string | null;
 }
 
 export interface EditSessionListResponse {
@@ -39,6 +41,8 @@ export interface EditSessionQueryParams {
   orderSeqno?: number;
   memberSeqno?: number;
   status?: SessionStatus;
+  /** Phase C-3 — 사이트별 필터 */
+  siteId?: string;
   page?: number;
   limit?: number;
 }
@@ -48,6 +52,7 @@ export const editSessionsApi = {
     const searchParams = new URLSearchParams();
     if (params?.orderSeqno) searchParams.append('orderSeqno', String(params.orderSeqno));
     if (params?.memberSeqno) searchParams.append('memberSeqno', String(params.memberSeqno));
+    if (params?.siteId) searchParams.append('siteId', params.siteId); // Phase C-3
     const response = await axiosInstance.get<EditSessionListResponse>(
       `/edit-sessions?${searchParams.toString()}`
     );
