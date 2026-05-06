@@ -14,6 +14,7 @@ import { EditorModule } from './editor/editor.module';
 import { EditorDesignsModule } from './editor-designs/editor-designs.module';
 import { EditorContentsModule } from './editor-contents/editor-contents.module';
 import { ProductsModule } from './products/products.module';
+import { SitesModule } from './sites/sites.module';
 import { HealthModule } from './health/health.module';
 import { SeedModule } from './database/seeds/seed.module';
 import { FilesModule } from './files/files.module';
@@ -123,6 +124,7 @@ if (process.env.BOOKMOA_DB_PASSWORD) {
     EditorDesignsModule,
     EditorContentsModule,
     ProductsModule,
+    SitesModule,
 
     // Database seeding
     SeedModule,

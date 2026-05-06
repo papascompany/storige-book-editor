@@ -1,8 +1,8 @@
-# Storige × bookmoa PHP 연동 최종 가이드 (v3.0)
+# Storige × bookmoa PHP 연동 최종 가이드 (v3.1)
 
 > **수신**: bookmoa PHP 개발팀  
 > **발신**: Storige 운영팀  
-> **버전**: v3.0 (2026-05-04) — VERIFICATION v2 + KICKOFF v1 통합 최종본  
+> **버전**: v3.1 (2026-05-06) — Phase A 멀티사이트 안내 추가 (API/PHP 코드 변경 0)  
 > **Storige 상태**: 운영 배포 완료 · Worker E2E 검증 완료 · PHP 측 작업 2일 예상  
 > **API 문서**: https://api.papascompany.co.kr/api/docs (Swagger)
 
@@ -97,6 +97,20 @@ PHP 측 필수 작업 우선순위:
 ---
 
 ## 2. 환경 설정 — API Key
+
+> **🆕 v3.1 (2026-05-06) — 멀티사이트 안내** (PHP 측 영향 0)
+>
+> Storige는 2026-05-06부터 단일 시스템에서 여러 외부 사이트(예: 북모아 메인,
+> 점보포토, 스튜디오북, Storywork, Printcard studio, MD2Books, 100p Books)의
+> 편집기·워커 연동을 동시 지원합니다. 각 사이트는 **고유 인증코드**(편집기용 +
+> 워커용)를 발급받아 같은 가이드를 그대로 따릅니다.
+>
+> **북모아 측 변경 0** — 기존 `STORIGE_API_KEY` 값은 부팅 시 자동으로 DB에
+> 마이그레이션돼 그대로 인증 통과합니다. 새 값으로 교체할 필요 없음.
+>
+> **새 사이트 추가 시** (예: 점보포토): Storige 운영팀이 admin 콘솔에서 사이트
+> 등록 → 인증코드 자동 발급 → 안전 채널로 전달 → 그 사이트 PHP `.env`에 입력.
+> 코드는 동일.
 
 ### 2-1. PHP 서버 설정
 
@@ -909,3 +923,4 @@ Content-Type: application/json
 | v1.0 | 2026-05-02 | PHP_INTEGRATION_VERIFICATION 최초 작성 (10개 체크리스트) |
 | v2.0 | 2026-05-03 | 보안 패치 A-E 반영 (체크리스트 #11~13 + §11 추가) |
 | v3.0 | 2026-05-04 | **KICKOFF 문서 통합** / Webhook outputFileUrl 형식 수정 (상대경로) / 합성 결과 다운로드 흐름 정확화 (JWT 방식) / Worker E2E 검증 완료 |
+| v3.1 | 2026-05-06 | **Phase A 멀티사이트 안내** (§2 헤더에 박스 추가). PHP 측 코드/.env 변경 0. 기존 키는 자동 DB 마이그레이션으로 그대로 작동. 새 사이트 추가 시 admin에서 키 발급. |

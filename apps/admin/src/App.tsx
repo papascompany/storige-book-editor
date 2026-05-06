@@ -23,6 +23,7 @@ import {
 import { EditSessionList } from './pages/EditSessions';
 import { WorkerJobList } from './pages/WorkerJobs';
 import { WorkerTestPage } from './pages/WorkerTest';
+import { SiteList } from './pages/Sites';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -60,6 +61,8 @@ function App() {
               }
             >
               <Route index element={<Dashboard />} />
+              {/* 기본설정 (Phase A) */}
+              <Route path="sites" element={<SiteList />} />
               {/* 템플릿 그룹 */}
               <Route path="templates" element={<TemplateList />} />
               <Route path="template-sets" element={<TemplateSetList />} />
