@@ -75,10 +75,15 @@ export interface ValidationResult {
 
 export const workerJobsApi = {
   // List jobs
-  getAll: async (status?: WorkerJobStatus, jobType?: WorkerJobType): Promise<WorkerJob[]> => {
+  getAll: async (
+    status?: WorkerJobStatus,
+    jobType?: WorkerJobType,
+    siteId?: string, // Phase C-3
+  ): Promise<WorkerJob[]> => {
     const params = new URLSearchParams();
     if (status) params.append('status', status);
     if (jobType) params.append('jobType', jobType);
+    if (siteId) params.append('siteId', siteId);
 
     const response = await axiosInstance.get<WorkerJob[]>(
       `/worker-jobs?${params.toString()}`

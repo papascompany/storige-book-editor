@@ -24,6 +24,7 @@ import {
 } from './dto/shop-session.dto';
 import { Public } from './decorators/public.decorator';
 import { CurrentUser } from './decorators/current-user.decorator';
+import { CurrentSite, CurrentSitePayload } from './decorators/current-site.decorator';
 import { ApiKeyGuard } from './guards/api-key.guard';
 import { User } from './entities/user.entity';
 import type { AuthTokens, UserRole } from '@storige/types';
@@ -101,9 +102,13 @@ export class AuthController {
   async createShopSession(
     @Body() dto: CreateShopSessionDto,
     @Res({ passthrough: true }) res: Response,
+    @CurrentSite() site?: CurrentSitePayload, // Phase C-2 — JWT 페이로드에 siteId 주입
   ): Promise<ShopSessionResponseDto> {
+    const siteContext = site
+      ? { siteId: site.siteId, siteName: site.siteName }
+      : undefined;
     const { accessToken, refreshToken } =
-      await this.authService.createShopSession(dto);
+      await this.authService.createShopSession(dto, siteContext);
 
     const isProduction = process.env.NODE_ENV === 'production';
 

@@ -35,6 +35,10 @@ export class JwtCookieStrategy extends PassportStrategy(Strategy, 'jwt-cookie') 
       role: payload.role,
       source: payload.source,
       permissions: payload.permissions,
+      // Phase C-2 — siteId/siteName 패스스루
+      siteId: payload.siteId,
+      siteName: payload.siteName,
+      allowedOrderSeqnos: payload.allowedOrderSeqnos,
     };
   }
 }

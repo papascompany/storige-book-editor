@@ -45,4 +45,9 @@ export class CreateEditSessionDto {
   @IsOptional()
   @IsString()
   callbackUrl?: string;
+
+  /** Phase C-2 — 호출 컨트롤러에서 JWT siteId 자동 주입 */
+  @IsOptional()
+  @IsUUID()
+  siteId?: string;
 }

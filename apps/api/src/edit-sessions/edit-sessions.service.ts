@@ -53,6 +53,7 @@ export class EditSessionsService {
       canvasData: dto.canvasData,
       metadata: dto.metadata,
       callbackUrl: dto.callbackUrl,
+      siteId: (dto as any).siteId || null, // Phase C-2 — JWT siteId 자동 주입
     });
 
     const saved = await this.sessionRepository.save(session);
@@ -80,6 +81,18 @@ export class EditSessionsService {
       where: { memberSeqno },
       relations: ['coverFile', 'contentFile'],
       order: { createdAt: 'DESC' },
+    });
+  }
+
+  /**
+   * Phase C-3 — 사이트 ID로 세션 목록 조회 (admin 사이트별 필터)
+   */
+  async findBySiteId(siteId: string): Promise<EditSessionEntity[]> {
+    return this.sessionRepository.find({
+      where: { siteId },
+      relations: ['coverFile', 'contentFile'],
+      order: { createdAt: 'DESC' },
+      take: 200,
     });
   }
 
@@ -413,6 +426,7 @@ export class EditSessionsService {
       completedAt: session.completedAt,
       createdAt: session.createdAt,
       updatedAt: session.updatedAt,
+      siteId: session.siteId, // Phase C-3
     };
 
     // 파일 정보 추가

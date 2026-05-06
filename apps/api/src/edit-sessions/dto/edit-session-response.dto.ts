@@ -66,6 +66,10 @@ export class EditSessionResponseDto {
 
   @ApiProperty()
   updatedAt: Date;
+
+  /** Phase C — 사이트 컨텍스트 */
+  @ApiPropertyOptional()
+  siteId?: string | null;
 }
 
 export class EditSessionListResponseDto {

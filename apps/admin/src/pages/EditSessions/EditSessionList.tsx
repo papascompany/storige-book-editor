@@ -11,7 +11,9 @@ import {
   Input,
   Image,
   Tooltip,
+  Select,
 } from 'antd';
+import { sitesApi } from '../../api/sites';
 import type { ColumnsType } from 'antd/es/table';
 import {
   DeleteOutlined,
@@ -39,16 +41,31 @@ export const EditSessionList = () => {
   const queryClient = useQueryClient();
   const [searchMemberSeqno, setSearchMemberSeqno] = useState('');
   const [searchOrderSeqno, setSearchOrderSeqno] = useState('');
+  const [selectedSiteId, setSelectedSiteId] = useState<string | undefined>(undefined);
+
+  // Phase C-3 — 사이트 dropdown 옵션
+  const { data: sites = [] } = useQuery({
+    queryKey: ['sites'],
+    queryFn: () => sitesApi.list(),
+  });
+  const siteOptions = sites.map((s) => ({ value: s.id, label: s.name }));
 
   // Fetch edit sessions
   const { data, isLoading } = useQuery({
-    queryKey: ['edit-sessions', searchMemberSeqno, searchOrderSeqno],
+    queryKey: ['edit-sessions', searchMemberSeqno, searchOrderSeqno, selectedSiteId],
     queryFn: () =>
       editSessionsApi.getAll({
         memberSeqno: searchMemberSeqno ? parseInt(searchMemberSeqno) : undefined,
         orderSeqno: searchOrderSeqno ? parseInt(searchOrderSeqno) : undefined,
+        siteId: selectedSiteId,
       }),
   });
+
+  // siteId → name 매핑 (테이블 컬럼 표시용)
+  const siteNameById: Record<string, string> = sites.reduce(
+    (acc, s) => ({ ...acc, [s.id]: s.name }),
+    {} as Record<string, string>,
+  );
 
   // Delete mutation
   const deleteMutation = useMutation({
@@ -83,6 +100,18 @@ export const EditSessionList = () => {
   };
 
   const columns: ColumnsType<EditSessionResponse> = [
+    {
+      title: '사이트',
+      dataIndex: 'siteId',
+      key: 'siteId',
+      width: 130,
+      render: (siteId: string | null) =>
+        siteId ? (
+          <Tag color="blue">{siteNameById[siteId] || siteId.slice(0, 8)}</Tag>
+        ) : (
+          <Text type="secondary">—</Text>
+        ),
+    },
     {
       title: '주문번호',
       dataIndex: 'orderSeqno',
@@ -228,6 +257,14 @@ export const EditSessionList = () => {
       </div>
 
       <Space style={{ marginBottom: 16 }}>
+        <Select
+          placeholder="사이트 선택"
+          allowClear
+          style={{ width: 200 }}
+          value={selectedSiteId}
+          onChange={setSelectedSiteId}
+          options={siteOptions}
+        />
         <Input
           placeholder="회원번호 검색"
           prefix={<SearchOutlined />}
