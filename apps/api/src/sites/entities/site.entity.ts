@@ -55,6 +55,35 @@ export class Site {
   @Column({ type: 'varchar', length: 20, default: 'active' })
   status: 'active' | 'suspended';
 
+  // ─────────────────────────────────────────────────────
+  // Phase B — 사이트별 워커 옵션 (default 정책)
+  // 워커 잡 생성 시 호출자가 명시 안 하면 site default 머지.
+  // ─────────────────────────────────────────────────────
+
+  /** PDF 자동 변환(addPages/applyBleed) 사용 여부 default */
+  @Column({ name: 'pdf_conversion_enabled', type: 'boolean', default: true })
+  pdfConversionEnabled: boolean;
+
+  /** Before/After 미리보기 URL — Admin Worker UI에서 비교용 */
+  @Column({ name: 'before_after_url', type: 'varchar', length: 500, nullable: true })
+  beforeAfterUrl: string | null;
+
+  /** 단위 구분 default: 'mm' | 'inch' */
+  @Column({ name: 'default_unit', type: 'varchar', length: 10, default: 'mm' })
+  defaultUnit: 'mm' | 'inch';
+
+  /** 작업서(workorder) 체크 사용 여부 default */
+  @Column({ name: 'check_workorder', type: 'boolean', default: true })
+  checkWorkorder: boolean;
+
+  /** 재단선(cutting line) 체크 사용 여부 default */
+  @Column({ name: 'check_cutting', type: 'boolean', default: true })
+  checkCutting: boolean;
+
+  /** 안전선(safe zone) 체크 사용 여부 default */
+  @Column({ name: 'check_safezone', type: 'boolean', default: true })
+  checkSafezone: boolean;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

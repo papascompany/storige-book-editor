@@ -8,6 +8,7 @@ import {
   ManyToOne,
   JoinColumn,
   RelationId,
+  Index,
 } from 'typeorm';
 import { FileEntity } from '../../files/entities/file.entity';
 
@@ -92,6 +93,14 @@ export class EditSessionEntity {
 
   @Column({ name: 'worker_error', type: 'text', nullable: true })
   workerError: string | null;
+
+  /**
+   * Phase C — 세션 발사 사이트 식별 (X-API-Key /auth/shop-session 시 자동 주입).
+   * 기존 데이터는 NULL.
+   */
+  @Index('idx_edit_sessions_site_id')
+  @Column({ name: 'site_id', type: 'varchar', length: 36, nullable: true })
+  siteId: string | null;
 
   @Column({ name: 'callback_url', type: 'varchar', length: 500, nullable: true })
   callbackUrl: string | null;

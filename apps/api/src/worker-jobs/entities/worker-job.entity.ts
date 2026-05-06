@@ -89,6 +89,14 @@ export class WorkerJob {
   @Column({ name: 'completed_at', type: 'timestamp', nullable: true })
   completedAt: Date | null;
 
+  /**
+   * Phase C — 잡 발사 사이트 식별 (X-API-Key 사용 시 자동 주입).
+   * 기존 데이터는 NULL — 마이그레이션 후 운영팀이 일괄 backfill 가능.
+   */
+  @Index('idx_worker_jobs_site_id')
+  @Column({ name: 'site_id', type: 'varchar', length: 36, nullable: true })
+  siteId: string | null;
+
   @BeforeInsert()
   generateId() {
     if (!this.id) {

@@ -9,6 +9,13 @@ export interface Site {
   editorAuthCode: string;
   workerAuthCode: string;
   status: 'active' | 'suspended';
+  // Phase B — 사이트별 워커 옵션 default
+  pdfConversionEnabled: boolean;
+  beforeAfterUrl: string | null;
+  defaultUnit: 'mm' | 'inch';
+  checkWorkorder: boolean;
+  checkCutting: boolean;
+  checkSafezone: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -18,9 +25,15 @@ export interface CreateSiteDto {
   domain?: string;
   returnUrlBase?: string;
   uploadCallbackUrl?: string;
-  editorAuthCode?: string; // 미입력 시 자동 생성
-  workerAuthCode?: string; // 미입력 시 editorAuthCode 동일 값
+  editorAuthCode?: string;
+  workerAuthCode?: string;
   status?: 'active' | 'suspended';
+  pdfConversionEnabled?: boolean;
+  beforeAfterUrl?: string;
+  defaultUnit?: 'mm' | 'inch';
+  checkWorkorder?: boolean;
+  checkCutting?: boolean;
+  checkSafezone?: boolean;
 }
 
 export type UpdateSiteDto = Partial<CreateSiteDto>;

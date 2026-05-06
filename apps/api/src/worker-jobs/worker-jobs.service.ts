@@ -194,6 +194,7 @@ export class WorkerJobsService {
       editSessionId: createValidationJobDto.editSessionId || null,
       fileId,
       inputFileUrl: fileUrl,
+      siteId: createValidationJobDto.siteId || null, // Phase C
       options: {
         fileType: createValidationJobDto.fileType,
         orderOptions: createValidationJobDto.orderOptions,
@@ -242,6 +243,7 @@ export class WorkerJobsService {
       status: WorkerJobStatus.PENDING,
       fileId,
       inputFileUrl: fileUrl,
+      siteId: createConversionJobDto.siteId || null, // Phase C
       options: createConversionJobDto.convertOptions,
     });
 
@@ -302,6 +304,7 @@ export class WorkerJobsService {
       editSessionId: createSynthesisJobDto.editSessionId || null,
       fileId: coverFileId, // 대표 파일로 표지 사용
       inputFileUrl: coverUrl,
+      siteId: createSynthesisJobDto.siteId || null, // Phase C
       options: {
         coverFileId,
         contentFileId,

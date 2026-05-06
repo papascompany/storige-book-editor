@@ -28,6 +28,7 @@ import { WorkerJob } from './entities/worker-job.entity';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { ApiKeyGuard } from '../auth/guards/api-key.guard';
+import { CurrentSite, CurrentSitePayload } from '../auth/decorators/current-site.decorator';
 import { Public } from '../auth/decorators/public.decorator';
 import { UserRole, WorkerJobStatus, WorkerJobType } from '@storige/types';
 
@@ -65,8 +66,12 @@ export class WorkerJobsController {
   @ApiResponse({ status: 401, description: 'Invalid API key' })
   async createValidationJobExternal(
     @Body() createValidationJobDto: CreateValidationJobDto,
+    @CurrentSite() site?: CurrentSitePayload,
   ): Promise<WorkerJob> {
-    return await this.workerJobsService.createValidationJob(createValidationJobDto);
+    return await this.workerJobsService.createValidationJob({
+      ...createValidationJobDto,
+      siteId: site?.siteId, // Phase C — 자동 사이트 식별
+    });
   }
 
   @Post('convert')
@@ -107,8 +112,12 @@ export class WorkerJobsController {
   @ApiResponse({ status: 401, description: 'Invalid API key' })
   async createSynthesisJobExternal(
     @Body() createSynthesisJobDto: CreateSynthesisJobDto,
+    @CurrentSite() site?: CurrentSitePayload,
   ): Promise<WorkerJob> {
-    return await this.workerJobsService.createSynthesisJob(createSynthesisJobDto);
+    return await this.workerJobsService.createSynthesisJob({
+      ...createSynthesisJobDto,
+      siteId: site?.siteId, // Phase C — 자동 사이트 식별
+    });
   }
 
   // ============================================================================
