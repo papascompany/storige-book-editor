@@ -19,6 +19,7 @@ import {
   BorderOutlined,
   BlockOutlined,
   StarOutlined,
+  GlobalOutlined,
 } from '@ant-design/icons';
 import { useAuthStore } from '../../stores/authStore';
 import { authApi } from '../../api/auth';
@@ -63,6 +64,12 @@ export const MainLayout = () => {
       icon: <DashboardOutlined />,
       label: '대시보드',
       onClick: () => navigate('/'),
+    },
+    {
+      key: '/sites',
+      icon: <GlobalOutlined />,
+      label: '기본설정',
+      onClick: () => navigate('/sites'),
     },
     {
       key: '/templates-group',

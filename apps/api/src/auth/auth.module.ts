@@ -15,11 +15,13 @@ import { RolesGuard } from './guards/roles.guard';
 import { ApiKeyGuard } from './guards/api-key.guard';
 import { JwtCookieGuard } from './guards/jwt-cookie.guard';
 import { APP_GUARD } from '@nestjs/core';
+import { SitesModule } from '../sites/sites.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([User]),
     PassportModule,
+    SitesModule, // ApiKeyStrategy가 SitesService 사용 (Phase A)
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
