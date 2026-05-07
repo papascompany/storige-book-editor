@@ -85,10 +85,45 @@
 
 ---
 
-### 5. (예약) Admin 비밀번호 강제 교체
-- 상태: ❌ 미진행 (P0-2)
-- 핵심: 시드값 `admin@storige.com` / `admin123` → 강한 값
-- 별도 트래커: `NEXT_DEVELOPMENT_PLAN.md`
+### 5. Admin 비밀번호 강제 교체 ✅ 사실상 완료
+- 상태: ✅ 시드값 → 강한 비번 자동 교체됨 (`r46e…`, 2026-05-03)
+- 사용자 본인 비번으로 추후 교체 권장 (별도 사이클)
+
+---
+
+### 6. 멀티사이트 플랫폼화 (Phase A/B/C) ✅ 완료 (2026-05-06 ~ 05-07)
+- **상태**: ✅ Phase A + B-1/B-2 + C-1/C-2/C-3 모두 완료
+- **이력**:
+  - 2026-05-06: Phase A (Site 모델), B-1 (워커 옵션 컬럼), C-1 (site_id 자동 주입)
+  - 2026-05-07: B-2 (default 머지), C-2 (JWT siteId), C-3 (admin dropdown)
+- **운영 검증**:
+  - sites 테이블 시드 (3 site)
+  - worker_jobs/file_edit_sessions site_id 자동 주입 + backfill (19건)
+  - admin 사이트별 dropdown 필터 동작
+  - PHP 영향 0건 (기존 키 그대로 작동)
+- **남은 후속** (별도 사이클, 선택):
+  - [ ] TypeORM Migration 파일 도입 (entity 변경 시 수동 SQL 불필요화), 1일
+  - [ ] Sentry/Grafana 사이트별 라벨 자동 주입 (Interceptor), 0.5일
+  - [ ] 사이트별 통계 대시보드 (Grafana), 0.5일
+  - [ ] edit_sessions/worker_jobs FK 제약 (ON DELETE SET NULL), 0.5일
+- **참조**: [`MASTER_STATUS_2026-05-07.md`](./MASTER_STATUS_2026-05-07.md), [`PHASE_A_SITE_MODEL_REPORT_2026-05-06.md`](./PHASE_A_SITE_MODEL_REPORT_2026-05-06.md), [`PHASE_B2_C2_C3_FOLLOWUP_REPORT_2026-05-07.md`](./PHASE_B2_C2_C3_FOLLOWUP_REPORT_2026-05-07.md)
+
+---
+
+### 7. TypeORM Migration 파일 도입 (운영 안전화)
+- **상태**: ⏳ 대기 (Phase A/B/C 후속 정리)
+- **발견 시점**: 2026-05-06 (Phase A 운영 배포 시 ALTER 순서 회귀)
+- **컨텍스트**:
+  - 운영 `synchronize: false` 라 entity 변경 시 자동 마이그레이션 X
+  - Phase A/B/C 배포 시 매번 수동 `ALTER TABLE` SQL 실행 필요
+  - 회귀 1건 발생: ALTER 전 API 부팅 시 `ER_BAD_FIELD_ERROR`
+- **본 작업**:
+  - [ ] TypeORM Migration 파일 도입 (`apps/api/src/database/migrations/`)
+  - [ ] `pnpm --filter @storige/api typeorm migration:generate` 워크플로
+  - [ ] 운영 배포 스크립트에 `migration:run` 단계 추가 (코드 빌드 → migration → API up)
+  - [ ] 기존 ALTER 5종을 Migration 파일로 백포트
+- **권장 일정**: Phase A/B/C 안정화 후 (2~4주 내)
+- **위험도**: 🟡 중 (운영 절차 변경)
 
 ---
 
