@@ -1,8 +1,8 @@
 # Storige 문서 인덱스
 
-> **갱신**: 2026-05-04 · 전체 문서 카탈로그 + 분류
+> **갱신**: 2026-05-07 · 전체 문서 카탈로그 + 분류
 
-📊 **시작점**: [`MASTER_STATUS_2026-05-04.md`](./MASTER_STATUS_2026-05-04.md) · [HTML](./MASTER_STATUS_2026-05-04.html)
+📊 **시작점**: [`MASTER_STATUS_2026-05-07.md`](./MASTER_STATUS_2026-05-07.md) (최신)
 
 ---
 
@@ -10,17 +10,25 @@
 
 | 문서 | 형식 | 설명 |
 |------|------|------|
-| [`MASTER_STATUS_2026-05-04.md`](./MASTER_STATUS_2026-05-04.md) | MD | 전체 개발 상태 통합 트래커 (96% 완료) |
-| [`MASTER_STATUS_2026-05-04.html`](./MASTER_STATUS_2026-05-04.html) | HTML | 한 화면 시각화 대시보드 |
-| [`FUTURE_UPDATES.md`](./FUTURE_UPDATES.md) | MD | 향후 인프라 업데이트 트래커 (Node22 ✅, Grafana B안, PHP 후속, PNG hang 후속, Admin 비번) |
+| [`MASTER_STATUS_2026-05-07.md`](./MASTER_STATUS_2026-05-07.md) | MD | **최신** — 멀티사이트 플랫폼화 완료, 98% 진척 |
+| [`MASTER_STATUS_2026-05-04.md`](./MASTER_STATUS_2026-05-04.md) | MD | 이전 스냅샷 (2026-05-04) |
+| [`MASTER_STATUS_2026-05-04.html`](./MASTER_STATUS_2026-05-04.html) | HTML | 시각화 (구 버전) |
+| [`FUTURE_UPDATES.md`](./FUTURE_UPDATES.md) | MD | 향후 인프라 + Phase A/B/C 완료 + 후속 작업 |
 
 ---
 
-## 🤝 2. PHP 통합 (현재)
+## 🤝 2. 외부 사이트 연동 가이드 (현재)
 
+### 🆕 플랫폼 워커 연동 (언어 중립, 2026-05-07)
 | 문서 | 형식 | 설명 |
 |------|------|------|
-| [`PHP_INTEGRATION_FINAL_v3.md`](./PHP_INTEGRATION_FINAL_v3.md) | MD | PHP 팀 전달용 최종 가이드 v3.0 |
+| [`PLATFORM_WORKER_INTEGRATION_v1.md`](./PLATFORM_WORKER_INTEGRATION_v1.md) | MD | 외부 사이트 개발자용 자기완결 가이드 (curl/Node/Python/Go) |
+| [`PLATFORM_WORKER_INTEGRATION_AI_PROMPT.md`](./PLATFORM_WORKER_INTEGRATION_AI_PROMPT.md) | MD | AI에 가이드 첨부 후 즉시 코드 생성 프롬프트 |
+
+### PHP 한정 (편집기 UI 포함)
+| 문서 | 형식 | 설명 |
+|------|------|------|
+| [`PHP_INTEGRATION_FINAL_v3.md`](./PHP_INTEGRATION_FINAL_v3.md) | MD | PHP 팀 전달용 최종 가이드 v3.1 (멀티사이트 안내 포함) |
 | [`PHP_INTEGRATION_FINAL_v3.html`](./PHP_INTEGRATION_FINAL_v3.html) | HTML | 시각화 (사이드바 네비, 코드 하이라이트) |
 | [`PHP_INTEGRATION_VERIFICATION.md`](./PHP_INTEGRATION_VERIFICATION.md) | MD | 13 체크리스트 (v3로 흡수, 참조용) |
 | [`PHP_INTEGRATION_VERIFICATION.html`](./PHP_INTEGRATION_VERIFICATION.html) | HTML | (참조용) |
@@ -74,6 +82,14 @@
 ---
 
 ## 📊 6. 사이클 보고서 (시간역순)
+
+### 🆕 2026-05-06 ~ 05-07 — 멀티사이트 플랫폼화
+| 문서 | 설명 |
+|------|------|
+| [`ADMIN_PLATFORMIZATION_PLAN_2026-05-06.md`](./ADMIN_PLATFORMIZATION_PLAN_2026-05-06.md) | 11p PDF 스토리보드 분석 + 4 카테고리 플랫폼화 계획 |
+| [`PHASE_A_SITE_MODEL_REPORT_2026-05-06.md`](./PHASE_A_SITE_MODEL_REPORT_2026-05-06.md) | Site/Tenant 모델 도입 + admin "기본설정" |
+| [`PHASE_B_C_SITE_CONTEXT_REPORT_2026-05-06.md`](./PHASE_B_C_SITE_CONTEXT_REPORT_2026-05-06.md) | 사이트별 워커 옵션 + site_id 자동 주입 1차 |
+| [`PHASE_B2_C2_C3_FOLLOWUP_REPORT_2026-05-07.md`](./PHASE_B2_C2_C3_FOLLOWUP_REPORT_2026-05-07.md) | 후속 사이클 (default 머지 + JWT siteId + admin dropdown + backfill) |
 
 ### 2026-05-04
 | 문서 | 설명 |

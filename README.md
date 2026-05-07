@@ -90,11 +90,14 @@ docker-compose logs -f
 ## 📚 문서
 
 ### ⭐ 마스터 트래커
-- [**MASTER_STATUS_2026-05-04.md**](./docs/MASTER_STATUS_2026-05-04.md) — 전체 개발 상태 통합 (96% 완료)
-- [**MASTER_STATUS_2026-05-04.html**](./docs/MASTER_STATUS_2026-05-04.html) — 한 화면 시각화 대시보드
+- [**MASTER_STATUS_2026-05-07.md**](./docs/MASTER_STATUS_2026-05-07.md) — **최신** 전체 개발 상태 (98% 완료, 멀티사이트 플랫폼화 완료)
+- [docs/INDEX.md](./docs/INDEX.md) — 전체 문서 카탈로그
+- [docs/FUTURE_UPDATES.md](./docs/FUTURE_UPDATES.md) — 향후 인프라 + 후속 작업
 
-### 🤝 PHP 통합
-- [PHP_INTEGRATION_FINAL_v3.md](./docs/PHP_INTEGRATION_FINAL_v3.md) / [HTML](./docs/PHP_INTEGRATION_FINAL_v3.html) — PHP 팀 전달용 최종 가이드 v3.0
+### 🤝 외부 사이트 연동 가이드
+- [**PLATFORM_WORKER_INTEGRATION_v1.md**](./docs/PLATFORM_WORKER_INTEGRATION_v1.md) — 외부 사이트 개발자용 (언어 중립)
+- [PLATFORM_WORKER_INTEGRATION_AI_PROMPT.md](./docs/PLATFORM_WORKER_INTEGRATION_AI_PROMPT.md) — AI 구현 프롬프트
+- [PHP_INTEGRATION_FINAL_v3.md](./docs/PHP_INTEGRATION_FINAL_v3.md) v3.1 / [HTML](./docs/PHP_INTEGRATION_FINAL_v3.html) — PHP 한정 (편집기 UI 포함)
 
 ### 🏗️ 시스템 설계
 - [SYSTEM_INTEGRATION_OVERVIEW.md](./docs/SYSTEM_INTEGRATION_OVERVIEW.md) — 시스템 통합 개요 v2.5
