@@ -179,6 +179,36 @@ const fontSizePx = ptToPx(120, settings.dpi /* 150 */)
 
 `save.ts` 에서 mm 단위로 영구 저장 / 화면 표시는 px → mm `mmToPxDisplay()` 사용.
 
+## 워크스페이스 정렬 & 뷰포트
+
+캔버스 영역 폭이 바뀔 때(사이드 메뉴 토글, 사이드바 드래그 리사이즈, 객체 선택 시 ControlBar 등장, 윈도우 리사이즈) 편집중인 페이지(workspace)는 항상 새 영역의 중앙으로 재배치되어야 한다. `setDimensions` 만 호출하면 viewport 가 그대로라 페이지가 한쪽으로 치우친다.
+
+**구현 위치**: [`apps/editor/src/views/EditorView.tsx`](../../apps/editor/src/views/EditorView.tsx) — ResizeObserver `apply()` 내부.
+
+**API 매핑**:
+
+| API | 동작 | 사용 시점 |
+|---|---|---|
+| `WorkspacePlugin.setCenterPointOf(workspace)` | 줌은 그대로 두고 viewportTransform[4][5] 만 조정해 객체를 캔버스 중앙으로 이동 | 페이지가 현재 줌에서 영역에 들어가는 경우 |
+| `WorkspacePlugin.setZoomAuto(scale?)` | 자동 맞춤 — 캔버스 폭에 맞춰 줌과 중앙 위치 모두 재계산 (`zoomRatio * 0.98 ≈ 78%`) | 페이지가 영역을 넘어가는 경우 / 첫 마운트 / 사이즈 옵션 변경 후 |
+
+**판정 로직** (재정렬 분기):
+
+```ts
+const wsScreenW = ws.width * ws.scaleX * canvas.getZoom()
+const wsScreenH = ws.height * ws.scaleY * canvas.getZoom()
+const PADDING = 0.95   // 5% 여백 — 자동맞춤↔중앙이동 진동 방지
+const fits = wsScreenW <= canvas.getWidth() * PADDING
+          && wsScreenH <= canvas.getHeight() * PADDING
+fits ? plugin.setCenterPointOf(ws) : plugin.setZoomAuto()
+```
+
+**원칙**:
+- 첫 마운트(`isFirstApply`)는 스킵 — `WorkspacePlugin.reset()` 의 `setZoomAuto()` 가 이미 처리.
+- 가능하면 사용자의 줌을 유지 → 작업 위치 보존.
+- 줌 유지가 불가능할 때(페이지가 새 영역을 넘어감)만 자동맞춤으로 떨어뜨려 페이지 전체가 보이게.
+- ResizeObserver 는 RAF 1 프레임 1회 적용으로 합쳐 무한 루프 방지(이전 폭 캐시 + 1px 미만 변동 무시).
+
 ## 저장 / 복원
 
 - 저장: `canvas.toObject([...extraProps])` → JSON
@@ -213,6 +243,7 @@ const fontSizePx = ptToPx(120, settings.dpi /* 150 */)
 | 컨텍스트 메뉴가 모바일에서 안 뜸 | `stopContextMenu: true` 디폴트 — 모바일은 long-press 대체 UI 별도 구현 필요 |
 | dispose 후 clearRect TypeError | `cvs.disposed = true` 플래그 후 dispose, 이후 접근 시 가드 |
 | 객체 선택 후 ControlBar 가 캔버스를 가림 (모바일) | ControlBar mobile 모드 (하단 시트) + main 에 `pb-[50vh]` |
+| 사이드 메뉴 펼치면 페이지가 한쪽으로 치우침 | `setDimensions` 만 부르고 viewport 보정 없으면 발생. `EditorView.tsx` ResizeObserver 의 워크스페이스 재정렬(`setCenterPointOf` / `setZoomAuto`) 로직 유지 필수 |
 
 ## 핵심 파일 빠른참조
 

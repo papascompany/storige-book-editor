@@ -531,22 +531,48 @@ export default function EditorView() {
       if (w <= 0 || h <= 0) return
       // 1px 미만 변동은 무시 — 모바일 viewport 지터 흡수
       if (Math.abs(w - lastW) < 1 && Math.abs(h - lastH) < 1) return
+      // 첫 동기화는 WorkspacePlugin.reset() 의 setZoomAuto 가 이미 처리.
+      // 이후 호출(사이드바 토글/창 리사이즈/ControlBar 표시 등)에서만 워크스페이스 재정렬.
+      const isFirstApply = lastW === 0 && lastH === 0
       lastW = w
       lastH = h
 
-      const canvases = useAppStore.getState().allCanvas
-      canvases.forEach((cvs) => {
+      const { allCanvas: canvases, allEditors: editors } = useAppStore.getState()
+      canvases.forEach((cvs, i) => {
         try {
           if (!cvs || (cvs as any).disposed) return
           // 현재 fabric 캔버스 크기와 같으면 스킵 (불필요한 setDimensions 방지)
           if (cvs.getWidth?.() === w && cvs.getHeight?.() === h) return
           cvs.setDimensions({ width: w, height: h })
+
+          // 사이드 메뉴 토글/사이드바 드래그/창 리사이즈로 캔버스 폭이 바뀌면
+          // 페이지(workspace)가 한쪽으로 치우쳐 보이는 문제 해결.
+          // - 현재 줌에서 페이지가 새 영역에 들어가면: 줌 유지하고 중앙으로만 이동.
+          // - 들어가지 않으면: 자동맞춤(setZoomAuto)으로 페이지 전체가 보이게 다시 스케일.
+          if (!isFirstApply) {
+            const ed = editors[i]
+            const ws = ed?.getPlugin?.<any>('WorkspacePlugin')
+            const workspace = cvs.getObjects?.().find?.((o: any) => o.id === 'workspace')
+            if (ws && workspace) {
+              const zoom = cvs.getZoom?.() || 1
+              const wsScreenW = (workspace.width || 0) * (workspace.scaleX || 1) * zoom
+              const wsScreenH = (workspace.height || 0) * (workspace.scaleY || 1) * zoom
+              // 5% 여백을 둬서 경계에서의 미세 진동(자동맞춤 ↔ 중앙이동 반복) 방지.
+              const PADDING = 0.95
+              const fits = wsScreenW <= w * PADDING && wsScreenH <= h * PADDING
+              if (fits) {
+                ws.setCenterPointOf?.(workspace)
+              } else {
+                ws.setZoomAuto?.()
+              }
+            }
+          }
+
           cvs.requestRenderAll?.()
         } catch (e) {
           console.warn('[EditorView] canvas resize error:', e)
         }
       })
-      const editors = useAppStore.getState().allEditors
       editors.forEach((ed) => {
         try { ed?.emit?.('sizeChange', { width: w, height: h }) } catch { /* noop */ }
       })

@@ -405,6 +405,19 @@
 · · · ·  파란 점선: 안전 영역 - 중요 내용은 이 안에
 ```
 
+### 워크스페이스 자동 중앙 정렬
+
+캔버스 영역의 폭이 변하면(사이드 메뉴 토글/사이드바 드래그/객체 선택 시 ControlBar 등장/창 리사이즈) 편집중인 페이지(workspace)가 자동으로 새 영역의 중앙으로 재배치됩니다.
+
+| 상황 | 동작 |
+|---|---|
+| 현재 줌에서 페이지가 새 영역에 들어감 | **줌 유지** + 중앙으로만 재배치 (`WorkspacePlugin.setCenterPointOf`) |
+| 페이지가 새 영역을 넘어감 (확대 상태에서 영역이 더 좁아진 경우) | **자동 맞춤**(`setZoomAuto`)으로 페이지 전체가 다시 보이도록 스케일 + 중앙 정렬 |
+
+- 5% 여백을 둬서(`PADDING = 0.95`) 경계선에서의 미세 진동(자동맞춤 ↔ 중앙이동 반복) 방지.
+- 첫 마운트는 `WorkspacePlugin.reset()` 의 `setZoomAuto()` 가 처리하므로 이 자동 재정렬은 그 이후 발생한 영역 변화에만 적용.
+- 구현 위치: [`apps/editor/src/views/EditorView.tsx`](../apps/editor/src/views/EditorView.tsx) — ResizeObserver `apply()`.
+
 ---
 
 ## 6. 사이드패널 (우측)
