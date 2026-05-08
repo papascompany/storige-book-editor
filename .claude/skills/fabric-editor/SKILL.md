@@ -205,6 +205,52 @@ const fontSizePx = ptToPx(120, settings.dpi /* 150 */)
 
 `save.ts` 에서 mm 단위로 영구 저장 / 화면 표시는 px → mm `mmToPxDisplay()` 사용.
 
+## 도구 메뉴 화이트리스트 (템플릿셋별)
+
+좌측 ToolBar 도구 메뉴는 템플릿셋(상품) 단위로 노출 여부를 제어할 수 있다.
+
+**데이터 흐름**
+
+```
+template_sets.enabled_menus (JSON, nullable)
+   ↓ admin 의 체크박스 토글 (TemplateSetForm.tsx)
+   ↓ API: TemplateSet CRUD DTO (template-set.dto.ts)
+   ↓ editor: loadTemplateSetEditor() 가 templateSet.enabledMenus 추출
+   ↓ useSettingsStore.setEnabledMenus(menus)
+   ↓ ToolBar 가 useSettingsStore.enabledMenus 구독해 ALL_MENUS 필터링
+```
+
+**핵심 단일 소스**: [`packages/types/src/index.ts`](../../packages/types/src/index.ts)
+- `EditorMenuKey`: 'UPLOAD'|'CLIPPING'|'TEMPLATE'|'IMAGE'|'TEXT'|'SHAPE'|'BACKGROUND'|'FRAME'|'SMART_CODE'|'EDIT'|'AI'
+- `EDITOR_MENU_DEFS`: admin 토글 UI 가 그대로 사용 (label, description, requiresFlag 메타)
+- `ALL_EDITOR_MENU_KEYS`, `resolveEnabledMenus()`, `isMenuEnabled()` 헬퍼
+
+**의미**
+
+| 값 | 의미 |
+|---|---|
+| `null` / `undefined` | 모든 메뉴 노출 (기본/legacy) |
+| `EditorMenuKey[]` | 화이트리스트 — 그 키만 노출 |
+| `[]` | 모두 숨김 (극단적 케이스) |
+
+**원칙**
+- `editMode === true` (admin 편집 미리보기) 에서는 화이트리스트 무시 → 전체 노출. 빌드 플래그(`VITE_ENABLE_*`) 와 화이트리스트는 **AND** 관계.
+- 새 도구 추가 시 `EditorMenuKey` + `EDITOR_MENU_DEFS` + `ToolBar.ALL_MENUS` 세 곳만 갱신하면 admin 체크박스 UI 가 자동 갱신.
+- 화이트리스트 저장 순서는 무시 — Admin form 이 항상 `EDITOR_MENU_DEFS` 순서로 정렬해 저장.
+
+**관련 파일**
+
+| 파일 | 역할 |
+|---|---|
+| `packages/types/src/index.ts` | `EditorMenuKey` / `EDITOR_MENU_DEFS` 단일 소스 |
+| `apps/api/src/templates/entities/template-set.entity.ts` | `enabled_menus` JSON 컬럼 |
+| `apps/api/src/templates/dto/template-set.dto.ts` | Create/Update DTO 검증 (`@IsIn(ALL_EDITOR_MENU_KEYS)`) |
+| `apps/api/migrations/20260508_add_template_sets_enabledMenus.sql` | 운영 DB 마이그레이션 |
+| `apps/admin/src/pages/TemplateSets/TemplateSetForm.tsx` | 토글 + 체크박스 UI |
+| `apps/editor/src/stores/useSettingsStore.ts` | `enabledMenus` 상태 + `setEnabledMenus()` |
+| `apps/editor/src/hooks/useEditorContents.ts` | `loadTemplateSetEditor` 에서 setter 호출 |
+| `apps/editor/src/components/editor/ToolBar.tsx` | 화이트리스트 적용 + UPLOAD 별도 처리 |
+
 ## 워크스페이스 정렬 & 뷰포트
 
 캔버스 영역 폭이 바뀔 때(사이드 메뉴 토글, 사이드바 드래그 리사이즈, 객체 선택 시 ControlBar 등장, 윈도우 리사이즈) 편집중인 페이지(workspace)는 항상 새 영역의 중앙으로 재배치되어야 한다. `setDimensions` 만 호출하면 viewport 가 그대로라 페이지가 한쪽으로 치우친다.

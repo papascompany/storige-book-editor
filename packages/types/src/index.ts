@@ -150,6 +150,14 @@ export interface TemplateSet {
   pageCountRange: number[];   // 내지 수량 범위 (예: [10, 20, 30, 40])
   templates: TemplateRef[];   // 순서 포함, N:N 관계
   isDeleted: boolean;         // 소프트 삭제
+  /**
+   * 에디터 좌측 도구 메뉴 노출 화이트리스트.
+   * - null/undefined: 모든 메뉴 노출 (legacy/기본값)
+   * - 배열: 배열에 포함된 키만 노출 (예: ['UPLOAD','TEXT','IMAGE'])
+   * - 빈 배열: 모든 도구 메뉴 숨김 (※ 업로드만 별도 노출하려면 ['UPLOAD'])
+   * Admin 의 템플릿셋 편집 화면에서 토글로 설정.
+   */
+  enabledMenus?: EditorMenuKey[] | null;
   // Legacy fields (하위 호환)
   description?: string;
   categoryId?: string;
@@ -173,6 +181,8 @@ export interface CreateTemplateSetInput {
   pageCountRange?: number[];
   templates?: TemplateRef[];
   categoryId?: string;
+  /** 에디터 도구 메뉴 노출 화이트리스트 (null=모두 노출) */
+  enabledMenus?: EditorMenuKey[] | null;
 }
 
 /**
@@ -187,6 +197,8 @@ export interface UpdateTemplateSetInput {
   canAddPage?: boolean;
   pageCountRange?: number[];
   templates?: TemplateRef[];
+  /** 에디터 도구 메뉴 노출 화이트리스트 (null=모두 노출) */
+  enabledMenus?: EditorMenuKey[] | null;
 }
 
 /**
@@ -1050,6 +1062,88 @@ export const ROLE_PERMISSIONS: Record<UserRole, UserPermissions> = {
 export enum EditorMode {
   SINGLE = 'single',
   BOOK = 'book',
+}
+
+// ============================================================================
+// Editor Menus (좌측 도구 메뉴 — 템플릿셋별 노출 제어)
+// ============================================================================
+
+/**
+ * 에디터 좌측 ToolBar 메뉴 키.
+ * - 새 도구를 추가할 때 이 enum + EDITOR_MENU_DEFS 에만 등록하면
+ *   admin/editor 양쪽이 자동으로 인지한다.
+ */
+export type EditorMenuKey =
+  | 'UPLOAD'
+  | 'CLIPPING'
+  | 'TEMPLATE'
+  | 'IMAGE'
+  | 'TEXT'
+  | 'SHAPE'
+  | 'BACKGROUND'
+  | 'FRAME'
+  | 'SMART_CODE'
+  | 'EDIT'
+  | 'AI';
+
+/**
+ * 메뉴 메타정보. admin 의 토글 UI 에서 그대로 사용.
+ * - `key`: ToolBar 가 렌더하는 메뉴 type 과 일치 (대소문자 구분)
+ * - `label`: 사용자 노출 라벨 (Korean)
+ * - `description`: admin 도움말
+ * - `defaultEnabled`: 신규 템플릿셋의 디폴트 (모두 true — 명시적 비활성만 enabledMenus 에서 빠짐)
+ * - `requiresFlag`: 빌드 타임 feature flag 가 필요한 경우 (예: AI, OpenCV)
+ */
+export interface EditorMenuDef {
+  key: EditorMenuKey;
+  label: string;
+  description: string;
+  defaultEnabled: boolean;
+  requiresFlag?: 'IMAGE_PROCESSING' | 'TEMPLATE' | 'FRAME' | 'SMART_CODE' | 'AI' | 'UPLOAD';
+}
+
+/**
+ * 메뉴 정의 — admin 토글 UI / editor 필터링이 공통으로 참조하는 단일 소스.
+ * 새 도구가 추가되면 여기에만 항목을 추가하면 admin 체크박스가 자동 생성된다.
+ */
+export const EDITOR_MENU_DEFS: EditorMenuDef[] = [
+  { key: 'UPLOAD', label: '업로드', description: '사용자 이미지 업로드 (PDF/AI/EPS 포함)', defaultEnabled: true, requiresFlag: 'UPLOAD' },
+  { key: 'CLIPPING', label: '모양컷', description: 'OpenCV 기반 모양 클리핑', defaultEnabled: true, requiresFlag: 'IMAGE_PROCESSING' },
+  { key: 'TEMPLATE', label: '템플릿', description: '템플릿셋 / 낱장 템플릿 교체', defaultEnabled: true, requiresFlag: 'TEMPLATE' },
+  { key: 'IMAGE', label: '이미지', description: '라이브러리 이미지 추가', defaultEnabled: true },
+  { key: 'TEXT', label: '텍스트', description: '텍스트 추가 + 추천 스타일', defaultEnabled: true },
+  { key: 'SHAPE', label: '요소', description: '도형/일러스트 추가', defaultEnabled: true },
+  { key: 'BACKGROUND', label: '배경', description: '배경색 / 배경 이미지', defaultEnabled: true },
+  { key: 'FRAME', label: '프레임', description: '사진틀 (이미지 마스킹)', defaultEnabled: true, requiresFlag: 'FRAME' },
+  { key: 'SMART_CODE', label: 'QR/바코드', description: 'QR 코드 / 바코드 생성', defaultEnabled: true, requiresFlag: 'SMART_CODE' },
+  { key: 'EDIT', label: '편집도구', description: '이미지 편집 (배경 제거 등 OpenCV)', defaultEnabled: true, requiresFlag: 'IMAGE_PROCESSING' },
+  { key: 'AI', label: 'AI', description: 'AI 추천 / 생성 패널', defaultEnabled: true, requiresFlag: 'AI' },
+];
+
+/**
+ * 모든 메뉴 키 배열 (편의용).
+ */
+export const ALL_EDITOR_MENU_KEYS: EditorMenuKey[] = EDITOR_MENU_DEFS.map((d) => d.key);
+
+/**
+ * `enabledMenus` 가 null/undefined 이면 "모두 노출"로 해석.
+ * 빈 배열은 "어떤 메뉴도 노출 안 함" — 극단적 케이스(예: 업로드만 별도 옵션) 를 위해 허용.
+ */
+export function resolveEnabledMenus(
+  enabledMenus: EditorMenuKey[] | null | undefined
+): EditorMenuKey[] {
+  return enabledMenus ?? ALL_EDITOR_MENU_KEYS;
+}
+
+/**
+ * 특정 메뉴가 템플릿셋 설정에서 활성인지 판정.
+ */
+export function isMenuEnabled(
+  enabledMenus: EditorMenuKey[] | null | undefined,
+  key: EditorMenuKey
+): boolean {
+  if (enabledMenus == null) return true;
+  return enabledMenus.includes(key);
 }
 
 // ============================================================================

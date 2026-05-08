@@ -20,6 +20,8 @@ import {
   List,
   Radio,
   Alert,
+  Checkbox,
+  Tooltip,
 } from 'antd';
 import {
   PlusOutlined,
@@ -50,6 +52,9 @@ import {
   Template,
   TemplateType,
   EditorMode,
+  EDITOR_MENU_DEFS,
+  ALL_EDITOR_MENU_KEYS,
+  EditorMenuKey,
 } from '@storige/types';
 import { templateSetsApi } from '../../api/template-sets';
 import { templatesApi } from '../../api/templates';
@@ -247,6 +252,12 @@ export const TemplateSetForm = () => {
   // Load form data when editing
   useEffect(() => {
     if (templateSet) {
+      // enabledMenus null/undefined = "모두 노출" → 폼은 customizeMenus=false 로 표현 (간단 모드).
+      // 배열이면 customizeMenus=true 로 명시적 화이트리스트 모드.
+      const customizeMenus = Array.isArray(templateSet.enabledMenus);
+      const menuList = customizeMenus
+        ? (templateSet.enabledMenus as EditorMenuKey[])
+        : ALL_EDITOR_MENU_KEYS;
       form.setFieldsValue({
         name: templateSet.name,
         type: templateSet.type,
@@ -256,6 +267,8 @@ export const TemplateSetForm = () => {
         canAddPage: templateSet.canAddPage,
         pageCountMin: templateSet.pageCountRange?.[0],
         pageCountMax: templateSet.pageCountRange?.[templateSet.pageCountRange.length - 1],
+        customizeMenus,
+        enabledMenus: menuList,
       });
 
       // Load template refs with template details
@@ -302,6 +315,16 @@ export const TemplateSetForm = () => {
       }
     }
 
+    // 도구 메뉴 화이트리스트:
+    // - customizeMenus=false: 모든 메뉴 노출 (null 로 저장)
+    // - customizeMenus=true: 체크된 메뉴만 노출 (배열로 저장)
+    // 키 순서는 EDITOR_MENU_DEFS 순서를 보존해 ToolBar 순서와 일치시킴.
+    let enabledMenus: EditorMenuKey[] | null = null;
+    if (values.customizeMenus) {
+      const selected = new Set<EditorMenuKey>(values.enabledMenus ?? []);
+      enabledMenus = ALL_EDITOR_MENU_KEYS.filter((k) => selected.has(k));
+    }
+
     const data = {
       name: values.name,
       type: values.type,
@@ -316,6 +339,7 @@ export const TemplateSetForm = () => {
         templateId,
         required,
       })),
+      enabledMenus,
     };
 
     if (id) {
@@ -445,6 +469,8 @@ export const TemplateSetForm = () => {
             canAddPage: true,
             pageCountMin: 10,
             pageCountMax: 100,
+            customizeMenus: false,
+            enabledMenus: ALL_EDITOR_MENU_KEYS,
           }}
         >
           <Form.Item
@@ -524,6 +550,96 @@ export const TemplateSetForm = () => {
                 </Space>
               )
             }
+          </Form.Item>
+
+          <Divider>에디터 도구 메뉴</Divider>
+
+          <Form.Item
+            name="customizeMenus"
+            label="도구 메뉴 노출 직접 설정"
+            valuePropName="checked"
+            extra="끔: 모든 메뉴 노출 (기본). 켬: 아래에서 선택한 메뉴만 노출. 예) 동화책=프레임/QR 끄기, 전단지=AI/모양컷 끄기."
+          >
+            <Switch checkedChildren="화이트리스트" unCheckedChildren="모두 노출" />
+          </Form.Item>
+
+          <Form.Item
+            noStyle
+            shouldUpdate={(prev, curr) => prev.customizeMenus !== curr.customizeMenus}
+          >
+            {({ getFieldValue }) => {
+              const customizeMenus = getFieldValue('customizeMenus');
+              if (!customizeMenus) return null;
+              return (
+                <Form.Item
+                  name="enabledMenus"
+                  label="노출할 도구 메뉴"
+                  rules={[
+                    {
+                      validator: async (_rule, value: EditorMenuKey[] | undefined) => {
+                        // 빈 배열도 허용 (모두 숨김 = 극단적 케이스)
+                        if (!Array.isArray(value)) {
+                          throw new Error('메뉴 배열이 올바르지 않습니다.');
+                        }
+                      },
+                    },
+                  ]}
+                  extra={
+                    <Space direction="vertical" size={2} style={{ marginTop: 4 }}>
+                      <Text type="secondary" style={{ fontSize: 12 }}>
+                        체크된 메뉴만 에디터 좌측에 노출됩니다. 배열 순서는 ToolBar 순서를 따릅니다.
+                      </Text>
+                      <Space size={4}>
+                        <Button
+                          size="small"
+                          onClick={() => form.setFieldValue('enabledMenus', ALL_EDITOR_MENU_KEYS)}
+                        >
+                          전체 선택
+                        </Button>
+                        <Button
+                          size="small"
+                          onClick={() => form.setFieldValue('enabledMenus', [])}
+                        >
+                          전체 해제
+                        </Button>
+                        <Button
+                          size="small"
+                          onClick={() => form.setFieldValue('enabledMenus', ['UPLOAD'])}
+                        >
+                          업로드만
+                        </Button>
+                      </Space>
+                    </Space>
+                  }
+                >
+                  <Checkbox.Group style={{ width: '100%' }}>
+                    <Space direction="vertical" size={6} style={{ width: '100%' }}>
+                      {EDITOR_MENU_DEFS.map((def) => (
+                        <Tooltip
+                          key={def.key}
+                          title={def.requiresFlag
+                            ? `${def.description} (빌드 플래그 ${def.requiresFlag} 가 꺼져있으면 화이트리스트와 무관하게 숨겨집니다)`
+                            : def.description}
+                          placement="right"
+                        >
+                          <Checkbox value={def.key} style={{ width: '100%' }}>
+                            <Space size={6}>
+                              <Tag color="blue" style={{ margin: 0 }}>
+                                {def.key}
+                              </Tag>
+                              <Text strong>{def.label}</Text>
+                              <Text type="secondary" style={{ fontSize: 12 }}>
+                                {def.description}
+                              </Text>
+                            </Space>
+                          </Checkbox>
+                        </Tooltip>
+                      ))}
+                    </Space>
+                  </Checkbox.Group>
+                </Form.Item>
+              );
+            }}
           </Form.Item>
 
           <Divider>템플릿 구성</Divider>

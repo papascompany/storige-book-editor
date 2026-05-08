@@ -8,7 +8,7 @@ import {
   pxToMmDisplay,
 } from '@storige/canvas-core'
 import type { EditorTemplate } from '@/generated/graphql'
-import type { SpreadConfig } from '@storige/types'
+import type { SpreadConfig, EditorMenuKey } from '@storige/types'
 
 // Types (will be replaced with GraphQL generated types later)
 interface WowPressProductSize {
@@ -236,6 +236,14 @@ interface SettingsState {
   renderType: EditorRenderType
   spineConfig: SpineConfig  // 책등 계산 설정
   spreadConfig: SpreadConfig | null  // 스프레드 편집 설정 (null이면 비-스프레드 모드)
+  /**
+   * 템플릿셋이 지정한 도구 메뉴 노출 화이트리스트.
+   * - null: 모든 메뉴 노출 (legacy/기본)
+   * - 배열: 그 키만 노출 (빈 배열은 모두 숨김)
+   * loadTemplateSetEditor 가 templateSet.enabledMenus 를 그대로 복사해 둔다.
+   * ToolBar 가 ALL_MENUS 를 이 화이트리스트로 필터링.
+   */
+  enabledMenus: EditorMenuKey[] | null
   artwork: {
     name: string
     product: WowPressLinkedProduct | null
@@ -307,6 +315,9 @@ interface SettingsActions {
   // 스프레드 편집 설정 관리
   setSpreadConfig: (config: SpreadConfig | null) => void
   updateSpreadSpineWidth: (newWidthMm: number) => void
+
+  // 도구 메뉴 화이트리스트 관리 (템플릿셋이 지정)
+  setEnabledMenus: (menus: EditorMenuKey[] | null) => void
 }
 
 // Initial state
@@ -333,6 +344,7 @@ const initialState: SettingsState = {
     calculatedSpineWidth: null,
   },
   spreadConfig: null,
+  enabledMenus: null,
   artwork: {
     name: '나의 새로운 작업',
     product: null,
@@ -743,6 +755,12 @@ export const useSettingsStore = create<SettingsState & SettingsActions>()((set, 
         },
       },
     })
+  },
+
+  // 템플릿셋이 지정한 도구 메뉴 화이트리스트 설정.
+  // null = 모두 노출 (기본). loadTemplateSetEditor 가 호출.
+  setEnabledMenus: (menus) => {
+    set({ enabledMenus: menus ?? null })
   },
 }))
 

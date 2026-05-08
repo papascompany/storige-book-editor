@@ -3,6 +3,7 @@ import { useAppStore } from '@/stores/useAppStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useImageStore } from '@/stores/useImageStore'
 import { SelectionType, ImageProcessingPlugin } from '@storige/canvas-core'
+import type { EditorMenuKey } from '@storige/types'
 import {
   Upload,
   LayoutTemplate,
@@ -61,9 +62,11 @@ export default function ToolBar({ horizontal = false }: ToolBarProps) {
   const getPlugin = useAppStore((state) => state.getPlugin)
 
   const editMode = useSettingsStore((state) => state.currentSettings.editMode)
-  // Note: menu config will be loaded from product settings when available
-  // For now, use all menus as default
-  const appMenu: string[] | undefined = undefined
+  // 템플릿셋이 지정한 도구 메뉴 화이트리스트.
+  // - null/undefined: 모두 노출 (legacy/기본)
+  // - 배열: 그 키만 노출 (빈 배열 → 모든 도구 메뉴 숨김)
+  // useEditorContents.loadTemplateSetEditor 가 templateSet.enabledMenus 를 store 에 저장.
+  const enabledMenus = useSettingsStore((state) => state.enabledMenus)
 
   const upload = useImageStore((state) => state.upload)
   const uploadSimple = useImageStore((state) => state.uploadSimple)
@@ -102,16 +105,23 @@ export default function ToolBar({ horizontal = false }: ToolBarProps) {
       },
     }
 
-    // In edit mode or development, show all menus
-    const availableMenus =
-      editMode || import.meta.env.DEV
-        ? ALL_MENUS
-        : (appMenu as string[] | undefined)
-            ?.map((menuType) => ALL_MENUS.find((m) => m.type === menuType))
-            .filter((m): m is AppMenu => m !== undefined) ?? ALL_MENUS
+    // 화이트리스트 helper: enabledMenus null = 모두 노출
+    const isAllowed = (key: EditorMenuKey | string): boolean => {
+      if (enabledMenus == null) return true
+      return (enabledMenus as string[]).includes(key)
+    }
 
-    return [...(ENABLE_UPLOAD_MENU ? [uploadMenu] : []), ...availableMenus]
-  }, [editMode, appMenu, ready, canvas, getPlugin, upload, uploadSimple])
+    // edit mode (admin 편집 미리보기) 에서는 화이트리스트 무시하고 전체 노출.
+    // 일반 사용자에게는 enabledMenus 적용.
+    const availableMenus = editMode
+      ? ALL_MENUS
+      : ALL_MENUS.filter((m) => isAllowed(m.type))
+
+    // 업로드 메뉴는 빌드 플래그 + 화이트리스트 모두 통과해야 노출.
+    const showUpload = ENABLE_UPLOAD_MENU && (editMode || isAllowed('UPLOAD'))
+
+    return [...(showUpload ? [uploadMenu] : []), ...availableMenus]
+  }, [editMode, enabledMenus, ready, canvas, getPlugin, upload, uploadSimple])
 
   const handleMenuClick = (menu: AppMenu) => {
     if (menu.onTap) {

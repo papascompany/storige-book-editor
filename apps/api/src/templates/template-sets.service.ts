@@ -58,6 +58,8 @@ export class TemplateSetsService {
       pageCountRange: dto.pageCountRange || [],
       templates: dto.templates || [],
       editorMode,
+      // null = 모든 메뉴 노출(기본). admin 에서 명시적으로 배열을 보내면 화이트리스트로 작동.
+      enabledMenus: dto.enabledMenus ?? null,
       categoryId: dto.categoryId || null,
       isDeleted: false,
       isActive: true,

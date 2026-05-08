@@ -132,6 +132,74 @@
 
 ---
 
+### 도구 메뉴 노출 화이트리스트 (템플릿셋별)
+
+**개요**
+
+좌측 ToolBar의 도구 메뉴(업로드/모양컷/템플릿/이미지/텍스트/요소/배경/프레임/QR·바코드/편집도구/AI)는 템플릿셋(상품) 단위로 노출 여부를 제어할 수 있습니다.
+
+**저장 위치**: `template_sets.enabled_menus` (JSON 배열, nullable)
+
+| 값 | 의미 |
+|---|---|
+| `null` (기본) | 모든 메뉴 노출 — legacy 호환 |
+| `[ ... ]` 배열 | 화이트리스트 — 배열에 포함된 키만 노출, 순서는 ToolBar 순서를 따름 |
+| `[]` 빈 배열 | 모든 도구 메뉴 숨김 |
+
+**설정 위치 (Admin)**
+- 템플릿셋 편집 화면 → "에디터 도구 메뉴" 섹션
+- "도구 메뉴 노출 직접 설정" 토글
+  - **끔**: 모든 메뉴 노출 (`enabledMenus: null` 저장)
+  - **켬**: 체크박스 그룹에서 노출할 메뉴 선택
+- 빠른 프리셋 버튼: 전체 선택 / 전체 해제 / 업로드만
+
+**적용 흐름 (Editor)**
+1. URL `?templateSetId=...` 로 에디터 진입
+2. `loadTemplateSetEditor()` 가 templateSet 조회 → `enabledMenus` 추출
+3. `useSettingsStore.setEnabledMenus()` 로 store 에 저장
+4. `ToolBar` 가 `useSettingsStore.enabledMenus` 를 구독해 자동 필터링
+5. **`editMode === true`** (admin 편집 미리보기) 에서는 화이트리스트 무시 → 전체 노출
+
+**도구 메뉴 키 (`EditorMenuKey`)**
+
+| 키 | 라벨 | 빌드 플래그 |
+|---|---|---|
+| `UPLOAD` | 업로드 | `VITE_ENABLE_UPLOAD_MENU` |
+| `CLIPPING` | 모양컷 | `VITE_ENABLE_IMAGE_PROCESSING` (OpenCV) |
+| `TEMPLATE` | 템플릿 | `VITE_ENABLE_TEMPLATE_MENU` |
+| `IMAGE` | 이미지 | — |
+| `TEXT` | 텍스트 | — |
+| `SHAPE` | 요소 | — |
+| `BACKGROUND` | 배경 | — |
+| `FRAME` | 프레임 | `VITE_ENABLE_FRAME_MENU` |
+| `SMART_CODE` | QR/바코드 | `VITE_ENABLE_SMART_CODE_MENU` |
+| `EDIT` | 편집도구 | `VITE_ENABLE_IMAGE_PROCESSING` |
+| `AI` | AI | `VITE_ENABLE_AI_PANEL` |
+
+> **빌드 플래그가 꺼진 메뉴는 화이트리스트에 포함되어 있어도 노출되지 않습니다.** 두 조건이 모두 통과해야 노출됩니다.
+
+**예시 시나리오**
+
+```jsonc
+// 동화책 — 프레임/QR 안 씀
+{ "enabledMenus": ["UPLOAD","CLIPPING","TEMPLATE","IMAGE","TEXT","SHAPE","BACKGROUND","EDIT","AI"] }
+
+// 전단지 — AI/모양컷 안 씀
+{ "enabledMenus": ["UPLOAD","TEMPLATE","IMAGE","TEXT","SHAPE","BACKGROUND","FRAME","SMART_CODE","EDIT"] }
+
+// 업로드만 (단순 PDF 입고용)
+{ "enabledMenus": ["UPLOAD"] }
+```
+
+**새 도구 추가 절차**
+
+1. `packages/types/src/index.ts` 의 `EditorMenuKey` 와 `EDITOR_MENU_DEFS` 에 항목 추가
+2. `apps/editor/src/components/editor/ToolBar.tsx` 의 `ALL_MENUS` 에 메뉴 정의 추가 (아이콘/onTap 등)
+3. `pnpm --filter @storige/types build` 후 admin/editor 빌드
+4. Admin 의 체크박스 그룹은 자동 갱신 (별도 코드 변경 불필요)
+
+---
+
 ## 4. 사이드바 (FeatureSidebar vs ControlBar)
 
 ### 4.1 FeatureSidebar (도구 선택 시)
