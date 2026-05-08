@@ -392,13 +392,15 @@ export default function AppBackground() {
         {/* Background Color */}
         <AppSection id="app-background-color" title="배경색">
           <div className="flex flex-col gap-1.5 px-4">
-            <div className="flex flex-row gap-2 items-center">
-              <div className="flex-1 flex items-center gap-2 h-10 px-3 rounded-lg bg-editor-surface-lowest">
+            {/* min-w-0: flex 자식이 부모 폭 안으로 줄어들 수 있게(기본 min-width:auto 회피).
+                shrink-0: 적용 버튼이 사이드바 가장자리에서 잘리지 않게 고정 폭 보장. */}
+            <div className="flex flex-row gap-2 items-center min-w-0">
+              <div className="flex-1 min-w-0 flex items-center gap-2 h-10 px-3 rounded-lg bg-editor-surface-lowest">
                 <input
                   type="color"
                   value={bgColor}
                   onChange={onBgColorChange}
-                  className="w-8 h-8 rounded cursor-pointer border-0"
+                  className="w-8 h-8 shrink-0 rounded cursor-pointer border-0"
                   aria-label="배경색 선택"
                 />
                 <input
@@ -411,19 +413,19 @@ export default function AppBackground() {
                     }
                   }}
                   onBlur={onBgColorChange as unknown as React.FocusEventHandler<HTMLInputElement>}
-                  className="flex-1 bg-transparent text-sm text-editor-text outline-none uppercase"
+                  className="flex-1 min-w-0 bg-transparent text-sm text-editor-text outline-none uppercase"
                   aria-label="배경색 hex 코드"
                 />
               </div>
               <button
                 type="button"
                 onClick={handleApplyBgColor}
-                className="flex items-center justify-center gap-1 h-10 min-w-[64px] px-3 rounded-lg bg-editor-accent text-white text-xs font-medium hover:bg-editor-accent-hover transition-colors"
+                className="shrink-0 flex items-center justify-center gap-1 h-10 px-3 rounded-lg bg-editor-accent text-white text-xs font-medium hover:bg-editor-accent-hover transition-colors"
                 aria-label="배경색 적용"
                 title="현재 색상을 배경에 적용"
               >
                 <Check className="h-4 w-4" />
-                적용
+                <span>적용</span>
               </button>
             </div>
             {TOUCH_ENV && (
@@ -438,13 +440,13 @@ export default function AppBackground() {
         {lidObject && (
           <AppSection id="app-background-cap" title="뚜껑색 변경">
             <div className="flex flex-col gap-1.5 px-4">
-              <div className="flex flex-row gap-2 items-center">
-                <div className="flex-1 flex items-center gap-2 h-10 px-3 rounded-lg bg-editor-surface-lowest">
+              <div className="flex flex-row gap-2 items-center min-w-0">
+                <div className="flex-1 min-w-0 flex items-center gap-2 h-10 px-3 rounded-lg bg-editor-surface-lowest">
                   <input
                     type="color"
                     value={lidColor}
                     onChange={onLidColorChange}
-                    className="w-8 h-8 rounded cursor-pointer border-0"
+                    className="w-8 h-8 shrink-0 rounded cursor-pointer border-0"
                     aria-label="뚜껑색 선택"
                   />
                   <input
@@ -457,19 +459,19 @@ export default function AppBackground() {
                       }
                     }}
                     onBlur={onLidColorChange as unknown as React.FocusEventHandler<HTMLInputElement>}
-                    className="flex-1 bg-transparent text-sm text-editor-text outline-none uppercase"
+                    className="flex-1 min-w-0 bg-transparent text-sm text-editor-text outline-none uppercase"
                     aria-label="뚜껑색 hex 코드"
                   />
                 </div>
                 <button
                   type="button"
                   onClick={handleApplyLidColor}
-                  className="flex items-center justify-center gap-1 h-10 min-w-[64px] px-3 rounded-lg bg-editor-accent text-white text-xs font-medium hover:bg-editor-accent-hover transition-colors"
+                  className="shrink-0 flex items-center justify-center gap-1 h-10 px-3 rounded-lg bg-editor-accent text-white text-xs font-medium hover:bg-editor-accent-hover transition-colors"
                   aria-label="뚜껑색 적용"
                   title="현재 색상을 뚜껑에 적용"
                 >
                   <Check className="h-4 w-4" />
-                  적용
+                  <span>적용</span>
                 </button>
               </div>
               {TOUCH_ENV && (
