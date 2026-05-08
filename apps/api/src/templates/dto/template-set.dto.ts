@@ -6,12 +6,13 @@ import {
   IsEnum,
   IsNumber,
   IsArray,
+  IsIn,
   ValidateNested,
   Min,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { TemplateSetType, TemplateRef, EditorMode } from '@storige/types';
+import { TemplateSetType, TemplateRef, EditorMode, EditorMenuKey, ALL_EDITOR_MENU_KEYS } from '@storige/types';
 
 /**
  * 템플릿 참조 DTO
@@ -92,6 +93,18 @@ export class CreateTemplateSetDto {
   @IsOptional()
   @IsString()
   categoryId?: string;
+
+  @ApiPropertyOptional({
+    type: [String],
+    enum: ALL_EDITOR_MENU_KEYS,
+    example: ['UPLOAD', 'TEXT', 'IMAGE', 'BACKGROUND'],
+    description:
+      '에디터 좌측 도구 메뉴 노출 화이트리스트. null=모두 노출(기본), 빈 배열=모두 숨김.',
+  })
+  @IsOptional()
+  @IsArray()
+  @IsIn(ALL_EDITOR_MENU_KEYS, { each: true })
+  enabledMenus?: EditorMenuKey[] | null;
 }
 
 /**
@@ -162,6 +175,18 @@ export class UpdateTemplateSetDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @ApiPropertyOptional({
+    type: [String],
+    enum: ALL_EDITOR_MENU_KEYS,
+    example: ['UPLOAD', 'TEXT', 'IMAGE', 'BACKGROUND'],
+    description:
+      '에디터 좌측 도구 메뉴 노출 화이트리스트. null=모두 노출(기본), 빈 배열=모두 숨김.',
+  })
+  @IsOptional()
+  @IsArray()
+  @IsIn(ALL_EDITOR_MENU_KEYS, { each: true })
+  enabledMenus?: EditorMenuKey[] | null;
 }
 
 /**

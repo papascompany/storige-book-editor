@@ -13,7 +13,7 @@ import {
 import { v4 as uuidv4 } from 'uuid';
 import { Category } from './category.entity';
 import { Template } from './template.entity';
-import type { ProductSpecs, TemplateSetType, TemplateRef, EditorMode } from '@storige/types';
+import type { ProductSpecs, TemplateSetType, TemplateRef, EditorMode, EditorMenuKey } from '@storige/types';
 
 /**
  * 템플릿셋 타입 enum (DB용)
@@ -82,6 +82,18 @@ export class TemplateSet {
    */
   @Column({ name: 'editor_mode', type: 'varchar', length: 20, default: 'single' })
   editorMode: EditorMode;
+
+  /**
+   * 에디터 좌측 도구 메뉴 노출 화이트리스트.
+   * - null: 모든 메뉴 노출 (legacy/기본값)
+   * - 배열: 배열에 포함된 키만 노출 (예: ['UPLOAD','TEXT','IMAGE'])
+   * - 빈 배열 []: 모든 도구 메뉴 숨김
+   *
+   * 키 정의는 `@storige/types` 의 `EditorMenuKey` / `EDITOR_MENU_DEFS` 참조.
+   * Admin 의 템플릿셋 편집 화면에서 토글로 설정.
+   */
+  @Column({ name: 'enabled_menus', type: 'json', nullable: true })
+  enabledMenus: EditorMenuKey[] | null;
 
   /**
    * 소프트 삭제 플래그

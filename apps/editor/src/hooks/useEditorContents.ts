@@ -166,12 +166,14 @@ export function useEditorContents(): UseEditorContentsReturn {
     setupEmptyEditor: setupEmptyEditorStore,
     setupGeneral: setupGeneralStore,
     setEditorTemplates,
+    setEnabledMenus,
   } = useSettingsStore(
     useShallow((state) => ({
       setupProductBased: state.setupProductBased,
       setupEmptyEditor: state.setupEmptyEditor,
       setupGeneral: state.setupGeneral,
       setEditorTemplates: state.setEditorTemplates,
+      setEnabledMenus: state.setEnabledMenus,
     }))
   )
 
@@ -877,6 +879,14 @@ export function useEditorContents(): UseEditorContentsReturn {
 
       console.log('[EditorContents] Template set loaded:', templateSet.name)
       console.log('[EditorContents] Original template details count:', originalTemplateDetails.length)
+
+      // 1-A. 템플릿셋이 지정한 도구 메뉴 화이트리스트를 settings store 에 반영.
+      // null/undefined = 모두 노출(legacy/기본). 배열이면 그 키만 ToolBar 에 노출.
+      // ToolBar 가 useSettingsStore.enabledMenus 를 구독해 자동 필터링.
+      const templateSetEnabledMenus = (templateSet as any).enabledMenus
+      setEnabledMenus(
+        Array.isArray(templateSetEnabledMenus) ? templateSetEnabledMenus : null
+      )
 
       // 2. EditorMode 확인 및 분기
       // DB의 editorMode를 우선 사용하되, 스프레드 템플릿이 존재하면 book 모드로 자동 전환
