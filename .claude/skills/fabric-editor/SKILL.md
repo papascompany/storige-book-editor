@@ -127,6 +127,32 @@ const isUserObject =
 `(pointer: coarse)` 디바이스에서 `Object.prototype` 컨트롤이 자동 확대됨:
 - `cornerSize: 16`, `touchCornerSize: 36`, `padding: 8`, `borderScaleFactor: 2`
 
+## 객체 선택 핸들 (커스텀 컨트롤)
+
+`packages/canvas-core/src/plugins/ControlsPlugin.ts` 가 `fabric.Object.prototype.controls` 의 각 컨트롤에 커스텀 `render` 함수를 idempotent 하게 주입한다.
+
+| 컨트롤 키 | 모양 | 의미 |
+|---|---|---|
+| `tl` `tr` `bl` `br` | **원형** (Ø`cornerSize`) | 자유 리사이즈 — 코너 = 둥근 핸들 |
+| `ml` `mr` | **세로 캡슐** (`PILL_SHORT`×`PILL_LONG`) | 가로 방향 스케일/스큐 |
+| `mt` `mb` | **가로 캡슐** (`PILL_LONG`×`PILL_SHORT`) | 세로 방향 스케일/스큐 |
+| `mtr` | **객체 아래 원형 + 회전 화살표** (`offsetY: +36`) | 회전 — 텍스트/이미지 위 가려짐 방지 |
+
+색상은 `cornerColor` (fill) / `cornerStrokeColor` (stroke) prototype 값을 그대로 따라 light/dark 테마와 자동 동기화.
+
+**디자인 토큰** (`ControlsPlugin.ts` 상단 상수):
+
+```
+CORNER_DIAMETER = 12     PILL_SHORT = 7      PILL_LONG = 22
+HANDLE_STROKE   = 1.5    ROTATE_HANDLE_R = 11   ROTATE_HANDLE_OFFSET = 36
+```
+
+**원칙**:
+- 회전 아이콘은 **객체 angle 을 따라가지 않음** (화면 기준으로 그려야 직관적). 코너/변 핸들은 angle 따라 회전.
+- `cornerSize` 가 터치 환경에서 16+ 로 커지면 캡슐도 비례 확대 (`scale = cornerSize / CORNER_DIAMETER`).
+- prototype 수정은 **한 번만** 적용 (`customControlsApplied` 플래그). 여러 캔버스 init 때 중복 안 됨.
+- 변 핸들은 텍스트(`i-text`)에서 `lockUniScaling: true` 로 자동 숨김 → 코너만 활성.
+
 ## 플러그인 작성 패턴
 
 ```ts
