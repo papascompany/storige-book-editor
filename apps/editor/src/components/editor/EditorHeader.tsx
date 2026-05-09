@@ -3,6 +3,7 @@ import { useAppStore } from '@/stores/useAppStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useIsAdmin } from '@/stores/useAuthStore'
 import { useWorkSave } from '@/hooks/useWorkSave'
+import { useTemplateSetSave } from '@/hooks/useTemplateSetSave'
 import { ServicePlugin, PreviewPlugin, HistoryPlugin } from '@storige/canvas-core'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -61,6 +62,11 @@ interface EditorHeaderProps {
   onSaveWork?: () => Promise<void>
   /** 불러오기 콜백 */
   onOpenWorkspace?: () => void
+  /**
+   * Admin "템플릿셋 수정" 모드 — true 면 저장 동작이 templates.canvas_data PATCH 로 전환.
+   * EditorView 가 ?adminEdit=templateSet 파라미터 + admin 권한일 때 true 로 전달.
+   */
+  isAdminTemplateSetEdit?: boolean
 }
 
 export default function EditorHeader({
@@ -70,6 +76,7 @@ export default function EditorHeader({
   onFinish,
   onSaveWork,
   onOpenWorkspace,
+  isAdminTemplateSetEdit = false,
 }: EditorHeaderProps) {
   const [previewMode, setPreviewMode] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -148,6 +155,8 @@ export default function EditorHeader({
 
   // Work save hook for admin
   const { saveWorkForAdmin, saving: workSaving } = useWorkSave()
+  // Admin "템플릿셋 수정" 모드 전용 저장 — 각 페이지 → templates.canvas_data PATCH
+  const { saveTemplateSet, saving: templateSetSaving } = useTemplateSetSave()
 
   // Size from settings
   const size = currentSettings.size || { width: 100, height: 100, cutSize: 5, safeSize: 5, printSize: undefined }
@@ -373,10 +382,21 @@ export default function EditorHeader({
           }
         }
 
-        // 관리자용 저장 실행 (useWorkSave 훅 사용)
-        await saveWorkForAdmin()
-
-        showToast('저장됐습니다.', 'success')
+        // ====== Admin "템플릿셋 수정" 모드 분기 ======
+        // EditorView 가 ?adminEdit=templateSet 으로 진입한 경우, editor_designs 에 작품을
+        // 만드는 saveWorkForAdmin 대신 각 페이지의 fabric canvas → 해당 templates.canvas_data
+        // 로 PATCH 한다. 같은 templateId 가 반복되면 한 번만 저장 (데이터 모델 그대로 따름).
+        if (isAdminTemplateSetEdit) {
+          const result = await saveTemplateSet()
+          showToast(
+            `템플릿셋 저장됨 (${result.savedCount}/${result.totalPages} templates 갱신)`,
+            'success'
+          )
+        } else {
+          // 기존 흐름 — editor_designs 에 admin 작품으로 저장
+          await saveWorkForAdmin()
+          showToast('저장됐습니다.', 'success')
+        }
 
         // CMS에 저장 완료 메시지 전송
         sendMessageToCMS({
@@ -413,7 +433,7 @@ export default function EditorHeader({
         setLoading(false)
       }
     },
-    [ready, canvas, previewMode, getPlugin, currentSettings.colorMode, setLoading, saveWorkForAdmin, sendMessageToCMS]
+    [ready, canvas, previewMode, getPlugin, currentSettings.colorMode, setLoading, saveWorkForAdmin, saveTemplateSet, isAdminTemplateSetEdit, sendMessageToCMS]
   )
 
   // 불러오기
