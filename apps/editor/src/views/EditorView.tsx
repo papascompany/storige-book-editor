@@ -83,6 +83,14 @@ export default function EditorView() {
   // product.allowCustomSize=true 일 때만 적용. 둘 다 있어야 적용 (한쪽만이면 무시).
   const width = searchParams.get('width')
   const height = searchParams.get('height')
+  /**
+   * Admin 전용 — 템플릿셋 자체를 디자인하는 모드.
+   * Admin "템플릿셋 수정" 버튼이 `?templateSetId=...&adminEdit=templateSet&token=<admin_jwt>` 로 진입.
+   * 이 모드에서 저장 시 각 페이지 fabric canvas → 해당 templates.canvas_data 로 PATCH 처리.
+   * 고객(PHP/bookmoa) 흐름은 이 파라미터를 보내지 않으므로 무관.
+   */
+  const adminEdit = searchParams.get('adminEdit')
+  const isAdminTemplateSetEdit = adminEdit === 'templateSet' && !!templateSetId
 
   // Stores
   const { setToken, initializeFromStorage } = useAuthStore()
@@ -721,7 +729,24 @@ export default function EditorView() {
       <EditorHeader
         screenMode={screenMode}
         onLoadingChange={handleLoadingChange}
+        isAdminTemplateSetEdit={isAdminTemplateSetEdit}
       />
+
+      {/* Admin "템플릿셋 수정" 모드 안내 배너 — 일반 사용자/PHP 흐름과 시각적 구분.
+          저장 동작이 templates.canvas_data 갱신으로 분기됨을 명확히 안내. */}
+      {isAdminTemplateSetEdit && (
+        <div
+          role="alert"
+          className="px-4 py-2 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-700/50 text-[12.5px] leading-snug text-amber-900 dark:text-amber-200 flex items-center gap-2"
+        >
+          <span aria-hidden className="font-semibold">⚠ 관리자 모드</span>
+          <span>
+            "템플릿셋 수정" 진입 — 저장(편집완료) 시 각 페이지 캔버스가 해당
+            <code className="mx-1 px-1 rounded bg-amber-100 dark:bg-amber-800/40 font-mono text-[11px]">templates.canvas_data</code>
+            로 PATCH 됩니다. 같은 templateId 가 반복되는 페이지는 한 번만 저장됩니다.
+          </span>
+        </div>
+      )}
 
       {/* CoverFocusBar — 활성 페이지가 표지 그룹일 때만 표시 (cover.md §6) */}
       {!isSpreadMode && <CoverFocusBar />}

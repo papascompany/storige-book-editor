@@ -181,7 +181,17 @@ export const TemplateSetList = () => {
     navigate(`/template-sets/${id}`);
   };
 
-  const handleOpenEditor = (id: string) => {
+  /**
+   * 템플릿셋 디자인 수정 (admin 전용).
+   *
+   * URL 에 `adminEdit=templateSet` 을 함께 전달하면 EditorView 가 admin 모드로 진입해서:
+   * - 상단에 "관리자 모드: 저장하면 이 템플릿셋의 모든 페이지가 갱신됩니다" 안내 노출
+   * - 저장(편집완료) 시 각 페이지 fabric canvas → 해당 templates.canvas_data 로 PATCH 처리
+   *   (editor_designs 에 작품으로 저장하던 기존 admin 흐름과 분리)
+   *
+   * 고객(PHP/bookmoa) 흐름은 이 파라미터를 보내지 않으므로 영향 없음.
+   */
+  const handleEditTemplateSet = (id: string) => {
     // 상대 경로인 경우 현재 origin을 base로 사용
     let baseUrl = EDITOR_BASE_URL.startsWith('/')
       ? window.location.origin + EDITOR_BASE_URL
@@ -192,6 +202,7 @@ export const TemplateSetList = () => {
     }
     const url = new URL(baseUrl);
     url.searchParams.set('templateSetId', id);
+    url.searchParams.set('adminEdit', 'templateSet');
     if (accessToken) {
       url.searchParams.set('token', accessToken);
     }
@@ -308,23 +319,29 @@ export const TemplateSetList = () => {
     {
       title: '작업',
       key: 'actions',
-      width: 250,
+      width: 280,
       render: (_, record) => (
         <Space>
-          <Button
-            type="link"
-            icon={<DesktopOutlined />}
-            onClick={() => handleOpenEditor(record.id)}
-          >
-            에디터
-          </Button>
-          <Button
-            type="link"
-            icon={<EditOutlined />}
-            onClick={() => handleEdit(record.id)}
-          >
-            편집
-          </Button>
+          {/* 디자인 캔버스 — 저장 시 templates.canvas_data 갱신 (admin 전용) */}
+          <Tooltip title="에디터로 진입해 모든 페이지의 캔버스를 입히고 저장합니다. 각 페이지 templates.canvas_data 가 갱신됩니다.">
+            <Button
+              type="link"
+              icon={<DesktopOutlined />}
+              onClick={() => handleEditTemplateSet(record.id)}
+            >
+              템플릿셋 수정
+            </Button>
+          </Tooltip>
+          {/* 메타 수정 — name/판형/templates 구성/도구 메뉴 화이트리스트 등 */}
+          <Tooltip title="템플릿셋 메타(이름·판형·페이지 구성·노출 도구 메뉴 등) 수정.">
+            <Button
+              type="link"
+              icon={<EditOutlined />}
+              onClick={() => handleEdit(record.id)}
+            >
+              설정
+            </Button>
+          </Tooltip>
           <Button
             type="link"
             icon={<CopyOutlined />}

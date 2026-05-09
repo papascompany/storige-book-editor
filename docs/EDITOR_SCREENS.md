@@ -132,6 +132,31 @@
 
 ---
 
+### 저장 흐름 매트릭스 (admin / 고객 분리)
+
+| 진입 경로 | URL | 저장 시 호출 | 저장 대상 | 영향 범위 |
+|---|---|---|---|---|
+| Admin → 템플릿관리 → "편집" | `/template?templateId=…` (TemplateEditorView) | `PATCH /templates/:id` | `templates.canvas_data` 1건 | 단일 템플릿 |
+| **Admin → 템플릿셋관리 → "템플릿셋 수정"** | `/?templateSetId=…&adminEdit=templateSet` (EditorView) | `PATCH /templates/:id` × N | 각 페이지 templateId 의 `canvas_data` (중복 제거 후) | 템플릿셋 전체 페이지의 디폴트 디자인 |
+| Admin → 템플릿셋관리 → "설정" | `/template-sets/:id` (TemplateSetForm) | `PATCH /template-sets/:id` | 템플릿셋 메타 (이름·판형·페이지 구성·도구 메뉴) | 메타만, 캔버스 무관 |
+| **고객 (PHP/bookmoa iframe)** | `embed.tsx` 번들 | `PATCH /edit-sessions/:id` + `filesApi.upload` + `complete()` | `edit_sessions` + 업로드 PDF | 본인 주문 작품 |
+| 고객 (standalone 새 탭) | `/?templateSetId=…` (EditorView, adminEdit 없음) | (현재 미연결) | — | "독립 실행 모드" 토스트만 표시 |
+
+**원칙**:
+- "Admin 권한 + URL 파라미터" 두 조건이 모두 맞아야 admin 저장 분기 활성. customer JWT 토큰으로는 `adminEdit=templateSet` 을 보내도 `useIsAdmin()===false` 라 분기되지 않음.
+- "템플릿셋 수정" 모드: 같은 templateId 가 여러 페이지에 반복되면 첫 번째 페이지의 캔버스만 PATCH. 페이지마다 다른 디자인을 원하면 admin 이 "설정" 에서 페이지마다 다른 templateId 를 미리 추가해 둬야 함.
+- 고객 흐름은 `adminEdit` 파라미터를 인식하지 못하므로 admin 이 입힌 디폴트 디자인을 자동으로 베이스로 받게 됨 (templates.canvas_data 가 갱신되었으므로).
+
+### Admin 라벨 (혼동 방지)
+
+| 메뉴 | 라벨 | 아이콘 | 동작 |
+|---|---|---|---|
+| 템플릿 관리 | **편집** | ✏ | 단일 템플릿 캔버스 편집 → templates 갱신 |
+| 템플릿셋 관리 | **템플릿셋 수정** | 🖥 | 모든 페이지 캔버스 편집 → 각 templates 갱신 |
+| 템플릿셋 관리 | **설정** | ✏ | 템플릿셋 메타 수정 (form) — 캔버스 무관 |
+
+이전 버전의 "에디터" 라벨은 모호해 폐기. "수정 vs 설정" 으로 캔버스 vs 메타 의미를 구분.
+
 ### 디폴트 진입 시 자동 로드되는 샘플 템플릿셋
 
 URL 파라미터 없이 `/` 로 진입하면 (productId/contentId/templateSetId/editMode 모두 없음) 자동으로 **샘플 8×8 inch 책 템플릿셋(24p)** 이 로드됩니다 — 표지(스프레드)부터 순서대로 편집 가능.
