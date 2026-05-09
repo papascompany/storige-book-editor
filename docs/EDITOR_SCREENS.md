@@ -132,6 +132,37 @@
 
 ---
 
+### 디폴트 진입 시 자동 로드되는 샘플 템플릿셋
+
+URL 파라미터 없이 `/` 로 진입하면 (productId/contentId/templateSetId/editMode 모두 없음) 자동으로 **샘플 8×8 inch 책 템플릿셋(24p)** 이 로드됩니다 — 표지(스프레드)부터 순서대로 편집 가능.
+
+| 항목 | 값 |
+|---|---|
+| 템플릿셋 ID | `sample-8x8-book-24p` |
+| 이름 | 샘플 8×8 inch 책 (24p) |
+| 판형 | 203.2 × 203.2 mm (8 × 8 inch) |
+| 에디터 모드 | `book` (책모드 — 스프레드 편집) |
+| 구성 | 표지 스프레드 1 + 내지 24 |
+| pageCountRange | `[8, 24, 48]` (사용자가 페이지 수 조정 가능) |
+
+표지 스프레드(`sample-spread-cover-8x8`):
+- 408.1 × 203.2 mm (앞표지 + 책등 1.7mm + 뒤표지)
+- 24p 무선제본 모조지 80g 기준 책등 폭 = `(24/2) × 0.10 + 0.5 = 1.7 mm`
+- 화면에 들어가면 SpreadPlugin 이 가이드 + 라벨 자동 그림
+
+내지 (`sample-page-8x8`):
+- 203.2 × 203.2 mm
+- 같은 templateId 가 24번 반복 (각 페이지가 독립 캔버스로 로드되어 별도 편집)
+
+**시드 데이터**: [`apps/api/migrations/20260508_seed_sample_template_set.sql`](../apps/api/migrations/20260508_seed_sample_template_set.sql) — `INSERT ... ON DUPLICATE KEY UPDATE` 로 idempotent.
+
+**디폴트 변경 / 비활성화**:
+- 환경변수 `VITE_DEFAULT_TEMPLATE_SET_ID=other-id` → 다른 템플릿셋으로 교체
+- `VITE_DEFAULT_TEMPLATE_SET_ID=none` (또는 `disabled`, 빈 문자열) → 기존 100×100mm 빈 캔버스 디폴트로 복원
+- 구현: [`apps/editor/src/constants/defaultTemplateSet.ts`](../apps/editor/src/constants/defaultTemplateSet.ts)
+
+---
+
 ### 도구 메뉴 노출 화이트리스트 (템플릿셋별)
 
 **개요**

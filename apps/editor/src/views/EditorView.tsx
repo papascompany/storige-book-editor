@@ -24,6 +24,7 @@ import { useSpreadAutoAnchor, useSpreadOutOfBoundsToast } from '@/hooks/useCover
 import { useCanvasThemeSync } from '@/hooks/useCanvasThemeSync'
 import { useCanvasLocalBackup } from '@/hooks/useCanvasLocalBackup'
 import { productsApi } from '@/api'
+import { getDefaultTemplateSetId } from '@/constants/defaultTemplateSet'
 
 // Screen mode type
 type ScreenMode = 'mobile' | 'tablet' | 'desktop'
@@ -135,15 +136,32 @@ export default function EditorView() {
       return
     }
 
+    // 디폴트 진입(URL 파라미터가 templateSetId/productId/contentId/editMode 모두 없음) 시
+    // 샘플 8×8 inch 책 템플릿셋(표지+24p)으로 자동 라우팅. 환경변수 override 가능.
+    // 기존 빈 100×100mm 캔버스 디폴트 → 표지부터 순서대로 편집 가능한 샘플 책으로 변경.
+    let effectiveTemplateSetId = templateSetId
+    if (
+      !effectiveTemplateSetId &&
+      !productId &&
+      !contentId &&
+      !editMode
+    ) {
+      const fallbackId = getDefaultTemplateSetId()
+      if (fallbackId) {
+        console.log('[EditorView] No params provided — loading default sample template set:', fallbackId)
+        effectiveTemplateSetId = fallbackId
+      }
+    }
+
     // templateSetId가 있으면 template-set 모드로 처리
-    if (templateSetId) {
+    if (effectiveTemplateSetId) {
       console.log('[EditorView] Handling template set editor')
       setIsLoading(true)
       setLoadingMessage('템플릿셋을 불러오는 중...')
 
       try {
         await loadTemplateSetEditor({
-          templateSetId,
+          templateSetId: effectiveTemplateSetId,
           pageCount: pageCount ? parseInt(pageCount, 10) : undefined,
           paperType: paperType || undefined,
           bindingType: bindingType || undefined,
