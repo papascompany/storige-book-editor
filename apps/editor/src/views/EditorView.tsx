@@ -733,17 +733,22 @@ export default function EditorView() {
       />
 
       {/* Admin "템플릿셋 수정" 모드 안내 배너 — 일반 사용자/PHP 흐름과 시각적 구분.
-          저장 동작이 templates.canvas_data 갱신으로 분기됨을 명확히 안내. */}
+          저장 동작 + 자동저장 비활성 + 영향 범위까지 한눈에 안내. */}
       {isAdminTemplateSetEdit && (
         <div
           role="alert"
-          className="px-4 py-2 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-700/50 text-[12.5px] leading-snug text-amber-900 dark:text-amber-200 flex items-center gap-2"
+          className="px-4 py-2 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-700/50 text-[12.5px] leading-snug text-amber-900 dark:text-amber-200 flex flex-wrap items-center gap-x-3 gap-y-1"
         >
-          <span aria-hidden className="font-semibold">⚠ 관리자 모드</span>
-          <span>
-            "템플릿셋 수정" 진입 — 저장(편집완료) 시 각 페이지 캔버스가 해당
+          <span aria-hidden className="font-semibold whitespace-nowrap">⚠ 관리자 모드 — 템플릿셋 수정</span>
+          <span className="opacity-90">
+            저장 시 각 페이지 캔버스가 해당
             <code className="mx-1 px-1 rounded bg-amber-100 dark:bg-amber-800/40 font-mono text-[11px]">templates.canvas_data</code>
-            로 PATCH 됩니다. 같은 templateId 가 반복되는 페이지는 한 번만 저장됩니다.
+            로 PATCH 됩니다. 갱신 후 같은 templateSetId 로 진입하는 모든 사용자에게 새 디자인이 보입니다.
+          </span>
+          <span className="text-amber-700/80 dark:text-amber-300/80 whitespace-nowrap">
+            <span className="font-semibold">저장</span>: 창 유지 ·
+            <span className="font-semibold ml-1">저장 후 닫기</span>: 저장+종료 ·
+            <span className="font-semibold ml-1">⌘S</span>: 저장 단축키 · 자동저장 없음 (수동)
           </span>
         </div>
       )}

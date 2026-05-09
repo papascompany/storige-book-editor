@@ -30,6 +30,7 @@ import {
   Sun,
   Moon,
   Monitor,
+  Save,
 } from 'lucide-react'
 import { AutoSaveIndicator } from './AutoSaveIndicator'
 import { BookMockup3D } from '../Mockup3D/BookMockup3D'
@@ -445,6 +446,33 @@ export default function EditorHeader({
     }
   }, [onOpenWorkspace])
 
+  /**
+   * Phase 2-F — Admin "템플릿셋 수정" 저장 직전 확인.
+   *
+   * 같은 templateSetId 로 진입하는 모든 사용자에게 새 디자인이 노출되므로
+   * 운영 사고(실수로 빈 캔버스 저장 등) 방지를 위해 명시적 확인 단계를 둔다.
+   * window.confirm 으로 충분 — 운영 가드 목적이며 디자인 일관성보다 안정성 우선.
+   */
+  const confirmAndSaveTemplateSet = useCallback(
+    (closeWindow: boolean) => {
+      const { allCanvas } = useAppStore.getState()
+      const { editorTemplates } = useSettingsStore.getState()
+      const sliced = (editorTemplates as Array<{ id?: string }>).slice(0, allCanvas.length)
+      const uniqueIds = new Set(sliced.map((t) => t?.id).filter(Boolean))
+      const msg =
+        '이 템플릿셋의 모든 페이지 디자인을 갱신합니다.\n\n' +
+        `• 영향 페이지: ${allCanvas.length}개\n` +
+        `• PATCH 대상 templates: ${uniqueIds.size}개 (중복 templateId 제거)\n` +
+        '• 갱신 후 같은 templateSetId 로 진입하는 모든 사용자에게 새 디자인이 보입니다.\n\n' +
+        (closeWindow
+          ? '저장 후 창을 닫습니다. 진행하시겠습니까?'
+          : '저장 후 계속 편집할 수 있습니다. 진행하시겠습니까?')
+      if (!window.confirm(msg)) return
+      void handleSaveForAdmin(closeWindow)
+    },
+    [handleSaveForAdmin]
+  )
+
   // ? 키 + Cmd/Ctrl+S 글로벌 리스너 — handleFinish/handleSaveForAdmin 정의 후 등록
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -470,12 +498,17 @@ export default function EditorHeader({
         return
       }
 
-      // Cmd/Ctrl+S → 편집완료 (브라우저 저장 다이얼로그 차단)
+      // Cmd/Ctrl+S → 저장 (브라우저 저장 다이얼로그 차단)
+      // - admin "템플릿셋 수정" 모드: 운영 가드(confirm) 적용된 저장 경로 사용
+      // - admin standalone: 기존 saveWorkForAdmin (editor_designs 작품 저장)
+      // - 고객: handleFinish (PHP 콜백 또는 standalone 토스트)
       if ((e.metaKey || e.ctrlKey) && (e.key === 's' || e.key === 'S')) {
         e.preventDefault()
         if (inInput) return
         if (!ready || finishing) return
-        if (isAdmin) {
+        if (isAdminTemplateSetEdit) {
+          confirmAndSaveTemplateSet(false)
+        } else if (isAdmin) {
           handleSaveForAdmin(false)
         } else {
           handleFinish()
@@ -484,7 +517,7 @@ export default function EditorHeader({
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [ready, finishing, isAdmin, handleFinish, handleSaveForAdmin])
+  }, [ready, finishing, isAdmin, isAdminTemplateSetEdit, handleFinish, handleSaveForAdmin, confirmAndSaveTemplateSet])
 
   // Undo/Redo (HistoryPlugin)
   const handleUndo = useCallback(() => {
@@ -589,8 +622,21 @@ export default function EditorHeader({
             </TooltipTrigger>
             <TooltipContent>다시 실행 (⌘⇧Z)</TooltipContent>
           </Tooltip>
-          {/* 자동 저장 상태 (클라우드 인디케이터 역할) */}
-          <AutoSaveIndicator className="hidden sm:flex ml-1" />
+          {/* 저장 상태 인디케이터.
+              - 일반(고객) 모드: 자동저장(useEmbedAutoSave)이 useSaveStore 를 갱신 → AutoSaveIndicator 가 실시간 표시.
+              - admin "템플릿셋 수정" 모드: 자동저장 미적용 → AutoSaveIndicator 의 거짓 "저장됨" 표시 방지를 위해 숨기고
+                "수동 저장 모드" 뱃지로 명확히 구분. */}
+          {!isAdminTemplateSetEdit ? (
+            <AutoSaveIndicator className="hidden sm:flex ml-1" />
+          ) : (
+            <span
+              className="hidden sm:inline-flex items-center gap-1 ml-1 px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 text-[11px] font-medium border border-amber-200 dark:border-amber-700/50"
+              title="이 모드에서는 자동저장이 동작하지 않습니다. ⌘S 또는 우측 '저장' 버튼을 눌러 명시적으로 저장하세요."
+            >
+              <span aria-hidden>⚠</span>
+              수동 저장 모드
+            </span>
+          )}
 
           {/* 변경 이력 요약 popover — 모바일(< sm) 에서 숨김 */}
           <span className="hidden sm:contents">
@@ -807,22 +853,71 @@ export default function EditorHeader({
           {/* 구분선 */}
           <div className="hidden md:block w-px h-6 bg-editor-border mx-1" />
 
-          {/* 불러오기 */}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleOpenWorkspace}
-            className="hidden md:flex rounded-full border-editor-border text-editor-text hover:bg-editor-surface-low px-4"
-          >
-            <FolderOpen className="h-4 w-4 mr-2" />
-            불러오기
-          </Button>
-
-          {/* 편집완료 (고객용) — 모바일에서 아이콘 전용, sm+ 에서 텍스트 포함 */}
-          {!isAdmin && (
+          {/* 불러오기 — admin "템플릿셋 수정" 모드에서는 의미 없음(templateSet 자체를 편집 중) → 숨김. */}
+          {!isAdminTemplateSetEdit && (
             <Button
+              variant="outline"
               size="sm"
-              onClick={handleFinish}
+              onClick={handleOpenWorkspace}
+              className="hidden md:flex rounded-full border-editor-border text-editor-text hover:bg-editor-surface-low px-4"
+            >
+              <FolderOpen className="h-4 w-4 mr-2" />
+              불러오기
+            </Button>
+          )}
+
+          {/* === 우측 액션 (모드별 분리) === */}
+
+          {/* 1) Admin "템플릿셋 수정" 모드 — 두 버튼: "저장" (창 유지) + "저장 후 닫기".
+                둘 다 templates.canvas_data PATCH. window.confirm 으로 운영 사고 방지 가드. */}
+          {isAdminTemplateSetEdit && (
+            <>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => confirmAndSaveTemplateSet(false)}
+                    disabled={!ready || finishing || templateSetSaving}
+                    aria-label="템플릿셋 저장"
+                    className="hidden sm:inline-flex rounded-full border-editor-border text-editor-text hover:bg-editor-surface-low px-4"
+                  >
+                    {(finishing || templateSetSaving) ? (
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2" />
+                    ) : (
+                      <Save className="h-4 w-4 mr-2" />
+                    )}
+                    저장
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>각 페이지 캔버스를 templates.canvas_data 로 저장 (창 유지) · ⌘S</TooltipContent>
+              </Tooltip>
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    onClick={() => confirmAndSaveTemplateSet(true)}
+                    disabled={!ready || finishing || templateSetSaving}
+                    aria-label="저장 후 닫기"
+                    className="bg-editor-accent hover:bg-editor-accent-hover text-white rounded-full shadow-sm px-2 sm:px-4"
+                  >
+                    {(finishing || templateSetSaving) ? (
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white sm:mr-2" />
+                    ) : (
+                      <Check className="h-4 w-4 sm:mr-2" />
+                    )}
+                    <span className="sr-only sm:not-sr-only">저장 후 닫기</span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>저장 후 이 창을 닫습니다.</TooltipContent>
+              </Tooltip>
+            </>
+          )}
+
+          {/* 2) Admin standalone(legacy, adminEdit 파라미터 없음) — 기존 saveWorkForAdmin (editor_designs 작품 저장) */}
+          {!isAdminTemplateSetEdit && isAdmin && (
+            <Button
+              onClick={() => handleSaveForAdmin(true)}
               disabled={!ready || finishing}
               aria-label="편집완료"
               className="bg-editor-accent hover:bg-editor-accent-hover text-white rounded-full shadow-sm px-2 sm:px-4"
@@ -836,10 +931,11 @@ export default function EditorHeader({
             </Button>
           )}
 
-          {/* 편집완료 (관리자용) — 모바일에서 아이콘 전용 */}
-          {isAdmin && (
+          {/* 3) 고객 — 편집완료 (PHP/embed 콜백 또는 standalone 토스트) */}
+          {!isAdmin && (
             <Button
-              onClick={() => handleSaveForAdmin(true)}
+              size="sm"
+              onClick={handleFinish}
               disabled={!ready || finishing}
               aria-label="편집완료"
               className="bg-editor-accent hover:bg-editor-accent-hover text-white rounded-full shadow-sm px-2 sm:px-4"
@@ -858,11 +954,17 @@ export default function EditorHeader({
       {/* 단축키 도움말 모달 */}
       <KeyboardShortcutsModal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
 
-      {/* 커맨드 팔레트 (Cmd+K) */}
+      {/* 커맨드 팔레트 (Cmd+K) — admin "템플릿셋 수정" 모드는 confirm 거친 저장 경로 사용 */}
       <CommandPaletteModal
         open={paletteOpen}
         onClose={() => setPaletteOpen(false)}
-        onFinish={isAdmin ? () => handleSaveForAdmin(false) : handleFinish}
+        onFinish={
+          isAdminTemplateSetEdit
+            ? () => confirmAndSaveTemplateSet(false)
+            : isAdmin
+              ? () => handleSaveForAdmin(false)
+              : handleFinish
+        }
         onOpenWorkspace={handleOpenWorkspace}
         onOpenShortcuts={() => {
           setPaletteOpen(false)
