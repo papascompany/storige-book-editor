@@ -1,5 +1,10 @@
 # Storige 에디터 기획서
 
+> **갱신**: 2026-05-10 — §7~§11 (편집기 UX 사이클) 추가
+>
+> §1~§6 은 데이터 모델·비즈니스 룰 · 권한 명세 (변경 없음)
+> **§7 부터** 가 2026-05-09 ~ 05-10 사이 도입된 신기능. 운영 화면 검증 시 우선 참조.
+
 ---
 
 ## 1. 용어 정의
@@ -228,3 +233,181 @@ interface Template {
 - **허용하지 않음**
 - 먼저 편집 중인 사용자에게 잠금
 - 다른 사용자는 읽기 전용으로 접근
+
+---
+
+## 7. 도구 메뉴 노출 화이트리스트 (템플릿셋별)
+
+좌측 ToolBar 도구 메뉴(업로드/모양컷/템플릿/이미지/텍스트/요소/배경/프레임/QR·바코드/편집도구/AI)를 템플릿셋(상품) 단위로 노출 제어.
+
+**저장 위치**: `template_sets.enabled_menus` (JSON 배열, nullable)
+
+| 값 | 의미 |
+|---|---|
+| `null` (기본) | 모든 메뉴 노출 — legacy 호환 |
+| `[ ... ]` 배열 | 화이트리스트 — 배열에 포함된 키만 노출 (순서 보존) |
+| `[]` 빈 배열 | 모든 도구 메뉴 숨김 |
+
+**도구 키** (`EditorMenuKey`, `packages/types/src/index.ts`):
+`UPLOAD`, `CLIPPING`, `TEMPLATE`, `IMAGE`, `TEXT`, `SHAPE`, `BACKGROUND`, `FRAME`, `SMART_CODE`, `EDIT`, `AI`
+
+**Admin 설정**: 템플릿셋 "설정" 화면 → "도구 메뉴 노출 직접 설정" 토글 → 체크박스 그룹
+
+**Editor 적용**: `loadTemplateSetEditor()` 가 templateSet 로드 시 `useSettingsStore.setEnabledMenus()` 호출 → ToolBar 가 자동 필터링.
+
+**예시 시나리오**:
+```jsonc
+// 동화책 — 프레임/QR 안 씀
+{ "enabledMenus": ["UPLOAD","CLIPPING","TEMPLATE","IMAGE","TEXT","SHAPE","BACKGROUND","EDIT","AI"] }
+
+// 전단지 — AI/모양컷 안 씀
+{ "enabledMenus": ["UPLOAD","TEMPLATE","IMAGE","TEXT","SHAPE","BACKGROUND","FRAME","SMART_CODE","EDIT"] }
+
+// 단순 PDF 입고용
+{ "enabledMenus": ["UPLOAD"] }
+```
+
+**원칙**:
+- `editMode === true` (admin 편집 미리보기) 에서는 화이트리스트 무시
+- 빌드 플래그 (`VITE_ENABLE_*`) 와 화이트리스트는 **AND** 관계
+- 새 도구 추가 시 `EditorMenuKey` + `EDITOR_MENU_DEFS` + `ToolBar.ALL_MENUS` 세 곳만 갱신 → admin 체크박스 자동 갱신
+
+---
+
+## 8. 디폴트 진입 — 샘플 8×8 inch 책 템플릿셋
+
+URL 파라미터 없이 `/` 진입 시 자동 로드되는 샘플:
+
+| 항목 | 값 |
+|---|---|
+| 템플릿셋 ID | `sample-8x8-book-24p` |
+| 판형 | 203.2 × 203.2 mm (8 × 8 inch) |
+| 에디터 모드 | `book` (스프레드 표지 + 내지) |
+| 구성 | 표지 스프레드 1 + 내지 24 |
+| pageCountRange | `[8, 24, 48]` |
+
+**스프레드 사양**:
+- 408.1 × 203.2 mm (앞표지 + 책등 1.7 mm + 뒤표지)
+- 책등 = `(24/2) × 0.10 + 0.5` (모조지 80g · 무선제본 24p 기준)
+
+**시드 데이터**: [`apps/api/migrations/20260508_seed_sample_template_set.sql`](../apps/api/migrations/20260508_seed_sample_template_set.sql) — `INSERT ... ON DUPLICATE KEY UPDATE` 로 idempotent.
+
+**디폴트 변경 / 비활성화**: 환경변수 `VITE_DEFAULT_TEMPLATE_SET_ID`
+- 다른 ID → 그 templateSet 자동 로드
+- `none` / `disabled` / 빈 문자열 → 기존 100×100mm 빈 캔버스 디폴트로 복원
+
+---
+
+## 9. 객체 선택 핸들 UI
+
+| 컨트롤 | 모양 | 동작 |
+|---|---|---|
+| 4 코너 (`tl/tr/bl/br`) | **원형** Ø12 (터치 ×1.33) | 자유 비율 리사이즈 |
+| 좌·우 변 (`ml/mr`) | **세로 캡슐** 7 × 22 | 가로 스케일 / Shift+드래그 = 스큐 |
+| 상·하 변 (`mt/mb`) | **가로 캡슐** 22 × 7 | 세로 스케일 / Shift+드래그 = 스큐 |
+| 회전 (`mtr`) | **객체 아래 36px 원형 + 회전 화살표** | 회전 (15° 스냅) |
+
+추가 UX:
+- 보더 두께 1px → 1.5px (선택 객체 인식 강화)
+- 회전 핸들 위→아래 이동 (텍스트 위 가려짐 방지)
+- 회전 화살표는 객체 angle 무관 항상 화면 기준으로 표시
+- light/dark 테마 색상 자동 동기화 (브랜드 파랑/그린)
+- 터치(`pointer:coarse`) 환경에서 핸들/캡슐 비례 확대
+
+구현: [`packages/canvas-core/src/plugins/ControlsPlugin.ts`](../packages/canvas-core/src/plugins/ControlsPlugin.ts) — `fabric.Object.prototype.controls` 의 각 컨트롤 `render` 커스터마이즈 (idempotent 가드).
+
+---
+
+## 10. 워크스페이스 자동 중앙 정렬
+
+캔버스 영역 폭이 바뀔 때(사이드 메뉴 토글, 사이드바 드래그 리사이즈, 객체 선택 시 ControlBar 등장, 윈도우 리사이즈) 편집중인 페이지(workspace)가 자동으로 새 영역의 중앙으로 재배치됨.
+
+| 상황 | 동작 |
+|---|---|
+| 현재 줌에서 페이지가 새 영역에 들어감 | **줌 유지** + 중앙 재배치 (`WorkspacePlugin.setCenterPointOf`) |
+| 페이지가 새 영역을 넘어감 | **자동맞춤**(`setZoomAuto`) — 페이지 전체가 다시 보이게 스케일 |
+
+- 5% 여백 (`PADDING = 0.95`) 으로 경계선 진동 방지
+- 첫 마운트는 스킵 (`WorkspacePlugin.reset()` 의 `setZoomAuto` 가 처리)
+- 구현: [`apps/editor/src/views/EditorView.tsx`](../apps/editor/src/views/EditorView.tsx) — ResizeObserver `apply()`
+
+---
+
+## 11. 모드별 헤더 UI (사용자 vs 관리자)
+
+같은 EditorView 가 권한·URL 파라미터에 따라 다른 헤더를 노출해 운영자가 한눈에 "지금 편집하는 게 본인 작품인가, 운영 베이스인가" 구분 가능.
+
+### 11.1 진입 매트릭스
+
+| 진입 경로 | URL | 권한 | 화면 모드 | 저장 동작 |
+|---|---|---|---|---|
+| Admin "템플릿셋 수정" | `/?templateSetId=…&adminEdit=templateSet&token=<admin_jwt>` | admin | **admin templateSet 수정** | `PATCH /templates/:id` × N (각 페이지) |
+| Admin standalone (legacy) | `/?templateSetId=…&token=<admin_jwt>` | admin | admin standalone | `POST/PATCH /editor-designs` (작품) |
+| 고객 (PHP iframe embed) | `embed.tsx` 번들 | customer | embed | `PATCH /edit-sessions/:id` + 파일 업로드 + complete |
+| 고객 (standalone 새 탭) | `/?templateSetId=…` | customer | standalone | onFinish 콜백 미연결 (토스트만) |
+| Admin → 템플릿관리 → "편집" | `/template?templateId=…` | admin | TemplateEditorView | `PATCH /templates/:id` 1건 |
+
+### 11.2 헤더 영역 모드별 차이
+
+| 영역 | 고객 (embed) | Admin "템플릿셋 수정" |
+|---|---|---|
+| 좌측 인디케이터 | `AutoSaveIndicator` (실시간) | **"⚠ 수동 저장 모드"** amber 뱃지 |
+| 우측 "불러오기" | 표시 (내 작업 라이브러리) | **숨김** (templateSet 자체를 편집 중) |
+| 우측 액션 1 | "내 작업에 저장" | **"저장"** (창 유지, ⌘S) |
+| 우측 액션 2 | **"편집완료"** (PHP onFinish) | **"저장 후 닫기"** (저장 + window.close) |
+| 저장 가드 | 자동저장 (30초) + 수동 | **`window.confirm`** + amber 배너 |
+| 상단 안내 배너 | 없음 | **amber 배너** — 영향 범위·액션·단축키·자동저장 부재 |
+
+### 11.3 Admin "템플릿셋 수정" 저장 가드
+
+운영 사고(실수로 빈 캔버스 저장 등) 방지 — 모든 저장 진입점 (저장 버튼/저장 후 닫기/⌘S/커맨드 팔레트) 이 동일 confirm 거침:
+
+```
+이 템플릿셋의 모든 페이지 디자인을 갱신합니다.
+
+• 영향 페이지: <N>개
+• PATCH 대상 templates: <M>개 (중복 templateId 제거)
+• 갱신 후 같은 templateSetId 로 진입하는 모든 사용자에게 새 디자인이 보입니다.
+
+저장 후 [계속 편집할 수 있습니다 | 창을 닫습니다]. 진행하시겠습니까?
+```
+
+### 11.4 Admin 라벨 정리 (혼동 방지)
+
+| 메뉴 | 라벨 | 동작 |
+|---|---|---|
+| 템플릿 관리 | **편집** | 단일 템플릿 캔버스 → templates 갱신 |
+| 템플릿셋 관리 | **템플릿셋 수정** | 모든 페이지 캔버스 → 각 templates 갱신 (운영 베이스) |
+| 템플릿셋 관리 | **설정** | 메타 form (이름·판형·페이지 구성·도구 메뉴 노출) |
+
+이전의 "에디터" 라벨은 모호해 폐기 — "수정 vs 설정" 으로 캔버스 vs 메타 의미 구분.
+
+### 11.5 PHP/bookmoa 영향
+
+**없음.** 두 가드 모두 통과해야 admin 분기 활성화:
+1. URL `?adminEdit=templateSet` (PHP 미전달)
+2. `useIsAdmin() === true` (고객 JWT 거부)
+
+부수 효과(긍정): admin 이 입혀둔 디자인이 **자동으로 고객 시작 베이스가 됨** (templates.canvas_data 가 갱신됐으므로).
+
+별도 통보 문서: [`PHP_NOTICE_2026-05-10_admin_template_set_edit.md`](./PHP_NOTICE_2026-05-10_admin_template_set_edit.md)
+
+---
+
+## 12. 관련 파일 빠른참조
+
+| 영역 | 파일 |
+|---|---|
+| 도구 메뉴 키 정의 | `packages/types/src/index.ts` (`EditorMenuKey`, `EDITOR_MENU_DEFS`) |
+| TemplateSet entity (enabled_menus) | `apps/api/src/templates/entities/template-set.entity.ts` |
+| Admin 토글 UI | `apps/admin/src/pages/TemplateSets/TemplateSetForm.tsx` |
+| Admin 라벨 (행) | `apps/admin/src/pages/TemplateSets/TemplateSetList.tsx` |
+| EditorView (디폴트 진입 + adminEdit 분기 + amber 배너) | `apps/editor/src/views/EditorView.tsx` |
+| 디폴트 샘플 ID 상수 | `apps/editor/src/constants/defaultTemplateSet.ts` |
+| ToolBar (메뉴 필터링) | `apps/editor/src/components/editor/ToolBar.tsx` |
+| EditorHeader (모드별 UI 분기 + confirm 가드) | `apps/editor/src/components/editor/EditorHeader.tsx` |
+| useTemplateSetSave (admin 저장 훅) | `apps/editor/src/hooks/useTemplateSetSave.ts` |
+| useSettingsStore (`enabledMenus`) | `apps/editor/src/stores/useSettingsStore.ts` |
+| 객체 선택 핸들 | `packages/canvas-core/src/plugins/ControlsPlugin.ts` |
+| 시드 SQL — 템플릿셋 도구 메뉴 컬럼 | `apps/api/migrations/20260508_add_template_sets_enabledMenus.sql` |
+| 시드 SQL — 샘플 템플릿셋 | `apps/api/migrations/20260508_seed_sample_template_set.sql` |

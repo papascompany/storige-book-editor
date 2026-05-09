@@ -1,8 +1,8 @@
 # Storige 문서 인덱스
 
-> **갱신**: 2026-05-07 · 전체 문서 카탈로그 + 분류
+> **갱신**: 2026-05-10 · 편집기 UX·관리자 모드 분리 사이클 반영
 
-📊 **시작점**: [`MASTER_STATUS_2026-05-07.md`](./MASTER_STATUS_2026-05-07.md) (최신)
+📊 **시작점**: [`MASTER_STATUS_2026-05-10.md`](./MASTER_STATUS_2026-05-10.md) (최신)
 
 ---
 
@@ -10,8 +10,9 @@
 
 | 문서 | 형식 | 설명 |
 |------|------|------|
-| [`MASTER_STATUS_2026-05-07.md`](./MASTER_STATUS_2026-05-07.md) | MD | **최신** — 멀티사이트 플랫폼화 완료, 98% 진척 |
-| [`MASTER_STATUS_2026-05-04.md`](./MASTER_STATUS_2026-05-04.md) | MD | 이전 스냅샷 (2026-05-04) |
+| [`MASTER_STATUS_2026-05-10.md`](./MASTER_STATUS_2026-05-10.md) | MD | **최신** — 편집기 UX·관리자 모드 분리 (7건 커밋) |
+| [`MASTER_STATUS_2026-05-07.md`](./MASTER_STATUS_2026-05-07.md) | MD | 멀티사이트 플랫폼화 완료, 98% 진척 |
+| [`MASTER_STATUS_2026-05-04.md`](./MASTER_STATUS_2026-05-04.md) | MD | 스냅샷 (2026-05-04) |
 | [`MASTER_STATUS_2026-05-04.html`](./MASTER_STATUS_2026-05-04.html) | HTML | 시각화 (구 버전) |
 | [`FUTURE_UPDATES.md`](./FUTURE_UPDATES.md) | MD | 향후 인프라 + Phase A/B/C 완료 + 후속 작업 |
 
@@ -83,7 +84,13 @@
 
 ## 📊 6. 사이클 보고서 (시간역순)
 
-### 🆕 2026-05-06 ~ 05-07 — 멀티사이트 플랫폼화
+### 🆕 2026-05-09 ~ 05-10 — 편집기 UX · 관리자 모드 분리
+| 문서 | 설명 |
+|------|------|
+| [`MASTER_STATUS_2026-05-10.md`](./MASTER_STATUS_2026-05-10.md) | 7건 커밋 사이클 보고서 (UX 누수 정리 + 운영 베이스 디자인 흐름) |
+| [`PHP_NOTICE_2026-05-10_admin_template_set_edit.md`](./PHP_NOTICE_2026-05-10_admin_template_set_edit.md) | PHP 팀 통보 — admin 템플릿셋 수정 모드 추가 (PHP 영향 없음) |
+
+### 2026-05-06 ~ 05-07 — 멀티사이트 플랫폼화
 | 문서 | 설명 |
 |------|------|
 | [`ADMIN_PLATFORMIZATION_PLAN_2026-05-06.md`](./ADMIN_PLATFORMIZATION_PLAN_2026-05-06.md) | 11p PDF 스토리보드 분석 + 4 카테고리 플랫폼화 계획 |
@@ -134,9 +141,9 @@
 ### 에디터 / 캔버스
 | 문서 | 설명 |
 |------|------|
-| [`EDITOR.md`](./EDITOR.md) | 에디터 명세 |
+| [`EDITOR.md`](./EDITOR.md) | **에디터 명세** (§1~§6 데이터/룰/권한, §7~§12 UX 사이클 — 도구 메뉴/디폴트 샘플/핸들/워크스페이스 정렬/모드별 헤더) |
+| [`EDITOR_SCREENS.md`](./EDITOR_SCREENS.md) | **에디터 화면** + 저장 흐름 매트릭스 + Admin 라벨 + 모드별 헤더 UI |
 | [`EDITOR_OBJECT_EDITING_SPEC.md`](./EDITOR_OBJECT_EDITING_SPEC.md) | 객체 편집 명세 |
-| [`EDITOR_SCREENS.md`](./EDITOR_SCREENS.md) | 에디터 화면 |
 | [`MOBILE_TOUCH_UI.md`](./MOBILE_TOUCH_UI.md) | 모바일 UX |
 | [`스프레드편집_상세설계서_20260206.md`](./스프레드편집_상세설계서_20260206.md) | 스프레드 편집 상세 |
 | [`스프레드편집_결정사항_요약_20260206.md`](./스프레드편집_결정사항_요약_20260206.md) | 결정사항 요약 |
