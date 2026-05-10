@@ -1,0 +1,1068 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Worker·PDF 파이프라인 전체 흐름</title>
+<style>
+:root {
+  --bg: #f5f6fa;
+  --white: #ffffff;
+  --surface: #ffffff;
+  --surface2: #f0f2f8;
+  --border: #dde1ee;
+  --border-strong: #c5cbe0;
+
+  --blue: #2563eb;
+  --blue-light: #eff6ff;
+  --blue-mid: #dbeafe;
+  --green: #16a34a;
+  --green-light: #f0fdf4;
+  --green-mid: #dcfce7;
+  --red: #dc2626;
+  --red-light: #fef2f2;
+  --red-mid: #fee2e2;
+  --yellow: #d97706;
+  --yellow-light: #fffbeb;
+  --yellow-mid: #fef3c7;
+  --purple: #7c3aed;
+  --purple-light: #f5f3ff;
+  --orange: #ea580c;
+  --orange-light: #fff7ed;
+
+  --text: #1e2333;
+  --text-mid: #3d4466;
+  --text-dim: #6b7494;
+  --text-light: #9aa3c2;
+
+  --shadow-sm: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.05);
+  --shadow: 0 4px 12px rgba(0,0,0,.08), 0 2px 4px rgba(0,0,0,.04);
+  --shadow-lg: 0 8px 24px rgba(0,0,0,.1);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Segoe UI', 'Apple SD Gothic Neo', -apple-system, sans-serif;
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+/* ── Header ── */
+.header {
+  background: linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 60%, #2563eb 100%);
+  padding: 28px 44px;
+  display: flex; align-items: center; gap: 18px;
+  box-shadow: 0 2px 12px rgba(37,99,235,.35);
+}
+.header-icon { font-size: 36px; }
+.header h1 { font-size: 22px; font-weight: 800; color: #fff; letter-spacing: -.3px; }
+.header p { color: rgba(255,255,255,.75); font-size: 13px; margin-top: 3px; }
+.badge-date {
+  margin-left: auto;
+  background: rgba(255,255,255,.15);
+  border: 1px solid rgba(255,255,255,.25);
+  border-radius: 8px;
+  padding: 6px 14px;
+  font-size: 12px;
+  color: rgba(255,255,255,.9);
+  white-space: nowrap;
+}
+
+/* ── Nav ── */
+.nav {
+  background: var(--white);
+  border-bottom: 2px solid var(--border);
+  padding: 0 44px;
+  display: flex; gap: 2px; overflow-x: auto;
+  box-shadow: var(--shadow-sm);
+  position: sticky; top: 0; z-index: 100;
+}
+.nav-btn {
+  background: none; border: none; color: var(--text-dim);
+  padding: 14px 16px; cursor: pointer; font-size: 13px; font-weight: 500;
+  border-bottom: 3px solid transparent; margin-bottom: -2px;
+  white-space: nowrap; transition: all .18s;
+}
+.nav-btn:hover { color: var(--blue); background: var(--blue-light); border-radius: 6px 6px 0 0; }
+.nav-btn.active { color: var(--blue); border-bottom-color: var(--blue); font-weight: 700; }
+
+/* ── Container ── */
+.container { max-width: 1160px; margin: 0 auto; padding: 36px 44px; }
+.section { display: none; }
+.section.active { display: block; }
+
+/* ── Section title ── */
+.section-title {
+  font-size: 18px; font-weight: 800;
+  margin-bottom: 22px; color: var(--text);
+  display: flex; align-items: center; gap: 10px;
+}
+.section-title::before {
+  content: '';
+  display: block; width: 4px; height: 22px;
+  background: var(--blue); border-radius: 2px;
+}
+
+/* ── Flow wrapper ── */
+.flow-wrapper {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 32px;
+  overflow-x: auto;
+  box-shadow: var(--shadow);
+}
+
+.flow-lanes {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 18px;
+  min-width: 820px;
+}
+.lane { display: flex; flex-direction: column; gap: 10px; }
+
+.lane-header {
+  border-radius: 8px;
+  padding: 10px 14px;
+  text-align: center;
+  font-weight: 700;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+}
+.lane-header.purple { background: var(--purple-light); color: var(--purple); border: 1.5px solid #c4b5fd; }
+.lane-header.green  { background: var(--green-light);  color: var(--green);  border: 1.5px solid #86efac; }
+.lane-header.red    { background: var(--red-light);    color: var(--red);    border: 1.5px solid #fca5a5; }
+.lane-header.yellow { background: var(--yellow-light); color: var(--yellow); border: 1.5px solid #fcd34d; }
+
+.flow-step {
+  background: var(--white);
+  border: 1.5px solid var(--border);
+  border-radius: 10px;
+  padding: 13px 15px;
+  font-size: 12.5px;
+  box-shadow: var(--shadow-sm);
+  transition: all .18s;
+}
+.flow-step:hover { border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-mid); }
+
+.step-num {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 50%;
+  font-size: 11px; font-weight: 800; margin-bottom: 7px;
+}
+.step-num.blue   { background: var(--blue);   color: #fff; }
+.step-num.green  { background: var(--green);  color: #fff; }
+.step-num.red    { background: var(--red);    color: #fff; }
+.step-num.yellow { background: var(--yellow); color: #fff; }
+.step-num.gray   { background: #94a3b8;       color: #fff; }
+
+.flow-step strong { color: var(--text); font-weight: 700; font-size: 13px; }
+.flow-step p { color: var(--text-dim); margin-top: 3px; font-size: 12px; }
+.api-tag {
+  display: inline-block;
+  background: var(--blue-light);
+  border: 1px solid var(--blue-mid);
+  color: var(--blue);
+  font-size: 10.5px; font-family: monospace;
+  padding: 2px 7px; border-radius: 4px; margin-top: 5px;
+}
+.step-ghost {
+  background: #f8f9fc; border: 1.5px dashed #d1d5e8;
+  opacity: .5;
+}
+
+.flow-arrow { text-align: center; color: #a0a8c8; font-size: 18px; padding: 1px 0; }
+
+.flow-footer {
+  margin-top: 20px;
+  background: linear-gradient(135deg, var(--blue-light), #f0f0ff);
+  border: 1.5px solid var(--blue-mid);
+  border-radius: 10px;
+  padding: 14px 20px;
+  font-size: 13px; color: var(--text-mid);
+}
+.flow-footer strong { color: var(--blue); }
+
+/* ── Cards ── */
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 14px; margin-bottom: 24px;
+}
+.card {
+  background: var(--white);
+  border: 1.5px solid var(--border);
+  border-radius: 12px;
+  padding: 20px 22px;
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow .18s;
+}
+.card:hover { box-shadow: var(--shadow); }
+.card-title {
+  font-weight: 700; font-size: 15px; color: var(--text);
+  margin-bottom: 10px; display: flex; align-items: center; gap: 8px;
+}
+.card-badge {
+  font-size: 11px; font-weight: 600;
+  padding: 2px 8px; border-radius: 10px;
+  background: var(--surface2); color: var(--text-dim);
+  border: 1px solid var(--border);
+}
+.card p { color: var(--text-mid); font-size: 13px; margin-bottom: 5px; }
+
+.code-chip {
+  display: inline-block;
+  background: var(--blue-light); border: 1px solid var(--blue-mid);
+  border-radius: 4px; padding: 1px 7px;
+  font-family: monospace; font-size: 12px; color: var(--blue);
+  margin: 2px;
+}
+.queue-chip {
+  display: inline-block;
+  background: var(--purple-light); border: 1px solid #c4b5fd;
+  border-radius: 20px; padding: 3px 10px;
+  font-size: 11px; color: var(--purple); margin-bottom: 8px;
+}
+
+/* ── Status nodes ── */
+.status-flow {
+  display: flex; align-items: center; gap: 4px;
+  flex-wrap: wrap; padding: 20px 24px;
+  background: var(--white); border: 1.5px solid var(--border);
+  border-radius: 12px; margin-bottom: 24px;
+  box-shadow: var(--shadow-sm);
+}
+.status-node {
+  padding: 9px 18px; border-radius: 8px;
+  font-size: 13px; font-weight: 700;
+  text-align: center;
+}
+.status-node.pending    { background: var(--blue-light);   border: 1.5px solid #93c5fd; color: var(--blue); }
+.status-node.processing { background: var(--yellow-light); border: 1.5px solid #fcd34d; color: var(--yellow); }
+.status-node.completed  { background: var(--green-light);  border: 1.5px solid #86efac; color: var(--green); }
+.status-node.failed     { background: var(--red-light);    border: 1.5px solid #fca5a5; color: var(--red); }
+.status-node.fixable    { background: var(--orange-light); border: 1.5px solid #fed7aa; color: var(--orange); }
+.status-arrow { color: #94a3b8; font-size: 20px; padding: 0 6px; }
+.status-label { font-size: 11px; color: var(--text-dim); text-align: center; margin-top: 3px; }
+
+/* ── Table ── */
+.table-wrap { overflow-x: auto; margin-bottom: 24px; }
+table {
+  width: 100%; border-collapse: collapse;
+  background: var(--white);
+  border: 1.5px solid var(--border);
+  border-radius: 12px; overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+th {
+  background: var(--surface2);
+  padding: 11px 16px; text-align: left;
+  font-size: 12px; font-weight: 700;
+  color: var(--text-mid); text-transform: uppercase;
+  letter-spacing: .4px; border-bottom: 1.5px solid var(--border);
+}
+td {
+  padding: 11px 16px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px; vertical-align: top; color: var(--text-mid);
+}
+td strong { color: var(--text); }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: var(--blue-light); }
+.tag-fixable   { color: var(--orange); font-weight: 600; }
+.tag-nonfixable{ color: var(--red); font-weight: 600; }
+
+/* ── Storage tree ── */
+.storage-tree {
+  background: #1e293b; color: #e2e8f0;
+  border-radius: 12px; padding: 24px 28px;
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 13px; line-height: 2;
+  margin-bottom: 24px;
+  box-shadow: var(--shadow);
+}
+.tree-dir     { color: #fbbf24; font-weight: 700; }
+.tree-file    { color: #94a3b8; }
+.tree-comment { color: #475569; }
+.tree-highlight { color: #86efac; font-weight: 600; }
+
+/* ── Callout ── */
+.callout {
+  display: flex; gap: 12px;
+  padding: 14px 18px; border-radius: 10px;
+  margin-bottom: 16px; font-size: 13px;
+}
+.callout.warn    { background: var(--yellow-light); border: 1.5px solid #fcd34d; color: #92400e; }
+.callout.info    { background: var(--blue-light);   border: 1.5px solid #93c5fd; color: #1e40af; }
+.callout.danger  { background: var(--red-light);    border: 1.5px solid #fca5a5; color: #991b1b; }
+.callout.success { background: var(--green-light);  border: 1.5px solid #86efac; color: #14532d; }
+.callout-icon { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+.callout p { color: inherit; }
+
+/* ── Roles ── */
+.role-card {
+  background: var(--white);
+  border: 1.5px solid var(--border);
+  border-radius: 12px; padding: 18px 20px;
+  display: flex; gap: 16px; margin-bottom: 12px;
+  box-shadow: var(--shadow-sm); transition: box-shadow .18s;
+}
+.role-card:hover { box-shadow: var(--shadow); }
+.role-icon {
+  width: 46px; height: 46px; border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 24px; flex-shrink: 0;
+}
+.role-icon.shop    { background: var(--purple-light); }
+.role-icon.api     { background: var(--green-light); }
+.role-icon.worker  { background: var(--blue-light); }
+.role-icon.storage { background: var(--yellow-light); }
+.role-icon.admin   { background: var(--red-light); }
+.role-info h3 { font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+.role-info p  { color: var(--text-dim); font-size: 12.5px; margin-bottom: 5px; }
+.role-table   { font-size: 12px; color: var(--text-dim); display: flex; gap: 16px; flex-wrap: wrap; }
+.role-table strong { color: var(--text-mid); }
+
+.principle-item {
+  display: flex; gap: 12px; align-items: flex-start;
+  padding: 13px 16px;
+  background: var(--blue-light);
+  border: 1.5px solid var(--blue-mid);
+  border-radius: 10px; margin-bottom: 8px; font-size: 13px;
+  color: var(--text-mid);
+}
+.principle-num {
+  background: var(--blue); color: #fff;
+  font-size: 11px; font-weight: 800;
+  width: 22px; height: 22px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+
+/* ── Priority ── */
+.priority-title {
+  display: flex; align-items: center; gap: 10px;
+  font-weight: 700; font-size: 15px;
+  margin-bottom: 12px;
+  padding: 11px 18px; border-radius: 10px;
+}
+.priority-title.p0 { background: var(--red-light);    border: 1.5px solid #fca5a5; color: var(--red); }
+.priority-title.p1 { background: var(--yellow-light); border: 1.5px solid #fcd34d; color: var(--yellow); }
+.priority-title.p2 { background: var(--blue-light);   border: 1.5px solid #93c5fd; color: var(--blue); }
+
+/* ── Env block ── */
+.env-block {
+  background: #1e293b; color: #e2e8f0;
+  border-radius: 10px; padding: 16px 20px;
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 12.5px; line-height: 1.9;
+  margin-bottom: 14px; overflow-x: auto;
+  box-shadow: var(--shadow);
+}
+.env-key     { color: #93c5fd; font-weight: 600; }
+.env-val     { color: #86efac; }
+.env-comment { color: #475569; }
+
+/* ── Checklist ── */
+.checklist-item {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 12px 16px;
+  background: var(--white);
+  border: 1.5px solid var(--border);
+  border-radius: 9px; margin-bottom: 8px; font-size: 13px;
+  color: var(--text-mid);
+  box-shadow: var(--shadow-sm);
+  transition: border-color .18s;
+}
+.checklist-item:hover { border-color: var(--blue); }
+.check-icon {
+  width: 20px; height: 20px;
+  border: 2px solid var(--border-strong);
+  border-radius: 5px; flex-shrink: 0; margin-top: 1px;
+  background: var(--surface2);
+}
+
+/* ── Edge case table ── */
+.edge-row td:first-child { font-weight: 600; color: var(--text); }
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+  .container { padding: 20px; }
+  .nav { padding: 0 16px; }
+  .header { padding: 20px; flex-wrap: wrap; }
+  .flow-lanes { grid-template-columns: 1fr; }
+  .card-grid { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <span class="header-icon">⚙️</span>
+  <div>
+    <h1>Worker · PDF 파이프라인 전체 흐름</h1>
+    <p>북모아 PDF 주문 → Storige Worker 검증/변환/합성 → 결과 저장 → 관리자 다운로드</p>
+  </div>
+  <div class="badge-date">소스 스캔 기준: 2026-04-16</div>
+</div>
+
+<!-- Nav -->
+<div class="nav">
+  <button class="nav-btn active" onclick="showSection('flow')">📊 전체 흐름</button>
+  <button class="nav-btn" onclick="showSection('systems')">🏗 시스템 역할</button>
+  <button class="nav-btn" onclick="showSection('processors')">⚙️ Worker 기능</button>
+  <button class="nav-btn" onclick="showSection('validation')">🔍 검증 로직</button>
+  <button class="nav-btn" onclick="showSection('storage')">📁 Storage 경로</button>
+  <button class="nav-btn" onclick="showSection('orderflow')">🛒 주문 연동</button>
+  <button class="nav-btn" onclick="showSection('admin')">🖥 관리자 콘솔</button>
+  <button class="nav-btn" onclick="showSection('datamodel')">🗄 데이터 모델</button>
+  <button class="nav-btn" onclick="showSection('priority')">🚨 우선순위</button>
+  <button class="nav-btn" onclick="showSection('checklist')">✅ 체크리스트</button>
+</div>
+
+<div class="container">
+
+<!-- ═══ §0 전체 흐름 ═══ -->
+<div id="flow" class="section active">
+  <div class="section-title">전체 흐름 한눈에 보기</div>
+
+  <div class="callout info">
+    <span class="callout-icon">💡</span>
+    <p>①~⑦ 단계 중 버그가 생기면, 아래 흐름에서 <strong>"어느 화살표가 끊겼는지"</strong>를 먼저 파악한 뒤 해당 §(섹션)의 코드를 확인하세요.</p>
+  </div>
+
+  <div class="flow-wrapper">
+    <div class="flow-lanes">
+
+      <!-- Lane 1 -->
+      <div class="lane">
+        <div class="lane-header purple">🛒 쇼핑몰 (PHP)</div>
+        <div class="flow-step">
+          <div class="step-num blue">①</div>
+          <strong>PDF 파일 업로드</strong>
+          <p>표지·내지 multipart 전송</p>
+          <span class="api-tag">POST /api/files/upload</span>
+        </div>
+        <div class="flow-arrow">↓</div>
+        <div class="flow-step">
+          <div class="step-num blue">②</div>
+          <strong>fileId를 주문DB에 저장</strong>
+          <p>fileId(UUID)만 쇼핑몰 DB에 보관</p>
+        </div>
+        <div class="flow-arrow">↓</div>
+        <div class="flow-step">
+          <div class="step-num blue">③</div>
+          <strong>검증 요청</strong>
+          <p>주문 옵션과 함께 Worker에 전달</p>
+          <span class="api-tag">POST /worker-jobs/validate/external</span>
+        </div>
+        <div class="flow-arrow">↓</div>
+        <div class="flow-step">
+          <div class="step-num yellow">④</div>
+          <strong>결과 수신</strong>
+          <p><strong>방식 A</strong>: 2~3초 폴링</p>
+          <span class="api-tag">GET /worker-jobs/external/:id</span>
+          <p style="margin-top:7px;"><strong>방식 B</strong>: 웹훅 콜백 수신</p>
+          <span class="api-tag">POST callbackUrl</span>
+        </div>
+        <div class="flow-arrow">↓</div>
+        <div class="flow-step">
+          <div class="step-num blue">⑤</div>
+          <strong>결과 분기</strong>
+          <p>✅ isValid=true → 주문 진행</p>
+          <p>🔧 autoFixable → /convert 요청</p>
+          <p>❌ 수정불가 → 재업로드/에디터</p>
+        </div>
+        <div class="flow-arrow">↓</div>
+        <div class="flow-step">
+          <div class="step-num blue">⑥</div>
+          <strong>합성 요청 (책 주문)</strong>
+          <p>표지+내지 PDF 합산</p>
+          <span class="api-tag">POST /worker-jobs/synthesize/external</span>
+        </div>
+      </div>
+
+      <!-- Lane 2 -->
+      <div class="lane">
+        <div class="lane-header green">⚡ Storige API</div>
+        <div class="flow-step" style="border-color:#86efac;">
+          <div class="step-num green">R</div>
+          <strong>파일 수신</strong>
+          <p>files.controller.ts</p>
+          <p>응답: fileId, fileUrl</p>
+        </div>
+        <div class="flow-arrow">↓</div>
+        <div class="flow-step step-ghost">
+          <div class="step-num gray">–</div>
+          <strong style="color:#94a3b8;">쇼핑몰 자체 처리</strong>
+        </div>
+        <div class="flow-arrow">↓</div>
+        <div class="flow-step" style="border-color:#86efac;">
+          <div class="step-num green">R</div>
+          <strong>Job 생성</strong>
+          <p>worker_jobs row 생성</p>
+          <p>Bull Queue(Redis) 등록</p>
+        </div>
+        <div class="flow-arrow">↓</div>
+        <div class="flow-step" style="border-color:#86efac;">
+          <div class="step-num green">R</div>
+          <strong>상태 조회 or 웹훅 발송</strong>
+          <p>status/result 반환</p>
+          <p>webhook.service.ts</p>
+        </div>
+        <div class="flow-arrow" style="margin-top:56px;">↓</div>
+        <div class="flow-step" style="border-color:#86efac;">
+          <div class="step-num green">R</div>
+          <strong>분기 처리 응답</strong>
+          <p>결과 JSON 제공</p>
+        </div>
+        <div class="flow-arrow">↓</div>
+        <div class="flow-step" style="border-color:#86efac;">
+          <div class="step-num green">R</div>
+          <strong>합성 Job 생성</strong>
+          <p>Queue에 등록</p>
+        </div>
+      </div>
+
+      <!-- Lane 3 -->
+      <div class="lane">
+        <div class="lane-header red">🔧 Storige Worker</div>
+        <div class="flow-step step-ghost"><div class="step-num gray">–</div><strong style="color:#94a3b8;">–</strong></div>
+        <div class="flow-arrow">↓</div>
+        <div class="flow-step step-ghost"><div class="step-num gray">–</div><strong style="color:#94a3b8;">–</strong></div>
+        <div class="flow-arrow">↓</div>
+        <div class="flow-step" style="border-color:#fca5a5;">
+          <div class="step-num red">W</div>
+          <strong>큐 픽업 → PDF 검증</strong>
+          <p>pdf-validator.service.ts</p>
+          <p>pdf-lib + Ghostscript</p>
+        </div>
+        <div class="flow-arrow">↓</div>
+        <div class="flow-step" style="border-color:#fca5a5;">
+          <div class="step-num red">W</div>
+          <strong>상태 PATCH</strong>
+          <p>COMPLETED / FIXABLE / FAILED</p>
+          <span class="api-tag">PATCH /worker-jobs/:id/status</span>
+        </div>
+        <div class="flow-arrow">↓</div>
+        <div class="flow-step" style="border-color:#fca5a5;">
+          <div class="step-num red">W</div>
+          <strong>자동 변환 (FIXABLE)</strong>
+          <p>conversion.processor.ts</p>
+          <p>→ /storage/temp/converted_*.pdf</p>
+        </div>
+        <div class="flow-arrow">↓</div>
+        <div class="flow-step" style="border-color:#fca5a5;">
+          <div class="step-num red">W</div>
+          <strong>합성/분리 실행</strong>
+          <p>synthesis.processor.ts</p>
+          <p>merge / split / spread 모드</p>
+        </div>
+      </div>
+
+      <!-- Lane 4 -->
+      <div class="lane">
+        <div class="lane-header yellow">💾 Storage (볼륨)</div>
+        <div class="flow-step" style="border-color:#fcd34d;">
+          <div class="step-num yellow">S</div>
+          <strong>업로드 원본 저장</strong>
+          <p>/storage/uploads/&lt;uuid&gt;.pdf</p>
+        </div>
+        <div class="flow-arrow">↓</div>
+        <div class="flow-step step-ghost"><div class="step-num gray">–</div><strong style="color:#94a3b8;">–</strong></div>
+        <div class="flow-arrow">↓</div>
+        <div class="flow-step step-ghost"><div class="step-num gray">–</div><strong style="color:#94a3b8;">–</strong></div>
+        <div class="flow-arrow">↓</div>
+        <div class="flow-step step-ghost"><div class="step-num gray">–</div><strong style="color:#94a3b8;">–</strong></div>
+        <div class="flow-arrow">↓</div>
+        <div class="flow-step" style="border-color:#fcd34d;">
+          <div class="step-num yellow">S</div>
+          <strong>변환 결과 저장 (임시)</strong>
+          <p>/storage/temp/converted_*.pdf</p>
+          <p style="color:#d97706;">고객 컨펌 전 보관</p>
+        </div>
+        <div class="flow-arrow">↓</div>
+        <div class="flow-step" style="border-color:#fcd34d;">
+          <div class="step-num yellow">S</div>
+          <strong>최종 합성 결과 저장</strong>
+          <p>/storage/outputs/&lt;jobId&gt;/merged.pdf</p>
+          <p>또는 cover.pdf + content.pdf</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- 관리자 -->
+    <div class="flow-footer" style="margin-top:20px;">
+      <strong>⑦ 관리자 콘솔</strong>
+      &nbsp;&nbsp;GET /worker-jobs (Admin 인증) → 입력/출력 URL 목록 →
+      resolveStorageUrl() → API 경유 다운로드
+    </div>
+  </div>
+</div>
+
+<!-- ═══ §1 시스템 역할 ═══ -->
+<div id="systems" class="section">
+  <div class="section-title">시스템 역할 분리</div>
+
+  <div class="role-card">
+    <div class="role-icon shop">🛒</div>
+    <div class="role-info">
+      <h3>북모아 쇼핑몰 (PHP)</h3>
+      <p>주문 라이프사이클 전체 관리 · 주문상태 소유 (12단계 110…021)</p>
+      <div class="role-table"><span><strong>핵심 DB:</strong> order_common, member, cate (Storige 읽기 전용)</span></div>
+    </div>
+  </div>
+  <div class="role-card">
+    <div class="role-icon api">⚡</div>
+    <div class="role-info">
+      <h3>Storige API <span style="color:var(--text-dim);font-weight:400;font-size:12px;">apps/api</span></h3>
+      <p>파일 저장, 편집 세션, Job 생성/상태 중계, 웹훅 송신</p>
+      <div class="role-table">
+        <span><strong>소유 상태:</strong> draft / complete</span>
+        <span><strong>핵심 테이블:</strong> files, edit_sessions, file_edit_sessions, worker_jobs</span>
+      </div>
+    </div>
+  </div>
+  <div class="role-card">
+    <div class="role-icon worker">🔧</div>
+    <div class="role-info">
+      <h3>Storige Worker <span style="color:var(--text-dim);font-weight:400;font-size:12px;">apps/worker</span></h3>
+      <p>PDF 검증 / 변환 / 합성 / 분리 실행 — DB 직접 쓰기 없음</p>
+      <div class="role-table"><span><strong>상태 전이:</strong> PENDING → PROCESSING → COMPLETED / FAILED / FIXABLE</span></div>
+    </div>
+  </div>
+  <div class="role-card">
+    <div class="role-icon storage">💾</div>
+    <div class="role-info">
+      <h3>공유 Storage</h3>
+      <p>실제 파일 바이너리 저장 · 북모아와 Storige가 동일 Docker 볼륨 공유</p>
+    </div>
+  </div>
+  <div class="role-card">
+    <div class="role-icon admin">🖥</div>
+    <div class="role-info">
+      <h3>관리자 콘솔 <span style="color:var(--text-dim);font-weight:400;font-size:12px;">apps/admin</span></h3>
+      <p>Job 모니터링 · 재시도 · 결과 PDF 다운로드 (읽기 전용)</p>
+    </div>
+  </div>
+
+  <div class="section-title" style="margin-top:30px;">핵심 원칙 (어기면 버그 근원)</div>
+  <div class="principle-item"><div class="principle-num">1</div><div><strong>주문상태는 북모아만 변경.</strong> Storige는 절대 주문 상태를 건드리지 않는다.</div></div>
+  <div class="principle-item"><div class="principle-num">2</div><div><strong>파일 저장은 Storige만.</strong> 북모아는 fileId(UUID)만 보관한다.</div></div>
+  <div class="principle-item"><div class="principle-num">3</div><div><strong>Worker는 DB에 직접 쓰지 않는다.</strong> 반드시 <code style="background:var(--blue-light);border:1px solid var(--blue-mid);border-radius:4px;padding:1px 6px;font-family:monospace;color:var(--blue);">PATCH /api/worker-jobs/:id/status</code> API 경유.</div></div>
+  <div class="principle-item"><div class="principle-num">4</div><div><strong>Storage 디렉터리는 북모아와 Storige가 동일 볼륨 공유.</strong> 같은 서버·디스크 전제.</div></div>
+</div>
+
+<!-- ═══ §2 Worker 기능 ═══ -->
+<div id="processors" class="section">
+  <div class="section-title">Worker 기능 — 3개 Bull 큐 Processor</div>
+
+  <div style="margin-bottom:10px;color:var(--text-dim);font-size:13px;">공통 상태 전이</div>
+  <div class="status-flow">
+    <div><div class="status-node pending">PENDING</div><div class="status-label">Job 생성됨</div></div>
+    <div class="status-arrow">→</div>
+    <div><div class="status-node processing">PROCESSING</div><div class="status-label">처리 중</div></div>
+    <div class="status-arrow">→</div>
+    <div><div class="status-node completed">COMPLETED</div><div class="status-label">성공</div></div>
+    <span style="color:var(--text-dim);padding:0 8px;align-self:center;">또는</span>
+    <div><div class="status-node failed">FAILED</div><div class="status-label">실패</div></div>
+    <span style="color:var(--text-dim);padding:0 8px;align-self:center;">또는</span>
+    <div><div class="status-node fixable">FIXABLE</div><div class="status-label">자동수정 가능<br>(validation 전용)</div></div>
+  </div>
+
+  <div class="card-grid">
+    <div class="card" style="border-top:3px solid var(--blue);">
+      <div class="card-title">🔍 Validation (검증)<span class="card-badge">pdf-validation</span></div>
+      <p>고객 PDF가 주문 옵션(크기·페이지수·제본·재단여백)과 맞는지 체크</p>
+      <div style="margin:8px 0;"><span class="code-chip">validation.processor.ts:36</span></div>
+      <div style="font-size:12px;color:var(--text-dim);border-top:1px solid var(--border);padding-top:10px;margin-top:8px;">
+        <div style="margin:3px 0;">에러 0 → <span class="status-node completed" style="display:inline;padding:2px 8px;font-size:11px;border-radius:6px;">COMPLETED</span></div>
+        <div style="margin:3px 0;">에러 전부 autoFixable → <span class="status-node fixable" style="display:inline;padding:2px 8px;font-size:11px;border-radius:6px;">FIXABLE</span></div>
+        <div style="margin:3px 0;">수정 불가 포함 → <span class="status-node failed" style="display:inline;padding:2px 8px;font-size:11px;border-radius:6px;">FAILED</span></div>
+      </div>
+    </div>
+    <div class="card" style="border-top:3px solid var(--green);">
+      <div class="card-title">🔄 Conversion (자동 변환)<span class="card-badge">pdf-conversion</span></div>
+      <p>FIXABLE 파일을 자동 교정: 빈페이지 추가 / bleed 연장 / 사이즈 리샘플</p>
+      <div style="margin:8px 0;"><span class="code-chip">conversion.processor.ts:33</span></div>
+      <p style="margin-top:8px;color:var(--text-dim);">결과물: <code style="background:var(--green-light);border:1px solid #86efac;border-radius:4px;padding:1px 6px;font-family:monospace;font-size:12px;color:var(--green);">/storage/temp/converted_&lt;uuid&gt;.pdf</code></p>
+      <p style="color:var(--text-dim);font-size:12px;margin-top:6px;">고객 Before/After 컨펌 → 승인 시 변환본으로 주문 진행</p>
+    </div>
+    <div class="card" style="border-top:3px solid var(--orange);">
+      <div class="card-title">🔗 Synthesis (합성/분리)<span class="card-badge">pdf-synthesis</span></div>
+      <div style="margin-bottom:8px;"><span class="code-chip">synthesis.processor.ts:65</span></div>
+      <div class="table-wrap" style="margin:0;">
+        <table style="font-size:12px;box-shadow:none;border:1px solid var(--border);">
+          <thead><tr><th>mode</th><th>설명</th></tr></thead>
+          <tbody>
+            <tr><td><code style="background:var(--green-light);border:1px solid #86efac;border-radius:4px;padding:1px 6px;font-family:monospace;font-size:11px;color:var(--green);">merge</code></td><td style="color:var(--text-mid);">표지+내지 → 1개 merged.pdf</td></tr>
+            <tr><td><code style="background:var(--yellow-light);border:1px solid #fcd34d;border-radius:4px;padding:1px 6px;font-family:monospace;font-size:11px;color:var(--yellow);">split</code></td><td style="color:var(--text-mid);">단일 PDF → 표지/내지 분리</td></tr>
+            <tr><td><code style="background:var(--purple-light);border:1px solid #c4b5fd;border-radius:4px;padding:1px 6px;font-family:monospace;font-size:11px;color:var(--purple);">spread</code></td><td style="color:var(--text-mid);">스프레드 편집 → 인쇄용 분리</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ §3 검증 로직 ═══ -->
+<div id="validation" class="section">
+  <div class="section-title">Validation 체크 로직 — 검증 항목 전체</div>
+
+  <div class="callout info">
+    <span class="callout-icon">📍</span>
+    <p>코드: <code style="background:var(--blue-light);border:1px solid var(--blue-mid);border-radius:4px;padding:1px 6px;font-family:monospace;color:var(--blue);">apps/worker/src/services/pdf-validator.service.ts</code> (877 lines)</p>
+  </div>
+
+  <div style="margin-bottom:16px;font-weight:700;font-size:14px;color:var(--text);">검증 실행 순서 (validate())</div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px;margin-bottom:28px;">
+    <div class="flow-step"><div class="step-num blue">1</div><strong>파일 다운로드</strong><p>로컬 경로면 read, 원격이면 axios GET</p></div>
+    <div class="flow-step"><div class="step-num blue">2</div><strong>파일 크기 검증</strong><p>초과 → FILE_TOO_LARGE 조기 종료</p></div>
+    <div class="flow-step"><div class="step-num blue">3</div><strong>PDF 무결성 검증</strong><p>pdf-lib → FILE_CORRUPTED 조기 종료</p></div>
+    <div class="flow-step"><div class="step-num blue">4</div><strong>메타데이터 추출</strong><p>pageCount, pageSize mm, hasBleed, colorMode, resolution</p></div>
+    <div class="flow-step"><div class="step-num blue">5</div><strong>페이지 수 검증</strong><p>주문 옵션 vs 실제</p></div>
+    <div class="flow-step"><div class="step-num blue">6</div><strong>페이지 크기 검증</strong><p>주문 사이즈 vs 실제 (허용 오차 포함)</p></div>
+    <div class="flow-step"><div class="step-num blue">7</div><strong>재단 여백 검증</strong><p>bleed 마진 체크</p></div>
+    <div class="flow-step"><div class="step-num blue">8</div><strong>책등 크기 검증</strong><p>fileType==='cover' 인 경우만</p></div>
+    <div class="flow-step"><div class="step-num blue">9</div><strong>가로형 페이지 감지</strong><p>WBS 2.1 기준</p></div>
+    <div class="flow-step"><div class="step-num blue">10</div><strong>사철 4배수 검증</strong><p>binding==='saddle' 인 경우만</p></div>
+    <div class="flow-step"><div class="step-num blue">11</div><strong>스프레드(펼침) 감지</strong><p>WBS 2.3 기준</p></div>
+    <div class="flow-step"><div class="step-num blue">12</div><strong>Ghostscript 고급 검증</strong><p>CMYK·별색·투명도·오버프린트·이미지 해상도</p></div>
+  </div>
+
+  <div class="section-title">ErrorCode (10개)</div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>코드</th><th>메시지</th><th>자동수정</th><th>수정 방법</th></tr></thead>
+      <tbody>
+        <tr><td><code style="background:var(--blue-light);border:1px solid var(--blue-mid);border-radius:4px;padding:1px 6px;font-family:monospace;color:var(--blue);">UNSUPPORTED_FORMAT</code></td><td>지원하지 않는 파일 형식</td><td><span class="tag-nonfixable">❌</span></td><td>재업로드</td></tr>
+        <tr><td><code style="background:var(--blue-light);border:1px solid var(--blue-mid);border-radius:4px;padding:1px 6px;font-family:monospace;color:var(--blue);">FILE_CORRUPTED</code></td><td>파일 손상</td><td><span class="tag-nonfixable">❌</span></td><td>재업로드</td></tr>
+        <tr><td><code style="background:var(--blue-light);border:1px solid var(--blue-mid);border-radius:4px;padding:1px 6px;font-family:monospace;color:var(--blue);">FILE_TOO_LARGE</code></td><td>파일 크기 초과</td><td><span class="tag-nonfixable">❌</span></td><td>용량 축소 후 재업로드</td></tr>
+        <tr><td><code style="background:var(--blue-light);border:1px solid var(--blue-mid);border-radius:4px;padding:1px 6px;font-family:monospace;color:var(--blue);">PAGE_COUNT_INVALID</code></td><td>제본 방식에 맞지 않는 페이지수</td><td><span class="tag-fixable">⚠️ 가능</span></td><td>addBlankPages</td></tr>
+        <tr><td><code style="background:var(--blue-light);border:1px solid var(--blue-mid);border-radius:4px;padding:1px 6px;font-family:monospace;color:var(--blue);">PAGE_COUNT_EXCEEDED</code></td><td>페이지 수 초과</td><td><span class="tag-nonfixable">❌</span></td><td>분책 or 축소</td></tr>
+        <tr><td><code style="background:var(--blue-light);border:1px solid var(--blue-mid);border-radius:4px;padding:1px 6px;font-family:monospace;color:var(--blue);">SIZE_MISMATCH</code></td><td>페이지 크기 불일치</td><td><span class="tag-fixable">⚠️ 가능</span></td><td>resizeWithPadding</td></tr>
+        <tr><td><code style="background:var(--blue-light);border:1px solid var(--blue-mid);border-radius:4px;padding:1px 6px;font-family:monospace;color:var(--blue);">SPINE_SIZE_MISMATCH</code></td><td>책등(세네카) 크기 불일치</td><td><span class="tag-fixable">⚠️ 가능</span></td><td>adjustSpine</td></tr>
+        <tr><td><code style="background:var(--blue-light);border:1px solid var(--blue-mid);border-radius:4px;padding:1px 6px;font-family:monospace;color:var(--blue);">SADDLE_STITCH_INVALID</code></td><td>사철제본 4배수 위반</td><td><span class="tag-fixable">⚠️ 가능</span></td><td>addBlankPages</td></tr>
+        <tr><td><code style="background:var(--blue-light);border:1px solid var(--blue-mid);border-radius:4px;padding:1px 6px;font-family:monospace;color:var(--blue);">POST_PROCESS_CMYK</code></td><td>후가공 파일에 CMYK 사용</td><td><span class="tag-nonfixable">❌</span></td><td>고객 수정 필요</td></tr>
+        <tr><td><code style="background:var(--blue-light);border:1px solid var(--blue-mid);border-radius:4px;padding:1px 6px;font-family:monospace;color:var(--blue);">SPREAD_SIZE_MISMATCH</code></td><td>스프레드 사이즈 불일치</td><td><span class="tag-nonfixable">❌</span></td><td>에디터 재작업</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section-title" style="margin-top:24px;">WarningCode (9개) — 주문 가능, 품질 주의</div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>코드</th><th>설명</th></tr></thead>
+      <tbody>
+        <tr><td><code style="background:var(--yellow-light);border:1px solid #fcd34d;border-radius:4px;padding:1px 6px;font-family:monospace;color:var(--yellow);">PAGE_COUNT_MISMATCH</code></td><td>주문 수량과 실제 수량 다름</td></tr>
+        <tr><td><code style="background:var(--yellow-light);border:1px solid #fcd34d;border-radius:4px;padding:1px 6px;font-family:monospace;color:var(--yellow);">BLEED_MISSING</code></td><td>재단여백 없음</td></tr>
+        <tr><td><code style="background:var(--yellow-light);border:1px solid #fcd34d;border-radius:4px;padding:1px 6px;font-family:monospace;color:var(--yellow);">RESOLUTION_LOW</code></td><td>해상도 낮음 (&lt;300dpi)</td></tr>
+        <tr><td><code style="background:var(--yellow-light);border:1px solid #fcd34d;border-radius:4px;padding:1px 6px;font-family:monospace;color:var(--yellow);">LANDSCAPE_PAGE</code></td><td>가로형 페이지 섞임</td></tr>
+        <tr><td><code style="background:var(--yellow-light);border:1px solid #fcd34d;border-radius:4px;padding:1px 6px;font-family:monospace;color:var(--yellow);">CENTER_OBJECT_CHECK</code></td><td>사철 중앙부 객체 확인 필요</td></tr>
+        <tr><td><code style="background:var(--yellow-light);border:1px solid #fcd34d;border-radius:4px;padding:1px 6px;font-family:monospace;color:var(--yellow);">CMYK_STRUCTURE_DETECTED</code></td><td>CMYK 구조 감지 (GS 미확정)</td></tr>
+        <tr><td><code style="background:var(--yellow-light);border:1px solid #fcd34d;border-radius:4px;padding:1px 6px;font-family:monospace;color:var(--yellow);">MIXED_PDF</code></td><td>혼합 PDF (표지+내지 섞임)</td></tr>
+        <tr><td><code style="background:var(--yellow-light);border:1px solid #fcd34d;border-radius:4px;padding:1px 6px;font-family:monospace;color:var(--yellow);">TRANSPARENCY_DETECTED</code></td><td>투명도 사용</td></tr>
+        <tr><td><code style="background:var(--yellow-light);border:1px solid #fcd34d;border-radius:4px;padding:1px 6px;font-family:monospace;color:var(--yellow);">OVERPRINT_DETECTED</code></td><td>오버프린트 사용</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ═══ §4 Storage 경로 ═══ -->
+<div id="storage" class="section">
+  <div class="section-title">파일 업로드 & Storage 경로 설계</div>
+
+  <div class="card-grid">
+    <div class="card">
+      <div class="card-title">📤 업로드 엔드포인트</div>
+      <span class="api-tag">POST /api/files/upload</span>
+      <p style="margin-top:10px;">multipart: file(PDF), type(cover|content), orderId?, memberSeqno?</p>
+      <p>응답: id(UUID), fileName, fileUrl, fileSize, mimeType, createdAt</p>
+      <div class="callout info" style="margin-top:12px;margin-bottom:0;">
+        <span class="callout-icon">💡</span>
+        <p>쇼핑몰은 <strong>id(UUID) 하나만</strong> 저장하면 됩니다</p>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">🔗 URL 반환 규약</div>
+      <p>DB에는 <strong>상대경로만</strong> 저장</p>
+      <span class="api-tag">/storage/outputs/&lt;jobId&gt;/merged.pdf</span>
+      <p style="margin-top:10px;">UI에서 절대 URL로 변환: <code style="background:var(--blue-light);border:1px solid var(--blue-mid);border-radius:4px;padding:1px 6px;font-family:monospace;font-size:12px;color:var(--blue);">resolveStorageUrl.ts</code></p>
+      <p style="margin-top:6px;color:var(--text-dim);font-size:12px;">개발/운영 호스트가 달라도 URL 재작성 불필요</p>
+    </div>
+  </div>
+
+  <div class="section-title">Storage 디렉터리 구조</div>
+  <div class="storage-tree">
+    <div><span class="tree-dir">/app/storage/</span></div>
+    <div>&nbsp;&nbsp;<span class="tree-dir">├─ uploads/</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="tree-comment">← POST /files/upload 원본</span></div>
+    <div>&nbsp;&nbsp;<span class="tree-file">│&nbsp;&nbsp;&nbsp;└─ &lt;uuid&gt;.pdf</span></div>
+    <div>&nbsp;&nbsp;<span class="tree-dir">│</span></div>
+    <div>&nbsp;&nbsp;<span class="tree-dir">├─ temp/</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="tree-comment">← Conversion 결과 (고객 컨펌 전 임시)</span></div>
+    <div>&nbsp;&nbsp;<span class="tree-file">│&nbsp;&nbsp;&nbsp;└─ converted_&lt;uuid&gt;.pdf</span></div>
+    <div>&nbsp;&nbsp;<span class="tree-dir">│</span></div>
+    <div>&nbsp;&nbsp;<span class="tree-dir">└─ outputs/</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="tree-comment">← Synthesis 최종 결과물</span></div>
+    <div>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="tree-file">└─ &lt;jobId&gt;/</span></div>
+    <div>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="tree-highlight">├─ merged.pdf</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="tree-comment">← outputFormat='merged'</span></div>
+    <div>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="tree-highlight">├─ cover.pdf</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="tree-comment">← outputFormat='separate'</span></div>
+    <div>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="tree-highlight">└─ content.pdf</span></div>
+  </div>
+
+  <div class="section-title">환경변수</div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;">
+    <div>
+      <div style="color:var(--text-dim);font-size:12px;font-weight:700;margin-bottom:6px;">WORKER</div>
+      <div class="env-block">
+        <div><span class="env-key">API_BASE_URL</span>=<span class="env-val">http://localhost:4000/api</span></div>
+        <div><span class="env-key">WORKER_API_KEY</span>=<span class="env-val">test-api-key</span>&nbsp;&nbsp;<span class="env-comment"># PATCH 인증</span></div>
+        <div><span class="env-key">STORAGE_PATH</span>=<span class="env-val">/app/storage/temp</span></div>
+        <div><span class="env-key">OUTPUTS_PATH</span>=<span class="env-val">/app/storage/outputs</span></div>
+        <div><span class="env-key">REDIS_HOST</span>=<span class="env-val">redis</span></div>
+        <div><span class="env-key">REDIS_PORT</span>=<span class="env-val">6379</span></div>
+      </div>
+    </div>
+    <div>
+      <div style="color:var(--text-dim);font-size:12px;font-weight:700;margin-bottom:6px;">API</div>
+      <div class="env-block">
+        <div><span class="env-key">DATABASE_HOST / PORT / USER / PASSWORD / NAME</span></div>
+        <div><span class="env-key">JWT_SECRET / JWT_EXPIRATION</span></div>
+        <div><span class="env-key">WORKER_API_KEY</span>=<span class="env-val">test-api-key</span></div>
+        <div><span class="env-key">STORAGE_PATH</span>=<span class="env-val">/app/storage</span></div>
+      </div>
+    </div>
+    <div>
+      <div style="color:var(--text-dim);font-size:12px;font-weight:700;margin-bottom:6px;">쇼핑몰 (샘플 PHP)</div>
+      <div class="env-block">
+        <div><span class="env-key">STORIGE_API_URL</span>=<span class="env-val">https://api.storige.com/api</span></div>
+        <div><span class="env-key">STORIGE_API_KEY</span>=<span class="env-val">bookmoa-shared-api-key</span></div>
+        <div><span class="env-key">STORIGE_WEBHOOK_SECRET</span>=<span class="env-val">...</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ §5 주문 연동 ═══ -->
+<div id="orderflow" class="section">
+  <div class="section-title">주문 → Worker 연동 플로우 (쇼핑몰 관점)</div>
+
+  <div class="section-title" style="font-size:14px;margin-top:0;">고객 유형별 분기</div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>유형</th><th>보유 파일</th><th>처리 경로</th></tr></thead>
+      <tbody>
+        <tr><td><strong>A. PDF 업로드</strong></td><td>표지+내지</td><td>🔧 <strong>Worker 파일검증</strong></td></tr>
+        <tr><td><strong>B. 표지 디자인 의뢰</strong></td><td>내지만</td><td>관리자 컨펌</td></tr>
+        <tr><td><strong>C. 출판계약</strong></td><td>내지만</td><td>관리자 컨펌</td></tr>
+        <tr><td><strong>D. 셀프 편집</strong></td><td>내지만</td><td>에디터(표지 편집)+내지 PDF</td></tr>
+        <tr><td><strong>E. 셀프 편집</strong></td><td>없음</td><td>에디터(표지+내지 편집)</td></tr>
+        <tr><td><strong>F. 디지털인쇄</strong></td><td>작업파일</td><td>🔧 <strong>Worker 파일검증</strong></td></tr>
+        <tr><td><strong>G. 디지털인쇄</strong></td><td>없음</td><td>에디터(템플릿)</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section-title" style="margin-top:24px;">Worker 경유 유형(A/F) 타임라인</div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>#</th><th>주체</th><th>액션</th><th>엔드포인트</th><th>결과</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td>쇼핑몰</td><td>PDF multipart 업로드</td><td><span class="api-tag">POST /api/files/upload</span></td><td>fileId 수령</td></tr>
+        <tr><td>2</td><td>쇼핑몰</td><td>주문DB에 fileId 저장</td><td>—</td><td>—</td></tr>
+        <tr><td>3</td><td>쇼핑몰</td><td>검증 요청</td><td><span class="api-tag">POST /api/worker-jobs/validate/external</span></td><td>jobId, PENDING</td></tr>
+        <tr><td>4</td><td>API</td><td>Bull 큐에 job 등록</td><td>(internal)</td><td>Redis enqueue</td></tr>
+        <tr><td>5</td><td>Worker</td><td>큐 pickup → 검증 실행</td><td>—</td><td>result DTO 생성</td></tr>
+        <tr><td>6</td><td>Worker</td><td>API로 상태 PATCH</td><td><span class="api-tag">PATCH /api/worker-jobs/external/:id/status</span></td><td>DB 업데이트</td></tr>
+        <tr><td>7-A</td><td>쇼핑몰 (폴링)</td><td>2~3초 간격 조회</td><td><span class="api-tag">GET /api/worker-jobs/external/:id</span></td><td>status/result</td></tr>
+        <tr><td>7-B</td><td>API (웹훅)</td><td>callbackUrl 있을 때 자동 발송</td><td><span class="api-tag">POST ${callbackUrl}</span></td><td>event, outputFileUrl</td></tr>
+        <tr><td>8</td><td>쇼핑몰</td><td>결과 분기 UI</td><td>—</td><td>주문진행/변환/재업로드</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section-title" style="margin-top:24px;">Polling vs Webhook</div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>방식</th><th>장점</th><th>단점</th><th>상태</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Polling</strong></td><td>구현 단순, 추가 인프라 없음</td><td>요청 빈도 ↑, 리소스 낭비</td><td><span style="color:var(--green);font-weight:600;">✓ 즉시 사용 가능</span></td></tr>
+        <tr><td><strong>Webhook 콜백</strong></td><td>즉시성, 효율</td><td>callbackUrl 보안, HMAC 검증 필요</td><td><span style="color:var(--yellow);font-weight:600;">⚠️ base64 서명 (HMAC 교체 필요)</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="callout warn">
+    <span class="callout-icon">⚠️</span>
+    <p>현재 Webhook 서명은 base64입니다. <strong>webhook.service.ts:80</strong>에서 HMAC-SHA256으로 교체 권장.</p>
+  </div>
+</div>
+
+<!-- ═══ §7 관리자 ═══ -->
+<div id="admin" class="section">
+  <div class="section-title">관리자 콘솔 — apps/admin</div>
+
+  <div class="card-grid">
+    <div class="card">
+      <div class="card-title">📋 Worker Jobs <span class="card-badge">/worker-jobs</span></div>
+      <p>Job 목록·상태·입출력 파일 다운로드</p>
+      <p style="margin-top:8px;font-size:12px;">• 입력/출력 파일 → resolveStorageUrl() → 새 탭 열기</p>
+      <p style="font-size:12px;">• 에러 메시지 → 빨간 텍스트 표시</p>
+    </div>
+    <div class="card">
+      <div class="card-title">✏️ Edit Sessions <span class="card-badge">/edit-sessions</span></div>
+      <p>편집 세션 목록·상태 모니터링</p>
+    </div>
+    <div class="card">
+      <div class="card-title">🧪 Worker Test <span class="card-badge">/worker-test</span></div>
+      <p>수동 파일 업로드 + Job 생성 (QA 전용)</p>
+    </div>
+  </div>
+
+  <div class="section-title">관리자 가능 작업</div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>액션</th><th>엔드포인트</th><th>비고</th></tr></thead>
+      <tbody>
+        <tr><td>Job 조회/필터</td><td><span class="api-tag">GET /api/worker-jobs?status=&jobType=</span></td><td></td></tr>
+        <tr><td>Job 상세</td><td><span class="api-tag">GET /api/worker-jobs/:id</span></td><td></td></tr>
+        <tr><td>Job 통계</td><td><span class="api-tag">GET /api/worker-jobs/stats</span></td><td></td></tr>
+        <tr><td>상태 수동 갱신</td><td><span class="api-tag">PATCH /api/worker-jobs/:id/status</span></td><td><span style="color:var(--red);font-weight:600;">⚠️ RolesGuard 없음</span></td></tr>
+        <tr><td>결과 PDF 다운로드</td><td>resolveStorageUrl() → API 경유</td><td></td></tr>
+        <tr><td>재시도/재큐잉</td><td>—</td><td><span style="color:var(--yellow);font-weight:600;">UI 없음, 향후 추가 필요</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section-title" style="margin-top:20px;">개선 여지</div>
+  <div class="callout danger"><span class="callout-icon">🚨</span><p><strong>개선 1:</strong> Job 재시도 버튼 없음 → 실패 시 새 Job을 수동 생성해야 함. <code style="background:var(--red-light);border:1px solid #fca5a5;border-radius:4px;padding:1px 6px;font-family:monospace;color:var(--red);">POST /api/worker-jobs/:id/retry</code> 추가 필요.</p></div>
+  <div class="callout warn"><span class="callout-icon">⚠️</span><p><strong>개선 2:</strong> 결과 PDF 썸네일 미리보기 없음 → <code style="background:var(--yellow-light);border:1px solid #fcd34d;border-radius:4px;padding:1px 6px;font-family:monospace;color:var(--yellow);">GET /api/files/:id/thumbnail</code> 신규 개발 필요.</p></div>
+  <div class="callout info"><span class="callout-icon">💡</span><p><strong>개선 3:</strong> 검증 오류 errors[].details가 문자열만 표시됨 → JSON 표 형태 expand UI 필요.</p></div>
+</div>
+
+<!-- ═══ §8 데이터 모델 ═══ -->
+<div id="datamodel" class="section">
+  <div class="section-title">데이터 모델 — 관련 테이블 요약</div>
+
+  <div class="callout info"><span class="callout-icon">📌</span><p>외부 DB 3개 (cate, member, order_common)는 <strong>북모아 소유 — 읽기 전용</strong></p></div>
+
+  <div class="card-grid">
+    <div class="card">
+      <div class="card-title">📄 files</div>
+      <p style="font-family:monospace;font-size:12px;line-height:2;color:var(--text-mid);">id, file_name, file_url, thumbnail_url<br>file_size, mime_type, file_type<br>order_seqno, member_seqno, metadata</p>
+    </div>
+    <div class="card">
+      <div class="card-title">✏️ edit_sessions <span style="color:var(--text-dim);font-size:11px;font-weight:400;">레거시 호환</span></div>
+      <p style="font-family:monospace;font-size:12px;line-height:2;color:var(--text-mid);">id, order_id, pages<br>status, canvas_data, template_id</p>
+    </div>
+    <div class="card" style="border:2px solid var(--blue);">
+      <div class="card-title" style="color:var(--blue);">⭐ file_edit_sessions <span style="font-size:11px;color:var(--blue);">워커 파이프라인 핵심</span></div>
+      <p style="font-family:monospace;font-size:12px;line-height:1.9;color:var(--text-mid);">id, order_seqno, member_seqno<br>status, mode, cover_file_id<br>content_file_id, template_set_id<br>canvas_data, metadata, completed_at<br>worker_status, worker_error, callback_url</p>
+      <div class="callout danger" style="margin-top:10px;margin-bottom:0;padding:10px 12px;">
+        <span class="callout-icon">🚨</span>
+        <p style="font-size:12px;"><strong>현재 init.sql에 누락!</strong> P0-A 완료 전까지 편집 완료→검증 체인이 ER_NO_SUCH_TABLE로 실패</p>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">⚙️ worker_jobs</div>
+      <p style="font-family:monospace;font-size:12px;line-height:1.9;color:var(--text-mid);">id, job_type, status<br>edit_session_id, file_id<br>input_file_url, output_file_url<br>options, result, error_message<br>session_id, pdf_file_id, request_id&nbsp;<span style="color:var(--blue);">← 멱등성 키</span><br>error_code, error_detail<br>created_at, completed_at</p>
+      <div class="callout info" style="margin-top:10px;margin-bottom:0;padding:10px 12px;">
+        <span class="callout-icon">🔑</span>
+        <p style="font-size:12px;"><strong>멱등성 키:</strong> (session_id, pdf_file_id, request_id) UNIQUE — 중복 Job 생성 차단</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ §9 우선순위 ═══ -->
+<div id="priority" class="section">
+  <div class="section-title">지금 당장 vs 나중 과제</div>
+
+  <div class="priority-title p0">🚨 P0 — 즉시 (0~1일)</div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>#</th><th>항목</th><th>왜 시급한가</th><th>담당</th></tr></thead>
+      <tbody>
+        <tr><td><strong>P0-A</strong></td><td>init.sql에 file_edit_sessions 포함 누락 13개 테이블 추가</td><td><span style="color:var(--red);font-weight:600;">편집 완료→검증 체인 전체 500 에러</span></td><td>Storige 인수자</td></tr>
+        <tr><td><strong>P0-B</strong></td><td>WORKER_API_KEY 강력한 값으로 교체</td><td>디폴트 test-api-key 운영 배포 시 외부 스팸</td><td>DevOps</td></tr>
+        <tr><td><strong>P0-C</strong></td><td>PATCH /worker-jobs/:id/status에 RolesGuard 추가</td><td>현재 인증만, 역할 체크 없음</td><td>API</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="priority-title p1" style="margin-top:20px;">⚠️ P1 — 단기 (1주)</div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>#</th><th>항목</th><th>설명</th></tr></thead>
+      <tbody>
+        <tr><td><strong>P1-A</strong></td><td>Webhook HMAC-SHA256 서명</td><td>현재 base64, 변조 탐지 불가</td></tr>
+        <tr><td><strong>P1-B</strong></td><td>Job 재시도 API + Admin 버튼</td><td>수동 재작업 비용 감소</td></tr>
+        <tr><td><strong>P1-C</strong></td><td>Storage GC 배치 (temp, outputs 오래된 파일)</td><td>디스크 고갈 방지</td></tr>
+        <tr><td><strong>P1-D</strong></td><td>썸네일 API (/files/:id/thumbnail) 구현</td><td>고객·관리자 UI 공통 필요</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="priority-title p2" style="margin-top:20px;">💡 P2 — 중기 (1달)</div>
+  <div class="card-grid">
+    <div class="card" style="padding:14px 18px;"><p>🔧 Ghostscript 필수화 + 컨테이너 이미지 정리</p></div>
+    <div class="card" style="padding:14px 18px;"><p>📦 검증 결과 UI 컴포넌트 라이브러리화 (쇼핑몰 배포용)</p></div>
+    <div class="card" style="padding:14px 18px;"><p>📈 워커 오토스케일 (큐 길이 기반)</p></div>
+    <div class="card" style="padding:14px 18px;"><p>👁 PDF 미리보기 PDF.js Viewer 내장</p></div>
+  </div>
+
+  <div class="section-title" style="margin-top:24px;">실패·엣지 케이스 매트릭스</div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>상황</th><th>어디서</th><th>현재 처리</th><th>향후 보완</th></tr></thead>
+      <tbody class="edge-row">
+        <tr><td>파일 업로드 실패</td><td>POST /files/upload</td><td>400 응답</td><td>청크 업로드 (tus)</td></tr>
+        <tr><td>Ghostscript 미설치</td><td>Worker</td><td>warning만</td><td>GS 필수화 or 이미지 폴백</td></tr>
+        <tr><td>Validation → FAILED</td><td>Worker</td><td>상태만 FAILED, 자동 재시도 X</td><td>Bull retry 활성화</td></tr>
+        <tr><td>Conversion 결과 거절</td><td>쇼핑몰 UI</td><td>수동 재업로드</td><td>temp 파일 자동 GC</td></tr>
+        <tr><td>Synthesis Merge 실패</td><td>Worker</td><td>FAILED + errorMessage</td><td>관리자 재시도 API</td></tr>
+        <tr><td>Webhook 송신 실패</td><td>API</td><td>1회 재시도 후 로그만</td><td>재시도 큐</td></tr>
+        <tr><td>Webhook 서명 취약</td><td>수신측</td><td>현재 base64</td><td>HMAC-SHA256</td></tr>
+        <tr><td>Worker → API PATCH 실패</td><td>Worker</td><td>로그만, 예외 미전파</td><td>Bull backoff / DLQ</td></tr>
+        <tr><td>Job 중복 생성</td><td>API</td><td>멱등성 키로 차단</td><td>409 명시</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ═══ §10 체크리스트 ═══ -->
+<div id="checklist" class="section">
+  <div class="section-title">E2E 확인 체크리스트 (운영 전 Smoke Test)</div>
+
+  <div class="checklist-item"><div class="check-icon"></div><div><span class="api-tag">POST /api/files/upload</span> → fileId 발급 확인</div></div>
+  <div class="checklist-item"><div class="check-icon"></div><div><span class="api-tag">POST /api/worker-jobs/validate/external</span> → PENDING Job 생성</div></div>
+  <div class="checklist-item"><div class="check-icon"></div><div><span class="api-tag">GET /api/worker-jobs/external/:id</span> → 2~5초 내 COMPLETED / FAILED / FIXABLE 응답</div></div>
+  <div class="checklist-item"><div class="check-icon"></div><div>FIXABLE 케이스 → <span class="api-tag">POST /api/worker-jobs/convert</span> → <code style="background:var(--green-light);border:1px solid #86efac;border-radius:4px;padding:1px 6px;font-family:monospace;font-size:12px;color:var(--green);">/storage/temp/converted_*.pdf</code> 생성</div></div>
+  <div class="checklist-item"><div class="check-icon"></div><div>표지+내지 → <span class="api-tag">POST /api/worker-jobs/synthesize/external</span> → <code style="background:var(--green-light);border:1px solid #86efac;border-radius:4px;padding:1px 6px;font-family:monospace;font-size:12px;color:var(--green);">/storage/outputs/&lt;jobId&gt;/merged.pdf</code> 생성</div></div>
+  <div class="checklist-item"><div class="check-icon"></div><div>관리자 <code style="background:var(--blue-light);border:1px solid var(--blue-mid);border-radius:4px;padding:1px 6px;font-family:monospace;font-size:12px;color:var(--blue);">/worker-jobs</code> 화면 → [입력/출력 파일] 링크 클릭 → PDF 브라우저 오픈</div></div>
+  <div class="checklist-item"><div class="check-icon"></div><div><span class="api-tag">POST /api/edit-sessions</span> → 편집 → <span class="api-tag">PATCH /.../complete</span> → 검증 Job 자동 생성 확인</div></div>
+  <div class="checklist-item"><div class="check-icon"></div><div>에디터 완료 후 session.callbackUrl 있으면 웹훅 POST 수신 확인</div></div>
+  <div class="checklist-item"><div class="check-icon"></div><div>worker_jobs 멱등성 키 동작 — 같은 요청 2회 → 409 또는 동일 Job id 반환</div></div>
+
+  <div class="callout danger" style="margin-top:24px;">
+    <span class="callout-icon">🚨</span>
+    <p><strong>체크 전 필수:</strong> init.sql에 <code style="background:var(--red-light);border:1px solid #fca5a5;border-radius:4px;padding:1px 6px;font-family:monospace;color:var(--red);">file_edit_sessions</code>가 없으면 ⑦번 항목이 ER_NO_SUCH_TABLE로 실패. <strong>P0-A 완료 여부를 먼저 확인하세요.</strong></p>
+  </div>
+</div>
+
+</div><!-- /container -->
+
+<script>
+function showSection(id) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  event.target.classList.add('active');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+</script>
+</body>
+</html>
