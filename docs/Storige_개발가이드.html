@@ -1,0 +1,1597 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Storige 통합 개발 가이드</title>
+<style>
+:root {
+  --bg: #0d1117;
+  --surface: #161b22;
+  --surface2: #21262d;
+  --border: #30363d;
+  --accent: #58a6ff;
+  --accent2: #3fb950;
+  --accent3: #f85149;
+  --accent4: #e3b341;
+  --accent5: #d2a8ff;
+  --text: #e6edf3;
+  --text-dim: #8b949e;
+  --red: #f85149;
+  --yellow: #e3b341;
+  --green: #3fb950;
+  --blue: #58a6ff;
+  --purple: #d2a8ff;
+  --orange: #ffa657;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body { background: var(--bg); color: var(--text); font-family: -apple-system, 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; }
+
+/* ── Sidebar ── */
+.sidebar {
+  position: fixed; left: 0; top: 0; bottom: 0; width: 220px;
+  background: var(--surface); border-right: 1px solid var(--border);
+  overflow-y: auto; z-index: 100;
+  display: flex; flex-direction: column;
+}
+.sidebar-logo {
+  padding: 20px 16px 12px;
+  font-size: 16px; font-weight: 700; color: var(--accent);
+  border-bottom: 1px solid var(--border);
+}
+.sidebar-logo small { display: block; font-size: 11px; color: var(--text-dim); font-weight: 400; margin-top: 2px; }
+.nav-section { padding: 12px 8px 4px; font-size: 11px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: .6px; }
+.nav-link {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 16px; font-size: 13px; color: var(--text-dim);
+  cursor: pointer; border-radius: 6px; margin: 1px 8px;
+  transition: all .15s; text-decoration: none;
+  border: none; background: none; width: calc(100% - 16px); text-align: left;
+}
+.nav-link:hover { background: var(--surface2); color: var(--text); }
+.nav-link.active { background: rgba(88,166,255,.1); color: var(--accent); }
+.nav-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.dot-red { background: var(--red); }
+.dot-yellow { background: var(--yellow); }
+.dot-green { background: var(--green); }
+.dot-blue { background: var(--blue); }
+
+/* ── Main ── */
+.main { margin-left: 220px; min-height: 100vh; }
+.section { display: none; padding: 32px 40px; max-width: 1100px; }
+.section.active { display: block; }
+
+/* ── Titles ── */
+.page-title { font-size: 22px; font-weight: 700; margin-bottom: 6px; }
+.page-subtitle { color: var(--text-dim); font-size: 14px; margin-bottom: 28px; }
+.section-heading {
+  font-size: 16px; font-weight: 700; margin: 28px 0 14px;
+  display: flex; align-items: center; gap: 10px;
+}
+.section-heading::before { content:''; display:block; width:3px; height:18px; background:var(--accent); border-radius:2px; }
+
+/* ── Cards ── */
+.card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; padding: 18px 20px; margin-bottom: 12px;
+}
+.card-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 12px; margin-bottom: 20px;
+}
+.card-title { font-weight: 700; font-size: 14px; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+.card p { color: var(--text-dim); font-size: 13px; }
+
+/* ── Badges / Tags ── */
+.badge {
+  display: inline-block; font-size: 11px; font-weight: 600;
+  padding: 2px 8px; border-radius: 12px;
+}
+.badge-red { background: rgba(248,81,73,.15); color: var(--red); border: 1px solid rgba(248,81,73,.3); }
+.badge-yellow { background: rgba(227,179,65,.15); color: var(--yellow); border: 1px solid rgba(227,179,65,.3); }
+.badge-green { background: rgba(63,185,80,.15); color: var(--green); border: 1px solid rgba(63,185,80,.3); }
+.badge-blue { background: rgba(88,166,255,.15); color: var(--blue); border: 1px solid rgba(88,166,255,.3); }
+.badge-purple { background: rgba(210,168,255,.15); color: var(--purple); border: 1px solid rgba(210,168,255,.3); }
+.badge-orange { background: rgba(255,166,87,.15); color: var(--orange); border: 1px solid rgba(255,166,87,.3); }
+
+code {
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 4px; padding: 1px 6px; font-family: monospace; font-size: 12px;
+  color: #a5b4fc;
+}
+.code-block {
+  background: #010409; border: 1px solid var(--border); border-radius: 8px;
+  padding: 16px 20px; font-family: monospace; font-size: 12.5px; line-height: 1.9;
+  overflow-x: auto; margin-bottom: 16px;
+}
+.cb-comment { color: #6e7681; }
+.cb-key { color: #79c0ff; }
+.cb-val { color: #a5d6ff; }
+.cb-cmd { color: #ffa657; }
+.cb-str { color: #a5d6ff; }
+.cb-keyword { color: #ff7b72; }
+
+/* ── Table ── */
+.tbl-wrap { overflow-x: auto; margin-bottom: 20px; }
+table { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+th { background: var(--surface2); padding: 10px 14px; text-align: left; font-size: 12px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: .4px; border-bottom: 1px solid var(--border); }
+td { padding: 10px 14px; border-bottom: 1px solid var(--border); font-size: 13px; vertical-align: top; }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: rgba(255,255,255,.02); }
+
+/* ── Callout ── */
+.callout {
+  display: flex; gap: 12px; padding: 13px 16px;
+  border-radius: 8px; margin-bottom: 14px; font-size: 13px;
+}
+.callout.danger { background: rgba(248,81,73,.07); border: 1px solid rgba(248,81,73,.25); }
+.callout.warn { background: rgba(227,179,65,.07); border: 1px solid rgba(227,179,65,.25); }
+.callout.info { background: rgba(88,166,255,.07); border: 1px solid rgba(88,166,255,.25); }
+.callout.success { background: rgba(63,185,80,.07); border: 1px solid rgba(63,185,80,.25); }
+.callout-icon { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+
+/* ── System diagram ── */
+.sys-diagram {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; padding: 28px; margin-bottom: 20px; overflow-x: auto;
+}
+.sys-row { display: flex; align-items: center; gap: 0; flex-wrap: wrap; justify-content: center; margin-bottom: 16px; }
+.sys-node {
+  padding: 12px 18px; border-radius: 10px;
+  text-align: center; min-width: 120px; font-size: 13px;
+}
+.sys-node strong { display: block; font-size: 14px; margin-bottom: 2px; }
+.sys-node small { color: var(--text-dim); font-size: 11px; }
+.sys-node.editor { background: rgba(88,166,255,.1); border: 1.5px solid rgba(88,166,255,.4); }
+.sys-node.admin { background: rgba(210,168,255,.1); border: 1.5px solid rgba(210,168,255,.4); }
+.sys-node.api { background: rgba(63,185,80,.1); border: 1.5px solid rgba(63,185,80,.4); }
+.sys-node.worker { background: rgba(255,166,87,.1); border: 1.5px solid rgba(255,166,87,.4); }
+.sys-node.db { background: rgba(248,81,73,.1); border: 1.5px solid rgba(248,81,73,.3); }
+.sys-node.redis { background: rgba(248,81,73,.08); border: 1.5px solid rgba(248,81,73,.2); }
+.sys-node.storage { background: rgba(227,179,65,.1); border: 1.5px solid rgba(227,179,65,.3); }
+.sys-node.shop { background: rgba(63,185,80,.08); border: 1.5px dashed rgba(63,185,80,.4); }
+.arrow {
+  font-size: 20px; color: var(--text-dim); padding: 0 10px;
+}
+.arrow-down { font-size: 20px; color: var(--text-dim); text-align: center; padding: 4px; }
+.conn-label { font-size: 11px; color: var(--text-dim); white-space: nowrap; }
+
+/* ── Priority list ── */
+.p-item {
+  display: flex; gap: 14px; padding: 14px 16px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; margin-bottom: 8px; transition: border-color .2s;
+}
+.p-item:hover { border-color: var(--accent); }
+.p-badge {
+  min-width: 42px; height: 26px; line-height: 26px;
+  text-align: center; border-radius: 6px; font-size: 12px; font-weight: 700;
+  flex-shrink: 0; margin-top: 1px;
+}
+.p-badge.p0 { background: rgba(248,81,73,.2); color: var(--red); }
+.p-badge.p1 { background: rgba(255,166,87,.2); color: var(--orange); }
+.p-badge.p2 { background: rgba(227,179,65,.2); color: var(--yellow); }
+.p-badge.p3 { background: rgba(88,166,255,.2); color: var(--blue); }
+.p-item-body strong { font-size: 14px; }
+.p-item-body p { color: var(--text-dim); font-size: 12.5px; margin-top: 3px; }
+.p-item-body .file-ref { color: #a5b4fc; font-family: monospace; font-size: 11.5px; margin-top: 4px; }
+
+/* ── Checklist ── */
+.check-item {
+  display: flex; gap: 10px; padding: 11px 14px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 7px; margin-bottom: 7px; align-items: flex-start;
+}
+.check-box {
+  width: 18px; height: 18px; border: 2px solid var(--border);
+  border-radius: 4px; flex-shrink: 0; margin-top: 2px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all .15s;
+}
+.check-box.checked { background: var(--green); border-color: var(--green); }
+.check-box.checked::after { content: '✓'; color: #000; font-size: 11px; font-weight: 700; }
+.check-item-text { font-size: 13px; }
+.check-item-text .sub { color: var(--text-dim); font-size: 12px; margin-top: 2px; display: block; }
+
+/* ── Auth diagram ── */
+.auth-row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+.auth-card {
+  flex: 1; min-width: 220px; padding: 16px;
+  background: var(--surface); border-radius: 10px; border: 1px solid var(--border);
+}
+.auth-card h4 { font-size: 13px; font-weight: 700; margin-bottom: 8px; }
+.auth-card p { font-size: 12px; color: var(--text-dim); margin-bottom: 4px; }
+.auth-card.editor { border-top: 3px solid var(--blue); }
+.auth-card.admin { border-top: 3px solid var(--purple); }
+.auth-card.shop { border-top: 3px solid var(--green); }
+
+/* ── DB table list ── */
+.db-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }
+.db-col h4 { font-size: 12px; font-weight: 700; margin-bottom: 8px; padding: 6px 10px; border-radius: 6px; }
+.db-col.present h4 { background: rgba(63,185,80,.1); color: var(--green); }
+.db-col.missing h4 { background: rgba(248,81,73,.1); color: var(--red); }
+.db-item {
+  padding: 5px 10px; font-family: monospace; font-size: 12px;
+  border-radius: 5px; margin-bottom: 3px;
+}
+.db-col.present .db-item { background: rgba(63,185,80,.05); color: #6ee7b7; }
+.db-col.missing .db-item { background: rgba(248,81,73,.05); color: #fca5a5; }
+.db-item.critical { border-left: 3px solid var(--orange); padding-left: 7px; }
+
+/* ── Sprint milestone ── */
+.milestone {
+  border: 1px solid var(--border); border-radius: 10px;
+  overflow: hidden; margin-bottom: 14px;
+}
+.milestone-header {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 16px; background: var(--surface2);
+  border-bottom: 1px solid var(--border);
+}
+.m-num {
+  width: 32px; height: 32px; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 13px; flex-shrink: 0;
+}
+.milestone-body { padding: 14px 16px; background: var(--surface); }
+.milestone-body p { color: var(--text-dim); font-size: 13px; margin-bottom: 6px; }
+.milestone-body .files { font-family: monospace; font-size: 12px; color: #a5b4fc; line-height: 2; }
+
+/* ── FAQ ── */
+.faq-item {
+  border: 1px solid var(--border); border-radius: 8px;
+  overflow: hidden; margin-bottom: 8px;
+}
+.faq-q {
+  padding: 12px 16px; background: var(--surface);
+  font-weight: 600; font-size: 13px; cursor: pointer;
+  display: flex; justify-content: space-between; align-items: center;
+}
+.faq-q:hover { background: var(--surface2); }
+.faq-a {
+  padding: 12px 16px; background: var(--bg);
+  font-size: 13px; color: var(--text-dim); border-top: 1px solid var(--border);
+}
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+  .sidebar { transform: translateX(-100%); }
+  .main { margin-left: 0; }
+  .section { padding: 20px; }
+  .db-grid { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<nav class="sidebar">
+  <div class="sidebar-logo">
+    🏗 Storige Dev Guide
+    <small>기준: 2026-05-10 · 커밋 03d30d2 · 편집기 UX 사이클 반영</small>
+  </div>
+
+  <div class="nav-section">개요</div>
+  <button class="nav-link active" onclick="showSection('overview')">🗺 시스템 관계도</button>
+  <button class="nav-link" onclick="showSection('codebase')">📁 코드베이스 지도</button>
+  <button class="nav-link" onclick="showSection('auth')">🔐 인증 3종 구조</button>
+
+  <div class="nav-section">에디터 UX (2026-05)</div>
+  <button class="nav-link" onclick="showSection('editor-modes')">
+    <span class="nav-dot dot-green"></span>편집기 진입 매트릭스
+  </button>
+  <button class="nav-link" onclick="showSection('editor-tools')">🧰 도구 메뉴 화이트리스트</button>
+  <button class="nav-link" onclick="showSection('editor-canvas')">🎨 캔버스 UX (핸들·정렬)</button>
+  <button class="nav-link" onclick="showSection('editor-admin')">
+    <span class="nav-dot dot-yellow"></span>관리자 모드 + 저장 가드
+  </button>
+
+  <div class="nav-section">지금 할 일</div>
+  <button class="nav-link" onclick="showSection('p0')">
+    <span class="nav-dot dot-red"></span>P0-A DB 스키마 수정
+  </button>
+  <button class="nav-link" onclick="showSection('priority')">
+    <span class="nav-dot dot-yellow"></span>P1~P8 우선순위
+  </button>
+  <button class="nav-link" onclick="showSection('checklist')">✅ 개발 체크리스트</button>
+  <button class="nav-link" onclick="showSection('sprint')">🚀 스프린트 마일스톤</button>
+
+  <div class="nav-section">심화</div>
+  <button class="nav-link" onclick="showSection('db')">🗄 DB 스키마 현황</button>
+  <button class="nav-link" onclick="showSection('worker')">⚙️ Worker 파이프라인</button>
+  <button class="nav-link" onclick="showSection('integration')">🔗 외부 연동 검증</button>
+  <button class="nav-link" onclick="showSection('deploy')">🚢 배포 & 운영</button>
+  <button class="nav-link" onclick="showSection('faq')">❓ FAQ & 장애대응</button>
+  <button class="nav-link" onclick="showSection('risks')">⚠️ 위험 포인트 10선</button>
+</nav>
+
+<div class="main">
+
+<!-- ══════════════════════════════════════════════════
+     §0 시스템 관계도
+══════════════════════════════════════════════════ -->
+<section id="overview" class="section active">
+  <div class="page-title">🗺 시스템 관계도</div>
+  <div class="page-subtitle">Storige = 북모아 쇼핑몰에 붙는 "웹 에디터 + PDF 합성" 시스템</div>
+
+  <div class="callout danger">
+    <span class="callout-icon">🚨</span>
+    <div><strong>P0-A 미해결</strong> — init.sql(10개)과 엔티티(23개) 불일치. 운영 재기동 시 <code>ER_NO_SUCH_TABLE</code>. 좌측 메뉴 "P0-A DB 스키마 수정"을 먼저 처리하세요.</div>
+  </div>
+
+  <div class="section-heading">전체 아키텍처</div>
+  <div class="sys-diagram">
+    <!-- 외부 시스템 -->
+    <div style="display:flex; gap:20px; justify-content:center; margin-bottom:24px; flex-wrap:wrap;">
+      <div class="sys-node shop">
+        <strong>🛒 북모아 쇼핑몰</strong>
+        <small>PHP · X-API-Key</small>
+      </div>
+      <div class="arrow">↔</div>
+      <div class="sys-node editor">
+        <strong>✏️ Editor</strong>
+        <small>React+Fabric.js · :3000</small>
+      </div>
+      <div class="arrow">↔</div>
+      <div class="sys-node admin">
+        <strong>🖥 Admin</strong>
+        <small>React+AntD · :3001</small>
+      </div>
+    </div>
+
+    <div style="text-align:center; color:var(--text-dim); font-size:22px; margin-bottom:16px;">↕ HTTP REST</div>
+
+    <!-- API 중심 -->
+    <div style="display:flex; justify-content:center; margin-bottom:16px;">
+      <div class="sys-node api" style="min-width:200px; padding:16px 24px;">
+        <strong>⚡ API Server</strong>
+        <small>NestJS · :4000 · global prefix /api</small>
+      </div>
+    </div>
+
+    <div style="display:flex; gap:20px; justify-content:center; flex-wrap:wrap;">
+      <div style="text-align:center;">
+        <div style="color:var(--text-dim); font-size:13px; margin-bottom:6px;">Bull Queue</div>
+        <div style="font-size:22px; color:var(--text-dim);">↓</div>
+      </div>
+      <div style="text-align:center;">
+        <div style="color:var(--text-dim); font-size:13px; margin-bottom:6px;">TypeORM</div>
+        <div style="font-size:22px; color:var(--text-dim);">↓</div>
+      </div>
+      <div style="text-align:center;">
+        <div style="color:var(--text-dim); font-size:13px; margin-bottom:6px;">ioredis</div>
+        <div style="font-size:22px; color:var(--text-dim);">↓</div>
+      </div>
+      <div style="text-align:center;">
+        <div style="color:var(--text-dim); font-size:13px; margin-bottom:6px;">fs</div>
+        <div style="font-size:22px; color:var(--text-dim);">↓</div>
+      </div>
+    </div>
+
+    <div style="display:flex; gap:16px; justify-content:center; flex-wrap:wrap; margin-top:8px;">
+      <div class="sys-node worker" style="min-width:140px;">
+        <strong>⚙️ Worker</strong>
+        <small>NestJS+Bull · :4001</small>
+        <div style="margin-top:4px; font-size:11px; color:var(--orange);">pdf-lib · sharp · ghostscript</div>
+      </div>
+      <div class="sys-node db" style="min-width:130px;">
+        <strong>🗄 MariaDB</strong>
+        <small>11.2 · :3306</small>
+        <div style="margin-top:4px; font-size:11px; color:var(--red);">⚠️ init.sql 불일치</div>
+      </div>
+      <div class="sys-node redis" style="min-width:120px;">
+        <strong>📡 Redis</strong>
+        <small>7.2 · :6379</small>
+      </div>
+      <div class="sys-node storage" style="min-width:130px;">
+        <strong>💾 Storage</strong>
+        <small>/app/storage (볼륨 공유)</small>
+      </div>
+    </div>
+
+    <div style="text-align:center; margin-top:16px; color:var(--text-dim); font-size:13px;">
+      Worker → <code>PATCH /api/worker-jobs/:id/status</code> (API Key) → API → Webhook → 북모아
+    </div>
+  </div>
+
+  <div class="section-heading">4개 앱 역할표</div>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>앱</th><th>역할</th><th>포트</th><th>핵심 기술</th><th>TS Strict</th></tr></thead>
+      <tbody>
+        <tr><td><strong>apps/editor</strong></td><td>고객 캔버스 편집기</td><td>3000</td><td>React 18 · Vite · Fabric.js 5 · Zustand</td><td><span class="badge badge-red">false ⚠️</span></td></tr>
+        <tr><td><strong>apps/admin</strong></td><td>운영자 대시보드</td><td>3001</td><td>React 18 · Vite · Ant Design 5 · React Query</td><td><span class="badge badge-green">true</span></td></tr>
+        <tr><td><strong>apps/api</strong></td><td>REST API 게이트웨이</td><td>4000</td><td>NestJS 10 · TypeORM · Bull · mysql2</td><td>NestJS 표준</td></tr>
+        <tr><td><strong>apps/worker</strong></td><td>PDF 합성 워커</td><td>4001</td><td>NestJS · Bull · pdf-lib · sharp · node-canvas</td><td>NestJS 표준</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section-heading">3가지 인증 흐름 요약</div>
+  <div class="auth-row">
+    <div class="auth-card editor">
+      <h4>✏️ Editor (고객)</h4>
+      <p>저장: <code>localStorage.auth_token</code></p>
+      <p>발급: <code>POST /api/auth/login</code></p>
+      <p style="color:var(--yellow); margin-top:6px;">⚠️ 에디터와 어드민은 같은 localStorage지만 키가 다름</p>
+    </div>
+    <div class="auth-card admin">
+      <h4>🖥 Admin (운영자)</h4>
+      <p>저장: <code>localStorage.accessToken</code> + <code>refreshToken</code></p>
+      <p>발급: <code>POST /api/auth/login</code> + 자동 갱신</p>
+    </div>
+    <div class="auth-card shop">
+      <h4>🛒 Bookmoa Shop 세션</h4>
+      <p>저장: HttpOnly 쿠키 <code>storige_access</code></p>
+      <p>발급: <code>POST /api/auth/shop-session</code> (X-API-Key 필요)</p>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════
+     §1 코드베이스 지도
+══════════════════════════════════════════════════ -->
+<section id="codebase" class="section">
+  <div class="page-title">📁 코드베이스 지도</div>
+  <div class="page-subtitle">어디에 뭐가 있는지 한눈에</div>
+
+  <div class="section-heading">최상위 구조</div>
+  <div class="code-block">
+<span class="cb-comment"># 모노레포 루트 (pnpm workspaces + Turborepo)</span>
+storige/
+├── <span class="cb-key">apps/</span>
+│   ├── <span class="cb-val">editor/</span>        <span class="cb-comment"># 고객 에디터 (React + Fabric.js) :3000</span>
+│   ├── <span class="cb-val">admin/</span>         <span class="cb-comment"># 운영자 대시보드 (React + AntD) :3001</span>
+│   ├── <span class="cb-val">api/</span>           <span class="cb-comment"># REST API (NestJS) :4000 → prefix /api</span>
+│   └── <span class="cb-val">worker/</span>        <span class="cb-comment"># PDF 워커 (NestJS + Bull) :4001</span>
+├── <span class="cb-key">packages/</span>
+│   ├── <span class="cb-val">types/</span>         <span class="cb-comment"># 공유 타입 CJS+ESM 이중 출력 → 반드시 먼저 빌드!</span>
+│   ├── <span class="cb-val">canvas-core/</span>  <span class="cb-comment"># Fabric.js 래퍼 + 18개 플러그인 시스템</span>
+│   ├── <span class="cb-val">ui/</span>            <span class="cb-comment"># 공유 React 컴포넌트</span>
+│   └── <span class="cb-val">ai/</span>            <span class="cb-comment"># ⚠️ README 누락 패키지 (AI 관련)</span>
+├── <span class="cb-key">docker/</span>            <span class="cb-comment"># Dockerfile + ⚠️ init.sql (P0-A)</span>
+├── <span class="cb-key">test-php/</span>          <span class="cb-comment"># 쇼핑몰 연동 시뮬레이터 (메인 서비스 아님)</span>
+└── <span class="cb-key">.cursor/plans/</span>    <span class="cb-comment"># 개발 가이드 문서 전체</span>
+  </div>
+
+  <div class="section-heading">apps/api 모듈 맵 (20개)</div>
+  <div class="card-grid">
+    <div class="card">
+      <div class="card-title">🔐 인증/세션</div>
+      <p><code>auth/</code> — JWT 로그인, shop-session 쿠키</p>
+      <p><code>bookmoa/</code> — 북모아 쇼핑몰 read-only 연결</p>
+    </div>
+    <div class="card">
+      <div class="card-title">✏️ 편집 세션</div>
+      <p><code>editor/</code> — 캔버스 편집 세션 (legacy)</p>
+      <p><code>edit-sessions/</code> — 워커 파이프라인 세션 ★</p>
+    </div>
+    <div class="card">
+      <div class="card-title">📄 템플릿/상품</div>
+      <p><code>templates/</code> — 템플릿셋, 항목, 상품 매핑</p>
+      <p><code>products/</code> — 상품·책등 계산</p>
+    </div>
+    <div class="card">
+      <div class="card-title">⚙️ 워커/파일</div>
+      <p><code>worker-jobs/</code> — 잡 생성/조회</p>
+      <p><code>files/</code> — 파일 메타 · <code>storage/</code> 업로드/다운</p>
+    </div>
+    <div class="card">
+      <div class="card-title">📚 라이브러리</div>
+      <p><code>library/</code> — 폰트/배경/클립아트/도형</p>
+    </div>
+    <div class="card">
+      <div class="card-title">🔔 웹훅/공통</div>
+      <p><code>webhook/</code> — 외부 웹훅 전송 (base64 서명 ⚠️)</p>
+      <p><code>common/</code> — 공통 가드/데코레이터</p>
+    </div>
+  </div>
+
+  <div class="section-heading">canvas-core 플러그인 체인 (순서 = 의존성)</div>
+  <div class="code-block">
+WorkspacePlugin → SpreadPlugin(옵션) → ObjectPlugin → RulerPlugin(옵션)
+→ ControlsPlugin → GroupPlugin → HistoryPlugin → CopyPlugin → AlignPlugin
+→ DraggingPlugin → FontPlugin → FilterPlugin → EffectPlugin → SmartCodePlugin
+→ ImageProcessingPlugin(옵션) → AccessoryPlugin → PreviewPlugin
+→ TemplatePlugin → <span class="cb-keyword">ServicePlugin</span> <span class="cb-comment">← 저장/로드/PDF 내보내기 응집</span>
+  </div>
+  <div class="callout warn">
+    <span class="callout-icon">⚠️</span>
+    <div>도메인 로직 대부분이 React 컴포넌트가 아닌 <strong>플러그인</strong>에 있습니다. UI만 수정하다 플러그인 훅을 건드리지 않도록 주의.</div>
+  </div>
+
+  <div class="section-heading">주요 진입점 파일 레퍼런스</div>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>파일</th><th>역할</th></tr></thead>
+      <tbody>
+        <tr><td><code>apps/editor/src/embed.tsx:1</code></td><td>외부에서 <code>window.StorigeEditor.create()</code> 진입점</td></tr>
+        <tr><td><code>apps/editor/src/hooks/useWorkSave.ts:666</code></td><td><strong class="badge badge-red">P1 TODO</strong> 편집 완료 API 미연동</td></tr>
+        <tr><td><code>apps/api/src/storage/storage.service.ts:163</code></td><td><strong class="badge badge-yellow">P4 TODO</strong> 썸네일 Sharp 미구현</td></tr>
+        <tr><td><code>apps/worker/src/services/pdf-synthesizer.service.ts:259</code></td><td><strong class="badge badge-yellow">P2 TODO</strong> 중철 페이지 순서 미구현</td></tr>
+        <tr><td><code>apps/api/src/templates/template-sets.service.ts:210</code></td><td><strong class="badge badge-yellow">P5 TODO</strong> 템플릿 사용 여부 미확인</td></tr>
+        <tr><td><code>apps/admin/src/utils/resolveStorageUrl.ts</code></td><td>Storage URL → API 경유 절대URL 변환 (최근 3커밋 핵심)</td></tr>
+        <tr><td><code>docker/mysql/init.sql</code></td><td><strong class="badge badge-red">P0-A</strong> 10개 테이블만 정의 → 23개로 보강 필요</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════
+     §2 인증 3종
+══════════════════════════════════════════════════ -->
+<section id="auth" class="section">
+  <div class="page-title">🔐 인증 3종 구조</div>
+  <div class="page-subtitle">세 갈래가 공존 — 이해 안 하면 무조건 막힙니다</div>
+
+  <div class="callout danger">
+    <span class="callout-icon">⚠️</span>
+    <div>에디터는 <code>auth_token</code>, 어드민은 <code>accessToken</code>. <strong>같은 localStorage지만 키가 다릅니다.</strong> 두 SPA 동시 사용 시 별도 브라우저 프로필 권장.</div>
+  </div>
+
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>흐름</th><th>토큰 저장</th><th>발급 엔드포인트</th><th>대상</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><span class="badge badge-blue">Editor Bearer</span></td>
+          <td><code>localStorage.auth_token</code></td>
+          <td><code>POST /api/auth/login</code><br><code>/auth/refresh</code><br><code>/auth/me</code></td>
+          <td>고객 Editor</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-purple">Admin 재발급형</span></td>
+          <td><code>localStorage.accessToken</code><br><code>localStorage.refreshToken</code></td>
+          <td><code>POST /api/auth/login</code><br>401 시 <code>/auth/refresh</code> 자동</td>
+          <td>운영자 Admin</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-green">Shop 세션 쿠키</span></td>
+          <td>HttpOnly 쿠키<br><code>storige_access</code><br><code>storige_refresh</code></td>
+          <td><code>POST /api/auth/shop-session</code><br>(X-API-Key 필요)<br><code>/auth/shop-refresh</code></td>
+          <td>PHP 쇼핑몰 임베드</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section-heading">API Key 사용 엔드포인트</div>
+  <div class="callout info">
+    <span class="callout-icon">🔑</span>
+    <div>외부 쇼핑몰은 <strong>X-API-Key 헤더</strong>를 사용. <code>WORKER_API_KEY</code>는 <code>API_KEYS</code> 콤마 목록 안에 반드시 포함되어야 합니다.<br>
+    대상 엔드포인트: <code>/worker-jobs/*/external</code>, <code>/edit-sessions/external</code>, <code>/product-template-sets/by-product</code></div>
+  </div>
+
+  <div class="section-heading">보안 재검토 필수 항목 (운영 전)</div>
+  <div class="p-item">
+    <div class="p-badge p0">⚠️</div>
+    <div class="p-item-body">
+      <strong>PATCH /api/worker-jobs/:id/status — RolesGuard 없음</strong>
+      <p>현재 인증만 있고 역할 체크가 없어 외부에서 상태 조작 가능. <code>JwtAuthGuard + RolesGuard</code> 추가 필요.</p>
+    </div>
+  </div>
+  <div class="p-item">
+    <div class="p-badge p0">⚠️</div>
+    <div class="p-item-body">
+      <strong>template-sets/admin/update-thumbnails — @Public() 선언</strong>
+      <p>관리자 권한 체크 없이 누구나 호출 가능. 운영 전 가드 추가 필수.</p>
+    </div>
+  </div>
+  <div class="p-item">
+    <div class="p-badge p1">P1</div>
+    <div class="p-item-body">
+      <strong>Webhook 서명 — HMAC-SHA256이 아닌 base64</strong>
+      <p><code>identifier:event:timestamp</code>를 base64로만 인코딩. 변조 탐지 불가. <code>webhook.service.ts</code>에서 HMAC으로 교체 필요.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════
+     §3 P0-A DB 스키마
+══════════════════════════════════════════════════ -->
+<section id="p0" class="section">
+  <div class="page-title">🔴 P0-A: DB 스키마 수정 (최우선)</div>
+  <div class="page-subtitle">init.sql(10개) ≠ 엔티티(23개). 운영 재기동 시 전체 장애.</div>
+
+  <div class="callout danger">
+    <span class="callout-icon">🚨</span>
+    <div><strong>이 작업 없이 P1 진행 불가.</strong> 편집 완료 → 워커 검증 체인 전체가 <code>ER_NO_SUCH_TABLE</code>로 실패합니다.</div>
+  </div>
+
+  <div class="section-heading">결론 — 권장 경로: (b) 수동 보강 → (c) Migrations 승격</div>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>항목</th><th>(b) init.sql 수동 보강 ★권장</th><th>(c) TypeORM Migrations 도입</th></tr></thead>
+      <tbody>
+        <tr><td>소요 시간</td><td><span class="badge badge-green">반나절~1일</span></td><td>1~2일 (러닝커브 포함)</td></tr>
+        <tr><td>즉시 운영 배포</td><td><span class="badge badge-green">가능</span></td><td>첫 마이그레이션 검증 후</td></tr>
+        <tr><td>향후 스키마 변경</td><td>매번 init.sql 직접 수정</td><td>migration:generate → run 자동</td></tr>
+        <tr><td>현시점 적합성</td><td><span class="badge badge-green">높음</span></td><td>중간 (투자 대비 기간 길다)</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section-heading">Step-by-Step 실행 순서 (경로 b)</div>
+
+  <div class="check-item"><div class="check-box" onclick="toggleCheck(this)"></div>
+    <div class="check-item-text"><strong>Step A</strong> — init.sql 백업
+      <span class="sub"><code>cp docker/mysql/init.sql docker/mysql/init.sql.bak.$(date +%Y%m%d)</code></span>
+    </div>
+  </div>
+  <div class="check-item"><div class="check-box" onclick="toggleCheck(this)"></div>
+    <div class="check-item-text"><strong>Step B</strong> — <code>P0A_DB_SCHEMA_FIX.md</code>의 완성된 SQL로 init.sql 전체 교체
+      <span class="sub">23개 테이블 DDL 포함. admin 비밀번호 bcrypt 해시 생성 후 주입.</span>
+    </div>
+  </div>
+  <div class="check-item"><div class="check-box" onclick="toggleCheck(this)"></div>
+    <div class="check-item-text"><strong>Step C</strong> — MariaDB 볼륨 초기화 후 재기동
+      <span class="sub"><code>docker-compose down -v && docker-compose up -d mariadb</code></span>
+    </div>
+  </div>
+  <div class="check-item"><div class="check-box" onclick="toggleCheck(this)"></div>
+    <div class="check-item-text"><strong>Step D</strong> — 테이블 수 검증 → 23개 확인
+      <span class="sub"><code>docker exec -it storige-mariadb mysql -u storige -p storige -e "SHOW TABLES;"</code></span>
+    </div>
+  </div>
+  <div class="check-item"><div class="check-box" onclick="toggleCheck(this)"></div>
+    <div class="check-item-text"><strong>Step E</strong> — API 기동 및 ER_NO_SUCH_TABLE 에러 없음 확인
+      <span class="sub"><code>GET http://localhost:4000/api/edit-sessions</code> → HTTP 200 (빈 배열 OK)</span>
+    </div>
+  </div>
+
+  <div class="section-heading">완료 판단 기준 (4개 모두 ✓)</div>
+  <div class="callout success">
+    <span class="callout-icon">✅</span>
+    <div>
+      1. <code>docker compose down -v && up -d mariadb</code> 직후 MariaDB 에러 로그 없음<br>
+      2. <code>SHOW TABLES</code> 결과 → <strong>21개</strong> (외부 DB 3개 제외)<br>
+      3. <code>NODE_ENV=production</code> API 기동 로그에 <code>ER_NO_SUCH_TABLE</code> 없음<br>
+      4. <code>GET /api/edit-sessions</code> → HTTP 200
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════
+     §4 우선순위
+══════════════════════════════════════════════════ -->
+<section id="priority" class="section">
+  <div class="page-title">📋 P1~P8 개발 우선순위</div>
+  <div class="page-subtitle">P0-A 완료 후 이 순서대로 처리</div>
+
+  <div class="p-item">
+    <div class="p-badge p1">P1 🔥</div>
+    <div class="p-item-body">
+      <strong>저장 완료 체인 복구 (EditSession 완료 API 연동)</strong>
+      <p>편집 완료 후 EditSession 완료 API 호출 단계가 mock jobId 반환으로 비어 있음. 운영 가치 0.</p>
+      <div class="file-ref">apps/editor/src/hooks/useWorkSave.ts:666, 675 · apps/editor/src/api/edit-sessions.ts:complete()</div>
+    </div>
+  </div>
+
+  <div class="p-item">
+    <div class="p-badge p2">P2</div>
+    <div class="p-item-body">
+      <strong>중철(Saddle Stitch) 페이지 임포지션 구현</strong>
+      <p>binding=saddle 분기에 TODO만 있고 단순 병합으로 우회. 페이지 순서가 틀린 PDF 생성됨.</p>
+      <div class="file-ref">apps/worker/src/services/pdf-synthesizer.service.ts:259</div>
+    </div>
+  </div>
+
+  <div class="p-item">
+    <div class="p-badge p2">P3</div>
+    <div class="p-item-body">
+      <strong>리뷰 승인자 하드코딩 교체</strong>
+      <p>Admin 리뷰 승인/반려 3번째 파라미터에 <code>'admin'</code> 리터럴 하드코딩. Auth 컨텍스트 현재 사용자 값으로 교체.</p>
+      <div class="file-ref">apps/admin/src/pages/Reviews/ReviewDetail.tsx</div>
+    </div>
+  </div>
+
+  <div class="p-item">
+    <div class="p-badge p2">P4</div>
+    <div class="p-item-body">
+      <strong>썸네일 생성 구현 (Sharp)</strong>
+      <p>generateThumbnail()이 원본 경로 그대로 반환. sharp가 의존성에 이미 있으므로 즉시 구현 가능.</p>
+      <div class="file-ref">apps/api/src/storage/storage.service.ts:163</div>
+    </div>
+  </div>
+
+  <div class="p-item">
+    <div class="p-badge p2">P5</div>
+    <div class="p-item-body">
+      <strong>템플릿셋 삭제 전 상품 사용 여부 검증</strong>
+      <p>remove() TODO. product_template_sets · products.template_set_id 양쪽 검사 필요.</p>
+      <div class="file-ref">apps/api/src/templates/template-sets.service.ts:210</div>
+    </div>
+  </div>
+
+  <div class="p-item">
+    <div class="p-badge p3">P6</div>
+    <div class="p-item-body">
+      <strong>GraphQL 콘텐츠 에디터 경로 결정</strong>
+      <p>loadContentEditor()가 TODO. GraphQL 연결 or 폐기 선택 필요.</p>
+      <div class="file-ref">apps/editor/src/hooks/useEditorContents.ts</div>
+    </div>
+  </div>
+
+  <div class="p-item">
+    <div class="p-badge p3">P7</div>
+    <div class="p-item-body">
+      <strong>CMYK 색공간 런타임 스텁 처리</strong>
+      <p>@pf/color-runtime 미설치 시 throw 스텁 주입. CMYK 변환이 제품 요구면 구현, 폐기면 제거.</p>
+      <div class="file-ref">apps/editor/vite.config.ts</div>
+    </div>
+  </div>
+
+  <div class="p-item">
+    <div class="p-badge p3">상시</div>
+    <div class="p-item-body">
+      <strong>Worker 콜백 경로 통일 (Validation/Conversion/Synthesis)</strong>
+      <p>Validation은 /external + X-API-Key, Conversion/Synthesis는 비-external 경로 → 하나로 통일. Webhook HMAC 서명 승격 병행.</p>
+      <div class="file-ref">apps/worker/src/processors/*.ts · apps/api/src/worker-jobs/worker-jobs.controller.ts</div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════
+     §5 개발 체크리스트
+══════════════════════════════════════════════════ -->
+<section id="checklist" class="section">
+  <div class="page-title">✅ 개발 체크리스트</div>
+  <div class="page-subtitle">Day 1부터 순서대로. 클릭해서 완료 체크 가능.</div>
+
+  <div class="section-heading">Day 1 — P0-A (DB 스키마)</div>
+  <div class="check-item"><div class="check-box" onclick="toggleCheck(this)"></div><div class="check-item-text">P0A_DB_SCHEMA_FIX.md 읽기 (경로 b 택일)<span class="sub">→ .cursor/plans/P0A_DB_SCHEMA_FIX.md</span></div></div>
+  <div class="check-item"><div class="check-box" onclick="toggleCheck(this)"></div><div class="check-item-text">init.sql 백업 → 23개 테이블 버전으로 교체<span class="sub"><code>cp docker/mysql/init.sql docker/mysql/init.sql.bak</code></span></div></div>
+  <div class="check-item"><div class="check-box" onclick="toggleCheck(this)"></div><div class="check-item-text">MariaDB 볼륨 재기동 + SHOW TABLES 23개 확인<span class="sub"><code>docker-compose down -v && docker-compose up -d mariadb</code></span></div></div>
+  <div class="check-item"><div class="check-box" onclick="toggleCheck(this)"></div><div class="check-item-text">API 기동 · ER_NO_SUCH_TABLE 없음 · GET /api/edit-sessions 200 확인</div></div>
+  <div class="check-item"><div class="check-box" onclick="toggleCheck(this)"></div><div class="check-item-text">WORKER_API_KEY 강력한 값으로 교체 (디폴트 test-api-key 제거)<span class="sub">루트 .env + apps/worker/.env 동기화</span></div></div>
+  <div class="check-item"><div class="check-box" onclick="toggleCheck(this)"></div><div class="check-item-text">PATCH /worker-jobs/:id/status RolesGuard 추가 (보안 P0-C)</div></div>
+
+  <div class="section-heading">Day 2~3 — P1 (저장 완료 체인)</div>
+  <div class="check-item"><div class="check-box" onclick="toggleCheck(this)"></div><div class="check-item-text">useWorkSave.ts:666 TODO — editSessionsApi.complete(id) 연결<span class="sub">apps/editor/src/api/edit-sessions.ts에 complete() 래퍼 이미 존재</span></div></div>
+  <div class="check-item"><div class="check-box" onclick="toggleCheck(this)"></div><div class="check-item-text">Spread 모드 EditSession 완료 API 호출 연결 (line 675)<span class="sub">console.log('[useWorkSave:Spread] TODO' 부분</span></div></div>
+  <div class="check-item"><div class="check-box" onclick="toggleCheck(this)"></div><div class="check-item-text">에디터 편집 완료 → API → Bull 큐 → Worker 검증 실제 흐름 테스트</div></div>
+  <div class="check-item"><div class="check-box" onclick="toggleCheck(this)"></div><div class="check-item-text">test-php callback.php에서 sessionId 정상 수신 확인</div></div>
+
+  <div class="section-heading">Day 4 — P2 (중철 제본)</div>
+  <div class="check-item"><div class="check-box" onclick="toggleCheck(this)"></div><div class="check-item-text">pdf-synthesizer.service.ts:259 — 사철 임포지션 알고리즘 구현<span class="sub">① 페이지 수 4배수 정렬 → ② 스프레드 페어 계산 → ③ pdf-lib 재조합</span></div></div>
+  <div class="check-item"><div class="check-box" onclick="toggleCheck(this)"></div><div class="check-item-text">synthesis.processor.spec.ts 단위 테스트 추가</div></div>
+
+  <div class="section-heading">Day 5 — P4 (썸네일)</div>
+  <div class="check-item"><div class="check-box" onclick="toggleCheck(this)"></div><div class="check-item-text">storage.service.ts:163 — Sharp로 썸네일 생성 구현<span class="sub">sharp 이미 의존성 존재. 200px 정사각 리사이즈 기준</span></div></div>
+  <div class="check-item"><div class="check-box" onclick="toggleCheck(this)"></div><div class="check-item-text">Admin 갤러리에서 실제 썸네일 이미지 출력 확인</div></div>
+
+  <div class="section-heading">Week 2 — 보안/안정화</div>
+  <div class="check-item"><div class="check-box" onclick="toggleCheck(this)"></div><div class="check-item-text">Webhook HMAC-SHA256 서명으로 교체<span class="sub">webhook.service.ts — identifier:event:timestamp base64 → HMAC</span></div></div>
+  <div class="check-item"><div class="check-box" onclick="toggleCheck(this)"></div><div class="check-item-text">Worker 콜백 경로 통일 (모두 /external + X-API-Key)</div></div>
+  <div class="check-item"><div class="check-box" onclick="toggleCheck(this)"></div><div class="check-item-text">TypeORM Migrations 도입 (synchronize:true → false 전환)</div></div>
+  <div class="check-item"><div class="check-box" onclick="toggleCheck(this)"></div><div class="check-item-text">apps/editor tsconfig strict:true 전환 + 타입 오류 수습</div></div>
+  <div class="check-item"><div class="check-box" onclick="toggleCheck(this)"></div><div class="check-item-text">docker/api/Dockerfile의 || true 빌드 실패 은폐 제거</div></div>
+
+  <div class="section-heading">운영 배포 전 환경변수 점검</div>
+  <div class="check-item"><div class="check-box" onclick="toggleCheck(this)"></div><div class="check-item-text">JWT_SECRET — 랜덤 64자 이상</div></div>
+  <div class="check-item"><div class="check-box" onclick="toggleCheck(this)"></div><div class="check-item-text">DB_PASSWORD — 기본값 제거</div></div>
+  <div class="check-item"><div class="check-box" onclick="toggleCheck(this)"></div><div class="check-item-text">WORKER_API_KEY — API_KEYS 콤마 목록과 동기화</div></div>
+  <div class="check-item"><div class="check-box" onclick="toggleCheck(this)"></div><div class="check-item-text">apps/worker/.env에 WORKER_API_KEY + API_BASE_URL 수동 추가 (.env.example에 누락)</div></div>
+  <div class="check-item"><div class="check-box" onclick="toggleCheck(this)"></div><div class="check-item-text">BOOKMOA_DB_* 읽기 전용 계정으로 연결 (주석 해제 시)</div></div>
+</section>
+
+<!-- ══════════════════════════════════════════════════
+     §6 스프린트 마일스톤
+══════════════════════════════════════════════════ -->
+<section id="sprint" class="section">
+  <div class="page-title">🚀 스프린트 마일스톤</div>
+  <div class="page-subtitle">바로 코딩 가능한 M1~M8 순서</div>
+
+  <div class="milestone">
+    <div class="milestone-header">
+      <div class="m-num" style="background:rgba(248,81,73,.2); color:var(--red);">M1</div>
+      <div>
+        <strong>편집 완료 체인 복구 (P1) + 통합 스모크 테스트</strong>
+        <div style="font-size:12px; color:var(--text-dim);">기대 효과: 실제 워커 체인 End-to-End 동작</div>
+      </div>
+    </div>
+    <div class="milestone-body">
+      <p>useWorkSave.ts:666, 675 → <code>editSessionsApi.complete(id)</code> 연결</p>
+      <div class="files">apps/editor/src/hooks/useWorkSave.ts · apps/editor/src/api/edit-sessions.ts · scripts/test-integration.sh</div>
+    </div>
+  </div>
+
+  <div class="milestone">
+    <div class="milestone-header">
+      <div class="m-num" style="background:rgba(255,166,87,.2); color:var(--orange);">M2</div>
+      <div>
+        <strong>중철 임포지션 구현 (P2) + 단위 테스트</strong>
+        <div style="font-size:12px; color:var(--text-dim);">기대 효과: 제본 품질 정상화</div>
+      </div>
+    </div>
+    <div class="milestone-body">
+      <p>binding=saddle 분기 완전 구현. 페이지 수 4배수 검증 → 스프레드 페어 계산 → pdf-lib 재조합</p>
+      <div class="files">apps/worker/src/services/pdf-synthesizer.service.ts · apps/worker/src/processors/synthesis.processor.spec.ts</div>
+    </div>
+  </div>
+
+  <div class="milestone">
+    <div class="milestone-header">
+      <div class="m-num" style="background:rgba(227,179,65,.2); color:var(--yellow);">M3</div>
+      <div>
+        <strong>Worker 콜백 경로 통일 (/external + API Key 표준)</strong>
+        <div style="font-size:12px; color:var(--text-dim);">기대 효과: 상태 업데이트 일관성</div>
+      </div>
+    </div>
+    <div class="milestone-body">
+      <p>Validation(/external) ↔ Conversion/Synthesis(non-external) 혼재 → 전부 /external + X-API-Key로 통일</p>
+      <div class="files">apps/worker/src/processors/validation.processor.ts · conversion.processor.ts · synthesis.processor.ts · apps/api/src/worker-jobs/worker-jobs.controller.ts</div>
+    </div>
+  </div>
+
+  <div class="milestone">
+    <div class="milestone-header">
+      <div class="m-num" style="background:rgba(63,185,80,.2); color:var(--green);">M4</div>
+      <div>
+        <strong>Webhook HMAC 서명으로 승격 + 재시도 시 서명 유지</strong>
+        <div style="font-size:12px; color:var(--text-dim);">기대 효과: 수신측 무결성 검증 가능</div>
+      </div>
+    </div>
+    <div class="milestone-body">
+      <p>base64 인코딩 → HMAC-SHA256 교체. X-Storige-Signature 재시도 시에도 원래 서명 유지.</p>
+      <div class="files">apps/api/src/webhook/webhook.service.ts · .env.example (WEBHOOK_SECRET 활성화)</div>
+    </div>
+  </div>
+
+  <div class="milestone">
+    <div class="milestone-header">
+      <div class="m-num" style="background:rgba(88,166,255,.2); color:var(--blue);">M5</div>
+      <div>
+        <strong>edit_sessions ↔ file_edit_sessions 관계 명확화</strong>
+        <div style="font-size:12px; color:var(--text-dim);">기대 효과: 혼동/버그 감소</div>
+      </div>
+    </div>
+    <div class="milestone-body">
+      <p>두 세션 엔티티 공존 정리. 통합 or 명명 개선 + 워커 디버깅 시 file_edit_sessions 우선 확인 문서화.</p>
+      <div class="files">apps/api/src/editor/entities/edit-session.entity.ts · apps/api/src/edit-sessions/entities/edit-session.entity.ts</div>
+    </div>
+  </div>
+
+  <div class="milestone">
+    <div class="milestone-header">
+      <div class="m-num" style="background:rgba(210,168,255,.2); color:var(--purple);">M6</div>
+      <div>
+        <strong>프로덕션 마이그레이션 전략 (TypeORM Migrations)</strong>
+        <div style="font-size:12px; color:var(--text-dim);">기대 효과: 스키마 안정성</div>
+      </div>
+    </div>
+    <div class="milestone-body">
+      <p>synchronize:true → false 전환. data-source.ts 작성 + migration:generate 파이프라인 구축.</p>
+      <div class="files">apps/api/src/database/ · docker/mysql/init.sql (seed만 남기기)</div>
+    </div>
+  </div>
+
+  <div class="milestone">
+    <div class="milestone-header">
+      <div class="m-num" style="background:rgba(255,166,87,.15); color:var(--orange);">M7</div>
+      <div>
+        <strong>Editor strict:true 전환 + 타입 오류 수습</strong>
+        <div style="font-size:12px; color:var(--text-dim);">기대 효과: 회귀 방지</div>
+      </div>
+    </div>
+    <div class="milestone-body">
+      <p>apps/editor/tsconfig.json strict:false → true. 발생하는 타입 오류 전수 수습.</p>
+      <div class="files">apps/editor/tsconfig.json · apps/editor/src/**/*.tsx</div>
+    </div>
+  </div>
+
+  <div class="milestone">
+    <div class="milestone-header">
+      <div class="m-num" style="background:rgba(63,185,80,.15); color:var(--green);">M8</div>
+      <div>
+        <strong>썸네일/CMYK 스텁 정리 (P4, P7)</strong>
+        <div style="font-size:12px; color:var(--text-dim);">기대 효과: 관리/성능 개선</div>
+      </div>
+    </div>
+    <div class="milestone-body">
+      <p>Sharp 썸네일 실 구현 + CMYK 런타임 방향 결정 (구현 or 제거).</p>
+      <div class="files">apps/api/src/storage/storage.service.ts · apps/editor/vite.config.ts</div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════
+     §7 DB 스키마 현황
+══════════════════════════════════════════════════ -->
+<section id="db" class="section">
+  <div class="page-title">🗄 DB 스키마 현황</div>
+  <div class="page-subtitle">init.sql(10개) vs 엔티티(23개) — 13개 누락</div>
+
+  <div class="db-grid">
+    <div class="db-col present">
+      <h4>✅ init.sql에 있는 10개</h4>
+      <div class="db-item">categories</div>
+      <div class="db-item">edit_sessions</div>
+      <div class="db-item">library_backgrounds</div>
+      <div class="db-item">library_cliparts</div>
+      <div class="db-item">library_fonts</div>
+      <div class="db-item">template_set_items</div>
+      <div class="db-item">template_sets</div>
+      <div class="db-item">templates</div>
+      <div class="db-item">users</div>
+      <div class="db-item">worker_jobs</div>
+    </div>
+    <div class="db-col missing">
+      <h4>❌ 누락된 13개 (P0-A 대상)</h4>
+      <div class="db-item critical">file_edit_sessions ★ 편집기 저장 체인 핵심</div>
+      <div class="db-item critical">product_template_sets ★ 상품-템플릿 매핑</div>
+      <div class="db-item critical">products</div>
+      <div class="db-item">files</div>
+      <div class="db-item">editor_contents</div>
+      <div class="db-item">editor_designs</div>
+      <div class="db-item">edit_histories</div>
+      <div class="db-item">binding_types</div>
+      <div class="db-item">paper_types</div>
+      <div class="db-item">product_sizes</div>
+      <div class="db-item">library_categories</div>
+      <div class="db-item">library_frames</div>
+      <div class="db-item">library_shapes</div>
+    </div>
+  </div>
+
+  <div class="section-heading">핵심 테이블 관계 (ERD 요약)</div>
+  <div class="code-block">
+<span class="cb-comment"># Storige 자체 DB</span>
+<span class="cb-keyword">file_edit_sessions</span>   ←─── worker_jobs (ManyToOne)
+  │ order_seqno, mode, cover_file_id, content_file_id
+  │ worker_status, callback_url
+  │
+  └── files (cover_file_id / content_file_id FK)
+
+<span class="cb-keyword">template_sets</span> ←── template_set_items
+     ↑
+product_template_sets  ←─── sortcode + prdtStanSeqno (외부 상품 식별자)
+     ↑
+products.template_set_id  (대표 템플릿셋 1개 — 내부 경로)
+
+<span class="cb-comment"># 북모아 읽기 전용 DB (bookmoa connection)</span>
+BookmoaMember · BookmoaOrder · BookmoaCategory
+  </div>
+
+  <div class="callout warn">
+    <span class="callout-icon">⚠️</span>
+    <div>
+      <strong>두 개의 EditSession 엔티티 혼동 주의</strong><br>
+      <code>apps/api/src/editor/entities/edit-session.entity.ts</code> → 테이블: <code>edit_sessions</code> (레거시)<br>
+      <code>apps/api/src/edit-sessions/entities/edit-session.entity.ts</code> → 테이블: <code>file_edit_sessions</code> ★<br>
+      워커 처리 디버깅 시 <strong>file_edit_sessions</strong>를 먼저 보세요.
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════
+     §8 Worker 파이프라인
+══════════════════════════════════════════════════ -->
+<section id="worker" class="section">
+  <div class="page-title">⚙️ Worker 파이프라인</div>
+  <div class="page-subtitle">3개 Bull 큐 · PDF 검증 → 변환 → 합성</div>
+
+  <div class="section-heading">3개 프로세서</div>
+  <div class="card-grid">
+    <div class="card" style="border-top:3px solid var(--blue);">
+      <div class="card-title">🔍 Validation</div>
+      <p>큐: <code>pdf-validation</code></p>
+      <p>파일 크기 → PDF 무결성 → 메타데이터 → 페이지수/크기/재단여백 → 책등/사철/스프레드 → GS 고급</p>
+      <div style="margin-top:8px; font-size:12px;">
+        에러0 → <span class="badge badge-green">COMPLETED</span>&nbsp;
+        autoFixable → <span class="badge badge-yellow">FIXABLE</span>&nbsp;
+        수정불가 → <span class="badge badge-red">FAILED</span>
+      </div>
+    </div>
+    <div class="card" style="border-top:3px solid var(--green);">
+      <div class="card-title">🔄 Conversion</div>
+      <p>큐: <code>pdf-conversion</code></p>
+      <p>FIXABLE 파일 자동 교정: 빈페이지 추가 / bleed 연장 / 사이즈 리샘플</p>
+      <p>결과: <code>/storage/temp/converted_*.pdf</code></p>
+    </div>
+    <div class="card" style="border-top:3px solid var(--orange);">
+      <div class="card-title">🔗 Synthesis</div>
+      <p>큐: <code>pdf-synthesis</code></p>
+      <p><code>merge</code>: 표지+내지 → 1개 PDF</p>
+      <p><code>split</code>: 단일 PDF를 표지/내지로 분리</p>
+      <p><code>spread</code>: 스프레드 편집 → 인쇄용 분리</p>
+      <p>결과: <code>/storage/outputs/&lt;jobId&gt;/*.pdf</code></p>
+    </div>
+  </div>
+
+  <div class="section-heading">상태 전이</div>
+  <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:16px; background:var(--surface); border:1px solid var(--border); border-radius:10px; margin-bottom:20px;">
+    <span class="badge badge-blue" style="padding:6px 14px;">PENDING</span>
+    <span style="color:var(--text-dim);">→</span>
+    <span class="badge badge-yellow" style="padding:6px 14px;">PROCESSING</span>
+    <span style="color:var(--text-dim);">→</span>
+    <span class="badge badge-green" style="padding:6px 14px;">COMPLETED</span>
+    <span style="color:var(--text-dim);">/ 또는</span>
+    <span class="badge badge-red" style="padding:6px 14px;">FAILED</span>
+    <span style="color:var(--text-dim);">/ 또는</span>
+    <span class="badge badge-yellow" style="padding:6px 14px;">FIXABLE</span>
+    <span style="font-size:12px; color:var(--text-dim);">(validation 전용)</span>
+  </div>
+
+  <div class="callout danger">
+    <span class="callout-icon">⚠️</span>
+    <div>
+      <strong>Worker 상태 업데이트 혼재 (즉시 통일 필요)</strong><br>
+      ValidationProcessor → <code>/worker-jobs/external/:id/status</code> (X-API-Key)<br>
+      Conversion/SynthesisProcessor → 비-external 경로 (JWT 해석될 수 있음) → 상태 업데이트 실패 가능
+    </div>
+  </div>
+
+  <div class="section-heading">Worker 환경변수 (apps/worker/.env.example에 누락!)</div>
+  <div class="code-block">
+<span class="cb-comment"># apps/worker/.env에 수동으로 추가 필요</span>
+<span class="cb-key">WORKER_API_KEY</span>=<span class="cb-val">your-strong-key-here</span>
+<span class="cb-key">API_BASE_URL</span>=<span class="cb-val">http://localhost:4000/api</span>
+<span class="cb-comment"># WORKER_API_KEY는 반드시 루트 .env의 API_KEYS 콤마 목록에 포함되어야 함</span>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════
+     §9 외부 연동 검증
+══════════════════════════════════════════════════ -->
+<section id="integration" class="section">
+  <div class="page-title">🔗 외부 쇼핑몰 연동 검증</div>
+  <div class="page-subtitle">Admin → API → test-php 전 구간 체크</div>
+
+  <div class="section-heading">전체 연동 흐름</div>
+  <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; padding:20px; background:var(--surface); border:1px solid var(--border); border-radius:10px; margin-bottom:20px; font-size:13px;">
+    <div style="padding:8px 14px; border:1px solid var(--border); border-radius:8px; text-align:center; background:var(--surface2);">Admin<br><small style="color:var(--text-dim);">sortcode 매핑</small></div>
+    <span style="color:var(--text-dim);">→</span>
+    <div style="padding:8px 14px; border:1px solid var(--blue); border-radius:8px; text-align:center;">GET by-product<br><small style="color:var(--blue);">X-API-Key</small></div>
+    <span style="color:var(--text-dim);">→</span>
+    <div style="padding:8px 14px; border:1px solid var(--border); border-radius:8px; text-align:center; background:var(--surface2);">templateSetId 결정</div>
+    <span style="color:var(--text-dim);">→</span>
+    <div style="padding:8px 14px; border:1px solid var(--green); border-radius:8px; text-align:center;">Editor.create()<br><small style="color:var(--green);">templateSetId 전달</small></div>
+    <span style="color:var(--text-dim);">→</span>
+    <div style="padding:8px 14px; border:1px solid var(--border); border-radius:8px; text-align:center; background:var(--surface2);">callback.php<br><small style="color:var(--text-dim);">sessionId 수신</small></div>
+    <span style="color:var(--text-dim);">→</span>
+    <div style="padding:8px 14px; border:1px solid var(--orange); border-radius:8px; text-align:center;">webhook.php<br><small style="color:var(--orange);">mergedUrl 수신</small></div>
+  </div>
+
+  <div class="section-heading">핵심 API 검증 커맨드</div>
+  <div class="code-block">
+<span class="cb-comment"># 1. 상품-템플릿셋 매핑 조회 (핵심 외부 연동 API)</span>
+<span class="cb-cmd">curl</span> -G "http://localhost:4000/api/product-template-sets/by-product" \
+  -H "X-API-Key: YOUR_API_KEY" \
+  --data-urlencode "sortcode=001001001" \
+  --data-urlencode "stanSeqno=1"
+<span class="cb-comment"># 성공: templateSets 배열 비어있지 않음 + 기대한 templateSetId 포함</span>
+
+<span class="cb-comment"># 2. 편집 세션 외부 조회 (주문번호 기준)</span>
+<span class="cb-cmd">curl</span> -G "http://localhost:4000/api/edit-sessions/external" \
+  -H "X-API-Key: YOUR_API_KEY" \
+  --data-urlencode "orderSeqno=12345"
+
+<span class="cb-comment"># 3. 검증 잡 생성</span>
+<span class="cb-cmd">curl</span> -X POST "http://localhost:4000/api/worker-jobs/validate/external" \
+  -H "X-API-Key: YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"fileId":"uuid","fileType":"cover","orderOptions":{...}}'
+  </div>
+
+  <div class="section-heading">권장 점검 순서</div>
+  <div class="check-item"><div class="check-box" onclick="toggleCheck(this)"></div><div class="check-item-text">Admin에서 sortcode/prdtStanSeqno/templateSetId 매핑 생성 및 isActive 확인</div></div>
+  <div class="check-item"><div class="check-box" onclick="toggleCheck(this)"></div><div class="check-item-text">curl로 by-product API 호출 → 기대 templateSetId 포함 응답 확인</div></div>
+  <div class="check-item"><div class="check-box" onclick="toggleCheck(this)"></div><div class="check-item-text">test-php config.php에서 로그인 토큰 정상 발급 확인</div></div>
+  <div class="check-item"><div class="check-box" onclick="toggleCheck(this)"></div><div class="check-item-text">editor.php?templateSetId=&productId= 접속 → 에디터 정상 로딩</div></div>
+  <div class="check-item"><div class="check-box" onclick="toggleCheck(this)"></div><div class="check-item-text">편집 완료 → callback.php에 sessionId 비어있지 않음</div></div>
+  <div class="check-item"><div class="check-box" onclick="toggleCheck(this)"></div><div class="check-item-text">워커 잡 생성 → webhook.php에 results/&lt;jobId&gt;.json 파일 생성</div></div>
+
+  <div class="section-heading">장애 빠른 분류표</div>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>증상</th><th>가장 먼저 볼 곳</th></tr></thead>
+      <tbody>
+        <tr><td>by-product 빈 배열</td><td>Admin 매핑 확인, sortcode/stanSeqno/X-API-Key 값</td></tr>
+        <tr><td>PHP 로그인 실패</td><td>test-php/php/config.php, POST /api/auth/login</td></tr>
+        <tr><td>에디터 템플릿 못 불러옴</td><td>templateSetId 값, EditorView.tsx</td></tr>
+        <tr><td>callback sessionId 빈 값</td><td>useWorkSave.ts:675 (P1 미구현)</td></tr>
+        <tr><td>webhook 파일 안 생김</td><td>callbackUrl 도달성, webhook.php 접근성</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════
+     §10 배포 & 운영
+══════════════════════════════════════════════════ -->
+<section id="deploy" class="section">
+  <div class="page-title">🚢 배포 & 운영</div>
+  <div class="page-subtitle">Docker Compose / PM2 / 운영 로그</div>
+
+  <div class="section-heading">최초 환경 세팅 (한 번만)</div>
+  <div class="code-block">
+<span class="cb-comment"># 1. 의존성 설치</span>
+<span class="cb-cmd">pnpm install</span>
+
+<span class="cb-comment"># 2. 공용 타입 먼저 빌드 (다른 패키지 의존)</span>
+<span class="cb-cmd">pnpm --filter @storige/types build</span>
+
+<span class="cb-comment"># 3. canvas-core 선빌드 (필요 시)</span>
+<span class="cb-cmd">pnpm --filter @storige/canvas-core build</span>
+
+<span class="cb-comment"># 4. 환경변수 파일 복사 (3곳 모두!)</span>
+<span class="cb-cmd">cp .env.example .env</span>
+<span class="cb-cmd">cp apps/api/.env.example apps/api/.env</span>
+<span class="cb-cmd">cp apps/editor/.env.example apps/editor/.env</span>
+<span class="cb-cmd">cp apps/worker/.env.example apps/worker/.env</span>
+<span class="cb-comment"># → apps/worker/.env에 WORKER_API_KEY, API_BASE_URL 두 줄 수동 추가!</span>
+
+<span class="cb-comment"># 5. DB/Redis 먼저 기동</span>
+<span class="cb-cmd">docker compose up -d mariadb redis</span>
+
+<span class="cb-comment"># 6. 개발 서버 전체 기동</span>
+<span class="cb-cmd">pnpm dev</span>
+  </div>
+
+  <div class="section-heading">운영 배포 (Docker Compose)</div>
+  <div class="code-block">
+<span class="cb-cmd">git pull</span>
+<span class="cb-cmd">pnpm install</span>
+<span class="cb-cmd">pnpm --filter @storige/types build</span>
+<span class="cb-cmd">docker compose build</span>
+<span class="cb-cmd">docker compose up -d</span>
+<span class="cb-comment"># 서비스: nginx(80/443) · api(4000) · worker(4001) · editor · admin · mariadb · redis</span>
+  </div>
+
+  <div class="section-heading">자주 쓰는 운영 명령</div>
+  <div class="code-block">
+<span class="cb-comment"># 로그 추적</span>
+<span class="cb-cmd">docker-compose logs -f api worker</span>
+
+<span class="cb-comment"># 큐 적체 확인</span>
+<span class="cb-cmd">docker exec -it storige-redis redis-cli LLEN bull:pdf-synthesis:wait</span>
+
+<span class="cb-comment"># 테이블 수 확인 (23개 확인)</span>
+<span class="cb-cmd">docker exec -it storige-mariadb mysql -u storige -p storige -e "SHOW TABLES;"</span>
+
+<span class="cb-comment"># Health check</span>
+<span class="cb-cmd">curl http://localhost:4000/api/health</span>   <span class="cb-comment"># → {status:"ok"}</span>
+
+<span class="cb-comment"># 전체 재배포 (one-liner)</span>
+<span class="cb-cmd">git pull && pnpm install && pnpm --filter @storige/types build && docker compose up -d --build</span>
+  </div>
+
+  <div class="section-heading">백업 대상</div>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>대상</th><th>위치</th><th>빈도</th></tr></thead>
+      <tbody>
+        <tr><td>MariaDB</td><td>Docker 볼륨 <code>storige_mariadb_data</code></td><td>매일</td></tr>
+        <tr><td>업로드 파일</td><td>Docker 볼륨 <code>storige_storage</code> (<code>/app/storage</code>)</td><td>매일</td></tr>
+        <tr><td>Redis 큐 상태</td><td>볼륨 있어도 소실 가능</td><td>해당 없음 (재시작 시 재처리)</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout warn">
+    <span class="callout-icon">⚠️</span>
+    <div><code>docker/api/Dockerfile</code>에 <code>|| true</code>로 빌드 실패를 삼키는 라인 있음 → 빌드 실패가 마스킹됨. 조속히 제거 필요.</div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════
+     §11 FAQ & 장애대응
+══════════════════════════════════════════════════ -->
+<section id="faq" class="section">
+  <div class="page-title">❓ FAQ & 장애 대응</div>
+  <div class="page-subtitle">자주 막히는 지점 모음</div>
+
+  <div class="section-heading">증상별 빠른 분류표</div>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>증상</th><th>첫 번째로 볼 것</th><th>원인 후보</th></tr></thead>
+      <tbody>
+        <tr><td>컨테이너 기동 후 "테이블 없음"</td><td>SHOW TABLES</td><td><strong class="badge badge-red">P0-A</strong></td></tr>
+        <tr><td>Admin 템플릿셋 저장 500</td><td>API 로그</td><td>엔티티-DB 컬럼 불일치</td></tr>
+        <tr><td>에디터 템플릿 못 불러옴</td><td>templateSetId 값</td><td>쿼리 키 오타, 매핑 비활성</td></tr>
+        <tr><td>편집 완료 후 sessionId 빈 값</td><td>useWorkSave.ts:675</td><td><strong class="badge badge-orange">P1 미구현</strong></td></tr>
+        <tr><td>썸네일 안 나옴</td><td>storage.service.ts:163</td><td><strong class="badge badge-yellow">P4 미구현</strong></td></tr>
+        <tr><td>Worker 상태 API 반영 안 됨</td><td>apps/worker/.env</td><td>WORKER_API_KEY, API_BASE_URL 누락</td></tr>
+        <tr><td>Admin 401 무한 루프</td><td>localStorage 초기화</td><td>accessToken/refreshToken 충돌</td></tr>
+        <tr><td>중철 PDF 이상</td><td>pdf-synthesizer.service.ts</td><td><strong class="badge badge-yellow">P2 미구현 (임포지션)</strong></td></tr>
+        <tr><td>외부 by-product 빈 배열</td><td>Admin 매핑, API Key</td><td>매핑 없음 or 키 틀림</td></tr>
+        <tr><td>운영 Storage URL 404</td><td>admin resolveStorageUrl</td><td>최근 3커밋 패턴 확인</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section-heading">자주 묻는 Q&A</div>
+
+  <div class="faq-item">
+    <div class="faq-q">Q. pnpm dev가 types를 못 찾아요</div>
+    <div class="faq-a">A. <code>pnpm --filter @storige/types build</code>를 먼저 실행. canvas-core도 함께 빌드: <code>pnpm --filter @storige/canvas-core build</code></div>
+  </div>
+  <div class="faq-item">
+    <div class="faq-q">Q. Worker는 도는데 상태가 API에 반영 안 됩니다</div>
+    <div class="faq-a">A. <code>apps/worker/.env</code>에 <code>WORKER_API_KEY</code>, <code>API_BASE_URL</code>이 있는지 확인. 둘 다 없으면 조용히 실패. 추가로 <code>WORKER_API_KEY</code>가 루트 <code>API_KEYS</code> 목록에 포함되어 있어야 함.</div>
+  </div>
+  <div class="faq-item">
+    <div class="faq-q">Q. 관리자 페이지 401 무한 루프</div>
+    <div class="faq-a">A. 브라우저 localStorage에서 <code>accessToken/refreshToken</code> 삭제 후 재로그인. 에디터와 동시 사용 시 세션 충돌 → 시크릿 창 또는 별도 브라우저 프로필 사용.</div>
+  </div>
+  <div class="faq-item">
+    <div class="faq-q">Q. 편집 후 PDF 저장이 중간에 멈춥니다</div>
+    <div class="faq-a">A. <code>useWorkSave.ts</code> P1 이슈 가능성 높음. 네트워크 탭에서 <code>/edit-sessions/:id/complete</code>가 호출되는지 먼저 확인.</div>
+  </div>
+  <div class="faq-item">
+    <div class="faq-q">Q. Docker worker 컨테이너가 canvas 빌드 실패</div>
+    <div class="faq-a">A. <code>docker/worker/Dockerfile</code>에 cairo/pango/ghostscript/imagemagick 설치 필요. 오래된 이미지면 <code>--no-cache</code> 재빌드. Apple Silicon은 <code>--platform linux/amd64</code> 명시.</div>
+  </div>
+  <div class="faq-item">
+    <div class="faq-q">Q. .env와 Vercel 환경변수가 따로 놀아요</div>
+    <div class="faq-a">A. <code>storige-admin .env.production</code>이 Vercel 값을 override하는 구조. 커밋 <code>012e1e9</code>, <code>f2bab8d</code> 참고.</div>
+  </div>
+  <div class="faq-item">
+    <div class="faq-q">Q. Bookmoa DB 연결 오류</div>
+    <div class="faq-a">A. <code>BOOKMOA_DB_*</code>는 기본 주석 처리. 필요할 때만 .env에서 해제. 반드시 읽기 전용 계정 사용.</div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════
+     §E1 편집기 진입 매트릭스 — 모드 분리
+══════════════════════════════════════════════════ -->
+<section id="editor-modes" class="section">
+  <div class="page-title">🚪 편집기 진입 매트릭스 — 모드 분리</div>
+  <div class="page-subtitle">같은 EditorView 가 권한·URL 파라미터에 따라 다른 헤더/저장 동작을 노출. 운영자가 한눈에 "본인 작품인가, 운영 베이스인가" 구분 가능.</div>
+
+  <div class="callout">
+    <span class="callout-icon">🆕</span>
+    <div><strong>2026-05-09 ~ 05-10</strong> — 사용자/관리자 흐름 명확 분리. 자세한 사이클 보고서: <code>docs/MASTER_STATUS_2026-05-10.md</code></div>
+  </div>
+
+  <div class="section-heading">5가지 진입 경로 + 저장 동작</div>
+  <div class="card">
+    <table class="data-table">
+      <thead>
+        <tr><th>진입 경로</th><th>URL</th><th>권한</th><th>저장 시 호출 API</th><th>저장 대상</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Admin → 템플릿관리 → "<strong>편집</strong>"</td>
+          <td><code>/template?templateId=…</code></td>
+          <td>admin</td>
+          <td><code>PATCH /templates/:id</code></td>
+          <td>단일 templates.canvas_data</td>
+        </tr>
+        <tr style="background:rgba(227,179,65,.08);">
+          <td><strong>Admin → 템플릿셋관리 → "템플릿셋 수정"</strong></td>
+          <td><code>/?templateSetId=…&adminEdit=templateSet&token=&lt;admin_jwt&gt;</code></td>
+          <td>admin</td>
+          <td><code>PATCH /templates/:id</code> × N (각 페이지)</td>
+          <td>전체 사용자에게 노출되는 베이스 디자인</td>
+        </tr>
+        <tr>
+          <td>Admin → 템플릿셋관리 → "설정"</td>
+          <td><code>/template-sets/:id</code> (admin form)</td>
+          <td>admin</td>
+          <td><code>PATCH /template-sets/:id</code></td>
+          <td>메타 (이름·판형·페이지 구성·도구 메뉴 노출)</td>
+        </tr>
+        <tr>
+          <td><strong>고객 (PHP/bookmoa iframe)</strong></td>
+          <td><code>embed.tsx</code> 번들</td>
+          <td>customer</td>
+          <td><code>PATCH /edit-sessions/:id</code> + filesApi.upload + complete</td>
+          <td>edit_sessions + 업로드 PDF</td>
+        </tr>
+        <tr style="opacity:.7;">
+          <td>고객 (standalone 새 탭, legacy)</td>
+          <td><code>/?templateSetId=…</code> (adminEdit 없음)</td>
+          <td>customer</td>
+          <td>(미연결)</td>
+          <td>"독립 실행 모드 — 편집완료 콜백 없음" 토스트</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section-heading">디폴트 진입 — 샘플 8×8 inch 책</div>
+  <div class="card">
+    <p>URL 파라미터 없이 <code>/</code> 진입 시 자동 로드되는 샘플 (이전: 100×100mm 빈 캔버스):</p>
+    <ul style="margin:8px 0 0 18px; line-height:1.9;">
+      <li>템플릿셋 ID: <code>sample-8x8-book-24p</code></li>
+      <li>판형: <code>203.2 × 203.2 mm</code> (8 × 8 inch)</li>
+      <li>에디터 모드: <code>book</code> (스프레드 표지 1 + 내지 24)</li>
+      <li>책등 폭: <code>(24/2) × 0.10 + 0.5 = 1.7 mm</code> (모조지 80g · 무선제본 24p)</li>
+      <li>비활성화: <code>VITE_DEFAULT_TEMPLATE_SET_ID=none</code> 환경변수</li>
+    </ul>
+    <div class="file-ref">apps/api/migrations/20260508_seed_sample_template_set.sql</div>
+    <div class="file-ref">apps/editor/src/constants/defaultTemplateSet.ts</div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════
+     §E2 도구 메뉴 노출 화이트리스트
+══════════════════════════════════════════════════ -->
+<section id="editor-tools" class="section">
+  <div class="page-title">🧰 도구 메뉴 노출 화이트리스트</div>
+  <div class="page-subtitle">템플릿셋(상품) 단위로 좌측 ToolBar 메뉴 노출 제어 — 동화책 = 프레임/QR off, 전단지 = AI/모양컷 off, 단순 PDF 입고 = 업로드만</div>
+
+  <div class="section-heading">데이터 모델</div>
+  <div class="card">
+    <p><strong>저장 위치</strong>: <code>template_sets.enabled_menus</code> (JSON 배열, nullable)</p>
+    <table class="data-table">
+      <thead><tr><th>값</th><th>의미</th></tr></thead>
+      <tbody>
+        <tr><td><code>null</code> (기본)</td><td>모든 메뉴 노출 — legacy 호환</td></tr>
+        <tr><td><code>[ ... ]</code> 배열</td><td>화이트리스트 — 배열에 포함된 키만 노출, 순서 보존</td></tr>
+        <tr><td><code>[]</code> 빈 배열</td><td>모든 도구 메뉴 숨김</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section-heading">도구 키 (EditorMenuKey · 단일 소스)</div>
+  <div class="card">
+    <p><code>packages/types/src/index.ts</code> — <code>EditorMenuKey</code> + <code>EDITOR_MENU_DEFS</code>:</p>
+    <p style="margin-top:8px;"><code>UPLOAD</code> · <code>CLIPPING</code> · <code>TEMPLATE</code> · <code>IMAGE</code> · <code>TEXT</code> · <code>SHAPE</code> · <code>BACKGROUND</code> · <code>FRAME</code> · <code>SMART_CODE</code> · <code>EDIT</code> · <code>AI</code></p>
+    <div class="callout" style="margin-top:14px;">
+      <span class="callout-icon">💡</span>
+      <div><strong>새 도구 추가 절차</strong>: <code>EditorMenuKey</code> + <code>EDITOR_MENU_DEFS</code> + <code>ToolBar.ALL_MENUS</code> 세 곳만 갱신 → admin 체크박스 UI 자동 갱신.</div>
+    </div>
+  </div>
+
+  <div class="section-heading">예시 시나리오</div>
+  <div class="card">
+    <pre style="background:var(--surface2); padding:12px; border-radius:6px; overflow-x:auto; font-size:12.5px;"><code>// 동화책 — 프레임/QR 안 씀
+{ "enabledMenus": ["UPLOAD","CLIPPING","TEMPLATE","IMAGE","TEXT","SHAPE","BACKGROUND","EDIT","AI"] }
+
+// 전단지 — AI/모양컷 안 씀
+{ "enabledMenus": ["UPLOAD","TEMPLATE","IMAGE","TEXT","SHAPE","BACKGROUND","FRAME","SMART_CODE","EDIT"] }
+
+// 단순 PDF 입고
+{ "enabledMenus": ["UPLOAD"] }</code></pre>
+  </div>
+
+  <div class="section-heading">원칙</div>
+  <div class="card">
+    <ul style="margin-left:18px; line-height:1.9;">
+      <li><code>editMode === true</code> (admin 편집 미리보기) 에서는 화이트리스트 무시 → 전체 노출</li>
+      <li>빌드 플래그 (<code>VITE_ENABLE_*</code>) 와 화이트리스트는 <strong>AND</strong> 관계</li>
+      <li>Admin "설정" 화면에서 토글 + 체크박스 그룹 (전체/없음/업로드만 프리셋)</li>
+    </ul>
+    <div class="file-ref">apps/admin/src/pages/TemplateSets/TemplateSetForm.tsx</div>
+    <div class="file-ref">apps/editor/src/components/editor/ToolBar.tsx</div>
+    <div class="file-ref">apps/editor/src/stores/useSettingsStore.ts (setEnabledMenus)</div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════
+     §E3 캔버스 UX — 객체 선택 핸들 + 워크스페이스 자동 정렬
+══════════════════════════════════════════════════ -->
+<section id="editor-canvas" class="section">
+  <div class="page-title">🎨 캔버스 UX — 객체 핸들 + 워크스페이스 자동 정렬</div>
+  <div class="page-subtitle">선택 핸들 직관성 ↑ + 사이드 메뉴 토글 시 페이지 자동 중앙 정렬</div>
+
+  <div class="section-heading">객체 선택 핸들</div>
+  <div class="card">
+    <table class="data-table">
+      <thead><tr><th>컨트롤</th><th>모양</th><th>동작</th></tr></thead>
+      <tbody>
+        <tr><td>4 코너 (<code>tl/tr/bl/br</code>)</td><td><strong>원형</strong> Ø12 (터치 ×1.33)</td><td>자유 비율 리사이즈</td></tr>
+        <tr><td>좌·우 변 (<code>ml/mr</code>)</td><td><strong>세로 캡슐</strong> 7×22</td><td>가로 스케일 / Shift+드래그 = 스큐</td></tr>
+        <tr><td>상·하 변 (<code>mt/mb</code>)</td><td><strong>가로 캡슐</strong> 22×7</td><td>세로 스케일 / Shift+드래그 = 스큐</td></tr>
+        <tr><td>회전 (<code>mtr</code>)</td><td><strong>객체 아래 36px 원형 + 회전 화살표</strong></td><td>회전 (15° 스냅)</td></tr>
+      </tbody>
+    </table>
+    <ul style="margin-top:14px; margin-left:18px; line-height:1.9;">
+      <li>보더 두께 1px → 1.5px (선택 객체 인식 강화)</li>
+      <li>회전 핸들 위→아래 이동 (텍스트 위 가려짐 방지)</li>
+      <li>회전 화살표는 객체 angle 무관 항상 화면 기준 → 직관성 ↑</li>
+      <li>light/dark 테마 색상 자동 동기화 (브랜드 파랑/그린)</li>
+      <li>터치 환경 핸들/캡슐 비례 확대</li>
+    </ul>
+    <div class="file-ref">packages/canvas-core/src/plugins/ControlsPlugin.ts (idempotent prototype 패치)</div>
+  </div>
+
+  <div class="section-heading">워크스페이스 자동 중앙 정렬</div>
+  <div class="card">
+    <p>캔버스 영역 폭이 변할 때(사이드 메뉴 토글 / 사이드바 드래그 / ControlBar 등장 / 윈도우 리사이즈) 페이지를 자동 중앙 재배치.</p>
+    <table class="data-table">
+      <thead><tr><th>상황</th><th>동작</th></tr></thead>
+      <tbody>
+        <tr><td>현재 줌에서 페이지가 새 영역에 들어감</td><td><strong>줌 유지</strong> + 중앙 재배치 (<code>setCenterPointOf</code>)</td></tr>
+        <tr><td>페이지가 새 영역을 넘어감</td><td><strong>자동맞춤</strong>(<code>setZoomAuto</code>) — 페이지 전체가 다시 보이게 스케일</td></tr>
+      </tbody>
+    </table>
+    <ul style="margin-top:14px; margin-left:18px; line-height:1.9;">
+      <li>5% 여백 (<code>PADDING = 0.95</code>) 으로 경계선 진동 방지</li>
+      <li>첫 마운트는 스킵 (<code>WorkspacePlugin.reset()</code> 의 setZoomAuto 가 처리)</li>
+    </ul>
+    <div class="file-ref">apps/editor/src/views/EditorView.tsx (ResizeObserver apply)</div>
+  </div>
+
+  <div class="section-heading">기타 UX fix</div>
+  <div class="card">
+    <ul style="margin-left:18px; line-height:1.9;">
+      <li><strong>배경 패널 "적용" 버튼 잘림</strong> — flex shrink 가드 (<code>min-w-0</code> + <code>shrink-0</code>) 추가</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════
+     §E4 관리자 모드 — 저장 가드 + 헤더 분리
+══════════════════════════════════════════════════ -->
+<section id="editor-admin" class="section">
+  <div class="page-title">🛡 관리자 모드 — 저장 가드 + 헤더 분리</div>
+  <div class="page-subtitle">"템플릿셋 수정" 모드는 한 번의 저장이 같은 templateSetId 진입자 모두에게 영향 → 자동저장 금지 + 명시적 confirm + 시각적 강조 3중 보호</div>
+
+  <div class="section-heading">진입 조건 (이중 가드)</div>
+  <div class="card">
+    <p><strong>두 조건 모두 통과해야</strong> admin "템플릿셋 수정" 모드 활성:</p>
+    <ol style="margin-top:8px; margin-left:22px; line-height:1.9;">
+      <li>URL 에 <code>?adminEdit=templateSet</code> (PHP/bookmoa 미전달 → 자동 차단)</li>
+      <li><code>useIsAdmin() === true</code> (고객 JWT → 자동 차단)</li>
+    </ol>
+  </div>
+
+  <div class="section-heading">헤더 영역 모드별 차이</div>
+  <div class="card">
+    <table class="data-table">
+      <thead>
+        <tr><th>영역</th><th>고객 (embed)</th><th>Admin "템플릿셋 수정"</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>좌측 인디케이터</td><td>AutoSaveIndicator (실시간)</td><td><strong>"⚠ 수동 저장 모드"</strong> amber 뱃지</td></tr>
+        <tr><td>우측 "불러오기"</td><td>표시</td><td><strong>숨김</strong></td></tr>
+        <tr><td>우측 액션 1</td><td>"내 작업에 저장"</td><td><strong>"저장"</strong> (창 유지, ⌘S)</td></tr>
+        <tr><td>우측 액션 2</td><td><strong>"편집완료"</strong> (PHP onFinish)</td><td><strong>"저장 후 닫기"</strong> (저장 + window.close)</td></tr>
+        <tr><td>저장 가드</td><td>자동저장 (30s) + 수동</td><td><strong>window.confirm</strong> + amber 배너</td></tr>
+        <tr><td>상단 안내 배너</td><td>없음</td><td>amber 배너 — 영향 범위·액션·단축키·자동저장 부재</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section-heading">저장 confirm 다이얼로그</div>
+  <div class="card">
+    <p>모든 저장 진입점 (저장 / 저장 후 닫기 / ⌘S / 커맨드 팔레트) 이 동일 confirm 거침:</p>
+    <pre style="background:var(--surface2); padding:12px; border-radius:6px; margin-top:10px; font-size:12.5px;">이 템플릿셋의 모든 페이지 디자인을 갱신합니다.
+
+• 영향 페이지: &lt;N&gt;개
+• PATCH 대상 templates: &lt;M&gt;개 (중복 templateId 제거)
+• 갱신 후 같은 templateSetId 로 진입하는 모든 사용자에게 새 디자인이 보입니다.
+
+저장 후 [계속 편집할 수 있습니다 | 창을 닫습니다]. 진행하시겠습니까?</pre>
+  </div>
+
+  <div class="section-heading">저장 흐름 (useTemplateSetSave)</div>
+  <div class="card">
+    <ul style="margin-left:18px; line-height:1.9;">
+      <li><code>allCanvas[i]</code> ↔ <code>editorTemplates[i].id</code> 1:1 매핑</li>
+      <li>같은 templateId 중복 페이지는 <strong>첫 번째만 PATCH</strong> (데이터 모델 그대로 따름)</li>
+      <li>각 templateId 별 <code>PATCH /templates/:id</code> 직렬 호출 — 실패 시 즉시 throw</li>
+      <li>토스트: <code>"템플릿셋 저장됨 (N/M templates 갱신)"</code></li>
+    </ul>
+    <div class="file-ref">apps/editor/src/hooks/useTemplateSetSave.ts</div>
+    <div class="file-ref">apps/editor/src/components/editor/EditorHeader.tsx (handleSaveForAdmin 분기)</div>
+  </div>
+
+  <div class="section-heading">Admin 라벨 정리 (혼동 방지)</div>
+  <div class="card">
+    <table class="data-table">
+      <thead><tr><th>메뉴</th><th>라벨</th><th>동작</th></tr></thead>
+      <tbody>
+        <tr><td>템플릿 관리</td><td><strong>편집</strong></td><td>단일 템플릿 캔버스 → templates 갱신</td></tr>
+        <tr><td>템플릿셋 관리</td><td><strong>템플릿셋 수정</strong></td><td>모든 페이지 캔버스 → 각 templates 갱신 (운영 베이스)</td></tr>
+        <tr><td>템플릿셋 관리</td><td><strong>설정</strong></td><td>메타 form (이름·판형·페이지 구성·도구 메뉴 노출)</td></tr>
+      </tbody>
+    </table>
+    <p style="margin-top:10px; color:var(--text-dim); font-size:13px;">이전 "에디터" 라벨은 모호해 폐기 — "수정 vs 설정" 으로 캔버스 vs 메타 의미 구분.</p>
+  </div>
+
+  <div class="callout">
+    <span class="callout-icon">📤</span>
+    <div><strong>PHP 통보 문서</strong>: <code>docs/PHP_NOTICE_2026-05-10_admin_template_set_edit.md</code> — PHP 영향 없음 + 부수 효과(긍정) 안내.</div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════
+     §12 위험 포인트 10선
+══════════════════════════════════════════════════ -->
+<section id="risks" class="section">
+  <div class="page-title">⚠️ 위험 포인트 10선</div>
+  <div class="page-subtitle">건드리기 전에 반드시 숙지</div>
+
+  <div class="p-item">
+    <div class="p-badge p0" style="font-size:18px; font-weight:700; background:none; color:var(--red);">①</div>
+    <div class="p-item-body">
+      <strong>ServicePlugin 도메인 로직 과집중</strong>
+      <p>JSON 저장과 PDF 내보내기가 한 파일에 응집. 한 쪽 수정 시 다른 쪽 회귀 발생 빈번.</p>
+      <div class="file-ref">packages/canvas-core/src/plugins/ServicePlugin.ts</div>
+    </div>
+  </div>
+  <div class="p-item">
+    <div class="p-badge p0" style="font-size:18px; font-weight:700; background:none; color:var(--red);">②</div>
+    <div class="p-item-body">
+      <strong>인증 3갈래 공존 + 저장 키 상이</strong>
+      <p>Bearer auth_token · Admin accessToken · Shop 쿠키 — 같은 localStorage에 다른 키. 세션 충돌 위험.</p>
+    </div>
+  </div>
+  <div class="p-item">
+    <div class="p-badge p0" style="font-size:18px; font-weight:700; background:none; color:var(--red);">③</div>
+    <div class="p-item-body">
+      <strong>edit_sessions vs file_edit_sessions 두 세션 엔티티 공존</strong>
+      <p>이름이 비슷하지만 테이블이 다름. 워커 디버깅 시 잘못된 테이블을 보게 되면 시간 낭비.</p>
+    </div>
+  </div>
+  <div class="p-item">
+    <div class="p-badge p1" style="font-size:18px; font-weight:700; background:none; color:var(--orange);">④</div>
+    <div class="p-item-body">
+      <strong>Worker 콜백 경로/인증 방식 혼재</strong>
+      <p>Validation만 /external 경로 사용, 나머지는 비-external. 상태 업데이트 일부만 성공 가능.</p>
+    </div>
+  </div>
+  <div class="p-item">
+    <div class="p-badge p1" style="font-size:18px; font-weight:700; background:none; color:var(--orange);">⑤</div>
+    <div class="p-item-body">
+      <strong>Webhook 서명이 비-암호학적 (base64)</strong>
+      <p>identifier:event:timestamp를 base64만으로 처리. 수신 측 변조 탐지 불가.</p>
+    </div>
+  </div>
+  <div class="p-item">
+    <div class="p-badge p1" style="font-size:18px; font-weight:700; background:none; color:var(--orange);">⑥</div>
+    <div class="p-item-body">
+      <strong>.env.example 3곳 분산 + worker 누락 항목</strong>
+      <p>apps/worker/.env.example에 WORKER_API_KEY, API_BASE_URL이 빠져 있음. 조용한 실패의 주범.</p>
+    </div>
+  </div>
+  <div class="p-item">
+    <div class="p-badge p1" style="font-size:18px; font-weight:700; background:none; color:var(--orange);">⑦</div>
+    <div class="p-item-body">
+      <strong>docker/api/Dockerfile의 || true 빌드 실패 은폐</strong>
+      <p>빌드 오류가 있어도 성공으로 처리되어 배포 실패 원인 추적 불가.</p>
+    </div>
+  </div>
+  <div class="p-item">
+    <div class="p-badge p2" style="font-size:18px; font-weight:700; background:none; color:var(--yellow);">⑧</div>
+    <div class="p-item-body">
+      <strong>Editor TS strict=false → 타입 회귀 취약</strong>
+      <p>apps/editor/tsconfig.json strict:false. 타입 오류가 런타임까지 통과됨.</p>
+    </div>
+  </div>
+  <div class="p-item">
+    <div class="p-badge p2" style="font-size:18px; font-weight:700; background:none; color:var(--yellow);">⑨</div>
+    <div class="p-item-body">
+      <strong>README.md 패키지 누락 + 깨진 링크</strong>
+      <p>packages/ai 미언급. CLAUDE.md 링크가 저장소에 없는 파일 참조.</p>
+    </div>
+  </div>
+  <div class="p-item">
+    <div class="p-badge p2" style="font-size:18px; font-weight:700; background:none; color:var(--yellow);">⑩</div>
+    <div class="p-item-body">
+      <strong>TypeORM synchronize dev 전용 → 프로덕션 마이그레이션 전략 부재</strong>
+      <p>운영에서는 synchronize:false. 스키마 변경은 수동 init.sql 의존. P0-A 해결과 함께 TypeORM Migrations 도입 필요.</p>
+    </div>
+  </div>
+</section>
+
+</div><!-- /main -->
+
+<script>
+function showSection(id) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.nav-link').forEach(b => b.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  event.currentTarget.classList.add('active');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function toggleCheck(el) {
+  el.classList.toggle('checked');
+  const item = el.closest('.check-item');
+  if (el.classList.contains('checked')) {
+    item.style.opacity = '0.5';
+    item.style.textDecoration = 'none';
+  } else {
+    item.style.opacity = '1';
+  }
+}
+</script>
+</body>
+</html>

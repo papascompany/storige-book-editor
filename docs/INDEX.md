@@ -1,8 +1,10 @@
 # Storige 문서 인덱스
 
 > **갱신**: 2026-05-10 · 편집기 UX·관리자 모드 분리 사이클 반영
+> **HTML 가이드 통합**: `Storige_개발가이드.html`, `WORKER_FLOW_시각화.html` 가 docs/ 로 합류 (이전엔 부모 디렉토리)
 
 📊 **시작점**: [`MASTER_STATUS_2026-05-10.md`](./MASTER_STATUS_2026-05-10.md) (최신)
+🏗 **시각 가이드**: [`Storige_개발가이드.html`](./Storige_개발가이드.html) (사이드바 네비, 에디터 UX 사이클 반영)
 
 ---
 
@@ -199,6 +201,8 @@
 
 | 파일 | 설명 |
 |------|------|
+| [`Storige_개발가이드.html`](./Storige_개발가이드.html) | **시각 통합 개발 가이드** — 시스템 관계도/코드베이스 지도/에디터 UX/위험 포인트 (사이드바 네비) |
+| [`WORKER_FLOW_시각화.html`](./WORKER_FLOW_시각화.html) | Worker 파이프라인 시각화 (validate → convert → synthesize) |
 | `admin-flow.pdf` | Admin 워크플로 다이어그램 |
 | `worker-work-flow.pdf` | Worker 워크플로 다이어그램 |
 | `표지편집 방식 정의.pdf` | 표지 편집 방식 |
