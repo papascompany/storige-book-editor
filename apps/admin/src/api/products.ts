@@ -2,18 +2,35 @@ import { axiosInstance } from '../lib/axios';
 
 export interface Product {
   id: string;
-  name: string;
-  code: string;
-  categoryId: string;
+  /**
+   * 상품 제목 — DB 의 진짜 컬럼 (NOT NULL).
+   * Storige 레거시 상품은 title 만 채워져 있고 name 은 NULL.
+   */
+  title?: string;
+  /**
+   * Bookmoa-style 상품명 (nullable). 누락 시 title 로 fallback.
+   * @deprecated 직접 접근 대신 `getProductDisplayName(product)` 사용 권장.
+   */
+  name?: string;
+  /** 상품 코드 (Bookmoa-style, nullable) */
+  code?: string;
+  categoryId?: string;
   templateSetId?: string;
   templateSet?: any;
-  price: number;
+  price?: number;
   isActive: boolean;
   /** 외부 쇼핑몰이 width/height URL 파라미터로 사이즈 override 허용 (옵션 C) */
   allowCustomSize?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
+
+/**
+ * Product 표시용 이름 helper — name 우선, 없으면 title 로 fallback, 둘 다 없으면 빈 문자열.
+ * Admin UI 의 모든 "상품명" 표시는 이걸 거쳐 unsafe 접근 차단.
+ */
+export const getProductDisplayName = (p: Pick<Product, 'name' | 'title'>): string =>
+  (p?.name ?? p?.title ?? '').toString();
 
 export interface CreateProductDto {
   name: string;
