@@ -105,6 +105,45 @@ docker exec -i storige-mariadb mariadb -ustorige -p"$DBPW" storige < \
 - `.claude/skills/editor-object-editing/SKILL.md` — 함정 표 추가
 - `Storige_개발가이드.html` — "에디터 UX" 사이드바 섹션 + 4개 신규 페이지
 
+## 6.1 후속 fix (2026-05-15)
+
+| 커밋 | 변경 | 영향 |
+|---|---|---|
+| `7ab82a9` | admin 상품관리 TypeError fix — name/code/price nullable 안전 접근 | 상품 페이지 흰 화면 해결 |
+| `d81b544` | admin 라이브러리/템플릿셋 썸네일 깨짐 — `/api` prefix 제거 (lib/axios) | 운영 nginx 가 `/storage/*` 직접 서빙. resolveStorageUrl 수정 |
+| `5b44825` | 누락 두 페이지 추가 fix (Templates, ProductTemplateSets) | 모든 admin 썸네일 페이지 단일 소스 사용 |
+| (예정) | 옵션 C: 더미 청소 + 샘플 placeholder + 공통 ThumbnailImage | 운영 데이터 정리 + UX 친절 placeholder |
+
+### 더미 데이터 청소 (옵션 C)
+
+진단: `templates.thumbnail_url` 모두 NULL 이었던 원인은 두 그룹의 시드 데이터:
+- **2026-04-27 시드**: tpl-cover, tpl-page-1~4 — `canvas_data.objects` 0개 (순수 더미)
+- **2026-05-09 시드 (이번 사이클)**: sample-page-8x8, sample-spread-cover-8x8 — workspace/가이드만, useTemplateSave 자동 캡쳐 경로 미경유
+
+처리:
+- `apps/api/migrations/20260515_cleanup_dummy_templates_and_seed_thumbnails.sql`
+  - tpl-* 5건 소프트 삭제 (`is_deleted=TRUE, is_active=FALSE`)
+  - sample-* 2건의 `thumbnail_url` = `/storage/library/template-samples/<file>.svg`
+  - `template_sets.sample-8x8-book-24p` 도 동일 SVG 로 대표 썸네일 부여
+- 운영 DB 적용 완료 (2026-05-15)
+
+### Placeholder SVG 자산
+
+신규 storage 위치: `/storage/library/template-samples/`
+- `sample-page-8x8.svg` — 정사각형 샘플 내지 (203.2 × 203.2 mm 라벨)
+- `sample-spread-cover-8x8.svg` — 가로형 표지 스프레드 (앞표지 + 책등 + 뒤표지 시각화)
+
+VPS `~/storige/storage/library/template-samples/` 에 업로드 + nginx `/storage/*` 직접 서빙으로 검증 완료 (200).
+
+### 공통 ThumbnailImage 컴포넌트
+
+신규: `apps/admin/src/components/ThumbnailImage.tsx`
+- props: `url`, `size?`, `alt?`, `emptyHint?`
+- url NULL → "⊘ 미설정" amber-style placeholder (Tooltip: "편집 후 저장 시 자동 생성")
+- 로드 실패 → 빨간색 placeholder (Tooltip: 실패한 URL)
+- 정상 → `<img>` (objectFit: cover)
+- 3개 페이지 (TemplateSetList / TemplateList / ProductTemplateSetList) 의 local 컴포넌트 제거 후 일괄 교체 → 단일 진실 공급원
+
 ## 7. 다음 사이클 후보
 
 - **Phase 3 (선택)**: admin "템플릿셋 수정" 모드에 "원본으로 되돌리기" 버튼 (현재 페이지 templates.canvas_data 재로드)
