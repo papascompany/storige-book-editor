@@ -58,21 +58,15 @@ import {
 } from '@storige/types';
 import { templateSetsApi } from '../../api/template-sets';
 import { templatesApi } from '../../api/templates';
+import { resolveStorageUrl } from '../../lib/axios';
 
 const { Title, Text } = Typography;
 
-// API 서버 URL (storage URL 변환용)
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000/api';
-
-// 썸네일 URL을 전체 URL로 변환
+// 썸네일 URL을 전체 URL로 변환 — 단일 소스 lib/axios.resolveStorageUrl 위임.
+// (운영의 nginx 가 /storage/* 직접 서빙하므로 /api prefix 가 들어가면 404. 2026-05-15 fix)
 const getFullThumbnailUrl = (url: string | null | undefined): string | null => {
-  if (!url) return null;
-  // 이미 전체 URL인 경우
-  if (url.startsWith('http://') || url.startsWith('https://')) {
-    return url;
-  }
-  // 상대 경로 (/storage/...) 인 경우 API base URL과 결합
-  return `${API_BASE_URL}${url}`;
+  const resolved = resolveStorageUrl(url ?? undefined);
+  return resolved || null;
 };
 
 const templateTypeLabels: Record<TemplateType, string> = {
