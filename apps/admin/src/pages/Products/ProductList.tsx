@@ -27,7 +27,7 @@ import {
   SearchOutlined,
 } from '@ant-design/icons';
 import { TemplateSetType, Category } from '@storige/types';
-import { productsApi, Product, CreateProductDto, UpdateProductDto } from '../../api/products';
+import { productsApi, Product, CreateProductDto, UpdateProductDto, getProductDisplayName } from '../../api/products';
 import { templateSetsApi } from '../../api/template-sets';
 import { categoriesApi } from '../../api/categories';
 import { resolveStorageUrl } from '../../lib/axios';
@@ -166,8 +166,9 @@ export const ProductList = () => {
   const handleEdit = (product: Product) => {
     setEditingProduct(product);
     form.setFieldsValue({
-      name: product.name,
-      code: product.code,
+      // legacy Storige 상품은 name 이 NULL — title 로 fallback
+      name: getProductDisplayName(product),
+      code: product.code ?? '',
       categoryId: product.categoryId,
       price: product.price,
       isActive: product.isActive,
@@ -214,13 +215,16 @@ export const ProductList = () => {
       dataIndex: 'code',
       key: 'code',
       width: 120,
-      render: (code: string) => <Text code>{code}</Text>,
+      render: (code: string | null | undefined) =>
+        code ? <Text code>{code}</Text> : <Text type="secondary">—</Text>,
     },
     {
       title: '상품명',
       dataIndex: 'name',
       key: 'name',
-      sorter: (a, b) => a.name.localeCompare(b.name),
+      // legacy 상품(name=NULL)도 title 로 fallback 표시
+      render: (_: unknown, record: Product) => getProductDisplayName(record) || <Text type="secondary">—</Text>,
+      sorter: (a, b) => getProductDisplayName(a).localeCompare(getProductDisplayName(b)),
     },
     {
       title: '카테고리',
@@ -234,8 +238,10 @@ export const ProductList = () => {
       dataIndex: 'price',
       key: 'price',
       width: 120,
-      render: (price: number) => `${price.toLocaleString()}원`,
-      sorter: (a, b) => a.price - b.price,
+      // legacy 상품은 price 가 NULL — 안전 표시
+      render: (price: number | null | undefined) =>
+        typeof price === 'number' ? `${price.toLocaleString()}원` : <Text type="secondary">—</Text>,
+      sorter: (a, b) => (a.price ?? 0) - (b.price ?? 0),
     },
     {
       title: '템플릿셋',
@@ -332,11 +338,15 @@ export const ProductList = () => {
     },
   ];
 
-  // Filter by search
-  const filteredProducts = products?.filter((product) =>
-    product.name.toLowerCase().includes(searchText.toLowerCase()) ||
-    product.code.toLowerCase().includes(searchText.toLowerCase())
-  );
+  // Filter by search — name/title/code 모두 nullable 이므로 안전 접근.
+  // legacy Storige 상품(name=NULL, code=NULL)이 섞여 있어 unsafe 접근 시 toLowerCase 폭발.
+  const filteredProducts = products?.filter((product) => {
+    const term = searchText.toLowerCase();
+    if (!term) return true;
+    const name = getProductDisplayName(product).toLowerCase();
+    const code = (product.code ?? '').toLowerCase();
+    return name.includes(term) || code.includes(term);
+  });
 
   return (
     <div>
