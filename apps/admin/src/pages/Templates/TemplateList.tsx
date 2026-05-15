@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -22,68 +22,18 @@ import {
   DeleteOutlined,
   CopyOutlined,
   SearchOutlined,
-  FileImageOutlined,
   CheckOutlined,
   CloseOutlined,
 } from '@ant-design/icons';
 import { Template } from '@storige/types';
 import { templatesApi } from '../../api/templates';
 import { categoriesApi } from '../../api/categories';
-import { resolveStorageUrl } from '../../lib/axios';
+import { ThumbnailImage } from '../../components/ThumbnailImage';
 
 const { Title } = Typography;
 
-// 썸네일 URL을 전체 URL로 변환 — 단일 소스 lib/axios.resolveStorageUrl 위임.
-// (운영의 nginx 가 /storage/* 직접 서빙하므로 /api prefix 가 들어가면 404. 2026-05-15 fix)
-const getFullThumbnailUrl = (url: string | null | undefined): string | null => {
-  const resolved = resolveStorageUrl(url ?? undefined);
-  return resolved || null;
-};
-
-// 썸네일 이미지 컴포넌트
-const ThumbnailImage = ({ url }: { url: string | null | undefined }) => {
-  const [hasError, setHasError] = useState(false);
-  const fullUrl = getFullThumbnailUrl(url);
-
-  const handleError = useCallback(() => {
-    setHasError(true);
-  }, []);
-
-  // URL이 없거나 로딩 실패 시 placeholder 표시
-  if (!fullUrl || hasError) {
-    return (
-      <div
-        style={{
-          width: 60,
-          height: 60,
-          borderRadius: 4,
-          backgroundColor: '#f5f5f5',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          border: '1px solid #e8e8e8',
-        }}
-      >
-        <FileImageOutlined style={{ fontSize: 24, color: '#bfbfbf' }} />
-      </div>
-    );
-  }
-
-  return (
-    <img
-      src={fullUrl}
-      alt="thumbnail"
-      style={{
-        width: 60,
-        height: 60,
-        objectFit: 'cover',
-        borderRadius: 4,
-        backgroundColor: '#f5f5f5',
-      }}
-      onError={handleError}
-    />
-  );
-};
+// 썸네일 표시는 공통 컴포넌트 사용 (admin/components/ThumbnailImage)
+// — placeholder/로드 실패 UX 통일 + resolveStorageUrl 위임
 
 // 편집 가능한 editCode 컴포넌트
 interface EditableEditCodeProps {
