@@ -37,17 +37,15 @@ import { templateSetsApi } from '../../api/template-sets';
 import { bookmoaApi, BookmoaCategory } from '../../api/bookmoa';
 import { TemplateSet } from '@storige/types';
 import { useDebouncedCallback } from 'use-debounce';
+import { resolveStorageUrl } from '../../lib/axios';
 
 const { Title, Text } = Typography;
 
-// API 서버 URL
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000/api';
-
-// 썸네일 URL 변환
+// 썸네일 URL 변환 — 단일 소스 lib/axios.resolveStorageUrl 위임.
+// (운영의 nginx 가 /storage/* 직접 서빙하므로 /api prefix 가 들어가면 404. 2026-05-15 fix)
 const getFullThumbnailUrl = (url: string | null | undefined): string | null => {
-  if (!url) return null;
-  if (url.startsWith('http://') || url.startsWith('https://')) return url;
-  return `${API_BASE_URL}${url}`;
+  const resolved = resolveStorageUrl(url ?? undefined);
+  return resolved || null;
 };
 
 // 썸네일 이미지 컴포넌트
