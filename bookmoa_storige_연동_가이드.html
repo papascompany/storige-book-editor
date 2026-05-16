@@ -363,9 +363,11 @@
         <a href="#overview">전체 개요</a>
         <a href="#platform">플랫폼 판단</a>
         <a href="#bookmoa-guide">bookmoa 연동가이드</a>
+        <a href="#strategy">진행 전략 (Group A/B)</a>
         <a href="#domain">도메인 제약</a>
         <a href="#architecture">구조도</a>
         <a href="#roadmap">진행 순서</a>
+        <a href="#priority">우선순위 매트릭스</a>
         <a href="#partner">제휴사 관리자</a>
         <a href="#worker">PDF 워커 흐름</a>
         <a href="#contracts">핵심 계약</a>
@@ -383,7 +385,7 @@
           bookmoa web(PHP)을 첫 운영 테넌트로 연동한 뒤 다른 인쇄 서비스까지 확장하기 위한 실행 순서입니다.
         </p>
         <div class="hero-grid">
-          <div class="metric"><strong>12</strong><span>따라갈 구현 단계</span></div>
+          <div class="metric"><strong>14</strong><span>따라갈 구현 단계</span></div>
           <div class="metric"><strong>4</strong><span>핵심 보안 경계</span></div>
           <div class="metric"><strong>Site</strong><span>외부 서비스 관리 단위</span></div>
           <div class="metric"><strong>PDF</strong><span>검증 · 합성 · 다운로드</span></div>
@@ -552,8 +554,143 @@
         </div>
       </section>
 
+      <section id="strategy">
+        <h2>3. 진행 전략 — 보완과 연동의 순서</h2>
+        <p class="section-intro">
+          두 저장소(Storige · bookmoa-mobile)의 보완 작업과 연동 작업을 어떤 순서로 진행할지 결정한 단락입니다.
+          <strong>하이브리드 진행</strong>으로 확정: Phase 0(계약 결정) → Group A 보완(병렬) → 메인 연동 → Pilot 운영 → Group B 보완(병렬).
+        </p>
+
+        <div class="grid-3">
+          <div class="card">
+            <span class="tag amber">왜 보완 먼저가 아닌가</span>
+            <h3>"보완 다 끝내고 연동" 의 함정</h3>
+            <p>보완 중 연동 요구사항이 보완 방향을 바꿔 두 번 작업하게 됩니다. 실데이터 없는 성능 개선은 헛수고가 되기 쉽습니다.</p>
+          </div>
+          <div class="card">
+            <span class="tag amber">왜 연동 먼저가 아닌가</span>
+            <h3>"연동 다 끝내고 보완" 의 함정</h3>
+            <p>흔들리는 화면/엔진 위에 연동을 얹어 디버깅이 어렵습니다. 곧 바뀔 UI에 진입점을 붙이면 다시 떼야 합니다.</p>
+          </div>
+          <div class="card">
+            <span class="tag green">하이브리드 결정</span>
+            <h3>인터페이스 영향만 먼저</h3>
+            <p>연동 인터페이스에 영향을 주는 보완(Group A)만 먼저 처리하고, 나머지 내부 보완(Group B)은 Pilot 운영 데이터를 보고 우선순위를 잡습니다.</p>
+          </div>
+        </div>
+
+        <h3 style="margin-top:22px">Group A — 연동 전 필수 보완 (두 저장소 병렬)</h3>
+        <div class="matrix">
+          <table>
+            <thead>
+              <tr>
+                <th>저장소</th>
+                <th>보완 항목</th>
+                <th>왜 연동 전인가</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Storige</strong></td>
+                <td>편집기 embed 모드 안정화 (postMessage, CSP `frame-ancestors`, `parentOrigin`)</td>
+                <td>inline embed가 연동의 핵심. 불안정하면 디버깅 시 Storige 버그/연동 버그 구분이 불가능합니다.</td>
+              </tr>
+              <tr>
+                <td><strong>Storige</strong></td>
+                <td>Admin 사이트 관리 기능 (`sites` CRUD, `allowedOrigins`/`frameAncestors`)</td>
+                <td>Phase 1 자체가 이 작업입니다. 분리할 수 없습니다.</td>
+              </tr>
+              <tr>
+                <td><strong>Storige</strong></td>
+                <td>외부 API 응답/DTO 안정화 (URL 케이스 호환, webhook 서명)</td>
+                <td>Phase 0 계약이 흔들리면 어댑터도 같이 흔들립니다.</td>
+              </tr>
+              <tr>
+                <td><strong>bookmoa-mobile</strong></td>
+                <td>상품 주문 화면 데이터 모델 정리 (`customProducts` 스키마)</td>
+                <td>어차피 `storige.*` 필드 추가가 필요. 구조가 흔들리면 cart 스키마도 같이 흔들립니다.</td>
+              </tr>
+              <tr>
+                <td><strong>bookmoa-mobile</strong></td>
+                <td>상품 상세 진입점/주문 화면 구조 정리</td>
+                <td>"편집기 열기" 버튼 위치가 흔들리면 진입점도 다시 붙여야 합니다.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 style="margin-top:22px">Group B — Pilot 운영 후 진행 (두 저장소 병렬, 우선순위는 Pilot 데이터로 재조정)</h3>
+        <div class="matrix">
+          <table>
+            <thead>
+              <tr>
+                <th>저장소</th>
+                <th>보완 항목</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Storige</strong></td>
+                <td>워커 성능 개선 (병렬 처리, 큐 튜닝, Ghostscript 옵션)</td>
+              </tr>
+              <tr>
+                <td><strong>Storige</strong></td>
+                <td>편집기 내부 기능 추가 (도구, 효과, 정렬 옵션 등)</td>
+              </tr>
+              <tr>
+                <td><strong>Storige</strong></td>
+                <td>Admin 통계/대시보드/리포트</td>
+              </tr>
+              <tr>
+                <td><strong>bookmoa-mobile</strong></td>
+                <td>주문 화면 UI/UX 개선, 결제 플로우 보강</td>
+              </tr>
+              <tr>
+                <td><strong>bookmoa-mobile</strong></td>
+                <td>부가 기능 (알림, 추천, 검색 강화 등)</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 style="margin-top:22px">전체 진행 흐름</h3>
+        <div class="flow">
+          <div class="flow-card">
+            <b>Phase 0</b>
+            <small>표준 계약 결정<br/>(URL 케이스 · webhook 서명 · inline embed)</small>
+          </div>
+          <div class="flow-card">
+            <b>Group A 보완</b>
+            <small>두 저장소 병렬<br/>(인터페이스에 영향을 주는 항목만)</small>
+          </div>
+          <div class="flow-card">
+            <b>메인 연동</b>
+            <small>Phase 1~7<br/>서버 어댑터 · 매핑 · EditorHost · Worker</small>
+          </div>
+          <div class="flow-card">
+            <b>Phase 7.5 Pilot</b>
+            <small>1~2개 상품 실데이터 운영<br/>병목·이슈 식별</small>
+          </div>
+          <div class="flow-card">
+            <b>Phase 8 QA</b>
+            <small>E2E 시나리오 1~17 통과<br/>운영 배포</small>
+          </div>
+          <div class="flow-card">
+            <b>Phase 9 Group B</b>
+            <small>Pilot 데이터 기반<br/>두 저장소 병렬 보완</small>
+          </div>
+        </div>
+
+        <div class="callout green">
+          <strong>운영 규칙</strong>
+          ① Group A는 두 저장소에서 병렬 가능. 단, Storige API DTO와 bookmoa-mobile 어댑터 시그니처가 Phase 0 계약과 일치하는지 매주 점검.
+          ② Group B는 Pilot 운영 데이터(큐 길이, 처리 시간, 실패율, 사용자 피드백)를 보고 우선순위 결정. 사전 추정으로 고정 금지.
+          ③ 운영 중 심각한 결함이 발생하면 Group 분류와 무관하게 핫픽스 우선.
+        </div>
+      </section>
+
       <section id="domain">
-        <h2>3. 외부 도메인 제약과 해결책</h2>
+        <h2>4. 외부 도메인 제약과 해결책</h2>
         <p class="section-intro">
           외부 사이트와 Storige Editor/API 도메인이 다르기 때문에 브라우저 보안 정책을 연동 계약에 포함해야 합니다.
         </p>
@@ -607,7 +744,7 @@
       </section>
 
       <section id="architecture">
-        <h2>4. 목표 구조</h2>
+        <h2>5. 목표 구조</h2>
         <p class="section-intro">
           Admin의 Site 설정이 외부 서비스 온보딩의 중심이고, 고객 편집 흐름과 파트너 운영 흐름은 권한을 분리합니다.
         </p>
@@ -636,7 +773,7 @@
       </section>
 
       <section id="roadmap">
-        <h2>5. 진행 순서</h2>
+        <h2>6. 진행 순서</h2>
         <p class="section-intro">
           아래 순서대로 진행하면 플랫폼 안전장치부터 bookmoa PHP 연동, mobile/기타 서비스 확장, 파트너 운영 포털까지 이어집니다.
         </p>
@@ -774,20 +911,208 @@
           <article class="step">
             <div class="num">12</div>
             <div>
-              <span class="phase">QA</span>
+              <span class="phase">Pilot · Phase 7.5</span>
+              <h3>1~2개 상품 실데이터 운영 (병목 식별)</h3>
+              <ul>
+                <li>bookmoa-mobile에서 1~2개 테스트 상품에 `allowEditor: true`를 켜고 내부 사용자 운영을 시작합니다.</li>
+                <li>Storige는 워커 큐 길이/평균 처리 시간/실패율, 편집기 ready→complete 소요/save 횟수/error율을 수집합니다.</li>
+                <li>운영 이슈를 트래킹 시트에 기록하고 Group B 우선순위 재조정 근거로 사용합니다.</li>
+              </ul>
+            </div>
+          </article>
+          <article class="step">
+            <div class="num">13</div>
+            <div>
+              <span class="phase">QA · Phase 8</span>
               <h3>사이트별 격리 E2E 검증</h3>
               <ul>
                 <li>북모아와 테스트 외부 서비스를 각각 등록하고 서로 다른 키로 작업을 만듭니다.</li>
                 <li>Admin 사이트 필터로 작업/세션이 분리되는지 확인합니다.</li>
                 <li>파트너 계정이 다른 사이트 주문/파일/job 상세에 접근하면 403인지 검증합니다.</li>
+                <li>Pilot 운영(Phase 7.5)과 병행 가능. 단, 회귀 시나리오 6~12(inline embed) 통과 없이 운영 배포 금지.</li>
+              </ul>
+            </div>
+          </article>
+          <article class="step">
+            <div class="num">14</div>
+            <div>
+              <span class="phase">Group B · Phase 9</span>
+              <h3>Pilot 데이터 기반 내부 보완 (두 저장소 병렬)</h3>
+              <ul>
+                <li>Storige: 워커 성능 개선(병렬·큐 튜닝·Ghostscript 옵션), 편집기 내부 기능, Admin 통계/대시보드.</li>
+                <li>bookmoa-mobile: 주문 화면 UI/UX 개선, 결제 플로우 보강, 부가 기능(알림·추천·검색).</li>
+                <li>모든 PR은 Phase 8 회귀 시나리오 통과 후 머지. 연동 인터페이스 변경 금지.</li>
               </ul>
             </div>
           </article>
         </div>
       </section>
 
+      <section id="priority">
+        <h2>7. 우선순위 매트릭스</h2>
+        <p class="section-intro">
+          보완 작업과 연동 작업을 같은 매트릭스에 통합. 분류 컬럼은 <strong>Phase / Group A / Group B</strong>.
+          Group A는 연동 시작 전 필수, Group B는 Pilot 운영 후 우선순위 재조정 대상입니다.
+        </p>
+
+        <h3>P0 — 1차 MVP (연동 시작 전)</h3>
+        <div class="matrix">
+          <table>
+            <thead>
+              <tr>
+                <th>작업</th>
+                <th>저장소</th>
+                <th>분류</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>표준 계약 결정 (URL 케이스, webhook 서명, inline embed 표준)</td>
+                <td>Storige</td>
+                <td><span class="tag amber">Phase 0</span></td>
+              </tr>
+              <tr>
+                <td>편집기 embed 모드 안정화 (postMessage, CSP, parentOrigin)</td>
+                <td>Storige</td>
+                <td><span class="tag green">Group A</span></td>
+              </tr>
+              <tr>
+                <td>Admin 사이트 관리 기능 (`sites` CRUD, `allowedOrigins`/`frameAncestors`)</td>
+                <td>Storige</td>
+                <td><span class="tag green">Group A</span> · <span class="tag blue">Phase 1</span></td>
+              </tr>
+              <tr>
+                <td>URL 파라미터 snake/camel 호환 레이어</td>
+                <td>Storige</td>
+                <td><span class="tag green">Group A</span> · <span class="tag amber">Phase 0</span></td>
+              </tr>
+              <tr>
+                <td>상품 주문 화면 데이터 모델 정리 (`customProducts` 스키마)</td>
+                <td>bookmoa-mobile</td>
+                <td><span class="tag green">Group A</span></td>
+              </tr>
+              <tr>
+                <td>상품 상세 진입점/주문 화면 구조 정리</td>
+                <td>bookmoa-mobile</td>
+                <td><span class="tag green">Group A</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 style="margin-top:20px">P1 — 메인 연동 + Pilot 운영</h3>
+        <div class="matrix">
+          <table>
+            <thead>
+              <tr>
+                <th>작업</th>
+                <th>저장소</th>
+                <th>분류</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>서버 어댑터 8종 (`_client`, `shop-session`, `template-sets` 등)</td>
+                <td>bookmoa-mobile</td>
+                <td><span class="tag blue">Phase 3</span></td>
+              </tr>
+              <tr>
+                <td>상품 ↔ 템플릿셋 매핑 UI</td>
+                <td>bookmoa-mobile</td>
+                <td><span class="tag blue">Phase 4</span></td>
+              </tr>
+              <tr>
+                <td>Inline Editor Host (`StorigeEditorHost`) + `useStorigeEditor` hook</td>
+                <td>bookmoa-mobile</td>
+                <td><span class="tag blue">Phase 5</span></td>
+              </tr>
+              <tr>
+                <td>cart/order에 `storige` 결과 저장</td>
+                <td>bookmoa-mobile</td>
+                <td><span class="tag blue">Phase 6</span></td>
+              </tr>
+              <tr>
+                <td>Worker 어댑터 (`check-mergeable`, `validate`, `synthesize`)</td>
+                <td>bookmoa-mobile</td>
+                <td><span class="tag blue">Phase 7</span></td>
+              </tr>
+              <tr>
+                <td>webhook endpoint + 서명 검증, 결과 PDF 다운로드 프록시</td>
+                <td>bookmoa-mobile</td>
+                <td><span class="tag blue">Phase 7</span></td>
+              </tr>
+              <tr>
+                <td>Pilot 운영 1~2개 상품 (실데이터 수집)</td>
+                <td>양쪽</td>
+                <td><span class="tag blue">Phase 7.5</span></td>
+              </tr>
+              <tr>
+                <td>E2E QA 시나리오 1~17 통과</td>
+                <td>양쪽</td>
+                <td><span class="tag blue">Phase 8</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 style="margin-top:20px">P2 — Pilot 후 보완 (우선순위는 데이터로 결정)</h3>
+        <div class="matrix">
+          <table>
+            <thead>
+              <tr>
+                <th>작업</th>
+                <th>저장소</th>
+                <th>분류</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>워커 성능 개선 (병렬, 큐 튜닝, Ghostscript 옵션)</td>
+                <td>Storige</td>
+                <td><span class="tag amber">Group B</span> · <span class="tag blue">Phase 9</span></td>
+              </tr>
+              <tr>
+                <td>편집기 내부 기능 추가 (도구, 효과, 정렬)</td>
+                <td>Storige</td>
+                <td><span class="tag amber">Group B</span> · <span class="tag blue">Phase 9</span></td>
+              </tr>
+              <tr>
+                <td>Admin 통계/대시보드/리포트</td>
+                <td>Storige</td>
+                <td><span class="tag amber">Group B</span> · <span class="tag blue">Phase 9</span></td>
+              </tr>
+              <tr>
+                <td>Site 기반 CORS/iframe/webhook allowlist 자동화 (확장)</td>
+                <td>Storige</td>
+                <td><span class="tag blue">Phase 1 확장</span></td>
+              </tr>
+              <tr>
+                <td>주문 화면 UI/UX 개선, 결제 플로우 보강</td>
+                <td>bookmoa-mobile</td>
+                <td><span class="tag amber">Group B</span> · <span class="tag blue">Phase 9</span></td>
+              </tr>
+              <tr>
+                <td>부가 기능 (알림, 추천, 검색 강화)</td>
+                <td>bookmoa-mobile</td>
+                <td><span class="tag amber">Group B</span> · <span class="tag blue">Phase 9</span></td>
+              </tr>
+              <tr>
+                <td>파트너 관리자 권한 모델 + 주문처리 API/UI</td>
+                <td>Storige</td>
+                <td><span class="tag red">별도 트랙</span></td>
+              </tr>
+              <tr>
+                <td>다중 외부 서비스 온보딩 문서/SDK 정리</td>
+                <td>Storige</td>
+                <td><span class="tag red">별도</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
       <section id="partner">
-        <h2>6. 제휴사 관리자 기능 개발 순서</h2>
+        <h2>8. 제휴사 관리자 기능 개발 순서</h2>
         <p class="section-intro">
           파트너 계정은 편집기 고객 세션과 분리된 운영 권한입니다. 자기 사이트 주문, 파일, 워커 작업만 처리해야 합니다.
         </p>
@@ -826,7 +1151,7 @@
       </section>
 
       <section id="worker">
-        <h2>7. PDF 워커 처리 흐름</h2>
+        <h2>9. PDF 워커 처리 흐름</h2>
         <p class="section-intro">
           여기서 worker는 Cloudflare Worker가 아니라 NestJS + Bull + Redis 기반 PDF 처리 서비스입니다.
         </p>
@@ -859,7 +1184,7 @@
       </section>
 
       <section id="contracts">
-        <h2>8. 핵심 계약 요약</h2>
+        <h2>10. 핵심 계약 요약</h2>
         <div class="grid-2">
           <div class="card">
             <span class="tag blue">Site 설정</span>
@@ -905,7 +1230,7 @@
       </section>
 
       <section id="checklist">
-        <h2>9. 실행 체크리스트</h2>
+        <h2>11. 실행 체크리스트</h2>
         <div class="grid-2">
           <div class="card">
             <h3>플랫폼 공급자 체크</h3>
@@ -933,7 +1258,7 @@
       </section>
 
       <section id="notes">
-        <h2>10. 최종 주의점</h2>
+        <h2>12. 최종 주의점</h2>
         <div class="callout red">
           <strong>가장 먼저 정리할 것</strong>
           URL 파라미터와 webhook 서명은 외부 연동의 계약입니다. bookmoa PHP 연동 전에 문서와 실제 구현을 반드시 맞춰야 합니다.
@@ -942,8 +1267,20 @@
           <strong>파트너 포털은 별도 Phase</strong>
           제휴사 관리자 기능은 보안 범위가 크므로 편집기 연동과 분리해 개발하되, 지금부터 모든 API에 `site_id` 권한 모델을 일관되게 적용해야 합니다.
         </div>
+        <div class="callout green">
+          <strong>보완 작업은 Group A와 Group B로 분리 운영</strong>
+          Group A(연동 인터페이스에 영향)는 메인 연동 시작 전, Group B(내부 개선)는 Pilot 운영(Phase 7.5) 후로 미룹니다. 분류를 섞어 동시에 진행하지 않습니다.
+        </div>
+        <div class="callout amber">
+          <strong>Group B 우선순위는 Pilot 데이터로 재조정</strong>
+          사전 추정만으로 우선순위를 고정하지 않습니다. Pilot 메트릭(큐 길이, 처리 시간, 실패율, 사용자 피드백)을 본 뒤 결정합니다.
+        </div>
+        <div class="callout amber">
+          <strong>Group A 병렬 진행 중 매주 계약 정합성 점검</strong>
+          두 저장소가 동시에 진행하므로 Storige API DTO와 bookmoa-mobile 어댑터 시그니처가 Phase 0 계약과 일치하는지 매주 확인하고, 어긋나면 즉시 동기화합니다.
+        </div>
         <p class="print-note">
-          기준 문서: `bookmoa_storige_연동_1af67c3d.plan.md` · 생성 목적: 진행 순서 기반 시각화 HTML
+          기준 문서: `bookmoa_storige_연동_1af67c3d.plan.md`, `Bookmoa_platform_Plan.md` · 생성 목적: 진행 순서 기반 시각화 HTML
         </p>
       </section>
     </main>
