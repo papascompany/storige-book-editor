@@ -8,6 +8,22 @@
 
 ---
 
+> ## 📌 Phase 0 정정 안내 (2026-05-16)
+>
+> 본 문서 본문은 그대로 두되, 아래 항목은 **`docs/PHASE_0_CONTRACT_DECISIONS_2026-05-16.md`** 의 결정을 우선 따릅니다.
+>
+> | 항목 | 본문 표기 | **정정 (코드 일치)** |
+> |---|---|---|
+> | Webhook 서명 | (HMAC 언급 시) | **Base64** of `${identifier}:${event}:${timestamp}`. HMAC 은 v2 로 분리 |
+> | Worker job 생성 응답 | (혼재) | **HTTP 201 Created**. 클라이언트는 2xx 전체 성공 처리 |
+> | `/worker-jobs/{id}/output` | Bearer JWT 직접 호출 | **외부 서비스는 자체 서버 프록시 단일**. 결과 PDF URL 을 브라우저에 직접 노출 금지 |
+> | URL 파라미터 케이스 | snake_case | snake_case 권장, **camelCase 도 양쪽 수용** (Phase A-2) |
+> | Webhook 재시도 | (미명시) | 1회 자동 재시도. 헤더 `X-Storige-Retry: 1`. 현재 구현은 재시도 시 `X-Storige-Signature` 누락 (D-4 핫픽스 예정) |
+>
+> 자세한 사항은 `PHASE_0_CONTRACT_DECISIONS_2026-05-16.md` 참조.
+
+---
+
 ## 0. TL;DR — 5분 요약
 
 ```

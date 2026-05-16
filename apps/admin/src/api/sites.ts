@@ -16,6 +16,13 @@ export interface Site {
   checkWorkorder: boolean;
   checkCutting: boolean;
   checkSafezone: boolean;
+  // Phase 1-1 (2026-05-16) — 외부 도메인 보안 정책
+  allowedOrigins: string[] | null;
+  frameAncestors: string[] | null;
+  editorLaunchMode: 'inline';
+  editorBundleUrl: string | null;
+  editorCssUrl: string | null;
+  editorVersion: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -34,6 +41,13 @@ export interface CreateSiteDto {
   checkWorkorder?: boolean;
   checkCutting?: boolean;
   checkSafezone?: boolean;
+  // Phase 1-1 (2026-05-16)
+  allowedOrigins?: string[];
+  frameAncestors?: string[];
+  editorLaunchMode?: 'inline';
+  editorBundleUrl?: string;
+  editorCssUrl?: string;
+  editorVersion?: string;
 }
 
 export type UpdateSiteDto = Partial<CreateSiteDto>;

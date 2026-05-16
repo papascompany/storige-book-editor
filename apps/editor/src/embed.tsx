@@ -62,6 +62,14 @@ export interface EditorConfig {
   apiBaseUrl?: string
   /** Worker 완료 시 콜백 URL (bookmoa 웹훅 수신용) */
   callbackUrl?: string
+  /**
+   * 부모 페이지 origin (Phase A-1, 2026-05-16).
+   *
+   * iframe 으로 임베드되는 경우 postMessage 의 targetOrigin 으로 사용된다.
+   * 보안 요구: 부모-자식 통신이 필요한 모든 inline embed 배포에서는 반드시 명시.
+   * 명시되지 않으면 postMessage 송신을 비활성화 (콜백 함수만 동작).
+   */
+  parentOrigin?: string
   /** 동적 옵션 */
   options?: {
     /** 페이지 수 */
@@ -142,6 +150,63 @@ interface EmbeddedEditorProps extends EditorConfig {
   instanceRef: React.MutableRefObject<EditorInstanceMethods | null>
 }
 
+// ============================================================
+// postMessage Standard (Phase A-1, 2026-05-16)
+// ============================================================
+// 외부 사이트가 Storige Editor 를 iframe 으로 임베드하는 경우의 부모↔자식 통신 규약.
+// 자세한 사양: docs/PHASE_0_CONTRACT_DECISIONS_2026-05-16.md §4
+
+export const EMBED_MESSAGE_SOURCE = 'storige-editor'
+export const EMBED_MESSAGE_VERSION = '1'
+
+export type EmbedMessageEvent =
+  | 'editor.ready'
+  | 'editor.save'
+  | 'editor.complete'
+  | 'editor.cancel'
+  | 'editor.error'
+
+export interface EmbedMessageEnvelope<T = unknown> {
+  source: typeof EMBED_MESSAGE_SOURCE
+  version: typeof EMBED_MESSAGE_VERSION
+  event: EmbedMessageEvent
+  payload: T
+  timestamp: string
+}
+
+/**
+ * 부모 페이지로 postMessage 전송.
+ *
+ * 보안 규칙:
+ * - parentOrigin 이 제공되지 않으면 송신하지 않는다 (콜백 함수만 동작).
+ * - targetOrigin 은 절대 '*' 사용 금지 — parentOrigin 그대로 사용.
+ * - top-level window 인 경우(iframe 아닌 경우) 송신 스킵.
+ */
+function postToParent<T>(
+  parentOrigin: string | undefined,
+  event: EmbedMessageEvent,
+  payload: T,
+): void {
+  if (!parentOrigin) return // 콜백 함수만 사용하는 IIFE 마운트 모드
+  if (typeof window === 'undefined') return
+  if (window.parent === window) return // top-level — iframe 아님
+
+  const envelope: EmbedMessageEnvelope<T> = {
+    source: EMBED_MESSAGE_SOURCE,
+    version: EMBED_MESSAGE_VERSION,
+    event,
+    payload,
+    timestamp: new Date().toISOString(),
+  }
+
+  try {
+    // parentOrigin 만 신뢰. '*' 절대 금지.
+    window.parent.postMessage(envelope, parentOrigin)
+  } catch (err) {
+    console.warn('[Editor] postMessage failed:', err)
+  }
+}
+
 // Edit Session API integration
 interface EditSessionCreatePayload {
   orderSeqno: number
@@ -173,6 +238,7 @@ function EmbeddedEditor({
   contentFileId,
   apiBaseUrl,
   callbackUrl,
+  parentOrigin,
   options,
   onComplete,
   onCancel,
@@ -241,13 +307,15 @@ function EmbeddedEditor({
   useEffect(() => {
     const unsubscribe = apiClient.onAuthExpired(() => {
       console.warn('[EmbeddedEditor] Auth token expired')
-      onError?.({
-        code: 'AUTH_EXPIRED',
+      const errorPayload = {
+        code: 'AUTH_EXPIRED' as const,
         message: '인증이 만료되었습니다. 페이지를 새로고침해주세요.',
-      })
+      }
+      onError?.(errorPayload)
+      postToParent(parentOrigin, 'editor.error', errorPayload)
     })
     return unsubscribe
-  }, [onError])
+  }, [onError, parentOrigin])
 
   // Main initialization
   useEffect(() => {
@@ -457,6 +525,11 @@ function EmbeddedEditor({
 
         console.log('[EmbeddedEditor] Initialization complete')
         onReady?.()
+        postToParent(parentOrigin, 'editor.ready', {
+          sessionId: editSession?.id,
+          templateSetId,
+          version: '1.0.0',
+        })
       } catch (err) {
         console.error('[EmbeddedEditor] Initialization error:', err)
 
@@ -489,7 +562,9 @@ function EmbeddedEditor({
 
         setError(errorMessage)
         setIsLoading(false)
-        onError?.({ code: errorCode, message: errorMessage })
+        const errPayload = { code: errorCode, message: errorMessage }
+        onError?.(errPayload)
+        postToParent(parentOrigin, 'editor.error', errPayload)
       }
     }
 
@@ -561,13 +636,16 @@ function EmbeddedEditor({
 
           console.log('[EmbeddedEditor] Save completed:', result.sessionId)
           onSave?.(result)
+          postToParent(parentOrigin, 'editor.save', result)
           return result
         } catch (err) {
           console.error('[EmbeddedEditor] Save failed:', err)
-          onError?.({
-            code: 'SAVE_FAILED',
+          const errPayload = {
+            code: 'SAVE_FAILED' as const,
             message: err instanceof Error ? err.message : '저장에 실패했습니다.',
-          })
+          }
+          onError?.(errPayload)
+          postToParent(parentOrigin, 'editor.error', errPayload)
           throw err
         }
       },
@@ -608,18 +686,24 @@ function EmbeddedEditor({
 
           console.log('[EmbeddedEditor] Complete success:', result.sessionId)
           onComplete?.(result)
+          postToParent(parentOrigin, 'editor.complete', result)
         } catch (err) {
           console.error('[EmbeddedEditor] Complete failed:', err)
-          onError?.({
-            code: 'SAVE_FAILED',
+          const errPayload = {
+            code: 'SAVE_FAILED' as const,
             message: err instanceof Error ? err.message : '편집 완료에 실패했습니다.',
-          })
+          }
+          onError?.(errPayload)
+          postToParent(parentOrigin, 'editor.error', errPayload)
           throw err
         }
       },
 
       cancel: () => {
         onCancel?.()
+        postToParent(parentOrigin, 'editor.cancel', {
+          sessionId: currentSession?.id || sessionId,
+        })
       },
 
       undo: () => {
@@ -637,7 +721,7 @@ function EmbeddedEditor({
         totalPages: 1,
       }),
     }
-  }, [ready, canvas, sessionId, currentSession, options, onComplete, onCancel, onSave, onError, instanceRef])
+  }, [ready, canvas, sessionId, currentSession, options, onComplete, onCancel, onSave, onError, instanceRef, parentOrigin])
 
   // Loading state handler
   const handleLoadingChange = useCallback((loading: boolean, message?: string) => {
@@ -754,17 +838,20 @@ function EmbeddedEditor({
 
       console.log('[EmbeddedEditor] Complete success:', result.sessionId)
       onComplete?.(result)
+      postToParent(parentOrigin, 'editor.complete', result)
     } catch (err) {
       console.error('[EmbeddedEditor] Complete failed:', err)
-      onError?.({
-        code: 'SAVE_FAILED',
+      const errPayload = {
+        code: 'SAVE_FAILED' as const,
         message: err instanceof Error ? err.message : '편집 완료에 실패했습니다.',
-      })
+      }
+      onError?.(errPayload)
+      postToParent(parentOrigin, 'editor.error', errPayload)
       throw err
     } finally {
       setIsLoading(false)
     }
-  }, [canvas, editor, sessionId, currentSession, options, mode, orderSeqno, onComplete, onError])
+  }, [canvas, editor, sessionId, currentSession, options, mode, orderSeqno, onComplete, onError, parentOrigin])
 
   // 내 작업에 저장 핸들러 - EditorHeader에서 호출됨
   const handleSaveWork = useCallback(async () => {
@@ -788,18 +875,21 @@ function EmbeddedEditor({
 
         console.log('[EmbeddedEditor] Manual save completed:', result.sessionId)
         onSave?.(result)
+        postToParent(parentOrigin, 'editor.save', result)
       } else {
         throw new Error('저장에 실패했습니다.')
       }
     } catch (err) {
       console.error('[EmbeddedEditor] Save failed:', err)
-      onError?.({
-        code: 'SAVE_FAILED',
+      const errPayload = {
+        code: 'SAVE_FAILED' as const,
         message: err instanceof Error ? err.message : '저장에 실패했습니다.',
-      })
+      }
+      onError?.(errPayload)
+      postToParent(parentOrigin, 'editor.error', errPayload)
       throw err
     }
-  }, [sessionId, currentSession, saveNow, onSave, onError])
+  }, [sessionId, currentSession, saveNow, onSave, onError, parentOrigin])
 
   // 불러오기 핸들러 - 모달 열기
   const handleOpenWorkspace = useCallback(() => {
@@ -825,14 +915,16 @@ function EmbeddedEditor({
       console.log('[EmbeddedEditor] Session loaded:', session.id)
     } catch (err) {
       console.error('[EmbeddedEditor] Failed to load session:', err)
-      onError?.({
-        code: 'INVALID_DATA',
+      const errPayload = {
+        code: 'INVALID_DATA' as const,
         message: err instanceof Error ? err.message : '작업을 불러오는데 실패했습니다.',
-      })
+      }
+      onError?.(errPayload)
+      postToParent(parentOrigin, 'editor.error', errPayload)
     } finally {
       setIsLoading(false)
     }
-  }, [canvas, onError])
+  }, [canvas, onError, parentOrigin])
 
   // Toggle side panel
   const toggleSidePanel = () => {

@@ -1,6 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import axios from 'axios';
 import { SynthesisWebhookPayload, ValidationWebhookPayload } from '@storige/types';
+import { SitesService } from '../sites/sites.service';
 
 export { SynthesisWebhookPayload, ValidationWebhookPayload };
 
@@ -28,6 +29,9 @@ export class WebhookService {
    * 환경변수 `WEBHOOK_ALLOWED_HOSTS` (콤마 구분) 우선, 없으면 기본값 사용.
    * SSRF 방어 — 임의 URL로 webhook 전송 금지.
    * 빈 문자열로 명시적 비활성화 가능 (`WEBHOOK_ALLOWED_HOSTS=*` — 호환 모드).
+   *
+   * Phase 1-2 (2026-05-16): env 매칭에 실패해도 `SitesService.isWebhookHostAllowed()`
+   * 로 한 번 더 확인 → 새 외부 사이트는 Admin 에서 등록만 하면 자동 허용.
    */
   private readonly allowedHosts: string[] = (() => {
     const env = process.env.WEBHOOK_ALLOWED_HOSTS;
@@ -45,12 +49,16 @@ export class WebhookService {
     ];
   })();
 
+  // Phase 1-2 — SitesService 는 webhook 모듈이 cyclic 의존을 피할 수 있도록 @Optional.
+  // 주입 안 되어도 (예: 부팅 초기) 기존 allowedHosts 만으로 동작.
+  constructor(@Optional() private readonly sitesService?: SitesService) {}
+
   /**
    * URL이 허용된 호스트인지 검증.
    * - allowedHosts가 빈 배열이면 (=`*`) 모든 URL 허용 (호환 모드)
-   * - 그 외엔 hostname이 정확히 일치하거나 .서브도메인 매칭
+   * - env / 기본값 매칭에 실패하면 sitesService (있으면) 동적 매칭으로 폴백
    */
-  private isAllowedCallbackUrl(callbackUrl: string): boolean {
+  private async isAllowedCallbackUrl(callbackUrl: string): Promise<boolean> {
     if (this.allowedHosts.length === 0) return true; // 와일드카드 모드
 
     let url: URL;
@@ -64,11 +72,23 @@ export class WebhookService {
     if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
 
     const host = url.hostname.toLowerCase();
-    return this.allowedHosts.some(
+    const staticMatch = this.allowedHosts.some(
       (allowed) =>
         host === allowed.toLowerCase() ||
         host.endsWith('.' + allowed.toLowerCase()),
     );
+    if (staticMatch) return true;
+
+    // Phase 1-2: env 매칭 실패 시 DB sites 기반 동적 매칭
+    if (this.sitesService) {
+      try {
+        return await this.sitesService.isWebhookHostAllowed(callbackUrl);
+      } catch (err) {
+        this.logger.error(`sites-based webhook host check failed: ${(err as Error).message}`);
+        return false;
+      }
+    }
+    return false;
   }
 
   /**
@@ -80,10 +100,11 @@ export class WebhookService {
       return false;
     }
 
-    // Patch E (2026-05-03): SSRF 방어 — 허용 호스트 검증
-    if (!this.isAllowedCallbackUrl(callbackUrl)) {
+    // Patch E (2026-05-03) + Phase 1-2 (2026-05-16):
+    // SSRF 방어 — env allowlist 우선, 실패 시 DB sites 동적 매칭.
+    if (!(await this.isAllowedCallbackUrl(callbackUrl))) {
       this.logger.error(
-        `[Webhook] Blocked callback URL not in allowlist: ${callbackUrl} (allowed: ${this.allowedHosts.join(', ')})`,
+        `[Webhook] Blocked callback URL not in allowlist: ${callbackUrl} (env-allowed: ${this.allowedHosts.join(', ')})`,
       );
       return false;
     }

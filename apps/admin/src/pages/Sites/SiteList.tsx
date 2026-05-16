@@ -419,6 +419,74 @@ export default function SiteList() {
             </Form.Item>
           </Space>
 
+          <Divider orientation="left" plain>
+            외부 도메인 보안 정책 (Phase 1-2)
+          </Divider>
+
+          <Form.Item
+            name="allowedOrigins"
+            label="CORS 허용 origin (콤마 또는 줄바꿈 구분)"
+            tooltip="외부 사이트 브라우저가 Storige API 를 호출할 때 허용할 origin. 예: https://www.bookmoa.co.kr"
+            getValueFromEvent={(e) => {
+              const raw = (e?.target?.value ?? e ?? '') as string;
+              return raw
+                .split(/[\n,]+/)
+                .map((s) => s.trim())
+                .filter(Boolean);
+            }}
+            getValueProps={(value: string[] | undefined) => ({
+              value: Array.isArray(value) ? value.join('\n') : value,
+            })}
+          >
+            <Input.TextArea
+              rows={3}
+              placeholder={'https://www.bookmoa.co.kr\nhttps://bookmoa-mobile.vercel.app'}
+            />
+          </Form.Item>
+
+          <Form.Item
+            name="frameAncestors"
+            label="iframe embed 허용 parent origin"
+            tooltip="외부 사이트가 Storige Editor 를 iframe 으로 임베드할 때 허용할 parent origin (CSP frame-ancestors 합성)."
+            getValueFromEvent={(e) => {
+              const raw = (e?.target?.value ?? e ?? '') as string;
+              return raw
+                .split(/[\n,]+/)
+                .map((s) => s.trim())
+                .filter(Boolean);
+            }}
+            getValueProps={(value: string[] | undefined) => ({
+              value: Array.isArray(value) ? value.join('\n') : value,
+            })}
+          >
+            <Input.TextArea
+              rows={3}
+              placeholder={'https://www.bookmoa.co.kr\nhttps://bookmoa-mobile.vercel.app'}
+            />
+          </Form.Item>
+
+          <Form.Item
+            name="editorLaunchMode"
+            label="편집기 실행 모드"
+            initialValue="inline"
+            tooltip="Phase 0 결정 D-1: inline embed 단일."
+          >
+            <Select
+              options={[{ value: 'inline', label: 'Inline embed (오버레이 + iframe)' }]}
+              disabled
+            />
+          </Form.Item>
+
+          <Form.Item name="editorBundleUrl" label="Editor IIFE 번들 URL (선택)">
+            <Input placeholder="https://editor.papascompany.co.kr/embed-bundle.js" />
+          </Form.Item>
+          <Form.Item name="editorCssUrl" label="Editor CSS URL (선택)">
+            <Input placeholder="https://editor.papascompany.co.kr/embed.css" />
+          </Form.Item>
+          <Form.Item name="editorVersion" label="Editor 버전 (선택)">
+            <Input placeholder="1.0.0" />
+          </Form.Item>
+
           {!editingSite && (
             <Text type="secondary" style={{ display: 'block', marginTop: 8 }}>
               💡 인증코드(편집기/워커)는 자동 생성됩니다. 등록 후 모달에서 복사해

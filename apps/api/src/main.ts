@@ -54,7 +54,9 @@ async function bootstrap() {
   // Cookie parser middleware
   app.use(cookieParser());
 
-  // Enable CORS
+  // Enable CORS — Phase 1-2 (2026-05-16):
+  // 환경변수 + 정적 패턴(legacy) 매칭 후, DB `sites.allowed_origins` 동적 매칭 (60s 캐시).
+  // 새 외부 사이트는 .env 변경 없이 Admin 에서만 등록하면 즉시 허용.
   const corsOrigin = process.env.CORS_ORIGIN;
   const defaultOrigins = [
     'http://localhost:3000',
@@ -72,14 +74,20 @@ async function bootstrap() {
   // 운영 도메인 서브도메인 wildcard
   const PAPAS_PATTERN = /\.papascompany\.co\.kr$/;
 
+  // Phase 1-2: SitesService 동적 정책 조회용. NestJS 인스턴스에서 lazily resolve.
+  // 부팅 시점에 resolve 하면 OnModuleInit 시드 전 호출되어 비어 있을 수 있으므로
+  // request-time lookup 으로 안전 처리.
+  const { SitesService } = await import('./sites/sites.service');
+  const sitesService = app.get(SitesService);
+
   app.enableCors({
-    origin: (origin, callback) => {
+    origin: async (origin, callback) => {
       // Allow requests with no origin (like mobile apps, curl, etc.)
       if (!origin) {
         callback(null, true);
         return;
       }
-      // 정적 화이트리스트 매칭
+      // 정적 화이트리스트 매칭 (env + 로컬 기본값)
       if (allowedOrigins.includes(origin)) {
         callback(null, origin);
         return;
@@ -93,6 +101,20 @@ async function bootstrap() {
         }
       } catch {
         // origin 파싱 실패는 차단
+        pinoLogger.warn({ origin }, 'CORS blocked');
+        callback(null, false);
+        return;
+      }
+      // Phase 1-2: DB sites 기반 동적 매칭
+      try {
+        const allowed = await sitesService.isOriginAllowed(origin);
+        if (allowed) {
+          callback(null, origin);
+          return;
+        }
+      } catch (err) {
+        pinoLogger.error({ err, origin }, 'sites-based CORS check failed');
+        // fallthrough → 차단
       }
       pinoLogger.warn({ origin }, 'CORS blocked');
       callback(null, false);
