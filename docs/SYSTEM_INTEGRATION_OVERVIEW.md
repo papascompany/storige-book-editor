@@ -1088,5 +1088,38 @@ requestValidation(
 
 ---
 
+## 부록: Phase A-2 결정사항 (2026-05-16)
+
+외부 다중 사이트(PHP + bookmoa-mobile 등) 공존 환경의 단일 진실. 자세한 사항은 `docs/PHASE_0_CONTRACT_DECISIONS_2026-05-16.md` §6.5 참조.
+
+### 모든 외부 사이트 공통
+
+| # | 항목 | 표준 |
+|---|---|---|
+| A2-1 | `validation.fixable` 처리 | **별도 status `fixable`** (failed 와 분리). 자동 보정 가능 상태 |
+| A2-2 | `siteId` URL 파라미터 | **선택(optional)**. 권한 권위는 JWT payload 의 `siteId` (URL 위조 가능) |
+| A2-3 | `orderSeqno` 생성 시점 | **실제 주문번호만**, 결제 후 편집기 진입 |
+| A2-4 | `editor.complete` payload | **`files.*` 중첩** (envelope 한 겹 안에 `EditorResult`) |
+
+→ 위 4건은 PHP / bookmoa-mobile / 향후 모든 외부 사이트에 동일 적용. PHP 사이트는 기존 구현이 이미 일치하므로 변경 없음.
+
+### bookmoa-mobile 한정
+
+| # | 항목 | 표준 |
+|---|---|---|
+| A2-5 | webhook 수신부 저장소 | **Supabase 일원화** (`SUPABASE_SERVICE_ROLE_KEY` 로 `app_config.p4-orders` 갱신) |
+
+→ PHP 는 자체 MariaDB 사용 그대로. bookmoa-mobile 한정 결정.
+
+### `cart item.storige.status` enum (6개)
+
+```
+edited / validated / fixable / synthesis_pending / completed / failed
+```
+
+각 status 의미는 `Bookmoa_platform_Plan.md` Phase 6 §6.1 참조.
+
+---
+
 > 이 문서는 `/Users/yohan/claude/Bookmoa Storige editor/storige/docs/SYSTEM_INTEGRATION_OVERVIEW.md`에 저장되었습니다.  
 > 최신 API 스펙은 Storige API Swagger 문서 (`http://localhost:4000/api/docs`)를 참조하세요.

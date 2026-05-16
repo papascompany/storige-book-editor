@@ -942,3 +942,36 @@ Content-Type: application/json
 | v2.0 | 2026-05-03 | 보안 패치 A-E 반영 (체크리스트 #11~13 + §11 추가) |
 | v3.0 | 2026-05-04 | **KICKOFF 문서 통합** / Webhook outputFileUrl 형식 수정 (상대경로) / 합성 결과 다운로드 흐름 정확화 (JWT 방식) / Worker E2E 검증 완료 |
 | v3.1 | 2026-05-06 | **Phase A 멀티사이트 안내** (§2 헤더에 박스 추가). PHP 측 코드/.env 변경 0. 기존 키는 자동 DB 마이그레이션으로 그대로 작동. 새 사이트 추가 시 admin에서 키 발급. |
+| v3.2 | 2026-05-16 | **부록 D 추가** — Phase A-2 의문점 5건 결정사항. 새 외부 사이트(bookmoa-mobile 등) 온보딩을 위한 결정이며, **기존 PHP 사이트 영향 0**. |
+
+---
+
+## 부록 D: Phase A-2 결정사항 (2026-05-16)
+
+> 새로 추가된 외부 사이트(bookmoa-mobile 등)를 위한 결정. **기존 PHP 사이트는 영향 없음** — 본 부록은 외부 다중 사이트 환경에서 PHP 와 신규 사이트가 공존하는 방식을 명문화한 것입니다. PHP 측 코드/.env/webhook 핸들러를 단 한 줄도 변경할 필요가 없습니다.
+>
+> 자세한 결정 근거는 `docs/PHASE_0_CONTRACT_DECISIONS_2026-05-16.md` §6.5 참조.
+
+### D.1 결정 5건과 PHP 영향 분석
+
+| # | 의문점 | 결정 | **PHP 사이트 영향** |
+|---|---|---|---|
+| A2-1 | `validation.fixable` 처리 | 별도 status `fixable` (failed 와 분리) | ✅ **없음** — PHP webhook 핸들러는 이미 이벤트별 분기. `validation.fixable` 이벤트가 이미 발송되고 있으며 PHP 가 처리하는 방식 그대로 |
+| A2-2 | `siteId` URL 파라미터 | 선택(optional). 권한 권위는 JWT payload | ✅ **없음** — PHP 는 URL 에 `siteId` 미전달. 에디터가 JWT payload 의 `siteId` 자동 폴백으로 정상 동작 |
+| A2-3 | `orderSeqno` 생성 시점 | 실제 주문번호만, 결제 후 편집 진입 | ✅ **없음** — PHP 는 이미 결제 직후 발급된 `orderSeqno` 로 편집기 진입 (본 문서 §3 URL 파라미터 가이드 그대로) |
+| A2-4 | `editor.complete` payload | `files.*` 중첩 구조 (top-level 아님) | ✅ **없음** — PHP 측 `onComplete` 핸들러는 이미 본 문서 §4 의 중첩 형식 (`result.files.coverFileId`) 사용 중 |
+| A2-5 | webhook 수신부 저장소 | Supabase 일원화 | ✅ **없음** — bookmoa-mobile 한정 결정. PHP 는 자체 MariaDB 사용 그대로 |
+
+### D.2 PHP 팀이 추가로 할 일
+
+**0건. 추가 작업 없음.**
+
+본 부록은 **다른 외부 사이트(bookmoa-mobile 등)가 같은 Storige 플랫폼을 PHP 와 나란히 사용할 때의 표준** 을 명문화한 것입니다. PHP 측은 본 문서 v3.1 까지의 모든 가이드를 그대로 따르면 됩니다.
+
+### D.3 참고 문서
+
+- `docs/PHASE_0_CONTRACT_DECISIONS_2026-05-16.md` §6.5 — 결정 5건 표 + 권위 출처 + 영향 분석
+- `docs/PLATFORM_INTEGRATION_v1.md` — 외부 서비스 어댑터 구현 가이드 (PHP 외 다른 외부 사이트용)
+- `Bookmoa_platform_Plan.md` Phase 5.2.1 — `editor.complete` payload (EditorResult) 단일 진실 스키마
+- `Bookmoa_platform_Plan.md` Phase 6 §6.1 — `status` enum 6개 (fixable 포함)
+
