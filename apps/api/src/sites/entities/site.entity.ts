@@ -84,6 +84,47 @@ export class Site {
   @Column({ name: 'check_safezone', type: 'boolean', default: true })
   checkSafezone: boolean;
 
+  // ─────────────────────────────────────────────────────
+  // Phase 1-1 (2026-05-16) — 외부 도메인 보안 정책
+  // CORS / iframe / postMessage / webhook 검증의 단일 출처.
+  // 자세한 사양: docs/PHASE_0_CONTRACT_DECISIONS_2026-05-16.md §2 D-10
+  // ─────────────────────────────────────────────────────
+
+  /**
+   * CORS allowlist (외부 사이트 브라우저 origin).
+   * 예: ['https://www.bookmoa.co.kr', 'https://bookmoa-mobile.vercel.app']
+   * 빈 배열이면 환경변수(CORS_ORIGIN) + 정적 패턴 fallback.
+   */
+  @Column({ name: 'allowed_origins', type: 'json', nullable: true })
+  allowedOrigins: string[] | null;
+
+  /**
+   * iframe embed parent origin allowlist (CSP frame-ancestors 합성용).
+   * 예: ['https://www.bookmoa.co.kr', 'https://bookmoa-mobile.vercel.app']
+   * 빈 배열이면 'self' 만 허용.
+   */
+  @Column({ name: 'frame_ancestors', type: 'json', nullable: true })
+  frameAncestors: string[] | null;
+
+  /**
+   * 편집기 실행 모드. Phase 0 결정(D-1): inline embed 단일.
+   * enum 은 향후 확장 여지를 위한 컬럼 유지. 현재 값은 'inline' 만 사용.
+   */
+  @Column({ name: 'editor_launch_mode', type: 'varchar', length: 20, default: 'inline' })
+  editorLaunchMode: 'inline';
+
+  /** Editor IIFE 번들 URL (외부 사이트가 자체 CDN 에서 로드할 때 공급 정보) */
+  @Column({ name: 'editor_bundle_url', type: 'varchar', length: 500, nullable: true })
+  editorBundleUrl: string | null;
+
+  /** Editor CSS URL */
+  @Column({ name: 'editor_css_url', type: 'varchar', length: 500, nullable: true })
+  editorCssUrl: string | null;
+
+  /** Editor 버전 (외부 사이트가 캐싱/검증에 사용) */
+  @Column({ name: 'editor_version', type: 'varchar', length: 50, nullable: true })
+  editorVersion: string | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

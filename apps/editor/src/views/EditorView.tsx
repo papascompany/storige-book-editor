@@ -25,6 +25,7 @@ import { useCanvasThemeSync } from '@/hooks/useCanvasThemeSync'
 import { useCanvasLocalBackup } from '@/hooks/useCanvasLocalBackup'
 import { productsApi } from '@/api'
 import { getDefaultTemplateSetId } from '@/constants/defaultTemplateSet'
+import { getParamCompat } from '@/utils/searchParams'
 
 // Screen mode type
 type ScreenMode = 'mobile' | 'tablet' | 'desktop'
@@ -68,28 +69,29 @@ export default function EditorView() {
   // 페이지 네비게이션 위치 — 'right' (우측 패널) | 'bottom' (하단 패널)
   const navPosition = useResolvedPageNavPosition()
 
-  // Query parameters
-  const productId = searchParams.get('productId')
-  const contentId = searchParams.get('contentId')
-  const contentType = searchParams.get('contentType')
-  const editMode = searchParams.get('editMode')
-  const token = searchParams.get('token')
-  const size = searchParams.get('size')
-  const templateSetId = searchParams.get('templateSetId')
-  const pageCount = searchParams.get('pageCount')
-  const paperType = searchParams.get('paperType')
-  const bindingType = searchParams.get('bindingType')
+  // Query parameters — Phase A-2 (2026-05-16): camelCase + snake_case 양쪽 수용.
+  // 외부 사이트(특히 PHP)에서 snake_case 로 보내도 그대로 동작.
+  const productId = getParamCompat(searchParams, 'productId')
+  const contentId = getParamCompat(searchParams, 'contentId')
+  const contentType = getParamCompat(searchParams, 'contentType')
+  const editMode = getParamCompat(searchParams, 'editMode')
+  const token = getParamCompat(searchParams, 'token')
+  const size = getParamCompat(searchParams, 'size')
+  const templateSetId = getParamCompat(searchParams, 'templateSetId')
+  const pageCount = getParamCompat(searchParams, 'pageCount')
+  const paperType = getParamCompat(searchParams, 'paperType')
+  const bindingType = getParamCompat(searchParams, 'bindingType')
   // 옵션 C: 외부 쇼핑몰의 동적 사이즈 override (mm 단위)
   // product.allowCustomSize=true 일 때만 적용. 둘 다 있어야 적용 (한쪽만이면 무시).
-  const width = searchParams.get('width')
-  const height = searchParams.get('height')
+  const width = getParamCompat(searchParams, 'width')
+  const height = getParamCompat(searchParams, 'height')
   /**
    * Admin 전용 — 템플릿셋 자체를 디자인하는 모드.
    * Admin "템플릿셋 수정" 버튼이 `?templateSetId=...&adminEdit=templateSet&token=<admin_jwt>` 로 진입.
    * 이 모드에서 저장 시 각 페이지 fabric canvas → 해당 templates.canvas_data 로 PATCH 처리.
    * 고객(PHP/bookmoa) 흐름은 이 파라미터를 보내지 않으므로 무관.
    */
-  const adminEdit = searchParams.get('adminEdit')
+  const adminEdit = getParamCompat(searchParams, 'adminEdit')
   const isAdminTemplateSetEdit = adminEdit === 'templateSet' && !!templateSetId
 
   // Stores

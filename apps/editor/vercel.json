@@ -16,7 +16,12 @@
       "headers": [
         { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
         { "key": "Pragma", "value": "no-cache" },
-        { "key": "Expires", "value": "0" }
+        { "key": "Expires", "value": "0" },
+        {
+          "key": "Content-Security-Policy",
+          "value": "frame-ancestors 'self' https://*.papascompany.co.kr https://*.bookmoa.co.kr https://www.bookmoa.co.kr https://*.vercel.app"
+        },
+        { "key": "X-Frame-Options", "value": "" }
       ]
     },
     {
@@ -27,3 +32,4 @@
     }
   ]
 }
+
