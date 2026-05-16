@@ -371,6 +371,7 @@
         <a href="#partner">제휴사 관리자</a>
         <a href="#worker">PDF 워커 흐름</a>
         <a href="#contracts">핵심 계약</a>
+        <a href="#decisions-v2">확정사항 v2</a>
         <a href="#checklist">검증 체크리스트</a>
         <a href="#notes">주의점</a>
       </nav>
@@ -1227,6 +1228,130 @@
             </ul>
           </div>
         </div>
+      </section>
+
+      <section id="decisions-v2">
+        <h2>10.5. 확정사항 v2 (Phase A-2, 2026-05-16)</h2>
+        <p>
+          Phase 3 어댑터 구현 직전, Codex 와 Claude 양쪽 작업 산출물 점검 중 5건의 의문점이 발견되었고
+          사용자가 모두 확정했습니다. <strong>공통 원칙: 기존 코드 / PHP 가이드가 단일 진실이며,
+          기존 PHP 사이트는 단 한 줄도 변경하지 않습니다.</strong>
+        </p>
+
+        <div class="callout green">
+          <strong>기존 PHP 사이트 영향: 0 (모든 결정에 대해)</strong>
+          5건 모두 PHP 영향 0 으로 결정. 기존 키·기존 URL·기존 webhook 핸들러 그대로 작동합니다.
+          본 결정은 새 어댑터(bookmoa-mobile)의 구현 방향을 명문화한 것입니다.
+        </div>
+
+        <div class="card" style="margin-top:14px;">
+          <h3>확정 5건</h3>
+          <table class="table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>의문점</th>
+                <th>결정</th>
+                <th>권위 출처</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>A2-1</td>
+                <td><code>validation.fixable</code> 처리</td>
+                <td><strong>별도 status <code>fixable</code></strong> (failed 아님).
+                  자동 보정 가능, 사용자 확인 필요 상태.
+                  cart item.storige.status enum 은 6개로 확장:
+                  <code>edited / validated / fixable / synthesis_pending / completed / failed</code></td>
+                <td><code>docs/SYSTEM_INTEGRATION_OVERVIEW.md</code> 225~259</td>
+              </tr>
+              <tr>
+                <td>A2-2</td>
+                <td><code>siteId</code> URL 파라미터</td>
+                <td><strong>선택(optional)</strong>. URL 파라미터는 UX 분기·로깅 보조용.
+                  <strong>권한 권위는 JWT payload 의 <code>siteId</code></strong>.
+                  URL 위조 가능하므로 권한 결정에 사용 금지.
+                  기존 PHP 는 URL siteId 미전달 → JWT 자동 폴백으로 정상 동작.</td>
+                <td><code>apps/api/src/sites/entities/site.entity.ts</code> +
+                  <code>apps/editor/src/embed.tsx</code></td>
+              </tr>
+              <tr>
+                <td>A2-3</td>
+                <td><code>orderSeqno</code> 생성 시점</td>
+                <td><strong>실제 주문번호만</strong>. 결제 후 발급된 순간에 편집기 진입 또는 합성 요청.
+                  <strong>장바구니 단계 <code>cart item.storige.orderSeqno = null</code></strong>.
+                  결제 후 webhook/주문 생성 응답으로 받은 실제 번호로 갱신.</td>
+                <td><code>docs/PHP_INTEGRATION_FINAL_v3.md</code> 880~881</td>
+              </tr>
+              <tr>
+                <td>A2-4</td>
+                <td><code>editor.complete</code> payload 형식</td>
+                <td><strong><code>files.*</code> 중첩</strong> (top-level 아님).
+                  envelope 한 겹 안에 <code>EditorResult</code> 가 들어가며,
+                  외부 수신부는 <code>envelope.payload.files.coverFileId</code> 형태로 접근.
+                  코드(<code>embed.tsx</code> L113~129)와 1:1 일치 — 옵션 B 확정.</td>
+                <td><code>apps/editor/src/embed.tsx</code> L113~129
+                  <code>EditorResult</code> 인터페이스</td>
+              </tr>
+              <tr>
+                <td>A2-5</td>
+                <td>webhook 수신부 저장소</td>
+                <td><strong>Supabase 일원화 (Option A)</strong>.
+                  사용자 운영 Supabase 가 항상 ON 으로 확정.
+                  <code>SUPABASE_SERVICE_ROLE_KEY</code> 로 Admin 클라이언트 생성 →
+                  <code>app_config</code> 테이블의 <code>p4-orders</code> 키 갱신 (<code>sSave</code> 패턴 그대로).
+                  별도 KV / 파일 저장소 추가 안 함.</td>
+                <td><code>bookmoa-mobile/src/lib/storage.js</code> 96~111</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="grid-2" style="margin-top:14px;">
+          <div class="card">
+            <h3>핵심 환경변수 (Vercel, 서버 only)</h3>
+            <p><strong><code>VITE_</code> prefix 절대 금지</strong> — 클라이언트 번들 노출 차단.</p>
+            <pre><code>SUPABASE_URL=https://&lt;project&gt;.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=eyJ...
+STORIGE_API_KEY=sk-storige-...
+STORIGE_API_BASE=https://api.papascompany.co.kr/api
+STORIGE_EDITOR_URL=https://editor.papascompany.co.kr
+STORIGE_WEBHOOK_URL=https://bookmoa-mobile.vercel.app/api/storige/webhook
+STORIGE_WEBHOOK_VERIFY_HEADER=X-Storige-Signature</code></pre>
+          </div>
+
+          <div class="card">
+            <h3>EditorResult payload (단일 진실)</h3>
+            <pre><code>// envelope
+{
+  source: 'storige-editor',
+  version: '1',
+  event: 'editor.complete',
+  payload: EditorResult,
+  timestamp: string,
+}
+
+// EditorResult
+{
+  sessionId,
+  orderSeqno?,
+  editCode?,
+  pages: { initial, final },
+  files: {                    // ← 중첩 필수
+    coverFileId?,
+    contentFileId?,
+    thumbnailUrl?,
+  },
+  savedAt,
+}</code></pre>
+          </div>
+        </div>
+
+        <p class="print-note" style="margin-top:14px;">
+          상세: <code>docs/PHASE_0_CONTRACT_DECISIONS_2026-05-16.md</code> §6.5 ·
+          <code>Bookmoa_platform_Plan.md</code> Phase 5.2.1 / §6.1 / Phase 7 ·
+          <code>docs/PLATFORM_INTEGRATION_v1.md</code> §4.1 / §4.2 / §4.3
+        </p>
       </section>
 
       <section id="checklist">

@@ -465,12 +465,64 @@ sequenceDiagram
     Host->>Iframe: 풀스크린 오버레이에 마운트<br/>(token, parentOrigin 전달)
     Iframe-->>Host: postMessage editor.ready
     Note over Iframe: 사용자 편집
-    Iframe-->>Host: postMessage editor.complete<br/>{ sessionId, coverFileId, contentFileId }
+    Iframe-->>Host: postMessage envelope<br/>{ source, version, event:'editor.complete', payload:EditorResult, timestamp }
     Host->>Host: event.origin === STORIGE_EDITOR_URL 검증
     Host->>Host: 오버레이 unmount<br/>history.back()<br/>body overflow 복원
-    Host-->>Page: onComplete(result) 콜백
-    Page->>Page: cart item에 storige 객체 추가
+    Host-->>Page: onComplete(envelope.payload) 콜백
+    Page->>Page: payload.files.{coverFileId,contentFileId} → cart item에 저장
 ```
+
+##### 5.2.1 editor.complete payload 스키마 (단일 진실)
+
+> **권위 출처**: `apps/editor/src/embed.tsx` L113~129 `EditorResult` 인터페이스 (Phase A-2 의문점 4 결정, 2026-05-16 사용자 확정).
+
+postMessage 봉투(envelope) 한 겹 안에 `EditorResult` 가 들어간다:
+
+```ts
+// 봉투 (envelope) — postMessage 전송 형식
+{
+  source: 'storige-editor',
+  version: '1',
+  event: 'editor.complete',
+  payload: EditorResult,        // ← 아래 인터페이스
+  timestamp: string,            // ISO8601
+}
+
+// EditorResult — payload 형식
+{
+  sessionId: string,
+  orderSeqno?: number,
+  editCode?: string,
+  pages: {
+    initial: number,
+    final: number,
+  },
+  files: {                      // ← 중첩 필수. top-level 아님.
+    coverFileId?: string,
+    contentFileId?: string,
+    thumbnailUrl?: string,
+  },
+  savedAt: string,              // ISO8601
+}
+```
+
+**외부 사이트 수신부 접근 패턴**:
+```js
+window.addEventListener('message', (e) => {
+  if (e.origin !== STORIGE_EDITOR_URL) return;
+  const env = e.data;
+  if (env?.source !== 'storige-editor' || env?.event !== 'editor.complete') return;
+  const result = env.payload;
+  // ✓ 올바른 접근
+  const coverId   = result.files?.coverFileId;
+  const contentId = result.files?.contentFileId;
+  const sessionId = result.sessionId;
+  // ✗ 잘못된 접근 (top-level coverFileId 는 존재하지 않음)
+  // const wrong = result.coverFileId;
+});
+```
+
+> **회귀 안전**: 이 스키마는 `embed.tsx` 의 현 emit 형식과 1:1 일치하므로 PHP/Admin 등 기존 사용처에 영향 0. 다른 형식으로 옮기는 옵션은 회수됨 (옵션 B 확정).
 
 #### 5.3 상태 보존 보장
 
@@ -486,15 +538,17 @@ sequenceDiagram
 
 #### 5.4 표준 embed 파라미터 (iframe URL/postMessage)
 
+> **Phase A-2 의문점 2 결정 (2026-05-16 사용자 확정)**: `siteId` URL 파라미터는 **선택**. 권한 권위는 `token` (shop-session JWT) payload 의 `siteId`. URL 위조 가능하므로 권한 결정에 사용 금지.
+
 | 파라미터 | 필수 | 비고 |
 |---|---|---|
-| `siteCode` 또는 `siteId` | 필수 | site context |
 | `templateSetId` | 필수 | |
 | `parentOrigin` | 필수 | postMessage 검증용 |
-| `token` | 필수 | 단기 JWT (≤1h) |
+| `token` | 필수 | 단기 JWT (≤1h). **권한 권위는 이 JWT payload 의 `siteId`** |
+| `siteId` | ⬜ 선택 | UX 분기·로깅 보조용. 권한 결정에 사용 금지. 기존 PHP 사이트는 미전달(JWT 자동) 호환 |
 | `mode` | 선택 | `both` / `cover` / `content` |
 | `pageCount`, `paperType`, `bindingType`, `width`, `height` | 선택 | 주문 옵션 |
-| `orderSeqno` / `orderId` | 선택 | 주문 식별 |
+| `orderSeqno` / `orderId` | 선택 | **장바구니 단계는 미전달(=null)**, 결제 후 실제 주문번호 발급 시점에 편집기 진입 (Phase A-2 의문점 3 결정) |
 | ~~`returnUrl`~~ | **금지** | inline embed에서는 페이지 전환이 없음 |
 
 #### 5.5 폐기되는 옵션
@@ -529,20 +583,37 @@ sequenceDiagram
 
 ```js
 cartItem.storige = {
-  sessionId,
-  coverFileId,
-  contentFileId,
+  sessionId,                  // editor.complete envelope.payload.sessionId
+  coverFileId,                // envelope.payload.files.coverFileId (중첩에서 꺼냄)
+  contentFileId,              // envelope.payload.files.contentFileId
   templateSetId,
-  status: 'edited',     // edited | validated | synthesis_pending | completed | failed
-  orderSeqno,
+  status: 'edited',           // 6개 enum 중 하나 — 아래 §6.1 status 표 참조
+  orderSeqno: null,           // 장바구니 단계는 null, 결제 후 실제 주문번호 발급 시 갱신 (Phase A-2 의문점 3 결정)
   // siteId/siteName은 표시·관리화면 조회용. 권한 판단은 자체 주문 DB 기준.
 }
 ```
 
+> **장바구니 단계는 임시 ID 를 만들지 않는다.** 결제 후 실제 `orderSeqno` 발급 시점에 편집기 진입 또는 합성 요청. 장바구니에 담는 단계에서는 `orderSeqno: null` 로 두고, 결제 후 webhook/주문 생성 응답으로 받은 실제 주문번호로 갱신한다. (Phase A-2 의문점 3 결정, 2026-05-16 사용자 확정. 권위 출처: `docs/PHP_INTEGRATION_FINAL_v3.md` 880~881)
+
+##### 6.1 status enum (단일 진실, 총 6개)
+
+> **Phase A-2 의문점 1 결정 (2026-05-16 사용자 확정)** — `validation.fixable` 은 `failed` 가 아닌 별도 status `fixable` 로 처리. 권위 출처: `docs/SYSTEM_INTEGRATION_OVERVIEW.md` 225~259.
+
+| # | 값 | 의미 / 전이 트리거 |
+|---|---|---|
+| 1 | `edited` | 편집기 완료 직후 (`editor.complete` 수신). 검증 시작 전 |
+| 2 | `validated` | `validation.completed` webhook — 검증 통과, 합성 가능 |
+| 3 | `fixable` | `validation.fixable` webhook — 자동 보정 가능. 사용자 확인 후 보정 합성 또는 재업로드 |
+| 4 | `synthesis_pending` | `POST /worker-jobs/synthesize/external` 발사 후 큐 대기 |
+| 5 | `completed` | `synthesis.completed` webhook — 합성 PDF 준비 완료 |
+| 6 | `failed` | `validation.failed` 또는 `synthesis.failed` webhook — 사용자/운영자 개입 필요 |
+
+기존 5개 enum (edited/validated/synthesis_pending/completed/failed) 에 **`fixable` 추가**. 외부 사이트는 `fixable` 상태에서 사용자에게 "자동 보정하시겠습니까?" 안내 후 `convert/external` 호출로 후속 처리 또는 재업로드 분기.
+
 2. **`Configure.handleAdd` / `ProdConfigure.handleAdd`** 시그니처 확장
    - 기존 Supabase Storage URL 기반 `files` 필드 유지
    - `storige` 키를 병행 추가
-3. **checkout/order 생성 흐름**에서 `storige` 객체 유지
+3. **checkout/order 생성 흐름**에서 `storige` 객체 유지하고 결제 직후 `orderSeqno` 채움
 4. **주문 상세 화면**에 Storige 상태 + 파일 ID 표시
 
 ### 처리 플로우
@@ -585,10 +656,37 @@ flowchart LR
    - 응답 `jobId`를 주문에 저장
 3. **`api/storige/validate.js`**
    - 업로드 PDF 또는 편집 결과 검증 job 생성
-4. **`api/storige/webhook.js`**
-   - `X-Storige-Event`, `X-Storige-Signature` 검증 (Phase 0 결정)
-   - 이벤트별 주문 상태 갱신
-   - 200 빠른 응답 (무거운 처리는 비동기 큐)
+4. **`api/storige/webhook.js`** — **Option A: Supabase 일원화 저장소** (Phase A-2 의문점 5 결정, 2026-05-16 사용자 확정)
+
+   사용자의 bookmoa-mobile 운영은 Supabase 가 항상 ON 으로 확정되었으므로, webhook 수신부는 별도 저장소 없이 Supabase 한 곳에 일원화한다. 권위 출처: `bookmoa-mobile/src/lib/storage.js` 96~111 의 `sLoad/sSave` 추상화.
+
+   ```
+   webhook.js 흐름:
+     1. X-Storige-Signature Base64 검증 (X-Storige-Retry: 1 인 경우 누락 허용 — Phase 0 D-4)
+     2. X-Storige-Event 분기 → cart/order item.storige.status 전이 (§6.1 6개 enum)
+     3. SUPABASE_SERVICE_ROLE_KEY 로 Supabase Admin 클라이언트 생성 (RLS bypass)
+     4. app_config 테이블의 p4-orders 키 갱신 (sSave 패턴 그대로)
+        - jobId / editSessionId 로 해당 cart/order item 찾아 storige.status / outputFileUrl 갱신
+        - 동일 jobId 멱등 처리 (이미 갱신된 상태면 무시)
+     5. 200 빠른 응답 (무거운 처리는 비동기 큐 — Vercel Function 짧은 응답 필수)
+
+   클라이언트:
+     - 주문 상세 진입 시 sLoad('p4-orders') 호출 → Supabase 에서 최신 상태 자동 조회 (기존 추상화 그대로)
+     - polling 불필요 (페이지 진입 시 1회 조회로 충분)
+     - 실시간성이 필요하면 Supabase Realtime 채널 구독으로 후속 확장 가능 (Phase 9 후보)
+   ```
+
+   **필수 Vercel 환경변수** (Production + Preview, **`VITE_` prefix 금지** — 서버 only):
+   ```
+   SUPABASE_URL=https://<project>.supabase.co
+   SUPABASE_SERVICE_ROLE_KEY=eyJ...           # service_role 키, 절대 클라이언트 노출 금지
+   STORIGE_API_KEY=sk-storige-...
+   STORIGE_API_BASE=https://api.papascompany.co.kr/api
+   STORIGE_EDITOR_URL=https://editor.papascompany.co.kr
+   STORIGE_WEBHOOK_URL=https://bookmoa-mobile.vercel.app/api/storige/webhook
+   STORIGE_WEBHOOK_VERIFY_HEADER=X-Storige-Signature
+   ```
+
 5. **`api/storige/files/proxy-download.js`**
    - `jobId` 기준 `GET /worker-jobs/:jobId/output` 프록시
    - 권한/주문 소유 검증 후 스트림 전달
