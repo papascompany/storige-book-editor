@@ -1,0 +1,952 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Bookmoa Storige 외부사이트 플랫폼 연동 가이드</title>
+  <style>
+    :root {
+      --bg: #f6f7f4;
+      --panel: #ffffff;
+      --ink: #172014;
+      --muted: #66705f;
+      --line: #dfe5da;
+      --green: #4f8f35;
+      --green-dark: #2e651f;
+      --green-soft: #edf7e8;
+      --amber: #b76e00;
+      --amber-soft: #fff7e8;
+      --red: #b3261e;
+      --red-soft: #fff0ef;
+      --blue: #275a91;
+      --blue-soft: #eef6ff;
+      --shadow: 0 18px 45px rgba(30, 44, 24, .08);
+      --radius: 20px;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans KR", "Apple SD Gothic Neo", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font-family: var(--sans);
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(79, 143, 53, .16), transparent 34rem),
+        radial-gradient(circle at top right, rgba(39, 90, 145, .12), transparent 30rem),
+        var(--bg);
+      line-height: 1.62;
+    }
+    a { color: inherit; }
+    code {
+      font-family: var(--mono);
+      font-size: .92em;
+      background: #f0f3ec;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      padding: 2px 6px;
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: 290px minmax(0, 1fr);
+      gap: 28px;
+      max-width: 1480px;
+      margin: 0 auto;
+      padding: 28px;
+    }
+    aside {
+      position: sticky;
+      top: 24px;
+      align-self: start;
+      height: calc(100vh - 48px);
+      overflow: auto;
+      background: rgba(255, 255, 255, .86);
+      border: 1px solid rgba(223, 229, 218, .9);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(10px);
+      padding: 22px;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 20px;
+      padding-bottom: 18px;
+      border-bottom: 1px solid var(--line);
+    }
+    .brand-mark {
+      width: 42px;
+      height: 42px;
+      border-radius: 14px;
+      background: linear-gradient(135deg, var(--green), var(--green-dark));
+      color: white;
+      display: grid;
+      place-items: center;
+      font-weight: 900;
+      letter-spacing: -.04em;
+    }
+    .brand small { display: block; color: var(--muted); line-height: 1.35; }
+    nav a {
+      display: block;
+      text-decoration: none;
+      color: #405039;
+      padding: 8px 10px;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 700;
+    }
+    nav a:hover { background: var(--green-soft); color: var(--green-dark); }
+    main { min-width: 0; }
+    .hero {
+      background: linear-gradient(135deg, #ffffff, #f1f8ed);
+      border: 1px solid rgba(223, 229, 218, .95);
+      border-radius: 28px;
+      padding: 38px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      position: relative;
+    }
+    .hero:after {
+      content: "";
+      position: absolute;
+      right: -90px;
+      top: -90px;
+      width: 260px;
+      height: 260px;
+      border-radius: 999px;
+      background: rgba(79, 143, 53, .12);
+    }
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid rgba(79, 143, 53, .28);
+      background: rgba(237, 247, 232, .9);
+      color: var(--green-dark);
+      border-radius: 999px;
+      padding: 6px 12px;
+      font-weight: 800;
+      font-size: 13px;
+      margin-bottom: 16px;
+    }
+    h1 {
+      margin: 0;
+      font-size: clamp(30px, 5vw, 56px);
+      letter-spacing: -.045em;
+      line-height: 1.08;
+      max-width: 940px;
+    }
+    .lead {
+      color: #43513d;
+      font-size: 18px;
+      max-width: 860px;
+      margin: 20px 0 0;
+    }
+    .hero-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+      margin-top: 28px;
+      position: relative;
+      z-index: 1;
+    }
+    .metric {
+      background: rgba(255, 255, 255, .84);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 16px;
+    }
+    .metric strong { display: block; font-size: 24px; color: var(--green-dark); }
+    .metric span { display: block; color: var(--muted); font-size: 13px; margin-top: 2px; }
+
+    section {
+      margin-top: 28px;
+      background: rgba(255, 255, 255, .9);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 28px;
+    }
+    h2 {
+      margin: 0 0 14px;
+      font-size: 26px;
+      letter-spacing: -.03em;
+    }
+    h3 {
+      margin: 0 0 10px;
+      font-size: 18px;
+      letter-spacing: -.02em;
+    }
+    .section-intro {
+      color: var(--muted);
+      margin: -4px 0 22px;
+      max-width: 880px;
+    }
+    .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    .card {
+      border: 1px solid var(--line);
+      background: #fff;
+      border-radius: 16px;
+      padding: 18px;
+    }
+    .card p { margin: 0; color: var(--muted); }
+    .tag {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 900;
+      margin-bottom: 9px;
+    }
+    .tag.green { background: var(--green-soft); color: var(--green-dark); }
+    .tag.amber { background: var(--amber-soft); color: var(--amber); }
+    .tag.blue { background: var(--blue-soft); color: var(--blue); }
+    .tag.red { background: var(--red-soft); color: var(--red); }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(120px, 1fr));
+      gap: 12px;
+      align-items: stretch;
+    }
+    .flow-card {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 16px;
+      background: #fff;
+      position: relative;
+      min-height: 122px;
+    }
+    .flow-card:not(:last-child):after {
+      content: ">";
+      position: absolute;
+      right: -12px;
+      top: 42%;
+      color: var(--green);
+      font-weight: 900;
+      background: var(--bg);
+      width: 20px;
+      height: 20px;
+      border-radius: 999px;
+      display: grid;
+      place-items: center;
+      z-index: 2;
+    }
+    .flow-card b { display: block; font-size: 15px; margin-bottom: 8px; }
+    .flow-card small { color: var(--muted); display: block; }
+
+    .timeline {
+      display: grid;
+      gap: 14px;
+      counter-reset: step;
+    }
+    .step {
+      display: grid;
+      grid-template-columns: 64px minmax(0, 1fr);
+      gap: 16px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 18px;
+      background: #fff;
+      position: relative;
+    }
+    .num {
+      width: 48px;
+      height: 48px;
+      border-radius: 16px;
+      background: var(--green-soft);
+      color: var(--green-dark);
+      display: grid;
+      place-items: center;
+      font-weight: 950;
+      font-size: 18px;
+    }
+    .step ul, .risk-list, .checklist { margin: 8px 0 0; padding-left: 18px; color: #485543; }
+    .step li, .risk-list li, .checklist li { margin: 5px 0; }
+    .phase {
+      display: inline-block;
+      font-size: 12px;
+      font-weight: 900;
+      color: var(--green-dark);
+      background: var(--green-soft);
+      border-radius: 999px;
+      padding: 2px 8px;
+      margin-bottom: 8px;
+    }
+
+    .swimlane {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 14px;
+    }
+    .lane {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 16px;
+      background: #fff;
+    }
+    .lane h3 { display: flex; align-items: center; gap: 8px; }
+    .lane ol { margin: 12px 0 0; padding-left: 20px; }
+    .lane li { margin: 8px 0; }
+
+    .matrix {
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: #fff;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+    th, td {
+      text-align: left;
+      vertical-align: top;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+    }
+    th { background: #f3f6ef; color: #3c4a35; font-size: 13px; }
+    tr:last-child td { border-bottom: 0; }
+
+    .callout {
+      border-radius: 18px;
+      padding: 18px;
+      border: 1px solid;
+      margin-top: 16px;
+    }
+    .callout.green { background: var(--green-soft); border-color: #c7ddb9; }
+    .callout.amber { background: var(--amber-soft); border-color: #f0d29b; }
+    .callout.red { background: var(--red-soft); border-color: #efc0bc; }
+    .callout strong { display: block; margin-bottom: 4px; }
+
+    .print-note {
+      color: var(--muted);
+      font-size: 13px;
+      margin-top: 14px;
+    }
+    @media (max-width: 1080px) {
+      .layout { grid-template-columns: 1fr; padding: 18px; }
+      aside { position: static; height: auto; }
+      nav { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; }
+      .hero-grid, .grid-3, .swimlane, .flow { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 720px) {
+      .hero, section { padding: 22px; }
+      .hero-grid, .grid-2, .grid-3, .swimlane, .flow { grid-template-columns: 1fr; }
+      .flow-card:not(:last-child):after { display: none; }
+      .step { grid-template-columns: 1fr; }
+      nav { grid-template-columns: 1fr; }
+    }
+    @media print {
+      body { background: #fff; }
+      .layout { display: block; max-width: none; padding: 0; }
+      aside { display: none; }
+      section, .hero { break-inside: avoid; box-shadow: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside>
+      <div class="brand">
+        <div class="brand-mark">ST</div>
+        <div>
+          <strong>Storige Platform</strong>
+          <small>외부사이트 편집기 · PDF 워커 연동</small>
+        </div>
+      </div>
+      <nav>
+        <a href="#overview">전체 개요</a>
+        <a href="#platform">플랫폼 판단</a>
+        <a href="#bookmoa-guide">bookmoa 연동가이드</a>
+        <a href="#domain">도메인 제약</a>
+        <a href="#architecture">구조도</a>
+        <a href="#roadmap">진행 순서</a>
+        <a href="#partner">제휴사 관리자</a>
+        <a href="#worker">PDF 워커 흐름</a>
+        <a href="#contracts">핵심 계약</a>
+        <a href="#checklist">검증 체크리스트</a>
+        <a href="#notes">주의점</a>
+      </nav>
+    </aside>
+
+    <main>
+      <header class="hero" id="overview">
+        <div class="eyebrow">Bookmoa Storige 외부사이트 플랫폼 연동 가이드</div>
+        <h1>편집기는 필요한 시점에만 띄우고, PDF 검증과 합성은 플랫폼 워커로 처리합니다.</h1>
+        <p class="lead">
+          이 문서는 `Bookmoa Storige editor/storige`를 공급자 플랫폼으로 보고,
+          bookmoa web(PHP)을 첫 운영 테넌트로 연동한 뒤 다른 인쇄 서비스까지 확장하기 위한 실행 순서입니다.
+        </p>
+        <div class="hero-grid">
+          <div class="metric"><strong>12</strong><span>따라갈 구현 단계</span></div>
+          <div class="metric"><strong>4</strong><span>핵심 보안 경계</span></div>
+          <div class="metric"><strong>Site</strong><span>외부 서비스 관리 단위</span></div>
+          <div class="metric"><strong>PDF</strong><span>검증 · 합성 · 다운로드</span></div>
+        </div>
+      </header>
+
+      <section id="platform">
+        <h2>1. 현재 결론</h2>
+        <p class="section-intro">
+          bookmoa는 특수 하드코딩 대상이 아니라 Storige 플랫폼에 등록되는 첫 번째 운영 테넌트입니다.
+          다른 외부 서비스도 같은 Site/Tenant 모델로 온보딩할 수 있습니다.
+        </p>
+        <div class="grid-3">
+          <div class="card">
+            <span class="tag green">이미 있음</span>
+            <h3>Site/Tenant 모델</h3>
+            <p>외부 쇼핑몰/앱/서비스 1개를 `sites` 행으로 관리합니다. `북모아 메인`, `점보포토`, `스튜디오북` 같은 단위입니다.</p>
+          </div>
+          <div class="card">
+            <span class="tag green">이미 있음</span>
+            <h3>사이트별 인증코드</h3>
+            <p>`editorAuthCode`, `workerAuthCode`를 발급하고 `X-API-Key`로 site context를 찾습니다.</p>
+          </div>
+          <div class="card">
+            <span class="tag green">이미 있음</span>
+            <h3>작업/세션 site_id</h3>
+            <p>편집 세션과 워커 작업에 `site_id`가 주입되어 Admin에서 사이트별 필터링이 가능합니다.</p>
+          </div>
+          <div class="card">
+            <span class="tag amber">보강 필요</span>
+            <h3>도메인 보안 정책</h3>
+            <p>CORS, iframe CSP, postMessage, webhook allowlist를 Site 설정 기반으로 통합해야 합니다.</p>
+          </div>
+          <div class="card">
+            <span class="tag amber">보강 필요</span>
+            <h3>파트너 관리자</h3>
+            <p>제휴사가 자기 주문/PDF/제작 상태만 처리하는 계정과 화면은 아직 없습니다.</p>
+          </div>
+          <div class="card">
+            <span class="tag red">P0 리스크</span>
+            <h3>문서와 구현 불일치</h3>
+            <p>URL 파라미터 snake_case/camelCase, webhook 서명 방식은 구현 전에 표준화해야 합니다.</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="bookmoa-guide">
+        <h2>2. bookmoa 연동가이드</h2>
+        <p class="section-intro">
+          기존 `docs/php연동가이드/PHP_INTEGRATION_FINAL_v3.md`와 `SYSTEM_INTEGRATION_OVERVIEW.html`을 다시 확인한 결과,
+          이번 플랜은 기존 PHP 연동 방식을 갈아엎는 작업이 아니라 이미 안내된 연동 계약을 Site/Tenant 모델 위에서 명확히 고정하는 작업입니다.
+        </p>
+
+        <div class="callout green">
+          <strong>결론: 기존 bookmoa PHP 연동안은 유지</strong>
+          PHP 서버가 `X-API-Key`를 서버에만 보관하고, `shop-session` 발급 → 편집기 실행 → 편집 완료 fileId 저장 →
+          `check-mergeable/external` → `synthesize/external` → webhook 수신 → 결과 PDF 다운로드 순서로 처리하는 큰 흐름은 바뀌지 않습니다.
+        </div>
+
+        <div class="grid-3" style="margin-top:16px">
+          <div class="card">
+            <span class="tag green">유지</span>
+            <h3>서버 간 인증</h3>
+            <p>기존 `STORIGE_API_KEY`는 계속 사용합니다. 브라우저에 노출하지 않고 PHP 서버에서만 `X-API-Key`로 호출합니다.</p>
+          </div>
+          <div class="card">
+            <span class="tag green">유지</span>
+            <h3>외부 전용 API</h3>
+            <p>`/auth/shop-session`, `/files/upload/external`, `/worker-jobs/*/external`, `/files/{id}/download/external` 계약은 유지됩니다.</p>
+          </div>
+          <div class="card">
+            <span class="tag green">유지</span>
+            <h3>파일 처리 방식</h3>
+            <p>편집 완료 결과는 PDF URL이 아니라 `coverFileId`, `contentFileId` UUID로 저장하고, 다운로드는 서버가 프록시합니다.</p>
+          </div>
+          <div class="card">
+            <span class="tag amber">확인 필요</span>
+            <h3>편집기 URL 파라미터</h3>
+            <p>기존 PHP 문서는 `template_set_id`, `page_count` 같은 snake_case를 안내합니다. 현재 에디터 구현은 camelCase도 사용하므로 호환 레이어가 필요합니다.</p>
+          </div>
+          <div class="card">
+            <span class="tag amber">확인 필요</span>
+            <h3>Webhook 서명</h3>
+            <p>문서는 HMAC-SHA256을 전제로 하지만 구현은 Base64 서명 흐름이 섞여 있습니다. PHP 배포 전 한 방식으로 확정해야 합니다.</p>
+          </div>
+          <div class="card">
+            <span class="tag blue">보강</span>
+            <h3>Site 설정 기반 운영</h3>
+            <p>북모아는 `sites`의 첫 운영 테넌트로 관리하고, 이후 외부 서비스도 동일한 인증코드/도메인/워커 옵션 규칙을 따릅니다.</p>
+          </div>
+        </div>
+
+        <h3 style="margin-top:22px">bookmoa PHP 기준 표준 흐름</h3>
+        <div class="flow">
+          <div class="flow-card">
+            <b>1. 세션 발급</b>
+            <small>PHP 서버가 `POST /auth/shop-session` 호출. 응답의 `accessToken`으로 편집기 권한을 부여합니다.</small>
+          </div>
+          <div class="flow-card">
+            <b>2. 편집기 실행</b>
+            <small>`template_set_id`, `order_seqno`, `page_count`, `paper_type`, `binding_type`, `return_url`을 전달합니다.</small>
+          </div>
+          <div class="flow-card">
+            <b>3. 완료 결과 저장</b>
+            <small>`session_id`, `cover_file_id`, `content_file_id`, `thumbnail_url`을 bookmoa 주문 DB에 저장합니다.</small>
+          </div>
+          <div class="flow-card">
+            <b>4. 합성 요청</b>
+            <small>결제/주문 확정 시 `check-mergeable/external` 후 `synthesize/external`을 호출합니다.</small>
+          </div>
+          <div class="flow-card">
+            <b>5. 결과 반영</b>
+            <small>Webhook으로 `jobId`를 받고 `GET /worker-jobs/{jobId}/output`을 서버에서 내려받아 저장합니다.</small>
+          </div>
+        </div>
+
+        <h3 style="margin-top:22px">작업 전 영향 체크</h3>
+        <div class="matrix">
+          <table>
+            <thead>
+              <tr>
+                <th>영향 영역</th>
+                <th>기존 문서 기준</th>
+                <th>이번 작업 후 판단</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>PHP 코드</strong></td>
+                <td>`X-API-Key` 서버 보관, `/external` API 사용, fileId 저장</td>
+                <td>큰 흐름 변경 없음. 단, HTTP 201 고정 체크보다 2xx 성공 처리 권장.</td>
+              </tr>
+              <tr>
+                <td><strong>에디터 진입 URL</strong></td>
+                <td>snake_case 파라미터 예시가 PHP 문서에 있음</td>
+                <td>Storige Editor가 snake_case를 직접 수용하거나 PHP 어댑터가 camelCase로 변환해야 함.</td>
+              </tr>
+              <tr>
+                <td><strong>Webhook</strong></td>
+                <td>`X-Storige-Event`, `X-Storige-Signature`, 200 응답, 최대 3회 재시도</td>
+                <td>이벤트/응답 정책은 유지. 서명 생성/검증 방식만 실제 코드와 문서 중 하나로 통일 필요.</td>
+              </tr>
+              <tr>
+                <td><strong>도메인 보안</strong></td>
+                <td>`WEBHOOK_ALLOWED_HOSTS`, CORS 도메인, API Key 비노출</td>
+                <td>수동 환경변수 중심에서 Site 설정 기반 allowlist로 확장하면 운영 영향은 줄고 온보딩이 쉬워짐.</td>
+              </tr>
+              <tr>
+                <td><strong>결과 PDF</strong></td>
+                <td>`outputFileUrl`은 내부 경로라 직접 요청 금지</td>
+                <td>변경 없음. bookmoa 서버가 다운로드/저장하고 고객에게 자체 URL 또는 스트림으로 제공.</td>
+              </tr>
+              <tr>
+                <td><strong>다른 외부 서비스</strong></td>
+                <td>bookmoa 중심 문서</td>
+                <td>같은 API 계약을 `sites` 행과 별도 인증코드로 재사용. bookmoa에는 호환성 유지가 핵심.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="callout amber">
+          <strong>구현 시작 전 P0 확인 항목</strong>
+          1) Editor URL의 snake_case/camelCase 호환, 2) webhook 서명 방식 확정, 3) bookmoa 도메인의 CORS·iframe·webhook allowlist 등록,
+          4) 결과 PDF와 fileId를 클라이언트에 직접 노출하지 않는지 점검해야 합니다.
+        </div>
+      </section>
+
+      <section id="domain">
+        <h2>3. 외부 도메인 제약과 해결책</h2>
+        <p class="section-intro">
+          외부 사이트와 Storige Editor/API 도메인이 다르기 때문에 브라우저 보안 정책을 연동 계약에 포함해야 합니다.
+        </p>
+        <div class="matrix">
+          <table>
+            <thead>
+              <tr>
+                <th>제약</th>
+                <th>발생 지점</th>
+                <th>공급자 대응</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>CORS</strong></td>
+                <td>외부 브라우저가 Storige API를 직접 호출할 때</td>
+                <td>API Key 호출은 서버 어댑터로 제한. 필요한 브라우저 호출은 `sites.allowedOrigins` 기반 허용.</td>
+              </tr>
+              <tr>
+                <td><strong>서드파티 쿠키</strong></td>
+                <td>외부 iframe 안에서 Storige 쿠키 인증 기대 시</td>
+                <td>외부 embed는 쿠키 의존을 줄이고 `StorigeEditor.create({ token })` 또는 일회성 세션 코드 사용.</td>
+              </tr>
+              <tr>
+                <td><strong>iframe / CSP</strong></td>
+                <td>파트너 사이트 내부에서 편집기를 iframe으로 띄울 때</td>
+                <td>`frame-ancestors`를 `sites.frameAncestors` 기준으로 생성하거나 새 탭 방식을 표준으로 선택.</td>
+              </tr>
+              <tr>
+                <td><strong>팝업 차단</strong></td>
+                <td>비동기 API 호출 후 `window.open` 실행 시</td>
+                <td>사용자 클릭 직후 빈 창을 열고, 토큰 발급 후 URL을 세팅. 또는 modal iframe 사용.</td>
+              </tr>
+              <tr>
+                <td><strong>postMessage</strong></td>
+                <td>편집 완료/저장/에러 이벤트를 부모 페이지로 보낼 때</td>
+                <td>`parentOrigin`을 필수 옵션으로 받고 양쪽에서 `event.origin` 검증. `targetOrigin='*'` 제거.</td>
+              </tr>
+              <tr>
+                <td><strong>Webhook allowlist</strong></td>
+                <td>PDF 검증/합성 완료 콜백 전송 시</td>
+                <td>`sites.uploadCallbackUrl` host를 검증 기준으로 사용. 수동 `WEBHOOK_ALLOWED_HOSTS` 의존을 축소.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="callout amber">
+          <strong>공급자 관점의 원칙</strong>
+          외부 사이트 브라우저에는 API Key를 절대 노출하지 않습니다. 외부 사이트 서버가 Storige API를 호출하고, 브라우저에는 단기 편집 토큰만 전달합니다.
+        </div>
+      </section>
+
+      <section id="architecture">
+        <h2>4. 목표 구조</h2>
+        <p class="section-intro">
+          Admin의 Site 설정이 외부 서비스 온보딩의 중심이고, 고객 편집 흐름과 파트너 운영 흐름은 권한을 분리합니다.
+        </p>
+        <div class="flow">
+          <div class="flow-card">
+            <b>외부 사이트</b>
+            <small>bookmoa web, bookmoa-mobile, 다른 인쇄 서비스</small>
+          </div>
+          <div class="flow-card">
+            <b>서버 어댑터</b>
+            <small>API Key 보관, shop-session 발급, worker job 생성</small>
+          </div>
+          <div class="flow-card">
+            <b>Storige API</b>
+            <small>siteId 주입, 세션/파일/잡 저장, webhook 발송</small>
+          </div>
+          <div class="flow-card">
+            <b>Editor + Worker</b>
+            <small>필요 시 편집기 실행, PDF 검증/합성 처리</small>
+          </div>
+          <div class="flow-card">
+            <b>파트너 처리</b>
+            <small>자기 사이트 주문 확인, PDF 다운로드, 제작 상태 관리</small>
+          </div>
+        </div>
+      </section>
+
+      <section id="roadmap">
+        <h2>5. 진행 순서</h2>
+        <p class="section-intro">
+          아래 순서대로 진행하면 플랫폼 안전장치부터 bookmoa PHP 연동, mobile/기타 서비스 확장, 파트너 운영 포털까지 이어집니다.
+        </p>
+        <div class="timeline">
+          <article class="step">
+            <div class="num">1</div>
+            <div>
+              <span class="phase">Platform P0</span>
+              <h3>Storige Admin 외부사이트 설정 확정</h3>
+              <ul>
+                <li>`기본설정 > 사이트`를 외부 연동의 단일 진입점으로 사용합니다.</li>
+                <li>`domain`, `returnUrlBase`, `uploadCallbackUrl`, `editorAuthCode`, `workerAuthCode`를 필수로 정리합니다.</li>
+                <li>`allowedOrigins`, `frameAncestors`, `editorLaunchMode`, 번들 URL/버전을 Site 설정으로 추가합니다.</li>
+              </ul>
+            </div>
+          </article>
+          <article class="step">
+            <div class="num">2</div>
+            <div>
+              <span class="phase">Bookmoa First</span>
+              <h3>bookmoa web(PHP) 1차 연동 확정</h3>
+              <ul>
+                <li>기존 `STORIGE_API_KEY` 호환을 유지합니다.</li>
+                <li>`shop-session` → 편집기 URL → 편집 완료 저장 → `check-mergeable` → `synthesize` → webhook 저장 흐름을 확정합니다.</li>
+                <li>PHP 문서의 snake_case와 에디터 구현의 camelCase를 호환 레이어로 맞춥니다.</li>
+              </ul>
+            </div>
+          </article>
+          <article class="step">
+            <div class="num">3</div>
+            <div>
+              <span class="phase">Security</span>
+              <h3>도메인 연동 보안 계층 정리</h3>
+              <ul>
+                <li>CORS, iframe, postMessage, webhook host 검증을 Site 설정 기반으로 일관 처리합니다.</li>
+                <li>고객 편집 권한은 `shop-session` JWT, 파트너 운영 권한은 Admin JWT + site scope로 분리합니다.</li>
+                <li>새 창 방식과 iframe 방식의 표준 옵션을 문서화합니다.</li>
+              </ul>
+            </div>
+          </article>
+          <article class="step">
+            <div class="num">4</div>
+            <div>
+              <span class="phase">Partner Portal</span>
+              <h3>제휴사 관리자/주문처리 기능 추가</h3>
+              <ul>
+                <li>`PARTNER_ADMIN`, `PARTNER_OPERATOR`, `users.site_id`를 추가합니다.</li>
+                <li>`SiteScopeGuard`로 자기 사이트 주문/파일/잡만 접근하게 합니다.</li>
+                <li>주문관리, PDF 검수/다운로드, 제작관리 화면을 역할별 메뉴로 분리합니다.</li>
+              </ul>
+            </div>
+          </article>
+          <article class="step">
+            <div class="num">5</div>
+            <div>
+              <span class="phase">Adapter</span>
+              <h3>외부 서비스 서버 어댑터 추가</h3>
+              <ul>
+                <li>각 서비스 서버에 `/api/storige/*` 또는 PHP helper를 둡니다.</li>
+                <li>`STORIGE_API_BASE`, `STORIGE_API_KEY`, `STORIGE_EDITOR_URL`, `STORIGE_WEBHOOK_URL`은 서버에만 보관합니다.</li>
+                <li>브라우저는 자기 서비스 어댑터만 호출합니다.</li>
+              </ul>
+            </div>
+          </article>
+          <article class="step">
+            <div class="num">6</div>
+            <div>
+              <span class="phase">Catalog</span>
+              <h3>상품과 템플릿셋 연결</h3>
+              <ul>
+                <li>`GET /api/product-template-sets/by-product?sortcode=...&stanSeqno=...` 계약을 사용합니다.</li>
+                <li>상품 모델에 `sortcode`, `stanSeqno`, `templateSetId`, `allowEditor`를 저장합니다.</li>
+                <li>bookmoa-mobile은 `ProductEditor`와 `customProducts` 스키마를 확장합니다.</li>
+              </ul>
+            </div>
+          </article>
+          <article class="step">
+            <div class="num">7</div>
+            <div>
+              <span class="phase">Editor</span>
+              <h3>편집기 진입 흐름 연결</h3>
+              <ul>
+                <li>주문/상품 흐름에서 필요한 시점에만 편집기를 띄웁니다.</li>
+                <li>iframe 방식은 `parentOrigin` 검증, 새 탭 방식은 팝업 차단 대응을 포함합니다.</li>
+                <li>`StorigeEditor.create(...)` embed 또는 운영 Editor URL 방식 중 하나를 표준으로 선택합니다.</li>
+              </ul>
+            </div>
+          </article>
+          <article class="step">
+            <div class="num">8</div>
+            <div>
+              <span class="phase">State</span>
+              <h3>편집 완료 결과 저장</h3>
+              <ul>
+                <li>`sessionId`, `coverFileId`, `contentFileId`, `templateSetId`, `status`를 주문/장바구니에 저장합니다.</li>
+                <li>외부 서비스의 권한 판단은 자체 주문 DB 기준으로 유지합니다.</li>
+              </ul>
+            </div>
+          </article>
+          <article class="step">
+            <div class="num">9</div>
+            <div>
+              <span class="phase">PDF Validation</span>
+              <h3>PDF 업로드와 검증 워커 연결</h3>
+              <ul>
+                <li>`POST /files/upload/external`로 PDF를 업로드합니다.</li>
+                <li>`POST /worker-jobs/validate/external`로 검증 작업을 생성합니다.</li>
+                <li>`orderOptions`에는 판형, 페이지 수, 제본, bleed, 종이 두께를 정규화해 보냅니다.</li>
+              </ul>
+            </div>
+          </article>
+          <article class="step">
+            <div class="num">10</div>
+            <div>
+              <span class="phase">Synthesis</span>
+              <h3>주문 확정 시 합성 워커 호출</h3>
+              <ul>
+                <li>`check-mergeable/external`로 사전 점검합니다.</li>
+                <li>`synthesize/external`에 `coverFileId`, `contentFileId`, `spineWidth`, `bindingType`, `orderId`, `callbackUrl`을 전달합니다.</li>
+              </ul>
+            </div>
+          </article>
+          <article class="step">
+            <div class="num">11</div>
+            <div>
+              <span class="phase">Webhook</span>
+              <h3>Webhook과 결과 PDF 저장</h3>
+              <ul>
+                <li>`synthesis.completed`, `synthesis.failed`, `validation.*` 이벤트를 수신합니다.</li>
+                <li>결과 PDF는 외부 서비스 서버가 다운로드/저장하고, 클라이언트에는 내부 storage 경로를 노출하지 않습니다.</li>
+                <li>webhook 서명은 구현과 문서를 맞춘 뒤 표준화합니다.</li>
+              </ul>
+            </div>
+          </article>
+          <article class="step">
+            <div class="num">12</div>
+            <div>
+              <span class="phase">QA</span>
+              <h3>사이트별 격리 E2E 검증</h3>
+              <ul>
+                <li>북모아와 테스트 외부 서비스를 각각 등록하고 서로 다른 키로 작업을 만듭니다.</li>
+                <li>Admin 사이트 필터로 작업/세션이 분리되는지 확인합니다.</li>
+                <li>파트너 계정이 다른 사이트 주문/파일/job 상세에 접근하면 403인지 검증합니다.</li>
+              </ul>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section id="partner">
+        <h2>6. 제휴사 관리자 기능 개발 순서</h2>
+        <p class="section-intro">
+          파트너 계정은 편집기 고객 세션과 분리된 운영 권한입니다. 자기 사이트 주문, 파일, 워커 작업만 처리해야 합니다.
+        </p>
+        <div class="swimlane">
+          <div class="lane">
+            <h3>API / DB</h3>
+            <ol>
+              <li>`PARTNER_ADMIN`, `PARTNER_OPERATOR` 역할 추가</li>
+              <li>`users.site_id` 또는 `site_users` 추가</li>
+              <li>`SiteScopeGuard` 추가</li>
+              <li>files, edit_sessions, worker_jobs 상세 권한 강화</li>
+              <li>`/partner/orders` API 추가</li>
+            </ol>
+          </div>
+          <div class="lane">
+            <h3>Admin UI</h3>
+            <ol>
+              <li>역할별 메뉴 분리</li>
+              <li>파트너 주문관리 화면</li>
+              <li>PDF 검수/다운로드 화면</li>
+              <li>제작상태 변경 화면</li>
+              <li>자기 사이트 고정 필터</li>
+            </ol>
+          </div>
+          <div class="lane">
+            <h3>운영 정책</h3>
+            <ol>
+              <li>파트너 계정 발급/비활성화</li>
+              <li>PDF 다운로드 감사 로그</li>
+              <li>상태 변경 이력 저장</li>
+              <li>다른 사이트 접근 차단 테스트</li>
+              <li>장기적으로 사이트별 통계 대시보드</li>
+            </ol>
+          </div>
+        </div>
+      </section>
+
+      <section id="worker">
+        <h2>7. PDF 워커 처리 흐름</h2>
+        <p class="section-intro">
+          여기서 worker는 Cloudflare Worker가 아니라 NestJS + Bull + Redis 기반 PDF 처리 서비스입니다.
+        </p>
+        <div class="flow">
+          <div class="flow-card">
+            <b>1. PDF 업로드</b>
+            <small>`/files/upload/external`</small>
+          </div>
+          <div class="flow-card">
+            <b>2. 검증 Job</b>
+            <small>`/worker-jobs/validate/external`</small>
+          </div>
+          <div class="flow-card">
+            <b>3. 합성 사전점검</b>
+            <small>`/worker-jobs/check-mergeable/external`</small>
+          </div>
+          <div class="flow-card">
+            <b>4. 합성 Job</b>
+            <small>`/worker-jobs/synthesize/external`</small>
+          </div>
+          <div class="flow-card">
+            <b>5. 결과 저장</b>
+            <small>Webhook 수신 후 PDF 다운로드/저장</small>
+          </div>
+        </div>
+        <div class="callout green">
+          <strong>사이트별 분리</strong>
+          모든 외부 worker 호출은 `X-API-Key`로 siteId를 찾아 `worker_jobs.site_id`에 저장해야 합니다.
+        </div>
+      </section>
+
+      <section id="contracts">
+        <h2>8. 핵심 계약 요약</h2>
+        <div class="grid-2">
+          <div class="card">
+            <span class="tag blue">Site 설정</span>
+            <h3>외부 서비스 등록값</h3>
+            <ul class="risk-list">
+              <li>`domain`, `returnUrlBase`, `uploadCallbackUrl`</li>
+              <li>`editorAuthCode`, `workerAuthCode`</li>
+              <li>`allowedOrigins`, `frameAncestors`</li>
+              <li>`editorLaunchMode`, `editorBundleUrl`, `editorVersion`</li>
+            </ul>
+          </div>
+          <div class="card">
+            <span class="tag blue">Embed 옵션</span>
+            <h3>편집기 진입값</h3>
+            <ul class="risk-list">
+              <li>`siteId` 또는 `siteCode`</li>
+              <li>`orderSeqno` / `orderId`</li>
+              <li>`templateSetId`, `mode`, `returnUrl`, `callbackUrl`</li>
+              <li>`parentOrigin`, `pageCount`, `paperType`, `bindingType`, `width`, `height`</li>
+            </ul>
+          </div>
+          <div class="card">
+            <span class="tag amber">P0 표준화</span>
+            <h3>문서/구현 불일치</h3>
+            <ul class="risk-list">
+              <li>PHP 문서: `template_set_id`, `page_count`</li>
+              <li>현재 EditorView: `templateSetId`, `pageCount`</li>
+              <li>Webhook 문서: HMAC-SHA256</li>
+              <li>현재 구현: Base64 서명</li>
+            </ul>
+          </div>
+          <div class="card">
+            <span class="tag red">금지</span>
+            <h3>브라우저 노출 금지</h3>
+            <ul class="risk-list">
+              <li>`X-API-Key`</li>
+              <li>Storige 내부 storage 경로</li>
+              <li>장기 토큰</li>
+              <li>다른 사이트의 jobId/fileId 접근 권한</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section id="checklist">
+        <h2>9. 실행 체크리스트</h2>
+        <div class="grid-2">
+          <div class="card">
+            <h3>플랫폼 공급자 체크</h3>
+            <ul class="checklist">
+              <li>북모아 메인 Site 등록 확인</li>
+              <li>테스트 외부 서비스 Site 별도 등록</li>
+              <li>도메인/CORS/iframe/webhook allowlist 설정</li>
+              <li>편집기 URL 파라미터 호환 처리</li>
+              <li>Webhook 서명 표준 확정</li>
+              <li>Admin 사이트 필터 동작 확인</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>외부 서비스 체크</h3>
+            <ul class="checklist">
+              <li>서버 어댑터에서만 `X-API-Key` 사용</li>
+              <li>`shop-session`으로 단기 JWT 발급</li>
+              <li>필요 시점에만 편집기 실행</li>
+              <li>편집 완료 파일 ID 주문 DB 저장</li>
+              <li>검증/합성 job 생성 및 상태 저장</li>
+              <li>결과 PDF 서버 저장 후 고객/관리자에게 노출</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section id="notes">
+        <h2>10. 최종 주의점</h2>
+        <div class="callout red">
+          <strong>가장 먼저 정리할 것</strong>
+          URL 파라미터와 webhook 서명은 외부 연동의 계약입니다. bookmoa PHP 연동 전에 문서와 실제 구현을 반드시 맞춰야 합니다.
+        </div>
+        <div class="callout amber">
+          <strong>파트너 포털은 별도 Phase</strong>
+          제휴사 관리자 기능은 보안 범위가 크므로 편집기 연동과 분리해 개발하되, 지금부터 모든 API에 `site_id` 권한 모델을 일관되게 적용해야 합니다.
+        </div>
+        <p class="print-note">
+          기준 문서: `bookmoa_storige_연동_1af67c3d.plan.md` · 생성 목적: 진행 순서 기반 시각화 HTML
+        </p>
+      </section>
+    </main>
+  </div>
+</body>
+</html>
