@@ -41,7 +41,9 @@ export const categoriesApi = {
   },
 
   update: async (id: string, data: UpdateCategoryDto): Promise<Category> => {
-    const response = await axiosInstance.put<Category>(`/categories/${id}`, data);
+    // API 컨트롤러가 @Patch(':id') 로 등록되어 있어 PUT 은 404 반환 → PATCH 사용
+    // (2026-05-15 fix — admin/categories 의 카테고리 수정이 PUT/404 로 실패하던 문제)
+    const response = await axiosInstance.patch<Category>(`/categories/${id}`, data);
     return response.data;
   },
 
