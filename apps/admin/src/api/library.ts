@@ -47,7 +47,8 @@ export const libraryApi = {
   },
 
   updateFont: async (id: string, data: Partial<CreateFontDto>): Promise<LibraryFont> => {
-    const response = await axiosInstance.put<LibraryFont>(`/library/fonts/${id}`, data);
+    // API 컨트롤러가 @Patch('fonts/:id') — PUT 은 404. 2026-05-15 fix
+    const response = await axiosInstance.patch<LibraryFont>(`/library/fonts/${id}`, data);
     return response.data;
   },
 
@@ -75,7 +76,8 @@ export const libraryApi = {
     id: string,
     data: Partial<LibraryBackground>
   ): Promise<LibraryBackground> => {
-    const response = await axiosInstance.put<LibraryBackground>(
+    // API 컨트롤러가 @Patch('backgrounds/:id') — PUT 은 404. 2026-05-15 fix
+    const response = await axiosInstance.patch<LibraryBackground>(
       `/library/backgrounds/${id}`,
       data
     );
@@ -110,7 +112,8 @@ export const libraryApi = {
   },
 
   updateClipart: async (id: string, data: Partial<LibraryClipart>): Promise<LibraryClipart> => {
-    const response = await axiosInstance.put<LibraryClipart>(`/library/cliparts/${id}`, data);
+    // API 컨트롤러가 @Patch('cliparts/:id') — PUT 은 404. 2026-05-15 fix
+    const response = await axiosInstance.patch<LibraryClipart>(`/library/cliparts/${id}`, data);
     return response.data;
   },
 
