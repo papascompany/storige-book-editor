@@ -411,3 +411,102 @@ URL 파라미터 없이 `/` 진입 시 자동 로드되는 샘플:
 | 객체 선택 핸들 | `packages/canvas-core/src/plugins/ControlsPlugin.ts` |
 | 시드 SQL — 템플릿셋 도구 메뉴 컬럼 | `apps/api/migrations/20260508_add_template_sets_enabledMenus.sql` |
 | 시드 SQL — 샘플 템플릿셋 | `apps/api/migrations/20260508_seed_sample_template_set.sql` |
+
+---
+
+## §13 인쇄 워크플로우 v1 — 면지 / PDF 첨부 / 게스트 / 레더커버 / 마이페이지 (2026-05-19)
+
+> 자세한 외부 통합 사양: [`docs/PHP_NOTICE_2026-05-19_pdf_attach_endpapers.md`](./PHP_NOTICE_2026-05-19_pdf_attach_endpapers.md)
+> 운영 계획서: `Bookmoa_platform_Plan.md` (Phase 4·5·6 단일 진실)
+> 관련 커밋: `7a4443e` P1 · `8aedc9c` P2 · `d8f4e81` P3 · `9491fe2` P4 · `50c0d1c` P5 · `b45f614` P6
+
+### 13.1 면지 (EndPaper)
+
+책의 표지 안쪽(앞면지) / 뒷표지 안쪽(뒷면지) 빈 페이지.
+
+**관리자 (`TemplateSetForm`)**:
+- `endpaperConfig.frontCount` (0~6) / `backCount` (0~6)
+- `frontEditable` / `backEditable` (편집 가능 토글)
+
+**저장**: `template_sets.endpaper_config` JSON 컬럼.
+
+**Editor 표시**: `EditorWorkflowControls` 의 floating 안내 카드 "📄 면지 앞N/뒤M".
+
+**Worker 합본 (compose-mixed)**: `frontEndpaperUrls[] / backEndpaperUrls[]` 의 `null` 원소는 worker 가 빈 페이지 자동 생성. URL 이 있으면 (편집가능 면지) 그대로 합본.
+
+### 13.2 내지 PDF 첨부
+
+**컴포넌트**: `apps/editor/src/components/editor/ContentPdfAttachModal.tsx`
+
+**흐름**:
+1. `EditorWorkflowControls` floating 버튼 "📎 내지 PDF 첨부" → 모달 열기
+2. 파일 선택 (`application/pdf`, 50MB 이하) → `POST /api/storage/upload-public`
+3. `POST /api/worker-jobs/validate` 로 검증 잡 생성 → 30s 폴링
+4. 결과 분기:
+   - `completed` → 통과
+   - `fixable` → 자동 보정 가능 (사용자 확인 모달)
+   - `failed` → **첨부 거부** (결정 3-4)
+5. 통과 + PDF 페이지수 > 현재 내지 수 + `canAddPage=true` → 자동 확장 선택 모달 (결정 3-2)
+6. `PATCH /edit-sessions/[guest/]:id` 에 `contentPdfFileId` 저장
+
+**결정 3-3 배타**: PDF 첨부 상태에서 캔버스 수정 시 API 가 `400 PDF_ATTACHED_EXCLUSIVE` 거부.
+
+### 13.3 게스트 (24h 자동 삭제)
+
+**Store**: `apps/editor/src/stores/useGuestStore.ts`
+- sessionStorage 자동 복원/저장 (`storige_guest_session_v1`)
+- `ensureGuestSession({templateSetId, mode})` — 없으면 `POST /edit-sessions/guest` 호출
+
+**자동 발급**: `EditorWorkflowControls` 가 token 없으면 templateSet 로드 후 자동 호출.
+
+**24h 만료**: DB EVENT `evt_purge_expired_guest_sessions` (1h 주기) 가 `guest_expires_at < NOW()` 세션 DELETE.
+
+**Editor App 마운트**: `App.tsx` 에서 `useGuestStore.initializeFromStorage()` 1회 호출.
+
+### 13.4 레더 커버 (`coverEditable=false`)
+
+**컴포넌트**: `apps/editor/src/components/editor/LeatherCoverPreview.tsx`
+
+`templateSet.coverEditable === false` 인 경우 표지 캔버스 대신 표시할 미리보기 컴포넌트. `coverPreviewImage` storage URL 을 표지 비율로 렌더링.
+
+**Worker compose-mixed**: `coverEditable=false` 전달 시 빈 표지 페이지 자동 생성. 실제 표지는 사전 인쇄된 레더/화보집 표지로 대체됨.
+
+**Editor 안내**: `EditorWorkflowControls` 가 "🏷 레더 커버" 배너 표시.
+
+### 13.5 편집완료 로그인 유도 + 회원 전환
+
+**컴포넌트**: `apps/editor/src/components/editor/GuestAuthPromptModal.tsx`
+
+**결정 3-6**: 게스트가 편집완료 누를 때만 로그인 유도. 자동 30분 후 유도 없음.
+
+**부모 사이트 통신** (iframe embed 시):
+```js
+{ source: 'storige-editor', event: 'editor.needAuth',
+  payload: { guestToken, reason: 'complete_save', ts } }
+```
+
+부모 사이트가 로그인 처리 후 `window.__storigeMigrateNow()` 또는 직접 `POST /edit-sessions/guest/migrate { guestToken }` 호출 → 게스트 세션 회원 흡수.
+
+### 13.6 마이페이지 `/my-works`
+
+**View**: `apps/editor/src/views/MyWorksView.tsx` (lazy)
+**API**: `GET /edit-sessions/my` (Bearer JWT)
+**라우트**: `App.tsx` 에 `/my-works` 추가됨
+
+비로그인 시 안내 + 편집기 복귀 버튼. 로그인 시 본인 세션 200건 최근순 + 재편집 링크.
+
+### 13.7 핵심 파일 매핑
+
+| 영역 | 파일 |
+|---|---|
+| 게스트 store | `apps/editor/src/stores/useGuestStore.ts` |
+| 워크플로우 floating UI | `apps/editor/src/components/editor/EditorWorkflowControls.tsx` |
+| PDF 첨부 모달 | `apps/editor/src/components/editor/ContentPdfAttachModal.tsx` |
+| 레더 커버 미리보기 | `apps/editor/src/components/editor/LeatherCoverPreview.tsx` |
+| 로그인 유도 모달 | `apps/editor/src/components/editor/GuestAuthPromptModal.tsx` |
+| 마이페이지 view | `apps/editor/src/views/MyWorksView.tsx` |
+| Admin 면지/표지 폼 | `apps/admin/src/pages/TemplateSets/TemplateSetForm.tsx` |
+| API edit-sessions guest | `apps/api/src/edit-sessions/edit-sessions.controller.ts` (POST /guest, PATCH /guest/:id, POST /guest/migrate, GET /my) |
+| API compose-mixed | `apps/api/src/worker-jobs/worker-jobs.controller.ts` (POST /compose-mixed) |
+| Worker compose-mixed | `apps/worker/src/processors/synthesis.processor.ts` (`handleComposeMixedSynthesis`) |
+| 마이그레이션 SQL | `apps/api/migrations/20260519_v1_phase2_workflow_schema.sql` |

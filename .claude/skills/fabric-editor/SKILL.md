@@ -1,6 +1,6 @@
 ---
 name: fabric-editor
-description: Storige fabric.js 5.x 기반 캔버스 편집기 작업 — 객체 추가/조작, 플러그인 작성, 모바일 터치 UX, 좌표/단위 변환, 저장·렌더 파이프라인. canvas-core 패키지 또는 apps/editor 의 도구·컨트롤·플러그인을 만지는 모든 작업에서 사용.
+description: Storige fabric.js 5.x 기반 캔버스 편집기 작업 — 객체 추가/조작, 플러그인 작성, 모바일 터치 UX, 좌표/단위 변환, 저장·렌더 파이프라인. canvas-core 패키지 또는 apps/editor 의 도구·컨트롤·플러그인, 그리고 인쇄 워크플로우 v1 (면지/PDF첨부/게스트/레더커버/compose-mixed/마이페이지) 을 만지는 모든 작업에서 사용.
 ---
 
 # Fabric.js 편집기 스킬
@@ -14,6 +14,8 @@ Storige 에디터의 캔버스 레이어 (`packages/canvas-core` + `apps/editor/
 - `apps/editor/src/controls/*` (선택된 객체의 속성 편집 패널)
 - `packages/canvas-core/src/plugins/*` (Editor 플러그인 작성/수정)
 - 모바일/터치 UX, 캔버스 줌·팬, 좌표/단위 변환, 저장·복원
+- **인쇄 워크플로우 v1 (2026-05-19)**: 면지 / PDF 첨부 / 게스트 토큰 / 레더 커버 / compose-mixed / 마이페이지 (`/my-works`)
+  - 트리거 키워드: "면지", "endpaper", "PDF 첨부", "contentPdf", "게스트", "guestToken", "guest 24h", "레더 커버", "coverEditable", "coverPreviewImage", "compose-mixed", "my-works", "마이페이지", "edit-sessions/guest", "GuestAuthPrompt", "ContentPdfAttachModal", "LeatherCoverPreview", "EditorWorkflowControls"
 
 ## 핵심 아키텍처
 
@@ -352,3 +354,69 @@ pnpm --filter @storige/editor test         # vitest unit
 3. 데스크톱: 텍스트/이미지/요소 추가, 선택, 드래그, 리사이즈, undo/redo
 4. 모바일 (pointer:coarse): 위 동작 + 사이드바 자동 닫힘 + 코너 핸들 손가락으로 잡힘
 5. 페이지 빠르게 여러번 리사이즈해도 ResizeObserver 무한 루프 없음
+
+---
+
+## 인쇄 워크플로우 v1 (2026-05-19) 핵심 참조
+
+> 자세한 사양: `docs/EDITOR.md` §13 + `docs/PHP_NOTICE_2026-05-19_pdf_attach_endpapers.md`
+> 운영 계획서: `Bookmoa_platform_Plan.md` Phase 4·5·6 (필드명·스키마 단일 진실)
+
+### 면지 / 표지 / 레더커버 메타
+
+- `TemplateSet.endpaperConfig: { frontCount, backCount, frontEditable, backEditable } | null`
+- `TemplateSet.coverEditable: boolean` (기본 true. 레더커버 = false)
+- `TemplateSet.coverPreviewImage: string | null` (coverEditable=false 일 때만 의미)
+- `TemplateType.ENDPAPER = 'endpaper'`
+
+캔버스 작업 시 readonly 가드는 호출자(EditorView/PagePanel) 가 처리 — 캔버스 자체 변경 없음.
+
+### EditorView 통합 정책
+
+**침습 최소**: 캔버스/PagePanel 로직 미변경. 새 기능은 `EditorWorkflowControls` floating UI 로만 노출.
+
+```
+apps/editor/src/components/editor/
+  EditorWorkflowControls.tsx    ← floating UI (PDF첨부 버튼 + 면지/레더커버 안내)
+  ContentPdfAttachModal.tsx     ← PDF 첨부 → 업로드 → 검증 → 자동확장
+  LeatherCoverPreview.tsx       ← coverEditable=false 시 표지 미리보기
+  GuestAuthPromptModal.tsx      ← 편집완료 로그인 유도 + editor.needAuth postMessage
+
+apps/editor/src/stores/useGuestStore.ts   ← 게스트 token sessionStorage zustand store
+apps/editor/src/views/MyWorksView.tsx     ← /my-works 마이페이지 lazy view
+```
+
+### 게스트 세션 API (Editor 측)
+
+`apps/editor/src/api/edit-sessions.ts`:
+- `editSessionsApi.createGuest({mode, templateSetId, ...})` → 응답에 `guestToken` 포함
+- `editSessionsApi.updateGuest(id, guestToken, patch)` — 쿼리 파라미터로 토큰 동봉
+
+App 마운트 시 `useGuestStore.initializeFromStorage()` 자동 호출 (`apps/editor/src/App.tsx`).
+
+### 호출 페이지 통합 (EditorView)
+
+```jsx
+{!isAdminTemplateSetEdit && templateSetId && (
+  <EditorWorkflowControls templateSetId={templateSetId} />
+)}
+```
+
+단 한 줄 — 그 외 캔버스 로직 영향 0.
+
+### Worker compose-mixed
+
+`apps/worker/src/processors/synthesis.processor.ts` 의 `handleComposeMixedSynthesis()`:
+- 입력 URL 배열의 null 원소 → pdf-lib 빈 페이지 생성
+- mm → pt 변환 (2.834645669)
+- 출력: `/storage/outputs/<jobId>/merged.pdf`
+- Webhook `synthesis.completed.result.capability = 'compose-mixed'`
+
+기존 `handleMergeSynthesis` / split / spread 경로 0 변경 — PHP 회귀 위험 없음.
+
+### 변경 시 추가 검증
+
+6. `apps/editor/src/views/EditorView.tsx` 의 `<EditorWorkflowControls />` 마운트 자리 유지
+7. `useGuestStore` 사용 시 sessionStorage 24h 만료 자동 정리 확인
+8. EditorWorkflowControls 가 admin 템플릿셋 편집(`isAdminTemplateSetEdit`) 에서는 렌더링 안 되는지 확인
+9. Worker compose-mixed 변경 시 PHP synthesize/external 경로 회귀 테스트 (`scripts/test-php-regression-phase2.sh` 등)
