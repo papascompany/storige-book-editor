@@ -9,12 +9,13 @@ import {
   Query,
   UseGuards,
   BadRequestException,
+  UnsupportedMediaTypeException,
   StreamableFile,
   Res,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
-import { Response } from 'express';
+import { Request, Response } from 'express';
 import { memoryStorage } from 'multer';
 import { StorageService } from './storage.service';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -29,6 +30,42 @@ const multerOptions = {
   storage: memoryStorage(),
   limits: {
     fileSize: 50 * 1024 * 1024, // 50MB
+  },
+};
+
+/**
+ * 게스트(비로그인) 업로드 허용 MIME 화이트리스트.
+ * 인쇄 워크플로우 v1 Phase 1 (2026-05-19) — 고객이 편집기에서 직접 이미지/PDF 업로드.
+ * 그 외 타입은 multer fileFilter 에서 415 Unsupported Media Type 으로 거부.
+ */
+const PUBLIC_UPLOAD_ALLOWED_MIME = new Set<string>([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'application/pdf',
+]);
+
+const multerOptionsPublic = {
+  storage: memoryStorage(),
+  limits: {
+    fileSize: 50 * 1024 * 1024, // 50MB
+  },
+  fileFilter: (
+    _req: Request,
+    file: Express.Multer.File,
+    cb: (err: Error | null, accept: boolean) => void,
+  ) => {
+    const mime = (file.mimetype || '').toLowerCase();
+    if (PUBLIC_UPLOAD_ALLOWED_MIME.has(mime)) {
+      cb(null, true);
+    } else {
+      cb(
+        new UnsupportedMediaTypeException(
+          `Unsupported file type: ${mime}. Allowed: ${Array.from(PUBLIC_UPLOAD_ALLOWED_MIME).join(', ')}`,
+        ),
+        false,
+      );
+    }
   },
 };
 
@@ -70,6 +107,45 @@ export class StorageController {
     }
 
     return await this.storageService.saveFile(file, category || 'uploads');
+  }
+
+  /**
+   * 게스트(비로그인) 업로드 endpoint — 인쇄 워크플로우 v1 Phase 1 (2026-05-19).
+   *
+   * - 인증 없이 호출 가능 (@Public).
+   * - 50MB 크기 제한 (multerOptionsPublic).
+   * - MIME 화이트리스트: image/jpeg|png|webp + application/pdf. 그 외 415.
+   * - category 강제: `uploads` (운영 nginx 가 /storage/uploads/* 서빙).
+   * - 응답 URL 은 `/storage/uploads/<filename>` 형식 (`/files/` 접두사 없음 — 커밋 d0f364d 정합).
+   *
+   * 기존 `POST /storage/upload` (ADMIN/MANAGER 전용) 는 그대로 유지.
+   */
+  @Post('upload-public')
+  @Public()
+  @UseInterceptors(FileInterceptor('file', multerOptionsPublic))
+  @ApiOperation({ summary: 'Upload a file (public — guest customer)' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: { type: 'string', format: 'binary' },
+      },
+    },
+  })
+  @ApiResponse({ status: 201, description: 'File uploaded successfully' })
+  @ApiResponse({ status: 400, description: 'No file provided' })
+  @ApiResponse({ status: 413, description: 'File too large (max 50MB)' })
+  @ApiResponse({ status: 415, description: 'Unsupported file type' })
+  async uploadFilePublic(
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    if (!file) {
+      throw new BadRequestException('No file provided');
+    }
+
+    // category 는 강제로 'uploads' — 게스트가 임의 디렉토리 쓰기 방지
+    return await this.storageService.saveFile(file, 'uploads');
   }
 
   // Legacy endpoint for backward compatibility (old URLs: /storage/:category/:filename)
