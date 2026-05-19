@@ -868,3 +868,92 @@ func Upload(path, fileType string) (string, error) {
 | 버전 | 날짜 | 내용 |
 |------|------|------|
 | v1.0 | 2026-05-07 | 최초 작성. Phase A/B/C 멀티사이트 모델 반영. PHP 가이드와 분리, 언어 중립. |
+| v1.1 | 2026-05-19 | 인쇄 워크플로우 v1 (Phase 5) — `compose-mixed` capability 추가 |
+
+---
+
+## 12. Capability — `compose-mixed` (2026-05-19, 인쇄 워크플로우 v1 Phase 5)
+
+표지 + 앞면지 N + 내지(편집 결과 또는 첨부 PDF) + 뒷면지 K 를 단일 합본 PDF 로 생성.
+
+### 12.1 출력 순서 (고정)
+
+```
+[표지, 앞면지 1..N, 내지 PDF, 뒷면지 1..K]
+```
+
+### 12.2 endpoint
+
+```
+POST /api/worker-jobs/compose-mixed
+Authentication: @Public (향후 X-Guest-Token 또는 X-API-Key 가드 추가 검토)
+Content-Type: application/json
+```
+
+### 12.3 입력 (`CreateComposeMixedJobDto`)
+
+| 필드 | 타입 | 필수 | 비고 |
+|---|---|---|---|
+| `editSessionId` | UUID | optional | 편집 세션과 연결 (분석/감사용) |
+| `coverUrl` | string | conditional | 표지 PDF URL (`coverEditable=true` 일 때 필수) |
+| `coverEditable` | boolean | optional (default true) | `false` → 빈 표지 페이지 자동 생성 (레더 커버) |
+| `coverWidthMm` | number | optional (default 210) | 표지 폭 (빈 표지 생성용) |
+| `coverHeightMm` | number | optional (default 297) | 표지 높이 |
+| `frontEndpaperUrls` | `(string \| null)[]` | optional | 앞면지 URL 배열. `null` 원소 = 빈 면지 페이지 |
+| `backEndpaperUrls` | `(string \| null)[]` | optional | 뒷면지 URL 배열. `null` 원소 = 빈 면지 페이지 |
+| `contentPdfUrl` | string | optional | 내지 PDF (편집 결과 또는 첨부 PDF) |
+| `contentWidthMm` | number | optional (default 210) | 내지 폭 (빈 면지 페이지 크기) |
+| `contentHeightMm` | number | optional (default 297) | 내지 높이 |
+| `callbackUrl` | URL | recommended | 완료 webhook |
+| `orderId` | string | optional | 외부 주문번호 (webhook echo) |
+
+### 12.4 응답 (HTTP 201)
+
+```json
+{
+  "id": "uuid-job",
+  "jobType": "synthesize",
+  "status": "PENDING",
+  "createdAt": "2026-05-19T09:25:00.000Z"
+}
+```
+
+### 12.5 Webhook (`synthesis.completed`)
+
+```json
+{
+  "event": "synthesis.completed",
+  "jobId": "uuid-job",
+  "orderId": "ORD-2026-99999",
+  "status": "completed",
+  "outputFileUrl": "/storage/outputs/<jobId>/merged.pdf",
+  "outputFormat": "merged",
+  "timestamp": "2026-05-19T09:26:30.000Z",
+  "result": {
+    "capability": "compose-mixed",
+    "outputFileUrl": "/storage/outputs/<jobId>/merged.pdf",
+    "totalPages": 28,
+    "success": true
+  }
+}
+```
+
+서명: 기존 Base64 방식 그대로 (§3 webhook 참조).
+
+### 12.6 에러
+
+- `400 Validation` — DTO 검증 실패 (예: coverWidthMm < 1)
+- `synthesis.failed` webhook — pdf-lib 로딩 실패 / 다운로드 실패 등
+
+### 12.7 mm → PDF point 변환
+
+Worker 내부 자동 변환:
+```
+1 mm = 2.834645669 pt (72 dpi)
+```
+
+외부 호출자는 mm 단위로만 전달.
+
+### 12.8 회귀 안전성
+
+기존 `synthesize/external`, `validate/external`, `check-mergeable/external` 경로는 **0 변경**. compose-mixed 는 신규 mode 로 worker 가 별도 분기 처리.

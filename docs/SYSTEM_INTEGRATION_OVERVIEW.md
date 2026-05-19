@@ -1123,3 +1123,32 @@ edited / validated / fixable / synthesis_pending / completed / failed
 
 > 이 문서는 `/Users/yohan/claude/Bookmoa Storige editor/storige/docs/SYSTEM_INTEGRATION_OVERVIEW.md`에 저장되었습니다.  
 > 최신 API 스펙은 Storige API Swagger 문서 (`http://localhost:4000/api/docs`)를 참조하세요.
+
+---
+
+## 부록 v1 (2026-05-19) — 인쇄 워크플로우 Phase 5+6 통합
+
+> 자세한 사양: `docs/PHP_NOTICE_2026-05-19_pdf_attach_endpapers.md`
+
+### 모든 외부 사이트 공통 (additive, 기존 영향 0)
+
+| 항목 | 추가 사양 |
+|---|---|
+| 게스트 세션 | `POST /api/edit-sessions/guest` → `guestToken` + `guestExpiresAt = NOW+24h` |
+| 게스트 update | `PATCH /api/edit-sessions/guest/:id?guestToken=...` |
+| 게스트 마이그레이션 | `POST /api/edit-sessions/guest/migrate` (Bearer JWT) → `{migratedCount, sessionIds[]}` |
+| 본인 세션 목록 | `GET /api/edit-sessions/my` (Bearer JWT) |
+| Compose-mixed 합본 | `POST /api/worker-jobs/compose-mixed` — [표지, 앞면지, 내지, 뒷면지] 순서. `coverEditable=false` → 빈 표지 (레더 커버). `frontEndpaperUrls/backEndpaperUrls` null 원소 → 빈 면지 페이지 |
+| Webhook `synthesis.completed` 확장 | `result.capability = 'compose-mixed'` 추가 (기존 처리 영향 0) |
+| Editor postMessage | `editor.needAuth` — 게스트 편집완료 시 iframe 부모에 발신 |
+
+### DB 스키마 변경 (운영 적용 완료)
+
+- `template_sets`: `endpaper_config`(JSON), `cover_editable`(default 1), `cover_preview_image`
+- `file_edit_sessions`: `content_pdf_file_id`, `content_pdf_page_count`, `content_pdf_validation_result`, `guest_token`, `guest_expires_at`
+- `templates.type` enum 에 `endpaper` 추가
+- EVENT `evt_purge_expired_guest_sessions` (1h 주기, 만료 게스트 DELETE)
+
+### PHP 사이트 호환성
+
+기존 PHP 호출 경로 (shop-session / validate/external / synthesize/external / external orderSeqno 조회 / webhook) **변경 0**.

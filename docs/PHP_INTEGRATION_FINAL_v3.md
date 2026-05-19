@@ -975,3 +975,56 @@ Content-Type: application/json
 - `Bookmoa_platform_Plan.md` Phase 5.2.1 — `editor.complete` payload (EditorResult) 단일 진실 스키마
 - `Bookmoa_platform_Plan.md` Phase 6 §6.1 — `status` enum 6개 (fixable 포함)
 
+---
+
+## 부록 E: 인쇄 워크플로우 v1 (2026-05-19) — Phase 5+6 endpoint 요약
+
+> 신규 PDF 첨부 / 면지 / 게스트 / compose-mixed / 마이페이지 — **PHP 영향 0**.
+> 자세한 사양은 `docs/PHP_NOTICE_2026-05-19_pdf_attach_endpapers.md` 참조.
+
+### E.1 6가지 결정사항 (사용자 확정 2026-05-19)
+
+| # | 결정 |
+|---|---|
+| 3-1 | 게스트 작업 24h 자동 삭제 (DB EVENT) |
+| 3-2 | PDF 페이지수 < 내지 수 → 고객 선택 모달 (자동 확장) |
+| 3-3 | PDF 첨부 ↔ 편집 배타 |
+| 3-4 | 검증 실패 → 첨부 거부 (강제 진행 없음) |
+| 3-5 | 레더 커버 미리보기 = `coverPreviewImage` 별도 필드 |
+| 3-6 | 게스트 회원 전환 = 저장(편집완료) 시점만 |
+
+### E.2 신규 endpoint (PHP 사용 선택)
+
+| 메서드 | 경로 | 인증 | 설명 |
+|---|---|---|---|
+| POST | `/api/storage/upload-public` | Public + MIME 가드 | 게스트 파일 업로드 |
+| POST | `/api/edit-sessions/guest` | Public | 게스트 세션 생성 + token 발급 |
+| PATCH | `/api/edit-sessions/guest/:id?guestToken=...` | Public + 토큰 검증 | 게스트 세션 update |
+| POST | `/api/edit-sessions/guest/migrate` | Bearer JWT | 게스트 → 회원 흡수 |
+| GET | `/api/edit-sessions/my` | Bearer JWT | 본인 세션 목록 |
+| POST | `/api/worker-jobs/compose-mixed` | Public | 표지+면지+내지+면지 합본 |
+
+### E.3 기존 endpoint (변경 없음)
+
+`POST /auth/shop-session`, `GET /product-template-sets/by-product`, `POST /worker-jobs/validate/external`, `POST /worker-jobs/check-mergeable/external`, `POST /worker-jobs/synthesize/external` — **변경 0, PHP 그대로 사용**.
+
+### E.4 Webhook 변경 (additive)
+
+`synthesis.completed` payload 의 `result.capability` 필드 추가 (compose-mixed 잡일 때 `'compose-mixed'`). PHP 측 핸들러는 이 필드 무시 가능 — 기존 동작 영향 없음.
+
+### E.5 `editor.needAuth` postMessage (iframe 임베드 시)
+
+editor 가 게스트 편집완료 시 부모 페이지로 발신:
+```js
+{ source: 'storige-editor', event: 'editor.needAuth',
+  payload: { guestToken, reason: 'complete_save', ts } }
+```
+
+PHP 페이지가 iframe 으로 editor 를 임베드한 경우만 처리. 일반 redirect 흐름은 무관.
+
+### E.6 PHP 측 추가 작업
+
+**0건.** 본 부록은 신규 외부 사이트(bookmoa-mobile, Codex 영역)를 위한 통보이며, PHP 가 v1 기능을 직접 사용하고 싶을 때만 §3~5 참조.
+
+> v1 변경 이력 / DB 마이그레이션 / 회귀 체크리스트는 `docs/PHP_NOTICE_2026-05-19_pdf_attach_endpapers.md` 참조.
+
