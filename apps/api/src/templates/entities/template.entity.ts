@@ -15,7 +15,10 @@ import { User } from '../../auth/entities/user.entity';
 import type { CanvasData, TemplateType, SpreadConfig } from '@storige/types';
 
 /**
- * 템플릿 타입 enum (DB용)
+ * 템플릿 타입 enum (DB용).
+ *
+ * 인쇄 워크플로우 v1 Phase 2 (2026-05-19): ENDPAPER 추가.
+ * 마이그레이션: apps/api/migrations/20260519_v1_phase2_workflow_schema.sql
  */
 export enum TemplateTypeEnum {
   WING = 'wing',
@@ -23,6 +26,8 @@ export enum TemplateTypeEnum {
   SPINE = 'spine',
   PAGE = 'page',
   SPREAD = 'spread',
+  /** 면지 — 표지 안쪽/뒤표지 안쪽 빈 면 (편집가능/불가 토글) */
+  ENDPAPER = 'endpaper',
 }
 
 @Entity('templates')

@@ -59,6 +59,8 @@ export enum TemplateType {
   SPINE = 'spine',
   PAGE = 'page',
   SPREAD = 'spread',
+  /** 면지 (앞면지/뒷면지) — 인쇄 워크플로우 v1 Phase 2 (2026-05-19) */
+  ENDPAPER = 'endpaper',
 }
 
 /**
@@ -138,6 +140,23 @@ export interface TemplateRef {
  * 템플릿셋
  * 템플릿들의 조합. 상품에 연결되어 에디터의 기본 구성을 정의
  */
+/**
+ * 면지(EndPaper) 구성 — 인쇄 워크플로우 v1 Phase 2 (2026-05-19).
+ *
+ * 책의 표지 안쪽(앞)과 뒤표지 안쪽(뒷)에 위치하는 빈 면지.
+ * 관리자가 0~6 장 범위에서 사전 등록하고, 각 면지의 편집 가능 여부를 결정.
+ */
+export interface EndpaperConfig {
+  /** 앞면지 개수 (0~6). 0이면 면지 없음 */
+  frontCount: number;
+  /** 뒷면지 개수 (0~6). 0이면 면지 없음 */
+  backCount: number;
+  /** 앞면지 편집 가능 여부 (false 면 readonly, 인쇄용 빈 페이지만) */
+  frontEditable: boolean;
+  /** 뒷면지 편집 가능 여부 */
+  backEditable: boolean;
+}
+
 export interface TemplateSet {
   id: string;
   name: string;
@@ -158,6 +177,23 @@ export interface TemplateSet {
    * Admin 의 템플릿셋 편집 화면에서 토글로 설정.
    */
   enabledMenus?: EditorMenuKey[] | null;
+  /**
+   * 면지 구성 — Phase 2 (2026-05-19).
+   * null/undefined: 면지 없음 (legacy/기본).
+   */
+  endpaperConfig?: EndpaperConfig | null;
+  /**
+   * 표지 편집 가능 여부 — Phase 2 (2026-05-19).
+   * - true (기본): 일반 책 표지 — 편집기에서 디자인 가능
+   * - false: 레더 커버 / 화보집 — 표지는 미리보기 이미지로만 노출, 빈 PDF + 네이밍으로 인쇄
+   */
+  coverEditable: boolean;
+  /**
+   * 레더 커버 / 화보집용 표지 미리보기 이미지 storage URL — Phase 2 (2026-05-19).
+   * 결정 3-5: 별도 필드. 표지 템플릿 객체로 우회하지 않음.
+   * `coverEditable=false` 일 때만 의미 있음.
+   */
+  coverPreviewImage?: string | null;
   // Legacy fields (하위 호환)
   description?: string;
   categoryId?: string;
@@ -290,6 +326,23 @@ export interface EditSession {
   // 수정 기록
   modifiedBy?: string;
   modifiedAt?: Date;
+  /**
+   * 고객 첨부 내지 PDF — 인쇄 워크플로우 v1 Phase 2 (2026-05-19).
+   * 결정 3-3: PDF 첨부와 일부 편집은 배타적 (둘 다 동시 불가).
+   * 결정 3-4: 워커 검증 실패 시 첨부 자체 거부 (validationResult 에 issue 누적되면 클라이언트가 거부 UI 노출).
+   */
+  contentPdfFileId?: string | null;
+  /** PDF 페이지수 (자동 페이지 확장 계산용) */
+  contentPdfPageCount?: number | null;
+  /** 워커 검증 결과 캐시 (issues, warnings, metadata 등) */
+  contentPdfValidationResult?: Record<string, unknown> | null;
+  /**
+   * 게스트 식별자 — Phase 2 (2026-05-19).
+   * 결정 3-1: 24시간 후 자동 삭제. 결정 3-6: 저장(편집완료) 시점에만 회원 전환 유도.
+   */
+  guestToken?: string | null;
+  /** 게스트 작업 자동 삭제 시점 (NOW + 24h). 회원 가입 시 NULL 로 클리어 */
+  guestExpiresAt?: Date | null;
   // Legacy fields
   templateId?: string;
   canvasData?: CanvasData;

@@ -95,6 +95,39 @@ export class TemplateSet {
   @Column({ name: 'enabled_menus', type: 'json', nullable: true })
   enabledMenus: EditorMenuKey[] | null;
 
+  // ─────────────────────────────────────────────────────
+  // 인쇄 워크플로우 v1 Phase 2 (2026-05-19)
+  // 면지 / 표지 편집 / 레더 커버 미리보기 필드.
+  // 마이그레이션: apps/api/migrations/20260519_v1_phase2_workflow_schema.sql
+  // ─────────────────────────────────────────────────────
+
+  /**
+   * 면지(EndPaper) 구성 — Phase 2.
+   * shape: { frontCount, backCount, frontEditable, backEditable }.
+   * null: 면지 없음 (legacy/기본).
+   */
+  @Column({ name: 'endpaper_config', type: 'json', nullable: true })
+  endpaperConfig: {
+    frontCount: number;
+    backCount: number;
+    frontEditable: boolean;
+    backEditable: boolean;
+  } | null;
+
+  /**
+   * 표지 편집 가능 여부 — Phase 2.
+   * 기본 true (일반 책 표지). 레더 커버 / 화보집은 false.
+   */
+  @Column({ name: 'cover_editable', type: 'boolean', default: true })
+  coverEditable: boolean;
+
+  /**
+   * 레더 커버 / 화보집용 표지 미리보기 이미지 storage URL — Phase 2.
+   * 결정 3-5: 별도 필드. `coverEditable=false` 일 때만 의미 있음.
+   */
+  @Column({ name: 'cover_preview_image', type: 'varchar', length: 500, nullable: true })
+  coverPreviewImage: string | null;
+
   /**
    * 소프트 삭제 플래그
    */

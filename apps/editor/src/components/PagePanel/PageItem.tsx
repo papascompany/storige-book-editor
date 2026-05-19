@@ -20,6 +20,7 @@ const templateTypeLabels: Record<TemplateType, string> = {
   [TemplateType.SPINE]: '책등',
   [TemplateType.PAGE]: '내지',
   [TemplateType.SPREAD]: '펼침',
+  [TemplateType.ENDPAPER]: '면지',
 }
 
 const templateTypeColors: Record<TemplateType, string> = {
@@ -28,6 +29,7 @@ const templateTypeColors: Record<TemplateType, string> = {
   [TemplateType.SPINE]: 'bg-orange-100 text-orange-700',
   [TemplateType.PAGE]: 'bg-gray-100 text-gray-700',
   [TemplateType.SPREAD]: 'bg-violet-100 text-violet-700',
+  [TemplateType.ENDPAPER]: 'bg-amber-100 text-amber-700',
 }
 
 export const PageItem = memo(function PageItem({
