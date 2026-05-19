@@ -87,8 +87,12 @@ export class StorageService {
     const filePath = path.join(categoryPath, filename);
     await fs.writeFile(filePath, file.buffer);
 
-    // Generate URL (matches controller endpoint /storage/files/:category/:filename)
-    const url = `/storage/files/${category}/${filename}`;
+    // Generate URL — 운영 nginx 가 /storage/* 를 NestJS 우회로 직접 서빙하므로
+    // URL 의 path segment 가 디스크 경로와 1:1 매칭되어야 함.
+    // 이전 형식 `/storage/files/<cat>/<file>` 는 디스크 `<storagePath>/<cat>/<file>` 와
+    // 어긋나 404 발생 → /files/ 접두사 제거 (2026-05-19 fix).
+    // NestJS legacy controller `@Get(':category/:filename')` 도 새 URL 패턴을 그대로 받음.
+    const url = `/storage/${category}/${filename}`;
 
     return {
       id: fileId,
