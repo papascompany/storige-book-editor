@@ -658,3 +658,49 @@ STORIGE_WEBHOOK_VERIFY_HEADER=X-Storige-Signature
 | 날짜 | 버전 | 변경 |
 |---|---|---|
 | 2026-05-16 | v1.0 | 최초 작성 (Phase 0 결정 반영) — D-1~D-11 일관, snake/camel 호환, postMessage 5종 표준, sites 동적 정책 |
+| 2026-05-19 | v1.1 | 인쇄 워크플로우 v1 (Phase 5+6) — guest / compose-mixed / migrate / my-sessions / `editor.needAuth` postMessage cross-link |
+
+---
+
+## 11. 인쇄 워크플로우 v1 (2026-05-19) — Phase 5+6 cross-link
+
+> 본 가이드 외에 신규 5개 endpoint + 1개 postMessage 가 추가되었습니다. 자세한 사양은
+> [`docs/PHP_NOTICE_2026-05-19_pdf_attach_endpapers.md`](./PHP_NOTICE_2026-05-19_pdf_attach_endpapers.md) 참조.
+
+### 11.1 게스트 세션 (Phase 4)
+
+- `POST /api/edit-sessions/guest` — `asGuest: true` 로 세션 생성, `guestToken` + `guestExpiresAt` 발급
+- `PATCH /api/edit-sessions/guest/:id?guestToken=...` — 게스트 update
+- 결정 3-1: 24h 후 자동 삭제 (DB EVENT)
+
+### 11.2 PDF 첨부 (Phase 4)
+
+- editor 내부에서 `POST /api/storage/upload-public` → `POST /api/worker-jobs/validate` → 30s 폴링
+- 결정 3-3: PDF 첨부 ↔ 편집 배타 (API 가드 `PDF_ATTACHED_EXCLUSIVE`)
+- 결정 3-4: 검증 실패 시 첨부 거부
+
+### 11.3 Compose-mixed (Phase 5)
+
+`POST /api/worker-jobs/compose-mixed` — 표지+면지+내지+면지 합본. 출력 순서:
+```
+[표지, 앞면지 1..N, 내지 PDF, 뒷면지 1..K]
+```
+
+- `coverEditable=false` → 빈 표지 페이지 (레더 커버, 결정 3-5)
+- 면지 URL null 원소 → 빈 면지 페이지
+- Webhook `synthesis.completed` 의 `result.capability = 'compose-mixed'`
+
+### 11.4 게스트 회원 전환 + 마이페이지 (Phase 6)
+
+- `POST /api/edit-sessions/guest/migrate` (Bearer JWT) — 게스트 → 회원 흡수 (결정 3-6)
+- `GET /api/edit-sessions/my` (Bearer JWT) — 본인 세션 목록
+
+### 11.5 editor.needAuth postMessage (iframe 임베드)
+
+게스트가 편집완료 누를 때 editor → 부모로 발신:
+```js
+{ source: 'storige-editor', event: 'editor.needAuth',
+  payload: { guestToken, reason: 'complete_save', ts } }
+```
+
+외부 사이트가 로그인 처리 후 `POST /api/edit-sessions/guest/migrate { guestToken }` 호출.
