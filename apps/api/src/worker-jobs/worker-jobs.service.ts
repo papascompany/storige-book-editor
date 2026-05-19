@@ -396,6 +396,68 @@ export class WorkerJobsService {
   }
 
   // ============================================================================
+  // Compose-mixed Jobs — 인쇄 워크플로우 v1 Phase 5 (2026-05-19)
+  // ============================================================================
+
+  /**
+   * Compose-mixed 잡 생성 — [표지, 앞면지N, 내지, 뒷면지K] 합본 PDF 생성.
+   *
+   * 기존 synthesis / split / spread 흐름과 분리된 별도 mode.
+   * PHP 기존 호출 경로 회귀 보호 (mode='compose-mixed' 만 신규 worker handler 사용).
+   */
+  async createComposeMixedJob(dto: any): Promise<WorkerJob> {
+    const job = this.workerJobRepository.create({
+      jobType: WorkerJobType.SYNTHESIZE,
+      status: WorkerJobStatus.PENDING,
+      editSessionId: dto.editSessionId || null,
+      inputFileUrl: dto.coverUrl || dto.contentPdfUrl || null,
+      siteId: dto.siteId || null,
+      options: {
+        capability: 'compose-mixed',
+        editSessionId: dto.editSessionId,
+        coverUrl: dto.coverUrl,
+        coverEditable: dto.coverEditable !== false,
+        coverWidthMm: dto.coverWidthMm,
+        coverHeightMm: dto.coverHeightMm,
+        frontEndpaperUrls: dto.frontEndpaperUrls ?? [],
+        backEndpaperUrls: dto.backEndpaperUrls ?? [],
+        contentPdfUrl: dto.contentPdfUrl,
+        contentWidthMm: dto.contentWidthMm,
+        contentHeightMm: dto.contentHeightMm,
+        orderId: dto.orderId,
+        callbackUrl: dto.callbackUrl,
+      },
+    });
+    const savedJob = await this.workerJobRepository.save(job);
+
+    await this.synthesisQueue.add(
+      'synthesize-pdf',
+      {
+        jobId: savedJob.id,
+        mode: 'compose-mixed',
+        // ── compose-mixed 전용 필드 (synthesis.processor SynthesisJobData) ──
+        composeCoverUrl: dto.coverUrl,
+        composeCoverEditable: dto.coverEditable !== false,
+        composeCoverWidthMm: dto.coverWidthMm,
+        composeCoverHeightMm: dto.coverHeightMm,
+        composeFrontEndpaperUrls: dto.frontEndpaperUrls ?? [],
+        composeBackEndpaperUrls: dto.backEndpaperUrls ?? [],
+        composeContentPdfUrl: dto.contentPdfUrl,
+        composeContentWidthMm: dto.contentWidthMm,
+        composeContentHeightMm: dto.contentHeightMm,
+        callbackUrl: dto.callbackUrl,
+      },
+      { priority: 5 },
+    );
+
+    this.logger.log(
+      `Compose-mixed job created: ${savedJob.id} (front=${(dto.frontEndpaperUrls ?? []).length}, back=${(dto.backEndpaperUrls ?? []).length}, coverEditable=${dto.coverEditable !== false})`,
+    );
+
+    return savedJob;
+  }
+
+  // ============================================================================
   // Split Synthesis Jobs (단일 PDF 분리)
   // ============================================================================
 
