@@ -159,6 +159,60 @@ export class EditSessionsController {
   }
 
   /**
+   * 게스트 세션 → 회원 마이그레이션 — 인쇄 워크플로우 v1 Phase 6-B (2026-05-19).
+   *
+   * 결정 3-6: 저장(편집완료) 시점의 로그인 직후 호출. 본인 인증된 상태에서만 흡수.
+   *
+   * Body: { guestToken: string }
+   * Response: { migratedCount, sessionIds[] }
+   */
+  @Post('guest/migrate')
+  @ApiOperation({ summary: '게스트 세션을 회원 세션으로 마이그레이션 (Phase 6)' })
+  @ApiResponse({ status: 200, description: '마이그레이션 결과' })
+  async migrateGuestToMember(
+    @Body() body: { guestToken?: string },
+    @CurrentUser() user: any,
+  ): Promise<{ migratedCount: number; sessionIds: string[] }> {
+    if (!user?.userId) {
+      throw new ForbiddenException({
+        code: 'AUTH_REQUIRED',
+        message: '회원 마이그레이션은 로그인 사용자만 가능합니다.',
+      });
+    }
+    if (!body?.guestToken || body.guestToken.length < 8) {
+      throw new BadRequestException({
+        code: 'GUEST_TOKEN_REQUIRED',
+        message: 'guestToken 이 필요합니다.',
+      });
+    }
+    const memberSeqno = parseInt(user.userId);
+    return this.editSessionsService.migrateGuestSessions(body.guestToken, memberSeqno);
+  }
+
+  /**
+   * 내 세션 목록 — 인쇄 워크플로우 v1 Phase 6-C (2026-05-19).
+   *
+   * 로그인 사용자 본인의 최근 세션 200건. /my-works UI 가 사용.
+   */
+  @Get('my')
+  @ApiOperation({ summary: '내 편집 세션 목록 (Phase 6)' })
+  @ApiResponse({ status: 200, description: '세션 목록', type: EditSessionListResponseDto })
+  async findMy(@CurrentUser() user: any): Promise<EditSessionListResponseDto> {
+    if (!user?.userId) {
+      throw new ForbiddenException({
+        code: 'AUTH_REQUIRED',
+        message: '로그인이 필요합니다.',
+      });
+    }
+    const memberSeqno = parseInt(user.userId);
+    const sessions = await this.editSessionsService.findMyRecent(memberSeqno);
+    return {
+      sessions: sessions.map((s) => this.editSessionsService.toResponseDto(s)),
+      total: sessions.length,
+    };
+  }
+
+  /**
    * 외부 시스템용 주문별 편집세션 + PDF 파일 조회 (API Key 인증)
    */
   @Get('external')
