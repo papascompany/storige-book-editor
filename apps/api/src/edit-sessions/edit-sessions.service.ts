@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { randomUUID } from 'crypto';
 import {
   EditSessionEntity,
   SessionStatus,
@@ -40,12 +41,22 @@ export class EditSessionsService {
 
   /**
    * 편집 세션 생성
+   *
+   * 인쇄 워크플로우 v1 Phase 4 (2026-05-19):
+   * - dto.asGuest=true → guestToken (uuid) + guestExpiresAt (NOW + 24h) 자동 발급.
+   * - 결정 3-1: EVENT evt_purge_expired_guest_sessions (1h 주기) 가 만료 시 DELETE.
+   * - 결정 3-6: 회원 전환은 저장(편집완료) 시점에 별도 흐름. 본 메서드는 발급만.
    */
   async create(dto: CreateEditSessionDto): Promise<EditSessionEntity> {
+    // 게스트 모드: orderSeqno/memberSeqno 미전송 시 0 / null. token 발급.
+    const isGuest = !!dto.asGuest || (!dto.memberSeqno && !dto.orderSeqno);
+    const guestToken = isGuest ? randomUUID() : null;
+    const guestExpiresAt = isGuest ? new Date(Date.now() + 24 * 60 * 60 * 1000) : null;
+
     // coverFileId/contentFileId는 @RelationId(read-only). ManyToOne relation을 통해 set.
     const session = this.sessionRepository.create({
-      orderSeqno: dto.orderSeqno,
-      memberSeqno: dto.memberSeqno,
+      orderSeqno: dto.orderSeqno ?? 0,
+      memberSeqno: dto.memberSeqno ?? 0,
       mode: dto.mode,
       coverFile: dto.coverFileId ? ({ id: dto.coverFileId } as any) : null,
       contentFile: dto.contentFileId ? ({ id: dto.contentFileId } as any) : null,
@@ -54,10 +65,16 @@ export class EditSessionsService {
       metadata: dto.metadata,
       callbackUrl: dto.callbackUrl,
       siteId: (dto as any).siteId || null, // Phase C-2 — JWT siteId 자동 주입
+      guestToken,
+      guestExpiresAt,
     });
 
     const saved = await this.sessionRepository.save(session);
-    this.logger.log(`Created edit session ${saved.id} for order ${dto.orderSeqno}`);
+    if (isGuest) {
+      this.logger.log(`Created guest edit session ${saved.id} (token=${guestToken?.slice(0, 8)}…, expires ${guestExpiresAt?.toISOString()})`);
+    } else {
+      this.logger.log(`Created edit session ${saved.id} for order ${dto.orderSeqno}`);
+    }
 
     return saved;
   }
@@ -205,6 +222,11 @@ export class EditSessionsService {
 
   /**
    * 세션 업데이트
+   *
+   * 인쇄 워크플로우 v1 Phase 4 (2026-05-19):
+   * - 게스트 세션(`guestToken` 보유)은 userId=0 으로 호출돼도 통과 (회원 권한 검사 우회).
+   * - PDF 첨부 / 검증 결과 / 페이지수 필드(`contentPdf*`) 갱신 지원.
+   * - 결정 3-3: PDF 첨부 시 `canvasData` 동시 수정은 클라가 막아야 함 (API 는 1차 가드만).
    */
   async update(
     id: string,
@@ -213,8 +235,9 @@ export class EditSessionsService {
   ): Promise<EditSessionEntity> {
     const session = await this.findById(id);
 
-    // 권한 확인: 세션 소유자만 수정 가능
-    if (Number(session.memberSeqno) !== userId) {
+    // 권한 확인: 회원 세션은 소유자만 / 게스트 세션은 토큰 보유자(클라이언트가 token 같이 보내는 흐름은 추후)
+    const isGuest = !!session.guestToken;
+    if (!isGuest && Number(session.memberSeqno) !== userId) {
       throw new ForbiddenException({
         code: 'PERMISSION_DENIED',
         message: '이 세션을 수정할 권한이 없습니다.',
@@ -223,6 +246,13 @@ export class EditSessionsService {
 
     // 캔버스 데이터 업데이트
     if (dto.canvasData !== undefined) {
+      // Phase 4 결정 3-3: PDF 첨부 ↔ 편집 배타. PDF 가 붙어있으면 캔버스 수정 거부.
+      if (session.contentPdfFileId && dto.contentPdfFileId === undefined) {
+        throw new BadRequestException({
+          code: 'PDF_ATTACHED_EXCLUSIVE',
+          message: '내지 PDF 첨부 상태에서는 편집 캔버스를 변경할 수 없습니다. PDF 를 먼저 제거하세요.',
+        });
+      }
       session.canvasData = dto.canvasData;
     }
 
@@ -248,8 +278,24 @@ export class EditSessionsService {
       session.contentFile = dto.contentFileId ? ({ id: dto.contentFileId } as any) : null;
     }
 
+    // ── Phase 4 (2026-05-19) — 고객 첨부 내지 PDF 필드 ──
+    if (dto.contentPdfFileId !== undefined) {
+      session.contentPdfFileId = dto.contentPdfFileId;
+      // PDF 를 비우면 검증 결과도 클리어 (재첨부 시 새 검증 결과로 덮어씀)
+      if (dto.contentPdfFileId === null) {
+        session.contentPdfPageCount = null;
+        session.contentPdfValidationResult = null;
+      }
+    }
+    if (dto.contentPdfPageCount !== undefined) {
+      session.contentPdfPageCount = dto.contentPdfPageCount;
+    }
+    if (dto.contentPdfValidationResult !== undefined) {
+      session.contentPdfValidationResult = dto.contentPdfValidationResult;
+    }
+
     const updated = await this.sessionRepository.save(session);
-    this.logger.log(`Updated edit session ${id}`);
+    this.logger.log(`Updated edit session ${id}${isGuest ? ' (guest)' : ''}`);
 
     return updated;
   }
@@ -427,6 +473,12 @@ export class EditSessionsService {
       createdAt: session.createdAt,
       updatedAt: session.updatedAt,
       siteId: session.siteId, // Phase C-3
+      // ── 인쇄 워크플로우 v1 Phase 4 (2026-05-19) ──
+      contentPdfFileId: session.contentPdfFileId,
+      contentPdfPageCount: session.contentPdfPageCount,
+      contentPdfValidationResult: session.contentPdfValidationResult,
+      guestToken: session.guestToken,
+      guestExpiresAt: session.guestExpiresAt,
     };
 
     // 파일 정보 추가
