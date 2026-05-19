@@ -301,6 +301,61 @@ export class EditSessionsService {
   }
 
   /**
+   * 게스트 세션 마이그레이션 — 인쇄 워크플로우 v1 Phase 6-B (2026-05-19).
+   *
+   * 결정 3-6: 회원 전환은 저장(편집완료) 시점에만. 본 메서드는 로그인 직후 호출되어
+   * 게스트 세션을 해당 회원 소유로 흡수.
+   *
+   * 보안:
+   * - guestToken 일치 세션만 흡수 가능 (타인 세션 흡수 불가)
+   * - 호출자는 인증된 사용자 (controller 가 JWT 검증)
+   *
+   * 작업:
+   * - WHERE guest_token = ? → memberSeqno 채움
+   * - guestToken / guestExpiresAt NULL 처리 (EVENT 가 더 이상 삭제 안 함)
+   */
+  async migrateGuestSessions(
+    guestToken: string,
+    memberSeqno: number,
+  ): Promise<{ migratedCount: number; sessionIds: string[] }> {
+    const sessions = await this.sessionRepository.find({
+      where: { guestToken },
+    });
+    if (sessions.length === 0) {
+      return { migratedCount: 0, sessionIds: [] };
+    }
+
+    const sessionIds: string[] = [];
+    for (const session of sessions) {
+      session.memberSeqno = memberSeqno as any;
+      session.guestToken = null;
+      session.guestExpiresAt = null;
+      await this.sessionRepository.save(session);
+      sessionIds.push(session.id);
+    }
+
+    this.logger.log(
+      `Migrated ${sessions.length} guest session(s) to member ${memberSeqno} (token=${guestToken.slice(0, 8)}…)`,
+    );
+    return { migratedCount: sessions.length, sessionIds };
+  }
+
+  /**
+   * 내 세션 목록 — 인쇄 워크플로우 v1 Phase 6-C (2026-05-19).
+   *
+   * 로그인 사용자 본인 세션을 최근순 200건 반환.
+   * 게스트 토큰 보유 세션은 제외 (회원만의 영구 보관 작업).
+   */
+  async findMyRecent(memberSeqno: number, limit = 200): Promise<EditSessionEntity[]> {
+    return this.sessionRepository.find({
+      where: { memberSeqno: memberSeqno as any, guestToken: null as any },
+      relations: ['coverFile', 'contentFile'],
+      order: { updatedAt: 'DESC' },
+      take: limit,
+    });
+  }
+
+  /**
    * 세션 완료 처리
    *
    * 인쇄 워크플로우 v1 Phase 5 (2026-05-19):

@@ -9,6 +9,8 @@ const EditorView = lazy(() => import('./views/EditorView'))
 const TemplateEditorView = lazy(() => import('./views/TemplateEditorView'))
 const BrowseContentsView = lazy(() => import('./views/BrowseContentsView'))
 const UnauthorizedView = lazy(() => import('./views/UnauthorizedView'))
+// 인쇄 워크플로우 v1 Phase 6-C (2026-05-19)
+const MyWorksView = lazy(() => import('./views/MyWorksView'))
 
 // Loading fallback component
 function LoadingFallback() {
@@ -37,6 +39,8 @@ function App() {
           <Route path="/template" element={<TemplateEditorView />} />
           <Route path="/browse" element={<BrowseContentsView />} />
           <Route path="/unauthorized" element={<UnauthorizedView />} />
+          {/* 인쇄 워크플로우 v1 Phase 6-C (2026-05-19) */}
+          <Route path="/my-works" element={<MyWorksView />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Suspense>
