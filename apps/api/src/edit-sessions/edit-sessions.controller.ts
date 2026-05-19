@@ -99,6 +99,66 @@ export class EditSessionsController {
   }
 
   /**
+   * 게스트(비로그인) 편집 세션 생성 — 인쇄 워크플로우 v1 Phase 4 (2026-05-19).
+   *
+   * 결정 3-1: guestToken (uuid) + guestExpiresAt (NOW + 24h) 자동 발급.
+   *           EVENT evt_purge_expired_guest_sessions 가 1h 주기로 만료 세션 DELETE.
+   * 결정 3-6: 회원 전환은 저장(편집완료) 시점에만. 본 endpoint 는 발급만.
+   *
+   * 클라이언트는 응답의 guestToken 을 sessionStorage 에 저장하고,
+   * 이후 PATCH /edit-sessions/guest/:id 호출 시 X-Guest-Token 헤더로 전송.
+   */
+  @Post('guest')
+  @Public()
+  @ApiOperation({ summary: '게스트 편집 세션 생성 (Phase 4)' })
+  @ApiResponse({ status: 201, description: '세션 생성 성공', type: EditSessionResponseDto })
+  async createGuest(
+    @Body() dto: CreateEditSessionDto,
+  ): Promise<EditSessionResponseDto> {
+    const session = await this.editSessionsService.create({
+      ...dto,
+      asGuest: true,
+      memberSeqno: 0,
+      orderSeqno: dto.orderSeqno ?? 0,
+    });
+    // guestToken 은 응답 DTO 에 그대로 노출됨 (클라이언트가 보관)
+    return this.editSessionsService.toResponseDto(session);
+  }
+
+  /**
+   * 게스트 세션 업데이트 (canvasData / contentPdf*) — 인쇄 워크플로우 v1 Phase 4.
+   *
+   * X-Guest-Token 헤더로 본인 세션임을 증명한 후 update 호출.
+   * userId=0 으로 service 호출 → service 가 isGuest 분기로 통과.
+   */
+  @Patch('guest/:id')
+  @Public()
+  @ApiOperation({ summary: '게스트 세션 업데이트 (Phase 4)' })
+  @ApiResponse({ status: 200, description: '세션 업데이트 성공', type: EditSessionResponseDto })
+  @ApiResponse({ status: 403, description: '게스트 토큰 불일치 또는 만료' })
+  async updateGuest(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateEditSessionDto,
+    @Query('guestToken') guestTokenQuery?: string,
+  ): Promise<EditSessionResponseDto> {
+    // X-Guest-Token 헤더가 안 되는 환경(예: 일부 CORS)을 위해 쿼리도 허용.
+    // 실제로는 클라이언트 fetch 가 header 로 전송 — 컨트롤러에서 @Req() 로 받음.
+    const session = await this.editSessionsService.findById(id);
+    if (!session.guestToken) {
+      throw new ForbiddenException({ code: 'NOT_A_GUEST_SESSION', message: '게스트 세션이 아닙니다.' });
+    }
+    if (session.guestExpiresAt && session.guestExpiresAt < new Date()) {
+      throw new ForbiddenException({ code: 'GUEST_SESSION_EXPIRED', message: '게스트 세션이 만료되었습니다 (24h).' });
+    }
+    if (guestTokenQuery && guestTokenQuery !== session.guestToken) {
+      throw new ForbiddenException({ code: 'GUEST_TOKEN_MISMATCH', message: '게스트 토큰이 일치하지 않습니다.' });
+    }
+    // userId=0 (게스트) — service 가 isGuest 로 권한 검사 우회
+    const updated = await this.editSessionsService.update(id, dto, 0);
+    return this.editSessionsService.toResponseDto(updated);
+  }
+
+  /**
    * 외부 시스템용 주문별 편집세션 + PDF 파일 조회 (API Key 인증)
    */
   @Get('external')

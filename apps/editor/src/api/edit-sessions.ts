@@ -41,13 +41,19 @@ export interface EditSessionResponse {
   completedAt?: string | null
   createdAt: string
   updatedAt: string
+  // 인쇄 워크플로우 v1 Phase 4 (2026-05-19)
+  contentPdfFileId?: string | null
+  contentPdfPageCount?: number | null
+  contentPdfValidationResult?: Record<string, any> | null
+  guestToken?: string | null
+  guestExpiresAt?: string | null
 }
 
 /**
  * Edit Session 생성 요청 DTO
  */
 export interface CreateEditSessionRequest {
-  orderSeqno: number
+  orderSeqno?: number
   mode: SessionMode
   coverFileId?: string
   contentFileId?: string
@@ -56,6 +62,8 @@ export interface CreateEditSessionRequest {
   metadata?: Record<string, any>
   /** Worker 완료 시 콜백 URL (bookmoa 웹훅 수신용) */
   callbackUrl?: string
+  /** 인쇄 워크플로우 v1 Phase 4 — 게스트 모드 진입 */
+  asGuest?: boolean
 }
 
 /**
@@ -64,10 +72,14 @@ export interface CreateEditSessionRequest {
 export interface UpdateEditSessionRequest {
   status?: SessionStatus
   coverFileId?: string
-  contentFileId?: string
+  contentFileId?: string | null
   templateSetId?: string
   canvasData?: any
   metadata?: Record<string, any>
+  // 인쇄 워크플로우 v1 Phase 4 (2026-05-19)
+  contentPdfFileId?: string | null
+  contentPdfPageCount?: number | null
+  contentPdfValidationResult?: Record<string, any> | null
 }
 
 /**
@@ -131,6 +143,33 @@ export const editSessionsApi = {
   getMySessions: async (): Promise<{ sessions: EditSessionResponse[]; total: number }> => {
     const response = await apiClient.get<{ sessions: EditSessionResponse[]; total: number }>(
       '/edit-sessions'
+    )
+    return response.data
+  },
+
+  /**
+   * 게스트 편집 세션 생성 — 인쇄 워크플로우 v1 Phase 4 (2026-05-19).
+   * 응답의 guestToken 을 sessionStorage 에 저장하고 이후 updateGuest 호출 시 토큰 동봉.
+   */
+  createGuest: async (payload: CreateEditSessionRequest): Promise<EditSessionResponse> => {
+    const response = await apiClient.post<EditSessionResponse>('/edit-sessions/guest', {
+      ...payload,
+      asGuest: true,
+    })
+    return response.data
+  },
+
+  /**
+   * 게스트 세션 업데이트 — 토큰 동봉 (쿼리 파라미터로 안전 전송).
+   */
+  updateGuest: async (
+    id: string,
+    guestToken: string,
+    payload: UpdateEditSessionRequest,
+  ): Promise<EditSessionResponse> => {
+    const response = await apiClient.patch<EditSessionResponse>(
+      `/edit-sessions/guest/${id}?guestToken=${encodeURIComponent(guestToken)}`,
+      payload,
     )
     return response.data
   },

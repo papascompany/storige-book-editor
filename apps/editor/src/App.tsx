@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useEffect } from 'react'
 import { useThemeSync } from '@/stores/useUiPrefStore'
+import { useGuestStore } from '@/stores/useGuestStore'
 import ToastViewport from '@/components/editor/ToastViewport'
 
 // Lazy load views
@@ -21,6 +22,12 @@ function LoadingFallback() {
 function App() {
   // 테마 (light/dark/system)를 <html data-theme> 속성에 동기화
   useThemeSync()
+
+  // 인쇄 워크플로우 v1 Phase 4 (2026-05-19) — 게스트 세션 복원
+  const initializeGuestFromStorage = useGuestStore((s) => s.initializeFromStorage)
+  useEffect(() => {
+    initializeGuestFromStorage()
+  }, [initializeGuestFromStorage])
 
   return (
     <>

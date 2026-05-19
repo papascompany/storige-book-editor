@@ -1,16 +1,27 @@
-import { IsNumber, IsEnum, IsOptional, IsString, IsObject, IsUUID } from 'class-validator';
+import { IsNumber, IsEnum, IsOptional, IsString, IsObject, IsUUID, IsBoolean } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { SessionMode } from '../entities/edit-session.entity';
 
 export class CreateEditSessionDto {
-  @ApiProperty({ example: 12345, description: '주문 번호' })
+  @ApiPropertyOptional({ example: 12345, description: '주문 번호 (게스트는 0 또는 미전송 — Phase 4)' })
+  @IsOptional()
   @IsNumber()
-  orderSeqno: number;
+  orderSeqno?: number;
 
   @ApiPropertyOptional({ example: 123, description: '회원 번호 (JWT에서 자동 추출 가능)' })
   @IsOptional()
   @IsNumber()
   memberSeqno?: number;
+
+  /**
+   * 인쇄 워크플로우 v1 Phase 4 (2026-05-19) — 게스트 세션 진입 플래그.
+   * true 면 API 측에서 guestToken (uuid) + guestExpiresAt (NOW + 24h) 자동 발급.
+   * 결정 3-1: 24시간 후 EVENT evt_purge_expired_guest_sessions 가 자동 DELETE.
+   */
+  @ApiPropertyOptional({ example: true, description: '게스트 세션 진입 — Phase 4' })
+  @IsOptional()
+  @IsBoolean()
+  asGuest?: boolean;
 
   @ApiProperty({ example: 'both', enum: SessionMode, description: '편집 모드' })
   @IsEnum(SessionMode)
