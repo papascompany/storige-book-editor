@@ -117,6 +117,9 @@ services:
     container_name: storige-mariadb
     ports:
       - "3306:3306"
+    # event_scheduler=ON: 인쇄 워크플로우 v1 Phase 2 (2026-05-19) — 게스트 24h 자동삭제 EVENT
+    # (evt_purge_expired_guest_sessions) 가 컨테이너 재시작 시에도 작동하도록 영구 설정.
+    command: --event-scheduler=ON
     environment:
       - MARIADB_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
       - MARIADB_DATABASE=${DATABASE_NAME:-storige}
