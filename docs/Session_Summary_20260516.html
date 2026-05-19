@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2026-05-16 Storige 통합 개발 세션 요약</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url("https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap");
+        body { font-family: "Noto Sans KR", sans-serif; background-color: #f1f5f9; }
+        .card { @apply bg-white rounded-2xl shadow-sm border border-slate-200 p-6; }
+        .step-circle { @apply w-8 h-8 rounded-full flex items-center justify-center font-bold text-white mb-2; }
+    </style>
+</head>
+<body class="p-6 md:p-12">
+    <div class="max-w-6xl mx-auto">
+        <!-- Header -->
+        <div class="flex items-center justify-between mb-10">
+            <div>
+                <h1 class="text-3xl font-extrabold text-slate-900 leading-tight">
+                    <i class="fas fa-terminal text-indigo-600 mr-2"></i>
+                    2026-05-16 세션 통합 보고서
+                </h1>
+                <p class="text-slate-500 mt-2 italic text-lg">"플랫폼화의 완성 및 카드 인쇄 특화 설계 확정"</p>
+            </div>
+            <div class="text-right">
+                <span class="px-4 py-2 bg-green-100 text-green-700 rounded-full font-bold text-sm">작업 완료</span>
+                <p class="text-xs text-slate-400 mt-2">작성자: Gemini CLI Agent</p>
+            </div>
+        </div>
+
+        <!-- 3 Projects Status -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div class="card border-t-4 border-indigo-500">
+                <div class="text-indigo-600 font-bold mb-1">Project 1</div>
+                <h3 class="text-xl font-bold text-slate-800">Storige</h3>
+                <p class="text-sm text-slate-500 mt-2">플랫폼 코어 (에디터/워커). 멀티사이트 대응 계약(Phase 0) 및 카드 조판 스킬 셋 구축 완료.</p>
+            </div>
+            <div class="card border-t-4 border-blue-500">
+                <div class="text-blue-600 font-bold mb-1">Project 2</div>
+                <h3 class="text-xl font-bold text-slate-800">BookMoa Mobile</h3>
+                <p class="text-sm text-slate-500 mt-2">연동 표준 수립. Inline Embed 및 서버 어댑터 방식의 연동 계획서 확정.</p>
+            </div>
+            <div class="card border-t-4 border-cyan-500">
+                <div class="text-cyan-600 font-bold mb-1">Project 3</div>
+                <h3 class="text-xl font-bold text-slate-800">PrintCard Studio</h3>
+                <p class="text-sm text-slate-500 mt-2">신규 연결 완료. Storige 워커를 활용한 양면 카드 조판 및 주문 연동 계획 수립.</p>
+            </div>
+        </div>
+
+        <!-- Major Deliverables -->
+        <div class="card mb-8">
+            <h2 class="text-2xl font-bold text-slate-800 mb-6 flex items-center gap-2">
+                <i class="fas fa-file-export text-slate-400"></i> 주요 산출물 (7개 파일 생성/수정)
+            </h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="flex items-center gap-3 p-3 bg-slate-50 rounded-lg">
+                    <i class="far fa-file-alt text-indigo-500 text-xl"></i>
+                    <div>
+                        <div class="font-bold text-sm">Migration_status_20260516 (MD/HTML)</div>
+                        <div class="text-xs text-slate-500">Storige 프로젝트 통합 마이그레이션 현황</div>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3 p-3 bg-slate-50 rounded-lg">
+                    <i class="far fa-file-alt text-blue-500 text-xl"></i>
+                    <div>
+                        <div class="font-bold text-sm">Integration_Plan_20260516 (MD/HTML)</div>
+                        <div class="text-xs text-slate-500">PrintCard Studio 워커 연동 계획서</div>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3 p-3 bg-slate-50 rounded-lg">
+                    <i class="far fa-file-code text-emerald-500 text-xl"></i>
+                    <div>
+                        <div class="font-bold text-sm">card_imposition_skills.md</div>
+                        <div class="text-xs text-slate-500">명함재단기 대응 기술 규격 (K100 마커, 반전)</div>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3 p-3 bg-slate-50 rounded-lg">
+                    <i class="far fa-file-code text-amber-500 text-xl"></i>
+                    <div>
+                        <div class="font-bold text-sm">CARD_IMPOSITION_DEV_GUIDE.md</div>
+                        <div class="text-xs text-slate-500">관리자 설정 기반 마커 구현 가이드</div>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3 p-3 bg-slate-50 rounded-lg">
+                    <i class="fas fa-brain text-purple-500 text-xl"></i>
+                    <div>
+                        <div class="font-bold text-sm">SKILL.md (card-imposition)</div>
+                        <div class="text-xs text-slate-500">AI 에이전트 전용 조판 스킬 정의 파일</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Card Imposition Logic Diagram -->
+        <div class="card mb-8 bg-slate-900 text-white border-none">
+            <h2 class="text-2xl font-bold mb-6 flex items-center gap-2">
+                <i class="fas fa-draw-polygon text-cyan-400"></i> 명함재단기 조판 로직 (핵심 요약)
+            </h2>
+            <div class="flex flex-col md:flex-row items-center justify-around gap-8 py-4">
+                <div class="text-center">
+                    <div class="step-circle bg-indigo-500 mx-auto">1</div>
+                    <div class="font-bold">설정 주입</div>
+                    <p class="text-xs opacity-70">X, Y, W, H 좌표<br/>(Admin 관리)</p>
+                </div>
+                <i class="fas fa-chevron-right text-slate-700 hidden md:block"></i>
+                <div class="text-center">
+                    <div class="step-circle bg-blue-500 mx-auto">2</div>
+                    <div class="font-bold">센서 마커 생성</div>
+                    <p class="text-xs opacity-70">왼쪽 에지에<br/>K100 검정 사각형</p>
+                </div>
+                <i class="fas fa-chevron-right text-slate-700 hidden md:block"></i>
+                <div class="text-center">
+                    <div class="step-circle bg-emerald-500 mx-auto">3</div>
+                    <div class="font-bold">앞면 조판</div>
+                    <p class="text-xs opacity-70">1, 2, 3... 순서대로<br/>N-up 배치</p>
+                </div>
+                <i class="fas fa-chevron-right text-slate-700 hidden md:block"></i>
+                <div class="text-center">
+                    <div class="step-circle bg-purple-500 mx-auto">4</div>
+                    <div class="font-bold">뒷면 반전</div>
+                    <p class="text-xs opacity-70">가로축 기준<br/>Mirroring (1:1 매칭)</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tomorrow Plan -->
+        <div class="bg-amber-50 border border-amber-200 rounded-2xl p-6">
+            <h2 class="text-xl font-bold text-amber-800 mb-4 flex items-center gap-2">
+                <i class="fas fa-calendar-day"></i> 내일의 작업 계획
+            </h2>
+            <ul class="space-y-2 text-amber-900 text-sm">
+                <li class="flex items-center gap-2"><i class="fas fa-arrow-right text-amber-400"></i> Storige Admin 내 마커 설정 UI 구현</li>
+                <li class="flex items-center gap-2"><i class="fas fa-arrow-right text-amber-400"></i> 워커의 PDF 조판 엔진에 동적 마커 및 반전 로직 구현 시작</li>
+                <li class="flex items-center gap-2"><i class="fas fa-arrow-right text-amber-400"></i> PrintCard Studio 실제 주문 데이터 연동 테스트</li>
+            </ul>
+        </div>
+
+        <div class="mt-10 text-center text-slate-400 text-sm">
+            <p>오늘 하루도 수고 많으셨습니다. 내일 뵙겠습니다!</p>
+        </div>
+    </div>
+</body>
+</html>
