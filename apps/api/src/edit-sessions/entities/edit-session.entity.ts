@@ -105,6 +105,44 @@ export class EditSessionEntity {
   @Column({ name: 'callback_url', type: 'varchar', length: 500, nullable: true })
   callbackUrl: string | null;
 
+  // ─────────────────────────────────────────────────────
+  // 인쇄 워크플로우 v1 Phase 2 (2026-05-19)
+  // 면지/PDF첨부/게스트 토큰/레더 커버를 위한 신규 컬럼.
+  // 마이그레이션: apps/api/migrations/20260519_v1_phase2_workflow_schema.sql
+  // 사용자 확정 결정 §4.4 (3-1~3-6 권장안).
+  // ─────────────────────────────────────────────────────
+
+  /**
+   * 고객 첨부 내지 PDF file_id.
+   * 결정 3-3: PDF 첨부와 일부 편집은 배타적 — 둘 다 동시 보유 금지.
+   */
+  @Column({ name: 'content_pdf_file_id', type: 'varchar', length: 36, nullable: true })
+  contentPdfFileId: string | null;
+
+  /** PDF 페이지수 — 자동 페이지 확장 계산용 */
+  @Column({ name: 'content_pdf_page_count', type: 'int', nullable: true })
+  contentPdfPageCount: number | null;
+
+  /**
+   * 워커 검증 결과 캐시 (issues, warnings, metadata).
+   * 결정 3-4: 검증 실패 시 클라이언트가 첨부 자체 거부 UI 노출 — 이 필드 확인.
+   */
+  @Column({ name: 'content_pdf_validation_result', type: 'json', nullable: true })
+  contentPdfValidationResult: Record<string, unknown> | null;
+
+  /**
+   * 게스트 식별자 — 결정 3-1: 24h 자동 삭제. 결정 3-6: 저장 시점에 회원 전환 유도.
+   * 회원 가입 시 user/member 컬럼으로 마이그레이션되고 guestToken/guestExpiresAt 클리어.
+   */
+  @Index('idx_edit_sessions_guest_token')
+  @Column({ name: 'guest_token', type: 'varchar', length: 64, nullable: true })
+  guestToken: string | null;
+
+  /** 게스트 작업 자동 삭제 시점 (NOW + 24h). EVENT 'evt_purge_expired_guest_sessions' 가 시간 경과 시 DELETE */
+  @Index('idx_edit_sessions_guest_expires_at')
+  @Column({ name: 'guest_expires_at', type: 'timestamp', nullable: true })
+  guestExpiresAt: Date | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
