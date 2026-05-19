@@ -8,8 +8,8 @@ import { computeSpreadDimensions, normalizeSpreadSpec } from '@storige/types';
 
 const { Option } = Select;
 
-// 템플릿 타입
-type TemplateType = 'wing' | 'cover' | 'spine' | 'page' | 'spread';
+// 템플릿 타입 (인쇄 워크플로우 v1 Phase 3, 2026-05-19: endpaper 추가)
+type TemplateType = 'wing' | 'cover' | 'spine' | 'page' | 'spread' | 'endpaper';
 
 // PostMessage 이벤트 타입
 interface TemplateEditorMessage {
@@ -331,6 +331,7 @@ export const TemplateEditor = () => {
               <Option value="spine">책등 (Spine)</Option>
               <Option value="wing">날개 (Wing)</Option>
               <Option value="spread">스프레드 (Spread) - 책모드용</Option>
+              <Option value="endpaper">면지 (EndPaper) - 표지 안쪽/뒷표지 안쪽</Option>
             </Select>
           </Form.Item>
 

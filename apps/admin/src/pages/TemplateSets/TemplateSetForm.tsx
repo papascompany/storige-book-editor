@@ -22,12 +22,15 @@ import {
   Alert,
   Checkbox,
   Tooltip,
+  Upload,
 } from 'antd';
+import type { UploadProps } from 'antd';
 import {
   PlusOutlined,
   DeleteOutlined,
   HolderOutlined,
   ArrowLeftOutlined,
+  UploadOutlined,
 } from '@ant-design/icons';
 import {
   DndContext,
@@ -58,7 +61,7 @@ import {
 } from '@storige/types';
 import { templateSetsApi } from '../../api/template-sets';
 import { templatesApi } from '../../api/templates';
-import { resolveStorageUrl } from '../../lib/axios';
+import { axiosInstance, resolveStorageUrl } from '../../lib/axios';
 
 const { Title, Text } = Typography;
 
@@ -265,6 +268,14 @@ export const TemplateSetForm = () => {
         pageCountMax: templateSet.pageCountRange?.[templateSet.pageCountRange.length - 1],
         customizeMenus,
         enabledMenus: menuList,
+        // 인쇄 워크플로우 v1 Phase 3 (2026-05-19) — 면지/표지편집/레더커버
+        useEndpaper: !!templateSet.endpaperConfig,
+        endpaperFrontCount: templateSet.endpaperConfig?.frontCount ?? 0,
+        endpaperBackCount: templateSet.endpaperConfig?.backCount ?? 0,
+        endpaperFrontEditable: templateSet.endpaperConfig?.frontEditable ?? false,
+        endpaperBackEditable: templateSet.endpaperConfig?.backEditable ?? false,
+        coverEditable: templateSet.coverEditable ?? true,
+        coverPreviewImage: templateSet.coverPreviewImage || undefined,
       });
 
       // Load template refs with template details
@@ -321,6 +332,19 @@ export const TemplateSetForm = () => {
       enabledMenus = ALL_EDITOR_MENU_KEYS.filter((k) => selected.has(k));
     }
 
+    // 인쇄 워크플로우 v1 Phase 3 (2026-05-19) — 면지/표지편집/레더커버
+    const endpaperConfig = values.useEndpaper
+      ? {
+          frontCount: Math.min(6, Math.max(0, Number(values.endpaperFrontCount ?? 0))),
+          backCount: Math.min(6, Math.max(0, Number(values.endpaperBackCount ?? 0))),
+          frontEditable: !!values.endpaperFrontEditable,
+          backEditable: !!values.endpaperBackEditable,
+        }
+      : null;
+    const coverEditable = values.coverEditable !== false; // 기본 true
+    // 결정 3-5: coverEditable=false 일 때만 의미. 그 외엔 null 로 저장 (운영 데이터 깔끔 유지)
+    const coverPreviewImage = !coverEditable ? (values.coverPreviewImage || null) : null;
+
     const data = {
       name: values.name,
       type: values.type,
@@ -336,6 +360,9 @@ export const TemplateSetForm = () => {
         required,
       })),
       enabledMenus,
+      endpaperConfig,
+      coverEditable,
+      coverPreviewImage,
     };
 
     if (id) {
@@ -546,6 +573,135 @@ export const TemplateSetForm = () => {
                 </Space>
               )
             }
+          </Form.Item>
+
+          {/* ===== 인쇄 워크플로우 v1 Phase 3 (2026-05-19) — 면지/표지/레더커버 ===== */}
+          <Divider>면지 (EndPaper)</Divider>
+
+          <Form.Item
+            name="useEndpaper"
+            label="면지 사용"
+            valuePropName="checked"
+            extra="책의 표지 안쪽(앞면지) / 뒤표지 안쪽(뒷면지)에 빈 페이지 추가. 0~6장."
+          >
+            <Switch checkedChildren="사용" unCheckedChildren="없음" />
+          </Form.Item>
+
+          <Form.Item
+            noStyle
+            shouldUpdate={(prev, curr) => prev.useEndpaper !== curr.useEndpaper}
+          >
+            {({ getFieldValue }) =>
+              getFieldValue('useEndpaper') && (
+                <Space size="large" wrap>
+                  <Form.Item name="endpaperFrontCount" label="앞면지 개수">
+                    <InputNumber min={0} max={6} />
+                  </Form.Item>
+                  <Form.Item name="endpaperBackCount" label="뒷면지 개수">
+                    <InputNumber min={0} max={6} />
+                  </Form.Item>
+                  <Form.Item
+                    name="endpaperFrontEditable"
+                    label="앞면지 편집 가능"
+                    valuePropName="checked"
+                  >
+                    <Switch checkedChildren="편집" unCheckedChildren="readonly" />
+                  </Form.Item>
+                  <Form.Item
+                    name="endpaperBackEditable"
+                    label="뒷면지 편집 가능"
+                    valuePropName="checked"
+                  >
+                    <Switch checkedChildren="편집" unCheckedChildren="readonly" />
+                  </Form.Item>
+                </Space>
+              )
+            }
+          </Form.Item>
+
+          <Divider>표지</Divider>
+
+          <Form.Item
+            name="coverEditable"
+            label="표지 편집 가능"
+            valuePropName="checked"
+            initialValue={true}
+            extra="레더 커버 / 화보집 등 표지를 사전 인쇄하는 경우 끄세요. 표지 미리보기 이미지로 대체됩니다."
+          >
+            <Switch checkedChildren="편집 가능" unCheckedChildren="레더 커버 (편집 불가)" />
+          </Form.Item>
+
+          <Form.Item
+            noStyle
+            shouldUpdate={(prev, curr) => prev.coverEditable !== curr.coverEditable}
+          >
+            {({ getFieldValue, setFieldValue }) => {
+              const coverEditable = getFieldValue('coverEditable');
+              if (coverEditable !== false) return null;
+              const currentPreview: string | undefined = getFieldValue('coverPreviewImage');
+
+              const uploadProps: UploadProps = {
+                name: 'file',
+                accept: 'image/jpeg,image/png,image/webp',
+                showUploadList: false,
+                customRequest: async ({ file, onSuccess, onError }) => {
+                  try {
+                    const formData = new FormData();
+                    formData.append('file', file as Blob);
+                    const res = await axiosInstance.post(
+                      '/storage/upload?category=library',
+                      formData,
+                      { headers: { 'Content-Type': 'multipart/form-data' } }
+                    );
+                    const url: string | undefined = res.data?.url;
+                    if (!url) throw new Error('업로드 응답에 URL이 없습니다');
+                    setFieldValue('coverPreviewImage', url);
+                    message.success('표지 미리보기 이미지 업로드 완료');
+                    onSuccess?.(res.data);
+                  } catch (err) {
+                    console.error('[coverPreviewImage upload]', err);
+                    message.error('이미지 업로드 실패');
+                    onError?.(err as Error);
+                  }
+                },
+              };
+
+              const resolvedPreview = currentPreview ? resolveStorageUrl(currentPreview) : null;
+
+              return (
+                <Form.Item label="표지 미리보기 이미지 (레더 커버용)">
+                  <Space direction="vertical" style={{ width: '100%' }}>
+                    {resolvedPreview && (
+                      <img
+                        src={resolvedPreview}
+                        alt="cover preview"
+                        style={{ maxWidth: 240, maxHeight: 240, border: '1px solid #eee', borderRadius: 4 }}
+                      />
+                    )}
+                    <Space>
+                      <Upload {...uploadProps}>
+                        <Button icon={<UploadOutlined />}>이미지 업로드</Button>
+                      </Upload>
+                      {currentPreview && (
+                        <Button
+                          danger
+                          size="small"
+                          onClick={() => setFieldValue('coverPreviewImage', undefined)}
+                        >
+                          제거
+                        </Button>
+                      )}
+                    </Space>
+                    <Form.Item name="coverPreviewImage" noStyle hidden>
+                      <Input />
+                    </Form.Item>
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      편집기에서는 이 이미지가 표지로만 표시되며, 인쇄용 PDF 의 표지는 빈 페이지로 생성됩니다.
+                    </Text>
+                  </Space>
+                </Form.Item>
+              );
+            }}
           </Form.Item>
 
           <Divider>에디터 도구 메뉴</Divider>
