@@ -7,12 +7,39 @@ import {
   IsNumber,
   IsArray,
   IsIn,
+  IsObject,
   ValidateNested,
+  Max,
   Min,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { TemplateSetType, TemplateRef, EditorMode, EditorMenuKey, ALL_EDITOR_MENU_KEYS } from '@storige/types';
+
+/**
+ * 면지 구성 DTO — 인쇄 워크플로우 v1 Phase 3 (2026-05-19).
+ */
+export class EndpaperConfigDto {
+  @ApiProperty({ minimum: 0, maximum: 6, example: 2, description: '앞면지 개수 (0~6)' })
+  @IsNumber()
+  @Min(0)
+  @Max(6)
+  frontCount: number;
+
+  @ApiProperty({ minimum: 0, maximum: 6, example: 1, description: '뒷면지 개수 (0~6)' })
+  @IsNumber()
+  @Min(0)
+  @Max(6)
+  backCount: number;
+
+  @ApiProperty({ example: false, description: '앞면지 편집 가능 여부' })
+  @IsBoolean()
+  frontEditable: boolean;
+
+  @ApiProperty({ example: false, description: '뒷면지 편집 가능 여부' })
+  @IsBoolean()
+  backEditable: boolean;
+}
 
 /**
  * 템플릿 참조 DTO
@@ -105,6 +132,23 @@ export class CreateTemplateSetDto {
   @IsArray()
   @IsIn(ALL_EDITOR_MENU_KEYS, { each: true })
   enabledMenus?: EditorMenuKey[] | null;
+
+  // ── 인쇄 워크플로우 v1 Phase 3 (2026-05-19) ──
+  @ApiPropertyOptional({ type: EndpaperConfigDto, description: '면지 구성 (null=면지 없음)', nullable: true })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => EndpaperConfigDto)
+  endpaperConfig?: EndpaperConfigDto | null;
+
+  @ApiPropertyOptional({ example: true, description: '표지 편집 가능 여부 (기본 true, 레더커버=false)' })
+  @IsOptional()
+  @IsBoolean()
+  coverEditable?: boolean;
+
+  @ApiPropertyOptional({ description: '레더커버 미리보기 storage URL (coverEditable=false 일 때만 의미)', nullable: true })
+  @IsOptional()
+  @IsString()
+  coverPreviewImage?: string | null;
 }
 
 /**
@@ -187,6 +231,23 @@ export class UpdateTemplateSetDto {
   @IsArray()
   @IsIn(ALL_EDITOR_MENU_KEYS, { each: true })
   enabledMenus?: EditorMenuKey[] | null;
+
+  // ── 인쇄 워크플로우 v1 Phase 3 (2026-05-19) ──
+  @ApiPropertyOptional({ type: EndpaperConfigDto, nullable: true })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => EndpaperConfigDto)
+  endpaperConfig?: EndpaperConfigDto | null;
+
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  @IsBoolean()
+  coverEditable?: boolean;
+
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @IsString()
+  coverPreviewImage?: string | null;
 }
 
 /**

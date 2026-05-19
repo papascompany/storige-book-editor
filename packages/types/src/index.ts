@@ -219,6 +219,10 @@ export interface CreateTemplateSetInput {
   categoryId?: string;
   /** 에디터 도구 메뉴 노출 화이트리스트 (null=모두 노출) */
   enabledMenus?: EditorMenuKey[] | null;
+  /** 인쇄 워크플로우 v1 Phase 3 (2026-05-19) — 면지/표지/레더커버 */
+  endpaperConfig?: EndpaperConfig | null;
+  coverEditable?: boolean;
+  coverPreviewImage?: string | null;
 }
 
 /**
@@ -235,6 +239,10 @@ export interface UpdateTemplateSetInput {
   templates?: TemplateRef[];
   /** 에디터 도구 메뉴 노출 화이트리스트 (null=모두 노출) */
   enabledMenus?: EditorMenuKey[] | null;
+  /** 인쇄 워크플로우 v1 Phase 3 (2026-05-19) — 면지/표지/레더커버 */
+  endpaperConfig?: EndpaperConfig | null;
+  coverEditable?: boolean;
+  coverPreviewImage?: string | null;
 }
 
 /**

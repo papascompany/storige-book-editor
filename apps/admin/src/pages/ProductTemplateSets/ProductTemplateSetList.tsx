@@ -223,16 +223,31 @@ export const ProductTemplateSetList = () => {
     {
       title: '템플릿셋',
       key: 'templateSet',
-      render: (_, record) => (
-        <Space direction="vertical" size={0}>
-          <Text>{record.templateSet?.name || '-'}</Text>
-          {record.templateSet && (
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              {record.templateSet.type === 'book' ? '책자' : '리플렛'} · {record.templateSet.width}×{record.templateSet.height}mm
-            </Text>
-          )}
-        </Space>
-      ),
+      render: (_, record) => {
+        // 인쇄 워크플로우 v1 Phase 3 (2026-05-19) — 면지/레더커버 요약 배지
+        const ts = record.templateSet;
+        const endpaper = ts?.endpaperConfig;
+        const endpaperLabel = endpaper
+          ? `면지 앞${endpaper.frontCount}/뒤${endpaper.backCount}`
+          : null;
+        const coverEditable = ts?.coverEditable !== false;
+        return (
+          <Space direction="vertical" size={2}>
+            <Text>{ts?.name || '-'}</Text>
+            {ts && (
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                {ts.type === 'book' ? '책자' : '리플렛'} · {ts.width}×{ts.height}mm
+              </Text>
+            )}
+            {(endpaperLabel || !coverEditable) && (
+              <Space size={4} wrap>
+                {endpaperLabel && <Tag color="gold">{endpaperLabel}</Tag>}
+                {!coverEditable && <Tag color="purple">레더커버</Tag>}
+              </Space>
+            )}
+          </Space>
+        );
+      },
     },
     {
       title: '기본',

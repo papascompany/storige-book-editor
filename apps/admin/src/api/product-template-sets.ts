@@ -18,6 +18,15 @@ export interface ProductTemplateSet {
     width: number;
     height: number;
     thumbnailUrl: string | null;
+    // 인쇄 워크플로우 v1 Phase 3 (2026-05-19)
+    endpaperConfig?: {
+      frontCount: number;
+      backCount: number;
+      frontEditable: boolean;
+      backEditable: boolean;
+    } | null;
+    coverEditable?: boolean;
+    coverPreviewImage?: string | null;
   };
 }
 
