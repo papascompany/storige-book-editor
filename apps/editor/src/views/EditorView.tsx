@@ -12,6 +12,7 @@ import FeatureSidebar from '@/components/editor/FeatureSidebar'
 import ControlBar from '@/components/editor/ControlBar'
 import SidePanel from '@/components/editor/SidePanel'
 import EditorHeader from '@/components/editor/EditorHeader'
+import { EditorWorkflowControls } from '@/components/editor/EditorWorkflowControls'
 import { CoverFocusBar } from '@/components/editor/CoverFocusBar'
 import EmptyCanvasHint from '@/components/editor/EmptyCanvasHint'
 import { useImageStore } from '@/stores/useImageStore'
@@ -733,6 +734,12 @@ export default function EditorView() {
         onLoadingChange={handleLoadingChange}
         isAdminTemplateSetEdit={isAdminTemplateSetEdit}
       />
+
+      {/* 인쇄 워크플로우 v1 Phase 5-D (2026-05-19) — 면지/PDF첨부/레더커버 floating controls.
+          침습 최소 통합: 캔버스/페이지 로직 미변경, 우측 상단 floating UI 만 추가. */}
+      {!isAdminTemplateSetEdit && templateSetId && (
+        <EditorWorkflowControls templateSetId={templateSetId} />
+      )}
 
       {/* Admin "템플릿셋 수정" 모드 안내 배너 — 일반 사용자/PHP 흐름과 시각적 구분.
           저장 동작 + 자동저장 비활성 + 영향 범위까지 한눈에 안내. */}

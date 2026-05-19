@@ -24,6 +24,7 @@ import {
 } from './dto/worker-job.dto';
 import { CreateSplitSynthesisJobDto } from './dto/create-split-synthesis-job.dto';
 import { CheckMergeableDto, CheckMergeableResponseDto } from './dto/check-mergeable.dto';
+import { CreateComposeMixedJobDto } from './dto/create-compose-mixed-job.dto';
 import { WorkerJob } from './entities/worker-job.entity';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -140,6 +141,26 @@ export class WorkerJobsController {
     @Body() dto: CreateSplitSynthesisJobDto,
   ): Promise<WorkerJob> {
     return await this.workerJobsService.createSplitSynthesisJob(dto);
+  }
+
+  // ============================================================================
+  // Compose-mixed (인쇄 워크플로우 v1 Phase 5, 2026-05-19)
+  // ============================================================================
+
+  /**
+   * Compose-mixed 잡 생성 — 표지+앞면지+내지+뒷면지 합본.
+   *
+   * 게스트도 호출 가능 (@Public). 향후 X-Guest-Token 또는 ApiKey 분기 추가 가능.
+   * 기존 PHP synthesize/external 경로와 완전 분리 — 회귀 보호.
+   */
+  @Post('compose-mixed')
+  @Public()
+  @ApiOperation({ summary: 'Compose-mixed 잡 생성 (Phase 5)' })
+  @ApiResponse({ status: 201, description: '잡 생성 성공', type: WorkerJob })
+  async createComposeMixed(
+    @Body() dto: CreateComposeMixedJobDto,
+  ): Promise<WorkerJob> {
+    return await this.workerJobsService.createComposeMixedJob(dto);
   }
 
   /**

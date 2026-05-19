@@ -302,11 +302,18 @@ export class EditSessionsService {
 
   /**
    * 세션 완료 처리
+   *
+   * 인쇄 워크플로우 v1 Phase 5 (2026-05-19):
+   * - 게스트 세션도 complete 호출 가능 (userId=0 통과)
+   * - contentPdfFileId 또는 endpaperConfig 또는 coverEditable=false 가 있으면
+   *   compose-mixed 잡 enqueue 분기 — Worker 가 표지+면지+내지+면지 합본 생성.
+   * - 기존 SPREAD / 일반 흐름은 그대로 유지 (PHP 영향 0).
    */
   async complete(id: string, userId: number): Promise<EditSessionEntity> {
     const session = await this.findById(id);
 
-    if (Number(session.memberSeqno) !== userId) {
+    const isGuest = !!session.guestToken;
+    if (!isGuest && Number(session.memberSeqno) !== userId) {
       throw new ForbiddenException({
         code: 'PERMISSION_DENIED',
         message: '이 세션을 완료할 권한이 없습니다.',
@@ -322,7 +329,7 @@ export class EditSessionsService {
     session.completedAt = new Date();
 
     const completed = await this.sessionRepository.save(session);
-    this.logger.log(`Completed edit session ${id}`);
+    this.logger.log(`Completed edit session ${id}${isGuest ? ' (guest)' : ''}`);
 
     // 스프레드 모드는 자동 검증 잡 발행을 스킵.
     // 표지(펼침면)는 일반 사이즈 검증(±1mm)에서 SIZE_MISMATCH가 나기 때문이며,

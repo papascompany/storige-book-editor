@@ -21,7 +21,7 @@ import {
 
 interface SynthesisJobData {
   jobId: string; // domain ID (worker_jobs.id)
-  mode?: 'split' | 'spread'; // ★ split/spread 모드 분기 기준
+  mode?: 'split' | 'spread' | 'compose-mixed'; // ★ 모드 분기 기준 (인쇄 워크플로우 v1 Phase 5: compose-mixed 추가)
   coverUrl?: string;
   contentUrl?: string;
   spineWidth?: number;
@@ -38,6 +38,24 @@ interface SynthesisJobData {
   // Spread synthesis 전용
   spreadPdfFileId?: string;
   contentPdfFileIds?: string[];
+  // ── 인쇄 워크플로우 v1 Phase 5 (2026-05-19) — compose-mixed 전용 ──
+  /** 표지 PDF URL. coverEditable=false 면 worker가 빈 페이지 생성하므로 미전송 가능 */
+  composeCoverUrl?: string;
+  /** 표지 편집 가능 여부 (false=레더커버 → 빈 페이지) */
+  composeCoverEditable?: boolean;
+  /** 표지 페이지 폭 (mm) — 빈 표지 생성 시 사용 */
+  composeCoverWidthMm?: number;
+  /** 표지 페이지 높이 (mm) */
+  composeCoverHeightMm?: number;
+  /** 앞면지 URL 배열 (editable=true 면 캔버스 PDF, false 면 worker가 빈 페이지 생성) */
+  composeFrontEndpaperUrls?: (string | null)[];
+  /** 뒷면지 URL 배열 */
+  composeBackEndpaperUrls?: (string | null)[];
+  /** 내지 PDF URL (편집 결과 또는 contentPdfFileId 첨부 PDF) */
+  composeContentPdfUrl?: string;
+  /** 내지 페이지 폭/높이 (mm) — 빈 면지 페이지 생성 시 사용 */
+  composeContentWidthMm?: number;
+  composeContentHeightMm?: number;
 }
 
 // FilesService 인터페이스 (Worker에서 DB 조회용)
@@ -73,9 +91,165 @@ export class SynthesisProcessor {
     if (mode === 'spread') {
       return this.handleSpreadSynthesis(job as Job<SpreadSynthesisJobData>);
     }
+    if (mode === 'compose-mixed') {
+      // 인쇄 워크플로우 v1 Phase 5 (2026-05-19) — 표지+면지+내지 합본
+      return this.handleComposeMixedSynthesis(job);
+    }
 
     // 기존 merge 로직
     return this.handleMergeSynthesis(job);
+  }
+
+  /**
+   * Compose-mixed 합성 — 인쇄 워크플로우 v1 Phase 5 (2026-05-19).
+   *
+   * 출력 순서 (고정):
+   *   [표지, 앞면지 1..N, 내지 PDF, 뒷면지 1..K]
+   *
+   * 입력:
+   *   - composeCoverUrl: 표지 PDF URL (composeCoverEditable=true 일 때)
+   *   - composeCoverEditable=false: 빈 표지 페이지 worker 생성
+   *   - composeFrontEndpaperUrls / composeBackEndpaperUrls: URL 배열. null 원소는 빈 면지 페이지 생성
+   *   - composeContentPdfUrl: 내지 PDF (편집 결과 또는 고객 첨부)
+   *
+   * 회귀 보호: 기존 synthesis/split/spread 경로 영향 없음 (별도 mode 분기).
+   */
+  private async handleComposeMixedSynthesis(job: Job<SynthesisJobData>) {
+    const {
+      composeCoverUrl,
+      composeCoverEditable,
+      composeCoverWidthMm,
+      composeCoverHeightMm,
+      composeFrontEndpaperUrls,
+      composeBackEndpaperUrls,
+      composeContentPdfUrl,
+      composeContentWidthMm,
+      composeContentHeightMm,
+    } = job.data;
+    const jobId = job.data.jobId;
+    const queueJobId = job.id;
+
+    this.logger.log(
+      `Processing compose-mixed synthesis job ${jobId} (queue: ${queueJobId})`,
+    );
+
+    try {
+      await this.updateJobStatus(jobId, { status: 'PROCESSING' });
+
+      // mm → PDF point (1 mm = 2.834645669 pt @ 72dpi)
+      const MM_TO_PT = 2.834645669;
+      const coverPt = {
+        width: (composeCoverWidthMm ?? 210) * MM_TO_PT,
+        height: (composeCoverHeightMm ?? 297) * MM_TO_PT,
+      };
+      const contentPt = {
+        width: (composeContentWidthMm ?? 210) * MM_TO_PT,
+        height: (composeContentHeightMm ?? 297) * MM_TO_PT,
+      };
+
+      // 최종 합본 PDF
+      const finalPdf = await PDFDocument.create();
+
+      // 1) 표지 — coverEditable=false 면 빈 페이지 1장, true 면 PDF 복사
+      if (composeCoverEditable === false || !composeCoverUrl) {
+        // 빈 표지 페이지 — 레더 커버 (결정 3-5)
+        finalPdf.addPage([coverPt.width, coverPt.height]);
+        this.logger.log(`[${jobId}] cover: empty page (leather cover)`);
+      } else {
+        const coverBytes = await this.synthesizerService.downloadFile(composeCoverUrl);
+        const coverDoc = await PDFDocument.load(coverBytes);
+        const copiedCoverPages = await finalPdf.copyPages(coverDoc, coverDoc.getPageIndices());
+        copiedCoverPages.forEach((p) => finalPdf.addPage(p));
+        this.logger.log(`[${jobId}] cover: copied ${copiedCoverPages.length} pages`);
+      }
+
+      // 2) 앞면지 — null/미전송 원소는 빈 페이지
+      const frontList = composeFrontEndpaperUrls ?? [];
+      for (let i = 0; i < frontList.length; i++) {
+        const url = frontList[i];
+        if (!url) {
+          finalPdf.addPage([contentPt.width, contentPt.height]);
+          this.logger.log(`[${jobId}] front endpaper ${i + 1}/${frontList.length}: empty`);
+        } else {
+          const bytes = await this.synthesizerService.downloadFile(url);
+          const doc = await PDFDocument.load(bytes);
+          const pages = await finalPdf.copyPages(doc, doc.getPageIndices());
+          pages.forEach((p) => finalPdf.addPage(p));
+          this.logger.log(`[${jobId}] front endpaper ${i + 1}/${frontList.length}: ${pages.length} pages`);
+        }
+      }
+
+      // 3) 내지 PDF — 편집 결과 또는 고객 첨부 PDF
+      if (composeContentPdfUrl) {
+        const bytes = await this.synthesizerService.downloadFile(composeContentPdfUrl);
+        const doc = await PDFDocument.load(bytes);
+        const pages = await finalPdf.copyPages(doc, doc.getPageIndices());
+        pages.forEach((p) => finalPdf.addPage(p));
+        this.logger.log(`[${jobId}] content: ${pages.length} pages`);
+      } else {
+        this.logger.warn(`[${jobId}] no content PDF — skipping content section`);
+      }
+
+      // 4) 뒷면지
+      const backList = composeBackEndpaperUrls ?? [];
+      for (let i = 0; i < backList.length; i++) {
+        const url = backList[i];
+        if (!url) {
+          finalPdf.addPage([contentPt.width, contentPt.height]);
+          this.logger.log(`[${jobId}] back endpaper ${i + 1}/${backList.length}: empty`);
+        } else {
+          const bytes = await this.synthesizerService.downloadFile(url);
+          const doc = await PDFDocument.load(bytes);
+          const pages = await finalPdf.copyPages(doc, doc.getPageIndices());
+          pages.forEach((p) => finalPdf.addPage(p));
+          this.logger.log(`[${jobId}] back endpaper ${i + 1}/${backList.length}: ${pages.length} pages`);
+        }
+      }
+
+      // 5) 저장 (outputs/<jobId>/merged.pdf)
+      const totalPages = finalPdf.getPageCount();
+      const storageKeyBase = `outputs/${jobId}`;
+      const mergedFilename = 'merged.pdf';
+      const outputDir = path.join(this.outputsPath, jobId);
+      await fs.mkdir(outputDir, { recursive: true });
+      const mergedPath = path.join(outputDir, mergedFilename);
+      const finalBytes = await finalPdf.save();
+      await fs.writeFile(mergedPath, finalBytes);
+      const mergedUrl = `/storage/${storageKeyBase}/${mergedFilename}`;
+
+      const result: SynthesisResult = {
+        success: true,
+        outputFileUrl: mergedUrl,
+        totalPages,
+      };
+
+      await this.updateJobStatus(jobId, {
+        status: 'COMPLETED',
+        outputFileUrl: result.outputFileUrl,
+        result: { ...result, capability: 'compose-mixed' } as any,
+        queueJobId,
+      });
+
+      this.logger.log(
+        `Compose-mixed job ${jobId} completed: ${totalPages} pages, ${mergedUrl}`,
+      );
+      return result;
+    } catch (error: any) {
+      this.logger.error(
+        `Compose-mixed job ${jobId} error: ${error.message}`,
+        error.stack,
+      );
+      captureJobException(error, {
+        jobId,
+        jobType: 'synthesize',
+        queueName: 'pdf-synthesis',
+      });
+      await this.updateJobStatus(jobId, {
+        status: 'FAILED',
+        errorMessage: error.message,
+      });
+      throw error;
+    }
   }
 
   /**
