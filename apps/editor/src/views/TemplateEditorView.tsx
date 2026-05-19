@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { useAuthStore } from '@/stores/useAuthStore'
 import { useAppStore } from '@/stores/useAppStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
-import { useTemplateSave } from '@/hooks/useTemplateSave'
+import { useTemplateSave, type UpdateTemplateOptions } from '@/hooks/useTemplateSave'
 import { templatesApi } from '@/api'
 import { createCanvas } from '@/utils/createCanvas'
 import { ServicePlugin, computeLayout } from '@storige/canvas-core'
@@ -319,14 +319,9 @@ export default function TemplateEditorView() {
       setLoadingMessage('템플릿을 저장하는 중...')
 
       // spread 모드: spec 기반 크기 + spreadConfig 포함
-      let width: number
-      let height: number
       let spreadConfig: SpreadConfig | undefined
-
       if (isSpreadMode && spreadSpecRef.current && spreadLayoutRef.current) {
         const dims = computeSpreadDimensions(spreadSpecRef.current)
-        width = dims.totalWidthMm
-        height = dims.totalHeightMm
         spreadConfig = {
           version: 1,
           spec: spreadSpecRef.current,
@@ -334,23 +329,37 @@ export default function TemplateEditorView() {
           totalWidthMm: dims.totalWidthMm,
           totalHeightMm: dims.totalHeightMm,
         }
-      } else {
-        width = widthParam ? parseInt(widthParam) : 210
-        height = heightParam ? parseInt(heightParam) : 297
       }
 
       let savedTemplate
       if (templateId) {
-        // 기존 템플릿 업데이트
-        savedTemplate = await updateExistingTemplate(templateId, {
+        // 기존 템플릿 업데이트 — URL 에 명시된 메타만 전달 (기존 DB 값 보존).
+        // 이전엔 type/width/height 기본값(PAGE/210/297) 으로 강제 덮어써서
+        // spread 표지가 page 로 손상되는 사고 발생 → 명시된 값만 전송 (2026-05-19 fix).
+        const updates: UpdateTemplateOptions = {
           name: templateName,
-          type: typeParam || TemplateType.PAGE,
-          width,
-          height,
-          spreadConfig,
-        })
+        }
+        if (typeParam) updates.type = typeParam
+        if (widthParam) updates.width = parseInt(widthParam)
+        if (heightParam) updates.height = parseInt(heightParam)
+        // spread 모드 진입 시(URL 에 mode=spread+spec) 만 spreadConfig 덮어쓰기.
+        // 일반 편집 진입(/template?templateId=...) 에서는 spread 정보 누락 가능 →
+        // 기존 spreadConfig 보존을 위해 보내지 않음.
+        if (isSpreadMode && spreadConfig) {
+          updates.spreadConfig = spreadConfig
+          // mode=spread 진입에서는 width/height 도 spec 으로 갱신
+          updates.width = spreadConfig.totalWidthMm
+          updates.height = spreadConfig.totalHeightMm
+        }
+        savedTemplate = await updateExistingTemplate(templateId, updates)
       } else {
-        // 새 템플릿 생성
+        // 새 템플릿 생성 — 기존 값이 없으므로 기본값(PAGE/210/297) 허용.
+        const width = isSpreadMode && spreadConfig
+          ? spreadConfig.totalWidthMm
+          : (widthParam ? parseInt(widthParam) : 210)
+        const height = isSpreadMode && spreadConfig
+          ? spreadConfig.totalHeightMm
+          : (heightParam ? parseInt(heightParam) : 297)
         savedTemplate = await saveTemplate({
           name: templateName,
           type: typeParam || TemplateType.PAGE,

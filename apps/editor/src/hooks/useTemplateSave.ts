@@ -249,18 +249,22 @@ export function useTemplateSave(): UseTemplateSaveReturn {
       // 썸네일 생성 및 업로드
       const thumbnailUrl = await generateAndUploadThumbnail(options.name || 'template')
 
-      // 템플릿 업데이트 DTO
+      // 템플릿 업데이트 DTO — 명시 안 된(undefined) 메타 필드는 dto 에서 제외해
+      // 기존 DB 값을 보존한다. (2026-05-19 fix)
+      // 이전엔 type/width/height 가 undefined 면 entity 의 기존 값을 덮을 위험은
+      // 없지만 호출자가 잘못된 기본값(PAGE/210/297)을 보내면 spread 표지가 page 로
+      // 덮어씌워지는 사고가 발생 → 호출 측 + 여기 둘 다 가드.
       const updateDto: UpdateTemplateDto = {
-        name: options.name,
-        type: options.type,
-        width: options.width,
-        height: options.height,
-        categoryId: options.categoryId,
         thumbnailUrl,
         canvasData,
-        spreadConfig: options.spreadConfig,
-        isActive: options.isActive,
       }
+      if (options.name !== undefined) updateDto.name = options.name
+      if (options.type !== undefined) updateDto.type = options.type
+      if (options.width !== undefined) updateDto.width = options.width
+      if (options.height !== undefined) updateDto.height = options.height
+      if (options.categoryId !== undefined) updateDto.categoryId = options.categoryId
+      if (options.spreadConfig !== undefined) updateDto.spreadConfig = options.spreadConfig
+      if (options.isActive !== undefined) updateDto.isActive = options.isActive
 
       // API 호출
       const template = await templatesApi.updateTemplate(id, updateDto)
