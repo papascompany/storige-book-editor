@@ -56,6 +56,8 @@ interface SynthesisJobData {
   /** 내지 페이지 폭/높이 (mm) — 빈 면지 페이지 생성 시 사용 */
   composeContentWidthMm?: number;
   composeContentHeightMm?: number;
+  /** 출력 모드: separate(표지+내지), content-only(내지만), single(낱장) */
+  composeOutputMode?: 'separate' | 'content-only' | 'single';
 }
 
 // FilesService 인터페이스 (Worker에서 DB 조회용)
@@ -125,18 +127,19 @@ export class SynthesisProcessor {
       composeContentPdfUrl,
       composeContentWidthMm,
       composeContentHeightMm,
+      composeOutputMode,
     } = job.data;
     const jobId = job.data.jobId;
     const queueJobId = job.id;
+    const outputMode = composeOutputMode || 'merged';
 
     this.logger.log(
-      `Processing compose-mixed synthesis job ${jobId} (queue: ${queueJobId})`,
+      `Processing compose-mixed synthesis job ${jobId} (queue: ${queueJobId}, outputMode: ${outputMode})`,
     );
 
     try {
       await this.updateJobStatus(jobId, { status: 'PROCESSING' });
 
-      // mm → PDF point (1 mm = 2.834645669 pt @ 72dpi)
       const MM_TO_PT = 2.834645669;
       const coverPt = {
         width: (composeCoverWidthMm ?? 210) * MM_TO_PT,
@@ -147,107 +150,144 @@ export class SynthesisProcessor {
         height: (composeContentHeightMm ?? 297) * MM_TO_PT,
       };
 
-      // 최종 합본 PDF
-      const finalPdf = await PDFDocument.create();
-
-      // 1) 표지 — coverEditable=false 면 빈 페이지 1장, true 면 PDF 복사
-      if (composeCoverEditable === false || !composeCoverUrl) {
-        // 빈 표지 페이지 — 레더 커버 (결정 3-5)
-        finalPdf.addPage([coverPt.width, coverPt.height]);
-        this.logger.log(`[${jobId}] cover: empty page (leather cover)`);
-      } else {
-        const coverBytes = await this.synthesizerService.downloadFile(composeCoverUrl);
-        const coverDoc = await PDFDocument.load(coverBytes);
-        const copiedCoverPages = await finalPdf.copyPages(coverDoc, coverDoc.getPageIndices());
-        copiedCoverPages.forEach((p) => finalPdf.addPage(p));
-        this.logger.log(`[${jobId}] cover: copied ${copiedCoverPages.length} pages`);
-      }
-
-      // 2) 앞면지 — null/미전송 원소는 빈 페이지
-      const frontList = composeFrontEndpaperUrls ?? [];
-      for (let i = 0; i < frontList.length; i++) {
-        const url = frontList[i];
-        if (!url) {
-          finalPdf.addPage([contentPt.width, contentPt.height]);
-          this.logger.log(`[${jobId}] front endpaper ${i + 1}/${frontList.length}: empty`);
-        } else {
-          const bytes = await this.synthesizerService.downloadFile(url);
-          const doc = await PDFDocument.load(bytes);
-          const pages = await finalPdf.copyPages(doc, doc.getPageIndices());
-          pages.forEach((p) => finalPdf.addPage(p));
-          this.logger.log(`[${jobId}] front endpaper ${i + 1}/${frontList.length}: ${pages.length} pages`);
-        }
-      }
-
-      // 3) 내지 PDF — 편집 결과 또는 고객 첨부 PDF
-      if (composeContentPdfUrl) {
-        const bytes = await this.synthesizerService.downloadFile(composeContentPdfUrl);
-        const doc = await PDFDocument.load(bytes);
-        const pages = await finalPdf.copyPages(doc, doc.getPageIndices());
-        pages.forEach((p) => finalPdf.addPage(p));
-        this.logger.log(`[${jobId}] content: ${pages.length} pages`);
-      } else {
-        this.logger.warn(`[${jobId}] no content PDF — skipping content section`);
-      }
-
-      // 4) 뒷면지
-      const backList = composeBackEndpaperUrls ?? [];
-      for (let i = 0; i < backList.length; i++) {
-        const url = backList[i];
-        if (!url) {
-          finalPdf.addPage([contentPt.width, contentPt.height]);
-          this.logger.log(`[${jobId}] back endpaper ${i + 1}/${backList.length}: empty`);
-        } else {
-          const bytes = await this.synthesizerService.downloadFile(url);
-          const doc = await PDFDocument.load(bytes);
-          const pages = await finalPdf.copyPages(doc, doc.getPageIndices());
-          pages.forEach((p) => finalPdf.addPage(p));
-          this.logger.log(`[${jobId}] back endpaper ${i + 1}/${backList.length}: ${pages.length} pages`);
-        }
-      }
-
-      // 5) 저장 (outputs/<jobId>/merged.pdf)
-      const totalPages = finalPdf.getPageCount();
-      const storageKeyBase = `outputs/${jobId}`;
-      const mergedFilename = 'merged.pdf';
       const outputDir = path.join(this.outputsPath, jobId);
       await fs.mkdir(outputDir, { recursive: true });
-      const mergedPath = path.join(outputDir, mergedFilename);
-      const finalBytes = await finalPdf.save();
-      await fs.writeFile(mergedPath, finalBytes);
-      const mergedUrl = `/storage/${storageKeyBase}/${mergedFilename}`;
+      const storageKeyBase = `outputs/${jobId}`;
 
-      const result: SynthesisResult = {
-        success: true,
-        outputFileUrl: mergedUrl,
-        totalPages,
+      // 면지+내지 페이지를 하나의 PDF로 조립하는 헬퍼
+      const buildContentPdf = async (): Promise<{ pdf: PDFDocument; pageCount: number }> => {
+        const pdf = await PDFDocument.create();
+        const frontList = composeFrontEndpaperUrls ?? [];
+        for (let i = 0; i < frontList.length; i++) {
+          const url = frontList[i];
+          if (!url) { pdf.addPage([contentPt.width, contentPt.height]); }
+          else {
+            const bytes = await this.synthesizerService.downloadFile(url);
+            const doc = await PDFDocument.load(bytes);
+            const pages = await pdf.copyPages(doc, doc.getPageIndices());
+            pages.forEach((p) => pdf.addPage(p));
+          }
+        }
+        if (composeContentPdfUrl) {
+          const bytes = await this.synthesizerService.downloadFile(composeContentPdfUrl);
+          const doc = await PDFDocument.load(bytes);
+          const pages = await pdf.copyPages(doc, doc.getPageIndices());
+          pages.forEach((p) => pdf.addPage(p));
+        }
+        const backList = composeBackEndpaperUrls ?? [];
+        for (let i = 0; i < backList.length; i++) {
+          const url = backList[i];
+          if (!url) { pdf.addPage([contentPt.width, contentPt.height]); }
+          else {
+            const bytes = await this.synthesizerService.downloadFile(url);
+            const doc = await PDFDocument.load(bytes);
+            const pages = await pdf.copyPages(doc, doc.getPageIndices());
+            pages.forEach((p) => pdf.addPage(p));
+          }
+        }
+        return { pdf, pageCount: pdf.getPageCount() };
       };
+
+      let result: SynthesisResult;
+      const outputFiles: OutputFile[] = [];
+
+      if (outputMode === 'separate') {
+        // 일반 책자: cover.pdf + content.pdf
+        const coverPdf = await PDFDocument.create();
+        if (composeCoverEditable !== false && composeCoverUrl) {
+          const coverBytes = await this.synthesizerService.downloadFile(composeCoverUrl);
+          const coverDoc = await PDFDocument.load(coverBytes);
+          const pages = await coverPdf.copyPages(coverDoc, coverDoc.getPageIndices());
+          pages.forEach((p) => coverPdf.addPage(p));
+        } else {
+          coverPdf.addPage([coverPt.width, coverPt.height]);
+        }
+        const coverPath = path.join(outputDir, 'cover.pdf');
+        await fs.writeFile(coverPath, await coverPdf.save());
+        const coverUrl = `/storage/${storageKeyBase}/cover.pdf`;
+        outputFiles.push({ type: 'cover', url: coverUrl, pageCount: coverPdf.getPageCount() } as any);
+        this.logger.log(`[${jobId}] cover.pdf: ${coverPdf.getPageCount()} pages`);
+
+        const { pdf: contentPdfDoc, pageCount: contentPages } = await buildContentPdf();
+        const contentPath = path.join(outputDir, 'content.pdf');
+        await fs.writeFile(contentPath, await contentPdfDoc.save());
+        const contentUrl = `/storage/${storageKeyBase}/content.pdf`;
+        outputFiles.push({ type: 'content', url: contentUrl, pageCount: contentPages } as any);
+        this.logger.log(`[${jobId}] content.pdf: ${contentPages} pages`);
+
+        result = { success: true, outputFileUrl: contentUrl, totalPages: coverPdf.getPageCount() + contentPages };
+
+      } else if (outputMode === 'content-only') {
+        // 레더커버: content.pdf만
+        const { pdf: contentPdfDoc, pageCount: contentPages } = await buildContentPdf();
+        const contentPath = path.join(outputDir, 'content.pdf');
+        await fs.writeFile(contentPath, await contentPdfDoc.save());
+        const contentUrl = `/storage/${storageKeyBase}/content.pdf`;
+        outputFiles.push({ type: 'content', url: contentUrl, pageCount: contentPages } as any);
+        this.logger.log(`[${jobId}] content.pdf (content-only): ${contentPages} pages`);
+
+        result = { success: true, outputFileUrl: contentUrl, totalPages: contentPages };
+
+      } else if (outputMode === 'single') {
+        // 낱장: 편집 페이지만 하나의 PDF
+        const pagesPdf = await PDFDocument.create();
+        if (composeContentPdfUrl) {
+          const bytes = await this.synthesizerService.downloadFile(composeContentPdfUrl);
+          const doc = await PDFDocument.load(bytes);
+          const pages = await pagesPdf.copyPages(doc, doc.getPageIndices());
+          pages.forEach((p) => pagesPdf.addPage(p));
+        }
+        const pagesPath = path.join(outputDir, 'pages.pdf');
+        await fs.writeFile(pagesPath, await pagesPdf.save());
+        const pagesUrl = `/storage/${storageKeyBase}/pages.pdf`;
+        outputFiles.push({ type: 'pages' as any, url: pagesUrl, pageCount: pagesPdf.getPageCount() } as any);
+        this.logger.log(`[${jobId}] pages.pdf (single): ${pagesPdf.getPageCount()} pages`);
+
+        result = { success: true, outputFileUrl: pagesUrl, totalPages: pagesPdf.getPageCount() };
+
+      } else {
+        // 하위 호환: merged.pdf (기존 동작)
+        const finalPdf = await PDFDocument.create();
+        if (composeCoverEditable === false || !composeCoverUrl) {
+          finalPdf.addPage([coverPt.width, coverPt.height]);
+        } else {
+          const coverBytes = await this.synthesizerService.downloadFile(composeCoverUrl);
+          const coverDoc = await PDFDocument.load(coverBytes);
+          const pages = await finalPdf.copyPages(coverDoc, coverDoc.getPageIndices());
+          pages.forEach((p) => finalPdf.addPage(p));
+        }
+        const frontList = composeFrontEndpaperUrls ?? [];
+        for (const url of frontList) {
+          if (!url) { finalPdf.addPage([contentPt.width, contentPt.height]); }
+          else { const b = await this.synthesizerService.downloadFile(url); const d = await PDFDocument.load(b); const p = await finalPdf.copyPages(d, d.getPageIndices()); p.forEach(pg => finalPdf.addPage(pg)); }
+        }
+        if (composeContentPdfUrl) {
+          const b = await this.synthesizerService.downloadFile(composeContentPdfUrl); const d = await PDFDocument.load(b); const p = await finalPdf.copyPages(d, d.getPageIndices()); p.forEach(pg => finalPdf.addPage(pg));
+        }
+        const backList = composeBackEndpaperUrls ?? [];
+        for (const url of backList) {
+          if (!url) { finalPdf.addPage([contentPt.width, contentPt.height]); }
+          else { const b = await this.synthesizerService.downloadFile(url); const d = await PDFDocument.load(b); const p = await finalPdf.copyPages(d, d.getPageIndices()); p.forEach(pg => finalPdf.addPage(pg)); }
+        }
+        const mergedPath = path.join(outputDir, 'merged.pdf');
+        await fs.writeFile(mergedPath, await finalPdf.save());
+        const mergedUrl = `/storage/${storageKeyBase}/merged.pdf`;
+        result = { success: true, outputFileUrl: mergedUrl, totalPages: finalPdf.getPageCount() };
+      }
 
       await this.updateJobStatus(jobId, {
         status: 'COMPLETED',
         outputFileUrl: result.outputFileUrl,
-        result: { ...result, capability: 'compose-mixed' } as any,
+        result: { ...result, capability: 'compose-mixed', outputMode, outputFiles } as any,
         queueJobId,
       });
 
-      this.logger.log(
-        `Compose-mixed job ${jobId} completed: ${totalPages} pages, ${mergedUrl}`,
-      );
+      this.logger.log(`Compose-mixed job ${jobId} completed (${outputMode}): ${result.totalPages} pages`);
       return result;
     } catch (error: any) {
-      this.logger.error(
-        `Compose-mixed job ${jobId} error: ${error.message}`,
-        error.stack,
-      );
-      captureJobException(error, {
-        jobId,
-        jobType: 'synthesize',
-        queueName: 'pdf-synthesis',
-      });
-      await this.updateJobStatus(jobId, {
-        status: 'FAILED',
-        errorMessage: error.message,
-      });
+      this.logger.error(`Compose-mixed job ${jobId} error: ${error.message}`, error.stack);
+      captureJobException(error, { jobId, jobType: 'synthesize', queueName: 'pdf-synthesis' });
+      await this.updateJobStatus(jobId, { status: 'FAILED', errorMessage: error.message });
       throw error;
     }
   }

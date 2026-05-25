@@ -79,6 +79,14 @@ export class CreateComposeMixedJobDto {
   @Min(1)
   contentHeightMm?: number;
 
+  @ApiPropertyOptional({
+    description: '출력 모드: separate(표지+내지 분리), content-only(내지만), single(낱장 단일)',
+    enum: ['separate', 'content-only', 'single'],
+  })
+  @IsOptional()
+  @IsString()
+  outputMode?: 'separate' | 'content-only' | 'single';
+
   @ApiPropertyOptional({ description: '완료 시 콜백 URL' })
   @IsOptional()
   @IsString()

@@ -426,6 +426,7 @@ export class WorkerJobsService {
         contentHeightMm: dto.contentHeightMm,
         orderId: dto.orderId,
         callbackUrl: dto.callbackUrl,
+        outputMode: dto.outputMode,
       },
     });
     const savedJob = await this.workerJobRepository.save(job);
@@ -435,7 +436,6 @@ export class WorkerJobsService {
       {
         jobId: savedJob.id,
         mode: 'compose-mixed',
-        // ── compose-mixed 전용 필드 (synthesis.processor SynthesisJobData) ──
         composeCoverUrl: dto.coverUrl,
         composeCoverEditable: dto.coverEditable !== false,
         composeCoverWidthMm: dto.coverWidthMm,
@@ -445,6 +445,7 @@ export class WorkerJobsService {
         composeContentPdfUrl: dto.contentPdfUrl,
         composeContentWidthMm: dto.contentWidthMm,
         composeContentHeightMm: dto.contentHeightMm,
+        composeOutputMode: dto.outputMode,
         callbackUrl: dto.callbackUrl,
       },
       { priority: 5 },
