@@ -1,0 +1,1014 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Storige 모듈 분기 + 플랫폼화 전략 · 2026-05-19</title>
+<style>
+:root {
+  --bg: #0d1117;
+  --surface: #161b22;
+  --surface2: #21262d;
+  --surface3: #2d333b;
+  --border: #30363d;
+  --border-soft: #21262d;
+  --accent: #58a6ff;
+  --accent2: #3fb950;
+  --accent3: #f85149;
+  --accent4: #e3b341;
+  --accent5: #d2a8ff;
+  --accent6: #ff7b72;
+  --text: #e6edf3;
+  --text-dim: #8b949e;
+  --text-mute: #6e7681;
+  --red: #f85149;
+  --yellow: #e3b341;
+  --green: #3fb950;
+  --blue: #58a6ff;
+  --purple: #d2a8ff;
+  --orange: #ffa657;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+/* ── Layout ── */
+.layout { display: flex; min-height: 100vh; }
+.sidebar {
+  position: fixed; left: 0; top: 0; bottom: 0; width: 240px;
+  background: var(--surface); border-right: 1px solid var(--border);
+  overflow-y: auto; padding: 20px 0; z-index: 100;
+}
+.main {
+  margin-left: 240px;
+  flex: 1;
+  padding: 32px 48px 80px;
+  max-width: 1180px;
+}
+
+/* ── Sidebar ── */
+.sidebar-logo {
+  padding: 0 20px 16px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 12px;
+}
+.sidebar-logo .title { font-size: 15px; font-weight: 700; color: var(--accent); }
+.sidebar-logo .subtitle { font-size: 11px; color: var(--text-mute); margin-top: 4px; }
+
+.nav-section {
+  padding: 12px 20px 6px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--text-mute);
+  text-transform: uppercase;
+  letter-spacing: .8px;
+}
+.nav-link {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 20px;
+  font-size: 13px;
+  color: var(--text-dim);
+  text-decoration: none;
+  border-left: 2px solid transparent;
+  transition: all .12s;
+}
+.nav-link:hover { color: var(--text); background: var(--surface2); }
+.nav-link.recommended { color: var(--green); }
+.nav-link.recommended::before {
+  content: '★';
+  font-size: 10px;
+}
+
+/* ── Hero ── */
+.hero {
+  background: linear-gradient(135deg, rgba(88,166,255,.08), rgba(63,185,113,.05));
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 28px 32px;
+  margin-bottom: 32px;
+}
+.hero-eyebrow {
+  display: inline-block;
+  padding: 4px 10px;
+  background: rgba(88,166,255,.15);
+  color: var(--accent);
+  border: 1px solid rgba(88,166,255,.3);
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+.hero h1 {
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.3;
+  margin-bottom: 10px;
+}
+.hero .subtitle {
+  color: var(--text-dim);
+  font-size: 14px;
+  line-height: 1.7;
+}
+.hero .tldr {
+  margin-top: 18px;
+  padding: 14px 18px;
+  background: rgba(63,185,113,.08);
+  border-left: 3px solid var(--green);
+  border-radius: 4px;
+  font-size: 13px;
+}
+.hero .tldr strong { color: var(--green); }
+
+/* ── Section ── */
+.section {
+  margin-top: 44px;
+  scroll-margin-top: 20px;
+}
+.section-num {
+  display: inline-block;
+  font-family: 'SF Mono', Menlo, monospace;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 700;
+  margin-right: 8px;
+}
+.section h2 {
+  font-size: 22px;
+  font-weight: 700;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: baseline;
+}
+.section .lead {
+  color: var(--text-dim);
+  font-size: 13.5px;
+  margin-bottom: 20px;
+}
+.section h3 {
+  font-size: 16px;
+  font-weight: 700;
+  margin: 24px 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.section h3::before {
+  content: '';
+  width: 3px;
+  height: 16px;
+  background: var(--accent);
+  border-radius: 2px;
+}
+
+/* ── Tables ── */
+.table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin: 12px 0;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--surface);
+  font-size: 13px;
+}
+th {
+  background: var(--surface2);
+  padding: 11px 14px;
+  text-align: left;
+  font-weight: 600;
+  color: var(--text);
+  border-bottom: 1px solid var(--border);
+  font-size: 12.5px;
+}
+td {
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--border-soft);
+  vertical-align: top;
+  color: var(--text-dim);
+}
+tbody tr:last-child td { border-bottom: none; }
+tbody tr:hover { background: rgba(255,255,255,.02); }
+td strong { color: var(--text); }
+
+/* Recommended row */
+tr.recommended {
+  background: linear-gradient(to right, rgba(63,185,113,.08), transparent);
+}
+tr.recommended td:first-child {
+  border-left: 3px solid var(--green);
+  font-weight: 600;
+  color: var(--green);
+}
+
+/* ── Cards ── */
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 14px;
+  margin: 12px 0;
+}
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 18px 20px;
+}
+.card-title {
+  font-size: 14px;
+  font-weight: 700;
+  margin-bottom: 6px;
+  color: var(--text);
+}
+.card-body {
+  font-size: 13px;
+  color: var(--text-dim);
+  line-height: 1.7;
+}
+.card-meta {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border);
+  font-size: 11px;
+}
+.card-meta span {
+  padding: 2px 8px;
+  background: var(--surface2);
+  border-radius: 10px;
+  color: var(--text-mute);
+}
+
+/* Phase cards */
+.phase-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 18px 22px;
+  margin-bottom: 12px;
+  border-left: 4px solid var(--accent);
+}
+.phase-card.green { border-left-color: var(--green); }
+.phase-card.yellow { border-left-color: var(--yellow); }
+.phase-card.orange { border-left-color: var(--orange); }
+.phase-card.purple { border-left-color: var(--purple); }
+.phase-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+.phase-id {
+  font-family: 'SF Mono', Menlo, monospace;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--accent);
+  padding: 3px 8px;
+  background: rgba(88,166,255,.1);
+  border-radius: 4px;
+}
+.phase-card.green .phase-id { color: var(--green); background: rgba(63,185,113,.1); }
+.phase-card.yellow .phase-id { color: var(--yellow); background: rgba(227,179,65,.1); }
+.phase-card.orange .phase-id { color: var(--orange); background: rgba(255,166,87,.1); }
+.phase-card.purple .phase-id { color: var(--purple); background: rgba(210,168,255,.1); }
+
+.phase-title { font-size: 15px; font-weight: 700; color: var(--text); flex: 1; }
+.phase-est {
+  font-size: 11px;
+  color: var(--text-mute);
+  font-family: 'SF Mono', Menlo, monospace;
+  padding: 3px 8px;
+  background: var(--surface2);
+  border-radius: 4px;
+}
+.phase-impact {
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 4px;
+}
+.phase-impact.zero { background: rgba(63,185,113,.15); color: var(--green); }
+.phase-impact.low { background: rgba(227,179,65,.15); color: var(--yellow); }
+.phase-impact.mid { background: rgba(255,166,87,.15); color: var(--orange); }
+
+.phase-body {
+  font-size: 13px;
+  color: var(--text-dim);
+  line-height: 1.7;
+}
+.phase-body ul { padding-left: 18px; }
+.phase-body li { margin: 3px 0; }
+
+/* ── Diagram (ASCII style) ── */
+.diagram {
+  background: #0a0e13;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 22px;
+  font-family: 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text);
+  overflow-x: auto;
+  white-space: pre;
+  margin: 14px 0;
+}
+.diagram .accent { color: var(--accent); }
+.diagram .green { color: var(--green); }
+.diagram .yellow { color: var(--yellow); }
+.diagram .red { color: var(--red); }
+.diagram .purple { color: var(--purple); }
+.diagram .dim { color: var(--text-mute); }
+
+/* ── Callouts ── */
+.callout {
+  display: flex;
+  gap: 14px;
+  padding: 14px 18px;
+  border-radius: 8px;
+  margin: 14px 0;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+.callout.info { border-left: 3px solid var(--accent); }
+.callout.success { border-left: 3px solid var(--green); }
+.callout.warn { border-left: 3px solid var(--yellow); }
+.callout.danger { border-left: 3px solid var(--red); }
+.callout-icon { font-size: 20px; line-height: 1; }
+.callout-body { font-size: 13px; color: var(--text-dim); line-height: 1.7; }
+.callout-body strong { color: var(--text); }
+
+/* ── Bars / Stars ── */
+.stars {
+  display: inline-flex;
+  gap: 1px;
+  color: var(--yellow);
+  font-size: 12px;
+}
+.stars-empty { color: var(--text-mute); }
+
+/* ── Badges ── */
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.badge-green { background: rgba(63,185,113,.15); color: var(--green); border: 1px solid rgba(63,185,113,.3); }
+.badge-yellow { background: rgba(227,179,65,.15); color: var(--yellow); border: 1px solid rgba(227,179,65,.3); }
+.badge-red { background: rgba(248,81,73,.15); color: var(--red); border: 1px solid rgba(248,81,73,.3); }
+.badge-blue { background: rgba(88,166,255,.15); color: var(--accent); border: 1px solid rgba(88,166,255,.3); }
+.badge-purple { background: rgba(210,168,255,.15); color: var(--purple); border: 1px solid rgba(210,168,255,.3); }
+.badge-gray { background: var(--surface2); color: var(--text-mute); border: 1px solid var(--border); }
+
+/* ── Code ── */
+code {
+  font-family: 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 12px;
+  padding: 2px 6px;
+  background: var(--surface2);
+  border-radius: 4px;
+  color: var(--accent5);
+}
+pre {
+  background: #0a0e13;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 18px;
+  overflow-x: auto;
+  font-family: 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text);
+  margin: 10px 0;
+}
+pre code { background: none; padding: 0; color: inherit; }
+
+/* ── Decision matrix ── */
+.matrix-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin: 16px 0;
+}
+.mode-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px 18px;
+  text-align: center;
+}
+.mode-card .mode-letter {
+  display: inline-block;
+  width: 36px; height: 36px; line-height: 36px;
+  border-radius: 50%;
+  font-size: 16px; font-weight: 700;
+  margin-bottom: 8px;
+}
+.mode-card.a .mode-letter { background: rgba(63,185,113,.18); color: var(--green); }
+.mode-card.b .mode-letter { background: rgba(88,166,255,.18); color: var(--accent); }
+.mode-card.c .mode-letter { background: rgba(255,166,87,.18); color: var(--orange); }
+.mode-card .mode-title { font-size: 13px; font-weight: 700; margin-bottom: 4px; }
+.mode-card .mode-desc { font-size: 12px; color: var(--text-dim); line-height: 1.5; }
+.mode-card .mode-meta {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border);
+  font-size: 11px;
+  color: var(--text-mute);
+}
+
+/* ── Final recommendation banner ── */
+.final-banner {
+  background: linear-gradient(135deg, rgba(63,185,113,.1), rgba(88,166,255,.05));
+  border: 1px solid var(--green);
+  border-radius: 12px;
+  padding: 22px 26px;
+  margin-top: 30px;
+}
+.final-banner .label {
+  font-size: 11px;
+  color: var(--green);
+  font-weight: 700;
+  letter-spacing: 1px;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+}
+.final-banner .text {
+  font-size: 15px;
+  color: var(--text);
+  line-height: 1.7;
+}
+
+/* footer */
+.footer {
+  margin-top: 60px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+  color: var(--text-mute);
+  font-size: 12px;
+}
+
+/* Responsive */
+@media (max-width: 920px) {
+  .sidebar { width: 200px; }
+  .main { margin-left: 200px; padding: 24px 28px 60px; }
+  .matrix-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 720px) {
+  .sidebar { display: none; }
+  .main { margin-left: 0; padding: 20px; }
+}
+</style>
+</head>
+<body>
+<div class="layout">
+
+<nav class="sidebar">
+  <div class="sidebar-logo">
+    <div class="title">🏗 Storige Strategy</div>
+    <div class="subtitle">모듈 분기 + 플랫폼화 · 2026-05-19</div>
+  </div>
+
+  <div class="nav-section">전략 개요</div>
+  <a class="nav-link" href="#summary">한 줄 요약</a>
+  <a class="nav-link" href="#assets">§1 현재 자산</a>
+
+  <div class="nav-section">옵션 비교</div>
+  <a class="nav-link" href="#options">§2 5가지 전략</a>
+  <a class="nav-link recommended" href="#recommend">§3 권장 — 하이브리드</a>
+
+  <div class="nav-section">실행 계획</div>
+  <a class="nav-link" href="#phases">§4 Phase 로드맵</a>
+  <a class="nav-link" href="#decision">§5 새 프로젝트 모드</a>
+  <a class="nav-link" href="#impact">§6 영향 평가</a>
+
+  <div class="nav-section">운영</div>
+  <a class="nav-link" href="#saas">§7 SaaS 운영 모델</a>
+  <a class="nav-link" href="#confirm">§8 컨펌 요청</a>
+
+  <div class="nav-section">결론</div>
+  <a class="nav-link recommended" href="#final">최종 권장</a>
+</nav>
+
+<main class="main">
+
+<!-- HERO -->
+<section class="hero" id="summary">
+  <span class="hero-eyebrow">전략 설계서 · 2026-05-19</span>
+  <h1>Storige 모듈 분기 + 플랫폼화 전략</h1>
+  <p class="subtitle">기존 운영 영향 없이 SDK 레이어를 추가하여, 새 프로젝트가 SaaS / 자체 백엔드 / 완전 분리 3가지 모드 중 선택 가능한 하이브리드 구조 제안.</p>
+  <div class="tldr">
+    <strong>TL;DR</strong> — <strong>Phase A + C (SDK 분리 + Publish)</strong> 부터 시작. 운영 영향 0, 외부 즉시 사용 가능, Phase B (SaaS 강화) 로 자연 확장. 새 프로젝트 컨텍스트 받으면 모드 A/B/C 자동 권장.
+  </div>
+</section>
+
+<!-- §1 -->
+<section class="section" id="assets">
+  <h2><span class="section-num">§1</span> 현재 자산 인벤토리 — 이미 70% 모듈화·플랫폼화 완료</h2>
+  <p class="lead">Storige 는 이미 SaaS / 플랫폼 방향으로 진화 중. 본 전략은 그 기반 위에 SDK 레이어를 추가하는 것.</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th width="32%">자산</th><th width="38%">위치</th><th>상태</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><strong>Site / Tenant 모델</strong></td><td><code>apps/api/src/sites/</code></td><td><span class="badge badge-green">✅ 구현됨</span> 멀티사이트 지원 인프라</td></tr>
+        <tr><td><strong>JWT siteId 자동 주입</strong></td><td>인증 미들웨어</td><td><span class="badge badge-green">✅ 적용</span></td></tr>
+        <tr><td><strong>CORS 동적 허용</strong></td><td><code>main.ts</code> + sites.service</td><td><span class="badge badge-green">✅</span> DB <code>sites.allowed_origins</code> 기반</td></tr>
+        <tr><td><strong>외부 사이트 통합 v1</strong></td><td><code>docs/PLATFORM_INTEGRATION_v1.md</code></td><td><span class="badge badge-green">✅ 문서화</span> 어댑터 가이드</td></tr>
+        <tr><td><strong>언어 중립 워커 가이드</strong></td><td><code>docs/PLATFORM_WORKER_INTEGRATION_v1.md</code></td><td><span class="badge badge-green">✅</span> curl/Node/Python/Go 예시</td></tr>
+        <tr><td><strong>PHP/bookmoa 통합</strong></td><td><code>docs/PHP_INTEGRATION_FINAL_v3.md</code></td><td><span class="badge badge-green">✅ 운영 중</span></td></tr>
+        <tr><td><strong><code>packages/canvas-core</code></strong></td><td>npm 패키지 구조</td><td><span class="badge badge-blue">✅ 90% 모듈화</span> 21개 플러그인</td></tr>
+        <tr><td><strong><code>embed.tsx</code> IIFE 번들</strong></td><td><code>vite.embed.config.ts</code></td><td><span class="badge badge-blue">✅ 빌드 가능</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout success">
+    <div class="callout-icon">💡</div>
+    <div class="callout-body">
+      <strong>결론</strong>: Storige 는 이미 "사내 SaaS + 플랫폼" 의 70% 인프라를 보유. 모듈 분기는 그 기반 위에 SDK 레이어를 더하는 것이 가장 자연스러움.
+    </div>
+  </div>
+</section>
+
+<!-- §2 -->
+<section class="section" id="options">
+  <h2><span class="section-num">§2</span> 5가지 분기 전략 비교</h2>
+  <p class="lead">각 옵션의 영향·자유도·유지보수·부팅 시간 트레이드오프.</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>#</th><th>전략</th><th>영향 범위</th><th>자유도</th><th>동기·유지보수</th><th>부팅 시간</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>1</td>
+          <td><strong>완전 fork</strong> (새 리포지토리)</td>
+          <td><span class="badge badge-green">없음</span></td>
+          <td><span class="stars">★★★★★</span></td>
+          <td><span class="badge badge-red">❌ 양쪽 따로 fix</span></td>
+          <td>매우 김</td>
+        </tr>
+        <tr>
+          <td>2</td>
+          <td><strong>monorepo 안 packages 확장</strong></td>
+          <td><span class="badge badge-green">최소</span></td>
+          <td><span class="stars">★★★<span class="stars-empty">★★</span></span></td>
+          <td><span class="badge badge-blue">⭐⭐⭐ 단일 소스</span></td>
+          <td>짧음</td>
+        </tr>
+        <tr>
+          <td>3</td>
+          <td><strong>SaaS 멀티테넌트</strong></td>
+          <td><span class="badge badge-yellow">중</span></td>
+          <td><span class="stars">★<span class="stars-empty">★★★★</span></span></td>
+          <td><span class="badge badge-green">⭐⭐⭐⭐⭐ 자동</span></td>
+          <td><strong>매우 짧음</strong></td>
+        </tr>
+        <tr class="recommended">
+          <td>4</td>
+          <td><strong>하이브리드 (SaaS 백엔드 + SDK 프론트)</strong></td>
+          <td><span class="badge badge-green">최소~중</span></td>
+          <td><span class="stars">★★★★<span class="stars-empty">★</span></span></td>
+          <td><span class="badge badge-green">⭐⭐⭐⭐</span></td>
+          <td><strong>매우 짧음</strong></td>
+        </tr>
+        <tr>
+          <td>5</td>
+          <td><strong>Module Federation</strong></td>
+          <td><span class="badge badge-red">높음</span></td>
+          <td><span class="stars">★★<span class="stars-empty">★★★</span></span></td>
+          <td><span class="badge badge-green">⭐⭐⭐⭐⭐</span></td>
+          <td>짧음</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- §3 -->
+<section class="section" id="recommend">
+  <h2><span class="section-num">§3</span> 🌟 권장 — 하이브리드 (옵션 4 + 2 조합)</h2>
+  <p class="lead">단일 옵션 대신 <strong>3-Layer 모듈화</strong> 가 가장 효율적. 다른 프로젝트가 자신의 상황에 맞춰 골라 쓸 수 있도록.</p>
+
+<div class="diagram">┌─────────────────────────────────────────────────────────────────────────┐
+│  <span class="accent">Storige Monorepo</span> (현재 운영)                                          │
+│                                                                          │
+│  ┌─ apps/api ────────────────────┐  ┌─ apps/admin ──────────────────┐  │
+│  │ 멀티테넌트 SaaS 백엔드           │  │ 운영 admin (storige 전용)        │  │
+│  │ • sites 격리 (row-level)       │  │ + 신규 site 관리 도구            │  │
+│  │ • JWT siteId                   │  └────────────────────────────────┘  │
+│  │ • CORS 동적                     │                                       │
+│  └─────────────────────────────────┘  ┌─ apps/editor ─────────────────┐  │
+│                                       │ Storige.com 자체 편집기          │  │
+│                                       └────────────────────────────────┘  │
+│                                                                          │
+│  ┌─ <span class="green">packages/ (SDK 레이어 — 외부 공개)</span> ──────────────────────────┐    │
+│  │  • <span class="purple">canvas-core</span>     (npm public)                              │    │
+│  │  • <span class="purple">editor-react</span>    (npm public 또는 GitHub Packages)         │    │
+│  │  • <span class="purple">editor-embed</span>    (IIFE bundle on CDN)                      │    │
+│  │  • <span class="purple">api-client</span>      (TypeScript SDK, 자동 생성)               │    │
+│  │  • <span class="purple">types</span>           (공유 타입 + 이벤트 명세)                  │    │
+│  └───────────────────────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────────────────┘
+                          ↓ 외부 통합 (3가지 모드)
+        ┌─────────────────┼─────────────────┐
+        ↓                 ↓                 ↓
+┌──────────────────┐ ┌──────────────────┐ ┌──────────────────┐
+│ <span class="green">모드 A</span>            │ │ <span class="accent">모드 B</span>            │ │ <span class="yellow">모드 C</span>             │
+│ <strong>SaaS 풀버전</strong>      │ │ <strong>SDK+자체 API</strong>     │ │ <strong>Fork+자체 호스팅</strong> │
+│                  │ │                  │ │                  │
+│ Storige API+UI   │ │ Storige UI만     │ │ 완전 다른 도메인  │
+│ 모두 사용         │ │ 가져가고 자체     │ │ (예: 명함, 메뉴) │
+│                  │ │ 백엔드 운영       │ │                  │
+│ 부팅: <strong>1시간</strong>     │ │ 부팅: <strong>1주</strong>        │ │ 부팅: <strong>1개월</strong>     │
+│ 자유도: 낮음     │ │ 자유도: 중간     │ │ 자유도: <strong>최대</strong>     │
+└──────────────────┘ └──────────────────┘ └──────────────────┘</div>
+
+  <h3>왜 이 조합인가</h3>
+  <div class="cards">
+    <div class="card">
+      <div class="card-title">🎯 현재 자산 100% 활용</div>
+      <div class="card-body">sites 도메인 · CORS · JWT siteId 이미 있음. 그 위에 SDK 레이어만 추가.</div>
+    </div>
+    <div class="card">
+      <div class="card-title">🛡 기존 운영 영향 0</div>
+      <div class="card-body"><code>packages/</code> 폴더에 신규 추가만, <code>apps/</code> 는 변경 없음.</div>
+    </div>
+    <div class="card">
+      <div class="card-title">🔓 자유도 단계적</div>
+      <div class="card-body">모드 A→B→C 로 성숙 시 점진 이행 가능 (lock-in 없음).</div>
+    </div>
+    <div class="card">
+      <div class="card-title">⚡ 새 사이트 부팅 시간 최소</div>
+      <div class="card-body">모드 A 면 site 등록만으로 즉시 출범.</div>
+    </div>
+    <div class="card">
+      <div class="card-title">🔁 모듈화 + 플랫폼화 동시</div>
+      <div class="card-body">한 작업으로 두 가지 효과.</div>
+    </div>
+  </div>
+</section>
+
+<!-- §4 -->
+<section class="section" id="phases">
+  <h2><span class="section-num">§4</span> 단계별 로드맵</h2>
+  <p class="lead">각 단계 후 영향 평가. 영향 0 인 Phase A · C 부터 시작 권장.</p>
+
+  <!-- Phase A -->
+  <div class="phase-card green">
+    <div class="phase-head">
+      <span class="phase-id">Phase A</span>
+      <span class="phase-title">SDK 레이어 분리</span>
+      <span class="phase-est">~10h</span>
+      <span class="phase-impact zero">✅ 운영 영향 0</span>
+    </div>
+    <div class="phase-body">
+      <pre style="margin-top:6px;"><code>storige/
+  packages/
+    canvas-core/         # 이미 90%, 정리만
++   editor-react/        # 신규 — apps/editor 에서 추출
++   editor-embed/        # 신규 — apps/editor/embed.tsx 이전
++   api-client/          # 신규 — TypeScript client (OpenAPI 기반)
+    types/               # 기존 + 외부 공개용 정리
+
+  apps/
+    editor/              # 변경 없음 (점진 마이그레이션 가능)
+    admin/               # 변경 없음
+    api/                 # 변경 없음</code></pre>
+      <strong style="color:var(--green);">완료 시점에 얻는 것:</strong>
+      <ul>
+        <li>다른 프로젝트가 npm install 로 즉시 사용 가능 (모드 B)</li>
+        <li>IIFE 번들로 PHP/임의 스택 즉시 embed (모드 B 보조)</li>
+        <li>기존 운영 100% 그대로</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Phase B -->
+  <div class="phase-card yellow">
+    <div class="phase-head">
+      <span class="phase-id">Phase B</span>
+      <span class="phase-title">SaaS 강화 (모드 A 가능하게)</span>
+      <span class="phase-est">~15h</span>
+      <span class="phase-impact mid">⚠ 중 영향 (테스트 필수)</span>
+    </div>
+    <div class="phase-body">
+      <pre style="margin-top:6px;"><code>apps/api/
++ src/sites/
++   tenant-context.middleware.ts    # siteId 자동 주입
++   tenant-isolation.guard.ts       # 다른 site 리소스 접근 차단
++   site-onboarding.service.ts      # 새 site 자동 등록 + 토큰
+
++ src/middleware/
++   rate-limit-per-site.ts          # noisy neighbor 방지
++   usage-tracking.middleware.ts    # 사용량 미터링
+
+apps/admin/
++ src/pages/Sites/Onboarding.tsx    # 신규 site 셋업 마법사
++ src/pages/Sites/Billing.tsx       # 사용량 + 결제 (옵션)</code></pre>
+      <strong style="color:var(--yellow);">완료 시점에 얻는 것:</strong>
+      <ul>
+        <li>새 사이트 = admin 에서 "사이트 추가" → <strong>1시간 내 출범</strong></li>
+        <li>Storige 가 진짜 SaaS 플랫폼</li>
+        <li>운영 모니터링 site 별 분리</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Phase C -->
+  <div class="phase-card purple">
+    <div class="phase-head">
+      <span class="phase-id">Phase C</span>
+      <span class="phase-title">SDK Publish + 새 프로젝트 부팅 키트</span>
+      <span class="phase-est">~8h</span>
+      <span class="phase-impact zero">✅ 운영 영향 0</span>
+    </div>
+    <div class="phase-body">
+      <pre style="margin-top:6px;"><code>release/
+├── @storige/canvas-core    → npm publish (public)
+├── @storige/editor-react   → npm publish
+├── editor-embed.iife.js    → CDN (cdn.papascompany.co.kr/editor/v1/)
+├── @storige/api-client     → npm publish
+└── starters/
+    ├── react-saas-template/        # 모드 A 부팅 키트
+    ├── react-self-hosted/          # 모드 B 부팅 키트
+    └── php-embed-template/         # 모드 B 부팅 키트 (PHP)</code></pre>
+      <strong style="color:var(--purple);">완료 시점:</strong> 누구든 <strong>5분 안에 새 프로젝트 부팅</strong> 가능
+    </div>
+  </div>
+
+  <!-- Phase D -->
+  <div class="phase-card orange">
+    <div class="phase-head">
+      <span class="phase-id">Phase D</span>
+      <span class="phase-title">새 프로젝트별 fork 가이드 (선택)</span>
+      <span class="phase-est">~3h</span>
+      <span class="phase-impact zero">✅ 영향 0 (문서만)</span>
+    </div>
+    <div class="phase-body">
+      완전 분리가 필요한 케이스(완전 다른 도메인)를 위한 fork 절차 + 동기 가이드 작성.
+    </div>
+  </div>
+
+  <div class="callout info">
+    <div class="callout-icon">⏱</div>
+    <div class="callout-body">
+      <strong>총 추정 시간</strong>: Phase A+C 만 = <strong>~18h</strong> / 전체 (A+B+C+D) = <strong>~36h</strong>
+    </div>
+  </div>
+</section>
+
+<!-- §5 -->
+<section class="section" id="decision">
+  <h2><span class="section-num">§5</span> 의사결정 매트릭스 — 새 프로젝트 성격별 권장 모드</h2>
+  <p class="lead">새 프로젝트가 무엇이냐에 따라 권장 모드가 달라집니다.</p>
+
+  <div class="matrix-grid">
+    <div class="mode-card a">
+      <div class="mode-letter">A</div>
+      <div class="mode-title">SaaS 풀버전</div>
+      <div class="mode-desc">Storige API + UI 모두 사용</div>
+      <div class="mode-meta">부팅: 1시간 · 자유도: 낮음</div>
+    </div>
+    <div class="mode-card b">
+      <div class="mode-letter">B</div>
+      <div class="mode-title">SDK + 자체 API</div>
+      <div class="mode-desc">UI 재사용 + 자체 백엔드</div>
+      <div class="mode-meta">부팅: 1주 · 자유도: 중간</div>
+    </div>
+    <div class="mode-card c">
+      <div class="mode-letter">C</div>
+      <div class="mode-title">Fork + 자체 호스팅</div>
+      <div class="mode-desc">canvas-core 만 활용</div>
+      <div class="mode-meta">부팅: 1개월 · 자유도: 최대</div>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th width="50%">새 프로젝트 성격</th><th>권장 모드</th><th>이유</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Storige 와 같은 도메인 (인쇄 쇼핑몰 변형)</td><td><span class="badge badge-green">모드 A</span></td><td>데이터 모델 90% 일치, site 등록만</td></tr>
+        <tr><td>비슷한 도메인 + 자체 백엔드</td><td><span class="badge badge-blue">모드 B</span></td><td>UI 재사용 + 자체 비즈니스 로직</td></tr>
+        <tr><td>디자인 도구지만 다른 산업 (명함·SNS)</td><td><span class="badge badge-blue">모드 B</span></td><td>UI 재사용 + 도메인별 백엔드</td></tr>
+        <tr><td>완전히 다른 시스템 (사진 편집 등)</td><td><span class="badge badge-yellow">모드 C</span></td><td>canvas-core 만 활용</td></tr>
+        <tr><td>작은 시제품 · MVP</td><td><span class="badge badge-green">모드 A</span></td><td>빠른 출범</td></tr>
+        <tr><td>대규모 별도 서비스</td><td><span class="badge badge-blue">모드 B + Phase D</span></td><td>SDK 사용 + 향후 fork 가능</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- §6 -->
+<section class="section" id="impact">
+  <h2><span class="section-num">§6</span> 영향 평가 — "기존에 영향 없는가" 정밀 검증</h2>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Phase</th><th width="55%">영향 항목</th><th>영향 정도</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><strong>A</strong> — SDK 분리</td><td>apps/editor 그대로 + packages 신규 추가</td><td><span class="badge badge-green">0</span></td></tr>
+        <tr><td></td><td>npm publish 시 storige 운영은 영향 없음</td><td><span class="badge badge-green">0</span></td></tr>
+        <tr><td><strong>B</strong> — SaaS 강화</td><td>sites 도메인 강화 → 기본 site=storige 우선</td><td><span class="badge badge-yellow">낮음</span></td></tr>
+        <tr><td></td><td>tenant isolation 미들웨어 잘못 적용 시 운영 영향 가능</td><td><span class="badge badge-yellow">중</span></td></tr>
+        <tr><td><strong>C</strong> — Publish</td><td>npm 패키지 자체 — storige 운영 영향 없음</td><td><span class="badge badge-green">0</span></td></tr>
+        <tr><td><strong>D</strong> — Fork 가이드</td><td>문서만</td><td><span class="badge badge-green">0</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout success">
+    <div class="callout-icon">✅</div>
+    <div class="callout-body">
+      <strong>결론</strong>: Phase A + C 는 영향 0. Phase B 만 신중한 검증 필요. 따라서 <strong>Phase A → C 먼저 (영향 0), Phase B 는 신규 site 등록 케이스 발생 시 별도 사이클로</strong>.
+    </div>
+  </div>
+</section>
+
+<!-- §7 -->
+<section class="section" id="saas">
+  <h2><span class="section-num">§7</span> SaaS 운영 모델 (Phase B 후)</h2>
+
+  <h3>라이선싱 + 과금 옵션</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>모델</th><th>예시</th></tr></thead>
+      <tbody>
+        <tr><td><strong>무료 + 플랫폼 노출</strong></td><td>papascompany 브랜드 상품으로 자동 연결</td></tr>
+        <tr><td><strong>월 정액</strong></td><td>site 별 $X/월</td></tr>
+        <tr><td><strong>사용량 기반</strong></td><td>편집 세션 수, 합성 PDF 수, 스토리지 GB</td></tr>
+        <tr><td><strong>B2B 계약 (현재 bookmoa 모델)</strong></td><td>사이트당 별도 계약</td></tr>
+        <tr><td><strong>오픈소스 + 셀프호스팅 옵션</strong></td><td>Apache 2.0 → 누구나 fork</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>데이터 격리 옵션 (Phase B 세부)</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>레벨</th><th>구현</th><th>보안</th><th>비용</th></tr></thead>
+      <tbody>
+        <tr class="recommended"><td>Row-level (siteId 컬럼)</td><td>현재 방향</td><td>보통</td><td>낮음</td></tr>
+        <tr><td>Schema-level (site 별 schema)</td><td>미들</td><td>좋음</td><td>중간</td></tr>
+        <tr><td>DB instance-level (site 별 DB)</td><td>멀리</td><td>매우 좋음</td><td>높음</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout info">
+    <div class="callout-icon">💡</div>
+    <div class="callout-body">
+      <strong>권장</strong>: Row-level 부터 시작 → 큰 site 만 분리 (점진 진화).
+    </div>
+  </div>
+</section>
+
+<!-- §8 -->
+<section class="section" id="confirm">
+  <h2><span class="section-num">§8</span> 컨펌 요청 사항</h2>
+
+  <h3>8-1. 진행 범위</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>옵션</th><th>내용</th><th>추정</th></tr></thead>
+      <tbody>
+        <tr class="recommended"><td><strong>A (가장 권장)</strong></td><td>Phase A + C 만 — 영향 0 + 외부 사용 즉시 가능</td><td>~18h</td></tr>
+        <tr><td>B</td><td>Phase A + B + C — 완전 SaaS 플랫폼</td><td>~33h</td></tr>
+        <tr><td>C</td><td>Phase A 만 — SDK 분리만</td><td>~10h</td></tr>
+        <tr><td>D</td><td>일단 보류 — 새 프로젝트 컨텍스트 확정 후</td><td>0h</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>8-2. 새 프로젝트 컨텍스트 (의사결정에 결정적)</h3>
+  <div class="cards">
+    <div class="card">
+      <div class="card-title">1. 도메인</div>
+      <div class="card-body">Storige 와 얼마나 같은가? (다른 인쇄? 완전 다른 산업?)</div>
+    </div>
+    <div class="card">
+      <div class="card-title">2. 운영 주체</div>
+      <div class="card-body">papascompany 직접? 외부 파트너 라이선스?</div>
+    </div>
+    <div class="card">
+      <div class="card-title">3. 예상 트래픽</div>
+      <div class="card-body">시제품? 정식 서비스?</div>
+    </div>
+    <div class="card">
+      <div class="card-title">4. 타임라인</div>
+      <div class="card-body">언제까지 출범 필요?</div>
+    </div>
+    <div class="card">
+      <div class="card-title">5. 백엔드 재사용</div>
+      <div class="card-body">Storige API 그대로? 인증·주문·결제 흐름이 같은가?</div>
+    </div>
+  </div>
+
+  <h3>8-3. 라이선스 / 공개 정책</h3>
+  <div class="cards">
+    <div class="card">
+      <div class="card-title">공개 npm</div>
+      <div class="card-body">오픈소스로 신뢰도 ↑, 누구나 install</div>
+    </div>
+    <div class="card">
+      <div class="card-title">GitHub Packages</div>
+      <div class="card-body">papascompany org 만</div>
+    </div>
+    <div class="card">
+      <div class="card-title">비공개 npm</div>
+      <div class="card-body">자체 레지스트리 운영</div>
+    </div>
+  </div>
+
+  <h3>8-4. 우선순위 (다른 컨펌 대기 작업과의 충돌)</h3>
+  <div class="callout warn">
+    <div class="callout-icon">⚠</div>
+    <div class="callout-body">
+      현재 동시 컨펌 대기 작업:
+      <ol style="margin-top:6px; margin-left:20px;">
+        <li><strong>인쇄 워크플로우 통합 개발계획서 v1</strong> (PDF 첨부/면지/게스트, ~31h)</li>
+        <li><strong>본 모듈화 + 플랫폼화 전략</strong> (~18~33h)</li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>우선순위</th><th>이유</th></tr></thead>
+      <tbody>
+        <tr><td>워크플로우 → 모듈화</td><td>운영 가치 우선, 모듈화는 기능 안정화 후</td></tr>
+        <tr><td>모듈화 → 워크플로우</td><td>새 프로젝트 출범이 더 시급</td></tr>
+        <tr class="recommended"><td><strong>병행 (권장)</strong></td><td>별도 세션/도구 분기 — Cursor 가 SDK 분리, Claude 가 워크플로우</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- FINAL -->
+<section class="section" id="final">
+  <div class="final-banner">
+    <div class="label">⭐ 최종 권장 — 한 줄 요약</div>
+    <div class="text">
+      <strong>Phase A + C (SDK 분리 + Publish) 부터 시작.</strong><br>
+      운영 영향 0, 외부 즉시 사용 가능, 향후 Phase B (SaaS 강화) 로 자연 확장.<br>
+      새 프로젝트 컨텍스트 알려주시면 모드 A/B/C 권장 자동 결정.
+    </div>
+  </div>
+
+  <div class="footer">
+    <div>📄 본 문서 위치: <code>storige/docs/MODULE_PLATFORM_STRATEGY_2026-05-19.html</code></div>
+    <div>🔗 관련: <code>docs/PLATFORM_INTEGRATION_v1.md</code>, <code>docs/MASTER_STATUS_2026-05-10.md</code>, <code>.cursor/plans/RESUME_PROMPT_2026-05-19.md</code></div>
+    <div>작성: 2026-05-19 · Storige Strategy Series</div>
+  </div>
+</section>
+
+</main>
+</div>
+
+<script>
+// 사이드바 active 표시
+const links = document.querySelectorAll('.nav-link');
+const sections = document.querySelectorAll('section[id]');
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      const id = entry.target.id;
+      links.forEach(link => {
+        if (link.getAttribute('href') === '#' + id) {
+          link.style.color = 'var(--accent)';
+          link.style.borderLeftColor = 'var(--accent)';
+          link.style.background = 'var(--surface2)';
+        } else {
+          link.style.color = '';
+          link.style.borderLeftColor = '';
+          link.style.background = '';
+        }
+      });
+    }
+  });
+}, { rootMargin: '-30% 0px -60% 0px' });
+sections.forEach(s => observer.observe(s));
+</script>
+</body>
+</html>
