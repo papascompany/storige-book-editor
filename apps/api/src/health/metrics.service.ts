@@ -15,7 +15,7 @@ export class MetricsService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(MetricsService.name);
   private readonly registry: client.Registry;
   private readonly queueGauges: Record<string, client.Gauge<string>>;
-  private intervalHandle?: NodeJS.Timeout;
+  private intervalHandle?: ReturnType<typeof setInterval>;
 
   // 30초 단위로 큐 상태 갱신 (Prometheus scrape interval 15초와 정렬, 1샘플 staleness 1분 이하)
   private readonly refreshIntervalMs = parseInt(

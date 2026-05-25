@@ -45,7 +45,7 @@ interface MonitorState {
 @Injectable()
 export class QueueMonitorService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(QueueMonitorService.name);
-  private intervalHandle?: NodeJS.Timeout;
+  private intervalHandle?: ReturnType<typeof setInterval>;
 
   private readonly enabled = process.env.QUEUE_MONITOR_ENABLED !== 'false';
   private readonly backlogThreshold = parseInt(
