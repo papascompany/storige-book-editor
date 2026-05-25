@@ -716,7 +716,7 @@ class ImageProcessingPlugin extends PluginBase {
     if (hasAlpha) {
       const binary = await this.preProcessImage(cv, imgElement, hasAlpha, kSize)
       const largestContour: [any, boolean] = this.findLargestContour(cv, binary)
-      const points = this.smoothContour(object, largestContour[0], largestContour[1])
+      const points = await this.smoothContour(object, largestContour[0], largestContour[1])
       return this.generateCurvedPath(points, hasAlpha)
     } else {
       return this.createExpandedPath(object, 0).path
@@ -1386,23 +1386,21 @@ class ImageProcessingPlugin extends PluginBase {
   }
 
   // 추출된 윤곽선을 부드럽게 만든 후 포인터 반환
-  private smoothContour(
+  private async smoothContour(
     object: fabric.Object,
     contour: any,
     useHull: boolean
-  ): [number, number][] {
-    // Note: cv is already loaded when this is called from getObjectPathData
+  ): Promise<[number, number][]> {
+    const cv = await getCv()
     const simplified = { delete: () => {} }
     const tempContour = { delete: () => {} }
 
     // 더글라스 피커 알고리즘 적용으로 다각형 근사화
     try {
-      // Contour 객체가 비어있는지 확인
       if (contour.rows === 0 || contour.cols !== 1) {
         console.error('Invalid contour')
       }
 
-      // Contour 객체의 데이터 타입 확인
       if (contour.type() !== cv.CV_32SC2) {
         console.error('Invalid contour type')
       }
