@@ -573,6 +573,14 @@ export interface SynthesisOptions {
   outputFormat?: 'merged' | 'separate'; // 요청 옵션, 기본값: 'merged'
 }
 
+/**
+ * Compose-mixed 출력 모드.
+ * - separate: cover.pdf + content.pdf (일반 책자)
+ * - content-only: content.pdf만 (레더커버)
+ * - single: pages.pdf (낱장 상품 — 카드/명함/엽서/포스터/리플렛)
+ */
+export type ComposeOutputMode = 'separate' | 'content-only' | 'single';
+
 // ============================================================================
 // Split Synthesis (단일 PDF 분리)
 // ============================================================================
