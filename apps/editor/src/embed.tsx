@@ -432,7 +432,8 @@ function EmbeddedEditor({
         let templateSet;
         try {
           setLoadingMessage('템플릿셋 정보를 불러오는 중...')
-          templateSet = await templatesApi.getTemplateSet(effectiveTemplateSetId)
+          const result = await templatesApi.getTemplateSetWithTemplates(effectiveTemplateSetId)
+          templateSet = result?.templateSet || result
           if (!templateSet || !templateSet.id) {
             throw new Error('템플릿셋을 찾을 수 없습니다.')
           }
@@ -440,7 +441,8 @@ function EmbeddedEditor({
           console.warn('[EmbeddedEditor] Failed to load requested template set. Falling back to sample.', err)
           showMappingAlert = true
           effectiveTemplateSetId = 'sample-8x8-book-24p'
-          templateSet = await templatesApi.getTemplateSet(effectiveTemplateSetId)
+          const fallback = await templatesApi.getTemplateSetWithTemplates(effectiveTemplateSetId)
+          templateSet = fallback?.templateSet || fallback
           if (!templateSet || !templateSet.id) {
             throw new Error('샘플 템플릿셋마저 불러올 수 없습니다.')
           }
