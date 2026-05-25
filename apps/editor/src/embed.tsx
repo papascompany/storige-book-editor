@@ -423,13 +423,27 @@ function EmbeddedEditor({
         if (!isMounted) return
 
         // 3. Fetch template set info
-        if (!templateSetId) {
+        let effectiveTemplateSetId = templateSetId;
+        let showMappingAlert = false;
+
+        if (!effectiveTemplateSetId) {
           throw new Error('템플릿셋 ID가 필요합니다. (templateSetId)')
         }
-        setLoadingMessage('템플릿셋 정보를 불러오는 중...')
-        const templateSet = await templatesApi.getTemplateSet(templateSetId)
-        if (!templateSet || !templateSet.id) {
-          throw new Error('템플릿셋을 찾을 수 없습니다.')
+        let templateSet;
+        try {
+          setLoadingMessage('템플릿셋 정보를 불러오는 중...')
+          templateSet = await templatesApi.getTemplateSet(effectiveTemplateSetId)
+          if (!templateSet || !templateSet.id) {
+            throw new Error('템플릿셋을 찾을 수 없습니다.')
+          }
+        } catch (err) {
+          console.warn('[EmbeddedEditor] Failed to load requested template set. Falling back to sample.', err)
+          showMappingAlert = true
+          effectiveTemplateSetId = 'sample-8x8-book-24p'
+          templateSet = await templatesApi.getTemplateSet(effectiveTemplateSetId)
+          if (!templateSet || !templateSet.id) {
+            throw new Error('샘플 템플릿셋마저 불러올 수 없습니다.')
+          }
         }
         console.log('[EmbeddedEditor] TemplateSet loaded:', templateSet.name)
 
@@ -482,17 +496,35 @@ function EmbeddedEditor({
         // 3. Load content based on template set
         setLoadingMessage('콘텐츠를 불러오는 중...')
         console.log('[EmbeddedEditor] Loading template set with options:', {
-          templateSetId,
+          templateSetId: effectiveTemplateSetId,
           pageCount: options?.pageCount,
           paperType: options?.paperType,
           bindingType: options?.bindingType,
         })
-        await loadTemplateSetEditor({
-          templateSetId,
-          pageCount: options?.pageCount,
-          paperType: options?.paperType,
-          bindingType: options?.bindingType,
-        })
+        try {
+          await loadTemplateSetEditor({
+            templateSetId: effectiveTemplateSetId,
+            pageCount: options?.pageCount,
+            paperType: options?.paperType,
+            bindingType: options?.bindingType,
+          })
+        } catch (loadErr) {
+          console.warn('[EmbeddedEditor] Failed to load template set editor. Falling back to sample.', loadErr)
+          showMappingAlert = true
+          effectiveTemplateSetId = 'sample-8x8-book-24p'
+          await loadTemplateSetEditor({
+            templateSetId: effectiveTemplateSetId,
+            pageCount: options?.pageCount,
+            paperType: options?.paperType,
+            bindingType: options?.bindingType,
+          })
+        }
+
+        if (showMappingAlert) {
+          setTimeout(() => {
+            alert('템플릿셋 매핑이 맞지 않아 테스트모드로 구동됩니다. 편집내용에 대한 주문에 문제가 있을 수 있습니다.');
+          }, 500);
+        }
 
         if (!isMounted) return
 
