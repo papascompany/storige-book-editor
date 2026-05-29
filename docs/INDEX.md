@@ -86,6 +86,15 @@
 
 ## 📊 6. 사이클 보고서 (시간역순)
 
+### 🆕 2026-05-29 — 추후 개발 로드맵 / Shopify
+| 문서 | 설명 |
+|------|------|
+| [`ROADMAP_2026-05-29.md`](./ROADMAP_2026-05-29.md) | **추후 개발 로드맵** — v1 GA 통과 후 트랙 정리 (T1 Pilot 운영 / T2 v1 polish / T3 Shopify GO·보류 / T4·T5 v2 후보) |
+| [`SHOPIFY_APP_PROPOSAL_2026-05-16.md`](./SHOPIFY_APP_PROPOSAL_2026-05-16.md) | Shopify 앱스토어 publish 계획 (v1.1, GO 결정 완료) — 시장/경쟁사/가격/로드맵 S-1~S-7 |
+| [`SHOPIFY_APP_PROPOSAL_2026-05-16.html`](./SHOPIFY_APP_PROPOSAL_2026-05-16.html) | 위 제안서 시각화 |
+| [`SHOPIFY_TECHNICAL_DESIGN.md`](./SHOPIFY_TECHNICAL_DESIGN.md) | Shopify 앱 기술 설계 — OAuth/Webhook/Billing/i18n/Theme Extension (S-2~S-5) |
+| [`../docs2/CURSOR_ORCHESTRATION_PLAN.md`](../docs2/CURSOR_ORCHESTRATION_PLAN.md) | bookmoa-mobile 연동 Cursor 조율 협업 계획 (2026-05-20) |
+
 ### 🆕 2026-05-19 — 전략 / 핸드오프
 | 문서 | 설명 |
 |------|------|
@@ -187,6 +196,9 @@
 ### AI / 미래
 | 문서 | 설명 |
 |------|------|
+| [`ROADMAP_2026-05-29.md`](./ROADMAP_2026-05-29.md) | **추후 개발 로드맵 (현재 활성)** — v1 GA 후 트랙 우선순위 |
+| [`SHOPIFY_APP_PROPOSAL_2026-05-16.md`](./SHOPIFY_APP_PROPOSAL_2026-05-16.md) | Shopify 앱 계획 (GO·착수 보류) |
+| [`SHOPIFY_TECHNICAL_DESIGN.md`](./SHOPIFY_TECHNICAL_DESIGN.md) | Shopify 앱 기술 설계 |
 | [`AI_FEATURES_PLAN.md`](./AI_FEATURES_PLAN.md) | AI 기능 plan |
 | [`NEXT_DEVELOPMENT_PLAN.md`](./NEXT_DEVELOPMENT_PLAN.md) | 다음 개발 (deprecated) |
 | [`PROJECT_VALIDATION.md`](./PROJECT_VALIDATION.md) | 프로젝트 검증 |

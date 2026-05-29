@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Printable Editor (Storige) × Shopify 앱스토어 배포 계획 (v1.1, 2026-05-27)</title>
+<style>
+  :root {
+    --shopify: #5E8E3E;
+    --shopify-dark: #2C5E1A;
+    --storige: #4F46E5;
+    --primary: #4F46E5;
+    --success: #059669;
+    --success-light: #D1FAE5;
+    --warning: #D97706;
+    --warning-light: #FEF3C7;
+    --danger: #DC2626;
+    --danger-light: #FEE2E2;
+    --info: #0891B2;
+    --info-light: #CFFAFE;
+    --gray-50: #F9FAFB;
+    --gray-100: #F3F4F6;
+    --gray-200: #E5E7EB;
+    --gray-400: #9CA3AF;
+    --gray-600: #4B5563;
+    --gray-800: #1F2937;
+    --gray-900: #111827;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--gray-800);
+    background: linear-gradient(180deg, #F0FDF4 0%, var(--gray-50) 400px, var(--gray-50) 100%);
+  }
+  .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
+
+  /* HERO */
+  .hero {
+    background: linear-gradient(135deg, var(--shopify) 0%, var(--storige) 100%);
+    color: white;
+    border-radius: 16px;
+    padding: 36px 32px;
+    margin-bottom: 28px;
+    box-shadow: 0 8px 24px rgba(94, 142, 62, 0.2);
+  }
+  .hero-tag { font-size: 11px; font-weight: 700; opacity: 0.7; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+  .hero h1 { font-size: 28px; font-weight: 800; letter-spacing: -0.5px; }
+  .hero p { opacity: 0.85; margin-top: 8px; font-size: 14px; max-width: 720px; }
+  .meta-row { display: flex; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
+  .meta-chip {
+    background: rgba(255,255,255,0.18);
+    border: 1px solid rgba(255,255,255,0.3);
+    border-radius: 20px;
+    padding: 5px 14px;
+    font-size: 12px;
+    font-weight: 500;
+  }
+  .meta-chip strong { font-weight: 800; margin-right: 4px; }
+
+  /* TL;DR Grid */
+  .tldr-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+    margin-bottom: 32px;
+  }
+  .tldr-card {
+    background: white;
+    border: 1px solid var(--gray-200);
+    border-radius: 10px;
+    padding: 16px;
+  }
+  .tldr-card .label { font-size: 11px; color: var(--gray-400); font-weight: 700; text-transform: uppercase; }
+  .tldr-card .value { font-size: 22px; font-weight: 800; color: var(--gray-900); margin-top: 4px; line-height: 1.2; }
+  .tldr-card .sub { font-size: 11px; color: var(--gray-600); margin-top: 4px; }
+  .tldr-card.green { border-color: var(--success); background: var(--success-light); }
+  .tldr-card.green .value { color: var(--success); }
+
+  /* Sections */
+  .section { margin-bottom: 36px; }
+  .section h2 {
+    font-size: 20px;
+    font-weight: 800;
+    color: var(--gray-900);
+    margin-bottom: 16px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid var(--gray-200);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .section h2 .num {
+    width: 32px; height: 32px;
+    background: linear-gradient(135deg, var(--shopify), var(--storige));
+    color: white;
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; font-weight: 800; flex-shrink: 0;
+  }
+  .section h3 { font-size: 14px; font-weight: 700; color: var(--gray-900); margin: 16px 0 10px; }
+
+  /* Competitor Table */
+  .data-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: white;
+    border: 1px solid var(--gray-200);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .data-table th {
+    text-align: left;
+    padding: 10px 14px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: var(--gray-400);
+    background: var(--gray-50);
+    border-bottom: 1px solid var(--gray-200);
+  }
+  .data-table td {
+    padding: 11px 14px;
+    border-bottom: 1px solid var(--gray-100);
+    font-size: 13px;
+    vertical-align: top;
+  }
+  .data-table tr:last-child td { border-bottom: none; }
+  .data-table .price { font-weight: 700; color: var(--shopify); font-family: monospace; }
+  .data-table .storige-row { background: linear-gradient(90deg, #EEF2FF, #F0FDF4); }
+  .data-table .storige-row td { font-weight: 600; }
+
+  /* Architecture diagram */
+  .arch {
+    background: #1E1E2E;
+    border-radius: 12px;
+    padding: 24px;
+    color: #CDD6F4;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 12px;
+    line-height: 1.8;
+    overflow-x: auto;
+  }
+  .arch .merchant { color: #89DCEB; font-weight: 700; }
+  .arch .shopper  { color: #F9E2AF; font-weight: 700; }
+  .arch .storige  { color: #A6E3A1; font-weight: 700; }
+  .arch .action   { color: #CBA6F7; }
+  .arch .comment  { color: #6C7086; font-style: italic; }
+
+  /* Embed options card */
+  .embed-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 14px;
+  }
+  .embed-card {
+    background: white;
+    border: 2px solid var(--gray-200);
+    border-radius: 12px;
+    padding: 18px;
+    position: relative;
+  }
+  .embed-card.required { border-color: var(--shopify); }
+  .embed-card.recommended { border-color: var(--info); }
+  .embed-badge {
+    position: absolute;
+    top: 12px; right: 12px;
+    font-size: 10px;
+    font-weight: 800;
+    padding: 3px 10px;
+    border-radius: 12px;
+  }
+  .embed-badge.required { background: var(--shopify); color: white; }
+  .embed-badge.recommended { background: var(--info); color: white; }
+  .embed-card h4 { font-size: 14px; font-weight: 700; margin-bottom: 4px; padding-right: 80px; }
+  .embed-card .audience { font-size: 11px; color: var(--gray-400); margin-bottom: 10px; }
+  .embed-card .desc { font-size: 13px; color: var(--gray-600); line-height: 1.5; }
+
+  /* Matching table 3-column comparison */
+  .match-table { width: 100%; border-collapse: collapse; background: white; border: 1px solid var(--gray-200); border-radius: 10px; overflow: hidden; font-size: 13px; }
+  .match-table th { padding: 10px 14px; background: var(--gray-50); font-size: 11px; font-weight: 700; text-align: left; text-transform: uppercase; color: var(--gray-400); border-bottom: 1px solid var(--gray-200); }
+  .match-table td { padding: 11px 14px; border-bottom: 1px solid var(--gray-100); vertical-align: top; }
+  .match-table tr:last-child td { border-bottom: none; }
+  .check-yes { color: var(--success); font-weight: 700; }
+  .check-no { color: var(--danger); font-weight: 700; }
+  .check-partial { color: var(--warning); font-weight: 700; }
+
+  /* Timeline */
+  .timeline {
+    position: relative;
+    padding-left: 32px;
+  }
+  .timeline::before {
+    content: '';
+    position: absolute;
+    left: 12px; top: 0; bottom: 0;
+    width: 3px;
+    background: linear-gradient(180deg, var(--shopify), var(--storige));
+    border-radius: 2px;
+  }
+  .timeline-item {
+    position: relative;
+    margin-bottom: 18px;
+    background: white;
+    border: 1px solid var(--gray-200);
+    border-radius: 10px;
+    padding: 16px;
+  }
+  .timeline-item::before {
+    content: attr(data-phase);
+    position: absolute;
+    left: -32px; top: 14px;
+    width: 28px; height: 28px;
+    background: white;
+    border: 3px solid var(--shopify);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 800;
+    color: var(--shopify);
+  }
+  .timeline-item h4 { font-size: 14px; font-weight: 700; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center; }
+  .timeline-item .duration { font-size: 11px; color: white; background: var(--shopify); padding: 2px 8px; border-radius: 12px; font-weight: 700; }
+  .timeline-item ul { margin: 8px 0 0 20px; font-size: 12px; color: var(--gray-600); }
+  .timeline-item li { margin-bottom: 4px; }
+  .timeline-item code { background: var(--gray-100); padding: 1px 5px; border-radius: 3px; font-size: 11px; }
+
+  /* Pricing scenario */
+  .pricing-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .pricing-card {
+    background: white;
+    border: 2px solid var(--gray-200);
+    border-radius: 12px;
+    padding: 18px;
+  }
+  .pricing-card.aggressive { border-color: var(--shopify); }
+  .pricing-card h4 { font-size: 14px; font-weight: 700; margin-bottom: 12px; }
+  .pricing-card .scenario-line { display: flex; justify-content: space-between; padding: 6px 0; font-size: 13px; border-bottom: 1px dashed var(--gray-100); }
+  .pricing-card .total { display: flex; justify-content: space-between; margin-top: 8px; padding-top: 10px; border-top: 2px solid var(--gray-200); font-weight: 700; }
+  .pricing-card .total .amount { color: var(--shopify); font-size: 16px; }
+  .pricing-card .note { font-size: 11px; color: var(--gray-400); margin-top: 8px; }
+
+  /* Risk grid */
+  .risk-grid { display: grid; grid-template-columns: 1fr; gap: 10px; }
+  .risk-item { display: grid; grid-template-columns: 30px 1fr 1fr; gap: 12px; padding: 12px 14px; background: white; border-left: 4px solid var(--gray-400); border-radius: 6px; }
+  .risk-item.red { border-left-color: var(--danger); }
+  .risk-item.yellow { border-left-color: var(--warning); }
+  .risk-item.green { border-left-color: var(--success); }
+  .risk-item .icon { font-size: 16px; }
+  .risk-item .label { font-weight: 600; font-size: 13px; }
+  .risk-item .action { font-size: 12px; color: var(--gray-600); }
+
+  /* Action ladder */
+  .ladder {
+    background: white;
+    border: 1px solid var(--gray-200);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .ladder-row {
+    display: grid;
+    grid-template-columns: 60px 1fr 130px 100px;
+    align-items: center;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--gray-100);
+    gap: 12px;
+    font-size: 13px;
+  }
+  .ladder-row:last-child { border-bottom: none; }
+  .ladder-row .step { font-size: 18px; font-weight: 800; color: var(--storige); }
+  .ladder-row .title { font-weight: 600; }
+  .ladder-row .owner { font-size: 11px; padding: 3px 8px; border-radius: 4px; font-weight: 700; text-align: center; }
+  .owner.user { background: var(--info-light); color: var(--info); }
+  .owner.storige { background: #EEF2FF; color: var(--storige); }
+  .ladder-row .duration { font-size: 11px; color: var(--gray-400); text-align: right; }
+
+  /* Sources */
+  .sources {
+    background: white;
+    border: 1px solid var(--gray-200);
+    border-radius: 10px;
+    padding: 16px;
+  }
+  .sources a {
+    display: block;
+    color: var(--storige);
+    padding: 4px 0;
+    font-size: 12px;
+    text-decoration: none;
+    border-bottom: 1px dashed var(--gray-100);
+  }
+  .sources a:hover { color: var(--shopify); }
+  .sources a:last-child { border-bottom: none; }
+
+  @media (max-width: 768px) {
+    .pricing-cards { grid-template-columns: 1fr; }
+    .ladder-row { grid-template-columns: 40px 1fr 80px; }
+    .ladder-row .duration { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- HERO -->
+  <div class="hero">
+    <div class="hero-tag">🛍️ Distribution Channel Expansion · Proposal v1.1 · ✅ GO 결정 완료</div>
+    <h1>Printable Editor — Shopify 앱스토어 배포 계획</h1>
+    <p>Storige 편집기·워커를 <strong>"Printable Editor"</strong> 브랜드로 글로벌+한국 Shopify 판매자에게. Freemium + 사용량 과금. 멀티사이트 모델(Phase A/B/C)을 그대로 활용해 약 6~8주 안에 publish 가능. 첫 $1M 매출까지 0% 수수료.</p>
+    <div class="meta-row">
+      <span class="meta-chip"><strong>✅</strong> 의사결정 5/5 완료</span>
+      <span class="meta-chip"><strong>🏷</strong> 브랜드: Printable Editor</span>
+      <span class="meta-chip"><strong>🌐</strong> 글로벌 + 한국 동시</span>
+      <span class="meta-chip"><strong>💵</strong> Freemium + 사용량</span>
+      <span class="meta-chip"><strong>⚡</strong> PHP 병렬 진행</span>
+      <span class="meta-chip"><strong>⏱</strong> 6~8주</span>
+      <span class="meta-chip"><strong>💰</strong> 초기 비용 $19</span>
+    </div>
+  </div>
+
+  <!-- 의사결정 카드 (v1.1 신규) -->
+  <div class="section" style="margin-bottom: 24px;">
+    <h2><span class="num" style="background: var(--success); color: white;">✅</span> 확정된 5가지 의사결정 <span style="font-size: 12px; color: var(--gray-400); font-weight: 500;">(2026-05-27)</span></h2>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-top: 14px;">
+      <div style="background: linear-gradient(135deg, #ECFDF5 0%, white 100%); border: 1px solid var(--success); border-radius: 10px; padding: 14px;">
+        <div style="font-size: 10px; color: var(--success); font-weight: 700; text-transform: uppercase; letter-spacing: 1px;">#1 타깃 시장</div>
+        <div style="font-size: 18px; font-weight: 800; color: var(--gray-900); margin-top: 4px;">🌐 글로벌 + 한국 동시</div>
+        <div style="font-size: 11px; color: var(--gray-600); margin-top: 6px;">영문 우선 + 한글 동시 i18n 필수</div>
+      </div>
+      <div style="background: linear-gradient(135deg, #ECFDF5 0%, white 100%); border: 1px solid var(--success); border-radius: 10px; padding: 14px;">
+        <div style="font-size: 10px; color: var(--success); font-weight: 700; text-transform: uppercase; letter-spacing: 1px;">#2 가격 모델</div>
+        <div style="font-size: 18px; font-weight: 800; color: var(--gray-900); margin-top: 4px;">🆓 Freemium + 사용량</div>
+        <div style="font-size: 11px; color: var(--gray-600); margin-top: 6px;">월 20건 무료 + $0.50/건 + Pro $29/월</div>
+      </div>
+      <div style="background: linear-gradient(135deg, #ECFDF5 0%, white 100%); border: 1px solid var(--success); border-radius: 10px; padding: 14px;">
+        <div style="font-size: 10px; color: var(--success); font-weight: 700; text-transform: uppercase; letter-spacing: 1px;">#3 브랜드명</div>
+        <div style="font-size: 18px; font-weight: 800; color: var(--gray-900); margin-top: 4px;">🏷 Printable Editor</div>
+        <div style="font-size: 11px; color: var(--gray-600); margin-top: 6px;">Storige는 백엔드 플랫폼명 유지</div>
+      </div>
+      <div style="background: linear-gradient(135deg, #ECFDF5 0%, white 100%); border: 1px solid var(--success); border-radius: 10px; padding: 14px;">
+        <div style="font-size: 10px; color: var(--success); font-weight: 700; text-transform: uppercase; letter-spacing: 1px;">#4 편집기 i18n</div>
+        <div style="font-size: 18px; font-weight: 800; color: var(--gray-900); margin-top: 4px;">🌍 영문 + 한글 동시</div>
+        <div style="font-size: 11px; color: var(--gray-600); margin-top: 6px;">react-i18next, 양쪽 시장 필수</div>
+      </div>
+      <div style="background: linear-gradient(135deg, #ECFDF5 0%, white 100%); border: 1px solid var(--success); border-radius: 10px; padding: 14px;">
+        <div style="font-size: 10px; color: var(--success); font-weight: 700; text-transform: uppercase; letter-spacing: 1px;">#5 PHP × Shopify</div>
+        <div style="font-size: 18px; font-weight: 800; color: var(--gray-900); margin-top: 4px;">⚡ 병렬 진행</div>
+        <div style="font-size: 11px; color: var(--gray-600); margin-top: 6px;">브랜치/워크트리 분리로 컨텍스트 격리</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TL;DR -->
+  <div class="tldr-grid">
+    <div class="tldr-card green">
+      <div class="label">상태</div>
+      <div class="value">✅ GO</div>
+      <div class="sub">의사결정 5/5 완료</div>
+    </div>
+    <div class="tldr-card">
+      <div class="label">개발 기간</div>
+      <div class="value">3~5주</div>
+      <div class="sub">+ 자체 QA 1주</div>
+    </div>
+    <div class="tldr-card">
+      <div class="label">Shopify 검수</div>
+      <div class="value">2~4주</div>
+      <div class="sub">평균 2회 재제출</div>
+    </div>
+    <div class="tldr-card">
+      <div class="label">재사용율</div>
+      <div class="value">~70%</div>
+      <div class="sub">편집기·워커 그대로</div>
+    </div>
+    <div class="tldr-card">
+      <div class="label">수수료</div>
+      <div class="value">0% / 15%</div>
+      <div class="sub">첫 $1M / 이후</div>
+    </div>
+  </div>
+
+  <!-- §1 시장 -->
+  <div class="section">
+    <h2><span class="num">1</span> 시장 컨텍스트</h2>
+    <p style="margin-bottom: 14px; color: var(--gray-600);">
+      Shopify 앱스토어의 <strong>Product Personalizer / Print on Demand</strong> 카테고리는 활성화돼 있고, 가격대도 검증됨. Storige는 일반 customizer가 약한 <strong>책자/포토북 합성 도메인</strong>에 자리를 차지할 수 있음.
+    </p>
+    <table class="data-table">
+      <thead>
+        <tr><th>앱</th><th>가격</th><th>특징</th><th>Storige 차별점</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><strong>Customily</strong></td><td class="price">$49/월 + 수수료</td><td>POD 종합, 라이브 미리보기, AI 필터</td><td>책자/spine 약함</td></tr>
+        <tr><td><strong>Inkybay</strong></td><td class="price">$19.99~/월</td><td>제품 빌더, 다양한 출력</td><td>멀티페이지 약함</td></tr>
+        <tr><td><strong>Print.App</strong></td><td class="price">$39/월</td><td>print-ready PDF 자동</td><td>책자 합성·spine 없음</td></tr>
+        <tr><td><strong>Smart Customizer</strong></td><td class="price">견적</td><td>2D/3D, dynamic pricing</td><td>일반 POD</td></tr>
+        <tr><td><strong>Customall</strong></td><td class="price">$24~/월</td><td>라이브 미리보기</td><td>POD 중심</td></tr>
+        <tr><td><strong>Customix</strong></td><td class="price">$19~/월</td><td>AI 배경 제거, 얼굴 cutout</td><td>단순 customizer</td></tr>
+        <tr class="storige-row">
+          <td><strong>🎯 Printable Editor</strong><br><span style="font-size: 10px; color: var(--gray-400);">(Storige 백엔드)</span></td>
+          <td class="price"><strong>Free 20건/월</strong><br>+ $0.50/건 / Pro $29</td>
+          <td><strong>책자/포토북 합성 + spine 자동 + 멀티사이트 운영 + i18n(en/ko)</strong></td>
+          <td>perfect / saddle / hardcover 자동</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- §2 임베드 옵션 -->
+  <div class="section">
+    <h2><span class="num">2</span> Shopify 앱의 3가지 임베드 위치</h2>
+    <p style="margin-bottom: 14px; color: var(--gray-600);">
+      Storige는 <strong>3개 모두 사용</strong>합니다. 각각의 역할이 명확히 분리.
+    </p>
+    <div class="embed-grid">
+      <div class="embed-card required">
+        <span class="embed-badge required">REQUIRED</span>
+        <h4>Admin Embedded App</h4>
+        <div class="audience">📍 Shopify Admin (판매자)</div>
+        <div class="desc">
+          App Bridge + Polaris UI. 판매자가 사이트 정보, 잡 모니터링, Billing 상태를 관리하는 화면.
+        </div>
+      </div>
+      <div class="embed-card required">
+        <span class="embed-badge required">REQUIRED</span>
+        <h4>Theme App Extension</h4>
+        <div class="audience">📍 판매자 스토어프론트 (고객)</div>
+        <div class="desc">
+          Liquid app block. 제품 페이지에 <strong>"🎨 디자인하기" 버튼</strong> 추가. 클릭 시 iframe으로 Storige 편집기 진입.
+        </div>
+      </div>
+      <div class="embed-card recommended">
+        <span class="embed-badge recommended">RECOMMENDED</span>
+        <h4>App Proxy</h4>
+        <div class="audience">📍 판매자 도메인 (Shopify HMAC)</div>
+        <div class="desc">
+          <code>shop.com/apps/storige/orders/{id}/pdf</code> 형태. 결과 PDF 다운로드를 판매자 도메인으로 프록시 (Shopify 인증 후).
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- §3 전체 아키텍처 -->
+  <div class="section">
+    <h2><span class="num">3</span> 전체 아키텍처</h2>
+    <div class="arch">
+<span class="merchant">┌─── [Shopify 판매자(merchant)] ─────────────────────────┐</span>
+
+[Shopify Admin]      ┌──────────────────────────────────┐
+  판매자 화면 ───────▶│ <span class="storige">Storige Admin Embed (Polaris UI)</span>  │
+                     │  · 사이트 정보 / 잡 모니터링         │
+                     │  · Billing 상태                    │
+                     └──────────────────────────────────┘
+                              ↕ <span class="action">App Bridge (JWT session)</span>
+<span class="merchant">└──────────────────────────────────────────────────────────┘</span>
+                              ↕  <span class="action">OAuth + Token Exchange</span>
+<span class="shopper">┌─── [고객(쇼퍼) — 판매자 스토어프론트] ─────────────────┐</span>
+
+                     제품 상세 페이지
+                     ┌──────────────────────────────────┐
+                     │ <span class="action">[🎨 디자인하기]</span> ← Theme App Block │
+                     └──────────────────────────────────┘
+                              ↓ 클릭
+                     ┌──────────────────────────────────┐
+                     │ iframe: <span class="storige">Storige Editor</span>           │
+                     │ editor.papascompany.co.kr        │
+                     └──────────────────────────────────┘
+                              ↓ 완료 (<span class="action">postMessage</span>)
+                       cart에 디자인 ID line item 첨부
+                              ↓ <span class="action">결제 → orders/paid webhook</span>
+<span class="shopper">└──────────────────────────────────────────────────────────┘</span>
+                              ↓  자동 합성 잡 발사
+<span class="storige">┌─── [Storige Platform] ─────────────────────────────────┐</span>
+  · API + Worker (<span class="comment">기존 그대로 재사용</span>)
+  · 멀티사이트 모델 (<span class="comment">각 Shopify shop = 1 site</span>)
+  · PDF 합성 → <span class="action">app proxy</span>로 판매자에게 전달
+<span class="storige">└──────────────────────────────────────────────────────────┘</span>
+    </div>
+  </div>
+
+  <!-- §4 자산 매칭 -->
+  <div class="section">
+    <h2><span class="num">4</span> 현재 Storige 자산 vs Shopify 요건</h2>
+    <p style="margin-bottom: 14px; color: var(--gray-600);">재사용 70% / 신규 30%. 핵심(편집기·워커)은 무변경.</p>
+    <table class="match-table">
+      <thead>
+        <tr><th>Shopify 요건</th><th>현재 Storige 보유</th><th>신규 작업</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><strong>멀티 테넌시</strong></td><td><span class="check-yes">✅</span> Phase A Site 엔티티 + site_id 격리</td><td>OAuth 후 Site 자동 생성</td></tr>
+        <tr><td><strong>OAuth 2.0 인증</strong></td><td><span class="check-no">❌</span> X-API-Key만</td><td>Shopify OAuth + Token Exchange</td></tr>
+        <tr><td><strong>App Bridge + Admin UI</strong></td><td><span class="check-no">❌</span></td><td>신규 앱 1개 (Remix/Polaris)</td></tr>
+        <tr><td><strong>Polaris 디자인 시스템</strong></td><td><span class="check-no">❌</span> 현재 Ant Design</td><td>임베디드 앱만 Polaris</td></tr>
+        <tr><td><strong>Theme App Extension</strong></td><td><span class="check-no">❌</span></td><td>Liquid block + JS 신규</td></tr>
+        <tr><td><strong>HMAC webhook 검증</strong></td><td><span class="check-yes">✅</span> 유사 패턴 (Base64 sig)</td><td>Shopify HMAC-SHA256 어댑터</td></tr>
+        <tr><td><strong>Billing API</strong></td><td><span class="check-no">❌</span></td><td>RecurringApplicationCharge 통합</td></tr>
+        <tr><td><strong>GDPR mandatory webhooks</strong></td><td><span class="check-partial">⚠️</span> 부분 (보안 패치 A-E)</td><td>3개 webhook handler</td></tr>
+        <tr><td><strong>Lighthouse ≤10pt 영향</strong></td><td><span class="check-yes">✅</span> 별도 도메인 자동 통과</td><td>검증만</td></tr>
+        <tr><td><strong>편집기 + 워커 + 합성 PDF</strong></td><td><span class="check-yes">✅</span> 완전 검증</td><td>그대로 재사용</td></tr>
+        <tr><td><strong>결과 PDF 다운로드</strong></td><td><span class="check-yes">✅</span> /worker-jobs/{id}/output</td><td>App Proxy 어댑터</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- §5 로드맵 -->
+  <div class="section">
+    <h2><span class="num">5</span> 단계별 로드맵 (총 6~8주)</h2>
+    <div class="timeline">
+      <div class="timeline-item" data-phase="S1">
+        <h4>사전 등록 + 환경 <span class="duration">1일</span></h4>
+        <ul>
+          <li>Shopify Partner 계정 가입 ($19 1회)</li>
+          <li>Development store 생성 (무료)</li>
+          <li>App 등록 → API key + secret 발급</li>
+          <li>개발 도메인 결정 (<code>shopify.papascompany.co.kr</code>)</li>
+        </ul>
+      </div>
+      <div class="timeline-item" data-phase="S2">
+        <h4>임베디드 앱 신규 구축 <span class="duration">1주</span></h4>
+        <ul>
+          <li><code>apps/shopify</code> 워크스페이스 (Remix + shopify-app-remix)</li>
+          <li>OAuth 흐름 (install → consent → token exchange)</li>
+          <li>OAuth 콜백에서 <strong>Site 자동 등록</strong> (Phase A 활용)</li>
+          <li>Polaris UI: 잡 목록 / 사이트 설정 / Billing</li>
+        </ul>
+      </div>
+      <div class="timeline-item" data-phase="S3">
+        <h4>백엔드 통합 <span class="duration">3일</span></h4>
+        <ul>
+          <li><code>apps/api</code>에 <code>/shopify/oauth/callback</code> + webhook 라우트</li>
+          <li>HMAC-SHA256 검증 어댑터 (Base64 sig와 분리)</li>
+          <li>GDPR webhooks 3종: customers/data_request / customers/redact / shop/redact</li>
+          <li>orders/paid → 워커 자동 합성 잡 발사</li>
+          <li>App proxy endpoint: /apps/storige/orders/{id}/pdf</li>
+        </ul>
+      </div>
+      <div class="timeline-item" data-phase="S4">
+        <h4>Theme App Extension <span class="duration">3일</span></h4>
+        <ul>
+          <li>Liquid app block <code>storige-designer.liquid</code></li>
+          <li>제품 페이지에 "🎨 디자인하기" 버튼 + iframe modal</li>
+          <li>편집기 완료 → postMessage → cart line item property 첨부</li>
+        </ul>
+      </div>
+      <div class="timeline-item" data-phase="S5">
+        <h4>Billing + 가격 정책 <span class="duration">2일</span> <span style="background: var(--success); color: white; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; margin-left: 4px;">v1.1 결정</span></h4>
+        <ul>
+          <li>Shopify Billing API: <code>RecurringApplicationCharge</code> + <code>UsageCharge</code> (capped)</li>
+          <li><strong>Free tier</strong>: 합성 잡 20건/월 무료</li>
+          <li><strong>사용량</strong>: 21건째부터 $0.50/건 (월 $99 cap)</li>
+          <li><strong>Pro</strong>: $29/월 무제한 (선택)</li>
+          <li>Polaris UI에 실시간 사용량 게이지 + 80% 임계 알림</li>
+        </ul>
+      </div>
+      <div class="timeline-item" data-phase="S6">
+        <h4>Built for Shopify 인증 준비 <span class="duration">1주</span></h4>
+        <ul>
+          <li>Lighthouse ≤10pt 영향 검증 (별도 도메인 통과 쉬움)</li>
+          <li>GDPR/CCPA 정책 페이지 + 개인정보 처리방침</li>
+          <li>접근성 (WCAG 2.1 AA) — Polaris 자동</li>
+          <li>App listing 자료: 스크린샷, 데모 영상(영문 자막), 아이콘</li>
+        </ul>
+      </div>
+      <div class="timeline-item" data-phase="S7">
+        <h4>검수 제출 + 1차 review 대응 <span class="duration">2~4주</span></h4>
+        <ul>
+          <li>Shopify Partner Dashboard에서 submission</li>
+          <li>평균 review 4-7 영업일 → feedback → 수정 → 재제출</li>
+          <li>평균 2-4주 후 publish</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- §6 수익 시뮬레이션 (v1.1 — Freemium + 사용량) -->
+  <div class="section">
+    <h2><span class="num">6</span> 수익 시뮬레이션 <span style="background: var(--success); color: white; padding: 3px 10px; border-radius: 6px; font-size: 11px; font-weight: 700; margin-left: 8px; vertical-align: middle;">v1.1 — Freemium + 사용량</span></h2>
+    <p style="margin-bottom: 14px; color: var(--gray-600);">
+      Shopify Revenue Share: 첫 <strong>$1,000,000 매출까지 0%</strong>, 이후 15% (영구). 2025-01 이후 누적. <br>
+      <strong>Free 20건/월 → 초과 $0.50/건 (cap $99) → Pro $29/월 무제한 (선택)</strong>
+    </p>
+    <div class="pricing-cards">
+      <div class="pricing-card">
+        <h4>📈 보수적 시나리오 (publish 후 6개월)</h4>
+        <div class="scenario-line"><span>Free 사용자 (200명)</span><span>$0</span></div>
+        <div class="scenario-line"><span>사용량 과금 평균 (40명 × $15)</span><span>$600/월</span></div>
+        <div class="scenario-line"><span>Pro 정액 (10명 × $29)</span><span>$290/월</span></div>
+        <div class="total"><span>월 합계</span><span class="amount">$890</span></div>
+        <div class="total"><span>연 매출</span><span class="amount">$10,680</span></div>
+        <div class="note">→ $1M 도달까지 90년+ = 사실상 영구 0% 수수료. Free funnel이 작아도 사용량 과금이 핵심 수익원.</div>
+      </div>
+      <div class="pricing-card aggressive">
+        <h4>🚀 성장 시나리오 (publish 후 18개월)</h4>
+        <div class="scenario-line"><span>Free 사용자 (1,500명)</span><span>$0 · CAC=0</span></div>
+        <div class="scenario-line"><span>사용량 과금 평균 (250명 × $20)</span><span>$5,000/월</span></div>
+        <div class="scenario-line"><span>Pro 정액 (60명 × $29)</span><span>$1,740/월</span></div>
+        <div class="total"><span>월 합계</span><span class="amount">$6,740</span></div>
+        <div class="total"><span>연 매출</span><span class="amount">$80,880</span></div>
+        <div class="note">→ Shopify App Store 자체 노출로 CAC ≈ 0. $1M 도달까지 약 12년 → 영구 0% 수수료 유효.</div>
+      </div>
+    </div>
+    <div style="margin-top: 14px; padding: 12px 16px; background: #FEF9C3; border-left: 3px solid var(--warning); border-radius: 6px; font-size: 13px; color: var(--gray-800);">
+      💡 <strong>Freemium의 강점</strong>: ① CAC가 사실상 0 (Shopify App Store 자체 노출) · ② 사용량 과금은 건당 처리 비용(GS·Sharp)이 명확해 마진 예측 쉬움 · ③ 책자/포토북 합성처럼 건수 기반 가치 단위가 명확한 도메인과 정렬됨
+    </div>
+  </div>
+
+  <!-- §7 위험 + 의사결정 -->
+  <div class="section">
+    <h2><span class="num">7</span> 위험 + 의사결정 항목</h2>
+
+    <h3 style="color: var(--success); margin-top: 0;">✅ 결정 완료 (2026-05-27)</h3>
+    <div class="risk-grid">
+      <div class="risk-item green">
+        <div class="icon">①</div>
+        <div class="label">타깃 시장</div>
+        <div class="action">🌐 글로벌 + 한국 동시</div>
+      </div>
+      <div class="risk-item green">
+        <div class="icon">②</div>
+        <div class="label">가격 모델</div>
+        <div class="action">🆓 Freemium (20건/월) + $0.50/건 + Pro $29/월</div>
+      </div>
+      <div class="risk-item green">
+        <div class="icon">③</div>
+        <div class="label">브랜드명</div>
+        <div class="action">🏷 Printable Editor</div>
+      </div>
+      <div class="risk-item green">
+        <div class="icon">④</div>
+        <div class="label">편집기 i18n</div>
+        <div class="action">🌍 영문 + 한글 동시 (react-i18next)</div>
+      </div>
+      <div class="risk-item green">
+        <div class="icon">⑤</div>
+        <div class="label">PHP × Shopify 순서</div>
+        <div class="action">⚡ 병렬 진행 (워크트리/브랜치 분리)</div>
+      </div>
+    </div>
+
+    <h3 style="color: var(--warning);">🟡 기술 리스크 (병렬 진행 항목 포함)</h3>
+    <div class="risk-grid">
+      <div class="risk-item yellow">
+        <div class="icon">⚡</div>
+        <div class="label">Lighthouse 점수</div>
+        <div class="action">편집기 별도 도메인 + lazy load → 영향 최소</div>
+      </div>
+      <div class="risk-item yellow">
+        <div class="icon">🛡</div>
+        <div class="label">2025-08 GDPR 강화</div>
+        <div class="action">DSR webhook 3종 미리 구현</div>
+      </div>
+      <div class="risk-item yellow">
+        <div class="icon">🔄</div>
+        <div class="label">첫 리뷰 거절</div>
+        <div class="action">평균 2회 재제출 — 일정 2주 buffer</div>
+      </div>
+      <div class="risk-item yellow">
+        <div class="icon">🌐</div>
+        <div class="label">영문 review (한글 편집기)</div>
+        <div class="action">i18n 영문 우선 + 영문 자막 데모 영상 + 영문 docs 준비</div>
+      </div>
+      <div class="risk-item yellow">
+        <div class="icon">🔀</div>
+        <div class="label">PHP × Shopify 병렬</div>
+        <div class="action">워크트리/브랜치 격리 + 일·주 단위 단일 트랙 집중</div>
+      </div>
+      <div class="risk-item yellow">
+        <div class="icon">💸</div>
+        <div class="label">사용량 과금 cap 누락</div>
+        <div class="action">UsageCharge cappedAmount 필수 + 80% 임계 알림</div>
+      </div>
+      <div class="risk-item yellow">
+        <div class="icon">🚫</div>
+        <div class="label">Free tier 남용</div>
+        <div class="action">합성 전 사용량 확인 게이트 + 동일 shop 다중 install 차단</div>
+      </div>
+    </div>
+
+    <h3 style="color: var(--success);">🟢 강점 활용 포인트</h3>
+    <div class="risk-grid">
+      <div class="risk-item green">
+        <div class="icon">📊</div>
+        <div class="label">검증된 운영 인프라</div>
+        <div class="action">Grafana + Loki + Sentry — Shopify 운영 안정성 입증 자료</div>
+      </div>
+      <div class="risk-item green">
+        <div class="icon">🏗</div>
+        <div class="label">Phase A/B/C 멀티사이트</div>
+        <div class="action">Shopify 멀티 스토어 격리에 1:1 매칭</div>
+      </div>
+      <div class="risk-item green">
+        <div class="icon">📚</div>
+        <div class="label">PDF 합성 도메인 전문성</div>
+        <div class="action">POD customizer 대비 책자/명함 특화 차별점</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- §8 다음 액션 (v1.1) -->
+  <div class="section">
+    <h2><span class="num">8</span> 다음 액션 <span style="background: var(--success); color: white; padding: 3px 10px; border-radius: 6px; font-size: 11px; font-weight: 700; margin-left: 8px; vertical-align: middle;">v1.1 — GO 후 재정렬</span></h2>
+    <p style="margin-bottom: 14px; color: var(--gray-600);">의사결정 5가지가 모두 확정되어 즉시 실행 가능. <strong>③ 부터 Claude가 병렬 작업 시작</strong>.</p>
+    <div class="ladder">
+      <div class="ladder-row" style="background: linear-gradient(90deg, #FEF3C7 0%, white 100%);">
+        <div class="step">①</div>
+        <div class="title">Shopify Partner 가입 ($19) + dev store 생성 + API key/secret 발급 → <code>.env</code> 등록</div>
+        <div class="owner user">사용자 직접</div>
+        <div class="duration">30분</div>
+      </div>
+      <div class="ladder-row" style="background: linear-gradient(90deg, #FEF3C7 0%, white 100%);">
+        <div class="step">②</div>
+        <div class="title">경쟁사 무료 체험 (Customily / Print.App / Inkybay) → UX 캡처 + 차별점 영문 카피</div>
+        <div class="owner user">사용자 직접</div>
+        <div class="duration">1~2h</div>
+      </div>
+      <div class="ladder-row">
+        <div class="step">③</div>
+        <div class="title"><strong>SHOPIFY_TECHNICAL_DESIGN.md</strong> — Phase S-2~S-5 상세 설계 (OAuth/Webhook/Billing/i18n)</div>
+        <div class="owner storige">Storige</div>
+        <div class="duration">이번 주</div>
+      </div>
+      <div class="ladder-row">
+        <div class="step">④</div>
+        <div class="title"><strong>i18n 골격</strong> — apps/editor + apps/admin 에 react-i18next 도입 (영문/한글 동시)</div>
+        <div class="owner storige">Storige</div>
+        <div class="duration">2~3일</div>
+      </div>
+      <div class="ladder-row">
+        <div class="step">⑤</div>
+        <div class="title"><strong>워크트리 셋업</strong> — 신규 <code>apps/shopify</code> (Remix + @shopify/shopify-app-remix) 스캐폴딩</div>
+        <div class="owner storige">Storige</div>
+        <div class="duration">1일</div>
+      </div>
+      <div class="ladder-row">
+        <div class="step">⑥</div>
+        <div class="title">Phase S-1 ~ S-7 진행 (PHP 트랙과 <strong>병렬</strong>, 브랜치 분리)</div>
+        <div class="owner storige">Storige</div>
+        <div class="duration">6~8주</div>
+      </div>
+      <div class="ladder-row">
+        <div class="step">⑦</div>
+        <div class="title">검수 후 publish → Free→Usage→Pro 전환율 추적 → 가격/cap 조정 → 기능 추가</div>
+        <div class="owner storige">Storige</div>
+        <div class="duration">상시</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- §9 Sources -->
+  <div class="section">
+    <h2><span class="num">9</span> 참조 자료</h2>
+    <h3>Shopify 공식 문서</h3>
+    <div class="sources">
+      <a href="https://shopify.dev/docs/apps/launch/shopify-app-store/app-store-requirements" target="_blank">📋 App Store requirements (Shopify dev)</a>
+      <a href="https://shopify.dev/docs/apps/launch/built-for-shopify/requirements" target="_blank">⭐ Built for Shopify requirements</a>
+      <a href="https://shopify.dev/docs/apps/launch/distribution/revenue-share" target="_blank">💰 Revenue share for App Store developers</a>
+      <a href="https://shopify.dev/docs/apps/build/online-store/theme-app-extensions/configuration" target="_blank">🎨 Configure theme app extensions</a>
+      <a href="https://shopify.dev/docs/apps/build/authentication-authorization/session-tokens" target="_blank">🔐 About session tokens (Auth)</a>
+      <a href="https://shopify.dev/docs/apps/build/online-store/app-proxies/authenticate-app-proxies" target="_blank">🔗 Authenticate app proxies</a>
+    </div>
+
+    <h3>경쟁사 (App Store listings)</h3>
+    <div class="sources">
+      <a href="https://apps.shopify.com/customily-product-personalizer" target="_blank">🛍 Customily Product Personalizer ($49/월)</a>
+      <a href="https://apps.shopify.com/print-app-1" target="_blank">🛍 Print.App Product Customizer ($39/월)</a>
+      <a href="https://apps.shopify.com/productsdesigner" target="_blank">🛍 Inkybay Product Personalizer ($19.99~/월)</a>
+      <a href="https://apps.shopify.com/smartcustomizer" target="_blank">🛍 Smart Customizer for W2P</a>
+      <a href="https://www.customily.com/post/top-7-best-product-personalizer-apps-for-shopify" target="_blank">📊 Top 7 Best Product Personalizer Apps 2026</a>
+    </div>
+
+    <h3>Storige 내부 연계</h3>
+    <div class="sources">
+      <a href="PLATFORM_WORKER_INTEGRATION_v1.md">📚 PLATFORM_WORKER_INTEGRATION_v1.md — Shopify 앱의 백엔드 기반</a>
+      <a href="PHASE_A_SITE_MODEL_REPORT_2026-05-06.md">📚 PHASE_A_SITE_MODEL_REPORT — 멀티사이트 모델</a>
+      <a href="MASTER_STATUS_2026-05-07.md">📚 MASTER_STATUS_2026-05-07 — 전체 진척률</a>
+    </div>
+  </div>
+
+  <div style="text-align: center; padding: 24px; color: var(--gray-400); font-size: 12px; border-top: 1px solid var(--gray-200); margin-top: 32px;">
+    📋 <strong>Printable Editor</strong> × Shopify 배포 계획 <strong>v1.1</strong> · 2026-05-27 · ✅ <span style="color: var(--success);">GO 결정 완료 — Phase S-1 진행 중</span>
+  </div>
+
+</div>
+</body>
+</html>
