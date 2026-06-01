@@ -218,7 +218,7 @@ interface EditSessionCreatePayload {
   metadata?: Record<string, any>
 }
 
-interface EditorInstanceMethods {
+export interface EditorInstanceMethods {
   save: () => Promise<SaveResult>
   complete: () => Promise<void>
   cancel: () => void

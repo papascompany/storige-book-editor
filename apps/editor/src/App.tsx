@@ -11,6 +11,8 @@ const BrowseContentsView = lazy(() => import('./views/BrowseContentsView'))
 const UnauthorizedView = lazy(() => import('./views/UnauthorizedView'))
 // 인쇄 워크플로우 v1 Phase 6-C (2026-05-19)
 const MyWorksView = lazy(() => import('./views/MyWorksView'))
+// iframe 임베드 전용 — 완전 배선된 EmbeddedEditor 마운트 (신규편집/sessionId 재편집)
+const EmbedView = lazy(() => import('./views/EmbedView'))
 
 // Loading fallback component
 function LoadingFallback() {
@@ -41,6 +43,8 @@ function App() {
           <Route path="/unauthorized" element={<UnauthorizedView />} />
           {/* 인쇄 워크플로우 v1 Phase 6-C (2026-05-19) */}
           <Route path="/my-works" element={<MyWorksView />} />
+          {/* iframe 임베드 전용 (bookmoa-mobile 등) — 신규편집/sessionId 재편집 */}
+          <Route path="/embed" element={<EmbedView />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Suspense>
