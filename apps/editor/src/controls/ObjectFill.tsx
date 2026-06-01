@@ -155,13 +155,18 @@ export default function ObjectFill() {
       const obj = firstSelection as any
 
       if (obj.type === 'i-text') {
-        // Text object - apply to all characters
+        // Text object — 편집 중 글자 범위를 선택했으면 그 부분에만, 아니면 전체에 적용 (부분 색상)
         const it = obj
         const textLen = it.text?.length ?? 0
-        if (textLen > 0) {
-          it.setSelectionStyles({ fill: rgbaString }, 0, textLen)
+        const hasRange = it.selectionStart !== it.selectionEnd
+        if (hasRange) {
+          it.setSelectionStyles({ fill: rgbaString }, it.selectionStart ?? 0, it.selectionEnd ?? textLen)
+        } else {
+          if (textLen > 0) {
+            it.setSelectionStyles({ fill: rgbaString }, 0, textLen)
+          }
+          it.set('fill', rgbaString)
         }
-        it.set('fill', rgbaString)
         it.dirty = true
       } else {
         obj.fill = rgbaString

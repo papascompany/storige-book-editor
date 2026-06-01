@@ -7,6 +7,7 @@ import FontPreviewDropdown from '@/components/FontPreviewDropdown'
 import { Button } from '@/components/ui/button'
 import {
   Bold as TextB,
+  Italic as TextItalic,
   Underline as TextUnderline,
   AlignLeft as TextAlignLeft,
   AlignCenter as TextAlignCenter,
@@ -14,9 +15,19 @@ import {
   CaseSensitive as TextAa,
   MoveVertical as ArrowsVertical,
   MoveHorizontal as ArrowsHorizontal,
+  ChevronDown,
 } from 'lucide-react'
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from '@/components/ui/dropdown-menu'
 import { FontPlugin, ptToPx, pxToPt } from '@storige/canvas-core'
 import { getFontListAsSource, findFontByName, type FontSource } from '@/utils/fontManager'
+
+// 글자 크기 프리셋 (pt) — 선택 드롭다운용
+const PRESET_FONT_SIZES = [6, 8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 42, 48, 56, 64, 72, 96]
 
 // Fabric.js IText 타입 정의 (런타임에 로드됨)
  
@@ -167,6 +178,15 @@ export default function TextAttributes() {
     return !mixed && value === true
   }, [activeSelection, selectionTick, computeCurrentValue])
 
+  // Italic selected (fontStyle)
+  const isItalicSelected = useMemo(() => {
+    void selectionTick
+    const obj = activeSelection?.[0] as FabricIText | undefined
+    if (!obj) return false
+    const { mixed, value } = computeCurrentValue<string>(obj, 'fontStyle')
+    return !mixed && value === 'italic'
+  }, [activeSelection, selectionTick, computeCurrentValue])
+
   // Line height
   const currentLineHeight = useMemo(() => {
     void selectionTick
@@ -288,6 +308,31 @@ export default function TextAttributes() {
     bumpSelectionTick()
   }, [activeSelection, canvas, computeCurrentValue, bumpSelectionTick])
 
+  // Italic toggle (fontStyle)
+  const handleItalic = useCallback(() => {
+    const obj = activeSelection?.[0] as FabricIText | undefined
+    if (!obj) return
+
+    const hasRange = obj.selectionStart !== obj.selectionEnd
+    if (hasRange) {
+      const styles = obj.getSelectionStyles() as Array<Record<string, unknown>>
+      const allItalic = styles.length > 0 && styles.every((s) => s.fontStyle === 'italic')
+      obj.setSelectionStyles({ fontStyle: allItalic ? 'normal' : 'italic' })
+    } else {
+      const { mixed, value } = computeCurrentValue<string>(obj, 'fontStyle')
+      const toItalic = !(value === 'italic' && !mixed)
+      const total = obj.text?.length ?? 0
+      if (total > 0) {
+        obj.setSelectionStyles({ fontStyle: toItalic ? 'italic' : 'normal' }, 0, total)
+      }
+      obj.fontStyle = toItalic ? 'italic' : 'normal'
+    }
+
+    obj.dirty = true
+    canvas?.renderAll()
+    bumpSelectionTick()
+  }, [activeSelection, canvas, computeCurrentValue, bumpSelectionTick])
+
   // Text align
   const handleAlign = useCallback(
     (type: 'left' | 'center' | 'right') => {
@@ -309,14 +354,11 @@ export default function TextAttributes() {
     [activeSelection, canvas, bumpSelectionTick]
   )
 
-  // Font size change
-  const handleFontSizeChange = useCallback(
-    (e: React.FocusEvent<HTMLInputElement> | React.KeyboardEvent<HTMLInputElement>) => {
+  // Font size 적용 (pt 값) — 입력과 프리셋 선택이 공유
+  const applyFontSizePt = useCallback(
+    (num: number) => {
       const obj = activeSelection?.[0] as FabricIText | undefined
       if (!obj) return
-
-      const target = e.target as HTMLInputElement
-      const num = Number(target?.value)
       if (!isFinite(num) || num <= 0) return
 
       const currentDPI = currentSettings.dpi || 150
@@ -340,6 +382,15 @@ export default function TextAttributes() {
       bumpSelectionTick()
     },
     [activeSelection, canvas, currentSettings.dpi, bumpSelectionTick]
+  )
+
+  // Font size change (입력 필드)
+  const handleFontSizeChange = useCallback(
+    (e: React.FocusEvent<HTMLInputElement> | React.KeyboardEvent<HTMLInputElement>) => {
+      const target = e.target as HTMLInputElement
+      applyFontSizePt(Number(target?.value))
+    },
+    [applyFontSizePt]
   )
 
   // Line height change
@@ -404,23 +455,54 @@ export default function TextAttributes() {
             />
           </div>
 
-          {/* Font size */}
-          <ControlInput
-            value={typeof currentFontSize === 'number' ? currentFontSize : 0}
-            display={isFontSizeMixed ? 'mixed' : undefined}
-            onChange={handleFontSizeChange}
-            type="number"
-            min={1}
-            step={1}
-          >
-            <TextAa className="h-5 w-5" />
-          </ControlInput>
+          {/* Font size — 직접 입력 + 프리셋 선택(pt) */}
+          <div className="flex items-center gap-1" title="글자 크기 (pt)">
+            <ControlInput
+              value={typeof currentFontSize === 'number' ? currentFontSize : 0}
+              display={isFontSizeMixed ? 'mixed' : undefined}
+              onChange={handleFontSizeChange}
+              type="number"
+              min={1}
+              step={1}
+              className="flex-1"
+            >
+              <TextAa className="h-5 w-5" />
+            </ControlInput>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-6 shrink-0 bg-editor-surface-lowest rounded"
+                  title="크기 선택"
+                  aria-label="글자 크기 선택"
+                >
+                  <ChevronDown className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="max-h-64 min-w-[4.5rem] overflow-y-auto">
+                {PRESET_FONT_SIZES.map((sz) => (
+                  <DropdownMenuItem
+                    key={sz}
+                    onSelect={() => applyFontSizePt(sz)}
+                    className="justify-between text-sm"
+                  >
+                    <span>{sz}</span>
+                    <span className="text-editor-text-muted text-xs">pt</span>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
 
-          {/* TextB & TextUnderline */}
+          {/* 굵게 / 기울임 / 밑줄 — 아이콘 자체가 스타일을 직관적으로 표현 */}
           <div className="flex items-center h-10 bg-editor-surface-lowest rounded overflow-hidden">
             <Button
               variant="ghost"
               size="icon"
+              title="굵게"
+              aria-label="굵게"
+              aria-pressed={isBoldSelected}
               className={`flex-1 h-full rounded-none border-r border-editor-border ${isBoldSelected ? 'bg-editor-surface-high text-primary' : ''}`}
               onClick={handleBold}
             >
@@ -429,6 +511,20 @@ export default function TextAttributes() {
             <Button
               variant="ghost"
               size="icon"
+              title="기울임 (이탤릭)"
+              aria-label="기울임"
+              aria-pressed={isItalicSelected}
+              className={`flex-1 h-full rounded-none border-r border-editor-border ${isItalicSelected ? 'bg-editor-surface-high text-primary' : ''}`}
+              onClick={handleItalic}
+            >
+              <TextItalic className="h-5 w-5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              title="밑줄"
+              aria-label="밑줄"
+              aria-pressed={isUnderlineSelected}
               className={`flex-1 h-full rounded-none ${isUnderlineSelected ? 'bg-editor-surface-high text-primary' : ''}`}
               onClick={handleUnderline}
             >
