@@ -23,6 +23,8 @@ export default function TextEffect() {
   const [averageRadius, setAverageRadius] = useState(0)
   const [gap, setGap] = useState(0)
   const [curveDirection, setCurveDirection] = useState<CurveDirectionType>('upward')
+  // 호 각도(도) — 180=반원(기본), 키우면 원 둘레를 더 감쌈 (배지/병뚜껑/라벨)
+  const [arcDeg, setArcDeg] = useState(180)
 
   const prevTextCountRef = useRef<number | undefined>(undefined)
   const isInitializingRef = useRef(false)
@@ -50,11 +52,20 @@ export default function TextEffect() {
   }, [activeSelection, refreshTick])
 
   // Generate path data for curved text
-  const generatePathData = useCallback((r: number, reverse: boolean = false) => {
-    return `
-    M ${-r}, ${0}
-    A ${r} ${r} 0 1 ${!reverse ? 1 : 0} ${r}, 0
-    `
+  // deg = 호 각도(도). 180=반원(기존 동작과 동일). 키우면 원을 더 감싼다.
+  // 상단(upward)은 sweep 1, 하단(downward)은 sweep 0 로 기존 방향성 유지.
+  const generatePathData = useCallback((r: number, reverse: boolean = false, deg: number = 180) => {
+    const d = Math.max(10, Math.min(deg, 350))
+    const h = (d / 2) * (Math.PI / 180)
+    const sx = r * Math.sin(h)
+    const cy = r * Math.cos(h)
+    const largeArc = d > 180 ? 1 : 0
+    if (!reverse) {
+      // 위쪽 호 (상단 중심)
+      return `M ${-sx}, ${-cy} A ${r} ${r} 0 ${largeArc} 1 ${sx}, ${-cy}`
+    }
+    // 아래쪽 호 (하단 중심)
+    return `M ${-sx}, ${cy} A ${r} ${r} 0 ${largeArc} 0 ${sx}, ${cy}`
   }, [])
 
   // Calculate radius based on text length
@@ -78,7 +89,7 @@ export default function TextEffect() {
 
     canvas.offHistory?.()
 
-    const pathData = generatePathData(radius, curveDirection === 'downward')
+    const pathData = generatePathData(radius, curveDirection === 'downward', arcDeg)
     const path = await createPath(pathData, {
       id: 'curveText',
       stroke: '#000',
@@ -91,10 +102,10 @@ export default function TextEffect() {
     })
 
     // Get path segments info
-     
+
     const fabric = (window as any).fabric
     if (fabric?.util?.getPathSegmentsInfo) {
-       
+
       (path as any).segmentsInfo = fabric.util.getPathSegmentsInfo((path as any).path)
     }
 
@@ -106,10 +117,11 @@ export default function TextEffect() {
       curveRadius: radius,
       charSpacing: gap,
       curveDirection: curveDirection,
+      curveArcDeg: arcDeg,
     })
 
     canvas.renderAll()
-  }, [activeSelection, canvas, radius, gap, curveDirection, generatePathData])
+  }, [activeSelection, canvas, radius, gap, curveDirection, arcDeg, generatePathData])
 
   // Add curve
   const addCurve = useCallback(async () => {
@@ -131,7 +143,7 @@ export default function TextEffect() {
     // Apply curve directly with new values
     canvas.offHistory?.()
 
-    const pathData = generatePathData(newRadius, curveDirection === 'downward')
+    const pathData = generatePathData(newRadius, curveDirection === 'downward', arcDeg)
     const path = await createPath(pathData, {
       id: 'curveText',
       stroke: '#000',
@@ -143,10 +155,10 @@ export default function TextEffect() {
       width: (obj.width || 0) * (obj.scaleX || 1),
     })
 
-     
+
     const fabric = (window as any).fabric
     if (fabric?.util?.getPathSegmentsInfo) {
-       
+
       (path as any).segmentsInfo = fabric.util.getPathSegmentsInfo((path as any).path)
     }
 
@@ -158,11 +170,12 @@ export default function TextEffect() {
       curveRadius: newRadius,
       charSpacing: gap,
       curveDirection: curveDirection,
+      curveArcDeg: arcDeg,
     })
 
     canvas.renderAll()
     forceRefresh()
-  }, [activeSelection, canvas, radius, gap, curveDirection, calcRadius, generatePathData])
+  }, [activeSelection, canvas, radius, gap, curveDirection, arcDeg, calcRadius, generatePathData])
 
   // Remove curve
   const removeCurve = useCallback(() => {
@@ -183,6 +196,7 @@ export default function TextEffect() {
     setRadius(0)
     setAverageRadius(0)
     setGap(0)
+    setArcDeg(180)
     forceRefresh()
   }, [activeSelection, canvas])
 
@@ -217,18 +231,23 @@ export default function TextEffect() {
     }
   }, [hasPath, curveText])
 
+  // Handle arc angle change — drag 중 라이브 반영 (아래 useEffect가 재적용)
+  const handleAngleChange = useCallback((value: number[]) => {
+    setArcDeg(value[0])
+  }, [])
+
   // Apply curve when direction changes only
   useEffect(() => {
     // Skip during initialization to prevent infinite loop
     if (isInitializingRef.current) {
       return
     }
-    // Only apply when direction changes (radius and gap are handled by onValueCommit)
+    // Apply when direction or arc angle changes (radius and gap are handled by onValueCommit)
     if (hasPath && radius > 0) {
       curveText()
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [curveDirection])
+  }, [curveDirection, arcDeg])
 
   // Initialize values when selection changes
   useEffect(() => {
@@ -254,6 +273,7 @@ export default function TextEffect() {
       setAverageRadius(baseAverage)
       setGap(objGap)
       setCurveDirection(obj.curveDirection || 'upward')
+      setArcDeg(obj.curveArcDeg || 180)
 
       // Reset flag after state updates are applied
       requestAnimationFrame(() => {
@@ -264,6 +284,7 @@ export default function TextEffect() {
       setRadius(0)
       setAverageRadius(0)
       setGap(0)
+      setArcDeg(180)
     }
   }, [activeSelection])
 
@@ -340,6 +361,21 @@ export default function TextEffect() {
                   onValueCommit={handleRadiusCommit}
                   min={0}
                   max={averageRadius + 100}
+                  step={1}
+                />
+              </div>
+
+              {/* Arc angle — 원 둘레를 감싸는 정도 (180=반원, 키우면 원형/배지) */}
+              <div className="flex flex-col gap-3">
+                <div className="flex justify-between items-center">
+                  <label className="text-xs text-editor-text-muted">각도</label>
+                  <span className="text-xs text-editor-text">{Math.round(arcDeg)}°</span>
+                </div>
+                <Slider
+                  value={[arcDeg]}
+                  onValueChange={handleAngleChange}
+                  min={30}
+                  max={340}
                   step={1}
                 />
               </div>
