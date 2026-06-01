@@ -112,6 +112,7 @@ export namespace core {
     'curveRadius',
     'charSpacing',
     'curveDirection',
+    'curveArcDeg',
     'pathAlign',
     'fillImage',
     'accessory',
