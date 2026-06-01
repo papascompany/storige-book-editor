@@ -378,6 +378,26 @@ export default function TextEffect() {
                   max={340}
                   step={1}
                 />
+                {/* 빠른 각도 프리셋 (배지/라벨/병뚜껑) — 일반 버튼이라 한 번에 적용 */}
+                <div className="flex gap-1">
+                  {[
+                    { label: '반원', deg: 180 },
+                    { label: '¾', deg: 270 },
+                    { label: '원형', deg: 320 },
+                  ].map((p) => (
+                    <Button
+                      key={p.deg}
+                      variant="ghost"
+                      size="sm"
+                      title={`${p.deg}°`}
+                      aria-pressed={Math.round(arcDeg) === p.deg}
+                      className={`flex-1 h-7 text-[11px] bg-editor-surface-lowest ${Math.round(arcDeg) === p.deg ? 'text-primary' : 'text-editor-text-muted'}`}
+                      onClick={() => setArcDeg(p.deg)}
+                    >
+                      {p.label}
+                    </Button>
+                  ))}
+                </div>
               </div>
 
               {/* Gap */}
