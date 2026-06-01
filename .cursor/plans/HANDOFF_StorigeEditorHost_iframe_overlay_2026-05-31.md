@@ -20,6 +20,38 @@
 
 ---
 
+## ⚡ 업데이트 (2026-06-01) — Storige 측 `/embed` 라우트 배포 완료, 이 내용이 우선
+
+> 아래 변경은 **Storige 측 구현이 끝나 배포된 새 계약**이다. §2~§5의 옛 `/?templateSetId=…`(EditorView) 설명보다 **이 절을 우선** 적용하라. (옛 경로는 완료 메시지를 안 보냈고, 이제 `/embed`가 정식 경로다.)
+
+### (1) iframe 진입 URL을 `/embed` 로 변경 (가장 중요)
+- **옛**: `https://editor.papascompany.co.kr/?templateSetId=…`  ← 완료 메시지 미발신(쓰지 말 것)
+- **신규 편집**: `https://editor.papascompany.co.kr/embed?templateSetId=<id>&token=<jwt>&orderSeqno=<n>&pageCount=&paperType=&bindingType=&parentOrigin=https://bookmoa-mobile.vercel.app`
+- **재편집(장바구니/주문내역의 수정 버튼)**: `https://editor.papascompany.co.kr/embed?sessionId=<저장된세션ID>&token=<jwt>&parentOrigin=https://bookmoa-mobile.vercel.app`
+  - `templateSetId`는 **세션에서 자동 도출**되므로 생략 가능(함께 보내도 무방·권장).
+  - `/embed`는 **완전 배선된 편집기**(자동저장·세션영속·재편집 복원·정식 postMessage)를 띄운다.
+
+### (2) 완료 메시지 — 이제 **dual-emit** (둘 다 옴)
+편집완료 시 `/embed`가 두 메시지를 **모두** 발신한다:
+- **레거시** `{ type:'storige:completed', payload:{ sessionId, orderSeqno, status, completedAt, files } }` ← **지금 구현한 수신부 그대로 동작** ✅
+- **정식** `{ source:'storige-editor', version:'1', event:'editor.complete', payload:{ sessionId, … }, timestamp }` ← 추후 이걸로 이전 권장
+- 저장 시: `storige:saved` / `editor.save`, 준비 완료: `storige:ready` / `editor.ready`, 취소: `storige:cancel` / `editor.cancel`, 에러: `storige:error` / `editor.error`
+- → **현재 구현 변경 없이 작동**한다. 정식 엔벨로프로 옮길지는 선택.
+
+### (3) 재편집 플로우 대응 (신규 요구사항 — 장바구니/주문내역 "수정" 버튼)
+편집보관함이 아직 없어도, **세션ID를 항목에 저장**해두면 재편집이 된다:
+1. 신규 편집 완료 시 받은 `payload.sessionId`를 **그 장바구니 항목 / 주문 라인에 저장**(Supabase).
+2. 장바구니/주문내역 행의 "수정"(초록 아이콘) 클릭 → 저장해 둔 `sessionId`로 `/embed?sessionId=…&token=…&parentOrigin=…` 오버레이 오픈.
+3. 편집기가 그 세션의 **최종 canvasData를 그대로 복원**해 이어서 편집 → 다시 완료하면 같은 세션이 갱신(`editVersion` 증가)된다.
+4. 적용 화면: 마이페이지 > 주문 > **주문내역**(관리 `•••`), 마이페이지 > 주문 > **장바구니**(파일/펜 아이콘). 두 곳 모두 같은 `/embed?sessionId=` 방식.
+   - 주문 확정(결제완료) 전까지는 항상 재편집 가능. 확정 후 정책은 bookmoa가 상태값으로 게이팅.
+
+### (4) 그대로 적용되는 것
+- §6 풀스크린 오버레이 / §7 모바일 체크리스트 / §8 보안(origin 검증) — **변경 없이 그대로**.
+- 단 §5.2 수신부의 origin 검증(`e.origin === 'https://editor.papascompany.co.kr'`)은 필수 유지.
+
+---
+
 ## 1. 근본 원인 (검증됨)
 
 에디터 `/` 라우트(`EditorView`)는 URL에 `templateSetId / productId / contentId / editMode`가 **전부 없으면** 의도적으로 샘플 템플릿셋(`sample-8x8-book-24p`)을 로드한다. (디폴트 데모 동작)

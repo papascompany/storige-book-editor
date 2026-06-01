@@ -1,5 +1,15 @@
 # 후속 지시서 — Storige 에디터 postMessage 규약 통일 (라우트 경로 정식 엔벨로프 발신)
 
+> ## ✅ 상태: 대체 해결됨 (SUPERSEDED, 2026-06-01)
+> 이 문서의 목표(라우트 경로에서 정식 엔벨로프 + 레거시 dual-emit)는 **`/embed` 라우트 신설로 이미 달성**되었다.
+> - 구현: `apps/editor/src/views/EmbedView.tsx`(신규) + `apps/editor/src/App.tsx`(`/embed` 라우트) — 완전 배선된 `EmbeddedEditor`를 마운트.
+> - `/embed`가 **정식 엔벨로프(`editor.*`)** 와 **레거시(`storige:*`)** 를 동시 발신(dual-emit) + `parentOrigin` 지원 + **sessionId 재편집**까지 처리.
+> - 즉 "기존 `/` 경로(EditorView)를 고쳐 dual-emit"하는 아래 작업은 **불필요**해졌다. (bookmoa는 `/`가 아니라 `/embed`를 쓴다.)
+>
+> 아래 본문은 **대안 설계 기록**으로만 보존한다. 별도 후속(예: `/`도 통일, 레거시 deprecate)은 여전히 유효한 참고.
+
+---
+
 > **대상**: 다른 Claude Code 세션 (Storige 레포 `storige-book-editor` 작업자)
 > **작성**: 2026-06-01 / 현재 코드 상태 검증 완료 (§8 참조 경로)
 > **레포**: `storige-book-editor` (PUBLIC, master)
