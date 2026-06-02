@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Storige 상품·템플릿 등록 매뉴얼</title>
+<style>
+  :root{
+    --bg:#0f172a; --card:#1e293b; --card2:#243449; --ink:#e2e8f0; --muted:#94a3b8;
+    --line:#334155; --accent:#38bdf8; --accent2:#818cf8; --ok:#34d399; --warn:#fbbf24; --bad:#f87171;
+    --chip:#0ea5e9;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:linear-gradient(180deg,#0b1220,#0f172a);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+    line-height:1.65;padding:0 0 80px}
+  header{padding:48px 24px 28px;text-align:center;border-bottom:1px solid var(--line);
+    background:radial-gradient(900px 300px at 50% -40%,rgba(56,189,248,.18),transparent)}
+  header h1{margin:0;font-size:30px;letter-spacing:-.5px}
+  header p{margin:8px 0 0;color:var(--muted)}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 24px}
+  .badge{display:inline-block;background:rgba(56,189,248,.15);color:var(--accent);
+    border:1px solid rgba(56,189,248,.4);border-radius:999px;padding:3px 12px;font-size:13px;margin-top:14px}
+  h2{margin:48px 0 12px;font-size:23px;padding-bottom:8px;border-bottom:2px solid var(--accent2);display:flex;gap:10px;align-items:center}
+  h2 .n{background:var(--accent2);color:#0b1220;border-radius:8px;width:34px;height:34px;display:inline-flex;
+    align-items:center;justify-content:center;font-weight:800;font-size:17px}
+  h3{margin:26px 0 8px;font-size:17px;color:var(--accent)}
+  p,li{color:var(--ink)}
+  .muted{color:var(--muted)}
+  /* flow */
+  .flow{display:flex;flex-wrap:wrap;gap:10px;align-items:stretch;margin:22px 0}
+  .step{flex:1 1 170px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;position:relative}
+  .step .si{position:absolute;top:-12px;left:14px;background:var(--accent);color:#0b1220;font-weight:800;
+    border-radius:8px;padding:2px 9px;font-size:13px}
+  .step h4{margin:8px 0 6px;font-size:15px}
+  .step p{margin:0;font-size:13px;color:var(--muted)}
+  .arrow{display:flex;align-items:center;color:var(--accent2);font-size:22px;font-weight:800}
+  /* cards */
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px 22px;margin:16px 0}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:760px){.grid2{grid-template-columns:1fr}.flow{flex-direction:column}.arrow{transform:rotate(90deg)}}
+  table{width:100%;border-collapse:collapse;margin:12px 0;font-size:14px}
+  th,td{border:1px solid var(--line);padding:9px 11px;text-align:left;vertical-align:top}
+  th{background:var(--card2);color:var(--accent)}
+  code{background:#0b1220;border:1px solid var(--line);border-radius:6px;padding:1px 6px;color:#7dd3fc;font-size:13px}
+  .tag{display:inline-block;border-radius:6px;padding:1px 8px;font-size:12px;font-weight:700}
+  .t-ok{background:rgba(52,211,153,.15);color:var(--ok);border:1px solid rgba(52,211,153,.4)}
+  .t-warn{background:rgba(251,191,36,.15);color:var(--warn);border:1px solid rgba(251,191,36,.4)}
+  .t-new{background:rgba(129,140,248,.18);color:#c7d2fe;border:1px solid rgba(129,140,248,.45)}
+  .note{border-left:4px solid var(--accent);background:rgba(56,189,248,.08);padding:12px 16px;border-radius:0 10px 10px 0;margin:14px 0}
+  .warn{border-left:4px solid var(--warn);background:rgba(251,191,36,.08)}
+  ul{margin:8px 0;padding-left:22px}
+  .kpi{display:flex;gap:12px;flex-wrap:wrap;margin:16px 0}
+  .kpi div{flex:1 1 150px;background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:14px;text-align:center}
+  .kpi b{display:block;font-size:22px;color:var(--accent)}
+  .kpi span{font-size:13px;color:var(--muted)}
+  footer{text-align:center;color:var(--muted);margin-top:50px;font-size:13px}
+  .toc{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:18px}
+  .toc a{color:var(--accent);text-decoration:none;border:1px solid var(--line);border-radius:999px;padding:5px 13px;font-size:13px}
+  .toc a:hover{background:var(--card2)}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <h1>🖨️ Storige 상품 · 템플릿 등록 매뉴얼</h1>
+    <p>관리자가 판형·에셋으로 템플릿셋을 제작 → 상품에 연결 → 고객이 편집 → 인쇄 PDF 합성</p>
+    <div class="badge">v1 · 2026-06-03 · 관리자(admin.papascompany.co.kr) 기준</div>
+    <div class="toc">
+      <a href="#flow">전체 흐름</a>
+      <a href="#s1">1. 에셋 등록</a>
+      <a href="#s2">2. 템플릿셋</a>
+      <a href="#s3">3. 템플릿 제작</a>
+      <a href="#s4">4. 상품 연결</a>
+      <a href="#s5">5. 고객 편집</a>
+      <a href="#updates">최근 변경</a>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <section id="flow">
+    <h2><span class="n">▶</span>전체 등록 흐름</h2>
+    <p class="muted">아래 5단계를 순서대로 진행하면 고객이 특정 상품을 주문할 때 알맞은 디자인 템플릿으로 편집을 시작합니다.</p>
+    <div class="flow">
+      <div class="step"><span class="si">1</span><h4>에셋 등록</h4><p>클립아트·프레임·배경·도형·폰트를 Library 에 업로드</p></div>
+      <div class="arrow">→</div>
+      <div class="step"><span class="si">2</span><h4>템플릿셋 생성</h4><p>판형·페이지 정책·면지·도구 화이트리스트 설정</p></div>
+      <div class="arrow">→</div>
+      <div class="step"><span class="si">3</span><h4>템플릿 제작</h4><p>표지/내지 캔버스에 에셋 배치 · 잠금 지정</p></div>
+      <div class="arrow">→</div>
+      <div class="step"><span class="si">4</span><h4>상품 연결</h4><p>북모아 상품 ↔ 템플릿셋(1:N) 매핑</p></div>
+      <div class="arrow">→</div>
+      <div class="step"><span class="si">5</span><h4>고객 편집</h4><p>productId/templateSetId 로 편집기 진입</p></div>
+    </div>
+    <div class="kpi">
+      <div><b>5</b><span>관리자 등록 단계</span></div>
+      <div><b>1:N</b><span>상품 ↔ 템플릿셋</span></div>
+      <div><b>300 DPI</b><span>인쇄 PDF 출력</span></div>
+      <div><b>WYSIWYG</b><span>화면 그대로 합성</span></div>
+    </div>
+  </section>
+
+  <section id="s1">
+    <h2><span class="n">1</span>에셋(디자인 리소스) 등록 — Library</h2>
+    <p>관리자 메뉴 <code>Library</code> 에서 고객 편집기에 공급할 디자인 리소스를 업로드합니다.
+       업로드 즉시 고객 편집기의 해당 패널에 노출됩니다 <span class="tag t-new">2026-06-03 연결됨</span>.</p>
+    <table>
+      <tr><th>에셋 종류</th><th>관리자 화면</th><th>편집기 노출 패널</th><th>저장 테이블</th></tr>
+      <tr><td>클립아트(요소)</td><td>Library › 클립아트</td><td>요소</td><td><code>library_cliparts</code></td></tr>
+      <tr><td>사진틀/프레임</td><td>Library › 프레임</td><td>프레임</td><td><code>library_frames</code></td></tr>
+      <tr><td>배경</td><td>Library › 배경</td><td>배경</td><td><code>library_backgrounds</code></td></tr>
+      <tr><td>도형</td><td>Library › 도형</td><td>도형</td><td><code>library_shapes</code></td></tr>
+      <tr><td>폰트</td><td>Library › 폰트</td><td>텍스트(폰트 선택)</td><td><code>library_fonts</code></td></tr>
+    </table>
+    <div class="note">
+      <b>권장 규격</b> · 인쇄 화질을 위해 사진틀/배경 PNG 는 <b>300 DPI 기준</b>(예: A4 ≈ 2480×3508px) 권장.
+      편집기→PDF 합성 시 최대 <b>3508px</b> 까지 원본 화질을 보존합니다.
+    </div>
+    <div class="note warn">
+      <b>주의</b> · 에셋은 카테고리/태그를 지정하면 고객 패널에서 검색·필터가 됩니다.
+      <code>isActive=false</code> 인 에셋은 고객에게 노출되지 않습니다(임시 비공개).
+    </div>
+  </section>
+
+  <section id="s2">
+    <h2><span class="n">2</span>템플릿셋(TemplateSet) 생성</h2>
+    <p>관리자 메뉴 <code>TemplateSets › 새 템플릿셋</code>. 템플릿셋은 "한 상품을 만들기 위한 판형·페이지·도구 규칙의 묶음"입니다.</p>
+    <table>
+      <tr><th>필드</th><th>의미</th><th>비고</th></tr>
+      <tr><td>템플릿셋명</td><td>관리/선택용 이름</td><td>필수</td></tr>
+      <tr><td>판형/규격 <code>printSize</code></td><td>완성 크기(mm) + 재단(bleed)</td><td>PDF mediabox 기준</td></tr>
+      <tr><td><code>canAddPage</code> / <code>pageCountRange</code></td><td>고객 페이지 추가 허용 + 최소/최대</td><td>PDF 첨부 시 페이지수 자동 맞춤</td></tr>
+      <tr><td><code>coverEditable</code></td><td>표지 편집 가능 여부</td><td><span class="tag t-warn">false</span>=레더커버/화보집(미리보기 이미지만)</td></tr>
+      <tr><td><code>endpaperConfig</code></td><td>앞/뒤 면지 수(0~6) + 각 편집가능 토글</td><td>면지 상품용</td></tr>
+      <tr><td>도구 메뉴 화이트리스트</td><td>이 템플릿셋에서 고객에게 노출할 편집 도구</td><td>EDITOR.md §7</td></tr>
+    </table>
+    <div class="card">
+      <h3>템플릿셋 구성 예시</h3>
+      <div class="flow">
+        <div class="step"><span class="si">표지</span><h4>SPREAD</h4><p>앞·뒤+책등 펼침. 편집가능/불가 토글</p></div>
+        <div class="arrow">+</div>
+        <div class="step"><span class="si">앞면지</span><h4>0~6장</h4><p>각 편집가능 토글</p></div>
+        <div class="arrow">+</div>
+        <div class="step"><span class="si">내지</span><h4>PAGE × N</h4><p>canAddPage 시 자동 확장</p></div>
+        <div class="arrow">+</div>
+        <div class="step"><span class="si">뒷면지</span><h4>0~6장</h4><p>각 편집가능 토글</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="s3">
+    <h2><span class="n">3</span>템플릿(캔버스 디자인) 제작</h2>
+    <p>관리자 메뉴 <code>Templates › 편집기(관리자 모드)</code>. 표지/내지 캔버스에 1단계 에셋을 배치해 고객이 시작할 디자인을 만듭니다.
+       관리자 모드(<code>editMode</code>)로 진입하면 잠금·삭제잠금 등 제작 전용 기능이 활성화됩니다.</p>
+    <div class="grid2">
+      <div class="card">
+        <h3>배치할 수 있는 요소</h3>
+        <ul>
+          <li>레이아웃 / 배경 / 사진틀(프레임)</li>
+          <li>텍스트(부분 색상·기울임·크기·곡선/원형 <span class="tag t-new">원형 배지</span>)</li>
+          <li>요소(클립아트) / 도형 / 이미지</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>객체 보호 지정 <span class="tag t-new">2026-06-03</span></h3>
+        <ul>
+          <li><b>이동 잠금</b>: 자물쇠 버튼 또는 <code>cmd+L</code></li>
+          <li><b>삭제 잠금</b>: ControlBar 방패 아이콘(관리자 전용)</li>
+          <li>저장→복원 후에도 보호 유지 → 고객은 <b>이동·삭제 불가</b></li>
+        </ul>
+      </div>
+    </div>
+    <div class="note">
+      <b>WYSIWYG 합성</b> · 고객이 편집을 완료하면 화면 캔버스가 <b>300 DPI 벡터/원본화질</b>로 PDF 합성됩니다.
+      표지 PDF + 앞면지 + 내지 + 뒷면지가 하나로 합본됩니다.
+    </div>
+  </section>
+
+  <section id="s4">
+    <h2><span class="n">4</span>상품 ↔ 템플릿셋 연결</h2>
+    <p>관리자 메뉴 <code>ProductTemplateSets</code>. 북모아 상품 하나에 여러 템플릿셋을 연결할 수 있습니다(1:N).</p>
+    <div class="card">
+      <div class="flow">
+        <div class="step"><span class="si">상품</span><h4>A4 무선제본 책자</h4><p>북모아 상품(prdt)</p></div>
+        <div class="arrow">→</div>
+        <div class="step"><span class="si">N</span><h4>기본 / 포토북 / 카탈로그</h4><p>연결된 템플릿셋 목록</p></div>
+        <div class="arrow">→</div>
+        <div class="step"><span class="si">고객</span><h4>템플릿 선택 화면</h4><p>연결된 셋 중 택1 후 편집</p></div>
+      </div>
+    </div>
+    <p class="muted">상세 매핑 규칙: <code>docs/product-templateset-linking-plan.md</code></p>
+  </section>
+
+  <section id="s5">
+    <h2><span class="n">5</span>고객 편집 진입</h2>
+    <table>
+      <tr><th>진입 방식</th><th>URL 파라미터</th><th>동작</th></tr>
+      <tr><td>상품 기준</td><td><code>?productId=...</code></td><td>연결된 템플릿셋 목록 → 선택</td></tr>
+      <tr><td>템플릿셋 직접</td><td><code>?templateSetId=...</code></td><td>해당 디자인으로 즉시 편집 시작</td></tr>
+      <tr><td>외부 iframe 임베드</td><td><code>/embed?templateSetId=&token=&orderSeqno=</code></td><td>북모아 등 외부 서비스 내 임베드</td></tr>
+      <tr><td>재편집</td><td><code>/embed?sessionId=...</code></td><td>저장된 세션 불러와 수정</td></tr>
+    </table>
+    <h3>내지 입력 2가지 모드</h3>
+    <div class="grid2">
+      <div class="card"><h3>A) 편집기로 직접 편집</h3><p class="muted">템플릿 위에 텍스트·이미지 배치 후 완료.</p></div>
+      <div class="card"><h3>B) PDF 첨부</h3>
+        <p class="muted">고객 PDF 업로드 → 워커 검증 → 통과 시 페이지수 자동 맞춤.</p>
+        <p><span class="tag t-warn">replace</span> PDF만 인쇄(배타) · <span class="tag t-new">underlay</span> PDF 배경 위 편집(API 토대 완료)</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="updates">
+    <h2><span class="n">★</span>최근 변경 (2026-06-03 오토파일럿 1차)</h2>
+    <table>
+      <tr><th>항목</th><th>상태</th><th>고객/관리자 체감</th></tr>
+      <tr><td>에셋 라이브러리 단절 해소</td><td><span class="tag t-ok">완료·배포</span></td><td>관리자 Library 등록 에셋이 고객 편집기에 노출</td></tr>
+      <tr><td>PDF 출력 DPI 300 통일 + 화질 상한</td><td><span class="tag t-ok">완료</span></td><td>인쇄물 크기 정합 + 사진 화질 향상</td></tr>
+      <tr><td>객체 잠금/삭제불가 + 관리자 토글</td><td><span class="tag t-ok">완료</span></td><td>관리자가 잠근 객체를 고객이 못 건드림</td></tr>
+      <tr><td>곡선/원형 텍스트 PDF 보존</td><td><span class="tag t-ok">완료</span></td><td>원형 배지 텍스트가 PDF에서도 유지</td></tr>
+      <tr><td>내지 PDF 첨부 underlay 모드</td><td><span class="tag t-warn">API 토대</span></td><td>편집기 자동 페이지 로딩·워커 합성은 후속</td></tr>
+      <tr><td>사진틀 프레임내 편집 / 면지 캔버스 / WYSIWYG 미세조정</td><td><span class="tag t-warn">계획</span></td><td>실시각 QA 후 진행 (갭 문서 참조)</td></tr>
+    </table>
+    <div class="note">
+      상세 기술 내역: <code>docs/EDITOR.md §15</code> · 갭 분석/잔여 계획: <code>.cursor/plans/EDITOR_TEMPLATE_ASSET_GAP_2026-06-02.md</code>
+    </div>
+  </section>
+
+</div>
+<footer>Storige · Bookmoa 인쇄 플랫폼 · 상품·템플릿 등록 매뉴얼 v1 (2026-06-03)</footer>
+</body>
+</html>
