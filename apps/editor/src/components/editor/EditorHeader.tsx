@@ -243,8 +243,9 @@ export default function EditorHeader({
           printSize: size.printSize,
         },
         cutline,
-        // TODO: DPI 설정 적용 (현재는 72로 하드코딩)
-        72
+        // P0-3 (2026-06-02): 인쇄 화질 정합 — embed/스프레드 경로(300 DPI)와 통일.
+        // 기존 72 DPI는 px→mm 변환이 ~4배 어긋나 인쇄물 물리 크기 불일치 원인이었음.
+        300
       )
 
       // 원래 페이지로 돌아가기
