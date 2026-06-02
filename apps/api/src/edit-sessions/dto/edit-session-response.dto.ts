@@ -81,6 +81,9 @@ export class EditSessionResponseDto {
   @ApiPropertyOptional({ description: '워커 검증 결과 캐시' })
   contentPdfValidationResult?: Record<string, unknown> | null;
 
+  @ApiPropertyOptional({ enum: ['replace', 'underlay'], description: 'P0-2: 내지 PDF 첨부 모드' })
+  contentPdfMode?: 'replace' | 'underlay' | null;
+
   @ApiPropertyOptional({ description: '게스트 식별자 (24h 만료)' })
   guestToken?: string | null;
 

@@ -131,6 +131,15 @@ export class EditSessionEntity {
   contentPdfValidationResult: Record<string, unknown> | null;
 
   /**
+   * P0-2 (2026-06-02): 내지 PDF 첨부 모드.
+   * - 'replace'(기본/레거시): PDF 만 인쇄, 캔버스 편집 배타(PDF_ATTACHED_EXCLUSIVE).
+   * - 'underlay': PDF 각 페이지를 잠금 배경으로 깔고 그 위 편집 허용 → canvasData 저장 허용.
+   * null 은 'replace' 로 간주(기존 세션 호환).
+   */
+  @Column({ name: 'content_pdf_mode', type: 'varchar', length: 16, nullable: true })
+  contentPdfMode: 'replace' | 'underlay' | null;
+
+  /**
    * 게스트 식별자 — 결정 3-1: 24h 자동 삭제. 결정 3-6: 저장 시점에 회원 전환 유도.
    * 회원 가입 시 user/member 컬럼으로 마이그레이션되고 guestToken/guestExpiresAt 클리어.
    */
