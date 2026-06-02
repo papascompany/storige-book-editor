@@ -189,3 +189,30 @@ ssh deploy@158.247.235.202 'docker logs --tail 100 storige-worker | grep -iE "co
 4. 파일 업로드 3경로 (§2)
 5. 실데이터 편집완료 세션으로 합성 (§5) ← bookmoa E2E와 맞물리는 지점
 6. 관리자 화면 결과 확인 (§6)
+
+---
+
+## 10. 실행 결과 (2026-06-02, 운영 환경 라이브 검증)
+
+Storige 측 4개 페이즈 전부 **통과**.
+
+| 페이즈 | 테스트 | 결과 |
+|---|---|---|
+| §3 검증 FIXABLE | 2p PDF + 무선제본 | `PAGE_COUNT_INVALID`(autoFixable:addBlankPages)+BLEED_MISSING → **FIXABLE** ✅ |
+| §3 검증 FAILED | 0바이트 PDF | `FILE_CORRUPTED`(autoFixable:false, "No PDF header") → **FAILED** ✅ |
+| §2 업로드 [1] | `POST /storage/upload-public` (게스트) | 200, `/storage/uploads/<uuid>.pdf` ✅ |
+| §2 업로드 [2] | `POST /files/upload` (회원 JWT) | 200, fileId+fileUrl, files 테이블 기록 ✅ |
+| §2 업로드 [3] | `POST /files/upload/external` (X-API-Key) | 200, fileId+fileUrl ✅ |
+| §2 가드 | 비-PDF→/files/upload, 비허용MIME→upload-public | **400** / **415** ✅ |
+| §4 합성 separate | compose-mixed (저장PDF 2개) | cover.pdf(2p)+content.pdf(2p)=4p ✅ |
+| §4 합성 single | compose-mixed (낱장) | pages.pdf(2p) ✅ |
+| §5 실데이터 합성 | 완료세션 `3f51f4f5`(both)의 cover/content | cover.pdf(1p)+content.pdf(3p=면지1+내지1+면지1)=4p, 면지[null]→빈페이지 ✅ |
+| §6 관리자 | `GET /worker-jobs`(목록 배열), `/:id`(상세 result), `/:id/output`(다운로드) | status/outputFiles/result + 200 application/pdf ✅ |
+
+**확인된 핵심 동작**:
+- 검증: autoFixable 분류 정확(FIXABLE vs FAILED).
+- 업로드: 3경로 + MIME/PDF 가드 정상. `/files/*`만 DB 기록, `/storage/*`는 디스크만.
+- 합성: outputMode별 출력파일 규칙(separate/single) + 면지 null→빈페이지 + editSessionId 연결 정상.
+- 관리자: 합성 결과 조회/다운로드 가능. (재합성/파일교체 UI는 bookmoa Admin.jsx — Storige admin엔 조회만)
+
+**남은 테스트 아티팩트**(무해, 정리 선택): worker_jobs `orderId=TEST-*`/`TEST-REALDATA` 6건 + `/storage/outputs/<jobId>/` + 업로드 테스트 PDF 수건.
