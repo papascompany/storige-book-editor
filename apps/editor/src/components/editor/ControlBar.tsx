@@ -1,5 +1,6 @@
 import { useMemo, useState, useEffect } from 'react'
 import { useAppStore, useSelectionType } from '@/stores/useAppStore'
+import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useIsCoarsePointer } from '@/hooks/useIsCoarsePointer'
 import { AlignPlugin, GroupPlugin, ObjectPlugin, SelectionType } from '@storige/canvas-core'
 
@@ -16,6 +17,8 @@ import {
   Eye,
   EyeOff as EyeSlash,
   Trash2 as Trash,
+  ShieldX,
+  ShieldCheck,
   Link,
   Unlink as LinkBreak,
   Scissors,
@@ -128,6 +131,8 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
   const selectionType = useSelectionType()
   const getPlugin = useAppStore((state) => state.getPlugin)
   const updateObjects = useAppStore((state) => state.updateObjects)
+  // P1-5: 관리자(editMode) 전용 "삭제 잠금" 토글 노출용
+  const editMode = useSettingsStore((state) => state.currentSettings.editMode)
   const isCoarsePointer = useIsCoarsePointer()
   // 폭 기반 mobileOverlay (EditorView 가 screenMode 로 결정) 또는 coarse pointer 감지 —
   // 어느 한쪽이라도 true 면 모바일 레이아웃. 두 신호를 모두 보아야 외장 키보드/마우스가
@@ -172,6 +177,11 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
   // Check if all items are visible
   const allVisible = useMemo(() => {
     return activeSelection?.every((e) => e.visible) ?? false
+  }, [activeSelection])
+
+  // P1-5: 선택 객체 전부가 삭제잠금(deleteable===false)인지
+  const allDeleteLocked = useMemo(() => {
+    return activeSelection?.every((e) => (e as any).deleteable === false) ?? false
   }, [activeSelection])
 
   // Actions
@@ -227,6 +237,15 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
       objectPlugin?.visible(obj)
     })
     canvas?.requestRenderAll()
+  }
+
+  // P1-5: 관리자 전용 — 삭제 잠금 토글. deleteable=false 면 고객 진입 시 삭제 차단(ObjectPlugin.del).
+  const handleToggleDeleteLock = () => {
+    const next = !allDeleteLocked
+    activeSelection?.forEach((obj) => {
+      ;(obj as any).deleteable = next ? false : true
+    })
+    updateObjects()
   }
 
   const handleInvisible = () => {
@@ -365,6 +384,23 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
                 ) : (
                   <Button variant="ghost" size="icon" onClick={handleVisible}>
                     <EyeSlash className="h-5 w-5" />
+                  </Button>
+                )}
+
+                {/* P1-5: 삭제 잠금 (관리자 editMode 전용) — 고객이 이 객체를 삭제 못하게 보호 */}
+                {editMode && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={handleToggleDeleteLock}
+                    title={allDeleteLocked ? '삭제 잠금 해제' : '삭제 잠금 (고객 삭제 불가)'}
+                    aria-pressed={allDeleteLocked}
+                  >
+                    {allDeleteLocked ? (
+                      <ShieldCheck className="h-5 w-5 text-amber-500" />
+                    ) : (
+                      <ShieldX className="h-5 w-5" />
+                    )}
                   </Button>
                 )}
               </div>
