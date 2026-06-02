@@ -1,22 +1,92 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Like, In } from 'typeorm';
+import { Repository, ObjectLiteral } from 'typeorm';
 import { EditorContent } from './entities/editor-content.entity';
+import { LibraryClipart } from '../library/entities/clipart.entity';
+import { LibraryFrame } from '../library/entities/frame.entity';
+import { LibraryBackground } from '../library/entities/background.entity';
 import { QueryEditorContentDto } from './dto/query-editor-content.dto';
 import { UpdateEditorContentDto } from './dto/update-editor-content.dto';
 import { EditorContentType } from '@storige/types';
 
+/**
+ * 편집기 콘텐츠 조회 서비스.
+ *
+ * ⚠️ 2026-06-02 (P0-1, 에셋 단절 해소): 관리자 Library(`library_cliparts`/`library_frames`/
+ * `library_backgrounds`)에 등록한 에셋이 고객 편집기 패널(요소/프레임/배경)에 노출되도록,
+ * element/frame/background 타입은 **library_* 테이블에서** 조회한다.
+ * (기존 `editor_contents` 테이블은 비어 있어 admin 에셋이 고객에게 전혀 안 보이던 문제.)
+ * template/image 타입은 종전대로 `editor_contents` 사용(향후 통합 후보).
+ */
 @Injectable()
 export class EditorContentsService {
   constructor(
     @InjectRepository(EditorContent)
     private readonly editorContentRepository: Repository<EditorContent>,
+    @InjectRepository(LibraryClipart)
+    private readonly clipartRepository: Repository<LibraryClipart>,
+    @InjectRepository(LibraryFrame)
+    private readonly frameRepository: Repository<LibraryFrame>,
+    @InjectRepository(LibraryBackground)
+    private readonly backgroundRepository: Repository<LibraryBackground>,
   ) {}
+
+  /** library_* 행 → 편집기 EditorContent 응답 형태로 매핑 */
+  private mapLibraryRow(row: any, type: EditorContentType): EditorContent {
+    return {
+      id: row.id,
+      type,
+      name: row.name,
+      // 편집기는 imageUrl(또는 nested image.image.url) / designUrl 로 에셋 URL을 읽는다.
+      imageUrl: row.fileUrl ?? null,
+      designUrl: row.fileUrl ?? null,
+      cutLineUrl: null,
+      tags: Array.isArray(row.tags) ? row.tags : [],
+      metadata: { source: 'library', category: row.category ?? null, categoryId: row.categoryId ?? null },
+      isActive: row.isActive,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt ?? row.createdAt,
+    } as unknown as EditorContent;
+  }
+
+  /** library_* 리포지토리에서 type에 맞는 콘텐츠를 EditorContent 형태로 조회 */
+  private async findFromLibrary(
+    repo: Repository<ObjectLiteral>,
+    type: EditorContentType,
+    query: QueryEditorContentDto,
+  ) {
+    const page = query.page || 1;
+    const pageSize = query.pageSize || 20;
+    const sortField = query.sortField || 'createdAt';
+    const sortOrder = (query.sortOrder || 'desc').toUpperCase() as 'ASC' | 'DESC';
+
+    const qb = repo.createQueryBuilder('c');
+    qb.where('c.is_active = :isActive', { isActive: query.isActive ?? true });
+    if (query.search) {
+      qb.andWhere('c.name LIKE :search', { search: `%${query.search}%` });
+    }
+    if (query.tags && query.tags.length > 0) {
+      query.tags.forEach((tag, i) => {
+        qb.andWhere(`JSON_CONTAINS(c.tags, :tag${i})`, { [`tag${i}`]: JSON.stringify(tag) });
+      });
+    }
+    const orderCol = sortField === 'name' ? 'c.name' : 'c.created_at';
+    qb.orderBy(orderCol, sortOrder).skip((page - 1) * pageSize).take(pageSize);
+
+    const [rows, total] = await qb.getManyAndCount();
+    return { items: rows.map((r) => this.mapLibraryRow(r, type)), total, page, pageSize };
+  }
 
   async findByType(
     type: EditorContentType,
     query: QueryEditorContentDto,
   ): Promise<{ items: EditorContent[]; total: number; page: number; pageSize: number }> {
+    // 에셋 라이브러리(관리자 업로드)에서 조회 — element/frame/background
+    if (type === 'element') return this.findFromLibrary(this.clipartRepository, type, query);
+    if (type === 'frame') return this.findFromLibrary(this.frameRepository, type, query);
+    if (type === 'background') return this.findFromLibrary(this.backgroundRepository, type, query);
+
+    // template / image 는 종전 editor_contents 테이블
     const page = query.page || 1;
     const pageSize = query.pageSize || 20;
     const sortField = query.sortField || 'createdAt';
@@ -26,20 +96,16 @@ export class EditorContentsService {
       .createQueryBuilder('content')
       .where('content.type = :type', { type });
 
-    // isActive 필터
     if (query.isActive !== undefined) {
       queryBuilder.andWhere('content.is_active = :isActive', { isActive: query.isActive });
     } else {
-      // 기본적으로 활성화된 콘텐츠만
       queryBuilder.andWhere('content.is_active = :isActive', { isActive: true });
     }
 
-    // 검색
     if (query.search) {
       queryBuilder.andWhere('content.name LIKE :search', { search: `%${query.search}%` });
     }
 
-    // 태그 필터 (JSON 필드 검색)
     if (query.tags && query.tags.length > 0) {
       query.tags.forEach((tag, index) => {
         queryBuilder.andWhere(`JSON_CONTAINS(content.tags, :tag${index})`, {
@@ -48,12 +114,10 @@ export class EditorContentsService {
       });
     }
 
-    // 정렬
     const orderField = sortField === 'name' ? 'content.name' :
                        sortField === 'createdAt' ? 'content.created_at' : 'content.updated_at';
     queryBuilder.orderBy(orderField, sortOrder.toUpperCase() as 'ASC' | 'DESC');
 
-    // 페이지네이션
     queryBuilder.skip((page - 1) * pageSize).take(pageSize);
 
     const [items, total] = await queryBuilder.getManyAndCount();
@@ -82,24 +146,26 @@ export class EditorContentsService {
   }
 
   async findOne(id: string): Promise<EditorContent> {
-    const content = await this.editorContentRepository.findOne({
-      where: { id },
-    });
+    // editor_contents 먼저, 없으면 library_* 에서 조회 (에셋 단절 해소)
+    const content = await this.editorContentRepository.findOne({ where: { id } });
+    if (content) return content;
 
-    if (!content) {
-      throw new NotFoundException(`EditorContent with id ${id} not found`);
-    }
+    const clip = await this.clipartRepository.findOne({ where: { id } as any });
+    if (clip) return this.mapLibraryRow(clip, 'element');
+    const frame = await this.frameRepository.findOne({ where: { id } as any });
+    if (frame) return this.mapLibraryRow(frame, 'frame');
+    const bg = await this.backgroundRepository.findOne({ where: { id } as any });
+    if (bg) return this.mapLibraryRow(bg, 'background');
 
-    return content;
+    throw new NotFoundException(`EditorContent with id ${id} not found`);
   }
 
   async update(type: EditorContentType, id: string, dto: UpdateEditorContentDto): Promise<EditorContent> {
-    const content = await this.findOne(id);
-
-    if (content.type !== type) {
-      throw new NotFoundException(`EditorContent with id ${id} and type ${type} not found`);
+    // editor_contents(template/image) 만 PUT 지원. element/frame/background 는 관리자 Library(/library/*)에서 관리.
+    const content = await this.editorContentRepository.findOne({ where: { id } });
+    if (!content || content.type !== type) {
+      throw new NotFoundException(`EditorContent with id ${id} and type ${type} not found (library 에셋은 /library 에서 수정)`);
     }
-
     Object.assign(content, dto);
     return this.editorContentRepository.save(content);
   }

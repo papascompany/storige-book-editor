@@ -56,16 +56,18 @@ const safeGetMetadata = (content: any, key: string, defaultValue: any = null) =>
 }
 
 // 안전한 URL 접근 유틸리티
+// 중첩 형태(content.image.image.url) + flat 형태(content.imageUrl) 모두 지원.
+// flat 은 API가 library 에셋/editor_contents 를 평면 필드로 반환하는 경우(P0-1, 2026-06-02).
 const safeGetImageUrl = (content: EditorContent | EditorTemplate): string | null => {
-  return content?.image?.image?.url || null
+  return content?.image?.image?.url || (content as any)?.imageUrl || null
 }
 
 // 안전한 템플릿 URL 접근
 const safeGetTemplateUrl = (content: EditorTemplate): string | null => {
-   
-  const designUrl = (content as any)?.design?.document?.url
+
+  const designUrl = (content as any)?.design?.document?.url || (content as any)?.designUrl
   if (designUrl) return designUrl
-  return content?.image?.image?.url || null
+  return content?.image?.image?.url || (content as any)?.imageUrl || null
 }
 
 // 안전한 칼선 템플릿 URL 접근
