@@ -132,6 +132,19 @@ export async function convertSvgTextToPath(
           const pathElement = document.createElementNS(svgNS, 'path');
           pathElement.setAttribute('d', pathData);
 
+          // P1-6 (2026-06-02): 곡선 텍스트 보존.
+          // Fabric은 path(text-on-path) 텍스트의 각 글자 <tspan>에 회전된 x/y + rotate 속성을 출력한다.
+          // opentype path 는 (x,y) baseline 에 평평하게 생성되므로, tspan rotate 만큼 (x,y) 기준 회전을
+          // path 요소 transform 으로 그대로 적용해야 PDF 에서도 호를 따라 글자가 회전된다.
+          // (rotate 속성이 없는 일반/혼합스타일 텍스트는 영향 없음.)
+          const rotateAttr = tspan.getAttribute('rotate');
+          if (rotateAttr) {
+            const deg = parseFloat(rotateAttr);
+            if (Number.isFinite(deg) && Math.abs(deg) > 0.001) {
+              pathElement.setAttribute('transform', `rotate(${deg} ${x} ${y})`);
+            }
+          }
+
           // Preserve per-tspan fill color (for mixed styles support)
           pathElement.setAttribute('fill', finalFill);
 
