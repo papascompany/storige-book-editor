@@ -11,6 +11,7 @@ import Editor, {
   GroupPlugin,
   HistoryPlugin,
   ImageProcessingPlugin,
+  LockPlugin,
   ObjectPlugin,
   PreviewPlugin,
   RulerPlugin,
@@ -206,6 +207,9 @@ function initPlugins(
 
   const workspace = new WorkspacePlugin(canvas, editor, mergedOptions)
   const object = new ObjectPlugin(canvas, editor, mergedOptions)
+  // P1-5 (2026-06-02): 객체 잠금/삭제불가 — LockPlugin 배선.
+  // editMode(관리자 템플릿 제작)면 'admin'(잠금 지정/해제 가능), 고객 편집이면 'user'.
+  const lock = new LockPlugin(canvas, editor, mergedOptions)
   const group = new GroupPlugin(canvas, editor)
   const history = new HistoryPlugin(canvas, editor)
   const copy = new CopyPlugin(canvas, editor, {
@@ -246,6 +250,8 @@ function initPlugins(
   }
 
   editor.use(object)
+  editor.use(lock)
+  lock.setUserRole((mergedOptions as any).editMode ? 'admin' : 'user')
   // RulerPlugin은 VITE_ENABLE_RULER 환경변수로 제어
   if (ruler) {
     editor.use(ruler)

@@ -266,7 +266,7 @@ class ObjectPlugin extends PluginBase {
   del(object?: fabric.Object) {
     this._canvas.offHistory()
     const canvas = this._canvas
-    const activeObject = object !== undefined ? [object] : canvas.getActiveObjects()
+    let activeObject = object !== undefined ? [object] : canvas.getActiveObjects()
 
     if (activeObject && activeObject.length > 0) {
       // lid 객체 삭제 방지 - editMode가 아닐 때
@@ -274,6 +274,19 @@ class ObjectPlugin extends PluginBase {
       if (lidObjects.length > 0 && !this._options.editMode) {
         canvas.onHistory()
         return
+      }
+
+      // P1-5 (2026-06-02): 삭제 잠금 강제.
+      // editMode(관리자)가 아닐 때, lockInfo.isLocked 또는 deleteable===false 객체는 삭제 차단.
+      // (휴지통 버튼·Delete/Backspace 단축키 모두 이 경로를 거치므로 일괄 보호.)
+      if (!this._options.editMode) {
+        const isProtected = (obj: fabric.Object) =>
+          (obj as any)?.lockInfo?.isLocked === true || (obj as any)?.deleteable === false
+        activeObject = activeObject.filter((obj) => !isProtected(obj))
+        if (activeObject.length === 0) {
+          canvas.onHistory()
+          return
+        }
       }
 
       // 모든 선택된 객체에 대해 연관된 fillImage 찾기 및 제거
