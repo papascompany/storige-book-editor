@@ -362,6 +362,12 @@ CREATE TABLE IF NOT EXISTS file_edit_sessions (
   worker_status     VARCHAR(20),
   worker_error      TEXT,
   callback_url      VARCHAR(500),
+  -- 인쇄 워크플로우 v1 Phase 4 (2026-05-19) — 고객 첨부 내지 PDF
+  content_pdf_file_id           VARCHAR(36),
+  content_pdf_page_count        INT,
+  content_pdf_validation_result JSON,
+  -- P0-2 (2026-06-02) — 첨부 모드: replace(PDF만/배타) | underlay(PDF 배경+편집)
+  content_pdf_mode              VARCHAR(16),
   created_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   deleted_at        TIMESTAMP NULL,

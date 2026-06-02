@@ -246,11 +246,18 @@ export class EditSessionsService {
 
     // 캔버스 데이터 업데이트
     if (dto.canvasData !== undefined) {
-      // Phase 4 결정 3-3: PDF 첨부 ↔ 편집 배타. PDF 가 붙어있으면 캔버스 수정 거부.
-      if (session.contentPdfFileId && dto.contentPdfFileId === undefined) {
+      // Phase 4 결정 3-3: PDF 첨부 ↔ 편집 배타(replace 모드).
+      // P0-2 (2026-06-02): underlay 모드는 PDF를 배경으로 깔고 그 위 편집을 허용 → 배타 완화.
+      const effectiveMode =
+        (dto.contentPdfMode ?? session.contentPdfMode ?? 'replace');
+      if (
+        session.contentPdfFileId &&
+        dto.contentPdfFileId === undefined &&
+        effectiveMode !== 'underlay'
+      ) {
         throw new BadRequestException({
           code: 'PDF_ATTACHED_EXCLUSIVE',
-          message: '내지 PDF 첨부 상태에서는 편집 캔버스를 변경할 수 없습니다. PDF 를 먼저 제거하세요.',
+          message: '내지 PDF 첨부(replace) 상태에서는 편집 캔버스를 변경할 수 없습니다. PDF 를 먼저 제거하거나 underlay 모드로 첨부하세요.',
         });
       }
       session.canvasData = dto.canvasData;
@@ -292,6 +299,13 @@ export class EditSessionsService {
     }
     if (dto.contentPdfValidationResult !== undefined) {
       session.contentPdfValidationResult = dto.contentPdfValidationResult;
+    }
+    // P0-2: 첨부 모드(replace|underlay). PDF 제거 시 모드도 클리어.
+    if (dto.contentPdfMode !== undefined) {
+      session.contentPdfMode = dto.contentPdfMode;
+    }
+    if (dto.contentPdfFileId === null) {
+      session.contentPdfMode = null;
     }
 
     const updated = await this.sessionRepository.save(session);
@@ -539,6 +553,7 @@ export class EditSessionsService {
       contentPdfFileId: session.contentPdfFileId,
       contentPdfPageCount: session.contentPdfPageCount,
       contentPdfValidationResult: session.contentPdfValidationResult,
+      contentPdfMode: session.contentPdfMode, // P0-2
       guestToken: session.guestToken,
       guestExpiresAt: session.guestExpiresAt,
     };

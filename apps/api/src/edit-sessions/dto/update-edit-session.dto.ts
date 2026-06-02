@@ -1,4 +1,4 @@
-import { IsOptional, IsObject, IsEnum, IsUUID, IsInt, Min } from 'class-validator';
+import { IsOptional, IsObject, IsEnum, IsUUID, IsInt, Min, IsIn } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { SessionStatus } from '../entities/edit-session.entity';
 
@@ -48,4 +48,12 @@ export class UpdateEditSessionDto {
   @IsOptional()
   @IsObject()
   contentPdfValidationResult?: Record<string, unknown> | null;
+
+  @ApiPropertyOptional({
+    enum: ['replace', 'underlay'],
+    description: 'P0-2: 내지 PDF 첨부 모드. replace=PDF만 인쇄(배타), underlay=PDF 배경+편집 허용',
+  })
+  @IsOptional()
+  @IsIn(['replace', 'underlay'])
+  contentPdfMode?: 'replace' | 'underlay' | null;
 }
