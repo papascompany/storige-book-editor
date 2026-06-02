@@ -510,3 +510,63 @@ URL 파라미터 없이 `/` 진입 시 자동 로드되는 샘플:
 | API compose-mixed | `apps/api/src/worker-jobs/worker-jobs.controller.ts` (POST /compose-mixed) |
 | Worker compose-mixed | `apps/worker/src/processors/synthesis.processor.ts` (`handleComposeMixedSynthesis`) |
 | 마이그레이션 SQL | `apps/api/migrations/20260519_v1_phase2_workflow_schema.sql` |
+
+---
+
+## §14 임베드 전환 + 텍스트 자유도 + 원형 텍스트 + 게스트 폴백 (2026-06-02)
+
+> 상세 핸드오프: [`.cursor/plans/RESUME_PROMPT_2026-06-02.md`](../.cursor/plans/RESUME_PROMPT_2026-06-02.md)
+
+### 14.1 `/embed` 라우트 — 외부 iframe 임베드 진입점
+
+외부 서비스(bookmoa-mobile 등)는 **`/embed`** 로 띄운다. 기존 `/`(EditorView)는 고객 편집완료 시
+부모로 완료 메시지를 안 보내고 자동저장·세션영속 배선이 없으므로 **레거시**. `/embed`(`EmbedView.tsx`)는
+완전 배선된 `EmbeddedEditor`(embed.tsx, 원래 PHP IIFE용)를 URL로 마운트 → 자동저장·세션영속·정식
+postMessage·**sessionId 재편집**을 재사용한다.
+
+```
+신규 편집: /embed?templateSetId=<id>&token=<JWT>&orderSeqno=<n>&pageCount=&paperType=&bindingType=&parentOrigin=<부모origin>
+재편집:    /embed?sessionId=<저장ID>&token=<JWT>&parentOrigin=...   (templateSetId 자동도출)
+```
+
+- 파라미터는 camelCase/snake_case 양쪽 허용(`getParamCompat`).
+- **postMessage dual-emit**: 정식 엔벨로프(`editor.ready/save/complete/cancel/error/needAuth`) + 레거시(`storige:completed/saved/...`). 기존 호스트 하위호환 + 추후 정식 엔벨로프 이전.
+- 라우트: `App.tsx` 에 `/embed`. SPA fallback rewrite가 자동 처리(vercel.json 불변).
+
+### 14.2 텍스트 리치 스타일 강화 (TextAttributes / ObjectFill)
+
+| 기능 | 동작 |
+|---|---|
+| 이탤릭(fontStyle) | 굵게/밑줄과 동일 — 부분선택(`setSelectionStyles`) + 전체 폴백. B/I/U 3버튼 |
+| 부분 색상 | 편집 중 글자 범위 선택 시 그 부분만 단색(없으면 전체). 부분은 단색만(그라디언트 전체) |
+| 글자 크기 | 직접 입력 + 프리셋(pt) 드롭다운(`applyFontSizePt` 공유) |
+| 직관 UI | B/I/U 아이콘 + title 툴팁 + `aria-pressed` |
+
+per-character `styles`(이탤릭·부분색)는 직렬화 리스트(`packages/canvas-core/src/utils/canvas.ts`)에 포함 → 저장/복원/PDF 반영.
+
+### 14.3 원형/배지 텍스트 (TextEffect "곡선")
+
+- 기존 180° 고정 → **호 각도 슬라이더(30~340°)** + **프리셋 칩(반원/¾/원형)**. `generatePathData(r,reverse,deg)` — 180°는 기존과 동일(회귀 0).
+- `arcDeg`는 `curveArcDeg`로 직렬화(`curveRadius/curveDirection`과 동일).
+- 배지 = 상단 텍스트(곡선 상단) + 하단 텍스트(곡선 하단) 2개. 패치/병뚜껑/라벨.
+- **PDF 출력 안전**: 출력은 `toDataURL('png')` 래스터 캡처(`useWorkSave.ts`)라 fabric이 그린 곡선 텍스트가 그대로 PNG→PDF에 출력됨.
+- `EffectPlugin.textCurve`(글자 그룹 분해)는 죽은 레거시 — 미사용.
+
+### 14.4 게스트 세션 폴백 (MEMBER_REQUIRED 400 방어)
+
+- `/embed`는 진입 즉시 `POST /edit-sessions`로 회원 세션 생성. 토큰에 **회원번호(memberSeqno) 누락/0**이면 **400 `MEMBER_REQUIRED`** → "편집기를 열 수 없습니다".
+- **보강**: 회원 세션 생성 실패 시 `createGuest` 자동 폴백 → 편집기 오픈. 저장 경로는 `currentSession.guestToken` 유무로 `update ↔ updateGuest` 분기(회원 토큰이면 기존 동작 그대로, 회귀 0). 게스트 편집완료 → `editor.needAuth` emit(로그인 유도).
+- **정석 해결(bookmoa 측)**: shop-session 발급 시 로그인 회원의 `memberSeqno`를 토큰에 포함. (`HANDOFF_StorigeEditorHost_iframe_overlay_2026-05-31.md` §3.5)
+
+### 14.5 핵심 파일 매핑
+
+| 영역 | 파일 |
+|---|---|
+| 임베드 진입 view | `apps/editor/src/views/EmbedView.tsx` |
+| 임베드 에디터 본체 | `apps/editor/src/embed.tsx` (`EmbeddedEditor`, postMessage, 게스트 폴백) |
+| 자동저장(게스트 분기) | `apps/editor/src/hooks/useEmbedAutoSave.ts` |
+| 텍스트 속성 | `apps/editor/src/controls/TextAttributes.tsx` |
+| 채우기(부분색) | `apps/editor/src/controls/ObjectFill.tsx` |
+| 곡선/원형 텍스트 | `apps/editor/src/controls/TextEffect.tsx` |
+| 직렬화 prop 리스트 | `packages/canvas-core/src/utils/canvas.ts` (`styles`, `curveArcDeg` 등) |
+| 라우트 | `apps/editor/src/App.tsx` (`/embed`) |

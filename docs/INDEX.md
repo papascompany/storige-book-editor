@@ -86,6 +86,14 @@
 
 ## 📊 6. 사이클 보고서 (시간역순)
 
+### 🆕 2026-06-02 — `/embed` 임베드 전환 + 텍스트 자유도 + 원형 텍스트 + 게스트 폴백
+| 문서 | 설명 |
+|------|------|
+| [`../.cursor/plans/RESUME_PROMPT_2026-06-02.md`](../.cursor/plans/RESUME_PROMPT_2026-06-02.md) | **세션 핸드오프(최신)** — `/embed`(EmbeddedEditor) 전환, 이탤릭/부분색/글자크기/원형 텍스트, MEMBER_REQUIRED 게스트 폴백. editor 6커밋, 회귀 0 |
+| [`EDITOR.md`](./EDITOR.md) §14 | 위 편집기 기능 상세 (임베드/텍스트/원형/게스트 폴백 + 파일 매핑) |
+| [`../.cursor/plans/HANDOFF_StorigeEditorHost_iframe_overlay_2026-05-31.md`](../.cursor/plans/HANDOFF_StorigeEditorHost_iframe_overlay_2026-05-31.md) | bookmoa 측 연동 지시서 — `/embed` URL + 재편집 + dual-emit + 토큰 memberSeqno 필수(§3.5) |
+| [`../.cursor/plans/HANDOFF_Storige_postMessage_standardize_2026-06-01.md`](../.cursor/plans/HANDOFF_Storige_postMessage_standardize_2026-06-01.md) | postMessage 규약 통일 (SUPERSEDED — /embed로 대체 해결) |
+
 ### 🆕 2026-05-29 — 추후 개발 로드맵 / Shopify
 | 문서 | 설명 |
 |------|------|
