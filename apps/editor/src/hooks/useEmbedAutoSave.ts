@@ -137,10 +137,11 @@ export function useEmbedAutoSave(config: AutoSaveConfig) {
     try {
       const canvasData = collectCanvasData()
 
-      const updatedSession = await editSessionsApi.update(sessionId, {
-        canvasData,
-        status: 'editing',
-      })
+      // 게스트 세션이면 guestToken 동봉(updateGuest), 아니면 회원 update
+      const guestToken = currentSession?.guestToken
+      const updatedSession = guestToken
+        ? await editSessionsApi.updateGuest(sessionId, guestToken, { canvasData, status: 'editing' })
+        : await editSessionsApi.update(sessionId, { canvasData, status: 'editing' })
 
       // 성공 시 상태 업데이트
       setSaved()
@@ -173,6 +174,7 @@ export function useEmbedAutoSave(config: AutoSaveConfig) {
     }
   }, [
     sessionId,
+    currentSession,
     collectCanvasData,
     setSaving,
     setSaved,

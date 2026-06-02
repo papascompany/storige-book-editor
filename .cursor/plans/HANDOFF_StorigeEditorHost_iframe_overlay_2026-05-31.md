@@ -46,6 +46,19 @@
 4. 적용 화면: 마이페이지 > 주문 > **주문내역**(관리 `•••`), 마이페이지 > 주문 > **장바구니**(파일/펜 아이콘). 두 곳 모두 같은 `/embed?sessionId=` 방식.
    - 주문 확정(결제완료) 전까지는 항상 재편집 가능. 확정 후 정책은 bookmoa가 상태값으로 게이팅.
 
+### (3.5) ❗ shop-session 토큰에 **회원번호(memberSeqno) 필수** (2026-06-02 추가)
+`/embed`(EmbeddedEditor)는 진입 즉시 `POST /api/edit-sessions`로 **회원 편집 세션을 생성**한다. 이때 토큰에 회원 식별이 없으면 **400 `MEMBER_REQUIRED`("회원 정보가 필요합니다.")** → "편집기를 열 수 없습니다"가 뜬다. (실제 발생 사례 확인됨)
+
+→ bookmoa 서버 어댑터(`api/storige/shop-session.js`)가 토큰 발급 시 **로그인 회원의 `memberSeqno`를 반드시 포함**:
+```
+POST https://api.papascompany.co.kr/api/auth/shop-session
+Headers: X-API-Key: <STORIGE_API_KEY>   // 서버에서만
+Body: { memberSeqno: <로그인 회원번호>, memberId: "<이메일/ID>", memberName: "<이름>" }
+→ 응답 accessToken(JWT, 1h)을 /embed URL 의 token= 으로 전달
+```
+- `memberSeqno`가 **0이거나 누락**이면 400. 장바구니/주문내역은 로그인 화면이므로 회원번호를 반드시 실어야 한다.
+- (Storige 보강) 회원 세션 생성 실패 시 편집기가 **게스트 세션으로 자동 폴백**하여 열리고 자동저장된다. 단, **편집완료 시 `editor.needAuth`** 가 부모로 전달되므로 bookmoa는 이를 받아 **로그인 → migrate → 재완료** 처리해야 한다. 정상 운영은 처음부터 회원 토큰을 싣는 것.
+
 ### (4) 그대로 적용되는 것
 - §6 풀스크린 오버레이 / §7 모바일 체크리스트 / §8 보안(origin 검증) — **변경 없이 그대로**.
 - 단 §5.2 수신부의 origin 검증(`e.origin === 'https://editor.papascompany.co.kr'`)은 필수 유지.
