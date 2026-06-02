@@ -3,9 +3,10 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { SessionStatus } from '../entities/edit-session.entity';
 
 export class UpdateEditSessionDto {
-  @ApiPropertyOptional({ description: '캔버스 데이터 (편집 내용)' })
+  // 캔버스 데이터: 단일 페이지는 객체, 멀티페이지(책자/스프레드)는 페이지별 배열.
+  // @IsObject() 는 배열을 거부하므로 사용하지 않는다 (멀티페이지 autosave 400 회귀 방지, 2026-06-02).
+  @ApiPropertyOptional({ description: '캔버스 데이터 (단일 객체 또는 멀티페이지 배열)' })
   @IsOptional()
-  @IsObject()
   canvasData?: any;
 
   @ApiPropertyOptional({ description: '메타데이터' })
