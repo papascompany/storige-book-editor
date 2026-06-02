@@ -95,9 +95,13 @@
 ```
 [외부 사이트] → POST /auth/shop-session (X-API-Key)
   → { memberSeqno, memberId, memberName }
-  → Storige API가 JWT 발급 (1시간 유효)
-  → 편집기 iframe URL에 token= 파라미터로 전달
+  → Storige API가 JWT 발급 (sub=memberSeqno, source='shop', 1시간 유효)
+  → 편집기 iframe URL(/embed)에 token= 파라미터로 전달
 ```
+> ⚠️ **memberSeqno 필수 + /embed 진입** (2026-06-02):
+> - 외부 iframe 진입 경로는 **`/embed`**(완전 배선 EmbeddedEditor: 자동저장·세션영속·정식 postMessage·sessionId 재편집). 레거시 `/`(EditorView)는 완료 메시지 미발신이라 사용 안 함.
+> - `/embed`는 진입 즉시 `POST /edit-sessions`로 회원 세션 생성 → JWT에 회원번호 없거나 0이면 **400 `MEMBER_REQUIRED`**("편집기를 열 수 없습니다"). shop-session 발급 시 로그인 회원의 `memberSeqno`를 반드시 포함.
+> - (Storige 보강) 회원 세션 생성 실패 시 **게스트 세션 자동 폴백** → 편집은 가능하되 편집완료 시 `editor.needAuth`(로그인 유도).
 
 ### 3.2 게스트 인증
 
@@ -292,3 +296,4 @@ edited → synthesizing → validated → completed
 | 일시 | 변경 |
 |------|------|
 | 2026-05-25 | 초판 — 3개 서비스 연동 워크플로우 + outputMode 3종 + 관리자 워크플로우 통합 정리 |
+| 2026-06-02 | 편집기 임베드 `/embed` 전환(EmbeddedEditor 마운트) + shop-session **memberSeqno 필수**(MEMBER_REQUIRED 방어=게스트 폴백) + pageCount 범위 밖 클램프 + **edit-session canvasData 멀티페이지 배열 허용**(autosave 400 핫픽스, API 재배포). 합성 파이프라인(compose-mixed separate/single/실데이터)·검증(FIXABLE/FAILED)·업로드 3경로·관리자 조회 **운영 라이브 검증 완료**. 상세: `RESUME_PROMPT_2026-06-02.md`, `SYNTHESIS_E2E_TEST_PLAN_2026-06-02.md`, `EDITOR.md §14` |
