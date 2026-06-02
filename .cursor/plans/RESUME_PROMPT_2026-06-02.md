@@ -117,6 +117,12 @@ Body: { memberSeqno: <로그인 회원번호>, memberId, memberName }
 5. ✅ **pageCount placeholder 미전송** — **완료**(2026-06-02). 상품 `productMeta.pages=1` placeholder를 호스트가 `pageCount=1`로 보내 "최소 8페이지" 검증 에러 발생 → `StorigeEditorHost.jsx`에서 `pageCount < 2`면 미전송(템플릿 기본 페이지수 사용)으로 수정.
    - (Storige 보강 2026-06-02): 범위 밖 pageCount는 **throw 대신 템플릿 유효 범위로 클램프**(`useEditorContents.ts` spread/single 모드, 커밋은 §8 참조). 호스트 placeholder에도 편집기 진입 보장.
 6. (게스트 폴백 시) `editor.needAuth` 수신 → 로그인 → migrate → 재완료.
+7. ✅ **편집기 자동저장 실패(에스컬레이션) 해결**(2026-06-02). bookmoa 인계문서 §2 미해결 항목.
+   - 증상: "자동 저장 실패, 재시도 중" 무한. 운영 로그 `PATCH /edit-sessions/:id` → **400 `canvasData must be an object`** 반복.
+   - 근본: `Update/CreateEditSessionDto.canvasData`가 `@IsObject()`인데, **멀티페이지 책자**는 `useEmbedAutoSave`가 canvasData를 **페이지별 배열**로 전송 → class-validator `@IsObject()`가 배열 거부 → 400. (A4 하드커버=spread 멀티페이지라 항상 발생, 단일페이지는 객체라 통과. `/embed` 멀티페이지 autosave로 처음 노출. 토큰/권한 무관.)
+   - 수정: 두 DTO의 `canvasData`에서 `@IsObject()` 제거(객체 OR 배열 허용). 커밋 `1572a3e` + **API 수동 재배포 완료**.
+   - 검증: shop-session JWT로 세션 생성 후 **배열 canvasData PATCH → 200**(수정 전 400), 객체 PATCH → 200(회귀 0).
+   - → bookmoa: 자동저장 정상화됨. **편집완료→합성 e2e 재검증 가능**.
 
 ---
 
@@ -126,9 +132,9 @@ Body: { memberSeqno: <로그인 회원번호>, memberId, memberName }
 |---|---|
 | `https://editor.papascompany.co.kr/` (EditorView, 레거시 고객/관리자) | ✅ |
 | `https://editor.papascompany.co.kr/embed` (신규 임베드 진입) | ✅ |
-| API `https://api.papascompany.co.kr/api/health` | ✅ |
+| API `https://api.papascompany.co.kr/api/health` | ✅ (canvasData DTO 수정 후 재배포됨) |
 
-- API/Worker/DB 변경 **없음** (이번 세션은 editor 프론트 + 핸드오프 문서만). 재배포 불필요.
+- editor 프론트(Vercel 자동배포) + **API 1건 변경**(edit-sessions canvasData DTO, `docker compose up -d --build api`로 재배포 완료). Worker/DB 변경 없음.
 
 ---
 
@@ -136,4 +142,6 @@ Body: { memberSeqno: <로그인 회원번호>, memberId, memberName }
 
 | 일시 | 변경 |
 |---|---|
-| 2026-06-02 | `/embed` 임베드 전환 + 텍스트 자유도(이탤릭/부분색/사이즈/원형) + 게스트 폴백. editor 프론트 6커밋, PHP/회원/관리자 회귀 0. bookmoa 토큰 memberSeqno 작업 진행 중 |
+| 2026-06-02 | `/embed` 임베드 전환 + 텍스트 자유도(이탤릭/부분색/사이즈/원형) + 게스트 폴백. editor 프론트 6커밋, PHP/회원/관리자 회귀 0. |
+| 2026-06-02 | pageCount 범위 밖 클램프(`0d37bfc`). 합성 E2E 테스트 계획+라이브 검증(`a7d89dd`,`014d1d1`). Storige 백엔드 테스트(검증/업로드/합성/관리자) 통과. |
+| 2026-06-02 | **autosave 400 핫픽스**(`1572a3e`): edit-session canvasData 멀티페이지 배열 허용(@IsObject 제거). **API 재배포 완료**. bookmoa 에스컬레이션 해결. |
