@@ -14,6 +14,14 @@ class ServicePlugin extends PluginBase {
   hotkeys = []
   readonly imagePlugin: ImageProcessingPlugin
 
+  /**
+   * P0-3 (2026-06-02): PDF 합성 시 이미지 다운스케일 상한(px).
+   * 종전 1280/1536/1600/2048 캡은 300 DPI A4(≈2480×3508px) 미달 → 인쇄 부적합 화질.
+   * 300 DPI × A4 장변(297mm) ≈ 3508px 로 통일하여 원본급 화질 보존(요구 #11·#12).
+   * (svg2pdf callstack 회피용 timeout/try-catch/null 폴백은 기존대로 유지.)
+   */
+  private static readonly PRINT_MAX_IMAGE_DIMENSION = 3508
+
   constructor(
     canvas: fabric.Canvas,
     editor: Editor,
@@ -2029,15 +2037,8 @@ class ServicePlugin extends PluginBase {
               return
             }
 
-            // 적극적인 크기 제한 (인쇄 품질 고려)
-            // PNG/알파 가능성이 높은 형식은 낮은 상한으로 메모리 사용 줄이기
-            const maxSize =
-              mimeType === 'image/png' ||
-                mimeType === 'image/webp' ||
-                mimeType === 'image/svg+xml' ||
-                mimeType === 'image/gif'
-                ? 1536
-                : 2048
+            // P0-3: 300 DPI 인쇄 화질 보존 — 포맷 구분 없이 인쇄 등급 상한 적용
+            const maxSize = ServicePlugin.PRINT_MAX_IMAGE_DIMENSION
             let { width, height } = img
 
             if (width > maxSize || height > maxSize) {
@@ -2136,8 +2137,8 @@ class ServicePlugin extends PluginBase {
               return
             }
 
-            // PNG는 무손실이므로 크기만 조정, 메모리 사용을 위해 상한 보수적으로 설정
-            const maxSize = 1280 // ~1.3K resolution
+            // P0-3: PNG 무손실 — 300 DPI 인쇄 등급 상한으로 통일(종전 1280은 인쇄 부적합)
+            const maxSize = ServicePlugin.PRINT_MAX_IMAGE_DIMENSION
             let { width, height } = img
 
             if (width > maxSize || height > maxSize) {
@@ -2218,12 +2219,12 @@ class ServicePlugin extends PluginBase {
               return
             }
 
-            // SVG의 경우 크기 추정이 필요할 수 있음 → 메모리 상한 보수적으로 적용
-            const maxSize = 1600
+            // P0-3: SVG/GIF/WEBP 래스터라이즈 — 300 DPI 인쇄 등급 상한으로 통일(종전 1600)
+            const maxSize = ServicePlugin.PRINT_MAX_IMAGE_DIMENSION
             let { width, height } = img
             if (!width || !height) {
-              width = 2048
-              height = 2048
+              width = maxSize
+              height = maxSize
             }
             if (width > maxSize || height > maxSize) {
               const ratio = Math.min(maxSize / width, maxSize / height)
