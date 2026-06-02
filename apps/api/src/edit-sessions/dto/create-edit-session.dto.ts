@@ -42,9 +42,9 @@ export class CreateEditSessionDto {
   @IsString()
   templateSetId?: string;
 
-  @ApiPropertyOptional({ description: '초기 캔버스 데이터' })
+  // 단일 페이지는 객체, 멀티페이지(책자/스프레드)는 배열. @IsObject() 는 배열을 거부하므로 미사용 (2026-06-02).
+  @ApiPropertyOptional({ description: '초기 캔버스 데이터 (단일 객체 또는 멀티페이지 배열)' })
   @IsOptional()
-  @IsObject()
   canvasData?: any;
 
   @ApiPropertyOptional({ description: '메타데이터 (제품 정보 등)' })
