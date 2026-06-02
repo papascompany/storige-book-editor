@@ -140,7 +140,13 @@ export namespace core {
     'cmykStroke',
     // 레이어 순서 잠금 관련 속성
     'lockLayerOrder',
-    'parentLayerId'
+    'parentLayerId',
+    // P1-5 (2026-06-02): 객체 잠금/삭제불가 영속화.
+    // lockInfo(LockPlugin) + deleteable 플래그가 저장→복원 시 유지돼야
+    // 관리자가 지정한 보호가 고객 진입 시에도 강제됨.
+    'lockInfo',
+    'deleteable',
+    'evented'
   ]
 
   export function getWorkspace(canvas: fabric.Canvas): fabric.Object | undefined {
