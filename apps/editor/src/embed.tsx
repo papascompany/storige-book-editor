@@ -165,6 +165,7 @@ export type EmbedMessageEvent =
   | 'editor.complete'
   | 'editor.cancel'
   | 'editor.error'
+  | 'editor.needAuth'
 
 export interface EmbedMessageEnvelope<T = unknown> {
   source: typeof EMBED_MESSAGE_SOURCE
@@ -397,7 +398,7 @@ function EmbeddedEditor({
 
           // 기존 세션이 없으면 새로 생성
           if (!editSession) {
-            editSession = await editSessionsApi.create({
+            const createPayload = {
               orderSeqno,
               mode,
               coverFileId,
@@ -413,8 +414,17 @@ function EmbeddedEditor({
                 paperThickness: options?.paperThickness,
                 productId,
               },
-            })
-            console.log('[EmbeddedEditor] New session created:', editSession.id)
+            }
+            try {
+              editSession = await editSessionsApi.create(createPayload)
+              console.log('[EmbeddedEditor] New session created:', editSession.id)
+            } catch (createErr) {
+              // 토큰에 회원 식별이 없으면(MEMBER_REQUIRED 등) 회원 세션 생성이 400.
+              // → 게스트 세션으로 폴백: 편집/자동저장은 가능하고, 편집완료 시 로그인 유도(editor.needAuth).
+              console.warn('[EmbeddedEditor] Member session create failed — falling back to guest:', createErr)
+              editSession = await editSessionsApi.createGuest(createPayload)
+              console.log('[EmbeddedEditor] Guest session created (fallback):', editSession.id)
+            }
           }
 
           setCurrentSession(editSession)
@@ -654,11 +664,11 @@ function EmbeddedEditor({
           // Get canvas data
           const canvasData = canvas?.toJSON(core.extendFabricOption) || null
 
-          // Update edit session with canvas data
-          const updatedSession = await editSessionsApi.update(currentSessionId, {
-            canvasData,
-            status: 'editing',
-          })
+          // Update edit session with canvas data (게스트 세션이면 guestToken 동봉)
+          const guestToken = currentSession?.guestToken
+          const updatedSession = guestToken
+            ? await editSessionsApi.updateGuest(currentSessionId, guestToken, { canvasData, status: 'editing' })
+            : await editSessionsApi.update(currentSessionId, { canvasData, status: 'editing' })
 
           setCurrentSession(updatedSession)
 
@@ -694,6 +704,20 @@ function EmbeddedEditor({
         try {
           // First save current state
           const canvasData = canvas?.toJSON(core.extendFabricOption) || null
+
+          // 게스트 세션: 회원 전용 complete 불가 → 저장만 하고 로그인 유도(editor.needAuth)
+          const guestToken = currentSession?.guestToken
+          if (guestToken) {
+            await editSessionsApi.updateGuest(currentSessionId, guestToken, { canvasData })
+            postToParent(parentOrigin, 'editor.needAuth', {
+              guestToken,
+              reason: 'complete_save',
+              ts: new Date().toISOString(),
+            })
+            console.log('[EmbeddedEditor] Guest complete → needAuth emitted')
+            return
+          }
+
           await editSessionsApi.update(currentSessionId, {
             canvasData,
           })
@@ -777,6 +801,19 @@ function EmbeddedEditor({
       setLoadingMessage('작업을 저장하는 중...')
       // Get canvas data
       const canvasData = canvas?.toJSON(core.extendFabricOption) || null
+
+      // 게스트 세션: PDF 생성/회원 complete 불가 → 저장만 하고 로그인 유도(editor.needAuth)
+      const guestToken = currentSession?.guestToken
+      if (guestToken) {
+        await editSessionsApi.updateGuest(currentSessionId, guestToken, { canvasData })
+        postToParent(parentOrigin, 'editor.needAuth', {
+          guestToken,
+          reason: 'complete_save',
+          ts: new Date().toISOString(),
+        })
+        console.log('[EmbeddedEditor] Guest finish → needAuth emitted')
+        return
+      }
 
       // Update edit session with canvas data
       await editSessionsApi.update(currentSessionId, {
