@@ -921,31 +921,32 @@ export function useEditorContents(): UseEditorContentsReturn {
 
         console.log(`[EditorContents] Page adjustment: requested=${requestedPageCount}, current=${currentPageCount}`)
 
-        // pageCountRange 검증
+        // 방어적 클램프: 호스트가 placeholder/범위 밖 pageCount(예: 1)를 보내도
+        // throw 대신 유효 범위로 보정한다 (편집기 진입 보장). 주문 페이지수 불일치는 워커/주문 검증에서 처리.
+        let effectivePageCount = requestedPageCount
         const pageCountRange = (templateSet as any).pageCountRange || []
         if (pageCountRange.length > 0) {
           const minPages = Math.min(...pageCountRange)
           const maxPages = Math.max(...pageCountRange)
-
-          if (requestedPageCount < minPages) {
-            throw new Error(`페이지 수는 최소 ${minPages}페이지 이상이어야 합니다.`)
+          if (effectivePageCount < minPages) {
+            console.warn(`[EditorContents] pageCount ${effectivePageCount} < 최소 ${minPages} — 템플릿 최소로 보정`)
+            effectivePageCount = minPages
           }
-          if (requestedPageCount > maxPages) {
-            throw new Error(`페이지 수는 최대 ${maxPages}페이지를 초과할 수 없습니다.`)
+          if (effectivePageCount > maxPages) {
+            console.warn(`[EditorContents] pageCount ${effectivePageCount} > 최대 ${maxPages} — 템플릿 최대로 보정`)
+            effectivePageCount = maxPages
           }
         }
-
-        // 페이지수가 템플릿 내지수보다 적으면 에러
-        if (requestedPageCount < currentPageCount) {
-          throw new Error(
-            `요청된 페이지 수(${requestedPageCount})가 템플릿의 최소 내지 수(${currentPageCount})보다 적습니다.`
-          )
+        // 템플릿 실제 내지수보다 적으면 내지수로 보정 (내지 삭제 불가)
+        if (effectivePageCount < currentPageCount) {
+          console.warn(`[EditorContents] pageCount ${effectivePageCount} < 템플릿 내지수 ${currentPageCount} — 내지수로 보정`)
+          effectivePageCount = currentPageCount
         }
 
         // 페이지수가 더 많으면 마지막 내지 템플릿 복제
-        if (requestedPageCount > currentPageCount && pageTemplates.length > 0) {
+        if (effectivePageCount > currentPageCount && pageTemplates.length > 0) {
           const lastPageTemplate = pageTemplates[pageTemplates.length - 1]
-          const pagesToAdd = requestedPageCount - currentPageCount
+          const pagesToAdd = effectivePageCount - currentPageCount
 
           console.log(`[EditorContents] Adding ${pagesToAdd} pages by cloning last page template`)
 
@@ -1461,31 +1462,33 @@ export function useEditorContents(): UseEditorContentsReturn {
 
         console.log(`[EditorContents:Spread] Page adjustment: requested=${requestedPageCount}, current=${currentPageCount}`)
 
-        // pageCountRange 검증
+        // 방어적 클램프: 호스트가 placeholder/범위 밖 pageCount(예: 1)를 보내도
+        // throw 대신 유효 범위로 보정한다 (편집기 진입 보장 — 게스트 폴백과 동일 철학).
+        // 실제 주문 페이지수 불일치는 워커/주문 검증에서 별도로 잡힌다.
+        let effectivePageCount = requestedPageCount
         const pageCountRange = (templateSet as any).pageCountRange || []
         if (pageCountRange.length > 0) {
           const minPages = Math.min(...pageCountRange)
           const maxPages = Math.max(...pageCountRange)
-
-          if (requestedPageCount < minPages) {
-            throw new Error(`페이지 수는 최소 ${minPages}페이지 이상이어야 합니다.`)
+          if (effectivePageCount < minPages) {
+            console.warn(`[EditorContents:Spread] pageCount ${effectivePageCount} < 최소 ${minPages} — 템플릿 최소로 보정`)
+            effectivePageCount = minPages
           }
-          if (requestedPageCount > maxPages) {
-            throw new Error(`페이지 수는 최대 ${maxPages}페이지를 초과할 수 없습니다.`)
+          if (effectivePageCount > maxPages) {
+            console.warn(`[EditorContents:Spread] pageCount ${effectivePageCount} > 최대 ${maxPages} — 템플릿 최대로 보정`)
+            effectivePageCount = maxPages
           }
         }
-
-        // 페이지수가 템플릿 내지수보다 적으면 에러
-        if (requestedPageCount < currentPageCount) {
-          throw new Error(
-            `요청된 페이지 수(${requestedPageCount})가 템플릿의 최소 내지 수(${currentPageCount})보다 적습니다.`
-          )
+        // 템플릿 실제 내지수보다 적으면 내지수로 보정 (내지 삭제 불가)
+        if (effectivePageCount < currentPageCount) {
+          console.warn(`[EditorContents:Spread] pageCount ${effectivePageCount} < 템플릿 내지수 ${currentPageCount} — 내지수로 보정`)
+          effectivePageCount = currentPageCount
         }
 
         // 페이지수가 더 많으면 마지막 내지 템플릿 복제
-        if (requestedPageCount > currentPageCount && pageTemplates.length > 0) {
+        if (effectivePageCount > currentPageCount && pageTemplates.length > 0) {
           const lastPageTemplate = pageTemplates[pageTemplates.length - 1]
-          const pagesToAdd = requestedPageCount - currentPageCount
+          const pagesToAdd = effectivePageCount - currentPageCount
 
           console.log(`[EditorContents:Spread] Adding ${pagesToAdd} pages by cloning last page template`)
 

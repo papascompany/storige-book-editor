@@ -113,8 +113,10 @@ Body: { memberSeqno: <로그인 회원번호>, memberId, memberName }
 1. iframe URL을 `/` → **`/embed`** 로 변경 (+필수 파라미터).
 2. 재편집: 완료 시 `payload.sessionId` 저장 → 주문내역/장바구니 "수정" 버튼이 `/embed?sessionId=`로 재구동.
 3. 완료 수신부: `storige:completed` 그대로 동작(dual-emit). 추후 정식 엔벨로프로 이전 가능.
-4. **shop-session 토큰에 `memberSeqno` 필수** (§3.5) — 현재 진행 중.
-5. (게스트 폴백 시) `editor.needAuth` 수신 → 로그인 → migrate → 재완료.
+4. ✅ **shop-session 토큰에 `memberSeqno` 포함** — **완료·확인됨**(2026-06-02). 테스트 회원 로그인 → "A4 하드커버 책자" 회원 세션 정상 생성(400 없음) + 실제 템플릿 로드 확인.
+5. ✅ **pageCount placeholder 미전송** — **완료**(2026-06-02). 상품 `productMeta.pages=1` placeholder를 호스트가 `pageCount=1`로 보내 "최소 8페이지" 검증 에러 발생 → `StorigeEditorHost.jsx`에서 `pageCount < 2`면 미전송(템플릿 기본 페이지수 사용)으로 수정.
+   - (Storige 보강 2026-06-02): 범위 밖 pageCount는 **throw 대신 템플릿 유효 범위로 클램프**(`useEditorContents.ts` spread/single 모드, 커밋은 §8 참조). 호스트 placeholder에도 편집기 진입 보장.
+6. (게스트 폴백 시) `editor.needAuth` 수신 → 로그인 → migrate → 재완료.
 
 ---
 

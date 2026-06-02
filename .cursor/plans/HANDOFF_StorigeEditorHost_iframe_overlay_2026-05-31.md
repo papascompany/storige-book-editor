@@ -87,7 +87,7 @@ https://editor.papascompany.co.kr/?templateSetId=f0335fda-bf48-47f2-a908-2b2e70e
 |---|---|---|---|---|
 | `templateSetId` | `template_set_id` | ✅ **필수** | 상품의 Storige 연동 설정값 (예: `f0335fda-…`) | **이게 없으면 샘플로 떨어짐.** 절대 빈 문자열 금지 |
 | `token` | `token` | ✅ 로그인 시 필수 | shop-session JWT (1h) | 인증. 게스트면 생략 가능(에디터가 게스트 세션 자동 생성) |
-| `pageCount` | `page_count` | 🔶 권장 | 고객 주문 옵션 (내지 수) | book 모드 페이지 자동 확장/검증에 사용. 범위 밖이면 로드 실패 가능 |
+| `pageCount` | `page_count` | 🔶 권장 | 고객 주문 옵션 (내지 수) | book 모드 페이지 자동 확장. **placeholder(예: 1) 금지** — 실제 내지 수만. (Storige 2026-06-02부터 범위 밖이면 throw 대신 템플릿 유효 범위로 클램프하지만, 정확한 값/미전송이 정석. 권장: 1 이하면 아예 미전송 → 템플릿 기본 페이지수 사용) |
 | `paperType` | `paper_type` | 🔶 권장 | 주문 옵션 (예: `mojo_80g`) | 책등 너비 계산(SpineCalculator) |
 | `bindingType` | `binding_type` | 🔶 권장 | 주문 옵션 (예: `perfect`/무선, `saddle`/중철) | 책등/제본 계산 |
 | `size` | `size` | ⬜ 선택 | 규격 코드 | 일부 흐름에서 사용 |
