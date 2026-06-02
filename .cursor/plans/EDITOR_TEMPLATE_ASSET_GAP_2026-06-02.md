@@ -5,6 +5,36 @@
 
 ---
 
+## ⏱️ 진행 상태 (2026-06-03 오토파일럿 1차) — ★최우선 참조
+
+| 항목 | 상태 | 커밋 | 검증 |
+|---|---|---|---|
+| **P0-1** 에셋 단절 해소 | ✅ **완료·배포·검증** | `b04dd39` | API 재배포 후 `/editor-contents/{elements,frames,backgrounds}` 가 library_* 데이터 반환 확인(요소3·프레임2·배경3) |
+| **P0-2** PDF 첨부 자동로딩 | 🟡 **API 토대 완료·배포** / 편집기·워커 후속 | `c02a6e6` | content_pdf_mode 컬럼 prod ALTER + 가드 완화 배포, 세션 SELECT 무손상 확인. **편집기 pdfjs 렌더→잠금배경 페이지생성 + 워커 underlay 합성은 미구현(아래 잔여작업)** |
+| **P0-3** DPI/화질 | ✅ **완료** | `9eff3ed` | EditorHeader 72→300(프로덕션 embed/스프레드와 통일), 이미지 캡 3508(300DPI A4)로 통일. 빌드 통과 |
+| **P1-4** 사진틀 정식화 | ⛔ **미착수(잔여)** | — | 프레임내 이동/줌·핏모드·원본합성은 실시각 QA 필요한 인터랙티브 기능 → 무단 프로덕션 배포 보류 |
+| **P1-5** 객체 잠금/삭제불가 | ✅ **완료** | `74a082f`,`615c642` | LockPlugin 배선+setUserRole, del() deleteable/lockInfo 강제, 직렬화, 관리자 삭제잠금 토글 UI. 빌드 통과 |
+| **P1-6** 곡선 텍스트 PDF 보존 | ✅ **완료** | `61e3d13` | tspan rotate→path transform 적용. 빌드 통과 |
+| **P2-7** 편집가능 면지 | ⛔ **미착수(잔여)** | — | loadTemplateSetEditor 면지 페이지 생성 + 워커 전달 (인터랙티브) |
+| **P2-8** WYSIWYG 정밀화 | ⛔ **미착수(잔여)** | — | `_removeSvgBackground` 과삭제·음수오프셋·혼합폰트 등 모두 시각 diff QA 필요 |
+
+### 🔧 P0-2 편집기·워커 잔여 작업 (구체 계획)
+1. **편집기 pdfjs 렌더**: `apps/editor` 에 `pdfjs-dist` 추가(네트워크 설치 필요) → `apps/editor/src/utils/pdfToImages.ts` 신설: 업로드 PDF의 각 페이지를 300 DPI 스케일 `page.render`→dataURL 배열. Vite 는 `pdfjs-dist/build/pdf.worker.min.js` 를 `?url` 또는 `new Worker(new URL(...))` 로 번들.
+2. **ContentPdfAttachModal**: 모드 선택 UI(replace|underlay) 추가. underlay 선택 시 `applyAttachment` 에서 `contentPdfMode:'underlay'` 함께 PATCH + 렌더된 페이지 dataURL 반환.
+3. **페이지 자동생성**: 호출자(EmbeddedEditor/EditorView)에서 PDF 페이지수만큼 `useAppStore.addPage()` → 각 페이지에 PDF 이미지를 `editable:false, selectable:false, deleteable:false, evented:false` 잠금 배경으로 add (P1-5 직렬화로 영속). 
+4. **워커 underlay 합성**: 완료 시 합성 단계에서 원본 PDF 페이지를 바닥에 깔고 편집 캔버스 PDF 를 그 위에 overlay 합성(`pdf-lib` page merge). `synthesis.processor.ts` 의 outputMode 에 `underlay` 분기 추가.
+5. **검증**: N페이지 내지 PDF 첨부(underlay) → 편집기 N페이지 배경 표시 + 위에 텍스트 추가 → 저장 → PDF 에서 원본 PDF + 편집물 합성 확인.
+
+### 🔧 P1-4 / P2-7 / P2-8 보류 사유 + 진입점
+- 공통: 모두 **캔버스 렌더링/사용자 인터랙션 결과를 실측 비교(QA)** 해야 안전. 프로덕션 편집기는 bookmoa 고객이 실사용 중이라 미검증 렌더/인터랙션 코드 자동배포는 회귀(주문 불가/출력 손상) 리스크.
+- **P1-4 진입점**: `apps/editor/src/stores/useImageStore.ts:416-647`(프레임 채우기), `controls/`(핏 토글 패널 신설), `ServicePlugin`(원본해상도 합성, P0-3 캡 상향과 연계). 핵심: `extensionType:'photo-frame'` + `fitMode:cover|contain`(scaleX=scaleY 왜곡 제거) + 더블클릭 프레임내 이동/휠줌 + `frameId/fitMode/cropX/cropY` 직렬화.
+- **P2-7 진입점**: `useEditorContents.ts loadTemplateSetEditor` 에 endpaper 분기 — `frontEditable` 시 `TemplateType.ENDPAPER` 편집 페이지 생성, 완료 시 `composeFrontEndpaperUrls` 로 워커 전달.
+- **P2-8 진입점**: `ServicePlugin._removeSvgBackground`(id 기반으로 워크스페이스 마커만 제거하도록 한정, 단 워크스페이스 배경 누출 회귀 주의 → 시각 QA 필수), 음수오프셋 클램프, `svgTextToPath` 혼합폰트 tspan별 폰트.
+
+> **다음 세션 권장**: 위 잔여작업은 로컬에서 `pnpm install pdfjs-dist` 후 편집기 dev 서버 + 실 PDF/이미지로 시각 검증하며 진행. 본 1차 오토파일럿은 **백엔드·로직·빌드검증 가능 항목(P0-1·P0-3·P1-5·P1-6·P0-2 API)** 을 안전 완료.
+
+---
+
 ## 0. 종합 판정 (요구사항 × 상태)
 
 | # | 요구사항 | 상태 | 핵심 갭 |

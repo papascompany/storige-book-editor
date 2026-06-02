@@ -570,3 +570,53 @@ per-character `styles`(이탤릭·부분색)는 직렬화 리스트(`packages/ca
 | 곡선/원형 텍스트 | `apps/editor/src/controls/TextEffect.tsx` |
 | 직렬화 prop 리스트 | `packages/canvas-core/src/utils/canvas.ts` (`styles`, `curveArcDeg` 등) |
 | 라우트 | `apps/editor/src/App.tsx` (`/embed`) |
+
+---
+
+## §15 템플릿·에셋 공급 + 인쇄 품질 + 객체 보호 (2026-06-03 오토파일럿 1차)
+
+> 갭 분석 `/.cursor/plans/EDITOR_TEMPLATE_ASSET_GAP_2026-06-02.md` 의 P0/P1 항목 중
+> **백엔드·로직·빌드검증 가능 항목**을 안전 완료한 변경 요약. (인터랙티브/렌더 QA 필요 항목은 동 문서 '진행 상태' 참조.)
+
+### 15.1 에셋 라이브러리 단절 해소 (P0-1) — `b04dd39`
+- **문제**: 관리자 Library(`/library/*`)에 등록한 클립아트/프레임/배경이 고객 편집기 패널에 전혀 안 보임.
+  원인 ① 편집기가 읽는 `editor_contents` 테이블이 0행 ② admin은 `library_cliparts/frames/backgrounds` 에 기록 → 두 시스템 미연결.
+- **수정**: `editor-contents.service` 가 `type=element→library_cliparts`, `frame→library_frames`, `background→library_backgrounds`
+  를 조회해 편집기 `EditorContent` 형태로 매핑. (`template`/`image` 은 종전 `editor_contents`.)
+  편집기 `useEditorContents.safeGetImageUrl/safeGetTemplateUrl` 가 중첩(`image.image.url`)+flat(`imageUrl`) 모두 수용.
+- **운영 시사점**: **관리자가 Library 에 에셋을 등록하면 곧바로 고객 편집기 요소/프레임/배경 패널에 노출**된다.
+
+### 15.2 PDF 출력 DPI/화질 (P0-3) — `9eff3ed`
+- 레거시 "PDF 저장" 버튼이 **DPI 72 하드코딩**이라 px→mm 환산이 ~4배 어긋남 → **300 으로 통일**(embed/스프레드 경로와 동일).
+- `ServicePlugin` 이미지 다운스케일 캡 1280/1536/1600/2048 → **3508(300DPI×A4 장변)** 단일 상수 `PRINT_MAX_IMAGE_DIMENSION`.
+- **운영 시사점**: 인쇄용 PDF 물리 크기 정합 + 사진/이미지 인쇄 화질 향상.
+
+### 15.3 객체 잠금/삭제불가 (P1-5) — `74a082f`, `615c642`
+- 완성돼 있으나 **미등록**이던 `LockPlugin` 을 `createCanvas` 에 배선 + `editMode→'admin'`, 고객→`'user'` 역할 설정.
+- `ObjectPlugin.del()`: editMode 가 아니면 `lockInfo.isLocked` 또는 `deleteable===false` 객체 삭제 차단(휴지통·Delete/Backspace 공통).
+- `lockInfo`/`deleteable`/`evented` 를 직렬화(`extendFabricOption`)에 추가 → **저장→복원 후에도 보호 유지**.
+- **관리자 UI**: `ControlBar` 에 editMode 전용 "삭제 잠금" 토글(방패 아이콘). 이동잠금은 기존 자물쇠 버튼/`cmd+L`.
+- **운영 시사점**: 관리자가 템플릿 제작 시 특정 객체를 잠그면 **고객이 이동·삭제 불가**.
+
+### 15.4 곡선/원형 텍스트 PDF 보존 (P1-6) — `61e3d13`
+- `svgTextToPath` 가 Fabric path-text 의 글자별 `rotate` 를 무시 → 원형 텍스트가 PDF 에서 펴지던 문제.
+- 각 글자 path 에 `transform="rotate(deg x y)"` 적용 → 호를 따라 회전 보존.
+
+### 15.5 내지 PDF 첨부 모드 토대 (P0-2 API) — `c02a6e6`
+- `EditSession.contentPdfMode`(`replace`|`underlay`) 추가. **prod DB ALTER 선행 완료**, `init.sql` 도 content_pdf_* 4종 명시.
+- `underlay` 모드면 `PDF_ATTACHED_EXCLUSIVE` 가드 완화 → PDF 배경 위 편집 캔버스 저장 허용.
+- ⚠️ **편집기 pdfjs 렌더→잠금배경 페이지 자동생성 + 워커 underlay 합성은 후속**(갭 문서 'P0-2 잔여 작업' 참조).
+
+### 15.6 핵심 파일 매핑
+| 영역 | 파일 |
+|---|---|
+| 에셋 공급(library→editor) | `apps/api/src/editor-contents/editor-contents.service.ts`, `.module.ts` |
+| 에셋 URL 폴백 | `apps/editor/src/hooks/useEditorContents.ts` (`safeGetImageUrl`) |
+| PDF DPI | `apps/editor/src/components/editor/EditorHeader.tsx` (300) |
+| 이미지 인쇄 캡 | `packages/canvas-core/src/plugins/ServicePlugin.ts` (`PRINT_MAX_IMAGE_DIMENSION`) |
+| 객체 잠금 플러그인 | `packages/canvas-core/src/plugins/LockPlugin.ts`, 배선=`apps/editor/src/utils/createCanvas.ts` |
+| 삭제 강제 | `packages/canvas-core/src/plugins/ObjectPlugin.ts` (`del()`) |
+| 잠금 직렬화 | `packages/canvas-core/src/utils/canvas.ts` (`lockInfo`/`deleteable`) |
+| 삭제잠금 UI | `apps/editor/src/components/editor/ControlBar.tsx` |
+| 곡선 텍스트 보존 | `packages/canvas-core/src/converters/svgTextToPath.ts` |
+| PDF 첨부 모드 | `apps/api/src/edit-sessions/{entities,dto,edit-sessions.service}.ts` |

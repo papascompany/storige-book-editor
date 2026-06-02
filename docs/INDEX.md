@@ -86,7 +86,14 @@
 
 ## 📊 6. 사이클 보고서 (시간역순)
 
-### 🆕 2026-06-02 — `/embed` 임베드 전환 + 텍스트 자유도 + 원형 텍스트 + 게스트 폴백 + autosave 핫픽스 + 합성 E2E
+### 🆕 2026-06-03 — 템플릿·에셋 공급 + 인쇄품질 + 객체보호 (오토파일럿 1차) + 상품·템플릿 등록 매뉴얼
+| 문서 | 설명 |
+|------|------|
+| [`PRODUCT_TEMPLATE_REGISTRATION_MANUAL.html`](./PRODUCT_TEMPLATE_REGISTRATION_MANUAL.html) | **🎨 상품·템플릿 등록 시각화 매뉴얼** — 에셋등록→템플릿셋→템플릿제작→상품연결→고객편집 5단계 + 최근 변경 |
+| [`EDITOR.md`](./EDITOR.md) §15 | 템플릿·에셋 공급/인쇄품질/객체보호 변경 상세 (P0-1 에셋단절·P0-3 DPI·P1-5 잠금·P1-6 곡선텍스트·P0-2 PDF모드 + 파일 매핑) |
+| [`../.cursor/plans/EDITOR_TEMPLATE_ASSET_GAP_2026-06-02.md`](../.cursor/plans/EDITOR_TEMPLATE_ASSET_GAP_2026-06-02.md) | 갭 분석 + **진행 상태 표**(완료/잔여) + P0-2 편집기·워커 / P1-4·P2 잔여작업 구체 계획 |
+
+### 2026-06-02 — `/embed` 임베드 전환 + 텍스트 자유도 + 원형 텍스트 + 게스트 폴백 + autosave 핫픽스 + 합성 E2E
 | 문서 | 설명 |
 |------|------|
 | [`../.cursor/plans/RESUME_PROMPT_2026-06-02.md`](../.cursor/plans/RESUME_PROMPT_2026-06-02.md) | **세션 핸드오프(최신)** — `/embed`(EmbeddedEditor) 전환, 이탤릭/부분색/글자크기/원형 텍스트, MEMBER_REQUIRED 게스트 폴백, pageCount 클램프, **autosave canvasData 배열 핫픽스(API 재배포)** |
@@ -168,7 +175,8 @@
 ### 에디터 / 캔버스
 | 문서 | 설명 |
 |------|------|
-| [`EDITOR.md`](./EDITOR.md) | **에디터 명세** (§1~§6 데이터/룰/권한, §7~§12 UX 사이클 — 도구 메뉴/디폴트 샘플/핸들/워크스페이스 정렬/모드별 헤더) |
+| [`EDITOR.md`](./EDITOR.md) | **에디터 명세** (§1~§6 데이터/룰/권한, §7~§12 UX 사이클, §13 인쇄워크플로우(면지/PDF첨부/게스트), §14 임베드/텍스트/원형, §15 에셋공급/인쇄품질/객체보호) |
+| [`PRODUCT_TEMPLATE_REGISTRATION_MANUAL.html`](./PRODUCT_TEMPLATE_REGISTRATION_MANUAL.html) | **상품·템플릿 등록 매뉴얼**(시각화) — 관리자 5단계 등록 절차 |
 | [`EDITOR_SCREENS.md`](./EDITOR_SCREENS.md) | **에디터 화면** + 저장 흐름 매트릭스 + Admin 라벨 + 모드별 헤더 UI |
 | [`EDITOR_OBJECT_EDITING_SPEC.md`](./EDITOR_OBJECT_EDITING_SPEC.md) | 객체 편집 명세 |
 | [`MOBILE_TOUCH_UI.md`](./MOBILE_TOUCH_UI.md) | 모바일 UX |
