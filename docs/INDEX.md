@@ -86,11 +86,13 @@
 
 ## 📊 6. 사이클 보고서 (시간역순)
 
-### 🆕 2026-06-02 — `/embed` 임베드 전환 + 텍스트 자유도 + 원형 텍스트 + 게스트 폴백
+### 🆕 2026-06-02 — `/embed` 임베드 전환 + 텍스트 자유도 + 원형 텍스트 + 게스트 폴백 + autosave 핫픽스 + 합성 E2E
 | 문서 | 설명 |
 |------|------|
-| [`../.cursor/plans/RESUME_PROMPT_2026-06-02.md`](../.cursor/plans/RESUME_PROMPT_2026-06-02.md) | **세션 핸드오프(최신)** — `/embed`(EmbeddedEditor) 전환, 이탤릭/부분색/글자크기/원형 텍스트, MEMBER_REQUIRED 게스트 폴백. editor 6커밋, 회귀 0 |
+| [`../.cursor/plans/RESUME_PROMPT_2026-06-02.md`](../.cursor/plans/RESUME_PROMPT_2026-06-02.md) | **세션 핸드오프(최신)** — `/embed`(EmbeddedEditor) 전환, 이탤릭/부분색/글자크기/원형 텍스트, MEMBER_REQUIRED 게스트 폴백, pageCount 클램프, **autosave canvasData 배열 핫픽스(API 재배포)** |
 | [`EDITOR.md`](./EDITOR.md) §14 | 위 편집기 기능 상세 (임베드/텍스트/원형/게스트 폴백 + 파일 매핑) |
+| [`../.cursor/plans/SYNTHESIS_E2E_TEST_PLAN_2026-06-02.md`](../.cursor/plans/SYNTHESIS_E2E_TEST_PLAN_2026-06-02.md) | 합성 E2E 테스트 계획 + §10 라이브 실행결과 (검증/업로드/합성/관리자 4페이즈 통과) |
+| [`INTEGRATION_WORKFLOWS.md`](./INTEGRATION_WORKFLOWS.md) · [`.html`](./INTEGRATION_WORKFLOWS.html) | 연동 워크플로우 — §3.1 /embed·memberSeqno 갱신 + 2026-06-02 변경이력 (HTML 상단 업데이트 카드) |
 | [`../.cursor/plans/HANDOFF_StorigeEditorHost_iframe_overlay_2026-05-31.md`](../.cursor/plans/HANDOFF_StorigeEditorHost_iframe_overlay_2026-05-31.md) | bookmoa 측 연동 지시서 — `/embed` URL + 재편집 + dual-emit + 토큰 memberSeqno 필수(§3.5) |
 | [`../.cursor/plans/HANDOFF_Storige_postMessage_standardize_2026-06-01.md`](../.cursor/plans/HANDOFF_Storige_postMessage_standardize_2026-06-01.md) | postMessage 규약 통일 (SUPERSEDED — /embed로 대체 해결) |
 

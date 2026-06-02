@@ -85,7 +85,19 @@ code{background:#0f172a;padding:1px 6px;border-radius:4px;font-size:12px;color:#
 <div class="wrap">
 
 <h1>Storige 플랫폼 연동 워크플로우</h1>
-<p class="sub">2026-05-25 | 기능별 · 사용 유형별 · 연동 방식별 전체 정리</p>
+<p class="sub">2026-05-25 작성 · <b style="color:#6ee7b7">2026-06-02 갱신</b> | 기능별 · 사용 유형별 · 연동 방식별 전체 정리</p>
+
+<div class="card" style="border-color:#10b981;border-left:4px solid #10b981;margin-bottom:28px">
+  <div class="card-t">🆕 2026-06-02 업데이트 — 편집기 임베드 강화 + 합성 E2E 라이브 검증</div>
+  <div style="font-size:13px;color:#cbd5e1;line-height:2">
+    <span class="b b-cyan">/embed 전환</span> 외부 iframe은 완전 배선 <code>EmbeddedEditor</code> 마운트(자동저장·세션영속·정식 postMessage·<code>sessionId</code> 재편집). 레거시 <code>/</code>는 완료 미발신.<br>
+    <span class="b b-amber">memberSeqno 필수</span> shop-session JWT에 회원번호 없으면 <code>POST /edit-sessions</code> 400 <code>MEMBER_REQUIRED</code> → Storige 보강: 실패 시 <span class="b b-gray">게스트 폴백</span> + <code>editor.needAuth</code>.<br>
+    <span class="b b-green">autosave 핫픽스</span> 멀티페이지 <code>canvasData</code> 배열을 <code>@IsObject()</code>가 거부하던 400 해소(두 DTO에서 제거, API 재배포). + pageCount 범위 밖 <b>클램프</b>.<br>
+    <span class="b b-purple">텍스트 자유도</span> 이탤릭·부분 색상·글자크기 입력/프리셋·원형(곡선 호 각도+칩).<br>
+    <span class="b b-blue">라이브 검증</span> 합성(compose-mixed separate/single/실데이터)·검증(FIXABLE/FAILED)·업로드 3경로·관리자 조회 운영 통과.<br>
+    <span style="color:#64748b;font-size:11px">상세: RESUME_PROMPT_2026-06-02 · SYNTHESIS_E2E_TEST_PLAN_2026-06-02 · EDITOR.md §14 · HANDOFF_StorigeEditorHost_2026-05-31</span>
+  </div>
+</div>
 
 <nav class="nav">
 <a href="#arch">아키텍처</a>
@@ -453,7 +465,7 @@ code{background:#0f172a;padding:1px 6px;border-radius:4px;font-size:12px;color:#
 </section>
 
 <hr class="sep">
-<p style="text-align:center;color:#334155;font-size:11px;padding:20px 0">Storige Integration Workflows v1 | 2026-05-25 | bookmoa-mobile + PHP + JumboCard</p>
+<p style="text-align:center;color:#334155;font-size:11px;padding:20px 0">Storige Integration Workflows v1 | 2026-05-25 작성 · 2026-06-02 갱신(/embed·autosave·합성 E2E) | bookmoa-mobile + PHP + JumboCard</p>
 
 </div>
 </body>
