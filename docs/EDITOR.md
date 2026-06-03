@@ -620,3 +620,36 @@ per-character `styles`(이탤릭·부분색)는 직렬화 리스트(`packages/ca
 | 삭제잠금 UI | `apps/editor/src/components/editor/ControlBar.tsx` |
 | 곡선 텍스트 보존 | `packages/canvas-core/src/converters/svgTextToPath.ts` |
 | PDF 첨부 모드 | `apps/api/src/edit-sessions/{entities,dto,edit-sessions.service}.ts` |
+
+## §16 스프레드 책 편집완료 PDF 프리즈 — 진단 · 하드닝 (2026-06-03 오토파일럿 2차)
+
+> 상세 진단/설계: [`.cursor/plans/SPREAD_PDF_FREEZE_FINDINGS_2026-06-03.md`](../.cursor/plans/SPREAD_PDF_FREEZE_FINDINGS_2026-06-03.md)
+
+### 16.1 증상과 오진단 정정
+- **증상**: 스프레드(펼침 표지) 책 편집완료 시 표지 cover PDF 생성이 프로덕션 난독화 에러 `'Mt'` 로 실패, 모든 `both` 모드 세션의 `cover_file_id`/`content_file_id` NULL.
+- **정정**: cover PDF **로직 자체는 정상**. 실제 실패 세션 canvasData + 스프레드 오버레이 + 실제 Noto Sans KR 웹폰트로 **로컬 dev 충실 재현 → 0.4초 정상 생성**(이미지/특수객체/폰트→벡터/429mm/clipPath/CJK 전부 배제).
+- **실제 원인**: **프로덕션 editor 렌더러 하드 프리즈**(편집완료 실제 트리거 시 5분+ 프리즈, 세션 `editing` 고정). 무거운 editor(opencv 10MB+onnx 882KB+11 라이브 fabric 캔버스 + PDF 래스터 동시 점유) = 환경/스케일 요인. 경량 컨텍스트에선 재현 불가가 일관.
+
+### 16.2 Patch B — handleFinish 하드닝 + 핫스팟 계측 (`19158f8`)
+- `embed.tsx`:
+  - `finishMark(phase)`: 각 단계 진입 직전 `Sentry.captureMessage` + `await Sentry.flush(1500)` → **프리즈에도 '마지막 통과 단계'가 Sentry(papascompany/editor)에 전달** → 다음 실패에서 핫스팟 자동 특정. 단계: `canvasData:save:{start,done}`·`spread:cover:gen:{start,done,FAILED}`·`spread:content:gen:{start,done,FAILED}`·`single:gen:{start,done}`·`complete:{start,done}`.
+  - `withWatchdog(p, ms, label)`: cover 120s / content 180s / single 120s 비동기 워치독 → **영구 무한로딩 방지**(동기 블록은 못 잡으나 비동기 행/네트워크 stall 대비).
+  - 각 PDF 생성 catch에 `Sentry.captureException(tags:{finishPhase})` → 실제 `'Mt'` 예외를 단계 컨텍스트와 함께 보고.
+- 저위험·가산적, `complete()` 항상 실행(회귀 없음). `pnpm --filter @storige/editor build` 통과.
+
+### 16.3 부수 발견 (별개 실버그)
+- **`/api/woff2ToTtf` 라우트 부재(404)** + **`library_fonts` 0행** → PDF 텍스트 아웃라인화 항상 실패(catch). 인쇄 폰트 임베딩 누락 위험. 폰트 시딩(제품 결정) + 라우트 구현(`wawoff2`) 필요 — 프리즈와 별개·하위 우선순위.
+- `products/spine/calculate` 는 프로덕션 정상(201).
+
+### 16.4 다음 단계 (Patch B 계측 데이터 확정 후)
+- **C 풋프린트 축소**: 메모리 요인이면 라이브 캔버스 dispose/opencv 언로드(취소 복구 위험), CPU 폭주면 `ServicePlugin._createMultiPagePDF` 루프 핫스팟 수정. ("격리 컨텍스트"만으론 피크 메모리 안 줆.)
+- **D 서버사이드 생성**: 워커가 canvasData→PDF 렌더(권장 **Puppeteer 헤드리스**로 동일 코드 재사용) → 브라우저 메모리 천장 제거(근본 해결). compose-mixed 파이프라인 합류.
+
+### 16.5 핵심 파일 매핑
+| 영역 | 파일 |
+|---|---|
+| 편집완료 하드닝/계측 | `apps/editor/src/embed.tsx` (`finishMark`/`withWatchdog`, handleFinish) |
+| PDF 생성 파이프라인 | `packages/canvas-core/src/plugins/ServicePlugin.ts` (`saveMultiPagePDFAsBlob`→`_createMultiPagePDF`) |
+| Sentry | `apps/editor/src/lib/sentry.ts` |
+| 폰트→벡터(woff2ToTtf 404) | `packages/canvas-core/src/plugins/FontPlugin.ts` (`getTtfBuffer`) |
+| dev 재현 하니스(미커밋) | `apps/editor/repro.html`, `apps/editor/src/repro-cover.tsx` |

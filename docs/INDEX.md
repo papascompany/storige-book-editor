@@ -1,6 +1,6 @@
 # Storige 문서 인덱스
 
-> **갱신**: 2026-05-10 · 편집기 UX·관리자 모드 분리 사이클 반영
+> **갱신**: 2026-06-03 · 스프레드 책 편집완료 PDF 프리즈 진단 + 하드닝(Patch B) 사이클 반영
 > **HTML 가이드 통합**: `Storige_개발가이드.html`, `WORKER_FLOW_시각화.html` 가 docs/ 로 합류 (이전엔 부모 디렉토리)
 
 📊 **시작점**: [`MASTER_STATUS_2026-05-10.md`](./MASTER_STATUS_2026-05-10.md) (최신)
@@ -86,7 +86,14 @@
 
 ## 📊 6. 사이클 보고서 (시간역순)
 
-### 🆕 2026-06-03 — 템플릿·에셋 공급 + 인쇄품질 + 객체보호 (오토파일럿 1차) + 상품·템플릿 등록 매뉴얼
+### 🆕 2026-06-03 — 스프레드 책 편집완료 PDF 프리즈 진단 + 하드닝 (오토파일럿 2차)
+| 문서 | 설명 |
+|------|------|
+| [`../.cursor/plans/SPREAD_PDF_FREEZE_FINDINGS_2026-06-03.md`](../.cursor/plans/SPREAD_PDF_FREEZE_FINDINGS_2026-06-03.md) | **진단·패치·설계** — cover PDF 로직 정상(로컬 0.4초 재현), 실제는 프로덕션 editor 렌더러 프리즈(환경/스케일). Patch B(워치독+Sentry 단계계측) 배포(`19158f8`). woff2ToTtf 404 + library_fonts 0행 별개 발견. C(풋프린트)/D(서버사이드 Puppeteer) 설계 |
+| [`EDITOR.md`](./EDITOR.md) §16 | 편집완료 PDF 프리즈 진단·하드닝 상세 + 핵심 파일 매핑 |
+| [`SYSTEM_INTEGRATION_OVERVIEW.html`](./SYSTEM_INTEGRATION_OVERVIEW.html) | 시각화 — 편집완료 PDF 생성 흐름 + 프리즈 진단 카드 반영 |
+
+### 2026-06-03 — 템플릿·에셋 공급 + 인쇄품질 + 객체보호 (오토파일럿 1차) + 상품·템플릿 등록 매뉴얼
 | 문서 | 설명 |
 |------|------|
 | [`PRODUCT_TEMPLATE_REGISTRATION_MANUAL.html`](./PRODUCT_TEMPLATE_REGISTRATION_MANUAL.html) | **🎨 상품·템플릿 등록 시각화 매뉴얼** — 에셋등록→템플릿셋→템플릿제작→상품연결→고객편집 5단계 + 최근 변경 |
@@ -175,7 +182,7 @@
 ### 에디터 / 캔버스
 | 문서 | 설명 |
 |------|------|
-| [`EDITOR.md`](./EDITOR.md) | **에디터 명세** (§1~§6 데이터/룰/권한, §7~§12 UX 사이클, §13 인쇄워크플로우(면지/PDF첨부/게스트), §14 임베드/텍스트/원형, §15 에셋공급/인쇄품질/객체보호) |
+| [`EDITOR.md`](./EDITOR.md) | **에디터 명세** (§1~§6 데이터/룰/권한, §7~§12 UX 사이클, §13 인쇄워크플로우(면지/PDF첨부/게스트), §14 임베드/텍스트/원형, §15 에셋공급/인쇄품질/객체보호, §16 편집완료 PDF 프리즈 진단·하드닝) |
 | [`PRODUCT_TEMPLATE_REGISTRATION_MANUAL.html`](./PRODUCT_TEMPLATE_REGISTRATION_MANUAL.html) | **상품·템플릿 등록 매뉴얼**(시각화) — 관리자 5단계 등록 절차 |
 | [`EDITOR_SCREENS.md`](./EDITOR_SCREENS.md) | **에디터 화면** + 저장 흐름 매트릭스 + Admin 라벨 + 모드별 헤더 UI |
 | [`EDITOR_OBJECT_EDITING_SPEC.md`](./EDITOR_OBJECT_EDITING_SPEC.md) | 객체 편집 명세 |
