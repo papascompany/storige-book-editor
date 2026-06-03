@@ -34,6 +34,9 @@ import FeatureSidebar from './components/editor/FeatureSidebar'
 import ControlBar from './components/editor/ControlBar'
 import SidePanel from './components/editor/SidePanel'
 import EditorHeader from './components/editor/EditorHeader'
+import { BookNavigation } from './components/PageNavigation/BookNavigation'
+import { SpreadPagePanel } from './components/PagePanel/SpreadPagePanel'
+import { useResolvedPageNavPosition } from './hooks/useResolvedPageNavPosition'
 import { WorkspaceModal } from './components/modals'
 import './index.css'
 
@@ -271,7 +274,11 @@ function EmbeddedEditor({
     updateObjects,
     editor,
     canvas,
+    isSpreadMode,
   } = useAppStore()
+
+  // 페이지 네비게이션 위치 (다중 페이지 템플릿셋에서 표지/내지 전환용) — admin EditorView 와 동일 배선
+  const navPosition = useResolvedPageNavPosition()
 
   const { loadEmptyEditor, loadTemplateSetEditor } = useEditorContents()
 
@@ -1045,26 +1052,42 @@ function EmbeddedEditor({
         {/* ToolBar - horizontal in tablet/mobile mode */}
         <ToolBar horizontal={screenMode !== 'desktop'} />
 
-        {/* Content area - always flex-row for sidebar + canvas */}
-        <div className="flex-1 flex flex-row relative overflow-hidden">
-          <FeatureSidebar />
-          {ready && <ControlBar />}
+        {/* 캔버스 + 하단 페이지 네비를 세로로 쌓는 컬럼 (다중 페이지 전환 지원) */}
+        <div className="flex-1 flex flex-col relative overflow-hidden min-w-0">
+          {/* Content area - always flex-row for sidebar + canvas */}
+          <div className="flex-1 flex flex-row relative overflow-hidden">
+            <FeatureSidebar />
+            {ready && <ControlBar />}
 
-          <main className="flex-1 relative overflow-hidden bg-editor-workspace">
-            <div id="canvas-wrapper" className="h-full w-full overflow-hidden relative">
-              <div id="workspace" className="workspace absolute inset-0 flex items-center justify-center">
-                <div className="inside-shadow absolute inset-0 shadow-inner pointer-events-none" />
-                <div
-                  ref={canvasContainerRef}
-                  id="canvas-containers"
-                  className="relative"
-                  style={{ width: '100%', height: '100%' }}
-                />
+            <main className="flex-1 relative overflow-hidden bg-editor-workspace">
+              <div id="canvas-wrapper" className="h-full w-full overflow-hidden relative">
+                <div id="workspace" className="workspace absolute inset-0 flex items-center justify-center">
+                  <div className="inside-shadow absolute inset-0 shadow-inner pointer-events-none" />
+                  <div
+                    ref={canvasContainerRef}
+                    id="canvas-containers"
+                    className="relative"
+                    style={{ width: '100%', height: '100%' }}
+                  />
+                </div>
               </div>
-            </div>
-          </main>
+            </main>
 
-          <SidePanel show={showSidePanel} onClose={() => setShowSidePanel(false)} />
+            {/* 우측 페이지 네비 (스프레드 모드가 아닐 때만) */}
+            {!isSpreadMode && navPosition === 'right' && (
+              <BookNavigation orientation="vertical" />
+            )}
+
+            <SidePanel show={showSidePanel} onClose={() => setShowSidePanel(false)} />
+          </div>
+
+          {/* 스프레드 모드 전용 하단 페이지 패널 (표지+내지 전환) */}
+          {isSpreadMode && <SpreadPagePanel />}
+
+          {/* 하단 페이지 네비 (스프레드 모드가 아닐 때만) */}
+          {!isSpreadMode && navPosition === 'bottom' && (
+            <BookNavigation orientation="horizontal" />
+          )}
         </div>
       </div>
 
