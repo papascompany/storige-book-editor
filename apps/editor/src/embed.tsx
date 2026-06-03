@@ -1073,21 +1073,24 @@ function EmbeddedEditor({
               </div>
             </main>
 
-            {/* 우측 페이지 네비 (스프레드 모드가 아닐 때만) */}
-            {!isSpreadMode && navPosition === 'right' && (
-              <BookNavigation orientation="vertical" />
-            )}
+            {/* 우측 페이지 네비 (스프레드=세로 SpreadPagePanel / 일반=세로 BookNavigation) */}
+            {navPosition === 'right' &&
+              (isSpreadMode ? (
+                <SpreadPagePanel orientation="vertical" />
+              ) : (
+                <BookNavigation orientation="vertical" />
+              ))}
 
             <SidePanel show={showSidePanel} onClose={() => setShowSidePanel(false)} />
           </div>
 
-          {/* 스프레드 모드 전용 하단 페이지 패널 (표지+내지 전환) */}
-          {isSpreadMode && <SpreadPagePanel />}
-
-          {/* 하단 페이지 네비 (스프레드 모드가 아닐 때만) */}
-          {!isSpreadMode && navPosition === 'bottom' && (
-            <BookNavigation orientation="horizontal" />
-          )}
+          {/* 하단 페이지 네비 (스프레드=가로 SpreadPagePanel / 일반=가로 BookNavigation) */}
+          {navPosition === 'bottom' &&
+            (isSpreadMode ? (
+              <SpreadPagePanel orientation="horizontal" />
+            ) : (
+              <BookNavigation orientation="horizontal" />
+            ))}
         </div>
       </div>
 
