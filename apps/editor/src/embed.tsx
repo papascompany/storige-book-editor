@@ -856,37 +856,55 @@ function EmbeddedEditor({
           //   ServicePlugin 이 없다. saveMultiPagePDFAsBlob 은 this._editor(=표지) 의 FontPlugin 을
           //   쓰고 전달된 canvases 를 순회하므로, 표지 ServicePlugin 으로 내지 PDF 도 생성한다.
           if (coverPlugin && innerCanvases.length > 0) {
-            // 표지: 스프레드 전체 크기
-            const coverBlob = await coverPlugin.saveMultiPagePDFAsBlob(
-              [allCanvas[0]] as any, [allEditors[0]], `cover-${currentSessionId}`,
-              { width: spreadCfg!.totalWidthMm, height: spreadCfg!.totalHeightMm, cutSize: bleed },
-              undefined, 300,
-            )
-            setLoadingMessage('PDF를 업로드하는 중...')
-            const coverUpload = await filesApi.upload({
-              file: coverBlob, type: 'cover', orderSeqno,
-              metadata: { generatedBy: 'editor', editSessionId: currentSessionId, mode: 'spread', isSpreadCover: true },
-            })
-
-            // 내지: 내지 면(코버 단면) 크기로 멀티페이지 합본
             const innerW = (spreadCfg!.spec as any)?.coverWidthMm ?? options?.size?.width ?? 210
             const innerH = (spreadCfg!.spec as any)?.coverHeightMm ?? options?.size?.height ?? 297
-            const contentBlob = await coverPlugin.saveMultiPagePDFAsBlob(
-              innerCanvases as any, innerEditors, `content-${currentSessionId}`,
-              { width: innerW, height: innerH, cutSize: bleed },
-              undefined, 300,
-            )
-            const contentUpload = await filesApi.upload({
-              file: contentBlob, type: 'content', orderSeqno,
-              metadata: { generatedBy: 'editor', editSessionId: currentSessionId, mode: 'spread', pageCount: innerCanvases.length },
-            })
+            console.log('[EmbeddedEditor] Spread PDF 시작 — pages:', allCanvas.length, 'cover:', spreadCfg!.totalWidthMm, 'x', spreadCfg!.totalHeightMm, 'inner:', innerW, 'x', innerH)
 
-            await editSessionsApi.update(currentSessionId, {
-              coverFileId: coverUpload.id,
-              contentFileId: contentUpload.id,
-              metadata: { spreadContentPageCount: innerCanvases.length },
-            })
-            console.log('[EmbeddedEditor] Spread PDFs uploaded — cover:', coverUpload.id, 'content:', contentUpload.id)
+            // 표지 cover PDF (스프레드 전체 크기) — 독립 try (실패해도 내지는 시도)
+            let coverFileId: string | undefined
+            try {
+              const coverBlob = await coverPlugin.saveMultiPagePDFAsBlob(
+                [allCanvas[0]] as any, [allEditors[0]], `cover-${currentSessionId}`,
+                { width: spreadCfg!.totalWidthMm, height: spreadCfg!.totalHeightMm, cutSize: bleed },
+                undefined, 300,
+              )
+              setLoadingMessage('PDF를 업로드하는 중...')
+              const coverUpload = await filesApi.upload({
+                file: coverBlob, type: 'cover', orderSeqno,
+                metadata: { generatedBy: 'editor', editSessionId: currentSessionId, mode: 'spread', isSpreadCover: true },
+              })
+              coverFileId = coverUpload.id
+              console.log('[EmbeddedEditor] Spread cover PDF uploaded:', coverFileId)
+            } catch (coverErr) {
+              console.error('[EmbeddedEditor] Spread COVER PDF 실패:', (coverErr as Error)?.message, (coverErr as Error)?.stack)
+            }
+
+            // 내지 content 멀티페이지 PDF (내지 면 크기) — 독립 try
+            let contentFileId: string | undefined
+            try {
+              const contentBlob = await coverPlugin.saveMultiPagePDFAsBlob(
+                innerCanvases as any, innerEditors, `content-${currentSessionId}`,
+                { width: innerW, height: innerH, cutSize: bleed },
+                undefined, 300,
+              )
+              const contentUpload = await filesApi.upload({
+                file: contentBlob, type: 'content', orderSeqno,
+                metadata: { generatedBy: 'editor', editSessionId: currentSessionId, mode: 'spread', pageCount: innerCanvases.length },
+              })
+              contentFileId = contentUpload.id
+              console.log('[EmbeddedEditor] Spread content PDF uploaded:', contentFileId)
+            } catch (contentErr) {
+              console.error('[EmbeddedEditor] Spread CONTENT PDF 실패:', (contentErr as Error)?.message, (contentErr as Error)?.stack)
+            }
+
+            if (coverFileId || contentFileId) {
+              await editSessionsApi.update(currentSessionId, {
+                ...(coverFileId ? { coverFileId } : {}),
+                ...(contentFileId ? { contentFileId } : {}),
+                metadata: { spreadContentPageCount: innerCanvases.length },
+              })
+            }
+            console.log('[EmbeddedEditor] Spread PDFs 결과 — cover:', coverFileId, 'content:', contentFileId)
           } else {
             console.warn('[EmbeddedEditor] Spread PDF: 플러그인/내지 캔버스 누락, PDF 생성 스킵')
           }
