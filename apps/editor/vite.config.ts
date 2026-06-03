@@ -49,9 +49,12 @@ export default defineConfig(({ mode }) => {
   server: {
     port: 3000,
     proxy: {
+      // DEV 전용: VITE_DEV_PROXY_TARGET 로 프록시 대상 변경 가능 (예: prod API 충실 재현).
+      // 미설정 시 로컬 API(localhost:4000) 로 폴백 — 기존 동작 보존.
       '/api': {
-        target: 'http://localhost:4000',
+        target: process.env.VITE_DEV_PROXY_TARGET || 'http://localhost:4000',
         changeOrigin: true,
+        secure: true,
       },
     },
   },

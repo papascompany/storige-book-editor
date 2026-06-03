@@ -39,7 +39,43 @@ import { BookNavigation } from './components/PageNavigation/BookNavigation'
 import { SpreadPagePanel } from './components/PagePanel/SpreadPagePanel'
 import { useResolvedPageNavPosition } from './hooks/useResolvedPageNavPosition'
 import { WorkspaceModal } from './components/modals'
+import { Sentry } from './lib/sentry'
 import './index.css'
+
+// ============================================================
+// 편집완료(finish) 진단 · 안전 유틸
+// ============================================================
+
+/**
+ * finish 단계 마커.
+ * 무거운 PDF 생성이 프로덕션 렌더러를 프리즈시켜도 "마지막으로 통과한 단계"를 알 수 있도록,
+ * 각 단계 진입 직전에 호출해 Sentry 로 즉시 전송(await flush)하고 콘솔에도 타임스탬프로 남긴다.
+ * Sentry 미설정/네트워크 실패는 무시(throw 하지 않음 — finish 흐름을 막지 않는다).
+ */
+async function finishMark(phase: string, extra?: Record<string, unknown>): Promise<void> {
+  const ts = new Date().toISOString()
+  // eslint-disable-next-line no-console
+  console.log(`[EmbeddedEditor][finish] ${phase}`, extra ?? '', ts)
+  try {
+    Sentry.captureMessage(`[finish] ${phase}`, { level: 'info', extra: { ...extra, ts } } as any)
+    await Sentry.flush(1500)
+  } catch {
+    /* Sentry 미설정/네트워크 — 무시 */
+  }
+}
+
+/**
+ * 워치독: 비동기 행(hang) 방지. p 가 ms 안에 끝나지 않으면 reject.
+ * (주의: 메인스레드 동기 블록은 setTimeout 자체가 지연되어 못 잡는다 — 비동기 행/네트워크 stall 대비용.)
+ */
+function withWatchdog<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`WATCHDOG_TIMEOUT_${ms}ms:${label}`)), ms),
+    ),
+  ])
+}
 
 // ============================================================
 // Types
@@ -839,7 +875,9 @@ function EmbeddedEditor({
       }
 
       // Update edit session with canvas data (멀티페이지면 배열 전체)
+      await finishMark('canvasData:save:start', { pages: Array.isArray(canvasData) ? canvasData.length : 1 })
       await editSessionsApi.update(currentSessionId, { canvasData })
+      await finishMark('canvasData:save:done')
 
       // Generate PDF
       try {
@@ -863,11 +901,16 @@ function EmbeddedEditor({
             // 표지 cover PDF (스프레드 전체 크기) — 독립 try (실패해도 내지는 시도)
             let coverFileId: string | undefined
             try {
-              const coverBlob = await coverPlugin.saveMultiPagePDFAsBlob(
-                [allCanvas[0]] as any, [allEditors[0]], `cover-${currentSessionId}`,
-                { width: spreadCfg!.totalWidthMm, height: spreadCfg!.totalHeightMm, cutSize: bleed },
-                undefined, 300,
+              await finishMark('spread:cover:gen:start', { w: spreadCfg!.totalWidthMm, h: spreadCfg!.totalHeightMm })
+              const coverBlob = await withWatchdog(
+                coverPlugin.saveMultiPagePDFAsBlob(
+                  [allCanvas[0]] as any, [allEditors[0]], `cover-${currentSessionId}`,
+                  { width: spreadCfg!.totalWidthMm, height: spreadCfg!.totalHeightMm, cutSize: bleed },
+                  undefined, 300,
+                ),
+                120000, 'spread-cover-gen',
               )
+              await finishMark('spread:cover:gen:done', { bytes: coverBlob.size })
               setLoadingMessage('PDF를 업로드하는 중...')
               const coverUpload = await filesApi.upload({
                 file: coverBlob, type: 'cover', orderSeqno,
@@ -876,17 +919,24 @@ function EmbeddedEditor({
               coverFileId = coverUpload.id
               console.log('[EmbeddedEditor] Spread cover PDF uploaded:', coverFileId)
             } catch (coverErr) {
-              console.error('[EmbeddedEditor] Spread COVER PDF 실패:', (coverErr as Error)?.message, (coverErr as Error)?.stack)
+              console.error('[EmbeddedEditor] Spread COVER PDF 실패:', (coverErr as Error)?.name, (coverErr as Error)?.message, (coverErr as Error)?.stack)
+              try { Sentry.captureException(coverErr, { tags: { finishPhase: 'spread-cover' } } as any) } catch { /* ignore */ }
+              await finishMark('spread:cover:gen:FAILED', { name: (coverErr as Error)?.name, message: (coverErr as Error)?.message })
             }
 
             // 내지 content 멀티페이지 PDF (내지 면 크기) — 독립 try
             let contentFileId: string | undefined
             try {
-              const contentBlob = await coverPlugin.saveMultiPagePDFAsBlob(
-                innerCanvases as any, innerEditors, `content-${currentSessionId}`,
-                { width: innerW, height: innerH, cutSize: bleed },
-                undefined, 300,
+              await finishMark('spread:content:gen:start', { pages: innerCanvases.length, w: innerW, h: innerH })
+              const contentBlob = await withWatchdog(
+                coverPlugin.saveMultiPagePDFAsBlob(
+                  innerCanvases as any, innerEditors, `content-${currentSessionId}`,
+                  { width: innerW, height: innerH, cutSize: bleed },
+                  undefined, 300,
+                ),
+                180000, 'spread-content-gen',
               )
+              await finishMark('spread:content:gen:done', { bytes: contentBlob.size })
               const contentUpload = await filesApi.upload({
                 file: contentBlob, type: 'content', orderSeqno,
                 metadata: { generatedBy: 'editor', editSessionId: currentSessionId, mode: 'spread', pageCount: innerCanvases.length },
@@ -894,7 +944,9 @@ function EmbeddedEditor({
               contentFileId = contentUpload.id
               console.log('[EmbeddedEditor] Spread content PDF uploaded:', contentFileId)
             } catch (contentErr) {
-              console.error('[EmbeddedEditor] Spread CONTENT PDF 실패:', (contentErr as Error)?.message, (contentErr as Error)?.stack)
+              console.error('[EmbeddedEditor] Spread CONTENT PDF 실패:', (contentErr as Error)?.name, (contentErr as Error)?.message, (contentErr as Error)?.stack)
+              try { Sentry.captureException(contentErr, { tags: { finishPhase: 'spread-content' } } as any) } catch { /* ignore */ }
+              await finishMark('spread:content:gen:FAILED', { name: (contentErr as Error)?.name, message: (contentErr as Error)?.message })
             }
 
             if (coverFileId || contentFileId) {
@@ -912,11 +964,16 @@ function EmbeddedEditor({
           // ── 단일 페이지(표지/내지/템플릿 등) ──
           const servicePlugin = editor.getPlugin('ServicePlugin') as ServicePlugin | undefined
           if (servicePlugin) {
-            const pdfBlob = await servicePlugin.saveMultiPagePDFAsBlob(
-              [canvas], [editor], `session-${currentSessionId}`,
-              { width: options?.size?.width || 210, height: options?.size?.height || 297, cutSize: bleed },
-              undefined, 300,
+            await finishMark('single:gen:start', { mode })
+            const pdfBlob = await withWatchdog(
+              servicePlugin.saveMultiPagePDFAsBlob(
+                [canvas], [editor], `session-${currentSessionId}`,
+                { width: options?.size?.width || 210, height: options?.size?.height || 297, cutSize: bleed },
+                undefined, 300,
+              ),
+              120000, 'single-gen',
             )
+            await finishMark('single:gen:done', { bytes: pdfBlob?.size })
             if (pdfBlob) {
               setLoadingMessage('PDF를 업로드하는 중...')
               const fileType: 'cover' | 'content' | 'template' | 'other' =
@@ -940,12 +997,15 @@ function EmbeddedEditor({
         }
       } catch (pdfErr) {
         console.error('[EmbeddedEditor] PDF generation/upload failed:', pdfErr)
+        try { Sentry.captureException(pdfErr, { tags: { finishPhase: 'pdf-outer' } } as any) } catch { /* ignore */ }
         // Continue without PDF - we still want to complete the session
       }
 
       // Mark session as completed
+      await finishMark('complete:start')
       setLoadingMessage('편집을 완료하는 중...')
       const completedSession = await editSessionsApi.complete(currentSessionId)
+      await finishMark('complete:done', { coverFileId: completedSession.coverFileId, contentFileId: completedSession.contentFileId })
       setCurrentSession(completedSession)
 
       const result: EditorResult = {
