@@ -852,9 +852,10 @@ function EmbeddedEditor({
           const coverPlugin = allEditors[0]?.getPlugin('ServicePlugin') as ServicePlugin | undefined
           const innerCanvases = allCanvas.slice(1)
           const innerEditors = allEditors.slice(1)
-          const innerPlugin = innerEditors[0]?.getPlugin('ServicePlugin') as ServicePlugin | undefined
-
-          if (coverPlugin && innerPlugin && innerCanvases.length > 0) {
+          // ⚠️ 스프레드 내지 페이지 에디터는 addInnerPage 에서 WorkspacePlugin 만 등록되어
+          //   ServicePlugin 이 없다. saveMultiPagePDFAsBlob 은 this._editor(=표지) 의 FontPlugin 을
+          //   쓰고 전달된 canvases 를 순회하므로, 표지 ServicePlugin 으로 내지 PDF 도 생성한다.
+          if (coverPlugin && innerCanvases.length > 0) {
             // 표지: 스프레드 전체 크기
             const coverBlob = await coverPlugin.saveMultiPagePDFAsBlob(
               [allCanvas[0]] as any, [allEditors[0]], `cover-${currentSessionId}`,
@@ -870,7 +871,7 @@ function EmbeddedEditor({
             // 내지: 내지 면(코버 단면) 크기로 멀티페이지 합본
             const innerW = (spreadCfg!.spec as any)?.coverWidthMm ?? options?.size?.width ?? 210
             const innerH = (spreadCfg!.spec as any)?.coverHeightMm ?? options?.size?.height ?? 297
-            const contentBlob = await innerPlugin.saveMultiPagePDFAsBlob(
+            const contentBlob = await coverPlugin.saveMultiPagePDFAsBlob(
               innerCanvases as any, innerEditors, `content-${currentSessionId}`,
               { width: innerW, height: innerH, cutSize: bleed },
               undefined, 300,
