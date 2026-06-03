@@ -344,7 +344,17 @@ export function useEditorContents(): UseEditorContentsReturn {
             }
 
             const plugin = ed.getPlugin<ServicePlugin>('ServicePlugin')
-            plugin?.loadJSON(canvases[index] as string | object, async () => {
+            if (!plugin) { resolve(); return }
+            // ⚠️ loadJSON 콜백이 끝내 호출되지 않으면(plugin/fabric 내부 실패·폰트적용 예외)
+            //   이 Promise 가 영원히 hang → Promise.all 미완 → longTask:end 미발생 →
+            //   '디자인을 적용하는 중' 오버레이 영구 표시. 타임아웃 가드로 항상 진행 보장.
+            let settled = false
+            const settle = () => { if (!settled) { settled = true; resolve() } }
+            const guardTimer = setTimeout(() => {
+              console.warn(`[loadCanvasData] loadJSON 타임아웃(page ${index}) — 복원 계속 진행`)
+              settle()
+            }, 12000)
+            plugin.loadJSON(canvases[index] as string | object, async () => {
               if (cvs) {
                 const targetObjects = (cvs.getObjects() as fabric.Object[]).filter((obj: fabric.Object) => {
                   const extObj = obj as ExtendedFabricObject
@@ -385,7 +395,8 @@ export function useEditorContents(): UseEditorContentsReturn {
 
                 cvs.requestRenderAll()
               }
-              resolve()
+              clearTimeout(guardTimer)
+              settle()
             })
           })
         })
@@ -1554,9 +1565,17 @@ export function useEditorContents(): UseEditorContentsReturn {
             if (servicePlugin && hasNonWorkspaceObjects) {
               const dataToLoad = Array.isArray(canvasData) ? canvasData[0] : canvasData
               await new Promise<void>((resolve) => {
+                // loadJSON 콜백 미발생 시 hang 방지 타임아웃 가드(오버레이 영구표시 방지)
+                let settled = false
+                const settle = () => { if (!settled) { settled = true; resolve() } }
+                const guardTimer = setTimeout(() => {
+                  console.warn(`[EditorContents:Spread] loadJSON 타임아웃(inner page ${newPageIndex}) — 계속 진행`)
+                  settle()
+                }, 12000)
                 servicePlugin.loadJSON(dataToLoad, () => {
                   console.log(`[EditorContents:Spread] loadJSON completed for inner page ${newPageIndex}`)
-                  resolve()
+                  clearTimeout(guardTimer)
+                  settle()
                 })
               })
             } else {
