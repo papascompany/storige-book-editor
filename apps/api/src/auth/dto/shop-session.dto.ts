@@ -72,6 +72,12 @@ export class ShopSessionResponseDto {
   @ApiProperty({ description: 'Access Token (JS 번들에서 사용)' })
   accessToken: string;
 
+  @ApiProperty({
+    description: 'Refresh Token(30d). 임베드 편집기 사일런트 리프레시용 — 호스트가 /embed?refreshToken= 로 전달',
+    required: false,
+  })
+  refreshToken?: string;
+
   @ApiProperty({ description: 'accessToken 만료 시간(초)' })
   expiresIn: number;
 
