@@ -7,6 +7,8 @@ interface SpreadThumbnailItemProps {
   isActive: boolean
   onClick: () => void
   className?: string
+  /** 우측 세로 패널 등 좁은 공간용 축소 썸네일 */
+  compact?: boolean
 }
 
 export const SpreadThumbnailItem = memo(function SpreadThumbnailItem({
@@ -15,7 +17,9 @@ export const SpreadThumbnailItem = memo(function SpreadThumbnailItem({
   isActive,
   onClick,
   className,
+  compact = false,
 }: SpreadThumbnailItemProps) {
+  const thumbSize = compact ? { width: 128, height: 64 } : { width: 200, height: 100 }
   return (
     <div
       className={cn(
@@ -31,7 +35,7 @@ export const SpreadThumbnailItem = memo(function SpreadThumbnailItem({
           'hover:border-blue-400',
           isActive ? 'border-blue-500 shadow-md' : 'border-gray-300'
         )}
-        style={{ width: 200, height: 100 }}
+        style={thumbSize}
       >
         {thumbnailUrl ? (
           <img

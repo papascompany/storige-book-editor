@@ -9,21 +9,23 @@ import type { EditPage } from '@storige/types'
 
 interface SpreadPagePanelProps {
   className?: string
+  /** 'horizontal'(하단 스트립) | 'vertical'(우측 패널). 기본 horizontal */
+  orientation?: 'horizontal' | 'vertical'
 }
 
 /**
- * SpreadPagePanel - 스프레드 모드 전용 하단 수평 페이지 패널
+ * SpreadPagePanel - 스프레드 모드 페이지 패널 (표지 스프레드 + 내지 전환)
  *
- * 레이아웃:
- * ┌─────────────────────────────────────────────────────────┐
- * │ [스프레드 썸네일 (200x60px)]  |  [내지1][내지2]...[+]   │
- * │    "표지 스프레드"             |   정방형 썸네일 나열      │
- * └─────────────────────────────────────────────────────────┘
- * 높이: 100px 고정, 항상 표시
+ * orientation:
+ *  - 'horizontal' (하단): [스프레드 썸네일] | [내지1][내지2]…[+]  — 모바일/하단 기본
+ *  - 'vertical' (우측):  세로로 [스프레드]→[내지…]→[+] 스택
+ *  네비 위치 옵션(우측/하단)에 따라 EditorView/embed 가 orientation 을 전달.
  */
 export const SpreadPagePanel = memo(function SpreadPagePanel({
   className,
+  orientation = 'horizontal',
 }: SpreadPagePanelProps) {
+  const isVertical = orientation === 'vertical'
   const pages = useEditorStore((state) => state.pages)
   const currentPageIndex = useEditorStore((state) => state.currentPageIndex)
   const setPage = useAppStore((state) => state.setPage)
@@ -82,12 +84,24 @@ export const SpreadPagePanel = memo(function SpreadPagePanel({
   return (
     <div
       className={cn(
-        'h-[180px] bg-white border-t flex items-center shrink-0',
+        'bg-white flex shrink-0',
+        isVertical
+          // 우측 세로 패널
+          ? 'w-[150px] h-full border-l flex-col items-stretch'
+          // 하단 가로 스트립 (모바일에서 높이 축소)
+          : 'w-full h-[132px] sm:h-[180px] border-t flex-row items-center',
         className
       )}
     >
       {/* 스크롤 가능 영역 */}
-      <div className="flex items-center h-full overflow-x-auto overflow-y-hidden px-4 gap-4 min-w-0 flex-1">
+      <div
+        className={cn(
+          'flex gap-4 min-w-0 flex-1',
+          isVertical
+            ? 'flex-col items-center overflow-y-auto overflow-x-hidden py-4 px-2'
+            : 'flex-row items-center overflow-x-auto overflow-y-hidden px-4'
+        )}
+      >
         {/* 스프레드 썸네일 */}
         {spreadPage && (
           <>
@@ -97,16 +111,17 @@ export const SpreadPagePanel = memo(function SpreadPagePanel({
                 thumbnailUrl={screenshots[0]}
                 isActive={currentPageIndex === 0}
                 onClick={handleSelectSpread}
+                compact={isVertical}
               />
             </div>
 
-            {/* 구분선 */}
-            <div className="h-16 w-px bg-gray-300 shrink-0" />
+            {/* 구분선 (방향에 따라) */}
+            <div className={cn('bg-gray-300 shrink-0', isVertical ? 'w-16 h-px' : 'h-16 w-px')} />
           </>
         )}
 
         {/* 내지 썸네일들 */}
-        <div className="flex items-start gap-2 pt-2">
+        <div className={cn('flex gap-2', isVertical ? 'flex-col items-center' : 'flex-row items-start pt-2')}>
           {innerPages.map((page, index) => (
             <div
               key={page.id}
@@ -131,15 +146,19 @@ export const SpreadPagePanel = memo(function SpreadPagePanel({
         </div>
       </div>
 
-      {/* 페이지 추가 버튼 - 오른쪽 고정 */}
-      <div className="shrink-0 flex items-center px-4 h-full border-l border-gray-100">
+      {/* 페이지 추가 버튼 - 가로면 오른쪽 / 세로면 하단 고정 */}
+      <div
+        className={cn(
+          'shrink-0 flex items-center justify-center border-gray-100',
+          isVertical ? 'w-full py-3 border-t' : 'h-full px-4 border-l'
+        )}
+      >
         <button
           onClick={handleAddPage}
           disabled={!canAddMore}
           className={cn(
-            'flex items-center justify-center',
-            'w-20 h-28 rounded-lg border-2 border-dashed',
-            'transition-colors',
+            'flex items-center justify-center rounded-lg border-2 border-dashed transition-colors',
+            isVertical ? 'w-16 h-16' : 'w-20 h-28',
             canAddMore
               ? 'border-gray-300 hover:border-blue-400 hover:bg-blue-50 text-gray-400 hover:text-blue-500'
               : 'border-gray-200 text-gray-300 cursor-not-allowed'
