@@ -983,23 +983,25 @@ function EmbeddedEditor({
     setShowWorkspaceModal(true)
   }, [])
 
-  // 세션 불러오기 핸들러 - 선택한 세션 로드
-  const handleLoadSession = useCallback(async (session: EditSessionResponse) => {
+  // 세션 불러오기 핸들러 - 선택한 세션으로 편집기 재진입
+  //
+  // ⚠️ 과거: core.loadFromJSON(canvas, session.canvasData) 단일 캔버스 로드만 수행 →
+  //   멀티페이지/스프레드 세션의 canvasData 는 "페이지별 배열" 이라 fabric loadFromJSON 이
+  //   배열에서 objects 를 못 찾아 캔버스가 비고(워크스페이스까지 유실) → 편집완료 PDF 가
+  //   "첫 번째 캔버스에서 워크스페이스를 찾을 수 없습니다" 로 실패.
+  // ✅ 수정: 선택 세션의 sessionId/templateSetId 로 **편집기를 재진입**시켜 검증된 초기화 복원
+  //   경로(멀티페이지 각 캔버스 복원 + 워크스페이스 보존)를 그대로 재사용한다.
+  //   현재 URL 의 token/refreshToken/parentOrigin 등은 유지하고 식별자만 교체.
+  const handleLoadSession = useCallback((session: EditSessionResponse) => {
     try {
       setShowWorkspaceModal(false)
-      setIsLoading(true)
-      setLoadingMessage('저장된 작업을 불러오는 중...')
-
-      // 세션 정보 업데이트
-      setCurrentSession(session)
-
-      // 캔버스 데이터가 있으면 로드
-      if (session.canvasData && canvas) {
-        await core.loadFromJSON(canvas, session.canvasData)
-        console.log('[EmbeddedEditor] Canvas data loaded from session:', session.id)
-      }
-
-      console.log('[EmbeddedEditor] Session loaded:', session.id)
+      const url = new URL(window.location.href)
+      url.searchParams.set('sessionId', session.id)
+      if (session.templateSetId) url.searchParams.set('templateSetId', session.templateSetId)
+      if (session.orderSeqno != null) url.searchParams.set('orderSeqno', String(session.orderSeqno))
+      console.log('[EmbeddedEditor] Reloading editor for session:', session.id)
+      // iframe(/embed) 컨텍스트면 iframe 만 재진입(부모 페이지 영향 없음).
+      window.location.href = url.toString()
     } catch (err) {
       console.error('[EmbeddedEditor] Failed to load session:', err)
       const errPayload = {
@@ -1008,10 +1010,8 @@ function EmbeddedEditor({
       }
       onError?.(errPayload)
       postToParent(parentOrigin, 'editor.error', errPayload)
-    } finally {
-      setIsLoading(false)
     }
-  }, [canvas, onError, parentOrigin])
+  }, [onError, parentOrigin])
 
   // Toggle side panel
   const toggleSidePanel = () => {
