@@ -179,4 +179,27 @@ export class AuthController {
 
     return { success: true, expiresIn };
   }
+
+  /**
+   * 임베드(iframe/localStorage Bearer) 전용 사일런트 리프레시.
+   * 쿠키 기반 /auth/shop-refresh 는 크로스오리진 iframe 에서 서드파티 쿠키 차단으로 동작 불가.
+   * 본 엔드포인트는 refreshToken 을 body 로 받아 새 accessToken 을 **JSON body** 로 반환한다.
+   * → 편집기가 401 시 자동 호출하여 localStorage 의 auth_token 을 갱신(포토북 다일 편집 지원).
+   */
+  @Public()
+  @Post('shop-refresh-body')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Refresh shop session token (embed/body variant)' })
+  @ApiResponse({ status: 200, description: 'New access token in body' })
+  @ApiResponse({ status: 401, description: 'Refresh token expired/invalid' })
+  async refreshShopSessionBody(
+    @Body('refreshToken') refreshToken: string,
+  ): Promise<{ success: boolean; accessToken?: string; expiresIn?: number; error?: string }> {
+    if (!refreshToken) {
+      return { success: false, error: 'REFRESH_TOKEN_MISSING' };
+    }
+    const { accessToken, expiresIn } =
+      await this.authService.refreshShopToken(refreshToken);
+    return { success: true, accessToken, expiresIn };
+  }
 }

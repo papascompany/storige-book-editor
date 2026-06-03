@@ -110,6 +110,43 @@ class ApiClient {
   }
 
   /**
+   * 사일런트 리프레시: refreshToken(30d)으로 새 accessToken 발급.
+   * 임베드(iframe/localStorage Bearer)는 쿠키 리프레시가 불가하므로 body 변형 엔드포인트 사용.
+   * - 인터셉터 재귀를 피하려고 bare axios 로 호출.
+   * - 동시 401 다발 시 단일 갱신만 수행하도록 in-flight Promise 공유.
+   * @returns 새 accessToken 또는 null(갱신 불가 → 진짜 만료)
+   */
+  private refreshInFlight: Promise<string | null> | null = null;
+  private async trySilentRefresh(): Promise<string | null> {
+    if (this.refreshInFlight) return this.refreshInFlight;
+    this.refreshInFlight = (async () => {
+      try {
+        const refreshToken = localStorage.getItem('auth_refresh_token');
+        if (!refreshToken) return null;
+        const base = this.getBaseUrl();
+        const res = await axios.post(
+          `${base}/auth/shop-refresh-body`,
+          { refreshToken },
+          { headers: { 'Content-Type': 'application/json' }, timeout: 15000 },
+        );
+        const newToken = res.data?.accessToken as string | undefined;
+        if (newToken) {
+          localStorage.setItem('auth_token', newToken);
+          console.log('[ApiClient] 사일런트 리프레시 성공 — 액세스 토큰 갱신');
+          return newToken;
+        }
+        return null;
+      } catch (e) {
+        console.warn('[ApiClient] 사일런트 리프레시 실패:', e);
+        return null;
+      } finally {
+        this.refreshInFlight = null;
+      }
+    })();
+    return this.refreshInFlight;
+  }
+
+  /**
    * Set the base URL for API requests (used for embedded editor)
    */
   setBaseUrl(baseUrl: string) {
@@ -147,9 +184,22 @@ class ApiClient {
       async (error: AxiosError) => {
         const config = error.config as AxiosRequestConfig & { __retryCount?: number };
 
-        // 인증 만료 처리
+        // 인증 만료 처리 — 사일런트 리프레시 1회 시도 후 재요청.
+        // (포토북 다일 편집 중 액세스 토큰 1h 만료 → refreshToken 으로 자동 갱신.)
         if (error.response?.status === 401) {
+          const reqCfg = config as (AxiosRequestConfig & { __authRetried?: boolean }) | undefined;
+          // refresh 호출 자체의 401 이거나 이미 한 번 갱신 재시도했다면 → 진짜 만료.
+          const isRefreshCall = reqCfg?.url?.includes('/auth/shop-refresh-body');
+          if (reqCfg && !reqCfg.__authRetried && !isRefreshCall) {
+            const newToken = await this.trySilentRefresh();
+            if (newToken) {
+              reqCfg.__authRetried = true;
+              reqCfg.headers = { ...(reqCfg.headers || {}), Authorization: `Bearer ${newToken}` };
+              return this.client.request(reqCfg);
+            }
+          }
           localStorage.removeItem('auth_token');
+          localStorage.removeItem('auth_refresh_token');
           this.emitAuthExpired();
           return Promise.reject(error);
         }
