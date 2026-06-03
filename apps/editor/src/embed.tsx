@@ -22,6 +22,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { createRoot, Root } from 'react-dom/client'
 import { useAppStore } from './stores/useAppStore'
+import { useSettingsStore } from './stores/useSettingsStore'
 import { useSaveStore } from './stores/useSaveStore'
 import { useEditorContents } from './hooks/useEditorContents'
 import { useEmbedAutoSave } from './hooks/useEmbedAutoSave'
@@ -815,8 +816,14 @@ function EmbeddedEditor({
     setIsLoading(true)
     try {
       setLoadingMessage('작업을 저장하는 중...')
-      // Get canvas data
-      const canvasData = canvas?.toJSON(core.extendFabricOption) || null
+
+      // 멀티페이지/스프레드 책: 전체 페이지 배열을 저장(단일 캔버스로 덮어써 다른 페이지 유실 방지)
+      const { isSpreadMode, allCanvas, allEditors } = useAppStore.getState()
+      const spreadCfg = useSettingsStore.getState().spreadConfig
+      const isSpreadBook = isSpreadMode && allCanvas.length > 1 && !!spreadCfg
+      const canvasData = allCanvas.length > 1
+        ? allCanvas.map((c) => c.toJSON(core.extendFabricOption))
+        : (canvas?.toJSON(core.extendFabricOption) || null)
 
       // 게스트 세션: PDF 생성/회원 complete 불가 → 저장만 하고 로그인 유도(editor.needAuth)
       const guestToken = currentSession?.guestToken
@@ -831,75 +838,90 @@ function EmbeddedEditor({
         return
       }
 
-      // Update edit session with canvas data
-      await editSessionsApi.update(currentSessionId, {
-        canvasData,
-      })
+      // Update edit session with canvas data (멀티페이지면 배열 전체)
+      await editSessionsApi.update(currentSessionId, { canvasData })
 
-      // Generate PDF from canvas
-      let fileId: string | undefined
-      if (editor && canvas) {
-        try {
-          setLoadingMessage('PDF를 생성하는 중...')
+      // Generate PDF
+      try {
+        setLoadingMessage('PDF를 생성하는 중...')
+        const bleed = options?.bleed ?? 3
+
+        if (isSpreadBook) {
+          // ── 스프레드 책: 표지(allCanvas[0]) cover PDF + 내지(allCanvas[1..]) 멀티페이지 content PDF ──
+          // 표지와 내지는 판형 크기가 달라 한 PDF 로 합칠 수 없으므로 분리 생성/업로드.
+          const coverPlugin = allEditors[0]?.getPlugin('ServicePlugin') as ServicePlugin | undefined
+          const innerCanvases = allCanvas.slice(1)
+          const innerEditors = allEditors.slice(1)
+          const innerPlugin = innerEditors[0]?.getPlugin('ServicePlugin') as ServicePlugin | undefined
+
+          if (coverPlugin && innerPlugin && innerCanvases.length > 0) {
+            // 표지: 스프레드 전체 크기
+            const coverBlob = await coverPlugin.saveMultiPagePDFAsBlob(
+              [allCanvas[0]] as any, [allEditors[0]], `cover-${currentSessionId}`,
+              { width: spreadCfg!.totalWidthMm, height: spreadCfg!.totalHeightMm, cutSize: bleed },
+              undefined, 300,
+            )
+            setLoadingMessage('PDF를 업로드하는 중...')
+            const coverUpload = await filesApi.upload({
+              file: coverBlob, type: 'cover', orderSeqno,
+              metadata: { generatedBy: 'editor', editSessionId: currentSessionId, mode: 'spread', isSpreadCover: true },
+            })
+
+            // 내지: 내지 면(코버 단면) 크기로 멀티페이지 합본
+            const innerW = (spreadCfg!.spec as any)?.coverWidthMm ?? options?.size?.width ?? 210
+            const innerH = (spreadCfg!.spec as any)?.coverHeightMm ?? options?.size?.height ?? 297
+            const contentBlob = await innerPlugin.saveMultiPagePDFAsBlob(
+              innerCanvases as any, innerEditors, `content-${currentSessionId}`,
+              { width: innerW, height: innerH, cutSize: bleed },
+              undefined, 300,
+            )
+            const contentUpload = await filesApi.upload({
+              file: contentBlob, type: 'content', orderSeqno,
+              metadata: { generatedBy: 'editor', editSessionId: currentSessionId, mode: 'spread', pageCount: innerCanvases.length },
+            })
+
+            await editSessionsApi.update(currentSessionId, {
+              coverFileId: coverUpload.id,
+              contentFileId: contentUpload.id,
+              metadata: { spreadContentPageCount: innerCanvases.length },
+            })
+            console.log('[EmbeddedEditor] Spread PDFs uploaded — cover:', coverUpload.id, 'content:', contentUpload.id)
+          } else {
+            console.warn('[EmbeddedEditor] Spread PDF: 플러그인/내지 캔버스 누락, PDF 생성 스킵')
+          }
+        } else if (editor && canvas) {
+          // ── 단일 페이지(표지/내지/템플릿 등) ──
           const servicePlugin = editor.getPlugin('ServicePlugin') as ServicePlugin | undefined
           if (servicePlugin) {
-            // Generate PDF Blob
             const pdfBlob = await servicePlugin.saveMultiPagePDFAsBlob(
-              [canvas],
-              [editor],
-              `session-${currentSessionId}`,
-              {
-                width: options?.size?.width || 210,
-                height: options?.size?.height || 297,
-                cutSize: options?.bleed || 3,
-              },
-              undefined, // cutLine
-              300 // DPI
+              [canvas], [editor], `session-${currentSessionId}`,
+              { width: options?.size?.width || 210, height: options?.size?.height || 297, cutSize: bleed },
+              undefined, 300,
             )
-
             if (pdfBlob) {
-              // Upload PDF to server
               setLoadingMessage('PDF를 업로드하는 중...')
-              // 백엔드 FileType enum: cover/content/template/other
-              // both 모드는 표지+내지 합본 → 'other'(이후 split synthesis 입력)
-              // template 모드는 'template'
               const fileType: 'cover' | 'content' | 'template' | 'other' =
                 mode === 'cover' ? 'cover'
                 : mode === 'content' ? 'content'
                 : mode === 'template' ? 'template'
                 : 'other'
               const uploadResponse = await filesApi.upload({
-                file: pdfBlob,
-                type: fileType,
-                orderSeqno: orderSeqno,
-                metadata: {
-                  generatedBy: 'editor',
-                  editSessionId: currentSessionId,
-                  mode,
-                },
+                file: pdfBlob, type: fileType, orderSeqno,
+                metadata: { generatedBy: 'editor', editSessionId: currentSessionId, mode },
               })
-              fileId = uploadResponse.id
-              console.log('[EmbeddedEditor] PDF uploaded:', fileId)
-
-              // Update session with file ID
               const updatePayload: { coverFileId?: string; contentFileId?: string } = {}
-              if (mode === 'cover') {
-                updatePayload.coverFileId = fileId
-              } else if (mode === 'content') {
-                updatePayload.contentFileId = fileId
-              } else {
-                // For 'both' or 'template' mode, treat as cover for now
-                updatePayload.coverFileId = fileId
-              }
+              if (mode === 'content') updatePayload.contentFileId = uploadResponse.id
+              else updatePayload.coverFileId = uploadResponse.id
               await editSessionsApi.update(currentSessionId, updatePayload)
+              console.log('[EmbeddedEditor] PDF uploaded:', uploadResponse.id)
             }
           } else {
             console.warn('[EmbeddedEditor] ServicePlugin not found, skipping PDF generation')
           }
-        } catch (pdfErr) {
-          console.error('[EmbeddedEditor] PDF generation/upload failed:', pdfErr)
-          // Continue without PDF - we still want to complete the session
         }
+      } catch (pdfErr) {
+        console.error('[EmbeddedEditor] PDF generation/upload failed:', pdfErr)
+        // Continue without PDF - we still want to complete the session
       }
 
       // Mark session as completed
