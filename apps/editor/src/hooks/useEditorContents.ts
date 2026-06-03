@@ -353,7 +353,7 @@ export function useEditorContents(): UseEditorContentsReturn {
             const guardTimer = setTimeout(() => {
               console.warn(`[loadCanvasData] loadJSON 타임아웃(page ${index}) — 복원 계속 진행`)
               settle()
-            }, 12000)
+            }, 8000)
             plugin.loadJSON(canvases[index] as string | object, async () => {
               if (cvs) {
                 const targetObjects = (cvs.getObjects() as fabric.Object[]).filter((obj: fabric.Object) => {
@@ -1571,7 +1571,7 @@ export function useEditorContents(): UseEditorContentsReturn {
                 const guardTimer = setTimeout(() => {
                   console.warn(`[EditorContents:Spread] loadJSON 타임아웃(inner page ${newPageIndex}) — 계속 진행`)
                   settle()
-                }, 12000)
+                }, 8000)
                 servicePlugin.loadJSON(dataToLoad, () => {
                   console.log(`[EditorContents:Spread] loadJSON completed for inner page ${newPageIndex}`)
                   clearTimeout(guardTimer)
