@@ -251,8 +251,16 @@ class FontPlugin extends PluginBase {
     object.set('fontFamily', targetFont)
 
     // 2. 브라우저가 폰트 메트릭을 계산할 시간 확보
-    await new Promise(resolve => requestAnimationFrame(resolve))
-    await new Promise(resolve => requestAnimationFrame(resolve))
+    // ⚠️ requestAnimationFrame 은 백그라운드/숨김 탭(임베드 iframe 비활성)에서 정지되어
+    //   영원히 대기할 수 있다 → 폰트 적용(afterLoad)이 hang → 복원 콜백 미발화.
+    //   setTimeout 과 race 하여 RAF 정지 시에도 진행 보장.
+    const rafOrTimeout = () =>
+      Promise.race([
+        new Promise<void>(resolve => requestAnimationFrame(() => resolve())),
+        new Promise<void>(resolve => setTimeout(resolve, 200)),
+      ])
+    await rafOrTimeout()
+    await rafOrTimeout()
 
     // 3. 크기 재계산 (폰트 메트릭이 반영된 후)
     object.initDimensions()

@@ -336,8 +336,12 @@ class ServicePlugin extends PluginBase {
           // 모든 폰트 리소스를 병렬로 로드 (객체 적용 없이)
           const fontLoadPromises = Array.from(requiredFonts).map((fontName) => {
             dlog('font', `🔄 폰트 리소스 로드 시작: ${fontName}`)
-            return fontPlugin
-              .ensureFontLoaded(fontName)
+            // ⚠️ ensureFontLoaded 가 끝내 resolve/reject 되지 않으면 beforeLoad 가 hang →
+            //   loadFromJSON 자체가 호출 안 됨. per-font 5s 타임아웃으로 항상 진행 보장.
+            return Promise.race([
+              fontPlugin.ensureFontLoaded(fontName),
+              new Promise((resolve) => setTimeout(resolve, 5000)),
+            ])
               .then(() => {
                 dlog('font', `✅ 폰트 리소스 로드 완료: ${fontName}`)
               })
@@ -347,13 +351,19 @@ class ServicePlugin extends PluginBase {
               })
           })
 
-          // 모든 폰트 로드 대기
-          await Promise.all(fontLoadPromises)
+          // 모든 폰트 로드 대기 (allSettled — 일부 실패해도 전체 진행)
+          await Promise.allSettled(fontLoadPromises)
           dlog('font', '✅ 모든 폰트 리소스 로드 완료')
         }
 
         // 폰트 로드 완료 후 JSON 로드
-        this._canvas.loadFromJSON(jsonStr, () => {
+        // ⚠️ fabric loadFromJSON 콜백은 객체 내 이미지(fillImage/accessory 등) 로드 실패 시
+        //   호출되지 않을 수 있다(특히 스프레드 표지). 콜백 미발화 시 afterLoad/콜백 체인이
+        //   영원히 멈추므로(=복원 오버레이 hang), once 가드 + 4s 타임아웃으로 항상 후처리 진행.
+        let postLoadDone = false
+        const onLoaded = () => {
+          if (postLoadDone) return
+          postLoadDone = true
           // 모든 객체의 좌표 및 상태 강제 업데이트
           const renderType = (this._canvas as any)?.renderType || (this._options as any)?.renderType
           const isEnvelope = renderType === 'envelope'
@@ -476,7 +486,14 @@ class ServicePlugin extends PluginBase {
               callback()
             }
           })
-        })
+        }
+        this._canvas.loadFromJSON(jsonStr, onLoaded)
+        setTimeout(() => {
+          if (!postLoadDone) {
+            console.warn('[ServicePlugin] loadFromJSON 콜백 미발화(4s) — afterLoad/콜백 강제 진행')
+            onLoaded()
+          }
+        }, 4000)
       } catch (error) {
         console.error('❌ JSON 로드 중 오류:', error)
         // 에러 발생 시에도 기본 로드는 시도
