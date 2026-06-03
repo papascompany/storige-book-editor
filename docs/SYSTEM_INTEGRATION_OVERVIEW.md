@@ -1152,3 +1152,16 @@ edited / validated / fixable / synthesis_pending / completed / failed
 ### PHP 사이트 호환성
 
 기존 PHP 호출 경로 (shop-session / validate/external / synthesize/external / external orderSeqno 조회 / webhook) **변경 0**.
+
+---
+
+## ⑥ 편집완료 PDF 프리즈 진단 · 하드닝 (2026-06-03)
+
+> 상세: `.cursor/plans/SPREAD_PDF_FREEZE_FINDINGS_2026-06-03.md` · `docs/EDITOR.md` §16 · 시각화 `SYSTEM_INTEGRATION_OVERVIEW.html` §6
+
+- **증상**: 스프레드 책 편집완료 시 표지 cover PDF 생성이 프로덕션 난독화 에러 `'Mt'` 로 실패 → `both` 모드 세션 cover/content fileId NULL.
+- **정정**: cover PDF 로직 자체는 정상(로컬 충실 재현 0.4초 생성). 이미지/특수객체/폰트→벡터/429mm/clipPath/CJK 전부 배제.
+- **실제 원인**: 프로덕션 editor 렌더러 하드 프리즈(편집완료 시 5분+, 세션 `editing` 고정). opencv 10MB+onnx 882KB+11 라이브 캔버스+PDF 래스터 동시 점유 = 환경/스케일 요인(경량 컨텍스트 미재현).
+- **Patch B(`19158f8`, 배포됨)**: `embed.tsx` handleFinish 에 `finishMark()`(단계별 Sentry captureMessage+flush → 프리즈에도 마지막 통과 단계 전달) + `withWatchdog()`(cover120/content180/single120s) + catch `Sentry.captureException(tags:finishPhase)`. 저위험·가산적, `complete()` 항상 실행.
+- **부수 발견**: `/api/woff2ToTtf` 404 + `library_fonts` 0행 → 텍스트 아웃라인화 항상 실패(catch). 폰트 시딩+라우트 구현 필요(별개·하위 우선순위). `spine/calculate` 정상.
+- **다음**: C 풋프린트 축소(메모리면 dispose/opencv 언로드, CPU면 `_createMultiPagePDF` 핫스팟 수정) / D 서버사이드 생성(워커 Puppeteer 권장) — Patch B 계측 데이터 확정 후.
