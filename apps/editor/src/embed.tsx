@@ -52,6 +52,8 @@ export interface EditorConfig {
   productId?: string
   /** API 인증 토큰 (필수, 없으면 쿠키 기반 인증 사용) */
   token?: string
+  /** 리프레시 토큰(30d) — 401 시 사일런트 갱신용(포토북 다일 편집 지원) */
+  refreshToken?: string
   /** 기존 편집 세션 ID (재편집시) */
   sessionId?: string
   /** 표지 파일 ID (bookmoa 연동용) */
@@ -234,6 +236,7 @@ function EmbeddedEditor({
   templateSetId,
   productId,
   token,
+  refreshToken,
   sessionId,
   coverFileId,
   contentFileId,
@@ -350,6 +353,12 @@ function EmbeddedEditor({
           if (effectiveToken) {
             console.log('[EmbeddedEditor] Using token from localStorage')
           }
+        }
+
+        // 사일런트 리프레시용 refreshToken 저장(있으면). 401 시 client.ts 가 자동 사용
+        // → 포토북처럼 며칠에 걸쳐 편집해도 액세스 토큰(1h) 만료 시 자동 갱신.
+        if (refreshToken) {
+          try { localStorage.setItem('auth_refresh_token', refreshToken) } catch { /* SSR/프라이버시 모드 무시 */ }
         }
 
         if (!effectiveToken) {

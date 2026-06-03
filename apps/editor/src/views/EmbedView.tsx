@@ -62,6 +62,7 @@ export default function EmbedView() {
       const sessionId = get('sessionId')
       let templateSetId = get('templateSetId')
       const token = get('token')
+      const refreshToken = get('refreshToken')
       const parentOrigin = get('parentOrigin')
       const orderSeqnoRaw = get('orderSeqno')
       const orderSeqno = orderSeqnoRaw ? Number(orderSeqnoRaw) : undefined
@@ -82,6 +83,10 @@ export default function EmbedView() {
       // 아래 재편집 세션 조회가 인증을 필요로 할 수 있으므로 선주입한다.
       if (token) {
         try { localStorage.setItem('auth_token', token) } catch { /* SSR/프라이버시 모드 무시 */ }
+      }
+      // 사일런트 리프레시용: refreshToken(30d) 저장 → 401 시 자동 갱신(포토북 다일 편집).
+      if (refreshToken) {
+        try { localStorage.setItem('auth_refresh_token', refreshToken) } catch { /* 무시 */ }
       }
 
       // 재편집: sessionId 만 받고 templateSetId 가 없으면 세션에서 도출.
@@ -112,6 +117,7 @@ export default function EmbedView() {
         templateSetId,
         productId,
         token,
+        refreshToken,
         sessionId,
         coverFileId,
         contentFileId,

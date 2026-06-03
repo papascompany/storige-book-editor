@@ -163,18 +163,25 @@ export class AuthService {
     try {
       const payload = this.jwtService.verify(refreshToken);
 
-      // 새로운 accessToken 발급
-      const newAccessToken = this.jwtService.sign(
-        {
-          sub: payload.sub,
-          email: payload.email,
-          name: payload.name,
-          role: payload.role,
-          source: payload.source,
-          permissions: payload.permissions,
-        },
-        { expiresIn: '1h' },
-      );
+      // 새로운 accessToken 발급 — shop 컨텍스트(주문 스코프/사이트) 전부 보존.
+      // (allowedOrderSeqnos/siteId/siteName 누락 시 갱신 토큰이 주문 권한·사이트를 잃는 회귀 방지.)
+      const newPayload: Record<string, any> = {
+        sub: payload.sub,
+        email: payload.email,
+        name: payload.name,
+        role: payload.role,
+        source: payload.source,
+        permissions: payload.permissions,
+      };
+      if (payload.allowedOrderSeqnos) {
+        newPayload.allowedOrderSeqnos = payload.allowedOrderSeqnos;
+      }
+      if (payload.siteId) {
+        newPayload.siteId = payload.siteId;
+        newPayload.siteName = payload.siteName;
+      }
+
+      const newAccessToken = this.jwtService.sign(newPayload, { expiresIn: '1h' });
 
       return { accessToken: newAccessToken, expiresIn: 3600 };
     } catch (error) {
