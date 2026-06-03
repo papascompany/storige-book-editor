@@ -133,6 +133,9 @@ export class AuthController {
     return {
       success: true,
       accessToken,
+      // 임베드 편집기 사일런트 리프레시용 — 호스트(bookmoa)가 /embed?refreshToken= 로 전달.
+      // (쿠키 storige_refresh 는 크로스오리진 iframe 에서 못 쓰므로 body 로도 반환.)
+      refreshToken,
       expiresIn: 3600,
       member: {
         seqno: dto.memberSeqno,
