@@ -1,6 +1,6 @@
 # Storige 문서 인덱스
 
-> **갱신**: 2026-06-03 · 스프레드 책 편집완료 PDF 프리즈 진단 + 하드닝(Patch B) 사이클 반영
+> **갱신**: 2026-06-04 · 뒤로가기 무결성+호스트 핸드셰이크 / PDF 첨부 검증 항목·갭 감사 반영
 > **HTML 가이드 통합**: `Storige_개발가이드.html`, `WORKER_FLOW_시각화.html` 가 docs/ 로 합류 (이전엔 부모 디렉토리)
 
 📊 **시작점**: [`MASTER_STATUS_2026-05-10.md`](./MASTER_STATUS_2026-05-10.md) (최신)
@@ -86,7 +86,15 @@
 
 ## 📊 6. 사이클 보고서 (시간역순)
 
-### 🆕 2026-06-03 — 스프레드 책 편집완료 PDF 프리즈 진단 + 하드닝 (오토파일럿 2차)
+### 🆕 2026-06-04 — 임베드 뒤로가기 무결성 + 호스트 핸드셰이크 + PDF 첨부 검증 감사
+| 문서 | 설명 |
+|------|------|
+| [`EDITOR.md`](./EDITOR.md) §17 | 임베드 뒤로가기 데이터 무결성 가드(`useEmbedBackGuard`) + §17.1 호스트 연동 핸드셰이크(getState/saveNow/setBackGuard) |
+| [`../.cursor/plans/HANDOFF_bookmoa_back_navigation_2026-06-04.md`](../.cursor/plans/HANDOFF_bookmoa_back_navigation_2026-06-04.md) | bookmoa-mobile 호스트 구현 가이드(Tier A/B + postMessage 프로토콜 + CSP frame-ancestors 주의) — e2e 검증 완료 |
+| [`PDF_VALIDATION_GUIDE.md`](./PDF_VALIDATION_GUIDE.md) | **PDF 첨부 검증 항목 한눈에(에러8/경고9)** + validate 입력 계약 + 알려진 갭(책등 공식 불일치·날개 미검증) |
+| [`SYSTEM_INTEGRATION_OVERVIEW.html`](./SYSTEM_INTEGRATION_OVERVIEW.html) §7 | 시각화 — PDF 첨부 검증 항목/갭 카드 |
+
+### 2026-06-03 — 스프레드 책 편집완료 PDF 프리즈 진단 + 하드닝 (오토파일럿 2차)
 | 문서 | 설명 |
 |------|------|
 | [`../.cursor/plans/SPREAD_PDF_FREEZE_FINDINGS_2026-06-03.md`](../.cursor/plans/SPREAD_PDF_FREEZE_FINDINGS_2026-06-03.md) | **진단·패치·설계** — cover PDF 로직 정상(로컬 0.4초 재현), 실제는 프로덕션 editor 렌더러 프리즈(환경/스케일). Patch B(워치독+Sentry 단계계측) 배포(`19158f8`). woff2ToTtf 404 + library_fonts 0행 별개 발견. C(풋프린트)/D(서버사이드 Puppeteer) 설계 |

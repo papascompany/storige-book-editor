@@ -26,6 +26,73 @@
 
 ---
 
+## 검증 항목 한눈에 (실행 순서) — 2026-06-04 코드 기준
+
+> 코드: `apps/worker/src/services/pdf-validator.service.ts` `validate()`. **에러 ≥1 → `isValid=false`(차단)**, 경고는 통과·표시. `apps/worker/src/dto/validation-result.dto.ts` / `config/validation.config.ts`.
+
+| # | 검증 항목 | 종류 | 코드 | 조건 / 임계값 | 적용 대상 | 자동수정 |
+|---|---|---|---|---|---|---|
+| 1 | 파일 크기 | 🔴에러(즉시중단) | `FILE_TOO_LARGE` | > **100MB** | 전체 | ✕ |
+| 2 | 파일 무결성 | 🔴에러(즉시중단) | `FILE_CORRUPTED` | PDF 로드 실패(손상) | 전체 | ✕ |
+| 3 | 페이지수 초과 | 🔴에러 | `PAGE_COUNT_EXCEEDED` | > **1000p**(`DEFAULT_MAX_PAGES`) | 전체 | ✕ |
+| 4 | 제본 규격(페이지수) | 🔴에러 | `PAGE_COUNT_INVALID` | 무선(perfect)·내지 4배수 아님 | 내지 | addBlankPages |
+| 5 | 주문 페이지수 일치 | 🟡경고 | `PAGE_COUNT_MISMATCH` | 실제 ≠ 주문 `pages` | 전체 | addBlankPages |
+| 6 | 판형(사이즈) | 🔴에러 | `SIZE_MISMATCH` | 주문 `size`와 ±**1mm** 초과(재단 포함/불포함 모두 비교) | 전체 | resizeWithPadding |
+| 7 | 재단 여백(bleed) | 🟡경고 | `BLEED_MISSING` | 재단 여백 없음 | 전체 | extendBleed |
+| 8 | 책등(spine) | 🔴에러 | `SPINE_SIZE_MISMATCH` | 표지 총너비 ≠ `size.w×2 + spine + bleed×2` ±**2mm** (spine=`paperThickness×pages/2` **재계산**) | **표지** + `paperThickness` 있을 때만 | adjustSpine |
+| 9 | 가로형 페이지 | 🟡경고 | `LANDSCAPE_PAGE` | 가로 방향 페이지 감지 | 전체 | ✕ |
+| 10 | 사철 제본 규격 | 🔴에러 | `SADDLE_STITCH_INVALID` | 사철(saddle)·4배수 아님 | 내지(saddle) | addBlankPages |
+| 10b | 사철 중앙부 객체 | 🟡경고 | `CENTER_OBJECT_CHECK` | 중앙 걸침 객체 확인 필요 | 내지(saddle) | ✕ |
+| 11 | 혼합/펼침면 감지 | 🟡경고 | `MIXED_PDF` | 표지+내지 다른 규격/스프레드 감지 | 전체 | ✕ |
+| 12 | CMYK(후가공) | 🔴에러 | `POST_PROCESS_CMYK` | 후가공 파일에 CMYK(별색만 허용) | 후가공 | ✕ |
+| 12b | CMYK(일반) | 🟡경고 | `CMYK_STRUCTURE_DETECTED` | 일반 파일 CMYK 감지 | 전체 | ✕ |
+| 13 | 별색(Spot) | ⚪정보 | (코드 없음) | 감지 → metadata만 | 전체 | — |
+| 14 | 투명도 | 🟡경고 | `TRANSPARENCY_DETECTED` | 투명 효과 포함 | 전체 | ✕ |
+| 14b | 오버프린트 | 🟡경고 | `OVERPRINT_DETECTED` | 오버프린트 설정 포함 | 전체 | ✕ |
+| 15 | 이미지 해상도 | 🟡경고 | `RESOLUTION_LOW` | 이미지 < **150 DPI**(권장 300) | 전체 | ✕ |
+
+**조건부 실행**: ⑧책등=`fileType==='cover'` + `paperThickness` 존재 시만, ⑩사철=`binding==='saddle'`일 때만, ⑫후가공CMYK=`fileType==='post_process'`일 때만.
+
+---
+
+## 검증 요청 계약 (validate 입력)
+
+`POST /api/worker-jobs/validate(/external)` — `apps/api/src/worker-jobs/dto/worker-job.dto.ts` `CreateValidationJobDto`.
+
+```jsonc
+{
+  "fileId | fileUrl": "...",
+  "fileType": "cover | content | post_process",
+  "orderOptions": {
+    "size": { "width": 210, "height": 297 },   // ✅ 판형 mm — 검증됨
+    "pages": 96,                                 // ✅ 페이지수 — 검증됨
+    "binding": "perfect | saddle | spring",
+    "bleed": 3,
+    "paperThickness": 0.1                        // ⚠️ 책등은 이 값으로 워커가 재계산
+    // ❌ spineWidthMm  : 필드 없음 (프런트가 책등폭을 직접 못 보냄)
+    // ❌ wingEnabled / wingWidthMm : 필드 없음 (날개 정보 전달 불가)
+  },
+  "callbackUrl": "..."
+}
+```
+
+기대 스펙은 **프런트가 `orderOptions`에 실어 보냄**(서버가 주문에서 자동 도출하지 않음).
+
+---
+
+## ⚠️ 알려진 갭 (2026-06-04 감사)
+
+| 항목 | 상태 | 내용 |
+|---|---|---|
+| **사이즈/페이지수** | ✅ 정상 | 프런트 `size`/`pages` 전달 → 정확히 검증 |
+| **책등(spine)** | ⚠️ 부정확 | ① 프런트가 책등폭이 아닌 `paperThickness`만 전달 ② 워커 재계산 공식 `paperThickness×(pages/2)`이 권위 공식(`spine.service.ts:49` = `(pages/2)×thickness + **bindingMargin**`)과 달라 **제본 여백(margin) 누락** → 마진 클수록 정상 표지도 `SPINE_SIZE_MISMATCH` 오검출 가능 |
+| **날개(wing)** | ❌ 미구현 | DTO·워커 어디에도 wing 필드/로직 없음. 표지 기대너비식이 `wing×2`를 빠뜨려 **정상 날개 표지가 거부**될 수 있음. wing 정보는 DB `spreadConfig.spec.wingEnabled/wingWidthMm`에만 존재(검증과 단절) |
+| 미사용 코드 | ℹ️ 참고 | `UNSUPPORTED_FORMAT`, `SPREAD_SIZE_MISMATCH`는 enum에만 정의되고 워커에서 push 안 됨(스프레드는 `MIXED_PDF` 경고로 처리) |
+
+**권장 개선**: `orderOptions`에 `spineWidthMm?`/`wingEnabled?`/`wingWidthMm?` 추가(하위호환) → 워커가 ① spine은 전달값 우선(없으면 `spine.service`와 동일 공식, margin 포함) ② 표지 기대너비에 `+ (wingEnabled ? wingWidthMm×2 : 0)`. 또는 기대 스펙을 서버가 주문/템플릿셋에서 도출(스푸핑·누락 방지).
+
+---
+
 ## 에러 코드 (차단)
 
 에러가 발생하면 접수가 차단되며, 고객은 파일을 수정 후 재업로드해야 합니다.

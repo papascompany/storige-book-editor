@@ -1165,3 +1165,14 @@ edited / validated / fixable / synthesis_pending / completed / failed
 - **Patch B(`19158f8`, 배포됨)**: `embed.tsx` handleFinish 에 `finishMark()`(단계별 Sentry captureMessage+flush → 프리즈에도 마지막 통과 단계 전달) + `withWatchdog()`(cover120/content180/single120s) + catch `Sentry.captureException(tags:finishPhase)`. 저위험·가산적, `complete()` 항상 실행.
 - **부수 발견**: `/api/woff2ToTtf` 404 + `library_fonts` 0행 → 텍스트 아웃라인화 항상 실패(catch). 폰트 시딩+라우트 구현 필요(별개·하위 우선순위). `spine/calculate` 정상.
 - **다음**: C 풋프린트 축소(메모리면 dispose/opencv 언로드, CPU면 `_createMultiPagePDF` 핫스팟 수정) / D 서버사이드 생성(워커 Puppeteer 권장) — Patch B 계측 데이터 확정 후.
+
+---
+
+## ⑦ PDF 첨부 검증 항목 (워커, 2026-06-04 코드 기준)
+
+> 상세: `docs/PDF_VALIDATION_GUIDE.md` · 코드 `apps/worker/src/services/pdf-validator.service.ts`. 에러 ≥1 → 차단(isValid=false), 경고는 통과·표시.
+
+- **🔴 에러(차단) 8종**: FILE_TOO_LARGE(>100MB) · FILE_CORRUPTED · PAGE_COUNT_EXCEEDED(>1000p) · PAGE_COUNT_INVALID(무선 4배수) · SIZE_MISMATCH(±1mm) · SPINE_SIZE_MISMATCH(표지 ±2mm, 책등 재계산) · SADDLE_STITCH_INVALID(사철 4배수) · POST_PROCESS_CMYK
+- **🟡 경고 9종**: PAGE_COUNT_MISMATCH · BLEED_MISSING · LANDSCAPE_PAGE · CENTER_OBJECT_CHECK · MIXED_PDF · CMYK_STRUCTURE_DETECTED · TRANSPARENCY_DETECTED · OVERPRINT_DETECTED · RESOLUTION_LOW(<150DPI, 권장 300). (별색=정보 metadata)
+- **입력 계약**: `orderOptions = { size, pages, binding, bleed, paperThickness }` — 프런트가 전달. `spineWidthMm`/`wingEnabled`/`wingWidthMm` 필드 **없음**.
+- **알려진 갭**: 사이즈·페이지수 ✅ 정상 / 책등 ⚠️ 부정확(프런트가 책등폭 대신 paperThickness만, 워커 재계산이 권위 공식의 bindingMargin 누락) / 날개 ❌ 미구현(DTO·워커에 wing 없음 → 정상 날개 표지 거부 위험). 미사용 코드: UNSUPPORTED_FORMAT, SPREAD_SIZE_MISMATCH.

@@ -392,7 +392,7 @@
 <div class="top-header">
   <div class="badge-row">
     <span class="badge blue">📄 기술 문서</span>
-    <span class="badge green">v2.5</span>
+    <span class="badge green">v2.6</span>
     <span class="badge">2026-06-03</span>
     <span class="badge">PHP 개발자용</span>
   </div>
@@ -435,6 +435,7 @@
   <a href="#s4-6" class="sub" style="color:var(--red)">워커 경로 정규화 ⚡</a>
   <a href="#s5">⑤ 환경 변수</a>
   <a href="#s6" style="color:var(--red)">⑥ 편집완료 PDF 프리즈 진단 🔥</a>
+  <a href="#s7" style="color:var(--blue2)">⑦ PDF 첨부 검증 항목 📋</a>
 </nav>
 
 <!-- ══════════════════════════════ 콘텐츠 ══════════════════════════════ -->
@@ -1513,9 +1514,58 @@ window.<span class="type">StorigeEditor</span>.<span class="func">init</span>({
   </p>
 </section>
 
+<!-- ─────────────── ⑦ PDF 첨부 검증 항목 (2026-06-04) ─────────────── -->
+<section class="section" id="s7">
+  <h2 class="section-title">
+    <span class="num" style="background:rgba(59,130,246,.2);color:var(--blue2)">⑦</span>
+    PDF 첨부 검증 항목 <span style="font-size:13px;color:var(--text3);font-weight:400">(워커, 2026-06-04 코드 기준)</span>
+  </h2>
+  <p style="color:var(--text2);font-size:14px;line-height:1.7">
+    고객이 주문 시 첨부한 표지/내지 PDF를 워커가 검증한다. 기대 스펙은 프런트가
+    <code>POST /worker-jobs/validate</code> 의 <code>orderOptions</code>(size·pages·binding·bleed·paperThickness)로 전달.
+    <strong>에러 ≥1 → 차단(isValid=false)</strong>, 경고는 통과·표시.
+  </p>
+
+  <h3 class="sub-title" id="s7-1">🔴 에러(차단) 8종</h3>
+  <table style="width:100%;border-collapse:collapse;font-size:13px;color:var(--text2)">
+    <thead><tr style="text-align:left;color:var(--text3)"><th style="padding:6px">코드</th><th>조건/임계값</th><th>대상</th><th>자동수정</th></tr></thead>
+    <tbody>
+      <tr><td style="padding:6px"><code>FILE_TOO_LARGE</code></td><td>&gt; 100MB</td><td>전체</td><td>✕</td></tr>
+      <tr><td style="padding:6px"><code>FILE_CORRUPTED</code></td><td>PDF 로드 실패</td><td>전체</td><td>✕</td></tr>
+      <tr><td style="padding:6px"><code>PAGE_COUNT_EXCEEDED</code></td><td>&gt; 1000p</td><td>전체</td><td>✕</td></tr>
+      <tr><td style="padding:6px"><code>PAGE_COUNT_INVALID</code></td><td>무선 내지 4배수 아님</td><td>내지</td><td>addBlankPages</td></tr>
+      <tr><td style="padding:6px"><code>SIZE_MISMATCH</code></td><td>판형 ±1mm 초과</td><td>전체</td><td>resizeWithPadding</td></tr>
+      <tr><td style="padding:6px"><code>SPINE_SIZE_MISMATCH</code></td><td>표지 총너비 ±2mm (책등 재계산)</td><td>표지</td><td>adjustSpine</td></tr>
+      <tr><td style="padding:6px"><code>SADDLE_STITCH_INVALID</code></td><td>사철 4배수 아님</td><td>내지(saddle)</td><td>addBlankPages</td></tr>
+      <tr><td style="padding:6px"><code>POST_PROCESS_CMYK</code></td><td>후가공 파일 CMYK(별색만 허용)</td><td>후가공</td><td>✕</td></tr>
+    </tbody>
+  </table>
+
+  <h3 class="sub-title" id="s7-2" style="margin-top:24px">🟡 경고(통과·표시) 9종</h3>
+  <p style="color:var(--text2);font-size:13px;line-height:1.9">
+    <code>PAGE_COUNT_MISMATCH</code>(주문≠실제) · <code>BLEED_MISSING</code> · <code>LANDSCAPE_PAGE</code> ·
+    <code>CENTER_OBJECT_CHECK</code>(사철 중앙) · <code>MIXED_PDF</code>(혼합/펼침면) ·
+    <code>CMYK_STRUCTURE_DETECTED</code>(일반 CMYK) · <code>TRANSPARENCY_DETECTED</code> ·
+    <code>OVERPRINT_DETECTED</code> · <code>RESOLUTION_LOW</code>(&lt;150DPI, 권장 300) · (별색=정보 metadata)
+  </p>
+
+  <h3 class="sub-title" id="s7-3" style="margin-top:24px">⚠️ 알려진 갭 (사이즈/페이지수/책등/날개)</h3>
+  <table style="width:100%;border-collapse:collapse;font-size:13px;color:var(--text2)">
+    <thead><tr style="text-align:left;color:var(--text3)"><th style="padding:6px">항목</th><th>상태</th><th>내용</th></tr></thead>
+    <tbody>
+      <tr><td style="padding:6px">사이즈/페이지수</td><td style="color:var(--green)">✅ 정상</td><td>프런트 <code>size</code>/<code>pages</code> → 정확히 검증</td></tr>
+      <tr><td style="padding:6px">책등(spine)</td><td style="color:#d97706">⚠️ 부정확</td><td>프런트가 책등폭 대신 <code>paperThickness</code>만 전달 + 워커 재계산 공식이 권위 공식(<code>+ bindingMargin</code>)과 달라 마진 누락 → 오검출 가능</td></tr>
+      <tr><td style="padding:6px">날개(wing)</td><td style="color:var(--red)">❌ 미구현</td><td>DTO·워커에 wing 필드/로직 없음 → 표지 기대너비에 <code>wing×2</code> 누락 → 정상 날개 표지 거부 위험</td></tr>
+    </tbody>
+  </table>
+  <p style="color:var(--text3);font-size:13px;margin-top:12px">
+    📎 상세: <a href="./PDF_VALIDATION_GUIDE.md" style="color:var(--blue2)">PDF_VALIDATION_GUIDE.md</a> (검증 항목·입력 계약·갭) · 코드 <code>apps/worker/src/services/pdf-validator.service.ts</code>
+  </p>
+</section>
+
 <!-- 푸터 -->
 <div style="border-top:1px solid var(--border);margin-top:48px;padding:24px 0;color:var(--text3);font-size:12px">
-  <div style="margin-bottom:6px"><strong style="color:var(--text2)">Storige × Bookmoa 시스템 통합 문서</strong> · v2.5 · 2026-06-03 (⑥ 편집완료 PDF 프리즈 진단 + Patch B 반영)</div>
+  <div style="margin-bottom:6px"><strong style="color:var(--text2)">Storige × Bookmoa 시스템 통합 문서</strong> · v2.6 · 2026-06-04 (⑦ PDF 첨부 검증 항목/갭 추가)</div>
   <div>저장 경로: <code style="font-family:monospace;color:var(--text3)">docs/SYSTEM_INTEGRATION_OVERVIEW.md</code> · <code style="font-family:monospace;color:var(--text3)">docs/SYSTEM_INTEGRATION_OVERVIEW.html</code></div>
   <div style="margin-top:6px">최신 API 스펙: <code style="font-family:monospace;color:var(--text3)">http://localhost:4000/api/docs</code> (Swagger UI)</div>
 </div>
