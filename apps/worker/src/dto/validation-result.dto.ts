@@ -160,8 +160,17 @@ export interface ValidationOptions {
     binding: 'perfect' | 'saddle' | 'spring';
     /** 재단 여백 (mm) */
     bleed: number;
-    /** 종이 두께 (mm, 책등 계산용) */
+    /** 종이 두께 (mm, 책등 계산 fallback용) */
     paperThickness?: number;
+    /**
+     * 책등 폭 (mm) — 프런트가 /products/spine/calculate 로 계산한 권위 값.
+     * 제공 시 표지 책등 검증이 이 값을 직접 사용(bindingMargin 포함). 미제공 시 paperThickness 로 fallback 재계산.
+     */
+    spineWidthMm?: number;
+    /** 날개(wing/flap) 사용 여부 — 표지 총너비 = ... + (wingEnabled ? wingWidthMm×2 : 0) */
+    wingEnabled?: boolean;
+    /** 날개 한쪽 폭 (mm) */
+    wingWidthMm?: number;
   };
   /** 최대 허용 파일 크기 (bytes) */
   maxFileSize?: number;

@@ -458,19 +458,32 @@ export class PdfValidatorService {
     errors: ValidationError[],
     metadata: PdfMetadata,
   ): void {
-    const { size, pages, paperThickness } = options.orderOptions;
+    const { size, pages, paperThickness, spineWidthMm, wingEnabled, wingWidthMm } =
+      options.orderOptions;
 
-    if (!paperThickness) {
-      return; // 종이 두께 정보 없으면 검증 생략
+    // 책등 폭 결정:
+    //  1) spineWidthMm (프런트가 /products/spine/calculate 로 계산한 권위 값, bindingMargin 포함) 우선
+    //  2) 없으면 paperThickness 로 fallback 재계산 (레거시 호환). 둘 다 없으면 검증 생략.
+    let expectedSpine: number;
+    if (typeof spineWidthMm === 'number' && spineWidthMm >= 0) {
+      expectedSpine = Math.round(spineWidthMm * 10) / 10;
+    } else if (paperThickness) {
+      // ⚠️ fallback 공식은 bindingMargin 을 모르므로 권위 공식보다 작을 수 있음(허용 오차로 흡수).
+      expectedSpine = Math.round(paperThickness * (pages / 2) * 10) / 10;
+    } else {
+      return; // 책등 정보 없음 → 검증 생략
     }
-
-    // 예상 책등 크기 계산 (종이 두께 * 내지 페이지 수 / 2)
-    const expectedSpine = Math.round(paperThickness * (pages / 2) * 10) / 10;
     metadata.spineSize = expectedSpine;
 
-    // 표지 전체 너비 (앞표지 + 책등 + 뒤표지)
+    // 날개(wing) 폭: 사용 시 양쪽(×2) 가산. 미사용/미전달이면 0 → 레거시 동작 동일.
+    const wingTotal =
+      wingEnabled && typeof wingWidthMm === 'number' && wingWidthMm > 0
+        ? wingWidthMm * 2
+        : 0;
+
+    // 표지 전체 너비 (앞표지 + 책등 + 뒤표지 + 날개×2 + 재단여백×2)
     const bleed = options.orderOptions.bleed ?? DEFAULT_BLEED;
-    const expectedTotalWidth = size.width * 2 + expectedSpine + bleed * 2;
+    const expectedTotalWidth = size.width * 2 + expectedSpine + wingTotal + bleed * 2;
 
     // 허용 오차 2mm (책등은 좀 더 여유롭게)
     const tolerance = 2;
@@ -478,11 +491,13 @@ export class PdfValidatorService {
     if (Math.abs(widthMm - expectedTotalWidth) > tolerance) {
       errors.push({
         code: ErrorCode.SPINE_SIZE_MISMATCH,
-        message: `표지 크기가 책등 크기와 맞지 않습니다. (예상 전체 너비: ${Math.round(expectedTotalWidth)}mm, 현재: ${Math.round(widthMm)}mm)`,
+        message: `표지 크기가 책등${wingTotal > 0 ? '·날개' : ''} 크기와 맞지 않습니다. (예상 전체 너비: ${Math.round(expectedTotalWidth)}mm, 현재: ${Math.round(widthMm)}mm)`,
         details: {
           expected: {
             totalWidth: Math.round(expectedTotalWidth),
             spine: expectedSpine,
+            spineSource: typeof spineWidthMm === 'number' ? 'provided' : 'recalculated',
+            wingTotal,
           },
           actual: {
             totalWidth: Math.round(widthMm),
