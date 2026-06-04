@@ -166,3 +166,32 @@ function installHostBackGuard(bridge: ReturnType<typeof createEditorBridge>, lea
 - 인바운드 핸들러 + 응답: `apps/editor/src/embed.tsx` (`EMBED_HOST_MESSAGE_SOURCE`, `getState`/`saveNow`/`setBackGuard`, `editor.state`/`editor.saved`).
 - 내부 뒤로가기 가드: `apps/editor/src/hooks/useEmbedBackGuard.ts` (Tier B 기본 동작) — `setBackGuard{enabled:false}` 로 off.
 - 상세: `docs/EDITOR.md` §17.
+
+---
+
+## 6. ⚠️ 보안/환경 주의 (검증 중 확인)
+
+### 6.1 CSP frame-ancestors (임베드 허용 도메인) — **중요**
+편집기는 다음 origin 에서만 iframe 임베드를 허용한다(2026-06-04 확인):
+```
+content-security-policy: frame-ancestors 'self'
+  https://*.papascompany.co.kr https://*.bookmoa.co.kr https://www.bookmoa.co.kr https://*.vercel.app
+```
+- `bookmoa-mobile.vercel.app` → `*.vercel.app` 매칭 → **정상**.
+- ⚠️ **커스텀 도메인(예: `m.bookmoa.co.kr` 외 다른 도메인)으로 이전하면 그 origin 이 위 목록에 없을 경우 임베드가 차단(빈 화면)** 된다. 도메인 변경 시 편집기 측 CSP 에 origin 추가 요청 필요(`apps/editor` 배포 설정).
+
+### 6.2 parentOrigin 정확 일치
+- iframe `src` 의 `parentOrigin` 은 **호스트 페이지 origin 과 정확히 일치**(scheme+host, 경로/슬래시 없음)해야 한다. 예: `https://bookmoa-mobile.vercel.app`.
+- 편집기는 인바운드 `e.origin === parentOrigin` 검증 + 아웃바운드 targetOrigin 으로 사용. 불일치 시 **조용히 무시**(에러도 안 남).
+
+### 6.3 타임아웃 폴백은 "안전" 기본값으로
+- `getState` 가 타임아웃(구버전 편집기/네트워크 blip)되면 **dirty 로 가정(확인창 표시)** 하라 — 절대 "조용히 이탈" 폴백 금지(데이터 유실).
+- 참고: 핸드셰이크를 지원하는 편집기는 내부 가드(256b517)도 함께 갖는다. 따라서 `getState` 응답이 오면 신버전(둘 다 보유), 타임아웃이면 구버전 가능성 → 안전측(확인창)으로.
+
+## 7. 라이브 e2e 검증 결과 (2026-06-04, 운영자 대행)
+호스트 페이지 ↔ 실제 편집기 빌드(현재 배포본 동일 코드) iframe 으로 왕복 확인 — **모두 통과**:
+- `getState` → `editor.state { requestId(echo), ready, dirty, sessionId }` ✓
+- `saveNow` → `editor.saved { requestId(echo), ok:true }` ✓
+- `setBackGuard{enabled:false}` 전송 ✓
+- origin 제한 + requestId 매칭 + 봉투 포맷 정상 ✓
+→ bookmoa 브리지가 의존하는 핸드셰이크 plumbing 실증 완료. (dirty/save 의 "의미적" 왕복은 실제 캔버스 편집이 필요한 운영 검증 영역이나, **프로토콜·응답 경로는 검증됨**.)
