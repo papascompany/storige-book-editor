@@ -665,4 +665,11 @@ per-character `styles`(이탤릭·부분색)는 직렬화 리스트(`packages/ca
   - 변경 있음 → `confirm` 경고: **취소→머무름(sentinel 재추가)** / **확인→강제 자동저장(`saveNow` flush, 최대 3s) 후 이탈**.
 - iframe 이면 sentinel/`history.back()` 이 합쳐진 세션 히스토리에 작용해 호스트 화면 전환을 일으키고, IIFE 면 호스트 윈도우에 직접 작용 — **양쪽 모두 동작**(브라우저 검증 완료: 머무름/저장후이탈/무변경이탈 3 시나리오).
 - 배선: `apps/editor/src/embed.tsx` (`enabled: ready && 세션존재`). 기존 `beforeunload`(새로고침/탭닫기/탑네비) + 언마운트 `localStorage` 백업은 **중복 안전망으로 유지**.
-- ⚠️ 한계(호스트 협조 시 개선): sentinel 이 호스트 히스토리에 1개 남음(정상 종료 후 추가 back 1회가 흡수될 수 있음). 가장 견고한 해법은 호스트(bookmoa-mobile)가 popstate 를 직접 가로채거나 편집기의 `editor.cancel`/확인 신호와 연동하는 것.
+- ⚠️ 한계(호스트 협조 시 개선): sentinel 이 호스트 히스토리에 1개 남음(정상 종료 후 추가 back 1회가 흡수될 수 있음).
+
+### 17.1 호스트 연동 핸드셰이크 (host → editor 인바운드)
+가장 견고한 형태(호스트 주도)를 위해 편집기에 인바운드 명령/응답을 추가(`apps/editor/src/embed.tsx`):
+- 봉투: `{ source:'storige-host', version:'1', command, requestId?, payload? }` (origin === parentOrigin 검증).
+- 명령: `getState`→`editor.state{ready,dirty,sessionId}` / `saveNow`(강제저장)→`editor.saved{ok,error?}` / `setBackGuard{enabled}`(내부 가드 on/off).
+- 호스트(bookmoa-mobile)는 이를 이용해 뒤로가기/닫기 시 dirty 확인 + 강제저장 후 직접 라우팅 가능(내부 가드는 `setBackGuard{enabled:false}` 로 off).
+- **호스트 구현 가이드**: [`.cursor/plans/HANDOFF_bookmoa_back_navigation_2026-06-04.md`](../.cursor/plans/HANDOFF_bookmoa_back_navigation_2026-06-04.md) (Tier A 핸드셰이크 코드 + Tier B 최소).

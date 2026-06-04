@@ -201,6 +201,8 @@ interface EmbeddedEditorProps extends EditorConfig {
 
 export const EMBED_MESSAGE_SOURCE = 'storige-editor'
 export const EMBED_MESSAGE_VERSION = '1'
+/** 호스트(bookmoa 등)가 편집기로 보내는 명령 메시지의 source 식별자 */
+export const EMBED_HOST_MESSAGE_SOURCE = 'storige-host'
 
 export type EmbedMessageEvent =
   | 'editor.ready'
@@ -209,6 +211,22 @@ export type EmbedMessageEvent =
   | 'editor.cancel'
   | 'editor.error'
   | 'editor.needAuth'
+  // 호스트 명령(getState/saveNow)에 대한 응답
+  | 'editor.state'
+  | 'editor.saved'
+
+/** 호스트 → 편집기 명령 종류 */
+export type EmbedHostCommand = 'getState' | 'saveNow' | 'setBackGuard'
+
+/** 호스트 → 편집기 명령 메시지 봉투 */
+export interface EmbedHostCommandEnvelope<T = unknown> {
+  source: typeof EMBED_HOST_MESSAGE_SOURCE
+  version: typeof EMBED_MESSAGE_VERSION
+  command: EmbedHostCommand
+  /** 응답 매칭용(에디터가 응답 payload 에 그대로 echo) */
+  requestId?: string
+  payload?: T
+}
 
 export interface EmbedMessageEnvelope<T = unknown> {
   source: typeof EMBED_MESSAGE_SOURCE
@@ -300,6 +318,8 @@ function EmbeddedEditor({
   const [error, setError] = useState<string | null>(null)
   const [currentSession, setCurrentSession] = useState<EditSessionResponse | null>(null)
   const [showWorkspaceModal, setShowWorkspaceModal] = useState(false)
+  // 내부 뒤로가기 가드 on/off. 호스트가 storige.setBackGuard{enabled:false} 로 직접 제어를 가져가면 끈다.
+  const [internalBackGuard, setInternalBackGuard] = useState(true)
 
   // Store state
   const {
@@ -336,10 +356,55 @@ function EmbeddedEditor({
   // 브라우저 "뒤로 가기" 데이터 무결성 가드 — 경고 없이 빠져나가 작업 유실되는 것 방지.
   // 변경사항이 있으면 confirm 으로 경고 + 강제 자동저장(flush) 후 이탈, 없으면 그대로 이탈.
   useEmbedBackGuard({
-    enabled: ready && !!(currentSession?.id || sessionId),
+    enabled: internalBackGuard && ready && !!(currentSession?.id || sessionId),
     getIsDirty: () => useSaveStore.getState().isDirty,
     saveNow,
   })
+
+  // 호스트(bookmoa 등) → 편집기 인바운드 명령 핸들러.
+  // 호스트가 자체 뒤로가기/이탈 처리를 하려면 이 핸드셰이크로 미저장 여부 확인 + 강제 저장이 가능하다.
+  //   · getState     → editor.state { ready, dirty, sessionId } 응답
+  //   · saveNow      → 강제 저장 후 editor.saved { ok, error? } 응답
+  //   · setBackGuard → { enabled } 로 편집기 내부 뒤로가기 가드 on/off (호스트가 제어 가져갈 때 off)
+  // 보안: parentOrigin 일치하는 메시지 + source==='storige-host' 만 처리.
+  useEffect(() => {
+    if (!parentOrigin || typeof window === 'undefined') return
+    const onMessage = (e: MessageEvent) => {
+      if (e.origin !== parentOrigin) return
+      const data = e.data as EmbedHostCommandEnvelope | undefined
+      if (!data || data.source !== EMBED_HOST_MESSAGE_SOURCE) return
+      const requestId = data.requestId
+      switch (data.command) {
+        case 'getState':
+          postToParent(parentOrigin, 'editor.state', {
+            requestId,
+            ready: useAppStore.getState().ready,
+            dirty: useSaveStore.getState().isDirty,
+            sessionId: currentSession?.id || sessionId || null,
+          })
+          break
+        case 'saveNow':
+          Promise.resolve()
+            .then(() => saveNow())
+            .then(() => postToParent(parentOrigin, 'editor.saved', { requestId, ok: true }))
+            .catch((err) =>
+              postToParent(parentOrigin, 'editor.saved', {
+                requestId,
+                ok: false,
+                error: err instanceof Error ? err.message : String(err),
+              }),
+            )
+          break
+        case 'setBackGuard':
+          setInternalBackGuard(!!(data.payload as { enabled?: boolean })?.enabled)
+          break
+        default:
+          break
+      }
+    }
+    window.addEventListener('message', onMessage)
+    return () => window.removeEventListener('message', onMessage)
+  }, [parentOrigin, saveNow, currentSession?.id, sessionId])
 
   // Screen resize handler
   const handleResize = useCallback(() => {
