@@ -68,9 +68,10 @@
     "pages": 96,                                 // ✅ 페이지수 — 검증됨
     "binding": "perfect | saddle | spring",
     "bleed": 3,
-    "paperThickness": 0.1                        // ⚠️ 책등은 이 값으로 워커가 재계산
-    // ❌ spineWidthMm  : 필드 없음 (프런트가 책등폭을 직접 못 보냄)
-    // ❌ wingEnabled / wingWidthMm : 필드 없음 (날개 정보 전달 불가)
+    "paperThickness": 0.1,                       // 책등 fallback 계산용(spineWidthMm 없을 때)
+    "spineWidthMm": 1.0,                          // ✅ (선택·권장) /products/spine/calculate 권위 책등폭. 있으면 워커가 직접 사용(bindingMargin 포함)
+    "wingEnabled": false,                         // ✅ (선택) 날개 사용 여부
+    "wingWidthMm": 0                              // ✅ (선택) 날개 한쪽 폭(mm) — 표지 총너비에 ×2 가산
   },
   "callbackUrl": "..."
 }
@@ -80,16 +81,28 @@
 
 ---
 
-## ⚠️ 알려진 갭 (2026-06-04 감사)
+## 책등·날개 검증 개선 (2026-06-04 적용)
 
-| 항목 | 상태 | 내용 |
+> 코드: `apps/worker/src/services/pdf-validator.service.ts` `validateSpine()` + `worker-job.dto.ts`. **하위호환**(신규 필드 미전달 시 기존 동작 유지 — 회귀 없음). 적용: 워커+API 재배포.
+
+| 항목 | 이전 | 현재 |
 |---|---|---|
-| **사이즈/페이지수** | ✅ 정상 | 프런트 `size`/`pages` 전달 → 정확히 검증 |
-| **책등(spine)** | ⚠️ 부정확 | ① 프런트가 책등폭이 아닌 `paperThickness`만 전달 ② 워커 재계산 공식 `paperThickness×(pages/2)`이 권위 공식(`spine.service.ts:49` = `(pages/2)×thickness + **bindingMargin**`)과 달라 **제본 여백(margin) 누락** → 마진 클수록 정상 표지도 `SPINE_SIZE_MISMATCH` 오검출 가능 |
-| **날개(wing)** | ❌ 미구현 | DTO·워커 어디에도 wing 필드/로직 없음. 표지 기대너비식이 `wing×2`를 빠뜨려 **정상 날개 표지가 거부**될 수 있음. wing 정보는 DB `spreadConfig.spec.wingEnabled/wingWidthMm`에만 존재(검증과 단절) |
-| 미사용 코드 | ℹ️ 참고 | `UNSUPPORTED_FORMAT`, `SPREAD_SIZE_MISMATCH`는 enum에만 정의되고 워커에서 push 안 됨(스프레드는 `MIXED_PDF` 경고로 처리) |
+| **책등(spine)** | `paperThickness×(pages/2)` 로만 재계산 → 권위 공식의 `bindingMargin` 누락 | `spineWidthMm` 전달 시 **그 값을 직접 사용**(margin 포함). 미전달 시 기존 fallback |
+| **날개(wing)** | 검증식에 wing 없음 → 정상 날개 표지 거부 위험 | `wingEnabled`+`wingWidthMm` 전달 시 표지 기대너비 = `size.w×2 + spine + **wingWidthMm×2** + bleed×2` |
 
-**권장 개선**: `orderOptions`에 `spineWidthMm?`/`wingEnabled?`/`wingWidthMm?` 추가(하위호환) → 워커가 ① spine은 전달값 우선(없으면 `spine.service`와 동일 공식, margin 포함) ② 표지 기대너비에 `+ (wingEnabled ? wingWidthMm×2 : 0)`. 또는 기대 스펙을 서버가 주문/템플릿셋에서 도출(스푸핑·누락 방지).
+표지 총너비 검증식(현재):
+```
+expectedTotalWidth = size.width×2 + (spineWidthMm ?? paperThickness×pages/2)
+                     + (wingEnabled ? wingWidthMm×2 : 0) + bleed×2   (허용 ±2mm)
+```
+
+### ⚠️ 프런트(주문화면/bookmoa) 액션 필요
+개선이 **실제로 동작하려면 프런트가 검증 요청에 새 필드를 실어 보내야** 한다:
+- **`spineWidthMm`**: `/products/spine/calculate` 응답의 `spineWidth` 를 그대로 전달(가장 정확).
+- **`wingEnabled`/`wingWidthMm`**: 날개 상품일 때 전달(템플릿 `spreadConfig.spec.wingEnabled/wingWidthMm` 기준).
+- 미전달 시 = 기존 동작(책등 fallback 재계산, 날개 미고려) → 회귀는 없으나 날개 상품 오검출은 그대로 남음.
+
+미사용 코드(참고): `UNSUPPORTED_FORMAT`, `SPREAD_SIZE_MISMATCH`는 enum 정의만 있고 push 안 됨(스프레드는 `MIXED_PDF` 경고로 처리).
 
 ---
 

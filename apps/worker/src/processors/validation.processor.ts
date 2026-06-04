@@ -21,6 +21,12 @@ interface ValidationJobData {
     binding: 'perfect' | 'saddle' | 'spring';
     bleed: number;
     paperThickness?: number;
+    /** 책등 폭(mm) — 프런트 계산 권위 값(있으면 우선 사용) */
+    spineWidthMm?: number;
+    /** 날개 사용 여부 */
+    wingEnabled?: boolean;
+    /** 날개 한쪽 폭(mm) */
+    wingWidthMm?: number;
   };
 }
 

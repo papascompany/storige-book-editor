@@ -223,6 +223,52 @@ describe('PdfValidatorService', () => {
       expect(pageCountError).toBeDefined();
     });
 
+    describe('spine + wing validation (2026-06-04)', () => {
+      const spineErr = (r: any) => r.errors.find((e: any) => e.code === ErrorCode.SPINE_SIZE_MISMATCH);
+
+      it('should accept cover whose width includes provided spineWidthMm + wings', async () => {
+        // 기대 총너비 = 200*2 + spine 5 + wing 50*2 + bleed 3*2 = 511mm
+        const pdfBytes = await createMockPdf(4, 511, 286);
+        mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
+        const result = await service.validate('./cover.pdf', {
+          fileType: 'cover',
+          orderOptions: {
+            size: { width: 200, height: 280 }, pages: 4, binding: 'perfect', bleed: 3,
+            spineWidthMm: 5, wingEnabled: true, wingWidthMm: 50,
+          },
+        } as ValidationOptions);
+        expect(spineErr(result)).toBeUndefined(); // 책등·날개 반영 → 책등 검증 통과
+      });
+
+      it('should reject the same wing cover when wing info is NOT passed (regression of old bug)', async () => {
+        // 동일 511mm 표지인데 wing 미전달 → 기대 411mm → 100mm 초과 → SPINE_SIZE_MISMATCH
+        const pdfBytes = await createMockPdf(4, 511, 286);
+        mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
+        const result = await service.validate('./cover.pdf', {
+          fileType: 'cover',
+          orderOptions: {
+            size: { width: 200, height: 280 }, pages: 4, binding: 'perfect', bleed: 3,
+            spineWidthMm: 5, // wing 미전달
+          },
+        } as ValidationOptions);
+        expect(spineErr(result)).toBeDefined();
+      });
+
+      it('should prefer spineWidthMm over paperThickness fallback', async () => {
+        // spineWidthMm 10 사용 시 기대 = 200*2 + 10 + 6 = 416mm (paperThickness fallback=0.2면 406.2 → 불일치)
+        const pdfBytes = await createMockPdf(4, 416, 286);
+        mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
+        const result = await service.validate('./cover.pdf', {
+          fileType: 'cover',
+          orderOptions: {
+            size: { width: 200, height: 280 }, pages: 4, binding: 'perfect', bleed: 3,
+            paperThickness: 0.1, spineWidthMm: 10,
+          },
+        } as ValidationOptions);
+        expect(spineErr(result)).toBeUndefined();
+      });
+    });
+
     it('should download file from URL', async () => {
       const pdfBytes = await createMockPdf(4, 210, 297);
       mockedAxios.get.mockResolvedValue({

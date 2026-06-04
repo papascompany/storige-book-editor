@@ -31,6 +31,9 @@ export class CreateValidationJobDto {
       binding: 'perfect',
       bleed: 3,
       paperThickness: 0.1,
+      spineWidthMm: 1.0,
+      wingEnabled: false,
+      wingWidthMm: 0,
     },
   })
   @IsObject()
@@ -41,6 +44,12 @@ export class CreateValidationJobDto {
     binding: 'perfect' | 'saddle' | 'spring';
     bleed: number;
     paperThickness?: number;
+    /** 책등 폭(mm) — /products/spine/calculate 권위 값. 있으면 워커가 직접 사용(bindingMargin 포함) */
+    spineWidthMm?: number;
+    /** 날개(wing/flap) 사용 여부 — 표지 총너비 검증에 반영 */
+    wingEnabled?: boolean;
+    /** 날개 한쪽 폭(mm) */
+    wingWidthMm?: number;
   };
 
   @ApiPropertyOptional({

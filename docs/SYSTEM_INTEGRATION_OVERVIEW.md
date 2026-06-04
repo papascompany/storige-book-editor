@@ -1174,5 +1174,5 @@ edited / validated / fixable / synthesis_pending / completed / failed
 
 - **🔴 에러(차단) 8종**: FILE_TOO_LARGE(>100MB) · FILE_CORRUPTED · PAGE_COUNT_EXCEEDED(>1000p) · PAGE_COUNT_INVALID(무선 4배수) · SIZE_MISMATCH(±1mm) · SPINE_SIZE_MISMATCH(표지 ±2mm, 책등 재계산) · SADDLE_STITCH_INVALID(사철 4배수) · POST_PROCESS_CMYK
 - **🟡 경고 9종**: PAGE_COUNT_MISMATCH · BLEED_MISSING · LANDSCAPE_PAGE · CENTER_OBJECT_CHECK · MIXED_PDF · CMYK_STRUCTURE_DETECTED · TRANSPARENCY_DETECTED · OVERPRINT_DETECTED · RESOLUTION_LOW(<150DPI, 권장 300). (별색=정보 metadata)
-- **입력 계약**: `orderOptions = { size, pages, binding, bleed, paperThickness }` — 프런트가 전달. `spineWidthMm`/`wingEnabled`/`wingWidthMm` 필드 **없음**.
-- **알려진 갭**: 사이즈·페이지수 ✅ 정상 / 책등 ⚠️ 부정확(프런트가 책등폭 대신 paperThickness만, 워커 재계산이 권위 공식의 bindingMargin 누락) / 날개 ❌ 미구현(DTO·워커에 wing 없음 → 정상 날개 표지 거부 위험). 미사용 코드: UNSUPPORTED_FORMAT, SPREAD_SIZE_MISMATCH.
+- **입력 계약**: `orderOptions = { size, pages, binding, bleed, paperThickness, spineWidthMm?, wingEnabled?, wingWidthMm? }` — 프런트가 전달.
+- **상태(2026-06-04 개선 적용)**: 사이즈·페이지수 ✅ 정상 / 책등 ✅ 개선(`spineWidthMm` 전달 시 권위 책등폭 직접 사용, 미전달 시 fallback) / 날개 ✅ 개선(`wingEnabled`+`wingWidthMm` 전달 시 표지 기대너비에 wing×2 가산). **하위호환**(미전달=기존 동작·회귀 없음). 적용 조건: 프런트가 새 필드 전달 필요. 미사용 코드: UNSUPPORTED_FORMAT, SPREAD_SIZE_MISMATCH.

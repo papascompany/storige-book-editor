@@ -1549,17 +1549,18 @@ window.<span class="type">StorigeEditor</span>.<span class="func">init</span>({
     <code>OVERPRINT_DETECTED</code> · <code>RESOLUTION_LOW</code>(&lt;150DPI, 권장 300) · (별색=정보 metadata)
   </p>
 
-  <h3 class="sub-title" id="s7-3" style="margin-top:24px">⚠️ 알려진 갭 (사이즈/페이지수/책등/날개)</h3>
+  <h3 class="sub-title" id="s7-3" style="margin-top:24px">사이즈/페이지수/책등/날개 — 상태 (2026-06-04 개선 적용)</h3>
   <table style="width:100%;border-collapse:collapse;font-size:13px;color:var(--text2)">
     <thead><tr style="text-align:left;color:var(--text3)"><th style="padding:6px">항목</th><th>상태</th><th>내용</th></tr></thead>
     <tbody>
       <tr><td style="padding:6px">사이즈/페이지수</td><td style="color:var(--green)">✅ 정상</td><td>프런트 <code>size</code>/<code>pages</code> → 정확히 검증</td></tr>
-      <tr><td style="padding:6px">책등(spine)</td><td style="color:#d97706">⚠️ 부정확</td><td>프런트가 책등폭 대신 <code>paperThickness</code>만 전달 + 워커 재계산 공식이 권위 공식(<code>+ bindingMargin</code>)과 달라 마진 누락 → 오검출 가능</td></tr>
-      <tr><td style="padding:6px">날개(wing)</td><td style="color:var(--red)">❌ 미구현</td><td>DTO·워커에 wing 필드/로직 없음 → 표지 기대너비에 <code>wing×2</code> 누락 → 정상 날개 표지 거부 위험</td></tr>
+      <tr><td style="padding:6px">책등(spine)</td><td style="color:var(--green)">✅ 개선</td><td><code>spineWidthMm</code> 전달 시 권위 책등폭 직접 사용(bindingMargin 포함). 미전달 시 기존 fallback(하위호환)</td></tr>
+      <tr><td style="padding:6px">날개(wing)</td><td style="color:var(--green)">✅ 개선</td><td><code>wingEnabled</code>+<code>wingWidthMm</code> 전달 시 표지 기대너비에 <code>wing×2</code> 가산. 미전달=기존 동작</td></tr>
     </tbody>
   </table>
   <p style="color:var(--text3);font-size:13px;margin-top:12px">
-    📎 상세: <a href="./PDF_VALIDATION_GUIDE.md" style="color:var(--blue2)">PDF_VALIDATION_GUIDE.md</a> (검증 항목·입력 계약·갭) · 코드 <code>apps/worker/src/services/pdf-validator.service.ts</code>
+    ⚠️ 개선 적용 조건: 프런트(주문화면)가 검증 <code>orderOptions</code> 에 <code>spineWidthMm</code>/<code>wingEnabled</code>/<code>wingWidthMm</code> 전달 필요(미전달 시 회귀 없이 기존 동작).<br>
+    📎 상세: <a href="./PDF_VALIDATION_GUIDE.md" style="color:var(--blue2)">PDF_VALIDATION_GUIDE.md</a> · 코드 <code>apps/worker/src/services/pdf-validator.service.ts</code>
   </p>
 </section>
 
