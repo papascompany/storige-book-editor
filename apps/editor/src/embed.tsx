@@ -26,6 +26,7 @@ import { useSettingsStore } from './stores/useSettingsStore'
 import { useSaveStore } from './stores/useSaveStore'
 import { useEditorContents } from './hooks/useEditorContents'
 import { useEmbedAutoSave } from './hooks/useEmbedAutoSave'
+import { useEmbedBackGuard } from './hooks/useEmbedBackGuard'
 import { createCanvas } from './utils/createCanvas'
 import { templatesApi, editSessionsApi, filesApi, apiClient, type EditSessionResponse } from './api'
 import { core, ServicePlugin } from '@storige/canvas-core'
@@ -330,6 +331,14 @@ function EmbeddedEditor({
       console.error('[EmbeddedEditor] Auto-save error:', error)
       // Don't call onError for auto-save failures to avoid disrupting user flow
     },
+  })
+
+  // 브라우저 "뒤로 가기" 데이터 무결성 가드 — 경고 없이 빠져나가 작업 유실되는 것 방지.
+  // 변경사항이 있으면 confirm 으로 경고 + 강제 자동저장(flush) 후 이탈, 없으면 그대로 이탈.
+  useEmbedBackGuard({
+    enabled: ready && !!(currentSession?.id || sessionId),
+    getIsDirty: () => useSaveStore.getState().isDirty,
+    saveNow,
   })
 
   // Screen resize handler

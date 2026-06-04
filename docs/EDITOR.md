@@ -653,3 +653,16 @@ per-character `styles`(이탤릭·부분색)는 직렬화 리스트(`packages/ca
 | Sentry | `apps/editor/src/lib/sentry.ts` |
 | 폰트→벡터(woff2ToTtf 404) | `packages/canvas-core/src/plugins/FontPlugin.ts` (`getTtfBuffer`) |
 | dev 재현 하니스(미커밋) | `apps/editor/repro.html`, `apps/editor/src/repro-cover.tsx` |
+
+## §17 임베드 편집기 — 뒤로 가기 데이터 무결성 가드 (2026-06-04)
+
+> 증상: bookmoa 등 호스트 SPA 안(iframe/IIFE)에서 편집 중 브라우저 ← 뒤로가기를 누르면
+> `beforeunload` 가 발화하지 않아(호스트 클라이언트측 라우팅) **아무 경고 없이** 편집 전 화면으로
+> 빠져나가 작업이 유실될 수 있었음.
+
+- **가드**: [`useEmbedBackGuard`](../apps/editor/src/hooks/useEmbedBackGuard.ts) — 마운트 시 history sentinel 1개 push 해 **첫 뒤로가기를 흡수**.
+  - 변경 없음(`isDirty=false`) → 경고 없이 그대로 이탈(자연스러운 뒤로가기).
+  - 변경 있음 → `confirm` 경고: **취소→머무름(sentinel 재추가)** / **확인→강제 자동저장(`saveNow` flush, 최대 3s) 후 이탈**.
+- iframe 이면 sentinel/`history.back()` 이 합쳐진 세션 히스토리에 작용해 호스트 화면 전환을 일으키고, IIFE 면 호스트 윈도우에 직접 작용 — **양쪽 모두 동작**(브라우저 검증 완료: 머무름/저장후이탈/무변경이탈 3 시나리오).
+- 배선: `apps/editor/src/embed.tsx` (`enabled: ready && 세션존재`). 기존 `beforeunload`(새로고침/탭닫기/탑네비) + 언마운트 `localStorage` 백업은 **중복 안전망으로 유지**.
+- ⚠️ 한계(호스트 협조 시 개선): sentinel 이 호스트 히스토리에 1개 남음(정상 종료 후 추가 back 1회가 흡수될 수 있음). 가장 견고한 해법은 호스트(bookmoa-mobile)가 popstate 를 직접 가로채거나 편집기의 `editor.cancel`/확인 신호와 연동하는 것.
