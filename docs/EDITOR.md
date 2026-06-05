@@ -673,3 +673,37 @@ per-character `styles`(이탤릭·부분색)는 직렬화 리스트(`packages/ca
 - 명령: `getState`→`editor.state{ready,dirty,sessionId}` / `saveNow`(강제저장)→`editor.saved{ok,error?}` / `setBackGuard{enabled}`(내부 가드 on/off).
 - 호스트(bookmoa-mobile)는 이를 이용해 뒤로가기/닫기 시 dirty 확인 + 강제저장 후 직접 라우팅 가능(내부 가드는 `setBackGuard{enabled:false}` 로 off).
 - **호스트 구현 가이드**: [`.cursor/plans/HANDOFF_bookmoa_back_navigation_2026-06-04.md`](../.cursor/plans/HANDOFF_bookmoa_back_navigation_2026-06-04.md) (Tier A 핸드셰이크 코드 + Tier B 최소).
+
+---
+
+## §18 PDF 첨부 검증 감사·책등/날개 + 검증/저장 속도 최적화 (2026-06-04~05)
+
+> 상세: `docs/PDF_VALIDATION_GUIDE.md` · 호스트 지시문 `.cursor/plans/HANDOFF_bookmoa_validate_fields_2026-06-04.md`
+> 커밋: `ed9cacd`(책등/날개) · `bb73a86`(병렬화·음수캐시·타입수정) · `2e27dae`(글리프 dedup·동시성)
+
+### 18.1 PDF 첨부 검증 — 책등(spine) 정합 + 날개(wing) 반영 (하위호환)
+- 문제(감사): 워커 `validateSpine` 이 `paperThickness×(pages/2)` 로만 책등 재계산 → 권위 공식(`spine.service` = `(pages/2)×thickness + bindingMargin`)과 불일치(오검출). 날개는 검증식에 부재 → 정상 날개 표지 거부 위험.
+- 수정: `orderOptions` 에 `spineWidthMm?/wingEnabled?/wingWidthMm?` 추가(`worker-job.dto`, 워커 `validation-result.dto`/`validation.processor`). `validateSpine` = 표지 기대너비 `size.w×2 + (spineWidthMm ?? paperThickness×pages/2) + (wingEnabled?wingWidthMm×2:0) + bleed×2` (±2mm). 미전달 시 기존 동작(회귀 없음).
+- **프런트(bookmoa) 액션**: 검증 요청에 `spineWidthMm`(=`/products/spine/calculate` 의 `spineWidth`)·`wingEnabled`/`wingWidthMm` 전달해야 발효. 호출 위치: bookmoa `StorigeFileUploadPanel.startValidation()` → 어댑터 `api/storige/validate.js` → `/worker-jobs/validate/external`.
+
+### 18.2 워커 검증 속도
+- `pdf-validator.service.validate()`: 색상모드(GS inkcov)·별색·투명도/오버프린트·이미지해상도 4개 독립 검출을 순차 await → **`Promise.all` 병렬**(GS 자식프로세스 대기와 JS 파싱이 겹쳐 wall-time 단축).
+- `validation.processor`: `@Process('validate-pdf')` 동시성 기본 1 → **`VALIDATION_CONCURRENCY`(기본 3)**. cover+content 다건 검증 동시 처리(GS 는 `GS_CONCURRENCY` 별도 보호).
+
+### 18.3 편집기 저장/글리프 검증 속도
+- `FontPlugin.getTtfBuffer`: **실패(음수) 캐시** 추가 — `woff2ToTtf` 404/URL없음 폰트를 폰트당 1회만 시도(반복 fetch 제거).
+- `ServicePlugin._createMultiPagePDF` PDF 저장 전 글리프 검증: 텍스트마다 순차 → **폰트별 사용문자 집합(중복제거) 후 폰트당 1회·`Promise.all` 병렬**. 경고 confirm 로직·결과 동일.
+
+### 18.4 기타
+- 전체 워크스페이스 타입체크 결과 오류 1건만 존재 → `useTemplateSetSave.ts:94` fabric toJSON loose 반환형을 `CanvasData` 단언으로 수정(나머지 패키지 오류 0).
+- 검증: canvas-core 214 / 워커 validator 27 + processor 6 테스트 통과. API+워커 수동 재배포·헬스 확인 완료.
+
+### 18.5 핵심 파일 매핑
+| 영역 | 파일 |
+|---|---|
+| 검증 입력 DTO(책등/날개) | `apps/api/src/worker-jobs/dto/worker-job.dto.ts` |
+| 워커 검증 로직 | `apps/worker/src/services/pdf-validator.service.ts` (`validate`/`validateSpine`) |
+| 검증 동시성 | `apps/worker/src/processors/validation.processor.ts` (`VALIDATION_CONCURRENCY`) |
+| 폰트 TTF 음수캐시 | `packages/canvas-core/src/plugins/FontPlugin.ts` (`ttfBufferFailed`/`getTtfBuffer`) |
+| 글리프 검증 dedup·병렬 | `packages/canvas-core/src/plugins/ServicePlugin.ts` (`_createMultiPagePDF` 글리프 단계) |
+| 책등 계산 API | `apps/api/src/products/spine.service.ts` (`/products/spine/calculate`) |
