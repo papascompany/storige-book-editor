@@ -639,7 +639,9 @@ class ServicePlugin extends PluginBase {
             throw new Error('첫 번째 캔버스에서 워크스페이스를 찾을 수 없습니다')
           }
 
-          const unit = firstCanvas.unitOptions.unit
+          // 스프레드 내지 캔버스는 addInnerPage 경로로 생성되어 unitOptions 가 없을 수 있다.
+          // (표지 ServicePlugin 으로 내지 PDF 를 생성하므로 firstCanvas=내지) → 옵셔널 체이닝 + 기본 'mm'.
+          const unit = firstCanvas.unitOptions?.unit ?? 'mm'
 
           console.log('PDF 생성 정보:')
           console.log('- Canvas 단위:', unit)
