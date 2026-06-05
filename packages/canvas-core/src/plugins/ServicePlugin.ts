@@ -554,55 +554,56 @@ class ServicePlugin extends PluginBase {
             console.log('🔍 PDF 저장 전 글리프 검증 시작...')
             
             const allMissingChars: Map<string, string[]> = new Map() // 폰트명 -> 미지원 문자 배열
-            
-            // 모든 캔버스의 모든 텍스트 객체 검증
-            for (const canvas of canvases) {
-              const collectTextObjects = (obj: fabric.Object): fabric.Object[] => {
-                const results: fabric.Object[] = []
-                if (obj.type === 'text' || obj.type === 'i-text' || obj.type === 'textbox') {
-                  results.push(obj)
-                }
-                if (obj.type === 'group' && (obj as any)._objects) {
-                  const group = obj as fabric.Group
-                  group._objects.forEach((child) => {
-                    results.push(...collectTextObjects(child))
-                  })
-                }
-                return results
+
+            const collectTextObjects = (obj: fabric.Object): fabric.Object[] => {
+              const results: fabric.Object[] = []
+              if (obj.type === 'text' || obj.type === 'i-text' || obj.type === 'textbox') {
+                results.push(obj)
               }
-              
+              if (obj.type === 'group' && (obj as any)._objects) {
+                const group = obj as fabric.Group
+                group._objects.forEach((child) => {
+                  results.push(...collectTextObjects(child))
+                })
+              }
+              return results
+            }
+
+            // 1) 폰트별 사용 문자 집합 수집(중복 제거) — 텍스트마다 검증하던 것을 폰트당 1회로 축소
+            const fontCharSets = new Map<string, Set<string>>()
+            for (const canvas of canvases) {
               const textObjects: fabric.Object[] = []
               canvas.getObjects().forEach((obj) => {
                 textObjects.push(...collectTextObjects(obj))
               })
-              
-              // 각 텍스트 객체 검증
               for (const textObj of textObjects) {
                 const text = (textObj as any).text || ''
                 const fontFamily = (textObj as any).fontFamily || ''
-                
                 if (text && fontFamily) {
-                  try {
-                    const validation = await fontPlugin.validateTextGlyphs(text, fontFamily)
-                    if (validation.hasMissingGlyphs && validation.missingChars.length > 0) {
-                      const key = `${fontFamily}`
-                      if (!allMissingChars.has(key)) {
-                        allMissingChars.set(key, [])
-                      }
-                      const existing = allMissingChars.get(key)!
-                      // 중복 제거하면서 추가
-                      validation.missingChars.forEach(char => {
-                        if (!existing.includes(char)) {
-                          existing.push(char)
-                        }
-                      })
-                    }
-                  } catch (error) {
-                    console.warn(`글리프 검증 실패 (폰트: ${fontFamily}):`, error)
+                  let set = fontCharSets.get(fontFamily)
+                  if (!set) {
+                    set = new Set<string>()
+                    fontCharSets.set(fontFamily, set)
                   }
+                  for (const ch of text as string) set.add(ch)
                 }
               }
             }
+
+            // 2) 폰트별 고유문자 1회 검증 — 병렬 실행(폰트 TTF 음수캐시와 결합해 반복 fetch 제거)
+            await Promise.all(
+              Array.from(fontCharSets.entries()).map(async ([fontFamily, charsSet]) => {
+                const uniqueChars = Array.from(charsSet).join('')
+                try {
+                  const validation = await fontPlugin.validateTextGlyphs(uniqueChars, fontFamily)
+                  if (validation.hasMissingGlyphs && validation.missingChars.length > 0) {
+                    allMissingChars.set(fontFamily, validation.missingChars)
+                  }
+                } catch (error) {
+                  console.warn(`글리프 검증 실패 (폰트: ${fontFamily}):`, error)
+                }
+              }),
+            )
             
             // 미지원 문자가 있는 경우 사용자에게 경고
             if (allMissingChars.size > 0) {
