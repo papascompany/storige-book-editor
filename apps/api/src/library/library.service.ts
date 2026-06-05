@@ -1,6 +1,14 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  Logger,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull } from 'typeorm';
+import axios from 'axios';
+import { decompress as woff2Decompress } from 'wawoff2';
 import { LibraryFont } from './entities/font.entity';
 import { LibraryBackground } from './entities/background.entity';
 import { LibraryClipart } from './entities/clipart.entity';
@@ -22,9 +30,16 @@ import {
   UpdateCategoryDto,
 } from './dto/library.dto';
 
+// woff2 → TTF 변환 제약 (SSRF / DoS 방어)
+const WOFF2_FETCH_TIMEOUT_MS = 15_000;
+const WOFF2_MAX_BYTES = 30 * 1024 * 1024; // 30MB — 일반 한글 woff2 는 보통 2~6MB
+
 @Injectable()
 export class LibraryService {
+  private readonly logger = new Logger(LibraryService.name);
+
   constructor(
+    private readonly configService: ConfigService,
     @InjectRepository(LibraryFont)
     private fontRepository: Repository<LibraryFont>,
     @InjectRepository(LibraryBackground)
@@ -77,6 +92,110 @@ export class LibraryService {
   async removeFont(id: string): Promise<void> {
     const font = await this.findOneFont(id);
     await this.fontRepository.remove(font);
+  }
+
+  // ============================================================================
+  // Font conversion (woff2 → TTF)
+  // ============================================================================
+
+  /**
+   * 허용된 폰트 호스트 목록을 구성한다 (SSRF 방어).
+   * - STORAGE_BASE_URL 의 host (운영: api.papascompany.co.kr, 로컬: localhost)
+   * - FONT_PROXY_ALLOWED_HOSTS (콤마 구분, 선택) — 외부 CDN 등 추가 허용
+   * host 비교는 대소문자 무시, hostname(포트 제외) 기준.
+   */
+  private getAllowedFontHosts(): Set<string> {
+    const hosts = new Set<string>();
+
+    const storageBaseUrl = this.configService.get<string>('STORAGE_BASE_URL');
+    if (storageBaseUrl) {
+      try {
+        hosts.add(new URL(storageBaseUrl).hostname.toLowerCase());
+      } catch {
+        // 무시 — 잘못 설정된 STORAGE_BASE_URL 은 화이트리스트에 기여하지 않음
+      }
+    }
+
+    const extra = this.configService.get<string>('FONT_PROXY_ALLOWED_HOSTS');
+    if (extra) {
+      for (const raw of extra.split(',')) {
+        const h = raw.trim().toLowerCase();
+        if (h) hosts.add(h);
+      }
+    }
+
+    return hosts;
+  }
+
+  /**
+   * WOFF2 폰트를 다운로드해 TTF(SFNT) 바이트로 디컴프레션한다.
+   * opentype.js(클라이언트)는 woff2 를 직접 읽지 못하므로 서버에서 변환해 준다.
+   *
+   * 보안:
+   * - host 화이트리스트(STORAGE_BASE_URL 등)에 속한 URL 만 허용 → SSRF 차단
+   * - https/http 스킴만 허용
+   * - 업스트림 fetch 타임아웃 + 응답 크기 상한
+   *
+   * @param woff2Url 변환할 woff2 파일의 절대 URL
+   * @returns TTF 바이트 (Buffer)
+   */
+  async woff2ToTtf(woff2Url: string): Promise<Buffer> {
+    let parsed: URL;
+    try {
+      parsed = new URL(woff2Url);
+    } catch {
+      throw new BadRequestException('Invalid woff2Url');
+    }
+
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+      throw new BadRequestException('Only http/https URLs are allowed');
+    }
+
+    const allowedHosts = this.getAllowedFontHosts();
+    const host = parsed.hostname.toLowerCase();
+    if (!allowedHosts.has(host)) {
+      this.logger.warn(`woff2ToTtf blocked disallowed host: ${host}`);
+      throw new BadRequestException(`Host not allowed: ${host}`);
+    }
+
+    let woff2Buffer: Buffer;
+    try {
+      const response = await axios.get<ArrayBuffer>(woff2Url, {
+        responseType: 'arraybuffer',
+        timeout: WOFF2_FETCH_TIMEOUT_MS,
+        maxContentLength: WOFF2_MAX_BYTES,
+        maxBodyLength: WOFF2_MAX_BYTES,
+        // 다운로드 대상이 다른 호스트로 리다이렉트되어 화이트리스트를 우회하는 것을 막는다.
+        maxRedirects: 0,
+        validateStatus: (status) => status === 200,
+      });
+      woff2Buffer = Buffer.from(response.data);
+    } catch (err) {
+      this.logger.error(
+        `woff2ToTtf fetch failed (${woff2Url}): ${(err as Error)?.message}`,
+      );
+      throw new BadRequestException('Failed to fetch woff2 font');
+    }
+
+    if (woff2Buffer.length > WOFF2_MAX_BYTES) {
+      throw new BadRequestException('woff2 font too large');
+    }
+
+    // woff2 매직 넘버 검증 ('wOF2')
+    const signature = woff2Buffer.subarray(0, 4).toString('ascii');
+    if (signature !== 'wOF2') {
+      throw new BadRequestException('Fetched file is not a valid woff2 font');
+    }
+
+    try {
+      const ttf = await woff2Decompress(woff2Buffer);
+      return Buffer.from(ttf);
+    } catch (err) {
+      this.logger.error(
+        `woff2ToTtf decompress failed (${woff2Url}): ${(err as Error)?.message}`,
+      );
+      throw new BadRequestException('Failed to decompress woff2 font');
+    }
   }
 
   // ============================================================================

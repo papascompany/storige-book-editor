@@ -103,14 +103,28 @@ class FontPlugin extends PluginBase {
   private fontUrlByName = new Map<string, string>()
   // 폰트 바이너리 fetch용 프록시 (문자열: 베이스 URL, 함수: URL 리라이터)
   private fontProxy?: string | ((originalUrl: string) => string)
+  // woff2ToTtf API 베이스 URL (예: https://api.papascompany.co.kr/api).
+  // 프로덕션에서 에디터는 Vercel(editor.papascompany.co.kr)에서 서빙되므로
+  // 상대 경로 '/api/woff2ToTtf' 는 Vercel 오리진으로 잘못 해석되어 404 가 난다.
+  // 반드시 NestJS API 오리진을 가리켜야 한다.
+  private apiBaseUrl?: string
   // TTF buffer 캐시 (fontFamily별로 캐싱)
   private ttfBufferCache = new Map<string, ArrayBuffer>()
   // TTF buffer 실패(음수) 캐시 — URL 없음/woff2ToTtf 실패한 폰트를 기억해
   // 같은 폰트의 텍스트가 여럿일 때 반복 fetch/실패를 1회로 줄인다(PDF 저장·글리프검증 속도).
   private ttfBufferFailed = new Set<string>()
 
-  constructor(canvas: fabric.Canvas, editor: Editor, fontList: FontSource[], defaultFont: string) {
+  constructor(
+    canvas: fabric.Canvas,
+    editor: Editor,
+    fontList: FontSource[],
+    defaultFont: string,
+    apiBaseUrl?: string
+  ) {
     super(canvas, editor, {})
+
+    // woff2ToTtf 호출에 사용할 API 베이스 URL 저장 (끝의 슬래시 제거).
+    this.apiBaseUrl = apiBaseUrl?.replace(/\/$/, '') || undefined
 
     dlog('font', 'create fonts', fontList.length)
     this.createFontCSS(fontList)
@@ -307,28 +321,49 @@ class FontPlugin extends PluginBase {
     dlog('font', `📥 TTF buffer cache miss, fetching: ${fontFamily}`)
 
     try {
-      // WOFF2 URL 가져오기
+      // 폰트 파일 URL 가져오기 (woff2 / ttf / otf 가능)
       const fontUrl = this._getWoff2FontUrl(fontFamily)
       if (!fontUrl) {
         throw new Error(`WOFF2 font URL not found for: ${fontFamily}`)
       }
 
-      // woff2ToTtf API 호출
-      const response = await fetch('/api/woff2ToTtf', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          woff2Url: fontUrl
-        })
-      })
+      let ttfBuffer: ArrayBuffer
 
-      if (!response.ok) {
-        throw new Error(`woff2ToTtf API failed: ${response.status} ${response.statusText}`)
+      // Fast-path: 원본이 이미 TTF/OTF 면 opentype.js 가 직접 파싱 가능하므로
+      // 서버 변환(woff2ToTtf) 없이 폰트 바이트를 그대로 받아온다.
+      // (?query 가 붙은 URL 도 대응하기 위해 확장자를 정규화 후 검사)
+      const pathname = fontUrl.split(/[?#]/)[0].toLowerCase()
+      const isSfnt = pathname.endsWith('.ttf') || pathname.endsWith('.otf')
+
+      if (isSfnt) {
+        dlog('font', `⏩ TTF/OTF 원본 직접 로드 (변환 스킵): ${fontUrl}`)
+        ttfBuffer = await this.fetchFontArrayBuffer(fontUrl)
+      } else {
+        // woff2 → TTF 변환은 서버(NestJS API)에서 수행.
+        // ⚠️ 반드시 API 오리진을 향해야 한다. 상대 '/api/woff2ToTtf' 는
+        //   프로덕션(Vercel 에디터 오리진)에서 404 가 난다.
+        // apiBaseUrl 은 전역 프리픽스 '/api' 까지 포함 (예: https://api.papascompany.co.kr/api).
+        // NestJS 라우트는 'library/woff2ToTtf' → 최종 '/api/library/woff2ToTtf'.
+        // apiBaseUrl 미주입(레거시/테스트) 시 상대 경로 폴백.
+        const base = this.apiBaseUrl ?? '/api'
+        const endpoint = `${base}/library/woff2ToTtf`
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            woff2Url: fontUrl
+          })
+        })
+
+        if (!response.ok) {
+          throw new Error(`woff2ToTtf API failed: ${response.status} ${response.statusText}`)
+        }
+
+        ttfBuffer = await response.arrayBuffer()
       }
 
-      const ttfBuffer = await response.arrayBuffer()
       dlog('font', `✅ TTF buffer received: ${ttfBuffer.byteLength} bytes`)
 
       // 캐시에 저장

@@ -8,10 +8,12 @@ import {
   Delete,
   Query,
   UseGuards,
+  Header,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { LibraryService } from './library.service';
 import {
+  Woff2ToTtfDto,
   CreateFontDto,
   UpdateFontDto,
   CreateBackgroundDto,
@@ -83,6 +85,21 @@ export class LibraryController {
   @ApiResponse({ status: 200, description: 'Font deleted successfully' })
   removeFont(@Param('id') id: string) {
     return this.libraryService.removeFont(id);
+  }
+
+  @Post('woff2ToTtf')
+  @Public()
+  @Header('Content-Type', 'application/octet-stream')
+  @Header('Cache-Control', 'public, max-age=31536000, immutable')
+  @ApiOperation({
+    summary: 'Decompress a WOFF2 font into TTF',
+    description:
+      'opentype.js (client-side) cannot read WOFF2, so the editor calls this to get a TTF buffer for glyph validation and text→path vectorization. The source host must be allow-listed (SSRF protection).',
+  })
+  @ApiResponse({ status: 200, description: 'TTF bytes (application/octet-stream)' })
+  @ApiResponse({ status: 400, description: 'Invalid or disallowed woff2Url' })
+  async woff2ToTtf(@Body() dto: Woff2ToTtfDto): Promise<Buffer> {
+    return this.libraryService.woff2ToTtf(dto.woff2Url);
   }
 
   // ============================================================================
