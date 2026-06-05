@@ -3,6 +3,7 @@ import { useAppStore } from '@/stores/useAppStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { templatesApi } from '@/api/templates'
 import { core } from '@storige/canvas-core'
+import type { CanvasData } from '@storige/types'
 
 /**
  * Admin 전용 — "템플릿셋 수정" 모드의 저장 훅.
@@ -80,7 +81,8 @@ export function useTemplateSetSave(): UseTemplateSetSaveReturn {
           console.warn(`[useTemplateSetSave] page ${pageIndex} 캔버스 dispose됨, 스킵`)
           continue
         }
-        // canvas-core 의 toJSON 이 storige 가 추가한 extension 프로퍼티까지 보존
+        // canvas-core 의 toJSON 이 storige 가 추가한 extension 프로퍼티까지 보존.
+        // fabric toJSON 반환형이 loose(`{}`) 라 CanvasData 로 단언(런타임은 version/objects 등 포함).
         const canvasData = core.toJSON(cv, [
           'id',
           'extensionType',
@@ -89,7 +91,7 @@ export function useTemplateSetSave(): UseTemplateSetSaveReturn {
           'meta',
           'isUserAdded',
           'isLocked',
-        ])
+        ]) as unknown as CanvasData
         try {
           await templatesApi.updateTemplate(templateId, { canvasData })
           savedCount++

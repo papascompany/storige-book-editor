@@ -105,6 +105,9 @@ class FontPlugin extends PluginBase {
   private fontProxy?: string | ((originalUrl: string) => string)
   // TTF buffer 캐시 (fontFamily별로 캐싱)
   private ttfBufferCache = new Map<string, ArrayBuffer>()
+  // TTF buffer 실패(음수) 캐시 — URL 없음/woff2ToTtf 실패한 폰트를 기억해
+  // 같은 폰트의 텍스트가 여럿일 때 반복 fetch/실패를 1회로 줄인다(PDF 저장·글리프검증 속도).
+  private ttfBufferFailed = new Set<string>()
 
   constructor(canvas: fabric.Canvas, editor: Editor, fontList: FontSource[], defaultFont: string) {
     super(canvas, editor, {})
@@ -296,37 +299,47 @@ class FontPlugin extends PluginBase {
       dlog('font', `✅ TTF buffer cache hit: ${fontFamily}`)
       return this.ttfBufferCache.get(fontFamily)!
     }
+    // 음수 캐시: 직전에 실패한 폰트는 네트워크 재시도 없이 즉시 실패 처리
+    if (this.ttfBufferFailed.has(fontFamily)) {
+      throw new Error(`TTF buffer unavailable (cached miss): ${fontFamily}`)
+    }
 
     dlog('font', `📥 TTF buffer cache miss, fetching: ${fontFamily}`)
 
-    // WOFF2 URL 가져오기
-    const fontUrl = this._getWoff2FontUrl(fontFamily)
-    if (!fontUrl) {
-      throw new Error(`WOFF2 font URL not found for: ${fontFamily}`)
-    }
+    try {
+      // WOFF2 URL 가져오기
+      const fontUrl = this._getWoff2FontUrl(fontFamily)
+      if (!fontUrl) {
+        throw new Error(`WOFF2 font URL not found for: ${fontFamily}`)
+      }
 
-    // woff2ToTtf API 호출
-    const response = await fetch('/api/woff2ToTtf', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        woff2Url: fontUrl
+      // woff2ToTtf API 호출
+      const response = await fetch('/api/woff2ToTtf', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          woff2Url: fontUrl
+        })
       })
-    })
 
-    if (!response.ok) {
-      throw new Error(`woff2ToTtf API failed: ${response.status} ${response.statusText}`)
+      if (!response.ok) {
+        throw new Error(`woff2ToTtf API failed: ${response.status} ${response.statusText}`)
+      }
+
+      const ttfBuffer = await response.arrayBuffer()
+      dlog('font', `✅ TTF buffer received: ${ttfBuffer.byteLength} bytes`)
+
+      // 캐시에 저장
+      this.ttfBufferCache.set(fontFamily, ttfBuffer)
+
+      return ttfBuffer
+    } catch (err) {
+      // 실패 폰트 기록 → 같은 폰트 재요청 시 즉시 단락(반복 fetch 방지)
+      this.ttfBufferFailed.add(fontFamily)
+      throw err
     }
-
-    const ttfBuffer = await response.arrayBuffer()
-    dlog('font', `✅ TTF buffer received: ${ttfBuffer.byteLength} bytes`)
-
-    // 캐시에 저장
-    this.ttfBufferCache.set(fontFamily, ttfBuffer)
-
-    return ttfBuffer
   }
 
   /**

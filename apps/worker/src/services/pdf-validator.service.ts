@@ -151,15 +151,22 @@ export class PdfValidatorService {
         });
       }
 
-      // 12. CMYK 2단계 검증 (WBS 3.0)
+      // 12~15. 색상모드(CMYK/GS)·별색·투명도/오버프린트·이미지해상도 검출.
+      // 네 검출은 서로 독립(동일 pdfBytes 만 읽음)이므로 병렬 실행한다.
+      // detectColorMode 의 Ghostscript inkcov 자식프로세스 대기 시간이 나머지 JS 파싱과
+      // 겹쳐 wall-time 이 '가장 느린 1개'로 수렴 → 검증 체감 속도 개선.
       // 파일 경로 계산 (Ghostscript inkcov용) — `/storage/`, `storage/` 양쪽 모두 정규화
       const inputPath = this.resolveLocalPath(fileUrl);
 
-      const colorModeResult = await this.detectColorMode(
-        pdfBytes,
-        inputPath,
-        options.fileType,
-      );
+      const [colorModeResult, spotColorResult, transparencyResult, resolutionResult] =
+        await Promise.all([
+          this.detectColorMode(pdfBytes, inputPath, options.fileType),
+          detectSpotColors('', pdfBytes),
+          detectTransparencyAndOverprint('', pdfBytes),
+          detectImageResolutionFromPdf(pdfBytes, VALIDATION_CONFIG.MIN_ACCEPTABLE_DPI),
+        ]);
+
+      // 12. 색상 모드 결과 처리
       metadata.colorMode = colorModeResult.colorMode;
 
       // 후가공 파일 + CMYK 사용 = 에러 (별색만 허용)
@@ -186,8 +193,7 @@ export class PdfValidatorService {
         });
       }
 
-      // 13. 별색(Spot Color) 감지 (WBS 4.1)
-      const spotColorResult = await detectSpotColors('', pdfBytes);
+      // 13. 별색(Spot Color) 결과 처리 (WBS 4.1)
       metadata.hasSpotColors = spotColorResult.hasSpotColors;
       metadata.spotColors = spotColorResult.spotColorNames;
 
@@ -198,8 +204,7 @@ export class PdfValidatorService {
         // 별색은 후가공 파일에서는 정상, 일반 파일에서는 정보성 메시지
       }
 
-      // 14. 투명도/오버프린트 감지 (WBS 4.2)
-      const transparencyResult = await detectTransparencyAndOverprint('', pdfBytes);
+      // 14. 투명도/오버프린트 결과 처리 (WBS 4.2)
       metadata.hasTransparency = transparencyResult.hasTransparency;
       metadata.hasOverprint = transparencyResult.hasOverprint;
 
@@ -220,13 +225,7 @@ export class PdfValidatorService {
         });
       }
 
-      // 15. 이미지 해상도 감지
-      const resolutionResult = await detectImageResolutionFromPdf(
-        pdfBytes,
-        VALIDATION_CONFIG.MIN_ACCEPTABLE_DPI,
-      );
-
-      // 메타데이터에 해상도 정보 업데이트
+      // 15. 이미지 해상도 결과 처리
       metadata.imageCount = resolutionResult.imageCount;
       if (resolutionResult.imageCount > 0) {
         metadata.resolution = resolutionResult.minResolution;
