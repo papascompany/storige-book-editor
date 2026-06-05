@@ -1,5 +1,7 @@
 # HANDOFF — bookmoa: PDF 검증 요청에 책등(spine)·날개(wing) 필드 추가 (2026-06-04)
 
+> ✅ **[완료 2026-06-05] bookmoa 측 구현·배포됨** — bookmoa `fcbc433`("PDF 검증 orderOptions에 책등·날개 필드 추가", on `origin/main` → Vercel 자동배포)에서 `StorigeFileUploadPanel.jsx`가 cover 한정 `spineWidthMm`/`wingEnabled`/`wingWidthMm` 전송 + `api/storige/validate.js`가 `/products/spine/calculate`의 `spineWidth` 자동조회까지 구현. 양쪽 done. 남은 건 실 PDF E2E 1회뿐(잘못된 책등 폭 커버 → `SPINE_SIZE_MISMATCH` 발효 확인).
+
 > 대상: **bookmoa**(주문화면에서 고객이 표지/내지 PDF 첨부 → 워커 검증을 트리거하는 프런트/어댑터).
 > Storige 워커 검증이 **책등 정합 + 날개 반영**을 지원하도록 배포 완료(2026-06-04, 하위호환). **발효하려면 bookmoa 가 검증 요청 payload 에 아래 3필드를 실어 보내야** 한다. (미전달 시 기존 동작 그대로 — 회귀 없음.)
 
