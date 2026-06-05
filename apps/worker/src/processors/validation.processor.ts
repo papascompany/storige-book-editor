@@ -39,7 +39,13 @@ export class ValidationProcessor {
 
   constructor(private readonly validatorService: PdfValidatorService) {}
 
-  @Process('validate-pdf')
+  // 검증 동시성: 기본 1이라 cover+content 등 다건 검증이 순차 처리되어 느렸음.
+  // env VALIDATION_CONCURRENCY 로 조정(기본 3). Ghostscript 는 별도 GS_CONCURRENCY 로 보호되고,
+  // 파일당 PDF 메모리 상한(100MB)을 고려해도 3~4는 안전.
+  @Process({
+    name: 'validate-pdf',
+    concurrency: Math.max(1, Number(process.env.VALIDATION_CONCURRENCY) || 3),
+  })
   async handleValidation(job: Job<ValidationJobData>): Promise<ValidationResultDto> {
     this.logger.log(`Processing validation job ${job.data.jobId}`);
 
