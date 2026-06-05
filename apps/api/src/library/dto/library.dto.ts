@@ -2,6 +2,17 @@ import { IsString, IsNotEmpty, IsOptional, IsBoolean, IsArray, IsNumber, IsIn } 
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 
+// Font conversion DTO
+export class Woff2ToTtfDto {
+  @ApiProperty({
+    example: 'https://api.papascompany.co.kr/storage/fonts/noto-sans-kr.woff2',
+    description: 'WOFF2 font URL to decompress into TTF. Must be on an allowed host.',
+  })
+  @IsString()
+  @IsNotEmpty()
+  woff2Url: string;
+}
+
 // Font DTOs
 export class CreateFontDto {
   @ApiProperty({ example: 'Noto Sans KR' })

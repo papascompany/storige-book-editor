@@ -31,6 +31,7 @@ const ENABLE_RULER = import.meta.env.VITE_ENABLE_RULER !== 'false'
 import { useAppStore } from '@/stores/useAppStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { DEFAULT_FONT_FAMILY, loadFonts, getFontList, resolveStorageUrl } from '@/utils/fontManager'
+import { apiClient } from '@/api/client'
 import type { fabric } from 'fabric'
 
 /**
@@ -229,7 +230,15 @@ function initPlugins(
     src: resolveStorageUrl(font.fileUrl),
   }))
 
-  const font = new FontPlugin(canvas, editor, fontListForPlugin, DEFAULT_FONT_FAMILY)
+  // woff2ToTtf 변환은 NestJS API 에서 수행하므로 API 베이스 URL 을 주입한다.
+  // (apiClient.getBaseUrl() 은 embed 의 setBaseUrl 런타임 오버라이드도 반영)
+  const font = new FontPlugin(
+    canvas,
+    editor,
+    fontListForPlugin,
+    DEFAULT_FONT_FAMILY,
+    apiClient.getBaseUrl()
+  )
 
   const filter = new FilterPlugin(canvas, editor)
   const effect = new EffectPlugin(canvas, editor)
