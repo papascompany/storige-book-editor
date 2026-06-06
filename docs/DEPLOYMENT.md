@@ -100,9 +100,12 @@ JWT_SECRET=<random-32-char-string>
 # 검증 동시성 (worker, 기본 3)
 VALIDATION_CONCURRENCY=3
 
-# 스프레드 책 스냅샷 무결성 검증 모드 (api). 미설정=SOFT(경고/기록만, 완료 무중단).
-# P0-3(compose-mixed 실출력 MediaBox 하드검증) 배포·데이터 정합 확인 후 'true'로 승격하면
-# 완료 시 metadata.spread/spine 누락·불일치를 HARD 차단(인쇄사고 방지). 기본은 미설정(SOFT).
+# 스프레드 책 스냅샷/크기 무결성 검증 모드 (api + worker 공용 토글). 미설정=SOFT(경고/기록만, 무중단).
+#  - api: 편집완료 시 metadata.spread/spine 누락·불일치 검증(완료 게이트).
+#  - worker: compose-mixed 합성 시 cover.pdf MediaBox vs 펼침면 총폭(metadata.spread) 대조.
+# 'true' 승격 시 양쪽 모두 HARD 차단(잘못된 펼침면 크기 인쇄사고 방지). 기본 미설정(SOFT).
+# ⚠️ HARD 승격 전 worker 컨테이너에도 ENV 주입 확인: docker exec storige-worker printenv SPREAD_SNAPSHOT_HARD_FAIL
+#    (미주입이면 docker-compose.yml 의 worker 서비스 environment 에 추가). SOFT 기간 worker_jobs.result.coverSizeValidation 모니터링 후 승격 권장.
 SPREAD_SNAPSHOT_HARD_FAIL=false
 ```
 
