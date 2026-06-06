@@ -5,6 +5,7 @@ import { useAuthStore } from '@/stores/useAuthStore'
 import { useEditorStore } from '@/stores/useEditorStore'
 import { ServicePlugin, core } from '@storige/canvas-core'
 import { designsApi, editSessionsApi, filesApi, storageApi } from '@/api'
+import { buildSpreadSnapshots } from '@/utils/buildSpreadSnapshots'
 import type { SpreadSynthesisJobData } from '@storige/types'
 
 // Fabric.js 타입 (런타임에 로드됨)
@@ -688,11 +689,19 @@ export function useWorkSave(): UseWorkSaveReturn {
       // ========================================================================
       console.log('[useWorkSave:Spread] 3. EditSession 완료 API 호출 중...')
 
+      // B38 출력재현 단일소스: metadata.spread/spine 스냅샷 저장(additive). 실패해도 완료 무중단.
+      const spreadSnapshots = buildSpreadSnapshots(
+        useSettingsStore.getState().spreadConfig,
+        useSettingsStore.getState().spineConfig,
+        innerCanvases.length,
+      )
       await editSessionsApi.update(sessionId, {
         coverFileId: coverPdfFileId,
         contentFileId: contentPdfFileId,
         metadata: {
           spreadContentPageCount: innerCanvases.length,
+          ...(spreadSnapshots.spread ? { spread: spreadSnapshots.spread } : {}),
+          ...(spreadSnapshots.spine ? { spine: spreadSnapshots.spine } : {}),
         },
       })
 
