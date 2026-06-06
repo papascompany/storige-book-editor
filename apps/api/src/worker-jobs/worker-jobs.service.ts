@@ -406,6 +406,40 @@ export class WorkerJobsService {
    * PHP 기존 호출 경로 회귀 보호 (mode='compose-mixed' 만 신규 worker handler 사용).
    */
   async createComposeMixedJob(dto: any): Promise<WorkerJob> {
+    // P0-3: 스프레드 책 무결성 — 세션의 출력재현 단일소스(metadata.spread)를 조회해
+    //  ① 워커 cover MediaBox 검증용 기대치(totalWidthMm/HeightMm/dpi)를 큐로 push,
+    //  ② 확정 비즈니스 규칙(스프레드 책 = cover.pdf + content.pdf "분리 2파일")에 맞춰
+    //     outputMode 를 'separate' 로 강제(편집기 펼침면 cover 가 출력에서 누락되지 않도록).
+    //  best-effort: 조회 실패/세션부재/스냅샷부재 시 검증·강제 미적용으로 자연 통과(잡 생성 무중단).
+    let composeSpreadTotalWidthMm: number | undefined;
+    let composeSpreadTotalHeightMm: number | undefined;
+    let composeSpreadDpi: number | undefined;
+    let effectiveOutputMode = dto.outputMode;
+    try {
+      if (dto.editSessionId) {
+        const sess = await this.editSessionRepository.findOne({
+          where: { id: dto.editSessionId },
+        });
+        const sp = (sess?.metadata as any)?.spread;
+        if (sp?.totalWidthMm && sp?.totalHeightMm) {
+          composeSpreadTotalWidthMm = sp.totalWidthMm;
+          composeSpreadTotalHeightMm = sp.totalHeightMm;
+          composeSpreadDpi = sp.dpi ?? 300;
+          // 스프레드 책은 표지/내지 분리 2파일이 기본(합본·single 금지). coverEditable 인 경우만.
+          if (dto.coverEditable !== false && effectiveOutputMode !== 'separate') {
+            this.logger.log(
+              `[compose-mixed] spread book ${dto.editSessionId}: outputMode '${effectiveOutputMode}' → 'separate' 강제(분리 2파일 규칙)`,
+            );
+            effectiveOutputMode = 'separate';
+          }
+        }
+      }
+    } catch (e) {
+      this.logger.warn(
+        `[compose-mixed] spread 스냅샷 조회 skip(잡 생성은 계속): ${(e as Error).message}`,
+      );
+    }
+
     const job = this.workerJobRepository.create({
       jobType: WorkerJobType.SYNTHESIZE,
       status: WorkerJobStatus.PENDING,
@@ -426,7 +460,10 @@ export class WorkerJobsService {
         contentHeightMm: dto.contentHeightMm,
         orderId: dto.orderId,
         callbackUrl: dto.callbackUrl,
-        outputMode: dto.outputMode,
+        outputMode: effectiveOutputMode,
+        spreadTotalWidthMm: composeSpreadTotalWidthMm,
+        spreadTotalHeightMm: composeSpreadTotalHeightMm,
+        spreadDpi: composeSpreadDpi,
       },
     });
     const savedJob = await this.workerJobRepository.save(job);
@@ -445,14 +482,18 @@ export class WorkerJobsService {
         composeContentPdfUrl: dto.contentPdfUrl,
         composeContentWidthMm: dto.contentWidthMm,
         composeContentHeightMm: dto.contentHeightMm,
-        composeOutputMode: dto.outputMode,
+        composeOutputMode: effectiveOutputMode,
+        // P0-3: 스프레드 cover MediaBox 검증 기대치(세션 metadata.spread). 부재=비스프레드 → 워커 검증 skip.
+        composeSpreadTotalWidthMm,
+        composeSpreadTotalHeightMm,
+        composeSpreadDpi,
         callbackUrl: dto.callbackUrl,
       },
       { priority: 5 },
     );
 
     this.logger.log(
-      `Compose-mixed job created: ${savedJob.id} (front=${(dto.frontEndpaperUrls ?? []).length}, back=${(dto.backEndpaperUrls ?? []).length}, coverEditable=${dto.coverEditable !== false})`,
+      `Compose-mixed job created: ${savedJob.id} (front=${(dto.frontEndpaperUrls ?? []).length}, back=${(dto.backEndpaperUrls ?? []).length}, coverEditable=${dto.coverEditable !== false}, outputMode=${effectiveOutputMode}, spread=${!!composeSpreadTotalWidthMm})`,
     );
 
     return savedJob;
