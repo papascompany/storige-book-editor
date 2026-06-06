@@ -7,6 +7,7 @@ import {
   SessionMode,
 } from './entities/edit-session.entity';
 import { WorkerJobsService } from '../worker-jobs/worker-jobs.service';
+import { TemplateSetsService } from '../templates/template-sets.service';
 import { WorkerJobStatus } from '@storige/types';
 
 describe('EditSessionsService', () => {
@@ -50,6 +51,10 @@ describe('EditSessionsService', () => {
     createValidationJob: jest.fn(),
   };
 
+  const mockTemplateSetsService = {
+    findOneWithTemplates: jest.fn(),
+  };
+
   beforeEach(async () => {
     jest.clearAllMocks();
 
@@ -63,6 +68,10 @@ describe('EditSessionsService', () => {
         {
           provide: WorkerJobsService,
           useValue: mockWorkerJobsService,
+        },
+        {
+          provide: TemplateSetsService,
+          useValue: mockTemplateSetsService,
         },
       ],
     }).compile();
