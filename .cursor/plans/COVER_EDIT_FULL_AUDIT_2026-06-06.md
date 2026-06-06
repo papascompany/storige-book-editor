@@ -122,3 +122,25 @@
 ## 5. 검증 신뢰도
 - 9차원 전부 적대적 반증 통과. 정정 1건(낱장 width/height)으로 거짓 음성 제거.
 - 모든 BROKEN/MISSING 판정은 grep-negative 또는 직접 file:line 확인 기반.
+
+---
+
+## 6. 진행 내역 (실행 로그)
+
+### ✅ P0 Step 1 — 스프레드 출력재현 단일소스 (완료·배포·라이브검증, 2026-06-06, 커밋 `df99d69`)
+설계→적대적검증(sound-with-fixes, MAJOR 2/MINOR 4 전부 반영)→구현→빌드/테스트→배포→프로덕션 능동 E2E.
+
+**P0-1 (편집기 metadata.spread/spine 저장)** + **P0-2 (검증 게이트 editorMode 전환, SOFT)** 함께 처리.
+
+저장 계약(`EditSession.metadata`):
+- `spread`(SpreadSnapshot): `{ spec:SpreadSpec(8필드), totalWidthMm, totalHeightMm, dpi }`. 총폭은 `computeSpreadDimensions(normalizeSpreadSpec(spec))` 재계산값(wing×2 포함 단일소스, 스토어 캐시 미사용).
+- `spine`(SpineSnapshot): `{ pageCount, paperType, bindingType, spineWidthMm, formulaVersion, spineWidthSource? }`. 필수 5필드 모두 유효할 때만 기록(부분기록 금지). `spineWidthSource`=spec이 공식값과 일치하면 'formula', 수동조정이면 'manual'.
+- `spreadValidation`(SpreadValidationResult): 완료 시 서버가 기록 `{ ok, checkedAt, gate, mismatches, mode }`.
+
+검증 게이트: `session.mode===SPREAD || !!metadata.spread`. 편집기는 책 완료 시에도 mode를 'both'/'cover'로 보내므로 **metadata.spread 존재**로 편집기 책 완료를 포착. 기본 **SOFT**(누락/불일치=경고·기록, throw 금지 → 기존 주문 무중단). 운영 ENV `SPREAD_SNAPSHOT_HARD_FAIL=true`일 때만 HARD 차단(P0-3 이후 승격).
+
+구현: `packages/types`(SPINE_FORMULA_VERSION, spineWidthSource, SpreadValidationResult+EditSessionMetadata.spreadValidation), `apps/editor/src/utils/buildSpreadSnapshots.ts`(공용 util, try/catch 무중단), `embed.tsx`/`useWorkSave.ts`(두 완료경로 적용), `apps/api/.../edit-sessions.service.ts`(게이트+soft validateSpreadSnapshot).
+
+검증: types/api/editor/worker 빌드 통과 · edit-sessions.service.spec 8/8 · buildSpreadSnapshots 7/7 · **프로덕션 E2E**: 스프레드 편집완료 재현 → 세션 metadata에 spread/spine/spreadValidation(ok:true, gate:metadata-spread, mode:soft) 기록 + spineWidthSource:'formula' + totalWidthMm 정확(214×2+0.6=428.6) 확인. DB ALTER 0건(metadata=JSON).
+
+→ **다음**: P0 Step 2 = P0-3(실출력 compose-mixed MediaBox 하드검증, soft→hard 단계) → 이후 `SPREAD_SNAPSHOT_HARD_FAIL=true` 승격.
