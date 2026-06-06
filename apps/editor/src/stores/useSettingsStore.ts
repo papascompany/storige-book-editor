@@ -9,6 +9,7 @@ import {
 } from '@storige/canvas-core'
 import type { EditorTemplate } from '@/generated/graphql'
 import type { SpreadConfig, EditorMenuKey } from '@storige/types'
+import { computeSpreadDimensions } from '@storige/types'
 
 // Types (will be replaced with GraphQL generated types later)
 interface WowPressProductSize {
@@ -745,14 +746,18 @@ export const useSettingsStore = create<SettingsState & SettingsActions>()((set, 
     const { spreadConfig } = get()
     if (!spreadConfig) return
 
-    // SpreadConfig의 spec.spineWidthMm 업데이트
+    // 책등 폭 변경 시 spec.spineWidthMm + totalWidthMm/totalHeightMm 를 함께 재계산한다.
+    // (이전엔 spec.spineWidthMm 만 갱신해 totalWidthMm 가 책등 변경 전 값으로 stale → 펼침면
+    //  cover PDF 가 stale 총폭으로 생성되어 실제 펼침면 크기와 어긋나는 인쇄크기 결함이 있었음.
+    //  computeSpreadDimensions 단일소스로 재계산해 cover 생성·스냅샷·검증이 모두 동일 총폭을 쓰게 한다.)
+    const newSpec = { ...spreadConfig.spec, spineWidthMm: newWidthMm }
+    const dims = computeSpreadDimensions(newSpec)
     set({
       spreadConfig: {
         ...spreadConfig,
-        spec: {
-          ...spreadConfig.spec,
-          spineWidthMm: newWidthMm,
-        },
+        spec: newSpec,
+        totalWidthMm: dims.totalWidthMm,
+        totalHeightMm: dims.totalHeightMm,
       },
     })
   },
