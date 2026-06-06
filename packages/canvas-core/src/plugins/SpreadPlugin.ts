@@ -45,7 +45,7 @@ interface SpreadPluginOptions extends PluginOption {
 
 class SpreadPlugin extends PluginBase {
   name = 'SpreadPlugin'
-  events = ['spineWidthChange', 'spreadLayoutUpdate', 'spreadObjectsOutOfBounds']
+  events = ['spineWidthChange', 'spreadLayoutUpdate', 'spreadObjectsOutOfBounds', 'spreadRegionFocus']
   hotkeys = []
 
   private currentSpec: SpreadSpec
@@ -59,6 +59,11 @@ class SpreadPlugin extends PluginBase {
   // 이벤트 핸들러 참조
   private _boundHandleObjectModified: ((e: IEvent) => void) | null = null
   private _boundHandleObjectMoving: ((e: IEvent) => void) | null = null
+
+  // 영역 클릭 포커싱 (PDF 핵심: 영역 클릭 → 해당 영역 포커싱 편집)
+  private _boundHandleRegionClick: ((e: IEvent) => void) | null = null
+  private _focusedRegionPosition: string | null = null
+  private _focusOverlay: fabric.Rect | null = null
 
   constructor(canvas: fabric.Canvas, editor: Editor, options: SpreadPluginOptions) {
     super(canvas, editor, options)
@@ -76,9 +81,11 @@ class SpreadPlugin extends PluginBase {
     // 이벤트 핸들러 등록
     this._boundHandleObjectModified = this.handleObjectModified.bind(this)
     this._boundHandleObjectMoving = this.handleObjectMoving.bind(this)
+    this._boundHandleRegionClick = this.handleRegionClick.bind(this)
 
     this._canvas.on('object:modified', this._boundHandleObjectModified)
     this._canvas.on('object:moving', this._boundHandleObjectMoving)
+    this._canvas.on('mouse:down', this._boundHandleRegionClick)
 
     return super.mounted()
   }
@@ -91,13 +98,18 @@ class SpreadPlugin extends PluginBase {
     if (this._boundHandleObjectMoving) {
       this._canvas.off('object:moving', this._boundHandleObjectMoving)
     }
+    if (this._boundHandleRegionClick) {
+      this._canvas.off('mouse:down', this._boundHandleRegionClick)
+    }
 
-    // 가이드/라벨 제거
+    // 가이드/라벨/포커스 오버레이 제거
     this.clearGuides()
     this.clearLabels()
+    this.clearFocusOverlay()
 
     this._boundHandleObjectModified = null
     this._boundHandleObjectMoving = null
+    this._boundHandleRegionClick = null
 
     return super.destroyed()
   }
@@ -415,6 +427,7 @@ class SpreadPlugin extends PluginBase {
         evented: false,
         hasControls: false,
         hasBorders: false,
+        excludeFromExport: true, // 시스템 가이드 — 저장/재로드 직렬화 제외(중복·오염 방지)
       })
 
       if (!line.meta) {
@@ -445,6 +458,7 @@ class SpreadPlugin extends PluginBase {
         hasBorders: false,
         originX: 'center',
         originY: 'bottom',
+        excludeFromExport: true, // 시스템 라벨 — 저장/재로드 직렬화 제외
       })
 
       if (!text.meta) {
@@ -574,13 +588,114 @@ class SpreadPlugin extends PluginBase {
   }
 
   /**
-   * x 좌표 → 영역 판정
+   * x 좌표 → 영역 판정 (content 좌표 전제)
+   * @deprecated scene 좌표 클릭에는 getRegionAtPoint 를 사용(좌표계 변환 포함).
    */
   getRegionAtX(x: number): SpreadRegion | null {
     if (!this.currentLayout) {
       return null
     }
     return resolveRegionAtX(this.currentLayout.regions, x)
+  }
+
+  /**
+   * Fabric scene 좌표(포인터) → 영역 판정. scene→content 좌표 변환을 내부 캡슐화.
+   */
+  getRegionAtPoint(scenePoint: { x: number; y: number }): SpreadRegion | null {
+    if (!this.currentLayout) return null
+    const origin = this.getContentOrigin()
+    const contentX = scenePoint.x - origin.x
+    return resolveRegionAtX(this.currentLayout.regions, contentX)
+  }
+
+  /** 현재 포커스된 영역 */
+  getFocusedRegion(): SpreadRegion | null {
+    if (!this.currentLayout || !this._focusedRegionPosition) return null
+    return this.currentLayout.regions.find((r) => r.position === this._focusedRegionPosition) ?? null
+  }
+
+  /**
+   * 영역 포커싱 — 해당 영역에 하이라이트 오버레이를 표시하고 spreadRegionFocus 이벤트 발행.
+   * (편집기는 이 이벤트로 활성 영역 표시/신규객체 앵커링 등에 활용 가능)
+   */
+  focusRegion(position: string): void {
+    if (!this.currentLayout) return
+    const region = this.currentLayout.regions.find((r) => r.position === position)
+    if (!region) return
+    this._focusedRegionPosition = position
+    this.renderFocusOverlay(region)
+    this._editor.emit('spreadRegionFocus', { region })
+  }
+
+  /** 영역 포커스 해제 */
+  clearFocus(): void {
+    if (!this._focusedRegionPosition) return
+    this._focusedRegionPosition = null
+    this.clearFocusOverlay()
+    this._editor.emit('spreadRegionFocus', { region: null })
+  }
+
+  /**
+   * mouse:down — 빈 영역(시스템/배경) 클릭 시 해당 영역 포커싱. 같은 영역 재클릭 시 해제.
+   * 사용자 객체 클릭/팬/alt 드래그에는 개입하지 않음(선택/이동 보존).
+   */
+  private handleRegionClick(opt: IEvent): void {
+    if (!this.currentLayout) return
+    // 팬/alt 드래그 중에는 무시(DraggingPlugin 과 충돌 방지)
+    const dragging = this._editor.getPlugin('DraggingPlugin') as unknown as { dragMode?: boolean } | null
+    if ((opt.e as MouseEvent | undefined)?.altKey || dragging?.dragMode) return
+    // 사용자 편집 가능 객체 클릭은 무시(선택 동작 보존). 빈 영역/워크스페이스/시스템 객체만 처리.
+    const target = opt.target as (fabric.Object & { id?: string; meta?: { system?: unknown }; excludeFromExport?: boolean }) | undefined
+    if (target && !target.meta?.system && !target.excludeFromExport && target.id !== 'workspace') return
+
+    const pointer = this._canvas.getPointer(opt.e)
+    const region = this.getRegionAtPoint(pointer)
+    if (!region) return
+    // 같은 영역 재클릭 → 포커스 해제(토글)
+    if (this._focusedRegionPosition === region.position) {
+      this.clearFocus()
+    } else {
+      this.focusRegion(region.position)
+    }
+  }
+
+  /** 포커스 영역 하이라이트 오버레이 렌더(저장 제외) */
+  private renderFocusOverlay(region: SpreadRegion): void {
+    this.clearFocusOverlay()
+    if (!this.currentLayout) return
+    const origin = this.getContentOrigin()
+    const rect = new fabric.Rect({
+      id: 'spread-focus-overlay',
+      left: origin.x + region.x,
+      top: origin.y,
+      width: region.width,
+      height: this.currentLayout.totalHeightPx,
+      fill: 'rgba(59,130,246,0.10)',
+      stroke: '#3b82f6',
+      strokeWidth: 2,
+      selectable: false,
+      evented: false,
+      hasControls: false,
+      hasBorders: false,
+      excludeFromExport: true,
+    })
+    if (!rect.meta) rect.meta = {}
+    rect.meta.system = 'spreadGuide' as SystemObjectType
+    this._canvas.add(rect)
+    // 경계선/라벨 위 z-order 유지(워크스페이스 테두리 앞으로)
+    const ws = this._editor.getPlugin('WorkspacePlugin') as unknown as { bringBordersToFront?: () => void } | null
+    ws?.bringBordersToFront?.()
+    this._focusOverlay = rect
+    this._canvas.requestRenderAll()
+  }
+
+  /** 포커스 오버레이 제거 */
+  private clearFocusOverlay(): void {
+    if (this._focusOverlay) {
+      this._canvas.remove(this._focusOverlay)
+      this._focusOverlay = null
+      this._canvas.requestRenderAll()
+    }
   }
 }
 
