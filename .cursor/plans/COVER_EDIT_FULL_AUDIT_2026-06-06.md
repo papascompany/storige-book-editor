@@ -163,3 +163,20 @@
 `SPREAD_SNAPSHOT_HARD_FAIL=true`는 API(완료시점)+Worker(MediaBox) 양쪽을 동시 승격하나, **worker 컨테이너에 ENV가 주입되는지 확인 필요**: `docker exec storige-worker printenv SPREAD_SNAPSHOT_HARD_FAIL`. 미주입 시 docker-compose.yml worker 서비스 environment에 추가. SOFT 기간 `worker_jobs.result.coverSizeValidation.ok=false` 빈도 모니터링 후 승격.
 
 ### P0 종합: 3개 핵심(스냅샷 저장 → 게이트 전환 → compose-mixed 실검증) 전부 SOFT로 실가동 + 실제 결함 1건 수정. 인쇄사고 방지장치가 "코드엔 있으나 실가동 0%" → **실가동(SOFT)**. HARD 승격은 모니터링 후 ENV 1개로.
+
+---
+
+## 7. P1 진행 (2026-06-07)
+
+P1 4항목 병렬 설계+적대적검증 완료(워크플로). 내지PDF 제품결정 = **표시 전용(가이드), 편집 반영 안 함**. 구현 순서: B48/B49 → A13 → 내지PDF(표시전용) → 영역클릭(XL).
+
+### ✅ P1 B48/B49(핵심=B49) — 스냅샷 ↔ 템플릿 권위 기하 대조 (완료·배포·검증, 커밋 `b53fc50`)
+- types `validateSpreadAgainstAuthority`: 책등(동적)/총폭 제외, 표지 가로·세로·날개 기하만 ±0.2mm 대조. 권위/스냅샷 한쪽 없으면 통과(레거시·비스프레드 무영향).
+- `complete()`(P0-2 검증부 확장): `TemplateSetsService.findOneWithTemplates`로 spread 템플릿 `spreadConfig.spec` 권위 로드 → 스냅샷 spec 대조 → `metadata.spreadValidation.mismatches`(AUTHORITY_*)에 병합. SOFT(경고/기록)/HARD(`SPREAD_SNAPSHOT_HARD_FAIL`→`TEMPLATE_SPEC_MISMATCH`).
+- DI: `TemplatesModule` import(순환참조 없음 확인), 부팅 정상. 검증: 빌드·spec 8/8, **실데이터 대조(템플릿 214×301 == 스냅샷 214×301 → 오탐 0)**.
+- **무결성 체인 완성**: 템플릿 권위 ⟵(B49) metadata.spread ⟵(P0-3) cover.pdf MediaBox. ※B48 보강(compose-mixed endpaper 카운트·coverEditable 대조)은 후속.
+
+### ⏳ 남은 P1 (설계·검증 완료, 구현 대기)
+- **A13 제본 페이지 가드**(M, sound-with-fixes): bindingType 미설정 시 "제약 없음"(perfect 기본 금지로 비제본 32p 오적용 회귀 방지) + spread/single 양 경로 주입. 무선32p/중철4p·4배수, 신규 hard/기존 soft.
+- **내지PDF 표시전용 임포지션**(XL, 재단순화): 워커 GS 다중페이지 래스터 → 내지 캔버스에 `excludeFromExport:true` 잠금배경으로 표시(최종 인쇄엔 미반영). 게스트 인증·GS 타임아웃·N페이지 메모리 가드 반영.
+- **영역클릭 포커싱**(XL, sound-with-fixes): SpreadPlugin mouse:down→getRegionAtX(좌표계 origin 보정)→activeRegion+하이라이트+줌. **embed.tsx(실사용)에도 배선**, 오버레이 `excludeFromExport:true`(저장오염 방지).
