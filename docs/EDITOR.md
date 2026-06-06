@@ -707,3 +707,55 @@ per-character `styles`(이탤릭·부분색)는 직렬화 리스트(`packages/ca
 | 폰트 TTF 음수캐시 | `packages/canvas-core/src/plugins/FontPlugin.ts` (`ttfBufferFailed`/`getTtfBuffer`) |
 | 글리프 검증 dedup·병렬 | `packages/canvas-core/src/plugins/ServicePlugin.ts` (`_createMultiPagePDF` 글리프 단계) |
 | 책등 계산 API | `apps/api/src/products/spine.service.ts` (`/products/spine/calculate`) |
+
+---
+
+## §19 스프레드 책 인쇄 무결성 체인 + 표지편집 감사 후속 (2026-06-06~07)
+
+> 전수 감사(`.cursor/plans/COVER_EDIT_FULL_AUDIT_2026-06-06.md`) 후 P0(인쇄 무결성) 전량 + P1 일부 구현·배포. 모든 검증은 **SOFT(경고·기록, 무중단)** 1차, 운영 ENV `SPREAD_SNAPSHOT_HARD_FAIL=true` 로 HARD(차단) 승격.
+
+### 19.1 스프레드 편집완료 PDF '프리즈' 근본수정 (`027c010`)
+§16의 "프로덕션 렌더러 프리즈" 가설은 **오진**이었음(프로덕션 능동 재현으로 확정). 실제는 ~7초 빠른 실패 2건:
+- **커버 업로드 HTTP 400**: `filesApi.upload` 가 `metadata` 를 JSON 문자열로 보내나 `UploadFileDto.@IsObject()` 가 거부 → `@Transform`(문자열→객체 선파싱) 추가. 2025-12-14부터 잠복(편집기 업로드 전체 차단, DB editor 업로드 0건이 증거).
+- **내지 생성 TypeError(`reading 'unit'`)**: `ServicePlugin.ts` `firstCanvas.unitOptions.unit` 옵셔널체이닝 누락 → `?.unit ?? 'mm'`.
+
+### 19.2 woff2ToTtf 엔드포인트 (`8fea0e8`)
+`/api/woff2ToTtf` 404(미구현) 해소: NestJS `POST /library/woff2ToTtf`(wawoff2 decompress, SSRF 화이트리스트), `FontPlugin` 이 상대경로 대신 apiBaseUrl 호출 + TTF 원본 fast-path. ※텍스트 아웃라인화 실발효는 폰트 시딩(제품결정) 후.
+
+### 19.3 출력재현 단일소스 — metadata.spread/spine 저장 + 검증 게이트 (`df99d69`, P0-1·P0-2)
+- 편집기 완료 시 `EditSession.metadata.spread`(SpreadSnapshot: spec/totalWidthMm/totalHeightMm/dpi) + `metadata.spine`(SpineSnapshot: pageCount/paperType/bindingType/spineWidthMm/formulaVersion/spineWidthSource) 저장. 공용 util `apps/editor/src/utils/buildSpreadSnapshots.ts`(총폭은 `computeSpreadDimensions`로 wing×2 포함 재계산, try/catch 무중단). 두 완료경로(embed.tsx, useWorkSave.ts) 공용.
+- 서버 검증 게이트를 `session.mode===SPREAD`(편집기가 안 보냄) → **`metadata.spread 존재`** 로 전환(`edit-sessions.service.ts validateSpreadSnapshot`). SOFT 기록(`metadata.spreadValidation`).
+- types: `SPINE_FORMULA_VERSION`, `SpineSnapshot.spineWidthSource`, `SpreadValidationResult`+`EditSessionMetadata.spreadValidation`.
+
+### 19.4 compose-mixed cover MediaBox 검증 + 분리 2파일 규칙 + totalWidthMm 결함수정 (`d81d3a7`, `8580b96`, P0-3)
+- **확정 비즈니스 규칙**: 스프레드 책 = `cover.pdf`(펼침면 전체: 뒷표지|책등|앞표지+날개) + `content.pdf` **분리 2파일**.
+- API `createComposeMixedJob`: 세션 `metadata.spread` 조회 → ①cover 검증 기대치(totalWidthMm/HeightMm/dpi) 큐 push, ②스프레드 책이면 `outputMode='separate'` **강제**(single은 cover 미출력 문제 해소).
+- Worker `handleComposeMixedSynthesis`(separate): `validateSpreadCoverSize` — cover.pdf MediaBox(pt→mm) ↔ 기대 총폭, 1쪽 가정 + tol=max(0.2mm,1px@dpi). SOFT(`result.coverSizeValidation` 기록)/HARD(`SPREAD_PDF_SIZE_MISMATCH` throw).
+- **🐞 가드가 검출한 실결함**: cover MediaBox 429.2mm vs 기대 428.6mm(0.6mm 과대). 원인: 책등 리사이즈 시 `updateSpreadSpineWidth`가 `spec.spineWidthMm`만 갱신하고 `SpreadConfig.totalWidthMm`는 stale → cover가 stale 총폭으로 생성. `computeSpreadDimensions`로 totalWidth/Height 동시 재계산하도록 수정 → cover가 정확히 428.6 생성(검증 ok:true).
+
+### 19.5 B48/B49(핵심=B49) — 스냅샷 ↔ 템플릿 권위 기하 대조 (`b53fc50`)
+- types `validateSpreadAgainstAuthority(candidate, authority)`: **책등(동적)·총폭 제외**, 표지 가로/세로·날개 기하만 ±0.2mm 대조(한쪽 없으면 통과=레거시 무영향).
+- `complete()`: `TemplateSetsService.findOneWithTemplates`로 spread 템플릿 `spreadConfig.spec` 권위 로드 → 스냅샷 spec 대조 → `metadata.spreadValidation.mismatches`(AUTHORITY_*)에 병합. SOFT/HARD(`TEMPLATE_SPEC_MISMATCH`). DI: `TemplatesModule` import(순환참조 없음).
+- **무결성 체인 완성**: 템플릿 권위 ⟵(B49) `metadata.spread` ⟵(P0-3) 실제 `cover.pdf` MediaBox.
+
+### 19.6 A13 — 제본별 페이지 가드 (`7453bb1`)
+`useEditorStore` `bindingType` 상태(기본 **null=제약없음** — perfect 기본값 금지로 비제본 32p 오적용 회귀 방지) + `canAddMorePages`/`canDeletePage`에 `BINDING_CONSTRAINTS` 적용(무선 min32 삭제차단, 중철 max64 추가차단). 책 로드 시 `config.bindingType`→`toBindingType` 주입, `SpreadPagePanel` 삭제가 `canDeletePage` 가드 경유 + 제본 안내 토스트. ※중철 4배수는 soft(후속).
+
+### 19.7 운영 플래그
+`SPREAD_SNAPSHOT_HARD_FAIL`(api+worker 공용, 기본 미설정=SOFT). HARD 승격 시 ①편집완료 스냅샷/권위 누락·불일치 차단(api) ②compose-mixed cover MediaBox 불일치 차단(worker). ⚠️ 승격 전 worker 컨테이너 ENV 주입 확인(`docker exec storige-worker printenv SPREAD_SNAPSHOT_HARD_FAIL`). 상세 `docs/DEPLOYMENT.md`.
+
+### 19.8 잔여 (P1 XL — 설계·적대적검증 완료, 구현 대기)
+- **내지 PDF 표시전용 임포지션**(제품결정: 표시전용·편집 미반영): 워커 GS 다중페이지 래스터 → 내지 캔버스 `excludeFromExport:true` 잠금배경. 게스트 인증·GS 타임아웃·N페이지 메모리 가드.
+- **영역 클릭 포커싱 편집**(PDF 핵심): SpreadPlugin mouse:down→getRegionAtX(좌표 origin 보정)→activeRegion+하이라이트+줌, embed.tsx 배선, 오버레이 excludeFromExport.
+
+### 19.9 핵심 파일 매핑
+| 영역 | 파일 |
+|---|---|
+| 스냅샷 직렬화 | `apps/editor/src/utils/buildSpreadSnapshots.ts`, `embed.tsx`(완료), `hooks/useWorkSave.ts` |
+| 책등→총폭 재계산 | `apps/editor/src/stores/useSettingsStore.ts` (`updateSpreadSpineWidth`) |
+| 스냅샷/권위 검증 | `apps/api/src/edit-sessions/edit-sessions.service.ts` (`validateSpreadSnapshot`, `compareSpreadWithTemplateAuthority`) |
+| cover MediaBox 검증 + separate 강제 | `apps/api/src/worker-jobs/worker-jobs.service.ts` (`createComposeMixedJob`), `apps/worker/src/processors/synthesis.processor.ts` (`validateSpreadCoverSize`) |
+| 제본 페이지 가드 | `apps/editor/src/stores/useEditorStore.ts`, `hooks/useEditorContents.ts`, `components/PagePanel/SpreadPagePanel.tsx` |
+| 공용 타입/공식 | `packages/types/src/index.ts` (`computeSpreadDimensions`, `validateSpreadAgainstAuthority`, `SPINE_FORMULA_VERSION`, `BINDING_CONSTRAINTS`, `SpreadSnapshot`/`SpineSnapshot`/`SpreadValidationResult`) |
+| woff2ToTtf | `apps/api/src/library/` (`POST /library/woff2ToTtf`), `packages/canvas-core/src/plugins/FontPlugin.ts` |
+| 운영 플래그 | `SPREAD_SNAPSHOT_HARD_FAIL` (api/worker `.env`) |

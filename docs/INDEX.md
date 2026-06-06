@@ -48,7 +48,7 @@
 
 | 문서 | 설명 |
 |------|------|
-| [`SYSTEM_INTEGRATION_OVERVIEW.md`](./SYSTEM_INTEGRATION_OVERVIEW.md) | 시스템 통합 개요 (v2.5 — 모니터링 + Node 22 추가) |
+| [`SYSTEM_INTEGRATION_OVERVIEW.md`](./SYSTEM_INTEGRATION_OVERVIEW.md) | 시스템 통합 개요 (v2.6 — 스프레드 책 인쇄 무결성 + 분리 2파일) |
 | [`SYSTEM_INTEGRATION_OVERVIEW.html`](./SYSTEM_INTEGRATION_OVERVIEW.html) | 시각화 |
 | [`SYSTEM_ARCHITECTURE.md`](./SYSTEM_ARCHITECTURE.md) | 전체 아키텍처 명세 |
 | [`PRD.md`](./PRD.md) | 제품 요구사항 |
@@ -85,6 +85,15 @@
 ---
 
 ## 📊 6. 사이클 보고서 (시간역순)
+
+### 🆕 2026-06-06~07 — 표지편집 전수 감사 + 스프레드 책 인쇄 무결성(P0 완료·P1 일부)
+| 문서 | 설명 |
+|------|------|
+| [`../.cursor/plans/COVER_EDIT_FULL_AUDIT_2026-06-06.md`](../.cursor/plans/COVER_EDIT_FULL_AUDIT_2026-06-06.md) | 표지편집 9차원 전수 감사(적대적검증) + P0/P1/P2 개선계획 + **진행 실행로그**(P0 3종·보너스 결함·B49·A13 완료) |
+| [`EDITOR.md`](./EDITOR.md) §19 | 인쇄 무결성 체인 상세: 프리즈 근본수정(metadata400+unit)·스냅샷 저장·compose-mixed cover MediaBox 검증·분리2파일 강제·totalWidthMm 결함수정·B49 권위대조·A13 제본가드·woff2ToTtf + 파일 매핑 |
+| [`SYSTEM_INTEGRATION_OVERVIEW.md`](./SYSTEM_INTEGRATION_OVERVIEW.md) v2.6 / [`.html`](./SYSTEM_INTEGRATION_OVERVIEW.html) | 통합문서 v2.6 — 무결성 체인 + 분리2파일 + Bookmoa 영향(separate 강제) |
+| [`DEPLOYMENT.md`](./DEPLOYMENT.md) | 운영 플래그 `SPREAD_SNAPSHOT_HARD_FAIL`(api+worker, SOFT→HARD) + worker ENV 주입 주의 |
+| bookmoa-mobile `docs/HANDOFF_storige_spread_integrity_2026-06-07.md` | **bookmoa 지시문** — 스프레드 책 separate 2파일 출력 대응 + order-design URL/다운로드 + (선택)검증결과 활용 |
 
 ### 🆕 2026-06-04 — 임베드 뒤로가기 무결성 + 호스트 핸드셰이크 + PDF 첨부 검증 감사
 | 문서 | 설명 |

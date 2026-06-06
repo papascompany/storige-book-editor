@@ -2,8 +2,18 @@
 
 > **작성일**: 2026-05-02  
 > **최종 수정**: 2026-05-04 (v2.5 — 운영 인프라 + 모니터링 스택 + Node 22 추가)  
-> **버전**: v2.5  
+> **버전**: v2.6  
 > **대상**: PHP 개발자, 운영자, 기술 검토자
+
+> ### 🔄 v2.6 변경 이력 (2026-06-07) — 스프레드 책 인쇄 무결성
+> 전수 감사 후 스프레드(펼침면) 책의 인쇄사고 방지장치를 실가동(전부 **SOFT** 1차, 운영 ENV `SPREAD_SNAPSHOT_HARD_FAIL=true` 로 HARD 승격). 상세: [`EDITOR.md §19`](./EDITOR.md), `../.cursor/plans/COVER_EDIT_FULL_AUDIT_2026-06-06.md`.
+> - **편집완료 프리즈 근본수정**: '렌더러 프리즈' 오진 정정 → 커버 업로드 metadata 400(`@Transform`) + 내지 unit TypeError(옵셔널체이닝) 2건 수정.
+> - **출력재현 단일소스**: 편집기 완료 시 `EditSession.metadata.spread`/`metadata.spine` 스냅샷 저장. 완료 검증 게이트를 `mode===SPREAD`→`metadata.spread 존재` 로 전환(SOFT 기록 `metadata.spreadValidation`).
+> - **스프레드 책 = 분리 2파일**: API `compose-mixed` 가 스프레드 책에 `outputMode='separate'` **강제** → `cover.pdf`(펼침면 전체) + `content.pdf` 분리 출력. 워커가 `cover.pdf` MediaBox ↔ 펼침면 총폭(metadata.spread) **무결성 검증**(tol max(0.2mm,1px@dpi)).
+> - **무결성 체인**: 템플릿 권위(`spreadConfig.spec`) ⟵(B49) `metadata.spread` ⟵(P0-3) 실제 `cover.pdf` MediaBox. 책등 가변폭 결함(cover 0.6mm 과대) 1건 검출·수정.
+> - **제본 페이지 가드(A13)**: 편집기에서 무선 32p 최소·중철 64p 최대 강제(미설정 상품 무영향).
+> - **woff2ToTtf 엔드포인트** 신설(`POST /library/woff2ToTtf`). 운영 플래그 `SPREAD_SNAPSHOT_HARD_FAIL` 추가([`DEPLOYMENT.md`](./DEPLOYMENT.md)).
+> - **⚠️ Bookmoa 영향**: 스프레드 책은 이제 서버가 `separate` 출력을 강제(`single` 전송해도 무시) → 합성 결과가 `cover.pdf`+`content.pdf` 2파일. 지시문: bookmoa-mobile `docs/HANDOFF_storige_spread_integrity_2026-06-07.md`.
 
 > ### 🔄 v2.5 변경 이력 (2026-05-04)
 > - **런타임 통일**: Node 20 → **Node 22 LTS** (Jod, EOL 2027-04-30) + canvas dead dep 제거

@@ -393,7 +393,7 @@
   <div class="badge-row">
     <span class="badge blue">📄 기술 문서</span>
     <span class="badge green">v2.6</span>
-    <span class="badge">2026-06-03</span>
+    <span class="badge">2026-06-07</span>
     <span class="badge">PHP 개발자용</span>
   </div>
   <h1>Storige <span>×</span> Bookmoa<br>시스템 통합 문서</h1>
@@ -440,6 +440,82 @@
 
 <!-- ══════════════════════════════ 콘텐츠 ══════════════════════════════ -->
 <main class="content">
+
+<!-- ─────────────── 변경 이력: v2.6 ─────────────── -->
+<section class="section" id="changelog-v26">
+  <h2 class="section-title">
+    <span class="num" style="background:rgba(34,197,94,.2);color:var(--green2)">v2.6</span>
+    v2.6 (2026-06-07) — 스프레드 책 인쇄 무결성
+  </h2>
+
+  <div class="badge-row" style="margin-bottom:20px">
+    <span class="tag new">PRINT INTEGRITY</span>
+    <span class="tag added">SPREAD SNAPSHOT</span>
+    <span class="tag warn">BOOKMOA 영향</span>
+  </div>
+
+  <p class="desc">
+    스프레드(펼침 표지) 책의 <strong>편집완료 → 합성 → 출력</strong> 전 구간을 단일 소스로 묶고,
+    템플릿 사양부터 실제 <code class="inline">cover.pdf</code> 까지의 폭을 검증하는 무결성 체인을 도입했습니다.
+  </p>
+
+  <div class="info-box red">
+    <div class="icon">🔥</div>
+    <div class="ib-content">
+      <div class="ib-title">편집완료 '프리즈' 근본수정</div>
+      렌더러 프리즈는 <strong>오진</strong>이었습니다. 실제 원인은 (1) 커버 업로드 metadata
+      <code class="inline">400</code>(<code class="inline">@Transform</code>) + (2) 내지 unit
+      <code class="inline">TypeError</code>(옵셔널 체이닝) 2건으로, 두 결함을 모두 수정했습니다.
+    </div>
+  </div>
+
+  <div class="info-box green">
+    <div class="icon">📸</div>
+    <div class="ib-content">
+      <div class="ib-title">출력재현 단일소스 — EditSession 스냅샷</div>
+      편집기 완료 시 <code class="inline">EditSession.metadata.spread</code> /
+      <code class="inline">metadata.spine</code> 스냅샷을 저장합니다.
+      완료 검증 게이트를 <code class="inline">mode === SPREAD</code> →
+      <code class="inline">metadata.spread</code> 존재 여부로 전환했습니다.
+    </div>
+  </div>
+
+  <div class="info-box blue">
+    <div class="icon">📄</div>
+    <div class="ib-content">
+      <div class="ib-title">스프레드 책 = 분리 2파일</div>
+      API <code class="inline">compose-mixed</code> 가 스프레드 책에
+      <code class="inline">outputMode='separate'</code> 를 강제합니다 →
+      <code class="inline">cover.pdf</code>(펼침면 전체: 뒷표지 | 책등 | 앞표지 + 날개) +
+      <code class="inline">content.pdf</code>.
+      워커는 <code class="inline">cover.pdf</code> MediaBox ↔ 펼침면 총폭(<code class="inline">metadata.spread</code>)
+      무결성을 검증합니다(허용오차 <code class="inline">max(0.2mm, 1px@dpi)</code>).
+    </div>
+  </div>
+
+  <h3 class="sub-title" style="color:var(--text)"><span style="display:inline-block;width:3px;height:18px;border-radius:2px;background:var(--green)"></span>무결성 체인</h3>
+  <p class="desc" style="margin-bottom:12px">
+    템플릿 권위(<code class="inline">spreadConfig.spec</code>)
+    ⟵(B49) <code class="inline">metadata.spread</code>
+    ⟵(P0-3) 실제 <code class="inline">cover.pdf</code> MediaBox.
+    이 체인으로 책등 가변폭 결함(<code class="inline">cover</code> 0.6mm 과대) 1건을 검출·수정했습니다.
+  </p>
+
+  <ul style="color:var(--text2);font-size:14px;line-height:1.9;padding-left:20px;margin-bottom:20px">
+    <li><strong>제본 페이지 가드(A13)</strong> — 무선 32p 최소 · 중철 64p 최대를 강제합니다(미설정 상품은 무영향).</li>
+    <li><strong><code class="inline">woff2ToTtf</code> 엔드포인트 신설</strong> — PDF 텍스트 아웃라인화용 폰트 변환 경로 추가.</li>
+    <li><strong>운영 플래그 <code class="inline">SPREAD_SNAPSHOT_HARD_FAIL</code></strong> — 기본 <code class="inline">SOFT</code>, <code class="inline">true</code> 설정 시 <code class="inline">HARD</code> 차단.</li>
+  </ul>
+
+  <div class="info-box yellow">
+    <div class="icon">⚠️</div>
+    <div class="ib-content">
+      <div class="ib-title">Bookmoa 영향 (Breaking)</div>
+      스프레드 책은 서버가 <code class="inline">separate</code> 출력을 강제합니다(<code class="inline">single</code> 로 전송해도 무시) →
+      합성 결과가 <code class="inline">cover.pdf</code> + <code class="inline">content.pdf</code> <strong>2파일</strong>로 반환됩니다.
+    </div>
+  </div>
+</section>
 
 <!-- ─────────────── ① 시스템 구성도 ─────────────── -->
 <section class="section" id="s1">
