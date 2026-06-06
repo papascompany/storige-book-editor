@@ -58,6 +58,10 @@ interface SynthesisJobData {
   composeContentHeightMm?: number;
   /** 출력 모드: separate(표지+내지), content-only(내지만), single(낱장) */
   composeOutputMode?: 'separate' | 'content-only' | 'single';
+  /** P0-3: 스프레드 책 cover(펼침면 전체) MediaBox 무결성 검증 기대치 (API가 세션 metadata.spread 에서 push). 부재=비스프레드 → 검증 skip */
+  composeSpreadTotalWidthMm?: number;
+  composeSpreadTotalHeightMm?: number;
+  composeSpreadDpi?: number;
 }
 
 // FilesService 인터페이스 (Worker에서 DB 조회용)
@@ -128,6 +132,9 @@ export class SynthesisProcessor {
       composeContentWidthMm,
       composeContentHeightMm,
       composeOutputMode,
+      composeSpreadTotalWidthMm,
+      composeSpreadTotalHeightMm,
+      composeSpreadDpi,
     } = job.data;
     const jobId = job.data.jobId;
     const queueJobId = job.id;
@@ -190,6 +197,8 @@ export class SynthesisProcessor {
 
       let result: SynthesisResult;
       const outputFiles: OutputFile[] = [];
+      // P0-3: 스프레드 cover MediaBox 검증 결과(있으면 result 에 기록). 비스프레드/skip 시 undefined.
+      let coverSizeValidation: Record<string, unknown> | undefined;
 
       if (outputMode === 'separate') {
         // 일반 책자: cover.pdf + content.pdf
@@ -197,6 +206,16 @@ export class SynthesisProcessor {
         if (composeCoverEditable !== false && composeCoverUrl) {
           const coverBytes = await this.synthesizerService.downloadFile(composeCoverUrl);
           const coverDoc = await PDFDocument.load(coverBytes);
+          // P0-3: 스프레드 책이면(API가 metadata.spread 기대치를 push) 펼침면 cover MediaBox 무결성 검증.
+          if (composeSpreadTotalWidthMm && composeSpreadTotalHeightMm) {
+            coverSizeValidation = this.validateSpreadCoverSize(
+              jobId,
+              coverDoc,
+              composeSpreadTotalWidthMm,
+              composeSpreadTotalHeightMm,
+              composeSpreadDpi,
+            );
+          }
           const pages = await coverPdf.copyPages(coverDoc, coverDoc.getPageIndices());
           pages.forEach((p) => coverPdf.addPage(p));
         } else {
@@ -278,7 +297,7 @@ export class SynthesisProcessor {
       await this.updateJobStatus(jobId, {
         status: 'COMPLETED',
         outputFileUrl: result.outputFileUrl,
-        result: { ...result, capability: 'compose-mixed', outputMode, outputFiles } as any,
+        result: { ...result, capability: 'compose-mixed', outputMode, outputFiles, coverSizeValidation } as any,
         queueJobId,
       });
 
@@ -290,6 +309,74 @@ export class SynthesisProcessor {
       await this.updateJobStatus(jobId, { status: 'FAILED', errorMessage: error.message });
       throw error;
     }
+  }
+
+  /**
+   * P0-3: 스프레드 책 cover(펼침면 전체) MediaBox 무결성 검증.
+   * cover.pdf 의 실제 페이지 크기(MediaBox)를 세션 metadata.spread 의 기대 펼침면 총폭/총높이와 대조.
+   * 펼침면 cover 는 1페이지(뒷표지|책등|앞표지(+날개))여야 하고, 폭/높이가 기대치 ±tol(B43=max(0.2mm,1px@dpi)) 이내여야 한다.
+   *
+   * SOFT(기본): 불일치를 결과로 기록 + logger.warn, throw 안 함(합성 계속).
+   * HARD(env SPREAD_SNAPSHOT_HARD_FAIL='true'): 불일치 시 DomainError(SPREAD_PDF_SIZE_MISMATCH) throw → 잡 FAILED(잘못된 크기 인쇄 차단).
+   */
+  private validateSpreadCoverSize(
+    jobId: string,
+    coverDoc: PDFDocument,
+    expectedWidthMm: number,
+    expectedHeightMm: number,
+    dpi?: number,
+  ): Record<string, unknown> {
+    const hardFail = process.env.SPREAD_SNAPSHOT_HARD_FAIL === 'true';
+    const useDpi = dpi || 300;
+    const toleranceMm = Math.max(0.2, (1 / useDpi) * 25.4);
+    const mismatches: string[] = [];
+    const pageCount = coverDoc.getPageCount();
+    let actualWidthMm: number | undefined;
+    let actualHeightMm: number | undefined;
+
+    if (pageCount !== 1) {
+      // 펼침면 cover 단일페이지 가정 위반(0페이지=손상, 2+=다면) → 명백한 cover 오류
+      mismatches.push(`COVER_PAGE_COUNT: ${pageCount}쪽 (펼침면 cover 는 1쪽이어야 함)`);
+    } else {
+      const { width: wPt, height: hPt } = coverDoc.getPage(0).getSize();
+      actualWidthMm = Number(((wPt * 25.4) / 72).toFixed(2));
+      actualHeightMm = Number(((hPt * 25.4) / 72).toFixed(2));
+      if (Math.abs(actualWidthMm - expectedWidthMm) > toleranceMm) {
+        mismatches.push(`WIDTH: ${actualWidthMm}mm vs 기대 ${expectedWidthMm}mm`);
+      }
+      if (Math.abs(actualHeightMm - expectedHeightMm) > toleranceMm) {
+        mismatches.push(`HEIGHT: ${actualHeightMm}mm vs 기대 ${expectedHeightMm}mm`);
+      }
+    }
+
+    const validation = {
+      ok: mismatches.length === 0,
+      mode: hardFail ? 'hard' : 'soft',
+      expectedWidthMm,
+      expectedHeightMm,
+      actualWidthMm,
+      actualHeightMm,
+      toleranceMm: Number(toleranceMm.toFixed(2)),
+      mismatches,
+    };
+
+    if (mismatches.length > 0) {
+      this.logger.warn(
+        `[${jobId}] SPREAD cover MediaBox ${hardFail ? 'HARD' : 'SOFT'} 불일치: ${mismatches.join(' | ')}`,
+      );
+      if (hardFail) {
+        throw new DomainError(
+          ErrorCodes.SPREAD_PDF_SIZE_MISMATCH,
+          `스프레드 cover 크기 불일치: ${mismatches.join(' | ')}`,
+        );
+      }
+    } else {
+      this.logger.log(
+        `[${jobId}] SPREAD cover MediaBox 검증 통과 (${actualWidthMm}x${actualHeightMm}mm, tol ${validation.toleranceMm}mm)`,
+      );
+    }
+
+    return validation;
   }
 
   /**
