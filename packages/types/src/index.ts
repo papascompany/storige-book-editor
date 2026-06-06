@@ -1065,6 +1065,41 @@ export function computeSpreadDimensions(spec: SpreadSpec): SpreadDimensions {
   };
 }
 
+/**
+ * B48/B49: 클라이언트가 제출한 스프레드 스펙(스냅샷)을 권위 스펙(Template.spreadConfig.spec)과 대조.
+ *
+ * ⚠️ 책등(spineWidthMm)·총폭(totalWidthMm)은 **비교하지 않는다** — 책등은 주문 페이지수/용지에 따라
+ *    동적으로 결정되므로 정적 템플릿 스펙과 다른 게 정상이다. 템플릿이 고정하는 **기하(표지 가로/세로,
+ *    날개 유무/폭)만** 허용오차 내 일치를 검증한다.
+ *
+ * @param candidate 클라이언트 제출 스펙(metadata.spread.spec 등)
+ * @param authority 권위 스펙(템플릿 spreadConfig.spec)
+ * @param toleranceMm 허용오차(기본 0.2mm)
+ * @returns { ok, mismatches } — mismatches 가 비면 일치
+ */
+export function validateSpreadAgainstAuthority(
+  candidate: Pick<SpreadSpec, 'coverWidthMm' | 'coverHeightMm' | 'wingEnabled' | 'wingWidthMm'> | null | undefined,
+  authority: Pick<SpreadSpec, 'coverWidthMm' | 'coverHeightMm' | 'wingEnabled' | 'wingWidthMm'> | null | undefined,
+  toleranceMm = 0.2,
+): { ok: boolean; mismatches: string[] } {
+  const mismatches: string[] = [];
+  // 한쪽이라도 없으면 검증 불가 → PASS(레거시/비스프레드 무영향)
+  if (!candidate || !authority) return { ok: true, mismatches };
+  const near = (a: number, b: number) => Math.abs((a ?? 0) - (b ?? 0)) <= toleranceMm;
+  if (!near(candidate.coverWidthMm, authority.coverWidthMm)) {
+    mismatches.push(`COVER_WIDTH_MISMATCH: ${candidate.coverWidthMm}mm vs 권위 ${authority.coverWidthMm}mm`);
+  }
+  if (!near(candidate.coverHeightMm, authority.coverHeightMm)) {
+    mismatches.push(`COVER_HEIGHT_MISMATCH: ${candidate.coverHeightMm}mm vs 권위 ${authority.coverHeightMm}mm`);
+  }
+  if (!!candidate.wingEnabled !== !!authority.wingEnabled) {
+    mismatches.push(`WING_ENABLED_MISMATCH: ${candidate.wingEnabled} vs 권위 ${authority.wingEnabled}`);
+  } else if (authority.wingEnabled && !near(candidate.wingWidthMm, authority.wingWidthMm)) {
+    mismatches.push(`WING_WIDTH_MISMATCH: ${candidate.wingWidthMm}mm vs 권위 ${authority.wingWidthMm}mm`);
+  }
+  return { ok: mismatches.length === 0, mismatches };
+}
+
 // ============================================================================
 // 권한 관련 타입
 // ============================================================================

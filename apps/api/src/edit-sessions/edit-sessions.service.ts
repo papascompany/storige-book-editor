@@ -26,7 +26,8 @@ import {
   ExternalSessionFilesDto,
 } from './dto/external-session-response.dto';
 import { WorkerJobsService } from '../worker-jobs/worker-jobs.service';
-import { WorkerJobStatus, type SpreadValidationResult } from '@storige/types';
+import { WorkerJobStatus, type SpreadValidationResult, validateSpreadAgainstAuthority } from '@storige/types';
+import { TemplateSetsService } from '../templates/template-sets.service';
 
 @Injectable()
 export class EditSessionsService {
@@ -37,7 +38,32 @@ export class EditSessionsService {
     private sessionRepository: Repository<EditSessionEntity>,
     @Inject(forwardRef(() => WorkerJobsService))
     private workerJobsService: WorkerJobsService,
+    private templateSetsService: TemplateSetsService,
   ) {}
+
+  /**
+   * B49: 세션의 출력재현 스냅샷(metadata.spread.spec)을 템플릿 권위 스펙(spreadConfig.spec)과 대조.
+   * 책등은 동적이라 제외하고 표지 가로/세로·날개 기하만 검증. 권위 미해결(레거시/비스프레드/스펙부재) 시 빈 배열(통과).
+   */
+  private async compareSpreadWithTemplateAuthority(
+    session: EditSessionEntity,
+  ): Promise<string[]> {
+    try {
+      const candidate = (session.metadata as any)?.spread?.spec;
+      if (!session.templateSetId || !candidate) return [];
+      const { templateDetails } = await this.templateSetsService.findOneWithTemplates(
+        session.templateSetId,
+      );
+      const spreadTpl = templateDetails.find((t) => t.type === ('spread' as any));
+      const authority = spreadTpl?.spreadConfig?.spec;
+      if (!authority) return []; // 권위 스펙 없음 → 검증 불가(통과)
+      const { mismatches } = validateSpreadAgainstAuthority(candidate, authority);
+      return mismatches.map((m) => 'AUTHORITY_' + m);
+    } catch (e) {
+      this.logger.warn(`[spread-spec] 권위 대조 skip(완료는 계속): ${(e as Error).message}`);
+      return [];
+    }
+  }
 
   /**
    * 편집 세션 생성
@@ -399,6 +425,23 @@ export class EditSessionsService {
       session.mode === SessionMode.SPREAD || !!session.metadata?.spread;
     if (isBookSession) {
       const validation = this.validateSpreadSnapshot(session);
+      // B49: 스냅샷 spec 을 템플릿 권위 기하(표지 가로/세로·날개, 책등 제외)와 대조해 병합.
+      const authorityMismatches = await this.compareSpreadWithTemplateAuthority(session);
+      if (authorityMismatches.length > 0) {
+        validation.ok = false;
+        validation.mismatches = [...validation.mismatches, ...authorityMismatches];
+        const hardFail = process.env.SPREAD_SNAPSHOT_HARD_FAIL === 'true';
+        this.logger.warn(
+          `[spread-spec] session ${session.id} 템플릿 권위 불일치 ${hardFail ? 'HARD' : 'SOFT'}: ${authorityMismatches.join(' | ')}`,
+        );
+        if (hardFail) {
+          throw new BadRequestException({
+            code: 'TEMPLATE_SPEC_MISMATCH',
+            message: '스프레드 스펙이 템플릿 권위(spreadConfig)와 불일치합니다.',
+            mismatches: authorityMismatches,
+          });
+        }
+      }
       session.metadata = { ...(session.metadata ?? {}), spreadValidation: validation };
     }
 
