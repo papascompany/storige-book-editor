@@ -744,14 +744,22 @@ per-character `styles`(이탤릭·부분색)는 직렬화 리스트(`packages/ca
 ### 19.7 운영 플래그
 `SPREAD_SNAPSHOT_HARD_FAIL`(api+worker 공용, 기본 미설정=SOFT). HARD 승격 시 ①편집완료 스냅샷/권위 누락·불일치 차단(api) ②compose-mixed cover MediaBox 불일치 차단(worker). ⚠️ 승격 전 worker 컨테이너 ENV 주입 확인(`docker exec storige-worker printenv SPREAD_SNAPSHOT_HARD_FAIL`). 상세 `docs/DEPLOYMENT.md`.
 
-### 19.8 잔여 (P1 XL — 설계·적대적검증 완료, 구현 대기)
-- **내지 PDF 표시전용 임포지션**(제품결정: 표시전용·편집 미반영): 워커 GS 다중페이지 래스터 → 내지 캔버스 `excludeFromExport:true` 잠금배경. 게스트 인증·GS 타임아웃·N페이지 메모리 가드.
-- **영역 클릭 포커싱 편집**(PDF 핵심): SpreadPlugin mouse:down→getRegionAtX(좌표 origin 보정)→activeRegion+하이라이트+줌, embed.tsx 배선, 오버레이 excludeFromExport.
+### 19.8 영역 클릭 포커싱 편집 (PDF 핵심, `af69ac5`)
+통합 펼침면에서 영역(뒷표지/책등/앞표지/날개) 클릭 → 해당 영역 하이라이트 포커싱. **SpreadPlugin 단독 구현**(canvas-core)이라 편집기/embed UI 배선 불필요 → `/embed` 자동 작동:
+- `mouse:down` 핸들러: 빈 영역(시스템/워크스페이스/배경) 클릭 → `getRegionAtPoint`(scene→content 좌표 변환 캡슐화)로 영역 판정 → 하이라이트 오버레이 + `spreadRegionFocus` 이벤트. 같은 영역 재클릭=토글 해제. 사용자 객체 클릭/팬/alt는 비개입(선택/이동 보존, DraggingPlugin 충돌 가드).
+- Public API: `getRegionAtPoint`/`focusRegion`/`clearFocus`/`getFocusedRegion`. `getRegionAtX`는 `@deprecated`.
+- **저장오염 근원 해소**: 가이드/라벨/포커스 오버레이에 `excludeFromExport:true`(재로드 시 중복·유령 객체 방지).
+- 라이브 검증: /embed 재현 — 앞표지/뒷표지 클릭 시 해당 영역 하이라이트·전환 확인. canvas-core 214 테스트 통과.
+- ※줌(viewport)·S1 사이드바 버튼·S4 신규객체 강제앵커링은 후속(리스크 격리).
 
-### 19.9 핵심 파일 매핑
+### 19.9 잔여 (P1 XL — 설계·적대적검증 완료, 구현 대기)
+- **내지 PDF 표시전용 임포지션**(제품결정: 표시전용·편집 미반영): 첨부 내지 PDF를 내지 캔버스에 `excludeFromExport:true` 잠금배경(가이드)으로 표시(최종 인쇄는 원본 그대로). 워커 GS 다중페이지 래스터(또는 클라 pdfjs) + 게스트 인증·타임아웃·N페이지 메모리 가드 필요.
+
+### 19.10 핵심 파일 매핑
 | 영역 | 파일 |
 |---|---|
 | 스냅샷 직렬화 | `apps/editor/src/utils/buildSpreadSnapshots.ts`, `embed.tsx`(완료), `hooks/useWorkSave.ts` |
+| 영역 클릭 포커싱 | `packages/canvas-core/src/plugins/SpreadPlugin.ts` (`handleRegionClick`/`getRegionAtPoint`/`focusRegion`/`renderFocusOverlay`) |
 | 책등→총폭 재계산 | `apps/editor/src/stores/useSettingsStore.ts` (`updateSpreadSpineWidth`) |
 | 스냅샷/권위 검증 | `apps/api/src/edit-sessions/edit-sessions.service.ts` (`validateSpreadSnapshot`, `compareSpreadWithTemplateAuthority`) |
 | cover MediaBox 검증 + separate 강제 | `apps/api/src/worker-jobs/worker-jobs.service.ts` (`createComposeMixedJob`), `apps/worker/src/processors/synthesis.processor.ts` (`validateSpreadCoverSize`) |
