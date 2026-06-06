@@ -144,3 +144,22 @@
 검증: types/api/editor/worker 빌드 통과 · edit-sessions.service.spec 8/8 · buildSpreadSnapshots 7/7 · **프로덕션 E2E**: 스프레드 편집완료 재현 → 세션 metadata에 spread/spine/spreadValidation(ok:true, gate:metadata-spread, mode:soft) 기록 + spineWidthSource:'formula' + totalWidthMm 정확(214×2+0.6=428.6) 확인. DB ALTER 0건(metadata=JSON).
 
 → **다음**: P0 Step 2 = P0-3(실출력 compose-mixed MediaBox 하드검증, soft→hard 단계) → 이후 `SPREAD_SNAPSHOT_HARD_FAIL=true` 승격.
+
+### ✅ P0 Step 2 — compose-mixed 스프레드 cover MediaBox 무결성 검증(SOFT) + 분리 2파일 규칙 강제 (완료·배포·라이브검증, 2026-06-07, 커밋 `d81d3a7`)
+재설계 필요했음: 1차 설계(게이트 `outputMode==='separate'`)가 **FLAWED** — bookmoa는 스프레드 책을 `outputMode='single'`로 보내고 single 분기는 cover 미로드/미출력. 운영DB 확인 결과 스프레드 합성은 **프로덕션 미실행**(오늘 프리즈 수정 전까지 스프레드 편집완료 불가). CTO 확정 비즈니스 규칙(**스프레드 책 = cover.pdf[펼침면 전체:뒷표지|책등|앞표지+날개] + content.pdf "분리 2파일"**)으로 재설계.
+
+구현(API+Worker):
+- **API `createComposeMixedJob`**: 세션 `metadata.spread`(Step1 스냅샷) 조회 → ①cover 검증 기대치(`spreadTotalWidthMm/HeightMm/dpi`) 큐 push, ②스프레드 책(coverEditable)이면 `outputMode`를 **'separate' 강제**(편집기 펼침면 cover가 출력에서 누락되지 않게). best-effort try/catch(잡 생성 무중단).
+- **Worker `handleComposeMixedSynthesis`(separate 분기)**: coverDoc 로드 직후 `validateSpreadCoverSize` — 1쪽 가정 + MediaBox(pt→mm) ↔ 기대치, tol=max(0.2mm,1px@dpi). **SOFT**(기본): `result.coverSizeValidation` 기록 + warn, throw 금지. **HARD**(`SPREAD_SNAPSHOT_HARD_FAIL=true`): `SPREAD_PDF_SIZE_MISMATCH` throw→잡 FAILED.
+
+게이트: `metadata.spread 존재 AND 펼침면 cover 입력`. 비스프레드/레더(content-only)/빈표지 폴백 자동 skip. cover=펼침면 전체폭이라 2배 오탐 없음.
+
+**라이브 E2E(프로덕션, soft)**: compose-mixed 직접 호출로 검증 — outputMode 'separate' 강제 ✅, 기대치 428.6 push ✅, **PASS**(cover 428.6 → `ok:true, mismatches:[]`) ✅, **MISMATCH 3종**(35.28/209.97/429.2mm → `ok:false` 정밀 mm 기록) ✅, 전부 SOFT COMPLETED(무차단) ✅.
+
+### 🐞 보너스 — P0-3 가드가 실제 인쇄크기 결함 1건 검출·수정 (커밋 `8580b96`)
+첫 실제 cover 검증에서 cover MediaBox **429.2mm vs 기대 428.6mm(0.6mm 과대)** 검출. 근본원인: `useSettingsStore.updateSpreadSpineWidth`가 책등 리사이즈(1.2→0.6mm) 시 `spec.spineWidthMm`만 갱신하고 `SpreadConfig.totalWidthMm`는 stale(429.2) → cover 생성이 stale 총폭 사용. 수정: `computeSpreadDimensions`로 `totalWidthMm/totalHeightMm` 동시 재계산. 검증: 수정 후 cover가 `428.6 x 301`로 생성 → MediaBox 검증 `ok:true`. (SOFT 우선 배포의 가치 — HARD였다면 모든 스프레드 합성이 차단됐을 결함을 무중단 검출)
+
+### ⚠️ HARD 승격 선결조건 (운영)
+`SPREAD_SNAPSHOT_HARD_FAIL=true`는 API(완료시점)+Worker(MediaBox) 양쪽을 동시 승격하나, **worker 컨테이너에 ENV가 주입되는지 확인 필요**: `docker exec storige-worker printenv SPREAD_SNAPSHOT_HARD_FAIL`. 미주입 시 docker-compose.yml worker 서비스 environment에 추가. SOFT 기간 `worker_jobs.result.coverSizeValidation.ok=false` 빈도 모니터링 후 승격.
+
+### P0 종합: 3개 핵심(스냅샷 저장 → 게이트 전환 → compose-mixed 실검증) 전부 SOFT로 실가동 + 실제 결함 1건 수정. 인쇄사고 방지장치가 "코드엔 있으나 실가동 0%" → **실가동(SOFT)**. HARD 승격은 모니터링 후 ENV 1개로.
