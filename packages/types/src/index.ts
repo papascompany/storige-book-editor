@@ -1367,6 +1367,12 @@ export interface RegionRefResult {
 // ============================================================================
 
 /**
+ * 책등 공식 버전. editor 저장·api/worker 검증 공용 단일 상수.
+ * 책등 계산 공식(calculateSpineWidth)이 바뀌면 bump 한다. (formulaVersion 추적용)
+ */
+export const SPINE_FORMULA_VERSION = '1.0' as const;
+
+/**
  * 책등 스냅샷 (EditSession.metadata.spine)
  */
 export interface SpineSnapshot {
@@ -1375,6 +1381,11 @@ export interface SpineSnapshot {
   bindingType: string;
   spineWidthMm: number;
   formulaVersion: string;
+  /**
+   * spineWidthMm 출처. 'formula'=책등공식 계산값과 일치, 'manual'=사용자/수동 조정으로 공식값과 불일치.
+   * (옵셔널 — 검증자는 위 5필드만 truthy 확인하므로 하위호환 유지. hard 승격 시 정책 판단용)
+   */
+  spineWidthSource?: 'formula' | 'manual';
 }
 
 /**
@@ -1388,11 +1399,24 @@ export interface SpreadSnapshot {
 }
 
 /**
+ * 스프레드 스냅샷 검증 결과 (EditSession.metadata.spreadValidation)
+ * P0-2: 완료 시 서버가 스냅샷 무결성을 SOFT(경고/기록) 또는 HARD(차단)로 검증한 결과.
+ */
+export interface SpreadValidationResult {
+  ok: boolean;
+  checkedAt: string;                                          // ISO timestamp
+  gate: 'session-mode' | 'metadata-spread';                  // 어떤 게이트로 검증 진입했는지
+  mismatches: string[];                                       // 누락/불일치 사유 코드·메시지
+  mode: 'soft' | 'hard';                                      // 적용 검증 모드
+}
+
+/**
  * 편집 세션 메타데이터
  */
 export interface EditSessionMetadata {
   spine?: SpineSnapshot;
   spread?: SpreadSnapshot;
+  spreadValidation?: SpreadValidationResult;
 }
 
 // ============================================================================

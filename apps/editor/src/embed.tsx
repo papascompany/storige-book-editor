@@ -28,6 +28,7 @@ import { useEditorContents } from './hooks/useEditorContents'
 import { useEmbedAutoSave } from './hooks/useEmbedAutoSave'
 import { useEmbedBackGuard } from './hooks/useEmbedBackGuard'
 import { createCanvas } from './utils/createCanvas'
+import { buildSpreadSnapshots } from './utils/buildSpreadSnapshots'
 import { templatesApi, editSessionsApi, filesApi, apiClient, type EditSessionResponse } from './api'
 import { core, ServicePlugin } from '@storige/canvas-core'
 import type { ApiError } from './api/client'
@@ -1024,10 +1025,20 @@ function EmbeddedEditor({
             }
 
             if (coverFileId || contentFileId) {
+              // B38 출력재현 단일소스: metadata.spread/spine 스냅샷 저장(additive). 실패해도 완료 무중단.
+              const snapshots = buildSpreadSnapshots(
+                spreadCfg,
+                useSettingsStore.getState().spineConfig,
+                innerCanvases.length,
+              )
               await editSessionsApi.update(currentSessionId, {
                 ...(coverFileId ? { coverFileId } : {}),
                 ...(contentFileId ? { contentFileId } : {}),
-                metadata: { spreadContentPageCount: innerCanvases.length },
+                metadata: {
+                  spreadContentPageCount: innerCanvases.length,
+                  ...(snapshots.spread ? { spread: snapshots.spread } : {}),
+                  ...(snapshots.spine ? { spine: snapshots.spine } : {}),
+                },
               })
             }
             console.log('[EmbeddedEditor] Spread PDFs 결과 — cover:', coverFileId, 'content:', contentFileId)

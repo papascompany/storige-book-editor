@@ -26,7 +26,7 @@ import {
   ExternalSessionFilesDto,
 } from './dto/external-session-response.dto';
 import { WorkerJobsService } from '../worker-jobs/worker-jobs.service';
-import { WorkerJobStatus } from '@storige/types';
+import { WorkerJobStatus, type SpreadValidationResult } from '@storige/types';
 
 @Injectable()
 export class EditSessionsService {
@@ -389,9 +389,17 @@ export class EditSessionsService {
       });
     }
 
-    // 스프레드 모드 스냅샷 검증 (하드 실패)
-    if (session.mode === SessionMode.SPREAD) {
-      this.validateSpreadSnapshot(session);
+    // 스프레드 책 스냅샷 검증.
+    // 게이트: session.mode===SPREAD(PHP/worker 합성 경로) 또는 metadata.spread 존재(편집기 책 완료 경로).
+    //   편집기는 책 완료 시에도 mode 를 'both'/'cover' 로 보내 SessionMode.SPREAD 가 안 걸리므로
+    //   metadata.spread 존재로 편집기 책 완료를 포착한다(P0-1 이 metadata.spread 를 채움).
+    // 기본 SOFT: 누락/불일치를 경고·기록만(throw 금지) → 기존 주문 무중단.
+    //   env SPREAD_SNAPSHOT_HARD_FAIL='true' 일 때만 HARD(차단)로 승격(P0-3 이후).
+    const isBookSession =
+      session.mode === SessionMode.SPREAD || !!session.metadata?.spread;
+    if (isBookSession) {
+      const validation = this.validateSpreadSnapshot(session);
+      session.metadata = { ...(session.metadata ?? {}), spreadValidation: validation };
     }
 
     session.status = SessionStatus.COMPLETE;
@@ -416,42 +424,69 @@ export class EditSessionsService {
   }
 
   /**
-   * 스프레드 모드 스냅샷 검증 (필수 필드 누락 시 하드 실패)
+   * 스프레드 책 스냅샷 무결성 검증.
+   *
+   * 검증 항목(하드 승격 시 차단 사유):
+   *  - metadata.spine: spineWidthMm/pageCount/paperType/bindingType/formulaVersion 5필드 truthy
+   *  - metadata.spread: spec/totalWidthMm/totalHeightMm/dpi 4필드 truthy
+   *
+   * 모드:
+   *  - SOFT(기본): 누락/불일치를 mismatches 에 누적하고 logger.warn 만(throw 금지) → 완료 무중단.
+   *  - HARD: env SPREAD_SNAPSHOT_HARD_FAIL='true' 일 때, mismatches 가 있으면 BadRequestException 으로 차단.
+   * 검증 로직은 하나로 유지하고 throw 여부만 토글 → P0-3 이후 ENV 만 켜서 hard 승격(인쇄사고 방지).
+   *
+   * @returns SpreadValidationResult — 호출측이 session.metadata.spreadValidation 에 기록.
    */
-  private validateSpreadSnapshot(session: EditSessionEntity): void {
-    // metadata.spine 검증
-    if (!session.metadata?.spine) {
-      throw new BadRequestException({
-        code: 'SPREAD_SNAPSHOT_MISSING',
-        message: 'spread 모드 세션 완료 시 metadata.spine이 필수입니다.',
-      });
+  private validateSpreadSnapshot(session: EditSessionEntity): SpreadValidationResult {
+    const mismatches: string[] = [];
+
+    const spine = session.metadata?.spine;
+    if (!spine) {
+      mismatches.push('SPINE_MISSING: metadata.spine 누락');
+    } else if (
+      !spine.spineWidthMm ||
+      !spine.pageCount ||
+      !spine.paperType ||
+      !spine.bindingType ||
+      !spine.formulaVersion
+    ) {
+      mismatches.push(
+        'SPINE_INVALID: spine 필수필드 누락(spineWidthMm/pageCount/paperType/bindingType/formulaVersion)',
+      );
     }
 
-    const { spine } = session.metadata;
-    if (!spine.spineWidthMm || !spine.pageCount || !spine.paperType || !spine.bindingType || !spine.formulaVersion) {
-      throw new BadRequestException({
-        code: 'SPREAD_SNAPSHOT_INVALID',
-        message: 'metadata.spine의 필수 필드가 누락되었습니다: spineWidthMm, pageCount, paperType, bindingType, formulaVersion',
-      });
+    const spread = session.metadata?.spread;
+    if (!spread) {
+      mismatches.push('SPREAD_MISSING: metadata.spread 누락');
+    } else if (!spread.spec || !spread.totalWidthMm || !spread.totalHeightMm || !spread.dpi) {
+      mismatches.push('SPREAD_INVALID: spread 필수필드 누락(spec/totalWidthMm/totalHeightMm/dpi)');
     }
 
-    // metadata.spread 검증
-    if (!session.metadata?.spread) {
-      throw new BadRequestException({
-        code: 'SPREAD_SNAPSHOT_MISSING',
-        message: 'spread 모드 세션 완료 시 metadata.spread가 필수입니다.',
-      });
+    const hardFail = process.env.SPREAD_SNAPSHOT_HARD_FAIL === 'true';
+    const result: SpreadValidationResult = {
+      ok: mismatches.length === 0,
+      checkedAt: new Date().toISOString(),
+      gate: session.mode === SessionMode.SPREAD ? 'session-mode' : 'metadata-spread',
+      mismatches,
+      mode: hardFail ? 'hard' : 'soft',
+    };
+
+    if (mismatches.length > 0) {
+      this.logger.warn(
+        `[spread-snapshot] session ${session.id} 검증 ${hardFail ? 'HARD' : 'SOFT'} 불일치: ${mismatches.join(' | ')}`,
+      );
+      if (hardFail) {
+        throw new BadRequestException({
+          code: 'SPREAD_SNAPSHOT_INVALID',
+          message: '스프레드 스냅샷 무결성 검증 실패',
+          mismatches,
+        });
+      }
+    } else {
+      this.logger.log(`[spread-snapshot] session ${session.id} 검증 통과 (${result.gate})`);
     }
 
-    const { spread } = session.metadata;
-    if (!spread.spec || !spread.totalWidthMm || !spread.totalHeightMm || !spread.dpi) {
-      throw new BadRequestException({
-        code: 'SPREAD_SNAPSHOT_INVALID',
-        message: 'metadata.spread의 필수 필드가 누락되었습니다: spec, totalWidthMm, totalHeightMm, dpi',
-      });
-    }
-
-    this.logger.log(`Validated spread snapshot for session ${session.id}`);
+    return result;
   }
 
   /**
