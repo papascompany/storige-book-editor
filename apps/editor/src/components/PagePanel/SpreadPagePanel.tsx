@@ -5,6 +5,8 @@ import { PageItem } from './PageItem'
 import { useEditorStore, useCanAddPage } from '@/stores/useEditorStore'
 import { useAppStore } from '@/stores/useAppStore'
 import { cn } from '@/lib/utils'
+import { showToast } from '@/stores/useToastStore'
+import { BindingType } from '@storige/types'
 import type { EditPage } from '@storige/types'
 
 interface SpreadPagePanelProps {
@@ -34,6 +36,8 @@ export const SpreadPagePanel = memo(function SpreadPagePanel({
   const allCanvas = useAppStore((state) => state.allCanvas)
   const screenshots = useAppStore((state) => state.screenshots)
   const canAddMore = useCanAddPage()
+  const canDeletePage = useEditorStore((state) => state.canDeletePage)
+  const bindingType = useEditorStore((state) => state.bindingType)
 
   // 스프레드 페이지 (항상 첫 번째)
   const spreadPage = pages[0]
@@ -50,15 +54,36 @@ export const SpreadPagePanel = memo(function SpreadPagePanel({
   }, [setPage])
 
   const handleAddPage = useCallback(async () => {
-    if (!canAddMore) return
+    if (!canAddMore) {
+      // A13: 제본 최대페이지(예: 중철 64p) 초과 — 안내
+      showToast(
+        bindingType === BindingType.SADDLE
+          ? '중철제본은 최대 64페이지까지 추가할 수 있습니다.'
+          : '더 이상 페이지를 추가할 수 없습니다.',
+        'warning',
+        2500,
+      )
+      return
+    }
     try {
       await addPage()
     } catch (error) {
       console.error('페이지 추가 실패:', error)
     }
-  }, [canAddMore, addPage])
+  }, [canAddMore, addPage, bindingType])
 
   const handleDeletePage = useCallback((pageId: string) => {
+    // A13: 제본 최소페이지(예: 무선 32p) 미만으로 삭제 차단
+    if (!canDeletePage(pageId)) {
+      showToast(
+        bindingType === BindingType.PERFECT
+          ? '무선제본은 최소 32페이지가 필요해 더 삭제할 수 없습니다.'
+          : '최소 페이지 수 제한으로 삭제할 수 없습니다.',
+        'warning',
+        2500,
+      )
+      return
+    }
     // pageId에 해당하는 캔버스 찾기
     const pageIndex = pages.findIndex((p) => p.id === pageId)
     if (pageIndex === -1) return
@@ -68,7 +93,7 @@ export const SpreadPagePanel = memo(function SpreadPagePanel({
     if (!canvas) return
 
     deletePage(canvas.id)
-  }, [pages, allCanvas, deletePage])
+  }, [pages, allCanvas, deletePage, canDeletePage, bindingType])
 
   // 활성 페이지 썸네일 ref 맵
   const itemRefs = useRef<Map<number, HTMLDivElement>>(new Map())
