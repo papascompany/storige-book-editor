@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import { EditStatus, TemplateType } from '@storige/types'
+import { EditStatus, TemplateType, BindingType, BINDING_CONSTRAINTS } from '@storige/types'
 import type { EditSession, EditPage, CanvasData } from '@storige/types'
 
 /**
@@ -37,6 +37,8 @@ interface EditorState {
   templateSetName: string | null
   canAddPage: boolean
   pageCountRange: number[]
+  // A13: 제본 방식(설정 시에만 제본별 최소/최대 페이지 가드 적용. null=제약 없음 — 비제본/미설정 상품 무영향)
+  bindingType: BindingType | null
 }
 
 interface EditorActions {
@@ -92,6 +94,7 @@ const initialState: EditorState = {
   templateSetName: null,
   canAddPage: true,
   pageCountRange: [1, 100],
+  bindingType: null,
 }
 
 export const useEditorStore = create<EditorState & EditorActions>()(
@@ -278,7 +281,7 @@ export const useEditorStore = create<EditorState & EditorActions>()(
       },
 
       canDeletePage: (pageId: string) => {
-        const { pages, pageCountRange } = get()
+        const { pages, pageCountRange, bindingType } = get()
         const page = pages.find((p) => p.id === pageId)
 
         if (!page) return false
@@ -288,7 +291,10 @@ export const useEditorStore = create<EditorState & EditorActions>()(
         // 내지(page) 타입인 경우 최소 수량 체크
         if (page.templateType === TemplateType.PAGE) {
           const pageTypeCount = pages.filter((p) => p.templateType === TemplateType.PAGE).length
-          const minCount = pageCountRange[0] || 1
+          // A13: 제본 최소페이지(무선 32p 등) — bindingType 설정 시에만 적용(null=제약 없음).
+          //   pageCountRange 최소와 제본 최소 중 큰 값 미만으로는 삭제 불가.
+          const bindMin = bindingType ? (BINDING_CONSTRAINTS[bindingType]?.minPages ?? 0) : 0
+          const minCount = Math.max(pageCountRange[0] || 1, bindMin)
           return pageTypeCount > minCount
         }
 
@@ -296,12 +302,14 @@ export const useEditorStore = create<EditorState & EditorActions>()(
       },
 
       canAddMorePages: () => {
-        const { pages, canAddPage, pageCountRange } = get()
+        const { pages, canAddPage, pageCountRange, bindingType } = get()
 
         if (!canAddPage) return false
 
         const pageTypeCount = pages.filter((p) => p.templateType === TemplateType.PAGE).length
-        const maxCount = pageCountRange[pageCountRange.length - 1] || 100
+        // A13: 제본 최대페이지(중철 64p 등) — bindingType 설정 시에만 적용(null=제약 없음).
+        const bindMax = bindingType ? (BINDING_CONSTRAINTS[bindingType]?.maxPages ?? Infinity) : Infinity
+        const maxCount = Math.min(pageCountRange[pageCountRange.length - 1] || 100, bindMax)
 
         return pageTypeCount < maxCount
       },

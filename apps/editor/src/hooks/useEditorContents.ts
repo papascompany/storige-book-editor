@@ -15,6 +15,12 @@ import Editor, { ServicePlugin, SvgUtils, TemplatePlugin, mmToPxDisplay, compute
 import { contentsApi, storageApi, templateSetsApi, templatesApi } from '@/api'
 import { createCanvas } from '@/utils/createCanvas'
 import { recalculateSpineWidth, initSpineConfig } from '@/utils/spineCalculator'
+import { BindingType } from '@storige/types'
+
+/** A13: 제본 코드 문자열 → BindingType(가드 적용 대상). 미지의 값/미설정은 null(=제약 없음). */
+function toBindingType(v?: string | null): BindingType | null {
+  return v && (Object.values(BindingType) as string[]).includes(v) ? (v as BindingType) : null
+}
 import { buildSpreadSpec } from '@/utils/buildSpreadSpec'
 import type {
   EditorContent,
@@ -1621,12 +1627,13 @@ export function useEditorContents(): UseEditorContentsReturn {
       const editorStore = useEditorStore.getState()
       editorStore.setPages(editorPages)
 
-      // canAddPage, pageCountRange도 설정
+      // canAddPage, pageCountRange도 설정 + A13 제본 가드용 bindingType 주입(미설정/미지=null=제약없음)
       useEditorStore.setState({
         canAddPage: templateSet.canAddPage ?? true,
         pageCountRange: templateSet.pageCountRange ?? [],
         templateSetId: templateSet.id,
         templateSetName: templateSet.name,
+        bindingType: toBindingType(config.bindingType),
       })
 
       console.log(`[EditorContents:Spread] EditorStore pages set: ${editorPages.length} pages`)
