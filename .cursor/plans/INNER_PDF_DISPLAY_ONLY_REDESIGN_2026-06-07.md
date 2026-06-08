@@ -154,7 +154,9 @@
    - ✅ **가이드 배치/정렬**: 내지 페이지 썸네일에 PDF 가이드가 여백 맞춰 정렬 렌더(workspace 박스 매핑 정상).
    - ✅ **C1 무오염**: 자동저장된 canvas_data에 가이드 이미지/meta/label 누출 0(excludeFromExport 정상).
    - ✅ **API contentPdfEditable 직렬화**(false 반환) + editable=false 분기 무에러 실행(LockPlugin 등록, `[contentPdfGuide]` 경고 0).
-   - ⏳ **잔여**: 메인 편집 캔버스가 top-level 직접 /embed 로드 시 전 페이지(커버 포함) 공백 — **iframe 임베드 전제** 사이징 아티팩트로 추정(썸네일은 정상). 가이드/레이블 풀사이즈 인캔버스 표시는 **실제 bookmoa iframe 런치(실주문)로 최종 확인 권장**.
+   - ✅ **메인 캔버스 풀사이즈 표시 확인**(사용자 실브라우저): 가이드가 내지에 정확 정렬 렌더(앞서 공백은 stale 캐시 탭 아티팩트, 캐시버스트 새 탭에서 정상).
+   - ✅ **다중 페이지 자동 임포지션 수정·검증**(커밋 `912e9ca`): 첨부 PDF 페이지수만큼 내지 생성. 16p PDF→`underlay 내지수=16`→`Creating inner page 1/16…16/16`→16개 내지, 각 페이지에 해당 가이드 정렬. (`config.underlayPageCount` 신설, pageCountRange 클램프 우회, 상한 200p.)
+   - 참고: 미방문 페이지 썸네일은 방문 시 갱신(코스메틱). 배포 직후 이미 열린 탭은 stale 번들 가능 → 새로고침/새 진입 시 최신.
 7. ⏳ **문서**: EDITOR §19, 통합문서 갱신.
 
 ---
