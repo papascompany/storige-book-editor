@@ -142,15 +142,15 @@
 1. ✅ **타입/주석 정합**: types `contentPdfMode`+`ContentPdfGuide`(G8) + entity 주석 표시전용(C5). 커밋 `c1ca6c6`.
 2. ✅ **워커 렌더잡**: `RENDER_PAGES` 잡 + `PdfPageRendererService`(GS pdfToImage 재사용, 110dpi, 페이지상한) + `RenderProcessor`(pdf-conversion 큐, concurrency 1) + `@Public POST /worker-jobs/render-pages`. 커밋 `c1ca6c6`.
    - **배포·검증 완료(2026-06-08)**: VPS api·worker 배포. E2E 스모크 = 108KB PDF→`page_1/2.png`@110dpi, COMPLETED ~0.5s, `result.pageImageUrls` 정상, 이미지 HTTP 200 공개서빙. ⚠️배포 시 nginx 502(옛 api IP 캐싱) 발생→nginx 재시작 복구. [[feedback_api_redeploy_nginx]]
-3. ⏳ **편집기/admin 배선 (다음 단계)** — CTO UX 확정(§9.1):
-   - admin: 편집기 세팅에 **"PDF첨부 파일 편집 가능/불가" 토글**(templateSet `contentPdfEditable`) + 엔티티/DTO.
-   - 첨부 UX(`ContentPdfAttachModal`): 첨부 시 `contentPdfMode='underlay'` + 렌더잡(`/worker-jobs/render-pages`) 폴링 → `metadata.contentPdfGuide` 저장(metadata 머지 주의).
-   - 로드 배치: inner 캔버스에 가이드 잠금배경 오버레이(`imageFromURL`+`resolveStorageUrl`, C1/C2/C3/C7) — **fabric 좌표/스케일 실세션 시각검증 필수**.
-   - '편집 불가' 세팅: 내지 편집 차단 + **첫 페이지 레이블**. '편집 가능': 편집 허용(풋건 안내).
-4. ⏳ **빌드/테스트**: types build 선행 → 편집기/admin 빌드.
-5. ⏳ **배포**: editor/admin 자동(master push) / 필요시 api·worker(**nginx 재시작 동반**).
-6. ⏳ **라이브검증**: /embed QA(§3)로 첨부→가이드 표시→편집완료 export 오염0 확인.
-7. ⏳ **문서**: EDITOR §19, 통합문서, 본 노트 갱신.
+3. ✅ **편집기/admin 배선** — CTO UX 확정(§9.1). 커밋 `376eb22`, 배포(2026-06-08):
+   - admin: TemplateSetForm "PDF 첨부 파일 편집 가능" 토글 + WorkerJobList RENDER_PAGES 라벨. (types/entity/dto/init.sql `contentPdfEditable` 기본 true)
+   - ⚠️ prod DB `ALTER TABLE template_sets ADD content_pdf_editable`(synchronize=false). API 재배포+nginx 재시작 완료, health ok, 11개 templateSet 전부 true.
+   - 첨부 UX(`ContentPdfAttachModal`): `contentPdfMode='underlay'` + `/worker-jobs/render-pages` 폴링 → `metadata.contentPdfGuide` 저장(머지). 카피 표시전용 갱신.
+   - 로드 배치(`utils/contentPdfGuide.ts` + embed.tsx): underlay 세션 로드 시 가이드를 workspace 박스 맞춤 잠금배경으로 배치(C1/C2/C3/C7). `contentPdfEditable=false` → LockPlugin 잠금 + 첫 내지 페이지 레이블.
+4. ✅ **빌드**: types/api/admin/canvas-core/editor 전부 클린.
+5. ✅ **배포**: api 수동(+nginx) 완료, admin/editor Vercel 자동배포(push `376eb22`).
+6. ⏳ **라이브 시각검증(잔여)**: /embed 실세션에서 첨부→가이드 표시(좌표/스케일 정렬)→편집완료 export 오염0 확인 필요. 백엔드 렌더 파이프라인은 E2E 검증됨(Phase 2). **편집기 가이드 좌표 정렬은 실브라우저 검증 권장**.
+7. ⏳ **문서**: EDITOR §19, 통합문서 갱신.
 
 ---
 
