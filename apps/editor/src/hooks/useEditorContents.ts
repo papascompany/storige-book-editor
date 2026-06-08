@@ -41,9 +41,16 @@ interface ExtendedFabricObject extends fabric.Object {
 // 템플릿셋 기반 에디터 설정 타입
 export interface TemplateSetBasedSetupConfig {
   templateSetId: string
-  pageCount?: number      // 요청된 페이지 수 (내지 자동 조정용)
+  pageCount?: number      // 요청된 페이지 수 (내지 자동 조정용, pageCountRange 로 클램프)
   paperType?: string      // 용지 종류 코드 (책등 계산용)
   bindingType?: string    // 제본 방식 코드 (책등 계산용)
+  /**
+   * 내지 PDF 표시전용(underlay) 페이지 수 (2026-06-08).
+   * 설정 시 내지 페이지를 정확히 이 수만큼 생성(pageCountRange 클램프 미적용 —
+   * 첨부 PDF가 책 페이지수를 정의). 메모리 안전상한만 적용.
+   * 각 페이지엔 applyContentPdfGuides 가 해당 PDF 페이지 가이드를 배치.
+   */
+  underlayPageCount?: number
 }
 
 // 사용 케이스별 설정 타입 매핑
@@ -1475,8 +1482,29 @@ export function useEditorContents(): UseEditorContentsReturn {
       // 9. 페이지수 조정 (config.pageCount가 있는 경우)
       let adjustedPageTemplates = [...pageTemplates]
       const requestedPageCount = config.pageCount
+      const UNDERLAY_MAX_PAGES = 200 // 워커 CONTENT_PDF_GUIDE_MAX_PAGES 정렬(메모리 안전상한)
 
-      if (requestedPageCount !== undefined) {
+      if (config.underlayPageCount && config.underlayPageCount > 0) {
+        // 내지 PDF 표시전용: pageCountRange 클램프 없이 정확히 PDF 페이지수만큼 내지 생성.
+        // 첨부 PDF가 책 페이지수를 정의 — 제조 유효성(무선 32p 등)은 워커/주문 검증이 별도 처리.
+        const target = Math.min(config.underlayPageCount, UNDERLAY_MAX_PAGES)
+        const currentPageCount = pageTemplates.length
+        if (config.underlayPageCount > UNDERLAY_MAX_PAGES) {
+          console.warn(`[EditorContents:Spread] underlay ${config.underlayPageCount}p > 상한 ${UNDERLAY_MAX_PAGES} — 상한까지만 표시`)
+        }
+        if (target > currentPageCount && pageTemplates.length > 0) {
+          const lastPageTemplate = pageTemplates[pageTemplates.length - 1]
+          for (let i = 0; i < target - currentPageCount; i++) {
+            adjustedPageTemplates.push({
+              ...lastPageTemplate,
+              id: uuid(),
+              name: `내지 (${currentPageCount + i + 1})`,
+              order: adjustedPageTemplates.length,
+            })
+          }
+        }
+        console.log(`[EditorContents:Spread] underlay 내지수=${adjustedPageTemplates.length} (PDF ${config.underlayPageCount}p)`)
+      } else if (requestedPageCount !== undefined) {
         const currentPageCount = pageTemplates.length
 
         console.log(`[EditorContents:Spread] Page adjustment: requested=${requestedPageCount}, current=${currentPageCount}`)

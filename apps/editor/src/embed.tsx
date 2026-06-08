@@ -636,9 +636,16 @@ function EmbeddedEditor({
 
         // 3. Load content based on template set
         setLoadingMessage('콘텐츠를 불러오는 중...')
+        // 내지 PDF 표시전용(underlay): 첨부 PDF 페이지수만큼 내지 자동 임포지션.
+        const underlayPageCount =
+          (editSession as any)?.contentPdfMode === 'underlay' &&
+          (editSession as any)?.contentPdfPageCount > 0
+            ? (editSession as any).contentPdfPageCount
+            : undefined
         console.log('[EmbeddedEditor] Loading template set with options:', {
           templateSetId: effectiveTemplateSetId,
           pageCount: options?.pageCount,
+          underlayPageCount,
           paperType: options?.paperType,
           bindingType: options?.bindingType,
         })
@@ -646,6 +653,7 @@ function EmbeddedEditor({
           await loadTemplateSetEditor({
             templateSetId: effectiveTemplateSetId,
             pageCount: options?.pageCount,
+            underlayPageCount,
             paperType: options?.paperType,
             bindingType: options?.bindingType,
           })
@@ -656,6 +664,7 @@ function EmbeddedEditor({
           await loadTemplateSetEditor({
             templateSetId: effectiveTemplateSetId,
             pageCount: options?.pageCount,
+            underlayPageCount,
             paperType: options?.paperType,
             bindingType: options?.bindingType,
           })
