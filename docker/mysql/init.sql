@@ -165,6 +165,7 @@ CREATE TABLE IF NOT EXISTS template_sets (
   page_count_range JSON NOT NULL,
   templates        JSON NOT NULL,
   editor_mode      VARCHAR(20) NOT NULL DEFAULT 'single',
+  content_pdf_editable BOOLEAN NOT NULL DEFAULT TRUE,
   is_deleted       BOOLEAN NOT NULL DEFAULT FALSE,
   description      TEXT,
   category_id      VARCHAR(36),

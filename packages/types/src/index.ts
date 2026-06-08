@@ -194,6 +194,13 @@ export interface TemplateSet {
    * `coverEditable=false` 일 때만 의미 있음.
    */
   coverPreviewImage?: string | null;
+  /**
+   * 내지 PDF 첨부 파일 편집 가능 여부 — 표시전용 임포지션 (2026-06-08).
+   * - true (기본): underlay 가이드 위 내지 편집 허용.
+   * - false: 첨부 PDF를 가이드로만 표시, 내지 캔버스 편집 차단 + 첫 페이지 레이블.
+   * ⚠️ 어느 쪽이든 최종 내지 인쇄는 첨부 원본 PDF 그대로(편집 미반영).
+   */
+  contentPdfEditable?: boolean;
   // Legacy fields (하위 호환)
   description?: string;
   categoryId?: string;
@@ -223,6 +230,8 @@ export interface CreateTemplateSetInput {
   endpaperConfig?: EndpaperConfig | null;
   coverEditable?: boolean;
   coverPreviewImage?: string | null;
+  /** 내지 PDF 첨부 파일 편집 가능 여부 (2026-06-08, 기본 true) */
+  contentPdfEditable?: boolean;
 }
 
 /**
@@ -243,6 +252,8 @@ export interface UpdateTemplateSetInput {
   endpaperConfig?: EndpaperConfig | null;
   coverEditable?: boolean;
   coverPreviewImage?: string | null;
+  /** 내지 PDF 첨부 파일 편집 가능 여부 (2026-06-08, 기본 true) */
+  contentPdfEditable?: boolean;
 }
 
 /**

@@ -43,6 +43,7 @@ const jobTypeLabels: Record<WorkerJobType, string> = {
   [WorkerJobType.VALIDATE]: '검증',
   [WorkerJobType.CONVERT]: '변환',
   [WorkerJobType.SYNTHESIZE]: '합성',
+  [WorkerJobType.RENDER_PAGES]: '내지가이드 래스터',
 };
 
 export const WorkerJobList = () => {

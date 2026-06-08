@@ -80,6 +80,8 @@ export interface UpdateEditSessionRequest {
   contentPdfFileId?: string | null
   contentPdfPageCount?: number | null
   contentPdfValidationResult?: Record<string, any> | null
+  /** 내지 PDF 첨부 모드 — 표시전용 (2026-06-08): 'replace' | 'underlay' */
+  contentPdfMode?: 'replace' | 'underlay' | null
 }
 
 /**

@@ -42,6 +42,7 @@ import { SpreadPagePanel } from './components/PagePanel/SpreadPagePanel'
 import { useResolvedPageNavPosition } from './hooks/useResolvedPageNavPosition'
 import { WorkspaceModal } from './components/modals'
 import { Sentry } from './lib/sentry'
+import { applyContentPdfGuides } from './utils/contentPdfGuide'
 import './index.css'
 
 // ============================================================
@@ -686,6 +687,14 @@ function EmbeddedEditor({
             await core.loadFromJSON(fabricCanvas, saved)
             console.log('[EmbeddedEditor] Single canvasData restored:', editSession.id)
           }
+        }
+
+        if (!isMounted) return
+
+        // 3-A. 내지 PDF 표시전용 가이드 배치 (underlay 모드) — 캔버스 복원 후.
+        // 가이드는 excludeFromExport 라 export/저장에서 제외, 최종 인쇄는 첨부 원본 PDF 그대로.
+        if (editSession) {
+          await applyContentPdfGuides(editSession, effectiveTemplateSetId)
         }
 
         if (!isMounted) return
