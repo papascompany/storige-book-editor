@@ -149,7 +149,12 @@
    - 로드 배치(`utils/contentPdfGuide.ts` + embed.tsx): underlay 세션 로드 시 가이드를 workspace 박스 맞춤 잠금배경으로 배치(C1/C2/C3/C7). `contentPdfEditable=false` → LockPlugin 잠금 + 첫 내지 페이지 레이블.
 4. ✅ **빌드**: types/api/admin/canvas-core/editor 전부 클린.
 5. ✅ **배포**: api 수동(+nginx) 완료, admin/editor Vercel 자동배포(push `376eb22`).
-6. ⏳ **라이브 시각검증(잔여)**: /embed 실세션에서 첨부→가이드 표시(좌표/스케일 정렬)→편집완료 export 오염0 확인 필요. 백엔드 렌더 파이프라인은 E2E 검증됨(Phase 2). **편집기 가이드 좌표 정렬은 실브라우저 검증 권장**.
+6. ✅/⏳ **라이브검증(2026-06-08)**: 신규 세션 `b1b7bd4f`로 /embed 실검증.
+   - ✅ **B(실제 첨부 API 플로우)**: PATCH underlay(200)+render(COMPLETED)+metadata(200). (주의: 토큰은 세션 site에 맞는 API키 필요 — 북모아메인=API_KEYS#3. QA세션 7d4e9171은 soft-deleted라 신규생성.)
+   - ✅ **가이드 배치/정렬**: 내지 페이지 썸네일에 PDF 가이드가 여백 맞춰 정렬 렌더(workspace 박스 매핑 정상).
+   - ✅ **C1 무오염**: 자동저장된 canvas_data에 가이드 이미지/meta/label 누출 0(excludeFromExport 정상).
+   - ✅ **API contentPdfEditable 직렬화**(false 반환) + editable=false 분기 무에러 실행(LockPlugin 등록, `[contentPdfGuide]` 경고 0).
+   - ⏳ **잔여**: 메인 편집 캔버스가 top-level 직접 /embed 로드 시 전 페이지(커버 포함) 공백 — **iframe 임베드 전제** 사이징 아티팩트로 추정(썸네일은 정상). 가이드/레이블 풀사이즈 인캔버스 표시는 **실제 bookmoa iframe 런치(실주문)로 최종 확인 권장**.
 7. ⏳ **문서**: EDITOR §19, 통합문서 갱신.
 
 ---
