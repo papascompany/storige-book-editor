@@ -11,6 +11,7 @@ import {
   Input,
   Select,
   Segmented,
+  Radio,
   Space,
   Spin,
   Tag,
@@ -55,6 +56,8 @@ export const TemplateImport = () => {
   const [categoryId, setCategoryId] = useState<string | undefined>();
   const [mode, setMode] = useState<'vector' | 'hybrid'>('vector');
   const [lastFile, setLastFile] = useState<File | null>(null);
+  // 등록 대상: 표지 템플릿만 / 책등 가변 셋으로 이어서 등록(방법 A — 기존 템플릿셋 폼 인계)
+  const [registerTarget, setRegisterTarget] = useState<'template' | 'bookset'>('template');
 
   const { data: categories } = useQuery({
     queryKey: ['categories'],
@@ -87,10 +90,10 @@ export const TemplateImport = () => {
         isActive: true,
       });
     },
-    onSuccess: (tpl) => {
+    onSuccess: () => {
       message.success('표지 펼침면 템플릿이 생성되었습니다.');
       queryClient.invalidateQueries({ queryKey: ['templates'] });
-      navigate(`/templates/editor?id=${tpl.id}`);
+      // 이동은 등록 대상에 따라 onClick(handleSave)에서 처리
     },
     onError: (e: unknown) => {
       message.error('템플릿 저장에 실패했습니다: ' + (e instanceof Error ? e.message : '알 수 없는 오류'));
@@ -126,6 +129,20 @@ export const TemplateImport = () => {
     setMode(next);
     // 이미 업로드한 파일이 있으면 새 모드로 재변환
     if (lastFile) void handleFile(lastFile, next);
+  };
+
+  // 저장 후 등록 대상에 따라 이동: 표지 단품→편집기 / 책등 가변 셋→템플릿셋 폼(표지 seed 인계)
+  const handleSave = async () => {
+    try {
+      const tpl = await saveMutation.mutateAsync();
+      if (registerTarget === 'bookset') {
+        navigate('/template-sets/new', { state: { seedTemplateId: tpl.id } });
+      } else {
+        navigate(`/templates/editor?id=${tpl.id}`);
+      }
+    } catch {
+      // 실패 메시지는 saveMutation.onError 에서 처리됨
+    }
   };
 
   const uploadProps: UploadProps = {
@@ -282,16 +299,29 @@ export const TemplateImport = () => {
                   style={{ width: '100%', marginTop: 4 }}
                 />
               </div>
+              <div>
+                <Text>등록 대상</Text>
+                <Radio.Group
+                  value={registerTarget}
+                  onChange={(e) => setRegisterTarget(e.target.value)}
+                  style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}
+                >
+                  <Radio value="template">표지 템플릿만 등록 (펼침면 단품)</Radio>
+                  <Radio value="bookset">책등 가변 셋으로 이어서 등록 (표지 + 내지 책)</Radio>
+                </Radio.Group>
+              </div>
               <Paragraph type="secondary" style={{ marginBottom: 0 }}>
-                저장 시 <b>type=spread</b> 템플릿으로 생성되며, 저장 후 편집기로 이동해 책등 가변·세부 보정을 확인할 수 있습니다.
+                {registerTarget === 'bookset'
+                  ? '표지 Template(type=spread) 생성 후, 표지가 미리 추가된 템플릿셋 폼으로 이동합니다. 거기서 내지(page) 템플릿과 페이지 수 범위를 추가해 책등 가변 책 셋을 완성하세요. (책등 가변은 런타임 자동 작동)'
+                  : '표지 Template(type=spread)만 생성하고 편집기로 이동합니다. 셋 구성은 추후 템플릿셋 관리에서 가능합니다.'}
               </Paragraph>
               <Button
                 type="primary"
                 icon={<SaveOutlined />}
                 loading={saveMutation.isPending}
-                onClick={() => saveMutation.mutate()}
+                onClick={handleSave}
               >
-                템플릿으로 저장
+                {registerTarget === 'bookset' ? '저장 후 셋 등록으로 →' : '템플릿으로 저장'}
               </Button>
             </Space>
           </Card>
