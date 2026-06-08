@@ -137,16 +137,20 @@
 
 ---
 
-## 8. 구현 순서 (제안)
-0. **Phase-0 전제검증**(§6) — 워커 패스스루 확인. 결과로 "워커 변경 유무" 확정.
-1. **타입/주석 정합**: types EditSession에 `contentPdfMode` 추가(G8) + entity 주석을 **표시전용**으로 수정(C5).
-2. **워커 렌더잡**: `inner-pdf-render` 잡타입 + 프로세서(기존 `pdfToImage` 재사용) + `@Public` 엔드포인트 + 동적 타임아웃.
-3. **첨부 UX**: `ContentPdfAttachModal`에 'underlay(가이드)' 선택지 → 렌더잡 폴링 → pageImageUrls 수신.
-4. **로드 배선**: `loadSpreadModeEditor`에 underlay 분기 — N페이지 자동생성 + 잠금 가이드 배치(§5.2) + 가드(§5.3).
-5. **빌드/테스트**: `pnpm --filter @storige/types build` 선행 → 편집기/워커 빌드 → store 테스트.
-6. **배포**: editor 자동(master push) / api·worker 수동(`docker compose up -d --build api worker`).
-7. **라이브검증**: /embed QA(§3 레시피)로 첨부→가이드 표시→편집완료 시 export에 가이드 미포함(오염0) 확인.
-8. **문서**: EDITOR §19, 통합 v2.6+, 감사문서, 본 노트 상태 갱신.
+## 8. 구현 순서 (진행 상황)
+0. ✅ **Phase-0 전제검증**(§6/§10) — 워커 패스스루 CONFIRMED → 워커 출력변경 불필요.
+1. ✅ **타입/주석 정합**: types `contentPdfMode`+`ContentPdfGuide`(G8) + entity 주석 표시전용(C5). 커밋 `c1ca6c6`.
+2. ✅ **워커 렌더잡**: `RENDER_PAGES` 잡 + `PdfPageRendererService`(GS pdfToImage 재사용, 110dpi, 페이지상한) + `RenderProcessor`(pdf-conversion 큐, concurrency 1) + `@Public POST /worker-jobs/render-pages`. 커밋 `c1ca6c6`.
+   - **배포·검증 완료(2026-06-08)**: VPS api·worker 배포. E2E 스모크 = 108KB PDF→`page_1/2.png`@110dpi, COMPLETED ~0.5s, `result.pageImageUrls` 정상, 이미지 HTTP 200 공개서빙. ⚠️배포 시 nginx 502(옛 api IP 캐싱) 발생→nginx 재시작 복구. [[feedback_api_redeploy_nginx]]
+3. ⏳ **편집기/admin 배선 (다음 단계)** — CTO UX 확정(§9.1):
+   - admin: 편집기 세팅에 **"PDF첨부 파일 편집 가능/불가" 토글**(templateSet `contentPdfEditable`) + 엔티티/DTO.
+   - 첨부 UX(`ContentPdfAttachModal`): 첨부 시 `contentPdfMode='underlay'` + 렌더잡(`/worker-jobs/render-pages`) 폴링 → `metadata.contentPdfGuide` 저장(metadata 머지 주의).
+   - 로드 배치: inner 캔버스에 가이드 잠금배경 오버레이(`imageFromURL`+`resolveStorageUrl`, C1/C2/C3/C7) — **fabric 좌표/스케일 실세션 시각검증 필수**.
+   - '편집 불가' 세팅: 내지 편집 차단 + **첫 페이지 레이블**. '편집 가능': 편집 허용(풋건 안내).
+4. ⏳ **빌드/테스트**: types build 선행 → 편집기/admin 빌드.
+5. ⏳ **배포**: editor/admin 자동(master push) / 필요시 api·worker(**nginx 재시작 동반**).
+6. ⏳ **라이브검증**: /embed QA(§3)로 첨부→가이드 표시→편집완료 export 오염0 확인.
+7. ⏳ **문서**: EDITOR §19, 통합문서, 본 노트 갱신.
 
 ---
 
