@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useState, useEffect, useRef } from 'react';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import {
   Form,
@@ -192,11 +192,23 @@ const SortableTemplateItem = ({
 export const TemplateSetForm = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const [form] = Form.useForm();
   const [templates, setTemplates] = useState<(TemplateRef & { template?: Template })[]>([]);
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
 
   const isEditing = !!id;
+
+  // IDML 가져오기 → "책등 가변 셋으로 이어서 등록" 인계: 표지(spread) Template id 를 state 로 받음.
+  const seedTemplateId = (location.state as { seedTemplateId?: string } | null)?.seedTemplateId;
+  const seededRef = useRef(false);
+
+  // 인계받은 표지 템플릿 상세 조회(생성 모드에서만)
+  const { data: seedTemplate } = useQuery({
+    queryKey: ['template', seedTemplateId],
+    queryFn: () => templatesApi.getById(seedTemplateId!),
+    enabled: !!seedTemplateId && !id,
+  });
 
   // DnD sensors
   const sensors = useSensors(
@@ -289,6 +301,27 @@ export const TemplateSetForm = () => {
       }
     }
   }, [templateSet, allTemplates, form]);
+
+  // IDML 가져오기 인계: 표지(spread)를 셋의 첫 템플릿(필수)으로 자동 추가 + 책모드/판형 자동 설정.
+  // 남은 수동 작업(내지 추가 + 페이지수 범위)은 관리자가 처리한다.
+  useEffect(() => {
+    if (id || !seedTemplate || seededRef.current) return;
+    seededRef.current = true;
+    const spec = seedTemplate.spreadConfig?.spec;
+    form.setFieldsValue({
+      name: `${seedTemplate.name} 세트`,
+      type: TemplateSetType.BOOK,
+      editorMode: EditorMode.BOOK,
+      // 셋 판형 = 표지 한 면 크기(coverWidth/Height) → 내지(page) 템플릿 필터와 일치
+      width: spec?.coverWidthMm ?? seedTemplate.width,
+      height: spec?.coverHeightMm ?? seedTemplate.height,
+      canAddPage: true,
+    });
+    setTemplates([{ templateId: seedTemplate.id, required: true, template: seedTemplate }]);
+    message.info(
+      '가져온 표지가 셋에 추가되었습니다. 내지(page) 템플릿을 추가하고 페이지 수 범위를 설정한 뒤 저장하세요.'
+    );
+  }, [id, seedTemplate, form]);
 
   const handleSubmit = async (values: any) => {
     const editorMode = values.editorMode || EditorMode.SINGLE;
