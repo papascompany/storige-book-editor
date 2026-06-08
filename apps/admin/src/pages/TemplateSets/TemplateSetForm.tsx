@@ -276,6 +276,7 @@ export const TemplateSetForm = () => {
         endpaperBackEditable: templateSet.endpaperConfig?.backEditable ?? false,
         coverEditable: templateSet.coverEditable ?? true,
         coverPreviewImage: templateSet.coverPreviewImage || undefined,
+        contentPdfEditable: templateSet.contentPdfEditable ?? true,
       });
 
       // Load template refs with template details
@@ -363,6 +364,7 @@ export const TemplateSetForm = () => {
       endpaperConfig,
       coverEditable,
       coverPreviewImage,
+      contentPdfEditable: values.contentPdfEditable !== false, // 기본 true
     };
 
     if (id) {
@@ -702,6 +704,18 @@ export const TemplateSetForm = () => {
                 </Form.Item>
               );
             }}
+          </Form.Item>
+
+          <Divider>내지 PDF 첨부</Divider>
+
+          <Form.Item
+            name="contentPdfEditable"
+            label="PDF 첨부 파일 편집 가능"
+            valuePropName="checked"
+            initialValue={true}
+            extra="끔: 첨부 내지 PDF를 가이드로만 표시하고 내지 편집을 막습니다(첫 페이지에 안내 레이블). 어느 쪽이든 최종 내지 인쇄는 첨부 원본 PDF 그대로입니다."
+          >
+            <Switch checkedChildren="편집 가능" unCheckedChildren="가이드만 (편집 불가)" />
           </Form.Item>
 
           <Divider>에디터 도구 메뉴</Divider>

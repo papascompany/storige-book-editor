@@ -149,6 +149,11 @@ export class CreateTemplateSetDto {
   @IsOptional()
   @IsString()
   coverPreviewImage?: string | null;
+
+  @ApiPropertyOptional({ example: true, description: '내지 PDF 첨부 파일 편집 가능 여부 (기본 true, false=가이드만·편집차단)' })
+  @IsOptional()
+  @IsBoolean()
+  contentPdfEditable?: boolean;
 }
 
 /**
@@ -248,6 +253,11 @@ export class UpdateTemplateSetDto {
   @IsOptional()
   @IsString()
   coverPreviewImage?: string | null;
+
+  @ApiPropertyOptional({ example: true, description: '내지 PDF 첨부 파일 편집 가능 여부 (기본 true)' })
+  @IsOptional()
+  @IsBoolean()
+  contentPdfEditable?: boolean;
 }
 
 /**

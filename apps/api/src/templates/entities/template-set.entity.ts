@@ -129,6 +129,14 @@ export class TemplateSet {
   coverPreviewImage: string | null;
 
   /**
+   * 내지 PDF 첨부 파일 편집 가능 여부 — 표시전용 임포지션 (2026-06-08).
+   * true(기본): underlay 가이드 위 편집 허용. false: 가이드 표시·편집 차단 + 첫페이지 레이블.
+   * 어느 쪽이든 최종 내지 인쇄는 첨부 원본 PDF 그대로(편집 미반영).
+   */
+  @Column({ name: 'content_pdf_editable', type: 'boolean', default: true })
+  contentPdfEditable: boolean;
+
+  /**
    * 소프트 삭제 플래그
    */
   @Column({ name: 'is_deleted', type: 'boolean', default: false })

@@ -64,6 +64,7 @@ export function ContentPdfAttachModal({
   const [uploadedFileId, setUploadedFileId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [showPageMismatch, setShowPageMismatch] = useState(false)
+  const [guideRendering, setGuideRendering] = useState(false)
 
   if (!open) return null
 
@@ -75,6 +76,7 @@ export function ContentPdfAttachModal({
     setUploadedFileId(null)
     setError(null)
     setShowPageMismatch(false)
+    setGuideRendering(false)
   }
 
   const handleClose = () => {
@@ -194,20 +196,60 @@ export function ContentPdfAttachModal({
     result: ValidationResult,
   ) => {
     try {
-      // 세션 업데이트 — 게스트 / 회원 분기
-      if (guestToken) {
-        await editSessionsApi.updateGuest(sessionId, guestToken, {
-          contentPdfFileId: fileId,
-          contentPdfPageCount: pdfPages,
-          contentPdfValidationResult: result as unknown as Record<string, any>,
-        })
-      } else {
-        await editSessionsApi.update(sessionId, {
-          contentPdfFileId: fileId,
-          contentPdfPageCount: pdfPages,
-          contentPdfValidationResult: result as unknown as Record<string, any>,
-        })
+      // 1) 세션에 첨부 + underlay(표시전용) 모드 저장 — 게스트 / 회원 분기
+      const basePayload = {
+        contentPdfFileId: fileId,
+        contentPdfPageCount: pdfPages,
+        contentPdfValidationResult: result as unknown as Record<string, any>,
+        contentPdfMode: 'underlay' as const,
       }
+      if (guestToken) {
+        await editSessionsApi.updateGuest(sessionId, guestToken, basePayload)
+      } else {
+        await editSessionsApi.update(sessionId, basePayload)
+      }
+
+      // 2) 가이드 래스터 잡 트리거 + 폴링 → metadata.contentPdfGuide 저장 (best-effort)
+      //    실패해도 첨부 자체는 성공 처리(가이드는 다음 로드/재시도에 생성 가능).
+      setGuideRendering(true)
+      try {
+        const renderRes = await apiClient.post<{ id: string }>('/worker-jobs/render-pages', {
+          fileId,
+          pageCount: pdfPages,
+          editSessionId: sessionId,
+        })
+        const rjid = renderRes.data.id
+        let guide: any = null
+        for (let a = 0; a < 40; a++) {
+          await new Promise((r) => setTimeout(r, 1500))
+          const job = await apiClient.get<{ status: string; result?: any }>(`/worker-jobs/${rjid}`)
+          const s = (job.data.status || '').toUpperCase()
+          if (s === 'COMPLETED') { guide = job.data.result; break }
+          if (s === 'FAILED') break
+        }
+        if (guide?.pageImageUrls?.length) {
+          const metaPayload = {
+            metadata: {
+              contentPdfGuide: {
+                sourceFileId: fileId,
+                resolution: guide.resolution,
+                pageImageUrls: guide.pageImageUrls,
+                renderedAt: guide.renderedAt,
+              },
+            },
+          }
+          if (guestToken) {
+            await editSessionsApi.updateGuest(sessionId, guestToken, metaPayload)
+          } else {
+            await editSessionsApi.update(sessionId, metaPayload)
+          }
+        }
+      } catch (e) {
+        console.warn('[ContentPdfAttachModal] 가이드 래스터 실패(첨부는 성공):', e)
+      } finally {
+        setGuideRendering(false)
+      }
+
       onAttached({
         contentPdfFileId: fileId,
         contentPdfPageCount: pdfPages,
@@ -238,10 +280,17 @@ export function ContentPdfAttachModal({
       >
         <h2 style={{ margin: 0, marginBottom: 16 }}>내지 PDF 첨부</h2>
 
+        {guideRendering && (
+          <div style={{ background: '#e3f2fd', padding: 12, borderRadius: 4, marginBottom: 12, color: '#1565c0', fontSize: 14 }}>
+            내지 가이드를 생성하는 중입니다… (페이지 수에 따라 최대 1분)
+          </div>
+        )}
+
         {!validationResult && (
           <>
             <p style={{ color: '#666', fontSize: 14, marginBottom: 12 }}>
-              직접 작성한 PDF 를 첨부하면 편집기 작업 대신 그대로 인쇄됩니다. (PDF 첨부와 캔버스 편집은 동시에 사용할 수 없습니다.)
+              직접 작성한 PDF 를 첨부하면 각 페이지가 내지에 <strong>가이드</strong>로 표시됩니다.
+              최종 내지 인쇄는 <strong>첨부한 원본 PDF 그대로</strong> 입니다(편집 내용은 내지 인쇄에 반영되지 않습니다).
             </p>
             <input type="file" accept="application/pdf" onChange={handleFileChange} disabled={uploading || validating} />
             {file && (
