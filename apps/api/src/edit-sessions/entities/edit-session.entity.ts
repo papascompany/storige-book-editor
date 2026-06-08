@@ -131,9 +131,13 @@ export class EditSessionEntity {
   contentPdfValidationResult: Record<string, unknown> | null;
 
   /**
-   * P0-2 (2026-06-02): 내지 PDF 첨부 모드.
+   * P0-2 (2026-06-02) → 표시전용 재정의 (2026-06-07).
+   * 내지 PDF 첨부 모드.
    * - 'replace'(기본/레거시): PDF 만 인쇄, 캔버스 편집 배타(PDF_ATTACHED_EXCLUSIVE).
-   * - 'underlay': PDF 각 페이지를 잠금 배경으로 깔고 그 위 편집 허용 → canvasData 저장 허용.
+   * - 'underlay'(표시전용): PDF 각 페이지를 `excludeFromExport:true` 잠금배경 가이드로
+   *   깔고 그 위 편집 허용(canvasData 저장 허용). ⚠️ 단 **최종 내지 인쇄는 원본 PDF 그대로**
+   *   (underlay 편집은 인쇄에 미반영 — 워커는 content.pdf 를 첨부 원본 그대로 방출).
+   *   가이드 이미지는 metadata.contentPdfGuide.pageImageUrls 에 저장.
    * null 은 'replace' 로 간주(기존 세션 호환).
    */
   @Column({ name: 'content_pdf_mode', type: 'varchar', length: 16, nullable: true })

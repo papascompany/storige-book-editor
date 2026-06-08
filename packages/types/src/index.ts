@@ -345,6 +345,14 @@ export interface EditSession {
   /** 워커 검증 결과 캐시 (issues, warnings, metadata 등) */
   contentPdfValidationResult?: Record<string, unknown> | null;
   /**
+   * 내지 PDF 첨부 모드 — 표시전용 임포지션 (2026-06-07).
+   * - 'replace'(기본/레거시): PDF 만 인쇄, 캔버스 편집 배타(PDF_ATTACHED_EXCLUSIVE).
+   * - 'underlay'(표시전용): PDF 각 페이지를 `excludeFromExport:true` 잠금배경 가이드로 표시,
+   *   그 위 편집 허용. 단 최종 내지 인쇄는 원본 PDF 그대로(편집 미반영).
+   * null 은 'replace' 로 간주(기존 세션 호환).
+   */
+  contentPdfMode?: 'replace' | 'underlay' | null;
+  /**
    * 게스트 식별자 — Phase 2 (2026-05-19).
    * 결정 3-1: 24시간 후 자동 삭제. 결정 3-6: 저장(편집완료) 시점에만 회원 전환 유도.
    */
@@ -492,6 +500,12 @@ export enum WorkerJobType {
   VALIDATE = 'VALIDATE',
   CONVERT = 'CONVERT',
   SYNTHESIZE = 'SYNTHESIZE',
+  /**
+   * 내지 PDF 표시전용 임포지션(2026-06-07): 첨부 내지 PDF 각 페이지를
+   * 이미지로 래스터화 → 편집기에 `excludeFromExport:true` 잠금 가이드로 표시.
+   * 최종 인쇄엔 미반영(원본 PDF 그대로). 워커 GS pdfToImage 재사용.
+   */
+  RENDER_PAGES = 'RENDER_PAGES',
 }
 
 export enum WorkerJobStatus {
@@ -1452,6 +1466,26 @@ export interface EditSessionMetadata {
   spine?: SpineSnapshot;
   spread?: SpreadSnapshot;
   spreadValidation?: SpreadValidationResult;
+  /**
+   * 내지 PDF 표시전용 가이드 (2026-06-07).
+   * 워커 RENDER_PAGES 잡이 생성한 페이지 이미지 URL 목록.
+   * 편집기는 underlay 모드에서 이 URL들을 잠금 가이드 배경으로 로드.
+   */
+  contentPdfGuide?: ContentPdfGuide;
+}
+
+/**
+ * 내지 PDF 표시전용 가이드 결과 (RENDER_PAGES 잡 산출).
+ */
+export interface ContentPdfGuide {
+  /** 가이드 출처 PDF 파일 ID (불일치 감지용) */
+  sourceFileId: string;
+  /** 래스터 해상도(dpi) */
+  resolution: number;
+  /** 페이지 순서대로의 이미지 상대 URL ('/storage/...') */
+  pageImageUrls: string[];
+  /** 생성 시각 ISO */
+  renderedAt: string;
 }
 
 // ============================================================================

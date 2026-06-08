@@ -8,11 +8,13 @@ import { LoggerModule } from 'nestjs-pino';
 import { PdfValidatorService } from './services/pdf-validator.service';
 import { PdfConverterService } from './services/pdf-converter.service';
 import { PdfSynthesizerService } from './services/pdf-synthesizer.service';
+import { PdfPageRendererService } from './services/pdf-page-renderer.service';
 
 // Processors
 import { ValidationProcessor } from './processors/validation.processor';
 import { ConversionProcessor } from './processors/conversion.processor';
 import { SynthesisProcessor } from './processors/synthesis.processor';
+import { RenderProcessor } from './processors/render.processor';
 
 // Controllers
 import { HealthController } from './health/health.controller';
@@ -86,11 +88,13 @@ import { HealthController } from './health/health.controller';
     PdfValidatorService,
     PdfConverterService,
     PdfSynthesizerService,
+    PdfPageRendererService,
 
     // Processors
     ValidationProcessor,
     ConversionProcessor,
     SynthesisProcessor,
+    RenderProcessor,
   ],
 })
 export class AppModule {}
