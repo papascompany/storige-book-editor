@@ -1,0 +1,9 @@
+# 고객 디자인 자산 — PUBLIC 레포에 커밋 금지
+*.idml
+*.indd
+*.output.json
+*.preview.png
+*.preview.svg
+*.preview.*
+Links/
+!README.md

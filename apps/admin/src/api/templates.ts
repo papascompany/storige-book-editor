@@ -1,5 +1,5 @@
 import { axiosInstance } from '../lib/axios';
-import { Template, CanvasData, TemplateType } from '@storige/types';
+import { Template, CanvasData, TemplateType, SpreadConfig } from '@storige/types';
 
 export interface CreateTemplateDto {
   name: string;
@@ -11,6 +11,7 @@ export interface CreateTemplateDto {
   templateCode?: string;
   thumbnailUrl?: string;
   canvasData: CanvasData;
+  spreadConfig?: SpreadConfig;
   isActive?: boolean;
 }
 

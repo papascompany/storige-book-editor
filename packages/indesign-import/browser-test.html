@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>IDML 변환 브라우저 검증</title>
+    <style>
+      body { font-family: sans-serif; margin: 16px; }
+      #status { padding: 8px 12px; border-radius: 6px; background: #eee; display: inline-block; }
+      #status[data-ok='1'] { background: #dcfce7; }
+      #status[data-ok='0'] { background: #fee2e2; }
+      #preview { max-width: 1100px; border: 1px solid #ddd; margin-top: 12px; }
+      #summary { margin: 10px 0; }
+    </style>
+  </head>
+  <body>
+    <h2>IDML → 표지 펼침면 (브라우저 변환 검증)</h2>
+    <div id="status">로딩…</div>
+    <div id="summary"></div>
+    <div id="preview"></div>
+    <script type="module">
+      import { convertIdmlToTemplate } from './src/index.mjs';
+      const status = document.getElementById('status');
+      // ?mode=hybrid 또는 ?mode=vector (기본 hybrid — 래스터+이미지 경로 검증)
+      const mode = new URLSearchParams(location.search).get('mode') || 'hybrid';
+      try {
+        const res = await fetch('./fixtures/cover-sample.idml');
+        if (!res.ok) throw new Error('fixture fetch ' + res.status);
+        const buf = await res.arrayBuffer();
+        const { result, previewSvg } = await convertIdmlToTemplate(buf, { name: 'browser-test', mode });
+        document.getElementById('preview').innerHTML = previewSvg;
+        const s = result.spec;
+        const objs = result.draftTemplateDto.canvasData.objects;
+        const imgN = objs.filter((o) => o.type === 'image').length;
+        const txtN = objs.filter((o) => o.type === 'textbox').length;
+        document.getElementById('summary').innerHTML =
+          `<b>mode=${mode}</b> · cover ${s.coverWidthMm}×${s.coverHeightMm}mm · spine ${s.spineWidthMm}mm · total ${result.totalWidthMm}mm · 객체 ${objs.length}개(이미지 ${imgN}/텍스트 ${txtN}) · 경고 ${result.warnings.length}건`;
+        status.textContent = `✅ 브라우저 변환 성공 (mode=${mode}, jszip+fxp${mode === 'hybrid' ? '+canvas 래스터' : ''} 런타임 OK)`;
+        status.dataset.ok = '1';
+        window.__convOK = { mode, total: objs.length, imgN, txtN };
+      } catch (e) {
+        status.textContent = '❌ ' + (e && (e.stack || e.message));
+        status.dataset.ok = '0';
+      }
+    </script>
+  </body>
+</html>

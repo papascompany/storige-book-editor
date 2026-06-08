@@ -24,6 +24,7 @@ import {
   SearchOutlined,
   CheckOutlined,
   CloseOutlined,
+  ImportOutlined,
 } from '@ant-design/icons';
 import { Template } from '@storige/types';
 import { templatesApi } from '../../api/templates';
@@ -441,13 +442,21 @@ export const TemplateList = () => {
     <div>
       <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
         <Title level={2}>템플릿 관리</Title>
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={() => navigate('/templates/editor')}
-        >
-          템플릿 생성
-        </Button>
+        <Space>
+          <Button
+            icon={<ImportOutlined />}
+            onClick={() => navigate('/templates/import')}
+          >
+            IDML 가져오기
+          </Button>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => navigate('/templates/editor')}
+          >
+            템플릿 생성
+          </Button>
+        </Space>
       </div>
 
       <Space style={{ marginBottom: 16 }}>

@@ -6,7 +6,7 @@ import { ProtectedRoute } from './components/ProtectedRoute';
 import { MainLayout } from './components/Layout';
 import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
-import { TemplateList, TemplateEditor } from './pages/Templates';
+import { TemplateList, TemplateEditor, TemplateImport } from './pages/Templates';
 import { TemplateSetList, TemplateSetForm } from './pages/TemplateSets';
 import { ProductTemplateSetList } from './pages/ProductTemplateSets';
 import { CategoryManagement } from './pages/Categories';
@@ -65,6 +65,7 @@ function App() {
               <Route path="sites" element={<SiteList />} />
               {/* 템플릿 그룹 */}
               <Route path="templates" element={<TemplateList />} />
+              <Route path="templates/import" element={<TemplateImport />} />
               <Route path="template-sets" element={<TemplateSetList />} />
               <Route path="template-sets/new" element={<TemplateSetForm />} />
               <Route path="template-sets/:id" element={<TemplateSetForm />} />
