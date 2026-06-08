@@ -70,7 +70,7 @@ export function useEmbedBackGuard(opts: {
     // 첫 뒤로가기를 흡수할 sentinel
     pushSentinel()
 
-    const onPop = (_e: PopStateEvent) => {
+    const onPop = (_e: Event) => {
       if (leaving) return
 
       // 변경사항 없음 → 경고 없이 이탈(자연스러운 뒤로가기)

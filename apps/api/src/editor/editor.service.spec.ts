@@ -4,9 +4,13 @@ import { Repository } from 'typeorm';
 import { NotFoundException } from '@nestjs/common';
 import { EditorService } from './editor.service';
 import { EditSession, EditHistory, EditSessionStatus } from './entities/edit-session.entity';
+import { EditSessionVersion } from './entities/edit-session-version.entity';
 import { TemplateSet } from '../templates/entities/template-set.entity';
 import { Template } from '../templates/entities/template.entity';
 import { TemplateType, TemplateSetType, EditStatus, CanvasData } from '@storige/types';
+import { EditSessionsService } from '../edit-sessions/edit-sessions.service';
+import { WorkerJobsService } from '../worker-jobs/worker-jobs.service';
+import { ThumbnailCleanupService } from './thumbnail-cleanup.service';
 
 describe('EditorService', () => {
   let service: EditorService;
@@ -95,6 +99,34 @@ describe('EditorService', () => {
             create: jest.fn(),
             save: jest.fn(),
             find: jest.fn().mockResolvedValue([]),
+          },
+        },
+        {
+          provide: getRepositoryToken(EditSessionVersion),
+          useValue: {
+            create: jest.fn(),
+            save: jest.fn(),
+            findOne: jest.fn().mockResolvedValue(null),
+            find: jest.fn().mockResolvedValue([]),
+          },
+        },
+        {
+          provide: EditSessionsService,
+          useValue: {
+            findById: jest.fn(),
+            update: jest.fn(),
+          },
+        },
+        {
+          provide: WorkerJobsService,
+          useValue: {
+            createSynthesisJob: jest.fn(),
+          },
+        },
+        {
+          provide: ThumbnailCleanupService,
+          useValue: {
+            scheduleCleanup: jest.fn(),
           },
         },
         {
