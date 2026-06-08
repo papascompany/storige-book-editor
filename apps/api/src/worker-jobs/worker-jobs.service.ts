@@ -26,6 +26,7 @@ import {
 } from './dto/worker-job.dto';
 import { CreateSplitSynthesisJobDto } from './dto/create-split-synthesis-job.dto';
 import { CreateSpreadSynthesisJobDto } from './dto/create-spread-synthesis-job.dto';
+import { CreateRenderPagesJobDto } from './dto/create-render-pages-job.dto';
 import {
   CheckMergeableDto,
   CheckMergeableResponseDto,
@@ -296,6 +297,53 @@ export class WorkerJobsService {
       fileId,
       fileUrl,
       convertOptions: createConversionJobDto.convertOptions,
+    });
+
+    return savedJob;
+  }
+
+  // ============================================================================
+  // Render Pages Jobs — 내지 PDF 표시전용 가이드 (2026-06-07)
+  // ============================================================================
+
+  /**
+   * 내지 PDF 각 페이지를 이미지로 래스터화하는 잡 생성.
+   * 산출 result.pageImageUrls 를 편집기가 underlay 잠금 가이드로 로드.
+   * ⚠️ 표시 전용 — 최종 인쇄엔 미반영(워커 content.pdf 는 첨부 원본 그대로).
+   * pdf-conversion 큐 공유(render-pdf-pages 잡명).
+   */
+  async createRenderPagesJob(dto: CreateRenderPagesJobDto): Promise<WorkerJob> {
+    if (!dto.fileId && !dto.fileUrl) {
+      throw new BadRequestException({
+        code: 'FILE_REQUIRED',
+        message: 'fileId 또는 fileUrl 중 하나를 제공해야 합니다.',
+      });
+    }
+
+    let fileUrl = dto.fileUrl;
+    const fileId = dto.fileId;
+    if (fileId) {
+      const file = await this.filesService.findById(fileId);
+      fileUrl = file.filePath;
+    }
+
+    const job = this.workerJobRepository.create({
+      jobType: WorkerJobType.RENDER_PAGES,
+      status: WorkerJobStatus.PENDING,
+      editSessionId: dto.editSessionId || null,
+      fileId: fileId || null,
+      inputFileUrl: fileUrl,
+      siteId: dto.siteId || null,
+      options: { fileId, fileUrl, pageCount: dto.pageCount },
+    });
+
+    const savedJob = await this.workerJobRepository.save(job);
+
+    await this.conversionQueue.add('render-pdf-pages', {
+      jobId: savedJob.id,
+      fileUrl,
+      sourceFileId: fileId,
+      pageCount: dto.pageCount,
     });
 
     return savedJob;

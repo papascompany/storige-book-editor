@@ -25,6 +25,7 @@ import {
 import { CreateSplitSynthesisJobDto } from './dto/create-split-synthesis-job.dto';
 import { CheckMergeableDto, CheckMergeableResponseDto } from './dto/check-mergeable.dto';
 import { CreateComposeMixedJobDto } from './dto/create-compose-mixed-job.dto';
+import { CreateRenderPagesJobDto } from './dto/create-render-pages-job.dto';
 import { WorkerJob } from './entities/worker-job.entity';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -161,6 +162,22 @@ export class WorkerJobsController {
     @Body() dto: CreateComposeMixedJobDto,
   ): Promise<WorkerJob> {
     return await this.workerJobsService.createComposeMixedJob(dto);
+  }
+
+  /**
+   * 내지 PDF 표시전용 가이드 래스터화 잡 생성 (2026-06-07).
+   *
+   * 첨부 내지 PDF 각 페이지를 이미지로 변환 → 편집기 underlay 잠금 가이드.
+   * 게스트도 호출 가능(@Public). ⚠️ 표시 전용 — 최종 인쇄엔 미반영.
+   */
+  @Post('render-pages')
+  @Public()
+  @ApiOperation({ summary: '내지 PDF 표시전용 가이드 래스터화 잡 생성' })
+  @ApiResponse({ status: 201, description: '잡 생성 성공', type: WorkerJob })
+  async createRenderPages(
+    @Body() dto: CreateRenderPagesJobDto,
+  ): Promise<WorkerJob> {
+    return await this.workerJobsService.createRenderPagesJob(dto);
   }
 
   /**
