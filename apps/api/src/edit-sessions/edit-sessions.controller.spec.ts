@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { EditSessionsController } from './edit-sessions.controller';
 import { EditSessionsService } from './edit-sessions.service';
 import { SessionStatus, SessionMode } from './entities/edit-session.entity';
+import { SitesService } from '../sites/sites.service';
 
 describe('EditSessionsController', () => {
   let controller: EditSessionsController;
@@ -46,6 +47,13 @@ describe('EditSessionsController', () => {
           provide: ConfigService,
           useValue: {
             get: jest.fn().mockReturnValue('test_api_key'),
+          },
+        },
+        {
+          provide: SitesService,
+          useValue: {
+            findByEditorAuthCode: jest.fn().mockResolvedValue(null),
+            findByWorkerAuthCode: jest.fn().mockResolvedValue(null),
           },
         },
       ],

@@ -1,6 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getQueueToken } from '@nestjs/bull';
 import { HealthController } from './health.controller';
+import { QueueMonitorService } from './queue-monitor.service';
+import { MetricsService } from './metrics.service';
 
 describe('HealthController', () => {
   let controller: HealthController;
@@ -43,6 +45,20 @@ describe('HealthController', () => {
         {
           provide: getQueueToken('pdf-synthesis'),
           useValue: mockSynthesisQueue,
+        },
+        {
+          provide: QueueMonitorService,
+          useValue: {
+            getDashboardSnapshot: jest.fn().mockResolvedValue({ queues: [] }),
+          },
+        },
+        {
+          provide: MetricsService,
+          useValue: {
+            getMetrics: jest.fn().mockResolvedValue(''),
+            recordJobCompleted: jest.fn(),
+            recordJobFailed: jest.fn(),
+          },
         },
       ],
     }).compile();
@@ -163,6 +179,14 @@ describe('HealthController', () => {
             provide: getQueueToken('pdf-synthesis'),
             useValue: mockSynthesisQueue,
           },
+          {
+            provide: QueueMonitorService,
+            useValue: { getDashboardSnapshot: jest.fn().mockResolvedValue({ queues: [] }) },
+          },
+          {
+            provide: MetricsService,
+            useValue: { getMetrics: jest.fn().mockResolvedValue(''), recordJobCompleted: jest.fn(), recordJobFailed: jest.fn() },
+          },
         ],
       }).compile();
 
@@ -201,6 +225,14 @@ describe('HealthController', () => {
           {
             provide: getQueueToken('pdf-synthesis'),
             useValue: mockSynthesisQueue,
+          },
+          {
+            provide: QueueMonitorService,
+            useValue: { getDashboardSnapshot: jest.fn().mockResolvedValue({ queues: [] }) },
+          },
+          {
+            provide: MetricsService,
+            useValue: { getMetrics: jest.fn().mockResolvedValue(''), recordJobCompleted: jest.fn(), recordJobFailed: jest.fn() },
           },
         ],
       }).compile();

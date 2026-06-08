@@ -71,6 +71,15 @@ describe('TemplateSetsService', () => {
             save: jest.fn().mockResolvedValue(mockTemplateSet),
             findOne: jest.fn().mockResolvedValue(mockTemplateSet),
             createQueryBuilder: jest.fn().mockReturnValue(mockQueryBuilder),
+            manager: {
+              createQueryBuilder: jest.fn().mockReturnValue({
+                select: jest.fn().mockReturnThis(),
+                from: jest.fn().mockReturnThis(),
+                where: jest.fn().mockReturnThis(),
+                andWhere: jest.fn().mockReturnThis(),
+                getRawOne: jest.fn().mockResolvedValue({ cnt: '0' }),
+              }),
+            },
           },
         },
         {
@@ -92,6 +101,13 @@ describe('TemplateSetsService', () => {
           provide: getRepositoryToken(Product),
           useValue: {
             find: jest.fn().mockResolvedValue([]),
+            createQueryBuilder: jest.fn().mockReturnValue({
+              leftJoin: jest.fn().mockReturnThis(),
+              where: jest.fn().mockReturnThis(),
+              andWhere: jest.fn().mockReturnThis(),
+              select: jest.fn().mockReturnThis(),
+              getMany: jest.fn().mockResolvedValue([]),
+            }),
           },
         },
       ],

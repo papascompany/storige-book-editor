@@ -45,6 +45,7 @@ describe('ProductsService', () => {
             save: jest.fn().mockResolvedValue(mockProduct),
             findOne: jest.fn().mockResolvedValue(mockProduct),
             find: jest.fn().mockResolvedValue([mockProduct]),
+            update: jest.fn().mockResolvedValue({ affected: 1 }),
             createQueryBuilder: jest.fn().mockReturnValue(mockQueryBuilder),
             remove: jest.fn().mockResolvedValue(mockProduct),
           },
@@ -120,7 +121,7 @@ describe('ProductsService', () => {
 
       expect(productRepository.findOne).toHaveBeenCalledWith({
         where: { id: 'product-id' },
-        relations: ['sizes'],
+        relations: ['sizes', 'templateSet'],
       });
       expect(result).toEqual(mockProduct);
     });
@@ -138,7 +139,7 @@ describe('ProductsService', () => {
 
       expect(productRepository.findOne).toHaveBeenCalledWith({
         where: { productId: 'PROD-001' },
-        relations: ['sizes'],
+        relations: ['sizes', 'templateSet'],
       });
       expect(result).toEqual(mockProduct);
     });
@@ -153,11 +154,11 @@ describe('ProductsService', () => {
   describe('linkTemplateSet', () => {
     it('should link a template set to a product', async () => {
       const linkedProduct = { ...mockProduct, templateSetId: 'template-set-id' };
-      productRepository.save.mockResolvedValueOnce(linkedProduct as Product);
+      productRepository.findOne.mockResolvedValueOnce(linkedProduct as Product);
 
       const result = await service.linkTemplateSet('product-id', 'template-set-id');
 
-      expect(productRepository.save).toHaveBeenCalled();
+      expect(productRepository.update).toHaveBeenCalled();
     });
   });
 
@@ -166,12 +167,9 @@ describe('ProductsService', () => {
       const linkedProduct = { ...mockProduct, templateSetId: 'template-set-id' };
       productRepository.findOne.mockResolvedValueOnce(linkedProduct as Product);
 
-      const unlinkedProduct = { ...linkedProduct, templateSetId: null };
-      productRepository.save.mockResolvedValueOnce(unlinkedProduct as Product);
-
       const result = await service.unlinkTemplateSet('product-id');
 
-      expect(productRepository.save).toHaveBeenCalled();
+      expect(productRepository.update).toHaveBeenCalled();
     });
   });
 

@@ -57,7 +57,6 @@ import './index.css'
  */
 async function finishMark(phase: string, extra?: Record<string, unknown>): Promise<void> {
   const ts = new Date().toISOString()
-  // eslint-disable-next-line no-console
   console.log(`[EmbeddedEditor][finish] ${phase}`, extra ?? '', ts)
   try {
     Sentry.captureMessage(`[finish] ${phase}`, { level: 'info', extra: { ...extra, ts } } as any)
