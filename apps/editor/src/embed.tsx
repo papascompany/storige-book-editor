@@ -706,6 +706,23 @@ function EmbeddedEditor({
           await applyContentPdfGuides(editSession, effectiveTemplateSetId)
         }
 
+        // 3-B. 로드 직후 자동 선택 해제 — mode='cover'(표지 전용) 등에서 표지 영역이
+        // 자동 선택된 채 로드돼 "어두운 박스(앞/뒤 비대칭처럼 보임)"로 표시되는 코스메틱 이슈 방지.
+        // 선택 해제만 수행(캔버스 기하/저장 데이터 영향 없음). 일부 로드 경로가 setTimeout
+        // 후처리(WorkspacePlugin.setOptions/setZoomAuto)하므로 동기 + 지연 2회 해제.
+        const clearLoadSelections = () => {
+          try {
+            useAppStore.getState().allCanvas.forEach((c: any) => {
+              try { c.discardActiveObject(); c.requestRenderAll() } catch { /* noop */ }
+            })
+            if (fabricCanvas) {
+              try { fabricCanvas.discardActiveObject(); fabricCanvas.requestRenderAll() } catch { /* noop */ }
+            }
+          } catch { /* noop */ }
+        }
+        clearLoadSelections()
+        setTimeout(clearLoadSelections, 200)
+
         if (!isMounted) return
 
         // 4. Complete initialization
