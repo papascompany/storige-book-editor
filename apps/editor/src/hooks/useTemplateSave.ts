@@ -107,7 +107,8 @@ export function useTemplateSave(): UseTemplateSaveReturn {
       ])
 
       // core API를 사용하여 캔버스 JSON 생성
-      const canvasJson = core.toJSON(canvas, ['id', 'extensionType', 'selectable', 'evented'])
+      // spread 책등 가변 재배치용 meta(regionRef/anchor) 보존 — useTemplateSetSave와 정합
+      const canvasJson = core.toJSON(canvas, ['id', 'extensionType', 'selectable', 'evented', 'meta'])
 
       // core API를 사용하여 임시 캔버스 생성
       const tempCanvas = core.createTempCanvas({

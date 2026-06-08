@@ -146,7 +146,9 @@ export namespace core {
     // 관리자가 지정한 보호가 고객 진입 시에도 강제됨.
     'lockInfo',
     'deleteable',
-    'evented'
+    'evented',
+    // spread 책등 가변 재배치용 meta(regionRef/anchor) 보존 — useTemplateSetSave와 정합
+    'meta'
   ]
 
   export function getWorkspace(canvas: fabric.Canvas): fabric.Object | undefined {

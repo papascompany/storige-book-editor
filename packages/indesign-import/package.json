@@ -1,0 +1,30 @@
+{
+  "name": "@storige/indesign-import",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "IDML(InDesign) → Storige Template/CanvasData 변환기 (표지 펼침면 · 책등 가변).",
+  "main": "src/index.mjs",
+  "module": "src/index.mjs",
+  "types": "src/index.d.mts",
+  "exports": {
+    ".": {
+      "types": "./src/index.d.mts",
+      "import": "./src/index.mjs"
+    }
+  },
+  "scripts": {
+    "test": "node --test src/**/*.test.mjs",
+    "test:geometry": "node --test src/geometry/units.test.mjs src/geometry/matrix.test.mjs src/geometry/regions.test.mjs",
+    "convert:sample": "node scripts/convert-sample.mjs fixtures/cover-sample.idml",
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "fast-xml-parser": "^4.5.0",
+    "jszip": "^3.10.1"
+  }
+}
