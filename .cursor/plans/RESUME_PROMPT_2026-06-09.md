@@ -66,6 +66,20 @@
 
 ---
 
+## 0-d. 책등 가변 인쇄 데이터 무결성 감사 (2026-06-09 밤) — 디지털인쇄 전문가 관점
+
+오너 요청: "책등 가변 시 가변영역 표시~뒤표지/책등 처리의 **출판 데이터 무결성**을 인쇄전문가 관점에서 보장". 적대 감사 워크플로우(3 에이전트: 재배치/PDF지오메트리/편집표시·책등적합 → 종합).
+
+**🔴 IB-1 (유일한 진짜 integrity-blocker, `622b1cc` 배포)**: `SpreadPlugin.repositionObjects` 가 **back-cover/back-wing 을 no-op** 으로 skip. 책등 확장 시 워크스페이스 중앙 대칭 확장 → `getContentOrigin`(-totalWidthPx/2) 이동 → 뒤표지 객체 scene 고정이라 **content 프레임에서 책등 쪽으로 drift = Δspine/2**(책등7→20mm=6.5mm). 뒤표지 바코드/간기/가격이 책등 침범 → 오인쇄·반품. PDF viewBox 동일 프레임이라 PDF 전파. **수정**: back-* 를 front-* 와 동일 `computeObjectReposition` 경로로 병합(region.x 불변+xNorm content 보존, +origin scene 보정 → drift 0). 회귀테스트 `SpreadCoordBridge.test.ts`(content 보존 + drift 불변식). canvas-core 227/227.
+
+**🟡 SF-3 (`e961815`)**: 표지 PDF 저장 폭을 `SpreadPlugin.getLayout().totalWidthMm`(트랜잭션 동기 갱신) 우선 사용 → 책등가변 직후 저장 시 settingsStore stale 로 폭 부족/과잉 방지.
+**🟡 SF-4 (`e961815` + API 배포)**: 책등 산식에 `Math.max(0, …)` 하한(types+spine.service 양쪽) — 음수 책등 레이아웃 붕괴 방지.
+
+**⏸ 후속(인쇄 차단 아님, 미수행)**: ① IB-2 PDF **TrimBox/BleedBox** 메타 등록(현 PDF 도 폭+cutSize 로 인쇄가능 → should-fix 강등, jsPDF 박스 API 버전위험 + 인쇄소 워크플로 확인 필요). ② 책등 **접지선/스파인 위치 마크**(RIP 식별용). ③ SF-5 **책등 텍스트 오버플로우 경고**(좁은 책등에서 표지 침범 감지; 텍스트 자동축소는 ❌ 폰트품질 의도설계). ④ 블리드 배경연장 PDF 보장 + E2E.
+**⚠️ 라이브 E2E 미검증**: IB-1/SF-3 은 로직·단위테스트·수치불변식으로 검증. 실 책등가변 셋 세션에서 내지수변경→책등재계산→뒤표지 정위치 추종 + 표지저장 폭 1회 시각확인 권장(§2-b).
+
+---
+
 ## 2-b. D 에디터 실로드 E2E 절차
 
 1. admin: IDML 변환 → 표지 Template 등록 → 책등 가변 책 셋 등록(방법A) + 내지 추가 + pageCountRange. 2. 그 셋으로 책모드 세션. 3. ✅ 표지+영역 가이드. 4. 내지 수 변경 → ✅ 책등 폭 자동 재계산 + 앞/뒤표지 평행이동. 5. 편집완료→재로드 → ✅ meta 보존(책등 가변 재배치 동작).
