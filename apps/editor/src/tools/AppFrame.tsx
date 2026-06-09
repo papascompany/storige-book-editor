@@ -2,6 +2,7 @@ import { useCallback, useState, useEffect } from 'react'
 import { Upload as UploadSimple } from 'lucide-react'
 import { useAppStore } from '@/stores/useAppStore'
 import { useImageStore } from '@/stores/useImageStore'
+import { useEditorStore } from '@/stores/useEditorStore'
 import { useIsCustomer } from '@/stores/useAuthStore'
 import { useEditorContents } from '@/hooks/useEditorContents'
 import { Button } from '@/components/ui/button'
@@ -18,6 +19,8 @@ export default function AppFrame() {
   const setContentsBrowser = useAppStore((state) => state.setContentsBrowser)
 
   const upload = useImageStore((state) => state.upload)
+  // 템플릿셋별 에셋 큐레이션(2026-06-09): 현재 세션의 templateSetId 를 콘텐츠 조회에 전달.
+  const templateSetId = useEditorStore((state) => state.templateSetId)
   const isCustomer = useIsCustomer()
 
   const { setupFrameContent } = useEditorContents()
@@ -50,6 +53,7 @@ export default function AppFrame() {
         const result = await contentsApi.getFrames({
           pageSize: 20,
           search: keyword.length >= 2 ? keyword : undefined,
+          templateSetId: templateSetId ?? undefined,
         })
 
         if (result.success && result.data) {
@@ -67,7 +71,7 @@ export default function AppFrame() {
     }
 
     fetchFrames()
-  }, [isCustomer, debouncedKeyword])
+  }, [isCustomer, debouncedKeyword, templateSetId])
 
   // UploadSimple handler
   const handleUpload = useCallback(async () => {

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, useRef } from 'react'
 import { Upload as UploadSimple } from 'lucide-react'
 import { useAppStore } from '@/stores/useAppStore'
 import { useImageStore } from '@/stores/useImageStore'
+import { useEditorStore } from '@/stores/useEditorStore'
 import { useIsCustomer } from '@/stores/useAuthStore'
 import { useEditorContents } from '@/hooks/useEditorContents'
 import { useIsCoarsePointer } from '@/hooks/useIsCoarsePointer'
@@ -20,6 +21,8 @@ export default function AppElement() {
   const setContentsBrowser = useAppStore((state) => state.setContentsBrowser)
   const tapMenu = useAppStore((state) => state.tapMenu)
   const upload = useImageStore((state) => state.upload)
+  // 템플릿셋별 에셋 큐레이션(2026-06-09): 현재 세션의 templateSetId 를 콘텐츠 조회에 전달.
+  const templateSetId = useEditorStore((state) => state.templateSetId)
   const isCustomer = useIsCustomer()
   const { setupAsset } = useEditorContents()
   const isCoarsePointer = useIsCoarsePointer()
@@ -55,7 +58,7 @@ export default function AppElement() {
 
     const discoverTags = async () => {
       try {
-        const result = await contentsApi.getElements({ pageSize: 100 })
+        const result = await contentsApi.getElements({ pageSize: 100, templateSetId: templateSetId ?? undefined })
         if (result.success && result.data) {
           const tagSet = new Set<string>()
           result.data.items.forEach((item: any) => {
@@ -71,7 +74,7 @@ export default function AppElement() {
       }
     }
     discoverTags()
-  }, [isCustomer])
+  }, [isCustomer, templateSetId])
 
   // Fetch elements — respects selectedTag + search
   useEffect(() => {
@@ -85,6 +88,7 @@ export default function AppElement() {
           pageSize: 20,
           search: keyword.length >= 2 ? keyword : undefined,
           tags: selectedTag ? [selectedTag] : undefined,
+          templateSetId: templateSetId ?? undefined,
         })
 
         if (result.success && result.data) {
@@ -101,7 +105,7 @@ export default function AppElement() {
     }
 
     fetchElements()
-  }, [isCustomer, debouncedKeyword, selectedTag])
+  }, [isCustomer, debouncedKeyword, selectedTag, templateSetId])
 
   // Handle upload
   const handleUpload = useCallback(async () => {
