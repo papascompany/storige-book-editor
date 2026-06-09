@@ -2,6 +2,7 @@ import { useCallback, useState, useEffect, useRef } from 'react'
 import { Upload as UploadSimple, Trash2 as Trash, Check } from 'lucide-react'
 import { useAppStore } from '@/stores/useAppStore'
 import { useImageStore } from '@/stores/useImageStore'
+import { useEditorStore } from '@/stores/useEditorStore'
 import { useIsCustomer } from '@/stores/useAuthStore'
 import { useEditorContents } from '@/hooks/useEditorContents'
 import { Button } from '@/components/ui/button'
@@ -29,6 +30,8 @@ export default function AppBackground() {
   const setContentsBrowser = useAppStore((state) => state.setContentsBrowser)
   const updateObjects = useAppStore((state) => state.updateObjects)
   const upload = useImageStore((state) => state.upload)
+  // 템플릿셋별 에셋 큐레이션(2026-06-09): 현재 세션의 templateSetId 를 콘텐츠 조회에 전달.
+  const templateSetId = useEditorStore((state) => state.templateSetId)
   const isCustomer = useIsCustomer()
   const { setupAsset } = useEditorContents()
 
@@ -89,7 +92,7 @@ export default function AppBackground() {
 
     const discoverTags = async () => {
       try {
-        const result = await contentsApi.getBackgrounds({ pageSize: 100 })
+        const result = await contentsApi.getBackgrounds({ pageSize: 100, templateSetId: templateSetId ?? undefined })
         if (result.success && result.data) {
           const tagSet = new Set<string>()
           result.data.items.forEach((item: any) => {
@@ -102,7 +105,7 @@ export default function AppBackground() {
       } catch { /* noop */ }
     }
     discoverTags()
-  }, [isCustomer])
+  }, [isCustomer, templateSetId])
 
   // Fetch background contents
   useEffect(() => {
@@ -114,6 +117,7 @@ export default function AppBackground() {
         const result = await contentsApi.getBackgrounds({
           pageSize: 20,
           tags: selectedTag ? [selectedTag] : undefined,
+          templateSetId: templateSetId ?? undefined,
         })
         if (result.success && result.data) {
           setContents(result.data.items as unknown as EditorContent[])
@@ -128,7 +132,7 @@ export default function AppBackground() {
       }
     }
     fetchBackgrounds()
-  }, [isCustomer, selectedTag])
+  }, [isCustomer, selectedTag, templateSetId])
 
   // Initialize and setup canvas event listeners
   useEffect(() => {
