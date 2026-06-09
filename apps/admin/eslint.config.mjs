@@ -36,6 +36,8 @@ export default [
         Blob: 'readonly',
         File: 'readonly',
         FileReader: 'readonly',
+        atob: 'readonly',
+        btoa: 'readonly',
         HTMLElement: 'readonly',
         HTMLCanvasElement: 'readonly',
         HTMLImageElement: 'readonly',
