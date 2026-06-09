@@ -115,6 +115,10 @@ export namespace core {
     'curveArcDeg',
     'pathAlign',
     'fillImage',
+    // 사진틀(프레임) 마스킹: 채워진 사진이 어떤 프레임에 속하는지 가리키는 링크.
+    // 프레임 PNG 의 투명창 영역에만 사진이 보이도록 inverted clipPath 를 쓰며,
+    // 저장→로드/인쇄 라운드트립에서 프레임↔사진 관계를 다시 찾기 위해 보존한다.
+    'frameRef',
     'accessory',
     'movingPath',
     'hasBorders',
