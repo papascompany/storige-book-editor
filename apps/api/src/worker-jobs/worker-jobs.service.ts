@@ -755,6 +755,162 @@ export class WorkerJobsService {
   }
 
   /**
+   * Duplex-split 합성 작업 생성 — 2026-06-09 (TemplateSet.pdfOutputMode='duplex-split').
+   *
+   * 단일/낱장 양면 상품의 편집기 산출 단일 PDF(앞,뒤,앞,뒤… 순서)를
+   * 앞/뒤 한 세트(각 2페이지)씩 잘라 개별 PDF n개로 분리한다.
+   *
+   * 기존 split(cover/content 분리) 머신을 재사용하지 않고 별도 mode로 분기하는 이유:
+   *  split 은 pageTypes(cover/content) 기준 "2파일" 분리이고, duplex-split 은
+   *  2페이지씩 "n파일" 그룹핑이라 산출 형태가 다르기 때문. 큐/프로세서/synthesizer
+   *  다운로드·copyPages 프리미티브는 동일하게 재사용한다.
+   *
+   * - pdfFileId: 편집기가 업로드한 단일 PDF(보통 session.coverFileId)
+   * - sessionId: EditSession ID (편집기 산출물 + 세션 일치 이중 검증용)
+   * - requestId: 멱등성 키
+   */
+  async createDuplexSplitJob(dto: {
+    sessionId: string;
+    pdfFileId: string;
+    requestId: string;
+    callbackUrl?: string;
+    priority?: 'high' | 'normal' | 'low';
+  }): Promise<WorkerJob> {
+    // 0. 멱등성 체크 (split/spread 와 동일 unique 인덱스 사용)
+    const existingJob = await this.workerJobRepository.findOne({
+      where: {
+        sessionId: dto.sessionId,
+        pdfFileId: dto.pdfFileId,
+        requestId: dto.requestId,
+      },
+    });
+    if (existingJob) {
+      this.logger.log(
+        `Idempotent hit: returning existing duplex-split job ${existingJob.id} for requestId=${dto.requestId}`,
+      );
+      return existingJob;
+    }
+
+    // 1. EditSession 조회
+    const session = await this.editSessionRepository.findOne({
+      where: { id: dto.sessionId },
+    });
+    if (!session) {
+      throw new NotFoundException({
+        code: 'SESSION_NOT_FOUND',
+        message: 'EditSession을 찾을 수 없습니다.',
+      });
+    }
+
+    // 2. PDF 파일 조회 + 편집기 산출물 / 세션 일치 검증 (split 과 동일 계약)
+    const file = await this.filesService.findById(dto.pdfFileId);
+    if (!file) {
+      throw new NotFoundException({
+        code: 'FILE_NOT_FOUND',
+        message: '파일을 찾을 수 없습니다.',
+      });
+    }
+    if (file.metadata?.generatedBy !== 'editor') {
+      throw new BadRequestException({
+        code: 'PDF_NOT_FROM_EDITOR',
+        message: '편집기에서 생성된 PDF만 지원합니다.',
+      });
+    }
+    if (file.metadata?.editSessionId !== dto.sessionId) {
+      throw new BadRequestException({
+        code: 'SESSION_FILE_MISMATCH',
+        message: '세션과 파일이 일치하지 않습니다.',
+      });
+    }
+
+    // 3. 페이지 수(=세트 수×2) 산출. metadata.pages → canvasData.pages 순으로 조회.
+    //    실제 PDF 페이지 수 검증은 워커(handleDuplexSplitSynthesis)에서 최종 수행한다.
+    const pages = session.metadata?.pages || session.canvasData?.pages || [];
+    const totalExpectedPages = pages.length;
+    if (totalExpectedPages === 0) {
+      throw new UnprocessableEntityException({
+        code: 'EMPTY_SESSION_PAGES',
+        message: '세션에 페이지가 없습니다.',
+      });
+    }
+    if (totalExpectedPages % 2 !== 0) {
+      // 양면(앞/뒤) 세트 구성 불가 — 짝수만 허용.
+      throw new UnprocessableEntityException({
+        code: 'ODD_PAGE_COUNT',
+        message: `duplex-split은 짝수 페이지만 지원합니다 (현재 ${totalExpectedPages}쪽).`,
+      });
+    }
+
+    // 4. WorkerJob 생성
+    const job = this.workerJobRepository.create({
+      jobType: WorkerJobType.SYNTHESIZE,
+      status: WorkerJobStatus.PENDING,
+      editSessionId: dto.sessionId,
+      sessionId: dto.sessionId,
+      pdfFileId: dto.pdfFileId,
+      requestId: dto.requestId,
+      options: {
+        mode: 'duplex-split',
+        totalExpectedPages,
+        callbackUrl: dto.callbackUrl,
+      },
+    });
+
+    // Race condition 방어 (split/spread 와 동일)
+    let savedJob: WorkerJob;
+    try {
+      savedJob = await this.workerJobRepository.save(job);
+    } catch (error: any) {
+      if (this.isUniqueViolation(error)) {
+        const existing = await this.workerJobRepository.findOne({
+          where: {
+            sessionId: dto.sessionId,
+            pdfFileId: dto.pdfFileId,
+            requestId: dto.requestId,
+          },
+        });
+        if (existing) {
+          this.logger.log(
+            `Race condition resolved: returning existing duplex-split job ${existing.id}`,
+          );
+          return existing;
+        }
+      }
+      throw error;
+    }
+
+    // 5. Bull Queue에 추가 (mode: 'duplex-split' 필수 — 워커 분기 기준)
+    const jobOptions: { priority?: number } = {};
+    if (dto.priority === 'high') {
+      jobOptions.priority = 1;
+    } else if (dto.priority === 'low') {
+      jobOptions.priority = 10;
+    } else {
+      jobOptions.priority = 5;
+    }
+
+    await this.synthesisQueue.add(
+      'synthesize-pdf',
+      {
+        jobId: savedJob.id,
+        mode: 'duplex-split',
+        sessionId: dto.sessionId,
+        pdfFileId: dto.pdfFileId,
+        totalExpectedPages,
+        callbackUrl: dto.callbackUrl,
+      },
+      jobOptions,
+    );
+
+    this.logger.log(
+      `Duplex-split job created: ${savedJob.id}, sessionId=${dto.sessionId}, ` +
+        `pages=${totalExpectedPages} (${totalExpectedPages / 2} sets), priority=${dto.priority || 'normal'}`,
+    );
+
+    return savedJob;
+  }
+
+  /**
    * 스프레드 합성 작업 생성
    * - spreadPdfFileId: 스프레드 PDF (1페이지)
    * - contentPdfFileIds: 내지 PDF들 (순서대로 병합)
