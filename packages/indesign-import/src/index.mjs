@@ -35,6 +35,10 @@ export async function convertIdmlToTemplate(buffer, opts = {}) {
       type: 'image',
       id: 'idml-artwork',
       src: raster.dataUrl,
+      // left/top 은 캔버스 중심 → origin 도 'center' 여야 채워짐. 없으면 fabric 기본 left/top 으로
+      // 해석돼 이미지가 우하단으로 어긋나 화면 밖으로 나감 → 저장/재로드 시 배경 미표시 버그.
+      originX: 'center',
+      originY: 'center',
       left: round2(cw / 2),
       top: round2(ch / 2),
       width: raster.widthPx,
