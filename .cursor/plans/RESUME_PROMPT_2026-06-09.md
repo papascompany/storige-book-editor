@@ -30,6 +30,29 @@
 
 ---
 
+## 0-b. 변환모듈 인쇄 정합성 사이클(2026-06-09 오후, CTO 방향)
+
+변환모듈 P0/P1을 진행. 인쇄 출력 영향 항목은 **스테이징 브랜치 보존**(검증 후 머지), 무관 항목만 배포.
+
+| 항목 | 상태 |
+|---|---|
+| **B. 상품별 색모드** `TemplateSet.colorMode(rgb/cmyk)` + admin | ✅ **배포**(`7cf5a79`, 마이그레이션 `color_mode`). 워커 색변환(GS ColorConversionStrategy/ICC)은 미구현(스테이징 예정) |
+| **A. 텍스트 아웃라인 혼합폰트 충실도** | 🌿 `feat/print-text-outline`(`b9a3fa0`). ※ 아웃라인 자체는 이미 라이브(8fea0e8), 이건 혼합폰트 per-run 버그 수정 |
+| **C. overprint/별색 보존** (GS pdfwrite 보존 플래그) | 🌿 `feat/print-overprint-preserve`(`5c02c1e`) |
+| **PNG-1. 변환 PNG 스토리지 업로드**(dataURL→URL, DB 비대화 해소) | ✅ **배포**(`1dd9484`, admin) |
+| **PNG-2. 사진 프레임 마스킹** | 📋 조사+계획만(코드 없음). 실사용 프레임 경로=마스킹 전무(사진 삐져나옴)=실갭. 권장=`clipPath`+`inverted:true`(투명창에만 사진). CTO 방식 결정 + 런타임 시각검증 필요. (`setShapeAsMold`는 구현됐으나 UI 미연결 데드코드) |
+| **D. 에디터 실로드 E2E**(책등가변+meta) | 수동 절차 §2-b. `meta` 직렬화 해소(canvas.ts:151) 확인, 실세션 1회 검증 필요 |
+
+**스테이징 대기 브랜치(인쇄출력 영향)**: `feat/pdf-output-worker-A1`(① duplex-split) · `feat/print-text-outline`(A) · `feat/print-overprint-preserve`(C). 미구현: B 워커 색변환.
+
+---
+
+## 2-b. D 에디터 실로드 E2E 절차
+
+1. admin: IDML 변환 → 표지 Template 등록 → 책등 가변 책 셋 등록(방법A) + 내지 추가 + pageCountRange. 2. 그 셋으로 책모드 세션. 3. ✅ 표지+영역 가이드. 4. 내지 수 변경 → ✅ 책등 폭 자동 재계산 + 앞/뒤표지 평행이동. 5. 편집완료→재로드 → ✅ meta 보존(책등 가변 재배치 동작).
+
+---
+
 ## 1. 잔여 작업 (우선순위)
 
 1. **① 워커 duplex-split 스테이징 테스트 후 머지** — branch `feat/pdf-output-worker-A1`. 검증항목: 양면 낱장 실주문 N세트→`set_<i>.pdf` n개(각 2p, 앞=먼저/뒤=다음 순서), single 1p, duplex-merged 회귀 무변경, 멱등 재완료, 웹훅 `outputFiles[type:'set']` 소비처(admin/PHP). 통과 시 master 머지 후 worker 배포. ⚠️ 회전 없음(RIP 처리).
