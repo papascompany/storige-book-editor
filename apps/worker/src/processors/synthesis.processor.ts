@@ -13,6 +13,7 @@ import {
   SynthesisResult,
   OutputFile,
   SplitSynthesisJobData,
+  DuplexSplitSynthesisJobData,
   SpreadSynthesisJobData,
   PageTypes,
   SplitResult,
@@ -21,7 +22,7 @@ import {
 
 interface SynthesisJobData {
   jobId: string; // domain ID (worker_jobs.id)
-  mode?: 'split' | 'spread' | 'compose-mixed'; // ★ 모드 분기 기준 (인쇄 워크플로우 v1 Phase 5: compose-mixed 추가)
+  mode?: 'split' | 'duplex-split' | 'spread' | 'compose-mixed'; // ★ 모드 분기 기준 (2026-06-09: duplex-split 추가)
   coverUrl?: string;
   contentUrl?: string;
   spineWidth?: number;
@@ -93,6 +94,11 @@ export class SynthesisProcessor {
     // ★ mode 단일 진실 공급원: Queue payload의 mode만 신뢰
     if (mode === 'split') {
       return this.handleSplitSynthesis(job as Job<SplitSynthesisJobData>);
+    }
+    if (mode === 'duplex-split') {
+      return this.handleDuplexSplitSynthesis(
+        job as Job<DuplexSplitSynthesisJobData>,
+      );
     }
     if (mode === 'spread') {
       return this.handleSpreadSynthesis(job as Job<SpreadSynthesisJobData>);
@@ -801,6 +807,182 @@ export class SynthesisProcessor {
       throw error;
     } finally {
       // ★ cleanup은 jobId scoped temp 디렉토리만 삭제
+      await this.cleanupJobTempDir(jobTempDir);
+    }
+  }
+
+  // ============================================================================
+  // Duplex-split Synthesis (낱장 양면 단일 PDF → 앞/뒤 2페이지 세트별 개별 PDF) - 2026-06-09
+  // ============================================================================
+
+  /**
+   * Duplex-split 처리 (1개 PDF[앞,뒤,앞,뒤…] → set_0.pdf, set_1.pdf, … 각 2페이지).
+   *
+   * TemplateSet.pdfOutputMode='duplex-split' 일 때 API가 발행.
+   * 편집기 페이지 순서를 그대로 보존(앞=먼저, 뒤=다음). 뒷면 회전은 인쇄소 RIP 책임이므로
+   * 여기서는 페이지 순서만 보장하고 회전은 적용하지 않는다(설계 제약).
+   *
+   * split(cover/content) 머신과 동일한 검증/temp/상태재시도 패턴을 따르되,
+   * 산출은 2파일이 아니라 2페이지 × n세트의 n파일이라는 점만 다르다.
+   */
+  private async handleDuplexSplitSynthesis(
+    job: Job<DuplexSplitSynthesisJobData>,
+  ) {
+    const { jobId, sessionId, pdfFileId, totalExpectedPages } = job.data;
+    const queueJobId = job.id;
+
+    const jobTempDir = path.join(this.storagePath, `temp_${jobId}`);
+
+    this.logger.log(
+      `Processing duplex-split synthesis job ${jobId} (queue: ${queueJobId}), ` +
+        `expectedPages=${totalExpectedPages}`,
+    );
+
+    try {
+      await this.updateJobStatusWithRetry(jobId, { status: 'PROCESSING' });
+
+      // 0. 임시 디렉토리 클린 시작 (재처리/리플레이 안전)
+      await fs.rm(jobTempDir, { recursive: true, force: true });
+      await fs.mkdir(jobTempDir, { recursive: true });
+
+      // 1. 파일 조회 + 이중 검증 (split 과 동일 계약: 편집기 산출물 + 세션 일치)
+      const file = await this.getFileById(pdfFileId);
+      if (!file) {
+        throw new DomainError(ErrorCodes.FILE_NOT_FOUND, '파일을 찾을 수 없습니다');
+      }
+      if (file.metadata?.generatedBy !== 'editor') {
+        throw new DomainError(
+          ErrorCodes.PDF_NOT_FROM_EDITOR,
+          '편집기 산출물이 아닙니다',
+        );
+      }
+      if (file.metadata?.editSessionId !== sessionId) {
+        throw new DomainError(ErrorCodes.SESSION_FILE_MISMATCH, '세션-파일 불일치');
+      }
+
+      // 2. PDF 다운로드
+      let pdfBytes: Uint8Array;
+      try {
+        pdfBytes = await this.synthesizerService.downloadFile(file.filePath);
+      } catch (error: any) {
+        throw new DomainError(
+          ErrorCodes.FILE_DOWNLOAD_FAILED,
+          '파일 다운로드 실패',
+          { url: file.filePath, cause: error.message },
+        );
+      }
+
+      // 3. PDF 로드
+      let pdfDoc: PDFDocument;
+      try {
+        pdfDoc = await PDFDocument.load(pdfBytes);
+      } catch (error: any) {
+        throw new DomainError(
+          ErrorCodes.PDF_LOAD_FAILED,
+          'PDF 로드 실패 (암호화/손상/지원불가)',
+          { cause: error.message },
+        );
+      }
+      const totalPages = pdfDoc.getPageCount();
+
+      // 4. 페이지 수 검증 (API 기대치와 일치 + 짝수 = 2 × 세트 수)
+      if (totalPages !== totalExpectedPages) {
+        throw new DomainError(ErrorCodes.PAGE_COUNT_MISMATCH, '페이지 수 불일치', {
+          expected: totalExpectedPages,
+          got: totalPages,
+        });
+      }
+      if (totalPages === 0 || totalPages % 2 !== 0) {
+        throw new DomainError(
+          ErrorCodes.PAGE_COUNT_MISMATCH,
+          'duplex-split은 짝수 페이지만 지원합니다',
+          { got: totalPages },
+        );
+      }
+
+      // 5. 2페이지씩 그룹핑하여 세트별 개별 PDF 생성 (synthesizer copyPages 프리미티브 재사용)
+      const setCount = totalPages / 2;
+      const storageKeyBase = `outputs/${jobId}`;
+      const outputDir = path.join(this.outputsPath, jobId);
+      await fs.mkdir(outputDir, { recursive: true });
+
+      const outputFiles: OutputFile[] = [];
+      for (let setIndex = 0; setIndex < setCount; setIndex++) {
+        const frontIdx = setIndex * 2; // 앞 (편집기에서 먼저 보인 페이지)
+        const backIdx = setIndex * 2 + 1; // 뒤 (다음 페이지)
+
+        const setDoc = await PDFDocument.create();
+        const [frontPage, backPage] = await setDoc.copyPages(pdfDoc, [
+          frontIdx,
+          backIdx,
+        ]);
+        setDoc.addPage(frontPage);
+        setDoc.addPage(backPage);
+
+        const setFilename = `set_${setIndex}.pdf`;
+        await fs.writeFile(
+          path.join(outputDir, setFilename),
+          await setDoc.save(),
+        );
+
+        // 무결성: 세트당 정확히 2페이지여야 함
+        if (setDoc.getPageCount() !== 2) {
+          throw new DomainError(
+            ErrorCodes.SPLIT_VERIFICATION_FAILED,
+            'duplex-split 세트 페이지 수 불일치',
+            { setIndex, expected: 2, got: setDoc.getPageCount() },
+          );
+        }
+
+        outputFiles.push({
+          type: 'set',
+          url: `/storage/${storageKeyBase}/${setFilename}`,
+          pageCount: 2,
+          setIndex,
+        });
+      }
+
+      // 6. 완료 처리 (★ 재시도 정책). outputFileUrl 은 첫 세트(하위호환용 단일 URL).
+      const result: SynthesisResult = {
+        success: true,
+        outputFileUrl: outputFiles[0]?.url,
+        outputFiles,
+        totalPages,
+      };
+
+      await this.updateJobStatusWithRetry(jobId, {
+        status: 'COMPLETED',
+        result,
+        outputFileUrl: result.outputFileUrl,
+        outputFiles,
+        queueJobId,
+      });
+
+      this.logger.log(
+        `Duplex-split job ${jobId} completed: ${setCount} sets (${totalPages} pages → ${setCount} PDFs)`,
+      );
+
+      return result;
+    } catch (error: any) {
+      const domainError =
+        error instanceof DomainError
+          ? error
+          : new DomainError(ErrorCodes.INTERNAL_ERROR, error.message);
+
+      this.logger.error(
+        `Duplex-split job ${jobId} failed: ${domainError.code} - ${domainError.message}`,
+        error.stack,
+      );
+
+      await this.updateJobStatusWithRetry(jobId, {
+        status: 'FAILED',
+        errorCode: domainError.code,
+        errorMessage: domainError.message,
+        errorDetail: domainError.detail,
+      });
+
+      throw error;
+    } finally {
       await this.cleanupJobTempDir(jobTempDir);
     }
   }
