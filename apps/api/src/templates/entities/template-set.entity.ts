@@ -13,7 +13,7 @@ import {
 import { v4 as uuidv4 } from 'uuid';
 import { Category } from './category.entity';
 import { Template } from './template.entity';
-import type { ProductSpecs, TemplateSetType, TemplateRef, EditorMode, EditorMenuKey } from '@storige/types';
+import type { ProductSpecs, TemplateSetType, TemplateRef, EditorMode, EditorMenuKey, PdfOutputMode } from '@storige/types';
 
 /**
  * 템플릿셋 타입 enum (DB용)
@@ -135,6 +135,13 @@ export class TemplateSet {
    */
   @Column({ name: 'content_pdf_editable', type: 'boolean', default: true })
   contentPdfEditable: boolean;
+
+  /**
+   * PDF 출력 모드 (2026-06-09) — 'single'(단면 1p) | 'duplex-merged'(양면 1파일) |
+   * 'duplex-split'(앞/뒤 세트별 개별 PDF). 단일/낱장 상품 출력에 적용.
+   */
+  @Column({ name: 'pdf_output_mode', type: 'varchar', length: 20, default: 'duplex-merged' })
+  pdfOutputMode: PdfOutputMode;
 
   /**
    * 소프트 삭제 플래그

@@ -289,6 +289,7 @@ export const TemplateSetForm = () => {
         coverEditable: templateSet.coverEditable ?? true,
         coverPreviewImage: templateSet.coverPreviewImage || undefined,
         contentPdfEditable: templateSet.contentPdfEditable ?? true,
+        pdfOutputMode: templateSet.pdfOutputMode ?? 'duplex-merged',
       });
 
       // Load template refs with template details
@@ -398,6 +399,7 @@ export const TemplateSetForm = () => {
       coverEditable,
       coverPreviewImage,
       contentPdfEditable: values.contentPdfEditable !== false, // 기본 true
+      pdfOutputMode: values.pdfOutputMode || 'duplex-merged',
     };
 
     if (id) {
@@ -529,6 +531,7 @@ export const TemplateSetForm = () => {
             pageCountMax: 100,
             customizeMenus: false,
             enabledMenus: ALL_EDITOR_MENU_KEYS,
+            pdfOutputMode: 'duplex-merged',
           }}
         >
           <Form.Item
@@ -749,6 +752,22 @@ export const TemplateSetForm = () => {
             extra="끔: 첨부 내지 PDF를 가이드로만 표시하고 내지 편집을 막습니다(첫 페이지에 안내 레이블). 어느 쪽이든 최종 내지 인쇄는 첨부 원본 PDF 그대로입니다."
           >
             <Switch checkedChildren="편집 가능" unCheckedChildren="가이드만 (편집 불가)" />
+          </Form.Item>
+
+          <Divider>PDF 출력</Divider>
+
+          <Form.Item
+            name="pdfOutputMode"
+            label="PDF 생성 방식"
+            extra="단면=1파일 1페이지(포스터 등). 양면-원파일=1파일에 앞,뒤(,앞,뒤…) 순서. 양면-파일분리=앞/뒤 한 세트씩 개별 PDF(각 2페이지). ※ 책(spread) 셋은 기존 표지+내지 분리 출력이 우선되며 이 설정은 단일/낱장 상품에 적용됩니다."
+          >
+            <Select
+              options={[
+                { label: '단면 (1파일·1페이지)', value: 'single' },
+                { label: '양면 — 원파일 (앞,뒤,앞,뒤…)', value: 'duplex-merged' },
+                { label: '양면 — 파일분리 (앞/뒤 세트별 개별 PDF)', value: 'duplex-split' },
+              ]}
+            />
           </Form.Item>
 
           <Divider>에디터 도구 메뉴</Divider>

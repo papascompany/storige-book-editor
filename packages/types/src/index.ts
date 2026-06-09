@@ -201,6 +201,14 @@ export interface TemplateSet {
    * ⚠️ 어느 쪽이든 최종 내지 인쇄는 첨부 원본 PDF 그대로(편집 미반영).
    */
   contentPdfEditable?: boolean;
+  /**
+   * PDF 출력 모드 — 인쇄물 구성에 따라 워커의 최종 PDF 생성 방식 결정 (2026-06-09).
+   * - 'single': 단면(포스터 등) — 1 PDF에 1페이지.
+   * - 'duplex-merged': 양면 — 1 PDF에 앞,뒤(,앞,뒤...) 순서로 한 파일 (기본).
+   * - 'duplex-split': 양면 — 앞/뒤 한 세트씩 잘라 개별 PDF(각 2페이지) n개.
+   * (책 모드 spread 셋은 기존 compose-mixed 경로가 우선 — 이 옵션은 단일/낱장 상품에 적용)
+   */
+  pdfOutputMode?: PdfOutputMode;
   // Legacy fields (하위 호환)
   description?: string;
   categoryId?: string;
@@ -210,6 +218,12 @@ export interface TemplateSet {
   createdAt: Date;
   updatedAt: Date;
 }
+
+/**
+ * PDF 출력(생성) 모드. 'single'=단면 1p, 'duplex-merged'=양면 1파일(앞,뒤,...),
+ * 'duplex-split'=앞/뒤 세트별 개별 PDF(각 2p). 기본 'duplex-merged'.
+ */
+export type PdfOutputMode = 'single' | 'duplex-merged' | 'duplex-split';
 
 /**
  * 템플릿셋 생성 입력
@@ -232,6 +246,8 @@ export interface CreateTemplateSetInput {
   coverPreviewImage?: string | null;
   /** 내지 PDF 첨부 파일 편집 가능 여부 (2026-06-08, 기본 true) */
   contentPdfEditable?: boolean;
+  /** PDF 출력 모드 (2026-06-09, 기본 'duplex-merged') */
+  pdfOutputMode?: PdfOutputMode;
 }
 
 /**
@@ -254,6 +270,8 @@ export interface UpdateTemplateSetInput {
   coverPreviewImage?: string | null;
   /** 내지 PDF 첨부 파일 편집 가능 여부 (2026-06-08, 기본 true) */
   contentPdfEditable?: boolean;
+  /** PDF 출력 모드 (2026-06-09, 기본 'duplex-merged') */
+  pdfOutputMode?: PdfOutputMode;
 }
 
 /**
