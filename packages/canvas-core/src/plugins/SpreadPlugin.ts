@@ -134,6 +134,27 @@ class SpreadPlugin extends PluginBase {
     }
   }
 
+  /**
+   * Fabric 객체의 바운딩박스를 SpreadLayoutEngine 의 content 좌표계(0..totalWidthPx)로 반환.
+   *
+   * ⚠️ 좌표계 주의: `getBoundingRect()`(무인자)는 lineCoords = **viewport(줌·팬 적용)** 좌표라
+   * 엔진(content 좌표) 비교에 부적합. 반드시 `getBoundingRect(true, true)`(aCoords = scene 좌표,
+   * viewport 무관)로 scene 을 얻은 뒤 `- origin` 으로 content 로 변환한다.
+   * (AlignPlugin/AccessoryPlugin 도 동일하게 absolute=true 를 사용.)
+   */
+  private getContentBoundingRect(
+    obj: fabric.Object
+  ): { left: number; top: number; width: number; height: number } {
+    const origin = this.getContentOrigin()
+    const br = obj.getBoundingRect(true, true)
+    return {
+      left: br.left - origin.x,
+      top: br.top - origin.y,
+      width: br.width,
+      height: br.height,
+    }
+  }
+
   // ============================================================================
   // Core Methods
   // ============================================================================
@@ -259,6 +280,8 @@ class SpreadPlugin extends PluginBase {
    */
   private repositionObjects(oldLayout: SpreadLayout, newLayout: SpreadLayout): void {
     const objects = this._canvas.getObjects()
+    // 엔진은 content 좌표(0..totalWidthPx)로 계산하므로, fabric(scene, 중앙원점)과의 변환에 사용.
+    const origin = this.getContentOrigin()
 
     for (const obj of objects) {
       // 시스템 객체 skip
@@ -275,8 +298,8 @@ class SpreadPlugin extends PluginBase {
         continue
       }
 
-      // 영역 객체: 재배치
-      const boundingRect = obj.getBoundingRect()
+      // 영역 객체: 재배치 — content 좌표계로 변환(엔진 입력용).
+      const boundingRect = this.getContentBoundingRect(obj)
 
       if (regionRef === 'spine') {
         // Spine 객체: Strategy 적용
@@ -286,9 +309,9 @@ class SpreadPlugin extends PluginBase {
         const strategy = getSpineResizeStrategy(obj)
         const result = strategy.apply(obj, oldSpine, newSpine)
 
-        // 위치 업데이트
+        // 위치 업데이트 (엔진 출력 content → scene: + origin)
         obj.setPositionByOrigin(
-          new fabric.Point(result.x, result.y),
+          new fabric.Point(result.x + origin.x, result.y + origin.y),
           'center',
           'center'
         )
@@ -311,8 +334,9 @@ class SpreadPlugin extends PluginBase {
           newLayout
         )
 
+        // 엔진 출력 content → scene: + origin
         obj.setPositionByOrigin(
-          new fabric.Point(result.x, result.y),
+          new fabric.Point(result.x + origin.x, result.y + origin.y),
           'center',
           'center'
         )
@@ -349,7 +373,9 @@ class SpreadPlugin extends PluginBase {
     const outOfBounds: any[] = []
     for (const obj of objects) {
       if (obj.meta?.system) continue
-      const br = obj.getBoundingRect()
+      // 경계(minX..maxX)는 origin 기반 scene 좌표 → br 도 scene(absolute) 이어야 정합.
+      // (무인자 getBoundingRect 는 viewport 좌표라 줌에 따라 오판정.)
+      const br = obj.getBoundingRect(true, true)
       const overflowRight = br.left + br.width > maxX
       const overflowLeft = br.left < minX
       const overflowBottom = br.top + br.height > maxY
@@ -514,8 +540,8 @@ class SpreadPlugin extends PluginBase {
       return
     }
 
-    // 바운딩 박스 계산 (stroke 포함)
-    const boundingRect = target.getBoundingRect()
+    // 바운딩 박스 계산 (stroke 포함) — content 좌표계로 변환(엔진 비교용).
+    const boundingRect = this.getContentBoundingRect(target)
 
     // 현재 regionRef
     const currentRegionRef = target.meta?.regionRef ?? null
