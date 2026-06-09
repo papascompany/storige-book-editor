@@ -13,7 +13,7 @@ import {
 import { v4 as uuidv4 } from 'uuid';
 import { Category } from './category.entity';
 import { Template } from './template.entity';
-import type { ProductSpecs, TemplateSetType, TemplateRef, EditorMode, EditorMenuKey, PdfOutputMode } from '@storige/types';
+import type { ProductSpecs, TemplateSetType, TemplateRef, EditorMode, EditorMenuKey, PdfOutputMode, ColorOutputMode } from '@storige/types';
 
 /**
  * 템플릿셋 타입 enum (DB용)
@@ -142,6 +142,13 @@ export class TemplateSet {
    */
   @Column({ name: 'pdf_output_mode', type: 'varchar', length: 20, default: 'duplex-merged' })
   pdfOutputMode: PdfOutputMode;
+
+  /**
+   * 색 처리 모드 (2026-06-09) — 'rgb'(유지, 기본) | 'cmyk'(출력 시 변환).
+   * 워커 실제 변환은 인쇄출력 영향 → 별도(스테이징). 필드는 의도 저장.
+   */
+  @Column({ name: 'color_mode', type: 'varchar', length: 10, default: 'rgb' })
+  colorMode: ColorOutputMode;
 
   /**
    * ④ 연결된 라이브러리 카테고리 ID (2026-06-09) — 컬럼 아님(transient).

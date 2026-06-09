@@ -90,6 +90,7 @@ export class TemplateSetsService {
       coverPreviewImage: dto.coverPreviewImage ?? null,
       contentPdfEditable: dto.contentPdfEditable ?? true,
       pdfOutputMode: dto.pdfOutputMode ?? 'duplex-merged',
+      colorMode: dto.colorMode ?? 'rgb',
       isDeleted: false,
       isActive: true,
     });

@@ -315,6 +315,7 @@ export const TemplateSetForm = () => {
         coverPreviewImage: templateSet.coverPreviewImage || undefined,
         contentPdfEditable: templateSet.contentPdfEditable ?? true,
         pdfOutputMode: templateSet.pdfOutputMode ?? 'duplex-merged',
+        colorMode: templateSet.colorMode ?? 'rgb',
         libraryCategoryIds: templateSet.libraryCategoryIds ?? [],
       });
 
@@ -426,6 +427,7 @@ export const TemplateSetForm = () => {
       coverPreviewImage,
       contentPdfEditable: values.contentPdfEditable !== false, // 기본 true
       pdfOutputMode: values.pdfOutputMode || 'duplex-merged',
+      colorMode: values.colorMode || 'rgb',
       libraryCategoryIds: values.libraryCategoryIds || [],
     };
 
@@ -559,6 +561,7 @@ export const TemplateSetForm = () => {
             customizeMenus: false,
             enabledMenus: ALL_EDITOR_MENU_KEYS,
             pdfOutputMode: 'duplex-merged',
+            colorMode: 'rgb',
           }}
         >
           <Collapse
@@ -816,6 +819,19 @@ export const TemplateSetForm = () => {
                           { label: '단면 (1파일·1페이지)', value: 'single' },
                           { label: '양면 — 원파일 (앞,뒤,앞,뒤…)', value: 'duplex-merged' },
                           { label: '양면 — 파일분리 (앞/뒤 세트별 개별 PDF)', value: 'duplex-split' },
+                        ]}
+                      />
+                    </Form.Item>
+
+                    <Form.Item
+                      name="colorMode"
+                      label="색 처리 방식"
+                      extra="RGB 유지=화면 색 그대로 출력(현재 기본). CMYK 변환=출력 PDF를 인쇄용 CMYK로 변환(색 정확도). ※ 워커의 실제 색변환 적용은 인쇄 출력 영향이라 스테이징 검증 후 라이브 — 현재는 설정 저장까지."
+                    >
+                      <Select
+                        options={[
+                          { label: 'RGB 유지 (화면 색 그대로)', value: 'rgb' },
+                          { label: 'CMYK 변환 (인쇄용)', value: 'cmyk' },
                         ]}
                       />
                     </Form.Item>
