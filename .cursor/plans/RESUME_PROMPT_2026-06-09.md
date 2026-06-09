@@ -47,6 +47,25 @@
 
 ---
 
+## 0-c. 좌표 중앙원점 정합 사이클 (2026-06-09 저녁) — IDML 임포트 표지 부분렌더 해결
+
+실 IDML(MA-348) 임포트 표지가 편집기에서 **좌상단 1/4만 렌더**(디자인 객체 다수 누락처럼 보임). 원인 추적 + 적대 교차검증(서브에이전트 워크플로우 2회)으로 확정·수정.
+
+**근본원인 = 좌표계 '원점' 불일치(DPI 아님).** Storige 규약 = 콘텐츠 **중앙원점@150dpi**(WorkspacePlugin workspace originX/originY='center', left/top:0 = fabric(0,0) + clipPath=workspace; setZoomAuto가 캔버스를 #canvas-wrapper 크기로 맞추고 워크스페이스 중심 정렬 — 반응형/모바일). 일반 편집기-제작 spread(`d765713a`)도 originX='center'+중앙원점(앞표지+/뒤표지-/책등0)으로 확인. 변환기만 좌상단원점(0..W)+originX 미설정으로 출력 → clip. DPI는 전 구간 150 일관(정상), 300은 래스터 화질(별개).
+
+| 항목 | 커밋 | 상태 |
+|---|---|---|
+| **변환기 중앙원점 출력** (toSpreadTemplate/toSinglePageTemplate/index.mjs: originX/originY='center' + (-halfW,-halfH) 평행이동, 단위테스트 추가) | `a92f146` | ✅ **배포**(admin Vercel). 실 IDML 재변환 74객체 전부 중앙원점 + **편집기 실렌더 전체 디자인 정확 복원**(막대그래프·삼각형·반원·로고) 검증. 변환기 테스트 35/35 |
+| **표지 펼침면 PDF 저장 복구** (useWorkSave:619 미정의 `spreadPlugin.exportToPDF()` → `saveMultiPagePDFAsBlob`, 펼침면 mm·dpi300) | `a8c9b65` | ✅ **배포**(editor Vercel). editor tsc 0/build OK. ⚠️ 실 book-set 세션 표지저장 E2E는 미검증(코드/빌드/로직검증만) |
+
+**교차검증 결론**: a92f146 좌표수정 = 정확·완전·회귀無(감사[1]의 "치명적" 주장은 commit 오귀속 — a92f146는 변환기 4파일만 변경). width 단위(px vs mm) = 버그 아님(워크스페이스는 `Template.width`(mm)로 산출, canvasData.width 미사용). exportToPDF = 선재 blocker 확정(수정함).
+
+**⏸ 분리된 선재 버그(별도 task `task_99a6a0c0`)**: `SpreadPlugin` 객체↔region **좌표계 불일치** — 엔진 regions(top-left) vs `handleObjectModified`/`repositionObjects`의 raw `getBoundingRect()`(중앙원점 scene). **드래그 영역이동·책등가변 시에만** 발현(정적 렌더 정상). 수정은 미변환 2개 호출부에만 `getContentOrigin()` 적용(❌ region.x 전역시프트 금지 — guides/labels 깨짐). center-origin 테스트 추가 + E2E 필요. a92f146와 무관, 중위험 P1.
+
+> 좌표 규약 상세: 사용자 메모리 `reference_coordinate_convention`.
+
+---
+
 ## 2-b. D 에디터 실로드 E2E 절차
 
 1. admin: IDML 변환 → 표지 Template 등록 → 책등 가변 책 셋 등록(방법A) + 내지 추가 + pageCountRange. 2. 그 셋으로 책모드 세션. 3. ✅ 표지+영역 가이드. 4. 내지 수 변경 → ✅ 책등 폭 자동 재계산 + 앞/뒤표지 평행이동. 5. 편집완료→재로드 → ✅ meta 보존(책등 가변 재배치 동작).
