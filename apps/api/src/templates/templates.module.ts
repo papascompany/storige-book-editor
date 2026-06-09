@@ -12,6 +12,7 @@ import { ProductTemplateSetsController } from './product-template-sets.controlle
 import { Template } from './entities/template.entity';
 import { Category } from './entities/category.entity';
 import { TemplateSet, TemplateSetItem } from './entities/template-set.entity';
+import { TemplateSetLibraryCategory } from './entities/template-set-library-category.entity';
 import { ProductTemplateSet } from './entities/product-template-set.entity';
 import { Product } from '../products/entities/product.entity';
 
@@ -39,6 +40,7 @@ if (process.env.BOOKMOA_DB_PASSWORD) {
       Category,
       TemplateSet,
       TemplateSetItem,
+      TemplateSetLibraryCategory,
       ProductTemplateSet,
       Product,
     ]),

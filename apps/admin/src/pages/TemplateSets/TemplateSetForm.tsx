@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import {
@@ -61,6 +61,7 @@ import {
 } from '@storige/types';
 import { templateSetsApi } from '../../api/template-sets';
 import { templatesApi } from '../../api/templates';
+import { libraryApi } from '../../api/library';
 import { axiosInstance, resolveStorageUrl } from '../../lib/axios';
 
 const { Title, Text } = Typography;
@@ -231,6 +232,29 @@ export const TemplateSetForm = () => {
     queryFn: () => templatesApi.getAll(),
   });
 
+  // ④ 라이브러리 카테고리(전체) — 에셋 구성 멀티셀렉트용
+  const { data: libraryCategories } = useQuery({
+    queryKey: ['library-categories'],
+    queryFn: () => libraryApi.getCategories(),
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+  // 타입별 그룹 옵션 (배경/도형/클립아트/프레임/폰트)
+  const libraryCategoryGroups = useMemo(() => {
+    const typeLabels: Record<string, string> = {
+      background: '배경', shape: '도형', frame: '프레임', clipart: '클립아트', font: '폰트',
+    };
+    const byType: Record<string, { label: string; value: string }[]> = {};
+    for (const c of libraryCategories ?? []) {
+      (byType[c.type] ??= []).push({ label: c.name, value: c.id });
+    }
+    return Object.entries(byType).map(([type, options]) => ({
+      label: typeLabels[type] ?? type,
+      title: typeLabels[type] ?? type,
+      options,
+    }));
+  }, [libraryCategories]);
+
   const handleSuccess = () => {
     navigate('/template-sets');
   };
@@ -290,6 +314,7 @@ export const TemplateSetForm = () => {
         coverPreviewImage: templateSet.coverPreviewImage || undefined,
         contentPdfEditable: templateSet.contentPdfEditable ?? true,
         pdfOutputMode: templateSet.pdfOutputMode ?? 'duplex-merged',
+        libraryCategoryIds: templateSet.libraryCategoryIds ?? [],
       });
 
       // Load template refs with template details
@@ -400,6 +425,7 @@ export const TemplateSetForm = () => {
       coverPreviewImage,
       contentPdfEditable: values.contentPdfEditable !== false, // 기본 true
       pdfOutputMode: values.pdfOutputMode || 'duplex-merged',
+      libraryCategoryIds: values.libraryCategoryIds || [],
     };
 
     if (id) {
@@ -767,6 +793,23 @@ export const TemplateSetForm = () => {
                 { label: '양면 — 원파일 (앞,뒤,앞,뒤…)', value: 'duplex-merged' },
                 { label: '양면 — 파일분리 (앞/뒤 세트별 개별 PDF)', value: 'duplex-split' },
               ]}
+            />
+          </Form.Item>
+
+          <Divider>에셋 구성 (라이브러리 카테고리)</Divider>
+
+          <Form.Item
+            name="libraryCategoryIds"
+            label="노출할 라이브러리 카테고리"
+            extra="이 상품/템플릿셋 편집기에서 노출할 에셋(배경·도형·클립아트·프레임·폰트)을 카테고리 단위로 선택합니다. 비워두면 = 전역(모든 카테고리 노출), 선택하면 그 카테고리만 노출. ※ 에디터 반영(필터링)은 단계적 적용 — 현재는 구성 저장까지."
+          >
+            <Select
+              mode="multiple"
+              allowClear
+              placeholder="비워두면 모든 에셋 노출 (전역)"
+              options={libraryCategoryGroups}
+              optionFilterProp="label"
+              maxTagCount="responsive"
             />
           </Form.Item>
 

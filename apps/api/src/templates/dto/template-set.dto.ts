@@ -158,6 +158,11 @@ export class CreateTemplateSetDto {
   @IsOptional()
   @IsIn(['single', 'duplex-merged', 'duplex-split'])
   pdfOutputMode?: PdfOutputMode;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  libraryCategoryIds?: string[];
 }
 
 /**
@@ -266,6 +271,11 @@ export class UpdateTemplateSetDto {
   @IsOptional()
   @IsIn(['single', 'duplex-merged', 'duplex-split'])
   pdfOutputMode?: PdfOutputMode;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  libraryCategoryIds?: string[];
 }
 
 /**

@@ -209,6 +209,12 @@ export interface TemplateSet {
    * (책 모드 spread 셋은 기존 compose-mixed 경로가 우선 — 이 옵션은 단일/낱장 상품에 적용)
    */
   pdfOutputMode?: PdfOutputMode;
+  /**
+   * ④ 노출 라이브러리 카테고리 ID 목록 (2026-06-09). 에디터 에셋(배경/도형/클립아트/프레임/폰트)을
+   * 상품·템플릿셋별로 큐레이션. 빈 배열/undefined = 전역(모든 카테고리 노출). 값이 있으면 그 카테고리만.
+   * (조인 테이블 template_set_library_categories 에서 populate)
+   */
+  libraryCategoryIds?: string[];
   // Legacy fields (하위 호환)
   description?: string;
   categoryId?: string;
@@ -248,6 +254,8 @@ export interface CreateTemplateSetInput {
   contentPdfEditable?: boolean;
   /** PDF 출력 모드 (2026-06-09, 기본 'duplex-merged') */
   pdfOutputMode?: PdfOutputMode;
+  /** ④ 노출 라이브러리 카테고리 ID 목록 (빈/미지정=전역) */
+  libraryCategoryIds?: string[];
 }
 
 /**
@@ -272,6 +280,8 @@ export interface UpdateTemplateSetInput {
   contentPdfEditable?: boolean;
   /** PDF 출력 모드 (2026-06-09, 기본 'duplex-merged') */
   pdfOutputMode?: PdfOutputMode;
+  /** ④ 노출 라이브러리 카테고리 ID 목록 (빈/미지정=전역) */
+  libraryCategoryIds?: string[];
 }
 
 /**
