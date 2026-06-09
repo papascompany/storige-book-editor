@@ -3,7 +3,7 @@ import Editor from '../Editor'
 import FontFaceObserver from 'fontfaceobserver'
 import { PluginBase } from '../plugin'
 import { parseColorValue } from '../utils'
-import { convertSvgTextToPath } from '../converters/svgTextToPath'
+import { convertSvgTextToPath, OpenTypeFontResolver } from '../converters/svgTextToPath'
 import { validateTextGlyphs as validateGlyphs } from '../converters/validateGlyphs'
 import { dlog, dwarn } from '../utils/debugLog'
 
@@ -113,6 +113,9 @@ class FontPlugin extends PluginBase {
   // TTF buffer 실패(음수) 캐시 — URL 없음/woff2ToTtf 실패한 폰트를 기억해
   // 같은 폰트의 텍스트가 여럿일 때 반복 fetch/실패를 1회로 줄인다(PDF 저장·글리프검증 속도).
   private ttfBufferFailed = new Set<string>()
+  // 파싱된 opentype.Font 캐시 — 아웃라인(getPath) 시 TTF buffer 재파싱 비용 제거.
+  // 키: 폰트패밀리(요청 원본 이름). PDF 저장에서 같은 폰트 텍스트가 여럿이어도 1회만 파싱.
+  private opentypeFontCache = new Map<string, any>()
 
   constructor(
     canvas: fabric.Canvas,
@@ -378,6 +381,22 @@ class FontPlugin extends PluginBase {
   }
 
   /**
+   * 폰트패밀리의 파싱된 opentype.Font 를 반환(캐싱).
+   * 아웃라인(getPath)·글리프 처리에 쓰인다. 실패 시 throw — 호출부에서 폴백 처리.
+   * @param fontFamily 폰트 패밀리 이름
+   */
+  private async getOpenTypeFont(fontFamily: string): Promise<any> {
+    const cached = this.opentypeFontCache.get(fontFamily)
+    if (cached) return cached
+
+    const ttfBuffer = await this.getTtfBuffer(fontFamily)
+    const opentype = await import('opentype.js')
+    const font = opentype.parse(ttfBuffer)
+    this.opentypeFontCache.set(fontFamily, font)
+    return font
+  }
+
+  /**
    * 텍스트 객체를 path 객체로 변환
    * SVG 기반 벡터화 (convertSvgTextToPath 사용)
    *
@@ -418,27 +437,44 @@ class FontPlugin extends PluginBase {
 
       dlog('font', `📦 벡터화에 필요한 폰트: ${Array.from(fontsToLoad).join(', ')}`)
 
-      // 3. 모든 폰트의 TTF buffer를 미리 로드 (캐싱됨)
-      // 이렇게 하면 toSVG()에서 생성된 SVG 내의 각 tspan의 font-family가
-      // convertSvgTextToPath에서 올바르게 처리될 수 있도록 준비됨
+      // 3. 사용된 모든 폰트를 opentype.Font 로 파싱해 리졸버 맵 구성(혼합폰트 정확도).
+      //    키는 SVG 의 font-family 매칭을 위해 "원본 이름 + 정규화(NFD/NFC) 변형" 모두 등록.
+      //    (fabric 은 applyFontToObject 에서 정규화된 이름을 객체에 적용 → SVG 에도 정규화명이 나온다.)
+      //    한 폰트라도 실패하면 그 폰트만 스킵(기본 폰트로 폴백) — 절대 throw 안 함.
+      const fontByFamily = new Map<string, any>()
       for (const font of fontsToLoad) {
         try {
-          await this.getTtfBuffer(font)
-          dlog('font', `✅ TTF buffer loaded for vectorization: ${font}`)
+          const otFont = await this.getOpenTypeFont(font)
+          for (const variant of getNormalizedVariants(font)) {
+            fontByFamily.set(variant, otFont)
+          }
+          fontByFamily.set(font, otFont)
+          dlog('font', `✅ opentype.Font ready for vectorization: ${font}`)
         } catch (err) {
-          dwarn('font', `⚠️ TTF buffer 로드 실패, 스킵: ${font}`, err)
+          dwarn('font', `⚠️ opentype.Font 로드 실패, 기본폰트 폴백 예정: ${font}`, err)
         }
       }
 
-      // 4. 기본 폰트의 TTF buffer (convertSvgTextToPath에 전달)
+      // 4. 기본 폰트(폴백)의 TTF buffer (convertSvgTextToPath 에 전달)
       const mainTtfBuffer = await this.getTtfBuffer(fontFamily)
 
-      // 5. SVG text → path 변환
-      // 주의: convertSvgTextToPath는 현재 단일 폰트만 지원
-      // styles 속성의 다른 폰트들은 SVG의 tspan 요소에 font-family로 인라인 포함되며,
-      // 브라우저 렌더링 시 이미 로드된 폰트가 사용됨
+      // 5. 혼합폰트 리졸버: tspan 의 font-family → 해당 opentype.Font.
+      //    정규화 변형까지 시도 후 미스면 null 반환(→ 컨버터가 기본폰트로 폴백).
+      const fontResolver: OpenTypeFontResolver = (family: string) => {
+        if (!family) return null
+        const direct = fontByFamily.get(family)
+        if (direct) return direct
+        for (const variant of getNormalizedVariants(family)) {
+          const v = fontByFamily.get(variant)
+          if (v) return v
+        }
+        return null
+      }
+
+      // 6. SVG text → path 변환 (혼합폰트 리졸버 전달)
+      //    각 tspan 은 자기 font-family 로 아웃라인되며, 미해결 폰트는 기본 폰트로 폴백.
       dlog('font', '🔄 Converting SVG text to paths...')
-      const { svg: pathSvg } = await convertSvgTextToPath(mainTtfBuffer, svgString)
+      const { svg: pathSvg } = await convertSvgTextToPath(mainTtfBuffer, svgString, fontResolver)
 
       // 4. Fabric.js로 로드
       return new Promise((resolve, reject) => {
