@@ -457,6 +457,9 @@ export class EditSessionsService {
     // 흐름을 호출하는 시점에 수행 (NEW_DEV_PLAN §3 PHP 무변경 정책과 정합).
     if (completed.mode !== SessionMode.SPREAD) {
       await this.createValidationJobs(completed);
+      // 단일/낱장 상품의 PDF 출력 모드(TemplateSet.pdfOutputMode) 적용.
+      // 책(spread) 셋은 위 분기에서 제외 — 기존 compose-mixed 경로 우선.
+      await this.applyPdfOutputMode(completed);
     } else {
       this.logger.log(
         `Skipping auto validation jobs for SPREAD session ${id} (PHP-driven synthesis flow)`,
@@ -464,6 +467,84 @@ export class EditSessionsService {
     }
 
     return completed;
+  }
+
+  /**
+   * 단일/낱장 상품 PDF 출력 모드 적용 — 2026-06-09.
+   *
+   * 세션의 TemplateSet.pdfOutputMode 에 따라 최종 PDF 구성을 결정한다.
+   * 적용 대상: 비-spread 세션(낱장/단일). 책 spread 셋은 호출측에서 이미 제외됨.
+   *
+   *  - 'single'        : 단면 1p. 편집기 산출 PDF 그대로가 최종(추가 잡 없음).
+   *  - 'duplex-merged' : 양면 1파일(앞,뒤,…). 기존 기본 동작 그대로(추가 잡 없음).
+   *  - 'duplex-split'  : 양면 — coverFileId(편집기 단일 PDF)를 앞/뒤 2페이지 세트별
+   *                      개별 PDF n개로 분리하는 워커 잡 발행.
+   *
+   * best-effort: TemplateSet 미해결/파일부재/잡 생성 실패 시 경고만 남기고 완료는 무중단.
+   * 출력 모드는 session.metadata.pdfOutputMode 에 스냅샷으로 기록(다운스트림/PHP 가독).
+   */
+  private async applyPdfOutputMode(session: EditSessionEntity): Promise<void> {
+    try {
+      if (!session.templateSetId) return; // 템플릿셋 미연결 → 기본(duplex-merged) 동작 유지
+
+      let pdfOutputMode: string;
+      try {
+        const templateSet = await this.templateSetsService.findOne(
+          session.templateSetId,
+        );
+        pdfOutputMode = templateSet.pdfOutputMode ?? 'duplex-merged';
+      } catch (e) {
+        this.logger.warn(
+          `[pdfOutputMode] TemplateSet ${session.templateSetId} 조회 실패 → 기본(duplex-merged) 유지: ${(e as Error).message}`,
+        );
+        return;
+      }
+
+      // 출력 모드 스냅샷 기록 (additive, 실패해도 무중단)
+      try {
+        session.metadata = {
+          ...(session.metadata ?? {}),
+          pdfOutputMode,
+        };
+        await this.sessionRepository.save(session);
+      } catch (e) {
+        this.logger.warn(
+          `[pdfOutputMode] metadata 스냅샷 저장 실패(무중단): ${(e as Error).message}`,
+        );
+      }
+
+      // single / duplex-merged 는 편집기 산출 PDF 그대로가 최종 → 추가 잡 없음.
+      if (pdfOutputMode !== 'duplex-split') {
+        this.logger.log(
+          `[pdfOutputMode] session ${session.id}: '${pdfOutputMode}' — 편집기 산출 PDF 그대로 사용(분리 없음)`,
+        );
+        return;
+      }
+
+      // duplex-split: 편집기 단일 PDF(coverFileId)를 앞/뒤 2페이지 세트별로 분리.
+      if (!session.coverFileId) {
+        this.logger.warn(
+          `[pdfOutputMode] session ${session.id}: duplex-split 이나 coverFileId 부재 → 분리 잡 스킵`,
+        );
+        return;
+      }
+
+      const job = await this.workerJobsService.createDuplexSplitJob({
+        sessionId: session.id,
+        pdfFileId: session.coverFileId,
+        // 멱등성 키: 세션+파일에 고정(완료당 1회). 재완료 시 동일 키 → 멱등 히트.
+        requestId: `duplex-split-${session.id}-${session.coverFileId}`,
+        callbackUrl: session.callbackUrl ?? undefined,
+      });
+      this.logger.log(
+        `[pdfOutputMode] Created duplex-split job ${job.id} for session ${session.id} (cover=${session.coverFileId})`,
+      );
+    } catch (error) {
+      // 완료 무중단 정책 — 잡 발행 실패가 세션 완료를 막지 않도록.
+      this.logger.error(
+        `[pdfOutputMode] session ${session.id} 적용 실패(완료는 유지): ${(error as Error).message}`,
+      );
+    }
   }
 
   /**

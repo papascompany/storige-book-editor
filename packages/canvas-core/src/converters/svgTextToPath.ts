@@ -12,27 +12,57 @@ export interface ConvertSvgTextToPathResult {
   font: any; // OpenType.js Font object for baseline correction
 }
 
+/**
+ * 혼합폰트(runs) 지원용 폰트 리졸버.
+ * tspan 의 font-family 에 해당하는 opentype.Font 를 동기 반환한다(없으면 null → 기본폰트 폴백).
+ * FontPlugin 이 export 전에 필요한 모든 폰트의 opentype.Font 를 미리 파싱해 Map 으로 넘긴다.
+ */
+export type OpenTypeFontResolver = (fontFamily: string) => any | null;
+
 interface TextStyle {
   fontSize: number;
   fontWeight: number;
   textDecoration: string;
+  fontFamily: string | null;
 }
 
 /**
  * Convert SVG text elements to path elements
  *
- * @param ttfBuffer - TTF font buffer from woff2ToTtf API
+ * @param ttfBuffer - TTF font buffer from woff2ToTtf API (기본/폴백 폰트)
  * @param svgString - SVG string containing text elements (from textObj.toSVG())
+ * @param fontResolver - (선택) tspan 별 font-family → opentype.Font 리졸버.
+ *   혼합폰트(runs) 텍스트에서 각 tspan 을 자기 폰트로 아웃라인하기 위해 사용.
+ *   미지정/미스 시 ttfBuffer 의 기본 폰트로 폴백한다.
  * @returns Object containing SVG string and font object
  */
 export async function convertSvgTextToPath(
   ttfBuffer: ArrayBuffer,
-  svgString: string
+  svgString: string,
+  fontResolver?: OpenTypeFontResolver
 ): Promise<ConvertSvgTextToPathResult> {
   const opentype = await import('opentype.js');
 
   // Parse TTF buffer to get font
   const font = opentype.parse(ttfBuffer);
+
+  /**
+   * tspan/text 의 font-family 에 맞는 opentype.Font 를 고른다.
+   * - resolver 가 해당 폰트를 알고 있으면 그 폰트 사용(혼합폰트 정확도↑)
+   * - 모르면(=미로드/미변환) 기본 폰트로 폴백 → 절대 throw 하지 않음(export 보호)
+   */
+  const pickFont = (fontFamily: string | null): any => {
+    if (fontFamily && fontResolver) {
+      try {
+        const resolved = fontResolver(fontFamily);
+        if (resolved) return resolved;
+        dwarn('font', `⚠️  per-run 폰트 미해결(기본폰트 폴백): "${fontFamily}"`);
+      } catch (e) {
+        dwarn('font', `⚠️  per-run 폰트 리졸브 오류(기본폰트 폴백): "${fontFamily}"`, e);
+      }
+    }
+    return font;
+  };
   dlog('font', `✅ Font parsed: ${font.names.fullName?.en || 'Unknown'}`);
 
   // Parse SVG string
@@ -117,10 +147,14 @@ export async function convertSvgTextToPath(
 
           const finalFill = tspanFill || fill;
 
-          dlog('font', `  📝 tspan: "${text}" at (${x.toFixed(2)}, ${y.toFixed(2)}), fontSize: ${style.fontSize}, fontWeight: ${style.fontWeight}, underline: ${style.textDecoration.includes('underline')}, fill: ${finalFill}`);
+          // 혼합폰트(runs): 이 tspan 의 font-family 에 맞는 폰트로 아웃라인.
+          // 미해결 시 기본 폰트로 폴백(pickFont 내부에서 처리).
+          const runFont = pickFont(style.fontFamily);
+
+          dlog('font', `  📝 tspan: "${text}" at (${x.toFixed(2)}, ${y.toFixed(2)}), fontSize: ${style.fontSize}, fontWeight: ${style.fontWeight}, fontFamily: ${style.fontFamily ?? '(inherit)'}, underline: ${style.textDecoration.includes('underline')}, fill: ${finalFill}`);
 
           // Generate path using OpenType.js at original coordinates
-          const path = font.getPath(text, x, y, style.fontSize);
+          const path = runFont.getPath(text, x, y, style.fontSize);
           const pathData = path.toPathData(2);
 
           if (!pathData || pathData.trim().length === 0) {
@@ -163,7 +197,7 @@ export async function convertSvgTextToPath(
 
           // Add underline if needed
           if (style.textDecoration.includes('underline')) {
-            const underlinePath = createUnderlinePath(font, text, x, y, style.fontSize, finalFill);
+            const underlinePath = createUnderlinePath(runFont, text, x, y, style.fontSize, finalFill);
             groupElement.appendChild(underlinePath);
           }
 
@@ -183,7 +217,7 @@ export async function convertSvgTextToPath(
 
       } else {
         // Case 2: Simple <text> without tspan children
-        const pathElement = convertTextElementToPath(font, textElement as SVGTextElement);
+        const pathElement = convertTextElementToPath(font, textElement as SVGTextElement, pickFont);
         if (pathElement) {
           // Replace text element with path element
           textElement.parentNode?.replaceChild(pathElement, textElement);
@@ -210,7 +244,8 @@ export async function convertSvgTextToPath(
  */
 function convertTextElementToPath(
   font: any,
-  textElement: SVGTextElement
+  textElement: SVGTextElement,
+  pickFont?: (fontFamily: string | null) => any
 ): SVGPathElement | SVGGElement | null {
   const text = textElement.textContent || '';
   if (!text.trim()) {
@@ -221,6 +256,9 @@ function convertTextElementToPath(
   const x = parseFloat(textElement.getAttribute('x') || '0');
   const y = parseFloat(textElement.getAttribute('y') || '0');
   const style = parseTextStyle(textElement);
+
+  // <text> 자체의 font-family 에 맞는 폰트 선택(미지정/미해결 시 기본 폰트).
+  const elFont = pickFont ? pickFont(style.fontFamily) : font;
 
   // Extract fill (check both attribute and style)
   let fill = textElement.getAttribute('fill');
@@ -242,8 +280,8 @@ function convertTextElementToPath(
 
   dlog('font', `📝 Converting text: "${text}" at (${x}, ${y}), fontSize: ${style.fontSize}, fontWeight: ${style.fontWeight}, underline: ${style.textDecoration.includes('underline')}, fill: ${fill}`);
 
-  // Generate path data using OpenType.js
-  const path = font.getPath(text, x, y, style.fontSize);
+  // Generate path data using OpenType.js (요소별 폰트 사용)
+  const path = elFont.getPath(text, x, y, style.fontSize);
   const pathData = path.toPathData(2);
 
   if (!pathData || pathData.trim().length === 0) {
@@ -278,7 +316,7 @@ function convertTextElementToPath(
     groupElement.appendChild(pathElement);
 
     // Create underline path
-    const underlinePath = createUnderlinePath(font, text, x, y, style.fontSize, fill);
+    const underlinePath = createUnderlinePath(elFont, text, x, y, style.fontSize, fill);
     groupElement.appendChild(underlinePath);
 
     // Apply transform to group
@@ -378,10 +416,70 @@ function parseFontSize(element: SVGTextElement): number {
 }
 
 /**
+ * font-family 원시값에서 첫 패밀리명만 정규화 추출.
+ * - 콤마 폴백목록(", sans-serif") 제거 → 첫 패밀리만
+ * - 양끝 작은/큰따옴표 제거 + 트림
+ * - 빈 값이면 null
+ * (테스트 가능하도록 export — DOM 불필요한 순수 함수)
+ */
+export function cleanFontFamilyValue(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const first = raw.split(',')[0].trim().replace(/^['"]|['"]$/g, '').trim();
+  return first.length > 0 ? first : null;
+}
+
+/**
+ * Parse font-family from an SVG text/tspan element.
+ * fabric 은 혼합폰트 run 의 font-family 를 tspan 의 style="font-family: '...'" 로,
+ * <text> 루트는 font-family 속성으로 출력한다. 둘 다 + tspan→부모 상속을 본다.
+ * 따옴표/뒤따르는 폴백목록(", sans-serif")은 제거해 첫 패밀리명만 반환.
+ */
+function parseFontFamily(element: SVGTextElement): string | null {
+  const clean = cleanFontFamilyValue;
+
+  // 1) font-family 속성
+  const attr = element.getAttribute('font-family');
+  if (attr) {
+    const c = clean(attr);
+    if (c) return c;
+  }
+
+  // 2) style="font-family: ..."
+  const style = element.getAttribute('style');
+  if (style) {
+    const m = style.match(/font-family:\s*([^;}"']+(?:'[^']*'|"[^"]*")?[^;}]*)/i);
+    if (m) {
+      const c = clean(m[1]);
+      if (c) return c;
+    }
+  }
+
+  // 3) tspan 은 부모 <text> 에서 상속
+  if (element.tagName === 'tspan' && element.parentElement) {
+    const parentAttr = element.parentElement.getAttribute('font-family');
+    if (parentAttr) {
+      const c = clean(parentAttr);
+      if (c) return c;
+    }
+    const parentStyle = element.parentElement.getAttribute('style');
+    if (parentStyle) {
+      const m = parentStyle.match(/font-family:\s*([^;}"']+(?:'[^']*'|"[^"]*")?[^;}]*)/i);
+      if (m) {
+        const c = clean(m[1]);
+        if (c) return c;
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
  * Parse text style including fontWeight and textDecoration
  */
 function parseTextStyle(element: SVGTextElement): TextStyle {
   const fontSize = parseFontSize(element);
+  const fontFamily = parseFontFamily(element);
   let fontWeight = 400; // normal
   let textDecoration = 'none';
 
@@ -441,7 +539,7 @@ function parseTextStyle(element: SVGTextElement): TextStyle {
     }
   }
 
-  return { fontSize, fontWeight, textDecoration };
+  return { fontSize, fontWeight, textDecoration, fontFamily };
 }
 
 /**

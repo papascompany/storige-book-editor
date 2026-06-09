@@ -1222,6 +1222,11 @@ class WorkspacePlugin extends PluginBase {
 
     if (obj.id === 'page-outline' || obj.id === 'template-background') return
 
+    // 사진틀(프레임)에 채워진 사진은 프레임 투명창 마스킹용 inverted clipPath 를 가진다.
+    // page-outline clip 으로 덮어쓰면 마스크가 사라지므로 건드리지 않는다.
+    // (frameRef 가 설정된 fillImage 객체 = 프레임 채움 사진)
+    if (obj.frameRef) return
+
     // page-outline 찾기
     const pageOutline = this._canvas.getObjects().find((o) => o.id === 'page-outline')
     if (!pageOutline) return

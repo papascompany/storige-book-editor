@@ -22,6 +22,37 @@ const logger = new Logger('GhostscriptUtil');
  */
 const GS_PATH = process.env.GHOSTSCRIPT_PATH || 'gs';
 
+/**
+ * pdfwrite 출력 시 인쇄 규약(오버프린트/녹아웃/별색)을 보존하기 위한 공통 플래그.
+ *
+ * 배경:
+ *   Ghostscript `pdfwrite` 디바이스는 입력 PDF를 재해석(distill)하여 다시 써낸다.
+ *   이 과정에서 아무 옵션도 주지 않으면 ExtGState의 오버프린트 설정(/OP, /op, /OPM)과
+ *   Separation/DeviceN(별색) 컬러스페이스가 정규화되며 **조용히 누락**될 수 있다.
+ *   오버프린트는 별색 분판(separation) 위에서만 의미가 있으므로, 별색 컬러스페이스를
+ *   보존하지 않으면 오버프린트/녹아웃 의도도 함께 깨진다.
+ *
+ * 보수적 원칙(PRESERVE):
+ *   아래 플래그는 새로운 변환을 추가하는 것이 아니라, 원본 PDF에 이미 들어있는
+ *   인쇄 의도를 pdfwrite가 **그대로 유지**하도록 지시한다. 오버프린트가 없는 일반
+ *   PDF에는 영향이 없다(보존할 설정 자체가 없으므로 no-op).
+ *
+ *   - `-dPreserveOverprintSettings=true` : ExtGState의 /OP, /op, /OPM 보존 (오버프린트/녹아웃)
+ *   - `-dPreserveSeparation=true`        : Separation 별색 컬러스페이스 보존
+ *   - `-dPreserveDeviceN=true`           : DeviceN(다중 별색) 컬러스페이스 보존
+ *
+ * 주의:
+ *   이 플래그들은 "보존"만 하며 새 분판/ICC 변환을 생성하지 않는다. 완전한
+ *   오버프린트 안전 변환(별색→프로세스 시뮬레이션, knockout 평탄화 등)은 별도
+ *   설계가 필요하다(스테이징 검증 후 단계적 도입). 아래 PRINT_PRESERVE_ARGS는
+ *   "원본 의도를 떨어뜨리지 않는" 최소·안전 변경에 해당한다.
+ */
+const PRINT_PRESERVE_ARGS = [
+  '-dPreserveOverprintSettings=true',
+  '-dPreserveSeparation=true',
+  '-dPreserveDeviceN=true',
+];
+
 export interface GsOptions {
   /** 입력 파일 경로 */
   input: string;
@@ -94,6 +125,7 @@ ${bleedPt} ${bleedPt} translate
     '-dSAFER',
     '-sDEVICE=pdfwrite',
     '-dCompatibilityLevel=1.4',
+    ...PRINT_PRESERVE_ARGS,
     `-dDEVICEWIDTHPOINTS=${bleedPt * 2}`,
     `-dDEVICEHEIGHTPOINTS=${bleedPt * 2}`,
     `-dFIXEDMEDIA`,
@@ -128,6 +160,7 @@ export async function resizePdf(
     '-dSAFER',
     '-sDEVICE=pdfwrite',
     '-dCompatibilityLevel=1.4',
+    ...PRINT_PRESERVE_ARGS,
     `-dDEVICEWIDTHPOINTS=${widthPt}`,
     `-dDEVICEHEIGHTPOINTS=${heightPt}`,
     '-dFIXEDMEDIA',
@@ -187,6 +220,7 @@ export async function mergePdfs(
     '-dSAFER',
     '-sDEVICE=pdfwrite',
     '-dCompatibilityLevel=1.4',
+    ...PRINT_PRESERVE_ARGS,
     `-sOutputFile=${outputPath}`,
     ...inputPaths,
   ];
