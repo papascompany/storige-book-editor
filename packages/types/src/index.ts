@@ -691,6 +691,24 @@ export interface SplitSynthesisJobData {
 }
 
 /**
+ * Duplex-split Synthesis Job Data (Worker Queue Payload) — 2026-06-09.
+ *
+ * 단일/낱장 양면 상품의 편집기 산출 단일 PDF(앞,뒤,앞,뒤… 순서)를
+ * 앞/뒤 한 세트(각 2페이지)씩 잘라 개별 PDF n개로 분리한다.
+ * (TemplateSet.pdfOutputMode='duplex-split' 일 때만 발행)
+ *
+ * ★ mode는 Queue payload의 단일 진실 공급원. split 모드(cover/content 분리)와 별개.
+ */
+export interface DuplexSplitSynthesisJobData {
+  jobId: string;
+  mode: 'duplex-split';        // ★ 필수: handleSynthesis() 분기 기준
+  sessionId: string;           // ★ 이중 검증용
+  pdfFileId: string;           // ★ 편집기 산출 단일 PDF (Worker가 fileId로 조회)
+  totalExpectedPages: number;  // ★ 원본 PDF 기대 페이지 수(짝수여야 함 = 2 × 세트 수)
+  callbackUrl?: string;
+}
+
+/**
  * PDF Synthesizer 내부 결과 (로컬 파일 경로)
  * Synthesizer → Processor 전달용
  */
@@ -711,11 +729,17 @@ export interface SynthesisLocalResult {
 
 /**
  * 분리 출력 시 개별 파일 정보
+ * - 'cover' / 'content': 책 분리(split) 출력.
+ * - 'pages': compose-mixed single(낱장) 출력.
+ * - 'set': duplex-split 출력 — 앞/뒤 한 세트(각 2페이지) 개별 PDF (2026-06-09).
+ *   setIndex 로 세트 순번(0-base)을 표기.
  */
 export interface OutputFile {
-  type: 'cover' | 'content';
+  type: 'cover' | 'content' | 'pages' | 'set';
   url: string;
   pageCount?: number;
+  /** duplex-split('set') 전용 — 세트 순번(0-base, 편집기 페이지 순서 기준) */
+  setIndex?: number;
 }
 
 /**
@@ -884,6 +908,9 @@ export interface EditorContentFilter {
   tags?: string[];
   isActive?: boolean;
   search?: string;
+  // 템플릿셋별 에셋 큐레이션(2026-06-09): 지정 시 해당 템플릿셋에 연결된 라이브러리 카테고리의
+  // 에셋만 노출. 연결이 없으면 전역(모든 에셋) — 미지정 시와 동일 동작(하위호환).
+  templateSetId?: string;
 }
 
 export interface EditorContentSort {
