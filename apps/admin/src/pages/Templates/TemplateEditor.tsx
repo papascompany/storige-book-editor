@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Button, message, Modal, Form, Input, Select, InputNumber, Space, Spin, Switch, Divider } from 'antd';
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import { useAuthStore } from '../../stores/authStore';
+import { templatesApi } from '../../api/templates';
 import { computeSpreadDimensions, normalizeSpreadSpec } from '@storige/types';
 
 const { Option } = Select;
@@ -59,6 +60,47 @@ export const TemplateEditor = () => {
   const [templateConfig, setTemplateConfig] = useState<TemplateConfig | null>(null);
   const [spreadConfig, setSpreadConfig] = useState<SpreadMinimalConfig | null>(null);
   const [selectedType, setSelectedType] = useState<TemplateType>('page');
+  // 편집 모드(?id=)에서 템플릿 로딩 완료 여부(신규 모드는 모달이 채우므로 즉시 true)
+  const [editTemplateLoaded, setEditTemplateLoaded] = useState(!templateId);
+
+  // 편집 모드: 템플릿을 조회해 templateConfig/spreadConfig 를 채운다.
+  // (이게 없으면 spread 템플릿을 id로 열 때 mode=spread/spec 이 전달되지 않아
+  //  임베디드 편집기가 기본 page 로 렌더 → 가져온 표지가 어긋나 보이던 버그)
+  useEffect(() => {
+    if (!templateId) return;
+    let cancelled = false;
+    templatesApi
+      .getById(templateId)
+      .then((tpl) => {
+        if (cancelled) return;
+        setTemplateConfig({
+          name: tpl.name,
+          type: tpl.type as TemplateType,
+          width: tpl.width,
+          height: tpl.height,
+        });
+        const spec = tpl.spreadConfig?.spec;
+        if (tpl.type === 'spread' && spec) {
+          setSpreadConfig({
+            coverWidthMm: spec.coverWidthMm,
+            coverHeightMm: spec.coverHeightMm,
+            wingEnabled: spec.wingEnabled ?? (spec.wingWidthMm ?? 0) > 0,
+            wingWidthMm: spec.wingWidthMm ?? 0,
+            initialSpineWidthMm: spec.spineWidthMm,
+          });
+        }
+      })
+      .catch((e) => {
+        console.error('템플릿 로드 실패(편집 모드):', e);
+        message.error('템플릿 정보를 불러오지 못했습니다. 기본 모드로 엽니다.');
+      })
+      .finally(() => {
+        if (!cancelled) setEditTemplateLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [templateId]);
 
   // 폼 인스턴스
   const [form] = Form.useForm();
@@ -267,7 +309,7 @@ export const TemplateEditor = () => {
 
         {/* iframe - 설정이 완료되었거나 편집 모드일 때만 표시 */}
         {/* spread 타입은 spreadConfig까지 완료되어야 iframe 렌더링 */}
-        {((templateConfig && (templateConfig.type !== 'spread' || spreadConfig)) || templateId) && (
+        {editTemplateLoaded && ((templateConfig && (templateConfig.type !== 'spread' || spreadConfig)) || templateId) && (
           <iframe
             ref={iframeRef}
             src={getEditorUrl(
