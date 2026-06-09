@@ -9,8 +9,8 @@ import { useAppStore } from '@/stores/useAppStore'
 import { templatesApi, type Template, type TemplateSet } from '@/api/templates'
 import { sessionsApi } from '@/api/sessions'
 import { cn } from '@/lib/utils'
-import type { TemplatePlugin } from '@storige/canvas-core'
-import type { TemplateType, TemplateSetType } from '@storige/types'
+import type { TemplatePlugin, SpreadPlugin } from '@storige/canvas-core'
+import type { TemplateType, TemplateSetType, SpreadSpec } from '@storige/types'
 
 type TabType = 'templateSet' | 'template'
 
@@ -68,12 +68,20 @@ export const TemplatePanel = memo(function TemplatePanel({
         categoryId: undefined,
       })
       // 같은 타입과 판형으로 필터링
-      const filtered = data.filter(
-        (t) =>
-          t.type === currentPageType &&
-          t.width === templateSetWidth &&
-          t.height === templateSetHeight
-      )
+      // ③ spread(표지 펼침면)는 t.width 가 '총폭'이라 셋 판형(표지 한 면)과 직접 비교 불가 →
+      //    spreadConfig.spec.coverWidth/Height(표지 한 면 크기)로 비교해 같은 표지 사이즈의
+      //    다른 펼침면 디자인들을 후보로 보여준다.
+      const filtered = data.filter((t) => {
+        if (t.type !== currentPageType) return false
+        if (currentPageType === 'spread') {
+          const spec = t.spreadConfig?.spec
+          if (spec) {
+            return spec.coverWidthMm === templateSetWidth && spec.coverHeightMm === templateSetHeight
+          }
+          return t.height === templateSetHeight // spec 없으면 높이만(fallback)
+        }
+        return t.width === templateSetWidth && t.height === templateSetHeight
+      })
       setTemplates(filtered)
     } catch (err) {
       console.error('템플릿 로드 실패:', err)
@@ -177,6 +185,16 @@ export const TemplatePanel = memo(function TemplatePanel({
               async (enlivened: fabric.Object[]) => {
                 try {
                   await plugin.replaceTemplate(enlivened)
+                  // ③ 커버(펼침면) 교체: 새 표지 spec 으로 영역/가이드 레이아웃 재계산.
+                  //    SpreadPlugin.init 은 기존 가이드/라벨을 clear 후 재렌더하므로 재호출 안전.
+                  //    책등(spine)은 런타임 파생값이라 페이지수 변동 시 자동 재계산된다.
+                  if (tpl.type === 'spread') {
+                    const newSpec = tpl.spreadConfig?.spec
+                    const spreadPlugin = useAppStore.getState().getPlugin<SpreadPlugin>('SpreadPlugin')
+                    if (spreadPlugin && newSpec) {
+                      spreadPlugin.init(newSpec as SpreadSpec)
+                    }
+                  }
                 } catch (e) {
                   console.error('라이브 템플릿 적용 실패:', e)
                 } finally {
