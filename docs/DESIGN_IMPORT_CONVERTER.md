@@ -325,15 +325,19 @@ node packages/indesign-import/scripts/convert-sample.mjs fixtures/cover-sample.i
 
 ---
 
-## 11. 로드맵 / 잔여
+## 11. 로드맵 / 잔여 (CTO 방향 반영, 2026-06-09)
 
-- **AI(SVG/PDF) 임포트 경로** 정식화.
-- **폰트 시딩 게이트** — 미임베드 폰트 자동 시딩/확정.
-- **효과 추출** — overprint/투명도/블렌드.
-- **워커 CMYK 출력** — `cmykFill` 보존값을 출력단에서 사용, TrimBox/BleedBox(B안).
-- **하이브리드/PSD PNG 업로드** — 현재 dataURL 인라인 → `filesApi` 업로드로 전환(DB 비대화 방지).
-- **에디터 실로드 end-to-end** — 책등 가변 런타임을 실제 에디터 로드로 검증(`meta` 라운드트립 포함).
-- **PSD 벡터형(셰이프) 레이어 보존 옵션** — 선택적.
+인쇄 출력 정합성 게이트 중심으로 재정의. ①(pdfOutputMode)·④(에셋 카테고리 큐레이션)은 별개 작업으로 배포 완료.
+
+| 항목 | 상태 |
+|------|------|
+| **B. 상품별 색 처리 모드** — `TemplateSet.colorMode('rgb'\|'cmyk')` + admin Select | ✅ **데이터모델+admin 배포**(2026-06-09). ⏸ 워커 실제 색변환(GS `-sColorConversionStrategy`/ICC, `colors.ts` LCMS2)은 인쇄출력 영향 → 스테이징 후 적용 |
+| **A. 텍스트 아웃라인 출력** — 고객/변환 텍스트를 PDF 저장 시 **벡터 아웃라인화**(폰트 시딩 아님). `woff2ToTtf`→opentype.js 글리프. 편집기(svg2pdf)+워커 양경로 | ⏳ 미착수 |
+| **C. 오버프린트/녹아웃 안전변환** — 인쇄 규약 처리 | ⏳ 미착수 |
+| **D. 에디터 실로드 E2E** — 책등 가변 런타임 검증(`meta` 직렬화는 canvas.ts:151로 **해소됨**, 검증만) | ⏳ 검증 대기 |
+| **PNG 에셋 대비책** — ①dataURL 인라인 → `filesApi` 업로드(DB 비대화 방지) ②사진 프레임(`AppFrame`) 투명창 마스킹(안=사진/밖=클립) 정밀도 검증·변환기 알파보존 | ⏳ 미착수 |
+| **AI(.ai) 임포트 정식화** — SVG export 우회 존재, 네이티브 파싱 비권장 | 보류(P2) |
+| **PSD 벡터형(셰이프) 레이어 보존** — 선택 옵션 | 보류(P2) |
 
 ---
 
