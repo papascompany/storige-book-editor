@@ -3,6 +3,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { v4 as uuid } from 'uuid'
 import { useAppStore } from '@/stores/useAppStore'
 import { useEditorStore } from '@/stores/useEditorStore'
+import { useImageStore } from '@/stores/useImageStore'
 import {
   useSettingsStore,
   type EditorUseCase,
@@ -11,7 +12,7 @@ import {
   type EmptyEditorSetupConfig,
   type GeneralSetupConfig,
 } from '@/stores/useSettingsStore'
-import Editor, { ServicePlugin, SvgUtils, TemplatePlugin, mmToPxDisplay, computeLayout, SpreadPlugin } from '@storige/canvas-core'
+import Editor, { ServicePlugin, SvgUtils, TemplatePlugin, mmToPxDisplay, computeLayout, SpreadPlugin, type ImageProcessingPlugin } from '@storige/canvas-core'
 import { contentsApi, storageApi, templateSetsApi, templatesApi } from '@/api'
 import { createCanvas } from '@/utils/createCanvas'
 import { recalculateSpineWidth, initSpineConfig } from '@/utils/spineCalculator'
@@ -405,6 +406,21 @@ export function useEditorContents(): UseEditorContentsReturn {
                   obj.setCoords()
                   obj.dirty = true
                 })
+
+                // 사진틀(프레임) 인터랙션 재바인딩 (mold afterLoad 모델과 동일).
+                // 저장된 JSON에는 hover/click 핸들러가 없으므로 로드 후 다시 부여.
+                // 이미 채워진 프레임은 makeFrameInteractive 내부 isFilled() 가드로 재채움 방지.
+                // 사진의 inverted clipPath(프레임 PNG src 보유)는 fabric 이 네이티브로 복원하므로
+                // 여기서 별도 재구성은 불필요하다.
+                const framePlugin = ed.getPlugin<ImageProcessingPlugin>('ImageProcessingPlugin')
+                if (framePlugin) {
+                  const frames = (cvs.getObjects() as fabric.Object[]).filter(
+                    (obj: fabric.Object) => (obj as ExtendedFabricObject).extensionType === 'frame'
+                  )
+                  for (const frame of frames) {
+                    useImageStore.getState().makeFrameInteractive(cvs, frame, framePlugin)
+                  }
+                }
 
                 cvs.requestRenderAll()
               }
@@ -1750,12 +1766,20 @@ export function useEditorContents(): UseEditorContentsReturn {
           originX: 'center',
           originY: 'center'
         })
+
+        // 프레임을 인터랙티브하게: hover "이미지 채우기" + 클릭 시 사진 선택 →
+        // 프레임 투명창에만 사진이 보이도록 inverted clipPath 마스킹.
+        const imagePlugin = getPlugin<ImageProcessingPlugin>('ImageProcessingPlugin')
+        if (imagePlugin) {
+          useImageStore.getState().makeFrameInteractive(targetCanvas, asset, imagePlugin)
+        }
+
         targetCanvas?.requestRenderAll()
       }
     } catch (e) {
       console.error('프레임 콘텐츠 설정 오류:', e)
     }
-  }, [addAssetToCanvas])
+  }, [addAssetToCanvas, getPlugin])
 
   return {
     loadContent,
