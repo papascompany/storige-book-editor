@@ -11,6 +11,7 @@ import {
   Space,
   message,
   Divider,
+  Collapse,
   Card,
   Typography,
   Tag,
@@ -560,459 +561,501 @@ export const TemplateSetForm = () => {
             pdfOutputMode: 'duplex-merged',
           }}
         >
-          <Form.Item
-            name="name"
-            label="템플릿셋명"
-            rules={[{ required: true, message: '템플릿셋명을 입력하세요' }]}
-          >
-            <Input placeholder="예: A4 책자 기본 템플릿" />
-          </Form.Item>
-
-          <Form.Item
-            name="type"
-            label="타입"
-            rules={[{ required: true, message: '타입을 선택하세요' }]}
-          >
-            <Select
-              options={[
-                { label: '책자 (날개+표지+책등+내지)', value: TemplateSetType.BOOK },
-                { label: '리플렛 (표지+내지)', value: TemplateSetType.LEAFLET },
-              ]}
-            />
-          </Form.Item>
-
-          <Form.Item
-            name="editorMode"
-            label="에디터 모드"
-            rules={[{ required: true, message: '에디터 모드를 선택하세요' }]}
-            extra="책모드는 스프레드 템플릿을 사용하며, 단일모드는 기존 방식입니다"
-          >
-            <Radio.Group>
-              <Radio value={EditorMode.SINGLE}>단일모드 (개별 페이지 편집)</Radio>
-              <Radio value={EditorMode.BOOK}>책모드 (스프레드 편집)</Radio>
-            </Radio.Group>
-          </Form.Item>
-
-          <Space size="large">
-            <Form.Item
-              name="width"
-              label="너비 (mm)"
-              rules={[{ required: true, message: '너비를 입력하세요' }]}
-            >
-              <InputNumber min={50} max={1000} />
-            </Form.Item>
-
-            <Form.Item
-              name="height"
-              label="높이 (mm)"
-              rules={[{ required: true, message: '높이를 입력하세요' }]}
-            >
-              <InputNumber min={50} max={1000} />
-            </Form.Item>
-          </Space>
-
-          <Form.Item name="canAddPage" label="내지 추가 허용" valuePropName="checked">
-            <Switch checkedChildren="허용" unCheckedChildren="불가" />
-          </Form.Item>
-
-          <Form.Item noStyle shouldUpdate={(prev, curr) => prev.canAddPage !== curr.canAddPage}>
-            {({ getFieldValue }) =>
-              getFieldValue('canAddPage') && (
-                <Space size="large">
-                  <Form.Item
-                    name="pageCountMin"
-                    label="최소 페이지"
-                    rules={[{ required: true, message: '최소 페이지를 입력하세요' }]}
-                  >
-                    <InputNumber min={1} max={500} />
-                  </Form.Item>
-
-                  <Form.Item
-                    name="pageCountMax"
-                    label="최대 페이지"
-                    rules={[{ required: true, message: '최대 페이지를 입력하세요' }]}
-                  >
-                    <InputNumber min={1} max={500} />
-                  </Form.Item>
-                </Space>
-              )
-            }
-          </Form.Item>
-
-          {/* ===== 인쇄 워크플로우 v1 Phase 3 (2026-05-19) — 면지/표지/레더커버 ===== */}
-          <Divider>면지 (EndPaper)</Divider>
-
-          <Form.Item
-            name="useEndpaper"
-            label="면지 사용"
-            valuePropName="checked"
-            extra="책의 표지 안쪽(앞면지) / 뒤표지 안쪽(뒷면지)에 빈 페이지 추가. 0~6장."
-          >
-            <Switch checkedChildren="사용" unCheckedChildren="없음" />
-          </Form.Item>
-
-          <Form.Item
-            noStyle
-            shouldUpdate={(prev, curr) => prev.useEndpaper !== curr.useEndpaper}
-          >
-            {({ getFieldValue }) =>
-              getFieldValue('useEndpaper') && (
-                <Space size="large" wrap>
-                  <Form.Item name="endpaperFrontCount" label="앞면지 개수">
-                    <InputNumber min={0} max={6} />
-                  </Form.Item>
-                  <Form.Item name="endpaperBackCount" label="뒷면지 개수">
-                    <InputNumber min={0} max={6} />
-                  </Form.Item>
-                  <Form.Item
-                    name="endpaperFrontEditable"
-                    label="앞면지 편집 가능"
-                    valuePropName="checked"
-                  >
-                    <Switch checkedChildren="편집" unCheckedChildren="readonly" />
-                  </Form.Item>
-                  <Form.Item
-                    name="endpaperBackEditable"
-                    label="뒷면지 편집 가능"
-                    valuePropName="checked"
-                  >
-                    <Switch checkedChildren="편집" unCheckedChildren="readonly" />
-                  </Form.Item>
-                </Space>
-              )
-            }
-          </Form.Item>
-
-          <Divider>표지</Divider>
-
-          <Form.Item
-            name="coverEditable"
-            label="표지 편집 가능"
-            valuePropName="checked"
-            initialValue={true}
-            extra="레더 커버 / 화보집 등 표지를 사전 인쇄하는 경우 끄세요. 표지 미리보기 이미지로 대체됩니다."
-          >
-            <Switch checkedChildren="편집 가능" unCheckedChildren="레더 커버 (편집 불가)" />
-          </Form.Item>
-
-          <Form.Item
-            noStyle
-            shouldUpdate={(prev, curr) => prev.coverEditable !== curr.coverEditable}
-          >
-            {({ getFieldValue, setFieldValue }) => {
-              const coverEditable = getFieldValue('coverEditable');
-              if (coverEditable !== false) return null;
-              const currentPreview: string | undefined = getFieldValue('coverPreviewImage');
-
-              const uploadProps: UploadProps = {
-                name: 'file',
-                accept: 'image/jpeg,image/png,image/webp',
-                showUploadList: false,
-                customRequest: async ({ file, onSuccess, onError }) => {
-                  try {
-                    const formData = new FormData();
-                    formData.append('file', file as Blob);
-                    const res = await axiosInstance.post(
-                      '/storage/upload?category=library',
-                      formData,
-                      { headers: { 'Content-Type': 'multipart/form-data' } }
-                    );
-                    const url: string | undefined = res.data?.url;
-                    if (!url) throw new Error('업로드 응답에 URL이 없습니다');
-                    setFieldValue('coverPreviewImage', url);
-                    message.success('표지 미리보기 이미지 업로드 완료');
-                    onSuccess?.(res.data);
-                  } catch (err) {
-                    console.error('[coverPreviewImage upload]', err);
-                    message.error('이미지 업로드 실패');
-                    onError?.(err as Error);
-                  }
-                },
-              };
-
-              const resolvedPreview = currentPreview ? resolveStorageUrl(currentPreview) : null;
-
-              return (
-                <Form.Item label="표지 미리보기 이미지 (레더 커버용)">
-                  <Space direction="vertical" style={{ width: '100%' }}>
-                    {resolvedPreview && (
-                      <img
-                        src={resolvedPreview}
-                        alt="cover preview"
-                        style={{ maxWidth: 240, maxHeight: 240, border: '1px solid #eee', borderRadius: 4 }}
-                      />
-                    )}
-                    <Space>
-                      <Upload {...uploadProps}>
-                        <Button icon={<UploadOutlined />}>이미지 업로드</Button>
-                      </Upload>
-                      {currentPreview && (
-                        <Button
-                          danger
-                          size="small"
-                          onClick={() => setFieldValue('coverPreviewImage', undefined)}
-                        >
-                          제거
-                        </Button>
-                      )}
-                    </Space>
-                    <Form.Item name="coverPreviewImage" noStyle hidden>
-                      <Input />
+          <Collapse
+            defaultActiveKey={['basic', 'page', 'template']}
+            items={[
+              {
+                key: 'basic',
+                label: '기본 정보',
+                forceRender: true,
+                children: (
+                  <>
+                    <Form.Item
+                      name="name"
+                      label="템플릿셋명"
+                      rules={[{ required: true, message: '템플릿셋명을 입력하세요' }]}
+                    >
+                      <Input placeholder="예: A4 책자 기본 템플릿" />
                     </Form.Item>
-                    <Text type="secondary" style={{ fontSize: 12 }}>
-                      편집기에서는 이 이미지가 표지로만 표시되며, 인쇄용 PDF 의 표지는 빈 페이지로 생성됩니다.
-                    </Text>
-                  </Space>
-                </Form.Item>
-              );
-            }}
-          </Form.Item>
 
-          <Divider>내지 PDF 첨부</Divider>
+                    <Form.Item
+                      name="type"
+                      label="타입"
+                      rules={[{ required: true, message: '타입을 선택하세요' }]}
+                    >
+                      <Select
+                        options={[
+                          { label: '책자 (날개+표지+책등+내지)', value: TemplateSetType.BOOK },
+                          { label: '리플렛 (표지+내지)', value: TemplateSetType.LEAFLET },
+                        ]}
+                      />
+                    </Form.Item>
 
-          <Form.Item
-            name="contentPdfEditable"
-            label="PDF 첨부 파일 편집 가능"
-            valuePropName="checked"
-            initialValue={true}
-            extra="끔: 첨부 내지 PDF를 가이드로만 표시하고 내지 편집을 막습니다(첫 페이지에 안내 레이블). 어느 쪽이든 최종 내지 인쇄는 첨부 원본 PDF 그대로입니다."
-          >
-            <Switch checkedChildren="편집 가능" unCheckedChildren="가이드만 (편집 불가)" />
-          </Form.Item>
+                    <Form.Item
+                      name="editorMode"
+                      label="에디터 모드"
+                      rules={[{ required: true, message: '에디터 모드를 선택하세요' }]}
+                      extra="책모드는 스프레드 템플릿을 사용하며, 단일모드는 기존 방식입니다"
+                    >
+                      <Radio.Group>
+                        <Radio value={EditorMode.SINGLE}>단일모드 (개별 페이지 편집)</Radio>
+                        <Radio value={EditorMode.BOOK}>책모드 (스프레드 편집)</Radio>
+                      </Radio.Group>
+                    </Form.Item>
 
-          <Divider>PDF 출력</Divider>
+                    <Space size="large">
+                      <Form.Item
+                        name="width"
+                        label="너비 (mm)"
+                        rules={[{ required: true, message: '너비를 입력하세요' }]}
+                      >
+                        <InputNumber min={50} max={1000} />
+                      </Form.Item>
 
-          <Form.Item
-            name="pdfOutputMode"
-            label="PDF 생성 방식"
-            extra="단면=1파일 1페이지(포스터 등). 양면-원파일=1파일에 앞,뒤(,앞,뒤…) 순서. 양면-파일분리=앞/뒤 한 세트씩 개별 PDF(각 2페이지). ※ 책(spread) 셋은 기존 표지+내지 분리 출력이 우선되며 이 설정은 단일/낱장 상품에 적용됩니다."
-          >
-            <Select
-              options={[
-                { label: '단면 (1파일·1페이지)', value: 'single' },
-                { label: '양면 — 원파일 (앞,뒤,앞,뒤…)', value: 'duplex-merged' },
-                { label: '양면 — 파일분리 (앞/뒤 세트별 개별 PDF)', value: 'duplex-split' },
-              ]}
-            />
-          </Form.Item>
-
-          <Divider>에셋 구성 (라이브러리 카테고리)</Divider>
-
-          <Form.Item
-            name="libraryCategoryIds"
-            label="노출할 라이브러리 카테고리"
-            extra="이 상품/템플릿셋 편집기에서 노출할 에셋(배경·도형·클립아트·프레임·폰트)을 카테고리 단위로 선택합니다. 비워두면 = 전역(모든 카테고리 노출), 선택하면 그 카테고리만 노출. ※ 에디터 반영(필터링)은 단계적 적용 — 현재는 구성 저장까지."
-          >
-            <Select
-              mode="multiple"
-              allowClear
-              placeholder="비워두면 모든 에셋 노출 (전역)"
-              options={libraryCategoryGroups}
-              optionFilterProp="label"
-              maxTagCount="responsive"
-            />
-          </Form.Item>
-
-          <Divider>에디터 도구 메뉴</Divider>
-
-          <Form.Item
-            name="customizeMenus"
-            label="도구 메뉴 노출 직접 설정"
-            valuePropName="checked"
-            extra="끔: 모든 메뉴 노출 (기본). 켬: 아래에서 선택한 메뉴만 노출. 예) 동화책=프레임/QR 끄기, 전단지=AI/모양컷 끄기."
-          >
-            <Switch checkedChildren="화이트리스트" unCheckedChildren="모두 노출" />
-          </Form.Item>
-
-          <Form.Item
-            noStyle
-            shouldUpdate={(prev, curr) => prev.customizeMenus !== curr.customizeMenus}
-          >
-            {({ getFieldValue }) => {
-              const customizeMenus = getFieldValue('customizeMenus');
-              if (!customizeMenus) return null;
-              return (
-                <Form.Item
-                  name="enabledMenus"
-                  label="노출할 도구 메뉴"
-                  rules={[
-                    {
-                      validator: async (_rule, value: EditorMenuKey[] | undefined) => {
-                        // 빈 배열도 허용 (모두 숨김 = 극단적 케이스)
-                        if (!Array.isArray(value)) {
-                          throw new Error('메뉴 배열이 올바르지 않습니다.');
-                        }
-                      },
-                    },
-                  ]}
-                  extra={
-                    <Space direction="vertical" size={2} style={{ marginTop: 4 }}>
-                      <Text type="secondary" style={{ fontSize: 12 }}>
-                        체크된 메뉴만 에디터 좌측에 노출됩니다. 배열 순서는 ToolBar 순서를 따릅니다.
-                      </Text>
-                      <Space size={4}>
-                        <Button
-                          size="small"
-                          onClick={() => form.setFieldValue('enabledMenus', ALL_EDITOR_MENU_KEYS)}
-                        >
-                          전체 선택
-                        </Button>
-                        <Button
-                          size="small"
-                          onClick={() => form.setFieldValue('enabledMenus', [])}
-                        >
-                          전체 해제
-                        </Button>
-                        <Button
-                          size="small"
-                          onClick={() => form.setFieldValue('enabledMenus', ['UPLOAD'])}
-                        >
-                          업로드만
-                        </Button>
-                      </Space>
+                      <Form.Item
+                        name="height"
+                        label="높이 (mm)"
+                        rules={[{ required: true, message: '높이를 입력하세요' }]}
+                      >
+                        <InputNumber min={50} max={1000} />
+                      </Form.Item>
                     </Space>
-                  }
-                >
-                  <Checkbox.Group style={{ width: '100%' }}>
-                    <Space direction="vertical" size={6} style={{ width: '100%' }}>
-                      {EDITOR_MENU_DEFS.map((def) => (
-                        <Tooltip
-                          key={def.key}
-                          title={def.requiresFlag
-                            ? `${def.description} (빌드 플래그 ${def.requiresFlag} 가 꺼져있으면 화이트리스트와 무관하게 숨겨집니다)`
-                            : def.description}
-                          placement="right"
-                        >
-                          <Checkbox value={def.key} style={{ width: '100%' }}>
-                            <Space size={6}>
-                              <Tag color="blue" style={{ margin: 0 }}>
-                                {def.key}
-                              </Tag>
-                              <Text strong>{def.label}</Text>
+                  </>
+                ),
+              },
+              {
+                key: 'page',
+                label: '페이지 · 면지',
+                forceRender: true,
+                children: (
+                  <>
+                    <Form.Item name="canAddPage" label="내지 추가 허용" valuePropName="checked">
+                      <Switch checkedChildren="허용" unCheckedChildren="불가" />
+                    </Form.Item>
+
+                    <Form.Item noStyle shouldUpdate={(prev, curr) => prev.canAddPage !== curr.canAddPage}>
+                      {({ getFieldValue }) =>
+                        getFieldValue('canAddPage') && (
+                          <Space size="large">
+                            <Form.Item
+                              name="pageCountMin"
+                              label="최소 페이지"
+                              rules={[{ required: true, message: '최소 페이지를 입력하세요' }]}
+                            >
+                              <InputNumber min={1} max={500} />
+                            </Form.Item>
+
+                            <Form.Item
+                              name="pageCountMax"
+                              label="최대 페이지"
+                              rules={[{ required: true, message: '최대 페이지를 입력하세요' }]}
+                            >
+                              <InputNumber min={1} max={500} />
+                            </Form.Item>
+                          </Space>
+                        )
+                      }
+                    </Form.Item>
+
+                    {/* ===== 인쇄 워크플로우 v1 Phase 3 (2026-05-19) — 면지/표지/레더커버 ===== */}
+                    <Divider>면지 (EndPaper)</Divider>
+
+                    <Form.Item
+                      name="useEndpaper"
+                      label="면지 사용"
+                      valuePropName="checked"
+                      extra="책의 표지 안쪽(앞면지) / 뒤표지 안쪽(뒷면지)에 빈 페이지 추가. 0~6장."
+                    >
+                      <Switch checkedChildren="사용" unCheckedChildren="없음" />
+                    </Form.Item>
+
+                    <Form.Item
+                      noStyle
+                      shouldUpdate={(prev, curr) => prev.useEndpaper !== curr.useEndpaper}
+                    >
+                      {({ getFieldValue }) =>
+                        getFieldValue('useEndpaper') && (
+                          <Space size="large" wrap>
+                            <Form.Item name="endpaperFrontCount" label="앞면지 개수">
+                              <InputNumber min={0} max={6} />
+                            </Form.Item>
+                            <Form.Item name="endpaperBackCount" label="뒷면지 개수">
+                              <InputNumber min={0} max={6} />
+                            </Form.Item>
+                            <Form.Item
+                              name="endpaperFrontEditable"
+                              label="앞면지 편집 가능"
+                              valuePropName="checked"
+                            >
+                              <Switch checkedChildren="편집" unCheckedChildren="readonly" />
+                            </Form.Item>
+                            <Form.Item
+                              name="endpaperBackEditable"
+                              label="뒷면지 편집 가능"
+                              valuePropName="checked"
+                            >
+                              <Switch checkedChildren="편집" unCheckedChildren="readonly" />
+                            </Form.Item>
+                          </Space>
+                        )
+                      }
+                    </Form.Item>
+                  </>
+                ),
+              },
+              {
+                key: 'cover',
+                label: '표지 · PDF 출력',
+                forceRender: true,
+                children: (
+                  <>
+                    <Form.Item
+                      name="coverEditable"
+                      label="표지 편집 가능"
+                      valuePropName="checked"
+                      initialValue={true}
+                      extra="레더 커버 / 화보집 등 표지를 사전 인쇄하는 경우 끄세요. 표지 미리보기 이미지로 대체됩니다."
+                    >
+                      <Switch checkedChildren="편집 가능" unCheckedChildren="레더 커버 (편집 불가)" />
+                    </Form.Item>
+
+                    <Form.Item
+                      noStyle
+                      shouldUpdate={(prev, curr) => prev.coverEditable !== curr.coverEditable}
+                    >
+                      {({ getFieldValue, setFieldValue }) => {
+                        const coverEditable = getFieldValue('coverEditable');
+                        if (coverEditable !== false) return null;
+                        const currentPreview: string | undefined = getFieldValue('coverPreviewImage');
+
+                        const uploadProps: UploadProps = {
+                          name: 'file',
+                          accept: 'image/jpeg,image/png,image/webp',
+                          showUploadList: false,
+                          customRequest: async ({ file, onSuccess, onError }) => {
+                            try {
+                              const formData = new FormData();
+                              formData.append('file', file as Blob);
+                              const res = await axiosInstance.post(
+                                '/storage/upload?category=library',
+                                formData,
+                                { headers: { 'Content-Type': 'multipart/form-data' } }
+                              );
+                              const url: string | undefined = res.data?.url;
+                              if (!url) throw new Error('업로드 응답에 URL이 없습니다');
+                              setFieldValue('coverPreviewImage', url);
+                              message.success('표지 미리보기 이미지 업로드 완료');
+                              onSuccess?.(res.data);
+                            } catch (err) {
+                              console.error('[coverPreviewImage upload]', err);
+                              message.error('이미지 업로드 실패');
+                              onError?.(err as Error);
+                            }
+                          },
+                        };
+
+                        const resolvedPreview = currentPreview ? resolveStorageUrl(currentPreview) : null;
+
+                        return (
+                          <Form.Item label="표지 미리보기 이미지 (레더 커버용)">
+                            <Space direction="vertical" style={{ width: '100%' }}>
+                              {resolvedPreview && (
+                                <img
+                                  src={resolvedPreview}
+                                  alt="cover preview"
+                                  style={{ maxWidth: 240, maxHeight: 240, border: '1px solid #eee', borderRadius: 4 }}
+                                />
+                              )}
+                              <Space>
+                                <Upload {...uploadProps}>
+                                  <Button icon={<UploadOutlined />}>이미지 업로드</Button>
+                                </Upload>
+                                {currentPreview && (
+                                  <Button
+                                    danger
+                                    size="small"
+                                    onClick={() => setFieldValue('coverPreviewImage', undefined)}
+                                  >
+                                    제거
+                                  </Button>
+                                )}
+                              </Space>
+                              <Form.Item name="coverPreviewImage" noStyle hidden>
+                                <Input />
+                              </Form.Item>
                               <Text type="secondary" style={{ fontSize: 12 }}>
-                                {def.description}
+                                편집기에서는 이 이미지가 표지로만 표시되며, 인쇄용 PDF 의 표지는 빈 페이지로 생성됩니다.
                               </Text>
                             </Space>
-                          </Checkbox>
-                        </Tooltip>
-                      ))}
-                    </Space>
-                  </Checkbox.Group>
-                </Form.Item>
-              );
-            }}
-          </Form.Item>
+                          </Form.Item>
+                        );
+                      }}
+                    </Form.Item>
 
-          <Divider>템플릿 구성</Divider>
+                    <Divider>내지 PDF 첨부</Divider>
 
-          {/* 에디터 모드별 안내 메시지 */}
-          <Form.Item noStyle shouldUpdate={(prev, curr) => prev.editorMode !== curr.editorMode}>
-            {({ getFieldValue }) => {
-              const editorMode = getFieldValue('editorMode');
-              const spreadTemplates = templates.filter(t => t.template?.type === TemplateType.SPREAD);
-              const invalidTemplates = templates.filter(t =>
-                t.template?.type === TemplateType.WING ||
-                t.template?.type === TemplateType.COVER ||
-                t.template?.type === TemplateType.SPINE
-              );
+                    <Form.Item
+                      name="contentPdfEditable"
+                      label="PDF 첨부 파일 편집 가능"
+                      valuePropName="checked"
+                      initialValue={true}
+                      extra="끔: 첨부 내지 PDF를 가이드로만 표시하고 내지 편집을 막습니다(첫 페이지에 안내 레이블). 어느 쪽이든 최종 내지 인쇄는 첨부 원본 PDF 그대로입니다."
+                    >
+                      <Switch checkedChildren="편집 가능" unCheckedChildren="가이드만 (편집 불가)" />
+                    </Form.Item>
 
-              if (editorMode === EditorMode.BOOK) {
-                if (spreadTemplates.length !== 1) {
-                  return (
-                    <Alert
-                      type="warning"
-                      message="책모드에서는 스프레드 템플릿이 정확히 1개 필요합니다"
-                      style={{ marginBottom: 16 }}
-                    />
-                  );
-                }
-                if (invalidTemplates.length > 0) {
-                  return (
-                    <Alert
-                      type="error"
-                      message="책모드에서는 날개/표지/책등 템플릿을 사용할 수 없습니다"
-                      description="스프레드 템플릿 1개와 내지(PAGE) 템플릿만 사용하세요"
-                      style={{ marginBottom: 16 }}
-                    />
-                  );
-                }
-                return (
-                  <Alert
-                    type="success"
-                    message="템플릿 구성이 올바릅니다"
-                    description="스프레드 템플릿 1개 + 내지 템플릿 N개"
-                    style={{ marginBottom: 16 }}
-                  />
-                );
-              }
+                    <Divider>PDF 출력</Divider>
 
-              if (editorMode === EditorMode.SINGLE) {
-                if (spreadTemplates.length > 0) {
-                  return (
-                    <Alert
-                      type="error"
-                      message="단일모드에서는 스프레드 템플릿을 사용할 수 없습니다"
-                      style={{ marginBottom: 16 }}
-                    />
-                  );
-                }
-              }
-
-              return null;
-            }}
-          </Form.Item>
-
-          <Card
-            size="small"
-            title={
-              <Space>
-                <span>템플릿 목록</span>
-                <Text type="secondary" style={{ fontWeight: 'normal', fontSize: 12 }}>
-                  (드래그하여 순서 변경)
-                </Text>
-              </Space>
-            }
-            extra={
-              <Button
-                type="dashed"
-                icon={<PlusOutlined />}
-                onClick={() => setIsTemplateModalOpen(true)}
-                disabled={!width || !height}
-              >
-                템플릿 추가
-              </Button>
-            }
-          >
-            {templates.length === 0 ? (
-              <Empty
-                description="템플릿이 없습니다. 판형을 선택한 후 템플릿을 추가하세요."
-                image={Empty.PRESENTED_IMAGE_SIMPLE}
-              />
-            ) : (
-              <DndContext
-                sensors={sensors}
-                collisionDetection={closestCenter}
-                onDragEnd={handleDragEnd}
-              >
-                <SortableContext
-                  items={templates.map((t) => t.templateId)}
-                  strategy={verticalListSortingStrategy}
-                >
-                  <div style={{ border: '1px solid #f0f0f0', borderRadius: 8 }}>
-                    {templates.map((item, index) => (
-                      <SortableTemplateItem
-                        key={item.templateId}
-                        item={item}
-                        index={index}
-                        onToggleRequired={handleToggleRequired}
-                        onRemove={handleRemoveTemplate}
+                    <Form.Item
+                      name="pdfOutputMode"
+                      label="PDF 생성 방식"
+                      extra="단면=1파일 1페이지(포스터 등). 양면-원파일=1파일에 앞,뒤(,앞,뒤…) 순서. 양면-파일분리=앞/뒤 한 세트씩 개별 PDF(각 2페이지). ※ 책(spread) 셋은 기존 표지+내지 분리 출력이 우선되며 이 설정은 단일/낱장 상품에 적용됩니다."
+                    >
+                      <Select
+                        options={[
+                          { label: '단면 (1파일·1페이지)', value: 'single' },
+                          { label: '양면 — 원파일 (앞,뒤,앞,뒤…)', value: 'duplex-merged' },
+                          { label: '양면 — 파일분리 (앞/뒤 세트별 개별 PDF)', value: 'duplex-split' },
+                        ]}
                       />
-                    ))}
-                  </div>
-                </SortableContext>
-              </DndContext>
-            )}
-          </Card>
+                    </Form.Item>
+                  </>
+                ),
+              },
+              {
+                key: 'asset',
+                label: '에셋 · 도구 메뉴',
+                forceRender: true,
+                children: (
+                  <>
+                    <Divider>에셋 구성 (라이브러리 카테고리)</Divider>
+
+                    <Form.Item
+                      name="libraryCategoryIds"
+                      label="노출할 라이브러리 카테고리"
+                      extra="이 상품/템플릿셋 편집기에서 노출할 에셋(배경·도형·클립아트·프레임·폰트)을 카테고리 단위로 선택합니다. 비워두면 = 전역(모든 카테고리 노출), 선택하면 그 카테고리만 노출. ※ 에디터 반영(필터링)은 단계적 적용 — 현재는 구성 저장까지."
+                    >
+                      <Select
+                        mode="multiple"
+                        allowClear
+                        placeholder="비워두면 모든 에셋 노출 (전역)"
+                        options={libraryCategoryGroups}
+                        optionFilterProp="label"
+                        maxTagCount="responsive"
+                      />
+                    </Form.Item>
+
+                    <Divider>에디터 도구 메뉴</Divider>
+
+                    <Form.Item
+                      name="customizeMenus"
+                      label="도구 메뉴 노출 직접 설정"
+                      valuePropName="checked"
+                      extra="끔: 모든 메뉴 노출 (기본). 켬: 아래에서 선택한 메뉴만 노출. 예) 동화책=프레임/QR 끄기, 전단지=AI/모양컷 끄기."
+                    >
+                      <Switch checkedChildren="화이트리스트" unCheckedChildren="모두 노출" />
+                    </Form.Item>
+
+                    <Form.Item
+                      noStyle
+                      shouldUpdate={(prev, curr) => prev.customizeMenus !== curr.customizeMenus}
+                    >
+                      {({ getFieldValue }) => {
+                        const customizeMenus = getFieldValue('customizeMenus');
+                        if (!customizeMenus) return null;
+                        return (
+                          <Form.Item
+                            name="enabledMenus"
+                            label="노출할 도구 메뉴"
+                            rules={[
+                              {
+                                validator: async (_rule, value: EditorMenuKey[] | undefined) => {
+                                  // 빈 배열도 허용 (모두 숨김 = 극단적 케이스)
+                                  if (!Array.isArray(value)) {
+                                    throw new Error('메뉴 배열이 올바르지 않습니다.');
+                                  }
+                                },
+                              },
+                            ]}
+                            extra={
+                              <Space direction="vertical" size={2} style={{ marginTop: 4 }}>
+                                <Text type="secondary" style={{ fontSize: 12 }}>
+                                  체크된 메뉴만 에디터 좌측에 노출됩니다. 배열 순서는 ToolBar 순서를 따릅니다.
+                                </Text>
+                                <Space size={4}>
+                                  <Button
+                                    size="small"
+                                    onClick={() => form.setFieldValue('enabledMenus', ALL_EDITOR_MENU_KEYS)}
+                                  >
+                                    전체 선택
+                                  </Button>
+                                  <Button
+                                    size="small"
+                                    onClick={() => form.setFieldValue('enabledMenus', [])}
+                                  >
+                                    전체 해제
+                                  </Button>
+                                  <Button
+                                    size="small"
+                                    onClick={() => form.setFieldValue('enabledMenus', ['UPLOAD'])}
+                                  >
+                                    업로드만
+                                  </Button>
+                                </Space>
+                              </Space>
+                            }
+                          >
+                            <Checkbox.Group style={{ width: '100%' }}>
+                              <Space direction="vertical" size={6} style={{ width: '100%' }}>
+                                {EDITOR_MENU_DEFS.map((def) => (
+                                  <Tooltip
+                                    key={def.key}
+                                    title={def.requiresFlag
+                                      ? `${def.description} (빌드 플래그 ${def.requiresFlag} 가 꺼져있으면 화이트리스트와 무관하게 숨겨집니다)`
+                                      : def.description}
+                                    placement="right"
+                                  >
+                                    <Checkbox value={def.key} style={{ width: '100%' }}>
+                                      <Space size={6}>
+                                        <Tag color="blue" style={{ margin: 0 }}>
+                                          {def.key}
+                                        </Tag>
+                                        <Text strong>{def.label}</Text>
+                                        <Text type="secondary" style={{ fontSize: 12 }}>
+                                          {def.description}
+                                        </Text>
+                                      </Space>
+                                    </Checkbox>
+                                  </Tooltip>
+                                ))}
+                              </Space>
+                            </Checkbox.Group>
+                          </Form.Item>
+                        );
+                      }}
+                    </Form.Item>
+                  </>
+                ),
+              },
+              {
+                key: 'template',
+                label: '템플릿 구성',
+                forceRender: true,
+                children: (
+                  <>
+                    {/* 에디터 모드별 안내 메시지 */}
+                    <Form.Item noStyle shouldUpdate={(prev, curr) => prev.editorMode !== curr.editorMode}>
+                      {({ getFieldValue }) => {
+                        const editorMode = getFieldValue('editorMode');
+                        const spreadTemplates = templates.filter(t => t.template?.type === TemplateType.SPREAD);
+                        const invalidTemplates = templates.filter(t =>
+                          t.template?.type === TemplateType.WING ||
+                          t.template?.type === TemplateType.COVER ||
+                          t.template?.type === TemplateType.SPINE
+                        );
+
+                        if (editorMode === EditorMode.BOOK) {
+                          if (spreadTemplates.length !== 1) {
+                            return (
+                              <Alert
+                                type="warning"
+                                message="책모드에서는 스프레드 템플릿이 정확히 1개 필요합니다"
+                                style={{ marginBottom: 16 }}
+                              />
+                            );
+                          }
+                          if (invalidTemplates.length > 0) {
+                            return (
+                              <Alert
+                                type="error"
+                                message="책모드에서는 날개/표지/책등 템플릿을 사용할 수 없습니다"
+                                description="스프레드 템플릿 1개와 내지(PAGE) 템플릿만 사용하세요"
+                                style={{ marginBottom: 16 }}
+                              />
+                            );
+                          }
+                          return (
+                            <Alert
+                              type="success"
+                              message="템플릿 구성이 올바릅니다"
+                              description="스프레드 템플릿 1개 + 내지 템플릿 N개"
+                              style={{ marginBottom: 16 }}
+                            />
+                          );
+                        }
+
+                        if (editorMode === EditorMode.SINGLE) {
+                          if (spreadTemplates.length > 0) {
+                            return (
+                              <Alert
+                                type="error"
+                                message="단일모드에서는 스프레드 템플릿을 사용할 수 없습니다"
+                                style={{ marginBottom: 16 }}
+                              />
+                            );
+                          }
+                        }
+
+                        return null;
+                      }}
+                    </Form.Item>
+
+                    <Card
+                      size="small"
+                      title={
+                        <Space>
+                          <span>템플릿 목록</span>
+                          <Text type="secondary" style={{ fontWeight: 'normal', fontSize: 12 }}>
+                            (드래그하여 순서 변경)
+                          </Text>
+                        </Space>
+                      }
+                      extra={
+                        <Button
+                          type="dashed"
+                          icon={<PlusOutlined />}
+                          onClick={() => setIsTemplateModalOpen(true)}
+                          disabled={!width || !height}
+                        >
+                          템플릿 추가
+                        </Button>
+                      }
+                    >
+                      {templates.length === 0 ? (
+                        <Empty
+                          description="템플릿이 없습니다. 판형을 선택한 후 템플릿을 추가하세요."
+                          image={Empty.PRESENTED_IMAGE_SIMPLE}
+                        />
+                      ) : (
+                        <DndContext
+                          sensors={sensors}
+                          collisionDetection={closestCenter}
+                          onDragEnd={handleDragEnd}
+                        >
+                          <SortableContext
+                            items={templates.map((t) => t.templateId)}
+                            strategy={verticalListSortingStrategy}
+                          >
+                            <div style={{ border: '1px solid #f0f0f0', borderRadius: 8 }}>
+                              {templates.map((item, index) => (
+                                <SortableTemplateItem
+                                  key={item.templateId}
+                                  item={item}
+                                  index={index}
+                                  onToggleRequired={handleToggleRequired}
+                                  onRemove={handleRemoveTemplate}
+                                />
+                              ))}
+                            </div>
+                          </SortableContext>
+                        </DndContext>
+                      )}
+                    </Card>
+                  </>
+                ),
+              },
+            ]}
+          />
 
           <Divider />
 
