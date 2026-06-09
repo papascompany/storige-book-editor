@@ -24,6 +24,8 @@ import type { SpreadTemplateResult, SinglePageResult } from '@storige/indesign-i
 import { TemplateType } from '@storige/types';
 import { templatesApi } from '../../api/templates';
 import { categoriesApi } from '../../api/categories';
+import { libraryApi } from '../../api/library';
+import { resolveStorageUrl } from '../../lib/axios';
 
 const { Title, Text, Paragraph } = Typography;
 const { Dragger } = Upload;
@@ -46,6 +48,55 @@ const flattenCategories = (cats: CategoryNode[], level = 0): { label: string; va
 };
 
 const detectFormat = (fileName: string): DesignFormat => (/\.psd$/i.test(fileName) ? 'psd' : 'idml');
+
+// canvasData 객체(불투명 Record). 변환기는 배경 PNG 를 type='image', src='data:image/png;base64,...'
+// 로 내보낸다(idml hybrid → id 'idml-artwork', psd → id 'psd-artwork').
+type CanvasObject = Record<string, unknown>;
+
+// 객체의 src 가 base64 dataURL 인 이미지인지 판정.
+const isDataUrlImage = (o: CanvasObject): o is CanvasObject & { src: string } =>
+  o.type === 'image' && typeof o.src === 'string' && (o.src as string).startsWith('data:');
+
+// base64 dataURL → File. fetch().blob() 대신 atob 로 직접 디코딩
+// (대용량 PNG 에서 fetch(dataUrl) 가 일부 환경에서 느림 — editor useAutoSaveThumbnail 과 동일 패턴).
+const dataUrlToFile = (dataUrl: string, fileName: string): File => {
+  const match = dataUrl.match(/^data:(.+?);base64,(.*)$/);
+  if (!match) throw new Error('배경 이미지 dataURL 형식을 해석할 수 없습니다.');
+  const mime = match[1];
+  const binary = atob(match[2]);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new File([bytes], fileName, { type: mime });
+};
+
+/**
+ * DB bloat 방지: canvasData 에 인라인된 base64 PNG 배경(들)을 스토리지에 업로드하고
+ * 객체의 src 를 스토리지 URL 로 치환한 새 객체 배열을 반환한다.
+ *
+ * - dataURL 이미지가 없으면(순수 벡터 IDML 등) 입력 배열을 그대로 반환(업로드 0회).
+ * - 여러 개여도 모두 처리.
+ * - 업로드 실패 시 throw → 호출자(saveMutation)가 에러를 표면화하고 저장을 중단
+ *   (깨진(URL 누락) 템플릿을 저장하지 않음).
+ * - 저장 src 는 resolveStorageUrl 로 변환한 값: prod=절대 URL, dev=vite proxy 상대경로.
+ *   resolveStorageUrl 은 http(s)/data URL 을 그대로 통과시키므로 멱등.
+ */
+const uploadInlineBackgrounds = async (
+  objects: CanvasObject[],
+  baseName: string
+): Promise<CanvasObject[]> => {
+  let uploadIdx = 0;
+  const safeBase = (baseName || 'imported').replace(/[^\w.-]+/g, '_').slice(0, 60) || 'imported';
+  return Promise.all(
+    objects.map(async (o) => {
+      if (!isDataUrlImage(o)) return o;
+      const fileName = `${safeBase}-bg-${uploadIdx++}.png`;
+      const file = dataUrlToFile(o.src, fileName);
+      const uploaded = await libraryApi.uploadFile(file);
+      if (!uploaded?.url) throw new Error('배경 이미지 업로드 응답에 URL 이 없습니다.');
+      return { ...o, src: resolveStorageUrl(uploaded.url) };
+    })
+  );
+};
 
 export const TemplateImport = () => {
   const navigate = useNavigate();
@@ -85,10 +136,14 @@ export const TemplateImport = () => {
       if (!result) throw new Error('변환 결과가 없습니다.');
       const dto = result.draftTemplateDto;
       // 디버그 필드(_idml/_psd) 제거, meta 는 유지(책등 가변/앵커)
-      const objects = dto.canvasData.objects.map((o) => {
+      const strippedObjects = dto.canvasData.objects.map((o) => {
         const { _idml, _psd, ...rest } = o as Record<string, unknown>;
         return rest;
       });
+      // DB bloat 방지: 인라인 base64 PNG 배경(들)을 스토리지에 업로드하고 src 를 URL 로 치환.
+      // dataURL 배경이 없으면(순수 벡터 IDML) 그대로 통과. 업로드 실패 시 throw → 저장 중단.
+      const baseName = name.trim() || dto.name;
+      const objects = await uploadInlineBackgrounds(strippedObjects, baseName);
       if (format === 'psd') {
         // 단일 페이지(명함/내지 단품): spreadConfig 없음
         return templatesApi.create({
