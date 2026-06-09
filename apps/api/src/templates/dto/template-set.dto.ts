@@ -14,7 +14,7 @@ import {
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { TemplateSetType, TemplateRef, EditorMode, EditorMenuKey, ALL_EDITOR_MENU_KEYS, PdfOutputMode } from '@storige/types';
+import { TemplateSetType, TemplateRef, EditorMode, EditorMenuKey, ALL_EDITOR_MENU_KEYS, PdfOutputMode, ColorOutputMode } from '@storige/types';
 
 /**
  * 면지 구성 DTO — 인쇄 워크플로우 v1 Phase 3 (2026-05-19).
@@ -160,6 +160,10 @@ export class CreateTemplateSetDto {
   pdfOutputMode?: PdfOutputMode;
 
   @IsOptional()
+  @IsIn(['rgb', 'cmyk'])
+  colorMode?: ColorOutputMode;
+
+  @IsOptional()
   @IsArray()
   @IsString({ each: true })
   libraryCategoryIds?: string[];
@@ -271,6 +275,10 @@ export class UpdateTemplateSetDto {
   @IsOptional()
   @IsIn(['single', 'duplex-merged', 'duplex-split'])
   pdfOutputMode?: PdfOutputMode;
+
+  @IsOptional()
+  @IsIn(['rgb', 'cmyk'])
+  colorMode?: ColorOutputMode;
 
   @IsOptional()
   @IsArray()

@@ -210,6 +210,13 @@ export interface TemplateSet {
    */
   pdfOutputMode?: PdfOutputMode;
   /**
+   * 색 처리 모드 — 상품에 따라 출력 PDF의 색공간 결정 (2026-06-09).
+   * - 'rgb': RGB 유지(기본). 현재 파이프라인 동작 그대로.
+   * - 'cmyk': 출력 시 RGB 객체를 CMYK로 변환(인쇄 색 정확도). 워커 ColorConversionStrategy/ICC.
+   * ※ 워커의 실제 변환 적용은 인쇄 출력 영향 → 별도(스테이징) 적용. 필드는 의도 저장.
+   */
+  colorMode?: ColorOutputMode;
+  /**
    * ④ 노출 라이브러리 카테고리 ID 목록 (2026-06-09). 에디터 에셋(배경/도형/클립아트/프레임/폰트)을
    * 상품·템플릿셋별로 큐레이션. 빈 배열/undefined = 전역(모든 카테고리 노출). 값이 있으면 그 카테고리만.
    * (조인 테이블 template_set_library_categories 에서 populate)
@@ -230,6 +237,11 @@ export interface TemplateSet {
  * 'duplex-split'=앞/뒤 세트별 개별 PDF(각 2p). 기본 'duplex-merged'.
  */
 export type PdfOutputMode = 'single' | 'duplex-merged' | 'duplex-split';
+
+/**
+ * 색 처리(출력 색공간) 모드. 'rgb'=RGB 유지(기본), 'cmyk'=출력 시 CMYK 변환(인쇄).
+ */
+export type ColorOutputMode = 'rgb' | 'cmyk';
 
 /**
  * 템플릿셋 생성 입력
@@ -254,6 +266,8 @@ export interface CreateTemplateSetInput {
   contentPdfEditable?: boolean;
   /** PDF 출력 모드 (2026-06-09, 기본 'duplex-merged') */
   pdfOutputMode?: PdfOutputMode;
+  /** 색 처리 모드 (2026-06-09, 기본 'rgb') */
+  colorMode?: ColorOutputMode;
   /** ④ 노출 라이브러리 카테고리 ID 목록 (빈/미지정=전역) */
   libraryCategoryIds?: string[];
 }
@@ -280,6 +294,8 @@ export interface UpdateTemplateSetInput {
   contentPdfEditable?: boolean;
   /** PDF 출력 모드 (2026-06-09, 기본 'duplex-merged') */
   pdfOutputMode?: PdfOutputMode;
+  /** 색 처리 모드 (2026-06-09, 기본 'rgb') */
+  colorMode?: ColorOutputMode;
   /** ④ 노출 라이브러리 카테고리 ID 목록 (빈/미지정=전역) */
   libraryCategoryIds?: string[];
 }
