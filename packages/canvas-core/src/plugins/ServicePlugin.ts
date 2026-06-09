@@ -1830,14 +1830,21 @@ class ServicePlugin extends PluginBase {
         }
       }
 
-      console.log(
-        `⚠️ FontPlugin WOFF2 벡터화 실패, 이미지 변환으로 폴백: "${(textObj as any).text}"`
+      // 아웃라인(글리프 path) 데이터를 못 구한 경우의 그레이스풀 폴백.
+      // svg2pdf 는 <text> 를 jsPDF 내장 폰트로 렌더 → 라이브러리 폰트가 깨진다.
+      // 따라서 화면 모양을 그대로 보존하는 래스터(PNG)로 폴백(인쇄 시각 충실도 우선).
+      // 어떤 텍스트/폰트가 아웃라인 안 됐는지 항상(운영 포함) 남겨 추적 가능하게 한다.
+      console.warn(
+        `⚠️ 텍스트 아웃라인 실패 → 래스터 폴백: text="${(textObj as any).text}", font="${(textObj as any).fontFamily}"`
       )
 
-      // 폴백: 이미지 변환 (WOFF2 벡터화 실패 시)
+      // 폴백: 이미지 변환 (아웃라인 데이터 미확보 시)
       return this._convertTextToImage(textObj)
     } catch (error) {
-      console.error('텍스트 SVG 변환 중 오류:', error)
+      console.error(
+        `텍스트 아웃라인 중 오류 → 래스터 폴백: text="${(textObj as any).text}", font="${(textObj as any).fontFamily}"`,
+        error
+      )
       // 최종 폴백
       return this._convertTextToImage(textObj)
     }

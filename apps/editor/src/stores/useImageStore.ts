@@ -87,6 +87,21 @@ interface ImageActions {
     imagePlugin: ImageProcessingPlugin
   ) => Promise<FabricObject>
 
+  // 사진틀(프레임)을 인터랙티브하게 만들기: hover "이미지 채우기" 오버레이 + 클릭 시 파일 선택
+  makeFrameInteractive: (
+    canvas: FabricCanvas,
+    frame: FabricObject,
+    imagePlugin: ImageProcessingPlugin
+  ) => void
+
+  // 사진을 프레임의 투명창 안에만 보이도록 채우기 (inverted clipPath 마스킹)
+  fillImageIntoFrame: (
+    canvas: FabricCanvas,
+    fore: FabricObject,
+    frame: FabricObject,
+    imagePlugin: ImageProcessingPlugin
+  ) => Promise<FabricObject>
+
   // 배경 추가
   addBackground: (item: FabricObject, canvas: FabricCanvas) => FabricObject
 
@@ -642,6 +657,183 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
     })
     fore.setCoords()
     rear.fillImage = fore.id
+
+    return fore
+  },
+
+  // 사진틀(프레임)을 인터랙티브하게 만들기
+  // - hover 시 "이미지 채우기" 오버레이를 프레임 위에 표시
+  // - 클릭(mousedown) 시 파일 선택 → 선택한 사진을 프레임 투명창에 마스킹하여 채움
+  // 테스트용 경로(useImageStore.upload 의 SelectionType.frame 블록)와 같은 UX 패턴을
+  // 공유하되, 마스킹 방식은 inverted clipPath(투명창 표시)로 통일한다.
+  makeFrameInteractive: (
+    canvas: FabricCanvas,
+    frame: FabricObject,
+    imagePlugin: ImageProcessingPlugin
+  ): void => {
+    // 중복 바인딩 방지 (afterLoad 재바인딩 등에서 다시 호출될 수 있음)
+    if (frame._frameInteractiveBound) return
+    frame._frameInteractiveBound = true
+
+    const isFilled = () =>
+      canvas
+        .getObjects()
+        .some((obj: FabricObject) => obj.frameRef === frame.id && obj.extensionType !== 'overlay')
+
+    // hover 오버레이는 매 hover 시 즉석 생성/제거 (프레임의 현재 위치/크기에 맞춤)
+    let overlay: FabricObject | null = null
+
+    const removeOverlay = () => {
+      if (overlay) {
+        canvas.remove(overlay)
+        overlay = null
+        canvas.requestRenderAll()
+      }
+    }
+
+    frame.set({ hoverCursor: 'pointer', moveCursor: 'pointer' })
+
+    frame.on('mouseover', () => {
+      if (overlay || isFilled()) return
+      const center = frame.getCenterPoint()
+      const w = frame.width! * frame.scaleX!
+      const h = frame.height! * frame.scaleY!
+
+      const rect = core.createRect({
+        id: uuid(),
+        width: w,
+        height: h,
+        fill: '#000',
+        opacity: 0.5,
+        originX: 'center',
+        originY: 'center',
+        left: center.x,
+        top: center.y,
+        angle: frame.angle,
+        selectable: false,
+        hasControls: false,
+        evented: false
+      })
+
+      const text = core.createText('이미지 채우기', {
+        fill: '#fff',
+        fontSize: Math.max(12, Math.min(w, h) / 10),
+        originX: 'center',
+        originY: 'center',
+        left: center.x,
+        top: center.y,
+        angle: frame.angle,
+        selectable: false,
+        hasControls: false,
+        evented: false
+      })
+
+      overlay = core.createGroup([rect, text], {
+        id: uuid(),
+        evented: false,
+        selectable: false,
+        hasControls: false,
+        editable: false,
+        excludeFromExport: true,
+        extensionType: 'overlay'
+      })
+      canvas.add(overlay)
+      overlay.bringToFront()
+      canvas.requestRenderAll()
+    })
+
+    frame.on('mouseout', removeOverlay)
+
+    frame.on('mousedown', async () => {
+      if (isFilled()) return
+
+      const selectedFiles = await selectFiles({ accept: 'image/*', multiple: false })
+      if (!selectedFiles || selectedFiles.length === 0) return
+      const selectedFile = selectedFiles[0]
+      if (!checkMobileFileSize(selectedFile)) return
+
+      const fabricImage = await core.fileToImage(canvas, selectedFile, imagePlugin)
+      if (!fabricImage) {
+        console.log('no image selected')
+        return
+      }
+
+      removeOverlay()
+      const fore = await get().fillImageIntoFrame(canvas, fabricImage, frame, imagePlugin)
+      canvas.add(fore)
+      canvas.setActiveObject(fore)
+      canvas.requestRenderAll()
+    })
+  },
+
+  // 사진을 프레임의 투명창 안에만 보이도록 채우기 (inverted clipPath 마스킹)
+  // - image 타입 프레임(PNG 사진틀/액자/말풍선): 프레임 이미지를 복제하여 inverted clipPath 로 사용.
+  //   프레임이 투명한 영역(=창)에서만 사진이 보이고, 불투명한 영역에선 가려진다.
+  // - 비-image 프레임(vector/shape/mold): 기존 fillImage(외곽선 path clip) 동작을 유지하여
+  //   몰드/테스트용 path 경로가 변하지 않게 한다.
+  fillImageIntoFrame: async (
+    canvas: FabricCanvas,
+    fore: FabricObject,
+    frame: FabricObject,
+    imagePlugin: ImageProcessingPlugin
+  ): Promise<FabricObject> => {
+    // image 가 아닌 프레임은 기존 외곽선 clip 방식으로 위임 (몰드/벡터 호환 유지)
+    if (frame.type !== 'image') {
+      return get().fillImage(canvas, fore, frame, imagePlugin)
+    }
+
+    const centerOf = frame.getCenterPoint()
+
+    // 프레임 이미지를 복제해 alpha 마스크로 사용.
+    // inverted:true → 프레임이 "투명한" 곳에서 사진이 보이고, "불투명한" 곳에서 가려진다.
+    // absolutePositioned:true → clipPath 가 사진의 로컬 좌표가 아니라 캔버스 절대좌표에 고정,
+    //   화면상의 프레임과 정확히 같은 위치/크기/각도로 마스킹된다.
+    const frameClip: FabricObject = await new Promise<FabricObject>((resolve) => {
+      frame.clone((cloned: FabricObject) => {
+        cloned.set({
+          id: `${frame.id}_frameClip`,
+          originX: 'center',
+          originY: 'center',
+          left: centerOf.x,
+          top: centerOf.y,
+          scaleX: frame.scaleX,
+          scaleY: frame.scaleY,
+          angle: frame.angle,
+          flipX: frame.flipX,
+          flipY: frame.flipY,
+          absolutePositioned: true,
+          inverted: true,
+          selectable: false,
+          evented: false
+        })
+        resolve(cloned)
+      })
+    })
+
+    // 사진이 프레임 창 전체를 덮도록 스케일링 (가로/세로 중 큰 비율로 cover)
+    const frameW = frame.width! * frame.scaleX!
+    const frameH = frame.height! * frame.scaleY!
+    const coverScale = Math.max(frameW / fore.width!, frameH / fore.height!)
+
+    fore.set({
+      extensionType: 'fillImage',
+      left: centerOf.x,
+      top: centerOf.y,
+      originX: 'center',
+      originY: 'center',
+      hasControls: true,
+      scaleX: coverScale,
+      scaleY: coverScale,
+      id: `${frame.id}_fillImage`,
+      frameRef: frame.id,
+      clipPath: frameClip
+    })
+    fore.setCoords()
+    frame.fillImage = fore.id
+
+    // 프레임을 사진 위로 올려 프레임 테두리/장식이 사진을 덮도록 z-order 보정.
+    // (사진은 위 add 호출 직후 맨 위에 놓이므로 프레임을 다시 최상단으로)
+    frame.bringToFront()
 
     return fore
   },
