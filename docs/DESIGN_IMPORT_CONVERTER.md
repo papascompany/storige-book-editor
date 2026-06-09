@@ -3,6 +3,7 @@
 > **패키지**: `@storige/indesign-import` · **상태**: 동작(브라우저 admin + Node) · **갱신**: 2026-06-09
 > **관리자 진입점**: `/templates/import` (admin) → `TemplateImport.tsx`
 > **연계 문서**: [`EDITOR.md`](./EDITOR.md) · [`SYSTEM_INTEGRATION_OVERVIEW.md`](./SYSTEM_INTEGRATION_OVERVIEW.md) · [`PRODUCT_TEMPLATE_REGISTRATION_MANUAL.html`](./PRODUCT_TEMPLATE_REGISTRATION_MANUAL.html)
+> **▶ 운영 전체 플로우(업로드·변환·등록·테스트·검증)**: [`IDML_IMPORT_FLOW.md`](./IDML_IMPORT_FLOW.md) · [`IDML_IMPORT_FLOW.html`](./IDML_IMPORT_FLOW.html) (이 문서=기술 아키텍처 / 그 문서=실제로 돌리고 검증하는 법)
 
 ---
 
@@ -332,10 +333,10 @@ node packages/indesign-import/scripts/convert-sample.mjs fixtures/cover-sample.i
 | 항목 | 상태 |
 |------|------|
 | **B. 상품별 색 처리 모드** — `TemplateSet.colorMode('rgb'\|'cmyk')` + admin Select | ✅ **데이터모델+admin 배포**(2026-06-09). ⏸ 워커 실제 색변환(GS `-sColorConversionStrategy`/ICC, `colors.ts` LCMS2)은 인쇄출력 영향 → 스테이징 후 적용 |
-| **A. 텍스트 아웃라인 출력** — 고객/변환 텍스트를 PDF 저장 시 **벡터 아웃라인화**(폰트 시딩 아님). `woff2ToTtf`→opentype.js 글리프. 편집기(svg2pdf)+워커 양경로 | ⏳ 미착수 |
-| **C. 오버프린트/녹아웃 안전변환** — 인쇄 규약 처리 | ⏳ 미착수 |
-| **D. 에디터 실로드 E2E** — 책등 가변 런타임 검증(`meta` 직렬화는 canvas.ts:151로 **해소됨**, 검증만) | ⏳ 검증 대기 |
-| **PNG 에셋 대비책** — ①dataURL 인라인 → `filesApi` 업로드(DB 비대화 방지) ②사진 프레임(`AppFrame`) 투명창 마스킹(안=사진/밖=클립) 정밀도 검증·변환기 알파보존 | ⏳ 미착수 |
+| **A. 텍스트 아웃라인 출력** — 아웃라인 자체는 이미 라이브(8fea0e8); **혼합폰트 per-run 충실도** 수정(opentype 글리프, NFD/NFC 매칭) | ✅ **배포**(merge `20ac84c`). 실주문 시각검증 중 |
+| **C. 오버프린트/별색 보존** — GS pdfwrite `-dPreserveOverprintSettings/Separation/DeviceN`(보존 전용, 일반 PDF no-op). 진입점=고객 PDF | ✅ **배포**(워커). overprint 시뮬/녹아웃 평탄화는 ICC 필요 → 보류(env 게이트) |
+| **D. 에디터 실로드 E2E** — 책등 가변 런타임 검증(`meta` 직렬화는 canvas.ts:151로 **해소됨**, 검증만) | ⏳ 수동 절차([`IDML_IMPORT_FLOW.md`](./IDML_IMPORT_FLOW.md) §2.2/§4) |
+| **PNG 에셋 대비책** — ①변환 PNG `/storage/upload` 업로드(DB 비대화 해소) ✅ ②사진 프레임 inverted clipPath 마스킹(투명창에만 사진) ✅ | ✅ **배포**(PNG-1 admin / PNG-2 editor). 프레임 방향·재로드·인쇄 시각검증 중 |
 | **AI(.ai) 임포트 정식화** — SVG export 우회 존재, 네이티브 파싱 비권장 | 보류(P2) |
 | **PSD 벡터형(셰이프) 레이어 보존** — 선택 옵션 | 보류(P2) |
 

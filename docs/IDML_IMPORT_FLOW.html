@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IDML 가져오기 전체 플로우 — 업로드·변환·등록·테스트·검증</title>
+<style>
+  :root{
+    --bg:#0f1115; --card:#171a21; --card2:#1d2129; --bd:#2a2f3a; --tx:#e6e9ef; --mut:#9aa3b2;
+    --ac:#5b9dff; --ac2:#7c5cff; --ok:#2ecc71; --warn:#f5b14c; --bad:#ff6b6b; --pill:#222836;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--tx);font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Segoe UI",Roboto,sans-serif;line-height:1.6;}
+  .wrap{max-width:1080px;margin:0 auto;padding:40px 24px 80px;}
+  h1{font-size:30px;margin:0 0 6px;letter-spacing:-.5px}
+  .sub{color:var(--mut);margin:0 0 28px;font-size:14px}
+  h2{font-size:20px;margin:40px 0 14px;padding-top:14px;border-top:1px solid var(--bd);display:flex;align-items:center;gap:10px}
+  h2 .n{display:inline-flex;width:26px;height:26px;border-radius:7px;background:linear-gradient(135deg,var(--ac),var(--ac2));align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#fff}
+  h3{font-size:15px;margin:20px 0 8px;color:var(--ac)}
+  p{margin:8px 0}
+  .grid{display:grid;gap:14px}
+  .cards2{grid-template-columns:1fr 1fr}
+  .cards3{grid-template-columns:repeat(3,1fr)}
+  @media(max-width:780px){.cards2,.cards3{grid-template-columns:1fr}}
+  .card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:16px 18px}
+  .card h4{margin:0 0 6px;font-size:15px}
+  .card .d{color:var(--mut);font-size:13.5px}
+  /* flow steps */
+  .flow{display:flex;flex-direction:column;gap:10px;margin:8px 0}
+  .step{display:flex;gap:14px;align-items:flex-start;background:var(--card);border:1px solid var(--bd);border-left:3px solid var(--ac);border-radius:10px;padding:14px 16px}
+  .step .idx{flex:0 0 30px;height:30px;border-radius:8px;background:var(--pill);display:flex;align-items:center;justify-content:center;font-weight:700;color:var(--ac)}
+  .step .body{flex:1}
+  .step .t{font-weight:600;margin-bottom:2px}
+  .step .d{color:var(--mut);font-size:13.5px}
+  code{background:#0c0e13;border:1px solid var(--bd);border-radius:5px;padding:1px 6px;font-size:12.5px;color:#cdd6e6}
+  table{width:100%;border-collapse:collapse;margin:10px 0;font-size:13.5px}
+  th,td{border:1px solid var(--bd);padding:8px 10px;text-align:left;vertical-align:top}
+  th{background:var(--card2);color:var(--tx);font-weight:600}
+  td.mut{color:var(--mut)}
+  .pill{display:inline-block;padding:1px 9px;border-radius:999px;font-size:11.5px;font-weight:600;border:1px solid var(--bd)}
+  .p-ok{background:rgba(46,204,113,.12);color:var(--ok);border-color:rgba(46,204,113,.3)}
+  .p-warn{background:rgba(245,177,76,.12);color:var(--warn);border-color:rgba(245,177,76,.3)}
+  .p-ac{background:rgba(91,157,255,.12);color:var(--ac);border-color:rgba(91,157,255,.3)}
+  .chk{list-style:none;padding:0;margin:8px 0}
+  .chk li{padding:6px 0 6px 26px;position:relative;border-bottom:1px dashed var(--bd);font-size:13.5px}
+  .chk li:before{content:"☐";position:absolute;left:4px;color:var(--ac)}
+  .spread{display:flex;border:1px solid var(--bd);border-radius:10px;overflow:hidden;margin:12px 0;font-size:12px;text-align:center}
+  .spread div{padding:14px 6px;border-right:1px solid var(--bd)}
+  .spread div:last-child{border-right:0}
+  .sp-wing{background:#20242e;color:var(--mut);flex:0 0 16%}
+  .sp-cover{background:#222b3a;color:var(--tx);flex:1}
+  .sp-spine{background:linear-gradient(180deg,var(--ac2),var(--ac));color:#fff;flex:0 0 12%;font-weight:700}
+  .note{background:rgba(245,177,76,.08);border:1px solid rgba(245,177,76,.25);border-radius:10px;padding:12px 16px;color:#f3d9a8;font-size:13.5px;margin:14px 0}
+  .foot{color:var(--mut);font-size:12.5px;margin-top:40px;border-top:1px solid var(--bd);padding-top:16px}
+  .arrow{text-align:center;color:var(--mut);font-size:18px;margin:-4px 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>InDesign(IDML) 가져오기 — 전체 플로우</h1>
+  <p class="sub">업로드 · 변환 · 등록 · 테스트 · 검증 &nbsp;|&nbsp; 갱신 2026-06-09 (인쇄 정합성 4종 통합 배포 직후)</p>
+
+  <h2><span class="n">0</span> 두 가지 산출물</h2>
+  <div class="grid cards2">
+    <div class="card"><h4>① 펼침면 단품 템플릿</h4><div class="d">표지 펼침면 1장(날개+앞표지+책등+뒤표지+날개)을 그대로 템플릿으로. 같은 사이즈 여러 디자인을 교체용으로 모음. <code>POST /templates</code> (type=spread)</div></div>
+    <div class="card"><h4>② 책등 가변 템플릿셋</h4><div class="d">표지(펼침면)+내지로 구성된 <b>책</b> 셋. 내지 페이지 수에 따라 <b>책등 폭이 런타임 자동 변동</b>. 방법 A로 등록</div></div>
+  </div>
+  <div class="spread">
+    <div class="sp-wing">날개</div><div class="sp-cover">뒤표지</div><div class="sp-spine">책등<br>(가변)</div><div class="sp-cover">앞표지</div><div class="sp-wing">날개</div>
+  </div>
+  <div class="note">"펼침면을 <b>이미지로 누르는</b>" 케이스 = <b>하이브리드 변환 모드</b>: 텍스트만 편집 레이어로 살리고 나머지 디자인은 300dpi PNG 1장으로 평면화.</div>
+
+  <h2><span class="n">1</span> 전체 플로우 (7단계)</h2>
+  <div class="flow">
+    <div class="step"><div class="idx">1</div><div class="body"><div class="t">IDML 준비 (InDesign)</div><div class="d">InDesign → IDML 내보내기(.indd는 <code>indd-to-idml.jsx</code>로 변환). 5영역이 한 스프레드에. ⚠️ 폰트 미임베드(참조만)</div></div></div>
+    <div class="arrow">↓</div>
+    <div class="step"><div class="idx">2</div><div class="body"><div class="t">admin 업로드</div><div class="d">템플릿관리 → "IDML 가져오기" → <code>/templates/import</code>. 포맷 자동감지(.idml/.psd/.ai)</div></div></div>
+    <div class="arrow">↓</div>
+    <div class="step"><div class="idx">3</div><div class="body"><div class="t">변환 (벡터 / 하이브리드)</div><div class="d">브라우저 즉시 변환. Segmented 토글: <b>벡터</b>(편집가능·무손실) vs <b>하이브리드</b>(텍스트만+배경 300dpi PNG)</div></div></div>
+    <div class="arrow">↓</div>
+    <div class="step"><div class="idx">4</div><div class="body"><div class="t">미리보기 · 경고 확인</div><div class="d">SVG 미리보기 + 검수 경고(별색/풀블리드/컴파운드패스). 세로글씨·줄바꿈·베지어 육안 확인</div></div></div>
+    <div class="arrow">↓</div>
+    <div class="step"><div class="idx">5</div><div class="body"><div class="t">등록 (단품 / 책등가변 셋)</div><div class="d">표지 단품 → <code>POST /templates</code> / 책등가변 셋 → 방법 A(<code>seedTemplateId</code> → 셋 폼 인계)</div></div></div>
+    <div class="arrow">↓</div>
+    <div class="step"><div class="idx">6</div><div class="body"><div class="t">수동 보완</div><div class="d">내지 추가 · pageCountRange · PDF/색 모드 · 에셋 구성 · 상품 연결(ProductTemplateSet)</div></div></div>
+    <div class="arrow">↓</div>
+    <div class="step"><div class="idx">7</div><div class="body"><div class="t">편집기 테스트 · 검증</div><div class="d">편집 세션 진입 → 책등 가변·색·폰트·인쇄 출력 검증(§4·§5)</div></div></div>
+  </div>
+
+  <h2><span class="n">2</span> 시나리오별 상세</h2>
+  <div class="grid cards2">
+    <div class="card">
+      <h4>A. 펼침면 단품 (하이브리드 "이미지로 누르기")</h4>
+      <div class="d">
+        1) 업로드 → <b>하이브리드</b> → 텍스트만 편집 + 배경 PNG<br>
+        2) 미리보기 확인<br>
+        3) 등록 = <b>표지 단품</b> → <code>POST /templates</code><br>
+        4) 같은 사이즈 다른 디자인 추가 → 편집기 '템플릿'에서 <b>교체</b><br>
+        5) 텍스트 미세조정 → 저장 → 인쇄 PDF 확인
+      </div>
+    </div>
+    <div class="card">
+      <h4>B. 책등 가변 템플릿셋</h4>
+      <div class="d">
+        1) 업로드 → 벡터(또는 하이브리드) → 등록 = <b>책등 가변 셋</b><br>
+        2) 표지 저장 → 셋 폼 자동 인계(표지+책모드+판형)<br>
+        3) <b>수동</b>: 내지 추가 + pageCountRange + PDF/색 모드<br>
+        4) 셋 저장 → 상품 연결<br>
+        5) <b>핵심</b>: 내지 수 변경 → 책등 폭 자동 재계산 + 앞/뒤표지 평행이동, 재로드 유지
+      </div>
+    </div>
+  </div>
+
+  <h2><span class="n">3</span> 책등 가변 원리 (왜 자동인가)</h2>
+  <div class="card">
+    <div class="d">
+      책등 폭은 템플릿 고정값이 아니라 <b>런타임 파생값</b>: <code>spineWidth = (pageCount/2) × thickness + margin</code>.<br>
+      권위 검증은 <b>coverWidth/coverHeight/wingEnabled/wingWidth 4필드만</b> 비교(책등/총폭은 제외).<br>
+      → IDML 원본의 고정 책등을 버리고 <b>표지 한 면+날개만 권위로 추출</b>하면 자연 가변화. 책등 텍스트=중앙 재배치, 앞/뒤표지=평행이동(리플로우 손실 없음).
+    </div>
+  </div>
+
+  <h2><span class="n">4</span> 검증 체크리스트</h2>
+  <div class="grid cards2">
+    <div class="card">
+      <h3 style="margin-top:0">변환 충실도</h3>
+      <ul class="chk">
+        <li>z-순서(쌓임) 원본대로</li>
+        <li>책등 제목/저자 세로글씨(90°)</li>
+        <li>여러 줄 텍스트 줄바꿈 보존(영역 이탈 없음)</li>
+        <li>폴리곤/곡선 베지어 경로 복원</li>
+        <li>mm 치수 정확(총폭=날개+앞+책등+뒤+날개)</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">인쇄 규약 (신규)</h3>
+      <ul class="chk">
+        <li>색 처리: 셋 colorMode대로(RGB/CMYK)</li>
+        <li>텍스트: 인쇄 PDF 아웃라인 벡터, 혼합폰트 각 폰트</li>
+        <li>overprint/별색: 고객 PDF /OP·Separation 보존</li>
+        <li>프레임: 사진이 투명창에만, 밖은 가림</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">책등 가변 / 워크플로우</h3>
+      <ul class="chk">
+        <li>내지 수 변경 → 책등 폭 자동 재계산 + 앞/뒤표지 평행이동</li>
+        <li>편집완료→재로드 후 책등 가변 유지(meta 보존)</li>
+        <li>같은 사이즈 다른 표지로 교체(편집기 '템플릿')</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2><span class="n">5</span> 이번 사이클 배포 기능 (2026-06-09)</h2>
+  <table>
+    <tr><th>기능</th><th>효과</th><th>상태</th></tr>
+    <tr><td>상품별 색 처리 모드 <code>colorMode</code></td><td>템플릿셋별 출력 색공간(RGB/CMYK)</td><td><span class="pill p-warn">admin 배포 · 워커 변환 예정</span></td></tr>
+    <tr><td>텍스트 아웃라인(혼합폰트)</td><td>벡터 아웃라인 출력(폰트 무관), 혼합폰트 각 폰트 정확</td><td><span class="pill p-ok">배포</span></td></tr>
+    <tr><td>overprint/별색 보존</td><td>고객 PDF overprint·별색 재distill 시 보존</td><td><span class="pill p-ok">배포(워커)</span></td></tr>
+    <tr><td>사진 프레임 마스킹</td><td>프레임 투명창에만 사진(inverted clipPath)</td><td><span class="pill p-ok">배포</span></td></tr>
+    <tr><td>변환 PNG 스토리지 업로드</td><td>배경을 URL로 저장(DB 비대화 방지)</td><td><span class="pill p-ok">배포</span></td></tr>
+    <tr><td>PDF 출력 모드 <code>pdfOutputMode</code></td><td>단면/양면-원파일/양면-파일분리</td><td><span class="pill p-ac">admin · 워커 duplex-split 배포(선택 시)</span></td></tr>
+  </table>
+  <div class="note">위 인쇄출력 기능은 <b>실주문/시각 검증 중</b>(deploy-and-iterate). 문제 발견 시 §6.</div>
+
+  <h2><span class="n">6</span> 문제 해결</h2>
+  <table>
+    <tr><th>증상</th><th>점검</th></tr>
+    <tr><td>변환 텍스트 폰트 다름/깨짐</td><td class="mut">폰트 라이브러리 시딩 여부. 미임베드는 폴백(base 폰트/래스터)</td></tr>
+    <tr><td>객체 영역 밖 이탈</td><td class="mut">미리보기 확인 → 편집기 템플릿편집 모드로 미세조정(전 객체 selectable)</td></tr>
+    <tr><td>책등이 안 변함</td><td class="mut">책모드 셋인지, SPREAD 1개+PAGE≥1개인지, meta(regionRef) 보존됐는지</td></tr>
+    <tr><td>책 셋 저장 안 됨</td><td class="mut">book 검증=SPREAD 정확히 1개 필수 → 내지(PAGE) 추가했는지</td></tr>
+    <tr><td>표지 색이 화면과 다름</td><td class="mut">RGB 파이프라인 색차. 셋 colorMode=cmyk + 워커 색변환(적용 후)</td></tr>
+    <tr><td>프레임에 사진 삐져나옴/반대로 가림</td><td class="mut">프레임 마스킹 방향(inverted) 검증 — 반대면 보고</td></tr>
+    <tr><td>변환 PNG 안 보임</td><td class="mut">스토리지 URL(/storage/...) 접근성(CORS) 확인</td></tr>
+  </table>
+
+  <div class="foot">
+    작성 2026-06-09 · 인쇄 정합성 4종 통합 배포(merge <code>20ac84c</code>) 직후 · 기술 아키텍처는 <code>DESIGN_IMPORT_CONVERTER.md</code> · 세션 핸드오프 <code>RESUME_PROMPT_2026-06-09.md</code>
+  </div>
+</div>
+</body>
+</html>
