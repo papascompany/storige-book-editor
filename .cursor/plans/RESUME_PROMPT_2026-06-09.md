@@ -43,7 +43,7 @@
 | **PNG-2. 사진 프레임 마스킹** | 🌿 **구현** `feat/print-frame-masking`(`beca763`). inverted clipPath(프레임 클론 absolutePositioned+inverted:true) → 투명창에만 사진, 프레임 위(bringToFront). 실사용 setupFrameContent 갭 해소 + frameRef 직렬화 + WorkspacePlugin page-outline 가드. 스테이징 시각검증 필요(창 방향·z순서·재로드·인쇄 export). |
 | **D. 에디터 실로드 E2E**(책등가변+meta) | 수동 절차 §2-b. `meta` 직렬화 해소(canvas.ts:151) 확인, 실세션 1회 검증 필요 |
 
-**스테이징 대기 브랜치(인쇄출력 영향, 시각/실주문 검증 후 머지)**: `feat/pdf-output-worker-A1`(① duplex-split) · `feat/print-text-outline`(A 혼합폰트 아웃라인) · `feat/print-overprint-preserve`(C overprint 보존) · `feat/print-frame-masking`(PNG-2 프레임 마스킹). 미구현: B 워커 색변환.
+**✅ 통합 배포됨(merge `20ac84c`, 2026-06-09 오후, 오너 결정 deploy-and-iterate)** — 위 4종(① duplex-split · A 아웃라인 충실도 · C overprint 보존 · PNG-2 프레임 마스킹)을 master 머지 + 배포(editor Vercel + VPS api·worker, 마이그레이션 없음, API healthy). 스테이징 브랜치 4종 삭제. **실주문/시각 검증은 실 IDML 플로우에서 진행** → **신규 문서 [`docs/IDML_IMPORT_FLOW.md`](../../docs/IDML_IMPORT_FLOW.md) + `.html`**(업로드·변환·등록·테스트·검증 전체 플로우 + 두 시나리오(펼침면 하이브리드/책등가변) + 검증 체크리스트 + 문제해결). 미구현: B 워커 색변환(GS ColorConversionStrategy).
 
 ---
 
@@ -55,7 +55,7 @@
 
 ## 1. 잔여 작업 (우선순위)
 
-1. **① 워커 duplex-split 스테이징 테스트 후 머지** — branch `feat/pdf-output-worker-A1`. 검증항목: 양면 낱장 실주문 N세트→`set_<i>.pdf` n개(각 2p, 앞=먼저/뒤=다음 순서), single 1p, duplex-merged 회귀 무변경, 멱등 재완료, 웹훅 `outputFiles[type:'set']` 소비처(admin/PHP). 통과 시 master 머지 후 worker 배포. ⚠️ 회전 없음(RIP 처리).
+1. **① 워커 duplex-split 실주문 검증**(✅ 배포됨 merge `20ac84c`) — 셋 `pdfOutputMode='duplex-split'` 선택 시만 작동(그 외 dormant). 검증항목: 양면 낱장 실주문 N세트→`set_<i>.pdf` n개(각 2p, 앞=먼저/뒤=다음 순서), single 1p, duplex-merged 회귀 무변경, 멱등 재완료, 웹훅 `outputFiles[type:'set']` 소비처(admin/PHP) 배선. ⚠️ 회전 없음(RIP 처리).
 2. **④ 폰트 큐레이션(후속)** — `LibraryFont`에 `category_id` 컬럼 없어 폰트는 큐레이션 제외(현재 전역). 필요 시 스키마+admin 폰트-카테고리 UI 추가.
 3. **②③ 에디터 수동 스모크** — §2 절차.
 4. **set 출력파일 소비 배선** — duplex-split의 n개 `set` 파일을 admin/PHP가 가져가는 경로(현재 웹훅 payload엔 실림, 소비처 미배선). A1 에이전트가 별도 task로 등록함.
