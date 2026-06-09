@@ -1087,8 +1087,8 @@ export function calculateSpineWidth(config: SpineConfig): SpineCalculationResult
     });
   }
 
-  // 책등 폭 계산
-  const spineWidth = (config.pageCount / 2) * paperThickness + bindingMargin;
+  // 책등 폭 계산 — 음수 방지(무결성: 음수 책등은 펼침면 총폭을 줄여 영역 레이아웃을 붕괴시킴).
+  const spineWidth = Math.max(0, (config.pageCount / 2) * paperThickness + bindingMargin);
 
   // 책등 폭 경고
   if (spineWidth < 5) {

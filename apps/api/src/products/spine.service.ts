@@ -45,8 +45,8 @@ export class SpineService {
     const thickness = dto.customPaperThickness ?? Number(paperType.thickness);
     const margin = dto.customBindingMargin ?? Number(bindingType.margin);
 
-    // 책등 폭 계산
-    const spineWidth = (dto.pageCount / 2) * thickness + margin;
+    // 책등 폭 계산 — 음수 방지(무결성: 음수 책등은 펼침면 총폭을 줄여 영역 레이아웃을 붕괴시킴).
+    const spineWidth = Math.max(0, (dto.pageCount / 2) * thickness + margin);
     const roundedSpineWidth = Math.round(spineWidth * 100) / 100;
 
     // 경고 메시지 생성

@@ -618,10 +618,18 @@ export function useWorkSave(): UseWorkSaveReturn {
 
       // 표지(펼침면) = 단일 페이지 PDF. 기존 spreadPlugin.exportToPDF() 는 ServicePlugin 에
       // 미정의(TypeError) 였음 → 내지와 동일하게 saveMultiPagePDFAsBlob 사용.
-      // 폭/높이는 표지 '펼침면 전체' mm(=spreadConfig.totalWidthMm/Height), dpi=300(내지와 통일).
+      // 폭/높이는 표지 '펼침면 전체' mm, dpi=300(내지와 통일).
+      // ⚠️ 무결성(SF-3): 책등 가변(비동기 트랜잭션) 직후 저장 시 settingsStore 가 아직 stale 일 수
+      // 있으므로, 방금 트랜잭션이 갱신한 SpreadPlugin.currentLayout(getLayout)을 단일 진실 소스로
+      // 우선 사용. 폴백: settingsStore → 내지 치수.
+      const spreadLayout = (
+        spreadEditor.getPlugin('SpreadPlugin') as
+          | { getLayout?: () => { totalWidthMm?: number; totalHeightMm?: number } | null }
+          | null
+      )?.getLayout?.()
       const spreadCfg = useSettingsStore.getState().spreadConfig
-      const coverWidthMm = spreadCfg?.totalWidthMm ?? innerWidthMm
-      const coverHeightMm = spreadCfg?.totalHeightMm ?? innerHeightMm
+      const coverWidthMm = spreadLayout?.totalWidthMm ?? spreadCfg?.totalWidthMm ?? innerWidthMm
+      const coverHeightMm = spreadLayout?.totalHeightMm ?? spreadCfg?.totalHeightMm ?? innerHeightMm
       const coverPdfBlob = await spreadPlugin.saveMultiPagePDFAsBlob(
         [spreadCanvas] as any,
         [spreadEditor],
