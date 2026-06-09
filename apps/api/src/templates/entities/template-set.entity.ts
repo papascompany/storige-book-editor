@@ -144,6 +144,12 @@ export class TemplateSet {
   pdfOutputMode: PdfOutputMode;
 
   /**
+   * ④ 연결된 라이브러리 카테고리 ID (2026-06-09) — 컬럼 아님(transient).
+   * 조인 테이블 template_set_library_categories 에서 서비스가 populate. 빈/없음=전역 노출.
+   */
+  libraryCategoryIds?: string[];
+
+  /**
    * 소프트 삭제 플래그
    */
   @Column({ name: 'is_deleted', type: 'boolean', default: false })

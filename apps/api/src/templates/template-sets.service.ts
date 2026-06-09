@@ -6,6 +6,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { TemplateSet, TemplateSetItem } from './entities/template-set.entity';
+import { TemplateSetLibraryCategory } from './entities/template-set-library-category.entity';
 import { Template } from './entities/template.entity';
 import { Product } from '../products/entities/product.entity';
 import {
@@ -29,7 +30,29 @@ export class TemplateSetsService {
     private templateRepository: Repository<Template>,
     @InjectRepository(Product)
     private productRepository: Repository<Product>,
+    @InjectRepository(TemplateSetLibraryCategory)
+    private tslcRepository: Repository<TemplateSetLibraryCategory>,
   ) {}
+
+  /** ④ 템플릿셋의 노출 라이브러리 카테고리 ID 목록 로드 (없으면 빈 배열 = 전역) */
+  private async loadLibraryCategoryIds(templateSetId: string): Promise<string[]> {
+    const rows = await this.tslcRepository.find({
+      where: { templateSetId },
+      order: { sortOrder: 'ASC' },
+    });
+    return rows.map((r) => r.libraryCategoryId);
+  }
+
+  /** ④ 템플릿셋의 라이브러리 카테고리 연결을 전량 교체(delete-then-insert) */
+  private async setLibraryCategories(templateSetId: string, ids: string[]): Promise<void> {
+    await this.tslcRepository.delete({ templateSetId });
+    const unique = [...new Set((ids || []).filter(Boolean))];
+    if (unique.length === 0) return;
+    const rows = unique.map((libraryCategoryId, i) =>
+      this.tslcRepository.create({ templateSetId, libraryCategoryId, sortOrder: i }),
+    );
+    await this.tslcRepository.save(rows);
+  }
 
   /**
    * 템플릿셋 생성
@@ -61,11 +84,23 @@ export class TemplateSetsService {
       // null = 모든 메뉴 노출(기본). admin 에서 명시적으로 배열을 보내면 화이트리스트로 작동.
       enabledMenus: dto.enabledMenus ?? null,
       categoryId: dto.categoryId || null,
+      // 생성 시에도 인쇄 워크플로우/출력 설정 저장(이전엔 누락되어 entity 기본값으로만 저장됨)
+      endpaperConfig: dto.endpaperConfig ?? null,
+      coverEditable: dto.coverEditable ?? true,
+      coverPreviewImage: dto.coverPreviewImage ?? null,
+      contentPdfEditable: dto.contentPdfEditable ?? true,
+      pdfOutputMode: dto.pdfOutputMode ?? 'duplex-merged',
       isDeleted: false,
       isActive: true,
     });
 
-    return this.templateSetRepository.save(templateSet);
+    const saved = await this.templateSetRepository.save(templateSet);
+    // ④ 라이브러리 카테고리 연결(undefined면 미설정 = 전역 유지)
+    if (dto.libraryCategoryIds !== undefined) {
+      await this.setLibraryCategories(saved.id, dto.libraryCategoryIds);
+    }
+    saved.libraryCategoryIds = await this.loadLibraryCategoryIds(saved.id);
+    return saved;
   }
 
   /**
@@ -143,6 +178,8 @@ export class TemplateSetsService {
       throw new NotFoundException(`템플릿셋을 찾을 수 없습니다: ${id}`);
     }
 
+    // ④ 연결된 라이브러리 카테고리 populate
+    templateSet.libraryCategoryIds = await this.loadLibraryCategoryIds(id);
     return templateSet;
   }
 
@@ -194,13 +231,19 @@ export class TemplateSetsService {
       thumbnailUrl = await this.getFirstTemplateThumbnail(templates);
     }
 
-    // 업데이트
+    // 업데이트 (libraryCategoryIds 는 컬럼이 아니므로 save 가 무시 — 조인은 아래에서 처리)
     Object.assign(templateSet, {
       ...dto,
       thumbnailUrl,
     });
 
-    return this.templateSetRepository.save(templateSet);
+    const saved = await this.templateSetRepository.save(templateSet);
+    // ④ 라이브러리 카테고리 연결 교체(undefined면 기존 유지)
+    if (dto.libraryCategoryIds !== undefined) {
+      await this.setLibraryCategories(saved.id, dto.libraryCategoryIds);
+    }
+    saved.libraryCategoryIds = await this.loadLibraryCategoryIds(saved.id);
+    return saved;
   }
 
   /**
