@@ -3,10 +3,13 @@ import { Layers as Stack, FileText, X, RefreshCw as ArrowsClockwise, ChevronRigh
 import { TemplateCard } from './TemplateCard'
 import { TemplateSetCard } from './TemplateSetCard'
 import { TemplateReplaceModal } from './TemplateReplaceModal'
+import { fabric } from 'fabric'
 import { useEditorStore, useCurrentPage } from '@/stores/useEditorStore'
+import { useAppStore } from '@/stores/useAppStore'
 import { templatesApi, type Template, type TemplateSet } from '@/api/templates'
 import { sessionsApi } from '@/api/sessions'
 import { cn } from '@/lib/utils'
+import type { TemplatePlugin } from '@storige/canvas-core'
 import type { TemplateType, TemplateSetType } from '@storige/types'
 
 type TabType = 'templateSet' | 'template'
@@ -157,6 +160,36 @@ export const TemplatePanel = memo(function TemplatePanel({
 
       // 세션 업데이트
       setSession(updatedSession)
+
+      // ★ 라이브 캔버스 갱신(버그 수정): setSession 만으로는 store의 pages 만 바뀌고
+      //   화면의 Fabric 캔버스는 구 템플릿 그대로였다. 서버가 교체를 영속화했으므로
+      //   현재 캔버스에도 새 템플릿을 적용한다. TemplatePlugin.replaceTemplate 가
+      //   워크스페이스(id='workspace')와 사용자 추가 객체(isUserAdded)를 보존하며
+      //   템플릿 레이어만 교체한다.
+      if (replaceModal.mode === 'template') {
+        const tpl = replaceModal.selectedItem as Template
+        const objects = tpl.canvasData?.objects
+        const plugin = useAppStore.getState().getPlugin<TemplatePlugin>('TemplatePlugin')
+        if (plugin && Array.isArray(objects) && objects.length > 0) {
+          await new Promise<void>((resolve) => {
+            fabric.util.enlivenObjects(
+              objects as unknown as fabric.Object[],
+              async (enlivened: fabric.Object[]) => {
+                try {
+                  await plugin.replaceTemplate(enlivened)
+                } catch (e) {
+                  console.error('라이브 템플릿 적용 실패:', e)
+                } finally {
+                  resolve()
+                }
+              },
+              ''
+            )
+          })
+        }
+      }
+      // NOTE: 템플릿셋 전체 교체(mode='templateSet')의 라이브 반영은 책/스프레드 다중
+      //       캔버스 처리가 필요해 별도 작업으로 분리(현재는 세션만 갱신).
 
       // 모달 닫기
       setReplaceModal({
