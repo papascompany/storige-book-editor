@@ -200,6 +200,12 @@ erDiagram
         varchar(36) category_id FK
         json product_specs "상품 스펙"
         boolean is_active
+        json enabled_menus "도구메뉴 화이트리스트(null=전체노출)"
+        json endpaper_config "면지 구성(front/back count·editable)"
+        boolean cover_editable "표지 편집 가능(레더커버=false)"
+        varchar(500) cover_preview_image "레더커버 미리보기 이미지"
+        boolean content_pdf_editable "내지 첨부PDF 편집 가능"
+        varchar(20) pdf_output_mode "PDF출력: single|duplex-merged|duplex-split (2026-06-09)"
         timestamp created_at
         timestamp updated_at
     }
@@ -210,6 +216,14 @@ erDiagram
         varchar(36) template_id FK
         int sort_order "정렬 순서"
         boolean required "필수 페이지 여부"
+    }
+
+    template_set_library_categories {
+        varchar(36) id PK
+        varchar(36) template_set_id FK "템플릿셋(CASCADE)"
+        varchar(36) library_category_id "라이브러리 카테고리"
+        int sort_order "정렬 순서"
+        timestamp created_at
     }
 
     templates {
@@ -237,13 +251,16 @@ erDiagram
     categories ||--o{ templates : belongs
     template_sets ||--o{ template_set_items : contains
     template_set_items }o--|| templates : references
+    template_sets ||--o{ template_set_library_categories : curates
+    library_categories ||--o{ template_set_library_categories : scoped_by
     users ||--o{ templates : creates
 ```
 
 **테이블 설명:**
 - `categories`: 계층형 카테고리 (3단계까지)
-- `template_sets`: 템플릿 묶음 (책자 구성)
+- `template_sets`: 템플릿 묶음 (책자 구성). `pdf_output_mode`로 PDF 출력방식(단면/양면-원파일/양면-파일분리) 설정(2026-06-09)
 - `template_set_items`: 템플릿셋-템플릿 연결
+- `template_set_library_categories`: 템플릿셋↔라이브러리 카테고리 연결(에셋 큐레이션, 2026-06-09). 연결 없으면 전역(모든 에셋 노출), 있으면 그 카테고리만. FK CASCADE
 - `templates`: 개별 템플릿 (표지, 내지, 책등 등)
 
 **템플릿 타입:**
