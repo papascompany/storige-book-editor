@@ -34,6 +34,10 @@ export function toSinglePageTemplate(parsed, background, opts = {}) {
       type: 'image',
       id: 'psd-artwork',
       src: background.dataUrl,
+      // left/top 은 캔버스 중심 → origin 도 'center' 여야 채워짐(없으면 fabric 기본 left/top 으로
+      // 해석돼 이미지가 우하단으로 어긋나 화면 밖 → 저장/재로드 시 배경 미표시).
+      originX: 'center',
+      originY: 'center',
       left: round2(canvasW / 2),
       top: round2(canvasH / 2),
       width: background.widthPx,
