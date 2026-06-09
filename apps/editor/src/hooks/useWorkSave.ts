@@ -616,7 +616,20 @@ export function useWorkSave(): UseWorkSaveReturn {
         throw new Error('스프레드 표지의 ServicePlugin을 찾을 수 없습니다.')
       }
 
-      const coverPdfBlob = await spreadPlugin.exportToPDF()
+      // 표지(펼침면) = 단일 페이지 PDF. 기존 spreadPlugin.exportToPDF() 는 ServicePlugin 에
+      // 미정의(TypeError) 였음 → 내지와 동일하게 saveMultiPagePDFAsBlob 사용.
+      // 폭/높이는 표지 '펼침면 전체' mm(=spreadConfig.totalWidthMm/Height), dpi=300(내지와 통일).
+      const spreadCfg = useSettingsStore.getState().spreadConfig
+      const coverWidthMm = spreadCfg?.totalWidthMm ?? innerWidthMm
+      const coverHeightMm = spreadCfg?.totalHeightMm ?? innerHeightMm
+      const coverPdfBlob = await spreadPlugin.saveMultiPagePDFAsBlob(
+        [spreadCanvas] as any,
+        [spreadEditor],
+        `spread_cover_${Date.now()}`,
+        { width: coverWidthMm, height: coverHeightMm, cutSize },
+        undefined,
+        300,
+      )
       const coverFile = new File(
         [coverPdfBlob],
         `spread_cover_${Date.now()}.pdf`,
