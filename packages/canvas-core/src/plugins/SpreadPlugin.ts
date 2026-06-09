@@ -325,8 +325,18 @@ class SpreadPlugin extends PluginBase {
         }
 
         obj.setCoords()
-      } else if (regionRef === 'front-cover' || regionRef === 'front-wing') {
-        // 앞표지/앞날개: 영역 이동에 따라 이동
+      } else if (
+        regionRef === 'front-cover' ||
+        regionRef === 'front-wing' ||
+        regionRef === 'back-cover' ||
+        regionRef === 'back-wing'
+      ) {
+        // 표지/날개(앞·뒤): 영역 앵커 기준 재배치.
+        // ⚠️ 무결성 핵심: 뒤표지(back-*)도 반드시 재배치해야 한다. 책등이 커지면 워크스페이스가
+        // 중앙 대칭 확장 → getContentOrigin 이동. 뒤표지를 no-op(scene 고정)으로 두면 content
+        // 프레임에서 책등 쪽으로 drift(= Δspine/2)하여 바코드/문안이 책등을 침범(오인쇄).
+        // computeObjectReposition 은 뒤표지 region.x(불변)+xNorm 으로 content 위치를 보존하고,
+        // +origin(이동값)으로 scene 를 좌측 보정 → drift 0.
         const result = computeObjectReposition(
           { regionRef, anchor },
           boundingRect,
@@ -349,7 +359,6 @@ class SpreadPlugin extends PluginBase {
         }
         obj.meta.anchor = result.anchor
       }
-      // else: back-wing, back-cover는 변동 없음
     }
   }
 

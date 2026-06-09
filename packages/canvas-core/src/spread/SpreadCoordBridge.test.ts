@@ -119,4 +119,35 @@ describe('SpreadPlugin scene↔content 좌표 브리지', () => {
     // +origin 누락(버그) 시: result.x(content, ~1978) 를 scene 으로 그대로 쓰면 캔버스(±half) 밖
     expect(result.x).toBeGreaterThan(frontSceneRight) // content 값은 scene 범위를 벗어남(변환 필수 입증)
   })
+
+  it('[무결성 IB-1] 책등 리사이즈 후 back-cover 객체의 content 위치가 보존된다(drift 0)', () => {
+    const oldLayout = computeLayout(baseSpec) // 책등 10mm
+    const oldOrigin = contentOrigin(oldLayout)
+    const back = oldLayout.regions.find((r) => r.position === 'back-cover')!
+    const contentCx = back.x + back.width / 2
+    const sceneBR = sceneBRAtContentCenter(contentCx, oldLayout.totalHeightPx / 2, 120, 120, oldOrigin)
+    const contentBR = sceneToContent(sceneBR, oldOrigin)
+    const reg = resolveRegionRef(oldLayout.regions, contentBR, null)
+    expect(reg.regionRef).toBe('back-cover')
+
+    // 책등 10 → 20mm (총폭 +10mm → origin 좌측 이동)
+    const newLayout = computeLayout({ ...baseSpec, spineWidthMm: 20 })
+    const newOrigin = contentOrigin(newLayout)
+
+    // ✅ 수정(IB-1): back-cover 도 computeObjectReposition 재배치 → content x 보존(영역 불변이므로)
+    const result = computeObjectReposition(
+      { regionRef: 'back-cover', anchor: reg.anchor },
+      contentBR,
+      oldLayout,
+      newLayout
+    )
+    expect(Math.abs(result.x - contentCx)).toBeLessThan(1) // content 위치 보존 = drift 0
+
+    // ❌ 버그(no-op): scene 고정 → content 가 책등 쪽으로 drift = ΔtotalWidthPx/2(= Δspine/2)
+    const noopContentX = contentCx + oldOrigin.x - newOrigin.x // scene 고정값을 새 origin 으로 content 환산
+    const driftPx = noopContentX - contentCx
+    const expectedDrift = (newLayout.totalWidthPx - oldLayout.totalWidthPx) / 2
+    expect(driftPx).toBeGreaterThan(1) // drift 실재 입증
+    expect(Math.abs(driftPx - expectedDrift)).toBeLessThan(0.5) // 불변식 drift == Δspine/2
+  })
 })
