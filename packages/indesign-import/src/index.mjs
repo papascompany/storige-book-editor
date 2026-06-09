@@ -59,3 +59,23 @@ export async function convertIdmlToTemplate(buffer, opts = {}) {
   const previewSvg = buildPreviewSvg(dto, { width: opts.previewWidth });
   return { result: finalResult, dto, previewSvg };
 }
+
+/**
+ * PSD(포토샵) → 단일 페이지 템플릿(명함/내지 단품 등). 하이브리드: 비텍스트=300dpi급 배경 PNG,
+ * 텍스트=편집가능 레이어(근사 폰트/크기/색, 관리자 확정 전제).
+ * @param {ArrayBuffer|Uint8Array} buffer
+ * @param {{name?:string, pageType?:('page'|'cover'), previewWidth?:number}} [opts]
+ */
+export async function convertPsdToTemplate(buffer, opts = {}) {
+  const { parsePsd } = await import('./psd/reader.mjs');
+  const { compositeLayersToPng } = await import('./psd/rasterizePsd.mjs');
+  const { toSinglePageTemplate } = await import('./convert/toSinglePageTemplate.mjs');
+  const parsed = await parsePsd(buffer);
+  const rasterLayers = parsed.layers.filter((l) => l.kind === 'raster');
+  const background = rasterLayers.length
+    ? await compositeLayersToPng(rasterLayers, parsed.widthPx, parsed.heightPx)
+    : null;
+  const result = toSinglePageTemplate(parsed, background, { name: opts.name, pageType: opts.pageType });
+  const previewSvg = buildPreviewSvg(result.draftTemplateDto, { width: opts.previewWidth });
+  return { result, dto: result.draftTemplateDto, previewSvg };
+}

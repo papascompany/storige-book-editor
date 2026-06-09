@@ -19,25 +19,35 @@
     <div id="summary"></div>
     <div id="preview"></div>
     <script type="module">
-      import { convertIdmlToTemplate } from './src/index.mjs';
+      import { convertIdmlToTemplate, convertPsdToTemplate } from './src/index.mjs';
       const status = document.getElementById('status');
-      // ?mode=hybrid 또는 ?mode=vector (기본 hybrid — 래스터+이미지 경로 검증)
-      const mode = new URLSearchParams(location.search).get('mode') || 'hybrid';
+      const q = new URLSearchParams(location.search);
+      const fmt = q.get('fmt') || 'idml'; // idml | psd
+      const mode = q.get('mode') || 'hybrid';
       try {
-        const res = await fetch('./fixtures/cover-sample.idml');
-        if (!res.ok) throw new Error('fixture fetch ' + res.status);
-        const buf = await res.arrayBuffer();
-        const { result, previewSvg } = await convertIdmlToTemplate(buf, { name: 'browser-test', mode });
+        let result, previewSvg, summary;
+        if (fmt === 'psd') {
+          const res = await fetch('./fixtures/card-sample.psd');
+          if (!res.ok) throw new Error('psd fixture fetch ' + res.status);
+          const buf = await res.arrayBuffer();
+          ({ result, previewSvg } = await convertPsdToTemplate(buf, { name: 'card', pageType: 'page' }));
+          const objs = result.draftTemplateDto.canvasData.objects;
+          summary = `<b>PSD → 단일페이지</b> · type=${result.draftTemplateDto.type} · ${result.widthMm}×${result.heightMm}mm · 객체 ${objs.length}(이미지 ${objs.filter(o=>o.type==='image').length}/텍스트 ${result.textCount}) · 경고 ${result.warnings.length}`;
+          window.__convOK = { fmt, total: objs.length, textCount: result.textCount };
+        } else {
+          const res = await fetch('./fixtures/cover-sample.idml');
+          if (!res.ok) throw new Error('idml fixture fetch ' + res.status);
+          const buf = await res.arrayBuffer();
+          ({ result, previewSvg } = await convertIdmlToTemplate(buf, { name: 'browser-test', mode }));
+          const s = result.spec;
+          const objs = result.draftTemplateDto.canvasData.objects;
+          summary = `<b>IDML mode=${mode}</b> · cover ${s.coverWidthMm}×${s.coverHeightMm}mm · spine ${s.spineWidthMm}mm · total ${result.totalWidthMm}mm · 객체 ${objs.length}(이미지 ${objs.filter(o=>o.type==='image').length}/텍스트 ${objs.filter(o=>o.type==='textbox').length})`;
+          window.__convOK = { fmt, mode, total: objs.length };
+        }
         document.getElementById('preview').innerHTML = previewSvg;
-        const s = result.spec;
-        const objs = result.draftTemplateDto.canvasData.objects;
-        const imgN = objs.filter((o) => o.type === 'image').length;
-        const txtN = objs.filter((o) => o.type === 'textbox').length;
-        document.getElementById('summary').innerHTML =
-          `<b>mode=${mode}</b> · cover ${s.coverWidthMm}×${s.coverHeightMm}mm · spine ${s.spineWidthMm}mm · total ${result.totalWidthMm}mm · 객체 ${objs.length}개(이미지 ${imgN}/텍스트 ${txtN}) · 경고 ${result.warnings.length}건`;
-        status.textContent = `✅ 브라우저 변환 성공 (mode=${mode}, jszip+fxp${mode === 'hybrid' ? '+canvas 래스터' : ''} 런타임 OK)`;
+        document.getElementById('summary').innerHTML = summary;
+        status.textContent = `✅ 브라우저 변환 성공 (fmt=${fmt}${fmt==='idml'?', mode='+mode:''}, canvas 래스터 OK)`;
         status.dataset.ok = '1';
-        window.__convOK = { mode, total: objs.length, imgN, txtN };
       } catch (e) {
         status.textContent = '❌ ' + (e && (e.stack || e.message));
         status.dataset.ok = '0';

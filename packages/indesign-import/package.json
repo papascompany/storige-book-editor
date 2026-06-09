@@ -24,7 +24,11 @@
     "dist"
   ],
   "dependencies": {
+    "@webtoon/psd": "^0.4.0",
     "fast-xml-parser": "^4.5.0",
     "jszip": "^3.10.1"
+  },
+  "devDependencies": {
+    "ag-psd": "^30.1.1"
   }
 }
