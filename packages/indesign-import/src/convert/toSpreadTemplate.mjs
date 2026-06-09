@@ -85,6 +85,12 @@ export function toSpreadTemplate(doc, opts = {}) {
   const originXpt = Math.min(...doc.pages.map((p) => p.leftSpreadPt)); // 좌측 콘텐츠 가장자리
   const topYpt = Math.min(...doc.pages.map((p) => p.topSpreadPt)); // 상단(스프레드 y center 기준 음수)
   const contentHeightPx = mmToPx(spec.coverHeightMm, dpi);
+  // 시스템 좌표 규약 = 콘텐츠 '중앙원점'(WorkspacePlugin 워크스페이스 중심 = fabric (0,0),
+  // 편집기/PDF/반응형 줌이 모두 이 규약). 변환기는 좌상단 0..W 로 계산하므로 최종 출력에서
+  // (-halfW, -halfH) 평행이동 + originX/originY='center' 로 정렬해야 화면=PDF=web 가 일치한다.
+  const totalWidthPx = mmToPx(totalWidthMm, dpi);
+  const halfW = totalWidthPx / 2;
+  const halfH = contentHeightPx / 2;
 
   const warnings = [];
   const objects = [];
@@ -130,7 +136,7 @@ export function toSpreadTemplate(doc, opts = {}) {
           xNorm: (centerXpx - region.x) / region.width,
           yNorm: contentHeightPx ? centerYpx / contentHeightPx : 0,
         }
-      : { kind: 'canvas', x: centerXpx, y: centerYpx };
+      : { kind: 'canvas', x: round2(centerXpx - halfW), y: round2(centerYpx - halfH) };
 
     const fill = resolveColor(it.fillColor, doc.colors);
     const stroke = resolveColor(it.strokeColor, doc.colors);
@@ -147,9 +153,11 @@ export function toSpreadTemplate(doc, opts = {}) {
       id: `idml-${it.self}`,
       selectable: true,
       evented: true,
-      // 중심 좌표(originX/originY='center')
-      left: round2(centerXpx),
-      top: round2(centerYpx),
+      // 중심 기준 + 콘텐츠 중앙원점 정렬(일반 템플릿과 동일한 좌표 모델)
+      originX: 'center',
+      originY: 'center',
+      left: round2(centerXpx - halfW),
+      top: round2(centerYpx - halfH),
       width: round2(widthPx),
       height: round2(heightPx),
       // 경로형은 변환좌표에 회전이 이미 반영됨 → angle 0
@@ -195,8 +203,6 @@ export function toSpreadTemplate(doc, opts = {}) {
   // 재단여백(블리드) 커버리지 점검 — 채움 객체들의 합집합이 재단선 밖 cutSize 까지 닿는지.
   // (기하 자동확장은 디자인 판단이 필요해 보류 — 경고로 사람이 편집기에서 확장하도록)
   {
-    const canvasW = mmToPx(totalWidthMm, dpi);
-    const canvasH = contentHeightPx;
     const bleedPx = mmToPx(spec.cutSizeMm, dpi);
     const tol = mmToPx(0.5, dpi);
     let minL = Infinity, maxR = -Infinity, minT = Infinity, maxB = -Infinity, any = false;
@@ -211,10 +217,10 @@ export function toSpreadTemplate(doc, opts = {}) {
     }
     if (any) {
       const miss = [];
-      if (minL > -bleedPx + tol) miss.push('좌');
-      if (maxR < canvasW + bleedPx - tol) miss.push('우');
-      if (minT > -bleedPx + tol) miss.push('상');
-      if (maxB < canvasH + bleedPx - tol) miss.push('하');
+      if (minL > -halfW - bleedPx + tol) miss.push('좌');
+      if (maxR < halfW + bleedPx - tol) miss.push('우');
+      if (minT > -halfH - bleedPx + tol) miss.push('상');
+      if (maxB < halfH + bleedPx - tol) miss.push('하');
       if (miss.length) {
         warnings.push(
           `재단여백(블리드) 미달 가장자리: ${miss.join('·')} — 배경이 재단선 밖 ${spec.cutSizeMm}mm까지 안 닿음(인쇄 시 흰 테두리 위험). 편집기에서 배경을 블리드까지 확장 권장`

@@ -35,12 +35,12 @@ export async function convertIdmlToTemplate(buffer, opts = {}) {
       type: 'image',
       id: 'idml-artwork',
       src: raster.dataUrl,
-      // left/top 은 캔버스 중심 → origin 도 'center' 여야 채워짐. 없으면 fabric 기본 left/top 으로
-      // 해석돼 이미지가 우하단으로 어긋나 화면 밖으로 나감 → 저장/재로드 시 배경 미표시 버그.
+      // 콘텐츠 중앙원점 규약: 배경(캔버스 전체)의 중심 = (0,0). originX/originY='center' 이므로
+      // left/top=0 이면 캔버스를 꽉 채운다. (좌상단원점으로 두면 우하단 어긋나 화면 밖 → 배경 미표시)
       originX: 'center',
       originY: 'center',
-      left: round2(cw / 2),
-      top: round2(ch / 2),
+      left: 0,
+      top: 0,
       width: raster.widthPx,
       height: raster.heightPx,
       scaleX: round4(cw / raster.widthPx),
@@ -48,7 +48,7 @@ export async function convertIdmlToTemplate(buffer, opts = {}) {
       selectable: true,
       evented: true,
       isUserAdded: false,
-      meta: { regionRef: null, anchor: { kind: 'canvas', x: round2(cw / 2), y: round2(ch / 2) } },
+      meta: { regionRef: null, anchor: { kind: 'canvas', x: 0, y: 0 } },
     };
     // 텍스트만 편집 레이어로 유지(이미지 위).
     const textObjs = dto.canvasData.objects.filter((o) => o.type === 'textbox');

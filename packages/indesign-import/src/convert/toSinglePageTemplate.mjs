@@ -25,6 +25,10 @@ export function toSinglePageTemplate(parsed, background, opts = {}) {
   const pxScale = tdpi / sourceDpi; // PSD px → 캔버스 px
   const canvasW = round2(parsed.widthPx * pxScale);
   const canvasH = round2(parsed.heightPx * pxScale);
+  // 콘텐츠 중앙원점 규약(편집기 WorkspacePlugin/PDF 공통): 페이지 중심 = fabric (0,0).
+  // 변환기는 좌상단 0..W 로 계산하므로 (-halfW,-halfH) 평행이동 + originX/originY='center' 로 정렬.
+  const halfW = canvasW / 2;
+  const halfH = canvasH / 2;
 
   const objects = [];
 
@@ -34,12 +38,11 @@ export function toSinglePageTemplate(parsed, background, opts = {}) {
       type: 'image',
       id: 'psd-artwork',
       src: background.dataUrl,
-      // left/top 은 캔버스 중심 → origin 도 'center' 여야 채워짐(없으면 fabric 기본 left/top 으로
-      // 해석돼 이미지가 우하단으로 어긋나 화면 밖 → 저장/재로드 시 배경 미표시).
+      // 콘텐츠 중앙원점: 배경(페이지 전체) 중심=(0,0). originX/originY='center'+left/top=0 이면 꽉 참.
       originX: 'center',
       originY: 'center',
-      left: round2(canvasW / 2),
-      top: round2(canvasH / 2),
+      left: 0,
+      top: 0,
       width: background.widthPx,
       height: background.heightPx,
       scaleX: round4(canvasW / background.widthPx),
@@ -47,7 +50,7 @@ export function toSinglePageTemplate(parsed, background, opts = {}) {
       selectable: true,
       evented: true,
       isUserAdded: false,
-      meta: { regionRef: null, anchor: { kind: 'canvas', x: round2(canvasW / 2), y: round2(canvasH / 2) } },
+      meta: { regionRef: null, anchor: { kind: 'canvas', x: 0, y: 0 } },
     });
   }
 
@@ -64,8 +67,11 @@ export function toSinglePageTemplate(parsed, background, opts = {}) {
     const obj = {
       type: 'textbox',
       id: `psd-text-${ti++}`,
-      left: round2(cx),
-      top: round2(cy),
+      // 중심 기준 + 콘텐츠 중앙원점 정렬(일반 템플릿과 동일 좌표 모델)
+      originX: 'center',
+      originY: 'center',
+      left: round2(cx - halfW),
+      top: round2(cy - halfH),
       width: round2(w),
       height: round2(h),
       fontSize,
@@ -74,7 +80,7 @@ export function toSinglePageTemplate(parsed, background, opts = {}) {
       selectable: true,
       evented: true,
       isUserAdded: false,
-      meta: { regionRef: null, anchor: { kind: 'canvas', x: round2(cx), y: round2(cy) } },
+      meta: { regionRef: null, anchor: { kind: 'canvas', x: round2(cx - halfW), y: round2(cy - halfH) } },
       _psd: { name: l.name, approx: true },
     };
     if (l.fontName) obj.fontFamily = l.fontName;
