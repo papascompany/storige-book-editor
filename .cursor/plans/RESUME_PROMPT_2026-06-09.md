@@ -40,10 +40,10 @@
 | **A. 텍스트 아웃라인 혼합폰트 충실도** | 🌿 `feat/print-text-outline`(`b9a3fa0`). ※ 아웃라인 자체는 이미 라이브(8fea0e8), 이건 혼합폰트 per-run 버그 수정 |
 | **C. overprint/별색 보존** (GS pdfwrite 보존 플래그) | 🌿 `feat/print-overprint-preserve`(`5c02c1e`) |
 | **PNG-1. 변환 PNG 스토리지 업로드**(dataURL→URL, DB 비대화 해소) | ✅ **배포**(`1dd9484`, admin) |
-| **PNG-2. 사진 프레임 마스킹** | 📋 조사+계획만(코드 없음). 실사용 프레임 경로=마스킹 전무(사진 삐져나옴)=실갭. 권장=`clipPath`+`inverted:true`(투명창에만 사진). CTO 방식 결정 + 런타임 시각검증 필요. (`setShapeAsMold`는 구현됐으나 UI 미연결 데드코드) |
+| **PNG-2. 사진 프레임 마스킹** | 🌿 **구현** `feat/print-frame-masking`(`beca763`). inverted clipPath(프레임 클론 absolutePositioned+inverted:true) → 투명창에만 사진, 프레임 위(bringToFront). 실사용 setupFrameContent 갭 해소 + frameRef 직렬화 + WorkspacePlugin page-outline 가드. 스테이징 시각검증 필요(창 방향·z순서·재로드·인쇄 export). |
 | **D. 에디터 실로드 E2E**(책등가변+meta) | 수동 절차 §2-b. `meta` 직렬화 해소(canvas.ts:151) 확인, 실세션 1회 검증 필요 |
 
-**스테이징 대기 브랜치(인쇄출력 영향)**: `feat/pdf-output-worker-A1`(① duplex-split) · `feat/print-text-outline`(A) · `feat/print-overprint-preserve`(C). 미구현: B 워커 색변환.
+**스테이징 대기 브랜치(인쇄출력 영향, 시각/실주문 검증 후 머지)**: `feat/pdf-output-worker-A1`(① duplex-split) · `feat/print-text-outline`(A 혼합폰트 아웃라인) · `feat/print-overprint-preserve`(C overprint 보존) · `feat/print-frame-masking`(PNG-2 프레임 마스킹). 미구현: B 워커 색변환.
 
 ---
 
