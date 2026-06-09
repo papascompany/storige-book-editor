@@ -5,6 +5,7 @@ import { EditorContent } from './entities/editor-content.entity';
 import { LibraryClipart } from '../library/entities/clipart.entity';
 import { LibraryFrame } from '../library/entities/frame.entity';
 import { LibraryBackground } from '../library/entities/background.entity';
+import { TemplateSetLibraryCategory } from '../templates/entities/template-set-library-category.entity';
 import { QueryEditorContentDto } from './dto/query-editor-content.dto';
 import { UpdateEditorContentDto } from './dto/update-editor-content.dto';
 import { EditorContentType } from '@storige/types';
@@ -29,7 +30,30 @@ export class EditorContentsService {
     private readonly frameRepository: Repository<LibraryFrame>,
     @InjectRepository(LibraryBackground)
     private readonly backgroundRepository: Repository<LibraryBackground>,
+    @InjectRepository(TemplateSetLibraryCategory)
+    private readonly templateSetLibraryCategoryRepository: Repository<TemplateSetLibraryCategory>,
   ) {}
+
+  /**
+   * 템플릿셋별 에셋 큐레이션(2026-06-09)을 위한 카테고리 화이트리스트 조회.
+   *
+   * 규약(template_set_library_categories 엔티티 참조):
+   *  - 템플릿셋에 연결이 **하나도 없으면** → 전역(모든 카테고리 노출) ⇒ `null` 반환(필터 미적용).
+   *  - 연결이 **하나 이상** 있으면 → 그 카테고리들만 ⇒ 연결된 library_category_id 배열 반환.
+   * 호출부는 `null`이면 카테고리 필터를 적용하지 않고(전역), 배열이면 `category_id IN (...)` 로 좁힌다.
+   * (idx_tslc_set 인덱스로 template_set_id 단일 컬럼 조회 — 효율적)
+   */
+  private async getCuratedCategoryIds(
+    templateSetId: string,
+  ): Promise<string[] | null> {
+    const links = await this.templateSetLibraryCategoryRepository.find({
+      where: { templateSetId },
+      select: ['libraryCategoryId'],
+    });
+    // 연결 없음 = 전역 (필터 미적용)
+    if (links.length === 0) return null;
+    return links.map((l) => l.libraryCategoryId);
+  }
 
   /** library_* 행 → 편집기 EditorContent 응답 형태로 매핑 */
   private mapLibraryRow(row: any, type: EditorContentType): EditorContent {
@@ -69,6 +93,17 @@ export class EditorContentsService {
       query.tags.forEach((tag, i) => {
         qb.andWhere(`JSON_CONTAINS(c.tags, :tag${i})`, { [`tag${i}`]: JSON.stringify(tag) });
       });
+    }
+
+    // 템플릿셋별 에셋 큐레이션(2026-06-09): templateSetId 지정 시 연결된 카테고리로 좁힌다.
+    //  - 연결 0개(전역) → curatedIds=null → 필터 미적용(전체 노출, 기존 동작 유지).
+    //  - 연결 1개 이상 → category_id 가 연결 목록에 포함된 에셋만.
+    //    (library_* 테이블은 종류별로 1:1이므로 category_id IN (...) 가 곧 종류별 스코프가 된다)
+    if (query.templateSetId) {
+      const curatedIds = await this.getCuratedCategoryIds(query.templateSetId);
+      if (curatedIds !== null) {
+        qb.andWhere('c.category_id IN (:...curatedIds)', { curatedIds });
+      }
     }
     const orderCol = sortField === 'name' ? 'c.name' : 'c.created_at';
     qb.orderBy(orderCol, sortOrder).skip((page - 1) * pageSize).take(pageSize);
