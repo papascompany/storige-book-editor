@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>디지털계산식 가격표 — 콘솔 크롤링 작업 정리</title>
+<style>
+  :root{--accent:#7CB342;--accent-d:#558B2F;--bg:#F7F7F5;--card:#fff;--text:#1C2912;--sub:#5b6b50;--border:#e6e9e1;
+        --warn:#C62828;--warnbg:#FFEBEE;--okbg:#E8F5E9;--amberbg:#FFF8E1;--amber:#B26A00;--blue:#1565C0;--bluebg:#E3F2FD;}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:'Pretendard','Noto Sans KR',system-ui,sans-serif;background:var(--bg);color:var(--text);line-height:1.65;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1000px;margin:0 auto;padding:32px 20px 80px;}
+  header{text-align:center;padding:38px 20px;background:linear-gradient(135deg,#E8F5E9,#C8E6C9);border-radius:20px;margin-bottom:26px;}
+  header h1{font-size:27px;font-weight:900;}
+  header .accent{color:var(--accent-d);}
+  header p{color:var(--sub);font-size:14px;margin-top:8px;}
+  header .formula{margin-top:16px;display:inline-block;background:#fff;border:1px solid var(--border);border-radius:12px;padding:10px 18px;font-size:13.5px;font-weight:700;color:var(--accent-d);font-family:ui-monospace,Menlo,monospace;}
+  section{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:22px 24px;margin-bottom:18px;box-shadow:0 1px 3px rgba(0,0,0,.04);}
+  h2{font-size:18px;font-weight:800;margin-bottom:14px;display:flex;align-items:center;gap:9px;}
+  h2 .ico{font-size:20px;}
+  h3{font-size:15px;font-weight:700;margin:16px 0 8px;color:var(--accent-d);}
+  p,li{font-size:14px;color:#33402a;}
+  ul,ol{padding-left:20px;margin:6px 0;}
+  li{margin:4px 0;}
+  table{width:100%;border-collapse:collapse;margin:10px 0;font-size:13px;}
+  th,td{border:1px solid var(--border);padding:8px 10px;text-align:left;vertical-align:top;}
+  th{background:#F1F8E9;font-weight:700;color:var(--accent-d);}
+  code{background:#eef3e8;color:var(--accent-d);padding:1px 6px;border-radius:5px;font-size:12.5px;font-family:ui-monospace,Menlo,monospace;word-break:break-all;}
+  .callout{border-radius:10px;padding:12px 14px;font-size:13px;margin:10px 0;}
+  .warn{background:var(--warnbg);border:1px solid #FFCDD2;color:#B71C1C;}
+  .tip{background:var(--okbg);border:1px solid #C8E6C9;}
+  .note{background:var(--bluebg);border:1px solid #BBDEFB;color:#0D47A1;}
+  .badge{display:inline-block;padding:1px 9px;border-radius:6px;font-size:11.5px;font-weight:700;}
+  .b-green{background:var(--okbg);color:#2E7D32;}.b-amber{background:var(--amberbg);color:var(--amber);}.b-red{background:var(--warnbg);color:#C62828;}
+  /* 스텝 */
+  .steps{display:flex;flex-direction:column;gap:12px;margin-top:8px;}
+  .step{display:flex;gap:14px;align-items:flex-start;border:1px solid var(--border);border-radius:14px;padding:14px 16px;background:#fcfdfb;}
+  .step .n{flex:0 0 38px;height:38px;border-radius:10px;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:15px;}
+  .step .body{flex:1;min-width:0;}
+  .step .t{font-weight:800;font-size:14.5px;margin-bottom:3px;}
+  .seq{counter-reset:s;list-style:none;padding-left:0;}
+  .seq li{counter-increment:s;position:relative;padding-left:30px;margin:6px 0;font-size:13.5px;}
+  .seq li:before{content:counter(s);position:absolute;left:0;top:1px;width:20px;height:20px;border-radius:50%;background:#dcedc8;color:var(--accent-d);font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;}
+  .files a{display:flex;align-items:center;gap:10px;padding:11px 14px;border:1px solid var(--border);border-radius:11px;margin:8px 0;text-decoration:none;color:var(--text);background:#fff;transition:.15s;}
+  .files a:hover{border-color:var(--accent);background:#f6faf2;}
+  .files .fi{font-size:20px;}
+  .files .fname{font-weight:700;font-size:13.5px;}
+  .files .fpath{font-size:11px;color:var(--sub);word-break:break-all;font-family:ui-monospace,Menlo,monospace;}
+  footer{text-align:center;color:var(--sub);font-size:12px;margin-top:24px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>디지털계산식 가격표 — <span class="accent">콘솔 크롤링</span> 작업 정리</h1>
+    <p>노리터 라이브 사이트에서 상업/디지털 인쇄 가격을 콘솔 스크립트로 추출 → 북모아 신규가격구성에 적재</p>
+    <div class="formula">공급가 = 종이값 + 인쇄값 + 재단값 + 후공정판매가 &nbsp;|&nbsp; 합계 = 공급가 × 1.1 (VAT)</div>
+  </header>
+
+  <!-- 1. 배경 -->
+  <section>
+    <h2><span class="ico">🧭</span> 1. 배경 — 왜 콘솔 자바스크립트인가</h2>
+    <p>기존 노리터 사이트(<code>bookmoa.noriter.co.kr</code>)는 옵션을 바꾸면 가격을 <b>동기 XHR</b>로 재계산합니다. 외부 자동화(크롬 CDP)로 시도하면:</p>
+    <ul>
+      <li>동기 XHR 진행 중 페이지 <b>프리즈</b> → CDP의 <b>45초 명령 한도</b>에 자주 걸림</li>
+      <li>수 분~수십 분 추출에서 중간 끊김 다발</li>
+      <li><code>alert/confirm</code>이 뜨면 자동화가 멈춤</li>
+    </ul>
+    <div class="callout tip">➡️ <b>사이트 자체 이벤트 루프에서 도는 콘솔 스크립트</b>가 가장 안정적. 페이지 내부 <code>setTimeout</code>으로 돌려 시간 제한이 없고 alert도 미리 무력화합니다.</div>
+    <div class="callout note">참고: "포스터로 했던 작업" = <b>Phase H PoC(2026-05-30)</b>, 대상은 <b>디지털전단/포스터</b> 1종으로 스키마/스크립트/엔진 완성. 산출물 <code>docs2/digital-poc-flyer.json</code>.</div>
+  </section>
+
+  <!-- 2. 가격 모델 -->
+  <section>
+    <h2><span class="ico">📐</span> 2. 추출하는 가격 모델</h2>
+    <p>라이브 사이트가 가격을 <b>이미 분해해서 노출</b>합니다(<code>#esti_paper</code> / <code>#esti_print</code> / <code>#esti_cut</code>). 역산이 필요 없습니다.</p>
+    <table>
+      <tr><th>구성요소</th><th>의존 변수</th><th>추출 방식</th></tr>
+      <tr><td><b>종이값</b></td><td>용지(종류×평량) × 규격</td><td>장당 일정 + 소량 최소금액(floor)</td></tr>
+      <tr><td><b>인쇄값</b></td><td>인쇄도수 × 규격 × 수량</td><td>수량구간 카운터(대량 할인 곡선)</td></tr>
+      <tr><td><b>재단값</b></td><td>규격</td><td>장당 일정 + 최소금액(floor)</td></tr>
+    </table>
+    <p>대상: <b>상업인쇄 4종 + 디지털인쇄 9종 = 13종</b> (13개 상품 페이지 각각 1회 실행).</p>
+  </section>
+
+  <!-- 3. 운영자 작업 순서 -->
+  <section>
+    <h2><span class="ico">🛠️</span> 3. 운영자 작업 순서 (상품 1개당)</h2>
+    <div class="steps">
+      <div class="step"><div class="n">1</div><div class="body"><div class="t">라이브 상품 페이지 열기</div>
+        예) <code>https://bookmoa.noriter.co.kr/p/dt_bl.html?p=goods11</code> — 상품마다 <code>goods</code> 번호가 다름.</div></div>
+
+      <div class="step"><div class="n">2</div><div class="body"><div class="t">콘솔 열기</div>
+        <code>F12</code> → <b>Console</b> 탭.</div></div>
+
+      <div class="step"><div class="n">3</div><div class="body"><div class="t">스크립트 실행</div>
+        이 작업의 <code>docs2/crawl-digital-console.js</code>(91줄, 5KB) 전체를 복사해 콘솔에 붙여넣고 <b>Enter</b>.
+        <h3 style="margin-top:10px">스크립트 동작 단계</h3>
+        <ol class="seq">
+          <li><code>alert/confirm/print/open</code> 무력화 (프리즈 방지)</li>
+          <li>수량 사다리 자동 선별: <code>[10,50,100,200,300,500,1000,2000,4000,8000]</code> 중 상품 옵션에 있는 것만</li>
+          <li><b>재단(cut)</b> 측정: 규격 스윕(HIQ=최대수량 + 소량 10장) → 장당단가·floor</li>
+          <li><b>인쇄(print)</b> 측정: 인쇄도수 × 규격 × 수량 사다리 전체 → 수량구간 곡선</li>
+          <li><b>종이(paper)</b> 측정(가장 오래): 용지 종류 × 평량 × 규격 → 결합키("아트지 백색 250g") 보관</li>
+          <li>진행 로그 출력 (<code>[crawl] 종이 …완료 (누적 read N)</code>)</li>
+          <li>완료 시 <code>digital-&lt;상품&gt;.json</code> <b>자동 다운로드</b></li>
+        </ol>
+        <div class="callout note">소요: 상품당 <b>수 분~수십 분</b>(옵션 조합 수 비례). 동기 XHR 사이 <code>WAIT=1600ms</code> 고정 대기.</div>
+      </div></div>
+
+      <div class="step"><div class="n">4</div><div class="body"><div class="t">JSON 적재</div>
+        북모아 관리자 콘솔 → <b>신규가격구성</b> 탭 → <b>"크롤 JSON 적재"</b> 버튼으로 <code>digital-*.json</code> 업로드.
+        <div class="callout tip">내부적으로 <code>p4-pricing-digital</code>(별도 DB 키, RLS: 공개 read + admin write)에 저장. 기존 <code>p4-pricing</code>(책자/낱장)과 <b>완전 격리</b>.</div>
+      </div></div>
+
+      <div class="step"><div class="n">5</div><div class="body"><div class="t">상품 매핑</div>
+        관리자 → <b>상품관리</b> → 해당 상품 편집 → <b>"🧮 가격 방식"</b>:
+        <ul>
+          <li><code>pricingKind = 'digital'</code> 선택</li>
+          <li><code>digitalKey</code> 드롭다운에서 방금 적재한 표 선택 → 저장</li>
+        </ul>
+        <div class="callout note"><code>pricingKind==='digital'</code>이면 ProdConfigure가 자동으로 <code>calcDigitalQuote</code>로 분기. 옵션그룹 입력은 비활성, 표에서 동적 렌더링.</div>
+      </div></div>
+
+      <div class="step"><div class="n">6</div><div class="body"><div class="t">스팟 체크</div>
+        공개 상품 페이지에서 옵션을 바꿔가며 견적이 라이브와 일치하는지 확인.
+        <div class="callout tip">✅ PoC(디지털전단/포스터·아트지·A4·1000장)는 공급가 <b>₩505,860</b>으로 라이브와 정확 일치 검증됨.</div>
+      </div></div>
+    </div>
+  </section>
+
+  <!-- 4. 진행 상황 -->
+  <section>
+    <h2><span class="ico">📊</span> 4. 작업 진행 상황</h2>
+    <table>
+      <tr><th>단계</th><th>상태</th></tr>
+      <tr><td><b>PoC</b>: 디지털전단/포스터로 스키마·스크립트·엔진(<code>calcDigitalQuote</code>)·테스트(12개) 완성</td><td><span class="badge b-green">✅ 완료 (2026-05-30)</span></td></tr>
+      <tr><td>격리 DB + 견적 분기 + 관리자 UI + 상품등록 연동</td><td><span class="badge b-green">✅ 완료</span></td></tr>
+      <tr><td><b>전 13종 콘솔 추출 → 적재 → 상품별 지정</b></td><td><span class="badge b-amber">⏳ 운영자 잔여 (베타 체크리스트 1-H)</span></td></tr>
+    </table>
+    <div class="callout warn">🔴 <b>베타 오픈 전 필수</b> — 미입력 시 디지털/상업 상품의 견적이 <b>0원</b>으로 나옵니다.</div>
+  </section>
+
+  <!-- 5. 주의/한계 -->
+  <section>
+    <h2><span class="ico">⚠️</span> 5. 주의 / 한계</h2>
+    <ul>
+      <li>스크립트는 <code>dt_*</code> 셀렉터(<code>#dt_amt</code>/<code>#dt_size</code>/<code>#dt_print_tmpt</code>/<code>#dt_paper_name</code>/<code>#dt_paper</code>) 기반. 다른 ID 패턴 페이지를 만나면 셀렉터 보강 필요 → 알려주면 추출기 변형 지원.</li>
+      <li><code>WAIT=1600ms</code>가 느린 환경에서 부족할 수 있음 → 스크립트 라인 26 상수만 늘리면 됨.</li>
+      <li>추출 중 콘솔에 <code>[crawl] …</code> 로그가 안 찍히면 정상 동작 아님 → 페이지 새로고침 후 재실행.</li>
+    </ul>
+    <div class="callout note">후속 지원 가능: (1) 13개 상품 URL 리스트 작성, (2) 추출기 셀렉터 다른 상품용 변형, (3) 적재된 표 검증 자동화.</div>
+  </section>
+
+  <!-- 6. 파일 & 링크 -->
+  <section class="files">
+    <h2><span class="ico">📎</span> 6. 파일 &amp; 링크</h2>
+    <a href="콘솔크롤링.md">
+      <span class="fi">📄</span><span><span class="fname">원본 문서 — 콘솔크롤링.md</span><br><span class="fpath">storige/docs/콘솔크롤링.md</span></span>
+    </a>
+    <a href="file:///Users/yohan/Documents/claude/bookmoa-mobile/docs2/crawl-digital-console.js">
+      <span class="fi">🧩</span><span><span class="fname">콘솔 추출기 스크립트 (91줄, 5KB) — Step 3에서 콘솔에 붙여넣기</span><br><span class="fpath">bookmoa-mobile/docs2/crawl-digital-console.js</span></span>
+    </a>
+    <a href="file:///Users/yohan/Documents/claude/bookmoa-mobile/docs2/digital-poc-flyer.json">
+      <span class="fi">🧪</span><span><span class="fname">PoC 산출물 JSON (디지털전단/포스터)</span><br><span class="fpath">bookmoa-mobile/docs2/digital-poc-flyer.json</span></span>
+    </a>
+    <a href="file:///Users/yohan/Documents/claude/bookmoa-mobile/docs/bookmoa_beta_open_checklist.md">
+      <span class="fi">✅</span><span><span class="fname">베타 오픈 체크리스트 — 1-H(가격 데이터 적재) 항목</span><br><span class="fpath">bookmoa-mobile/docs/bookmoa_beta_open_checklist.md</span></span>
+    </a>
+    <a href="file:///Users/yohan/Documents/claude/bookmoa-mobile/docs/DIGITAL-PRICING-PLAN.md">
+      <span class="fi">📘</span><span><span class="fname">디지털계산식 설계 문서 (§7-2 적재 절차)</span><br><span class="fpath">bookmoa-mobile/docs/DIGITAL-PRICING-PLAN.md</span></span>
+    </a>
+    <div class="callout note">파일 링크는 로컬 절대경로(<code>file://</code>)입니다. 브라우저 보안 설정에 따라 클릭이 막히면 경로를 복사해 직접 여세요.</div>
+  </section>
+
+  <footer>디지털계산식 가격표 콘솔 크롤링 · 원본: storige/docs/콘솔크롤링.md · 시각화 생성 2026-06-09</footer>
+</div>
+</body>
+</html>
