@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>디자인 가져오기 변환기 (IDML / PSD → Storige 템플릿)</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0f1117; --bg2: #161b27; --bg3: #1e2536; --card: #1a2133; --border: #2a3450;
+      --blue: #3b82f6; --blue2: #60a5fa; --green: #22c55e; --green2: #4ade80;
+      --red: #ef4444; --red2: #f87171; --yellow: #f59e0b; --yellow2:#fcd34d;
+      --purple: #a855f7; --purple2:#c084fc; --cyan: #06b6d4; --cyan2: #22d3ee;
+      --gray: #64748b; --text: #e2e8f0; --text2: #94a3b8; --text3: #64748b;
+    }
+    html { scroll-behavior: smooth; }
+    body { font-family: 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif; background: var(--bg); color: var(--text); line-height: 1.65; font-size: 15px; }
+
+    /* 헤더 */
+    .top-header { background: linear-gradient(135deg, #1e3a5f 0%, #0f2340 40%, #1a0e2e 100%); border-bottom: 1px solid var(--border); padding: 48px 40px 40px; position: relative; overflow: hidden; }
+    .top-header::before { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse 70% 80% at 80% 50%, rgba(168,85,247,.12) 0%, transparent 70%); }
+    .top-header .badge-row { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+    .badge { display: inline-flex; align-items: center; gap: 5px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12); border-radius: 20px; padding: 4px 12px; font-size: 12px; color: var(--text2); }
+    .badge.blue { background: rgba(59,130,246,.15); border-color: rgba(59,130,246,.3); color: var(--blue2); }
+    .badge.green { background: rgba(34,197,94,.12); border-color: rgba(34,197,94,.3); color: var(--green2); }
+    .badge.purple { background: rgba(168,85,247,.15); border-color: rgba(168,85,247,.3); color: var(--purple2); }
+    .top-header h1 { font-size: 32px; font-weight: 700; color: #fff; margin-bottom: 10px; position: relative; }
+    .top-header h1 span { color: var(--purple2); }
+    .top-header .subtitle { color: var(--text2); font-size: 15px; position: relative; max-width: 640px; }
+    .top-header .meta { margin-top: 24px; display: flex; gap: 24px; flex-wrap: wrap; }
+    .top-header .meta-item { font-size: 13px; color: var(--text3); }
+    .top-header .meta-item span { color: var(--text2); margin-left: 4px; }
+
+    /* 레이아웃 */
+    .layout { display: flex; min-height: calc(100vh - 200px); }
+    .sidebar { width: 250px; flex-shrink: 0; background: var(--bg2); border-right: 1px solid var(--border); padding: 24px 0; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
+    .sidebar-title { font-size: 11px; font-weight: 700; color: var(--text3); letter-spacing: .08em; text-transform: uppercase; padding: 0 20px 12px; }
+    .sidebar a { display: block; padding: 8px 20px; color: var(--text2); text-decoration: none; font-size: 13px; border-left: 3px solid transparent; transition: all .15s; }
+    .sidebar a:hover { color: var(--text); background: rgba(255,255,255,.04); border-left-color: var(--purple); }
+    .sidebar a.active { color: var(--purple2); background: rgba(168,85,247,.08); border-left-color: var(--purple); }
+    .sidebar .sub { padding-left: 32px; font-size: 12px; }
+
+    .content { flex: 1; max-width: 980px; padding: 40px 48px; overflow-x: hidden; }
+
+    /* 섹션 */
+    .section { margin-bottom: 64px; }
+    .section-title { font-size: 24px; font-weight: 700; color: #fff; padding-bottom: 16px; border-bottom: 1px solid var(--border); margin-bottom: 32px; display: flex; align-items: center; gap: 12px; }
+    .section-title .num { width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 700; }
+    .sub-title { font-size: 18px; font-weight: 600; color: var(--text); margin: 32px 0 16px; display: flex; align-items: center; gap: 8px; }
+    .sub-title::before { content: ''; width: 3px; height: 18px; border-radius: 2px; display: block; flex-shrink: 0; }
+    p.desc { color: var(--text2); margin-bottom: 20px; }
+    ul.bullet { color: var(--text2); font-size: 14px; line-height: 1.9; padding-left: 20px; margin-bottom: 20px; }
+    ul.bullet code { background: rgba(255,255,255,.07); border-radius: 4px; padding: 1px 6px; font-family: monospace; font-size: 12px; color: var(--cyan2); }
+
+    /* 플로우 */
+    .flow-steps { display: flex; flex-direction: column; gap: 0; margin-bottom: 16px; }
+    .flow-step { display: flex; gap: 0; position: relative; }
+    .flow-step .step-left { width: 48px; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; }
+    .step-num { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; flex-shrink: 0; position: relative; z-index: 1; }
+    .step-line { width: 2px; flex: 1; min-height: 24px; }
+    .flow-step .step-body { flex: 1; padding: 0 0 24px 16px; }
+    .step-title { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 6px; line-height: 32px; }
+    .step-detail { background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; font-size: 13px; color: var(--text2); }
+    .step-detail code { background: rgba(255,255,255,.07); border-radius: 4px; padding: 1px 6px; font-family: monospace; font-size: 12px; color: var(--cyan2); }
+    .flow-purple .step-num { background: rgba(168,85,247,.2); border: 2px solid var(--purple); color: var(--purple2); }
+    .flow-purple .step-line { background: linear-gradient(to bottom, var(--purple), transparent); opacity: .3; }
+    .flow-blue .step-num { background: rgba(59,130,246,.2); border: 2px solid var(--blue); color: var(--blue2); }
+    .flow-blue .step-line { background: linear-gradient(to bottom, var(--blue), transparent); opacity: .3; }
+
+    /* 영역 다이어그램 */
+    .region-bar { display: flex; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-bottom: 8px; font-family: monospace; }
+    .region-cell { padding: 18px 10px; text-align: center; font-size: 12px; font-weight: 700; border-right: 1px solid var(--border); }
+    .region-cell:last-child { border-right: none; }
+    .region-cell .rsub { display: block; font-size: 10px; font-weight: 400; opacity: .7; margin-top: 3px; }
+    .region-cell.wing { background: rgba(100,116,139,.12); color: var(--gray); flex: 0.6; }
+    .region-cell.cover { background: rgba(59,130,246,.12); color: var(--blue2); flex: 1.3; }
+    .region-cell.spine { background: rgba(168,85,247,.16); color: var(--purple2); flex: 0.4; }
+
+    /* 표 */
+    .table-wrap { overflow-x: auto; margin-bottom: 24px; border-radius: 10px; border: 1px solid var(--border); }
+    table { width: 100%; border-collapse: collapse; }
+    thead th { background: var(--bg3); padding: 12px 16px; text-align: left; font-size: 12px; font-weight: 700; color: var(--text2); letter-spacing: .04em; text-transform: uppercase; border-bottom: 1px solid var(--border); }
+    tbody tr { border-bottom: 1px solid rgba(255,255,255,.04); }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: rgba(255,255,255,.02); }
+    tbody td { padding: 11px 16px; font-size: 13px; color: var(--text2); vertical-align: top; }
+    tbody td:first-child { color: var(--text); font-weight: 500; }
+    code.inline { background: rgba(255,255,255,.07); border-radius: 4px; padding: 1px 7px; font-family: 'Consolas', monospace; font-size: 12px; color: var(--cyan2); white-space: nowrap; }
+
+    /* 배지 */
+    .tag { display: inline-flex; align-items: center; border-radius: 4px; padding: 2px 8px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+    .tag.auto { background: rgba(34,197,94,.12); color: var(--green2); }
+    .tag.manual { background: rgba(239,68,68,.12); color: var(--red2); }
+    .tag.warn { background: rgba(245,158,11,.12); color: var(--yellow2); }
+    .tag.info { background: rgba(59,130,246,.12); color: var(--blue2); }
+    .tag.new { background: rgba(34,197,94,.12); color: var(--green2); border: 1px solid rgba(34,197,94,.25); }
+
+    /* 코드블록 */
+    .code-block { background: #0d1117; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-bottom: 20px; }
+    .code-block .cb-header { background: var(--bg3); padding: 10px 16px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--border); }
+    .code-block .cb-lang { font-size: 11px; color: var(--text3); font-weight: 600; letter-spacing: .05em; }
+    .code-block .cb-dots { display: flex; gap: 5px; }
+    .code-block .cb-dot { width: 10px; height: 10px; border-radius: 50%; }
+    .code-block pre { padding: 20px; overflow-x: auto; font-family: 'Consolas', 'Fira Code', monospace; font-size: 12.5px; line-height: 1.7; color: #e2e8f0; }
+    .code-block pre .comment { color: #6b7280; }
+    .code-block pre .keyword { color: #60a5fa; }
+    .code-block pre .string { color: #86efac; }
+    .code-block pre .func { color: #fde68a; }
+    .code-block pre .num { color: #fb923c; }
+
+    /* 정보 박스 */
+    .info-box { border-radius: 8px; padding: 14px 18px; margin-bottom: 20px; display: flex; gap: 12px; align-items: flex-start; }
+    .info-box .icon { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
+    .info-box .ib-content { font-size: 13px; }
+    .info-box .ib-title { font-weight: 700; margin-bottom: 4px; }
+    .info-box.blue { background: rgba(59,130,246,.08); border: 1px solid rgba(59,130,246,.2); }
+    .info-box.blue .ib-title { color: var(--blue2); }
+    .info-box.green { background: rgba(34,197,94,.08); border: 1px solid rgba(34,197,94,.2); }
+    .info-box.green .ib-title { color: var(--green2); }
+    .info-box.red { background: rgba(239,68,68,.08); border: 1px solid rgba(239,68,68,.2); }
+    .info-box.red .ib-title { color: var(--red2); }
+    .info-box.yellow { background: rgba(245,158,11,.08); border: 1px solid rgba(245,158,11,.2); }
+    .info-box.yellow .ib-title { color: var(--yellow2); }
+    .info-box.purple { background: rgba(168,85,247,.08); border: 1px solid rgba(168,85,247,.2); }
+    .info-box.purple .ib-title { color: var(--purple2); }
+
+    /* 2열 비교 카드 */
+    .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+    .compare-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+    .compare-card .cc-head { padding: 12px 16px; font-weight: 700; font-size: 14px; border-bottom: 1px solid var(--border); }
+    .compare-card.vec .cc-head { background: rgba(59,130,246,.1); color: var(--blue2); }
+    .compare-card.hyb .cc-head { background: rgba(168,85,247,.1); color: var(--purple2); }
+    .compare-card ul { list-style: none; padding: 12px 16px; }
+    .compare-card li { font-size: 13px; color: var(--text2); padding: 4px 0 4px 18px; position: relative; }
+    .compare-card li::before { content: '·'; position: absolute; left: 4px; color: var(--text3); }
+
+    @media (max-width: 900px) { .sidebar { display: none; } .content { padding: 24px 20px; } .top-header { padding: 32px 20px; } .compare-grid { grid-template-columns: 1fr; } }
+    @media (max-width: 600px) { .top-header h1 { font-size: 22px; } }
+  </style>
+</head>
+<body>
+
+<!-- ══════════════ 헤더 ══════════════ -->
+<div class="top-header">
+  <div class="badge-row">
+    <span class="badge purple">🎨 개발 문서</span>
+    <span class="badge green">동작(admin + Node)</span>
+    <span class="badge">2026-06-09</span>
+    <span class="badge">@storige/indesign-import</span>
+  </div>
+  <h1>디자인 가져오기 <span>변환기</span><br>IDML / PSD → Storige 템플릿</h1>
+  <p class="subtitle">InDesign 표지(IDML)·Photoshop 단품(PSD)을 Fabric.js 캔버스 객체 + spreadConfig 로 변환. 브라우저 admin 과 Node 양쪽 동작.</p>
+  <div class="meta">
+    <div class="meta-item">진입점 <span>/templates/import (admin)</span></div>
+    <div class="meta-item">파싱 <span>jszip · fast-xml-parser · @webtoon/psd</span></div>
+    <div class="meta-item">래스터 <span>browser canvas / Node sharp</span></div>
+  </div>
+</div>
+
+<div class="layout">
+
+<!-- ══════════════ 사이드바 ══════════════ -->
+<nav class="sidebar">
+  <div class="sidebar-title">목차</div>
+  <a href="#s1" class="active">① 개요</a>
+  <a href="#s1-1" class="sub">의존성</a>
+  <a href="#s2">② 공개 API</a>
+  <a href="#s3">③ IDML(표지 펼침면)</a>
+  <a href="#s3-2" class="sub">파싱 규약</a>
+  <a href="#s3-3" class="sub">표지 5영역</a>
+  <a href="#s3-5" class="sub">벡터 vs 하이브리드</a>
+  <a href="#s3-7" class="sub">경고(검수)</a>
+  <a href="#s4">④ PSD(단품)</a>
+  <a href="#s5">⑤ 책등 가변(런타임)</a>
+  <a href="#s6">⑥ 등록 워크플로우</a>
+  <a href="#s7">⑦ 자동 vs 수동</a>
+  <a href="#s8" style="color:var(--yellow2)">⑧ 인쇄 규약/손실 ⚠️</a>
+  <a href="#s9">⑨ AI(일러스트) 현황</a>
+  <a href="#s10">⑩ 파일 구조 / 검증</a>
+  <a href="#s11">⑪ 로드맵 / 잔여</a>
+</nav>
+
+<!-- ══════════════ 콘텐츠 ══════════════ -->
+<main class="content">
+
+<!-- ① 개요 -->
+<section class="section" id="s1">
+  <h2 class="section-title"><span class="num" style="background:rgba(168,85,247,.2);color:var(--purple2)">①</span>개요</h2>
+
+  <p class="desc">
+    <code class="inline">@storige/indesign-import</code> 는 <strong>디자인 소스(InDesign IDML, Photoshop PSD)를 Storige 템플릿으로 변환</strong>하는 패키지다.
+    결과는 SVG 파일이 아니라 <strong>Fabric.js 캔버스 객체 배열(<code class="inline">canvasData.objects</code>)</strong> 과 (표지 펼침면) <strong><code class="inline">spreadConfig</code></strong> 를 담은
+    <strong>DraftTemplateDto</strong> 로, 기존 <code class="inline">POST /templates</code> 등록 경로에 그대로 투입된다.
+  </p>
+
+  <ul class="bullet">
+    <li><strong>브라우저(admin)와 Node 양쪽 동작</strong> — 핵심 <code>src/</code> 는 Node 내장 API 미사용. 환경 분기(<code>typeof document</code>)로 래스터화 백엔드만 교체(browser <code>&lt;canvas&gt;</code> / Node <code>sharp</code>).</li>
+    <li><strong>DB 직접 쓰기 없음</strong> — 변환기는 <code>CreateTemplateDto</code> 호환 JSON 생성 → 관리자 검수 → 기존 API 등록.</li>
+    <li><strong>포맷 자동 감지</strong> — 확장자로 IDML/PSD 구분(<code>detectFormat</code>).</li>
+  </ul>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>입력</th><th>결과 Template 타입</th><th>spreadConfig</th><th>주 용도</th></tr></thead>
+      <tbody>
+        <tr><td>IDML (표지 펼침면)</td><td><code class="inline">type='spread'</code></td><td>있음 (5영역)</td><td>책 표지(앞/뒤/책등/날개)</td></tr>
+        <tr><td>PSD (단품)</td><td><code class="inline">type='page'</code> / <code class="inline">'cover'</code></td><td>없음(단일 페이지)</td><td>명함 · 내지 단품 등</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3 class="sub-title" id="s1-1"><span style="background:var(--purple)"></span>의존성</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>라이브러리</th><th>용도</th></tr></thead>
+      <tbody>
+        <tr><td><code class="inline">jszip</code></td><td>IDML(ZIP) 압축 해제</td></tr>
+        <tr><td><code class="inline">fast-xml-parser</code></td><td>IDML XML 파싱(순서보존/비순서 2 파서)</td></tr>
+        <tr><td><code class="inline">@webtoon/psd</code></td><td>PSD 파싱(레이어 트리 + 픽셀 합성)</td></tr>
+        <tr><td><code class="inline">sharp</code> (Node, 선택)</td><td>SVG/RGBA → PNG 래스터화. 브라우저는 <code class="inline">&lt;canvas&gt;</code></td></tr>
+        <tr><td><code class="inline">ag-psd</code> (devDep)</td><td>테스트용 PSD 픽스처 생성</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ② 공개 API -->
+<section class="section" id="s2">
+  <h2 class="section-title"><span class="num" style="background:rgba(59,130,246,.2);color:var(--blue2)">②</span>공개 API</h2>
+  <p class="desc"><code class="inline">src/index.mjs</code> 가 진입점. 타입 선언은 <code class="inline">src/index.d.mts</code>.</p>
+
+  <div class="code-block">
+    <div class="cb-header"><div class="cb-dots"><span class="cb-dot" style="background:#ff5f56"></span><span class="cb-dot" style="background:#ffbd2e"></span><span class="cb-dot" style="background:#27c93f"></span></div><span class="cb-lang">JS — IDML</span></div>
+<pre><span class="keyword">const</span> { result, dto, previewSvg } = <span class="keyword">await</span> <span class="func">convertIdmlToTemplate</span>(buffer, {
+  name: <span class="string">'MA-348 표지(가져옴)'</span>,
+  mode: <span class="string">'vector'</span>,     <span class="comment">// 'vector'(기본) | 'hybrid'</span>
+  dpi: <span class="num">150</span>,           <span class="comment">// 캔버스 DPI(기본 150)</span>
+  rasterDpi: <span class="num">300</span>,     <span class="comment">// 하이브리드 배경 PNG dpi(기본 300)</span>
+  previewWidth: <span class="num">1100</span>, <span class="comment">// 미리보기 SVG 가로폭(px)</span>
+});
+<span class="comment">// result: SpreadTemplateResult — spec/regionsMm/totalWidthMm/objects/fonts/warnings/draftTemplateDto</span></pre>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><div class="cb-dots"><span class="cb-dot" style="background:#ff5f56"></span><span class="cb-dot" style="background:#ffbd2e"></span><span class="cb-dot" style="background:#27c93f"></span></div><span class="cb-lang">JS — PSD</span></div>
+<pre><span class="keyword">const</span> { result, dto, previewSvg } = <span class="keyword">await</span> <span class="func">convertPsdToTemplate</span>(buffer, {
+  name: <span class="string">'명함(가져옴)'</span>,
+  pageType: <span class="string">'page'</span>,   <span class="comment">// 'page'(내지/단품, 기본) | 'cover'(표지)</span>
+  previewWidth: <span class="num">1100</span>,
+});
+<span class="comment">// result: SinglePageResult — draftTemplateDto/widthMm/heightMm/textCount/rasterCount/warnings/fonts</span></pre>
+  </div>
+</section>
+
+<!-- ③ IDML -->
+<section class="section" id="s3">
+  <h2 class="section-title"><span class="num" style="background:rgba(168,85,247,.2);color:var(--purple2)">③</span>IDML (표지 펼침면)</h2>
+
+  <div class="info-box blue">
+    <div class="icon">💡</div>
+    <div class="ib-content">
+      <div class="ib-title">왜 IDML 인가</div>
+      <code class="inline">.indd</code> 는 독점 바이너리 → Node 단독 파싱 불가. <code class="inline">.idml</code> 은 ZIP+XML 공개사양이라 추가 라이선스 없이 파싱.
+      INDD 는 <code class="inline">scripts/indd-to-idml.jsx</code>(InDesign ExtendScript)로 IDML 내보낸 뒤 입력하는 <strong>옵션 경로</strong>(InDesign Server 시 무인 변환 가능).
+    </div>
+  </div>
+
+  <h3 class="sub-title" id="s3-2"><span style="background:var(--purple)"></span>파싱 규약 (<code class="inline">src/idml/reader.mjs</code>)</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>IDML 파일</th><th>추출 내용</th></tr></thead>
+      <tbody>
+        <tr><td><code class="inline">Spreads/Spread_*.xml</code></td><td>페이지 기하 + 페이지아이템 geometry(z-순서)</td></tr>
+        <tr><td><code class="inline">Stories/Story_*.xml</code></td><td>텍스트 내용 + 폰트/크기/색</td></tr>
+        <tr><td><code class="inline">Resources/Graphic.xml</code></td><td>색상(CMYK/RGB/별색)</td></tr>
+        <tr><td><code class="inline">Resources/Fonts.xml</code></td><td>폰트 패밀리 목록</td></tr>
+        <tr><td><code class="inline">Resources/Preferences.xml</code></td><td>블리드(<code class="inline">DocumentBleedTopOffset</code>)</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <ul class="bullet">
+    <li><strong>문서순(z-순서) 보존</strong> — <code>preserveOrder</code> 파서로 문서 순서대로 수집. 안 지키면 책등 패널 아래 도형이 위로 올라옴. 그룹은 재귀로 펼치며 부모 <code>ItemTransform</code> 합성.</li>
+    <li><strong>줄바꿈(<code>Br</code>) 보존</strong> — <code>Content</code>=텍스트, <code>Br</code>=<code>\n</code>. 단락 사이에도 <code>\n</code> → 다단 텍스트 영역 이탈 방지.</li>
+    <li><strong>베지어 경로 복원</strong> — Anchor·LeftDirection·RightDirection → 직선(L)/3차 베지어(C)/닫힘(Z) (<code>src/geometry/path.mjs</code>).</li>
+    <li><strong>CMYK 원본 보존</strong> — sRGB 근사 hex + 원본 4도값을 <code>cmykFill</code> 로 보존.</li>
+    <li><strong>별색(Spot) 감지</strong> — 판정은 반드시 <code>@_Model</code>(=<code>Spot</code>/<code>Mixed Ink</code>) 기준. Spot 도 <code>Space=CMYK</code> 인 경우가 많아 Space 판정은 놓침.</li>
+  </ul>
+
+  <h3 class="sub-title" id="s3-3"><span style="background:var(--purple)"></span>표지 5영역 (spreadConfig)</h3>
+  <p class="desc">좌→우 5영역(<code class="inline">src/geometry/regions.mjs</code>, canvas-core <code class="inline">SpreadLayoutEngine</code> 규약과 동일):</p>
+  <div class="region-bar">
+    <div class="region-cell wing">back-wing<span class="rsub">뒤날개</span></div>
+    <div class="region-cell cover">back-cover<span class="rsub">뒤표지</span></div>
+    <div class="region-cell spine">spine<span class="rsub">책등(가변)</span></div>
+    <div class="region-cell cover">front-cover<span class="rsub">앞표지</span></div>
+    <div class="region-cell wing">front-wing<span class="rsub">앞날개</span></div>
+  </div>
+  <p class="desc" style="font-size:13px;margin-bottom:20px">총폭(mm) = <code class="inline">wing×2</code>(활성 시) + <code class="inline">cover×2</code> + <code class="inline">spine</code>, 0.1mm 반올림.</p>
+  <ul class="bullet">
+    <li><strong>날개 판정</strong> — 3페이지=<code>[cover, spine, cover]</code>(날개 없음), 5페이지=<code>[wing, cover, spine, cover, wing]</code>(날개).</li>
+    <li><strong>책등 추정</strong> — 가장 좁은 페이지=책등. 표지폭=책등 제외 최대폭, 날개폭=최소폭(좌우 동일 가정).</li>
+    <li><strong>영역/앵커</strong> — 객체 중심 x 를 <code>resolveRegionAtX(x ≥ r.x &amp;&amp; x &lt; r.x + r.width)</code> 에 통과 → <code>regionRef</code> + 정규화 앵커(<code>xNorm</code>) 부여(런타임 책등 가변 입력).</li>
+  </ul>
+
+  <div class="info-box blue">
+    <div class="icon">📐</div>
+    <div class="ib-content">
+      <div class="ib-title">좌표 변환</div>
+      <code class="inline">IDML pt(1/72in) → mm → 캔버스 px(DPI 150)</code>. 상수 <code class="inline">src/geometry/units.mjs</code>(canvas-core <code class="inline">math.ts</code> 와 동일).
+      아핀 변환은 <code class="inline">ItemTransform([a,b,c,d,tx,ty])</code> 합성/적용/분해. 행렬식 음수(det&lt;0)는 한 축 반전(flip)으로 <code class="inline">scaleY</code> 부호에 흡수.
+      경로형은 회전이 좌표에 반영 → <code class="inline">angle=0</code>. 책등 세로쓰기 TextFrame 은 프레임 치수 유지 + <code class="inline">angle=90°</code>.
+    </div>
+  </div>
+
+  <h3 class="sub-title" id="s3-5"><span style="background:var(--purple)"></span>두 변환 모드: 벡터 vs 하이브리드</h3>
+  <div class="compare-grid">
+    <div class="compare-card vec">
+      <div class="cc-head">벡터 (mode='vector', 기본)</div>
+      <ul>
+        <li>도형/배경 → 편집 가능 벡터(rect/ellipse/path)</li>
+        <li>텍스트 → 편집 가능 textbox</li>
+        <li>적합: 단순한 디자인(정밀 편집)</li>
+        <li>손실: 무손실(벡터)</li>
+      </ul>
+    </div>
+    <div class="compare-card hyb">
+      <div class="cc-head">하이브리드 (mode='hybrid')</div>
+      <ul>
+        <li>비텍스트 전체 → 300dpi PNG 1장(최하단)</li>
+        <li>텍스트 → 편집 가능 textbox(이미지 위)</li>
+        <li>적합: 효과·그라디언트·별색이 많은 디자인</li>
+        <li>손실: 비텍스트는 PNG 해상도 의존</li>
+      </ul>
+    </div>
+  </div>
+  <p class="desc" style="font-size:13px">하이브리드는 <code class="inline">rasterizeArtwork(dto,{dpi:300})</code>(<code class="inline">src/raster/rasterize.mjs</code>)가 비텍스트만 그린 SVG 를 물리치수(<code class="inline">totalWidthMm/HeightMm</code>) 기준 목표 픽셀로 래스터화(텍스트 제외·투명 배경) → 최하단 이미지로 깔고 텍스트만 위에 둔다.</p>
+
+  <h3 class="sub-title"><span style="background:var(--purple)"></span>생성되는 객체 속성</h3>
+  <ul class="bullet">
+    <li>안정적 <code>id</code>: <code>idml-{Self}</code> (추적/선택/잠금), <code>selectable/evented:true</code>, <code>isUserAdded:false</code>.</li>
+    <li>중심 좌표 규약: <code>left/top</code> = 중심(originX/originY='center').</li>
+    <li><code>cmykFill</code>(원본 4도, 출력단 미사용), <code>spotColor</code>(별색명), <code>fillRule:'evenodd'</code>(컴파운드 패스 구멍 보존).</li>
+    <li><code>meta:{regionRef, anchor}</code> — 런타임 책등 가변 재배치 입력. <code>_idml</code> 디버그 필드는 저장 전 제거.</li>
+  </ul>
+
+  <h3 class="sub-title" id="s3-7"><span style="background:var(--purple)"></span>경고 (검수 항목)</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>경고</th><th>의미</th></tr></thead>
+      <tbody>
+        <tr><td>별색(Spot) N개 감지</td><td>4도(CMYK 근사)로 변환 — 후가공(박·형광)/별색판 의도 확인</td></tr>
+        <tr><td>재단여백(블리드) 미달</td><td>채움 합집합이 재단선 밖 cutSize 까지 안 닿음(흰 테두리 위험) → 편집기에서 배경 확장</td></tr>
+        <tr><td>폰트 미임베드</td><td>IDML 은 폰트 미임베드 → 시딩/확정 필요</td></tr>
+        <tr><td>미해석 색상</td><td>색상 사전에서 못 찾은 색상 id</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ④ PSD -->
+<section class="section" id="s4">
+  <h2 class="section-title"><span class="num" style="background:rgba(59,130,246,.2);color:var(--blue2)">④</span>PSD (단품)</h2>
+
+  <div class="info-box red">
+    <div class="icon">⚠️</div>
+    <div class="ib-content">
+      <div class="ib-title">텍스트 이중 렌더 방지</div>
+      비텍스트 레이어를 합성한 배경 PNG 에는 <strong>텍스트 레이어를 반드시 제외</strong>해야 한다(<code class="inline">kind==='raster'</code> 만 전달).
+      그래야 "추출 텍스트 제외 합성"이 되어 텍스트가 두 번 찍히지 않는다.
+    </div>
+  </div>
+
+  <h3 class="sub-title"><span style="background:var(--blue)"></span>파싱 (<code class="inline">src/psd/reader.mjs</code>)</h3>
+  <ul class="bullet">
+    <li><strong>텍스트 레이어 → 편집 가능 textbox</strong> — 내용 + 근사 폰트/크기/색(<code>EngineData</code> best-effort, 관리자 확정 전제). 픽셀 bbox 0 이어도(합성 PSD 흔함) 폰트/내용으로 근사 박스.</li>
+    <li><strong>비텍스트 레이어 → 배경 PNG 1장</strong> — <code>kind:'raster'</code> 만 합성.</li>
+    <li><strong>z-순서 뒤집기</strong> — <code>@webtoon/psd</code> children 은 위→아래(<code>[0]</code>=최상단). 합성/렌더는 아래부터라야 하므로 뒤집어 <strong>bottom→top</strong>(배경 맨 아래, 텍스트 위).</li>
+    <li><strong>DPI 추출</strong> — <code>resolutionInfo</code> DPI 로 px→mm(<code>PixelsPerCM</code> 이면 ×2.54). 정보 없으면 72dpi 가정.</li>
+    <li><strong>줄바꿈 정규화</strong> — Photoshop <code>\r</code> → <code>\n</code>.</li>
+  </ul>
+
+  <h3 class="sub-title"><span style="background:var(--blue)"></span>배경 합성 (<code class="inline">src/psd/rasterizePsd.mjs</code>)</h3>
+  <ul class="bullet">
+    <li>PSD <strong>원본 px 해상도 그대로</strong> 합성(인쇄 해상도 보존).</li>
+    <li>브라우저: 레이어별 임시 <code>&lt;canvas&gt;</code> → <code>drawImage</code> 알파 합성(위치/클리핑 자동).</li>
+    <li>Node: <code>sharp</code> 합성. ⚠️ 캔버스 밖 레이어 스킵(sharp 음수/초과 오프셋 거부). 브라우저는 <code>drawImage</code> 로 정상 클리핑.</li>
+  </ul>
+
+  <h3 class="sub-title"><span style="background:var(--blue)"></span>단일 페이지 템플릿 (<code class="inline">src/convert/toSinglePageTemplate.mjs</code>)</h3>
+  <ul class="bullet">
+    <li>좌표: PSD px → 물리 mm(소스 dpi) → 캔버스 px(템플릿 dpi 150). 스케일 = <code>150 / sourceDpi</code>.</li>
+    <li>배경 아트워크(최하단) + 텍스트 textbox(근사값).</li>
+    <li><strong>출력 = <code>type='page'</code> 또는 <code>'cover'</code> 단일 페이지 Template (spreadConfig 없음).</strong></li>
+    <li>경고: 폰트 확정 필요 · "텍스트 폰트/크기/효과는 추출 근사값 — 에디터에서 관리자 확정 필요" · (CMYK PSD) 지원 제한 · 해상도 &lt;300dpi.</li>
+  </ul>
+</section>
+
+<!-- ⑤ 책등 가변 -->
+<section class="section" id="s5">
+  <h2 class="section-title"><span class="num" style="background:rgba(168,85,247,.2);color:var(--purple2)">⑤</span>책등 가변 (런타임 파생)</h2>
+
+  <p class="desc">
+    표지 spread 템플릿의 <code class="inline">spineWidthMm</code> 는 <strong>권위 고정값이 아니라 런타임 파생값</strong>이다.
+    권위 검증 <code class="inline">validateSpreadAgainstAuthority</code>(<code class="inline">packages/types/src/index.ts</code>)는
+    <strong>cover 가로/세로, 날개 유무/폭 4필드만</strong> 비교하고 <strong>책등·총폭은 비교하지 않는다</strong>.
+  </p>
+
+  <div class="code-block">
+    <div class="cb-header"><div class="cb-dots"><span class="cb-dot" style="background:#ff5f56"></span><span class="cb-dot" style="background:#ffbd2e"></span><span class="cb-dot" style="background:#27c93f"></span></div><span class="cb-lang">책등폭 공식 — packages/types/src/index.ts</span></div>
+<pre>spineWidth(mm) = (pageCount / <span class="num">2</span>) × paperThickness + bindingMargin</pre>
+  </div>
+
+  <ul class="bullet">
+    <li>셋(<code>editorMode='book'</code>)이 구성되면 내지 수 변동 시 <code>SpreadPlugin.resizeSpine</code>(canvas-core)가 책등 자동 리사이즈 + <code>meta.regionRef/anchor</code> 기준 영역 객체 재배치.</li>
+    <li><strong>표지 IDML 단독으론 책 셋 완전 자동화 불가</strong> — 책모드 검증이 <strong>SPREAD 1 + PAGE≥1</strong> 강제(내지 필수).</li>
+  </ul>
+
+  <div class="info-box yellow">
+    <div class="icon">⚠️</div>
+    <div class="ib-content">
+      <div class="ib-title">구현 주의 (meta 라운드트립)</div>
+      객체 <code class="inline">meta</code>(regionRef/anchor)는 <code class="inline">resizeSpine</code> 재배치의 유일한 입력인데, 표준 단일 Template 저장경로 직렬화 화이트리스트에 <code class="inline">meta</code> 포함 여부 확인 필요(<code class="inline">useTemplateSetSave</code> 경로만 포함).
+      탈락 시 책등 가변이 깨질 수 있음. 보완: 화이트리스트에 <code class="inline">'meta'</code> 추가, 또는 <code class="inline">spreadConfig.regions</code> 기반 on-load regionRef 재계산.
+    </div>
+  </div>
+</section>
+
+<!-- ⑥ 등록 워크플로우 -->
+<section class="section" id="s6">
+  <h2 class="section-title"><span class="num" style="background:rgba(34,197,94,.2);color:var(--green2)">⑥</span>등록 워크플로우 (admin <code class="inline" style="font-size:14px">/templates/import</code>)</h2>
+  <p class="desc">진입점 <code class="inline">apps/admin/src/pages/Templates/TemplateImport.tsx</code>.</p>
+
+  <div class="flow-steps">
+    <div class="flow-step flow-purple">
+      <div class="step-left"><div class="step-num">1</div><div class="step-line"></div></div>
+      <div class="step-body"><div class="step-title">불러오기 · 자동 감지</div>
+        <div class="step-detail"><code>.idml</code>/<code>.psd</code> 드래그&amp;드롭. <code>detectFormat</code> 으로 포맷 결정. 브라우저에서 직접 변환(자동 업로드 안 함).</div></div>
+    </div>
+    <div class="flow-step flow-purple">
+      <div class="step-left"><div class="step-num">2</div><div class="step-line"></div></div>
+      <div class="step-body"><div class="step-title">변환</div>
+        <div class="step-detail">IDML: 벡터/하이브리드 토글(변경 시 재변환). PSD: 항상 하이브리드.</div></div>
+    </div>
+    <div class="flow-step flow-purple">
+      <div class="step-left"><div class="step-num">3</div><div class="step-line"></div></div>
+      <div class="step-body"><div class="step-title">검수</div>
+        <div class="step-detail">미리보기 SVG + 감지 사양(표지: cover/spine/wing/총폭, PSD: 판형/텍스트 수/배경 레이어 수) + 경고 리스트.</div></div>
+    </div>
+    <div class="flow-step flow-purple">
+      <div class="step-left"><div class="step-num">4</div><div class="step-line"></div></div>
+      <div class="step-body"><div class="step-title">등록 대상 선택</div>
+        <div class="step-detail">
+          <strong>IDML 표지</strong>: (a) 표지 단품 등록 → 편집기 <code>/templates/editor?id=...</code> · (b) 책등 가변 셋으로 이어서 등록(방법 A) → <code>/template-sets/new</code> 로 <code>state.seedTemplateId</code> 인계.<br>
+          <strong>PSD</strong>: 페이지 타입(page/cover) 선택 → 단일 페이지 Template 등록 → 편집기(텍스트 확정).
+        </div></div>
+    </div>
+    <div class="flow-step flow-purple">
+      <div class="step-left"><div class="step-num">5</div></div>
+      <div class="step-body"><div class="step-title">저장 시 정리</div>
+        <div class="step-detail"><code>_idml</code>/<code>_psd</code> 디버그 필드 제거, <code>meta</code> 유지.</div></div>
+    </div>
+  </div>
+
+  <div class="info-box green">
+    <div class="icon">📚</div>
+    <div class="ib-content">
+      <div class="ib-title">책등 가변 셋 인계(방법 A) — TemplateSetForm.tsx</div>
+      <code class="inline">seedTemplateId</code> 를 받은 <code class="inline">TemplateSetForm</code> 이 자동으로: 셋 타입 <code class="inline">BOOK</code> · <code class="inline">editorMode=BOOK</code> · 셋 판형 = 표지 한 면 크기(<code class="inline">spreadConfig.spec.coverWidth/Height</code>) · 표지(spread)를 첫 템플릿(필수)으로 자동 추가 · <code class="inline">canAddPage=true</code>.
+      관리자는 <strong>내지(page) 추가 + 페이지 수 범위(<code class="inline">pageCountRange</code>)</strong> 만 수동으로 채운다.
+      상품 연결(<code class="inline">ProductTemplateSet</code>, sortcode)은 별도 수동 단계.
+    </div>
+  </div>
+</section>
+
+<!-- ⑦ 자동 vs 수동 -->
+<section class="section" id="s7">
+  <h2 class="section-title"><span class="num" style="background:rgba(34,197,94,.2);color:var(--green2)">⑦</span>자동 vs 수동</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>구분</th><th>항목</th></tr></thead>
+      <tbody>
+        <tr><td><span class="tag auto">자동</span></td><td>IDML/PSD 변환 · 표지 Template 등록 · 셋 폼 책모드/판형/표지 자동 추가 · 책등 가변 런타임(<code class="inline">resizeSpine</code>)</td></tr>
+        <tr><td><span class="tag manual">수동 필수</span></td><td>내지 템플릿 선택 · <code class="inline">pageCountRange</code> · PSD 텍스트 폰트/크기/효과 확정 · 상품 카테고리 연결(ProductTemplateSet)</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ⑧ 인쇄 규약 / 손실 -->
+<section class="section" id="s8">
+  <h2 class="section-title"><span class="num" style="background:rgba(245,158,11,.2);color:var(--yellow2)">⑧</span>인쇄 규약 / 손실 주의</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>항목</th><th>현황</th></tr></thead>
+      <tbody>
+        <tr><td>색</td><td>파이프라인 전체 RGB. CMYK→sRGB 색차. <code class="inline">cmykFill</code> 보존되나 <strong>출력단 미사용</strong>. canvas-core <code class="inline">colors.ts</code> 에 ICC(LCMS2 기반) <code class="inline">cmykToRgb</code> 존재하나 기본은 legacy 공식 폴백</td></tr>
+        <tr><td>폰트</td><td>IDML/PSD 모두 미임베드 → 시딩/확정 필요</td></tr>
+        <tr><td>효과</td><td>overprint/투명도/블렌드 미추출</td></tr>
+        <tr><td>bleed</td><td>IDML: <code class="inline">DocumentBleedTopOffset</code> 명시값. PSD: 캔버스 전체=블리드 가정</td></tr>
+        <tr><td>해상도</td><td>PSD 원본 px 상한(&lt;300dpi 경고). 하이브리드/PSD 배경은 원본 해상도 의존</td></tr>
+        <tr><td>벡터</td><td>IDML 도형/텍스트(svg2pdf)는 무손실</td></tr>
+        <tr><td>래스터</td><td>하이브리드 배경/PSD 배경은 원본 해상도 의존</td></tr>
+        <tr><td>INDD</td><td><code class="inline">scripts/indd-to-idml.jsx</code>(ExtendScript)로 IDML 변환 후 입력</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ⑨ AI -->
+<section class="section" id="s9">
+  <h2 class="section-title"><span class="num" style="background:rgba(100,116,139,.2);color:var(--gray)">⑨</span>AI (일러스트) 현황</h2>
+  <div class="info-box yellow">
+    <div class="icon">🚧</div>
+    <div class="ib-content">
+      <div class="ib-title">미지원 (네이티브 .ai 파싱 경로 없음)</div>
+      권장 우회: <strong>(1)</strong> AI → SVG 내보내기 → 기존 SVG 임포트(편집 가능, 가장 권장) ·
+      <strong>(2)</strong> AI(=PDF) → Ghostscript 래스터 → 하이브리드(평면, 편집 불가).
+      네이티브 <code class="inline">.ai</code> 편집 객체 파싱은 비권장(로드맵).
+    </div>
+  </div>
+</section>
+
+<!-- ⑩ 파일 구조 / 검증 -->
+<section class="section" id="s10">
+  <h2 class="section-title"><span class="num" style="background:rgba(59,130,246,.2);color:var(--blue2)">⑩</span>파일 구조 / 검증</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>경로</th><th>역할</th></tr></thead>
+      <tbody>
+        <tr><td><code class="inline">src/index.mjs</code> (+ <code class="inline">.d.mts</code>)</td><td>공개 API</td></tr>
+        <tr><td><code class="inline">src/geometry/units.mjs</code></td><td>pt/mm/px 변환(DPI 150)</td></tr>
+        <tr><td><code class="inline">src/geometry/matrix.mjs</code></td><td>ItemTransform 아핀행렬 합성/적용/분해</td></tr>
+        <tr><td><code class="inline">src/geometry/regions.mjs</code></td><td>5영역 분할 + resolveRegionAtX + 앵커</td></tr>
+        <tr><td><code class="inline">src/geometry/path.mjs</code></td><td>PathGeometry → path d 복원(베지어)</td></tr>
+        <tr><td><code class="inline">src/idml/reader.mjs</code></td><td>IDML ZIP+XML 파싱 → IdmlDoc</td></tr>
+        <tr><td><code class="inline">src/convert/toSpreadTemplate.mjs</code></td><td>IdmlDoc → 표지 펼침면 DTO</td></tr>
+        <tr><td><code class="inline">src/convert/toSinglePageTemplate.mjs</code></td><td>PSD → 단일 페이지 DTO</td></tr>
+        <tr><td><code class="inline">src/psd/reader.mjs</code></td><td>PSD 파싱 → 레이어 분리</td></tr>
+        <tr><td><code class="inline">src/psd/rasterizePsd.mjs</code></td><td>비텍스트 합성 → 배경 PNG</td></tr>
+        <tr><td><code class="inline">src/raster/rasterize.mjs</code></td><td>하이브리드 비텍스트 → 300dpi PNG</td></tr>
+        <tr><td><code class="inline">src/preview/svg.mjs</code></td><td>변환 결과 → 미리보기 SVG</td></tr>
+        <tr><td><code class="inline">scripts/indd-to-idml.jsx</code></td><td>INDD → IDML(ExtendScript)</td></tr>
+        <tr><td><code class="inline">scripts/convert-sample.mjs</code></td><td>IDML 변환 CLI</td></tr>
+        <tr><td><code class="inline">scripts/render-preview.mjs</code></td><td>변환 결과 → SVG/PNG 렌더</td></tr>
+        <tr><td><code class="inline">scripts/gen-psd-fixture.mjs</code></td><td>테스트용 PSD 픽스처(ag-psd)</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="info-box green">
+    <div class="icon">✅</div>
+    <div class="ib-content">
+      <div class="ib-title">검증 현황</div>
+      코어 단위테스트 통과 — geometry units/matrix/regions/path (<code class="inline">node --test</code>, 의존성 0, 34건 통과). ·
+      IDML 벡터/하이브리드 + PSD 단일페이지 실제 브라우저 변환 E2E 확인. · admin tsc + vite build 통과.
+    </div>
+  </div>
+
+  <div class="code-block">
+    <div class="cb-header"><div class="cb-dots"><span class="cb-dot" style="background:#ff5f56"></span><span class="cb-dot" style="background:#ffbd2e"></span><span class="cb-dot" style="background:#27c93f"></span></div><span class="cb-lang">bash</span></div>
+<pre><span class="comment"># geometry 코어 테스트(의존성 설치 없이)</span>
+node --test packages/indesign-import/src/geometry/units.test.mjs \
+            packages/indesign-import/src/geometry/matrix.test.mjs \
+            packages/indesign-import/src/geometry/regions.test.mjs \
+            packages/indesign-import/src/geometry/path.test.mjs
+
+<span class="comment"># IDML 변환 CLI</span>
+node packages/indesign-import/scripts/convert-sample.mjs fixtures/cover-sample.idml</pre>
+  </div>
+</section>
+
+<!-- ⑪ 로드맵 -->
+<section class="section" id="s11">
+  <h2 class="section-title"><span class="num" style="background:rgba(168,85,247,.2);color:var(--purple2)">⑪</span>로드맵 / 잔여</h2>
+  <ul class="bullet">
+    <li><strong>AI(SVG/PDF) 임포트 경로</strong> 정식화.</li>
+    <li><strong>폰트 시딩 게이트</strong> — 미임베드 폰트 자동 시딩/확정.</li>
+    <li><strong>효과 추출</strong> — overprint/투명도/블렌드.</li>
+    <li><strong>워커 CMYK 출력</strong> — <code>cmykFill</code> 보존값 출력단 사용, TrimBox/BleedBox(B안).</li>
+    <li><strong>하이브리드/PSD PNG 업로드</strong> — dataURL 인라인 → <code>filesApi</code> 업로드(DB 비대화 방지).</li>
+    <li><strong>에디터 실로드 end-to-end</strong> — 책등 가변 런타임 실 에디터 로드 검증(<code>meta</code> 라운드트립 포함).</li>
+    <li><strong>PSD 벡터형(셰이프) 레이어 보존 옵션</strong> — 선택적.</li>
+  </ul>
+
+  <p class="desc" style="font-size:12px;color:var(--text3);margin-top:32px">
+    작성: 2026-06-09 · 코드 기준 검증(packages/indesign-import/src/, apps/admin/src/pages/Templates/TemplateImport.tsx, TemplateSets/TemplateSetForm.tsx, packages/types/src/index.ts).
+  </p>
+</section>
+
+</main>
+</div>
+</body>
+</html>

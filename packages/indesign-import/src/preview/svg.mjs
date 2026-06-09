@@ -22,8 +22,8 @@ export function buildPreviewSvg(dto, opts = {}) {
   parts.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`);
   parts.push(`<rect width="${W}" height="${H}" fill="#f4f4f5"/>`);
 
-  // 영역 경계 + 라벨
-  for (const r of dto.spreadConfig.regions) {
+  // 영역 경계 + 라벨 (단일 페이지 = spreadConfig 없음 → 스킵)
+  for (const r of dto.spreadConfig?.regions || []) {
     if (r.width <= 0) continue;
     parts.push(`<rect x="${s(r.x)}" y="0" width="${s(r.width)}" height="${H}" fill="none" stroke="#c026d3" stroke-dasharray="6 4" stroke-width="1"/>`);
     parts.push(`<text x="${s(r.x + r.width / 2)}" y="14" fill="#c026d3" font-size="11" text-anchor="middle" font-family="sans-serif">${esc(r.kind)}</text>`);

@@ -215,6 +215,11 @@
 | [`ADMIN_SCREENS.md`](./ADMIN_SCREENS.md) | Admin 화면 |
 | [`product-templateset-linking-plan.md`](./product-templateset-linking-plan.md) | Product↔TemplateSet 연결 |
 
+### 디자인 가져오기 (변환기)
+| 문서 | 설명 |
+|------|------|
+| [`DESIGN_IMPORT_CONVERTER.md`](./DESIGN_IMPORT_CONVERTER.md) / [`.html`](./DESIGN_IMPORT_CONVERTER.html) | **IDML/PSD → 템플릿 변환기** (`@storige/indesign-import`) — IDML 표지 펼침면(벡터/하이브리드·책등 가변·5영역) + PSD 단품(텍스트=편집/비텍스트=배경 PNG) · admin `/templates/import` 워크플로우 · 인쇄 손실 주의 · 로드맵 |
+
 ### PDF / 워커
 | 문서 | 설명 |
 |------|------|

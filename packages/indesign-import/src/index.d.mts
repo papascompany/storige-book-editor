@@ -61,6 +61,34 @@ export interface SpreadTemplateResult {
   draftTemplateDto: DraftTemplateDto;
 }
 
+export interface SinglePageDto {
+  name: string;
+  type: 'page' | 'cover';
+  width: number;
+  height: number;
+  canvasData: {
+    version: string;
+    width: number;
+    height: number;
+    objects: FabricObjectLike[];
+  };
+}
+
+export interface SinglePageResult {
+  draftTemplateDto: SinglePageDto;
+  widthMm: number;
+  heightMm: number;
+  textCount: number;
+  rasterCount: number;
+  warnings: string[];
+  fonts: string[];
+}
+
+export function convertPsdToTemplate(
+  buffer: ArrayBuffer | Uint8Array,
+  opts?: { name?: string; pageType?: 'page' | 'cover'; previewWidth?: number }
+): Promise<{ result: SinglePageResult; dto: SinglePageDto; previewSvg: string }>;
+
 export interface IdmlDoc {
   pages: { self: string; name: string; widthPt: number; heightPt: number; leftSpreadPt: number; topSpreadPt: number }[];
   items: unknown[];

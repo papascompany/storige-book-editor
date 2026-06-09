@@ -713,12 +713,19 @@ importers:
 
   packages/indesign-import:
     dependencies:
+      '@webtoon/psd':
+        specifier: ^0.4.0
+        version: 0.4.0
       fast-xml-parser:
         specifier: ^4.5.0
         version: 4.5.6
       jszip:
         specifier: ^3.10.1
         version: 3.10.1
+    devDependencies:
+      ag-psd:
+        specifier: ^30.1.1
+        version: 30.1.1
 
   packages/types:
     devDependencies:
@@ -3318,6 +3325,9 @@ packages:
     resolution: {integrity: sha512-NZyJarBfL7nWwIq+FDL6Zp/yHEhePMNnnJ0y3qfieCrmNvYct8uvtiV41UvlSe6apAfk0fY1FbWx+NwfmpvtTg==}
     engines: {node: '>=0.4.0'}
     hasBin: true
+
+  ag-psd@30.1.1:
+    resolution: {integrity: sha512-0GbWYR4Rvm1QnWCYeMiVbUJBXnSyTUKvNUK2tIIVDt/wrUVUL9pHTsnwqOTonEC2RRh5I/aUcGydc1LNgXfJWA==}
 
   agent-base@6.0.2:
     resolution: {integrity: sha512-RZNwNclF7+MS/8bDg70amg32dyeZGZxiDuQmZxKLAlQjr3jGyLx+4Kkk58UO7D2QdgFIQCovuSuZESne6RG6XQ==}
@@ -5986,6 +5996,9 @@ packages:
 
   pako@1.0.11:
     resolution: {integrity: sha512-4hLB8Py4zZce5s4yd9XzopqwVv/yGNhV1Bl8NTmCq1763HeK2+EwVTv+leGeL13Dnh2wfbqowVPXCIO0z4taYw==}
+
+  pako@2.1.0:
+    resolution: {integrity: sha512-w+eufiZ1WuJYgPXbV/PO3NCMEc3xqylkKHzp8bxp1uW4qaSNQUkwmLLEc3kKsfz8lpV1F8Ht3U1Cm+9Srog2ug==}
 
   paper@0.12.18:
     resolution: {integrity: sha512-ZSLIEejQTJZuYHhSSqAf4jXOnii0kPhCJGAnYAANtdS72aNwXJ9cP95tZHgq1tnNpvEwgQhggy+4OarviqTCGw==}
@@ -10676,6 +10689,11 @@ snapshots:
 
   acorn@8.15.0: {}
 
+  ag-psd@30.1.1:
+    dependencies:
+      base64-js: 1.5.1
+      pako: 2.1.0
+
   agent-base@6.0.2:
     dependencies:
       debug: 4.4.3
@@ -14042,6 +14060,8 @@ snapshots:
   package-json-from-dist@1.0.1: {}
 
   pako@1.0.11: {}
+
+  pako@2.1.0: {}
 
   paper@0.12.18: {}
 
