@@ -60,7 +60,7 @@
 
 **교차검증 결론**: a92f146 좌표수정 = 정확·완전·회귀無(감사[1]의 "치명적" 주장은 commit 오귀속 — a92f146는 변환기 4파일만 변경). width 단위(px vs mm) = 버그 아님(워크스페이스는 `Template.width`(mm)로 산출, canvasData.width 미사용). exportToPDF = 선재 blocker 확정(수정함).
 
-**⏸ 분리된 선재 버그(별도 task `task_99a6a0c0`)**: `SpreadPlugin` 객체↔region **좌표계 불일치** — 엔진 regions(top-left) vs `handleObjectModified`/`repositionObjects`의 raw `getBoundingRect()`(중앙원점 scene). **드래그 영역이동·책등가변 시에만** 발현(정적 렌더 정상). 수정은 미변환 2개 호출부에만 `getContentOrigin()` 적용(❌ region.x 전역시프트 금지 — guides/labels 깨짐). center-origin 테스트 추가 + E2E 필요. a92f146와 무관, 중위험 P1.
+**✅ 선재 버그 수정(`1d6bf9e`, a92f146 무관)**: `SpreadPlugin` 객체↔region **좌표계 불일치**. 엔진은 content 좌표(0..totalWidthPx), Fabric 은 중앙원점 scene. 3개 호출부(`handleObjectModified`/`repositionObjects`/`checkObjectsOutOfBounds`)가 좌표 변환 없이, 게다가 **`getBoundingRect()`(무인자=lineCoords=viewport 좌표, 줌 의존)** 를 엔진에 넘겨 **드래그 영역이동·책등가변 시** 영역 오판정·오배치(정적 렌더는 미발현). 수정: `getContentBoundingRect()` 헬퍼(=`getBoundingRect(true,true)` scene → −origin content), 입력 content 변환 + 출력 +origin scene 복원. 신규 `SpreadCoordBridge.test.ts`(버그재현+수정). canvas-core 226/226, editor build OK. ⚠️ **라이브 E2E(실 책등가변 드래그/리사이즈)는 미검증** — 정적 경로 미영향이라 회귀 위험 낮으나 실세션 1회 확인 권장(§2-b 절차).
 
 > 좌표 규약 상세: 사용자 메모리 `reference_coordinate_convention`.
 
