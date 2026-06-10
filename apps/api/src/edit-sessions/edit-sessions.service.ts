@@ -467,7 +467,132 @@ export class EditSessionsService {
       );
     }
 
+    // P4 (2026-06-10) — 고객 업로드 내지 PDF 작업사이즈 자동 임포지션 (opt-in).
+    // 마스터 게이트: TemplateSet.cropMarkEnabled === true 인 세션만 변환 잡 발행.
+    //   cropMarkEnabled !== true → 완전 no-op(현행 보존). 기본 false 라 배포 무변경.
+    // 메서드 내부에서 모든 게이트/예외를 처리하므로 spread 포함 모든 경로에서 안전 호출.
+    await this.createInnerPdfImpositionJob(completed);
+
     return completed;
+  }
+
+  /**
+   * P4 — 고객 업로드 내지 PDF 작업사이즈 자동 임포지션 잡 발행 (2026-06-10, opt-in).
+   *
+   * 대상: 고객이 첨부한 내지 PDF (session.contentPdfFileId). 편집기 산출 PDF(coverFileId/
+   * contentFileId)는 대상이 아니다(convert 미경유 정책 유지).
+   *
+   * ⚠️ 마스터 opt-in 게이트 — TemplateSet.cropMarkEnabled === true 일 때만 발행:
+   *   - cropMarkEnabled !== true            → 발행 안 함(현행 100% 보존). 기본 false.
+   *   - contentPdfFileId 없음               → 발행 안 함(첨부 내지 없음).
+   *   - underlay 모드(표시전용)              → 발행 안 함. 최종 인쇄는 원본 PDF 그대로라
+   *                                            임포지션 무의미(엔티티 주석 §content_pdf_mode).
+   *   - templateSet 미연결/조회실패/workSize 무효 → 발행 안 함(best-effort).
+   *
+   * 동작: convert 잡을 발행하되 convertOptions 에 editSize(=작업사이즈=trim+bleed*2),
+   * sizeToleranceMm 만 주입한다. mode 는 주입하지 않음 → 워커 convert() 의 resolveMode 가
+   * 실측 vs editSize±tol 비교로 자체결정(동일=passthrough / 큼=innerfit / 작음=center).
+   *
+   * ⚠️ 통합 한계(메인 세션 검증 필요): 변환 결과는 새 converted PDF(워커 job.result.
+   * outputFileUrl)로 산출되나, 본 메서드는 session.contentPdfFileId 를 그 결과로 자동
+   * 재배선하지 않는다. 후속(PHP compose-mixed/마이페이지 다운로드)은 여전히 원본
+   * contentPdfFileId 를 참조한다. 결과 연결은 콜백/후속 배선이 필요하며, cropMarkEnabled
+   * 가 기본 off 이므로 현 시점 전 고객 영향 0. (아래 보고 참조.)
+   *
+   * best-effort: 어떤 실패도 세션 완료를 막지 않는다(throw 금지).
+   */
+  private async createInnerPdfImpositionJob(
+    session: EditSessionEntity,
+  ): Promise<void> {
+    try {
+      // 첨부 내지 PDF 없음 → no-op.
+      if (!session.contentPdfFileId) return;
+
+      // underlay(표시전용)는 원본 PDF 그대로 인쇄 → 임포지션 대상 아님.
+      const pdfMode = session.contentPdfMode ?? 'replace';
+      if (pdfMode === 'underlay') {
+        this.logger.log(
+          `[inner-imposition] session ${session.id}: contentPdfMode=underlay → 임포지션 스킵(원본 인쇄)`,
+        );
+        return;
+      }
+
+      // 템플릿셋 미연결 → 작업사이즈 산출 불가 → 스킵(현행).
+      if (!session.templateSetId) return;
+
+      let cropMarkEnabled = false;
+      let workWidth: number | undefined;
+      let workHeight: number | undefined;
+      let sizeToleranceMm = 0.2;
+      try {
+        const templateSet = await this.templateSetsService.findOne(
+          session.templateSetId,
+        );
+        cropMarkEnabled = templateSet.cropMarkEnabled === true;
+        const bleedMm = templateSet.bleedMm ?? 3;
+        sizeToleranceMm = templateSet.sizeToleranceMm ?? 0.2;
+        // 작업(work) 사이즈 = 재단(판형) + 사방 블리드*2. (createValidationJobs 와 동일 규약)
+        workWidth = templateSet.width + bleedMm * 2;
+        workHeight = templateSet.height + bleedMm * 2;
+      } catch (e) {
+        this.logger.warn(
+          `[inner-imposition] templateSet ${session.templateSetId} 조회 실패 → 임포지션 스킵(완료는 계속): ${(e as Error).message}`,
+        );
+        return;
+      }
+
+      // ⚠️ 마스터 게이트: opt-in 아니면 절대 발행 안 함(현행 100% 보존).
+      if (!cropMarkEnabled) {
+        return;
+      }
+
+      // 작업사이즈 무효 → 스킵.
+      if (!(workWidth! > 0) || !(workHeight! > 0)) {
+        this.logger.warn(
+          `[inner-imposition] session ${session.id}: 작업사이즈 무효(${workWidth}x${workHeight}) → 스킵`,
+        );
+        return;
+      }
+
+      const job = await this.workerJobsService.createConversionJob({
+        fileId: session.contentPdfFileId,
+        siteId: session.siteId ?? undefined,
+        convertOptions: {
+          // mode 미지정 → 워커 resolveMode 가 실측 vs editSize 로 자체결정.
+          editSize: { width: workWidth, height: workHeight },
+          sizeToleranceMm,
+        },
+      });
+
+      // 임포지션 잡 추적 정보를 metadata 에 스냅샷(후속 배선/검증용, additive).
+      try {
+        session.metadata = {
+          ...(session.metadata ?? {}),
+          innerPdfImposition: {
+            jobId: job.id,
+            sourceFileId: session.contentPdfFileId,
+            workSize: { width: workWidth, height: workHeight },
+            sizeToleranceMm,
+            createdAt: new Date().toISOString(),
+          },
+        };
+        await this.sessionRepository.save(session);
+      } catch (e) {
+        this.logger.warn(
+          `[inner-imposition] metadata 스냅샷 저장 실패(무중단): ${(e as Error).message}`,
+        );
+      }
+
+      this.logger.log(
+        `[inner-imposition] Created conversion job ${job.id} for session ${session.id} ` +
+          `(content_pdf=${session.contentPdfFileId}, work=${workWidth}x${workHeight}mm, tol=${sizeToleranceMm})`,
+      );
+    } catch (error) {
+      // 완료 무중단 — 잡 발행 실패가 세션 완료를 막지 않도록.
+      this.logger.error(
+        `[inner-imposition] session ${session.id} 임포지션 잡 발행 실패(완료는 유지): ${(error as Error).message}`,
+      );
+    }
   }
 
   /**

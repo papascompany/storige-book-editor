@@ -70,7 +70,7 @@ export class PdfConverterService {
    */
   async convert(
     fileUrl: string,
-    options: ConversionOptions,
+    rawOptions: ConversionOptions,
     outputPath: string,
   ): Promise<ConversionResult> {
     this.logger.log(`Converting PDF: ${fileUrl}`);
@@ -86,6 +86,18 @@ export class PdfConverterService {
       const tempInputPath = path.join(this.storagePath, `input_${uuidv4()}.pdf`);
       const pdfBytes = await this.downloadFile(fileUrl);
       await fs.writeFile(tempInputPath, pdfBytes);
+
+      // ──────────────────────────────────────────────────────────────
+      // P4 — mode 자체결정 (2026-06-10).
+      // mode 가 명시되지 않았지만 editSize 가 주어진 업로드 경로에서는,
+      // 실측(getPdfInfo) vs editSize±허용오차 비교로 mode 를 결정한다.
+      //   - 동일(±tol)           → passthrough (무가공, 현행 효과와 동일)
+      //   - 실측 > editSize + tol → innerfit   (큼: 비율유지 다운스케일+중앙)
+      //   - 실측 < editSize - tol → center     (작음: 무스케일 중앙)
+      // mode 가 명시되면 그 값을 그대로 사용(아래 분기 자체결정 skip).
+      // editSize 가 없으면 결정하지 않음 → options.mode 가 계속 undefined →
+      //   현행(레거시) 경로 100% 유지(편집기 PDF/admin 자동수정 무영향). ⚠️ 게이트.
+      const options = await this.resolveMode(rawOptions, tempInputPath);
 
       let currentPath = tempInputPath;
       let pagesAdded = 0;
@@ -205,6 +217,80 @@ export class PdfConverterService {
       this.logger.error(`Conversion failed: ${error.message}`, error.stack);
       throw error;
     }
+  }
+
+  /**
+   * P4 — mode 자체결정 (2026-06-10).
+   *
+   * convert() 진입부에서 호출. mode 미지정 + editSize 주어진 업로드 경로에서만
+   * 실측(getPdfInfo) vs editSize±허용오차 비교로 mode 를 결정해 주입한다.
+   * applyImpositionMode 로직은 그대로 두고 진입부에서 mode 만 채운다.
+   *
+   * 결정 규칙(오너 스펙):
+   *   - 가로/세로 모두 동일(±tol)        → passthrough (무가공)
+   *   - 가로 또는 세로가 editSize+tol 초과 → innerfit   (큼: 비율유지 다운스케일+중앙)
+   *   - 그 외(작거나 같음)               → center     (작음: 무스케일 중앙)
+   *
+   * 보존:
+   *   - rawOptions.mode 가 이미 명시 → 그 값 우선(자체결정 skip).
+   *   - editSize 없음               → mode 미결정(undefined 유지) → 현행 레거시 경로.
+   *   - GS 미가용/실측 실패          → mode 미결정 유지(안전: 현행 경로로 폴백).
+   *
+   * 입력 객체를 변형하지 않고 얕은 복사본을 반환한다.
+   */
+  private async resolveMode(
+    rawOptions: ConversionOptions,
+    inputPath: string,
+  ): Promise<ConversionOptions> {
+    // 이미 mode 명시 또는 editSize 부재 → 자체결정 안 함(게이트).
+    if (rawOptions.mode) return rawOptions;
+    const editSize = rawOptions.editSize;
+    if (!editSize || !(editSize.width > 0) || !(editSize.height > 0)) {
+      return rawOptions;
+    }
+
+    // GS 미가용이면 imposition 자체가 폴백되므로 현행 경로 유지(결정 보류).
+    if (!this.gsAvailable) {
+      this.logger.warn(
+        'resolveMode: editSize 주어졌으나 Ghostscript 미가용 → mode 결정 보류(현행 경로 유지)',
+      );
+      return rawOptions;
+    }
+
+    let measuredW: number;
+    let measuredH: number;
+    try {
+      const info = await getPdfInfo(inputPath);
+      measuredW = info.width;
+      measuredH = info.height;
+    } catch (e) {
+      this.logger.warn(
+        `resolveMode: getPdfInfo 실패 → mode 결정 보류(현행 경로 유지): ${(e as Error).message}`,
+      );
+      return rawOptions;
+    }
+
+    const tol = rawOptions.sizeToleranceMm ?? 0.2;
+    const sameSize =
+      Math.abs(measuredW - editSize.width) <= tol &&
+      Math.abs(measuredH - editSize.height) <= tol;
+    const larger =
+      measuredW > editSize.width + tol || measuredH > editSize.height + tol;
+
+    let decided: 'passthrough' | 'innerfit' | 'center';
+    if (sameSize) {
+      decided = 'passthrough';
+    } else if (larger) {
+      decided = 'innerfit';
+    } else {
+      decided = 'center';
+    }
+
+    this.logger.log(
+      `resolveMode: measured ${measuredW}x${measuredH}mm vs edit ${editSize.width}x${editSize.height}mm (±${tol}) → mode='${decided}'`,
+    );
+
+    return { ...rawOptions, mode: decided };
   }
 
   /**
