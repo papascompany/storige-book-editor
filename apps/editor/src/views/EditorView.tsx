@@ -21,7 +21,7 @@ import { PagePanel } from '@/components/PagePanel/PagePanel'
 import { SpreadPagePanel } from '@/components/PagePanel/SpreadPagePanel'
 import { BookNavigation } from '@/components/PageNavigation/BookNavigation'
 import { useResolvedPageNavPosition } from '@/hooks/useResolvedPageNavPosition'
-import { useSpreadAutoAnchor, useSpreadOutOfBoundsToast } from '@/hooks/useCoverRegion'
+import { useSpreadAutoAnchor, useSpreadOutOfBoundsToast, useObjectOutOfTrimToast } from '@/hooks/useCoverRegion'
 import { useCanvasThemeSync } from '@/hooks/useCanvasThemeSync'
 import { useCanvasLocalBackup } from '@/hooks/useCanvasLocalBackup'
 import { productsApi } from '@/api'
@@ -516,6 +516,8 @@ export default function EditorView() {
   useSpreadAutoAnchor(ready)
   // 책등 폭 변경 후 캔버스 밖 객체 toast (cover.md §7 / D5 Phase 3b-iv)
   useSpreadOutOfBoundsToast(ready)
+  // P2: 재단선(트림박스) 이탈 객체 경고 toast (화면 가이드 — 일반/스프레드 공통)
+  useObjectOutOfTrimToast(ready)
   // 캔버스 측 다크 모드 동기화 — 룰러 + 객체 선택 핸들 (§8.3 다크 모드 Phase 3)
   useCanvasThemeSync(ready)
   // 5초마다 캔버스를 localStorage 에 백업 — iOS Safari WebContent 크래시 후 reload 시

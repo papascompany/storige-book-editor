@@ -18,7 +18,7 @@ class WorkspacePlugin extends PluginBase {
     height: 1200
   }
   name = 'WorkspacePlugin'
-  events = ['sizeChange', 'toggleCutBorder', 'toggleSafeBorder']
+  events = ['sizeChange', 'toggleCutBorder', 'toggleSafeBorder', 'objectOutOfTrim']
   hotkeys = []
 
   element: HTMLElement | undefined
@@ -27,6 +27,8 @@ class WorkspacePlugin extends PluginBase {
 
   private cutBorder: fabric.Path | null = null
   private safeSizeBorder: fabric.Path | null = null
+  // P2: 재단선 코너 마커(crop marks) — 화면 전용 system 가이드, excludeFromExport
+  private cropMarks: fabric.Group | null = null
 
   private _cutlineTemplate: fabric.Object | null = null
 
@@ -35,6 +37,8 @@ class WorkspacePlugin extends PluginBase {
   private _boundHandleObjectRemoved: ((e: fabric.IEvent) => void) | null = null
   private _boundHandleObjectModified: ((e: fabric.IEvent) => void) | null = null
   private _boundHandleObjectMoved: (() => void) | null = null
+  // P2: object:moving (드래그/리사이즈 중) 재단선 이탈 라이브 감지
+  private _boundHandleObjectMoving: ((e: fabric.IEvent) => void) | null = null
   private _boundEnsureTemplateBackgroundZOrder: (() => void) | null = null
   private _boundToggleCutBorder: ((value?: boolean) => void) | null = null
   private _boundToggleSafeBorder: ((value?: boolean) => void) | null = null
@@ -61,6 +65,10 @@ class WorkspacePlugin extends PluginBase {
     }
     if (this._boundHandleObjectMoved) {
       this._canvas.off('object:moved', this._boundHandleObjectMoved)
+    }
+    if (this._boundHandleObjectMoving) {
+      this._canvas.off('object:moving', this._boundHandleObjectMoving)
+      this._canvas.off('object:scaling', this._boundHandleObjectMoving)
     }
     if (this._boundEnsureTemplateBackgroundZOrder) {
       this._canvas.off('object:added', this._boundEnsureTemplateBackgroundZOrder)
@@ -93,6 +101,7 @@ class WorkspacePlugin extends PluginBase {
     this._boundHandleObjectRemoved = null
     this._boundHandleObjectModified = null
     this._boundHandleObjectMoved = null
+    this._boundHandleObjectMoving = null
     this._boundEnsureTemplateBackgroundZOrder = null
     this._boundToggleCutBorder = null
     this._boundToggleSafeBorder = null
@@ -125,6 +134,7 @@ class WorkspacePlugin extends PluginBase {
       this._boundHandleObjectRemoved = this.handleObjectRemoved.bind(this)
       this._boundHandleObjectModified = this.handleObjectModified.bind(this)
       this._boundHandleObjectMoved = this.bringBordersToFront.bind(this)
+      this._boundHandleObjectMoving = this.handleObjectMoving.bind(this)
       this._boundEnsureTemplateBackgroundZOrder = this.ensureTemplateBackgroundZOrder.bind(this)
       this._boundToggleCutBorder = this.toggleCutBorder.bind(this)
       this._boundToggleSafeBorder = this.toggleSafeBorder.bind(this)
@@ -136,6 +146,9 @@ class WorkspacePlugin extends PluginBase {
       // 통합된 이벤트 핸들러 등록
       this._canvas.on('object:modified', this._boundHandleObjectModified)
       this._canvas.on('object:moved', this._boundHandleObjectMoved)
+      // P2: 드래그/리사이즈 중 재단선 이탈 라이브 감지
+      this._canvas.on('object:moving', this._boundHandleObjectMoving)
+      this._canvas.on('object:scaling', this._boundHandleObjectMoving)
 
       // 템플릿 배경의 Z-순서 보장
       this._canvas.on('object:added', this._boundEnsureTemplateBackgroundZOrder)
@@ -182,6 +195,11 @@ class WorkspacePlugin extends PluginBase {
     if (this.cutBorder) {
       this.cutBorder.visible = Boolean(this._options.showCutBorder)
       this.cutBorder.dirty = true
+      // P2: crop marks 도 cutBorder 가시성을 따른다
+      if (this.cropMarks) {
+        this.cropMarks.visible = Boolean(this._options.showCutBorder)
+        this.cropMarks.dirty = true
+      }
       this._canvas.requestRenderAll()
       this.bringBordersToFront()
     } else {
@@ -207,6 +225,11 @@ class WorkspacePlugin extends PluginBase {
     // safe border 있으면 최상위로 가져오기
     if (this.safeSizeBorder) {
       this.safeSizeBorder.bringToFront()
+    }
+
+    // P2: crop marks(재단 코너 마커) 도 최상위로 (화면 전용 가이드)
+    if (this.cropMarks) {
+      this.cropMarks.bringToFront()
     }
 
     this._canvas.requestRenderAll()
@@ -481,6 +504,11 @@ class WorkspacePlugin extends PluginBase {
       if (this.cutBorder) {
         this.cutBorder.visible = Boolean(this._options.showCutBorder)
         this.cutBorder.dirty = true
+        // P2: crop marks 도 cutBorder 가시성을 따른다
+        if (this.cropMarks) {
+          this.cropMarks.visible = Boolean(this._options.showCutBorder)
+          this.cropMarks.dirty = true
+        }
         this._canvas.requestRenderAll()
         this.bringBordersToFront()
       } else if (this._options.showCutBorder) {
@@ -666,8 +694,101 @@ class WorkspacePlugin extends PluginBase {
     // 경계선 최상위로 가져오기
     this.bringBordersToFront()
 
+    // P2: 재단선(trim) 이탈 검사 — 이동/리사이즈 확정 시점
+    this.checkObjectsOutOfTrim()
+
     // 기타 로직 처리
     this._editor.emit('object:modified', obj)
+  }
+
+  // P2: object:moving / object:scaling (드래그/리사이즈 중) 라이브 이탈 감지
+  private handleObjectMoving(_e: fabric.IEvent) {
+    if (!this._canvas || !this._canvas.getContext()) return
+    this.checkObjectsOutOfTrim()
+  }
+
+  /**
+   * P2: 사용자 객체가 재단선(trim) 사각형을 벗어났는지 검사하고
+   * `objectOutOfTrim` { count, objects } 이벤트를 발행한다 (화면 경고용).
+   *
+   * - 좌표계: workspace 중앙원점(scene). trim 사각형 = workspace 중심 ± trim 반폭.
+   *   trim 반폭 = mmToPxDisplay(size.width)/2 (px 단위는 size.width/2). 높이도 동일.
+   *   (재단선은 workspace 보다 각 변 cutSize/2 안쪽 = size.width/size.height 폭.)
+   * - 비교: 각 객체 getBoundingRect(true, true) (aCoords = scene absolute) 사용.
+   * - 제외: system 객체(meta.system), workspace/template-background/page-outline/
+   *   cutline-template/template-mockup/crop-marks, printguide/outline/overlay extensionType,
+   *   excludeFromExport 객체. (배경은 의도적으로 블리드까지 나가므로 제외.)
+   * - 출력/저장 경로는 전혀 건드리지 않음 — 순수 화면 경고.
+   */
+  private checkObjectsOutOfTrim(): void {
+    if (!this._canvas || !this._canvas.getContext()) return
+
+    const workspace = this._getWorkspace() as fabric.Object | null
+    if (!workspace) return
+    if (workspace.extensionType === 'clipping') return
+
+    const sizeWidth = this._options.size?.width
+    const sizeHeight = this._options.size?.height
+    if (!sizeWidth || !sizeHeight) return
+
+    // trim 폭/높이 (화면 픽셀)
+    let trimW: number
+    let trimH: number
+    if (this._options.unit === 'mm') {
+      trimW = mmToPxDisplay(sizeWidth)
+      trimH = mmToPxDisplay(sizeHeight)
+    } else {
+      trimW = sizeWidth
+      trimH = sizeHeight
+    }
+
+    const center = workspace.getCenterPoint()
+    const minX = center.x - trimW / 2
+    const maxX = center.x + trimW / 2
+    const minY = center.y - trimH / 2
+    const maxY = center.y + trimH / 2
+
+    // 시스템/가이드 객체로 간주해 제외할 id / extensionType
+    const excludedIds = new Set([
+      'workspace',
+      'template-background',
+      'template-mockup',
+      'page-outline',
+      'cutline-template',
+      'crop-marks',
+      'cut-border',
+      'safe-zone-border'
+    ])
+    const excludedExtTypes = new Set(['printguide', 'outline', 'overlay', 'template-element'])
+
+    const outOfTrim: fabric.Object[] = []
+    for (const obj of this._canvas.getObjects()) {
+      if (!obj) continue
+      if ((obj as any).meta?.system) continue
+      if (obj.excludeFromExport) continue
+      if (obj.id && excludedIds.has(obj.id)) continue
+      if (obj.extensionType && excludedExtTypes.has(obj.extensionType)) continue
+
+      // scene(absolute) 좌표 바운딩 — 줌/팬 무관 정합
+      const br = obj.getBoundingRect(true, true)
+      // 약간의 부동소수 여유(0.5px) — 정확히 경계에 붙은 경우 오판정 방지
+      const eps = 0.5
+      const overflowLeft = br.left < minX - eps
+      const overflowRight = br.left + br.width > maxX + eps
+      const overflowTop = br.top < minY - eps
+      const overflowBottom = br.top + br.height > maxY + eps
+
+      if (overflowLeft || overflowRight || overflowTop || overflowBottom) {
+        outOfTrim.push(obj)
+      }
+    }
+
+    if (outOfTrim.length > 0) {
+      this._editor.emit('objectOutOfTrim', {
+        count: outOfTrim.length,
+        objects: outOfTrim
+      })
+    }
   }
 
   // page-outline 기반의 모든 클립패스 업데이트
@@ -866,6 +987,11 @@ class WorkspacePlugin extends PluginBase {
       this._canvas.remove(this.cutBorder)
       this.cutBorder = null
     }
+    // P2: crop marks 도 함께 제거 (아래 early-return 경로에서도 잔존 방지)
+    if (this.cropMarks) {
+      this._canvas.remove(this.cropMarks)
+      this.cropMarks = null
+    }
 
     if (!this.workspace) return
     // cutline-template이 존재하면 cutBorder를 생성하지 않음
@@ -991,7 +1117,110 @@ class WorkspacePlugin extends PluginBase {
 
     this._canvas.add(this.cutBorder)
     this._canvas.renderAll()
+
+    // P2: 재단선(trim) 코너 마커를 함께 갱신 (화면 전용, excludeFromExport)
+    // adjustedWidth/Height = 재단선(trim) 사각형 폭/높이. 마커는 trim 4코너에 그린다.
+    this.createOrUpdateCropMarks(adjustedWidth, adjustedHeight)
+
     this.bringBordersToFront()
+  }
+
+  /**
+   * P2: 재단선(trim) 4코너에 표준 crop marks 를 그린다 (화면 전용 가이드).
+   *
+   * - cutSize(블리드) > 0 일 때만 생성. cutSize=0 이면 마커 없음(블리드 영역이 없어 의미 없음).
+   * - 각 코너에 2개의 짧은 선(수평/수직). trim 코너에서 바깥(블리드 방향)으로 뻗는다.
+   * - 1개의 system fabric.Group (id 'crop-marks') 로 묶어 excludeFromExport:true → PDF/저장 미포함.
+   * - 좌표는 workspace 중앙원점(scene) 기준. trim 반폭 = adjustedWidth/2.
+   *
+   * ⚠️ 출력(ServicePlugin) 경로는 절대 건드리지 않는다. 순수 화면 가이드.
+   */
+  private createOrUpdateCropMarks(trimWidth: number, trimHeight: number) {
+    // 기존 마커 제거
+    if (this.cropMarks) {
+      this._canvas.remove(this.cropMarks)
+      this.cropMarks = null
+    }
+
+    if (!this.workspace) return
+    if (this.workspace.extensionType === 'clipping') return
+    // cutline-template 모드에서는 자동 cutBorder 가 없으므로 마커도 생성하지 않음
+    if (this._canvas.getObjects().find((obj) => obj.id === 'cutline-template')) return
+
+    // 블리드(cutSize) 가 없으면 코너 마커도 의미 없음
+    const cutSize = this._options.size?.cutSize ?? 0
+    if (!cutSize || cutSize <= 0) return
+
+    // 블리드 폭(화면 픽셀): 워크스페이스 가장자리 ~ 재단선 사이 = cutSize/2 (각 변)
+    let bleedPx: number
+    if (this._options.unit === 'mm') {
+      bleedPx = mmToPxDisplay(cutSize) / 2
+    } else {
+      bleedPx = cutSize / 2
+    }
+    if (bleedPx <= 0) return
+
+    const center = this.workspace.getCenterPoint()
+    const halfW = trimWidth / 2
+    const halfH = trimHeight / 2
+    if (halfW <= 0 || halfH <= 0) return
+
+    // 마커 선 길이: 블리드 폭만큼(워크스페이스 가장자리까지) 뻗고,
+    // trim 안쪽으로는 약간(짧게) 들어가지 않도록 trim 코너에서 바깥으로만 그린다.
+    const len = bleedPx
+    const stroke = '#1a1a1a'
+    const strokeWidth = 0.5
+
+    const lineOpts = {
+      id: 'crop-mark-line',
+      stroke,
+      strokeWidth,
+      strokeUniform: true,
+      selectable: false,
+      evented: false,
+      hasControls: false,
+      hoverCursor: 'default'
+    }
+
+    // trim 코너 4개. 각 코너에서 수평선 1개 + 수직선 1개를 바깥(블리드)으로.
+    // 좌표는 workspace 로컬(중앙원점) 기준 — Group originX/originY='center', left/top=center 로 배치.
+    const corners: Array<{ x: number; y: number; dx: number; dy: number }> = [
+      { x: -halfW, y: -halfH, dx: -1, dy: -1 }, // 좌상
+      { x: halfW, y: -halfH, dx: 1, dy: -1 }, // 우상
+      { x: halfW, y: halfH, dx: 1, dy: 1 }, // 우하
+      { x: -halfW, y: halfH, dx: -1, dy: 1 } // 좌하
+    ]
+
+    const lines: fabric.Line[] = []
+    for (const c of corners) {
+      // 수평 마커: 코너에서 바깥쪽 x 방향으로 len 만큼
+      lines.push(
+        new fabric.Line([c.x, c.y, c.x + c.dx * len, c.y], { ...lineOpts })
+      )
+      // 수직 마커: 코너에서 바깥쪽 y 방향으로 len 만큼
+      lines.push(
+        new fabric.Line([c.x, c.y, c.x, c.y + c.dy * len], { ...lineOpts })
+      )
+    }
+
+    this.cropMarks = new fabric.Group(lines, {
+      left: center.x,
+      top: center.y,
+      originX: 'center',
+      originY: 'center',
+      selectable: false,
+      hasControls: false,
+      hoverCursor: 'default',
+      evented: false,
+      id: 'crop-marks',
+      extensionType: 'printguide',
+      editable: false,
+      excludeFromExport: true,
+      // 재단선(cutBorder)과 동일한 표시 토글을 따른다
+      visible: this._options.showCutBorder
+    })
+
+    this._canvas.add(this.cropMarks)
   }
 
   private async createOrUpdateSafeSize() {
