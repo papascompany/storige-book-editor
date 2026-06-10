@@ -95,6 +95,16 @@
 
 ---
 
+## 0-f. IDML 등록 플로우 버그 3건 수정 (2026-06-10 밤) — 저장 무한로딩 + 배치이미지
+
+오너 보고 3건(국어 IDML 변환불량 / 신규 저장 무한로딩 / MA-348 템플릿수정 저장 무한로딩) 전수 수정·검증(`9628f1a`).
+
+**저장 무한로딩(2·3)**: 변환 textbox 가 `styles` 키 없이 출력 → fabric 5.5 `stylesFromArray(undefined)` 가 undefined 전파 → `toObject`(저장)에서 `stylesToArray` 크래시("reading '0'") → 저장 JSON 실패 무한로딩. 브라우저 재현 12/12 확정. **수정**: converter `styles:{}` 출력 + canvas-core `core.ensureTextStyles()` 3중 방어(loadFromJSON/ toJSON/ saveJSON) + 기존 IDML 템플릿 2건 DB 백필. **라이브 검증**: 두 템플릿 모두 '성공적으로 업데이트' + 재로드 무결성 확인. ⚠️ Vercel 새 배포 후 **브라우저 캐시된 구 번들**이 한동안 크래시 재현시킴(새 탭/캐시버스트로 해소) — 배포 직후 검증 시 주의.
+
+**배치 이미지 누락(1)**: IDML 의 placed Image/PDF/EPS 는 원본 픽셀 미포함(링크 메타만) → 복원 불가가 정상. 기존엔 빈 프레임만 남아 표지 메인 비주얼 소실처럼 보임(LA-383). **수정**: reader `placedContent` 감지 → converter 가 회색 플레이스홀더(#e9e9e9, meta.placeholder='placed-image') + 경고("배치 이미지 N개 — 편집기에서 이미지 업로드로 교체"). b403bf52 를 새 변환으로 교체, 편집기 렌더 확인(플레이스홀더 2개 표시).
+
+---
+
 ## 2-b. D 에디터 실로드 E2E 절차
 
 1. admin: IDML 변환 → 표지 Template 등록 → 책등 가변 책 셋 등록(방법A) + 내지 추가 + pageCountRange. 2. 그 셋으로 책모드 세션. 3. ✅ 표지+영역 가이드. 4. 내지 수 변경 → ✅ 책등 폭 자동 재계산 + 앞/뒤표지 평행이동. 5. 편집완료→재로드 → ✅ meta 보존(책등 가변 재배치 동작).
