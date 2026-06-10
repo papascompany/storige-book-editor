@@ -1298,12 +1298,26 @@ export class WorkerJobsService {
       }
 
       // 2) 세션 contentPdfFileId 재포인팅 + metadata 결과 스냅샷
-      const prevFileId = session.contentPdfFileId;
-      session.contentPdfFileId = resultFileId;
-      session.metadata = {
-        ...(session.metadata ?? {}),
+      //
+      // ⚠️ 동시쓰기 lost update 방지 (2026-06-10) — 전체 save() 금지, 컬럼 한정 원자 update().
+      //    검증 잡 콜백(updateEditSessionWorkerStatus)과 본 콜백은 설계상 병렬 완료될 수 있다.
+      //    TypeORM save(entity) 는 전 컬럼을 기록하므로 stale 엔티티 save 가 상대 변경을
+      //    덮어쓴다(최악: 검증 콜백의 stale save 가 contentPdfFileId 를 원본으로 되돌려
+      //    임포지션 결과가 무증상 소실). → 갱신 컬럼을 contentPdfFileId + metadata 2개로 한정.
+      //    metadata 는 update 직전 fresh reload 본에 innerPdfImposition 패치만 머지해
+      //    경합 창을 최소화한다.
+      //    (잔여 한계: metadata 는 단일 JSON 컬럼이라 reload~update 사이 타 트랜잭션의
+      //     metadata 변경과는 여전히 최종-쓰기-승리. 현재 병렬 상대(검증 콜백)는 metadata 를
+      //     쓰지 않으므로 실질 경합 없음 — 향후 metadata 동시 기록자가 생기면 재설계 필요)
+      const fresh = await this.editSessionRepository.findOne({
+        where: { id: sessionId },
+      });
+      const base = fresh ?? session;
+      const prevFileId = base.contentPdfFileId;
+      const mergedMetadata = {
+        ...(base.metadata ?? {}),
         innerPdfImposition: {
-          ...((session.metadata as any)?.innerPdfImposition ?? {}),
+          ...((base.metadata as any)?.innerPdfImposition ?? {}),
           jobId: job.id,
           resultFileId,
           outputFileUrl,
@@ -1311,7 +1325,10 @@ export class WorkerJobsService {
           relinkedAt: new Date().toISOString(),
         },
       };
-      await this.editSessionRepository.save(session);
+      await this.editSessionRepository.update(sessionId, {
+        contentPdfFileId: resultFileId,
+        metadata: mergedMetadata,
+      });
 
       this.logger.log(
         `[inner-imposition] session ${sessionId} contentPdfFileId 재포인팅: ${prevFileId} → ${resultFileId} (job ${job.id})`,
@@ -1465,7 +1482,19 @@ export class WorkerJobsService {
 
     if (newWorkerStatus) {
       session.workerStatus = newWorkerStatus;
-      await this.editSessionRepository.save(session);
+      // ⚠️ 동시쓰기 lost update 방지 (2026-06-10) — 전체 save() 금지, 컬럼 한정 원자 update().
+      //    임포지션 콜백(relinkImposedInnerPdf)이 병렬로 contentPdfFileId/metadata 를 갱신할
+      //    수 있는데, 여기서 stale 엔티티를 전체 save 하면 그 결과를 원본으로 되돌린다.
+      //    본 메서드가 실제로 기록하는 컬럼은 workerStatus(+FAILED 시 workerError)뿐이므로
+      //    그 컬럼만 갱신한다. contentPdfFileId/metadata 등은 절대 포함 금지(상호 클로버 제거).
+      //    in-memory session 의 workerStatus/workerError 변경은 아래 sendWebhookCallback
+      //    payload 일관성을 위해 유지.
+      await this.editSessionRepository.update(session.id, {
+        workerStatus: newWorkerStatus,
+        ...(updateDto.status === WorkerJobStatus.FAILED
+          ? { workerError: session.workerError }
+          : {}),
+      });
       this.logger.log(`Updated EditSession ${session.id} workerStatus to ${newWorkerStatus}`);
 
       // Send webhook callback when validation completes or fails

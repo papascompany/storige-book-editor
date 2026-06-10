@@ -555,6 +555,20 @@ export class EditSessionsService {
         return;
       }
 
+      // 멱등 가드 (2026-06-10) — complete() 재진입 시 중복 발행 방지.
+      //   PHP가 HTTP 타임아웃 후 complete 를 재호출하면 본 메서드가 재진입한다.
+      //   이전 호출이 잡 발행 후 metadata.innerPdfImposition.jobId 스냅샷을 저장했다면
+      //   이미 임포지션 잡이 존재 → 재발행하면 중복 변환 잡 + 중복 File 레코드가 생기므로 스킵.
+      //   (스냅샷 저장 자체가 best-effort 라 드물게 가드가 빠질 수 있으나, 그 경우도
+      //    relink 콜백이 동일 결과로 수렴해 기능상 해는 없음 — 중복 잡 비용만 발생)
+      const existingJobId = (session.metadata as any)?.innerPdfImposition?.jobId;
+      if (existingJobId) {
+        this.logger.log(
+          `[inner-imposition] session ${session.id}: 임포지션 잡 ${existingJobId} 이미 발행됨 → 중복 발행 스킵(멱등)`,
+        );
+        return;
+      }
+
       const job = await this.workerJobsService.createConversionJob({
         fileId: session.contentPdfFileId,
         siteId: session.siteId ?? undefined,
