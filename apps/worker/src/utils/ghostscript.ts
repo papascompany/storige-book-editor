@@ -1,5 +1,6 @@
 import { spawn } from 'child_process';
 import { Logger } from '@nestjs/common';
+import { PDFDocument } from 'pdf-lib';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { VALIDATION_CONFIG } from '../config/validation.config';
@@ -174,6 +175,73 @@ export async function resizePdf(
 }
 
 /**
+ * 원본을 확대/축소 없이 지정한 페이지 크기(pageWmm × pageHmm) 중앙에 배치.
+ *
+ * addBleedToPdf 의 translate 기법을 일반화한 것으로, 블리드처럼 사방을 균등 확장하는
+ * 대신 (목표 − 원본)/2 만큼 평행이동해 **비대칭 패딩**으로 중앙 정렬한다.
+ * 스케일을 건드리지 않으므로(-dPDFFitPage 미사용) 콘텐츠는 1:1 크기로 보존된다.
+ *
+ * 사용처(P4 고객 업로드 내지):
+ *   - 블리드 없음 & 작업사이즈보다 작은 PDF → 작업사이즈 페이지 중앙에 무스케일 배치.
+ *
+ * @param input   입력 PDF 경로
+ * @param output  출력 PDF 경로
+ * @param pageWmm 목표 페이지 너비(mm) = 작업(편집) 사이즈 너비
+ * @param pageHmm 목표 페이지 높이(mm) = 작업(편집) 사이즈 높이
+ */
+export async function centerOnPage(
+  input: string,
+  output: string,
+  pageWmm: number,
+  pageHmm: number,
+): Promise<void> {
+  const MM_TO_PT = 2.83465;
+  const pageWpt = pageWmm * MM_TO_PT;
+  const pageHpt = pageHmm * MM_TO_PT;
+
+  // 원본 페이지 크기 측정 (translate 오프셋 계산용). 실패 시 0,0 오프셋(좌하단 정렬) 폴백.
+  let origWpt = pageWpt;
+  let origHpt = pageHpt;
+  try {
+    const info = await getPdfInfo(input);
+    origWpt = info.width * MM_TO_PT;
+    origHpt = info.height * MM_TO_PT;
+  } catch {
+    // 측정 실패 시 중앙 오프셋 0 (콜러 안 깨지게 — 최소한 패스만 보장)
+    origWpt = pageWpt;
+    origHpt = pageHpt;
+  }
+
+  // 비대칭 패딩: 좌하단 기준 (목표 − 원본)/2 만큼 이동 → 중앙
+  const dx = (pageWpt - origWpt) / 2;
+  const dy = (pageHpt - origHpt) / 2;
+
+  const args = [
+    '-q',
+    '-dNOPAUSE',
+    '-dBATCH',
+    '-dSAFER',
+    '-sDEVICE=pdfwrite',
+    '-dCompatibilityLevel=1.4',
+    ...PRINT_PRESERVE_ARGS,
+    `-dDEVICEWIDTHPOINTS=${pageWpt}`,
+    `-dDEVICEHEIGHTPOINTS=${pageHpt}`,
+    '-dFIXEDMEDIA',
+    // ⚠️ -dPDFFitPage 미사용: 스케일 금지(무스케일 중앙)
+    `-sOutputFile=${output}`,
+    '-c',
+    `<< /BeginPage { ${dx} ${dy} translate } bind >> setpagedevice`,
+    '-f',
+    input,
+  ];
+
+  await runGhostscript(args);
+  logger.log(
+    `Centered PDF on ${pageWmm}x${pageHmm}mm page (no scale, dx=${dx.toFixed(1)}pt dy=${dy.toFixed(1)}pt): ${output}`,
+  );
+}
+
+/**
  * PDF를 이미지로 변환 (미리보기 생성)
  */
 export async function pdfToImage(
@@ -229,41 +297,49 @@ export async function mergePdfs(
   logger.log(`Merged ${inputPaths.length} PDFs: ${outputPath}`);
 }
 
+/** points → mm (1pt = 0.352778mm) */
+const PT_TO_MM = 0.352778;
+/** A4 폴백 치수(mm) */
+const A4_WIDTH_MM = 210;
+const A4_HEIGHT_MM = 297;
+
 /**
- * PDF 정보 추출
+ * PDF 정보 추출 (페이지 수 + 첫 페이지 실측 치수).
+ *
+ * P4: 기존 하드코딩 A4(210×297) → 첫 페이지 MediaBox 실측(pt→mm)으로 정확화.
+ *   - 1차: pdf-lib `getSize()` 로 첫 페이지 width/height(pt) 추출 후 mm 변환.
+ *   - 추출/로드 실패 시 A4(210×297) 폴백 — 콜러(centerOnPage/convert 분기 등)가 깨지지 않게.
+ *   - 반환 필드(pageCount/width/height)는 기존 시그니처 그대로 유지(width/height 만 정확화).
+ *
+ * @returns width/height 는 **mm 단위 첫 페이지 치수**.
  */
 export async function getPdfInfo(inputPath: string): Promise<{
   pageCount: number;
   width: number;
   height: number;
 }> {
-  // pdf-lib를 사용하거나 Ghostscript로 정보 추출
-  // 여기서는 간단히 Ghostscript 출력 파싱
-  const args = [
-    '-q',
-    '-dNODISPLAY',
-    '-dBATCH',
-    '-sFileName=' + inputPath,
-    '-c',
-    `(${inputPath}) (r) file runpdfbegin pdfpagecount = quit`,
-  ];
-
   try {
-    const output = await runGhostscript(args);
-    const pageCount = parseInt(output.trim(), 10) || 1;
+    const bytes = await fs.readFile(inputPath);
+    const pdfDoc = await PDFDocument.load(bytes, { updateMetadata: false });
+    const pageCount = pdfDoc.getPageCount();
 
-    // 기본값 반환 (실제로는 더 정교한 파싱 필요)
-    return {
-      pageCount,
-      width: 210, // A4 기본값
-      height: 297,
-    };
-  } catch {
-    return {
-      pageCount: 1,
-      width: 210,
-      height: 297,
-    };
+    if (pageCount > 0) {
+      const { width: wPt, height: hPt } = pdfDoc.getPage(0).getSize();
+      const widthMm = Math.round(wPt * PT_TO_MM * 10) / 10;
+      const heightMm = Math.round(hPt * PT_TO_MM * 10) / 10;
+
+      // 유효성 가드: 0/NaN 이면 A4 폴백
+      if (widthMm > 0 && heightMm > 0) {
+        return { pageCount, width: widthMm, height: heightMm };
+      }
+    }
+
+    return { pageCount: pageCount || 1, width: A4_WIDTH_MM, height: A4_HEIGHT_MM };
+  } catch (error) {
+    logger.warn(
+      `getPdfInfo: failed to measure '${inputPath}', falling back to A4 (${error?.message ?? error})`,
+    );
+    return { pageCount: 1, width: A4_WIDTH_MM, height: A4_HEIGHT_MM };
   }
 }
 

@@ -171,6 +171,22 @@ export interface ValidationOptions {
     wingEnabled?: boolean;
     /** 날개 한쪽 폭 (mm) */
     wingWidthMm?: number;
+    /**
+     * 사방(per-edge) 블리드 mm — 상품별 설정값(P1). P4: validatePageSize 가
+     * 작업사이즈 비교 시 사용(workSize 미제공 시 trim + bleedMm*2 로 파생).
+     */
+    bleedMm?: number;
+    /** 재단선 마커 표기 ON/OFF (P1). */
+    cropMarkEnabled?: boolean;
+    /**
+     * 고객 업로드 PDF 사이즈 검증 허용오차(mm) — P4 validatePageSize tolerance.
+     * 미제공 시 1mm(현행 기본) 유지. ⚠️ 0.2mm 로 좁히지 말 것(단계 인하는 별도).
+     */
+    sizeToleranceMm?: number;
+    /** 재단(완성) 사이즈(mm) — P1. 미제공 시 size 를 재단으로 간주. */
+    trimSize?: { width: number; height: number };
+    /** 작업 사이즈(재단 + bleedMm*2, mm) — P1. validatePageSize 매칭 케이스에 사용. */
+    workSize?: { width: number; height: number };
   };
   /** 최대 허용 파일 크기 (bytes) */
   maxFileSize?: number;
