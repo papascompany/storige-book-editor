@@ -45,7 +45,7 @@
 ### (나) P4 활성화 — 트리거 배선 완료(게이트), **결과 콜백 잔여** (`71ed1af` 배포)
 - ✅ **convert 자체 mode 결정**: `pdf-converter.resolveMode()` — convertOptions 에 editSize 있고 mode 미지정이면 getPdfInfo 실측 vs editSize±tol 로 자동결정(동일=passthrough/큼=innerfit/작음=center). editSize 없으면 mode undefined → legacy byte-identical(편집기 PDF 무영향).
 - ✅ **트리거**: `edit-sessions.complete()` → `createInnerPdfImpositionJob()` — 게이트(contentPdfFileId & !underlay & templateSet & **cropMarkEnabled===true**) 통과 시만 contentPdfFileId 에 conversion 잡 발행(editSize=작업사이즈, sizeToleranceMm). 기본 false → no-op(현행). worker-jobs 큐는 raw DTO 유지(admin 자동수정 경로 무변경).
-- ⏸ **잔여 = 결과 콜백**: 임포지션 결과(worker `job.result.outputFileUrl`)를 `session.contentPdfFileId`(또는 신규 `contentPdfImposedFileId`)로 **되연결하는 워커→API 콜백 미배선**. 현재 opt-in 이어도 변환 결과가 후속(PHP `compose-mixed`·다운로드)에 안 쓰임. hook: `session.metadata.innerPdfImposition.jobId`. (합성/다운로드 순서 보호 위해 의도적 미배선 + 게이트 off라 영향 0.)
+- ✅ **결과 콜백 배선 완료**(`d046409`): 임포지션 잡에 editSessionId+`purpose='inner-imposition'` 마커 → 워커 완료(`PATCH external/:id/status` → `updateJobStatus`)가 게이트(CONVERT&&purpose&&COMPLETED&&outputFileUrl) 통과 시 `relinkImposedInnerPdf()`(best-effort) — `files.registerExternalFile`로 결과 File 등록 → `session.contentPdfFileId` **재포인팅**(마이그레이션0, 원본은 metadata.innerPdfImposition 보존). 회귀방어: 임포지션 잡을 updateEditSessionWorkerStatus·areAllSessionJobsCompleted에서 제외(스푸리어스 webhook/검증지연 방지). **레이스**: compose-mixed는 caller-driven(contentPdfUrl 직접수신)이라 차단게이트 미적용(순서·PHP 무변경 보존), 재포인팅이라 임포지션 완료 후 자동 반영.
 - **검증(스테이징, 결과콜백 후)**: opt-in 세션 업로드 3종 — Match→passthrough(바이트동일)/큼→innerfit(다운스케일·중앙·확대금지)/작음→center(무스케일·중앙). underlay·cropMarkEnabled=false → 변환 잡 미발행 로그 확인. 허용오차 1mm→0.2mm 단계 인하(기존 통과 업로드 회귀 측정 후).
 
 ### (다) cutSize 한 변/양변 정합 (구현 시 주의)
