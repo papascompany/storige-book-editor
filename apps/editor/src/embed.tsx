@@ -1047,13 +1047,17 @@ function EmbeddedEditor({
             let contentFileId: string | undefined
             try {
               await finishMark('spread:content:gen:start', { pages: innerCanvases.length, w: innerW, h: innerH })
+              // 다페이지 내지: 워치독을 페이지수 비례로(고정 180s 는 24p 에서 타임아웃 실측,
+              // 2026-06-10) + 페이지 진행 메시지(사용자 인지 + 행 지점 진단).
+              const contentWatchdogMs = Math.max(180000, innerCanvases.length * 15000)
               const contentBlob = await withWatchdog(
                 coverPlugin.saveMultiPagePDFAsBlob(
                   innerCanvases as any, innerEditors, `content-${currentSessionId}`,
                   { width: innerW, height: innerH, cutSize: bleed, ...markOpt },
                   undefined, 300,
+                  (page, total) => setLoadingMessage(`내지 PDF 생성 중 (${page}/${total})...`),
                 ),
-                180000, 'spread-content-gen',
+                contentWatchdogMs, 'spread-content-gen',
               )
               await finishMark('spread:content:gen:done', { bytes: contentBlob.size })
               const contentUpload = await filesApi.upload({
