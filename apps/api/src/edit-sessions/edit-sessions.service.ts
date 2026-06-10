@@ -763,24 +763,29 @@ export class EditSessionsService {
       };
 
       // ── 블리드 / 재단선 / 사이즈 허용오차 + 재단/작업 사이즈 주입 (2026-06-10) ──
-      // ⚠️ P1: 워커는 이 필드를 받기만(optional) 하고 실제 검증/변환은 아직 사용 안 함(P4).
+      // ⚠️ 마스터 게이트(cropMarkEnabled===true) 통과 세션만 주입.
+      //   P4 워커 validatePageSize 가 이 필드를 실제 사용(tolerance '?? 1' / workSize 케이스)하므로
+      //   게이트 없이 주입하면 모든 templateSet 세션의 검증 허용오차가 1mm→0.2mm 로 좁아지는
+      //   회귀가 발생(실제 발생 → 본 게이트로 수정). off 세션 = 필드 미주입 = 워커 현행(1mm).
       // templateSet 조회 실패해도 세션 완료는 계속(기존 try/catch 패턴 재사용).
       if (session.templateSetId) {
         try {
           const templateSet = await this.templateSetsService.findOne(session.templateSetId);
-          const bleedMm = templateSet.bleedMm ?? 3;
-          const trimWidth = templateSet.width;
-          const trimHeight = templateSet.height;
-          orderOptions.bleedMm = bleedMm;
-          orderOptions.cropMarkEnabled = templateSet.cropMarkEnabled ?? false;
-          orderOptions.sizeToleranceMm = templateSet.sizeToleranceMm ?? 0.2;
-          // 재단(trim) = 템플릿셋 판형. 작업(work) = 재단 + 사방 블리드*2.
-          // 워커 수신 필드명(trimSize/workSize)에 맞춤.
-          orderOptions.trimSize = { width: trimWidth, height: trimHeight };
-          orderOptions.workSize = {
-            width: trimWidth + bleedMm * 2,
-            height: trimHeight + bleedMm * 2,
-          };
+          if (templateSet.cropMarkEnabled === true) {
+            const bleedMm = templateSet.bleedMm ?? 3;
+            const trimWidth = templateSet.width;
+            const trimHeight = templateSet.height;
+            orderOptions.bleedMm = bleedMm;
+            orderOptions.cropMarkEnabled = true;
+            orderOptions.sizeToleranceMm = templateSet.sizeToleranceMm ?? 0.2;
+            // 재단(trim) = 템플릿셋 판형. 작업(work) = 재단 + 사방 블리드*2.
+            // 워커 수신 필드명(trimSize/workSize)에 맞춤.
+            orderOptions.trimSize = { width: trimWidth, height: trimHeight };
+            orderOptions.workSize = {
+              width: trimWidth + bleedMm * 2,
+              height: trimHeight + bleedMm * 2,
+            };
+          }
         } catch (error) {
           this.logger.warn(
             `[validation-jobs] templateSet ${session.templateSetId} 조회 실패(블리드/허용오차 주입 생략, 완료는 계속): ${error.message}`,

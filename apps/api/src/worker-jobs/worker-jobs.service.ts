@@ -66,11 +66,11 @@ export class WorkerJobsService {
   ): Promise<Record<string, any>> {
     const opts = { ...(options || {}) };
 
-    // 블리드 / 사이즈 허용오차 (2026-06-10, P1) — site 유무와 무관한 워커 전역 기본값.
-    // templateSet에서 주입된 값(edit-sessions)이 있으면 보존, 누락 시에만 채움.
-    // ⚠️ 워커 검증/변환의 실제 사용은 P4. 여기서는 전달 보장만.
-    if (opts.bleedMm === undefined) opts.bleedMm = 3;
-    if (opts.sizeToleranceMm === undefined) opts.sizeToleranceMm = 0.2;
+    // ⚠️ bleedMm/sizeToleranceMm 전역 기본값은 여기서 주입하지 않는다(2026-06-10 제거).
+    //   큐 페이로드는 raw DTO 라 워커에 전달되지도 않았고(DB job.options 만 오염),
+    //   워커 validatePageSize 의 '?? 1' 폴백을 무력화해 검증 허용오차가 전 상품
+    //   1mm→0.2mm 로 좁아지는 회귀의 원인이 될 수 있다. 주입은 edit-sessions 가
+    //   cropMarkEnabled===true(opt-in) 세션에만 수행한다.
 
     if (!siteId) return opts;
 
