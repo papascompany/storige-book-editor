@@ -136,3 +136,44 @@ export function useSpreadOutOfBoundsToast(ready: boolean): void {
     }
   }, [ready, isSpreadMode, editor])
 }
+
+/**
+ * P2: 객체가 재단선(트림박스)을 벗어났을 때 warning toast 알림 (화면 가이드).
+ *
+ * `WorkspacePlugin`이 object:modified / object:moving / object:scaling 시 발행하는
+ * `objectOutOfTrim` { count, objects } 이벤트를 구독해 사용자에게 경고 toast 표시.
+ *
+ * spread 모드와 무관하게 일반 편집 모드에서도 동작한다 (가드는 ready/editor 만).
+ * 출력/저장 동작에는 영향 없음 — 순수 화면 경고.
+ *
+ * 드래그/리사이즈 중 연속 발행되므로, 동일 메시지를 매 프레임 띄우지 않도록
+ * 마지막 표시 후 짧은 쿨다운(throttle)을 둔다.
+ */
+export function useObjectOutOfTrimToast(ready: boolean): void {
+  const editor = useAppStore((s) => s.editor)
+
+  useEffect(() => {
+    if (!ready || !editor) return
+
+    let lastShownAt = 0
+    const COOLDOWN_MS = 2000
+
+    const handler = (payload: { count: number; objects?: unknown[] }) => {
+      const count = payload?.count ?? 0
+      if (count <= 0) return
+      const now = Date.now()
+      if (now - lastShownAt < COOLDOWN_MS) return
+      lastShownAt = now
+      showToast(
+        `재단선을 벗어난 객체가 ${count}개 있습니다 — 인쇄 시 잘릴 수 있습니다.`,
+        'warning',
+        4000,
+      )
+    }
+
+    editor.on('objectOutOfTrim', handler)
+    return () => {
+      editor.off?.('objectOutOfTrim', handler)
+    }
+  }, [ready, editor])
+}
