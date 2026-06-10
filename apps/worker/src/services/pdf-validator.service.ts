@@ -385,12 +385,22 @@ export class PdfValidatorService {
     const expectedHeight = options.orderOptions.size.height;
     const bleed = options.orderOptions.bleed ?? DEFAULT_BLEED;
 
-    // 허용 오차 1mm
-    const tolerance = 1;
+    // 허용 오차 — P1/P4 가변화. 기본 1mm(현행) 유지. ⚠️ 0.2mm 로 좁히지 말 것.
+    const tolerance = options.orderOptions.sizeToleranceMm ?? 1;
 
-    // 재단 여백 포함 크기
+    // 재단 여백 포함 크기(기존 케이스 보존)
     const expectedWidthWithBleed = expectedWidth + bleed * 2;
     const expectedHeightWithBleed = expectedHeight + bleed * 2;
+
+    // 작업 사이즈(P1) — workSize 제공 시 직접, 미제공 시 trim + bleedMm*2 로 파생.
+    // 매칭(작업사이즈±허용오차 동일) 업로드를 검증에서도 정상으로 인정(업로드 passthrough 와 정합).
+    const bleedMm = options.orderOptions.bleedMm;
+    const trim = options.orderOptions.trimSize;
+    const workSize =
+      options.orderOptions.workSize ??
+      (trim && typeof bleedMm === 'number'
+        ? { width: trim.width + bleedMm * 2, height: trim.height + bleedMm * 2 }
+        : undefined);
 
     // 크기 비교
     const widthDiff = Math.abs(widthMm - expectedWidth);
@@ -401,8 +411,12 @@ export class PdfValidatorService {
     const matchesWithoutBleed = widthDiff <= tolerance && heightDiff <= tolerance;
     const matchesWithBleed =
       widthDiffWithBleed <= tolerance && heightDiffWithBleed <= tolerance;
+    const matchesWorkSize =
+      !!workSize &&
+      Math.abs(widthMm - workSize.width) <= tolerance &&
+      Math.abs(heightMm - workSize.height) <= tolerance;
 
-    if (!matchesWithoutBleed && !matchesWithBleed) {
+    if (!matchesWithoutBleed && !matchesWithBleed && !matchesWorkSize) {
       errors.push({
         code: ErrorCode.SIZE_MISMATCH,
         message: `페이지 크기가 맞지 않습니다. (기대: ${expectedWidth}x${expectedHeight}mm 또는 ${expectedWidthWithBleed}x${expectedHeightWithBleed}mm, 현재: ${Math.round(widthMm)}x${Math.round(heightMm)}mm)`,
@@ -419,6 +433,16 @@ export class PdfValidatorService {
     } else if (matchesWithBleed) {
       metadata.hasBleed = true;
       metadata.bleedSize = bleed;
+    } else if (matchesWorkSize && workSize) {
+      // 작업사이즈(재단+블리드*2)와 동일 → 블리드 포함으로 판정.
+      // bleedMm 가 있으면 그 값을, 없으면 파생식의 (work-trim)/2 를 bleedSize 로 기록.
+      metadata.hasBleed = true;
+      metadata.bleedSize =
+        typeof bleedMm === 'number'
+          ? bleedMm
+          : trim
+            ? Math.round(((workSize.width - trim.width) / 2) * 10) / 10
+            : bleed;
     }
   }
 
