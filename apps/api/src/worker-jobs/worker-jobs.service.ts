@@ -303,6 +303,9 @@ export class WorkerJobsService {
       jobId: savedJob.id,
       fileId,
       fileUrl,
+      // 큐 페이로드는 raw DTO convertOptions 그대로(현행 동작 보존 — admin 자동수정 경로 무변경).
+      // P4 임포지션은 호출부가 editSize/sizeToleranceMm 를 명시 전달하므로 raw 로 충분.
+      // (DB job.options 는 merged 저장 — 기존과 동일.)
       convertOptions: createConversionJobDto.convertOptions,
     });
 
