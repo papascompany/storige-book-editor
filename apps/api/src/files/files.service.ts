@@ -110,6 +110,96 @@ export class FilesService {
   }
 
   /**
+   * 워커 산출(외부 저장경로) PDF 를 File 레코드로 등록 — P4 내지 임포지션 결과 되연결용 (2026-06-10).
+   *
+   * 업로드(uploadFile)와 달리 파일은 이미 워커가 STORAGE_PATH 아래(예: /storage/converted/x.pdf)에
+   * 생성해 둔 상태다. 본 메서드는 그 경로를 검증(존재 + storage 루트 밖 traversal 방지)하고
+   * 메타데이터만 files 테이블에 등록한다. (원본 업로드 PDF 는 별개 File 레코드로 그대로 보존됨.)
+   *
+   * @param outputFileUrl 워커 result.outputFileUrl (예: '/storage/converted/converted_<uuid>.pdf')
+   * @param opts          원본 파일에서 승계할 분류/소유 정보
+   * @returns 등록된 File 엔티티 (실패 시 throw — 호출측에서 best-effort 처리)
+   */
+  async registerExternalFile(
+    outputFileUrl: string,
+    opts: {
+      fileType?: FileType;
+      orderSeqno?: number | null;
+      memberSeqno?: number | null;
+      metadata?: Record<string, any>;
+    } = {},
+  ): Promise<FileEntity> {
+    if (!outputFileUrl) {
+      throw new BadRequestException({
+        code: 'OUTPUT_URL_REQUIRED',
+        message: 'outputFileUrl 이 필요합니다.',
+      });
+    }
+
+    // outputFileUrl → 절대경로 변환 (downloadOutput 컨트롤러와 동일 규약)
+    const storageBase = this.configService.get<string>('STORAGE_PATH', '/app/storage');
+    let absolutePath: string;
+    if (outputFileUrl.startsWith('/storage/')) {
+      absolutePath = path.join(storageBase, outputFileUrl.replace(/^\/storage\//, ''));
+    } else if (outputFileUrl.startsWith('storage/')) {
+      absolutePath = path.join(storageBase, outputFileUrl.replace(/^storage\//, ''));
+    } else if (path.isAbsolute(outputFileUrl)) {
+      absolutePath = outputFileUrl;
+    } else {
+      absolutePath = path.join(storageBase, outputFileUrl);
+    }
+
+    // 보안: storage 루트 밖 path traversal 방지
+    const resolvedPath = path.resolve(absolutePath);
+    const resolvedBase = path.resolve(storageBase);
+    if (!resolvedPath.startsWith(resolvedBase)) {
+      throw new BadRequestException({
+        code: 'INVALID_PATH',
+        message: 'Output path is outside storage root',
+      });
+    }
+
+    // 디스크 존재 + 크기 확인
+    let fileSize = 0;
+    try {
+      const stat = await fs.stat(resolvedPath);
+      fileSize = stat.size;
+    } catch {
+      throw new NotFoundException({
+        code: 'FILE_NOT_ON_DISK',
+        message: `등록 대상 파일이 디스크에 없습니다: ${outputFileUrl}`,
+        details: { outputFileUrl },
+      });
+    }
+
+    // 정규 URL 보장 (외부 응답/다운스트림은 file_url 사용)
+    const normalizedUrl = outputFileUrl.startsWith('/')
+      ? outputFileUrl
+      : `/${outputFileUrl}`;
+    const fileName = path.basename(resolvedPath);
+
+    const fileEntity = this.fileRepository.create({
+      fileName,
+      originalName: fileName,
+      filePath: resolvedPath,
+      fileUrl: normalizedUrl,
+      thumbnailUrl: null,
+      fileSize,
+      mimeType: 'application/pdf',
+      fileType: opts.fileType ?? FileType.CONTENT,
+      orderSeqno: opts.orderSeqno ?? undefined,
+      memberSeqno: opts.memberSeqno ?? undefined,
+      metadata: opts.metadata,
+    });
+
+    const saved = await this.fileRepository.save(fileEntity);
+    this.logger.log(
+      `Registered external file ${saved.id} from worker output (${normalizedUrl}, ${fileSize} bytes)`,
+    );
+    return saved;
+  }
+
+  /**
    * 파일 ID로 조회
    */
   async findById(id: string): Promise<FileEntity> {
