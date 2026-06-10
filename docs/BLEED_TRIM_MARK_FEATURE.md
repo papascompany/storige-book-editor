@@ -42,10 +42,11 @@
 - admin 템플릿셋 폼에서 대상 상품의 **재단선 마커 표기(crop_mark_enabled) ON + 블리드(사방) mm 설정** → 그 상품 편집/저장 PDF가 작업사이즈+마커+TrimBox로 출력.
 - **검증**: opt-in 상품 1건 편집→저장 PDF를 `mutool info`/`pdfinfo -box`/Acrobat 인쇄제작 으로 **MediaBox=작업사이즈, TrimBox=재단** 확인 + 마커 위치 + 콘텐츠 중앙 정합. OFF 상품은 현행 trim 그대로(회귀 없음 확인).
 
-### (나) P4 활성화 — 업로드→변환 mode 주입 배선 1건 (잔여)
-- 현재 `pdf-converter.convert` 의 mode 분기는 구현됐으나, **mode/editSize 를 주입하는 호출부가 없음**(고객 업로드 내지 PDF가 자동으로 conversion 잡을 타지 않음 — 현재 convert 호출부는 admin `PdfBeforeAfterPreview` 자동수정뿐).
-- **필요 배선**: 고객 업로드 내지 PDF 처리 시 (1) getPdfInfo 실측 vs workSize 비교로 mode 결정(동일±tol→passthrough / 블리드없음&큼→innerfit / 작음→center) + editSize/sizeToleranceMm 를 convertOptions 에 주입하는 1곳. 워커 자체결정(convert 진입부) 또는 업로드 처리 UI/잡 생성부. `CreateConversionJobDto.convertOptions` 가 `any` 라 **API DTO 변경 불필요**.
-- **검증(스테이징)**: ① 골든 — editSize 동일(passthrough 바이트동일)·큼(innerfit 다운스케일·중앙)·작음(center 무스케일·중앙) 3종. ② 검증 허용오차 1mm→0.2mm **단계 인하**(기존 통과 업로드가 0.2mm로 신규 실패하는지 사전 측정 후).
+### (나) P4 활성화 — 트리거 배선 완료(게이트), **결과 콜백 잔여** (`71ed1af` 배포)
+- ✅ **convert 자체 mode 결정**: `pdf-converter.resolveMode()` — convertOptions 에 editSize 있고 mode 미지정이면 getPdfInfo 실측 vs editSize±tol 로 자동결정(동일=passthrough/큼=innerfit/작음=center). editSize 없으면 mode undefined → legacy byte-identical(편집기 PDF 무영향).
+- ✅ **트리거**: `edit-sessions.complete()` → `createInnerPdfImpositionJob()` — 게이트(contentPdfFileId & !underlay & templateSet & **cropMarkEnabled===true**) 통과 시만 contentPdfFileId 에 conversion 잡 발행(editSize=작업사이즈, sizeToleranceMm). 기본 false → no-op(현행). worker-jobs 큐는 raw DTO 유지(admin 자동수정 경로 무변경).
+- ⏸ **잔여 = 결과 콜백**: 임포지션 결과(worker `job.result.outputFileUrl`)를 `session.contentPdfFileId`(또는 신규 `contentPdfImposedFileId`)로 **되연결하는 워커→API 콜백 미배선**. 현재 opt-in 이어도 변환 결과가 후속(PHP `compose-mixed`·다운로드)에 안 쓰임. hook: `session.metadata.innerPdfImposition.jobId`. (합성/다운로드 순서 보호 위해 의도적 미배선 + 게이트 off라 영향 0.)
+- **검증(스테이징, 결과콜백 후)**: opt-in 세션 업로드 3종 — Match→passthrough(바이트동일)/큼→innerfit(다운스케일·중앙·확대금지)/작음→center(무스케일·중앙). underlay·cropMarkEnabled=false → 변환 잡 미발행 로그 확인. 허용오차 1mm→0.2mm 단계 인하(기존 통과 업로드 회귀 측정 후).
 
 ### (다) cutSize 한 변/양변 정합 (구현 시 주의)
 편집기 워크스페이스는 `width + cutSize`(양변 합), P3 출력은 `bleedMm`(per-edge)×2. P3 게이트 ON 상품은 **편집기 cutSize 와 templateSet bleedMm 가 정합**(cutSize ≈ bleedMm×2)하도록 운영 설정 점검 필요. (현재 P3 는 bleedMm 기준으로 작업사이즈 산출 — 워크스페이스 cutSize 와 별개로 동작하므로 화면/PDF 괴리 가능 → opt-in 검증 시 함께 확인.)
