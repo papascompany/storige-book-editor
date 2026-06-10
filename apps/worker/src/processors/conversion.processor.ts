@@ -18,6 +18,20 @@ interface ConversionJobData {
     bleed: number;
     /** 출력 크기 (mm) */
     targetSize?: { width: number; height: number };
+    /**
+     * 고객 업로드 PDF 사이즈 검증 허용오차(mm).
+     * P1: 수신만(optional), 로직 미구현(P4).
+     */
+    sizeToleranceMm?: number;
+    /** 편집(원본) 사이즈(mm). P1: 수신만(optional), 로직 미구현(P4). */
+    editSize?: { width: number; height: number };
+    /**
+     * 변환 모드. P1: 인터페이스만, 로직 미구현(P4).
+     * - passthrough: 원본 그대로
+     * - innerfit: 내지 맞춤
+     * - center: 중앙 배치
+     */
+    mode?: 'passthrough' | 'innerfit' | 'center';
   };
 }
 

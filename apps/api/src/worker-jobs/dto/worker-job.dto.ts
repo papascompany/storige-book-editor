@@ -50,6 +50,16 @@ export class CreateValidationJobDto {
     wingEnabled?: boolean;
     /** 날개 한쪽 폭(mm) */
     wingWidthMm?: number;
+    /** 사방 블리드 mm (2026-06-10, P1) — 워커는 받기만(optional), 검증/변환 실제 사용은 P4 */
+    bleedMm?: number;
+    /** 재단선 마커 표기 ON/OFF (2026-06-10, P1) */
+    cropMarkEnabled?: boolean;
+    /** 업로드 PDF 사이즈 검증 허용오차 mm (2026-06-10, P1) */
+    sizeToleranceMm?: number;
+    /** 재단(완성) 사이즈 = 템플릿셋 판형 mm (2026-06-10, P1). 워커 수신 필드명 일치 */
+    trimSize?: { width: number; height: number };
+    /** 작업 사이즈 = 재단 + 사방 블리드*2 mm (2026-06-10, P1). 워커 수신 필드명 일치 */
+    workSize?: { width: number; height: number };
   };
 
   @ApiPropertyOptional({

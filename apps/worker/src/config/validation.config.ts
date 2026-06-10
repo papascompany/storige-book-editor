@@ -39,3 +39,15 @@ export const VALIDATION_CONFIG = {
 } as const;
 
 export type ValidationConfig = typeof VALIDATION_CONFIG;
+
+/**
+ * 신규 상품별 설정값의 전역 기본값.
+ * P1: export만(아직 미사용 가능). 실제 사용은 P4에서.
+ * @see 데이터모델 계약 — bleed_mm / crop_mark_enabled / size_tolerance_mm
+ */
+/** 고객 업로드 PDF 사이즈 검증 허용오차 기본값(mm). */
+export const DEFAULT_SIZE_TOLERANCE_MM = 0.2;
+/** 사방(per-edge) 블리드 기본값(mm). 작업사이즈 = 재단 + bleedMm*2. */
+export const DEFAULT_BLEED_MM = 3;
+/** 재단선 마커 표기 기본값(OFF). */
+export const DEFAULT_CROP_MARK_ENABLED = false;

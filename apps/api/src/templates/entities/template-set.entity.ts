@@ -150,6 +150,32 @@ export class TemplateSet {
   @Column({ name: 'color_mode', type: 'varchar', length: 10, default: 'rgb' })
   colorMode: ColorOutputMode;
 
+  // ─────────────────────────────────────────────────────
+  // 블리드 / 재단선 / 사이즈 검증 허용오차 (2026-06-10)
+  // 마이그레이션: apps/api/migrations/20260610_add_bleed_cropmark_tolerance.sql
+  // ⚠️ P1 단계 = '필드 저장 + 전달'만. 워커의 실제 검증/변환 동작 변경은 P4에서.
+  // ─────────────────────────────────────────────────────
+
+  /**
+   * 사방(per-edge) 블리드 mm (2026-06-10). 작업사이즈 = 재단 + bleedMm*2.
+   * 0이면 블리드 없음. 기본 3.
+   */
+  @Column({ name: 'bleed_mm', type: 'float', default: 3 })
+  bleedMm: number;
+
+  /**
+   * 재단선(crop mark) 마커 표기 ON/OFF 토글 (2026-06-10). 블리드와 별개 명시 스위치.
+   * 기본 false(0).
+   */
+  @Column({ name: 'crop_mark_enabled', type: 'boolean', default: false })
+  cropMarkEnabled: boolean;
+
+  /**
+   * 고객 업로드 PDF 사이즈 검증 허용오차 mm (2026-06-10). 기본 0.2.
+   */
+  @Column({ name: 'size_tolerance_mm', type: 'float', default: 0.2 })
+  sizeToleranceMm: number;
+
   /**
    * ④ 연결된 라이브러리 카테고리 ID (2026-06-09) — 컬럼 아님(transient).
    * 조인 테이블 template_set_library_categories 에서 서비스가 populate. 빈/없음=전역 노출.

@@ -65,11 +65,18 @@ export class WorkerJobsService {
     options: Record<string, any> | null | undefined,
   ): Promise<Record<string, any>> {
     const opts = { ...(options || {}) };
+
+    // 블리드 / 사이즈 허용오차 (2026-06-10, P1) — site 유무와 무관한 워커 전역 기본값.
+    // templateSet에서 주입된 값(edit-sessions)이 있으면 보존, 누락 시에만 채움.
+    // ⚠️ 워커 검증/변환의 실제 사용은 P4. 여기서는 전달 보장만.
+    if (opts.bleedMm === undefined) opts.bleedMm = 3;
+    if (opts.sizeToleranceMm === undefined) opts.sizeToleranceMm = 0.2;
+
     if (!siteId) return opts;
 
     try {
       const site = await this.sitesService.findOne(siteId);
-      // 누락 항목만 site default로 채움 (호출자 명시값 보존)
+      // 누락 항목만 site default로 채움 (호출자 명시값=templateSet 우선 보존)
       if (opts.applyBleed === undefined) opts.applyBleed = site.pdfConversionEnabled;
       if (opts.unit === undefined) opts.unit = site.defaultUnit;
       if (opts.checkWorkorder === undefined) opts.checkWorkorder = site.checkWorkorder;
