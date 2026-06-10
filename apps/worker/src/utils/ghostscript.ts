@@ -200,21 +200,36 @@ export async function centerOnPage(
   const pageHpt = pageHmm * MM_TO_PT;
 
   // 원본 페이지 크기 측정 (translate 오프셋 계산용). 실패 시 0,0 오프셋(좌하단 정렬) 폴백.
-  let origWpt = pageWpt;
-  let origHpt = pageHpt;
+  let origWmm = pageWmm;
+  let origHmm = pageHmm;
   try {
     const info = await getPdfInfo(input);
-    origWpt = info.width * MM_TO_PT;
-    origHpt = info.height * MM_TO_PT;
+    origWmm = info.width;
+    origHmm = info.height;
   } catch {
     // 측정 실패 시 중앙 오프셋 0 (콜러 안 깨지게 — 최소한 패스만 보장)
-    origWpt = pageWpt;
-    origHpt = pageHpt;
+    origWmm = pageWmm;
+    origHmm = pageHmm;
   }
 
-  // 비대칭 패딩: 좌하단 기준 (목표 − 원본)/2 만큼 이동 → 중앙
-  const dx = (pageWpt - origWpt) / 2;
-  const dy = (pageHpt - origHpt) / 2;
+  // 🛡️ 방어 가드: 원본이 목표보다 큰 변이 있으면 dx/dy 가 음수 → 좌하단 밖으로 클리핑됨.
+  //   현 호출경로(pdf-converter resolveMode)는 원본이 '작을' 때만 center 를 고르므로
+  //   실제로는 도달하지 않지만, 타 경로 호출/리팩터링 대비 무가공 복사로 안전 폴백.
+  //   (0.5mm 허용오차: getPdfInfo 반올림/측정 오차 흡수)
+  if (origWmm > pageWmm + 0.5 || origHmm > pageHmm + 0.5) {
+    logger.warn(
+      `centerOnPage: 원본(${origWmm}x${origHmm}mm)이 목표(${pageWmm}x${pageHmm}mm)보다 큼 — 중앙배치 부적합, 무가공 복사: ${output}`,
+    );
+    await fs.copyFile(input, output);
+    return;
+  }
+
+  const origWpt = origWmm * MM_TO_PT;
+  const origHpt = origHmm * MM_TO_PT;
+
+  // 비대칭 패딩: 좌하단 기준 (목표 − 원본)/2 만큼 이동 → 중앙 (허용오차 내 음수는 0 클램프)
+  const dx = Math.max(0, (pageWpt - origWpt) / 2);
+  const dy = Math.max(0, (pageHpt - origHpt) / 2);
 
   const args = [
     '-q',
