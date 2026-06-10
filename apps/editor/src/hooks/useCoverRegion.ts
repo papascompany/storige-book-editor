@@ -116,9 +116,23 @@ export function useSpreadOutOfBoundsToast(ready: boolean): void {
       showToast(msg, payload.autoRelocated ? 'info' : 'warning', 5000)
     }
 
+    // 책등 콘텐츠 오버플로우(책등이 좁아져 책등 객체가 표지 침범) 경고. (SF-5)
+    // 텍스트 자동 축소는 하지 않음(폰트품질 보존) — 사용자에게 조정 안내만.
+    const spineHandler = (payload: { count: number; spineWidthMm?: number }) => {
+      const count = payload?.count ?? 0
+      if (count <= 0) return
+      showToast(
+        `책등 폭(${payload?.spineWidthMm ?? '?'}mm)이 좁아 책등 객체 ${count}개가 표지를 침범합니다. 책등 텍스트/이미지 크기를 줄이거나 위치를 조정해 주세요.`,
+        'warning',
+        6000,
+      )
+    }
+
     editor.on('spreadObjectsOutOfBounds', handler)
+    editor.on('spreadSpineOverflow', spineHandler)
     return () => {
       editor.off?.('spreadObjectsOutOfBounds', handler)
+      editor.off?.('spreadSpineOverflow', spineHandler)
     }
   }, [ready, isSpreadMode, editor])
 }

@@ -45,7 +45,7 @@ interface SpreadPluginOptions extends PluginOption {
 
 class SpreadPlugin extends PluginBase {
   name = 'SpreadPlugin'
-  events = ['spineWidthChange', 'spreadLayoutUpdate', 'spreadObjectsOutOfBounds', 'spreadRegionFocus']
+  events = ['spineWidthChange', 'spreadLayoutUpdate', 'spreadObjectsOutOfBounds', 'spreadRegionFocus', 'spreadSpineOverflow']
   hotkeys = []
 
   private currentSpec: SpreadSpec
@@ -269,6 +269,9 @@ class SpreadPlugin extends PluginBase {
 
       // 11. 캔버스 밖 객체 경고 (선택 사항)
       this.checkObjectsOutOfBounds(newLayout)
+
+      // 12. 책등 콘텐츠 오버플로우 경고 (책등이 좁아질 때 책등 객체가 표지 침범)
+      this.checkSpineOverflow(newLayout)
     } finally {
       // 트랜잭션 종료
       this.isLayoutTransaction = false
@@ -434,6 +437,41 @@ class SpreadPlugin extends PluginBase {
         count: outOfBounds.length,
         objects: outOfBounds,
         autoRelocated: autoRelocate,
+      })
+    }
+  }
+
+  /**
+   * 책등 콘텐츠 오버플로우 경고 (SF-5).
+   *
+   * 책등이 좁아질 때 책등 객체(세로쓰기 제목 등)가 책등 영역을 벗어나 앞/뒤표지를 침범하면
+   * `spreadSpineOverflow` 이벤트로 알린다. ⚠️ 텍스트 자동 축소는 하지 않는다 — 폰트 렌더링
+   * 품질 보존을 위한 의도된 설계(SpineResizeStrategy: 텍스트 스케일 금지). 편집기가 이벤트를
+   * 받아 토스트/하이라이트로 사용자에게 책등 폭/배치 조정을 안내하도록 한다.
+   * (좌표계: spine.region 은 content 프레임, getContentBoundingRect 도 content → 직접 비교.)
+   */
+  private checkSpineOverflow(layout: SpreadLayout): void {
+    const spine = layout.regions.find((r) => r.position === 'spine')
+    if (!spine) return
+    const tol = 1 // px 허용오차
+    const overflow: fabric.Object[] = []
+    for (const obj of this._canvas.getObjects()) {
+      if (obj.meta?.system) continue
+      if (obj.meta?.regionRef !== 'spine') continue
+      const br = this.getContentBoundingRect(obj)
+      const exceedsLeft = br.left < spine.x - tol
+      const exceedsRight = br.left + br.width > spine.x + spine.width + tol
+      if (exceedsLeft || exceedsRight) overflow.push(obj)
+    }
+    if (overflow.length > 0) {
+      console.warn(
+        `SpreadPlugin: 책등 콘텐츠 ${overflow.length}개가 책등 영역(${spine.widthMm}mm)을 벗어남 → 표지 침범 위험`,
+      )
+      this._editor.emit('spreadSpineOverflow', {
+        count: overflow.length,
+        objects: overflow,
+        spineRegion: spine,
+        spineWidthMm: spine.widthMm,
       })
     }
   }
