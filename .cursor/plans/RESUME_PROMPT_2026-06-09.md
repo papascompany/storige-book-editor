@@ -91,7 +91,7 @@
 | **P4** 워커 임포지션 | getPdfInfo 실측 + centerOnPage + convert mode분기(미지정=현행) + 검증 tolerance가변(1mm유지) | `b235bf8` ✅배포(dormant) |
 | **P3** 편집기 PDF 출력 | ServicePlugin 게이트(cropMarkEnabled&bleed>0&!envelope)→작업사이즈+마커+박스, OFF=byte-identical. printMarkConfig 배선 | `1e118a2` ✅배포(editor) |
 
-**전부 게이팅으로 전 상품 무변경 배포.** 잔여 = **활성화·검증(오너 통제)**: (가)P3 admin 토글(crop_mark_enabled ON+블리드)→opt-in 상품 PDF 박스/마커 mutool/Acrobat 검증, (나)P4 업로드→mode 주입 배선 1건(워커 자체결정 or UI) + 스테이징 골든·tolerance 단계인하, (다)cutSize(양변)↔bleedMm(per-edge) 정합 점검. 좌표규약 [[reference_coordinate_convention]].
+**전부 게이팅으로 전 상품 무변경 배포.** [2026-06-10 추가] CTO 구조감사 → 라이브 회귀 1건(검증 허용오차 0.2mm 누수, `342b44d`) 즉시 수정·배포 + 차단 수정 4건(#2 지오메트리 `2eeb84e` / #3 원자업데이트·#5 멱등·#6 방어 `82a64b4`) 완료. **잔여 활성화 차단 = #4 PHP 연동 시점 규약 1건(오너·북모아 합의)** — 상세 `docs/BLEED_TRIM_MARK_FEATURE.md` §4-(라). 잔여 = **활성화·검증(오너 통제)**: (가)P3 admin 토글(crop_mark_enabled ON+블리드)→opt-in 상품 PDF 박스/마커 mutool/Acrobat 검증, (나)P4 업로드→mode 주입 배선 1건(워커 자체결정 or UI) + 스테이징 골든·tolerance 단계인하, (다)cutSize(양변)↔bleedMm(per-edge) 정합 점검. 좌표규약 [[reference_coordinate_convention]].
 
 ---
 
