@@ -27,6 +27,25 @@ interface ValidationJobData {
     wingEnabled?: boolean;
     /** 날개 한쪽 폭(mm) */
     wingWidthMm?: number;
+    /**
+     * 사방(per-edge) 블리드 mm — 상품별 설정값.
+     * P1: 수신만(optional), 사용은 P4에서.
+     */
+    bleedMm?: number;
+    /**
+     * 재단선 마커 표기 ON/OFF 토글(블리드와 별개 명시 스위치).
+     * P1: 수신만(optional), 사용은 P4에서.
+     */
+    cropMarkEnabled?: boolean;
+    /**
+     * 고객 업로드 PDF 사이즈 검증 허용오차(mm).
+     * P1: 수신만(optional), 사용은 P4에서.
+     */
+    sizeToleranceMm?: number;
+    /** 재단(완성) 사이즈(mm). P1: 수신만(optional). */
+    trimSize?: { width: number; height: number };
+    /** 작업 사이즈(재단 + bleedMm*2, mm). P1: 수신만(optional). */
+    workSize?: { width: number; height: number };
   };
 }
 

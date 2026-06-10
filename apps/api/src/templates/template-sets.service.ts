@@ -91,6 +91,10 @@ export class TemplateSetsService {
       contentPdfEditable: dto.contentPdfEditable ?? true,
       pdfOutputMode: dto.pdfOutputMode ?? 'duplex-merged',
       colorMode: dto.colorMode ?? 'rgb',
+      // 블리드 / 재단선 / 사이즈 검증 허용오차 (2026-06-10)
+      bleedMm: dto.bleedMm ?? 3,
+      cropMarkEnabled: dto.cropMarkEnabled ?? false,
+      sizeToleranceMm: dto.sizeToleranceMm ?? 0.2,
       isDeleted: false,
       isActive: true,
     });

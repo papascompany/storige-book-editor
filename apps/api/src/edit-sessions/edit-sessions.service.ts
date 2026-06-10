@@ -26,6 +26,7 @@ import {
   ExternalSessionFilesDto,
 } from './dto/external-session-response.dto';
 import { WorkerJobsService } from '../worker-jobs/worker-jobs.service';
+import { CreateValidationJobDto } from '../worker-jobs/dto/worker-job.dto';
 import { WorkerJobStatus, type SpreadValidationResult, validateSpreadAgainstAuthority } from '@storige/types';
 import { TemplateSetsService } from '../templates/template-sets.service';
 
@@ -619,13 +620,39 @@ export class EditSessionsService {
   private async createValidationJobs(session: EditSessionEntity): Promise<void> {
     try {
       // Get order options from metadata or use defaults
-      const orderOptions = {
+      const orderOptions: CreateValidationJobDto['orderOptions'] = {
         size: session.metadata?.size || { width: 210, height: 297 },
         pages: session.metadata?.pages || 1,
         binding: session.metadata?.binding || 'perfect',
         bleed: session.metadata?.bleed || 3,
         paperThickness: session.metadata?.paperThickness,
       };
+
+      // ── 블리드 / 재단선 / 사이즈 허용오차 + 재단/작업 사이즈 주입 (2026-06-10) ──
+      // ⚠️ P1: 워커는 이 필드를 받기만(optional) 하고 실제 검증/변환은 아직 사용 안 함(P4).
+      // templateSet 조회 실패해도 세션 완료는 계속(기존 try/catch 패턴 재사용).
+      if (session.templateSetId) {
+        try {
+          const templateSet = await this.templateSetsService.findOne(session.templateSetId);
+          const bleedMm = templateSet.bleedMm ?? 3;
+          const trimWidth = templateSet.width;
+          const trimHeight = templateSet.height;
+          orderOptions.bleedMm = bleedMm;
+          orderOptions.cropMarkEnabled = templateSet.cropMarkEnabled ?? false;
+          orderOptions.sizeToleranceMm = templateSet.sizeToleranceMm ?? 0.2;
+          // 재단(trim) = 템플릿셋 판형. 작업(work) = 재단 + 사방 블리드*2.
+          // 워커 수신 필드명(trimSize/workSize)에 맞춤.
+          orderOptions.trimSize = { width: trimWidth, height: trimHeight };
+          orderOptions.workSize = {
+            width: trimWidth + bleedMm * 2,
+            height: trimHeight + bleedMm * 2,
+          };
+        } catch (error) {
+          this.logger.warn(
+            `[validation-jobs] templateSet ${session.templateSetId} 조회 실패(블리드/허용오차 주입 생략, 완료는 계속): ${error.message}`,
+          );
+        }
+      }
 
       // Create validation job for cover file
       if (session.coverFileId) {

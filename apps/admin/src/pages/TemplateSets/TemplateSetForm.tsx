@@ -317,6 +317,10 @@ export const TemplateSetForm = () => {
         pdfOutputMode: templateSet.pdfOutputMode ?? 'duplex-merged',
         colorMode: templateSet.colorMode ?? 'rgb',
         libraryCategoryIds: templateSet.libraryCategoryIds ?? [],
+        // 블리드/재단선/허용오차 (P1: 저장+전달만, 워커 동작 무변경) — 공유 타입 미반영분은 any 로 로드
+        bleedMm: (templateSet as any).bleedMm ?? 3,
+        cropMarkEnabled: (templateSet as any).cropMarkEnabled ?? false,
+        sizeToleranceMm: (templateSet as any).sizeToleranceMm ?? 0.2,
       });
 
       // Load template refs with template details
@@ -429,6 +433,10 @@ export const TemplateSetForm = () => {
       pdfOutputMode: values.pdfOutputMode || 'duplex-merged',
       colorMode: values.colorMode || 'rgb',
       libraryCategoryIds: values.libraryCategoryIds || [],
+      // 블리드(사방 mm)/재단선 마커/업로드 허용오차 (P1: 저장+전달만, 워커 동작 무변경)
+      bleedMm: values.bleedMm ?? 3,
+      cropMarkEnabled: !!values.cropMarkEnabled,
+      sizeToleranceMm: values.sizeToleranceMm ?? 0.2,
     };
 
     if (id) {
@@ -562,6 +570,9 @@ export const TemplateSetForm = () => {
             enabledMenus: ALL_EDITOR_MENU_KEYS,
             pdfOutputMode: 'duplex-merged',
             colorMode: 'rgb',
+            bleedMm: 3,
+            cropMarkEnabled: false,
+            sizeToleranceMm: 0.2,
           }}
         >
           <Collapse
@@ -835,6 +846,35 @@ export const TemplateSetForm = () => {
                         ]}
                       />
                     </Form.Item>
+
+                    <Divider>재단 · 블리드</Divider>
+
+                    <Space size="large" wrap align="start">
+                      <Form.Item
+                        name="bleedMm"
+                        label="블리드(사방 mm)"
+                        extra="재단선 밖 여백. 작업사이즈=재단+블리드×2. 0이면 없음."
+                      >
+                        <InputNumber min={0} max={10} step={0.5} />
+                      </Form.Item>
+
+                      <Form.Item
+                        name="cropMarkEnabled"
+                        label="재단선 마커 표기"
+                        valuePropName="checked"
+                        extra="PDF에 코너 재단 마커 표시"
+                      >
+                        <Switch checkedChildren="표기" unCheckedChildren="없음" />
+                      </Form.Item>
+
+                      <Form.Item
+                        name="sizeToleranceMm"
+                        label="업로드 허용오차(mm)"
+                        extra="고객 업로드 PDF 사이즈 검증 허용오차"
+                      >
+                        <InputNumber min={0} max={5} step={0.1} />
+                      </Form.Item>
+                    </Space>
                   </>
                 ),
               },

@@ -163,6 +163,26 @@ export class CreateTemplateSetDto {
   @IsIn(['rgb', 'cmyk'])
   colorMode?: ColorOutputMode;
 
+  // ── 블리드 / 재단선 / 사이즈 검증 허용오차 (2026-06-10) ──
+  @ApiPropertyOptional({ example: 3, minimum: 0, maximum: 50, description: '사방 블리드 mm (0=없음, 기본 3)' })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(50)
+  bleedMm?: number;
+
+  @ApiPropertyOptional({ example: false, description: '재단선 마커 표기 ON/OFF (기본 false)' })
+  @IsOptional()
+  @IsBoolean()
+  cropMarkEnabled?: boolean;
+
+  @ApiPropertyOptional({ example: 0.2, minimum: 0, maximum: 10, description: '업로드 PDF 사이즈 검증 허용오차 mm (기본 0.2)' })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(10)
+  sizeToleranceMm?: number;
+
   @IsOptional()
   @IsArray()
   @IsString({ each: true })
@@ -279,6 +299,26 @@ export class UpdateTemplateSetDto {
   @IsOptional()
   @IsIn(['rgb', 'cmyk'])
   colorMode?: ColorOutputMode;
+
+  // ── 블리드 / 재단선 / 사이즈 검증 허용오차 (2026-06-10) ──
+  @ApiPropertyOptional({ example: 3, minimum: 0, maximum: 50, description: '사방 블리드 mm (0=없음, 기본 3)' })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(50)
+  bleedMm?: number;
+
+  @ApiPropertyOptional({ example: false, description: '재단선 마커 표기 ON/OFF (기본 false)' })
+  @IsOptional()
+  @IsBoolean()
+  cropMarkEnabled?: boolean;
+
+  @ApiPropertyOptional({ example: 0.2, minimum: 0, maximum: 10, description: '업로드 PDF 사이즈 검증 허용오차 mm (기본 0.2)' })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(10)
+  sizeToleranceMm?: number;
 
   @IsOptional()
   @IsArray()
