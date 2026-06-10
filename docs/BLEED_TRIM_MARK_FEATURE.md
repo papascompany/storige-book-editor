@@ -48,6 +48,22 @@
 - ✅ **결과 콜백 배선 완료**(`d046409`): 임포지션 잡에 editSessionId+`purpose='inner-imposition'` 마커 → 워커 완료(`PATCH external/:id/status` → `updateJobStatus`)가 게이트(CONVERT&&purpose&&COMPLETED&&outputFileUrl) 통과 시 `relinkImposedInnerPdf()`(best-effort) — `files.registerExternalFile`로 결과 File 등록 → `session.contentPdfFileId` **재포인팅**(마이그레이션0, 원본은 metadata.innerPdfImposition 보존). 회귀방어: 임포지션 잡을 updateEditSessionWorkerStatus·areAllSessionJobsCompleted에서 제외(스푸리어스 webhook/검증지연 방지). **레이스**: compose-mixed는 caller-driven(contentPdfUrl 직접수신)이라 차단게이트 미적용(순서·PHP 무변경 보존), 재포인팅이라 임포지션 완료 후 자동 반영.
 - **검증(스테이징, 결과콜백 후)**: opt-in 세션 업로드 3종 — Match→passthrough(바이트동일)/큼→innerfit(다운스케일·중앙·확대금지)/작음→center(무스케일·중앙). underlay·cropMarkEnabled=false → 변환 잡 미발행 로그 확인. 허용오차 1mm→0.2mm 단계 인하(기존 통과 업로드 회귀 측정 후).
 
+### (라) CTO 구조 감사 결과 (2026-06-10, 4차원 적대감사 + 종합 — 커밋 342b44d 기준)
+
+**게이트 OFF 안전성은 코드로 입증**(배포 무해). **게이트 ON(활성화)은 아래 3건 해소 전까지 어떤 templateSet 에도 cropMarkEnabled 를 켜지 말 것**:
+
+| # | 심각도 | 내용 | 처리 |
+|---|---|---|---|
+| 1 | critical | **검증 허용오차 0.2mm 게이트 누수**(라이브 회귀): P1 주입이 게이트 없이 전 templateSet 세션 적용 → validator `??1` 무력화(1mm→0.2mm) | ✅ **수정·배포**(`342b44d`) — 주입을 cropMarkEnabled 게이트 뒤로 + merge 무조건 주입 제거 |
+| 2 | critical | **화면↔PDF 블리드 지오메트리 불일치**: 단일모드 로드 cutSize:0 하드코딩(useEditorContents 1031/1172/1244) → 화면 블리드 0 + PDF 블리드 링 **100% 백지**(canvas.clipPath=workspace 가 SVG 클립, viewBox 만 확장). spread 는 cutSizeMm=2 → 1mm/edge vs bleedMm 3mm. 모양틀(page-outline)은 원천 불가 | ⛔ **활성화 차단** — 로드 시 cutSize=bleedMm×2 정합 + export 시 게이트 ON 이면 clipPath 를 renderSize 로 확장/해제. 수정 후 단일/spread/모양틀 3케이스 샘플 PDF 검증 |
+| 3 | major | **세션 lost update**: relinkImposedInnerPdf(전체 save)와 검증콜백 updateEditSessionWorkerStatus(전체 save)가 병렬 완료 → stale save 가 contentPdfFileId 를 원본으로 되돌릴 수 있음(임포지션 결과 무증상 소실) | ⛔ **활성화 차단** — 컬럼 한정 `repository.update()` 원자 갱신으로 전환(양쪽) |
+| 4 | major | **session.validated 웹훅 ≠ 임포지션 완료**: areAllSessionJobsCompleted 가 임포지션 잡 제외(의도된 회귀방어) → PHP 가 validated 직후 compose 하면 원본 사용 가능 | ⛔ **활성화 차단** — PHP 연동 규약 확정(웹훅 페이로드에 임포지션 상태 포함 또는 compose 시 대기/조회) |
+| 5 | minor | complete() 재진입 시 중복 임포지션 잡(멱등 가드 부재) | 지금 수정(1줄 가드) |
+| 6 | minor | centerOnPage 음수 오프셋 방어 부재(현 경로는 resolveMode 가 전제 보장) | 지금 수정(방어 가드) |
+| 7~9 | minor | printSize+게이트ON 정책 미정의 / 임포지션 결과 관측성(metadata mode 미기록)·재검증 부재 / 실측 0.1mm 라운딩 vs tol 0.2 경계 요동 | 후속 |
+
+**기각된 주장(감사 자체가 반증)**: TrimBox y축 반전(사방 균등 모델에서 항등), svg2pdf 이중 스케일(비례 구조 동일), **innerfit 좌하단 정렬(GS 10.06 실측 — `-dPDFFitPage` 는 중앙 정렬 수행)**, printMarkConfig spread/embed 미세팅(공통 경로 선행 확인), templateSet.width 의미(판형=트림으로 일관), TemplateSetForm 로드 미완(코드 반증).
+
 ### (다) cutSize 한 변/양변 정합 (구현 시 주의)
 편집기 워크스페이스는 `width + cutSize`(양변 합), P3 출력은 `bleedMm`(per-edge)×2. P3 게이트 ON 상품은 **편집기 cutSize 와 templateSet bleedMm 가 정합**(cutSize ≈ bleedMm×2)하도록 운영 설정 점검 필요. (현재 P3 는 bleedMm 기준으로 작업사이즈 산출 — 워크스페이스 cutSize 와 별개로 동작하므로 화면/PDF 괴리 가능 → opt-in 검증 시 함께 확인.)
 
