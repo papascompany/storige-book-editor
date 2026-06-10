@@ -80,6 +80,21 @@
 
 ---
 
+## 0-e. 편집사이즈(블리드) carry 인쇄 + 재단선 마커 + 고객업로드 임포지션 (2026-06-10) — P1~P4 배포
+
+오너 확정: 판형=재단(trim), 블리드=사방 per-edge mm(상품별), **작업사이즈=재단+블리드×2**. 블리드>0&재단선표기ON→작업사이즈 PDF+코너 마커+TrimBox. 고객 업로드 내지는 trim/work 받아 중심 임포지션(동일=패스스루/큼=이너핏/작음=중앙). 허용오차 ±0.2 기본. **상세: [`docs/BLEED_TRIM_MARK_FEATURE.md`](../../docs/BLEED_TRIM_MARK_FEATURE.md).**
+
+| | 내용 | 커밋 |
+|---|---|---|
+| **P1** 데이터모델+배선 | template_sets.bleed_mm/crop_mark_enabled/size_tolerance_mm + edit-sessions→워커(trim/work/tol) + admin 폼 | `771c3af` ✅배포(마이그레이션+API+worker) |
+| **P2** 편집기 화면가이드 | 점선 트림 + 코너 마커(cutSize>0) + 재단선 이탈 경고(objectOutOfTrim). 화면전용 excludeFromExport | `4267482` ✅배포(editor) |
+| **P4** 워커 임포지션 | getPdfInfo 실측 + centerOnPage + convert mode분기(미지정=현행) + 검증 tolerance가변(1mm유지) | `b235bf8` ✅배포(dormant) |
+| **P3** 편집기 PDF 출력 | ServicePlugin 게이트(cropMarkEnabled&bleed>0&!envelope)→작업사이즈+마커+박스, OFF=byte-identical. printMarkConfig 배선 | `1e118a2` ✅배포(editor) |
+
+**전부 게이팅으로 전 상품 무변경 배포.** 잔여 = **활성화·검증(오너 통제)**: (가)P3 admin 토글(crop_mark_enabled ON+블리드)→opt-in 상품 PDF 박스/마커 mutool/Acrobat 검증, (나)P4 업로드→mode 주입 배선 1건(워커 자체결정 or UI) + 스테이징 골든·tolerance 단계인하, (다)cutSize(양변)↔bleedMm(per-edge) 정합 점검. 좌표규약 [[reference_coordinate_convention]].
+
+---
+
 ## 2-b. D 에디터 실로드 E2E 절차
 
 1. admin: IDML 변환 → 표지 Template 등록 → 책등 가변 책 셋 등록(방법A) + 내지 추가 + pageCountRange. 2. 그 셋으로 책모드 세션. 3. ✅ 표지+영역 가이드. 4. 내지 수 변경 → ✅ 책등 폭 자동 재계산 + 앞/뒤표지 평행이동. 5. 편집완료→재로드 → ✅ meta 보존(책등 가변 재배치 동작).
