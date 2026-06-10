@@ -183,6 +183,7 @@ export function useEditorContents(): UseEditorContentsReturn {
     setupGeneral: setupGeneralStore,
     setEditorTemplates,
     setEnabledMenus,
+    setPrintMarkConfig,
   } = useSettingsStore(
     useShallow((state) => ({
       setupProductBased: state.setupProductBased,
@@ -190,6 +191,7 @@ export function useEditorContents(): UseEditorContentsReturn {
       setupGeneral: state.setupGeneral,
       setEditorTemplates: state.setEditorTemplates,
       setEnabledMenus: state.setEnabledMenus,
+      setPrintMarkConfig: state.setPrintMarkConfig,
     }))
   )
 
@@ -928,6 +930,21 @@ export function useEditorContents(): UseEditorContentsReturn {
       const templateSetEnabledMenus = (templateSet as any).enabledMenus
       setEnabledMenus(
         Array.isArray(templateSetEnabledMenus) ? templateSetEnabledMenus : null
+      )
+
+      // P3 (2026-06-10): 작업사이즈(재단+블리드)/재단마커 PDF 출력 설정 운반.
+      // templateSet 의 bleedMm/cropMarkEnabled 컬럼(API JSON)을 settings store 로 옮겨둔다.
+      // PDF 저장 시 게이트(cropMarkEnabled && bleedMm>0)에서만 작업사이즈 경로 활성.
+      // 필드 없으면 null → 게이트 OFF(현행 trim 출력 그대로).
+      const tsBleedMm = (templateSet as any).bleedMm
+      const tsCropMarkEnabled = (templateSet as any).cropMarkEnabled
+      setPrintMarkConfig(
+        typeof tsBleedMm === 'number' || typeof tsCropMarkEnabled === 'boolean'
+          ? {
+              bleedMm: typeof tsBleedMm === 'number' ? tsBleedMm : 0,
+              cropMarkEnabled: !!tsCropMarkEnabled,
+            }
+          : null
       )
 
       // 2. EditorMode 확인 및 분기
