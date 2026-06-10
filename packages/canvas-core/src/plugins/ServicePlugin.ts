@@ -894,18 +894,67 @@ class ServicePlugin extends PluginBase {
                       viewBoxY += (svgHeight - backgroundHeight)
                     }
                   }
-                  // SVG 생성 - 투명 배경으로 설정
-                  const svgData = canvas.toSVG({
-                    width: svgWidth ,
-                    height: svgHeight,
-                    viewBox: {
-                      x: viewBoxX,
-                      y: viewBoxY,
-                      width: svgWidth,
-                      height: svgHeight
-                    },
-                    backgroundColor: 'transparent'
-                  } as any)
+                  // ── #2 export 방어 (2026-06-10, CTO 감사 §4-(라)-2) ──────────────────
+                  // canvas.clipPath 가 workspace 사각형이면 toSVG 출력이 workspace 경계
+                  // (trim+cutSize px)로 클립된다. 게이트 ON(useEditSize) 시 viewBox 는
+                  // 작업사이즈(trim+bleedMm×2)로 확장되므로, 화면 cutSize 가 그보다 작은
+                  // 세션(레거시 저장본 등)은 블리드 링이 백지가 된다 → toSVG 동안만
+                  // workspace 클립을 renderSize(px)로 임시 확장 후 finally 에서 원복.
+                  // - 대상: id==='workspace' 인 'rect' 클립만. page-outline/cutline 등
+                  //   모양(shape) 클립과 extensionType==='clipping'(모양틀 워크스페이스)은
+                  //   트림 모양 유지가 의도이므로 절대 건드리지 않음.
+                  // - workspace 는 이미 renderSize 면 동일값 set = 사실상 no-op.
+                  // - useEditSize=false(게이트 OFF) → 일절 미개입 = 현행 byte-identical.
+                  const clipForExport = canvas.clipPath as
+                    | (fabric.Object & { id?: string; extensionType?: string })
+                    | undefined
+                  const shouldExpandClip =
+                    useEditSize &&
+                    !!clipForExport &&
+                    clipForExport.id === 'workspace' &&
+                    clipForExport.type === 'rect' &&
+                    clipForExport.extensionType !== 'clipping'
+                  const savedClipState = shouldExpandClip
+                    ? {
+                        width: clipForExport!.width,
+                        height: clipForExport!.height,
+                        scaleX: clipForExport!.scaleX,
+                        scaleY: clipForExport!.scaleY,
+                      }
+                    : null
+
+                  let svgData = ''
+                  try {
+                    if (shouldExpandClip && clipForExport) {
+                      clipForExport.set({
+                        width: svgWidth,
+                        height: svgHeight,
+                        scaleX: 1,
+                        scaleY: 1,
+                      })
+                      clipForExport.setCoords()
+                    }
+
+                    // SVG 생성 - 투명 배경으로 설정
+                    svgData = canvas.toSVG({
+                      width: svgWidth ,
+                      height: svgHeight,
+                      viewBox: {
+                        x: viewBoxX,
+                        y: viewBoxY,
+                        width: svgWidth,
+                        height: svgHeight
+                      },
+                      backgroundColor: 'transparent'
+                    } as any)
+                  } finally {
+                    // 원복 (workspace 객체는 캔버스 위 객체와 동일 인스턴스 — 반드시 복구)
+                    if (shouldExpandClip && clipForExport && savedClipState) {
+                      clipForExport.set(savedClipState)
+                      clipForExport.setCoords()
+                      clipForExport.dirty = true
+                    }
+                  }
 
                   console.log(`페이지 ${i + 1} SVG 생성 완료`)
 

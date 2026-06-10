@@ -947,6 +947,19 @@ export function useEditorContents(): UseEditorContentsReturn {
           : null
       )
 
+      // #2 (2026-06-10, CTO 감사 §4-(라)-2): 화면↔PDF 블리드 지오메트리 정합.
+      // P3 출력 게이트(cropMarkEnabled===true && bleedMm>0)가 켜진 templateSet 에서만
+      // 화면 워크스페이스 cutSize 를 배선한다. WorkspacePlugin 의 cutSize 는 '양변 합'
+      // 규약(workspace = size + cutSize, 재단선 inset = cutSize/2 per edge)이고
+      // templateSet.bleedMm 은 per-edge 이므로 정합값 = bleedMm × 2.
+      // - 게이트 미충족 → 0 유지 = 현행과 byte-identical.
+      // - workspace 는 중앙원점 대칭 확장이라 cutSize 변경이 콘텐츠 좌표에 영향 없음
+      //   (SpreadPlugin 주석 "둘 다 중앙 정렬이므로 cutSize 상쇄" 와 동일 원리).
+      const screenCutSizeMm =
+        tsCropMarkEnabled === true && typeof tsBleedMm === 'number' && tsBleedMm > 0
+          ? tsBleedMm * 2
+          : 0
+
       // 2. EditorMode 확인 및 분기
       // DB의 editorMode를 우선 사용하되, 스프레드 템플릿이 존재하면 book 모드로 자동 전환
       let editorMode = (templateSet as any).editorMode as EditorMode
@@ -1023,12 +1036,13 @@ export function useEditorContents(): UseEditorContentsReturn {
       }
 
       // 2. 설정 스토어에 크기 정보 설정
+      // #2: 게이트 ON 시 cutSize = bleedMm×2 (OFF 면 0 = 현행 그대로)
       await setupEmptyEditorStore({
         name: templateSet.name,
         size: {
           width: templateSet.width,
           height: templateSet.height,
-          cutSize: 0,
+          cutSize: screenCutSizeMm,
           safeSize: 0,
         },
         unit: 'mm',
@@ -1083,8 +1097,9 @@ export function useEditorContents(): UseEditorContentsReturn {
           } else {
             // 첫 번째 템플릿의 canvasData에서 workspace 크기를 템플릿별 크기로 수정
             // (spine, wing 타입은 템플릿 자체 크기, 나머지는 템플릿셋 크기)
-            const targetWidth = mmToPxDisplay(firstTemplateWidth)
-            const targetHeight = mmToPxDisplay(firstTemplateHeight)
+            // #2: workspace = trim + cutSize(양변 합) 규약 — 게이트 OFF 면 +0 = 현행 동일
+            const targetWidth = mmToPxDisplay(firstTemplateWidth + screenCutSizeMm)
+            const targetHeight = mmToPxDisplay(firstTemplateHeight + screenCutSizeMm)
 
             // canvasData의 workspace 객체 크기 수정
             const modifyWorkspaceInData = (data: any) => {
@@ -1120,8 +1135,9 @@ export function useEditorContents(): UseEditorContentsReturn {
           const firstEditor = useAppStore.getState().allEditors[0]
           if (firstCanvas && firstEditor) {
             // 첫 번째 템플릿 크기 사용 (spine, wing은 템플릿 자체 크기)
-            const totalWidth = mmToPxDisplay(firstTemplateWidth)
-            const totalHeight = mmToPxDisplay(firstTemplateHeight)
+            // #2: workspace = trim + cutSize(양변 합) — 게이트 OFF 면 +0 = 현행 동일
+            const totalWidth = mmToPxDisplay(firstTemplateWidth + screenCutSizeMm)
+            const totalHeight = mmToPxDisplay(firstTemplateHeight + screenCutSizeMm)
 
             console.log('[EditorContents] Resizing first page workspace to:', {
               templateType: firstTemplateType,
@@ -1165,11 +1181,12 @@ export function useEditorContents(): UseEditorContentsReturn {
             const workspacePlugin = firstEditor.getPlugin<any>('WorkspacePlugin')
             if (workspacePlugin) {
               // 플러그인 내부 옵션을 직접 업데이트 (템플릿별 크기 사용)
+              // #2: cutSize = 게이트 ON 시 bleedMm×2 (재단선/화면 crop marks 가 이 값을 사용)
               if (workspacePlugin._options) {
                 workspacePlugin._options.size = {
                   width: firstTemplateWidth,
                   height: firstTemplateHeight,
-                  cutSize: 0,
+                  cutSize: screenCutSizeMm,
                   safeSize: 0,
                 }
               }
@@ -1236,12 +1253,13 @@ export function useEditorContents(): UseEditorContentsReturn {
           }
 
           // createCanvas를 사용하여 모든 플러그인이 포함된 새 캔버스 생성
+          // #2: cutSize = 게이트 ON 시 bleedMm×2 (OFF 면 0 = 현행 동일)
           if (canvasContainer) {
             await createCanvas({
               size: {
                 width: templateWidth,
                 height: templateHeight,
-                cutSize: 0,
+                cutSize: screenCutSizeMm,
                 safeSize: 0,
               }
             }, canvasContainer, initId || undefined)
@@ -1288,10 +1306,11 @@ export function useEditorContents(): UseEditorContentsReturn {
 
                   // loadJSON 후 workspace 크기 조정
                   // 템플릿 타입별 크기 사용 (spine, wing은 템플릿 자체 크기)
+                  // #2: workspace = trim + cutSize(양변 합) — 게이트 OFF 면 +0 = 현행 동일
                   const cvs = latestAllCanvas[newPageIndex]
                   if (cvs) {
-                    const totalWidth = mmToPxDisplay(capturedWidth)
-                    const totalHeight = mmToPxDisplay(capturedHeight)
+                    const totalWidth = mmToPxDisplay(capturedWidth + screenCutSizeMm)
+                    const totalHeight = mmToPxDisplay(capturedHeight + screenCutSizeMm)
 
                     console.log(`[EditorContents] Resizing workspace for page ${newPageIndex}:`, {
                       templateType,
@@ -1416,16 +1435,36 @@ export function useEditorContents(): UseEditorContentsReturn {
         throw new Error('Spread 템플릿을 찾을 수 없습니다.')
       }
 
+      // #2 (2026-06-10, CTO 감사 §4-(라)-2): 화면↔PDF 블리드 지오메트리 정합 (spread).
+      // P3 출력 게이트(cropMarkEnabled===true && bleedMm>0)가 켜진 templateSet 에서만
+      // spread 화면 cutSizeMm(양변 합)를 bleedMm(per-edge)×2 로 정합. 게이트 OFF 면
+      // 기존 고정값 2 그대로 = 현행 byte-identical. (templateSet 에서 직접 읽음 —
+      // printMarkConfig 스토어 세팅 시점 의존 제거.)
+      const spreadBleedMm = (templateSet as any).bleedMm
+      const spreadGateOn =
+        (templateSet as any).cropMarkEnabled === true &&
+        typeof spreadBleedMm === 'number' &&
+        spreadBleedMm > 0
+
       // 2. SpreadSpec 구성
       const spreadSpec = buildSpreadSpec({
         template: spreadTemplate,
-        cutSizeMm: 2,
+        cutSizeMm: spreadGateOn ? spreadBleedMm * 2 : 2,
         safeSizeMm: 3,
         dpi: 150,
       })
 
       if (!spreadSpec) {
         throw new Error('SpreadSpec 구성에 실패했습니다.')
+      }
+
+      // #2: buildSpreadSpec 은 템플릿에 저장된 spec.cutSizeMm 을 우선하므로(`spec.cutSizeMm || cutSizeMm`)
+      // 게이트 ON 일 때는 P3 bleedMm 정합값으로 명시 덮어쓰기.
+      // (workspace 중앙 대칭 확장 + SpreadPlugin 콘텐츠 원점 = -totalPx/2 로 cutSize 상쇄 —
+      //  영역/가이드/객체 좌표 불변. 이 spec 은 setSpreadConfig·SpreadPlugin·addInnerPage(내지
+      //  workspace cutSize)·책등 가변 setOptions 까지 단일 소스로 전파된다.)
+      if (spreadGateOn) {
+        spreadSpec.cutSizeMm = spreadBleedMm * 2
       }
 
       console.log('[EditorContents:Spread] SpreadSpec built:', spreadSpec)
@@ -1446,6 +1485,7 @@ export function useEditorContents(): UseEditorContentsReturn {
       useSettingsStore.getState().setSpreadConfig(spreadConfig)
 
       // 5. 빈 에디터 스토어 설정 (spread 캔버스용 - totalWidth/Height 사용)
+      // #2: cutSize 는 위에서 정합된 spreadSpec.cutSizeMm 를 그대로 사용(게이트 ON 시 bleedMm×2)
       await setupEmptyEditorStore({
         name: templateSet.name,
         size: {
