@@ -236,6 +236,8 @@ class ServicePlugin extends PluginBase {
           item && (item.excludeFromExport = false)
         }
 
+        // fabric 5.5 styles=undefined 직렬화 크래시 방어(외부 변환 canvasData 유입 대비)
+        core.ensureTextStyles(this._canvas)
         const result = this._canvas.toJSON(core.extendFabricOption)
 
         console.log('Save JSON:', result)

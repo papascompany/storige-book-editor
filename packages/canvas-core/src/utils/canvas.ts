@@ -1012,6 +1012,27 @@ export namespace core {
   }
 
   /**
+   * 텍스트 객체 styles 정규화 (fabric 5.5 크래시 방어).
+   *
+   * canvasData 에 textbox 의 `styles` 키가 아예 없으면(예: 외부 변환기 출력)
+   * fabric 5.5 의 fromObject 가 stylesFromArray(undefined)를 그대로 전파해
+   * 객체의 styles 가 undefined 가 되고, 이후 toObject(저장/PDF/썸네일)에서
+   * stylesToArray 가 "Cannot read properties of undefined (reading '0')" 로
+   * 크래시한다(저장 무한로딩). 로드 직후/직렬화 직전에 빈 객체로 보정한다.
+   */
+  export function ensureTextStyles(canvas: fabric.StaticCanvas): void {
+    for (const obj of canvas.getObjects()) {
+      const t = obj as fabric.Object & { styles?: unknown; type?: string }
+      if (
+        (t.type === 'textbox' || t.type === 'text' || t.type === 'i-text') &&
+        (t.styles === undefined || t.styles === null)
+      ) {
+        ;(t as any).styles = {}
+      }
+    }
+  }
+
+  /**
    * JSON에서 캔버스 로드
    */
   export function loadFromJSON(
@@ -1020,6 +1041,7 @@ export namespace core {
   ): Promise<void> {
     return new Promise((resolve) => {
       canvas.loadFromJSON(json, () => {
+        ensureTextStyles(canvas)
         canvas.renderAll()
         resolve()
       })
@@ -1033,6 +1055,7 @@ export namespace core {
     canvas: fabric.Canvas,
     propertiesToInclude?: string[]
   ): object {
+    ensureTextStyles(canvas)
     const defaultProps = ['id', 'extensionType', 'selectable', 'evented']
     return canvas.toJSON(propertiesToInclude || defaultProps)
   }
