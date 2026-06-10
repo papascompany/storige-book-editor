@@ -170,6 +170,9 @@ export function toSpreadTemplate(doc, opts = {}) {
       top: round2(centerYpx - halfH),
       width: round2(widthPx),
       height: round2(heightPx),
+      // fabric.Ellipse 는 rx/ry(반경)로 그린다 — width/height 만 주면 rx=0 으로 로드돼 타원이
+      // 비가시 + 재저장 시 width:0 박제. Oval 은 rx/ry 를 명시한다.
+      ...(it.type === 'Oval' ? { rx: round2(widthPx / 2), ry: round2(heightPx / 2) } : {}),
       // 경로형은 변환좌표에 회전이 이미 반영됨 → angle 0
       angle: isPath ? 0 : round2(d.rotationDeg),
       ...(!isPath && d.flipped ? { flipY: true } : {}),

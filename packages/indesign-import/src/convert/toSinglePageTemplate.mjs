@@ -5,6 +5,7 @@
 // 텍스트는 편집가능 textbox(근사 폰트/크기/색) — 관리자가 에디터에서 확정.
 
 import { roundMm01, DEFAULT_DPI } from '../geometry/units.mjs';
+import { ARTWORK_LOCK } from './artworkLock.mjs';
 
 const round2 = (n) => Math.round(n * 100) / 100;
 const round4 = (n) => Math.round(n * 10000) / 10000;
@@ -47,8 +48,8 @@ export function toSinglePageTemplate(parsed, background, opts = {}) {
       height: background.heightPx,
       scaleX: round4(canvasW / background.widthPx),
       scaleY: round4(canvasH / background.heightPx),
-      selectable: true,
-      evented: true,
+      // 배경 아트워크는 판형에 고정(이동·삭제 불가, 편집은 텍스트만). IDML 경로(index.mjs)와 동일.
+      ...ARTWORK_LOCK,
       isUserAdded: false,
       meta: { regionRef: null, anchor: { kind: 'canvas', x: 0, y: 0 } },
     });

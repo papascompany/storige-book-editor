@@ -29,6 +29,13 @@ const esc = (t) =>
 export function buildArtworkSvg(dto) {
   const W = dto.canvasData.width;
   const H = dto.canvasData.height;
+  // 객체 left/top 은 '중앙원점'(toSpreadTemplate: centerXpx - halfW)인데 viewBox 는 좌상단원점
+  // (0 0 W H). 비-path 객체(image/rect/ellipse)와 회전 피벗은 +halfW/+halfH 평행이동으로
+  // 콘텐츠 좌상단 좌표로 환산해야 한다. (path 의 d 는 이미 콘텐츠 절대 px → 보정 불필요.)
+  // 이 보정 누락 시 back-cover(−x) 객체가 viewBox 밖으로 클립되고 front 가 좌측 절반으로 밀려
+  // PNG 의 표지 좌우가 뒤바뀐 것처럼 구워졌다(2026-06-11 회귀 수정).
+  const halfW = W / 2;
+  const halfH = H / 2;
 
   const parts = [];
   parts.push(`<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`);
@@ -36,8 +43,8 @@ export function buildArtworkSvg(dto) {
   for (const o of dto.canvasData.objects) {
     if (o.type === 'textbox') continue;
 
-    const left = o.left;
-    const top = o.top;
+    const left = o.left + halfW;
+    const top = o.top + halfH;
     const w = o.width || 12;
     const h = o.height || 12;
     const fill = o.fill && o.fill !== '' ? o.fill : 'none';
@@ -45,7 +52,7 @@ export function buildArtworkSvg(dto) {
       ? ` stroke="${o.stroke}" stroke-width="${o.strokeWidth || 1}"`
       : '';
 
-    // angle 이 있으면 객체 중심(left,top)을 축으로 회전 그룹으로 감싼다.
+    // angle 이 있으면 (보정된) 객체 중심(left,top)을 축으로 회전 그룹으로 감싼다.
     const angle = o.angle || 0;
     if (angle) parts.push(`<g transform="rotate(${angle} ${left} ${top})">`);
 
@@ -55,7 +62,7 @@ export function buildArtworkSvg(dto) {
       const y = top - h / 2;
       parts.push(`<image href="${esc(o.src)}" xlink:href="${esc(o.src)}" x="${x}" y="${y}" width="${w}" height="${h}"/>`);
     } else if (o.path) {
-      // path 의 d 는 절대 캔버스 px 좌표 → transform 불필요.
+      // path 의 d 는 절대 캔버스 px 좌표 → transform 불필요(중앙원점 보정도 불필요).
       parts.push(`<path d="${o.path}" fill="${fill}"${strokeAttr}/>`);
     } else if (o.type === 'ellipse') {
       parts.push(`<ellipse cx="${left}" cy="${top}" rx="${w / 2}" ry="${h / 2}" fill="${fill}"${strokeAttr}/>`);

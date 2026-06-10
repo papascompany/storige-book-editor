@@ -83,12 +83,12 @@ export function useTemplateSetSave(): UseTemplateSetSaveReturn {
         }
         // canvas-core 의 toJSON 이 storige 가 추가한 extension 프로퍼티까지 보존.
         // fabric toJSON 반환형이 loose(`{}`) 라 CanvasData 로 단언(런타임은 version/objects 등 포함).
+        // ⚠️ 단일 템플릿 저장(saveJSON)과 동일하게 extendFabricOption 전체를 보존해야 한다.
+        //   축소 목록을 쓰면 lockMovementX/Y·hasControls·lockInfo·deleteable·name·styles 등이
+        //   셋 일괄저장에서 탈락 → IDML 배경 아트워크 잠금이 책등가변 셋 편집 1회로 절반 풀리고,
+        //   텍스트 styles 누락 시 재저장 크래시(무한로딩) 위험. (isUserAdded/isLocked 추가 보존.)
         const canvasData = core.toJSON(cv, [
-          'id',
-          'extensionType',
-          'selectable',
-          'evented',
-          'meta',
+          ...core.extendFabricOption,
           'isUserAdded',
           'isLocked',
         ]) as unknown as CanvasData

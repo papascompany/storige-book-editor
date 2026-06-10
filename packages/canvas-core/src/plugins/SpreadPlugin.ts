@@ -90,6 +90,20 @@ class SpreadPlugin extends PluginBase {
     return super.mounted()
   }
 
+  /**
+   * 로드 후처리 — ServicePlugin.loadJSON 의 canvas.clear() 가 책등/영역 가이드·라벨을 함께 제거하므로
+   * (IDML/PSD 변환 표지처럼 canvasData 에 가이드 객체가 없으면 영구 소실 → 책등선·영역 라벨 부재)
+   * currentLayout 이 있으면 가이드/라벨을 재렌더링한다. init() 은 clearGuides/clearLabels 선행이라
+   * 중복 호출에 안전하고, WorkspacePlugin.afterLoad 가 workspace 를 z-최하단에 복원하므로 가이드는
+   * 그 위에 정상 노출된다. 일반(비-spread) 편집에는 currentLayout 이 없어 무영향.
+   */
+  async afterLoad(...args: any[]): Promise<void> {
+    if (this.currentLayout) {
+      this.init()
+    }
+    return super.afterLoad(...args)
+  }
+
   async destroyed(): Promise<void> {
     // 이벤트 핸들러 제거
     if (this._boundHandleObjectModified) {
