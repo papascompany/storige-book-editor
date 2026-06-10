@@ -31,13 +31,24 @@
 |---|---|---|
 | **P1 데이터모델+배선** | template_sets.bleed_mm/crop_mark_enabled/size_tolerance_mm + 엔티티·DTO·service·마이그레이션; edit-sessions→orderOptions(bleedMm/cropMarkEnabled/sizeToleranceMm + trimSize/workSize) 주입; worker-jobs 전역기본 머지; admin 폼; worker 인터페이스 optional 수신. **검증/출력 무변경.** | ✅ **완료·배포** (`771c3af`, 마이그레이션 적용·API/worker 재배포·admin Vercel) |
 | **P2 편집기 화면 가이드** | 재단선 점선(기존) + 코너 마커(createOrUpdateCropMarks, cutSize>0, excludeFromExport) + 재단선 이탈 경고(objectOutOfTrim→useObjectOutOfTrimToast). **전부 화면전용, 출력 무변경.** | ✅ **완료·배포** (`4267482`, editor Vercel). 단품(cutSize>0) 세션 시각검증 권장 |
-| **P3 편집기 PDF 출력** | ServicePlugin: 블리드>0 시 **작업사이즈 페이지+viewBox**(블리드 미클립) + 코너 마커(점선 제외) + jsPDF TrimBox/BleedBox(2.5.2 지원). cutSize=bleedMm*2 배선. **상품별 opt-in 플래그(기본 off → 기존 trim 출력 유지)**. | ⏸ **미착수(고위험·전상품)** — opt-in 게이팅 필수 + 실주문 PDF 검증(mutool/pdfinfo로 MediaBox/TrimBox 확인) |
-| **P4 워커 고객업로드** | getPdfInfo 실측화(현 하드코딩 A4) + 중심 임포지션(passthrough/innerfit/center) + 작업사이즈±허용오차 검증(현 1mm 하드코딩→sizeToleranceMm). **passthrough 기본** 안전. | ⏸ **미착수(고위험)** — 스테이징 회귀(기존 통과 PDF가 0.2mm로 실패하는지) + 골든파일 검증 |
+| **P3 편집기 PDF 출력** | ServicePlugin: 게이트 `useEditSize=cropMarkEnabled&&bleedMm>0&&!envelope` ON시 **작업사이즈 page/viewBox**(중앙원점 유지·블리드 미클립) + 코너 마커(`_drawCropMarksAndBoxes`, svg2pdf 후 try/catch) + pageContext.trimBox/bleedBox/mediaBox(jsPDF 2.5.2). editor 배선: useSettingsStore.printMarkConfig←loadTemplateSetEditor(templateSet.bleedMm/cropMarkEnabled)→useWorkSave/embed 5곳. **OFF(기본)=byte-identical 현행.** | ✅ **완료·배포** (`1e118a2`, editor Vercel). crop_mark_enabled 기본 false → opt-in 전 전 상품 무변경 |
+| **P4 워커 고객업로드** | getPdfInfo 실측화(pdf-lib getSize, A4폴백) + centerOnPage 헬퍼 + convert() mode 분기(**미지정=현행100%**, passthrough/innerfit(다운스케일,확대금지)/center) + validatePageSize tolerance=sizeToleranceMm??1(1mm유지)+workSize케이스. | ✅ **완료·배포(dormant)** (`b235bf8`). mode 보내는 호출부 없어 동작 무변경 |
 
-## 4. P3/P4 안전 배포 원칙
-- **P3**: templateSet `crop_mark_enabled`(+ 별도 opt-in 의미)로 게이팅. 미지정 상품은 **현행 trim 출력 그대로** → 전 상품 동시변경 회피. 가장 위험한 단일 변경(ServicePlugin page/viewBox/clipPath) — 중앙원점 정합([[reference_coordinate_convention]]) 깨지지 않게.
-- **P4**: 변환은 **mode 기본 passthrough**(동일사이즈→무가공=현 효과와 동일). 검증 허용오차는 **1mm→0.2mm 단계 인하**(스테이징 회귀 측정 후). getPdfInfo 실측화는 메타 정확화(판정 동작은 단계 분리).
-- 배포순서: P1(완료) → P2(완료) → P4(worker, 스테이징) → P3(editor, opt-in, 실주문).
+## 4. 상태: P1~P4 전부 배포 완료 — 활성화·검증은 오너 통제 단계
+
+4단계 모두 **게이팅으로 전 상품 무변경 상태로 배포**됨. 실제 활성화 + 실주문 검증이 남음:
+
+### (가) P3 활성화 — admin 토글만으로 즉시 (간단)
+- admin 템플릿셋 폼에서 대상 상품의 **재단선 마커 표기(crop_mark_enabled) ON + 블리드(사방) mm 설정** → 그 상품 편집/저장 PDF가 작업사이즈+마커+TrimBox로 출력.
+- **검증**: opt-in 상품 1건 편집→저장 PDF를 `mutool info`/`pdfinfo -box`/Acrobat 인쇄제작 으로 **MediaBox=작업사이즈, TrimBox=재단** 확인 + 마커 위치 + 콘텐츠 중앙 정합. OFF 상품은 현행 trim 그대로(회귀 없음 확인).
+
+### (나) P4 활성화 — 업로드→변환 mode 주입 배선 1건 (잔여)
+- 현재 `pdf-converter.convert` 의 mode 분기는 구현됐으나, **mode/editSize 를 주입하는 호출부가 없음**(고객 업로드 내지 PDF가 자동으로 conversion 잡을 타지 않음 — 현재 convert 호출부는 admin `PdfBeforeAfterPreview` 자동수정뿐).
+- **필요 배선**: 고객 업로드 내지 PDF 처리 시 (1) getPdfInfo 실측 vs workSize 비교로 mode 결정(동일±tol→passthrough / 블리드없음&큼→innerfit / 작음→center) + editSize/sizeToleranceMm 를 convertOptions 에 주입하는 1곳. 워커 자체결정(convert 진입부) 또는 업로드 처리 UI/잡 생성부. `CreateConversionJobDto.convertOptions` 가 `any` 라 **API DTO 변경 불필요**.
+- **검증(스테이징)**: ① 골든 — editSize 동일(passthrough 바이트동일)·큼(innerfit 다운스케일·중앙)·작음(center 무스케일·중앙) 3종. ② 검증 허용오차 1mm→0.2mm **단계 인하**(기존 통과 업로드가 0.2mm로 신규 실패하는지 사전 측정 후).
+
+### (다) cutSize 한 변/양변 정합 (구현 시 주의)
+편집기 워크스페이스는 `width + cutSize`(양변 합), P3 출력은 `bleedMm`(per-edge)×2. P3 게이트 ON 상품은 **편집기 cutSize 와 templateSet bleedMm 가 정합**(cutSize ≈ bleedMm×2)하도록 운영 설정 점검 필요. (현재 P3 는 bleedMm 기준으로 작업사이즈 산출 — 워크스페이스 cutSize 와 별개로 동작하므로 화면/PDF 괴리 가능 → opt-in 검증 시 함께 확인.)
 
 ## 5. 핵심 파일
 - 편집기/canvas-core: `WorkspacePlugin.ts`(워크스페이스·cutBorder·cropMarks·objectOutOfTrim), `ServicePlugin.ts`(_createMultiPagePDF ~653/668/720/852-877, P3), `useWorkSave.ts`(표지/내지 저장), `useCoverRegion.ts`(토스트).
