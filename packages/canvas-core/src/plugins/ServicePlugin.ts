@@ -288,6 +288,26 @@ class ServicePlugin extends PluginBase {
     this._canvas.offHistory()
     this._canvas.clear()
 
+    // ⚠️ canvasData 최상위 width/height 는 판형 메타데이터(useTemplateSave 규약 = mm, IDML/PSD
+    //   변환기 출력 = 워크스페이스 px)일 뿐 fabric 캔버스의 실제 px 치수가 아니다. 이를 그대로
+    //   loadFromJSON 에 넘기면 fabric __setupCanvas 의 _setOptions(serialized) 가 canvas.width/
+    //   height 를 덮어써(예: 표지 430×297) skipOffscreen 컬링이 가시영역 밖 객체를 렌더 스킵 →
+    //   '객체가 투명/사라짐'(특히 스프레드 표지 front/spine). 캔버스 치수는 컨테이너 기반
+    //   setDimensions/WorkspacePlugin.setZoomAuto 가 관리하므로 로드 입력에서 제거한다
+    //   (version/background/objects 등 나머지 키는 보존). 세션 canvasData(core.toJSON 산물)는
+    //   애초에 width/height 가 없어 무영향 — IDML/PSD 변환 템플릿 로드만 교정됨.
+    let loadInput: string | object = jsonStr
+    try {
+      const parsed: any = typeof jsonStr === 'string' ? JSON.parse(jsonStr) : { ...(jsonStr as object) }
+      if (parsed && typeof parsed === 'object' && ('width' in parsed || 'height' in parsed)) {
+        delete parsed.width
+        delete parsed.height
+        loadInput = parsed
+      }
+    } catch {
+      loadInput = jsonStr
+    }
+
     // JSON 파싱하여 필요한 폰트 목록 추출
     const extractFontsFromJSON = (json: any): Set<string> => {
       const fonts = new Set<string>()
@@ -500,7 +520,7 @@ class ServicePlugin extends PluginBase {
             }
           })
         }
-        this._canvas.loadFromJSON(jsonStr, onLoaded)
+        this._canvas.loadFromJSON(loadInput, onLoaded)
         setTimeout(() => {
           if (!postLoadDone) {
             console.warn('[ServicePlugin] loadFromJSON 콜백 미발화(4s) — afterLoad/콜백 강제 진행')
@@ -510,7 +530,7 @@ class ServicePlugin extends PluginBase {
       } catch (error) {
         console.error('❌ JSON 로드 중 오류:', error)
         // 에러 발생 시에도 기본 로드는 시도
-        this._canvas.loadFromJSON(jsonStr, () => {
+        this._canvas.loadFromJSON(loadInput, () => {
           this._editor.hooks.get('afterLoad').callAsync(jsonStr, () => {
             this._canvas.requestRenderAll()
             this._canvas.onHistory()

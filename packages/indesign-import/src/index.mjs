@@ -4,6 +4,7 @@
 import { parseIdml, colorToHex } from './idml/reader.mjs';
 import { toSpreadTemplate, deriveSpecFromPages } from './convert/toSpreadTemplate.mjs';
 import { buildPreviewSvg } from './preview/svg.mjs';
+import { ARTWORK_LOCK } from './convert/artworkLock.mjs';
 import * as units from './geometry/units.mjs';
 import * as regions from './geometry/regions.mjs';
 
@@ -45,8 +46,10 @@ export async function convertIdmlToTemplate(buffer, opts = {}) {
       height: raster.heightPx,
       scaleX: round4(cw / raster.widthPx),
       scaleY: round4(ch / raster.heightPx),
-      selectable: true,
-      evented: true,
+      // 배경 아트워크는 '표지 판형에 고정' — 고객/관리자가 실수로 이동·회전·삭제 못 하도록 잠금.
+      // (편집은 텍스트 오버레이만. 배경 교체는 재가져오기로.) 잠금 속성은 canvas-core
+      // extendFabricOption 화이트리스트로 저장 라운드트립 보존됨. PSD 경로(toSinglePageTemplate)와 동일.
+      ...ARTWORK_LOCK,
       isUserAdded: false,
       meta: { regionRef: null, anchor: { kind: 'canvas', x: 0, y: 0 } },
     };

@@ -545,7 +545,24 @@ class WorkspacePlugin extends PluginBase {
 
   afterLoad(...args: any[]): Promise<void> {
     return new Promise((r) => {
-      const workspace = this._getWorkspace()
+      let workspace = this._getWorkspace()
+
+      // 로드된 canvasData 에 workspace 객체가 없는 경우(= IDML/PSD 변환 템플릿: 변환기는 디자인
+      //   객체만 내보내고 흰 판형 rect 를 넣지 않음) afterLoad 가 통째로 스킵돼 흰 판형 배경·clipPath·
+      //   setZoomAuto(줌 핏)·재단선이 전부 누락된다. 이때 init→reset 단계에서 _options.size 로 이미
+      //   만들어 둔 this.workspace 를 z-최하단에 복원해 일반 템플릿과 동일한 로드 후처리를 태운다.
+      //   (일반 템플릿은 canvasData 에 workspace 가 포함되므로 이 분기를 타지 않음 — 무영향.)
+      if (
+        !workspace &&
+        this.workspace &&
+        this._options.renderType !== 'noBounded' &&
+        this._options.renderType !== 'mockup'
+      ) {
+        this._canvas.add(this.workspace)
+        ; (this.workspace as any).moveTo(0)
+        workspace = this._getWorkspace()
+      }
+
       if (workspace) {
         workspace.set('selectable', false)
         workspace.set('hasControls', false)
