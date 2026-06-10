@@ -77,6 +77,8 @@ export function toSinglePageTemplate(parsed, background, opts = {}) {
       fontSize,
       fill: l.fill || '#000000',
       text: l.text,
+      // fabric 5.5: styles 누락 시 fromObject 가 undefined 전파 → toObject 크래시. 빈 객체 필수.
+      styles: {},
       selectable: true,
       evented: true,
       isUserAdded: false,

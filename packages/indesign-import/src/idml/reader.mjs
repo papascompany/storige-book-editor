@@ -105,6 +105,11 @@ function collectItemsOrdered(siblingNodes, parentT, acc) {
       const a = attrsOf(node);
       const t = compose(parentT, fromItemTransform(parseNums(a['@_ItemTransform'])));
       const geom = extractGeometryOrdered(node);
+      // 프레임 안의 배치(placed) 콘텐츠 감지 — IDML 에는 원본 픽셀이 없고 링크 메타만 있어
+      // 복원 불가. 변환기에서 플레이스홀더 + 경고 처리용 플래그.
+      const placedContent = ['Image', 'PDF', 'EPS', 'WMF', 'PICT'].find(
+        (ct) => findChild(node, ct) != null
+      );
       acc.push({
         type: tag,
         self: a['@_Self'],
@@ -115,6 +120,7 @@ function collectItemsOrdered(siblingNodes, parentT, acc) {
         strokeColor: a['@_StrokeColor'],
         strokeWeight: a['@_StrokeWeight'] != null ? num(a['@_StrokeWeight']) : undefined,
         parentStory: a['@_ParentStory'],
+        ...(placedContent ? { placedContent } : {}),
       });
     } else if (tag === 'Group') {
       const a = attrsOf(node);

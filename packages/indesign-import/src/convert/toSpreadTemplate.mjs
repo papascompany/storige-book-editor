@@ -95,6 +95,7 @@ export function toSpreadTemplate(doc, opts = {}) {
   const warnings = [];
   const objects = [];
   const spotNames = new Set(); // 별색(Spot) 감지 — 후가공/별색 의도 확인 경고용
+  const placedFrames = []; // 배치(placed) 이미지 프레임 — IDML 에 원본 미포함 → 플레이스홀더
 
   // 로컬점([x,y]) → 캔버스 px({x,y}) 매퍼: world transform → 스프레드 → 캔버스 원점보정 → px
   const mapLocalToCanvas = (transform) => ([lx, ly]) => {
@@ -140,6 +141,15 @@ export function toSpreadTemplate(doc, opts = {}) {
 
     const fill = resolveColor(it.fillColor, doc.colors);
     const stroke = resolveColor(it.strokeColor, doc.colors);
+    // 배치(placed) 이미지 프레임 — IDML 에 원본 픽셀 미포함(링크 메타만)이라 복원 불가.
+    // 빈 프레임 대신 회색 플레이스홀더로 표시해 관리자가 편집기에서 이미지를 교체하도록 안내.
+    if (it.placedContent) {
+      placedFrames.push(it.self);
+      fill.hex = '#e9e9e9';
+      fill.isNone = false;
+      stroke.hex = '#999999';
+      stroke.isNone = false;
+    }
     if (fill.unknown) warnings.push(`미해석 색상: ${fill.unknown}`);
     if (fill.isSpot) spotNames.add(fill.spotName);
     if (stroke.isSpot) spotNames.add(stroke.spotName);
@@ -173,13 +183,21 @@ export function toSpreadTemplate(doc, opts = {}) {
       ...(isCompound ? { fillRule: 'evenodd' } : {}),
       isUserAdded: false,
       // Spread 가변 재배치용 — 저장 화이트리스트에 'meta' 보존 필요(README 참고)
-      meta: { regionRef: regionRef || null, anchor },
+      meta: {
+        regionRef: regionRef || null,
+        anchor,
+        ...(it.placedContent ? { placeholder: 'placed-image' } : {}),
+      },
       _idml: { self: it.self, srcType: it.type, points: it.bbox.pointCount },
     };
 
     if (it.type === 'TextFrame') {
       obj.type = 'textbox';
       obj.text = it.story?.text || '';
+      // ⚠️ fabric 5.5: styles 키가 아예 없으면 fromObject 의 stylesFromArray(undefined)가
+      // undefined 를 전파 → 이후 toObject(저장/PDF)에서 stylesToArray 가 크래시(무한로딩).
+      // 빈 객체라도 반드시 출력한다.
+      obj.styles = {};
       if (it.story?.sizePt) obj.fontSize = round2(mmToPx(ptToMm(it.story.sizePt), dpi)); // pt→px
       if (it.story?.font) obj.fontFamily = it.story.font;
       const tf = resolveColor(it.story?.fillColor, doc.colors);
@@ -191,6 +209,14 @@ export function toSpreadTemplate(doc, opts = {}) {
     }
 
     objects.push(obj);
+  }
+
+  // 배치(placed) 이미지 경고 — IDML 에는 이미지 원본이 포함되지 않음(링크 메타만)
+  if (placedFrames.length) {
+    warnings.push(
+      `배치 이미지 ${placedFrames.length}개 — IDML 에는 이미지 원본이 포함되지 않아 복원할 수 없습니다. ` +
+        `해당 자리는 회색 플레이스홀더로 표시됩니다. 편집기에서 [이미지] 메뉴로 원본 이미지를 업로드해 교체하세요.`
+    );
   }
 
   // 별색(Spot) 경고 — 4도 근사로 손실, 후가공/별색 의도 확인 필요
