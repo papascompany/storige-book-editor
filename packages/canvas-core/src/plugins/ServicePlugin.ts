@@ -210,7 +210,9 @@ class ServicePlugin extends PluginBase {
       cropMarkEnabled?: boolean
     },
     cutLine?: fabric.Object,
-    dpi: number = 72
+    dpi: number = 72,
+    /** 페이지 진행 콜백(다페이지 생성 UX/진단용) — 페이지 시작 시 (1-based page, total) 호출 */
+    onProgress?: (page: number, total: number) => void
   ): Promise<Blob> {
     const result = await this._createMultiPagePDF(
       canvases,
@@ -219,7 +221,8 @@ class ServicePlugin extends PluginBase {
       size,
       cutLine,
       true,
-      dpi
+      dpi,
+      onProgress
     )
     return result as Blob
   }
@@ -549,6 +552,8 @@ class ServicePlugin extends PluginBase {
     cutLine?: fabric.Object,
     returnBlob: boolean = false,
     dpi: number = 150,
+    /** 페이지 진행 콜백 — 페이지 시작 시 (1-based page, total) 호출(다페이지 UX/진단용) */
+    onProgress?: (page: number, total: number) => void,
   ): Promise<Blob | void> {
     return new Promise((resolve, reject) => {
       // 봉투 타입인 경우 칼선의 원본 상태를 저장 (모든 캔버스에 대해)
@@ -777,6 +782,9 @@ class ServicePlugin extends PluginBase {
             canvasStates.push({ canvas, editor, originalState })
 
             console.log(`페이지 ${i + 1}/${canvases.length} 처리 중...`)
+            // 다페이지 진행 보고(UX) + 페이지당 소요 측정(다음 장애 시 즉시 프로파일 확보용)
+            const pageStartedAt = Date.now()
+            try { onProgress?.(i + 1, canvases.length) } catch { /* 진행 콜백 실패는 무시 */ }
 
             // PDF 저장 전 모든 객체에 순서 정보 부여
             this._assignOrderToAllObjects(canvas)
@@ -1075,7 +1083,9 @@ class ServicePlugin extends PluginBase {
               })
             })
 
-            console.log(`페이지 ${i + 1}/${canvases.length} 처리 완료`)
+            console.log(
+              `페이지 ${i + 1}/${canvases.length} 처리 완료 (${Date.now() - pageStartedAt}ms)`,
+            )
 
             // 메모리 정리를 위한 지연 및 가비지 컬렉션 유도
             await this._performMemoryCleanup()
