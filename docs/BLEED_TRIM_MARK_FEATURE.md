@@ -50,16 +50,16 @@
 
 ### (라) CTO 구조 감사 결과 (2026-06-10, 4차원 적대감사 + 종합 — 커밋 342b44d 기준)
 
-**게이트 OFF 안전성은 코드로 입증**(배포 무해). **게이트 ON(활성화)은 아래 3건 해소 전까지 어떤 templateSet 에도 cropMarkEnabled 를 켜지 말 것**:
+**게이트 OFF 안전성은 코드로 입증**(배포 무해). 차단 4건 중 **#1·#2·#3·#5·#6 수정·배포 완료(2026-06-10)** — **잔여 활성화 차단 = #4(PHP 연동 시점 규약) 단 1건**. #4 합의 전까지는 PHP 자동 compose 를 쓰는 상품에 cropMarkEnabled 를 켜지 말 것(수동/비-PHP 흐름 상품은 #2 검증 절차 후 활성화 가능):
 
 | # | 심각도 | 내용 | 처리 |
 |---|---|---|---|
 | 1 | critical | **검증 허용오차 0.2mm 게이트 누수**(라이브 회귀): P1 주입이 게이트 없이 전 templateSet 세션 적용 → validator `??1` 무력화(1mm→0.2mm) | ✅ **수정·배포**(`342b44d`) — 주입을 cropMarkEnabled 게이트 뒤로 + merge 무조건 주입 제거 |
-| 2 | critical | **화면↔PDF 블리드 지오메트리 불일치**: 단일모드 로드 cutSize:0 하드코딩(useEditorContents 1031/1172/1244) → 화면 블리드 0 + PDF 블리드 링 **100% 백지**(canvas.clipPath=workspace 가 SVG 클립, viewBox 만 확장). spread 는 cutSizeMm=2 → 1mm/edge vs bleedMm 3mm. 모양틀(page-outline)은 원천 불가 | ⛔ **활성화 차단** — 로드 시 cutSize=bleedMm×2 정합 + export 시 게이트 ON 이면 clipPath 를 renderSize 로 확장/해제. 수정 후 단일/spread/모양틀 3케이스 샘플 PDF 검증 |
-| 3 | major | **세션 lost update**: relinkImposedInnerPdf(전체 save)와 검증콜백 updateEditSessionWorkerStatus(전체 save)가 병렬 완료 → stale save 가 contentPdfFileId 를 원본으로 되돌릴 수 있음(임포지션 결과 무증상 소실) | ⛔ **활성화 차단** — 컬럼 한정 `repository.update()` 원자 갱신으로 전환(양쪽) |
-| 4 | major | **session.validated 웹훅 ≠ 임포지션 완료**: areAllSessionJobsCompleted 가 임포지션 잡 제외(의도된 회귀방어) → PHP 가 validated 직후 compose 하면 원본 사용 가능 | ⛔ **활성화 차단** — PHP 연동 규약 확정(웹훅 페이로드에 임포지션 상태 포함 또는 compose 시 대기/조회) |
-| 5 | minor | complete() 재진입 시 중복 임포지션 잡(멱등 가드 부재) | 지금 수정(1줄 가드) |
-| 6 | minor | centerOnPage 음수 오프셋 방어 부재(현 경로는 resolveMode 가 전제 보장) | 지금 수정(방어 가드) |
+| 2 | critical | **화면↔PDF 블리드 지오메트리 불일치**: 단일모드 로드 cutSize:0 하드코딩 → 화면 블리드 0 + PDF 블리드 링 **100% 백지**(canvas.clipPath=workspace 가 SVG 클립). spread 는 cutSizeMm=2 고정 | ✅ **수정·배포**(`2eeb84e`) — 로드 시 게이트(cropMarkEnabled&&bleedMm>0) ON 이면 `cutSize=bleedMm×2`(단일 cutSize 3곳+workspace px 계산 3곳, spread spec 덮어쓰기) + export 시 workspace-rect 클립만 renderSize 로 임시 확장(finally 원복, 모양틀 불가침). 화면마커=PDF마커=TrimBox inset 정합(bleedMm≤5). ⚠️ 활성화 전 단일/spread/모양틀 3케이스 샘플 PDF 검증 절차는 유지 |
+| 3 | major | **세션 lost update**: relink(전체 save)↔검증콜백(전체 save) 병렬 → stale save 가 contentPdfFileId 원복(임포지션 결과 무증상 소실) | ✅ **수정·배포**(`82a64b4`) — 컬럼 한정 원자 `update()`: relink={contentPdfFileId, metadata(fresh reload 머지)}, workerStatus 갱신={workerStatus(+FAILED 시 workerError)}. 상호 클로버 제거 |
+| 4 | major | **session.validated 웹훅 ≠ 임포지션 완료**: PHP 가 validated 직후 compose 하면 원본 사용 가능 | ⛔ **활성화 차단(유일 잔여)** — PHP 연동 규약 확정 필요(웹훅 페이로드에 임포지션 상태 포함 또는 compose 시 대기/조회) — 북모아 측 합의(오너) |
+| 5 | minor | complete() 재진입 시 중복 임포지션 잡 | ✅ **수정·배포**(`82a64b4`) — metadata.innerPdfImposition.jobId 멱등 가드(게이트 뒤) |
+| 6 | minor | centerOnPage 음수 오프셋 방어 부재 | ✅ **수정·배포**(`82a64b4`) — 오버사이즈 가드(warn+무가공 복사) + 오프셋 클램프 |
 | 7~9 | minor | printSize+게이트ON 정책 미정의 / 임포지션 결과 관측성(metadata mode 미기록)·재검증 부재 / 실측 0.1mm 라운딩 vs tol 0.2 경계 요동 | 후속 |
 
 **기각된 주장(감사 자체가 반증)**: TrimBox y축 반전(사방 균등 모델에서 항등), svg2pdf 이중 스케일(비례 구조 동일), **innerfit 좌하단 정렬(GS 10.06 실측 — `-dPDFFitPage` 는 중앙 정렬 수행)**, printMarkConfig spread/embed 미세팅(공통 경로 선행 확인), templateSet.width 의미(판형=트림으로 일관), TemplateSetForm 로드 미완(코드 반증).
