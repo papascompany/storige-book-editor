@@ -493,11 +493,12 @@ export class EditSessionsService {
    * sizeToleranceMm 만 주입한다. mode 는 주입하지 않음 → 워커 convert() 의 resolveMode 가
    * 실측 vs editSize±tol 비교로 자체결정(동일=passthrough / 큼=innerfit / 작음=center).
    *
-   * ⚠️ 통합 한계(메인 세션 검증 필요): 변환 결과는 새 converted PDF(워커 job.result.
-   * outputFileUrl)로 산출되나, 본 메서드는 session.contentPdfFileId 를 그 결과로 자동
-   * 재배선하지 않는다. 후속(PHP compose-mixed/마이페이지 다운로드)은 여전히 원본
-   * contentPdfFileId 를 참조한다. 결과 연결은 콜백/후속 배선이 필요하며, cropMarkEnabled
-   * 가 기본 off 이므로 현 시점 전 고객 영향 0. (아래 보고 참조.)
+   * 결과 되연결(P4 콜백, 2026-06-10): 본 잡에 editSessionId + convertOptions.purpose=
+   * 'inner-imposition' 마커를 심는다. 워커 변환 완료 → updateJobStatus(COMPLETED) 시
+   * worker-jobs.service.relinkImposedInnerPdf 가 결과 PDF 를 File 로 등록하고
+   * session.contentPdfFileId 를 그 결과로 재포인팅한다(원본은 잡 inputFileUrl/별도 File 로 보존).
+   * → 후속(PHP compose-mixed contentPdfUrl 조회, 마이페이지 다운로드)이 임포지션 결과를 사용.
+   * cropMarkEnabled 가 기본 off 라 미opt-in 세션은 잡 자체가 없어 영향 0.
    *
    * best-effort: 어떤 실패도 세션 완료를 막지 않는다(throw 금지).
    */
@@ -557,10 +558,18 @@ export class EditSessionsService {
       const job = await this.workerJobsService.createConversionJob({
         fileId: session.contentPdfFileId,
         siteId: session.siteId ?? undefined,
+        // P4 결과 콜백 — 잡↔세션 연결 + 임포지션 식별 마커.
+        //  · editSessionId: 완료 콜백(updateJobStatus)이 세션을 역참조할 수 있게 edit_session_id 컬럼 세팅.
+        //  · convertOptions.purpose='inner-imposition': updateJobStatus 가 "임포지션 잡"임을 판별하는 마커
+        //    (이 마커가 없는 convert 잡=admin 자동수정 등은 콜백 개입 0 → 기존 동작 무영향).
+        editSessionId: session.id,
         convertOptions: {
           // mode 미지정 → 워커 resolveMode 가 실측 vs editSize 로 자체결정.
           editSize: { width: workWidth, height: workHeight },
           sizeToleranceMm,
+          purpose: 'inner-imposition',
+          editSessionId: session.id,
+          sourceFileId: session.contentPdfFileId,
         },
       });
 

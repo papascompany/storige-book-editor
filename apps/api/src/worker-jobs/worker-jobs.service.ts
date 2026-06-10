@@ -291,6 +291,11 @@ export class WorkerJobsService {
     const job = this.workerJobRepository.create({
       jobType: WorkerJobType.CONVERT,
       status: WorkerJobStatus.PENDING,
+      // P4 — 임포지션 결과 콜백이 세션을 역참조하도록 edit_session_id 세팅(relation 경유).
+      //   editSessionId 컬럼은 insert:false 라 relation 객체로만 설정 가능. 미지정이면 null(기존 convert 동작 보존).
+      editSession: createConversionJobDto.editSessionId
+        ? ({ id: createConversionJobDto.editSessionId } as EditSessionEntity)
+        : null,
       fileId,
       inputFileUrl: fileUrl,
       siteId: createConversionJobDto.siteId || null, // Phase C
@@ -1163,7 +1168,13 @@ export class WorkerJobsService {
     const savedJob = await this.workerJobRepository.save(job);
 
     // Update EditSession workerStatus and send webhook callback
-    if (job.editSessionId) {
+    //   ⚠️ 임포지션 잡(CONVERT + purpose='inner-imposition')은 세션 검증상태 추적 대상이 아니다.
+    //   editSessionId 는 결과 되연결 역참조 용도일 뿐이므로, workerStatus 오염/스푸리어스 webhook
+    //   (session.validated)을 피하려 이 경로에서 제외한다. 일반 validation/synthesis 흐름은 무영향.
+    const isInnerImpositionJob =
+      job.jobType === WorkerJobType.CONVERT &&
+      job.options?.purpose === 'inner-imposition';
+    if (job.editSessionId && !isInnerImpositionJob) {
       await this.updateEditSessionWorkerStatus(job, updateJobStatusDto);
     }
 
@@ -1188,7 +1199,129 @@ export class WorkerJobsService {
       await this.sendValidationCallback(savedJob);
     }
 
+    // P4 (2026-06-10) — 내지 임포지션 결과를 세션에 되연결 (best-effort, 마커 게이트).
+    //   조건: CONVERT 잡 && options.purpose==='inner-imposition' && COMPLETED && outputFileUrl 존재.
+    //   마커가 없는 일반 convert(admin 자동수정 등)는 절대 개입하지 않음 → 기존 동작 무영향.
+    if (
+      job.jobType === WorkerJobType.CONVERT &&
+      job.options?.purpose === 'inner-imposition' &&
+      updateJobStatusDto.status === WorkerJobStatus.COMPLETED
+    ) {
+      await this.relinkImposedInnerPdf(savedJob);
+    }
+
     return savedJob;
+  }
+
+  /**
+   * P4 — 임포지션 완료 결과(converted PDF)를 세션 contentPdfFileId 로 되연결 (2026-06-10).
+   *
+   * 동작:
+   *  1) 워커 산출 outputFileUrl 을 File 레코드로 등록(이미 outputFileId 가 세팅돼 있으면 재사용).
+   *  2) 해당 세션의 contentPdfFileId 를 그 결과 파일로 재포인팅.
+   *     → 원본 업로드 PDF 는 본 잡의 inputFileUrl/별도 File 레코드로 보존(되돌리기 가능).
+   *  3) metadata.innerPdfImposition 에 결과(resultFileId/outputFileUrl/relinkedAt) 스냅샷 추가.
+   *
+   * ⚠️ best-effort: 어떤 실패도 status 업데이트(이미 저장됨)를 되돌리지 않는다(throw 금지, 로그만).
+   *    재포인팅 실패 시 downstream 은 원본 contentPdfFileId 를 계속 사용(현행 동작과 동일 — 안전한 degrade).
+   */
+  private async relinkImposedInnerPdf(job: WorkerJob): Promise<void> {
+    try {
+      const outputFileUrl: string | undefined =
+        job.outputFileUrl ||
+        job.result?.outputFileUrl ||
+        job.result?.result?.outputFileUrl;
+
+      if (!outputFileUrl) {
+        this.logger.warn(
+          `[inner-imposition] job ${job.id} COMPLETED 이나 outputFileUrl 부재 → 되연결 스킵(원본 유지)`,
+        );
+        return;
+      }
+
+      // 세션 역참조 — edit_session_id 컬럼 우선, 없으면 마커(options.editSessionId) 폴백.
+      const sessionId = job.editSessionId || job.options?.editSessionId;
+      if (!sessionId) {
+        this.logger.warn(
+          `[inner-imposition] job ${job.id} 세션 역참조 불가(editSessionId 부재) → 되연결 스킵`,
+        );
+        return;
+      }
+
+      const session = await this.editSessionRepository.findOne({
+        where: { id: sessionId },
+      });
+      if (!session) {
+        this.logger.warn(
+          `[inner-imposition] job ${job.id}: 세션 ${sessionId} 미발견 → 되연결 스킵`,
+        );
+        return;
+      }
+
+      // 1) 결과 File 등록 (이미 outputFileId 세팅 시 재사용 — 멱등성/중복등록 방지)
+      let resultFileId = job.outputFileId;
+      if (!resultFileId) {
+        const sourceFileId: string | undefined = job.options?.sourceFileId;
+        let orderSeqno: number | null = null;
+        let memberSeqno: number | null = null;
+        try {
+          if (sourceFileId) {
+            const src = await this.filesService.findById(sourceFileId);
+            orderSeqno = (src.orderSeqno as number) ?? null;
+            memberSeqno = (src.memberSeqno as number) ?? null;
+          }
+        } catch {
+          // 원본 메타 승계 실패는 무시 (등록 자체는 계속)
+        }
+
+        const registered = await this.filesService.registerExternalFile(outputFileUrl, {
+          orderSeqno,
+          memberSeqno,
+          metadata: {
+            generatedBy: 'worker-imposition',
+            editSessionId: sessionId,
+            sourceFileId: sourceFileId ?? null,
+            workerJobId: job.id,
+          },
+        });
+        resultFileId = registered.id;
+
+        // 잡에도 outputFileId 기록(추적/멱등). best-effort.
+        try {
+          job.outputFileId = resultFileId;
+          await this.workerJobRepository.save(job);
+        } catch (e) {
+          this.logger.warn(
+            `[inner-imposition] job ${job.id} outputFileId 기록 실패(무중단): ${(e as Error).message}`,
+          );
+        }
+      }
+
+      // 2) 세션 contentPdfFileId 재포인팅 + metadata 결과 스냅샷
+      const prevFileId = session.contentPdfFileId;
+      session.contentPdfFileId = resultFileId;
+      session.metadata = {
+        ...(session.metadata ?? {}),
+        innerPdfImposition: {
+          ...((session.metadata as any)?.innerPdfImposition ?? {}),
+          jobId: job.id,
+          resultFileId,
+          outputFileUrl,
+          originalContentPdfFileId: prevFileId,
+          relinkedAt: new Date().toISOString(),
+        },
+      };
+      await this.editSessionRepository.save(session);
+
+      this.logger.log(
+        `[inner-imposition] session ${sessionId} contentPdfFileId 재포인팅: ${prevFileId} → ${resultFileId} (job ${job.id})`,
+      );
+    } catch (error) {
+      // best-effort — status 업데이트는 이미 성공. 되연결 실패는 로그만(원본 유지).
+      this.logger.error(
+        `[inner-imposition] job ${job.id} 결과 되연결 실패(원본 유지, status 업데이트는 성공): ${(error as Error).message}`,
+      );
+    }
   }
 
   /**
@@ -1353,12 +1486,22 @@ export class WorkerJobsService {
       where: { editSessionId },
     });
 
-    return jobs.every(
-      (j) =>
-        j.status === WorkerJobStatus.COMPLETED ||
-        j.status === WorkerJobStatus.FIXABLE ||
-        j.status === WorkerJobStatus.FAILED,
-    );
+    return jobs
+      // 임포지션 잡(CONVERT + purpose='inner-imposition')은 세션 검증 완료 판정 대상에서 제외.
+      //   비동기로 별도 진행되므로 포함하면 validation 완료가 지연될 수 있음(opt-in 회귀 방지).
+      .filter(
+        (j) =>
+          !(
+            j.jobType === WorkerJobType.CONVERT &&
+            j.options?.purpose === 'inner-imposition'
+          ),
+      )
+      .every(
+        (j) =>
+          j.status === WorkerJobStatus.COMPLETED ||
+          j.status === WorkerJobStatus.FIXABLE ||
+          j.status === WorkerJobStatus.FAILED,
+      );
   }
 
   /**

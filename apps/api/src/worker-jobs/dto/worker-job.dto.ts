@@ -77,6 +77,11 @@ export class CreateValidationJobDto {
 }
 
 export class CreateConversionJobDto {
+  @ApiPropertyOptional({ example: 'uuid', description: '편집 세션 ID (P4 임포지션 결과 콜백 역참조용)' })
+  @IsOptional()
+  @IsUUID()
+  editSessionId?: string;
+
   @ApiPropertyOptional({ example: 'uuid', description: '파일 ID (fileUrl 대신 사용 가능)' })
   @IsOptional()
   @IsUUID()
