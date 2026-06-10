@@ -599,6 +599,16 @@ export function useWorkSave(): UseWorkSaveReturn {
       const innerHeightMm = (artwork as any)?.sizeInfo?.height ?? 297
       const cutSize = 3
 
+      // P3 (2026-06-10): 작업사이즈(재단+블리드)+코너마커+TrimBox 출력 게이팅.
+      // templateSet 에서 운반한 printMarkConfig 를 saveMultiPagePDFAsBlob 의 size 에 전달.
+      // ServicePlugin 게이트(cropMarkEnabled && bleedMm>0)에서만 작업사이즈 경로 활성.
+      // 미설정(null) → undefined → 게이트 OFF(현행 trim 출력 그대로).
+      const printMarkCfg = useSettingsStore.getState().printMarkConfig
+      const markOpt = {
+        bleedMm: printMarkCfg?.bleedMm,
+        cropMarkEnabled: printMarkCfg?.cropMarkEnabled,
+      }
+
       // ========================================================================
       // 1. 스프레드 표지 (allCanvas[0]) → 단일 PDF → filesApi.upload(type='cover')
       // ========================================================================
@@ -634,7 +644,7 @@ export function useWorkSave(): UseWorkSaveReturn {
         [spreadCanvas] as any,
         [spreadEditor],
         `spread_cover_${Date.now()}`,
-        { width: coverWidthMm, height: coverHeightMm, cutSize },
+        { width: coverWidthMm, height: coverHeightMm, cutSize, ...markOpt },
         undefined,
         300,
       )
@@ -679,7 +689,7 @@ export function useWorkSave(): UseWorkSaveReturn {
         innerCanvases as any,
         innerEditors,
         `spread_content_${Date.now()}`,
-        { width: innerWidthMm, height: innerHeightMm, cutSize },
+        { width: innerWidthMm, height: innerHeightMm, cutSize, ...markOpt },
         undefined,
         300,
       )

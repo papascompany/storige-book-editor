@@ -993,6 +993,16 @@ function EmbeddedEditor({
         setLoadingMessage('PDF를 생성하는 중...')
         const bleed = options?.bleed ?? 3
 
+        // P3 (2026-06-10): 작업사이즈(재단+블리드)+코너마커+TrimBox 출력 게이팅.
+        // templateSet 에서 운반한 printMarkConfig 를 saveMultiPagePDFAsBlob 의 size 에 전달.
+        // ServicePlugin 게이트(cropMarkEnabled && bleedMm>0)에서만 작업사이즈 경로 활성.
+        // 미설정(null) → undefined → 게이트 OFF(현행 trim 출력 그대로).
+        const printMarkCfg = useSettingsStore.getState().printMarkConfig
+        const markOpt = {
+          bleedMm: printMarkCfg?.bleedMm,
+          cropMarkEnabled: printMarkCfg?.cropMarkEnabled,
+        }
+
         if (isSpreadBook) {
           // ── 스프레드 책: 표지(allCanvas[0]) cover PDF + 내지(allCanvas[1..]) 멀티페이지 content PDF ──
           // 표지와 내지는 판형 크기가 달라 한 PDF 로 합칠 수 없으므로 분리 생성/업로드.
@@ -1014,7 +1024,7 @@ function EmbeddedEditor({
               const coverBlob = await withWatchdog(
                 coverPlugin.saveMultiPagePDFAsBlob(
                   [allCanvas[0]] as any, [allEditors[0]], `cover-${currentSessionId}`,
-                  { width: spreadCfg!.totalWidthMm, height: spreadCfg!.totalHeightMm, cutSize: bleed },
+                  { width: spreadCfg!.totalWidthMm, height: spreadCfg!.totalHeightMm, cutSize: bleed, ...markOpt },
                   undefined, 300,
                 ),
                 120000, 'spread-cover-gen',
@@ -1040,7 +1050,7 @@ function EmbeddedEditor({
               const contentBlob = await withWatchdog(
                 coverPlugin.saveMultiPagePDFAsBlob(
                   innerCanvases as any, innerEditors, `content-${currentSessionId}`,
-                  { width: innerW, height: innerH, cutSize: bleed },
+                  { width: innerW, height: innerH, cutSize: bleed, ...markOpt },
                   undefined, 300,
                 ),
                 180000, 'spread-content-gen',
@@ -1087,7 +1097,7 @@ function EmbeddedEditor({
             const pdfBlob = await withWatchdog(
               servicePlugin.saveMultiPagePDFAsBlob(
                 [canvas], [editor], `session-${currentSessionId}`,
-                { width: options?.size?.width || 210, height: options?.size?.height || 297, cutSize: bleed },
+                { width: options?.size?.width || 210, height: options?.size?.height || 297, cutSize: bleed, ...markOpt },
                 undefined, 300,
               ),
               120000, 'single-gen',

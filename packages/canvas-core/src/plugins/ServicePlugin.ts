@@ -51,6 +51,10 @@ class ServicePlugin extends PluginBase {
       height: number
       cutSize: number
       printSize?: { width: number; height: number }
+      /** 사방(per-edge) 블리드 mm. 작업사이즈 = 재단 + bleedMm*2. (P3, 2026-06-10) */
+      bleedMm?: number
+      /** 재단선(crop mark) 마커 표기 ON/OFF. (P3, 2026-06-10) */
+      cropMarkEnabled?: boolean
     },
     cutLine?: fabric.Object,
     dpi: number = 72
@@ -200,6 +204,10 @@ class ServicePlugin extends PluginBase {
       height: number
       cutSize: number
       printSize?: { width: number; height: number }
+      /** 사방(per-edge) 블리드 mm. 작업사이즈 = 재단 + bleedMm*2. (P3, 2026-06-10) */
+      bleedMm?: number
+      /** 재단선(crop mark) 마커 표기 ON/OFF. (P3, 2026-06-10) */
+      cropMarkEnabled?: boolean
     },
     cutLine?: fabric.Object,
     dpi: number = 72
@@ -531,6 +539,10 @@ class ServicePlugin extends PluginBase {
       height: number
       cutSize: number
       printSize?: { width: number; height: number }
+      /** 사방(per-edge) 블리드 mm. 작업사이즈 = 재단 + bleedMm*2. (P3, 2026-06-10) */
+      bleedMm?: number
+      /** 재단선(crop mark) 마커 표기 ON/OFF. (P3, 2026-06-10) */
+      cropMarkEnabled?: boolean
     },
     cutLine?: fabric.Object,
     returnBlob: boolean = false,
@@ -664,10 +676,25 @@ class ServicePlugin extends PluginBase {
             contentHeight = envelopeOption.size.height
           }
 
-          // 2) 페이지 크기(mm) - printSize가 있으면 우선 사용
-          let pageWidth = contentWidth
-          let pageHeight = contentHeight
-          if (size.printSize && size.printSize.width && size.printSize.height) {
+          // ── P3 작업사이즈(재단+블리드) 게이팅 (2026-06-10) ──────────────────────
+          // 게이트: cropMarkEnabled === true && bleedMm > 0 일 때만 활성.
+          // OFF(기본) → 아래 모든 분기를 타지 않고 현행 trim 출력 100% 그대로 유지.
+          const bleedMm = size.bleedMm ?? 0
+          const useEditSize = !!size.cropMarkEnabled && bleedMm > 0 && !isEnvelope
+          // 렌더(SVG viewBox + svg2pdf) 기준 크기. 기본 = trim(콘텐츠). 게이트 ON 시 작업사이즈.
+          let renderWidth = contentWidth
+          let renderHeight = contentHeight
+          if (useEditSize) {
+            // 작업사이즈 = 재단(trim) + 사방 블리드*2. 콘텐츠 중심 불변(중앙원점 유지),
+            // 블리드 영역까지 viewBox 에 포함(클립 안 함).
+            renderWidth = contentWidth + bleedMm * 2
+            renderHeight = contentHeight + bleedMm * 2
+          }
+
+          // 2) 페이지 크기(mm) - 게이트 ON 시 작업사이즈, 아니면 printSize/콘텐츠 (현행)
+          let pageWidth = useEditSize ? renderWidth : contentWidth
+          let pageHeight = useEditSize ? renderHeight : contentHeight
+          if (!useEditSize && size.printSize && size.printSize.width && size.printSize.height) {
             /// print size는 무조건 mm 단위
             pageWidth = size.printSize.width
             pageHeight = size.printSize.height
@@ -675,9 +702,9 @@ class ServicePlugin extends PluginBase {
 
           const orientation = pageWidth >= pageHeight ? 'l' : 'p'
 
-          // 중앙 배치를 위한 오프셋(mm)
-          let offsetX = Math.max(0, (pageWidth - contentWidth) / 2)
-          let offsetY = Math.max(0, (pageHeight - contentHeight) / 2)
+          // 중앙 배치를 위한 오프셋(mm). 게이트 ON 시 페이지=렌더사이즈라 오프셋 0(가장자리부터 렌더).
+          let offsetX = Math.max(0, (pageWidth - renderWidth) / 2)
+          let offsetY = Math.max(0, (pageHeight - renderHeight) / 2)
 
           // 봉투 타입인 경우 direction에 따라 오프셋 조정
           if (isEnvelope) {
@@ -849,8 +876,10 @@ class ServicePlugin extends PluginBase {
                     canvas.remove(...outlinesForPage)
                   }
 
-                  const svgWidth = unit === 'px' ? contentWidth : mmToPx(contentWidth)
-                  const svgHeight = unit === 'px' ? contentHeight : mmToPx(contentHeight)
+                  // P3: 게이트 OFF 시 renderWidth===contentWidth 이므로 현행과 동일.
+                  // 게이트 ON 시 작업사이즈(=trim+bleed*2) viewBox → 중앙원점 유지, 블리드 포함.
+                  const svgWidth = unit === 'px' ? renderWidth : mmToPx(renderWidth)
+                  const svgHeight = unit === 'px' ? renderHeight : mmToPx(renderHeight)
                   const background = canvas.getObjects().find((obj) => obj.id === 'template-background')
                   const backgroundWidth = background ? background.width! * background.scaleX! : 0
                   const backgroundHeight = background ? background.height! * background.scaleY! : 0
@@ -905,11 +934,13 @@ class ServicePlugin extends PluginBase {
                   console.log(`페이지 ${i + 1} SVG->PDF 변환:`, { contentWidth, contentHeight, unit, dpi })
 
                   // DPI 정보를 포함한 SVG2PDF 옵션
+                  // P3: 게이트 OFF 시 renderWidth/offset === 현행 contentWidth/offset (무변경).
+                  // 게이트 ON 시 작업사이즈 SVG 를 작업사이즈 페이지에 매핑(offset 0).
                   const svg2pdfOptions = {
                     x: offsetX,
                     y: offsetY,
-                    width: contentWidth,
-                    height: contentHeight,
+                    width: renderWidth,
+                    height: renderHeight,
                     // DPI 정보를 메타데이터로 추가 (일부 뷰어에서 활용)
                     dpi: dpi
                   }
@@ -928,6 +959,17 @@ class ServicePlugin extends PluginBase {
                     )
                     if (!recovered) {
                       throw svgError
+                    }
+                  }
+
+                  // ── P3: 코너 재단 마커 + TrimBox/BleedBox 등록 (게이트 ON 일 때만) ──
+                  // svg2pdf 변환 직후, 현재 페이지에 마커를 그리고 박스를 등록한다.
+                  // 실패해도 throw 금지(현행 출력 보호) — try/catch 로 감싼다.
+                  if (useEditSize) {
+                    try {
+                      this._drawCropMarksAndBoxes(pdf, renderWidth, renderHeight, bleedMm)
+                    } catch (markErr) {
+                      console.warn(`페이지 ${i + 1} 재단 마커/박스 등록 실패(계속 진행):`, markErr)
                     }
                   }
 
@@ -1096,6 +1138,96 @@ class ServicePlugin extends PluginBase {
 
       processPages()
     })
+  }
+
+  /**
+   * P3 (2026-06-10): 작업사이즈 PDF 페이지에 코너 재단 마커(crop marks)를 그리고
+   * TrimBox/BleedBox/MediaBox 를 등록한다. 게이트 ON(cropMarkEnabled && bleedMm>0) 일 때만 호출.
+   *
+   * 좌표계: jsPDF 기본 = 좌상단 원점, mm 단위(이 PDF 는 'mm' 로 생성). 페이지=작업사이즈.
+   * - 재단(trim) 사각형 = 페이지에서 사방 bleedMm 안쪽:
+   *     좌상단 (bleedMm, bleedMm) ~ 우하단 (pageW-bleedMm, pageH-bleedMm)
+   * - 코너 마커: 각 trim 코너에서 수평/수직 짧은 선을 블리드 영역(바깥)으로 bleedMm 만큼 연장.
+   *   (편집화면 점선 트림선은 SVG 에서 excludeFromExport 라 미포함 — 여기선 마커만.)
+   * - 박스: TrimBox=trim, BleedBox/MediaBox=작업사이즈. jsPDF page context 에 직접 주입.
+   *
+   * @param pdf jsPDF 인스턴스 (현재 페이지가 방금 그려진 상태)
+   * @param pageWidthMm 페이지(작업사이즈) 폭 mm
+   * @param pageHeightMm 페이지(작업사이즈) 높이 mm
+   * @param bleedMm 사방 블리드 mm (>0)
+   */
+  private _drawCropMarksAndBoxes(
+    pdf: jsPDF,
+    pageWidthMm: number,
+    pageHeightMm: number,
+    bleedMm: number,
+  ): void {
+    // ── 1) 코너 재단 마커 (검정 0.1pt ≈ 0.0353mm) ──
+    // 마커 길이: 블리드 폭 이내(최대 5mm)로 제한. trim 코너에서 페이지 가장자리 방향으로 연장.
+    const markLen = Math.min(bleedMm, 5)
+    const left = bleedMm // trim 좌변 x
+    const right = pageWidthMm - bleedMm // trim 우변 x
+    const top = bleedMm // trim 상변 y
+    const bottom = pageHeightMm - bleedMm // trim 하변 y
+
+    const prevLineWidth = pdf.getLineWidth()
+    pdf.setLineWidth(0.0353) // ≈ 0.1pt
+    pdf.setDrawColor(0, 0, 0)
+
+    // 각 코너마다 수평선 1 + 수직선 1 (trim 코너 좌표에서 바깥쪽=블리드 영역으로 markLen)
+    // 좌상단 코너 (left, top)
+    pdf.line(left, top, left - markLen, top) // 수평(왼쪽으로)
+    pdf.line(left, top, left, top - markLen) // 수직(위로)
+    // 우상단 코너 (right, top)
+    pdf.line(right, top, right + markLen, top) // 수평(오른쪽으로)
+    pdf.line(right, top, right, top - markLen) // 수직(위로)
+    // 좌하단 코너 (left, bottom)
+    pdf.line(left, bottom, left - markLen, bottom) // 수평(왼쪽으로)
+    pdf.line(left, bottom, left, bottom + markLen) // 수직(아래로)
+    // 우하단 코너 (right, bottom)
+    pdf.line(right, bottom, right + markLen, bottom) // 수평(오른쪽으로)
+    pdf.line(right, bottom, right, bottom + markLen) // 수직(아래로)
+
+    // 라인 폭 복원(이후 페이지/그리기에 영향 최소화)
+    pdf.setLineWidth(prevLineWidth)
+
+    // ── 2) TrimBox / BleedBox / MediaBox 등록 ──
+    // jsPDF 2.5.2 는 public 박스 setter 가 없으나, 각 페이지 객체(pageContext)에
+    // trimBox/bleedBox/(mediaBox) 필드가 있으면 putPage 에서 자동 출력한다.
+    // 좌표는 mediaBox 와 동일한 '스케일된 단위'(mm * scaleFactor = pt) 로 저장해야 한다.
+    try {
+      const internal: any = (pdf as any).internal
+      const scaleFactor: number = internal?.scaleFactor ?? 1 // mm→pt 배율
+      const pageInfo = internal?.getCurrentPageInfo?.()
+      const ctx = pageInfo?.pageContext
+      if (ctx) {
+        const sx = (mm: number) => mm * scaleFactor
+        // PDF 좌표는 좌하단 원점. 작업사이즈 페이지에서 trim 은 사방 bleedMm 안쪽.
+        // BleedBox/MediaBox = 작업사이즈 전체. TrimBox = trim 사각형.
+        ctx.bleedBox = {
+          bottomLeftX: 0,
+          bottomLeftY: 0,
+          topRightX: sx(pageWidthMm),
+          topRightY: sx(pageHeightMm),
+        }
+        ctx.trimBox = {
+          bottomLeftX: sx(bleedMm),
+          bottomLeftY: sx(bleedMm),
+          topRightX: sx(pageWidthMm - bleedMm),
+          topRightY: sx(pageHeightMm - bleedMm),
+        }
+        // mediaBox 는 beginPage 에서 작업사이즈로 이미 설정됨(=BleedBox 와 동일). 명시 보강.
+        if (ctx.mediaBox) {
+          ctx.mediaBox.bottomLeftX = 0
+          ctx.mediaBox.bottomLeftY = 0
+          ctx.mediaBox.topRightX = sx(pageWidthMm)
+          ctx.mediaBox.topRightY = sx(pageHeightMm)
+        }
+      }
+    } catch (boxErr) {
+      // 박스 등록 실패는 무시(현행 출력 보호). 마커는 이미 그려짐.
+      console.warn('[P3] TrimBox/BleedBox 등록 실패(무시):', boxErr)
+    }
   }
 
   /**

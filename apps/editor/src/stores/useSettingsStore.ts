@@ -229,6 +229,19 @@ export interface SpineConfig {
   calculatedSpineWidth: number | null  // 계산된 책등 너비 (mm)
 }
 
+/**
+ * P3 (2026-06-10): 작업사이즈(재단+블리드) PDF 출력 설정.
+ * templateSet 의 bleedMm/cropMarkEnabled 를 그대로 운반하기만 한다(편집 동작 무변경).
+ * PDF 저장 시 ServicePlugin 게이트(cropMarkEnabled && bleedMm>0)에 전달.
+ * null = 미설정 → 게이트 OFF(현행 trim 출력 그대로).
+ */
+export interface PrintMarkConfig {
+  /** 사방(per-edge) 블리드 mm. 작업사이즈 = 재단 + bleedMm*2. */
+  bleedMm: number
+  /** 재단선(crop mark) 마커 표기 ON/OFF. */
+  cropMarkEnabled: boolean
+}
+
 // Settings store state
 interface SettingsState {
   currentSettings: CanvasSettings
@@ -237,6 +250,10 @@ interface SettingsState {
   renderType: EditorRenderType
   spineConfig: SpineConfig  // 책등 계산 설정
   spreadConfig: SpreadConfig | null  // 스프레드 편집 설정 (null이면 비-스프레드 모드)
+  /**
+   * P3: 작업사이즈/재단마커 PDF 출력 설정 (templateSet 에서 운반). null = 미설정(게이트 OFF).
+   */
+  printMarkConfig: PrintMarkConfig | null
   /**
    * 템플릿셋이 지정한 도구 메뉴 노출 화이트리스트.
    * - null: 모든 메뉴 노출 (legacy/기본)
@@ -319,6 +336,9 @@ interface SettingsActions {
 
   // 도구 메뉴 화이트리스트 관리 (템플릿셋이 지정)
   setEnabledMenus: (menus: EditorMenuKey[] | null) => void
+
+  // P3: 작업사이즈/재단마커 출력 설정 관리 (templateSet 에서 운반)
+  setPrintMarkConfig: (config: PrintMarkConfig | null) => void
 }
 
 // Initial state
@@ -346,6 +366,7 @@ const initialState: SettingsState = {
   },
   spreadConfig: null,
   enabledMenus: null,
+  printMarkConfig: null,
   artwork: {
     name: '나의 새로운 작업',
     product: null,
@@ -767,6 +788,11 @@ export const useSettingsStore = create<SettingsState & SettingsActions>()((set, 
   setEnabledMenus: (menus) => {
     set({ enabledMenus: menus ?? null })
   },
+
+  // P3: 작업사이즈/재단마커 출력 설정. null = 미설정(게이트 OFF). loadTemplateSetEditor 가 호출.
+  setPrintMarkConfig: (config) => {
+    set({ printMarkConfig: config ?? null })
+  },
 }))
 
 // Selector hooks for computed values
@@ -797,6 +823,7 @@ export const useShowCutBorder = () => useSettingsStore((state) => state.currentS
 export const useShowSafeBorder = () => useSettingsStore((state) => state.currentSettings.showSafeBorder)
 export const useEditorTemplates = () => useSettingsStore((state) => state.editorTemplates)
 export const useSpineConfig = () => useSettingsStore((state) => state.spineConfig)
+export const usePrintMarkConfig = () => useSettingsStore((state) => state.printMarkConfig)
 
 export const useRenderType = (): EditorRenderType => {
   const { currentSettings, artwork } = useSettingsStore.getState()
