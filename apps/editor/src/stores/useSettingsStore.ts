@@ -759,8 +759,14 @@ export const useSettingsStore = create<SettingsState & SettingsActions>()((set, 
   },
 
   // 스프레드 편집 설정 관리
+  // conversionMode 정규화: 미존재(레거시 템플릿/spec 직접 구성 경로)면 'full' 로 고정해
+  // createCanvas/SpreadPlugin/spineCalculator 등 모든 소비처가 동일 기본값을 보게 한다.
   setSpreadConfig: (config) => {
-    set({ spreadConfig: config })
+    set({
+      spreadConfig: config
+        ? { ...config, conversionMode: config.conversionMode ?? 'full' }
+        : null,
+    })
   },
 
   updateSpreadSpineWidth: (newWidthMm) => {

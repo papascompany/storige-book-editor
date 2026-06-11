@@ -1470,6 +1470,10 @@ export function useEditorContents(): UseEditorContentsReturn {
       console.log('[EditorContents:Spread] SpreadSpec built:', spreadSpec)
 
       // 3. computeLayout으로 완전한 SpreadConfig 계산
+      // conversionMode: 템플릿(IDML 가져오기)의 spreadConfig 에서 전파. 미존재 시 'full'
+      // (setSpreadConfig 에서도 동일 정규화 — 'flat-spread'=책등 고정, 'flat-spine'=3분할 아트워크).
+      const templateConversionMode =
+        (spreadTemplate.spreadConfig as SpreadConfig | undefined)?.conversionMode ?? 'full'
       const spreadLayout = computeLayout(spreadSpec)
       const spreadConfig: SpreadConfig = {
         version: 1,
@@ -1477,6 +1481,7 @@ export function useEditorContents(): UseEditorContentsReturn {
         regions: spreadLayout.regions,
         totalWidthMm: spreadLayout.totalWidthMm,
         totalHeightMm: spreadLayout.totalHeightMm,
+        conversionMode: templateConversionMode,
       }
 
       console.log('[EditorContents:Spread] SpreadConfig calculated:', spreadConfig)
@@ -1532,10 +1537,17 @@ export function useEditorContents(): UseEditorContentsReturn {
       const latestEditor = latestAppStore.editor
 
       if (latestCanvas && latestEditor) {
-        const existingSpread = latestEditor.getPlugin('SpreadPlugin')
-        if (!existingSpread) {
+        const existingSpread = latestEditor.getPlugin<SpreadPlugin>('SpreadPlugin')
+        if (existingSpread) {
+          // createCanvas 가 spreadConfig 설정 이전에 플러그인을 만든 드문 경로 대비:
+          // 변환 모드를 템플릿 값으로 동기화 (flat-spread 책등 고정 가드 정합)
+          existingSpread.setConversionMode(templateConversionMode)
+        } else {
           console.log('[EditorContents:Spread] Dynamically registering SpreadPlugin')
-          const spreadPlugin = new SpreadPlugin(latestCanvas, latestEditor, { spec: spreadSpec })
+          const spreadPlugin = new SpreadPlugin(latestCanvas, latestEditor, {
+            spec: spreadSpec,
+            conversionMode: templateConversionMode,
+          })
           latestEditor.use(spreadPlugin)
           // init() 호출하여 currentLayout 설정 + 가이드/라벨 렌더링
           spreadPlugin.init()

@@ -48,6 +48,8 @@ export interface DraftTemplateDto {
     regions: { kind: string; x: number; width: number }[];
     totalWidthMm: number;
     totalHeightMm: number;
+    /** 변환 모드 스탬프: vector='full', hybrid='flat-spread', flat-spine='flat-spine'. 미존재 시 'full'. */
+    conversionMode?: 'full' | 'flat-spread' | 'flat-spine';
   };
 }
 
@@ -110,10 +112,27 @@ export function convertIdmlToTemplate(
     name?: string;
     dpi?: number;
     previewWidth?: number;
-    mode?: 'vector' | 'hybrid';
+    mode?: 'vector' | 'hybrid' | 'flat-spine';
     rasterDpi?: number;
   }
 ): Promise<{ result: SpreadTemplateResult; dto: DraftTemplateDto; previewSvg: string }>;
+
+/** flat-spine 모드 크롭 지오메트리(순수 함수). 경계 px 합 = 전폭 px 보장, spine 은 책등 중심 3배폭. */
+export function computeFlatSpineCrops(
+  spec: SpreadSpecLike,
+  opts?: { dpi?: number }
+): {
+  dpi: number;
+  fullWidthPx: number;
+  fullHeightPx: number;
+  totalWidthMm: number;
+  spineLeftPx: number;
+  spineRightPx: number;
+  spineCenterMm: number;
+  back: { left: number; width: number; centerPx: number };
+  front: { left: number; width: number; centerPx: number };
+  spine: { left: number; width: number; centerPx: number };
+};
 
 export declare const units: typeof import('./geometry/units.mjs');
 export declare const regions: typeof import('./geometry/regions.mjs');

@@ -32,6 +32,8 @@ export interface RecalculateSpineResult {
   pageCount: number
   warnings: Array<{ code: string; message: string }>
   error?: string
+  /** 정상 스킵(예: flat-spread 책등 고정 가드) — error 문자열(실패)과 구분하기 위한 플래그 */
+  skipped?: boolean
 }
 
 /**
@@ -258,6 +260,27 @@ async function recalculateSpineWidthSpreadMode(
   const settingsStore = useSettingsStore.getState()
   const appStore = useAppStore.getState()
   const spineConfig = settingsStore.spineConfig
+
+  // ── flat-spread 가드 (책등 고정) ─────────────────────────────────────────
+  // 전폭 아트워크 1장(IDML hybrid 변환) 템플릿은 책등 폭을 바꾸면 아트워크와 어긋난다.
+  // 모든 책등 자동 재계산 트리거(초기 로드, 내지 추가/삭제 debounce)가 이 함수를 거치므로
+  // 여기가 단일 차단 지점. (SpreadPlugin.resizeSpine 에도 방어적 no-op 가드 존재.)
+  // spineWidth 는 템플릿 고정값을 그대로 반환해 호출측 로그/스냅샷 정합 유지.
+  const conversionMode = settingsStore.spreadConfig?.conversionMode ?? 'full'
+  if (conversionMode === 'flat-spread') {
+    const fixedSpineWidth = settingsStore.spreadConfig?.spec?.spineWidthMm ?? null
+    console.log(
+      `[SpineCalculator:Spread] conversionMode='flat-spread' — 책등 고정(${fixedSpineWidth}mm), 재계산/resizeSpine 스킵`
+    )
+    return {
+      success: false,
+      spineWidth: fixedSpineWidth,
+      pageCount: 0,
+      warnings: [],
+      skipped: true, // 정상 스킵 — 계산 실패(error 만 있는 경우)와 구분
+      error: '책등 고정 템플릿(flat-spread)입니다. 책등 폭은 변경되지 않습니다.',
+    }
+  }
 
   // paperType과 bindingType 결정 (옵션 > spineConfig > URL 파라미터 > 기본값)
   const urlParams = new URLSearchParams(window.location.search)

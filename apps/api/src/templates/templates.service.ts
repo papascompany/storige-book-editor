@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, ConflictException, BadRequestException, 
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { normalizeSpreadSpec, computeSpreadDimensions } from '@storige/types';
+import type { SpreadConversionMode } from '@storige/types';
 import { Template } from './entities/template.entity';
 import { TemplateSet } from './entities/template-set.entity';
 import { CreateTemplateDto, UpdateTemplateDto } from './dto/template.dto';
@@ -131,6 +132,18 @@ export class TemplatesService {
       }
     }
 
+    // conversionMode 보존 병합(서버측 최후 방어): 기존 템플릿에 conversionMode 가 있는데
+    // 수신 spreadConfig 에 누락된 경우(클라이언트가 spreadConfig 를 재구성해 덮어쓰는 경로),
+    // 기존 값을 병합해 라운드트립 유실('full' 강등 → flat 아트워크 분기 붕괴)을 막는다.
+    const existingConversionMode = template.spreadConfig?.conversionMode;
+    if (
+      updateTemplateDto.spreadConfig &&
+      updateTemplateDto.spreadConfig.conversionMode === undefined &&
+      existingConversionMode !== undefined
+    ) {
+      updateTemplateDto.spreadConfig.conversionMode = existingConversionMode;
+    }
+
     // spread 타입 검증 및 정규화
     const effectiveType = updateTemplateDto.type || template.type;
     if (effectiveType === 'spread' && updateTemplateDto.spreadConfig) {
@@ -190,6 +203,33 @@ export class TemplatesService {
     dto.spreadConfig.totalHeightMm = dims.totalHeightMm;
     if (!dto.spreadConfig.version) {
       dto.spreadConfig.version = 1;
+    }
+
+    // conversionMode 검증 (JSON 필드 — 미존재 시 'full' 간주. 값은 보존하며 변형하지 않음)
+    const conversionMode = dto.spreadConfig.conversionMode;
+    if (conversionMode !== undefined) {
+      const allowedModes: SpreadConversionMode[] = ['full', 'flat-spread', 'flat-spine'];
+      if (!allowedModes.includes(conversionMode)) {
+        throw new BadRequestException(
+          `spreadConfig.conversionMode는 ${allowedModes.join(', ')} 중 하나여야 합니다. (받은 값: ${String(conversionMode)})`,
+        );
+      }
+      if (conversionMode === 'flat-spine') {
+        // flat-spine 은 back/spine/front 3분할 아트워크가 영역에 앵커되므로 해당 영역이 필수.
+        // 변환기는 regions 항목을 {kind,...} 로, 편집기 레이아웃은 {position,...} 으로 내보내므로 둘 다 허용.
+        const regionKinds = new Set(
+          (dto.spreadConfig.regions ?? []).map(
+            (r) => (r as { kind?: string; position?: string }).kind ?? (r as { position?: string }).position,
+          ),
+        );
+        const required = ['back-cover', 'spine', 'front-cover'];
+        const missing = required.filter((k) => !regionKinds.has(k));
+        if (missing.length > 0) {
+          throw new BadRequestException(
+            `conversionMode=flat-spine일 때 spreadConfig.regions에 ${required.join(', ')} 영역이 모두 필요합니다. (누락: ${missing.join(', ')})`,
+          );
+        }
+      }
     }
   }
 

@@ -1378,6 +1378,12 @@ export interface SpreadObjectMeta {
   regionRef: SpreadRegionPosition | null;
   primaryRegionHint: SpreadRegionPosition | null;
   anchor: ObjectAnchor;
+  /**
+   * flat-spine 변환(conversionMode='flat-spine') 3분할 아트워크 식별.
+   * - 'spine': 책등 중심 3배폭 크롭 — resizeSpine 재배치에서 무이동·무스케일(SpreadPlugin 가드)
+   * - 'back' | 'front': 표지 크롭 — region anchor 로 평행이동
+   */
+  flatArtwork?: 'spine' | 'back' | 'front';
 }
 
 /**
@@ -1454,12 +1460,25 @@ export interface SpreadLayout {
 /**
  * 스프레드 설정 (저장용)
  */
+/**
+ * 템플릿 변환 모드 (IDML 가져오기 유형 3종)
+ * - 'full'        : 벡터 변환 — 모든 객체 개별 편집 가능 (현행 vector 모드. 미존재 시 기본값)
+ * - 'flat-spread' : 전폭 300dpi PNG 1장(id='idml-artwork') + 텍스트 오버레이.
+ *                   책등 고정 — 편집기에서 책등 가변(resizeSpine) 차단 대상.
+ * - 'flat-spine'  : 아트워크 3분할 PNG(spine/back/front-artwork) + 텍스트 오버레이.
+ *                   spine PNG 는 책등 중심 3배폭(canvas anchor, scene x=0), back/front 는 region anchor
+ *                   → 책등 가변 허용(대칭 레이아웃 전제: spine 중심 불변, back/front 는 region 추종).
+ */
+export type SpreadConversionMode = 'full' | 'flat-spread' | 'flat-spine';
+
 export interface SpreadConfig {
   version: number;        // 1 (향후 계산식 변경 대비)
   spec: SpreadSpec;
   regions: SpreadRegion[];
   totalWidthMm: number;
   totalHeightMm: number;
+  /** IDML 가져오기 변환 모드. JSON 필드라 마이그레이션 불필요. 미존재 시 'full' 간주. */
+  conversionMode?: SpreadConversionMode;
 }
 
 /**
