@@ -8,12 +8,14 @@
 //   - 브라우저: <img> + <canvas> 로 SVG를 래스터화 (외부 의존 없음).
 //   - Node:    sharp 로 SVG → PNG 래스터화.
 //
-// 좌표 규약(입력 draftTemplateDto):
-//   - 객체 left/top = 중심(center origin), width/height/strokeWidth 는 px.
-//   - canvasData.width/height 는 px@150dpi (SVG viewBox 단위).
-//   - obj.path 는 절대 캔버스 px 좌표의 SVG path `d` 문자열 → transform 불필요.
+// 좌표 규약(입력 draftTemplateDto, 전체: docs/COORDINATE_SYSTEM.md):
+//   - 객체 left/top = scene(중앙원점), width/height/strokeWidth 는 px.
+//   - canvasData.width/height 는 content px@150dpi (SVG viewBox 단위, 좌상단원점).
+//   - 비-path 객체는 sceneToContent(centerOrigin.mjs SSOT)로 환산. path 의 d 는 이미 콘텐츠 절대 px.
 //   - 미리보기(preview/svg.mjs)와 달리 래스터는: opacity 1, 영역 가이드/라벨 없음,
 //     textbox 제외, 흰 배경 미적용(투명 PNG).
+
+import { halvesOf, sceneToContentX, sceneToContentY } from '../geometry/centerOrigin.mjs';
 
 const esc = (t) =>
   String(t).replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
@@ -29,13 +31,11 @@ const esc = (t) =>
 export function buildArtworkSvg(dto) {
   const W = dto.canvasData.width;
   const H = dto.canvasData.height;
-  // 객체 left/top 은 '중앙원점'(toSpreadTemplate: centerXpx - halfW)인데 viewBox 는 좌상단원점
-  // (0 0 W H). 비-path 객체(image/rect/ellipse)와 회전 피벗은 +halfW/+halfH 평행이동으로
-  // 콘텐츠 좌상단 좌표로 환산해야 한다. (path 의 d 는 이미 콘텐츠 절대 px → 보정 불필요.)
-  // 이 보정 누락 시 back-cover(−x) 객체가 viewBox 밖으로 클립되고 front 가 좌측 절반으로 밀려
+  // 객체 left/top 은 scene(중앙원점)인데 viewBox 는 content(좌상단원점, 0 0 W H). 비-path 객체
+  // (image/rect/ellipse)와 회전 피벗은 sceneToContent 로 환산한다. (path 의 d 는 이미 콘텐츠 절대 px.)
+  // 이 환산 누락 시 back-cover(−x) 객체가 viewBox 밖으로 클립되고 front 가 좌측 절반으로 밀려
   // PNG 의 표지 좌우가 뒤바뀐 것처럼 구워졌다(2026-06-11 회귀 수정).
-  const halfW = W / 2;
-  const halfH = H / 2;
+  const { halfW, halfH } = halvesOf(W, H);
 
   const parts = [];
   parts.push(`<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`);
@@ -43,8 +43,8 @@ export function buildArtworkSvg(dto) {
   for (const o of dto.canvasData.objects) {
     if (o.type === 'textbox') continue;
 
-    const left = o.left + halfW;
-    const top = o.top + halfH;
+    const left = sceneToContentX(o.left, halfW);
+    const top = sceneToContentY(o.top, halfH);
     const w = o.width || 12;
     const h = o.height || 12;
     const fill = o.fill && o.fill !== '' ? o.fill : 'none';

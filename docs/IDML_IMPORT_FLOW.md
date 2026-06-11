@@ -169,6 +169,7 @@
 ---
 
 ## 7. 관련 문서 / 코드
+- [`COORDINATE_SYSTEM.md`](COORDINATE_SYSTEM.md) — 좌표계 규약(동결): content↔scene(중앙원점) 변환 SSOT, width/height 함정
 - [`DESIGN_IMPORT_CONVERTER.md`](DESIGN_IMPORT_CONVERTER.md) — 변환기 기술 아키텍처 + 로드맵 §11
 - `apps/admin/src/pages/Templates/TemplateImport.tsx` — 가져오기 UI
 - `apps/admin/src/pages/TemplateSets/TemplateSetForm.tsx` — 셋 폼(방법 A 인계 + 색/PDF/에셋 설정)

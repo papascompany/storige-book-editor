@@ -1,8 +1,9 @@
 // IdmlDoc → Storige 표지 펼침면 템플릿(spec + regions + CanvasData objects + draft DTO).
 //
-// 좌표 규약:
+// 좌표 규약(전체: docs/COORDINATE_SYSTEM.md):
 //  - IDML 스프레드 좌표(pt): x=0 은 좌측 콘텐츠 가장자리, y=0 은 세로 중앙.
-//  - Storige 캔버스: 좌상단 원점, 객체 left/top 은 '중심'(originX/originY='center').
+//  - 파싱 중간값은 content(좌상단원점, 0..W) px. 최종 출력 객체 left/top 은 scene(중앙원점,
+//    originX/originY='center'). content→scene 변환은 centerOrigin.mjs(SSOT)만 사용.
 //  - 변환: pt → mm → workspace px(DPI 150).
 //  - 책등(spine) 폭은 권위로 고정하지 않음(런타임 파생). cover/height/wing 만 권위.
 
@@ -14,6 +15,7 @@ import {
   resolveRegionAtX,
 } from '../geometry/regions.mjs';
 import { buildPathD, transformedBBox } from '../geometry/path.mjs';
+import { halvesOf, contentToSceneX, contentToSceneY } from '../geometry/centerOrigin.mjs';
 
 const PATH_TYPES = new Set(['Polygon', 'GraphicLine']);
 
@@ -86,11 +88,10 @@ export function toSpreadTemplate(doc, opts = {}) {
   const topYpt = Math.min(...doc.pages.map((p) => p.topSpreadPt)); // 상단(스프레드 y center 기준 음수)
   const contentHeightPx = mmToPx(spec.coverHeightMm, dpi);
   // 시스템 좌표 규약 = 콘텐츠 '중앙원점'(WorkspacePlugin 워크스페이스 중심 = fabric (0,0),
-  // 편집기/PDF/반응형 줌이 모두 이 규약). 변환기는 좌상단 0..W 로 계산하므로 최종 출력에서
-  // (-halfW, -halfH) 평행이동 + originX/originY='center' 로 정렬해야 화면=PDF=web 가 일치한다.
+  // 편집기/PDF/반응형 줌이 모두 이 규약). 변환기는 좌상단 content(0..W) 로 계산하므로 최종 출력에서
+  // contentToScene(centerOrigin.mjs SSOT) + originX/originY='center' 로 정렬해야 화면=PDF=web 일치.
   const totalWidthPx = mmToPx(totalWidthMm, dpi);
-  const halfW = totalWidthPx / 2;
-  const halfH = contentHeightPx / 2;
+  const { halfW, halfH } = halvesOf(totalWidthPx, contentHeightPx);
 
   const warnings = [];
   const objects = [];
@@ -137,7 +138,7 @@ export function toSpreadTemplate(doc, opts = {}) {
           xNorm: (centerXpx - region.x) / region.width,
           yNorm: contentHeightPx ? centerYpx / contentHeightPx : 0,
         }
-      : { kind: 'canvas', x: round2(centerXpx - halfW), y: round2(centerYpx - halfH) };
+      : { kind: 'canvas', x: round2(contentToSceneX(centerXpx, halfW)), y: round2(contentToSceneY(centerYpx, halfH)) };
 
     const fill = resolveColor(it.fillColor, doc.colors);
     const stroke = resolveColor(it.strokeColor, doc.colors);
@@ -166,8 +167,8 @@ export function toSpreadTemplate(doc, opts = {}) {
       // 중심 기준 + 콘텐츠 중앙원점 정렬(일반 템플릿과 동일한 좌표 모델)
       originX: 'center',
       originY: 'center',
-      left: round2(centerXpx - halfW),
-      top: round2(centerYpx - halfH),
+      left: round2(contentToSceneX(centerXpx, halfW)),
+      top: round2(contentToSceneY(centerYpx, halfH)),
       width: round2(widthPx),
       height: round2(heightPx),
       // fabric.Ellipse 는 rx/ry(반경)로 그린다 — width/height 만 주면 rx=0 으로 로드돼 타원이
