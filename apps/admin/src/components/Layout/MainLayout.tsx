@@ -165,6 +165,11 @@ export const MainLayout = () => {
           label: '편집검토',
           onClick: () => navigate('/reviews'),
         },
+        {
+          key: '/edit-sessions/deleted',
+          label: '삭제 리스트',
+          onClick: () => navigate('/edit-sessions/deleted'),
+        },
       ],
     },
     {

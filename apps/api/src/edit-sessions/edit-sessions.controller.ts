@@ -89,10 +89,18 @@ export class EditSessionsController {
     }
 
     // Phase C-2 — JWT의 siteId 자동 주입 (없으면 NULL — 기존 호환)
+    // 고객아이디 스냅샷 (2026-06-11): shop-session JWT 의 memberId(email)/memberName 을
+    // metadata.member 로 자동 기록 — admin 세션/삭제 리스트에서 "고객아이디"를 사람이 읽을 수
+    // 있게 노출하기 위함 (member_seqno 는 UUID 해시라 식별 불가). 클라이언트 변경 불필요.
+    const memberSnapshot =
+      user?.source === 'shop' && (user?.email || user?.name)
+        ? { member: { memberId: user.email ?? null, memberName: user.name ?? null } }
+        : {};
     const session = await this.editSessionsService.create({
       ...dto,
       memberSeqno,
       siteId: user?.siteId,
+      metadata: { ...(dto.metadata || {}), ...memberSnapshot },
     });
 
     return this.editSessionsService.toResponseDto(session);
@@ -233,6 +241,38 @@ export class EditSessionsController {
       sessions: sessions.map((s) => this.editSessionsService.toResponseDto(s)),
       total: sessions.length,
     };
+  }
+
+  /**
+   * 삭제된 세션 목록 — admin '삭제 리스트' 메뉴 (2026-06-11).
+   * 고객이 보관함/장바구니에서 삭제한 세션(soft delete)을 누적 조회.
+   * ⚠️ 라우트 순서: @Get(':id') 보다 먼저 선언해야 'deleted' 가 :id 로 캡처되지 않는다.
+   */
+  @Get('deleted')
+  @ApiOperation({ summary: '삭제된 편집 세션 목록 (admin 전용)' })
+  @ApiQuery({ name: 'memberSeqno', required: false, description: '회원 번호 필터' })
+  @ApiQuery({ name: 'orderSeqno', required: false, description: '주문 번호 필터' })
+  @ApiQuery({ name: 'siteId', required: false, description: '사이트 ID 필터' })
+  @ApiQuery({ name: 'page', required: false, description: '페이지 (기본 1)' })
+  @ApiQuery({ name: 'limit', required: false, description: '페이지 크기 (기본 20, 최대 100)' })
+  @ApiResponse({ status: 200, description: '삭제된 세션 목록', type: EditSessionListResponseDto })
+  @ApiResponse({ status: 403, description: 'admin/manager 아님' })
+  async findDeleted(
+    @CurrentUser() user: any,
+    @Query('memberSeqno') memberSeqno?: string,
+    @Query('orderSeqno') orderSeqno?: string,
+    @Query('siteId') siteId?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ): Promise<EditSessionListResponseDto> {
+    this.assertStaff(user);
+    return this.editSessionsService.findDeleted({
+      memberSeqno: memberSeqno ? parseInt(memberSeqno) : undefined,
+      orderSeqno: orderSeqno ? parseInt(orderSeqno) : undefined,
+      siteId: siteId || undefined,
+      page: page ? parseInt(page) : undefined,
+      limit: limit ? parseInt(limit) : undefined,
+    });
   }
 
   /**
@@ -452,5 +492,38 @@ export class EditSessionsController {
     const userId = user?.userId ? parseInt(user.userId) : 0;
     await this.editSessionsService.delete(id, userId);
     return { success: true };
+  }
+
+  /**
+   * 삭제된 세션 복구 — admin '삭제 리스트' 메뉴 (2026-06-11).
+   * 고객이 실수로 삭제한 작업을 운영자가 복원한다 (deleted_at 해제 — 파일은 softDelete 가
+   * 건드리지 않으므로 보관함/불러오기 모달에 즉시 재노출). 멱등 — 이미 활성이면 그대로 성공.
+   */
+  @Post(':id/restore')
+  @ApiOperation({ summary: '삭제된 편집 세션 복구 (admin 전용)' })
+  @ApiResponse({ status: 200, description: '복구 성공', type: EditSessionResponseDto })
+  @ApiResponse({ status: 403, description: 'admin/manager 아님' })
+  @ApiResponse({ status: 404, description: '세션을 찾을 수 없음' })
+  async restore(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: any,
+  ): Promise<EditSessionResponseDto> {
+    this.assertStaff(user);
+    const session = await this.editSessionsService.restoreSession(id);
+    return this.editSessionsService.toResponseDto(session);
+  }
+
+  /**
+   * admin/manager 전용 가드 — findSessions 의 IDOR 가드와 동일한 role 관례 (user.role).
+   * admin-app JWT(User 엔티티, role='admin')와 shop-session JWT(role='customer')를 구분한다.
+   */
+  private assertStaff(user: any): void {
+    const role = user?.role || '';
+    if (role !== 'admin' && role !== 'manager') {
+      throw new ForbiddenException({
+        code: 'ADMIN_ONLY',
+        message: '관리자만 사용할 수 있는 기능입니다.',
+      });
+    }
   }
 }

@@ -124,6 +124,12 @@ export interface EditorConfig {
     paperType?: string
     /** 제본 방식 코드 (책등 계산용) */
     bindingType?: string
+    /** 부수(수량) — metadata.orderOptions 스냅샷용 (2026-06-11) */
+    quantity?: number
+    /** 인쇄제목(작업 제목) — metadata.orderOptions 스냅샷용 */
+    title?: string
+    /** 상품명 — metadata.orderOptions 스냅샷용 */
+    productName?: string
     /** 판형 크기 */
     size?: { width: number; height: number }
     /** 제본 방식 */
@@ -564,6 +570,9 @@ function EmbeddedEditor({
               paperType: options?.paperType,
               bindingType: options?.bindingType,
               size: options?.size,
+              quantity: options?.quantity,
+              title: options?.title,
+              productName: options?.productName,
               productId,
               orderSeqno,
             }).filter(([, value]) => value !== undefined)

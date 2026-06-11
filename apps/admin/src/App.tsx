@@ -20,7 +20,7 @@ import {
   FrameList,
   CategoryManagement as LibraryCategoryManagement,
 } from './pages/Library';
-import { EditSessionList } from './pages/EditSessions';
+import { EditSessionList, DeletedSessionList } from './pages/EditSessions';
 import { WorkerJobList } from './pages/WorkerJobs';
 import { WorkerTestPage } from './pages/WorkerTest';
 import { SiteList } from './pages/Sites';
@@ -80,6 +80,7 @@ function App() {
               <Route path="library/cliparts" element={<ClipartList />} />
               {/* 편집관리 그룹 */}
               <Route path="edit-sessions" element={<EditSessionList />} />
+              <Route path="edit-sessions/deleted" element={<DeletedSessionList />} />
               <Route path="reviews" element={<ReviewList />} />
               <Route path="reviews/:id" element={<ReviewDetail />} />
               {/* 기타 */}
