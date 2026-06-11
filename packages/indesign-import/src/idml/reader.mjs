@@ -137,14 +137,20 @@ const innerText = (node) =>
     .join('');
 
 /**
- * Story_*.xml → { self, text, font, sizePt, fillColor } (순서보존 파서).
+ * Story_*.xml → { self, text, font, sizePt, fillColor, vertical } (순서보존 파서).
  * 단락(ParagraphStyleRange) 사이 + 줄바꿈(Br)을 모두 '\n' 으로 보존 → 다단 텍스트 영역 이탈 방지.
+ * vertical: StoryPreference@StoryOrientation="Vertical"(세로짜기). 회전(angle)이 아니라
+ * 글자가 똑바로 선 채 위→아래로 쌓이는 CJK 세로조판 — 변환기에서 글자 단위 세로 배치로 근사.
  */
 function parseStory(xml) {
   const top = orderedParser.parse(xml);
   const story = deepFindOrdered(top, 'Story');
   if (!story) return null;
   const self = attrsOf(story)['@_Self'];
+  const storyPref = findChild(story, 'StoryPreference');
+  const vertical = storyPref
+    ? attrsOf(storyPref)['@_StoryOrientation'] === 'Vertical'
+    : false;
   let text = '';
   let font;
   let sizePt;
@@ -170,7 +176,7 @@ function parseStory(xml) {
     }
     if (pi < psrs.length - 1) text += '\n'; // 단락 구분
   });
-  return { self, text: text.replace(/[ \t]+$/gm, '').trim(), font, sizePt, fillColor };
+  return { self, text: text.replace(/[ \t]+$/gm, '').trim(), font, sizePt, fillColor, vertical };
 }
 
 function deepFind(obj, key) {
