@@ -20,6 +20,7 @@ import type {
   SystemObjectType,
   ObjectAnchor,
   SpreadObjectMeta,
+  RegionRefResult,
 } from '@storige/types'
 import {
   computeLayout,
@@ -355,8 +356,8 @@ class SpreadPlugin extends PluginBase {
         continue
       }
 
-      const regionRef = objMeta?.regionRef ?? null
-      const anchor = objMeta?.anchor ?? { kind: 'canvas', x: 0, y: 0 }
+      let regionRef = objMeta?.regionRef ?? null
+      let anchor: ObjectAnchor = objMeta?.anchor ?? { kind: 'canvas', x: 0, y: 0 }
 
       // 자유 객체: 절대좌표 유지
       if (regionRef === null) {
@@ -366,6 +367,40 @@ class SpreadPlugin extends PluginBase {
 
       // 영역 객체: 재배치 — content 좌표계로 변환(엔진 입력용, old origin 기준).
       const boundingRect = this.getContentBoundingRect(obj)
+
+      // 자가치유 가드(meta 오염 방어, 라이브 P1 2026-06-11/12): regionRef/anchor 는
+      // 외부(편집기 훅·DB 기저장 데이터)에서 오염될 수 있다 — 실측 사고에서는 편집기 훅이
+      // viewport 좌표 bbox 로 front 객체를 back-cover/xNorm0.6466 으로 재앵커했고,
+      // 이 분기가 오염 anchor 를 무비판 적용해 객체를 반대편 표지로 텔레포트시켰다.
+      // 방어 규칙(보수적): 실측 content bbox 가 claimed region 과 "전혀" 겹치지 않으면
+      // (legit 객체는 클램프 범위 내에서 항상 일부라도 걸친다) meta 를 실측으로 재유도한다.
+      //  - 재유도 결과가 region 이면 그 region anchor 로 정상 재배치 (자가복구)
+      //  - 어느 영역에도 promote(≥0.9) 불가면 자유 객체로 강등 → 절대좌표 보존(무이동)
+      // 부분 겹침(overlap>0) 객체는 건드리지 않는다 — 기존 동작 완전 보존.
+      const claimedRegion = oldLayout.regions.find((r) => r.position === regionRef) ?? null
+      const claimedOverlapW = claimedRegion
+        ? Math.min(boundingRect.left + boundingRect.width, claimedRegion.x + claimedRegion.width) -
+          Math.max(boundingRect.left, claimedRegion.x)
+        : 0
+      if (!claimedRegion || claimedOverlapW <= 0) {
+        const healed = resolveRegionRef(oldLayout.regions, boundingRect, null)
+        if (!obj.meta) {
+          obj.meta = {}
+        }
+        obj.meta.regionRef = healed.regionRef
+        obj.meta.primaryRegionHint = healed.primaryRegionHint
+        obj.meta.anchor = healed.anchor
+        console.warn(
+          `[SpreadPlugin] repositionObjects: meta 오염 자가치유 — regionRef '${regionRef}' 는 실측 bbox 와 무교차 → '${healed.regionRef}' 로 재유도 (객체 id=${(obj as any).id ?? '?'})`
+        )
+        regionRef = healed.regionRef
+        anchor = healed.anchor
+
+        // 자유 객체로 치유된 경우: 절대좌표 보존(무이동)
+        if (regionRef === null) {
+          continue
+        }
+      }
 
       if (regionRef === 'spine') {
         const oldSpine = oldLayout.regions.find((r) => r.position === 'spine')!
@@ -773,6 +808,31 @@ class SpreadPlugin extends PluginBase {
     const origin = this.getContentOrigin()
     const contentX = scenePoint.x - origin.x
     return resolveRegionAtX(this.currentLayout.regions, contentX)
+  }
+
+  /**
+   * Fabric 객체의 "현재 위치" 기반 regionRef/anchor 판정 — scene→content 변환을 캡슐화한 공개 API.
+   *
+   * ⚠️ 편집기 훅(useSpreadAutoAnchor, MoveToCoverRegion 등)은 반드시 이 API 를 사용할 것.
+   * `obj.getBoundingRect()`(무인자)는 viewport(줌·팬 적용) 좌표라 엔진(content 좌표)과
+   * 비교하면 영역을 오판한다 — 라이브 P1(2026-06-11/12): fit-zoom(≈0.49)에서 front-cover
+   * textbox 가 back-cover 로 재앵커돼 다음 책등가변 때 반대편 표지로 텔레포트.
+   * (플러그인 내부 호출부는 getBoundingRect(true,true) 로 이미 정합 — 외부 호출부용 정식 통로가 이 메서드.)
+   *
+   * @param obj fabric 객체 (scene 좌표는 내부에서 getBoundingRect(true,true) 로 측정)
+   * @param currentRegionRef 히스테리시스 기준점 (신규 객체는 null)
+   * @returns RegionRefResult, currentLayout 미초기화 시 null
+   */
+  resolveRegionMetaForObject(
+    obj: fabric.Object,
+    currentRegionRef: SpreadRegionPosition | null = null
+  ): RegionRefResult | null {
+    if (!this.currentLayout) return null
+    return resolveRegionRef(
+      this.currentLayout.regions,
+      this.getContentBoundingRect(obj),
+      currentRegionRef
+    )
   }
 
   /** 현재 포커스된 영역 */

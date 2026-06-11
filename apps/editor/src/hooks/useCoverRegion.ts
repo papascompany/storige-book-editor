@@ -2,7 +2,7 @@ import { useCallback, useEffect } from 'react'
 import { useAppStore } from '@/stores/useAppStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { showToast } from '@/stores/useToastStore'
-import { resolveRegionRef, type SpreadPlugin } from '@storige/canvas-core'
+import { type SpreadPlugin } from '@storige/canvas-core'
 import type { SpreadRegion } from '@storige/types'
 
 /**
@@ -74,11 +74,14 @@ export function useSpreadAutoAnchor(ready: boolean): void {
       if (target.meta?.system) return
       if (target.meta?.regionRef !== undefined) return
 
-      const layout = spreadPlugin.getLayout()
-      if (!layout) return
-
-      const boundingRect = target.getBoundingRect()
-      const result = resolveRegionRef(layout.regions, boundingRect, null)
+      // ⚠️ 좌표계 주의(라이브 P1, 2026-06-11/12): 과거 이 훅은 `target.getBoundingRect()`
+      // (무인자 = viewport 좌표, 줌·팬 의존)를 resolveRegionRef(content 좌표 엔진)에 그대로
+      // 넘겨 fit-zoom(≈0.49)에서 front-cover 객체를 back-cover 로 오판/재앵커했고, 오염된
+      // anchor 가 다음 책등가변(repositionObjects) 때 객체를 반대편 표지로 텔레포트시켰다.
+      // SpreadPlugin.resolveRegionMetaForObject 가 scene bbox(getBoundingRect(true,true))
+      // → content 변환을 캡슐화한다 — 외부에서는 반드시 이 API 를 사용.
+      const result = spreadPlugin.resolveRegionMetaForObject(target, null)
+      if (!result) return
 
       if (!target.meta) target.meta = {}
       target.meta.regionRef = result.regionRef
