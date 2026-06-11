@@ -106,8 +106,10 @@ describe('EditSessionsController', () => {
   // ── IDOR 가드 (2026-06-11): GET /edit-sessions?memberSeqno=X ──
   // admin/manager 가 아니면 본인 memberSeqno 만 허용, 타인은 403.
   describe('GET /edit-sessions (memberSeqno IDOR 가드)', () => {
-    const adminUser = { role: 'admin' }; // admin-app User 엔티티 (userId 없음)
-    const managerUser = { role: 'manager' };
+    // 실제 admin-app JWT 의 role 은 UserRole enum **대문자**('ADMIN'/'MANAGER') —
+    // 소문자 비교는 admin 검색 403 회귀를 만들었으므로(2026-06-11 수정) 실값으로 검증.
+    const adminUser = { role: 'ADMIN' }; // admin-app User 엔티티 (userId 없음)
+    const managerUser = { role: 'MANAGER' };
     const shopUser = { userId: '100', role: 'customer', source: 'shop' };
 
     beforeEach(() => {

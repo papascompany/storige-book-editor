@@ -361,8 +361,9 @@ export class EditSessionsController {
       //    ApiKeyGuard)를 사용하므로 본 가드와 무관 — 영향 없음.
       //  - orderSeqno/siteId 분기는 현행 불변.
       const requestedSeqno = parseInt(memberSeqno);
-      const userRole = user?.role || '';
-      const isStaff = userRole === 'admin' || userRole === 'manager';
+      // ⚠️ UserRole enum 은 대문자('ADMIN' 등) — 소문자 비교는 admin 검색을 403 으로 막는
+      // 회귀였음(2026-06-11 수정). 대소문자 무관 헬퍼 사용.
+      const isStaff = this.isStaffRole(user);
       // userId 부재(예: 일반 admin-app User 엔티티) 시 NaN → 비교 항상 불일치(안전측)
       const selfSeqno = user?.userId ? parseInt(user.userId) : NaN;
       if (!isStaff && requestedSeqno !== selfSeqno) {
@@ -415,9 +416,9 @@ export class EditSessionsController {
 
     // 권한 확인: 세션 소유자 (memberSeqno 일치) 또는 admin/manager 역할
     const userId = user?.userId ? parseInt(user.userId) : 0;
-    const userRole = user?.role || '';
     const isOwner = Number(session.memberSeqno) === userId;
-    const isStaff = userRole === 'admin' || userRole === 'manager';
+    // UserRole enum 대문자 대응 — 대소문자 무관 판정 (2026-06-11)
+    const isStaff = this.isStaffRole(user);
 
     if (!isOwner && !isStaff) {
       throw new ForbiddenException({
@@ -514,12 +515,19 @@ export class EditSessionsController {
   }
 
   /**
-   * admin/manager 전용 가드 — findSessions 의 IDOR 가드와 동일한 role 관례 (user.role).
-   * admin-app JWT(User 엔티티, role='admin')와 shop-session JWT(role='customer')를 구분한다.
+   * 운영자(staff) 역할 판정 — admin-app JWT(User 엔티티, UserRole enum = 'ADMIN'/'MANAGER'/
+   * 'SUPER_ADMIN' **대문자**)와 shop-session JWT(role='customer' 소문자)를 모두 포괄하도록
+   * 대소문자 무관 비교. (기존 소문자 비교는 admin JWT 를 staff 로 인식하지 못하던 결함 —
+   * 2026-06-11 삭제 리스트 라이브 검증에서 발견·수정.)
    */
+  private isStaffRole(user: any): boolean {
+    const role = String(user?.role || '').toLowerCase();
+    return role === 'admin' || role === 'manager' || role === 'super_admin';
+  }
+
+  /** admin/manager 전용 가드 (삭제 리스트/복구) */
   private assertStaff(user: any): void {
-    const role = user?.role || '';
-    if (role !== 'admin' && role !== 'manager') {
+    if (!this.isStaffRole(user)) {
       throw new ForbiddenException({
         code: 'ADMIN_ONLY',
         message: '관리자만 사용할 수 있는 기능입니다.',
