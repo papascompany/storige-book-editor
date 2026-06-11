@@ -21,6 +21,7 @@ export { default as PreviewPlugin } from './plugins/PreviewPlugin'
 export { default as ScreenshotPlugin } from './plugins/ScreenshotPlugin'
 export { default as LockPlugin, type LockLevel, type UserRole, type LockInfo } from './plugins/LockPlugin'
 export { default as SpreadPlugin } from './plugins/SpreadPlugin'
+export { default as PointerShiftGuardPlugin } from './plugins/PointerShiftGuardPlugin'
 
 export { PluginBase } from './plugin'
 
@@ -45,6 +46,8 @@ export * as SvgUtils from './utils/svg'
 
 export * from './utils/eyeDrop'
 export * from './utils/logger'
+// P1-3 — 변환 중 포인터→scene 매핑 점프 보정 (PointerShiftGuardPlugin 의 순수 로직)
+export * from './utils/pointerShift'
 // P2-11/A — OpenCV/배경제거 lazy-loader + warmup helpers
 export { getCv, getBackgroundRemoval, warmupOpenCv, warmupBackgroundRemoval } from './utils/openCv'
 

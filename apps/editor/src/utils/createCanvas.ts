@@ -13,6 +13,7 @@ import Editor, {
   ImageProcessingPlugin,
   LockPlugin,
   ObjectPlugin,
+  PointerShiftGuardPlugin,
   PreviewPlugin,
   RulerPlugin,
   ServicePlugin,
@@ -229,6 +230,10 @@ function initPlugins(
   const service = new ServicePlugin(canvas, editor, image, mergedOptions)
   const material = new AccessoryPlugin(canvas, editor, {})
   const drag = new DraggingPlugin(canvas, editor)
+  // P1-3 (2026-06-12): 드래그 변환 진행 중 캔버스 레이아웃 이동/vpt 변경이 드래그
+  // 변위로 전이되는 결함 차단 — 패널(ControlBar 280px) 열림 × 더블클릭 편집 레이스로
+  // 객체가 -280px/zoom 텔레포트하던 라이브 P1 의 근본 수정.
+  const pointerShiftGuard = new PointerShiftGuardPlugin(canvas, editor)
 
   // FontPlugin에 전달하기 위해 fontList 변환 (API에서 로드된 LibraryFont 사용)
   // 상대 URL을 절대 URL로 변환하여 전달
@@ -278,6 +283,7 @@ function initPlugins(
   editor.use(copy)
   editor.use(align)
   editor.use(drag)
+  editor.use(pointerShiftGuard)
   editor.use(font)
   editor.use(filter)
   editor.use(effect)

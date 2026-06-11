@@ -5,6 +5,7 @@ import Editor, {
   type CanvasSettings,
   core,
   PluginBase,
+  PointerShiftGuardPlugin,
   SelectionType,
   WorkspacePlugin,
   RenderOptimizer,
@@ -533,6 +534,9 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
       }
       const workspacePlugin = new WorkspacePlugin(newCanvas, newEditor, workspaceOptions)
       newEditor.use(workspacePlugin)
+      // P1-3: 내지 추가 경로의 캔버스에도 포인터 매핑 점프 가드 등록
+      // (패널 열림/레이아웃 시프트 × 드래그 변환 레이스 → 객체 텔레포트 방지)
+      newEditor.use(new PointerShiftGuardPlugin(newCanvas, newEditor))
 
       // 스토어에 등록 (initializationId 전달하여 등록 허용)
       init(newCanvas, newEditor, initializationId || undefined)
