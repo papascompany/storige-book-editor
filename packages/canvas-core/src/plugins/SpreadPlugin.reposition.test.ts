@@ -272,3 +272,131 @@ describe('SpreadPlugin.repositionObjects — 책등 가변 재배치', () => {
     expect(legacy._centerY).toBeCloseTo(0.5 * newSpine.height + newOrigin.y, 3)
   })
 })
+
+// ============================================================================
+// conversionMode 분기 — flat-spine 아트워크 불변 / flat-spread 책등 고정
+// ============================================================================
+
+describe('SpreadPlugin conversionMode — flat-spine/flat-spread 가드', () => {
+  const mkSpineArtwork = (layout: SpreadLayout, spineWidthPx: number, meta: any) =>
+    makeObj({
+      type: 'image',
+      // 변환기 규약: spine-artwork 중심 = scene x 0 (콘텐츠 중앙, 대칭 레이아웃에서 불변점)
+      centerX: 0,
+      centerY: 0,
+      width: spineWidthPx * 3, // 책등 3배폭 크롭
+      height: layout.totalHeightPx,
+      meta,
+    })
+
+  it('flat-spine: spine-artwork(meta.flatArtwork="spine") 는 resizeSpine 재배치에서 무이동·무스케일', () => {
+    const oldLayout = computeLayout(baseSpec)
+    const newLayout = computeLayout({ ...baseSpec, spineWidthMm: 20 })
+    const oldSpine = oldLayout.regions.find((r) => r.position === 'spine')!
+
+    // 정상 데이터: regionRef=null + canvas anchor (자유 객체 분기로도 무이동이지만 명시 가드 검증)
+    const canonical = mkSpineArtwork(oldLayout, oldSpine.width, {
+      flatArtwork: 'spine',
+      regionRef: null,
+      anchor: { kind: 'canvas', x: 0, y: 0 },
+    })
+
+    // 오염 데이터: 저장/재편집 과정에서 regionRef 가 region 으로 재분류된 경우 —
+    // 명시 가드(flatArtwork==='spine') 없으면 cover 분기가 평행이동시켜 아트워크가 어긋난다.
+    const corrupted = mkSpineArtwork(oldLayout, oldSpine.width, {
+      flatArtwork: 'spine',
+      regionRef: 'back-cover',
+      anchor: { kind: 'region', xNorm: 0.5, yNorm: 0.5 },
+    })
+
+    const plugin = makePlugin([canonical, corrupted], oldLayout, baseSpec)
+    plugin.conversionMode = 'flat-spine'
+    plugin.repositionObjects(oldLayout, newLayout)
+
+    for (const art of [canonical, corrupted]) {
+      expect(art._centerX).toBe(0) // scene x 0 불변 (대칭 레이아웃: spine 중심 = 콘텐츠 중앙)
+      expect(art._centerY).toBe(0)
+      expect(art.scaleX).toBe(1)
+      expect(art.scaleY).toBe(1)
+    }
+    // anchor 도 미갱신(가드가 분기 진입 자체를 차단)
+    expect(corrupted.meta.anchor).toEqual({ kind: 'region', xNorm: 0.5, yNorm: 0.5 })
+  })
+
+  it('flat-spine: back/front-artwork(region anchor) 는 기존 cover 평행이동 로직 유지', () => {
+    const oldLayout = computeLayout(baseSpec)
+    const newLayout = computeLayout({ ...baseSpec, spineWidthMm: 20 })
+    const oldBack = oldLayout.regions.find((r) => r.position === 'back-cover')!
+    const oldFront = oldLayout.regions.find((r) => r.position === 'front-cover')!
+    const newFront = newLayout.regions.find((r) => r.position === 'front-cover')!
+    const H = oldLayout.totalHeightPx
+
+    const mkCoverArtwork = (flatArtwork: 'back' | 'front', region: { x: number; width: number }) => {
+      const scene = toScene(region.x + 0.5 * region.width, 0.5 * H, oldLayout)
+      return makeObj({
+        type: 'image',
+        centerX: scene.x,
+        centerY: scene.y,
+        width: region.width,
+        height: H,
+        meta: {
+          flatArtwork,
+          regionRef: flatArtwork === 'back' ? 'back-cover' : 'front-cover',
+          anchor: { kind: 'region', xNorm: 0.5, yNorm: 0.5 },
+        },
+      })
+    }
+    const backArt = mkCoverArtwork('back', oldBack)
+    const frontArt = mkCoverArtwork('front', oldFront)
+
+    const plugin = makePlugin([backArt, frontArt], oldLayout, baseSpec)
+    plugin.conversionMode = 'flat-spine'
+    plugin.repositionObjects(oldLayout, newLayout)
+
+    const newOrigin = contentOrigin(newLayout)
+    // back: region.x 불변 → content x 보존
+    expect(backArt._centerX - newOrigin.x).toBeCloseTo(oldBack.x + 0.5 * oldBack.width, 3)
+    // front: 새 region.x (책등 확장분만큼 우측 평행이동)
+    expect(frontArt._centerX - newOrigin.x).toBeCloseTo(newFront.x + 0.5 * newFront.width, 3)
+    // 평행이동만 — 스케일 불변
+    expect(backArt.scaleX).toBe(1)
+    expect(frontArt.scaleX).toBe(1)
+  })
+
+  it('flat-spread: resizeSpine 은 방어적 no-op (레이아웃/스펙 불변 + 경고 로그)', async () => {
+    const oldLayout = computeLayout(baseSpec)
+    const obj = makeObj({
+      type: 'textbox',
+      centerX: 0,
+      centerY: 0,
+      width: 40,
+      height: 120,
+      meta: { regionRef: 'spine', anchor: { kind: 'region', xNorm: 0.5, yNorm: 0.5 } },
+    })
+    const plugin = makePlugin([obj], oldLayout, baseSpec)
+    plugin.conversionMode = 'flat-spread'
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      await plugin.resizeSpine(20)
+    } finally {
+      warnSpy.mockRestore()
+    }
+
+    // 레이아웃/스펙/객체 전부 불변 (canvas/workspace 접근 전에 가드 — mock canvas 라 접근 시 throw 됐을 것)
+    expect(plugin.getLayout()).toBe(oldLayout)
+    expect(plugin.getSpec().spineWidthMm).toBe(10)
+    expect(obj._centerX).toBe(0)
+    expect(plugin.getConversionMode()).toBe('flat-spread')
+  })
+
+  it('기본값: conversionMode 미지정 시 full (옵션 생략 + setConversionMode(null) 정규화)', () => {
+    const layout = computeLayout(baseSpec)
+    const plugin = makePlugin([], layout, baseSpec)
+    expect(plugin.getConversionMode()).toBe('full')
+    plugin.setConversionMode('flat-spine')
+    expect(plugin.getConversionMode()).toBe('flat-spine')
+    plugin.setConversionMode(null)
+    expect(plugin.getConversionMode()).toBe('full')
+  })
+})

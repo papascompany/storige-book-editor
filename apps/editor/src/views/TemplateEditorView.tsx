@@ -8,7 +8,7 @@ import { templatesApi } from '@/api'
 import { createCanvas } from '@/utils/createCanvas'
 import { ServicePlugin, computeLayout } from '@storige/canvas-core'
 import { normalizeSpreadSpec, computeSpreadDimensions, TemplateType } from '@storige/types'
-import type { SpreadSpec, SpreadConfig, SpreadLayout } from '@storige/types'
+import type { SpreadSpec, SpreadConfig, SpreadLayout, SpreadConversionMode } from '@storige/types'
 import ToolBar from '@/components/editor/ToolBar'
 import FeatureSidebar from '@/components/editor/FeatureSidebar'
 import ControlBar from '@/components/editor/ControlBar'
@@ -59,6 +59,10 @@ export default function TemplateEditorView() {
   const [spreadError, setSpreadError] = useState<string | null>(null)
   const spreadSpecRef = useRef<SpreadSpec | null>(null)
   const spreadLayoutRef = useRef<SpreadLayout | null>(null)
+  // 템플릿 로드 시 기존 spreadConfig.conversionMode 보관 — 저장 시 spreadConfig 를
+  // {version,spec,regions,...} 로 재구성하면서 conversionMode 가 유실(라운드트립 'full' 강등)
+  // 되는 사고 방지. 없으면 필드 자체를 생략(legacy='full' 간주는 소비측 규약).
+  const existingConversionModeRef = useRef<SpreadConversionMode | undefined>(undefined)
 
   const isSpreadMode = modeParam === 'spread' && specParam != null
 
@@ -235,6 +239,8 @@ export default function TemplateEditorView() {
           try {
             const template = await templatesApi.getTemplate(templateId)
             setTemplateName(template.name)
+            // 기존 conversionMode 보관 (저장 시 병합 보존)
+            existingConversionModeRef.current = template.spreadConfig?.conversionMode
 
             // 캔버스에 템플릿 데이터 로드
             const servicePlugin = newEditor?.getPlugin('ServicePlugin') as ServicePlugin
@@ -328,6 +334,11 @@ export default function TemplateEditorView() {
           regions: spreadLayoutRef.current.regions,
           totalWidthMm: dims.totalWidthMm,
           totalHeightMm: dims.totalHeightMm,
+          // 템플릿 로드 시 보관한 기존 conversionMode 병합 보존.
+          // 없으면 필드 자체 생략 — 'full' 강제 주입 금지(서버/소비측이 legacy 간주).
+          ...(existingConversionModeRef.current !== undefined
+            ? { conversionMode: existingConversionModeRef.current }
+            : {}),
         }
       }
 

@@ -16,6 +16,7 @@ import type {
   SpreadLayout,
   SpreadRegion,
   SpreadRegionPosition,
+  SpreadConversionMode,
   SystemObjectType,
   ObjectAnchor,
   SpreadObjectMeta,
@@ -37,6 +38,12 @@ import {
 
 interface SpreadPluginOptions extends PluginOption {
   spec: SpreadSpec
+  /**
+   * IDML 가져오기 변환 모드 (spreadConfig.conversionMode). 미지정 시 'full'.
+   * - 'flat-spread': 전폭 아트워크 1장 — 책등 가변 금지(resizeSpine 방어적 no-op)
+   * - 'flat-spine' : 3분할 아트워크 — 책등 가변 허용, spine-artwork 는 재배치 불변
+   */
+  conversionMode?: SpreadConversionMode
 }
 
 // ============================================================================
@@ -51,6 +58,7 @@ class SpreadPlugin extends PluginBase {
   private currentSpec: SpreadSpec
   private currentLayout: SpreadLayout | null = null
   private isLayoutTransaction = false
+  private conversionMode: SpreadConversionMode = 'full'
 
   // Fabric 오브젝트 참조
   private guideLines: fabric.Line[] = []
@@ -68,6 +76,17 @@ class SpreadPlugin extends PluginBase {
   constructor(canvas: fabric.Canvas, editor: Editor, options: SpreadPluginOptions) {
     super(canvas, editor, options)
     this.currentSpec = options.spec
+    this.conversionMode = options.conversionMode ?? 'full'
+  }
+
+  /** 변환 모드 갱신 (spreadConfig 가 플러그인 생성 이후에 확정되는 로드 경로용) */
+  setConversionMode(mode: SpreadConversionMode | null | undefined): void {
+    this.conversionMode = mode ?? 'full'
+  }
+
+  /** 현재 변환 모드 */
+  getConversionMode(): SpreadConversionMode {
+    return this.conversionMode
   }
 
   // ============================================================================
@@ -196,6 +215,16 @@ class SpreadPlugin extends PluginBase {
    * 책등 리사이즈 (Atomic Transaction)
    */
   async resizeSpine(newSpineWidthMm: number): Promise<void> {
+    // flat-spread(전폭 아트워크 1장) 템플릿은 책등 고정 — 아트워크가 통짜 PNG 라
+    // 책등 폭을 바꾸면 인쇄물과 화면이 어긋난다. 편집기(spineCalculator)에서 차단하지만
+    // 방어적으로 플러그인에서도 no-op 처리한다.
+    if (this.conversionMode === 'flat-spread') {
+      console.warn(
+        `[SpreadPlugin] resizeSpine 차단: conversionMode='flat-spread' 는 책등 고정(요청 ${newSpineWidthMm}mm 무시)`
+      )
+      return
+    }
+
     if (!this.currentLayout) {
       console.warn('SpreadPlugin.resizeSpine: currentLayout is null, init() 호출 필요')
       return
@@ -315,8 +344,19 @@ class SpreadPlugin extends PluginBase {
         continue
       }
 
-      const regionRef = obj.meta?.regionRef ?? null
-      const anchor = obj.meta?.anchor ?? { kind: 'canvas', x: 0, y: 0 }
+      // flat-spine 책등 아트워크(meta.flatArtwork='spine'): 절대 이동/스케일 금지.
+      // 변환기가 책등 중심 3배폭 PNG 를 scene x=0(콘텐츠 중앙)에 canvas anchor + regionRef=null 로
+      // 두므로 아래 "자유 객체" 분기로도 무이동이지만, regionRef 가 후속 편집/저장 과정에서
+      // 오염되어도(예: handleObjectModified 의 자동 재분류, DB 기저장 데이터) 붕괴하지 않도록
+      // 암묵 동작에 기대지 않고 명시적으로 가드한다. (대칭 레이아웃에서 spine 중심은 책등 가변에
+      // 불변이므로 무이동·무스케일이 정답. back/front-artwork 는 region anchor 로 평행이동.)
+      const objMeta = obj.meta as Partial<SpreadObjectMeta> | undefined
+      if (objMeta?.flatArtwork === 'spine') {
+        continue
+      }
+
+      const regionRef = objMeta?.regionRef ?? null
+      const anchor = objMeta?.anchor ?? { kind: 'canvas', x: 0, y: 0 }
 
       // 자유 객체: 절대좌표 유지
       if (regionRef === null) {

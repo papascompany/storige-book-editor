@@ -203,8 +203,15 @@ function initPlugins(
   }
 
   // SpreadPlugin은 스프레드 모드일 때만 등록
+  // conversionMode: IDML 가져오기 유형(미존재 시 'full') — flat-spread 는 resizeSpine 방어 no-op,
+  // flat-spine 은 spine-artwork 재배치 불변 가드에 사용된다.
   const spreadConfig = settingsStore.spreadConfig
-  const spread = spreadConfig?.spec ? new SpreadPlugin(canvas, editor, { spec: spreadConfig.spec }) : null
+  const spread = spreadConfig?.spec
+    ? new SpreadPlugin(canvas, editor, {
+        spec: spreadConfig.spec,
+        conversionMode: spreadConfig.conversionMode ?? 'full',
+      })
+    : null
 
   const workspace = new WorkspacePlugin(canvas, editor, mergedOptions)
   const object = new ObjectPlugin(canvas, editor, mergedOptions)

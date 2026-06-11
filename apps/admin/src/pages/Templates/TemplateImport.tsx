@@ -49,8 +49,27 @@ const flattenCategories = (cats: CategoryNode[], level = 0): { label: string; va
 
 const detectFormat = (fileName: string): DesignFormat => (/\.psd$/i.test(fileName) ? 'psd' : 'idml');
 
+// IDML 변환 방식 3종 (spreadConfig.conversionMode 와 1:1 대응 — vector→full, hybrid→flat-spread, flat-spine→flat-spine)
+type IdmlImportMode = 'vector' | 'hybrid' | 'flat-spine';
+
+const IDML_MODE_OPTIONS: { label: string; value: IdmlImportMode }[] = [
+  { label: '벡터 (전체 편집형)', value: 'vector' },
+  { label: '펼침면 플랫형 (책등 고정)', value: 'hybrid' },
+  { label: '책등가변 3분할 플랫형', value: 'flat-spine' },
+];
+
+const IDML_MODE_DESCRIPTIONS: Record<IdmlImportMode, string> = {
+  vector:
+    '도형·텍스트를 모두 편집 가능한 벡터로 추출합니다 (정밀). 단순한 디자인에 적합합니다.',
+  hybrid:
+    '텍스트만 편집 가능한 레이어로 두고, 나머지 디자인은 전폭 300dpi PNG 한 장으로 고정합니다. 책등 두께가 고정인 상품(페이지 수 변동 없음)에 사용하세요 — 편집기에서 책등 가변이 차단됩니다.',
+  'flat-spine':
+    '텍스트만 편집 가능한 레이어로 두고, 디자인을 뒷표지/책등/앞표지 3장의 300dpi PNG 로 분할 고정합니다. 책등 PNG 는 책등 중심 기준 3배폭이라 페이지 수에 따라 책등 두께가 변해도 디자인이 따라갑니다 (책등 가변 책 셋용 권장).',
+};
+
 // canvasData 객체(불투명 Record). 변환기는 배경 PNG 를 type='image', src='data:image/png;base64,...'
-// 로 내보낸다(idml hybrid → id 'idml-artwork', psd → id 'psd-artwork').
+// 로 내보낸다(idml hybrid → id 'idml-artwork' 1장, idml flat-spine → 'spine-artwork'/'back-artwork'/'front-artwork' 3장,
+// psd → id 'psd-artwork').
 type CanvasObject = Record<string, unknown>;
 
 // 객체의 src 가 base64 dataURL 인 이미지인지 판정.
@@ -74,9 +93,9 @@ const dataUrlToFile = (dataUrl: string, fileName: string): File => {
  * 객체의 src 를 스토리지 URL 로 치환한 새 객체 배열을 반환한다.
  *
  * - dataURL 이미지가 없으면(순수 벡터 IDML 등) 입력 배열을 그대로 반환(업로드 0회).
- * - 여러 개여도 모두 처리.
- * - 업로드 실패 시 throw → 호출자(saveMutation)가 에러를 표면화하고 저장을 중단
- *   (깨진(URL 누락) 템플릿을 저장하지 않음).
+ * - 여러 개여도 모두 처리 (flat-spine 의 spine/back/front 3장 포함). 순서·z-order 보존(map).
+ * - 한 장이라도 업로드 실패 시 Promise.all 전체 reject → 호출자(saveMutation)가 에러를
+ *   표면화하고 저장을 중단 (부분 치환된 깨진 템플릿을 저장하지 않음 — 전체 실패 처리).
  * - 저장 src 는 resolveStorageUrl 로 변환한 값: prod=절대 URL, dev=vite proxy 상대경로.
  *   resolveStorageUrl 은 http(s)/data URL 을 그대로 통과시키므로 멱등.
  */
@@ -89,7 +108,9 @@ const uploadInlineBackgrounds = async (
   return Promise.all(
     objects.map(async (o) => {
       if (!isDataUrlImage(o)) return o;
-      const fileName = `${safeBase}-bg-${uploadIdx++}.png`;
+      // 식별 가능한 파일명: 객체 id(spine-artwork 등)가 있으면 포함 (flat-spine 3장 구분에 유용)
+      const idPart = typeof o.id === 'string' && o.id ? `-${(o.id as string).replace(/[^\w.-]+/g, '_').slice(0, 30)}` : '';
+      const fileName = `${safeBase}${idPart}-bg-${uploadIdx++}.png`;
       const file = dataUrlToFile(o.src, fileName);
       const uploaded = await libraryApi.uploadFile(file);
       if (!uploaded?.url) throw new Error('배경 이미지 업로드 응답에 URL 이 없습니다.');
@@ -110,7 +131,7 @@ export const TemplateImport = () => {
   const [previewSvg, setPreviewSvg] = useState<string>('');
   const [name, setName] = useState<string>('');
   const [categoryId, setCategoryId] = useState<string | undefined>();
-  const [mode, setMode] = useState<'vector' | 'hybrid'>('vector'); // IDML 전용
+  const [mode, setMode] = useState<IdmlImportMode>('vector'); // IDML 전용
   const [pageType, setPageType] = useState<'page' | 'cover'>('page'); // PSD 전용
   const [lastFile, setLastFile] = useState<File | null>(null);
   // 등록 대상(IDML 표지 한정): 표지 단품 / 책등 가변 셋으로 이어서 등록(방법 A)
@@ -180,7 +201,7 @@ export const TemplateImport = () => {
 
   const handleFile = async (
     file: File,
-    opts?: { mode?: 'vector' | 'hybrid'; pageType?: 'page' | 'cover' }
+    opts?: { mode?: IdmlImportMode; pageType?: 'page' | 'cover' }
   ) => {
     setLastFile(file);
     setConverting(true);
@@ -218,7 +239,7 @@ export const TemplateImport = () => {
     }
   };
 
-  const handleModeChange = (next: 'vector' | 'hybrid') => {
+  const handleModeChange = (next: IdmlImportMode) => {
     setMode(next);
     if (lastFile && detectFormat(lastFile.name) === 'idml') void handleFile(lastFile, { mode: next });
   };
@@ -285,19 +306,12 @@ export const TemplateImport = () => {
         <Card size="small" style={{ marginBottom: 16 }}>
           <Space direction="vertical" size={4} style={{ width: '100%' }}>
             <Text strong>변환 방식 (IDML)</Text>
-            <Segmented<'vector' | 'hybrid'>
+            <Segmented<IdmlImportMode>
               value={mode}
               onChange={(v) => handleModeChange(v)}
-              options={[
-                { label: '벡터 (정밀 편집)', value: 'vector' },
-                { label: '하이브리드 (텍스트만 편집·디자인 300dpi)', value: 'hybrid' },
-              ]}
+              options={IDML_MODE_OPTIONS}
             />
-            <Text type="secondary">
-              {mode === 'vector'
-                ? '도형·텍스트를 모두 편집 가능한 벡터로 추출합니다 (정밀). 단순한 디자인에 적합합니다.'
-                : '텍스트만 편집 가능한 레이어로 두고, 나머지 디자인은 300dpi PNG 한 장으로 고정합니다. 효과·그라디언트·별색이 많은 복잡한 디자인에 권장합니다.'}
-            </Text>
+            <Text type="secondary">{IDML_MODE_DESCRIPTIONS[mode]}</Text>
           </Space>
         </Card>
       )}

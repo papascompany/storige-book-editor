@@ -111,6 +111,134 @@ describe('TemplatesService', () => {
     });
   });
 
+  describe('create (spread conversionMode)', () => {
+    const baseSpec = {
+      coverWidthMm: 210,
+      coverHeightMm: 297,
+      spineWidthMm: 10,
+      wingEnabled: false,
+      wingWidthMm: 0,
+      cutSizeMm: 3,
+      safeSizeMm: 5,
+      dpi: 300,
+    };
+    const fullRegions = [
+      { kind: 'back-cover', x: 0, width: 100 },
+      { kind: 'spine', x: 100, width: 10 },
+      { kind: 'front-cover', x: 110, width: 100 },
+    ];
+    const makeDto = (spreadConfig: Record<string, unknown>) => ({
+      name: 'Spread Template',
+      type: TemplateType.SPREAD,
+      canvasData: '{}',
+      spreadConfig: { version: 1, spec: baseSpec, totalWidthMm: 0, totalHeightMm: 0, ...spreadConfig },
+    });
+
+    beforeEach(() => {
+      templateRepository.findOne.mockResolvedValue(null); // code 중복 없음
+    });
+
+    it('should accept flat-spine when back-cover/spine/front-cover regions exist and preserve conversionMode', async () => {
+      const dto = makeDto({ conversionMode: 'flat-spine', regions: fullRegions });
+
+      const result = await service.create(dto as any, 'user-id');
+
+      expect(result).toEqual(mockTemplate);
+      // 검증/정규화 후에도 conversionMode 가 스트립되지 않고 보존되어야 함
+      expect((dto.spreadConfig as any).conversionMode).toBe('flat-spine');
+      expect(templateRepository.save).toHaveBeenCalled();
+    });
+
+    it('should reject flat-spine when a required region is missing', async () => {
+      const dto = makeDto({
+        conversionMode: 'flat-spine',
+        regions: fullRegions.filter((r) => r.kind !== 'spine'),
+      });
+
+      await expect(service.create(dto as any, 'user-id')).rejects.toThrow(BadRequestException);
+      expect(templateRepository.save).not.toHaveBeenCalled();
+    });
+
+    it('should reject unknown conversionMode values', async () => {
+      const dto = makeDto({ conversionMode: 'bogus-mode', regions: fullRegions });
+
+      await expect(service.create(dto as any, 'user-id')).rejects.toThrow(BadRequestException);
+    });
+
+    it('should accept spreads without conversionMode (legacy = full)', async () => {
+      const dto = makeDto({ regions: [] });
+
+      const result = await service.create(dto as any, 'user-id');
+      expect(result).toEqual(mockTemplate);
+    });
+
+    it('should accept region entries keyed by position (editor layout shape)', async () => {
+      const dto = makeDto({
+        conversionMode: 'flat-spine',
+        regions: [
+          { position: 'back-cover', type: 'cover', x: 0, width: 100 },
+          { position: 'spine', type: 'spine', x: 100, width: 10 },
+          { position: 'front-cover', type: 'cover', x: 110, width: 100 },
+        ],
+      });
+
+      const result = await service.create(dto as any, 'user-id');
+      expect(result).toEqual(mockTemplate);
+    });
+  });
+
+  describe('update (spread conversionMode preservation)', () => {
+    it('should preserve existing conversionMode when incoming spreadConfig omits it', async () => {
+      const baseSpec = {
+        coverWidthMm: 210,
+        coverHeightMm: 297,
+        spineWidthMm: 10,
+        wingEnabled: false,
+        wingWidthMm: 0,
+        cutSizeMm: 3,
+        safeSizeMm: 5,
+        dpi: 300,
+      };
+      const fullRegions = [
+        { kind: 'back-cover', x: 0, width: 100 },
+        { kind: 'spine', x: 100, width: 10 },
+        { kind: 'front-cover', x: 110, width: 100 },
+      ];
+      // 기존 템플릿: flat-spine 으로 변환된 spread
+      const existingTemplate = {
+        ...mockTemplate,
+        type: TemplateType.SPREAD,
+        spreadConfig: {
+          version: 1,
+          spec: baseSpec,
+          regions: fullRegions,
+          totalWidthMm: 430,
+          totalHeightMm: 297,
+          conversionMode: 'flat-spine',
+        },
+      };
+      templateRepository.findOne.mockResolvedValueOnce(existingTemplate as any);
+
+      // 클라이언트(템플릿 편집기)가 spreadConfig 를 재구성해 conversionMode 없이 전송
+      const updateDto = {
+        name: 'Updated Spread',
+        spreadConfig: {
+          version: 1,
+          spec: baseSpec,
+          regions: fullRegions,
+          totalWidthMm: 430,
+          totalHeightMm: 297,
+        },
+      };
+
+      await service.update('test-template-id', updateDto as any);
+
+      expect(templateRepository.save).toHaveBeenCalled();
+      const saved = templateRepository.save.mock.calls[0][0] as any;
+      expect(saved.spreadConfig.conversionMode).toBe('flat-spine');
+    });
+  });
+
   describe('findAll', () => {
     it('should return all templates without filters', async () => {
       const result = await service.findAll();

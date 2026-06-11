@@ -726,6 +726,9 @@ importers:
       ag-psd:
         specifier: ^30.1.1
         version: 30.1.1
+      sharp:
+        specifier: 0.33.5
+        version: 0.33.5
 
   packages/types:
     devDependencies:
