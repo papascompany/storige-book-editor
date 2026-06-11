@@ -297,8 +297,17 @@ class SpreadPlugin extends PluginBase {
    */
   private repositionObjects(oldLayout: SpreadLayout, newLayout: SpreadLayout): void {
     const objects = this._canvas.getObjects()
-    // 엔진은 content 좌표(0..totalWidthPx)로 계산하므로, fabric(scene, 중앙원점)과의 변환에 사용.
-    const origin = this.getContentOrigin()
+    // ⚠️ 입력/출력 origin 분리 (stale origin 버그 수정):
+    //  - 입력(bbox 측정): 객체의 현재 scene 위치는 old 레이아웃 기준이므로 old origin 이 맞다.
+    //    (this.currentLayout 은 resizeSpine 6단계에서 갱신 → 이 시점의 getContentOrigin = old.)
+    //    getContentBoundingRect 가 내부에서 이를 사용한다.
+    //  - 출력(scene 배치): workspace 는 resizeSpine 3단계에서 이미 new 크기로 변경됨 →
+    //    출력 변환은 반드시 newLayout 기준 origin 이어야 한다. old origin 으로 출력하면
+    //    모든 anchored 객체가 Δspine/2 만큼 일괄 드리프트(아래 "drift 0" 의도와 불일치).
+    const outOrigin = {
+      x: -newLayout.totalWidthPx / 2,
+      y: -newLayout.totalHeightPx / 2,
+    }
 
     for (const obj of objects) {
       // 시스템 객체 skip
@@ -315,20 +324,51 @@ class SpreadPlugin extends PluginBase {
         continue
       }
 
-      // 영역 객체: 재배치 — content 좌표계로 변환(엔진 입력용).
+      // 영역 객체: 재배치 — content 좌표계로 변환(엔진 입력용, old origin 기준).
       const boundingRect = this.getContentBoundingRect(obj)
 
       if (regionRef === 'spine') {
-        // Spine 객체: Strategy 적용
         const oldSpine = oldLayout.regions.find((r) => r.position === 'spine')!
         const newSpine = newLayout.regions.find((r) => r.position === 'spine')!
 
+        // 방어 가드(기저장 데이터 보호): 스프레드 전폭 배경처럼 중심 x 만 책등 밴드에 들어와
+        // 'spine' 으로 잘못 분류·저장된 객체는 newSpine/oldSpine 비율 스케일+중앙이동을 적용하면
+        // 표지 전체 배경이 책등 크기로 붕괴한다. 객체 content 폭이 책등 폭의 1.5배를 넘으면
+        // 책등 소속 객체일 수 없으므로 이동/스케일을 모두 건너뛴다(위치·크기 보존).
+        if (boundingRect.width > oldSpine.width * 1.5) {
+          continue
+        }
+
+        // Spine 객체: 스케일은 기존 전략 유지(텍스트=무스케일, 이미지/기타=비례 스케일)
         const strategy = getSpineResizeStrategy(obj)
         const result = strategy.apply(obj, oldSpine, newSpine)
 
-        // 위치 업데이트 (엔진 출력 content → scene: + origin)
+        // 위치: anchor(kind='region')가 있으면 covers 와 동일하게 엔진(computeObjectReposition)으로
+        // 계산해 xNorm/yNorm 을 보존한다. 기존 전략의 "영역 중앙" 위치는 책등 텍스트 여러 개를
+        // 전부 한 점(영역 중앙)에 적층시키는 원인이었다(IDML 표지 책등 제목/저자/출판사 등).
+        // anchor 가 없거나 region 이 아니면 현행 전략 위치(영역 중앙) 폴백 유지.
+        let posX = result.x
+        let posY = result.y
+        if (anchor.kind === 'region') {
+          const repo = computeObjectReposition(
+            { regionRef, anchor },
+            boundingRect,
+            oldLayout,
+            newLayout
+          )
+          posX = repo.x
+          posY = repo.y
+
+          // anchor 갱신 (엔진 클램프 반영)
+          if (!obj.meta) {
+            obj.meta = {}
+          }
+          obj.meta.anchor = repo.anchor
+        }
+
+        // 위치 업데이트 (엔진 출력 content → scene: + outOrigin, new layout 기준)
         obj.setPositionByOrigin(
-          new fabric.Point(result.x + origin.x, result.y + origin.y),
+          new fabric.Point(posX + outOrigin.x, posY + outOrigin.y),
           'center',
           'center'
         )
@@ -350,10 +390,10 @@ class SpreadPlugin extends PluginBase {
       ) {
         // 표지/날개(앞·뒤): 영역 앵커 기준 재배치.
         // ⚠️ 무결성 핵심: 뒤표지(back-*)도 반드시 재배치해야 한다. 책등이 커지면 워크스페이스가
-        // 중앙 대칭 확장 → getContentOrigin 이동. 뒤표지를 no-op(scene 고정)으로 두면 content
+        // 중앙 대칭 확장 → content origin 이동. 뒤표지를 no-op(scene 고정)으로 두면 content
         // 프레임에서 책등 쪽으로 drift(= Δspine/2)하여 바코드/문안이 책등을 침범(오인쇄).
         // computeObjectReposition 은 뒤표지 region.x(불변)+xNorm 으로 content 위치를 보존하고,
-        // +origin(이동값)으로 scene 를 좌측 보정 → drift 0.
+        // +outOrigin(newLayout 기준 origin)으로 scene 를 좌측 보정 → drift 0.
         const result = computeObjectReposition(
           { regionRef, anchor },
           boundingRect,
@@ -361,9 +401,9 @@ class SpreadPlugin extends PluginBase {
           newLayout
         )
 
-        // 엔진 출력 content → scene: + origin
+        // 엔진 출력 content → scene: + outOrigin (new layout 기준)
         obj.setPositionByOrigin(
-          new fabric.Point(result.x + origin.x, result.y + origin.y),
+          new fabric.Point(result.x + outOrigin.x, result.y + outOrigin.y),
           'center',
           'center'
         )
