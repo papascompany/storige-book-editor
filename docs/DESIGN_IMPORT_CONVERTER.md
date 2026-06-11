@@ -139,19 +139,25 @@ IDML pt(1/72in) → mm → content px(좌상단원점, DPI 150) → scene px(중
 | 적합 | 단순한 디자인(정밀 편집) | 효과·그라디언트·별색이 많은 복잡한 디자인 |
 | 손실 | 무손실(벡터) | 비텍스트는 PNG 해상도에 의존 |
 
-하이브리드는 `rasterizeArtwork(dto, {dpi:300})`(`src/raster/rasterize.mjs`)가 비텍스트 객체만 그린 SVG를 만들어, 물리치수(`totalWidthMm/HeightMm`) 기준 목표 픽셀로 래스터화한다(텍스트 제외, 투명 배경). 결과 PNG를 최하단 이미지 객체로 깔고 텍스트만 그 위에 둔다.
+하이브리드는 `rasterizeArtwork(dto, {dpi:300})`(`src/raster/rasterize.mjs`)가 비텍스트 객체만 그린 SVG를 만들어, 물리치수(`totalWidthMm/HeightMm`) 기준 목표 픽셀로 래스터화한다(텍스트 제외, 투명 배경). 결과 PNG를 최하단 이미지 객체(고정 — §3.6 잠금)로 깔고 텍스트만 그 위에 둔다.
+
+> ⚠️ **미리보기(`preview/svg.mjs`)·래스터(`raster/rasterize.mjs`) 좌표 주의**: 둘 다 SVG `viewBox="0 0 W H"`(content 좌상단원점)인데 객체 `left/top` 은 scene(중앙원점)이다 → 비-path 객체는 `sceneToContent`(`geometry/centerOrigin.mjs` SSOT)로 환산해야 region·path 와 정합한다. 이 환산을 빠뜨리면 back-cover(−x) 객체가 viewBox 밖으로 클립되고 front 가 좌측으로 밀린다(2026-06-11 ③④ 회귀 — `527b85b` 수정, `a64d409` 단일화 + 불변식 테스트로 재발 차단). path 의 `d` 는 이미 content 절대 px 라 변환 제외.
 
 ### 3.6 생성되는 객체 속성
 
 각 객체는 다음을 부여받는다(`toSpreadTemplate`):
 
 - **안정적 id**: `idml-{Self}` — 에디터에서 추적/선택/잠금 가능.
-- **`selectable: true`, `evented: true`, `isUserAdded: false`.**
-- **중심 좌표 규약**: `left/top` = 중심(originX/originY='center').
+- **`selectable: true`, `evented: true`, `isUserAdded: false`.** (배경 아트워크 예외 — 아래 하이브리드 잠금)
+- **중심 좌표 규약**: `left/top` = scene(중앙원점, originX/originY='center'). content→scene 변환은 `geometry/centerOrigin.mjs`(SSOT). 자세히 [`COORDINATE_SYSTEM.md`](COORDINATE_SYSTEM.md).
+- **`styles: {}`**: textbox 필수 — fabric 5.5 에서 `styles` 키 누락 시 `stylesFromArray(undefined)` 전파 → 이후 `toObject`(저장/PDF)에서 `stylesToArray` 크래시(무한로딩). 빈 객체라도 반드시 출력(`9628f1a`).
+- **`rx`/`ry`**: Oval(ellipse) 은 반경을 명시 — `fabric.Ellipse` 는 width/height 가 아닌 rx/ry 로 그린다. 누락 시 rx=0 비가시·재저장 시 width:0 박제(`527b85b`).
 - **`cmykFill`**: CMYK 원본값 보존(출력단 미사용, §7 참고).
 - **`spotColor`**: 별색 이름(감지 시).
 - **`fillRule:'evenodd'`**: 컴파운드 패스(서브패스≥2) — 도넛형/음각 로고의 구멍 보존(nonzero면 메워짐).
 - **`meta: { regionRef, anchor }`**: 런타임 책등 가변 재배치 입력. **`_idml`** 디버그 필드는 저장 전 제거된다.
+
+**하이브리드 배경 아트워크 잠금**(`idml-artwork`/`psd-artwork`, `geometry`→`convert/artworkLock.mjs` `ARTWORK_LOCK`): 굽힌 PNG 1장은 표지 판형에 **고정**된다. `selectable:false`·`evented:false`·`hasControls/hasBorders:false`·`lockMovement/Rotation/Scaling*:true`·`deleteable:false`·`extensionType:'template-element'`(레이어 패널 숨김 + 로드 시 `isUserAdded=false` 재판정)·`lockInfo{lockLevel:'admin'}`(고객 차단, 관리자 권한 경로만 해제). `excludeFromExport` 는 두지 않아 PDF/썸네일에는 포함. 이 속성들은 canvas-core `extendFabricOption` 화이트리스트로 저장 라운드트립 보존(편집은 텍스트 오버레이만, 배경 교체는 재가져오기).
 
 ### 3.7 경고(검수 항목)
 
@@ -297,9 +303,11 @@ spineWidth(mm) = (pageCount / 2) × paperThickness + bindingMargin
 | `src/geometry/matrix.mjs` | ItemTransform 아핀행렬 합성/적용/분해 |
 | `src/geometry/regions.mjs` | 5영역 분할 + `resolveRegionAtX` + 정규화 앵커 |
 | `src/geometry/path.mjs` | PathGeometry → SVG/Fabric path `d` 복원(베지어) |
+| `src/geometry/centerOrigin.mjs` | **content↔scene(중앙원점) 변환 SSOT** — `halvesOf`/`contentToScene`/`sceneToContent`. 변환기·미리보기·래스터 4파일이 공용([`COORDINATE_SYSTEM.md`](COORDINATE_SYSTEM.md)) |
 | `src/idml/reader.mjs` | IDML ZIP+XML 파싱 → IdmlDoc |
 | `src/convert/toSpreadTemplate.mjs` | IdmlDoc → 표지 펼침면 DTO |
 | `src/convert/toSinglePageTemplate.mjs` | PSD → 단일 페이지 DTO |
+| `src/convert/artworkLock.mjs` | 하이브리드 배경 아트워크 고정 잠금 속성(`ARTWORK_LOCK`) — IDML/PSD 공용 |
 | `src/psd/reader.mjs` | PSD 파싱 → 레이어 분리(텍스트/래스터) |
 | `src/psd/rasterizePsd.mjs` | 비텍스트 레이어 합성 → 배경 PNG |
 | `src/raster/rasterize.mjs` | 하이브리드 비텍스트 → 300dpi PNG |
@@ -311,16 +319,17 @@ spineWidth(mm) = (pageCount / 2) × paperThickness + bindingMargin
 
 ### 10.2 검증
 
-- **코어 단위테스트 통과** — geometry units/matrix/regions/path (`node --test`, 의존성 0). 34건 통과 확인.
-- **E2E** — IDML 벡터/하이브리드 + PSD 단일페이지를 실제 브라우저 변환으로 확인.
-- **빌드** — admin tsc + vite build 통과.
+- **단위/불변식 테스트 42건 통과**(`pnpm --filter @storige/indesign-import test`, 의존성 0):
+  - geometry units/matrix/regions/path + 변환기 좌표 규약(기존 35).
+  - `geometry/centerOrigin.test.mjs` — content↔scene 왕복 불변식·부호 규약(5).
+  - `preview/renderInvariants.test.mjs` — **실제 SVG 출력 좌표**로 front 객체는 front region, back 객체는 back region 픽셀범위에 렌더되는지(미리보기·래스터). 환산 제거 시 즉시 실패(2).
+- **E2E** — IDML 벡터/하이브리드 + PSD 단일페이지를 실제 브라우저 변환으로 확인. 2026-06-11 라이브: 편집기 재편집 렌더+저장+라운드트립(9cb8709f 74객체) 합격.
+- **빌드** — admin/editor/canvas-core tsc + vite build 통과.
 
 ```bash
-# geometry 코어 테스트(의존성 설치 없이)
-node --test packages/indesign-import/src/geometry/units.test.mjs \
-            packages/indesign-import/src/geometry/matrix.test.mjs \
-            packages/indesign-import/src/geometry/regions.test.mjs \
-            packages/indesign-import/src/geometry/path.test.mjs
+# 변환기 전체 테스트(의존성 설치 없이)
+pnpm --filter @storige/indesign-import test
+# 또는 직접:  node --test packages/indesign-import/src/**/*.test.mjs
 
 # IDML 변환 CLI
 node packages/indesign-import/scripts/convert-sample.mjs fixtures/cover-sample.idml
@@ -344,4 +353,23 @@ node packages/indesign-import/scripts/convert-sample.mjs fixtures/cover-sample.i
 
 ---
 
-> 작성: 2026-06-09 · 코드 기준 검증(`packages/indesign-import/src/`, `apps/admin/src/pages/Templates/TemplateImport.tsx`, `TemplateSets/TemplateSetForm.tsx`, `packages/types/src/index.ts`).
+## 12. 재편집 정합성 사이클 (2026-06-11, 등록→재편집→저장 무결성)
+
+가져온 템플릿을 다시 '편집'으로 열었을 때의 5종 결함 수정(서브에이전트 교차검증). 운영 흐름·재가져오기 안내는 [`IDML_IMPORT_FLOW.md`](./IDML_IMPORT_FLOW.md) §5b, 좌표 규약은 [`COORDINATE_SYSTEM.md`](COORDINATE_SYSTEM.md).
+
+| # | 증상 | 근본원인 | 수정 |
+|---|------|---------|------|
+| ①② | 재편집 시 객체 투명/사라짐·배치붕괴 | `ServicePlugin.loadJSON` 이 `canvasData.width/height`(판형 메타)를 fabric 캔버스 px 치수로 덮어씀 → `skipOffscreen` 컬링. IDML 템플릿은 workspace 객체가 없어 `afterLoad` 치수복구도 누락 | loadJSON width/height strip + `WorkspacePlugin.afterLoad` workspace 복원 + `SpreadPlugin.afterLoad` 가이드 재렌더 (`527b85b`) |
+| ③ | admin 미리보기 앞표지 패널 누락 | `a92f146` 중앙원점 전환이 `preview/svg.mjs` 누락 → scene 좌표를 content viewBox 에 보정 없이 그림 | `sceneToContent` 환산(`527b85b`) |
+| ④ | 하이브리드 PNG 표지 좌우 뒤바뀜 | 동일하게 `raster/rasterize.mjs` 누락 | `sceneToContent` 환산(`527b85b`) |
+| ⑤ | 배경 아트워크 이동·삭제됨 | 변환기가 `selectable:true` emit | `ARTWORK_LOCK`(§3.6) + `useTemplateSetSave` 직렬화 전체 보존(`527b85b`) |
+
+**구조적 재발 차단**(`a64d409`): ③④ 의 원인은 ±half 변환이 4파일에 복붙돼 한 곳만 갱신을 빠뜨린 것 → `geometry/centerOrigin.mjs`(SSOT)로 단일화 + 불변식 테스트(§10.2)로 가드 + [`COORDINATE_SYSTEM.md`](COORDINATE_SYSTEM.md) 규약 동결.
+
+**배포 함정 동반 수정**: `apps/admin/vercel.json` `ignoreCommand` 에 `packages/indesign-import` 가 빠져 있어 **변환기만 고치면 admin 재배포 스킵**(등록 하이브리드 `styles` 누락의 배포측 원인) → 추가(`527b85b`).
+
+> ⚠️ 이미 등록된 깨진 템플릿(2026-06-11 이전 변환·또는 드래그 변위 저장)은 코드 수정으로 자동복원되지 않음 → **재가져오기** 필요. 신규 가져오기는 정상.
+
+---
+
+> 작성: 2026-06-09 · 갱신: 2026-06-11(§3.5/3.6/10/12 — 재편집 정합성 사이클 `527b85b`/`a64d409`). 코드 기준 검증(`packages/indesign-import/src/`, `apps/admin/src/pages/Templates/TemplateImport.tsx`, `TemplateSets/TemplateSetForm.tsx`, `packages/types/src/index.ts`).

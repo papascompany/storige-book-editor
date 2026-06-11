@@ -163,11 +163,25 @@
   </table>
   <div class="note">위 인쇄출력 기능은 <b>실주문/시각 검증 중</b>(deploy-and-iterate). 문제 발견 시 §6.</div>
 
+  <h2><span class="n">5b</span> 재편집 정합성 사이클 (2026-06-11)</h2>
+  <p class="mut" style="margin-bottom:12px">가져온 템플릿을 다시 '편집'으로 열었을 때의 5종 결함 수정(서브에이전트 교차검증, <code>527b85b</code>/<code>a64d409</code>). 좌표 규약은 <code>COORDINATE_SYSTEM.md</code>.</p>
+  <table>
+    <tr><th>#</th><th>증상</th><th>근본원인 → 수정</th></tr>
+    <tr><td>①②</td><td>재편집 시 객체 투명/사라짐·배치붕괴</td><td class="mut"><code>loadJSON</code> 이 canvasData width/height(판형 메타)를 fabric 캔버스 px 치수로 덮어씀 → skipOffscreen 컬링. IDML 은 workspace 객체 없어 afterLoad 복구도 누락 → width/height strip + workspace 복원 + 가이드 재렌더</td></tr>
+    <tr><td>③</td><td>admin 미리보기 앞표지 패널 누락</td><td class="mut">중앙원점 전환이 <code>preview/svg.mjs</code> 누락 → sceneToContent 환산</td></tr>
+    <tr><td>④</td><td>하이브리드 PNG 표지 좌우 뒤바뀜</td><td class="mut">동일하게 <code>raster/rasterize.mjs</code> 누락 → sceneToContent 환산</td></tr>
+    <tr><td>⑤</td><td>배경 아트워크 이동·삭제됨</td><td class="mut">변환기가 selectable:true emit → ARTWORK_LOCK(고정·패널숨김·관리자잠금) + 직렬화 전체 보존</td></tr>
+  </table>
+  <div class="note"><b>배포 함정</b>: <code>apps/admin/vercel.json</code> ignoreCommand 에 <code>packages/indesign-import</code> 누락 → 변환기만 고치면 admin 재배포 스킵(등록 하이브리드 styles 누락의 배포측 원인). 추가 완료. <b>⚠️ 이미 등록된 깨진 템플릿</b>(2026-06-11 이전 변환·또는 드래그 변위)은 자동복원 안 됨 → <b>재가져오기</b> 필요.</div>
+
   <h2><span class="n">6</span> 문제 해결</h2>
   <table>
     <tr><th>증상</th><th>점검</th></tr>
     <tr><td>변환 텍스트 폰트 다름/깨짐</td><td class="mut">폰트 라이브러리 시딩 여부. 미임베드는 폴백(base 폰트/래스터)</td></tr>
-    <tr><td>객체 영역 밖 이탈</td><td class="mut">미리보기 확인 → 편집기 템플릿편집 모드로 미세조정(전 객체 selectable)</td></tr>
+    <tr><td><b>재편집 시 객체 투명/사라짐</b></td><td class="mut">§5b ① — <code>527b85b</code> 이후 신규 가져오기는 정상. 이전 등록본은 재가져오기. 새 탭/캐시버스트로 배포 확인</td></tr>
+    <tr><td><b>미리보기/하이브리드 PNG 좌우 어긋남</b></td><td class="mut">§5b ③④ — <code>527b85b</code> 이후 정상. admin 배포 반영 확인(ignoreCommand 수정 포함)</td></tr>
+    <tr><td><b>배경 아트워크가 움직임/지워짐</b></td><td class="mut">§5b ⑤ — 신규 가져오기는 template-element 로 고정. 교체는 재가져오기</td></tr>
+    <tr><td>객체 영역 밖 이탈</td><td class="mut">미리보기 확인 → 편집기 템플릿편집 모드로 미세조정(배경 아트워크는 고정, 텍스트만 편집)</td></tr>
     <tr><td>책등이 안 변함</td><td class="mut">책모드 셋인지, SPREAD 1개+PAGE≥1개인지, meta(regionRef) 보존됐는지</td></tr>
     <tr><td>책 셋 저장 안 됨</td><td class="mut">book 검증=SPREAD 정확히 1개 필수 → 내지(PAGE) 추가했는지</td></tr>
     <tr><td>표지 색이 화면과 다름</td><td class="mut">RGB 파이프라인 색차. 셋 colorMode=cmyk + 워커 색변환(적용 후)</td></tr>
@@ -176,7 +190,7 @@
   </table>
 
   <div class="foot">
-    작성 2026-06-09 · 인쇄 정합성 4종 통합 배포(merge <code>20ac84c</code>) 직후 · 기술 아키텍처는 <code>DESIGN_IMPORT_CONVERTER.md</code> · 세션 핸드오프 <code>RESUME_PROMPT_2026-06-09.md</code>
+    작성 2026-06-09 · 갱신 2026-06-11(§5b 재편집 정합성 <code>527b85b</code>/<code>a64d409</code>) · 기술 아키텍처 <code>DESIGN_IMPORT_CONVERTER.md</code> · 좌표 규약 <code>COORDINATE_SYSTEM.md</code> · 세션 핸드오프 <code>RESUME_PROMPT_2026-06-09.md</code>
   </div>
 </div>
 </body>

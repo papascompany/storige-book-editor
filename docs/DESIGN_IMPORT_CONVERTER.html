@@ -145,7 +145,7 @@
   <div class="badge-row">
     <span class="badge purple">🎨 개발 문서</span>
     <span class="badge green">동작(admin + Node)</span>
-    <span class="badge">2026-06-09</span>
+    <span class="badge">2026-06-11 갱신</span>
     <span class="badge">@storige/indesign-import</span>
   </div>
   <h1>디자인 가져오기 <span>변환기</span><br>IDML / PSD → Storige 템플릿</h1>
@@ -178,6 +178,7 @@
   <a href="#s9">⑨ AI(일러스트) 현황</a>
   <a href="#s10">⑩ 파일 구조 / 검증</a>
   <a href="#s11">⑪ 로드맵 / 잔여</a>
+  <a href="#s12" style="color:var(--green2)">⑫ 재편집 정합성(2026-06-11) ✨</a>
 </nav>
 
 <!-- ══════════════ 콘텐츠 ══════════════ -->
@@ -305,10 +306,11 @@
   <div class="info-box blue">
     <div class="icon">📐</div>
     <div class="ib-content">
-      <div class="ib-title">좌표 변환</div>
-      <code class="inline">IDML pt(1/72in) → mm → 캔버스 px(DPI 150)</code>. 상수 <code class="inline">src/geometry/units.mjs</code>(canvas-core <code class="inline">math.ts</code> 와 동일).
+      <div class="ib-title">좌표 변환 — content↔scene(중앙원점)</div>
+      <code class="inline">IDML pt(1/72in) → mm → content px(좌상단원점, DPI 150) → scene px(중앙원점, 객체 left/top)</code>. 상수 <code class="inline">src/geometry/units.mjs</code>(canvas-core <code class="inline">math.ts</code> 와 동일).
       아핀 변환은 <code class="inline">ItemTransform([a,b,c,d,tx,ty])</code> 합성/적용/분해. 행렬식 음수(det&lt;0)는 한 축 반전(flip)으로 <code class="inline">scaleY</code> 부호에 흡수.
-      경로형은 회전이 좌표에 반영 → <code class="inline">angle=0</code>. 책등 세로쓰기 TextFrame 은 프레임 치수 유지 + <code class="inline">angle=90°</code>.
+      경로형은 회전이 좌표에 반영 → <code class="inline">angle=0</code>. 책등 세로쓰기 TextFrame 은 프레임 치수 유지 + <code class="inline">angle=90°</code>.<br>
+      🧭 <strong>content↔scene 변환은 <code class="inline">COORDINATE_SYSTEM.md</code> 가 정본</strong> — 부호 규약은 <code class="inline">src/geometry/centerOrigin.mjs</code>(SSOT) 한 곳에만 두고, 변환기·미리보기·래스터 4파일이 모두 이 헬퍼만 쓴다(드리프트 방지). 회귀 가드: <code class="inline">centerOrigin.test.mjs</code> + <code class="inline">preview/renderInvariants.test.mjs</code>.
     </div>
   </div>
 
@@ -333,15 +335,31 @@
       </ul>
     </div>
   </div>
-  <p class="desc" style="font-size:13px">하이브리드는 <code class="inline">rasterizeArtwork(dto,{dpi:300})</code>(<code class="inline">src/raster/rasterize.mjs</code>)가 비텍스트만 그린 SVG 를 물리치수(<code class="inline">totalWidthMm/HeightMm</code>) 기준 목표 픽셀로 래스터화(텍스트 제외·투명 배경) → 최하단 이미지로 깔고 텍스트만 위에 둔다.</p>
+  <p class="desc" style="font-size:13px">하이브리드는 <code class="inline">rasterizeArtwork(dto,{dpi:300})</code>(<code class="inline">src/raster/rasterize.mjs</code>)가 비텍스트만 그린 SVG 를 물리치수(<code class="inline">totalWidthMm/HeightMm</code>) 기준 목표 픽셀로 래스터화(텍스트 제외·투명 배경) → 최하단 이미지(고정 — 아래 잠금)로 깔고 텍스트만 위에 둔다.</p>
+  <div class="info-box" style="background:rgba(245,158,11,.08);border-color:rgba(245,158,11,.3)">
+    <div class="icon">⚠️</div>
+    <div class="ib-content">
+      <div class="ib-title">미리보기·래스터 좌표 주의 (③④ 회귀 지점)</div>
+      <code class="inline">preview/svg.mjs</code>·<code class="inline">raster/rasterize.mjs</code> 는 SVG <code class="inline">viewBox="0 0 W H"</code>(content 좌상단원점)인데 객체 <code class="inline">left/top</code> 은 scene(중앙원점)이다 → 비-path 객체는 <code class="inline">sceneToContent</code>(centerOrigin.mjs SSOT)로 환산해야 region·path 와 정합. 누락 시 back-cover(−x) 객체가 viewBox 밖 클립·front 좌측 변위(<code class="inline">527b85b</code> 수정, <code class="inline">a64d409</code> 단일화+불변식 가드). path 의 <code class="inline">d</code> 는 이미 content 절대 px → 변환 제외.
+    </div>
+  </div>
 
   <h3 class="sub-title"><span style="background:var(--purple)"></span>생성되는 객체 속성</h3>
   <ul class="bullet">
-    <li>안정적 <code>id</code>: <code>idml-{Self}</code> (추적/선택/잠금), <code>selectable/evented:true</code>, <code>isUserAdded:false</code>.</li>
-    <li>중심 좌표 규약: <code>left/top</code> = 중심(originX/originY='center').</li>
+    <li>안정적 <code>id</code>: <code>idml-{Self}</code> (추적/선택/잠금), <code>selectable/evented:true</code>, <code>isUserAdded:false</code>. (배경 아트워크 예외 — 아래 잠금)</li>
+    <li>중심 좌표 규약: <code>left/top</code> = scene(중앙원점, originX/originY='center'). content→scene 변환 <code>geometry/centerOrigin.mjs</code>(SSOT).</li>
+    <li><code>styles:{}</code> — textbox 필수(fabric 5.5 키 누락 시 <code>stylesToArray</code> 저장 크래시·무한로딩, <code>9628f1a</code>).</li>
+    <li><code>rx/ry</code> — Oval 은 반경 명시(fabric.Ellipse 는 width/height 가 아닌 rx/ry; 누락 시 비가시·width:0 박제, <code>527b85b</code>).</li>
     <li><code>cmykFill</code>(원본 4도, 출력단 미사용), <code>spotColor</code>(별색명), <code>fillRule:'evenodd'</code>(컴파운드 패스 구멍 보존).</li>
     <li><code>meta:{regionRef, anchor}</code> — 런타임 책등 가변 재배치 입력. <code>_idml</code> 디버그 필드는 저장 전 제거.</li>
   </ul>
+  <div class="info-box" style="background:rgba(168,85,247,.08);border-color:rgba(168,85,247,.3)">
+    <div class="icon">🔒</div>
+    <div class="ib-content">
+      <div class="ib-title">하이브리드 배경 아트워크 잠금 (<code class="inline">ARTWORK_LOCK</code>, convert/artworkLock.mjs)</div>
+      굽힌 PNG 1장(<code class="inline">idml-artwork</code>/<code class="inline">psd-artwork</code>)은 표지 판형에 <strong>고정</strong>: <code class="inline">selectable/evented:false</code> · <code class="inline">hasControls/hasBorders:false</code> · <code class="inline">lockMovement/Rotation/Scaling*:true</code> · <code class="inline">deleteable:false</code> · <code class="inline">extensionType:'template-element'</code>(레이어 패널 숨김 + isUserAdded=false 재판정) · <code class="inline">lockInfo{lockLevel:'admin'}</code>(고객 차단, 관리자만 해제). <code class="inline">excludeFromExport</code> 없음 → PDF/썸네일 포함. <code class="inline">extendFabricOption</code> 화이트리스트로 저장 보존(편집은 텍스트만, 교체는 재가져오기).
+    </div>
+  </div>
 
   <h3 class="sub-title" id="s3-7"><span style="background:var(--purple)"></span>경고 (검수 항목)</h3>
   <div class="table-wrap">
@@ -532,9 +550,11 @@
         <tr><td><code class="inline">src/geometry/matrix.mjs</code></td><td>ItemTransform 아핀행렬 합성/적용/분해</td></tr>
         <tr><td><code class="inline">src/geometry/regions.mjs</code></td><td>5영역 분할 + resolveRegionAtX + 앵커</td></tr>
         <tr><td><code class="inline">src/geometry/path.mjs</code></td><td>PathGeometry → path d 복원(베지어)</td></tr>
+        <tr><td><code class="inline">src/geometry/centerOrigin.mjs</code></td><td><strong>content↔scene(중앙원점) 변환 SSOT</strong> — 변환기·미리보기·래스터 공용</td></tr>
         <tr><td><code class="inline">src/idml/reader.mjs</code></td><td>IDML ZIP+XML 파싱 → IdmlDoc</td></tr>
         <tr><td><code class="inline">src/convert/toSpreadTemplate.mjs</code></td><td>IdmlDoc → 표지 펼침면 DTO</td></tr>
         <tr><td><code class="inline">src/convert/toSinglePageTemplate.mjs</code></td><td>PSD → 단일 페이지 DTO</td></tr>
+        <tr><td><code class="inline">src/convert/artworkLock.mjs</code></td><td>하이브리드 배경 아트워크 고정 잠금(<code>ARTWORK_LOCK</code>) — IDML/PSD 공용</td></tr>
         <tr><td><code class="inline">src/psd/reader.mjs</code></td><td>PSD 파싱 → 레이어 분리</td></tr>
         <tr><td><code class="inline">src/psd/rasterizePsd.mjs</code></td><td>비텍스트 합성 → 배경 PNG</td></tr>
         <tr><td><code class="inline">src/raster/rasterize.mjs</code></td><td>하이브리드 비텍스트 → 300dpi PNG</td></tr>
@@ -550,19 +570,17 @@
   <div class="info-box green">
     <div class="icon">✅</div>
     <div class="ib-content">
-      <div class="ib-title">검증 현황</div>
-      코어 단위테스트 통과 — geometry units/matrix/regions/path (<code class="inline">node --test</code>, 의존성 0, 34건 통과). ·
-      IDML 벡터/하이브리드 + PSD 단일페이지 실제 브라우저 변환 E2E 확인. · admin tsc + vite build 통과.
+      <div class="ib-title">검증 현황 (42건)</div>
+      단위/불변식 테스트 42건 통과(<code class="inline">pnpm --filter @storige/indesign-import test</code>, 의존성 0): geometry units/matrix/regions/path + 변환기 좌표 규약(35) · <code class="inline">centerOrigin.test.mjs</code> 왕복 불변식(5) · <code class="inline">preview/renderInvariants.test.mjs</code> 실제 SVG 출력 좌표로 front/back region 정합(2). ·
+      IDML 벡터/하이브리드 + PSD 단일페이지 실제 브라우저 변환 E2E. 2026-06-11 라이브: 재편집 렌더+저장+라운드트립(9cb8709f 74객체) 합격. · admin/editor/canvas-core tsc + vite build 통과.
     </div>
   </div>
 
   <div class="code-block">
     <div class="cb-header"><div class="cb-dots"><span class="cb-dot" style="background:#ff5f56"></span><span class="cb-dot" style="background:#ffbd2e"></span><span class="cb-dot" style="background:#27c93f"></span></div><span class="cb-lang">bash</span></div>
-<pre><span class="comment"># geometry 코어 테스트(의존성 설치 없이)</span>
-node --test packages/indesign-import/src/geometry/units.test.mjs \
-            packages/indesign-import/src/geometry/matrix.test.mjs \
-            packages/indesign-import/src/geometry/regions.test.mjs \
-            packages/indesign-import/src/geometry/path.test.mjs
+<pre><span class="comment"># 변환기 전체 테스트(의존성 설치 없이)</span>
+pnpm --filter @storige/indesign-import test
+<span class="comment"># 또는 직접:  node --test packages/indesign-import/src/**/*.test.mjs</span>
 
 <span class="comment"># IDML 변환 CLI</span>
 node packages/indesign-import/scripts/convert-sample.mjs fixtures/cover-sample.idml</pre>
@@ -584,6 +602,48 @@ node packages/indesign-import/scripts/convert-sample.mjs fixtures/cover-sample.i
 
   <p class="desc" style="font-size:12px;color:var(--text3);margin-top:32px">
     작성: 2026-06-09 · 코드 기준 검증(packages/indesign-import/src/, apps/admin/src/pages/Templates/TemplateImport.tsx, TemplateSets/TemplateSetForm.tsx, packages/types/src/index.ts).
+  </p>
+</section>
+
+<!-- ⑫ 재편집 정합성 사이클 -->
+<section class="section" id="s12">
+  <h2 class="section-title"><span class="num" style="background:rgba(34,197,94,.2);color:var(--green2)">⑫</span>재편집 정합성 사이클 (2026-06-11)</h2>
+  <p class="desc">가져온 템플릿을 다시 '편집'으로 열었을 때의 5종 결함 수정(서브에이전트 교차검증). 운영 흐름·재가져오기 안내는 <code class="inline">IDML_IMPORT_FLOW.md</code> §5b, 좌표 규약은 <code class="inline">COORDINATE_SYSTEM.md</code>.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>#</th><th>증상</th><th>근본원인</th><th>수정</th></tr></thead>
+      <tbody>
+        <tr><td>①②</td><td>재편집 시 객체 투명/사라짐·배치붕괴</td><td><code>ServicePlugin.loadJSON</code> 이 <code>canvasData.width/height</code>(판형 메타)를 fabric 캔버스 px 치수로 덮어씀 → <code>skipOffscreen</code> 컬링. IDML 템플릿은 workspace 객체가 없어 <code>afterLoad</code> 치수복구도 누락</td><td>loadJSON width/height strip + <code>WorkspacePlugin.afterLoad</code> workspace 복원 + <code>SpreadPlugin.afterLoad</code> 가이드 재렌더 (<code>527b85b</code>)</td></tr>
+        <tr><td>③</td><td>admin 미리보기 앞표지 패널 누락</td><td><code>a92f146</code> 중앙원점 전환이 <code>preview/svg.mjs</code> 누락</td><td><code>sceneToContent</code> 환산 (<code>527b85b</code>)</td></tr>
+        <tr><td>④</td><td>하이브리드 PNG 표지 좌우 뒤바뀜</td><td>동일하게 <code>raster/rasterize.mjs</code> 누락</td><td><code>sceneToContent</code> 환산 (<code>527b85b</code>)</td></tr>
+        <tr><td>⑤</td><td>배경 아트워크 이동·삭제됨</td><td>변환기가 <code>selectable:true</code> emit</td><td><code>ARTWORK_LOCK</code> + <code>useTemplateSetSave</code> 직렬화 전체 보존 (<code>527b85b</code>)</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="info-box blue">
+    <div class="icon">🧭</div>
+    <div class="ib-content">
+      <div class="ib-title">구조적 재발 차단 (<code class="inline">a64d409</code>)</div>
+      ③④ 의 원인은 ±half 변환이 4파일에 복붙돼 한 곳만 갱신을 빠뜨린 것 → <code class="inline">geometry/centerOrigin.mjs</code>(SSOT)로 단일화 + 불변식 테스트로 가드 + <code class="inline">COORDINATE_SYSTEM.md</code> 규약 동결. <strong>중앙원점 정본 유지가 정답</strong>(런타임 책등가변·토글 블리드에 구조적 이점; 좌상단 전환은 DB 마이그레이션 필요로 비권장). "중앙" 3가지(객체원점/화면센터링 setZoomAuto/내지임포지션 centerOnPage)는 독립 계층.
+    </div>
+  </div>
+  <div class="info-box" style="background:rgba(245,158,11,.08);border-color:rgba(245,158,11,.3)">
+    <div class="icon">🚀</div>
+    <div class="ib-content">
+      <div class="ib-title">배포 함정 동반 수정</div>
+      <code class="inline">apps/admin/vercel.json</code> <code class="inline">ignoreCommand</code> 에 <code class="inline">packages/indesign-import</code> 가 빠져 있어 <strong>변환기만 고치면 admin 재배포 스킵</strong>(등록 하이브리드 <code class="inline">styles</code> 누락의 배포측 원인) → 추가(<code class="inline">527b85b</code>). 변환기 수정 후 admin 배포 미반영 시 이 항목 확인.
+    </div>
+  </div>
+  <div class="info-box" style="background:rgba(239,68,68,.08);border-color:rgba(239,68,68,.3)">
+    <div class="icon">⚠️</div>
+    <div class="ib-content">
+      <div class="ib-title">이미 등록된 깨진 템플릿</div>
+      2026-06-11 이전 변환분(또는 드래그 변위 저장)은 코드 수정으로 자동복원되지 않음 → <strong>재가져오기</strong> 필요. 신규 가져오기는 정상.
+    </div>
+  </div>
+
+  <p class="desc" style="font-size:12px;color:var(--text3);margin-top:32px">
+    갱신: 2026-06-11 (§3.5/3.6/10/12 — 재편집 정합성 사이클 <code class="inline">527b85b</code>/<code class="inline">a64d409</code>).
   </p>
 </section>
 
