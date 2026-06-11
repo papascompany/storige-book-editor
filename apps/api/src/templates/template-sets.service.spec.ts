@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { TemplateSetsService } from './template-sets.service';
 import { TemplateSet, TemplateSetItem, TemplateSetTypeEnum } from './entities/template-set.entity';
+import { TemplateSetLibraryCategory } from './entities/template-set-library-category.entity';
 import { Template } from './entities/template.entity';
 import { Product } from '../products/entities/product.entity';
 import { TemplateSetType, TemplateType, CanvasData } from '@storige/types';
@@ -108,6 +109,17 @@ describe('TemplateSetsService', () => {
               select: jest.fn().mockReturnThis(),
               getMany: jest.fn().mockResolvedValue([]),
             }),
+          },
+        },
+        {
+          // ④ 에셋 구성(노출 라이브러리 카테고리) — 서비스 생성자 5번째 의존성.
+          // loadLibraryCategoryIds(find) + setLibraryCategories(delete/create/save) 경로용.
+          provide: getRepositoryToken(TemplateSetLibraryCategory),
+          useValue: {
+            find: jest.fn().mockResolvedValue([]),
+            delete: jest.fn().mockResolvedValue({ affected: 0 }),
+            create: jest.fn().mockImplementation((row) => row),
+            save: jest.fn().mockImplementation((rows) => Promise.resolve(rows)),
           },
         },
       ],
