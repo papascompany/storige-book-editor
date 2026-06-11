@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { ArrowRightLeft, Undo2 } from 'lucide-react'
-import { moveObjectToCanvas, resolveRegionRef, type SpreadPlugin } from '@storige/canvas-core'
+import { moveObjectToCanvas, type SpreadPlugin } from '@storige/canvas-core'
 import { useAppStore, useActiveSelection } from '@/stores/useAppStore'
 import { useEditorStore } from '@/stores/useEditorStore'
 import { showToast } from '@/stores/useToastStore'
@@ -141,18 +141,17 @@ export default function MoveToCoverRegion() {
       movedCount++
 
       // target SpreadPlugin이 있으면 (spread 모드) regionRef/anchor 자동 갱신
-      if (targetSpread?.getLayout) {
+      if (targetSpread?.resolveRegionMetaForObject) {
         try {
-          const layout = targetSpread.getLayout()
-          if (layout) {
-            const br = (moved as any).getBoundingRect?.()
-            if (br) {
-              const result = resolveRegionRef(layout.regions, br, null)
-              if (!(moved as any).meta) (moved as any).meta = {}
-              ;(moved as any).meta.regionRef = result.regionRef
-              ;(moved as any).meta.primaryRegionHint = result.primaryRegionHint
-              ;(moved as any).meta.anchor = result.anchor
-            }
+          // ⚠️ raw getBoundingRect()(무인자 = viewport 좌표) 금지 — 줌에 따라 영역을 오판해
+          // meta 를 오염시킨다(라이브 P1, 2026-06-12). scene→content 변환을 캡슐화한
+          // SpreadPlugin.resolveRegionMetaForObject 만 사용한다.
+          const result = targetSpread.resolveRegionMetaForObject(moved as any, null)
+          if (result) {
+            if (!(moved as any).meta) (moved as any).meta = {}
+            ;(moved as any).meta.regionRef = result.regionRef
+            ;(moved as any).meta.primaryRegionHint = result.primaryRegionHint
+            ;(moved as any).meta.anchor = result.anchor
           }
         } catch (e) {
           console.warn('[MoveToCoverRegion] target spread meta recompute failed:', e)

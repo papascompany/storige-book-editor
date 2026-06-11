@@ -382,6 +382,8 @@ function EmbeddedEditor({
       console.error('[EmbeddedEditor] Auto-save error:', error)
       // Don't call onError for auto-save failures to avoid disrupting user flow
     },
+    // 복원 완료 전 dirty 마킹 차단 — 무편집 자동저장의 지오메트리 오염 방지 (2026-06-12)
+    initializedRef: isInitializedRef,
   })
 
   // 브라우저 "뒤로 가기" 데이터 무결성 가드 — 경고 없이 빠져나가 작업 유실되는 것 방지.
@@ -725,20 +727,72 @@ function EmbeddedEditor({
           (editSession as any)?.contentPdfPageCount > 0
             ? (editSession as any).contentPdfPageCount
             : undefined
+
+        // 재편집 spine 옵션 복원 (2026-06-12): /embed?sessionId 단독 진입(bookmoa 재편집 표준
+        // 경로)에서는 URL/props 에 주문 옵션이 없다 → 세션 metadata 에서 도출한다.
+        // 우선순위: props/URL > metadata.orderOptions(세션 생성 시 기록 — 자동저장만 된
+        // 진행중 세션에도 항상 존재) > metadata.spine(편집완료 시에만 기록되는 B38 스냅샷, 폴백).
+        // 세션 canvasData 는 "저장 당시 spine 폭" 기준 지오메트리이므로, 이 값들 없이 기본
+        // pageCount(템플릿 내지수)로 책등을 재계산하면 resizeSpine 이 복원된 객체를 흔든다
+        // (실측 사고: spine 10mm → 0.55mm, 객체 ±649.7px → ±621.9px 재배치, 2026-06-11).
+        // spineWidthMm(스냅샷 결과값)이 아닌 계산 입력값(pageCount/paperType/bindingType)을
+        // 복원하는 이유: 이후 내지 추가/삭제 debounce 재계산(spineCalculator)도 같은 입력으로
+        // 일관 동작해야 하고, 동일 입력 재계산은 SpreadPlugin.resizeSpine 동일폭 no-op 가드로
+        // 객체를 흔들지 않기 때문. (flat-spread 는 spineCalculator 에서 재계산 자체가 skip)
+        const sessionMeta = (editSession?.metadata ?? {}) as Record<string, any>
+        const sessionOrderOptions = (sessionMeta.orderOptions ?? {}) as Record<string, any>
+        const sessionSpineSnapshot = (sessionMeta.spine ?? {}) as Record<string, any>
+        const asPositiveNumber = (v: unknown): number | undefined => {
+          const n = typeof v === 'string' ? Number(v) : (v as number)
+          return typeof n === 'number' && Number.isFinite(n) && n > 0 ? n : undefined
+        }
+        const asNonEmptyString = (v: unknown): string | undefined =>
+          typeof v === 'string' && v.length > 0 ? v : undefined
+        // 저장된 canvasData 배열 = [표지, ...내지] — 실제 복원될 페이지 수의 가장 충실한
+        // 실측값(메타데이터 없는 레거시 세션 포함). 편집 중 내지 추가/삭제로 orderOptions 의
+        // 주문 시점 pageCount 와 드리프트할 수 있으므로, 명시적 props/URL 다음 순위로 둔다 —
+        // 복원 루프(min(saved.length, canvases.length))의 뒷페이지 절단도 함께 방지.
+        const restoredInnerPageCount = Array.isArray(editSession?.canvasData)
+          ? asPositiveNumber(editSession.canvasData.length - 1)
+          : undefined
+        const effectivePageCount =
+          asPositiveNumber(options?.pageCount) ??
+          restoredInnerPageCount ??
+          asPositiveNumber(sessionOrderOptions.pageCount) ??
+          asPositiveNumber(sessionSpineSnapshot.pageCount)
+        const effectivePaperType =
+          asNonEmptyString(options?.paperType) ??
+          asNonEmptyString(sessionOrderOptions.paperType) ??
+          asNonEmptyString(sessionSpineSnapshot.paperType)
+        const effectiveBindingType =
+          asNonEmptyString(options?.bindingType) ??
+          asNonEmptyString(sessionOrderOptions.bindingType) ??
+          asNonEmptyString(sessionSpineSnapshot.bindingType)
+
         console.log('[EmbeddedEditor] Loading template set with options:', {
           templateSetId: effectiveTemplateSetId,
-          pageCount: options?.pageCount,
+          pageCount: effectivePageCount,
           underlayPageCount,
-          paperType: options?.paperType,
-          bindingType: options?.bindingType,
+          paperType: effectivePaperType,
+          bindingType: effectiveBindingType,
+          optionsSource:
+            asPositiveNumber(options?.pageCount) != null
+              ? 'props/url'
+              : restoredInnerPageCount != null
+                ? 'session.canvasData(restored pages)'
+                : asPositiveNumber(sessionOrderOptions.pageCount) != null
+                  ? 'session.metadata.orderOptions'
+                  : asPositiveNumber(sessionSpineSnapshot.pageCount) != null
+                    ? 'session.metadata.spine'
+                    : 'none(template-default)',
         })
         try {
           await loadTemplateSetEditor({
             templateSetId: effectiveTemplateSetId,
-            pageCount: options?.pageCount,
+            pageCount: effectivePageCount,
             underlayPageCount,
-            paperType: options?.paperType,
-            bindingType: options?.bindingType,
+            paperType: effectivePaperType,
+            bindingType: effectiveBindingType,
           })
         } catch (loadErr) {
           // 프로덕션 기본: 무음 샘플 폴백 금지 — 명확히 실패 표시 후 중단 (2026-06-11)
@@ -754,10 +808,10 @@ function EmbeddedEditor({
           effectiveTemplateSetId = 'sample-8x8-book-24p'
           await loadTemplateSetEditor({
             templateSetId: effectiveTemplateSetId,
-            pageCount: options?.pageCount,
+            pageCount: effectivePageCount,
             underlayPageCount,
-            paperType: options?.paperType,
-            bindingType: options?.bindingType,
+            paperType: effectivePaperType,
+            bindingType: effectiveBindingType,
           })
         }
 

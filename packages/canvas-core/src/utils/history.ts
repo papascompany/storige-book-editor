@@ -182,7 +182,12 @@ fabric.Canvas.prototype._historyNext = function (): string {
         hasMolding: obj.hasMolding,
         hasCutting: obj.hasCutting,
         extensionType: obj.extensionType,
-        _isSvgElement: obj._isSvgElement // SVG 요소 플래그 저장
+        _isSvgElement: obj._isSvgElement, // SVG 요소 플래그 저장
+        // spread 책등 가변 재배치 메타(regionRef/anchor/primaryRegionHint) 보존.
+        // 누락 시 undo/redo 의 enliven 재추가 경로(_loadHistory 3단계)에서 meta 가 통째로
+        // 소실 → 편집기 useSpreadAutoAnchor 가 "meta 없는 신규 객체"로 보고 재앵커를 시도해
+        // regionRef 오염의 한 축이 됐다 (라이브 P1, 2026-06-11/12).
+        meta: obj.meta
       }
 
       // 객체 타입에 따라 추가 속성 포함

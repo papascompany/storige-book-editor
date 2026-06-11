@@ -17,6 +17,14 @@ interface AutoSaveConfig {
   onSessionUpdate?: (session: EditSessionResponse) => void
   /** 에러 콜백 */
   onError?: (error: Error) => void
+  /**
+   * 초기화(템플릿 로드 + 세션 복원) 완료 신호 — embed 의 isInitializedRef 를 그대로 받는다.
+   * ⚠️ useAppStore.ready 로 게이트하면 안 된다: useAppStore.init() 이 캔버스 등록 시마다
+   * ready:true 를 set 하므로 복원 시작 전에 이미 true — 복원(loadFromJSON)이 발화하는
+   * object:added 가 dirty 로 마킹돼 "무편집 자동저장"이 로드 재계산 지오메트리를 세션에
+   * 덮어쓴다(실측 2026-06-11, 적대 리뷰에서 ready 가드 무효 판정 2026-06-12).
+   */
+  initializedRef?: React.RefObject<boolean>
 }
 
 /**
@@ -27,7 +35,7 @@ interface AutoSaveConfig {
  * - 네트워크 복구 시 동기화
  */
 export function useEmbedAutoSave(config: AutoSaveConfig) {
-  const { sessionId, currentSession, onSessionUpdate, onError } = config
+  const { sessionId, currentSession, onSessionUpdate, onError, initializedRef } = config
 
   // Refs
   const saveTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -217,6 +225,12 @@ export function useEmbedAutoSave(config: AutoSaveConfig) {
     if (!canvas) return
 
     const handleChange = () => {
+      // 초기화/세션 복원 중 가드 (2026-06-12): loadJSON/loadFromJSON·가이드 배치가 발화하는
+      // object:added 등은 사용자 편집이 아니다. 여기서 dirty 로 마킹되면 "무편집 자동저장"이
+      // 로드 시 재계산 지오메트리를 세션 canvasData 에 덮어써 영구 오염시킨다(실측 2026-06-11).
+      // 게이트는 embed 의 isInitializedRef(복원 완료 시점에만 true) — useAppStore.ready 는
+      // 캔버스 등록 시점에 이미 true 라 게이트로 무효(AutoSaveConfig.initializedRef 주석 참조).
+      if (initializedRef && !initializedRef.current) return
       markDirty()
       debouncedSave()
     }
