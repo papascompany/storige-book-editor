@@ -420,6 +420,96 @@ export class EditSessionsService {
   }
 
   /**
+   * 삭제된 세션 목록 — admin '삭제 리스트' 메뉴 (2026-06-11).
+   *
+   * 고객이 보관함/장바구니에서 삭제(soft delete)한 세션을 admin 이 누적 조회·복구하기 위한
+   * 목록. withDeleted + deletedAt IS NOT NULL 로 삭제분만, 삭제시각 내림차순.
+   * 응답은 summary 매퍼(canvasData 제외 + templateSetName/thumbnailUrl) + deletedAt 포함.
+   * 게스트 세션은 DB EVENT 가 24h 후 hard DELETE 하므로 여기 잔존분은 회원 세션 위주.
+   */
+  async findDeleted(opts: {
+    memberSeqno?: number;
+    orderSeqno?: number;
+    siteId?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<{ sessions: EditSessionResponseDto[]; total: number }> {
+    const page = Math.max(1, opts.page ?? 1);
+    const limit = Math.min(100, Math.max(1, opts.limit ?? 20));
+
+    const qb = this.sessionRepository
+      .createQueryBuilder('session')
+      .withDeleted()
+      .leftJoinAndSelect('session.coverFile', 'coverFile')
+      .leftJoinAndSelect('session.contentFile', 'contentFile')
+      .where('session.deletedAt IS NOT NULL');
+
+    if (opts.memberSeqno) {
+      qb.andWhere('session.memberSeqno = :memberSeqno', { memberSeqno: opts.memberSeqno });
+    }
+    if (opts.orderSeqno) {
+      qb.andWhere('session.orderSeqno = :orderSeqno', { orderSeqno: opts.orderSeqno });
+    }
+    if (opts.siteId) {
+      qb.andWhere('session.siteId = :siteId', { siteId: opts.siteId });
+    }
+
+    const [sessions, total] = await qb
+      .orderBy('session.deletedAt', 'DESC')
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getManyAndCount();
+
+    const templateSetIds = sessions
+      .map((s) => s.templateSetId)
+      .filter((id): id is string => !!id);
+    const nameMap = await this.getTemplateSetNames(templateSetIds);
+
+    return {
+      sessions: sessions.map((s) => {
+        const dto = this.toSummaryResponseDto(
+          s,
+          s.templateSetId ? (nameMap.get(s.templateSetId) ?? null) : null,
+        );
+        dto.deletedAt = s.deletedAt; // 삭제요청시간 — 삭제 리스트 전용 노출
+        return dto;
+      }),
+      total,
+    };
+  }
+
+  /**
+   * 삭제된 세션 복구 — admin 전용 (2026-06-11).
+   *
+   * 고객이 실수로 삭제한 세션 복원 요구 대응. softDelete 는 파일(coverFile/contentFile)을
+   * 건드리지 않으므로 deletedAt 해제만으로 완전 복구된다(보관함/불러오기 모달 재노출).
+   * 멱등: 이미 활성(deletedAt null)이면 그대로 반환.
+   */
+  async restoreSession(id: string): Promise<EditSessionEntity> {
+    const session = await this.sessionRepository.findOne({
+      where: { id },
+      withDeleted: true,
+      relations: ['coverFile', 'contentFile'],
+    });
+
+    if (!session) {
+      throw new NotFoundException({
+        code: 'SESSION_NOT_FOUND',
+        message: '편집 세션을 찾을 수 없습니다.',
+        details: { sessionId: id },
+      });
+    }
+
+    if (session.deletedAt) {
+      await this.sessionRepository.restore(id);
+      session.deletedAt = null;
+      this.logger.log(`Restored edit session ${id} (admin)`);
+    }
+
+    return session;
+  }
+
+  /**
    * templateSetId 목록 → 이름 매핑 배치 조회 (단일 IN 쿼리).
    * findByOrderExternal 의 manager 쿼리빌더 관례 재사용. 빈 입력이면 쿼리 없이 빈 Map.
    */

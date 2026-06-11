@@ -75,6 +75,10 @@ export default function EmbedView() {
       const pageCount = get('pageCount') ? Number(get('pageCount')) : undefined
       const paperType = get('paperType')
       const bindingType = get('bindingType')
+      // 주문 메타 스냅샷용 (2026-06-11) — admin 세션/삭제 리스트에서 부수·인쇄제목·상품명 노출
+      const quantity = get('quantity') ? Number(get('quantity')) : undefined
+      const title = get('title')
+      const productName = get('productName')
       const widthRaw = get('width')
       const heightRaw = get('height')
       const size = widthRaw && heightRaw ? { width: Number(widthRaw), height: Number(heightRaw) } : undefined
@@ -124,7 +128,7 @@ export default function EmbedView() {
         apiBaseUrl,
         callbackUrl,
         parentOrigin,
-        options: { pageCount, paperType, bindingType, size },
+        options: { pageCount, paperType, bindingType, size, quantity, title, productName },
         // 레거시 dual-emit (정식 엔벨로프는 EmbeddedEditor 가 별도 발신)
         onReady: () => emitLegacy(parentOrigin, 'storige:ready', { templateSetId, sessionId }),
         onSave: (r: SaveResult) =>

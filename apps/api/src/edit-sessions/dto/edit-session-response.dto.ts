@@ -97,6 +97,10 @@ export class EditSessionResponseDto {
 
   @ApiPropertyOptional({ description: 'summary 모드 전용: 표지 썸네일 URL (coverFile.thumbnailUrl 평탄화, 없으면 null)' })
   thumbnailUrl?: string | null;
+
+  // ── admin '삭제 리스트' (2026-06-11) — GET /edit-sessions/deleted 전용 ──
+  @ApiPropertyOptional({ description: '삭제요청시간 (soft delete 시각) — 삭제 리스트 응답에서만 채워짐' })
+  deletedAt?: Date | null;
 }
 
 export class EditSessionListResponseDto {

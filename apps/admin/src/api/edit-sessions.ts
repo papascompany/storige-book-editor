@@ -30,6 +30,10 @@ export interface EditSessionResponse {
   updatedAt: Date;
   // Phase C-2 — 사이트 컨텍스트 (자동 주입)
   siteId?: string | null;
+  // 삭제 리스트 (2026-06-11) — GET /edit-sessions/deleted 응답 전용
+  deletedAt?: string | null;
+  templateSetName?: string | null;
+  thumbnailUrl?: string | null;
 }
 
 export interface EditSessionListResponse {
@@ -71,6 +75,28 @@ export const editSessionsApi = {
 
   complete: async (id: string): Promise<EditSessionResponse> => {
     const response = await axiosInstance.patch<EditSessionResponse>(`/edit-sessions/${id}/complete`);
+    return response.data;
+  },
+
+  /** 삭제 리스트 (2026-06-11) — 고객이 삭제(soft delete)한 세션 누적 조회 (admin 전용) */
+  getDeleted: async (
+    params?: EditSessionQueryParams
+  ): Promise<EditSessionListResponse> => {
+    const searchParams = new URLSearchParams();
+    if (params?.orderSeqno) searchParams.append('orderSeqno', String(params.orderSeqno));
+    if (params?.memberSeqno) searchParams.append('memberSeqno', String(params.memberSeqno));
+    if (params?.siteId) searchParams.append('siteId', params.siteId);
+    if (params?.page) searchParams.append('page', String(params.page));
+    if (params?.limit) searchParams.append('limit', String(params.limit));
+    const response = await axiosInstance.get<EditSessionListResponse>(
+      `/edit-sessions/deleted?${searchParams.toString()}`
+    );
+    return response.data;
+  },
+
+  /** 삭제된 세션 복구 (admin 전용, 멱등) — 고객 실수 삭제 복원 요구 대응 */
+  restore: async (id: string): Promise<EditSessionResponse> => {
+    const response = await axiosInstance.post<EditSessionResponse>(`/edit-sessions/${id}/restore`);
     return response.data;
   },
 };

@@ -25,7 +25,7 @@
         { "key": "Expires", "value": "0" },
         {
           "key": "Content-Security-Policy",
-          "value": "frame-ancestors 'self' https://*.papascompany.co.kr https://*.bookmoa.co.kr https://www.bookmoa.co.kr https://*.vercel.app"
+          "value": "frame-ancestors 'self' https://*.papascompany.co.kr https://*.bookmoa.co.kr https://www.bookmoa.co.kr https://*.vercel.app http://localhost:5173 http://localhost:5174 http://localhost:3000 http://127.0.0.1:5173 http://127.0.0.1:5174 http://127.0.0.1:3000"
         },
         { "key": "X-Frame-Options", "value": "" }
       ]
@@ -38,7 +38,7 @@
         { "key": "Expires", "value": "0" },
         {
           "key": "Content-Security-Policy",
-          "value": "frame-ancestors 'self' https://*.papascompany.co.kr https://*.bookmoa.co.kr https://www.bookmoa.co.kr https://*.vercel.app"
+          "value": "frame-ancestors 'self' https://*.papascompany.co.kr https://*.bookmoa.co.kr https://www.bookmoa.co.kr https://*.vercel.app http://localhost:5173 http://localhost:5174 http://localhost:3000 http://127.0.0.1:5173 http://127.0.0.1:5174 http://127.0.0.1:3000"
         },
         { "key": "X-Frame-Options", "value": "" }
       ]
