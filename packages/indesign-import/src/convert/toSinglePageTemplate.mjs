@@ -5,6 +5,7 @@
 // 텍스트는 편집가능 textbox(근사 폰트/크기/색) — 관리자가 에디터에서 확정.
 
 import { roundMm01, DEFAULT_DPI } from '../geometry/units.mjs';
+import { halvesOf, contentToSceneX, contentToSceneY } from '../geometry/centerOrigin.mjs';
 import { ARTWORK_LOCK } from './artworkLock.mjs';
 
 const round2 = (n) => Math.round(n * 100) / 100;
@@ -26,10 +27,10 @@ export function toSinglePageTemplate(parsed, background, opts = {}) {
   const pxScale = tdpi / sourceDpi; // PSD px → 캔버스 px
   const canvasW = round2(parsed.widthPx * pxScale);
   const canvasH = round2(parsed.heightPx * pxScale);
-  // 콘텐츠 중앙원점 규약(편집기 WorkspacePlugin/PDF 공통): 페이지 중심 = fabric (0,0).
-  // 변환기는 좌상단 0..W 로 계산하므로 (-halfW,-halfH) 평행이동 + originX/originY='center' 로 정렬.
-  const halfW = canvasW / 2;
-  const halfH = canvasH / 2;
+  // 콘텐츠 중앙원점 규약(편집기 WorkspacePlugin/PDF 공통, docs/COORDINATE_SYSTEM.md): 페이지 중심
+  // = fabric (0,0). 변환기는 좌상단 content(0..W) 로 계산하므로 contentToScene(centerOrigin.mjs SSOT)
+  // + originX/originY='center' 로 정렬.
+  const { halfW, halfH } = halvesOf(canvasW, canvasH);
 
   const objects = [];
 
@@ -71,8 +72,8 @@ export function toSinglePageTemplate(parsed, background, opts = {}) {
       // 중심 기준 + 콘텐츠 중앙원점 정렬(일반 템플릿과 동일 좌표 모델)
       originX: 'center',
       originY: 'center',
-      left: round2(cx - halfW),
-      top: round2(cy - halfH),
+      left: round2(contentToSceneX(cx, halfW)),
+      top: round2(contentToSceneY(cy, halfH)),
       width: round2(w),
       height: round2(h),
       fontSize,
@@ -83,7 +84,7 @@ export function toSinglePageTemplate(parsed, background, opts = {}) {
       selectable: true,
       evented: true,
       isUserAdded: false,
-      meta: { regionRef: null, anchor: { kind: 'canvas', x: round2(cx - halfW), y: round2(cy - halfH) } },
+      meta: { regionRef: null, anchor: { kind: 'canvas', x: round2(contentToSceneX(cx, halfW)), y: round2(contentToSceneY(cy, halfH)) } },
       _psd: { name: l.name, approx: true },
     };
     if (l.fontName) obj.fontFamily = l.fontName;

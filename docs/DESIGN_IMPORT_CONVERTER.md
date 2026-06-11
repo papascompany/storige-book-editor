@@ -119,10 +119,12 @@ back-wing | back-cover | spine | front-cover | front-wing
 ### 3.4 좌표 변환
 
 ```
-IDML pt(1/72in) → mm → 캔버스 px(DPI 150)
+IDML pt(1/72in) → mm → content px(좌상단원점, DPI 150) → scene px(중앙원점, 객체 left/top)
 ```
 
 상수는 `src/geometry/units.mjs`(`DEFAULT_DPI=150`, canvas-core `math.ts` 와 동일). 아핀 변환은 `src/geometry/matrix.mjs` 의 `ItemTransform([a,b,c,d,tx,ty])` 합성/적용/분해를 쓴다. 분해(`decompose`)는 translate/scale/rotation을 뽑고, 행렬식 음수(det<0)는 한 축 반전(flip)으로 `scaleY` 부호에 흡수한다.
+
+> 🧭 **content↔scene(중앙원점) 변환은 [`COORDINATE_SYSTEM.md`](COORDINATE_SYSTEM.md) 가 정본.** 부호 규약은 `src/geometry/centerOrigin.mjs`(SSOT) 한 곳에만 두고, 변환기·미리보기·래스터 4파일이 모두 이 헬퍼만 쓴다(드리프트 방지). 회귀 가드: `centerOrigin.test.mjs` + `preview/renderInvariants.test.mjs`.
 
 - 경로형(Polygon/GraphicLine)은 변환된 anchor들로 정확한 bbox를 계산하고 회전이 이미 좌표에 반영되므로 `angle=0`.
 - 그 외(Rectangle/Oval/TextFrame)는 로컬 bbox × scale 로 폭/높이를 잡고 `angle=회전각`.

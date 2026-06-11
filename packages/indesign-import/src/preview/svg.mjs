@@ -1,5 +1,9 @@
 // 변환 결과(draft DTO) → 미리보기 SVG 문자열 (순수 함수, fs 미사용 — 브라우저/노드 공용).
 // 폴리곤은 복원된 path(절대 캔버스 px)를 그룹 스케일로 렌더.
+// 좌표: 객체 left/top 은 scene(중앙원점), viewBox/region/path 는 content(좌상단원점). 비-path
+// 객체는 sceneToContent(centerOrigin.mjs SSOT)로 환산. (docs/COORDINATE_SYSTEM.md)
+
+import { halvesOf, sceneToContentX, sceneToContentY } from '../geometry/centerOrigin.mjs';
 
 const esc = (t) =>
   String(t).replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
@@ -17,11 +21,12 @@ export function buildPreviewSvg(dto, opts = {}) {
   const W = Math.round(cw * scale);
   const H = Math.round(ch * scale);
   const s = (v) => v * scale;
-  // 객체 left/top 은 '중앙원점' 좌표(toSpreadTemplate: centerXpx - halfW)인데 viewBox/region/path
-  // 는 콘텐츠 좌상단원점(0..W). 비-path 객체(image/rect/ellipse/textbox)는 +halfW/+halfH 평행이동
-  // 으로 콘텐츠 좌표로 환산해야 region 가이드·path 와 정합한다. (path 의 d 는 이미 콘텐츠 절대 px.)
-  const halfW = cw / 2;
-  const halfH = ch / 2;
+  // 객체 left/top 은 scene(중앙원점)인데 viewBox/region/path 는 content(좌상단원점, 0..W).
+  // 비-path 객체(image/rect/ellipse/textbox)는 sceneToContent 로 환산해야 region 가이드·path 와
+  // 정합한다. (path 의 d 는 이미 콘텐츠 절대 px → 변환 제외.)
+  const { halfW, halfH } = halvesOf(cw, ch);
+  const cX = (left) => sceneToContentX(left, halfW); // scene.left → content.x
+  const cY = (top) => sceneToContentY(top, halfH);   // scene.top  → content.y
 
   const parts = [];
   parts.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`);
@@ -41,19 +46,19 @@ export function buildPreviewSvg(dto, opts = {}) {
     if (o.type === 'image' && o.src) {
       const dw = (o.width || 0) * (o.scaleX || 1);
       const dh = (o.height || 0) * (o.scaleY || 1);
-      parts.push(`<image href="${o.src}" x="${s(o.left + halfW - dw / 2)}" y="${s(o.top + halfH - dh / 2)}" width="${s(dw)}" height="${s(dh)}" preserveAspectRatio="none"/>`);
+      parts.push(`<image href="${o.src}" x="${s(cX(o.left) - dw / 2)}" y="${s(cY(o.top) - dh / 2)}" width="${s(dw)}" height="${s(dh)}" preserveAspectRatio="none"/>`);
       continue;
     }
     const w = o.width || 12;
     const h = o.height || 12;
-    const x = s(o.left + halfW - w / 2);
-    const y = s(o.top + halfH - h / 2);
+    const x = s(cX(o.left) - w / 2);
+    const y = s(cY(o.top) - h / 2);
     const fill = o.fill && o.fill !== '' ? o.fill : 'none';
     if (o.path) {
       const strokeAttr = o.stroke ? ` stroke="${o.stroke}" stroke-width="${(o.strokeWidth || 1) * scale}"` : '';
       parts.push(`<path d="${o.path}" transform="scale(${scale})" fill="${fill}"${strokeAttr} opacity="0.92"/>`);
     } else if (o.type === 'ellipse') {
-      parts.push(`<ellipse cx="${s(o.left + halfW)}" cy="${s(o.top + halfH)}" rx="${s(w / 2)}" ry="${s(h / 2)}" fill="${fill}" opacity="0.9"/>`);
+      parts.push(`<ellipse cx="${s(cX(o.left))}" cy="${s(cY(o.top))}" rx="${s(w / 2)}" ry="${s(h / 2)}" fill="${fill}" opacity="0.9"/>`);
     } else {
       parts.push(`<rect x="${x}" y="${y}" width="${s(w)}" height="${s(h)}" fill="${fill}" opacity="0.92"/>`);
     }
@@ -63,8 +68,8 @@ export function buildPreviewSvg(dto, opts = {}) {
   for (const o of dto.canvasData.objects) {
     if (o.type !== 'textbox' || !o.text) continue;
     const fs = Math.max(7, s(o.fontSize || 24));
-    const cx = s(o.left + halfW);
-    const cy = s(o.top + halfH);
+    const cx = s(cX(o.left));
+    const cy = s(cY(o.top));
     const angle = o.angle || 0;
     const lines = String(o.text).split('\n');
     const blockH = lines.length * fs;
