@@ -131,7 +131,19 @@ export function toSpreadTemplate(doc, opts = {}) {
       heightPx = mmToPx(ptToMm(it.bbox.h * Math.abs(d.scaleY)), dpi);
     }
 
-    const regionRef = resolveRegionAtX(regionsPx, centerXpx);
+    let regionRef = resolveRegionAtX(regionsPx, centerXpx);
+    // [강등 가드] 스프레드 전폭 배경처럼 중심 x 만 책등 밴드에 들어와 'spine' 으로 판정되는
+    // 객체는 편집기의 책등 가변(resizeSpine) 시 newSpine/oldSpine 비율 축소+중앙이동으로
+    // 표지 전체가 붕괴한다. spine 판정에 한해 객체 폭이 책등 폭을 유의미하게(5%) 초과하면
+    // 자유 객체(regionRef=null + canvas anchor)로 강등한다.
+    // ⚠️ cover/wing 판정은 절대 불변 — 풀블리드 표지 배경은 cover 앵커를 유지해야
+    // 책등 가변 시 표지와 함께 따라간다.
+    if (regionRef === 'spine') {
+      const spineRegion = regionsPx.find((r) => r.kind === 'spine');
+      if (spineRegion && widthPx > spineRegion.width * 1.05) {
+        regionRef = null;
+      }
+    }
     const region = regionsPx.find((r) => r.kind === regionRef);
     const anchor = region
       ? {
