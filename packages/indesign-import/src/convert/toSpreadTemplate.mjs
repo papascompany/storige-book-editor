@@ -97,6 +97,7 @@ export function toSpreadTemplate(doc, opts = {}) {
   const objects = [];
   const spotNames = new Set(); // 별색(Spot) 감지 — 후가공/별색 의도 확인 경고용
   const placedFrames = []; // 배치(placed) 이미지 프레임 — IDML 에 원본 미포함 → 플레이스홀더
+  const verticalFrames = []; // 세로짜기(StoryOrientation=Vertical) 프레임 — 글자 단위 세로 배치 근사
 
   // 로컬점([x,y]) → 캔버스 px({x,y}) 매퍼: world transform → 스프레드 → 캔버스 원점보정 → px
   const mapLocalToCanvas = (transform) => ([lx, ly]) => {
@@ -198,6 +199,18 @@ export function toSpreadTemplate(doc, opts = {}) {
     if (it.type === 'TextFrame') {
       obj.type = 'textbox';
       obj.text = it.story?.text || '';
+      // 세로짜기(StoryOrientation=Vertical) — fabric 은 CJK 세로조판 미지원이라 글자 단위
+      // 세로 배치(한 글자 = 한 줄)로 근사한다. 이를 빠뜨리면 세로 프레임(좁고 긴) 텍스트가
+      // 거대한 가로 한 줄로 렌더되어 캔버스 밖까지 잘려나간다(2026-06-11 LA-383 재현).
+      if (it.story?.vertical && obj.text) {
+        obj.text = obj.text
+          .split('\n')
+          .map((line) => [...line].join('\n'))
+          .join('\n');
+        obj.textAlign = 'center';
+        obj.lineHeight = 1;
+        verticalFrames.push(it.self);
+      }
       // ⚠️ fabric 5.5: styles 키가 아예 없으면 fromObject 의 stylesFromArray(undefined)가
       // undefined 를 전파 → 이후 toObject(저장/PDF)에서 stylesToArray 가 크래시(무한로딩).
       // 빈 객체라도 반드시 출력한다.
@@ -213,6 +226,14 @@ export function toSpreadTemplate(doc, opts = {}) {
     }
 
     objects.push(obj);
+  }
+
+  // 세로짜기 근사 경고 — 줄간격/단(column) 구성은 원본과 다를 수 있음
+  if (verticalFrames.length) {
+    warnings.push(
+      `세로쓰기 텍스트 ${verticalFrames.length}개 — 글자 단위 세로 배치로 근사 변환됨. ` +
+        `편집기에서 줄간격·위치를 확인하세요.`
+    );
   }
 
   // 배치(placed) 이미지 경고 — IDML 에는 이미지 원본이 포함되지 않음(링크 메타만)
