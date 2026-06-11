@@ -15,6 +15,7 @@ describe('EditSessionsService', () => {
 
   const mockGetMany = jest.fn();
   const mockGetRawOne = jest.fn();
+  const mockGetRawMany = jest.fn();
 
   const mockSessionQueryBuilder = {
     leftJoinAndSelect: jest.fn().mockReturnThis(),
@@ -33,6 +34,7 @@ describe('EditSessionsService', () => {
     orderBy: jest.fn().mockReturnThis(),
     limit: jest.fn().mockReturnThis(),
     getRawOne: mockGetRawOne,
+    getRawMany: mockGetRawMany,
   };
 
   const mockSessionRepository = {
@@ -234,6 +236,86 @@ describe('EditSessionsService', () => {
       const result = await service.findByOrderExternal(12345);
 
       expect(result[0].files.merged).toBe('/storage/outputs/job-1/merged.pdf');
+    });
+  });
+
+  // ── 편집보관함 경량(summary) 모드 (2026-06-11) ──
+  describe('findMyRecentSummary', () => {
+    const makeSession = (overrides: Partial<EditSessionEntity> = {}): EditSessionEntity =>
+      ({
+        id: 'session-uuid-1',
+        orderSeqno: 12345,
+        memberSeqno: 100,
+        status: SessionStatus.EDITING,
+        mode: SessionMode.SPREAD,
+        coverFile: null,
+        contentFile: null,
+        coverFileId: null,
+        contentFileId: null,
+        templateSetId: null,
+        canvasData: { objects: [{ type: 'textbox' }] }, // 경량 모드에서 제외돼야 함
+        metadata: null,
+        completedAt: null,
+        guestToken: null,
+        guestExpiresAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        deletedAt: null,
+        ...overrides,
+      }) as EditSessionEntity;
+
+    it('canvasData 제외 + templateSetName/thumbnailUrl 포함, 이름은 단일 IN 쿼리 배치 조회', async () => {
+      const sessions = [
+        makeSession({
+          id: 'session-1',
+          templateSetId: 'ts-1',
+          coverFile: {
+            id: 'file-1',
+            fileName: 'cover.pdf',
+            originalName: 'cover.pdf',
+            thumbnailUrl: '/storage/thumbs/file-1.png',
+            fileSize: 1024,
+            mimeType: 'application/pdf',
+          } as any,
+        }),
+        // 같은 templateSetId 중복(IN 쿼리 dedupe 검증) + 셋 미연결 세션
+        makeSession({ id: 'session-2', templateSetId: 'ts-1' }),
+        makeSession({ id: 'session-3', templateSetId: null }),
+      ];
+      mockSessionRepository.find.mockResolvedValue(sessions);
+      mockGetRawMany.mockResolvedValue([{ id: 'ts-1', name: 'A4 기본 책자' }]);
+
+      const result = await service.findMyRecentSummary(100);
+
+      expect(result).toHaveLength(3);
+      // canvasData 부재 (목록 경량화)
+      for (const dto of result) {
+        expect(dto).not.toHaveProperty('canvasData');
+      }
+      // templateSetName 배치 조인
+      expect(result[0].templateSetName).toBe('A4 기본 책자');
+      expect(result[1].templateSetName).toBe('A4 기본 책자');
+      expect(result[2].templateSetName).toBeNull(); // 셋 미연결 → null
+      // thumbnailUrl 평탄화
+      expect(result[0].thumbnailUrl).toBe('/storage/thumbs/file-1.png');
+      expect(result[1].thumbnailUrl).toBeNull();
+      // 단일 IN 쿼리 (세션당 N+1 금지) + 중복 id dedupe
+      expect(mockSessionRepository.manager.createQueryBuilder).toHaveBeenCalledTimes(1);
+      expect(mockManagerQueryBuilder.where).toHaveBeenCalledWith('ts.id IN (:...ids)', {
+        ids: ['ts-1'],
+      });
+    });
+
+    it('templateSetId 가 전부 null 이면 IN 쿼리 자체를 생략', async () => {
+      mockSessionRepository.find.mockResolvedValue([
+        makeSession({ id: 'session-1', templateSetId: null }),
+      ]);
+
+      const result = await service.findMyRecentSummary(100);
+
+      expect(mockSessionRepository.manager.createQueryBuilder).not.toHaveBeenCalled();
+      expect(result[0].templateSetName).toBeNull();
+      expect(result[0]).not.toHaveProperty('canvasData');
     });
   });
 });

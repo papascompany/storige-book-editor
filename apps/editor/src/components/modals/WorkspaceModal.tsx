@@ -29,11 +29,13 @@ export const WorkspaceModal = memo(function WorkspaceModal({
       setIsLoading(true)
       setError(null)
       const response = await editSessionsApi.getMySessions()
-      // 최신순으로 정렬하고 draft/editing 상태만 표시
-      const filteredSessions = response.sessions
-        .filter(s => s.status !== 'complete')
+      // 최신순으로 정렬 — complete 세션도 포함해 표시 (2026-06-11).
+      // 고객 저장본(장바구니 담기)은 전부 status='complete' 라 기존
+      // `s.status !== 'complete'` 필터가 최근 저장본을 전부 숨기던 버그 수정.
+      // complete 세션도 재편집 시 update 가 status:'editing' 역전환을 허용하므로 표시해도 무해.
+      const sortedSessions = [...response.sessions]
         .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
-      setSessions(filteredSessions)
+      setSessions(sortedSessions)
     } catch (err) {
       console.error('Failed to load sessions:', err)
       setError('저장된 작업 목록을 불러오는데 실패했습니다.')

@@ -141,10 +141,15 @@ export const editSessionsApi = {
 
   /**
    * 내 세션 목록 조회 (현재 사용자 기준)
+   *
+   * GET /edit-sessions/my — 서버측 updatedAt DESC 정렬·게스트 세션 제외·200건 캡(findMyRecent).
+   * summary=1 은 곧 배포될 경량 응답(canvasData 제외) 요청 — 구 API 가 무시하고
+   * full 응답을 반환해도 클라이언트(WorkspaceModal)는 canvasData 를 사용하지 않으므로 양쪽 모두 동작.
    */
   getMySessions: async (): Promise<{ sessions: EditSessionResponse[]; total: number }> => {
     const response = await apiClient.get<{ sessions: EditSessionResponse[]; total: number }>(
-      '/edit-sessions'
+      '/edit-sessions/my',
+      { params: { summary: 1 } }
     )
     return response.data
   },

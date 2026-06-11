@@ -397,6 +397,52 @@ export class EditSessionsService {
   }
 
   /**
+   * 내 세션 목록 — 경량(summary) 모드 (2026-06-11).
+   *
+   * bookmoa-mobile '편집보관함' 등 모바일 목록 UI 용. findMyRecent 와 동일 조회 후:
+   *  - canvasData 제외 — 세션당 수백KB~MB 라 목록 응답에 부적합.
+   *  - templateSetName(template_sets.name) 추가 — 단일 IN 쿼리 배치 조회(세션당 N+1 금지).
+   *  - thumbnailUrl(coverFile.thumbnailUrl) 평탄화 추가.
+   * 기본(GET /my 무파라미터) 경로는 본 메서드를 타지 않으므로 현행 응답 100% 불변.
+   */
+  async findMyRecentSummary(memberSeqno: number): Promise<EditSessionResponseDto[]> {
+    const sessions = await this.findMyRecent(memberSeqno);
+    const templateSetIds = sessions
+      .map((s) => s.templateSetId)
+      .filter((id): id is string => !!id);
+    const nameMap = await this.getTemplateSetNames(templateSetIds);
+    return sessions.map((s) =>
+      this.toSummaryResponseDto(
+        s,
+        s.templateSetId ? (nameMap.get(s.templateSetId) ?? null) : null,
+      ),
+    );
+  }
+
+  /**
+   * templateSetId 목록 → 이름 매핑 배치 조회 (단일 IN 쿼리).
+   * findByOrderExternal 의 manager 쿼리빌더 관례 재사용. 빈 입력이면 쿼리 없이 빈 Map.
+   */
+  private async getTemplateSetNames(ids: string[]): Promise<Map<string, string>> {
+    const map = new Map<string, string>();
+    const uniqueIds = [...new Set(ids)];
+    if (uniqueIds.length === 0) return map;
+
+    const rows = await this.sessionRepository.manager
+      .createQueryBuilder()
+      .select('ts.id', 'id')
+      .addSelect('ts.name', 'name')
+      .from('template_sets', 'ts')
+      .where('ts.id IN (:...ids)', { ids: uniqueIds })
+      .getRawMany();
+
+    for (const row of rows) {
+      map.set(row.id, row.name);
+    }
+    return map;
+  }
+
+  /**
    * 세션 완료 처리
    *
    * 인쇄 워크플로우 v1 Phase 5 (2026-05-19):
@@ -905,6 +951,22 @@ export class EditSessionsService {
       response.contentFile = this.toFileInfoDto(session.contentFile);
     }
 
+    return response;
+  }
+
+  /**
+   * summary 전용 매퍼 (2026-06-11) — toResponseDto 에서 canvasData 만 제외하고
+   * templateSetName / thumbnailUrl(coverFile.thumbnailUrl 평탄화)을 추가한다.
+   * GET /edit-sessions/my?summary=1 (편집보관함 경량 목록) 에서만 사용.
+   */
+  toSummaryResponseDto(
+    session: EditSessionEntity,
+    templateSetName: string | null,
+  ): EditSessionResponseDto {
+    const response = this.toResponseDto(session);
+    delete response.canvasData; // 목록 경량화 — 전문은 GET /edit-sessions/:id 로 조회
+    response.templateSetName = templateSetName;
+    response.thumbnailUrl = session.coverFile?.thumbnailUrl ?? null;
     return response;
   }
 

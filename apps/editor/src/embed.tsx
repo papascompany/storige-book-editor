@@ -150,7 +150,13 @@ export interface EditorConfig {
 }
 
 export interface EditorError {
-  code: 'AUTH_EXPIRED' | 'NETWORK_ERROR' | 'SAVE_FAILED' | 'INVALID_DATA' | 'SESSION_NOT_FOUND'
+  code:
+    | 'AUTH_EXPIRED'
+    | 'NETWORK_ERROR'
+    | 'SAVE_FAILED'
+    | 'INVALID_DATA'
+    | 'SESSION_NOT_FOUND'
+    | 'TEMPLATE_SET_NOT_FOUND'
   message: string
 }
 
@@ -267,6 +273,24 @@ function postToParent<T>(
     window.parent.postMessage(envelope, parentOrigin)
   } catch (err) {
     console.warn('[Editor] postMessage failed:', err)
+  }
+}
+
+/**
+ * 샘플 템플릿셋 폴백 허용 여부 (2026-06-11).
+ *
+ * 과거: 템플릿셋 로드 실패 시 사용자 모르게 'sample-8x8-book-24p' 로 무음 바꿔치기 →
+ * 고객이 잘못된 지오메트리(판형/책등) 위에서 편집·주문하는 사고 위험.
+ * 현재: DEV 빌드 또는 URL 파라미터 `allowSampleFallback=1` 일 때만 폴백 허용.
+ * 프로덕션 기본은 폴백 없이 오류 화면 + editor.error(TEMPLATE_SET_NOT_FOUND) 발신.
+ */
+function isSampleFallbackAllowed(): boolean {
+  if (import.meta.env.DEV === true) return true
+  try {
+    if (typeof window === 'undefined') return false
+    return new URLSearchParams(window.location.search).get('allowSampleFallback') === '1'
+  } catch {
+    return false
   }
 }
 
@@ -496,36 +520,54 @@ function EmbeddedEditor({
         const initId = startInitialization()
 
         // 2. Fetch or create edit session (if bookmoa integration)
+        // 재편집 게이트 완화 (2026-06-11): 과거 `if (orderSeqno && mode)` 게이트 때문에
+        // /embed?sessionId&token 만으로는 세션이 로드되지 않아 빈 템플릿으로 시작하고,
+        // 이후 자동저장이 기존 저장본을 덮어쓸 위험이 있었다.
+        // → sessionId 가 있으면 orderSeqno/mode 없이도 세션을 조회·복원하고,
+        //   mode/orderSeqno/templateSetId 는 세션에서 도출한다.
+        //   (orderSeqno+mode 제공 시 기존 경로 — 주문 검색/생성 폴백 — 동작 불변)
         let editSession: EditSessionResponse | null = null
-        if (orderSeqno && mode) {
+
+        if (sessionId) {
+          setLoadingMessage('편집 세션을 불러오는 중...')
+          // 기존 세션 불러오기
+          try {
+            editSession = await editSessionsApi.get(sessionId)
+            console.log('[EmbeddedEditor] Existing session loaded:', editSession.id)
+          } catch (err) {
+            console.warn('[EmbeddedEditor] Session not found:', sessionId, err)
+          }
+        }
+
+        if (!editSession && orderSeqno && mode) {
           setLoadingMessage('편집 세션을 불러오는 중...')
 
-          if (sessionId) {
-            // 기존 세션 불러오기
-            try {
-              editSession = await editSessionsApi.get(sessionId)
-              console.log('[EmbeddedEditor] Existing session loaded:', editSession.id)
-            } catch (err) {
-              console.warn('[EmbeddedEditor] Session not found, creating new one:', sessionId)
-            }
-          }
-
           // sessionId 없거나 조회 실패 → orderSeqno로 기존 세션 검색
-          if (!editSession) {
-            try {
-              const { sessions } = await editSessionsApi.findByOrder(orderSeqno)
-              // 가장 최근 세션 사용 (canvasData가 있는 것 우선)
-              editSession = sessions.find(s => s.canvasData) || sessions[0] || null
-              if (editSession) {
-                console.log('[EmbeddedEditor] Found existing session for order:', editSession.id)
-              }
-            } catch (err) {
-              console.warn('[EmbeddedEditor] Failed to find sessions by order:', err)
+          try {
+            const { sessions } = await editSessionsApi.findByOrder(orderSeqno)
+            // 가장 최근 세션 사용 (canvasData가 있는 것 우선)
+            editSession = sessions.find(s => s.canvasData) || sessions[0] || null
+            if (editSession) {
+              console.log('[EmbeddedEditor] Found existing session for order:', editSession.id)
             }
+          } catch (err) {
+            console.warn('[EmbeddedEditor] Failed to find sessions by order:', err)
           }
 
           // 기존 세션이 없으면 새로 생성
           if (!editSession) {
+            // 주문 옵션 스냅샷 (2026-06-11): 주문 시점 옵션을 metadata.orderOptions 로 기록.
+            // 정의된 값만 포함(undefined 키 제외). 기존 metadata 필드
+            // (size/pages/binding/bleed/paperThickness/productId)는 호환을 위해 불변 유지.
+            const orderOptionsEntries = Object.entries({
+              pageCount: options?.pageCount,
+              paperType: options?.paperType,
+              bindingType: options?.bindingType,
+              size: options?.size,
+              productId,
+              orderSeqno,
+            }).filter(([, value]) => value !== undefined)
+
             const createPayload = {
               orderSeqno,
               mode,
@@ -541,6 +583,9 @@ function EmbeddedEditor({
                 bleed: options?.bleed,
                 paperThickness: options?.paperThickness,
                 productId,
+                ...(orderOptionsEntries.length > 0
+                  ? { orderOptions: Object.fromEntries(orderOptionsEntries) }
+                  : {}),
               },
             }
             try {
@@ -554,19 +599,43 @@ function EmbeddedEditor({
               console.log('[EmbeddedEditor] Guest session created (fallback):', editSession.id)
             }
           }
+        }
 
+        if (editSession) {
           setCurrentSession(editSession)
         }
 
         if (!isMounted) return
 
         // 3. Fetch template set info
-        let effectiveTemplateSetId = templateSetId;
-        let showMappingAlert = false;
+        // 재편집 게이트 완화 (2026-06-11): templateSetId 미전달 시 세션에서 도출.
+        let effectiveTemplateSetId = templateSetId || editSession?.templateSetId || ''
+        let showMappingAlert = false
+        let fallbackReason = ''
 
         if (!effectiveTemplateSetId) {
           throw new Error('템플릿셋 ID가 필요합니다. (templateSetId)')
         }
+        /** 폴백 전 원래 요청된 템플릿셋 ID — 폴백 발생 판정/세션 복원 스킵에 사용 */
+        const requestedTemplateSetId = effectiveTemplateSetId
+        const allowSampleFallback = isSampleFallbackAllowed()
+
+        // 템플릿셋 로드 실패 처리(프로덕션 기본): 폴백 없이 오류 화면 표시 + editor.error 발신.
+        const failTemplateSetLoad = (err: unknown, phase: string) => {
+          const reason = err instanceof Error ? err.message : String(err)
+          const message = `템플릿셋을 불러올 수 없습니다. (templateSetId: ${requestedTemplateSetId}, ${phase}) ${reason}`
+          console.error('[EmbeddedEditor]', message, err)
+          setError(message)
+          setIsLoading(false)
+          const errPayload = {
+            code: 'TEMPLATE_SET_NOT_FOUND' as const,
+            message,
+            templateSetId: requestedTemplateSetId,
+          }
+          onError?.(errPayload)
+          postToParent(parentOrigin, 'editor.error', errPayload)
+        }
+
         let templateSet;
         try {
           setLoadingMessage('템플릿셋 정보를 불러오는 중...')
@@ -576,8 +645,14 @@ function EmbeddedEditor({
             throw new Error('템플릿셋을 찾을 수 없습니다.')
           }
         } catch (err) {
-          console.warn('[EmbeddedEditor] Failed to load requested template set. Falling back to sample.', err)
+          // 프로덕션 기본: 무음 샘플 폴백 금지 — 명확히 실패 표시 후 중단 (2026-06-11)
+          if (!allowSampleFallback) {
+            failTemplateSetLoad(err, '조회 실패')
+            return
+          }
+          console.warn('[EmbeddedEditor] Failed to load requested template set. Falling back to sample. (DEV/allowSampleFallback)', err)
           showMappingAlert = true
+          fallbackReason = `템플릿셋 조회 실패: ${err instanceof Error ? err.message : String(err)}`
           effectiveTemplateSetId = 'sample-8x8-book-24p'
           const fallback = await templatesApi.getTemplateSetWithTemplates(effectiveTemplateSetId)
           templateSet = fallback?.templateSet || fallback
@@ -657,8 +732,16 @@ function EmbeddedEditor({
             bindingType: options?.bindingType,
           })
         } catch (loadErr) {
-          console.warn('[EmbeddedEditor] Failed to load template set editor. Falling back to sample.', loadErr)
+          // 프로덕션 기본: 무음 샘플 폴백 금지 — 명확히 실패 표시 후 중단 (2026-06-11)
+          if (!allowSampleFallback) {
+            failTemplateSetLoad(loadErr, '에디터 로드 실패')
+            return
+          }
+          console.warn('[EmbeddedEditor] Failed to load template set editor. Falling back to sample. (DEV/allowSampleFallback)', loadErr)
           showMappingAlert = true
+          if (!fallbackReason) {
+            fallbackReason = `에디터 로드 실패: ${loadErr instanceof Error ? loadErr.message : String(loadErr)}`
+          }
           effectiveTemplateSetId = 'sample-8x8-book-24p'
           await loadTemplateSetEditor({
             templateSetId: effectiveTemplateSetId,
@@ -670,8 +753,14 @@ function EmbeddedEditor({
         }
 
         if (showMappingAlert) {
+          // 폴백은 DEV/allowSampleFallback=1 에서만 도달 — 실패한 templateSetId 와 사유를 명시.
+          const alertMessage =
+            `템플릿셋 매핑이 맞지 않아 테스트모드(샘플 템플릿셋)로 구동됩니다.\n` +
+            `요청 템플릿셋: ${requestedTemplateSetId}\n` +
+            `사유: ${fallbackReason || '알 수 없음'}\n` +
+            `편집내용에 대한 주문에 문제가 있을 수 있습니다.`
           setTimeout(() => {
-            alert('템플릿셋 매핑이 맞지 않아 테스트모드로 구동됩니다. 편집내용에 대한 주문에 문제가 있을 수 있습니다.');
+            alert(alertMessage)
           }, 500);
         }
 
@@ -679,7 +768,14 @@ function EmbeddedEditor({
 
         // 기존 세션의 canvasData가 있으면 복원 (재편집)
         // canvasData가 배열이면 멀티페이지 복원, 객체면 단일 캔버스 복원
-        if (editSession?.canvasData) {
+        // 단, 샘플 폴백으로 다른 템플릿셋이 로드된 경우 복원 스킵 (2026-06-11) —
+        // 다른 spec(판형/책등) 위에 복원하면 지오메트리 오염이 일어난다.
+        if (editSession?.canvasData && effectiveTemplateSetId !== requestedTemplateSetId) {
+          console.warn(
+            '[EmbeddedEditor] 폴백 템플릿셋 위 세션 canvasData 복원 스킵 — 지오메트리 오염 방지:',
+            { requested: requestedTemplateSetId, effective: effectiveTemplateSetId, sessionId: editSession.id },
+          )
+        } else if (editSession?.canvasData) {
           setLoadingMessage('저장된 작업을 복원하는 중...')
           const saved = editSession.canvasData
           const { allCanvas: canvases } = useAppStore.getState()
@@ -735,6 +831,8 @@ function EmbeddedEditor({
           sessionId: editSession?.id,
           templateSetId,
           version: '1.0.0',
+          // 샘플 폴백 구동 시(DEV/allowSampleFallback) 호스트가 인지할 수 있도록 명시 (2026-06-11)
+          ...(showMappingAlert ? { fallback: true, effectiveTemplateSetId } : {}),
         })
       } catch (err) {
         console.error('[EmbeddedEditor] Initialization error:', err)
@@ -958,6 +1056,12 @@ function EmbeddedEditor({
       return
     }
 
+    // 재편집 게이트 완화 (2026-06-11): /embed?sessionId 단독 진입 시 mode/orderSeqno 가
+    // props 로 전달되지 않으므로 세션에서 도출한다 (props 제공 시 props 우선 — 기존 경로 동작 불변).
+    const effectiveMode = mode ?? currentSession?.mode
+    const effectiveOrderSeqno =
+      orderSeqno ?? (currentSession?.orderSeqno != null ? Number(currentSession.orderSeqno) : undefined)
+
     setIsLoading(true)
     try {
       setLoadingMessage('작업을 저장하는 중...')
@@ -1032,7 +1136,7 @@ function EmbeddedEditor({
               await finishMark('spread:cover:gen:done', { bytes: coverBlob.size })
               setLoadingMessage('PDF를 업로드하는 중...')
               const coverUpload = await filesApi.upload({
-                file: coverBlob, type: 'cover', orderSeqno,
+                file: coverBlob, type: 'cover', orderSeqno: effectiveOrderSeqno,
                 metadata: { generatedBy: 'editor', editSessionId: currentSessionId, mode: 'spread', isSpreadCover: true },
               })
               coverFileId = coverUpload.id
@@ -1061,7 +1165,7 @@ function EmbeddedEditor({
               )
               await finishMark('spread:content:gen:done', { bytes: contentBlob.size })
               const contentUpload = await filesApi.upload({
-                file: contentBlob, type: 'content', orderSeqno,
+                file: contentBlob, type: 'content', orderSeqno: effectiveOrderSeqno,
                 metadata: { generatedBy: 'editor', editSessionId: currentSessionId, mode: 'spread', pageCount: innerCanvases.length },
               })
               contentFileId = contentUpload.id
@@ -1097,7 +1201,7 @@ function EmbeddedEditor({
           // ── 단일 페이지(표지/내지/템플릿 등) ──
           const servicePlugin = editor.getPlugin('ServicePlugin') as ServicePlugin | undefined
           if (servicePlugin) {
-            await finishMark('single:gen:start', { mode })
+            await finishMark('single:gen:start', { mode: effectiveMode })
             const pdfBlob = await withWatchdog(
               servicePlugin.saveMultiPagePDFAsBlob(
                 [canvas], [editor], `session-${currentSessionId}`,
@@ -1110,16 +1214,16 @@ function EmbeddedEditor({
             if (pdfBlob) {
               setLoadingMessage('PDF를 업로드하는 중...')
               const fileType: 'cover' | 'content' | 'template' | 'other' =
-                mode === 'cover' ? 'cover'
-                : mode === 'content' ? 'content'
-                : mode === 'template' ? 'template'
+                effectiveMode === 'cover' ? 'cover'
+                : effectiveMode === 'content' ? 'content'
+                : effectiveMode === 'template' ? 'template'
                 : 'other'
               const uploadResponse = await filesApi.upload({
-                file: pdfBlob, type: fileType, orderSeqno,
-                metadata: { generatedBy: 'editor', editSessionId: currentSessionId, mode },
+                file: pdfBlob, type: fileType, orderSeqno: effectiveOrderSeqno,
+                metadata: { generatedBy: 'editor', editSessionId: currentSessionId, mode: effectiveMode },
               })
               const updatePayload: { coverFileId?: string; contentFileId?: string } = {}
-              if (mode === 'content') updatePayload.contentFileId = uploadResponse.id
+              if (effectiveMode === 'content') updatePayload.contentFileId = uploadResponse.id
               else updatePayload.coverFileId = uploadResponse.id
               await editSessionsApi.update(currentSessionId, updatePayload)
               console.log('[EmbeddedEditor] PDF uploaded:', uploadResponse.id)
