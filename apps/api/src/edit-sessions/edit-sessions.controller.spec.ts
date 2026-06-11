@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { EditSessionsController } from './edit-sessions.controller';
 import { EditSessionsService } from './edit-sessions.service';
@@ -35,6 +35,9 @@ describe('EditSessionsController', () => {
             findByOrderExternal: jest.fn().mockResolvedValue(mockExternalResponse),
             findByOrderSeqno: jest.fn(),
             findByMemberSeqno: jest.fn(),
+            findBySiteId: jest.fn(),
+            findMyRecent: jest.fn(),
+            findMyRecentSummary: jest.fn(),
             findById: jest.fn(),
             create: jest.fn(),
             update: jest.fn(),
@@ -97,6 +100,83 @@ describe('EditSessionsController', () => {
 
       expect(result.success).toBe(true);
       expect(result.data).toEqual([]);
+    });
+  });
+
+  // ── IDOR 가드 (2026-06-11): GET /edit-sessions?memberSeqno=X ──
+  // admin/manager 가 아니면 본인 memberSeqno 만 허용, 타인은 403.
+  describe('GET /edit-sessions (memberSeqno IDOR 가드)', () => {
+    const adminUser = { role: 'admin' }; // admin-app User 엔티티 (userId 없음)
+    const managerUser = { role: 'manager' };
+    const shopUser = { userId: '100', role: 'customer', source: 'shop' };
+
+    beforeEach(() => {
+      service.findByMemberSeqno.mockResolvedValue([]);
+      service.toResponseDto.mockReturnValue({} as any);
+    });
+
+    it('admin 은 타인 memberSeqno 조회 허용', async () => {
+      const result = await controller.findSessions(undefined, '200', undefined, adminUser);
+
+      expect(service.findByMemberSeqno).toHaveBeenCalledWith(200);
+      expect(result.total).toBe(0);
+    });
+
+    it('manager 도 타인 memberSeqno 조회 허용', async () => {
+      await controller.findSessions(undefined, '200', undefined, managerUser);
+
+      expect(service.findByMemberSeqno).toHaveBeenCalledWith(200);
+    });
+
+    it('일반 사용자(shop customer)가 타인 memberSeqno 조회 시 403 FORBIDDEN_MEMBER_QUERY', async () => {
+      await expect(
+        controller.findSessions(undefined, '200', undefined, shopUser),
+      ).rejects.toThrow(ForbiddenException);
+      expect(service.findByMemberSeqno).not.toHaveBeenCalled();
+    });
+
+    it('일반 사용자 본인 memberSeqno 조회는 허용', async () => {
+      await controller.findSessions(undefined, '100', undefined, shopUser);
+
+      expect(service.findByMemberSeqno).toHaveBeenCalledWith(100);
+    });
+  });
+
+  // ── 편집보관함 경량(summary) 모드 (2026-06-11): GET /edit-sessions/my?summary=1 ──
+  describe('GET /edit-sessions/my (summary 경량 모드)', () => {
+    const shopUser = { userId: '100', role: 'customer', source: 'shop' };
+
+    it("summary='1' 시 경량 매퍼 사용 — canvasData 부재 + templateSetName 포함", async () => {
+      service.findMyRecentSummary.mockResolvedValue([
+        {
+          id: 'session-1',
+          templateSetName: 'A4 기본 책자',
+          thumbnailUrl: '/storage/thumbs/f-1.png',
+        } as any,
+      ]);
+
+      const result = await controller.findMy(shopUser, '1');
+
+      expect(service.findMyRecentSummary).toHaveBeenCalledWith(100);
+      expect(service.findMyRecent).not.toHaveBeenCalled();
+      expect(result.total).toBe(1);
+      expect(result.sessions[0]).not.toHaveProperty('canvasData');
+      expect(result.sessions[0].templateSetName).toBe('A4 기본 책자');
+      expect(result.sessions[0].thumbnailUrl).toBe('/storage/thumbs/f-1.png');
+    });
+
+    it('summary 미지정 시 기존(canvasData 전문 포함) 경로 불변', async () => {
+      service.findMyRecent.mockResolvedValue([{ id: 'session-1' } as any]);
+      service.toResponseDto.mockReturnValue({
+        id: 'session-1',
+        canvasData: { objects: [] },
+      } as any);
+
+      const result = await controller.findMy(shopUser, undefined);
+
+      expect(service.findMyRecent).toHaveBeenCalledWith(100);
+      expect(service.findMyRecentSummary).not.toHaveBeenCalled();
+      expect(result.sessions[0].canvasData).toEqual({ objects: [] });
     });
   });
 });

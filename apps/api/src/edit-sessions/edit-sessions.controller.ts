@@ -193,11 +193,26 @@ export class EditSessionsController {
    * 내 세션 목록 — 인쇄 워크플로우 v1 Phase 6-C (2026-05-19).
    *
    * 로그인 사용자 본인의 최근 세션 200건. /my-works UI 가 사용.
+   *
+   * summary 경량 모드 (2026-06-11) — bookmoa-mobile '편집보관함' 목록용:
+   *  - ?summary=1|true 시 canvasData 제외 + templateSetName/thumbnailUrl 추가.
+   *  - 개별 @Query 원시(string) 파라미터라 전역 ValidationPipe(whitelist/
+   *    forbidNonWhitelisted)의 DTO 화이트리스트 검사 대상이 아님 →
+   *    기존 무파라미터 호출(bookmoa/editor /my-works)과 100% 호환.
    */
   @Get('my')
   @ApiOperation({ summary: '내 편집 세션 목록 (Phase 6)' })
+  @ApiQuery({
+    name: 'summary',
+    required: false,
+    description:
+      "'1'|'true' 시 경량 모드 — canvasData 제외, templateSetName/thumbnailUrl 추가 (편집보관함용)",
+  })
   @ApiResponse({ status: 200, description: '세션 목록', type: EditSessionListResponseDto })
-  async findMy(@CurrentUser() user: any): Promise<EditSessionListResponseDto> {
+  async findMy(
+    @CurrentUser() user: any,
+    @Query('summary') summary?: string,
+  ): Promise<EditSessionListResponseDto> {
     if (!user?.userId) {
       throw new ForbiddenException({
         code: 'AUTH_REQUIRED',
@@ -205,6 +220,14 @@ export class EditSessionsController {
       });
     }
     const memberSeqno = parseInt(user.userId);
+
+    // 경량(summary) 모드 — canvasData 미포함 목록 (편집보관함)
+    if (summary === '1' || summary === 'true') {
+      const sessions = await this.editSessionsService.findMyRecentSummary(memberSeqno);
+      return { sessions, total: sessions.length };
+    }
+
+    // 기본 모드 — 현행 응답 불변 (canvasData 전문 포함)
     const sessions = await this.editSessionsService.findMyRecent(memberSeqno);
     return {
       sessions: sessions.map((s) => this.editSessionsService.toResponseDto(s)),
@@ -290,9 +313,26 @@ export class EditSessionsController {
         parseInt(orderSeqno),
       );
     } else if (memberSeqno) {
-      sessions = await this.editSessionsService.findByMemberSeqno(
-        parseInt(memberSeqno),
-      );
+      // IDOR 가드 (2026-06-11): admin/manager 가 아니면 memberSeqno 쿼리는
+      // 본인(JWT user.userId == memberSeqno)일 때만 허용 — 임의 회원의 세션
+      // (canvasData 포함)이 유출되는 표면 차단.
+      //  - role 판정은 findOne(:id) 의 admin/manager 관례와 동일 (user.role).
+      //  - 외부서버(nimda/PHP)는 X-API-Key 라우트(GET /edit-sessions/external,
+      //    ApiKeyGuard)를 사용하므로 본 가드와 무관 — 영향 없음.
+      //  - orderSeqno/siteId 분기는 현행 불변.
+      const requestedSeqno = parseInt(memberSeqno);
+      const userRole = user?.role || '';
+      const isStaff = userRole === 'admin' || userRole === 'manager';
+      // userId 부재(예: 일반 admin-app User 엔티티) 시 NaN → 비교 항상 불일치(안전측)
+      const selfSeqno = user?.userId ? parseInt(user.userId) : NaN;
+      if (!isStaff && requestedSeqno !== selfSeqno) {
+        throw new ForbiddenException({
+          code: 'FORBIDDEN_MEMBER_QUERY',
+          message: '다른 회원의 편집 세션은 조회할 수 없습니다.',
+          details: { requestedMemberSeqno: requestedSeqno },
+        });
+      }
+      sessions = await this.editSessionsService.findByMemberSeqno(requestedSeqno);
     } else if (siteId) {
       sessions = await this.editSessionsService.findBySiteId(siteId);
     } else if (user?.userId) {

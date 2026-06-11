@@ -89,6 +89,14 @@ export class EditSessionResponseDto {
 
   @ApiPropertyOptional({ description: '게스트 만료 시점' })
   guestExpiresAt?: Date | null;
+
+  // ── 편집보관함 경량(summary) 모드 (2026-06-11) — GET /edit-sessions/my?summary=1 전용 ──
+  // summary 모드에서만 채워지며, 이때 canvasData 는 응답에서 제외된다.
+  @ApiPropertyOptional({ description: 'summary 모드 전용: 템플릿셋 이름 (template_sets.name, 미연결 시 null)' })
+  templateSetName?: string | null;
+
+  @ApiPropertyOptional({ description: 'summary 모드 전용: 표지 썸네일 URL (coverFile.thumbnailUrl 평탄화, 없으면 null)' })
+  thumbnailUrl?: string | null;
 }
 
 export class EditSessionListResponseDto {
