@@ -152,7 +152,10 @@ export namespace core {
     'deleteable',
     'evented',
     // spread 책등 가변 재배치용 meta(regionRef/anchor) 보존 — useTemplateSetSave와 정합
-    'meta'
+    'meta',
+    // D1 외부 사진 주입 (2026-06-12): 공유방 사진 탭에서 추가된 이미지의 출처 URL.
+    // 저장→재편집 라운드트립에서 '사용됨' 뱃지를 복원하기 위해 보존.
+    'externalPhotoUrl'
   ]
 
   export function getWorkspace(canvas: fabric.Canvas): fabric.Object | undefined {

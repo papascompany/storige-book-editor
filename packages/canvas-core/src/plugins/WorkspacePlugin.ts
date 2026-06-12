@@ -45,6 +45,18 @@ class WorkspacePlugin extends PluginBase {
   private _boundRestoreGuideElements: (() => void) | null = null
   private _boundMouseWheel: ((opt: IEvent<WheelEvent>) => void) | null = null
   private _afterZoomDebounced: ReturnType<typeof debounce> | null = null
+  // D2 핀치-투-줌 (2026-06-12): wrapperEl 포인터 이벤트 2지 추적
+  private _boundPinchDown: ((e: PointerEvent) => void) | null = null
+  private _boundPinchMove: ((e: PointerEvent) => void) | null = null
+  private _boundPinchUp: ((e: PointerEvent) => void) | null = null
+  private _pinchPointers: Map<number, { x: number; y: number }> = new Map()
+  private _pinchState: {
+    startDist: number
+    startZoom: number
+    lastMid: { x: number; y: number }
+    prevSelection: boolean
+    prevSkipTargetFind: boolean
+  } | null = null
 
   constructor(canvas: fabric.Canvas, editor: Editor, options: WorkspacePluginOptions) {
     super(canvas, editor, options)
@@ -78,6 +90,22 @@ class WorkspacePlugin extends PluginBase {
     if (this._boundMouseWheel) {
       this._canvas.off('mouse:wheel', this._boundMouseWheel)
     }
+
+    // D2 핀치 리스너 제거 (wrapperEl 네이티브 이벤트)
+    const wrapperEl = (this._canvas as unknown as { wrapperEl?: HTMLElement }).wrapperEl
+    if (wrapperEl) {
+      if (this._boundPinchDown) wrapperEl.removeEventListener('pointerdown', this._boundPinchDown)
+      if (this._boundPinchMove) wrapperEl.removeEventListener('pointermove', this._boundPinchMove)
+      if (this._boundPinchUp) {
+        wrapperEl.removeEventListener('pointerup', this._boundPinchUp)
+        wrapperEl.removeEventListener('pointercancel', this._boundPinchUp)
+      }
+    }
+    this._boundPinchDown = null
+    this._boundPinchMove = null
+    this._boundPinchUp = null
+    this._pinchPointers.clear()
+    this._pinchState = null
 
     // 에디터 이벤트 리스너 제거
     if (this._boundToggleCutBorder) {
@@ -128,6 +156,7 @@ class WorkspacePlugin extends PluginBase {
     } else {
       this.reset(workspace)
       this.bindWheel()
+      this.bindPinch()
 
       // 이벤트 핸들러 참조 저장 (cleanup을 위해)
       this._boundHandleObjectAdded = this.handleObjectAdded.bind(this)
@@ -996,6 +1025,105 @@ class WorkspacePlugin extends PluginBase {
     }
 
     this._canvas.on('mouse:wheel', this._boundMouseWheel)
+  }
+
+  /**
+   * D2 핀치-투-줌 (2026-06-12, EDITOR.md §20.2).
+   *
+   * fabric 5는 빌드 옵션 없이 `touch:gesture` 를 발화하지 않으므로 wrapperEl 에
+   * 네이티브 pointer 이벤트로 2지(터치)를 직접 추적한다.
+   * - 두 손가락 거리 비율 → zoomToPoint(중점 기준), 중점 이동량 → relativePan
+   * - 핀치 중에는 fabric 객체 조작 차단: 진행 중 transform 중단 + skipTargetFind
+   * - 캔버스 컨테이너는 이미 touch-action:none (index.css) → 브라우저 제스처 충돌 없음
+   * - 줌 한계는 휠 줌과 동일 (0.01 ~ 20)
+   */
+  private bindPinch() {
+    const wrapper = (this._canvas as unknown as { wrapperEl?: HTMLElement }).wrapperEl
+    if (!wrapper || typeof window === 'undefined' || !window.PointerEvent) return
+    const vm = this
+
+    const midAndDist = () => {
+      const pts = Array.from(vm._pinchPointers.values())
+      const dx = pts[0].x - pts[1].x
+      const dy = pts[0].y - pts[1].y
+      return {
+        dist: Math.hypot(dx, dy),
+        mid: { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 },
+      }
+    }
+
+    this._boundPinchDown = (e: PointerEvent) => {
+      if (e.pointerType !== 'touch') return
+      vm._pinchPointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
+      if (vm._pinchPointers.size !== 2 || vm._pinchState) return
+
+      // 핀치 시작 — 첫 손가락으로 시작된 fabric 변형(드래그/스케일) 즉시 중단
+      const canvasAny = vm._canvas as unknown as { _currentTransform?: unknown }
+      if (canvasAny._currentTransform) canvasAny._currentTransform = undefined
+      vm._canvas.discardActiveObject()
+
+      const { dist, mid } = midAndDist()
+      vm._pinchState = {
+        startDist: dist,
+        startZoom: vm._canvas.getZoom(),
+        lastMid: mid,
+        prevSelection: vm._canvas.selection !== false,
+        prevSkipTargetFind: vm._canvas.skipTargetFind === true,
+      }
+      vm._canvas.selection = false
+      vm._canvas.skipTargetFind = true
+
+      // 휠 줌과 동일하게 overlay 일시 숨김 (줌 중 clipPath 렌더 부하 회피)
+      vm._canvas.getObjects().forEach((obj) => {
+        if (obj.extensionType === 'overlay') obj.visible = false
+      })
+      vm._canvas.requestRenderAll()
+    }
+
+    this._boundPinchMove = (e: PointerEvent) => {
+      if (!vm._pinchPointers.has(e.pointerId)) return
+      vm._pinchPointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
+      if (vm._pinchPointers.size !== 2 || !vm._pinchState) return
+      if (vm._pinchState.startDist <= 0) return
+      e.preventDefault()
+
+      const { dist, mid } = midAndDist()
+      let zoom = vm._pinchState.startZoom * (dist / vm._pinchState.startDist)
+      if (zoom > 20) zoom = 20
+      if (zoom < 0.01) zoom = 0.01
+
+      const rect = wrapper.getBoundingClientRect()
+      vm._canvas.zoomToPoint(new fabric.Point(mid.x - rect.left, mid.y - rect.top), zoom)
+
+      // 두 손가락 팬 — 중점 이동량만큼 viewport 이동
+      const dxm = mid.x - vm._pinchState.lastMid.x
+      const dym = mid.y - vm._pinchState.lastMid.y
+      if (dxm !== 0 || dym !== 0) {
+        vm._canvas.relativePan(new fabric.Point(dxm, dym))
+      }
+      vm._pinchState.lastMid = mid
+
+      vm._editor.emit('zoomChanged')
+      if (vm._canvas.getContext()) {
+        vm._canvas.requestRenderAll()
+      }
+      vm._afterZoomDebounced?.()
+    }
+
+    this._boundPinchUp = (e: PointerEvent) => {
+      if (!vm._pinchPointers.delete(e.pointerId)) return
+      if (vm._pinchPointers.size < 2 && vm._pinchState) {
+        vm._canvas.selection = vm._pinchState.prevSelection
+        vm._canvas.skipTargetFind = vm._pinchState.prevSkipTargetFind
+        vm._pinchState = null
+        vm._canvas.requestRenderAll()
+      }
+    }
+
+    wrapper.addEventListener('pointerdown', this._boundPinchDown)
+    wrapper.addEventListener('pointermove', this._boundPinchMove, { passive: false })
+    wrapper.addEventListener('pointerup', this._boundPinchUp)
+    wrapper.addEventListener('pointercancel', this._boundPinchUp)
   }
 
   private async createOrUpdateCutBorder() {

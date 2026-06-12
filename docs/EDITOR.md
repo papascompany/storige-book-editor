@@ -768,10 +768,16 @@ per-character `styles`(이탤릭·부분색)는 직렬화 리스트(`packages/ca
 | woff2ToTtf | `apps/api/src/library/` (`POST /library/woff2ToTtf`), `packages/canvas-core/src/plugins/FontPlugin.ts` |
 | 운영 플래그 | `SPREAD_SNAPSHOT_HARD_FAIL` (api/worker `.env`) |
 
-## §20 외부 사진 주입(공유방 갤러리 탭) + 캔버스 핀치줌 — ShareSnap 연동 신규 기능 (2026-06-12 계획 확정)
+## §20 외부 사진 주입(공유방 갤러리 탭) + 캔버스 핀치줌 — ShareSnap 연동 신규 기능 (2026-06-12 구현·검증 완료)
 
 > 배경: 두 번째 외부 사이트 ShareSnap(공유방 사진 → 하드커버 포토북) 연동. 연동 자체는 기존 멀티사이트(/embed + shop-session) 구조로 코드 변경 0이나, 플랫폼 기능 2건이 신규 필요. 정본: `../.cursor/plans/HANDOFF_sharesnap_integration_2026-06-12.md` §6.
 > **둘 다 범용 플랫폼 기능** — sharesnap 전용 분기 없음. 단일 코드베이스·단일 배포가 전 사이트 공통 대응.
+
+### 20.0 구현 현황 (2026-06-12)
+| 항목 | 상태 | 핵심 파일 |
+|---|---|---|
+| D1 사진 주입 | ✅ 구현 + 로컬 검증 (탭 렌더·1-tap 추가·80% 맞춤 스케일·사용됨 뱃지·안쓴사진 필터·목록 없으면 탭 미표시 회귀 확인) | `packages/types`(ExternalPhoto), `apps/editor/src/stores/useExternalPhotosStore.ts`, `tools/AppImage.tsx`, `embed.tsx`(3-A'), `canvas-core utils/canvas.ts`(extendFabricOption +externalPhotoUrl) |
+| D2 핀치줌 | ✅ 구현 + 합성 PointerEvent 검증 (핀치아웃 1→3.0·핀치인 1→0.33 정확, selection/skipTargetFind 복원) | `packages/canvas-core/src/plugins/WorkspacePlugin.ts` (`bindPinch`) |
 
 ### 20.1 D1 — 외부 사진 주입 (공유방 갤러리 탭)
 
