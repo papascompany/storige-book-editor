@@ -19,21 +19,34 @@ import {
 
 const ITEM_TYPES = ['Rectangle', 'Polygon', 'Oval', 'GraphicLine', 'TextFrame'];
 
-// 비순서 파서 — 스토리/색상/폰트(순서 무관)
+// 비순서 파서 — 스토리/색상/폰트/스타일시트(순서 무관)
 const parser = new XMLParser({
   ignoreAttributes: false,
   attributeNamePrefix: '@_',
   isArray: (name) =>
-    ['ParagraphStyleRange', 'CharacterStyleRange', 'Color'].includes(name),
+    ['ParagraphStyleRange', 'CharacterStyleRange', 'Color', 'ParagraphStyle'].includes(name),
 });
 
-// 순서보존 파서 — 스프레드 geometry(z-순서) + 스토리(줄바꿈 Br 순서) 보존.
+// 순서보존 파서 — 스프레드 geometry(z-순서) 보존.
 // parseTagValue:false → 텍스트(#text)를 숫자로 변환하지 않음(예: "2026" 보존).
 const orderedParser = new XMLParser({
   ignoreAttributes: false,
   attributeNamePrefix: '@_',
   preserveOrder: true,
   parseTagValue: false,
+});
+
+// 스토리 전용 순서보존 파서 — trimValues:false 로 Content 의 공백 보존.
+// 기본(trim)은 `<Content> </Content>`(단독 공백 run, 실측 u187)와 Content 끝공백을 파서 단계에서
+// 삼켜 per-run 오프셋이 어긋난다. 부작용(요소 사이 들여쓰기 '#text' 노드)은 keyOf 기반 순회가
+// 태그명으로 거르므로 무해. 폰트명 등 텍스트 값은 사용처에서 trim(실측: '태나다체   ' 끝공백).
+// ⚠️ 스프레드 geometry 는 기존 orderedParser 유지(좌표 회귀 금지 — 절대 규칙 #3).
+const storyParser = new XMLParser({
+  ignoreAttributes: false,
+  attributeNamePrefix: '@_',
+  preserveOrder: true,
+  parseTagValue: false,
+  trimValues: false,
 });
 
 const num = (s) => Number(s);
@@ -45,7 +58,12 @@ const keyOf = (node) => {
   return null;
 };
 const attrsOf = (node) => node[':@'] || {};
-const childrenOf = (node) => node[keyOf(node)] || [];
+// '#text' 리프는 값이 문자열 — 배열이 아니면 자식 없음으로 취급(문자열을 순회하면
+// 1글자 문자열이 자기 자신을 자식으로 갖는 무한 재귀가 된다. trimValues:false 도입으로 표면화).
+const childrenOf = (node) => {
+  const v = node[keyOf(node)];
+  return Array.isArray(v) ? v : [];
+};
 const findChildren = (node, tag) => childrenOf(node).filter((c) => keyOf(c) === tag);
 const findChild = (node, tag) => childrenOf(node).find((c) => keyOf(c) === tag);
 function deepFindOrdered(nodes, tag) {
@@ -136,14 +154,121 @@ const innerText = (node) =>
     .map((c) => (c['#text'] != null ? String(c['#text']) : ''))
     .join('');
 
+// ── 단락 스타일 시트(Styles.xml) ──
+// 실측(MA-348/LA-383): 상속 체인은 NormalParagraphStyle(고유 속성 0, BasedOn 만)
+// → [No paragraph style](전 속성 보유) 1단뿐이고, 캐릭터 스타일은 전부 빈
+// [No character style] — 따라서 ParagraphStyle 의 Justification/AutoLeading 만 해석한다.
+// (양 문서 모두 [No paragraph style]: Justification="LeftJustified", AutoLeading="120")
+
+/** 비순서 파스 트리에서 key 이름의 노드를 재귀로 전부 수집(중첩 StyleGroup 대비) */
+function deepCollect(obj, key, acc = []) {
+  if (obj == null || typeof obj !== 'object') return acc;
+  if (!Array.isArray(obj) && key in obj) {
+    const v = obj[key];
+    if (Array.isArray(v)) acc.push(...v);
+    else acc.push(v);
+  }
+  for (const k of Object.keys(obj)) {
+    if (k !== key) deepCollect(obj[k], key, acc);
+  }
+  return acc;
+}
+
+/** BasedOn 텍스트('#text' 또는 원시 문자열) 추출 */
+const basedOnText = (props) => {
+  const b = props?.BasedOn;
+  if (b == null) return null;
+  if (typeof b === 'object') return b['#text'] != null ? String(b['#text']) : null;
+  return String(b);
+};
+
 /**
- * Story_*.xml → { self, text, font, sizePt, fillColor, vertical } (순서보존 파서).
+ * Resources/Styles.xml → Map(styleSelf → { justification, autoLeadingPct, basedOn }).
+ * Self/AppliedParagraphStyle 형식: "ParagraphStyle/$ID/[No paragraph style]".
+ * BasedOn 값("$ID/...")은 "ParagraphStyle/" 접두를 붙여 정규화.
+ */
+export function parseParagraphStyles(xml) {
+  const o = parser.parse(xml);
+  const map = new Map();
+  for (const ps of deepCollect(o, 'ParagraphStyle')) {
+    if (!ps || ps['@_Self'] == null) continue;
+    let basedOn = basedOnText(ps.Properties);
+    if (basedOn && !basedOn.startsWith('ParagraphStyle/')) basedOn = `ParagraphStyle/${basedOn}`;
+    map.set(ps['@_Self'], {
+      justification: ps['@_Justification'] != null ? String(ps['@_Justification']) : null,
+      autoLeadingPct: ps['@_AutoLeading'] != null ? num(ps['@_AutoLeading']) : null,
+      basedOn,
+    });
+  }
+  return map;
+}
+
+/** 스타일 체인(BasedOn) 따라 attr 해석 — 순환 가드 10단 */
+function resolveParaStyleAttr(styles, styleSelf, key) {
+  if (!styles) return null;
+  let ref = styleSelf;
+  for (let hop = 0; hop < 10 && ref; hop++) {
+    const st = styles.get(ref);
+    if (!st) return null;
+    if (st[key] != null) return st[key];
+    ref = st.basedOn;
+  }
+  return null;
+}
+
+/**
+ * 텍스트 정규화(문자 단위) — 기존 문자열 정규화 `replace(/[ \t]+$/gm,'').trim()` 와
+ * 결과가 정확히 일치하도록 동일 규칙을 {ch,run,para} 배열에 적용한다(코드유닛 단위).
+ * per-run 오프셋은 반드시 이 '정규화 후' 텍스트 기준이어야 한다(실측 §5: u187 끝공백 탈락,
+ * u627/u74b 말미 Br-only run 통째 소멸).
+ */
+function normalizeStoryChars(chars) {
+  const out = [];
+  for (const c of chars) {
+    if (c.ch === '\n') {
+      // /[ \t]+$/gm — 각 줄 끝(개행 직전)의 스페이스/탭 제거
+      while (out.length && (out[out.length - 1].ch === ' ' || out[out.length - 1].ch === '\t')) out.pop();
+    }
+    out.push(c);
+  }
+  while (out.length && (out[out.length - 1].ch === ' ' || out[out.length - 1].ch === '\t')) out.pop();
+  // .trim() — 양 끝의 JS 공백문자(개행 포함) 제거. 단일 문자 trim 결과가 '' 인지가 동일 술어.
+  while (out.length && out[0].ch.trim() === '') out.shift();
+  while (out.length && out[out.length - 1].ch.trim() === '') out.pop();
+  return out;
+}
+
+/** 정규화된 {ch,idx} 배열에서 idx(>=0) 연속 구간 → [{idx,start,end}] */
+function rangesByIndex(normChars, key) {
+  const ranges = [];
+  normChars.forEach((c, i) => {
+    const v = c[key];
+    if (v == null || v < 0) return;
+    const last = ranges[ranges.length - 1];
+    if (last && last.idx === v && last.end === i) last.end = i + 1;
+    else ranges.push({ idx: v, start: i, end: i + 1 });
+  });
+  return ranges;
+}
+
+/**
+ * Story_*.xml → { self, text, font, sizePt, fillColor, vertical, runs, paragraphs, autoLeadingPct }.
  * 단락(ParagraphStyleRange) 사이 + 줄바꿈(Br)을 모두 '\n' 으로 보존 → 다단 텍스트 영역 이탈 방지.
  * vertical: StoryPreference@StoryOrientation="Vertical"(세로짜기). 회전(angle)이 아니라
  * 글자가 똑바로 선 채 위→아래로 쌓이는 CJK 세로조판 — 변환기에서 글자 단위 세로 배치로 근사.
+ *
+ * per-run 보존(A2):
+ *  - runs: [{ start, end, text, font, fontStyle, sizePt, fillColor, tracking, leadingPt, underline,
+ *    horizontalScale }] — start/end 는 '정규화 후' text 의 [start,end) 코드유닛 구간('\n' 포함 인덱싱).
+ *  - paragraphs: [{ start, end, justification }] — PSR 단위. Justification absent 시
+ *    AppliedParagraphStyle 의 BasedOn 체인으로 해석(실측: 기본 LeftJustified).
+ *  - leadingPt: CSR Properties/Leading type="unit" 의 pt 값, 그 외('auto' 포함 absent)는 'auto'
+ *    (실측: absent = AutoLeading 120%).
+ *  - font/sizePt/fillColor(스토리 단일값)는 기존 '첫 non-null 승자' 의미 그대로 유지(하위 호환).
  */
-function parseStory(xml) {
-  const top = orderedParser.parse(xml);
+function parseStory(xml, styleCtx = {}) {
+  const { paragraphStyles = null, autoLeadingPct = 120 } = styleCtx;
+  const top = storyParser.parse(xml);
   const story = deepFindOrdered(top, 'Story');
   if (!story) return null;
   const self = attrsOf(story)['@_Self'];
@@ -151,32 +276,109 @@ function parseStory(xml) {
   const vertical = storyPref
     ? attrsOf(storyPref)['@_StoryOrientation'] === 'Vertical'
     : false;
-  let text = '';
+  let rawText = '';
   let font;
   let sizePt;
   let fillColor;
+  const runDefs = []; // CSR 단위 스타일
+  const paraDefs = []; // PSR 단위 단락 속성
+  const chars = []; // { ch, run, para } — run/para 는 위 배열 인덱스, 단락 구분 '\n' 은 run=-1
+  const pushChars = (s, run, para) => {
+    // 코드유닛 단위(서러게이트 분리 포함) — 문자열 정규식 정규화와 결과 동치 보장
+    for (let i = 0; i < s.length; i++) chars.push({ ch: s[i], run, para });
+  };
   const psrs = findChildren(story, 'ParagraphStyleRange');
   psrs.forEach((psr, pi) => {
+    const pa = attrsOf(psr);
+    const justification =
+      pa['@_Justification'] != null
+        ? String(pa['@_Justification'])
+        : resolveParaStyleAttr(paragraphStyles, pa['@_AppliedParagraphStyle'], 'justification');
+    paraDefs.push({ justification: justification || null });
     for (const csr of findChildren(psr, 'CharacterStyleRange')) {
       const a = attrsOf(csr);
       if (sizePt == null && a['@_PointSize'] != null) sizePt = num(a['@_PointSize']);
       if (fillColor == null && a['@_FillColor'] != null) fillColor = a['@_FillColor'];
       const props = findChild(csr, 'Properties');
       const af = props ? findChild(props, 'AppliedFont') : null;
-      if (!font && af) {
-        const f = innerText(af);
-        if (f) font = f;
+      const runFont = af ? innerText(af).trim() : ''; // trimValues:false — 폰트명 끝공백 제거(실측 '태나다체   ')
+      if (!font && runFont) font = runFont;
+      // Leading: <Properties><Leading type="unit">14</Leading> 만 명시 pt — 그 외는 'auto'
+      let leadingPt = 'auto';
+      const leadNode = props ? findChild(props, 'Leading') : null;
+      if (leadNode && attrsOf(leadNode)['@_type'] === 'unit') {
+        const lv = innerText(leadNode);
+        if (lv !== '' && !Number.isNaN(num(lv))) leadingPt = num(lv);
       }
+      const runIdx =
+        runDefs.push({
+          font: runFont || null,
+          fontStyle: a['@_FontStyle'] != null ? String(a['@_FontStyle']) : null,
+          sizePt: a['@_PointSize'] != null ? num(a['@_PointSize']) : null,
+          fillColor: a['@_FillColor'] != null ? String(a['@_FillColor']) : null,
+          tracking: a['@_Tracking'] != null ? num(a['@_Tracking']) : 0,
+          leadingPt,
+          underline: a['@_Underline'] === 'true',
+          horizontalScale: a['@_HorizontalScale'] != null ? num(a['@_HorizontalScale']) : 100,
+        }) - 1;
       // CSR 자식을 순서대로: Content=텍스트, Br=줄바꿈
       for (const child of childrenOf(csr)) {
         const k = keyOf(child);
-        if (k === 'Content') text += innerText(child);
-        else if (k === 'Br') text += '\n';
+        if (k === 'Content') {
+          const t = innerText(child);
+          rawText += t;
+          pushChars(t, runIdx, pi);
+        } else if (k === 'Br') {
+          rawText += '\n';
+          chars.push({ ch: '\n', run: runIdx, para: pi });
+        }
       }
     }
-    if (pi < psrs.length - 1) text += '\n'; // 단락 구분
+    if (pi < psrs.length - 1) {
+      rawText += '\n'; // 단락 구분
+      chars.push({ ch: '\n', run: -1, para: pi });
+    }
   });
-  return { self, text: text.replace(/[ \t]+$/gm, '').trim(), font, sizePt, fillColor, vertical };
+
+  const legacyText = rawText.replace(/[ \t]+$/gm, '').trim();
+  const normChars = normalizeStoryChars(chars);
+  const normText = normChars.map((c) => c.ch).join('');
+
+  let runs = [];
+  let paragraphs = [];
+  let runFallback = false;
+  if (normText === legacyText) {
+    runs = rangesByIndex(normChars, 'run').map((r) => ({
+      start: r.start,
+      end: r.end,
+      text: normText.slice(r.start, r.end),
+      ...runDefs[r.idx],
+    }));
+    paragraphs = rangesByIndex(normChars, 'para').map((r) => ({
+      start: r.start,
+      end: r.end,
+      justification: paraDefs[r.idx]?.justification || null,
+    }));
+  }
+  else {
+    // (방어) 문자배열 정규화 ≠ 문자열 정규화 — 절대 일어나면 안 되지만, 어긋나면 per-run 을
+    // 포기하고 단일 스타일 폴백(runs:[])로 안전 강하. 크래시/오프셋 오염 금지.
+    // runFallback 신호로 호출측(toSpreadTemplate)이 경고를 노출해 운영 중 감지 가능하게 한다.
+    runFallback = true;
+  }
+
+  return {
+    self,
+    text: legacyText,
+    font,
+    sizePt,
+    fillColor,
+    vertical,
+    runs,
+    paragraphs,
+    runFallback,
+    autoLeadingPct,
+  };
 }
 
 function deepFind(obj, key) {
@@ -229,7 +431,9 @@ const rgbHex = (r, g, b) =>
   '#' + [r, g, b].map((v) => Math.max(0, Math.min(255, v | 0)).toString(16).padStart(2, '0')).join('');
 
 function parseFonts(xml) {
-  const families = [...xml.matchAll(/<FontFamily\b[^>]*\bName="([^"]+)"/g)].map((m) => m[1]);
+  // 폰트명 끝공백 trim — IDML 원본에 '태나다체   ' 같은 패딩이 실존(실측). textbox fontFamily
+  // (parseStory, trim 적용)와 시딩 목록이 같은 표기를 쓰도록 정규화.
+  const families = [...xml.matchAll(/<FontFamily\b[^>]*\bName="([^"]+)"/g)].map((m) => m[1].trim());
   return [...new Set(families)];
 }
 
@@ -283,11 +487,20 @@ export async function parseIdml(buffer) {
     ? parseBleedPt(await zip.files['Resources/Preferences.xml'].async('string'))
     : null;
 
+  // 단락 스타일 시트(Justification/AutoLeading 기본값 해석용)
+  const paragraphStyles = zip.files['Resources/Styles.xml']
+    ? parseParagraphStyles(await zip.files['Resources/Styles.xml'].async('string'))
+    : null;
+  // 문서 기본 AutoLeading(%) — 루트 [No paragraph style] 보유(실측: 양 문서 120)
+  const rootPara = paragraphStyles?.get('ParagraphStyle/$ID/[No paragraph style]');
+  const autoLeadingPct = rootPara?.autoLeadingPct != null ? rootPara.autoLeadingPct : 120;
+  const styleCtx = { paragraphStyles, autoLeadingPct };
+
   // 스토리(텍스트)
   const stories = new Map();
   for (const name of Object.keys(zip.files)) {
     if (/^Stories\/Story_.*\.xml$/.test(name)) {
-      const st = parseStory(await zip.files[name].async('string'));
+      const st = parseStory(await zip.files[name].async('string'), styleCtx);
       if (st && st.self) stories.set(st.self, st);
     }
   }

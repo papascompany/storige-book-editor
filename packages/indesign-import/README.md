@@ -58,8 +58,9 @@ src/
     regions.mjs   5영역 분할 + resolveRegionAtX + 정규화 앵커
     path.mjs      PathGeometry → SVG/Fabric path 'd' 복원(베지어)
     *.test.mjs    node:test (의존성 0)
-  idml/reader.mjs              IDML ZIP+XML 파싱 → IdmlDoc
+  idml/reader.mjs              IDML ZIP+XML 파싱 → IdmlDoc (스토리 per-run 스타일/단락 속성 보존)
   convert/toSpreadTemplate.mjs IdmlDoc → 표지 펼침면 DTO
+  convert/textStyles.mjs       per-run → fabric 5.5 매핑(styles/lineHeight/charSpacing/textAlign)
   convert/toSinglePageTemplate.mjs  PSD → 단일 페이지 DTO
   psd/reader.mjs              PSD 파싱 → 레이어 분리(텍스트/래스터)
   psd/rasterizePsd.mjs        비텍스트 레이어 합성 → 배경 PNG

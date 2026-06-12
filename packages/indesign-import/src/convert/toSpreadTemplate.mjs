@@ -16,6 +16,7 @@ import {
 } from '../geometry/regions.mjs';
 import { buildPathD, transformedBBox } from '../geometry/path.mjs';
 import { halvesOf, contentToSceneX, contentToSceneY } from '../geometry/centerOrigin.mjs';
+import { buildStoryTypography, verticalLineHeightFromTracking } from './textStyles.mjs';
 
 const PATH_TYPES = new Set(['Polygon', 'GraphicLine']);
 
@@ -98,6 +99,7 @@ export function toSpreadTemplate(doc, opts = {}) {
   const spotNames = new Set(); // 별색(Spot) 감지 — 후가공/별색 의도 확인 경고용
   const placedFrames = []; // 배치(placed) 이미지 프레임 — IDML 에 원본 미포함 → 플레이스홀더
   const verticalFrames = []; // 세로짜기(StoryOrientation=Vertical) 프레임 — 글자 단위 세로 배치 근사
+  const textWarnings = new Set(); // 텍스트 매핑 경고(per-run 근사/미해석 색) — 중복 제거용
 
   // 로컬점([x,y]) → 캔버스 px({x,y}) 매퍼: world transform → 스프레드 → 캔버스 원점보정 → px
   const mapLocalToCanvas = (transform) => ([lx, ly]) => {
@@ -211,6 +213,31 @@ export function toSpreadTemplate(doc, opts = {}) {
     if (it.type === 'TextFrame') {
       obj.type = 'textbox';
       obj.text = it.story?.text || '';
+      const ptToPx = (pt) => round2(mmToPx(ptToMm(pt), dpi));
+      // per-run 타이포그래피(A2+A3) — runs 가 있으면(신규 reader) 지배값+per-char styles,
+      // 없으면(수제 doc/구버전) 기존 '첫 non-null' 폴백. 3모드(full/flat-spread/flat-spine)
+      // 모두 이 textbox 산출물을 그대로 재사용하므로 여기 한 곳이 공통 적용 지점이다.
+      const typo = it.story?.runs?.length
+        ? buildStoryTypography(it.story, {
+            ptToPx,
+            resolveFillHex: (colorId) => {
+              const c = resolveColor(colorId, doc.colors);
+              if (c.unknown) {
+                textWarnings.add(`미해석 텍스트 색상: ${c.unknown} — 검정으로 대체됨(그라디언트 등)`);
+                return { hex: '#000000' };
+              }
+              if (c.isSpot) spotNames.add(c.spotName);
+              return { hex: c.isNone ? '#000000' : c.hex || '#000000' };
+            },
+          })
+        : null;
+      if (it.story?.runFallback) {
+        // reader 의 방어 강하(문자배열 정규화 ≠ 문자열 정규화) — 발생하면 per-run 스타일이
+        // 통째로 빠진 채 변환되므로 운영에서 감지 가능하게 경고로 표면화한다.
+        textWarnings.add(
+          `텍스트(${it.self}): per-run 정규화 불일치 — 단일 스타일 폴백 적용(혼합 서식 유실 가능)`
+        );
+      }
       // 세로짜기(StoryOrientation=Vertical) — fabric 은 CJK 세로조판 미지원이라 글자 단위
       // 세로 배치(한 글자 = 한 줄)로 근사한다. 이를 빠뜨리면 세로 프레임(좁고 긴) 텍스트가
       // 거대한 가로 한 줄로 렌더되어 캔버스 밖까지 잘려나간다(2026-06-11 LA-383 재현).
@@ -220,17 +247,48 @@ export function toSpreadTemplate(doc, opts = {}) {
           .map((line) => [...line].join('\n'))
           .join('\n');
         obj.textAlign = 'center';
-        obj.lineHeight = 1;
+        // 세로 자간(Tracking)은 글자 진행(세로) 간격 → 줄전진으로 환산.
+        // (charSpacing 은 1글자/줄 구조에서 측정 상쇄로 무효과 — 실측 §4.)
+        obj.lineHeight = verticalLineHeightFromTracking(typo?.base.tracking ?? 0);
         verticalFrames.push(it.self);
       }
       // ⚠️ fabric 5.5: styles 키가 아예 없으면 fromObject 의 stylesFromArray(undefined)가
       // undefined 를 전파 → 이후 toObject(저장/PDF)에서 stylesToArray 가 크래시(무한로딩).
       // 빈 객체라도 반드시 출력한다.
       obj.styles = {};
-      if (it.story?.sizePt) obj.fontSize = round2(mmToPx(ptToMm(it.story.sizePt), dpi)); // pt→px
-      if (it.story?.font) obj.fontFamily = it.story.font;
-      const tf = resolveColor(it.story?.fillColor, doc.colors);
-      obj.fill = tf.isNone ? '#000000' : tf.hex || '#000000';
+      let textFillId = it.story?.fillColor;
+      if (typo) {
+        if (typo.base.sizePt) obj.fontSize = ptToPx(typo.base.sizePt); // pt→px(지배값)
+        if (typo.base.font) obj.fontFamily = typo.base.font;
+        if (typo.base.fontWeight !== 400) obj.fontWeight = typo.base.fontWeight;
+        if (typo.base.fontStyle === 'italic') obj.fontStyle = 'italic';
+        if (typo.base.underline) obj.underline = true;
+        textFillId = typo.base.fillColor;
+        if (!it.story.vertical) {
+          obj.textAlign = typo.textAlign;
+          if (typo.lineHeight != null) obj.lineHeight = typo.lineHeight;
+          if (typo.charSpacing) obj.charSpacing = typo.charSpacing;
+          // 전 run 동일 속성이면 {} 유지(불필요 비대 방지) — multiStyle 일 때만 채움.
+          // styles 인덱스는 obj.text(=story.text, '\n' 분리 라인/라인내 문자) 기준.
+          if (typo.multiStyle) obj.styles = typo.styles;
+        } else if (typo.multiStyle) {
+          // 글자단위 분해가 line/char 인덱스를 바꾸므로 세로짜기는 단일 스타일 유지(택1).
+          // 근거: 실측 세로 4스토리 전부 단일 run — 리맵 이득 0, 인덱스 오염 리스크만 존재.
+          textWarnings.add(
+            `세로쓰기 혼합 스타일(${it.self}) — 글자단위 근사와의 충돌 방지를 위해 대표 스타일로 단일화`
+          );
+        }
+        for (const w of typo.warnings) textWarnings.add(`텍스트(${it.self}): ${w}`);
+      } else {
+        if (it.story?.sizePt) obj.fontSize = ptToPx(it.story.sizePt); // pt→px(폴백)
+        if (it.story?.font) obj.fontFamily = it.story.font;
+      }
+      const tf = resolveColor(textFillId, doc.colors);
+      if (tf.unknown) {
+        // 종전엔 경고 없이 검정 fallback(도형 fill 만 경고) — 그라디언트 등 미해석 색을 가시화
+        textWarnings.add(`미해석 텍스트 색상: ${tf.unknown} — 검정으로 대체됨(그라디언트 등)`);
+      }
+      obj.fill = tf.isNone || tf.unknown ? '#000000' : tf.hex || '#000000';
       if (tf.cmyk) obj.cmykFill = tf.cmyk;
       if (tf.isSpot) { obj.spotColor = tf.spotName; spotNames.add(tf.spotName); }
       // width/height 는 프레임 자체 치수(회전 전)를 유지 → angle(예: 책등 세로쓰기 90°)
@@ -239,6 +297,9 @@ export function toSpreadTemplate(doc, opts = {}) {
 
     objects.push(obj);
   }
+
+  // 텍스트 매핑 경고(per-run 근사 한계/미해석 색상) — 프레임 간 중복 제거 후 병합
+  warnings.push(...textWarnings);
 
   // 세로짜기 근사 경고 — 줄간격/단(column) 구성은 원본과 다를 수 있음
   if (verticalFrames.length) {

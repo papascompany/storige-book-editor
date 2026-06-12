@@ -1,5 +1,9 @@
 import Editor from './Editor'
 
+// fabric 5.5.2 stylesToArray 갭 라인 병합 버그 패치 — 패키지 로드 시 무조건 부착
+// (toObject/toJSON/toDatalessJSON 등 모든 직렬화 경로가 fabric.util 을 호출 시점 조회)
+import './utils/textStyles'
+
 export { default as RulerPlugin } from './plugins/RulerPlugin'
 export { default as WorkspacePlugin } from './plugins/WorkspacePlugin'
 export { default as ServicePlugin } from './plugins/ServicePlugin'
