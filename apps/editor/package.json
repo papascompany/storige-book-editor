@@ -34,7 +34,7 @@
     "@storige/ai": "workspace:*",
     "@storige/canvas-core": "workspace:*",
     "@storige/types": "workspace:*",
-    "axios": "^1.7.9",
+    "axios": "^1.16.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "fabric": "^5.5.2",
