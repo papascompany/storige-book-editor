@@ -29,7 +29,7 @@
     "@storige/types": "workspace:^",
     "@techstark/opencv-js": "^4.9.0-release.3",
     "@webtoon/psd": "^0.4.0",
-    "axios": "^1.7.2",
+    "axios": "^1.16.0",
     "d3": "^7.9.0",
     "events": "^3.3.0",
     "fabric": "^5.5.2",

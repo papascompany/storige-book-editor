@@ -56,7 +56,21 @@ class HistoryPlugin extends PluginBase {
     this._editor.emit('historyUpdate', historyUndo.length, historyRedo.length)
   }
 
+  /**
+   * 캔버스가 화면에 표시 중인지 확인 (DraggingPlugin.isCanvasVisible 과 동일 가드)
+   * 멀티페이지 환경에서 hotkeys 가 전역 등록되어 ctrl+z 한 번에 모든 페이지의
+   * undo/redo 가 동시에 실행되는 문제 차단 — 보이는 캔버스만 동작.
+   */
+  private isCanvasVisible(): boolean {
+    if (!this._canvas) return false
+    const el = this._canvas.wrapperEl || this._canvas.getElement()?.parentElement
+    if (!el) return false
+    return el.offsetParent !== null && getComputedStyle(el).display !== 'none'
+  }
+
   undo() {
+    // 숨겨진(비활성 페이지) 캔버스에서는 undo 금지 — 전 페이지 동시 undo 차단
+    if (!this.isCanvasVisible()) return
     console.log('undo')
     this._canvas.undo(async () => {
       // undo 완료 후 추가 처리
@@ -73,6 +87,8 @@ class HistoryPlugin extends PluginBase {
   }
 
   redo() {
+    // 숨겨진(비활성 페이지) 캔버스에서는 redo 금지 — 전 페이지 동시 redo 차단
+    if (!this.isCanvasVisible()) return
     this._canvas.redo(async () => {
       // redo 완료 후 추가 처리
       this._canvas.offHistory()

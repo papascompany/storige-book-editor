@@ -105,8 +105,8 @@ interface AppActions {
   // 설정 업데이트
   updateAllWorkspaceSettings: (settings: CanvasSettings) => void
 
-  // 스크린샷
-  takeCanvasScreenshot: () => void
+  // 스크린샷 — changedIndex 를 주면 해당 캔버스만 재캡처, 생략하면 전체 재캡처
+  takeCanvasScreenshot: (changedIndex?: number) => void
 
   // 렌더링
   render: (immediate?: boolean) => void
@@ -193,9 +193,23 @@ function isTouchEnv(): boolean {
 const TOUCH_ENV = isTouchEnv()
 const SCREENSHOT_DEBOUNCE_MS = TOUCH_ENV ? 2000 : 200
 
-const debouncedTakeScreenshot = debounce((allCanvas: any[], set: any) => {
+// 썸네일 목표 폭(px) — 소비처는 PageItem(w-20=80px)/SidePanel(h-120px, 패널폭 ≤~280px).
+// retina 대비 320px 이면 충분. 워크스페이스 crop 캡처에 multiplier 를 적용해
+// 풀해상도 PNG 인코딩(페이지당 수백 KB~수 MB)을 수십 KB 수준으로 축소.
+const THUMBNAIL_TARGET_WIDTH = 320
+
+// 재캡처 대상 인덱스 집합. 'all' 이면 전체 재캡처(페이지 추가/삭제/재정렬 등
+// 인덱스가 이동하는 경우). 변경 발생 캔버스만 재캡처해 100p 문서에서
+// 편집 1회당 toDataURL 100회 → 1회로 줄인다.
+let pendingScreenshotIndices: Set<number> | 'all' = 'all'
+
+const debouncedTakeScreenshot = debounce((allCanvas: any[], set: any, get: any) => {
   // 캔버스가 유효한지 확인
   if (!allCanvas || allCanvas.length === 0) return
+
+  // 이번 실행분 dirty 스냅샷을 가져가고 누적 집합은 리셋
+  const dirty = pendingScreenshotIndices
+  pendingScreenshotIndices = new Set<number>()
 
   // 모바일/터치 디바이스에서는 썸네일 생성을 스킵 — toDataURL 비용이 iOS Safari
   // 메모리 한계와 만나 페이지 크래시를 유발. 썸네일이 필요한 PagePanel 등은
@@ -206,8 +220,13 @@ const debouncedTakeScreenshot = debounce((allCanvas: any[], set: any) => {
     return
   }
 
-  const newScreenshots: string[] = []
+  // 변경 없는 인덱스는 기존 썸네일 유지 (길이는 현재 캔버스 수에 맞춤)
+  const prevScreenshots: string[] = get().screenshots || []
+  const newScreenshots: string[] = allCanvas.map((_: FabricCanvas, i: number) => prevScreenshots[i] ?? '')
+
   allCanvas.forEach((cvs: FabricCanvas, index: number) => {
+    // 변경 발생 캔버스만 재캡처 (dirty === 'all' 이면 전체)
+    if (dirty !== 'all' && !dirty.has(index)) return
     try {
       // 캔버스가 disposed되었는지 확인
       if (cvs && !cvs.disposed && cvs.getContext()) {
@@ -215,6 +234,10 @@ const debouncedTakeScreenshot = debounce((allCanvas: any[], set: any) => {
         const workspace = cvs.getObjects().find((obj: any) => obj.id === 'workspace')
         if (workspace) {
           const bound = workspace.getBoundingRect()
+          // 썸네일 목표폭/현재폭 비율로 축소 캡처 (업스케일은 하지 않음)
+          const multiplier = bound.width > 0
+            ? Math.min(1, THUMBNAIL_TARGET_WIDTH / bound.width)
+            : 1
           newScreenshots[index] = cvs.toDataURL({
             format: 'png',
             quality: 0.8,
@@ -222,6 +245,7 @@ const debouncedTakeScreenshot = debounce((allCanvas: any[], set: any) => {
             top: bound.top,
             width: bound.width,
             height: bound.height,
+            multiplier,
           })
         } else {
           newScreenshots[index] = cvs.toDataURL({
@@ -344,7 +368,17 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
   },
 
   clearAll: () => {
-    const { allCanvas } = get()
+    const { allCanvas, allEditors } = get()
+
+    // 에디터(플러그인 리스너 + 전역 hotkeys + contextMenu) 먼저 정리
+    // — 캔버스 dispose 후에 정리하면 플러그인 off() 가 dispose 된 캔버스를 만진다
+    allEditors.forEach((editor: Editor) => {
+      try {
+        editor?.dispose()
+      } catch (e) {
+        console.warn('에디터 dispose 중 오류 발생:', e)
+      }
+    })
 
     // 모든 캔버스 DOM 요소 정리
     allCanvas.forEach((canvas: FabricCanvas) => {
@@ -381,6 +415,9 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
     debouncedTakeScreenshot.cancel()
     debouncedRenderFn.cancel()
     debouncedUpdateObjectsHandler.cancel()
+
+    // 다음 세션 첫 캡처는 전체 재캡처
+    pendingScreenshotIndices = 'all'
 
     // 타이머 정리
     if (debounceTimer) {
@@ -681,10 +718,13 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
         get().setPage(newCurrentIdx)
       }
     }
+
+    // 재정렬로 인덱스가 이동했으므로 전체 재캡처 (부분 갱신 시 썸네일 어긋남)
+    get().takeCanvasScreenshot()
   },
 
   deletePage: (canvasId: string) => {
-    const { allCanvas, allEditors, setPage, updateObjects } = get()
+    const { allCanvas, allEditors, setPage, updateObjects, takeCanvasScreenshot } = get()
     const currentIndex = allCanvas.findIndex((cvs: FabricCanvas) => cvs.id === get().canvas?.id)
 
     if (allCanvas.length <= 1) {
@@ -698,6 +738,7 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
     const newCanvases = [...allCanvas]
     const newEditors = [...allEditors]
     const targetCanvas = newCanvases[indexOfCanvas]
+    const targetEditor = newEditors[indexOfCanvas]
 
     // DOM에서 캔버스 컨테이너 요소 찾기 - wrapperEl 사용
     const containerToRemove = targetCanvas.wrapperEl
@@ -708,6 +749,15 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
       targetCanvas.clear()
     } catch (err) {
       console.error('캔버스 clear 중 오류:', err)
+    }
+
+    // 에디터 정리 (캔버스 dispose 전) — 플러그인 리스너 off / 전역 hotkeys unbind /
+    // contextMenu DOM 리스너 해제. 누락 시 삭제된 페이지의 단축키 핸들러가 잔존해
+    // dispose 된 캔버스를 건드린다 (메모리 누수 + TypeError 위험)
+    try {
+      targetEditor?.dispose()
+    } catch (err) {
+      console.error('에디터 dispose 중 오류:', err)
     }
 
     // DOM에서 제거 (dispose 전에 수행)
@@ -754,6 +804,8 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
     }
 
     updateObjects()
+    // 페이지 삭제로 인덱스가 이동했으므로 전체 재캡처 (부분 갱신 시 썸네일 어긋남)
+    takeCanvasScreenshot()
 
     // 내지 삭제 시 책등 너비 재계산
     recalculateSpineWidth().then((result) => {
@@ -903,7 +955,10 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
       newObjects.reverse()
 
       // 스크린샷 및 객체 목록 상태 업데이트
-      get().takeCanvasScreenshot()
+      // 변경이 발생한 캔버스(현재 캔버스)만 재캡처 — 100p 문서에서 매 편집마다
+      // 전 페이지 toDataURL 100회가 돌던 것을 1회로 축소
+      const changedIndex = get().allCanvas.findIndex((c: FabricCanvas) => c.id === cvs.id)
+      get().takeCanvasScreenshot(changedIndex)
       set({ objects: newObjects })
     } catch (error) {
       console.error('updateObjects 에러:', error)
@@ -979,9 +1034,16 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
   },
 
   // 스크린샷 (외부 debounce 함수 사용)
-  takeCanvasScreenshot: () => {
+  // changedIndex 지정 시 해당 캔버스만 재캡처(나머지는 기존 썸네일 유지),
+  // 생략 시 전체 재캡처(페이지 추가/삭제/재정렬 등 인덱스 이동 케이스)
+  takeCanvasScreenshot: (changedIndex?: number) => {
     const { allCanvas } = get()
-    debouncedTakeScreenshot(allCanvas, set)
+    if (typeof changedIndex === 'number' && changedIndex >= 0 && pendingScreenshotIndices !== 'all') {
+      pendingScreenshotIndices.add(changedIndex)
+    } else if (typeof changedIndex !== 'number' || changedIndex < 0) {
+      pendingScreenshotIndices = 'all'
+    }
+    debouncedTakeScreenshot(allCanvas, set, get)
   },
 
   // 렌더링

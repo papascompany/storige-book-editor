@@ -921,7 +921,11 @@ class SpreadPlugin extends PluginBase {
     if (this._focusOverlay) {
       this._canvas.remove(this._focusOverlay)
       this._focusOverlay = null
-      this._canvas.requestRenderAll()
+      // destroyed() 가 Editor.dispose 경유로 실제 호출되면서(ED-2) 캔버스 dispose 이후에도
+      // 도달 가능 — disposed 캔버스에 RAF 렌더를 예약하면 비동기 TypeError 가 나므로 가드
+      if (!(this._canvas as any).disposed) {
+        this._canvas.requestRenderAll()
+      }
     }
   }
 }
