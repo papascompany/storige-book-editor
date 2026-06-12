@@ -9,7 +9,7 @@ import { useAppStore } from '@/stores/useAppStore'
 import { templatesApi, type Template, type TemplateSet } from '@/api/templates'
 import { sessionsApi } from '@/api/sessions'
 import { cn } from '@/lib/utils'
-import type { TemplatePlugin, SpreadPlugin } from '@storige/canvas-core'
+import { core, type TemplatePlugin, type SpreadPlugin } from '@storige/canvas-core'
 import type { TemplateType, TemplateSetType, SpreadSpec } from '@storige/types'
 
 type TabType = 'templateSet' | 'template'
@@ -181,7 +181,9 @@ export const TemplatePanel = memo(function TemplatePanel({
         if (plugin && Array.isArray(objects) && objects.length > 0) {
           await new Promise<void>((resolve) => {
             fabric.util.enlivenObjects(
-              objects as unknown as fabric.Object[],
+              // 교차출처 이미지 crossOrigin:'anonymous' 주입 (캔버스 taint 방어 —
+              // core.ensureImageCrossOrigin 참조. dataURL/동일출처 불변)
+              core.ensureImageCrossOrigin(objects) as unknown as fabric.Object[],
               async (enlivened: fabric.Object[]) => {
                 try {
                   await plugin.replaceTemplate(enlivened)

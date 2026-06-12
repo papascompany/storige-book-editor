@@ -302,8 +302,13 @@ class ServicePlugin extends PluginBase {
       if (parsed && typeof parsed === 'object' && ('width' in parsed || 'height' in parsed)) {
         delete parsed.width
         delete parsed.height
-        loadInput = parsed
       }
+      // ⚠️ 교차출처 이미지 crossOrigin:'anonymous' 주입 (2026-06-12, taint 방어).
+      //   변환기 출력/기존 등록 템플릿의 image 객체에 crossOrigin 이 없으면 fabric 이
+      //   비-CORS 모드로 로드 → 캔버스 taint → 썸네일 자동저장/미리보기 toDataURL 이
+      //   SecurityError. 로드 입력 단계에서 주입해 기존 템플릿을 재가져오기 없이 구제.
+      //   dataURL/동일출처는 불변 — core.ensureImageCrossOrigin 참조.
+      loadInput = parsed && typeof parsed === 'object' ? core.ensureImageCrossOrigin(parsed) : parsed
     } catch {
       loadInput = jsonStr
     }

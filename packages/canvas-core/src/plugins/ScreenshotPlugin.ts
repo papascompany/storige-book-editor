@@ -8,6 +8,7 @@ import { fabric } from 'fabric'
 import Editor from '../Editor'
 import CanvasHotkey from '../models/CanvasHotkey'
 import { PluginBase, PluginOption } from '../plugin'
+import { core } from '../utils'
 
 /**
  * 스크린샷 옵션
@@ -223,9 +224,10 @@ class ScreenshotPlugin extends PluginBase {
         backgroundColor
       })
 
-      // JSON 로드
+      // JSON 로드 (교차출처 이미지 crossOrigin 주입 — 썸네일 toDataURL taint 방어)
+      const loadInput = core.ensureImageCrossOrigin(json)
       await new Promise<void>((resolve, reject) => {
-        tempCanvas.loadFromJSON(json, () => {
+        tempCanvas.loadFromJSON(loadInput, () => {
           tempCanvas.renderAll()
           resolve()
         })
