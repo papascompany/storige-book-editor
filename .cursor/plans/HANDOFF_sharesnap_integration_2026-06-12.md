@@ -209,3 +209,39 @@ Headers: X-API-Key: {STORIGE_API_KEY}
 2. **상품 구성**: 어떤 인쇄 상품? (포토북/카드/낱장 등 — S6 템플릿셋 등록 범위 결정)
 3. **웹훅 사용 여부**: push 받을 endpoint URL (S4) vs 폴링만
 4. **회원 체계**: memberSeqno 로 쓸 고유번호 필드 확정
+
+---
+
+## 6. ShareSnap 평가서 검증 결과 (2026-06-12 추가)
+
+ShareSnap 세션의 `docs/storige-integration-assessment.md` 평가서를 storige 코드 기준으로 전수 검증했다. **주장 전부 사실 확인**:
+
+| 평가서 주장 | 검증 | 근거 |
+|---|---|---|
+| 외부 사진 주입 인터페이스 없음 | ✅ 사실 | `useImageStore.ts` — 이미지 패널은 `selectFiles`/`File` 로컬 업로드 전용. URL 주입 표면 없음 |
+| 캔버스 핀치줌 미구현 | ✅ 사실 | `docs/MOBILE_TOUCH_UI.md` §개선과제 — "캔버스 자체 핀치-투-줌 제스처 미구현" 명시 |
+| PDF 1차 생성이 브라우저 실행 | ✅ 사실 | `useWorkSave.completeSpreadWork` → `saveMultiPagePDFAsBlob`(클라 300dpi) → 업로드. 워커는 합성/검증만 |
+| CSP frame-ancestors 개발 허용 | ✅ 사실 | `apps/editor/vercel.json` — `localhost:3000`, `*.vercel.app` 포함 |
+| Fabric 5.5.2 + 커스텀 속성 다수 → 직접 JSON 조작 불가 | ✅ 타당 | `storige_session_id` 참조 모델 권장 동의 (fabric_data 직저장 금지) |
+
+**완화 사실 1건**: "사진 주입" 갭은 평가보다 작다 — 캔버스 코어에 `imageFromURL` + 잠금배경 배치 인프라가 이미 가동 중(내지 PDF 가이드가 이 경로 사용). 신규 개발은 **노출 표면(API/패널 탭)** 이지 렌더링 엔진이 아니다.
+
+### 6.1 Storige 측 신규 개발 항목 (§2 표에 추가)
+
+| # | 작업 | 설계 방향 | 추정 |
+|---|------|----------|------|
+| D1 | **외부 사진 주입** | ① 세션 `metadata.externalPhotos: [{url, name, thumbnailUrl?}]` — 호스트 서버가 세션 생성 시(또는 PATCH) 주입 ② 편집기 이미지 패널에 "공유방 사진" 탭 — 목록 렌더 + 탭하면 `imageFromURL` 로 캔버스 추가 ③ (선택) postMessage `host.addImages` 명령. CORS: 사진 호스트(Supabase Storage)가 editor origin 허용 필요 | 3~5일 |
+| D2 | **캔버스 핀치-투-줌** | Fabric `touch:gesture` 또는 pointer events 2지 추적 → `canvas.zoomToPoint`. 기존 `touch-action: none` 기반이라 충돌 없음. WorkspacePlugin 줌 API 재사용 | 3~5일 |
+| D3 | **사진+코멘트 자동배치** (협의) | 표준 계약 밖. 권장: 템플릿에 이미지 프레임(placeholder) N개 정의 → `externalPhotos` 순서대로 자동 채움 + 코멘트는 텍스트 placeholder. D1 완료 후 별도 스코프 | 미정 (결정 ②) |
+
+### 6.2 리스크 대응 방침
+
+1. **브라우저 PDF 생성 타임아웃(24p/180초 실측)**: 단기 = sharesnap 포토북 `pageCountRange` 상한 정책(모바일 기준 ≤24~32p 권장, 기존 제본별 페이지 가드 A13 인프라 재사용). 장기 = 워커 서버렌더(GS 래스터 인프라 존재하나 별도 프로젝트, 합성 아닌 1차 생성까지 워커 이관은 대규모).
+2. **표지 모델**: storige 책 상품의 네이티브 모델 = 스프레드(뒤표지+책등+앞표지 단일 캔버스, 책등 가변폭). ShareSnap이 이를 수용하는 것을 강력 권장 — 분리 모델 신규 개발은 무결성 체인(metadata.spread ↔ cover.pdf MediaBox 검증) 전체를 재설계해야 함.
+
+### 6.3 ShareSnap 어댑터 계층 (평가서 동의 + 보강)
+
+- `photobook_pages.fabric_data` 직저장 ❌ → **`storige_session_id` 참조 모델** ✅ (§3.4의 sessionId 저장과 동일)
+- `/api/storige/*` 서버 어댑터: API Key 서버 전용 (§3.2와 동일)
+- **Supabase UUID ↔ memberSeqno 매핑**: shop-session의 `memberSeqno`는 정수 필수. 권장 = sharesnap DB에 `users.storige_member_no BIGINT` (시퀀스/IDENTITY) 컬럼 추가, UUID당 1회 발급·영구 고정. 해시 변환은 충돌 위험으로 비권장.
+- 사진 URL 수명: `externalPhotos` URL은 편집기가 로드 시점에 fetch — **만료되는 signed URL 금지**, public bucket 또는 장수명 URL 사용. 재편집 시에도 같은 URL로 다시 로드됨을 유의.
