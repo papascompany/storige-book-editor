@@ -40,6 +40,8 @@ export function toSinglePageTemplate(parsed, background, opts = {}) {
       type: 'image',
       id: 'psd-artwork',
       src: background.dataUrl,
+      // 캔버스 taint 방어 (IDML idml-artwork 와 동일 — admin src 치환 후 교차출처 CORS 로드)
+      crossOrigin: 'anonymous',
       // 콘텐츠 중앙원점: 배경(페이지 전체) 중심=(0,0). originX/originY='center'+left/top=0 이면 꽉 참.
       originX: 'center',
       originY: 'center',

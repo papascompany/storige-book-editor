@@ -662,7 +662,8 @@ fabric.Canvas.prototype._loadHistory = function (
       const addObjectsAsync = () => {
         return new Promise<void>((resolve) => {
           fabric.util.enlivenObjects(
-            objectsToAdd,
+            // 교차출처 이미지 crossOrigin 주입 (undo/redo 재생성 시 taint 방어)
+            core.ensureImageCrossOrigin(objectsToAdd),
             (enlivenedObjects) => {
               enlivenedObjects.forEach((obj) => {
                 // SVG 요소인 경우 특별 처리

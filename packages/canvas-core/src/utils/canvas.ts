@@ -1036,14 +1036,99 @@ export namespace core {
   }
 
   /**
+   * 이미지 객체 crossOrigin 새니타이저 (cross-origin canvas taint 방어, 2026-06-12).
+   *
+   * fabric 5.5 Image.fromObject 는 object.crossOrigin 을 loadImage 에 그대로 전달하고,
+   * crossOrigin 이 없으면(undefined/null) <img> 를 비-CORS 모드로 로드한다. 변환기 출력·
+   * 기존 등록 템플릿 canvasData 의 image 객체에는 crossOrigin 이 없어, 편집기
+   * (editor.papascompany.co.kr)가 스토리지(api.papascompany.co.kr) PNG 를 로드하면
+   * 캔버스가 taint → 썸네일 자동저장/미리보기 toDataURL·getImageData 가
+   * SecurityError 로 터진다(서버는 ACAO:* 정상 — 클라이언트 로드 모드 문제).
+   *
+   * 로드 직전에 type==='image' && src 가 교차출처 http(s)/protocol-relative URL 인
+   * 객체에 crossOrigin:'anonymous' 를 주입해 기존 등록 템플릿을 재가져오기 없이 구제한다.
+   * - dataURL/blob/상대경로/동일출처 절대 URL 은 불변 (회귀 금지)
+   * - 기존 crossOrigin 값('', 'anonymous', 'use-credentials')은 보존
+   *   (fabric toObject 는 비-CORS 로드 이미지를 crossOrigin:null 로 직렬화하므로
+   *   null 은 '미지정'으로 간주하고 주입한다)
+   * - 비파괴: 변경이 필요한 노드만 얕은 복사(원본 store 객체 불변)
+   * - group(objects)/clipPath/backgroundImage/overlayImage 재귀 처리
+   */
+  export function ensureImageCrossOrigin<T extends object>(input: T): T {
+    const isCrossOriginHttpSrc = (src: unknown): boolean => {
+      if (typeof src !== 'string') return false
+      const isHttp =
+        src.startsWith('http://') || src.startsWith('https://') || src.startsWith('//')
+      if (!isHttp) return false // dataURL/blob/상대경로 등은 대상 아님
+      // 동일출처 절대 URL 은 불변 (브라우저 환경에서만 판정 가능 — node 등은 주입)
+      if (typeof window !== 'undefined' && window.location?.origin) {
+        const origin = window.location.origin
+        if (src === origin || src.startsWith(origin + '/')) return false
+      }
+      return true
+    }
+
+    const visit = (node: any): any => {
+      if (!node || typeof node !== 'object') return node
+
+      if (Array.isArray(node)) {
+        let changed = false
+        const mapped = node.map((item) => {
+          const v = visit(item)
+          if (v !== item) changed = true
+          return v
+        })
+        return changed ? mapped : node
+      }
+
+      let out = node
+      const set = (key: string, value: any) => {
+        if (out === node) out = { ...node }
+        out[key] = value
+      }
+
+      if (
+        node.type === 'image' &&
+        (node.crossOrigin === undefined || node.crossOrigin === null) &&
+        isCrossOriginHttpSrc(node.src)
+      ) {
+        set('crossOrigin', 'anonymous')
+      }
+
+      // 중첩 이미지가 들어올 수 있는 키만 재귀 (styles 등 대형 트리는 건드리지 않음)
+      for (const key of ['objects', 'clipPath', 'backgroundImage', 'overlayImage']) {
+        const child = node[key]
+        if (child && typeof child === 'object') {
+          const v = visit(child)
+          if (v !== child) set(key, v)
+        }
+      }
+
+      return out
+    }
+
+    return visit(input)
+  }
+
+  /**
    * JSON에서 캔버스 로드
    */
   export function loadFromJSON(
     canvas: fabric.Canvas,
     json: object | string
   ): Promise<void> {
+    // 교차출처 이미지 crossOrigin 주입 (taint 방어 — ensureImageCrossOrigin 참조)
+    let input: object | string = json
+    try {
+      const parsed = typeof json === 'string' ? JSON.parse(json) : json
+      if (parsed && typeof parsed === 'object') {
+        input = ensureImageCrossOrigin(parsed)
+      }
+    } catch {
+      input = json
+    }
     return new Promise((resolve) => {
-      canvas.loadFromJSON(json, () => {
+      canvas.loadFromJSON(input, () => {
         ensureTextStyles(canvas)
         canvas.renderAll()
         resolve()

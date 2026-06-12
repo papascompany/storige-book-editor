@@ -51,6 +51,11 @@ export async function convertIdmlToTemplate(buffer, opts = {}) {
       type: 'image',
       id: 'idml-artwork',
       src: raster.dataUrl,
+      // 캔버스 taint 방어: admin 이 src 를 스토리지 URL(api.papascompany.co.kr)로 치환하면
+      // 편집기(editor.*)에서 교차출처 로드가 된다. crossOrigin 없으면 fabric 이 비-CORS
+      // 모드로 로드 → toDataURL/getImageData SecurityError. dataURL 단계에선 무해
+      // (fabric loadImage 가 data: 에는 crossOrigin 미적용), src 치환 후 유효.
+      crossOrigin: 'anonymous',
       // 콘텐츠 중앙원점 규약: 배경(캔버스 전체)의 중심 = (0,0). originX/originY='center' 이므로
       // left/top=0 이면 캔버스를 꽉 채운다. (좌상단원점으로 두면 우하단 어긋나 화면 밖 → 배경 미표시)
       originX: 'center',
@@ -125,6 +130,8 @@ export async function convertIdmlToTemplate(buffer, opts = {}) {
       type: 'image',
       id,
       src: png.dataUrl,
+      // 캔버스 taint 방어 (hybrid idml-artwork 와 동일 — admin src 치환 후 교차출처 CORS 로드)
+      crossOrigin: 'anonymous',
       // 콘텐츠 중앙원점 규약(hybrid idml-artwork 와 동일): originX/originY='center', left/top=scene px.
       originX: 'center',
       originY: 'center',

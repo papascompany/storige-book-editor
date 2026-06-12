@@ -198,6 +198,9 @@ export async function applyPlacedImages(result, linkedImages) {
           type: 'image',
           id: o.id, // 기존 플레이스홀더 id(idml-<self>) 승계 — 추적/재가져오기 안정성
           src: baked.dataUrl,
+          // 캔버스 taint 방어: admin 동반업로드로 src 가 스토리지 URL 로 치환되면 편집기에서
+          // 교차출처 로드 — crossOrigin 없으면 toDataURL/getImageData SecurityError.
+          crossOrigin: 'anonymous',
           selectable: true,
           evented: true,
           originX: 'center',

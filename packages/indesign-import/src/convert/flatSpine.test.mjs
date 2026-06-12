@@ -153,6 +153,22 @@ test('flat-spine: 아트워크 3장 모두 ARTWORK_LOCK 전 속성 적용', asyn
   }
 });
 
+// 의도된 출력 계약 변경(2026-06-12, 캔버스 taint 방어): 변환기 image 출력에 crossOrigin:'anonymous'
+// 명시. admin 이 src 를 스토리지 URL(api.papascompany.co.kr)로 치환하면 편집기(editor.*)에서
+// 교차출처 로드 — crossOrigin 없으면 fabric 비-CORS 로드 → 캔버스 taint →
+// 썸네일/미리보기 toDataURL·getImageData SecurityError(라이브 관측). dataURL 단계에선 무해.
+test('아트워크 image 출력에 crossOrigin:anonymous 명시 (hybrid + flat-spine 3장)', async () => {
+  const hybrid = await convertFixture('hybrid');
+  const artwork = hybrid.dto.canvasData.objects.find((o) => o.id === 'idml-artwork');
+  assert.strictEqual(artwork.crossOrigin, 'anonymous', 'hybrid idml-artwork');
+
+  const flat = await convertFixture('flat-spine');
+  for (const id of ['spine-artwork', 'back-artwork', 'front-artwork']) {
+    const o = flat.dto.canvasData.objects.find((x) => x.id === id);
+    assert.strictEqual(o.crossOrigin, 'anonymous', `${id}.crossOrigin`);
+  }
+});
+
 test('flat-spine: 텍스트 오버레이는 styles:{} 유지(fabric 5.5 저장 크래시 방어)', async () => {
   const { dto } = await convertFixture('flat-spine');
   const texts = dto.canvasData.objects.filter((o) => o.type === 'textbox');

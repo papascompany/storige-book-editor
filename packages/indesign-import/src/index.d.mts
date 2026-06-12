@@ -48,6 +48,8 @@ export interface FabricObjectLike {
   fontSize?: number;
   fontFamily?: string;
   isUserAdded?: boolean;
+  /** image 객체 CORS 로드 모드 — 변환기는 'anonymous' 명시(편집기 캔버스 taint 방어). */
+  crossOrigin?: 'anonymous' | 'use-credentials' | '' | null;
   meta?: { regionRef: string | null; anchor: unknown };
   _idml?: { self: string; srcType: string; points: number };
   [key: string]: unknown;
