@@ -17,6 +17,18 @@ export interface CreateFontDto {
   isActive?: boolean;
 }
 
+/**
+ * woff2ToTtf 의 woff2Url 은 API 서버가 직접 fetch 하는 절대 URL 이어야 한다
+ * (library.service.ts SSRF 화이트리스트 — STORAGE_BASE_URL host 기준).
+ * 업로드 응답 '/storage/<category>/<file>' → '<API_BASE_URL>/storage/...'
+ * (NestJS legacy GET storage/:category/:filename 라우트 — dev 직결·prod nginx 경유 공통 유효).
+ */
+const toAbsoluteStorageUrl = (url: string): string => {
+  if (url.startsWith('http://') || url.startsWith('https://')) return url;
+  const base = (axiosInstance.defaults.baseURL || '').replace(/\/$/, '');
+  return `${base}${url.startsWith('/') ? url : `/${url}`}`;
+};
+
 export const libraryApi = {
   // File upload
   uploadFile: async (file: File): Promise<UploadResponse> => {
@@ -54,6 +66,20 @@ export const libraryApi = {
 
   deleteFont: async (id: string): Promise<void> => {
     await axiosInstance.delete(`/library/fonts/${id}`);
+  },
+
+  /**
+   * WOFF2 → TTF 변환 (기존 POST /library/woff2ToTtf — 편집기 FontPlugin getTtfBuffer 와 동일 엔드포인트).
+   * storageUrl 은 업로드 응답의 상대 URL('/storage/...') 그대로 전달 — 내부에서 절대화한다.
+   * @returns TTF 바이트 (ArrayBuffer)
+   */
+  convertWoff2ToTtf: async (storageUrl: string): Promise<ArrayBuffer> => {
+    const response = await axiosInstance.post<ArrayBuffer>(
+      '/library/woff2ToTtf',
+      { woff2Url: toAbsoluteStorageUrl(storageUrl) },
+      { responseType: 'arraybuffer' }
+    );
+    return response.data;
   },
 
   // Backgrounds
