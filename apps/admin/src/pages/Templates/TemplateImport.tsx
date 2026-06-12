@@ -17,7 +17,7 @@ import {
   Tag,
   message,
 } from 'antd';
-import { InboxOutlined, SaveOutlined, ArrowLeftOutlined } from '@ant-design/icons';
+import { InboxOutlined, SaveOutlined, ArrowLeftOutlined, UploadOutlined } from '@ant-design/icons';
 import type { UploadProps } from 'antd';
 import {
   convertIdmlToTemplate,
@@ -38,6 +38,8 @@ import {
   buildPlacedMatchRows,
 } from './placedMatching';
 import type { PlacedMatchRow } from './placedMatching';
+import { buildFontMatchRows, seedFontFormatFor, ttfFileNameFor } from './fontMatching';
+import type { FontMatchRow } from './fontMatching';
 
 const { Title, Text, Paragraph } = Typography;
 const { Dragger } = Upload;
@@ -190,6 +192,21 @@ export const TemplateImport = () => {
     [categories]
   );
 
+  // 폰트 라이브러리 전체(활성+비활성) — 변환 폰트 매칭용. FontList(폰트 관리)와 같은 queryKey 라
+  // 시딩 후 invalidate 가 양쪽을 동기화한다.
+  const { data: libraryFonts } = useQuery({
+    queryKey: ['fonts'],
+    queryFn: () => libraryApi.getFonts(),
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+
+  // 변환 폰트(doc.fonts) ✓/✗ 매칭 행 — 라이브러리 변경(시딩/활성화) 시 자동 재평가.
+  const fontRows = useMemo<FontMatchRow[]>(
+    () => (result?.fonts?.length ? buildFontMatchRows(result.fonts, libraryFonts ?? []) : []),
+    [result, libraryFonts]
+  );
+
   // 포맷별 결과 캐스팅
   const idmlResult = format === 'idml' ? (result as SpreadTemplateResult | null) : null;
   const psdResult = format === 'psd' ? (result as SinglePageResult | null) : null;
@@ -238,6 +255,64 @@ export const TemplateImport = () => {
     },
     onError: (e: unknown) => {
       message.error('템플릿 저장에 실패했습니다: ' + (e instanceof Error ? e.message : '알 수 없는 오류'));
+    },
+  });
+
+  // 미등록(✗) 폰트 시딩 — 기존 API 만 재사용(신규 엔드포인트 없음):
+  //   ttf/otf  : POST /storage/upload → POST /library/fonts (FontList 폰트 관리와 동일 플로우)
+  //   woff2    : POST /storage/upload(원본) → POST /library/woff2ToTtf(서버 변환, 편집기
+  //              FontPlugin getTtfBuffer 와 동일 엔드포인트) → 변환 TTF 재업로드 → 등록.
+  //              TTF 로 등록하면 편집기 opentype.js(글리프검증/PDF 벡터화)가 변환 API 왕복 없이
+  //              fast-path 로 직접 파싱한다 (FontPlugin isSfnt 분기).
+  // 등록 name 은 doc.fonts 표기 그대로 → 편집기 fontFamily resolve(@font-face font-family)와 일치.
+  const seedFontMutation = useMutation({
+    mutationFn: async ({ fontName, file }: { fontName: string; file: File }) => {
+      const format = seedFontFormatFor(file.name);
+      if (!format) throw new Error('TTF/OTF/WOFF2 파일만 등록할 수 있습니다.');
+      if (format === 'woff2') {
+        const rawUp = await libraryApi.uploadFile(file);
+        if (!rawUp?.url) throw new Error('woff2 업로드 응답에 URL 이 없습니다.');
+        const ttfBuffer = await libraryApi.convertWoff2ToTtf(rawUp.url);
+        const ttfFile = new File([ttfBuffer], ttfFileNameFor(file.name), { type: 'font/ttf' });
+        const ttfUp = await libraryApi.uploadFile(ttfFile);
+        if (!ttfUp?.url) throw new Error('변환 TTF 업로드 응답에 URL 이 없습니다.');
+        return libraryApi.createFont({
+          name: fontName,
+          fileUrl: ttfUp.url,
+          fileFormat: 'ttf',
+          isActive: true,
+        });
+      }
+      const up = await libraryApi.uploadFile(file);
+      if (!up?.url) throw new Error('폰트 업로드 응답에 URL 이 없습니다.');
+      return libraryApi.createFont({
+        name: fontName,
+        fileUrl: up.url,
+        fileFormat: format,
+        isActive: true,
+      });
+    },
+    onSuccess: (font) => {
+      message.success(`폰트가 라이브러리에 등록되었습니다: ${font.name}`);
+      queryClient.invalidateQueries({ queryKey: ['fonts'] }); // → fontRows 재평가
+    },
+    onError: (e: unknown) => {
+      message.error(
+        '폰트 등록에 실패했습니다: ' + (e instanceof Error ? e.message : '알 수 없는 오류')
+      );
+    },
+  });
+
+  // 등록되어 있으나 비활성인 폰트 — 편집기는 isActive=true 만 로드하므로 활성화로 사용 가능 처리.
+  const activateFontMutation = useMutation({
+    mutationFn: ({ id }: { id: string; fontName: string }) =>
+      libraryApi.updateFont(id, { isActive: true }),
+    onSuccess: (font) => {
+      message.success(`폰트를 활성화했습니다: ${font.name}`);
+      queryClient.invalidateQueries({ queryKey: ['fonts'] });
+    },
+    onError: () => {
+      message.error('폰트 활성화에 실패했습니다.');
     },
   });
 
@@ -588,6 +663,77 @@ export const TemplateImport = () => {
                         {row.reason && <Text type="secondary"> — {row.reason}</Text>}
                       </div>
                     ))}
+                  </Space>
+                </Descriptions.Item>
+              )}
+              {/* 변환 폰트별 라이브러리 매칭 ✓/✗ — ✗ 폰트는 파일 업로드로 즉시 시딩(등록 후 자동 재평가) */}
+              {fontRows.length > 0 && (
+                <Descriptions.Item label="폰트 매칭 (라이브러리)" span={2}>
+                  <Space direction="vertical" size={2}>
+                    {fontRows.map((row) => (
+                      <div key={row.fontName}>
+                        {row.status === 'available' ? (
+                          <Tag color="green">✓ 사용 가능</Tag>
+                        ) : row.status === 'inactive' ? (
+                          <Tag color="orange">비활성</Tag>
+                        ) : (
+                          <Tag color="red">✗ 미등록</Tag>
+                        )}
+                        <Text code>{row.fontName}</Text>
+                        {row.status === 'available' &&
+                          row.libraryFontName &&
+                          row.libraryFontName.trim() !== row.fontName && (
+                            <Text type="secondary"> — 라이브러리 표기: {row.libraryFontName}</Text>
+                          )}
+                        {row.status === 'inactive' && (
+                          <>
+                            <Text type="secondary"> — 등록되어 있으나 비활성 (편집기 미로드)</Text>
+                            <Button
+                              size="small"
+                              type="link"
+                              loading={
+                                activateFontMutation.isPending &&
+                                activateFontMutation.variables?.fontName === row.fontName
+                              }
+                              onClick={() =>
+                                activateFontMutation.mutate({
+                                  id: row.libraryFontId!,
+                                  fontName: row.fontName,
+                                })
+                              }
+                            >
+                              활성화
+                            </Button>
+                          </>
+                        )}
+                        {row.status === 'missing' && (
+                          <Upload
+                            accept=".ttf,.otf,.woff2"
+                            showUploadList={false}
+                            beforeUpload={(file) => {
+                              seedFontMutation.mutate({ fontName: row.fontName, file: file as unknown as File });
+                              return false; // 자동 업로드 방지 — mutation 이 업로드/등록 수행
+                            }}
+                          >
+                            <Button
+                              size="small"
+                              type="link"
+                              icon={<UploadOutlined />}
+                              loading={
+                                seedFontMutation.isPending &&
+                                seedFontMutation.variables?.fontName === row.fontName
+                              }
+                            >
+                              폰트 파일 등록
+                            </Button>
+                          </Upload>
+                        )}
+                      </div>
+                    ))}
+                    <Text type="secondary">
+                      미등록 폰트의 텍스트는 편집기에서 기본 폰트로 대체됩니다. TTF/OTF/WOFF2 를
+                      등록하면 즉시 사용 가능합니다 (WOFF2 는 서버에서 TTF 변환 후 등록).
+                    </Text>
                   </Space>
                 </Descriptions.Item>
               )}

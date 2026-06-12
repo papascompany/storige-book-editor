@@ -145,7 +145,7 @@
   <div class="badge-row">
     <span class="badge purple">🎨 개발 문서</span>
     <span class="badge green">동작(admin + Node)</span>
-    <span class="badge">2026-06-11 갱신</span>
+    <span class="badge">2026-06-12 갱신</span>
     <span class="badge">@storige/indesign-import</span>
   </div>
   <h1>디자인 가져오기 <span>변환기</span><br>IDML / PSD → Storige 템플릿</h1>
@@ -168,7 +168,7 @@
   <a href="#s3">③ IDML(표지 펼침면)</a>
   <a href="#s3-2" class="sub">파싱 규약</a>
   <a href="#s3-3" class="sub">표지 5영역</a>
-  <a href="#s3-5" class="sub">벡터 vs 하이브리드</a>
+  <a href="#s3-5" class="sub">변환 모드 3종</a>
   <a href="#s3-7" class="sub">경고(검수)</a>
   <a href="#s4">④ PSD(단품)</a>
   <a href="#s5">⑤ 책등 가변(런타임)</a>
@@ -178,7 +178,8 @@
   <a href="#s9">⑨ AI(일러스트) 현황</a>
   <a href="#s10">⑩ 파일 구조 / 검증</a>
   <a href="#s11">⑪ 로드맵 / 잔여</a>
-  <a href="#s12" style="color:var(--green2)">⑫ 재편집 정합성(2026-06-11) ✨</a>
+  <a href="#s12" style="color:var(--green2)">⑫ 재편집 정합성 + P1 3종</a>
+  <a href="#s13" style="color:var(--green2)">⑬ 템플릿 유형 3종(2026-06-12) ✨</a>
 </nav>
 
 <!-- ══════════════ 콘텐츠 ══════════════ -->
@@ -234,12 +235,17 @@
     <div class="cb-header"><div class="cb-dots"><span class="cb-dot" style="background:#ff5f56"></span><span class="cb-dot" style="background:#ffbd2e"></span><span class="cb-dot" style="background:#27c93f"></span></div><span class="cb-lang">JS — IDML</span></div>
 <pre><span class="keyword">const</span> { result, dto, previewSvg } = <span class="keyword">await</span> <span class="func">convertIdmlToTemplate</span>(buffer, {
   name: <span class="string">'MA-348 표지(가져옴)'</span>,
-  mode: <span class="string">'vector'</span>,     <span class="comment">// 'vector'(기본) | 'hybrid'</span>
+  mode: <span class="string">'vector'</span>,     <span class="comment">// 'vector'(기본) | 'hybrid' | 'flat-spine' (③/⑬)</span>
   dpi: <span class="num">150</span>,           <span class="comment">// 캔버스 DPI(기본 150)</span>
-  rasterDpi: <span class="num">300</span>,     <span class="comment">// 하이브리드 배경 PNG dpi(기본 300)</span>
+  rasterDpi: <span class="num">300</span>,     <span class="comment">// 플랫 배경 PNG dpi(기본 300)</span>
   previewWidth: <span class="num">1100</span>, <span class="comment">// 미리보기 SVG 가로폭(px)</span>
+  linkedImages,       <span class="comment">// (선택, A5) 파일명→dataURL Map — placed 이미지 실복원</span>
 });
-<span class="comment">// result: SpreadTemplateResult — spec/regionsMm/totalWidthMm/objects/fonts/warnings/draftTemplateDto</span></pre>
+<span class="comment">// result: SpreadTemplateResult — spec/regionsMm/totalWidthMm/objects/fonts/warnings/draftTemplateDto</span>
+
+<span class="comment">// 패키지 zip(*.idml + 링크 이미지) 해제 — admin 단일 업로드용 (A5)</span>
+<span class="keyword">const</span> { kind, idmlBuffer, linkedImages: imgs, skipped } = <span class="keyword">await</span> <span class="func">extractDesignPackage</span>(buffer);
+<span class="comment">// *.idml 엔트리 우선 → 루트 designmap.xml=순수 IDML. TIFF/EPS 등 미디코드는 skipped 보고.</span></pre>
   </div>
 
   <div class="code-block">
@@ -314,28 +320,39 @@
     </div>
   </div>
 
-  <h3 class="sub-title" id="s3-5"><span style="background:var(--purple)"></span>두 변환 모드: 벡터 vs 하이브리드</h3>
+  <h3 class="sub-title" id="s3-5"><span style="background:var(--purple)"></span>세 변환 모드: 벡터 / 하이브리드 / flat-spine <span class="tag new">2026-06-12</span></h3>
+  <p class="desc" style="font-size:13px">각 모드는 <code class="inline">spreadConfig.conversionMode</code> 와 1:1 대응(vector→<code class="inline">full</code>, hybrid→<code class="inline">flat-spread</code>, flat-spine→<code class="inline">flat-spine</code>). 설계 결정·함정은 <a href="#s13" style="color:var(--green2)">⑬</a> 참조.</p>
   <div class="compare-grid">
     <div class="compare-card vec">
-      <div class="cc-head">벡터 (mode='vector', 기본)</div>
+      <div class="cc-head">벡터 (mode='vector', 기본) → full</div>
       <ul>
         <li>도형/배경 → 편집 가능 벡터(rect/ellipse/path)</li>
         <li>텍스트 → 편집 가능 textbox</li>
-        <li>적합: 단순한 디자인(정밀 편집)</li>
-        <li>손실: 무손실(벡터)</li>
+        <li>책등 가변: 허용(meta 재배치)</li>
+        <li>적합: 단순한 디자인(정밀 편집) · 손실: 무손실</li>
       </ul>
     </div>
     <div class="compare-card hyb">
-      <div class="cc-head">하이브리드 (mode='hybrid')</div>
+      <div class="cc-head">하이브리드 (mode='hybrid') → flat-spread</div>
       <ul>
         <li>비텍스트 전체 → 300dpi PNG 1장(최하단)</li>
         <li>텍스트 → 편집 가능 textbox(이미지 위)</li>
-        <li>적합: 효과·그라디언트·별색이 많은 디자인</li>
-        <li>손실: 비텍스트는 PNG 해상도 의존</li>
+        <li>책등 가변: <strong>차단(책등 고정)</strong></li>
+        <li>적합: 효과 많은 디자인 + 책등 고정 상품 · 손실: PNG 해상도 의존</li>
+      </ul>
+    </div>
+    <div class="compare-card hyb">
+      <div class="cc-head">flat-spine (mode='flat-spine') → flat-spine</div>
+      <ul>
+        <li>전폭 300dpi 1회 렌더 → <strong>3크롭</strong>(back / spine 3배폭 / front, 흰 배경 합성 불투명)</li>
+        <li>텍스트 → 편집 가능 textbox(이미지 위)</li>
+        <li>책등 가변: <strong>허용</strong> — spine PNG 3배폭이 두께 변동 흡수</li>
+        <li>적합: 효과 많은 디자인 + 책등 가변 책 셋 · 손실: PNG 해상도 의존</li>
       </ul>
     </div>
   </div>
-  <p class="desc" style="font-size:13px">하이브리드는 <code class="inline">rasterizeArtwork(dto,{dpi:300})</code>(<code class="inline">src/raster/rasterize.mjs</code>)가 비텍스트만 그린 SVG 를 물리치수(<code class="inline">totalWidthMm/HeightMm</code>) 기준 목표 픽셀로 래스터화(텍스트 제외·투명 배경) → 최하단 이미지(고정 — 아래 잠금)로 깔고 텍스트만 위에 둔다.</p>
+  <p class="desc" style="font-size:13px">하이브리드는 <code class="inline">rasterizeArtwork(dto,{dpi:300})</code>(<code class="inline">src/raster/rasterize.mjs</code>)가 비텍스트만 그린 SVG 를 물리치수(<code class="inline">totalWidthMm/HeightMm</code>) 기준 목표 픽셀로 래스터화(텍스트 제외·투명 배경) → 최하단 이미지(고정 — 아래 잠금)로 깔고 텍스트만 위에 둔다.
+  flat-spine 은 같은 전폭 래스터를 <code class="inline">computeFlatSpineCrops</code>(<code class="inline">convert/flatSpineGeometry.mjs</code>, 순수 함수) 경계로 3크롭(<code class="inline">raster/cropArtwork.mjs</code>, 흰 배경 합성)해 <code class="inline">spine-artwork</code>(최하단, 3배폭) → <code class="inline">back-artwork</code> → <code class="inline">front-artwork</code> → 텍스트 z-order 로 깐다 — back/front 가 spine 겹침 구간을 불투명하게 <strong>은폐</strong>하고, 책등이 늘어나면 가려졌던 spine PNG 가 드러난다.</p>
   <div class="info-box" style="background:rgba(245,158,11,.08);border-color:rgba(245,158,11,.3)">
     <div class="icon">⚠️</div>
     <div class="ib-content">
@@ -348,10 +365,12 @@
   <ul class="bullet">
     <li>안정적 <code>id</code>: <code>idml-{Self}</code> (추적/선택/잠금), <code>selectable/evented:true</code>, <code>isUserAdded:false</code>. (배경 아트워크 예외 — 아래 잠금)</li>
     <li>중심 좌표 규약: <code>left/top</code> = scene(중앙원점, originX/originY='center'). content→scene 변환 <code>geometry/centerOrigin.mjs</code>(SSOT).</li>
-    <li><code>styles:{}</code> — textbox 필수(fabric 5.5 키 누락 시 <code>stylesToArray</code> 저장 크래시·무한로딩, <code>9628f1a</code>).</li>
-    <li><code>rx/ry</code> — Oval 은 반경 명시(fabric.Ellipse 는 width/height 가 아닌 rx/ry; 누락 시 비가시·width:0 박제, <code>527b85b</code>).</li>
+    <li><code>styles:{}</code> + <strong>per-run styles</strong> <span class="tag new">A2+A3</span> — textbox 필수(fabric 5.5 키 누락 시 <code>stylesToArray</code> 저장 크래시·무한로딩, <code>9628f1a</code>). 혼합 서식은 <code>convert/textStyles.mjs</code>(SSOT)가 객체 base(문자수 가중 지배값)와 <strong>다른 속성만 diff</strong>(전 run 동일이면 {}). 객체 단위: <code>charSpacing</code>=Tracking 1:1(1/1000em 동단위) · <code>lineHeight</code>=LeadingPt/(1.13×pt)(auto=120%→≈1.0619) · <code>textAlign</code>=Justification · FontStyle명→<code>fontWeight</code>(SemiBold=600·Heavy=900). 세로짜기는 단일 스타일 + 자간→lineHeight 환산((1+trk/1000)/1.13). 혼합/장평은 지배값 근사+경고.</li>
+    <li><code>rx/ry</code> — Oval 은 반경 명시(fabric.Ellipse 는 width/height 가 아닌 rx/ry; 누락 시 비가시·width:0 박제, <code>527b85b</code>). <strong>Rectangle 균일 RoundedCorner 도 rx/ry</strong> <span class="tag new">A6</span> — <code>extractCorner</code>(per-corner 4값+legacy, option≠None ∧ radius&gt;0 게이트로 잔존 기본값 12.7pt 오염 차단), |scale| 베이크, 비클램프(pill 형상 보존). 한 축 0 라운딩은 직각+경고(fabric <code>_initRxRy</code> 0=미설정 분기 차단). 고아 strokeWidth(색 없는 weight)는 제거.</li>
+    <li>그라디언트 <code>fill</code> <span class="tag new">A1</span> — fabric Gradient plain object({type, coords, colorStops, gradientUnits:'pixels'}, <code>_initGradient</code> 자동 부활·왕복 안전). 끝점 E 를 <strong>inner pt 공간에서 합성 후 S 와 동일 SSOT 매퍼로 사상</strong> → 회전/플립/스케일(베이크 포함) 자동 정합. flipY 미러 보정+경고, Midpoint≠50 은 50% 혼합 중간 스톱. FLAT 경로는 <code>render/svgGradient.mjs</code> 공통 defs(objectBoundingBox — 비정사각 대각 각도 근사 경고). 텍스트 그라디언트는 검정 대체+경고(보류).</li>
+    <li>placed 이미지 <span class="tag new">A5</span> — 배치 SSOT = inner Image <code>ItemTransform</code>(FFO crop 은 보조 — 단독 신뢰 금지). <code>linkedImages</code> 매칭 시 프레임 가시영역을 <strong>픽셀 크롭 베이크</strong>(browser canvas/Node sharp, JPEG q90)한 plain image 로 동일 z-order 인덱스 치환 — <code>cropX</code>/<code>clipPath</code> 불사용(직렬화 함정). FULL=편집 가능 이미지(id 승계), FLAT=래스터에 베이크. 미매칭은 '동반 업로드 매칭 실패' 구분 경고.</li>
     <li><code>cmykFill</code>(원본 4도, 출력단 미사용), <code>spotColor</code>(별색명), <code>fillRule:'evenodd'</code>(컴파운드 패스 구멍 보존).</li>
-    <li><code>meta:{regionRef, anchor}</code> — 런타임 책등 가변 재배치 입력. <code>_idml</code> 디버그 필드는 저장 전 제거.</li>
+    <li><code>meta:{regionRef, anchor}</code> — 런타임 책등 가변 재배치 입력. flat 아트워크는 <code>meta.flatArtwork('spine'|'back'|'front')</code> 추가(⑬). <code>_idml</code> 디버그 필드는 저장 전 제거.</li>
   </ul>
   <div class="info-box" style="background:rgba(168,85,247,.08);border-color:rgba(168,85,247,.3)">
     <div class="icon">🔒</div>
@@ -369,7 +388,14 @@
         <tr><td>별색(Spot) N개 감지</td><td>4도(CMYK 근사)로 변환 — 후가공(박·형광)/별색판 의도 확인</td></tr>
         <tr><td>재단여백(블리드) 미달</td><td>채움 합집합이 재단선 밖 cutSize 까지 안 닿음(흰 테두리 위험) → 편집기에서 배경 확장</td></tr>
         <tr><td>폰트 미임베드</td><td>IDML 은 폰트 미임베드 → 시딩/확정 필요</td></tr>
-        <tr><td>미해석 색상</td><td>색상 사전에서 못 찾은 색상 id</td></tr>
+        <tr><td>미해석 색상 / 미해석 텍스트 색상</td><td>색상 사전에서 못 찾은 색상 id. 텍스트는 검정 대체(그라디언트 텍스트 포함 — A1 보류)</td></tr>
+        <tr><td>자간/단락 정렬 혼합 <span class="tag new">A2+A3</span></td><td>fabric 은 charSpacing/textAlign 이 객체 단위 — 혼합 run 은 문자수 가중 지배값 근사</td></tr>
+        <tr><td>가로비율(HorizontalScale) N%</td><td>fabric 미지원 — 미적용, 원본보다 글자폭 넓을 수 있음</td></tr>
+        <tr><td>per-run 정규화 불일치 / 세로쓰기 혼합 스타일</td><td>단일(대표) 스타일 폴백 — 혼합 서식 유실 가능</td></tr>
+        <tr><td>그라디언트: 회전/플립/대각+비정사각/곡선 <span class="tag new">A1</span></td><td>실측 표본 0건 또는 FLAT objectBoundingBox 한계 — 합성 검증 통과, 편집기에서 확인 권장</td></tr>
+        <tr><td>코너/스트로크 근사 <span class="tag new">A6</span></td><td>RoundedCorner 외·비대칭 코너·점선·끝모양·접합·선 정렬 — 실표본 0건, 감지 경고만(기본값 근사·보정식 보류)</td></tr>
+        <tr><td>배치 이미지 N개 / 동반 업로드 매칭 실패 <span class="tag new">A5</span></td><td>IDML 에 픽셀 미포함 — 같은 파일명 이미지 동반 업로드 시 자동 복원. 매칭 실패는 재업로드 유도 또는 미지원 형식(TIFF/EPS) 안내</td></tr>
+        <tr><td>세로쓰기 텍스트 N개</td><td>글자 단위 세로 배치 근사 — 줄간격·위치 확인</td></tr>
       </tbody>
     </table>
   </div>
@@ -430,6 +456,7 @@
 
   <ul class="bullet">
     <li>셋(<code>editorMode='book'</code>)이 구성되면 내지 수 변동 시 <code>SpreadPlugin.resizeSpine</code>(canvas-core)가 책등 자동 리사이즈 + <code>meta.regionRef/anchor</code> 기준 영역 객체 재배치.</li>
+    <li><strong><code>conversionMode='flat-spread'</code> 는 책등 고정</strong> — spineCalculator 정상 스킵 + resizeSpine no-op(⑬). <code>flat-spine</code> 은 가변 허용(spine-artwork 만 불변).</li>
     <li><strong>표지 IDML 단독으론 책 셋 완전 자동화 불가</strong> — 책모드 검증이 <strong>SPREAD 1 + PAGE≥1</strong> 강제(내지 필수).</li>
   </ul>
 
@@ -452,12 +479,12 @@
     <div class="flow-step flow-purple">
       <div class="step-left"><div class="step-num">1</div><div class="step-line"></div></div>
       <div class="step-body"><div class="step-title">불러오기 · 자동 감지</div>
-        <div class="step-detail"><code>.idml</code>/<code>.psd</code> 드래그&amp;드롭. <code>detectFormat</code> 으로 포맷 결정. 브라우저에서 직접 변환(자동 업로드 안 함).</div></div>
+        <div class="step-detail"><code>.idml</code>/<code>.psd</code> 드래그&amp;드롭. <code>detectFormat</code> 으로 포맷 결정. 브라우저에서 직접 변환(자동 업로드 안 함). <strong>A5 동반 업로드</strong>: <code>.idml</code>+이미지 다중 / 패키지 zip(<code>extractDesignPackage</code>) / 이미지 추가 업로드(직전 변환에 병합 재변환) — placed 이미지 실복원, 매칭 ✓/✗ 요약(<code>placedMatching.ts</code>).</div></div>
     </div>
     <div class="flow-step flow-purple">
       <div class="step-left"><div class="step-num">2</div><div class="step-line"></div></div>
       <div class="step-body"><div class="step-title">변환</div>
-        <div class="step-detail">IDML: 벡터/하이브리드 토글(변경 시 재변환). PSD: 항상 하이브리드.</div></div>
+        <div class="step-detail">IDML: 모드 3종 선택(벡터/펼침면 플랫형/책등가변 3분할 플랫형 — ③/⑬, 변경 시 재변환). PSD: 항상 하이브리드.</div></div>
     </div>
     <div class="flow-step flow-purple">
       <div class="step-left"><div class="step-num">3</div><div class="step-line"></div></div>
@@ -551,13 +578,19 @@
         <tr><td><code class="inline">src/geometry/regions.mjs</code></td><td>5영역 분할 + resolveRegionAtX + 앵커</td></tr>
         <tr><td><code class="inline">src/geometry/path.mjs</code></td><td>PathGeometry → path d 복원(베지어)</td></tr>
         <tr><td><code class="inline">src/geometry/centerOrigin.mjs</code></td><td><strong>content↔scene(중앙원점) 변환 SSOT</strong> — 변환기·미리보기·래스터 공용</td></tr>
-        <tr><td><code class="inline">src/idml/reader.mjs</code></td><td>IDML ZIP+XML 파싱 → IdmlDoc</td></tr>
+        <tr><td><code class="inline">src/idml/reader.mjs</code></td><td>IDML ZIP+XML 파싱 → IdmlDoc(per-run 스타일·그라디언트·코너/스트로크·placed 메타 포함)</td></tr>
         <tr><td><code class="inline">src/convert/toSpreadTemplate.mjs</code></td><td>IdmlDoc → 표지 펼침면 DTO</td></tr>
         <tr><td><code class="inline">src/convert/toSinglePageTemplate.mjs</code></td><td>PSD → 단일 페이지 DTO</td></tr>
         <tr><td><code class="inline">src/convert/artworkLock.mjs</code></td><td>하이브리드 배경 아트워크 고정 잠금(<code>ARTWORK_LOCK</code>) — IDML/PSD 공용</td></tr>
+        <tr><td><code class="inline">src/convert/textStyles.mjs</code> <span class="tag new">A2+A3</span></td><td>per-run → fabric 매핑 SSOT(styles diff/charSpacing/lineHeight/textAlign/fontWeight/세로짜기 환산)</td></tr>
+        <tr><td><code class="inline">src/convert/gradientFill.mjs</code> <span class="tag new">A1</span></td><td>IDML 그라디언트 → fabric Gradient plain object(inner 공간 E 합성·flipY 보정·Midpoint 합성)</td></tr>
+        <tr><td><code class="inline">src/convert/flatSpineGeometry.mjs</code> <span class="tag new">⑬</span></td><td>flat-spine 3크롭 경계 순수 함수(<code>computeFlatSpineCrops</code> — 경계 mm 1회 반올림으로 3분할 합=전폭 보장)</td></tr>
+        <tr><td><code class="inline">src/convert/placedImages.mjs</code> <span class="tag new">A5</span></td><td>placed 디스크립터 ↔ linkedImages 매칭·크롭 베이크·동일 인덱스 치환(<code>applyPlacedImages</code>)</td></tr>
+        <tr><td><code class="inline">src/render/svgGradient.mjs</code> <span class="tag new">A1</span></td><td>그라디언트 SVG defs 공통 헬퍼 — 래스터/미리보기 단일화(objectBoundingBox·flipY 반전)</td></tr>
         <tr><td><code class="inline">src/psd/reader.mjs</code></td><td>PSD 파싱 → 레이어 분리</td></tr>
         <tr><td><code class="inline">src/psd/rasterizePsd.mjs</code></td><td>비텍스트 합성 → 배경 PNG</td></tr>
-        <tr><td><code class="inline">src/raster/rasterize.mjs</code></td><td>하이브리드 비텍스트 → 300dpi PNG</td></tr>
+        <tr><td><code class="inline">src/raster/rasterize.mjs</code></td><td>하이브리드/flat-spine 비텍스트 → 300dpi PNG</td></tr>
+        <tr><td><code class="inline">src/raster/cropArtwork.mjs</code> <span class="tag new">⑬</span></td><td>전폭 PNG 수직 크롭 + 흰 배경 합성(불투명 — z-order 은폐 전제)</td></tr>
         <tr><td><code class="inline">src/preview/svg.mjs</code></td><td>변환 결과 → 미리보기 SVG</td></tr>
         <tr><td><code class="inline">scripts/indd-to-idml.jsx</code></td><td>INDD → IDML(ExtendScript)</td></tr>
         <tr><td><code class="inline">scripts/convert-sample.mjs</code></td><td>IDML 변환 CLI</td></tr>
@@ -570,9 +603,11 @@
   <div class="info-box green">
     <div class="icon">✅</div>
     <div class="ib-content">
-      <div class="ib-title">검증 현황 (42건)</div>
-      단위/불변식 테스트 42건 통과(<code class="inline">pnpm --filter @storige/indesign-import test</code>, 의존성 0): geometry units/matrix/regions/path + 변환기 좌표 규약(35) · <code class="inline">centerOrigin.test.mjs</code> 왕복 불변식(5) · <code class="inline">preview/renderInvariants.test.mjs</code> 실제 SVG 출력 좌표로 front/back region 정합(2). ·
-      IDML 벡터/하이브리드 + PSD 단일페이지 실제 브라우저 변환 E2E. 2026-06-11 라이브: 재편집 렌더+저장+라운드트립(9cb8709f 74객체) 합격. · admin/editor/canvas-core tsc + vite build 통과.
+      <div class="ib-title">검증 현황 (139건, 2026-06-12)</div>
+      단위/불변식 테스트 <strong>139건</strong> 통과(<code class="inline">pnpm --filter @storige/indesign-import test</code>, 의존성 0). 2026-06-12 보완 사이클 43→139 누적: geometry/centerOrigin/renderInvariants(기존) · flat-spine 3크롭(43→54, <code class="inline">7585e38</code>) · textStyles(54→73, <code class="inline">8a23f93</code>) · 그라디언트 3스위트(73→102, <code class="inline">3639c8b</code>) · 코너/스트로크(102→119, <code class="inline">50dc6d7</code>) · placedImages(119→139, <code class="inline">e1fd2f2</code>).
+      연계: canvas-core 275(metaCorruption 6+history.meta 2+pointerShift 20+textStyles 패치 핀) · api 99(conversionMode 6) · admin vitest 14(placedMatching 신설).
+      회귀 가드: 커밋마다 실 IDML 표본 HEAD worktree 전수 diff <strong>회귀 0</strong>(3크롭 합 5079px=전폭·spine 354px=3배폭, LA-383 placed 0.01px 일치).
+      IDML 3모드 + PSD 단일페이지 실제 브라우저 변환 E2E. 2026-06-11 라이브: 재편집 렌더+저장+라운드트립(9cb8709f 74객체) 합격. · admin/editor/canvas-core tsc + vite build 통과.
     </div>
   </div>
 
@@ -595,9 +630,12 @@ node packages/indesign-import/scripts/convert-sample.mjs fixtures/cover-sample.i
     <li><strong>폰트 시딩 게이트</strong> — 미임베드 폰트 자동 시딩/확정.</li>
     <li><strong>효과 추출</strong> — overprint/투명도/블렌드.</li>
     <li><strong>워커 CMYK 출력</strong> — <code>cmykFill</code> 보존값 출력단 사용, TrimBox/BleedBox(B안).</li>
-    <li><strong>하이브리드/PSD PNG 업로드</strong> — dataURL 인라인 → <code>filesApi</code> 업로드(DB 비대화 방지).</li>
+    <li><strong>하이브리드/PSD PNG 업로드</strong> — dataURL 인라인 → <code>filesApi</code> 업로드(DB 비대화 방지). <span class="tag auto">배포(2026-06-09)</span></li>
     <li><strong>에디터 실로드 end-to-end</strong> — 책등 가변 런타임 실 에디터 로드 검증(<code>meta</code> 라운드트립 포함).</li>
     <li><strong>PSD 벡터형(셰이프) 레이어 보존 옵션</strong> — 선택적.</li>
+    <li><strong>충실도 백로그 A1~A6</strong> — A1 그라디언트·A2+A3 텍스트·A5 placed·A6 코너/스트로크. <span class="tag auto">배포(2026-06-12 — ③ 객체 속성 참조)</span></li>
+    <li><strong>텍스트 fill 그라디언트</strong> — 검정 대체+경고 유지(A1 사이클에서 의도적 분리). <span class="tag warn">보류</span></li>
+    <li><strong>A6/A4 잔여</strong>(비대칭 코너·dash·EndCap/Join·StrokeAlignment 보정식 / 약물 회전·다열 세로) — 실표본 0건 판정, 파싱+감지 경고만(과잉 구현 금지). <span class="tag warn">보류</span></li>
   </ul>
 
   <p class="desc" style="font-size:12px;color:var(--text3);margin-top:32px">
@@ -642,8 +680,64 @@ node packages/indesign-import/scripts/convert-sample.mjs fixtures/cover-sample.i
     </div>
   </div>
 
+  <h3 class="sub-title"><span style="background:var(--green)"></span>라이브 P1 3종 (2026-06-12, <code class="inline">e4eb328</code>/<code class="inline">a01f3f3</code>)</h3>
+  <p class="desc" style="font-size:13px">flat-spine 라이브 E2E 중 발견된 <strong>기존 spread 플로우의 P1 결함 3종</strong>(신규 코드와 무관). 가져온 템플릿의 재편집·책등 가변에 직결.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>#</th><th>증상</th><th>근본원인</th><th>수정</th></tr></thead>
+      <tbody>
+        <tr><td>P1-1</td><td>책등 가변 시 front 객체가 뒤표지로 텔레포트(재앵커 오염)</td><td>편집기 훅이 무인자 <code>getBoundingRect()</code>(<strong>viewport 좌표, 줌 의존</strong>)를 content 좌표 엔진 <code>resolveRegionRef</code> 에 전달 — fit-zoom(≈0.49)에서 front→back 오판. history lightState 의 <code>meta</code> 누락이 undo 재추가 경로의 오염 창구 추가</td><td><code>SpreadPlugin.resolveRegionMetaForObject</code> <strong>공개 API 신설</strong>(scene→content 캡슐화, 두 훅 교체) + history lightState <code>meta</code> 보존 + <code>repositionObjects</code> 자가치유 가드(claimed region 과 실측 bbox <strong>무교차</strong> 시 재유도 — 부분 겹침 정상 객체 불간섭)</td></tr>
+        <tr><td>P1-2</td><td><code>/embed?sessionId</code> 재편집 진입이 spine 10mm→0.55mm 재계산 + 무편집 자동저장</td><td>재편집 표준 경로엔 URL/props 주문 옵션이 없어 기본 pageCount 로 재계산 → <code>resizeSpine</code> 이 복원 객체를 흔듦. 자동저장 게이트(<code>useAppStore.ready</code>)는 캔버스 등록 시점에 이미 true 라 무효</td><td>spine 입력 복원 <strong>우선순위 체인</strong>: props/URL &gt; 복원 canvasData 배열 실측(레거시 포함 — 내지 드리프트/뒷페이지 절단 방지) &gt; metadata.orderOptions &gt; metadata.spine 스냅샷. 결과값 아닌 <strong>계산 입력값</strong>(pageCount/paperType/bindingType) 복원(동일 입력=resizeSpine no-op). 자동저장 게이트를 <code>isInitializedRef</code>(복원 완료 시점)로 교체</td></tr>
+        <tr><td>P1-3</td><td>속성 패널 닫힘 상태에서 더블클릭 시 객체 -280px/zoom 수평 텔레포트(물리 이동 박제)</td><td>1클릭 선택→패널(280px) in-flow 마운트가 캔버스 요소를 밀고, 그 <strong>레이아웃 시프트가 2클릭의 mousedown~mousemove 사이</strong>에 떨어지면 fabric 이 포인터 점프를 드래그 변위로 해석(zoom 0.339→-826.7px, 라이브 4/4 재현). 2026-06-11 원 사고의 물리 이동 주범</td><td><code>PointerShiftGuardPlugin</code> 신설(canvas-core) — mouse:down 매핑 스냅샷, <code>mouse:move:before</code> 에서 변화 감지 시 변환 기준 좌표(offsetX/ex/ey) 점프량 보정. 요소 이동·vpt 패닝·줌 변경 단일 보정식, 패널 UX 보존. alt-팬 스킵·멀티터치 무시(적대 리뷰). 전 캔버스 등록</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="desc" style="font-size:12px;color:var(--text3)">테스트: canvas-core 243→263→275(metaCorruption 6 · history.meta 2 · pointerShift 20 — 실측 -700/-826.7px 재현 + 결함 대조군 + 보정 불변식).</p>
+
   <p class="desc" style="font-size:12px;color:var(--text3);margin-top:32px">
-    갱신: 2026-06-11 (§3.5/3.6/10/12 — 재편집 정합성 사이클 <code class="inline">527b85b</code>/<code class="inline">a64d409</code>).
+    갱신: 2026-06-11 (재편집 정합성 사이클 <code class="inline">527b85b</code>/<code class="inline">a64d409</code>) · 2026-06-12 (P1 3종 <code class="inline">e4eb328</code>/<code class="inline">a01f3f3</code>).
+  </p>
+</section>
+
+<!-- ⑬ 템플릿 유형 3종 -->
+<section class="section" id="s13">
+  <h2 class="section-title"><span class="num" style="background:rgba(34,197,94,.2);color:var(--green2)">⑬</span>템플릿 유형 3종 — conversionMode (2026-06-12)</h2>
+  <p class="desc">표지 spread 템플릿을 <strong>변환 방식 기준 3유형</strong>으로 체계화(<code class="inline">7585e38</code>). 모드별 동작 비교는 ③(세 변환 모드), admin UI 문구는 <code class="inline">IDML_IMPORT_FLOW.md</code> §1[3].</p>
+
+  <h3 class="sub-title"><span style="background:var(--green)"></span>설계 결정</h3>
+  <ul class="bullet">
+    <li><strong><code>spreadConfig.conversionMode</code> 스탬프</strong> — <code>'full' | 'flat-spread' | 'flat-spine'</code>(types <code>SpreadConversionMode</code>). vector→full, hybrid→flat-spread, flat-spine→flat-spine. <strong>JSON 필드라 DB 마이그레이션 불필요, 레거시(미존재)=full 간주.</strong></li>
+    <li><strong>z-order 은폐</strong>(flat-spine) — <code>spine-artwork</code>(책등 중심 <strong>3배폭</strong> 크롭, 최하단) 위를 <code>back/front-artwork</code> 가 덮음. 책등이 늘면 가려졌던 spine PNG 노출. 전제: 3장 모두 <strong>흰 배경 합성 불투명</strong>(투명이면 아래층이 비쳐 이중상).</li>
+    <li><strong>clipPath 절대 금지</strong> — 직렬화 유실 함정. 크롭은 전부 <strong>픽셀 베이크</strong>(flat 3크롭·placed 공통 규약).</li>
+    <li><strong>앵커 규약</strong> — back/front 는 region anchor(<code>regionRef</code>+<code>xNorm</code>), <strong>spine-artwork 는 canvas anchor</strong>(content 중앙 규약 = scene (0,0)). left 는 가정값 0 이 아닌 <strong>크롭 실제 중심(centerPx)에서 유도</strong>(클램프/반올림 퇴화 자동 흡수).</li>
+    <li><strong><code>meta.flatArtwork('spine'|'back'|'front')</code></strong> — 런타임 재배치 분기 식별자. <code>repositionObjects</code> 가 spine-artwork 를 <strong>무이동·무스케일</strong> 명시 가드.</li>
+    <li><strong>크롭 지오메트리 단일 출처</strong> — <code>computeFlatSpineCrops</code>(순수 함수): 경계 px 는 누적 mm 를 <strong>한 번씩만 반올림</strong> → back+spineBand+front = 전폭 항상 성립. <code>rasterizeArtwork</code> 와 동일 공식, 불일치 시 명시 throw.</li>
+  </ul>
+
+  <h3 class="sub-title"><span style="background:var(--green)"></span>편집기/canvas-core 가드 · admin/API</h3>
+  <ul class="bullet">
+    <li><strong>flat-spread = 책등 고정</strong> — editor <code>spineCalculator</code> 단일 가드가 재계산을 정상 스킵 + <code>SpreadPlugin.resizeSpine</code> 방어적 no-op(이중 방어). 통짜 PNG 라 가변 시 디자인이 찢어지기 때문.</li>
+    <li><strong>flat-spine = 책등 가변 허용</strong> — spine-artwork 만 불변, back/front 는 region anchor 로 평행이동.</li>
+    <li><strong>admin 모드 3종 UI</strong>(<code>TemplateImport.tsx</code>) — '벡터 (전체 편집형)' / '펼침면 플랫형 (책등 고정)' / '책등가변 3분할 플랫형'. flat-spine 은 3장 dataURL 각각 <code>/storage</code> 업로드.</li>
+    <li><strong>API 검증</strong>(<code>validateAndNormalizeSpreadConfig</code>) — conversionMode 화이트리스트 + flat-spine 은 back-cover/spine/front-cover regions 필수(<code>kind</code>/<code>position</code> 키 둘 다 허용). <strong>update 시 conversionMode 보존 병합</strong>(누락 시 기존 값 유지 — 'full' 강등 라운드트립 유실 차단). <code>TemplateEditorView</code> 저장 시에도 보존.</li>
+  </ul>
+
+  <h3 class="sub-title"><span style="background:var(--yellow)"></span>함정(재발 주의)</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>함정</th><th>내용</th></tr></thead>
+      <tbody>
+        <tr><td>투명 크롭</td><td>flat-spine 크롭을 투명 PNG 로 만들면 z-order 은폐가 깨져 이중상 — 흰 배경 합성 필수(vector/hybrid 의 투명 PNG 동작은 불변)</td></tr>
+        <tr><td>clipPath 유혹</td><td>크롭을 clipPath 로 처리하면 저장 라운드트립에서 유실 — 픽셀 베이크만 허용</td></tr>
+        <tr><td>spine left=0 가정</td><td>대칭 레이아웃에선 scene x≈0 이지만 클램프/roundMm01 오프셋 퇴화 케이스 존재 — 크롭 실제 중심(centerPx)에서 유도</td></tr>
+        <tr><td>conversionMode 유실</td><td>클라이언트가 spreadConfig 를 재구성해 PATCH 하면 누락 가능 — 서버측 보존 병합이 최후 방어</td></tr>
+        <tr><td>경계 반올림 드리프트</td><td>크롭 경계를 각자 반올림하면 3분할 합≠전폭 — 누적 mm 1회 반올림 규약</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p class="desc" style="font-size:12px;color:var(--text3);margin-top:32px">
+    작성: 2026-06-12 (<code class="inline">7585e38</code> — 본 사이클: §2/③/⑩/⑪/⑫/⑬ 갱신, 커밋 <code class="inline">7585e38</code>/<code class="inline">e4eb328</code>/<code class="inline">a01f3f3</code>/<code class="inline">8a23f93</code>/<code class="inline">3639c8b</code>/<code class="inline">50dc6d7</code>/<code class="inline">e1fd2f2</code>).
   </p>
 </section>
 
