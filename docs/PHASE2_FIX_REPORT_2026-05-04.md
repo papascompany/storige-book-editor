@@ -133,7 +133,7 @@ queryBuilder.leftJoinAndSelect('product.templateSet', 'templateSet');
 ```
 
 #### 4. Admin 비번 본인 값으로 재교체
-- 현재 임시값 `r46eAZ2jDxELVeEqAKU7TLK1` (CLAUDE.local.md 기록)
+- 현재 임시값 `REDACTED_SEE_VPS_ENV` (CLAUDE.local.md 기록)
 - 사용자가 직접 admin UI 또는 DB에서 본인 비번으로 변경 권장
 
 #### 5. Editor 본격 검증 (브라우저 통합 테스트)

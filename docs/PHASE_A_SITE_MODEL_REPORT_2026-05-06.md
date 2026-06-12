@@ -94,7 +94,7 @@ SitesService initialized — 3 site(s) registered
 ### PHP 영향 0 검증 (실 운영 호출)
 ```
 $ curl -X POST https://api.papascompany.co.kr/api/auth/shop-session \
-    -H "X-API-Key: sk-storige-l3YVceH0sB739pgTfxRAxZAmLJROcMtgdKPIDYdVG0g" \
+    -H "X-API-Key: sk-storige-REDACTED_SEE_VPS_ENV" \
     -d '{"memberSeqno":1,"memberId":"test","memberName":"PhaseA"}'
 → accessToken len=285 ✅
 ```

@@ -28,7 +28,7 @@
 
 ### 🔴 결함 #3 — Admin 시드 비번 (`admin123`) 노출 ✅
 **조치**:
-- 임시 강한 비번 자동 생성: `r46eAZ2jDxELVeEqAKU7TLK1` (24자 base64)
+- 임시 강한 비번 자동 생성: `REDACTED_SEE_VPS_ENV` (24자 base64)
 - VPS bcrypt hash 생성 (`$2b$10$...` 60자)
 - `users` 테이블 직접 UPDATE (`password_hash` 컬럼)
 - `CLAUDE.local.md` 시크릿 메모 갱신
@@ -190,7 +190,7 @@ POST /api/template-sets {"editorMode":"spread"}
 ### 🟡 P1 — 단기
 
 4. **Admin 비번 본인 값으로 재교체** (5분)
-   - 현재 `r46eAZ2jDxELVeEqAKU7TLK1`은 임시 — 사용자 본인이 자기 비번으로 변경 권장
+   - 현재 `REDACTED_SEE_VPS_ENV`은 임시 — 사용자 본인이 자기 비번으로 변경 권장
    - admin UI에서 또는 DB 직접
 
 5. **상품-템플릿셋 연결** (Admin UI에서 클릭)
