@@ -108,9 +108,18 @@ export interface SinglePageResult {
   fonts: string[];
 }
 
+/** 동반 업로드 이미지: Link 파일명(NFC, 대소문자 무시 매칭) → dataURL. Map 또는 plain object. */
+export type LinkedImages = Map<string, string> | Record<string, string>;
+
 export function convertPsdToTemplate(
   buffer: ArrayBuffer | Uint8Array,
-  opts?: { name?: string; pageType?: 'page' | 'cover'; previewWidth?: number }
+  opts?: {
+    name?: string;
+    pageType?: 'page' | 'cover';
+    previewWidth?: number;
+    /** IDML 과의 시그니처 통일용 — PSD 는 픽셀 내장이라 현재 미소비(무해). */
+    linkedImages?: LinkedImages;
+  }
 ): Promise<{ result: SinglePageResult; dto: SinglePageDto; previewSvg: string }>;
 
 /** parseGradients 스톱 항목 — StopColor 참조 해석 결과(미해석 시 color null + unknown) */
@@ -161,8 +170,54 @@ export function convertIdmlToTemplate(
     previewWidth?: number;
     mode?: 'vector' | 'hybrid' | 'flat-spine';
     rasterDpi?: number;
+    /**
+     * placed 이미지 복원(A5): IDML Link 파일명과 매칭되는 동반 업로드 이미지.
+     * 매칭 프레임은 회색 플레이스홀더 대신 실제 image 객체(크롭 베이크 PNG)로 치환되고
+     * (FULL=편집 가능, FLAT=래스터 베이크), 미제공/미매칭은 기존 플레이스홀더+경고 유지.
+     */
+    linkedImages?: LinkedImages;
   }
-): Promise<{ result: SpreadTemplateResult; dto: DraftTemplateDto; previewSvg: string }>;
+): Promise<{
+  result: SpreadTemplateResult & { placedApplied: PlacedAppliedSummary };
+  dto: DraftTemplateDto;
+  previewSvg: string;
+}>;
+
+/** applyPlacedImages 적용 요약 — convertIdmlToTemplate 의 result 에 항상 부가된다(미제공 시 matched 0/failed []). */
+export interface PlacedAppliedSummary {
+  matched: number;
+  failed: { fileName: string; reason: string }[];
+}
+
+/**
+ * toSpreadTemplate 결과의 meta.placed 디스크립터를 동반 업로드 이미지로 치환(인덱스/z-order
+ * 보존). linkedImages 미제공 시 디스크립터만 제거(기존 출력과 동일 — 하위호환).
+ */
+export function applyPlacedImages(
+  result: SpreadTemplateResult,
+  linkedImages?: LinkedImages | null
+): Promise<SpreadTemplateResult & { placedApplied: PlacedAppliedSummary }>;
+
+/**
+ * dataURL 이미지에서 정규화 크롭(GraphicBounds 0..1)을 잘라 PNG 베이크.
+ * flipX/flipY 는 픽셀 미러로 베이크. 브라우저=canvas, Node=sharp(dual-env).
+ */
+export function bakeCroppedImage(
+  dataUrl: string,
+  cropNorm: { x: number; y: number; w: number; h: number },
+  opts?: { flipX?: boolean; flipY?: boolean }
+): Promise<{ dataUrl: string; widthPx: number; heightPx: number }>;
+
+/**
+ * 디자인 패키지 zip 해제(A5) — 순수 IDML(designmap.xml)과 패키지 zip(*.idml + Links 이미지)
+ * 판별. 이미지 엔트리는 파일명(NFC) → dataURL Map, 브라우저 디코드 불가 형식은 skipped.
+ */
+export function extractDesignPackage(buffer: ArrayBuffer | Uint8Array): Promise<{
+  kind: 'idml' | 'package';
+  idmlBuffer: ArrayBuffer | Uint8Array | null;
+  linkedImages: Map<string, string>;
+  skipped: string[];
+}>;
 
 /** flat-spine 모드 크롭 지오메트리(순수 함수). 경계 px 합 = 전폭 px 보장, spine 은 책등 중심 3배폭. */
 export function computeFlatSpineCrops(

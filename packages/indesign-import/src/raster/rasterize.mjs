@@ -70,9 +70,17 @@ export function buildArtworkSvg(dto) {
 
     if (o.type === 'image' && o.src) {
       // 이미지: center → 좌상단 변환. href 로 data URL/URL 그대로 포함.
-      const x = left - w / 2;
-      const y = top - h / 2;
-      parts.push(`<image href="${esc(o.src)}" xlink:href="${esc(o.src)}" x="${x}" y="${y}" width="${w}" height="${h}"/>`);
+      // placed 복원 이미지(A5) 패리티: scaleX/Y(베이크 원본 px → 캔버스 px) + flipY(중심 y
+      // 미러). angle 은 위 공통 rotate 그룹이 처리(피벗=객체 중심, flip 보다 바깥 — fabric
+      // 합성 순서와 동일). 기존 hybrid/flat-spine 아트워크는 rasterizeArtwork 호출 시점에
+      // image 객체가 dto 에 없으므로 이 분기 강화는 placed 경로에만 발동한다.
+      const dw = (o.width || 0) * (o.scaleX || 1) || w;
+      const dh = (o.height || 0) * (o.scaleY || 1) || h;
+      const x = left - dw / 2;
+      const y = top - dh / 2;
+      if (o.flipY) parts.push(`<g transform="translate(0 ${2 * top}) scale(1 -1)">`); // y → 2·top − y
+      parts.push(`<image href="${esc(o.src)}" xlink:href="${esc(o.src)}" x="${x}" y="${y}" width="${dw}" height="${dh}" preserveAspectRatio="none"/>`);
+      if (o.flipY) parts.push('</g>');
     } else if (o.path) {
       // path 의 d 는 절대 캔버스 px 좌표 → transform 불필요(중앙원점 보정도 불필요).
       parts.push(`<path d="${o.path}" fill="${fill}"${strokeAttr}/>`);

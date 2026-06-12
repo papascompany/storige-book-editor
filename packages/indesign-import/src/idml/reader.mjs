@@ -141,6 +141,54 @@ function extractCorner(a) {
   };
 }
 
+/**
+ * Link@LinkResourceURI → 파일명(NFC). URI 는 percent-encoded + 한글 NFD 실측
+ * (`file:/Users/.../Links/17146230.jpg`) → decode + NFC 정규화. 디코드 실패 시 원시 꼬리 폴백.
+ */
+function linkUriToFileName(uri) {
+  if (!uri) return null;
+  const tail = String(uri).split('/').pop();
+  if (!tail) return null;
+  try {
+    return decodeURIComponent(tail).normalize('NFC');
+  } catch {
+    return tail.normalize ? tail.normalize('NFC') : tail;
+  }
+}
+
+/**
+ * 프레임 노드의 배치(placed) 상세 추출 — inner <Image|PDF|...> 의 ItemTransform(배치 SSOT),
+ * Properties/GraphicBounds(원본 좌표계 pt), <Link> 파일명.
+ * 누락 필드는 null — 변환기에서 복원 불가 판정(플레이스홀더 유지)에 사용.
+ */
+function extractPlacedDetail(node, contentTag) {
+  const innerNode = findChild(node, contentTag);
+  if (!innerNode) return null;
+  const ia = attrsOf(innerNode);
+  const innerTransform = ia['@_ItemTransform'] ? parseNums(ia['@_ItemTransform']) : null;
+  const props = findChild(innerNode, 'Properties');
+  const gb = props ? findChild(props, 'GraphicBounds') : null;
+  const gba = gb ? attrsOf(gb) : null;
+  const graphicBounds =
+    gba && gba['@_Left'] != null
+      ? {
+          left: num(gba['@_Left']),
+          top: num(gba['@_Top']),
+          right: num(gba['@_Right']),
+          bottom: num(gba['@_Bottom']),
+        }
+      : null;
+  const link = findChild(innerNode, 'Link');
+  const linkUri = link ? attrsOf(link)['@_LinkResourceURI'] || null : null;
+  return {
+    contentType: contentTag,
+    innerTransform, // [a,b,c,d,tx,ty] — 프레임 로컬 → GraphicBounds 공간 배치
+    graphicBounds,
+    linkUri,
+    linkFileName: linkUriToFileName(linkUri),
+  };
+}
+
 /** 스프레드/그룹 자식들을 '문서 순서대로' 재귀 수집(z-순서 보존, 부모 변환 합성) */
 function collectItemsOrdered(siblingNodes, parentT, acc) {
   for (const node of siblingNodes) {
@@ -154,6 +202,11 @@ function collectItemsOrdered(siblingNodes, parentT, acc) {
       const placedContent = ['Image', 'PDF', 'EPS', 'WMF', 'PICT'].find(
         (ct) => findChild(node, ct) != null
       );
+      // 배치 상세(A5) — inner ItemTransform / GraphicBounds / Link 파일명.
+      // 동반 업로드 이미지(linkedImages)로 실제 픽셀을 복원할 때 사용한다.
+      // ⚠️ 배치 SSOT 는 inner <Image> ItemTransform — FrameFittingOption crop 은 신뢰 금지
+      //   (실측 LA-383 u9d3: 109.16pt 크롭 실존인데 FFO crop attr 자체가 없음).
+      const placed = placedContent ? extractPlacedDetail(node, placedContent) : null;
       // 그라디언트 기하(GradientFill*) — InDesign 은 모든 프레임에 잔존 기본값
       // (GradientFillStart="0 0" Length="0")을 박아두므로, 이 값의 존재만으로 그라디언트
       // 적용을 판정하면 안 된다(실측). 적용 판정은 변환기에서 FillColor="Gradient/..." 로만.
@@ -188,6 +241,7 @@ function collectItemsOrdered(siblingNodes, parentT, acc) {
         strokeWeight: a['@_StrokeWeight'] != null ? num(a['@_StrokeWeight']) : undefined,
         parentStory: a['@_ParentStory'],
         ...(placedContent ? { placedContent } : {}),
+        ...(placed ? { placed } : {}),
         ...(gradientFill ? { gradientFill } : {}),
         ...(corner ? { corner } : {}),
         ...strokeDetail,

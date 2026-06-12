@@ -45,10 +45,20 @@ export function buildPreviewSvg(dto, opts = {}) {
   for (const o of dto.canvasData.objects) {
     if (o.type === 'textbox') continue;
     // 하이브리드 모드: 디자인 아트워크 이미지(최하단). scale 반영해 캔버스 전체 커버.
+    // placed 복원 이미지(A5) 패리티: angle(중심 피벗 회전) + flipY(중심 y 미러 — 객체 속성)
+    // 반영. fabric 합성 순서(translate·rotate·flip)와 동일하게 rotate 가 바깥, flip 이 안쪽
+    // (SVG transform 리스트는 우측이 먼저 적용). 기존 아트워크(angle/flip 없음)는 종전과
+    // 바이트 동일 출력(transform attr 자체가 안 붙음).
     if (o.type === 'image' && o.src) {
       const dw = (o.width || 0) * (o.scaleX || 1);
       const dh = (o.height || 0) * (o.scaleY || 1);
-      parts.push(`<image href="${o.src}" x="${s(cX(o.left) - dw / 2)}" y="${s(cY(o.top) - dh / 2)}" width="${s(dw)}" height="${s(dh)}" preserveAspectRatio="none"/>`);
+      const icx = s(cX(o.left));
+      const icy = s(cY(o.top));
+      const tfs = [];
+      if (o.angle) tfs.push(`rotate(${o.angle} ${icx} ${icy})`);
+      if (o.flipY) tfs.push(`translate(0 ${2 * icy}) scale(1 -1)`); // y → 2·icy − y (중심선 미러)
+      const tfAttr = tfs.length ? ` transform="${tfs.join(' ')}"` : '';
+      parts.push(`<image href="${o.src}" x="${s(cX(o.left) - dw / 2)}" y="${s(cY(o.top) - dh / 2)}" width="${s(dw)}" height="${s(dh)}" preserveAspectRatio="none"${tfAttr}/>`);
       continue;
     }
     const w = o.width || 12;
