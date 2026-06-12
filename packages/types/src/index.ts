@@ -1573,6 +1573,29 @@ export interface EditSessionMetadata {
    * 편집기는 underlay 모드에서 이 URL들을 잠금 가이드 배경으로 로드.
    */
   contentPdfGuide?: ContentPdfGuide;
+  /**
+   * D1 외부 사진 주입 (2026-06-12, EDITOR.md §20.1).
+   * 호스트(예: ShareSnap 공유방)가 세션 생성/PATCH 시 주입하는 사진 목록.
+   * 목록이 있으면 편집기 이미지 패널에 "공유방 사진" 탭이 조건부 렌더된다.
+   * url 은 인쇄용 리사이즈본(긴변 3000~4000px 권장, 만료형 signed URL 금지).
+   */
+  externalPhotos?: ExternalPhoto[];
+}
+
+/**
+ * 외부 주입 사진 1장 (D1).
+ */
+export interface ExternalPhoto {
+  /** 인쇄용 이미지 URL (편집기 캔버스에 로드되는 원본 — 곧 인쇄 품질) */
+  url: string;
+  /** 표시명 */
+  name?: string;
+  /** 패널 그리드용 썸네일(~300px). 없으면 url 사용 */
+  thumbnailUrl?: string;
+  /** 올린 사람 표시명 (정렬/필터용, 선택) */
+  uploaderName?: string;
+  /** 업로드 시각 ISO (정렬용, 선택) */
+  uploadedAt?: string;
 }
 
 /**

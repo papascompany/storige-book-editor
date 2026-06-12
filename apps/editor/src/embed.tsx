@@ -43,6 +43,7 @@ import { useResolvedPageNavPosition } from './hooks/useResolvedPageNavPosition'
 import { WorkspaceModal } from './components/modals'
 import { Sentry } from './lib/sentry'
 import { applyContentPdfGuides } from './utils/contentPdfGuide'
+import { useExternalPhotosStore } from './stores/useExternalPhotosStore'
 import './index.css'
 
 // ============================================================
@@ -862,6 +863,17 @@ function EmbeddedEditor({
         // 가이드는 excludeFromExport 라 export/저장에서 제외, 최종 인쇄는 첨부 원본 PDF 그대로.
         if (editSession) {
           await applyContentPdfGuides(editSession, effectiveTemplateSetId)
+        }
+
+        // 3-A'. D1 외부 사진 주입 (EDITOR.md §20.1) — 호스트가 세션 metadata 로
+        // 주입한 공유방 사진 목록을 스토어에 적재. 목록이 있으면 이미지 패널에
+        // "공유방 사진" 탭이 조건부 렌더된다(없으면 기존 동작 그대로 = bookmoa 영향 0).
+        {
+          const externalPhotos = (editSession?.metadata as Record<string, unknown> | undefined)
+            ?.externalPhotos
+          useExternalPhotosStore.getState().setPhotos(
+            Array.isArray(externalPhotos) ? (externalPhotos as never[]) : [],
+          )
         }
 
         // 3-B. 로드 직후 자동 선택 해제 — mode='cover'(표지 전용) 등에서 표지 영역이
