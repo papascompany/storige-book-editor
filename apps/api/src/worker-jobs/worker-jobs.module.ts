@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { BullModule } from '@nestjs/bull';
 import { WorkerJobsController } from './worker-jobs.controller';
 import { WorkerJobsService } from './worker-jobs.service';
+import { WorkerJobsSweeperService } from './worker-jobs-sweeper.service';
 import { WorkerJob } from './entities/worker-job.entity';
 import { FilesModule } from '../files/files.module';
 import { WebhookModule } from '../webhook/webhook.module';
@@ -26,7 +27,8 @@ import { EditSessionEntity } from '../edit-sessions/entities/edit-session.entity
     WebhookModule,
   ],
   controllers: [WorkerJobsController],
-  providers: [WorkerJobsService],
+  // WK-4 — 고아 잡 스위퍼 cron (ScheduleModule.forRoot() 는 app.module 기존재)
+  providers: [WorkerJobsService, WorkerJobsSweeperService],
   exports: [WorkerJobsService],
 })
 export class WorkerJobsModule {}

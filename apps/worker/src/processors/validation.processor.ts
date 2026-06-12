@@ -3,7 +3,7 @@ import { Logger } from '@nestjs/common';
 import { Job } from 'bull';
 import { PdfValidatorService } from '../services/pdf-validator.service';
 import { ValidationOptions, ValidationResultDto } from '../dto/validation-result.dto';
-import axios from 'axios';
+import { JobStatusService } from '../services/job-status.service';
 import { captureJobException } from '../sentry/sentry.init';
 
 interface ValidationJobData {
@@ -52,14 +52,18 @@ interface ValidationJobData {
 @Processor('pdf-validation')
 export class ValidationProcessor {
   private readonly logger = new Logger(ValidationProcessor.name);
-  private readonly apiBaseUrl =
-    process.env.API_BASE_URL || 'http://localhost:4000/api';
-  private readonly apiKey = process.env.WORKER_API_KEY || 'test-api-key';
+  // WK-4 — 상태 업데이트 재시도 공유 서비스 (생성자 주입 대신 직접 생성:
+  //   기존 스펙들이 생성자 시그니처를 고정하고 있어 DI 파라미터 추가 불가)
+  private readonly jobStatusService = new JobStatusService();
 
   constructor(private readonly validatorService: PdfValidatorService) {}
 
   // 검증 동시성: 기본 1이라 cover+content 등 다건 검증이 순차 처리되어 느렸음.
-  // env VALIDATION_CONCURRENCY 로 조정(기본 3). Ghostscript 는 별도 GS_CONCURRENCY 로 보호되고,
+  // env VALIDATION_CONCURRENCY 로 조정(기본 3).
+  // ⚠️ 주석 정정 (WK-5, 2026-06-13): 종전 주석은 "Ghostscript 는 별도 GS_CONCURRENCY 로
+  //   보호된다"고 했으나 당시 그런 가드는 존재하지 않았다(허위). 현재는
+  //   utils/ghostscript.ts 의 모듈 레벨 카운팅 세마포어(gsSemaphore, env GS_CONCURRENCY,
+  //   기본 2)가 GS spawn 동시 수를 실제로 제한한다.
   // 파일당 PDF 메모리 상한(100MB)을 고려해도 3~4는 안전.
   @Process({
     name: 'validate-pdf',
@@ -147,7 +151,11 @@ export class ValidationProcessor {
   }
 
   /**
-   * API를 통해 Job 상태 업데이트
+   * API를 통해 Job 상태 업데이트.
+   *
+   * WK-4: 무재시도 axios.patch → 공유 JobStatusService(재시도 5회·최대 30s 백오프,
+   * 최종 실패 시 Sentry capture)로 대체. 최종 실패해도 throw 하지 않는 기존
+   * 동작(검증 결과 반환은 보존)은 유지된다.
    */
   private async updateJobStatus(
     jobId: string,
@@ -155,26 +163,10 @@ export class ValidationProcessor {
     result?: any,
     errorMessage?: string,
   ): Promise<void> {
-    try {
-      await axios.patch(
-        `${this.apiBaseUrl}/worker-jobs/external/${jobId}/status`,
-        {
-          status,
-          result,
-          errorMessage,
-        },
-        {
-          timeout: 10000, // 10초 타임아웃
-          headers: {
-            'X-API-Key': this.apiKey,
-          },
-        },
-      );
-    } catch (error) {
-      this.logger.error(
-        `Failed to update job status: ${error.message}`,
-        error.stack,
-      );
-    }
+    await this.jobStatusService.updateJobStatusWithRetry(
+      jobId,
+      { status, result, errorMessage },
+      { jobType: 'validate', queueName: 'pdf-validation' },
+    );
   }
 }

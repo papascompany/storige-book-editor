@@ -134,8 +134,29 @@ export class PdfConverterService {
           const tempBleedPath = path.join(this.storagePath, `bleed_${uuidv4()}.pdf`);
 
           if (this.gsAvailable) {
+            // WK-2 sanity 게이트용 원본 실측 (블리드 적용 전)
+            const beforeInfo = await getPdfInfo(currentPath);
+
             // Ghostscript로 블리드 적용 (더 정확함)
             await addBleedToPdf(currentPath, tempBleedPath, options.bleed);
+
+            // WK-2 (2026-06-13) — sanity 게이트: 변환 결과 첫 페이지 크기 ≥ 원본.
+            //   종전 addBleedToPdf 는 페이지 크기를 bleedPt*2 로 잘못 지정해
+            //   콘텐츠가 블리드 2배 크기로 잘려나간 손상 PDF 를 조용히 산출했다.
+            //   동일 계열 회귀가 재발하면 손상 산출물이 인쇄로 흘러가지 않도록
+            //   여기서 잡을 FAILED 로 떨어뜨린다(throw → 프로세서가 FAILED 처리).
+            //   (0.5mm 허용오차: getPdfInfo 반올림/측정 오차 흡수)
+            const afterInfo = await getPdfInfo(tempBleedPath);
+            const SANITY_TOL_MM = 0.5;
+            if (
+              afterInfo.width + SANITY_TOL_MM < beforeInfo.width ||
+              afterInfo.height + SANITY_TOL_MM < beforeInfo.height
+            ) {
+              throw new Error(
+                `BLEED_OUTPUT_SMALLER_THAN_INPUT: 블리드 적용 결과(${afterInfo.width}x${afterInfo.height}mm)가 ` +
+                  `원본(${beforeInfo.width}x${beforeInfo.height}mm)보다 작습니다 — Ghostscript 블리드 변환 손상 의심, 잡 FAILED 처리`,
+              );
+            }
           } else {
             // pdf-lib로 폴백 (기본 기능만)
             await this.applyBleedWithPdfLib(currentPath, tempBleedPath, options.bleed);

@@ -220,6 +220,27 @@ export class UpdateJobStatusDto {
   @IsString()
   errorMessage?: string;
 
+  /**
+   * WK-1 (2026-06-13) — 세분화 에러 코드 (예: 'PAGE_COUNT_MISMATCH').
+   * 워커 split/duplex-split/spread 실패 경로가 DomainError.code 를 보내는데,
+   * 전역 ValidationPipe(forbidNonWhitelisted)가 DTO 미정의 필드를 400 으로
+   * 거부해 FAILED 상태 업데이트 자체가 실패하던 구멍을 막는다.
+   * 엔티티 컬럼(error_code)은 기존재 — Object.assign 경유로 그대로 저장된다.
+   */
+  @ApiPropertyOptional({ example: 'PAGE_COUNT_MISMATCH', description: '세분화 에러 코드 (DomainError.code)' })
+  @IsOptional()
+  @IsString()
+  errorCode?: string;
+
+  /** WK-1 — 에러 상세 정보 (JSON). 엔티티 컬럼(error_detail) 기존재. */
+  @ApiPropertyOptional({
+    example: { expected: 4, got: 3 },
+    description: '에러 상세 정보 (JSON)',
+  })
+  @IsOptional()
+  @IsObject()
+  errorDetail?: Record<string, any>;
+
   @ApiPropertyOptional({ example: '123', description: 'Bull queue job ID (디버깅용)' })
   @IsOptional()
   queueJobId?: string | number;
