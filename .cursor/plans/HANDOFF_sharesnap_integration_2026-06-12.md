@@ -231,6 +231,7 @@ ShareSnap 세션의 `docs/storige-integration-assessment.md` 평가서를 storig
 | # | 작업 | 설계 방향 | 추정 |
 |---|------|----------|------|
 | D1 | **외부 사진 주입** | ① 세션 `metadata.externalPhotos: [{url, name, thumbnailUrl?}]` — 호스트 서버가 세션 생성 시(또는 PATCH) 주입 ② 편집기 이미지 패널에 "공유방 사진" 탭 — 목록 렌더 + 탭하면 `imageFromURL` 로 캔버스 추가 ③ (선택) postMessage `host.addImages` 명령. CORS: 사진 호스트(Supabase Storage)가 editor origin 허용 필요 | 3~5일 |
+| D1-UX | **UI 방식 (2026-06-12 검토, CTO 확인 대기)** | **A안 = 공유방 갤러리(파일브라우저) 탭 권장.** 근거: ⓐ 공유방 사진은 **타 참여자가 올린 것** — 고객 기기 갤러리에 없어 로컬 업로드(B안)로는 기능 자체가 성립 안 함 ⓑ 기존 모바일 4MB 가드가 원본 카메라 사진(HEIC/JPEG 3~12MB) 다수 차단 — B안과 정면 충돌 ⓒ 재업로드 데이터 비용·중복 저장 0. **B안(로컬 업로드)은 기존 패널이 이미 제공** — "내 업로드" 탭으로 병존(신규 개발 0, 공유방에 없는 사진 추가용 보조). UX 디테일: 탭=즉시 캔버스 추가(현행 '나의 콘텐츠'와 동일 1-tap), 사용됨 체크 뱃지(포토북 '안 쓴 사진' 파악 핵심), 정렬 칩(시간순/올린사람/안 쓴 사진), 썸네일 lazy-load. **인쇄해상도 정책**: ShareSnap이 공유방 업로드 시점에 인쇄용 리사이즈본(긴변 3000~4000px, JPEG ~2-3MB) 사전 생성해 `url`로 제공, `thumbnailUrl`은 ~300px — 모바일 메모리와 300dpi 인쇄품질 양립의 유일한 안전 경로 | (D1에 포함) |
 | D2 | **캔버스 핀치-투-줌** | Fabric `touch:gesture` 또는 pointer events 2지 추적 → `canvas.zoomToPoint`. 기존 `touch-action: none` 기반이라 충돌 없음. WorkspacePlugin 줌 API 재사용 | 3~5일 |
 | D3 | **사진+코멘트 자동배치** (협의) | 표준 계약 밖. 권장: 템플릿에 이미지 프레임(placeholder) N개 정의 → `externalPhotos` 순서대로 자동 채움 + 코멘트는 텍스트 placeholder. D1 완료 후 별도 스코프 | 미정 (결정 ②) |
 
