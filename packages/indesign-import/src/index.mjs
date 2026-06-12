@@ -3,6 +3,7 @@
 
 import { parseIdml, colorToHex, parseGradients } from './idml/reader.mjs';
 import { toSpreadTemplate, deriveSpecFromPages } from './convert/toSpreadTemplate.mjs';
+import { applyPlacedImages, bakeCroppedImage } from './convert/placedImages.mjs';
 import { buildPreviewSvg } from './preview/svg.mjs';
 import { ARTWORK_LOCK } from './convert/artworkLock.mjs';
 import { computeFlatSpineCrops } from './convert/flatSpineGeometry.mjs';
@@ -10,7 +11,7 @@ import { halvesOf, contentToSceneX } from './geometry/centerOrigin.mjs';
 import * as units from './geometry/units.mjs';
 import * as regions from './geometry/regions.mjs';
 
-export { parseIdml, colorToHex, parseGradients, toSpreadTemplate, deriveSpecFromPages, buildPreviewSvg, computeFlatSpineCrops, units, regions };
+export { parseIdml, colorToHex, parseGradients, toSpreadTemplate, deriveSpecFromPages, buildPreviewSvg, computeFlatSpineCrops, applyPlacedImages, bakeCroppedImage, units, regions };
 
 const round2 = (n) => Math.round(n * 100) / 100;
 const round4 = (n) => Math.round(n * 10000) / 10000;
@@ -22,12 +23,21 @@ const round4 = (n) => Math.round(n * 10000) / 10000;
  *   최하단 이미지 레이어로 깐다(conversionMode='flat-spread' — 책등 고정).
  * mode='flat-spine': 전폭 300dpi 1회 렌더 후 3크롭(spine 3배폭/back/front, 흰 배경 합성)으로
  *   나눠 깐다(conversionMode='flat-spine' — 책등 가변 허용).
+ * linkedImages(A5): IDML 의 placed 이미지 프레임을 동반 업로드 이미지(파일명→dataURL,
+ * Map 또는 plain object — Link 파일명과 NFC·대소문자 무시 매칭)로 실제 복원한다.
+ * 미제공/미매칭 시 기존 회색 플레이스홀더 + 경고 동작 그대로(하위호환).
  * @param {ArrayBuffer|Uint8Array} buffer
- * @param {{name?:string, dpi?:number, previewWidth?:number, mode?:('vector'|'hybrid'|'flat-spine'), rasterDpi?:number}} [opts]
+ * @param {{name?:string, dpi?:number, previewWidth?:number, mode?:('vector'|'hybrid'|'flat-spine'), rasterDpi?:number, linkedImages?:(Map<string,string>|Record<string,string>)}} [opts]
  */
 export async function convertIdmlToTemplate(buffer, opts = {}) {
   const doc = await parseIdml(buffer);
-  const result = toSpreadTemplate(doc, { name: opts.name, dpi: opts.dpi });
+  // 호출 순서 고정: toSpreadTemplate(sync, meta.placed emit) → applyPlacedImages(치환/디스크립터
+  // 제거) → hybrid/flat-spine 래스터. FLAT 모드는 복원 이미지가 z-order 그대로 베이크되고,
+  // FULL 모드는 편집 가능한 image 객체로 남는다.
+  const result = await applyPlacedImages(
+    toSpreadTemplate(doc, { name: opts.name, dpi: opts.dpi }),
+    opts.linkedImages
+  );
   let dto = result.draftTemplateDto;
   let finalResult = result;
 
@@ -181,8 +191,10 @@ export async function convertIdmlToTemplate(buffer, opts = {}) {
 /**
  * PSD(포토샵) → 단일 페이지 템플릿(명함/내지 단품 등). 하이브리드: 비텍스트=300dpi급 배경 PNG,
  * 텍스트=편집가능 레이어(근사 폰트/크기/색, 관리자 확정 전제).
+ * linkedImages 는 IDML 과의 시그니처 통일용으로 수용만 한다 — PSD 는 픽셀이 파일에 내장되어
+ * 있어(링크 메타 없음) 현재 소비하지 않는다(무해, 향후 스마트오브젝트 링크 대응 여지).
  * @param {ArrayBuffer|Uint8Array} buffer
- * @param {{name?:string, pageType?:('page'|'cover'), previewWidth?:number}} [opts]
+ * @param {{name?:string, pageType?:('page'|'cover'), previewWidth?:number, linkedImages?:(Map<string,string>|Record<string,string>)}} [opts]
  */
 export async function convertPsdToTemplate(buffer, opts = {}) {
   const { parsePsd } = await import('./psd/reader.mjs');
@@ -196,4 +208,64 @@ export async function convertPsdToTemplate(buffer, opts = {}) {
   const result = toSinglePageTemplate(parsed, background, { name: opts.name, pageType: opts.pageType });
   const previewSvg = buildPreviewSvg(result.draftTemplateDto, { width: opts.previewWidth });
   return { result, dto: result.draftTemplateDto, previewSvg };
+}
+
+// 브라우저 디코드 가능한 동반 이미지 확장자 → MIME (TIFF/EPS/PDF/PSD/AI 는 디코드 불가 → skipped)
+const PACKAGE_IMAGE_MIME = {
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  bmp: 'image/bmp',
+  avif: 'image/avif',
+};
+
+/**
+ * 디자인 패키지 zip 해제 헬퍼(A5) — admin 이 단일 업로드로 IDML+링크 이미지를 받을 수 있게 한다.
+ *  - 순수 IDML(zip 루트에 designmap.xml): { kind:'idml', idmlBuffer: 입력 그대로, linkedImages: 빈 Map }
+ *  - 패키지 zip(*.idml 엔트리 포함): IDML 바이트 + 이미지 엔트리(파일명 NFC → dataURL) 추출.
+ *    브라우저 디코드 불가 형식(TIFF/EPS/PDF 등)은 skipped 로 보고(경고+플레이스홀더 유지용).
+ * jszip 은 본 패키지 dependencies — admin 은 소스 직소비(main: src/index.mjs)라 번들에 포함된다.
+ * @param {ArrayBuffer|Uint8Array} buffer
+ * @returns {Promise<{kind:('idml'|'package'), idmlBuffer:(ArrayBuffer|Uint8Array|null), linkedImages:Map<string,string>, skipped:string[]}>}
+ */
+export async function extractDesignPackage(buffer) {
+  const JSZip = (await import('jszip')).default;
+  const zip = await JSZip.loadAsync(buffer);
+  const names = Object.keys(zip.files);
+
+  // 판별 순서: *.idml 엔트리 우선(패키지 zip) → 루트 designmap.xml(순수 IDML — IDML 은 그 자체가
+  // zip 이고 designmap.xml 은 반드시 루트). 중첩 designmap.xml 만 있는 zip(IDML 내부 구조를
+  // 폴더째 압축한 형태)은 순수 IDML 로 오판하면 parseIdml 이 깨지므로 명시 에러로 안내한다.
+  const idmlEntry = names.find((n) => /\.idml$/i.test(n) && !zip.files[n].dir);
+  if (!idmlEntry) {
+    if (names.some((n) => /^designmap\.xml$/i.test(n))) {
+      return { kind: 'idml', idmlBuffer: buffer, linkedImages: new Map(), skipped: [] };
+    }
+    if (names.some((n) => /(^|\/)designmap\.xml$/i.test(n))) {
+      throw new Error(
+        'zip 안에 IDML 내부 구조(designmap.xml)가 폴더로 들어 있습니다 — IDML 패키지 zip(*.idml + 이미지) 또는 .idml 파일을 넣어주세요.'
+      );
+    }
+  }
+  const linkedImages = new Map();
+  const skipped = [];
+  for (const n of names) {
+    const f = zip.files[n];
+    if (f.dir || n === idmlEntry) continue;
+    const base = n.split('/').pop();
+    if (!base || base.startsWith('.')) continue; // __MACOSX/._* 등 메타 무시
+    const ext = (base.split('.').pop() || '').toLowerCase();
+    const mime = PACKAGE_IMAGE_MIME[ext];
+    if (mime) {
+      const b64 = await f.async('base64');
+      const key = base.normalize('NFC');
+      if (!linkedImages.has(key)) linkedImages.set(key, `data:${mime};base64,${b64}`);
+    } else if (/^(tif|tiff|eps|pdf|psd|ai|wmf|pict)$/.test(ext)) {
+      skipped.push(base.normalize('NFC'));
+    }
+  }
+  const idmlBuffer = idmlEntry ? await zip.files[idmlEntry].async('uint8array') : null;
+  return { kind: 'package', idmlBuffer, linkedImages, skipped };
 }

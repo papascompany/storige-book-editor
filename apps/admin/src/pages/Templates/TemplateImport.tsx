@@ -19,13 +19,25 @@ import {
 } from 'antd';
 import { InboxOutlined, SaveOutlined, ArrowLeftOutlined } from '@ant-design/icons';
 import type { UploadProps } from 'antd';
-import { convertIdmlToTemplate, convertPsdToTemplate } from '@storige/indesign-import';
+import {
+  convertIdmlToTemplate,
+  convertPsdToTemplate,
+  extractDesignPackage,
+  parseIdml,
+} from '@storige/indesign-import';
 import type { SpreadTemplateResult, SinglePageResult } from '@storige/indesign-import';
 import { TemplateType } from '@storige/types';
 import { templatesApi } from '../../api/templates';
 import { categoriesApi } from '../../api/categories';
 import { libraryApi } from '../../api/library';
 import { resolveStorageUrl } from '../../lib/axios';
+import {
+  classifyUploadName,
+  fixDataUrlMime,
+  collectPlacedLinkNames,
+  buildPlacedMatchRows,
+} from './placedMatching';
+import type { PlacedMatchRow } from './placedMatching';
 
 const { Title, Text, Paragraph } = Typography;
 const { Dragger } = Upload;
@@ -47,7 +59,31 @@ const flattenCategories = (cats: CategoryNode[], level = 0): { label: string; va
   return out;
 };
 
-const detectFormat = (fileName: string): DesignFormat => (/\.psd$/i.test(fileName) ? 'psd' : 'idml');
+// 업로드 허용 확장자 — IDML 본체(.idml/.zip 패키지) + PSD + 동반 이미지(placed 복원용,
+// 변환기 extractDesignPackage 와 동일한 브라우저 디코드 가능 집합)
+const UPLOAD_ACCEPT = '.idml,.psd,.zip,.jpg,.jpeg,.png,.gif,.webp,.bmp,.avif';
+
+// 모드 변경 재변환용으로 보관하는 IDML 원본 + 동반 이미지 컨텍스트(A5).
+// zip 은 업로드 시 1회만 해제하고 여기 보관해 모드 전환마다 재해제하지 않는다.
+interface PendingIdml {
+  buffer: ArrayBuffer | Uint8Array;
+  baseName: string;
+  /** 미리보기 카드 제목에 쓰는 출처 라벨 (파일명 + 동반 이미지 수) */
+  sourceLabel: string;
+  /** 동반 업로드 이미지: 파일명(NFC) → dataURL — 변환기 linkedImages 로 그대로 주입 */
+  linkedImages: Map<string, string>;
+  /** zip 에서 변환 불가 형식(TIF/EPS 등)으로 건너뛴 파일명 — 매칭 요약 사유 구체화용 */
+  skipped: string[];
+}
+
+// 동반 이미지 File → dataURL (file.type 미상이면 확장자 기반 MIME 으로 교정 — <img> 디코드 보장)
+const fileToDataUrl = (file: File): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(fixDataUrlMime(file.name, String(reader.result)));
+    reader.onerror = () => reject(new Error(`이미지 파일을 읽을 수 없습니다: ${file.name}`));
+    reader.readAsDataURL(file);
+  });
 
 // IDML 변환 방식 3종 (spreadConfig.conversionMode 와 1:1 대응 — vector→full, hybrid→flat-spread, flat-spine→flat-spine)
 type IdmlImportMode = 'vector' | 'hybrid' | 'flat-spine';
@@ -89,11 +125,14 @@ const dataUrlToFile = (dataUrl: string, fileName: string): File => {
 };
 
 /**
- * DB bloat 방지: canvasData 에 인라인된 base64 PNG 배경(들)을 스토리지에 업로드하고
+ * DB bloat 방지: canvasData 에 인라인된 base64 이미지(들)를 스토리지에 업로드하고
  * 객체의 src 를 스토리지 URL 로 치환한 새 객체 배열을 반환한다.
  *
  * - dataURL 이미지가 없으면(순수 벡터 IDML 등) 입력 배열을 그대로 반환(업로드 0회).
  * - 여러 개여도 모두 처리 (flat-spine 의 spine/back/front 3장 포함). 순서·z-order 보존(map).
+ * - A5 placed 복원 이미지(FULL 모드의 편집 가능 image 객체, id 'idml-<self>', 크롭 베이크
+ *   PNG dataURL)도 같은 판정(type==='image' && src data:)에 걸려 함께 업로드·치환된다.
+ *   FLAT 모드는 변환기에서 이미 아트워크 PNG 에 베이크되므로 기존 아트워크 업로드로 처리.
  * - 한 장이라도 업로드 실패 시 Promise.all 전체 reject → 호출자(saveMutation)가 에러를
  *   표면화하고 저장을 중단 (부분 치환된 깨진 템플릿을 저장하지 않음 — 전체 실패 처리).
  * - 저장 src 는 resolveStorageUrl 로 변환한 값: prod=절대 URL, dev=vite proxy 상대경로.
@@ -133,7 +172,10 @@ export const TemplateImport = () => {
   const [categoryId, setCategoryId] = useState<string | undefined>();
   const [mode, setMode] = useState<IdmlImportMode>('vector'); // IDML 전용
   const [pageType, setPageType] = useState<'page' | 'cover'>('page'); // PSD 전용
-  const [lastFile, setLastFile] = useState<File | null>(null);
+  // 모드 변경 재변환용 IDML 컨텍스트(원본 버퍼 + 동반 이미지). PSD 변환 시 null 로 리셋.
+  const [pendingIdml, setPendingIdml] = useState<PendingIdml | null>(null);
+  // placed 링크 파일명별 매칭 ✓/✗ 요약 — 동반 이미지를 제공한 변환에서만 채워진다.
+  const [matchRows, setMatchRows] = useState<PlacedMatchRow[]>([]);
   // 등록 대상(IDML 표지 한정): 표지 단품 / 책등 가변 셋으로 이어서 등록(방법 A)
   const [registerTarget, setRegisterTarget] = useState<'template' | 'bookset'>('template');
 
@@ -199,49 +241,188 @@ export const TemplateImport = () => {
     },
   });
 
-  const handleFile = async (
-    file: File,
-    opts?: { mode?: IdmlImportMode; pageType?: 'page' | 'cover' }
-  ) => {
-    setLastFile(file);
+  // 변환 실행 공통 래퍼: 스피너/에러 표면화. 실패 시 부분 결과를 남기지 않는다.
+  const runConversion = async (fn: () => Promise<void>) => {
     setConverting(true);
     setConvertError(null);
-    setResult(null);
-    setPreviewSvg('');
-    const fmt = detectFormat(file.name);
-    setFormat(fmt);
     try {
-      const baseName = file.name.replace(/\.(idml|indd|psd)$/i, '');
-      const buffer = await file.arrayBuffer();
-      if (fmt === 'psd') {
-        const { result: r, previewSvg: svg } = await convertPsdToTemplate(buffer, {
-          name: `${baseName} (가져옴)`,
-          pageType: opts?.pageType ?? pageType,
-          previewWidth: 1100,
-        });
-        setResult(r);
-        setPreviewSvg(svg);
-      } else {
-        const { result: r, previewSvg: svg } = await convertIdmlToTemplate(buffer, {
-          name: `${baseName} (가져옴)`,
-          previewWidth: 1100,
-          mode: opts?.mode ?? mode,
-        });
-        setResult(r);
-        setPreviewSvg(svg);
-      }
-      setName(`${baseName} (가져옴)`);
-      setFileName(file.name);
+      await fn();
     } catch (e) {
+      setResult(null);
+      setPreviewSvg('');
+      setMatchRows([]);
       setConvertError(e instanceof Error ? e.message : '변환에 실패했습니다.');
     } finally {
       setConverting(false);
     }
   };
 
+  /** IDML 버퍼 + 동반 이미지 → 변환 + 매칭 요약. 최초 업로드와 모드 변경 재변환이 같은 경로. */
+  const convertPreparedIdml = async (prep: PendingIdml, useMode: IdmlImportMode) => {
+    setResult(null);
+    setPreviewSvg('');
+    setMatchRows([]);
+    setFormat('idml');
+    const displayName = `${prep.baseName} (가져옴)`;
+    // 하위호환(절대 규칙): 동반 이미지가 없으면 linkedImages 옵션 자체를 전달하지 않는다
+    // → 변환기 미제공 경로(기존 회색 플레이스홀더 + 경고)가 바이트 단위로 보존된다.
+    const linked = prep.linkedImages.size > 0 ? prep.linkedImages : undefined;
+    const { result: r, previewSvg: svg } = await convertIdmlToTemplate(prep.buffer, {
+      name: displayName,
+      previewWidth: 1100,
+      mode: useMode,
+      ...(linked ? { linkedImages: linked } : {}),
+    });
+    // 매칭 ✓/✗ 요약 — 이미지를 제공한 경우에만 표시(링크 파일명 목록은 parseIdml 1회로 수집).
+    if (linked) {
+      const doc = await parseIdml(prep.buffer);
+      setMatchRows(
+        buildPlacedMatchRows({
+          linkNames: collectPlacedLinkNames(doc.items),
+          failed: r.placedApplied.failed,
+          providedNames: [...prep.linkedImages.keys()],
+          skipped: prep.skipped,
+        })
+      );
+    }
+    setResult(r);
+    setPreviewSvg(svg);
+    setName(displayName);
+    setFileName(prep.sourceLabel);
+  };
+
+  /** PSD 단일 파일 변환 — 기존 동작 그대로(동반 이미지는 픽셀 내장이라 미소비). */
+  const convertPsdFile = async (file: File) => {
+    setResult(null);
+    setPreviewSvg('');
+    setMatchRows([]);
+    setPendingIdml(null);
+    setFormat('psd');
+    const baseName = file.name.replace(/\.psd$/i, '');
+    const buffer = await file.arrayBuffer();
+    const { result: r, previewSvg: svg } = await convertPsdToTemplate(buffer, {
+      name: `${baseName} (가져옴)`,
+      pageType,
+      previewWidth: 1100,
+    });
+    setResult(r);
+    setPreviewSvg(svg);
+    setName(`${baseName} (가져옴)`);
+    setFileName(file.name);
+  };
+
+  /**
+   * 업로드 배치 처리 — 단일/다중/zip 모두 한 경로.
+   *  - .idml 단독: 기존 동작 그대로(linkedImages 미전달 → 변환기 하위호환 경로).
+   *  - .idml + 이미지들(다중 선택/드롭): 이미지를 dataURL 로 읽어 linkedImages 주입(placed 복원).
+   *  - .zip: extractDesignPackage 로 판별 — 순수 IDML(designmap.xml)이면 그대로 변환,
+   *    패키지(*.idml + Links 이미지)면 내장 IDML + 이미지 추출. 이미지 전용 zip 은
+   *    동반 이미지 공급원으로 동작(.idml 동반 또는 직전 변환에 추가).
+   *  - 이미지만: 직전 IDML 변환(pendingIdml)에 추가 매칭 후 재변환(누락 이미지 추가 보완용).
+   *  - .psd: 기존 단일 파일 동작 그대로. PSD+zip 동시 드롭에서 zip 에 IDML 이 없으면
+   *    PSD 변환으로 폴백(동반 이미지는 미소비 — 안내만).
+   *  - 디코드 불가 이미지(TIF/EPS/PDF/AI 등): 'JPG/PNG 변환' 안내 + 매칭 요약 사유 구체화.
+   */
+  const handleFiles = async (incoming: File[]) => {
+    const idmls = incoming.filter((f) => classifyUploadName(f.name) === 'idml');
+    const psds = incoming.filter((f) => classifyUploadName(f.name) === 'psd');
+    const zips = incoming.filter((f) => classifyUploadName(f.name) === 'zip');
+    const images = incoming.filter((f) => classifyUploadName(f.name) === 'image');
+    // 브라우저 디코드 불가 이미지(TIF/EPS/PDF/AI 등) — zip 경유(skipped)와 동일하게
+    // 'JPG/PNG 변환' 안내를 주고, 매칭 요약(skipped)에 합산해 실패 사유를 구체화한다.
+    const unsupportedImages = incoming.filter(
+      (f) => classifyUploadName(f.name) === 'unsupported-image'
+    );
+    const others = incoming.filter((f) => classifyUploadName(f.name) === 'other');
+    if (unsupportedImages.length) {
+      message.warning(
+        `브라우저에서 디코드할 수 없는 이미지 형식입니다 — JPG/PNG 로 변환해 다시 업로드하세요: ${unsupportedImages.map((f) => f.name).join(', ')}`
+      );
+    }
+    if (others.length) {
+      message.warning(`지원하지 않는 형식은 무시합니다: ${others.map((f) => f.name).join(', ')}`);
+    }
+
+    // PSD: 단일 파일 변환(기존 동작). IDML/zip 이 함께 오면 IDML 우선.
+    if (psds.length && !idmls.length && !zips.length) {
+      if (psds.length > 1) message.warning('PSD 파일이 여러 개입니다 — 첫 번째만 사용합니다.');
+      if (images.length) message.info('PSD 는 이미지가 파일에 내장되어 동반 이미지를 사용하지 않습니다.');
+      await convertPsdFile(psds[0]);
+      return;
+    }
+
+    // 동반 이미지 수집: zip 해제분(먼저, 같은 이름 첫 zip 우선) → 개별 이미지 파일(나중, 덮어씀)
+    const linkedImages = new Map<string, string>();
+    const skipped: string[] = [];
+    let zipIdml: { buffer: ArrayBuffer | Uint8Array; name: string } | null = null;
+    for (const z of zips) {
+      const pkg = await extractDesignPackage(await z.arrayBuffer());
+      if (!zipIdml && pkg.idmlBuffer) zipIdml = { buffer: pkg.idmlBuffer, name: z.name };
+      for (const [k, v] of pkg.linkedImages) if (!linkedImages.has(k)) linkedImages.set(k, v);
+      skipped.push(...pkg.skipped);
+    }
+    for (const f of images) linkedImages.set(f.name.normalize('NFC'), await fileToDataUrl(f));
+    // 개별 드롭된 디코드 불가 이미지도 skipped 에 합산 — placed 링크와 이름이 맞으면 매칭
+    // 요약이 '형식 변환 필요' 사유를 표시한다(zip 경유와 동일 품질).
+    skipped.push(...unsupportedImages.map((f) => f.name.normalize('NFC')));
+
+    // IDML 본체 결정: .idml 파일 > zip 내장 IDML > (없으면) 직전 변환에 이미지 추가
+    let main: { buffer: ArrayBuffer | Uint8Array; fileName: string } | null = null;
+    if (idmls.length) {
+      if (idmls.length > 1) message.warning('IDML 파일이 여러 개입니다 — 첫 번째만 사용합니다.');
+      main = { buffer: await idmls[0].arrayBuffer(), fileName: idmls[0].name };
+    } else if (zipIdml) {
+      main = { buffer: zipIdml.buffer, fileName: zipIdml.name };
+    }
+
+    if (!main) {
+      // PSD+zip 동시 드롭(zip 에 IDML 없음) 엣지 — IDML 본체가 없으면 PSD 변환으로 폴백.
+      // (PSD 는 픽셀 내장이라 zip/이미지 동반분은 소비하지 않는다 — 안내만.)
+      if (psds.length) {
+        if (psds.length > 1) message.warning('PSD 파일이 여러 개입니다 — 첫 번째만 사용합니다.');
+        if (zips.length || images.length || linkedImages.size) {
+          message.info('PSD 는 이미지가 파일에 내장되어 동반 이미지(이미지/zip)를 사용하지 않습니다.');
+        }
+        await convertPsdFile(psds[0]);
+        return;
+      }
+      if (!linkedImages.size) {
+        message.warning('변환할 파일(.idml / 패키지 .zip / .psd)을 선택하세요.');
+        return;
+      }
+      if (!pendingIdml) {
+        message.warning('동반 이미지만 받았습니다 — IDML(.idml 또는 패키지 .zip)을 함께 업로드하세요.');
+        return;
+      }
+      // 직전 IDML 변환에 이미지 추가 매칭(같은 이름이면 새 파일 우선) 후 재변환
+      const merged = new Map(pendingIdml.linkedImages);
+      for (const [k, v] of linkedImages) merged.set(k, v);
+      const prep: PendingIdml = {
+        ...pendingIdml,
+        linkedImages: merged,
+        skipped: [...pendingIdml.skipped, ...skipped],
+        sourceLabel: merged.size
+          ? `${pendingIdml.sourceLabel.replace(/ \(\+동반 이미지 \d+개\)$/, '')} (+동반 이미지 ${merged.size}개)`
+          : pendingIdml.sourceLabel,
+      };
+      setPendingIdml(prep);
+      await convertPreparedIdml(prep, mode);
+      return;
+    }
+
+    const baseName = main.fileName.replace(/\.(idml|indd|zip)$/i, '');
+    const sourceLabel = linkedImages.size
+      ? `${main.fileName} (+동반 이미지 ${linkedImages.size}개)`
+      : main.fileName;
+    const prep: PendingIdml = { buffer: main.buffer, baseName, sourceLabel, linkedImages, skipped };
+    setPendingIdml(prep);
+    await convertPreparedIdml(prep, mode);
+  };
+
   const handleModeChange = (next: IdmlImportMode) => {
     setMode(next);
-    if (lastFile && detectFormat(lastFile.name) === 'idml') void handleFile(lastFile, { mode: next });
+    // IDML 컨텍스트가 있으면 같은 원본+동반 이미지로 재변환(zip 재해제 없음)
+    if (pendingIdml) void runConversion(() => convertPreparedIdml(pendingIdml, next));
   };
   const handlePageTypeChange = (next: 'page' | 'cover') => {
     setPageType(next);
@@ -263,11 +444,14 @@ export const TemplateImport = () => {
   };
 
   const uploadProps: UploadProps = {
-    accept: '.idml,.psd',
-    multiple: false,
+    accept: UPLOAD_ACCEPT,
+    multiple: true,
     showUploadList: false,
-    beforeUpload: (file) => {
-      void handleFile(file as unknown as File);
+    beforeUpload: (file, fileList) => {
+      // 다중 선택/드롭 시 antd 가 파일마다 호출 — 마지막 파일 차례에 배치 전체를 1회 처리.
+      if (file === fileList[fileList.length - 1]) {
+        void runConversion(() => handleFiles(fileList as unknown as File[]));
+      }
       return false; // 자동 업로드 방지(브라우저에서 직접 변환)
     },
   };
@@ -297,8 +481,8 @@ export const TemplateImport = () => {
         type="info"
         showIcon
         style={{ marginBottom: 16 }}
-        message="InDesign 표지(IDML) 또는 Photoshop 단품 디자인(PSD)을 업로드하세요."
-        description="브라우저에서 변환되어 미리보기로 확인 후 저장합니다. IDML=표지 펼침면(스프레드), PSD=단일 페이지(명함/내지 단품). 폰트는 임베드되지 않으므로 누락 폰트는 시딩/확정이 필요합니다."
+        message="InDesign 표지(IDML·패키지 zip) 또는 Photoshop 단품 디자인(PSD)을 업로드하세요."
+        description="브라우저에서 변환되어 미리보기로 확인 후 저장합니다. IDML=표지 펼침면(스프레드), PSD=단일 페이지(명함/내지 단품). IDML 의 배치(링크) 이미지는 같은 파일명의 이미지를 함께 업로드(다중 선택 또는 패키지 zip)하면 자동 복원됩니다. 폰트는 임베드되지 않으므로 누락 폰트는 시딩/확정이 필요합니다."
       />
 
       {/* IDML 변환 방식(벡터/하이브리드) — 파일 선택 후 표시. PSD 는 항상 하이브리드. */}
@@ -320,8 +504,11 @@ export const TemplateImport = () => {
         <p className="ant-upload-drag-icon">
           <InboxOutlined />
         </p>
-        <p className="ant-upload-text">IDML 또는 PSD 파일을 끌어다 놓거나 클릭하여 선택</p>
-        <p className="ant-upload-hint">.idml — 표지 펼침면 / .psd — 단품(명함·내지). PSD 는 비텍스트=배경 PNG, 텍스트=편집 레이어로 분리됩니다.</p>
+        <p className="ant-upload-text">IDML·패키지 zip·PSD (+배치 이미지)를 끌어다 놓거나 클릭하여 선택</p>
+        <p className="ant-upload-hint">
+          .idml — 표지 펼침면 / .zip — IDML+이미지 패키지 / .psd — 단품(명함·내지).
+          IDML 배치 이미지는 같은 파일명의 jpg/png 등을 함께 선택하면 자동 복원됩니다 (이미지만 추가로 올리면 직전 변환에 추가 매칭).
+        </p>
       </Dragger>
 
       {converting && (
@@ -383,6 +570,27 @@ export const TemplateImport = () => {
                   ))}
                 </Space>
               </Descriptions.Item>
+              {/* placed 링크 파일명별 매칭 ✓/✗ — 동반 이미지를 제공한 IDML 변환에서만 표시 */}
+              {idmlResult && matchRows.length > 0 && (
+                <Descriptions.Item label="배치 이미지 매칭" span={2}>
+                  <Space direction="vertical" size={2}>
+                    {matchRows.map((row) => (
+                      <div key={`${row.status}:${row.fileName}`}>
+                        {row.status === 'matched' ? (
+                          <Tag color="green">✓ 복원</Tag>
+                        ) : row.status === 'unused' ? (
+                          <Tag>참조 없음</Tag>
+                        ) : (
+                          <Tag color="red">✗ 실패</Tag>
+                        )}
+                        <Text code>{row.fileName}</Text>
+                        {row.frames > 1 && <Text type="secondary"> ×{row.frames}프레임</Text>}
+                        {row.reason && <Text type="secondary"> — {row.reason}</Text>}
+                      </div>
+                    ))}
+                  </Space>
+                </Descriptions.Item>
+              )}
             </Descriptions>
           </Card>
 

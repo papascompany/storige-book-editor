@@ -18,6 +18,7 @@ import { buildPathD, transformedBBox } from '../geometry/path.mjs';
 import { halvesOf, contentToSceneX, contentToSceneY } from '../geometry/centerOrigin.mjs';
 import { buildStoryTypography, verticalLineHeightFromTracking } from './textStyles.mjs';
 import { isGradientRef, buildFabricGradientFill } from './gradientFill.mjs';
+import { placedWarningFor } from './placedImages.mjs';
 
 const PATH_TYPES = new Set(['Polygon', 'GraphicLine']);
 
@@ -111,6 +112,32 @@ export function toSpreadTemplate(doc, opts = {}) {
     };
   };
 
+  // 객체 중심(content px) → { regionRef, anchor } — 메인 흐름과 placed 타깃이 공유(SSOT).
+  const resolveAnchorAt = (centerXpx, centerYpx, widthPx) => {
+    let regionRef = resolveRegionAtX(regionsPx, centerXpx);
+    // [강등 가드] 스프레드 전폭 배경처럼 중심 x 만 책등 밴드에 들어와 'spine' 으로 판정되는
+    // 객체는 편집기의 책등 가변(resizeSpine) 시 newSpine/oldSpine 비율 축소+중앙이동으로
+    // 표지 전체가 붕괴한다. spine 판정에 한해 객체 폭이 책등 폭을 유의미하게(5%) 초과하면
+    // 자유 객체(regionRef=null + canvas anchor)로 강등한다.
+    // ⚠️ cover/wing 판정은 절대 불변 — 풀블리드 표지 배경은 cover 앵커를 유지해야
+    // 책등 가변 시 표지와 함께 따라간다.
+    if (regionRef === 'spine') {
+      const spineRegion = regionsPx.find((r) => r.kind === 'spine');
+      if (spineRegion && widthPx > spineRegion.width * 1.05) {
+        regionRef = null;
+      }
+    }
+    const region = regionsPx.find((r) => r.kind === regionRef);
+    const anchor = region
+      ? {
+          kind: 'region',
+          xNorm: (centerXpx - region.x) / region.width,
+          yNorm: contentHeightPx ? centerYpx / contentHeightPx : 0,
+        }
+      : { kind: 'canvas', x: round2(contentToSceneX(centerXpx, halfW)), y: round2(contentToSceneY(centerYpx, halfH)) };
+    return { regionRef, anchor };
+  };
+
   for (const it of doc.items) {
     if (!it.bbox) continue;
     const isPath = PATH_TYPES.has(it.type) && it.subpaths?.length;
@@ -134,38 +161,31 @@ export function toSpreadTemplate(doc, opts = {}) {
       heightPx = mmToPx(ptToMm(it.bbox.h * Math.abs(d.scaleY)), dpi);
     }
 
-    let regionRef = resolveRegionAtX(regionsPx, centerXpx);
-    // [강등 가드] 스프레드 전폭 배경처럼 중심 x 만 책등 밴드에 들어와 'spine' 으로 판정되는
-    // 객체는 편집기의 책등 가변(resizeSpine) 시 newSpine/oldSpine 비율 축소+중앙이동으로
-    // 표지 전체가 붕괴한다. spine 판정에 한해 객체 폭이 책등 폭을 유의미하게(5%) 초과하면
-    // 자유 객체(regionRef=null + canvas anchor)로 강등한다.
-    // ⚠️ cover/wing 판정은 절대 불변 — 풀블리드 표지 배경은 cover 앵커를 유지해야
-    // 책등 가변 시 표지와 함께 따라간다.
-    if (regionRef === 'spine') {
-      const spineRegion = regionsPx.find((r) => r.kind === 'spine');
-      if (spineRegion && widthPx > spineRegion.width * 1.05) {
-        regionRef = null;
-      }
-    }
-    const region = regionsPx.find((r) => r.kind === regionRef);
-    const anchor = region
-      ? {
-          kind: 'region',
-          xNorm: (centerXpx - region.x) / region.width,
-          yNorm: contentHeightPx ? centerYpx / contentHeightPx : 0,
-        }
-      : { kind: 'canvas', x: round2(contentToSceneX(centerXpx, halfW)), y: round2(contentToSceneY(centerYpx, halfH)) };
+    const { regionRef, anchor } = resolveAnchorAt(centerXpx, centerYpx, widthPx);
 
     const fill = resolveColor(it.fillColor, doc.colors);
     const stroke = resolveColor(it.strokeColor, doc.colors);
     // 배치(placed) 이미지 프레임 — IDML 에 원본 픽셀 미포함(링크 메타만)이라 복원 불가.
     // 빈 프레임 대신 회색 플레이스홀더로 표시해 관리자가 편집기에서 이미지를 교체하도록 안내.
+    // 동반 업로드(linkedImages) 복원용 디스크립터(meta.placed)는 후처리(applyPlacedImages)가
+    // 소비·제거한다 — 미제공 시 최종 출력은 기존과 동일(하위호환).
+    let placedDesc = null;
     if (it.placedContent) {
       placedFrames.push(it.self);
       fill.hex = '#e9e9e9';
       fill.isNone = false;
       stroke.hex = '#999999';
       stroke.isNone = false;
+      placedDesc = buildPlacedDescriptor(it, {
+        isPath,
+        d,
+        dpi,
+        originXpt,
+        topYpt,
+        halfW,
+        halfH,
+        resolveAnchorAt,
+      });
     }
     // 그라디언트 fill (비텍스트, A1) — 판정은 반드시 FillColor="Gradient/..." 로만.
     // (실측: InDesign 은 모든 프레임에 잔존 GradientFillStart/Length 기본값을 박아두므로
@@ -338,6 +358,9 @@ export function toSpreadTemplate(doc, opts = {}) {
         regionRef: regionRef || null,
         anchor,
         ...(it.placedContent ? { placeholder: 'placed-image' } : {}),
+        // 동반 업로드 복원 디스크립터 — applyPlacedImages(후처리)가 소비 후 제거.
+        // 저장 산출물에는 절대 남지 않는다(미제공 시에도 제거 → 기존 출력과 동일).
+        ...(placedDesc ? { placed: placedDesc } : {}),
       },
       _idml: { self: it.self, srcType: it.type, points: it.bbox.pointCount },
     };
@@ -448,12 +471,10 @@ export function toSpreadTemplate(doc, opts = {}) {
     );
   }
 
-  // 배치(placed) 이미지 경고 — IDML 에는 이미지 원본이 포함되지 않음(링크 메타만)
+  // 배치(placed) 이미지 경고 — IDML 에는 이미지 원본이 포함되지 않음(링크 메타만).
+  // 문구는 placedImages.mjs 의 placedWarningFor 가 단일 출처(applyPlacedImages 재산정과 공유).
   if (placedFrames.length) {
-    warnings.push(
-      `배치 이미지 ${placedFrames.length}개 — IDML 에는 이미지 원본이 포함되지 않아 복원할 수 없습니다. ` +
-        `해당 자리는 회색 플레이스홀더로 표시됩니다. 편집기에서 [이미지] 메뉴로 원본 이미지를 업로드해 교체하세요.`
-    );
+    warnings.push(placedWarningFor(placedFrames.length));
   }
 
   // 별색(Spot) 경고 — 4도 근사로 손실, 후가공/별색 의도 확인 필요
@@ -535,3 +556,98 @@ export function toSpreadTemplate(doc, opts = {}) {
 }
 
 const round2 = (n) => Math.round(n * 100) / 100;
+const round6 = (n) => Math.round(n * 1e6) / 1e6;
+const EPS = 1e-6;
+
+/**
+ * 배치(placed) 이미지 복원 디스크립터(A5) — meta.placed 로 emit, applyPlacedImages 가 소비.
+ *
+ * 좌표식(설계 검증 보고 §1, LA-383 실측): 배치 SSOT 는 inner <Image> ItemTransform.
+ *   spread_pt = frameWorldT · (innerIT · p_GB)
+ * 프레임 로컬 공간에서 교차(inner IT 가 b=c=0 축정렬일 때만 — 실측 양건 해당):
+ *   imgLocal = innerIT · GraphicBounds, visible = imgLocal ∩ frame bbox
+ *   객체 = 기존 non-path 분기와 동일식: center=frameWorldT·visCenter, w/h=vis×|d.scaleX/Y|,
+ *          angle=d.rotationDeg, flipY=d.flipped
+ *   소스 크롭 = inverse(innerIT)·visible → GraphicBounds 0..1 정규화(제공 이미지 해상도 무관).
+ *   inner IT 의 음수 a/d(플립)는 bakeFlipX/Y 로 픽셀에 미러 베이크.
+ * 회전 inner IT(b,c≠0)·비사각 프레임 등은 unsupported 사유만 기록 — 플레이스홀더 유지
+ * (경고는 이미지가 실제 제공된 경우에만 applyPlacedImages 가 노출 — 미제공 출력 불변).
+ *
+ * @returns {object|null} 디스크립터(미지원 시 { unsupported } 포함). 파일명 없으면 null.
+ */
+function buildPlacedDescriptor(it, ctx) {
+  const p = it.placed;
+  if (!p || !p.linkFileName) return null;
+  const base = { frameSelf: it.self, linkFileName: p.linkFileName, contentType: p.contentType };
+  if (!p.innerTransform || !p.graphicBounds) return { ...base, unsupported: 'missing-detail' };
+  if (ctx.isPath) return { ...base, unsupported: 'non-rect-frame' };
+  const [a, b, c, dd, e, f] = p.innerTransform;
+  // 축정렬(b=c=0)만 지원 — 회전 inner IT 는 실측 표본 없음(경고+플레이스홀더 폴백).
+  if (Math.abs(b) > EPS || Math.abs(c) > EPS) return { ...base, unsupported: 'rotated-inner-transform' };
+  const gb = p.graphicBounds;
+  const gbW = gb.right - gb.left;
+  const gbH = gb.bottom - gb.top;
+  if (!(gbW > EPS) || !(gbH > EPS) || Math.abs(a) < EPS || Math.abs(dd) < EPS) {
+    return { ...base, unsupported: 'degenerate-transform' };
+  }
+  // 이미지 로컬 extent(프레임 로컬 공간) — a/d 음수(플립)면 min/max 로 정렬
+  const ix0 = a * gb.left + e;
+  const ix1 = a * gb.right + e;
+  const iy0 = dd * gb.top + f;
+  const iy1 = dd * gb.bottom + f;
+  const imgX0 = Math.min(ix0, ix1);
+  const imgX1 = Math.max(ix0, ix1);
+  const imgY0 = Math.min(iy0, iy1);
+  const imgY1 = Math.max(iy0, iy1);
+  // visible = 이미지 ∩ 프레임 bbox — 프레임 밖 초과분 크롭, 미커버(갭)는 레터박스 금지
+  // (min/max 부재 시 cx/w 파생 — reader 출력엔 항상 있으나 수제 doc 방어)
+  const fb = it.bbox;
+  const frX0 = fb.minX ?? fb.cx - fb.w / 2;
+  const frX1 = fb.maxX ?? fb.cx + fb.w / 2;
+  const frY0 = fb.minY ?? fb.cy - fb.h / 2;
+  const frY1 = fb.maxY ?? fb.cy + fb.h / 2;
+  const visX0 = Math.max(imgX0, frX0);
+  const visX1 = Math.min(imgX1, frX1);
+  const visY0 = Math.max(imgY0, frY0);
+  const visY1 = Math.min(imgY1, frY1);
+  if (visX1 - visX0 <= EPS || visY1 - visY0 <= EPS) return { ...base, unsupported: 'no-overlap' };
+  // 소스 크롭: inverse(innerIT)·visible → GB 단위 → 0..1 정규화(클램프)
+  const gx0 = (visX0 - e) / a;
+  const gx1 = (visX1 - e) / a;
+  const gy0 = (visY0 - f) / dd;
+  const gy1 = (visY1 - f) / dd;
+  const sx0 = Math.min(gx0, gx1);
+  const sx1 = Math.max(gx0, gx1);
+  const sy0 = Math.min(gy0, gy1);
+  const sy1 = Math.max(gy0, gy1);
+  const clamp01 = (v) => Math.max(0, Math.min(1, v));
+  const cx0 = clamp01((sx0 - gb.left) / gbW);
+  const cx1 = clamp01((sx1 - gb.left) / gbW);
+  const cy0 = clamp01((sy0 - gb.top) / gbH);
+  const cy1 = clamp01((sy1 - gb.top) / gbH);
+  // 타깃 기하 — 기존 non-path 분기와 동일식(visible 중심/치수 기준)
+  const cSpread = applyToPoint(it.transform, (visX0 + visX1) / 2, (visY0 + visY1) / 2);
+  const centerXpx = mmToPx(ptToMm(cSpread.x - ctx.originXpt), ctx.dpi);
+  const centerYpx = mmToPx(ptToMm(cSpread.y - ctx.topYpt), ctx.dpi);
+  const widthPx = mmToPx(ptToMm((visX1 - visX0) * Math.abs(ctx.d.scaleX)), ctx.dpi);
+  const heightPx = mmToPx(ptToMm((visY1 - visY0) * Math.abs(ctx.d.scaleY)), ctx.dpi);
+  const { regionRef, anchor } = ctx.resolveAnchorAt(centerXpx, centerYpx, widthPx);
+  return {
+    ...base,
+    // 소스 크롭(GraphicBounds 0..1 정규화) — 실제 픽셀 크롭은 제공 이미지 natural px × 이 비율
+    crop: { x: round6(cx0), y: round6(cy0), w: round6(cx1 - cx0), h: round6(cy1 - cy0) },
+    // inner IT 음수 스케일(플립) — 픽셀에 미러 베이크(fabric flipX 잔존 금지)
+    bakeFlipX: a < 0,
+    bakeFlipY: dd < 0,
+    target: {
+      left: round2(contentToSceneX(centerXpx, ctx.halfW)),
+      top: round2(contentToSceneY(centerYpx, ctx.halfH)),
+      width: round2(widthPx),
+      height: round2(heightPx),
+      angle: round2(ctx.d.rotationDeg),
+      flipY: !!ctx.d.flipped,
+      regionRef: regionRef || null,
+      anchor,
+    },
+  };
+}
