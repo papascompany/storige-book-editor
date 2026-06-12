@@ -10,6 +10,25 @@ export interface SpreadSpecLike {
   safeSizeMm: number;
 }
 
+/** fabric Gradient 직렬화 colorStop (cmyk 등 추가 키는 fabric 이 보존 — slice) */
+export interface GradientColorStopLike {
+  offset: number;
+  color: string;
+  opacity?: number;
+  cmyk?: number[];
+  [key: string]: unknown;
+}
+
+/** fabric 5.5 Gradient 직렬화 plain object — Object._initGradient 로 자동 부활 */
+export interface GradientFillLike {
+  type: 'linear' | 'radial';
+  coords: { x1: number; y1: number; x2: number; y2: number; r1?: number; r2?: number };
+  colorStops: GradientColorStopLike[];
+  gradientUnits: 'pixels';
+  offsetX: number;
+  offsetY: number;
+}
+
 export interface FabricObjectLike {
   type: string;
   left: number;
@@ -17,7 +36,7 @@ export interface FabricObjectLike {
   width?: number;
   height?: number;
   angle?: number;
-  fill?: string;
+  fill?: string | GradientFillLike;
   cmykFill?: number[];
   stroke?: string;
   strokeWidth?: number;
@@ -91,15 +110,40 @@ export function convertPsdToTemplate(
   opts?: { name?: string; pageType?: 'page' | 'cover'; previewWidth?: number }
 ): Promise<{ result: SinglePageResult; dto: SinglePageDto; previewSvg: string }>;
 
+/** parseGradients 스톱 항목 — StopColor 참조 해석 결과(미해석 시 color null + unknown) */
+export interface GradientStopDef {
+  offset: number;
+  color: string | null;
+  midpoint: number;
+  stopColorId: string | null;
+  cmyk?: number[];
+  isSpot?: boolean;
+  spotName?: string;
+  isPaper?: boolean;
+  isNone?: boolean;
+  unknown?: string;
+}
+
+/** Graphic.xml 의 그라디언트 정의 */
+export interface GradientDef {
+  self: string;
+  type: 'linear' | 'radial';
+  name: string | null;
+  stops: GradientStopDef[];
+}
+
 export interface IdmlDoc {
   pages: { self: string; name: string; widthPt: number; heightPt: number; leftSpreadPt: number; topSpreadPt: number }[];
   items: unknown[];
   colors: Map<string, { space: string; value: number[]; hex: string | null }>;
+  gradients: Map<string, GradientDef>;
   fonts: string[];
   bleedPt: number | null;
 }
 
 export function parseIdml(buffer: ArrayBuffer | Uint8Array): Promise<IdmlDoc>;
+/** Resources/Graphic.xml 문자열 → 그라디언트 정의 Map (스톱 색 참조는 같은 XML 의 색 정의로 hex 화) */
+export function parseGradients(xml: string): Map<string, GradientDef>;
 export function toSpreadTemplate(
   doc: IdmlDoc,
   opts?: { name?: string; dpi?: number }

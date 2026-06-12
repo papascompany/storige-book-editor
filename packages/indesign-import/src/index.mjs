@@ -1,7 +1,7 @@
 // @storige/indesign-import — IDML → Storige 표지 펼침면 템플릿 변환기.
 // 브라우저/노드 공용(src 는 node 내장 API 미사용). 파싱: jszip + fast-xml-parser.
 
-import { parseIdml, colorToHex } from './idml/reader.mjs';
+import { parseIdml, colorToHex, parseGradients } from './idml/reader.mjs';
 import { toSpreadTemplate, deriveSpecFromPages } from './convert/toSpreadTemplate.mjs';
 import { buildPreviewSvg } from './preview/svg.mjs';
 import { ARTWORK_LOCK } from './convert/artworkLock.mjs';
@@ -10,7 +10,7 @@ import { halvesOf, contentToSceneX } from './geometry/centerOrigin.mjs';
 import * as units from './geometry/units.mjs';
 import * as regions from './geometry/regions.mjs';
 
-export { parseIdml, colorToHex, toSpreadTemplate, deriveSpecFromPages, buildPreviewSvg, computeFlatSpineCrops, units, regions };
+export { parseIdml, colorToHex, parseGradients, toSpreadTemplate, deriveSpecFromPages, buildPreviewSvg, computeFlatSpineCrops, units, regions };
 
 const round2 = (n) => Math.round(n * 100) / 100;
 const round4 = (n) => Math.round(n * 10000) / 10000;

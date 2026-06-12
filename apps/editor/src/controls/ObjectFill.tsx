@@ -259,9 +259,25 @@ export default function ObjectFill() {
       const firstSelection = activeSelection[0]
       if (!firstSelection) return
 
-       
+
       const obj = firstSelection as any
       obj.fillOpacity = value
+
+      // 그라디언트 fill — fill 자체를 rgba 문자열로 치환하면 parseColorValue 의 object 분기가
+      // r/g/b undefined 를 통과시켜 "rgba(undefined,...)" 로 그라디언트가 파괴된다(적대 리뷰).
+      // 그라디언트는 각 colorStop 색의 알파만 조정하고 fill 객체(좌표/타입)는 보존한다.
+      const fill = obj.fill
+      if (fill && typeof fill === 'object' && Array.isArray(fill.colorStops)) {
+        for (const stop of fill.colorStops) {
+          const stopRgba = parseColorValue(stop.color || '#000000')
+          if (stopRgba) {
+            stop.color = `rgba(${stopRgba.r}, ${stopRgba.g}, ${stopRgba.b}, ${value / 100})`
+          }
+        }
+        obj.dirty = true
+        canvas?.requestRenderAll()
+        return
+      }
 
       // Update fill with new alpha
       const rgba = parseColorValue(obj.fill || '#000000')

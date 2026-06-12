@@ -16,6 +16,7 @@
 //     textbox 제외, 흰 배경 미적용(투명 PNG).
 
 import { halvesOf, sceneToContentX, sceneToContentY } from '../geometry/centerOrigin.mjs';
+import { isGradientFill, svgGradientFor } from '../render/svgGradient.mjs';
 
 const esc = (t) =>
   String(t).replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
@@ -40,6 +41,7 @@ export function buildArtworkSvg(dto) {
   const parts = [];
   parts.push(`<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`);
 
+  let gi = 0; // 그라디언트 id 폴백 카운터(객체 id 부재 시)
   for (const o of dto.canvasData.objects) {
     if (o.type === 'textbox') continue;
 
@@ -47,7 +49,17 @@ export function buildArtworkSvg(dto) {
     const top = sceneToContentY(o.top, halfH);
     const w = o.width || 12;
     const h = o.height || 12;
-    const fill = o.fill && o.fill !== '' ? o.fill : 'none';
+    // 그라디언트 fill — 공통 헬퍼(render/svgGradient)로 defs 출력 + url 참조(preview 와 단일화).
+    // flipY 객체는 도형을 미러 없이 그리므로 그라디언트 y 를 1−y 반전(공통 헬퍼 옵션).
+    let fill;
+    if (isGradientFill(o.fill)) {
+      const g = svgGradientFor(o.fill, { id: o.id ?? `i${gi}`, width: w, height: h, flipY: !!o.flipY });
+      parts.push(`<defs>${g.def}</defs>`);
+      fill = g.ref;
+    } else {
+      fill = o.fill && o.fill !== '' ? o.fill : 'none';
+    }
+    gi++;
     const strokeAttr = o.stroke
       ? ` stroke="${o.stroke}" stroke-width="${o.strokeWidth || 1}"`
       : '';

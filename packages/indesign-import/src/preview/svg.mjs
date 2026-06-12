@@ -4,6 +4,7 @@
 // 객체는 sceneToContent(centerOrigin.mjs SSOT)로 환산. (docs/COORDINATE_SYSTEM.md)
 
 import { halvesOf, sceneToContentX, sceneToContentY } from '../geometry/centerOrigin.mjs';
+import { isGradientFill, svgGradientFor } from '../render/svgGradient.mjs';
 
 const esc = (t) =>
   String(t).replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
@@ -40,6 +41,7 @@ export function buildPreviewSvg(dto, opts = {}) {
   }
 
   // 도형/이미지 (center origin)
+  let gi = 0; // 그라디언트 id 폴백 카운터(객체 id 부재 시)
   for (const o of dto.canvasData.objects) {
     if (o.type === 'textbox') continue;
     // 하이브리드 모드: 디자인 아트워크 이미지(최하단). scale 반영해 캔버스 전체 커버.
@@ -53,7 +55,18 @@ export function buildPreviewSvg(dto, opts = {}) {
     const h = o.height || 12;
     const x = s(cX(o.left) - w / 2);
     const y = s(cY(o.top) - h / 2);
-    const fill = o.fill && o.fill !== '' ? o.fill : 'none';
+    // 그라디언트 fill — raster(buildArtworkSvg)와 동일한 공통 헬퍼로 defs 출력(중복 구현 금지).
+    // objectBoundingBox 정규화라 path 의 transform="scale(s)" 에도 불변.
+    // flipY 객체는 도형을 미러 없이 그리므로 그라디언트 y 를 1−y 반전(공통 헬퍼 옵션).
+    let fill;
+    if (isGradientFill(o.fill)) {
+      const g = svgGradientFor(o.fill, { id: o.id ?? `i${gi}`, width: w, height: h, flipY: !!o.flipY });
+      parts.push(`<defs>${g.def}</defs>`);
+      fill = g.ref;
+    } else {
+      fill = o.fill && o.fill !== '' ? o.fill : 'none';
+    }
+    gi++;
     if (o.path) {
       const strokeAttr = o.stroke ? ` stroke="${o.stroke}" stroke-width="${(o.strokeWidth || 1) * scale}"` : '';
       parts.push(`<path d="${o.path}" transform="scale(${scale})" fill="${fill}"${strokeAttr} opacity="0.92"/>`);
