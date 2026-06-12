@@ -22,6 +22,9 @@ import {
 import { ProductTemplateSetsService } from './product-template-sets.service';
 import { Public } from '../auth/decorators/public.decorator';
 import { ApiKeyGuard } from '../auth/guards/api-key.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { UserRole } from '@storige/types';
 import {
   CreateProductTemplateSetDto,
   UpdateProductTemplateSetDto,
@@ -103,6 +106,8 @@ export class ProductTemplateSetsController {
    * 연결 생성
    */
   @Post()
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
   @ApiBearerAuth()
   @ApiOperation({ summary: '상품-템플릿셋 연결 생성' })
   @ApiResponse({
@@ -123,6 +128,8 @@ export class ProductTemplateSetsController {
    * 일괄 연결 생성
    */
   @Post('bulk')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
   @ApiBearerAuth()
   @ApiOperation({ summary: '상품-템플릿셋 일괄 연결' })
   @ApiResponse({
@@ -141,6 +148,8 @@ export class ProductTemplateSetsController {
    * 연결 수정
    */
   @Patch(':id')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
   @ApiBearerAuth()
   @ApiOperation({ summary: '상품-템플릿셋 연결 수정' })
   @ApiResponse({
@@ -161,6 +170,8 @@ export class ProductTemplateSetsController {
    * 연결 삭제
    */
   @Delete(':id')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
   @ApiBearerAuth()
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: '상품-템플릿셋 연결 삭제' })

@@ -1,9 +1,10 @@
 import { Module, DynamicModule } from '@nestjs/common';
-import { APP_FILTER } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BullModule } from '@nestjs/bull';
 import { ScheduleModule } from '@nestjs/schedule';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
 import { AuthModule } from './auth/auth.module';
 import { TemplatesModule } from './templates/templates.module';
@@ -113,6 +114,18 @@ if (process.env.BOOKMOA_DB_PASSWORD) {
     // Cron schedules (BB-Phase 3 follow-up: 시점 썸네일 orphan cleanup 등)
     ScheduleModule.forRoot(),
 
+    // SEC-4 글로벌 rate limiting (per-IP · per-endpoint, 60초 윈도우 300회).
+    // nginx 뒤에서 동작 — main.ts 의 `trust proxy` 설정으로 X-Forwarded-For 의
+    // 실제 클라이언트 IP 가 추적 키로 사용됨 (nginx.conf 가 XFF 전달 확인됨).
+    // 민감 라우트(login/register/refresh/shop-session/upload-public/woff2ToTtf)는
+    // 각 컨트롤러에서 @Throttle 로 더 좁은 한도를 적용.
+    ThrottlerModule.forRoot([
+      {
+        ttl: 60000,
+        limit: 300,
+      },
+    ]),
+
     // Feature modules
     HealthModule,
     AuthModule,
@@ -143,6 +156,11 @@ if (process.env.BOOKMOA_DB_PASSWORD) {
     {
       provide: APP_FILTER,
       useClass: PayloadTooLargeFilter,
+    },
+    // SEC-4: 전역 rate limit 가드 (ThrottlerModule 설정 사용)
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
     },
   ],
 })

@@ -45,6 +45,13 @@ async function bootstrap() {
   const pinoLogger = app.get(PinoLogger);
   app.useLogger(pinoLogger);
 
+  // SEC-4: 운영은 nginx(단일 hop) 뒤에서 동작 — X-Forwarded-For 의 클라이언트 IP 를
+  // req.ip 로 신뢰해야 ThrottlerGuard 가 고객별로 카운트한다 (미설정 시 전 고객이
+  // nginx 컨테이너 IP 하나로 묶여 오차단). nginx.conf 의
+  // `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for` 전달 확인됨 (2026-06-13).
+  // 값 1 = 마지막 1개 프록시만 신뢰 (클라이언트가 XFF 를 위조해도 nginx 가 append 하므로 안전).
+  app.set('trust proxy', 1);
+
   // Body parser size limit (캔버스 데이터 등 대용량 JSON 허용)
   const configService = app.get(ConfigService);
   const maxBodySize = configService.get<string>('MAX_BODY_SIZE', '100mb');
