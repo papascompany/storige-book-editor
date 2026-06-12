@@ -24,6 +24,16 @@ const toStringRgba = (rgba: RGBA) => {
 
 const parseColorValue = (value: string | RGB | RGBA): RGBA | null => {
   if (value instanceof Object) {
+    // 방어: r/g/b 가 숫자가 아닌 객체(예: fabric Gradient — colorStops 만 보유)가 들어오면
+    // "rgba(undefined,...)" 오염을 만들지 않도록 null 을 반환한다.
+    const { r, g, b } = value as RGBA
+    if (
+      typeof r !== 'number' || Number.isNaN(r) ||
+      typeof g !== 'number' || Number.isNaN(g) ||
+      typeof b !== 'number' || Number.isNaN(b)
+    ) {
+      return null
+    }
     if ('a' in value) {
       return value
     } else {

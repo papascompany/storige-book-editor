@@ -24,7 +24,7 @@ const parser = new XMLParser({
   ignoreAttributes: false,
   attributeNamePrefix: '@_',
   isArray: (name) =>
-    ['ParagraphStyleRange', 'CharacterStyleRange', 'Color', 'ParagraphStyle'].includes(name),
+    ['ParagraphStyleRange', 'CharacterStyleRange', 'Color', 'ParagraphStyle', 'Gradient', 'GradientStop'].includes(name),
 });
 
 // 순서보존 파서 — 스프레드 geometry(z-순서) 보존.
@@ -128,6 +128,19 @@ function collectItemsOrdered(siblingNodes, parentT, acc) {
       const placedContent = ['Image', 'PDF', 'EPS', 'WMF', 'PICT'].find(
         (ct) => findChild(node, ct) != null
       );
+      // 그라디언트 기하(GradientFill*) — InDesign 은 모든 프레임에 잔존 기본값
+      // (GradientFillStart="0 0" Length="0")을 박아두므로, 이 값의 존재만으로 그라디언트
+      // 적용을 판정하면 안 된다(실측). 적용 판정은 변환기에서 FillColor="Gradient/..." 로만.
+      const gradientFill =
+        a['@_GradientFillStart'] != null || a['@_GradientFillLength'] != null
+          ? {
+              start: a['@_GradientFillStart'] != null ? parseNums(a['@_GradientFillStart']) : null,
+              length: a['@_GradientFillLength'] != null ? num(a['@_GradientFillLength']) : null,
+              angle: a['@_GradientFillAngle'] != null ? num(a['@_GradientFillAngle']) : 0,
+              hiliteAngle: a['@_GradientFillHiliteAngle'] != null ? num(a['@_GradientFillHiliteAngle']) : 0,
+              hiliteLength: a['@_GradientFillHiliteLength'] != null ? num(a['@_GradientFillHiliteLength']) : 0,
+            }
+          : null;
       acc.push({
         type: tag,
         self: a['@_Self'],
@@ -139,6 +152,7 @@ function collectItemsOrdered(siblingNodes, parentT, acc) {
         strokeWeight: a['@_StrokeWeight'] != null ? num(a['@_StrokeWeight']) : undefined,
         parentStory: a['@_ParentStory'],
         ...(placedContent ? { placedContent } : {}),
+        ...(gradientFill ? { gradientFill } : {}),
       });
     } else if (tag === 'Group') {
       const a = attrsOf(node);
@@ -395,9 +409,8 @@ function deepFind(obj, key) {
  * Graphic.xml → Map(colorId → { space, value:[..], hex, model, isSpot, spotName }).
  * 별색(Spot)/혼합잉크(Mixed Ink)는 4도 근사 시 손실되므로 @_Model 기준으로 감지·보존한다.
  */
-function parseColors(xml) {
-  const o = parser.parse(xml);
-  const colors = deepFind(o, 'Color') || [];
+function collectColors(parsed) {
+  const colors = deepFind(parsed, 'Color') || [];
   const map = new Map();
   for (const c of colors) {
     const self = c['@_Self'];
@@ -409,6 +422,57 @@ function parseColors(xml) {
     // @_Name 우선, 없으면 @_Self 에서 'Color/' 접두 제거.
     const spotName = c['@_Name'] != null ? c['@_Name'] : String(self).replace(/^Color\//, '');
     map.set(self, { space, value, hex: colorToHex(space, value), model, isSpot, spotName });
+  }
+  return map;
+}
+
+function parseColors(xml) {
+  return collectColors(parser.parse(xml));
+}
+
+/** GradientStop 의 StopColor 참조 해석 — resolveColor(toSpreadTemplate)와 동일 특수규칙 */
+function resolveStopColor(stopColorId, colors) {
+  const out = { stopColorId: stopColorId || null };
+  if (!stopColorId || /\/None$/.test(stopColorId)) return { ...out, color: '#ffffff', isNone: true };
+  if (/\/Paper$/.test(stopColorId)) return { ...out, color: '#ffffff', isPaper: true };
+  const c = colors.get(stopColorId);
+  if (!c) return { ...out, color: null, unknown: stopColorId };
+  return {
+    ...out,
+    color: c.hex,
+    ...(c.space === 'CMYK' ? { cmyk: c.value } : {}),
+    ...(c.isSpot ? { isSpot: true, spotName: c.spotName } : {}),
+  };
+}
+
+/**
+ * Graphic.xml → Map(gradientId → { self, type:'linear'|'radial', name, stops }).
+ * stops: [{ offset(0~1), color(hex), midpoint(0~100, 기본 50), cmyk?, isSpot?, spotName?,
+ *           isPaper?, isNone?, unknown?, stopColorId }] — offset 오름차순.
+ * 스톱 색 참조(StopColor="Color/...")는 같은 Graphic.xml 의 색 정의로 hex 화한다.
+ * (Midpoint 는 '이전 스톱과 이 스톱 사이' 50% 혼합점 위치 — 변환기에서 ≠50 시 중간 스톱 합성.)
+ */
+export function parseGradients(xml) {
+  const o = parser.parse(xml);
+  const colors = collectColors(o);
+  const grads = deepFind(o, 'Gradient') || [];
+  const map = new Map();
+  for (const g of grads) {
+    const self = g['@_Self'];
+    if (self == null) continue;
+    const stops = (g.GradientStop || [])
+      .map((s) => ({
+        offset: s['@_Location'] != null ? num(s['@_Location']) / 100 : 0,
+        midpoint: s['@_Midpoint'] != null ? num(s['@_Midpoint']) : 50,
+        ...resolveStopColor(s['@_StopColor'], colors),
+      }))
+      .sort((a, b) => a.offset - b.offset);
+    map.set(self, {
+      self,
+      type: g['@_Type'] === 'Radial' ? 'radial' : 'linear',
+      name: g['@_Name'] != null ? String(g['@_Name']) : null,
+      stops,
+    });
   }
   return map;
 }
@@ -444,7 +508,7 @@ function parseBleedPt(xml) {
 
 /**
  * IDML(Buffer/Uint8Array/ArrayBuffer) → IdmlDoc.
- * @returns {Promise<{ pages, items, colors, fonts, bleedPt }>}
+ * @returns {Promise<{ pages, items, colors, gradients, fonts, bleedPt }>}
  */
 export async function parseIdml(buffer) {
   const zip = await JSZip.loadAsync(buffer);
@@ -476,10 +540,12 @@ export async function parseIdml(buffer) {
   const items = [];
   collectItemsOrdered(childrenOf(spread), IDENTITY, items);
 
-  // 색상 / 폰트 / 블리드
-  const colors = zip.files['Resources/Graphic.xml']
-    ? parseColors(await zip.files['Resources/Graphic.xml'].async('string'))
-    : new Map();
+  // 색상 / 그라디언트 / 폰트 / 블리드
+  const graphicXml = zip.files['Resources/Graphic.xml']
+    ? await zip.files['Resources/Graphic.xml'].async('string')
+    : null;
+  const colors = graphicXml ? parseColors(graphicXml) : new Map();
+  const gradients = graphicXml ? parseGradients(graphicXml) : new Map();
   const fonts = zip.files['Resources/Fonts.xml']
     ? parseFonts(await zip.files['Resources/Fonts.xml'].async('string'))
     : [];
@@ -510,5 +576,5 @@ export async function parseIdml(buffer) {
     }
   }
 
-  return { pages, items, colors, fonts, bleedPt };
+  return { pages, items, colors, gradients, fonts, bleedPt };
 }

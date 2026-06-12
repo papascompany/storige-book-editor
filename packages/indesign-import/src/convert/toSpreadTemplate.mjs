@@ -17,6 +17,7 @@ import {
 import { buildPathD, transformedBBox } from '../geometry/path.mjs';
 import { halvesOf, contentToSceneX, contentToSceneY } from '../geometry/centerOrigin.mjs';
 import { buildStoryTypography, verticalLineHeightFromTracking } from './textStyles.mjs';
+import { isGradientRef, buildFabricGradientFill } from './gradientFill.mjs';
 
 const PATH_TYPES = new Set(['Polygon', 'GraphicLine']);
 
@@ -166,7 +167,65 @@ export function toSpreadTemplate(doc, opts = {}) {
       stroke.hex = '#999999';
       stroke.isNone = false;
     }
-    if (fill.unknown) warnings.push(`미해석 색상: ${fill.unknown}`);
+    // 그라디언트 fill (비텍스트, A1) — 판정은 반드시 FillColor="Gradient/..." 로만.
+    // (실측: InDesign 은 모든 프레임에 잔존 GradientFillStart/Length 기본값을 박아두므로
+    //  기하 파라미터 존재만으로 판정하면 단색 객체가 그라디언트로 오염된다.)
+    // 텍스트 fill 그라디언트는 fabric 텍스트 그라디언트 미지원으로 현행 '검정 대체+경고' 유지.
+    let gradFill = null;
+    if (it.type !== 'TextFrame' && !it.placedContent && isGradientRef(it.fillColor)) {
+      const def = doc.gradients?.get(it.fillColor);
+      if (def && def.stops?.length) {
+        const gradAngle = it.gradientFill?.angle ?? 0;
+        const g = buildFabricGradientFill(def, {
+          mapPt, // mapLocalToCanvas 재사용(SSOT) — 좌표식 복붙 금지. E 도 inner pt 합성 후 동일 사상.
+          start: it.gradientFill?.start ?? null,
+          lengthPt: it.gradientFill?.length ?? null,
+          angleDeg: gradAngle,
+          objectAngleDeg: isPath ? 0 : d.rotationDeg,
+          objectFlipY: isPath ? false : !!d.flipped,
+          centerXpx,
+          centerYpx,
+          widthPx,
+          heightPx,
+        });
+        gradFill = g.fill;
+        for (const s of def.stops) {
+          if (s.isSpot) spotNames.add(s.spotName);
+          if (s.unknown) warnings.push(`미해석 색상: ${s.unknown}`);
+        }
+        if (g.warnings.includes('gradient-rotated-object')) {
+          warnings.push(
+            `그라디언트(${it.self}): 회전 객체 적용 — 실측 표본 없음, inner 공간 합성 + 중심 역회전(편집기에서 확인 권장)`
+          );
+        }
+        if (g.warnings.includes('gradient-flipped-object')) {
+          warnings.push(
+            `그라디언트(${it.self}): 플립(flipY) 객체 적용 — 실측 표본 없음, 중심 기준 y 미러 보정(편집기에서 확인 권장)`
+          );
+        }
+        if (g.warnings.includes('gradient-default-geometry')) {
+          warnings.push(
+            `그라디언트(${it.self}): 기하(GradientFillStart/Length) 미지정 — 객체 폭 기준 기본 적용`
+          );
+        }
+        // FLAT(미리보기/래스터) SVG 는 objectBoundingBox 정규화라 비정사각 bbox 의 대각
+        // 그라디언트는 각도가 bbox 비율만큼 근사된다(편집기/PDF 의 fabric 'pixels' 렌더는 정확).
+        if (gradAngle % 90 !== 0 && Math.abs(widthPx - heightPx) > 0.5) {
+          warnings.push(
+            `그라디언트(${it.self}): 대각 각도(${gradAngle}°)+비정사각 객체 — FLAT 미리보기/래스터는 각도 근사(편집기/PDF 는 정확)`
+          );
+        }
+        // 곡선 세그먼트(베지어 C) 경로의 bbox 는 transformedBBox(앵커 기준)와 극값이 어긋날 수
+        // 있어 그라디언트 로컬 원점(좌상단)이 수 px 밀릴 수 있다 — 경고로 표면화.
+        if (pathD && pathD.includes('C')) {
+          warnings.push(
+            `그라디언트(${it.self}): 곡선(베지어) 경로 결합 — 앵커 기준 bbox 근사로 그라디언트 위치가 미세 오차 가능(편집기에서 확인 권장)`
+          );
+        }
+      }
+      // def 미존재 → 아래 공통 경로(미해석 색상 경고 + 검정 폴백) 유지
+    }
+    if (fill.unknown && !gradFill) warnings.push(`미해석 색상: ${fill.unknown}`);
     if (fill.isSpot) spotNames.add(fill.spotName);
     if (stroke.isSpot) spotNames.add(stroke.spotName);
 
@@ -192,9 +251,11 @@ export function toSpreadTemplate(doc, opts = {}) {
       // 경로형은 변환좌표에 회전이 이미 반영됨 → angle 0
       angle: isPath ? 0 : round2(d.rotationDeg),
       ...(!isPath && d.flipped ? { flipY: true } : {}),
-      fill: fill.isNone ? '' : fill.hex || '#000000',
-      ...(fill.cmyk ? { cmykFill: fill.cmyk } : {}),
-      ...(fill.isSpot ? { spotColor: fill.spotName } : {}),
+      // 그라디언트는 fabric Gradient 직렬화 plain object(왕복 안전 — gradientFill.mjs 주석),
+      // 그 외는 기존 단색 hex. cmykFill/spotColor 단일값은 그라디언트와 의미 충돌 → 스톱별 보존.
+      fill: gradFill || (fill.isNone ? '' : fill.hex || '#000000'),
+      ...(fill.cmyk && !gradFill ? { cmykFill: fill.cmyk } : {}),
+      ...(fill.isSpot && !gradFill ? { spotColor: fill.spotName } : {}),
       ...(stroke.isNone ? {} : { stroke: stroke.hex || undefined }),
       ...(it.strokeWeight ? { strokeWidth: round2(mmToPx(ptToMm(it.strokeWeight), dpi)) } : {}),
       // 복원된 경로(절대 캔버스 px). Fabric 로드 시 pathOffset 정규화는 에디터-로드 단계에서 검증.
