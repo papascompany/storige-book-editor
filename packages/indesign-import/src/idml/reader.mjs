@@ -115,6 +115,32 @@ function extractGeometryOrdered(itemNode) {
   return { bbox, subpaths };
 }
 
+// ── 코너 반경(A6) ──
+// 실측(MA-348/LA-383, 2026-06-12): 라운드 코너 보유 요소는 Rectangle 4건(MA u5c3/u6f8/u5df,
+// LA u79c)뿐이며 전부 균일 — per-corner 4값(TopLeft~BottomRight ×Option/Radius)과 legacy
+// CornerOption/CornerRadius 가 동시 기록·값 동일. 코너 미적용 요소는 corner attr 자체가 없다
+// (실측: 미적용 70건 attr 0). 방어적으로 option(None 제외) ∧ radius>0 을 함께 요구한다.
+const CORNER_KEYS = ['TopLeft', 'TopRight', 'BottomLeft', 'BottomRight'];
+function extractCorner(a) {
+  const legacyOption = a['@_CornerOption'] != null ? String(a['@_CornerOption']) : null;
+  const legacyRadius = a['@_CornerRadius'] != null ? num(a['@_CornerRadius']) : null;
+  const per = CORNER_KEYS.map((c) => ({
+    option: a[`@_${c}CornerOption`] != null ? String(a[`@_${c}CornerOption`]) : legacyOption,
+    radius: a[`@_${c}CornerRadius`] != null ? num(a[`@_${c}CornerRadius`]) : legacyRadius,
+  }));
+  const active = (p) => p.option != null && p.option !== 'None' && p.radius != null && p.radius > 0;
+  if (!per.some(active)) return null;
+  const radii = per.map((p) => (active(p) ? p.radius : 0));
+  const options = [...new Set(per.filter(active).map((p) => p.option))];
+  const uniform = per.every(active) && options.length === 1 && radii.every((r) => r === radii[0]);
+  return {
+    options, // 적용된 코너 유형(실측: ['RoundedCorner'] 만)
+    radiusPt: Math.max(...radii), // 대표 반경 — 비균일 시 최대값 폴백(실측 0건, 변환기 경고)
+    radiiPt: radii, // [tl, tr, bl, br] (pt)
+    uniform,
+  };
+}
+
 /** 스프레드/그룹 자식들을 '문서 순서대로' 재귀 수집(z-순서 보존, 부모 변환 합성) */
 function collectItemsOrdered(siblingNodes, parentT, acc) {
   for (const node of siblingNodes) {
@@ -141,6 +167,16 @@ function collectItemsOrdered(siblingNodes, parentT, acc) {
               hiliteLength: a['@_GradientFillHiliteLength'] != null ? num(a['@_GradientFillHiliteLength']) : 0,
             }
           : null;
+      // 코너 반경(A6) — 실측 4건 전부 균일 RoundedCorner. 비적용 시 null(키 미출력).
+      const corner = extractCorner(a);
+      // 특수 스트로크 속성(점선/끝모양/선정렬) — 실측 0건(가시 스트로크 자체가 0)이라
+      // 매핑은 보류, 변환기의 감지·경고용으로만 추출한다(파싱+경고만 — 과잉 구현 금지).
+      // ⚠️ ColumnRuleStrokeType(칼럼룰 기본값 노이즈)와 attr 이름이 다르므로 오염 없음.
+      const strokeDetail = {};
+      if (a['@_StrokeType'] != null) strokeDetail.strokeType = String(a['@_StrokeType']);
+      if (a['@_EndCap'] != null) strokeDetail.endCap = String(a['@_EndCap']);
+      if (a['@_EndJoin'] != null) strokeDetail.endJoin = String(a['@_EndJoin']);
+      if (a['@_StrokeAlignment'] != null) strokeDetail.strokeAlignment = String(a['@_StrokeAlignment']);
       acc.push({
         type: tag,
         self: a['@_Self'],
@@ -153,6 +189,8 @@ function collectItemsOrdered(siblingNodes, parentT, acc) {
         parentStory: a['@_ParentStory'],
         ...(placedContent ? { placedContent } : {}),
         ...(gradientFill ? { gradientFill } : {}),
+        ...(corner ? { corner } : {}),
+        ...strokeDetail,
       });
     } else if (tag === 'Group') {
       const a = attrsOf(node);

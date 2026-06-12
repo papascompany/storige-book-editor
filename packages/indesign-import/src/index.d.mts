@@ -40,6 +40,9 @@ export interface FabricObjectLike {
   cmykFill?: number[];
   stroke?: string;
   strokeWidth?: number;
+  /** Oval=타원 반경(width/2), Rectangle=라운드 코너 반경(A6, 균일 RoundedCorner) — fabric native 키(왕복 안전) */
+  rx?: number;
+  ry?: number;
   path?: string;
   text?: string;
   fontSize?: number;

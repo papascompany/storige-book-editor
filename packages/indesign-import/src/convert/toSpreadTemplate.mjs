@@ -229,6 +229,72 @@ export function toSpreadTemplate(doc, opts = {}) {
     if (fill.isSpot) spotNames.add(fill.spotName);
     if (stroke.isSpot) spotNames.add(stroke.spotName);
 
+    // ── 코너 반경(A6) → fabric rect rx/ry 매핑 ──
+    // 실측(2026-06-12): 라운드 코너는 Rectangle 4건·전부 균일 → path 화 불필요, native rx/ry
+    // (fabric 5.5 Rect.toObject 상시 직렬화 — 왕복 안전, canvas-core 화이트리스트 불필요)로 충분.
+    // 매핑식: rxPx = round2(mmToPx(ptToMm(radiusPt × |scale|), dpi)). rx/ry 는 객체 로컬축이라
+    // 회전(u5df rot=90°)과 무관. 반경 > 변/2(pill, LA u79c 31.18pt > 55.5pt/2)는 클램프하지
+    // 않는다 — SVG rect 스펙과 fabric 5.5 렌더(Math.min(rx, w/2)) 모두 동일 클램프라 InDesign
+    // 외형(pill)이 그대로 보존된다. Oval 의 rx/ry(타원 반경, 527b85b)와는 타입 분기로 충돌 없음.
+    let cornerPx = null;
+    if (it.corner) {
+      const c = it.corner;
+      if (it.type !== 'Rectangle') {
+        warnings.push(
+          `코너 반경(${it.self}): ${it.type} 적용 — Rectangle 외 매핑 미지원(실측 0건), 무시됨(편집기에서 확인 권장)`
+        );
+      } else {
+        const nonRounded = c.options.filter((o) => o !== 'RoundedCorner');
+        if (nonRounded.length) {
+          warnings.push(
+            `코너 유형(${it.self}): ${nonRounded.join(', ')} — RoundedCorner 외 미지원(실측 0건), 직각 근사`
+          );
+        }
+        if (c.options.includes('RoundedCorner')) {
+          if (!c.uniform) {
+            warnings.push(
+              `코너 반경(${it.self}): 비대칭/부분 적용 — 최대값(${c.radiusPt}pt) 균일 근사(실측 0건, 편집기에서 확인 권장)`
+            );
+          }
+          const rxPx = round2(mmToPx(ptToMm(c.radiusPt * Math.abs(d.scaleX)), dpi));
+          const ryPx = round2(mmToPx(ptToMm(c.radiusPt * Math.abs(d.scaleY)), dpi));
+          if (rxPx > 0 && ryPx > 0) {
+            cornerPx = { rx: rxPx, ry: ryPx };
+          } else {
+            // 한 축만 0 으로 라운딩되면 fabric(_initRxRy: 0=미설정→반대축 복사)과
+            // SVG(rx=0 직각)가 서로 다르게 렌더 — 코너를 생략하고 경고로 표면화.
+            warnings.push(
+              `코너 반경(${it.self}): 극단 스케일로 한 축이 0 — 직각 처리(rx ${rxPx}/ry ${ryPx})`
+            );
+          }
+        }
+      }
+    }
+
+    // ── 특수 스트로크(점선/끝모양/선정렬, A6) — 실측 0건: 매핑 보류, 감지 시 경고만 ──
+    // (가시 스트로크 weight>0 ∧ color≠None 자체가 실측 0건. strokeDashArray/LineCap/Join/
+    //  Alignment 보정식은 실표본 확보 전 비구현 판정 — 과잉 구현 금지.)
+    const strokeVisible = !stroke.isNone && (it.strokeWeight || 0) > 0;
+    if (strokeVisible && stroke.unknown) {
+      warnings.push(`미해석 색상: ${stroke.unknown} — 스트로크 생략됨`);
+    }
+    if (strokeVisible) {
+      if (it.strokeType && !/\/Solid$/.test(it.strokeType)) {
+        warnings.push(`스트로크(${it.self}): 특수 선 유형(${it.strokeType}) — 실선으로 근사(점선/패턴 미지원)`);
+      }
+      if (it.endCap && it.endCap !== 'ButtEndCap') {
+        warnings.push(`스트로크(${it.self}): 끝모양(${it.endCap}) 미지원 — 기본(butt)으로 렌더`);
+      }
+      if (it.endJoin && it.endJoin !== 'MiterEndJoin') {
+        warnings.push(`스트로크(${it.self}): 모서리 접합(${it.endJoin}) 미지원 — 기본(miter)으로 렌더`);
+      }
+      if (it.strokeAlignment && it.strokeAlignment !== 'CenterAlignment') {
+        warnings.push(
+          `스트로크(${it.self}): 선 정렬(${it.strokeAlignment}) — 중앙 정렬로 근사(치수 보정식 보류, 실측 0건)`
+        );
+      }
+    }
+
     // 컴파운드 패스(서브패스≥2) → even-odd: 도넛형/음각 로고의 구멍 보존(nonzero면 메워짐)
     const isCompound = isPath && (it.subpaths?.length || 0) >= 2;
 
@@ -248,6 +314,8 @@ export function toSpreadTemplate(doc, opts = {}) {
       // fabric.Ellipse 는 rx/ry(반경)로 그린다 — width/height 만 주면 rx=0 으로 로드돼 타원이
       // 비가시 + 재저장 시 width:0 박제. Oval 은 rx/ry 를 명시한다.
       ...(it.type === 'Oval' ? { rx: round2(widthPx / 2), ry: round2(heightPx / 2) } : {}),
+      // Rectangle 라운드 코너(A6) — cornerPx 는 it.type==='Rectangle' 일 때만 산출(Oval 분기와 배타)
+      ...(cornerPx || {}),
       // 경로형은 변환좌표에 회전이 이미 반영됨 → angle 0
       angle: isPath ? 0 : round2(d.rotationDeg),
       ...(!isPath && d.flipped ? { flipY: true } : {}),
@@ -257,7 +325,10 @@ export function toSpreadTemplate(doc, opts = {}) {
       ...(fill.cmyk && !gradFill ? { cmykFill: fill.cmyk } : {}),
       ...(fill.isSpot && !gradFill ? { spotColor: fill.spotName } : {}),
       ...(stroke.isNone ? {} : { stroke: stroke.hex || undefined }),
-      ...(it.strokeWeight ? { strokeWidth: round2(mmToPx(ptToMm(it.strokeWeight), dpi)) } : {}),
+      // strokeWidth 는 가시 스트로크(색≠None)일 때만 — 실측 89건이 [None] 스타일 상속으로
+      // weight>0 인데 비가시였고, 고아 strokeWidth 는 fabric _getNonTransformedDimensions 가
+      // 무조건 치수에 가산해 bbox 미세 팽창 + 직렬화 오염만 남긴다(A6 위생 정리).
+      ...(!stroke.isNone && stroke.hex && it.strokeWeight ? { strokeWidth: round2(mmToPx(ptToMm(it.strokeWeight), dpi)) } : {}),
       // 복원된 경로(절대 캔버스 px). Fabric 로드 시 pathOffset 정규화는 에디터-로드 단계에서 검증.
       ...(pathD ? { path: pathD } : {}),
       ...(isCompound ? { fillRule: 'evenodd' } : {}),
@@ -302,6 +373,13 @@ export function toSpreadTemplate(doc, opts = {}) {
       // 세로짜기(StoryOrientation=Vertical) — fabric 은 CJK 세로조판 미지원이라 글자 단위
       // 세로 배치(한 글자 = 한 줄)로 근사한다. 이를 빠뜨리면 세로 프레임(좁고 긴) 텍스트가
       // 거대한 가로 한 줄로 렌더되어 캔버스 밖까지 잘려나간다(2026-06-11 LA-383 재현).
+      //
+      // [A4 잔여 — 보류 판정, 2026-06-12 실측] ① 약물 회전(괄호·ー·〜·句読点·숫자·라틴은 세로
+      // 조판 시 90° 회전이 정답): 실 IDML 세로 스토리 4건(LA ub51/ub83/ub9b/ube4) 전부 순한글
+      // — 회전 대상 0건. ② 다열 세로(TextColumnCount>1): 전 프레임(MA 12, LA 8) =1 — 0건.
+      // 실표본 없는 구현은 검증 불가 + 글자단위 분해 구조에서 개별 글자 rotate 는 fabric 텍스트
+      // 모델상 불가(객체 분리 필요)라 비용 대비 근거 부재 → 표본 확보 시 세로형 대체문자
+      // (︵︶·ー 등) 치환 + 경고 방침으로 재개한다.
       if (it.story?.vertical && obj.text) {
         obj.text = obj.text
           .split('\n')

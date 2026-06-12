@@ -67,13 +67,24 @@ export function buildPreviewSvg(dto, opts = {}) {
       fill = o.fill && o.fill !== '' ? o.fill : 'none';
     }
     gi++;
+    // 스트로크는 path/ellipse/rect 3종 모두 동일 적용 — raster(buildArtworkSvg)와 패리티
+    // (renderInvariants 정신: FULL/FLAT 한쪽만 반영 금지. 종전엔 path 만 적용돼 잠복 갭).
+    // path 는 transform="scale()" 이 스트로크까지 스케일하므로 비스케일 굵기를 쓴다
+    // (스케일 곱하면 scale² 이중 축소 — 적대 리뷰 2026-06-12). rect/ellipse 는 사전
+    // 스케일 geometry(transform 없음)라 ×scale 1회가 정확.
+    const strokeAttr = o.stroke ? ` stroke="${o.stroke}" stroke-width="${(o.strokeWidth || 1) * scale}"` : '';
+    const strokeAttrUnscaled = o.stroke ? ` stroke="${o.stroke}" stroke-width="${o.strokeWidth || 1}"` : '';
+    // 도형 회전 — rasterize.mjs 의 rotate 그룹과 동일 패턴(미리보기↔래스터 패리티).
+    // 회전 중심 = 객체 중심(중앙원점 객체의 left/top 은 center).
+    const rot = o.angle && !o.path ? ` transform="rotate(${o.angle} ${s(cX(o.left))} ${s(cY(o.top))})"` : '';
     if (o.path) {
-      const strokeAttr = o.stroke ? ` stroke="${o.stroke}" stroke-width="${(o.strokeWidth || 1) * scale}"` : '';
-      parts.push(`<path d="${o.path}" transform="scale(${scale})" fill="${fill}"${strokeAttr} opacity="0.92"/>`);
+      parts.push(`<path d="${o.path}" transform="scale(${scale})" fill="${fill}"${strokeAttrUnscaled} opacity="0.92"/>`);
     } else if (o.type === 'ellipse') {
-      parts.push(`<ellipse cx="${s(cX(o.left))}" cy="${s(cY(o.top))}" rx="${s(w / 2)}" ry="${s(h / 2)}" fill="${fill}" opacity="0.9"/>`);
+      parts.push(`<ellipse cx="${s(cX(o.left))}" cy="${s(cY(o.top))}" rx="${s(w / 2)}" ry="${s(h / 2)}" fill="${fill}"${strokeAttr}${rot} opacity="0.9"/>`);
     } else {
-      parts.push(`<rect x="${x}" y="${y}" width="${s(w)}" height="${s(h)}" fill="${fill}" opacity="0.92"/>`);
+      // rect rx/ry = 라운드 코너(A6) — raster 와 동일 충실도, 출력 스케일(s) 반영.
+      const rxAttr = o.rx ? ` rx="${s(o.rx)}" ry="${s(o.ry != null ? o.ry : o.rx)}"` : '';
+      parts.push(`<rect x="${x}" y="${y}" width="${s(w)}" height="${s(h)}"${rxAttr} fill="${fill}"${strokeAttr}${rot} opacity="0.92"/>`);
     }
   }
 

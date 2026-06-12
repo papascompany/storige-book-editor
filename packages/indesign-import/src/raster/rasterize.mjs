@@ -79,10 +79,13 @@ export function buildArtworkSvg(dto) {
     } else if (o.type === 'ellipse') {
       parts.push(`<ellipse cx="${left}" cy="${top}" rx="${w / 2}" ry="${h / 2}" fill="${fill}"${strokeAttr}/>`);
     } else {
-      // rect (기본): center → 좌상단 변환.
+      // rect (기본): center → 좌상단 변환. rx/ry = 라운드 코너(A6, 균일) — SVG rect 스펙이
+      // fabric 5.5 렌더와 동일하게 Math.min(rx, w/2) 클램프하므로 pill(반경>변/2)도 외형 일치.
+      // (Oval 의 rx/ry 는 type==='ellipse' 분기로 처리 — 여기 도달하지 않음, 충돌 없음.)
       const x = left - w / 2;
       const y = top - h / 2;
-      parts.push(`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}"${strokeAttr}/>`);
+      const rxAttr = o.rx ? ` rx="${o.rx}" ry="${o.ry != null ? o.ry : o.rx}"` : '';
+      parts.push(`<rect x="${x}" y="${y}" width="${w}" height="${h}"${rxAttr} fill="${fill}"${strokeAttr}/>`);
     }
 
     if (angle) parts.push('</g>');
