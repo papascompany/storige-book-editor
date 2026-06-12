@@ -2,7 +2,7 @@ import { Processor, Process } from '@nestjs/bull';
 import { Logger } from '@nestjs/common';
 import { Job } from 'bull';
 import { PdfConverterService } from '../services/pdf-converter.service';
-import axios from 'axios';
+import { JobStatusService } from '../services/job-status.service';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
@@ -38,11 +38,11 @@ interface ConversionJobData {
 @Processor('pdf-conversion')
 export class ConversionProcessor {
   private readonly logger = new Logger(ConversionProcessor.name);
-  private readonly apiBaseUrl =
-    process.env.API_BASE_URL || 'http://localhost:4000/api';
   private readonly storagePath =
     process.env.STORAGE_PATH || '/app/storage';
   private readonly convertedDir = 'converted';
+  // WK-4 — 상태 업데이트 재시도 공유 서비스 (DI 대신 직접 생성 — 기존 스펙 생성자 고정)
+  private readonly jobStatusService = new JobStatusService();
 
   constructor(private readonly converterService: PdfConverterService) {}
 
@@ -104,6 +104,9 @@ export class ConversionProcessor {
 
   /**
    * Update job status in API
+   *
+   * WK-4: 무재시도 axios.patch → 공유 JobStatusService(재시도 5회·최대 30s 백오프,
+   * 최종 실패 시 Sentry capture)로 대체. 페이로드 wire 포맷은 기존 그대로 유지.
    */
   private async updateJobStatus(
     jobId: string,
@@ -111,30 +114,22 @@ export class ConversionProcessor {
     result?: any,
     errorMessage?: string,
   ): Promise<void> {
-    try {
-      const payload: any = { status };
+    const payload: any = { status };
 
-      if (result) {
-        payload.result = result.result || result;
-        if (result.outputFileUrl) {
-          payload.outputFileUrl = result.outputFileUrl;
-        }
+    if (result) {
+      payload.result = result.result || result;
+      if (result.outputFileUrl) {
+        payload.outputFileUrl = result.outputFileUrl;
       }
-
-      if (errorMessage) {
-        payload.errorMessage = errorMessage;
-      }
-
-      await axios.patch(
-        `${this.apiBaseUrl}/worker-jobs/external/${jobId}/status`,
-        payload,
-        { headers: { 'X-API-Key': process.env.WORKER_API_KEY } },
-      );
-    } catch (error) {
-      this.logger.error(
-        `Failed to update job status: ${error.message}`,
-        error.stack,
-      );
     }
+
+    if (errorMessage) {
+      payload.errorMessage = errorMessage;
+    }
+
+    await this.jobStatusService.updateJobStatusWithRetry(jobId, payload, {
+      jobType: 'convert',
+      queueName: 'pdf-conversion',
+    });
   }
 }

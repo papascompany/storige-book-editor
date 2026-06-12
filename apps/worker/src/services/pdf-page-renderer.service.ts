@@ -112,7 +112,7 @@ export class PdfPageRendererService {
     try {
       for (let p = 1; p <= renderCount; p++) {
         const outPath = path.join(outDir, `page_${p}.png`);
-        // pdfToImage 는 runGhostscript(타임아웃 없음) 사용 — 페이지 상한으로 폭주 방지.
+        // pdfToImage 는 페이지당 30s 타임아웃(WK-3, GS_RASTER_TIMEOUT_MS) + 페이지 상한으로 폭주 방지.
         await pdfToImage(inputPath, outPath, {
           page: p,
           resolution: this.dpi,

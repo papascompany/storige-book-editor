@@ -20,7 +20,7 @@
     "@nestjs/typeorm": "^10.0.2",
     "@sentry/node": "^7.119.2",
     "@storige/types": "workspace:*",
-    "axios": "^1.7.9",
+    "axios": "^1.16.0",
     "bull": "^4.16.4",
     "dotenv": "^17.2.3",
     "mysql2": "^3.12.0",

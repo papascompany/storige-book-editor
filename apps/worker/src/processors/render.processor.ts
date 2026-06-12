@@ -1,8 +1,8 @@
 import { Processor, Process } from '@nestjs/bull';
 import { Logger } from '@nestjs/common';
 import { Job } from 'bull';
-import axios from 'axios';
 import { PdfPageRendererService } from '../services/pdf-page-renderer.service';
+import { JobStatusService } from '../services/job-status.service';
 import { captureJobException } from '../sentry/sentry.init';
 
 interface RenderPagesJobData {
@@ -24,8 +24,8 @@ interface RenderPagesJobData {
 @Processor('pdf-conversion')
 export class RenderProcessor {
   private readonly logger = new Logger(RenderProcessor.name);
-  private readonly apiBaseUrl =
-    process.env.API_BASE_URL || 'http://localhost:4000/api';
+  // WK-4 — 상태 업데이트 재시도 공유 서비스 (DI 대신 직접 생성 — 기존 스펙 생성자 고정)
+  private readonly jobStatusService = new JobStatusService();
 
   constructor(private readonly rendererService: PdfPageRendererService) {}
 
@@ -77,31 +77,27 @@ export class RenderProcessor {
     }
   }
 
+  /**
+   * WK-4: 무재시도 axios.patch → 공유 JobStatusService(재시도 5회·최대 30s 백오프,
+   * 최종 실패 시 Sentry capture)로 대체. 페이로드 wire 포맷은 기존 그대로 유지.
+   */
   private async updateJobStatus(
     jobId: string,
     status: string,
     result?: any,
     errorMessage?: string,
   ): Promise<void> {
-    try {
-      const payload: any = { status };
-      if (result) {
-        payload.result = result.result || result;
-      }
-      if (errorMessage) {
-        payload.errorMessage = errorMessage;
-      }
-
-      await axios.patch(
-        `${this.apiBaseUrl}/worker-jobs/external/${jobId}/status`,
-        payload,
-        { headers: { 'X-API-Key': process.env.WORKER_API_KEY } },
-      );
-    } catch (error) {
-      this.logger.error(
-        `Failed to update job status: ${error.message}`,
-        error.stack,
-      );
+    const payload: any = { status };
+    if (result) {
+      payload.result = result.result || result;
     }
+    if (errorMessage) {
+      payload.errorMessage = errorMessage;
+    }
+
+    await this.jobStatusService.updateJobStatusWithRetry(jobId, payload, {
+      jobType: 'render-pages',
+      queueName: 'pdf-conversion',
+    });
   }
 }

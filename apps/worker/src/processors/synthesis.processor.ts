@@ -3,6 +3,7 @@ import { Logger } from '@nestjs/common';
 import { Job } from 'bull';
 import { PDFDocument } from 'pdf-lib';
 import { PdfSynthesizerService } from '../services/pdf-synthesizer.service';
+import { JobStatusService } from '../services/job-status.service';
 import { DomainError, ErrorCodes } from '../common/errors';
 import axios from 'axios';
 import * as path from 'path';
@@ -84,6 +85,8 @@ export class SynthesisProcessor {
     process.env.STORAGE_PATH || '/app/storage/temp';
   private readonly outputsPath =
     process.env.OUTPUTS_PATH || '/app/storage/outputs';
+  // WK-4 — 상태 업데이트 재시도 공유 서비스 (DI 대신 직접 생성 — 기존 스펙 생성자 고정)
+  private readonly jobStatusService = new JobStatusService();
 
   constructor(private readonly synthesizerService: PdfSynthesizerService) {}
 
@@ -1096,10 +1099,9 @@ export class SynthesisProcessor {
   /**
    * ★ 상태 업데이트 재시도 래퍼 (설계서 v1.1.4)
    *
-   * 재시도 정책:
-   * - 최대 3회
-   * - 지수 백오프: 250ms → 1s → 3s
-   * - 최종 실패 시 ERROR 로그
+   * WK-4 (2026-06-13): 본 프로세서에만 있던 재시도 로직(3회/최대 3s)을
+   * 공유 JobStatusService 로 추출 — 재시도 5회·최대 30s 백오프·최종 실패 시
+   * Sentry capture 로 강화되었고 validation/conversion/render 도 동일 정책을 쓴다.
    */
   private async updateJobStatusWithRetry(
     jobId: string,
@@ -1114,33 +1116,10 @@ export class SynthesisProcessor {
       errorDetail?: Record<string, any>;
     },
   ): Promise<void> {
-    const delays = [250, 1000, 3000];
-    let lastError: Error | null = null;
-
-    for (let attempt = 0; attempt <= delays.length; attempt++) {
-      try {
-        await this.updateJobStatus(jobId, payload);
-        return;
-      } catch (error: any) {
-        lastError = error;
-        if (attempt < delays.length) {
-          this.logger.warn(
-            `updateJobStatus attempt ${attempt + 1} failed, retrying in ${delays[attempt]}ms`,
-          );
-          await this.delay(delays[attempt]);
-        }
-      }
-    }
-
-    // 최종 실패
-    this.logger.error(
-      `updateJobStatus FINAL FAILURE for jobId=${jobId}: ${lastError?.message}`,
-      { jobId, payload, error: lastError },
-    );
-  }
-
-  private delay(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+    await this.jobStatusService.updateJobStatusWithRetry(jobId, payload, {
+      jobType: 'synthesize',
+      queueName: 'pdf-synthesis',
+    });
   }
 
   // ============================================================================
@@ -1295,6 +1274,10 @@ export class SynthesisProcessor {
 
   /**
    * Update job status in API (★ payload 객체 형태로만 호출)
+   *
+   * WK-4: 공유 JobStatusService 의 재시도 경로로 위임 — merge/compose-mixed
+   * 경로가 쓰던 무재시도 단발 PATCH 도 동일 재시도 정책(5회·최대 30s·Sentry)을 얻는다.
+   * 최종 실패 시 throw 하지 않음(상태 미반영이 잡 결과 자체를 삼키지 않도록).
    */
   private async updateJobStatus(
     jobId: string,
@@ -1309,10 +1292,9 @@ export class SynthesisProcessor {
       errorDetail?: Record<string, any>;
     },
   ): Promise<void> {
-    await axios.patch(
-      `${this.apiBaseUrl}/worker-jobs/external/${jobId}/status`,
-      payload,
-      { headers: { 'X-API-Key': process.env.WORKER_API_KEY } },
-    );
+    await this.jobStatusService.updateJobStatusWithRetry(jobId, payload, {
+      jobType: 'synthesize',
+      queueName: 'pdf-synthesis',
+    });
   }
 }
