@@ -1,9 +1,18 @@
 # Storige × Bookmoa 시스템 통합 문서
 
 > **작성일**: 2026-05-02  
-> **최종 수정**: 2026-05-04 (v2.5 — 운영 인프라 + 모니터링 스택 + Node 22 추가)  
-> **버전**: v2.6  
-> **대상**: PHP 개발자, 운영자, 기술 검토자
+> **최종 수정**: 2026-06-12 (v2.7 — ShareSnap 멀티사이트 연동 계획 + 외부 사진 주입 계약)  
+> **버전**: v2.7  
+> **대상**: PHP 개발자, 외부 연동 개발자, 운영자, 기술 검토자
+
+> ### 🔄 v2.7 변경 이력 (2026-06-12) — ShareSnap 멀티사이트 연동 (계획 확정)
+> 두 번째 외부 사이트 **ShareSnap**(공유방 사진 → 하드커버 포토북, React+Vercel+Supabase) 연동 계획 확정. **Storige 코드 변경 없이** 기존 멀티사이트(sites) 구조로 수용 + 신규 플랫폼 기능 2건 개발 예정. 정본: `../.cursor/plans/HANDOFF_sharesnap_integration_2026-06-12.md`.
+> - **연동 모델**: bookmoa-mobile과 동일 — `/embed` iframe + shop-session JWT + 정식 postMessage 엔벨로프(`editor.*`)만 사용(레거시 `storige:*` 미사용). PDF 다운로드는 처음부터 `/files/:id/download/external`.
+> - **신규 D1 — 외부 사진 주입(공유방 갤러리 탭)**: 세션 `metadata.externalPhotos: [{url, name, thumbnailUrl?}]` 를 호스트 서버가 주입 → 편집기 이미지 패널에 "공유방 사진" 탭 조건부 렌더(없으면 미표시 = **bookmoa 영향 0**). 탭하면 캔버스 추가, 사용됨 뱃지, 안 쓴 사진 필터. **호스트 의무**: 업로드 시점에 인쇄용 리사이즈본(긴변 3000~4000px, JPEG ~2-3MB) 사전 생성 — 브라우저 PDF 생성(300dpi)과 모바일 메모리 가드(4MB) 양립 조건.
+> - **신규 D2 — 캔버스 핀치-투-줌**: 전 사이트 공통 모바일 개선(기존 "알려진 한계" 해소). `EDITOR.md §20` 참조.
+> - **표지 모델**: ShareSnap 상품 = 하드커버 포토북 픽스, 표지는 storige 네이티브 스프레드(뒤+책등+앞 단일 캔버스) 모델 수용 방향.
+> - **자동배치(D3)**: 사진+코멘트 자동편집은 표준 계약 밖 — 템플릿셋 '편집 모드' 설정 방식으로 별도 기획 후 결정(보류).
+> - **회원 매핑 규약**: 외부 UUID 회원 체계는 정수 시퀀스 컬럼(예: `users.storige_member_no`)으로 1:1 발급해 `memberSeqno`로 전달(해시 변환 금지 — 충돌 위험).
 
 > ### 🔄 v2.6 변경 이력 (2026-06-07) — 스프레드 책 인쇄 무결성
 > 전수 감사 후 스프레드(펼침면) 책의 인쇄사고 방지장치를 실가동(전부 **SOFT** 1차, 운영 ENV `SPREAD_SNAPSHOT_HARD_FAIL=true` 로 HARD 승격). 상세: [`EDITOR.md §19`](./EDITOR.md), `../.cursor/plans/COVER_EDIT_FULL_AUDIT_2026-06-06.md`.

@@ -767,3 +767,38 @@ per-character `styles`(이탤릭·부분색)는 직렬화 리스트(`packages/ca
 | 공용 타입/공식 | `packages/types/src/index.ts` (`computeSpreadDimensions`, `validateSpreadAgainstAuthority`, `SPINE_FORMULA_VERSION`, `BINDING_CONSTRAINTS`, `SpreadSnapshot`/`SpineSnapshot`/`SpreadValidationResult`) |
 | woff2ToTtf | `apps/api/src/library/` (`POST /library/woff2ToTtf`), `packages/canvas-core/src/plugins/FontPlugin.ts` |
 | 운영 플래그 | `SPREAD_SNAPSHOT_HARD_FAIL` (api/worker `.env`) |
+
+## §20 외부 사진 주입(공유방 갤러리 탭) + 캔버스 핀치줌 — ShareSnap 연동 신규 기능 (2026-06-12 계획 확정)
+
+> 배경: 두 번째 외부 사이트 ShareSnap(공유방 사진 → 하드커버 포토북) 연동. 연동 자체는 기존 멀티사이트(/embed + shop-session) 구조로 코드 변경 0이나, 플랫폼 기능 2건이 신규 필요. 정본: `../.cursor/plans/HANDOFF_sharesnap_integration_2026-06-12.md` §6.
+> **둘 다 범용 플랫폼 기능** — sharesnap 전용 분기 없음. 단일 코드베이스·단일 배포가 전 사이트 공통 대응.
+
+### 20.1 D1 — 외부 사진 주입 (공유방 갤러리 탭)
+
+**문제**: 이미지 패널(`tools/AppImage.tsx` + `stores/useImageStore.ts`)은 로컬 파일 업로드 전용. 공유방 사진은 **타 참여자가 올린 것**이라 고객 기기에 없음 → 로컬 업로드로는 연동 목적 자체가 성립 불가.
+
+**계약 (호스트 ↔ 편집기)**:
+- 호스트 서버가 세션 생성/PATCH 시 `metadata.externalPhotos: [{ url, name, thumbnailUrl? }]` 주입.
+- 편집기는 목록이 **있으면** 이미지 패널에 `[공유방 사진]` 탭 렌더, **없으면** 탭 자체 미표시 → 기존 사이트(bookmoa) 영향 0.
+- 기존 로컬 업로드는 `[내 업로드]` 탭으로 병존 (공유방에 없는 사진 추가용 보조 — 신규 개발 0).
+
+**UX (A안 확정 근거 — 2026-06-12 검토)**:
+- 탭하면 즉시 캔버스 추가 (현행 '나의 콘텐츠' 1-tap 인터랙션과 동일, 학습비용 0). 일괄 자동배치는 D3(별도 기획) 영역.
+- **사용됨 체크 뱃지**: 어느 페이지든 배치된 사진에 표시 + "안 쓴 사진" 필터 칩 — 포토북 편집의 핵심 질문("뭘 아직 안 썼지?") 대응.
+- 정렬 칩: 시간순 / 올린사람 / 안 쓴 사진. 썸네일 lazy-load.
+- 렌더 엔진은 기존 `imageFromURL` 경로 재사용(내지 PDF 가이드가 이미 사용 중) — 신규 개발은 노출 표면(메타데이터 계약 + 패널 탭).
+
+**인쇄 해상도 정책 (호스트 의무)**: PDF는 브라우저에서 생성(§16, 300dpi)되므로 캔버스 이미지 = 인쇄 품질. 원본(12MP)은 모바일 메모리 크래시(기존 4MB 가드와 동일 사유), 과축소는 300dpi 미달 → **호스트가 업로드 시점에 인쇄용 리사이즈본(긴변 3000~4000px, JPEG ~2-3MB)을 사전 생성**해 `url`로 제공, `thumbnailUrl`은 ~300px. signed URL 등 만료 URL 금지(재편집 시 동일 URL 재로드).
+
+**CORS**: 사진 호스트(예: Supabase Storage)가 editor origin 허용 필요.
+
+### 20.2 D2 — 캔버스 핀치-투-줌
+
+- 기존 상태: `MOBILE_TOUCH_UI.md` "알려진 한계" — viewport `user-scalable=no` 로 시스템 핀치는 차단, 캔버스 자체 핀치 제스처 미구현.
+- 설계: Fabric `touch:gesture` 또는 pointer events 2지 추적 → `canvas.zoomToPoint`. 캔버스 컨테이너 `touch-action: none` 기반이라 브라우저 제스처 충돌 없음. WorkspacePlugin 줌 API 재사용.
+- **전 사이트 공통 모바일 개선** (bookmoa 카톡 인앱 사용자 즉시 혜택) — D1보다 선행 착수 권장.
+
+### 20.3 보류/대기 항목
+- **D3 자동배치(사진+코멘트 자동편집)**: 표준 계약 밖. 템플릿셋 등록 시 '편집 모드' 설정 방식으로 오너 기획 후 논의·결정 (착수 보류).
+- **표지 모델**: ShareSnap 상품 = 하드커버 포토북 픽스 + 표지 스프레드(뒤+책등+앞 단일 캔버스) 수용 방향 — D3 기획과 함께 오너가 정리 예정.
+- **브라우저 PDF 생성 타임아웃 리스크**: 24p/180초 실측 이력 → sharesnap 포토북 템플릿셋 `pageCountRange` 상한(≤24~32p) 정책으로 단기 대응. 워커 서버렌더 이관은 별도 대형 프로젝트.

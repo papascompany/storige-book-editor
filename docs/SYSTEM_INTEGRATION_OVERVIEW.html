@@ -392,9 +392,9 @@
 <div class="top-header">
   <div class="badge-row">
     <span class="badge blue">📄 기술 문서</span>
-    <span class="badge green">v2.6</span>
-    <span class="badge">2026-06-07</span>
-    <span class="badge">PHP 개발자용</span>
+    <span class="badge green">v2.7</span>
+    <span class="badge">2026-06-12</span>
+    <span class="badge">외부 연동 개발자용</span>
   </div>
   <h1>Storige <span>×</span> Bookmoa<br>시스템 통합 문서</h1>
   <p class="subtitle">워커 데이터 플로우 · PHP 연동안 · 시스템 구성도 · PDF 검증 세부 항목</p>
@@ -410,6 +410,7 @@
 <!-- ══════════════════════════════ 사이드바 ══════════════════════════ -->
 <nav class="sidebar">
   <div class="sidebar-title">목차</div>
+  <a href="#changelog-v27" style="color:var(--green)">🆕 v2.7 ShareSnap 연동</a>
   <a href="#s1" class="active">① 시스템 구성도</a>
   <a href="#s1-2" class="sub">서비스 목록</a>
   <a href="#s1-3" class="sub">인증 방식</a>
@@ -440,6 +441,71 @@
 
 <!-- ══════════════════════════════ 콘텐츠 ══════════════════════════════ -->
 <main class="content">
+
+<!-- ─────────────── 변경 이력: v2.7 ─────────────── -->
+<section class="section" id="changelog-v27">
+  <h2 class="section-title">
+    <span class="num" style="background:rgba(34,197,94,.2);color:var(--green2)">v2.7</span>
+    v2.7 (2026-06-12) — ShareSnap 멀티사이트 연동 (계획 확정)
+  </h2>
+
+  <div class="badge-row" style="margin-bottom:20px">
+    <span class="tag new">MULTI-SITE</span>
+    <span class="tag added">EXTERNAL PHOTOS (D1)</span>
+    <span class="tag added">PINCH ZOOM (D2)</span>
+    <span class="tag warn">BOOKMOA 영향 0</span>
+  </div>
+
+  <p class="desc">
+    두 번째 외부 사이트 <strong>ShareSnap</strong>(공유방 사진 → 하드커버 포토북, React+Vercel+Supabase) 연동 계획이 확정되었습니다.
+    연동 자체는 <strong>Storige 코드 변경 없이</strong> 기존 멀티사이트(sites) 구조로 수용하며,
+    범용 플랫폼 기능 2건(D1·D2)을 신규 개발합니다.
+    정본: <code class="inline">.cursor/plans/HANDOFF_sharesnap_integration_2026-06-12.md</code>
+  </p>
+
+  <div class="info-box blue">
+    <div class="icon">🔗</div>
+    <div class="ib-content">
+      <div class="ib-title">연동 모델 — bookmoa-mobile과 동일</div>
+      <code class="inline">/embed</code> iframe + shop-session JWT + <strong>정식 postMessage 엔벨로프(<code class="inline">editor.*</code>)만 사용</strong>
+      (레거시 <code class="inline">storige:*</code> 미사용). PDF 다운로드는 처음부터
+      <code class="inline">/files/:id/download/external</code> + X-API-Key.
+      회원 매핑: 외부 UUID 체계는 정수 시퀀스 컬럼으로 1:1 발급해 <code class="inline">memberSeqno</code>로 전달(해시 변환 금지).
+    </div>
+  </div>
+
+  <div class="info-box green">
+    <div class="icon">🖼️</div>
+    <div class="ib-content">
+      <div class="ib-title">신규 D1 — 외부 사진 주입 (공유방 갤러리 탭)</div>
+      호스트 서버가 세션 <code class="inline">metadata.externalPhotos: [{url, name, thumbnailUrl?}]</code> 주입 →
+      편집기 이미지 패널에 "공유방 사진" 탭 <strong>조건부 렌더</strong>(목록 없으면 미표시 = 기존 사이트 영향 0).
+      탭하면 캔버스 즉시 추가, 사용됨 뱃지, 안 쓴 사진 필터.
+      <strong>호스트 의무</strong>: 업로드 시점에 인쇄용 리사이즈본(긴변 3000~4000px, JPEG ~2-3MB) 사전 생성 —
+      브라우저 300dpi PDF 생성과 모바일 4MB 메모리 가드 양립 조건. 만료형 signed URL 금지.
+    </div>
+  </div>
+
+  <div class="info-box blue">
+    <div class="icon">🤏</div>
+    <div class="ib-content">
+      <div class="ib-title">신규 D2 — 캔버스 핀치-투-줌</div>
+      기존 "알려진 한계"(MOBILE_TOUCH_UI.md) 해소. Fabric 터치 제스처 → <code class="inline">zoomToPoint</code>.
+      <strong>전 사이트 공통 모바일 개선</strong>(bookmoa 카톡 인앱 사용자 즉시 혜택) — D1보다 선행 착수.
+      상세: <code class="inline">EDITOR.md §20</code>
+    </div>
+  </div>
+
+  <div class="info-box yellow">
+    <div class="icon">⏸️</div>
+    <div class="ib-content">
+      <div class="ib-title">보류 — D3 자동배치 · 표지 모델 · 페이지 상한</div>
+      ① 사진+코멘트 자동편집(D3)은 표준 계약 밖 — 템플릿셋 '편집 모드' 설정 방식으로 오너 기획 후 결정.
+      ② ShareSnap 상품 = 하드커버 포토북 픽스 + 표지는 네이티브 스프레드(뒤+책등+앞 단일 캔버스) 수용 방향.
+      ③ 브라우저 PDF 생성 타임아웃(24p/180초 실측) → 포토북 <code class="inline">pageCountRange</code> 상한(≤24~32p) 정책으로 단기 대응.
+    </div>
+  </div>
+</section>
 
 <!-- ─────────────── 변경 이력: v2.6 ─────────────── -->
 <section class="section" id="changelog-v26">
@@ -1642,7 +1708,7 @@ window.<span class="type">StorigeEditor</span>.<span class="func">init</span>({
 
 <!-- 푸터 -->
 <div style="border-top:1px solid var(--border);margin-top:48px;padding:24px 0;color:var(--text3);font-size:12px">
-  <div style="margin-bottom:6px"><strong style="color:var(--text2)">Storige × Bookmoa 시스템 통합 문서</strong> · v2.6 · 2026-06-04 (⑦ PDF 첨부 검증 항목/갭 추가)</div>
+  <div style="margin-bottom:6px"><strong style="color:var(--text2)">Storige × Bookmoa 시스템 통합 문서</strong> · v2.7 · 2026-06-12 (ShareSnap 멀티사이트 연동 계획 + 외부 사진 주입 계약)</div>
   <div>저장 경로: <code style="font-family:monospace;color:var(--text3)">docs/SYSTEM_INTEGRATION_OVERVIEW.md</code> · <code style="font-family:monospace;color:var(--text3)">docs/SYSTEM_INTEGRATION_OVERVIEW.html</code></div>
   <div style="margin-top:6px">최신 API 스펙: <code style="font-family:monospace;color:var(--text3)">http://localhost:4000/api/docs</code> (Swagger UI)</div>
 </div>
