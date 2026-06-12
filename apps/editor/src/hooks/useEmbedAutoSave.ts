@@ -171,7 +171,9 @@ export function useEmbedAutoSave(config: AutoSaveConfig) {
         incrementRetry()
         setFailed('저장 실패. 재시도 중...')
       } else {
-        setFailed('저장 실패. 로컬에 백업되었습니다.')
+        // ⚠️ "백업되었습니다" 단정 금지 — localStorage 임시 보관일 뿐 서버에 저장된 것이
+        // 아니고, 복원 UI 도 아직 없다(아래 TODO 참조). 사용자가 안심하고 이탈하지 않도록 안내.
+        setFailed('저장 실패. 변경사항이 서버에 저장되지 않았습니다 — 네트워크 확인 후 다시 시도해 주세요.')
       }
 
       onError?.(error instanceof Error ? error : new Error('저장 실패'))
@@ -326,7 +328,11 @@ export function useEmbedAutoSave(config: AutoSaveConfig) {
   }, [isDirty])
 
   /**
-   * 컴포넌트 언마운트 시 저장
+   * 컴포넌트 언마운트 시 로컬 백업
+   * ⚠️ 서버 저장이 아니다 — 언마운트 cleanup 은 동기라 API 호출을 보장할 수 없어
+   * localStorage 백업만 수행한다. 미저장 변경은 서버 세션에는 반영되지 않은 상태.
+   * collectCanvasData() 사용: 멀티페이지(allCanvas 2+)면 전체 페이지 배열을 직렬화 —
+   * 과거 canvas.toJSON(현재 페이지 1장)만 백업해 내지 N페이지가 유실되던 문제 수정.
    */
   useEffect(() => {
     return () => {
@@ -335,7 +341,7 @@ export function useEmbedAutoSave(config: AutoSaveConfig) {
       if (isDirty && sessionId && canvas) {
         // 동기적으로 로컬 백업 (언마운트 시에는 async 불가)
         try {
-          const canvasData = canvas.toJSON(core.extendFabricOption)
+          const canvasData = collectCanvasData()
           const backup = {
             sessionId,
             canvasData,
@@ -347,10 +353,16 @@ export function useEmbedAutoSave(config: AutoSaveConfig) {
         }
       }
     }
-  }, [isDirty, sessionId, canvas, debouncedSave])
+  }, [isDirty, sessionId, canvas, debouncedSave, collectCanvasData])
 
   /**
    * 초기화 시 로컬 백업 확인
+   *
+   * TODO(설계 결정 대기): 백업 복원 모달 — 발견된 로컬 백업을 사용자에게 보여주고
+   * "복원 / 무시(삭제)" 를 선택하게 하는 UI 는 아직 없다. 현재는 상태 플래그만 set 하고
+   * 자동 복구하지 않으므로, 백업이 있어도 사용자가 복원할 방법이 없다.
+   * 복원 정책(서버 세션 vs 로컬 백업 중 최신 판정, 멀티페이지 배열 백업의 loadJSON
+   * 라우팅, 게스트 세션 처리)은 제품 설계 결정 사안 — 여기서 임의 구현하지 말 것.
    */
   useEffect(() => {
     if (!sessionId || !canvas) return
@@ -358,7 +370,7 @@ export function useEmbedAutoSave(config: AutoSaveConfig) {
     const backup = loadFromLocal()
     if (backup && backup.canvasData) {
       // 백업이 있고 세션이 일치하면 복구 여부 확인 가능
-      // 현재는 자동 복구하지 않고 정보만 제공
+      // 현재는 자동 복구하지 않고 정보만 제공 (복원 UI 없음 — 위 TODO 참조)
       console.log('[EmbedAutoSave] 로컬 백업 발견:', backup.savedAt)
       setLocalBackup(true, new Date(backup.savedAt))
     }
