@@ -9,6 +9,7 @@ import {
   Query,
   HttpCode,
   HttpStatus,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -18,6 +19,9 @@ import {
 } from '@nestjs/swagger';
 import { TemplateSetsService } from './template-sets.service';
 import { Public } from '../auth/decorators/public.decorator';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { UserRole } from '@storige/types';
 import {
   CreateTemplateSetDto,
   UpdateTemplateSetDto,
@@ -32,6 +36,8 @@ export class TemplateSetsController {
   constructor(private readonly templateSetsService: TemplateSetsService) {}
 
   @Post()
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
   @ApiBearerAuth()
   @ApiOperation({ summary: '템플릿셋 생성' })
   @ApiResponse({ status: 201, description: '생성 성공' })
@@ -79,6 +85,8 @@ export class TemplateSetsController {
   }
 
   @Put(':id')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
   @ApiBearerAuth()
   @ApiOperation({ summary: '템플릿셋 수정' })
   @ApiResponse({ status: 200, description: '수정 성공' })
@@ -91,6 +99,8 @@ export class TemplateSetsController {
   }
 
   @Delete(':id')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
   @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '템플릿셋 삭제 (소프트 삭제)' })
@@ -101,6 +111,8 @@ export class TemplateSetsController {
   }
 
   @Post(':id/copy')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
   @ApiBearerAuth()
   @ApiOperation({ summary: '템플릿셋 복제' })
   @ApiResponse({ status: 201, description: '복제 성공' })
@@ -110,6 +122,8 @@ export class TemplateSetsController {
   }
 
   @Put(':id/templates')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
   @ApiBearerAuth()
   @ApiOperation({ summary: '템플릿 구성 일괄 수정' })
   @ApiResponse({ status: 200, description: '수정 성공' })
@@ -130,6 +144,8 @@ export class TemplateSetsController {
   }
 
   @Post(':id/templates')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
   @ApiBearerAuth()
   @ApiOperation({ summary: '템플릿셋에 템플릿 추가' })
   @ApiResponse({ status: 201, description: '추가 성공' })
@@ -143,6 +159,8 @@ export class TemplateSetsController {
   }
 
   @Delete(':id/templates/:templateId')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
   @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '템플릿셋에서 템플릿 제거' })
@@ -156,6 +174,8 @@ export class TemplateSetsController {
   }
 
   @Put(':id/templates/reorder')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
   @ApiBearerAuth()
   @ApiOperation({ summary: '템플릿 순서 변경' })
   @ApiResponse({ status: 200, description: '순서 변경 성공' })
@@ -168,8 +188,10 @@ export class TemplateSetsController {
     return this.templateSetsService.reorderTemplates(id, dto);
   }
 
-  @Public()
   @Post('admin/update-thumbnails')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth()
   @ApiOperation({ summary: '모든 템플릿셋의 썸네일 일괄 업데이트' })
   @ApiResponse({ status: 200, description: '업데이트 성공' })
   async updateAllThumbnails() {

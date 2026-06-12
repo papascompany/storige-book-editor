@@ -16,6 +16,7 @@ import {
   ApiSecurity,
 } from '@nestjs/swagger';
 import { Response, Request } from 'express';
+import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { LoginDto, RegisterDto } from './dto/login.dto';
 import {
@@ -44,6 +45,7 @@ export class AuthController {
 
   @Public()
   @Post('login')
+  @Throttle({ default: { limit: 10, ttl: 60000 } }) // SEC-4 brute-force 방어
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'User login' })
   @ApiResponse({ status: 200, description: 'Login successful' })
@@ -54,6 +56,7 @@ export class AuthController {
 
   @Public()
   @Post('register')
+  @Throttle({ default: { limit: 5, ttl: 60000 } }) // SEC-4 대량 계정 생성 방어
   @ApiOperation({ summary: 'User registration' })
   @ApiResponse({ status: 201, description: 'User registered successfully' })
   @ApiResponse({ status: 409, description: 'Email already exists' })
@@ -65,6 +68,7 @@ export class AuthController {
 
   @Public()
   @Post('refresh')
+  @Throttle({ default: { limit: 20, ttl: 60000 } }) // SEC-4 토큰 무차별 대입 방어
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Refresh access token' })
   @ApiResponse({ status: 200, description: 'Token refreshed successfully' })
@@ -90,6 +94,9 @@ export class AuthController {
   @Public()
   @UseGuards(ApiKeyGuard)
   @Post('shop-session')
+  // SEC-4: API Key 무차별 대입 방어. 주의 — 호출원이 bookmoa 서버(단일 IP)이므로
+  // 분당 20 세션 생성 초과 규모가 되면 이 한도를 상향해야 함 (현재 트래픽 « 20/분).
+  @Throttle({ default: { limit: 20, ttl: 60000 } })
   @HttpCode(HttpStatus.OK)
   @ApiSecurity('api-key')
   @ApiOperation({ summary: 'Create shop session for bookmoa members' })
@@ -150,6 +157,7 @@ export class AuthController {
    */
   @Public()
   @Post('shop-refresh')
+  @Throttle({ default: { limit: 20, ttl: 60000 } }) // SEC-4 refresh 계열 동일 한도
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Refresh shop session token' })
   @ApiResponse({ status: 200, description: 'Token refreshed successfully' })
@@ -191,6 +199,7 @@ export class AuthController {
    */
   @Public()
   @Post('shop-refresh-body')
+  @Throttle({ default: { limit: 20, ttl: 60000 } }) // SEC-4 refresh 계열 동일 한도
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Refresh shop session token (embed/body variant)' })
   @ApiResponse({ status: 200, description: 'New access token in body' })

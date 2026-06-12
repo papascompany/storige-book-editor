@@ -37,10 +37,27 @@ import { EditSession, EditHistory } from './entities/edit-session.entity';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { UserRole } from '@storige/types';
-import { Public } from '../auth/decorators/public.decorator';
 
+/**
+ * 레거시 편집 세션 컨트롤러 (edit_sessions 테이블).
+ *
+ * SEC-1 (2026-06-13): 전 라우트가 @Public + X-User-Id 헤더 신뢰 구조였던 것을
+ * JWT(글로벌 JwtAuthGuard) + RolesGuard(ADMIN/MANAGER) 로 전환.
+ *
+ * 판단 근거 (VPS nginx 전 기간 로그, 2026-04-28 ~ 06-13, 약 11만 라인):
+ * - /api/editor/* 호출 총 40건 — 전부 내부(admin 검토 화면 32건 + 운영자 curl/스캐너 8건).
+ * - 외부/고객 소비자 0건. 라이브 편집기(/embed)는 /edit-sessions(file_edit_sessions)만 사용.
+ * - 컨트롤러 제거 대신 가드 전환을 택한 이유: /edit-sessions 는 다른 도메인
+ *   (주문/파일 기반)이라 admin 검토 워크플로우(status=review 목록·history·status 전환)의
+ *   1:1 대체가 불가 — 제거 시 admin 검토 기능 회귀.
+ *
+ * X-User-Id 헤더는 잠금/감사(modifiedBy) 용도로 유지되지만,
+ * 이제 인증된 ADMIN/MANAGER 만 도달 가능하므로 IDOR 표면이 제거됨.
+ */
 @ApiTags('Editor')
 @ApiBearerAuth()
+@UseGuards(RolesGuard)
+@Roles(UserRole.ADMIN, UserRole.MANAGER)
 @Controller('editor')
 export class EditorController {
   constructor(private readonly editorService: EditorService) {}
@@ -50,7 +67,6 @@ export class EditorController {
   // ============================================================================
 
   @Post('sessions')
-  @Public()
   @ApiOperation({ summary: '편집 세션 생성 (템플릿셋 기반)' })
   @ApiResponse({ status: 201, description: '세션 생성 성공', type: EditSession })
   @ApiResponse({ status: 404, description: '템플릿셋을 찾을 수 없음' })
@@ -70,7 +86,6 @@ export class EditorController {
   }
 
   @Get('sessions/:id')
-  @Public()
   @ApiOperation({ summary: '편집 세션 상세 조회' })
   @ApiResponse({ status: 200, description: '세션 상세', type: EditSession })
   @ApiResponse({ status: 404, description: '세션을 찾을 수 없음' })
@@ -79,7 +94,6 @@ export class EditorController {
   }
 
   @Put('sessions/:id')
-  @Public()
   @ApiOperation({ summary: '편집 세션 업데이트' })
   @ApiHeader({ name: 'X-User-Id', required: false, description: '사용자 ID' })
   @ApiResponse({ status: 200, description: '업데이트 성공', type: EditSession })
@@ -110,7 +124,6 @@ export class EditorController {
   // ============================================================================
 
   @Post('sessions/:id/auto-save')
-  @Public()
   @ApiOperation({ summary: '자동 저장 (주기적으로 호출됨)' })
   @ApiHeader({ name: 'X-User-Id', required: false, description: '사용자 ID' })
   @ApiResponse({ status: 200, description: '저장 성공', type: EditSession })
@@ -129,7 +142,6 @@ export class EditorController {
   // ============================================================================
 
   @Get('sessions/:id/versions')
-  @Public()
   @ApiOperation({ summary: '자동저장 시점 list (메타만)' })
   @ApiHeader({ name: 'X-User-Id', required: false })
   @ApiResponse({ status: 200, description: '시점 list (savedAt DESC)' })
@@ -141,7 +153,6 @@ export class EditorController {
   }
 
   @Get('sessions/:id/versions/:vid')
-  @Public()
   @ApiOperation({ summary: '특정 시점의 pages JSON 조회' })
   @ApiHeader({ name: 'X-User-Id', required: false })
   async getVersion(
@@ -153,7 +164,6 @@ export class EditorController {
   }
 
   @Post('sessions/:id/versions/:vid/restore')
-  @Public()
   @ApiOperation({ summary: '시점으로 복원 (현재 pages 교체)' })
   @ApiHeader({ name: 'X-User-Id', required: false })
   async restoreVersion(
@@ -169,7 +179,6 @@ export class EditorController {
   // ============================================================================
 
   @Post('sessions/:id/pages')
-  @Public()
   @ApiOperation({ summary: '페이지 추가' })
   @ApiHeader({ name: 'X-User-Id', required: false, description: '사용자 ID' })
   @ApiResponse({ status: 201, description: '페이지 추가 성공', type: EditSession })
@@ -185,7 +194,6 @@ export class EditorController {
   }
 
   @Delete('sessions/:id/pages/:pageId')
-  @Public()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '페이지 삭제' })
   @ApiHeader({ name: 'X-User-Id', required: false, description: '사용자 ID' })
@@ -202,7 +210,6 @@ export class EditorController {
   }
 
   @Put('sessions/:id/pages/reorder')
-  @Public()
   @ApiOperation({ summary: '페이지 순서 변경' })
   @ApiHeader({ name: 'X-User-Id', required: false, description: '사용자 ID' })
   @ApiResponse({ status: 200, description: '순서 변경 성공', type: EditSession })
@@ -222,7 +229,6 @@ export class EditorController {
   // ============================================================================
 
   @Put('sessions/:id/template')
-  @Public()
   @ApiOperation({ summary: '템플릿 교체 (사용자 요소 보존)' })
   @ApiHeader({ name: 'X-User-Id', required: false, description: '사용자 ID' })
   @ApiResponse({ status: 200, description: '템플릿 교체 성공', type: EditSession })
@@ -237,7 +243,6 @@ export class EditorController {
   }
 
   @Put('sessions/:id/template-set')
-  @Public()
   @ApiOperation({ summary: '템플릿셋 교체 (사용자 요소 보존)' })
   @ApiHeader({ name: 'X-User-Id', required: false, description: '사용자 ID' })
   @ApiResponse({ status: 200, description: '템플릿셋 교체 성공', type: EditSession })
@@ -256,7 +261,6 @@ export class EditorController {
   // ============================================================================
 
   @Get('sessions/:id/validate')
-  @Public()
   @ApiOperation({ summary: '세션 검증 (내지 수량, 필수 페이지 확인)' })
   @ApiResponse({
     status: 200,
@@ -302,7 +306,6 @@ export class EditorController {
   // ============================================================================
 
   @Post('sessions/:id/lock')
-  @Public()
   @ApiOperation({ summary: '편집 잠금 획득' })
   @ApiResponse({ status: 200, description: '잠금 획득 성공', type: EditSession })
   @ApiResponse({ status: 404, description: '세션을 찾을 수 없음' })
@@ -315,7 +318,6 @@ export class EditorController {
   }
 
   @Delete('sessions/:id/lock')
-  @Public()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '편집 잠금 해제' })
   @ApiHeader({ name: 'X-User-Id', required: true, description: '사용자 ID' })
@@ -334,7 +336,6 @@ export class EditorController {
   // ============================================================================
 
   @Put('sessions/:id/status')
-  @Public()
   @ApiOperation({ summary: '편집 상태 변경' })
   @ApiHeader({ name: 'X-User-Id', required: true, description: '사용자 ID' })
   @ApiResponse({ status: 200, description: '상태 변경 성공', type: EditSession })
@@ -366,7 +367,6 @@ export class EditorController {
   // ============================================================================
 
   @Post('export')
-  @Public()
   @ApiOperation({ summary: 'PDF 내보내기 (worker 합성 잡 발행)' })
   @ApiResponse({
     status: 200,

@@ -115,9 +115,8 @@ export class StorageService {
   }
 
   async deleteFileByUrl(url: string): Promise<void> {
-    // Extract path from URL (e.g., /storage/files/uploads/file.jpg -> uploads/file.jpg)
-    const relativePath = url.replace('/storage/files/', '').replace('/storage/', '');
-    const filePath = path.join(this.storagePath, relativePath);
+    // getFilePathFromUrl 가 storage 루트 격리(path traversal 방어)를 수행
+    const filePath = this.getFilePathFromUrl(url);
     await this.deleteFile(filePath);
   }
 
@@ -165,10 +164,18 @@ export class StorageService {
   }
 
   // Helper method to get full file path from URL
+  // SEC-5: path.resolve 후 storage 루트 격리 — `../`, 인코딩된 세그먼트 등을 통한
+  // path traversal 로 storage 루트 밖 파일 접근을 차단한다.
   getFilePathFromUrl(url: string): string {
     // Handle both old (/storage/category/file) and new (/storage/files/category/file) URL formats
     const relativePath = url.replace('/storage/files/', '').replace('/storage/', '');
-    return path.join(this.storagePath, relativePath);
+    const storageRoot = path.resolve(this.storagePath);
+    const resolved = path.resolve(storageRoot, relativePath);
+    if (resolved !== storageRoot && !resolved.startsWith(storageRoot + path.sep)) {
+      this.logger.warn(`Blocked path traversal attempt: ${url}`);
+      throw new BadRequestException('Invalid file path');
+    }
+    return resolved;
   }
 
   /**

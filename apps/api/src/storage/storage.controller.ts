@@ -14,6 +14,7 @@ import {
   Res,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { Throttle } from '@nestjs/throttler';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
 import { Request, Response } from 'express';
 import { memoryStorage } from 'multer';
@@ -122,6 +123,9 @@ export class StorageController {
    */
   @Post('upload-public')
   @Public()
+  // SEC-4: 비인증 업로드 디스크 고갈 방어 — IP 당 분당 20회.
+  // 고객 플로우는 1회 1파일(이미지/PDF 첨부) 수동 업로드라 일반 사용 영향 없음.
+  @Throttle({ default: { limit: 20, ttl: 60000 } })
   @UseInterceptors(FileInterceptor('file', multerOptionsPublic))
   @ApiOperation({ summary: 'Upload a file (public — guest customer)' })
   @ApiConsumes('multipart/form-data')

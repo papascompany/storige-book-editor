@@ -20,9 +20,8 @@ export class AdminSeedService implements OnModuleInit {
 
   private async seedAdminUser() {
     const adminEmail = process.env.ADMIN_EMAIL || 'admin@storige.com';
-    const adminPassword = process.env.ADMIN_PASSWORD || 'admin1234';
 
-    // 이미 관리자가 존재하는지 확인
+    // 이미 관리자가 존재하면 ADMIN_PASSWORD 불필요 — no-op
     const existingAdmin = await this.userRepository.findOne({
       where: { email: adminEmail },
     });
@@ -30,6 +29,19 @@ export class AdminSeedService implements OnModuleInit {
     if (existingAdmin) {
       this.logger.log(`Admin user already exists: ${adminEmail}`);
       return;
+    }
+
+    // 신규 생성 경로 — 기본 비밀번호 폴백 금지 (보안 SCRT, 2026-06-13).
+    // ADMIN_PASSWORD 미설정 상태에서 약한 기본값('admin1234')으로 관리자
+    // 계정이 만들어지는 사고를 막기 위해 명시 에러로 기동을 실패시킨다.
+    const adminPassword = process.env.ADMIN_PASSWORD;
+    if (!adminPassword) {
+      throw new Error(
+        `AdminSeedService: admin user "${adminEmail}" does not exist and ` +
+          'ADMIN_PASSWORD env is not set. Refusing to create an admin account ' +
+          'with a default password. Set ADMIN_PASSWORD (and optionally ADMIN_EMAIL) ' +
+          'and restart.',
+      );
     }
 
     // 관리자 계정 생성
@@ -43,7 +55,7 @@ export class AdminSeedService implements OnModuleInit {
     });
 
     await this.userRepository.save(admin);
-    this.logger.log(`Admin user created: ${adminEmail}`);
-    this.logger.log(`Default password: ${adminPassword} (change in production!)`);
+    // 보안: 비밀번호 값은 절대 로그에 남기지 않는다.
+    this.logger.log(`Admin user created: ${adminEmail} (password from ADMIN_PASSWORD env)`);
   }
 }
