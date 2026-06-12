@@ -10,7 +10,7 @@ model: sonnet
 - 새 API: `https://api.papascompany.co.kr/api`
 - 새 Editor: `https://editor.papascompany.co.kr`
 - 옛 운영 storige: `http://58.229.105.98:4000` — 북모아 서버 내부 Node.js v20 위 가동 추정. 인수자 접근 불가. 비교는 응답 schema만.
-- nimda PHP 키: `sk-storige-l3YVceH0sB739pgTfxRAxZAmLJROcMtgdKPIDYdVG0g` — **새 인프라 `.env` API_KEYS에 추가 완료**
+- nimda PHP 키: `sk-storige-REDACTED_SEE_VPS_ENV` — **새 인프라 `.env` API_KEYS에 추가 완료**
 - 북모아 운영 PHP 페이지: `bookmoa.noriter.co.kr/editor/{index,editor,callback,worker-test}.php` — storige 레포 `test-php/php/` 그대로 배포 (worker-test.php는 북모아 자체 추가)
 - 외부 계약은 `NEW_DEV_PLAN.md §3` 참조
 
@@ -29,7 +29,7 @@ ProxyPassReverse /storige-api/ https://api.papascompany.co.kr/api/
 SetEnv STORIGE_API_URL "https://api.papascompany.co.kr/api"
 
 # ③ API 키는 변경 없음 (새 인프라가 이미 이 키 인식)
-SetEnv STORIGE_API_KEY "sk-storige-l3YVceH0sB739pgTfxRAxZAmLJROcMtgdKPIDYdVG0g"
+SetEnv STORIGE_API_KEY "sk-storige-REDACTED_SEE_VPS_ENV"
 
 # ④ 편집기 URL은 새 값으로 (기존에 있다면)
 SetEnv STORIGE_EDITOR_URL "https://editor.papascompany.co.kr"
@@ -52,7 +52,7 @@ bookmoa staging 권한 없이도 PHP 흐름을 우리 인프라에서 흉내낼 
 
 ```bash
 BASE="https://api.papascompany.co.kr/api"
-PHP_KEY="sk-storige-l3YVceH0sB739pgTfxRAxZAmLJROcMtgdKPIDYdVG0g"
+PHP_KEY="sk-storige-REDACTED_SEE_VPS_ENV"
 
 # 1. JWT 발급 (PHP getEditorToken 패턴)
 TOKEN=$(curl -sS -X POST $BASE/auth/login \

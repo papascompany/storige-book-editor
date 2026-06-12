@@ -21,6 +21,24 @@ build/
 .env.test.local
 .env.production.local
 
+# 시크릿 파일 커밋 금지 (보안 SCRT, 2026-06-13 — PUBLIC 레포)
+# api/worker 런타임 env 는 VPS ~/storige/.env(untracked, chmod 600)에서 주입.
+# 레포에는 *.example(플레이스홀더)만 커밋한다.
+.env.production
+.env.development
+!.env*.example
+!.env.development.example
+!.env.production.example
+# admin/editor 의 .env.production / .env.development 은 시크릿 없는
+# 공개 Vite 설정(URL/플래그)이라 추적 유지.
+!apps/admin/.env.production
+!apps/admin/.env.development
+!apps/editor/.env.production
+.env*.bak*
+계정정보*.html
+*.secret.*
+*.secrets.*
+
 # Claude Code local memory (operational secrets — SSH/VPS/API keys)
 # 세션 간 자동 로드되는 로컬 메모리 — 절대 커밋 금지
 CLAUDE.local.md

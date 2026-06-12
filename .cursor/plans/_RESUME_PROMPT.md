@@ -93,7 +93,7 @@
   - 첨부 안내(`nimda_storige_연동_안내.md`) 분석: nimda 측 `load_storige_files.php`가 `GET /api/edit-sessions/external?orderSeqno=...` 호출, 응답 `files{cover,content,merged}`에 STORIGE_API_URL prefix 붙여 다운로드
   - 원본 레포(`blueamethyst/storige`) clone → 우리 fork master와 100% 동기화 확인 (모든 최근 커밋 동일)
   - 북모아 PHP 운영 `bookmoa.noriter.co.kr/editor/` = storige 레포의 `test-php/php/` 그대로 배포 확인
-  - nimda PHP 키 `sk-storige-l3YVceH0sB739pgTfxRAxZAmLJROcMtgdKPIDYdVG0g` 새 인프라 `.env` API_KEYS에 추가 + `docker compose up -d --force-recreate api`
+  - nimda PHP 키 `sk-storige-REDACTED_SEE_VPS_ENV` 새 인프라 `.env` API_KEYS에 추가 + `docker compose up -d --force-recreate api`
   - 두 인프라 동일 키로 동일 schema 응답 확인 (`{"success":true,"data":[]}`)
   - **결과: 컷오버 = bookmoa의 STORIGE_API_URL 1줄 변경. PHP 코드 0줄 변경 가능.**
 - ✅ **옵션 A — 자체 시뮬레이션 (PHP 흐름 7단계)** (2026-04-28 늦은 야간)
@@ -197,7 +197,7 @@
 - 변경하는 것: bookmoa Apache vhost의 `SetEnv STORIGE_API_URL` 1줄
   - 옛 값: `http://58.229.105.98:4000/api`
   - 새 값: `https://api.papascompany.co.kr/api`
-- `STORIGE_API_KEY` (`sk-storige-l3YVceH0sB739pgTfxRAxZAmLJROcMtgdKPIDYdVG0g`)는 변경 없음 — 새 인프라가 이 키를 인식하도록 등록 완료
+- `STORIGE_API_KEY` (`sk-storige-REDACTED_SEE_VPS_ENV`)는 변경 없음 — 새 인프라가 이 키를 인식하도록 등록 완료
 
 ## PHP 흐름 7단계 (자체 시뮬레이션)
 1. JWT 발급 (admin 로그인) — 에디터용 토큰
@@ -212,7 +212,7 @@
 ## 검증 명령 (운영 점검)
 ```bash
 # 두 인프라 동일 응답 비교 (nimda 키)
-PHP_KEY="sk-storige-l3YVceH0sB739pgTfxRAxZAmLJROcMtgdKPIDYdVG0g"
+PHP_KEY="sk-storige-REDACTED_SEE_VPS_ENV"
 curl -sS -H "X-API-Key: $PHP_KEY" "http://58.229.105.98:4000/api/edit-sessions/external?orderSeqno=1"
 curl -sS -H "X-API-Key: $PHP_KEY" "https://api.papascompany.co.kr/api/edit-sessions/external?orderSeqno=1"
 
@@ -230,7 +230,7 @@ ssh deploy@158.247.235.202 'docker logs --tail 200 storige-worker | grep -iE "sy
 |---|---|
 | `STORIGE_API_URL` | `https://api.papascompany.co.kr/api` |
 | `STORIGE_EDITOR_URL` | `https://editor.papascompany.co.kr` |
-| `STORIGE_API_KEY` | `sk-storige-l3YVceH0sB739pgTfxRAxZAmLJROcMtgdKPIDYdVG0g` (기존 값 유지) |
+| `STORIGE_API_KEY` | `sk-storige-REDACTED_SEE_VPS_ENV` (기존 값 유지) |
 | `STORIGE_WEBHOOK_VERIFY_HEADER` | `X-Storige-Signature` |
 
 # 더미 테스트 데이터 (이미 삽입됨, 그대로 사용 가능)

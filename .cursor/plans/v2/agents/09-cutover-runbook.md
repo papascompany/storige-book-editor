@@ -117,7 +117,7 @@ T+24h:  무사고 시 옛 storige(58.229.105.98) stand-by 종료 결정
 
 ### 4.4 새 인프라에 등록된 nimda PHP 키 검증 (사전)
 ```bash
-PHP_KEY="sk-storige-l3YVceH0sB739pgTfxRAxZAmLJROcMtgdKPIDYdVG0g"
+PHP_KEY="sk-storige-REDACTED_SEE_VPS_ENV"
 
 # 두 인프라 동일 응답 확인 (변경 후에도 nimda는 그대로 동작)
 curl -sS -H "X-API-Key: $PHP_KEY" "http://58.229.105.98:4000/api/edit-sessions/external?orderSeqno=1"

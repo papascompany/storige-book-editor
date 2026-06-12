@@ -23,7 +23,7 @@
 - **API**: https://api.papascompany.co.kr/api (Sentry 활성화 + 보안 패치 A-E 적용)
 - **Admin**: https://admin.papascompany.co.kr (Vercel storige-admin)
 - **Editor**: https://editor.papascompany.co.kr (Vercel storige-editor)
-- **Admin 계정**: `admin@storige.com` / `r46eAZ2jDxELVeEqAKU7TLK1` (2026-05-03 자동 교체)
+- **Admin 계정**: `admin@storige.com` / `REDACTED_SEE_VPS_ENV` (2026-05-03 자동 교체)
 - **로컬 경로**: `/Users/yohan/claude/Bookmoa Storige editor/storige`
 - **레포**: `papascompany/storige-book-editor` (master)
 - **첫 SSH 호출 전**: `ssh-add -l` → 비어있으면 `ssh-add ~/.ssh/id_ed25519`
@@ -92,7 +92,7 @@ const queryBuilder = this.productRepository
    ```bash
    TOKEN=$(curl -sX POST https://api.papascompany.co.kr/api/auth/login \
      -H "Content-Type: application/json" \
-     -d '{"email":"admin@storige.com","password":"r46eAZ2jDxELVeEqAKU7TLK1"}' \
+     -d '{"email":"admin@storige.com","password":"REDACTED_SEE_VPS_ENV"}' \
      | python3 -c "import json,sys;print(json.load(sys.stdin).get('accessToken',''))")
    curl -s -H "Authorization: Bearer $TOKEN" https://api.papascompany.co.kr/api/products | python3 -m json.tool | head -50
    ```
@@ -161,7 +161,7 @@ EOF
 ```bash
 TOKEN=$(curl -sX POST https://api.papascompany.co.kr/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"email":"admin@storige.com","password":"r46eAZ2jDxELVeEqAKU7TLK1"}' \
+  -d '{"email":"admin@storige.com","password":"REDACTED_SEE_VPS_ENV"}' \
   | python3 -c "import json,sys;print(json.load(sys.stdin).get('accessToken',''))")
 
 # Cover 업로드

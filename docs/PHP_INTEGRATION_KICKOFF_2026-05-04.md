@@ -44,7 +44,7 @@ $pdfData = file_get_contents("https://api.papascompany.co.kr/api/files/{$fileId}
 **변경 후**:
 ```php
 // ✅ 외부용 endpoint + X-API-Key 헤더 사용
-define('STORIGE_API_KEY', 'sk-storige-l3YVceH0sB739pgTfxRAxZAmLJROcMtgdKPIDYdVG0g');
+define('STORIGE_API_KEY', 'sk-storige-REDACTED_SEE_VPS_ENV');
 define('STORIGE_API_BASE', 'https://api.papascompany.co.kr/api');
 
 function storigenDownloadOutputPdf(string $fileId): string {
