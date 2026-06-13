@@ -4,7 +4,7 @@
   "installCommand": "cd ../.. && pnpm install --no-frozen-lockfile --filter @storige/admin... --ignore-scripts",
   "buildCommand": "cd ../.. && pnpm --filter @storige/types build && pnpm --filter @storige/admin build",
   "outputDirectory": "dist",
-  "ignoreCommand": "git diff --quiet HEAD^ HEAD ./ ../../packages/types ../../packages/ui ../../packages/indesign-import",
+  "ignoreCommand": "git diff --quiet ${VERCEL_GIT_PREVIOUS_SHA:-HEAD^} HEAD ./ ../../packages/types ../../packages/ui ../../packages/indesign-import",
   "build": {
     "env": {
       "VITE_API_BASE_URL": "https://api.papascompany.co.kr/api"
