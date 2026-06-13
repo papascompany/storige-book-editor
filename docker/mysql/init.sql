@@ -289,6 +289,10 @@ CREATE TABLE IF NOT EXISTS files (
   original_name  VARCHAR(255) NOT NULL,
   file_path      VARCHAR(500) NOT NULL,
   file_url       VARCHAR(500) NOT NULL,
+  -- 저장계층 R2 보강 (2026-06-13): 백엔드별 라우팅 + 보존정책
+  storage_backend VARCHAR(16) NOT NULL DEFAULT 'local',  -- 'local' | 's3'
+  storage_key    VARCHAR(500),                            -- local=STORAGE_PATH 상대, s3=object key
+  expires_at     TIMESTAMP NULL,                          -- 보존 만료(null=영구). retention cron 이 만료분 삭제
   thumbnail_url  VARCHAR(500),
   file_size      BIGINT NOT NULL,
   mime_type      VARCHAR(100) NOT NULL,
@@ -301,7 +305,8 @@ CREATE TABLE IF NOT EXISTS files (
   deleted_at     TIMESTAMP NULL,
   INDEX idx_files_file_type (file_type),
   INDEX idx_files_order_seqno (order_seqno),
-  INDEX idx_files_member_seqno (member_seqno)
+  INDEX idx_files_member_seqno (member_seqno),
+  INDEX idx_files_expires_at (expires_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------

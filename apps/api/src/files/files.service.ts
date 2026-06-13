@@ -15,6 +15,7 @@ import { v4 as uuidv4 } from 'uuid';
 import sharp from 'sharp';
 import { FileEntity, FileType } from './entities/file.entity';
 import { FileResponseDto } from './dto/file-response.dto';
+import { ObjectStorageService } from '../storage/object-storage.service';
 
 const execAsync = promisify(exec);
 
@@ -30,6 +31,7 @@ export class FilesService {
     @InjectRepository(FileEntity)
     private fileRepository: Repository<FileEntity>,
     private configService: ConfigService,
+    private objectStorage: ObjectStorageService,
   ) {
     this.uploadPath = this.configService.get<string>(
       'UPLOAD_PATH',
@@ -78,18 +80,19 @@ export class FilesService {
       });
     }
 
-    // 저장 디렉토리 생성
-    await this.ensureDirectoryExists(this.uploadPath);
-
-    // 파일명 생성 (timestamp_uuid.ext)
+    // 파일명 + 저장 key 생성 (timestamp_uuid.ext)
     const timestamp = Date.now();
     const ext = path.extname(file.originalname).toLowerCase();
     const fileName = `${timestamp}_${uuidv4()}${ext}`;
-    const filePath = path.join(this.uploadPath, fileName);
-    const fileUrl = `/storage/uploads/${fileName}`;
+    const storageKey = `uploads/${fileName}`; // STORAGE_PATH 상대 / s3 object key 공통
+    const fileUrl = `/storage/uploads/${fileName}`; // 하위호환(local 직접서빙). s3는 fileId 다운로드로 접근.
 
-    // 파일 저장
-    await fs.writeFile(filePath, file.buffer);
+    // active 백엔드에 저장 (local=파일시스템, s3=R2). ObjectStorageService 가 디렉토리/버킷 처리.
+    const { backend } = await this.objectStorage.put(storageKey, file.buffer, file.mimetype);
+
+    // filePath: local 은 절대경로(하위호환), s3 는 마커(로컬 fs 접근 차단 — getFileBuffer 가 backend 로 분기)
+    const filePath =
+      backend === 's3' ? `s3://${storageKey}` : path.join(this.uploadPath, fileName);
 
     // 엔티티 생성 및 저장
     const fileEntity = this.fileRepository.create({
@@ -97,6 +100,8 @@ export class FilesService {
       originalName: file.originalname,
       filePath,
       fileUrl,
+      storageBackend: backend,
+      storageKey,
       thumbnailUrl: null,
       fileSize: file.size,
       mimeType: file.mimetype,
@@ -282,26 +287,81 @@ export class FilesService {
       orderSeqno: file.orderSeqno,
       memberSeqno: file.memberSeqno,
       metadata: file.metadata,
+      storageBackend: file.storageBackend,
+      expiresAt: file.expiresAt,
       createdAt: file.createdAt,
     };
   }
 
   /**
-   * 파일 버퍼 읽기 (다운로드용)
+   * 파일 버퍼 읽기 (다운로드용) — storage_backend 로 라우팅.
+   * s3 파일은 R2 에서, local 파일은 디스크에서 읽는다(혼재 보장).
    */
   async getFileBuffer(id: string): Promise<{ buffer: Buffer; file: FileEntity }> {
     const file = await this.findById(id);
 
     try {
-      const buffer = await fs.readFile(file.filePath);
+      let buffer: Buffer;
+      if (file.storageBackend === 's3') {
+        if (!file.storageKey) {
+          throw new Error('s3-backed 파일에 storage_key 가 없습니다.');
+        }
+        buffer = await this.objectStorage.get('s3', file.storageKey);
+      } else {
+        // local: 레거시 레코드는 storageKey 없이 filePath(절대경로)만 있음 → filePath 사용
+        buffer = await fs.readFile(file.filePath);
+      }
       return { buffer, file };
     } catch (error) {
       throw new NotFoundException({
         code: 'FILE_NOT_FOUND',
         message: '파일을 읽을 수 없습니다.',
-        details: { fileId: id, path: file.filePath },
+        details: { fileId: id, backend: file.storageBackend, key: file.storageKey, path: file.filePath },
       });
     }
+  }
+
+  /**
+   * 파일 하드 삭제 (2026-06-13 보존정책/테넌트 삭제용).
+   * 저장 백엔드의 실제 객체 + DB 레코드를 모두 제거. 멱등(없으면 무시).
+   * ⚠️ 외부 테넌트가 주문 이행 완료 후 호출(DELETE /files/:id/external) 하거나 retention cron 이 사용.
+   */
+  async hardDelete(id: string): Promise<void> {
+    const file = await this.findById(id);
+    // 백엔드 객체 삭제 (storageKey 있으면 그걸로, 없으면 local filePath fallback)
+    if (file.storageKey) {
+      await this.objectStorage.delete(file.storageBackend, file.storageKey);
+    } else if (file.storageBackend === 'local' && file.filePath) {
+      try {
+        await fs.unlink(file.filePath);
+      } catch {
+        /* 이미 없으면 무시 */
+      }
+    }
+    // DB 레코드 영구 삭제 (soft delete 아님 — 보존정책상 완전 제거)
+    await this.fileRepository.delete(file.id);
+    this.logger.log(`Hard-deleted file ${id} (backend=${file.storageBackend})`);
+  }
+
+  /**
+   * 보존 만료 시각 설정 (테넌트가 주문 이행 후 'N일 뒤 삭제' 예약).
+   * null 로 설정하면 영구보관으로 되돌림.
+   */
+  async setExpiry(id: string, expiresAt: Date | null): Promise<FileEntity> {
+    const file = await this.findById(id);
+    file.expiresAt = expiresAt;
+    return this.fileRepository.save(file);
+  }
+
+  /** 만료된(expires_at < now) 파일 조회 — retention cron 용. limit 으로 배치 제한. */
+  async findExpired(limit = 200): Promise<FileEntity[]> {
+    return this.fileRepository
+      .createQueryBuilder('f')
+      .where('f.expires_at IS NOT NULL')
+      .andWhere('f.expires_at < :now', { now: new Date() })
+      .orderBy('f.expires_at', 'ASC')
+      .take(limit)
+      .getMany();
   }
 
   /**
