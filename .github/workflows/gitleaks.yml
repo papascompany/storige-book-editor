@@ -1,0 +1,75 @@
+name: gitleaks
+
+# 시크릿 누출 자동 차단 — DEP-1~4 재발 방지(docs/SECURITY_ROTATION_RUNBOOK_2026-06-13.md §(e)).
+#
+# 구현 선택: 공식 gitleaks-action 대신 **OSS 바이너리 직접 실행**.
+#   - 이유: gitleaks-action 은 organization 계정(papascompany)이면 PUBLIC 이라도
+#     무료 GITLEAKS_LICENSE 키 등록을 요구하고, 미등록 시 잡이 '시크릿 미검출'이 아니라
+#     '라이선스 오류'로 실패한다. 바이너리(gitleaks, MIT)는 키 불필요 → secret 등록 없이
+#     첫 푸시부터 동작.
+#
+# 스캔 범위(비용·정확도 절충): **신규 커밋 범위만** 스캔한다.
+#   - 과거 히스토리에는 §(c) 정화 전까지 기존 유출이 남아 있어, 전체 히스토리를 매번
+#     스캔하면 CI 가 영구 red 가 된다. 따라서 push 는 before..after, PR 은 base..head
+#     범위만(`--log-opts`) 스캔해 '새로 들어오는' 시크릿만 차단한다.
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read   # 코드 체크아웃만 — 최소 권한
+
+# 같은 ref 의 중복 실행은 취소(러너 비용 절약)
+concurrency:
+  group: gitleaks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scan:
+    name: scan for secrets
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # 범위 스캔의 양끝 커밋이 reachable 해야 하므로 전체 히스토리를 받는다.
+          # (622 커밋 규모라 비용 무시 가능. 실제 스캔은 아래 --log-opts 범위로 제한.)
+          fetch-depth: 0
+
+      - name: Install gitleaks
+        run: |
+          set -euo pipefail
+          VER=8.30.1
+          curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${VER}/gitleaks_${VER}_linux_x64.tar.gz" \
+            | tar -xz gitleaks
+          install -m 0755 gitleaks /usr/local/bin/gitleaks
+          gitleaks version
+
+      - name: Determine scan range
+        id: range
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            # PR: base..head 의 커밋만(diff 스캔). 머지 전 신규 시크릿 차단.
+            echo "logopts=--log-opts=${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
+          else
+            BEFORE="${{ github.event.before }}"
+            # 신규 브랜치/첫 푸시/force-push 등으로 before 가 0...0 이면 마지막 1커밋만.
+            if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+              echo "logopts=--log-opts=-1" >> "$GITHUB_OUTPUT"
+            else
+              echo "logopts=--log-opts=${BEFORE}..${{ github.sha }}" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
+      - name: Scan (new commits only)
+        run: |
+          set -euo pipefail
+          # --redact: 출력에 시크릿 평문 노출 금지. 누출 발견 시 비0 종료로 잡 실패.
+          gitleaks git . \
+            --config .gitleaks.toml \
+            --redact \
+            --no-banner \
+            ${{ steps.range.outputs.logopts }}

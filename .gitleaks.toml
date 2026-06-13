@@ -1,0 +1,89 @@
+# gitleaks 설정 — Storige (PUBLIC 레포 papascompany/storige-book-editor)
+#
+# 목적: DEP-1~4 시크릿 커밋 재발 방지. 기본 룰셋(useDefault) 위에
+#   (1) Storige 고유 시크릿 룰(sk-storige API 키)을 추가하고,
+#   (2) 이미 마스킹된 docs/예시 env 의 플레이스홀더를 allowlist 로 제외한다.
+#
+# 검증 명령:
+#   gitleaks detect --no-git --config .gitleaks.toml   # 현 워킹트리(0 leaks 기대)
+#   gitleaks protect --staged --config .gitleaks.toml  # 스테이지된 변경만(pre-commit)
+#
+# ⚠️ 히스토리 전체 스캔(`gitleaks detect --source . --log-opts=--all`)은
+#    과거 커밋의 실 시크릿이 잡히는 게 정상이다(§(c) 정화 전까지). CI 는 신규 변경만 본다.
+
+title = "Storige gitleaks config"
+
+[extend]
+# 업스트림 기본 룰셋(AWS/GCP/JWT/Generic API key 등 100+종)을 그대로 상속하고
+# 아래에서 Storige 고유 룰·allowlist 만 덧붙인다.
+useDefault = true
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 커스텀 룰 — Storige 고유 시크릿
+# ─────────────────────────────────────────────────────────────────────────────
+
+[[rules]]
+# bookmoa PHP ↔ storige API 인증 키. 형식: sk-storige- + 48 hex (admin 자동 생성).
+# 실키만 검출하도록 hex 길이를 40+ 로 못 박는다 → docs 의 마스킹된
+# `sk-storige-REDACTED_SEE_VPS_ENV` 나 `sk-storige-l3YV…`(절단 4자) 같은
+# 플레이스홀더/단편은 매칭되지 않는다.
+id = "storige-api-key"
+description = "Storige API key (sk-storige-<48hex>)"
+regex = '''sk-storige-[0-9a-fA-F]{40,}'''
+keywords = ["sk-storige-"]
+
+[[rules]]
+# 북모아 read-only DB 자격증명. 빈 값/플레이스홀더(.env.example)는 잡지 않도록
+# 값이 실제로 채워진 경우만 검출(공백·따옴표 시작 제외, 8자 이상).
+id = "bookmoa-db-password"
+description = "Bookmoa DB password assignment"
+regex = '''(?i)BOOKMOA_DB_PASSWORD\s*[=:]\s*['"]?[^\s'"#][^\s'"#]{7,}'''
+keywords = ["bookmoa_db_password"]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 전역 allowlist — 오탐(false positive) 제외
+#   gitleaks v8: 하나의 [allowlist] 안에서 paths / regexes / regexTarget 등을 조합.
+#   실제 시크릿(채워진 값)까지 광범위하게 풀어주지 않도록 좁게 지정한다.
+# ─────────────────────────────────────────────────────────────────────────────
+
+[allowlist]
+description = "예시 env 플레이스홀더 · 마스킹된 docs · 테스트 픽스처 오탐 제외"
+
+# (b) 예시 env 파일 전체 제외 — 실값이 들어가는 .env.development/.env.production
+#     자체는 .gitignore 로 추적이 막혀 있으므로, 추적되는 *.example 만 면제한다.
+paths = [
+  '''(^|/)\.env\.example$''',
+  '''(^|/)\.env\.development\.example$''',
+  '''(^|/)\.env\.[^/]*\.example$''',
+  # admin 의 추적되는 .env.development (CRA/Vite 빌드 플래그만 — 시크릿 아님)
+  '''(^|/)apps/admin/\.env\.development$''',
+  # (c) 예시/참고 문서 — REST API 응답 샘플 JWT·YOUR_API_KEY 등 픽스처.
+  #     example/ 은 .gitignore 대상이지만 과거 커밋분이 추적 중 → 문서 픽스처로 면제.
+  '''(^|/)example/''',
+  # 잠금 파일 — 무결성 해시가 generic 룰에 오탐될 수 있음
+  '''(^|/)pnpm-lock\.yaml$''',
+  '''(^|/)package-lock\.json$''',
+]
+
+# (a) 이미 마스킹된 docs 플레이스홀더 + (b) 예시 env 의 대표 플레이스홀더 값.
+#     gitleaks 는 매칭된 '시크릿 문자열'을 이 regex 들과 대조해 하나라도 맞으면 무시한다.
+regexes = [
+  # docs 레드액션 마커
+  '''REDACTED''',
+  '''sk-storige-REDACTED_SEE_VPS_ENV''',
+  # 예시 env 의 change-me / your-…-here / *_change_this 류
+  '''change-?me''',
+  '''change[-_]this''',
+  '''your-[a-z-]*-here''',
+  '''your-secret-key-change-this-in-production''',
+  '''(?i)example|placeholder|dummy|sample|test[-_]?key''',
+  '''local_dev_key_change_this''',
+  '''bookmoa_dev_key_change_this''',
+  # (c) 문서 픽스처 — 대문자 플레이스홀더 토큰
+  '''(?i)YOUR[-_](API[-_])?KEY''',
+  '''(?i)YOUR[-_].*[-_](TOKEN|SECRET)''',
+  # (c) 문서에 절단(truncated)된 샘플 JWT — '…' 또는 '...' 로 끝나는 미완성 토큰만.
+  #     실제 완전한 JWT(점 2개 + 서명 전체)는 면제되지 않으므로 진짜 유출은 계속 탐지.
+  '''eyJ[A-Za-z0-9_-]+\.\.\.''',
+  '''eyJ[A-Za-z0-9_-]+…''',
+]

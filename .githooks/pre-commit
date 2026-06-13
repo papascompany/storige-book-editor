@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# 선택적 로컬 pre-commit 훅 — 스테이지된 변경에서 시크릿 누출 차단.
+#
+# ⚠️ 자동 설치되지 않는다(husky/lefthook 미사용 — 신규 훅 인프라 강제 도입 안 함).
+#    쓰려면 개발자가 명시적으로 한 번만 활성화:
+#
+#        git config core.hooksPath .githooks      # 레포 훅 경로 등록
+#        brew install gitleaks                     # 또는: go install github.com/zricethezav/gitleaks/v8@latest
+#
+#    해제: git config --unset core.hooksPath
+#
+# gitleaks 가 PATH 에 없으면 경고만 하고 통과(커밋을 막지 않음) — CI(.github/workflows/gitleaks.yml)가
+# 최종 게이트다. 로컬 훅은 "조기 발견"용 편의 장치.
+
+set -euo pipefail
+
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "[pre-commit] gitleaks 미설치 — 로컬 시크릿 검사 생략(CI 에서 검사됨)." >&2
+  echo "[pre-commit]   설치: brew install gitleaks" >&2
+  exit 0
+fi
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+CONFIG="$REPO_ROOT/.gitleaks.toml"
+
+# 스테이지된(--staged) 변경만 검사. --redact 로 출력에 실값 노출 방지.
+if ! gitleaks protect --staged --redact --config "$CONFIG"; then
+  echo "" >&2
+  echo "[pre-commit] ❌ 스테이지된 변경에서 시크릿 의심 패턴 발견 — 커밋 차단." >&2
+  echo "[pre-commit]   오탐이면 .gitleaks.toml 의 [allowlist] 에 추가하거나," >&2
+  echo "[pre-commit]   정말 시크릿이면 제거 후 (이미 노출됐다면) 회전하라." >&2
+  echo "[pre-commit]   긴급 우회(권장 안 함): git commit --no-verify" >&2
+  exit 1
+fi
+
+exit 0
