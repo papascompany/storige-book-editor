@@ -40,6 +40,7 @@ import {
 import type { PlacedMatchRow } from './placedMatching';
 import { buildFontMatchRows, seedFontFormatFor, ttfFileNameFor } from './fontMatching';
 import type { FontMatchRow } from './fontMatching';
+import { sanitizeSvgMarkup } from '../../utils/sanitizeSvg';
 
 const { Title, Text, Paragraph } = Typography;
 const { Dragger } = Upload;
@@ -170,6 +171,10 @@ export const TemplateImport = () => {
   const [convertError, setConvertError] = useState<string | null>(null);
   const [result, setResult] = useState<SpreadTemplateResult | SinglePageResult | null>(null);
   const [previewSvg, setPreviewSvg] = useState<string>('');
+  // 보안(감사 DEP-7 / CVE-2026-27013): previewSvg 는 신뢰할 수 없는 업로드
+  // IDML/PSD 변환 결과이며 아래에서 dangerouslySetInnerHTML 로 라이브 DOM 에
+  // 주입된다. 주입 전 화이트리스트 새니타이즈로 <script>/on*/javascript: 제거.
+  const safePreviewSvg = useMemo(() => sanitizeSvgMarkup(previewSvg), [previewSvg]);
   const [name, setName] = useState<string>('');
   const [categoryId, setCategoryId] = useState<string | undefined>();
   const [mode, setMode] = useState<IdmlImportMode>('vector'); // IDML 전용
@@ -605,7 +610,7 @@ export const TemplateImport = () => {
           >
             <div
               style={{ width: '100%', maxWidth: 1100, margin: '0 auto' }}
-              dangerouslySetInnerHTML={{ __html: previewSvg }}
+              dangerouslySetInnerHTML={{ __html: safePreviewSvg }}
             />
           </Card>
 
