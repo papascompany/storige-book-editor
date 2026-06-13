@@ -36,6 +36,26 @@ export class FileEntity {
   @Column({ name: 'file_url', length: 500 })
   fileUrl: string;
 
+  /**
+   * 저장 백엔드 (2026-06-13, R2 보강). 'local'=VPS 파일시스템, 's3'=객체스토리지(R2).
+   * 읽기/삭제 시 이 값으로 라우팅 → 기존 local 파일과 신규 s3 파일 공존 보장.
+   * 기본 'local' (기존 레코드는 마이그레이션에서 'local' 채움).
+   */
+  @Column({ name: 'storage_backend', type: 'varchar', length: 16, default: 'local' })
+  storageBackend: 'local' | 's3';
+
+  /** 백엔드 내 객체 key (local=STORAGE_PATH 상대경로, s3=버킷 object key). nullable=레거시 레코드. */
+  @Column({ name: 'storage_key', type: 'varchar', length: 500, nullable: true })
+  storageKey: string | null;
+
+  /**
+   * 보존 만료 시각 (2026-06-13). null=영구보관(기본, bookmoa 등 보호).
+   * 테넌트가 주문 이행 후 설정 → FileRetentionService cron 이 만료분 하드삭제.
+   */
+  @Index('idx_files_expires_at')
+  @Column({ name: 'expires_at', type: 'timestamp', nullable: true })
+  expiresAt: Date | null;
+
   @Column({ name: 'thumbnail_url', type: 'varchar', length: 500, nullable: true })
   thumbnailUrl: string | null;
 

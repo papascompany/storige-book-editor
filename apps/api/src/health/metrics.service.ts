@@ -1,7 +1,10 @@
 import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { Queue } from 'bull';
 import * as client from 'prom-client';
+import { FileEntity } from '../files/entities/file.entity';
 
 /**
  * Prometheus 메트릭 수집 서비스 (P2-8 옵션 C 하이브리드)
@@ -15,6 +18,8 @@ export class MetricsService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(MetricsService.name);
   private readonly registry: client.Registry;
   private readonly queueGauges: Record<string, client.Gauge<string>>;
+  private readonly storageBytesGauge: client.Gauge<string>;
+  private readonly storageFilesGauge: client.Gauge<string>;
   private intervalHandle?: ReturnType<typeof setInterval>;
 
   // 30초 단위로 큐 상태 갱신 (Prometheus scrape interval 15초와 정렬, 1샘플 staleness 1분 이하)
@@ -27,6 +32,7 @@ export class MetricsService implements OnModuleInit, OnModuleDestroy {
     @InjectQueue('pdf-validation') private validationQueue: Queue,
     @InjectQueue('pdf-conversion') private conversionQueue: Queue,
     @InjectQueue('pdf-synthesis') private synthesisQueue: Queue,
+    @InjectRepository(FileEntity) private fileRepository: Repository<FileEntity>,
   ) {
     this.registry = new client.Registry();
     this.registry.setDefaultLabels({ app: 'storige-api' });
@@ -48,6 +54,20 @@ export class MetricsService implements OnModuleInit, OnModuleDestroy {
     });
 
     this.queueGauges = { state: stateGauge, backlog: backlogGauge };
+
+    // 저장 용량 메트릭 (R2 보강 — 비용/용량 모니터링). label: backend(local|s3)
+    this.storageBytesGauge = new client.Gauge({
+      name: 'storige_storage_bytes',
+      help: 'Total stored file bytes by storage backend (files table, not soft-deleted)',
+      labelNames: ['backend'],
+      registers: [this.registry],
+    });
+    this.storageFilesGauge = new client.Gauge({
+      name: 'storige_storage_files',
+      help: 'Total file count by storage backend',
+      labelNames: ['backend'],
+      registers: [this.registry],
+    });
   }
 
   onModuleInit(): void {
@@ -101,6 +121,31 @@ export class MetricsService implements OnModuleInit, OnModuleDestroy {
       stateGauge.set({ queue: name, state: 'delayed' }, delayed);
 
       this.queueGauges.backlog.set({ queue: name }, waiting + active);
+    }
+
+    // 저장 용량 by backend (소프트삭제 제외). 실패해도 큐 메트릭은 유지.
+    try {
+      const rows: Array<{ backend: string; bytes: string | null; cnt: string }> =
+        await this.fileRepository
+          .createQueryBuilder('f')
+          .select('f.storage_backend', 'backend')
+          .addSelect('SUM(f.file_size)', 'bytes')
+          .addSelect('COUNT(*)', 'cnt')
+          .where('f.deleted_at IS NULL')
+          .groupBy('f.storage_backend')
+          .getRawMany();
+      // 보고 없는 backend 는 0 으로 리셋(라벨 stale 방지)
+      this.storageBytesGauge.set({ backend: 'local' }, 0);
+      this.storageBytesGauge.set({ backend: 's3' }, 0);
+      this.storageFilesGauge.set({ backend: 'local' }, 0);
+      this.storageFilesGauge.set({ backend: 's3' }, 0);
+      for (const r of rows) {
+        const backend = r.backend === 's3' ? 's3' : 'local';
+        this.storageBytesGauge.set({ backend }, Number(r.bytes ?? 0));
+        this.storageFilesGauge.set({ backend }, Number(r.cnt ?? 0));
+      }
+    } catch (e) {
+      this.logger.debug(`storage metric refresh failed: ${(e as Error).message}`);
     }
   }
 }

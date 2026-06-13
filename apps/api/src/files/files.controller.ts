@@ -349,6 +349,59 @@ export class FilesController {
   }
 
   /**
+   * 파일 하드 삭제 (외부 API Key 인증) — 2026-06-13 보존정책 트랙.
+   * 테넌트(100p_books 등)가 주문 이행 완료 후 호출 → 저장 백엔드 객체 + DB 레코드 영구 제거.
+   * 멱등 — 이미 없으면 404.
+   */
+  @Delete(':id/external')
+  @Public()
+  @UseGuards(ApiKeyGuard)
+  @ApiSecurity('api-key')
+  @ApiOperation({ summary: '파일 하드 삭제 (외부 API Key 인증) — 보존정책/주문이행 후 정리' })
+  @ApiResponse({ status: 200, description: '삭제 완료' })
+  @ApiResponse({ status: 401, description: 'Invalid API key' })
+  @ApiResponse({ status: 404, description: '파일을 찾을 수 없음' })
+  async deleteFileExternal(
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<{ success: boolean }> {
+    await this.filesService.hardDelete(id);
+    return { success: true };
+  }
+
+  /**
+   * 파일 보존 만료 예약 (외부 API Key 인증) — 2026-06-13.
+   * 테넌트가 'N일 뒤 자동 삭제' 를 예약. expiresAt(ISO) 또는 null(영구보관 복원).
+   * retention cron 이 만료분을 하드삭제.
+   */
+  @Post(':id/expiry/external')
+  @Public()
+  @UseGuards(ApiKeyGuard)
+  @ApiSecurity('api-key')
+  @ApiOperation({ summary: '파일 보존 만료 예약 (외부 API Key 인증)' })
+  @ApiResponse({ status: 200, description: '예약 완료', type: FileResponseDto })
+  @ApiResponse({ status: 400, description: '잘못된 expiresAt' })
+  @ApiResponse({ status: 401, description: 'Invalid API key' })
+  @ApiResponse({ status: 404, description: '파일을 찾을 수 없음' })
+  async setFileExpiryExternal(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: { expiresAt: string | null },
+  ): Promise<FileResponseDto> {
+    let parsed: Date | null = null;
+    if (body?.expiresAt != null) {
+      const d = new Date(body.expiresAt);
+      if (Number.isNaN(d.getTime())) {
+        throw new BadRequestException({
+          code: 'INVALID_EXPIRES_AT',
+          message: 'expiresAt 은 유효한 ISO 날짜 또는 null 이어야 합니다.',
+        });
+      }
+      parsed = d;
+    }
+    const file = await this.filesService.setExpiry(id, parsed);
+    return this.filesService.toResponseDto(file);
+  }
+
+  /**
    * PDF 썸네일 조회
    */
   @Get(':id/thumbnail')

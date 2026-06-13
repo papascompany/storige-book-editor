@@ -38,6 +38,12 @@ export class FileResponseDto {
   @ApiPropertyOptional({ description: '추가 메타데이터' })
   metadata: Record<string, any> | null;
 
+  @ApiPropertyOptional({ description: '저장 백엔드 (local|s3)', enum: ['local', 's3'] })
+  storageBackend?: 'local' | 's3';
+
+  @ApiPropertyOptional({ description: '보존 만료 시각 (null=영구보관)' })
+  expiresAt?: Date | null;
+
   @ApiProperty({ description: '생성일시' })
   createdAt: Date;
 }
