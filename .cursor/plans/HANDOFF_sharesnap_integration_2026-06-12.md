@@ -47,15 +47,19 @@ sharesnap이 bookmoa처럼 Storige 편집기를 쓰려면:
 
 ## 2. Storige 측 대응 (우리가 할 일)
 
+> **2026-06-13 진행**: 등록 전 서버 준비도 4스트림 감사 완료 + S1 실행. 결과는 §7(감사 결론) 참조.
+
 | # | 작업 | 위치 | 상태 |
 |---|------|------|------|
-| S1 | Admin > Sites 에 "sharesnap" 등록 (`POST /sites` — name, domain) → `editorAuthCode`/`workerAuthCode` 자동 생성 | https://admin.papascompany.co.kr > 기본설정(Sites) | ⬜ 도메인 확정 대기 |
-| S2 | `allowedOrigins` 에 sharesnap 도메인(들) 추가 — CORS 허용 | 같은 화면 | ⬜ |
-| S3 | `frameAncestors` 에 sharesnap 도메인 추가 — iframe 임베드 CSP 허용 | 같은 화면 | ⬜ |
-| S4 | `uploadCallbackUrl` 설정(웹훅 push 원하면) + `returnUrlBase`(보관함 URL) | 같은 화면 | ⬜ 선택 |
-| S5 | 발급된 `editorAuthCode` 를 sharesnap 팀에 안전 채널로 전달 (절대 커밋/로그 금지) | — | ⬜ |
-| S6 | sharesnap 상품용 **템플릿셋/상품 등록** (기존 북 템플릿 재사용이면 생략) | Admin > 템플릿셋/상품 | ⬜ 상품 정의 대기 |
-| S7 | 연동 스모크 테스트 (shop-session → /embed 오픈 → 완료 → 합성 → 다운로드 E2E) | — | ⬜ S1~S5 후 |
+| S1 | Sites 에 "ShareSnap" 등록 → `editorAuthCode`/`workerAuthCode` 자동 생성 | `POST /sites {name:"ShareSnap"}` | ✅ **완료(2026-06-13)** — site id `9a5d4e0c-1508-45de-93f2-422ccbdfc1d7`, 키 59자(editor=worker), 스모크 통과(유효키 200·무효키 401). 키는 storige `CLAUDE.local.md §5`. |
+| S2 | `allowedOrigins` 에 ShareSnap **프로덕션** 도메인 추가 — CORS 허용 | `PATCH /sites/:id` (DB만, 재배포 불필요, 60s 캐시) | ⏸ **dev는 불필요**(localhost:3000·*.vercel.app 정적 통과). prod 도메인 회신(§5) 후 PATCH. |
+| S3 | ShareSnap **프로덕션** 도메인 iframe 허용 | ⚠️ `apps/editor/vercel.json` frame-ancestors **수정 + editor 재배포** | ⏸ **dev는 불필요**(*.vercel.app·localhost 이미 허용). **DB site.frameAncestors 는 死코드 — 설정해도 무효.** prod 도메인 회신 후 vercel.json 편집·push. |
+| S4 | `uploadCallbackUrl`(웹훅) + `returnUrlBase`(보관함) 설정 | `PATCH /sites/:id` 또는 env `WEBHOOK_ALLOWED_HOSTS` | ⏸ 웹훅 URL 회신(§5) 후. webhook SSRF allowlist 통과에 **필수**(미등록 시 콜백 403). |
+| S5 | 발급 키를 ShareSnap 팀에 **안전 채널로 전달** | — | ⏳ **오너 작업** — 키는 `CLAUDE.local.md §5`. (자동 전송 안 함) |
+| S6 | ShareSnap 상품용 **템플릿셋/상품 등록** | Admin > 템플릿셋/상품 | ⏸ 상품 구성 회신(§5) 후 — 하드커버 포토북 픽스 방향. |
+| S7 | E2E 스모크 (shop-session → /embed → 완료 → compose → webhook → 다운로드) | — | 🟡 **부분 완료** — 키 인증(shop-session 경로 대체검증)·CORS·dev CSP 확정. 전체 E2E는 S4(웹훅)+S6(템플릿셋) 후. |
+
+**즉시 가능**: ShareSnap는 **지금 발급된 키만으로 dev E2E 착수 가능** — dev 오리진(localhost:3000·*.vercel.app)은 CORS·CSP 모두 무설정 통과 확정(§7). prod 오픈 전에만 S2/S3/S4 마무리.
 
 > S1 등록 시 인증코드는 `sk-storige-<48hex>` 형식으로 자동 생성. 재발급은 `PATCH /sites/:id/regenerate`.
 > **bookmoa 키 공유 금지** — 반드시 sharesnap 전용 site row + 전용 키. (사이트별 정책·웹훅·통계 격리)
@@ -246,3 +250,51 @@ ShareSnap 세션의 `docs/storige-integration-assessment.md` 평가서를 storig
 - `/api/storige/*` 서버 어댑터: API Key 서버 전용 (§3.2와 동일)
 - **Supabase UUID ↔ memberSeqno 매핑**: shop-session의 `memberSeqno`는 정수 필수. 권장 = sharesnap DB에 `users.storige_member_no BIGINT` (시퀀스/IDENTITY) 컬럼 추가, UUID당 1회 발급·영구 고정. 해시 변환은 충돌 위험으로 비권장.
 - 사진 URL 수명: `externalPhotos` URL은 편집기가 로드 시점에 fetch — **만료되는 signed URL 금지**, public bucket 또는 장수명 URL 사용. 재편집 시에도 같은 URL로 다시 로드됨을 유의.
+
+---
+
+## 7. 서버 준비도 감사 결론 (2026-06-13, S1 실행 직전 4스트림 병렬 감사)
+
+코드 근거로 확정. 프로덕션 변경 전 불확실성 제거 목적.
+
+### 7.1 CORS — 새 사이트 등록은 안전(additive)
+- 결정 순서(`apps/api/src/main.ts:90-128`): no-origin → env 정적 화이트리스트 → `*.vercel.app`/`*.papascompany.co.kr` 정규식 → DB `sites.allowedOrigins` 합집합(60s 캐시) → 거부. **OR 로직**.
+- **dev(localhost:3000·*.vercel.app)는 사이트 등록 없이도 통과.** 키만으로 dev E2E 가능.
+- **새 사이트의 allowedOrigins 설정은 순수 추가** — bookmoa 등 기존 오리진 절대 배제 안 함(`sites.service.ts` Set 합집합).
+- prod 도메인 허용 = `PATCH /sites/:id {allowedOrigins:[...]}` **DB만**(env/코드/재배포 불필요, 캐시 즉시 무효화).
+
+### 7.2 frame-ancestors(iframe CSP) — ⚠️ DB 아님, vercel.json 정적
+- 편집기는 Vercel 정적 호스팅. frame-ancestors 헤더는 **`apps/editor/vercel.json`(line 28·41) 정적 정의**에서만 나옴.
+- **`site.frameAncestors` DB 필드 + `getAllFrameAncestors()` 는 死코드(호출처 0).** Admin에서 입력해도 iframe 허용에 **무효**.
+- dev(localhost:3000·5173·5174·127.0.0.1·`*.vercel.app`)는 vercel.json에 **이미 포함** → 추가 작업 0.
+- **prod 자체도메인 허용 = `apps/editor/vercel.json` frame-ancestors 에 도메인 추가 + master push(editor 자동 재배포).** ShareSnap이 Vercel 서브도메인(`*.vercel.app`)으로 운영하면 이마저 불필요.
+
+### 7.3 E2E 신규 테넌트 게이트 (editorAuthCode 기준)
+| 게이트 | 통과 조건 | 신규 사이트 상태 |
+|---|---|---|
+| shop-session 발급 | `X-API-Key`(editorAuthCode) + `memberSeqno` 필수 | ✅ 키로 통과(스모크 검증). memberSeqno 0/누락 시 DTO/`MEMBER_REQUIRED`. |
+| /embed → EditSession | 회원=JWT+memberSeqno, 게스트=`/edit-sessions/guest`(무인증·24h 토큰) | ✅ 회원·게스트 양경로 가능 |
+| 저장/완료 | 동일 회원 JWT | ✅ |
+| **compose-mixed** | 호스트가 **명시적 호출**(자동발행 아님) — bookmoa-mobile과 동일 | ✅ 계약대로(§3.5) |
+| **webhook 콜백** | `uploadCallbackUrl`/`domain` 이 sites DB 또는 env `WEBHOOK_ALLOWED_HOSTS` 에 등록돼야 SSRF allowlist 통과 | ⏸ **S4 필수** — 미등록 시 콜백 403 |
+| 파일 다운로드 | `GET /files/:id/download/external` + `X-API-Key` | ✅ 키로 통과 |
+
+→ **키만으로 dev E2E 완주 가능**. 단 **웹훅 수신(S4)** 은 ShareSnap 콜백 URL을 사이트에 등록해야 작동.
+
+### 7.4 운영 주의 (감사 발견 갭)
+- **domain 중복 금지**: `sites.domain` 유니크 제약 없음 → 같은 도메인 2개 등록 시 정책 캐시가 마지막 값으로 덮어씀(정책 누수). ShareSnap 도메인은 전용으로만.
+- `name` 유니크 제약 없음 — 운영 규칙으로 고유 유지("ShareSnap" 단일).
+- 키 재발급: `PATCH /sites/:id/regenerate {target}`.
+
+---
+
+## 8. ShareSnap 회신 대기(§5) — 받는 즉시 우리가 처리
+
+| 항목 | 왜 필요 | 받으면 우리가 할 것 |
+|---|---|---|
+| **① 프로덕션/스테이징 도메인** | CORS(S2)·iframe CSP(S3) | `PATCH /sites/9a5d4e0c-…{allowedOrigins}` + (자체도메인이면) `apps/editor/vercel.json` frame-ancestors 추가·push |
+| **② 상품 구성**(하드커버 포토북 픽스?) | 템플릿셋/상품 등록(S6) | 스프레드 표지 픽스 + `pageCountRange` 상한(≤24~32p) 템플릿셋 생성 |
+| **③ 웹훅 수신 URL** | webhook SSRF allowlist(S4) | `PATCH /sites/:id{uploadCallbackUrl}` (또는 env 추가) |
+| **④ 회원번호 체계** | shop-session `memberSeqno` | 정수 시퀀스(`users.storige_member_no`) 권장 확정 — 코드 변경 없음 |
+
+**dev 착수는 ①~④ 없이 즉시 가능**(키만으로). 위 4건은 **프로덕션 오픈 게이트**.
