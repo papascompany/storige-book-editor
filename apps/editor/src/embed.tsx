@@ -41,6 +41,7 @@ import { BookNavigation } from './components/PageNavigation/BookNavigation'
 import { SpreadPagePanel } from './components/PagePanel/SpreadPagePanel'
 import { useResolvedPageNavPosition } from './hooks/useResolvedPageNavPosition'
 import { WorkspaceModal } from './components/modals'
+import { RestoreBackupBanner } from './components/RestoreBackupBanner'
 import { Sentry } from './lib/sentry'
 import { applyContentPdfGuides } from './utils/contentPdfGuide'
 import { useExternalPhotosStore } from './stores/useExternalPhotosStore'
@@ -372,20 +373,26 @@ function EmbeddedEditor({
 
   const { loadEmptyEditor, loadTemplateSetEditor } = useEditorContents()
 
+  // 자동저장 복원 배너 상태 (비차단 — 사용자 발동 only). 자동 복원은 절대 하지 않는다.
+  const [restoreOffer, setRestoreOffer] = useState<{ confident: boolean; backupAt?: Date } | null>(
+    null,
+  )
+
   // Auto-save hook integration
-  const { saveNow, markDirty } = useEmbedAutoSave({
-    sessionId: currentSession?.id || sessionId || null,
-    currentSession,
-    onSessionUpdate: (updatedSession) => {
-      setCurrentSession(updatedSession)
-    },
-    onError: (error) => {
-      console.error('[EmbeddedEditor] Auto-save error:', error)
-      // Don't call onError for auto-save failures to avoid disrupting user flow
-    },
-    // 복원 완료 전 dirty 마킹 차단 — 무편집 자동저장의 지오메트리 오염 방지 (2026-06-12)
-    initializedRef: isInitializedRef,
-  })
+  const { saveNow, restoreFromLocal, evaluateRestore, deleteLocalBackup } =
+    useEmbedAutoSave({
+      sessionId: currentSession?.id || sessionId || null,
+      currentSession,
+      onSessionUpdate: (updatedSession) => {
+        setCurrentSession(updatedSession)
+      },
+      onError: (error) => {
+        console.error('[EmbeddedEditor] Auto-save error:', error)
+        // Don't call onError for auto-save failures to avoid disrupting user flow
+      },
+      // 복원 완료 전 dirty 마킹 차단 — 무편집 자동저장의 지오메트리 오염 방지 (2026-06-12)
+      initializedRef: isInitializedRef,
+    })
 
   // 브라우저 "뒤로 가기" 데이터 무결성 가드 — 경고 없이 빠져나가 작업 유실되는 것 방지.
   // 변경사항이 있으면 confirm 으로 경고 + 강제 자동저장(flush) 후 이탈, 없으면 그대로 이탈.
@@ -985,6 +992,45 @@ function EmbeddedEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // 자동저장 복원 제안 — 세션 로드 완료(ready) 후 1회 평가 (자동 복원 금지, 판정만).
+  //
+  // 데이터 유실 footgun 방어:
+  //  - ready 가 true 가 된 뒤에만 평가 → 복원(loadFromJSON)이 발화하는 object:added 가
+  //    초기화 중 dirty 마킹으로 오인되지 않는다(useEmbedAutoSave initializedRef 가드와 정합).
+  //  - evaluateRestore 는 순수 판정(shouldOfferRestore) — 캔버스는 사용자가 [복원] 을 누른
+  //    restoreFromLocal 에서만 변경된다.
+  //  - 세션당 1회만 평가(restoreEvaluatedRef) — ready 토글/리렌더로 배너가 깜빡이지 않게.
+  const restoreEvaluatedRef = useRef(false)
+  useEffect(() => {
+    if (!ready) return
+    if (restoreEvaluatedRef.current) return
+    restoreEvaluatedRef.current = true
+
+    const session = currentSession
+      ? { id: currentSession.id, updatedAt: currentSession.updatedAt }
+      : sessionId
+        ? { id: sessionId, updatedAt: null }
+        : null
+
+    const decision = evaluateRestore(session)
+    if (decision.offer) {
+      setRestoreOffer({ confident: decision.confident, backupAt: decision.backupAt })
+    }
+  }, [ready, currentSession, sessionId, evaluateRestore])
+
+  // [복원] — 백업을 캔버스에 로드(멀티페이지 전체). 성공 시 배너 닫기.
+  const handleRestoreBackup = useCallback(async (): Promise<boolean> => {
+    const ok = await restoreFromLocal()
+    if (ok) setRestoreOffer(null)
+    return ok
+  }, [restoreFromLocal])
+
+  // [무시] — 백업 삭제 후 배너 닫기. 캔버스는 그대로(서버 세션 유지).
+  const handleDismissRestore = useCallback(() => {
+    deleteLocalBackup()
+    setRestoreOffer(null)
+  }, [deleteLocalBackup])
+
   // Expose instance methods
   useEffect(() => {
     instanceRef.current = {
@@ -1521,6 +1567,15 @@ function EmbeddedEditor({
         isOpen={showWorkspaceModal}
         onLoad={handleLoadSession}
         onClose={() => setShowWorkspaceModal(false)}
+      />
+
+      {/* 자동저장 복원 배너 (비차단 — 사용자 발동 only, 자동 복원 없음) */}
+      <RestoreBackupBanner
+        open={!!restoreOffer}
+        confident={restoreOffer?.confident ?? false}
+        backupAt={restoreOffer?.backupAt}
+        onRestore={handleRestoreBackup}
+        onDismiss={handleDismissRestore}
       />
     </div>
   )

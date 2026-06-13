@@ -35,8 +35,9 @@ export class EditorErrorBoundary extends Component<Props, State> {
   }
 
   private handleReload = () => {
-    // 안전 reload — 같은 URL 로 새로고침. localStorage 백업이 있으면 EditorView 가
-    // 마운트 시 자동 복원 시도.
+    // 안전 reload — 같은 URL 로 새로고침. 새로고침하면 서버에 저장된 마지막 시점부터
+    // 다시 시작하고, 이 기기에 저장 안 된 로컬 백업이 있으면 편집기가 복원 여부를 묻는다
+    // (embed: RestoreBackupBanner). 자동 복원은 하지 않는다(사용자 발동 only).
     window.location.reload()
   }
 
