@@ -9,6 +9,31 @@ import { isGradientFill, svgGradientFor } from '../render/svgGradient.mjs';
 const esc = (t) =>
   String(t).replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
 
+// 속성값 이스케이프(따옴표 탈출 방지). fill/stroke/path/href 등은 신뢰할 수 없는
+// 업로드 IDML/PSD 에서 유래하므로 따옴표·꺾쇠·앰퍼샌드를 엔티티로 치환해 속성
+// 경계를 깨고 on*/요소를 주입하는 것을 차단한다(감사 DEP-7 / CVE-2026-27013 방어선).
+// admin 렌더 경계의 sanitizeSvgMarkup 과 이중 방어.
+const escAttr = (t) =>
+  String(t == null ? '' : t).replace(
+    /[<>&"']/g,
+    (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;' }[c])
+  );
+
+// href(이미지 src) 안전 스킴만 허용. 위험 스킴이면 빈 문자열(이미지 미표시)로 폴백.
+const safeHref = (raw) => {
+  const v = String(raw == null ? '' : raw)
+    .replace(/[\u0000-\u0020\u200B-\u200F\uFEFF]/g, '')
+    .toLowerCase();
+  if (
+    v.startsWith('javascript:') ||
+    v.startsWith('vbscript:') ||
+    v.startsWith('data:text/html')
+  ) {
+    return '';
+  }
+  return /^(?:data:image\/|https?:\/\/|\/|#)/i.test(v) ? String(raw) : '';
+};
+
 /**
  * @param {object} dto  toSpreadTemplate().draftTemplateDto
  * @param {{width?:number}} [opts]  출력 SVG 가로폭(px). 기본 1100.
@@ -58,7 +83,7 @@ export function buildPreviewSvg(dto, opts = {}) {
       if (o.angle) tfs.push(`rotate(${o.angle} ${icx} ${icy})`);
       if (o.flipY) tfs.push(`translate(0 ${2 * icy}) scale(1 -1)`); // y → 2·icy − y (중심선 미러)
       const tfAttr = tfs.length ? ` transform="${tfs.join(' ')}"` : '';
-      parts.push(`<image href="${o.src}" x="${s(cX(o.left) - dw / 2)}" y="${s(cY(o.top) - dh / 2)}" width="${s(dw)}" height="${s(dh)}" preserveAspectRatio="none"${tfAttr}/>`);
+      parts.push(`<image href="${escAttr(safeHref(o.src))}" x="${s(cX(o.left) - dw / 2)}" y="${s(cY(o.top) - dh / 2)}" width="${s(dw)}" height="${s(dh)}" preserveAspectRatio="none"${tfAttr}/>`);
       continue;
     }
     const w = o.width || 12;
@@ -72,9 +97,9 @@ export function buildPreviewSvg(dto, opts = {}) {
     if (isGradientFill(o.fill)) {
       const g = svgGradientFor(o.fill, { id: o.id ?? `i${gi}`, width: w, height: h, flipY: !!o.flipY });
       parts.push(`<defs>${g.def}</defs>`);
-      fill = g.ref;
+      fill = escAttr(g.ref);
     } else {
-      fill = o.fill && o.fill !== '' ? o.fill : 'none';
+      fill = o.fill && o.fill !== '' ? escAttr(o.fill) : 'none';
     }
     gi++;
     // 스트로크는 path/ellipse/rect 3종 모두 동일 적용 — raster(buildArtworkSvg)와 패리티
@@ -82,13 +107,13 @@ export function buildPreviewSvg(dto, opts = {}) {
     // path 는 transform="scale()" 이 스트로크까지 스케일하므로 비스케일 굵기를 쓴다
     // (스케일 곱하면 scale² 이중 축소 — 적대 리뷰 2026-06-12). rect/ellipse 는 사전
     // 스케일 geometry(transform 없음)라 ×scale 1회가 정확.
-    const strokeAttr = o.stroke ? ` stroke="${o.stroke}" stroke-width="${(o.strokeWidth || 1) * scale}"` : '';
-    const strokeAttrUnscaled = o.stroke ? ` stroke="${o.stroke}" stroke-width="${o.strokeWidth || 1}"` : '';
+    const strokeAttr = o.stroke ? ` stroke="${escAttr(o.stroke)}" stroke-width="${(o.strokeWidth || 1) * scale}"` : '';
+    const strokeAttrUnscaled = o.stroke ? ` stroke="${escAttr(o.stroke)}" stroke-width="${o.strokeWidth || 1}"` : '';
     // 도형 회전 — rasterize.mjs 의 rotate 그룹과 동일 패턴(미리보기↔래스터 패리티).
     // 회전 중심 = 객체 중심(중앙원점 객체의 left/top 은 center).
     const rot = o.angle && !o.path ? ` transform="rotate(${o.angle} ${s(cX(o.left))} ${s(cY(o.top))})"` : '';
     if (o.path) {
-      parts.push(`<path d="${o.path}" transform="scale(${scale})" fill="${fill}"${strokeAttrUnscaled} opacity="0.92"/>`);
+      parts.push(`<path d="${escAttr(o.path)}" transform="scale(${scale})" fill="${fill}"${strokeAttrUnscaled} opacity="0.92"/>`);
     } else if (o.type === 'ellipse') {
       parts.push(`<ellipse cx="${s(cX(o.left))}" cy="${s(cY(o.top))}" rx="${s(w / 2)}" ry="${s(h / 2)}" fill="${fill}"${strokeAttr}${rot} opacity="0.9"/>`);
     } else {
@@ -112,7 +137,7 @@ export function buildPreviewSvg(dto, opts = {}) {
     lines.forEach((ln, i) => {
       // 블록을 중심에 맞춰 세로 정렬
       const y = cy - blockH / 2 + (i + 0.8) * fs;
-      parts.push(`<text x="${cx}" y="${y}" fill="${o.fill || '#000'}" font-size="${fs}" text-anchor="middle" font-family="sans-serif">${esc(ln)}</text>`);
+      parts.push(`<text x="${cx}" y="${y}" fill="${escAttr(o.fill || '#000')}" font-size="${fs}" text-anchor="middle" font-family="sans-serif">${esc(ln)}</text>`);
     });
     parts.push('</g>');
   }
