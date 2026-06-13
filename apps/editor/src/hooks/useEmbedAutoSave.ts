@@ -4,6 +4,12 @@ import { useAppStore } from '@/stores/useAppStore'
 import { useSaveStore } from '@/stores/useSaveStore'
 import { editSessionsApi, type EditSessionResponse } from '@/api/edit-sessions'
 import { core } from '@storige/canvas-core'
+import {
+  shouldOfferRestore,
+  type EmbedLocalBackup,
+  type RestoreSessionInfo,
+  type RestoreDecision,
+} from './restoreDecision'
 
 // 로컬 스토리지 키
 const LOCAL_BACKUP_KEY = 'storige_embed_session_backup'
@@ -132,6 +138,48 @@ export function useEmbedAutoSave(config: AutoSaveConfig) {
     localStorage.removeItem(LOCAL_BACKUP_KEY)
     clearLocalBackup()
   }, [clearLocalBackup])
+
+  /**
+   * 로컬 백업을 캔버스에 복원 (사용자 [복원] 발동 시에만 호출 — 자동 복원 금지).
+   *
+   * collectCanvasData() 의 역방향:
+   *  - 배열 백업 → allCanvas[i] 에 순서대로 loadFromJSON (멀티페이지 전체 복원,
+   *    min(saved.length, allCanvas.length) 로 페이지수 불일치 시 안전 절단).
+   *  - 객체 백업 → 활성 canvas 에 loadFromJSON (단일/표지전용 세션).
+   * 복원 성공 후 dirty 마킹 → 사용자가 저장하면 서버 반영, 백업은 삭제(중복 제안 방지).
+   * 실패 시 백업을 보존(삭제하지 않음)해 사용자가 재시도/이탈 시 데이터를 잃지 않게 한다.
+   */
+  const restoreFromLocal = useCallback(async (): Promise<boolean> => {
+    const backup = loadFromLocal()
+    if (!backup || backup.canvasData == null) return false
+
+    try {
+      const saved = backup.canvasData
+      if (Array.isArray(saved)) {
+        if (saved.length === 0) return false
+        for (let i = 0; i < saved.length && i < allCanvas.length; i++) {
+          if (saved[i]) await core.loadFromJSON(allCanvas[i], saved[i])
+        }
+        console.log('[EmbedAutoSave] 멀티페이지 백업 복원:', saved.length, 'pages')
+      } else if (canvas) {
+        await core.loadFromJSON(canvas, saved)
+        console.log('[EmbedAutoSave] 단일 백업 복원')
+      } else {
+        return false
+      }
+
+      // 복원된 내용은 아직 서버에 없다 — dirty 로 마킹해 사용자가 저장하면 반영되게 한다.
+      markDirty()
+      // 복원 완료 → 백업 삭제(같은 백업으로 중복 제안 방지). 미저장 상태는 dirty 가드 +
+      // beforeunload 경고가 보호하고, 이후 자동저장이 서버에 반영한다.
+      deleteLocalBackup()
+      return true
+    } catch (error) {
+      console.error('[EmbedAutoSave] 백업 복원 실패:', error)
+      // 실패 시 백업 보존 — 데이터 유실 방지.
+      return false
+    }
+  }, [loadFromLocal, allCanvas, canvas, markDirty, deleteLocalBackup])
 
   /**
    * 서버에 저장
@@ -356,25 +404,35 @@ export function useEmbedAutoSave(config: AutoSaveConfig) {
   }, [isDirty, sessionId, canvas, debouncedSave, collectCanvasData])
 
   /**
-   * 초기화 시 로컬 백업 확인
+   * 초기화 시 로컬 백업 확인 (상태 플래그만 — 자동 복원 금지).
    *
-   * TODO(설계 결정 대기): 백업 복원 모달 — 발견된 로컬 백업을 사용자에게 보여주고
-   * "복원 / 무시(삭제)" 를 선택하게 하는 UI 는 아직 없다. 현재는 상태 플래그만 set 하고
-   * 자동 복구하지 않으므로, 백업이 있어도 사용자가 복원할 방법이 없다.
-   * 복원 정책(서버 세션 vs 로컬 백업 중 최신 판정, 멀티페이지 배열 백업의 loadJSON
-   * 라우팅, 게스트 세션 처리)은 제품 설계 결정 사안 — 여기서 임의 구현하지 말 것.
+   * 복원 제안(모달/배너) 노출 판정은 embed 마운트 경로가 세션 로드 완료(isInitializedRef
+   * true) 후 evaluateRestore(session) 로 1회 수행한다. 여기서는 hasLocalBackup 플래그와
+   * 백업 시각만 스토어에 반영해, 복원 UI 가 없던 시절의 "백업만 쓰고 안 읽음" 상태를
+   * 더는 만들지 않는다. 실제 캔버스 변경은 사용자가 [복원] 을 누른 restoreFromLocal 에서만.
    */
   useEffect(() => {
     if (!sessionId || !canvas) return
 
     const backup = loadFromLocal()
     if (backup && backup.canvasData) {
-      // 백업이 있고 세션이 일치하면 복구 여부 확인 가능
-      // 현재는 자동 복구하지 않고 정보만 제공 (복원 UI 없음 — 위 TODO 참조)
+      const ms = Date.parse(backup.savedAt)
       console.log('[EmbedAutoSave] 로컬 백업 발견:', backup.savedAt)
-      setLocalBackup(true, new Date(backup.savedAt))
+      setLocalBackup(true, Number.isFinite(ms) ? new Date(ms) : new Date())
     }
   }, [sessionId, canvas, loadFromLocal, setLocalBackup])
+
+  /**
+   * 복원 제안 판정 — embed 가 세션 로드 완료 후 1회 호출.
+   * 순수 함수 shouldOfferRestore 에 위임(자동 복원 절대 없음, 판정만).
+   */
+  const evaluateRestore = useCallback(
+    (session: RestoreSessionInfo | null | undefined): RestoreDecision => {
+      const backup = loadFromLocal() as EmbedLocalBackup | null
+      return shouldOfferRestore(backup, session)
+    },
+    [loadFromLocal],
+  )
 
   return {
     // Actions
@@ -382,6 +440,8 @@ export function useEmbedAutoSave(config: AutoSaveConfig) {
     saveToLocal,
     loadFromLocal,
     deleteLocalBackup,
+    restoreFromLocal,
+    evaluateRestore,
     markDirty,
     markClean,
 
