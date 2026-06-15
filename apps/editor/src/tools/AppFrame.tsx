@@ -11,6 +11,7 @@ import AppSectionSearch from '@/components/AppSectionSearch'
 import { ImageProcessingPlugin, SelectionType } from '@storige/canvas-core'
 import { contentsApi } from '@/api'
 import type { EditorContent } from '@/generated/graphql'
+import { resolveAssetUrl } from '@/utils/resolveAssetUrl'
 
 export default function AppFrame() {
   const canvas = useAppStore((state) => state.canvas)
@@ -50,14 +51,23 @@ export default function AppFrame() {
       setLoadingContents(true)
       try {
         const keyword = debouncedKeyword.trim()
-        const result = await contentsApi.getFrames({
+        const baseParams = {
           pageSize: 20,
           search: keyword.length >= 2 ? keyword : undefined,
+        }
+        let result = await contentsApi.getFrames({
+          ...baseParams,
           templateSetId: templateSetId ?? undefined,
         })
 
+        // P1 빈화면 방지: 템플릿셋 큐레이션 결과가 0건이면 전역 프레임으로 한 번 더 폴백.
+        const isEmpty = !result.success || !result.data || result.data.items.length === 0
+        if (isEmpty && templateSetId) {
+          result = await contentsApi.getFrames(baseParams)
+        }
+
         if (result.success && result.data) {
-           
+
           setContents(result.data.items as any[])
         } else {
           setContents([])
@@ -151,16 +161,20 @@ export default function AppFrame() {
               </div>
             ) : (
               <div className="w-full grid grid-cols-2 gap-2 px-4">
-                {contents.map((content, index) => (
+                {contents.map((content, index) => {
+                  const imageUrl = resolveAssetUrl(
+                    (content as any).imageUrl || content?.image?.image?.url
+                  )
+                  return (
                   <div
                     key={index}
                     className="w-full cursor-pointer"
                     onClick={() => addContentToCanvas(content)}
                   >
                     <div className="bg-editor-surface-low p-2 flex items-center justify-center w-full rounded hover:bg-editor-hover aspect-square overflow-hidden">
-                      {content?.image?.image?.url && (
+                      {imageUrl && (
                         <img
-                          src={content.image.image.url}
+                          src={imageUrl}
                           alt={content.name || ''}
                           className="object-contain w-full h-full"
                         />
@@ -170,7 +184,8 @@ export default function AppFrame() {
                       {content?.name || '이름 없음'}
                     </div>
                   </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </AppSection>

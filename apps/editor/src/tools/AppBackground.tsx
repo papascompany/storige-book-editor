@@ -10,6 +10,7 @@ import AppSection from '@/components/AppSection'
 import { ImageProcessingPlugin, SelectionType, parseColorValue, rgbaToHex8 } from '@storige/canvas-core'
 import type { EditorContent } from '@/generated/graphql'
 import { contentsApi } from '@/api'
+import { resolveAssetUrl } from '@/utils/resolveAssetUrl'
 import { cn } from '@/lib/utils'
 
 // 모바일/터치 환경 감지 — iOS native <input type="color">는 picker dismiss(X 버튼) 시점에
@@ -114,11 +115,21 @@ export default function AppBackground() {
     const fetchBackgrounds = async () => {
       setLoadingContents(true)
       try {
-        const result = await contentsApi.getBackgrounds({
+        const baseParams = {
           pageSize: 20,
           tags: selectedTag ? [selectedTag] : undefined,
+        }
+        let result = await contentsApi.getBackgrounds({
+          ...baseParams,
           templateSetId: templateSetId ?? undefined,
         })
+
+        // P1 빈화면 방지: 템플릿셋 큐레이션 결과가 0건이면 전역 배경으로 한 번 더 폴백.
+        const isEmpty = !result.success || !result.data || result.data.items.length === 0
+        if (isEmpty && templateSetId) {
+          result = await contentsApi.getBackgrounds(baseParams)
+        }
+
         if (result.success && result.data) {
           setContents(result.data.items as unknown as EditorContent[])
         } else {
@@ -535,7 +546,7 @@ export default function AppBackground() {
           ) : (
             <div className="w-full grid grid-cols-2 gap-2">
               {contents.map((content, index) => {
-                const imageUrl = (content as any).imageUrl || content?.image?.image?.url
+                const imageUrl = resolveAssetUrl((content as any).imageUrl || content?.image?.image?.url)
                 return (
                   <div
                     key={index}

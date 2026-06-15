@@ -23,6 +23,7 @@ function toBindingType(v?: string | null): BindingType | null {
   return v && (Object.values(BindingType) as string[]).includes(v) ? (v as BindingType) : null
 }
 import { buildSpreadSpec } from '@/utils/buildSpreadSpec'
+import { resolveAssetUrl } from '@/utils/resolveAssetUrl'
 import type {
   EditorContent,
   EditorTemplate,
@@ -220,15 +221,21 @@ export function useEditorContents(): UseEditorContentsReturn {
       throw new Error('이미지 URL을 찾을 수 없습니다.')
     }
 
+    // P0-B: library 에셋 URL 은 `/storage/...` 상대 경로일 수 있다. 그대로
+    // loadSVGFromURL/imageFromURL 에 넘기면 editor origin 기준으로 해석돼 404 →
+    // 캔버스 배치 실패. API origin 기준 절대 URL 로 정규화한다.
+    // (절대/data/blob URL 은 resolveAssetUrl 이 원본 그대로 통과시킨다.)
+    const resolvedUrl = resolveAssetUrl(url) ?? url
+
     // canvas-core API 사용을 위한 import
     const { core } = await import('@storige/canvas-core')
 
-    const isSvg = url.toLowerCase().endsWith('.svg')
+    const isSvg = resolvedUrl.toLowerCase().endsWith('.svg')
 
     try {
       if (isSvg) {
         // core API를 사용하여 SVG 로드
-        const group = await core.loadSVGFromURL(url, {
+        const group = await core.loadSVGFromURL(resolvedUrl, {
           left: 0,
           top: 0,
           originX: 'center',
@@ -244,7 +251,7 @@ export function useEditorContents(): UseEditorContentsReturn {
         return group
       } else {
         // core API를 사용하여 이미지 로드
-        const img = await core.imageFromURL(url, {
+        const img = await core.imageFromURL(resolvedUrl, {
           left: 0,
           top: 0,
           originX: 'center',
