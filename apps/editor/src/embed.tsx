@@ -22,6 +22,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { createRoot, Root } from 'react-dom/client'
 import { useAppStore } from './stores/useAppStore'
+import { rebindFrameInteractivity } from './utils/frameInteractive'
 import { useAuthStore } from './stores/useAuthStore'
 import { useSettingsStore } from './stores/useSettingsStore'
 import { useSaveStore } from './stores/useSaveStore'
@@ -864,17 +865,21 @@ function EmbeddedEditor({
         } else if (editSession?.canvasData) {
           setLoadingMessage('저장된 작업을 복원하는 중...')
           const saved = editSession.canvasData
-          const { allCanvas: canvases } = useAppStore.getState()
+          const { allCanvas: canvases, allEditors } = useAppStore.getState()
 
           if (Array.isArray(saved) && saved.length > 0) {
             // 멀티페이지: 각 페이지 canvasData를 대응 캔버스에 로드
             for (let i = 0; i < saved.length && i < canvases.length; i++) {
               if (saved[i]) await core.loadFromJSON(canvases[i], saved[i])
+              // 복원 직후 사진틀 인터랙션 재바인딩 (핸들러는 직렬화 안 됨 → 미재바인딩 시 채우기 불능).
+              rebindFrameInteractivity(allEditors[i], canvases[i])
             }
             console.log('[EmbeddedEditor] Multi-page canvasData restored:', saved.length, 'pages')
           } else if (!Array.isArray(saved) && fabricCanvas) {
             // 단일 캔버스 (legacy 및 cover 전용 세션)
             await core.loadFromJSON(fabricCanvas, saved)
+            const singleIdx = Math.max(0, canvases.indexOf(fabricCanvas))
+            rebindFrameInteractivity(allEditors[singleIdx], fabricCanvas)
             console.log('[EmbeddedEditor] Single canvasData restored:', editSession.id)
           }
         }

@@ -4,6 +4,7 @@ import { useAppStore } from '@/stores/useAppStore'
 import { useSaveStore } from '@/stores/useSaveStore'
 import { editSessionsApi, type EditSessionResponse } from '@/api/edit-sessions'
 import { core } from '@storige/canvas-core'
+import { rebindFrameInteractivity } from '@/utils/frameInteractive'
 import {
   shouldOfferRestore,
   type EmbedLocalBackup,
@@ -155,14 +156,18 @@ export function useEmbedAutoSave(config: AutoSaveConfig) {
 
     try {
       const saved = backup.canvasData
+      const allEditors = useAppStore.getState().allEditors || []
       if (Array.isArray(saved)) {
         if (saved.length === 0) return false
         for (let i = 0; i < saved.length && i < allCanvas.length; i++) {
           if (saved[i]) await core.loadFromJSON(allCanvas[i], saved[i])
+          // 복원 직후 사진틀 인터랙션 재바인딩 (핸들러 미직렬화 → 미재바인딩 시 채우기 불능).
+          rebindFrameInteractivity(allEditors[i], allCanvas[i])
         }
         console.log('[EmbedAutoSave] 멀티페이지 백업 복원:', saved.length, 'pages')
       } else if (canvas) {
         await core.loadFromJSON(canvas, saved)
+        rebindFrameInteractivity(allEditors[Math.max(0, allCanvas.indexOf(canvas))], canvas)
         console.log('[EmbedAutoSave] 단일 백업 복원')
       } else {
         return false

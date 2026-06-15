@@ -25,7 +25,7 @@ vi.mock('@storige/canvas-core', () => {
 // 무거운 모듈 초기화 부작용을 동반해 renderHook 의 act 큐와 충돌한다(Should not already be
 // working). 이 테스트는 복원 라우팅만 검증하므로 canvas/allCanvas 셀렉터만 노출하면 충분.
 const { appState } = vi.hoisted(() => ({
-  appState: { canvas: null as any, allCanvas: [] as any[] },
+  appState: { canvas: null as any, allCanvas: [] as any[], allEditors: [] as any[] },
 }))
 vi.mock('@/stores/useAppStore', () => {
   const useAppStore = (selector: (s: typeof appState) => unknown) => selector(appState)

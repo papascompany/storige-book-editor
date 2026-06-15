@@ -653,6 +653,12 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
       scaleX: (rear.width! * rear.scaleX!) / fore.width!,
       scaleY: (rear.width! * rear.scaleX!) / fore.width!,
       id: rear.id + '_fillImage',
+      // 프레임↔사진 링크 (vector/SVG 프레임 경로). frameRef = makeFrameInteractive.isFilled()
+      // 중복채움 가드, parentLayerId = ObjectPlugin 삭제 동반제거·z-order 동기화 키.
+      // 둘 다 extendFabricOption 화이트리스트라 저장/복원에 보존된다. (image 분기는
+      // fillImageIntoFrame 가 동일하게 설정.)
+      frameRef: rear.id,
+      parentLayerId: rear.id,
       clipPath: rearClip
     })
     fore.setCoords()
@@ -826,6 +832,8 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
       scaleY: coverScale,
       id: `${frame.id}_fillImage`,
       frameRef: frame.id,
+      // ObjectPlugin 삭제 동반제거·z-order 동기화 키 (frameRef 만으론 불충분 — 매칭 기준이 parentLayerId).
+      parentLayerId: frame.id,
       clipPath: frameClip
     })
     fore.setCoords()
