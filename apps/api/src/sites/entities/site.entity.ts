@@ -55,6 +55,15 @@ export class Site {
   @Column({ type: 'varchar', length: 20, default: 'active' })
   status: 'active' | 'suspended';
 
+  /**
+   * 파일 보존 기간(일) (2026-06-15). null/0 = 영구보관(기본).
+   * 이 사이트가 업로드(/files/upload/external)한 파일에 expires_at = now + N일 자동 설정 →
+   * retention cron 이 만료분 삭제. 인쇄 완료분 정리용(테넌트가 원본에서 재생성 가능).
+   * bookmoa 등 영구보관이 필요한 사이트는 null 유지.
+   */
+  @Column({ name: 'retention_days', type: 'int', nullable: true })
+  retentionDays: number | null;
+
   // ─────────────────────────────────────────────────────
   // Phase B — 사이트별 워커 옵션 (default 정책)
   // 워커 잡 생성 시 호출자가 명시 안 하면 site default 머지.

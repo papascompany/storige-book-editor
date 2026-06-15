@@ -43,31 +43,34 @@
 
 ---
 
-## 3. 배포 절차 (무중단 순서 — synchronize=false 주의)
+## 3. 배포 절차 (무중단 순서 — synchronge=false 주의)
 
 ```bash
-# (1) 코드 배포 전: DB 마이그레이션 먼저 (컬럼 추가)
+# (1) DB 마이그레이션 먼저 (컬럼/테이블 추가) — 코드 배포 전
 ssh deploy@158.247.235.202
 source ~/storige/.env
 docker exec -i storige-mariadb mariadb -ustorige -p"$DATABASE_PASSWORD" storige \
   < ~/storige/apps/api/migrations/20260613_add_files_storage_backend.sql
+docker exec -i storige-mariadb mariadb -ustorige -p"$DATABASE_PASSWORD" storige \
+  < ~/storige/apps/api/migrations/20260615_add_storage_settings_and_site_retention.sql
 
-# (2) .env 에 R2 설정 추가 (s3 켜기)
-#   STORAGE_DRIVER=s3
-#   S3_ENDPOINT=https://<acct>.r2.cloudflarestorage.com
-#   S3_REGION=auto
-#   S3_BUCKET=storige-files
-#   S3_ACCESS_KEY_ID=...   S3_SECRET_ACCESS_KEY=...   S3_FORCE_PATH_STYLE=true
-
-# (3) API 재배포 + nginx 재시작(IP 캐시 회피)
+# (2) API + admin 재배포 (admin은 Vercel 자동, API는 수동) + nginx 재시작
 cd ~/storige && git pull origin master && docker compose up -d --build api && docker compose restart nginx
-
-# (4) 스모크: 신규 업로드가 s3로 가는지
-#   POST /files/upload/external (X-API-Key) → 응답 storageBackend='s3' 확인
-#   GET  /files/:id/download/external → 바이트 정상
 ```
 
-> ⚠️ 마이그레이션 → API 재배포 순서 지킬 것(신규 코드가 컬럼 존재 전제). [[feedback_schema_change_deploy]]
+> ⚠️ 마이그레이션 → API 재배포 순서 지킬 것(신규 코드가 컬럼/테이블 존재 전제). [[feedback_schema_change_deploy]]
+
+### 3.1 R2 활성화 — **admin UI 에서 (권장, 재배포 불필요)**
+배포 후, admin **[저장소 설정]** 페이지에서:
+1. "파일 저장 위치" → **객체스토리지 (R2 / S3)** 선택
+2. 엔드포인트(`https://<acct>.r2.cloudflarestorage.com`)·버킷·Access Key ID·Secret 입력
+3. 저장 → **즉시 반영**(다음 업로드부터 R2). 기존 로컬 파일은 그대로 읽힘(혼재 보장).
+
+> env(`STORAGE_DRIVER=s3`, `S3_*`)로도 설정 가능하지만, **DB(admin) 값이 env 보다 우선**. admin 미설정 시 env fallback.
+
+### 3.2 스모크
+- `POST /files/upload/external`(X-API-Key) → 응답 `storageBackend='s3'` 확인
+- `GET /files/:id/download/external` → 바이트 정상
 
 ---
 
@@ -83,13 +86,18 @@ DRY_RUN=1 STORAGE_PATH=/app/storage npx ts-node apps/api/scripts/migrate-files-t
 
 ---
 
-## 5. 보존정책 사용 (테넌트 = 100p_books)
+## 5. 보존정책 (관리자 설정 + 테넌트 API)
 
-- **만료 예약**: `POST /files/:id/expiry/external` `{ "expiresAt": "2026-07-01T00:00:00Z" }` (또는 `null`=영구).
-  - 권장: 주문 배송완료 시 `expiresAt = 배송완료 + 14일` 설정.
+**관리자(admin UI)**:
+- **[기본설정] 각 사이트 → "파일 보존 기간(일)"**: 그 사이트가 업로드한 파일을 N일 후 자동삭제. 비움/0=영구보관(bookmoa 등). 100p Books 사이트에 예: `14`.
+  - 업로드 시점에 자동으로 `expires_at = now + N일` 설정됨(테넌트가 별도 호출 안 해도 됨).
+- **[저장소 설정] → "파일 보존정책"**: 자동삭제 작업(cron) 전체 on/off + 관찰 모드(실삭제 전 로그만). 첫 도입 시 관찰 모드로 확인 후 끄기.
+
+**테넌트 API(선택, 세밀제어)**:
+- **만료 예약 덮어쓰기**: `POST /files/:id/expiry/external` `{ "expiresAt": "2026-07-01T00:00:00Z" | null }`.
 - **즉시 삭제**: `DELETE /files/:id/external` (X-API-Key).
-- cron(`매시 17분`)이 만료분 하드삭제(객체+DB). 첫 운영은 `FILE_RETENTION_DRY_RUN=1`로 관찰 후 0으로.
-- 재인쇄/CS: 테넌트가 원본(PageDoc 등)에서 재생성→재업로드. **PDF 장기보관 안 함이 핵심.**
+
+cron(`매시 17분`)이 만료분 하드삭제(객체+DB). 재인쇄/CS는 원본(PageDoc 등)에서 재생성→재업로드. **PDF 장기보관 안 함이 핵심.**
 
 ---
 

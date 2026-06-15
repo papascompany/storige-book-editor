@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
 import { FilesService } from './files.service';
+import { StorageConfigService } from '../settings/storage-config.service';
 
 /**
  * FileRetentionService — 보존정책 cron (2026-06-13, R2 보강 트랙).
@@ -17,23 +18,30 @@ import { FilesService } from './files.service';
 @Injectable()
 export class FileRetentionService {
   private readonly logger = new Logger(FileRetentionService.name);
-  private readonly dryRun: boolean;
   private readonly batchLimit: number;
 
   constructor(
     private readonly filesService: FilesService,
     private readonly config: ConfigService,
+    private readonly storageConfig: StorageConfigService,
   ) {
-    this.dryRun = this.config.get<string>('FILE_RETENTION_DRY_RUN', '0') === '1';
     this.batchLimit = Number(this.config.get<string>('FILE_RETENTION_BATCH', '200')) || 200;
   }
 
   /**
    * 매시 17분(분산) 실행. 만료 파일 배치 정리.
+   * enabled/dryRun 은 admin 설정(StorageConfigService) 에서 런타임 조회.
    * 만료가 대량일 수 있으므로 배치(batchLimit)로 제한, 다음 tick 에서 잔여 처리.
    */
   @Cron('17 * * * *')
   async sweepExpired(): Promise<void> {
+    const retention = (await this.storageConfig.getEffectiveConfig()).retention;
+    if (!retention.enabled) {
+      this.logger.debug('[retention] 비활성(admin 설정) — 스킵');
+      return;
+    }
+    const dryRun = retention.dryRun;
+
     let expired;
     try {
       expired = await this.filesService.findExpired(this.batchLimit);
@@ -44,13 +52,13 @@ export class FileRetentionService {
     if (!expired.length) return;
 
     this.logger.log(
-      `[retention] 만료 파일 ${expired.length}건 정리 시작 (dryRun=${this.dryRun}, batch=${this.batchLimit})`,
+      `[retention] 만료 파일 ${expired.length}건 정리 시작 (dryRun=${dryRun}, batch=${this.batchLimit})`,
     );
 
     let ok = 0;
     let failed = 0;
     for (const file of expired) {
-      if (this.dryRun) {
+      if (dryRun) {
         this.logger.log(
           `[retention][dry-run] 삭제 대상 ${file.id} backend=${file.storageBackend} expires_at=${file.expiresAt?.toISOString?.() ?? file.expiresAt}`,
         );

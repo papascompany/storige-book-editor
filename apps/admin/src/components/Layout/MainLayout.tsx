@@ -72,6 +72,12 @@ export const MainLayout = () => {
       onClick: () => navigate('/sites'),
     },
     {
+      key: '/storage-settings',
+      icon: <CloudServerOutlined />,
+      label: '저장소 설정',
+      onClick: () => navigate('/storage-settings'),
+    },
+    {
       key: '/templates-group',
       icon: <FileTextOutlined />,
       label: '템플릿',

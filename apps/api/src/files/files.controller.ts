@@ -31,6 +31,7 @@ import { FileResponseDto, FileListResponseDto } from './dto/file-response.dto';
 import { FileType } from './entities/file.entity';
 import { Public } from '../auth/decorators/public.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { CurrentSite, CurrentSitePayload } from '../auth/decorators/current-site.decorator';
 import { ApiKeyGuard } from '../auth/guards/api-key.guard';
 
 @ApiTags('Files')
@@ -165,6 +166,7 @@ export class FilesController {
   async uploadFileExternal(
     @UploadedFile() file: Express.Multer.File,
     @Body() dto: UploadFileDto,
+    @CurrentSite() site?: CurrentSitePayload,
   ): Promise<FileResponseDto> {
     if (!file) {
       throw new BadRequestException({
@@ -173,13 +175,20 @@ export class FilesController {
       });
     }
 
-    const fileEntity = await this.filesService.uploadFile(
+    let fileEntity = await this.filesService.uploadFile(
       file,
       dto.type,
       dto.orderSeqno,
       dto.memberSeqno,
       dto.metadata,
     );
+
+    // 사이트 보존정책 적용 — retentionDays>0 이면 expires_at = now + N일 (retention cron 이 정리)
+    const days = site?.retentionDays ?? 0;
+    if (days && days > 0) {
+      const expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+      fileEntity = await this.filesService.setExpiry(fileEntity.id, expiresAt);
+    }
 
     return this.filesService.toResponseDto(fileEntity);
   }

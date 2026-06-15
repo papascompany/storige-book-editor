@@ -24,6 +24,7 @@ import { EditSessionList, DeletedSessionList } from './pages/EditSessions';
 import { WorkerJobList } from './pages/WorkerJobs';
 import { WorkerTestPage } from './pages/WorkerTest';
 import { SiteList } from './pages/Sites';
+import { StorageSettings } from './pages/StorageSettings';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -63,6 +64,7 @@ function App() {
               <Route index element={<Dashboard />} />
               {/* 기본설정 (Phase A) */}
               <Route path="sites" element={<SiteList />} />
+              <Route path="storage-settings" element={<StorageSettings />} />
               {/* 템플릿 그룹 */}
               <Route path="templates" element={<TemplateList />} />
               <Route path="templates/import" element={<TemplateImport />} />
