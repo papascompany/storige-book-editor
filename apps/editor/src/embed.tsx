@@ -22,6 +22,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { createRoot, Root } from 'react-dom/client'
 import { useAppStore } from './stores/useAppStore'
+import { useAuthStore } from './stores/useAuthStore'
 import { useSettingsStore } from './stores/useSettingsStore'
 import { useSaveStore } from './stores/useSaveStore'
 import { useEditorContents } from './hooks/useEditorContents'
@@ -522,6 +523,20 @@ function EmbeddedEditor({
 
         if (!effectiveToken) {
           throw new Error('접근 권한이 없습니다. 로그인 후 다시 시도해주세요.')
+        }
+
+        // useAuthStore 에 토큰 주입 → checkAuth(getMe) 로 me 채움(role 비동기 세팅).
+        // ⚠️ 임베드는 종전 localStorage/apiClient 에만 토큰을 넣고 useAuthStore.setToken 을
+        //   호출하지 않아 me=null → useIsCustomer()=false → 라이브러리 에셋 패널(요소/배경/
+        //   프레임)이 isCustomer 게이트로 통째 비어 있었다(2026-06-15 라이브 확인).
+        //   getMe 는 apiClient 인터셉터(localStorage 토큰)를 타므로 위 effectiveToken 으로
+        //   인증되어 me.role='customer'(소문자) 세팅 → normalizeRole 로 isCustomer=true.
+        //   refreshToken 은 임베드 자체 키('auth_refresh_token')로 관리하므로 미전달
+        //   (setToken 의 'refresh_token' 키와 분리 — 기존 사일런트 리프레시 동작 불변).
+        try {
+          useAuthStore.getState().setToken(effectiveToken)
+        } catch (authErr) {
+          console.warn('[EmbeddedEditor] useAuthStore.setToken 실패(비차단):', authErr)
         }
         // ========== 인증 설정 완료 ==========
 
