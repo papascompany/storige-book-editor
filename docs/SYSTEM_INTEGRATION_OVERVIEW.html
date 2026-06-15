@@ -392,8 +392,8 @@
 <div class="top-header">
   <div class="badge-row">
     <span class="badge blue">📄 기술 문서</span>
-    <span class="badge green">v2.7</span>
-    <span class="badge">2026-06-12</span>
+    <span class="badge green">v2.8</span>
+    <span class="badge">2026-06-15</span>
     <span class="badge">외부 연동 개발자용</span>
   </div>
   <h1>Storige <span>×</span> Bookmoa<br>시스템 통합 문서</h1>
@@ -410,7 +410,8 @@
 <!-- ══════════════════════════════ 사이드바 ══════════════════════════ -->
 <nav class="sidebar">
   <div class="sidebar-title">목차</div>
-  <a href="#changelog-v27" style="color:var(--green)">🆕 v2.7 ShareSnap 연동</a>
+  <a href="#changelog-v28" style="color:var(--green)">🆕 v2.8 100p_books + 저장계층 R2</a>
+  <a href="#changelog-v27" style="color:var(--green)">v2.7 ShareSnap 연동</a>
   <a href="#s1" class="active">① 시스템 구성도</a>
   <a href="#s1-2" class="sub">서비스 목록</a>
   <a href="#s1-3" class="sub">인증 방식</a>
@@ -441,6 +442,72 @@
 
 <!-- ══════════════════════════════ 콘텐츠 ══════════════════════════════ -->
 <main class="content">
+
+<!-- ─────────────── 변경 이력: v2.8 ─────────────── -->
+<section class="section" id="changelog-v28">
+  <h2 class="section-title">
+    <span class="num" style="background:rgba(34,197,94,.2);color:var(--green2)">v2.8</span>
+    v2.8 (2026-06-15) — 100p_books 연동 + 저장계층 R2 + 보존정책(admin)
+  </h2>
+
+  <div class="badge-row" style="margin-bottom:20px">
+    <span class="tag new">100P_BOOKS</span>
+    <span class="tag added">STORAGE R2 (PHASE 1)</span>
+    <span class="tag added">RETENTION (ADMIN)</span>
+    <span class="tag warn">외부 영향 0</span>
+  </div>
+
+  <p class="desc">
+    세 번째 외부 서비스 <strong>100p_books</strong>(자체 에디터·렌더러 보유 100p 포토북)를 <strong>저장·검증만 오프로드</strong>하는
+    전략적 통합으로 수용하고, 인쇄 백엔드 일원화 기반으로 <strong>저장계층 객체스토리지(R2) 추상화 + 보존정책</strong>을 도입했습니다.
+    정본: <code class="inline">.cursor/plans/HANDOFF_100pbooks_integration_2026-06-13.md</code>, <code class="inline">docs/STORAGE_R2_RUNBOOK.md</code>
+  </p>
+
+  <div class="info-box blue">
+    <div class="icon">🔗</div>
+    <div class="ib-content">
+      <div class="ib-title">100p_books — 저장·검증만 오프로드 (ShareSnap과 다름)</div>
+      자체 Fabric6 에디터·PDF렌더러는 <strong>유지</strong>. 생성 PDF를
+      <code class="inline">POST /files/upload/external</code>(X-API-Key)→fileId 저장,
+      <code class="inline">worker-jobs/validate/external</code>로 인쇄검증(CMYK/재단선),
+      <code class="inline">files/:id/download/external</code>로 인쇄소 다운로드 일원화.
+      ShareSnap=편집기 임베드, 100p=저장/검증 백엔드 — 연동 각도가 다름.
+    </div>
+  </div>
+
+  <div class="info-box green">
+    <div class="icon">🗄️</div>
+    <div class="ib-content">
+      <div class="ib-title">저장계층 R2 추상화 (Phase 1 · 비파괴)</div>
+      <code class="inline">ObjectStorageService</code>로 local|s3(R2) 통합. <strong>fileId 기반 앱-프록시 경로
+      (upload/download external)만</strong> R2 전환 가능 — nginx 직접서빙 <code class="inline">/storage/*</code>
+      (외부 300+ 소비처 URL 의존)·워커 산출물은 <strong>불변</strong>. 파일별 <code class="inline">storage_backend</code>
+      라우팅으로 local/s3 <strong>혼재 보장</strong>. 신규 API: <code class="inline">DELETE /files/:id/external</code>(하드삭제),
+      <code class="inline">POST /files/:id/expiry/external</code>(만료예약).
+    </div>
+  </div>
+
+  <div class="info-box blue">
+    <div class="icon">⚙️</div>
+    <div class="ib-content">
+      <div class="ib-title">보존정책 + R2 토글 = admin 관리형</div>
+      admin <strong>[기본설정] 사이트 폼 "파일 보존 기간(일)"</strong>(업로드 N일 후 자동삭제, 비움=영구) +
+      <strong>[저장소 설정] 페이지</strong>(저장 백엔드 로컬|R2 토글 + R2 키 입력(시크릿 마스킹) + 보존 cron on/off·관찰모드).
+      <strong>재배포 없이 즉시 반영</strong>(DB설정&gt;env 우선). PDF는 원본에서 재생성 가능한 파생물 → 장기보관 불필요.
+    </div>
+  </div>
+
+  <div class="info-box yellow">
+    <div class="icon">🛠️</div>
+    <div class="ib-content">
+      <div class="ib-title">운영 — 마이그레이션 2건(수동) + 메트릭</div>
+      synchronize=false → 수동 실행 후 API 재배포 순서:
+      <code class="inline">20260613_add_files_storage_backend.sql</code>(files.storage_backend/storage_key/expires_at),
+      <code class="inline">20260615_add_storage_settings_and_site_retention.sql</code>(storage_settings + sites.retention_days).
+      Grafana 메트릭 <code class="inline">storige_storage_bytes{backend}</code> 추가. 기본 driver=local → <strong>외부 영향 0</strong>.
+    </div>
+  </div>
+</section>
 
 <!-- ─────────────── 변경 이력: v2.7 ─────────────── -->
 <section class="section" id="changelog-v27">
@@ -1708,7 +1775,7 @@ window.<span class="type">StorigeEditor</span>.<span class="func">init</span>({
 
 <!-- 푸터 -->
 <div style="border-top:1px solid var(--border);margin-top:48px;padding:24px 0;color:var(--text3);font-size:12px">
-  <div style="margin-bottom:6px"><strong style="color:var(--text2)">Storige × Bookmoa 시스템 통합 문서</strong> · v2.7 · 2026-06-12 (ShareSnap 멀티사이트 연동 계획 + 외부 사진 주입 계약)</div>
+  <div style="margin-bottom:6px"><strong style="color:var(--text2)">Storige × Bookmoa 시스템 통합 문서</strong> · v2.8 · 2026-06-15 (100p_books 연동 + 저장계층 R2 추상화 + 보존정책 admin 관리형)</div>
   <div>저장 경로: <code style="font-family:monospace;color:var(--text3)">docs/SYSTEM_INTEGRATION_OVERVIEW.md</code> · <code style="font-family:monospace;color:var(--text3)">docs/SYSTEM_INTEGRATION_OVERVIEW.html</code></div>
   <div style="margin-top:6px">최신 API 스펙: <code style="font-family:monospace;color:var(--text3)">http://localhost:4000/api/docs</code> (Swagger UI)</div>
 </div>

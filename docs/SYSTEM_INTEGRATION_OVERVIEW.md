@@ -1,9 +1,20 @@
 # Storige × Bookmoa 시스템 통합 문서
 
 > **작성일**: 2026-05-02  
-> **최종 수정**: 2026-06-12 (v2.7 — ShareSnap 멀티사이트 연동 계획 + 외부 사진 주입 계약)  
-> **버전**: v2.7  
+> **최종 수정**: 2026-06-15 (v2.8 — 100p_books 연동 + 저장계층 R2 추상화 + 보존정책(admin 관리형))  
+> **버전**: v2.8  
 > **대상**: PHP 개발자, 외부 연동 개발자, 운영자, 기술 검토자
+
+> ### 🔄 v2.8 변경 이력 (2026-06-15) — 100p_books 연동 + 저장계층 R2 + 보존정책
+> 세 번째 외부 서비스 **100p_books**(자체 에디터·렌더러 보유 100p 포토북, Next.js+Supabase) 연동 + 인쇄 백엔드 일원화 기반 정비. 정본: `../.cursor/plans/HANDOFF_100pbooks_integration_2026-06-13.md`, `./STORAGE_R2_RUNBOOK.md`.
+> - **100p_books = 저장·검증만 오프로드(전략적 통합)**: 자체 에디터·PDF렌더러는 유지. 생성 PDF를 `POST /files/upload/external`(X-API-Key)→fileId 저장, `worker-jobs/validate/external`로 인쇄검증(CMYK/재단선), `files/:id/download/external`로 인쇄소 일원화. ShareSnap(편집기 임베드)과 **연동 각도 다름**.
+> - **신규 외부 파일 API**: `POST /files/upload/external`(multipart, type=cover|content, ≤100MB), `GET /files/:id/download/external`, `DELETE /files/:id/external`(하드삭제), `POST /files/:id/expiry/external`(보존 만료예약) — 전부 X-API-Key.
+> - **저장계층 R2 추상화(Phase 1, 비파괴)**: `ObjectStorageService`로 local|s3(R2) 통합. **fileId 기반 앱-프록시 경로(upload/download external)만** R2 전환 가능 — nginx 직접서빙 `/storage/*`(외부 300+ 소비처 URL 의존)·워커 산출물은 **불변**. 파일별 `storage_backend` 라우팅으로 local/s3 혼재 보장.
+> - **보존정책(admin 관리형)**: 사이트별 `retentionDays`(업로드 N일 후 자동삭제, 비움=영구) + 전역 cron on/off·관찰모드. admin **[기본설정] 사이트 폼** + **[저장소 설정] 페이지**에서 관리. PDF는 원본에서 재생성 가능한 파생물이라 장기보관 불필요.
+> - **R2 토글도 admin에서**: [저장소 설정]에서 저장 백엔드(로컬|R2) 선택 + R2 키 입력(시크릿 마스킹) → 재배포 없이 즉시 활성. 기본값 local(비파괴), DB설정이 env보다 우선.
+> - **마이그레이션 2건**(수동, synchronize=false): `20260613_add_files_storage_backend.sql`(files.storage_backend/storage_key/expires_at), `20260615_add_storage_settings_and_site_retention.sql`(storage_settings 테이블 + sites.retention_days). → API 재배포 순서 준수.
+> - **메트릭**: `storige_storage_bytes{backend}`·`storige_storage_files{backend}`(Grafana — 백엔드별 용량 추세).
+> - **⚠️ 외부 영향 0**: 기존 bookmoa·ShareSnap 경로·URL 계약 불변. 신규 API·설정은 전부 추가형(opt-in).
 
 > ### 🔄 v2.7 변경 이력 (2026-06-12) — ShareSnap 멀티사이트 연동 (계획 확정)
 > 두 번째 외부 사이트 **ShareSnap**(공유방 사진 → 하드커버 포토북, React+Vercel+Supabase) 연동 계획 확정. **Storige 코드 변경 없이** 기존 멀티사이트(sites) 구조로 수용 + 신규 플랫폼 기능 2건 개발 예정. 정본: `../.cursor/plans/HANDOFF_sharesnap_integration_2026-06-12.md`.
