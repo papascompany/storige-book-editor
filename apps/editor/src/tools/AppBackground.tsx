@@ -1,17 +1,17 @@
-import { useCallback, useState, useEffect, useRef } from 'react'
+import { useCallback, useState, useEffect } from 'react'
 import { Upload as UploadSimple, Trash2 as Trash, Check } from 'lucide-react'
 import { useAppStore } from '@/stores/useAppStore'
 import { useImageStore } from '@/stores/useImageStore'
-import { useEditorStore } from '@/stores/useEditorStore'
 import { useIsCustomer } from '@/stores/useAuthStore'
 import { useEditorContents } from '@/hooks/useEditorContents'
+import { useLibraryPanel } from '@/hooks/useLibraryPanel'
 import { Button } from '@/components/ui/button'
 import AppSection from '@/components/AppSection'
+import AppSectionSearch from '@/components/AppSectionSearch'
 import { ImageProcessingPlugin, SelectionType, parseColorValue, rgbaToHex8 } from '@storige/canvas-core'
 import type { EditorContent } from '@/generated/graphql'
 import { contentsApi } from '@/api'
 import { resolveAssetUrl } from '@/utils/resolveAssetUrl'
-import { cn } from '@/lib/utils'
 
 // 모바일/터치 환경 감지 — iOS native <input type="color">는 picker dismiss(X 버튼) 시점에
 // change 이벤트가 발화되며 사용자가 "적용 UI 없음"으로 혼동. 모바일 안내 + 명시적 "적용" 버튼 노출.
@@ -29,10 +29,7 @@ export default function AppBackground() {
   const canvas = useAppStore((state) => state.canvas)
   const getPlugin = useAppStore((state) => state.getPlugin)
   const setContentsBrowser = useAppStore((state) => state.setContentsBrowser)
-  const updateObjects = useAppStore((state) => state.updateObjects)
   const upload = useImageStore((state) => state.upload)
-  // 템플릿셋별 에셋 큐레이션(2026-06-09): 현재 세션의 templateSetId 를 콘텐츠 조회에 전달.
-  const templateSetId = useEditorStore((state) => state.templateSetId)
   const isCustomer = useIsCustomer()
   const { setupAsset } = useEditorContents()
 
@@ -45,14 +42,18 @@ export default function AppBackground() {
   const [bgColor, setBgColor] = useState('#FFFFFF')
   const [lidColor, setLidColor] = useState('#FFFFFF')
 
-  // Category tabs state
-  const [availableTags, setAvailableTags] = useState<string[]>([])
-  const [selectedTag, setSelectedTag] = useState<string | null>(null)
-  const tagsDiscoveredRef = useRef(false)
-
-  // Contents state
-  const [contents, setContents] = useState<EditorContent[]>([])
-  const [loadingContents, setLoadingContents] = useState(false)
+  // 추천 콘텐츠 데이터 파이프라인 공통화 (P3-b).
+  // ⚠️ 배경(library_backgrounds)은 tags 컬럼이 없어 태그칩 필터 불가 → enableTags:false.
+  //    대신 이름 검색바를 추가해 다른 패널과 일관성을 맞춘다(enableSearch:true).
+  const {
+    contents,
+    loadingContents,
+    searchType,
+    searchKeyword,
+    handleSearch,
+    handleClearSearch,
+    hasActiveFilter,
+  } = useLibraryPanel({ fetcher: contentsApi.getBackgrounds, enableTags: false })
 
   // Compute effective background color
   useEffect(() => {
@@ -85,65 +86,6 @@ export default function AppBackground() {
       }
     }
   }, [lidObject?.fill, bgColor])
-
-  // Discover available tags once on mount
-  useEffect(() => {
-    if (!isCustomer || tagsDiscoveredRef.current) return
-    tagsDiscoveredRef.current = true
-
-    const discoverTags = async () => {
-      try {
-        const result = await contentsApi.getBackgrounds({ pageSize: 100, templateSetId: templateSetId ?? undefined })
-        if (result.success && result.data) {
-          const tagSet = new Set<string>()
-          result.data.items.forEach((item: any) => {
-            if (Array.isArray(item.tags)) {
-              item.tags.forEach((t: string) => { if (t) tagSet.add(t) })
-            }
-          })
-          setAvailableTags(Array.from(tagSet).sort((a, b) => a.localeCompare(b, 'ko')))
-        }
-      } catch { /* noop */ }
-    }
-    discoverTags()
-  }, [isCustomer, templateSetId])
-
-  // Fetch background contents
-  useEffect(() => {
-    if (!isCustomer) return
-
-    const fetchBackgrounds = async () => {
-      setLoadingContents(true)
-      try {
-        const baseParams = {
-          pageSize: 20,
-          tags: selectedTag ? [selectedTag] : undefined,
-        }
-        let result = await contentsApi.getBackgrounds({
-          ...baseParams,
-          templateSetId: templateSetId ?? undefined,
-        })
-
-        // P1 빈화면 방지: 템플릿셋 큐레이션 결과가 0건이면 전역 배경으로 한 번 더 폴백.
-        const isEmpty = !result.success || !result.data || result.data.items.length === 0
-        if (isEmpty && templateSetId) {
-          result = await contentsApi.getBackgrounds(baseParams)
-        }
-
-        if (result.success && result.data) {
-          setContents(result.data.items as unknown as EditorContent[])
-        } else {
-          setContents([])
-        }
-      } catch (error) {
-        console.error('배경 콘텐츠 로드 오류:', error)
-        setContents([])
-      } finally {
-        setLoadingContents(false)
-      }
-    }
-    fetchBackgrounds()
-  }, [isCustomer, selectedTag, templateSetId])
 
   // Initialize and setup canvas event listeners
   useEffect(() => {
@@ -498,50 +440,30 @@ export default function AppBackground() {
           </AppSection>
         )}
 
-        {/* Recommended Contents */}
+        {/* Recommended Contents — 배경은 tags 컬럼 부재로 태그칩 없이 이름 검색만 제공(P3-b) */}
         {isCustomer && (
-        <AppSection id="app-background-recommended" title="추천 콘텐츠" onDetail={showMore}>
-          {/* Category tag tabs */}
-          {availableTags.length > 0 && (
-            <div
-              className="flex gap-1.5 overflow-x-auto pb-3 -mx-4 px-4"
-              style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-            >
-              <button
-                className={cn(
-                  'whitespace-nowrap text-xs px-3 py-1 rounded-full border transition-colors flex-shrink-0',
-                  !selectedTag
-                    ? 'bg-editor-accent border-editor-accent text-white'
-                    : 'border-editor-border text-editor-text-muted hover:text-editor-text hover:border-editor-text-muted'
-                )}
-                onClick={() => setSelectedTag(null)}
-              >
-                전체
-              </button>
-              {availableTags.map((tag) => (
-                <button
-                  key={tag}
-                  className={cn(
-                    'whitespace-nowrap text-xs px-3 py-1 rounded-full border transition-colors flex-shrink-0',
-                    selectedTag === tag
-                      ? 'bg-editor-accent border-editor-accent text-white'
-                      : 'border-editor-border text-editor-text-muted hover:text-editor-text hover:border-editor-text-muted'
-                  )}
-                  onClick={() => setSelectedTag(tag)}
-                >
-                  {tag}
-                </button>
-              ))}
-            </div>
-          )}
-
+        <AppSection
+          id="app-background-recommended"
+          title="추천 콘텐츠"
+          onDetail={showMore}
+          searchSlot={
+            <AppSectionSearch
+              searchType={searchType}
+              searchKeyword={searchKeyword}
+              isSearching={loadingContents}
+              onSearch={handleSearch}
+              onClear={handleClearSearch}
+              searchOptions={[{ label: '이름', value: 'name' }]}
+            />
+          }
+        >
           {loadingContents ? (
             <div className="flex justify-center items-center min-h-[160px]">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-editor-accent" />
             </div>
           ) : contents.length === 0 ? (
             <div className="py-8 text-center text-editor-text-muted text-xs">
-              {selectedTag ? '검색 결과가 없습니다.' : '추천 콘텐츠가 없습니다.'}
+              {hasActiveFilter ? '검색 결과가 없습니다.' : '추천 콘텐츠가 없습니다.'}
             </div>
           ) : (
             <div className="w-full grid grid-cols-2 gap-2">

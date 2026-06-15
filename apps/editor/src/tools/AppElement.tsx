@@ -1,19 +1,19 @@
-import { useCallback, useEffect, useState, useRef } from 'react'
+import { useCallback, useState } from 'react'
 import { Upload as UploadSimple } from 'lucide-react'
 import { useAppStore } from '@/stores/useAppStore'
 import { useImageStore } from '@/stores/useImageStore'
-import { useEditorStore } from '@/stores/useEditorStore'
 import { useIsCustomer } from '@/stores/useAuthStore'
 import { useEditorContents } from '@/hooks/useEditorContents'
 import { useIsCoarsePointer } from '@/hooks/useIsCoarsePointer'
+import { useLibraryPanel } from '@/hooks/useLibraryPanel'
 import { Button } from '@/components/ui/button'
 import AppSection from '@/components/AppSection'
 import AppSectionSearch from '@/components/AppSectionSearch'
+import LibraryTagChips from '@/components/LibraryTagChips'
 import { ImageProcessingPlugin, SelectionType } from '@storige/canvas-core'
 import { contentsApi } from '@/api'
 import type { EditorContent } from '@/generated/graphql'
 import { resolveAssetUrl } from '@/utils/resolveAssetUrl'
-import { cn } from '@/lib/utils'
 
 export default function AppElement() {
   const canvas = useAppStore((state) => state.canvas)
@@ -22,101 +22,25 @@ export default function AppElement() {
   const setContentsBrowser = useAppStore((state) => state.setContentsBrowser)
   const tapMenu = useAppStore((state) => state.tapMenu)
   const upload = useImageStore((state) => state.upload)
-  // 템플릿셋별 에셋 큐레이션(2026-06-09): 현재 세션의 templateSetId 를 콘텐츠 조회에 전달.
-  const templateSetId = useEditorStore((state) => state.templateSetId)
   const isCustomer = useIsCustomer()
   const { setupAsset } = useEditorContents()
   const isCoarsePointer = useIsCoarsePointer()
 
   const [isLoading, setIsLoading] = useState(false)
 
-  // Search state
-  const [searchType, setSearchType] = useState('name')
-  const [searchKeyword, setSearchKeyword] = useState('')
-  const [debouncedKeyword, setDebouncedKeyword] = useState('')
-
-  // Category tabs state
-  const [availableTags, setAvailableTags] = useState<string[]>([])
-  const [selectedTag, setSelectedTag] = useState<string | null>(null)
-  const tagsDiscoveredRef = useRef(false)
-
-  // Contents state
-  const [contents, setContents] = useState<EditorContent[]>([])
-  const [loadingContents, setLoadingContents] = useState(false)
-
-  // Debounce search keyword
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedKeyword(searchKeyword)
-    }, 300)
-    return () => clearTimeout(timer)
-  }, [searchKeyword])
-
-  // Discover available tags once on mount (large fetch, no search)
-  useEffect(() => {
-    if (!isCustomer || tagsDiscoveredRef.current) return
-    tagsDiscoveredRef.current = true
-
-    const discoverTags = async () => {
-      try {
-        const result = await contentsApi.getElements({ pageSize: 100, templateSetId: templateSetId ?? undefined })
-        if (result.success && result.data) {
-          const tagSet = new Set<string>()
-          result.data.items.forEach((item: any) => {
-            const itemTags = item.tags
-            if (Array.isArray(itemTags)) {
-              itemTags.forEach((t: string) => { if (t) tagSet.add(t) })
-            }
-          })
-          setAvailableTags(Array.from(tagSet).sort((a, b) => a.localeCompare(b, 'ko')))
-        }
-      } catch {
-        // tags discovery failure is non-critical
-      }
-    }
-    discoverTags()
-  }, [isCustomer, templateSetId])
-
-  // Fetch elements — respects selectedTag + search
-  useEffect(() => {
-    if (!isCustomer) return
-
-    const fetchElements = async () => {
-      setLoadingContents(true)
-      try {
-        const keyword = debouncedKeyword.trim()
-        const baseParams = {
-          pageSize: 20,
-          search: keyword.length >= 2 ? keyword : undefined,
-          tags: selectedTag ? [selectedTag] : undefined,
-        }
-        let result = await contentsApi.getElements({
-          ...baseParams,
-          templateSetId: templateSetId ?? undefined,
-        })
-
-        // P1 빈화면 방지: 템플릿셋 큐레이션 결과가 0건이면(별도 세팅 안 됨/매칭 실패)
-        // templateSetId 없이 전역 에셋으로 한 번 더 폴백 조회한다(기본 에셋 디폴트).
-        const isEmpty = !result.success || !result.data || result.data.items.length === 0
-        if (isEmpty && templateSetId) {
-          result = await contentsApi.getElements(baseParams)
-        }
-
-        if (result.success && result.data) {
-          setContents(result.data.items as unknown as EditorContent[])
-        } else {
-          setContents([])
-        }
-      } catch (error) {
-        console.error('요소 콘텐츠 로드 오류:', error)
-        setContents([])
-      } finally {
-        setLoadingContents(false)
-      }
-    }
-
-    fetchElements()
-  }, [isCustomer, debouncedKeyword, selectedTag, templateSetId])
+  // 추천 콘텐츠 데이터 파이프라인(검색·태그칩·templateSetId 큐레이션·0건 전역 폴백) 공통화 (P3-b)
+  const {
+    contents,
+    loadingContents,
+    availableTags,
+    selectedTag,
+    setSelectedTag,
+    searchType,
+    searchKeyword,
+    handleSearch,
+    handleClearSearch,
+    hasActiveFilter,
+  } = useLibraryPanel({ fetcher: contentsApi.getElements })
 
   // Handle upload
   const handleUpload = useCallback(async () => {
@@ -159,16 +83,6 @@ export default function AppElement() {
     setContentsBrowser('element')
   }, [setContentsBrowser])
 
-  const handleSearch = useCallback(({ type, keyword }: { type: string; keyword: string }) => {
-    setSearchType(type)
-    setSearchKeyword(keyword)
-  }, [])
-
-  const handleClearSearch = useCallback(() => {
-    setSearchType('name')
-    setSearchKeyword('')
-  }, [])
-
   return (
     <div className="w-full h-full flex flex-col">
       <div className="px-4 pt-4 pb-3">
@@ -195,42 +109,16 @@ export default function AppElement() {
                 isSearching={loadingContents}
                 onSearch={handleSearch}
                 onClear={handleClearSearch}
+                searchOptions={[{ label: '이름', value: 'name' }]}
               />
             }
           >
             {/* Category tag tabs */}
-            {availableTags.length > 0 && (
-              <div
-                className="flex gap-1.5 overflow-x-auto pb-3 -mx-4 px-4"
-                style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-              >
-                <button
-                  className={cn(
-                    'whitespace-nowrap text-xs px-3 py-1 rounded-full border transition-colors flex-shrink-0',
-                    !selectedTag
-                      ? 'bg-editor-accent border-editor-accent text-white'
-                      : 'border-editor-border text-editor-text-muted hover:text-editor-text hover:border-editor-text-muted'
-                  )}
-                  onClick={() => setSelectedTag(null)}
-                >
-                  전체
-                </button>
-                {availableTags.map((tag) => (
-                  <button
-                    key={tag}
-                    className={cn(
-                      'whitespace-nowrap text-xs px-3 py-1 rounded-full border transition-colors flex-shrink-0',
-                      selectedTag === tag
-                        ? 'bg-editor-accent border-editor-accent text-white'
-                        : 'border-editor-border text-editor-text-muted hover:text-editor-text hover:border-editor-text-muted'
-                    )}
-                    onClick={() => setSelectedTag(tag)}
-                  >
-                    {tag}
-                  </button>
-                ))}
-              </div>
-            )}
+            <LibraryTagChips
+              tags={availableTags}
+              selectedTag={selectedTag}
+              onSelect={setSelectedTag}
+            />
 
             {loadingContents ? (
               <div className="flex justify-center items-center min-h-[160px]">
@@ -238,7 +126,7 @@ export default function AppElement() {
               </div>
             ) : contents.length === 0 ? (
               <div className="py-8 text-center text-editor-text-muted text-xs">
-                {searchKeyword || selectedTag ? '검색 결과가 없습니다.' : '추천 콘텐츠가 없습니다.'}
+                {hasActiveFilter ? '검색 결과가 없습니다.' : '추천 콘텐츠가 없습니다.'}
               </div>
             ) : (
               <div className="w-full grid grid-cols-2 gap-2">
