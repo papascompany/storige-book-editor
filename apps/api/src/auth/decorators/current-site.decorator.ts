@@ -5,6 +5,8 @@ export interface CurrentSitePayload {
   siteName: string;
   role: 'editor' | 'worker';
   apiKey: string;
+  /** 사이트 파일 보존 기간(일). null/0=영구. 업로드 시 expires_at 적용용. */
+  retentionDays?: number | null;
 }
 
 /**
@@ -30,6 +32,7 @@ export const CurrentSite = createParamDecorator(
       siteName: user.siteName,
       role: user.role,
       apiKey: user.apiKey,
+      retentionDays: user.retentionDays ?? null,
     };
   },
 );

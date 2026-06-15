@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
-import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsOptional, IsString, IsUrl, Length } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, IsUrl, Length, Max, Min } from 'class-validator';
 
 export class CreateSiteDto {
   @ApiProperty({ example: '북모아 메인', description: '사이트명' })
@@ -43,6 +43,16 @@ export class CreateSiteDto {
   @IsOptional()
   @IsIn(['active', 'suspended'])
   status?: 'active' | 'suspended';
+
+  @ApiPropertyOptional({
+    description: '파일 보존 기간(일). null/0=영구보관. 이 사이트 업로드 파일을 N일 후 자동삭제(retention cron).',
+    example: 14,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(3650)
+  retentionDays?: number | null;
 
   // ── Phase B 워커 옵션 default ───────────────────────────────
 

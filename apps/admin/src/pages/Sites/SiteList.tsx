@@ -15,6 +15,7 @@ import {
   Dropdown,
   Select,
   Divider,
+  InputNumber,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
@@ -153,6 +154,7 @@ export default function SiteList() {
       returnUrlBase: site.returnUrlBase ?? undefined,
       uploadCallbackUrl: site.uploadCallbackUrl ?? undefined,
       status: site.status,
+      retentionDays: site.retentionDays ?? undefined,
       pdfConversionEnabled: site.pdfConversionEnabled,
       beforeAfterUrl: site.beforeAfterUrl ?? undefined,
       defaultUnit: site.defaultUnit,
@@ -363,6 +365,18 @@ export default function SiteList() {
           </Form.Item>
           <Form.Item name="uploadCallbackUrl" label="업로드 콜백 URL (Webhook)">
             <Input placeholder="https://www.bookmoa.co.kr/storige/proc/synthesis_callback.php" />
+          </Form.Item>
+
+          <Divider orientation="left" plain>
+            파일 보존정책
+          </Divider>
+          <Form.Item
+            name="retentionDays"
+            label="파일 보존 기간 (일)"
+            tooltip="이 사이트가 업로드한 파일을 N일 후 자동 삭제합니다(저장 용량 관리). 인쇄 PDF는 편집 원본에서 재생성 가능. 비우거나 0이면 영구보관."
+            extra="비우면 영구보관. 예: 14 = 업로드 14일 후 자동 삭제 (전체 자동삭제 작업은 [저장소 설정]에서 on/off)."
+          >
+            <InputNumber min={0} max={3650} style={{ width: 200 }} placeholder="비움 = 영구보관" addonAfter="일" />
           </Form.Item>
 
           <Divider orientation="left" plain>

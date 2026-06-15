@@ -4,6 +4,8 @@ import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import { ObjectStorageService } from './object-storage.service';
+import { StorageConfigService } from '../settings/storage-config.service';
+import type { EffectiveStorageConfig } from '../settings/storage-config.service';
 
 /**
  * ObjectStorageService — local 백엔드 라운드트립 + 경로 격리 검증.
@@ -17,31 +19,37 @@ describe('ObjectStorageService (local)', () => {
     tmpDir = path.join(os.tmpdir(), `storige-objstore-test-${process.pid}`);
     await fs.mkdir(tmpDir, { recursive: true });
 
+    const localCfg: EffectiveStorageConfig = {
+      driver: 'local',
+      s3: { endpoint: null, region: 'auto', bucket: null, accessKeyId: null, secretAccessKey: null, forcePathStyle: true },
+      retention: { enabled: true, dryRun: false },
+      s3Signature: 'local',
+    };
+
     const config: Partial<ConfigService> = {
-      get: ((key: string, def?: unknown) => {
-        if (key === 'STORAGE_DRIVER') return 'local';
-        if (key === 'STORAGE_PATH') return tmpDir;
-        return def;
-      }) as ConfigService['get'],
+      get: ((key: string, def?: unknown) => (key === 'STORAGE_PATH' ? tmpDir : def)) as ConfigService['get'],
+    };
+    const storageConfig: Partial<StorageConfigService> = {
+      getEffectiveConfig: jest.fn().mockResolvedValue(localCfg),
     };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ObjectStorageService,
         { provide: ConfigService, useValue: config },
+        { provide: StorageConfigService, useValue: storageConfig },
       ],
     }).compile();
 
     service = module.get(ObjectStorageService);
-    await service.onModuleInit();
   });
 
   afterEach(async () => {
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
-  it('activeBackend 는 local', () => {
-    expect(service.activeBackend).toBe('local');
+  it('getActiveBackend 는 local', async () => {
+    expect(await service.getActiveBackend()).toBe('local');
   });
 
   it('put → get 라운드트립 (디렉토리 자동 생성)', async () => {
@@ -52,7 +60,6 @@ describe('ObjectStorageService (local)', () => {
     const got = await service.get('local', 'uploads/abc.pdf');
     expect(got.equals(body)).toBe(true);
 
-    // 실제 디스크에 기록됐는지
     const onDisk = await fs.readFile(path.join(tmpDir, 'uploads/abc.pdf'));
     expect(onDisk.equals(body)).toBe(true);
   });

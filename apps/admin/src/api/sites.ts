@@ -9,6 +9,8 @@ export interface Site {
   editorAuthCode: string;
   workerAuthCode: string;
   status: 'active' | 'suspended';
+  /** 파일 보존 기간(일). null/0=영구보관. (2026-06-15 보존정책) */
+  retentionDays: number | null;
   // Phase B — 사이트별 워커 옵션 default
   pdfConversionEnabled: boolean;
   beforeAfterUrl: string | null;
@@ -35,6 +37,7 @@ export interface CreateSiteDto {
   editorAuthCode?: string;
   workerAuthCode?: string;
   status?: 'active' | 'suspended';
+  retentionDays?: number | null;
   pdfConversionEnabled?: boolean;
   beforeAfterUrl?: string;
   defaultUnit?: 'mm' | 'inch';

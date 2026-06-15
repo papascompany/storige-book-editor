@@ -19,6 +19,7 @@ import { SitesModule } from './sites/sites.module';
 import { HealthModule } from './health/health.module';
 import { SeedModule } from './database/seeds/seed.module';
 import { FilesModule } from './files/files.module';
+import { SettingsModule } from './settings/settings.module';
 import { EditSessionsModule } from './edit-sessions/edit-sessions.module';
 import { PayloadTooLargeFilter } from './common/filters/payload-too-large.filter';
 
@@ -144,6 +145,9 @@ if (process.env.BOOKMOA_DB_PASSWORD) {
 
     // File management
     FilesModule,
+
+    // 저장계층/보존정책 런타임 설정 (admin)
+    SettingsModule,
 
     // Edit sessions
     EditSessionsModule,

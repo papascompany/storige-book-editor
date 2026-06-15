@@ -46,6 +46,7 @@ export class ApiKeyGuard implements CanActivate {
       siteId: site.id,
       siteName: site.name,
       role,
+      retentionDays: site.retentionDays ?? null, // 업로드 파일 보존정책 적용용
     };
     return true;
   }
