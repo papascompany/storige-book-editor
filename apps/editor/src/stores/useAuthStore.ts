@@ -120,8 +120,19 @@ export const useAuthStore = create<AuthState & AuthActions>()((set, get) => ({
   },
 }))
 
+// 역할 비교는 대소문자 무관(P0-A, 2026-06-15).
+// shop-session JWT 는 role:'customer'(소문자, apps/api auth.service.ts)인 반면
+// 내부 admin/일반 토큰은 'CUSTOMER'/'ADMIN'(대문자)을 쓴다. 양쪽 모두 동작하도록
+// 정규화한다. (과거 staff 대소문자 회귀 이력 있어 admin/super_admin 도 동일 처리.)
+const normalizeRole = (role?: string | null): string =>
+  (role ?? '').toUpperCase()
+
 // Selector hooks for computed values
 export const useIsAuthenticated = () => useAuthStore((state) => !!state.token)
 export const useIsAdmin = () =>
-  useAuthStore((state) => state.me?.role === 'ADMIN' || state.me?.role === 'SUPER_ADMIN')
-export const useIsCustomer = () => useAuthStore((state) => state.me?.role === 'CUSTOMER')
+  useAuthStore((state) => {
+    const role = normalizeRole(state.me?.role)
+    return role === 'ADMIN' || role === 'SUPER_ADMIN'
+  })
+export const useIsCustomer = () =>
+  useAuthStore((state) => normalizeRole(state.me?.role) === 'CUSTOMER')

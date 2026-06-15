@@ -9,18 +9,11 @@ import { useAutoSaveSnapshotsStore } from '@/stores/useAutoSaveSnapshotsStore'
 import { showToast } from '@/stores/useToastStore'
 import { sessionsApi } from '@/api/sessions'
 import { HistoryPlugin } from '@storige/canvas-core'
+import { resolveAssetUrl as resolveThumbnailUrl } from '@/utils/resolveAssetUrl'
 import { cn } from '@/lib/utils'
 
-// 썸네일 URL 정규화 — 백엔드는 `/storage/files/...` 상대 경로를 반환하므로
-// VITE_API_BASE_URL을 prefix해 절대 경로로 만든다 (apiClient base와 동일 경로 규칙).
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000/api'
-function resolveThumbnailUrl(url: string | null | undefined): string | null {
-  if (!url) return null
-  if (/^https?:\/\//.test(url)) return url
-  // /storage/files/thumbnails/abc.jpg → {API_BASE_URL}/storage/files/thumbnails/abc.jpg
-  // API_BASE_URL이 /api로 끝나면 그대로 prefix
-  return `${API_BASE_URL.replace(/\/$/, '')}${url.startsWith('/') ? '' : '/'}${url}`
-}
+// 썸네일 URL 정규화는 공유 헬퍼 resolveAssetUrl 로 일원화(P0-B, 2026-06-15).
+// 백엔드는 `/storage/files/...` 상대 경로를 반환하므로 API origin 을 prefix 한다.
 
 interface BackendVersion {
   id: string

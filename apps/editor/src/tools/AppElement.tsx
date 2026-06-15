@@ -12,6 +12,7 @@ import AppSectionSearch from '@/components/AppSectionSearch'
 import { ImageProcessingPlugin, SelectionType } from '@storige/canvas-core'
 import { contentsApi } from '@/api'
 import type { EditorContent } from '@/generated/graphql'
+import { resolveAssetUrl } from '@/utils/resolveAssetUrl'
 import { cn } from '@/lib/utils'
 
 export default function AppElement() {
@@ -84,12 +85,22 @@ export default function AppElement() {
       setLoadingContents(true)
       try {
         const keyword = debouncedKeyword.trim()
-        const result = await contentsApi.getElements({
+        const baseParams = {
           pageSize: 20,
           search: keyword.length >= 2 ? keyword : undefined,
           tags: selectedTag ? [selectedTag] : undefined,
+        }
+        let result = await contentsApi.getElements({
+          ...baseParams,
           templateSetId: templateSetId ?? undefined,
         })
+
+        // P1 빈화면 방지: 템플릿셋 큐레이션 결과가 0건이면(별도 세팅 안 됨/매칭 실패)
+        // templateSetId 없이 전역 에셋으로 한 번 더 폴백 조회한다(기본 에셋 디폴트).
+        const isEmpty = !result.success || !result.data || result.data.items.length === 0
+        if (isEmpty && templateSetId) {
+          result = await contentsApi.getElements(baseParams)
+        }
 
         if (result.success && result.data) {
           setContents(result.data.items as unknown as EditorContent[])
@@ -232,7 +243,7 @@ export default function AppElement() {
             ) : (
               <div className="w-full grid grid-cols-2 gap-2">
                 {contents.map((content, index) => {
-                  const imageUrl = (content as any).imageUrl || content?.image?.image?.url
+                  const imageUrl = resolveAssetUrl((content as any).imageUrl || content?.image?.image?.url)
                   return (
                     <div
                       key={index}
