@@ -49,6 +49,23 @@ describe('StorageService', () => {
       expect(result).toBe(path.join(storagePath, 'uploads', 'abc.thumb-200.jpg'));
     });
 
+    it('중첩(3-seg) 라이브러리 에셋 경로를 storage 루트 하위로 해석한다 (getFileNested 지원)', () => {
+      // 편집기 라이브러리 에셋은 /storage/library/<subdir>/<file> 형식(클립아트/배경/도형/프레임).
+      // StorageController.getFileNested 가 getFile→getFilePathFromUrl 로 위임하는 경로.
+      expect(
+        service.getFilePathFromUrl('/storage/library/clipart/check.svg'),
+      ).toBe(path.join(storagePath, 'library', 'clipart', 'check.svg'));
+      expect(
+        service.getFilePathFromUrl('/storage/library/bg/sky.png'),
+      ).toBe(path.join(storagePath, 'library', 'bg', 'sky.png'));
+    });
+
+    it('중첩 경로의 ../ 상위 탈출 시도도 차단한다', () => {
+      expect(() =>
+        service.getFilePathFromUrl('/storage/library/clipart/../../../etc/passwd'),
+      ).toThrow(BadRequestException);
+    });
+
     it('../ 상위 탈출 시도를 차단한다', () => {
       expect(() =>
         service.getFilePathFromUrl('/storage/../../../etc/passwd'),
