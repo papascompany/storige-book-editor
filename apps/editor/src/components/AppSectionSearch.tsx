@@ -1,6 +1,11 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { cn } from '@/lib/utils'
 
+interface SearchOption {
+  label: string
+  value: string
+}
+
 interface AppSectionSearchProps {
   searchType?: string
   searchKeyword?: string
@@ -8,9 +13,15 @@ interface AppSectionSearchProps {
   minSearchLength?: number
   onSearch?: (params: { type: string; keyword: string }) => void
   onClear?: () => void
+  /**
+   * 검색 유형 옵션 목록. 미지정 시 이름/태그 모두 노출(기본).
+   * 배경 패널처럼 태그 검색이 불가능한 경우 [{label:'이름',value:'name'}] 만 전달하면
+   * 유형 선택 드롭다운이 자동으로 숨겨진다(옵션 1개).
+   */
+  searchOptions?: SearchOption[]
 }
 
-const searchOptions = [
+const DEFAULT_SEARCH_OPTIONS: SearchOption[] = [
   { label: '이름', value: 'name' },
   { label: '태그', value: 'tags' }
 ]
@@ -21,7 +32,8 @@ export default function AppSectionSearch({
   isSearching = false,
   minSearchLength = 2,
   onSearch,
-  onClear
+  onClear,
+  searchOptions = DEFAULT_SEARCH_OPTIONS
 }: AppSectionSearchProps) {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
   const [localKeyword, setLocalKeyword] = useState(searchKeyword)
@@ -38,10 +50,13 @@ export default function AppSectionSearch({
     setLocalType(searchType)
   }, [searchType])
 
+  // 옵션이 1개뿐이면 유형 선택 드롭다운을 숨긴다(예: 배경 — 이름 검색만 가능).
+  const showTypeSelector = searchOptions.length > 1
+
   // Current search type label
   const currentSearchTypeLabel = useMemo(() => {
     return searchOptions.find(o => o.value === localType)?.label ?? '검색유형'
-  }, [localType])
+  }, [localType, searchOptions])
 
   // Toggle dropdown
   const toggleDropdown = useCallback(() => {
@@ -133,42 +148,46 @@ export default function AppSectionSearch({
           ref={rootRef}
           className="search-field relative flex items-center bg-editor-panel border border-black/10 rounded-lg px-2 py-1"
         >
-          {/* Type selector */}
-          <button
-            type="button"
-            className="prefix inline-flex items-center gap-1.5 h-7 px-2 border-none bg-transparent text-editor-text cursor-pointer rounded-md text-xs hover:bg-black/5"
-            aria-expanded={isDropdownOpen}
-            onClick={toggleDropdown}
-          >
-            <span className="prefix-label min-w-[32px]">{currentSearchTypeLabel}</span>
-            <span className="chevron text-[10px] leading-none text-editor-text-muted" aria-hidden="true">▾</span>
-          </button>
+          {/* Type selector (옵션 1개면 숨김) */}
+          {showTypeSelector && (
+            <>
+              <button
+                type="button"
+                className="prefix inline-flex items-center gap-1.5 h-7 px-2 border-none bg-transparent text-editor-text cursor-pointer rounded-md text-xs hover:bg-black/5"
+                aria-expanded={isDropdownOpen}
+                onClick={toggleDropdown}
+              >
+                <span className="prefix-label min-w-[32px]">{currentSearchTypeLabel}</span>
+                <span className="chevron text-[10px] leading-none text-editor-text-muted" aria-hidden="true">▾</span>
+              </button>
 
-          {/* Dropdown */}
-          {isDropdownOpen && (
-            <div className="dropdown absolute top-full left-0 mt-1.5 bg-editor-panel border border-black/10 rounded-lg shadow-lg z-20 min-w-[140px] py-1.5 px-1">
-              <ul className="list-none p-0 m-0">
-                {searchOptions.map(opt => (
-                  <li
-                    key={opt.value}
-                    className={cn(
-                      'dropdown-item py-2 px-2.5 rounded-md cursor-pointer text-sm text-editor-text',
-                      'hover:bg-black/5',
-                      opt.value === localType && 'bg-black/[0.06] font-semibold'
-                    )}
-                    role="option"
-                    aria-selected={opt.value === localType}
-                    onClick={() => selectType(opt.value)}
-                  >
-                    {opt.label}
-                  </li>
-                ))}
-              </ul>
-            </div>
+              {/* Dropdown */}
+              {isDropdownOpen && (
+                <div className="dropdown absolute top-full left-0 mt-1.5 bg-editor-panel border border-black/10 rounded-lg shadow-lg z-20 min-w-[140px] py-1.5 px-1">
+                  <ul className="list-none p-0 m-0">
+                    {searchOptions.map(opt => (
+                      <li
+                        key={opt.value}
+                        className={cn(
+                          'dropdown-item py-2 px-2.5 rounded-md cursor-pointer text-sm text-editor-text',
+                          'hover:bg-black/5',
+                          opt.value === localType && 'bg-black/[0.06] font-semibold'
+                        )}
+                        role="option"
+                        aria-selected={opt.value === localType}
+                        onClick={() => selectType(opt.value)}
+                      >
+                        {opt.label}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Divider */}
+              <div className="divider w-px h-[18px] bg-black/10 mx-2" />
+            </>
           )}
-
-          {/* Divider */}
-          <div className="divider w-px h-[18px] bg-black/10 mx-2" />
 
           {/* Input */}
           <input

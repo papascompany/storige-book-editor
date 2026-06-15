@@ -1,13 +1,14 @@
-import { useCallback, useState, useEffect } from 'react'
+import { useCallback, useState } from 'react'
 import { Upload as UploadSimple } from 'lucide-react'
 import { useAppStore } from '@/stores/useAppStore'
 import { useImageStore } from '@/stores/useImageStore'
-import { useEditorStore } from '@/stores/useEditorStore'
 import { useIsCustomer } from '@/stores/useAuthStore'
 import { useEditorContents } from '@/hooks/useEditorContents'
+import { useLibraryPanel } from '@/hooks/useLibraryPanel'
 import { Button } from '@/components/ui/button'
 import AppSection from '@/components/AppSection'
 import AppSectionSearch from '@/components/AppSectionSearch'
+import LibraryTagChips from '@/components/LibraryTagChips'
 import { ImageProcessingPlugin, SelectionType } from '@storige/canvas-core'
 import { contentsApi } from '@/api'
 import type { EditorContent } from '@/generated/graphql'
@@ -20,68 +21,25 @@ export default function AppFrame() {
   const setContentsBrowser = useAppStore((state) => state.setContentsBrowser)
 
   const upload = useImageStore((state) => state.upload)
-  // 템플릿셋별 에셋 큐레이션(2026-06-09): 현재 세션의 templateSetId 를 콘텐츠 조회에 전달.
-  const templateSetId = useEditorStore((state) => state.templateSetId)
   const isCustomer = useIsCustomer()
 
   const { setupFrameContent } = useEditorContents()
 
   const [isLoading, setIsLoading] = useState(false)
-  const [searchType, setSearchType] = useState('name')
-  const [searchKeyword, setSearchKeyword] = useState('')
-  const [debouncedKeyword, setDebouncedKeyword] = useState('')
 
-  // Contents state
-  const [contents, setContents] = useState<EditorContent[]>([])
-  const [loadingContents, setLoadingContents] = useState(false)
-
-  // Debounce search keyword
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedKeyword(searchKeyword)
-    }, 300)
-    return () => clearTimeout(timer)
-  }, [searchKeyword])
-
-  // Fetch frames using REST API
-  useEffect(() => {
-    if (!isCustomer) return
-
-    const fetchFrames = async () => {
-      setLoadingContents(true)
-      try {
-        const keyword = debouncedKeyword.trim()
-        const baseParams = {
-          pageSize: 20,
-          search: keyword.length >= 2 ? keyword : undefined,
-        }
-        let result = await contentsApi.getFrames({
-          ...baseParams,
-          templateSetId: templateSetId ?? undefined,
-        })
-
-        // P1 빈화면 방지: 템플릿셋 큐레이션 결과가 0건이면 전역 프레임으로 한 번 더 폴백.
-        const isEmpty = !result.success || !result.data || result.data.items.length === 0
-        if (isEmpty && templateSetId) {
-          result = await contentsApi.getFrames(baseParams)
-        }
-
-        if (result.success && result.data) {
-
-          setContents(result.data.items as any[])
-        } else {
-          setContents([])
-        }
-      } catch (error) {
-        console.error('프레임 콘텐츠 로드 오류:', error)
-        setContents([])
-      } finally {
-        setLoadingContents(false)
-      }
-    }
-
-    fetchFrames()
-  }, [isCustomer, debouncedKeyword, templateSetId])
+  // 추천 콘텐츠 데이터 파이프라인 공통화 (P3-b) — 프레임은 tags 컬럼 보유로 태그칩 지원.
+  const {
+    contents,
+    loadingContents,
+    availableTags,
+    selectedTag,
+    setSelectedTag,
+    searchType,
+    searchKeyword,
+    handleSearch,
+    handleClearSearch,
+    hasActiveFilter,
+  } = useLibraryPanel({ fetcher: contentsApi.getFrames })
 
   // UploadSimple handler
   const handleUpload = useCallback(async () => {
@@ -110,18 +68,6 @@ export default function AppFrame() {
     setContentsBrowser('frame')
   }, [setContentsBrowser])
 
-  // Search handlers
-  const handleSearch = useCallback(({ type, keyword }: { type: string; keyword: string }) => {
-    setSearchType(type)
-    setSearchKeyword(keyword)
-    // GraphQL will automatically refetch when filter changes via useMemo
-  }, [])
-
-  const handleClearSearch = useCallback(() => {
-    setSearchType('name')
-    setSearchKeyword('')
-  }, [])
-
   return (
     <div className="w-full h-full flex flex-col">
       <div className="px-4 pt-4 pb-3">
@@ -148,19 +94,27 @@ export default function AppFrame() {
                 isSearching={loadingContents}
                 onSearch={handleSearch}
                 onClear={handleClearSearch}
+                searchOptions={[{ label: '이름', value: 'name' }]}
               />
             }
           >
+            {/* Category tag tabs (프레임 tags 컬럼 지원) */}
+            <LibraryTagChips
+              tags={availableTags}
+              selectedTag={selectedTag}
+              onSelect={setSelectedTag}
+            />
+
             {loadingContents ? (
               <div className="flex justify-center items-center min-h-[200px]">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-editor-accent" />
               </div>
             ) : contents.length === 0 ? (
-              <div className="px-4 py-8 text-center text-editor-text-muted text-xs">
-                {searchKeyword ? '검색 결과가 없습니다.' : '추천 콘텐츠가 없습니다.'}
+              <div className="py-8 text-center text-editor-text-muted text-xs">
+                {hasActiveFilter ? '검색 결과가 없습니다.' : '추천 콘텐츠가 없습니다.'}
               </div>
             ) : (
-              <div className="w-full grid grid-cols-2 gap-2 px-4">
+              <div className="w-full grid grid-cols-2 gap-2">
                 {contents.map((content, index) => {
                   const imageUrl = resolveAssetUrl(
                     (content as any).imageUrl || content?.image?.image?.url
