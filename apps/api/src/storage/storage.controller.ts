@@ -209,6 +209,29 @@ export class StorageController {
     return new StreamableFile(file);
   }
 
+  // 중첩(3-seg) 경로 파일 서빙 — 예: /storage/library/clipart/check.svg
+  //
+  // 배경: 운영 nginx 는 /storage/* 를 정적 직접 서빙(임의 depth)하지만, 편집기는
+  // resolveAssetUrl 이 API_BASE(…/api)를 prefix 해 `/api/storage/library/clipart/x.svg`
+  // 로 요청한다. 기존 `:category/:filename`(2-seg)·`files/:category/:filename` 로는
+  // library/<subdir>/<file> 같은 3-seg 가 매칭되지 않아 404 → 라이브러리 에셋(클립아트/
+  // 배경/도형/프레임 = library/clipart·bg·shape·frame) 썸네일·캔버스 로드가 전부 깨졌다.
+  // getFile 로 위임(getFilePathFromUrl 가 storage 루트 격리·path traversal 방어 수행).
+  // files/:category/:filename 보다 뒤에 선언 — 리터럴 files 라우트가 우선 매칭되도록.
+  @Get(':category/:subdir/:filename')
+  @Public()
+  @ApiOperation({ summary: 'Get a nested file (e.g., library/clipart/x.svg)' })
+  @ApiResponse({ status: 200, description: 'File retrieved successfully' })
+  @ApiResponse({ status: 404, description: 'File not found' })
+  async getFileNested(
+    @Param('category') category: string,
+    @Param('subdir') subdir: string,
+    @Param('filename') filename: string,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<StreamableFile> {
+    return this.getFile(`${category}/${subdir}`, filename, res);
+  }
+
   @Delete('files')
   @UseGuards(RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.MANAGER)
