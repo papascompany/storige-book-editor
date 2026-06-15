@@ -1,6 +1,21 @@
 # Storige Deployment Guide
 
 > 🔄 **갱신**: 2026-05-04 — Node 22 LTS 마이그레이션, Grafana + Prometheus, Loki + Promtail 모니터링 스택 반영
+>
+> 🔄 **갱신**: 2026-06-15 — 저장계층 R2 추상화 + 보존정책(admin 관리형). **신규 DB 마이그레이션 2건**(아래 "스키마 마이그레이션") + R2 활성화 절차는 [`STORAGE_R2_RUNBOOK.md`](./STORAGE_R2_RUNBOOK.md) 참조.
+
+> ### ⚠️ 스키마 마이그레이션 (synchronize=false → 수동, API 재배포 **전** 실행)
+> 프로덕션은 TypeORM `synchronize=false` 이므로 엔티티 변경 시 `apps/api/migrations/*.sql` 을 수동 실행 후 API 재배포한다(순서 중요 — 신규 코드가 컬럼/테이블 존재를 전제).
+> ```bash
+> ssh deploy@<host> && source ~/storige/.env
+> # 미적용 마이그레이션을 날짜순으로 실행 (예: 2026-06-13·06-15 저장계층/보존정책)
+> docker exec -i storige-mariadb mariadb -ustorige -p"$DATABASE_PASSWORD" storige \
+>   < ~/storige/apps/api/migrations/20260613_add_files_storage_backend.sql
+> docker exec -i storige-mariadb mariadb -ustorige -p"$DATABASE_PASSWORD" storige \
+>   < ~/storige/apps/api/migrations/20260615_add_storage_settings_and_site_retention.sql
+> # 그 후 API 재배포 + nginx 재시작
+> docker compose up -d --build api && docker compose restart nginx
+> ```
 
 ## 📋 목차
 
@@ -268,6 +283,11 @@ JWT_EXPIRES_IN=7d
 # Storage
 STORAGE_PATH=/app/storage
 STORAGE_MAX_FILE_SIZE=52428800
+
+# 저장계층 백엔드 (2026-06-15). 기본 local. R2 사용 시 admin [저장소 설정] 권장(DB>env 우선).
+#   STORAGE_DRIVER=s3
+#   S3_ENDPOINT=https://<acct>.r2.cloudflarestorage.com  S3_REGION=auto  S3_BUCKET=storige-files
+#   S3_ACCESS_KEY_ID=...  S3_SECRET_ACCESS_KEY=...  S3_FORCE_PATH_STYLE=true
 ```
 
 ### Worker Service
