@@ -24,7 +24,7 @@ import {
   UploadOutlined,
   EditOutlined,
 } from '@ant-design/icons';
-import { LibraryClipart } from '@storige/types';
+import { LibraryClipart, LibraryCategory } from '@storige/types';
 import { libraryApi } from '../../api/library';
 import { resolveStorageUrl } from '../../lib/axios';
 
@@ -57,6 +57,13 @@ export const ClipartList = () => {
     queryFn: () => libraryApi.getCliparts(selectedCategory),
   });
 
+  // Fetch library categories (type='clipart') for the FK Select.
+  // categoryId 가 큐레이션 정본 — 자유텍스트 category 는 하위호환용 보조 필드로만 유지.
+  const { data: libraryCategories } = useQuery({
+    queryKey: ['library-categories', 'clipart'],
+    queryFn: () => libraryApi.getCategories('clipart'),
+  });
+
   // Update mutation
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: Partial<LibraryClipart> }) =>
@@ -87,17 +94,18 @@ export const ClipartList = () => {
 
   // Upload mutation
   const uploadMutation = useMutation({
-    mutationFn: async (data: { name: string; category?: string; tags?: string; file: File }) => {
+    mutationFn: async (data: { name: string; category?: string; categoryId?: string; tags?: string; file: File }) => {
       // 1. 파일 업로드
       const uploadResult = await libraryApi.uploadFile(data.file);
 
       // 2. 태그 파싱
       const tags = data.tags ? data.tags.split(',').map((t: string) => t.trim()) : [];
 
-      // 3. 클립아트 정보 저장
+      // 3. 클립아트 정보 저장 (categoryId = 큐레이션 FK 정본, category = 하위호환 자유텍스트)
       const clipart = await libraryApi.createClipart({
         name: data.name,
         category: data.category || undefined,
+        categoryId: data.categoryId || undefined,
         fileUrl: uploadResult.url,
         thumbnailUrl: uploadResult.url,
         tags,
@@ -132,6 +140,7 @@ export const ClipartList = () => {
     editForm.setFieldsValue({
       name: clipart.name,
       category: clipart.category || '',
+      categoryId: clipart.categoryId || undefined,
       tags: clipart.tags?.join(', ') || '',
       isActive: clipart.isActive ?? true,
     });
@@ -143,7 +152,7 @@ export const ClipartList = () => {
     const tags = values.tags ? values.tags.split(',').map((t: string) => t.trim()).filter(Boolean) : [];
     updateMutation.mutate({
       id: editingClipart.id,
-      data: { name: values.name, category: values.category || undefined, tags, isActive: values.isActive },
+      data: { name: values.name, category: values.category || undefined, categoryId: values.categoryId || undefined, tags, isActive: values.isActive },
     });
   };
 
@@ -162,6 +171,7 @@ export const ClipartList = () => {
     uploadMutation.mutate({
       name: values.name,
       category: values.category,
+      categoryId: values.categoryId,
       tags: values.tags,
       file,
     });
@@ -195,9 +205,11 @@ export const ClipartList = () => {
     },
     {
       title: '카테고리',
-      dataIndex: 'category',
       key: 'category',
-      render: (category: string | null) => category || '-',
+      render: (_, record) => {
+        const fkName = libraryCategories?.find((c: LibraryCategory) => c.id === record.categoryId)?.name;
+        return fkName || record.category || '-';
+      },
     },
     {
       title: '태그',
@@ -300,7 +312,15 @@ export const ClipartList = () => {
             <Input placeholder="예: 하트 아이콘" />
           </Form.Item>
 
-          <Form.Item name="category" label="카테고리">
+          <Form.Item name="categoryId" label="카테고리" extra="큐레이션 분류용 (정본)">
+            <Select
+              placeholder="카테고리 선택"
+              allowClear
+              options={libraryCategories?.map((c: LibraryCategory) => ({ label: c.name, value: c.id }))}
+            />
+          </Form.Item>
+
+          <Form.Item name="category" label="카테고리(텍스트)" extra="레거시 자유 분류 — 선택 입력">
             <Input placeholder="예: 아이콘" />
           </Form.Item>
 
@@ -343,7 +363,14 @@ export const ClipartList = () => {
           <Form.Item name="name" label="클립아트 이름" rules={[{ required: true, message: '이름을 입력해주세요' }]}>
             <Input />
           </Form.Item>
-          <Form.Item name="category" label="카테고리">
+          <Form.Item name="categoryId" label="카테고리" extra="큐레이션 분류용 (정본)">
+            <Select
+              placeholder="카테고리 선택"
+              allowClear
+              options={libraryCategories?.map((c: LibraryCategory) => ({ label: c.name, value: c.id }))}
+            />
+          </Form.Item>
+          <Form.Item name="category" label="카테고리(텍스트)" extra="레거시 자유 분류 — 선택 입력">
             <Input placeholder="예: 아이콘" />
           </Form.Item>
           <Form.Item name="tags" label="태그" extra="쉼표로 구분">

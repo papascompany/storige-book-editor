@@ -23,7 +23,7 @@ import {
   UploadOutlined,
   EditOutlined,
 } from '@ant-design/icons';
-import { LibraryBackground } from '@storige/types';
+import { LibraryBackground, LibraryCategory } from '@storige/types';
 import { libraryApi } from '../../api/library';
 import { resolveStorageUrl } from '../../lib/axios';
 
@@ -56,6 +56,13 @@ export const BackgroundList = () => {
     queryFn: () => libraryApi.getBackgrounds(selectedCategory),
   });
 
+  // Fetch library categories (type='background') for the FK Select.
+  // categoryId 가 큐레이션 정본 — 자유텍스트 category 는 하위호환용 보조 필드로만 유지.
+  const { data: libraryCategories } = useQuery({
+    queryKey: ['library-categories', 'background'],
+    queryFn: () => libraryApi.getCategories('background'),
+  });
+
   // Update mutation
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: Partial<LibraryBackground> }) =>
@@ -86,14 +93,15 @@ export const BackgroundList = () => {
 
   // Upload mutation
   const uploadMutation = useMutation({
-    mutationFn: async (data: { name: string; category?: string; file: File }) => {
+    mutationFn: async (data: { name: string; category?: string; categoryId?: string; file: File }) => {
       // 1. 파일 업로드
       const uploadResult = await libraryApi.uploadFile(data.file);
 
-      // 2. 배경 정보 저장
+      // 2. 배경 정보 저장 (categoryId = 큐레이션 FK 정본, category = 하위호환 자유텍스트)
       const background = await libraryApi.createBackground({
         name: data.name,
         category: data.category || undefined,
+        categoryId: data.categoryId || undefined,
         fileUrl: uploadResult.url,
         thumbnailUrl: uploadResult.url, // 썸네일도 동일한 URL 사용
         isActive: true,
@@ -124,13 +132,13 @@ export const BackgroundList = () => {
 
   const handleOpenEditModal = (bg: LibraryBackground) => {
     setEditingBackground(bg);
-    editForm.setFieldsValue({ name: bg.name, category: bg.category || '', isActive: bg.isActive ?? true });
+    editForm.setFieldsValue({ name: bg.name, category: bg.category || '', categoryId: bg.categoryId || undefined, isActive: bg.isActive ?? true });
     setIsEditModalOpen(true);
   };
 
   const handleEditSubmit = (values: any) => {
     if (!editingBackground) return;
-    updateMutation.mutate({ id: editingBackground.id, data: { name: values.name, category: values.category || undefined, isActive: values.isActive } });
+    updateMutation.mutate({ id: editingBackground.id, data: { name: values.name, category: values.category || undefined, categoryId: values.categoryId || undefined, isActive: values.isActive } });
   };
 
   const handleSubmit = async (values: any) => {
@@ -148,6 +156,7 @@ export const BackgroundList = () => {
     uploadMutation.mutate({
       name: values.name,
       category: values.category,
+      categoryId: values.categoryId,
       file,
     });
   };
@@ -180,9 +189,11 @@ export const BackgroundList = () => {
     },
     {
       title: '카테고리',
-      dataIndex: 'category',
       key: 'category',
-      render: (category: string | null) => category || '-',
+      render: (_, record) => {
+        const fkName = libraryCategories?.find((c: LibraryCategory) => c.id === record.categoryId)?.name;
+        return fkName || record.category || '-';
+      },
     },
     {
       title: '생성일',
@@ -273,7 +284,15 @@ export const BackgroundList = () => {
             <Input placeholder="예: 파스텔 배경" />
           </Form.Item>
 
-          <Form.Item name="category" label="카테고리">
+          <Form.Item name="categoryId" label="카테고리" extra="큐레이션 분류용 (정본)">
+            <Select
+              placeholder="카테고리 선택"
+              allowClear
+              options={libraryCategories?.map((c: LibraryCategory) => ({ label: c.name, value: c.id }))}
+            />
+          </Form.Item>
+
+          <Form.Item name="category" label="카테고리(텍스트)" extra="레거시 자유 분류 — 선택 입력">
             <Input placeholder="예: 파스텔" />
           </Form.Item>
 
@@ -315,7 +334,14 @@ export const BackgroundList = () => {
           >
             <Input />
           </Form.Item>
-          <Form.Item name="category" label="카테고리">
+          <Form.Item name="categoryId" label="카테고리" extra="큐레이션 분류용 (정본)">
+            <Select
+              placeholder="카테고리 선택"
+              allowClear
+              options={libraryCategories?.map((c: LibraryCategory) => ({ label: c.name, value: c.id }))}
+            />
+          </Form.Item>
+          <Form.Item name="category" label="카테고리(텍스트)" extra="레거시 자유 분류 — 선택 입력">
             <Input placeholder="예: 파스텔" />
           </Form.Item>
           <Form.Item name="isActive" label="활성 상태" valuePropName="checked">
