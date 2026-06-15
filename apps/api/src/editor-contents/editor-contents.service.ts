@@ -83,32 +83,50 @@ export class EditorContentsService {
     const pageSize = query.pageSize || 20;
     const sortField = query.sortField || 'createdAt';
     const sortOrder = (query.sortOrder || 'desc').toUpperCase() as 'ASC' | 'DESC';
+    const orderCol = sortField === 'name' ? 'c.name' : 'c.created_at';
 
-    const qb = repo.createQueryBuilder('c');
-    qb.where('c.is_active = :isActive', { isActive: query.isActive ?? true });
-    if (query.search) {
-      qb.andWhere('c.name LIKE :search', { search: `%${query.search}%` });
-    }
-    if (query.tags && query.tags.length > 0) {
-      query.tags.forEach((tag, i) => {
-        qb.andWhere(`JSON_CONTAINS(c.tags, :tag${i})`, { [`tag${i}`]: JSON.stringify(tag) });
-      });
-    }
+    // 검색/태그/활성 등 큐레이션과 무관한 기본 술어를 매번 동일하게 적용하는 빌더 팩토리.
+    // (전역 폴백 재조회 시 동일한 base 조건을 재현하기 위해 분리)
+    const buildBaseQuery = () => {
+      const qb = repo.createQueryBuilder('c');
+      qb.where('c.is_active = :isActive', { isActive: query.isActive ?? true });
+      if (query.search) {
+        qb.andWhere('c.name LIKE :search', { search: `%${query.search}%` });
+      }
+      if (query.tags && query.tags.length > 0) {
+        query.tags.forEach((tag, i) => {
+          qb.andWhere(`JSON_CONTAINS(c.tags, :tag${i})`, { [`tag${i}`]: JSON.stringify(tag) });
+        });
+      }
+      qb.orderBy(orderCol, sortOrder).skip((page - 1) * pageSize).take(pageSize);
+      return qb;
+    };
 
     // 템플릿셋별 에셋 큐레이션(2026-06-09): templateSetId 지정 시 연결된 카테고리로 좁힌다.
     //  - 연결 0개(전역) → curatedIds=null → 필터 미적용(전체 노출, 기존 동작 유지).
     //  - 연결 1개 이상 → category_id 가 연결 목록에 포함된 에셋만.
     //    (library_* 테이블은 종류별로 1:1이므로 category_id IN (...) 가 곧 종류별 스코프가 된다)
+    let curatedIds: string[] | null = null;
     if (query.templateSetId) {
-      const curatedIds = await this.getCuratedCategoryIds(query.templateSetId);
-      if (curatedIds !== null) {
-        qb.andWhere('c.category_id IN (:...curatedIds)', { curatedIds });
-      }
+      curatedIds = await this.getCuratedCategoryIds(query.templateSetId);
     }
-    const orderCol = sortField === 'name' ? 'c.name' : 'c.created_at';
-    qb.orderBy(orderCol, sortOrder).skip((page - 1) * pageSize).take(pageSize);
 
-    const [rows, total] = await qb.getManyAndCount();
+    const scoped = buildBaseQuery();
+    if (curatedIds !== null && curatedIds.length > 0) {
+      scoped.andWhere('c.category_id IN (:...curatedIds)', { curatedIds });
+    }
+    let [rows, total] = await scoped.getManyAndCount();
+
+    // 빈 화면 방지 폴백(P1, 2026-06-15): 큐레이션 연결은 존재하지만(curatedIds!==null)
+    // 그 카테고리들에 활성 에셋이 0건이면 패널이 완전히 비어버린다 — 사용자에게는
+    // "에셋이 아예 없다"로 보여 신뢰를 떨어뜨림. 이 경우 카테고리 필터를 제거하고
+    // 전역(검색/태그 등 다른 조건은 보존)으로 1회 재조회한다. 정렬/페이지네이션 규약 보존.
+    // (curatedIds===null=전역, curatedIds.length===0=빈 연결 배열도 전역과 동일 — 이미 스코프 미적용)
+    if (total === 0 && curatedIds !== null && curatedIds.length > 0) {
+      const fallback = buildBaseQuery();
+      [rows, total] = await fallback.getManyAndCount();
+    }
+
     return { items: rows.map((r) => this.mapLibraryRow(r, type)), total, page, pageSize };
   }
 
