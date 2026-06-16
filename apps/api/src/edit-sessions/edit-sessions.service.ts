@@ -29,6 +29,11 @@ import { WorkerJobsService } from '../worker-jobs/worker-jobs.service';
 import { CreateValidationJobDto } from '../worker-jobs/dto/worker-job.dto';
 import { WorkerJobStatus, type SpreadValidationResult, validateSpreadAgainstAuthority } from '@storige/types';
 import { TemplateSetsService } from '../templates/template-sets.service';
+import {
+  computeReaderSpreadLayout,
+  type SpreadStartSide,
+} from '../worker-jobs/imposition.util';
+import { ImpositionPreviewResponseDto } from './dto/imposition-preview.dto';
 
 @Injectable()
 export class EditSessionsService {
@@ -245,6 +250,63 @@ export class EditSessionsService {
     }
 
     return session;
+  }
+
+  /**
+   * 고객 첨부 내지 PDF "리더 스프레드" 임포지션 미리보기 (2026-06-16).
+   *
+   * 외부(bookmoa-mobile 등)가 "이 PDF가 책으로 묶이면 펼침면이 이렇게 보입니다"를
+   * 그리기 위한 표시용 데이터를 조회한다. 부수효과 없음 — 재렌더/잡 생성 금지.
+   *
+   * 동작:
+   *  - 세션의 metadata.contentPdfGuide 가 있으면 그 pageImageUrls/resolution 을
+   *    그대로 재사용한다(워커 RENDER_PAGES 산출 캐시). 없으면 ready:false +
+   *    reason 으로 "썸네일 미생성" 을 알린다(재렌더 트리거하지 않음).
+   *  - totalPages = contentPdfGuide.pageImageUrls.length ?? metadata.pages ?? 0.
+   *    (썸네일이 없어도 metadata.pages 로 페이지 수를 알면 layout 은 채운다)
+   *  - bindingType = bindingOverride ?? metadata.binding ?? 'perfect'.
+   *  - layout 은 imposition.util 순수 함수(computeReaderSpreadLayout)가 계산.
+   *
+   * ⚠️ 권한/소유 검증은 호출하는 컨트롤러(외부 ApiKeyGuard 또는 소유자/staff)가 담당.
+   *   본 메서드는 순수 조회 + 조립만 한다.
+   */
+  async getImpositionPreview(
+    id: string,
+    startSide: SpreadStartSide,
+    bindingOverride?: string,
+  ): Promise<ImpositionPreviewResponseDto> {
+    const session = await this.findById(id);
+    const metadata = (session.metadata ?? {}) as Record<string, any>;
+    const guide = metadata.contentPdfGuide as
+      | { pageImageUrls?: string[]; resolution?: number }
+      | undefined;
+
+    const pageImageUrls = Array.isArray(guide?.pageImageUrls)
+      ? guide!.pageImageUrls
+      : [];
+    const ready = pageImageUrls.length > 0;
+    const resolution = ready ? guide?.resolution ?? null : null;
+
+    // 페이지 수: 썸네일이 있으면 썸네일 수, 없으면 metadata.pages, 그것도 없으면 0.
+    const totalPages = ready
+      ? pageImageUrls.length
+      : typeof metadata.pages === 'number'
+        ? metadata.pages
+        : 0;
+
+    // 제본: override > metadata.binding > 'perfect'(검증잡 기본과 동일)
+    const bindingType = bindingOverride ?? metadata.binding ?? 'perfect';
+
+    const layout = computeReaderSpreadLayout(totalPages, startSide, bindingType);
+
+    return {
+      ready,
+      pageImageUrls,
+      resolution,
+      layout,
+      bindingType,
+      ...(ready ? {} : { reason: '썸네일 미생성: 업로드/렌더 대기' }),
+    };
   }
 
   /**

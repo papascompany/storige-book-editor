@@ -32,10 +32,12 @@ import {
 import {
   ExternalSessionListResponseDto,
 } from './dto/external-session-response.dto';
+import { ImpositionPreviewResponseDto } from './dto/imposition-preview.dto';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Public } from '../auth/decorators/public.decorator';
 import { ApiKeyGuard } from '../auth/guards/api-key.guard';
 import { PayloadTooLargeResponseDto } from '../common/dto/error-response.dto';
+import { SpreadStartSide } from '../worker-jobs/imposition.util';
 
 @ApiTags('Edit Sessions')
 @ApiBearerAuth()
@@ -325,6 +327,69 @@ export class EditSessionsController {
 
     const data = await this.editSessionsService.findByOrderExternal(parsed);
     return { success: true, data };
+  }
+
+  /**
+   * 고객 첨부 내지 PDF "리더 스프레드" 임포지션 미리보기 — 외부 API Key 인증 (2026-06-16).
+   *
+   * bookmoa-mobile 등 외부 호출자가 "이 내지 PDF가 책으로 묶이면 펼침면이
+   * 이렇게 보입니다"를 그리기 위한 표시용 데이터를 조회한다.
+   *
+   * ⚠️ 부수효과 없는 순수 조회 — 재렌더/잡 생성 안 함(GET).
+   *   썸네일(metadata.contentPdfGuide)이 있으면 그 URL/해상도를 재사용하고,
+   *   없으면 ready:false + reason 으로 알린다(layout 은 페이지 수만 알면 채움).
+   *
+   * 인증: X-API-Key 헤더(GET /edit-sessions/external 과 동일한 ApiKeyGuard).
+   * 라우트 순서: 반드시 @Get(':id') 보다 먼저 선언(NestJS 파라미터 세그먼트 매칭 안전).
+   */
+  @Get(':id/imposition-preview')
+  @Public()
+  @UseGuards(ApiKeyGuard)
+  @ApiSecurity('api-key')
+  @ApiOperation({
+    summary: '내지 PDF 리더 스프레드 임포지션 미리보기 (외부 API Key 인증)',
+    description: `세션 ID로 고객 첨부 내지 PDF의 "리더 스프레드"(완성본 펼침면) 레이아웃을 조회합니다.
+
+**인증**: X-API-Key 헤더 필수
+
+**동작**:
+- metadata.contentPdfGuide 가 있으면 pageImageUrls/resolution 재사용(재렌더 안 함, ready:true)
+- 없으면 ready:false + reason('썸네일 미생성: 업로드/렌더 대기'), pageImageUrls:[] / resolution:null
+- layout 은 totalPages(썸네일 수 ?? metadata.pages ?? 0)만 알면 항상 채움
+
+⚠️ 리더 스프레드(읽는 순서 펼침면) 계산이며 인쇄 면付(printer-spread)이 아닙니다.`,
+  })
+  @ApiQuery({
+    name: 'startSide',
+    required: false,
+    enum: ['left', 'right'],
+    description: "펼침 시작 면 ('right'=우수 기본, 'left'=좌수)",
+  })
+  @ApiQuery({
+    name: 'binding',
+    required: false,
+    description: "제본 방식 override (예: 'saddle', 'perfect'). 미지정 시 세션 metadata.binding",
+  })
+  @ApiResponse({
+    status: 200,
+    description: '임포지션 미리보기',
+    type: ImpositionPreviewResponseDto,
+  })
+  @ApiResponse({ status: 401, description: 'API Key 누락 또는 유효하지 않음' })
+  @ApiResponse({ status: 404, description: '세션을 찾을 수 없음' })
+  async getImpositionPreviewExternal(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('startSide') startSide?: string,
+    @Query('binding') binding?: string,
+  ): Promise<ImpositionPreviewResponseDto> {
+    // startSide 정규화 — 'left' 만 좌수, 그 외(미지정/오타 포함)는 기본 우수('right')
+    const normalizedStartSide: SpreadStartSide =
+      startSide === 'left' ? 'left' : 'right';
+    return this.editSessionsService.getImpositionPreview(
+      id,
+      normalizedStartSide,
+      binding || undefined,
+    );
   }
 
   /**
