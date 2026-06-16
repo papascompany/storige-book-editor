@@ -1803,6 +1803,93 @@ class ServicePlugin extends PluginBase {
   }
 
   /**
+   * Phase 2 — PNG 액자형 사진틀의 fillImage 를 창 모양으로 평탄화(raster)하여 in-place 치환.
+   *
+   * inverted/absolutePositioned image clipPath 는 fabric toSVG 에서 누락되어(svg2pdf 가 image
+   * clipPath 미지원) PDF 에서 사진이 사라진다. fabric 의 raster 렌더는 image clipPath 를 정상
+   * 처리하므로, 사진(clip 포함)을 임시 캔버스에 그려 "창 모양으로 마스킹된 PNG" 를 구운 뒤
+   * clipPath 없는 단일 이미지로 fore 를 in-place 교체한다. 좌표/스케일은 마스크 창(=프레임 클론,
+   * absolutePositioned)의 캔버스 절대 bounding box 에 맞춰 평탄화 전과 동일 위치/크기로 렌더되게 한다.
+   *
+   * 프레임 테두리(PNG 액자)는 별도 객체라 그대로 렌더된다. 평탄화 사진은 창 밖이 투명,
+   * 프레임은 창 안이 투명 → 서로 상보적이라 z-order 무관하게 합성이 동일하다. in-place 변경은
+   * _createMultiPagePDF 의 originalState(저장 전 toJSON, 평탄화 이전) 복원으로 가역.
+   */
+  private async _flattenFramedImage(fore: fabric.Object): Promise<void> {
+    const clip = fore.clipPath as fabric.Object | undefined
+    if (!clip) return
+    // 마스크 창의 캔버스 절대좌표 bounding box (absolute=true, calculate=true)
+    const bounds = clip.getBoundingRect(true, true)
+    if (!bounds || !bounds.width || !bounds.height) return
+
+    // 인쇄 등급 해상도: 창 크기 대비 최대 4x 슈퍼샘플, 단 한 변이 PRINT_MAX_IMAGE_DIMENSION 이하.
+    const maxDim = ServicePlugin.PRINT_MAX_IMAGE_DIMENSION
+    const longest = Math.max(bounds.width, bounds.height)
+    const mult = Math.max(1, Math.min(4, maxDim / longest))
+    const outW = Math.max(1, Math.round(bounds.width * mult))
+    const outH = Math.max(1, Math.round(bounds.height * mult))
+
+    // 1) 사진(clip 포함) 복제 → 임시 StaticCanvas 에 창 영역만 렌더 → PNG dataURL
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      try {
+        fore.clone((cloned: fabric.Object) => {
+          try {
+            const tmpEl = document.createElement('canvas')
+            const tmp = new fabric.StaticCanvas(tmpEl, {
+              width: outW,
+              height: outH,
+              backgroundColor: 'transparent',
+              enableRetinaScaling: false,
+            } as any)
+            // 월드좌표 → 임시캔버스 픽셀 매핑 (창 bbox 좌상단을 원점으로). absolutePositioned
+            // clipPath 도 이 vpt 로 함께 매핑되어 원본과 동일한 마스킹이 렌더된다.
+            tmp.setViewportTransform([mult, 0, 0, mult, -bounds.left * mult, -bounds.top * mult])
+            tmp.add(cloned)
+            tmp.renderAll()
+            const url = tmp.toDataURL({ format: 'png' })
+            tmp.dispose()
+            resolve(url)
+          } catch (e) {
+            reject(e)
+          }
+        })
+      } catch (e) {
+        reject(e)
+      }
+    })
+
+    // 2) 평탄화 PNG 를 fore 에 in-place 적용 (clipPath 제거, 창 bbox 위치/크기로 재설정)
+    await new Promise<void>((resolve, reject) => {
+      fabric.Image.fromURL(
+        dataUrl,
+        (img: fabric.Image) => {
+          try {
+            const el = img.getElement()
+            ;(fore as any).clipPath = undefined
+            ;(fore as unknown as fabric.Image).setElement(el as any)
+            fore.set({
+              left: bounds.left,
+              top: bounds.top,
+              originX: 'left',
+              originY: 'top',
+              scaleX: 1 / mult,
+              scaleY: 1 / mult,
+              angle: 0,
+              flipX: false,
+              flipY: false,
+            } as any)
+            fore.setCoords()
+            resolve()
+          } catch (e) {
+            reject(e)
+          }
+        },
+        { crossOrigin: 'anonymous' } as any
+      )
+    })
+  }
+
+  /**
    * SVG 저장을 위해 객체 준비
    * - 각 오버레이에 대한 마스크 객체 생성 및 추가
    * @returns 추가된 마스크 객체 배열
@@ -1901,6 +1988,28 @@ class ServicePlugin extends PluginBase {
           })
           .catch((e) => {
             console.error('SVG 텍스트 생성 오류:', e)
+            return { obj: null, originalIndex: index }
+          })
+
+        promises.push(promise)
+      }
+      // Phase 2 (2026-06-16): PNG 액자형 사진틀 평탄화.
+      // PNG 프레임에 채운 사진(fillImage)은 clipPath 가 inverted/absolutePositioned image 인데,
+      // fabric toSVG 는 image clipPath 를 표현하지 못해(빈 클립) PDF 에서 사진이 사라진다.
+      // fabric 의 raster 렌더는 image clipPath 를 정상 처리하므로, 임시 캔버스에 사진(clip 포함)을
+      // 렌더→창 모양으로 평탄화한 단일 PNG 로 in-place 치환(clipPath 제거)한다. 프레임 테두리는
+      // 별도 객체라 그대로 렌더된다. z-order 유지·originalState(저장 전 toJSON) 복원으로 가역.
+      // 범위 한정(extensionType==='fillImage' && clipPath.type==='image') + try-catch 로 타 출력 무영향.
+      else if (
+        (obj as any).extensionType === 'fillImage' &&
+        obj.clipPath &&
+        (obj.clipPath as any).type === 'image' &&
+        !obj.excludeFromExport
+      ) {
+        const promise = this._flattenFramedImage(obj)
+          .then(() => ({ obj: null, originalIndex: index })) // in-place 변경 — 새 객체 추가 없음
+          .catch((e) => {
+            console.error('PNG 액자 사진 평탄화 오류:', obj.id, e)
             return { obj: null, originalIndex: index }
           })
 
