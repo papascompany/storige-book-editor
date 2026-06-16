@@ -128,6 +128,7 @@
 | **CTX-MENU-1** | 모바일에선 long-press 컨텍스트 메뉴 없음 | `stopContextMenu: true` 디폴트 | floating action bar 별도 트랙 |
 | **PINCH-ZOOM-1** | 캔버스 자체 핀치 줌 미구현 | `touch:gesture` 미바인딩 | 별도 트랙 |
 | **DUAL-FINGER-PAN-1** | 두 손가락 패닝 미구현 | dragMode 만 있고 멀티터치 없음 | 별도 트랙 |
+| **PERM-1** (추후 개발 검토) | 객체별 편집권한(Part B, `movable` 플래그)의 **기본 정책**이 설계 정본의 'default locked'(관리자 배치 상태 전부 잠금) 대신 **'default permissive'**(undefined=허용, 관리자가 '위치 고정'으로 명시 잠금만 적용)로 구현됨 | 안전 우선 — 'default locked' 를 그대로 적용하면 `movable` 플래그가 없는 **기존 라이브 템플릿·주문 전체 객체가 일괄 동결**되는 회귀 발생. 그래서 1차는 admin opt-in(명시 잠금)으로 출하 | **default-locked 옵션을 per-template / per-site 플래그로 도입 검토**: 템플릿에서 배치된 객체만 기본 잠금하고 고객이 추가한 객체는 자유 편집 유지(템플릿 객체 vs 고객 객체 구분 마커 필요). 도입 전 기존 데이터 영향·마이그레이션 분석 선행. 정본 설계: `.cursor/plans/PHOTO_FRAME_UX_AND_OBJECT_LOCK_DESIGN_2026-06-16.md` §4(Part B)·§7 |
 
 ### 3-3. 의도된 trade-off
 
