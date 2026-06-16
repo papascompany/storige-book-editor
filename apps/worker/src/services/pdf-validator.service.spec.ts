@@ -324,11 +324,12 @@ describe('PdfValidatorService', () => {
     });
 
     // ============================================================
-    // WBS 2.1: 가로형 페이지 감지 테스트
+    // WBS 2.1 / R3: 페이지 방향 검증 테스트 (집계형 재구현)
+    // 종전 무차별 LANDSCAPE_PAGE per-page emit 은 제거 → 카테고리당 1건 집계.
     // ============================================================
-    describe('landscape page detection (WBS 2.1)', () => {
-      it('should detect landscape pages and add warning', async () => {
-        // 가로형 페이지: width > height (297 x 210)
+    describe('page orientation detection (WBS 2.1 / R3)', () => {
+      // 더 이상 페이지마다 LANDSCAPE_PAGE 를 뿜지 않는다(레거시 enum 만 유지).
+      it('should NOT emit per-page LANDSCAPE_PAGE warnings anymore (legacy removed)', async () => {
         const pdfDoc = await PDFDocument.create();
         pdfDoc.addPage([297 * 2.83465, 210 * 2.83465]); // Landscape A4
         const pdfBytes = await pdfDoc.save();
@@ -349,20 +350,143 @@ describe('PdfValidatorService', () => {
         const landscapeWarning = result.warnings.find(
           (w) => w.code === WarningCode.LANDSCAPE_PAGE,
         );
-        expect(landscapeWarning).toBeDefined();
-        expect(landscapeWarning?.details?.page).toBe(1);
+        expect(landscapeWarning).toBeUndefined();
       });
 
-      it('should not warn for portrait pages', async () => {
+      // 가로책(전 페이지 landscape, auto) → 단일 방향이므로 경고 0건 (오탐 해소)
+      it('should NOT warn for an all-landscape book under auto (no false positive)', async () => {
+        const pdfDoc = await PDFDocument.create();
+        for (let i = 0; i < 4; i++) {
+          pdfDoc.addPage([297 * 2.83465, 210 * 2.83465]); // all landscape
+        }
+        const pdfBytes = await pdfDoc.save();
+        mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
+
+        const options: ValidationOptions = {
+          fileType: 'content',
+          orderOptions: {
+            size: { width: 297, height: 210 },
+            pages: 4,
+            binding: 'perfect',
+            bleed: 0,
+            // expectedOrientation 미제공 = auto
+          },
+        };
+
+        const result = await service.validate('./landscape-book.pdf', options);
+
+        expect(
+          result.warnings.find((w) => w.code === WarningCode.MIXED_PAGE_ORIENTATION),
+        ).toBeUndefined();
+        expect(
+          result.warnings.find((w) => w.code === WarningCode.ORIENTATION_MISMATCH),
+        ).toBeUndefined();
+      });
+
+      // 단일 방향(전 페이지 portrait, auto) → 경고 0건
+      it('should NOT warn for an all-portrait book under auto', async () => {
         const pdfBytes = await createMockPdf(4, 210, 297);
         mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
 
         const result = await service.validate('./portrait.pdf', defaultOptions);
 
-        const landscapeWarning = result.warnings.find(
-          (w) => w.code === WarningCode.LANDSCAPE_PAGE,
+        expect(
+          result.warnings.find((w) => w.code === WarningCode.MIXED_PAGE_ORIENTATION),
+        ).toBeUndefined();
+        expect(
+          result.warnings.find((w) => w.code === WarningCode.LANDSCAPE_PAGE),
+        ).toBeUndefined();
+      });
+
+      // 혼재(세로 다수 + 가로 1, auto) → MIXED_PAGE_ORIENTATION 1건, 소수=가로 목록
+      it('should emit exactly one MIXED_PAGE_ORIENTATION when orientations are mixed (auto)', async () => {
+        const pdfDoc = await PDFDocument.create();
+        // 3 portrait + 1 landscape (landscape 가 4번째 페이지)
+        for (let i = 0; i < 3; i++) {
+          pdfDoc.addPage([210 * 2.83465, 297 * 2.83465]);
+        }
+        pdfDoc.addPage([297 * 2.83465, 210 * 2.83465]);
+        const pdfBytes = await pdfDoc.save();
+        mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
+
+        const options: ValidationOptions = {
+          fileType: 'content',
+          orderOptions: {
+            size: { width: 210, height: 297 },
+            pages: 4,
+            binding: 'perfect',
+            bleed: 0,
+          },
+        };
+
+        const result = await service.validate('./mixed-orient.pdf', options);
+
+        const mixed = result.warnings.filter(
+          (w) => w.code === WarningCode.MIXED_PAGE_ORIENTATION,
         );
-        expect(landscapeWarning).toBeUndefined();
+        expect(mixed).toHaveLength(1);
+        expect(mixed[0].details?.portraitCount).toBe(3);
+        expect(mixed[0].details?.landscapeCount).toBe(1);
+        expect(mixed[0].details?.minorityPages).toEqual([4]); // 소수=가로(p.4)
+        // 비차단 → 통과
+        expect(result.isValid).toBe(true);
+      });
+
+      // expectedOrientation='portrait' + 가로 페이지 존재 → ORIENTATION_MISMATCH 1건
+      // (4의 배수 페이지 + 정사이즈로 구성해 방향 경고만 단독 검증 = 비차단 통과 확인)
+      it('should emit one ORIENTATION_MISMATCH when expected portrait but landscape pages exist', async () => {
+        const pdfDoc = await PDFDocument.create();
+        pdfDoc.addPage([210 * 2.83465, 297 * 2.83465]); // portrait (p.1)
+        pdfDoc.addPage([210 * 2.83465, 297 * 2.83465]); // portrait (p.2)
+        pdfDoc.addPage([210 * 2.83465, 297 * 2.83465]); // portrait (p.3)
+        pdfDoc.addPage([297 * 2.83465, 210 * 2.83465]); // landscape (p.4)
+        const pdfBytes = await pdfDoc.save();
+        mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
+
+        const options: ValidationOptions = {
+          fileType: 'content',
+          orderOptions: {
+            size: { width: 210, height: 297 },
+            pages: 4,
+            binding: 'perfect',
+            bleed: 0,
+            expectedOrientation: 'portrait',
+          },
+        };
+
+        const result = await service.validate('./portrait-order.pdf', options);
+
+        const mismatch = result.warnings.filter(
+          (w) => w.code === WarningCode.ORIENTATION_MISMATCH,
+        );
+        expect(mismatch).toHaveLength(1);
+        expect(mismatch[0].details?.expected).toBe('portrait');
+        expect(mismatch[0].details?.mismatchPages).toEqual([4]);
+        // expected 명시 시에는 MIXED 경고를 내지 않는다
+        expect(
+          result.warnings.find((w) => w.code === WarningCode.MIXED_PAGE_ORIENTATION),
+        ).toBeUndefined();
+        expect(result.isValid).toBe(true);
+      });
+
+      // expectedOrientation='portrait' + 전부 세로 → 경고 0건
+      it('should NOT warn when all pages match expected portrait orientation', async () => {
+        const pdfBytes = await createMockPdf(4, 210, 297);
+        mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
+
+        const options: ValidationOptions = {
+          ...defaultOptions,
+          orderOptions: {
+            ...defaultOptions.orderOptions,
+            expectedOrientation: 'portrait',
+          },
+        };
+
+        const result = await service.validate('./portrait.pdf', options);
+
+        expect(
+          result.warnings.find((w) => w.code === WarningCode.ORIENTATION_MISMATCH),
+        ).toBeUndefined();
       });
     });
 
@@ -437,6 +561,88 @@ describe('PdfValidatorService', () => {
           (w) => w.code === WarningCode.CENTER_OBJECT_CHECK,
         );
         expect(centerWarning).toBeDefined();
+      });
+    });
+
+    // ============================================================
+    // R5: 짝수책 경고 (spring 홀수) 테스트
+    // ============================================================
+    describe('odd page count warning (R5)', () => {
+      // spring 제본 + 홀수 페이지 → ODD_PAGE_COUNT 경고 1건 (비차단)
+      it('should warn ODD_PAGE_COUNT for spring binding with odd pages', async () => {
+        const pdfBytes = await createMockPdf(5, 210, 297);
+        mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
+
+        const options: ValidationOptions = {
+          fileType: 'content',
+          orderOptions: {
+            size: { width: 210, height: 297 },
+            pages: 5,
+            binding: 'spring',
+            bleed: 0,
+          },
+        };
+
+        const result = await service.validate('./spring-odd.pdf', options);
+
+        const oddWarnings = result.warnings.filter(
+          (w) => w.code === WarningCode.ODD_PAGE_COUNT,
+        );
+        expect(oddWarnings).toHaveLength(1);
+        expect(oddWarnings[0].details?.actualPages).toBe(5);
+        expect(oddWarnings[0].details?.suggestion).toBe(6);
+        expect(oddWarnings[0].autoFixable).toBe(false);
+        // spring 은 4배수 강제가 없으므로 페이지수 에러 없음 → 비차단 통과
+        expect(result.isValid).toBe(true);
+      });
+
+      // spring 제본 + 짝수 페이지 → 경고 0건
+      it('should NOT warn for spring binding with even pages', async () => {
+        const pdfBytes = await createMockPdf(6, 210, 297);
+        mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
+
+        const options: ValidationOptions = {
+          fileType: 'content',
+          orderOptions: {
+            size: { width: 210, height: 297 },
+            pages: 6,
+            binding: 'spring',
+            bleed: 0,
+          },
+        };
+
+        const result = await service.validate('./spring-even.pdf', options);
+
+        expect(
+          result.warnings.find((w) => w.code === WarningCode.ODD_PAGE_COUNT),
+        ).toBeUndefined();
+      });
+
+      // perfect 제본 + 홀수(비4배수) → 기존 PAGE_COUNT_INVALID 에러만, ODD 중복 없음
+      it('should NOT add ODD_PAGE_COUNT for perfect binding odd pages (covered by 4-multiple error)', async () => {
+        const pdfBytes = await createMockPdf(3, 210, 297);
+        mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
+
+        const options: ValidationOptions = {
+          fileType: 'content',
+          orderOptions: {
+            size: { width: 210, height: 297 },
+            pages: 3,
+            binding: 'perfect',
+            bleed: 0,
+          },
+        };
+
+        const result = await service.validate('./perfect-odd.pdf', options);
+
+        // 4배수 위반 에러는 존재
+        expect(
+          result.errors.find((e) => e.code === ErrorCode.PAGE_COUNT_INVALID),
+        ).toBeDefined();
+        // ODD_PAGE_COUNT 는 중복으로 추가되지 않음
+        expect(
+          result.warnings.find((w) => w.code === WarningCode.ODD_PAGE_COUNT),
+        ).toBeUndefined();
       });
     });
 

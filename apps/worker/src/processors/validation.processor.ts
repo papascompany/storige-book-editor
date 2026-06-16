@@ -46,6 +46,11 @@ interface ValidationJobData {
     trimSize?: { width: number; height: number };
     /** 작업 사이즈(재단 + bleedMm*2, mm). P1: 수신만(optional). */
     workSize?: { width: number; height: number };
+    /**
+     * 주문 의도 페이지 방향 (R3). 수신만(optional) — 사용은 validate() 의
+     * validatePageOrientation 에서. 미제공/'auto' 면 혼재 시에만 집계 경고.
+     */
+    expectedOrientation?: 'portrait' | 'landscape' | 'auto';
   };
 }
 
