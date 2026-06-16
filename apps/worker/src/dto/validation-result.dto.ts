@@ -49,6 +49,10 @@ export enum WarningCode {
   TRANSPARENCY_DETECTED = 'TRANSPARENCY_DETECTED',
   /** 오버프린트 감지 */
   OVERPRINT_DETECTED = 'OVERPRINT_DETECTED',
+  /** 임베딩되지 않은 폰트 감지 (아웃라인/임베딩 권장) */
+  FONT_NOT_EMBEDDED = 'FONT_NOT_EMBEDDED',
+  /** 별색(Spot Color) 사용 감지 (주문 전 확인 권장) */
+  SPOT_COLOR_DETECTED = 'SPOT_COLOR_DETECTED',
 }
 
 /**
@@ -125,6 +129,12 @@ export interface PdfMetadata {
   hasOverprint?: boolean;
   /** 이미지 개수 */
   imageCount?: number;
+  /** 감지된 폰트 수 */
+  fontCount?: number;
+  /** 임베딩되지 않은 폰트 존재 여부 */
+  hasUnembeddedFonts?: boolean;
+  /** 임베딩되지 않은 폰트 이름 목록 */
+  unembeddedFonts?: string[];
 }
 
 /**

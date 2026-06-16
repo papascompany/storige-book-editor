@@ -908,7 +908,9 @@ export class EditSessionsService {
         size: session.metadata?.size || { width: 210, height: 297 },
         pages: session.metadata?.pages || 1,
         binding: session.metadata?.binding || 'perfect',
-        bleed: session.metadata?.bleed || 3,
+        // ?? (|| 아님): 도련無(bleed=0) 상품의 명시적 0 을 보존한다.
+        // || 사용 시 0 이 3 으로 덮여 작업사이즈가 trim+6mm 로 오산정→정상 PDF 가 SIZE_MISMATCH 로 오검증(R2).
+        bleed: session.metadata?.bleed ?? 3,
         paperThickness: session.metadata?.paperThickness,
       };
 

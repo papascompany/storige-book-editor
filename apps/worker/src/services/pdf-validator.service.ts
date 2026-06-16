@@ -21,6 +21,7 @@ import {
   detectSpotColors,
   detectTransparencyAndOverprint,
   detectImageResolutionFromPdf,
+  detectFonts,
 } from '../utils/ghostscript';
 
 // 기본 설정 (VALIDATION_CONFIG에서 가져오거나 폴백)
@@ -151,20 +152,28 @@ export class PdfValidatorService {
         });
       }
 
-      // 12~15. 색상모드(CMYK/GS)·별색·투명도/오버프린트·이미지해상도 검출.
-      // 네 검출은 서로 독립(동일 pdfBytes 만 읽음)이므로 병렬 실행한다.
+      // 12~16. 색상모드(CMYK/GS)·별색·투명도/오버프린트·이미지해상도·폰트임베딩 검출.
+      // 다섯 검출은 서로 독립(동일 pdfBytes 만 읽음)이므로 병렬 실행한다.
       // detectColorMode 의 Ghostscript inkcov 자식프로세스 대기 시간이 나머지 JS 파싱과
       // 겹쳐 wall-time 이 '가장 느린 1개'로 수렴 → 검증 체감 속도 개선.
       // 파일 경로 계산 (Ghostscript inkcov용) — `/storage/`, `storage/` 양쪽 모두 정규화
       const inputPath = this.resolveLocalPath(fileUrl);
 
-      const [colorModeResult, spotColorResult, transparencyResult, resolutionResult] =
-        await Promise.all([
-          this.detectColorMode(pdfBytes, inputPath, options.fileType),
-          detectSpotColors('', pdfBytes),
-          detectTransparencyAndOverprint('', pdfBytes),
-          detectImageResolutionFromPdf(pdfBytes, VALIDATION_CONFIG.MIN_ACCEPTABLE_DPI),
-        ]);
+      const [
+        colorModeResult,
+        spotColorResult,
+        transparencyResult,
+        resolutionResult,
+        fontResult,
+      ] = await Promise.all([
+        this.detectColorMode(pdfBytes, inputPath, options.fileType),
+        detectSpotColors('', pdfBytes),
+        detectTransparencyAndOverprint('', pdfBytes),
+        detectImageResolutionFromPdf(pdfBytes, VALIDATION_CONFIG.MIN_ACCEPTABLE_DPI),
+        // detectFonts 는 자체 try/catch 로 실패 시 안전기본값(hasUnembeddedFonts:false)을
+        // 반환하므로 추가 가드 없이 결과를 그대로 사용한다.
+        detectFonts(pdfBytes),
+      ]);
 
       // 12. 색상 모드 결과 처리
       metadata.colorMode = colorModeResult.colorMode;
@@ -201,7 +210,20 @@ export class PdfValidatorService {
         this.logger.debug(
           `Spot colors detected: ${spotColorResult.spotColorNames.join(', ')}`,
         );
-        // 별색은 후가공 파일에서는 정상, 일반 파일에서는 정보성 메시지
+        // 별색은 후가공 파일에서는 정상(별색 인쇄가 정상 입력) → 경고 없음, CMYK 에러경로 불변.
+        // 일반 인쇄 파일에서는 별색 인쇄가 별도 확인이 필요할 수 있으므로 비차단 노티.
+        if (options.fileType !== 'post_process') {
+          const spotColorNames = spotColorResult.spotColorNames;
+          warnings.push({
+            code: WarningCode.SPOT_COLOR_DETECTED,
+            message: `별색(${spotColorNames.join(', ')})이 사용되었습니다. 별색 인쇄는 별도 확인이 필요할 수 있으니 주문 전 확인해 주세요.`,
+            details: {
+              spotColorNames,
+              count: spotColorNames.length,
+            },
+            autoFixable: false,
+          });
+        }
       }
 
       // 14. 투명도/오버프린트 결과 처리 (WBS 4.2)
@@ -232,12 +254,15 @@ export class PdfValidatorService {
 
         if (resolutionResult.hasLowResolution) {
           const lowResCount = resolutionResult.lowResImages.length;
+          // 게이트는 MIN_ACCEPTABLE_DPI(150) 미만에서 발동한다. 메시지는 실제 게이트값과
+          // 권장값(300)을 함께 명시해 "권장 미만"으로 인한 혼동을 없앤다. (게이트 임계값은 불변)
           warnings.push({
             code: WarningCode.RESOLUTION_LOW,
-            message: `${lowResCount}개의 이미지가 권장 해상도(${VALIDATION_CONFIG.RECOMMENDED_DPI}DPI) 미만입니다. 인쇄 품질이 저하될 수 있습니다.`,
+            message: `${lowResCount}개의 이미지가 최소 허용 해상도(${VALIDATION_CONFIG.MIN_ACCEPTABLE_DPI}DPI) 미만입니다. 인쇄 품질 저하가 우려됩니다(권장 ${VALIDATION_CONFIG.RECOMMENDED_DPI}DPI).`,
             details: {
               minResolution: resolutionResult.minResolution,
               avgResolution: resolutionResult.avgResolution,
+              minAcceptableDpi: VALIDATION_CONFIG.MIN_ACCEPTABLE_DPI,
               recommendedDpi: VALIDATION_CONFIG.RECOMMENDED_DPI,
               lowResImages: resolutionResult.lowResImages.map((img) => ({
                 index: img.index,
@@ -248,6 +273,30 @@ export class PdfValidatorService {
             autoFixable: false,
           });
         }
+      }
+
+      // 16. 폰트 임베딩 결과 처리 (요구사항6)
+      // detectFonts 는 정규식 기반(현행 방식)으로 폰트 객체를 스캔하며, 실패 시 안전기본값을
+      // 반환하므로 별도 가드가 없다. 임베딩되지 않은 폰트는 인쇄소에서 글꼴 누락/치환을
+      // 유발하므로 비차단 경고로 노출한다(기존 통과/에러 동작은 변경하지 않음).
+      metadata.fontCount = fontResult.fontCount;
+      metadata.hasUnembeddedFonts = fontResult.hasUnembeddedFonts;
+      metadata.unembeddedFonts = fontResult.unembeddedFonts;
+
+      if (fontResult.hasUnembeddedFonts) {
+        const unembeddedFonts = fontResult.unembeddedFonts;
+        this.logger.debug(
+          `Unembedded fonts detected: ${unembeddedFonts.join(', ')}`,
+        );
+        warnings.push({
+          code: WarningCode.FONT_NOT_EMBEDDED,
+          message: `임베딩되지 않은 폰트가 ${unembeddedFonts.length}개 있습니다(${unembeddedFonts.join(', ')}). 폰트를 아웃라인 처리하거나 임베딩(서브셋 포함)해 다시 업로드해 주세요.`,
+          details: {
+            unembeddedFonts,
+            fontCount: fontResult.fontCount,
+          },
+          autoFixable: false,
+        });
       }
 
       this.logger.log(
