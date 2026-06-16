@@ -135,7 +135,9 @@ describe('PDF Validation E2E (WBS 5.3)', () => {
     });
 
     describe('Fail cases', () => {
-      it('should detect landscape pages and add warning', async () => {
+      // R3: 종전엔 가로 페이지마다 LANDSCAPE_PAGE 를 개별 emit 했으나, 이제는
+      // 방향 혼재(세로 다수 + 가로 1) 시 MIXED_PAGE_ORIENTATION 1건으로 집계한다.
+      it('should aggregate mixed orientations into a single MIXED_PAGE_ORIENTATION warning (auto)', async () => {
         const pdfPath = path.join(FIXTURES_DIR, 'rgb', 'fail-mixed-orientation.pdf');
         if (!await fileExists(pdfPath)) {
           console.log('Skipping: fail-mixed-orientation.pdf not found');
@@ -149,16 +151,23 @@ describe('PDF Validation E2E (WBS 5.3)', () => {
             pages: 3,
             binding: 'perfect',
             bleed: 0,
+            // expectedOrientation 미제공 = auto → 혼재 시 1건 집계
           },
         };
 
         const result = await service.validate(pdfPath, options);
 
-        const landscapeWarning = result.warnings.find(
-          (w) => w.code === WarningCode.LANDSCAPE_PAGE,
+        // 레거시 per-page 경고는 더 이상 나오지 않는다
+        expect(
+          result.warnings.find((w) => w.code === WarningCode.LANDSCAPE_PAGE),
+        ).toBeUndefined();
+
+        // 혼재 → MIXED_PAGE_ORIENTATION 정확히 1건, 소수=가로(p.2)
+        const mixed = result.warnings.filter(
+          (w) => w.code === WarningCode.MIXED_PAGE_ORIENTATION,
         );
-        expect(landscapeWarning).toBeDefined();
-        expect(landscapeWarning?.details?.page).toBe(2);
+        expect(mixed).toHaveLength(1);
+        expect(mixed[0].details?.minorityPages).toEqual([2]);
       });
 
       it('should fail for wrong size PDF', async () => {

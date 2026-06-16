@@ -37,8 +37,18 @@ export enum WarningCode {
   BLEED_MISSING = 'BLEED_MISSING',
   /** 해상도 낮음 */
   RESOLUTION_LOW = 'RESOLUTION_LOW',
-  /** 가로형 페이지 감지 */
+  /**
+   * 가로형 페이지 감지 (레거시 — 하위호환 위해 enum 값 유지).
+   * 무차별 페이지별 emit 은 제거됨. 신규 동작은
+   * MIXED_PAGE_ORIENTATION / ORIENTATION_MISMATCH 로 집계 노출.
+   */
   LANDSCAPE_PAGE = 'LANDSCAPE_PAGE',
+  /** 페이지 방향 혼재 (세로·가로 섞임, 주문 방향 미지정/auto일 때 1건 집계) */
+  MIXED_PAGE_ORIENTATION = 'MIXED_PAGE_ORIENTATION',
+  /** 주문 의도 방향과 다른 페이지 존재 (expectedOrientation 명시 시 1건 집계) */
+  ORIENTATION_MISMATCH = 'ORIENTATION_MISMATCH',
+  /** 책자 총 페이지가 홀수 (보통 짝수면으로 제작 — 확인 권장) */
+  ODD_PAGE_COUNT = 'ODD_PAGE_COUNT',
   /** 사철 제본 중앙부 객체 확인 필요 */
   CENTER_OBJECT_CHECK = 'CENTER_OBJECT_CHECK',
   /** CMYK 구조 감지 (GS 미확정) */
@@ -197,6 +207,12 @@ export interface ValidationOptions {
     trimSize?: { width: number; height: number };
     /** 작업 사이즈(재단 + bleedMm*2, mm) — P1. validatePageSize 매칭 케이스에 사용. */
     workSize?: { width: number; height: number };
+    /**
+     * 주문 의도 페이지 방향 (R3). 'portrait'/'landscape' 명시 시 그와 다른 페이지를
+     * ORIENTATION_MISMATCH 로 1건 집계. 미제공/'auto' 면 혼재일 때만
+     * MIXED_PAGE_ORIENTATION 으로 1건 집계(단일 방향이면 경고 없음 — 가로책 오탐 해소).
+     */
+    expectedOrientation?: 'portrait' | 'landscape' | 'auto';
   };
   /** 최대 허용 파일 크기 (bytes) */
   maxFileSize?: number;

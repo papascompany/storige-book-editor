@@ -118,8 +118,12 @@ export class PdfValidatorService {
         this.validateSpine(widthMm, options, errors, metadata);
       }
 
-      // 9. 가로형 페이지 감지 (WBS 2.1)
-      this.validatePageOrientation(pages, warnings);
+      // 9. 페이지 방향 검증 (WBS 2.1, R3 집계형 재구현)
+      this.validatePageOrientation(
+        pages,
+        warnings,
+        options.orderOptions.expectedOrientation,
+      );
 
       // 10. 사철 제본 검증 (WBS 2.2)
       if (options.orderOptions.binding === 'saddle') {
@@ -362,6 +366,24 @@ export class PdfValidatorService {
       }
     } else if (options.fileType === 'content') {
       const binding = options.orderOptions.binding;
+
+      // R5: 짝수책 경고 (비차단).
+      // perfect/saddle 은 아래에서 4의 배수(=자동 짝수)를 PAGE_COUNT_INVALID 에러로 강제하므로
+      // 홀수면 이미 에러로 커버됨 → 중복 push 금지. 반면 spring(스프링 제본)은 페이지수
+      // 무검사라 홀수가 통과되므로, 여기서만 ODD_PAGE_COUNT 경고로 확인을 유도한다.
+      // ⚠️ parity('오른쪽=홀수/왼쪽=짝수' 좌/우 면 배치)는 '검증'이 아니라 임포지션
+      //    미리보기(모달②)의 책임 — 여기에 parity 검증을 넣지 말 것(시각 확인으로 분리).
+      if (binding === 'spring' && actualPages % 2 !== 0) {
+        warnings.push({
+          code: WarningCode.ODD_PAGE_COUNT,
+          message: `총 페이지가 홀수(${actualPages}면)입니다. 책자는 보통 짝수면으로 제작됩니다. 확인해 주세요.`,
+          details: {
+            actualPages,
+            suggestion: actualPages + 1,
+          },
+          autoFixable: false,
+        });
+      }
 
       // 무선제본: 4의 배수
       if (binding === 'perfect' && actualPages % 4 !== 0) {
@@ -633,36 +655,88 @@ export class PdfValidatorService {
   // ============================================================
 
   /**
-   * WBS 2.1: 가로형 페이지 감지
-   * 모든 페이지를 검사하여 가로형(landscape) 페이지가 있으면 경고
+   * WBS 2.1 / R3: 페이지 방향 검증 (집계형·비차단)
+   *
+   * 종전: 각 landscape 페이지마다 LANDSCAPE_PAGE 경고를 개별 emit
+   *   → (1) 가로형 책자가 정상이어도 전 페이지 오탐, (2) 주문 의도 방향 비교 불가,
+   *      (3) 경고 N개 스팸. 모달 친화적이지 않음.
+   *
+   * 재설계(카테고리당 최대 1건):
+   *   - expectedOrientation 'portrait'|'landscape' 명시 → 어긋난 페이지를 모아
+   *     ORIENTATION_MISMATCH 1건(어긋난 페이지 0개면 경고 없음).
+   *   - 미제공/'auto' → 두 방향이 혼재할 때만 MIXED_PAGE_ORIENTATION 1건.
+   *     모든 페이지가 같은 방향이면 경고 없음(가로책 오탐 해소).
+   *
+   * 정사각(거의 정사각) 페이지의 jitter 오판을 막기 위해 landscape 판정에
+   * +0.5mm 마진을 둔다(widthMm > heightMm + 0.5 일 때만 가로).
+   * 모든 신규 동작은 비차단(warning) — isValid 에 영향 없음.
    */
   private validatePageOrientation(
     pages: PDFPage[],
     warnings: ValidationWarning[],
+    expectedOrientation?: 'portrait' | 'landscape' | 'auto',
   ): void {
     const { PT_TO_MM } = VALIDATION_CONFIG;
+
+    // 각 페이지 방향 산정 (1-based 인덱스 수집)
+    const portraitPages: number[] = [];
+    const landscapePages: number[] = [];
 
     pages.forEach((page, index) => {
       const { width, height } = page.getSize();
       const widthMm = width * PT_TO_MM;
       const heightMm = height * PT_TO_MM;
 
-      const isLandscape = widthMm > heightMm;
-
+      // 정사각 jitter 방지: 너비가 높이보다 0.5mm 초과로 클 때만 가로
+      const isLandscape = widthMm > heightMm + 0.5;
       if (isLandscape) {
+        landscapePages.push(index + 1);
+      } else {
+        portraitPages.push(index + 1);
+      }
+    });
+
+    const portraitCount = portraitPages.length;
+    const landscapeCount = landscapePages.length;
+
+    // (A) 주문 의도 방향이 명시된 경우 → 어긋난 페이지를 1건으로 집계
+    if (expectedOrientation === 'portrait' || expectedOrientation === 'landscape') {
+      const mismatchPages =
+        expectedOrientation === 'portrait' ? landscapePages : portraitPages;
+
+      if (mismatchPages.length > 0) {
+        const expectedLabel = expectedOrientation === 'portrait' ? '세로형' : '가로형';
+        const actualLabel = expectedOrientation === 'portrait' ? '가로형' : '세로형';
         warnings.push({
-          code: WarningCode.LANDSCAPE_PAGE,
-          message: `${index + 1}페이지가 가로형입니다.`,
+          code: WarningCode.ORIENTATION_MISMATCH,
+          message: `${expectedLabel} 주문인데 ${actualLabel} 페이지가 ${mismatchPages.length}개 있습니다(p.${mismatchPages.join(', ')}).`,
           details: {
-            page: index + 1,
-            width: Math.round(widthMm * 10) / 10,
-            height: Math.round(heightMm * 10) / 10,
-            orientation: 'landscape',
+            expected: expectedOrientation,
+            mismatchPages,
+            total: pages.length,
           },
           autoFixable: false,
         });
       }
-    });
+      return;
+    }
+
+    // (B) 미제공/'auto' → 두 방향 혼재 시에만 1건 집계. 단일 방향이면 경고 없음.
+    if (portraitCount > 0 && landscapeCount > 0) {
+      // 소수(minority) 방향 페이지 목록을 노출(모달에서 "어느 쪽이 섞였는지" 안내용)
+      const minorityPages =
+        landscapeCount <= portraitCount ? landscapePages : portraitPages;
+      warnings.push({
+        code: WarningCode.MIXED_PAGE_ORIENTATION,
+        message: `세로형과 가로형 페이지가 섞여 있습니다(세로 ${portraitCount}개, 가로 ${landscapeCount}개). 의도한 구성인지 확인해 주세요.`,
+        details: {
+          portraitCount,
+          landscapeCount,
+          minorityPages,
+        },
+        autoFixable: false,
+      });
+    }
   }
 
   /**
