@@ -643,6 +643,11 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
       })
     }
 
+    // 사진틀(extensionType==='frame')에 채운 사진은 기본 모드에서 비선택(클릭이 프레임을 잡게).
+    // FrameInteractionPlugin 더블클릭(adjust) 진입 시에만 evented 를 켠다. 모양틀(mold/clipart)
+    // 등 비-frame 채우기는 기존 동작(사진 직접 선택)을 유지해 회귀를 막는다.
+    const asFrame = rear.extensionType === 'frame'
+
     fore.set({
       extensionType: 'fillImage',
       left: centerOf.x,
@@ -650,6 +655,9 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
       originX: 'center',
       originY: 'center',
       hasControls: true,
+      // 프레임 채우기: 비선택(프레임=선택단위). 모양틀: 선택 가능(기존 동작).
+      selectable: !asFrame,
+      evented: !asFrame,
       scaleX: (rear.width! * rear.scaleX!) / fore.width!,
       scaleY: (rear.width! * rear.scaleX!) / fore.width!,
       id: rear.id + '_fillImage',
@@ -663,6 +671,10 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
     })
     fore.setCoords()
     rear.fillImage = fore.id
+
+    // z-order 보정: SVG 프레임도 image 경로(fillImageIntoFrame)와 통일해 프레임을 위로.
+    // (모양틀은 기존 스택 유지를 위해 건드리지 않음)
+    if (asFrame) rear.bringToFront()
 
     return fore
   },
@@ -767,7 +779,9 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
       removeOverlay()
       const fore = await get().fillImageIntoFrame(canvas, fabricImage, frame, imagePlugin)
       canvas.add(fore)
-      canvas.setActiveObject(fore)
+      // 프레임=선택단위: 채우기 후엔 사진이 아니라 프레임을 선택한다(사진은 비evented).
+      // 사진 위치 조정은 프레임 더블클릭(FrameInteractionPlugin adjust 모드)으로.
+      canvas.setActiveObject(frame)
       canvas.requestRenderAll()
     })
   },
@@ -828,6 +842,10 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
       originX: 'center',
       originY: 'center',
       hasControls: true,
+      // 프레임=선택단위: 채운 사진은 기본 모드에서 비선택(클릭이 프레임을 잡게).
+      // FrameInteractionPlugin 더블클릭(adjust)에서만 evented 를 켠다.
+      selectable: false,
+      evented: false,
       scaleX: coverScale,
       scaleY: coverScale,
       id: `${frame.id}_fillImage`,
