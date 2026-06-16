@@ -26,6 +26,7 @@ export { default as ScreenshotPlugin } from './plugins/ScreenshotPlugin'
 export { default as LockPlugin, type LockLevel, type UserRole, type LockInfo } from './plugins/LockPlugin'
 export { default as SpreadPlugin } from './plugins/SpreadPlugin'
 export { default as PointerShiftGuardPlugin } from './plugins/PointerShiftGuardPlugin'
+export { default as FrameInteractionPlugin } from './plugins/FrameInteractionPlugin'
 
 export { PluginBase } from './plugin'
 

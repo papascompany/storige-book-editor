@@ -8,6 +8,7 @@ import Editor, {
   EffectPlugin,
   FilterPlugin,
   FontPlugin,
+  FrameInteractionPlugin,
   GroupPlugin,
   HistoryPlugin,
   ImageProcessingPlugin,
@@ -219,6 +220,9 @@ function initPlugins(
   // P1-5 (2026-06-02): 객체 잠금/삭제불가 — LockPlugin 배선.
   // editMode(관리자 템플릿 제작)면 'admin'(잠금 지정/해제 가능), 고객 편집이면 'user'.
   const lock = new LockPlugin(canvas, editor, mergedOptions)
+  // 사진틀(프레임) 인터랙션 — 프레임=선택단위 그룹 이동/스케일 동기화 + 더블클릭 사진 조정 모드.
+  // 캔버스 레벨 리스너라 EditorView/embed 양쪽에 한 번 등록으로 적용되고 loadFromJSON 복원 후에도 유지된다.
+  const frameInteraction = new FrameInteractionPlugin(canvas, editor, mergedOptions)
   const group = new GroupPlugin(canvas, editor)
   const history = new HistoryPlugin(canvas, editor)
   const copy = new CopyPlugin(canvas, editor, {
@@ -273,6 +277,7 @@ function initPlugins(
   editor.use(object)
   editor.use(lock)
   lock.setUserRole((mergedOptions as any).editMode ? 'admin' : 'user')
+  editor.use(frameInteraction)
   // RulerPlugin은 VITE_ENABLE_RULER 환경변수로 제어
   if (ruler) {
     editor.use(ruler)
