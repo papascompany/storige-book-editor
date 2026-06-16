@@ -19,6 +19,8 @@ import {
   Trash2 as Trash,
   ShieldX,
   ShieldCheck,
+  Pin,
+  PinOff,
   Link,
   Unlink as LinkBreak,
   Scissors,
@@ -184,6 +186,11 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
     return activeSelection?.every((e) => (e as any).deleteable === false) ?? false
   }, [activeSelection])
 
+  // Part B (2026-06-16): 선택 객체 전부가 위치고정(movable===false)인지
+  const allMovementLocked = useMemo(() => {
+    return activeSelection?.every((e) => (e as any).movable === false) ?? false
+  }, [activeSelection])
+
   // Actions
   const handleGroup = () => {
     const groupPlugin = getPlugin<GroupPlugin>('GroupPlugin')
@@ -244,6 +251,17 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
     const next = !allDeleteLocked
     activeSelection?.forEach((obj) => {
       ;(obj as any).deleteable = next ? false : true
+    })
+    updateObjects()
+  }
+
+  // Part B (2026-06-16): 관리자 전용 — 위치 고정 토글. movable=false 면 고객 진입 시
+  // 이동/스케일/회전 차단(applyObjectPermissions 가 로드 시 lockMovement/Scaling/Rotation 적용).
+  // 관리자 자신은 editMode 라 잠금 미적용 — 자유 편집(deleteable 패턴과 동일).
+  const handleToggleMovementLock = () => {
+    const next = !allMovementLocked
+    activeSelection?.forEach((obj) => {
+      ;(obj as any).movable = next ? false : true
     })
     updateObjects()
   }
@@ -384,6 +402,23 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
                 ) : (
                   <Button variant="ghost" size="icon" onClick={handleVisible}>
                     <EyeSlash className="h-5 w-5" />
+                  </Button>
+                )}
+
+                {/* Part B: 위치 고정 (관리자 editMode 전용) — 고객이 이 객체를 이동/변형 못하게 보호 */}
+                {editMode && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={handleToggleMovementLock}
+                    title={allMovementLocked ? '위치 고정 해제' : '위치 고정 (고객 이동·변형 불가)'}
+                    aria-pressed={allMovementLocked}
+                  >
+                    {allMovementLocked ? (
+                      <Pin className="h-5 w-5 text-amber-500" />
+                    ) : (
+                      <PinOff className="h-5 w-5" />
+                    )}
                   </Button>
                 )}
 

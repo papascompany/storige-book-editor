@@ -150,6 +150,10 @@ export namespace core {
     // 관리자가 지정한 보호가 고객 진입 시에도 강제됨.
     'lockInfo',
     'deleteable',
+    // Part B (2026-06-16): 객체별 편집권한 — 이동/변형 잠금.
+    // movable===false 면 고객(비 editMode) 로드 시 applyObjectPermissions 가 lockMovement/
+    // Scaling/Rotation 을 강제(deleteable 와 동일하게 관리자가 지정→저장→고객 진입 시 적용).
+    'movable',
     'evented',
     // spread 책등 가변 재배치용 meta(regionRef/anchor) 보존 — useTemplateSetSave와 정합
     'meta',

@@ -23,6 +23,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { createRoot, Root } from 'react-dom/client'
 import { useAppStore } from './stores/useAppStore'
 import { rebindFrameInteractivity } from './utils/frameInteractive'
+import { applyObjectPermissions } from './utils/objectPermissions'
 import { useAuthStore } from './stores/useAuthStore'
 import { useSettingsStore } from './stores/useSettingsStore'
 import { useSaveStore } from './stores/useSaveStore'
@@ -873,6 +874,8 @@ function EmbeddedEditor({
               if (saved[i]) await core.loadFromJSON(canvases[i], saved[i])
               // 복원 직후 사진틀 인터랙션 재바인딩 (핸들러는 직렬화 안 됨 → 미재바인딩 시 채우기 불능).
               rebindFrameInteractivity(allEditors[i], canvases[i])
+              // Part B: 고객 임베드 세션 복원 시 객체별 이동/변형 잠금 적용(movable=false).
+              applyObjectPermissions(canvases[i], useSettingsStore.getState().currentSettings.editMode)
             }
             console.log('[EmbeddedEditor] Multi-page canvasData restored:', saved.length, 'pages')
           } else if (!Array.isArray(saved) && fabricCanvas) {
@@ -880,6 +883,7 @@ function EmbeddedEditor({
             await core.loadFromJSON(fabricCanvas, saved)
             const singleIdx = Math.max(0, canvases.indexOf(fabricCanvas))
             rebindFrameInteractivity(allEditors[singleIdx], fabricCanvas)
+            applyObjectPermissions(fabricCanvas, useSettingsStore.getState().currentSettings.editMode)
             console.log('[EmbeddedEditor] Single canvasData restored:', editSession.id)
           }
         }
