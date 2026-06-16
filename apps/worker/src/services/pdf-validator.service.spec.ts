@@ -35,6 +35,14 @@ jest.mock('../utils/ghostscript', () => ({
     lowResImages: [],
     images: [],
   }),
+  // 기본값: 폰트 모두 임베딩됨(경고 없음). 개별 테스트에서 mockResolvedValueOnce 로 override.
+  detectFonts: jest.fn().mockResolvedValue({
+    fontCount: 0,
+    fonts: [],
+    hasUnembeddedFonts: false,
+    unembeddedFonts: [],
+    allFontsEmbedded: true,
+  }),
 }));
 
 const mockedFs = fs as jest.Mocked<typeof fs>;
@@ -600,6 +608,256 @@ describe('PdfValidatorService', () => {
         (w) => w.code === WarningCode.OVERPRINT_DETECTED,
       );
       expect(overprintWarning).toBeDefined();
+    });
+
+    // 별색 노티 (요구사항7): 일반 인쇄 파일에서는 비차단 경고, 후가공 파일에서는 정상(경고 없음)
+    it('should add SPOT_COLOR_DETECTED warning for non post_process file', async () => {
+      detectSpotColors.mockResolvedValueOnce({
+        hasSpotColors: true,
+        spotColorNames: ['PANTONE 877 C'],
+        pages: [{ page: 1, colors: ['PANTONE 877 C'] }],
+      });
+
+      // 4페이지 무선제본 + 정사이즈 → 별색 노티 외 차단 사유 없음(비차단 검증용)
+      const pdfBytes = await PDFDocument.create().then((doc) => {
+        for (let i = 0; i < 4; i++) doc.addPage([210 * 2.83465, 297 * 2.83465]);
+        return doc.save();
+      });
+      mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
+
+      const options: ValidationOptions = {
+        fileType: 'content',
+        orderOptions: {
+          size: { width: 210, height: 297 },
+          pages: 4,
+          binding: 'perfect',
+          bleed: 0,
+        },
+      };
+
+      const result = await service.validate('./spot.pdf', options);
+
+      const spotWarning = result.warnings.find(
+        (w) => w.code === WarningCode.SPOT_COLOR_DETECTED,
+      );
+      expect(spotWarning).toBeDefined();
+      expect(spotWarning?.autoFixable).toBe(false);
+      expect(spotWarning?.details?.count).toBe(1);
+      expect(spotWarning?.details?.spotColorNames).toEqual(['PANTONE 877 C']);
+      // 별색 노티는 비차단 → 통과
+      expect(result.isValid).toBe(true);
+    });
+
+    it('should NOT add SPOT_COLOR_DETECTED warning for post_process file (spot is normal)', async () => {
+      detectSpotColors.mockResolvedValueOnce({
+        hasSpotColors: true,
+        spotColorNames: ['PANTONE 877 C'],
+        pages: [{ page: 1, colors: ['PANTONE 877 C'] }],
+      });
+
+      const pdfBytes = await PDFDocument.create().then((doc) => {
+        doc.addPage([210 * 2.83465, 297 * 2.83465]);
+        return doc.save();
+      });
+      mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
+
+      const options: ValidationOptions = {
+        fileType: 'post_process',
+        orderOptions: {
+          size: { width: 210, height: 297 },
+          pages: 1,
+          binding: 'perfect',
+          bleed: 0,
+        },
+      };
+
+      const result = await service.validate('./postprocess.pdf', options);
+
+      const spotWarning = result.warnings.find(
+        (w) => w.code === WarningCode.SPOT_COLOR_DETECTED,
+      );
+      expect(spotWarning).toBeUndefined();
+      // 메타데이터에는 별색 정보가 그대로 기록됨
+      expect(result.metadata.hasSpotColors).toBe(true);
+    });
+  });
+
+  // ============================================================
+  // 폰트 임베딩 검증 테스트 (요구사항6)
+  // ============================================================
+  describe('font embedding detection (요구사항6)', () => {
+    const { detectFonts } = require('../utils/ghostscript');
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+    });
+
+    it('should add FONT_NOT_EMBEDDED warning when unembedded fonts exist', async () => {
+      detectFonts.mockResolvedValueOnce({
+        fontCount: 2,
+        fonts: [
+          { name: 'Arial', type: 'TrueType', embedded: false, subset: false },
+          { name: 'ABCDEF+NanumGothic', type: 'CID', embedded: true, subset: true },
+        ],
+        hasUnembeddedFonts: true,
+        unembeddedFonts: ['Arial'],
+        allFontsEmbedded: false,
+      });
+
+      // 4페이지 무선제본 + 정사이즈 → 폰트 경고 외 차단 사유 없음(비차단 검증용)
+      const pdfBytes = await PDFDocument.create().then((doc) => {
+        for (let i = 0; i < 4; i++) doc.addPage([210 * 2.83465, 297 * 2.83465]);
+        return doc.save();
+      });
+      mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
+
+      const options: ValidationOptions = {
+        fileType: 'content',
+        orderOptions: {
+          size: { width: 210, height: 297 },
+          pages: 4,
+          binding: 'perfect',
+          bleed: 0,
+        },
+      };
+
+      const result = await service.validate('./font.pdf', options);
+
+      const fontWarning = result.warnings.find(
+        (w) => w.code === WarningCode.FONT_NOT_EMBEDDED,
+      );
+      expect(fontWarning).toBeDefined();
+      expect(fontWarning?.autoFixable).toBe(false);
+      expect(fontWarning?.details?.unembeddedFonts).toEqual(['Arial']);
+      expect(fontWarning?.details?.fontCount).toBe(2);
+      // 메타데이터 반영
+      expect(result.metadata.fontCount).toBe(2);
+      expect(result.metadata.hasUnembeddedFonts).toBe(true);
+      expect(result.metadata.unembeddedFonts).toEqual(['Arial']);
+      // 비차단 → 통과
+      expect(result.isValid).toBe(true);
+    });
+
+    it('should NOT add FONT_NOT_EMBEDDED warning when all fonts embedded', async () => {
+      detectFonts.mockResolvedValueOnce({
+        fontCount: 1,
+        fonts: [
+          { name: 'ABCDEF+NanumGothic', type: 'CID', embedded: true, subset: true },
+        ],
+        hasUnembeddedFonts: false,
+        unembeddedFonts: [],
+        allFontsEmbedded: true,
+      });
+
+      const pdfBytes = await PDFDocument.create().then((doc) => {
+        doc.addPage([210 * 2.83465, 297 * 2.83465]);
+        return doc.save();
+      });
+      mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
+
+      const options: ValidationOptions = {
+        fileType: 'content',
+        orderOptions: {
+          size: { width: 210, height: 297 },
+          pages: 1,
+          binding: 'perfect',
+          bleed: 0,
+        },
+      };
+
+      const result = await service.validate('./font.pdf', options);
+
+      const fontWarning = result.warnings.find(
+        (w) => w.code === WarningCode.FONT_NOT_EMBEDDED,
+      );
+      expect(fontWarning).toBeUndefined();
+      expect(result.metadata.hasUnembeddedFonts).toBe(false);
+    });
+
+    it('should call detectFonts during validation', async () => {
+      const pdfBytes = await PDFDocument.create().then((doc) => {
+        doc.addPage([210 * 2.83465, 297 * 2.83465]);
+        return doc.save();
+      });
+      mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
+
+      const options: ValidationOptions = {
+        fileType: 'content',
+        orderOptions: {
+          size: { width: 210, height: 297 },
+          pages: 1,
+          binding: 'perfect',
+          bleed: 0,
+        },
+      };
+
+      await service.validate('./test.pdf', options);
+
+      expect(detectFonts).toHaveBeenCalled();
+    });
+  });
+
+  // ============================================================
+  // 해상도 경고 메시지 정합 테스트 (요구사항4)
+  // ============================================================
+  describe('low resolution warning message (요구사항4)', () => {
+    const { detectImageResolutionFromPdf } = require('../utils/ghostscript');
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+    });
+
+    it('should reference min acceptable DPI (150) in message and details', async () => {
+      detectImageResolutionFromPdf.mockResolvedValueOnce({
+        imageCount: 1,
+        hasLowResolution: true,
+        minResolution: 96,
+        avgResolution: 96,
+        lowResImages: [
+          {
+            index: 0,
+            pixelWidth: 400,
+            pixelHeight: 400,
+            displayWidthMm: 100,
+            displayHeightMm: 100,
+            effectiveDpiX: 96,
+            effectiveDpiY: 96,
+            minEffectiveDpi: 96,
+          },
+        ],
+        images: [],
+      });
+
+      // 4페이지 무선제본 + 정사이즈 → 해상도 경고 외 차단 사유 없음(비차단 검증용)
+      const pdfBytes = await PDFDocument.create().then((doc) => {
+        for (let i = 0; i < 4; i++) doc.addPage([210 * 2.83465, 297 * 2.83465]);
+        return doc.save();
+      });
+      mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
+
+      const options: ValidationOptions = {
+        fileType: 'content',
+        orderOptions: {
+          size: { width: 210, height: 297 },
+          pages: 4,
+          binding: 'perfect',
+          bleed: 0,
+        },
+      };
+
+      const result = await service.validate('./lowres.pdf', options);
+
+      const resWarning = result.warnings.find(
+        (w) => w.code === WarningCode.RESOLUTION_LOW,
+      );
+      expect(resWarning).toBeDefined();
+      // 메시지는 게이트값(150)과 권장값(300)을 함께 명시
+      expect(resWarning?.message).toContain('150DPI');
+      expect(resWarning?.message).toContain('300DPI');
+      expect(resWarning?.details?.minAcceptableDpi).toBe(150);
+      expect(resWarning?.details?.recommendedDpi).toBe(300);
+      // 비차단 → 통과
+      expect(result.isValid).toBe(true);
     });
   });
 });
