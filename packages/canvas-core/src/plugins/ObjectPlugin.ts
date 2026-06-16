@@ -67,7 +67,10 @@ class ObjectPlugin extends PluginBase {
         hideContext: true,
         callback: () => {
           const activeObject = this._canvas.getActiveObject()
-          activeObject && activeObject.set('left', activeObject.left! - 1)
+          // Part B: 화살표 이동은 .set('left') 로 lockMovementX 를 우회하므로 직접 가드.
+          // (드래그는 fabric 이 lockMovementX 를 존중하지만 키보드 이동은 별도 차단 필요.)
+          if (!activeObject || activeObject.lockMovementX) return
+          activeObject.set('left', activeObject.left! - 1)
         }
       },
       {
@@ -77,7 +80,8 @@ class ObjectPlugin extends PluginBase {
         hideContext: true,
         callback: () => {
           const activeObject = this._canvas.getActiveObject()
-          activeObject && activeObject.set('left', activeObject.left! + 1)
+          if (!activeObject || activeObject.lockMovementX) return
+          activeObject.set('left', activeObject.left! + 1)
         }
       },
       {
@@ -87,7 +91,8 @@ class ObjectPlugin extends PluginBase {
         hideContext: true,
         callback: () => {
           const activeObject = this._canvas.getActiveObject()
-          activeObject && activeObject.set('top', activeObject.top! + 1)
+          if (!activeObject || activeObject.lockMovementY) return
+          activeObject.set('top', activeObject.top! + 1)
         }
       },
       {
@@ -97,7 +102,8 @@ class ObjectPlugin extends PluginBase {
         hideContext: true,
         callback: () => {
           const activeObject = this._canvas.getActiveObject()
-          activeObject && activeObject.set('top', activeObject.top! - 1)
+          if (!activeObject || activeObject.lockMovementY) return
+          activeObject.set('top', activeObject.top! - 1)
         }
       },
       {

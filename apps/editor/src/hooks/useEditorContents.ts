@@ -5,6 +5,7 @@ import { useAppStore } from '@/stores/useAppStore'
 import { useEditorStore } from '@/stores/useEditorStore'
 import { useImageStore } from '@/stores/useImageStore'
 import { rebindFrameInteractivity } from '@/utils/frameInteractive'
+import { applyObjectPermissions } from '@/utils/objectPermissions'
 import {
   useSettingsStore,
   type EditorUseCase,
@@ -422,6 +423,10 @@ export function useEditorContents(): UseEditorContentsReturn {
                 // embed·useEmbedAutoSave 복원 경로와 공유하는 헬퍼로 일원화(재발 방지).
                 rebindFrameInteractivity(ed, cvs)
 
+                // Part B: 고객(비 editMode) 진입 시 객체별 이동/변형 잠금 적용
+                // (관리자가 movable=false 로 지정한 객체를 lockMovement/Scaling/Rotation 으로 강제).
+                applyObjectPermissions(cvs, useSettingsStore.getState().currentSettings.editMode)
+
                 cvs.requestRenderAll()
               }
               clearTimeout(guardTimer)
@@ -728,6 +733,13 @@ export function useEditorContents(): UseEditorContentsReturn {
             }
           })
         }
+      }
+
+      // Part B: SVG 템플릿 경로도 고객 진입 시 객체별 이동/변형 잠금 적용
+      // (loadCanvasData(JSON) 경로와 정합 — setupTemplateContent/loadProductBasedEditor 가 이 경로를 탐).
+      {
+        const editModeNow = useSettingsStore.getState().currentSettings.editMode
+        for (const c of allCanvas) applyObjectPermissions(c, editModeNow)
       }
 
       if (allCanvas.length > 0) {
@@ -1691,6 +1703,11 @@ export function useEditorContents(): UseEditorContentsReturn {
                 }, 8000)
                 servicePlugin.loadJSON(dataToLoad, () => {
                   console.log(`[EditorContents:Spread] loadJSON completed for inner page ${newPageIndex}`)
+                  // Part B: 스프레드 내지 페이지도 고객 진입 시 객체별 이동/변형 잠금 적용.
+                  applyObjectPermissions(
+                    latestAllCanvas[newPageIndex],
+                    useSettingsStore.getState().currentSettings.editMode
+                  )
                   clearTimeout(guardTimer)
                   settle()
                 })
