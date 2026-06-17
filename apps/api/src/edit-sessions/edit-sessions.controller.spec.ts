@@ -68,11 +68,12 @@ describe('EditSessionsController', () => {
 
   describe('GET /edit-sessions/external', () => {
     it('정상 조회 - orderSeqno로 세션 목록 반환', async () => {
-      const result = await controller.findByOrderExternal('12345');
+      // P2c: 컨트롤러가 @CurrentSite().siteId 를 2번째 인자로 전달(테스트엔 site 미주입 → undefined).
+      const result = await controller.findByOrderExternal('12345', undefined);
 
       expect(result.success).toBe(true);
       expect(result.data).toEqual(mockExternalResponse);
-      expect(service.findByOrderExternal).toHaveBeenCalledWith(12345);
+      expect(service.findByOrderExternal).toHaveBeenCalledWith(12345, undefined);
     });
 
     it('orderSeqno 파라미터 누락 - 400 Bad Request', async () => {

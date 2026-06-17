@@ -36,6 +36,10 @@ import { ImpositionPreviewResponseDto } from './dto/imposition-preview.dto';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Public } from '../auth/decorators/public.decorator';
 import { ApiKeyGuard } from '../auth/guards/api-key.guard';
+import {
+  CurrentSite,
+  CurrentSitePayload,
+} from '../auth/decorators/current-site.decorator';
 import { PayloadTooLargeResponseDto } from '../common/dto/error-response.dto';
 import { SpreadStartSide } from '../worker-jobs/imposition.util';
 
@@ -309,6 +313,7 @@ export class EditSessionsController {
   @ApiResponse({ status: 401, description: 'API Key 누락 또는 유효하지 않음' })
   async findByOrderExternal(
     @Query('orderSeqno') orderSeqno?: string,
+    @CurrentSite() site?: CurrentSitePayload,
   ): Promise<ExternalSessionListResponseDto> {
     if (!orderSeqno) {
       throw new BadRequestException({
@@ -325,7 +330,10 @@ export class EditSessionsController {
       });
     }
 
-    const data = await this.editSessionsService.findByOrderExternal(parsed);
+    const data = await this.editSessionsService.findByOrderExternal(
+      parsed,
+      site?.siteId,
+    );
     return { success: true, data };
   }
 
@@ -381,6 +389,7 @@ export class EditSessionsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Query('startSide') startSide?: string,
     @Query('binding') binding?: string,
+    @CurrentSite() site?: CurrentSitePayload,
   ): Promise<ImpositionPreviewResponseDto> {
     // startSide 정규화 — 'left' 만 좌수, 그 외(미지정/오타 포함)는 기본 우수('right')
     const normalizedStartSide: SpreadStartSide =
@@ -389,6 +398,7 @@ export class EditSessionsController {
       id,
       normalizedStartSide,
       binding || undefined,
+      site?.siteId,
     );
   }
 

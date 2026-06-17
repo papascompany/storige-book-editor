@@ -181,6 +181,7 @@ export class FilesController {
       dto.orderSeqno,
       dto.memberSeqno,
       dto.metadata,
+      site?.siteId, // P2c S-2: 외부 업로드 파일에 호출자 site 스탬프(테넌트 소유)
     );
 
     // 사이트 보존정책 적용 — retentionDays>0 이면 expires_at = now + N일 (retention cron 이 정리)
@@ -345,8 +346,13 @@ export class FilesController {
   async downloadFileExternal(
     @Param('id', ParseUUIDPipe) id: string,
     @Res() res: Response,
+    @CurrentSite() site?: CurrentSitePayload,
   ): Promise<void> {
-    const { buffer, file } = await this.filesService.getFileBuffer(id);
+    // P2c S-2: 호출자 site 대조 — 타 테넌트 파일 다운로드 차단(NULL=레거시/공유 허용).
+    const { buffer, file } = await this.filesService.getFileBuffer(
+      id,
+      site?.siteId,
+    );
 
     res.setHeader('Content-Type', file.mimeType);
     res.setHeader(
@@ -372,8 +378,10 @@ export class FilesController {
   @ApiResponse({ status: 404, description: '파일을 찾을 수 없음' })
   async deleteFileExternal(
     @Param('id', ParseUUIDPipe) id: string,
+    @CurrentSite() site?: CurrentSitePayload,
   ): Promise<{ success: boolean }> {
-    await this.filesService.hardDelete(id);
+    // P2c S-2: 호출자 site 대조 — 타 테넌트 파일 하드삭제 차단(파괴적).
+    await this.filesService.hardDelete(id, site?.siteId);
     return { success: true };
   }
 
@@ -394,6 +402,7 @@ export class FilesController {
   async setFileExpiryExternal(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: { expiresAt: string | null },
+    @CurrentSite() site?: CurrentSitePayload,
   ): Promise<FileResponseDto> {
     let parsed: Date | null = null;
     if (body?.expiresAt != null) {
@@ -406,7 +415,8 @@ export class FilesController {
       }
       parsed = d;
     }
-    const file = await this.filesService.setExpiry(id, parsed);
+    // P2c S-2: 호출자 site 대조 — 타 테넌트 파일 만료예약 차단.
+    const file = await this.filesService.setExpiry(id, parsed, site?.siteId);
     return this.filesService.toResponseDto(file);
   }
 
