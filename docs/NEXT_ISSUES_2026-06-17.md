@@ -54,6 +54,22 @@
 
 ---
 
+### P2c — 외부 라우트 테넌트 격리 (🔒 보안 선결, 2026-06-17 무결점 감사 확정 결함)
+> 6렌즈 무결점 감사(확정결함3·오탐0)에서 **MEDIUM 보안 갭 2건 확정**. 내 P1~P3a 신규 코드의 결함이 아니라
+> **기존 외부 API-Key 라우트가 호출자 site 와 리소스 site_id 를 대조하지 않는 갭**(설계가 P2c로 이연했던 항목).
+> ⚠️ **인라인 즉수정 위험**: rotated-site 세션/파일이 깨질 수 있어(아래) 신중한 게이트 처리 필요.
+
+- **S-1 [MEDIUM] 외부 주문별 세션조회 site 미대조** (`edit-sessions`): `findByOrderExternal`(edit-sessions.service.ts:151-159)이 `orderSeqno` 만으로 조회 → 타 테넌트 키로 다른 사이트 주문번호 조회 시 세션+PDF URL 열람 가능. **edit_sessions.site_id 는 생성 시 채워짐(controller:104)** + order_seqno 가 사이트별 네임스페이스 없음 → **미래 데이터에 live 결함**. 가장 우선.
+  - **수정**: `@CurrentSite()` 로 callerSiteId 받아 `WHERE (site_id = :caller OR site_id IS NULL)` 결합. imposition-preview 동일.
+  - **⚠️ 위험**: bookmoa-mobile 의 **cutover 전 세션은 구 site_id(`26183a7c`, inactive)로 스탬프** → 신 키(`b5aef7a9`)로 조회 시 불일치로 안 보임 → **재편집 붕괴**. 배포 전 site_id 분포 확인 + 구→신 site 매핑/마이그 필요.
+- **S-2 [MEDIUM] 외부 파일 다운로드/하드삭제/만료예약 site 미대조** (`files`): `downloadFileExternal`/`deleteFileExternal`/`setFileExpiryExternal`(files.controller.ts:337-411)이 `CurrentSite` 미주입 → fileId 만으로 타 테넌트 파일 유출·파괴 가능.
+  - **현 완화**: `files.site_id` 는 **생성 경로(uploadFileExternal)가 채우지 않아 전부 NULL** → 즉각 유출은 제한. 단 **하드삭제/다운로드는 파괴적/유출이라 우선 보강 권장**.
+  - **수정 2단계**: ① write-side — uploadFileExternal 이 `@CurrentSite().siteId` 로 file.site_id 스탬프. ② read/delete-side — callerSiteId 대조(`site_id = caller OR IS NULL`).
+- **권고 순서**: S-1(live 결함) → S-2(파괴적 우선). 둘 다 외부계약이라 **P1 게이트 패턴**(백업→적대검증→활성 사이트 7곳 회귀→배포) + rotated-site 데이터 확인 선행.
+- **기타 P2c**: editor-contents 에셋 격리 · templates categories(find→QueryBuilder).
+
+---
+
 ### P3 — admin UI 멀티테넌시
 - **P3a = ✅ 완료·LIVE (`2074e54`, 2026-06-17)**: 운영자 계정 관리(user_site_roles CRUD) + 역할 게이팅.
   - API: OperatorsController(@Roles(ADMIN)) 생성·배정·회수·비번리셋·삭제, 권한상승 3중 차단(DTO @IsIn+서비스+DB CHECK), getOperator 로 전역 admin 보호. /auth/me GET+siteRoles(editor POST 보존).
