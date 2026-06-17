@@ -58,7 +58,12 @@
 > ✅ **S-1·S-2 완료·LIVE (`71ac9de` + 마이그 `20260617_c`, 2026-06-17 게이트 배포·검증)**:
 > 재스탬프 마이그(26183a7c→b5aef7a9 15세션) → API 재배포 → 전수검증 회귀0(메인/mobile 자기주문 조회 정상,
 > 크로스테넌트 0/0 차단, 7사이트 shop-session 200, 오류0). 적대검증 3렌즈 GO·확정0.
-> ⏳ **S-3 잔여**: worker-jobs external(GET/PATCH /worker-jobs/external/:id) site 미대조 + `registerExternalFile`(워커 출력 PDF) site_id 미스탬프 → 같은 클래스 갭. worker_jobs rotated-site 재스탬프 동반 필요. **S-1/S-2 와 동일 게이트 패턴**으로 별도 처리.
+> ✅ **S-3 완료·LIVE (`44b3699` + 핫픽스 `dd05247`/`6636c6d` + 마이그 `20260617_d`, 2026-06-17~18)**:
+> worker-jobs external(GET/PATCH /external/:id) caller-site 대조 + `registerExternalFile` 워커출력 site 승계 +
+> worker_jobs 구 mobile(26183a7c) 5잡→b5aef7a9 재스탬프. ⚠️ **배포 후 워커 회귀 핫픽스**: 내부 워커는
+> WORKER_API_KEY(=Default Site editor==worker 코드) 사용→ApiKeyGuard editor 매칭→테넌트 체크 404로 콜백 붕괴.
+> 핫픽스=ApiKeyGuard WORKER_API_KEY→role='worker' 강제 + files/edit-sessions role 바이패스 + docker-compose api
+> 에 WORKER_API_KEY 주입. 검증: WORKER_API_KEY+테넌트잡 200(바이패스), 크로스테넌트 editor 404, 큐/잡 영향0.
 
 #### (참고) 원 감사 확정 결함 — 아래 S-1/S-2 는 위와 같이 해소됨
 > 6렌즈 무결점 감사(확정결함3·오탐0)에서 **MEDIUM 보안 갭 2건 확정**. 내 P1~P3a 신규 코드의 결함이 아니라
