@@ -3,6 +3,7 @@ import { ConfigProvider } from 'antd';
 import koKR from 'antd/locale/ko_KR';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ProtectedRoute } from './components/ProtectedRoute';
+import { AuthBootstrap } from './components/AuthBootstrap';
 import { MainLayout } from './components/Layout';
 import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
@@ -42,6 +43,7 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <ConfigProvider locale={koKR}>
         <BrowserRouter basename={import.meta.env.VITE_ROUTER_BASE || '/'}>
+          <AuthBootstrap />
           <Routes>
             <Route path="/login" element={<Login />} />
 
