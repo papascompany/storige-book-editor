@@ -308,8 +308,13 @@ export class FilesService {
    * 불일치 시 존재 노출 방지로 404(타 테넌트 파일 다운로드/하드삭제/만료 차단).
    * callerSiteId 미지정(내부 호출·retention cron)이면 검사 생략.
    */
-  private assertSiteAccess(file: FileEntity, callerSiteId?: string): void {
-    if (callerSiteId && file.siteId && file.siteId !== callerSiteId) {
+  private assertSiteAccess(
+    file: FileEntity,
+    caller?: { siteId?: string; role?: string },
+  ): void {
+    // P2c: worker 역할(내부 워커, WORKER_API_KEY)·caller 미지정(내부 호출)은 바이패스.
+    if (!caller || caller.role === 'worker') return;
+    if (file.siteId && file.siteId !== caller.siteId) {
       throw new NotFoundException({
         code: 'FILE_NOT_FOUND',
         message: '파일을 찾을 수 없습니다.',
@@ -320,10 +325,10 @@ export class FilesService {
 
   async getFileBuffer(
     id: string,
-    callerSiteId?: string,
+    caller?: { siteId?: string; role?: string },
   ): Promise<{ buffer: Buffer; file: FileEntity }> {
     const file = await this.findById(id);
-    this.assertSiteAccess(file, callerSiteId);
+    this.assertSiteAccess(file, caller);
 
     try {
       let buffer: Buffer;
@@ -351,9 +356,12 @@ export class FilesService {
    * 저장 백엔드의 실제 객체 + DB 레코드를 모두 제거. 멱등(없으면 무시).
    * ⚠️ 외부 테넌트가 주문 이행 완료 후 호출(DELETE /files/:id/external) 하거나 retention cron 이 사용.
    */
-  async hardDelete(id: string, callerSiteId?: string): Promise<void> {
+  async hardDelete(
+    id: string,
+    caller?: { siteId?: string; role?: string },
+  ): Promise<void> {
     const file = await this.findById(id);
-    this.assertSiteAccess(file, callerSiteId);
+    this.assertSiteAccess(file, caller);
     // 백엔드 객체 삭제 (storageKey 있으면 그걸로, 없으면 local filePath fallback)
     if (file.storageKey) {
       await this.objectStorage.delete(file.storageBackend, file.storageKey);
@@ -376,10 +384,10 @@ export class FilesService {
   async setExpiry(
     id: string,
     expiresAt: Date | null,
-    callerSiteId?: string,
+    caller?: { siteId?: string; role?: string },
   ): Promise<FileEntity> {
     const file = await this.findById(id);
-    this.assertSiteAccess(file, callerSiteId);
+    this.assertSiteAccess(file, caller);
     file.expiresAt = expiresAt;
     return this.fileRepository.save(file);
   }

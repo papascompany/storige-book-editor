@@ -332,7 +332,7 @@ export class EditSessionsController {
 
     const data = await this.editSessionsService.findByOrderExternal(
       parsed,
-      site?.siteId,
+      site,
     );
     return { success: true, data };
   }
@@ -398,7 +398,7 @@ export class EditSessionsController {
       id,
       normalizedStartSide,
       binding || undefined,
-      site?.siteId,
+      site,
     );
   }
 

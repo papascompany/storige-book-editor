@@ -349,10 +349,7 @@ export class FilesController {
     @CurrentSite() site?: CurrentSitePayload,
   ): Promise<void> {
     // P2c S-2: 호출자 site 대조 — 타 테넌트 파일 다운로드 차단(NULL=레거시/공유 허용).
-    const { buffer, file } = await this.filesService.getFileBuffer(
-      id,
-      site?.siteId,
-    );
+    const { buffer, file } = await this.filesService.getFileBuffer(id, site);
 
     res.setHeader('Content-Type', file.mimeType);
     res.setHeader(
@@ -381,7 +378,7 @@ export class FilesController {
     @CurrentSite() site?: CurrentSitePayload,
   ): Promise<{ success: boolean }> {
     // P2c S-2: 호출자 site 대조 — 타 테넌트 파일 하드삭제 차단(파괴적).
-    await this.filesService.hardDelete(id, site?.siteId);
+    await this.filesService.hardDelete(id, site);
     return { success: true };
   }
 
@@ -416,7 +413,7 @@ export class FilesController {
       parsed = d;
     }
     // P2c S-2: 호출자 site 대조 — 타 테넌트 파일 만료예약 차단.
-    const file = await this.filesService.setExpiry(id, parsed, site?.siteId);
+    const file = await this.filesService.setExpiry(id, parsed, site);
     return this.filesService.toResponseDto(file);
   }
 

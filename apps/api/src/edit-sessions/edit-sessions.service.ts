@@ -150,7 +150,7 @@ export class EditSessionsService {
    */
   async findByOrderExternal(
     orderSeqno: number,
-    callerSiteId?: string,
+    caller?: { siteId?: string; role?: string },
   ): Promise<ExternalSessionResponseDto[]> {
     const qb = this.sessionRepository
       .createQueryBuilder('session')
@@ -160,11 +160,12 @@ export class EditSessionsService {
       .andWhere('session.deletedAt IS NULL');
 
     // P2c 테넌트 격리: 호출자 site 세션 + 레거시 NULL(시스템공유)만 노출. 타 테넌트 세션·PDF URL 차단.
-    // (order_seqno 는 사이트별 네임스페이스가 없어, callerSiteId 미대조 시 교차 열람이 가능했음.)
-    if (callerSiteId) {
+    // (order_seqno 는 사이트별 네임스페이스가 없어, 미대조 시 교차 열람 가능했음.)
+    // worker 역할(내부 워커)·caller 미지정(내부 호출)은 바이패스.
+    if (caller && caller.role !== 'worker' && caller.siteId) {
       qb.andWhere(
         '(session.siteId = :callerSiteId OR session.siteId IS NULL)',
-        { callerSiteId },
+        { callerSiteId: caller.siteId },
       );
     }
 
@@ -286,12 +287,18 @@ export class EditSessionsService {
     id: string,
     startSide: SpreadStartSide,
     bindingOverride?: string,
-    callerSiteId?: string,
+    caller?: { siteId?: string; role?: string },
   ): Promise<ImpositionPreviewResponseDto> {
     const session = await this.findById(id);
-    // P2c 테넌트 격리: 타 site 세션 미리보기 차단(NULL=레거시/공유는 허용).
-    // findById 의 not-found 404 와 **동일한 응답**으로 던져 존재 오라클(타 테넌트 세션 존재 여부 추론)을 차단.
-    if (callerSiteId && session.siteId && session.siteId !== callerSiteId) {
+    // P2c 테넌트 격리: 타 site 세션 미리보기 차단(NULL=레거시/공유 허용, worker/내부호출 바이패스).
+    // findById 의 not-found 404 와 **동일한 응답**으로 던져 존재 오라클을 차단.
+    if (
+      caller &&
+      caller.role !== 'worker' &&
+      caller.siteId &&
+      session.siteId &&
+      session.siteId !== caller.siteId
+    ) {
       throw new NotFoundException({
         code: 'SESSION_NOT_FOUND',
         message: '편집 세션을 찾을 수 없습니다.',
