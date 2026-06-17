@@ -1,9 +1,9 @@
 # Storige 문서 인덱스
 
-> **갱신**: 2026-06-04 · 뒤로가기 무결성+호스트 핸드셰이크 / PDF 첨부 검증 항목·갭 감사 반영
+> **갱신**: 2026-06-17 · 멀티테넌시 P1(인증/테넌트 기반)+P2a(site_id 12테이블) 프로덕션 게이트 실행완료·LIVE / admin 비밀번호 변경 기능 / Vercel 배포 파이프라인 복구 (격리는 아직 비활성 = 동작 불변·비파괴)
 > **HTML 가이드 통합**: `Storige_개발가이드.html`, `WORKER_FLOW_시각화.html` 가 docs/ 로 합류 (이전엔 부모 디렉토리)
 
-📊 **시작점**: [`MASTER_STATUS_2026-05-10.md`](./MASTER_STATUS_2026-05-10.md) (최신)
+📊 **시작점**: [`MASTER_STATUS_2026-06-17.md`](./MASTER_STATUS_2026-06-17.md) (최신)
 🏗 **시각 가이드**: [`Storige_개발가이드.html`](./Storige_개발가이드.html) (사이드바 네비, 에디터 UX 사이클 반영)
 
 ---
@@ -12,7 +12,9 @@
 
 | 문서 | 형식 | 설명 |
 |------|------|------|
-| [`MASTER_STATUS_2026-05-10.md`](./MASTER_STATUS_2026-05-10.md) | MD | **최신** — 편집기 UX·관리자 모드 분리 (7건 커밋) |
+| [`MASTER_STATUS_2026-06-17.md`](./MASTER_STATUS_2026-06-17.md) | MD | **최신** — 멀티테넌시 P1+P2a 프로덕션 게이트 실행완료(LIVE·격리 비활성)·admin 비밀번호 변경 기능·Vercel 배포 파이프라인 복구 |
+| [`NEXT_ISSUES_2026-06-17.md`](./NEXT_ISSUES_2026-06-17.md) | MD | 다음 개발 이슈 — P2b 조회격리(회귀주의)·P3 admin UI·P4 편집기 런타임·P5 워커 공정성·P6 운영·오너 대기(키 cutover/히스토리 정화/DB 회전)·PDF 업로드 검증 Tier0 |
+| [`MASTER_STATUS_2026-05-10.md`](./MASTER_STATUS_2026-05-10.md) | MD | 편집기 UX·관리자 모드 분리 (7건 커밋) |
 | [`MASTER_STATUS_2026-05-07.md`](./MASTER_STATUS_2026-05-07.md) | MD | 멀티사이트 플랫폼화 완료, 98% 진척 |
 | [`MASTER_STATUS_2026-05-04.md`](./MASTER_STATUS_2026-05-04.md) | MD | 스냅샷 (2026-05-04) |
 | [`MASTER_STATUS_2026-05-04.html`](./MASTER_STATUS_2026-05-04.html) | HTML | 시각화 (구 버전) |
@@ -85,6 +87,14 @@
 ---
 
 ## 📊 6. 사이클 보고서 (시간역순)
+
+### 🆕 2026-06-17 — 멀티테넌시 P1+P2a 프로덕션 게이트 실행완료(LIVE) + admin 비밀번호 변경 + Vercel 파이프라인 복구
+| 문서 | 설명 |
+|------|------|
+| [`MASTER_STATUS_2026-06-17.md`](./MASTER_STATUS_2026-06-17.md) | **사이클 정본** — 멀티테넌시 P1(인증/테넌트 기반)+P2a(site_id 12테이블) 프로덕션 게이트 실행완료·전수검증 회귀0 · admin 비밀번호 변경 기능 LIVE · Vercel 배포 파이프라인 복구(640e3e6) · 격리는 아직 비활성(site_id 전부 NULL=시스템공유, 동작 불변·비파괴) |
+| [`NEXT_ISSUES_2026-06-17.md`](./NEXT_ISSUES_2026-06-17.md) | **다음 개발 이슈** — P2b 조회격리(QueryScope 라우터 적용·회귀주의·findByProduct 전역 fallback)·P3 admin UI 멀티테넌시(테넌트 스위처·운영자 계정 CRUD)·P4 편집기 런타임(Site 메타)·P5 워커 공정성(큐 site_id·쿼터)·P6 운영(storageKey 네임스페이스·nginx /storage 인증) + 오너 대기(북모아 메인 키 cutover·히스토리 정화·bookmoa DB 회전) + 별도 트랙 PDF 업로드 검증 Tier0 |
+| [`../.cursor/plans/MULTITENANCY_EXPANSION_DESIGN_2026-06-17.md`](../.cursor/plans/MULTITENANCY_EXPANSION_DESIGN_2026-06-17.md) | 설계 정본(로컬·미커밋) — 6대 갭 분석 + P0~P6 로드맵 + User↔Site 관계 핵심 |
+| [`../.cursor/plans/MULTITENANCY_P1_DEPLOY_RUNBOOK_2026-06-17.md`](../.cursor/plans/MULTITENANCY_P1_DEPLOY_RUNBOOK_2026-06-17.md) | P1+P2a 통합 배포 런북(로컬·미커밋) — §0/§4(e) 비번변경 검증 + §5 P2a 롤백 |
 
 ### 🆕 2026-06-06~07 — 표지편집 전수 감사 + 스프레드 책 인쇄 무결성(P0 완료·P1 일부)
 | 문서 | 설명 |
