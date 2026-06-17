@@ -55,12 +55,13 @@
 ---
 
 ### P3 — admin UI 멀티테넌시
-- **우선순위**: **[P1]** (P2b 직후, 운영자 자율 관리 진입점)
+- **P3a = ✅ 완료·LIVE (`2074e54`, 2026-06-17)**: 운영자 계정 관리(user_site_roles CRUD) + 역할 게이팅.
+  - API: OperatorsController(@Roles(ADMIN)) 생성·배정·회수·비번리셋·삭제, 권한상승 3중 차단(DTO @IsIn+서비스+DB CHECK), getOperator 로 전역 admin 보호. /auth/me GET+siteRoles(editor POST 보존).
+  - Admin UI: 운영자 관리 페이지 + 역할 게이팅(isGlobalAdmin → SITE_ADMIN 에게 운영자/사이트/저장소 메뉴 숨김) + Login me-하이드레이션.
+  - 검증: 빌드+161테스트+적대검증 API보안/UI게이팅 GO·확정0. 배포후 가드(무인증401·shop403)·editor호환·오류0.
+- **P3b = 잔여(다음)**: ① SITE_ADMIN/SITE_MANAGER 를 데이터 라우트(templates/library/products/edit-sessions) @Roles 에 추가(현재 @Roles(ADMIN,MANAGER) 라 SITE_ADMIN 403) + TenantGuard/CurrentScope 배선 검증 → SITE_ADMIN 이 자기 site 데이터를 실제 관리. ② 테넌트 스위처(전역 admin 의 site 별 view). ③ /operators 등 라우트 role 가드(ProtectedRoute=인증만). ④ resetPassword 세션 무효화(JWT siteRoles 스냅샷 TTL).
+- **우선순위**: P3a [P1] 완료 / P3b [P1] 다음.
 - **목표**: admin 대시보드에 테넌트 개념을 노출. SUPER_ADMIN은 전체, SITE_ADMIN/SITE_MANAGER는 자기 사이트만 관리.
-- **핵심 작업**:
-  - 테넌트 스위처(상단 사이트 선택) + 각 페이지 목록/생성 스코핑.
-  - 권한 게이팅(ROLE_PERMISSIONS 기반 UI 노출/숨김).
-  - 운영자 계정 CRUD: `user_site_roles` 관리(사이트별 role 부여/회수), **role 입력 검증**(허용 enum만).
 - **위험**: **[위험 — 中]**
   - admin은 Vercel 자동배포 + axios 핫픽스/Profile UI가 최근에야 LIVE → **배포 state 모니터링 필수**(아래 운영 항목 참조).
   - 권한 게이팅 누락 시 SITE_MANAGER가 타 사이트 데이터 조작 가능 → P2b의 서버측 스코프가 최종 방어선이어야 함(UI 게이팅만 믿지 말 것).
