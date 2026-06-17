@@ -31,4 +31,12 @@ export const authApi = {
     const response = await axiosInstance.post<AuthTokens>('/auth/refresh', { refreshToken });
     return response.data;
   },
+
+  changePassword: async (data: {
+    currentPassword: string;
+    newPassword: string;
+  }): Promise<{ success: boolean }> => {
+    const response = await axiosInstance.patch('/auth/change-password', data);
+    return response.data;
+  },
 };

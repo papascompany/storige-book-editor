@@ -1,6 +1,7 @@
 import {
   Controller,
   Post,
+  Patch,
   Body,
   UseGuards,
   HttpCode,
@@ -19,6 +20,7 @@ import { Response, Request } from 'express';
 import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { LoginDto, RegisterDto } from './dto/login.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import {
   CreateShopSessionDto,
   ShopSessionResponseDto,
@@ -85,6 +87,29 @@ export class AuthController {
   async getMe(@CurrentUser() user: User): Promise<UserResponse> {
     const { passwordHash, ...result } = user;
     return result as UserResponse;
+  }
+
+  /**
+   * 관리자(User 엔티티) 본인 비밀번호 변경.
+   * 전역 APP_GUARD(JwtAuthGuard)로 인증된 요청만 도달 — @CurrentUser() 는 User 엔티티(user.id).
+   */
+  @ApiBearerAuth()
+  @Patch('change-password')
+  @Throttle({ default: { limit: 10, ttl: 60000 } }) // SEC-4 현재 비번 추측 방어
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Change current admin password' })
+  @ApiResponse({ status: 200, description: 'Password changed successfully' })
+  @ApiResponse({ status: 401, description: 'Current password mismatch' })
+  async changePassword(
+    @CurrentUser() user: User,
+    @Body() dto: ChangePasswordDto,
+  ): Promise<{ success: boolean }> {
+    await this.authService.changePassword(
+      user.id,
+      dto.currentPassword,
+      dto.newPassword,
+    );
+    return { success: true };
   }
 
   /**
