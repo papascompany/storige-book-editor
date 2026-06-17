@@ -16,8 +16,9 @@
 | admin 로그인 핫픽스 (401 시 `//login` 리다이렉트 오류 수정) | `59c660a` | ✅ LIVE |
 | admin 비밀번호 변경 기능 (Profile 페이지 + `PATCH /auth/change-password`) | `81edae2` | ✅ LIVE |
 | admin/editor `vercel.json` ignoreCommand 견고화 (배포 파이프라인 복구) | `640e3e6` | ✅ LIVE |
+| 멀티테넌시 P2b — 조회 격리(QueryScope) hybrid 8라우트 배선(includeNull=true) | `5c5b533` | ✅ **LIVE (프로덕션 배포·검증 2026-06-17)** |
 
-> **핵심 상태**: P1+P2a는 LIVE이나 **격리는 아직 비활성**. `site_id` 전부 NULL(시스템공유), 실제 조회 격리(P2b)는 미착수 → 현재 모든 데이터가 종전처럼 전역 노출(동작 불변, 비파괴, bookmoa 무중단).
+> **핵심 상태**: P1+P2a+**P2b 모두 LIVE**. P2b로 조회 격리 **배선은 활성화**됐으나, `site_id` 전부 NULL(시스템공유) + per-site 콘텐츠·운영자 미생성이라 **실효 격리는 P3 이후**(현재 inert·비파괴·bookmoa 무중단). shop 토큰도 includeNull=true로 시스템공유 전부 노출(검증 완료).
 
 ---
 
@@ -28,9 +29,10 @@
 
 ---
 
-### P2b — 조회 격리 (QueryScope 라우터 적용)
-- **우선순위**: **[P0]** (멀티테넌시 임계 경로 1순위)
-- **목표**: P1에서 정의만 해둔 `tenant-scope.helper`(QueryScope)를 실제 컨트롤러/서비스 조회 경로에 배선하여, 사이트별 데이터 격리를 **활성화**.
+### P2b — 조회 격리 (QueryScope 라우터 적용) — ✅ **완료·LIVE (`5c5b533`, 2026-06-17)**
+- **상태**: 프로덕션 배포·전수검증 완료. `@CurrentScope()` 데코레이터 + `getTenantScope` MANAGER 전역화 + `applySiteScope`(alias.siteId) → hybrid 8라우트(templates·template-sets·findCompatible·library 5종) `includeNull=true` 배선. 적대검증 3렌즈 GO·확정0, shop 토큰 스코프 라우트 200+비어있지않음(무중단).
+- **P2c 잔여**(아래 별도): editor-contents 에셋 격리 · templates categories(find→QueryBuilder) · products/files(가드 분리 선결).
+- **목표**(달성): P1에서 정의만 해둔 `tenant-scope.helper`(QueryScope)를 실제 컨트롤러/서비스 조회 경로에 배선하여, 사이트별 데이터 격리를 **활성화**.
 - **핵심 작업**:
   - 컨트롤러: `getTenantScope(req.user)` → 서비스에 scope 전달.
   - 서비스: `applySiteScope(qb, alias, scope, { includeNull })` 를 QueryBuilder에 적용.
@@ -206,8 +208,8 @@
 ## 💡 최우선 액션 권장 순서
 
 1. ✅ **admin 비번 본인 교체 + 임시파일 정리 완료** (O-1, 2026-06-17 사용자 완료)
-2. **P2b 조회격리** (멀티테넌시 임계 경로 1순위 — includeNull 매트릭스 고정 + `findByProduct` 전역 fallback 테스트 → 적대검증 → 배포) **← 진행 중**
-3. **P3 admin UI 멀티테넌시** (운영자 자율 관리 — 서버 권한 검증 동반)
+2. ✅ **P2b 조회격리 완료·LIVE** (`5c5b533`, 2026-06-17 — 8라우트 includeNull=true 배선, 적대검증 GO, 프로덕션 검증 회귀0)
+3. **P3 admin UI 멀티테넌시** (운영자 자율 관리 — 서버 권한 검증 동반) **← 다음 권장**
 4. **(병렬) T-1 고객 PDF 검증 Tier0** (워커 독립 트랙)
 5. **P4 / P5 / P6** (P2b·P3 완료 후 병렬)
 6. **오너 트리거 시**: ~~W-1 북모아 메인 키 cutover~~ **(보류 — 이슈 발생 시 대응)** → W-2 히스토리 정화 force-push → W-3 bookmoa DB 회전
