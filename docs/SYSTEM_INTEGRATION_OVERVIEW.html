@@ -392,8 +392,8 @@
 <div class="top-header">
   <div class="badge-row">
     <span class="badge blue">📄 기술 문서</span>
-    <span class="badge green">v2.8</span>
-    <span class="badge">2026-06-15</span>
+    <span class="badge green">v2.9</span>
+    <span class="badge">2026-06-17</span>
     <span class="badge">외부 연동 개발자용</span>
   </div>
   <h1>Storige <span>×</span> Bookmoa<br>시스템 통합 문서</h1>
@@ -410,7 +410,8 @@
 <!-- ══════════════════════════════ 사이드바 ══════════════════════════ -->
 <nav class="sidebar">
   <div class="sidebar-title">목차</div>
-  <a href="#changelog-v28" style="color:var(--green)">🆕 v2.8 100p_books + 저장계층 R2</a>
+  <a href="#changelog-v29" style="color:var(--green)">🆕 v2.9 멀티테넌시 P1+P2a (LIVE)</a>
+  <a href="#changelog-v28" style="color:var(--green)">v2.8 100p_books + 저장계층 R2</a>
   <a href="#changelog-v27" style="color:var(--green)">v2.7 ShareSnap 연동</a>
   <a href="#s1" class="active">① 시스템 구성도</a>
   <a href="#s1-2" class="sub">서비스 목록</a>
@@ -442,6 +443,104 @@
 
 <!-- ══════════════════════════════ 콘텐츠 ══════════════════════════════ -->
 <main class="content">
+
+<!-- ─────────────── 변경 이력: v2.9 ─────────────── -->
+<section class="section" id="changelog-v29">
+  <h2 class="section-title">
+    <span class="num" style="background:rgba(34,197,94,.2);color:var(--green2)">v2.9</span>
+    v2.9 (2026-06-17) — 멀티테넌시 P1+P2a (인증/테넌트 기반 + 데이터모델) LIVE
+  </h2>
+
+  <div class="badge-row" style="margin-bottom:20px">
+    <span class="tag new">MULTI-TENANCY P1</span>
+    <span class="tag added">SITE_ID 12 TABLES (P2a)</span>
+    <span class="tag added">ADMIN 비밀번호 변경</span>
+    <span class="tag warn">외부 영향 0 · 동작 불변</span>
+  </div>
+
+  <p class="desc">
+    여러 외부 사이트가 임베드하고 각자 admin 으로 독립 관리하는 <strong>멀티테넌시 플랫폼 확장</strong>의
+    1단계(P1 인증/테넌트 기반)와 데이터모델(P2a)을 프로덕션에 게이트 실행했습니다.
+    전부 <strong>비파괴·additive</strong>이며 <strong>격리는 아직 비활성</strong>(site_id 전부 NULL = 시스템공유) →
+    현재 모든 데이터가 종전처럼 전역 노출(bookmoa 무중단). 실제 조회 격리(P2b)는 후속 대기.
+    설계 정본: <code class="inline">.cursor/plans/MULTITENANCY_EXPANSION_DESIGN_2026-06-17.md</code>,
+    런북: <code class="inline">.cursor/plans/MULTITENANCY_P1_DEPLOY_RUNBOOK_2026-06-17.md</code>
+  </p>
+
+  <div class="info-box green">
+    <div class="icon">🔐</div>
+    <div class="ib-content">
+      <div class="ib-title">P1 — 인증/테넌트 기반 (LIVE · 비파괴)</div>
+      <code class="inline">UserRole</code>에 <strong>SITE_ADMIN/SITE_MANAGER</strong> 추가,
+      <code class="inline">UserSiteRole</code> 조인 엔티티(<code class="inline">user_site_roles</code>),
+      <code class="inline">ROLE_PERMISSIONS</code> 정의. login/refresh JWT 에 <strong>siteRoles 클레임</strong>(dual-mode:
+      없으면 전역 동작). <code class="inline">RolesGuard</code> SUPER_ADMIN 통과, <code class="inline">TenantGuard</code> +
+      <code class="inline">tenant-scope.helper</code>(<code class="inline">QueryScope</code>, <code class="inline">includeNull</code> 기본 false)
+      — <strong>정의만</strong> 추가(라우터 적용은 P3). 커밋 <code class="inline">5945570</code>.
+    </div>
+  </div>
+
+  <div class="info-box blue">
+    <div class="icon">🗄️</div>
+    <div class="ib-content">
+      <div class="ib-title">P2a — site_id 데이터모델 (LIVE · 12테이블)</div>
+      <code class="inline">site_id VARCHAR(36) NULL</code> 컬럼을 <strong>12개 테이블</strong>에 추가(+인덱스):
+      templates · template_sets · product_template_sets · categories · library_categories ·
+      library_frames/backgrounds/cliparts/shapes/fonts · products · files.
+      전부 <strong>nullable·additive</strong>(기존 NULL = 시스템공유/레거시 → 동작 불변).
+      마이그 멱등성: 12 ADD COLUMN + 12 CREATE INDEX 에 <code class="inline">IF NOT EXISTS</code>(MariaDB 11.2) →
+      부분실패 후 재실행 안전. 커밋 <code class="inline">8d9c13b</code>, <code class="inline">8a193ff</code>.
+    </div>
+  </div>
+
+  <div class="info-box blue">
+    <div class="icon">🔑</div>
+    <div class="ib-content">
+      <div class="ib-title">Admin 비밀번호 변경 기능 (LIVE)</div>
+      신규 프로필 페이지(현재/새/확인, 최소 8자·일치검증) + <code class="inline">PATCH /auth/change-password</code>
+      (전역 <code class="inline">JwtAuthGuard</code> 보호 · <code class="inline">@CurrentUser().id</code> 본인만 ·
+      <code class="inline">@Throttle</code> · <code class="inline">bcrypt.compare</code>→<code class="inline">genSalt(10)/hash</code>).
+      App.tsx 보호 라우트 <code class="inline">profile</code>. shop 토큰은 <code class="inline">user.id=undefined</code>→
+      'User not found' 거부(무영향). 커밋 <code class="inline">59c660a</code>(로그인 핫픽스 동반).
+    </div>
+  </div>
+
+  <div class="info-box yellow">
+    <div class="icon">🛠️</div>
+    <div class="ib-content">
+      <div class="ib-title">로그인 핫픽스 + Vercel 파이프라인 복구</div>
+      ① admin 로그인 401 시 <code class="inline">//login</code>→<code class="inline">https://login/</code> 오류페이지
+      튕김 수정(axios 인터셉터: <code class="inline">VITE_ROUTER_BASE</code> 끝슬래시 제거 + <code class="inline">/auth/login·/auth/refresh</code>
+      401은 리다이렉트 제외, 커밋 <code class="inline">59c660a</code>). ② admin Vercel 빌드가 옛 성공 SHA 이후 전 커밋 ERROR
+      로 고착(<code class="inline">ignoreCommand</code> git diff <code class="inline">PREVIOUS_SHA</code> 얕은클론 부재→<code class="inline">fatal: bad object</code>) →
+      비었거나 클론 부재 시 빌드 강제 폴백으로 견고화(admin+editor, 커밋 <code class="inline">640e3e6</code>). → admin READY·라이브.
+    </div>
+  </div>
+
+  <div class="info-box green">
+    <div class="icon">✅</div>
+    <div class="ib-content">
+      <div class="ib-title">프로덕션 게이트 실행 — 전수검증 회귀 0</div>
+      순서: 전체 백업 → git pull → 마이그1(<code class="inline">user_site_roles</code>) → 마이그2(site_id 12테이블) →
+      API 재빌드/재배포 → nginx 재시작 → 검증. 사전 이중검증(라이브 스키마 점검 + 4렌즈 적대검증, criticals 0).
+      검증 결과: API health 200 · admin 로그인 200 · change-password 무인증 401 · 스코프 테이블 13종 전부 200 ·
+      활성 사이트 7곳 shop-session 전부 200(북모아 메인·Default×2·ShareSnap·100p Books·bookmoa-mobile·rotated) ·
+      오류로그 5분 스캔 비어있음.
+    </div>
+  </div>
+
+  <div class="info-box yellow">
+    <div class="icon">⏭️</div>
+    <div class="ib-content">
+      <div class="ib-title">다음 단계 — P2b 조회격리(회귀주의) 이후 P3~P6</div>
+      <strong>P2b</strong> 라우터 QueryScope 적용(template/library=includeNull true, product/file=false;
+      ⚠️ bookmoa <code class="inline">findByProduct</code>=전역 fallback 강제로 무중단). 이후
+      <strong>P3</strong> admin 멀티테넌시 UI(테넌트 스위처·운영자 CRUD) · <strong>P4</strong> 편집기 런타임 Site 메타 ·
+      <strong>P5</strong> 워커 큐 공정성(site_id 페이로드·쿼터) · <strong>P6</strong> 파일 storageKey 네임스페이스·nginx 인증.
+      오너 대기: 북모아 메인(PHP) 키 cutover(마지막 외부 cutover).
+    </div>
+  </div>
+</section>
 
 <!-- ─────────────── 변경 이력: v2.8 ─────────────── -->
 <section class="section" id="changelog-v28">
@@ -1775,7 +1874,7 @@ window.<span class="type">StorigeEditor</span>.<span class="func">init</span>({
 
 <!-- 푸터 -->
 <div style="border-top:1px solid var(--border);margin-top:48px;padding:24px 0;color:var(--text3);font-size:12px">
-  <div style="margin-bottom:6px"><strong style="color:var(--text2)">Storige × Bookmoa 시스템 통합 문서</strong> · v2.8 · 2026-06-15 (100p_books 연동 + 저장계층 R2 추상화 + 보존정책 admin 관리형)</div>
+  <div style="margin-bottom:6px"><strong style="color:var(--text2)">Storige × Bookmoa 시스템 통합 문서</strong> · v2.9 · 2026-06-17 (멀티테넌시 P1+P2a 게이트 실행완료 LIVE·격리 P2b 대기 + admin 비밀번호 변경 + 로그인 핫픽스 + Vercel 파이프라인 복구)</div>
   <div>저장 경로: <code style="font-family:monospace;color:var(--text3)">docs/SYSTEM_INTEGRATION_OVERVIEW.md</code> · <code style="font-family:monospace;color:var(--text3)">docs/SYSTEM_INTEGRATION_OVERVIEW.html</code></div>
   <div style="margin-top:6px">최신 API 스펙: <code style="font-family:monospace;color:var(--text3)">http://localhost:4000/api/docs</code> (Swagger UI)</div>
 </div>

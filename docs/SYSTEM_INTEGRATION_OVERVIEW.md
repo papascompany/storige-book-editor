@@ -1,10 +1,21 @@
 # Storige × Bookmoa 시스템 통합 문서
 
 > **작성일**: 2026-05-02  
-> **최종 수정**: 2026-06-15 (v2.8 — 100p_books 연동 + 저장계층 R2 추상화 + 보존정책(admin 관리형))  
-> **버전**: v2.8  
+> **최종 수정**: 2026-06-17 (v2.9 — 멀티테넌시 P1+P2a 프로덕션 게이트 실행완료(LIVE, 격리는 P2b 대기) + admin 비밀번호 변경 + admin 로그인 핫픽스 + Vercel 배포 파이프라인 복구)  
+> **버전**: v2.9  
 > **대상**: PHP 개발자, 외부 연동 개발자, 운영자, 기술 검토자
 
+> ### 🔄 v2.9 변경 이력 (2026-06-17) — 멀티테넌시 P1+P2a LIVE + admin 비번변경 + 로그인 핫픽스 + 배포 파이프라인 복구
+> 멀티테넌시 플랫폼 확장의 **P1(인증/테넌트 기반)** + **P2a(데이터모델 site_id)** 를 프로덕션 게이트로 실행·검증 완료(LIVE). 단 **실제 조회 격리는 비활성**(site_id 전부 NULL=시스템공유 → 동작 불변·비파괴, bookmoa 무중단). 격리(P2b QueryScope 라우터 적용)는 다음 단계 대기. 정본: `../.cursor/plans/MULTITENANCY_EXPANSION_DESIGN_2026-06-17.md`(설계), `../.cursor/plans/MULTITENANCY_P1_DEPLOY_RUNBOOK_2026-06-17.md`(P1+P2a 통합 런북).
+> - **P1 — 인증/테넌트 기반 (LIVE)**: `UserRole`에 `SITE_ADMIN`/`SITE_MANAGER` 추가, `UserSiteRole` 조인엔티티(`user_site_roles`), auth.service login/refresh JWT에 `siteRoles` 클레임(dual-mode: 없으면 전역), `RolesGuard` `SUPER_ADMIN` 통과, `TenantGuard` + tenant-scope.helper(`QueryScope`, `includeNull` 기본 false) — **정의만**(라우터 적용은 P3). 전부 비파괴·additive.
+> - **P2a — 데이터모델 site_id (LIVE)**: 12개 테이블(`templates`·`template_sets`·`product_template_sets`·`categories`·`library_categories`·library 4종·`products`·`files`)에 `site_id` VARCHAR(36) NULL 컬럼 + 인덱스 추가. 전부 nullable·additive(기존 NULL=시스템공유/레거시 → 동작 불변).
+> - **마이그레이션 2건**(수동, synchronize=false): `user_site_roles` 생성 → `site_id` 12테이블 ADD COLUMN + CREATE INDEX(전부 `IF NOT EXISTS` 멱등 — 부분실패 후 재실행 안전). → API 재배포 순서 준수.
+> - **프로덕션 게이트 회귀 0**: 사전 이중검증(라이브 스키마 FK 타입 정합 + 4렌즈 적대검증 criticals 0) 후 실행. 전수검증 — API health 200 · admin 로그인 200(P1 relation 정상) · 스코프 테이블 13종 SELECT 무오류 · 활성 사이트 7곳 shop-session 전부 200 · 오류로그 5분 스캔 비어있음.
+> - **admin 비밀번호 변경 기능**: 신규 프로필 페이지 + `PATCH /auth/change-password`(전역 JwtAuthGuard 보호·`@CurrentUser().id` 본인만·`@Throttle`·bcrypt). shop 토큰(user.id 없음)은 거부(무영향).
+> - **admin 로그인 핫픽스**: 401 시 `//login`→오류페이지 튕김 수정(axios 인터셉터: `VITE_ROUTER_BASE` 끝슬래시 제거 + `/auth/login`·`/auth/refresh` 401은 리다이렉트 제외).
+> - **Vercel 배포 파이프라인 복구**: admin/editor `vercel.json` `ignoreCommand` 견고화(`VERCEL_GIT_PREVIOUS_SHA`가 얕은 클론에 없을 때 `fatal: bad object`로 빌드가 ERROR 자기영속하던 장애 해소 → PREVIOUS_SHA 비었거나 미존재 시 빌드 강제 폴백). axios 핫픽스·비번변경 UI 라이브 반영.
+> - **⚠️ 외부 영향 0**: 격리 미활성으로 모든 데이터가 종전처럼 전역 노출. bookmoa/ShareSnap/100p_books 경로·URL 계약 불변. 신규 API·기능은 전부 추가형.
+>
 > ### 🔄 v2.8 변경 이력 (2026-06-15) — 100p_books 연동 + 저장계층 R2 + 보존정책
 > 세 번째 외부 서비스 **100p_books**(자체 에디터·렌더러 보유 100p 포토북, Next.js+Supabase) 연동 + 인쇄 백엔드 일원화 기반 정비. 정본: `../.cursor/plans/HANDOFF_100pbooks_integration_2026-06-13.md`, `./STORAGE_R2_RUNBOOK.md`.
 > - **100p_books = 저장·검증만 오프로드(전략적 통합)**: 자체 에디터·PDF렌더러는 유지. 생성 PDF를 `POST /files/upload/external`(X-API-Key)→fileId 저장, `worker-jobs/validate/external`로 인쇄검증(CMYK/재단선), `files/:id/download/external`로 인쇄소 일원화. ShareSnap(편집기 임베드)과 **연동 각도 다름**.
@@ -1121,6 +1132,8 @@ requestValidation(
 ## 부록: Phase A-2 결정사항 (2026-05-16)
 
 외부 다중 사이트(PHP + bookmoa-mobile 등) 공존 환경의 단일 진실. 자세한 사항은 `docs/PHASE_0_CONTRACT_DECISIONS_2026-05-16.md` §6.5 참조.
+
+> **멀티테넌시 확장 현황 (2026-06-17, v2.9)**: P1(인증/테넌트 기반 — `UserRole` SITE_ADMIN/SITE_MANAGER·`UserSiteRole`·JWT `siteRoles` 클레임·`TenantGuard`/tenant-scope.helper)과 P2a(데이터모델 — 12테이블 `site_id` VARCHAR(36) NULL 컬럼+인덱스)가 프로덕션에 배포·검증 완료(**LIVE**). dual-mode·비파괴: `site_id` 전부 NULL(시스템공유)이라 **격리는 아직 비활성** — 모든 데이터가 종전처럼 전역 노출(bookmoa 무중단). 실제 조회 격리(P2b QueryScope 라우터 적용)는 다음 단계 대기. 정본: `../.cursor/plans/MULTITENANCY_EXPANSION_DESIGN_2026-06-17.md`.
 
 ### 모든 외부 사이트 공통
 

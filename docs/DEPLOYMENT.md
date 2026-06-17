@@ -3,6 +3,8 @@
 > 🔄 **갱신**: 2026-05-04 — Node 22 LTS 마이그레이션, Grafana + Prometheus, Loki + Promtail 모니터링 스택 반영
 >
 > 🔄 **갱신**: 2026-06-15 — 저장계층 R2 추상화 + 보존정책(admin 관리형). **신규 DB 마이그레이션 2건**(아래 "스키마 마이그레이션") + R2 활성화 절차는 [`STORAGE_R2_RUNBOOK.md`](./STORAGE_R2_RUNBOOK.md) 참조.
+>
+> 🔄 **갱신**: 2026-06-17 — 멀티테넌시 P1+P2a. **신규 DB 마이그레이션 2건 프로덕션 적용완료**(`20260617_add_user_site_roles.sql`·`20260617_b_add_site_id_data_scoping.sql`, 아래 "스키마 마이그레이션") + Vercel `ignoreCommand` 견고화(아래 "Vercel 배포 파이프라인" — admin 배포 ERROR 고착 트랩 해소).
 
 > ### ⚠️ 스키마 마이그레이션 (synchronize=false → 수동, API 재배포 **전** 실행)
 > 프로덕션은 TypeORM `synchronize=false` 이므로 엔티티 변경 시 `apps/api/migrations/*.sql` 을 수동 실행 후 API 재배포한다(순서 중요 — 신규 코드가 컬럼/테이블 존재를 전제).
@@ -13,9 +15,23 @@
 >   < ~/storige/apps/api/migrations/20260613_add_files_storage_backend.sql
 > docker exec -i storige-mariadb mariadb -ustorige -p"$DATABASE_PASSWORD" storige \
 >   < ~/storige/apps/api/migrations/20260615_add_storage_settings_and_site_retention.sql
+> # 멀티테넌시 P1+P2a (2026-06-17 프로덕션 적용완료) — 반드시 날짜순(P1 먼저 → P2a)
+> docker exec -i storige-mariadb mariadb -ustorige -p"$DATABASE_PASSWORD" storige \
+>   < ~/storige/apps/api/migrations/20260617_add_user_site_roles.sql
+> docker exec -i storige-mariadb mariadb -ustorige -p"$DATABASE_PASSWORD" storige \
+>   < ~/storige/apps/api/migrations/20260617_b_add_site_id_data_scoping.sql
 > # 그 후 API 재배포 + nginx 재시작
 > docker compose up -d --build api && docker compose restart nginx
 > ```
+>
+> #### 멀티테넌시 P1+P2a 마이그레이션 (2026-06-17 — **프로덕션 적용완료**)
+> 두 마이그레이션은 전부 **additive·비파괴**(기존 데이터 NULL=시스템공유/레거시 → 동작 불변, bookmoa 무중단). 적용 순서는 **마이그 2건(P1 먼저) → API 재빌드/재배포 → nginx 재시작**.
+> | 파일 | 내용 |
+> |------|------|
+> | `20260617_add_user_site_roles.sql` (P1) | 신규 조인 테이블 `user_site_roles`(운영자↔사이트 역할). FK → `users`/`sites`. |
+> | `20260617_b_add_site_id_data_scoping.sql` (P2a) | 12개 테이블에 `site_id VARCHAR(36) NULL` 컬럼 + 인덱스 ADD(templates·template_sets·product_template_sets·categories·library_categories·library_frames/backgrounds/cliparts/shapes/fonts·products·files). `IF NOT EXISTS`(MariaDB 11.2) 로 **멱등** — 부분실패 후 재실행 안전. |
+>
+> 통합 런북(백업→pull→마이그 2건→API 재배포→nginx 재시작→전수검증, P2a 롤백 포함): [`../.cursor/plans/MULTITENANCY_P1_DEPLOY_RUNBOOK_2026-06-17.md`](../.cursor/plans/MULTITENANCY_P1_DEPLOY_RUNBOOK_2026-06-17.md).
 
 ## 📋 목차
 
@@ -570,6 +586,21 @@ git revert daeb2b7 --no-edit
 git push origin master
 docker-compose build worker
 docker-compose up -d worker
+```
+
+### Vercel 배포 파이프라인(ignoreCommand) 주의 (2026-06-17)
+
+> admin/editor 는 Vercel 자동 배포(master push)지만, `apps/admin/vercel.json`·`apps/editor/vercel.json` 의 `ignoreCommand` 가 변경 감지에 `git diff $VERCEL_GIT_PREVIOUS_SHA HEAD` 를 사용한다.
+
+**트랩**: `PREVIOUS_SHA`(직전 성공 배포 SHA)가 Vercel 의 얕은(shallow) 클론에 없으면 `git diff` 가 `fatal: bad object` 로 비정상 종료(exit 128) → 배포가 **ERROR** 로 떨어지고, 라이브가 옛 빌드에 **고착**된다(자기영속: 다음 커밋들도 계속 ERROR). 실제로 admin 이 한동안 옛 빌드에 묶여 axios 로그인 핫픽스·프로필/비번변경 UI 가 라이브에 안 나타났다.
+
+**해소(커밋 `640e3e6`)**: `PREVIOUS_SHA` 가 비었거나 클론에 없으면 `exit 1`(빌드 강제) 폴백 후 diff 하도록 admin·editor 양쪽 `ignoreCommand` 견고화. → admin 재배포 READY(라이브 복구).
+
+**운영 규칙**: UI 변경(admin/editor)이 master push 후에도 라이브에 보이지 않으면, 코드를 의심하기 전에 **Vercel 배포 state(READY/ERROR)부터 확인**한다.
+```bash
+vercel inspect <deployment-url>        # 빌드 상세/상태
+vercel logs storige-admin              # admin 런타임 로그
+# 또는 대시보드 → 프로젝트 → Deployments 에서 최신 상태 확인
 ```
 
 ---
