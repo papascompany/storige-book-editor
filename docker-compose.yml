@@ -39,6 +39,8 @@ services:
       - REDIS_PORT=6379
       - JWT_SECRET=${JWT_SECRET}
       - API_KEYS=${API_KEYS}
+      # P2c: ApiKeyGuard 가 내부 워커 키를 식별해 외부 라우트 테넌트 스코프를 바이패스(워커 콜백·파일 무중단)
+      - WORKER_API_KEY=${WORKER_API_KEY}
       - CORS_ORIGIN=${CORS_ORIGIN}
       - STORAGE_PATH=/app/storage
       # Sentry (DSN 미설정 시 silent 동작)
