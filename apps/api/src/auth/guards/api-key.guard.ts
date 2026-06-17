@@ -40,6 +40,14 @@ export class ApiKeyGuard implements CanActivate {
       throw new UnauthorizedException('Invalid API Key');
     }
 
+    // P2c: 내부 워커 키(WORKER_API_KEY)는 Default Site 의 editor==worker 코드 때문에 위에서 'editor'로
+    // 매칭되더라도 'worker'(신뢰 내부 워커)로 강제한다. → 외부 라우트 테넌트 스코프(P2c S-1~S-3)를
+    // 바이패스해 워커 콜백(PATCH status)·파일 처리(download/external)가 테넌트 잡/파일에서도 무중단.
+    const workerApiKey = process.env.WORKER_API_KEY;
+    if (workerApiKey && apiKey === workerApiKey) {
+      role = 'worker';
+    }
+
     request.user = {
       apiKey,
       source: 'shop',
