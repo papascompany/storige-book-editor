@@ -18,6 +18,8 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { UserRole } from '@storige/types';
 import { PayloadTooLargeResponseDto } from '../common/dto/error-response.dto';
+import { CurrentScope } from '../auth/decorators/tenant-scope.decorator';
+import { TenantScope } from '../common/helpers/tenant-scope.helper';
 
 @ApiTags('Templates')
 @ApiBearerAuth()
@@ -46,10 +48,11 @@ export class TemplatesController {
   @ApiQuery({ name: 'isActive', required: false, type: Boolean })
   @ApiResponse({ status: 200, description: 'Templates retrieved successfully' })
   findAll(
+    @CurrentScope() scope: TenantScope,
     @Query('categoryId') categoryId?: string,
     @Query('isActive') isActive?: boolean,
   ) {
-    return this.templatesService.findAll(categoryId, isActive);
+    return this.templatesService.findAll(categoryId, isActive, scope);
   }
 
   @Get(':id')

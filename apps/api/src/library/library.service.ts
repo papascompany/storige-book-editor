@@ -7,6 +7,10 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull } from 'typeorm';
+import {
+  applySiteScope,
+  TenantScope,
+} from '../common/helpers/tenant-scope.helper';
 import axios from 'axios';
 import { decompress as woff2Decompress } from 'wawoff2';
 import { LibraryFont } from './entities/font.entity';
@@ -207,7 +211,11 @@ export class LibraryService {
     return await this.backgroundRepository.save(background);
   }
 
-  async findAllBackgrounds(category?: string, isActive?: boolean): Promise<LibraryBackground[]> {
+  async findAllBackgrounds(
+    category?: string,
+    isActive?: boolean,
+    scope?: TenantScope,
+  ): Promise<LibraryBackground[]> {
     const query = this.backgroundRepository.createQueryBuilder('background');
 
     if (category) {
@@ -217,6 +225,9 @@ export class LibraryService {
     if (isActive !== undefined) {
       query.andWhere('background.isActive = :isActive', { isActive });
     }
+
+    // P2b: 라이브러리=hybrid(시스템공유 site_id=NULL). includeNull=true → 공유 에셋 전 사이트 노출.
+    if (scope) applySiteScope(query, 'background', scope, { includeNull: true });
 
     return await query.orderBy('background.name', 'ASC').getMany();
   }
@@ -254,7 +265,11 @@ export class LibraryService {
     return await this.clipartRepository.save(clipart);
   }
 
-  async findAllCliparts(category?: string, isActive?: boolean): Promise<LibraryClipart[]> {
+  async findAllCliparts(
+    category?: string,
+    isActive?: boolean,
+    scope?: TenantScope,
+  ): Promise<LibraryClipart[]> {
     const query = this.clipartRepository.createQueryBuilder('clipart');
 
     if (category) {
@@ -264,6 +279,9 @@ export class LibraryService {
     if (isActive !== undefined) {
       query.andWhere('clipart.isActive = :isActive', { isActive });
     }
+
+    // P2b: 라이브러리=hybrid. includeNull=true → 시스템공유 클립아트 전 사이트 노출.
+    if (scope) applySiteScope(query, 'clipart', scope, { includeNull: true });
 
     return await query.orderBy('clipart.name', 'ASC').getMany();
   }
@@ -313,7 +331,11 @@ export class LibraryService {
     return await this.shapeRepository.save(shape);
   }
 
-  async findAllShapes(categoryId?: string, isActive?: boolean): Promise<LibraryShape[]> {
+  async findAllShapes(
+    categoryId?: string,
+    isActive?: boolean,
+    scope?: TenantScope,
+  ): Promise<LibraryShape[]> {
     const query = this.shapeRepository.createQueryBuilder('shape');
 
     if (categoryId) {
@@ -323,6 +345,9 @@ export class LibraryService {
     if (isActive !== undefined) {
       query.andWhere('shape.isActive = :isActive', { isActive });
     }
+
+    // P2b: 라이브러리=hybrid. includeNull=true → 시스템공유 도형 전 사이트 노출.
+    if (scope) applySiteScope(query, 'shape', scope, { includeNull: true });
 
     return await query.orderBy('shape.name', 'ASC').getMany();
   }
@@ -357,7 +382,11 @@ export class LibraryService {
     return await this.frameRepository.save(frame);
   }
 
-  async findAllFrames(categoryId?: string, isActive?: boolean): Promise<LibraryFrame[]> {
+  async findAllFrames(
+    categoryId?: string,
+    isActive?: boolean,
+    scope?: TenantScope,
+  ): Promise<LibraryFrame[]> {
     const query = this.frameRepository.createQueryBuilder('frame');
 
     if (categoryId) {
@@ -367,6 +396,9 @@ export class LibraryService {
     if (isActive !== undefined) {
       query.andWhere('frame.isActive = :isActive', { isActive });
     }
+
+    // P2b: 라이브러리=hybrid. includeNull=true → 시스템공유 프레임 전 사이트 노출.
+    if (scope) applySiteScope(query, 'frame', scope, { includeNull: true });
 
     return await query.orderBy('frame.name', 'ASC').getMany();
   }
@@ -401,7 +433,11 @@ export class LibraryService {
     return await this.categoryRepository.save(category);
   }
 
-  async findAllCategories(type?: LibraryCategoryType, isActive?: boolean): Promise<LibraryCategory[]> {
+  async findAllCategories(
+    type?: LibraryCategoryType,
+    isActive?: boolean,
+    scope?: TenantScope,
+  ): Promise<LibraryCategory[]> {
     const query = this.categoryRepository.createQueryBuilder('category');
 
     if (type) {
@@ -411,6 +447,9 @@ export class LibraryService {
     if (isActive !== undefined) {
       query.andWhere('category.isActive = :isActive', { isActive });
     }
+
+    // P2b: 라이브러리 카테고리=hybrid. includeNull=true → 시스템공유 카테고리 전 사이트 노출.
+    if (scope) applySiteScope(query, 'category', scope, { includeNull: true });
 
     return await query
       .orderBy('category.sortOrder', 'ASC')

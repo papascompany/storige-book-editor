@@ -27,7 +27,14 @@ export function getTenantScope(user: unknown): TenantScope {
     siteId?: string;
     siteRoles?: Array<{ siteId: string }>;
   };
-  if (u.role === UserRole.SUPER_ADMIN || u.role === UserRole.ADMIN) {
+  // 전역 관리자 역할(레거시 단일테넌트 admin 포함): SUPER_ADMIN/ADMIN/MANAGER → 필터 없음.
+  // ⚠️ MANAGER 는 사이트 역할(SITE_MANAGER)이 아닌 '전역 매니저' → 전역 취급.
+  //    (누락 시 MANAGER 가 siteIds=[] 로 떨어져 목록이 빈 결과가 되는 회귀를 방지.)
+  if (
+    u.role === UserRole.SUPER_ADMIN ||
+    u.role === UserRole.ADMIN ||
+    u.role === UserRole.MANAGER
+  ) {
     return { isGlobal: true, siteIds: [] };
   }
   // 외부 shop-session / api-key 인증 — site 가 토큰/키로 고정
@@ -62,7 +69,7 @@ export function applySiteScope<T extends ObjectLiteral>(
   // 허용 site 가 하나도 없는 운영자 — 시스템공유만(includeNull) 또는 빈 결과
   if (scope.siteIds.length === 0) {
     return includeNull
-      ? qb.andWhere(`${alias}.site_id IS NULL`)
+      ? qb.andWhere(`${alias}.siteId IS NULL`)
       : qb.andWhere('1 = 0');
   }
 
@@ -70,11 +77,11 @@ export function applySiteScope<T extends ObjectLiteral>(
   const param = `tenantSiteIds_${alias}`;
   if (includeNull) {
     qb.andWhere(
-      `(${alias}.site_id IN (:...${param}) OR ${alias}.site_id IS NULL)`,
+      `(${alias}.siteId IN (:...${param}) OR ${alias}.siteId IS NULL)`,
       { [param]: scope.siteIds },
     );
   } else {
-    qb.andWhere(`${alias}.site_id IN (:...${param})`, {
+    qb.andWhere(`${alias}.siteId IN (:...${param})`, {
       [param]: scope.siteIds,
     });
   }
