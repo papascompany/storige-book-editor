@@ -66,9 +66,19 @@ axiosInstance.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
+    const reqUrl: string = originalRequest?.url || '';
+
+    // 로그인/리프레시 자체의 401 은 리다이렉트하지 않고 호출부(로그인 폼)가 에러 메시지로 처리한다.
+    // (안 그러면 비번 오류 시마다 로그인 화면이 에러 페이지로 튕겨 '비번 틀림'을 알 수 없다.)
+    const isAuthEndpoint =
+      reqUrl.includes('/auth/login') || reqUrl.includes('/auth/refresh');
 
     // If 401 and not already retried
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    if (
+      error.response?.status === 401 &&
+      !originalRequest._retry &&
+      !isAuthEndpoint
+    ) {
       originalRequest._retry = true;
 
       try {
@@ -90,7 +100,13 @@ axiosInstance.interceptors.response.use(
         // Refresh failed, logout user
         localStorage.removeItem('accessToken');
         localStorage.removeItem('refreshToken');
-        const basePath = import.meta.env.VITE_ROUTER_BASE || '';
+        // 버그 수정: VITE_ROUTER_BASE='/' 일 때 `${basePath}/login` = '//login' →
+        // 브라우저가 protocol-relative URL 로 해석해 https://login/ (잘못된 호스트) 에러 페이지로 이동.
+        // 끝 슬래시를 제거해 항상 정상 절대경로 '/login' 이 되도록 한다.
+        const basePath = (import.meta.env.VITE_ROUTER_BASE || '').replace(
+          /\/+$/,
+          '',
+        );
         window.location.href = `${basePath}/login`;
         return Promise.reject(refreshError);
       }
