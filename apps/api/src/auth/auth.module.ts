@@ -6,6 +6,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { User } from './entities/user.entity';
+import { UserSiteRole } from './entities/user-site-role.entity';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { LocalStrategy } from './strategies/local.strategy';
 import { ApiKeyStrategy } from './strategies/api-key.strategy';
@@ -19,7 +20,7 @@ import { SitesModule } from '../sites/sites.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User]),
+    TypeOrmModule.forFeature([User, UserSiteRole]),
     PassportModule,
     SitesModule, // ApiKeyStrategy가 SitesService 사용 (Phase A)
     JwtModule.registerAsync({

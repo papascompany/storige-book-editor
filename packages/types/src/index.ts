@@ -10,8 +10,25 @@
 export enum UserRole {
   SUPER_ADMIN = 'SUPER_ADMIN',
   ADMIN = 'ADMIN',
+  // P1 멀티테넌시 (2026-06-17): 사이트 운영자 역할. 전역(SUPER_ADMIN/ADMIN)과 달리
+  // user_site_roles 에 매핑된 site 에서만 권한을 가진다(TenantGuard 가 스코핑 강제).
+  // SITE_ADMIN = 해당 site 의 관리자(템플릿·라이브러리·상품·주문 관리),
+  // SITE_MANAGER = 해당 site 의 운영(주문/세션 조회·상태변경 등 제한).
+  SITE_ADMIN = 'SITE_ADMIN',
+  SITE_MANAGER = 'SITE_MANAGER',
   MANAGER = 'MANAGER',
   CUSTOMER = 'CUSTOMER',
+}
+
+/**
+ * P1 멀티테넌시 — JWT 에 실리는 사이트별 역할 클레임.
+ * 한 계정이 여러 site 를 다른 역할로 운영할 수 있다(user_site_roles 1:N).
+ * 전역 관리자(SUPER_ADMIN/ADMIN)는 siteRoles 가 비어 있어도 전역 접근(dual-mode).
+ */
+export interface SiteRoleClaim {
+  siteId: string;
+  siteName?: string;
+  role: UserRole; // SITE_ADMIN | SITE_MANAGER (해당 site 에서의 역할)
 }
 
 export interface User {
@@ -1233,6 +1250,24 @@ export const ROLE_PERMISSIONS: Record<UserRole, UserPermissions> = {
     canViewAllSessions: true,
   },
   [UserRole.ADMIN]: {
+    canEdit: true,
+    canAddDeletePages: true,
+    canReplaceTemplate: true,
+    canUnlockElements: true,
+    canChangeStatus: true,
+    canViewAllSessions: true,
+  },
+  // P1 멀티테넌시: 사이트 운영자. 기능 권한은 ADMIN/MANAGER 급이되, 접근 범위(site)는
+  // TenantGuard 가 user_site_roles 로 스코핑한다(여기 권한 맵은 '무엇을 할 수 있나'만 정의).
+  [UserRole.SITE_ADMIN]: {
+    canEdit: true,
+    canAddDeletePages: true,
+    canReplaceTemplate: true,
+    canUnlockElements: true,
+    canChangeStatus: true,
+    canViewAllSessions: true,
+  },
+  [UserRole.SITE_MANAGER]: {
     canEdit: true,
     canAddDeletePages: true,
     canReplaceTemplate: true,

@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from '../entities/user.entity';
+import { SiteRoleClaim } from '@storige/types';
 
 export interface JwtPayload {
   sub: string;
@@ -18,6 +19,9 @@ export interface JwtPayload {
   /** Phase C-2: 사이트 컨텍스트 — shop-session 발급 시 X-API-Key의 site 정보를 토큰에 포함 */
   siteId?: string;
   siteName?: string;
+  /** P1 멀티테넌시 (2026-06-17): admin 로그인 토큰의 사이트별 역할(SITE_ADMIN/SITE_MANAGER).
+   *  없으면(전역 관리자/고객) 미포함 → TenantGuard 가 전역 접근으로 간주(dual-mode). */
+  siteRoles?: SiteRoleClaim[];
 }
 
 // Shop session 사용자 타입
@@ -74,6 +78,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     if (!user) {
       throw new UnauthorizedException('User not found');
     }
+
+    // P1 멀티테넌시 — 토큰의 site 역할 클레임을 req.user.siteRoles 로 노출(TenantGuard 스코핑용).
+    // DB 재조회 없이 토큰 기반(효율). 없으면 빈 배열 = 전역 관리자/고객(dual-mode).
+    // ⚠️ siteRoles 는 발급 시점 스냅샷 — 민감 라우터(P3)는 필요 시 DB user_site_roles 재검증 권장.
+    user.siteRoles = payload.siteRoles ?? [];
 
     return user;
   }

@@ -6,7 +6,7 @@ import * as bcrypt from 'bcrypt';
 import { User } from './entities/user.entity';
 import { LoginDto, RegisterDto } from './dto/login.dto';
 import { CreateShopSessionDto } from './dto/shop-session.dto';
-import { AuthTokens, UserRole } from '@storige/types';
+import { AuthTokens, UserRole, SiteRoleClaim } from '@storige/types';
 
 @Injectable()
 export class AuthService {
@@ -17,7 +17,12 @@ export class AuthService {
   ) {}
 
   async validateUser(email: string, password: string): Promise<User | null> {
-    const user = await this.userRepository.findOne({ where: { email } });
+    // P1: 사이트 운영자(SITE_ADMIN/SITE_MANAGER) 권한을 JWT 클레임에 실으려면 site 역할 매핑을
+    // 함께 로드한다. 전역 관리자/고객은 매핑이 없어 빈 배열(기존 동작 무영향).
+    const user = await this.userRepository.findOne({
+      where: { email },
+      relations: ['siteRoleAssignments'],
+    });
 
     if (!user) {
       return null;
@@ -31,6 +36,17 @@ export class AuthService {
     return user;
   }
 
+  /**
+   * P1 멀티테넌시 — User 의 site 역할 매핑을 JWT 클레임(SiteRoleClaim[])으로 변환.
+   * 전역 관리자/고객은 매핑이 없어 빈 배열을 반환(클레임 미포함 → dual-mode 전역).
+   */
+  private buildSiteRolesClaim(user: User): SiteRoleClaim[] {
+    return (user.siteRoleAssignments ?? []).map((a) => ({
+      siteId: a.siteId,
+      role: a.role,
+    }));
+  }
+
   async login(loginDto: LoginDto): Promise<AuthTokens> {
     const user = await this.validateUser(loginDto.email, loginDto.password);
 
@@ -38,11 +54,16 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    const payload = {
+    const payload: Record<string, any> = {
       sub: user.id,
       email: user.email,
       role: user.role,
     };
+    // P1: site 역할이 있을 때만 클레임 추가(비파괴 — 기존 admin 토큰은 미포함 → 전역).
+    const siteRoles = this.buildSiteRolesClaim(user);
+    if (siteRoles.length > 0) {
+      payload.siteRoles = siteRoles;
+    }
 
     return {
       accessToken: this.jwtService.sign(payload),
@@ -76,17 +97,23 @@ export class AuthService {
       const payload = this.jwtService.verify(token);
       const user = await this.userRepository.findOne({
         where: { id: payload.sub },
+        relations: ['siteRoleAssignments'],
       });
 
       if (!user) {
         throw new UnauthorizedException('User not found');
       }
 
-      const newPayload = {
+      const newPayload: Record<string, any> = {
         sub: user.id,
         email: user.email,
         role: user.role,
       };
+      // P1: 토큰 갱신 시 site 역할 클레임 유지(누락 시 갱신 후 권한 손실 방지).
+      const siteRoles = this.buildSiteRolesClaim(user);
+      if (siteRoles.length > 0) {
+        newPayload.siteRoles = siteRoles;
+      }
 
       return {
         accessToken: this.jwtService.sign(newPayload),
