@@ -1,5 +1,6 @@
 import {
   Controller,
+  Get,
   Post,
   Patch,
   Body,
@@ -85,8 +86,29 @@ export class AuthController {
   @ApiOperation({ summary: 'Get current user' })
   @ApiResponse({ status: 200, description: 'Current user retrieved' })
   async getMe(@CurrentUser() user: User): Promise<UserResponse> {
+    // 하위호환 보존: editor(apps/editor/src/api/auth.ts)·e2e 가 POST /auth/me 를 사용.
     const { passwordHash, ...result } = user;
     return result as UserResponse;
+  }
+
+  /**
+   * P3a: admin UI 가 GET /auth/me 로 현재 사용자(role + siteRoles)를 하이드레이션한다.
+   * editor 는 위 POST 를 그대로 사용(공존) — 기존 동작 무변경.
+   */
+  @ApiBearerAuth()
+  @Get('me')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Get current user (role + siteRoles 포함, admin)' })
+  @ApiResponse({ status: 200, description: 'Current user retrieved' })
+  async getMeForAdmin(@CurrentUser() user: User) {
+    return {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      siteRoles: user.siteRoles ?? [],
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+    };
   }
 
   /**

@@ -5,6 +5,8 @@ import { PassportModule } from '@nestjs/passport';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
+import { OperatorsController } from './operators.controller';
+import { OperatorsService } from './operators.service';
 import { User } from './entities/user.entity';
 import { UserSiteRole } from './entities/user-site-role.entity';
 import { JwtStrategy } from './strategies/jwt.strategy';
@@ -34,9 +36,10 @@ import { SitesModule } from '../sites/sites.module';
       }),
     }),
   ],
-  controllers: [AuthController],
+  controllers: [AuthController, OperatorsController],
   providers: [
     AuthService,
+    OperatorsService,
     JwtStrategy,
     LocalStrategy,
     ApiKeyStrategy,

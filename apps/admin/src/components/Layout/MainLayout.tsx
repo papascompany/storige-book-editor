@@ -20,9 +20,11 @@ import {
   BlockOutlined,
   StarOutlined,
   GlobalOutlined,
+  TeamOutlined,
 } from '@ant-design/icons';
 import { useAuthStore } from '../../stores/authStore';
 import { authApi } from '../../api/auth';
+import { isGlobalAdmin } from '../../utils/permissions';
 import './MainLayout.css';
 
 const { Header, Sider, Content } = Layout;
@@ -58,6 +60,12 @@ export const MainLayout = () => {
     },
   ];
 
+  // P3a 멀티테넌시 — 전역 전용 메뉴(운영자 관리·사이트 관리·저장소 설정) 게이팅.
+  // user.role 이 있고 전역 admin 이 아니면 숨긴다(사이트 운영자 SITE_ADMIN/SITE_MANAGER).
+  // user 미하이드레이션(role 없음) 이면 기존처럼 노출(현 admin 회귀 방지).
+  const hasRole = !!user?.role;
+  const showGlobalOnly = !hasRole || isGlobalAdmin(user?.role);
+
   const menuItems: MenuProps['items'] = [
     {
       key: '/',
@@ -65,18 +73,28 @@ export const MainLayout = () => {
       label: '대시보드',
       onClick: () => navigate('/'),
     },
-    {
-      key: '/sites',
-      icon: <GlobalOutlined />,
-      label: '기본설정',
-      onClick: () => navigate('/sites'),
-    },
-    {
-      key: '/storage-settings',
-      icon: <CloudServerOutlined />,
-      label: '저장소 설정',
-      onClick: () => navigate('/storage-settings'),
-    },
+    ...(showGlobalOnly
+      ? ([
+          {
+            key: '/sites',
+            icon: <GlobalOutlined />,
+            label: '기본설정',
+            onClick: () => navigate('/sites'),
+          },
+          {
+            key: '/operators',
+            icon: <TeamOutlined />,
+            label: '운영자 관리',
+            onClick: () => navigate('/operators'),
+          },
+          {
+            key: '/storage-settings',
+            icon: <CloudServerOutlined />,
+            label: '저장소 설정',
+            onClick: () => navigate('/storage-settings'),
+          },
+        ] as NonNullable<MenuProps['items']>)
+      : []),
     {
       key: '/templates-group',
       icon: <FileTextOutlined />,
