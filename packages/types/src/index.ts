@@ -35,6 +35,12 @@ export interface User {
   id: string;
   email: string;
   role: UserRole;
+  /**
+   * P1 멀티테넌시 (2026-06-17) — 이 계정이 운영하는 사이트별 역할 목록.
+   * 전역 관리자(SUPER_ADMIN/ADMIN/MANAGER)는 비어 있을 수 있다(dual-mode).
+   * GET /auth/me 가 채워서 반환(additive optional — 하위호환).
+   */
+  siteRoles?: SiteRoleClaim[];
   createdAt: Date;
   updatedAt: Date;
 }

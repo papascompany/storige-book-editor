@@ -25,6 +25,7 @@ import { EditSessionList, DeletedSessionList } from './pages/EditSessions';
 import { WorkerJobList } from './pages/WorkerJobs';
 import { WorkerTestPage } from './pages/WorkerTest';
 import { SiteList } from './pages/Sites';
+import { OperatorList } from './pages/Operators';
 import { StorageSettings } from './pages/StorageSettings';
 
 const queryClient = new QueryClient({
@@ -66,6 +67,8 @@ function App() {
               <Route path="profile" element={<Profile />} />
               {/* 기본설정 (Phase A) */}
               <Route path="sites" element={<SiteList />} />
+              {/* 운영자 관리 (P3a 멀티테넌시) */}
+              <Route path="operators" element={<OperatorList />} />
               <Route path="storage-settings" element={<StorageSettings />} />
               {/* 템플릿 그룹 */}
               <Route path="templates" element={<TemplateList />} />
