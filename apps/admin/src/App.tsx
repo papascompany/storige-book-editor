@@ -6,6 +6,7 @@ import { ProtectedRoute } from './components/ProtectedRoute';
 import { MainLayout } from './components/Layout';
 import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
+import { Profile } from './pages/Profile';
 import { TemplateList, TemplateEditor, TemplateImport } from './pages/Templates';
 import { TemplateSetList, TemplateSetForm } from './pages/TemplateSets';
 import { ProductTemplateSetList } from './pages/ProductTemplateSets';
@@ -62,6 +63,7 @@ function App() {
               }
             >
               <Route index element={<Dashboard />} />
+              <Route path="profile" element={<Profile />} />
               {/* 기본설정 (Phase A) */}
               <Route path="sites" element={<SiteList />} />
               <Route path="storage-settings" element={<StorageSettings />} />

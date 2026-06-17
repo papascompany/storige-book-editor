@@ -38,6 +38,15 @@ build/
 계정정보*.html
 *.secret.*
 *.secrets.*
+# 시크릿 회전 산출물 (2026-06-15~) — 백업 env/신구 시크릿 스테이징/회전 스크립트 절대 커밋 금지
+.env.pre-rotation-*
+.rotated-secrets-*
+rotate_phase*.sh
+rotate_verify_*.sh
+# 시크릿 참조 핸드오프(키 스왑/회전/외부 DB 자격) — API 키 포함, PUBLIC 레포 커밋 금지
+.cursor/plans/*KEY_SWAP*
+.cursor/plans/*SECRET_ROTATION*
+.cursor/plans/*DB_ROTATION*
 
 # Claude Code local memory (operational secrets — SSH/VPS/API keys)
 # 세션 간 자동 로드되는 로컬 메모리 — 절대 커밋 금지

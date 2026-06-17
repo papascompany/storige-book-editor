@@ -92,6 +92,24 @@ export class AuthService {
     return await this.userRepository.save(user);
   }
 
+  async changePassword(
+    userId: string,
+    currentPassword: string,
+    newPassword: string,
+  ): Promise<void> {
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+    const ok = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!ok) {
+      throw new UnauthorizedException('현재 비밀번호가 일치하지 않습니다.');
+    }
+    const salt = await bcrypt.genSalt(10);
+    user.passwordHash = await bcrypt.hash(newPassword, salt);
+    await this.userRepository.save(user);
+  }
+
   async refreshToken(token: string): Promise<AuthTokens> {
     try {
       const payload = this.jwtService.verify(token);
