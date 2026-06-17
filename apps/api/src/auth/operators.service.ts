@@ -5,7 +5,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, DataSource } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { UserRole } from '@storige/types';
 import { User } from './entities/user.entity';
@@ -41,6 +41,7 @@ export class OperatorsService {
     @InjectRepository(UserSiteRole)
     private readonly userSiteRoleRepository: Repository<UserSiteRole>,
     private readonly sitesService: SitesService,
+    private readonly dataSource: DataSource,
   ) {}
 
   /** 운영자 목록(site 이름 매핑 포함). siteId 지정 시 그 site 에 배정된 운영자만. */
@@ -87,21 +88,27 @@ export class OperatorsService {
 
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(dto.password, salt);
-    const user = await this.userRepository.save(
-      this.userRepository.create({
-        email: dto.email,
-        passwordHash,
-        role: dto.role,
-      }),
-    );
-    await this.userSiteRoleRepository.save(
-      this.userSiteRoleRepository.create({
-        userId: user.id,
-        siteId: dto.siteId,
-        role: dto.role,
-      }),
-    );
-    return this.getOne(user.id);
+
+    // 원자성: User + 첫 UserSiteRole 배정을 한 트랜잭션에. 배정 저장 실패 시
+    // 고아 User(역할만 SITE_*인데 배정 0개)가 남지 않도록 롤백.
+    const userId = await this.dataSource.transaction(async (manager) => {
+      const user = await manager.save(
+        manager.create(User, {
+          email: dto.email,
+          passwordHash,
+          role: dto.role,
+        }),
+      );
+      await manager.save(
+        manager.create(UserSiteRole, {
+          userId: user.id,
+          siteId: dto.siteId,
+          role: dto.role,
+        }),
+      );
+      return user.id;
+    });
+    return this.getOne(userId);
   }
 
   /** 추가 site 배정(한 계정이 여러 site 운영). */
