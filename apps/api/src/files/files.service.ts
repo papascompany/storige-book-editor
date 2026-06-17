@@ -135,6 +135,7 @@ export class FilesService {
       orderSeqno?: number | null;
       memberSeqno?: number | null;
       metadata?: Record<string, any>;
+      siteId?: string | null; // P2c S-3: 워커 출력 파일에 원본 잡의 site 승계(테넌트 소유)
     } = {},
   ): Promise<FileEntity> {
     if (!outputFileUrl) {
@@ -198,6 +199,7 @@ export class FilesService {
       orderSeqno: opts.orderSeqno ?? undefined,
       memberSeqno: opts.memberSeqno ?? undefined,
       metadata: opts.metadata,
+      siteId: opts.siteId ?? null, // P2c S-3: 워커 출력 site 스탬프(외부 라우트 격리 적용 대상)
     });
 
     const saved = await this.fileRepository.save(fileEntity);
