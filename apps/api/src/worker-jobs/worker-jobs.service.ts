@@ -1135,17 +1135,43 @@ export class WorkerJobsService {
     return await query.orderBy('job.createdAt', 'DESC').getMany();
   }
 
-  async findOne(id: string): Promise<WorkerJob> {
+  /**
+   * P2c S-3 테넌트 격리 — 외부(API Key) 호출자의 잡 접근 검증.
+   * - worker 역할(내부/사이트 워커): 잡 처리·상태콜백 위해 바이패스(잡 site 무관, 내부 WORKER_API_KEY=Default Site).
+   * - editor 역할(테넌트): 잡 site 가 NULL(공유/레거시) 또는 자기 site 일 때만 허용.
+   * - 불일치는 not-found 와 **동일한 404** 로 던져 존재 오라클을 차단.
+   * - caller 미지정(내부 in-process 호출)은 검사 생략(불변).
+   */
+  private assertJobSiteAccess(
+    job: WorkerJob,
+    caller?: { siteId?: string; role?: string },
+  ): void {
+    if (!caller || caller.role === 'worker') return;
+    if (job.siteId && job.siteId !== caller.siteId) {
+      throw new NotFoundException(`Worker job with ID ${job.id} not found`);
+    }
+  }
+
+  async findOne(
+    id: string,
+    caller?: { siteId?: string; role?: string },
+  ): Promise<WorkerJob> {
     const job = await this.workerJobRepository.findOne({ where: { id } });
 
     if (!job) {
       throw new NotFoundException(`Worker job with ID ${id} not found`);
     }
 
+    this.assertJobSiteAccess(job, caller);
+
     return job;
   }
 
-  async updateJobStatus(id: string, updateJobStatusDto: UpdateJobStatusDto): Promise<WorkerJob> {
+  async updateJobStatus(
+    id: string,
+    updateJobStatusDto: UpdateJobStatusDto,
+    caller?: { siteId?: string; role?: string },
+  ): Promise<WorkerJob> {
     const job = await this.workerJobRepository.findOne({
       where: { id },
       relations: ['editSession'],
@@ -1154,6 +1180,8 @@ export class WorkerJobsService {
     if (!job) {
       throw new NotFoundException(`Worker job with ID ${id} not found`);
     }
+
+    this.assertJobSiteAccess(job, caller);
 
     Object.assign(job, updateJobStatusDto);
 
@@ -1277,6 +1305,7 @@ export class WorkerJobsService {
         const registered = await this.filesService.registerExternalFile(outputFileUrl, {
           orderSeqno,
           memberSeqno,
+          siteId: job.siteId, // P2c S-3: 워커 출력 파일에 잡 site 승계(외부 라우트 격리 적용)
           metadata: {
             generatedBy: 'worker-imposition',
             editSessionId: sessionId,

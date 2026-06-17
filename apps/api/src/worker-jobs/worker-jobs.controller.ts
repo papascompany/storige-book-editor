@@ -273,8 +273,12 @@ export class WorkerJobsController {
   @ApiResponse({ status: 200, description: 'Worker job details', type: WorkerJob })
   @ApiResponse({ status: 404, description: 'Job not found' })
   @ApiResponse({ status: 401, description: 'Invalid API key' })
-  async findOneExternal(@Param('id') id: string): Promise<WorkerJob> {
-    return await this.workerJobsService.findOne(id);
+  async findOneExternal(
+    @Param('id') id: string,
+    @CurrentSite() site?: CurrentSitePayload,
+  ): Promise<WorkerJob> {
+    // P2c S-3: editor 키(테넌트)는 자기 site/NULL 잡만, worker 키(내부)는 바이패스.
+    return await this.workerJobsService.findOne(id, site);
   }
 
   /**
@@ -385,8 +389,10 @@ export class WorkerJobsController {
   async updateJobStatusExternal(
     @Param('id') id: string,
     @Body() updateJobStatusDto: UpdateJobStatusDto,
+    @CurrentSite() site?: CurrentSitePayload,
   ): Promise<WorkerJob> {
-    return await this.workerJobsService.updateJobStatus(id, updateJobStatusDto);
+    // P2c S-3: worker 키(내부 콜백)는 바이패스, editor 키(테넌트)는 자기 site 잡만 업데이트.
+    return await this.workerJobsService.updateJobStatus(id, updateJobStatusDto, site);
   }
 
   @Patch(':id/status')
