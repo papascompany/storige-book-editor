@@ -63,6 +63,11 @@ export class ProductTemplateSet {
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;
 
+  // P2 멀티테넌시 (2026-06-17) — 소속 site. NULL = 시스템공유(hybrid). additive nullable(비파괴).
+  // 조회 스코핑은 QueryScope(P2b)에서 적용. 인덱스는 마이그레이션 SQL에서 생성.
+  @Column({ name: 'site_id', type: 'varchar', length: 36, nullable: true })
+  siteId: string | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
