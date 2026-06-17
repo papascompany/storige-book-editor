@@ -6,6 +6,10 @@ import type { SpreadConversionMode } from '@storige/types';
 import { Template } from './entities/template.entity';
 import { TemplateSet } from './entities/template-set.entity';
 import { CreateTemplateDto, UpdateTemplateDto } from './dto/template.dto';
+import {
+  applySiteScope,
+  TenantScope,
+} from '../common/helpers/tenant-scope.helper';
 
 @Injectable()
 export class TemplatesService {
@@ -78,7 +82,11 @@ export class TemplatesService {
     return await this.templateRepository.save(template);
   }
 
-  async findAll(categoryId?: string, isActive?: boolean): Promise<Template[]> {
+  async findAll(
+    categoryId?: string,
+    isActive?: boolean,
+    scope?: TenantScope,
+  ): Promise<Template[]> {
     const query = this.templateRepository.createQueryBuilder('template')
       .leftJoinAndSelect('template.category', 'category')
       .leftJoinAndSelect('template.creator', 'creator')
@@ -91,6 +99,10 @@ export class TemplatesService {
     if (isActive !== undefined) {
       query.andWhere('template.isActive = :isActive', { isActive });
     }
+
+    // P2b: 템플릿=hybrid(시스템공유 site_id=NULL + per-site). includeNull=true 로
+    // 시스템공유 자산은 전 사이트에 노출, 운영자는 자기 site + 공유만 본다(전역 admin 무필터).
+    if (scope) applySiteScope(query, 'template', scope, { includeNull: true });
 
     return await query.getMany();
   }

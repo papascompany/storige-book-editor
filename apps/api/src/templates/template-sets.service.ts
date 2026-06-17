@@ -18,6 +18,10 @@ import {
 } from './dto/template-set.dto';
 import { EditorMode } from '@storige/types';
 import type { TemplateRef, PaginatedResponse } from '@storige/types';
+import {
+  applySiteScope,
+  TenantScope,
+} from '../common/helpers/tenant-scope.helper';
 
 @Injectable()
 export class TemplateSetsService {
@@ -111,7 +115,10 @@ export class TemplateSetsService {
   /**
    * 템플릿셋 목록 조회
    */
-  async findAll(query: TemplateSetQueryDto): Promise<PaginatedResponse<TemplateSet>> {
+  async findAll(
+    query: TemplateSetQueryDto,
+    scope?: TenantScope,
+  ): Promise<PaginatedResponse<TemplateSet>> {
     const {
       type,
       width,
@@ -152,6 +159,9 @@ export class TemplateSetsService {
     if (isActive !== undefined) {
       qb.andWhere('ts.isActive = :isActive', { isActive });
     }
+
+    // P2b: 템플릿셋=hybrid. includeNull=true → 시스템공유(site_id=NULL) 셋 + 자기 site.
+    if (scope) applySiteScope(qb, 'ts', scope, { includeNull: true });
 
     // 정렬
     qb.orderBy('ts.createdAt', 'DESC');
@@ -427,6 +437,7 @@ export class TemplateSetsService {
     width: number,
     height: number,
     type?: string,
+    scope?: TenantScope,
   ): Promise<TemplateSet[]> {
     const qb = this.templateSetRepository.createQueryBuilder('ts');
 
@@ -438,6 +449,9 @@ export class TemplateSetsService {
     if (type) {
       qb.andWhere('ts.type = :type', { type });
     }
+
+    // P2b: hybrid. includeNull=true → 시스템공유 + 자기 site (편집기 '셋 교체'용).
+    if (scope) applySiteScope(qb, 'ts', scope, { includeNull: true });
 
     qb.orderBy('ts.name', 'ASC');
 

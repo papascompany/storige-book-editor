@@ -22,6 +22,8 @@ import { Public } from '../auth/decorators/public.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { UserRole } from '@storige/types';
+import { CurrentScope } from '../auth/decorators/tenant-scope.decorator';
+import { TenantScope } from '../common/helpers/tenant-scope.helper';
 import {
   CreateTemplateSetDto,
   UpdateTemplateSetDto,
@@ -50,8 +52,11 @@ export class TemplateSetsController {
   @ApiBearerAuth()
   @ApiOperation({ summary: '템플릿셋 목록 조회' })
   @ApiResponse({ status: 200, description: '조회 성공' })
-  async findAll(@Query() query: TemplateSetQueryDto) {
-    return this.templateSetsService.findAll(query);
+  async findAll(
+    @CurrentScope() scope: TenantScope,
+    @Query() query: TemplateSetQueryDto,
+  ) {
+    return this.templateSetsService.findAll(query, scope);
   }
 
   @Get('compatible')
@@ -59,11 +64,12 @@ export class TemplateSetsController {
   @ApiOperation({ summary: '호환 가능한 템플릿셋 조회 (같은 판형)' })
   @ApiResponse({ status: 200, description: '조회 성공' })
   async findCompatible(
+    @CurrentScope() scope: TenantScope,
     @Query('width') width: number,
     @Query('height') height: number,
     @Query('type') type?: string,
   ) {
-    return this.templateSetsService.findCompatible(+width, +height, type);
+    return this.templateSetsService.findCompatible(+width, +height, type, scope);
   }
 
   @Get(':id')

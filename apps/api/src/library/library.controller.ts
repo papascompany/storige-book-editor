@@ -13,6 +13,8 @@ import {
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { LibraryService } from './library.service';
+import { CurrentScope } from '../auth/decorators/tenant-scope.decorator';
+import { TenantScope } from '../common/helpers/tenant-scope.helper';
 import {
   Woff2ToTtfDto,
   CreateFontDto,
@@ -116,10 +118,11 @@ export class LibraryController {
   @ApiQuery({ name: 'isActive', required: false, type: Boolean })
   @ApiResponse({ status: 200, description: 'Backgrounds retrieved successfully' })
   findAllBackgrounds(
+    @CurrentScope() scope: TenantScope,
     @Query('category') category?: string,
     @Query('isActive') isActive?: boolean,
   ) {
-    return this.libraryService.findAllBackgrounds(category, isActive);
+    return this.libraryService.findAllBackgrounds(category, isActive, scope);
   }
 
   @Get('backgrounds/:id')
@@ -167,10 +170,11 @@ export class LibraryController {
   @ApiQuery({ name: 'isActive', required: false, type: Boolean })
   @ApiResponse({ status: 200, description: 'Cliparts retrieved successfully' })
   findAllCliparts(
+    @CurrentScope() scope: TenantScope,
     @Query('category') category?: string,
     @Query('isActive') isActive?: boolean,
   ) {
-    return this.libraryService.findAllCliparts(category, isActive);
+    return this.libraryService.findAllCliparts(category, isActive, scope);
   }
 
   @Get('cliparts/search')
@@ -227,10 +231,11 @@ export class LibraryController {
   @ApiQuery({ name: 'isActive', required: false, type: Boolean })
   @ApiResponse({ status: 200, description: 'Shapes retrieved successfully' })
   findAllShapes(
+    @CurrentScope() scope: TenantScope,
     @Query('categoryId') categoryId?: string,
     @Query('isActive') isActive?: boolean,
   ) {
-    return this.libraryService.findAllShapes(categoryId, isActive);
+    return this.libraryService.findAllShapes(categoryId, isActive, scope);
   }
 
   @Get('shapes/:id')
@@ -278,10 +283,11 @@ export class LibraryController {
   @ApiQuery({ name: 'isActive', required: false, type: Boolean })
   @ApiResponse({ status: 200, description: 'Frames retrieved successfully' })
   findAllFrames(
+    @CurrentScope() scope: TenantScope,
     @Query('categoryId') categoryId?: string,
     @Query('isActive') isActive?: boolean,
   ) {
-    return this.libraryService.findAllFrames(categoryId, isActive);
+    return this.libraryService.findAllFrames(categoryId, isActive, scope);
   }
 
   @Get('frames/:id')
@@ -329,10 +335,11 @@ export class LibraryController {
   @ApiQuery({ name: 'isActive', required: false, type: Boolean })
   @ApiResponse({ status: 200, description: 'Categories retrieved successfully' })
   findAllCategories(
+    @CurrentScope() scope: TenantScope,
     @Query('type') type?: LibraryCategoryType,
     @Query('isActive') isActive?: boolean,
   ) {
-    return this.libraryService.findAllCategories(type, isActive);
+    return this.libraryService.findAllCategories(type, isActive, scope);
   }
 
   @Get('categories/tree/:type')
