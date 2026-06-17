@@ -148,15 +148,27 @@ export class EditSessionsService {
   /**
    * 주문 번호로 외부 조회 (워커잡 포함, nimda용)
    */
-  async findByOrderExternal(orderSeqno: number): Promise<ExternalSessionResponseDto[]> {
-    const sessions = await this.sessionRepository
+  async findByOrderExternal(
+    orderSeqno: number,
+    callerSiteId?: string,
+  ): Promise<ExternalSessionResponseDto[]> {
+    const qb = this.sessionRepository
       .createQueryBuilder('session')
       .leftJoinAndSelect('session.coverFile', 'coverFile')
       .leftJoinAndSelect('session.contentFile', 'contentFile')
       .where('session.orderSeqno = :orderSeqno', { orderSeqno })
-      .andWhere('session.deletedAt IS NULL')
-      .orderBy('session.createdAt', 'DESC')
-      .getMany();
+      .andWhere('session.deletedAt IS NULL');
+
+    // P2c 테넌트 격리: 호출자 site 세션 + 레거시 NULL(시스템공유)만 노출. 타 테넌트 세션·PDF URL 차단.
+    // (order_seqno 는 사이트별 네임스페이스가 없어, callerSiteId 미대조 시 교차 열람이 가능했음.)
+    if (callerSiteId) {
+      qb.andWhere(
+        '(session.siteId = :callerSiteId OR session.siteId IS NULL)',
+        { callerSiteId },
+      );
+    }
+
+    const sessions = await qb.orderBy('session.createdAt', 'DESC').getMany();
 
     const results: ExternalSessionResponseDto[] = [];
 
@@ -274,8 +286,18 @@ export class EditSessionsService {
     id: string,
     startSide: SpreadStartSide,
     bindingOverride?: string,
+    callerSiteId?: string,
   ): Promise<ImpositionPreviewResponseDto> {
     const session = await this.findById(id);
+    // P2c 테넌트 격리: 타 site 세션 미리보기 차단(NULL=레거시/공유는 허용).
+    // findById 의 not-found 404 와 **동일한 응답**으로 던져 존재 오라클(타 테넌트 세션 존재 여부 추론)을 차단.
+    if (callerSiteId && session.siteId && session.siteId !== callerSiteId) {
+      throw new NotFoundException({
+        code: 'SESSION_NOT_FOUND',
+        message: '편집 세션을 찾을 수 없습니다.',
+        details: { sessionId: id },
+      });
+    }
     const metadata = (session.metadata ?? {}) as Record<string, any>;
     const guide = metadata.contentPdfGuide as
       | { pageImageUrls?: string[]; resolution?: number }

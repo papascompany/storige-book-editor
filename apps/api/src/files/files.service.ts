@@ -60,6 +60,7 @@ export class FilesService {
     orderSeqno?: number,
     memberSeqno?: number,
     metadata?: Record<string, any>,
+    siteId?: string | null,
   ): Promise<FileEntity> {
     // 파일 크기 검증
     if (file.size > this.maxFileSize) {
@@ -109,6 +110,8 @@ export class FilesService {
       orderSeqno,
       memberSeqno,
       metadata,
+      // P2c S-2: 외부 업로드 파일에 호출자 site 스탬프(테넌트 소유). 내부 업로드(siteId 미지정)=NULL=공유.
+      siteId: siteId ?? null,
     });
 
     return this.fileRepository.save(fileEntity);
@@ -297,8 +300,28 @@ export class FilesService {
    * 파일 버퍼 읽기 (다운로드용) — storage_backend 로 라우팅.
    * s3 파일은 R2 에서, local 파일은 디스크에서 읽는다(혼재 보장).
    */
-  async getFileBuffer(id: string): Promise<{ buffer: Buffer; file: FileEntity }> {
+  /**
+   * P2c S-2 테넌트 격리 — 외부(API Key) 라우트에서 호출자 site 와 파일 소유 site 대조.
+   * file.siteId 가 NULL(레거시/시스템공유)이거나 callerSiteId 와 일치할 때만 허용.
+   * 불일치 시 존재 노출 방지로 404(타 테넌트 파일 다운로드/하드삭제/만료 차단).
+   * callerSiteId 미지정(내부 호출·retention cron)이면 검사 생략.
+   */
+  private assertSiteAccess(file: FileEntity, callerSiteId?: string): void {
+    if (callerSiteId && file.siteId && file.siteId !== callerSiteId) {
+      throw new NotFoundException({
+        code: 'FILE_NOT_FOUND',
+        message: '파일을 찾을 수 없습니다.',
+        details: { fileId: file.id },
+      });
+    }
+  }
+
+  async getFileBuffer(
+    id: string,
+    callerSiteId?: string,
+  ): Promise<{ buffer: Buffer; file: FileEntity }> {
     const file = await this.findById(id);
+    this.assertSiteAccess(file, callerSiteId);
 
     try {
       let buffer: Buffer;
@@ -326,8 +349,9 @@ export class FilesService {
    * 저장 백엔드의 실제 객체 + DB 레코드를 모두 제거. 멱등(없으면 무시).
    * ⚠️ 외부 테넌트가 주문 이행 완료 후 호출(DELETE /files/:id/external) 하거나 retention cron 이 사용.
    */
-  async hardDelete(id: string): Promise<void> {
+  async hardDelete(id: string, callerSiteId?: string): Promise<void> {
     const file = await this.findById(id);
+    this.assertSiteAccess(file, callerSiteId);
     // 백엔드 객체 삭제 (storageKey 있으면 그걸로, 없으면 local filePath fallback)
     if (file.storageKey) {
       await this.objectStorage.delete(file.storageBackend, file.storageKey);
@@ -347,8 +371,13 @@ export class FilesService {
    * 보존 만료 시각 설정 (테넌트가 주문 이행 후 'N일 뒤 삭제' 예약).
    * null 로 설정하면 영구보관으로 되돌림.
    */
-  async setExpiry(id: string, expiresAt: Date | null): Promise<FileEntity> {
+  async setExpiry(
+    id: string,
+    expiresAt: Date | null,
+    callerSiteId?: string,
+  ): Promise<FileEntity> {
     const file = await this.findById(id);
+    this.assertSiteAccess(file, callerSiteId);
     file.expiresAt = expiresAt;
     return this.fileRepository.save(file);
   }
