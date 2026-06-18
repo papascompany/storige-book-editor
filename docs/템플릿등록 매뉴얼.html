@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Storige 템플릿 등록 매뉴얼</title>
+<style>
+  :root {
+    --bg: #f5f6f8;
+    --surface: #ffffff;
+    --surface-2: #f0f2f5;
+    --ink: #1c2330;
+    --ink-soft: #5a6577;
+    --line: #e2e6ec;
+    --brand: #2f54eb;
+    --brand-soft: #e8edff;
+    --green: #237804;
+    --green-soft: #e6f4e1;
+    --gold: #ad6800;
+    --gold-soft: #fff7e0;
+    --red: #cf1322;
+    --red-soft: #fde7e7;
+    --purple: #531dab;
+    --purple-soft: #f3ebff;
+    --radius: 12px;
+    --shadow: 0 1px 3px rgba(20,30,50,.06), 0 6px 20px rgba(20,30,50,.06);
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14171c; --surface: #1c2027; --surface-2: #232830; --ink: #e7ebf2;
+      --ink-soft: #9aa6b8; --line: #2c333d; --brand: #6f8cff; --brand-soft: #1e2740;
+      --green: #95de64; --green-soft: #1c2a16; --gold: #ffd666; --gold-soft: #2c2410;
+      --red: #ff7875; --red-soft: #2c1717; --purple: #b37feb; --purple-soft: #241634;
+      --shadow: 0 1px 3px rgba(0,0,0,.3), 0 6px 20px rgba(0,0,0,.3);
+    }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: var(--sans); line-height: 1.65; font-size: 15px;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { display: grid; grid-template-columns: 248px 1fr; gap: 0; max-width: 1280px; margin: 0 auto; }
+
+  /* ── Sidebar TOC ── */
+  aside {
+    position: sticky; top: 0; align-self: start; height: 100vh; overflow-y: auto;
+    padding: 28px 18px; border-right: 1px solid var(--line); background: var(--surface);
+  }
+  aside .logo { font-weight: 800; font-size: 16px; letter-spacing: -.02em; margin-bottom: 4px; }
+  aside .logo span { color: var(--brand); }
+  aside .sub { font-size: 12px; color: var(--ink-soft); margin-bottom: 20px; }
+  aside nav a {
+    display: block; padding: 6px 10px; border-radius: 8px; color: var(--ink-soft);
+    text-decoration: none; font-size: 13.5px; transition: background .12s, color .12s;
+  }
+  aside nav a:hover { background: var(--surface-2); color: var(--ink); }
+  aside nav a.head { font-weight: 700; color: var(--ink); margin-top: 14px; }
+  aside nav a.sub2 { padding-left: 22px; font-size: 12.5px; }
+
+  /* ── Main ── */
+  main { padding: 40px 48px 96px; min-width: 0; }
+  .hero { margin-bottom: 36px; }
+  .hero h1 { font-size: 30px; letter-spacing: -.03em; margin: 0 0 8px; }
+  .hero p { color: var(--ink-soft); margin: 0; max-width: 70ch; }
+  .meta-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+  .pill { font-size: 12px; padding: 4px 11px; border-radius: 999px; background: var(--surface-2); color: var(--ink-soft); border: 1px solid var(--line); }
+  .pill.brand { background: var(--brand-soft); color: var(--brand); border-color: transparent; }
+
+  section { margin-bottom: 44px; scroll-margin-top: 20px; }
+  h2 { font-size: 22px; letter-spacing: -.02em; margin: 0 0 6px; padding-bottom: 10px; border-bottom: 2px solid var(--line); }
+  h2 .num { color: var(--brand); font-weight: 800; margin-right: 8px; }
+  h3 { font-size: 17px; margin: 28px 0 10px; letter-spacing: -.01em; }
+  h4 { font-size: 14.5px; margin: 18px 0 6px; color: var(--ink); }
+  p { margin: 8px 0; }
+  code { font-family: var(--mono); font-size: .86em; background: var(--surface-2); padding: 1.5px 6px; border-radius: 5px; color: var(--brand); }
+  @media (prefers-color-scheme: dark) { code { color: var(--gold); } }
+
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 20px 22px; margin: 14px 0; }
+  .grid { display: grid; gap: 14px; }
+  .grid.c3 { grid-template-columns: repeat(3, 1fr); }
+  .grid.c2 { grid-template-columns: repeat(2, 1fr); }
+
+  /* method cards */
+  .method { border-top: 4px solid var(--brand); }
+  .method .tag { display:inline-block; font-size: 11.5px; font-weight: 700; color: var(--brand); background: var(--brand-soft); padding: 3px 9px; border-radius: 6px; margin-bottom: 8px; }
+  .method h4 { margin: 0 0 6px; font-size: 15.5px; }
+  .method p { font-size: 13px; color: var(--ink-soft); margin: 0; }
+  .method .route { font-family: var(--mono); font-size: 11.5px; color: var(--ink-soft); margin-top: 10px; display:block; }
+
+  /* steps */
+  .steps { counter-reset: step; list-style: none; padding: 0; margin: 14px 0; }
+  .steps > li { position: relative; padding: 4px 0 18px 46px; border-left: 2px solid var(--line); margin-left: 16px; }
+  .steps > li:last-child { border-left: 2px solid transparent; }
+  .steps > li::before {
+    counter-increment: step; content: counter(step);
+    position: absolute; left: -16px; top: 0; width: 30px; height: 30px; border-radius: 50%;
+    background: var(--brand); color: #fff; font-weight: 700; font-size: 13px;
+    display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 4px var(--bg);
+  }
+  .steps > li b { display:block; margin-bottom: 2px; }
+  .steps > li .desc { font-size: 13.5px; color: var(--ink-soft); }
+
+  /* tables */
+  table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 13.5px; background: var(--surface); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); }
+  th, td { text-align: left; padding: 10px 13px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--surface-2); font-weight: 700; font-size: 12.5px; color: var(--ink-soft); text-transform: none; }
+  tr:last-child td { border-bottom: none; }
+  td code { white-space: nowrap; }
+
+  /* badges */
+  .b { display: inline-block; font-size: 11.5px; font-weight: 700; padding: 2px 8px; border-radius: 6px; white-space: nowrap; }
+  .b.green { background: var(--green-soft); color: var(--green); }
+  .b.gold { background: var(--gold-soft); color: var(--gold); }
+  .b.red { background: var(--red-soft); color: var(--red); }
+  .b.purple { background: var(--purple-soft); color: var(--purple); }
+  .b.brand { background: var(--brand-soft); color: var(--brand); }
+
+  /* callouts */
+  .note { border-left: 4px solid var(--brand); background: var(--brand-soft); padding: 12px 16px; border-radius: 0 8px 8px 0; margin: 14px 0; font-size: 13.5px; }
+  .warn { border-left: 4px solid var(--gold); background: var(--gold-soft); padding: 12px 16px; border-radius: 0 8px 8px 0; margin: 14px 0; font-size: 13.5px; }
+  .warn b, .note b { color: inherit; }
+
+  /* flow diagram */
+  .flow { display: flex; align-items: stretch; gap: 0; flex-wrap: wrap; margin: 16px 0; }
+  .flow .node { flex: 1; min-width: 120px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; text-align: center; box-shadow: var(--shadow); }
+  .flow .node .t { font-weight: 700; font-size: 13.5px; }
+  .flow .node .d { font-size: 11.5px; color: var(--ink-soft); margin-top: 3px; }
+  .flow .arrow { display: flex; align-items: center; color: var(--ink-soft); font-size: 20px; padding: 0 8px; }
+
+  /* tabs visual */
+  .tabset { border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); margin: 16px 0; }
+  .tabset .bar { display: flex; flex-wrap: wrap; background: var(--surface-2); border-bottom: 1px solid var(--line); }
+  .tabset .bar span { padding: 10px 16px; font-size: 13px; font-weight: 600; color: var(--ink-soft); border-right: 1px solid var(--line); }
+  .tabset .bar span.active { background: var(--surface); color: var(--brand); box-shadow: inset 0 -2px 0 var(--brand); }
+  .tabset .body { padding: 0; }
+  .tabset .body table { margin: 0; border-radius: 0; box-shadow: none; }
+
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12.5px; color: var(--ink-soft); margin: 8px 0; }
+
+  footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--line); font-size: 12.5px; color: var(--ink-soft); }
+
+  @media (max-width: 900px) {
+    .wrap { grid-template-columns: 1fr; }
+    aside { position: static; height: auto; border-right: none; border-bottom: 1px solid var(--line); }
+    main { padding: 28px 20px 64px; }
+    .grid.c3, .grid.c2 { grid-template-columns: 1fr; }
+  }
+  @media print {
+    aside { display: none; }
+    .wrap { display: block; max-width: none; }
+    body { background: #fff; font-size: 11pt; }
+    .card, table, .tabset { box-shadow: none; break-inside: avoid; }
+    section { break-inside: avoid-page; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <!-- ───────── Sidebar ───────── -->
+  <aside>
+    <div class="logo">Stor<span>ige</span></div>
+    <div class="sub">템플릿 등록 매뉴얼</div>
+    <nav>
+      <a href="#overview" class="head">전체 그림</a>
+      <a href="#reg" class="head">① 템플릿 등록</a>
+      <a href="#idml" class="sub2">1-A. IDML 변환 (케이스별)</a>
+      <a href="#psd" class="sub2">1-B. PSD 변환</a>
+      <a href="#manual" class="sub2">1-C. 직접 수기 등록</a>
+      <a href="#set" class="head">② 템플릿셋 등록</a>
+      <a href="#object" class="head">③ 객체 속성 관리</a>
+      <a href="#product" class="head">④ 상품-템플릿 연결</a>
+      <a href="#trouble" class="head">부록 · 문제 해결</a>
+      <a href="#map" class="sub2">화면·코드 매핑</a>
+    </nav>
+  </aside>
+
+  <!-- ───────── Main ───────── -->
+  <main>
+    <div class="hero" id="top">
+      <h1>Storige 템플릿 등록 매뉴얼</h1>
+      <p>InDesign·Photoshop 디자인 또는 직접 수기 작업을 <b>템플릿 → 템플릿셋 → 상품 연결</b>로 등록하는 단계별 운영 가이드입니다. 실제 admin 화면(<code>TemplateImport</code> / <code>TemplateEditor</code> / <code>TemplateSetForm</code> / <code>ProductTemplateSetList</code>) 기준.</p>
+      <div class="meta-row">
+        <span class="pill brand">admin.papascompany.co.kr</span>
+        <span class="pill">갱신 2026-06-18</span>
+        <span class="pill">대상: 운영자</span>
+        <span class="pill">IDML · PSD · 수기</span>
+      </div>
+    </div>
+
+    <!-- ── Overview ── -->
+    <section id="overview">
+      <h2><span class="num">●</span>전체 그림 (한눈에)</h2>
+      <p>등록은 디자인 소스에서 시작해 4개의 흐름을 거칩니다.</p>
+      <div class="flow">
+        <div class="node"><div class="t">디자인 소스</div><div class="d">IDML · PSD · 수기</div></div>
+        <div class="arrow">→</div>
+        <div class="node"><div class="t">① 템플릿</div><div class="d">디자인 1장 등록</div></div>
+        <div class="arrow">→</div>
+        <div class="node"><div class="t">② 템플릿셋</div><div class="d">표지+내지+설정 묶기</div></div>
+        <div class="arrow">→</div>
+        <div class="node"><div class="t">④ 상품 연결</div><div class="d">sortcode 매핑</div></div>
+      </div>
+      <div class="note"><b>③ 객체 속성</b>(고정 / 편집 권한 / 도구 메뉴)은 별도 단계가 아니라 변환·편집·셋 설정에 걸쳐 적용됩니다.</div>
+
+      <h3>핵심 개념 3가지</h3>
+      <table>
+        <tr><th>용어</th><th>뜻</th><th>예</th></tr>
+        <tr><td><b>템플릿</b><br><span class="b brand">Template</span></td><td>디자인 1장. 타입: 펼침면(spread)·내지(page)·표지(cover)·책등(spine)·날개(wing)·면지(endpaper)</td><td>"A4 양장 표지 펼침면"</td></tr>
+        <tr><td><b>템플릿셋</b><br><span class="b brand">TemplateSet</span></td><td>한 상품의 편집 단위로 묶은 템플릿 모음 + 출력/면지/에셋 설정</td><td>"A4 책자 기본 세트(표지 1 + 내지 N)"</td></tr>
+        <tr><td><b>상품 연결</b><br><span class="b brand">ProductTemplateSet</span></td><td>북모아 상품코드(sortcode)에 템플릿셋 매핑 → 주문 시 자동 제공</td><td><code>001001001</code> → 세트 3종</td></tr>
+      </table>
+    </section>
+
+    <!-- ── ① 템플릿 등록 ── -->
+    <section id="reg">
+      <h2><span class="num">①</span>템플릿 등록 방법</h2>
+      <p>템플릿을 만드는 길은 <b>3가지</b>입니다. 진입은 <b>템플릿 &gt; 템플릿 관리</b>(<code>/templates</code>) 우상단의 두 버튼.</p>
+      <div class="grid c3">
+        <div class="card method">
+          <span class="tag">1-A</span>
+          <h4>IDML 변환</h4>
+          <p>InDesign 표지 펼침면(.idml)을 <code>type=spread</code> 템플릿으로. 케이스별 3가지 변환 방식.</p>
+          <span class="route">버튼: IDML 가져오기 → /templates/import</span>
+        </div>
+        <div class="card method">
+          <span class="tag">1-B</span>
+          <h4>PSD 변환</h4>
+          <p>Photoshop 단품(.psd)을 단일 페이지(page/cover)로. 같은 화면에서 자동 감지.</p>
+          <span class="route">버튼: IDML 가져오기 → /templates/import</span>
+        </div>
+        <div class="card method">
+          <span class="tag">1-C</span>
+          <h4>직접 수기 등록</h4>
+          <p>빈 캔버스에서 객체를 직접 배치. 모든 타입 가능.</p>
+          <span class="route">버튼: 템플릿 생성 → /templates/editor</span>
+        </div>
+      </div>
+
+      <!-- 1-A IDML -->
+      <h3 id="idml">1-A. IDML 변환 등록 (케이스별)</h3>
+      <p>InDesign에서 만든 <b>표지 펼침면</b>(날개+앞표지+책등+뒤표지+날개 5영역)을 변환합니다.</p>
+
+      <h4>사전 준비 (InDesign)</h4>
+      <ul>
+        <li>InDesign → <code>파일 &gt; 다른 이름으로 저장 &gt; InDesign Markup (IDML)</code>. (<code>.indd</code>는 <code>scripts/indd-to-idml.jsx</code>로 변환)</li>
+        <li>⚠️ 폰트는 IDML에 임베드되지 않음 → 변환 화면 <b>폰트 매칭</b>에서 시딩 필요.</li>
+        <li>⚠️ 배치(placed) 이미지는 픽셀이 없음 → 원본 이미지를 같은 드롭에 함께 올리면 자동 복원.</li>
+      </ul>
+
+      <h4>등록 단계</h4>
+      <div class="flow">
+        <div class="node"><div class="t">1. 변환 방식</div><div class="d">3종 선택</div></div>
+        <div class="arrow">→</div>
+        <div class="node"><div class="t">2. 업로드</div><div class="d">.idml + 이미지</div></div>
+        <div class="arrow">→</div>
+        <div class="node"><div class="t">3. 검수</div><div class="d">미리보기·매칭·경고</div></div>
+        <div class="arrow">→</div>
+        <div class="node"><div class="t">4. 등록 대상</div><div class="d">단품 / 책 셋</div></div>
+        <div class="arrow">→</div>
+        <div class="node"><div class="t">5. 저장</div><div class="d"></div></div>
+      </div>
+
+      <h4>[1] 변환 방식 — 케이스별 3종 <span class="b brand">가장 중요</span></h4>
+      <p>상단 <code>변환 방식 (IDML)</code> 토글에서 선택. 값은 <code>spreadConfig.conversionMode</code>로 저장됩니다.</p>
+      <table>
+        <tr><th>admin 문구 (mode)</th><th>conversionMode</th><th>동작</th><th>언제 쓰나</th></tr>
+        <tr>
+          <td><b>벡터 (전체 편집형)</b><br><code>vector</code></td>
+          <td><span class="b green">full</span></td>
+          <td>도형·텍스트를 <b>모두 편집 가능한 벡터</b>로 추출(정밀, CMYK <code>cmykFill</code> 보존)</td>
+          <td><b>대부분 권장.</b> 단순한 디자인, 객체 미세조정 필요 시</td>
+        </tr>
+        <tr>
+          <td><b>펼침면 플랫형 (책등 고정)</b><br><code>hybrid</code></td>
+          <td><span class="b gold">flat-spread</span></td>
+          <td>텍스트만 편집 레이어 + 나머지를 <b>전폭 300dpi PNG 1장</b>으로 평면화</td>
+          <td>복잡한 효과·그라디언트가 많고 <b>책등 두께 고정</b> 상품. <span class="b red">책등 가변 차단</span></td>
+        </tr>
+        <tr>
+          <td><b>책등가변 3분할 플랫형</b><br><code>flat-spine</code></td>
+          <td><span class="b purple">flat-spine</span></td>
+          <td>텍스트만 편집 + 디자인을 <b>뒷표지/책등/앞표지 3장 PNG</b>로 분할. 책등 PNG는 <b>3배폭</b> → 책등 두께 변동 추종</td>
+          <td>복잡한 디자인을 <b>책등 가변 책 셋</b>으로 쓸 때(권장)</td>
+        </tr>
+      </table>
+
+      <h4>변환 방식 결정 트리</h4>
+      <div class="card" style="background:var(--surface-2);">
+        <svg viewBox="0 0 720 250" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;font-family:var(--sans);">
+          <defs>
+            <marker id="ar" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="currentColor"/></marker>
+          </defs>
+          <g color="#8a93a6" stroke="currentColor" stroke-width="1.6" fill="none">
+            <line x1="160" y1="48" x2="160" y2="92" marker-end="url(#ar)"/>
+            <line x1="160" y1="132" x2="540" y2="48" marker-end="url(#ar)"/>
+            <line x1="160" y1="152" x2="160" y2="178" marker-end="url(#ar)"/>
+            <line x1="100" y1="218" x2="60" y2="232" marker-end="url(#ar)" style="display:none"/>
+          </g>
+          <!-- Q1 -->
+          <rect x="40" y="14" width="240" height="34" rx="8" fill="var(--surface)" stroke="var(--line)"/>
+          <text x="160" y="36" text-anchor="middle" font-size="13" font-weight="700" fill="var(--ink)">디자인이 단순한가?</text>
+          <text x="300" y="34" font-size="12" fill="var(--green)" font-weight="700">예 →</text>
+          <!-- vector result -->
+          <rect x="500" y="20" width="200" height="40" rx="8" fill="var(--green-soft)" stroke="var(--green)"/>
+          <text x="600" y="38" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--green)">벡터 (전체 편집형)</text>
+          <text x="600" y="53" text-anchor="middle" font-size="10.5" fill="var(--green)">기본 · 권장</text>
+          <!-- Q2 -->
+          <rect x="20" y="96" width="280" height="52" rx="8" fill="var(--surface)" stroke="var(--line)"/>
+          <text x="160" y="116" text-anchor="middle" font-size="12.5" fill="var(--ink-soft)">아니오 (복잡한 효과/그라디언트)</text>
+          <text x="160" y="135" text-anchor="middle" font-size="13" font-weight="700" fill="var(--ink)">책등 두께가 페이지 수로 변하나?</text>
+          <!-- branches -->
+          <line x1="110" y1="148" x2="80" y2="182" stroke="#8a93a6" stroke-width="1.6" fill="none" marker-end="url(#ar)"/>
+          <line x1="210" y1="148" x2="240" y2="182" stroke="#8a93a6" stroke-width="1.6" fill="none" marker-end="url(#ar)"/>
+          <text x="70" y="172" font-size="11.5" fill="var(--ink-soft)">아니오</text>
+          <text x="232" y="172" font-size="11.5" fill="var(--ink-soft)">예</text>
+          <!-- hybrid -->
+          <rect x="0" y="186" width="158" height="48" rx="8" fill="var(--gold-soft)" stroke="var(--gold)"/>
+          <text x="79" y="206" text-anchor="middle" font-size="12" font-weight="700" fill="var(--gold)">펼침면 플랫형</text>
+          <text x="79" y="222" text-anchor="middle" font-size="10.5" fill="var(--gold)">책등 고정</text>
+          <!-- flat-spine -->
+          <rect x="178" y="186" width="170" height="48" rx="8" fill="var(--purple-soft)" stroke="var(--purple)"/>
+          <text x="263" y="206" text-anchor="middle" font-size="12" font-weight="700" fill="var(--purple)">책등가변 3분할 플랫형</text>
+          <text x="263" y="222" text-anchor="middle" font-size="10.5" fill="var(--purple)">책등 가변 추종</text>
+        </svg>
+      </div>
+
+      <h4>[2] 파일 업로드</h4>
+      <p>허용 형식: <code>.idml .psd .zip .jpg .jpeg .png .gif .webp .bmp .avif</code>. 배치 이미지 복원 케이스:</p>
+      <table>
+        <tr><th>케이스</th><th>동작</th></tr>
+        <tr><td><code>.idml</code> 단독</td><td>회색 플레이스홀더 + 경고(기존 동작)</td></tr>
+        <tr><td><code>.idml</code> + 이미지 다중</td><td>같은 드롭에 JPG/PNG 함께 → <b>파일명 자동 매칭</b>(NFC, 대소문자 무시, 크롭/플립 베이크)</td></tr>
+        <tr><td>패키지 <code>.zip</code></td><td><code>*.idml</code> + 이미지를 zip 1개로(폴더 구조 무관, 파일명 기준)</td></tr>
+        <tr><td>이미지 추가 업로드</td><td>매칭 실패 후 이미지 추가 → <b>직전 변환에 병합 재변환</b></td></tr>
+      </table>
+      <div class="warn">⚠️ TIFF/EPS/PDF/AI는 브라우저 미지원 → <b>JPG/PNG로 변환해 재업로드</b>. AI(.ai)는 미지원(InDesign 배치 후 IDML, 또는 SVG 내보내기 우회).</div>
+
+      <h4>[3] 미리보기·매칭·경고 검수</h4>
+      <ul>
+        <li><b>SVG 미리보기</b> — z-순서, 책등 세로글씨(90°), 줄바꿈, 베지어 경로 육안 확인.</li>
+        <li><b>감지된 사양</b> — 표지 한 면(coverWidth)·높이·책등(spineWidth <b>가변</b>)·날개·재단여백·<b>총폭</b>.</li>
+        <li><b>배치 이미지 매칭</b> — <span class="b green">✓ 복원</span> <span class="b">참조 없음</span> <span class="b red">✗ 실패</span></li>
+        <li><b>폰트 매칭(라이브러리)</b> — <span class="b green">✓ 사용 가능</span> <span class="b gold">비활성 → 활성화</span> <span class="b red">✗ 미등록 → 폰트 파일 등록(TTF/OTF/WOFF2)</span></li>
+        <li><b>검수 경고</b> — 별색·풀블리드·자간/정렬 혼합(지배값 근사)·장평(미적용)·미해석 색(검정 대체)·텍스트 그라디언트(검정 대체)·세로쓰기 등.</li>
+      </ul>
+
+      <h4>[4] 등록 대상 선택 (IDML 전용)</h4>
+      <table>
+        <tr><th>라디오</th><th>동작</th></tr>
+        <tr><td><b>표지 템플릿만 등록</b><br>(펼침면 단품)</td><td><code>type=spread</code> 템플릿만 생성 → 저장 후 편집기 이동. 셋 구성은 추후</td></tr>
+        <tr><td><b>책등 가변 셋으로 이어서 등록</b><br>(표지 + 내지 책)</td><td>표지 생성 후 <b>템플릿셋 폼 자동 인계</b>(<code>seedTemplateId</code>). 표지 자동 추가 + 책모드 + 판형 자동 설정</td></tr>
+      </table>
+      <div class="warn">⚠️ <b>'펼침면 플랫형(책등 고정)'으로 등록한 표지를 책등 가변 셋에 넣으면 책등이 변하지 않습니다</b>(통짜 PNG 보호 가드). 가변이 필요하면 <b>'책등가변 3분할 플랫형'</b>으로 재변환하세요.</div>
+
+      <h4>[5] 저장</h4>
+      <p>템플릿명(기본값 <code>&lt;파일명&gt; (가져옴)</code>)·카테고리 입력 후 <span class="b brand">템플릿으로 저장</span> 또는 <span class="b brand">저장 후 셋 등록으로 →</span>. 인라인 base64 PNG 배경은 자동으로 스토리지 URL로 치환(DB 비대화 방지).</p>
+
+      <!-- 1-B PSD -->
+      <h3 id="psd">1-B. PSD 변환 등록</h3>
+      <p>Photoshop <b>단품</b>(명함·내지 단품)을 단일 페이지 템플릿으로. <b>IDML과 같은 화면</b>(<code>/templates/import</code>)에서 <code>.psd</code> 업로드 시 자동 감지.</p>
+      <table>
+        <tr><th>항목</th><th>IDML</th><th>PSD</th></tr>
+        <tr><td>산출물</td><td>펼침면(spread)</td><td><b>단일 페이지</b>(page/cover)</td></tr>
+        <tr><td><code>spreadConfig</code></td><td>있음(5영역·책등 가변)</td><td><b>없음</b></td></tr>
+        <tr><td>변환 방식 토글</td><td>3종</td><td>없음(텍스트 + 배경 PNG 고정)</td></tr>
+        <tr><td>배치 이미지 동반</td><td>사용</td><td><b>미사용</b>(픽셀 내장)</td></tr>
+      </table>
+      <ol class="steps">
+        <li><b>업로드</b><span class="desc"><code>.psd</code> 업로드 → 자동 PSD 모드.</span></li>
+        <li><b>미리보기 + 감지된 사양</b><span class="desc">판형 가로×세로 · 편집 텍스트 레이어 수 · 배경 합성 레이어 → 배경 PNG 1장.</span></li>
+        <li><b>페이지 타입 선택</b><span class="desc"><b>내지/단품 (page)</b> = <code>type=page</code> / <b>표지 (cover)</b> = <code>type=cover</code>.</span></li>
+        <li><b>저장</b><span class="desc">템플릿명·카테고리 → [템플릿으로 저장] → 편집기로 이동해 폰트·크기·효과 확정.</span></li>
+      </ol>
+
+      <!-- 1-C 수기 -->
+      <h3 id="manual">1-C. 직접 수기 등록 (디자인 요소 수기 배치)</h3>
+      <p>빈 캔버스에서 직접 객체를 배치. 변환 소스가 없거나 단순 양식/배경/도형 위주 템플릿에 적합.</p>
+      <ol class="steps">
+        <li><b>템플릿 생성 클릭</b><span class="desc">템플릿 관리 → [템플릿 생성] → "새 템플릿 설정" 모달.</span></li>
+        <li><b>이름 입력</b></li>
+        <li><b>템플릿 타입 선택</b><span class="desc">내지(Page) / 표지(Cover) / 책등(Spine) / 날개(Wing) / 스프레드(Spread, 책모드용) / 면지(EndPaper).</span></li>
+        <li><b>치수 입력</b><span class="desc">일반 타입: 가로/세로(mm, 10~1000). 스프레드: "스프레드 템플릿 설정"에서 표지 한 면·날개·초기 책등(셋에서 가변).</span></li>
+        <li><b>편집기에서 디자인</b><span class="desc">편집기(iframe)에서 텍스트·이미지·요소(SVG·도형)·배경·프레임·QR 등 직접 배치.</span></li>
+        <li><b>저장</b><span class="desc">편집기 저장 → admin이 <code>TEMPLATE_SAVED</code> 수신 → "템플릿이 저장되었습니다."</span></li>
+      </ol>
+      <div class="note">수기 등록 템플릿도 변환 결과와 동일하게 템플릿셋에 넣고 상품에 연결할 수 있습니다.</div>
+    </section>
+
+    <!-- ── ② 템플릿셋 ── -->
+    <section id="set">
+      <h2><span class="num">②</span>템플릿셋 등록 방법</h2>
+      <p>여러 템플릿(표지+내지+면지)을 한 상품의 편집 단위로 묶고 출력·면지·에셋·도구 메뉴를 설정합니다.</p>
+      <div class="grid c2">
+        <div class="card method" style="border-top-color:var(--green);">
+          <span class="tag" style="color:var(--green);background:var(--green-soft);">방법 A</span>
+          <h4>IDML 인계</h4>
+          <p>1-A 등록 대상에서 '책등 가변 셋으로 이어서 등록' → 표지가 미리 추가된 폼으로 자동 진입.</p>
+        </div>
+        <div class="card method">
+          <span class="tag">방법 B</span>
+          <h4>직접 생성</h4>
+          <p>템플릿셋 관리(<code>/template-sets</code>) → [생성] → <code>/template-sets/new</code>. 빈 폼에서 시작.</p>
+        </div>
+      </div>
+
+      <h3>폼 구성 — 5개 탭</h3>
+      <div class="tabset">
+        <div class="bar">
+          <span class="active">1. 기본 정보</span>
+          <span>2. 페이지·면지</span>
+          <span>3. 표지·PDF 출력</span>
+          <span>4. 에셋·도구 메뉴</span>
+          <span>5. 템플릿 구성</span>
+        </div>
+        <div class="body">
+          <table>
+            <tr><th>탭 1 · 기본 정보</th><th>값</th></tr>
+            <tr><td>템플릿셋명</td><td>예: "A4 책자 기본 템플릿"</td></tr>
+            <tr><td>타입</td><td>책자(날개+표지+책등+내지) = <code>BOOK</code> / 리플렛(표지+내지) = <code>LEAFLET</code></td></tr>
+            <tr><td>에디터 모드</td><td>단일모드(개별 페이지) = <code>SINGLE</code> / 책모드(스프레드) = <code>BOOK</code></td></tr>
+            <tr><td>너비/높이 (mm)</td><td>셋 판형 = <b>표지 한 면 크기</b>(내지 필터와 일치). IDML 인계 시 자동</td></tr>
+          </table>
+        </div>
+      </div>
+
+      <h4>탭 2 · 페이지 · 면지</h4>
+      <table>
+        <tr><th>필드</th><th>값</th></tr>
+        <tr><td>내지 추가 허용 <code>canAddPage</code></td><td>켜면 고객 PDF/페이지 수에 따라 내지 자동 확장</td></tr>
+        <tr><td>최소/최대 페이지</td><td><code>canAddPage</code> 켤 때 노출. 페이지 수 범위(<code>pageCountRange</code>)</td></tr>
+        <tr><td>면지 사용 <code>useEndpaper</code></td><td>표지 안쪽(앞면지)/뒤표지 안쪽(뒷면지) 빈 페이지 추가</td></tr>
+        <tr><td>앞/뒷면지 개수</td><td>각 0~6장</td></tr>
+        <tr><td>앞/뒷면지 편집 가능</td><td>면지를 고객이 편집할 수 있는지</td></tr>
+      </table>
+
+      <h4>탭 3 · 표지 · PDF 출력</h4>
+      <table>
+        <tr><th>필드</th><th>값</th></tr>
+        <tr><td>표지 편집 가능 <code>coverEditable</code></td><td>레더 커버/화보집처럼 표지를 사전 인쇄하면 <b>끄기</b> → 표지 미리보기 이미지로 대체</td></tr>
+        <tr><td>표지 미리보기 이미지</td><td>레더 커버용. 편집기에선 표지로만, 인쇄 PDF 표지는 빈 페이지</td></tr>
+        <tr><td>PDF 첨부 편집 가능 <code>contentPdfEditable</code></td><td>끔=첨부 내지 PDF를 가이드로만(편집 불가). 최종 내지는 첨부 원본 그대로</td></tr>
+        <tr><td>PDF 생성 방식 <code>pdfOutputMode</code></td><td>단면(1파일·1페이지) / 양면-원파일 <code>duplex-merged</code> / 양면-파일분리 <code>duplex-split</code> ※ 단일·낱장 상품</td></tr>
+        <tr><td>색 처리 방식 <code>colorMode</code></td><td>RGB 유지(기본) / CMYK 변환(인쇄용) ※ 워커 실제 색변환은 검증 후 라이브</td></tr>
+        <tr><td>블리드 / 재단선 마커 / 허용오차</td><td>사방 mm / 코너 마커 표기 / 업로드 PDF 사이즈 검증 허용오차</td></tr>
+      </table>
+
+      <h4>탭 4 · 에셋 · 도구 메뉴</h4>
+      <table>
+        <tr><th>필드</th><th>값</th></tr>
+        <tr><td>노출할 라이브러리 카테고리 <code>libraryCategoryIds</code></td><td>편집기에 노출할 에셋(배경·도형·클립아트·프레임·폰트)을 카테고리 단위로. <b>비우면 전역(전체 노출)</b></td></tr>
+        <tr><td>도구 메뉴 노출 직접 설정 <code>customizeMenus</code></td><td>끔=모든 메뉴 노출(기본) / 켬=화이트리스트만</td></tr>
+        <tr><td>노출할 도구 메뉴 <code>enabledMenus</code></td><td>체크한 메뉴만 노출. 예) 동화책=프레임/QR 끄기, 전단지=AI/모양컷 끄기</td></tr>
+      </table>
+
+      <h4>탭 5 · 템플릿 구성</h4>
+      <ul>
+        <li><b>[템플릿 추가]</b>(판형 <code>너비×높이</code> 필터) → 편집할 템플릿 추가. <b>드래그로 순서 변경</b>, 필수(required) 토글, 제거.</li>
+        <li><b>책모드 검증(실시간)</b>: 스프레드 <b>정확히 1개</b> + 내지(PAGE)만. 날개/표지/책등 사용 불가. 단일모드는 스프레드 불가.</li>
+      </ul>
+      <div class="legend">
+        <span><span class="b green">성공</span> 스프레드 1개 + 내지 N개 = "구성이 올바릅니다"</span>
+        <span><span class="b red">오류</span> 스프레드 ≠ 1개 / 날개·표지·책등 포함</span>
+      </div>
+      <div class="warn"><b>IDML 인계 후 수동 보완 체크리스트</b>: 내지 템플릿 추가 · 페이지 수 범위 · PDF/색 모드 · 면지 · 에셋 카테고리 (IDML 표지에는 이 정보가 없습니다). 저장: 하단 [생성]/[수정]. 책모드 저장 검증 = SPREAD 정확히 1개 + 날개/표지/책등 미포함. (내지 PAGE는 폼에서 강제되지 않으나 반드시 추가)</div>
+    </section>
+
+    <!-- ── ③ 객체 속성 ── -->
+    <section id="object">
+      <h2><span class="num">③</span>템플릿 객체 속성 관리</h2>
+      <p>객체의 <b>고정 여부 · 편집 권한 · 노출 메뉴</b>를 관리합니다. 변환·편집·셋 단계에 걸쳐 적용됩니다.</p>
+
+      <h3>객체 종류와 식별 (extensionType)</h3>
+      <table>
+        <tr><th>객체</th><th>extensionType / id</th><th>성격</th></tr>
+        <tr><td>텍스트 / 이미지 / 요소(SVG·도형)</td><td>(없음)</td><td>일반 사용자 객체 — 자유 편집</td></tr>
+        <tr><td>배경 색/이미지</td><td><code>background</code></td><td>배경</td></tr>
+        <tr><td>프레임</td><td><code>frame</code></td><td>사진 클리핑 창</td></tr>
+        <tr><td><b>템플릿 요소</b></td><td><code>template-element</code></td><td>관리자 배치 디자인 요소</td></tr>
+        <tr><td>워크스페이스</td><td><code>id: 'workspace'</code></td><td>시스템(선택 제외)</td></tr>
+        <tr><td>컷/세이프 보더 · 가이드 · 클리핑 마스크</td><td><code>overlay</code> / <code>guideline</code> / <code>clipping</code></td><td>시스템</td></tr>
+      </table>
+
+      <div class="grid c2">
+        <div class="card">
+          <h4>1) 배경 아트워크 고정 — <code>ARTWORK_LOCK</code></h4>
+          <p>플랫형(hybrid/flat-spine)·PSD 배경 PNG는 변환기가 <code>ARTWORK_LOCK</code>으로 emit:</p>
+          <ul>
+            <li><b>고정</b>(<code>selectable:false</code>) — 이동/삭제 불가</li>
+            <li><b>패널 숨김</b> — 레이어 패널 미노출</li>
+            <li><b>관리자 잠금</b> — 템플릿 요소로 보존</li>
+          </ul>
+          <p style="color:var(--ink-soft);font-size:13px;">효과: 고객은 <b>텍스트만</b> 편집, 배경 디자인은 흔들리지 않음.</p>
+        </div>
+        <div class="card">
+          <h4>2) 객체별 편집 권한 — <code>movable</code>/<code>deleteable</code></h4>
+          <p>현재 정책 <span class="b gold">default-permissive</span> (PERM-1):</p>
+          <ul>
+            <li>플래그 미지정(<code>undefined</code>) = <b>허용</b></li>
+            <li>관리자가 <b>'위치 고정'으로 명시 잠근 객체만</b> 잠김</li>
+          </ul>
+          <p style="color:var(--ink-soft);font-size:13px;">이유: default-locked면 플래그 없는 기존 라이브 객체가 일괄 동결되는 회귀 → 1차는 admin opt-in.</p>
+        </div>
+      </div>
+
+      <h4>3) 템플릿/면지/표지 단위 편집 가능 토글</h4>
+      <table>
+        <tr><th>토글</th><th>위치</th><th>효과</th></tr>
+        <tr><td>템플릿 <code>editable</code></td><td>템플릿</td><td>readonly 처리(객체 추가/이동 차단)</td></tr>
+        <tr><td>표지 편집 가능 <code>coverEditable</code></td><td>템플릿셋 탭3</td><td>끄면 표지 미리보기 이미지로 대체(레더 커버)</td></tr>
+        <tr><td>면지 편집 가능(앞/뒤)</td><td>템플릿셋 탭2</td><td>면지 편집 허용 여부</td></tr>
+        <tr><td>PDF 첨부 편집 가능 <code>contentPdfEditable</code></td><td>템플릿셋 탭3</td><td>끄면 첨부 내지 PDF를 가이드로만</td></tr>
+      </table>
+
+      <h4>4) 도구 메뉴 화이트리스트 (셋 단위)</h4>
+      <p>템플릿셋 탭4 <b>도구 메뉴 노출 직접 설정</b> → <code>enabledMenus</code>로 좌측 메뉴를 한정. 빌드 플래그(<code>requiresFlag</code>)가 꺼진 메뉴는 화이트리스트와 무관하게 숨겨집니다.</p>
+
+      <div class="warn">⚠️ 2026-06-11 이전 변환본은 재편집 시 객체 투명/붕괴·좌표 변위 결함이 있을 수 있습니다(<code>527b85b</code>에서 수정). 해당 등록본은 <b>재가져오기</b> 필요. 신규 가져오기는 정상.</div>
+    </section>
+
+    <!-- ── ④ 상품 연결 ── -->
+    <section id="product">
+      <h2><span class="num">④</span>상품-템플릿셋 연결 방법</h2>
+      <p>북모아 상품코드(sortcode)에 템플릿셋을 매핑합니다. 고객이 주문하면 연결된 템플릿셋이 자동 제공됩니다(1:N). 진입: <b>상품-템플릿셋 연결 관리</b>(<code>/product-template-sets</code>).</p>
+
+      <h3>데이터 모델 (ProductTemplateSet)</h3>
+      <table>
+        <tr><th>컬럼</th><th>뜻</th></tr>
+        <tr><td><code>sortcode</code></td><td>북모아 카테고리(상품) 코드 (예: <code>001001001</code>)</td></tr>
+        <tr><td><code>prdtStanSeqno</code></td><td>북모아 규격 번호. <b>NULL이면 모든 규격에 적용</b></td></tr>
+        <tr><td><code>templateSetId</code></td><td>연결할 템플릿셋</td></tr>
+        <tr><td><code>displayOrder</code></td><td>표시 순서</td></tr>
+        <tr><td><code>isDefault</code></td><td>기본 템플릿(먼저 추천)</td></tr>
+        <tr><td><code>isActive</code></td><td>활성 여부</td></tr>
+      </table>
+
+      <h3>연결 단계</h3>
+      <ol class="steps">
+        <li><b>연결 추가</b><span class="desc">[연결 추가] → "상품-템플릿셋 연결 추가" 모달.</span></li>
+        <li><b>상품코드(sortcode)</b><span class="desc">자동완성(상품명/코드로 북모아 카테고리 검색, 2자 이상).</span></li>
+        <li><b>규격 번호(선택)</b><span class="desc">비우면 해당 상품 모든 규격에 적용.</span></li>
+        <li><b>템플릿셋 선택(다중)</b><span class="desc">검색·다중 선택. 셋 정보(책자/리플렛·판형)가 라벨에 표시.</span></li>
+        <li><b>기본/순서</b><span class="desc">1개 선택 시 '기본 템플릿' 토글. 여러 개는 순서대로 <code>displayOrder</code>, 첫 번째가 기본.</span></li>
+        <li><b>추가</b><span class="desc">1개=단건 생성, 여러 개=일괄 생성.</span></li>
+      </ol>
+
+      <h3>목록 관리 & 외부 조회</h3>
+      <div class="grid c2">
+        <div class="card">
+          <h4>목록 관리</h4>
+          <ul>
+            <li><b>기본(★)</b> 별 아이콘 토글</li>
+            <li><b>순서</b> displayOrder 컬럼</li>
+            <li><b>활성</b> 스위치 on/off</li>
+            <li><b>배지</b> 면지(<span class="b gold">면지 앞2/뒤2</span>)·<span class="b purple">레더커버</span></li>
+            <li><b>삭제</b> 연결만 제거(셋 유지)</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h4>외부 조회 (북모아 연동)</h4>
+          <p><code>GET /api/product-template-sets/by-product?sortcode=&amp;stanSeqno=</code></p>
+          <p style="font-size:12.5px;color:var(--gold);margin-top:6px;">⚠️ <b>API Key 인증 필요</b>(<code>@Public</code>+<code>ApiKeyGuard</code>, <code>X-API-Key</code>/<code>STORIGE_API_KEY</code>). 관리자 CRUD는 Bearer+RolesGuard.</p>
+          <p style="font-weight:700;margin-top:8px;">폴백 조회 로직</p>
+          <ol style="margin:0;padding-left:18px;font-size:13px;color:var(--ink-soft);">
+            <li><code>sortcode</code>+<code>prdtStanSeqno</code> 정확 매칭</li>
+            <li>없으면 <code>sortcode</code>만(규격 NULL)</li>
+            <li><code>displayOrder</code> 순 정렬</li>
+            <li><code>isDefault</code>를 첫 번째로</li>
+            <li><b><code>isDeleted</code> 템플릿셋 연결 행 제외</b>(total도 제외 후 카운트)</li>
+          </ol>
+          <p style="font-size:12.5px;color:var(--ink-soft);margin-top:8px;">북모아 <code>edit.php</code> → <code>storige_get_template_sets()</code>로 목록 수신 후 에디터 전달.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── 부록 ── -->
+    <section id="trouble">
+      <h2><span class="num">●</span>부록 · 문제 해결</h2>
+      <table>
+        <tr><th>증상</th><th>점검</th></tr>
+        <tr><td>표지가 회색 박스투성이</td><td>배치 이미지 미동반 → 같은 파일명 이미지를 다중/zip 동반 업로드(자동 복원), 또는 편집기 [이미지]로 교체</td></tr>
+        <tr><td>폰트가 다르게/깨져 보임</td><td>변환 화면 <b>폰트 매칭</b>에서 ✗ 미등록 폰트를 TTF/OTF/WOFF2로 등록(또는 비활성→활성화)</td></tr>
+        <tr><td>책등이 안 변함</td><td>① '펼침면 플랫형'이면 정상 가드(가변 필요 시 '책등가변 3분할' 재변환) ② 책모드 셋 + SPREAD 1개 + 내지(PAGE)가 있는지(책등 폭은 내지 페이지 수에서 파생)</td></tr>
+        <tr><td>재편집 시 객체 투명/사라짐</td><td>2026-06-11(<code>527b85b</code>) 이후 신규 가져오기는 정상. 이전 등록본은 재가져오기</td></tr>
+        <tr><td>미리보기/플랫 PNG 좌우 어긋남</td><td><code>527b85b</code> 이후 정상. admin 배포 반영 확인</td></tr>
+        <tr><td>배경 아트워크가 움직임/지워짐</td><td>신규 가져오기는 <code>template-element</code>로 고정(ARTWORK_LOCK). 교체는 재가져오기</td></tr>
+        <tr><td>책 셋 저장 안 됨</td><td>책모드 저장 검증 = SPREAD 정확히 1개 + 날개/표지/책등 미포함인지. (내지 PAGE는 폼에서 강제 안 됨 — 저장은 되지만 내지는 반드시 추가)</td></tr>
+        <tr><td>표지 색이 화면과 다름</td><td>셋 <code>colorMode=cmyk</code> + 워커 색변환(적용 후)</td></tr>
+        <tr><td>미해석 색/그라디언트 경고</td><td>색상 사전에 없는 색(검정 대체). 편집기에서 색 지정</td></tr>
+        <tr><td>상품 연결이 고객에 안 보임</td><td><code>isActive</code>/<code>displayOrder</code> + sortcode·규격 매칭/폴백 확인</td></tr>
+      </table>
+
+      <h3 id="map">화면 · 코드 매핑</h3>
+      <table>
+        <tr><th>단계</th><th>admin 라우트</th><th>소스</th></tr>
+        <tr><td>템플릿 목록</td><td><code>/templates</code></td><td><code>Templates/TemplateList.tsx</code></td></tr>
+        <tr><td>IDML/PSD 가져오기</td><td><code>/templates/import</code></td><td><code>Templates/TemplateImport.tsx</code></td></tr>
+        <tr><td>직접 수기 등록/편집</td><td><code>/templates/editor</code></td><td><code>Templates/TemplateEditor.tsx</code></td></tr>
+        <tr><td>템플릿셋 생성/편집</td><td><code>/template-sets/new</code>, <code>:id/edit</code></td><td><code>TemplateSets/TemplateSetForm.tsx</code></td></tr>
+        <tr><td>상품-템플릿셋 연결</td><td><code>/product-template-sets</code></td><td><code>ProductTemplateSets/ProductTemplateSetList.tsx</code></td></tr>
+        <tr><td>변환 코어</td><td>—</td><td><code>packages/indesign-import/</code></td></tr>
+      </table>
+    </section>
+
+    <footer>
+      작성 2026-06-18 · 근거: 실제 admin 컴포넌트 + <code>DESIGN_IMPORT_CONVERTER.md</code> / <code>IDML_IMPORT_FLOW.md</code> / <code>EDITOR_OBJECT_EDITING_SPEC.md</code> / <code>product-templateset-linking-plan.md</code>. 텍스트 버전: <code>템플릿등록 매뉴얼.md</code>
+    </footer>
+  </main>
+</div>
+</body>
+</html>
+</content>
