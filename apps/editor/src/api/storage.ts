@@ -25,6 +25,9 @@ export const storageApi = {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
+        // 임베드 호스트 프록시 우회 → Storige API 직결. 호스트가 base 를 자사 프록시
+        // (예: Vercel 4.5MB 본문 한도)로 덮어쓴 경우 대용량 업로드가 413 나는 것을 방지.
+        baseURL: apiClient.getDirectBaseUrl(),
       }
     );
     return response.data;
@@ -56,6 +59,9 @@ export const storageApi = {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
+        // 임베드 호스트 프록시 우회 → Storige API 직결. 호스트가 base 를 자사 프록시
+        // (예: Vercel 4.5MB 본문 한도)로 덮어쓴 경우 대용량 업로드가 413 나는 것을 방지.
+        baseURL: apiClient.getDirectBaseUrl(),
       }
     );
     return response.data;
@@ -76,6 +82,9 @@ export const storageApi = {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
+        // 임베드 호스트 프록시 우회 → Storige API 직결. 호스트가 base 를 자사 프록시
+        // (예: Vercel 4.5MB 본문 한도)로 덮어쓴 경우 대용량 업로드가 413 나는 것을 방지.
+        baseURL: apiClient.getDirectBaseUrl(),
       }
     );
     return response.data;

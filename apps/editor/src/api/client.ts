@@ -59,6 +59,18 @@ export function parseApiError(error: AxiosError): ApiError {
     };
   }
 
+  // 413 Payload Too Large — 업로드/요청 본문이 한도를 초과.
+  // 본문이 비-JSON 평문일 수 있으나(위 transformResponse 가 { message } 로 감쌈)
+  // 여기서는 한국어 친화 메시지로 통일한다(원문 "Request Entity Too Large" 노출 방지).
+  if (status === 413) {
+    return {
+      code: 'VALIDATION_ERROR',
+      message: '업로드 용량이 서버 한도를 초과했습니다. 더 작은 파일(권장 50MB 이하)로 다시 시도해주세요.',
+      status,
+      originalError: error,
+    };
+  }
+
   if (status >= 500) {
     return {
       code: 'SERVER_ERROR',
@@ -76,6 +88,18 @@ export function parseApiError(error: AxiosError): ApiError {
   };
 }
 
+/**
+ * 임의의 throw 값을 사용자 표시용 메시지로 변환.
+ * - AxiosError → parseApiError 의 친화 메시지(401/413/4xx/5xx 분기)
+ * - 그 외 Error → message
+ * 비-JSON 응답이 transformResponse 로 { message } 가 된 경우도 안전하게 처리된다.
+ */
+export function toUserMessage(err: unknown, fallback = '요청에 실패했습니다.'): string {
+  if (axios.isAxiosError(err)) return parseApiError(err).message;
+  if (err instanceof Error && err.message) return err.message;
+  return fallback;
+}
+
 // 이벤트 리스너 타입
 type AuthExpiredListener = () => void;
 
@@ -90,6 +114,23 @@ class ApiClient {
       headers: {
         'Content-Type': 'application/json',
       },
+      // 비-JSON 응답 방어: 프록시/게이트웨이(예: Vercel 서버리스 4.5MB 한도)·nginx 가
+      // 내는 평문 413 "Request Entity Too Large" 나 HTML 에러 페이지를 받아도
+      // 기본 JSON.parse 가 던지는 "Unexpected token 'R'…" 크래시를 막는다.
+      // 정상 JSON 은 그대로 파싱하고, 파싱 실패 시 { message: 원문 } 으로 감싸
+      // parseApiError/호출부가 .message 로 안전하게 읽도록 한다. 바이너리(arraybuffer/blob)는
+      // string 이 아니므로 그대로 통과.
+      transformResponse: [
+        (data) => {
+          if (typeof data !== 'string') return data;
+          if (data.length === 0) return data;
+          try {
+            return JSON.parse(data);
+          } catch {
+            return { message: data };
+          }
+        },
+      ],
     });
 
     this.setupInterceptors();
@@ -158,6 +199,17 @@ class ApiClient {
    */
   getBaseUrl(): string {
     return this.client.defaults.baseURL || API_BASE_URL;
+  }
+
+  /**
+   * 빌드타임 직결 API base (= VITE_API_BASE_URL).
+   * 임베드 호스트가 setBaseUrl 로 덮어쓴 런타임 base(호스트 프록시일 수 있음)와 무관하게
+   * 항상 Storige API 원본을 가리킨다. 대용량 파일 업로드를 호스트 프록시(예: Vercel
+   * 서버리스 4.5MB 본문 한도)로 보내 413 이 나는 것을 막기 위해 업로드 요청은 이 base 로 직결한다.
+   * (/storage/upload-public 등 업로드 엔드포인트는 @Public 이라 키 없이 직결 가능.)
+   */
+  getDirectBaseUrl(): string {
+    return API_BASE_URL;
   }
 
   private setupInterceptors() {
