@@ -63,6 +63,8 @@ export const filesApi = {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
+      // 임베드 호스트 프록시 우회 → Storige API 직결(대용량 PDF 업로드 413 방지).
+      baseURL: apiClient.getDirectBaseUrl(),
     })
     return response.data
   },

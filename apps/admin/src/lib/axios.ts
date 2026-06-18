@@ -45,6 +45,21 @@ export const axiosInstance = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  // 비-JSON 응답 방어: 프록시/nginx 가 내는 평문 413 "Request Entity Too Large" 나
+  // HTML 에러 페이지를 받아도 기본 JSON.parse 의 "Unexpected token 'R'…" 크래시를 막는다.
+  // 정상 JSON 은 그대로 파싱, 실패 시 { message: 원문 } 으로 감싼다. 바이너리(arraybuffer)는
+  // string 이 아니므로 그대로 통과(woff2→ttf 변환 등 영향 없음).
+  transformResponse: [
+    (data) => {
+      if (typeof data !== 'string') return data;
+      if (data.length === 0) return data;
+      try {
+        return JSON.parse(data);
+      } catch {
+        return { message: data };
+      }
+    },
+  ],
 });
 
 // Request interceptor to add auth token
@@ -67,6 +82,15 @@ axiosInstance.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
     const reqUrl: string = originalRequest?.url || '';
+
+    // 413(업로드 용량 초과) 친화 메시지 정규화 — 평문/HTML 본문이 와도 컴포넌트가
+    // data.message 로 일관된 한국어 안내를 읽도록(원문 "Request Entity Too Large" 노출 방지).
+    if (error.response?.status === 413) {
+      error.response.data = {
+        message:
+          '업로드 용량이 서버 한도를 초과했습니다. 더 작은 파일(권장 50MB 이하)로 다시 시도해주세요.',
+      };
+    }
 
     // 로그인/리프레시 자체의 401 은 리다이렉트하지 않고 호출부(로그인 폼)가 에러 메시지로 처리한다.
     // (안 그러면 비번 오류 시마다 로그인 화면이 에러 페이지로 튕겨 '비번 틀림'을 알 수 없다.)

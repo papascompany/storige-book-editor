@@ -13,7 +13,7 @@
  * 결정 3-3: 첨부 성공 시 캔버스 편집 차단 (호출자가 readonly 처리).
  */
 import { useState } from 'react'
-import { apiClient } from '../../api/client'
+import { apiClient, toUserMessage } from '../../api/client'
 import { editSessionsApi } from '../../api/edit-sessions'
 import { useGuestStore } from '../../stores/useGuestStore'
 
@@ -110,7 +110,14 @@ export function ContentPdfAttachModal({
       const uploadRes = await apiClient.post<{ id: string; url: string }>(
         '/storage/upload-public?category=uploads',
         form,
-        { headers: { 'Content-Type': 'multipart/form-data' } }
+        {
+          headers: { 'Content-Type': 'multipart/form-data' },
+          // 임베드(호스트 프록시) 우회 → Storige API 직결. 호스트가 apiBaseUrl 로 base 를
+          // 자사 프록시(예: Vercel 서버리스 4.5MB 본문 한도)로 덮어쓴 경우, 정상 크기 PDF
+          // (예: 6MB)도 413 "Request Entity Too Large" 로 막히던 문제 해소.
+          // /storage/upload-public 은 @Public 이라 키 없이 직결 가능(우리 API multer 50MB).
+          baseURL: apiClient.getDirectBaseUrl(),
+        }
       )
       const fileId = uploadRes.data.id
       setUploadedFileId(fileId)
@@ -183,7 +190,7 @@ export function ContentPdfAttachModal({
       await applyAttachment(fileId, pdfPages, targetPageCount, result)
     } catch (err) {
       console.error('[ContentPdfAttachModal]', err)
-      setError(err instanceof Error ? err.message : '업로드/검증 실패')
+      setError(toUserMessage(err, '업로드/검증에 실패했습니다.'))
       setUploading(false)
       setValidating(false)
     }
@@ -260,7 +267,7 @@ export function ContentPdfAttachModal({
       onClose()
     } catch (err) {
       console.error('[ContentPdfAttachModal] applyAttachment', err)
-      setError(err instanceof Error ? err.message : '세션 업데이트 실패')
+      setError(toUserMessage(err, '세션 업데이트에 실패했습니다.'))
     }
   }
 
