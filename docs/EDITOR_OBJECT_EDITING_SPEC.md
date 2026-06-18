@@ -14,7 +14,7 @@
 | 요소 (SVG/도형) | `Group`/`Path`/`Rect`... | `tools/AppElement.tsx` | (없음) |
 | 배경 색/이미지 | workspace.fill / `Image` | `tools/AppBackground.tsx` | `extensionType: 'background'` |
 | 프레임 | `Group` (clipping) | `tools/AppFrame.tsx` | `extensionType: 'frame'` |
-| 템플릿 요소 | 다양 | `tools/AppTemplate.tsx` | `extensionType: 'templateElement'` |
+| 템플릿 요소 | 다양 | `tools/AppTemplate.tsx` | `extensionType: 'template-element'` |
 | QR/바코드 | `Group` | `tools/SmartCodes.tsx` | (smartCode) |
 | 워크스페이스 | `Rect` | (시스템) | `id: 'workspace'` — 사용자 선택 제외 |
 | 컷/세이프 보더 | `Path` | (시스템) | `extensionType: 'overlay'` — 줌 시 숨김 |
