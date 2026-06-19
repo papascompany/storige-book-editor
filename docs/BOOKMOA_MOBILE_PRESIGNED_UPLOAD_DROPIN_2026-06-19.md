@@ -196,6 +196,7 @@ async function handlePdfSelected(file: File, kind: 'cover' | 'content', setPct: 
 {
   "AllowedOrigins": [
     "https://bookmoa.com", "https://www.bookmoa.com",
+    "https://bookmoa.net", "https://www.bookmoa.net",
     "https://mybookmake.com", "https://www.mybookmake.com",
     "https://*.vercel.app"
   ],
