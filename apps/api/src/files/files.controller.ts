@@ -590,4 +590,21 @@ export class FilesController {
     await this.filesService.softDelete(id);
     return { success: true };
   }
+
+  /**
+   * 소프트삭제 파일 복구 (48h 복구창 내) — deleted_at NULL 로 되돌림.
+   * 데이터손실 안전장치: 보존 sweep/수동삭제로 soft-delete 된 파일을 purge(영구삭제) 전 복구.
+   * 이미 purge(hardDelete)된 경우 404.
+   */
+  @Post(':id/restore')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '소프트삭제 파일 복구 (48h 복구창)' })
+  @ApiResponse({ status: 200, description: '복구 성공', type: FileResponseDto })
+  @ApiResponse({ status: 404, description: '파일 없음 또는 이미 영구삭제됨' })
+  async restoreFile(
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<FileResponseDto> {
+    const file = await this.filesService.restore(id);
+    return this.filesService.toResponseDto(file);
+  }
 }
