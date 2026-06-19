@@ -19,6 +19,8 @@ const PRESIGN_EXPIRES_SEC = 900;
 const FORCED_CONTENT_TYPE = 'application/pdf';
 /** expected_size 상한(2GB). 클라 선언값 검증 + complete HeadObject 대조. */
 const MAX_EXPECTED_SIZE = 2 * 1024 * 1024 * 1024;
+/** 발급된 pending 업로드의 미완 방치 TTL(24h). complete 시 retention 으로 재설정. */
+const PRESIGN_PENDING_TTL_MS = 24 * 60 * 60 * 1000;
 
 export interface PresignInitResult {
   fileId: string;
@@ -140,6 +142,7 @@ export class PresignedUploadService {
         storageBackend: 's3',
         storageKey,
         status: 'pending',
+        expiresAt: new Date(Date.now() + PRESIGN_PENDING_TTL_MS), // 미완 pending 자동만료(24h)
         expectedSize: expected,
         uploadToken,
         thumbnailUrl: null,
@@ -187,6 +190,7 @@ export class PresignedUploadService {
         storageBackend: 's3',
         storageKey,
         status: 'pending',
+        expiresAt: new Date(Date.now() + PRESIGN_PENDING_TTL_MS), // 미완 pending 자동만료(24h)
         multipartUploadId: uploadId,
         expectedSize: expected,
         uploadToken,
@@ -233,6 +237,7 @@ export class PresignedUploadService {
     parts: { partNumber: number; etag: string }[],
     uploadToken: string,
     caller?: { siteId?: string; role?: string },
+    retentionDays?: number | null,
   ): Promise<FileEntity> {
     await this.assertS3Driver();
     const file = await this.requirePending(fileId, caller, uploadToken);
@@ -253,7 +258,7 @@ export class PresignedUploadService {
         },
       }),
     );
-    return this.finalize(file);
+    return this.finalize(file, retentionDays);
   }
 
   async abortMultipart(fileId: string, uploadToken: string): Promise<void> {
@@ -286,10 +291,11 @@ export class PresignedUploadService {
     fileId: string,
     uploadToken: string,
     caller?: { siteId?: string; role?: string },
+    retentionDays?: number | null,
   ): Promise<FileEntity> {
     await this.assertS3Driver();
     const file = await this.requirePending(fileId, caller, uploadToken);
-    return this.finalize(file);
+    return this.finalize(file, retentionDays);
   }
 
   // ── 공통 검증/마무리 ─────────────────────────────────────────
@@ -316,7 +322,10 @@ export class PresignedUploadService {
   }
 
   /** HeadObject 로 R2 객체 존재/ContentType/크기 검증 → status='ready' 확정. */
-  private async finalize(file: FileEntity): Promise<FileEntity> {
+  private async finalize(
+    file: FileEntity,
+    retentionDays?: number | null,
+  ): Promise<FileEntity> {
     const { client, bucket } = await this.objectStorage.ensureS3();
     const { HeadObjectCommand } = await import('@aws-sdk/client-s3');
     let head;
@@ -363,6 +372,12 @@ export class PresignedUploadService {
     file.status = 'ready';
     file.multipartUploadId = null;
     file.uploadToken = null; // ready 확정 시 소유 토큰 소거(이후 재사용 불가)
+    // ── pending TTL 해제 → 영구 or retention 재설정 ──
+    // null/undefined/0 → 영구(null). >0 → now + N일. (site.entity 규약: null/0=영구)
+    file.expiresAt =
+      retentionDays && retentionDays > 0
+        ? new Date(Date.now() + retentionDays * 24 * 60 * 60 * 1000)
+        : null;
     return this.fileRepository.save(file);
   }
 }
