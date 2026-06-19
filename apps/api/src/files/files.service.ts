@@ -5,7 +5,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, Brackets } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import * as path from 'path';
 import * as fs from 'fs/promises';
@@ -461,6 +461,113 @@ export class FilesService {
       .orderBy('f.deleted_at', 'ASC')
       .take(limit)
       .getMany();
+  }
+
+  /**
+   * P1 고아 파일 후보 조회 — **보수적 NOT EXISTS**. 데이터손실 방지가 최우선.
+   *
+   * 후보 조건 (전부 AND):
+   *  1) order_seqno IS NULL          (주문 연결 없음)
+   *  2) deleted_at IS NULL           (이미 soft-deleted 제외 — 중복강등 방지)
+   *  3) status IN ('pending','failed','ready')
+   *  4) created_at < (now - grace)   grace: pending/failed=pendingHours, ready=readyDays
+   *  5) NOT EXISTS 어떤 file_edit_sessions 의 cover_file_id / content_file_id / content_pdf_file_id
+   *  6) NOT EXISTS 어떤 worker_jobs 의 file_id / output_file_id / pdf_file_id (id 직접)
+   *     또는 input_file_url / output_file_url 가 api://<id> · file_path · s3://<key> · %/<key> 포함
+   *
+   * ⚠️ 세션/잡 참조 조회는 deleted_at 무시(soft-deleted 세션의 참조도 유효 — 복구 대비).
+   * ⚠️ storage_key NULL 이면 key 기반 url 매칭은 건너뜀(NULL substring 매칭 사고 방지).
+   * ⚠️ 후보 0건 의심 시(쿼리 변경 후) 반드시 dryRun 로그로 표본 검증.
+   *
+   * @returns 강등 대상 FileEntity[] (배치 limit)
+   */
+  async findOrphanCandidates(
+    pendingFailedGraceHours: number,
+    readyGraceDays: number,
+    limit = 200,
+  ): Promise<FileEntity[]> {
+    const now = Date.now();
+    const pfCutoff = new Date(now - pendingFailedGraceHours * 60 * 60 * 1000);
+    const readyCutoff = new Date(now - readyGraceDays * 24 * 60 * 60 * 1000);
+
+    const qb = this.fileRepository
+      .createQueryBuilder('f')
+      .where('f.order_seqno IS NULL')
+      .andWhere('f.deleted_at IS NULL')
+      // status별 grace를 한 조건으로 — 애매하면 보존(범위 밖이면 후보 제외)
+      .andWhere(
+        new Brackets((b) => {
+          b.where('(f.status IN (:...pf) AND f.created_at < :pfCutoff)', {
+            pf: ['pending', 'failed'],
+            pfCutoff,
+          }).orWhere('(f.status = :ready AND f.created_at < :readyCutoff)', {
+            ready: 'ready',
+            readyCutoff,
+          });
+        }),
+      )
+      // ── (5) edit_session 참조 없음 (3개 컬럼 전부) ──
+      .andWhere(
+        `NOT EXISTS (
+           SELECT 1 FROM file_edit_sessions s
+           WHERE s.cover_file_id = f.id
+              OR s.content_file_id = f.id
+              OR s.content_pdf_file_id = f.id
+         )`,
+      )
+      // ── (6) worker_job 참조 없음 (id 3컬럼 + url 2컬럼 + options JSON 역참조) ──
+      // ⚠️ 데이터손실 방지: 일부 잡은 파일참조를 컬럼이 아닌 options JSON 안에만 둔다 —
+      //    spread-merge(createSpreadSynthesisJob): options.spreadPdfFileId(id) · options.contentPdfFileIds[](id 배열)
+      //    compose-mixed(createComposeMixedJob): options.coverUrl · options.contentPdfUrl · options.front/backEndpaperUrls[](url)
+      //    컬럼만 보면 이들이 고아로 오판된다 → JSON 경로까지 역참조(JSON_CONTAINS/->>) 추가.
+      .andWhere(
+        `NOT EXISTS (
+           SELECT 1 FROM worker_jobs w
+           WHERE w.file_id = f.id
+              OR w.output_file_id = f.id
+              OR w.pdf_file_id = f.id
+              OR w.input_file_url  = CONCAT('api://', f.id)
+              OR w.output_file_url = CONCAT('api://', f.id)
+              OR w.input_file_url  = f.file_path
+              OR w.output_file_url = f.file_path
+              OR (f.storage_key IS NOT NULL AND w.input_file_url  = CONCAT('s3://', f.storage_key))
+              OR (f.storage_key IS NOT NULL AND w.output_file_url = CONCAT('s3://', f.storage_key))
+              OR (f.storage_key IS NOT NULL AND w.input_file_url  LIKE CONCAT('%/', f.storage_key))
+              OR (f.storage_key IS NOT NULL AND w.output_file_url LIKE CONCAT('%/', f.storage_key))
+              OR (w.options IS NOT NULL AND (
+                   JSON_VALUE(w.options, '$.spreadPdfFileId') = f.id
+                OR JSON_VALUE(w.options, '$.pdfFileId') = f.id
+                OR JSON_CONTAINS(JSON_EXTRACT(w.options, '$.contentPdfFileIds'), JSON_QUOTE(f.id))
+                OR JSON_VALUE(w.options, '$.coverUrl') = f.file_url
+                OR JSON_VALUE(w.options, '$.contentPdfUrl') = f.file_url
+                OR JSON_CONTAINS(JSON_EXTRACT(w.options, '$.frontEndpaperUrls'), JSON_QUOTE(f.file_url))
+                OR JSON_CONTAINS(JSON_EXTRACT(w.options, '$.backEndpaperUrls'), JSON_QUOTE(f.file_url))
+              ))
+         )`,
+      )
+      .orderBy('f.created_at', 'ASC')
+      .take(limit);
+
+    return qb.getMany();
+  }
+
+  /**
+   * P1 고아 강등 — expires_at=now 세팅 후 softDelete. **순서 필수**.
+   * purge(findSoftDeletedOlderThan)는 expires_at IS NOT NULL 만 회수하므로,
+   * expires_at 없이 softDelete 하면 고아가 soft 상태로 영구잔존한다.
+   * → expires_at=now 로 즉시 '만료' 표식 + deleted_at 세팅 = 48h 후 기존 purge 가 hardDelete.
+   * 단일 UPDATE 로 원자적 처리(soft-delete 컬럼 deleted_at 직접 세팅).
+   * @returns true=강등됨, false=대상 아님(이미 처리/없음 — 멱등)
+   */
+  async softDeleteWithExpiry(id: string): Promise<boolean> {
+    const res = await this.fileRepository
+      .createQueryBuilder()
+      .update(FileEntity)
+      .set({ expiresAt: () => 'NOW()', deletedAt: () => 'NOW()' })
+      .where('id = :id', { id })
+      .andWhere('deleted_at IS NULL') // 이미 강등된 행 재처리 방지(멱등)
+      .execute();
+    return (res.affected ?? 0) > 0;
   }
 
   /**

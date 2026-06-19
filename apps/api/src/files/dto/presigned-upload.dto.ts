@@ -40,6 +40,13 @@ export class CompleteUploadDto {
   /** presign 발급 시 받은 소유 토큰 — IDOR 차단(보유자만 complete). */
   @IsString()
   uploadToken: string;
+
+  /** 상품별 보존기간(일). null/0=영구, >0=N일. 인증 라우트에서만 신뢰(게스트 무시). */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(3650)
+  retentionDays?: number;
 }
 
 export class MultipartInitDto extends PresignUploadDto {}
@@ -80,6 +87,13 @@ export class MultipartCompleteDto {
   /** init 시 받은 소유 토큰 — IDOR 차단(보유자만 complete). */
   @IsString()
   uploadToken: string;
+
+  /** 상품별 보존기간(일). null/0=영구, >0=N일. 인증 라우트에서만 신뢰(게스트 무시). */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(3650)
+  retentionDays?: number;
 }
 
 export class MultipartAbortDto {

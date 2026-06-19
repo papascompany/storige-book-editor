@@ -302,12 +302,17 @@ export class FilesController {
       site?.siteId, // P2c S-2: 외부 업로드 파일에 호출자 site 스탬프(테넌트 소유)
     );
 
-    // 사이트 보존정책 적용 — retentionDays>0 이면 expires_at = now + N일 (retention cron 이 정리)
-    const days = site?.retentionDays ?? 0;
-    if (days && days > 0) {
-      const expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
-      fileEntity = await this.filesService.setExpiry(fileEntity.id, expiresAt);
+    // per-product override 우선 → 없으면 site.retentionDays.
+    // 규약(site.entity): null/0 = 영구(미설정), >0 = now + N일.
+    //   dto.retentionDays 가 명시되면(0 포함) 그 값으로 override(0=영구 강제, site 무시).
+    const effectiveDays =
+      dto.retentionDays !== undefined ? dto.retentionDays : (site?.retentionDays ?? 0);
+    if (effectiveDays && effectiveDays > 0) {
+      const expiresAt = new Date(Date.now() + effectiveDays * 24 * 60 * 60 * 1000);
+      // setExpiry 에 site 전달 — assertSiteAccess 가 방금 업로드한 동일 site 파일이므로 통과(테넌트 정합).
+      fileEntity = await this.filesService.setExpiry(fileEntity.id, expiresAt, site);
     }
+    // effectiveDays === 0 → 영구(expires_at NULL 유지, uploadFile 기본).
 
     return this.filesService.toResponseDto(fileEntity);
   }

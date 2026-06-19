@@ -1,4 +1,13 @@
-import { IsEnum, IsOptional, IsNumber, IsString, IsObject } from 'class-validator';
+import {
+  IsEnum,
+  IsOptional,
+  IsNumber,
+  IsString,
+  IsObject,
+  IsInt,
+  Min,
+  Max,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type, Transform } from 'class-transformer';
 import { FileType } from '../entities/file.entity';
@@ -37,6 +46,18 @@ export class UploadFileDto {
   @IsOptional()
   @IsString()
   description?: string;
+
+  @ApiPropertyOptional({
+    description:
+      '상품별 보존기간(일). null/0=영구, >0=N일 후 자동삭제. site.retentionDays 보다 우선.',
+    example: 30,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(3650) // 10년 상한(폭주 방지)
+  @Type(() => Number)
+  retentionDays?: number;
 
   @ApiPropertyOptional({
     description: '추가 메타데이터',
