@@ -54,7 +54,7 @@ export class FilesController {
 
   // ─────────────────────────────────────────────────────────────
   // R2 presigned 직결 업로드 (2026-06-19) — driver!=='s3' 이면 503 STORAGE_NOT_S3.
-  // 키 서버생성·contentType=application/pdf 강제·2GB 상한·public throttle.
+  // 키 서버생성·contentType 화이트리스트(pdf+이미지) 서명바인딩·2GB 상한·public throttle.
   // ─────────────────────────────────────────────────────────────
 
   // ── single-part: 인증 ─────────────────────────────────────────
@@ -71,6 +71,7 @@ export class FilesController {
       originalName: dto.originalName,
       orderSeqno: dto.orderSeqno,
       memberSeqno,
+      contentType: dto.contentType,
     });
   }
 
@@ -90,6 +91,7 @@ export class FilesController {
       // 공개(게스트) 경로는 클라가 보낸 memberSeqno 를 신뢰하지 않는다(소유권 위조 차단).
       // 실제 소유 연결은 edit-session(contentPdfFileId) 등 서버측 컨텍스트에서 이뤄진다.
       memberSeqno: null,
+      contentType: dto.contentType,
     });
   }
 
@@ -107,6 +109,7 @@ export class FilesController {
       orderSeqno: dto.orderSeqno,
       // 공개(게스트) 경로 — 클라 memberSeqno 미신뢰(소유권 위조 차단).
       memberSeqno: null,
+      contentType: dto.contentType,
     });
   }
 

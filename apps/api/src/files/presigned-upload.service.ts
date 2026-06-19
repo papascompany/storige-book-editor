@@ -15,8 +15,24 @@ import { StorageConfigService } from '../settings/storage-config.service';
 
 /** presigned PUT/part URL 만료(초). R2 권장 단명. */
 const PRESIGN_EXPIRES_SEC = 900;
-/** 강제 contentType — 본 흐름은 PDF 전용. */
-const FORCED_CONTENT_TYPE = 'application/pdf';
+
+/**
+ * presigned 직결 허용 contentType 화이트리스트.
+ * 게스트(@Public)도 발급하므로 임의 MIME 업로드를 차단한다.
+ * key=허용 MIME, value=storageKey 확장자.
+ */
+const ALLOWED_CONTENT_TYPES: Readonly<Record<string, string>> = {
+  'application/pdf': 'pdf',
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+  'image/gif': 'gif',
+  // 'image/svg+xml' 제외: presigned 발급이 @Public(게스트 도달)이라 JS 내장 SVG 인라인 서빙 시
+  // Stored XSS 위험(보안 적대검증 high). SVG 에셋은 ≤50MB 레거시 업로드 경로 사용.
+};
+/** 미지정 시 기본(하위호환 — 기존 PDF 흐름). */
+const DEFAULT_CONTENT_TYPE = 'application/pdf';
+
 /** expected_size 상한(2GB). 클라 선언값 검증 + complete HeadObject 대조. */
 const MAX_EXPECTED_SIZE = 2 * 1024 * 1024 * 1024;
 /** 발급된 pending 업로드의 미완 방치 TTL(24h). complete 시 retention 으로 재설정. */
@@ -65,9 +81,26 @@ export class PresignedUploadService {
     }
   }
 
-  /** 서버 생성 key — 클라가 절대 지정 못 함(path traversal/덮어쓰기 방지). */
-  private newKey(): string {
-    return `uploads/${Date.now()}_${uuidv4()}.pdf`;
+  /** contentType 검증 → 정규화. 미지정=기본(pdf), 미허용=거부(400). */
+  private resolveContentType(contentType?: string): { mime: string; ext: string } {
+    if (contentType == null) {
+      return { mime: DEFAULT_CONTENT_TYPE, ext: ALLOWED_CONTENT_TYPES[DEFAULT_CONTENT_TYPE] };
+    }
+    const mime = contentType.trim().toLowerCase();
+    const ext = ALLOWED_CONTENT_TYPES[mime];
+    if (!ext) {
+      throw new BadRequestException({
+        code: 'UNSUPPORTED_CONTENT_TYPE',
+        message: '허용되지 않는 파일 형식입니다.',
+        details: { contentType: mime, allowed: Object.keys(ALLOWED_CONTENT_TYPES) },
+      });
+    }
+    return { mime, ext };
+  }
+
+  /** 서버 생성 key — 클라가 절대 지정 못 함(path traversal/덮어쓰기 방지). 확장자는 contentType 에 바인딩. */
+  private newKey(ext: string): string {
+    return `uploads/${Date.now()}_${uuidv4()}.${ext}`;
   }
 
   /** 업로드 세션 소유 토큰(고엔트로피, 64 hex chars). */
@@ -114,19 +147,21 @@ export class PresignedUploadService {
     orderSeqno?: number | null;
     memberSeqno?: number | null;
     siteId?: string | null;
+    contentType?: string;
   }): Promise<PresignInitResult> {
     await this.assertS3Driver();
     const expected = this.validateExpectedSize(opts.expectedSize);
+    const { mime, ext } = this.resolveContentType(opts.contentType);
     const { client, bucket } = await this.objectStorage.ensureS3();
     const { PutObjectCommand } = await import('@aws-sdk/client-s3');
     const { getSignedUrl } = await import('@aws-sdk/s3-request-presigner');
 
-    const storageKey = this.newKey();
-    // contentType 바인딩 — 클라 PUT 헤더가 일치해야 서명 유효(application/pdf 강제).
+    const storageKey = this.newKey(ext);
+    // contentType 바인딩 — 클라 PUT 헤더가 일치해야 서명 유효(화이트리스트 값).
     const cmd = new PutObjectCommand({
       Bucket: bucket,
       Key: storageKey,
-      ContentType: FORCED_CONTENT_TYPE,
+      ContentType: mime,
       // ContentLength 는 R2 presigned PUT 에서 서명 바인딩이 까다로워 강제하지 않고
       // complete 시 HeadObject 로 검증한다(아래 finalize 참고).
     });
@@ -147,7 +182,7 @@ export class PresignedUploadService {
         uploadToken,
         thumbnailUrl: null,
         fileSize: 0, // complete 시 실제 크기로 갱신
-        mimeType: FORCED_CONTENT_TYPE,
+        mimeType: mime, // 화이트리스트 값으로 저장(finalize 에서 불변)
         fileType: opts.fileType,
         orderSeqno: opts.orderSeqno ?? undefined,
         memberSeqno: opts.memberSeqno ?? undefined,
@@ -165,18 +200,20 @@ export class PresignedUploadService {
     orderSeqno?: number | null;
     memberSeqno?: number | null;
     siteId?: string | null;
+    contentType?: string;
   }): Promise<MultipartInitResult> {
     await this.assertS3Driver();
     const expected = this.validateExpectedSize(opts.expectedSize);
+    const { mime, ext } = this.resolveContentType(opts.contentType);
     const { client, bucket } = await this.objectStorage.ensureS3();
     const { CreateMultipartUploadCommand } = await import('@aws-sdk/client-s3');
 
-    const storageKey = this.newKey();
+    const storageKey = this.newKey(ext);
     const res = await client.send(
       new CreateMultipartUploadCommand({
         Bucket: bucket,
         Key: storageKey,
-        ContentType: FORCED_CONTENT_TYPE,
+        ContentType: mime,
       }),
     );
     const uploadId = res.UploadId!;
@@ -196,7 +233,7 @@ export class PresignedUploadService {
         uploadToken,
         thumbnailUrl: null,
         fileSize: 0,
-        mimeType: FORCED_CONTENT_TYPE,
+        mimeType: mime, // 화이트리스트 값으로 저장(finalize 에서 불변)
         fileType: opts.fileType,
         orderSeqno: opts.orderSeqno ?? undefined,
         memberSeqno: opts.memberSeqno ?? undefined,
