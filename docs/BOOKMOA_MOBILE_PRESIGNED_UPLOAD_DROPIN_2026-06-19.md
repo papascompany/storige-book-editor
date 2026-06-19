@@ -191,10 +191,14 @@ async function handlePdfSelected(file: File, kind: 'cover' | 'content', setPct: 
 
 ## 6. ⚠️ R2 CORS (필수 — Storige 오너에게 요청)
 
-브라우저 PUT은 R2 버킷 CORS에 **주문화면 origin**이 있어야 동작한다. Storige 오너가 버킷 `storige-files` CORS에 아래를 반영(이미 `*.vercel.app`·`*.papascompany.co.kr` 포함 예정 — **주문화면 실도메인이 다르면 그 origin을 알려줄 것**):
+브라우저 PUT은 R2 버킷 CORS에 **주문화면 origin**이 있어야 동작한다. 주문화면 도메인 = **bookmoa.com / mybookmake.com**(곧 Vercel 배포에 연결 예정, 그전엔 `*.vercel.app`). Storige 오너가 버킷 `storige-files` CORS에 아래 반영:
 ```json
 {
-  "AllowedOrigins": ["https://<주문화면 실도메인>", "https://*.vercel.app"],
+  "AllowedOrigins": [
+    "https://bookmoa.com", "https://www.bookmoa.com",
+    "https://mybookmake.com", "https://www.mybookmake.com",
+    "https://*.vercel.app"
+  ],
   "AllowedMethods": ["PUT", "POST", "GET", "HEAD"],
   "AllowedHeaders": ["*"],
   "ExposeHeaders": ["ETag"],
