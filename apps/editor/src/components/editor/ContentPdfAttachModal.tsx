@@ -16,6 +16,7 @@ import { useState } from 'react'
 import { apiClient, toUserMessage } from '../../api/client'
 import { editSessionsApi } from '../../api/edit-sessions'
 import { useGuestStore } from '../../stores/useGuestStore'
+import { uploadViaPresigned, PresignedNotConfiguredError } from '../../api/presigned-upload'
 
 interface Issue {
   code: string
@@ -65,6 +66,7 @@ export function ContentPdfAttachModal({
   const [error, setError] = useState<string | null>(null)
   const [showPageMismatch, setShowPageMismatch] = useState(false)
   const [guideRendering, setGuideRendering] = useState(false)
+  const [uploadPct, setUploadPct] = useState(0)
 
   if (!open) return null
 
@@ -77,6 +79,7 @@ export function ContentPdfAttachModal({
     setError(null)
     setShowPageMismatch(false)
     setGuideRendering(false)
+    setUploadPct(0)
   }
 
   const handleClose = () => {
@@ -91,8 +94,10 @@ export function ContentPdfAttachModal({
       setError('PDF 파일만 첨부 가능합니다.')
       return
     }
-    if (f.size > 50 * 1024 * 1024) {
-      setError('파일 크기는 50MB 이하만 허용됩니다.')
+    // 대용량 허용(presigned 직결). 상한 2GB.
+    const MAX_ATTACH = 2 * 1024 * 1024 * 1024
+    if (f.size > MAX_ATTACH) {
+      setError('파일 크기는 2GB 이하만 허용됩니다.')
       return
     }
     setError(null)
@@ -104,22 +109,51 @@ export function ContentPdfAttachModal({
     setUploading(true)
     setError(null)
     try {
-      // 1) /storage/upload-public 으로 업로드 (게스트도 사용 가능)
-      const form = new FormData()
-      form.append('file', file)
-      const uploadRes = await apiClient.post<{ id: string; url: string }>(
-        '/storage/upload-public?category=uploads',
-        form,
-        {
-          headers: { 'Content-Type': 'multipart/form-data' },
-          // 임베드(호스트 프록시) 우회 → Storige API 직결. 호스트가 apiBaseUrl 로 base 를
-          // 자사 프록시(예: Vercel 서버리스 4.5MB 본문 한도)로 덮어쓴 경우, 정상 크기 PDF
-          // (예: 6MB)도 413 "Request Entity Too Large" 로 막히던 문제 해소.
-          // /storage/upload-public 은 @Public 이라 키 없이 직결 가능(우리 API multer 50MB).
-          baseURL: apiClient.getDirectBaseUrl(),
+      // 1) 업로드 — 파일 크기로 경로 분기. 두 경로 모두 fileId 로 통일.
+      //    ≤50MB → 기존 /storage/upload-public 멀티파트 폼(검증된 경로, API multer 50MB).
+      //    >50MB → presigned 직결(R2 PUT). 미구성(503) 시 명확히 안내.
+      const SMALL_THRESHOLD = 50 * 1024 * 1024
+      let fileId: string
+
+      const uploadSmallFallback = async (): Promise<string> => {
+        // /storage/upload-public 으로 업로드 (게스트도 사용 가능).
+        // 임베드(호스트 프록시) 우회 → Storige API 직결. 호스트가 apiBaseUrl 로 base 를
+        // 자사 프록시(예: Vercel 서버리스 4.5MB 본문 한도)로 덮어쓴 경우, 정상 크기 PDF
+        // (예: 6MB)도 413 "Request Entity Too Large" 로 막히던 문제 해소.
+        const form = new FormData()
+        form.append('file', file)
+        const res = await apiClient.post<{ id: string; url: string }>(
+          '/storage/upload-public?category=uploads',
+          form,
+          {
+            headers: { 'Content-Type': 'multipart/form-data' },
+            baseURL: apiClient.getDirectBaseUrl(),
+          }
+        )
+        return res.data.id
+      }
+
+      setUploadPct(0)
+      if (file.size <= SMALL_THRESHOLD) {
+        // ≤50MB → 기존 멀티파트 폼 업로드(검증된 경로)
+        fileId = await uploadSmallFallback()
+      } else {
+        // >50MB → presigned 직결. 미구성(503) 식별 시 사용자에게 명확히 안내.
+        try {
+          const r = await uploadViaPresigned(file, {
+            isPublic: true, type: 'content', onProgress: setUploadPct,
+          })
+          fileId = r.fileId
+        } catch (e) {
+          if (e instanceof PresignedNotConfiguredError) {
+            // driver=local → 50MB multer 로는 >50MB 불가. 사용자에게 명확히 안내.
+            setError('현재 대용량 업로드(50MB 초과)가 비활성화되어 있습니다. 50MB 이하 PDF 로 시도하거나 관리자에게 문의해주세요.')
+            setUploading(false)
+            return
+          }
+          throw e
         }
-      )
-      const fileId = uploadRes.data.id
+      }
       setUploadedFileId(fileId)
       setUploading(false)
 
@@ -300,6 +334,14 @@ export function ContentPdfAttachModal({
               최종 내지 인쇄는 <strong>첨부한 원본 PDF 그대로</strong> 입니다(편집 내용은 내지 인쇄에 반영되지 않습니다).
             </p>
             <input type="file" accept="application/pdf" onChange={handleFileChange} disabled={uploading || validating} />
+            {uploading && file && file.size > 50 * 1024 * 1024 && (
+              <div style={{ marginTop: 12 }}>
+                <div style={{ fontSize: 13, color: '#555', marginBottom: 4 }}>업로드 중… {uploadPct}%</div>
+                <div style={{ height: 8, background: '#eee', borderRadius: 4, overflow: 'hidden' }}>
+                  <div style={{ width: `${uploadPct}%`, height: '100%', background: '#1976d2', transition: 'width .2s' }} />
+                </div>
+              </div>
+            )}
             {file && (
               <p style={{ fontSize: 13, color: '#555', marginTop: 8 }}>
                 선택: <strong>{file.name}</strong> ({Math.round(file.size / 1024)} KB)

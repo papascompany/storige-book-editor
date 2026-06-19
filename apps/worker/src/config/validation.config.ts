@@ -12,8 +12,8 @@ export const VALIDATION_CONFIG = {
   GS_CONCURRENCY: 2,
 
   // 파일 크기 제한
-  /** 최대 파일 크기 (100MB) */
-  MAX_FILE_SIZE: 100 * 1024 * 1024,
+  /** 최대 파일 크기 — env WORKER_MAX_FILE_SIZE(바이트) 로 상향 가능. 기본 100MB. */
+  MAX_FILE_SIZE: Number(process.env.WORKER_MAX_FILE_SIZE) || 100 * 1024 * 1024,
   /** 대형 파일 임계값 - GS 분석 선택적 (50MB) */
   LARGE_FILE_THRESHOLD: 50 * 1024 * 1024,
 

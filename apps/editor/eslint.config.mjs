@@ -95,6 +95,7 @@ export default [
         // Other
         AbortController: 'readonly',
         AbortSignal: 'readonly',
+        XMLHttpRequest: 'readonly',
         Headers: 'readonly',
         Request: 'readonly',
         Response: 'readonly',

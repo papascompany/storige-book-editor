@@ -57,6 +57,14 @@ export class WorkerJobsService {
   ) {}
 
   /**
+   * 워커 잡 입력용 파일 URL 해석. s3(R2) 백엔드 파일은 워커가 api://<fileId> 마커로
+   * GET /files/:id/download/external 경유 다운로드(로컬/s3 무관). local 은 기존 filePath 그대로.
+   */
+  private toWorkerInputUrl(file: { id: string; storageBackend?: 'local' | 's3'; filePath: string }): string {
+    return file.storageBackend === 's3' ? `api://${file.id}` : file.filePath;
+  }
+
+  /**
    * Phase B-2 — site 조회 + 잡 옵션 default 머지.
    * 호출자 옵션이 명시되어 있으면 우선, 누락된 항목만 site default로 채움.
    */
@@ -222,7 +230,7 @@ export class WorkerJobsService {
 
     if (fileId) {
       const file = await this.filesService.findById(fileId);
-      fileUrl = file.filePath; // 로컬 파일 경로 사용
+      fileUrl = this.toWorkerInputUrl(file); // s3 백엔드면 api://<id> 마커, local 은 filePath
     }
 
     // Phase B-2 — site default 머지 (호출자 명시값 보존)
@@ -279,7 +287,7 @@ export class WorkerJobsService {
 
     if (fileId) {
       const file = await this.filesService.findById(fileId);
-      fileUrl = file.filePath;
+      fileUrl = this.toWorkerInputUrl(file); // s3 백엔드면 api://<id> 마커, local 은 filePath
     }
 
     // Phase B-2 — site default 머지
@@ -339,7 +347,7 @@ export class WorkerJobsService {
     const fileId = dto.fileId;
     if (fileId) {
       const file = await this.filesService.findById(fileId);
-      fileUrl = file.filePath;
+      fileUrl = this.toWorkerInputUrl(file); // s3 백엔드면 api://<id> 마커, local 은 filePath
     }
 
     const job = this.workerJobRepository.create({
@@ -393,12 +401,12 @@ export class WorkerJobsService {
 
     if (coverFileId) {
       const coverFile = await this.filesService.findById(coverFileId);
-      coverUrl = coverFile.filePath;
+      coverUrl = this.toWorkerInputUrl(coverFile); // s3 백엔드면 api://<id> 마커, local 은 filePath
     }
 
     if (contentFileId) {
       const contentFile = await this.filesService.findById(contentFileId);
-      contentUrl = contentFile.filePath;
+      contentUrl = this.toWorkerInputUrl(contentFile); // s3 백엔드면 api://<id> 마커, local 은 filePath
     }
 
     const outputFormat = createSynthesisJobDto.outputFormat || 'merged';

@@ -86,6 +86,11 @@ services:
       - MAX_RETRY_ATTEMPTS=3
       - API_BASE_URL=http://api:4000/api
       - WORKER_API_KEY=${WORKER_API_KEY}
+      # 워커 검증 최대 파일 크기(바이트). 기본 100MB(현행 유지). R2 presigned 대용량(>100MB)
+      # 활성화 시 상향 — 단 현재 검증은 PDFDocument.load 로 전체를 메모리에 올리므로 무분별한
+      # 1GB 상향은 OOM 위험. 워커 스트리밍 검증 재설계(P2) 후 상향 권장.
+      # (정본: docs/LARGE_FILE_UPLOAD_1GB_HANDOFF_2026-06-18.md)
+      - WORKER_MAX_FILE_SIZE=${WORKER_MAX_FILE_SIZE:-104857600}
       # Sentry (DSN 미설정 시 silent 동작)
       - SENTRY_DSN=${SENTRY_DSN_WORKER:-}
       - SENTRY_ENVIRONMENT=${SENTRY_ENVIRONMENT:-production}

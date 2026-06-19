@@ -12,6 +12,7 @@ import {
   centerOnPage,
   getPdfInfo,
 } from '../utils/ghostscript';
+import { isApiMarker, downloadViaApi } from './api-file-download';
 
 export interface ConversionOptions {
   addPages: boolean;
@@ -493,6 +494,11 @@ export class PdfConverterService {
    *    절대경로로 처리되어 ENOENT 발생.
    */
   private async downloadFile(url: string): Promise<Uint8Array> {
+    // API가 s3(R2) backend 파일에 넘기는 마커 → API 다운로드 라우트로 위임 (local/s3 라우팅)
+    if (isApiMarker(url)) {
+      return await downloadViaApi(url);
+    }
+
     // storige 내부 storage 경로 (API에서 받는 fileUrl이 보통 이 형태)
     if (url.startsWith('/storage/') || url.startsWith('storage/')) {
       const storageBase = process.env.WORKER_STORAGE_PATH || '../api';

@@ -293,6 +293,7 @@ export class FilesService {
       memberSeqno: file.memberSeqno,
       metadata: file.metadata,
       storageBackend: file.storageBackend,
+      status: file.status,
       expiresAt: file.expiresAt,
       createdAt: file.createdAt,
     };
