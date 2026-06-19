@@ -293,20 +293,29 @@ CREATE TABLE IF NOT EXISTS files (
   storage_backend VARCHAR(16) NOT NULL DEFAULT 'local',  -- 'local' | 's3'
   storage_key    VARCHAR(500),                            -- local=STORAGE_PATH 상대, s3=object key
   expires_at     TIMESTAMP NULL,                          -- 보존 만료(null=영구). retention cron 이 만료분 삭제
+  -- presigned 직결 업로드 (2026-06-19): pending→ready 라이프사이클 + 멀티파트 + 소유토큰
+  status         VARCHAR(16) NOT NULL DEFAULT 'ready',    -- 'pending' | 'ready' | 'failed'
+  multipart_upload_id VARCHAR(1024) NULL,                 -- R2 멀티파트 UploadId(미완/완료 후 NULL)
+  expected_size  BIGINT NULL,                             -- 클라 선언 크기(complete 시 HeadObject 대조)
+  upload_token   VARCHAR(64) NULL,                        -- presigned 소유토큰(IDOR 차단, ready/failed 시 NULL)
   thumbnail_url  VARCHAR(500),
   file_size      BIGINT NOT NULL,
   mime_type      VARCHAR(100) NOT NULL,
   file_type      VARCHAR(20) NOT NULL,
   order_seqno    BIGINT,
   member_seqno   BIGINT,
+  site_id        VARCHAR(36) NULL,                        -- (2026-06-17 멀티테넌시) 테넌트 스코프(null=공유/레거시)
   metadata       JSON,
   created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  deleted_at     TIMESTAMP NULL,
+  deleted_at     TIMESTAMP NULL,                          -- 소프트삭제(보존 2단계/복구창). idx 하단
   INDEX idx_files_file_type (file_type),
   INDEX idx_files_order_seqno (order_seqno),
   INDEX idx_files_member_seqno (member_seqno),
-  INDEX idx_files_expires_at (expires_at)
+  INDEX idx_files_expires_at (expires_at),
+  INDEX idx_files_status (status),
+  INDEX idx_files_site_id (site_id),
+  INDEX idx_files_deleted_at (deleted_at)                 -- purge 쿼리(findSoftDeletedOlderThan) 필터/정렬
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------
