@@ -23,19 +23,21 @@ function toUploadedFileResponse(
   file: File | Blob,
   filename: string,
 ): ApiResponse<UploadedFile> {
-  // fileUrl 은 '/storage/...' 상대경로 → 직결 base 의 '/api' 접미 제거한 오리진으로 절대화.
-  // (/storage/* 는 nginx 가 R2 프록시 — 앱 프록시 경로만 전환, /storage/* 는 불변)
-  // useImageStore.uploadVector 가 url 을 fetch 하므로 절대 URL 정확성 필수.
-  const absUrl = res.url.startsWith('http')
-    ? res.url
-    : `${apiClient.getDirectBaseUrl().replace(/\/api$/, '')}${res.url}`;
+  // 트랙 B-(c): presigned(R2) 업로드 파일은 nginx `/storage/*`(로컬 전용 alias)로는 표시 404 다.
+  // → API 공개 스트리밍 엔드포인트 `/api/files/:id/raw` 로 src 를 빌드해야 >50MB 이미지가 표시된다.
+  //   (res.url=`/storage/<key>` 은 더 이상 표시에 쓰지 않는다. fileId 단일출처로 구성.)
+  // getDirectBaseUrl() 은 보통 '.../api' 로 끝나므로 그대로 '/files/:id/raw' 를 이어붙인다.
+  // useImageStore.uploadVector 등이 url 을 fetch/이미지 src 로 쓰므로 절대 URL 정확성 필수.
+  const base = apiClient.getDirectBaseUrl().replace(/\/+$/, '');
+  const rawPath = `/files/${res.fileId}/raw`;
+  const absUrl = `${base}${rawPath}`;
   return {
     success: true,
     data: {
       id: res.fileId,
       originalName: filename,
       filename,
-      path: res.url,
+      path: rawPath,
       url: absUrl,
       mimetype: (file as File).type || 'application/octet-stream',
       size: (file as { size?: number }).size ?? 0,

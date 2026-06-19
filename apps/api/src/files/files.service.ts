@@ -2,6 +2,7 @@ import {
   Injectable,
   BadRequestException,
   NotFoundException,
+  ServiceUnavailableException,
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -9,6 +10,8 @@ import { Repository, Brackets } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import * as path from 'path';
 import * as fs from 'fs/promises';
+import { createReadStream } from 'fs';
+import type { Readable } from 'stream';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { v4 as uuidv4 } from 'uuid';
@@ -324,6 +327,11 @@ export class FilesService {
     }
   }
 
+  /**
+   * @deprecated 트랙 B-(c) 이후 런타임 호출처 0건. 다운로드/서빙은 전부 `getFileStream`(전체버퍼
+   * 미적재)으로 전환됨. 동일 권한경계(findById+assertSiteAccess)가 두 벌로 남아 드리프트 위험이
+   * 있으니, 권한·라우팅 변경 시 반드시 getFileStream 을 정본으로 보고 이 메서드는 제거를 검토할 것.
+   */
   async getFileBuffer(
     id: string,
     caller?: { siteId?: string; role?: string },
@@ -348,6 +356,65 @@ export class FilesService {
         code: 'FILE_NOT_FOUND',
         message: '파일을 읽을 수 없습니다.',
         details: { fileId: id, backend: file.storageBackend, key: file.storageKey, path: file.filePath },
+      });
+    }
+  }
+
+  /**
+   * 파일 **스트림** 읽기 (다운로드/인라인 서빙용) — 트랙 B-(c).
+   * getFileBuffer 와 동일한 라우팅/권한(assertSiteAccess)을 적용하되 파일을 heap 에
+   * 통째로 적재하지 않는다(2GB 도 API heap 상수). 호출측은 `stream.pipe(res)` + `stream.on('error')`.
+   *
+   * @returns stream(Readable), file(엔티티), size(Content-Length 용: local=실제 stat, s3=DB fileSize)
+   *   - size 는 정확할 때만(>0) 반환. s3 의 fileSize 는 finalize 의 HeadObject 로 검증된 값.
+   *   - s3 의 키 부재(NoSuchKey)는 getStream 의 await 중 throw → 여기서 catch → 404(헤더 전 안전).
+   *   - local 의 부재(ENOENT)는 fs.stat 으로 선행 검출 → 404(스트림 생성 전, 헤더 전 안전).
+   */
+  async getFileStream(
+    id: string,
+    caller?: { siteId?: string; role?: string },
+  ): Promise<{ stream: Readable; file: FileEntity; size?: number }> {
+    const file = await this.findById(id);
+    this.assertSiteAccess(file, caller);
+
+    try {
+      if (file.storageBackend === 's3') {
+        if (!file.storageKey) {
+          throw new Error('s3-backed 파일에 storage_key 가 없습니다.');
+        }
+        const stream = await this.objectStorage.getStream('s3', file.storageKey);
+        const size = Number(file.fileSize);
+        return { stream, file, size: Number.isFinite(size) && size > 0 ? size : undefined };
+      }
+      // local: 레거시 레코드는 storageKey 없이 filePath(절대경로)만 있음 → filePath 사용.
+      // stat 으로 존재 확인(부재 시 헤더 전 404) + 정확한 Content-Length 취득.
+      const stat = await fs.stat(file.filePath);
+      const stream = createReadStream(file.filePath);
+      return { stream, file, size: stat.size > 0 ? stat.size : undefined };
+    } catch (error) {
+      // 객체 부재(s3 NoSuchKey/NotFound, local ENOENT)는 404, 그 외(R2 타임아웃/5xx/네트워크
+      // 장애)는 503 으로 분기 — 일시장애를 영구 404 로 오인해 클라가 재시도를 포기하는 것 방지.
+      // details 에 내부 경로/키 비노출(정보누출 차단), fileId 만 유지. 원인은 서버 로그로.
+      const err = error as Error & { name?: string; code?: string };
+      const notFound =
+        err?.name === 'NoSuchKey' ||
+        err?.name === 'NotFound' ||
+        err?.code === 'NoSuchKey' ||
+        err?.code === 'ENOENT';
+      this.logger.warn(
+        `getFileStream 실패(fileId=${id}, backend=${file.storageBackend}, notFound=${notFound}): ${err?.name ?? ''} ${err?.message ?? String(error)}`,
+      );
+      if (notFound) {
+        throw new NotFoundException({
+          code: 'FILE_NOT_FOUND',
+          message: '파일을 찾을 수 없습니다.',
+          details: { fileId: id },
+        });
+      }
+      throw new ServiceUnavailableException({
+        code: 'STORAGE_UNAVAILABLE',
+        message: '파일 저장소에 일시적으로 접근할 수 없습니다. 잠시 후 다시 시도해주세요.',
+        details: { fileId: id },
       });
     }
   }
