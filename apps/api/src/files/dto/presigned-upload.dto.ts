@@ -34,6 +34,16 @@ export class PresignUploadDto {
   @IsOptional()
   @IsInt()
   memberSeqno?: number;
+
+  /**
+   * 업로드 파일 MIME (presigned 서명 ContentType 바인딩).
+   * 미지정 시 서버가 application/pdf 로 기본 처리. 화이트리스트 외 값은 400.
+   * @example image/jpeg
+   */
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  contentType?: string;
 }
 
 export class CompleteUploadDto {

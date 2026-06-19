@@ -16,6 +16,26 @@ import { apiClient } from './client'
 const SINGLE_PART_THRESHOLD = 80 * 1024 * 1024 // 80MB 이하=single, 초과=multipart
 const PART_SIZE = 16 * 1024 * 1024 // 16MB/part (R2 min 5MB, 마지막 제외)
 
+/** 편집기 직결 허용 MIME (API ALLOWED_CONTENT_TYPES 화이트리스트와 동기). */
+const EXT_TO_MIME: Record<string, string> = {
+  pdf: 'application/pdf',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  webp: 'image/webp',
+  gif: 'image/gif',
+  // svg 제외: API 화이트리스트와 동기(게스트 presigned SVG XSS 차단). SVG 는 ≤50MB 레거시 경로.
+}
+const DEFAULT_MIME = 'application/pdf'
+
+/** file.type 우선, 없으면 확장자로 MIME 추론. 미허용이면 기본(pdf). */
+function resolveContentType(file: File): string {
+  const t = (file.type || '').toLowerCase()
+  if (Object.values(EXT_TO_MIME).includes(t)) return t
+  const ext = file.name.split('.').pop()?.toLowerCase() ?? ''
+  return EXT_TO_MIME[ext] ?? DEFAULT_MIME
+}
+
 export class PresignedNotConfiguredError extends Error {
   code = 'STORAGE_NOT_S3' as const
 }
@@ -69,15 +89,17 @@ function asNotConfigured(err: any): never {
 export async function uploadViaPresigned(
   file: File,
   opts: UploadOpts = {},
-): Promise<{ fileId: string }> {
+): Promise<{ fileId: string; url: string }> {
   const base = apiClient.getDirectBaseUrl()
   const pubSuffix = opts.isPublic ? '-public' : ''
+  const contentType = resolveContentType(file) // file.type/확장자로 자동결정(서명 바인딩)
   const body = {
     type: opts.type ?? 'content',
     expectedSize: file.size,
     originalName: file.name,
     orderSeqno: opts.orderSeqno,
     memberSeqno: opts.memberSeqno,
+    contentType, // API 로 전송 → presigned 서명 ContentType 바인딩
   }
 
   if (file.size <= SINGLE_PART_THRESHOLD) {
@@ -93,12 +115,17 @@ export async function uploadViaPresigned(
       asNotConfigured(e)
     }
     const { fileId, uploadUrl, uploadToken } = init!.data
-    await rawPut(uploadUrl, file, 'application/pdf', (l, t) =>
+    await rawPut(uploadUrl, file, contentType, (l, t) =>
       opts.onProgress?.(Math.round((l / t) * 100)),
     )
     // uploadToken 동봉 — 발급받은 클라만 complete 가능(IDOR 차단).
-    await apiClient.post(`/files/${fileId}/complete`, { uploadToken }, { baseURL: base })
-    return { fileId }
+    // complete 응답(FileResponseDto)에서 fileUrl(`/storage/{storageKey}`) 회수 → 에셋/이미지 src.
+    const done = await apiClient.post<{ fileUrl: string }>(
+      `/files/${fileId}/complete`,
+      { uploadToken },
+      { baseURL: base },
+    )
+    return { fileId, url: done.data.fileUrl }
   }
 
   // ── multipart ──
@@ -106,7 +133,7 @@ export async function uploadViaPresigned(
   try {
     init = await apiClient.post<{ fileId: string; uploadId: string; uploadToken: string }>(
       `/files/multipart/init`,
-      body,
+      body, // body 에 contentType 포함 → init 컨테이너 ContentType 이 최종 객체 MIME 결정
       { baseURL: base },
     )
   } catch (e) {
@@ -126,7 +153,9 @@ export async function uploadViaPresigned(
         { fileId, partNumber, uploadToken },
         { baseURL: base },
       )
-      const etag = await rawPut(sign.data.url, chunk, 'application/pdf', (l) => {
+      // 파트 PUT 은 contentType 서명 바인딩 대상 아님 → 컨테이너 MIME(init) 가 최종 결정.
+      // 일관성 위해 동일 contentType 헤더 전송(무해).
+      const etag = await rawPut(sign.data.url, chunk, contentType, (l) => {
         const done = uploadedBytes + l
         opts.onProgress?.(Math.round((done / file.size) * 100))
       })
@@ -134,12 +163,12 @@ export async function uploadViaPresigned(
       if (!etag) throw new Error('파트 ETag 누락(R2 CORS ExposeHeaders 확인)')
       parts.push({ partNumber, etag })
     }
-    const done = await apiClient.post<{ id: string }>(
+    const done = await apiClient.post<{ id: string; fileUrl: string }>(
       `/files/multipart/complete`,
       { fileId, parts, uploadToken },
       { baseURL: base },
     )
-    return { fileId: done.data.id ?? fileId }
+    return { fileId: done.data.id ?? fileId, url: done.data.fileUrl }
   } catch (err) {
     // 실패 시 R2 멀티파트 abort(best-effort) — 고아 파트 정리. uploadToken 동봉.
     try {
