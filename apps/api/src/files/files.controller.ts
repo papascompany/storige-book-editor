@@ -13,7 +13,10 @@ import {
   ParseUUIDPipe,
   BadRequestException,
   ForbiddenException,
+  NotFoundException,
+  Logger,
 } from '@nestjs/common';
+import type { Readable } from 'stream';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
   ApiTags,
@@ -47,10 +50,60 @@ import { ApiKeyGuard } from '../auth/guards/api-key.guard';
 @ApiTags('Files')
 @Controller('files')
 export class FilesController {
+  private readonly logger = new Logger(FilesController.name);
+
   constructor(
     private readonly filesService: FilesService,
     private readonly presignedUpload: PresignedUploadService,
   ) {}
+
+  /**
+   * 공통 스트리밍 파이프 — 헤더 설정 + 에러/중단 처리(트랙 B-(c)).
+   * `res.send(buffer)` 대신 `stream.pipe(res)` 로 2GB 도 API heap 상수.
+   * - stream 'error': 헤더 전이면 500 JSON, 후면 연결 강제 종료(잘린 응답).
+   * - res 'close'(클라 중단): 업스트림(R2/fs) 스트림 destroy → 연결 누수 방지.
+   */
+  private streamToResponse(
+    res: Response,
+    stream: Readable,
+    opts: {
+      contentType: string;
+      disposition: string;
+      contentLength?: number;
+      cacheControl?: string;
+      nosniff?: boolean;
+      corp?: boolean;
+      logCtx: string;
+    },
+  ): void {
+    res.setHeader('Content-Type', opts.contentType);
+    res.setHeader('Content-Disposition', opts.disposition);
+    if (opts.nosniff) res.setHeader('X-Content-Type-Options', 'nosniff');
+    if (opts.corp) res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    if (opts.cacheControl) res.setHeader('Cache-Control', opts.cacheControl);
+    if (
+      opts.contentLength != null &&
+      Number.isFinite(opts.contentLength) &&
+      opts.contentLength > 0
+    ) {
+      res.setHeader('Content-Length', String(opts.contentLength));
+    }
+
+    res.on('close', () => stream.destroy());
+
+    stream.on('error', (err: Error) => {
+      this.logger.error(`[${opts.logCtx}] stream error: ${err?.message}`);
+      if (!res.headersSent) {
+        res
+          .status(500)
+          .json({ code: 'STREAM_ERROR', message: '파일 스트리밍 중 오류가 발생했습니다.' });
+      } else {
+        res.destroy(err);
+      }
+    });
+
+    stream.pipe(res);
+  }
 
   // ─────────────────────────────────────────────────────────────
   // R2 presigned 직결 업로드 (2026-06-19) — driver!=='s3' 이면 503 STORAGE_NOT_S3.
@@ -446,15 +499,15 @@ export class FilesController {
       });
     }
 
-    const { buffer } = await this.filesService.getFileBuffer(id);
-
-    res.setHeader('Content-Type', file.mimeType);
-    res.setHeader(
-      'Content-Disposition',
-      `attachment; filename="${encodeURIComponent(file.originalName)}"`,
-    );
-    res.setHeader('Content-Length', buffer.length);
-    res.send(buffer);
+    // 트랙 B-(c): 전체버퍼(res.send) → 스트리밍(stream.pipe). 권한검증은 위에서 완료.
+    const { stream, file: f, size } = await this.filesService.getFileStream(id);
+    this.streamToResponse(res, stream, {
+      contentType: f.mimeType,
+      disposition: `attachment; filename="${encodeURIComponent(f.originalName)}"`,
+      contentLength: size,
+      nosniff: true,
+      logCtx: `download ${id}`,
+    });
   }
 
   /**
@@ -475,15 +528,75 @@ export class FilesController {
     @CurrentSite() site?: CurrentSitePayload,
   ): Promise<void> {
     // P2c S-2: 호출자 site 대조 — 타 테넌트 파일 다운로드 차단(NULL=레거시/공유 허용).
-    const { buffer, file } = await this.filesService.getFileBuffer(id, site);
+    // 트랙 B-(c): 전체버퍼 → 스트리밍(합성결과 PDF 가 2GB 라도 API heap 상수).
+    const { stream, file, size } = await this.filesService.getFileStream(id, site);
+    this.streamToResponse(res, stream, {
+      contentType: file.mimeType,
+      disposition: `attachment; filename="${encodeURIComponent(file.originalName)}"`,
+      contentLength: size,
+      nosniff: true,
+      logCtx: `download/external ${id}`,
+    });
+  }
 
-    res.setHeader('Content-Type', file.mimeType);
-    res.setHeader(
-      'Content-Disposition',
-      `attachment; filename="${encodeURIComponent(file.originalName)}"`,
-    );
-    res.setHeader('Content-Length', buffer.length);
-    res.send(buffer);
+  /**
+   * R2/local **이미지 자산** 브라우저 공개 스트리밍 — 트랙 B-(c) 권장안 A. ⭐
+   *
+   * 편집기가 >50MB 내부 '이미지'를 R2 에 presigned 업로드한 뒤, 이 엔드포인트로 표시(display)한다.
+   * (nginx `/storage/*` 는 로컬만 서빙 → R2 키는 404 였음. 이 라우트가 그 갭을 메운다.)
+   *
+   * 보안 설계(적대검증 high 반영 — 2026-06-20):
+   *  - **표시용 래스터 이미지로만 한정**: RAW_SERVE_TYPES(jpeg/png/webp/gif) 만 서빙, 그 외는 404.
+   *    ⚠️ application/pdf 는 절대 서빙하지 않는다 — 합성결과/주문 content PDF(민감)도 동일 files
+   *    테이블에 status='ready' 로 공존하고, 편집기가 content PDF 를 표시이미지와 동일한 공개
+   *    presigned 경로(`uploadViaPresigned isPublic, type:'content'`)로 올리므로 fileType/마커로는
+   *    구분이 불가능하다. content-type 만이 안전한 판별자다. PDF 취득은 `:id/download`(JWT)·
+   *    `:id/download/external`(ApiKey+site)만 담당 → raw 가 그 권한경계를 우회하지 못하게 한다
+   *    (2026-05-03 패치가 막은 'UUID 유출 시 무인증 다운로드' 회귀를 차단).
+   *    image/svg+xml 도 제외(서빙단 인라인 XSS 이중방어).
+   *  - **@Public** + fileId(UUID=비추측). 서빙 대상이 '공유 표시 이미지'(public presigned=siteId NULL)로
+   *    좁혀져 테넌트 격리 비대칭도 함께 해소(민감 siteId 스탬프 PDF 가 raw 로 새지 않음).
+   *  - **X-Content-Type-Options: nosniff** 항상 + **inline**(서빙 대상이 안전 래스터뿐) + CORP cross-origin
+   *    (crossOriginIsolated 편집기/임베드 fabric 로드 통과). ACAO 는 전역 CORS(허용오리진 반영)가 처리.
+   *  - status!=='ready' 는 미완 업로드 → 404. soft-deleted 는 findById 가 자동 제외 → 404.
+   *  - @Throttle: 무인증 대용량 egress 남용 완화(전역 300/min 보다 보수적).
+   */
+  @Get(':id/raw')
+  @Public()
+  @Throttle({ default: { limit: 120, ttl: 60000 } })
+  @ApiOperation({ summary: 'R2/local 이미지 공개 스트리밍(인라인 표시용) — fileId(UUID) 기반, 이미지만' })
+  @ApiResponse({ status: 200, description: '이미지 스트림' })
+  @ApiResponse({ status: 404, description: '파일 없음 / 미완(pending) / 비이미지(PDF 등) / 삭제됨' })
+  async getRawFile(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const { stream, file, size } = await this.filesService.getFileStream(id);
+
+    // 표시 가능한 안전 래스터 이미지로만 한정. PDF(content/합성/회원/디자인)·svg·html·기타는
+    // 비공개 다운로드 경로 전용 → 여기선 404. (mimeType 은 파라미터/대소문자 정규화 후 비교.)
+    const RAW_SERVE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
+    const mime = (file.mimeType || '').toLowerCase().split(';')[0].trim();
+
+    // 미완(pending/failed) 또는 비표시 타입은 404. 이미 연 스트림은 즉시 정리(소켓/fd 누수 방지).
+    if (file.status !== 'ready' || !RAW_SERVE_TYPES.has(mime)) {
+      stream.destroy();
+      throw new NotFoundException({
+        code: 'FILE_NOT_FOUND',
+        message: '파일을 찾을 수 없습니다.',
+        details: { fileId: id },
+      });
+    }
+
+    this.streamToResponse(res, stream, {
+      contentType: file.mimeType,
+      disposition: `inline; filename="${encodeURIComponent(file.originalName)}"`,
+      contentLength: size,
+      cacheControl: 'public, max-age=31536000, immutable',
+      nosniff: true,
+      corp: true,
+      logCtx: `raw ${id}`,
+    });
   }
 
   /**
