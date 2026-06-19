@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PDFDocument, PDFPage } from 'pdf-lib';
 import * as fs from 'fs/promises';
+import * as os from 'os';
+import * as path from 'path';
 import axios from 'axios';
 import {
   ErrorCode,
@@ -51,6 +53,9 @@ export class PdfValidatorService {
       colorMode: 'RGB',
       resolution: 300,
     };
+
+    // s3 백엔드(api://) 검증 시 inkcov 입력용으로 떨군 임시파일 경로. finally 에서 정리.
+    let tmpToCleanup: string | null = null;
 
     try {
       // 1. 파일 다운로드 및 기본 검증
@@ -160,8 +165,20 @@ export class PdfValidatorService {
       // 다섯 검출은 서로 독립(동일 pdfBytes 만 읽음)이므로 병렬 실행한다.
       // detectColorMode 의 Ghostscript inkcov 자식프로세스 대기 시간이 나머지 JS 파싱과
       // 겹쳐 wall-time 이 '가장 느린 1개'로 수렴 → 검증 체감 속도 개선.
-      // 파일 경로 계산 (Ghostscript inkcov용) — `/storage/`, `storage/` 양쪽 모두 정규화
-      const inputPath = this.resolveLocalPath(fileUrl);
+      // 파일 경로 계산 (Ghostscript inkcov용) — `/storage/`, `storage/` 양쪽 모두 정규화.
+      // s3 백엔드(api://)는 로컬 경로가 없으므로 이미 받은 pdfBytes 를 임시파일로 떨궈
+      // 그 경로를 inkcov 입력으로 사용한다(검증 종료 시 정리).
+      let inputPath: string;
+      if (fileUrl.startsWith('api://')) {
+        tmpToCleanup = path.join(
+          os.tmpdir(),
+          `validate_${Date.now()}_${Math.random().toString(36).slice(2)}.pdf`,
+        );
+        await fs.writeFile(tmpToCleanup, Buffer.from(pdfBytes));
+        inputPath = tmpToCleanup;
+      } else {
+        inputPath = this.resolveLocalPath(fileUrl);
+      }
 
       const [
         colorModeResult,
@@ -322,6 +339,11 @@ export class PdfValidatorService {
         autoFixable: false,
       });
       return { isValid: false, errors, warnings, metadata };
+    } finally {
+      // s3 백엔드 검증용 임시파일 정리(존재할 때만). 실패해도 검증 결과에 영향 없음.
+      if (tmpToCleanup) {
+        await fs.unlink(tmpToCleanup).catch(() => {});
+      }
     }
   }
 
@@ -631,6 +653,20 @@ export class PdfValidatorService {
    * 파일 다운로드
    */
   private async downloadFile(url: string): Promise<Uint8Array> {
+    // s3 백엔드 마커(api://<fileId>) — API 다운로드 엔드포인트 경유.
+    // 워커에 s3 SDK 를 추가하지 않고, 기존 API_BASE_URL + WORKER_API_KEY 자산을 재사용.
+    if (url.startsWith('api://')) {
+      const fileId = url.slice('api://'.length);
+      const apiBase = process.env.API_BASE_URL || 'http://localhost:4000/api';
+      this.logger.log(`Downloading s3-backed file via API: ${fileId}`);
+      const res = await axios.get(`${apiBase}/files/${fileId}/download/external`, {
+        responseType: 'arraybuffer',
+        timeout: 120000, // 대용량 고려 2분
+        headers: { 'X-API-Key': process.env.WORKER_API_KEY },
+      });
+      return new Uint8Array(res.data);
+    }
+
     // 로컬 파일 경로인 경우 (절대 경로, 상대 경로, storage/ 또는 /storage/ 경로)
     if (url.startsWith('/') || url.startsWith('./') || url.startsWith('storage/')) {
       const filePath = this.resolveLocalPath(url);

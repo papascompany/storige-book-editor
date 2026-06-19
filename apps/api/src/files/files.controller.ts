@@ -24,10 +24,20 @@ import {
   ApiBearerAuth,
   ApiSecurity,
 } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { Response } from 'express';
 import { FilesService } from './files.service';
+import { PresignedUploadService } from './presigned-upload.service';
 import { UploadFileDto } from './dto/upload-file.dto';
 import { FileResponseDto, FileListResponseDto } from './dto/file-response.dto';
+import {
+  PresignUploadDto,
+  MultipartInitDto,
+  MultipartSignDto,
+  MultipartCompleteDto,
+  MultipartAbortDto,
+  CompleteUploadDto,
+} from './dto/presigned-upload.dto';
 import { FileType } from './entities/file.entity';
 import { Public } from '../auth/decorators/public.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -37,7 +47,113 @@ import { ApiKeyGuard } from '../auth/guards/api-key.guard';
 @ApiTags('Files')
 @Controller('files')
 export class FilesController {
-  constructor(private readonly filesService: FilesService) {}
+  constructor(
+    private readonly filesService: FilesService,
+    private readonly presignedUpload: PresignedUploadService,
+  ) {}
+
+  // ─────────────────────────────────────────────────────────────
+  // R2 presigned 직결 업로드 (2026-06-19) — driver!=='s3' 이면 503 STORAGE_NOT_S3.
+  // 키 서버생성·contentType=application/pdf 강제·2GB 상한·public throttle.
+  // ─────────────────────────────────────────────────────────────
+
+  // ── single-part: 인증 ─────────────────────────────────────────
+  @Post('presigned-upload')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'presigned 직결 업로드 URL 발급(인증)' })
+  @ApiResponse({ status: 201, description: '발급 성공' })
+  @ApiResponse({ status: 503, description: 'STORAGE_NOT_S3 (local 드라이버)' })
+  async presignUpload(@Body() dto: PresignUploadDto, @CurrentUser() user: any) {
+    const memberSeqno = dto.memberSeqno ?? (user?.userId ? parseInt(user.userId) : undefined);
+    return this.presignedUpload.presignPut({
+      fileType: dto.type ?? FileType.CONTENT,
+      expectedSize: dto.expectedSize,
+      originalName: dto.originalName,
+      orderSeqno: dto.orderSeqno,
+      memberSeqno,
+    });
+  }
+
+  // ── single-part: 공개(게스트) ────────────────────────────────
+  @Post('presigned-upload-public')
+  @Public()
+  @Throttle({ default: { limit: 20, ttl: 60000 } })
+  @ApiOperation({ summary: 'presigned 직결 업로드 URL 발급(공개/게스트)' })
+  @ApiResponse({ status: 201, description: '발급 성공' })
+  @ApiResponse({ status: 503, description: 'STORAGE_NOT_S3 (local 드라이버)' })
+  async presignUploadPublic(@Body() dto: PresignUploadDto) {
+    return this.presignedUpload.presignPut({
+      fileType: dto.type ?? FileType.CONTENT,
+      expectedSize: dto.expectedSize,
+      originalName: dto.originalName,
+      orderSeqno: dto.orderSeqno,
+      // 공개(게스트) 경로는 클라가 보낸 memberSeqno 를 신뢰하지 않는다(소유권 위조 차단).
+      // 실제 소유 연결은 edit-session(contentPdfFileId) 등 서버측 컨텍스트에서 이뤄진다.
+      memberSeqno: null,
+    });
+  }
+
+  // ── complete (single) ─ 공개+throttle (게스트 흐름이 호출). 멱등. ─
+  @Post(':id/complete')
+  @Public()
+  @Throttle({ default: { limit: 30, ttl: 60000 } })
+  @ApiOperation({ summary: '직결 업로드 완료 확정(HeadObject 검증)' })
+  @ApiResponse({ status: 200, description: 'ready 확정', type: FileResponseDto })
+  @ApiResponse({ status: 400, description: 'UPLOAD_NOT_FOUND_ON_R2 / EMPTY_UPLOAD' })
+  async completeUpload(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CompleteUploadDto,
+  ): Promise<FileResponseDto> {
+    const file = await this.presignedUpload.completeSingle(id, dto.uploadToken);
+    return this.filesService.toResponseDto(file);
+  }
+
+  // ── multipart: init ──────────────────────────────────────────
+  @Post('multipart/init')
+  @Public()
+  @Throttle({ default: { limit: 20, ttl: 60000 } })
+  @ApiOperation({ summary: '멀티파트 업로드 시작' })
+  @ApiResponse({ status: 503, description: 'STORAGE_NOT_S3' })
+  async multipartInit(@Body() dto: MultipartInitDto) {
+    return this.presignedUpload.initMultipart({
+      fileType: dto.type ?? FileType.CONTENT,
+      expectedSize: dto.expectedSize,
+      originalName: dto.originalName,
+      orderSeqno: dto.orderSeqno,
+      // 공개(게스트) 경로 — 클라 memberSeqno 미신뢰(소유권 위조 차단).
+      memberSeqno: null,
+    });
+  }
+
+  // ── multipart: sign part ─────────────────────────────────────
+  @Post('multipart/sign')
+  @Public()
+  @Throttle({ default: { limit: 600, ttl: 60000 } }) // 파트당 1콜 — 대용량은 콜 多 → 넉넉히
+  @ApiOperation({ summary: '멀티파트 파트 업로드 URL 서명' })
+  async multipartSign(@Body() dto: MultipartSignDto) {
+    return this.presignedUpload.signUploadPart(dto.fileId, dto.partNumber, dto.uploadToken);
+  }
+
+  // ── multipart: complete ──────────────────────────────────────
+  @Post('multipart/complete')
+  @Public()
+  @Throttle({ default: { limit: 30, ttl: 60000 } })
+  @ApiOperation({ summary: '멀티파트 완료(파트 etag 결합 + HeadObject 검증)' })
+  @ApiResponse({ status: 200, type: FileResponseDto })
+  async multipartComplete(@Body() dto: MultipartCompleteDto): Promise<FileResponseDto> {
+    const file = await this.presignedUpload.completeMultipart(dto.fileId, dto.parts, dto.uploadToken);
+    return this.filesService.toResponseDto(file);
+  }
+
+  // ── multipart: abort ─────────────────────────────────────────
+  @Post('multipart/abort')
+  @Public()
+  @Throttle({ default: { limit: 30, ttl: 60000 } })
+  @ApiOperation({ summary: '멀티파트 취소(R2 abort + status=failed)' })
+  async multipartAbort(@Body() dto: MultipartAbortDto): Promise<{ success: boolean }> {
+    await this.presignedUpload.abortMultipart(dto.fileId, dto.uploadToken);
+    return { success: true };
+  }
 
   /**
    * 파일 업로드

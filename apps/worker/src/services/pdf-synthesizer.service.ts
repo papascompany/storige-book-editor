@@ -11,6 +11,7 @@ import {
 } from '../utils/ghostscript';
 import { SynthesisLocalResult, SplitResult, SpreadSynthesisLocalResult } from '@storige/types';
 import { DomainError, ErrorCodes } from '../common/errors';
+import { isApiMarker, downloadViaApi } from './api-file-download';
 
 export interface SynthesisOptions {
   /** 표지 PDF URL 또는 파일 경로 */
@@ -619,6 +620,11 @@ export class PdfSynthesizerService {
    * - 그 외 → axios.get HTTP 다운로드
    */
   async downloadFile(url: string): Promise<Uint8Array> {
+    // API가 s3(R2) backend 파일에 넘기는 마커 → API 다운로드 라우트로 위임 (local/s3 라우팅)
+    if (isApiMarker(url)) {
+      return await downloadViaApi(url);
+    }
+
     // ⚠️ 중요: '/storage/...' 와 'storage/...' 를 일반 절대경로보다 먼저 처리해야 함
     // API가 반환하는 fileUrl은 HTTP 서빙용 '/storage/...' 형태이며,
     // 이를 그대로 fs.readFile()에 넘기면 ENOENT 발생.
@@ -712,7 +718,9 @@ export class PdfSynthesizerService {
     }
 
     const spreadPdfPath = path.join(jobTempDir, `spread_${spreadPdfFileId}.pdf`);
-    const spreadBytes = await this.downloadFile(spreadFile.filePath);
+    const spreadBytes = await this.downloadFile(
+      spreadFile.storageBackend === 's3' ? `api://${spreadFile.id}` : spreadFile.filePath,
+    );
     await fs.writeFile(spreadPdfPath, spreadBytes);
 
     // 2-1. 스프레드 PDF 검증: 1페이지 + MediaBox 일치
@@ -761,7 +769,9 @@ export class PdfSynthesizerService {
       }
 
       const contentPdfPath = path.join(jobTempDir, `content_${fileId}.pdf`);
-      const contentBytes = await this.downloadFile(contentFile.filePath);
+      const contentBytes = await this.downloadFile(
+        contentFile.storageBackend === 's3' ? `api://${contentFile.id}` : contentFile.filePath,
+      );
       await fs.writeFile(contentPdfPath, contentBytes);
       contentPdfPaths.push(contentPdfPath);
     }

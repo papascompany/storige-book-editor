@@ -49,6 +49,32 @@ export class FileEntity {
   storageKey: string | null;
 
   /**
+   * 업로드 라이프사이클 상태 (2026-06-19 presigned 직결).
+   * 'ready'  = 사용 가능(기존 multipart 업로드·워커출력 전부 ready). 기본값 → 기존행 무해.
+   * 'pending'= presigned 직결 발급됨·아직 R2 PUT 미완(complete 전). 검증/다운로드 금지.
+   * 'failed' = 클라 abort 또는 complete 검증 실패. retention/cleanup 대상.
+   */
+  @Index('idx_files_status')
+  @Column({ name: 'status', type: 'varchar', length: 16, default: 'ready' })
+  status: 'pending' | 'ready' | 'failed';
+
+  /** 멀티파트 업로드 ID (R2 CreateMultipartUpload 반환). single-part 또는 완료 후 NULL. */
+  @Column({ name: 'multipart_upload_id', type: 'varchar', length: 255, nullable: true })
+  multipartUploadId: string | null;
+
+  /** 클라가 선언한 예상 바이트 수 (complete 시 HeadObject ContentLength 와 대조). NULL=레거시. */
+  @Column({ name: 'expected_size', type: 'bigint', nullable: true })
+  expectedSize: number | null;
+
+  /**
+   * 업로드 세션 소유 토큰 (2026-06-19). presign 발급 시 서버가 고엔트로피로 생성해 클라에 1회 반환.
+   * complete/sign/abort 호출 시 이 토큰을 대조 → fileId(UUID)만 아는 제3자가 진행중(pending)
+   * 업로드를 가로채/abort 하거나 멀티파트에 임의 파트를 주입하는 IDOR 차단. ready/failed 확정 시 NULL.
+   */
+  @Column({ name: 'upload_token', type: 'varchar', length: 64, nullable: true })
+  uploadToken: string | null;
+
+  /**
    * 보존 만료 시각 (2026-06-13). null=영구보관(기본, bookmoa 등 보호).
    * 테넌트가 주문 이행 후 설정 → FileRetentionService cron 이 만료분 하드삭제.
    */

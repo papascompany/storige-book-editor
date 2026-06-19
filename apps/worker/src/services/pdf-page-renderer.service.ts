@@ -5,6 +5,7 @@ import * as os from 'os';
 import axios from 'axios';
 import { PDFDocument } from 'pdf-lib';
 import { pdfToImage } from '../utils/ghostscript';
+import { isApiMarker, downloadViaApi } from './api-file-download';
 
 export interface RenderPagesResult {
   /** 페이지 순서대로의 이미지 상대 URL ('/storage/...') */
@@ -56,6 +57,10 @@ export class PdfPageRendererService {
    * (pdf-converter.service 의 downloadFile 과 동일 규약)
    */
   private async loadBytes(url: string): Promise<Buffer> {
+    // API가 s3(R2) backend 파일에 넘기는 마커 → API 다운로드 라우트로 위임 (local/s3 라우팅)
+    if (isApiMarker(url)) {
+      return Buffer.from(await downloadViaApi(url));
+    }
     if (url.startsWith('/storage/') || url.startsWith('storage/')) {
       const storageBase = process.env.WORKER_STORAGE_PATH || '../api';
       const filePath = url.startsWith('/storage/')

@@ -50,8 +50,11 @@ export class ObjectStorageService {
     return (await this.storageConfig.getEffectiveConfig()).driver;
   }
 
-  /** config 기반으로 s3 클라이언트 확보(시그니처 변경 시 재생성). */
-  private async ensureS3(): Promise<{ client: import('@aws-sdk/client-s3').S3Client; bucket: string }> {
+  /**
+   * config 기반으로 s3 클라이언트 확보(시그니처 변경 시 재생성).
+   * presigned 서비스가 동일 S3Client/버킷을 재사용하도록 public 승격(2026-06-19).
+   */
+  async ensureS3(): Promise<{ client: import('@aws-sdk/client-s3').S3Client; bucket: string }> {
     const cfg = await this.storageConfig.getEffectiveConfig();
     const { s3 } = cfg;
     if (!s3.bucket || !s3.accessKeyId || !s3.secretAccessKey) {

@@ -6,6 +6,7 @@ import { FilesService } from './files.service';
 import { FileEntity } from './entities/file.entity';
 import { ObjectStorageService } from '../storage/object-storage.service';
 import { FileRetentionService } from './file-retention.service';
+import { PresignedUploadService } from './presigned-upload.service';
 import { SettingsModule } from '../settings/settings.module';
 
 @Module({
@@ -15,7 +16,7 @@ import { SettingsModule } from '../settings/settings.module';
     SettingsModule, // StorageConfigService (저장 드라이버/보존정책 런타임 설정)
   ],
   controllers: [FilesController],
-  providers: [FilesService, ObjectStorageService, FileRetentionService],
-  exports: [FilesService, ObjectStorageService],
+  providers: [FilesService, ObjectStorageService, FileRetentionService, PresignedUploadService],
+  exports: [FilesService, ObjectStorageService, PresignedUploadService],
 })
 export class FilesModule {}
