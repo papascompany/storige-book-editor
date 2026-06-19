@@ -93,21 +93,6 @@ export class FilesController {
     });
   }
 
-  // ── complete (single) ─ 공개+throttle (게스트 흐름이 호출). 멱등. ─
-  @Post(':id/complete')
-  @Public()
-  @Throttle({ default: { limit: 30, ttl: 60000 } })
-  @ApiOperation({ summary: '직결 업로드 완료 확정(HeadObject 검증)' })
-  @ApiResponse({ status: 200, description: 'ready 확정', type: FileResponseDto })
-  @ApiResponse({ status: 400, description: 'UPLOAD_NOT_FOUND_ON_R2 / EMPTY_UPLOAD' })
-  async completeUpload(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: CompleteUploadDto,
-  ): Promise<FileResponseDto> {
-    const file = await this.presignedUpload.completeSingle(id, dto.uploadToken);
-    return this.filesService.toResponseDto(file);
-  }
-
   // ── multipart: init ──────────────────────────────────────────
   @Post('multipart/init')
   @Public()
@@ -153,6 +138,23 @@ export class FilesController {
   async multipartAbort(@Body() dto: MultipartAbortDto): Promise<{ success: boolean }> {
     await this.presignedUpload.abortMultipart(dto.fileId, dto.uploadToken);
     return { success: true };
+  }
+
+  // ── complete (single) ─ 공개+throttle (게스트 흐름이 호출). 멱등. ─
+  // ⚠️ 반드시 multipart/* 라우트 "뒤"에 선언: ':id/complete' 파라미터 경로가
+  //    'multipart/complete'(:id='multipart')를 가로채면 단품 DTO로 검증돼 400 난다(라우트 충돌).
+  @Post(':id/complete')
+  @Public()
+  @Throttle({ default: { limit: 30, ttl: 60000 } })
+  @ApiOperation({ summary: '직결 업로드 완료 확정(HeadObject 검증)' })
+  @ApiResponse({ status: 200, description: 'ready 확정', type: FileResponseDto })
+  @ApiResponse({ status: 400, description: 'UPLOAD_NOT_FOUND_ON_R2 / EMPTY_UPLOAD' })
+  async completeUpload(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CompleteUploadDto,
+  ): Promise<FileResponseDto> {
+    const file = await this.presignedUpload.completeSingle(id, dto.uploadToken);
+    return this.filesService.toResponseDto(file);
   }
 
   /**

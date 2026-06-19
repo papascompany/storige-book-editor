@@ -58,8 +58,9 @@ export class FileEntity {
   @Column({ name: 'status', type: 'varchar', length: 16, default: 'ready' })
   status: 'pending' | 'ready' | 'failed';
 
-  /** 멀티파트 업로드 ID (R2 CreateMultipartUpload 반환). single-part 또는 완료 후 NULL. */
-  @Column({ name: 'multipart_upload_id', type: 'varchar', length: 255, nullable: true })
+  /** 멀티파트 업로드 ID (R2 CreateMultipartUpload 반환). single-part 또는 완료 후 NULL.
+   *  ⚠️ R2 UploadId 는 길다(실측 ~343자) — varchar(255) 부족 → 1024. */
+  @Column({ name: 'multipart_upload_id', type: 'varchar', length: 1024, nullable: true })
   multipartUploadId: string | null;
 
   /** 클라가 선언한 예상 바이트 수 (complete 시 HeadObject ContentLength 와 대조). NULL=레거시. */
