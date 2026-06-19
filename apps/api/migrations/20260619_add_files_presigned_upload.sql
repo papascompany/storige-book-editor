@@ -16,8 +16,11 @@
 ALTER TABLE files
   ADD COLUMN IF NOT EXISTS status VARCHAR(16) NOT NULL DEFAULT 'ready' AFTER storage_key;
 
+-- R2 멀티파트 UploadId 는 길다(실측 ~343자) → varchar(1024). (이미 255로 생성된 환경은 아래 MODIFY 가 정정)
 ALTER TABLE files
-  ADD COLUMN IF NOT EXISTS multipart_upload_id VARCHAR(255) NULL AFTER status;
+  ADD COLUMN IF NOT EXISTS multipart_upload_id VARCHAR(1024) NULL AFTER status;
+ALTER TABLE files
+  MODIFY COLUMN multipart_upload_id VARCHAR(1024) NULL;
 
 ALTER TABLE files
   ADD COLUMN IF NOT EXISTS expected_size BIGINT NULL AFTER multipart_upload_id;
