@@ -354,8 +354,10 @@ export class FilesService {
 
   /**
    * 파일 하드 삭제 (2026-06-13 보존정책/테넌트 삭제용).
+   * 외부 테넌트(DELETE /files/:id/external) 즉시삭제용 — site 대조 후 영구 제거.
    * 저장 백엔드의 실제 객체 + DB 레코드를 모두 제거. 멱등(없으면 무시).
-   * ⚠️ 외부 테넌트가 주문 이행 완료 후 호출(DELETE /files/:id/external) 하거나 retention cron 이 사용.
+   * ⚠️ soft-deleted 파일은 findById 가 못 찾으므로(deleted_at IS NULL 자동 적용)
+   *    purge cron 은 hardDeleteEntity 를 사용한다.
    */
   async hardDelete(
     id: string,
@@ -363,6 +365,15 @@ export class FilesService {
   ): Promise<void> {
     const file = await this.findById(id);
     this.assertSiteAccess(file, caller);
+    await this.hardDeleteEntity(file);
+  }
+
+  /**
+   * purge 전용 — 이미 (withDeleted 로) 조회한 엔티티의 백엔드 객체 + DB 행을 영구 제거.
+   * findById 재조회 없음(soft-deleted 행은 findById 가 못 찾음). 멱등.
+   * hardDelete 와 백엔드/DB 삭제 로직을 공유한다.
+   */
+  async hardDeleteEntity(file: FileEntity): Promise<void> {
     // 백엔드 객체 삭제 (storageKey 있으면 그걸로, 없으면 local filePath fallback)
     if (file.storageKey) {
       await this.objectStorage.delete(file.storageBackend, file.storageKey);
@@ -373,9 +384,35 @@ export class FilesService {
         /* 이미 없으면 무시 */
       }
     }
-    // DB 레코드 영구 삭제 (soft delete 아님 — 보존정책상 완전 제거)
+    // DB 레코드 영구 삭제 (soft-deleted 행도 .delete() 로 물리 제거됨 — 보존정책상 완전 제거)
     await this.fileRepository.delete(file.id);
-    this.logger.log(`Hard-deleted file ${id} (backend=${file.storageBackend})`);
+    this.logger.log(`Hard-deleted file ${file.id} (backend=${file.storageBackend})`);
+  }
+
+  /**
+   * 소프트삭제 복구 (48h 복구창 내) — deleted_at NULL 로 되돌림.
+   * withDeleted 로 조회(소프트삭제 행은 기본 findById 가 못 찾음).
+   * 이미 purge(hardDelete)된 경우 NotFoundException. 이미 활성이면 멱등 반환.
+   * admin 라우트 노출은 P1.
+   * @returns 복구된 엔티티
+   */
+  async restore(id: string): Promise<FileEntity> {
+    const file = await this.fileRepository.findOne({
+      where: { id },
+      withDeleted: true,
+    });
+    if (!file) {
+      throw new NotFoundException({
+        code: 'FILE_NOT_FOUND',
+        message: '파일을 찾을 수 없습니다.',
+        details: { fileId: id },
+      });
+    }
+    if (!file.deletedAt) {
+      return file; // 이미 활성 — 멱등
+    }
+    await this.fileRepository.restore(id); // TypeORM: deleted_at = NULL
+    return this.findById(id);
   }
 
   /**
@@ -400,6 +437,28 @@ export class FilesService {
       .where('f.expires_at IS NOT NULL')
       .andWhere('f.expires_at < :now', { now: new Date() })
       .orderBy('f.expires_at', 'ASC')
+      .take(limit)
+      .getMany();
+  }
+
+  /**
+   * purge 대상 조회 — **보존정책 만료로 soft-delete 된** 파일 중 GRACE 시간 지난 것.
+   * ⚠️ withDeleted(true) 필수: 기본 쿼리는 deleted_at IS NOT NULL 행을 자동 제외하므로
+   * 명시적으로 포함시켜야 purge cron 이 찾을 수 있다.
+   * ⚠️ expires_at IS NOT NULL 제한: 보존 sweep(만료예약 파일만)으로 soft-delete 된 것만 영구삭제.
+   *    수동삭제(DELETE /files/:id → softDelete, expires_at 미설정)는 purge 대상에서 제외해
+   *    소프트삭제 상태로 보존(복구 가능) — 의도치 않은 영구손실 방지. (고아 정리는 P1 별도)
+   * @param cutoff  deleted_at < cutoff 인 행만 (예: now - 48h)
+   * @param limit   배치 제한
+   */
+  async findSoftDeletedOlderThan(cutoff: Date, limit = 200): Promise<FileEntity[]> {
+    return this.fileRepository
+      .createQueryBuilder('f')
+      .withDeleted() // soft-deleted 행 포함
+      .where('f.deleted_at IS NOT NULL')
+      .andWhere('f.deleted_at < :cutoff', { cutoff })
+      .andWhere('f.expires_at IS NOT NULL') // 보존 만료분만 — 수동삭제 보존
+      .orderBy('f.deleted_at', 'ASC')
       .take(limit)
       .getMany();
   }
