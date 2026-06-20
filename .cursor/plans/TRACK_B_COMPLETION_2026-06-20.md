@@ -11,6 +11,15 @@
 | (c) API 스트리밍 서빙 + `GET /files/:id/raw`(이미지전용) + nginx proxy_buffering off | 26563ad | ✅ API 배포·검증 |
 | (d) 워커 검증 경량화(qpdf 메타 + 청크 스트리밍 검출) | bb9db0a | ✅ **프로덕션 ON** |
 | (e) VPS 2GB 활성(mem_limit 4g·MAX_FILE_SIZE 2GB·동시성1) | 7587c82, a599602 | ✅ |
+| (f) 변환·합성·렌더 2GB(qpdf 파일기반 머지) | 25ee9ef, 879bad3 | ✅ **프로덕션 ON** — 끝단 2GB 완주 |
+| editor /raw url 배포(git 웹훅 미발화 → CLI 원격빌드+promote) | (master 7de2d33 빌드, dpl_4Fqafd) | ✅ |
+
+### (f) 완료 메모 (2026-06-20)
+- 끝단 2GB 완주: 업로드→검증(d)→임포지션(변환)→합성→다운로드 전 구간 상수메모리.
+- 신규 `utils/pdf-merge-qpdf.ts`(qpdf `--empty --pages`=객체 무재해석→별색/오버프린트/치수 무손실) + `getPdfInfoQpdf`. 변환=다운로드/메타 (d)모듈화(임포지션 GS 코어 불변), 합성=pdf-lib copyPages→qpdf, 소형산출(saddle/duplex/빈페이지)은 pdf-lib 유지. OFF 무손상(플래그).
+- 게이트 통과: 로컬 골든파리티(OFF vs ON 전모드) + **컨테이너 골든파리티(GS pdfwrite vs qpdf 머지 — 별색 PANTONE/CutContour·오버프린트·투명도·치수·페이지 5/5 동일)** + 적대검증 3렌즈 ship + tsc/스펙 329/329.
+- 프로덕션 .env: `WORKER_LIGHTWEIGHT_SYNTHESIS=true`(+ (d) VALIDATION=true, (e) MAX_FILE_SIZE=2GB·동시성1·mem_limit4g).
+- (f) 롤백: `WORKER_LIGHTWEIGHT_SYNTHESIS=false`(+2GB 유지 시 OFF 합성이 전체버퍼라 `WORKER_MAX_FILE_SIZE=1073741824`도 함께) → `docker compose up -d worker`.
 
 검증: (d) 로컬 파리티 119/119(57픽스처×2 + 이미지검출5) + 컨테이너 7/7(gs 존재) + ON 진입점 스모크. OFF 스펙 40/40 회귀0. 워커 restarts0·에러0.
 
