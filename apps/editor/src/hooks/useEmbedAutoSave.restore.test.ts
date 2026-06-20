@@ -43,7 +43,17 @@ const SESSION_ID = 'sess-restore'
 
 /** 가짜 fabric 캔버스 — toJSON + on/off(이벤트 리스너 등록 가드용) */
 function fakeCanvas(id: string) {
-  return { id, toJSON: () => ({ id, objects: [] }), on: vi.fn(), off: vi.fn() } as any
+  // 복원 경로가 호출하는 fabric 메서드 스텁: rebindFrameInteractivity / applyObjectPermissions
+  // (Part B·프레임픽스, 2026-06-16) 가 canvas.getObjects()·requestRenderAll() 를 호출하므로
+  // 실 fabric 캔버스와 동일하게 제공해야 복원이 throw 없이 완주한다(목 staleness 수정).
+  return {
+    id,
+    toJSON: () => ({ id, objects: [] }),
+    on: vi.fn(),
+    off: vi.fn(),
+    getObjects: () => [],
+    requestRenderAll: vi.fn(),
+  } as any
 }
 
 function setCanvases(list: any[]) {
