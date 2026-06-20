@@ -43,6 +43,8 @@ FROM node:22-alpine
 WORKDIR /app
 
 # Install system dependencies for PDF processing
+# 트랙 B-(d): qpdf(경량 메타·손상검증), poppler-utils(pdfinfo 폴백 — qpdf --json 치수
+#   추출 실패 시에만 사용). 둘 다 상수메모리 검증 ON 경로 전제 도구.
 RUN apk add --no-cache \
     ghostscript \
     imagemagick \
@@ -50,7 +52,9 @@ RUN apk add --no-cache \
     pango \
     jpeg \
     giflib \
-    librsvg
+    librsvg \
+    qpdf \
+    poppler-utils
 
 # Install pnpm
 RUN npm install -g pnpm@9.15.0
