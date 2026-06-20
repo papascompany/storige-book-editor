@@ -69,6 +69,10 @@ services:
       context: .
       dockerfile: docker/worker/Dockerfile
     container_name: storige-worker
+    # 트랙 B-(e): 워커 메모리 상한(기본 4g). OOM 시 워커만 죽고 API/DB/박스는 보호.
+    #   경량검증(ON) 은 상수 메모리라 여유롭고, 만약 OFF 폴백/대용량이 한도 초과해도 박스 안전.
+    #   .env WORKER_MEM_LIMIT 로 조정(예: 증설 시 상향).
+    mem_limit: ${WORKER_MEM_LIMIT:-4g}
     ports:
       - "4001:4001"
     environment:
