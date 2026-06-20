@@ -93,6 +93,12 @@ services:
       - WORKER_MAX_FILE_SIZE=${WORKER_MAX_FILE_SIZE:-1073741824}
       # 대용량 PDF(pdf-lib 파싱) 힙 여유 — 기본 노드 힙에 파싱 오버헤드 더해 OOM 방지(8GB VPS, 동시성 주의).
       - NODE_OPTIONS=${WORKER_NODE_OPTIONS:---max-old-space-size=3072}
+      # 트랙 B-(d): 경량(스트리밍) 검증 ON 토글. 기본 false(=기존 전체버퍼 OFF 경로, 동작 무변화).
+      #   파리티 검증 통과 후 .env WORKER_LIGHTWEIGHT_VALIDATION=true 로 ON → 2GB 상수메모리 검증.
+      - WORKER_LIGHTWEIGHT_VALIDATION=${WORKER_LIGHTWEIGHT_VALIDATION:-false}
+      # 트랙 B-(e) 대비 동시성 토글(기본=현행 3/2). 2GB 활성 시 .env 로 1/1 강제(+mem_limit) 필요.
+      - VALIDATION_CONCURRENCY=${VALIDATION_CONCURRENCY:-3}
+      - GS_CONCURRENCY=${GS_CONCURRENCY:-2}
       # Sentry (DSN 미설정 시 silent 동작)
       - SENTRY_DSN=${SENTRY_DSN_WORKER:-}
       - SENTRY_ENVIRONMENT=${SENTRY_ENVIRONMENT:-production}
