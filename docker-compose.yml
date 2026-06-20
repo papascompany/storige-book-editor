@@ -100,6 +100,8 @@ services:
       # 트랙 B-(d): 경량(스트리밍) 검증 ON 토글. 기본 false(=기존 전체버퍼 OFF 경로, 동작 무변화).
       #   파리티 검증 통과 후 .env WORKER_LIGHTWEIGHT_VALIDATION=true 로 ON → 2GB 상수메모리 검증.
       - WORKER_LIGHTWEIGHT_VALIDATION=${WORKER_LIGHTWEIGHT_VALIDATION:-false}
+      # 트랙 B-(f): 변환·합성·렌더 경량(qpdf) 경로 ON 토글. 기본 false. 골든파리티 후 ON.
+      - WORKER_LIGHTWEIGHT_SYNTHESIS=${WORKER_LIGHTWEIGHT_SYNTHESIS:-false}
       # 트랙 B-(e) 대비 동시성 토글(기본=현행 3/2). 2GB 활성 시 .env 로 1/1 강제(+mem_limit) 필요.
       - VALIDATION_CONCURRENCY=${VALIDATION_CONCURRENCY:-3}
       - GS_CONCURRENCY=${GS_CONCURRENCY:-2}
