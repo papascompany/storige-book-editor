@@ -25,6 +25,11 @@ import {
   detectImageResolutionFromPdf,
   detectFonts,
 } from '../utils/ghostscript';
+// 트랙 B-(d) 경량(ON) 검증 경로 전용 유틸 (OFF 경로는 import 만 하고 사용하지 않음).
+import { downloadToTempFile } from '../utils/stream-download';
+import { extractPdfMetadataQpdf } from '../utils/pdf-metadata-qpdf';
+import { scanPdfStreaming } from '../utils/streaming-pdf-scan';
+import { SpotColorResult, TransparencyResult, ImageResolutionResult, FontDetectionResult } from '../dto/validation-result.dto';
 
 // 기본 설정 (VALIDATION_CONFIG에서 가져오거나 폴백)
 const DEFAULT_MAX_FILE_SIZE = VALIDATION_CONFIG.MAX_FILE_SIZE;
@@ -43,6 +48,12 @@ export class PdfValidatorService {
     options: ValidationOptions,
   ): Promise<ValidationResultDto> {
     this.logger.log(`Validating PDF: ${fileUrl}`);
+
+    // 트랙 B-(d): 경량(스트리밍) 검증 ON 경로. env WORKER_LIGHTWEIGHT_VALIDATION=true 일 때만
+    // 진입한다. OFF(기본) 동작은 아래 본문 그대로 유지(파리티 보장).
+    if (VALIDATION_CONFIG.LIGHTWEIGHT_VALIDATION) {
+      return this.validateLightweight(fileUrl, options);
+    }
 
     const errors: ValidationError[] = [];
     const warnings: ValidationWarning[] = [];
@@ -196,129 +207,19 @@ export class PdfValidatorService {
         detectFonts(pdfBytes),
       ]);
 
-      // 12. 색상 모드 결과 처리
-      metadata.colorMode = colorModeResult.colorMode;
-
-      // 후가공 파일 + CMYK 사용 = 에러 (별색만 허용)
-      if (options.fileType === 'post_process' && colorModeResult.colorMode === 'CMYK') {
-        errors.push({
-          code: ErrorCode.POST_PROCESS_CMYK,
-          message: '후가공 파일에 CMYK 색상이 사용되었습니다. 별색(Spot Color)만 허용됩니다.',
-          details: {
-            colorMode: colorModeResult.colorMode,
-            signatures: colorModeResult.cmykStructure?.signatures,
-          },
-          autoFixable: false,
-        });
-      } else if (colorModeResult.colorMode === 'CMYK') {
-        // 일반 인쇄 파일의 CMYK는 경고만
-        warnings.push({
-          code: WarningCode.CMYK_STRUCTURE_DETECTED,
-          message: 'CMYK 색상 모드가 감지되었습니다. 인쇄 품질을 위해 확인해주세요.',
-          details: {
-            signatures: colorModeResult.cmykStructure?.signatures,
-            confidence: colorModeResult.confidence,
-          },
-          autoFixable: false,
-        });
-      }
-
-      // 13. 별색(Spot Color) 결과 처리 (WBS 4.1)
-      metadata.hasSpotColors = spotColorResult.hasSpotColors;
-      metadata.spotColors = spotColorResult.spotColorNames;
-
-      if (spotColorResult.hasSpotColors) {
-        this.logger.debug(
-          `Spot colors detected: ${spotColorResult.spotColorNames.join(', ')}`,
-        );
-        // 별색은 후가공 파일에서는 정상(별색 인쇄가 정상 입력) → 경고 없음, CMYK 에러경로 불변.
-        // 일반 인쇄 파일에서는 별색 인쇄가 별도 확인이 필요할 수 있으므로 비차단 노티.
-        if (options.fileType !== 'post_process') {
-          const spotColorNames = spotColorResult.spotColorNames;
-          warnings.push({
-            code: WarningCode.SPOT_COLOR_DETECTED,
-            message: `별색(${spotColorNames.join(', ')})이 사용되었습니다. 별색 인쇄는 별도 확인이 필요할 수 있으니 주문 전 확인해 주세요.`,
-            details: {
-              spotColorNames,
-              count: spotColorNames.length,
-            },
-            autoFixable: false,
-          });
-        }
-      }
-
-      // 14. 투명도/오버프린트 결과 처리 (WBS 4.2)
-      metadata.hasTransparency = transparencyResult.hasTransparency;
-      metadata.hasOverprint = transparencyResult.hasOverprint;
-
-      if (transparencyResult.hasTransparency) {
-        warnings.push({
-          code: WarningCode.TRANSPARENCY_DETECTED,
-          message: '투명도 효과가 포함되어 있습니다. 인쇄 시 예상과 다른 결과가 나올 수 있습니다.',
-          details: { pages: transparencyResult.pages },
-          autoFixable: false,
-        });
-      }
-      if (transparencyResult.hasOverprint) {
-        warnings.push({
-          code: WarningCode.OVERPRINT_DETECTED,
-          message: '오버프린트 설정이 포함되어 있습니다. 인쇄 시 색상이 혼합될 수 있습니다.',
-          details: { pages: transparencyResult.pages },
-          autoFixable: false,
-        });
-      }
-
-      // 15. 이미지 해상도 결과 처리
-      metadata.imageCount = resolutionResult.imageCount;
-      if (resolutionResult.imageCount > 0) {
-        metadata.resolution = resolutionResult.minResolution;
-
-        if (resolutionResult.hasLowResolution) {
-          const lowResCount = resolutionResult.lowResImages.length;
-          // 게이트는 MIN_ACCEPTABLE_DPI(150) 미만에서 발동한다. 메시지는 실제 게이트값과
-          // 권장값(300)을 함께 명시해 "권장 미만"으로 인한 혼동을 없앤다. (게이트 임계값은 불변)
-          warnings.push({
-            code: WarningCode.RESOLUTION_LOW,
-            message: `${lowResCount}개의 이미지가 최소 허용 해상도(${VALIDATION_CONFIG.MIN_ACCEPTABLE_DPI}DPI) 미만입니다. 인쇄 품질 저하가 우려됩니다(권장 ${VALIDATION_CONFIG.RECOMMENDED_DPI}DPI).`,
-            details: {
-              minResolution: resolutionResult.minResolution,
-              avgResolution: resolutionResult.avgResolution,
-              minAcceptableDpi: VALIDATION_CONFIG.MIN_ACCEPTABLE_DPI,
-              recommendedDpi: VALIDATION_CONFIG.RECOMMENDED_DPI,
-              lowResImages: resolutionResult.lowResImages.map((img) => ({
-                index: img.index,
-                pixelSize: `${img.pixelWidth}x${img.pixelHeight}`,
-                effectiveDpi: img.minEffectiveDpi,
-              })),
-            },
-            autoFixable: false,
-          });
-        }
-      }
-
-      // 16. 폰트 임베딩 결과 처리 (요구사항6)
-      // detectFonts 는 정규식 기반(현행 방식)으로 폰트 객체를 스캔하며, 실패 시 안전기본값을
-      // 반환하므로 별도 가드가 없다. 임베딩되지 않은 폰트는 인쇄소에서 글꼴 누락/치환을
-      // 유발하므로 비차단 경고로 노출한다(기존 통과/에러 동작은 변경하지 않음).
-      metadata.fontCount = fontResult.fontCount;
-      metadata.hasUnembeddedFonts = fontResult.hasUnembeddedFonts;
-      metadata.unembeddedFonts = fontResult.unembeddedFonts;
-
-      if (fontResult.hasUnembeddedFonts) {
-        const unembeddedFonts = fontResult.unembeddedFonts;
-        this.logger.debug(
-          `Unembedded fonts detected: ${unembeddedFonts.join(', ')}`,
-        );
-        warnings.push({
-          code: WarningCode.FONT_NOT_EMBEDDED,
-          message: `임베딩되지 않은 폰트가 ${unembeddedFonts.length}개 있습니다(${unembeddedFonts.join(', ')}). 폰트를 아웃라인 처리하거나 임베딩(서브셋 포함)해 다시 업로드해 주세요.`,
-          details: {
-            unembeddedFonts,
-            fontCount: fontResult.fontCount,
-          },
-          autoFixable: false,
-        });
-      }
+      // 12~16. 색상/별색/투명도/해상도/폰트 검출 결과 → errors/warnings/metadata 매핑.
+      // OFF·ON 양쪽이 동일 로직을 쓰도록 단일 메서드로 추출(중복 제거·드리프트 방지).
+      this.applyDetectionWarnings(
+        colorModeResult,
+        spotColorResult,
+        transparencyResult,
+        resolutionResult,
+        fontResult,
+        options,
+        errors,
+        warnings,
+        metadata,
+      );
 
       this.logger.log(
         `Validation complete: ${errors.length === 0 ? 'PASS' : 'FAIL'} (errors: ${errors.length}, warnings: ${warnings.length})`,
@@ -344,6 +245,334 @@ export class PdfValidatorService {
       if (tmpToCleanup) {
         await fs.unlink(tmpToCleanup).catch(() => {});
       }
+    }
+  }
+
+  /**
+   * 검출 결과(색상모드/별색/투명도/해상도/폰트)를 errors/warnings/metadata 에 매핑.
+   *
+   * validate()(OFF)·validateLightweight()(ON) 두 경로가 동일 로직을 호출하도록 추출했다.
+   * ⚠️ 이 메서드의 동작은 '추출 이전 validate() 의 12~16단계 블록'과 100% 동일해야 한다
+   *    (메시지/details/푸시 순서/메타데이터 키 전부). 인쇄 품질 직결 → 임의 변경 금지.
+   */
+  private applyDetectionWarnings(
+    colorModeResult: ColorModeResult,
+    spotColorResult: SpotColorResult,
+    transparencyResult: TransparencyResult,
+    resolutionResult: ImageResolutionResult,
+    fontResult: FontDetectionResult,
+    options: ValidationOptions,
+    errors: ValidationError[],
+    warnings: ValidationWarning[],
+    metadata: PdfMetadata,
+  ): void {
+    // 12. 색상 모드 결과 처리
+    metadata.colorMode = colorModeResult.colorMode;
+
+    // 후가공 파일 + CMYK 사용 = 에러 (별색만 허용)
+    if (options.fileType === 'post_process' && colorModeResult.colorMode === 'CMYK') {
+      errors.push({
+        code: ErrorCode.POST_PROCESS_CMYK,
+        message: '후가공 파일에 CMYK 색상이 사용되었습니다. 별색(Spot Color)만 허용됩니다.',
+        details: {
+          colorMode: colorModeResult.colorMode,
+          signatures: colorModeResult.cmykStructure?.signatures,
+        },
+        autoFixable: false,
+      });
+    } else if (colorModeResult.colorMode === 'CMYK') {
+      // 일반 인쇄 파일의 CMYK는 경고만
+      warnings.push({
+        code: WarningCode.CMYK_STRUCTURE_DETECTED,
+        message: 'CMYK 색상 모드가 감지되었습니다. 인쇄 품질을 위해 확인해주세요.',
+        details: {
+          signatures: colorModeResult.cmykStructure?.signatures,
+          confidence: colorModeResult.confidence,
+        },
+        autoFixable: false,
+      });
+    }
+
+    // 13. 별색(Spot Color) 결과 처리 (WBS 4.1)
+    metadata.hasSpotColors = spotColorResult.hasSpotColors;
+    metadata.spotColors = spotColorResult.spotColorNames;
+
+    if (spotColorResult.hasSpotColors) {
+      this.logger.debug(
+        `Spot colors detected: ${spotColorResult.spotColorNames.join(', ')}`,
+      );
+      // 별색은 후가공 파일에서는 정상(별색 인쇄가 정상 입력) → 경고 없음, CMYK 에러경로 불변.
+      // 일반 인쇄 파일에서는 별색 인쇄가 별도 확인이 필요할 수 있으므로 비차단 노티.
+      if (options.fileType !== 'post_process') {
+        const spotColorNames = spotColorResult.spotColorNames;
+        warnings.push({
+          code: WarningCode.SPOT_COLOR_DETECTED,
+          message: `별색(${spotColorNames.join(', ')})이 사용되었습니다. 별색 인쇄는 별도 확인이 필요할 수 있으니 주문 전 확인해 주세요.`,
+          details: {
+            spotColorNames,
+            count: spotColorNames.length,
+          },
+          autoFixable: false,
+        });
+      }
+    }
+
+    // 14. 투명도/오버프린트 결과 처리 (WBS 4.2)
+    metadata.hasTransparency = transparencyResult.hasTransparency;
+    metadata.hasOverprint = transparencyResult.hasOverprint;
+
+    if (transparencyResult.hasTransparency) {
+      warnings.push({
+        code: WarningCode.TRANSPARENCY_DETECTED,
+        message: '투명도 효과가 포함되어 있습니다. 인쇄 시 예상과 다른 결과가 나올 수 있습니다.',
+        details: { pages: transparencyResult.pages },
+        autoFixable: false,
+      });
+    }
+    if (transparencyResult.hasOverprint) {
+      warnings.push({
+        code: WarningCode.OVERPRINT_DETECTED,
+        message: '오버프린트 설정이 포함되어 있습니다. 인쇄 시 색상이 혼합될 수 있습니다.',
+        details: { pages: transparencyResult.pages },
+        autoFixable: false,
+      });
+    }
+
+    // 15. 이미지 해상도 결과 처리
+    metadata.imageCount = resolutionResult.imageCount;
+    if (resolutionResult.imageCount > 0) {
+      metadata.resolution = resolutionResult.minResolution;
+
+      if (resolutionResult.hasLowResolution) {
+        const lowResCount = resolutionResult.lowResImages.length;
+        // 게이트는 MIN_ACCEPTABLE_DPI(150) 미만에서 발동한다. 메시지는 실제 게이트값과
+        // 권장값(300)을 함께 명시해 "권장 미만"으로 인한 혼동을 없앤다. (게이트 임계값은 불변)
+        warnings.push({
+          code: WarningCode.RESOLUTION_LOW,
+          message: `${lowResCount}개의 이미지가 최소 허용 해상도(${VALIDATION_CONFIG.MIN_ACCEPTABLE_DPI}DPI) 미만입니다. 인쇄 품질 저하가 우려됩니다(권장 ${VALIDATION_CONFIG.RECOMMENDED_DPI}DPI).`,
+          details: {
+            minResolution: resolutionResult.minResolution,
+            avgResolution: resolutionResult.avgResolution,
+            minAcceptableDpi: VALIDATION_CONFIG.MIN_ACCEPTABLE_DPI,
+            recommendedDpi: VALIDATION_CONFIG.RECOMMENDED_DPI,
+            lowResImages: resolutionResult.lowResImages.map((img) => ({
+              index: img.index,
+              pixelSize: `${img.pixelWidth}x${img.pixelHeight}`,
+              effectiveDpi: img.minEffectiveDpi,
+            })),
+          },
+          autoFixable: false,
+        });
+      }
+    }
+
+    // 16. 폰트 임베딩 결과 처리 (요구사항6)
+    // detectFonts 는 정규식 기반(현행 방식)으로 폰트 객체를 스캔하며, 실패 시 안전기본값을
+    // 반환하므로 별도 가드가 없다. 임베딩되지 않은 폰트는 인쇄소에서 글꼴 누락/치환을
+    // 유발하므로 비차단 경고로 노출한다(기존 통과/에러 동작은 변경하지 않음).
+    metadata.fontCount = fontResult.fontCount;
+    metadata.hasUnembeddedFonts = fontResult.hasUnembeddedFonts;
+    metadata.unembeddedFonts = fontResult.unembeddedFonts;
+
+    if (fontResult.hasUnembeddedFonts) {
+      const unembeddedFonts = fontResult.unembeddedFonts;
+      this.logger.debug(
+        `Unembedded fonts detected: ${unembeddedFonts.join(', ')}`,
+      );
+      warnings.push({
+        code: WarningCode.FONT_NOT_EMBEDDED,
+        message: `임베딩되지 않은 폰트가 ${unembeddedFonts.length}개 있습니다(${unembeddedFonts.join(', ')}). 폰트를 아웃라인 처리하거나 임베딩(서브셋 포함)해 다시 업로드해 주세요.`,
+        details: {
+          unembeddedFonts,
+          fontCount: fontResult.fontCount,
+        },
+        autoFixable: false,
+      });
+    }
+  }
+
+  /**
+   * 트랙 B-(d): 경량(스트리밍) 검증 ON 경로.
+   *
+   * 기존 validate()(OFF) 는 파일 전체를 메모리(Uint8Array)에 올리고 pdf-lib 로 load 하므로
+   * 2GB 파일에서 OOM 이 난다. 이 경로는 같은 검증 규칙을 유지하되:
+   *   - 다운로드: 스트림으로 임시파일에 흘려 상수 메모리(downloadToTempFile).
+   *   - 메타/페이지치수: qpdf(extractPdfMetadataQpdf) — pdf-lib load 우회.
+   *   - 검출 5종: 8MB 청크 스트리밍 스캔(scanPdfStreaming) — 전체버퍼 우회.
+   * 결과(errors/warnings/metadata)는 OFF 경로와 **동일**해야 한다(파리티 하니스로 검증).
+   */
+  private async validateLightweight(
+    fileUrl: string,
+    options: ValidationOptions,
+  ): Promise<ValidationResultDto> {
+    // 초기화는 validate() 와 동일.
+    const errors: ValidationError[] = [];
+    const warnings: ValidationWarning[] = [];
+    const metadata: PdfMetadata = {
+      pageCount: 0,
+      pageSize: { width: 0, height: 0 },
+      hasBleed: false,
+      colorMode: 'RGB',
+      resolution: 300,
+    };
+
+    // 스트림 다운로드(임시파일). 로컬 원본이면 복사 없이 경로만 잡고 cleanup 은 no-op.
+    const dl = await downloadToTempFile(fileUrl);
+    try {
+      // 2. 파일 크기 검증 (OFF 와 동일 메시지/details/조기반환)
+      const maxFileSize = options.maxFileSize ?? DEFAULT_MAX_FILE_SIZE;
+      if (dl.size > maxFileSize) {
+        errors.push({
+          code: ErrorCode.FILE_TOO_LARGE,
+          message: `파일 크기가 ${Math.round(maxFileSize / 1024 / 1024)}MB를 초과합니다.`,
+          details: {
+            expected: maxFileSize,
+            actual: dl.size,
+          },
+          autoFixable: false,
+        });
+        return { isValid: false, errors, warnings, metadata };
+      }
+
+      // 3. 메타데이터 추출(qpdf) + 손상 판정 (OFF 의 pdf-lib load 실패와 동일 의미)
+      const meta = await extractPdfMetadataQpdf(dl.path);
+      if (meta.corrupted) {
+        errors.push({
+          code: ErrorCode.FILE_CORRUPTED,
+          message: '파일이 손상되었습니다. 다시 업로드해주세요.',
+          details: {
+            actual: 'qpdf: page extraction failed (corrupted or unreadable PDF)',
+          },
+          autoFixable: false,
+        });
+        return { isValid: false, errors, warnings, metadata };
+      }
+
+      // 페이지 객체 확보: qpdf 치수가 있으면 그대로(PDFPage 듀얼로 getSize 만 노출),
+      // 드문 폴백(ok:false·corrupted:false = 로드 가능하나 치수 미해석)에서는 pdf-lib 로 치수만 보강.
+      let pages: PDFPage[];
+      if (meta.ok && meta.pages.length > 0) {
+        pages = meta.pages.map(
+          (d) => ({ getSize: () => ({ width: d.widthPt, height: d.heightPt }) }),
+        ) as unknown as PDFPage[];
+      } else {
+        // 드문 폴백: qpdf+pdfinfo 둘 다 치수 미해석(파일은 로드 가능). pdf-lib 로 치수만 보강.
+        // ⚠️ 전체버퍼 적재 경로 → 대형 파일은 거부(2GB OOM 차단, 상수메모리 불변식 보존).
+        //    메타 추출이 전부 실패하는 극히 드문 경우이며, 큰 파일에서만 거부된다.
+        if (dl.size > VALIDATION_CONFIG.LARGE_FILE_THRESHOLD) {
+          throw new Error(
+            `metadata unresolved for large file (${dl.size} bytes); refusing full-buffer fallback`,
+          );
+        }
+        const buf = await fs.readFile(dl.path);
+        pages = (await PDFDocument.load(buf)).getPages();
+      }
+      // pageCount: 정상(meta.ok)=qpdf npages, 폴백=pdf-lib pages.length(OFF 와 동일 단일소스).
+      const pageCount =
+        meta.ok && meta.pageCount > 0 ? meta.pageCount : pages.length;
+
+      // 4. 메타데이터(치수) — OFF 와 동일 (firstPage.getSize → mm 변환)
+      const firstPage = pages[0];
+      const { width, height } = firstPage.getSize();
+      const widthMm = width * 0.352778;
+      const heightMm = height * 0.352778;
+
+      metadata.pageCount = pageCount;
+      metadata.pageSize = {
+        width: Math.round(widthMm * 10) / 10,
+        height: Math.round(heightMm * 10) / 10,
+      };
+
+      // 5~11. 페이지/사이즈/블리드/책등/방향/사철/스프레드 검증 — OFF 와 동일 헬퍼.
+      this.validatePageCount(pageCount, options, errors, warnings);
+      this.validatePageSize(widthMm, heightMm, options, errors, metadata);
+      this.validateBleed(widthMm, heightMm, options, warnings, metadata);
+      if (options.fileType === 'cover') {
+        this.validateSpine(widthMm, options, errors, metadata);
+      }
+      this.validatePageOrientation(
+        pages,
+        warnings,
+        options.orderOptions.expectedOrientation,
+      );
+      if (options.orderOptions.binding === 'saddle') {
+        this.validateSaddleStitch(pageCount, errors, warnings);
+      }
+      const spreadResult = this.detectSpreadFormat(
+        pages,
+        options.orderOptions.size.width,
+        options.orderOptions.size.height,
+        options.orderOptions.bleed ?? DEFAULT_BLEED,
+      );
+      metadata.spreadInfo = {
+        isSpread: spreadResult.isSpread,
+        score: spreadResult.score,
+        confidence: spreadResult.confidence,
+        detectedType: spreadResult.detectedType,
+      };
+      if (spreadResult.warnings.length > 0) {
+        spreadResult.warnings.forEach((msg) => {
+          warnings.push({
+            code: WarningCode.MIXED_PDF,
+            message: msg,
+            autoFixable: false,
+          });
+        });
+      }
+
+      // 12~16. 검출 5종(스트리밍 스캔). 색상모드는 GS inkcov 경로를 OFF 와 동일하게 타되,
+      // 1차 CMYK 구조·파일크기만 스캔 결과로 주입(전체버퍼 의존 제거).
+      // 이미지 DPI 의 페이지 치수는 스캐너가 OFF 와 동일하게 '평문 첫 MediaBox/A4' 로 자체 결정한다
+      // (qpdf widthMm/heightMm 주입 금지 — OFF detectImageResolutionFromPdf 와 파리티 위해).
+      const scan = await scanPdfStreaming(dl.path, {
+        minDpi: VALIDATION_CONFIG.MIN_ACCEPTABLE_DPI,
+      });
+      const colorModeResult = await this.detectColorMode(
+        new Uint8Array(0),
+        dl.path,
+        options.fileType,
+        { cmykStructure: scan.cmyk as CmykStructureResult, fileSize: dl.size },
+      );
+      const spotColorResult = scan.spot;
+      const transparencyResult = scan.transparency;
+      const resolutionResult = scan.resolution;
+      const fontResult = scan.fonts;
+
+      // OFF·ON 공통 매핑(추출 메서드).
+      this.applyDetectionWarnings(
+        colorModeResult,
+        spotColorResult,
+        transparencyResult,
+        resolutionResult,
+        fontResult,
+        options,
+        errors,
+        warnings,
+        metadata,
+      );
+
+      this.logger.log(
+        `Validation complete: ${errors.length === 0 ? 'PASS' : 'FAIL'} (errors: ${errors.length}, warnings: ${warnings.length})`,
+      );
+
+      return {
+        isValid: errors.length === 0,
+        errors,
+        warnings,
+        metadata,
+      };
+    } catch (error) {
+      // OFF catch 와 동일 메시지/형식.
+      this.logger.error(`Validation failed: ${error.message}`, error.stack);
+      errors.push({
+        code: ErrorCode.FILE_CORRUPTED,
+        message: `파일 처리 중 오류가 발생했습니다: ${error.message}`,
+        details: { actual: error.message },
+        autoFixable: false,
+      });
+      return { isValid: false, errors, warnings, metadata };
+    } finally {
+      await dl.cleanup();
     }
   }
 
@@ -1001,11 +1230,15 @@ export class PdfValidatorService {
     pdfBytes: Uint8Array,
     inputPath: string,
     fileType?: string,
+    // 경량(ON) 경로 전용 선택 인자. 스트리밍 스캔이 이미 구한 CMYK 구조와 파일크기를
+    // 주입해 pdfBytes 전체버퍼 의존(detectCmykStructure·pdfBytes.length)을 우회한다.
+    // 미전달(OFF 경로) 시 동작은 기존과 완전히 동일하다.
+    precomputed?: { cmykStructure: CmykStructureResult; fileSize: number },
   ): Promise<ColorModeResult> {
     const warnings: string[] = [];
 
-    // 1차: 구조적 CMYK 감지
-    const cmykStructure = this.detectCmykStructure(pdfBytes);
+    // 1차: 구조적 CMYK 감지 (ON 경로는 스트리밍 스캔 결과를 재사용)
+    const cmykStructure = precomputed?.cmykStructure ?? this.detectCmykStructure(pdfBytes);
 
     // CMYK 시그니처가 없으면 RGB로 판정 (GS 호출 생략)
     if (!cmykStructure.suspectedCmyk) {
@@ -1032,8 +1265,8 @@ export class PdfValidatorService {
         };
       }
 
-      // 파일 크기 확인 - 대형 파일은 GS 분석 생략
-      const fileSize = pdfBytes.length;
+      // 파일 크기 확인 - 대형 파일은 GS 분석 생략 (ON 경로는 dl.size 를 주입)
+      const fileSize = precomputed?.fileSize ?? pdfBytes.length;
       if (fileSize > VALIDATION_CONFIG.LARGE_FILE_THRESHOLD) {
         warnings.push(
           `파일이 ${Math.round(fileSize / 1024 / 1024)}MB로 대형 파일입니다. 구조 기반으로 추정합니다.`,

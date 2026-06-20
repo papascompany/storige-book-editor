@@ -17,6 +17,15 @@ export const VALIDATION_CONFIG = {
   /** 대형 파일 임계값 - GS 분석 선택적 (50MB) */
   LARGE_FILE_THRESHOLD: 50 * 1024 * 1024,
 
+  // 트랙 B-(d): 경량 검증(스트리밍) 경로 토글
+  /**
+   * true 면 검증을 ON 경로(스트림 다운로드 + qpdf 메타 + 청크 스트리밍 검출)로 수행 →
+   * 2GB 도 상수 메모리. false(기본)면 기존 OFF 경로(전체버퍼 + pdf-lib.load) 유지.
+   * 파리티(구↔신 결과 동일) 검증 통과 후 env WORKER_LIGHTWEIGHT_VALIDATION=true 로 활성.
+   */
+  LIGHTWEIGHT_VALIDATION:
+    String(process.env.WORKER_LIGHTWEIGHT_VALIDATION || '').toLowerCase() === 'true',
+
   // 스프레드(펼침면) 감지
   /** 스프레드 판정 점수 임계값 */
   SPREAD_SCORE_THRESHOLD: 70,
