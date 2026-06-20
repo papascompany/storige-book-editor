@@ -43,7 +43,7 @@ function collectPdfs(dir: string): string[] {
   return out;
 }
 
-const FIXTURE_DIR = path.join(__dirname, 'fixtures', 'pdf');
+const FIXTURE_DIR = path.join(__dirname, '..', 'test', 'fixtures', 'pdf');
 
 // 옵션 변형 — 서로 다른 검증 분기(spine/saddle/방향/스프레드)를 함께 운동시킨다.
 function optsVariants(): { label: string; opts: ValidationOptions }[] {
