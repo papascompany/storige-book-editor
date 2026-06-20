@@ -12,6 +12,13 @@ import {
 import { SynthesisLocalResult, SplitResult, SpreadSynthesisLocalResult } from '@storige/types';
 import { DomainError, ErrorCodes } from '../common/errors';
 import { isApiMarker, downloadViaApi } from './api-file-download';
+import { VALIDATION_CONFIG } from '../config/validation.config';
+import { downloadToTempFile } from '../utils/stream-download';
+import { extractPdfMetadataQpdf } from '../utils/pdf-metadata-qpdf';
+import {
+  assemblePdf as qpdfAssemble,
+  mergePdfs as qpdfMergePdfs,
+} from '../utils/pdf-merge-qpdf';
 
 export interface SynthesisOptions {
   /** 표지 PDF URL 또는 파일 경로 */
@@ -82,11 +89,9 @@ export class PdfSynthesizerService {
       `source_content_${uuidv4()}.pdf`,
     );
 
-    const coverBytes = await this.downloadFile(coverPdfUrl);
-    const contentBytes = await this.downloadFile(contentPdfUrl);
-
-    await fs.writeFile(sourceCoverPath, coverBytes);
-    await fs.writeFile(sourceContentPath, contentBytes);
+    // 트랙 B-(f): ON 이면 스트림 다운로드(상수메모리), OFF 면 기존 전체버퍼. 산출 파일 동일.
+    await this.downloadToPath(coverPdfUrl, sourceCoverPath);
+    await this.downloadToPath(contentPdfUrl, sourceContentPath);
 
     // 2. merged PDF 생성 (항상)
     const mergedPath = path.join(this.storagePath, `merged_${uuidv4()}.pdf`);
@@ -243,12 +248,17 @@ export class PdfSynthesizerService {
     // perfect binding: 표지 전면 + 내지 전체 + 표지 후면
     // saddle stitch: 내지 페이지를 saddle stitch 순서로 재배열
 
-    // pdf-lib로 표지 구조 분석
-    const coverDoc = await PDFDocument.load(await fs.readFile(coverPath));
-    const contentDoc = await PDFDocument.load(await fs.readFile(contentPath));
-
-    const coverPageCount = coverDoc.getPageCount();
-    const contentPageCount = contentDoc.getPageCount();
+    // 트랙 B-(f): ON 이면 표지 구조 분석을 qpdf 메타(파일기반)로. OFF 면 pdf-lib load (불변).
+    const lightweight = VALIDATION_CONFIG.LIGHTWEIGHT_SYNTHESIS;
+    let coverPageCount: number;
+    if (lightweight) {
+      coverPageCount = (await extractPdfMetadataQpdf(coverPath)).pageCount;
+    } else {
+      const coverDoc = await PDFDocument.load(await fs.readFile(coverPath));
+      // contentDoc 은 OFF 에서도 페이지수만 쓰지 않으므로 로드만(부수효과 없음, 불변 유지)
+      await PDFDocument.load(await fs.readFile(contentPath));
+      coverPageCount = coverDoc.getPageCount();
+    }
 
     // 임시 파일 경로들
     const tempFiles: string[] = [];
@@ -269,6 +279,7 @@ export class PdfSynthesizerService {
         );
         tempFiles.push(composedCoverPath);
 
+        // saddle 표지 2-up 합성은 소형 산출 → ON/OFF 공통으로 pdf-lib 유지(거대 content 무관).
         await this.composeSaddleCover(
           coverPath,
           composedCoverPath,
@@ -276,40 +287,71 @@ export class PdfSynthesizerService {
         );
 
         // 합성된 표지 + 내지 (단일 페이지) 병합
-        await mergePdfs([composedCoverPath, contentPath], outputPath);
+        if (lightweight) {
+          await qpdfAssemble(
+            [{ file: composedCoverPath }, { file: contentPath }],
+            outputPath,
+          );
+        } else {
+          await mergePdfs([composedCoverPath, contentPath], outputPath);
+        }
       } else {
         // Perfect binding 또는 hardcover
         if (coverPageCount >= 2) {
           // 표지가 2페이지 이상: 전면표지, 내지, 후면표지
-          const frontCoverPath = path.join(
-            this.storagePath,
-            `front_${uuidv4()}.pdf`,
-          );
-          const backCoverPath = path.join(
-            this.storagePath,
-            `back_${uuidv4()}.pdf`,
-          );
+          if (lightweight) {
+            // qpdf 페이지범위로 직접 합성: [표지 첫p, 내지 전체, 표지 마지막p].
+            // 페이지 추출 임시파일 없이 순서 그대로 이어붙임(상수메모리·치수/인쇄속성 무손실).
+            //  표기: 전면=cover "1"(1-based 첫 페이지), 후면=cover "z"(마지막 페이지).
+            await qpdfAssemble(
+              [
+                { file: coverPath, range: '1' },
+                { file: contentPath },
+                { file: coverPath, range: 'z' },
+              ],
+              outputPath,
+            );
+          } else {
+            const frontCoverPath = path.join(
+              this.storagePath,
+              `front_${uuidv4()}.pdf`,
+            );
+            const backCoverPath = path.join(
+              this.storagePath,
+              `back_${uuidv4()}.pdf`,
+            );
 
-          // 표지를 전면/후면으로 분리
-          await this.extractPages(coverPath, frontCoverPath, [0]);
-          await this.extractPages(coverPath, backCoverPath, [
-            coverPageCount - 1,
-          ]);
+            // 표지를 전면/후면으로 분리
+            await this.extractPages(coverPath, frontCoverPath, [0]);
+            await this.extractPages(coverPath, backCoverPath, [
+              coverPageCount - 1,
+            ]);
 
-          tempFiles.push(frontCoverPath, backCoverPath);
+            tempFiles.push(frontCoverPath, backCoverPath);
 
-          // 병합: 전면표지 + 내지 + 후면표지
-          await mergePdfs(
-            [frontCoverPath, contentPath, backCoverPath],
-            outputPath,
-          );
+            // 병합: 전면표지 + 내지 + 후면표지
+            await mergePdfs(
+              [frontCoverPath, contentPath, backCoverPath],
+              outputPath,
+            );
+          }
         } else {
           // 표지가 1페이지: 그대로 병합
-          await mergePdfs([coverPath, contentPath], outputPath);
+          if (lightweight) {
+            await qpdfAssemble(
+              [{ file: coverPath }, { file: contentPath }],
+              outputPath,
+            );
+          } else {
+            await mergePdfs([coverPath, contentPath], outputPath);
+          }
         }
       }
 
-      // 최종 페이지 수 확인
+      // 최종 페이지 수 확인 (ON: qpdf 메타, OFF: pdf-lib load)
+      if (lightweight) {
+        return (await extractPdfMetadataQpdf(outputPath)).pageCount;
+      }
       const finalDoc = await PDFDocument.load(await fs.readFile(outputPath));
       return finalDoc.getPageCount();
     } finally {
@@ -579,6 +621,14 @@ export class PdfSynthesizerService {
     contentPath: string,
     outputPath: string,
   ): Promise<void> {
+    // 트랙 B-(f): ON 이면 qpdf 파일기반 병합(상수메모리·순서/치수/인쇄속성 무손실).
+    if (VALIDATION_CONFIG.LIGHTWEIGHT_SYNTHESIS) {
+      await qpdfMergePdfs([coverPath, contentPath], outputPath);
+      const pageCount = (await extractPdfMetadataQpdf(outputPath)).pageCount;
+      this.logger.log(`Merged PDF created: ${outputPath} (${pageCount} pages)`);
+      return;
+    }
+
     const coverDoc = await PDFDocument.load(await fs.readFile(coverPath));
     const contentDoc = await PDFDocument.load(await fs.readFile(contentPath));
 
@@ -651,6 +701,36 @@ export class PdfSynthesizerService {
   }
 
   /**
+   * 트랙 B-(f) — 빈(0페이지) PDF 1개 작성. ON 의 spread content 병합에서 내지가 0건일 때
+   * OFF(`PDFDocument.create()+save()`, 0페이지)와 동일 산출을 내기 위함(qpdf 는 0건 병합 불가).
+   */
+  private async writeEmptyPdf(destPath: string): Promise<void> {
+    const doc = await PDFDocument.create();
+    await fs.writeFile(destPath, await doc.save());
+  }
+
+  /**
+   * 트랙 B-(f) — url 을 destPath 에 확보한다.
+   *   ON (LIGHTWEIGHT_SYNTHESIS) : downloadToTempFile 로 스트림 다운로드(메모리 비경유) 후
+   *                                destPath 로 복사. 로컬 원본도 동일하게 destPath 로 복사한다
+   *                                (OFF 가 downloadFile→writeFile 로 destPath 파일을 만들던 것과 동일 산출).
+   *   OFF                        : 기존 downloadFile(전체버퍼)→writeFile (불변).
+   */
+  private async downloadToPath(url: string, destPath: string): Promise<void> {
+    if (VALIDATION_CONFIG.LIGHTWEIGHT_SYNTHESIS) {
+      const dl = await downloadToTempFile(url);
+      try {
+        await fs.copyFile(dl.path, destPath);
+      } finally {
+        await dl.cleanup();
+      }
+      return;
+    }
+    const bytes = await this.downloadFile(url);
+    await fs.writeFile(destPath, bytes);
+  }
+
+  /**
    * Safely delete a file
    */
   private async safeDelete(filePath: string): Promise<void> {
@@ -717,15 +797,41 @@ export class PdfSynthesizerService {
       );
     }
 
+    const lightweight = VALIDATION_CONFIG.LIGHTWEIGHT_SYNTHESIS;
+
     const spreadPdfPath = path.join(jobTempDir, `spread_${spreadPdfFileId}.pdf`);
-    const spreadBytes = await this.downloadFile(
-      spreadFile.storageBackend === 's3' ? `api://${spreadFile.id}` : spreadFile.filePath,
-    );
-    await fs.writeFile(spreadPdfPath, spreadBytes);
+    const spreadSourceUrl =
+      spreadFile.storageBackend === 's3' ? `api://${spreadFile.id}` : spreadFile.filePath;
+    // 트랙 B-(f): ON 이면 스트림 다운로드(상수메모리), OFF 면 기존 전체버퍼. 산출 파일 동일.
+    await this.downloadToPath(spreadSourceUrl, spreadPdfPath);
 
     // 2-1. 스프레드 PDF 검증: 1페이지 + MediaBox 일치
-    const spreadPdf = await PDFDocument.load(spreadBytes);
-    const spreadPageCount = spreadPdf.getPageCount();
+    //   ON : qpdf 메타(파일기반)로 페이지수·첫 페이지 치수(pt). OFF : pdf-lib load (불변).
+    //   pdf-lib getSize()=(urx-llx, ury-lly) 와 qpdf widthPt/heightPt 동일 보장 → 검증 산출 동일.
+    let spreadPageCount: number;
+    let pdfWidthPt: number;
+    let pdfHeightPt: number;
+    if (lightweight) {
+      const meta = await extractPdfMetadataQpdf(spreadPdfPath);
+      spreadPageCount = meta.pageCount;
+      // 치수 미해석(빈 pages) 시 pdf-lib 1회 폴백(검증 게이트가 NaN 으로 새지 않게).
+      if (meta.pages.length > 0) {
+        pdfWidthPt = meta.pages[0].widthPt;
+        pdfHeightPt = meta.pages[0].heightPt;
+      } else {
+        const spreadPdf = await PDFDocument.load(await fs.readFile(spreadPdfPath));
+        spreadPageCount = spreadPdf.getPageCount();
+        const sz = spreadPdf.getPage(0).getSize();
+        pdfWidthPt = sz.width;
+        pdfHeightPt = sz.height;
+      }
+    } else {
+      const spreadPdf = await PDFDocument.load(await fs.readFile(spreadPdfPath));
+      spreadPageCount = spreadPdf.getPageCount();
+      const spreadPage = spreadPdf.getPage(0);
+      pdfWidthPt = spreadPage.getSize().width;
+      pdfHeightPt = spreadPage.getSize().height;
+    }
 
     if (spreadPageCount !== 1) {
       throw new DomainError(
@@ -735,8 +841,6 @@ export class PdfSynthesizerService {
     }
 
     // MediaBox 사이즈 검증 (오차 허용: 0.2mm 또는 1px@dpi)
-    const spreadPage = spreadPdf.getPage(0);
-    const { width: pdfWidthPt, height: pdfHeightPt } = spreadPage.getSize();
     const pdfWidthMm = pdfWidthPt * 25.4 / 72;
     const pdfHeightMm = pdfHeightPt * 25.4 / 72;
 
@@ -769,10 +873,10 @@ export class PdfSynthesizerService {
       }
 
       const contentPdfPath = path.join(jobTempDir, `content_${fileId}.pdf`);
-      const contentBytes = await this.downloadFile(
-        contentFile.storageBackend === 's3' ? `api://${contentFile.id}` : contentFile.filePath,
-      );
-      await fs.writeFile(contentPdfPath, contentBytes);
+      const contentSourceUrl =
+        contentFile.storageBackend === 's3' ? `api://${contentFile.id}` : contentFile.filePath;
+      // 트랙 B-(f): ON 이면 스트림 다운로드(상수메모리), OFF 면 기존 전체버퍼. 산출 파일 동일.
+      await this.downloadToPath(contentSourceUrl, contentPdfPath);
       contentPdfPaths.push(contentPdfPath);
     }
 
@@ -781,49 +885,72 @@ export class PdfSynthesizerService {
     await fs.copyFile(spreadPdfPath, coverPath);
 
     // 5. content.pdf 생성 (내지 PDF들 순서대로 병합)
+    //    출력 순서 = contentPdfPaths 배열 순서 그대로(파리티). 빈 배열이면 빈 content(0p) 생성.
     const contentPath = path.join(jobTempDir, 'content.pdf');
-    const mergedContentPdf = await PDFDocument.create();
-
     let totalContentPages = 0;
-    for (const contentPdfPath of contentPdfPaths) {
-      const contentPdfBytes = await fs.readFile(contentPdfPath);
-      const contentPdf = await PDFDocument.load(contentPdfBytes);
-      const pageCount = contentPdf.getPageCount();
 
-      for (let i = 0; i < pageCount; i++) {
-        const [copiedPage] = await mergedContentPdf.copyPages(contentPdf, [i]);
-        mergedContentPdf.addPage(copiedPage);
-        totalContentPages++;
+    if (lightweight) {
+      // ON: qpdf 파일기반 병합(상수메모리·치수/인쇄속성 무손실). 페이지수는 qpdf 메타로.
+      if (contentPdfPaths.length === 0) {
+        await this.writeEmptyPdf(contentPath);
+        totalContentPages = 0;
+      } else {
+        await qpdfAssemble(
+          contentPdfPaths.map((file) => ({ file })),
+          contentPath,
+        );
+        totalContentPages = (await extractPdfMetadataQpdf(contentPath)).pageCount;
       }
+    } else {
+      const mergedContentPdf = await PDFDocument.create();
+      for (const contentPdfPath of contentPdfPaths) {
+        const contentPdfBytes = await fs.readFile(contentPdfPath);
+        const contentPdf = await PDFDocument.load(contentPdfBytes);
+        const pageCount = contentPdf.getPageCount();
+
+        for (let i = 0; i < pageCount; i++) {
+          const [copiedPage] = await mergedContentPdf.copyPages(contentPdf, [i]);
+          mergedContentPdf.addPage(copiedPage);
+          totalContentPages++;
+        }
+      }
+      const mergedContentBytes = await mergedContentPdf.save();
+      await fs.writeFile(contentPath, mergedContentBytes);
     }
 
-    const mergedContentBytes = await mergedContentPdf.save();
-    await fs.writeFile(contentPath, mergedContentBytes);
-
-    // 6. merged.pdf 생성 (선택)
+    // 6. merged.pdf 생성 (선택) — 순서: cover(1p) + content(N페이지)
     let mergedPath: string | undefined = undefined;
     if (alsoGenerateMerged) {
       mergedPath = path.join(jobTempDir, 'merged.pdf');
-      const finalMergedPdf = await PDFDocument.create();
 
-      // cover.pdf 추가 (1페이지)
-      const coverPdfBytes = await fs.readFile(coverPath);
-      const coverPdf = await PDFDocument.load(coverPdfBytes);
-      const [copiedCoverPage] = await finalMergedPdf.copyPages(coverPdf, [0]);
-      finalMergedPdf.addPage(copiedCoverPage);
+      if (lightweight) {
+        // ON: cover.pdf 첫 페이지 + content.pdf 전체를 qpdf 로 이어붙임.
+        await qpdfAssemble(
+          [{ file: coverPath, range: '1' }, { file: contentPath }],
+          mergedPath,
+        );
+      } else {
+        const finalMergedPdf = await PDFDocument.create();
 
-      // content.pdf 추가 (N페이지)
-      const contentPdfBytes = await fs.readFile(contentPath);
-      const contentPdf = await PDFDocument.load(contentPdfBytes);
-      const contentPageCount = contentPdf.getPageCount();
+        // cover.pdf 추가 (1페이지)
+        const coverPdfBytes = await fs.readFile(coverPath);
+        const coverPdf = await PDFDocument.load(coverPdfBytes);
+        const [copiedCoverPage] = await finalMergedPdf.copyPages(coverPdf, [0]);
+        finalMergedPdf.addPage(copiedCoverPage);
 
-      for (let i = 0; i < contentPageCount; i++) {
-        const [copiedPage] = await finalMergedPdf.copyPages(contentPdf, [i]);
-        finalMergedPdf.addPage(copiedPage);
+        // content.pdf 추가 (N페이지)
+        const contentPdfBytes = await fs.readFile(contentPath);
+        const contentPdf = await PDFDocument.load(contentPdfBytes);
+        const contentPageCount = contentPdf.getPageCount();
+
+        for (let i = 0; i < contentPageCount; i++) {
+          const [copiedPage] = await finalMergedPdf.copyPages(contentPdf, [i]);
+          finalMergedPdf.addPage(copiedPage);
+        }
+
+        const finalMergedBytes = await finalMergedPdf.save();
+        await fs.writeFile(mergedPath, finalMergedBytes);
       }
-
-      const finalMergedBytes = await finalMergedPdf.save();
-      await fs.writeFile(mergedPath, finalMergedBytes);
 
       this.logger.log(`Generated merged.pdf with ${1 + totalContentPages} pages`);
     }

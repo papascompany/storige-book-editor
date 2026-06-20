@@ -6,6 +6,9 @@ import axios from 'axios';
 import { PDFDocument } from 'pdf-lib';
 import { pdfToImage } from '../utils/ghostscript';
 import { isApiMarker, downloadViaApi } from './api-file-download';
+import { VALIDATION_CONFIG } from '../config/validation.config';
+import { downloadToTempFile } from '../utils/stream-download';
+import { extractPdfMetadataQpdf } from '../utils/pdf-metadata-qpdf';
 
 export interface RenderPagesResult {
   /** 페이지 순서대로의 이미지 상대 URL ('/storage/...') */
@@ -86,35 +89,49 @@ export class PdfPageRendererService {
     jobId: string,
     pageCount?: number,
   ): Promise<RenderPagesResult> {
-    const bytes = await this.loadBytes(fileUrl);
+    // 트랙 B-(f): ON 이면 스트림 다운로드(상수메모리) + qpdf 페이지수. OFF 면 기존 전체버퍼+pdf-lib.
+    const lightweight = VALIDATION_CONFIG.LIGHTWEIGHT_SYNTHESIS;
 
-    // 페이지 수 결정 — 전달값 우선, 없으면 pdf-lib
-    let sourcePageCount = pageCount ?? 0;
-    if (!sourcePageCount || sourcePageCount < 1) {
-      const doc = await PDFDocument.load(bytes, { updateMetadata: false });
-      sourcePageCount = doc.getPageCount();
-    }
-
-    let renderCount = sourcePageCount;
-    let truncated = false;
-    if (renderCount > this.maxPages) {
-      this.logger.warn(
-        `content-pdf-guide[${jobId}]: pageCount ${renderCount} > 상한 ${this.maxPages} — 상한까지만 래스터`,
-      );
-      renderCount = this.maxPages;
-      truncated = true;
-    }
-
-    // GS 입력용 임시 PDF
+    // GS 입력용 임시 PDF 디렉토리(ON/OFF 공통)
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cpg-'));
-    const inputPath = path.join(tmpDir, 'input.pdf');
-    await fs.writeFile(inputPath, bytes);
+    // ON 경로 다운로드 핸들(임시면 삭제, 로컬원본이면 no-op). finally 에서 정리.
+    let lwCleanup: (() => Promise<void>) | null = null;
 
-    const outDir = path.join(this.storagePath, this.guidesDir, jobId);
-    await fs.mkdir(outDir, { recursive: true });
-
-    const pageImageUrls: string[] = [];
     try {
+      let inputPath: string;
+      let sourcePageCount = pageCount ?? 0;
+
+      if (lightweight) {
+        const dl = await downloadToTempFile(fileUrl);
+        lwCleanup = dl.cleanup;
+        inputPath = dl.path; // GS 입력으로 다운로드 파일을 그대로 사용(메모리 비경유)
+        if (!sourcePageCount || sourcePageCount < 1) {
+          sourcePageCount = (await extractPdfMetadataQpdf(inputPath)).pageCount;
+        }
+      } else {
+        const bytes = await this.loadBytes(fileUrl);
+        if (!sourcePageCount || sourcePageCount < 1) {
+          const doc = await PDFDocument.load(bytes, { updateMetadata: false });
+          sourcePageCount = doc.getPageCount();
+        }
+        inputPath = path.join(tmpDir, 'input.pdf');
+        await fs.writeFile(inputPath, bytes);
+      }
+
+      let renderCount = sourcePageCount;
+      let truncated = false;
+      if (renderCount > this.maxPages) {
+        this.logger.warn(
+          `content-pdf-guide[${jobId}]: pageCount ${renderCount} > 상한 ${this.maxPages} — 상한까지만 래스터`,
+        );
+        renderCount = this.maxPages;
+        truncated = true;
+      }
+
+      const outDir = path.join(this.storagePath, this.guidesDir, jobId);
+      await fs.mkdir(outDir, { recursive: true });
+
+      const pageImageUrls: string[] = [];
       for (let p = 1; p <= renderCount; p++) {
         const outPath = path.join(outDir, `page_${p}.png`);
         // pdfToImage 는 페이지당 30s 타임아웃(WK-3, GS_RASTER_TIMEOUT_MS) + 페이지 상한으로 폭주 방지.
@@ -128,16 +145,17 @@ export class PdfPageRendererService {
       this.logger.log(
         `content-pdf-guide[${jobId}]: ${pageImageUrls.length}/${sourcePageCount}p @${this.dpi}dpi`,
       );
+
+      return {
+        pageImageUrls,
+        pageCount: renderCount,
+        resolution: this.dpi,
+        sourcePageCount,
+        truncated,
+      };
     } finally {
       await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+      if (lwCleanup) await lwCleanup().catch(() => {});
     }
-
-    return {
-      pageImageUrls,
-      pageCount: renderCount,
-      resolution: this.dpi,
-      sourcePageCount,
-      truncated,
-    };
   }
 }

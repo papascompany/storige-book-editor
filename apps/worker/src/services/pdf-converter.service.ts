@@ -13,6 +13,12 @@ import {
   getPdfInfo,
 } from '../utils/ghostscript';
 import { isApiMarker, downloadViaApi } from './api-file-download';
+import { VALIDATION_CONFIG } from '../config/validation.config';
+import { downloadToTempFile } from '../utils/stream-download';
+import {
+  extractPdfMetadataQpdf,
+  getPdfInfoQpdf,
+} from '../utils/pdf-metadata-qpdf';
 
 export interface ConversionOptions {
   addPages: boolean;
@@ -83,10 +89,30 @@ export class PdfConverterService {
         this.logger.log(`Ghostscript available: ${this.gsAvailable}`);
       }
 
-      // 임시 파일로 다운로드
+      // ──────────────────────────────────────────────────────────────
+      // 트랙 B-(f) — 2GB 상수메모리 ON 경로(LIGHTWEIGHT_SYNTHESIS).
+      //   ON  : 입력을 스트림으로 임시파일에 흘려(메모리 비경유) 확보.
+      //   OFF : 기존 전체버퍼 다운로드(downloadFile) → writeFile (불변).
+      // 임포지션 코어(addBleed/resize/center=GS 파일기반)는 양쪽 동일하게 'tempInputPath'
+      // 파일을 입력으로 받으므로, 여기서 입력 확보 방식만 분기한다. ⚠️ 산출 동일.
+      // ──────────────────────────────────────────────────────────────
+      const lightweight = VALIDATION_CONFIG.LIGHTWEIGHT_SYNTHESIS;
       const tempInputPath = path.join(this.storagePath, `input_${uuidv4()}.pdf`);
-      const pdfBytes = await this.downloadFile(fileUrl);
-      await fs.writeFile(tempInputPath, pdfBytes);
+
+      if (lightweight) {
+        // 스트림 다운로드 → 디스크. 로컬 원본이면 그 경로를 그대로 복사(파리티: OFF 도
+        // 결국 tempInputPath 파일을 만들어 그 경로로 처리하므로 동일 입력 파일을 만든다).
+        // tempInputPath 정리는 OFF 와 동일하게 하단 safeDelete(tempInputPath) 가 담당.
+        const dl = await downloadToTempFile(fileUrl);
+        try {
+          await fs.copyFile(dl.path, tempInputPath);
+        } finally {
+          await dl.cleanup();
+        }
+      } else {
+        const pdfBytes = await this.downloadFile(fileUrl);
+        await fs.writeFile(tempInputPath, pdfBytes);
+      }
 
       // ──────────────────────────────────────────────────────────────
       // P4 — mode 자체결정 (2026-06-10).
@@ -98,7 +124,7 @@ export class PdfConverterService {
       // mode 가 명시되면 그 값을 그대로 사용(아래 분기 자체결정 skip).
       // editSize 가 없으면 결정하지 않음 → options.mode 가 계속 undefined →
       //   현행(레거시) 경로 100% 유지(편집기 PDF/admin 자동수정 무영향). ⚠️ 게이트.
-      const options = await this.resolveMode(rawOptions, tempInputPath);
+      const options = await this.resolveMode(rawOptions, tempInputPath, lightweight);
 
       let currentPath = tempInputPath;
       let pagesAdded = 0;
@@ -193,7 +219,7 @@ export class PdfConverterService {
         // mode 가 명시된 업로드 경로에서만 실행. 블리드/리사이즈/페이지추가 스킵.
         // 가짜 블리드 자동생성 안 함.
         // ──────────────────────────────────────────────────────────────
-        currentPath = await this.applyImpositionMode(tempInputPath, options);
+        currentPath = await this.applyImpositionMode(tempInputPath, options, lightweight);
       }
 
       // 4. 최종 파일로 복사
@@ -213,10 +239,32 @@ export class PdfConverterService {
       }
 
       // 6. 최종 PDF 정보 추출
-      const finalPdf = await PDFDocument.load(await fs.readFile(outputPath));
-      const finalPageCount = finalPdf.getPageCount();
-      const firstPage = finalPdf.getPage(0);
-      const { width, height } = firstPage.getSize();
+      //    ON  : extractPdfMetadataQpdf(파일기반·상수메모리)로 pageCount + 첫 페이지 치수(pt).
+      //          pdf-lib getSize()=(urx-llx, ury-lly) 와 동일 보장(스왑 없음) → 산출 동일.
+      //    OFF : 기존 pdf-lib load(전체바이트) (불변).
+      let finalPageCount: number;
+      let width: number;
+      let height: number;
+      if (lightweight) {
+        const meta = await extractPdfMetadataQpdf(outputPath);
+        finalPageCount = meta.pageCount;
+        // 첫 페이지 치수(pt). 메타 미해석 시 pdf-lib 로 1회 폴백(파리티 안전망).
+        if (meta.pages.length > 0) {
+          width = meta.pages[0].widthPt;
+          height = meta.pages[0].heightPt;
+        } else {
+          const finalPdf = await PDFDocument.load(await fs.readFile(outputPath));
+          finalPageCount = finalPdf.getPageCount();
+          const fp = finalPdf.getPage(0).getSize();
+          width = fp.width;
+          height = fp.height;
+        }
+      } else {
+        const finalPdf = await PDFDocument.load(await fs.readFile(outputPath));
+        finalPageCount = finalPdf.getPageCount();
+        const firstPage = finalPdf.getPage(0);
+        ({ width, height } = firstPage.getSize());
+      }
 
       // 임시 입력 파일 삭제
       await this.safeDelete(tempInputPath);
@@ -263,6 +311,7 @@ export class PdfConverterService {
   private async resolveMode(
     rawOptions: ConversionOptions,
     inputPath: string,
+    lightweight = false,
   ): Promise<ConversionOptions> {
     // 이미 mode 명시 또는 editSize 부재 → 자체결정 안 함(게이트).
     if (rawOptions.mode) return rawOptions;
@@ -282,7 +331,10 @@ export class PdfConverterService {
     let measuredW: number;
     let measuredH: number;
     try {
-      const info = await getPdfInfo(inputPath);
+      // ON: qpdf 파일기반 실측(상수메모리). OFF: pdf-lib getPdfInfo. 둘 다 mm·A4폴백 동일.
+      const info = lightweight
+        ? await getPdfInfoQpdf(inputPath)
+        : await getPdfInfo(inputPath);
       measuredW = info.width;
       measuredH = info.height;
     } catch (e) {
@@ -332,6 +384,7 @@ export class PdfConverterService {
   private async applyImpositionMode(
     inputPath: string,
     options: ConversionOptions,
+    lightweight = false,
   ): Promise<string> {
     const mode = options.mode;
     const tol = options.sizeToleranceMm ?? 0.2;
@@ -359,8 +412,10 @@ export class PdfConverterService {
       return inputPath;
     }
 
-    // 실측(첫 페이지 mm)
-    const info = await getPdfInfo(inputPath);
+    // 실측(첫 페이지 mm). ON: qpdf 파일기반(상수메모리), OFF: pdf-lib getPdfInfo. 산출 동일.
+    const info = lightweight
+      ? await getPdfInfoQpdf(inputPath)
+      : await getPdfInfo(inputPath);
     const measuredW = info.width;
     const measuredH = info.height;
 

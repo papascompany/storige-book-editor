@@ -9,6 +9,14 @@ import axios from 'axios';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import { captureJobException } from '../sentry/sentry.init';
+import { VALIDATION_CONFIG } from '../config/validation.config';
+import { downloadToTempFile } from '../utils/stream-download';
+import { extractPdfMetadataQpdf } from '../utils/pdf-metadata-qpdf';
+import {
+  assemblePdf as qpdfAssemble,
+  extractPages as qpdfExtractPages,
+  createBlankPdf,
+} from '../utils/pdf-merge-qpdf';
 import {
   SynthesisLocalResult,
   SynthesisResult,
@@ -170,6 +178,33 @@ export class SynthesisProcessor {
       await fs.mkdir(outputDir, { recursive: true });
       const storageKeyBase = `outputs/${jobId}`;
 
+      // ──────────────────────────────────────────────────────────────
+      // 트랙 B-(f) — compose-mixed 2GB 상수메모리 ON 경로(LIGHTWEIGHT_SYNTHESIS).
+      // pdf-lib copyPages 누적적재 대신 입력을 임시파일로 확보 → qpdf assemblePdf 로 순서대로
+      // 이어붙임(치수/별색/오버프린트 무손실). null 면지/빈 표지는 createBlankPdf(contentPt/coverPt).
+      // outputMode 별 산출(separate/content-only/single/merged)·outputFiles·result 매핑은 OFF 와 동일.
+      // ──────────────────────────────────────────────────────────────
+      if (VALIDATION_CONFIG.LIGHTWEIGHT_SYNTHESIS) {
+        const r = await this.composeMixedLightweight({
+          jobId,
+          queueJobId,
+          outputDir,
+          storageKeyBase,
+          outputMode,
+          coverPt,
+          contentPt,
+          composeCoverUrl,
+          composeCoverEditable,
+          composeFrontEndpaperUrls,
+          composeBackEndpaperUrls,
+          composeContentPdfUrl,
+          composeSpreadTotalWidthMm,
+          composeSpreadTotalHeightMm,
+          composeSpreadDpi,
+        });
+        return r;
+      }
+
       // 면지+내지 페이지를 하나의 PDF로 조립하는 헬퍼
       const buildContentPdf = async (): Promise<{ pdf: PDFDocument; pageCount: number }> => {
         const pdf = await PDFDocument.create();
@@ -321,6 +356,220 @@ export class SynthesisProcessor {
   }
 
   /**
+   * 트랙 B-(f) — compose-mixed 2GB 상수메모리 구현(LIGHTWEIGHT_SYNTHESIS ON).
+   *
+   * OFF(handleComposeMixedSynthesis 본문)와 '동일 산출'을 내야 한다:
+   *   - 출력 순서: [표지, 앞면지 1..N, 내지 PDF, 뒷면지 1..K] (content 조립은 면지+내지+면지 순서)
+   *   - null 면지/빈 표지: 빈 페이지(면지=contentPt, 표지=coverPt) — OFF 의 addPage([w,h]) 와 동치
+   *   - outputMode 별 산출/파일명/URL/pageCount, result.outputFileUrl, coverSizeValidation 매핑
+   * 차이는 '메모리 적재 없이 qpdf 로 파일기반 병합'뿐. 페이지 내용/치수/인쇄속성은 무손실.
+   */
+  private async composeMixedLightweight(args: {
+    jobId: string;
+    queueJobId: string | number;
+    outputDir: string;
+    storageKeyBase: string;
+    outputMode: string;
+    coverPt: { width: number; height: number };
+    contentPt: { width: number; height: number };
+    composeCoverUrl?: string;
+    composeCoverEditable?: boolean;
+    composeFrontEndpaperUrls?: (string | null)[];
+    composeBackEndpaperUrls?: (string | null)[];
+    composeContentPdfUrl?: string;
+    composeSpreadTotalWidthMm?: number;
+    composeSpreadTotalHeightMm?: number;
+    composeSpreadDpi?: number;
+  }): Promise<SynthesisResult> {
+    const {
+      jobId,
+      queueJobId,
+      outputDir,
+      storageKeyBase,
+      outputMode,
+      coverPt,
+      contentPt,
+      composeCoverUrl,
+      composeCoverEditable,
+      composeFrontEndpaperUrls,
+      composeBackEndpaperUrls,
+      composeContentPdfUrl,
+      composeSpreadTotalWidthMm,
+      composeSpreadTotalHeightMm,
+      composeSpreadDpi,
+    } = args;
+
+    // 생성/다운로드한 임시 파일들 — finally 에서 정리(출력물은 outputDir 라 별개).
+    const scratch: string[] = [];
+    const scratchCleanups: Array<() => Promise<void>> = [];
+    const mkTmp = (suffix: string) =>
+      path.join(outputDir, `__lw_${suffix}_${Math.random().toString(36).slice(2)}.pdf`);
+
+    // url 을 임시파일로 확보(스트림). null 이면 contentPt 빈 페이지 생성.
+    const partFromEndpaper = async (url: string | null): Promise<string> => {
+      if (!url) {
+        const blank = mkTmp('blank');
+        await createBlankPdf(contentPt.width, contentPt.height, blank);
+        scratch.push(blank);
+        return blank;
+      }
+      const dl = await downloadToTempFile(url);
+      // downloadToTempFile 는 로컬 원본이면 그 경로를 반환(cleanup no-op)하므로 그대로 part 로 사용.
+      // cleanup 은 finally 에서 일괄(임시면 삭제, 로컬원본이면 no-op).
+      scratchCleanups.push(dl.cleanup);
+      return dl.path;
+    };
+
+    // content 조립(면지+내지+면지)을 위한 part 파일 목록 생성.
+    const buildContentParts = async (): Promise<string[]> => {
+      const parts: string[] = [];
+      for (const url of composeFrontEndpaperUrls ?? []) {
+        parts.push(await partFromEndpaper(url));
+      }
+      if (composeContentPdfUrl) {
+        const dl = await downloadToTempFile(composeContentPdfUrl);
+        scratchCleanups.push(dl.cleanup);
+        parts.push(dl.path);
+      }
+      for (const url of composeBackEndpaperUrls ?? []) {
+        parts.push(await partFromEndpaper(url));
+      }
+      return parts;
+    };
+
+    // parts → outPath 병합 후 페이지수 반환. parts 가 비면 빈(0p) PDF.
+    const assembleToFile = async (parts: string[], outPath: string): Promise<number> => {
+      if (parts.length === 0) {
+        const doc = await PDFDocument.create();
+        await fs.writeFile(outPath, await doc.save());
+        return 0;
+      }
+      await qpdfAssemble(parts.map((file) => ({ file })), outPath);
+      return (await extractPdfMetadataQpdf(outPath)).pageCount;
+    };
+
+    let result: SynthesisResult;
+    const outputFiles: OutputFile[] = [];
+    let coverSizeValidation: Record<string, unknown> | undefined;
+
+    try {
+      if (outputMode === 'separate') {
+        // cover.pdf + content.pdf
+        const coverPath = path.join(outputDir, 'cover.pdf');
+        let coverPageCount: number;
+        if (composeCoverEditable !== false && composeCoverUrl) {
+          const dl = await downloadToTempFile(composeCoverUrl);
+          scratchCleanups.push(dl.cleanup);
+          const meta = await extractPdfMetadataQpdf(dl.path);
+          // P0-3: 스프레드 책이면 펼침면 cover MediaBox 무결성 검증(측정-주입판).
+          if (composeSpreadTotalWidthMm && composeSpreadTotalHeightMm) {
+            // qpdf 가 MediaBox 를 못 해석(meta.pages 비어있음)한 '정상' 표지에서 치수가
+            // undefined 가 되어 허위 COVER_SIZE 불일치/HARD-FAIL 이 나는 것을 방지:
+            // 표지는 소형이라 pdf-lib 로 치수만 보강한다(OFF=pdf-lib getSize 와 동일 소스).
+            let coverWidthPt = meta.pages[0]?.widthPt;
+            let coverHeightPt = meta.pages[0]?.heightPt;
+            if ((coverWidthPt == null || coverHeightPt == null) && meta.pageCount >= 1) {
+              try {
+                const cdoc = await PDFDocument.load(await fs.readFile(dl.path));
+                const sz = cdoc.getPage(0).getSize();
+                coverWidthPt = sz.width;
+                coverHeightPt = sz.height;
+              } catch {
+                /* 보강 실패 시 undefined 그대로 — validateSpreadCoverSizeMeasured 가 처리 */
+              }
+            }
+            coverSizeValidation = this.validateSpreadCoverSizeMeasured(
+              jobId,
+              meta.pageCount,
+              coverWidthPt,
+              coverHeightPt,
+              composeSpreadTotalWidthMm,
+              composeSpreadTotalHeightMm,
+              composeSpreadDpi,
+            );
+          }
+          // 표지 전체 페이지 그대로 보존(qpdf, 범위 생략=전체).
+          await qpdfAssemble([{ file: dl.path }], coverPath);
+          coverPageCount = (await extractPdfMetadataQpdf(coverPath)).pageCount;
+        } else {
+          await createBlankPdf(coverPt.width, coverPt.height, coverPath);
+          coverPageCount = 1;
+        }
+        const coverUrl = `/storage/${storageKeyBase}/cover.pdf`;
+        outputFiles.push({ type: 'cover', url: coverUrl, pageCount: coverPageCount } as any);
+        this.logger.log(`[${jobId}] cover.pdf: ${coverPageCount} pages`);
+
+        const contentPath = path.join(outputDir, 'content.pdf');
+        const contentPages = await assembleToFile(await buildContentParts(), contentPath);
+        const contentUrl = `/storage/${storageKeyBase}/content.pdf`;
+        outputFiles.push({ type: 'content', url: contentUrl, pageCount: contentPages } as any);
+        this.logger.log(`[${jobId}] content.pdf: ${contentPages} pages`);
+
+        result = { success: true, outputFileUrl: contentUrl, totalPages: coverPageCount + contentPages };
+      } else if (outputMode === 'content-only') {
+        const contentPath = path.join(outputDir, 'content.pdf');
+        const contentPages = await assembleToFile(await buildContentParts(), contentPath);
+        const contentUrl = `/storage/${storageKeyBase}/content.pdf`;
+        outputFiles.push({ type: 'content', url: contentUrl, pageCount: contentPages } as any);
+        this.logger.log(`[${jobId}] content.pdf (content-only): ${contentPages} pages`);
+
+        result = { success: true, outputFileUrl: contentUrl, totalPages: contentPages };
+      } else if (outputMode === 'single') {
+        // 낱장: 편집 내지 PDF 만(면지/표지 없음).
+        const pagesPath = path.join(outputDir, 'pages.pdf');
+        let pagesParts: string[] = [];
+        if (composeContentPdfUrl) {
+          const dl = await downloadToTempFile(composeContentPdfUrl);
+          scratchCleanups.push(dl.cleanup);
+          pagesParts = [dl.path];
+        }
+        const pagesCount = await assembleToFile(pagesParts, pagesPath);
+        const pagesUrl = `/storage/${storageKeyBase}/pages.pdf`;
+        outputFiles.push({ type: 'pages' as any, url: pagesUrl, pageCount: pagesCount } as any);
+        this.logger.log(`[${jobId}] pages.pdf (single): ${pagesCount} pages`);
+
+        result = { success: true, outputFileUrl: pagesUrl, totalPages: pagesCount };
+      } else {
+        // merged(기타): 표지 + 면지 + 내지 + 면지 단일 PDF.
+        const mergedParts: string[] = [];
+        if (composeCoverEditable === false || !composeCoverUrl) {
+          const blankCover = mkTmp('cover');
+          await createBlankPdf(coverPt.width, coverPt.height, blankCover);
+          scratch.push(blankCover);
+          mergedParts.push(blankCover);
+        } else {
+          const dl = await downloadToTempFile(composeCoverUrl);
+          scratchCleanups.push(dl.cleanup);
+          mergedParts.push(dl.path);
+        }
+        mergedParts.push(...(await buildContentParts()));
+        const mergedPath = path.join(outputDir, 'merged.pdf');
+        const mergedCount = await assembleToFile(mergedParts, mergedPath);
+        const mergedUrl = `/storage/${storageKeyBase}/merged.pdf`;
+        result = { success: true, outputFileUrl: mergedUrl, totalPages: mergedCount };
+      }
+
+      await this.updateJobStatus(jobId, {
+        status: 'COMPLETED',
+        outputFileUrl: result.outputFileUrl,
+        result: { ...result, capability: 'compose-mixed', outputMode, outputFiles, coverSizeValidation } as any,
+        queueJobId,
+      });
+
+      this.logger.log(`Compose-mixed job ${jobId} completed (${outputMode}): ${result.totalPages} pages`);
+      return result;
+    } finally {
+      // 임시 part/blank 정리(출력물 cover/content/merged/pages 는 제외).
+      for (const c of scratchCleanups) {
+        await c().catch(() => {});
+      }
+      for (const f of scratch) {
+        await this.safeDelete(f);
+      }
+    }
+  }
+
+  /**
    * P0-3: 스프레드 책 cover(펼침면 전체) MediaBox 무결성 검증.
    * cover.pdf 의 실제 페이지 크기(MediaBox)를 세션 metadata.spread 의 기대 펼침면 총폭/총높이와 대조.
    * 펼침면 cover 는 1페이지(뒷표지|책등|앞표지(+날개))여야 하고, 폭/높이가 기대치 ±tol(B43=max(0.2mm,1px@dpi)) 이내여야 한다.
@@ -335,19 +584,47 @@ export class SynthesisProcessor {
     expectedHeightMm: number,
     dpi?: number,
   ): Record<string, unknown> {
+    // pdf-lib 측정값을 추출해 공통 구현으로 위임(OFF 경로). getSize()=(urx-llx, ury-lly).
+    const pageCount = coverDoc.getPageCount();
+    const first = pageCount === 1 ? coverDoc.getPage(0).getSize() : undefined;
+    return this.validateSpreadCoverSizeMeasured(
+      jobId,
+      pageCount,
+      first ? first.width : undefined,
+      first ? first.height : undefined,
+      expectedWidthMm,
+      expectedHeightMm,
+      dpi,
+    );
+  }
+
+  /**
+   * 트랙 B-(f) — validateSpreadCoverSize 의 측정-주입판(파일기반 ON 경로용).
+   * pageCount + 첫 페이지 치수(pt)를 직접 받아 동일 게이트(SOFT/HARD·tol·mismatches)를 적용한다.
+   * qpdf widthPt/heightPt 는 pdf-lib getSize() 와 동일 보장 → 산출(검증 결과) 동일.
+   */
+  private validateSpreadCoverSizeMeasured(
+    jobId: string,
+    pageCount: number,
+    firstWidthPt: number | undefined,
+    firstHeightPt: number | undefined,
+    expectedWidthMm: number,
+    expectedHeightMm: number,
+    dpi?: number,
+  ): Record<string, unknown> {
     const hardFail = process.env.SPREAD_SNAPSHOT_HARD_FAIL === 'true';
     const useDpi = dpi || 300;
     const toleranceMm = Math.max(0.2, (1 / useDpi) * 25.4);
     const mismatches: string[] = [];
-    const pageCount = coverDoc.getPageCount();
     let actualWidthMm: number | undefined;
     let actualHeightMm: number | undefined;
 
-    if (pageCount !== 1) {
+    if (pageCount !== 1 || firstWidthPt === undefined || firstHeightPt === undefined) {
       // 펼침면 cover 단일페이지 가정 위반(0페이지=손상, 2+=다면) → 명백한 cover 오류
       mismatches.push(`COVER_PAGE_COUNT: ${pageCount}쪽 (펼침면 cover 는 1쪽이어야 함)`);
     } else {
-      const { width: wPt, height: hPt } = coverDoc.getPage(0).getSize();
+      const wPt = firstWidthPt;
+      const hPt = firstHeightPt;
       actualWidthMm = Number(((wPt * 25.4) / 72).toFixed(2));
       actualHeightMm = Number(((hPt * 25.4) / 72).toFixed(2));
       if (Math.abs(actualWidthMm - expectedWidthMm) > toleranceMm) {
@@ -589,6 +866,9 @@ export class SynthesisProcessor {
     // ★ jobId scoped temp 디렉토리 (동시 작업 안전)
     const jobTempDir = path.join(this.storagePath, `temp_${jobId}`);
 
+    // 트랙 B-(f) ON 경로의 스트림 입력 임시파일 정리 핸들(임시면 삭제, 로컬원본이면 no-op).
+    let lwCleanup: (() => Promise<void>) | null = null;
+
     this.logger.log(
       `Processing split synthesis job ${jobId} (queue: ${queueJobId}), ` +
         `pages=${totalExpectedPages}, format=${outputFormat}`,
@@ -629,30 +909,60 @@ export class SynthesisProcessor {
         );
       }
 
-      // 2. PDF 다운로드 (★ 예외 래핑: FILE_DOWNLOAD_FAILED)
-      let pdfBytes: Uint8Array;
-      try {
-        pdfBytes = await this.synthesizerService.downloadFile(file.filePath);
-      } catch (error: any) {
-        throw new DomainError(
-          ErrorCodes.FILE_DOWNLOAD_FAILED,
-          '파일 다운로드 실패',
-          { url: file.filePath, cause: error.message },
-        );
-      }
+      // 2~3. PDF 다운로드 + 로드(페이지수 확보)
+      //   ON (LIGHTWEIGHT_SYNTHESIS): 스트림 다운로드 → 임시파일, 페이지수는 qpdf 메타(상수메모리).
+      //   OFF                       : 기존 전체버퍼 + pdf-lib load (불변).
+      // 예외 래핑(FILE_DOWNLOAD_FAILED / PDF_LOAD_FAILED) 시맨틱은 양쪽 동일하게 유지.
+      const lightweight = VALIDATION_CONFIG.LIGHTWEIGHT_SYNTHESIS;
+      let pdfDoc: PDFDocument | null = null; // OFF 경로 전용(분리 입력)
+      let lwInputPath: string | null = null; // ON 경로 전용(분리 입력)
+      let totalPages: number;
 
-      // 3. PDF 로드 (★ 예외 래핑: PDF_LOAD_FAILED)
-      let pdfDoc: PDFDocument;
-      try {
-        pdfDoc = await PDFDocument.load(pdfBytes);
-      } catch (error: any) {
-        throw new DomainError(
-          ErrorCodes.PDF_LOAD_FAILED,
-          'PDF 로드 실패 (암호화/손상/지원불가)',
-          { cause: error.message },
-        );
+      if (lightweight) {
+        let dl;
+        try {
+          dl = await downloadToTempFile(file.filePath);
+        } catch (error: any) {
+          throw new DomainError(
+            ErrorCodes.FILE_DOWNLOAD_FAILED,
+            '파일 다운로드 실패',
+            { url: file.filePath, cause: error.message },
+          );
+        }
+        lwInputPath = dl.path;
+        lwCleanup = dl.cleanup;
+        const meta = await extractPdfMetadataQpdf(dl.path);
+        if (meta.corrupted || meta.pageCount <= 0) {
+          // pdf-lib load 실패와 동치(암호화/손상/지원불가) → 동일 에러코드.
+          throw new DomainError(
+            ErrorCodes.PDF_LOAD_FAILED,
+            'PDF 로드 실패 (암호화/손상/지원불가)',
+            { cause: 'qpdf metadata corrupted/unreadable' },
+          );
+        }
+        totalPages = meta.pageCount;
+      } else {
+        let pdfBytes: Uint8Array;
+        try {
+          pdfBytes = await this.synthesizerService.downloadFile(file.filePath);
+        } catch (error: any) {
+          throw new DomainError(
+            ErrorCodes.FILE_DOWNLOAD_FAILED,
+            '파일 다운로드 실패',
+            { url: file.filePath, cause: error.message },
+          );
+        }
+        try {
+          pdfDoc = await PDFDocument.load(pdfBytes);
+        } catch (error: any) {
+          throw new DomainError(
+            ErrorCodes.PDF_LOAD_FAILED,
+            'PDF 로드 실패 (암호화/손상/지원불가)',
+            { cause: error.message },
+          );
+        }
+        totalPages = pdfDoc.getPageCount();
       }
-      const totalPages = pdfDoc.getPageCount();
 
       // 4. ★ 페이지 수 검증
       if (totalPages !== totalExpectedPages) {
@@ -700,18 +1010,36 @@ export class SynthesisProcessor {
       }
 
       // 7. PDF 분리 (★ jobTempDir 사용)
-      const splitResult = await this.synthesizerService.splitPdfByIndices(
-        pdfDoc,
-        coverIndices,
-        contentIndices,
-        jobTempDir,
-      );
+      //   ON : qpdf 페이지범위 추출(파일기반·상수메모리·치수/인쇄속성 무손실).
+      //   OFF: pdf-lib splitPdfByIndices (불변). 페이지 순서는 indices 순서 그대로 보존.
+      let splitResult: SplitResult;
+      if (lightweight) {
+        const coverPath = path.join(jobTempDir, 'cover.pdf');
+        const contentPath = path.join(jobTempDir, 'content.pdf');
+        // 0-based indices → qpdf 1-based 콤마 페이지표기(순서 보존).
+        await qpdfExtractPages(lwInputPath!, this.toQpdfRange(coverIndices), coverPath);
+        await qpdfExtractPages(lwInputPath!, this.toQpdfRange(contentIndices), contentPath);
+        splitResult = {
+          coverPath,
+          contentPath,
+          coverPageCount: coverIndices.length,
+          contentPageCount: contentIndices.length,
+        };
+      } else {
+        splitResult = await this.synthesizerService.splitPdfByIndices(
+          pdfDoc!,
+          coverIndices,
+          contentIndices,
+          jobTempDir,
+        );
+      }
 
       // 8. ★ 무결성 검증 (P0 필수)
       await this.verifySplitResult(
         splitResult,
         coverIndices.length,
         contentIndices.length,
+        lightweight,
       );
 
       // 9. 스토리지 업로드 (★ outputFormat 계약 일치)
@@ -809,6 +1137,8 @@ export class SynthesisProcessor {
 
       throw error;
     } finally {
+      // ON 경로 스트림 입력 임시파일 정리(임시면 삭제, 로컬원본이면 no-op)
+      if (lwCleanup) await lwCleanup().catch(() => {});
       // ★ cleanup은 jobId scoped temp 디렉토리만 삭제
       await this.cleanupJobTempDir(jobTempDir);
     }
@@ -835,6 +1165,9 @@ export class SynthesisProcessor {
     const queueJobId = job.id;
 
     const jobTempDir = path.join(this.storagePath, `temp_${jobId}`);
+
+    // 트랙 B-(f) ON 경로의 스트림 입력 임시파일 정리 핸들.
+    let lwCleanup: (() => Promise<void>) | null = null;
 
     this.logger.log(
       `Processing duplex-split synthesis job ${jobId} (queue: ${queueJobId}), ` +
@@ -863,30 +1196,58 @@ export class SynthesisProcessor {
         throw new DomainError(ErrorCodes.SESSION_FILE_MISMATCH, '세션-파일 불일치');
       }
 
-      // 2. PDF 다운로드
-      let pdfBytes: Uint8Array;
-      try {
-        pdfBytes = await this.synthesizerService.downloadFile(file.filePath);
-      } catch (error: any) {
-        throw new DomainError(
-          ErrorCodes.FILE_DOWNLOAD_FAILED,
-          '파일 다운로드 실패',
-          { url: file.filePath, cause: error.message },
-        );
-      }
+      // 2~3. PDF 다운로드 + 로드(페이지수 확보)
+      //   ON : 스트림 다운로드 → 임시파일, 페이지수 qpdf 메타(상수메모리). 세트추출도 qpdf.
+      //   OFF: 기존 전체버퍼 + pdf-lib load (불변).
+      const lightweight = VALIDATION_CONFIG.LIGHTWEIGHT_SYNTHESIS;
+      let pdfDoc: PDFDocument | null = null;
+      let lwInputPath: string | null = null;
+      let totalPages: number;
 
-      // 3. PDF 로드
-      let pdfDoc: PDFDocument;
-      try {
-        pdfDoc = await PDFDocument.load(pdfBytes);
-      } catch (error: any) {
-        throw new DomainError(
-          ErrorCodes.PDF_LOAD_FAILED,
-          'PDF 로드 실패 (암호화/손상/지원불가)',
-          { cause: error.message },
-        );
+      if (lightweight) {
+        let dl;
+        try {
+          dl = await downloadToTempFile(file.filePath);
+        } catch (error: any) {
+          throw new DomainError(
+            ErrorCodes.FILE_DOWNLOAD_FAILED,
+            '파일 다운로드 실패',
+            { url: file.filePath, cause: error.message },
+          );
+        }
+        lwInputPath = dl.path;
+        lwCleanup = dl.cleanup;
+        const meta = await extractPdfMetadataQpdf(dl.path);
+        if (meta.corrupted || meta.pageCount <= 0) {
+          throw new DomainError(
+            ErrorCodes.PDF_LOAD_FAILED,
+            'PDF 로드 실패 (암호화/손상/지원불가)',
+            { cause: 'qpdf metadata corrupted/unreadable' },
+          );
+        }
+        totalPages = meta.pageCount;
+      } else {
+        let pdfBytes: Uint8Array;
+        try {
+          pdfBytes = await this.synthesizerService.downloadFile(file.filePath);
+        } catch (error: any) {
+          throw new DomainError(
+            ErrorCodes.FILE_DOWNLOAD_FAILED,
+            '파일 다운로드 실패',
+            { url: file.filePath, cause: error.message },
+          );
+        }
+        try {
+          pdfDoc = await PDFDocument.load(pdfBytes);
+        } catch (error: any) {
+          throw new DomainError(
+            ErrorCodes.PDF_LOAD_FAILED,
+            'PDF 로드 실패 (암호화/손상/지원불가)',
+            { cause: error.message },
+          );
+        }
+        totalPages = pdfDoc.getPageCount();
       }
-      const totalPages = pdfDoc.getPageCount();
 
       // 4. 페이지 수 검증 (API 기대치와 일치 + 짝수 = 2 × 세트 수)
       if (totalPages !== totalExpectedPages) {
@@ -913,27 +1274,36 @@ export class SynthesisProcessor {
       for (let setIndex = 0; setIndex < setCount; setIndex++) {
         const frontIdx = setIndex * 2; // 앞 (편집기에서 먼저 보인 페이지)
         const backIdx = setIndex * 2 + 1; // 뒤 (다음 페이지)
-
-        const setDoc = await PDFDocument.create();
-        const [frontPage, backPage] = await setDoc.copyPages(pdfDoc, [
-          frontIdx,
-          backIdx,
-        ]);
-        setDoc.addPage(frontPage);
-        setDoc.addPage(backPage);
-
         const setFilename = `set_${setIndex}.pdf`;
-        await fs.writeFile(
-          path.join(outputDir, setFilename),
-          await setDoc.save(),
-        );
+        const setOutPath = path.join(outputDir, setFilename);
+
+        let setPageCount: number;
+        if (lightweight) {
+          // ON: qpdf 로 [앞,뒤] 2페이지 추출(순서 보존·치수/인쇄속성 무손실). 1-based 표기.
+          await qpdfExtractPages(
+            lwInputPath!,
+            `${frontIdx + 1},${backIdx + 1}`,
+            setOutPath,
+          );
+          setPageCount = (await extractPdfMetadataQpdf(setOutPath)).pageCount;
+        } else {
+          const setDoc = await PDFDocument.create();
+          const [frontPage, backPage] = await setDoc.copyPages(pdfDoc!, [
+            frontIdx,
+            backIdx,
+          ]);
+          setDoc.addPage(frontPage);
+          setDoc.addPage(backPage);
+          await fs.writeFile(setOutPath, await setDoc.save());
+          setPageCount = setDoc.getPageCount();
+        }
 
         // 무결성: 세트당 정확히 2페이지여야 함
-        if (setDoc.getPageCount() !== 2) {
+        if (setPageCount !== 2) {
           throw new DomainError(
             ErrorCodes.SPLIT_VERIFICATION_FAILED,
             'duplex-split 세트 페이지 수 불일치',
-            { setIndex, expected: 2, got: setDoc.getPageCount() },
+            { setIndex, expected: 2, got: setPageCount },
           );
         }
 
@@ -986,6 +1356,7 @@ export class SynthesisProcessor {
 
       throw error;
     } finally {
+      if (lwCleanup) await lwCleanup().catch(() => {});
       await this.cleanupJobTempDir(jobTempDir);
     }
   }
@@ -1001,6 +1372,7 @@ export class SynthesisProcessor {
     result: SplitResult,
     expectedCover: number,
     expectedContent: number,
+    lightweight = false,
   ): Promise<void> {
     // 파일 크기 체크
     const coverStats = await fs.stat(result.coverPath);
@@ -1011,30 +1383,58 @@ export class SynthesisProcessor {
     }
 
     // 재로딩 + 페이지 수 확인 (★ 세분화된 errorDetail)
-    let coverDoc: PDFDocument;
-    let contentDoc: PDFDocument;
+    //   ON : qpdf 메타(파일기반·상수메모리). 손상이면 동일 SPLIT_VERIFICATION_FAILED.
+    //   OFF: pdf-lib 재로딩 (불변).
+    let coverPages: number;
+    let contentPages: number;
 
-    try {
-      coverDoc = await PDFDocument.load(await fs.readFile(result.coverPath));
-    } catch (error: any) {
-      throw new DomainError(
-        ErrorCodes.SPLIT_VERIFICATION_FAILED,
-        'cover.pdf 재로딩 실패',
-        { phase: 'load', target: 'cover', cause: error.message },
-      );
+    if (lightweight) {
+      const coverMeta = await extractPdfMetadataQpdf(result.coverPath);
+      if (coverMeta.corrupted || coverMeta.pageCount < 0) {
+        throw new DomainError(
+          ErrorCodes.SPLIT_VERIFICATION_FAILED,
+          'cover.pdf 재로딩 실패',
+          { phase: 'load', target: 'cover', cause: 'qpdf metadata unreadable' },
+        );
+      }
+      const contentMeta = await extractPdfMetadataQpdf(result.contentPath);
+      if (contentMeta.corrupted || contentMeta.pageCount < 0) {
+        throw new DomainError(
+          ErrorCodes.SPLIT_VERIFICATION_FAILED,
+          'content.pdf 재로딩 실패',
+          { phase: 'load', target: 'content', cause: 'qpdf metadata unreadable' },
+        );
+      }
+      coverPages = coverMeta.pageCount;
+      contentPages = contentMeta.pageCount;
+    } else {
+      let coverDoc: PDFDocument;
+      let contentDoc: PDFDocument;
+
+      try {
+        coverDoc = await PDFDocument.load(await fs.readFile(result.coverPath));
+      } catch (error: any) {
+        throw new DomainError(
+          ErrorCodes.SPLIT_VERIFICATION_FAILED,
+          'cover.pdf 재로딩 실패',
+          { phase: 'load', target: 'cover', cause: error.message },
+        );
+      }
+
+      try {
+        contentDoc = await PDFDocument.load(await fs.readFile(result.contentPath));
+      } catch (error: any) {
+        throw new DomainError(
+          ErrorCodes.SPLIT_VERIFICATION_FAILED,
+          'content.pdf 재로딩 실패',
+          { phase: 'load', target: 'content', cause: error.message },
+        );
+      }
+      coverPages = coverDoc.getPageCount();
+      contentPages = contentDoc.getPageCount();
     }
 
-    try {
-      contentDoc = await PDFDocument.load(await fs.readFile(result.contentPath));
-    } catch (error: any) {
-      throw new DomainError(
-        ErrorCodes.SPLIT_VERIFICATION_FAILED,
-        'content.pdf 재로딩 실패',
-        { phase: 'load', target: 'content', cause: error.message },
-      );
-    }
-
-    if (coverDoc.getPageCount() !== expectedCover) {
+    if (coverPages !== expectedCover) {
       throw new DomainError(
         ErrorCodes.SPLIT_VERIFICATION_FAILED,
         'cover 페이지 수 불일치',
@@ -1042,12 +1442,12 @@ export class SynthesisProcessor {
           phase: 'pageCount',
           target: 'cover',
           expected: expectedCover,
-          got: coverDoc.getPageCount(),
+          got: coverPages,
         },
       );
     }
 
-    if (contentDoc.getPageCount() !== expectedContent) {
+    if (contentPages !== expectedContent) {
       throw new DomainError(
         ErrorCodes.SPLIT_VERIFICATION_FAILED,
         'content 페이지 수 불일치',
@@ -1055,10 +1455,19 @@ export class SynthesisProcessor {
           phase: 'pageCount',
           target: 'content',
           expected: expectedContent,
-          got: contentDoc.getPageCount(),
+          got: contentPages,
         },
       );
     }
+  }
+
+  /**
+   * 트랙 B-(f) — 0-based 페이지 인덱스 배열을 qpdf 1-based 콤마 페이지표기로 변환.
+   * 순서를 그대로 보존한다(예: [0,2,1] → "1,3,2"). 빈 배열은 호출 전에 걸러져야 한다
+   * (split 은 cover/content 비어있음을 이미 NO_*_PAGES 로 차단).
+   */
+  private toQpdfRange(indices: number[]): string {
+    return indices.map((i) => String(i + 1)).join(',');
   }
 
   /**
