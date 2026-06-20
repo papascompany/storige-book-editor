@@ -25,6 +25,17 @@ export const VALIDATION_CONFIG = {
    */
   LIGHTWEIGHT_VALIDATION:
     String(process.env.WORKER_LIGHTWEIGHT_VALIDATION || '').toLowerCase() === 'true',
+  /**
+   * 트랙 B-(f): true 면 변환(conversion)·합성(synthesis)·렌더를 상수메모리 경로로 수행
+   * (스트림 다운로드 + qpdf 메타/병합 — 끝단 2GB). false(기본)면 기존 pdf-lib/arraybuffer 경로.
+   * 골든파일 파리티(출력 PDF 동일성) 통과 후 env WORKER_LIGHTWEIGHT_SYNTHESIS=true 로 ON.
+   * ⚠️ 불변식: 로컬 /storage 입력일 때 ON(downloadToTempFile→resolveLocalPath, WORKER_STORAGE_PATH)
+   *   과 OFF(downloadFile, STORAGE_PATH+접두사제거)가 같은 파일로 수렴하려면
+   *   STORAGE_PATH === WORKER_STORAGE_PATH + '/storage' 여야 한다(prod: /app/storage = /app + /storage).
+   *   프로덕션은 R2(api://) 입력이라 무관하지만, local 드라이버 cutover 시 이 정렬을 확인할 것.
+   */
+  LIGHTWEIGHT_SYNTHESIS:
+    String(process.env.WORKER_LIGHTWEIGHT_SYNTHESIS || '').toLowerCase() === 'true',
 
   // 스프레드(펼침면) 감지
   /** 스프레드 판정 점수 임계값 */

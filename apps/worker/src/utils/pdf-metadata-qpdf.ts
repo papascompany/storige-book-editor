@@ -243,6 +243,54 @@ export async function extractPdfMetadataQpdf(
  * 주의: 단일 'Page size:' 줄(첫 페이지만)은 모든 페이지에 동일 적용하면 혼합치수
  * PDF 에서 파리티가 깨지므로 사용하지 않는다. 반드시 페이지별 -box 를 사용한다.
  */
+/**
+ * 트랙 B-(f): getPdfInfo(ghostscript.ts) 의 상수메모리 대체.
+ *
+ * 기존 getPdfInfo 는 pdf-lib `PDFDocument.load(전체바이트)` 로 첫 페이지를 실측 →
+ * 2GB 에서 OOM. 이 함수는 extractPdfMetadataQpdf(qpdf, 파일기반) 로 첫 페이지 치수를
+ * 얻어 **getPdfInfo 와 동일한 산출**(pageCount·width/height mm)을 낸다.
+ *
+ * ⚠️ 파리티 보장 — getPdfInfo 와 동일해야 한다:
+ *   - width/height = 첫 페이지 (pt → mm), `Math.round(pt * PT_TO_MM * 10) / 10` (소수1자리).
+ *   - 0/NaN 가드: 첫 페이지 치수가 무효면 A4(210×297) 폴백.
+ *   - 추출 실패/손상: `{ pageCount: 1, width: 210, height: 297 }` 폴백
+ *     (getPdfInfo 의 load 실패 분기와 동일 — 콜러가 깨지지 않도록).
+ *
+ * 신규 ON 경로 전용(LIGHTWEIGHT_SYNTHESIS). 기존 getPdfInfo(OFF)는 불변.
+ */
+export async function getPdfInfoQpdf(filePath: string): Promise<{
+  pageCount: number;
+  width: number;
+  height: number;
+}> {
+  // getPdfInfo 와 동일한 변환계수/폴백 치수(파리티).
+  const PT_TO_MM = 0.352778;
+  const A4_WIDTH_MM = 210;
+  const A4_HEIGHT_MM = 297;
+
+  try {
+    const meta = await extractPdfMetadataQpdf(filePath);
+    const pageCount = meta.pageCount;
+
+    if (pageCount > 0 && meta.pages.length > 0) {
+      const { widthPt, heightPt } = meta.pages[0];
+      const widthMm = Math.round(widthPt * PT_TO_MM * 10) / 10;
+      const heightMm = Math.round(heightPt * PT_TO_MM * 10) / 10;
+      if (widthMm > 0 && heightMm > 0) {
+        return { pageCount, width: widthMm, height: heightMm };
+      }
+    }
+
+    // 치수를 못 얻었지만 pageCount 는 알 수 있는 경우 → getPdfInfo 와 동일하게 A4 폴백.
+    return { pageCount: pageCount || 1, width: A4_WIDTH_MM, height: A4_HEIGHT_MM };
+  } catch (error: any) {
+    logger.warn(
+      `getPdfInfoQpdf: failed to measure '${filePath}', falling back to A4 (${error?.message ?? error})`,
+    );
+    return { pageCount: 1, width: A4_WIDTH_MM, height: A4_HEIGHT_MM };
+  }
+}
+
 async function extractPageSizesPdfinfo(
   filePath: string,
   pageCount: number,
