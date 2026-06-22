@@ -171,21 +171,48 @@ export class EditSessionsService {
 
     const sessions = await qb.orderBy('session.createdAt', 'DESC').getMany();
 
+    // DB-001(2026-06-22): 세션 루프 내 최신 SYNTHESIZE 잡 조회(N+1)를 윈도우함수 1회 배치로 치환.
+    // 세션별 created_at DESC 최신 1건(group-wise max)을 ROW_NUMBER()=1 로 정확히 보존
+    // (MariaDB 11.2 윈도우함수 지원). 미존재 세션은 Map 미수록 → 기존 getRawOne undefined 와 동일.
+    const latestJobBySession = new Map<
+      string,
+      { status: string; result: any; outputFileUrl: string | null }
+    >();
+    const sessionIds = sessions.map((s) => s.id);
+    if (sessionIds.length > 0) {
+      const rows: Array<{
+        sessionId: string;
+        status: string;
+        result: any;
+        outputFileUrl: string | null;
+      }> = await this.sessionRepository.manager.query(
+        `SELECT t.edit_session_id AS sessionId, t.status AS status,
+                t.result AS result, t.output_file_url AS outputFileUrl
+           FROM (
+             SELECT job.edit_session_id, job.status, job.result, job.output_file_url,
+                    ROW_NUMBER() OVER (
+                      PARTITION BY job.edit_session_id ORDER BY job.created_at DESC
+                    ) AS rn
+               FROM worker_jobs job
+              WHERE job.edit_session_id IN (?) AND job.job_type = 'SYNTHESIZE'
+           ) t
+          WHERE t.rn = 1`,
+        [sessionIds],
+      );
+      for (const r of rows) {
+        latestJobBySession.set(r.sessionId, {
+          status: r.status,
+          result: r.result,
+          outputFileUrl: r.outputFileUrl,
+        });
+      }
+    }
+
     const results: ExternalSessionResponseDto[] = [];
 
     for (const session of sessions) {
-      // 해당 세션의 최신 SYNTHESIZE 워커잡 조회
-      const workerJob = await this.sessionRepository.manager
-        .createQueryBuilder()
-        .select('job.status', 'status')
-        .addSelect('job.result', 'result')
-        .addSelect('job.output_file_url', 'outputFileUrl')
-        .from('worker_jobs', 'job')
-        .where('job.edit_session_id = :sessionId', { sessionId: session.id })
-        .andWhere('job.job_type = :jobType', { jobType: 'SYNTHESIZE' })
-        .orderBy('job.created_at', 'DESC')
-        .limit(1)
-        .getRawOne();
+      // 세션별 최신 SYNTHESIZE 워커잡(배치 Map). 없으면 null → resolveFiles 가 에디터 원본 fallback.
+      const workerJob = latestJobBySession.get(session.id) ?? null;
 
       const files = this.resolveFiles(session, workerJob);
 

@@ -16,6 +16,8 @@ describe('EditSessionsService', () => {
   const mockGetMany = jest.fn();
   const mockGetRawOne = jest.fn();
   const mockGetRawMany = jest.fn();
+  // DB-001: findByOrderExternal 이 manager.query(윈도우함수 배치)로 전환됨 → query 목 추가.
+  const mockQuery = jest.fn().mockResolvedValue([]);
 
   const mockSessionQueryBuilder = {
     leftJoinAndSelect: jest.fn().mockReturnThis(),
@@ -46,6 +48,7 @@ describe('EditSessionsService', () => {
     softDelete: jest.fn(),
     manager: {
       createQueryBuilder: jest.fn().mockReturnValue(mockManagerQueryBuilder),
+      query: mockQuery,
     },
   };
 
@@ -108,17 +111,20 @@ describe('EditSessionsService', () => {
     it('정상 조회 - 워커 완료된 세션', async () => {
       const session = makeSession();
       mockGetMany.mockResolvedValue([session]);
-      mockGetRawOne.mockResolvedValue({
-        status: WorkerJobStatus.COMPLETED,
-        result: {
+      mockQuery.mockResolvedValue([
+        {
+          sessionId: 'session-uuid-1',
+          status: WorkerJobStatus.COMPLETED,
+          result: {
+            outputFileUrl: '/storage/outputs/job-1/merged.pdf',
+            outputFiles: [
+              { type: 'cover', url: '/storage/outputs/job-1/cover.pdf' },
+              { type: 'content', url: '/storage/outputs/job-1/content.pdf' },
+            ],
+          },
           outputFileUrl: '/storage/outputs/job-1/merged.pdf',
-          outputFiles: [
-            { type: 'cover', url: '/storage/outputs/job-1/cover.pdf' },
-            { type: 'content', url: '/storage/outputs/job-1/content.pdf' },
-          ],
         },
-        outputFileUrl: '/storage/outputs/job-1/merged.pdf',
-      });
+      ]);
 
       const result = await service.findByOrderExternal(12345);
 
@@ -136,7 +142,7 @@ describe('EditSessionsService', () => {
         contentFile: { id: 'file-2', fileUrl: '/storage/designs/content.pdf' } as any,
       });
       mockGetMany.mockResolvedValue([session]);
-      mockGetRawOne.mockResolvedValue(null); // 워커잡 없음
+      mockQuery.mockResolvedValue([]); // 워커잡 없음
 
       const result = await service.findByOrderExternal(12345);
 
@@ -158,7 +164,7 @@ describe('EditSessionsService', () => {
       const session1 = makeSession({ id: 'session-1', mode: SessionMode.COVER });
       const session2 = makeSession({ id: 'session-2', mode: SessionMode.CONTENT });
       mockGetMany.mockResolvedValue([session1, session2]);
-      mockGetRawOne.mockResolvedValue(null);
+      mockQuery.mockResolvedValue([]);
 
       const result = await service.findByOrderExternal(12345);
 
@@ -174,11 +180,14 @@ describe('EditSessionsService', () => {
         coverFile: { id: 'file-1', fileUrl: '/storage/designs/cover.pdf' } as any,
       });
       mockGetMany.mockResolvedValue([session]);
-      mockGetRawOne.mockResolvedValue({
-        status: WorkerJobStatus.FAILED,
-        result: null,
-        outputFileUrl: null,
-      });
+      mockQuery.mockResolvedValue([
+        {
+          sessionId: 'session-uuid-1',
+          status: WorkerJobStatus.FAILED,
+          result: null,
+          outputFileUrl: null,
+        },
+      ]);
 
       const result = await service.findByOrderExternal(12345);
 
@@ -194,7 +203,7 @@ describe('EditSessionsService', () => {
         contentFile: null,
       });
       mockGetMany.mockResolvedValue([session]);
-      mockGetRawOne.mockResolvedValue(null);
+      mockQuery.mockResolvedValue([]);
 
       const result = await service.findByOrderExternal(12345);
 
@@ -207,16 +216,19 @@ describe('EditSessionsService', () => {
     it('워커잡 result가 문자열(JSON)인 경우 파싱', async () => {
       const session = makeSession();
       mockGetMany.mockResolvedValue([session]);
-      mockGetRawOne.mockResolvedValue({
-        status: WorkerJobStatus.COMPLETED,
-        result: JSON.stringify({
+      mockQuery.mockResolvedValue([
+        {
+          sessionId: 'session-uuid-1',
+          status: WorkerJobStatus.COMPLETED,
+          result: JSON.stringify({
+            outputFileUrl: '/storage/outputs/job-1/merged.pdf',
+            outputFiles: [
+              { type: 'cover', url: '/storage/outputs/job-1/cover.pdf' },
+            ],
+          }),
           outputFileUrl: '/storage/outputs/job-1/merged.pdf',
-          outputFiles: [
-            { type: 'cover', url: '/storage/outputs/job-1/cover.pdf' },
-          ],
-        }),
-        outputFileUrl: '/storage/outputs/job-1/merged.pdf',
-      });
+        },
+      ]);
 
       const result = await service.findByOrderExternal(12345);
 
@@ -227,11 +239,14 @@ describe('EditSessionsService', () => {
     it('워커잡 outputFileUrl fallback (result에 없는 경우)', async () => {
       const session = makeSession();
       mockGetMany.mockResolvedValue([session]);
-      mockGetRawOne.mockResolvedValue({
-        status: WorkerJobStatus.COMPLETED,
-        result: { outputFiles: [] },
-        outputFileUrl: '/storage/outputs/job-1/merged.pdf',
-      });
+      mockQuery.mockResolvedValue([
+        {
+          sessionId: 'session-uuid-1',
+          status: WorkerJobStatus.COMPLETED,
+          result: { outputFiles: [] },
+          outputFileUrl: '/storage/outputs/job-1/merged.pdf',
+        },
+      ]);
 
       const result = await service.findByOrderExternal(12345);
 
