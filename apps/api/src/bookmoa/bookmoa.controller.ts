@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Query,
+  UseGuards,
   HttpException,
   HttpStatus,
 } from '@nestjs/common';
@@ -15,6 +16,9 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { BookmoaCategoryEntity } from '../bookmoa-entities/category.entity';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { UserRole } from '@storige/types';
 
 interface BookmoaCategory {
   sortcode: string;
@@ -41,8 +45,12 @@ export class BookmoaController {
    * Admin에서 상품코드 자동완성에 사용
    */
   @Get('categories')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
   @ApiBearerAuth()
-  @ApiOperation({ summary: '북모아 카테고리 목록 조회' })
+  // SEC-006: Admin 상품코드 자동완성 전용 — 과거 전역 JWT만 통과해 고객 토큰으로도 북모아
+  // 카테고리 DB 조회 가능했음. 관리자 역할로 제한(editor/외부 콜러 0건).
+  @ApiOperation({ summary: '북모아 카테고리 목록 조회 (관리자 전용)' })
   @ApiQuery({ name: 'search', required: false, description: '검색어 (카테고리명 또는 sortcode)' })
   @ApiQuery({ name: 'depth', required: false, description: '카테고리 깊이 (1, 2, 3)' })
   @ApiQuery({ name: 'parent', required: false, description: '상위 카테고리 sortcode' })

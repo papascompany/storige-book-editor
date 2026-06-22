@@ -702,12 +702,27 @@ export class FilesController {
    */
   @Delete(':id')
   @ApiBearerAuth()
-  @ApiOperation({ summary: '파일 삭제' })
+  @ApiOperation({ summary: '파일 삭제 — 소유자 또는 관리자만' })
   @ApiResponse({ status: 200, description: '삭제 성공' })
+  @ApiResponse({ status: 403, description: '권한 없음 (다른 사용자의 파일)' })
   @ApiResponse({ status: 404, description: '파일을 찾을 수 없음' })
   async deleteFile(
     @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: any,
   ): Promise<{ success: boolean }> {
+    // SEC-003: getFile 과 동일 소유권 검증 — UUID만으로 임의 파일 삭제(IDOR) 차단.
+    // 역할 비교는 case-insensitive(UserRole enum 은 대문자 'ADMIN' — edit-sessions isStaffRole 정합).
+    const file = await this.filesService.findById(id);
+    const userId = user?.userId ? parseInt(user.userId) : 0;
+    const userRole = String(user?.role || '').toLowerCase();
+    const isOwner = file.memberSeqno !== null && Number(file.memberSeqno) === userId;
+    const isStaff = userRole === 'admin' || userRole === 'manager';
+    if (!isOwner && !isStaff) {
+      throw new ForbiddenException({
+        code: 'PERMISSION_DENIED',
+        message: '이 파일을 삭제할 권한이 없습니다.',
+      });
+    }
     await this.filesService.softDelete(id);
     return { success: true };
   }
@@ -719,12 +734,24 @@ export class FilesController {
    */
   @Post(':id/restore')
   @ApiBearerAuth()
-  @ApiOperation({ summary: '소프트삭제 파일 복구 (48h 복구창)' })
+  @ApiOperation({ summary: '소프트삭제 파일 복구 (48h 복구창) — 관리자 전용' })
   @ApiResponse({ status: 200, description: '복구 성공', type: FileResponseDto })
+  @ApiResponse({ status: 403, description: '권한 없음 (관리자만)' })
   @ApiResponse({ status: 404, description: '파일 없음 또는 이미 영구삭제됨' })
   async restoreFile(
     @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: any,
   ): Promise<FileResponseDto> {
+    // SEC-003: 복구는 보존 sweep/운영 작업 성격 → 관리자 전용(소프트삭제 파일의 소유권
+    // 역참조 복잡성 회피 + 운영 안전). 현재 콜러 0건이라 비파괴.
+    // 역할 비교 case-insensitive(UserRole enum 대문자).
+    const userRole = String(user?.role || '').toLowerCase();
+    if (userRole !== 'admin' && userRole !== 'manager') {
+      throw new ForbiddenException({
+        code: 'PERMISSION_DENIED',
+        message: '파일 복구는 관리자만 가능합니다.',
+      });
+    }
     const file = await this.filesService.restore(id);
     return this.filesService.toResponseDto(file);
   }

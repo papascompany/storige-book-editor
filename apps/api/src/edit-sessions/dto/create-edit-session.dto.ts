@@ -1,4 +1,4 @@
-import { IsNumber, IsEnum, IsOptional, IsString, IsObject, IsUUID, IsBoolean } from 'class-validator';
+import { IsNumber, IsEnum, IsOptional, IsString, IsObject, IsUUID, IsBoolean, IsUrl } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { SessionMode } from '../entities/edit-session.entity';
 
@@ -54,7 +54,8 @@ export class CreateEditSessionDto {
 
   @ApiPropertyOptional({ example: 'https://shop.example.com/api/callback', description: 'Worker 완료 콜백 URL' })
   @IsOptional()
-  @IsString()
+  // SEC-009: http/https 절대 URL 만 허용.
+  @IsUrl({ protocols: ['http', 'https'], require_tld: false, require_protocol: true })
   callbackUrl?: string;
 
   /** Phase C-2 — 호출 컨트롤러에서 JWT siteId 자동 주입 */

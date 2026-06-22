@@ -1478,7 +1478,10 @@ export class SynthesisProcessor {
     try {
       const response = await axios.get(
         `${this.apiBaseUrl}/files/${fileId}`,
-        { headers: { 'X-API-Key': process.env.WORKER_API_KEY } },
+        {
+          headers: { 'X-API-Key': process.env.WORKER_API_KEY },
+          timeout: 30000, // EH-005: API 무응답 시 split/duplex 잡 무한대기 방지
+        },
       );
       return response.data;
     } catch (error: any) {
@@ -1650,6 +1653,13 @@ export class SynthesisProcessor {
         `Spread synthesis failed for job ${jobId}: ${error.message}`,
         error.stack,
       );
+
+      // EH-001: 스프레드 합성 실패도 다른 합성 핸들러와 동일하게 Sentry 로 보고(과거 누락).
+      captureJobException(error, {
+        jobId,
+        jobType: 'synthesize',
+        queueName: 'pdf-synthesis',
+      });
 
       await this.updateJobStatusWithRetry(jobId, {
         status: 'FAILED',

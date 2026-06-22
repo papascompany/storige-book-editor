@@ -12,7 +12,7 @@ import * as path from 'path';
 import * as fs from 'fs/promises';
 import { createReadStream } from 'fs';
 import type { Readable } from 'stream';
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { v4 as uuidv4 } from 'uuid';
 import sharp from 'sharp';
@@ -20,7 +20,8 @@ import { FileEntity, FileType } from './entities/file.entity';
 import { FileResponseDto } from './dto/file-response.dto';
 import { ObjectStorageService } from '../storage/object-storage.service';
 
-const execAsync = promisify(exec);
+// SEC-010: 셸을 거치지 않는 execFile — 인자가 그대로 argv 로 전달돼 메타문자 해석/인젝션 불가.
+const execFileAsync = promisify(execFile);
 
 @Injectable()
 export class FilesService {
@@ -352,10 +353,15 @@ export class FilesService {
       }
       return { buffer, file };
     } catch (error) {
+      // SEC-007: 클라 응답에 S3 키·서버 절대경로 노출 금지(getFileStream 선례 정합).
+      // 진단정보는 서버 로그로만.
+      this.logger.warn(
+        `getFileBuffer failed (id=${id}, backend=${file.storageBackend}, key=${file.storageKey}, path=${file.filePath}): ${(error as Error)?.message}`,
+      );
       throw new NotFoundException({
         code: 'FILE_NOT_FOUND',
         message: '파일을 읽을 수 없습니다.',
-        details: { fileId: id, backend: file.storageBackend, key: file.storageKey, path: file.filePath },
+        details: { fileId: id },
       });
     }
   }
@@ -691,8 +697,9 @@ export class FilesService {
 
     try {
       // Ghostscript를 사용해 PDF → PNG 변환
-      const gsCommand = [
-        this.ghostscriptPath,
+      // SEC-010: execFile(인자배열, 셸 없음)로 실행 — 따옴표/메타문자 이스케이프 불필요,
+      // filePath 가 오염돼도 커맨드 인젝션 불가(argv 로 그대로 전달).
+      const gsArgs = [
         '-dSAFER',
         '-dBATCH',
         '-dNOPAUSE',
@@ -702,12 +709,12 @@ export class FilesService {
         '-r150', // 150 DPI
         '-dTextAlphaBits=4',
         '-dGraphicsAlphaBits=4',
-        `-sOutputFile="${tempFilePath}"`,
-        `"${file.filePath}"`,
-      ].join(' ');
+        `-sOutputFile=${tempFilePath}`,
+        file.filePath,
+      ];
 
-      this.logger.debug(`Executing Ghostscript: ${gsCommand}`);
-      await execAsync(gsCommand);
+      this.logger.debug(`Executing Ghostscript: ${this.ghostscriptPath} ${gsArgs.join(' ')}`);
+      await execFileAsync(this.ghostscriptPath, gsArgs);
 
       // Sharp로 리사이즈
       await sharp(tempFilePath)

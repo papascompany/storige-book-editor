@@ -1,5 +1,6 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import axios from 'axios';
+import { createHmac } from 'crypto';
 import { SynthesisWebhookPayload, ValidationWebhookPayload } from '@storige/types';
 import { SitesService } from '../sites/sites.service';
 
@@ -114,11 +115,7 @@ export class WebhookService {
 
       const response = await axios.post(callbackUrl, payload, {
         timeout: 10000, // 10초 타임아웃
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Storige-Event': payload.event,
-          'X-Storige-Signature': this.generateSignature(payload),
-        },
+        headers: this.buildHeaders(payload),
       });
 
       if (response.status >= 200 && response.status < 300) {
@@ -136,11 +133,8 @@ export class WebhookService {
         await new Promise(resolve => setTimeout(resolve, 2000)); // 2초 대기
         const retryResponse = await axios.post(callbackUrl, payload, {
           timeout: 10000,
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Storige-Event': payload.event,
-            'X-Storige-Retry': '1',
-          },
+          // WH-001: 재시도 경로도 서명 헤더를 포함(기존엔 누락돼 수신측 검증 불가했음).
+          headers: { ...this.buildHeaders(payload), 'X-Storige-Retry': '1' },
         });
         if (retryResponse.status >= 200 && retryResponse.status < 300) {
           this.logger.log('Webhook retry succeeded');
@@ -155,7 +149,25 @@ export class WebhookService {
   }
 
   /**
-   * 간단한 시그니처 생성 (실제 환경에서는 HMAC 등 사용)
+   * 공통 웹훅 헤더 구성. 기존 base64 서명(X-Storige-Signature)은 그대로 유지하고(계약 호환),
+   * WEBHOOK_SECRET 이 설정된 경우에만 위조 불가한 HMAC 서명(X-Storige-Signature-HMAC)을
+   * 추가로 함께 보낸다(WH-001, 비파괴). 수신측은 HMAC 헤더로 점진 전환 가능.
+   */
+  private buildHeaders(payload: WebhookPayload): Record<string, string> {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'X-Storige-Event': payload.event,
+      'X-Storige-Signature': this.generateSignature(payload),
+    };
+    const hmac = this.generateHmacSignature(payload);
+    if (hmac) headers['X-Storige-Signature-HMAC'] = hmac;
+    return headers;
+  }
+
+  /**
+   * 간단한 시그니처 생성 (레거시 — 비밀키 미사용 base64, 위조 가능).
+   * ⚠️ 보안 검증용으로 신뢰 금지. 무결성 검증은 generateHmacSignature(HMAC) 사용.
+   * 기존 수신측 계약 호환을 위해 헤더는 계속 전송한다.
    */
   private generateSignature(payload: WebhookPayload): string {
     // SynthesisWebhookPayload는 jobId 우선 (sessionId는 additive optional이므로 둘 다 존재 가능).
@@ -164,5 +176,22 @@ export class WebhookService {
       'jobId' in payload ? payload.jobId : payload.sessionId;
     const data = `${identifier}:${payload.event}:${payload.timestamp}`;
     return Buffer.from(data).toString('base64');
+  }
+
+  /**
+   * WH-001 — HMAC-SHA256(WEBHOOK_SECRET) 위조 불가 서명. 포맷 `t=<unixsec>,v1=<hex>`
+   * (Stripe 호환 스타일, PLATFORM_WORKER_INTEGRATION 문서 규약과 정합).
+   * WEBHOOK_SECRET 미설정 시 undefined → 헤더 미전송(현행 동작 100% 보존, 비파괴).
+   * 수신측 검증: 동일 `t.payloadIdentifier:event:timestamp` 를 같은 비밀키로 HMAC 후 비교.
+   */
+  private generateHmacSignature(payload: WebhookPayload): string | undefined {
+    const secret = process.env.WEBHOOK_SECRET;
+    if (!secret) return undefined;
+    const identifier =
+      'jobId' in payload ? payload.jobId : payload.sessionId;
+    const t = Math.floor(Date.now() / 1000);
+    const data = `${t}.${identifier}:${payload.event}:${payload.timestamp}`;
+    const v1 = createHmac('sha256', secret).update(data).digest('hex');
+    return `t=${t},v1=${v1}`;
   }
 }
