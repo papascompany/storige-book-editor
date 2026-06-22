@@ -14,8 +14,9 @@ export class FileResponseDto {
   @ApiProperty({ description: '파일 URL' })
   fileUrl: string;
 
-  @ApiProperty({ description: '파일 시스템 경로' })
-  filePath: string;
+  // SEC-008(2026-06-22): filePath(서버 절대경로·s3 키) 는 클라 응답에서 제거.
+  // 워커는 GET /files/:id 에 도달 불가(JwtAuthGuard 가 X-API-Key 401)하고 /download/external
+  // 스트리밍으로 바이트를 받으므로 이 필드에 의존하지 않으며, editor/admin 프론트도 미소비.
 
   @ApiPropertyOptional({ description: '썸네일 URL' })
   thumbnailUrl: string | null;

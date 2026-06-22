@@ -299,7 +299,7 @@ export class FilesService {
       fileName: file.fileName,
       originalName: file.originalName,
       fileUrl: file.fileUrl,
-      filePath: file.filePath,
+      // SEC-008: filePath(절대경로·s3키) 미노출 — DTO 에서 제거.
       thumbnailUrl: file.thumbnailUrl,
       fileSize: Number(file.fileSize),
       mimeType: file.mimeType,
