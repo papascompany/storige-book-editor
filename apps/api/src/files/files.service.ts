@@ -6,7 +6,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Brackets } from 'typeorm';
+import { Repository, Brackets, In } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import * as path from 'path';
 import * as fs from 'fs/promises';
@@ -228,6 +228,17 @@ export class FilesService {
     }
 
     return file;
+  }
+
+  /**
+   * 여러 파일을 In() 1회 배치 조회해 id→entity Map 반환 (DB-003 N+1 제거용).
+   * 미존재 id 는 Map 에 없음 — 호출측이 findById 와 동일한 NotFoundException 을 던져 동작 보존.
+   */
+  async findManyByIds(ids: string[]): Promise<Map<string, FileEntity>> {
+    const unique = [...new Set(ids)];
+    if (unique.length === 0) return new Map();
+    const files = await this.fileRepository.findBy({ id: In(unique) });
+    return new Map(files.map((f) => [f.id, f]));
   }
 
   /**

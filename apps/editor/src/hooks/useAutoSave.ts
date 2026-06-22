@@ -244,22 +244,36 @@ export function useAutoSave() {
 
   /**
    * 네트워크 상태 감지
+   *
+   * RACE-001(2026-06-22): 과거 deps 에 [isDirty, saveToServer, saveToLocal] 가 있어
+   * isDirty 변동마다 리스너가 재구독되고, 핸들러가 stale isDirty/saveToServer 를 캡처해
+   * 중복 저장 호출 위험이 있었다. 최신값은 ref 로 읽고 리스너는 마운트 시 1회만 구독한다.
+   * (saveToServer 는 내부 isSavingRef 가드가 이미 있어 중복은 1차 차단되지만, 여기서도
+   *  isSavingRef 가드 + 단일구독으로 이중 방어.)
    */
+  // 최신 클로저 값 동기화(렌더마다) — 핸들러가 ref 로 최신값을 읽어 stale 방지.
+  const isDirtyRef = useRef(isDirty)
+  isDirtyRef.current = isDirty
+  const saveToServerRef = useRef(saveToServer)
+  saveToServerRef.current = saveToServer
+  const saveToLocalRef = useRef(saveToLocal)
+  saveToLocalRef.current = saveToLocal
+
   useEffect(() => {
     const handleOnline = () => {
       console.log('[AutoSave] 온라인 전환')
       setOnline(true)
 
-      // 온라인 복귀 시 저장되지 않은 변경사항 동기화
-      if (isDirty) {
-        saveToServer()
+      // 온라인 복귀 시 저장되지 않은 변경사항 동기화(저장 진행 중이면 스킵 — 중복 방어)
+      if (isDirtyRef.current && !isSavingRef.current) {
+        saveToServerRef.current()
       }
     }
 
     const handleOffline = () => {
       console.log('[AutoSave] 오프라인 전환')
       setOnline(false)
-      saveToLocal()
+      saveToLocalRef.current()
     }
 
     window.addEventListener('online', handleOnline)
@@ -272,7 +286,7 @@ export function useAutoSave() {
       window.removeEventListener('online', handleOnline)
       window.removeEventListener('offline', handleOffline)
     }
-  }, [setOnline, isDirty, saveToServer, saveToLocal])
+  }, [setOnline])
 
   /**
    * 주기적 자동저장

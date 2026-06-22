@@ -33,6 +33,17 @@ async function bootstrap() {
   const pinoLogger = app.get(PinoLogger);
   app.useLogger(pinoLogger);
 
+  // CFG-001(2026-06-22): 핵심 시크릿 누락 조기 경보(warn-only, 부팅 미차단).
+  if ((process.env.NODE_ENV || 'development') === 'production') {
+    for (const key of ['DATABASE_PASSWORD', 'WORKER_API_KEY']) {
+      if (!process.env[key]) {
+        pinoLogger.warn(
+          `[CFG] 필수 환경변수 ${key} 가 설정되지 않았습니다 — DB/API 콜백 연동이 실패할 수 있습니다.`,
+        );
+      }
+    }
+  }
+
   const port = process.env.PORT || 4001;
   await app.listen(port);
 

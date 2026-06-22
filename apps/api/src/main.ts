@@ -54,6 +54,20 @@ async function bootstrap() {
 
   // Body parser size limit (캔버스 데이터 등 대용량 JSON 허용)
   const configService = app.get(ConfigService);
+
+  // CFG-001(2026-06-22): 핵심 시크릿 누락 조기 경보. ⚠️ throw 금지(부팅 차단=전체 다운 위험).
+  // JWT_SECRET 은 기본값이 없어 누락 시 secret=undefined 로 인증이 조용히 붕괴하므로 로그로 가시화.
+  // (Joi .required() 강제 검증은 prod .env 변수목록 불확실성 + 부팅실패 리스크로 채택 안 함.)
+  if (configService.get('NODE_ENV') === 'production') {
+    for (const key of ['JWT_SECRET', 'DATABASE_PASSWORD', 'WORKER_API_KEY']) {
+      if (!configService.get(key)) {
+        pinoLogger.warn(
+          `[CFG] 필수 환경변수 ${key} 가 설정되지 않았습니다 — 인증/DB/워커 연동이 실패할 수 있습니다. .env 확인 필요.`,
+        );
+      }
+    }
+  }
+
   const maxBodySize = configService.get<string>('MAX_BODY_SIZE', '100mb');
   app.useBodyParser('json', { limit: maxBodySize });
   app.useBodyParser('urlencoded', { limit: maxBodySize, extended: true });

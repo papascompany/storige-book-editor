@@ -5,7 +5,7 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, In } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
 import { EditSession, EditHistory } from './entities/edit-session.entity';
 import { EditSessionVersion } from './entities/edit-session-version.entity';
@@ -70,12 +70,17 @@ export class EditorService {
     }
 
     // 템플릿 정보 조회 및 초기 페이지 생성
+    // DB-002: 루프 내 findOne(N+1)을 In() 배치 1회로 치환. ref 순서·sortOrder:i·미존재 skip 동작
+    // 동일 보존(Map.get). 중복 templateId 도 Map 으로 안전.
+    const _tplIds = [...new Set(templateSet.templates.map((r) => r.templateId))];
+    const _tplList = _tplIds.length
+      ? await this.templateRepository.findBy({ id: In(_tplIds) })
+      : [];
+    const _tplById = new Map(_tplList.map((t) => [t.id, t]));
     const pages: EditPage[] = [];
     for (let i = 0; i < templateSet.templates.length; i++) {
       const ref = templateSet.templates[i];
-      const template = await this.templateRepository.findOne({
-        where: { id: ref.templateId },
-      });
+      const template = _tplById.get(ref.templateId);
 
       if (template) {
         pages.push({
@@ -695,12 +700,16 @@ export class EditorService {
     }
 
     // 새 템플릿셋으로 페이지 재생성
+    // DB-002: 루프 내 findOne(N+1)을 In() 배치 1회로 치환(동작 동일 보존).
+    const _newTplIds = [...new Set(newTemplateSet.templates.map((r) => r.templateId))];
+    const _newTplList = _newTplIds.length
+      ? await this.templateRepository.findBy({ id: In(_newTplIds) })
+      : [];
+    const _newTplById = new Map(_newTplList.map((t) => [t.id, t]));
     const newPages: EditPage[] = [];
     for (let i = 0; i < newTemplateSet.templates.length; i++) {
       const ref = newTemplateSet.templates[i];
-      const template = await this.templateRepository.findOne({
-        where: { id: ref.templateId },
-      });
+      const template = _newTplById.get(ref.templateId);
 
       if (template) {
         // 같은 타입의 사용자 요소 찾기

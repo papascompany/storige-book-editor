@@ -1064,12 +1064,17 @@ export class WorkerJobsService {
     }
 
     // 3. 내지 PDF 파일들 조회 + 검증
+    // DB-003: 루프 내 findById(N+1)를 In() 배치 1회로 치환. 미존재 시 findById 와 동일한
+    // NotFoundException(FILE_NOT_FOUND, details.fileId)을 던져 기존 reachable 동작 보존
+    // (기존 코드의 per-file 메시지 블록은 findById 가 먼저 throw 해 도달 불가했음).
+    const _contentFiles = await this.filesService.findManyByIds(dto.contentPdfFileIds);
     for (const fileId of dto.contentPdfFileIds) {
-      const contentFile = await this.filesService.findById(fileId);
+      const contentFile = _contentFiles.get(fileId);
       if (!contentFile) {
         throw new NotFoundException({
           code: 'FILE_NOT_FOUND',
-          message: `내지 PDF 파일을 찾을 수 없습니다: ${fileId}`,
+          message: '파일을 찾을 수 없습니다.',
+          details: { fileId },
         });
       }
 
