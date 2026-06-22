@@ -332,8 +332,14 @@ export class StorageController {
   }
 
   @Delete('designs/:filename')
-  @ApiOperation({ summary: 'Delete a design file' })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Delete a design file — 관리자 전용' })
   @ApiResponse({ status: 200, description: 'Design file deleted successfully' })
+  @ApiResponse({ status: 403, description: '권한 없음 (관리자만)' })
+  // SEC-004: 과거 가드 부재로 유효 JWT 가진 임의 사용자가 디자인 파일을 비가역 삭제(fs.unlink)
+  // 가능했음. POST upload(ADMIN/MANAGER)와 동일 역할 가드로 잠금. 정당 콜러 0건(dead client).
   async deleteDesignFile(@Param('filename') filename: string) {
     const url = `/storage/designs/${filename}`;
     await this.storageService.deleteFileByUrl(url);

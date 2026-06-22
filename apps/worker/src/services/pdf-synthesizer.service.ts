@@ -714,6 +714,7 @@ export class PdfSynthesizerService {
     const response = await axios.get(url, {
       responseType: 'arraybuffer',
       maxRedirects: 0,
+      timeout: 60000, // EH-003: 무응답 외부 URL 로 워커 잡 무한대기 방지
     });
 
     return new Uint8Array(response.data);

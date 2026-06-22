@@ -11,6 +11,7 @@ import {
   ParseUUIDPipe,
   BadRequestException,
   ForbiddenException,
+  Logger,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -48,6 +49,8 @@ import { SpreadStartSide } from '../worker-jobs/imposition.util';
 @ApiExtraModels(PayloadTooLargeResponseDto)
 @Controller('edit-sessions')
 export class EditSessionsController {
+  private readonly logger = new Logger(EditSessionsController.name);
+
   constructor(private readonly editSessionsService: EditSessionsService) {}
 
   /**
@@ -427,6 +430,32 @@ export class EditSessionsController {
       sessions = await this.editSessionsService.findByOrderSeqno(
         parseInt(orderSeqno),
       );
+      // SEC-005 (2026-06-22): orderSeqno 분기 IDOR 차단. 과거엔 고객 JWT로 임의 주문번호의
+      // 모든 세션(canvasData 포함)을 열람할 수 있었다. staff 또는 JWT 에 명시된 주문권한
+      // (allowedOrderSeqnos)이 없으면 본인 소유(memberSeqno) 세션만 반환 → 타인 데이터 유출 차단.
+      // 외부 파트너는 /edit-sessions/external(ApiKeyGuard+site격리)을 사용하므로 무영향.
+      const isStaff = this.isStaffRole(user);
+      const reqOrder = parseInt(orderSeqno);
+      const granted =
+        Array.isArray(user?.allowedOrderSeqnos) &&
+        user.allowedOrderSeqnos.includes(reqOrder);
+      if (!isStaff && !granted) {
+        const selfSeqno = user?.userId ? parseInt(user.userId) : NaN;
+        const before = sessions.length;
+        sessions = sessions.filter(
+          (s: any) => s.memberSeqno !== null && Number(s.memberSeqno) === selfSeqno,
+        );
+        // ⚠️ 데이터유실 조기탐지: 정상 재편집(임베드 findByOrder)인데 필터가 전부 제거하면,
+        // 호스트가 shop-session 발급 시 orderSeqno(→allowedOrderSeqnos) 를 누락했고 주문 세션
+        // memberSeqno 가 요청자와 불일치한다는 신호(embed.tsx 가 신규세션 생성→고아화 위험).
+        // 정본 계약(PLATFORM_INTEGRATION_GUIDE)은 orderSeqno 포함을 명시 → 발생 시 호스트 점검.
+        if (before > 0 && sessions.length === 0) {
+          this.logger.warn(
+            `[SEC-005] orderSeqno=${reqOrder} 조회: 권한 미보유 + memberSeqno 불일치로 ${before}건 전부 필터됨 ` +
+              `(member=${selfSeqno}, site=${user?.siteId}). 호스트 shop-session orderSeqno 주입 점검 필요.`,
+          );
+        }
+      }
     } else if (memberSeqno) {
       // IDOR 가드 (2026-06-11): admin/manager 가 아니면 memberSeqno 쿼리는
       // 본인(JWT user.userId == memberSeqno)일 때만 허용 — 임의 회원의 세션
@@ -450,6 +479,13 @@ export class EditSessionsController {
       }
       sessions = await this.editSessionsService.findByMemberSeqno(requestedSeqno);
     } else if (siteId) {
+      // SEC-005: siteId 분기도 staff 또는 자기 site 만 허용(타 테넌트 세션 유출 차단).
+      if (!this.isStaffRole(user) && user?.siteId !== siteId) {
+        throw new ForbiddenException({
+          code: 'FORBIDDEN_SITE_QUERY',
+          message: '다른 사이트의 편집 세션은 조회할 수 없습니다.',
+        });
+      }
       sessions = await this.editSessionsService.findBySiteId(siteId);
     } else if (user?.userId) {
       // 본인 세션만 조회

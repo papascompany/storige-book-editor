@@ -243,13 +243,15 @@ export class WorkerJobsController {
   @ApiQuery({ name: 'status', required: false, enum: WorkerJobStatus })
   @ApiQuery({ name: 'jobType', required: false, enum: WorkerJobType })
   @ApiQuery({ name: 'siteId', required: false, description: '사이트 ID (Phase C-3)' })
+  @ApiQuery({ name: 'limit', required: false, description: '최대 반환 수 (기본 200, 최대 1000) — DB-016' })
   @ApiResponse({ status: 200, description: 'List of worker jobs', type: [WorkerJob] })
   async findAll(
     @Query('status') status?: WorkerJobStatus,
     @Query('jobType') jobType?: WorkerJobType,
     @Query('siteId') siteId?: string, // Phase C-3
+    @Query('limit') limit?: string, // DB-016
   ): Promise<WorkerJob[]> {
-    return await this.workerJobsService.findAll(status, jobType, siteId);
+    return await this.workerJobsService.findAll(status, jobType, siteId, limit ? Number(limit) : undefined);
   }
 
   @Get('stats')
@@ -292,8 +294,14 @@ export class WorkerJobsController {
   @ApiResponse({ status: 200, description: 'PDF file stream' })
   @ApiResponse({ status: 404, description: 'Job not found or no output file' })
   @ApiResponse({ status: 400, description: 'Job not completed or no output' })
-  async downloadOutput(@Param('id') id: string, @Res() res: Response): Promise<void> {
-    const job = await this.workerJobsService.findOne(id);
+  async downloadOutput(
+    @Param('id') id: string,
+    @Res() res: Response,
+    @CurrentSite() site?: CurrentSitePayload,
+  ): Promise<void> {
+    // SEC-002: site/소유권 격리(external/:id 와 동일). NULL-site 잡·undefined-caller 는 통과,
+    // 타 테넌트 잡은 404 → IDOR 차단. assertJobSiteAccess(service) 재사용.
+    const job = await this.workerJobsService.findOne(id, site);
     if (!job) {
       throw new NotFoundException({
         code: 'JOB_NOT_FOUND',
@@ -370,8 +378,12 @@ export class WorkerJobsController {
   @ApiOperation({ summary: 'Get a worker job by ID' })
   @ApiResponse({ status: 200, description: 'Worker job details', type: WorkerJob })
   @ApiResponse({ status: 404, description: 'Job not found' })
-  async findOne(@Param('id') id: string): Promise<WorkerJob> {
-    return await this.workerJobsService.findOne(id);
+  async findOne(
+    @Param('id') id: string,
+    @CurrentSite() site?: CurrentSitePayload,
+  ): Promise<WorkerJob> {
+    // SEC-002: site/소유권 격리(external/:id 와 동일). 타 테넌트 잡 조회 차단.
+    return await this.workerJobsService.findOne(id, site);
   }
 
   /**

@@ -12,7 +12,7 @@ import { ValidationPipe, BadRequestException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { getQueueToken } from '@nestjs/bull';
-import { UpdateJobStatusDto } from './worker-job.dto';
+import { UpdateJobStatusDto, CreateValidationJobDto } from './worker-job.dto';
 import { WorkerJobsService } from '../worker-jobs.service';
 import { WorkerJob } from '../entities/worker-job.entity';
 import { EditSessionEntity } from '../../edit-sessions/entities/edit-session.entity';
@@ -79,6 +79,42 @@ describe('UpdateJobStatusDto (WK-1: errorCode/errorDetail)', () => {
   it('미정의 필드는 여전히 forbidNonWhitelisted 로 거부해야 한다 (기존 보안 동작 유지)', async () => {
     const payload = { status: 'FAILED', hackerField: 'x' };
     await expect(pipe.transform(payload, metadata)).rejects.toThrow(BadRequestException);
+  });
+});
+
+// SEC-009(2026-06-22) — callbackUrl @IsUrl 검증.
+describe('CreateValidationJobDto.callbackUrl (SEC-009 @IsUrl)', () => {
+  const pipe = new ValidationPipe({ whitelist: true, transform: true, forbidNonWhitelisted: true });
+  const meta = { type: 'body' as const, metatype: CreateValidationJobDto };
+  const base = {
+    fileId: '3f2c1a4e-0b6d-4c2a-9e1f-1234567890ab',
+    fileType: 'content',
+    orderOptions: { size: { width: 210, height: 297 }, pages: 4, binding: 'perfect', bleed: 3 },
+  };
+
+  it('정상 https 콜백 URL 통과', async () => {
+    const out = await pipe.transform(
+      { ...base, callbackUrl: 'https://bookmoa.com/api/webhook/validation' },
+      meta,
+    );
+    expect(out.callbackUrl).toBe('https://bookmoa.com/api/webhook/validation');
+  });
+
+  it('비-URL 문자열 콜백은 400 거부', async () => {
+    await expect(
+      pipe.transform({ ...base, callbackUrl: 'not a url' }, meta),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('비-http 스킴(file://) 콜백은 400 거부', async () => {
+    await expect(
+      pipe.transform({ ...base, callbackUrl: 'file:///etc/passwd' }, meta),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('callbackUrl 미지정은 통과(옵셔널)', async () => {
+    const out = await pipe.transform({ ...base }, meta);
+    expect(out.callbackUrl).toBeUndefined();
   });
 });
 

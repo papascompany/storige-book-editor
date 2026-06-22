@@ -83,6 +83,12 @@ export class PdfConverterService {
   ): Promise<ConversionResult> {
     this.logger.log(`Converting PDF: ${fileUrl}`);
 
+    // PDF-006(2026-06-22): 예외 시 임시파일 누수 방지. 경로를 try 밖에 선언해 finally 에서
+    // 정리한다. 정상 경로는 기존대로 단계별 safeDelete 로 정리되므로 succeeded 후 추가 삭제 없음.
+    let tempInputPath: string | undefined;
+    let currentPath: string | undefined;
+    let succeeded = false;
+
     try {
       // Ghostscript 사용 가능 여부 확인
       if (this.gsAvailable === null) {
@@ -98,7 +104,7 @@ export class PdfConverterService {
       // 파일을 입력으로 받으므로, 여기서 입력 확보 방식만 분기한다. ⚠️ 산출 동일.
       // ──────────────────────────────────────────────────────────────
       const lightweight = VALIDATION_CONFIG.LIGHTWEIGHT_SYNTHESIS;
-      const tempInputPath = path.join(this.storagePath, `input_${uuidv4()}.pdf`);
+      tempInputPath = path.join(this.storagePath, `input_${uuidv4()}.pdf`);
 
       if (lightweight) {
         // 스트림 다운로드 → 디스크. 로컬 원본이면 그 경로를 그대로 복사(파리티: OFF 도
@@ -127,7 +133,7 @@ export class PdfConverterService {
       //   현행(레거시) 경로 100% 유지(편집기 PDF/admin 자동수정 무영향). ⚠️ 게이트.
       const options = await this.resolveMode(rawOptions, tempInputPath, lightweight);
 
-      let currentPath = tempInputPath;
+      currentPath = tempInputPath;
       let pagesAdded = 0;
       let bleedApplied = false;
 
@@ -272,6 +278,7 @@ export class PdfConverterService {
 
       this.logger.log(`Conversion complete: ${outputPath}`);
 
+      succeeded = true;
       return {
         success: true,
         outputFileUrl: this.toStorageUrl(outputPath),
@@ -287,6 +294,14 @@ export class PdfConverterService {
     } catch (error) {
       this.logger.error(`Conversion failed: ${error.message}`, error.stack);
       throw error;
+    } finally {
+      // PDF-006: 예외 경로에서만 임시파일 정리. 정상 경로는 단계별 safeDelete + 270행
+      // safeDelete(tempInputPath)로 이미 정리됨(succeeded=true → 스킵). safeDelete 는
+      // ENOENT 를 삼키므로 이미 삭제된 경로 재삭제도 무해(멱등).
+      if (!succeeded) {
+        if (currentPath) await this.safeDelete(currentPath);
+        if (tempInputPath) await this.safeDelete(tempInputPath);
+      }
     }
   }
 

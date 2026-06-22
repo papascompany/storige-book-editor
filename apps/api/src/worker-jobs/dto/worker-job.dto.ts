@@ -67,7 +67,9 @@ export class CreateValidationJobDto {
     description: '검증 완료/실패 시 콜백 URL (editSessionId 없이 서버 간 통신에 사용)',
   })
   @IsOptional()
-  @IsString()
+  // SEC-009: http/https 절대 URL 만 허용(file://·상대경로 등 차단). SSRF 1차 방어는
+  // WebhookService.isAllowedCallbackUrl(allowlist) — 여기선 입력 형식 위생.
+  @IsUrl({ protocols: ['http', 'https'], require_tld: false, require_protocol: true })
   callbackUrl?: string;
 
   /** Phase C — 호출 컨트롤러에서 자동 주입 */
@@ -156,7 +158,8 @@ export class CreateSynthesisJobDto {
 
   @ApiPropertyOptional({ example: 'https://bookmoa.com/api/webhook/synthesis', description: '완료 시 콜백 URL' })
   @IsOptional()
-  @IsString()
+  // SEC-009: http/https 절대 URL 만 허용.
+  @IsUrl({ protocols: ['http', 'https'], require_tld: false, require_protocol: true })
   callbackUrl?: string;
 
   @ApiPropertyOptional({

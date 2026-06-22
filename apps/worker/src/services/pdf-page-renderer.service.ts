@@ -77,7 +77,8 @@ export class PdfPageRendererService {
     }
     // SSRF 가드(P0-1 M1): 내부망 페치 + 리다이렉트 우회 차단.
     await assertSafeDownloadUrl(url);
-    const res = await axios.get(url, { responseType: 'arraybuffer', maxRedirects: 0 });
+    // EH-004: timeout 으로 무응답 URL 의 render-pdf-pages 잡 무한대기(큐 적체) 방지.
+    const res = await axios.get(url, { responseType: 'arraybuffer', maxRedirects: 0, timeout: 60000 });
     return Buffer.from(res.data);
   }
 
