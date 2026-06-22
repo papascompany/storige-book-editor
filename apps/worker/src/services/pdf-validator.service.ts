@@ -27,6 +27,7 @@ import {
 } from '../utils/ghostscript';
 // 트랙 B-(d) 경량(ON) 검증 경로 전용 유틸 (OFF 경로는 import 만 하고 사용하지 않음).
 import { downloadToTempFile } from '../utils/stream-download';
+import { assertSafeDownloadUrl } from '../utils/url-safety';
 import { extractPdfMetadataQpdf } from '../utils/pdf-metadata-qpdf';
 import { scanPdfStreaming } from '../utils/streaming-pdf-scan';
 import { SpotColorResult, TransparencyResult, ImageResolutionResult, FontDetectionResult } from '../dto/validation-result.dto';
@@ -107,6 +108,17 @@ export class PdfValidatorService {
 
       // 4. 메타데이터 추출
       const pages = pdfDoc.getPages();
+      // 0페이지 가드(P0-4): pages[0] 접근 전 차단. 없으면 firstPage.getSize() 가
+      // TypeError 를 던져 상위 catch 가 FILE_CORRUPTED 로 오진한다.
+      if (pages.length === 0) {
+        errors.push({
+          code: ErrorCode.PAGE_COUNT_INVALID,
+          message: 'PDF에 페이지가 없습니다. (0페이지) 최소 1페이지 이상의 PDF를 업로드해주세요.',
+          details: { expected: '>=1', actual: 0 },
+          autoFixable: false,
+        });
+        return { isValid: false, errors, warnings, metadata };
+      }
       const firstPage = pages[0];
       const { width, height } = firstPage.getSize();
 
@@ -471,6 +483,17 @@ export class PdfValidatorService {
       const pageCount =
         meta.ok && meta.pageCount > 0 ? meta.pageCount : pages.length;
 
+      // 0페이지 가드(P0-4): OFF 와 파리티 유지 + pdf-lib 폴백분기 안전(qpdf 상위 가드가
+      // 막아 도달은 드물지만, 폴백([])·파리티를 위해 양 경로 동일 적용).
+      if (pages.length === 0) {
+        errors.push({
+          code: ErrorCode.PAGE_COUNT_INVALID,
+          message: 'PDF에 페이지가 없습니다. (0페이지) 최소 1페이지 이상의 PDF를 업로드해주세요.',
+          details: { expected: '>=1', actual: 0 },
+          autoFixable: false,
+        });
+        return { isValid: false, errors, warnings, metadata };
+      }
       // 4. 메타데이터(치수) — OFF 와 동일 (firstPage.getSize → mm 변환)
       const firstPage = pages[0];
       const { width, height } = firstPage.getSize();
@@ -904,11 +927,13 @@ export class PdfValidatorService {
       return new Uint8Array(buffer);
     }
 
-    // URL에서 다운로드
+    // URL에서 다운로드 — SSRF 가드(P0-1 M1): 내부망 페치 + 리다이렉트 우회 차단.
+    await assertSafeDownloadUrl(url);
     this.logger.log(`Downloading from URL: ${url}`);
     const response = await axios.get(url, {
       responseType: 'arraybuffer',
       timeout: 60000, // 60초 타임아웃
+      maxRedirects: 0,
     });
 
     return new Uint8Array(response.data);

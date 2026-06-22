@@ -93,6 +93,63 @@ describe('PdfSynthesizerService', () => {
         expect(result.coverPath).not.toContain('source');
       });
     });
+
+    // P0-6(2026-06-22): try-finally 자기-정리 — 예외 시 source 임시파일 누수 방어,
+    // 정상 경로는 산출물 보존(반환계약 불변).
+    describe('임시파일 누수 방어 (P0-6 try-finally)', () => {
+      it('합성 중 예외가 나면 다운로드된 source 임시파일을 정리해야 한다', async () => {
+        const created: string[] = [];
+        jest
+          .spyOn(service as any, 'downloadToPath')
+          .mockImplementation(async (...args: any[]) => {
+            const dest = args[1] as string;
+            await fs.writeFile(dest, 'dummy');
+            created.push(dest);
+          });
+        (service as any).gsAvailable = false; // null 체크 우회 → pdf-lib 경로
+        jest
+          .spyOn(service as any, 'synthesizeWithPdfLib')
+          .mockRejectedValue(new Error('boom'));
+
+        await expect(
+          service.synthesizeToLocal('cover-url', 'content-url', {
+            outputFormat: 'merged',
+          }),
+        ).rejects.toThrow('boom');
+
+        // source cover + content 두 개가 디스크에 기록됐고
+        expect(created).toHaveLength(2);
+        // 모두 정리되어 더이상 존재하지 않아야 한다
+        for (const p of created) {
+          await expect(fs.access(p)).rejects.toThrow();
+        }
+      });
+
+      it('정상 합성 시 source/merged 산출물을 보존해야 한다(반환계약 불변)', async () => {
+        jest
+          .spyOn(service as any, 'downloadToPath')
+          .mockImplementation(async (...args: any[]) => {
+            await fs.writeFile(args[1] as string, 'dummy');
+          });
+        (service as any).gsAvailable = false;
+        jest
+          .spyOn(service as any, 'synthesizeWithPdfLib')
+          .mockImplementation(async (...args: any[]) => {
+            await fs.writeFile(args[2] as string, 'merged'); // mergedPath 생성
+            return 10;
+          });
+
+        const result = await service.synthesizeToLocal('c', 'ct', {
+          outputFormat: 'merged',
+        });
+
+        expect(result.success).toBe(true);
+        // 정상 경로: 호출자(cleanupTempFiles)가 후속 정리하므로 여기선 보존돼야 함
+        await expect(fs.access(result.sourceCoverPath)).resolves.toBeUndefined();
+        await expect(fs.access(result.sourceContentPath)).resolves.toBeUndefined();
+        await expect(fs.access(result.mergedPath)).resolves.toBeUndefined();
+      });
+    });
   });
 
   describe('calculateSpineWidth', () => {

@@ -5,9 +5,15 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import axios from 'axios';
 import { ValidationOptions, ErrorCode, WarningCode } from '../dto/validation-result.dto';
+import { assertSafeDownloadUrl } from '../utils/url-safety';
 
 jest.mock('fs/promises');
 jest.mock('axios');
+// SSRF 가드(P0-1 M1)는 url-safety.spec.ts 가 오프라인으로 단독 검증한다. 여기선 downloadFile
+// 단위테스트가 실제 DNS 조회를 타지 않도록 no-op 으로 목하고, 배선(호출 여부)만 확인한다.
+jest.mock('../utils/url-safety', () => ({
+  assertSafeDownloadUrl: jest.fn().mockResolvedValue(undefined),
+}));
 
 // ghostscript 함수 모킹
 jest.mock('../utils/ghostscript', () => ({
@@ -99,6 +105,35 @@ describe('PdfValidatorService', () => {
       expect(result.isValid).toBe(false);
       expect(result.errors).toHaveLength(1);
       expect(result.errors[0].code).toBe(ErrorCode.FILE_CORRUPTED);
+    });
+
+    // P0-4(2026-06-22): 0페이지 PDF 는 과거 firstPage.getSize() TypeError → FILE_CORRUPTED 오진.
+    // 이제 PAGE_COUNT_INVALID 로 정확히 진단하고 크래시하지 않아야 한다.
+    // pdf-lib 의 create/save/load 라운드트립은 빈 문서를 1페이지로 정규화하므로(검증됨),
+    // 타 도구가 만든 진짜 0페이지 상태를 재현하려면 load 를 스텁해 getPages()=[] 를 강제한다.
+    it('should return PAGE_COUNT_INVALID (not crash) for a 0-page PDF', async () => {
+      const pdfBytes = await createMockPdf(1, 210, 297); // 크기검증 통과용 더미 바이트
+      mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
+      const loadSpy = jest
+        .spyOn(PDFDocument, 'load')
+        .mockResolvedValueOnce({ getPages: () => [] } as any);
+
+      try {
+        const result = await service.validate('./empty.pdf', defaultOptions);
+
+        expect(result.isValid).toBe(false);
+        const zeroPageError = result.errors.find(
+          (e) => e.code === ErrorCode.PAGE_COUNT_INVALID,
+        );
+        expect(zeroPageError).toBeDefined();
+        expect(zeroPageError?.details?.actual).toBe(0);
+        // firstPage.getSize() TypeError → FILE_CORRUPTED 오진이 없어야 한다
+        expect(
+          result.errors.find((e) => e.code === ErrorCode.FILE_CORRUPTED),
+        ).toBeUndefined();
+      } finally {
+        loadSpy.mockRestore();
+      }
     });
 
     it('should return error when file is too large', async () => {
@@ -285,11 +320,14 @@ describe('PdfValidatorService', () => {
 
       const result = await service.validate('https://example.com/test.pdf', defaultOptions);
 
+      // SSRF 가드(P0-1 M1)가 raw-URL 다운로드 전에 호출됐는지 배선 확인
+      expect(assertSafeDownloadUrl).toHaveBeenCalledWith('https://example.com/test.pdf');
       expect(mockedAxios.get).toHaveBeenCalledWith(
         'https://example.com/test.pdf',
         expect.objectContaining({
           responseType: 'arraybuffer',
           timeout: 60000,
+          maxRedirects: 0,
         }),
       );
       expect(result.metadata.pageCount).toBe(4);

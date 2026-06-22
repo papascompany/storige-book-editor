@@ -8,6 +8,7 @@ import { pdfToImage } from '../utils/ghostscript';
 import { isApiMarker, downloadViaApi } from './api-file-download';
 import { VALIDATION_CONFIG } from '../config/validation.config';
 import { downloadToTempFile } from '../utils/stream-download';
+import { assertSafeDownloadUrl } from '../utils/url-safety';
 import { extractPdfMetadataQpdf } from '../utils/pdf-metadata-qpdf';
 
 export interface RenderPagesResult {
@@ -74,7 +75,9 @@ export class PdfPageRendererService {
     if (url.startsWith('/') || url.startsWith('./')) {
       return fs.readFile(url);
     }
-    const res = await axios.get(url, { responseType: 'arraybuffer' });
+    // SSRF 가드(P0-1 M1): 내부망 페치 + 리다이렉트 우회 차단.
+    await assertSafeDownloadUrl(url);
+    const res = await axios.get(url, { responseType: 'arraybuffer', maxRedirects: 0 });
     return Buffer.from(res.data);
   }
 

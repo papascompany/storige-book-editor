@@ -395,14 +395,28 @@ export class WorkerJobsController {
     return await this.workerJobsService.updateJobStatus(id, updateJobStatusDto, site);
   }
 
+  /**
+   * 작업 상태 업데이트(내부 호환 별칭) — API Key 인증 필수 (P0-3, 2026-06-22).
+   *
+   * ⚠️ 과거 이 라우트는 가드 없이 전역 JwtAuthGuard 만 적용돼, 유효한 고객 JWT 면 누구나
+   * 임의 잡 상태를 조작할 수 있었다(소유권/역할 검사 없음). 워커 콜백은 전부
+   * `external/:id/status`(X-API-Key) 를 쓰므로 이 라우트엔 코드 콜러가 없으나,
+   * 혹시 모를 인증된 외부 콜러 보호를 위해 삭제 대신 external 변형과 동일하게 잠근다.
+   */
   @Patch(':id/status')
-  @ApiOperation({ summary: 'Update job status (used by worker service)' })
+  @Public()
+  @UseGuards(ApiKeyGuard)
+  @ApiSecurity('api-key')
+  @ApiOperation({ summary: 'Update job status (API key auth; alias of external/:id/status)' })
   @ApiResponse({ status: 200, description: 'Job status updated', type: WorkerJob })
+  @ApiResponse({ status: 401, description: 'Invalid API key' })
   @ApiResponse({ status: 404, description: 'Job not found' })
   async updateJobStatus(
     @Param('id') id: string,
     @Body() updateJobStatusDto: UpdateJobStatusDto,
+    @CurrentSite() site?: CurrentSitePayload,
   ): Promise<WorkerJob> {
-    return await this.workerJobsService.updateJobStatus(id, updateJobStatusDto);
+    // external 변형과 동일: worker 키는 바이패스, editor 키는 자기 site 잡만 갱신.
+    return await this.workerJobsService.updateJobStatus(id, updateJobStatusDto, site);
   }
 }
