@@ -139,6 +139,12 @@ describe('EditorService', () => {
           provide: getRepositoryToken(Template),
           useValue: {
             findOne: jest.fn().mockResolvedValue(mockTemplate),
+            // DB-002: createSession/replaceTemplateSet 가 findBy(In()) 배치 사용 →
+            // templateSet.templates 의 두 id 를 모두 해석하도록 목 제공.
+            findBy: jest.fn().mockResolvedValue([
+              mockTemplate,
+              { ...mockTemplate, id: 'template-id-2' },
+            ]),
           },
         },
       ],

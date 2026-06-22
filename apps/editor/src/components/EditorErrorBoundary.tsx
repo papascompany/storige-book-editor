@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
+import { Sentry } from '../lib/sentry'
 
 /**
  * 에디터 전역 ErrorBoundary —
@@ -30,8 +31,16 @@ export class EditorErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    // 운영 환경에서도 콘솔에는 남김 — Sentry 등 외부 추적 도구 연결 시 여기서 dispatch.
+    // 운영 환경에서도 콘솔에는 남김.
     console.error('[EditorErrorBoundary]', error, info?.componentStack)
+    // EH-002: React 렌더 트리 크래시를 Sentry 로 전송(과거 누락). DSN 미설정 시 no-op 이라 안전.
+    try {
+      Sentry.captureException(error, {
+        extra: { componentStack: info?.componentStack },
+      } as any)
+    } catch {
+      /* Sentry 미초기화 등 — 무시 */
+    }
   }
 
   private handleReload = () => {
