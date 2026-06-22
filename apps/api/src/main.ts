@@ -18,6 +18,7 @@ import { ConfigService } from '@nestjs/config';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import cookieParser from 'cookie-parser';
+import helmet from 'helmet';
 import { Logger as PinoLogger } from 'nestjs-pino';
 import { AppModule } from './app.module';
 import { PayloadTooLargeResponseDto } from './common/dto/error-response.dto';
@@ -71,6 +72,18 @@ async function bootstrap() {
   const maxBodySize = configService.get<string>('MAX_BODY_SIZE', '100mb');
   app.useBodyParser('json', { limit: maxBodySize });
   app.useBodyParser('urlencoded', { limit: maxBodySize, extended: true });
+
+  // AUTH-001 WS-2(2026-06-22): 보안 응답 헤더(helmet). XSS 표면 축소·클릭재킹·MIME스니핑 방어.
+  // ⚠️ API 가 크로스오리진 리소스(GET /files/:id/raw 이미지 — 외부 임베드 편집기에서 로드)를
+  //    서빙하므로 Cross-Origin-Resource-Policy=cross-origin 유지(same-origin 기본은 차단 회귀).
+  //    CSP/COEP 는 API/Swagger·임베드 호환 위해 미부과(별도 단계에서 Report-Only 검토).
+  app.use(
+    helmet({
+      contentSecurityPolicy: false,
+      crossOriginEmbedderPolicy: false,
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
+    }),
+  );
 
   // Cookie parser middleware
   app.use(cookieParser());
