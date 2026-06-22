@@ -72,6 +72,17 @@ import { HealthController } from './health/health.controller';
           host: config.get('REDIS_HOST', 'localhost'),
           port: config.get('REDIS_PORT', 6379),
         },
+        // P0-5(2026-06-22): 대형 PDF 합성/변환이 Bull 기본 lockDuration(30s)을 초과하면
+        // stalled 로 오판돼 잡이 중복 재실행되고 DB 상태(PROCESSING)·콜백이 경합한다.
+        // lock 을 10분으로 늘리고 주기 갱신해 애초에 stalled 판정을 막는다.
+        // ⚠️ maxStalledCount 는 0 금지(0=stalled 1회에 즉시 영구 FAILED → 정상완료 잡 오탐).
+        //    기본값 1 유지: 진짜 크래시 시에만 1회 재처리.
+        settings: {
+          lockDuration: 600000, // 10분 (기본 30s) — 대형 PDF 처리시간 여유
+          lockRenewTime: 150000, // lockDuration/4 — lock 만료 전 능동 갱신
+          maxStalledCount: 1, // 기본값 유지(0 아님)
+          stalledInterval: 30000, // 기본값 유지
+        },
       }),
     }),
 

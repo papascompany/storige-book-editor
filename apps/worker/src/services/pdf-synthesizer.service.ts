@@ -14,6 +14,7 @@ import { DomainError, ErrorCodes } from '../common/errors';
 import { isApiMarker, downloadViaApi } from './api-file-download';
 import { VALIDATION_CONFIG } from '../config/validation.config';
 import { downloadToTempFile } from '../utils/stream-download';
+import { assertSafeDownloadUrl } from '../utils/url-safety';
 import { extractPdfMetadataQpdf } from '../utils/pdf-metadata-qpdf';
 import {
   assemblePdf as qpdfAssemble,
@@ -80,6 +81,9 @@ export class PdfSynthesizerService {
     }
 
     // 1. 다운로드 (source 경로)
+    // P0-6(2026-06-22): 경로를 try 밖에 선언해 예외 시 finally 에서 정리 가능하도록 한다.
+    // 과거엔 try-finally 가 없어 GS/pdf-lib 예외 시 source 파일이 디스크에 잔류했고,
+    // 호출자 catch 도 localResult=null 이라 cleanup 을 건너뛰어 누수가 영구화됐다.
     const sourceCoverPath = path.join(
       this.storagePath,
       `source_cover_${uuidv4()}.pdf`,
@@ -88,67 +92,80 @@ export class PdfSynthesizerService {
       this.storagePath,
       `source_content_${uuidv4()}.pdf`,
     );
-
-    // 트랙 B-(f): ON 이면 스트림 다운로드(상수메모리), OFF 면 기존 전체버퍼. 산출 파일 동일.
-    await this.downloadToPath(coverPdfUrl, sourceCoverPath);
-    await this.downloadToPath(contentPdfUrl, sourceContentPath);
-
-    // 2. merged PDF 생성 (항상)
     const mergedPath = path.join(this.storagePath, `merged_${uuidv4()}.pdf`);
+    let coverPath: string | undefined;
+    let contentPath: string | undefined;
+    let succeeded = false;
 
-    let totalPages: number;
-    if (this.gsAvailable) {
-      totalPages = await this.synthesizeWithGhostscript(
-        sourceCoverPath,
-        sourceContentPath,
-        mergedPath,
-        bindingType,
-      );
-    } else {
-      totalPages = await this.synthesizeWithPdfLib(
-        sourceCoverPath,
-        sourceContentPath,
-        mergedPath,
-        bindingType,
-      );
-    }
+    try {
+      // 트랙 B-(f): ON 이면 스트림 다운로드(상수메모리), OFF 면 기존 전체버퍼. 산출 파일 동일.
+      await this.downloadToPath(coverPdfUrl, sourceCoverPath);
+      await this.downloadToPath(contentPdfUrl, sourceContentPath);
 
-    this.logger.log(
-      `Merged PDF created: ${totalPages} pages saved to ${mergedPath}`,
-    );
-
-    // 3. separate 모드면 cover/content 복사본 생성 (output 경로)
-    if (outputFormat === 'separate') {
-      const coverPath = path.join(this.storagePath, `cover_${uuidv4()}.pdf`);
-      const contentPath = path.join(
-        this.storagePath,
-        `content_${uuidv4()}.pdf`,
-      );
-      await fs.copyFile(sourceCoverPath, coverPath);
-      await fs.copyFile(sourceContentPath, contentPath);
+      // 2. merged PDF 생성 (항상)
+      let totalPages: number;
+      if (this.gsAvailable) {
+        totalPages = await this.synthesizeWithGhostscript(
+          sourceCoverPath,
+          sourceContentPath,
+          mergedPath,
+          bindingType,
+        );
+      } else {
+        totalPages = await this.synthesizeWithPdfLib(
+          sourceCoverPath,
+          sourceContentPath,
+          mergedPath,
+          bindingType,
+        );
+      }
 
       this.logger.log(
-        `Separate mode: cover=${coverPath}, content=${contentPath}`,
+        `Merged PDF created: ${totalPages} pages saved to ${mergedPath}`,
       );
 
+      // 3. separate 모드면 cover/content 복사본 생성 (output 경로)
+      if (outputFormat === 'separate') {
+        coverPath = path.join(this.storagePath, `cover_${uuidv4()}.pdf`);
+        contentPath = path.join(this.storagePath, `content_${uuidv4()}.pdf`);
+        await fs.copyFile(sourceCoverPath, coverPath);
+        await fs.copyFile(sourceContentPath, contentPath);
+
+        this.logger.log(
+          `Separate mode: cover=${coverPath}, content=${contentPath}`,
+        );
+
+        succeeded = true;
+        return {
+          success: true,
+          sourceCoverPath, // 다운로드 원본
+          sourceContentPath, // 다운로드 원본
+          mergedPath,
+          coverPath, // 복사본 (출력용)
+          contentPath, // 복사본 (출력용)
+          totalPages,
+        };
+      }
+
+      succeeded = true;
       return {
         success: true,
         sourceCoverPath, // 다운로드 원본
         sourceContentPath, // 다운로드 원본
         mergedPath,
-        coverPath, // 복사본 (출력용)
-        contentPath, // 복사본 (출력용)
         totalPages,
       };
+    } finally {
+      // 예외 경로에서만 자기-정리. 정상 경로 산출물은 호출자(cleanupTempFiles)가
+      // 후속 단계 이후 정리하므로 보존한다 → 반환계약 불변.
+      if (!succeeded) {
+        await this.safeDelete(sourceCoverPath);
+        await this.safeDelete(sourceContentPath);
+        await this.safeDelete(mergedPath);
+        if (coverPath) await this.safeDelete(coverPath);
+        if (contentPath) await this.safeDelete(contentPath);
+      }
     }
-
-    return {
-      success: true,
-      sourceCoverPath, // 다운로드 원본
-      sourceContentPath, // 다운로드 원본
-      mergedPath,
-      totalPages,
-    };
   }
 
   /**
@@ -692,9 +709,11 @@ export class PdfSynthesizerService {
       return new Uint8Array(buffer);
     }
 
-    // 그 외: HTTP/HTTPS URL
+    // 그 외: HTTP/HTTPS URL — SSRF 가드(P0-1 M1): 내부망 페치 차단 + 리다이렉트 우회 차단.
+    await assertSafeDownloadUrl(url);
     const response = await axios.get(url, {
       responseType: 'arraybuffer',
+      maxRedirects: 0,
     });
 
     return new Uint8Array(response.data);

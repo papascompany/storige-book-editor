@@ -8,6 +8,7 @@ import {
   Min,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsSafeFileRef } from './is-safe-file-ref.validator';
 
 /**
  * Compose-mixed 잡 생성 DTO — 인쇄 워크플로우 v1 Phase 5 (2026-05-19).
@@ -25,6 +26,7 @@ export class CreateComposeMixedJobDto {
   @ApiPropertyOptional({ description: '표지 PDF URL (coverEditable=true 일 때)' })
   @IsOptional()
   @IsString()
+  @IsSafeFileRef()
   coverUrl?: string;
 
   @ApiPropertyOptional({ default: true, description: '표지 편집 가능 여부 (false=레더커버)' })
@@ -51,6 +53,7 @@ export class CreateComposeMixedJobDto {
   })
   @IsOptional()
   @IsArray()
+  @IsSafeFileRef({ each: true })
   frontEndpaperUrls?: (string | null)[];
 
   @ApiPropertyOptional({
@@ -59,12 +62,14 @@ export class CreateComposeMixedJobDto {
   })
   @IsOptional()
   @IsArray()
+  @IsSafeFileRef({ each: true })
   backEndpaperUrls?: (string | null)[];
 
   // ── 내지 ──
   @ApiPropertyOptional({ description: '내지 PDF URL (편집 결과 또는 첨부 PDF)' })
   @IsOptional()
   @IsString()
+  @IsSafeFileRef()
   contentPdfUrl?: string;
 
   @ApiPropertyOptional({ description: '내지 폭 (mm)', example: 210 })

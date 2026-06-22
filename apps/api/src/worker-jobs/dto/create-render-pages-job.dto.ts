@@ -1,5 +1,6 @@
 import { IsInt, IsOptional, IsString, IsUUID, Min } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
+import { IsSafeFileRef } from './is-safe-file-ref.validator';
 
 /**
  * 내지 PDF 표시전용 가이드 래스터화 잡 DTO (2026-06-07).
@@ -21,6 +22,7 @@ export class CreateRenderPagesJobDto {
   @ApiPropertyOptional({ description: '내지 PDF URL (fileId 미제공 시)' })
   @IsOptional()
   @IsString()
+  @IsSafeFileRef()
   fileUrl?: string;
 
   @ApiPropertyOptional({ description: '알려진 페이지 수(있으면 워커 추출 생략)' })

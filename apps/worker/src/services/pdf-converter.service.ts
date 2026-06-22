@@ -15,6 +15,7 @@ import {
 import { isApiMarker, downloadViaApi } from './api-file-download';
 import { VALIDATION_CONFIG } from '../config/validation.config';
 import { downloadToTempFile } from '../utils/stream-download';
+import { assertSafeDownloadUrl } from '../utils/url-safety';
 import {
   extractPdfMetadataQpdf,
   getPdfInfoQpdf,
@@ -570,9 +571,11 @@ export class PdfConverterService {
       return new Uint8Array(buffer);
     }
 
-    // Download from URL
+    // Download from URL — SSRF 가드(P0-1 M1): 내부망 페치 + 리다이렉트 우회 차단.
+    await assertSafeDownloadUrl(url);
     const response = await axios.get(url, {
       responseType: 'arraybuffer',
+      maxRedirects: 0,
     });
 
     return new Uint8Array(response.data);

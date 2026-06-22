@@ -16,6 +16,7 @@ import * as path from 'path';
 import { pipeline } from 'stream/promises';
 import type { Readable } from 'stream';
 import { Logger } from '@nestjs/common';
+import { assertSafeDownloadUrl } from './url-safety';
 
 const logger = new Logger('StreamDownload');
 
@@ -94,6 +95,9 @@ export async function downloadToTempFile(url: string): Promise<DownloadedFile> {
     return { path: filePath, size: stat.size, cleanup: async () => {} };
   }
 
+  // SSRF 방어(P0-1): 임의 외부 URL 페치 전 스킴/사설IP 검증. api://·로컬 분기는 위에서
+  // 이미 분기 처리돼 여기 도달하지 않음 → 정당 내부 흐름 무영향. 리다이렉트 우회 차단(maxRedirects:0).
+  await assertSafeDownloadUrl(url);
   logger.log(`Streaming from URL to temp: ${url}`);
   return streamToTemp(async () => {
     const res = await axios.get(url, {
@@ -101,6 +105,7 @@ export async function downloadToTempFile(url: string): Promise<DownloadedFile> {
       timeout: DOWNLOAD_TIMEOUT_MS,
       maxContentLength: Infinity,
       maxBodyLength: Infinity,
+      maxRedirects: 0,
     });
     return res.data as Readable;
   });
