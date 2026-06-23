@@ -605,8 +605,50 @@
       </table>
     </section>
 
+    <!-- ── 부록 C · 유형 인벤토리 + 확장 지점 (2026-06-23) ── -->
+    <section id="inventory">
+      <h2><span class="num">●</span>부록 C · 현재 유형 인벤토리 + 새 상품 유형 추가 지점</h2>
+      <p style="font-size:12.5px;color:var(--green);margin-top:-4px;">✓ 2026-06-23 본문 유형/모드를 코드(<code>packages/types/src/index.ts</code>)와 전수 대조 — <b>일치(드리프트 없음)</b>.</p>
+
+      <h3>C-1. 현재 유형/모드 전수 (코드 정본)</h3>
+      <table>
+        <tr><th>축</th><th>값</th><th>타입</th><th>위치(types/index.ts)</th></tr>
+        <tr><td>템플릿 타입 <code>TemplateType</code></td><td>wing · cover · spine · page · spread · endpaper <b>(6)</b></td><td>enum</td><td><code>:79</code></td></tr>
+        <tr><td><b>상품 유형 <code>TemplateSetType</code></b></td><td><b>book · leaflet (2)</b></td><td>enum</td><td><code>:94</code></td></tr>
+        <tr><td>에디터 모드 <code>EditorMode</code></td><td>single · book (2)</td><td>enum</td><td><code>:1304</code></td></tr>
+        <tr><td>IDML 변환 <code>SpreadConversionMode</code></td><td>full · flat-spread · flat-spine (3)</td><td>union</td><td><code>:1513</code></td></tr>
+        <tr><td>PDF 출력 <code>PdfOutputMode</code></td><td>single · duplex-merged · duplex-split (3)</td><td>union</td><td><code>:262</code></td></tr>
+        <tr><td>합성 출력 <code>ComposeOutputMode</code></td><td>separate · content-only · single (3)</td><td>union</td><td><code>:674</code></td></tr>
+        <tr><td>색 모드 <code>colorMode</code></td><td>rgb · cmyk (2)</td><td>union</td><td>TemplateSetConfig</td></tr>
+      </table>
+      <p style="font-size:12px;color:var(--ink-soft);">부수: <code>productSpecs?</code>(상품 규격 메타) 필드는 본문 탭 미노출(내부/연동용).</p>
+
+      <h3>C-2. "상품 유형"의 실제 모델링 (enum ≠ 사용자 상품 1:1)</h3>
+      <table>
+        <tr><th>사용자 상품</th><th>모델링 조합</th></tr>
+        <tr><td>책자(양장/무선)</td><td><code>BOOK</code> + EditorMode <code>book</code> + spread 1 + page N (+ 면지)</td></tr>
+        <tr><td>리플렛/낱장(명함·엽서·카드)</td><td><code>LEAFLET</code> + EditorMode <code>single</code> + page + <code>pdfOutputMode</code></td></tr>
+        <tr><td>레더커버/화보집</td><td><code>BOOK</code>/<code>LEAFLET</code> + <code>coverEditable=false</code> + <code>coverPreviewImage</code></td></tr>
+        <tr><td>포스터/단면</td><td><code>LEAFLET</code> + <code>pdfOutputMode=single</code></td></tr>
+      </table>
+      <p style="font-size:13px;color:var(--ink);">→ <b>새 상품 유형은 대개 enum 추가 없이</b> 기존 타입 조합 + 셋 설정으로 가능. 출력 규칙 자체가 다른 진짜 새 카테고리(캘린더·박스/패키지·아코디언 접지 등)만 enum 확장 필요.</p>
+
+      <h3>C-3. 새 상품 유형 추가 변경 지점 (체크리스트)</h3>
+      <p style="font-weight:700;color:var(--green);">케이스 1 — 기존 조합으로 표현 (권장 · 코드 변경 0)</p>
+      <p style="font-size:13px;color:var(--ink-soft);">템플릿셋 폼에서 <code>type</code>/<code>editorMode</code>/<code>pdfOutputMode</code>/면지/표지 설정만으로 신규 상품 생성 → 상품코드 연결. <b>admin 데이터 입력만, 배포 불필요.</b></p>
+      <p style="font-weight:700;color:var(--gold);margin-top:8px;">케이스 2 — 새 <code>TemplateSetType</code> enum 추가 (출력/구성 규칙이 본질적으로 다른 새 카테고리)</p>
+      <ol style="margin:0;padding-left:18px;font-size:13px;color:var(--ink-soft);">
+        <li><code>packages/types/src/index.ts</code> <code>TemplateSetType</code> enum + 본 매뉴얼 §2 탭1</li>
+        <li>admin <code>TemplateSets/TemplateSetForm.tsx</code> 타입 셀렉트 + 저장 검증(책/단일 규칙)</li>
+        <li>워커 <code>synthesis.processor.ts</code> <code>handleSynthesis</code> / compose <code>outputMode</code> 매핑(새 출력 규칙 시)</li>
+        <li>(선택) 새 <code>PdfOutputMode</code>/<code>ComposeOutputMode</code>/<code>SpreadConversionMode</code> union + 워커 핸들러</li>
+        <li>E2E + 본 매뉴얼 갱신</li>
+      </ol>
+      <p style="font-size:12px;color:var(--ink-soft);margin-top:6px;">JSON 필드(<code>conversionMode</code> 등)는 마이그레이션 불필요. <code>type</code>은 enum 컬럼 → DB 영향 검토.</p>
+    </section>
+
     <footer>
-      작성 2026-06-18 · 근거: 실제 admin 컴포넌트 + <code>DESIGN_IMPORT_CONVERTER.md</code> / <code>IDML_IMPORT_FLOW.md</code> / <code>EDITOR_OBJECT_EDITING_SPEC.md</code> / <code>product-templateset-linking-plan.md</code>. 텍스트 버전: <code>템플릿등록 매뉴얼.md</code>
+      작성 2026-06-18 · <b>갱신 2026-06-23</b>(부록 C — 코드 전수 대조, 일치 확인) · 근거: 실제 admin 컴포넌트 + <code>packages/types/src/index.ts</code> + <code>DESIGN_IMPORT_CONVERTER.md</code> / <code>IDML_IMPORT_FLOW.md</code> / <code>EDITOR_OBJECT_EDITING_SPEC.md</code> / <code>product-templateset-linking-plan.md</code>. 텍스트 버전: <code>템플릿등록 매뉴얼.md</code>
     </footer>
   </main>
 </div>
