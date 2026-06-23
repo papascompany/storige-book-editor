@@ -101,6 +101,22 @@ export class SynthesisProcessor {
   @Process('synthesize-pdf')
   async handleSynthesis(job: Job<SynthesisJobData>) {
     const { mode } = job.data;
+    const jobId = job.data.jobId;
+
+    // ⓔ(2026-06-23) 멱등 가드 — 합성 비멱등 재실행 방지(유료 인쇄 주문 중복합성 차단).
+    // 완료 마커(.synthesis-complete.json, updateJobStatus COMPLETED 시 기록)가 있으면 이전 시도가
+    // 이미 성공한 것 → 재합성/재다운로드/재머지 없이 단락. Bull stalled 재배달(maxStalledCount,
+    // attempts=1 에서도 lock 만료 시 발생) 및 향후 attempts>1 양쪽을 커버한다.
+    // fail-safe: 마커 부재/파손이면 null → 정상 합성으로 폴백(가드가 합성을 막는 일은 없음).
+    const cached = await this.loadCompletionMarker(jobId);
+    if (cached) {
+      this.logger.warn(
+        `[idempotent] synthesis job ${jobId} 이미 완료됨(mode=${mode}, queue=${job.id}) — 재합성 생략, 콜백 재발송`,
+      );
+      // 수신측 webhook patch 는 멱등(upsert) → 최초 콜백 유실 엣지 복구 겸 재발송. 중복은 무해.
+      await this.updateJobStatus(jobId, cached);
+      return cached.result ?? { success: true, idempotentSkip: true };
+    }
 
     // ★ mode 단일 진실 공급원: Queue payload의 mode만 신뢰
     if (mode === 'split') {
@@ -1532,6 +1548,9 @@ export class SynthesisProcessor {
       jobType: 'synthesize',
       queueName: 'pdf-synthesis',
     });
+    if (payload.status === 'COMPLETED') {
+      await this.writeCompletionMarker(jobId, payload);
+    }
   }
 
   // ============================================================================
@@ -1715,5 +1734,46 @@ export class SynthesisProcessor {
       jobType: 'synthesize',
       queueName: 'pdf-synthesis',
     });
+    if (payload.status === 'COMPLETED') {
+      await this.writeCompletionMarker(jobId, payload);
+    }
+  }
+
+  // ── ⓔ 멱등 가드 헬퍼 (2026-06-23) ──
+  // 마커는 outputsPath/<jobId>/.synthesis-complete.json (마운트 볼륨=재시도/재시작 간 영속).
+  private completionMarkerPath(jobId: string): string {
+    return path.join(this.outputsPath, jobId, '.synthesis-complete.json');
+  }
+
+  /** COMPLETED payload 를 마커로 기록. fail-safe: 실패해도 throw 안 함(다음 재시도 시 재합성될 뿐). */
+  private async writeCompletionMarker(
+    jobId: string,
+    payload: Record<string, any>,
+  ): Promise<void> {
+    try {
+      await fs.mkdir(path.join(this.outputsPath, jobId), { recursive: true });
+      await fs.writeFile(
+        this.completionMarkerPath(jobId),
+        JSON.stringify(payload),
+        'utf8',
+      );
+    } catch (e: any) {
+      this.logger.warn(
+        `[idempotent] 완료 마커 기록 실패 jobId=${jobId}: ${e?.message ?? e}`,
+      );
+    }
+  }
+
+  /** 마커가 있고 COMPLETED 면 payload 반환(=이미 완료). 없음/파손/오류 → null(정상 합성 폴백). */
+  private async loadCompletionMarker(
+    jobId: string,
+  ): Promise<({ status: string } & Record<string, any>) | null> {
+    try {
+      const raw = await fs.readFile(this.completionMarkerPath(jobId), 'utf8');
+      const parsed = JSON.parse(raw);
+      return parsed && parsed.status === 'COMPLETED' ? parsed : null;
+    } catch {
+      return null;
+    }
   }
 }

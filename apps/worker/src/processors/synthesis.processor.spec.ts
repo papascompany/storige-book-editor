@@ -376,6 +376,94 @@ describe('SynthesisProcessor', () => {
       expect(splitResult.coverPageCount + splitResult.contentPageCount).toBe(10);
     });
   });
+
+  // ── ⓔ 멱등 가드 (2026-06-23): 재시도/stalled 재배달 시 유료주문 중복합성 방지 ──
+  describe('ⓔ 멱등 가드 (completion marker)', () => {
+    it('writeCompletionMarker → loadCompletionMarker 왕복(COMPLETED 만 반환)', async () => {
+      const jobId = 'idem-roundtrip';
+      const payload = {
+        status: 'COMPLETED',
+        outputFileUrl: `/storage/outputs/${jobId}/merged.pdf`,
+        result: { success: true, outputFileUrl: `/storage/outputs/${jobId}/merged.pdf`, totalPages: 7 },
+      };
+      await (processor as any).writeCompletionMarker(jobId, payload);
+      const loaded = await (processor as any).loadCompletionMarker(jobId);
+      expect(loaded).toMatchObject({ status: 'COMPLETED' });
+      expect(loaded.result.totalPages).toBe(7);
+    });
+
+    it('마커 부재 → null(정상 합성 폴백)', async () => {
+      const loaded = await (processor as any).loadCompletionMarker('idem-absent-xyz');
+      expect(loaded).toBeNull();
+    });
+
+    it('COMPLETED 아닌 마커 → null(미완료로 간주, 재합성 허용)', async () => {
+      const jobId = 'idem-processing';
+      await (processor as any).writeCompletionMarker(jobId, { status: 'PROCESSING' });
+      expect(await (processor as any).loadCompletionMarker(jobId)).toBeNull();
+    });
+
+    it('마커가 있으면 handleSynthesis 가 재합성 없이 단락하고 캐시 결과를 반환한다', async () => {
+      const jobId = 'idem-shortcircuit';
+      const cachedResult = { success: true, outputFileUrl: `/storage/outputs/${jobId}/merged.pdf`, totalPages: 99 };
+      await (processor as any).writeCompletionMarker(jobId, {
+        status: 'COMPLETED',
+        outputFileUrl: cachedResult.outputFileUrl,
+        result: cachedResult,
+      });
+
+      const job = createMockJob({
+        jobId,
+        coverUrl: 'https://example.com/cover.pdf',
+        contentUrl: 'https://example.com/content.pdf',
+        spineWidth: 5,
+      });
+
+      const result = await processor.handleSynthesis(job as any);
+
+      // 재합성 경로(synthesizer)가 호출되지 않아야 한다(=중복합성 방지)
+      expect(synthesizerService.synthesizeToLocal).not.toHaveBeenCalled();
+      expect(synthesizerService.downloadFile).not.toHaveBeenCalled();
+      // 캐시된 결과 반환
+      expect(result.totalPages).toBe(99);
+      expect(result.outputFileUrl).toContain('merged.pdf');
+    });
+
+    it('성공 합성 후 마커가 기록된다(다음 재시도 단락 보장)', async () => {
+      const jobId = 'idem-writes-marker';
+      const mockLocalResult: SynthesisLocalResult = {
+        success: true,
+        sourceCoverPath: `${testStoragePath}/m_cover.pdf`,
+        sourceContentPath: `${testStoragePath}/m_content.pdf`,
+        mergedPath: `${testStoragePath}/m_merged.pdf`,
+        totalPages: 12,
+      };
+      await createMockPdfFile(mockLocalResult.sourceCoverPath);
+      await createMockPdfFile(mockLocalResult.sourceContentPath);
+      await createMockPdfFile(mockLocalResult.mergedPath);
+      synthesizerService.synthesizeToLocal.mockResolvedValue(mockLocalResult);
+
+      try {
+        await processor.handleSynthesis(
+          createMockJob({
+            jobId,
+            coverUrl: 'https://example.com/cover.pdf',
+            contentUrl: 'https://example.com/content.pdf',
+            spineWidth: 5,
+          }) as any,
+        );
+        const marker = await (processor as any).loadCompletionMarker(jobId);
+        expect(marker).not.toBeNull();
+        expect(marker.status).toBe('COMPLETED');
+      } finally {
+        await cleanupMockFiles([
+          mockLocalResult.sourceCoverPath,
+          mockLocalResult.sourceContentPath,
+          mockLocalResult.mergedPath,
+        ]);
+      }
+    });
+  });
 });
 
 // Helper functions
