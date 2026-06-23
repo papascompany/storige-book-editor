@@ -23,6 +23,7 @@ import {
   ApiExtraModels,
   getSchemaPath,
 } from '@nestjs/swagger';
+import * as Sentry from '@sentry/node';
 import { EditSessionsService } from './edit-sessions.service';
 import { CreateEditSessionDto } from './dto/create-edit-session.dto';
 import { UpdateEditSessionDto } from './dto/update-edit-session.dto';
@@ -450,10 +451,26 @@ export class EditSessionsController {
         // memberSeqno 가 요청자와 불일치한다는 신호(embed.tsx 가 신규세션 생성→고아화 위험).
         // 정본 계약(PLATFORM_INTEGRATION_GUIDE)은 orderSeqno 포함을 명시 → 발생 시 호스트 점검.
         if (before > 0 && sessions.length === 0) {
-          this.logger.warn(
+          const sec005Msg =
             `[SEC-005] orderSeqno=${reqOrder} 조회: 권한 미보유 + memberSeqno 불일치로 ${before}건 전부 필터됨 ` +
-              `(member=${selfSeqno}, site=${user?.siteId}). 호스트 shop-session orderSeqno 주입 점검 필요.`,
-          );
+            `(member=${selfSeqno}, site=${user?.siteId}). 호스트 shop-session orderSeqno 주입 점검 필요.`;
+          this.logger.warn(sec005Msg);
+          // ⓕ(2026-06-23): 수동 grep → Sentry 알림 자동화. 데이터 고아화 인접 신호이므로
+          // 운영자에게 능동 통지. 모든 SEC-005 를 단일 이슈로 묶고(setFingerprint) 발생건은
+          // 태그/extra 로 구분 → 알림 폭주 없이 호스트별 비준수 추적. DSN 미설정 시 silent no-op.
+          Sentry.withScope((scope) => {
+            scope.setLevel('warning');
+            scope.setFingerprint(['SEC-005', 'orderSeqno-filter-all-removed']);
+            scope.setTag('alert', 'SEC-005');
+            scope.setTag('siteId', String(user?.siteId ?? 'unknown'));
+            scope.setExtras({
+              orderSeqno: reqOrder,
+              memberSeqno: selfSeqno,
+              filteredCount: before,
+              hint: '호스트 shop-session 이 orderSeqno(→allowedOrderSeqnos) 를 누락 → 재편집 세션 고아화 위험',
+            });
+            Sentry.captureMessage(sec005Msg);
+          });
         }
       }
     } else if (memberSeqno) {
