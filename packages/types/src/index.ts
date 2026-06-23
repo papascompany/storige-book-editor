@@ -1639,7 +1639,24 @@ export interface ExternalPhoto {
   uploaderName?: string;
   /** 업로드 시각 ISO (정렬용, 선택) */
   uploadedAt?: string;
+  /**
+   * 포토북 자동편집(Phase 2): EXIF 메타. 호스트가 주입하거나 편집기가 exifr 로 파싱해 채운다.
+   * 없을 수 있음(스캔/구형/프라이버시) → 정렬 폴백 체인(takenAt→uploadedAt→name)으로 처리.
+   */
+  takenAt?: string;            // EXIF DateTimeOriginal ISO (날짜순 정렬 1차 기준)
+  gps?: { lat: number; lng: number }; // EXIF GPS (장소별=군집 기준, 없으면 날짜로 폴백)
+  exifParsed?: boolean;        // EXIF 파싱 시도 완료 플래그(중복 파싱 방지)
 }
+
+/**
+ * 포토북 자동편집 정렬 기준 (Phase 2).
+ * - 'date'    : 촬영일시(DateTimeOriginal) 오름차순 — **기본/1차 기준**(거의 항상 존재, 시간순 이야기).
+ * - 'filename': 파일명 자연 정렬.
+ * - 'location': GPS 근접 군집 → 군집을 최소 촬영시각순, 군집 내부는 시간순. GPS 없는 사진은 날짜로 폴백.
+ * - 'random'  : 셔플(프레임 매칭은 레이아웃 엔진이 별도 처리).
+ * ⚠️ GPS 는 '유일 기준'이 아니라 'location' 모드 한정 + 군집 필요 + 폴백 동반.
+ */
+export type PhotoSortMode = 'date' | 'filename' | 'location' | 'random';
 
 /**
  * 내지 PDF 표시전용 가이드 결과 (RENDER_PAGES 잡 산출).
