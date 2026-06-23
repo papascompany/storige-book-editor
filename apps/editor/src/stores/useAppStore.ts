@@ -4,6 +4,7 @@ import Editor, {
   type CanvasObject,
   type CanvasSettings,
   core,
+  ObjectPlugin,
   PluginBase,
   PointerShiftGuardPlugin,
   SelectionType,
@@ -99,14 +100,24 @@ interface AppActions {
   // 객체 목록 관리
   updateObjects: () => void
 
+  /**
+   * 레이어 패널 DnD 재정렬 (S3, 공유 계층 — 전 상품 적용).
+   * sourceId 객체를 targetId 객체의 위/아래로 z-order 이동.
+   * @param sourceId 드래그한 객체 id
+   * @param targetId 드롭 대상 객체 id
+   * @param placeAbove true=target 위(앞/front)로, false=target 아래(뒤/back)로
+   */
+  reorderObject: (sourceId: string, targetId: string, placeAbove: boolean) => void
+
   // 객체 관리
   changeObjectValue: (value: number | string, key: string) => void
 
   // 설정 업데이트
   updateAllWorkspaceSettings: (settings: CanvasSettings) => void
 
-  // 스크린샷 — changedIndex 를 주면 해당 캔버스만 재캡처, 생략하면 전체 재캡처
-  takeCanvasScreenshot: (changedIndex?: number) => void
+  // 스크린샷 — changedIndex 를 주면 해당 캔버스만 재캡처, 생략하면 전체 재캡처.
+  // P2: options 로 포맷/해상도(jpg·72dpi 등) 추가 지정 가능 (기본 png/320px = 기존 비파괴).
+  takeCanvasScreenshot: (changedIndex?: number, options?: ThumbnailFormatOptions) => void
 
   // 렌더링
   render: (immediate?: boolean) => void
@@ -198,6 +209,27 @@ const SCREENSHOT_DEBOUNCE_MS = TOUCH_ENV ? 2000 : 200
 // 풀해상도 PNG 인코딩(페이지당 수백 KB~수 MB)을 수십 KB 수준으로 축소.
 const THUMBNAIL_TARGET_WIDTH = 320
 
+// P2 (포토북, 2026-06-23): 썸네일 포맷/해상도 파라미터.
+// ⚠️ 비파괴 — 기본값은 기존과 동일한 'png'/320px(THUMBNAIL_TARGET_WIDTH). 포토북(펼침면 72dpi
+//    jpg 썸네일 등)은 takeCanvasScreenshot 호출 시 옵션으로만 추가 지정한다. 기본 포맷을
+//    png→jpg 로 바꾸면 공유 변경=전 상품(BOOK/LEAFLET/카드) 회귀이므로 금지.
+export interface ThumbnailFormatOptions {
+  /** 인코딩 포맷. 기본 'png'(기존 동작). 포토북 등은 'jpeg' 로 용량/72dpi 산출. */
+  format?: 'png' | 'jpeg'
+  /** crop 캡처 목표 폭(px). 기본 320(THUMBNAIL_TARGET_WIDTH). 72dpi 펼침면 등은 더 크게. */
+  targetWidth?: number
+  /** 인코딩 품질(0~1). 기본 0.8(기존 동작). jpeg 에서 주로 의미. */
+  quality?: number
+}
+
+// 현재 적용 중인 썸네일 포맷 옵션. 기본 = 기존 png 동작과 1:1 일치(비파괴).
+// takeCanvasScreenshot(changedIndex, options) 로 호출당 덮어쓴다.
+let screenshotFormatOptions: Required<ThumbnailFormatOptions> = {
+  format: 'png',
+  targetWidth: THUMBNAIL_TARGET_WIDTH,
+  quality: 0.8,
+}
+
 // 재캡처 대상 인덱스 집합. 'all' 이면 전체 재캡처(페이지 추가/삭제/재정렬 등
 // 인덱스가 이동하는 경우). 변경 발생 캔버스만 재캡처해 100p 문서에서
 // 편집 1회당 toDataURL 100회 → 1회로 줄인다.
@@ -232,15 +264,17 @@ const debouncedTakeScreenshot = debounce((allCanvas: any[], set: any, get: any) 
       if (cvs && !cvs.disposed && cvs.getContext()) {
         // 워크스페이스 영역만 캡처 (회색 배경 제외)
         const workspace = cvs.getObjects().find((obj: any) => obj.id === 'workspace')
+        // P2: 포맷/목표폭/품질은 screenshotFormatOptions 에서 (기본=png/320/0.8 = 기존 동작)
+        const { format, targetWidth, quality } = screenshotFormatOptions
         if (workspace) {
           const bound = workspace.getBoundingRect()
           // 썸네일 목표폭/현재폭 비율로 축소 캡처 (업스케일은 하지 않음)
           const multiplier = bound.width > 0
-            ? Math.min(1, THUMBNAIL_TARGET_WIDTH / bound.width)
+            ? Math.min(1, targetWidth / bound.width)
             : 1
           newScreenshots[index] = cvs.toDataURL({
-            format: 'png',
-            quality: 0.8,
+            format,
+            quality,
             left: bound.left,
             top: bound.top,
             width: bound.width,
@@ -249,8 +283,8 @@ const debouncedTakeScreenshot = debounce((allCanvas: any[], set: any, get: any) 
           })
         } else {
           newScreenshots[index] = cvs.toDataURL({
-            format: 'png',
-            quality: 0.8,
+            format,
+            quality,
             multiplier: 0.2
           })
         }
@@ -967,6 +1001,79 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
     }
   },
 
+  // 레이어 패널 DnD 재정렬 (S3, 공유 계층 — BOOK/LEAFLET/카드 전 상품 적용)
+  //
+  // ⚠️ 단일 진실원(R2): 레이어 목록은 updateObjects()에서 core.getObjects() 필터 결과를
+  //    .reverse() 한 것이라 "목록 위 = 맨앞(front, 높은 z-index)"이다. 목록 인덱스로
+  //    직접 계산하면 방향이 뒤집혀 "맨앞으로"가 뒤로 가는 회귀가 난다. 따라서 목록 인덱스가
+  //    아니라 **fabric 라이브 스택(canvas.getObjects())의 실제 인덱스**를 기준으로 moveTo 한다.
+  //    placeAbove(앞으로)=target 의 fabric 인덱스보다 위, placeAbove=false(뒤로)=아래.
+  reorderObject: (sourceId: string, targetId: string, placeAbove: boolean) => {
+    const { canvas, getPlugin, updateObjects } = get()
+    if (!canvas || sourceId === targetId) return
+
+    const all: FabricObject[] = canvas.getObjects()
+    const source = all.find((obj: FabricObject) => obj.id === sourceId)
+    const target = all.find((obj: FabricObject) => obj.id === targetId)
+    if (!source || !target) return
+
+    // ObjectPlugin 의 z-order 가드와 동일: 레이어 순서 잠금 객체는 단독 이동 불가
+    if ((source as any).lockLayerOrder) {
+      console.log('🔒 레이어 순서 이동이 잠긴 객체입니다')
+      return
+    }
+
+    // 히스토리 1트랜잭션으로 묶기 (ObjectPlugin.up/down 패턴)
+    canvas.offHistory()
+    try {
+      // target 의 현재 fabric 인덱스를 기준으로 목적지 산출.
+      // fabric 인덱스: 0 = 맨뒤(back), 큰 값 = 맨앞(front).
+      // placeAbove(앞으로) → target 위(인덱스 +1), 아니면 target 자리(아래).
+      const sourceIdx = canvas.getObjects().indexOf(source)
+      const targetIdx = canvas.getObjects().indexOf(target)
+      if (sourceIdx === -1 || targetIdx === -1) {
+        canvas.onHistory()
+        return
+      }
+
+      let destIdx = placeAbove ? targetIdx + 1 : targetIdx
+      // source 를 먼저 빼면 source 아래(작은 인덱스)의 목적지는 한 칸 당겨진다.
+      if (sourceIdx < destIdx) destIdx -= 1
+      // 범위 클램프
+      const maxIdx = canvas.getObjects().length - 1
+      if (destIdx < 0) destIdx = 0
+      if (destIdx > maxIdx) destIdx = maxIdx
+
+      if (destIdx === sourceIdx) {
+        canvas.onHistory()
+        return
+      }
+
+      source.moveTo(destIdx)
+
+      // ObjectPlugin z-order 와 동일: 사진틀 채움 이미지(fillImage)는 부모 바로 위로 동반 이동
+      const fillImage = canvas.getObjects().find((obj: FabricObject) =>
+        obj.extensionType === 'fillImage' && (obj as any).parentLayerId === source.id
+      )
+      if (fillImage) {
+        const parentIndex = canvas.getObjects().indexOf(source)
+        fillImage.moveTo(parentIndex + 1)
+      }
+
+      // workspace/background/guide 등 항상-바닥/항상-위 객체 재고정 (ObjectPlugin.setUnchangeable)
+      getPlugin<ObjectPlugin>('ObjectPlugin')?.setUnchangeable()
+
+      RenderOptimizer.queueRender(canvas)
+    } catch (error) {
+      console.error('reorderObject 에러:', error)
+    } finally {
+      canvas.onHistory()
+    }
+
+    // layerChanged 핸들러가 debounce 라 목록 즉시 갱신을 위해 updateObjects 직접 호출
+    updateObjects()
+  },
+
   // 객체 값 변경
   changeObjectValue: (inputValue: number | string, key: string) => {
     if (debounceTimer) {
@@ -1036,8 +1143,15 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
   // 스크린샷 (외부 debounce 함수 사용)
   // changedIndex 지정 시 해당 캔버스만 재캡처(나머지는 기존 썸네일 유지),
   // 생략 시 전체 재캡처(페이지 추가/삭제/재정렬 등 인덱스 이동 케이스)
-  takeCanvasScreenshot: (changedIndex?: number) => {
+  // P2: options 지정 시 포맷/목표폭/품질을 덮어쓴다. 미지정 필드는 기본(png/320/0.8)으로
+  //     리셋해 호출 간 상태 누수를 막는다 — 한 번 jpg 로 호출해도 다음 png 호출이 영향받지 않음.
+  takeCanvasScreenshot: (changedIndex?: number, options?: ThumbnailFormatOptions) => {
     const { allCanvas } = get()
+    screenshotFormatOptions = {
+      format: options?.format ?? 'png',
+      targetWidth: options?.targetWidth ?? THUMBNAIL_TARGET_WIDTH,
+      quality: options?.quality ?? 0.8,
+    }
     if (typeof changedIndex === 'number' && changedIndex >= 0 && pendingScreenshotIndices !== 'all') {
       pendingScreenshotIndices.add(changedIndex)
     } else if (typeof changedIndex !== 'number' || changedIndex < 0) {

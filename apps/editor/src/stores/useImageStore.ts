@@ -102,6 +102,13 @@ interface ImageActions {
     imagePlugin: ImageProcessingPlugin
   ) => Promise<FabricObject>
 
+  // 빈 사진틀(채워진 사진 없는 frame) 삭제 — 포토북 고유, 무경고 분기
+  // 채워진 틀은 삭제하지 않고 false 반환(채워진 틀의 '사진' 삭제 경고는 별도 항목).
+  deleteEmptyFrame: (
+    canvas: FabricCanvas,
+    frame: FabricObject
+  ) => boolean
+
   // 배경 추가
   addBackground: (item: FabricObject, canvas: FabricCanvas) => FabricObject
 
@@ -698,6 +705,24 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
         .getObjects()
         .some((obj: FabricObject) => obj.frameRef === frame.id && obj.extensionType !== 'overlay')
 
+    // 이 프레임에 채워진 사진(fillImage) 찾기 — frameRef/parentLayerId 규약(FrameInteractionPlugin·
+    // ObjectPlugin.del 과 동일). 드롭 오버라이드 스왑·빈틀삭제 가드에서 공유.
+    const findFilledImage = (): FabricObject | undefined =>
+      canvas
+        .getObjects()
+        .find(
+          (obj: FabricObject) =>
+            obj.extensionType === 'fillImage' && obj.parentLayerId === frame.id
+        )
+
+    // 채워진 사진을 캔버스에서 제거 — ObjectPlugin.del(:309-310) 과 동일하게
+    // clipPath 해제 후 remove (clipPath 잔존 시 렌더 누수/마스크 오염 방지).
+    const removeFilledImage = (filled: FabricObject) => {
+      filled.clipPath = undefined
+      canvas.remove(filled)
+      frame.fillImage = null
+    }
+
     // hover 오버레이는 매 hover 시 즉석 생성/제거 (프레임의 현재 위치/크기에 맞춤)
     let overlay: FabricObject | null = null
 
@@ -763,8 +788,11 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
     frame.on('mouseout', removeOverlay)
 
     frame.on('mousedown', async () => {
-      if (isFilled()) return
-
+      // 드롭 오버라이드 스왑(포토북 고유): 이미 채워진 틀에 새 사진을 떨어뜨리면
+      // early-return 으로 차단하지 않고 기존 사진을 교체한다. 새 파일을 먼저 받은 뒤
+      // (취소 시 기존 사진 보존) 기존 fillImage 를 제거하고 동일한 fillImageIntoFrame
+      // 경로로 다시 채워 마스킹(inverted clipPath)·frameRef/parentLayerId·z-order 보정을
+      // 그대로 재사용한다(중복 구현 없음).
       const selectedFiles = await selectFiles({ accept: 'image/*', multiple: false })
       if (!selectedFiles || selectedFiles.length === 0) return
       const selectedFile = selectedFiles[0]
@@ -775,6 +803,10 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
         console.log('no image selected')
         return
       }
+
+      // 새 이미지 로드 성공 후에만 기존 사진을 치운다(로드 실패 시 기존 채움 유지).
+      const existing = findFilledImage()
+      if (existing) removeFilledImage(existing)
 
       removeOverlay()
       const fore = await get().fillImageIntoFrame(canvas, fabricImage, frame, imagePlugin)
@@ -862,6 +894,36 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
     frame.bringToFront()
 
     return fore
+  },
+
+  // 빈 사진틀 삭제 (포토북 고유)
+  // - 채워진 사진이 없는(frameRef/parentLayerId 매칭 fillImage 부재) 사진틀만 무경고로 즉시 삭제.
+  //   (설계: 빈틀 무경고 분기 = 포토북 고유. 채워진 틀의 '사진' 삭제 경고는 별도 항목.)
+  // - 채워진 틀이면 아무 것도 하지 않고 false 반환(여기서 사진 삭제/경고를 다루지 않음).
+  // - 삭제 시 hover 오버레이가 남지 않도록 잔여 overlay 도 정리한다.
+  deleteEmptyFrame: (
+    canvas: FabricCanvas,
+    frame: FabricObject
+  ): boolean => {
+    if (!frame || frame.extensionType !== 'frame') return false
+
+    // 채워진 사진 존재 여부 — fillImage 채우기 규약(frameRef/parentLayerId)과 동일 기준.
+    const hasFilled = canvas
+      .getObjects()
+      .some(
+        (obj: FabricObject) =>
+          obj.extensionType === 'fillImage' &&
+          (obj.parentLayerId === frame.id || obj.frameRef === frame.id)
+      )
+    if (hasFilled) return false
+
+    // hover "이미지 채우기" 오버레이는 frame.mouseout(=삭제 시 포인터 이탈) 에서 removeOverlay 로
+    // 정리되고 excludeFromExport:true 라 출력에도 무영향이므로 여기서 별도 제거하지 않는다
+    // (overlay 는 hover 싱글톤이라 전역 제거 시 타 프레임 오버레이 오염 위험 → 비파괴 유지).
+    frame.clipPath = undefined
+    canvas.remove(frame)
+    canvas.requestRenderAll()
+    return true
   },
 
   // 이미지 세그멘테이션 (배경 제거)

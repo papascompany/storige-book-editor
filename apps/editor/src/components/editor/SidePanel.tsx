@@ -6,6 +6,19 @@ import { Image, Type as TextT, Hexagon, Frame as FrameCorners, QrCode, Layers as
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 
+// S3 (공유 계층, 2026-06-23): 레이어 패널 DnD 재정렬.
+// 모바일/터치 환경에서는 native HTML5 drag 가 long-press·터치 스크롤과 충돌하므로 비활성
+// (BookNavigation 페이지 DnD 와 동일한 가드 — 데스크톱 전용).
+function isTouchEnv(): boolean {
+  if (typeof window === 'undefined' || !window.matchMedia) return false
+  try {
+    return window.matchMedia('(pointer: coarse)').matches
+  } catch {
+    return false
+  }
+}
+const TOUCH_ENV = isTouchEnv()
+
 // Icon mapping by selection type
 const getIconByType = (type: SelectionType) => {
   switch (type) {
@@ -44,12 +57,17 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
   const addPage = useAppStore((state) => state.addPage)
   const updateObjects = useAppStore((state) => state.updateObjects)
   const getPlugin = useAppStore((state) => state.getPlugin)
+  const reorderObject = useAppStore((state) => state.reorderObject)
 
   const pageInfo = useSettingsStore((state) => state.currentSettings.page)
 
   const [editingObject, setEditingObject] = useState<CanvasObject | null>(null)
   const [editName, setEditName] = useState('')
   const nameInputRef = useRef<HTMLInputElement>(null)
+
+  // S3: 레이어 패널 DnD 재정렬 상태 (데스크톱 전용)
+  const [dragSourceId, setDragSourceId] = useState<string | null>(null)
+  const [dragOver, setDragOver] = useState<{ id: string; above: boolean } | null>(null)
 
   // Focus input when editing
   useEffect(() => {
@@ -172,6 +190,60 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
     }
   }, [currentIndex, setPage])
 
+  // S3: 레이어 DnD 핸들러 (데스크톱 전용 — 모바일은 dragEnabled=false 로 미부여)
+  // ⚠️ 단일 진실원(R2): 목록은 z-order reverse 라 "위 = 맨앞". 따라서 target 카드 상단 절반에
+  //    드롭 = source 를 그 위(앞/front)로 → reorderObject(.., placeAbove=true). 하단 절반 = 뒤.
+  const dragEnabled = !TOUCH_ENV
+
+  const handleObjDragStart = (objectId: string) => (e: React.DragEvent<HTMLDivElement>) => {
+    if (!dragEnabled) return
+    setDragSourceId(objectId)
+    try {
+      e.dataTransfer.effectAllowed = 'move'
+      // 일부 브라우저는 setData 없으면 dragstart 가 무시됨
+      e.dataTransfer.setData('text/plain', objectId)
+    } catch {
+      // 무시
+    }
+  }
+
+  const handleObjDragOver = (objectId: string) => (e: React.DragEvent<HTMLDivElement>) => {
+    if (!dragEnabled || dragSourceId === null || objectId === dragSourceId) return
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    const rect = e.currentTarget.getBoundingClientRect()
+    const above = e.clientY < rect.top + rect.height / 2
+    setDragOver((prev) =>
+      prev && prev.id === objectId && prev.above === above ? prev : { id: objectId, above }
+    )
+  }
+
+  const handleObjDragLeave = (objectId: string) => () => {
+    setDragOver((prev) => (prev && prev.id === objectId ? null : prev))
+  }
+
+  const handleObjDrop = (objectId: string) => (e: React.DragEvent<HTMLDivElement>) => {
+    if (!dragEnabled || dragSourceId === null) {
+      setDragSourceId(null)
+      setDragOver(null)
+      return
+    }
+    e.preventDefault()
+    e.stopPropagation()
+    const source = dragSourceId
+    setDragSourceId(null)
+    setDragOver(null)
+    if (source === objectId) return
+    const rect = e.currentTarget.getBoundingClientRect()
+    const above = e.clientY < rect.top + rect.height / 2
+    reorderObject(source, objectId, above)
+  }
+
+  const handleObjDragEnd = () => {
+    setDragSourceId(null)
+    setDragOver(null)
+  }
+
   return (
     <div
       className={cn(
@@ -266,11 +338,21 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
                 return (
                   <div
                     key={obj.id}
+                    draggable={dragEnabled && editingObject?.id !== obj.id}
+                    onDragStart={dragEnabled ? handleObjDragStart(obj.id) : undefined}
+                    onDragOver={dragEnabled ? handleObjDragOver(obj.id) : undefined}
+                    onDragLeave={dragEnabled ? handleObjDragLeave(obj.id) : undefined}
+                    onDrop={dragEnabled ? handleObjDrop(obj.id) : undefined}
+                    onDragEnd={dragEnabled ? handleObjDragEnd : undefined}
                     className={cn(
                       'object-item w-full flex flex-row items-center gap-1 p-1 justify-between',
                       'rounded-lg mb-2 cursor-pointer border border-transparent',
                       'hover:bg-editor-hover group',
-                      obj.selected && 'bg-editor-accent/10 border-editor-accent/10'
+                      obj.selected && 'bg-editor-accent/10 border-editor-accent/10',
+                      // S3: 드래그 중 source 흐리게 + 드롭 위치 힌트(위/아래 경계선)
+                      dragSourceId === obj.id && 'opacity-40',
+                      dragOver?.id === obj.id && dragOver.above && 'border-t-2 border-t-editor-accent',
+                      dragOver?.id === obj.id && !dragOver.above && 'border-b-2 border-b-editor-accent'
                     )}
                     onClick={() => selectObject(obj.id)}
                     onDoubleClick={() => startEditing(obj)}
