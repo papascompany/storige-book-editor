@@ -218,12 +218,11 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
     canvas?.requestRenderAll()
   }
 
+  // S2 (공유): 즉시 삭제 대신 확인 모달을 거친다(휴지통 버튼·DEL 핫키 공통 경로).
+  // 실제 삭제는 store.confirmDeleteSelection → ObjectPlugin.del() 재사용.
+  const requestDeleteSelection = useAppStore((state) => state.requestDeleteSelection)
   const handleDelete = () => {
-    const objectPlugin = getPlugin<ObjectPlugin>('ObjectPlugin')
-    activeSelection?.forEach((obj) => {
-      objectPlugin?.del(obj)
-    })
-    canvas?.requestRenderAll()
+    requestDeleteSelection()
   }
 
   const handleLock = () => {

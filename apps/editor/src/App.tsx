@@ -3,6 +3,7 @@ import { lazy, Suspense, useEffect } from 'react'
 import { useThemeSync } from '@/stores/useUiPrefStore'
 import { useGuestStore } from '@/stores/useGuestStore'
 import ToastViewport from '@/components/editor/ToastViewport'
+import ObjectDeleteConfirm from '@/components/editor/ObjectDeleteConfirm'
 
 // Lazy load views
 const EditorView = lazy(() => import('./views/EditorView'))
@@ -49,6 +50,8 @@ function App() {
         </Routes>
       </Suspense>
       <ToastViewport />
+      {/* S2 (공유): DEL/Backspace·휴지통 객체삭제 확인 모달 — 전역 1회 마운트(가드로 비캔버스 no-op) */}
+      <ObjectDeleteConfirm />
     </>
   )
 }
