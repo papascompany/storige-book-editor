@@ -76,6 +76,8 @@
 ## 3. 데이터모델
 
 ### 3-1. `TemplateSetType.PHOTOBOOK` 추가 (S)
+
+> **유형 추가 판단(부록 C 정합, `docs/PRODUCT_TEMPLATE_REGISTRATION_MANUAL` 부록 C·2026-06-23):** 대다수 새 상품유형은 enum 없이 기존 타입 조합+셋 설정으로 가능(Case 1, 예: 레더커버=`BOOK`+`coverEditable=false`). **enum 확장(Case 2)은 출력/구성 규칙이 본질적으로 다른 새 카테고리만** — 포토북은 펼침면 2-up 내지·autofill·페이지 가격연동·펼침면 래스터로 **구성/출력이 본질적으로 달라 Case 2 정당**. 부록 C의 enum 확장 체크리스트를 Phase 1-포토북 P1 에 사용.
 ```ts
 // packages/types/src/index.ts:94 + apps/api/.../template-set.entity.ts:21
 export enum TemplateSetType {

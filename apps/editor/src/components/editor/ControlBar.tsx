@@ -32,6 +32,10 @@ import {
   AlignEndHorizontal,
   AlignHorizontalDistributeCenter,
   AlignVerticalDistributeCenter,
+  ArrowUp,
+  ArrowUpToLine,
+  ArrowDown,
+  ArrowDownToLine,
 } from 'lucide-react'
 import { fabric } from 'fabric'
 import {
@@ -246,6 +250,15 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
     canvas?.requestRenderAll()
   }
 
+  // Phase 1-공유(2026-06-23): 레이어 z-order 4버튼 — 전 상품 공유 ObjectPlugin 로직 재사용.
+  // up/upTop/down/downTop 은 단일 선택(active 1개)에서만 동작하고 내부에서 lockLayerOrder 가드 +
+  // fillImage(사진틀 채움) 동반 이동 + layerChanged emit 을 처리하므로 forEach/인자 불필요.
+  // 우클릭 컨텍스트 메뉴(ObjectPlugin 등록)와 동일 동작을 툴바에 노출할 뿐 — 신규 로직 없음.
+  const handleBringForward = () => getPlugin<ObjectPlugin>('ObjectPlugin')?.up()
+  const handleBringToFront = () => getPlugin<ObjectPlugin>('ObjectPlugin')?.upTop()
+  const handleSendBackward = () => getPlugin<ObjectPlugin>('ObjectPlugin')?.down()
+  const handleSendToBack = () => getPlugin<ObjectPlugin>('ObjectPlugin')?.downTop()
+
   // P1-5: 관리자 전용 — 삭제 잠금 토글. deleteable=false 면 고객 진입 시 삭제 차단(ObjectPlugin.del).
   const handleToggleDeleteLock = () => {
     const next = !allDeleteLocked
@@ -403,6 +416,24 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
                   <Button variant="ghost" size="icon" onClick={handleVisible}>
                     <EyeSlash className="h-5 w-5" />
                   </Button>
+                )}
+
+                {/* Phase 1-공유: 레이어 z-order (단일 선택에서만 — ObjectPlugin 이 active 1개만 처리) */}
+                {activeSelection?.length === 1 && (
+                  <>
+                    <Button variant="ghost" size="icon" onClick={handleBringToFront} title="맨 앞으로">
+                      <ArrowUpToLine className="h-5 w-5" />
+                    </Button>
+                    <Button variant="ghost" size="icon" onClick={handleBringForward} title="앞으로">
+                      <ArrowUp className="h-5 w-5" />
+                    </Button>
+                    <Button variant="ghost" size="icon" onClick={handleSendBackward} title="뒤로">
+                      <ArrowDown className="h-5 w-5" />
+                    </Button>
+                    <Button variant="ghost" size="icon" onClick={handleSendToBack} title="맨 뒤로">
+                      <ArrowDownToLine className="h-5 w-5" />
+                    </Button>
+                  </>
                 )}
 
                 {/* Part B: 위치 고정 (관리자 editMode 전용) — 고객이 이 객체를 이동/변형 못하게 보호 */}
