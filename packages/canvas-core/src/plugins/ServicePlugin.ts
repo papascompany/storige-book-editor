@@ -776,7 +776,11 @@ class ServicePlugin extends PluginBase {
           }
 
           // PDF 생성 - 항상 mm 단위 사용
-          const pdf: jsPDF = new jsPDF(orientation, 'mm', [pageWidth, pageHeight])
+          // compress=true: 콘텐츠 스트림 + 임베드 래스터를 Flate 압축한다.
+          // jspdf 4.x 는 임베드 이미지를 기본 무압축(raw RGB) 저장 → 래스터 폴백/이미지 多 PDF 가
+          // 크게 비대해짐(2.x 는 Flate). 박스주입(getCurrentPageInfo().pageContext)·시각 출력은 불변
+          // (골든파리티: 픽셀 diff 0 · Trim/Bleed/Media/Art pt 동일 · 파일 41KB→7KB, 2026-06-23 검증).
+          const pdf: jsPDF = new jsPDF(orientation, 'mm', [pageWidth, pageHeight], true)
 
           // 봉투 타입인 경우 칼선을 PDF 생성 시에만 표시
           if (isEnvelope) {

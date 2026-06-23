@@ -71,6 +71,35 @@ describe('jspdf 4.x 박스주입 private API 카나리 (ServicePlugin._drawCropM
     expect(pdfStr).toMatch(/\/TrimBox\s*\[\s*8\.\d+\s+8\.\d+/)
   })
 
+  it('compress:true(ServicePlugin 실사용) 에서도 박스주입이 생존하고 Flate 압축이 활성화된다', () => {
+    // ServicePlugin 은 new jsPDF(orientation,'mm',[w,h], true) 로 생성한다(ⓐ, 2026-06-23):
+    // jspdf 4.x 가 임베드 래스터를 기본 무압축 저장 → compress 로 콘텐츠/이미지 Flate.
+    // 박스는 page dict 엔트리라 콘텐츠 스트림 압축과 무관하게 평문 출력되어야 한다.
+    const pdf = new jsPDF('p', 'mm', [216, 303], true)
+    pdf.setFillColor(0, 0, 0)
+    pdf.rect(20, 20, 100, 100, 'F') // 콘텐츠 스트림이 비어있지 않게(=압축 대상 존재)
+
+    const internal: any = (pdf as any).internal
+    const sf: number = internal?.scaleFactor ?? 1
+    const ctx = internal?.getCurrentPageInfo?.()?.pageContext
+    expect(ctx).toBeTruthy()
+    const sx = (mm: number) => mm * sf
+    ctx.bleedBox = { bottomLeftX: 0, bottomLeftY: 0, topRightX: sx(216), topRightY: sx(303) }
+    ctx.trimBox = { bottomLeftX: sx(3), bottomLeftY: sx(3), topRightX: sx(213), topRightY: sx(300) }
+    if (ctx.mediaBox) {
+      ctx.mediaBox.bottomLeftX = 0; ctx.mediaBox.bottomLeftY = 0
+      ctx.mediaBox.topRightX = sx(216); ctx.mediaBox.topRightY = sx(303)
+    }
+
+    const pdfStr = Buffer.from(pdf.output('arraybuffer')).toString('latin1')
+    // 박스 평문 생존(압축돼도 page dict 는 평문)
+    expect(pdfStr).toMatch(/\/TrimBox/)
+    expect(pdfStr).toMatch(/\/BleedBox/)
+    expect(pdfStr).toMatch(/\/MediaBox/)
+    // 압축 활성: 콘텐츠 스트림이 FlateDecode 로 인코딩됨(=무압축 회귀 방지)
+    expect(pdfStr).toMatch(/\/FlateDecode/)
+  })
+
   it('output(blob)/output(arraybuffer) 가 node 환경에서 동작한다(편집기 저장 경로 스모크)', () => {
     const pdf = new jsPDF('p', 'mm', [210, 297])
     const buf = pdf.output('arraybuffer')
