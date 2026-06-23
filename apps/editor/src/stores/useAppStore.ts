@@ -47,6 +47,10 @@ interface AppState {
   activeSelection: FabricObject[]
   triggerSelectionRefresh: number
 
+  // S2 (공유): 객체 삭제 확인 모달 상태 (전 상품 적용)
+  deleteConfirmOpen: boolean
+  deleteConfirmCount: number
+
   // UI 상태
   screenshots: string[]
   currentContentsBrowser: ContentsBrowserType
@@ -108,6 +112,11 @@ interface AppActions {
    * @param placeAbove true=target 위(앞/front)로, false=target 아래(뒤/back)로
    */
   reorderObject: (sourceId: string, targetId: string, placeAbove: boolean) => void
+
+  // S2 (공유): 삭제 확인 — 휴지통 버튼/DEL 핫키 모두 이 액션을 거쳐 모달을 띄운다.
+  requestDeleteSelection: () => void
+  confirmDeleteSelection: () => void
+  cancelDeleteSelection: () => void
 
   // 객체 관리
   changeObjectValue: (value: number | string, key: string) => void
@@ -321,6 +330,8 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
   editor: null,
   objects: [],
   activeSelection: [],
+  deleteConfirmOpen: false,
+  deleteConfirmCount: 0,
   triggerSelectionRefresh: 0,
   screenshots: [],
   currentContentsBrowser: null,
@@ -1073,6 +1084,32 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
     // layerChanged 핸들러가 debounce 라 목록 즉시 갱신을 위해 updateObjects 직접 호출
     updateObjects()
   },
+
+  // ── S2 (공유 계층, 2026-06-23): 객체 삭제 확인 (전 상품 BOOK/LEAFLET/카드 적용) ──
+  // ⚠️ canvas-core 무변경(R1): DEL/Backspace 핫키는 canvas-core 의 hotkeys-js(document keydown)가
+  //    처리하므로, editor 의 ObjectDeleteConfirm 가 document 캡처단계에서 가로채(stopImmediatePropagation)
+  //    이 액션을 호출한다 → 외부 임베더(ShareSnap/100p/MD2Books)는 이 모달이 없어 영향 0.
+  //    실제 삭제는 기존 ObjectPlugin.del() 재사용(삭제잠금·lid·fillImage 동반제거 가드 그대로).
+  requestDeleteSelection: () => {
+    const { canvas, activeSelection } = get()
+    if (!canvas) return
+    const sel =
+      activeSelection && activeSelection.length > 0
+        ? activeSelection
+        : (canvas.getActiveObjects?.() ?? [])
+    if (!sel || sel.length === 0) return
+    set({ deleteConfirmOpen: true, deleteConfirmCount: sel.length })
+  },
+  confirmDeleteSelection: () => {
+    const { getPlugin, updateObjects, canvas } = get()
+    // del() 무인자 = active selection 전체를 1회 삭제(가드 내장). 버튼/핫키 공통 경로.
+    getPlugin<ObjectPlugin>('ObjectPlugin')?.del()
+    canvas?.discardActiveObject?.()
+    canvas?.requestRenderAll?.()
+    updateObjects()
+    set({ deleteConfirmOpen: false, deleteConfirmCount: 0, activeSelection: [] })
+  },
+  cancelDeleteSelection: () => set({ deleteConfirmOpen: false, deleteConfirmCount: 0 }),
 
   // 객체 값 변경
   changeObjectValue: (inputValue: number | string, key: string) => {

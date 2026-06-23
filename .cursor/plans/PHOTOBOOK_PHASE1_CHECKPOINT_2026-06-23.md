@@ -18,20 +18,19 @@
 | 항목 | 트랙 | 상태 | 파일 |
 |---|---|---|---|
 | S1 z-order 4버튼 | 공유 | ✅ `121804c` (빌드OK·스테이징) | `ControlBar.tsx` |
-| S2 삭제경고 모달 | 공유 | ⛔ **설계 결정 대기**(아래 §2-S2) | canvas-core 핫키 + R1 |
+| S2 삭제경고 모달 | 공유 | ✅ **옵션A 구현**(editor 캡처 인터셉트·canvas-core 0변경, §2-S2) | `ObjectDeleteConfirm.tsx`·`useAppStore`·`ControlBar`·`App.tsx` |
 | S3 레이어 패널 DnD | 공유 | ✅ `e094e3e` (빌드·테스트OK·스테이징) | `SidePanel.tsx`·`useAppStore.ts` |
 | P1 PHOTOBOOK enum+폼 | 포토북 | ✅ `153669d` (빌드·api206OK) | `types`·`entity`·admin 폼+3맵 |
 | P2 썸네일 jpg 파라미터 | 포토북 | ✅ `e094e3e` (비파괴 옵션) | `useAppStore.ts` |
 | P3 사진틀 드롭스왑+빈틀삭제 | 포토북 | ✅ `e094e3e` (호출처 배선 별도) | `useImageStore.ts` |
 | P4 싸바리 MVP | 포토북 | ✅ 코드불요(`coverEditable` 비게이팅 확인) | — |
 
-### §2-S2 — 삭제경고 모달: 설계 결정 필요 (병렬 에이전트 실패 + 아키텍처 제약 발견)
-스펙은 **DEL/Backspace 핫키**에 삭제 경고를 원하나, 핫키는 **canvas-core `ObjectPlugin.hotkeys`(`:31-60`→`del()`)** 에 등록됨 = 외부 임베더(ShareSnap/100p/MD2Books) 공유. 거기 모달 추가는 **R1 위반**(외부 임베더 회귀). 휴지통 버튼·핫키 모두 `del()` 단일경로(`:287`).
-**옵션 3택(오너/설계 결정):**
-1. **editor 캡처단계 keydown 인터셉트** — editor 가 Delete/Backspace 를 canvas-core 보다 먼저 잡아 모달→확인 시 del. R1-safe 하나 이벤트 순서/포커스/입력필드 충돌 주의(인터랙션 테스트 필수).
-2. **canvas-core 가산 confirm 훅** — `ObjectPlugin.setDeleteConfirm(fn)` 옵셔널 추가, 미설정=즉시(외부 무변경), editor 가 모달 fn 주입. del 이 sync→async 가 되는 타이밍 변화 검토 필요.
-3. **ControlBar 버튼만 confirm**(핫키 제외) — 단순·R1-safe 하나 스펙(핫키 confirm) 미충족.
-권장=옵션1 또는 2 + **반드시 인터랙션 테스트**(전 상품 삭제 UX 회귀). 블라인드 구현 금지.
+### §2-S2 — 삭제경고 모달: ✅ **옵션 A 구현 완료** (CTO 결정)
+스펙은 **DEL/Backspace 핫키**에 삭제 경고를 원하나, 핫키는 **canvas-core `ObjectPlugin.hotkeys`(`:31-60`→`del()`, hotkeys-js document keydown)** 에 등록됨 = 외부 임베더(ShareSnap/100p/MD2Books) 공유 → 거기 모달 추가는 **R1 위반**.
+**CTO 결정 = 옵션 A (editor 캡처단계 인터셉트, canvas-core 0 변경)**. B안(canvas-core 가산 confirm 훅)은 del() sync→async + 공유 엔진 계약변경=외부 임베더 blast radius 큼 → 기각. 삭제확인은 "상품 UX"라 상품 앱(editor) 소유가 옳음.
+**구현(전부 apps/editor)**: `ObjectDeleteConfirm.tsx`(document 캡처단계 keydown 인터셉터 — hotkeys-js 보다 먼저 `stopImmediatePropagation` 으로 차단 + 모달) · `useAppStore`(deleteConfirmOpen/Count + requestDeleteSelection/confirm/cancel, 실삭제는 기존 `ObjectPlugin.del()` 재사용) · `ControlBar.handleDelete`→requestDeleteSelection · `App.tsx` 전역 마운트. 가드: 입력필드/IText 편집중/선택없음=통과(통상 삭제), Esc=취소·Enter=확인, 모바일 ≥44px.
+**검증**: editor 빌드 OK · 유닛 10/10 · 프리뷰 부팅 무크래시(에러 0, 모든 콘솔에러는 백엔드 네트워크)·키 인터셉터 무예외·선택없음 시 모달 닫힘. ⚠️ 실객체 DEL→모달 풀플로우는 배포 editor 인터랙션 테스트(DoD).
+**잔여(별도)**: 빈 사진틀 무경고 삭제(P3 deleteEmptyFrame)를 DEL 경로에 연결하는 frame-specific 분기는 포토북 후속.
 
 ### 병렬 분할 (파일 디스조인트)
 - A: P1 (types/entity/admin) · B: P4 (service/worker) · C: P3 (useImageStore) · D: S2 (ControlBar+모달) · E: **S3+P2**(SidePanel+useAppStore — 동일파일이라 한 에이전트가 동반).
