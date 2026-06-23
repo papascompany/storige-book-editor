@@ -67,6 +67,14 @@ async function bootstrap() {
         );
       }
     }
+    // WH-001(2026-06-23): WEBHOOK_SECRET 미주입 시 위조불가 HMAC 서명(X-Storige-Signature-HMAC)이
+    // silent 생략된다(=웹훅 무서명). 미설정도 하위호환상 유효하나, .env 에 값이 있는데 컨테이너에
+    // 미주입되는 회귀(docker-compose environment 매핑 누락)를 가시화. 경보일 뿐 부팅은 차단 안 함.
+    if (!configService.get('WEBHOOK_SECRET')) {
+      pinoLogger.warn(
+        `[CFG] WEBHOOK_SECRET 미설정 — 아웃바운드 웹훅이 위조불가 HMAC 서명 없이 발송됩니다(레거시 base64만). 파트너 cutover 전 .env + docker-compose environment 매핑 확인 필요.`,
+      );
+    }
   }
 
   const maxBodySize = configService.get<string>('MAX_BODY_SIZE', '100mb');
