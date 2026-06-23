@@ -56,6 +56,9 @@ services:
       # Webhook callbackUrl SSRF 방어 (Patch E, 2026-05-03)
       # 콤마 구분 호스트명 — '*'로 설정 시 모든 URL 허용 (개발용), 비우면 기본값 사용
       - WEBHOOK_ALLOWED_HOSTS=${WEBHOOK_ALLOWED_HOSTS:-papascompany.co.kr,bookmoa.com}
+      # WH-001 위조불가 HMAC 서명(X-Storige-Signature-HMAC). 미설정 시 HMAC 헤더 생략(=서명 비활성).
+      # .env 에 존재해도 이 environment 매핑이 없으면 컨테이너 런타임에 미주입되어 HMAC 이 silent no-op 가 됨(2026-06-23 적발).
+      - WEBHOOK_SECRET=${WEBHOOK_SECRET}
     volumes:
       - ./storage:/app/storage
     depends_on:
