@@ -204,22 +204,25 @@ export interface TemplateSet {
 
 ## 7. 자동편집 (autofill 엔진)
 
+> ✅ **정렬 모델 = Phase 2 구현 완료**(`apps/editor/src/utils/photoAutofill.ts`, 2026-06-23, `a0d5f0a`). 아래 1·3·정렬모드 + EXIF 파싱 토대 구현·테스트(9). **프레임 매칭(4)·UI 는 Phase 3**(프레임 슬롯 의존).
+> **GPS 기준 정립(O-6 해소)**: GPS 는 유일 기준 아님 — 기본=`date`(촬영일시), `location` 모드 한정 군집+폴백.
+
 ### 7-1. 알고리즘 (외부: Mixbook Auto-Create / aspect-ratio 매칭)
-1. **수집:** `useExternalPhotosStore.ts` 사진 목록.
-2. **중복 제거:** 파일 해시/유사도(옵션).
-3. **정렬(기본):** EXIF `DateTimeOriginal` asc. 폴백 체인 = DateTaken → DateAdded(파일mtime) → FileName. 옵션 드롭다운(asc/desc).
-4. **프레임 매칭:** 사진 aspect ratio ↔ 슬롯 aspect ratio 최근접 매칭. 가로/세로/정사각 분류 후 스프레드 단위 슬롯 채움.
+1. **수집:** `useExternalPhotosStore.ts` 사진 목록. ✅
+2. **중복 제거:** 파일 해시/유사도(옵션, 미구현).
+3. **정렬:** `sortPhotosForAutofill(photos, mode)` ✅ — `date`(촬영일시 asc, 폴백 takenAt→uploadedAt→name) / `filename`(자연정렬) / `location`(haversine 근접 군집→군집 최소시각순·내부 시간순, **GPS 없는 사진 날짜순 뒤, GPS전무=날짜폴백**) / `random`(Fisher-Yates).
+4. **프레임 매칭(Phase 3):** 사진 aspect ratio ↔ 슬롯 aspect ratio 최근접 매칭. 가로/세로/정사각 분류 후 스프레드 단위 슬롯 채움.
 5. **출력:** **편집가능 시드**(immutable 아님) — 사용자가 이후 자유 편집.
-- **random/장소(GPS) 옵션:** 외부 표준 아님(O-6). MVP는 date/filename/added 3종 한정 권장.
 
-### 7-2. EXIF 도입 (M)
-- **의존성:** `exifr` 신규 도입(현재 exif 파서 **전무** 확인).
-- ⚠️ **순서 제약(중요):** `storage.service.ts:217`의 sharp `.rotate()`(EXIF orientation 보정)는 **메타데이터를 strip할 수 있음**. → **EXIF 파싱을 `.rotate()` 이전에** 수행하거나, 원본에서 `DateTimeOriginal`/orientation을 먼저 읽고 보존. 파이프 순서: `원본 수신 → exifr 파싱(날짜/GPS/orientation 저장) → sharp.rotate() → 저장`.
-- **스키마 확장:** `ExternalPhoto`/업로드 파이프에 `takenAt?:Date`, `gps?:{lat,lng}`(옵션), `smartCropAnchor?:bbox` 추가.
+### 7-2. EXIF 도입 ✅ (Phase 2)
+- **의존성:** `exifr ^7.1.3` editor 도입 완료.
+- **스키마:** `ExternalPhoto` 에 `takenAt?`/`gps?:{lat,lng}`/`exifParsed?` 추가(types). `setPhotos` 가 spread 통과 → **호스트 제공 EXIF 그대로 사용**. (smartCropAnchor 는 Phase 3.)
+- **파서:** `parsePhotoExif`(동적 import, 실패시 빈객체) + `enrichPhotosWithExif`(URL 페치 파싱, **호스트 제공 메타 존중**, 병렬한도).
+- ⚠️ 서버 `storage.service.ts:217` sharp `.rotate()` 의 메타 strip 은 **클라이언트 파싱(원본 바이트)엔 무관**. 서버측 EXIF 영속(worker 자동배치 잡)을 추가할 때만 rotate **이전** 파싱 제약 적용(Phase 3).
 
-### 7-3. 실행 위치 (O-5)
-- **worker 잡(권장):** 대량 사진·비동기. EXIF 파싱은 업로드 파이프(`storage.service.ts:217` 인근, rotate 이전)에서 1회.
-- 또는 편집기 클라이언트(소량). 결정 게이트 O-5.
+### 7-3. 실행 위치 (O-5 = 클라이언트 채택)
+- ✅ **편집기 클라이언트 파싱 채택**(자동편집=편집기 인터랙션이라 즉시·서버 round-trip 無). 호스트가 takenAt/gps 주면 그대로, 없으면 enrichPhotosWithExif 가 URL 페치 파싱.
+- **worker 잡(O-5 잔여)**: 초대량 사진·서버측 영속이 필요하면 Phase 3 에서 worker 추가(그땐 rotate 이전 파싱). 현 MVP=클라이언트로 충분.
 
 ---
 
@@ -276,8 +279,8 @@ export interface TemplateSet {
 | O-2 | **펼침면 내지 범위** | 본문 2-up facing 정식 지원(L) vs MVP 단면 1p 유지 + 파노라마만 분기 |
 | O-3 | **가격 계산 주체** | storige `pricing` 메타만 emit(권장) vs 총가 계산. 사이즈×커버 단가 매트릭스 출처 |
 | O-4 | **300dpi 래스터 필요성** | 인쇄 RIP가 펼침면 래스터 실요구? 현 벡터 PDF + separate(`GUIDE.md:477`)로 충분하면 §9-1 불필요 |
-| O-5 | **자동배치 실행 위치** | worker 잡(권장, 대량) vs 편집기. EXIF 파싱은 업로드 파이프 rotate **이전**(§7-2) |
-| O-6 | **EXIF GPS 장소그룹** | 비표준(외부). date/filename/added 3종 한정 vs GPS 그룹 추가 |
+| O-5 | ✅ **결정: 편집기 클라이언트 파싱**(Phase 2). 초대량·서버영속 필요 시 worker 잡은 Phase 3 잔여 |
+| O-6 | ✅ **결정: GPS 는 'location' 모드 한정 군집+폴백**(유일기준 아님), 기본=date. Phase 2 구현·테스트 완료 |
 | O-7 | **페이지 DnD swap vs insert** | 포토북은 swap 흔함(Mixbook). 표지/면지 고정 가드는 기존(`:363`) |
 | O-8 | **잠금 default 파라미터(공유)** | 잠금 메커니즘(`applyObjectPermissions`)은 **공유 계층** — 포토북은 신규 잠금 로직 없이 공유 시스템에 **per-template default 파라미터**(default-locked)만 추가(BOOK/LEAFLET 도 사용 가능한 공유 설정, 포토북 전용 분기 금지). 결정=공유 파라미터 도입 + 포토북이 default 를 locked 로 둘지 |
 | O-9 | **저해상도 임계** | 150dpi hard / 220 soft 확정. 비차단 동의 게이트 |
