@@ -90,10 +90,12 @@ export enum TemplateType {
  * 템플릿셋 타입
  * - book: 책자 (날개 + 앞표지 + 책등 + 내지 N장 + 뒤표지 + 날개)
  * - leaflet: 리플렛 (앞표지 + 내지 N장 + 뒤표지)
+ * - photobook: 포토북 (펼침면 표지/내지 + 사진틀 중심, editorMode='book' 스프레드)
  */
 export enum TemplateSetType {
   BOOK = 'book',
   LEAFLET = 'leaflet',
+  PHOTOBOOK = 'photobook',
 }
 
 /**

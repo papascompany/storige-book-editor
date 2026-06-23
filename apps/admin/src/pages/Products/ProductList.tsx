@@ -37,6 +37,7 @@ const { Title, Text } = Typography;
 const templateSetTypeLabels: Record<TemplateSetType, string> = {
   [TemplateSetType.BOOK]: '책자',
   [TemplateSetType.LEAFLET]: '리플렛',
+  [TemplateSetType.PHOTOBOOK]: '포토북',
 };
 
 export const ProductList = () => {

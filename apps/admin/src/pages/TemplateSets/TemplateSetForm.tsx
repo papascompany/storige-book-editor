@@ -601,7 +601,18 @@ export const TemplateSetForm = () => {
                         options={[
                           { label: '책자 (날개+표지+책등+내지)', value: TemplateSetType.BOOK },
                           { label: '리플렛 (표지+내지)', value: TemplateSetType.LEAFLET },
+                          { label: '포토북 (펼침면 표지/내지·사진틀)', value: TemplateSetType.PHOTOBOOK },
                         ]}
+                        onChange={(value) => {
+                          // 포토북은 스프레드(펼침면) 편집이므로 책모드를 강제 파생.
+                          // (스프레드 템플릿 추가/제거에 의한 기존 자동전환과 동일 패턴)
+                          if (value === TemplateSetType.PHOTOBOOK) {
+                            if (form.getFieldValue('editorMode') !== EditorMode.BOOK) {
+                              form.setFieldsValue({ editorMode: EditorMode.BOOK });
+                              message.info('포토북은 펼침면 편집이므로 에디터 모드가 책모드로 전환되었습니다.');
+                            }
+                          }
+                        }}
                       />
                     </Form.Item>
 
