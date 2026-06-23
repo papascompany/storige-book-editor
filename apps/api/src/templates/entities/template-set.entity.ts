@@ -21,6 +21,7 @@ import type { ProductSpecs, TemplateSetType, TemplateRef, EditorMode, EditorMenu
 export enum TemplateSetTypeEnum {
   BOOK = 'book',
   LEAFLET = 'leaflet',
+  PHOTOBOOK = 'photobook',
 }
 
 @Entity('template_sets')
