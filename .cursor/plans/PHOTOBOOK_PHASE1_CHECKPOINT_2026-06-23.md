@@ -18,12 +18,20 @@
 | 항목 | 트랙 | 상태 | 파일 |
 |---|---|---|---|
 | S1 z-order 4버튼 | 공유 | ✅ `121804c` (빌드OK·스테이징) | `ControlBar.tsx` |
-| S2 삭제경고 모달 | 공유 | ⏳ 진행 | `ControlBar.tsx` + 신규 모달 |
-| S3 레이어 패널 DnD | 공유 | ⏳ 진행 | `SidePanel.tsx`·`useAppStore.ts` |
-| P1 PHOTOBOOK enum+폼 | 포토북 | ⏳ 진행 | `types/index.ts`·`template-set.entity.ts`·admin `TemplateSetForm.tsx` |
-| P2 썸네일 jpg 파라미터 | 포토북 | ⏳ 진행 | `useAppStore.ts`(S3과 동일파일→동반) |
-| P3 사진틀 드롭스왑+빈틀삭제 | 포토북 | ⏳ 진행 | `useImageStore.ts` |
-| P4 싸바리 MVP | 포토북 | ⏳ 진행 | `template-sets.service.ts`·worker(거의 config) |
+| S2 삭제경고 모달 | 공유 | ⛔ **설계 결정 대기**(아래 §2-S2) | canvas-core 핫키 + R1 |
+| S3 레이어 패널 DnD | 공유 | ✅ `e094e3e` (빌드·테스트OK·스테이징) | `SidePanel.tsx`·`useAppStore.ts` |
+| P1 PHOTOBOOK enum+폼 | 포토북 | ✅ `153669d` (빌드·api206OK) | `types`·`entity`·admin 폼+3맵 |
+| P2 썸네일 jpg 파라미터 | 포토북 | ✅ `e094e3e` (비파괴 옵션) | `useAppStore.ts` |
+| P3 사진틀 드롭스왑+빈틀삭제 | 포토북 | ✅ `e094e3e` (호출처 배선 별도) | `useImageStore.ts` |
+| P4 싸바리 MVP | 포토북 | ✅ 코드불요(`coverEditable` 비게이팅 확인) | — |
+
+### §2-S2 — 삭제경고 모달: 설계 결정 필요 (병렬 에이전트 실패 + 아키텍처 제약 발견)
+스펙은 **DEL/Backspace 핫키**에 삭제 경고를 원하나, 핫키는 **canvas-core `ObjectPlugin.hotkeys`(`:31-60`→`del()`)** 에 등록됨 = 외부 임베더(ShareSnap/100p/MD2Books) 공유. 거기 모달 추가는 **R1 위반**(외부 임베더 회귀). 휴지통 버튼·핫키 모두 `del()` 단일경로(`:287`).
+**옵션 3택(오너/설계 결정):**
+1. **editor 캡처단계 keydown 인터셉트** — editor 가 Delete/Backspace 를 canvas-core 보다 먼저 잡아 모달→확인 시 del. R1-safe 하나 이벤트 순서/포커스/입력필드 충돌 주의(인터랙션 테스트 필수).
+2. **canvas-core 가산 confirm 훅** — `ObjectPlugin.setDeleteConfirm(fn)` 옵셔널 추가, 미설정=즉시(외부 무변경), editor 가 모달 fn 주입. del 이 sync→async 가 되는 타이밍 변화 검토 필요.
+3. **ControlBar 버튼만 confirm**(핫키 제외) — 단순·R1-safe 하나 스펙(핫키 confirm) 미충족.
+권장=옵션1 또는 2 + **반드시 인터랙션 테스트**(전 상품 삭제 UX 회귀). 블라인드 구현 금지.
 
 ### 병렬 분할 (파일 디스조인트)
 - A: P1 (types/entity/admin) · B: P4 (service/worker) · C: P3 (useImageStore) · D: S2 (ControlBar+모달) · E: **S3+P2**(SidePanel+useAppStore — 동일파일이라 한 에이전트가 동반).
