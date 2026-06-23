@@ -53,8 +53,13 @@ export class AuthController {
   @ApiOperation({ summary: 'User login' })
   @ApiResponse({ status: 200, description: 'Login successful' })
   @ApiResponse({ status: 401, description: 'Invalid credentials' })
-  async login(@Body() loginDto: LoginDto): Promise<AuthTokens> {
-    return this.authService.login(loginDto);
+  async login(
+    @Body() loginDto: LoginDto,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<AuthTokens> {
+    const tokens = await this.authService.login(loginDto);
+    this.setAdminAuthCookies(res, tokens);
+    return tokens;
   }
 
   @Public()
@@ -76,8 +81,40 @@ export class AuthController {
   @ApiOperation({ summary: 'Refresh access token' })
   @ApiResponse({ status: 200, description: 'Token refreshed successfully' })
   @ApiResponse({ status: 401, description: 'Invalid token' })
-  async refresh(@Body('refreshToken') refreshToken: string): Promise<AuthTokens> {
-    return this.authService.refreshToken(refreshToken);
+  async refresh(
+    @Body('refreshToken') refreshToken: string,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<AuthTokens> {
+    const tokens = await this.authService.refreshToken(refreshToken);
+    this.setAdminAuthCookies(res, tokens);
+    return tokens;
+  }
+
+  /**
+   * AUTH-001 stage1(2026-06-23): admin(1st-party) httpOnly 쿠키 이원화.
+   * ⚠️ 비파괴 — body 토큰(accessToken/refreshToken)은 그대로 반환하므로 기존 Bearer/localStorage
+   * 흐름(admin 프론트)은 변경 없이 동작한다. 쿠키는 *추가* 발급일 뿐이며, 프론트가 쿠키 기반으로
+   * 전환(withCredentials, localStorage 제거)하는 stage1b 이전까지는 미사용 상태로 둔다.
+   * 쿠키 옵션은 shop-session(createShopSession)과 동일 — admin↔api 는 동일 site(서브도메인)라 sameSite=lax 로 전송됨.
+   */
+  private setAdminAuthCookies(res: Response, tokens: AuthTokens): void {
+    const isProduction = process.env.NODE_ENV === 'production';
+    res.cookie('storige_access', tokens.accessToken, {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: 'lax',
+      path: '/api',
+      maxAge: 3600 * 1000, // 1시간
+    });
+    if (tokens.refreshToken) {
+      res.cookie('storige_refresh', tokens.refreshToken, {
+        httpOnly: true,
+        secure: isProduction,
+        sameSite: 'lax',
+        path: '/api/auth',
+        maxAge: 30 * 24 * 3600 * 1000, // 30일
+      });
+    }
   }
 
   @ApiBearerAuth()

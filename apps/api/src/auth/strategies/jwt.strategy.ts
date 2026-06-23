@@ -47,7 +47,15 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     private userRepository: Repository<User>,
   ) {
     super({
-      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+      // AUTH-001 stage1(2026-06-23): Bearer 우선 + httpOnly 쿠키(storige_access) 폴백 다중 extractor.
+      // ⚠️ 비파괴 — Bearer 헤더 클라이언트는 1순위로 그대로 동작(기존 admin/임베드 무영향).
+      // 쿠키는 *추가* 인증경로일 뿐(XSS 시 토큰 탈취 표면 축소를 위한 httpOnly 전환 기반).
+      // 프론트 쿠키 전환(localStorage→쿠키)은 별도 단계(stage1b) — 본 변경은 서버측만.
+      jwtFromRequest: ExtractJwt.fromExtractors([
+        ExtractJwt.fromAuthHeaderAsBearerToken(),
+        (req: { cookies?: Record<string, string> }) =>
+          req?.cookies?.['storige_access'] ?? null,
+      ]),
       ignoreExpiration: false,
       secretOrKey: configService.get<string>('JWT_SECRET'),
     });
