@@ -17,6 +17,9 @@ import type {
   RepositionResult,
   ObjectAnchor,
   RegionRefResult,
+  SpreadInnerSpec,
+  SpreadInnerLayout,
+  SpreadInnerRegion,
 } from '@storige/types'
 import { computeSpreadDimensions } from '@storige/types'
 
@@ -132,6 +135,66 @@ export function computeLayout(spec: SpreadSpec): SpreadLayout {
     regions,
     guides,
     labels,
+    totalWidthPx,
+    totalHeightPx,
+    totalWidthMm,
+    totalHeightMm,
+  }
+}
+
+/**
+ * 펼침면 내지(2-up) 레이아웃 계산 — 포토북 (O-2, 2026-06-24).
+ *
+ * 표지 computeLayout 과 별개. 입력 SpreadInnerSpec(mm), 출력 SpreadInnerLayout(workspace px, trim 기준).
+ * - trim = pageWidthMm*2 × pageHeightMm (블리드 제외 — 표지와 동일하게 WorkspacePlugin 이 bleed 처리).
+ * - 좌면(left-page) [0, pageWidthPx], 우면(right-page) [pageWidthPx, 2*pageWidthPx].
+ * - gutterGuide = 중앙 제본 경계(좌/우 면 경계, x=pageWidthPx). gutterBandPx = 거터 안전 밴드(중앙 ±band/2).
+ */
+export function computeInnerSpreadLayout(spec: SpreadInnerSpec): SpreadInnerLayout {
+  const { pageWidthMm, pageHeightMm, gutterMm, dpi } = spec
+
+  const totalWidthMm = pageWidthMm * 2
+  const totalHeightMm = pageHeightMm
+  const pageWidthPx = mmToPx(pageWidthMm, dpi)
+  const totalWidthPx = mmToPx(totalWidthMm, dpi)
+  const totalHeightPx = mmToPx(totalHeightMm, dpi)
+
+  const regions: SpreadInnerRegion[] = [
+    {
+      position: 'left-page',
+      x: 0,
+      width: pageWidthPx,
+      height: totalHeightPx,
+      widthMm: pageWidthMm,
+      heightMm: pageHeightMm,
+      label: '좌면',
+    },
+    {
+      position: 'right-page',
+      x: pageWidthPx,
+      width: pageWidthPx,
+      height: totalHeightPx,
+      widthMm: pageWidthMm,
+      heightMm: pageHeightMm,
+      label: '우면',
+    },
+  ]
+
+  // 중앙 제본 경계선(좌/우 면 경계)
+  const gutterGuide: GuideLineSpec = {
+    x: pageWidthPx,
+    y1: 0,
+    y2: totalHeightPx,
+    type: 'region-border',
+  }
+
+  // 거터 안전 밴드(px) — 제본 손실 회피 영역(중앙 ±gutterBandPx/2)
+  const gutterBandPx = Math.max(0, mmToPx(gutterMm, dpi))
+
+  return {
+    regions,
+    gutterGuide,
+    gutterBandPx,
     totalWidthPx,
     totalHeightPx,
     totalWidthMm,
