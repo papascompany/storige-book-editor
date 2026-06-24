@@ -8,7 +8,8 @@ import { templatesApi } from '@/api'
 import { createCanvas } from '@/utils/createCanvas'
 import { ServicePlugin, computeLayout } from '@storige/canvas-core'
 import { normalizeSpreadSpec, computeSpreadDimensions, TemplateType } from '@storige/types'
-import type { SpreadSpec, SpreadConfig, SpreadLayout, SpreadConversionMode } from '@storige/types'
+import type { SpreadSpec, SpreadConfig, SpreadLayout, SpreadConversionMode, SpreadInnerSpec } from '@storige/types'
+import { buildInnerSpreadConfig } from '@/utils/photobookSpread'
 import ToolBar from '@/components/editor/ToolBar'
 import FeatureSidebar from '@/components/editor/FeatureSidebar'
 import ControlBar from '@/components/editor/ControlBar'
@@ -59,6 +60,9 @@ export default function TemplateEditorView() {
   const [spreadError, setSpreadError] = useState<string | null>(null)
   const spreadSpecRef = useRef<SpreadSpec | null>(null)
   const spreadLayoutRef = useRef<SpreadLayout | null>(null)
+  // 포토북 내지 펼침면(2-up, O-2): admin 이 spec 으로 보낸 regionScope='inner' config 의 innerSpec.
+  // 표지(cover) spec 과 별개 — 존재하면 좌/우 면+거터 모델로 저장/렌더한다.
+  const innerSpecRef = useRef<SpreadInnerSpec | null>(null)
   // 템플릿 로드 시 기존 spreadConfig.conversionMode 보관 — 저장 시 spreadConfig 를
   // {version,spec,regions,...} 로 재구성하면서 conversionMode 가 유실(라운드트립 'full' 강등)
   // 되는 사고 방지. 없으면 필드 자체를 생략(legacy='full' 간주는 소비측 규약).
@@ -67,19 +71,28 @@ export default function TemplateEditorView() {
   const isSpreadMode = modeParam === 'spread' && specParam != null
 
   // Parse and validate spread spec (once)
-  if (isSpreadMode && !spreadSpecRef.current && !spreadError) {
+  if (isSpreadMode && !spreadSpecRef.current && !innerSpecRef.current && !spreadError) {
     try {
       const parsed = JSON.parse(specParam!)
-      const normalized = normalizeSpreadSpec(parsed)
-      // Validate finite + positive
-      if (normalized.coverWidthMm <= 0 || normalized.coverHeightMm <= 0) {
-        throw new Error('coverWidthMm, coverHeightMm은 양수여야 합니다')
+      if (parsed?.regionScope === 'inner' && parsed?.innerSpec) {
+        // 포토북 내지 펼침면(2-up): innerSpec 권위 — cover 파싱(normalizeSpreadSpec) 우회.
+        const is = parsed.innerSpec as SpreadInnerSpec
+        if (!(is.pageWidthMm > 0) || !(is.pageHeightMm > 0)) {
+          throw new Error('innerSpec.pageWidthMm/pageHeightMm은 양수여야 합니다')
+        }
+        innerSpecRef.current = is
+      } else {
+        const normalized = normalizeSpreadSpec(parsed)
+        // Validate finite + positive
+        if (normalized.coverWidthMm <= 0 || normalized.coverHeightMm <= 0) {
+          throw new Error('coverWidthMm, coverHeightMm은 양수여야 합니다')
+        }
+        if (normalized.wingEnabled && normalized.wingWidthMm <= 0) {
+          throw new Error('wingEnabled=true일 때 wingWidthMm은 양수여야 합니다')
+        }
+        spreadSpecRef.current = normalized
+        spreadLayoutRef.current = computeLayout(normalized)
       }
-      if (normalized.wingEnabled && normalized.wingWidthMm <= 0) {
-        throw new Error('wingEnabled=true일 때 wingWidthMm은 양수여야 합니다')
-      }
-      spreadSpecRef.current = normalized
-      spreadLayoutRef.current = computeLayout(normalized)
     } catch (e) {
       setSpreadError(e instanceof Error ? e.message : 'spec 파싱 실패')
     }
@@ -152,7 +165,14 @@ export default function TemplateEditorView() {
         let cutSize = 3
         let safeSize = 3
 
-        if (isSpreadMode && spreadSpecRef.current) {
+        if (isSpreadMode && innerSpecRef.current) {
+          // 포토북 내지 펼침면: 폭=한 면×2, 높이=한 면.
+          const is = innerSpecRef.current
+          width = is.pageWidthMm * 2
+          height = is.pageHeightMm
+          cutSize = is.cutSizeMm
+          safeSize = is.safeSizeMm
+        } else if (isSpreadMode && spreadSpecRef.current) {
           const dims = computeSpreadDimensions(spreadSpecRef.current)
           width = dims.totalWidthMm
           height = dims.totalHeightMm
@@ -175,8 +195,11 @@ export default function TemplateEditorView() {
         })
 
         // 스프레드 모드: spreadConfig을 settings store에 설정
-        // createCanvas에서 SpreadPlugin 등록 여부를 spreadConfig?.spec으로 판단
-        if (isSpreadMode && spreadSpecRef.current && spreadLayoutRef.current) {
+        // createCanvas에서 SpreadPlugin 등록 여부를 spreadConfig?.spec(또는 innerSpec)으로 판단
+        if (isSpreadMode && innerSpecRef.current) {
+          // 포토북 내지 펼침면: 좌/우 면+거터 config(regionScope='inner').
+          setSpreadConfig(buildInnerSpreadConfig(innerSpecRef.current))
+        } else if (isSpreadMode && spreadSpecRef.current && spreadLayoutRef.current) {
           const dims = computeSpreadDimensions(spreadSpecRef.current)
           setSpreadConfig({
             version: 1,
@@ -326,7 +349,16 @@ export default function TemplateEditorView() {
 
       // spread 모드: spec 기반 크기 + spreadConfig 포함
       let spreadConfig: SpreadConfig | undefined
-      if (isSpreadMode && spreadSpecRef.current && spreadLayoutRef.current) {
+      if (isSpreadMode && innerSpecRef.current) {
+        // 포토북 내지 펼침면(2-up): innerSpec 권위로 spreadConfig{regionScope:'inner'} 저장.
+        // 이 템플릿이 DB 에 저장되면 loadSpreadModeEditor 가 이를 보고 N개 펼침면을 생성한다.
+        spreadConfig = {
+          ...buildInnerSpreadConfig(innerSpecRef.current),
+          ...(existingConversionModeRef.current !== undefined
+            ? { conversionMode: existingConversionModeRef.current }
+            : {}),
+        }
+      } else if (isSpreadMode && spreadSpecRef.current && spreadLayoutRef.current) {
         const dims = computeSpreadDimensions(spreadSpecRef.current)
         spreadConfig = {
           version: 1,

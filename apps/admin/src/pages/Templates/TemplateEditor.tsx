@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { Button, message, Modal, Form, Input, Select, InputNumber, Space, Spin, Switch, Divider } from 'antd';
+import { Button, message, Modal, Form, Input, Select, InputNumber, Space, Spin, Switch, Divider, Radio } from 'antd';
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import { useAuthStore } from '../../stores/authStore';
 import { templatesApi } from '../../api/templates';
@@ -30,13 +30,28 @@ interface TemplateConfig {
   height: number;
 }
 
+// 스프레드 영역 범위 — 'cover'(표지, 기본) / 'inner'(포토북 내지 펼침면 2-up)
+type SpreadRegionScope = 'cover' | 'inner';
+
 // 스프레드 최소 설정 타입
+// regionScope==='inner' 면 cover 필드 대신 내지 펼침면 필드(page*/gutter/cut/safe/dpi)를 사용한다.
+// regionScope 미존재/'cover' = 기존 동작(byte-identical).
 interface SpreadMinimalConfig {
+  // regionScope: 미존재 시 'cover'로 폴백(레거시 호환)
+  regionScope?: SpreadRegionScope;
+  // --- cover (regionScope==='cover') ---
   coverWidthMm: number;
   coverHeightMm: number;
   wingEnabled: boolean;
   wingWidthMm: number;
   initialSpineWidthMm?: number;
+  // --- inner (regionScope==='inner') ---
+  pageWidthMm?: number;
+  pageHeightMm?: number;
+  gutterMm?: number;
+  cutSizeMm?: number;
+  safeSizeMm?: number;
+  dpi?: number;
 }
 
 // 에디터 URL
@@ -79,15 +94,39 @@ export const TemplateEditor = () => {
           width: tpl.width,
           height: tpl.height,
         });
-        const spec = tpl.spreadConfig?.spec;
-        if (tpl.type === 'spread' && spec) {
-          setSpreadConfig({
-            coverWidthMm: spec.coverWidthMm,
-            coverHeightMm: spec.coverHeightMm,
-            wingEnabled: spec.wingEnabled ?? (spec.wingWidthMm ?? 0) > 0,
-            wingWidthMm: spec.wingWidthMm ?? 0,
-            initialSpineWidthMm: spec.spineWidthMm,
-          });
+        const sc = tpl.spreadConfig;
+        if (tpl.type === 'spread' && sc) {
+          // regionScope 미존재 = 'cover'로 폴백(레거시 호환)
+          const regionScope: SpreadRegionScope = sc.regionScope === 'inner' ? 'inner' : 'cover';
+          if (regionScope === 'inner' && sc.innerSpec) {
+            // 포토북 내지 펼침면: innerSpec 필드 prefill
+            const is = sc.innerSpec;
+            setSpreadConfig({
+              regionScope: 'inner',
+              // cover 필드는 폼 복원용 기본값(inner 분기에서는 미사용)
+              coverWidthMm: is.pageWidthMm,
+              coverHeightMm: is.pageHeightMm,
+              wingEnabled: false,
+              wingWidthMm: 0,
+              pageWidthMm: is.pageWidthMm,
+              pageHeightMm: is.pageHeightMm,
+              gutterMm: is.gutterMm,
+              cutSizeMm: is.cutSizeMm,
+              safeSizeMm: is.safeSizeMm,
+              dpi: is.dpi,
+            });
+          } else if (sc.spec) {
+            // 표지(cover): 기존 동작 그대로
+            const spec = sc.spec;
+            setSpreadConfig({
+              regionScope: 'cover',
+              coverWidthMm: spec.coverWidthMm,
+              coverHeightMm: spec.coverHeightMm,
+              wingEnabled: spec.wingEnabled ?? (spec.wingWidthMm ?? 0) > 0,
+              wingWidthMm: spec.wingWidthMm ?? 0,
+              initialSpineWidthMm: spec.spineWidthMm,
+            });
+          }
         }
       })
       .catch((e) => {
@@ -121,7 +160,44 @@ export const TemplateEditor = () => {
       if (config.type === 'spread' && spread) {
         // spread일 때는 width/height를 URL에 넣지 않음 (spec이 권위)
         params.set('mode', 'spread');
-        params.set('spec', JSON.stringify(spread));
+        if (spread.regionScope === 'inner') {
+          // 포토북 내지 펼침면(2-up): 편집기가 이 spec 으로 미리보기·저장.
+          // 저장될 spreadConfig 형태:
+          //   { version:1, regionScope:'inner',
+          //     innerSpec:{pageWidthMm,pageHeightMm,gutterMm,cutSizeMm,safeSizeMm,dpi},
+          //     regions:[], totalWidthMm: pageWidthMm*2, totalHeightMm: pageHeightMm }
+          const pageWidthMm = spread.pageWidthMm ?? 210;
+          const pageHeightMm = spread.pageHeightMm ?? 297;
+          params.set(
+            'spec',
+            JSON.stringify({
+              version: 1,
+              regionScope: 'inner',
+              innerSpec: {
+                pageWidthMm,
+                pageHeightMm,
+                gutterMm: spread.gutterMm ?? 10,
+                cutSizeMm: spread.cutSizeMm ?? 3,
+                safeSizeMm: spread.safeSizeMm ?? 5,
+                dpi: spread.dpi ?? 150,
+              },
+              regions: [],
+              totalWidthMm: pageWidthMm * 2,
+              totalHeightMm: pageHeightMm,
+            })
+          );
+        } else {
+          // 표지(cover): 기존 동작 그대로(byte-identical).
+          // regionScope/inner 필드를 제거해 레거시와 동일한 cover 전용 minimal spec 만 직렬화.
+          const coverSpec: SpreadMinimalConfig = {
+            coverWidthMm: spread.coverWidthMm,
+            coverHeightMm: spread.coverHeightMm,
+            wingEnabled: spread.wingEnabled,
+            wingWidthMm: spread.wingWidthMm,
+            initialSpineWidthMm: spread.initialSpineWidthMm,
+          };
+          params.set('spec', JSON.stringify(coverSpec));
+        }
       } else {
         // 일반 타입은 width/height 전달
         params.set('width', config.width.toString());
@@ -216,7 +292,35 @@ export const TemplateEditor = () => {
   const handleSpreadConfigSubmit = async () => {
     try {
       const values = await spreadForm.validateFields();
-      setSpreadConfig(values);
+      const regionScope: SpreadRegionScope = values.regionScope === 'inner' ? 'inner' : 'cover';
+      if (regionScope === 'inner') {
+        // 포토북 내지 펼침면(2-up): inner 필드만 권위.
+        // getEditorUrl 이 regionScope==='inner' 분기에서 innerSpec/totals 를 구성한다.
+        setSpreadConfig({
+          regionScope: 'inner',
+          // cover 필드는 타입 만족용(폼 initialValues 보존값) — inner 경로에서는 미사용
+          coverWidthMm: values.pageWidthMm,
+          coverHeightMm: values.pageHeightMm,
+          wingEnabled: false,
+          wingWidthMm: 0,
+          pageWidthMm: values.pageWidthMm,
+          pageHeightMm: values.pageHeightMm,
+          gutterMm: values.gutterMm,
+          cutSizeMm: values.cutSizeMm,
+          safeSizeMm: values.safeSizeMm,
+          dpi: values.dpi,
+        });
+      } else {
+        // 표지(cover): 기존 동작 그대로(byte-identical) — cover 전용 minimal config.
+        setSpreadConfig({
+          regionScope: 'cover',
+          coverWidthMm: values.coverWidthMm,
+          coverHeightMm: values.coverHeightMm,
+          wingEnabled: values.wingEnabled,
+          wingWidthMm: values.wingWidthMm,
+          initialSpineWidthMm: values.initialSpineWidthMm,
+        });
+      }
       setSpreadConfigModalVisible(false);
     } catch (error) {
       console.error('Spread form validation failed:', error);
@@ -273,6 +377,12 @@ export const TemplateEditor = () => {
           <span style={{ marginLeft: 16, color: '#888' }}>
             {templateConfig.type === 'spread'
               ? (spreadConfig ? (() => {
+                  if (spreadConfig.regionScope === 'inner') {
+                    // 포토북 내지 펼침면(2-up): 펼침면 = 한 면 × 2
+                    const pw = spreadConfig.pageWidthMm ?? 210;
+                    const ph = spreadConfig.pageHeightMm ?? 297;
+                    return `spread(내지) | ${pw * 2} × ${ph} mm (한 면 ${pw}×${ph})`;
+                  }
                   const spec = normalizeSpreadSpec(spreadConfig);
                   const dims = computeSpreadDimensions(spec);
                   return `spread | ${dims.totalWidthMm} × ${dims.totalHeightMm} mm (표지 ${spreadConfig.coverWidthMm}×${spreadConfig.coverHeightMm})`;
@@ -428,75 +538,176 @@ export const TemplateEditor = () => {
           form={spreadForm}
           layout="vertical"
           initialValues={{
+            regionScope: 'cover',
             coverWidthMm: 210,
             coverHeightMm: 297,
             wingEnabled: true,
             wingWidthMm: 60,
             initialSpineWidthMm: undefined,
+            // inner(포토북 내지 펼침면) 기본값 — regionScope==='inner' 일 때만 사용
+            pageWidthMm: 210,
+            pageHeightMm: 297,
+            gutterMm: 10,
+            cutSizeMm: 3,
+            safeSizeMm: 5,
+            dpi: 150,
           }}
         >
-          <Divider orientation="left">표지 크기</Divider>
-          <Space size="middle" style={{ display: 'flex' }}>
-            <Form.Item
-              name="coverWidthMm"
-              label="표지 가로 (mm)"
-              rules={[{ required: true, message: '표지 가로를 입력해주세요' }]}
-            >
-              <InputNumber min={50} max={1000} style={{ width: 150 }} />
-            </Form.Item>
-
-            <Form.Item
-              name="coverHeightMm"
-              label="표지 세로 (mm)"
-              rules={[{ required: true, message: '표지 세로를 입력해주세요' }]}
-            >
-              <InputNumber min={50} max={1000} style={{ width: 150 }} />
-            </Form.Item>
-          </Space>
-
-          <Divider orientation="left">날개 설정</Divider>
-          <Form.Item
-            name="wingEnabled"
-            label="날개 포함"
-            valuePropName="checked"
-          >
-            <Switch checkedChildren="포함" unCheckedChildren="제외" />
+          {/* 영역 범위 선택 — 'cover'(표지, 기본) / 'inner'(포토북 내지 펼침면) */}
+          <Form.Item name="regionScope" label="스프레드 종류">
+            <Radio.Group>
+              <Radio.Button value="cover">표지 (Cover)</Radio.Button>
+              <Radio.Button value="inner">내지 펼침면 (Inner 2-up)</Radio.Button>
+            </Radio.Group>
           </Form.Item>
 
-          <Form.Item noStyle shouldUpdate={(prev, curr) => prev.wingEnabled !== curr.wingEnabled}>
+          {/* ── 표지(cover): 기존 폼 그대로(byte-identical) ── */}
+          <Form.Item noStyle shouldUpdate={(prev, curr) => prev.regionScope !== curr.regionScope}>
             {({ getFieldValue }) =>
-              getFieldValue('wingEnabled') && (
-                <Form.Item
-                  name="wingWidthMm"
-                  label="날개 너비 (mm)"
-                  rules={[
-                    { required: true, message: '날개 너비를 입력해주세요' },
-                    { type: 'number', min: 30, max: 200, message: '30~200mm 사이로 입력해주세요' },
-                  ]}
-                >
-                  <InputNumber min={30} max={200} style={{ width: 150 }} />
-                </Form.Item>
+              (getFieldValue('regionScope') ?? 'cover') !== 'inner' && (
+                <>
+                  <Divider orientation="left">표지 크기</Divider>
+                  <Space size="middle" style={{ display: 'flex' }}>
+                    <Form.Item
+                      name="coverWidthMm"
+                      label="표지 가로 (mm)"
+                      rules={[{ required: true, message: '표지 가로를 입력해주세요' }]}
+                    >
+                      <InputNumber min={50} max={1000} style={{ width: 150 }} />
+                    </Form.Item>
+
+                    <Form.Item
+                      name="coverHeightMm"
+                      label="표지 세로 (mm)"
+                      rules={[{ required: true, message: '표지 세로를 입력해주세요' }]}
+                    >
+                      <InputNumber min={50} max={1000} style={{ width: 150 }} />
+                    </Form.Item>
+                  </Space>
+
+                  <Divider orientation="left">날개 설정</Divider>
+                  <Form.Item
+                    name="wingEnabled"
+                    label="날개 포함"
+                    valuePropName="checked"
+                  >
+                    <Switch checkedChildren="포함" unCheckedChildren="제외" />
+                  </Form.Item>
+
+                  <Form.Item noStyle shouldUpdate={(prev, curr) => prev.wingEnabled !== curr.wingEnabled}>
+                    {({ getFieldValue: gv }) =>
+                      gv('wingEnabled') && (
+                        <Form.Item
+                          name="wingWidthMm"
+                          label="날개 너비 (mm)"
+                          rules={[
+                            { required: true, message: '날개 너비를 입력해주세요' },
+                            { type: 'number', min: 30, max: 200, message: '30~200mm 사이로 입력해주세요' },
+                          ]}
+                        >
+                          <InputNumber min={30} max={200} style={{ width: 150 }} />
+                        </Form.Item>
+                      )
+                    }
+                  </Form.Item>
+
+                  <Divider orientation="left">책등 설정 (선택)</Divider>
+                  <Form.Item
+                    name="initialSpineWidthMm"
+                    label="초기 책등 너비 (mm)"
+                    extra="입력하지 않으면 상품 스펙에서 자동 계산됩니다"
+                  >
+                    <InputNumber min={1} max={100} style={{ width: 150 }} placeholder="자동 계산" />
+                  </Form.Item>
+
+                  <div style={{ color: '#888', fontSize: 12, marginTop: 16 }}>
+                    <strong>참고:</strong>
+                    <ul style={{ margin: '4px 0', paddingLeft: 20 }}>
+                      <li>스프레드 템플릿은 책모드 전용입니다</li>
+                      <li>표지 크기는 상품 스펙과 일치해야 합니다</li>
+                      <li>책등 너비는 내지 페이지 수에 따라 동적으로 변경됩니다</li>
+                    </ul>
+                  </div>
+                </>
               )
             }
           </Form.Item>
 
-          <Divider orientation="left">책등 설정 (선택)</Divider>
-          <Form.Item
-            name="initialSpineWidthMm"
-            label="초기 책등 너비 (mm)"
-            extra="입력하지 않으면 상품 스펙에서 자동 계산됩니다"
-          >
-            <InputNumber min={1} max={100} style={{ width: 150 }} placeholder="자동 계산" />
-          </Form.Item>
+          {/* ── 내지 펼침면(inner 2-up): 포토북 내지 포맷 ── */}
+          <Form.Item noStyle shouldUpdate={(prev, curr) => prev.regionScope !== curr.regionScope}>
+            {({ getFieldValue }) =>
+              getFieldValue('regionScope') === 'inner' && (
+                <>
+                  <Divider orientation="left">한 면(page) 크기</Divider>
+                  <Space size="middle" style={{ display: 'flex' }}>
+                    <Form.Item
+                      name="pageWidthMm"
+                      label="한 면 가로 (mm)"
+                      rules={[{ required: true, message: '한 면 가로를 입력해주세요' }]}
+                    >
+                      <InputNumber min={50} max={1000} style={{ width: 150 }} />
+                    </Form.Item>
 
-          <div style={{ color: '#888', fontSize: 12, marginTop: 16 }}>
-            <strong>참고:</strong>
-            <ul style={{ margin: '4px 0', paddingLeft: 20 }}>
-              <li>스프레드 템플릿은 책모드 전용입니다</li>
-              <li>표지 크기는 상품 스펙과 일치해야 합니다</li>
-              <li>책등 너비는 내지 페이지 수에 따라 동적으로 변경됩니다</li>
-            </ul>
-          </div>
+                    <Form.Item
+                      name="pageHeightMm"
+                      label="한 면 세로 (mm)"
+                      rules={[{ required: true, message: '한 면 세로를 입력해주세요' }]}
+                    >
+                      <InputNumber min={50} max={1000} style={{ width: 150 }} />
+                    </Form.Item>
+                  </Space>
+
+                  <Divider orientation="left">제본/여백</Divider>
+                  <Space size="middle" style={{ display: 'flex' }}>
+                    <Form.Item
+                      name="gutterMm"
+                      label="거터 (mm)"
+                      extra="중앙 제본부 안전 밴드"
+                      rules={[{ required: true, message: '거터를 입력해주세요' }]}
+                    >
+                      <InputNumber min={0} max={100} style={{ width: 140 }} />
+                    </Form.Item>
+
+                    <Form.Item
+                      name="cutSizeMm"
+                      label="블리드 (mm)"
+                      extra="사방 재단 여백"
+                      rules={[{ required: true, message: '블리드를 입력해주세요' }]}
+                    >
+                      <InputNumber min={0} max={50} style={{ width: 140 }} />
+                    </Form.Item>
+
+                    <Form.Item
+                      name="safeSizeMm"
+                      label="세이프 (mm)"
+                      extra="안전 여백"
+                      rules={[{ required: true, message: '세이프를 입력해주세요' }]}
+                    >
+                      <InputNumber min={0} max={50} style={{ width: 140 }} />
+                    </Form.Item>
+                  </Space>
+
+                  <Divider orientation="left">해상도</Divider>
+                  <Form.Item
+                    name="dpi"
+                    label="DPI"
+                    rules={[{ required: true, message: 'DPI를 입력해주세요' }]}
+                  >
+                    <InputNumber min={72} max={600} style={{ width: 150 }} />
+                  </Form.Item>
+
+                  <div style={{ color: '#888', fontSize: 12, marginTop: 16 }}>
+                    <strong>참고 (포토북 내지 펼침면):</strong>
+                    <ul style={{ margin: '4px 0', paddingLeft: 20 }}>
+                      <li>펼침면(2-up) = 한 면 × 2 (좌/우 면 + 중앙 거터)</li>
+                      <li>펼침면 가로 = 한 면 가로 × 2, 세로 = 한 면 세로</li>
+                      <li>거터는 중앙 제본부의 콘텐츠 회피 밴드입니다</li>
+                    </ul>
+                  </div>
+                </>
+              )
+            }
+          </Form.Item>
         </Form>
       </Modal>
     </div>
