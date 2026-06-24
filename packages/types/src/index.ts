@@ -1552,6 +1552,66 @@ export interface SpreadConfig {
   totalHeightMm: number;
   /** IDML 가져오기 변환 모드. JSON 필드라 마이그레이션 불필요. 미존재 시 'full' 간주. */
   conversionMode?: SpreadConversionMode;
+  /**
+   * 포토북(O-2): 이 스프레드가 표지인지 내지(2-up 펼침면)인지. 미존재 시 'cover'(기존 호환).
+   * 'inner' 면 spec 대신 innerSpec 으로 좌/우 면 레이아웃을 계산한다(computeInnerSpreadLayout).
+   */
+  regionScope?: 'cover' | 'inner';
+  /** 포토북 내지 펼침면(2-up) 스펙. regionScope==='inner' 일 때 사용. */
+  innerSpec?: SpreadInnerSpec;
+}
+
+// ============================================================================
+// 포토북 펼침면 내지(2-up) 모델 (O-2, 2026-06-24)
+// — 표지 스프레드(wing/cover/spine)와 **별개**의 좌/우 면 + 거터 모델.
+//   좌표는 중앙원점@150dpi 규약(content=trim, bleed 는 WorkspacePlugin 이 별도 처리) — 표지와 동일.
+// ============================================================================
+
+/**
+ * 펼침면 내지(2-up) 스펙 — 레이아웃 계산 입력.
+ * 한 면(page) = pageWidthMm × pageHeightMm. 펼침면 trim = pageWidthMm*2 × pageHeightMm.
+ * gutterMm = 중앙(제본부) 안전 밴드 폭(제본 손실 회피). cutSizeMm = 블리드(사방).
+ */
+export interface SpreadInnerSpec {
+  pageWidthMm: number;
+  pageHeightMm: number;
+  gutterMm: number;
+  cutSizeMm: number;
+  safeSizeMm: number;
+  dpi: number;
+}
+
+export type SpreadInnerRegionPosition = 'left-page' | 'right-page';
+
+/** 펼침면 내지 영역(좌/우 면) — 레이아웃 결과(workspace px, trim 기준 0=좌). */
+export interface SpreadInnerRegion {
+  position: SpreadInnerRegionPosition;
+  x: number;          // workspace px (0 = trim 좌단)
+  width: number;      // px
+  height: number;     // px
+  widthMm: number;
+  heightMm: number;
+  label: string;
+}
+
+/** 펼침면 내지 레이아웃(계산 결과). 표지 SpreadLayout 과 형태는 유사하나 별개 타입. */
+export interface SpreadInnerLayout {
+  regions: SpreadInnerRegion[];   // [left-page, right-page]
+  gutterGuide: GuideLineSpec;     // 중앙 제본 경계선(좌/우 면 경계)
+  gutterBandPx: number;           // 거터 안전 밴드 폭(px) — 중앙 ±band/2 영역은 콘텐츠 회피
+  totalWidthPx: number;
+  totalHeightPx: number;
+  totalWidthMm: number;           // pageWidthMm*2 (trim, bleed 제외)
+  totalHeightMm: number;          // pageHeightMm
+}
+
+/** 페이지가 펼침면 페어의 어느 면/페어인지(재정렬·삭제·출력 정합용). */
+export interface SpreadPairMeta {
+  /** 펼침면 페어 식별자(좌우 두 면이 같은 값) */
+  pairId: string;
+  /** 논리 페이지 번호 — 좌면(verso)/우면(recto) */
+  leftPageNo: number;
+  rightPageNo: number;
 }
 
 /**
