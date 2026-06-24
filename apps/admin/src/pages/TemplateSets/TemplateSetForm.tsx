@@ -321,6 +321,12 @@ export const TemplateSetForm = () => {
         bleedMm: (templateSet as any).bleedMm ?? 3,
         cropMarkEnabled: (templateSet as any).cropMarkEnabled ?? false,
         sizeToleranceMm: (templateSet as any).sizeToleranceMm ?? 0.2,
+        // 포토북 페이지 가변 가격 메타 (2026-06-24) — PHOTOBOOK 일 때만 입력 노출. null=미사용.
+        usePricing: !!templateSet.pricing,
+        pricingIncludedPages: templateSet.pricing?.includedPages ?? 16,
+        pricingMinPages: templateSet.pricing?.minPages ?? 16,
+        pricingPageStep: templateSet.pricing?.pageStep ?? 2,
+        pricingPerPageUnit: templateSet.pricing?.perPageUnit ?? 0,
       });
 
       // Load template refs with template details
@@ -411,6 +417,18 @@ export const TemplateSetForm = () => {
     // 결정 3-5: coverEditable=false 일 때만 의미. 그 외엔 null 로 저장 (운영 데이터 깔끔 유지)
     const coverPreviewImage = !coverEditable ? (values.coverPreviewImage || null) : null;
 
+    // 포토북 페이지 가변 가격 메타 (2026-06-24) — PHOTOBOOK + usePricing 일 때만 저장. 그 외 null(미사용).
+    // storige 는 가격을 계산하지 않는다 — 이 메타는 편집완료 시 pageCount 와 함께 emit 되어 파트너 장바구니가 계산.
+    const pricing =
+      values.type === TemplateSetType.PHOTOBOOK && values.usePricing
+        ? {
+            includedPages: Math.max(0, Number(values.pricingIncludedPages ?? 0)),
+            minPages: Math.max(0, Number(values.pricingMinPages ?? 0)),
+            pageStep: Math.max(1, Number(values.pricingPageStep ?? 1)),
+            perPageUnit: Math.max(0, Number(values.pricingPerPageUnit ?? 0)),
+          }
+        : null;
+
     const data = {
       name: values.name,
       type: values.type,
@@ -437,6 +455,8 @@ export const TemplateSetForm = () => {
       bleedMm: values.bleedMm ?? 3,
       cropMarkEnabled: !!values.cropMarkEnabled,
       sizeToleranceMm: values.sizeToleranceMm ?? 0.2,
+      // 포토북 페이지 가변 가격 메타 (2026-06-24) — PHOTOBOOK 만 사용, 그 외 null
+      pricing,
     };
 
     if (id) {
@@ -886,6 +906,69 @@ export const TemplateSetForm = () => {
                         <InputNumber min={0} max={5} step={0.1} />
                       </Form.Item>
                     </Space>
+
+                    {/* 포토북 페이지 가변 가격 (2026-06-24) — type===PHOTOBOOK 일 때만 노출 */}
+                    <Form.Item
+                      noStyle
+                      shouldUpdate={(prev, curr) =>
+                        prev.type !== curr.type || prev.usePricing !== curr.usePricing
+                      }
+                    >
+                      {({ getFieldValue }) => {
+                        if (getFieldValue('type') !== TemplateSetType.PHOTOBOOK) return null;
+                        const usePricing = getFieldValue('usePricing');
+                        return (
+                          <>
+                            <Divider>페이지 가변 가격 (포토북)</Divider>
+
+                            <Form.Item
+                              name="usePricing"
+                              label="페이지당 가격 연동"
+                              valuePropName="checked"
+                              extra="켜면 페이지 단가 메타를 저장합니다. storige 는 가격을 계산하지 않으며, 편집 완료 시 현재 총 페이지수와 이 메타를 장바구니로 전달해 파트너가 가/감 가격을 계산합니다."
+                            >
+                              <Switch checkedChildren="가격 연동" unCheckedChildren="미사용" />
+                            </Form.Item>
+
+                            {usePricing && (
+                              <Space size="large" wrap align="start">
+                                <Form.Item
+                                  name="pricingIncludedPages"
+                                  label="기본 포함 페이지"
+                                  extra="이 수까지는 추가 단가 없음 (예: 16)"
+                                >
+                                  <InputNumber min={0} step={1} />
+                                </Form.Item>
+
+                                <Form.Item
+                                  name="pricingMinPages"
+                                  label="최소 제작 페이지"
+                                  extra="이하로는 삭제 차단 (가드용 메타)"
+                                >
+                                  <InputNumber min={0} step={1} />
+                                </Form.Item>
+
+                                <Form.Item
+                                  name="pricingPageStep"
+                                  label="증감 단위"
+                                  extra="펼침면=2 등"
+                                >
+                                  <InputNumber min={1} step={1} />
+                                </Form.Item>
+
+                                <Form.Item
+                                  name="pricingPerPageUnit"
+                                  label="초과 페이지당 단가"
+                                  extra="통화·세금은 파트너 책임 (storige 미계산)"
+                                >
+                                  <InputNumber min={0} step={1} />
+                                </Form.Item>
+                              </Space>
+                            )}
+                          </>
+                        );
+                      }}
+                    </Form.Item>
                   </>
                 ),
               },

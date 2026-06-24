@@ -42,6 +42,32 @@ export class EndpaperConfigDto {
 }
 
 /**
+ * 포토북 페이지 가변 가격 메타 DTO (Phase 2 §8).
+ * storige 는 가격 계산을 하지 않는다 — 본 메타 + pageCount 를 파트너 장바구니에 emit 만 한다.
+ */
+export class PhotobookPricingDto {
+  @ApiProperty({ minimum: 0, example: 16, description: '기본 포함 페이지' })
+  @IsNumber()
+  @Min(0)
+  includedPages: number;
+
+  @ApiProperty({ minimum: 0, example: 16, description: '최소 제작 페이지(삭제 가드)' })
+  @IsNumber()
+  @Min(0)
+  minPages: number;
+
+  @ApiProperty({ minimum: 1, example: 2, description: '증감 단위(펼침면=2)' })
+  @IsNumber()
+  @Min(1)
+  pageStep: number;
+
+  @ApiProperty({ minimum: 0, example: 1000, description: '초과 페이지당 단가' })
+  @IsNumber()
+  @Min(0)
+  perPageUnit: number;
+}
+
+/**
  * 템플릿 참조 DTO
  */
 export class TemplateRefDto implements TemplateRef {
@@ -69,8 +95,8 @@ export class CreateTemplateSetDto {
   @IsString()
   thumbnailUrl?: string;
 
-  @ApiProperty({ enum: ['book', 'leaflet'], example: 'book' })
-  @IsEnum(['book', 'leaflet'])
+  @ApiProperty({ enum: TemplateSetType, example: 'book' })
+  @IsEnum(TemplateSetType)
   type: TemplateSetType;
 
   @ApiProperty({ example: 210, description: '판형 가로 (mm)' })
@@ -140,6 +166,13 @@ export class CreateTemplateSetDto {
   @Type(() => EndpaperConfigDto)
   endpaperConfig?: EndpaperConfigDto | null;
 
+  // ── 포토북 가격 메타 (Phase 2 §8) — PHOTOBOOK 전용, storige 는 emit 만 ──
+  @ApiPropertyOptional({ type: PhotobookPricingDto, description: '포토북 페이지 가변 가격 메타 (null=미사용)', nullable: true })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => PhotobookPricingDto)
+  pricing?: PhotobookPricingDto | null;
+
   @ApiPropertyOptional({ example: true, description: '표지 편집 가능 여부 (기본 true, 레더커버=false)' })
   @IsOptional()
   @IsBoolean()
@@ -203,9 +236,9 @@ export class UpdateTemplateSetDto {
   @IsString()
   thumbnailUrl?: string;
 
-  @ApiPropertyOptional({ enum: ['book', 'leaflet'], example: 'book' })
+  @ApiPropertyOptional({ enum: TemplateSetType, example: 'book' })
   @IsOptional()
-  @IsEnum(['book', 'leaflet'])
+  @IsEnum(TemplateSetType)
   type?: TemplateSetType;
 
   @ApiPropertyOptional({ example: 210, description: '판형 가로 (mm)' })
@@ -277,6 +310,13 @@ export class UpdateTemplateSetDto {
   @Type(() => EndpaperConfigDto)
   endpaperConfig?: EndpaperConfigDto | null;
 
+  // 포토북 가격 메타 (Phase 2 §8) — 수정 시에도 영속되도록 UpdateDto 에 포함
+  @ApiPropertyOptional({ type: PhotobookPricingDto, nullable: true })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => PhotobookPricingDto)
+  pricing?: PhotobookPricingDto | null;
+
   @ApiPropertyOptional({ example: true })
   @IsOptional()
   @IsBoolean()
@@ -330,9 +370,9 @@ export class UpdateTemplateSetDto {
  * 템플릿셋 조회 쿼리 DTO
  */
 export class TemplateSetQueryDto {
-  @ApiPropertyOptional({ enum: ['book', 'leaflet'] })
+  @ApiPropertyOptional({ enum: TemplateSetType })
   @IsOptional()
-  @IsEnum(['book', 'leaflet'])
+  @IsEnum(TemplateSetType)
   type?: TemplateSetType;
 
   @ApiPropertyOptional({ example: 210, description: '판형 가로 (mm)' })

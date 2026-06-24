@@ -34,6 +34,7 @@ import { createCanvas } from './utils/createCanvas'
 import { buildSpreadSnapshots } from './utils/buildSpreadSnapshots'
 import { templatesApi, editSessionsApi, filesApi, apiClient, type EditSessionResponse } from './api'
 import { core, ServicePlugin } from '@storige/canvas-core'
+import type { PhotobookPricing } from '@storige/types'
 import type { ApiError } from './api/client'
 import ToolBar from './components/editor/ToolBar'
 import FeatureSidebar from './components/editor/FeatureSidebar'
@@ -179,6 +180,18 @@ export interface EditorResult {
     initial: number
     final: number
   }
+  /**
+   * 편집 완료 시점의 현재 총 페이지 수 (2026-06-24, 포토북 페이지 가변 가격용).
+   * 라이브 캔버스 페이지 수(allCanvas.length). pages.final 과 동일 값을 가지나,
+   * 파트너 장바구니가 가/감 가격 계산에 사용하는 명시 필드로 별도 노출(additive).
+   */
+  pageCount?: number
+  /**
+   * 포토북 페이지 가변 가격 메타 (2026-06-24). 템플릿셋에 pricing 이 설정된 경우에만 포함.
+   * storige 는 가격을 계산하지 않는다 — 이 메타 + pageCount 로 **파트너 장바구니가 가격을 계산**.
+   * 미설정(BOOK/LEAFLET 등)이면 생략(기존 동작 비파괴).
+   */
+  pricing?: PhotobookPricing
   files: {
     coverFileId?: string
     contentFileId?: string
@@ -348,6 +361,10 @@ function EmbeddedEditor({
 }: EmbeddedEditorProps) {
   const canvasContainerRef = useRef<HTMLDivElement>(null)
   const isInitializedRef = useRef(false)
+  // 포토북 페이지 가변 가격 메타 (2026-06-24) — 로드된 템플릿셋의 pricing 을 보관해
+  // editor.complete emit 시 현재 총 pageCount 와 함께 파트너로 전달한다(파트너가 가격 계산).
+  // null = 가변 가격 미사용(BOOK/LEAFLET 등). 기존 동작 비파괴.
+  const templateSetPricingRef = useRef<PhotobookPricing | null>(null)
   const [screenMode, setScreenMode] = useState<'mobile' | 'tablet' | 'desktop'>('desktop')
   const [isLoading, setIsLoading] = useState(true)
   const [loadingMessage, setLoadingMessage] = useState('에디터를 초기화하는 중...')
@@ -697,6 +714,10 @@ function EmbeddedEditor({
           }
         }
         console.log('[EmbeddedEditor] TemplateSet loaded:', templateSet.name)
+
+        // 포토북 페이지 가변 가격 메타 보관 (2026-06-24) — editor.complete emit 시 사용.
+        // pricing 없으면 null(가변 가격 미사용) → emit 에서 생략(기존 동작 비파괴).
+        templateSetPricingRef.current = (templateSet as { pricing?: PhotobookPricing | null }).pricing ?? null
 
         if (!isMounted) return
 
@@ -1131,6 +1152,12 @@ function EmbeddedEditor({
           const completedSession = await editSessionsApi.complete(currentSessionId)
           setCurrentSession(completedSession)
 
+          // 현재 총 페이지 수(라이브 캔버스 수) — 포토북 페이지 가변 가격 emit 용 (2026-06-24).
+          // 편집 중 내지 추가/삭제가 반영된 실측값. 없으면 주문 시점 pages 로 폴백(비파괴).
+          const liveCanvasCount = useAppStore.getState().allCanvas.length
+          const livePageCount = liveCanvasCount > 0 ? liveCanvasCount : (options?.pages || 1)
+          const pricingMeta = templateSetPricingRef.current
+
           const result: EditorResult = {
             sessionId: completedSession.id,
             orderSeqno: Number(completedSession.orderSeqno),
@@ -1139,6 +1166,10 @@ function EmbeddedEditor({
               initial: options?.pages || 1,
               final: options?.pages || 1,
             },
+            // 페이지 가변 가격 메타 (2026-06-24): 현재 총 pageCount 는 항상, pricing 은 설정된 셋만.
+            // 파트너 장바구니가 base + max(0, pageCount − includedPages) × perPageUnit 로 가/감 계산.
+            pageCount: livePageCount,
+            ...(pricingMeta ? { pricing: pricingMeta } : {}),
             files: {
               coverFileId: completedSession.coverFileId || undefined,
               contentFileId: completedSession.contentFileId || undefined,
