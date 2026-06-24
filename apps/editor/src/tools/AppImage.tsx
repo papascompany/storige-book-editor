@@ -1,12 +1,23 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Upload as UploadSimple, Check } from 'lucide-react'
+import { Upload as UploadSimple, Check, Wand2 } from 'lucide-react'
 import { useAppStore } from '@/stores/useAppStore'
 import { useImageStore, useUploaded } from '@/stores/useImageStore'
 import { useExternalPhotosStore, isPhotoUsed } from '@/stores/useExternalPhotosStore'
 import { useIsCoarsePointer } from '@/hooks/useIsCoarsePointer'
 import { Button } from '@/components/ui/button'
 import { ImageProcessingPlugin, SelectionType, core } from '@storige/canvas-core'
-import type { ExternalPhoto } from '@storige/types'
+import type { ExternalPhoto, PhotoSortMode } from '@storige/types'
+import { enrichPhotosWithExif } from '@/utils/photoAutofill'
+import { autofillPhotosIntoFrames } from '@/utils/photoPlacement'
+import { showToast } from '@/stores/useToastStore'
+
+// 자동편집 정렬 모드 옵션 (PhotoSortMode 와 동기)
+const AUTOFILL_SORT_OPTIONS: { value: PhotoSortMode; label: string }[] = [
+  { value: 'date', label: '날짜순' },
+  { value: 'filename', label: '파일명순' },
+  { value: 'location', label: '장소별' },
+  { value: 'random', label: '랜덤' },
+]
 
 export default function AppImage() {
   const canvas = useAppStore((state) => state.canvas)
@@ -26,6 +37,9 @@ export default function AppImage() {
   const [activeTab, setActiveTab] = useState<'external' | 'my'>(hasExternal ? 'external' : 'my')
   const [unusedOnly, setUnusedOnly] = useState(false)
   const [addingUrl, setAddingUrl] = useState<string | null>(null)
+  // 포토북 자동편집(Phase 3): 정렬 모드 + 진행 상태
+  const [autofillMode, setAutofillMode] = useState<PhotoSortMode>('date')
+  const [autofilling, setAutofilling] = useState(false)
 
   // 사진 목록은 세션 로드 후 비동기 적재 — 패널이 먼저 마운트됐어도 기본 탭 전환
   useEffect(() => {
@@ -139,6 +153,75 @@ export default function AppImage() {
     }
   }, [canvas, addingUrl, bumpUsage, isCoarsePointer, tapMenu])
 
+  // 포토북 자동편집(Phase 3): 정렬 → 빈 사진틀 aspect 매칭 채움 → 저해상도 경고.
+  // 배치 엔진(autofillPhotosIntoFrames)에 fillImageIntoFrame(채움) + core.imageFromURL(로드)을
+  // 주입한다 — 마스킹/clipPath/frameRef/z-order 는 전부 fillImageIntoFrame 재사용(중복 구현 없음).
+  const handleAutofill = useCallback(async () => {
+    if (!canvas || autofilling) return
+    const imagePlugin = getPlugin<ImageProcessingPlugin>('ImageProcessingPlugin')
+    if (!imagePlugin) {
+      showToast('이미지 처리 플러그인을 찾을 수 없습니다.', 'error')
+      return
+    }
+    if (externalPhotos.length === 0) {
+      showToast('자동편집할 사진이 없습니다.', 'info')
+      return
+    }
+
+    setAutofilling(true)
+    try {
+      // 모든 페이지(캔버스)를 대상으로 빈 사진틀을 채운다.
+      const allCanvas = useAppStore.getState().allCanvas
+      const canvases = allCanvas.length > 0 ? allCanvas : [canvas]
+
+      // EXIF 보강(date/location 정렬 정확도) — 호스트 제공 메타는 존중, 미파싱분만 URL 페치.
+      const enriched = await enrichPhotosWithExif(externalPhotos)
+
+      const fillImageIntoFrame = useImageStore.getState().fillImageIntoFrame
+
+      const result = await autofillPhotosIntoFrames(canvases, enriched, {
+        mode: autofillMode,
+        fillFrame: (cv, fore, frame, plugin) =>
+          fillImageIntoFrame(cv, fore, frame, plugin as ImageProcessingPlugin),
+        loadImage: (url) => core.imageFromURL(url, { crossOrigin: 'anonymous' }),
+        imagePlugin,
+        onFilled: (cv, frame) => {
+          // 프레임=선택단위 — 채운 사진이 아니라 프레임을 활성화(기존 makeFrameInteractive 규약).
+          cv.setActiveObject?.(frame)
+        },
+      })
+
+      // '사용됨' 뱃지 재계산
+      bumpUsage()
+      canvas.requestRenderAll()
+
+      if (result.filledCount === 0) {
+        showToast('채울 빈 사진틀이 없습니다.', 'info')
+      } else {
+        let msg = `${result.filledCount}개 사진틀을 채웠습니다.`
+        if (result.remainingFrames > 0) msg += ` 빈 틀 ${result.remainingFrames}개 남음.`
+        if (result.remainingPhotos > 0) msg += ` 사진 ${result.remainingPhotos}장 미배치.`
+        showToast(msg, result.lowResWarnings.length > 0 ? 'warning' : 'success')
+      }
+
+      // 저해상도 경고 — 임계 미만 사진이 있으면 별도 경고 토스트.
+      if (result.lowResWarnings.length > 0) {
+        const n = result.lowResWarnings.length
+        const minDpi = Math.min(...result.lowResWarnings.map((w) => w.effectiveDpi))
+        showToast(
+          `사진 ${n}장이 인쇄 권장 해상도(${result.lowResWarnings[0].thresholdDpi}dpi) 미만입니다 (최저 ${minDpi}dpi). 더 큰 사진으로 교체를 권장합니다.`,
+          'warning',
+          6000,
+        )
+      }
+    } catch (error) {
+      console.error('[AppImage] 자동편집 실패:', error)
+      showToast('자동편집 중 오류가 발생했습니다.', 'error')
+    } finally {
+      setAutofilling(false)
+    }
+  }, [canvas, autofilling, getPlugin, externalPhotos, autofillMode, bumpUsage])
+
   // Add uploaded image to canvas
   const addToCanvas = useCallback(async (image: unknown) => {
     if (!canvas) return
@@ -220,7 +303,32 @@ export default function AppImage() {
 
       {hasExternal && activeTab === 'external' ? (
         <>
-          <div className="px-4 pt-3 pb-2 flex items-center gap-2">
+          {/* 포토북 자동편집: 정렬모드 드롭다운 + 실행 버튼 */}
+          <div className="px-4 pt-3 pb-1 flex items-center gap-2">
+            <select
+              value={autofillMode}
+              onChange={(e) => setAutofillMode(e.target.value as PhotoSortMode)}
+              disabled={autofilling}
+              className="h-8 px-2 text-xs rounded-md border border-editor-border bg-editor-surface text-editor-text focus:outline-none focus:border-editor-accent disabled:opacity-50"
+              aria-label="자동편집 정렬 기준"
+            >
+              {AUTOFILL_SORT_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+            <Button
+              variant="secondary"
+              className="flex-1 h-8 text-xs"
+              onClick={handleAutofill}
+              disabled={autofilling}
+            >
+              <Wand2 className="h-3.5 w-3.5 mr-1.5" />
+              {autofilling ? '자동편집 중...' : '사진 자동편집'}
+            </Button>
+          </div>
+          <div className="px-4 pt-2 pb-2 flex items-center gap-2">
             <button
               className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
                 !unusedOnly
