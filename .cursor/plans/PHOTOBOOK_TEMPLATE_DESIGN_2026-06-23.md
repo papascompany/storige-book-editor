@@ -118,7 +118,8 @@ export interface SpreadSpec {
 - ✅ `SpreadConfig.regionScope?:'cover'|'inner'` + `innerSpec?:SpreadInnerSpec` 추가(additive, 미존재=cover). 좌표 **중앙원점@150dpi 규약 유지**. 표지 모델과 별개 타입.
 - ✅ `computeInnerSpreadLayout(spec)`(canvas-core SpreadLayoutEngine, 순수·테스트6): trim=pageWidth*2×pageHeight(bleed 제외, WorkspacePlugin 처리), 좌면[0,W]/우면[W,2W], 거터 가이드 중앙·거터 안전밴드px.
 - ✅ `SpreadPairMeta{pairId,leftPageNo,rightPageNo}` 타입 추가(페어 무결성·출력 정합용).
-- ⏳ **다음 증분(에디터 적용)**: SpreadPlugin 내지 렌더 경로(computeInnerSpreadLayout→workspace 사이즈+거터 가이드) · 페이지 셋업(내지=2-up 생성) · BookNavigation 페어 재정렬(§4-3 PI) · per-region/파노라마(§6) · admin 내지 펼침면 등록. + 출력(content.pdf 좌우분할 separate 정합).
+- ✅ **에디터 렌더·사이징 파이프라인 구현(2026-06-24, `eb77f0b`)**: SpreadPlugin `initInner`(거터 제본선+안전밴드+좌/우 라벨+bleed, getContentOrigin inner 분기, resizeSpine no-op, getInnerLayout) · `photobookSpread.ts` 순수헬퍼(spec/config 빌더·`deriveSpreadPairs`·placeholder spec) · createCanvas inner SpreadPlugin 배선 · `useAppStore.addPage` inner 사이징(폭=한면×2) · PageNavigation 페어 라벨. **한 캔버스=한 펼침면 ⇒ 좌/우 페어 구조적 무결성**(재정렬·삭제해도 안 깨짐 → §4-3 PI 모델 차원 해소). 게이트=regionScope:'inner', 표지/BOOK/LEAFLET byte-identical(R1 검증). 검증 canvas-core 324/324·editor tsc0+vite+182/182.
+- ⏳ **다음 증분(콘텐츠 생성 트리거)**: photobook templateSet → inner spreadConfig + 펼침면 캔버스 N개 생성(`loadTemplateSetEditor` content 경로, type==='photobook' 게이트) · admin 내지 펼침면 등록(page 치수→innerSpec) · 출력(content.pdf 좌우분할/펼침면 단위 separate 정합, O-4 300dpi 래스터 연계) · per-region 편집경계/파노라마(§6). **렌더 파이프라인은 준비됨 — 트리거가 spreadConfig{regionScope:'inner'} 셋업만 하면 전부 작동**.
 
 ### 3-4. 페이지 가변·단가 (M)
 가격은 storige 미보유 → **단가 메타를 TemplateSet에 저장 + pageCount emit**하는 2-tier:
