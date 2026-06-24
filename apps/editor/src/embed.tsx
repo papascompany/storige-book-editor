@@ -1155,7 +1155,11 @@ function EmbeddedEditor({
           // 현재 총 페이지 수(라이브 캔버스 수) — 포토북 페이지 가변 가격 emit 용 (2026-06-24).
           // 편집 중 내지 추가/삭제가 반영된 실측값. 없으면 주문 시점 pages 로 폴백(비파괴).
           const liveCanvasCount = useAppStore.getState().allCanvas.length
-          const livePageCount = liveCanvasCount > 0 ? liveCanvasCount : (options?.pages || 1)
+          // 포토북 내지(inner) 펼침면(O-2): 한 캔버스=1펼침면=2 물리페이지 → 가격용 pageCount 는 ×2.
+          // (비-내지/표지/BOOK 는 캔버스 수 그대로 = 기존 동작 byte-identical.)
+          const isInnerSpread = useSettingsStore.getState().spreadConfig?.regionScope === 'inner'
+          const livePhysicalPages = isInnerSpread ? liveCanvasCount * 2 : liveCanvasCount
+          const livePageCount = livePhysicalPages > 0 ? livePhysicalPages : (options?.pages || 1)
           const pricingMeta = templateSetPricingRef.current
 
           const result: EditorResult = {

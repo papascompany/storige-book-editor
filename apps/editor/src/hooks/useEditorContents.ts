@@ -25,13 +25,18 @@ function toBindingType(v?: string | null): BindingType | null {
   return v && (Object.values(BindingType) as string[]).includes(v) ? (v as BindingType) : null
 }
 import { buildSpreadSpec } from '@/utils/buildSpreadSpec'
+import {
+  buildInnerSpreadConfig,
+  innerSpecToPlaceholderSpec,
+  spreadCountFromPageCount,
+} from '@/utils/photobookSpread'
 import { resolveAssetUrl } from '@/utils/resolveAssetUrl'
 import type {
   EditorContent,
   EditorTemplate,
 } from '@/generated/graphql'
 import type { fabric } from 'fabric'
-import type { EditorMode, SpreadConfig, EditPage } from '@storige/types'
+import type { EditorMode, SpreadConfig, EditPage, SpreadInnerSpec } from '@storige/types'
 import { TemplateType } from '@storige/types'
 
 // Fabric.js Object 확장 타입 (canvas-core에서 사용하는 커스텀 속성 포함)
@@ -1445,6 +1450,16 @@ export function useEditorContents(): UseEditorContentsReturn {
         throw new Error('Spread 템플릿을 찾을 수 없습니다.')
       }
 
+      // 1-A. 포토북 내지 펼침면(2-up, O-2): spread 템플릿의 spreadConfig.regionScope==='inner' 이면
+      // 표지(cover) 대신 좌/우 면+거터 레이아웃으로 N개 펼침면 캔버스를 만든다(콘텐츠 생성 트리거).
+      // cover/legacy(regionScope 미존재) → isPhotobookInner=false → 기존 표지 경로 byte-identical.
+      // (내지는 표지와 별개 세션 — 전역 spreadConfig 를 inner 로 둔다. 표지=별도 cover 세션.)
+      const photobookInnerSpec =
+        (spreadTemplate.spreadConfig as SpreadConfig | undefined)?.regionScope === 'inner'
+          ? ((spreadTemplate.spreadConfig as SpreadConfig).innerSpec as SpreadInnerSpec | undefined)
+          : undefined
+      const isPhotobookInner = !!photobookInnerSpec
+
       // #2 (2026-06-10, CTO 감사 §4-(라)-2): 화면↔PDF 블리드 지오메트리 정합 (spread).
       // P3 출력 게이트(cropMarkEnabled===true && bleedMm>0)가 켜진 templateSet 에서만
       // spread 화면 cutSizeMm(양변 합)를 bleedMm(per-edge)×2 로 정합. 게이트 OFF 면
@@ -1457,12 +1472,16 @@ export function useEditorContents(): UseEditorContentsReturn {
         spreadBleedMm > 0
 
       // 2. SpreadSpec 구성
-      const spreadSpec = buildSpreadSpec({
-        template: spreadTemplate,
-        cutSizeMm: spreadGateOn ? spreadBleedMm * 2 : 2,
-        safeSizeMm: 3,
-        dpi: 150,
-      })
+      // 포토북 내지(inner)는 표지 스펙이 없으므로 innerSpec 으로부터 placeholder 표지 spec 을 합성
+      // (SpreadPlugin 생성자 계약상 spec 필요 — 실제 렌더는 innerSpec 으로만 수행). cover 는 기존대로.
+      const spreadSpec = isPhotobookInner
+        ? innerSpecToPlaceholderSpec(photobookInnerSpec!)
+        : buildSpreadSpec({
+            template: spreadTemplate,
+            cutSizeMm: spreadGateOn ? spreadBleedMm * 2 : 2,
+            safeSizeMm: 3,
+            dpi: 150,
+          })
 
       if (!spreadSpec) {
         throw new Error('SpreadSpec 구성에 실패했습니다.')
@@ -1473,7 +1492,7 @@ export function useEditorContents(): UseEditorContentsReturn {
       // (workspace 중앙 대칭 확장 + SpreadPlugin 콘텐츠 원점 = -totalPx/2 로 cutSize 상쇄 —
       //  영역/가이드/객체 좌표 불변. 이 spec 은 setSpreadConfig·SpreadPlugin·addInnerPage(내지
       //  workspace cutSize)·책등 가변 setOptions 까지 단일 소스로 전파된다.)
-      if (spreadGateOn) {
+      if (spreadGateOn && !isPhotobookInner) {
         spreadSpec.cutSizeMm = spreadBleedMm * 2
       }
 
@@ -1484,15 +1503,18 @@ export function useEditorContents(): UseEditorContentsReturn {
       // (setSpreadConfig 에서도 동일 정규화 — 'flat-spread'=책등 고정, 'flat-spine'=3분할 아트워크).
       const templateConversionMode =
         (spreadTemplate.spreadConfig as SpreadConfig | undefined)?.conversionMode ?? 'full'
-      const spreadLayout = computeLayout(spreadSpec)
-      const spreadConfig: SpreadConfig = {
-        version: 1,
-        spec: spreadSpec,
-        regions: spreadLayout.regions,
-        totalWidthMm: spreadLayout.totalWidthMm,
-        totalHeightMm: spreadLayout.totalHeightMm,
-        conversionMode: templateConversionMode,
-      }
+      // 포토북 내지(inner)는 buildInnerSpreadConfig 로 좌/우 면+거터 config 생성(표지 computeLayout 미사용).
+      const spreadLayout = isPhotobookInner ? null : computeLayout(spreadSpec)
+      const spreadConfig: SpreadConfig = isPhotobookInner
+        ? { ...buildInnerSpreadConfig(photobookInnerSpec!), conversionMode: templateConversionMode }
+        : {
+            version: 1,
+            spec: spreadSpec,
+            regions: spreadLayout!.regions,
+            totalWidthMm: spreadLayout!.totalWidthMm,
+            totalHeightMm: spreadLayout!.totalHeightMm,
+            conversionMode: templateConversionMode,
+          }
 
       console.log('[EditorContents:Spread] SpreadConfig calculated:', spreadConfig)
 
@@ -1557,6 +1579,9 @@ export function useEditorContents(): UseEditorContentsReturn {
           const spreadPlugin = new SpreadPlugin(latestCanvas, latestEditor, {
             spec: spreadSpec,
             conversionMode: templateConversionMode,
+            // 포토북 내지(inner): 좌/우 면+거터 렌더 경로. cover 는 기존(미지정=cover).
+            regionScope: isPhotobookInner ? 'inner' : 'cover',
+            innerSpec: isPhotobookInner ? photobookInnerSpec! : undefined,
           })
           latestEditor.use(spreadPlugin)
           // init() 호출하여 currentLayout 설정 + 가이드/라벨 렌더링
@@ -1645,6 +1670,31 @@ export function useEditorContents(): UseEditorContentsReturn {
 
           console.log(`[EditorContents:Spread] Adjusted page templates count: ${adjustedPageTemplates.length}`)
         }
+      }
+
+      // 9-A. 포토북 내지(inner): 물리 페이지수 → 펼침면 수. page 0(첫 펼침면)은 setupEmptyEditorStore 로
+      // 이미 생성됐고, 나머지 (spreadCount-1) 개를 합성 내지 템플릿으로 채우면 아래 페이지 생성 루프·
+      // editorPages·메타데이터가 그대로 N개 펼침면을 만든다(각 캔버스=1펼침면, addInnerPage→createCanvas
+      // 가 inner 사이징+SpreadPlugin inner 렌더 적용 — eb77f0b). 한 캔버스=한 펼침면 ⇒ 좌/우 페어 구조 무결.
+      if (isPhotobookInner) {
+        const pcRange: number[] = (templateSet as any).pageCountRange || []
+        let physicalPages = config.pageCount ?? (pcRange.length ? Math.min(...pcRange) : 2)
+        if (pcRange.length) {
+          physicalPages = Math.max(Math.min(...pcRange), Math.min(Math.max(...pcRange), physicalPages))
+        }
+        const spreadCount = Math.max(1, spreadCountFromPageCount(physicalPages))
+        adjustedPageTemplates = []
+        for (let i = 1; i < spreadCount; i++) {
+          adjustedPageTemplates.push({
+            id: uuid(),
+            type: 'page',
+            name: `펼침면 ${i + 1}`,
+            order: i,
+            canvasData: null,
+            required: false,
+          } as any)
+        }
+        console.log(`[EditorContents:Spread] Photobook inner: ${spreadCount} 펼침면 (물리 ${physicalPages}p)`)
       }
 
       // 10. 내지 페이지 캔버스 생성 및 로드
