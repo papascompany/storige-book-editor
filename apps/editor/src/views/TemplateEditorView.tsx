@@ -468,7 +468,10 @@ export default function TemplateEditorView() {
               onKeyDown={handleNameChange}
             />
             <span className="text-xs text-editor-text-muted">
-              {isSpreadMode && spreadSpecRef.current ? (() => {
+              {isSpreadMode && innerSpecRef.current ? (() => {
+                const is = innerSpecRef.current
+                return `spread | ${is.pageWidthMm * 2} × ${is.pageHeightMm} mm (내지 펼침면 ${is.pageWidthMm}×${is.pageHeightMm})`
+              })() : isSpreadMode && spreadSpecRef.current ? (() => {
                 const dims = computeSpreadDimensions(spreadSpecRef.current)
                 return `spread | ${dims.totalWidthMm} × ${dims.totalHeightMm} mm (표지 ${spreadSpecRef.current.coverWidthMm}×${spreadSpecRef.current.coverHeightMm})`
               })() : `${typeParam || TemplateType.PAGE} | ${widthParam || 210}×${heightParam || 297}mm`}
