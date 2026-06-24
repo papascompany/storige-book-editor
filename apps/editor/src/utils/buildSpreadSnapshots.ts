@@ -10,7 +10,9 @@ import {
 
 /** useSettingsStore.spreadConfig 의 구조적 부분형 (필요한 필드만) */
 interface SpreadConfigLike {
-  spec: SpreadSpec
+  // 포토북 내지(regionScope==='inner')는 spec 이 없음 — 본 함수는 표지 스냅샷 전용이라
+  // 진입 가드(`if (!spreadConfig?.spec) return {}`)로 내지 config 는 빈 객체 반환.
+  spec?: SpreadSpec
   totalWidthMm?: number
   totalHeightMm?: number
 }

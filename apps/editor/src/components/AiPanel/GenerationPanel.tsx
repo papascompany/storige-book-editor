@@ -82,7 +82,8 @@ export function GenerationPanel({
       const request: GenerationRequest = {
         prompt: prompt.trim(),
         options: {
-          templateType: defaultTemplateType,
+          // AI 생성은 book/leaflet 만 지원 — 포토북 등 기타 타입은 book 으로 안전 매핑.
+          templateType: defaultTemplateType === TemplateSetType.LEAFLET ? 'leaflet' : 'book',
           pageCount,
           style,
           colorScheme,

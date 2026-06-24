@@ -21,6 +21,8 @@ import type {
   ObjectAnchor,
   SpreadObjectMeta,
   RegionRefResult,
+  SpreadInnerSpec,
+  SpreadInnerLayout,
 } from '@storige/types'
 import {
   computeLayout,
@@ -28,6 +30,7 @@ import {
   resolveRegionAtX,
   computeObjectReposition,
   resolveRegionRef,
+  computeInnerSpreadLayout,
 } from '../spread/SpreadLayoutEngine'
 import {
   getSpineResizeStrategy,
@@ -45,6 +48,16 @@ interface SpreadPluginOptions extends PluginOption {
    * - 'flat-spine' : 3분할 아트워크 — 책등 가변 허용, spine-artwork 는 재배치 불변
    */
   conversionMode?: SpreadConversionMode
+  /**
+   * 포토북(O-2): 표지(cover) vs 내지 펼침면(inner). 미지정 시 'cover'(기존 호환·byte-identical).
+   * 'inner' 일 때만 좌/우 면 + 거터 렌더 경로(initInner)가 활성화된다. cover 경로는 불변.
+   */
+  regionScope?: 'cover' | 'inner'
+  /**
+   * 포토북 내지 펼침면(2-up) 스펙. regionScope==='inner' 일 때 사용(computeInnerSpreadLayout 입력).
+   * 호출측은 inner 모드에서도 placeholder 표지 spec 을 넘기므로 spec 은 required 유지(currentSpec 비-null 불변).
+   */
+  innerSpec?: SpreadInnerSpec
 }
 
 // ============================================================================
@@ -60,6 +73,14 @@ class SpreadPlugin extends PluginBase {
   private currentLayout: SpreadLayout | null = null
   private isLayoutTransaction = false
   private conversionMode: SpreadConversionMode = 'full'
+
+  // 포토북 내지(inner) 펼침면 — regionScope==='inner' 일 때만 사용.
+  // cover 모드에서는 모두 기본값(아래)이라 기존 cover 경로는 byte-identical 유지.
+  private regionScope: 'cover' | 'inner' = 'cover'
+  private innerSpec: SpreadInnerSpec | null = null
+  private currentInnerLayout: SpreadInnerLayout | null = null
+  private gutterGuideLine: fabric.Line | null = null
+  private gutterBandRect: fabric.Rect | null = null
 
   // Fabric 오브젝트 참조
   private guideLines: fabric.Line[] = []
@@ -83,6 +104,8 @@ class SpreadPlugin extends PluginBase {
     super(canvas, editor, options)
     this.currentSpec = options.spec
     this.conversionMode = options.conversionMode ?? 'full'
+    this.regionScope = options.regionScope ?? 'cover'
+    this.innerSpec = options.innerSpec ?? null
   }
 
   /** 변환 모드 갱신 (spreadConfig 가 플러그인 생성 이후에 확정되는 로드 경로용) */
@@ -123,7 +146,7 @@ class SpreadPlugin extends PluginBase {
    * 그 위에 정상 노출된다. 일반(비-spread) 편집에는 currentLayout 이 없어 무영향.
    */
   async afterLoad(...args: any[]): Promise<void> {
-    if (this.currentLayout) {
+    if (this.currentLayout || this.currentInnerLayout) {
       this.init()
     }
     return super.afterLoad(...args)
@@ -146,6 +169,7 @@ class SpreadPlugin extends PluginBase {
     this.clearLabels()
     this.clearBleedBorder()
     this.clearFocusOverlay()
+    this.clearGutter()
 
     this._boundHandleObjectModified = null
     this._boundHandleObjectMoving = null
@@ -167,6 +191,13 @@ class SpreadPlugin extends PluginBase {
    * 둘 다 중앙 정렬이므로 cutSize가 상쇄되어 콘텐츠 원점 = -totalPx/2.
    */
   private getContentOrigin(): { x: number; y: number } {
+    // 내지(inner) 모드: 펼침면 trim 중앙 원점(표지와 동일한 중앙원점 규약)
+    if (this.regionScope === 'inner' && this.currentInnerLayout) {
+      return {
+        x: -this.currentInnerLayout.totalWidthPx / 2,
+        y: -this.currentInnerLayout.totalHeightPx / 2,
+      }
+    }
     if (!this.currentLayout) return { x: 0, y: 0 }
     return {
       x: -this.currentLayout.totalWidthPx / 2,
@@ -207,6 +238,11 @@ class SpreadPlugin extends PluginBase {
     if (spec) {
       this.currentSpec = spec
     }
+    // 포토북 내지(inner) 모드: 좌/우 면 + 거터 렌더 경로로 분기(표지 경로 불변).
+    if (this.regionScope === 'inner' && this.innerSpec) {
+      this.initInner()
+      return
+    }
     this.currentLayout = computeLayout(this.currentSpec)
 
     // 기존 가이드/라벨 제거 후 재렌더링 (init 중복 호출 시 중복 방지)
@@ -221,9 +257,185 @@ class SpreadPlugin extends PluginBase {
   }
 
   /**
+   * 포토북 내지(2-up 펼침면) 초기화 — 표지 init() 과 별개 경로(O-2, 2026-06-24).
+   *
+   * 좌/우 면 라벨 + 중앙 거터 제본선(+ 옵션 안전 밴드) + bleed 경계를 렌더한다.
+   * 좌표계는 표지와 동일한 중앙원점 규약(getContentOrigin 이 inner 분기로 펼침면 trim 중앙을 원점으로).
+   * 거터 제본선은 guideLines 배열에도 push 해 clearGuides() 가 함께 제거하도록 한다.
+   */
+  private initInner(): void {
+    this.currentInnerLayout = computeInnerSpreadLayout(this.innerSpec!)
+
+    // 기존 가이드/라벨/블리드/거터 제거 후 재렌더링 (init 중복 호출 시 중복 방지)
+    this.clearGuides()
+    this.clearLabels()
+    this.clearBleedBorder()
+    this.clearGutter()
+
+    const L = this.currentInnerLayout
+    const o = this.getContentOrigin()
+
+    // 1. 거터 제본선(좌/우 면 경계, 중앙) — 파란 점선
+    const gutterLine = new fabric.Line(
+      [
+        o.x + L.gutterGuide.x,
+        o.y + L.gutterGuide.y1,
+        o.x + L.gutterGuide.x,
+        o.y + L.gutterGuide.y2,
+      ],
+      {
+        id: 'spread-gutter-guide',
+        stroke: '#3b82f6',
+        strokeWidth: 1,
+        strokeDashArray: [6, 4],
+        selectable: false,
+        evented: false,
+        hasControls: false,
+        hasBorders: false,
+        excludeFromExport: true, // 화면 전용 — 저장/재로드·출력 제외
+      }
+    )
+    if (!gutterLine.meta) {
+      gutterLine.meta = {}
+    }
+    gutterLine.meta.system = 'spreadGuide' as SystemObjectType
+    this._canvas.add(gutterLine)
+    this.gutterGuideLine = gutterLine
+    // clearGuides 가 함께 제거하도록 guideLines 배열에도 포함
+    this.guideLines.push(gutterLine)
+
+    // 2. 거터 안전 밴드(옵션) — 중앙 ±band/2 반투명 영역(제본 손실 회피 안내)
+    if (L.gutterBandPx > 0) {
+      const band = new fabric.Rect({
+        id: 'spread-gutter-band',
+        left: o.x + L.gutterGuide.x - L.gutterBandPx / 2,
+        top: o.y,
+        width: L.gutterBandPx,
+        height: L.totalHeightPx,
+        fill: 'rgba(59,130,246,0.06)',
+        stroke: 'transparent',
+        selectable: false,
+        evented: false,
+        hasControls: false,
+        hasBorders: false,
+        excludeFromExport: true,
+      })
+      if (!band.meta) {
+        band.meta = {}
+      }
+      band.meta.system = 'spreadGuide' as SystemObjectType
+      this._canvas.add(band)
+      this.gutterBandRect = band
+    }
+
+    // 3. 좌/우 면 치수 라벨
+    L.regions.forEach((r) => {
+      const text = new fabric.Text(
+        `${r.label} ${Math.round(r.widthMm)}×${Math.round(r.heightMm)}mm`,
+        {
+          left: o.x + r.x + r.width / 2,
+          top: o.y,
+          fontSize: 14,
+          fill: '#666',
+          selectable: false,
+          evented: false,
+          hasControls: false,
+          hasBorders: false,
+          originX: 'center',
+          originY: 'bottom',
+          excludeFromExport: true,
+        }
+      )
+      if (!text.meta) {
+        text.meta = {}
+      }
+      text.meta.system = 'dimensionLabel' as SystemObjectType
+      text.meta.regionPosition = r.position as unknown as SpreadRegionPosition
+      this._canvas.add(text)
+      this.dimensionLabels.push(text)
+    })
+
+    // 4. bleed 경계 (재단여백 바깥) — 표지 renderBleedBorder 와 동일한 빨강 점선
+    this.renderInnerBleedBorder()
+
+    this._editor.emit('spreadLayoutUpdate', {
+      layout: this.currentInnerLayout,
+      regionScope: 'inner',
+    })
+  }
+
+  /**
+   * 내지(inner) bleed 경계 렌더 — renderBleedBorder 와 동일 로직(좌표계/색/제외 동일),
+   * 입력만 innerSpec/currentInnerLayout 으로 교체. bleedBorder 슬롯 재사용(clearBleedBorder 공유).
+   */
+  private renderInnerBleedBorder(): void {
+    if (!this.innerSpec || !this.currentInnerLayout) return
+
+    const cutSizeMm = this.innerSpec.cutSizeMm
+    // bleed 값 없음(0/미설정/음수) → bleed 가이드 미표시
+    if (!cutSizeMm || cutSizeMm <= 0) return
+
+    const dpi = this.innerSpec.dpi
+    if (!dpi || dpi <= 0) return
+
+    const bleedHalfPx = ((cutSizeMm / 2) / 25.4) * dpi
+    if (bleedHalfPx <= 0) return
+
+    const origin = this.getContentOrigin()
+    const total = this.currentInnerLayout
+    const rect = new fabric.Rect({
+      id: 'spread-bleed-border',
+      left: origin.x - bleedHalfPx,
+      top: origin.y - bleedHalfPx,
+      width: total.totalWidthPx + bleedHalfPx * 2,
+      height: total.totalHeightPx + bleedHalfPx * 2,
+      originX: 'left',
+      originY: 'top',
+      fill: 'transparent',
+      stroke: '#e11d48', // bleed = 빨강 (표지와 동일)
+      strokeWidth: 1,
+      strokeDashArray: [5, 5],
+      strokeUniform: true,
+      selectable: false,
+      evented: false,
+      hasControls: false,
+      hasBorders: false,
+      excludeFromExport: true,
+    })
+
+    if (!rect.meta) {
+      rect.meta = {}
+    }
+    rect.meta.system = 'spreadGuide' as SystemObjectType
+
+    this._canvas.add(rect)
+    this.bleedBorder = rect
+  }
+
+  /**
+   * 거터(제본선/안전밴드) 제거.
+   * 거터 제본선(gutterGuideLine)은 guideLines 배열에 포함되어 clearGuides() 가 캔버스에서 제거하므로
+   * 여기서는 ref 만 null 처리한다(중복 remove 방지). 안전 밴드는 자체적으로 remove 후 null.
+   */
+  private clearGutter(): void {
+    // gutterGuideLine 은 clearGuides() 가 제거 → 여기선 ref 만 해제
+    this.gutterGuideLine = null
+    if (this.gutterBandRect) {
+      this._canvas.remove(this.gutterBandRect)
+      this.gutterBandRect = null
+    }
+  }
+
+  /**
    * 책등 리사이즈 (Atomic Transaction)
    */
   async resizeSpine(newSpineWidthMm: number): Promise<void> {
+    // 포토북 내지(inner)는 책등이 없는 펼침면 2-up — 책등 리사이즈는 무의미하므로 no-op.
+    if (this.regionScope === 'inner') {
+      console.warn('[SpreadPlugin] resizeSpine: 내지(inner)는 책등 없음 — no-op')
+      return
+    }
+
     // flat-spread(전폭 아트워크 1장) 템플릿은 책등 고정 — 아트워크가 통짜 PNG 라
     // 책등 폭을 바꾸면 인쇄물과 화면이 어긋난다. 편집기(spineCalculator)에서 차단하지만
     // 방어적으로 플러그인에서도 no-op 처리한다.
@@ -858,6 +1070,13 @@ class SpreadPlugin extends PluginBase {
    */
   getLayout(): SpreadLayout | null {
     return this.currentLayout
+  }
+
+  /**
+   * 현재 내지(inner) 펼침면 레이아웃 조회 (regionScope==='inner' 일 때만 비-null)
+   */
+  getInnerLayout(): SpreadInnerLayout | null {
+    return this.currentInnerLayout
   }
 
   /**

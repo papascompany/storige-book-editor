@@ -973,8 +973,8 @@ export default function EditorHeader({
         }}
       />
 
-      {/* 3D 미리보기 모달 */}
-      {show3DMockup && spreadConfig && (
+      {/* 3D 미리보기 모달 — 표지 스프레드 전용(spine/cover). 포토북 내지(spec 없음)는 미해당 */}
+      {show3DMockup && spreadConfig?.spec && (
         <BookMockup3D
           spineWidthMm={spreadConfig.spec.spineWidthMm}
           coverWidthMm={spreadConfig.spec.coverWidthMm}

@@ -1546,7 +1546,12 @@ export type SpreadConversionMode = 'full' | 'flat-spread' | 'flat-spine';
 
 export interface SpreadConfig {
   version: number;        // 1 (향후 계산식 변경 대비)
-  spec: SpreadSpec;
+  /**
+   * 표지 스프레드 스펙(front/spine/back). regionScope==='cover'(기본)에서 필수.
+   * 포토북 내지(regionScope==='inner')는 spec 대신 innerSpec 을 사용하므로 생략 가능.
+   * (기존 읽기 경로는 모두 `spreadConfig?.spec` truthy 가드라 선택화는 비파괴.)
+   */
+  spec?: SpreadSpec;
   regions: SpreadRegion[];
   totalWidthMm: number;
   totalHeightMm: number;
