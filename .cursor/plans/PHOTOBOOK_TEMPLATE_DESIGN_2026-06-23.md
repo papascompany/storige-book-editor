@@ -114,9 +114,11 @@ export interface SpreadSpec {
 - `caseBind` 존재 시 책등폭 = `calculateSpineWidth()`(`index.ts:1086`) + `boardThicknessMm×2`, 전체 표지폭 = cover×2 + spine + (turnIn+wrap)×2. `SpreadLayoutEngine`의 `computeSpreadDimensions`에 wrap 영역 가산.
 - **`SpreadConfig.version` 1→2 bump**(`index.ts:1516`) + `SPINE_FORMULA_VERSION`(`index.ts:1564`, 현 '1.0') bump로 계산식 변경 추적.
 
-### 3-3. 펼침면 내지 모델 (L)
-- 신규 내지 펼침면 타입 또는 기존 spread에 `regionScope:'cover'|'inner'` 플래그. 좌표는 **중앙원점@150dpi 규약 유지**(reference_coordinate_convention) — 거터를 원점으로 좌/우 면 분할.
-- 페이지 메타에 `spreadPair:{left,right}` 추가, 재정렬 시 **페어 무결성 가드**(미리캔버스 주의점). `conversionMode`(`index.ts:1521-1522`, optional JSON·마이그레이션 불필요) 패턴 차용.
+### 3-3. 펼침면 내지 모델 (L) — ✅ **모델 토대 구현(2026-06-24, `5e426af`)**
+- ✅ `SpreadConfig.regionScope?:'cover'|'inner'` + `innerSpec?:SpreadInnerSpec` 추가(additive, 미존재=cover). 좌표 **중앙원점@150dpi 규약 유지**. 표지 모델과 별개 타입.
+- ✅ `computeInnerSpreadLayout(spec)`(canvas-core SpreadLayoutEngine, 순수·테스트6): trim=pageWidth*2×pageHeight(bleed 제외, WorkspacePlugin 처리), 좌면[0,W]/우면[W,2W], 거터 가이드 중앙·거터 안전밴드px.
+- ✅ `SpreadPairMeta{pairId,leftPageNo,rightPageNo}` 타입 추가(페어 무결성·출력 정합용).
+- ⏳ **다음 증분(에디터 적용)**: SpreadPlugin 내지 렌더 경로(computeInnerSpreadLayout→workspace 사이즈+거터 가이드) · 페이지 셋업(내지=2-up 생성) · BookNavigation 페어 재정렬(§4-3 PI) · per-region/파노라마(§6) · admin 내지 펼침면 등록. + 출력(content.pdf 좌우분할 separate 정합).
 
 ### 3-4. 페이지 가변·단가 (M)
 가격은 storige 미보유 → **단가 메타를 TemplateSet에 저장 + pageCount emit**하는 2-tier:
@@ -276,7 +278,7 @@ export interface TemplateSet {
 | # | 항목 | 결정 필요 내용 |
 |---|---|---|
 | O-1 | **싸바리 geometry 정밀도** | MVP=`coverEditable=false` 우회(권장, S) vs 정밀 `caseBind` geometry(L). 우회로 출고 품질 충분한지 |
-| O-2 | **펼침면 내지 범위** | 본문 2-up facing 정식 지원(L) vs MVP 단면 1p 유지 + 파노라마만 분기 |
+| O-2 | ✅ **결정: 2-up facing 정식 지원**. 모델 토대(타입+엔진+테스트) 구현 완료(`5e426af`, `computeInnerSpreadLayout`). 에디터 적용(렌더/셋업/네비)은 다음 증분 |
 | O-3 | **가격 계산 주체** | storige `pricing` 메타만 emit(권장) vs 총가 계산. 사이즈×커버 단가 매트릭스 출처 |
 | O-4 | **300dpi 래스터 필요성** | 인쇄 RIP가 펼침면 래스터 실요구? 현 벡터 PDF + separate(`GUIDE.md:477`)로 충분하면 §9-1 불필요 |
 | O-5 | ✅ **결정: 편집기 클라이언트 파싱**(Phase 2). 초대량·서버영속 필요 시 worker 잡은 Phase 3 잔여 |
