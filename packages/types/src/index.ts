@@ -182,6 +182,24 @@ export interface EndpaperConfig {
   backEditable: boolean;
 }
 
+/**
+ * PHOTOBOOK 페이지 가변 가격 메타 — Phase 2 (2026-06-24).
+ *
+ * storige 는 가격을 계산하지 않는다. 관리자가 템플릿셋에 이 메타를 저장하면,
+ * 편집기는 완료 시 현재 총 pageCount 와 함께 emit 하고 **파트너 장바구니가 가격을 계산**한다.
+ * (설계 §3-4·§8 — 가격 계산 주체=파트너)
+ */
+export interface PhotobookPricing {
+  /** 기본 포함 페이지 (예: 16). 이 수까지는 추가 단가 없음 */
+  includedPages: number;
+  /** 최소 제작 페이지 (이하로는 삭제 차단 — 가드용 메타) */
+  minPages: number;
+  /** 증감 단위 (펼침면=2 등) */
+  pageStep: number;
+  /** 초과 페이지당 단가 (정수/소수). 통화·세금은 파트너 책임 */
+  perPageUnit: number;
+}
+
 export interface TemplateSet {
   id: string;
   name: string;
@@ -247,6 +265,14 @@ export interface TemplateSet {
    * (조인 테이블 template_set_library_categories 에서 populate)
    */
   libraryCategoryIds?: string[];
+  /**
+   * PHOTOBOOK 페이지 가변 가격 메타 — Phase 2 (2026-06-24).
+   * storige 는 가격을 계산하지 않는다(설계 §3-4·§8). 이 메타를 저장하고 편집 완료 시
+   * 현재 총 pageCount 와 함께 emit 하면, 파트너 장바구니가 실제 가/감 가격을 계산한다.
+   * 가격식(참고): base + max(0, pageCount − includedPages) × perPageUnit.
+   * null/undefined = 가변 가격 미사용(BOOK/LEAFLET 등 기존 동작 비파괴).
+   */
+  pricing?: PhotobookPricing | null;
   // Legacy fields (하위 호환)
   description?: string;
   categoryId?: string;
@@ -295,6 +321,8 @@ export interface CreateTemplateSetInput {
   colorMode?: ColorOutputMode;
   /** ④ 노출 라이브러리 카테고리 ID 목록 (빈/미지정=전역) */
   libraryCategoryIds?: string[];
+  /** PHOTOBOOK 페이지 가변 가격 메타 (2026-06-24, null/미지정=미사용) */
+  pricing?: PhotobookPricing | null;
 }
 
 /**
@@ -323,6 +351,8 @@ export interface UpdateTemplateSetInput {
   colorMode?: ColorOutputMode;
   /** ④ 노출 라이브러리 카테고리 ID 목록 (빈/미지정=전역) */
   libraryCategoryIds?: string[];
+  /** PHOTOBOOK 페이지 가변 가격 메타 (2026-06-24, null/미지정=미사용) */
+  pricing?: PhotobookPricing | null;
 }
 
 /**

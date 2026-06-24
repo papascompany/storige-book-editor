@@ -90,6 +90,7 @@ export class TemplateSetsService {
       categoryId: dto.categoryId || null,
       // 생성 시에도 인쇄 워크플로우/출력 설정 저장(이전엔 누락되어 entity 기본값으로만 저장됨)
       endpaperConfig: dto.endpaperConfig ?? null,
+      pricing: dto.pricing ?? null, // 포토북 가격 메타 (Phase 2 §8)
       coverEditable: dto.coverEditable ?? true,
       coverPreviewImage: dto.coverPreviewImage ?? null,
       contentPdfEditable: dto.contentPdfEditable ?? true,

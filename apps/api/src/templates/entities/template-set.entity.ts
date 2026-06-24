@@ -13,7 +13,7 @@ import {
 import { v4 as uuidv4 } from 'uuid';
 import { Category } from './category.entity';
 import { Template } from './template.entity';
-import type { ProductSpecs, TemplateSetType, TemplateRef, EditorMode, EditorMenuKey, PdfOutputMode, ColorOutputMode } from '@storige/types';
+import type { ProductSpecs, TemplateSetType, TemplateRef, EditorMode, EditorMenuKey, PdfOutputMode, ColorOutputMode, PhotobookPricing } from '@storige/types';
 
 /**
  * 템플릿셋 타입 enum (DB용)
@@ -176,6 +176,21 @@ export class TemplateSet {
    */
   @Column({ name: 'size_tolerance_mm', type: 'float', default: 0.2 })
   sizeToleranceMm: number;
+
+  // ─────────────────────────────────────────────────────
+  // 포토북 페이지 가변 가격 메타 (2026-06-24, Phase 2)
+  // 마이그레이션: apps/api/migrations/20260624_add_template_set_pricing.sql
+  // ⚠️ storige 는 가격을 계산하지 않는다 — 메타 저장 + 편집완료 시 pageCount/pricing emit 만.
+  //    실제 가/감 가격 계산은 파트너(bookmoa-mobile 등) 장바구니 책임.
+  // ─────────────────────────────────────────────────────
+
+  /**
+   * PHOTOBOOK 페이지 가변 가격 메타 (2026-06-24, additive nullable=비파괴).
+   * shape: { includedPages, minPages, pageStep, perPageUnit }.
+   * null: 가변 가격 미사용 (BOOK/LEAFLET 등 기존 동작 비파괴).
+   */
+  @Column({ name: 'pricing', type: 'json', nullable: true })
+  pricing: PhotobookPricing | null;
 
   /**
    * ④ 연결된 라이브러리 카테고리 ID (2026-06-09) — 컬럼 아님(transient).
