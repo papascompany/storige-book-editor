@@ -592,7 +592,17 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
       const currentSettings = settingsStore.currentSettings
 
       let pageSize: { width: number; height: number; cutSize: number; safeSize: number }
-      if (spreadConfig?.spec) {
+      if (spreadConfig?.regionScope === 'inner' && spreadConfig.innerSpec) {
+        // 포토북 내지(O-2): 2-up 펼침면 — 폭=한 면×2, 높이=한 면. (한 펼침면=1 캔버스라
+        // 좌/우 페어가 구조적으로 함께 이동·삭제·재정렬 → 페어 무결성 보장.)
+        const isp = spreadConfig.innerSpec
+        pageSize = {
+          width: isp.pageWidthMm * 2,
+          height: isp.pageHeightMm,
+          cutSize: isp.cutSizeMm,
+          safeSize: isp.safeSizeMm,
+        }
+      } else if (spreadConfig?.spec) {
         // 스프레드 모드: 내지는 표지 크기 사용
         pageSize = {
           width: spreadConfig.spec.coverWidthMm,

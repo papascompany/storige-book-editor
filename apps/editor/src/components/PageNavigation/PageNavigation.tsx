@@ -1,7 +1,9 @@
-import { memo, useCallback } from 'react'
+import { memo, useCallback, useMemo } from 'react'
 import { ChevronLeft as CaretLeft, ChevronRight as CaretRight } from 'lucide-react'
 import { useEditorStore, usePageCount } from '@/stores/useEditorStore'
 import { useAppStore } from '@/stores/useAppStore'
+import { useSettingsStore } from '@/stores/useSettingsStore'
+import { deriveSpreadPairs, formatPairLabel } from '@/utils/photobookSpread'
 import { cn } from '@/lib/utils'
 
 interface PageNavigationProps {
@@ -22,6 +24,14 @@ export const PageNavigation = memo(function PageNavigation({
   const pageCount = usePageCount()
 
   const setPage = useAppStore((state) => state.setPage)
+  // 포토북 내지(O-2): 펼침면 모드면 현재 펼침면의 좌/우 페이지 번호 라벨(예: 'p.1–2')을 표시.
+  // 한 캔버스=한 펼침면이라 currentPageIndex 가 곧 펼침면 인덱스. 비-내지면 null(기존 표시 불변).
+  const isInnerSpread = useSettingsStore((s) => s.spreadConfig?.regionScope === 'inner')
+  const pairLabel = useMemo(() => {
+    if (!isInnerSpread) return null
+    const pair = deriveSpreadPairs(pageCount)[currentPageIndex]
+    return pair ? formatPairLabel(pair) : null
+  }, [isInnerSpread, pageCount, currentPageIndex])
 
   const canGoPrev = currentPageIndex > 0
   const canGoNext = currentPageIndex < pageCount - 1
@@ -107,6 +117,11 @@ export const PageNavigation = memo(function PageNavigation({
           />
           <span className="text-gray-500">/</span>
           <span className="text-gray-700">{pageCount}</span>
+          {pairLabel && (
+            <span className="ml-1 text-gray-400" title="현재 펼침면의 좌/우 페이지">
+              ({pairLabel})
+            </span>
+          )}
         </div>
       )}
 

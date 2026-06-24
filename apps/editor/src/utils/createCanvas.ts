@@ -32,6 +32,7 @@ const ENABLE_IMAGE_PROCESSING = import.meta.env.VITE_ENABLE_IMAGE_PROCESSING !==
 const ENABLE_RULER = import.meta.env.VITE_ENABLE_RULER !== 'false'
 import { useAppStore } from '@/stores/useAppStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
+import { innerSpecToPlaceholderSpec } from '@/utils/photobookSpread'
 import { DEFAULT_FONT_FAMILY, loadFonts, getFontList, resolveStorageUrl } from '@/utils/fontManager'
 import { apiClient } from '@/api/client'
 import type { fabric } from 'fabric'
@@ -208,12 +209,22 @@ function initPlugins(
   // conversionMode: IDML 가져오기 유형(미존재 시 'full') — flat-spread 는 resizeSpine 방어 no-op,
   // flat-spine 은 spine-artwork 재배치 불변 가드에 사용된다.
   const spreadConfig = settingsStore.spreadConfig
+  // 포토북 내지(O-2): regionScope==='inner' + innerSpec 이면 2-up 펼침면 렌더 경로.
+  // inner 도 SpreadPlugin 생성자 계약상 spec(표지 SpreadSpec)을 요구하므로 placeholder 합성
+  // (렌더는 innerSpec 으로만 수행 — placeholder 는 currentSpec 비-null 유지용, 표지경로 미진입).
+  const isInnerSpread = spreadConfig?.regionScope === 'inner' && !!spreadConfig.innerSpec
   const spread = spreadConfig?.spec
     ? new SpreadPlugin(canvas, editor, {
         spec: spreadConfig.spec,
         conversionMode: spreadConfig.conversionMode ?? 'full',
       })
-    : null
+    : isInnerSpread
+      ? new SpreadPlugin(canvas, editor, {
+          spec: innerSpecToPlaceholderSpec(spreadConfig!.innerSpec!),
+          regionScope: 'inner',
+          innerSpec: spreadConfig!.innerSpec!,
+        })
+      : null
 
   const workspace = new WorkspacePlugin(canvas, editor, mergedOptions)
   const object = new ObjectPlugin(canvas, editor, mergedOptions)
