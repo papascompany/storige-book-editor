@@ -64,6 +64,11 @@ class SpreadPlugin extends PluginBase {
   // Fabric 오브젝트 참조
   private guideLines: fabric.Line[] = []
   private dimensionLabels: fabric.Text[] = []
+  // 3겹 가이드의 bleed(블리드/재단여백 바깥) 경계 — 화면 전용(excludeFromExport).
+  // 기존 trim(cut)/safety(safe) 가이드는 WorkspacePlugin(cut-border/safe-zone-border)이 그리고,
+  // SpreadPlugin 은 그 위에 region-border(spreadGuide)를 그린다. bleed 경계는 워크스페이스 바깥
+  // 테두리(content + cutSize/2)로, 여기에 additive 로 1종만 추가한다(기존 2겹 비파괴).
+  private bleedBorder: fabric.Rect | null = null
 
   // 이벤트 핸들러 참조
   private _boundHandleObjectModified: ((e: IEvent) => void) | null = null
@@ -139,6 +144,7 @@ class SpreadPlugin extends PluginBase {
     // 가이드/라벨/포커스 오버레이 제거
     this.clearGuides()
     this.clearLabels()
+    this.clearBleedBorder()
     this.clearFocusOverlay()
 
     this._boundHandleObjectModified = null
@@ -206,8 +212,10 @@ class SpreadPlugin extends PluginBase {
     // 기존 가이드/라벨 제거 후 재렌더링 (init 중복 호출 시 중복 방지)
     this.clearGuides()
     this.clearLabels()
+    this.clearBleedBorder()
     this.renderGuides(this.currentLayout)
     this.renderLabels(this.currentLayout)
+    this.renderBleedBorder(this.currentLayout)
 
     this._editor.emit('spreadLayoutUpdate', { layout: this.currentLayout })
   }
@@ -278,8 +286,10 @@ class SpreadPlugin extends PluginBase {
       // 5. 가이드/라벨 재렌더링
       this.clearGuides()
       this.clearLabels()
+      this.clearBleedBorder()
       this.renderGuides(newLayout)
       this.renderLabels(newLayout)
+      this.renderBleedBorder(newLayout)
 
       // 6. 레이아웃 갱신
       const oldLayout = this.currentLayout
@@ -640,6 +650,74 @@ class SpreadPlugin extends PluginBase {
       this._canvas.add(line)
       this.guideLines.push(line)
     })
+  }
+
+  /**
+   * bleed(블리드/재단여백 바깥) 경계 렌더링 — 3겹 가이드의 가장 바깥 1종.
+   *
+   * 3겹 = bleed(이 메서드, 빨강 점선·재단선 바깥) + trim/cut(WorkspacePlugin cut-border, 검정 점선)
+   *      + safety(WorkspacePlugin safe-zone-border, 점선). 기존 2겹(trim+safety)은 그대로 두고
+   * bleed 1종만 additive 로 추가한다.
+   *
+   * 좌표계: getContentOrigin() 은 content(=trim) 프레임 좌상단을 scene 원점으로 준다(중앙원점 규약).
+   * 워크스페이스는 content + cutSize 크기로 중앙 정렬되므로, bleed 경계 = content 프레임을 각 변
+   * cutSizeMm/2 만큼 바깥으로 확장한 사각형(= 워크스페이스 외곽). px 변환은 엔진(mmToPx)과 동일하게
+   * spec.dpi 기준으로 맞춰 content px(totalWidthPx)와 정합시킨다.
+   *
+   * ⚠️ cutSizeMm 가 0/미설정이면 블리드 영역이 없으므로 가이드를 그리지 않는다(미표시).
+   * ⚠️ 화면 전용: excludeFromExport=true → 저장/재로드 직렬화·출력 PDF 미포함.
+   */
+  private renderBleedBorder(layout: SpreadLayout): void {
+    const cutSizeMm = this.currentSpec.cutSizeMm
+    // bleed 값 없음(0/미설정/음수) → bleed 가이드 미표시(기존 2겹은 영향 없음)
+    if (!cutSizeMm || cutSizeMm <= 0) return
+
+    const dpi = this.currentSpec.dpi
+    if (!dpi || dpi <= 0) return
+
+    // 각 변으로 뻗는 블리드 폭(px) = cutSizeMm/2 (워크스페이스가 content ± cutSize/2 로 중앙 확장).
+    // 엔진과 동일한 mm→px 변환((mm/25.4)*dpi)으로 content px 와 정합.
+    const bleedHalfPx = ((cutSizeMm / 2) / 25.4) * dpi
+    if (bleedHalfPx <= 0) return
+
+    const origin = this.getContentOrigin()
+    const rect = new fabric.Rect({
+      id: 'spread-bleed-border',
+      left: origin.x - bleedHalfPx,
+      top: origin.y - bleedHalfPx,
+      width: layout.totalWidthPx + bleedHalfPx * 2,
+      height: layout.totalHeightPx + bleedHalfPx * 2,
+      originX: 'left',
+      originY: 'top',
+      fill: 'transparent',
+      stroke: '#e11d48', // bleed = 빨강 (trim=검정/safety=점선 과 구분)
+      strokeWidth: 1,
+      strokeDashArray: [5, 5],
+      strokeUniform: true,
+      selectable: false,
+      evented: false,
+      hasControls: false,
+      hasBorders: false,
+      excludeFromExport: true, // 시스템 가이드 — 저장/재로드 직렬화·출력 제외
+    })
+
+    if (!rect.meta) {
+      rect.meta = {}
+    }
+    rect.meta.system = 'spreadGuide' as SystemObjectType
+
+    this._canvas.add(rect)
+    this.bleedBorder = rect
+  }
+
+  /**
+   * bleed 경계 제거
+   */
+  private clearBleedBorder(): void {
+    if (this.bleedBorder) {
+      this._canvas.remove(this.bleedBorder)
+      this.bleedBorder = null
+    }
   }
 
   /**
