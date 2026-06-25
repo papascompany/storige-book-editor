@@ -8,7 +8,7 @@
 
 ## 1. TL;DR
 - 🟢 **bookmoa 적용분(`5bcaae4`) 검증 통과 — 정상.** canonical 4종 매핑 정확, orderOptions 페이로드가 worker 수신 필드와 정확히 일치, 스파인 트리거를 canonical binding으로 교정 → 한글 `무선` 404 무음실패 해소.
-- 🟢 **fix-pagecount 계약 확정**(아래 §3). **비동기** — 호출 → `jobId` 반환 → `GET /worker-jobs/:id` 폴링 → `COMPLETED` + `outputFileId`(빈페이지 추가된 새 fileId). 원본 fileId 보존. 구현 중.
+- 🟢 **fix-pagecount 계약 확정 + 배포 완료(LIVE, 2026-06-25)**(아래 §3). **비동기** — 호출 → `jobId` 반환 → `GET /worker-jobs/external/:id`(ApiKeyGuard) 폴링 → `COMPLETED` + `outputFileId`(빈페이지 추가된 새 fileId). 원본 fileId 보존. **지금 바로 호출 가능.**
 - 👉 bookmoa는 (a) 프론트 배포만 하면 데이터주도 검증이 즉시 작동, (b) 이 계약대로 모달(d1)/토스트(d2) + fix-pagecount 호출만 구현하면 됨.
 
 ---
@@ -31,7 +31,7 @@
 
 ---
 
-## 3. fix-pagecount 최종 계약 (구현 중)
+## 3. fix-pagecount 최종 계약 (✅ 구현·배포 완료 LIVE, 2026-06-25)
 
 ### 3.1 엔드포인트
 | 엔드포인트 | 인증 |
@@ -43,7 +43,7 @@
 
 ### 3.2 비동기 흐름 (반드시 폴링)
 1. 호출 → **`WorkerJob(jobId)` 반환** (즉시, 처리 전).
-2. 호출측은 **`GET /worker-jobs/:id`** 폴링.
+2. 호출측은 **`GET /worker-jobs/external/:id`**(ApiKeyGuard, 검증 폴링과 동일 인증) 폴링. (내부 호출은 `GET /worker-jobs/:id`.)
 3. `status === 'COMPLETED'` → 응답의 **`outputFileId`** = 빈페이지가 추가된 **새 fileId**.
 4. **원본 fileId는 보존** (불변).
 
@@ -80,6 +80,6 @@
 | 액션 | 내용 | 상태 |
 |---|---|---|
 | (a) 프론트 배포 | `5bcaae4` 배포 시 **데이터주도 검증 즉시 작동** (Storige 추가 작업 없음) | bookmoa 배포만 |
-| (b) fix-pagecount 연동 | §3 계약대로 **호출 + 폴링** + **모달(d1)/토스트(d2)** 구현 | Storige 엔드포인트 구현 중 → 준비되면 통지 |
+| (b) fix-pagecount 연동 | §3 계약대로 **호출 + 폴링** + **모달(d1)/토스트(d2)** 구현 | ✅ Storige 엔드포인트 **배포 완료(LIVE)** — 지금 호출 가능 |
 
 **정리: bookmoa의 canonical 매핑 적용(`5bcaae4`)은 검증 통과·정상입니다. fix-pagecount는 §3 계약(비동기 `jobId` → 폴링 → `outputFileId`, 원본 보존)대로 확정했으니, bookmoa는 이 계약에 맞춰 모달+호출만 구현하시면 됩니다. 엔드포인트 배포 완료 시 별도 통지하겠습니다. 🙏**

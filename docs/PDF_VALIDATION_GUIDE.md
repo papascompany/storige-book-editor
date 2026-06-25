@@ -141,7 +141,7 @@ expectedTotalWidth = size.width×2 + (spineWidthMm ?? paperThickness×pages/2)
 
 ---
 
-## 페이지수 자동 보정 (fix-pagecount) — 계약 확정, 구현 중
+## 페이지수 자동 보정 (fix-pagecount) — ✅ 배포 완료(2026-06-25 LIVE)
 
 > 배수위반(`PAGE_COUNT_INVALID`, FIXABLE)을 빈 페이지 추가로 보정하는 경로. 기존 변환(`pdf-conversion`) 파이프라인 재사용(`addPages` + `registerExternalFile`).
 
