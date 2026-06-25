@@ -49,6 +49,8 @@ export enum WarningCode {
   ORIENTATION_MISMATCH = 'ORIENTATION_MISMATCH',
   /** 책자 총 페이지가 홀수 (보통 짝수면으로 제작 — 확인 권장) */
   ODD_PAGE_COUNT = 'ODD_PAGE_COUNT',
+  /** 주문 상품의 최소 페이지수 미만 (데이터 주도 pageCountMin, 비차단 — 고객 선택/확인 유도) */
+  PAGE_COUNT_BELOW_MIN = 'PAGE_COUNT_BELOW_MIN',
   /** 사철 제본 중앙부 객체 확인 필요 */
   CENTER_OBJECT_CHECK = 'CENTER_OBJECT_CHECK',
   /** CMYK 구조 감지 (GS 미확정) */
@@ -213,6 +215,16 @@ export interface ValidationOptions {
      * MIXED_PAGE_ORIENTATION 으로 1건 집계(단일 방향이면 경고 없음 — 가로책 오탐 해소).
      */
     expectedOrientation?: 'portrait' | 'landscape' | 'auto';
+    /**
+     * 내지 페이지수 배수(데이터 주도 계약, 2026-06-25). 제공 시 worker 가 binding 하드코딩 대신
+     * `actual % pageMultiple !== 0` → PAGE_COUNT_INVALID(에러·자동수정 addBlankPages)로 검증.
+     * 미제공 시 binding 기반 레거시 분기로 폴백(byte-identical). 파트너가 제본별 값 전달(무선=2/양장=4/중철=4/스프링=8 등).
+     */
+    pageMultiple?: number;
+    /** 제본별 페이지수 상한(예 중철 64). 제공 시 `actual > max` → PAGE_COUNT_EXCEEDED(에러). 미제공 시 레거시(saddle 64) 폴백. */
+    pageCountMax?: number;
+    /** 제본별 페이지수 하한(예 무선 32). 제공 시 `actual < min` → PAGE_COUNT_BELOW_MIN(경고·비차단, 고객 선택). 미제공 시 미검사. */
+    pageCountMin?: number;
   };
   /** 최대 허용 파일 크기 (bytes) */
   maxFileSize?: number;

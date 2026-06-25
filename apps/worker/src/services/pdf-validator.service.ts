@@ -153,9 +153,13 @@ export class PdfValidatorService {
         options.orderOptions.expectedOrientation,
       );
 
-      // 10. 사철 제본 검증 (WBS 2.2)
+      // 10. 사철 제본 검증 (WBS 2.2). 데이터 주도 페이지규칙 활성 시 페이지수 검사는 validatePageCount 소유.
       if (options.orderOptions.binding === 'saddle') {
-        this.validateSaddleStitch(pages.length, errors, warnings);
+        const dd =
+          options.orderOptions.pageMultiple != null ||
+          options.orderOptions.pageCountMax != null ||
+          options.orderOptions.pageCountMin != null;
+        this.validateSaddleStitch(pages.length, errors, warnings, dd);
       }
 
       // 11. 스프레드(펼침면) 감지 (WBS 2.3)
@@ -519,7 +523,11 @@ export class PdfValidatorService {
         options.orderOptions.expectedOrientation,
       );
       if (options.orderOptions.binding === 'saddle') {
-        this.validateSaddleStitch(pageCount, errors, warnings);
+        const dd =
+          options.orderOptions.pageMultiple != null ||
+          options.orderOptions.pageCountMax != null ||
+          options.orderOptions.pageCountMin != null;
+        this.validateSaddleStitch(pageCount, errors, warnings, dd);
       }
       const spreadResult = this.detectSpreadFormat(
         pages,
@@ -641,44 +649,79 @@ export class PdfValidatorService {
     } else if (options.fileType === 'content') {
       const binding = options.orderOptions.binding;
 
-      // R5: 짝수책 경고 (비차단).
-      // perfect/saddle 은 아래에서 4의 배수(=자동 짝수)를 PAGE_COUNT_INVALID 에러로 강제하므로
-      // 홀수면 이미 에러로 커버됨 → 중복 push 금지. 반면 spring(스프링 제본)은 페이지수
-      // 무검사라 홀수가 통과되므로, 여기서만 ODD_PAGE_COUNT 경고로 확인을 유도한다.
-      // ⚠️ parity('오른쪽=홀수/왼쪽=짝수' 좌/우 면 배치)는 '검증'이 아니라 임포지션
-      //    미리보기(모달②)의 책임 — 여기에 parity 검증을 넣지 말 것(시각 확인으로 분리).
-      if (binding === 'spring' && actualPages % 2 !== 0) {
-        warnings.push({
-          code: WarningCode.ODD_PAGE_COUNT,
-          message: `총 페이지가 홀수(${actualPages}면)입니다. 책자는 보통 짝수면으로 제작됩니다. 확인해 주세요.`,
-          details: {
-            actualPages,
-            suggestion: actualPages + 1,
-          },
-          autoFixable: false,
-        });
-      }
+      // ── 페이지수 단위 검증: 데이터 주도(2026-06-25) vs 레거시 폴백 ──
+      // 파트너가 orderOptions.pageMultiple/pageCountMax/pageCountMin 중 하나라도 전달하면 그 값으로
+      // 검증한다(worker 무수정으로 제본 taxonomy 확장 — 무선=2/양장=4/중철=4/스프링=8 등).
+      // 셋 다 미전송이면 기존 binding 하드코딩(perfect/saddle=4·중철≤64·스프링 홀수경고)으로 폴백
+      // — 현행 동작 byte-identical(임베드/기존 외부호출 무영향).
+      const { pageMultiple, pageCountMax, pageCountMin } = options.orderOptions;
+      const usesDataDriven =
+        pageMultiple != null || pageCountMax != null || pageCountMin != null;
 
-      // 무선제본: 4의 배수
-      if (binding === 'perfect' && actualPages % 4 !== 0) {
-        errors.push({
-          code: ErrorCode.PAGE_COUNT_INVALID,
-          message: `무선제본은 페이지 수가 4의 배수여야 합니다. (현재: ${actualPages}페이지)`,
-          details: {
-            expected: Math.ceil(actualPages / 4) * 4,
-            actual: actualPages,
-          },
-          autoFixable: true,
-          fixMethod: 'addBlankPages',
-        });
-      }
-
-      // 중철제본: 4의 배수, 최대 64페이지
-      if (binding === 'saddle') {
-        if (actualPages % 4 !== 0) {
+      if (usesDataDriven) {
+        // (d1) 배수 위반 → 에러 + 자동수정(addBlankPages). bookmoa 모달이 고객 동의 받아 fix 트리거.
+        if (pageMultiple && pageMultiple > 0 && actualPages % pageMultiple !== 0) {
           errors.push({
             code: ErrorCode.PAGE_COUNT_INVALID,
-            message: `중철제본은 페이지 수가 4의 배수여야 합니다. (현재: ${actualPages}페이지)`,
+            message: `페이지 수가 ${pageMultiple}의 배수여야 합니다. (현재: ${actualPages}페이지)`,
+            details: {
+              expected: Math.ceil(actualPages / pageMultiple) * pageMultiple,
+              actual: actualPages,
+              pageMultiple,
+            },
+            autoFixable: true,
+            fixMethod: 'addBlankPages',
+          });
+        }
+        // 제본별 상한 초과 → 에러
+        if (pageCountMax && pageCountMax > 0 && actualPages > pageCountMax) {
+          errors.push({
+            code: ErrorCode.PAGE_COUNT_EXCEEDED,
+            message: `페이지 수가 최대 허용치(${pageCountMax}페이지)를 초과합니다. (현재: ${actualPages}페이지)`,
+            details: {
+              expected: pageCountMax,
+              actual: actualPages,
+            },
+            autoFixable: false,
+          });
+        }
+        // (d2) 제본별 하한 미만 → 경고(비차단, 고객 선택). 콘텐츠 추가는 고객 몫 = 자동수정 불가.
+        if (pageCountMin && pageCountMin > 0 && actualPages < pageCountMin) {
+          warnings.push({
+            code: WarningCode.PAGE_COUNT_BELOW_MIN,
+            message: `주문 상품의 최소 페이지(${pageCountMin}페이지)보다 적습니다. (현재: ${actualPages}페이지)`,
+            details: {
+              min: pageCountMin,
+              actual: actualPages,
+            },
+            autoFixable: false,
+          });
+        }
+      } else {
+        // ── 레거시 폴백 (현행 byte-identical) ──
+        // R5: 짝수책 경고 (비차단).
+        // perfect/saddle 은 아래에서 4의 배수(=자동 짝수)를 PAGE_COUNT_INVALID 에러로 강제하므로
+        // 홀수면 이미 에러로 커버됨 → 중복 push 금지. 반면 spring(스프링 제본)은 페이지수
+        // 무검사라 홀수가 통과되므로, 여기서만 ODD_PAGE_COUNT 경고로 확인을 유도한다.
+        // ⚠️ parity('오른쪽=홀수/왼쪽=짝수' 좌/우 면 배치)는 '검증'이 아니라 임포지션
+        //    미리보기(모달②)의 책임 — 여기에 parity 검증을 넣지 말 것(시각 확인으로 분리).
+        if (binding === 'spring' && actualPages % 2 !== 0) {
+          warnings.push({
+            code: WarningCode.ODD_PAGE_COUNT,
+            message: `총 페이지가 홀수(${actualPages}면)입니다. 책자는 보통 짝수면으로 제작됩니다. 확인해 주세요.`,
+            details: {
+              actualPages,
+              suggestion: actualPages + 1,
+            },
+            autoFixable: false,
+          });
+        }
+
+        // 무선제본: 4의 배수
+        if (binding === 'perfect' && actualPages % 4 !== 0) {
+          errors.push({
+            code: ErrorCode.PAGE_COUNT_INVALID,
+            message: `무선제본은 페이지 수가 4의 배수여야 합니다. (현재: ${actualPages}페이지)`,
             details: {
               expected: Math.ceil(actualPages / 4) * 4,
               actual: actualPages,
@@ -687,20 +730,36 @@ export class PdfValidatorService {
             fixMethod: 'addBlankPages',
           });
         }
-        if (actualPages > 64) {
-          errors.push({
-            code: ErrorCode.PAGE_COUNT_EXCEEDED,
-            message: `중철제본은 최대 64페이지까지 가능합니다. (현재: ${actualPages}페이지)`,
-            details: {
-              expected: 64,
-              actual: actualPages,
-            },
-            autoFixable: false,
-          });
+
+        // 중철제본: 4의 배수, 최대 64페이지
+        if (binding === 'saddle') {
+          if (actualPages % 4 !== 0) {
+            errors.push({
+              code: ErrorCode.PAGE_COUNT_INVALID,
+              message: `중철제본은 페이지 수가 4의 배수여야 합니다. (현재: ${actualPages}페이지)`,
+              details: {
+                expected: Math.ceil(actualPages / 4) * 4,
+                actual: actualPages,
+              },
+              autoFixable: true,
+              fixMethod: 'addBlankPages',
+            });
+          }
+          if (actualPages > 64) {
+            errors.push({
+              code: ErrorCode.PAGE_COUNT_EXCEEDED,
+              message: `중철제본은 최대 64페이지까지 가능합니다. (현재: ${actualPages}페이지)`,
+              details: {
+                expected: 64,
+                actual: actualPages,
+              },
+              autoFixable: false,
+            });
+          }
         }
       }
 
-      // 주문 페이지 수와 다른 경우 경고
+      // 주문 페이지 수와 다른 경우 경고 (데이터주도/레거시 공통)
       if (actualPages !== expectedPages) {
         warnings.push({
           code: WarningCode.PAGE_COUNT_MISMATCH,
@@ -1037,38 +1096,43 @@ export class PdfValidatorService {
     pageCount: number,
     errors: ValidationError[],
     warnings: ValidationWarning[],
+    dataDrivenPageRules = false,
   ): void {
     const { SADDLE_STITCH_MAX_PAGES } = VALIDATION_CONFIG;
 
-    // 4의 배수 검증
-    if (pageCount % 4 !== 0) {
-      errors.push({
-        code: ErrorCode.SADDLE_STITCH_INVALID,
-        message: `사철 제본은 페이지 수가 4의 배수여야 합니다. (현재: ${pageCount}페이지)`,
-        details: {
-          pageCount,
-          required: 'multiple of 4',
-          suggestion: Math.ceil(pageCount / 4) * 4,
-        },
-        autoFixable: true,
-        fixMethod: 'addBlankPages',
-      });
+    // 페이지수 규칙(4의 배수·최대 64)은 데이터 주도(orderOptions.pageMultiple/pageCountMax) 활성 시
+    // validatePageCount 가 소유 → 여기선 스킵(이중 보고/충돌 방지). 미활성(레거시)이면 현행 byte-identical.
+    if (!dataDrivenPageRules) {
+      // 4의 배수 검증
+      if (pageCount % 4 !== 0) {
+        errors.push({
+          code: ErrorCode.SADDLE_STITCH_INVALID,
+          message: `사철 제본은 페이지 수가 4의 배수여야 합니다. (현재: ${pageCount}페이지)`,
+          details: {
+            pageCount,
+            required: 'multiple of 4',
+            suggestion: Math.ceil(pageCount / 4) * 4,
+          },
+          autoFixable: true,
+          fixMethod: 'addBlankPages',
+        });
+      }
+
+      // 최대 페이지 수 검증
+      if (pageCount > SADDLE_STITCH_MAX_PAGES) {
+        errors.push({
+          code: ErrorCode.PAGE_COUNT_EXCEEDED,
+          message: `사철 제본은 최대 ${SADDLE_STITCH_MAX_PAGES}페이지까지 가능합니다. (현재: ${pageCount}페이지)`,
+          details: {
+            pageCount,
+            maxAllowed: SADDLE_STITCH_MAX_PAGES,
+          },
+          autoFixable: false,
+        });
+      }
     }
 
-    // 최대 페이지 수 검증
-    if (pageCount > SADDLE_STITCH_MAX_PAGES) {
-      errors.push({
-        code: ErrorCode.PAGE_COUNT_EXCEEDED,
-        message: `사철 제본은 최대 ${SADDLE_STITCH_MAX_PAGES}페이지까지 가능합니다. (현재: ${pageCount}페이지)`,
-        details: {
-          pageCount,
-          maxAllowed: SADDLE_STITCH_MAX_PAGES,
-        },
-        autoFixable: false,
-      });
-    }
-
-    // 중앙부 객체 확인 경고
+    // 중앙부 객체 확인 경고 (페이지수와 무관 — 항상 유지)
     warnings.push({
       code: WarningCode.CENTER_OBJECT_CHECK,
       message: '사철 제본 시 중앙부(접지 부분)에 중요 객체가 배치되어 있는지 확인해주세요.',

@@ -51,6 +51,15 @@ interface ValidationJobData {
      * validatePageOrientation 에서. 미제공/'auto' 면 혼재 시에만 집계 경고.
      */
     expectedOrientation?: 'portrait' | 'landscape' | 'auto';
+    /**
+     * 내지 페이지수 배수(데이터 주도 계약, 2026-06-25). 제공 시 binding 하드코딩 대신 이 값으로 검증.
+     * 미제공 시 binding 레거시 분기 폴백(byte-identical). 무선=2/양장=4/중철=4/스프링=8 등 파트너가 매핑 전달.
+     */
+    pageMultiple?: number;
+    /** 제본별 페이지수 상한(중철 64 등). 미제공 시 레거시 폴백. */
+    pageCountMax?: number;
+    /** 제본별 페이지수 하한(무선 32 등). 미제공 시 미검사. 위반=경고(비차단). */
+    pageCountMin?: number;
   };
 }
 
