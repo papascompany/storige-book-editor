@@ -21,6 +21,7 @@ import {
 import {
   CreateValidationJobDto,
   CreateConversionJobDto,
+  CreatePageCountFixJobDto,
   CreateSynthesisJobDto,
   UpdateJobStatusDto,
 } from './dto/worker-job.dto';
@@ -384,6 +385,59 @@ export class WorkerJobsService {
       // P4 임포지션은 호출부가 editSize/sizeToleranceMm 를 명시 전달하므로 raw 로 충분.
       // (DB job.options 는 merged 저장 — 기존과 동일.)
       convertOptions: createConversionJobDto.convertOptions,
+    });
+
+    return savedJob;
+  }
+
+  /**
+   * 페이지수 배수 보정 잡 (fix-pagecount, 2026-06-25) — 데이터 주도 검증 d1 빈페이지 추가 실행기.
+   * pdf-conversion(addPages) 재사용: convertOptions.padToMultiple 로 현재 페이지수를 배수까지 백지 보정.
+   * 비동기 — 반환 WorkerJob(jobId) 폴링 → COMPLETED 시 updateJobStatus 가 결과를 새 fileId 로 등록
+   * (options.kind='pagecount-fix' 게이트, 원본 site/order 승계). 원본 fileId 는 보존(되돌리기 가능).
+   */
+  async createPageCountFixJob(dto: CreatePageCountFixJobDto): Promise<WorkerJob> {
+    if (!dto.fileId) {
+      throw new BadRequestException({ code: 'FILE_REQUIRED', message: 'fileId 가 필요합니다.' });
+    }
+    const targetMultiple = Math.floor(Number(dto.targetMultiple));
+    if (!Number.isFinite(targetMultiple) || targetMultiple < 1) {
+      throw new BadRequestException({
+        code: 'INVALID_MULTIPLE',
+        message: 'targetMultiple 은 1 이상의 정수여야 합니다.',
+      });
+    }
+
+    const file = await this.filesService.findById(dto.fileId);
+    const fileUrl = this.toWorkerInputUrl(file); // s3 백엔드면 api://<id>, local 은 filePath
+
+    const job = this.workerJobRepository.create({
+      jobType: WorkerJobType.CONVERT,
+      status: WorkerJobStatus.PENDING,
+      fileId: dto.fileId,
+      inputFileUrl: fileUrl,
+      siteId: dto.siteId || null,
+      // kind 마커 → updateJobStatus 완료 훅이 결과를 fileId 로 등록(세션 무관). sourceFileId=원본 승계용.
+      options: {
+        kind: 'pagecount-fix',
+        sourceFileId: dto.fileId,
+        targetMultiple,
+        callbackUrl: dto.callbackUrl || undefined,
+      },
+    });
+    const savedJob = await this.workerJobRepository.save(job);
+
+    await this.conversionQueue.add('convert-pdf', {
+      jobId: savedJob.id,
+      fileId: dto.fileId,
+      fileUrl,
+      convertOptions: {
+        addPages: false,
+        applyBleed: false,
+        targetPages: 0,
+        bleed: 0,
+        padToMultiple: targetMultiple, // 현재 페이지수 → 다음 배수까지 백지 보정(addPages 재사용)
+      },
     });
 
     return savedJob;
@@ -1319,7 +1373,80 @@ export class WorkerJobsService {
       await this.relinkImposedInnerPdf(savedJob);
     }
 
+    // fix-pagecount(2026-06-25) — 배수 보정 결과(converted PDF)를 새 fileId 로 등록(세션 무관).
+    //   조건: CONVERT && options.kind==='pagecount-fix' && COMPLETED. 마커 없는 일반 convert 무영향.
+    //   호출측(파트너)은 GET /worker-jobs/:id 폴링 → outputFileId 로 보정본을 사용한다.
+    if (
+      job.jobType === WorkerJobType.CONVERT &&
+      job.options?.kind === 'pagecount-fix' &&
+      updateJobStatusDto.status === WorkerJobStatus.COMPLETED
+    ) {
+      await this.registerPageCountFixOutput(savedJob);
+    }
+
     return savedJob;
+  }
+
+  /**
+   * 페이지수 보정(fix-pagecount) 완료 결과를 새 File 로 등록하고 job.outputFileId 에 기록 (2026-06-25).
+   * inner-imposition 의 relinkImposedInnerPdf 와 동일 패턴이되 **세션 되연결 없이** 등록만 — 직접 업로드
+   * 파일은 세션이 없기 때문. 원본 fileId(sourceFileId) 의 order/member/site 를 승계. best-effort(throw 금지).
+   */
+  private async registerPageCountFixOutput(job: WorkerJob): Promise<void> {
+    try {
+      const outputFileUrl: string | undefined =
+        job.outputFileUrl ||
+        (job.result as any)?.outputFileUrl ||
+        (job.result as any)?.result?.outputFileUrl;
+
+      if (!outputFileUrl) {
+        this.logger.warn(`[fix-pagecount] job ${job.id}: outputFileUrl 없음 → 등록 스킵`);
+        return;
+      }
+      if (job.outputFileId) return; // 멱등(중복 등록 방지)
+
+      const sourceFileId: string | undefined = job.options?.sourceFileId;
+      let orderSeqno: number | null = null;
+      let memberSeqno: number | null = null;
+      try {
+        if (sourceFileId) {
+          const src = await this.filesService.findById(sourceFileId);
+          orderSeqno = (src.orderSeqno as number) ?? null;
+          memberSeqno = (src.memberSeqno as number) ?? null;
+        }
+      } catch {
+        // 원본 메타 승계 실패는 무시(등록 자체는 계속)
+      }
+
+      const registered = await this.filesService.registerExternalFile(outputFileUrl, {
+        orderSeqno,
+        memberSeqno,
+        siteId: job.siteId, // 원본 잡 site 승계(외부 라우트 격리)
+        metadata: {
+          generatedBy: 'worker-pagecount-fix',
+          sourceFileId: sourceFileId ?? null,
+          targetMultiple: job.options?.targetMultiple ?? null,
+          workerJobId: job.id,
+        },
+      });
+
+      try {
+        job.outputFileId = registered.id;
+        await this.workerJobRepository.save(job);
+      } catch (e) {
+        this.logger.warn(
+          `[fix-pagecount] job ${job.id} outputFileId 기록 실패(무중단): ${(e as Error).message}`,
+        );
+      }
+
+      this.logger.log(
+        `[fix-pagecount] job ${job.id} 완료 → outputFileId=${registered.id} (배수 ${job.options?.targetMultiple})`,
+      );
+    } catch (e) {
+      this.logger.error(
+        `[fix-pagecount] job ${job.id} 결과 등록 실패(무중단): ${(e as Error).message}`,
+      );
+    }
   }
 
   /**

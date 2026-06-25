@@ -41,6 +41,12 @@ export interface ConversionOptions {
   editSize?: { width: number; height: number };
   /** P4 — 실측 vs editSize 비교 허용오차(mm). 미지정 시 기본 0.2mm. */
   sizeToleranceMm?: number;
+  /**
+   * 페이지수 배수 보정(2026-06-25, fix-pagecount) — 제공 시 현재 페이지수를 다음 배수
+   * (= ceil(현재/padToMultiple)*padToMultiple)까지 첫 페이지 크기 백지로 맨 뒤에 채운다.
+   * addPages(절대 targetPages) 위에 얹는 편의 모드. 이미 배수면 no-op. 데이터 주도 d1 빈페이지 보정.
+   */
+  padToMultiple?: number;
 }
 
 export interface ConversionResult {
@@ -143,10 +149,18 @@ export class PdfConverterService {
         // 편집기 생성 PDF(표지/내지) 및 기존 admin 자동수정 변환이 여기로 들어온다.
         // ──────────────────────────────────────────────────────────────
 
-        // 1. 페이지 추가 (pdf-lib 사용)
-        if (options.addPages && options.targetPages > 0) {
+        // 1. 페이지 추가 (pdf-lib 사용). padToMultiple(2026-06-25 fix-pagecount): 현재 페이지수를
+        //    다음 배수까지 백지로 보정. addPages(절대 targetPages)와 공존(둘 다 시 더 큰 목표 채택).
+        const _padTo = options.padToMultiple && options.padToMultiple > 0 ? options.padToMultiple : 0;
+        if ((options.addPages && options.targetPages > 0) || _padTo > 0) {
           const pdfDoc = await PDFDocument.load(await fs.readFile(currentPath));
-          pagesAdded = await this.addPages(pdfDoc, options.targetPages);
+          let _targetPages =
+            options.addPages && options.targetPages > 0 ? options.targetPages : 0;
+          if (_padTo > 0) {
+            const _cur = pdfDoc.getPageCount();
+            _targetPages = Math.max(_targetPages, Math.ceil(_cur / _padTo) * _padTo);
+          }
+          pagesAdded = await this.addPages(pdfDoc, _targetPages);
 
           if (pagesAdded > 0) {
             const tempPagesPath = path.join(this.storagePath, `pages_${uuidv4()}.pdf`);

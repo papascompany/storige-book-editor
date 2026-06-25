@@ -19,6 +19,7 @@ import { WorkerJobsService } from './worker-jobs.service';
 import {
   CreateValidationJobDto,
   CreateConversionJobDto,
+  CreatePageCountFixJobDto,
   CreateSynthesisJobDto,
   UpdateJobStatusDto,
 } from './dto/worker-job.dto';
@@ -86,6 +87,42 @@ export class WorkerJobsController {
     @Body() createConversionJobDto: CreateConversionJobDto,
   ): Promise<WorkerJob> {
     return await this.workerJobsService.createConversionJob(createConversionJobDto);
+  }
+
+  /**
+   * 페이지수 배수 보정 (fix-pagecount) — 데이터 주도 검증 d1 빈페이지 추가 실행기. 내부(admin/manager).
+   * 비동기 — 반환 jobId 폴링(GET /worker-jobs/:id) → COMPLETED 시 outputFileId(보정본 새 fileId).
+   */
+  @Post('fix-pagecount')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @ApiOperation({ summary: 'Create a page-count fix job (pad blank pages to multiple)' })
+  @ApiResponse({ status: 201, description: 'Fix job created and queued', type: WorkerJob })
+  @ApiResponse({ status: 400, description: 'Invalid input' })
+  async createPageCountFixJob(
+    @Body() dto: CreatePageCountFixJobDto,
+  ): Promise<WorkerJob> {
+    return await this.workerJobsService.createPageCountFixJob(dto);
+  }
+
+  /**
+   * 외부 연동용 페이지수 보정 (API Key 인증). 파트너 주문화면 d1 모달 Y 확정 시 호출.
+   */
+  @Post('fix-pagecount/external')
+  @Public()
+  @UseGuards(ApiKeyGuard)
+  @ApiSecurity('api-key')
+  @ApiOperation({ summary: 'Create a page-count fix job (external API key auth)' })
+  @ApiResponse({ status: 201, description: 'Fix job created and queued', type: WorkerJob })
+  @ApiResponse({ status: 401, description: 'Invalid API key' })
+  async createPageCountFixJobExternal(
+    @Body() dto: CreatePageCountFixJobDto,
+    @CurrentSite() site?: CurrentSitePayload,
+  ): Promise<WorkerJob> {
+    return await this.workerJobsService.createPageCountFixJob({
+      ...dto,
+      siteId: site?.siteId, // Phase C — 자동 사이트 식별
+    });
   }
 
   @Post('synthesize')

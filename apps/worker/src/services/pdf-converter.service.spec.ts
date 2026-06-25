@@ -131,4 +131,50 @@ describe('PdfConverterService — WK-2 블리드 sanity 게이트', () => {
     expect(mockedAddBleed).not.toHaveBeenCalled();
     expect(mockedGetPdfInfo).not.toHaveBeenCalled();
   });
+
+  // ── padToMultiple (fix-pagecount, 2026-06-25) ──
+  // 현재 페이지수를 다음 배수까지 첫 페이지 크기 백지로 보정(기존 addPages 재사용).
+  describe('padToMultiple — fix-pagecount 빈페이지 보정', () => {
+    const makePdf = async (n: number): Promise<Uint8Array> => {
+      const d = await PDFDocument.create();
+      for (let i = 0; i < n; i++) d.addPage([595.28, 841.89]);
+      return d.save();
+    };
+    const padOptions = (padToMultiple: number) => ({
+      addPages: false,
+      applyBleed: false,
+      targetPages: 0,
+      bleed: 0,
+      padToMultiple,
+    });
+
+    it('3p + padToMultiple 4 → 1장 추가(pagesAdded=1)', async () => {
+      const inPath = path.join(testDir, 'pad-3.pdf');
+      await fs.writeFile(inPath, await makePdf(3));
+      const result = await service.convert(inPath, padOptions(4), path.join(testDir, 'pad-3-out.pdf'));
+      expect(result.success).toBe(true);
+      expect(result.pagesAdded).toBe(1);
+    });
+
+    it('35p + padToMultiple 4 → 36까지 1장 추가', async () => {
+      const inPath = path.join(testDir, 'pad-35.pdf');
+      await fs.writeFile(inPath, await makePdf(35));
+      const result = await service.convert(inPath, padOptions(4), path.join(testDir, 'pad-35-out.pdf'));
+      expect(result.pagesAdded).toBe(1); // 35 → 36
+    });
+
+    it('8p + padToMultiple 4 → 이미 배수, 추가 없음(pagesAdded=0)', async () => {
+      const inPath = path.join(testDir, 'pad-8.pdf');
+      await fs.writeFile(inPath, await makePdf(8));
+      const result = await service.convert(inPath, padOptions(4), path.join(testDir, 'pad-8-out.pdf'));
+      expect(result.pagesAdded).toBe(0);
+    });
+
+    it('5p + padToMultiple 2 → 1장 추가(6)', async () => {
+      const inPath = path.join(testDir, 'pad-5.pdf');
+      await fs.writeFile(inPath, await makePdf(5));
+      const result = await service.convert(inPath, padOptions(2), path.join(testDir, 'pad-5-out.pdf'));
+      expect(result.pagesAdded).toBe(1); // 5 → 6
+    });
+  });
 });
