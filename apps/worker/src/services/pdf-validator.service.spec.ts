@@ -211,6 +211,71 @@ describe('PdfValidatorService', () => {
       expect(pageCountWarning).toBeDefined();
     });
 
+    // ── 데이터 주도 페이지수 (pageMultiple/pageCountMax/pageCountMin, 2026-06-25) ──
+    // 파트너가 제본별 값을 전달하면 binding 하드코딩 대신 그 값으로 검증. 미전송 시 레거시(byte-identical).
+    const ddOptions = (
+      orderOverrides: Record<string, unknown>,
+    ): ValidationOptions => ({
+      ...defaultOptions,
+      orderOptions: { ...defaultOptions.orderOptions, ...orderOverrides } as any,
+    });
+
+    it('데이터주도: pageMultiple 위반 → PAGE_COUNT_INVALID(자동수정, expected=올림 배수)', async () => {
+      mockedFs.readFile.mockResolvedValue(Buffer.from(await createMockPdf(35, 210, 297)));
+      const result = await service.validate('./dd.pdf', ddOptions({ pageMultiple: 4, pages: 35 }));
+      const err = result.errors.find(e => e.code === ErrorCode.PAGE_COUNT_INVALID);
+      expect(err).toBeDefined();
+      expect(err?.autoFixable).toBe(true);
+      expect(err?.fixMethod).toBe('addBlankPages');
+      expect(err?.details?.expected).toBe(36);
+      expect(err?.details?.pageMultiple).toBe(4);
+    });
+
+    it('데이터주도: pageMultiple 충족 → 페이지수 에러 없음', async () => {
+      mockedFs.readFile.mockResolvedValue(Buffer.from(await createMockPdf(36, 210, 297)));
+      const result = await service.validate('./dd.pdf', ddOptions({ pageMultiple: 4, pages: 36 }));
+      expect(result.errors.find(e => e.code === ErrorCode.PAGE_COUNT_INVALID)).toBeUndefined();
+    });
+
+    it('데이터주도: pageMultiple 이 binding 레거시(perfect=4)를 오버라이드 (무선=2)', async () => {
+      // 34p 는 레거시 perfect(%4)면 에러지만, pageMultiple=2 면 34%2=0 → 통과.
+      mockedFs.readFile.mockResolvedValue(Buffer.from(await createMockPdf(34, 210, 297)));
+      const result = await service.validate('./dd.pdf', ddOptions({ binding: 'perfect', pageMultiple: 2, pages: 34 }));
+      expect(result.errors.find(e => e.code === ErrorCode.PAGE_COUNT_INVALID)).toBeUndefined();
+    });
+
+    it('데이터주도: pageCountMax 초과 → PAGE_COUNT_EXCEEDED', async () => {
+      mockedFs.readFile.mockResolvedValue(Buffer.from(await createMockPdf(40, 210, 297)));
+      const result = await service.validate('./dd.pdf', ddOptions({ pageMultiple: 4, pageCountMax: 32, pages: 40 }));
+      expect(result.errors.find(e => e.code === ErrorCode.PAGE_COUNT_EXCEEDED)).toBeDefined();
+    });
+
+    it('데이터주도: pageCountMin 미만 → PAGE_COUNT_BELOW_MIN 경고(비차단·자동수정 불가)', async () => {
+      mockedFs.readFile.mockResolvedValue(Buffer.from(await createMockPdf(20, 210, 297)));
+      const result = await service.validate('./dd.pdf', ddOptions({ pageCountMin: 32, pages: 20 }));
+      const warn = result.warnings.find(w => w.code === WarningCode.PAGE_COUNT_BELOW_MIN);
+      expect(warn).toBeDefined();
+      expect(warn?.autoFixable).toBe(false);
+      // 하한 미만은 경고일 뿐 → 페이지수 에러 없음
+      expect(result.errors.find(e => e.code === ErrorCode.PAGE_COUNT_INVALID)).toBeUndefined();
+    });
+
+    it('데이터주도: saddle + pageMultiple 이면 validateSaddleStitch 의 %4 강제 스킵(중앙객체 경고는 유지)', async () => {
+      // 10p 는 레거시 saddle(%4)이면 SADDLE_STITCH_INVALID 지만, pageMultiple=2 면 10%2=0 → 통과해야.
+      mockedFs.readFile.mockResolvedValue(Buffer.from(await createMockPdf(10, 210, 297)));
+      const result = await service.validate('./dd.pdf', ddOptions({ binding: 'saddle', pageMultiple: 2, pages: 10 }));
+      expect(result.errors.find(e => e.code === ErrorCode.SADDLE_STITCH_INVALID)).toBeUndefined();
+      expect(result.errors.find(e => e.code === ErrorCode.PAGE_COUNT_INVALID)).toBeUndefined();
+      // 사철 중앙부 객체 확인 경고는 페이지수와 무관 → 유지
+      expect(result.warnings.find(w => w.code === WarningCode.CENTER_OBJECT_CHECK)).toBeDefined();
+    });
+
+    it('레거시 잠금: 데이터주도 필드 미전송 시 perfect %4 에러 현행 유지', async () => {
+      mockedFs.readFile.mockResolvedValue(Buffer.from(await createMockPdf(34, 210, 297)));
+      const result = await service.validate('./legacy.pdf', ddOptions({ binding: 'perfect', pages: 34 }));
+      expect(result.errors.find(e => e.code === ErrorCode.PAGE_COUNT_INVALID)).toBeDefined();
+    });
+
     it('should return warning for missing bleed', async () => {
       const pdfBytes = await createMockPdf(4, 210, 297); // No bleed
       mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));

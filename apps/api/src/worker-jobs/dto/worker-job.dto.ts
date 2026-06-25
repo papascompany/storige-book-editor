@@ -60,6 +60,15 @@ export class CreateValidationJobDto {
     trimSize?: { width: number; height: number };
     /** 작업 사이즈 = 재단 + 사방 블리드*2 mm (2026-06-10, P1). 워커 수신 필드명 일치 */
     workSize?: { width: number; height: number };
+    /**
+     * 내지 페이지수 배수(데이터 주도 계약, 2026-06-25) — 파트너가 제본별 값 전달(무선=2/양장=4/중철=4/스프링=8 등).
+     * 제공 시 워커가 binding 하드코딩 대신 이 값으로 검증(PAGE_COUNT_INVALID·자동수정). 미제공 시 레거시 폴백.
+     */
+    pageMultiple?: number;
+    /** 제본별 페이지수 상한(중철 64 등). 미제공 시 레거시 폴백. */
+    pageCountMax?: number;
+    /** 제본별 페이지수 하한(무선 32 등). 미제공 시 미검사. 위반=경고(비차단). */
+    pageCountMin?: number;
   };
 
   @ApiPropertyOptional({
