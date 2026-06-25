@@ -416,7 +416,7 @@ curl -X POST "https://api.papascompany.co.kr/api/worker-jobs/validate/external" 
 
 ### 2.6 페이지수 보정 (fix-pagecount)
 
-> **계약 확정, 구현 중.** 배수 위반(`PAGE_COUNT_INVALID`)으로 `FIXABLE` 판정된 PDF에 빈 페이지를 자동 추가해 배수를 맞추는 비동기 엔드포인트입니다.
+> **계약 확정·배포 완료(2026-06-25 LIVE).** 배수 위반(`PAGE_COUNT_INVALID`)으로 `FIXABLE` 판정된 PDF에 빈 페이지를 자동 추가해 배수를 맞추는 비동기 엔드포인트입니다.
 
 **엔드포인트:**
 
@@ -735,8 +735,8 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 | POST | `/api/worker-jobs/synthesize/external` | X-API-Key | 표지+내지 합성 잡 |
 | POST | `/api/worker-jobs/split-synthesize/external` | X-API-Key | 분할 합성 잡 |
 | POST | `/api/worker-jobs/check-mergeable/external` | X-API-Key | 합성 가능 dry-run |
-| POST | `/api/worker-jobs/fix-pagecount/external` | X-API-Key (`@Public`+ApiKeyGuard+`@CurrentSite`) | **(구현 중)** 페이지수 보정 — 빈 페이지 추가로 배수 정합. Body `{fileId, targetMultiple}` → jobId, 폴링 시 `outputFileId`(새 fileId, 원본 보존). 2.6 |
-| POST | `/api/worker-jobs/fix-pagecount` | 내부 RolesGuard | **(구현 중)** 페이지수 보정 — 내부 전용 변형 |
+| POST | `/api/worker-jobs/fix-pagecount/external` | X-API-Key (`@Public`+ApiKeyGuard+`@CurrentSite`) | **(LIVE)** 페이지수 보정 — 빈 페이지 추가로 배수 정합. Body `{fileId, targetMultiple}` → jobId, 폴링 시 `outputFileId`(새 fileId, 원본 보존). 2.6 |
+| POST | `/api/worker-jobs/fix-pagecount` | 내부 RolesGuard | **(LIVE)** 페이지수 보정 — 내부 전용 변형 |
 | POST | `/api/worker-jobs/compose-mixed` | **@Public (무인증·테넌트 스코프 없음)** | 세션 기반 합성 트리거. ⚠️ editSessionId(UUID)만으로 트리거 가능 → 세션ID 비밀유지·브라우저 노출 최소화 |
 | GET | `/api/worker-jobs/external/:id` | X-API-Key | 잡 상태 폴링 |
 | GET | `/api/worker-jobs/:id/output` | **JWT (전역 가드, @Public 아님)** | admin Before/After 미리보기용 **내부** 라우트. 파트너는 사용 불가 → 결과 PDF 는 `download/external` 사용 |
@@ -832,7 +832,7 @@ CORS는 (a) Origin 없음→무조건 허용 (b) env 정적 (c) `*.vercel.app`/`
 presigned 업로드는 2 GB까지 허용합니다. 워커 PDF 검증 상한은 env `WORKER_MAX_FILE_SIZE` 로 결정되며, **코드 기본값은 100 MB이지만 현재 프로덕션 배포값은 1 GB**(`docker-compose.yml` `WORKER_MAX_FILE_SIZE=1073741824`)입니다. 즉 오늘 기준 1 GB까지 검증을 통과하고, 설정 상한 초과 시 즉시 `FAILED`('N MB를 초과합니다')입니다. 1 GB 초과(최대 2 GB) 검증은 워커 스트리밍(트랙 B) 완료 후 운영팀 상향이 필요하니 온보딩 시 협의하세요.
 
 **Q. 페이지수가 제본 배수에 안 맞아 검증이 `FIXABLE` 로 떨어집니다.**
-`orderOptions.pageMultiple` 을 전송하면 워커가 그 배수로 페이지수를 검증합니다. 배수 위반 시 `ErrorCode.PAGE_COUNT_INVALID`(autoFixable, `fixMethod='addBlankPages'`, `details.expected`=올림된 목표 페이지수)로 `FIXABLE` 판정됩니다. 보정하려면 `POST /api/worker-jobs/fix-pagecount/external {fileId, targetMultiple}`(비동기 — jobId 반환) 후 `GET /api/worker-jobs/external/:id` 폴링으로 `outputFileId`(빈 페이지 추가된 새 fileId, 원본 보존)를 받아 주문에 사용하세요. `pageMultiple`/`pageCountMax`/`pageCountMin` 을 셋 다 미전송하면 기존 binding 폴백으로 동작합니다(비파괴). 상세는 2.4·2.6 참조. (fix-pagecount 는 현재 구현 중)
+`orderOptions.pageMultiple` 을 전송하면 워커가 그 배수로 페이지수를 검증합니다. 배수 위반 시 `ErrorCode.PAGE_COUNT_INVALID`(autoFixable, `fixMethod='addBlankPages'`, `details.expected`=올림된 목표 페이지수)로 `FIXABLE` 판정됩니다. 보정하려면 `POST /api/worker-jobs/fix-pagecount/external {fileId, targetMultiple}`(비동기 — jobId 반환) 후 `GET /api/worker-jobs/external/:id` 폴링으로 `outputFileId`(빈 페이지 추가된 새 fileId, 원본 보존)를 받아 주문에 사용하세요. `pageMultiple`/`pageCountMax`/`pageCountMin` 을 셋 다 미전송하면 기존 binding 폴백으로 동작합니다(비파괴). 상세는 2.4·2.6 참조. (fix-pagecount 는 2026-06-25 배포 완료·LIVE)
 
 **Q. `binding` 에 어떤 값을 보내야 하나요?**
 책등 계산과 합성기는 canonical code 4종(`perfect`/`saddle`/`spiral`/`hardcover`)만 인지합니다. 자체 제본 라벨(무선날개·계단식중철 등)을 이 4종으로 매핑해 전송하세요. 페이지 규칙(배수/상한/하한)은 binding 문자열이 아니라 `pageMultiple` 등 값으로 구분하므로, 라벨 세분화는 파트너 주문기록에 유지하면 됩니다. bookmoa 매핑 예시는 2.5 참조.
