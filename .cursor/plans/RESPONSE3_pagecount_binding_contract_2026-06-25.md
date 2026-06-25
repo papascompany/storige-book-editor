@@ -66,3 +66,21 @@
 - (D) bookmoa: (d1 severity)(d2 min정책)+제본별 값표 회신 → Storige 전환·배포. 선골격 구현 원하면 즉시.
 
 bookmoa가 제본 taxonomy를 자유롭게 확장할 수 있는 구조로 가는 게 맞습니다. 값표만 주세요 🙏
+
+---
+
+## E. [구현 완료·배포 LIVE] backward-compatible 골격 (2026-06-25, worker `6d0cb76`)
+bookmoa 결정(d1·d2)을 반영해 **데이터 주도 골격을 선구현·배포**했습니다. 지금부터 bookmoa는 orderOptions에 값을 실어 보내기만 하면 됩니다.
+
+- **수신 필드(LIVE)**: `orderOptions.pageMultiple` / `pageCountMax` / `pageCountMin` (전부 optional). 현 배포 API가 그대로 passthrough(검증 strip 없음 확인) → **worker만 배포로 적용 완료.**
+- **동작**: 하나라도 전송되면 데이터 주도 — 배수위반→`PAGE_COUNT_INVALID`(autoFixable·`fixMethod:'addBlankPages'`, **d1**)·상한초과→`PAGE_COUNT_EXCEEDED`·하한미만→`PAGE_COUNT_BELOW_MIN`(신규 경고·비차단, **d2**). saddle도 데이터주도면 내부 `%4/64` 강제 스킵(중앙객체 경고는 유지).
+- **비파괴**: 셋 다 미전송 = 기존 binding 하드코딩 폴백(byte-identical). 임베드/기존 외부호출/타 사이트 무영향. (회귀 376/376 + 레거시잠금 테스트 통과.)
+- **검증 결과 스키마(모달용)**: 배수위반 에러 `details: { expected: <올림 배수>, actual, pageMultiple }` → bookmoa 모달이 "현재 N → 권장 M페이지" 그대로 노출 가능. 하한경고 `details: { min, actual }`.
+- **binding 영문값**: 데이터주도면 worker가 binding 문자열을 페이지수 검증에 쓰지 않으므로 무선/양장 등 세분화에 자유. (단 `binding`은 책등합성용으로 영문 `'perfect'|'saddle'|'spring'` 계속 전송 권장 — RESPONSE2 §6.)
+
+### 🔴 잔여 — d1 "빈페이지 실제 추가" 실행기는 별건(미구현)
+현재 worker는 배수위반을 **`autoFixable:'addBlankPages'` 플래그 + FIXABLE 상태로 표시만** 합니다. 고객이 모달에서 yes 했을 때 **실제로 맨 뒤에 빈페이지를 추가해 36p 파일을 생성하는 "수정 실행기"는 아직 없습니다**(검증과 분리된 신규 worker 기능).
+- 필요 설계: 고객 yes → (bookmoa가) Storige에 **fix 요청**(예: `POST /worker-jobs/fix` 또는 기존 잡 재처리) → worker가 원본 PDF 로드 → 다음 배수까지 **빈 페이지 append**(pdf-lib, 동일 판형) → 새 fileId 저장 → bookmoa가 그 fileId로 주문 확정.
+- ❓ bookmoa 확인: 빈페이지 추가 트리거를 **별도 fix 엔드포인트**로 받을지, 아니면 **고객 yes 시 bookmoa가 편집기/업로드로 직접 보정**할지? (전자면 Storige가 fix 잡/엔드포인트 신규 구현 — 다음 작업으로 진행 가능.)
+
+요약: **검증 계약은 LIVE — bookmoa는 d1·d2 값표대로 전송 시작 가능.** 빈페이지 실제 추가(d1 후반부)만 트리거 방식 확정 후 Storige가 별건 구현.
