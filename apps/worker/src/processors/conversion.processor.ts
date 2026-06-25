@@ -32,6 +32,8 @@ interface ConversionJobData {
      * - center: 중앙 배치
      */
     mode?: 'passthrough' | 'innerfit' | 'center';
+    /** 페이지수 배수 보정(2026-06-25, fix-pagecount) — 현재 페이지수를 다음 배수까지 백지로 채움. */
+    padToMultiple?: number;
   };
 }
 

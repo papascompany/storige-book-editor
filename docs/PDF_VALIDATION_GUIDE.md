@@ -32,7 +32,7 @@
 
 | # | 검증 항목 | 종류 | 코드 | 조건 / 임계값 | 적용 대상 | 자동수정 |
 |---|---|---|---|---|---|---|
-| 1 | 파일 크기 | 🔴에러(즉시중단) | `FILE_TOO_LARGE` | > **100MB** | 전체 | ✕ |
+| 1 | 파일 크기 | 🔴에러(즉시중단) | `FILE_TOO_LARGE` | > **`WORKER_MAX_FILE_SIZE`**(실배포 2GB) | 전체 | ✕ |
 | 2 | 파일 무결성 | 🔴에러(즉시중단) | `FILE_CORRUPTED` | PDF 로드 실패(손상) | 전체 | ✕ |
 | 3 | 페이지수 초과 | 🔴에러 | `PAGE_COUNT_EXCEEDED` | > **1000p**(`DEFAULT_MAX_PAGES`) | 전체 | ✕ |
 | 4 | 제본 규격(페이지수) | 🔴에러 | `PAGE_COUNT_INVALID` | 무선(perfect)·내지 4배수 아님 | 내지 | addBlankPages |
@@ -106,6 +106,78 @@ expectedTotalWidth = size.width×2 + (spineWidthMm ?? paperThickness×pages/2)
 
 ---
 
+## 데이터 주도 페이지수 검증 (2026-06-25 적용)
+
+> 코드: `apps/worker` (커밋 `6d0cb76`, 배포완료). **하위호환**(신규 필드 미전달 시 기존 binding 폴백 — byte-identical, 회귀 없음).
+
+페이지수 규칙을 `binding` 문자열 하드코딩 대신 **주문 데이터(`orderOptions`)로 직접 주입**한다. 신규 필드 3종은 **전부 선택(optional)** 이며, 하나라도 전송되면 워커가 그 값으로 페이지수를 검증한다. 셋 다 미전송이면 기존 `binding` 폴백 동작.
+
+### 신규 `orderOptions` 필드
+
+| 필드 | 의미 | 위반 시 |
+|---|---|---|
+| `pageMultiple` | 페이지수가 이 값의 **배수**여야 함 | `PAGE_COUNT_INVALID` 🔴에러 — `autoFixable=true`, `fixMethod='addBlankPages'`, `details={ expected: 올림배수, actual, pageMultiple }` |
+| `pageCountMax` | **상한** 페이지수 | `PAGE_COUNT_EXCEEDED` 🔴에러 |
+| `pageCountMin` | **하한** 페이지수 | `PAGE_COUNT_BELOW_MIN` 🟡경고(신규·비차단) — `details={ min, actual }` |
+
+- **미전송 폴백(레거시 binding)**: `perfect`/`saddle` → 4배수 검사(`%4`), `saddle` → ≤64p, `spring` → 홀수 페이지 경고. 데이터 주도 필드를 보내면 이 폴백 대신 전송값으로 검증한다(둘은 병행이 아닌 택일).
+- **글로벌 안전상한 1000p**(`options.maxPages`)는 위 규칙과 **별개로 항상 유지**된다.
+- **파일크기 상한**은 `WORKER_MAX_FILE_SIZE`(실배포 2GB)로 별개 관리(위 §파일 크기 참조).
+
+### binding 어휘 = canonical 4종
+
+책등(spine) 계산은 `binding_types` DB를 `code`로 조회한다. canonical `code`는 4종(`perfect` / `saddle` / `spiral` / `hardcover`)이며, 매칭되는 code가 없으면 404. 합성기(synthesis)도 `perfect`/`saddle`/`hardcover`만 인지하고 그 외는 일반 병합 처리한다.
+
+따라서 파트너는 워커로 보내는 `binding`을 **canonical 4종으로 매핑**하고, 페이지 규칙 자체는 `binding` 문자열이 아니라 위 `pageMultiple`/`pageCountMax`/`pageCountMin` 값으로 구분해야 한다(문자열 무의존).
+
+**bookmoa 확정 매핑** (bookmoa 라벨 구분은 bookmoa 주문기록 측에 유지):
+
+| canonical `code` | bookmoa 라벨 | `pageMultiple` | `pageCountMax` | `pageCountMin` |
+|---|---|---|---|---|
+| `perfect` | 무선 / 무선날개 / PUR | 2 | 1000 | 8 |
+| `saddle` | 중철 / 계단식중철 | 4 | 64 | 8 |
+| `hardcover` | 양장 / 반양장 | 4 | 1000 | 8 |
+| `spiral` | 스프링(PP제외/포함) / 벽걸이 / 양장스프링 | 2 | 500 | 8 |
+
+---
+
+## 페이지수 자동 보정 (fix-pagecount) — 계약 확정, 구현 중
+
+> 배수위반(`PAGE_COUNT_INVALID`, FIXABLE)을 빈 페이지 추가로 보정하는 경로. 기존 변환(`pdf-conversion`) 파이프라인 재사용(`addPages` + `registerExternalFile`).
+
+### 엔드포인트
+
+| 엔드포인트 | 인증 |
+|---|---|
+| `POST /worker-jobs/fix-pagecount` | 내부 `RolesGuard` |
+| `POST /worker-jobs/fix-pagecount/external` | 외부 `@Public` + `ApiKeyGuard` + `CurrentSite` |
+
+**Body**: `{ fileId, targetMultiple }`
+
+### 비동기 흐름
+
+1. 호출 → `WorkerJob`(`jobId`) 즉시 반환.
+2. 호출측은 `GET /worker-jobs/:id` 폴링 → `status` `COMPLETED` + `outputFileId`(=빈 페이지가 추가된 **새 `fileId`**).
+3. **원본 `fileId`는 보존**된다.
+
+### 동작
+
+```
+원본 PDF 로드
+→ targetPages = ceil(현재페이지수 / targetMultiple) * targetMultiple
+→ 첫 페이지 크기의 백지를 (targetPages − 현재페이지수)장 맨 뒤에 추가
+→ 새 파일 저장 → 새 fileId 등록(원본 site/order 승계)
+```
+
+### d1(파트너) 연동 흐름
+
+1. 검증 결과가 **FIXABLE**(배수위반)로 반환.
+2. 파트너 모달: "N페이지로 빈페이지 추가할까요? Y/N".
+3. **Y** → `fix-pagecount` 호출 → 반환 `outputFileId`로 주문 진행.
+4. **N** → 호출하지 않음(재업로드 유도, 자동 수정 없음).
+
+---
+
 ## 에러 코드 (차단)
 
 에러가 발생하면 접수가 차단되며, 고객은 파일을 수정 후 재업로드해야 합니다.
@@ -114,7 +186,7 @@ expectedTotalWidth = size.width×2 + (spineWidthMm ?? paperThickness×pages/2)
 |------|------|------|----------|
 | `UNSUPPORTED_FORMAT` | 지원하지 않는 파일 형식 | PDF가 아니거나 손상된 헤더 | PDF 형식으로 저장 |
 | `FILE_CORRUPTED` | 손상된 파일 | 파일 업로드 중 손상 또는 잘못된 PDF | 파일 재생성 |
-| `FILE_TOO_LARGE` | 파일 크기 초과 | 100MB 초과 | 이미지 해상도 줄이기, 압축 |
+| `FILE_TOO_LARGE` | 파일 크기 초과 | `WORKER_MAX_FILE_SIZE`(실배포 2GB) 초과 | 이미지 해상도 줄이기, 압축 |
 | `PAGE_COUNT_INVALID` | 페이지 수 오류 | 제본 방식에 맞지 않는 페이지 수 | 4의 배수로 조정 (사철) |
 | `PAGE_COUNT_EXCEEDED` | 페이지 수 초과 | 사철 64페이지 초과 등 | 무선 제본으로 변경 |
 | `SIZE_MISMATCH` | 페이지 사이즈 불일치 | 주문 규격과 PDF 크기 다름 | PDF 크기 조정 |
@@ -140,6 +212,7 @@ expectedTotalWidth = size.width×2 + (spineWidthMm ?? paperThickness×pages/2)
 | 코드 | 설명 | 원인 | 권장 조치 |
 |------|------|------|----------|
 | `PAGE_COUNT_MISMATCH` | 페이지 수 불일치 | 주문한 페이지 수와 PDF가 다름 | 고객 확인 요청 |
+| `PAGE_COUNT_BELOW_MIN` | 페이지 수 하한 미만 (2026-06-25 신규) | 실제 페이지 수 < `orderOptions.pageCountMin` | 고객 확인 요청 (비차단, `details={ min, actual }`) |
 | `BLEED_MISSING` | 재단 여백 없음 | 3mm 여백이 없음 | 여백 추가 권장 |
 | `RESOLUTION_LOW` | 해상도 낮음 | 150DPI 미만 이미지 존재 | 고해상도 이미지 사용 (300DPI 권장) |
 | `LANDSCAPE_PAGE` | 가로형 페이지 | 세로형 대신 가로형 | 의도 확인 |
@@ -319,7 +392,7 @@ REDIS_HOST=localhost
 REDIS_PORT=6379
 
 # 검증 설정
-MAX_FILE_SIZE=104857600           # 100MB
+WORKER_MAX_FILE_SIZE=2147483648    # 2GB (실배포 파일크기 상한)
 GS_TIMEOUT=5000                   # 5초
 GS_MAX_PAGES=50
 ```

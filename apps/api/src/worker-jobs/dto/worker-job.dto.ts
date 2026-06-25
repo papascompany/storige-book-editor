@@ -122,6 +122,33 @@ export class CreateConversionJobDto {
   siteId?: string;
 }
 
+/**
+ * 페이지수 배수 보정(fix-pagecount, 2026-06-25) — 데이터 주도 검증 d1 빈페이지 추가 실행기.
+ * 검증이 PAGE_COUNT_INVALID(배수위반, autoFixable)로 끝난 파일을 targetMultiple 배수까지
+ * 백지로 보정한 **새 파일**을 만든다. 비동기 — 반환 WorkerJob(jobId) 폴링 → COMPLETED 시 outputFileId.
+ * 내부적으로 pdf-conversion(addPages) 재사용. 원본 fileId 는 보존.
+ */
+export class CreatePageCountFixJobDto {
+  @ApiProperty({ example: 'uuid', description: '원본 PDF 파일 ID' })
+  @IsUUID()
+  @IsNotEmpty()
+  fileId: string;
+
+  @ApiProperty({ example: 4, description: '맞출 페이지수 배수(2/4/8 등). 결과 = ceil(현재/배수)*배수' })
+  @IsNumber()
+  targetMultiple: number;
+
+  @ApiPropertyOptional({ example: 'https://bookmoa.com/api/webhook/fix', description: '완료 콜백 URL(선택)' })
+  @IsOptional()
+  @IsUrl({ protocols: ['http', 'https'], require_tld: false, require_protocol: true })
+  callbackUrl?: string;
+
+  /** Phase C — 호출 컨트롤러에서 자동 주입 */
+  @IsOptional()
+  @IsUUID()
+  siteId?: string;
+}
+
 export class CreateSynthesisJobDto {
   @ApiPropertyOptional({ example: 'uuid', description: '편집 세션 ID' })
   @IsOptional()

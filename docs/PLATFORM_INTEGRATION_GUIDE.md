@@ -280,7 +280,7 @@ curl -X POST "https://api.papascompany.co.kr/api/files/upload/external" \
 | `fileId` | `fileId`/`fileUrl` 중 택1 (fileId 권장) | UUID |
 | `fileUrl` | `fileId` 없을 때 필수(`@ValidateIf(!fileId)` + `@IsNotEmpty`) | URL |
 | `fileType` | **필수** (`@IsNotEmpty`) | enum: `cover` \| `content` \| `post_process` (그 외 값 → `400`) |
-| `orderOptions` | **필수** (`@IsObject` + `@IsNotEmpty`) | `size`·`pages`·`binding`(`perfect`\|`saddle`\|`spring`)·`bleed` 등 |
+| `orderOptions` | **필수** (`@IsObject` + `@IsNotEmpty`) | `size`·`pages`·`binding`(canonical 4종 — 2.5)·`bleed` 등. **선택 필드** `pageMultiple`·`pageCountMax`·`pageCountMin`(데이터 주도 페이지수 검증 — 2.4) |
 | `callbackUrl` | 선택 | 웹훅 수신 시 |
 | `spineWidthMm`, `wingEnabled`, `wingWidthMm` | 선택 | 미전달 시 fallback |
 
@@ -346,13 +346,135 @@ curl "https://api.papascompany.co.kr/api/files/<fileId>/download/external" \
 
 PDF 검증 규칙 요약은 5장 표 참조 (15단계).
 
-### 2.4 유형 1 체크리스트
+### 2.4 페이지수 검증 (데이터 주도)
+
+> **LIVE** — worker 커밋 `6d0cb76` 배포완료. 페이지수·제본 규격 검증을 binding 문자열 하드코딩이 아니라 **파트너가 전송한 데이터로 구동**합니다.
+
+`orderOptions` 에 아래 **3개 신규 필드(전부 선택)** 를 추가할 수 있습니다.
+
+| 필드 | 타입 | 의미 |
+|---|---|---|
+| `pageMultiple` | number | 페이지수가 이 값의 배수여야 함 (예: 중철=4, 무선=2) |
+| `pageCountMax` | number | 허용 최대 페이지수 (상한) |
+| `pageCountMin` | number | 권장 최소 페이지수 (하한, 비차단 경고) |
+
+**동작:**
+- **셋 중 하나라도 전송되면** 워커는 binding 문자열 기준 하드코딩 대신 **전송된 값으로 페이지수를 검증**합니다.
+- **셋 다 미전송이면 기존 binding 폴백** 으로 동작합니다 (byte-identical, 비파괴 — 기존 통합은 변경 없이 그대로 동작).
+
+**판정 결과 코드:**
+
+| 조건 | 결과 | 코드 / 상세 |
+|---|---|---|
+| `pageMultiple` 배수 위반 | 차단 (`FIXABLE`) | `ErrorCode.PAGE_COUNT_INVALID` — `autoFixable=true`, `fixMethod='addBlankPages'`, `details={ expected: 올림배수, actual, pageMultiple }` |
+| `pageCountMax` 초과 | 차단 (`FAILED`) | `ErrorCode.PAGE_COUNT_EXCEEDED` |
+| `pageCountMin` 미만 | 비차단 경고 | `WarningCode.PAGE_COUNT_BELOW_MIN` (신규) — `details={ min, actual }` |
+
+> 배수 위반은 `autoFixable=true` 이므로 잡 status 가 `FIXABLE` 로 떨어집니다. `details.expected`(올림된 목표 페이지수)와 `fixMethod='addBlankPages'` 를 받아 파트너는 자동수정 흐름(2.6 fix-pagecount)으로 이어갈 수 있습니다.
+
+> **글로벌 안전상한은 별개로 유지:** `options.maxPages = 1000p` 는 위 데이터 주도 검증과 **무관하게 항상 적용**되는 절대 상한입니다. 파일크기 상한 역시 별개로 `WORKER_MAX_FILE_SIZE`(현재 프로덕션 2 GB 실배포 — §1.4)가 적용됩니다.
+
+**파트너 액션:** 제본 종류별로 위 값을 채워 전송하세요. 값 매핑은 2.5(canonical binding) 참조.
+
+```bash
+curl -X POST "https://api.papascompany.co.kr/api/worker-jobs/validate/external" \
+  -H "X-API-Key: <YOUR_SITE_API_KEY>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "fileId": "8b1f...uuid",
+    "fileType": "content",
+    "orderOptions": {
+      "size": { "width": 148, "height": 210 },
+      "pages": 26,
+      "binding": "saddle",
+      "bleed": 3,
+      "pageMultiple": 4,
+      "pageCountMax": 64,
+      "pageCountMin": 8
+    }
+  }'
+```
+
+### 2.5 binding 어휘 (canonical 4종)
+
+> 책등(spine) 계산과 합성기는 binding 문자열을 **canonical 코드**로만 인지합니다. 파트너는 자체 제본 라벨을 canonical 4종으로 **매핑하여 전송**합니다.
+
+- 책등(spine) 계산은 `binding_types` DB를 **code로 조회**합니다. **code 4종: `perfect` / `saddle` / `spiral` / `hardcover`** — 없으면 `404`.
+- 합성기는 `perfect` / `saddle` / `hardcover` 만 인지하며, 그 외 값은 일반 병합으로 처리합니다.
+- 따라서 파트너가 워커로 보내는 `binding` 은 **canonical 4종으로 매핑**해야 합니다. **페이지 규칙(배수/상한/하한)은 binding 문자열에 의존하지 않고 `pageMultiple` 등의 값으로 구분**합니다 (2.4).
+
+**bookmoa 확정 매핑 (예시 — 파트너 라벨 → canonical):**
+
+| bookmoa 라벨 | canonical code | pageMultiple | pageCountMax | pageCountMin |
+|---|---|---|---|---|
+| 무선 / 무선날개 / PUR | `perfect` | 2 | 1000 | 8 |
+| 중철 / 계단식중철 | `saddle` | 4 | 64 | 8 |
+| 양장 / 반양장 | `hardcover` | 4 | 1000 | 8 |
+| 스프링(PP제외/포함) / 벽걸이 / 양장스프링 | `spiral` | 2 | 500 | 8 |
+
+> bookmoa 라벨(무선날개·계단식중철 등) 구분은 **bookmoa 주문기록에 유지**합니다. Storige 로는 canonical code + 페이지 규칙 값만 전달하면 됩니다. 위 표는 bookmoa 매핑 예시이며, 다른 파트너는 자체 라벨을 동일 4종 code로 매핑하고 해당 페이지 규칙 값을 전송하세요.
+
+### 2.6 페이지수 보정 (fix-pagecount)
+
+> **계약 확정, 구현 중.** 배수 위반(`PAGE_COUNT_INVALID`)으로 `FIXABLE` 판정된 PDF에 빈 페이지를 자동 추가해 배수를 맞추는 비동기 엔드포인트입니다.
+
+**엔드포인트:**
+
+| Method | Path | 인증 |
+|---|---|---|
+| POST | `/api/worker-jobs/fix-pagecount` | 내부 `RolesGuard` (내부 전용) |
+| POST | `/api/worker-jobs/fix-pagecount/external` | `@Public` + `ApiKeyGuard` + `@CurrentSite` (외부 파트너) |
+
+**요청 Body:**
+```json
+{ "fileId": "<원본 fileId>", "targetMultiple": 4 }
+```
+
+**비동기 흐름 (jobId → outputFileId):**
+1. 호출 → `WorkerJob`(`jobId`) 반환 (비동기).
+2. 호출측이 `GET /api/worker-jobs/external/:id` 폴링 → `status: COMPLETED` + **`outputFileId`**(빈 페이지가 추가된 **새 fileId**).
+3. **원본 `fileId` 는 보존**됩니다 (새 파일로 등록, 비파괴).
+
+**보정 동작:**
+- 원본 PDF 로드 → `targetPages = ceil(현재페이지수 / targetMultiple) * targetMultiple`.
+- **첫 페이지 크기의 백지** 를 `(targetPages - 현재페이지수)` 장 **맨 뒤에 추가**.
+- 새 파일 저장 → 새 `fileId` 등록 (원본 `site`/`order` 승계).
+
+> 내부적으로 기존 변환(`pdf-conversion`) 파이프라인(`addPages` + `registerExternalFile`)을 재사용합니다. 외부 노출 계약은 위 (Body/응답)와 같습니다.
+
+**d1 흐름 (검증 FIXABLE → 보정 → 주문):**
+
+```
+validate/external → FIXABLE (PAGE_COUNT_INVALID, 배수 위반)
+        │
+        ▼
+파트너 모달: "N페이지로 빈 페이지를 추가할까요? (Y/N)"
+        │
+  ┌─────┴─────┐
+  ▼ Y          ▼ N
+fix-pagecount  호출 안 함
+호출            (재업로드 유도,
+  │             자동수정 없음)
+  ▼
+폴링 → COMPLETED + outputFileId
+  │
+  ▼
+반환된 outputFileId 로 주문 진행
+```
+
+- **Y(예)** → `fix-pagecount/external` 호출 → 반환된 `outputFileId` 로 주문 진행. 모달의 `N`(목표 페이지수)은 검증 결과의 `details.expected` 를 사용.
+- **N(아니오)** → 호출하지 않음. 재업로드를 유도하며 **자동 수정은 일어나지 않습니다**.
+
+### 2.7 유형 1 체크리스트
 
 - [ ] `X-API-Key` 를 서버에서만 사용 (브라우저 노출 없음)
 - [ ] presigned 직결 사용 시 R2 CORS에 origin + `ExposeHeaders: ETag` 등록 (Storige 오너 작업)
 - [ ] `PUT` 시 `Content-Type` = 서명 mime 일치
 - [ ] `complete` 의 `expectedSize` = 실제 파일 크기 (SIZE_MISMATCH 방지)
 - [ ] `validate/external` 에 `fileType`(enum) + `orderOptions`(size·pages·binding·bleed·spineWidthMm) 명시 전달
+- [ ] `binding` 은 canonical 4종(`perfect`/`saddle`/`spiral`/`hardcover`)으로 매핑 전송 (2.5)
+- [ ] 데이터 주도 페이지수 검증 사용 시 `orderOptions.pageMultiple`/`pageCountMax`/`pageCountMin` 전송 (미전송 시 binding 폴백 — 2.4)
+- [ ] `FIXABLE`(배수 위반, `PAGE_COUNT_INVALID`) 수신 시 모달 → `fix-pagecount/external` → `outputFileId` 로 주문 (2.6)
 - [ ] 검증 PDF가 1 GB 초과(현재 프로덕션 상한)면 운영팀에 `WORKER_MAX_FILE_SIZE` 상향 사전 요청
 - [ ] 폴링 또는 웹훅 중 택1, 웹훅이면 `uploadCallbackUrl` 사전 등록 (SSRF allowlist)
 - [ ] 결과는 `download/external`(X-API-Key)로만 회수, fileId 고객 브라우저 노출 자제
@@ -613,6 +735,8 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 | POST | `/api/worker-jobs/synthesize/external` | X-API-Key | 표지+내지 합성 잡 |
 | POST | `/api/worker-jobs/split-synthesize/external` | X-API-Key | 분할 합성 잡 |
 | POST | `/api/worker-jobs/check-mergeable/external` | X-API-Key | 합성 가능 dry-run |
+| POST | `/api/worker-jobs/fix-pagecount/external` | X-API-Key (`@Public`+ApiKeyGuard+`@CurrentSite`) | **(구현 중)** 페이지수 보정 — 빈 페이지 추가로 배수 정합. Body `{fileId, targetMultiple}` → jobId, 폴링 시 `outputFileId`(새 fileId, 원본 보존). 2.6 |
+| POST | `/api/worker-jobs/fix-pagecount` | 내부 RolesGuard | **(구현 중)** 페이지수 보정 — 내부 전용 변형 |
 | POST | `/api/worker-jobs/compose-mixed` | **@Public (무인증·테넌트 스코프 없음)** | 세션 기반 합성 트리거. ⚠️ editSessionId(UUID)만으로 트리거 가능 → 세션ID 비밀유지·브라우저 노출 최소화 |
 | GET | `/api/worker-jobs/external/:id` | X-API-Key | 잡 상태 폴링 |
 | GET | `/api/worker-jobs/:id/output` | **JWT (전역 가드, @Public 아님)** | admin Before/After 미리보기용 **내부** 라우트. 파트너는 사용 불가 → 결과 PDF 는 `download/external` 사용 |
@@ -653,7 +777,7 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 |---|---|---|
 | 1 | 파일 크기 | 코드 기본 100 MB / **프로덕션 현재 1 GB** (env `WORKER_MAX_FILE_SIZE`; 최대 2 GB는 운영팀 상향 대기) |
 | 2 | 파일 무결성 | PDF 구조 유효성 |
-| 3 | 페이지 수 / 제본 규격 | `pages` + `binding`(perfect/saddle/spring) |
+| 3 | 페이지 수 / 제본 규격 | **데이터 주도**: `orderOptions.pageMultiple`/`pageCountMax`/`pageCountMin` 전송 시 그 값으로 검증, 미전송 시 binding 폴백. 배수 위반 → `PAGE_COUNT_INVALID`(FIXABLE), 상한 초과 → `PAGE_COUNT_EXCEEDED`(FAILED), 하한 미만 → `PAGE_COUNT_BELOW_MIN`(경고). binding 은 canonical 4종(`perfect`/`saddle`/`spiral`/`hardcover`). 글로벌 안전상한 `maxPages=1000p` 별도 유지. (2.4·2.5) |
 | 4 | 판형 | ±1 mm |
 | 5 | 재단 여백(bleed) | 3 mm |
 | 6 | 책등(spine) | ±2 mm |
@@ -706,6 +830,12 @@ CORS는 (a) Origin 없음→무조건 허용 (b) env 정적 (c) `*.vercel.app`/`
 
 **Q. 1~2 GB 파일을 올릴 수 있나요?**
 presigned 업로드는 2 GB까지 허용합니다. 워커 PDF 검증 상한은 env `WORKER_MAX_FILE_SIZE` 로 결정되며, **코드 기본값은 100 MB이지만 현재 프로덕션 배포값은 1 GB**(`docker-compose.yml` `WORKER_MAX_FILE_SIZE=1073741824`)입니다. 즉 오늘 기준 1 GB까지 검증을 통과하고, 설정 상한 초과 시 즉시 `FAILED`('N MB를 초과합니다')입니다. 1 GB 초과(최대 2 GB) 검증은 워커 스트리밍(트랙 B) 완료 후 운영팀 상향이 필요하니 온보딩 시 협의하세요.
+
+**Q. 페이지수가 제본 배수에 안 맞아 검증이 `FIXABLE` 로 떨어집니다.**
+`orderOptions.pageMultiple` 을 전송하면 워커가 그 배수로 페이지수를 검증합니다. 배수 위반 시 `ErrorCode.PAGE_COUNT_INVALID`(autoFixable, `fixMethod='addBlankPages'`, `details.expected`=올림된 목표 페이지수)로 `FIXABLE` 판정됩니다. 보정하려면 `POST /api/worker-jobs/fix-pagecount/external {fileId, targetMultiple}`(비동기 — jobId 반환) 후 `GET /api/worker-jobs/external/:id` 폴링으로 `outputFileId`(빈 페이지 추가된 새 fileId, 원본 보존)를 받아 주문에 사용하세요. `pageMultiple`/`pageCountMax`/`pageCountMin` 을 셋 다 미전송하면 기존 binding 폴백으로 동작합니다(비파괴). 상세는 2.4·2.6 참조. (fix-pagecount 는 현재 구현 중)
+
+**Q. `binding` 에 어떤 값을 보내야 하나요?**
+책등 계산과 합성기는 canonical code 4종(`perfect`/`saddle`/`spiral`/`hardcover`)만 인지합니다. 자체 제본 라벨(무선날개·계단식중철 등)을 이 4종으로 매핑해 전송하세요. 페이지 규칙(배수/상한/하한)은 binding 문자열이 아니라 `pageMultiple` 등 값으로 구분하므로, 라벨 세분화는 파트너 주문기록에 유지하면 됩니다. bookmoa 매핑 예시는 2.5 참조.
 
 **Q. shop-session에서 회원번호 관련 에러가 납니다.**
 `memberSeqno` 는 `@IsNumber()` 필수 필드라 **누락 시 일반 검증 `400`**(코드명 `MEMBER_REQUIRED` 아님)이 납니다. `memberSeqno=0` 은 유효한 number라 검증을 통과해 `sub='0'` 세션을 발급합니다(거부 안 함). `MEMBER_REQUIRED` 는 shop-session 이 아니라 `POST /api/edit-sessions`(세션 생성) 단계에서 `memberSeqno` 가 falsy(0/누락)일 때 발생합니다. 파트너 자체 정수 회원번호(0/음수 아님)를 채우세요.
