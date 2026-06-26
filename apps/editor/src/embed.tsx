@@ -176,6 +176,13 @@ export interface EditorResult {
   sessionId: string
   orderSeqno?: number
   editCode?: string
+  /**
+   * 게스트 세션 완료 시 true — 로그인 유도 신호 (STALE-CLOSURE-001).
+   * 이 값이 true이면 guestToken도 함께 포함됨. bookmoa는 editor.complete.needsAuth로 분기.
+   */
+  needsAuth?: boolean
+  /** 게스트 세션 토큰 — needsAuth=true일 때만 포함 */
+  guestToken?: string
   pages: {
     initial: number
     final: number
@@ -1131,16 +1138,29 @@ function EmbeddedEditor({
           // First save current state
           const canvasData = canvas?.toJSON(core.extendFabricOption) || null
 
-          // 게스트 세션: 회원 전용 complete 불가 → 저장만 하고 로그인 유도(editor.needAuth)
+          // 게스트 세션: 회원 전용 complete 불가 → 저장만 하고 로그인 유도
           const guestToken = currentSession?.guestToken
           if (guestToken) {
             await editSessionsApi.updateGuest(currentSessionId, guestToken, { canvasData })
+            // STALE-CLOSURE-001: editor.complete에 needsAuth/guestToken 인라인 포함
+            // bookmoa finishComplete가 editor.complete.needsAuth 로 분기하므로 이 이벤트를 먼저 emit
+            const guestResult: EditorResult = {
+              sessionId: currentSessionId,
+              needsAuth: true,
+              guestToken,
+              pages: { initial: options?.pages || 1, final: options?.pages || 1 },
+              files: {},
+              savedAt: new Date().toISOString(),
+            }
+            onComplete?.(guestResult)
+            postToParent(parentOrigin, 'editor.complete', guestResult)
+            // 하위호환: editor.needAuth도 유지
             postToParent(parentOrigin, 'editor.needAuth', {
               guestToken,
               reason: 'complete_save',
               ts: new Date().toISOString(),
             })
-            console.log('[EmbeddedEditor] Guest complete → needAuth emitted')
+            console.log('[EmbeddedEditor] Guest complete → editor.complete(needsAuth) + needAuth emitted')
             return
           }
 
@@ -1254,16 +1274,28 @@ function EmbeddedEditor({
         ? allCanvas.map((c) => c.toJSON(core.extendFabricOption))
         : (canvas?.toJSON(core.extendFabricOption) || null)
 
-      // 게스트 세션: PDF 생성/회원 complete 불가 → 저장만 하고 로그인 유도(editor.needAuth)
+      // 게스트 세션: PDF 생성/회원 complete 불가 → 저장만 하고 로그인 유도
       const guestToken = currentSession?.guestToken
       if (guestToken) {
         await editSessionsApi.updateGuest(currentSessionId, guestToken, { canvasData })
+        // STALE-CLOSURE-001: editor.complete에 needsAuth/guestToken 인라인 포함
+        const guestResult: EditorResult = {
+          sessionId: currentSessionId,
+          needsAuth: true,
+          guestToken,
+          pages: { initial: options?.pages || 1, final: options?.pages || 1 },
+          files: {},
+          savedAt: new Date().toISOString(),
+        }
+        onComplete?.(guestResult)
+        postToParent(parentOrigin, 'editor.complete', guestResult)
+        // 하위호환: editor.needAuth도 유지
         postToParent(parentOrigin, 'editor.needAuth', {
           guestToken,
           reason: 'complete_save',
           ts: new Date().toISOString(),
         })
-        console.log('[EmbeddedEditor] Guest finish → needAuth emitted')
+        console.log('[EmbeddedEditor] Guest finish → editor.complete(needsAuth) + needAuth emitted')
         return
       }
 
