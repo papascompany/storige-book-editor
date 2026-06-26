@@ -831,9 +831,11 @@ export interface SynthesisResult {
 export interface ValidationWebhookPayload {
   event: 'validation.completed' | 'validation.fixable' | 'validation.failed';
   jobId: string;
+  /** 편집 세션 ID — job.editSessionId가 있을 때만 포함 (WH-005) */
+  sessionId?: string;
   /** 검증 대상 파일 타입 */
   fileType: 'cover' | 'content' | 'post_process';
-  /** 연결된 주문 번호 */
+  /** 연결된 주문 번호 — bookmoa orderOptions.orderSeqno echo-back (WH-005) */
   orderSeqno?: number;
   status: 'completed' | 'fixable' | 'failed';
   /** 검증 결과 상세 (errors, warnings, metadata) */
@@ -851,6 +853,8 @@ export interface SynthesisWebhookPayload {
   jobId: string;
   sessionId?: string; // EditSession ID (additive, NEW_DEV_PLAN §3.5 계약 보강)
   orderId?: string;
+  /** bookmoa orderOptions.orderSeqno echo-back — orders 테이블 원자 갱신용 (WH-005) */
+  orderSeqno?: number;
   status: 'completed' | 'failed';
 
   // 하위호환 필수
