@@ -69,6 +69,8 @@ export class CreateValidationJobDto {
     pageCountMax?: number;
     /** 제본별 페이지수 하한(무선 32 등). 미제공 시 미검사. 위반=경고(비차단). */
     pageCountMin?: number;
+    /** bookmoa 주문 번호 — 검증/합성 완료 웹훅 echo-back용 (WH-005). bookmoa order.id와 1:1 매핑. */
+    orderSeqno?: number;
   };
 
   @ApiPropertyOptional({

@@ -1597,6 +1597,7 @@ export class WorkerJobsService {
         jobId: job.id, // domain ID (worker_jobs.id)
         sessionId: job.editSessionId || undefined, // additive (계약 보강)
         orderId: job.options?.orderId,
+        orderSeqno: job.options?.orderOptions?.orderSeqno, // WH-005: bookmoa orderOptions.orderSeqno echo-back
         status: isCompleted ? 'completed' : 'failed',
 
         // 하위호환: 항상 merged URL (failed면 '')
@@ -1656,8 +1657,9 @@ export class WorkerJobsService {
       const payload: ValidationWebhookPayload = {
         event,
         jobId: job.id,
+        sessionId: job.editSessionId || undefined, // WH-005
         fileType: job.options?.fileType ?? 'cover',
-        orderSeqno: job.options?.orderOptions?.orderSeqno,
+        orderSeqno: job.options?.orderOptions?.orderSeqno, // WH-005: bookmoa orderOptions.orderSeqno echo-back
         status,
         result: job.result,
         errorMessage: job.errorMessage || undefined,
