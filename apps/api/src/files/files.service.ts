@@ -514,12 +514,39 @@ export class FilesService {
     return this.fileRepository.save(file);
   }
 
-  /** 만료된(expires_at < now) 파일 조회 — retention cron 용. limit 으로 배치 제한. */
+  /**
+   * 만료된(expires_at < now) 파일 조회 — retention cron 용. limit 으로 배치 제한.
+   *
+   * P0 무중단 가드 (2026-07-03): **미완결 주문에 연결된 파일은 만료 sweep 에서 제외**한다.
+   * ⚠️ `order_seqno IS NULL` 단독 가드는 오답 — 100p/MD2 등 retention 오프로드 테넌트는
+   *    order_seqno 와 expires_at 을 **동시 스탬프**(uploadFileExternal 이 orderSeqno 스탬프 후
+   *    setExpiry)하므로, 그 방식은 이들의 정상 만료를 영구 차단해 스토리지 무한 잔존을 부른다.
+   * 따라서 **주문 상태(편집세션 status)를 조인**해, 진행 중(status <> 'complete')인 세션이 존재하는
+   * 주문의 파일만 보호하고, 완결됐거나 편집세션이 아예 없는(순수 워커 오프로드) 파일은 예약된
+   * expires_at 대로 만료시킨다. site 스코프를 함께 대조해 파트너 간 order_seqno 충돌로 인한
+   * 오보호를 줄인다(양측 site_id NULL 은 동일 스코프로 간주). 데이터손실 < 디스크 잔존 원칙상
+   * 경계 사례에서는 보호(만료 제외) 쪽으로 기운다.
+   *
+   * ⚠️ 배포 전 retention.dryRun=ON 으로 sweep 후보 건수 before/after 표본 검증 필수
+   *    (모든 파일이 미완결 주문 연결이면 '아무것도 만료 안 됨' 침묵실패 가능).
+   */
   async findExpired(limit = 200): Promise<FileEntity[]> {
     return this.fileRepository
       .createQueryBuilder('f')
       .where('f.expires_at IS NOT NULL')
       .andWhere('f.expires_at < :now', { now: new Date() })
+      .andWhere(
+        `NOT EXISTS (
+           SELECT 1 FROM file_edit_sessions s
+           WHERE s.order_seqno = f.order_seqno
+             AND s.status <> 'complete'
+             AND s.deleted_at IS NULL
+             AND (
+               s.site_id = f.site_id
+               OR (s.site_id IS NULL AND f.site_id IS NULL)
+             )
+         )`,
+      )
       .orderBy('f.expires_at', 'ASC')
       .take(limit)
       .getMany();
@@ -673,8 +700,14 @@ export class FilesService {
     fileId: string,
     page: number = 1,
     width: number = 200,
+    caller?: { siteId?: string; role?: string },
   ): Promise<string> {
     const file = await this.findById(fileId);
+
+    // P0-3: 테넌트 격리 — findById 직후·mimeType 검사 전에 대조(getFileStream 선례와 동일 위치).
+    // 불일치 시 여기서 404 로 종료되므로 아래 GS 래스터화·thumbnailUrl 저장 부수효과는
+    // 인가된 테넌트(또는 내부/worker)에서만 발생한다.
+    this.assertSiteAccess(file, caller);
 
     // PDF 파일만 썸네일 생성 가능
     if (file.mimeType !== 'application/pdf') {
@@ -777,8 +810,9 @@ export class FilesService {
     fileId: string,
     page: number = 1,
     width: number = 200,
+    caller?: { siteId?: string; role?: string },
   ): Promise<Buffer> {
-    const thumbnailUrl = await this.generateThumbnail(fileId, page, width);
+    const thumbnailUrl = await this.generateThumbnail(fileId, page, width, caller);
     const thumbnailPath = path.join(
       this.thumbnailPath,
       path.basename(thumbnailUrl),

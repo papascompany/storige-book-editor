@@ -657,19 +657,31 @@ export class FilesController {
   }
 
   /**
-   * PDF 썸네일 조회
+   * PDF 썸네일 조회 (외부 API Key 인증 + 테넌트 격리)
+   *
+   * P0-3 (2026-07-03): 과거 @Public 무인증이라 fileId(UUID)만 알면 임의 파일의 첫 페이지를
+   * PNG 로 무인증 유출했다 — 바로 위 :id/raw 가 'content PDF(민감) 무인증 유출' 회귀를 막으려
+   * PDF/svg 를 404 배제하는데, thumbnail 은 그 권한경계에 뚫린 구멍이었다(주문 원고·합성물·
+   * 회원 디자인 첫 페이지 노출). download/external·:id/expiry/external 와 동일하게
+   * ApiKeyGuard + @CurrentSite + assertSiteAccess(서비스단) 로 강등하고, PDF→PNG 래스터화
+   * 무인증 DoS 를 @Throttle 로 완화. NULL-siteId(레거시/공유)는 assertSiteAccess 가 기존 정책대로 통과.
    */
   @Get(':id/thumbnail')
   @Public()
-  @ApiOperation({ summary: 'PDF 썸네일 조회' })
+  @UseGuards(ApiKeyGuard)
+  @ApiSecurity('api-key')
+  @Throttle({ default: { limit: 60, ttl: 60000 } })
+  @ApiOperation({ summary: 'PDF 썸네일 조회 (외부 API Key 인증 + 테넌트 격리)' })
   @ApiResponse({ status: 200, description: 'PNG 이미지' })
   @ApiResponse({ status: 400, description: 'PDF 파일이 아니거나 썸네일 생성 실패' })
+  @ApiResponse({ status: 401, description: 'Invalid API key' })
   @ApiResponse({ status: 404, description: '파일을 찾을 수 없음' })
   async getThumbnail(
     @Param('id', ParseUUIDPipe) id: string,
     @Query('page') page: string = '1',
     @Query('width') width: string = '200',
     @Res() res: Response,
+    @CurrentSite() site?: CurrentSitePayload,
   ): Promise<void> {
     const pageNum = parseInt(page, 10) || 1;
     const widthNum = parseInt(width, 10) || 200;
@@ -688,7 +700,8 @@ export class FilesController {
       });
     }
 
-    const buffer = await this.filesService.getThumbnailBuffer(id, pageNum, widthNum);
+    // P0-3: 호출자 site 대조 — 타 테넌트 파일 썸네일 유출 차단(assertSiteAccess 서비스단).
+    const buffer = await this.filesService.getThumbnailBuffer(id, pageNum, widthNum, site);
 
     // 캐싱 헤더 설정 (1시간)
     res.setHeader('Content-Type', 'image/png');
