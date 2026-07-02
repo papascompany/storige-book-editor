@@ -1,9 +1,7 @@
 import { fabric } from 'fabric'
 import Editor from '../Editor'
 import { BarCodeType, QrCodeOption, SmartCodeOption } from '../models'
-import JsBarcode from 'jsbarcode'
 import { v4 as uuid } from 'uuid'
-import QRCodeStyling from 'qr-code-styling'
 import { blobToBase64 } from '../utils/utils'
 import { core } from '../utils/canvas'
 import { PluginBase } from '../plugin'
@@ -54,16 +52,18 @@ class SmartCodePlugin extends PluginBase {
 
   async hookTransform(object: fabric.Object) {
     if (object.extensionType === 'barcode') {
-      object.src = this.getBarCodeDataUrl(object.extension)
+      object.src = await this.getBarCodeDataUrl(object.extension)
     } else if (object.extensionType === 'qrcode') {
-      object.src = this.getQrCodeDataUrl(object.extension)
+      object.src = await this.getQrCodeDataUrl(object.extension)
     }
   }
 
   public async barcode(option: SmartCodeOption): Promise<fabric.Image | undefined> {
+    const lastOptions = { ...defaultBarCodeOption, ...option }
+    // ⚠️ getBarCodeDataUrl 은 async(dynamic import). await 를 Promise executor '밖'에서 수행해
+    // 예외(잘못된 입력·청크 로드 실패)가 async executor 에 삼켜져 무한 hang 되지 않고 caller 로 전파되게 한다.
+    const url = await this.getBarCodeDataUrl(JSON.parse(JSON.stringify(lastOptions)))
     return new Promise((resolve) => {
-      const lastOptions = { ...defaultBarCodeOption, ...option }
-      const url = this.getBarCodeDataUrl(JSON.parse(JSON.stringify(lastOptions)))
       fabric.Image.fromURL(
         url,
         (imgEl: fabric.Image) => {
@@ -86,9 +86,11 @@ class SmartCodePlugin extends PluginBase {
   }
 
   public async qrcode(option: QrCodeOption): Promise<fabric.Image | undefined> {
-    return new Promise(async (resolve) => {
-      const lastOptions = { ...defaultQrCodeOption, ...option }
-      const url = await this.getQrCodeDataUrl(lastOptions)
+    const lastOptions = { ...defaultQrCodeOption, ...option }
+    // ⚠️ getQrCodeDataUrl 은 async(dynamic import). await 를 Promise executor '밖'에서 수행해
+    // 예외가 삼켜져 무한 hang 되지 않고 caller 로 전파되게 한다(async executor 안티패턴 제거).
+    const url = await this.getQrCodeDataUrl(lastOptions)
+    return new Promise((resolve) => {
       fabric.Image.fromURL(
         url,
         (imgEl) => {
@@ -111,7 +113,8 @@ class SmartCodePlugin extends PluginBase {
     })
   }
 
-  private getBarCodeDataUrl(option: any): string {
+  private async getBarCodeDataUrl(option: any): Promise<string> {
+    const { default: JsBarcode } = await import('jsbarcode')
     const canvas = document.createElement('canvas')
     let value = option.value
 
@@ -122,6 +125,7 @@ class SmartCodePlugin extends PluginBase {
   }
 
   private async getQrCodeDataUrl(options: any): Promise<string> {
+    const { default: QRCodeStyling } = await import('qr-code-styling')
     const qrCode = new QRCodeStyling(options)
     const blob = await qrCode.getRawData('png')
     if (!blob) return ''
