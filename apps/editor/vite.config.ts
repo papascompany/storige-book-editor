@@ -112,8 +112,20 @@ export default defineConfig(({ mode }) => {
                   return 'vendor-pdf'
                 }
                 // QR/Barcode
-                if (id.includes('qrcode') || id.includes('jsbarcode') || id.includes('bwip-js')) {
+                // ⚠️ 'qrcode' 부분문자열은 'qr-code-styling'(하이픈)을 매칭하지 못한다 → 명시 매칭 필수.
+                // 미매칭 시 eager 'vendor' 캐치올에 흡수되어 dynamic import 절단이 무효화됨.
+                if (
+                  id.includes('qrcode') ||
+                  id.includes('qr-code-styling') ||
+                  id.includes('jsbarcode') ||
+                  id.includes('bwip-js')
+                ) {
                   return 'vendor-codes'
+                }
+                // Paper.js (accessory/effect 벡터 union) — dynamic-only 라 dedicated 청크로
+                // 분리해야 eager 'vendor' 캐치올과 섞이지 않아 실제 지연로드가 유효해진다.
+                if (id.includes('/paper@') || id.includes('/node_modules/paper/')) {
+                  return 'vendor-paper'
                 }
                 // UI components (radix, etc)
                 if (id.includes('@radix-ui') || id.includes('@phosphor-icons')) {
