@@ -2,9 +2,23 @@ import Editor from '../Editor'
 import { fabric } from 'fabric'
 import { PluginBase, PluginOption } from '../plugin'
 import { v4 as uuid } from 'uuid'
-import paper from 'paper'
+// 타입 전용 import (빌드시 완전 소거 → paper 를 eager 번들로 재유입시키지 않음).
+// 전역 `declare namespace paper` 의 타입(PaperScope/PathItem) 참조 시 ESLint no-undef 를 만족시키기 위함.
+// 런타임 값은 아래 getPaper() 의 dynamic import('paper') 로만 로드한다.
+import type paper from 'paper'
 import { AccessoryPosition, ClippingAccessory } from '../models'
 import ImageProcessingPlugin from './ImageProcessingPlugin'
+
+// paper.js 지연 로드 (번들 절단: Track A) — drawMergedWorkspace 최초 호출 시에만 로드.
+// paper 타입(paper.PaperScope/paper.PathItem 등)은 전역 `declare namespace paper`로 제공되어
+// 정적 import 없이도 타입 참조가 유지된다. 런타임 값(PaperScope 싱글턴)만 dynamic import로 가져온다.
+let _paperScope: paper.PaperScope | null = null
+async function getPaper(): Promise<paper.PaperScope> {
+  if (!_paperScope) {
+    _paperScope = (await import('paper')).default
+  }
+  return _paperScope
+}
 
 class AccessoryPlugin extends PluginBase {
   events = []
@@ -343,10 +357,11 @@ class AccessoryPlugin extends PluginBase {
       return
     }
 
+    const paper = await getPaper()
     paper.setup(new paper.Size(1, 1))
     paper.view.autoUpdate = false
 
-    const wcPath = this.svgPathArrayToPaperPath(workspace as fabric.Path)
+    const wcPath = this.svgPathArrayToPaperPath(workspace as fabric.Path, paper)
     let acPath = new paper.Path()
     const acHeight = (group.height! * group.scaleY!) / 2
     const acWidth = accessoryObj.width! * accessoryObj.scaleX!
@@ -554,7 +569,7 @@ class AccessoryPlugin extends PluginBase {
     })
   }
 
-  private svgPathArrayToPaperPath = (pathObj: fabric.Path): paper.PathItem => {
+  private svgPathArrayToPaperPath = (pathObj: fabric.Path, paper: paper.PaperScope): paper.PathItem => {
     // Paper.js Path 객체 생성
     const paperPath = new paper.Path()
     const scaleY = pathObj.scaleY!
