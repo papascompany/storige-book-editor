@@ -703,9 +703,12 @@ export class FilesController {
     // P0-3: 호출자 site 대조 — 타 테넌트 파일 썸네일 유출 차단(assertSiteAccess 서비스단).
     const buffer = await this.filesService.getThumbnailBuffer(id, pageNum, widthNum, site);
 
-    // 캐싱 헤더 설정 (1시간)
+    // 캐싱 헤더 (1시간). P0-3: 이제 테넌트 격리 인증 라우트이므로 `private` — 공유 프록시/CDN 이
+    // fileId(URL) 로 캐시해 API·assertSiteAccess 를 우회하고 타 테넌트에 서빙하는 벡터 차단.
+    // (raw 라우트는 siteId=NULL 공유 이미지 전용이라 public/immutable 이지만, thumbnail 은
+    //  siteId 스탬프 PDF 를 렌더하므로 private 가 맞다.)
     res.setHeader('Content-Type', 'image/png');
-    res.setHeader('Cache-Control', 'public, max-age=3600');
+    res.setHeader('Cache-Control', 'private, max-age=3600');
     res.setHeader('Content-Length', buffer.length);
     res.send(buffer);
   }

@@ -42,13 +42,16 @@
 
 **🔴 Track A 경보**: 골든/픽셀 diff PDF 회귀 테스트 인프라 **부재**(grep 0건). 커밋 본문은 출력 불변 명시(순수 dynamic import, 호출처 이미 async). 골든 검증하려면 인프라 신설 or 수동 qpdf 구조+시각 비교 필요 → ADR-1 검증 방법 오너 결정.
 
-**Review Gate 대기(코드·프로덕션 접촉 — 오너 승인 후 실행)**:
-| 항목 | 상태 | 승인 조건 |
-|---|---|---|
-| thumbnail 무인증 제거 | diff 준비·**소비처 0건 확정**(로컬+파트너 4종 grep) | 승인 → files 모듈 spec 신규 작성 후 적용 → VPS 배포 |
-| findExpired 가드 | **원안(order IS NULL) 반려** — 재설계안(주문상태 조인/setExpiry 가드) | 접근 선택 + dryRun before/after 표본검증 |
-| Sharesnap DB 언블록 | SQL 런북 준비(가역, 값 교체) | 오너 실값 입력·백업·단일 site_id 확인 |
-| Track A push | 골든 검증 인프라 부재 | 검증 방법 결정 → 통과 후 push |
+**Phase 0 구현 완료 (branch `feat/platform-phase0-safety`, origin/master 기준 = Track A 미포함, 미푸시·미배포)**:
+| 항목 | 오너결정 | 구현 | 검증 | 배포 게이트(잔여) |
+|---|---|---|---|---|
+| thumbnail 무인증 제거 | 지금 구현(별도 브랜치) | ✅ `files.controller.ts` getThumbnail(ApiKeyGuard+@CurrentSite+@Throttle), `files.service.ts` generateThumbnail/getThumbnailBuffer(assertSiteAccess) | ✅ files 모듈 첫 spec 7케이스 + api 213 tests green + build/lint clean | VPS `docker compose up -d --build api` + nginx restart |
+| findExpired 가드 | 주문 상태 조인(미완결만 제외) | ✅ `files.service.ts:518` NOT EXISTS(file_edit_sessions status<>'complete') + site 스코프 | ✅ spec(NOT EXISTS 가드 존재·만료조건 유지) | ⚠️ **배포 전 retention.dryRun=ON before/after 표본검증 필수** → VPS 배포 |
+| 골든 하네스 | 인프라 신설 후 자동화 | ✅ `scripts/pdf-golden/`(compare.mjs+test+README, `golden:compare`/`golden:test`) | ✅ self-test 3/3(샘플PDF identical PASS/different FAIL/pixel-skip) | 캡처(편집기→PDF) 자동화는 Phase 1 후속 |
+| Sharesnap DB 언블록 | (오너 실행) | 📋 SQL 런북 제공(가역, 값 교체) | — | 오너 실값·백업·단일 site_id 후 실행 |
+| Track A push | 골든 검증 후 처리 | — | 하네스 준비됨(캡처는 수동/후속) | 골든 PASS 확인 후 오너 push |
+
+**커밋(feat/platform-phase0-safety, 미푸시)**: `b5fe349`(docs) · `92540a6`(fix: thumbnail+findExpired) · `6738f2b`(feat: 골든 하네스).
 
 ---
 
