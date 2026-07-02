@@ -1,6 +1,11 @@
 {
   "compilerOptions": {
     "composite": true,
+    // emitDeclarationOnly: tsc -b 가 vite.config.js 를 방출하지 못하게 한다(.d.ts 만 방출).
+    // vite.config.js 가 생기면 Vite 설정 해석 우선순위(.js > .ts)로 stale vite.config.js 가
+    // vite.config.ts 를 shadow → 로컬 빌드/설정 편집이 무효화됨(재발 이력 f2680ec).
+    // composite 참조 프로젝트는 noEmit 불가(TS6310)라 emitDeclarationOnly 로 .js 만 차단한다.
+    "emitDeclarationOnly": true,
     "skipLibCheck": true,
     "module": "ESNext",
     "moduleResolution": "bundler",
