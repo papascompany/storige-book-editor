@@ -1,7 +1,5 @@
 // 앱 컴포넌트 또는 스토어에서 사용할 코드
 
-import { PDFDocument } from 'pdf-lib'
-
 /**
  * 여러 PDF Blob을 하나로 병합하는 함수
  * @param pdfBlobs PDF Blob 배열
@@ -12,6 +10,9 @@ async function mergeAndSavePDFs(
   fileName: string = 'merged_project'
 ): Promise<void> {
   try {
+    // pdf-lib 지연 로드 (번들 절단: Track A) — 이 함수 최초 호출 시에만 로드
+    const { PDFDocument } = await import('pdf-lib')
+
     // 새 PDF 문서 생성
     const mergedPdf = await PDFDocument.create()
 
