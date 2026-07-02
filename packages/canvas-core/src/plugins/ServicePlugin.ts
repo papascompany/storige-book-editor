@@ -2,8 +2,7 @@ import Editor from '../Editor'
 import { fabric } from 'fabric'
 import { PluginBase, PluginOption } from '../plugin'
 import ImageProcessingPlugin from './ImageProcessingPlugin'
-import { jsPDF } from 'jspdf'
-import { svg2pdf } from 'svg2pdf.js'
+import type { jsPDF } from 'jspdf'
 import FontPlugin from './FontPlugin'
 import { convertFabricObjectToSVGString, core, mmToPx, pxToMm } from '../utils'
 import { dlog } from '../utils/debugLog'
@@ -13,6 +12,28 @@ class ServicePlugin extends PluginBase {
   events = []
   hotkeys = []
   readonly imagePlugin: ImageProcessingPlugin
+
+  // jspdf/svg2pdf 지연 로드 캐시 (번들 절단: Track A). Promise 자체를 캐싱해
+  // 병행 저장 흐름에서도 단일 import + 최초 1회만 평가된다.
+  private static _pdfDeps: Promise<{
+    jsPDF: typeof import('jspdf').jsPDF
+    svg2pdf: typeof import('svg2pdf.js').svg2pdf
+  }> | null = null
+
+  private static loadPdfDeps() {
+    if (!ServicePlugin._pdfDeps) {
+      const p = Promise.all([import('jspdf'), import('svg2pdf.js')]).then(
+        ([jspdfMod, svg2pdfMod]) => ({ jsPDF: jspdfMod.jsPDF, svg2pdf: svg2pdfMod.svg2pdf })
+      )
+      // 로드 실패(stale 청크 404·오프라인) 시 캐시를 비워 재시도를 허용한다.
+      // (거부된 Promise 를 영구 캐싱하면 세션 내내 PDF 저장/합성이 불가해짐)
+      p.catch(() => {
+        if (ServicePlugin._pdfDeps === p) ServicePlugin._pdfDeps = null
+      })
+      ServicePlugin._pdfDeps = p
+    }
+    return ServicePlugin._pdfDeps
+  }
 
   /**
    * P0-3 (2026-06-02): PDF 합성 시 이미지 다운스케일 상한(px).
@@ -775,6 +796,10 @@ class ServicePlugin extends PluginBase {
             }
           }
 
+          // jspdf/svg2pdf 지연 로드 (번들 절단: Track A). 로더는 Promise 캐시라 재호출 비용 0.
+          // svg2pdf 는 이 스코프의 하위 콜백(_prepareSaveOperation)에서 클로저로 사용된다.
+          const { jsPDF, svg2pdf } = await ServicePlugin.loadPdfDeps()
+
           // PDF 생성 - 항상 mm 단위 사용
           // compress=true: 콘텐츠 스트림 + 임베드 래스터를 Flate 압축한다.
           // jspdf 4.x 는 임베드 이미지를 기본 무압축(raw RGB) 저장 → 래스터 폴백/이미지 多 PDF 가
@@ -1368,6 +1393,9 @@ class ServicePlugin extends PluginBase {
     dpi: number
   ): Promise<void> {
     try {
+      // svg2pdf 지연 로드 (번들 절단: Track A). Promise 캐시라 재호출 비용 0.
+      const { svg2pdf } = await ServicePlugin.loadPdfDeps()
+
       // 새 페이지 추가
       pdf.addPage([pageWidth, pageHeight], orientation)
 
@@ -1452,6 +1480,9 @@ class ServicePlugin extends PluginBase {
     dpi: number
   ): Promise<void> {
     try {
+      // svg2pdf 지연 로드 (번들 절단: Track A). Promise 캐시라 재호출 비용 0.
+      const { svg2pdf } = await ServicePlugin.loadPdfDeps()
+
       const workspace = canvas.getObjects().find((obj) => obj.id === 'workspace')
       if (!workspace) return
 
@@ -1619,6 +1650,9 @@ class ServicePlugin extends PluginBase {
     const embossObjects = addedObjects.filter((obj) => obj.effects?.includes('emboss') ?? false)
     const cuttingObjects = addedObjects.filter((obj) => obj.effects?.includes('cutting') ?? false)
     const goldObjects = addedObjects.filter((obj) => obj.effects?.includes('gold') ?? false)
+
+    // svg2pdf 지연 로드 (번들 절단: Track A). addEffectPage 클로저에서 사용. Promise 캐시라 재호출 비용 0.
+    const { svg2pdf } = await ServicePlugin.loadPdfDeps()
 
     // 효과 페이지 추가 함수
     const addEffectPage = async (effectObjects: fabric.Object[]) => {
@@ -2642,6 +2676,9 @@ class ServicePlugin extends PluginBase {
     pdf: jsPDF,
     options: any
   ): Promise<boolean> {
+    // svg2pdf 지연 로드 (번들 절단: Track A). 복구 전략에서 사용. Promise 캐시라 재호출 비용 0.
+    const { svg2pdf } = await ServicePlugin.loadPdfDeps()
+
     const errorMessage = error.message?.toLowerCase() || ''
     console.log('SVG->PDF 오류 복구 시도:', errorMessage)
 
