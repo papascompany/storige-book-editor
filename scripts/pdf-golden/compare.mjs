@@ -71,11 +71,19 @@ async function normalizedHash(pdf) {
       outPath,
     ]);
     const text = (await readFile(outPath)).toString('latin1');
+    // ⚠️ 트레일러 /ID 도 스크럽해야 한다: --deterministic-id 는 /ID 를 "전체 콘텐츠"에서
+    // 파생시키는데 그 콘텐츠에 /CreationDate 가 포함된다. 날짜 라인을 지워도 파생 /ID 가
+    // 날짜 차이를 그대로 실어 나르므로, 같은 코드 2회 실행조차 해시 불일치(FAIL)가 됐다
+    // (2026-07-03 Track A 사후검증에서 실증 — 실차이는 날짜 2바이트뿐, /ID 60바이트는 연쇄).
+    // 날짜 스크럽 후의 /ID 는 독립 신호가 없으므로 제거해도 실제 콘텐츠 차이는
+    // 콘텐츠 라인 자체의 diff 로 여전히 잡힌다.
     const scrubbed = text
       .split('\n')
       .filter(
         (line) =>
-          !/\/CreationDate|\/ModDate|xmp:(CreateDate|ModifyDate|MetadataDate)|<xmpMM:/i.test(line),
+          !/\/CreationDate|\/ModDate|xmp:(CreateDate|ModifyDate|MetadataDate)|<xmpMM:|^\s*\/ID\s*\[|^\s*<[0-9a-f]{32}>\s*\]?\s*$/i.test(
+            line,
+          ),
       )
       .join('\n');
     return createHash('sha256').update(scrubbed, 'latin1').digest('hex');
