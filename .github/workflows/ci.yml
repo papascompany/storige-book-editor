@@ -38,8 +38,15 @@ jobs:
           node-version: 22
           cache: pnpm
 
-      - name: qpdf 설치 (골든 하네스 self-test 용)
-        run: sudo apt-get update -q && sudo apt-get install -y -q qpdf
+      - name: 시스템 의존성 (qpdf=골든 self-test · cairo/pango=node-canvas 소스 빌드)
+        # node-canvas(canvas@2.11.2)는 fabric 5.x node 엔트리의 하드 요구인데 Node 22 용
+        # 프리빌트가 없어 소스 빌드가 필요하다. canvas 는 jsdom 의 optionalDependency 라
+        # 빌드 실패가 "조용히 용인"되고(설치는 성공처럼 보임) vitest 로드 시점에
+        # 'Cannot find module ../build/Release/canvas.node' 로 터진다(2026-07-03 CI 1차 실적발).
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q qpdf build-essential libcairo2-dev libpango1.0-dev \
+            libjpeg-dev libgif-dev librsvg2-dev libpixman-1-dev
 
       - name: 의존성 설치
         run: pnpm install --frozen-lockfile
