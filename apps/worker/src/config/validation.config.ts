@@ -37,6 +37,16 @@ export const VALIDATION_CONFIG = {
   LIGHTWEIGHT_SYNTHESIS:
     String(process.env.WORKER_LIGHTWEIGHT_SYNTHESIS || '').toLowerCase() === 'true',
 
+  // C-2a: crop mark(재단 기하) 검증 킬스위치
+  /**
+   * true 면 TrimBox 기반 재단 기하 검증(validateCropMarks)을 수행한다. **기본 OFF** —
+   * 기본 상태에서 프로덕션 행동 변화 0. 켜도 orderOptions.cropMarkEnabled === true 인
+   * 잡에서만 동작(이중 게이트: TemplateSet/파트너 opt-in + env 카나리).
+   * 전부 warning(비차단) — isValid/COMPLETED·FIXABLE·FAILED 상태 판정에 영향 없음.
+   */
+  CROP_MARK_VALIDATION:
+    String(process.env.WORKER_CROP_MARK_VALIDATION || '').toLowerCase() === 'true',
+
   // 스프레드(펼침면) 감지
   /** 스프레드 판정 점수 임계값 */
   SPREAD_SCORE_THRESHOLD: 70,

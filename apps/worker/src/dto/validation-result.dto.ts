@@ -65,6 +65,13 @@ export enum WarningCode {
   FONT_NOT_EMBEDDED = 'FONT_NOT_EMBEDDED',
   /** 별색(Spot Color) 사용 감지 (주문 전 확인 권장) */
   SPOT_COLOR_DETECTED = 'SPOT_COLOR_DETECTED',
+  // ── C-2a: crop mark(재단 기하) 검증 — 전부 비차단 warning, error 승격 금지 ──
+  /** 재단 기하(TrimBox) 미선언 — 재단선 확인 불가(정보). cropMarkEnabled opt-in 잡 한정 */
+  TRIMBOX_MISSING = 'TRIMBOX_MISSING',
+  /** 선언된 TrimBox 크기가 주문 재단 사이즈와 불일치 */
+  TRIMBOX_SIZE_MISMATCH = 'TRIMBOX_SIZE_MISMATCH',
+  /** TrimBox↔MediaBox/BleedBox 블리드 기하 부정합 (TrimBox 이탈 또는 BleedBox 크기 불일치) */
+  TRIMBOX_BLEED_INCONSISTENT = 'TRIMBOX_BLEED_INCONSISTENT',
 }
 
 /**
@@ -147,6 +154,10 @@ export interface PdfMetadata {
   hasUnembeddedFonts?: boolean;
   /** 임베딩되지 않은 폰트 이름 목록 */
   unembeddedFonts?: string[];
+  /** C-2a: 첫 페이지 TrimBox 크기(mm, 소수1자리) — TrimBox 명시 선언 시에만 기록 */
+  trimBox?: { width: number; height: number };
+  /** C-2a: 재단 기하(TrimBox) 명시 선언 여부 — crop mark 검증 수행 시에만 기록 */
+  hasCropMarkGeometry?: boolean;
 }
 
 /**
