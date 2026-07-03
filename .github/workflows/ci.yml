@@ -1,0 +1,59 @@
+name: ci
+
+# Phase 0 안전판 — contract test 를 CI 게이트로 승격 (계획서 §Phase 0-3).
+# 종전 CI 는 gitleaks(시크릿 스캔)뿐 = 테스트는 honor system 이었다. 이 워크플로가
+# master push/PR 마다 아래를 검증한다:
+#   1) apps/api jest — 파트너 동결 표면 contract test(src/contract-freeze.spec.ts) +
+#      웹훅 서명 페어와이즈(webhook-signature-pairwise.spec.ts) + 기존 스펙 전부
+#   2) packages/canvas-core vitest + tsc — 편집기 코어(ServicePlugin.pdf 카나리 포함)
+#   3) scripts/pdf-golden 비교 엔진 self-test (qpdf 필요)
+#
+# ⚠️ branch protection(필수 체크 지정)은 의도적으로 미설정 — master 직push 가 곧
+#    배포 트리거인 현행 운영과 충돌(오너 결정 대기). 현재는 push 후행 신호 + PR 게이트.
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        # 버전은 package.json packageManager(pnpm@9.15.0) 에서 자동 해석
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: qpdf 설치 (골든 하네스 self-test 용)
+        run: sudo apt-get update -q && sudo apt-get install -y -q qpdf
+
+      - name: 의존성 설치
+        run: pnpm install --frozen-lockfile
+
+      - name: types 선행 빌드 (모노레포 규약 — 다른 패키지가 dist 소비)
+        run: pnpm --filter @storige/types build
+
+      - name: api 테스트 (contract-freeze + 서명 페어와이즈 + 전체 스펙)
+        run: pnpm --filter @storige/api test
+
+      - name: canvas-core 타입체크 + 테스트 (ServicePlugin.pdf 카나리 포함)
+        run: |
+          pnpm --filter @storige/canvas-core typecheck
+          pnpm --filter @storige/canvas-core test
+
+      - name: PDF 골든 비교 엔진 self-test
+        run: node --test scripts/pdf-golden/compare.test.mjs
