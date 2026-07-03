@@ -16,7 +16,11 @@ import {
   CmykStructureResult,
   ColorModeResult,
 } from '../dto/validation-result.dto';
-import { VALIDATION_CONFIG } from '../config/validation.config';
+import {
+  VALIDATION_CONFIG,
+  DEFAULT_BLEED_MM,
+  LEGACY_SIZE_TOLERANCE_MM,
+} from '../config/validation.config';
 import {
   detectCmykUsage,
   isGhostscriptAvailable,
@@ -35,7 +39,9 @@ import { SpotColorResult, TransparencyResult, ImageResolutionResult, FontDetecti
 // 기본 설정 (VALIDATION_CONFIG에서 가져오거나 폴백)
 const DEFAULT_MAX_FILE_SIZE = VALIDATION_CONFIG.MAX_FILE_SIZE;
 const DEFAULT_MAX_PAGES = 1000;
-const DEFAULT_BLEED = 3; // mm
+// C-2b: 로컬 상수 `DEFAULT_BLEED = 3` 을 삭제하고 validation.config.ts 의
+// DEFAULT_BLEED_MM(=3) import 로 치환(값-동일 리팩터, 행동 무변화).
+// 사용처는 `orderOptions.bleed ?? DEFAULT_BLEED_MM`.
 
 @Injectable()
 export class PdfValidatorService {
@@ -167,7 +173,7 @@ export class PdfValidatorService {
         pages,
         options.orderOptions.size.width,
         options.orderOptions.size.height,
-        options.orderOptions.bleed ?? DEFAULT_BLEED,
+        options.orderOptions.bleed ?? DEFAULT_BLEED_MM,
       );
 
       // 스프레드 정보를 메타데이터에 추가
@@ -533,7 +539,7 @@ export class PdfValidatorService {
         pages,
         options.orderOptions.size.width,
         options.orderOptions.size.height,
-        options.orderOptions.bleed ?? DEFAULT_BLEED,
+        options.orderOptions.bleed ?? DEFAULT_BLEED_MM,
       );
       metadata.spreadInfo = {
         isSpread: spreadResult.isSpread,
@@ -787,10 +793,12 @@ export class PdfValidatorService {
   ): void {
     const expectedWidth = options.orderOptions.size.width;
     const expectedHeight = options.orderOptions.size.height;
-    const bleed = options.orderOptions.bleed ?? DEFAULT_BLEED;
+    const bleed = options.orderOptions.bleed ?? DEFAULT_BLEED_MM;
 
-    // 허용 오차 — P1/P4 가변화. 기본 1mm(현행) 유지. ⚠️ 0.2mm 로 좁히지 말 것.
-    const tolerance = options.orderOptions.sizeToleranceMm ?? 1;
+    // 허용 오차 — P1/P4 가변화. 기본 LEGACY_SIZE_TOLERANCE_MM(=1mm, 현행) 유지.
+    // ⚠️ DEFAULT_SIZE_TOLERANCE_MM(0.2) 로 좁히지 말 것 — 2026-06-10 실회귀 재발.
+    const tolerance =
+      options.orderOptions.sizeToleranceMm ?? LEGACY_SIZE_TOLERANCE_MM;
 
     // 재단 여백 포함 크기(기존 케이스 보존)
     const expectedWidthWithBleed = expectedWidth + bleed * 2;
@@ -860,7 +868,7 @@ export class PdfValidatorService {
     warnings: ValidationWarning[],
     metadata: PdfMetadata,
   ): void {
-    const expectedBleed = options.orderOptions.bleed ?? DEFAULT_BLEED;
+    const expectedBleed = options.orderOptions.bleed ?? DEFAULT_BLEED_MM;
 
     if (expectedBleed > 0 && !metadata.hasBleed) {
       warnings.push({
@@ -909,7 +917,7 @@ export class PdfValidatorService {
         : 0;
 
     // 표지 전체 너비 (앞표지 + 책등 + 뒤표지 + 날개×2 + 재단여백×2)
-    const bleed = options.orderOptions.bleed ?? DEFAULT_BLEED;
+    const bleed = options.orderOptions.bleed ?? DEFAULT_BLEED_MM;
     const expectedTotalWidth = size.width * 2 + expectedSpine + wingTotal + bleed * 2;
 
     // 허용 오차 2mm (책등은 좀 더 여유롭게)

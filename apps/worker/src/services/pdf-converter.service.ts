@@ -13,7 +13,10 @@ import {
   getPdfInfo,
 } from '../utils/ghostscript';
 import { isApiMarker, downloadViaApi } from './api-file-download';
-import { VALIDATION_CONFIG } from '../config/validation.config';
+import {
+  VALIDATION_CONFIG,
+  DEFAULT_SIZE_TOLERANCE_MM,
+} from '../config/validation.config';
 import { downloadToTempFile } from '../utils/stream-download';
 import { assertSafeDownloadUrl } from '../utils/url-safety';
 import {
@@ -374,7 +377,8 @@ export class PdfConverterService {
       return rawOptions;
     }
 
-    const tol = rawOptions.sizeToleranceMm ?? 0.2;
+    // C-2b: 매직넘버 0.2 → DEFAULT_SIZE_TOLERANCE_MM(=0.2) 치환(값-동일, 행동 무변화).
+    const tol = rawOptions.sizeToleranceMm ?? DEFAULT_SIZE_TOLERANCE_MM;
     const sameSize =
       Math.abs(measuredW - editSize.width) <= tol &&
       Math.abs(measuredH - editSize.height) <= tol;
@@ -417,7 +421,8 @@ export class PdfConverterService {
     lightweight = false,
   ): Promise<string> {
     const mode = options.mode;
-    const tol = options.sizeToleranceMm ?? 0.2;
+    // C-2b: 매직넘버 0.2 → DEFAULT_SIZE_TOLERANCE_MM(=0.2) 치환(값-동일, 행동 무변화).
+    const tol = options.sizeToleranceMm ?? DEFAULT_SIZE_TOLERANCE_MM;
     const editSize = options.editSize;
 
     // passthrough: 무가공. 입력 경로 그대로 반환(step4 가 outputPath 로 copy).
