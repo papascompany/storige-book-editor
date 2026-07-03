@@ -158,7 +158,7 @@ image/gif
 | `multipart/sign` | `600 / 60s` (파트당 1콜) |
 | `multipart/complete` / `abort` / `:id/complete` | `30 / 60s` |
 | `/files/:id/raw` | `120 / 60s` |
-| `/files/:id/thumbnail` | (캐시 1h) |
+| `/files/:id/thumbnail` | `60 / 60s` (캐시 1h `private`) |
 
 > 다중 IP 또는 고볼륨 파트너는 `shop-session` 20/min 한계에 걸릴 수 있습니다 (코드상 상향 필요로 명시됨). 온보딩 시 협의하세요.
 
@@ -724,7 +724,7 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 | GET | `/api/files/:id/download` | JWT + 소유자/staff | 내부 다운로드 |
 | GET | `/api/files/:id/download/external` | X-API-Key + site 대조 | 외부 결과 PDF 다운로드 |
 | GET | `/api/files/:id/raw` | @Public (이미지 전용) | 이미지 인라인 공개 표시 (PDF 거부) |
-| GET | `/api/files/:id/thumbnail` | @Public | PDF 썸네일 PNG (`?page=`, `?width=`) |
+| GET | `/api/files/:id/thumbnail` | X-API-Key + site 대조 | PDF 썸네일 PNG (`?page=`, `?width=`) — 2026-07-03 인증 전환(구 @Public) |
 | DELETE | `/api/files/:id/external` | X-API-Key + site 대조 | 외부 테넌트 하드삭제 |
 | POST | `/api/files/:id/expiry/external` | X-API-Key + site 대조 | 만료 예약 / 영구복원 |
 | GET | `/api/files/:id` | JWT + 소유자/staff | 파일 메타 조회 |
