@@ -37,6 +37,10 @@
 
 UI(둘 다): ⓐ ControlBar — 기존 위치고정/삭제잠금 3종 세트 패턴(토글 핸들러+editMode 게이트+useMemo 판정) 복제로 4토글 추가. ⓑ SidePanel 레이어 행 — 속성 배지(잠김 종류 구분: 현재 locked=!hasControls 로 뭉뚱그림 → lockInfo/movable/단순잠금 구분 표시) + 행 팝오버에 토글 일람. `template-element`/`fillImage` 가 prevented 목록(useAppStore.ts:983)이라 패널 미표시 → editMode 에서는 template-element 표시 검토(제작자가 제어해야 하므로).
 
+### B1 구현 상태 (2026-07-04, PR-2)
+- ✅ 구현: extendFabricOption 신규 2종(contentEditable/printExclude — lockInfo/lockLayerOrder/movable 는 기등재였음) · fabric.d.ts 2본 동기 · ServicePlugin printExclude(**_prepareSaveOperation 이전 플래깅** — 벡터화가 커스텀 속성을 복사하지 않아 이후 세팅 시 텍스트 침묵 실패, 적대 리뷰 critical 수정) + fillImage 동반 제외 · applyObjectPermissions contentEditable 강제+editMode 역오염 원복 · useImageStore/photoPlacement 사진틀 교체·자동배치 가드(editMode 면제) · ControlBar 토글 3종+잠금레벨 Select(LockPlugin 경유, 선택 복원) · z-order 4버튼 disabled · SidePanel 속성 배지 6종 · LockPlugin admin 선택 바이패스(프로그래매틱 한정) · 해제 경로 lockInfo 는 LockPlugin.unlock 경유(이중상태 방지).
+- ⚠️ 잔여(후속): ① template-element/fillImage 는 prevented 목록이라 배지 미표시 — 고객 캔버스 printExclude 시각 표식 정책 결정 필요(CS 리스크) ② PDF 생성 창 동안 자동저장 발화 시 excludeFromExport 객체 저장 누락(pre-existing 계열, moldIcon 동일 — autosave suspend 후속) ③ 그룹 내부 텍스트는 contentEditable 강제 미적용(대칭이라 오염 없음) ④ contentEditable=false 여도 TextAttributes 스타일 변경은 허용(내용 vs 스타일 — 정의 확정) ⑤ admin 다중선택 드래그 시 잠긴 멤버 동반 이동 ⑥ designer role 부여 경로 없음(멀티테넌시 user_site_roles 연동 대기) ⑦ printExclude 텍스트 포함 골든 PDF 육안검증 1회 권장.
+
 ## 3. Phase A1 — 객체 컨트롤 4갭 (PR-3, ~3-4일)
 1. **레이어 행 hover 삭제·복제**: 삭제=requestDeleteSelection 공통경로(S2 확인모달 승계, useAppStore.ts:1103), 복제=CopyPlugin clone(핫키만 있던 것 버튼화). deleteable=false 객체는 버튼 disabled.
 2. **레이어 다중선택**: shift/ctrl 클릭 → fabric ActiveSelection 구성(setActiveObject). ⚠️ 선행 재현테스트: ActiveSelection 드래그가 자식 lockMovement 를 존중하는지(fabric 5.5.2 — 정찰 리스크 항목). 다중 z-order 는 editor 레벨 forEach(ControlBar handleLock :228-234 선례).

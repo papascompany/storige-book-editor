@@ -69,6 +69,26 @@ declare namespace fabric {
     fixed?: boolean
     alwaysTop?: boolean
 
+    // B1 (2026-07-04): 레이어별 편집권한 속성 — apps/editor/src/types/fabric.d.ts 와 동기.
+    /** false = 고객 이동/변형 잠금 (Part B, applyObjectPermissions 강제) */
+    movable?: boolean
+    /** false = 고객 삭제 잠금 (P1-5, ObjectPlugin.del 가드) */
+    deleteable?: boolean
+    /** false = 고객 내용편집 잠금 (텍스트 진입/사진틀 교체 차단) */
+    contentEditable?: boolean
+    /** true = PDF 출력 제외 (화면·썸네일에는 표시) */
+    printExclude?: boolean
+    /** true = 레이어 순서 변경 잠금 (ObjectPlugin z-order/reorderObject 가드) */
+    lockLayerOrder?: boolean
+    /** LockPlugin 고급 잠금 메타 (lockedAt 은 JSON 왕복 후 string 가능) */
+    lockInfo?: {
+      isLocked: boolean
+      lockLevel: 'user' | 'designer' | 'admin' | 'system'
+      lockedBy?: string
+      lockedAt?: Date | string
+      reason?: string
+    }
+
     getElement(): HTMLCanvasElement
 
     [key: string]: any

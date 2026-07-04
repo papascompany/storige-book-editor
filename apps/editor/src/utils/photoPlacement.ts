@@ -69,6 +69,8 @@ export interface AutofillOptions {
   imagePlugin: unknown
   /** 채움 후 setActiveObject 등 호출처 후처리(선택). */
   onFilled?: (canvas: FabricCanvas, frame: FabricObject, fore: FabricObject) => void
+  /** B1: 관리자(editMode)면 contentEditable 잠금 프레임도 자동배치 허용(기본 false=고객). */
+  editMode?: boolean
 }
 
 export interface AutofillResult {
@@ -234,7 +236,10 @@ export interface CollectedFrame {
  * 모든 캔버스(페이지)에서 빈 사진틀을 페이지 순서대로 수집.
  * extensionType==='frame' 이고 채워진 사진이 없는 프레임만.
  */
-export function collectEmptyFrames(canvases: FabricCanvas[]): CollectedFrame[] {
+export function collectEmptyFrames(
+  canvases: FabricCanvas[],
+  opts?: { editMode?: boolean },
+): CollectedFrame[] {
   const out: CollectedFrame[] = []
   for (const canvas of canvases) {
     let objs: FabricObject[]
@@ -246,6 +251,9 @@ export function collectEmptyFrames(canvases: FabricCanvas[]): CollectedFrame[] {
     const dpi = canvasDpi(canvas)
     for (const obj of objs) {
       if (obj.extensionType !== 'frame') continue
+      // B1 (2026-07-04): 내용편집 잠금 프레임은 자동배치 대상에서 제외.
+      // 관리자(editMode)는 면제 — 수동 채우기/스왑의 useImageStore 가드와 동일 규약.
+      if (!opts?.editMode && obj.contentEditable === false) continue
       if (isFrameFilled(canvas, obj)) continue
       const measure = measureFrame(obj)
       out.push({ canvas, frame: obj, dpi, measure, aspect: measure.aspect })
@@ -281,7 +289,7 @@ export async function autofillPhotosIntoFrames(
   const aspectMatch = opts.aspectMatch ?? true
 
   const sorted = sortPhotosForAutofill(photos, mode)
-  const emptyFrames = collectEmptyFrames(canvases)
+  const emptyFrames = collectEmptyFrames(canvases, { editMode: opts.editMode })
 
   const lowResWarnings: LowResWarning[] = []
   let filledCount = 0

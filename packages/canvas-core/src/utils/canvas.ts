@@ -154,6 +154,12 @@ export namespace core {
     // movable===false 면 고객(비 editMode) 로드 시 applyObjectPermissions 가 lockMovement/
     // Scaling/Rotation 을 강제(deleteable 와 동일하게 관리자가 지정→저장→고객 진입 시 적용).
     'movable',
+    // B1 (2026-07-04): 레이어별 속성 4축 — 신규 2종.
+    // contentEditable===false 면 고객(비 editMode) 로드 시 applyObjectPermissions 가
+    // 텍스트 편집 진입/사진틀 교체를 차단. printExclude===true 면 ServicePlugin PDF
+    // 생성에서만 제외(화면·썸네일에는 표시). 미등재 시 저장 1회 왕복에 침묵 소실.
+    'contentEditable',
+    'printExclude',
     'evented',
     // spread 책등 가변 재배치용 meta(regionRef/anchor) 보존 — useTemplateSetSave와 정합
     'meta',
