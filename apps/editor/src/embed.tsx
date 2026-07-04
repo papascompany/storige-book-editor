@@ -199,6 +199,12 @@ export interface EditorResult {
    * 미설정(BOOK/LEAFLET 등)이면 생략(기존 동작 비파괴).
    */
   pricing?: PhotobookPricing
+  /**
+   * S2 (2026-07-04): 편집 완료 시점의 캔버스 규격(mm, additive).
+   * 파트너가 주문 옵션 규격과의 정합 검증에 사용할 수 있는 참고값 — 규격의 권위는
+   * 여전히 상품 옵션이며(embed 는 S1 로 편집기 내 규격 변경 차단), 이 값은 감사/검증용.
+   */
+  size?: { width: number; height: number; unit: 'mm' }
   files: {
     coverFileId?: string
     contentFileId?: string
@@ -1182,18 +1188,25 @@ function EmbeddedEditor({
           const livePageCount = livePhysicalPages > 0 ? livePhysicalPages : (options?.pages || 1)
           const pricingMeta = templateSetPricingRef.current
 
+          // S2 (2026-07-04): 완료 시점 캔버스 규격(mm) — 파트너 정합 검증용(additive).
+          const liveSize = useSettingsStore.getState().currentSettings.size
           const result: EditorResult = {
             sessionId: completedSession.id,
             orderSeqno: Number(completedSession.orderSeqno),
             editCode: `EDIT-${completedSession.id.substring(0, 8).toUpperCase()}`,
             pages: {
               initial: options?.pages || 1,
-              final: options?.pages || 1,
+              // S2: final 은 실측값(라이브 캔버스 기준) — 기존 하드코딩(주문 옵션 pages) 정정.
+              // 소비자 없음 확정(bookmoa-mobile 은 pages 미소비) + pageCount 와 동일 값이라 안전.
+              final: livePageCount,
             },
             // 페이지 가변 가격 메타 (2026-06-24): 현재 총 pageCount 는 항상, pricing 은 설정된 셋만.
             // 파트너 장바구니가 base + max(0, pageCount − includedPages) × perPageUnit 로 가/감 계산.
             pageCount: livePageCount,
             ...(pricingMeta ? { pricing: pricingMeta } : {}),
+            ...(liveSize
+              ? { size: { width: liveSize.width, height: liveSize.height, unit: 'mm' as const } }
+              : {}),
             files: {
               coverFileId: completedSession.coverFileId || undefined,
               contentFileId: completedSession.contentFileId || undefined,
@@ -1457,14 +1470,28 @@ function EmbeddedEditor({
       await finishMark('complete:done', { coverFileId: completedSession.coverFileId, contentFileId: completedSession.contentFileId })
       setCurrentSession(completedSession)
 
+      // S2 (2026-07-04): 이 경로(헤더 '편집완료' = 라이브 임베드 실완료 경로)에도 실측
+      // pageCount/size + pricing 동봉 — 인스턴스 complete 경로와 payload 파리티.
+      // (pricing 은 pre-existing 갭: 인스턴스 경로만 싣고 있어 라이브 임베드에서 포토북
+      //  가변가격 메타가 파트너에 전달되지 않던 것 — 적대 리뷰 major 지적으로 정렬.)
+      const liveCanvasCount2 = useAppStore.getState().allCanvas.length
+      const isInnerSpread2 = useSettingsStore.getState().spreadConfig?.regionScope === 'inner'
+      const livePageCount2 = (isInnerSpread2 ? liveCanvasCount2 * 2 : liveCanvasCount2) || (options?.pages || 1)
+      const liveSize2 = useSettingsStore.getState().currentSettings.size
+      const pricingMeta2 = templateSetPricingRef.current
       const result: EditorResult = {
         sessionId: completedSession.id,
         orderSeqno: Number(completedSession.orderSeqno),
         editCode: `EDIT-${completedSession.id.substring(0, 8).toUpperCase()}`,
         pages: {
           initial: options?.pages || 1,
-          final: options?.pages || 1,
+          final: livePageCount2,
         },
+        pageCount: livePageCount2,
+        ...(pricingMeta2 ? { pricing: pricingMeta2 } : {}),
+        ...(liveSize2
+          ? { size: { width: liveSize2.width, height: liveSize2.height, unit: 'mm' as const } }
+          : {}),
         files: {
           coverFileId: completedSession.coverFileId || undefined,
           contentFileId: completedSession.contentFileId || undefined,
@@ -1596,6 +1623,8 @@ function EmbeddedEditor({
         onFinish={handleFinish}
         onSaveWork={handleSaveWork}
         onOpenWorkspace={handleOpenWorkspace}
+        /* S1 (2026-07-04): embed = 주문 컨텍스트 — 작업 사이즈를 읽기전용으로 강등 */
+        orderContext
       />
 
       <div className={`flex-1 flex relative overflow-hidden ${screenMode !== 'desktop' ? 'flex-col' : 'flex-row'}`}>
