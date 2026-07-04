@@ -103,6 +103,12 @@ export interface EmptyEditorSetupConfig {
   }
   unit?: 'mm' | 'px'
   name?: string
+  /**
+   * B0-① (2026-07-04): empty 프리셋의 editMode:true 가 스프레드로 전 호출자(특히 embed
+   * loadTemplateSetEditor)에 새어 나가 고객 화면에 관리자 토글이 노출되던 오염 수정.
+   * 명시적으로 요청한 호출자만 true — 기본 false. 관리자 화면은 로드 후 role 검증 effect 가 켠다.
+   */
+  editMode?: boolean
 }
 
 export interface GeneralSetupConfig {
@@ -584,6 +590,8 @@ export const useSettingsStore = create<SettingsState & SettingsActions>()((set, 
 
     await get().updateSettings({
       ...defaultConfig,
+      // B0-①: 프리셋 editMode:true 스프레드 차단 — 명시 인자만 적용(기본 false).
+      editMode: config?.editMode ?? false,
       size: mergedSize,
       unit: config?.unit || defaultConfig.unit,
     })

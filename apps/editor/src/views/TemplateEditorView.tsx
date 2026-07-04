@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { useAuthStore } from '@/stores/useAuthStore'
+import { useAuthStore, useIsAdmin } from '@/stores/useAuthStore'
 import { useAppStore } from '@/stores/useAppStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useTemplateSave, type UpdateTemplateOptions } from '@/hooks/useTemplateSave'
@@ -112,6 +112,22 @@ export default function TemplateEditorView() {
     canvas,
   } = useAppStore()
   const { updateSettings, setSpreadConfig } = useSettingsStore()
+
+  // B0-③ (2026-07-04): /template 화면 editMode 활성.
+  // 이 뷰는 admin iframe 이 ?token=<admin_jwt> 로 진입하지만 라우트 자체는 무가드라
+  // URL 파라미터만으로 editMode 를 켜면 위조 가능 — checkAuth 로 me.role 이
+  // ADMIN/SUPER_ADMIN 확인된 뒤에만 켠다. (초기값 false → 관리자 속성 토글 미노출 버그 수정)
+  const isAdmin = useIsAdmin()
+  const storeEditMode = useSettingsStore((s) => s.currentSettings.editMode)
+  useEffect(() => {
+    if (isAdmin && !storeEditMode) {
+      updateSettings({ editMode: true })
+      // LockPlugin role 은 createCanvas 시점 editMode 스냅샷('user')이라 함께 승격.
+      ;(useAppStore.getState().editor?.getPlugin?.('LockPlugin') as
+        | { setUserRole?: (r: string) => void }
+        | undefined)?.setUserRole?.('admin')
+    }
+  }, [isAdmin, storeEditMode, updateSettings])
 
   // Template save hook
   const { saving, saveTemplate, updateExistingTemplate } = useTemplateSave()
