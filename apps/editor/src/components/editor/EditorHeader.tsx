@@ -68,6 +68,14 @@ interface EditorHeaderProps {
    * EditorView 가 ?adminEdit=templateSet 파라미터 + admin 권한일 때 true 로 전달.
    */
   isAdminTemplateSetEdit?: boolean
+  /**
+   * S1 (2026-07-04): 주문 컨텍스트(embed 임베드) — true 면 규격의 권위가 상품 옵션에
+   * 있으므로 '작업 사이즈'를 읽기전용 라벨로 강등(클릭 시 안내 토스트). 관리자(editMode)
+   * 는 템플릿 제작 목적이라 편집 가능 유지. EmbeddedEditor 가 true 로 전달.
+   * 배경: 편집기 내 규격 변경이 세션 metadata·가격·주문 옵션에 전파되지 않아
+   * SIZE_MISMATCH/가격 불일치 사고 소지 — EDITOR_SAVE_LOAD_AND_SIZE_GAP_WORKORDER §3.
+   */
+  orderContext?: boolean
 }
 
 export default function EditorHeader({
@@ -78,6 +86,7 @@ export default function EditorHeader({
   onSaveWork,
   onOpenWorkspace,
   isAdminTemplateSetEdit = false,
+  orderContext = false,
 }: EditorHeaderProps) {
   const [previewMode, setPreviewMode] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -533,6 +542,10 @@ export default function EditorHeader({
   // 작업 사이즈 표시 (mm 단위)
   const sizeLabel = `${Math.round(size.width)} × ${Math.round(size.height)} mm`
 
+  // S1 (2026-07-04): 주문 컨텍스트(embed 고객)에서는 규격 편집 차단 — 읽기전용 라벨.
+  // 규격 권위 = 상품 옵션(파트너 장바구니). 관리자(editMode)는 편집 가능 유지.
+  const sizeReadOnly = orderContext && !currentSettings.editMode
+
   // 사이즈 변경 (프리셋/직접 입력) — currentSettings를 갱신하고 모든 WorkspacePlugin에 전파
   const applySize = useCallback(
     (nextWidth: number, nextHeight: number) => {
@@ -675,6 +688,19 @@ export default function EditorHeader({
               }
             }}
           />
+          {sizeReadOnly ? (
+            /* S1: 주문 컨텍스트 — 규격 읽기전용 라벨. 클릭 시 안내만(권위=상품 옵션). */
+            <button
+              type="button"
+              aria-label="작업 사이즈 (상품 옵션에서 변경)"
+              onClick={() =>
+                showToast('규격은 상품 옵션에서 변경할 수 있어요.', 'info')
+              }
+              className="hidden md:inline-flex items-center gap-1 px-2 py-1 text-xs text-editor-text-muted border border-editor-border rounded-md bg-editor-surface-low cursor-help"
+            >
+              <span>{sizeLabel}</span>
+            </button>
+          ) : (
           <Popover open={sizeOpen} onOpenChange={setSizeOpen}>
             <PopoverTrigger asChild>
               <button
@@ -759,6 +785,7 @@ export default function EditorHeader({
               </div>
             </PopoverContent>
           </Popover>
+          )}
         </div>
 
         {/* 우측: 보기 옵션 + 불러오기 + 편집완료 + 도움말 */}

@@ -139,6 +139,11 @@ export default function EmbedView() {
             orderSeqno: r.orderSeqno,
             status: 'completed',
             completedAt: r.savedAt,
+            // S2 (2026-07-04): 실측 페이지수/규격/가격메타 — 정식 envelope 와 동일하게
+            // legacy 형식에도 additive 동봉 (bookmoa-mobile 은 storige:completed 를 주 수신).
+            ...(r.pageCount != null ? { pageCount: r.pageCount } : {}),
+            ...(r.size ? { size: r.size } : {}),
+            ...(r.pricing ? { pricing: r.pricing } : {}),
             files: {
               coverFileId: r.files.coverFileId ?? null,
               contentFileId: r.files.contentFileId ?? null,
