@@ -36,6 +36,10 @@ import {
   ArrowUpToLine,
   ArrowDown,
   ArrowDownToLine,
+  Pencil,
+  PencilOff,
+  Printer,
+  ArrowUpDown,
 } from 'lucide-react'
 import { fabric } from 'fabric'
 import {
@@ -45,6 +49,13 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { Button } from '@/components/ui/button'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import ObjectSize from '@/controls/ObjectSize'
 import ObjectFill from '@/controls/ObjectFill'
 import ObjectShadow from '@/controls/ObjectShadow'
@@ -195,6 +206,29 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
     return activeSelection?.every((e) => (e as any).movable === false) ?? false
   }, [activeSelection])
 
+  // B1 (2026-07-04): 레이어별 속성 4축 — 선택 객체 전부 기준 판정 (기존 토글 3종 패턴).
+  const allContentLocked = useMemo(() => {
+    return activeSelection?.every((e) => (e as any).contentEditable === false) ?? false
+  }, [activeSelection])
+
+  const allPrintExcluded = useMemo(() => {
+    return activeSelection?.every((e) => (e as any).printExclude === true) ?? false
+  }, [activeSelection])
+
+  const allOrderLocked = useMemo(() => {
+    return activeSelection?.every((e) => (e as any).lockLayerOrder === true) ?? false
+  }, [activeSelection])
+
+  // 선택 전부의 lockInfo.lockLevel 이 동일하면 그 값, 혼합/미잠금이면 'none'
+  const selectionLockLevel = useMemo(() => {
+    if (!activeSelection || activeSelection.length === 0) return 'none'
+    const levels = activeSelection.map((e) => {
+      const info = (e as any).lockInfo
+      return info?.isLocked ? (info.lockLevel as string) : 'none'
+    })
+    return levels.every((l) => l === levels[0]) ? levels[0] : 'mixed'
+  }, [activeSelection])
+
   // Actions
   const handleGroup = () => {
     const groupPlugin = getPlugin<GroupPlugin>('GroupPlugin')
@@ -243,7 +277,13 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
     activeSelection?.forEach((obj) => {
       if (!editMode && (obj as any).movable === false) return
       const lockInfo = (obj as any).lockInfo
-      if (lockInfo?.isLocked && lockPlugin && !lockPlugin.canUnlock(lockInfo.lockLevel)) return
+      if (lockInfo?.isLocked) {
+        // LockPlugin 고급 잠금은 플러그인 경유 해제 — 내부 canUnlock(CAN_UNLOCK_MAP) 검사
+        // + lockInfo/fabric 속성 정합 해제(ObjectPlugin.unlock 만 쓰면 lockInfo 잔류로
+        // handleSelection/handleMoving 가드가 계속 발동하는 이중상태가 남는다).
+        lockPlugin?.unlock(obj)
+        return
+      }
       objectPlugin?.unlock(obj)
     })
     updateObjects()
@@ -283,6 +323,63 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
     activeSelection?.forEach((obj) => {
       ;(obj as any).movable = next ? false : true
     })
+    updateObjects()
+  }
+
+  // B1: 관리자 전용 — 내용편집 잠금 토글. contentEditable=false 면 고객 진입 시
+  // 텍스트 편집 진입/사진틀 채우기·교체가 차단된다(applyObjectPermissions·useImageStore 가드).
+  const handleToggleContentLock = () => {
+    const next = !allContentLocked
+    activeSelection?.forEach((obj) => {
+      ;(obj as any).contentEditable = next ? false : true
+    })
+    updateObjects()
+  }
+
+  // B1: 관리자 전용 — 프린트 제외 토글. printExclude=true 면 PDF 출력에서만 제외
+  // (화면·썸네일에는 표시, ServicePlugin 이 excludeFromExport 로 임시 변환).
+  const handleTogglePrintExclude = () => {
+    const next = !allPrintExcluded
+    activeSelection?.forEach((obj) => {
+      ;(obj as any).printExclude = next ? true : false
+    })
+    updateObjects()
+  }
+
+  // B1: 관리자 전용 — 순서 잠금 토글. ObjectPlugin z-order 4메서드·reorderObject 에
+  // 기능 가드 기존재(lockLayerOrder) — 여기선 플래그 지정만.
+  const handleToggleOrderLock = () => {
+    const next = !allOrderLocked
+    activeSelection?.forEach((obj) => {
+      ;(obj as any).lockLayerOrder = next ? true : false
+    })
+    updateObjects()
+  }
+
+  // B1: 관리자 전용 — 잠금 레벨 지정/해제 (LockPlugin 경유, CAN_UNLOCK_MAP 규약).
+  const handleLockLevelChange = (level: string) => {
+    if (level === 'mixed' || level === 'system') return // 표시용 sentinel — 동작 없음
+    const lockPlugin = getPlugin<LockPlugin>('LockPlugin')
+    if (!lockPlugin || !activeSelection?.length) return
+    const targets = [...activeSelection]
+    if (level === 'none') {
+      lockPlugin.unlockMultiple(targets)
+    } else {
+      // 레벨 변경은 해제 후 재잠금 (lock() 이 기존 상위 잠금을 거부하는 규약 준수)
+      lockPlugin.unlockMultiple(targets)
+      lockPlugin.lockMultiple(targets, level as 'user' | 'designer' | 'admin')
+    }
+    // lock() 이 discardActiveObject 로 선택을 해제하고 evented=false 라 캔버스 재클릭도
+    // 불가 — editMode(admin) 에서는 선택을 복원해 레벨 변경/해제 동선을 유지한다
+    // (LockPlugin handleSelection 의 admin 바이패스가 프로그래매틱 선택을 허용).
+    if (editMode && canvas && targets.length > 0) {
+      if (targets.length === 1) {
+        canvas.setActiveObject(targets[0])
+      } else {
+        canvas.setActiveObject(new fabric.ActiveSelection(targets, { canvas }))
+      }
+      canvas.requestRenderAll()
+    }
     updateObjects()
   }
 
@@ -430,16 +527,17 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
                 {/* Phase 1-공유: 레이어 z-order (단일 선택에서만 — ObjectPlugin 이 active 1개만 처리) */}
                 {activeSelection?.length === 1 && (
                   <>
-                    <Button variant="ghost" size="icon" onClick={handleBringToFront} title="맨 앞으로">
+                    {/* B1: lockLayerOrder 객체는 UI 도 비활성 (ObjectPlugin 내부 가드와 정합) */}
+                    <Button variant="ghost" size="icon" onClick={handleBringToFront} title="맨 앞으로" disabled={allOrderLocked}>
                       <ArrowUpToLine className="h-5 w-5" />
                     </Button>
-                    <Button variant="ghost" size="icon" onClick={handleBringForward} title="앞으로">
+                    <Button variant="ghost" size="icon" onClick={handleBringForward} title="앞으로" disabled={allOrderLocked}>
                       <ArrowUp className="h-5 w-5" />
                     </Button>
-                    <Button variant="ghost" size="icon" onClick={handleSendBackward} title="뒤로">
+                    <Button variant="ghost" size="icon" onClick={handleSendBackward} title="뒤로" disabled={allOrderLocked}>
                       <ArrowDown className="h-5 w-5" />
                     </Button>
-                    <Button variant="ghost" size="icon" onClick={handleSendToBack} title="맨 뒤로">
+                    <Button variant="ghost" size="icon" onClick={handleSendToBack} title="맨 뒤로" disabled={allOrderLocked}>
                       <ArrowDownToLine className="h-5 w-5" />
                     </Button>
                   </>
@@ -478,6 +576,49 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
                     )}
                   </Button>
                 )}
+
+                {/* B1: 내용편집 잠금 (관리자 editMode 전용) — 텍스트 진입/사진틀 교체 차단 */}
+                {editMode && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={handleToggleContentLock}
+                    title={allContentLocked ? '내용편집 잠금 해제' : '내용편집 잠금 (고객 내용 수정 불가)'}
+                    aria-pressed={allContentLocked}
+                  >
+                    {allContentLocked ? (
+                      <PencilOff className="h-5 w-5 text-amber-500" />
+                    ) : (
+                      <Pencil className="h-5 w-5" />
+                    )}
+                  </Button>
+                )}
+
+                {/* B1: 프린트 제외 (관리자 editMode 전용) — 화면 표시, PDF 출력만 제외 */}
+                {editMode && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={handleTogglePrintExclude}
+                    title={allPrintExcluded ? '프린트 제외 해제' : '프린트 제외 (PDF 출력 제외, 화면 표시)'}
+                    aria-pressed={allPrintExcluded}
+                  >
+                    <Printer className={allPrintExcluded ? 'h-5 w-5 text-amber-500' : 'h-5 w-5'} />
+                  </Button>
+                )}
+
+                {/* B1: 순서 잠금 (관리자 editMode 전용) — 레이어 z-order 변경 차단 */}
+                {editMode && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={handleToggleOrderLock}
+                    title={allOrderLocked ? '순서 잠금 해제' : '순서 잠금 (레이어 순서 변경 불가)'}
+                    aria-pressed={allOrderLocked}
+                  >
+                    <ArrowUpDown className={allOrderLocked ? 'h-5 w-5 text-amber-500' : 'h-5 w-5'} />
+                  </Button>
+                )}
               </div>
               <div className="actions-right">
                 <Button variant="ghost" size="icon" onClick={handleDelete}>
@@ -487,6 +628,29 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
             </div>
           </div>
         </div>
+
+        {/* B1: 잠금 레벨 (관리자 editMode 전용) — LockPlugin CAN_UNLOCK_MAP 규약.
+            designer 이상은 고객(user) 해제 불가. 해제 주체 role 은 createCanvas/editMode 승격 배선. */}
+        {editMode && (
+          <div className="lock-level flex items-center gap-2 px-4 pb-2">
+            <span className="text-[11px] font-semibold text-editor-text-muted shrink-0">잠금 레벨</span>
+            <Select value={selectionLockLevel} onValueChange={handleLockLevelChange}>
+              <SelectTrigger className="h-7 text-xs flex-1">
+                <SelectValue />
+              </SelectTrigger>
+              {/* 모바일 bottom sheet(z-[102]) 위로 드롭다운이 뜨도록 z-index 상향 */}
+              <SelectContent className="z-[110]">
+                <SelectItem value="none">잠금 없음</SelectItem>
+                <SelectItem value="user">user — 고객 해제 가능</SelectItem>
+                <SelectItem value="designer">designer — 고객 해제 불가</SelectItem>
+                <SelectItem value="admin">admin — 관리자만 해제</SelectItem>
+                {/* 표시 전용 sentinel — 선택해도 동작 없음 */}
+                <SelectItem value="mixed" disabled>혼합</SelectItem>
+                <SelectItem value="system" disabled>system — 해제 불가</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        )}
 
         <hr className="border-editor-border" />
 

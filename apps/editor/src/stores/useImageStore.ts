@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { v4 as uuid } from 'uuid'
 import { core, ImageProcessingPlugin, selectFiles, SelectionType } from '@storige/canvas-core'
 import { useAppStore } from '@/stores/useAppStore'
+import { useSettingsStore } from '@/stores/useSettingsStore'
 import { storageApi } from '@/api'
 import { CUTTING_LINE_CONFIG } from '@/constants/cutting'
 import { showToast } from '@/stores/useToastStore'
@@ -736,8 +737,14 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
 
     frame.set({ hoverCursor: 'pointer', moveCursor: 'pointer' })
 
+    // B1 (2026-07-04): 내용편집 잠금 — contentEditable===false 프레임은 고객(비-editMode)의
+    // 채우기/교체 진입 차단. 관리자(editMode)는 자유 편집(다른 잠금 축과 동일 규약).
+    const isContentLocked = () =>
+      frame.contentEditable === false &&
+      !useSettingsStore.getState().currentSettings.editMode
+
     frame.on('mouseover', () => {
-      if (overlay || isFilled()) return
+      if (overlay || isFilled() || isContentLocked()) return
       const center = frame.getCenterPoint()
       const w = frame.width! * frame.scaleX!
       const h = frame.height! * frame.scaleY!
@@ -788,6 +795,8 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
     frame.on('mouseout', removeOverlay)
 
     frame.on('mousedown', async () => {
+      // B1: 내용편집 잠금 프레임은 채우기/스왑 진입 차단(비-editMode).
+      if (isContentLocked()) return
       // 드롭 오버라이드 스왑(포토북 고유): 이미 채워진 틀에 새 사진을 떨어뜨리면
       // early-return 으로 차단하지 않고 기존 사진을 교체한다. 새 파일을 먼저 받은 뒤
       // (취소 시 기존 사진 보존) 기존 fillImage 를 제거하고 동일한 fillImageIntoFrame

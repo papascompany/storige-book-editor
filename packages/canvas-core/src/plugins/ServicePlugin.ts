@@ -843,6 +843,34 @@ class ServicePlugin extends PluginBase {
             // PDF 저장 전 모든 객체에 순서 정보 부여
             this._assignOrderToAllObjects(canvas)
 
+            // B1 (2026-07-04): printExclude===true 객체는 PDF 출력에서만 제외.
+            // 반드시 _prepareSaveOperation(내부에서 _prepareObjectsForSvgExport 가 텍스트를
+            // 벡터화·원본 제거) **이전**에 세팅해야 한다 — 벡터화 산출 Path Group 은 커스텀
+            // 속성을 복사하지 않으므로, 이후에 세팅하면 printExclude 텍스트가 PDF 에 그대로
+            // 인쇄된다(적대 리뷰 critical). 이 위치면 !excludeFromExport 게이트로 벡터화/
+            // 평탄화 비용까지 스킵되고 toSVG 도 자동 제외한다.
+            // 사진틀(frame)에 지정된 경우 채워진 사진(fillImage: parentLayerId/frameRef 연결)도
+            // 동반 제외 — 프레임만 빠지고 사진이 인쇄되는 절반 동작 방지.
+            // 원복은 originalState(위 :833, 플래그 세팅 전 toJSON) 전체 loadFromJSON 복원이
+            // 성공/오류 양 경로에서 수행되므로 별도 해제 불필요(moldIcon 과 동일 패턴).
+            {
+              const allObjs = canvas.getObjects() as fabric.Object[]
+              const printExcluded = allObjs.filter((obj) => (obj as any).printExclude === true)
+              const excludedIds = new Set(printExcluded.map((obj) => (obj as any).id))
+              for (const excluded of printExcluded) {
+                ; (excluded as any).excludeFromExport = true
+              }
+              for (const obj of allObjs) {
+                const o = obj as any
+                if (
+                  o.extensionType === 'fillImage' &&
+                  (excludedIds.has(o.parentLayerId) || excludedIds.has(o.frameRef))
+                ) {
+                  o.excludeFromExport = true
+                }
+              }
+            }
+
             // PDF 페이지 준비 및 생성
             await new Promise<void>((resolvePrep, rejectPrep) => {
               this._prepareSaveOperation('', canvas, editor, async (preparedData) => {
