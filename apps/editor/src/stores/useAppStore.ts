@@ -1002,6 +1002,8 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
           locked: !(obj.hasControls ?? true),
           selected: selected,
           editable: obj.editable ?? true,
+          // B0-②: 관리자 위치고정 여부 — SidePanel 이 비-editMode 에서 해제 버튼 숨김 판정에 사용
+          movable: (obj as { movable?: boolean }).movable,
           displayOrder: index
         } as CanvasObject)
       })

@@ -2,7 +2,7 @@ import { useMemo, useState, useEffect } from 'react'
 import { useAppStore, useSelectionType } from '@/stores/useAppStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useIsCoarsePointer } from '@/hooks/useIsCoarsePointer'
-import { AlignPlugin, GroupPlugin, ObjectPlugin, SelectionType } from '@storige/canvas-core'
+import { AlignPlugin, GroupPlugin, LockPlugin, ObjectPlugin, SelectionType } from '@storige/canvas-core'
 
 import {
   Image,
@@ -233,9 +233,17 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
     updateObjects()
   }
 
+  // B0-② (2026-07-04): 잠금 해제 권한 게이트.
+  // - 관리자 지정 위치고정(movable===false)은 비-editMode 에서 해제 불가(버튼도 숨김).
+  // - LockPlugin 고급 잠금(lockInfo.isLocked)은 CAN_UNLOCK_MAP 역할 검사 통과 시에만 해제.
+  //   (고객이 스스로 건 단순잠금은 legacy 판정이 'user' 레벨이라 현행대로 해제 가능.)
   const handleUnlock = () => {
     const objectPlugin = getPlugin<ObjectPlugin>('ObjectPlugin')
+    const lockPlugin = getPlugin<LockPlugin>('LockPlugin')
     activeSelection?.forEach((obj) => {
+      if (!editMode && (obj as any).movable === false) return
+      const lockInfo = (obj as any).lockInfo
+      if (lockInfo?.isLocked && lockPlugin && !lockPlugin.canUnlock(lockInfo.lockLevel)) return
       objectPlugin?.unlock(obj)
     })
     updateObjects()
@@ -395,11 +403,13 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
             </div>
             <div className="actions flex flex-row justify-between">
               <div className="actions-left flex items-center gap-2">
-                {/* LockSimple/Unlock */}
+                {/* LockSimple/Unlock — B0-②: 관리자 위치고정은 비-editMode 에서 해제 버튼 숨김 */}
                 {allLocked ? (
-                  <Button variant="ghost" size="icon" onClick={handleUnlock}>
-                    <LockSimple className="h-5 w-5" />
-                  </Button>
+                  (editMode || !allMovementLocked) && (
+                    <Button variant="ghost" size="icon" onClick={handleUnlock}>
+                      <LockSimple className="h-5 w-5" />
+                    </Button>
+                  )
                 ) : (
                   <Button variant="ghost" size="icon" onClick={handleLock}>
                     <LockSimpleOpen className="h-5 w-5" />

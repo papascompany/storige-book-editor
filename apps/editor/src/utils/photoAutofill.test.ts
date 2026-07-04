@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest'
+// eslint no-undef 대응 — 전역 TextEncoder 를 명시 import (사전 존재하던 lint 유일 error 제거)
+import { TextEncoder } from 'util'
 import type { ExternalPhoto } from '@storige/types'
 import {
   sortPhotosForAutofill,
