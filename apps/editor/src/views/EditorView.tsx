@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { useAuthStore, useIsCustomer } from '@/stores/useAuthStore'
+import { useAuthStore, useIsAdmin, useIsCustomer } from '@/stores/useAuthStore'
 import { useAppStore } from '@/stores/useAppStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useUiPrefStore } from '@/stores/useUiPrefStore'
@@ -98,6 +98,7 @@ export default function EditorView() {
   // Stores
   const { setToken, initializeFromStorage } = useAuthStore()
   const isCustomer = useIsCustomer()
+  const isAdmin = useIsAdmin()
   const {
     ready,
     showSidePanel,
@@ -112,6 +113,24 @@ export default function EditorView() {
   } = useAppStore()
   const { getUseCaseFromParams } = useSettingsStore()
   const showRuler = useUiPrefStore((s) => s.showRuler)
+
+  // B0-① (2026-07-04): editMode 는 URL 파라미터만으로 부여하지 않는다.
+  // setupEmptyEditor 가 항상 editMode=false 로 리셋하므로, 관리자 진입
+  // (adminEdit=templateSet 또는 ?editMode= 단독 요청)은 checkAuth 로 me.role 이
+  // ADMIN/SUPER_ADMIN 임이 확인된 뒤 여기서만 켠다. 고객(embed/PHP/bookmoa)은
+  // role 검증을 통과할 수 없어 관리자 토글·applyObjectPermissions 무력화가 차단된다.
+  const storeEditMode = useSettingsStore((s) => s.currentSettings.editMode)
+  const editModeRequested = isAdminTemplateSetEdit || (!!editMode && !contentId && !productId)
+  useEffect(() => {
+    if (editModeRequested && isAdmin && !storeEditMode && !isLoading) {
+      useSettingsStore.getState().updateSettings({ editMode: true })
+      // LockPlugin role 은 createCanvas 시점 editMode 스냅샷('user')이라 함께 승격.
+      for (const ed of useAppStore.getState().allEditors) {
+        ;(ed?.getPlugin?.('LockPlugin') as { setUserRole?: (r: string) => void } | undefined)
+          ?.setUserRole?.('admin')
+      }
+    }
+  }, [editModeRequested, isAdmin, storeEditMode, isLoading])
 
   // Editor contents hook
   const {

@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useAppStore, useCurrentIndex } from '@/stores/useAppStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
-import { type CanvasObject, ObjectPlugin, SelectionType } from '@storige/canvas-core'
+import { type CanvasObject, LockPlugin, ObjectPlugin, SelectionType } from '@storige/canvas-core'
 import { Image, Type as TextT, Hexagon, Frame as FrameCorners, QrCode, Layers as Stack, X, Trash2 as Trash, Lock as LockSimple, Unlock as LockSimpleOpen, Eye, EyeOff as EyeSlash, GripVertical as DotsSixVertical, Plus } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -60,6 +60,8 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
   const reorderObject = useAppStore((state) => state.reorderObject)
 
   const pageInfo = useSettingsStore((state) => state.currentSettings.page)
+  // B0-② (2026-07-04): 잠금 해제 권한 게이트용 — 관리자 위치고정은 비-editMode 에서 해제 불가
+  const editMode = useSettingsStore((state) => state.currentSettings.editMode)
 
   const [editingObject, setEditingObject] = useState<CanvasObject | null>(null)
   const [editName, setEditName] = useState('')
@@ -96,13 +98,19 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
     e.stopPropagation()
 
     const objectPlugin = getPlugin<ObjectPlugin>('ObjectPlugin')
+    const lockPlugin = getPlugin<LockPlugin>('LockPlugin')
     const object = canvas?.getObjects().find((obj: any) => obj.id === objectId)
 
     if (object && objectPlugin) {
+      // B0-②: 관리자 위치고정(movable===false)은 비-editMode 에서 해제 차단.
+      if (!editMode && (object as any).movable === false) return
+      // LockPlugin 고급 잠금은 CAN_UNLOCK_MAP 역할 검사.
+      const lockInfo = (object as any).lockInfo
+      if (lockInfo?.isLocked && lockPlugin && !lockPlugin.canUnlock(lockInfo.lockLevel)) return
       objectPlugin.unlock(object)
       updateObjects()
     }
-  }, [canvas, getPlugin, updateObjects])
+  }, [canvas, getPlugin, updateObjects, editMode])
 
   const handleVisible = useCallback((e: React.MouseEvent, objectId: string) => {
     e.preventDefault()
@@ -387,14 +395,17 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
                       {obj.editable && (
                         <div className="actions absolute right-0 top-0 bottom-0 m-auto flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                           {obj.locked ? (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7"
-                              onClick={(e) => handleUnlock(e, obj.id)}
-                            >
-                              <LockSimple className="h-4 w-4" />
-                            </Button>
+                            /* B0-②: 관리자 위치고정(movable===false)은 비-editMode 에서 해제 버튼 숨김 */
+                            (editMode || obj.movable !== false) && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7"
+                                onClick={(e) => handleUnlock(e, obj.id)}
+                              >
+                                <LockSimple className="h-4 w-4" />
+                              </Button>
+                            )
                           ) : (
                             <Button
                               variant="ghost"
