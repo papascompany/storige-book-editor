@@ -1001,9 +1001,19 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
           visible: Boolean(obj.visible !== false),
           locked: !(obj.hasControls ?? true),
           selected: selected,
-          editable: obj.editable ?? true,
+          // B1: contentEditable 강제(applyObjectPermissions)가 fabric editable=false 를
+          // 세팅해도 레이어 행 액션(잠금/가시성)은 유지 — 내용편집만 잠근다는 설계 의도 초과 방지.
+          editable: (obj.editable ?? true) || (obj as { contentEditable?: boolean }).contentEditable === false,
           // B0-②: 관리자 위치고정 여부 — SidePanel 이 비-editMode 에서 해제 버튼 숨김 판정에 사용
           movable: (obj as { movable?: boolean }).movable,
+          // B1: 레이어 행 배지용 속성 스냅샷
+          deleteable: (obj as { deleteable?: boolean }).deleteable,
+          contentEditable: (obj as { contentEditable?: boolean }).contentEditable,
+          printExclude: (obj as { printExclude?: boolean }).printExclude,
+          lockLayerOrder: (obj as { lockLayerOrder?: boolean }).lockLayerOrder,
+          lockLevel: (obj as { lockInfo?: { isLocked?: boolean; lockLevel?: string } }).lockInfo?.isLocked
+            ? ((obj as { lockInfo?: { lockLevel?: string } }).lockInfo?.lockLevel as CanvasObject['lockLevel'])
+            : undefined,
           displayOrder: index
         } as CanvasObject)
       })

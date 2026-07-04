@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { useAppStore, useCurrentIndex } from '@/stores/useAppStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { type CanvasObject, LockPlugin, ObjectPlugin, SelectionType } from '@storige/canvas-core'
-import { Image, Type as TextT, Hexagon, Frame as FrameCorners, QrCode, Layers as Stack, X, Trash2 as Trash, Lock as LockSimple, Unlock as LockSimpleOpen, Eye, EyeOff as EyeSlash, GripVertical as DotsSixVertical, Plus } from 'lucide-react'
+import { Image, Type as TextT, Hexagon, Frame as FrameCorners, QrCode, Layers as Stack, X, Trash2 as Trash, Lock as LockSimple, Unlock as LockSimpleOpen, Eye, EyeOff as EyeSlash, GripVertical as DotsSixVertical, Plus, Pin, ShieldX, PencilOff, Printer, ArrowUpDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 
@@ -104,10 +104,13 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
     if (object && objectPlugin) {
       // B0-②: 관리자 위치고정(movable===false)은 비-editMode 에서 해제 차단.
       if (!editMode && (object as any).movable === false) return
-      // LockPlugin 고급 잠금은 CAN_UNLOCK_MAP 역할 검사.
       const lockInfo = (object as any).lockInfo
-      if (lockInfo?.isLocked && lockPlugin && !lockPlugin.canUnlock(lockInfo.lockLevel)) return
-      objectPlugin.unlock(object)
+      if (lockInfo?.isLocked) {
+        // LockPlugin 고급 잠금은 플러그인 경유 해제(내부 canUnlock 검사 + lockInfo 정합 해제).
+        lockPlugin?.unlock(object)
+      } else {
+        objectPlugin.unlock(object)
+      }
       updateObjects()
     }
   }, [canvas, getPlugin, updateObjects, editMode])
@@ -388,6 +391,32 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
                           <span className="name text-xs text-editor-text truncate block">
                             {obj.name}
                           </span>
+                        )}
+                      </div>
+                      {/* B1: 속성 배지 — 잠김 종류 구분(고급잠금 레벨/위치고정/삭제·내용·프린트·순서) */}
+                      <div className="badges flex items-center gap-0.5 shrink-0">
+                        {obj.lockLevel && (
+                          <span
+                            title={`잠금 레벨: ${obj.lockLevel}`}
+                            className="text-[9px] leading-none px-1 py-0.5 rounded bg-amber-500/15 text-amber-600 font-semibold"
+                          >
+                            {obj.lockLevel}
+                          </span>
+                        )}
+                        {obj.movable === false && (
+                          <Pin className="h-3 w-3 text-amber-500" aria-label="위치 고정" />
+                        )}
+                        {obj.deleteable === false && (
+                          <ShieldX className="h-3 w-3 text-amber-500" aria-label="삭제 잠금" />
+                        )}
+                        {obj.contentEditable === false && (
+                          <PencilOff className="h-3 w-3 text-amber-500" aria-label="내용편집 잠금" />
+                        )}
+                        {obj.printExclude === true && (
+                          <Printer className="h-3 w-3 text-amber-500" aria-label="프린트 제외" />
+                        )}
+                        {obj.lockLayerOrder === true && (
+                          <ArrowUpDown className="h-3 w-3 text-amber-500" aria-label="순서 잠금" />
                         )}
                       </div>
                     </div>
