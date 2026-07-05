@@ -64,7 +64,8 @@
 - **B5. 재편집 경로 동일 반영** — `src/pages/Orders.jsx` onComplete(:479): 재편집 산출 pageCount로 cfg.pages/quote 갱신(운영 정책상 금액 변경 허용 여부는 오너 결정 — 발주 후 동결 설계(editLock)와 연계).
 - **선행 의존**: B1은 현행 payload의 pageCount만으로 착수 가능. size 반영은 storige S2 배포 후.
 
-## 7. 오너 결정 대기
-1. A안(embed 사이즈 잠금) 즉시 적용 승인 여부 — 데스크톱 embed에서 기능이 사라지는 가시 변화.
-2. B5 재편집 금액 변경 정책(자동 재계산 vs 재편집 시 페이지 증감 차단) — 발주 후 동결(editLock) 설계와 함께.
-3. B안(옵션 변경 요청 postMessage 계약) 착수 시점.
+## 7. 오너 결정 — 전건 확정 (트랙 종결 2026-07-05)
+1. ✅ A안(embed 사이즈 잠금) — 승인·구현·배포(e7ed48d)·라이브 육안검증 PASS(Playwright 2방향).
+2. ✅ 고지 UX — '주문 스펙 확인 모달'(항상 표시, 페이지수 실측 자동동기 고정)로 확정. bookmoa-mobile R-10(d84197b) 구현·배포·교차검증 PASS.
+3. ✅ D-2 결제 완료 주문 페이지 증감 — **현행 유지(차단) 확정(2026-07-05)**. 디자인 수정 재편집은 허용, 차액결제(B/C)는 수요 발생 시 별도 로드맵. bookmoa docs/DECISIONS-PENDING-2026-07-04.md 에 확정 기록(2526f00).
+4. ⏳ B안(옵션 변경 요청 postMessage 계약)은 별도 트랙 보류.
