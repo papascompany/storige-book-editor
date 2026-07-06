@@ -26,6 +26,16 @@ function log(msg: string) {
 
 const params = new URLSearchParams(location.search)
 const LABEL = params.get('label') || 'unlabeled'
+/**
+ * 캡처 케이스 (Track 1, 2026-07-06 — 포토북 출력 계약 골든):
+ * - 'book'(기본, 기존 경로 byte-identical): A4 2p + 칼선 + 바코드/QR.
+ * - 'photobook-content': D-1 — 내지 content 페이지 = 2-up trim(190×2=380 × 190mm).
+ *   기대 MediaBox: 380×190mm = 1077.17×538.58pt (bleed 게이트 OFF 기준).
+ * - 'photobook-cover-wrap': D-4 — 하드커버 cover 페이지 = wrap 포함 출력 사이즈.
+ *   trim 430×297mm(cover210×2+spine10) + caseBind(board2/turnIn15/wrap5) →
+ *   printSize 474×337mm = 기대 MediaBox 1343.62×955.28pt, 콘텐츠(trim 렌더)는 중앙 배치.
+ */
+const CASE = params.get('case') || 'book'
 const RECEIVER = 'http://localhost:3199'
 
 // ── 결정적 지오메트리: A4 재단 210x297 + 재단여백 3mm = 작업 216x303mm @150dpi ──
@@ -123,8 +133,122 @@ async function buildPage2(fabric: any) {
   return { canvas, editor }
 }
 
+/**
+ * 포토북 케이스용 결정적 벡터 페이지 (텍스트/폰트 미사용 — 결정성 원칙 동일).
+ * sizeMm = trim 기준, workspace = trim + cutSize×2 (@150dpi).
+ */
+async function buildVectorPage(
+  fabric: any,
+  sizeMm: { width: number; height: number; cutSize: number },
+  variant: 0 | 1,
+) {
+  const el = document.createElement('canvas')
+  const canvas = new fabric.Canvas(el, { width: 2600, height: 1400 })
+  const editor = new Editor()
+  editor.init(canvas)
+
+  const wsW = mmToPx(sizeMm.width + sizeMm.cutSize * 2, DPI)
+  const wsH = mmToPx(sizeMm.height + sizeMm.cutSize * 2, DPI)
+  canvas.add(
+    new fabric.Rect({
+      id: 'workspace',
+      left: 0,
+      top: 0,
+      width: wsW,
+      height: wsH,
+      fill: variant === 0 ? '#ffffff' : '#fbf7ee',
+      selectable: false,
+      evented: false,
+    }),
+    // 좌면/우면 식별용 고정 도형(2-up 경계 시각 확인) — 좌면 사각 + 우면 원
+    new fabric.Rect({
+      id: `pb-r${variant}`,
+      left: Math.round(wsW * 0.08),
+      top: Math.round(wsH * 0.15),
+      width: Math.round(wsW * 0.3),
+      height: Math.round(wsH * 0.5),
+      fill: variant === 0 ? '#e8443a' : '#2b6cb0',
+    }),
+    new fabric.Circle({
+      id: `pb-c${variant}`,
+      left: Math.round(wsW * 0.62),
+      top: Math.round(wsH * 0.25),
+      radius: Math.round(wsH * 0.22),
+      fill: variant === 0 ? '#2f855a' : '#d69e2e',
+    }),
+    // 중앙(거터/책등) 경계 라인
+    new fabric.Rect({
+      id: `pb-g${variant}`,
+      left: Math.round(wsW / 2) - 2,
+      top: 0,
+      width: 4,
+      height: wsH,
+      fill: '#6b46c1',
+    })
+  )
+  canvas.renderAll()
+  return { canvas, editor }
+}
+
+/** D-1 골든: 포토북 내지 2-up content — 페이지 크기 = pageWidthMm×2 × pageHeightMm (2p). */
+async function runPhotobookContent(fabric: any) {
+  // innerSpec: 190×190 정방형 포토북, 2-up trim = 380×190
+  const CONTENT_SIZE = { width: 380, height: 190, cutSize: 3 }
+  const s1 = await buildVectorPage(fabric, CONTENT_SIZE, 0)
+  const s2 = await buildVectorPage(fabric, CONTENT_SIZE, 1)
+  const service = new ServicePlugin(s1.canvas, s1.editor, null as any, {})
+  s1.editor.use(service)
+  return service.saveMultiPagePDFAsBlob(
+    [s1.canvas, s2.canvas],
+    [s1.editor, s2.editor],
+    'golden-photobook-content',
+    CONTENT_SIZE,
+    undefined,
+    DPI
+  )
+}
+
+/** D-4 골든: 하드커버 cover — 페이지(MediaBox) = wrap 포함 출력 사이즈(printSize), 콘텐츠 중앙. */
+async function runPhotobookCoverWrap(fabric: any) {
+  // trim = cover210×2 + spine10 = 430×297 / caseBind(board2, turnIn15, wrap5)
+  // → 출력 = 430+2×2+(15+5)×2 = 474 × 297+(15+5)×2 = 337 (computeSpreadOutputDimensions 동일 공식)
+  const COVER_TRIM = { width: 430, height: 297, cutSize: 3 }
+  const COVER_OUTPUT = { width: 474, height: 337 }
+  const c1 = await buildVectorPage(fabric, COVER_TRIM, 0)
+  const service = new ServicePlugin(c1.canvas, c1.editor, null as any, {})
+  c1.editor.use(service)
+  return service.saveMultiPagePDFAsBlob(
+    [c1.canvas],
+    [c1.editor],
+    'golden-photobook-cover-wrap',
+    { ...COVER_TRIM, printSize: COVER_OUTPUT },
+    undefined,
+    DPI
+  )
+}
+
 async function run() {
   const fabric = await getFabric()
+
+  // ── 포토북 케이스(Track 1 additive) — 기본 'book' 경로는 아래 기존 흐름 그대로 ──
+  if (CASE === 'photobook-content' || CASE === 'photobook-cover-wrap') {
+    log(`캡처 시작 label=${LABEL} case=${CASE}`)
+    const t0 = performance.now()
+    const blob: Blob =
+      CASE === 'photobook-content'
+        ? await runPhotobookContent(fabric)
+        : await runPhotobookCoverWrap(fabric)
+    log(`PDF 생성 완료 ${blob.size} bytes (${Math.round(performance.now() - t0)}ms)`)
+    const res = await fetch(
+      `${RECEIVER}/save?label=${encodeURIComponent(LABEL)}&name=${encodeURIComponent(CASE)}`,
+      { method: 'POST', body: blob }
+    )
+    if (!res.ok) throw new Error(`수신 서버 저장 실패 HTTP ${res.status}`)
+    log('수신 서버 저장 OK')
+    statusEl.textContent = `DONE ${LABEL} ${CASE} ${blob.size}B`
+    document.title = `DONE-${LABEL}`
+    return
+  }
 
   const p1 = await buildPage1(fabric)
   const p2 = await buildPage2(fabric)
