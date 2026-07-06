@@ -50,6 +50,7 @@ import {
 } from '@/components/ui/tooltip'
 import { Button } from '@/components/ui/button'
 import { showToast } from '@/stores/useToastStore'
+import { selectionTypeLabel } from '@/utils/layerDisplay'
 import {
   Select,
   SelectContent,
@@ -117,31 +118,10 @@ function AlignBtn({
   )
 }
 
-// Object name mapping
-const getObjectName = (type: SelectionType, selectionCount: number) => {
-  switch (type) {
-    case SelectionType.text:
-      return '텍스트'
-    case SelectionType.image:
-      return '이미지'
-    case SelectionType.shape:
-      return '요소'
-    case SelectionType.frame:
-      return '프레임'
-    case SelectionType.background:
-      return '배경'
-    case SelectionType.smartCode:
-      return 'QR/바코드'
-    case SelectionType.group:
-      return '그룹'
-    case SelectionType.multiple:
-      return `${selectionCount}개의 아이템`
-    case SelectionType.templateElement:
-      return '템플릿 요소'
-    default:
-      return '요소'
-  }
-}
+// L2 §5 용어 동기화: 타입 한국어명 단일 소스(layerDisplay.selectionTypeLabel) 재사용 —
+// 레이어 행 이름 규약과 ControlBar 헤더가 같은 명칭을 쓴다(사진/도형/사진틀…).
+const getObjectName = (type: SelectionType, selectionCount: number) =>
+  selectionTypeLabel(type, selectionCount)
 
 export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: boolean } = {}) {
   const canvas = useAppStore((state) => state.canvas)

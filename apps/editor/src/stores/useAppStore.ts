@@ -1014,6 +1014,10 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
           lockLevel: (obj as { lockInfo?: { isLocked?: boolean; lockLevel?: string } }).lockInfo?.isLocked
             ? ((obj as { lockInfo?: { lockLevel?: string } }).lockInfo?.lockLevel as CanvasObject['lockLevel'])
             : undefined,
+          // L2: 텍스트 내용 미리보기 — 행 표시명(자동 이름일 때 대체)용, 저장 무접촉
+          textPreview: typeof (obj as { text?: unknown }).text === 'string'
+            ? ((obj as { text?: string }).text as string).slice(0, 24)
+            : undefined,
           displayOrder: index
         } as CanvasObject)
       })
