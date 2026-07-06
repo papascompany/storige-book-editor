@@ -20,6 +20,8 @@ export interface CanvasObject {
   lockLayerOrder?: boolean
   /** LockPlugin 고급 잠금 레벨 (lockInfo.isLocked 인 경우만 세팅) */
   lockLevel?: 'user' | 'designer' | 'admin' | 'system'
+  /** L2: 텍스트류 내용 미리보기(행 표시명용, display-only) */
+  textPreview?: string
   name?: string
   displayOrder: number
 }
