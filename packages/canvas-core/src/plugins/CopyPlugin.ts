@@ -55,12 +55,33 @@ class CopyPlugin extends PluginBase {
     this.initPaste()
   }
 
+  /**
+   * L1④ (2026-07-06): 관리자 보호 객체(위치고정/삭제잠금/내용잠금/고급잠금)는 고객
+   * (비-editMode)이 복제할 수 없다 — 보호 플래그가 사본에 복사돼 삭제 불가한 유령
+   * 사본이 쌓이는 것 방지. ObjectPlugin.del 의 삭제 가드와 동일 규약(_options.editMode).
+   * 핫키(ctrl+d)·우클릭 컨텍스트 메뉴·SidePanel 버튼이 전부 clone() 을 거치므로 일괄 방어.
+   */
+  private isCloneProtected(obj: fabric.Object): boolean {
+    if (this._options?.editMode) return false
+    const o = obj as any
+    return (
+      o?.movable === false ||
+      o?.deleteable === false ||
+      o?.contentEditable === false ||
+      o?.lockInfo?.isLocked === true
+    )
+  }
+
   clone(paramsActiveObject?: fabric.ActiveSelection | fabric.Object) {
     const activeObject = paramsActiveObject || this._canvas.getActiveObject()
     if (!activeObject) return
     if (activeObject?.type === 'activeSelection') {
+      const sel = activeObject as fabric.ActiveSelection
+      const objects = (sel.getObjects?.() ?? []) as fabric.Object[]
+      if (objects.some((o) => this.isCloneProtected(o))) return
       this.copyActiveSelection(activeObject)
     } else {
+      if (this.isCloneProtected(activeObject)) return
       this.copyObject(activeObject)
     }
   }

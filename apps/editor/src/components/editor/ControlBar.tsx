@@ -49,6 +49,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { Button } from '@/components/ui/button'
+import { showToast } from '@/stores/useToastStore'
 import {
   Select,
   SelectContent,
@@ -255,6 +256,9 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
   // S2 (공유): 즉시 삭제 대신 확인 모달을 거친다(휴지통 버튼·DEL 핫키 공통 경로).
   // 실제 삭제는 store.confirmDeleteSelection → ObjectPlugin.del() 재사용.
   const requestDeleteSelection = useAppStore((state) => state.requestDeleteSelection)
+  // L1② (2026-07-06): 레이어 패널 진입점 — 객체 선택 중 빠른 접근(헤더 Layers 버튼과 병행)
+  const setShowSidePanel = useAppStore((state) => state.setShowSidePanel)
+  const showSidePanel = useAppStore((state) => state.showSidePanel)
   const handleDelete = () => {
     requestDeleteSelection()
   }
@@ -385,9 +389,18 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
 
   const handleInvisible = () => {
     const objectPlugin = getPlugin<ObjectPlugin>('ObjectPlugin')
+    let blocked = false
     activeSelection?.forEach((obj) => {
+      // L1④ 대칭 가드(적대 리뷰 major): 보호 객체는 고객이 숨길 수 없다 —
+      // visible=false 는 저장 영속 → 필수 요소 미인쇄 사고 벡터. SidePanel 가드와 동일 규약.
+      const o = obj as { movable?: boolean; deleteable?: boolean; contentEditable?: boolean }
+      if (!editMode && (o.movable === false || o.deleteable === false || o.contentEditable === false)) {
+        blocked = true
+        return
+      }
       objectPlugin?.invisible(obj)
     })
+    if (blocked) showToast('관리자가 보호한 요소는 숨길 수 없어요.', 'info')
     canvas?.requestRenderAll()
   }
 
@@ -523,6 +536,17 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
                     <EyeSlash className="h-5 w-5" />
                   </Button>
                 )}
+
+                {/* L1②: 레이어 패널 열기 — 선택 컨텍스트에서 즉시 레이어 구조 확인 */}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setShowSidePanel(!showSidePanel)}
+                  title="레이어 패널"
+                  aria-pressed={showSidePanel}
+                >
+                  <Stack className="h-5 w-5" />
+                </Button>
 
                 {/* Phase 1-공유: 레이어 z-order (단일 선택에서만 — ObjectPlugin 이 active 1개만 처리) */}
                 {activeSelection?.length === 1 && (

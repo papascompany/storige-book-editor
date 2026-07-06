@@ -754,6 +754,8 @@ export default function EditorView() {
         screenMode={screenMode}
         onLoadingChange={handleLoadingChange}
         isAdminTemplateSetEdit={isAdminTemplateSetEdit}
+        /* L1⑤ (2026-07-06): 헤더 Layers 버튼과 연결 — EditorView 에도 레이어 패널 진입점 */
+        onToggleSidePanel={toggleSidePanel}
       />
 
       {/* 인쇄 워크플로우 v1 Phase 5-D (2026-05-19) — 면지/PDF첨부/레더커버 floating controls.
@@ -862,6 +864,10 @@ export default function EditorView() {
               ) : (
                 <BookNavigation orientation="vertical" />
               ))}
+
+            {/* L1⑤ (2026-07-06): SidePanel 마운트 갭 해소 — import/toggle 배선만 있고
+                JSX 렌더가 없어 디자이너 화면에서 레이어 패널이 열 수 없었다(embed:1786 과 동일 패턴). */}
+            <SidePanel show={showSidePanel} onClose={() => setShowSidePanel(false)} />
           </div>
 
           {/* 하단 페이지 네비 (스프레드=가로 SpreadPagePanel / 일반=가로 BookNavigation) */}

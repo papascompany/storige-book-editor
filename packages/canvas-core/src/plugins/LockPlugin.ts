@@ -242,6 +242,16 @@ class LockPlugin extends PluginBase {
       return lockInfo
     }
 
+    // L1① (2026-07-06): 위치고정(movable===false, Part B)은 '잠금'이 아니다 —
+    // applyObjectPermissions 가 lockMovement* 를 세팅하지만 선택/내용편집은 허용이
+    // 설계 규약. 레거시 렌즈가 이를 isLocked 로 오판하면 handleSelection 이 고객
+    // 선택을 즉시 해제해 '위치고정=선택불가'로 변질된다(실버그). 이동 차단 자체는
+    // fabric lockMovementX/Y 가 담당하므로 여기서 false 를 줘도 드래그는 막힌다.
+    // ⚠️ lockInfo(고급잠금) 경로는 위에서 이미 반환 — 절대 불변.
+    if ((obj as any).movable === false) {
+      return { isLocked: false, lockLevel: 'user' }
+    }
+
     // 레거시 방식의 잠금 확인 (lockMovementX 등)
     const isLegacyLocked = LOCK_ATTRIBUTES.some(attr => (obj as any)[attr] === true)
 
