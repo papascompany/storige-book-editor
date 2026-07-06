@@ -31,6 +31,7 @@ import {
   Moon,
   Monitor,
   Save,
+  Layers,
 } from 'lucide-react'
 import { AutoSaveIndicator } from './AutoSaveIndicator'
 import { BookMockup3D } from '../Mockup3D/BookMockup3D'
@@ -892,6 +893,26 @@ export default function EditorHeader({
               <FolderOpen className="h-4 w-4 mr-2" />
               불러오기
             </Button>
+          )}
+
+          {/* L1② (2026-07-06): 레이어 패널 진입점 복원 — cefe2d4 에서 제거된 뒤 고객이
+              SidePanel 을 열 방법이 0이던 갭. onToggleSidePanel prop 은 embed/EditorView
+              양쪽에서 배선되므로 이 버튼 하나로 두 화면 진입점 동시 복원. */}
+          {onToggleSidePanel && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={onToggleSidePanel}
+                  aria-label="레이어 패널"
+                  className="text-editor-text hover:bg-editor-surface-low"
+                >
+                  <Layers className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">레이어</TooltipContent>
+            </Tooltip>
           )}
 
           {/* === 우측 액션 (모드별 분리) === */}

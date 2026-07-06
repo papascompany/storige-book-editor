@@ -31,6 +31,10 @@ interface ToastState {
 export const useToastStore = create<ToastState>((set, get) => ({
   toasts: [],
   push: (message, type = 'info', duration = 3500) => {
+    // L1⑥ (2026-07-06): 동일 문구·타입 활성 토스트가 있으면 스킵 — 가드 버튼 연타 시
+    // 같은 안내가 겹쳐 쌓이는 남발 방지(기존 id 반환, 동작 비파괴).
+    const dup = get().toasts.find((t) => t.message === message && t.type === type)
+    if (dup) return dup.id
     const id = `toast_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
     set((s) => ({ toasts: [...s.toasts, { id, message, type, duration }] }))
     if (duration > 0) {
