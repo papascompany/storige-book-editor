@@ -75,3 +75,31 @@ export function applyObjectPermissions(
   }
   if (changed) canvas.requestRenderAll()
 }
+
+/**
+ * L3 B-3 (2026-07-06): 고객 시점 미리보기 종료 시 원복 — applyObjectPermissions 가
+ * movable===false 객체에 강제한 fabric 잠금 5속성+hasControls 를 되돌린다.
+ * (contentEditable 의 editable 원복은 applyObjectPermissions(canvas, true) 가 담당.)
+ * 미리보기는 저장 없는 일시 모드이므로 마커(movable 플래그) 기준 정확 원복이 가능하다.
+ */
+export function revertObjectPermissions(canvas: fabric.Canvas | null | undefined): void {
+  if (!canvas) return
+  let changed = false
+  for (const obj of canvas.getObjects() as fabric.Object[]) {
+    // apply 와 대칭: fillImage 는 apply 가 건드리지 않으므로 revert 도 건드리지 않는다.
+    if ((obj as { extensionType?: string }).extensionType === 'fillImage') continue
+    if ((obj as { movable?: boolean }).movable === false) {
+      obj.set({
+        lockMovementX: false,
+        lockMovementY: false,
+        lockScalingX: false,
+        lockScalingY: false,
+        lockRotation: false,
+        hasControls: true,
+      })
+      obj.setCoords()
+      changed = true
+    }
+  }
+  if (changed) canvas.requestRenderAll()
+}
