@@ -68,7 +68,9 @@ class CopyPlugin extends PluginBase {
       o?.movable === false ||
       o?.deleteable === false ||
       o?.contentEditable === false ||
-      o?.lockInfo?.isLocked === true
+      // user 레벨 고급잠금은 본인이 건 '내 잠금' — 복제 허용(레이어 행 mine 판정과 정합).
+      // designer+ 레벨만 템플릿 보호로 간주해 차단(적대 리뷰: 판정 불일치 해소).
+      (o?.lockInfo?.isLocked === true && o?.lockInfo?.lockLevel !== 'user')
     )
   }
 
