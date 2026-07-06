@@ -224,6 +224,105 @@ export function isFrameFilled(canvas: FabricCanvas, frame: FabricObject): boolea
   }
 }
 
+/**
+ * '빈 사진틀 존재' 런타임 판정(순수, early-return) — 자동편집 UI 노출 조건.
+ *
+ * ⚠️ 노출 게이팅 원칙(오너 결정 D-2 + 착수 원칙): TemplateSetType 으로 게이팅하지 않는다.
+ *    frame 이 없는 상품(BOOK/LEAFLET 일반 셋)에선 이 판정이 false 라 버튼이 자연히 숨는다.
+ * collectEmptyFrames 와 동일 기준(extensionType==='frame' + contentEditable 게이트 + 미채움)이되
+ * 첫 발견 즉시 반환해 렌더 경로에서 싸다.
+ */
+export function hasEmptyFrame(
+  canvases: FabricCanvas[],
+  opts?: { editMode?: boolean },
+): boolean {
+  for (const canvas of canvases) {
+    let objs: FabricObject[]
+    try {
+      objs = canvas.getObjects()
+    } catch {
+      continue
+    }
+    for (const obj of objs) {
+      if (obj.extensionType !== 'frame') continue
+      if (!opts?.editMode && obj.contentEditable === false) continue
+      if (!isFrameFilled(canvas, obj)) return true
+    }
+  }
+  return false
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// '내 업로드' 입력 어댑터 (순수) — Track 2 (D-2 잔여 갭, 2026-07-06)
+// ────────────────────────────────────────────────────────────────────────────
+
+/**
+ * '내 업로드' 사진 메타(useImageStore.uploadedPhotoMeta) — editor 로컬 어댑터 타입.
+ * packages/types 의 ExternalPhoto 와 구조적으로 호환되지만 소유/시맨틱이 다르다:
+ *
+ * ⚠️ uploadedAt 시맨틱 차이(혼합 정렬 시 주의 — SKILL.md §자동편집 EXIF 명문화):
+ *   - ExternalPhoto.uploadedAt      = 호스트 서비스가 사진을 업로드한 시각(서버 시계).
+ *   - UploadedPhotoMeta.uploadedAt  = file.lastModified(사용자 기기의 파일 수정시각).
+ *   둘 다 D-2 폴백 체인의 DateAdded 역할이나 기준 시계가 다르다. takenAt(EXIF)이 있으면
+ *   effectiveTime 이 takenAt 을 우선하므로 실사진 대부분에선 차이가 드러나지 않는다.
+ *
+ * url 은 반드시 storage 업로드 결과 URL(objectURL/dataURL 금지 — 세션 휘발로 저장 JSON·
+ * '사용됨' 뱃지·재편집 기준이 깨진다). 등록 주체(useImageStore.registerUploadedPhoto)가 보장.
+ */
+export interface UploadedPhotoMeta {
+  /** storage 업로드 결과 URL (안정 참조 — objectURL 금지) */
+  url: string
+  /** 원본 파일명 (filename 정렬 기준) */
+  name?: string
+  /** file.lastModified ISO — DateAdded 폴백(위 시맨틱 주의) */
+  uploadedAt?: string
+  /** EXIF DateTimeOriginal ISO (업로드 시점 원본 File 파싱) */
+  takenAt?: string
+  /** EXIF GPS (location 모드 군집 기준) */
+  gps?: { lat: number; lng: number }
+  /** EXIF 파싱 시도 완료 플래그 (enrichPhotosWithExif 의 재파싱/URL 페치 방지) */
+  exifParsed?: boolean
+}
+
+/** '내 업로드' 메타를 ExternalPhoto 형태로 어댑팅(순수). url 없는 항목은 제외. */
+export function adaptUploadedPhotoMeta(metas: UploadedPhotoMeta[]): ExternalPhoto[] {
+  return metas
+    .filter((m) => !!m && typeof m.url === 'string' && m.url.length > 0)
+    .map((m) => ({
+      url: m.url,
+      name: m.name,
+      uploadedAt: m.uploadedAt,
+      takenAt: m.takenAt,
+      gps: m.gps,
+      // 업로드 시점에 원본 File 로 파싱 완료 → enrichPhotosWithExif 의 URL 재페치 방지.
+      exifParsed: m.exifParsed ?? true,
+    }))
+}
+
+/**
+ * 자동편집 입력 = 외부주입(externalPhotos) ∪ '내 업로드'(uploadedPhotoMeta) 합집합(순수).
+ * URL 기준 중복 제거 — 동일 URL 이면 외부주입(호스트 메타)이 우선한다.
+ * 순서: 외부주입 먼저, 내 업로드 뒤(최종 순서는 어차피 sortPhotosForAutofill 이 결정).
+ */
+export function mergeAutofillPhotoInputs(
+  external: ExternalPhoto[],
+  uploaded: UploadedPhotoMeta[],
+): ExternalPhoto[] {
+  const out: ExternalPhoto[] = []
+  const seen = new Set<string>()
+  for (const p of external) {
+    if (!p || typeof p.url !== 'string' || !p.url || seen.has(p.url)) continue
+    seen.add(p.url)
+    out.push(p)
+  }
+  for (const a of adaptUploadedPhotoMeta(uploaded)) {
+    if (seen.has(a.url)) continue
+    seen.add(a.url)
+    out.push(a)
+  }
+  return out
+}
+
 export interface CollectedFrame {
   canvas: FabricCanvas
   frame: FabricObject
@@ -235,6 +334,11 @@ export interface CollectedFrame {
 /**
  * 모든 캔버스(페이지)에서 빈 사진틀을 페이지 순서대로 수집.
  * extensionType==='frame' 이고 채워진 사진이 없는 프레임만.
+ *
+ * ⚠️ [O-급 이슈 태깅 — 변경 금지, 오너 게이트 대기] 캔버스 내부 프레임 열거 순서는
+ * getObjects() 순서 = z-order(디자이너 추가순)이며 시각적 독서 순서(top,left)가 아니다.
+ * 디자이너가 의도한 추가순일 수 있어 위치순 정렬 옵션은 오너 결정 후에만 추가한다
+ * (2026-07-06 Track 2에서 실측 확인·테스트로 고정).
  */
 export function collectEmptyFrames(
   canvases: FabricCanvas[],
