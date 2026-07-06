@@ -108,6 +108,10 @@ services:
       # 트랙 B-(e) 대비 동시성 토글(기본=현행 3/2). 2GB 활성 시 .env 로 1/1 강제(+mem_limit) 필요.
       - VALIDATION_CONCURRENCY=${VALIDATION_CONCURRENCY:-3}
       - GS_CONCURRENCY=${GS_CONCURRENCY:-2}
+      # C-2a: crop mark(TrimBox 기하) 검증 킬스위치. 기본 false(행동 무변화).
+      #   ⚠️ .env 에만 넣고 이 매핑을 빼먹으면 silent no-op(WH-001 실적발 전례) — 매핑 필수.
+      #   ON 이어도 warning-only + templateSet.cropMarkEnabled opt-in 이중 게이트.
+      - WORKER_CROP_MARK_VALIDATION=${WORKER_CROP_MARK_VALIDATION:-false}
       # Sentry (DSN 미설정 시 silent 동작)
       - SENTRY_DSN=${SENTRY_DSN_WORKER:-}
       - SENTRY_ENVIRONMENT=${SENTRY_ENVIRONMENT:-production}
