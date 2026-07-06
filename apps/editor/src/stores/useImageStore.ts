@@ -744,7 +744,13 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
       !useSettingsStore.getState().currentSettings.editMode
 
     frame.on('mouseover', () => {
-      if (overlay || isFilled() || isContentLocked()) return
+      if (overlay || isContentLocked()) return
+      // A1-5 (스왑 발견성): 채워진 액자에도 hover 시 '사진 교체' 오버레이를 표시한다.
+      // 클릭 동작은 기존 mousedown 스왑 경로 그대로(로직 무변경) — 표시만 추가.
+      // adjust(사진 조정) 모드 중엔 숨김: FrameInteractionPlugin 이 frame.evented=false 로
+      // 두어 mouseover 자체가 오지 않지만, fore.evented(adjust 진입 시 true)도 방어 검사.
+      const filled = isFilled()
+      if (filled && findFilledImage()?.evented === true) return
       const center = frame.getCenterPoint()
       const w = frame.width! * frame.scaleX!
       const h = frame.height! * frame.scaleY!
@@ -765,7 +771,7 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
         evented: false
       })
 
-      const text = core.createText('이미지 채우기', {
+      const text = core.createText(filled ? '사진 교체' : '이미지 채우기', {
         fill: '#fff',
         fontSize: Math.max(12, Math.min(w, h) / 10),
         originX: 'center',
@@ -797,6 +803,9 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
     frame.on('mousedown', async () => {
       // B1: 내용편집 잠금 프레임은 채우기/스왑 진입 차단(비-editMode).
       if (isContentLocked()) return
+      // A1-5: 클릭(파일선택 진입)·더블클릭(adjust 진입) 시 오버레이 즉시 제거 —
+      // adjust 진입 후엔 frame.evented=false 라 mouseout 이 오지 않아 잔존할 수 있다.
+      removeOverlay()
       // 드롭 오버라이드 스왑(포토북 고유): 이미 채워진 틀에 새 사진을 떨어뜨리면
       // early-return 으로 차단하지 않고 기존 사진을 교체한다. 새 파일을 먼저 받은 뒤
       // (취소 시 기존 사진 보존) 기존 fillImage 를 제거하고 동일한 fillImageIntoFrame
