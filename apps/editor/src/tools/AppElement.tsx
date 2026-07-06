@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react'
 import { Upload as UploadSimple } from 'lucide-react'
 import { useAppStore } from '@/stores/useAppStore'
 import { useImageStore } from '@/stores/useImageStore'
+import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useIsCustomer } from '@/stores/useAuthStore'
 import { useEditorContents } from '@/hooks/useEditorContents'
 import { useIsCoarsePointer } from '@/hooks/useIsCoarsePointer'
@@ -23,6 +24,8 @@ export default function AppElement() {
   const tapMenu = useAppStore((state) => state.tapMenu)
   const upload = useImageStore((state) => state.upload)
   const isCustomer = useIsCustomer()
+  // A1-4: 관리자(editMode) 템플릿 제작 화면에도 추천 콘텐츠(라이브러리) 섹션 노출
+  const editMode = useSettingsStore((state) => state.currentSettings.editMode)
   const { setupAsset } = useEditorContents()
   const isCoarsePointer = useIsCoarsePointer()
 
@@ -97,7 +100,8 @@ export default function AppElement() {
         </Button>
       </div>
       <div className="sections flex flex-col overflow-y-auto">
-        {isCustomer && (
+        {/* A1-4: isCustomer 게이트 완화 — 관리자(editMode)도 추천 섹션 사용(템플릿 제작 시 에셋 배치) */}
+        {(isCustomer || editMode) && (
           <AppSection
             id="app-element-recommended"
             title="추천 콘텐츠"

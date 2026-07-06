@@ -1,10 +1,12 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { fabric } from 'fabric'
 import { useAppStore, useCurrentIndex } from '@/stores/useAppStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
-import { type CanvasObject, LockPlugin, ObjectPlugin, SelectionType } from '@storige/canvas-core'
-import { Image, Type as TextT, Hexagon, Frame as FrameCorners, QrCode, Layers as Stack, X, Trash2 as Trash, Lock as LockSimple, Unlock as LockSimpleOpen, Eye, EyeOff as EyeSlash, GripVertical as DotsSixVertical, Plus, Pin, ShieldX, PencilOff, Printer, ArrowUpDown } from 'lucide-react'
+import { type CanvasObject, CopyPlugin, LockPlugin, ObjectPlugin, SelectionType } from '@storige/canvas-core'
+import { Image, Type as TextT, Hexagon, Frame as FrameCorners, QrCode, Layers as Stack, X, Trash2 as Trash, Lock as LockSimple, Unlock as LockSimpleOpen, Eye, EyeOff as EyeSlash, GripVertical as DotsSixVertical, Plus, Pin, ShieldX, PencilOff, Printer, ArrowUpDown, Copy as CopyIcon, ChevronUp, ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
+import { buildNextMultiSelection, layerStepReorderArgs } from '@/utils/layerPanelSelection'
 
 // S3 (공유 계층, 2026-06-23): 레이어 패널 DnD 재정렬.
 // 모바일/터치 환경에서는 native HTML5 drag 가 long-press·터치 스크롤과 충돌하므로 비활성
@@ -58,6 +60,8 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
   const updateObjects = useAppStore((state) => state.updateObjects)
   const getPlugin = useAppStore((state) => state.getPlugin)
   const reorderObject = useAppStore((state) => state.reorderObject)
+  // A1-1: 레이어 행 삭제 — S2 확인 모달 공통 경로(ControlBar 휴지통·DEL 핫키와 동일)
+  const requestDeleteSelection = useAppStore((state) => state.requestDeleteSelection)
 
   const pageInfo = useSettingsStore((state) => state.currentSettings.page)
   // B0-② (2026-07-04): 잠금 해제 권한 게이트용 — 관리자 위치고정은 비-editMode 에서 해제 불가
@@ -141,13 +145,70 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
     }
   }, [canvas, getPlugin])
 
-  const selectObject = useCallback((objectId: string) => {
-    const object = canvas?.getObjects().find((obj: any) => obj.id === objectId)
-    if (object) {
-      canvas?.setActiveObject(object)
-      canvas?.renderAll()
+  const selectObject = useCallback((objectId: string, e?: React.MouseEvent) => {
+    if (!canvas) return
+    const object = canvas.getObjects().find((obj: any) => obj.id === objectId)
+    if (!object) return
+
+    // A1-2: shift/ctrl(⌘) 클릭 → fabric ActiveSelection 다중선택.
+    // ⚠️ fabric 5.5.2 ActiveSelection 드래그는 자식 lockMovementX/Y 를 존중하지 않는다
+    //   (layerPanelSelection.test.ts 재현) → 비-editMode 에서 잠긴 객체는 제외
+    //   (buildNextMultiSelection 내 가드 — LockPlugin.handleSelection 선례).
+    if (e && (e.shiftKey || e.ctrlKey || e.metaKey)) {
+      const prev = (canvas.getActiveObjects?.() ?? []) as fabric.Object[]
+      // 기존 ActiveSelection 을 먼저 해제해 자식 좌표(그룹 상대)를 절대좌표로 원복한 뒤 재구성
+      canvas.discardActiveObject()
+      const next = buildNextMultiSelection(prev, object, editMode)
+      if (next.length === 1) {
+        canvas.setActiveObject(next[0])
+      } else if (next.length > 1) {
+        canvas.setActiveObject(new fabric.ActiveSelection(next, { canvas }))
+      }
+      canvas.requestRenderAll()
+      return
     }
-  }, [canvas])
+
+    canvas.setActiveObject(object)
+    canvas.renderAll()
+  }, [canvas, editMode])
+
+  // A1-1: 레이어 행 삭제 버튼 — 대상 객체를 먼저 선택한 뒤 공통 경로(requestDeleteSelection)
+  // 호출 → S2 확인 모달 → ObjectPlugin.del() (삭제잠금·lid·fillImage 동반제거 가드 그대로).
+  const handleDeleteObject = useCallback((e: React.MouseEvent, objectId: string) => {
+    e.preventDefault()
+    e.stopPropagation()
+
+    const object = canvas?.getObjects().find((obj: any) => obj.id === objectId)
+    if (!object) return
+    // 삭제잠금(deleteable===false)은 고객(비-editMode) 진입 시 차단 — 버튼 disabled 와 이중 방어
+    if (!editMode && (object as any).deleteable === false) return
+
+    canvas?.setActiveObject(object)
+    canvas?.requestRenderAll()
+    requestDeleteSelection()
+  }, [canvas, editMode, requestDeleteSelection])
+
+  // A1-1: 레이어 행 복제 버튼 — CopyPlugin.clone(기존 ctrl+d 핫키 로직) 재사용, 시그니처 불변.
+  // 복제 후 목록 갱신은 canvas 'object:added' → _updateObjectsHandler 가 처리(직접 호출 불필요).
+  const handleDuplicateObject = useCallback((e: React.MouseEvent, objectId: string) => {
+    e.preventDefault()
+    e.stopPropagation()
+
+    const object = canvas?.getObjects().find((obj: any) => obj.id === objectId)
+    if (!object) return
+    getPlugin<CopyPlugin>('CopyPlugin')?.clone(object)
+  }, [canvas, getPlugin])
+
+  // A1-3: 모바일(TOUCH_ENV) ↑↓ 순서변경 — reorderObject 재사용(fabric 라이브 스택 기준,
+  // reverse 방향 함정·fillImage 동반이동·setUnchangeable 재고정·updateObjects 전부 내장).
+  const handleStepReorder = useCallback((e: React.MouseEvent, index: number, dir: 'up' | 'down') => {
+    e.preventDefault()
+    e.stopPropagation()
+
+    const args = layerStepReorderArgs(objects, index, dir)
+    if (!args) return
+    reorderObject(objects[index].id, args.targetId, args.placeAbove)
+  }, [objects, reorderObject])
 
   const startEditing = (obj: CanvasObject) => {
     setEditingObject(obj)
@@ -344,7 +405,7 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
             </div>
           ) : (
             <div className="items px-3">
-              {objects.map((obj) => {
+              {objects.map((obj, index) => {
                 const Icon = getIconByType(obj.type)
                 return (
                   <div
@@ -365,7 +426,7 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
                       dragOver?.id === obj.id && dragOver.above && 'border-t-2 border-t-editor-accent',
                       dragOver?.id === obj.id && !dragOver.above && 'border-b-2 border-b-editor-accent'
                     )}
-                    onClick={() => selectObject(obj.id)}
+                    onClick={(e) => selectObject(obj.id, e)}
                     onDoubleClick={() => startEditing(obj)}
                   >
                     <div className="left flex flex-row gap-2 flex-1 items-center overflow-hidden">
@@ -420,9 +481,56 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
                         )}
                       </div>
                     </div>
-                    <div className="right w-16 h-[30px] relative">
+                    {/* A1-3: 모바일(TOUCH_ENV) ↑↓ 순서변경 — hover 가 없는 터치 환경이라 상시 표시 */}
+                    {TOUCH_ENV && obj.editable && (
+                      <div className="mobile-reorder flex flex-col items-center shrink-0">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-4 w-6"
+                          disabled={index === 0 || obj.lockLayerOrder === true}
+                          onClick={(e) => handleStepReorder(e, index, 'up')}
+                          aria-label="앞으로 가져오기"
+                        >
+                          <ChevronUp className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-4 w-6"
+                          disabled={index === objects.length - 1 || obj.lockLayerOrder === true}
+                          onClick={(e) => handleStepReorder(e, index, 'down')}
+                          aria-label="뒤로 보내기"
+                        >
+                          <ChevronDown className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    )}
+                    <div className="right w-16 h-[30px] relative shrink-0">
                       {obj.editable && (
-                        <div className="actions absolute right-0 top-0 bottom-0 m-auto flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        /* A1-1: 4버튼(복제·삭제·잠금·표시)이 w-16 을 넘어 왼쪽으로 확장되므로
+                           행 hover 배경과 같은 색을 깔아 이름/배지 위에 겹쳐도 읽히게 한다 */
+                        <div className="actions absolute right-0 top-0 bottom-0 m-auto flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-editor-hover rounded-lg">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7"
+                            title="복제"
+                            onClick={(e) => handleDuplicateObject(e, obj.id)}
+                          >
+                            <CopyIcon className="h-4 w-4" />
+                          </Button>
+                          {/* A1-1: 삭제잠금(deleteable===false)은 비-editMode 에서 disabled — B1 배지(ShieldX)와 일관 */}
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7"
+                            title={!editMode && obj.deleteable === false ? '삭제 잠금된 객체입니다' : '삭제'}
+                            disabled={!editMode && obj.deleteable === false}
+                            onClick={(e) => handleDeleteObject(e, obj.id)}
+                          >
+                            <Trash className="h-4 w-4" />
+                          </Button>
                           {obj.locked ? (
                             /* B0-②: 관리자 위치고정(movable===false)은 비-editMode 에서 해제 버튼 숨김 */
                             (editMode || obj.movable !== false) && (
