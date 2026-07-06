@@ -7,7 +7,13 @@ import {
   canvasDpi,
   isFrameFilled,
   collectEmptyFrames,
+  hasEmptyFrame,
+  adaptUploadedPhotoMeta,
+  mergeAutofillPhotoInputs,
+  autofillPhotosIntoFrames,
+  type UploadedPhotoMeta,
 } from './photoPlacement'
+import type { ExternalPhoto, PhotoSortMode } from '@storige/types'
 
 // ────────────────────────────────────────────────────────────────────────────
 // measureFrame / imageAspect / canvasDpi
@@ -182,5 +188,267 @@ describe('collectEmptyFrames', () => {
     const good = fakeCanvas([{ id: 'x', extensionType: 'frame', width: 10, height: 10 }])
     const out = collectEmptyFrames([bad as any, good])
     expect(out.map((f) => f.frame.id)).toEqual(['x'])
+  })
+
+  it('[O-급 태깅 실측] 캔버스 내 열거 순서 = getObjects() 순서(z-order/추가순), 시각적 위치순 아님', () => {
+    // 시각적으로는 top-left 가 앞이어야 할 프레임(b)이 추가순으로 뒤에 있으면 뒤에 열거된다.
+    // 이 동작은 오너 게이트(위치순 정렬 옵션) 전까지 의도된 현행 스펙 — 변경 시 이 테스트로 감지.
+    const later = { id: 'b', extensionType: 'frame', width: 10, height: 10, top: 0, left: 0 }
+    const earlier = { id: 'a', extensionType: 'frame', width: 10, height: 10, top: 500, left: 500 }
+    const out = collectEmptyFrames([fakeCanvas([earlier, later])])
+    expect(out.map((f) => f.frame.id)).toEqual(['a', 'b'])
+  })
+})
+
+// ────────────────────────────────────────────────────────────────────────────
+// hasEmptyFrame (자동편집 UI 노출 판정 — Track 2)
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('hasEmptyFrame', () => {
+  it('빈 frame 있으면 true', () => {
+    const frame = { id: 'f1', extensionType: 'frame', width: 10, height: 10 }
+    expect(hasEmptyFrame([fakeCanvas([frame])])).toBe(true)
+  })
+
+  it('frame 이 아예 없으면 false (BOOK/LEAFLET 일반 셋 — 버튼 미노출 근거)', () => {
+    const text = { id: 't', extensionType: 'text' }
+    const image = { id: 'i', extensionType: 'fillImage', parentLayerId: 'x' }
+    expect(hasEmptyFrame([fakeCanvas([text, image])])).toBe(false)
+    expect(hasEmptyFrame([])).toBe(false)
+  })
+
+  it('모든 frame 이 채워졌으면 false', () => {
+    const frame = { id: 'f1', extensionType: 'frame', width: 10, height: 10 }
+    const fill = { extensionType: 'fillImage', parentLayerId: 'f1' }
+    expect(hasEmptyFrame([fakeCanvas([frame, fill])])).toBe(false)
+  })
+
+  it('contentEditable=false 프레임은 고객 기준 제외, editMode 는 포함 (collectEmptyFrames 와 동일 규약)', () => {
+    const locked = { id: 'f1', extensionType: 'frame', contentEditable: false, width: 10, height: 10 }
+    expect(hasEmptyFrame([fakeCanvas([locked])])).toBe(false)
+    expect(hasEmptyFrame([fakeCanvas([locked])], { editMode: true })).toBe(true)
+  })
+
+  it('getObjects throw 캔버스는 건너뜀', () => {
+    const bad = { getObjects: () => { throw new Error('disposed') } }
+    const good = fakeCanvas([{ id: 'f', extensionType: 'frame', width: 10, height: 10 }])
+    expect(hasEmptyFrame([bad as any, good])).toBe(true)
+    expect(hasEmptyFrame([bad as any])).toBe(false)
+  })
+})
+
+// ────────────────────────────────────────────────────────────────────────────
+// adaptUploadedPhotoMeta / mergeAutofillPhotoInputs (혼합 입력 어댑팅 — Track 2)
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('adaptUploadedPhotoMeta', () => {
+  it('메타 필드를 ExternalPhoto 형태로 보존 매핑, exifParsed 기본 true', () => {
+    const metas: UploadedPhotoMeta[] = [
+      {
+        url: 'https://s/u1.jpg',
+        name: 'u1.jpg',
+        uploadedAt: '2026-07-01T00:00:00.000Z', // = file.lastModified (호스트 업로드시각 아님)
+        takenAt: '2026-06-30T10:00:00.000Z',
+        gps: { lat: 37.5, lng: 127.0 },
+      },
+    ]
+    const out = adaptUploadedPhotoMeta(metas)
+    expect(out).toHaveLength(1)
+    expect(out[0]).toEqual({
+      url: 'https://s/u1.jpg',
+      name: 'u1.jpg',
+      uploadedAt: '2026-07-01T00:00:00.000Z',
+      takenAt: '2026-06-30T10:00:00.000Z',
+      gps: { lat: 37.5, lng: 127.0 },
+      exifParsed: true, // 업로드 시점 원본 File 파싱 완료 → URL 재페치 방지
+    })
+  })
+
+  it('url 없는/빈 항목은 제외', () => {
+    const out = adaptUploadedPhotoMeta([
+      { url: '' },
+      { url: 'https://s/ok.jpg' },
+      null as unknown as UploadedPhotoMeta,
+    ])
+    expect(out.map((p) => p.url)).toEqual(['https://s/ok.jpg'])
+  })
+})
+
+describe('mergeAutofillPhotoInputs', () => {
+  it('외부주입 ∪ 내 업로드 — URL 중복은 외부주입(호스트 메타) 우선', () => {
+    const external: ExternalPhoto[] = [
+      { url: 'https://s/dup.jpg', name: 'host-name.jpg', takenAt: '2026-01-01T00:00:00Z' },
+      { url: 'https://s/e1.jpg' },
+    ]
+    const uploaded: UploadedPhotoMeta[] = [
+      { url: 'https://s/dup.jpg', name: 'local-name.jpg' }, // 중복 → 무시
+      { url: 'https://s/u1.jpg', name: 'u1.jpg' },
+    ]
+    const out = mergeAutofillPhotoInputs(external, uploaded)
+    expect(out.map((p) => p.url)).toEqual(['https://s/dup.jpg', 'https://s/e1.jpg', 'https://s/u1.jpg'])
+    expect(out[0].name).toBe('host-name.jpg') // 외부주입 승리
+  })
+
+  it('한쪽이 비어도 동작(외부주입만 / 내 업로드만)', () => {
+    expect(mergeAutofillPhotoInputs([{ url: 'https://s/e.jpg' }], []).map((p) => p.url)).toEqual([
+      'https://s/e.jpg',
+    ])
+    expect(mergeAutofillPhotoInputs([], [{ url: 'https://s/u.jpg' }]).map((p) => p.url)).toEqual([
+      'https://s/u.jpg',
+    ])
+    expect(mergeAutofillPhotoInputs([], [])).toEqual([])
+  })
+
+  it('외부주입 내부 중복·불량 url 도 방어적으로 제거', () => {
+    const out = mergeAutofillPhotoInputs(
+      [
+        { url: 'https://s/a.jpg' },
+        { url: 'https://s/a.jpg' },
+        { url: '' },
+      ],
+      [],
+    )
+    expect(out.map((p) => p.url)).toEqual(['https://s/a.jpg'])
+  })
+})
+
+// ────────────────────────────────────────────────────────────────────────────
+// autofillPhotosIntoFrames — 혼합 입력 4모드 라운드트립(엔진 통합, fake 캔버스)
+// ────────────────────────────────────────────────────────────────────────────
+
+/** add() 가 getObjects() 에 반영되는 fake 캔버스 — isFrameFilled 라운드트립 검증용. */
+function liveCanvas(objects: any[], unitOptions?: any): any {
+  return {
+    getObjects: () => objects,
+    add: (obj: any) => { objects.push(obj) },
+    requestRenderAll: () => {},
+    unitOptions,
+  }
+}
+
+/** fillImageIntoFrame 계약(frameRef/parentLayerId/extensionType)을 흉내내는 fake. */
+const fakeFillFrame = async (_canvas: any, fore: any, frame: any) => {
+  fore.extensionType = 'fillImage'
+  fore.frameRef = frame.id
+  fore.parentLayerId = frame.id
+  fore.id = `${frame.id}_fillImage`
+  return fore
+}
+
+/** url → {width,height,src} 이미지 fake (정사각 1000px). */
+const fakeLoadImage = async (url: string) => ({ width: 1000, height: 1000, src: url })
+
+function makePhotos(): ExternalPhoto[] {
+  // 외부주입 2장 + 내 업로드 2장(어댑팅) 혼합. takenAt 우선 → uploadedAt 폴백 순서 검증 가능.
+  const external: ExternalPhoto[] = [
+    { url: 'https://s/e2.jpg', name: 'e2.jpg', takenAt: '2026-05-02T00:00:00Z' },
+    { url: 'https://s/e1.jpg', name: 'e1.jpg', takenAt: '2026-05-01T00:00:00Z' },
+  ]
+  const uploaded: UploadedPhotoMeta[] = [
+    // takenAt 없음 → uploadedAt(file.lastModified) 폴백으로 맨 뒤
+    { url: 'https://s/u2.jpg', name: 'u2.jpg', uploadedAt: '2026-06-01T00:00:00Z' },
+    { url: 'https://s/u1.jpg', name: 'u1.jpg', takenAt: '2026-04-01T00:00:00Z' },
+  ]
+  return mergeAutofillPhotoInputs(external, uploaded)
+}
+
+function makeCanvases() {
+  // 2페이지 × 2프레임 = 4슬롯(정사각 — aspect 매칭이 순서를 흔들지 않게)
+  const p1 = [
+    { id: 'p1f1', extensionType: 'frame', width: 100, height: 100 },
+    { id: 'p1f2', extensionType: 'frame', width: 100, height: 100 },
+  ]
+  const p2 = [
+    { id: 'p2f1', extensionType: 'frame', width: 100, height: 100 },
+    { id: 'p2f2', extensionType: 'frame', width: 100, height: 100 },
+  ]
+  return [liveCanvas(p1, { unit: 'mm', dpi: 150 }), liveCanvas(p2, { unit: 'mm', dpi: 150 })]
+}
+
+describe('autofillPhotosIntoFrames — 혼합 입력 4모드 라운드트립', () => {
+  const MODES: PhotoSortMode[] = ['date', 'filename', 'location', 'random']
+
+  for (const mode of MODES) {
+    it(`${mode} 모드: 혼합 입력 4장 → 4슬롯 전부 채움 + fillImage 링크 계약 유지`, async () => {
+      const canvases = makeCanvases()
+      const result = await autofillPhotosIntoFrames(canvases, makePhotos(), {
+        mode,
+        fillFrame: fakeFillFrame,
+        loadImage: fakeLoadImage,
+        imagePlugin: {},
+      })
+
+      expect(result.filledCount).toBe(4)
+      expect(result.remainingFrames).toBe(0)
+      expect(result.remainingPhotos).toBe(0)
+
+      // 라운드트립: 채움 후 모든 프레임이 isFrameFilled=true (fillImage 규약 매칭)
+      for (const cv of canvases) {
+        const frames = cv.getObjects().filter((o: any) => o.extensionType === 'frame')
+        for (const f of frames) expect(isFrameFilled(cv, f)).toBe(true)
+        const fills = cv.getObjects().filter((o: any) => o.extensionType === 'fillImage')
+        expect(fills).toHaveLength(2)
+        for (const fill of fills) {
+          expect(fill.frameRef).toBeTruthy()
+          expect(fill.parentLayerId).toBe(fill.frameRef)
+        }
+      }
+
+      // 재실행(빈 틀 없음) → 아무 것도 안 채움 (idempotent — 채워진 틀 스킵 = 보수 기본)
+      const again = await autofillPhotosIntoFrames(canvases, makePhotos(), {
+        mode,
+        fillFrame: fakeFillFrame,
+        loadImage: fakeLoadImage,
+        imagePlugin: {},
+      })
+      expect(again.filledCount).toBe(0)
+      expect(again.remainingPhotos).toBe(4)
+    })
+  }
+
+  it('date 모드: takenAt → uploadedAt 폴백 순서가 프레임 열거 순서(페이지→z-order)에 그대로 매핑', async () => {
+    const canvases = makeCanvases()
+    await autofillPhotosIntoFrames(canvases, makePhotos(), {
+      mode: 'date',
+      fillFrame: fakeFillFrame,
+      loadImage: fakeLoadImage,
+      imagePlugin: {},
+      aspectMatch: false, // 순서 검증이 목적 — zip 매칭
+    })
+    const srcOf = (cv: any, frameId: string) =>
+      cv.getObjects().find((o: any) => o.parentLayerId === frameId)?.src
+    // 시간순: u1(4/1) → e1(5/1) → e2(5/2) → u2(takenAt 없음 → uploadedAt 6/1 폴백, 맨 뒤)
+    expect(srcOf(canvases[0], 'p1f1')).toBe('https://s/u1.jpg')
+    expect(srcOf(canvases[0], 'p1f2')).toBe('https://s/e1.jpg')
+    expect(srcOf(canvases[1], 'p2f1')).toBe('https://s/e2.jpg')
+    expect(srcOf(canvases[1], 'p2f2')).toBe('https://s/u2.jpg')
+  })
+
+  it('filename 모드: 내 업로드 name(file.name) 도 자연 정렬에 참여', async () => {
+    const canvases = [liveCanvas([
+      { id: 'f1', extensionType: 'frame', width: 100, height: 100 },
+      { id: 'f2', extensionType: 'frame', width: 100, height: 100 },
+      { id: 'f3', extensionType: 'frame', width: 100, height: 100 },
+    ], { unit: 'mm', dpi: 150 })]
+    const photos = mergeAutofillPhotoInputs(
+      [{ url: 'https://s/b.jpg', name: 'IMG_10.jpg' }],
+      [
+        { url: 'https://s/a.jpg', name: 'IMG_2.jpg' },
+        { url: 'https://s/c.jpg', name: 'IMG_11.jpg' },
+      ],
+    )
+    await autofillPhotosIntoFrames(canvases, photos, {
+      mode: 'filename',
+      fillFrame: fakeFillFrame,
+      loadImage: fakeLoadImage,
+      imagePlugin: {},
+      aspectMatch: false,
+    })
+    const srcOf = (frameId: string) =>
+      canvases[0].getObjects().find((o: any) => o.parentLayerId === frameId)?.src
+    // 자연 정렬: IMG_2 < IMG_10 < IMG_11
+    expect(srcOf('f1')).toBe('https://s/a.jpg')
+    expect(srcOf('f2')).toBe('https://s/b.jpg')
+    expect(srcOf('f3')).toBe('https://s/c.jpg')
   })
 })
