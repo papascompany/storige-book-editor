@@ -603,6 +603,12 @@ export class WorkerJobsService {
     let composeSpreadTotalWidthMm: number | undefined;
     let composeSpreadTotalHeightMm: number | undefined;
     let composeSpreadDpi: number | undefined;
+    // D-4 (2026-07-06, C-4 Track 3): 하드커버 싸바리 등 '출력(wrap 포함) 사이즈'가 화면 trim 과
+    // 다른 상품의 cover 검증 기대치. 세션 metadata.spread.outputWidthMm/outputHeightMm(mm, Track 1
+    // 합의 인터페이스)를 내부 큐 metadata 로만 additive push — 워커 external DTO 표면 불변.
+    // 부재 시 기존 totalWidthMm 검증과 100% 동일(output 우선·total 폴백).
+    let composeSpreadOutputWidthMm: number | undefined;
+    let composeSpreadOutputHeightMm: number | undefined;
     let effectiveOutputMode = dto.outputMode;
     try {
       if (dto.editSessionId) {
@@ -621,6 +627,16 @@ export class WorkerJobsService {
             );
             effectiveOutputMode = 'separate';
           }
+        }
+        // D-4: output 사이즈는 total 게이트와 독립적으로 읽는다(배포 순서 무관 안전).
+        //  둘 다 양수 number 일 때만 유효 — 한쪽만 있으면 무시(기존 동작 유지).
+        if (
+          typeof sp?.outputWidthMm === 'number' && sp.outputWidthMm > 0 &&
+          typeof sp?.outputHeightMm === 'number' && sp.outputHeightMm > 0
+        ) {
+          composeSpreadOutputWidthMm = sp.outputWidthMm;
+          composeSpreadOutputHeightMm = sp.outputHeightMm;
+          composeSpreadDpi = composeSpreadDpi ?? (sp.dpi ?? 300);
         }
       }
     } catch (e) {
@@ -653,6 +669,9 @@ export class WorkerJobsService {
         spreadTotalWidthMm: composeSpreadTotalWidthMm,
         spreadTotalHeightMm: composeSpreadTotalHeightMm,
         spreadDpi: composeSpreadDpi,
+        // D-4: 출력(wrap 포함) 사이즈 기대치 — additive, 부재=기존 total 검증
+        spreadOutputWidthMm: composeSpreadOutputWidthMm,
+        spreadOutputHeightMm: composeSpreadOutputHeightMm,
       },
     });
     const savedJob = await this.workerJobRepository.save(job);
@@ -676,13 +695,16 @@ export class WorkerJobsService {
         composeSpreadTotalWidthMm,
         composeSpreadTotalHeightMm,
         composeSpreadDpi,
+        // D-4: 출력(싸바리 wrap 포함) 사이즈 기대치 — output 우선·total 폴백(additive, 내부 큐 전용)
+        composeSpreadOutputWidthMm,
+        composeSpreadOutputHeightMm,
         callbackUrl: dto.callbackUrl,
       },
       { priority: 5 },
     );
 
     this.logger.log(
-      `Compose-mixed job created: ${savedJob.id} (front=${(dto.frontEndpaperUrls ?? []).length}, back=${(dto.backEndpaperUrls ?? []).length}, coverEditable=${dto.coverEditable !== false}, outputMode=${effectiveOutputMode}, spread=${!!composeSpreadTotalWidthMm})`,
+      `Compose-mixed job created: ${savedJob.id} (front=${(dto.frontEndpaperUrls ?? []).length}, back=${(dto.backEndpaperUrls ?? []).length}, coverEditable=${dto.coverEditable !== false}, outputMode=${effectiveOutputMode}, spread=${!!composeSpreadTotalWidthMm}, spreadOutput=${!!composeSpreadOutputWidthMm})`,
     );
 
     return savedJob;
