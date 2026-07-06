@@ -32,6 +32,7 @@ import {
   Monitor,
   Save,
   Layers,
+  Eye,
 } from 'lucide-react'
 import { AutoSaveIndicator } from './AutoSaveIndicator'
 import { BookMockup3D } from '../Mockup3D/BookMockup3D'
@@ -40,6 +41,7 @@ import CommandPaletteModal from './CommandPaletteModal'
 import HistoryPanel from './HistoryPanel'
 import { showToast } from '@/stores/useToastStore'
 import { useUiPrefStore, type PageNavPosition, type Theme } from '@/stores/useUiPrefStore'
+import { applyObjectPermissions, revertObjectPermissions } from '@/utils/objectPermissions'
 
 const SIZE_PRESETS: { label: string; width: number; height: number }[] = [
   { label: '정사각', width: 100, height: 100 },
@@ -117,6 +119,38 @@ export default function EditorHeader({
   const { ready, canvas, allCanvas, allEditors, getPlugin, setPage, isSpreadMode, updateAllWorkspaceSettings } = useAppStore()
   const { artwork, currentSettings, spreadConfig, updateSettings, setArtworkName } = useSettingsStore()
   const isAdmin = useIsAdmin()
+
+  // L3 B-3 (2026-07-06): 고객 시점 미리보기 — 디자이너가 보호 강제를 고객 모드 그대로
+  // 체험(저장 없는 일시 모드). editMode 를 실제로 내리되 customerPreview 플래그가
+  // ① 복귀 버튼 게이트 ② EditorView/TemplateEditorView 의 editMode 자동 승격 억제
+  // ③ 저장 차단을 담당한다. 종료 시 revert+재승격으로 정확 원복.
+  const customerPreview = useSettingsStore((s) => s.customerPreview)
+  const setCustomerPreview = useSettingsStore((s) => s.setCustomerPreview)
+
+  const toggleCustomerPreview = useCallback(() => {
+    const { allCanvas: cvs, allEditors: eds } = useAppStore.getState()
+    if (!customerPreview) {
+      setCustomerPreview(true)
+      updateSettings({ editMode: false })
+      eds.forEach((ed) =>
+        (ed?.getPlugin?.('LockPlugin') as { setUserRole?: (r: string) => void } | undefined)?.setUserRole?.('user')
+      )
+      cvs.forEach((c: unknown) => applyObjectPermissions(c as never, false))
+      // B-5 stale 방지: 레이어 목록의 template-element 노출 분기를 즉시 재계산
+      useAppStore.getState().updateObjects()
+      showToast('고객 화면 미리보기 중 — 저장은 잠겨 있어요.', 'info')
+    } else {
+      cvs.forEach((c: unknown) => revertObjectPermissions(c as never))
+      setCustomerPreview(false)
+      updateSettings({ editMode: true })
+      eds.forEach((ed) =>
+        (ed?.getPlugin?.('LockPlugin') as { setUserRole?: (r: string) => void } | undefined)?.setUserRole?.('admin')
+      )
+      // contentEditable 강제분(editable=false) 원복은 editMode 분기가 담당
+      cvs.forEach((c: unknown) => applyObjectPermissions(c as never, true))
+      useAppStore.getState().updateObjects()
+    }
+  }, [customerPreview, setCustomerPreview, updateSettings])
 
   // (작업명 핸들러는 commitArtworkName/handleNameKeyDown으로 정의 — 아래)
 
@@ -380,6 +414,11 @@ export default function EditorHeader({
   const handleSaveForAdmin = useCallback(
     async (closeWindow: boolean = false) => {
       if (!ready || !canvas) return
+      // L3 B-3: 미리보기 강제 상태(lockMovement 등)가 저장본에 새는 것 방지
+      if (useSettingsStore.getState().customerPreview) {
+        showToast('고객 화면 미리보기 중에는 저장할 수 없어요 — 미리보기를 끄고 저장해주세요.', 'info')
+        return
+      }
 
       try {
         setFinishing(true)
@@ -466,6 +505,11 @@ export default function EditorHeader({
    */
   const confirmAndSaveTemplateSet = useCallback(
     (closeWindow: boolean) => {
+      // L3 B-3: 미리보기 강제 상태가 템플릿 저장본에 새는 것 방지
+      if (useSettingsStore.getState().customerPreview) {
+        showToast('고객 화면 미리보기 중에는 저장할 수 없어요 — 미리보기를 끄고 저장해주세요.', 'info')
+        return
+      }
       const { allCanvas } = useAppStore.getState()
       const { editorTemplates } = useSettingsStore.getState()
       const sliced = (editorTemplates as Array<{ id?: string }>).slice(0, allCanvas.length)
@@ -913,6 +957,35 @@ export default function EditorHeader({
               </TooltipTrigger>
               <TooltipContent side="bottom">레이어</TooltipContent>
             </Tooltip>
+          )}
+
+          {/* L3 B-3: 고객 시점 미리보기 토글 — editMode(디자이너)일 때 노출, 미리보기 중에는
+              복귀 버튼으로 유지(editMode 가 내려가 있으므로 customerPreview 로 게이트). */}
+          {(currentSettings.editMode || customerPreview) && (
+            <>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={toggleCustomerPreview}
+                    aria-label="고객 화면으로 보기"
+                    aria-pressed={customerPreview}
+                    className={customerPreview ? 'text-amber-500 hover:bg-editor-surface-low' : 'text-editor-text hover:bg-editor-surface-low'}
+                  >
+                    <Eye className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  {customerPreview ? '디자이너 화면으로 돌아가기' : '고객 화면으로 보기'}
+                </TooltipContent>
+              </Tooltip>
+              {customerPreview && (
+                <span className="hidden md:inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-500/15 text-amber-600">
+                  고객 화면 미리보기 중
+                </span>
+              )}
+            </>
           )}
 
           {/* === 우측 액션 (모드별 분리) === */}

@@ -120,8 +120,11 @@ export default function EditorView() {
   // ADMIN/SUPER_ADMIN 임이 확인된 뒤 여기서만 켠다. 고객(embed/PHP/bookmoa)은
   // role 검증을 통과할 수 없어 관리자 토글·applyObjectPermissions 무력화가 차단된다.
   const storeEditMode = useSettingsStore((s) => s.currentSettings.editMode)
+  // L3 B-3: 고객 시점 미리보기 중에는 editMode 자동 승격을 억제(미리보기가 즉시 되돌아가는 것 방지)
+  const customerPreview = useSettingsStore((s) => s.customerPreview)
   const editModeRequested = isAdminTemplateSetEdit || (!!editMode && !contentId && !productId)
   useEffect(() => {
+    if (customerPreview) return
     if (editModeRequested && isAdmin && !storeEditMode && !isLoading) {
       useSettingsStore.getState().updateSettings({ editMode: true })
       // LockPlugin role 은 createCanvas 시점 editMode 스냅샷('user')이라 함께 승격.
@@ -130,7 +133,7 @@ export default function EditorView() {
           ?.setUserRole?.('admin')
       }
     }
-  }, [editModeRequested, isAdmin, storeEditMode, isLoading])
+  }, [editModeRequested, isAdmin, storeEditMode, isLoading, customerPreview])
 
   // Editor contents hook
   const {

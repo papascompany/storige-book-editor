@@ -19,8 +19,6 @@ import {
   Trash2 as Trash,
   ShieldX,
   ShieldCheck,
-  Pin,
-  PinOff,
   Link,
   Unlink as LinkBreak,
   Scissors,
@@ -36,10 +34,7 @@ import {
   ArrowUpToLine,
   ArrowDown,
   ArrowDownToLine,
-  Pencil,
-  PencilOff,
   Printer,
-  ArrowUpDown,
 } from 'lucide-react'
 import { fabric } from 'fabric'
 import {
@@ -52,12 +47,15 @@ import { Button } from '@/components/ui/button'
 import { showToast } from '@/stores/useToastStore'
 import { selectionTypeLabel } from '@/utils/layerDisplay'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+  DropdownMenuCheckboxItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+} from '@/components/ui/dropdown-menu'
 import ObjectSize from '@/controls/ObjectSize'
 import ObjectFill from '@/controls/ObjectFill'
 import ObjectShadow from '@/controls/ObjectShadow'
@@ -210,6 +208,17 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
     return levels.every((l) => l === levels[0]) ? levels[0] : 'mixed'
   }, [activeSelection])
 
+  // L3 B-2: 보호 드롭다운 트리거 활성 표시 — 축 하나라도 걸려 있으면 amber
+  const anyProtection = useMemo(
+    () =>
+      allMovementLocked ||
+      allDeleteLocked ||
+      allContentLocked ||
+      allOrderLocked ||
+      (selectionLockLevel !== 'none' && selectionLockLevel !== 'mixed'),
+    [allMovementLocked, allDeleteLocked, allContentLocked, allOrderLocked, selectionLockLevel]
+  )
+
   // Actions
   const handleGroup = () => {
     const groupPlugin = getPlugin<GroupPlugin>('GroupPlugin')
@@ -343,6 +352,11 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
   // B1: 관리자 전용 — 잠금 레벨 지정/해제 (LockPlugin 경유, CAN_UNLOCK_MAP 규약).
   const handleLockLevelChange = (level: string) => {
     if (level === 'mixed' || level === 'system') return // 표시용 sentinel — 동작 없음
+    // L3(적대 리뷰): system 잠금은 어떤 레벨로도 변경 불가 — 침묵 실패 대신 안내
+    if (selectionLockLevel === 'system') {
+      showToast('시스템 잠금은 해제할 수 없어요.', 'info')
+      return
+    }
     const lockPlugin = getPlugin<LockPlugin>('LockPlugin')
     if (!lockPlugin || !activeSelection?.length) return
     const targets = [...activeSelection]
@@ -547,55 +561,81 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
                   </>
                 )}
 
-                {/* Part B: 위치 고정 (관리자 editMode 전용) — 고객이 이 객체를 이동/변형 못하게 보호 */}
+                {/* L3 B-2 (2026-07-06): '보호' 통합 드롭다운 — 보호 수단을 방패 하나로.
+                    개별 토글 4종(위치/삭제/내용/순서)+잠금레벨 Select 를 대체. '내 잠금'(자물쇠)
+                    과 시각·개념 분리(잠금 2어휘 규약). printExclude 는 보호가 아니라 출력 속성
+                    이므로 별도 버튼 유지. */}
                 {editMode && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={handleToggleMovementLock}
-                    title={allMovementLocked ? '위치 고정 해제' : '위치 고정 (고객 이동·변형 불가)'}
-                    aria-pressed={allMovementLocked}
-                  >
-                    {allMovementLocked ? (
-                      <Pin className="h-5 w-5 text-amber-500" />
-                    ) : (
-                      <PinOff className="h-5 w-5" />
-                    )}
-                  </Button>
-                )}
-
-                {/* P1-5: 삭제 잠금 (관리자 editMode 전용) — 고객이 이 객체를 삭제 못하게 보호 */}
-                {editMode && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={handleToggleDeleteLock}
-                    title={allDeleteLocked ? '삭제 잠금 해제' : '삭제 잠금 (고객 삭제 불가)'}
-                    aria-pressed={allDeleteLocked}
-                  >
-                    {allDeleteLocked ? (
-                      <ShieldCheck className="h-5 w-5 text-amber-500" />
-                    ) : (
-                      <ShieldX className="h-5 w-5" />
-                    )}
-                  </Button>
-                )}
-
-                {/* B1: 내용편집 잠금 (관리자 editMode 전용) — 텍스트 진입/사진틀 교체 차단 */}
-                {editMode && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={handleToggleContentLock}
-                    title={allContentLocked ? '내용편집 잠금 해제' : '내용편집 잠금 (고객 내용 수정 불가)'}
-                    aria-pressed={allContentLocked}
-                  >
-                    {allContentLocked ? (
-                      <PencilOff className="h-5 w-5 text-amber-500" />
-                    ) : (
-                      <Pencil className="h-5 w-5" />
-                    )}
-                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        title="보호 (고객 편집 제한)"
+                        aria-label="보호 설정"
+                      >
+                        {anyProtection ? (
+                          <ShieldCheck className="h-5 w-5 text-amber-500" />
+                        ) : (
+                          <ShieldX className="h-5 w-5" />
+                        )}
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="z-[110] w-56">
+                      <DropdownMenuLabel className="text-xs">보호 — 고객 편집 제한</DropdownMenuLabel>
+                      <DropdownMenuCheckboxItem
+                        checked={allMovementLocked}
+                        onCheckedChange={() => handleToggleMovementLock()}
+                        onSelect={(e) => e.preventDefault()}
+                      >
+                        위치 고정 (이동·변형 불가)
+                      </DropdownMenuCheckboxItem>
+                      <DropdownMenuCheckboxItem
+                        checked={allDeleteLocked}
+                        onCheckedChange={() => handleToggleDeleteLock()}
+                        onSelect={(e) => e.preventDefault()}
+                      >
+                        삭제 잠금
+                      </DropdownMenuCheckboxItem>
+                      <DropdownMenuCheckboxItem
+                        checked={allContentLocked}
+                        onCheckedChange={() => handleToggleContentLock()}
+                        onSelect={(e) => e.preventDefault()}
+                      >
+                        내용 잠금 (텍스트·사진 교체 불가)
+                      </DropdownMenuCheckboxItem>
+                      <DropdownMenuCheckboxItem
+                        checked={allOrderLocked}
+                        onCheckedChange={() => handleToggleOrderLock()}
+                        onSelect={(e) => e.preventDefault()}
+                      >
+                        순서 잠금 (레이어 순서 고정)
+                      </DropdownMenuCheckboxItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuLabel className="text-xs">
+                        보호 레벨 (전체 잠금)
+                        {selectionLockLevel === 'mixed' && ' — 혼합 선택'}
+                        {selectionLockLevel === 'system' && ' — 시스템(해제 불가)'}
+                      </DropdownMenuLabel>
+                      <DropdownMenuRadioGroup
+                        value={selectionLockLevel}
+                        onValueChange={handleLockLevelChange}
+                      >
+                        <DropdownMenuRadioItem value="none" onSelect={(e) => e.preventDefault()}>
+                          잠금 없음
+                        </DropdownMenuRadioItem>
+                        <DropdownMenuRadioItem value="designer" onSelect={(e) => e.preventDefault()}>
+                          디자이너 — 고객 해제 불가
+                        </DropdownMenuRadioItem>
+                        <DropdownMenuRadioItem value="admin" onSelect={(e) => e.preventDefault()}>
+                          관리자 — 관리자만 해제
+                        </DropdownMenuRadioItem>
+                        <DropdownMenuRadioItem value="user" onSelect={(e) => e.preventDefault()}>
+                          사용자 — 고객 해제 가능
+                        </DropdownMenuRadioItem>
+                      </DropdownMenuRadioGroup>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 )}
 
                 {/* B1: 프린트 제외 (관리자 editMode 전용) — 화면 표시, PDF 출력만 제외 */}
@@ -611,18 +651,6 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
                   </Button>
                 )}
 
-                {/* B1: 순서 잠금 (관리자 editMode 전용) — 레이어 z-order 변경 차단 */}
-                {editMode && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={handleToggleOrderLock}
-                    title={allOrderLocked ? '순서 잠금 해제' : '순서 잠금 (레이어 순서 변경 불가)'}
-                    aria-pressed={allOrderLocked}
-                  >
-                    <ArrowUpDown className={allOrderLocked ? 'h-5 w-5 text-amber-500' : 'h-5 w-5'} />
-                  </Button>
-                )}
               </div>
               <div className="actions-right">
                 <Button variant="ghost" size="icon" onClick={handleDelete}>
@@ -633,28 +661,6 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
           </div>
         </div>
 
-        {/* B1: 잠금 레벨 (관리자 editMode 전용) — LockPlugin CAN_UNLOCK_MAP 규약.
-            designer 이상은 고객(user) 해제 불가. 해제 주체 role 은 createCanvas/editMode 승격 배선. */}
-        {editMode && (
-          <div className="lock-level flex items-center gap-2 px-4 pb-2">
-            <span className="text-[11px] font-semibold text-editor-text-muted shrink-0">잠금 레벨</span>
-            <Select value={selectionLockLevel} onValueChange={handleLockLevelChange}>
-              <SelectTrigger className="h-7 text-xs flex-1">
-                <SelectValue />
-              </SelectTrigger>
-              {/* 모바일 bottom sheet(z-[102]) 위로 드롭다운이 뜨도록 z-index 상향 */}
-              <SelectContent className="z-[110]">
-                <SelectItem value="none">잠금 없음</SelectItem>
-                <SelectItem value="user">user — 고객 해제 가능</SelectItem>
-                <SelectItem value="designer">designer — 고객 해제 불가</SelectItem>
-                <SelectItem value="admin">admin — 관리자만 해제</SelectItem>
-                {/* 표시 전용 sentinel — 선택해도 동작 없음 */}
-                <SelectItem value="mixed" disabled>혼합</SelectItem>
-                <SelectItem value="system" disabled>system — 해제 불가</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        )}
 
         <hr className="border-editor-border" />
 
