@@ -90,6 +90,9 @@ export function useEmbedAutoSave(config: AutoSaveConfig) {
    */
   const saveToLocal = useCallback(() => {
     if (!sessionId) return
+    // L3 B-3 (적대 리뷰 major): 고객 시점 미리보기 중에는 저장 억제 — 미리보기가 강제한
+    // lock 속성(직렬화 등재)이 백업/세션에 영속되는 누수 방지.
+    if (useSettingsStore.getState().customerPreview) return
 
     try {
       const canvasData = collectCanvasData()
@@ -196,6 +199,8 @@ export function useEmbedAutoSave(config: AutoSaveConfig) {
    */
   const saveToServer = useCallback(async (): Promise<boolean> => {
     if (!sessionId || isSavingRef.current) return false
+    // L3 B-3 (적대 리뷰 major): 미리보기 강제 상태가 서버 세션 JSON 에 영속되는 누수 방지.
+    if (useSettingsStore.getState().customerPreview) return false
 
     isSavingRef.current = true
     setSaving()

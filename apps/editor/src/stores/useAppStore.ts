@@ -16,6 +16,7 @@ import Editor, {
 import type { AppMenu } from '@/types/menu'
 import { recalculateSpineWidth } from '@/utils/spineCalculator'
 import { useEditorStore } from '@/stores/useEditorStore'
+import { useSettingsStore } from '@/stores/useSettingsStore'
 import { TemplateType } from '@storige/types'
 
 // Fabric.js 타입 (실제 fabric 타입은 런타임에 로드됨)
@@ -980,12 +981,24 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
       if (!Array.isArray(allObjects)) return
 
       const newObjects: CanvasObject[] = []
-      const prevented = ['overlay', 'outline', 'clipping', 'printguide', 'template-element', 'fillImage']
+      // L3 B-5 (2026-07-06): 디자이너(editMode)는 template-element 를 목록에 표시 —
+      // 제작자가 보호 속성을 제어해야 하므로. 고객은 현행 은폐 유지(CC <LC> 패턴 정합).
+      // fillImage 는 양쪽 모두 은폐(사진틀 내부 구현체).
+      const isEditMode = useSettingsStore.getState().currentSettings.editMode === true
+      const prevented = isEditMode
+        ? ['overlay', 'outline', 'clipping', 'printguide', 'fillImage']
+        : ['overlay', 'outline', 'clipping', 'printguide', 'template-element', 'fillImage']
+      // L3 B-5(적대 리뷰): 구조성 헬퍼는 editMode 에도 은폐 — 독립 조작 의미가 없고
+      // z-order/삭제가 저장본 구조를 오염시킨다(page-outline 계열·템플릿 배경).
+      const structuralIds = ['page-outline', 'page-outline-clip', 'template-background', 'template-mockup']
 
       // 객체 정보 생성
       allObjects.forEach((obj: FabricObject, index: number) => {
         // settingsStore 연동은 나중에 추가
         if (!obj || obj.excludeFromExport === true || prevented.includes(obj.extensionType || '')) {
+          return
+        }
+        if (structuralIds.includes(obj.id || '')) {
           return
         }
 

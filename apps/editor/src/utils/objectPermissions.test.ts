@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { applyObjectPermissions } from './objectPermissions'
+import { applyObjectPermissions, revertObjectPermissions } from './objectPermissions'
 
 /**
  * B1 (2026-07-04): contentEditable 축 강제/원복 회귀 테스트.
@@ -64,5 +64,42 @@ describe('applyObjectPermissions — contentEditable (B1)', () => {
     applyObjectPermissions(makeCanvas([shape]), false)
     expect(shape.lockMovementX).toBe(true)
     expect(shape.hasControls).toBe(false)
+  })
+})
+
+describe('revertObjectPermissions — 고객 시점 미리보기 원복 (L3 B-3)', () => {
+  it('movable=false 강제분(lock 5속성+hasControls)을 정확 원복', () => {
+    const shape = makeObj({ type: 'rect', movable: false, hasControls: true })
+    applyObjectPermissions(makeCanvas([shape]), false)
+    expect(shape.lockMovementX).toBe(true)
+    expect(shape.hasControls).toBe(false)
+
+    revertObjectPermissions(makeCanvas([shape]))
+    expect(shape.lockMovementX).toBe(false)
+    expect(shape.lockMovementY).toBe(false)
+    expect(shape.lockScalingX).toBe(false)
+    expect(shape.lockScalingY).toBe(false)
+    expect(shape.lockRotation).toBe(false)
+    expect(shape.hasControls).toBe(true)
+  })
+
+  it('마커 없는 객체는 건드리지 않음 (고객 단순잠금 보존)', () => {
+    const locked = makeObj({ type: 'rect', lockMovementX: true, hasControls: false })
+    revertObjectPermissions(makeCanvas([locked]))
+    expect(locked.lockMovementX).toBe(true)
+    expect(locked.hasControls).toBe(false)
+  })
+
+  it('미리보기 왕복(apply false → revert → apply true)에 editable 도 원복', () => {
+    const text = makeObj({ contentEditable: false, movable: false, hasControls: true })
+    applyObjectPermissions(makeCanvas([text]), false)
+    expect(text.editable).toBe(false)
+    expect(text.lockMovementX).toBe(true)
+
+    revertObjectPermissions(makeCanvas([text]))
+    applyObjectPermissions(makeCanvas([text]), true)
+    expect(text.editable).toBe(true)
+    expect(text.lockMovementX).toBe(false)
+    expect(text.hasControls).toBe(true)
   })
 })

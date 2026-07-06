@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useAppStore } from '@/stores/useAppStore'
+import { useSettingsStore } from '@/stores/useSettingsStore'
 
 const KEY_PREFIX = 'storige.editor.backup.'
 const MAX_BACKUPS = 3 // 최근 3개 세션만 보관 — localStorage quota 회피
@@ -25,6 +26,8 @@ export function useCanvasLocalBackup(sessionKey: string | null | undefined, read
 
     const save = () => {
       try {
+        // L3 B-3: 고객 시점 미리보기 중 백업 중단 — 강제 hasControls:false 가 백업에 굳는 것 방지.
+        if (useSettingsStore.getState().customerPreview) return
         const canvas = useAppStore.getState().canvas
         if (!canvas || (canvas as any).disposed) return
         // toJSON 은 동기 — 큰 캔버스에서 비싸지만 5초 한 번이라 허용 범위
