@@ -561,6 +561,7 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 | 편집기→부모 | `editor.needAuth` | `{guestToken, reason:'complete_save', ts}` | 게스트 폴백만 |
 | 편집기→부모 | `editor.state` | `{requestId, ready, dirty, sessionId}` | getState 응답 |
 | 편집기→부모 | `editor.saved` | `{requestId, ok, error}` | saveNow 응답 |
+| 편집기→부모 | `editor.pricingChange` | `{sessionId, pageCount, pricing?, coverType?}` | 가격 영향 변경(페이지 증감 등) 실시간 통지 (2026-07-06 additive) |
 | **부모→편집기** | `getState` | `{requestId}` | → `editor.state` 응답 |
 | **부모→편집기** | `saveNow` | `{requestId}` | 저장 후 `editor.saved` |
 | **부모→편집기** | `setBackGuard` | `{enabled}` | 뒤로가기 가드 on/off (응답 없음) |
@@ -569,6 +570,7 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 > **페이지/규격 정합 (2026-07-04 additive):** `pages.final`·`pageCount` = 편집 완료 시점 실측 페이지 수(포토북 내지 펼침면은 ×2 물리페이지). `size` = 완료 시점 캔버스 규격(mm, 감사/정합 검증용 — 규격의 권위는 상품 옵션이며 embed 편집기에서는 규격 변경 UI 가 잠겨 있음). **파트너 장바구니는 `pageCount` 가 주문 옵션 페이지수와 다르면 가격을 재계산하고 고객에게 고지해야 합니다** — 결제 시점 서버 재계산에서도 동일 정합 검증 권장.
 > `pageCount`/`size`/`pricing` 은 legacy `storige:completed` 형식에도 동일하게 동봉됩니다. 단 **게스트(needsAuth=true) 완료 이벤트에는 미포함**(실제 완료가 아닌 로그인 유도 신호) — optional 처리 필수.
 > **`editCode` 형식:** `EDIT-XXXXXXXX` = 접두 `EDIT-` + 세션ID 앞 8자 대문자(`EDIT-${id.substring(0,8).toUpperCase()}`). 순수 8자리 숫자가 아닙니다.
+> **`editor.pricingChange` (D-3, 2026-07-06 additive):** 편집 중 페이지 추가/삭제로 총 페이지 수가 바뀌면 ~300ms 디바운스로 발신됩니다. 가격 계산 주체는 **호스트**(storige 는 가격을 계산하지 않음) — `pageCount`(물리 페이지, 포토북 내지 펼침면 ×2)와 `pricing` 메타로 장바구니 표시가를 갱신하세요. **발신 조건(보수 기본):** 템플릿셋에 `pricing` 이 설정된 경우 + 회원 세션만(게스트 미발신) + 에디터 초기화/세션 복원 완료 후. `coverType` 은 템플릿셋에 커버 종류 코드(string, 확장 가능 — `hardcover_wrap`/`softcover_variable_spine`/`ready_made` 시드)가 설정된 경우에만 동봉. 미지 이벤트를 무시하는 기존 수신부는 영향 없음(additive).
 
 `editor.error` code 종류: `AUTH_EXPIRED`, `NETWORK_ERROR`, `SAVE_FAILED`, `INVALID_DATA`, `SESSION_NOT_FOUND`, `TEMPLATE_SET_NOT_FOUND`.
 

@@ -70,6 +70,7 @@
 | `/embed` URL 파라미터 12종(camel/snake 겸용) | bookmoa/Sharesnap iframe | FROZEN | getParamCompat |
 | postMessage 엔벨로프 v1 `{source:'storige-editor', version:'1', event, payload, timestamp}` | 임베드 2종 | FROZEN | editor.ready/save/complete/cancel/error/needAuth/state/saved |
 | editor.complete payload (files 중첩 + needsAuth/guestToken 인라인) | bookmoa | FROZEN | STALE-CLOSURE-001 |
+| `editor.pricingChange` 신규 이벤트 `{sessionId, pageCount, pricing?, coverType?}` (2026-07-06, D-3) | 포토북 호스트(opt-in) | **ADDITIVE** | needAuth 선례의 신규 이벤트명 추가 — 수신부 event 스위치는 미지 이벤트 무시(파트너 4종 영향 0). 발신은 pricing 설정 셋+회원 세션만. 기존 8종 payload 불변 |
 | 레거시 `storige:*` dual-emit | bookmoa | FROZEN(하위호환) | parentOrigin 미지정 시 targetOrigin='*' — 신규 연동 혼입 금지 |
 | shop-session 응답 shape (accessToken/refreshToken/expiresIn/member) | 임베드 2종 | FROZEN | |
 | `POST /worker-jobs/compose-mixed` (@Public, 게스트) | 게스트 편집 | FROZEN(게스트 UX) | siteId=dto.siteId‖null (NULL 격리 결함 §4.3) |

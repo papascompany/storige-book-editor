@@ -38,7 +38,7 @@
 
 2. **"매니페스트 `enabled:false` = 번들 제외"는 거짓** → `ImageProcessingPlugin.ts:2`의 `import * as d3`, `SmartCodePlugin.ts:4/6`의 jsbarcode/qr는 **static import**라 매니페스트 플래그와 무관하게 번들에 잔존. ⇒ 번들 절감은 오직 **static import 경계 절단**(dynamic import + stub)으로만 달성. `enabled:false`는 "런타임 미마운트"로 의미 한정.
 
-3. **photobook 출력계약 오류** → 원안 `pdfOutputMode:'duplex-split'`은 `synthesis.processor.ts:125`의 카드/명함용(set_N.pdf 2p 세트)이고, **포토북 실경로는 `mode:'spread'`(line 130, cover.pdf+content.pdf)**. ⇒ photobook 프로파일을 `workerMode:'spread'` + `composeOutputMode:'content-only'`로 정정. **이 정정은 진행 중인 포토북 작업에도 직접 영향**(워커 담당 확인 필요).
+3. **photobook 출력계약 오류** → 원안 `pdfOutputMode:'duplex-split'`은 `synthesis.processor.ts:125`의 카드/명함용(set_N.pdf 2p 세트)이라는 정정은 유효. 단 **이 문서의 재정정("실경로=`mode:'spread'`+`content-only`")도 오류였음이 2026-07-06 Track 1 정찰에서 확정**: ① `mode:'spread'` 워커 핸들러(`handleSpreadSynthesis`)는 존재하나 잡 생성자 `createSpreadSynthesisJob`(worker-jobs.service.ts:1061)을 호출하는 controller 라우트가 없어 **HTTP 로 도달 불가한 레거시(v2.5)**(DTO 주석의 `POST /worker-jobs/spread-synthesize` 는 미배선), ② `content-only` 는 compose-mixed 전용 outputMode(레더커버 분기)로 spread 경로와 무관. ⇒ **포토북/스프레드 실 LIVE 경로 = `POST /worker-jobs/compose-mixed` → 세션 metadata.spread 존재 시 `outputMode='separate'` 강제(cover.pdf+content.pdf 2파일, worker-jobs.service.ts:606-624 P0-3)**. photobook 프로파일은 `composeOutputMode:'separate'`(compose-mixed) 기준으로 설계할 것 — 이 문서를 근거로 `mode:'spread'` 에 배선하면 도달 불가 경로가 된다.
 
 4. **"OpenCV 45MB 절감"은 신규 이득 아님** → OpenCV 10MB·ONNX·background-removal wasm은 **이미** `getCv()`/`getBackgroundRemoval()` dynamic import로 lazy이고 Vite가 청크 분리 완료. ⇒ 실제 남은 신규 레버는 jspdf 793KB + jsbarcode/qr + paper.js뿐. **아키텍처 확정 전 `rollup-plugin-visualizer`로 gzip 전송 기준 절감 KB를 정량화**해 ROI부터 확인.
 
