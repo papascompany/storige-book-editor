@@ -178,6 +178,44 @@ describe('TemplateSetsService', () => {
 
       await expect(service.create(createDto)).rejects.toThrow(NotFoundException);
     });
+
+    // D-4 (2026-07-06, C-4 Track 3): 커버 3종 메타 create 매핑 — 저장/조회 라운드트립의 저장측 고정
+    it('coverType/coverConfig(caseBind) 를 생성 시 영속 매핑한다 (D-4)', async () => {
+      const createDto = {
+        name: 'Hardcover Photobook Set',
+        type: TemplateSetType.PHOTOBOOK,
+        width: 210,
+        height: 297,
+        coverType: 'hardcover_wrap',
+        coverConfig: {
+          caseBind: { boardThicknessMm: 2.5, turnInMm: 15, wrapMm: 8 },
+        },
+      };
+
+      await service.create(createDto as any);
+
+      expect(templateSetRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          coverType: 'hardcover_wrap',
+          coverConfig: { caseBind: { boardThicknessMm: 2.5, turnInMm: 15, wrapMm: 8 } },
+        }),
+      );
+    });
+
+    it('coverType 미지정(기존 페이로드)은 null 로 저장 — 기존 셋 동작 비파괴 (D-4)', async () => {
+      const createDto = {
+        name: 'Legacy Set',
+        type: TemplateSetType.BOOK,
+        width: 210,
+        height: 297,
+      };
+
+      await service.create(createDto);
+
+      expect(templateSetRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({ coverType: null, coverConfig: null }),
+      );
+    });
   });
 
   describe('findAll', () => {

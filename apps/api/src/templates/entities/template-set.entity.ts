@@ -16,6 +16,44 @@ import { Template } from './template.entity';
 import type { ProductSpecs, TemplateSetType, TemplateRef, EditorMode, EditorMenuKey, PdfOutputMode, ColorOutputMode, PhotobookPricing } from '@storige/types';
 
 /**
+ * D-4 커버 3종 시드 코드 (2026-07-06, C-4 Track 3).
+ * ⚠️ 고정 enum 금지(오너 결정 D-4 — "커버 종류는 상품 구성에 따라 추가될 수 있다").
+ *    컬럼은 varchar 자유 코드이며, 이 상수는 admin 셀렉트 시드/문서화 용도다.
+ * ⚠️ packages/types 는 Track 1 소유 — 통합 시 이 로컬 선언을 Track 1 공유 타입으로 치환.
+ */
+export const COVER_TYPE_SEED_CODES = [
+  /** 하드커버(싸바리) — coverConfig.caseBind 활성 */
+  'hardcover_wrap',
+  /** 책등가변 일반커버(소프트커버) — 현행 SpreadSpec(책등 가변) 경로 */
+  'softcover_variable_spine',
+  /** 기성커버 — 기존 coverEditable=false + coverPreviewImage 경로에 매핑 */
+  'ready_made',
+] as const;
+
+/**
+ * 싸바리(caseBind) geometry — 하드커버 wrap 산출용 3필드 (mm).
+ * 화면 = trim 기준 뷰 / 출력 = wrap 포함 사이즈 (D-4).
+ */
+export interface CoverCaseBindConfig {
+  /** 합지(보드) 두께 mm */
+  boardThicknessMm: number;
+  /** 안쪽으로 접어 넘기는 여분(turn-in) mm */
+  turnInMm: number;
+  /** trim 대비 사방으로 추가되는 wrap 여분 mm */
+  wrapMm: number;
+}
+
+/**
+ * 커버 종류별 부가 설정 JSON (additive nullable — NULL=미사용, 기존 셋 비파괴).
+ */
+export interface TemplateSetCoverConfig {
+  /** 하드커버(싸바리) geometry — coverType='hardcover_wrap' 계열에서 사용 */
+  caseBind?: CoverCaseBindConfig;
+  /** 기성커버 참조(옵션) — 정본은 기존 coverPreviewImage 필드, 여기는 보조 참조 */
+  readyMade?: { previewImageUrl?: string | null };
+}
+
+/**
  * 템플릿셋 타입 enum (DB용)
  */
 export enum TemplateSetTypeEnum {
@@ -191,6 +229,28 @@ export class TemplateSet {
    */
   @Column({ name: 'pricing', type: 'json', nullable: true })
   pricing: PhotobookPricing | null;
+
+  // ─────────────────────────────────────────────────────
+  // D-4 커버 3종 메타 (2026-07-06, C-4 Track 3)
+  // 마이그레이션: apps/api/migrations/20260706_add_template_set_cover_type.sql
+  // ⚠️ 편집 UX 는 coverType 으로 게이팅하지 않는다(공유 UX 원칙). 출력/emit 메타 전용.
+  // ─────────────────────────────────────────────────────
+
+  /**
+   * 커버 종류 코드 (additive nullable=비파괴).
+   * 시드 3종: 'hardcover_wrap' | 'softcover_variable_spine' | 'ready_made' — COVER_TYPE_SEED_CODES.
+   * 고정 enum 금지(D-4) — 자유 코드 확장 가능. NULL=미사용(기존 셋 동작 무변화).
+   */
+  @Column({ name: 'cover_type', type: 'varchar', length: 50, nullable: true })
+  coverType: string | null;
+
+  /**
+   * 커버 종류별 설정 JSON (additive nullable=비파괴).
+   * shape: { caseBind?: { boardThicknessMm, turnInMm, wrapMm }, readyMade?: { previewImageUrl } }.
+   * NULL=미사용.
+   */
+  @Column({ name: 'cover_config', type: 'json', nullable: true })
+  coverConfig: TemplateSetCoverConfig | null;
 
   /**
    * ④ 연결된 라이브러리 카테고리 ID (2026-06-09) — 컬럼 아님(transient).
