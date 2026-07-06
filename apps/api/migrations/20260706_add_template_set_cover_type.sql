@@ -10,7 +10,7 @@
 --
 --       cover_type(VARCHAR 50): 커버 종류 코드. 자유 코드 확장 가능(enum 아님).
 --       cover_config(JSON): 커버 종류별 부가 설정.
---         { caseBind?: { boardThicknessMm, turnInMm, wrapMm },   -- 싸바리 geometry
+--         { caseBind?: { boardThicknessMm, turnInMm, wrapMarginMm },   -- 싸바리 geometry
 --           readyMade?: { previewImageUrl } }                    -- 기성커버 참조(옵션)
 --       NULL = 커버 종류 메타 미사용 (기존 셋 전량 동작 비파괴).
 --
@@ -38,4 +38,4 @@ ALTER TABLE `template_sets`
   ADD COLUMN IF NOT EXISTS `cover_type` VARCHAR(50) NULL
     COMMENT '커버 종류 코드(hardcover_wrap/softcover_variable_spine/ready_made + 자유 확장). NULL=미사용',
   ADD COLUMN IF NOT EXISTS `cover_config` JSON NULL
-    COMMENT '커버 종류별 설정 {caseBind:{boardThicknessMm,turnInMm,wrapMm},readyMade:{previewImageUrl}}. NULL=미사용';
+    COMMENT '커버 종류별 설정 {caseBind:{boardThicknessMm,turnInMm,wrapMarginMm},readyMade:{previewImageUrl}}. NULL=미사용';

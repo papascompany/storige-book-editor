@@ -337,7 +337,7 @@ export const TemplateSetForm = () => {
         coverType: (templateSet as any).coverType ?? undefined,
         caseBindBoardThicknessMm: (templateSet as any).coverConfig?.caseBind?.boardThicknessMm,
         caseBindTurnInMm: (templateSet as any).coverConfig?.caseBind?.turnInMm,
-        caseBindWrapMm: (templateSet as any).coverConfig?.caseBind?.wrapMm,
+        caseBindWrapMm: (templateSet as any).coverConfig?.caseBind?.wrapMarginMm,
         // 포토북 페이지 가변 가격 메타 (2026-06-24) — PHOTOBOOK 일 때만 입력 노출. null=미사용.
         usePricing: !!templateSet.pricing,
         pricingIncludedPages: templateSet.pricing?.includedPages ?? 16,
@@ -450,7 +450,7 @@ export const TemplateSetForm = () => {
             caseBind: {
               boardThicknessMm: Math.max(0, Number(values.caseBindBoardThicknessMm ?? 0)),
               turnInMm: Math.max(0, Number(values.caseBindTurnInMm ?? 0)),
-              wrapMm: Math.max(0, Number(values.caseBindWrapMm ?? 0)),
+              wrapMarginMm: Math.max(0, Number(values.caseBindWrapMm ?? 0)),
             },
           }
         : null;

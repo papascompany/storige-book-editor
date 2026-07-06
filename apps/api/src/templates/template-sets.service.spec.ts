@@ -188,7 +188,7 @@ describe('TemplateSetsService', () => {
         height: 297,
         coverType: 'hardcover_wrap',
         coverConfig: {
-          caseBind: { boardThicknessMm: 2.5, turnInMm: 15, wrapMm: 8 },
+          caseBind: { boardThicknessMm: 2.5, turnInMm: 15, wrapMarginMm: 8 },
         },
       };
 
@@ -197,7 +197,7 @@ describe('TemplateSetsService', () => {
       expect(templateSetRepository.create).toHaveBeenCalledWith(
         expect.objectContaining({
           coverType: 'hardcover_wrap',
-          coverConfig: { caseBind: { boardThicknessMm: 2.5, turnInMm: 15, wrapMm: 8 } },
+          coverConfig: { caseBind: { boardThicknessMm: 2.5, turnInMm: 15, wrapMarginMm: 8 } },
         }),
       );
     });

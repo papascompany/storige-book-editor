@@ -86,7 +86,7 @@ export class CoverCaseBindDto {
   @ApiProperty({ minimum: 0, example: 8, description: 'trim 대비 사방 wrap 여분 mm' })
   @IsNumber()
   @Min(0)
-  wrapMm: number;
+  wrapMarginMm: number;
 }
 
 /**
