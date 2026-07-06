@@ -119,7 +119,10 @@ export default function TemplateEditorView() {
   // ADMIN/SUPER_ADMIN 확인된 뒤에만 켠다. (초기값 false → 관리자 속성 토글 미노출 버그 수정)
   const isAdmin = useIsAdmin()
   const storeEditMode = useSettingsStore((s) => s.currentSettings.editMode)
+  // L3 B-3: 고객 시점 미리보기 중에는 editMode 자동 승격 억제
+  const customerPreview = useSettingsStore((s) => s.customerPreview)
   useEffect(() => {
+    if (customerPreview) return
     if (isAdmin && !storeEditMode) {
       updateSettings({ editMode: true })
       // LockPlugin role 은 createCanvas 시점 editMode 스냅샷('user')이라 함께 승격.
@@ -127,7 +130,7 @@ export default function TemplateEditorView() {
         | { setUserRole?: (r: string) => void }
         | undefined)?.setUserRole?.('admin')
     }
-  }, [isAdmin, storeEditMode, updateSettings])
+  }, [isAdmin, storeEditMode, updateSettings, customerPreview])
 
   // Template save hook
   const { saving, saveTemplate, updateExistingTemplate } = useTemplateSave()

@@ -252,6 +252,8 @@ export interface PrintMarkConfig {
 interface SettingsState {
   currentSettings: CanvasSettings
   currentUseCase: EditorUseCase
+  /** L3 B-3: 고객 시점 미리보기 중 여부(디자이너 전용 일시 모드 — 비영속·직렬화 무접촉) */
+  customerPreview: boolean
   editorTemplates: EditorTemplate[]
   renderType: EditorRenderType
   spineConfig: SpineConfig  // 책등 계산 설정
@@ -301,6 +303,8 @@ interface SettingsActions {
   setupProductBased: (config: ProductBasedSetupConfig) => Promise<void>
   setupContentEdit: (config: ContentEditSetupConfig) => Promise<void>
   setupEmptyEditor: (config?: EmptyEditorSetupConfig) => Promise<void>
+  /** L3 B-3: 고객 시점 미리보기(디자이너 전용, 일시 모드 — 저장·직렬화 무접촉) */
+  setCustomerPreview: (on: boolean) => void
   setupGeneral: (config?: GeneralSetupConfig) => Promise<void>
 
   // Artwork management
@@ -363,6 +367,8 @@ const initialState: SettingsState = {
     reduced: false,
   },
   currentUseCase: 'general',
+  // L3 B-3: 고객 시점 미리보기 중 여부 — EditorView B0 승격 effect 억제용(비영속)
+  customerPreview: false,
   editorTemplates: [],
   renderType: 'bounded',
   spineConfig: {
@@ -574,6 +580,8 @@ export const useSettingsStore = create<SettingsState & SettingsActions>()((set, 
     get().updateArtworkForContent(config.contentId, config.contentType, config.workId)
     set({ currentUseCase: 'content-edit' })
   },
+
+  setCustomerPreview: (on) => set({ customerPreview: on }),
 
   setupEmptyEditor: async (config) => {
     console.log('[SettingsStore] Setting up empty editor', config)
