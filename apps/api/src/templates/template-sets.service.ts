@@ -93,6 +93,9 @@ export class TemplateSetsService {
       pricing: dto.pricing ?? null, // 포토북 가격 메타 (Phase 2 §8)
       coverEditable: dto.coverEditable ?? true,
       coverPreviewImage: dto.coverPreviewImage ?? null,
+      // D-4 커버 3종 메타 (2026-07-06, C-4 Track 3) — 생성 시에도 영속(additive nullable)
+      coverType: dto.coverType ?? null,
+      coverConfig: dto.coverConfig ?? null,
       contentPdfEditable: dto.contentPdfEditable ?? true,
       pdfOutputMode: dto.pdfOutputMode ?? 'duplex-merged',
       colorMode: dto.colorMode ?? 'rgb',
