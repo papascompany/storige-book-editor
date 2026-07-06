@@ -200,6 +200,59 @@ export interface PhotobookPricing {
   perPageUnit: number;
 }
 
+// ============================================================================
+// 커버 체계 (D-4, 2026-07-06) — 공통 3종 + 확장형 코드 모델
+// ============================================================================
+
+/**
+ * 커버 종류 시드 코드 3종 (D-4). ⚠️ **고정 enum 아님** — 커버 종류는 상품 구성에 따라
+ * 추가될 수 있으므로 저장/전송은 자유 문자열(varchar) 코드로 하고, 이 상수는 기본 시드일 뿐이다.
+ * - 'hardcover_wrap'            : 하드커버(싸바리) — caseBind geometry 로 출력 사이즈 확장
+ * - 'softcover_variable_spine'  : 책등가변 일반커버(소프트커버) — 현행 SpreadSpec 경로
+ * - 'ready_made'                : 기성커버 — coverEditable=false + coverPreviewImage 경로
+ */
+export const COVER_TYPE_SEED_CODES = [
+  'hardcover_wrap',
+  'softcover_variable_spine',
+  'ready_made',
+] as const;
+
+/**
+ * 싸바리(하드커버 보드 wrap) geometry — D-4 (설계서 §3-2 초안 채택).
+ * 화면(trim 뷰)에는 나타나지 않고 **출력(PDF) 사이즈 계산에만** 사용된다.
+ */
+export interface CaseBindSpec {
+  /** 합지(보드) 두께 mm — 책등 폭에 ×2 가산 */
+  boardThicknessMm: number;
+  /** 시접(보드 안쪽 접어넘김) mm — 사방 가산 */
+  turnInMm: number;
+  /** 보드 바깥 풀칠/감싸기 여유 mm — 사방 가산 */
+  wrapMarginMm: number;
+}
+
+/** CaseBindSpec 유효성: 3필드 모두 유한 ≥ 0. (부분/비정상 값은 미설정으로 간주 — 출력 불변) */
+export function isValidCaseBind(cb: Partial<CaseBindSpec> | null | undefined): cb is CaseBindSpec {
+  if (!cb) return false;
+  return [cb.boardThicknessMm, cb.turnInMm, cb.wrapMarginMm].every(
+    (n) => typeof n === 'number' && Number.isFinite(n) && n >= 0,
+  );
+}
+
+/** 템플릿셋 coverConfig JSON 형상 (트랙 간 동결 인터페이스 ③) */
+export interface TemplateSetCoverConfig {
+  caseBind?: CaseBindSpec;
+}
+
+/**
+ * 템플릿셋 커버 메타 (D-4). 데이터 소스는 template_sets 의 additive nullable 컬럼
+ * (coverType varchar + coverConfig JSON) — 편집기는 옵셔널 체이닝으로 읽기만 한다(값 없으면 기존 동작).
+ */
+export interface TemplateSetCoverMeta {
+  /** 커버 종류 코드 — string 기반(고정 enum 금지). 시드는 COVER_TYPE_SEED_CODES 참조 */
+  coverType: string;
+  coverConfig?: TemplateSetCoverConfig;
+}
+
 export interface TemplateSet {
   id: string;
   name: string;
@@ -1195,6 +1248,17 @@ export function normalizeSpreadSpec(raw: Partial<SpreadSpec> & {
     cutSizeMm: roundMm01(raw.cutSizeMm ?? 3),
     safeSizeMm: roundMm01(raw.safeSizeMm ?? 3),
     dpi: raw.dpi ?? 150,
+    // D-4 (2026-07-06): 싸바리 geometry 보존(additive) — 유효할 때만 0.1mm 정규화해 유지.
+    // 비유효/미설정이면 필드 자체를 생략해 기존 스냅샷과 byte-identical.
+    ...(isValidCaseBind(raw.caseBind)
+      ? {
+          caseBind: {
+            boardThicknessMm: roundMm01(raw.caseBind.boardThicknessMm),
+            turnInMm: roundMm01(raw.caseBind.turnInMm),
+            wrapMarginMm: roundMm01(raw.caseBind.wrapMarginMm),
+          },
+        }
+      : {}),
   };
 }
 
@@ -1217,6 +1281,28 @@ export function computeSpreadDimensions(spec: SpreadSpec): SpreadDimensions {
   return {
     totalWidthMm: roundMm01(rawWidth),
     totalHeightMm: roundMm01(spec.coverHeightMm),
+  };
+}
+
+/**
+ * D-4 (2026-07-06): 스프레드 **출력(PDF) 사이즈** 계산 — 싸바리(caseBind) wrap 포함.
+ *
+ * 이중경계 원칙: 화면(trim 뷰)은 computeSpreadDimensions(위, **불변**)를 그대로 쓰고,
+ * PDF 생성 시에만 이 함수의 출력 사이즈를 페이지 크기로 쓴다(콘텐츠는 중앙 배치).
+ *
+ * 공식(설계서 §3-2): 출력 폭 = trim 총폭 + boardThicknessMm×2(책등 가산) + (turnIn+wrap)×2,
+ * 출력 높이 = trim 높이 + (turnIn+wrap)×2.
+ *
+ * caseBind 미설정/비유효 → computeSpreadDimensions 와 동일값(기존 totalWidthMm 출력 byte-parity).
+ */
+export function computeSpreadOutputDimensions(spec: SpreadSpec): SpreadDimensions {
+  const base = computeSpreadDimensions(spec);
+  const cb = spec.caseBind;
+  if (!isValidCaseBind(cb)) return base;
+  const wrapPerSideMm = cb.turnInMm + cb.wrapMarginMm;
+  return {
+    totalWidthMm: roundMm01(base.totalWidthMm + cb.boardThicknessMm * 2 + wrapPerSideMm * 2),
+    totalHeightMm: roundMm01(base.totalHeightMm + wrapPerSideMm * 2),
   };
 }
 
@@ -1485,6 +1571,12 @@ export interface SpreadSpec {
   cutSizeMm: number;
   safeSizeMm: number;
   dpi: number;
+  /**
+   * D-4 (2026-07-06): 싸바리(하드커버 보드 wrap) geometry — optional additive, 기존 BOOK 비파괴.
+   * 화면 레이아웃(computeSpreadDimensions/SpreadLayoutEngine)에는 **관여하지 않고**,
+   * 출력(PDF) 사이즈 계산(computeSpreadOutputDimensions)에만 사용된다.
+   */
+  caseBind?: CaseBindSpec;
 }
 
 /**
@@ -1548,8 +1640,16 @@ export interface SpreadLayout {
  */
 export type SpreadConversionMode = 'full' | 'flat-spread' | 'flat-spine';
 
+/**
+ * SpreadConfig.version 현재값.
+ * - 1: 초기 (표지 스프레드 + 포토북 내지 regionScope/innerSpec)
+ * - 2: D-4 caseBind(싸바리)·출력 사이즈 이중경계 도입 (2026-07-06)
+ * 소비처는 version 으로 게이팅하지 않는다(형상 세대 추적용 — 미존재 시 1 간주).
+ */
+export const SPREAD_CONFIG_VERSION = 2;
+
 export interface SpreadConfig {
-  version: number;        // 1 (향후 계산식 변경 대비)
+  version: number;        // SPREAD_CONFIG_VERSION 참조 (1=초기, 2=caseBind/출력 사이즈)
   /**
    * 표지 스프레드 스펙(front/spine/back). regionScope==='cover'(기본)에서 필수.
    * 포토북 내지(regionScope==='inner')는 spec 대신 innerSpec 을 사용하므로 생략 가능.
@@ -1688,6 +1788,13 @@ export interface SpreadSnapshot {
   totalWidthMm: number;
   totalHeightMm: number;
   dpi: number;
+  /**
+   * D-4 (2026-07-06, 트랙 간 동결 인터페이스 ①): 싸바리 wrap 포함 **출력(PDF) 사이즈** mm.
+   * caseBind 가 설정된 세션에만 기록(additive) — 미설정 세션은 필드 자체 생략(기존 스냅샷 불변).
+   * 워커 cover MediaBox 검증 기대치는 output 우선·total 폴백으로 확장 가능.
+   */
+  outputWidthMm?: number;
+  outputHeightMm?: number;
 }
 
 /**

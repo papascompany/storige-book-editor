@@ -85,6 +85,22 @@ node scripts/pdf-golden/fixture/receiver.mjs &   # :3199, out/<label>/<name>.pdf
 - ⚠️ vite.golden.config.mts 는 'vite' 패키지를 임포트하지 않는다(worktree 루트에 vite 부재 —
   플레인 객체 export). 픽스처 확장 시에도 이 제약 유지.
 
+## 포토북 출력 계약 케이스 (Track 1, 2026-07-06 신설 — D-1·D-4)
+픽스처 URL 파라미터 `case=` 로 선택(미지정 = 기존 `book` 경로 byte-identical):
+
+| case | 검증 대상 | 페이지 크기 입력 | 기대 MediaBox |
+|---|---|---|---|
+| `photobook-content` | D-1: 내지 content.pdf 1페이지=1펼침면(2-up) | size 380×190mm(=190×2 × 190), 2p | **380×190mm = 1077.17×538.58pt** ×2p |
+| `photobook-cover-wrap` | D-4: 하드커버 cover.pdf = wrap 포함 출력 사이즈 | trim 430×297 + `printSize` 474×337 | **474×337mm = 1343.62×955.28pt**, 콘텐츠(trim 렌더) 중앙 배치(오프셋 22×20mm) |
+
+- geometry 근거: `computeSpreadOutputDimensions`(types) — trim 430×297(cover210×2+spine10) +
+  caseBind(board2/turnIn15/wrap5) → 폭 +2×2+(15+5)×2, 높이 +(15+5)×2.
+- 편집기 실경로 대응: embed.tsx/useWorkSave 두 완료 경로가 `computeInnerContentSizeMm`/
+  `computeCoverOutputSizeMm`(apps/editor/src/utils/photobookSpread.ts) 헬퍼로 동일 값을 산출해
+  `saveMultiPagePDFAsBlob` 의 size/printSize 로 주입한다(ServicePlugin 무변경 — 기존 printSize 중앙배치 재사용).
+- MediaBox 판독: `qpdf --qdf out.pdf - | grep -a MediaBox` 또는 `pdfinfo`. BOOK/LEAFLET 기존
+  케이스는 `case` 미지정 경로가 불변이므로 골든 diff 0 이 유지되어야 한다.
+
 ## 디렉터리
 - `compare.mjs` — 비교 엔진(CLI + `comparePdfs()` export).
 - `compare.test.mjs` — 엔진 자체 회귀 테스트(node:test).

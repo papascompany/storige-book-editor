@@ -6,6 +6,7 @@ import { useEditorStore } from '@/stores/useEditorStore'
 import { ServicePlugin, core } from '@storige/canvas-core'
 import { designsApi, editSessionsApi, filesApi, storageApi } from '@/api'
 import { buildSpreadSnapshots } from '@/utils/buildSpreadSnapshots'
+import { computeInnerContentSizeMm, computeCoverOutputSizeMm } from '@/utils/photobookSpread'
 import type { SpreadSynthesisJobData } from '@storige/types'
 
 // Fabric.js 타입 (런타임에 로드됨)
@@ -595,8 +596,14 @@ export function useWorkSave(): UseWorkSaveReturn {
       }
 
       const orderSeqnoFromSession = (session as any)?.orderSeqno as number | undefined
-      const innerWidthMm = (artwork as any)?.sizeInfo?.width ?? 210
-      const innerHeightMm = (artwork as any)?.sizeInfo?.height ?? 297
+      // Track 1 (2026-07-06): 출력 크기 산출은 embed.tsx handleFinish 와 photobookSpread 헬퍼를
+      // **단일 진실원**으로 공유한다(경로별 출력 크기 불일치 회귀 방지).
+      const spreadCfg = useSettingsStore.getState().spreadConfig
+      // D-1 1단계: 포토북 내지(regionScope='inner')는 content.pdf 페이지 크기 = innerSpec 2-up
+      // (pageWidthMm×2 × pageHeightMm). 비-포토북은 헬퍼가 null → 기존 폴백(주문 판형) byte-parity.
+      const innerContentSize = computeInnerContentSizeMm(spreadCfg)
+      const innerWidthMm = innerContentSize?.widthMm ?? (artwork as any)?.sizeInfo?.width ?? 210
+      const innerHeightMm = innerContentSize?.heightMm ?? (artwork as any)?.sizeInfo?.height ?? 297
       const cutSize = 3
 
       // P3 (2026-06-10): 작업사이즈(재단+블리드)+코너마커+TrimBox 출력 게이팅.
@@ -637,14 +644,23 @@ export function useWorkSave(): UseWorkSaveReturn {
           | { getLayout?: () => { totalWidthMm?: number; totalHeightMm?: number } | null }
           | null
       )?.getLayout?.()
-      const spreadCfg = useSettingsStore.getState().spreadConfig
       const coverWidthMm = spreadLayout?.totalWidthMm ?? spreadCfg?.totalWidthMm ?? innerWidthMm
       const coverHeightMm = spreadLayout?.totalHeightMm ?? spreadCfg?.totalHeightMm ?? innerHeightMm
+      // D-4 (2026-07-06): 하드커버(caseBind) 표지는 출력 페이지 크기 = wrap 포함 사이즈.
+      // ServicePlugin 의 기존 printSize 메커니즘(페이지=printSize, 콘텐츠 trim 렌더 중앙 배치) 재사용
+      // — canvas-core 무변경. caseBind 미설정이면 null → 기존 호출 byte-parity.
+      // (wrap 자체가 재단 여유 역할 — crop mark 게이트(markOpt)는 printSize 와 함께 쓰지 않는다.)
+      const coverOutputSize = computeCoverOutputSizeMm(spreadCfg)
       const coverPdfBlob = await spreadPlugin.saveMultiPagePDFAsBlob(
         [spreadCanvas] as any,
         [spreadEditor],
         `spread_cover_${Date.now()}`,
-        { width: coverWidthMm, height: coverHeightMm, cutSize, ...markOpt },
+        {
+          width: coverWidthMm, height: coverHeightMm, cutSize,
+          ...(coverOutputSize
+            ? { printSize: { width: coverOutputSize.widthMm, height: coverOutputSize.heightMm } }
+            : markOpt),
+        },
         undefined,
         300,
       )
