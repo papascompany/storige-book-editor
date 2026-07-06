@@ -50,8 +50,13 @@
 | 14 | 투명도 | 🟡경고 | `TRANSPARENCY_DETECTED` | 투명 효과 포함 | 전체 | ✕ |
 | 14b | 오버프린트 | 🟡경고 | `OVERPRINT_DETECTED` | 오버프린트 설정 포함 | 전체 | ✕ |
 | 15 | 이미지 해상도 | 🟡경고 | `RESOLUTION_LOW` | 이미지 < **150 DPI**(권장 300) | 전체 | ✕ |
+| 16 | 재단선 기하(TrimBox) | 🟡경고 | `TRIMBOX_MISSING` | PDF 에 TrimBox 미명시(재단 위치 기계 확정 불가) | crop-mark opt-in 셋 | ✕ |
+| 16b | TrimBox 크기 | 🟡경고 | `TRIMBOX_SIZE_MISMATCH` | TrimBox ≠ 주문 재단 사이즈 ±tolerance | crop-mark opt-in 셋 | ✕ |
+| 16c | TrimBox/Bleed 정합 | 🟡경고 | `TRIMBOX_BLEED_INCONSISTENT` | TrimBox⊄MediaBox 또는 BleedBox ≠ trim+bleed×2 | crop-mark opt-in 셋 | ✕ |
 
-**조건부 실행**: ⑧책등=`fileType==='cover'` + `paperThickness` 존재 시만, ⑩사철=`binding==='saddle'`일 때만, ⑫후가공CMYK=`fileType==='post_process'`일 때만.
+**조건부 실행**: ⑧책등=`fileType==='cover'` + `paperThickness` 존재 시만, ⑩사철=`binding==='saddle'`일 때만, ⑫후가공CMYK=`fileType==='post_process'`일 때만, ⑯재단선 기하=**templateSet `cropMarkEnabled` opt-in + 워커 env `WORKER_CROP_MARK_VALIDATION`(2026-07-06 프로덕션 ON) 이중 게이트**일 때만.
+
+> ⑯ 파트너 표시 안내: 항상 🟡경고(주문 차단 없음). 편집기 산출 PDF 는 TrimBox 를 넣지 않으므로 opt-in 셋에서 `TRIMBOX_MISSING` 이 관찰될 수 있으며, 이는 "고객 업로드 원고의 재단 정보 확인" 용도다. 고객 노출 문구는 "재단선 정보가 없어 인쇄소 확인이 필요할 수 있습니다" 수준을 권장.
 
 ---
 
