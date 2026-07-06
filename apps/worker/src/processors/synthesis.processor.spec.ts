@@ -464,6 +464,222 @@ describe('SynthesisProcessor', () => {
       }
     });
   });
+
+  // ── D-4 (2026-07-06, C-4 Track 3): compose-mixed cover 검증 output 우선·total 폴백 + 커버 3종 정합 ──
+  describe('D-4 스프레드 cover 기대치 — output 우선 · total 폴백', () => {
+    it('output(wrap 포함) 사이즈가 있으면 output 을 기대치로 사용 (total 무시)', () => {
+      const exp = (processor as any).resolveSpreadCoverExpectation({
+        composeSpreadTotalWidthMm: 450,
+        composeSpreadTotalHeightMm: 300,
+        composeSpreadOutputWidthMm: 466,
+        composeSpreadOutputHeightMm: 316,
+        composeSpreadDpi: 300,
+      });
+      expect(exp).toEqual({ widthMm: 466, heightMm: 316, dpi: 300 });
+    });
+
+    it('output 부재 시 totalWidthMm 폴백 — 기존 검증과 동일 결과', () => {
+      const exp = (processor as any).resolveSpreadCoverExpectation({
+        composeSpreadTotalWidthMm: 450,
+        composeSpreadTotalHeightMm: 300,
+        composeSpreadDpi: 300,
+      });
+      expect(exp).toEqual({ widthMm: 450, heightMm: 300, dpi: 300 });
+    });
+
+    it('output 이 한쪽만 있거나 0/비수치면 무시하고 total 폴백', () => {
+      const base = { composeSpreadTotalWidthMm: 450, composeSpreadTotalHeightMm: 300 };
+      expect(
+        (processor as any).resolveSpreadCoverExpectation({ ...base, composeSpreadOutputWidthMm: 466 }),
+      ).toMatchObject({ widthMm: 450, heightMm: 300 });
+      expect(
+        (processor as any).resolveSpreadCoverExpectation({
+          ...base,
+          composeSpreadOutputWidthMm: 0,
+          composeSpreadOutputHeightMm: 316,
+        }),
+      ).toMatchObject({ widthMm: 450, heightMm: 300 });
+      expect(
+        (processor as any).resolveSpreadCoverExpectation({
+          ...base,
+          composeSpreadOutputWidthMm: 'x' as any,
+          composeSpreadOutputHeightMm: 316,
+        }),
+      ).toMatchObject({ widthMm: 450, heightMm: 300 });
+    });
+
+    it('total/output 모두 부재(비스프레드) → undefined (검증 skip, 기존 동일)', () => {
+      expect((processor as any).resolveSpreadCoverExpectation({})).toBeUndefined();
+    });
+
+    it('SOFT(기본) 정책 불변: 불일치 시 throw 없이 ok=false 기록', () => {
+      const mmToPt = (mm: number) => (mm * 72) / 25.4;
+      const v = (processor as any).validateSpreadCoverSizeMeasured(
+        'd4-soft', 1, mmToPt(450), mmToPt(300), 466, 316, 300,
+      );
+      expect(v.ok).toBe(false);
+      expect(v.mode).toBe('soft');
+      expect(v.mismatches.length).toBeGreaterThan(0);
+    });
+
+    it('HARD(SPREAD_SNAPSHOT_HARD_FAIL=true) 정책 불변: 불일치 시 throw', () => {
+      const mmToPt = (mm: number) => (mm * 72) / 25.4;
+      process.env.SPREAD_SNAPSHOT_HARD_FAIL = 'true';
+      try {
+        expect(() =>
+          (processor as any).validateSpreadCoverSizeMeasured(
+            'd4-hard', 1, mmToPt(450), mmToPt(300), 466, 316, 300,
+          ),
+        ).toThrow();
+      } finally {
+        delete process.env.SPREAD_SNAPSHOT_HARD_FAIL;
+      }
+    });
+
+    it('wrap 사이즈 cover + output 기대치 = 검증 통과 (tol 내)', () => {
+      const mmToPt = (mm: number) => (mm * 72) / 25.4;
+      const v = (processor as any).validateSpreadCoverSizeMeasured(
+        'd4-ok', 1, mmToPt(466), mmToPt(316), 466, 316, 300,
+      );
+      expect(v.ok).toBe(true);
+      expect(v.expectedWidthMm).toBe(466);
+      expect(v.expectedHeightMm).toBe(316);
+    });
+  });
+
+  describe('D-4 compose-mixed 통합 — 커버 3종 정합 회귀', () => {
+    const { PDFDocument } = require('pdf-lib');
+    const mmToPt = (mm: number) => (mm * 72) / 25.4;
+
+    const makePdfBytes = async (widthMm: number, heightMm: number, pages: number): Promise<Buffer> => {
+      const doc = await PDFDocument.create();
+      for (let i = 0; i < pages; i++) {
+        doc.addPage([mmToPt(widthMm), mmToPt(heightMm)]);
+      }
+      return Buffer.from(await doc.save());
+    };
+
+    it('하드커버(wrap 466x316 cover) + output 기대치 push → output 기준 검증 통과', async () => {
+      const jobId = 'd4-cm-hardcover-output';
+      const coverBytes = await makePdfBytes(466, 316, 1); // 싸바리 wrap 포함 출력 사이즈
+      const contentBytes = await makePdfBytes(210, 297, 4);
+      synthesizerService.downloadFile.mockImplementation(async (url: string) =>
+        url.includes('cover') ? coverBytes : contentBytes,
+      );
+
+      const result = await processor.handleSynthesis(
+        createMockJob({
+          jobId,
+          mode: 'compose-mixed',
+          composeCoverUrl: 'https://example.com/cover.pdf',
+          composeCoverEditable: true,
+          composeCoverWidthMm: 216,
+          composeCoverHeightMm: 303,
+          composeContentPdfUrl: 'https://example.com/content.pdf',
+          composeContentWidthMm: 210,
+          composeContentHeightMm: 297,
+          composeOutputMode: 'separate',
+          // 기존(trim 기준 total) + D-4 신규(output wrap) 동시 존재 → output 우선
+          composeSpreadTotalWidthMm: 450,
+          composeSpreadTotalHeightMm: 300,
+          composeSpreadOutputWidthMm: 466,
+          composeSpreadOutputHeightMm: 316,
+          composeSpreadDpi: 300,
+        }) as any,
+      );
+
+      expect(result.success).toBe(true);
+      const marker = await (processor as any).loadCompletionMarker(jobId);
+      expect(marker?.result?.coverSizeValidation).toMatchObject({
+        ok: true,
+        expectedWidthMm: 466,
+        expectedHeightMm: 316,
+      });
+      // 계약 회귀: separate = cover.pdf + content.pdf 2파일
+      const types = (marker?.result?.outputFiles ?? []).map((f: any) => f.type);
+      expect(types).toEqual(['cover', 'content']);
+    });
+
+    it('output 부재(기존 페이로드) → total 기준 검증 = 기존 동작 100% 동일 (wrap cover 는 SOFT 불일치·비차단)', async () => {
+      const jobId = 'd4-cm-total-fallback';
+      const coverBytes = await makePdfBytes(466, 316, 1);
+      const contentBytes = await makePdfBytes(210, 297, 4);
+      synthesizerService.downloadFile.mockImplementation(async (url: string) =>
+        url.includes('cover') ? coverBytes : contentBytes,
+      );
+
+      const result = await processor.handleSynthesis(
+        createMockJob({
+          jobId,
+          mode: 'compose-mixed',
+          composeCoverUrl: 'https://example.com/cover.pdf',
+          composeCoverEditable: true,
+          composeCoverWidthMm: 216,
+          composeCoverHeightMm: 303,
+          composeContentPdfUrl: 'https://example.com/content.pdf',
+          composeContentWidthMm: 210,
+          composeContentHeightMm: 297,
+          composeOutputMode: 'separate',
+          composeSpreadTotalWidthMm: 450,
+          composeSpreadTotalHeightMm: 300,
+          composeSpreadDpi: 300,
+        }) as any,
+      );
+
+      // SOFT: 불일치여도 합성 계속(비차단) — 기존 정책 그대로
+      expect(result.success).toBe(true);
+      const marker = await (processor as any).loadCompletionMarker(jobId);
+      expect(marker?.result?.coverSizeValidation).toMatchObject({
+        ok: false,
+        mode: 'soft',
+        expectedWidthMm: 450,
+        expectedHeightMm: 300,
+      });
+    });
+
+    it('기성커버(coverEditable=false) separate: 빈 표지 1쪽 생성 + cover 사이즈 검증 skip', async () => {
+      const jobId = 'd4-cm-readymade-skip';
+      const contentBytes = await makePdfBytes(210, 297, 4);
+      synthesizerService.downloadFile.mockResolvedValue(contentBytes as any);
+
+      const result = await processor.handleSynthesis(
+        createMockJob({
+          jobId,
+          mode: 'compose-mixed',
+          // 기성커버: 편집 표지 없음 — coverPreviewImage 는 편집기 표시용, 출력은 빈 표지
+          composeCoverEditable: false,
+          composeCoverWidthMm: 216,
+          composeCoverHeightMm: 303,
+          composeContentPdfUrl: 'https://example.com/content.pdf',
+          composeContentWidthMm: 210,
+          composeContentHeightMm: 297,
+          composeOutputMode: 'separate',
+          // 스프레드/output 기대치가 있어도 기성커버는 검증 대상 아님(빈 표지)
+          composeSpreadTotalWidthMm: 450,
+          composeSpreadTotalHeightMm: 300,
+          composeSpreadOutputWidthMm: 466,
+          composeSpreadOutputHeightMm: 316,
+        }) as any,
+      );
+
+      expect(result.success).toBe(true);
+      const marker = await (processor as any).loadCompletionMarker(jobId);
+      // 검증 skip — 허위 SIZE_MISMATCH/HARD-FAIL 없음
+      expect(marker?.result?.coverSizeValidation).toBeUndefined();
+      // 분리 2파일 계약 유지 + 빈 표지 1쪽
+      const coverFile = (marker?.result?.outputFiles ?? []).find((f: any) => f.type === 'cover');
+      const contentFile = (marker?.result?.outputFiles ?? []).find((f: any) => f.type === 'content');
+      expect(coverFile?.pageCount).toBe(1);
+      expect(contentFile?.pageCount).toBe(4);
+      // 빈 표지 크기 = composeCoverWidthMm/HeightMm (coverPt)
+      const coverPdf = await PDFDocument.load(
+        await fs.readFile(path.join(testOutputsPath, jobId, 'cover.pdf')),
+      );
+      const size = coverPdf.getPage(0).getSize();
+      expect(size.width).toBeCloseTo(mmToPt(216), 0);
+      expect(size.height).toBeCloseTo(mmToPt(303), 0);
+    });
+  });
 });
 
 // Helper functions
