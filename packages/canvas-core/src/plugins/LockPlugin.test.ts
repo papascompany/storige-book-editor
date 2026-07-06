@@ -55,6 +55,11 @@ function getLockInfo(obj: any): LockInfo {
     return lockInfo
   }
 
+  // L1① (2026-07-06): 위치고정(movable===false)은 잠금이 아님 — 실물과 동기.
+  if (obj.movable === false) {
+    return { isLocked: false, lockLevel: 'user' }
+  }
+
   // 레거시 방식의 잠금 확인
   const isLegacyLocked = LOCK_ATTRIBUTES.some(attr => obj[attr] === true)
 
@@ -527,5 +532,48 @@ describe('LockPlugin - Permission System', () => {
       expect(getLockInfo(objects[1]).isLocked).toBe(true)
       expect(getLockInfo(objects[2]).isLocked).toBe(true)
     })
+  })
+})
+
+// ────────────────────────────────────────────────────────────────────────────
+// L1① (2026-07-06) 실물 회귀 스펙 — 미러가 아니라 실제 LockPlugin.prototype 검증.
+// getLockInfo 는 this 를 사용하지 않으므로 인스턴스 없이 프로토타입 호출로 검증한다
+// (fabric 캔버스 기동 불필요 — canvas.test.ts 미러 함정의 재발 방지).
+// ────────────────────────────────────────────────────────────────────────────
+import RealLockPlugin from './LockPlugin'
+
+describe('L1① 실물 getLockInfo — 위치고정(movable=false)은 잠금이 아니다', () => {
+  const realGetLockInfo = (obj: unknown) =>
+    (RealLockPlugin.prototype.getLockInfo as (o: unknown) => LockInfo).call(null, obj)
+
+  it('movable=false + lockMovementX/Y=true (applyObjectPermissions 산출물) → isLocked=false (선택 유지)', () => {
+    const placeholder = {
+      movable: false,
+      lockMovementX: true,
+      lockMovementY: true,
+      lockScalingX: true,
+      lockScalingY: true,
+      lockRotation: true,
+      hasControls: false,
+    }
+    expect(realGetLockInfo(placeholder).isLocked).toBe(false)
+  })
+
+  it('movable 미지정 + lockMovementX=true (레거시 단순잠금) → isLocked=true (현행 유지)', () => {
+    expect(realGetLockInfo({ lockMovementX: true }).isLocked).toBe(true)
+  })
+
+  it('movable=false 여도 lockInfo.isLocked=true (진짜 고급잠금) → isLocked=true (고급잠금 경로 불변)', () => {
+    const advanced = {
+      movable: false,
+      lockInfo: { isLocked: true, lockLevel: 'admin' as const },
+    }
+    const info = realGetLockInfo(advanced)
+    expect(info.isLocked).toBe(true)
+    expect(info.lockLevel).toBe('admin')
+  })
+
+  it('movable=true 명시 + lock 속성 없음 → isLocked=false', () => {
+    expect(realGetLockInfo({ movable: true }).isLocked).toBe(false)
   })
 })

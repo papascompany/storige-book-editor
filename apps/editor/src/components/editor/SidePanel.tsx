@@ -5,6 +5,7 @@ import { useSettingsStore } from '@/stores/useSettingsStore'
 import { type CanvasObject, CopyPlugin, LockPlugin, ObjectPlugin, SelectionType } from '@storige/canvas-core'
 import { Image, Type as TextT, Hexagon, Frame as FrameCorners, QrCode, Layers as Stack, X, Trash2 as Trash, Lock as LockSimple, Unlock as LockSimpleOpen, Eye, EyeOff as EyeSlash, GripVertical as DotsSixVertical, Plus, Pin, ShieldX, PencilOff, Printer, ArrowUpDown, Copy as CopyIcon, ChevronUp, ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { showToast } from '@/stores/useToastStore'
 import { Button } from '@/components/ui/button'
 import { buildNextMultiSelection, layerStepReorderArgs } from '@/utils/layerPanelSelection'
 
@@ -107,7 +108,11 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
 
     if (object && objectPlugin) {
       // B0-②: 관리자 위치고정(movable===false)은 비-editMode 에서 해제 차단.
-      if (!editMode && (object as any).movable === false) return
+      // L1⑥: silent 실패 → 안내 토스트(왜 안 되는지 피드백).
+      if (!editMode && (object as any).movable === false) {
+        showToast('관리자가 보호한 요소예요. 잠금을 해제할 수 없어요.', 'info')
+        return
+      }
       const lockInfo = (object as any).lockInfo
       if (lockInfo?.isLocked) {
         // LockPlugin 고급 잠금은 플러그인 경유 해제(내부 canUnlock 검사 + lockInfo 정합 해제).
@@ -140,10 +145,17 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
     const object = canvas?.getObjects().find((obj: any) => obj.id === objectId)
 
     if (object && objectPlugin) {
+      // L1④ 대칭 가드: 관리자 보호 객체(위치고정/삭제잠금/내용잠금)는 고객이 숨길 수 없다 —
+      // visible=false 는 저장에 영속돼 필수 요소(로고 등) 미인쇄 사고 벡터(삭제 가드와 대칭).
+      const o = object as { movable?: boolean; deleteable?: boolean; contentEditable?: boolean }
+      if (!editMode && (o.movable === false || o.deleteable === false || o.contentEditable === false)) {
+        showToast('관리자가 보호한 요소는 숨길 수 없어요.', 'info')
+        return
+      }
       objectPlugin.invisible(object)
       canvas?.requestRenderAll()
     }
-  }, [canvas, getPlugin])
+  }, [canvas, getPlugin, editMode])
 
   const selectObject = useCallback((objectId: string, e?: React.MouseEvent) => {
     if (!canvas) return
@@ -181,7 +193,10 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
     const object = canvas?.getObjects().find((obj: any) => obj.id === objectId)
     if (!object) return
     // 삭제잠금(deleteable===false)은 고객(비-editMode) 진입 시 차단 — 버튼 disabled 와 이중 방어
-    if (!editMode && (object as any).deleteable === false) return
+    if (!editMode && (object as any).deleteable === false) {
+      showToast('관리자가 보호한 요소는 삭제할 수 없어요.', 'info')
+      return
+    }
 
     canvas?.setActiveObject(object)
     canvas?.requestRenderAll()
@@ -196,8 +211,15 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
 
     const object = canvas?.getObjects().find((obj: any) => obj.id === objectId)
     if (!object) return
+    // L1④ 대칭 가드: 보호 객체(비-editMode)는 복제 차단 — 보호 플래그가 사본에 복사되더라도
+    // 필수 요소 중복 배치는 디자인/인쇄 오염(삭제·숨김 가드와 대칭).
+    const o = object as { movable?: boolean; deleteable?: boolean; contentEditable?: boolean }
+    if (!editMode && (o.movable === false || o.deleteable === false || o.contentEditable === false)) {
+      showToast('관리자가 보호한 요소는 복제할 수 없어요.', 'info')
+      return
+    }
     getPlugin<CopyPlugin>('CopyPlugin')?.clone(object)
-  }, [canvas, getPlugin])
+  }, [canvas, getPlugin, editMode])
 
   // A1-3: 모바일(TOUCH_ENV) ↑↓ 순서변경 — reorderObject 재사용(fabric 라이브 스택 기준,
   // reverse 방향 함정·fillImage 동반이동·setUnchangeable 재고정·updateObjects 전부 내장).
@@ -211,6 +233,11 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
   }, [objects, reorderObject])
 
   const startEditing = (obj: CanvasObject) => {
+    // L1④ 대칭 가드: 보호 객체(비-editMode)는 이름변경 진입 차단(레이어 식별 오염 방지).
+    if (!editMode && (obj.movable === false || obj.deleteable === false || obj.contentEditable === false)) {
+      showToast('관리자가 보호한 요소는 이름을 바꿀 수 없어요.', 'info')
+      return
+    }
     setEditingObject(obj)
     setEditName(obj.name || '')
   }
@@ -218,7 +245,10 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
   const finishEditing = () => {
     if (editingObject && editName.trim()) {
       const fabricObject = canvas?.getObjects().find((obj: any) => obj.id === editingObject.id)
-      if (fabricObject) {
+      // L1④: commit 경로 이중 가드 — startEditing 차단과 대칭(리뷰 지적, 유일 진입이지만 방어적).
+      const o = fabricObject as { movable?: boolean; deleteable?: boolean; contentEditable?: boolean } | undefined
+      const isProtected = !editMode && !!o && (o.movable === false || o.deleteable === false || o.contentEditable === false)
+      if (fabricObject && !isProtected) {
         fabricObject.set('name', editName.trim())
       }
     }
@@ -511,11 +541,13 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
                         /* A1-1: 4버튼(복제·삭제·잠금·표시)이 w-16 을 넘어 왼쪽으로 확장되므로
                            행 hover 배경과 같은 색을 깔아 이름/배지 위에 겹쳐도 읽히게 한다 */
                         <div className="actions absolute right-0 top-0 bottom-0 m-auto flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-editor-hover rounded-lg">
+                          {/* L1④: 보호 객체는 복제 disabled — 삭제 버튼 패턴과 일관 */}
                           <Button
                             variant="ghost"
                             size="icon"
                             className="h-7 w-7"
-                            title="복제"
+                            title={!editMode && (obj.movable === false || obj.deleteable === false || obj.contentEditable === false) ? '보호된 요소는 복제할 수 없어요' : '복제'}
+                            disabled={!editMode && (obj.movable === false || obj.deleteable === false || obj.contentEditable === false)}
                             onClick={(e) => handleDuplicateObject(e, obj.id)}
                           >
                             <CopyIcon className="h-4 w-4" />
@@ -554,10 +586,13 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
                             </Button>
                           )}
                           {obj.visible ? (
+                            /* L1④: 보호 객체는 숨김 disabled — 복제 버튼 패턴과 일관 */
                             <Button
                               variant="ghost"
                               size="icon"
                               className="h-7 w-7"
+                              title={!editMode && (obj.movable === false || obj.deleteable === false || obj.contentEditable === false) ? '보호된 요소는 숨길 수 없어요' : '숨기기'}
+                              disabled={!editMode && (obj.movable === false || obj.deleteable === false || obj.contentEditable === false)}
                               onClick={(e) => handleInvisible(e, obj.id)}
                             >
                               <Eye className="h-4 w-4" />
