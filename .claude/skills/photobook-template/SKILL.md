@@ -111,13 +111,21 @@ Storige `TemplateSetType` 에 추가되는 **포토북** 타입(펼침면 표지
 
 ## 자동편집 EXIF — 순서 제약 (버그 유발 지점)
 
-`storage.service.ts:217` 의 sharp `.rotate()`(EXIF orientation 보정)가 **메타데이터를 strip 할 수 있다**. 따라서 파이프 순서를 지켜라:
+sharp `.rotate()`(EXIF orientation 보정)는 **메타데이터를 strip 할 수 있다**. 따라서 파이프 순서를 지켜라:
 
 ```
 원본 수신 → exifr 파싱(DateTimeOriginal/GPS/orientation 저장) → sharp.rotate() → 저장
 ```
 
-`.rotate()` 이후에 EXIF 를 읽으면 촬영일시/GPS 가 사라져 날짜순/장소별 정렬이 깨진다. EXIF 파서(`exifr`)는 현재 **미도입**(도입 필요). 정렬 폴백 체인: DateTaken → DateAdded(mtime) → FileName.
+`.rotate()` 이후에 EXIF 를 읽으면 촬영일시/GPS 가 사라져 날짜순/장소별 정렬이 깨진다.
+
+**현 구조에선 이 제약이 자동 충족된다** (2026-07-06 실측 정정 — 이전 "exifr 미도입" 표기는 stale):
+- `storage.service.ts` 의 `.rotate()` 는 `generateThumbnail` 내부에서 **썸네일 사본**에만 적용되고 원본 파일은 불변 → 원본 URL 의 EXIF 보존.
+- EXIF 파서 `exifr`(^7.1.3)는 **도입 완료** — `apps/editor/src/utils/photoAutofill.ts` 의 `parsePhotoExif`/`enrichPhotosWithExif`(dynamic import, 번들 분리). 외부주입은 원본 URL 페치로, '내 업로드'는 업로드 시점 **원본 File** 파싱으로 어느 쪽도 rotate 경로를 타지 않는다.
+- 자동배치 엔진/UI 도 구현 완료: 정렬 모델 `photoAutofill.ts`(a0d5f0a) + 배치 엔진 `photoPlacement.ts` + `AppImage.tsx` '사진 자동편집'(68cfc7b). 입력은 외부주입 ∪ '내 업로드'(`useImageStore.uploadedPhotoMeta`, Track 2 2026-07-06) — 노출 조건은 **'빈 frame 존재' 런타임 판정**(TemplateSetType 게이팅 금지).
+
+정렬 폴백 체인: DateTaken → DateAdded → FileName.
+⚠️ **혼합 입력 시 `uploadedAt`(DateAdded) 시맨틱 차이**: 외부주입 `ExternalPhoto.uploadedAt` = 호스트 서비스 업로드 시각, '내 업로드' `uploadedPhotoMeta.uploadedAt` = `file.lastModified`(기기 파일 수정시각). 기준 시계가 다르므로 혼합 정렬 시 인지할 것(takenAt 이 있으면 우선돼 대부분 무영향 — `photoPlacement.ts` `UploadedPhotoMeta` 주석 참조). '내 업로드' 메타의 url 은 **storage 업로드 결과 URL**이어야 한다(objectURL 은 세션 휘발 — 저장/재편집 기준 붕괴).
 
 ## 구현 단계 (Phase) — 설계서 §11-2
 

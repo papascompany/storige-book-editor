@@ -101,7 +101,7 @@
 3. **[템플릿 UX]** 사진틀 스왑 **발견성 개선**(채워진 액자에도 hover 오버레이/교체 아이콘). 기능은 이미 동작.
 
 ### C. 병행 in-flight (본 세션 무관 — 잃지 말 것)
-- **포토북 O-2 잔여**: O-4(출력 펼침면 좌우분할+300dpi 래스터, 워커·오너게이트) · per-region 편집경계/파노라마 · 자동배치 UI 프레임 배선 · 실 템플릿셋 E2E. 정본 [[project_photobook_template]] · `PHOTOBOOK_TEMPLATE_DESIGN_2026-06-23.md`. **편집기 공유 UX = TemplateSetType 게이팅 0건 원칙(위반 금지).**
+- **포토북 O-2 잔여**: O-4 는 오너 결정 D-1(2026-07-04, `PHOTOBOOK_O2_DECISIONS_2026-07-04.md`)로 **무분할 스프레드 래스터**로 재정의(좌우분할 과제 폐기) · per-region 편집경계/파노라마 · ~~자동배치 UI 프레임 배선~~ **해소(2026-07-06 Track 2)** — 엔진/UI 는 a0d5f0a+68cfc7b 로 기 구현이었고 실 잔여 갭이던 '내 업로드' 입력 확장(`useImageStore.uploadedPhotoMeta`, storage URL 기준 + 업로드 시점 원본 File EXIF 파싱)과 노출 조건('빈 frame 존재' 런타임 판정, external 탭 밖 공통 노출)을 반영, 혼합 입력 4모드 라운드트립은 vitest 통합 테스트로 고정(`photoPlacement.test.ts` 38 tests) · 실 템플릿셋 **브라우저 E2E 는 잔여**(frame 포함 셋 + 외부주입/업로드 실기기 확인). 프레임 열거 순서=z-order(추가순, 시각적 위치순 아님)는 O-급 태깅만(오너 게이트, 변경 금지). 정본 [[project_photobook_template]] · `PHOTOBOOK_TEMPLATE_DESIGN_2026-06-23.md`. **편집기 공유 UX = TemplateSetType 게이팅 0건 원칙(위반 금지).**
 - **bookmoa 검증연동**: Storige 측 전부 LIVE. bookmoa 프론트 d1 모달/d2 토스트 구현 대기(bookmoa 세션). [[project_pdf_upload_validation]].
 - **오너 게이트(비긴급)**: bookmoa PHP 키 cutover ⏸️보류 · git history force-push · admin AUTH stage1b 프론트 쿠키전환 · Bull attempts>1.
 
