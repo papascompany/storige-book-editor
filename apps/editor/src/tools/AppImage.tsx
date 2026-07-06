@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Upload as UploadSimple, Check, Wand2 } from 'lucide-react'
 import { useAppStore } from '@/stores/useAppStore'
-import { useImageStore, useUploaded } from '@/stores/useImageStore'
+import { useImageStore, useUploaded, useUploadedPhotoMeta } from '@/stores/useImageStore'
 import { useExternalPhotosStore, isPhotoUsed } from '@/stores/useExternalPhotosStore'
 import { useIsCoarsePointer } from '@/hooks/useIsCoarsePointer'
 import { Button } from '@/components/ui/button'
 import { ImageProcessingPlugin, SelectionType, core } from '@storige/canvas-core'
 import type { ExternalPhoto, PhotoSortMode } from '@storige/types'
 import { enrichPhotosWithExif } from '@/utils/photoAutofill'
-import { autofillPhotosIntoFrames } from '@/utils/photoPlacement'
+import { autofillPhotosIntoFrames, hasEmptyFrame, mergeAutofillPhotoInputs } from '@/utils/photoPlacement'
 import { showToast } from '@/stores/useToastStore'
 
 // 자동편집 정렬 모드 옵션 (PhotoSortMode 와 동기)
@@ -33,6 +33,10 @@ export default function AppImage() {
   const bumpUsage = useExternalPhotosStore((s) => s.bumpUsage)
   const hasExternal = externalPhotos.length > 0
 
+  // Track 2 (D-2): '내 업로드' 자동편집 입력 메타(storage URL 기준) + 페이지(캔버스) 목록.
+  const uploadedPhotoMeta = useUploadedPhotoMeta()
+  const allCanvas = useAppStore((state) => state.allCanvas)
+
   const [isLoading, setIsLoading] = useState(false)
   const [activeTab, setActiveTab] = useState<'external' | 'my'>(hasExternal ? 'external' : 'my')
   const [unusedOnly, setUnusedOnly] = useState(false)
@@ -40,6 +44,8 @@ export default function AppImage() {
   // 포토북 자동편집(Phase 3): 정렬 모드 + 진행 상태
   const [autofillMode, setAutofillMode] = useState<PhotoSortMode>('date')
   const [autofilling, setAutofilling] = useState(false)
+  // Track 2 (D-2): 빈 사진틀 존재 재판정 트리거 — 캔버스 객체 추가/삭제 시 증가.
+  const [frameTick, setFrameTick] = useState(0)
 
   // 사진 목록은 세션 로드 후 비동기 적재 — 패널이 먼저 마운트됐어도 기본 탭 전환
   useEffect(() => {
@@ -66,6 +72,46 @@ export default function AppImage() {
       })
     }
   }, [hasExternal, bumpUsage])
+
+  // Track 2 (D-2): 빈 사진틀 존재 재판정 배선 — 채움/삭제(fillImage add·frame remove)가
+  // object:added/removed 로 관측되므로 그때마다 frameTick 을 올려 노출 조건을 갱신한다.
+  // allCanvas 는 zustand 상태(캔버스 등록 시 배열 교체)라 늦게 뜨는 페이지도 재구독된다.
+  useEffect(() => {
+    if (allCanvas.length === 0) return
+    const handler = () => setFrameTick((t) => t + 1)
+    allCanvas.forEach((c: any) => {
+      try {
+        c.on('object:added', handler)
+        c.on('object:removed', handler)
+      } catch { /* noop */ }
+    })
+    handler() // 구독 시점 즉시 1회 재판정(세션 로드 직후 프레임 포함 페이지 반영)
+    return () => {
+      allCanvas.forEach((c: any) => {
+        try {
+          c.off('object:added', handler)
+          c.off('object:removed', handler)
+        } catch { /* noop */ }
+      })
+    }
+  }, [allCanvas])
+
+  // Track 2 (D-2): 자동편집 입력 = 외부주입 ∪ 내 업로드 (URL 중복 제거, 외부주입 우선).
+  const autofillPhotos = useMemo(
+    () => mergeAutofillPhotoInputs(externalPhotos, uploadedPhotoMeta),
+    [externalPhotos, uploadedPhotoMeta],
+  )
+
+  // Track 2 (D-2): 자동편집 노출 조건 = '빈 사진틀 존재' 런타임 판정.
+  // ⚠️ TemplateSetType 게이팅 금지(오너 결정) — frame 없는 상품(BOOK/LEAFLET 일반 셋)에선
+  // 이 판정이 false 라 컨트롤이 자연히 숨는다.
+  const emptyFrameExists = useMemo(() => {
+    const canvases = allCanvas.length > 0 ? allCanvas : canvas ? [canvas] : []
+    return hasEmptyFrame(canvases)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allCanvas, canvas, frameTick])
+
+  const showAutofill = emptyFrameExists && autofillPhotos.length > 0
 
   // 사용 여부 맵 — usageTick 변경 시 전체 캔버스 재스캔
   const usedMap = useMemo(() => {
@@ -163,7 +209,8 @@ export default function AppImage() {
       showToast('이미지 처리 플러그인을 찾을 수 없습니다.', 'error')
       return
     }
-    if (externalPhotos.length === 0) {
+    // Track 2 (D-2): 입력 = 외부주입 ∪ 내 업로드(스토어 메타, storage URL 기준).
+    if (autofillPhotos.length === 0) {
       showToast('자동편집할 사진이 없습니다.', 'info')
       return
     }
@@ -175,7 +222,8 @@ export default function AppImage() {
       const canvases = allCanvas.length > 0 ? allCanvas : [canvas]
 
       // EXIF 보강(date/location 정렬 정확도) — 호스트 제공 메타는 존중, 미파싱분만 URL 페치.
-      const enriched = await enrichPhotosWithExif(externalPhotos)
+      // ('내 업로드'는 등록 시점에 원본 File 로 파싱 완료(exifParsed=true) → 여기서 재페치 없음)
+      const enriched = await enrichPhotosWithExif(autofillPhotos)
 
       const fillImageIntoFrame = useImageStore.getState().fillImageIntoFrame
 
@@ -220,7 +268,7 @@ export default function AppImage() {
     } finally {
       setAutofilling(false)
     }
-  }, [canvas, autofilling, getPlugin, externalPhotos, autofillMode, bumpUsage])
+  }, [canvas, autofilling, getPlugin, autofillPhotos, autofillMode, bumpUsage])
 
   // Add uploaded image to canvas
   const addToCanvas = useCallback(async (image: unknown) => {
@@ -301,33 +349,38 @@ export default function AppImage() {
         </div>
       )}
 
+      {/* 포토북 자동편집: 정렬모드 드롭다운 + 실행 버튼.
+          Track 2 (D-2): external 탭 전용 → 탭 공통으로 이동. 입력 = 외부주입 ∪ 내 업로드.
+          노출 = '빈 사진틀 존재' 런타임 판정(TemplateSetType 게이팅 금지) ∧ 입력 사진 존재. */}
+      {showAutofill && (
+        <div className="px-4 pt-3 pb-1 flex items-center gap-2">
+          <select
+            value={autofillMode}
+            onChange={(e) => setAutofillMode(e.target.value as PhotoSortMode)}
+            disabled={autofilling}
+            className="h-8 px-2 text-xs rounded-md border border-editor-border bg-editor-surface text-editor-text focus:outline-none focus:border-editor-accent disabled:opacity-50"
+            aria-label="자동편집 정렬 기준"
+          >
+            {AUTOFILL_SORT_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+          <Button
+            variant="secondary"
+            className="flex-1 h-8 text-xs"
+            onClick={handleAutofill}
+            disabled={autofilling}
+          >
+            <Wand2 className="h-3.5 w-3.5 mr-1.5" />
+            {autofilling ? '자동편집 중...' : '사진 자동편집'}
+          </Button>
+        </div>
+      )}
+
       {hasExternal && activeTab === 'external' ? (
         <>
-          {/* 포토북 자동편집: 정렬모드 드롭다운 + 실행 버튼 */}
-          <div className="px-4 pt-3 pb-1 flex items-center gap-2">
-            <select
-              value={autofillMode}
-              onChange={(e) => setAutofillMode(e.target.value as PhotoSortMode)}
-              disabled={autofilling}
-              className="h-8 px-2 text-xs rounded-md border border-editor-border bg-editor-surface text-editor-text focus:outline-none focus:border-editor-accent disabled:opacity-50"
-              aria-label="자동편집 정렬 기준"
-            >
-              {AUTOFILL_SORT_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-            <Button
-              variant="secondary"
-              className="flex-1 h-8 text-xs"
-              onClick={handleAutofill}
-              disabled={autofilling}
-            >
-              <Wand2 className="h-3.5 w-3.5 mr-1.5" />
-              {autofilling ? '자동편집 중...' : '사진 자동편집'}
-            </Button>
-          </div>
           <div className="px-4 pt-2 pb-2 flex items-center gap-2">
             <button
               className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${

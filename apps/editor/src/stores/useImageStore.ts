@@ -6,6 +6,8 @@ import { useSettingsStore } from '@/stores/useSettingsStore'
 import { storageApi } from '@/api'
 import { CUTTING_LINE_CONFIG } from '@/constants/cutting'
 import { showToast } from '@/stores/useToastStore'
+import { parsePhotoExif } from '@/utils/photoAutofill'
+import type { UploadedPhotoMeta } from '@/utils/photoPlacement'
 
 // Feature flag for image processing (OpenCV) features
 const ENABLE_IMAGE_PROCESSING = import.meta.env.VITE_ENABLE_IMAGE_PROCESSING !== 'false'
@@ -55,6 +57,14 @@ interface LoadingBar {
 interface ImageState {
   uploading: boolean
   uploaded: FabricObject[]
+  /**
+   * Track 2 (D-2 잔여 갭, 2026-07-06): '내 업로드' 사진 메타 — 자동편집(autofill) 입력용.
+   * 기존 uploaded(FabricObject[])는 불변 유지(additive). url 은 storage 업로드 결과 URL
+   * (objectURL/dataURL 금지 — 세션 휘발로 저장 JSON·재편집 기준이 깨짐).
+   * ⚠️ uploadedAt = file.lastModified(파일 수정시각) — 외부주입 ExternalPhoto.uploadedAt
+   * (호스트 업로드시각)과 시맨틱이 다름. photoPlacement.UploadedPhotoMeta 주석 참조.
+   */
+  uploadedPhotoMeta: UploadedPhotoMeta[]
 }
 
 interface ImageActions {
@@ -79,6 +89,11 @@ interface ImageActions {
     canvas: FabricCanvas,
     file: File
   ) => Promise<FabricObject | undefined>
+
+  // Track 2 (D-2): 업로드 File 을 자동편집 입력으로 등록 — EXIF(원본 File) 파싱 +
+  // storage 업로드 URL 확보 후 uploadedPhotoMeta 에 additive 추가. 실패는 조용히 스킵
+  // (자동편집 대상에서만 제외, 캔버스 업로드 UX 무영향). fire-and-forget 호출 전제.
+  registerUploadedPhoto: (file: File) => Promise<UploadedPhotoMeta | undefined>
 
   // 이미지 채우기
   fillImage: (
@@ -149,6 +164,44 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
   // 초기 상태
   uploading: false,
   uploaded: [],
+  uploadedPhotoMeta: [],
+
+  // Track 2 (D-2): '내 업로드' → 자동편집 입력 메타 등록.
+  // 순서 제약(SKILL.md §자동편집 EXIF): EXIF 는 **원본 File** 에서 즉시 파싱한다 —
+  // 서버 썸네일 파이프(storage.service.ts sharp.rotate())는 사본에만 적용되지만,
+  // 원본 File 파싱이면 그 경로와 아예 무관해 takenAt/GPS 보존이 구조적으로 보장된다.
+  registerUploadedPhoto: async (file: File): Promise<UploadedPhotoMeta | undefined> => {
+    try {
+      const exif = await parsePhotoExif(file)
+      // storage 업로드 URL 기준(안정 참조). objectURL/dataURL 은 세션 휘발이라
+      // 자동편집 결과(fillImage src)의 저장/재편집 라운드트립이 깨진다.
+      const result = await storageApi.uploadFile(file, 'uploads')
+      if (!result.success || !result.data?.url) {
+        console.warn('[useImageStore.registerUploadedPhoto] storage 업로드 실패 — 자동편집 대상 제외:', file.name)
+        return undefined
+      }
+      const meta: UploadedPhotoMeta = {
+        url: result.data.url,
+        name: file.name,
+        // ⚠️ uploadedAt = file.lastModified(기기 파일 수정시각) — 호스트 업로드시각이 아님.
+        uploadedAt: Number.isFinite(file.lastModified)
+          ? new Date(file.lastModified).toISOString()
+          : undefined,
+        takenAt: exif.takenAt,
+        gps: exif.gps,
+        exifParsed: true,
+      }
+      set((s) =>
+        s.uploadedPhotoMeta.some((m) => m.url === meta.url)
+          ? {}
+          : { uploadedPhotoMeta: [...s.uploadedPhotoMeta, meta] }
+      )
+      return meta
+    } catch (e) {
+      console.warn('[useImageStore.registerUploadedPhoto] 등록 실패 — 자동편집 대상 제외:', e)
+      return undefined
+    }
+  },
 
   // 배경 추가
   addBackground: (item: FabricObject, canvas: FabricCanvas): FabricObject => {
@@ -268,6 +321,8 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
         canvas.setActiveObject(item)
 
         set({ uploaded: [...uploaded, item] })
+        // Track 2 (D-2): 자동편집 입력 등록 — fire-and-forget(업로드 UX 비블로킹).
+        void get().registerUploadedPhoto(file)
         return item
       }
 
@@ -329,6 +384,8 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
       canvas.add(item)
       canvas.setActiveObject(item)
       set({ uploaded: [...uploaded, item] })
+      // Track 2 (D-2): 자동편집 입력 등록 — fire-and-forget(업로드 UX 비블로킹).
+      void get().registerUploadedPhoto(file)
       return item
     } catch (e) {
       console.error('[useImageStore.uploadFile]', e)
@@ -592,6 +649,10 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
 
         if (type === SelectionType.image) {
           set({ uploaded: [...uploaded, item] })
+          // Track 2 (D-2): 래스터 사진만 자동편집 입력 등록(벡터/SVG 는 사진틀 채움 대상 아님).
+          if (!isVectorFile && !isSvgFile) {
+            void get().registerUploadedPhoto(file)
+          }
         }
         return item
       }
@@ -1126,3 +1187,4 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
 // Selector hooks
 export const useUploading = () => useImageStore((state) => state.uploading)
 export const useUploaded = () => useImageStore((state) => state.uploaded)
+export const useUploadedPhotoMeta = () => useImageStore((state) => state.uploadedPhotoMeta)
