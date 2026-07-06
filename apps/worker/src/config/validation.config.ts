@@ -37,6 +37,16 @@ export const VALIDATION_CONFIG = {
   LIGHTWEIGHT_SYNTHESIS:
     String(process.env.WORKER_LIGHTWEIGHT_SYNTHESIS || '').toLowerCase() === 'true',
 
+  // C-2a: crop mark(재단 기하) 검증 킬스위치
+  /**
+   * true 면 TrimBox 기반 재단 기하 검증(validateCropMarks)을 수행한다. **기본 OFF** —
+   * 기본 상태에서 프로덕션 행동 변화 0. 켜도 orderOptions.cropMarkEnabled === true 인
+   * 잡에서만 동작(이중 게이트: TemplateSet/파트너 opt-in + env 카나리).
+   * 전부 warning(비차단) — isValid/COMPLETED·FIXABLE·FAILED 상태 판정에 영향 없음.
+   */
+  CROP_MARK_VALIDATION:
+    String(process.env.WORKER_CROP_MARK_VALIDATION || '').toLowerCase() === 'true',
+
   // 스프레드(펼침면) 감지
   /** 스프레드 판정 점수 임계값 */
   SPREAD_SCORE_THRESHOLD: 70,
@@ -61,13 +71,34 @@ export const VALIDATION_CONFIG = {
 export type ValidationConfig = typeof VALIDATION_CONFIG;
 
 /**
- * 신규 상품별 설정값의 전역 기본값.
- * P1: export만(아직 미사용 가능). 실제 사용은 P4에서.
+ * 신규 상품별 설정값의 전역 기본값 (C-2b: 소비처 배선 완료 — 값-동일 리팩터).
  * @see 데이터모델 계약 — bleed_mm / crop_mark_enabled / size_tolerance_mm
  */
-/** 고객 업로드 PDF 사이즈 검증 허용오차 기본값(mm). */
+/**
+ * 고객 업로드 PDF 사이즈 검증 허용오차 기본값(mm) — templateSet 계약(P4 변환) 기본값.
+ * 소비처: pdf-converter.service.ts resolveMode/applyImpositionMode 의 폴백.
+ * ⚠️ validatePageSize(검증)의 폴백은 이 값이 아니라 LEGACY_SIZE_TOLERANCE_MM(1mm)다 —
+ *    이원 체제는 의도된 설계이며 통일 금지(아래 LEGACY_SIZE_TOLERANCE_MM 주석 참조).
+ */
 export const DEFAULT_SIZE_TOLERANCE_MM = 0.2;
-/** 사방(per-edge) 블리드 기본값(mm). 작업사이즈 = 재단 + bleedMm*2. */
+/**
+ * 레거시/전역 검증 허용오차 폴백(mm) — sizeToleranceMm 미탑재 검증 잡에 적용.
+ * 소비처: pdf-validator.service.ts validatePageSize 의 `?? LEGACY_SIZE_TOLERANCE_MM`.
+ * ⚠️ 절대 0.2 로 좁히지 말 것 — 2026-06-10 실회귀(전 상품 1mm→0.2mm 엄격화로
+ *    0.2~1mm 오차 파일이 SIZE_MISMATCH FAIL 로 반전) 재발이다.
+ *    @see apps/api/src/worker-jobs/worker-jobs.service.ts (전역 기본값 미주입 결정)
+ */
+export const LEGACY_SIZE_TOLERANCE_MM = 1;
+/**
+ * 사방(per-edge) 블리드 기본값(mm). 작업사이즈 = 재단 + bleedMm*2.
+ * 소비처: pdf-validator.service.ts (`orderOptions.bleed ?? DEFAULT_BLEED_MM`).
+ */
 export const DEFAULT_BLEED_MM = 3;
-/** 재단선 마커 표기 기본값(OFF). */
+/**
+ * 재단선 마커 표기 기본값(OFF) — 문서화용 상수.
+ * ⚠️ 실제 ON/OFF 판정은 worker 가 아니라 API 가 수행한다:
+ *    TemplateSet.cropMarkEnabled(DB default false)===true 인 세션에서만
+ *    edit-sessions.service 가 orderOptions.cropMarkEnabled 를 잡에 주입하며,
+ *    worker 는 전달받은 값을 소비할 뿐 이 기본값으로 판정하지 않는다.
+ */
 export const DEFAULT_CROP_MARK_ENABLED = false;

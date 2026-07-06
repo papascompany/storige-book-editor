@@ -16,7 +16,11 @@ import {
   CmykStructureResult,
   ColorModeResult,
 } from '../dto/validation-result.dto';
-import { VALIDATION_CONFIG } from '../config/validation.config';
+import {
+  VALIDATION_CONFIG,
+  DEFAULT_BLEED_MM,
+  LEGACY_SIZE_TOLERANCE_MM,
+} from '../config/validation.config';
 import {
   detectCmykUsage,
   isGhostscriptAvailable,
@@ -28,14 +32,39 @@ import {
 // 트랙 B-(d) 경량(ON) 검증 경로 전용 유틸 (OFF 경로는 import 만 하고 사용하지 않음).
 import { downloadToTempFile } from '../utils/stream-download';
 import { assertSafeDownloadUrl } from '../utils/url-safety';
-import { extractPdfMetadataQpdf } from '../utils/pdf-metadata-qpdf';
+import {
+  extractPdfMetadataQpdf,
+  QpdfMetadataResult,
+} from '../utils/pdf-metadata-qpdf';
 import { scanPdfStreaming } from '../utils/streaming-pdf-scan';
 import { SpotColorResult, TransparencyResult, ImageResolutionResult, FontDetectionResult } from '../dto/validation-result.dto';
 
 // 기본 설정 (VALIDATION_CONFIG에서 가져오거나 폴백)
 const DEFAULT_MAX_FILE_SIZE = VALIDATION_CONFIG.MAX_FILE_SIZE;
 const DEFAULT_MAX_PAGES = 1000;
-const DEFAULT_BLEED = 3; // mm
+// C-2b: 로컬 상수 `DEFAULT_BLEED = 3` 을 삭제하고 validation.config.ts 의
+// DEFAULT_BLEED_MM(=3) import 로 치환(값-동일 리팩터, 행동 무변화).
+// 사용처는 `orderOptions.bleed ?? DEFAULT_BLEED_MM`.
+
+/** C-2a: 정규화된 박스 사각형(pt) — x/y 는 좌하단, width/height 는 항상 양수. */
+interface BoxRectPt {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * C-2a: 첫 페이지 박스 기하 — validateCropMarks 입력.
+ * authoritative=false 면 trim/bleed 존재 판정을 신뢰할 수 없어(추출 실패·pdfinfo 폴백 등)
+ * 검증을 skip 한다(TRIMBOX_MISSING 허위 경고 오탐 방지).
+ */
+interface FirstPageBoxes {
+  mediaBox?: BoxRectPt;
+  trimBox?: BoxRectPt;
+  bleedBox?: BoxRectPt;
+  authoritative: boolean;
+}
 
 @Injectable()
 export class PdfValidatorService {
@@ -138,6 +167,20 @@ export class PdfValidatorService {
       // 6. 페이지 크기 검증
       this.validatePageSize(widthMm, heightMm, options, errors, metadata);
 
+      // 6-b. C-2a: crop mark(재단 기하) 검증 — 이중 게이트(orderOptions.cropMarkEnabled
+      // opt-in + env WORKER_CROP_MARK_VALIDATION 킬스위치 기본 OFF), 전부 warning(비차단).
+      // 게이트 통과 전에는 박스 추출조차 하지 않아 기본 경로 행동 변화 0.
+      // ⚠️ pdf-lib page.getTrimBox() 는 부재 시 CropBox/MediaBox 로 폴백하므로
+      //    '명시 존재' 판별을 위해 page.node 직독(extractFirstPageBoxesPdfLib)을 쓴다.
+      if (this.isCropMarkValidationEnabled(options)) {
+        this.validateCropMarks(
+          this.extractFirstPageBoxesPdfLib(firstPage),
+          options,
+          warnings,
+          metadata,
+        );
+      }
+
       // 7. 재단 여백 검증
       this.validateBleed(widthMm, heightMm, options, warnings, metadata);
 
@@ -167,7 +210,7 @@ export class PdfValidatorService {
         pages,
         options.orderOptions.size.width,
         options.orderOptions.size.height,
-        options.orderOptions.bleed ?? DEFAULT_BLEED,
+        options.orderOptions.bleed ?? DEFAULT_BLEED_MM,
       );
 
       // 스프레드 정보를 메타데이터에 추가
@@ -513,6 +556,16 @@ export class PdfValidatorService {
       // 5~11. 페이지/사이즈/블리드/책등/방향/사철/스프레드 검증 — OFF 와 동일 헬퍼.
       this.validatePageCount(pageCount, options, errors, warnings);
       this.validatePageSize(widthMm, heightMm, options, errors, metadata);
+      // C-2a: crop mark(재단 기하) 검증(경량 경로) — OFF 와 동일 게이트/위치(validatePageSize 직후).
+      // 1차: qpdf 추출 박스. 비신뢰(pdfinfo 폴백·간접참조 미해석)면 pdf-lib 실페이지
+      // (위 폴백 분기에서 로드된 경우에만 node 존재)로 재시도, 그것도 없으면 skip(오탐 방지).
+      if (this.isCropMarkValidationEnabled(options)) {
+        let cropBoxes = this.extractFirstPageBoxesQpdf(meta);
+        if (!cropBoxes.authoritative && firstPage.node) {
+          cropBoxes = this.extractFirstPageBoxesPdfLib(firstPage);
+        }
+        this.validateCropMarks(cropBoxes, options, warnings, metadata);
+      }
       this.validateBleed(widthMm, heightMm, options, warnings, metadata);
       if (options.fileType === 'cover') {
         this.validateSpine(widthMm, options, errors, metadata);
@@ -533,7 +586,7 @@ export class PdfValidatorService {
         pages,
         options.orderOptions.size.width,
         options.orderOptions.size.height,
-        options.orderOptions.bleed ?? DEFAULT_BLEED,
+        options.orderOptions.bleed ?? DEFAULT_BLEED_MM,
       );
       metadata.spreadInfo = {
         isSpread: spreadResult.isSpread,
@@ -787,10 +840,12 @@ export class PdfValidatorService {
   ): void {
     const expectedWidth = options.orderOptions.size.width;
     const expectedHeight = options.orderOptions.size.height;
-    const bleed = options.orderOptions.bleed ?? DEFAULT_BLEED;
+    const bleed = options.orderOptions.bleed ?? DEFAULT_BLEED_MM;
 
-    // 허용 오차 — P1/P4 가변화. 기본 1mm(현행) 유지. ⚠️ 0.2mm 로 좁히지 말 것.
-    const tolerance = options.orderOptions.sizeToleranceMm ?? 1;
+    // 허용 오차 — P1/P4 가변화. 기본 LEGACY_SIZE_TOLERANCE_MM(=1mm, 현행) 유지.
+    // ⚠️ DEFAULT_SIZE_TOLERANCE_MM(0.2) 로 좁히지 말 것 — 2026-06-10 실회귀 재발.
+    const tolerance =
+      options.orderOptions.sizeToleranceMm ?? LEGACY_SIZE_TOLERANCE_MM;
 
     // 재단 여백 포함 크기(기존 케이스 보존)
     const expectedWidthWithBleed = expectedWidth + bleed * 2;
@@ -860,7 +915,7 @@ export class PdfValidatorService {
     warnings: ValidationWarning[],
     metadata: PdfMetadata,
   ): void {
-    const expectedBleed = options.orderOptions.bleed ?? DEFAULT_BLEED;
+    const expectedBleed = options.orderOptions.bleed ?? DEFAULT_BLEED_MM;
 
     if (expectedBleed > 0 && !metadata.hasBleed) {
       warnings.push({
@@ -872,6 +927,205 @@ export class PdfValidatorService {
         },
         autoFixable: true,
         fixMethod: 'extendBleed',
+      });
+    }
+  }
+
+  // ============================================================
+  // C-2a: crop mark(재단 기하) 검증 — warning-only, 이중 게이트
+  // ============================================================
+
+  /**
+   * 이중 게이트: (1) 잡 opt-in — API TemplateSet.cropMarkEnabled===true 세션 또는
+   * 외부 파트너가 orderOptions.cropMarkEnabled 를 명시 전송한 잡에서만,
+   * (2) env WORKER_CROP_MARK_VALIDATION 킬스위치(**기본 OFF**, 카나리용).
+   * 기본 상태(둘 중 하나라도 미충족)에서는 박스 추출조차 하지 않는다 — 행동 변화 0.
+   */
+  private isCropMarkValidationEnabled(options: ValidationOptions): boolean {
+    return (
+      options.orderOptions.cropMarkEnabled === true &&
+      VALIDATION_CONFIG.CROP_MARK_VALIDATION
+    );
+  }
+
+  /** [llx, lly, urx, ury](pt) → 정규화 사각형(음수 폭/역순 좌표 방어). */
+  private normalizeBoxPt(nums: number[]): BoxRectPt {
+    const [llx, lly, urx, ury] = nums;
+    return {
+      x: Math.min(llx, urx),
+      y: Math.min(lly, ury),
+      width: Math.abs(urx - llx),
+      height: Math.abs(ury - lly),
+    };
+  }
+
+  /**
+   * OFF(pdf-lib) 경로 첫 페이지 박스 추출.
+   * ⚠️ page.getTrimBox()/getBleedBox() 는 부재 시 CropBox→MediaBox 로 **폴백**하므로
+   *    명시 존재 판별에 쓰면 안 된다(함정). page.node.TrimBox()/BleedBox() 는
+   *    페이지 딕셔너리 lookupMaybe 직독 — 명시 부재 시 undefined 를 돌려준다.
+   * 추출 중 예외(비정형 박스 배열 등)는 authoritative=false 로 강등해 검증을 skip 한다.
+   */
+  private extractFirstPageBoxesPdfLib(firstPage: PDFPage): FirstPageBoxes {
+    try {
+      const node = firstPage.node;
+      const rectOf = (
+        arr?: { asRectangle(): { x: number; y: number; width: number; height: number } },
+      ): BoxRectPt | undefined => {
+        if (!arr) return undefined;
+        const r = arr.asRectangle();
+        return this.normalizeBoxPt([r.x, r.y, r.x + r.width, r.y + r.height]);
+      };
+      return {
+        mediaBox: rectOf(node.MediaBox()),
+        trimBox: rectOf(node.TrimBox()),
+        bleedBox: rectOf(node.BleedBox()),
+        authoritative: true,
+      };
+    } catch (error) {
+      this.logger.warn(
+        `extractFirstPageBoxesPdfLib 실패 — crop mark 검증 skip: ${error.message}`,
+      );
+      return { authoritative: false };
+    }
+  }
+
+  /** 경량(qpdf) 경로 첫 페이지 박스 추출 — extractPdfMetadataQpdf 산출을 정규화. */
+  private extractFirstPageBoxesQpdf(meta: QpdfMetadataResult): FirstPageBoxes {
+    const p0 = meta.ok ? meta.pages[0] : undefined;
+    if (!p0 || !p0.boxesAuthoritative) {
+      // pdfinfo 폴백(명시 여부 판별 불가) 또는 간접참조 미해석 → 비신뢰.
+      return { authoritative: false };
+    }
+    return {
+      mediaBox: p0.mediaBoxPt ? this.normalizeBoxPt(p0.mediaBoxPt) : undefined,
+      trimBox: p0.trimBoxPt ? this.normalizeBoxPt(p0.trimBoxPt) : undefined,
+      bleedBox: p0.bleedBoxPt ? this.normalizeBoxPt(p0.bleedBoxPt) : undefined,
+      authoritative: true,
+    };
+  }
+
+  /**
+   * crop mark 검증 — "재단선이 그려져 있는가"가 아니라 "인쇄소가 재단 위치를 기계적으로
+   * 확정할 수 있는 기하 정보(TrimBox)가 PDF에 선언돼 있는가"를 본다(1계층·결정적 검증만).
+   * 렌더링/이미지 분석(그려진 마크의 위치·길이·색상 검사)은 범위 제외.
+   *
+   * 검증 3종(전부 **warning** — error 절대 금지, isValid/상태 판정 불변):
+   *   (0) TrimBox 명시 존재            → 부재 시 TRIMBOX_MISSING(정보성)
+   *   (1) TrimBox 크기 vs 주문 재단     → ±sizeToleranceMm 초과 시 TRIMBOX_SIZE_MISMATCH
+   *   (2) TrimBox⊂MediaBox 포함관계 + BleedBox 존재 시 trim+bleed*2 크기 정합
+   *       → 위반 시 TRIMBOX_BLEED_INCONSISTENT (두 위반을 1건으로 집계)
+   *
+   * error 승격은 파트너 명시 opt-in(데이터 주도 옵션) 없이는 금지 — 파트너 4종 라이브
+   * 주문 흐름 차단 방지가 최우선. 편집기(jspdf) 산출 PDF 는 TrimBox 가 없어 opt-in 셋에서
+   * TRIMBOX_MISSING 이 상시 발생할 수 있으므로 메시지는 '확인 불가(정보)' 톤을 유지한다.
+   */
+  private validateCropMarks(
+    boxes: FirstPageBoxes,
+    options: ValidationOptions,
+    warnings: ValidationWarning[],
+    metadata: PdfMetadata,
+  ): void {
+    if (!boxes.authoritative) return; // 판정 불가 — 오탐 방지 위해 조용히 skip
+
+    const { PT_TO_MM } = VALIDATION_CONFIG;
+    const round1 = (v: number): number => Math.round(v * 10) / 10;
+    // 허용오차: cropMark opt-in 잡은 API 가 sizeToleranceMm(templateSet, 기본 0.2)을
+    // 주입한다. 미탑재(외부 파트너 직전송 등)면 validatePageSize 와 동일한 레거시 1mm.
+    const tolerance =
+      options.orderOptions.sizeToleranceMm ?? LEGACY_SIZE_TOLERANCE_MM;
+
+    // (0) TrimBox 명시 존재
+    if (!boxes.trimBox) {
+      metadata.hasCropMarkGeometry = false;
+      warnings.push({
+        code: WarningCode.TRIMBOX_MISSING,
+        message:
+          '재단선 확인 불가: PDF에 재단 기하(TrimBox)가 선언되어 있지 않습니다. 재단 위치는 주문 재단 사이즈 기준으로 처리됩니다.',
+        details: { expected: 'TrimBox', actual: null },
+        autoFixable: false,
+      });
+      return;
+    }
+
+    const trimWmm = boxes.trimBox.width * PT_TO_MM;
+    const trimHmm = boxes.trimBox.height * PT_TO_MM;
+    metadata.hasCropMarkGeometry = true;
+    metadata.trimBox = { width: round1(trimWmm), height: round1(trimHmm) };
+
+    // (1) TrimBox 크기 vs 주문 재단 사이즈 (trimSize 미제공 시 size=판형을 재단으로 간주)
+    const expectedTrim = options.orderOptions.trimSize ?? options.orderOptions.size;
+    if (
+      expectedTrim &&
+      (Math.abs(trimWmm - expectedTrim.width) > tolerance ||
+        Math.abs(trimHmm - expectedTrim.height) > tolerance)
+    ) {
+      warnings.push({
+        code: WarningCode.TRIMBOX_SIZE_MISMATCH,
+        message: `선언된 재단 크기(TrimBox ${round1(trimWmm)}x${round1(trimHmm)}mm)가 주문 재단 사이즈(${expectedTrim.width}x${expectedTrim.height}mm)와 다릅니다. 재단 결과를 확인해 주세요.`,
+        details: {
+          expected: { width: expectedTrim.width, height: expectedTrim.height },
+          actual: { width: round1(trimWmm), height: round1(trimHmm) },
+          toleranceMm: tolerance,
+        },
+        autoFixable: false,
+      });
+    }
+
+    // (2) 블리드 기하 정합 — 위반 2종을 1건(TRIMBOX_BLEED_INCONSISTENT)으로 집계.
+    const issues: string[] = [];
+    const details: Record<string, any> = {};
+    const tolerancePt = tolerance / PT_TO_MM;
+
+    // (2-a) TrimBox ⊂ MediaBox 포함관계 (±tolerance 여유)
+    if (boxes.mediaBox) {
+      const t = boxes.trimBox;
+      const m = boxes.mediaBox;
+      const inside =
+        t.x >= m.x - tolerancePt &&
+        t.y >= m.y - tolerancePt &&
+        t.x + t.width <= m.x + m.width + tolerancePt &&
+        t.y + t.height <= m.y + m.height + tolerancePt;
+      if (!inside) {
+        issues.push('TrimBox가 MediaBox(작업 영역)를 벗어납니다');
+        details.trimBoxMm = { width: round1(trimWmm), height: round1(trimHmm) };
+        details.mediaBoxMm = {
+          width: round1(m.width * PT_TO_MM),
+          height: round1(m.height * PT_TO_MM),
+        };
+      }
+    }
+
+    // (2-b) BleedBox 존재 시 크기 = trim + bleed*2 정합
+    if (boxes.bleedBox) {
+      const bleedMm =
+        options.orderOptions.bleedMm ??
+        options.orderOptions.bleed ??
+        DEFAULT_BLEED_MM;
+      const bleedWmm = boxes.bleedBox.width * PT_TO_MM;
+      const bleedHmm = boxes.bleedBox.height * PT_TO_MM;
+      const expectedW = trimWmm + bleedMm * 2;
+      const expectedH = trimHmm + bleedMm * 2;
+      if (
+        Math.abs(bleedWmm - expectedW) > tolerance ||
+        Math.abs(bleedHmm - expectedH) > tolerance
+      ) {
+        issues.push(`BleedBox 크기가 재단+블리드(${bleedMm}mm×2)와 다릅니다`);
+        details.bleedBoxMm = { width: round1(bleedWmm), height: round1(bleedHmm) };
+        details.expectedBleedBoxMm = {
+          width: round1(expectedW),
+          height: round1(expectedH),
+        };
+        details.bleedMm = bleedMm;
+      }
+    }
+
+    if (issues.length > 0) {
+      warnings.push({
+        code: WarningCode.TRIMBOX_BLEED_INCONSISTENT,
+        message: `재단 기하 부정합: ${issues.join(' / ')}. 재단·블리드 구성을 확인해 주세요.`,
+        details,
+        autoFixable: false,
       });
     }
   }
@@ -909,7 +1163,7 @@ export class PdfValidatorService {
         : 0;
 
     // 표지 전체 너비 (앞표지 + 책등 + 뒤표지 + 날개×2 + 재단여백×2)
-    const bleed = options.orderOptions.bleed ?? DEFAULT_BLEED;
+    const bleed = options.orderOptions.bleed ?? DEFAULT_BLEED_MM;
     const expectedTotalWidth = size.width * 2 + expectedSpine + wingTotal + bleed * 2;
 
     // 허용 오차 2mm (책등은 좀 더 여유롭게)

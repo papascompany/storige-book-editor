@@ -31,6 +31,24 @@ export interface QpdfPageSize {
   widthPt: number;
   /** 페이지 높이(pt) = 상속 해석된 MediaBox 의 (ury - lly). 회전 스왑 없음. */
   heightPt: number;
+  // ── C-2a: crop mark 검증용 박스 기하 (qpdf --json 경로에서만 채워짐 — pdfinfo 폴백은 미지원) ──
+  /** 상속 해석된 MediaBox [llx, lly, urx, ury] (pt). */
+  mediaBoxPt?: number[];
+  /**
+   * 페이지 딕셔너리에 **명시 선언된** TrimBox [llx, lly, urx, ury] (pt).
+   * TrimBox 는 PDF 사양상 비상속(non-inheritable) 속성 — parent-walk 없이 직독.
+   * undefined = 명시 부재(boxesAuthoritative=true 이면 '없음' 확정).
+   */
+  trimBoxPt?: number[];
+  /** 페이지 딕셔너리에 명시 선언된 BleedBox [llx, lly, urx, ury] (pt). 비상속 — 직독. */
+  bleedBoxPt?: number[];
+  /**
+   * trim/bleed 박스의 존재/부재 판정이 신뢰 가능한가.
+   * true  = qpdf --json 직독 성공(간접참조도 objmap 으로 해석 완료) — undefined 는 '명시 부재' 확정.
+   * false/undefined = 해석 불가(박스가 미해석 간접참조 등) 또는 pdfinfo 폴백
+   *   (pdfinfo 는 부재 박스를 사양 기본값으로 합성해 명시 여부 판별 불가) → 검증 skip 대상.
+   */
+  boxesAuthoritative?: boolean;
 }
 
 export interface QpdfMetadataResult {
@@ -94,6 +112,47 @@ function resolveInheritedMediaBox(
     nodeRef = parentRef;
   }
   return null;
+}
+
+/** qpdf --json 이 간접참조를 노출하는 문자열 형태("N M R") 판별. */
+const INDIRECT_REF_RE = /^\d+ \d+ R$/;
+
+/**
+ * C-2a: 페이지 딕셔너리에 **명시 선언된** 비상속 박스(/TrimBox, /BleedBox)를 해석한다.
+ *
+ * 간접참조 함정은 기존 MediaBox 처리 방식(qpdf objmap 해석)을 재사용하되,
+ * 비상속 속성이므로 parent-walk 는 하지 않는다(사양: TrimBox/BleedBox 는 상속 불가).
+ *
+ * 반환 규약:
+ *   - undefined : 키 자체가 없음(명시 부재 확정 — TRIMBOX_MISSING 판정 근거로 사용 가능)
+ *   - null      : 키는 있으나 해석 불가(미해석 간접참조/형식 오류) → 오탐 방지 위해
+ *                 콜러가 boxesAuthoritative=false 로 강등해 crop mark 검증을 skip 한다.
+ *   - number[]  : [llx, lly, urx, ury] 해석 성공
+ */
+function resolveExplicitBox(
+  objmap: Record<string, any>,
+  pageDict: any,
+  key: '/TrimBox' | '/BleedBox',
+): number[] | null | undefined {
+  const raw = pageDict?.[key];
+  if (raw === undefined) return undefined; // 명시 부재
+  // 박스 배열 자체가 간접참조("12 0 R")인 경우 objmap 으로 해석.
+  let arr: any = raw;
+  if (typeof arr === 'string' && INDIRECT_REF_RE.test(arr)) {
+    arr = unwrapObject(objmap, arr);
+  }
+  if (!Array.isArray(arr) || arr.length !== 4) return null;
+  // 원소 간접참조(예: `[0 0 4 0 R 595]` → 문자열 "4 0 R")도 objmap 으로 해석.
+  const nums = arr.map((el) => {
+    if (typeof el === 'number') return el;
+    if (typeof el === 'string' && INDIRECT_REF_RE.test(el)) {
+      const v = unwrapObject(objmap, el);
+      return typeof v === 'number' ? v : NaN;
+    }
+    return Number(el);
+  });
+  if (nums.some((v) => !Number.isFinite(v))) return null;
+  return nums;
 }
 
 /**
@@ -203,7 +262,22 @@ export async function extractPdfMetadataQpdf(
       if (!Number.isFinite(widthPt) || !Number.isFinite(heightPt)) {
         throw new Error(`non-finite MediaBox for page object: ${ref}`);
       }
-      pages.push({ widthPt, heightPt });
+
+      // C-2a: 비상속 박스(TrimBox/BleedBox) 명시 선언 직독 — 실패해도 치수 추출은 불변.
+      // null(해석 불가)이 하나라도 있으면 boxesAuthoritative=false 로 강등해
+      // 검증기가 오탐(TRIMBOX_MISSING 허위 경고) 없이 skip 하게 한다.
+      const trimBox = resolveExplicitBox(objmap, pageDict, '/TrimBox');
+      const bleedBox = resolveExplicitBox(objmap, pageDict, '/BleedBox');
+      const boxesAuthoritative = trimBox !== null && bleedBox !== null;
+
+      pages.push({
+        widthPt,
+        heightPt,
+        mediaBoxPt: mb,
+        trimBoxPt: trimBox ?? undefined,
+        bleedBoxPt: bleedBox ?? undefined,
+        boxesAuthoritative,
+      });
     }
 
     // pageCount 와 페이지치수 배열 길이 정합성 보강(npages 우선이 정본).
