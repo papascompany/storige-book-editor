@@ -40,7 +40,7 @@ export interface CoverCaseBindConfig {
   /** 안쪽으로 접어 넘기는 여분(turn-in) mm */
   turnInMm: number;
   /** trim 대비 사방으로 추가되는 wrap 여분 mm */
-  wrapMm: number;
+  wrapMarginMm: number;
 }
 
 /**
@@ -246,7 +246,7 @@ export class TemplateSet {
 
   /**
    * 커버 종류별 설정 JSON (additive nullable=비파괴).
-   * shape: { caseBind?: { boardThicknessMm, turnInMm, wrapMm }, readyMade?: { previewImageUrl } }.
+   * shape: { caseBind?: { boardThicknessMm, turnInMm, wrapMarginMm }, readyMade?: { previewImageUrl } }.
    * NULL=미사용.
    */
   @Column({ name: 'cover_config', type: 'json', nullable: true })
