@@ -9,7 +9,17 @@
  * 통합(편집기 스토어/렌더)은 이 헬퍼의 반환값을 입력으로 받아 레이아웃을 계산한다.
  */
 
-import type { SpreadInnerSpec, SpreadConfig, SpreadPairMeta, SpreadSpec } from '@storige/types'
+import {
+  type SpreadInnerSpec,
+  type SpreadConfig,
+  type SpreadPairMeta,
+  type SpreadSpec,
+  type CaseBindSpec,
+  type TemplateSetCoverMeta,
+  SPREAD_CONFIG_VERSION,
+  computeSpreadOutputDimensions,
+  isValidCaseBind,
+} from '@storige/types'
 
 /** buildInnerSpreadSpec 입력. page 치수는 필수, 나머지는 기본값 보충. */
 export interface BuildInnerSpreadSpecInput {
@@ -55,7 +65,7 @@ export function buildInnerSpreadSpec(input: BuildInnerSpreadSpecInput): SpreadIn
  */
 export function buildInnerSpreadConfig(spec: SpreadInnerSpec): SpreadConfig {
   return {
-    version: 1,
+    version: SPREAD_CONFIG_VERSION,
     regionScope: 'inner',
     innerSpec: spec,
     regions: [],
@@ -131,4 +141,103 @@ export function innerSpecToPlaceholderSpec(spec: SpreadInnerSpec): SpreadSpec {
     cutSizeMm: spec.cutSizeMm,
     safeSizeMm: spec.safeSizeMm,
   }
+}
+
+// ============================================================================
+// 출력 계약 헬퍼 (Track 1, 2026-07-06) — D-1 1단계 · D-4 이중경계 · D-3 pageCount
+// embed.tsx(handleFinish/instance.complete)와 useWorkSave.completeSpreadWork 두 완료 경로가
+// **반드시 이 헬퍼를 단일 진실원으로** 사용한다(경로별 출력 크기 불일치 회귀 방지).
+// ============================================================================
+
+/** useSettingsStore.spreadConfig 의 구조적 부분형 — 출력 크기 산출에 필요한 필드만. */
+export interface SpreadOutputConfigLike {
+  regionScope?: 'cover' | 'inner'
+  innerSpec?: SpreadInnerSpec | null
+  spec?: SpreadSpec | null
+  totalWidthMm?: number
+  totalHeightMm?: number
+}
+
+/** 출력 페이지 크기(mm, trim 기준 — bleed 게이트는 ServicePlugin 이 별도 처리) */
+export interface OutputPageSizeMm {
+  widthMm: number
+  heightMm: number
+}
+
+/**
+ * D-1 1단계: 포토북 내지(regionScope='inner') content.pdf 의 **페이지 크기**를 계산한다.
+ * 'content.pdf 1페이지 = 1펼침면' 계약 — 2-up trim = pageWidthMm×2 × pageHeightMm.
+ *
+ * inner 가 아니거나 innerSpec 이 비유효하면 null 반환 → 호출측은 기존 폴백
+ * (spec.coverWidthMm/주문 옵션)으로 진행한다(BOOK/LEAFLET byte-parity).
+ */
+export function computeInnerContentSizeMm(
+  cfg: SpreadOutputConfigLike | null | undefined,
+): OutputPageSizeMm | null {
+  if (cfg?.regionScope !== 'inner') return null
+  const inner = cfg.innerSpec
+  if (!inner) return null
+  if (!isPositiveFinite(inner.pageWidthMm) || !isPositiveFinite(inner.pageHeightMm)) return null
+  return {
+    widthMm: inner.pageWidthMm * 2,
+    heightMm: inner.pageHeightMm,
+  }
+}
+
+/**
+ * D-4: 하드커버(caseBind) 표지 cover.pdf 의 **출력(wrap 포함) 페이지 크기**를 계산한다.
+ * 화면은 trim 뷰 그대로(computeSpreadDimensions 불변) — PDF 페이지 크기에만 적용.
+ *
+ * caseBind 미설정/비유효/내지(inner) config → null 반환 → 호출측은 기존
+ * totalWidthMm×totalHeightMm 출력 그대로(byte-parity).
+ */
+export function computeCoverOutputSizeMm(
+  cfg: SpreadOutputConfigLike | null | undefined,
+): OutputPageSizeMm | null {
+  if (!cfg?.spec) return null
+  if (cfg.regionScope === 'inner') return null // 내지 세션 — 표지는 별도 세션
+  if (!isValidCaseBind(cfg.spec.caseBind)) return null
+  try {
+    const dims = computeSpreadOutputDimensions(cfg.spec)
+    if (!isPositiveFinite(dims.totalWidthMm) || !isPositiveFinite(dims.totalHeightMm)) return null
+    return { widthMm: dims.totalWidthMm, heightMm: dims.totalHeightMm }
+  } catch {
+    // 비정상 spec(NaN 등) — roundMm01 throw → 출력 크기 미확장(기존 동작 계속)
+    return null
+  }
+}
+
+/**
+ * templateSet 응답의 optional 커버 메타(coverType varchar + coverConfig JSON — Track 3 데이터 소스)를
+ * 옵셔널 체이닝으로 읽는다. 값 없으면 null(전 경로 기존 동작).
+ */
+export function resolveTemplateSetCoverMeta(templateSet: unknown): TemplateSetCoverMeta | null {
+  const ts = templateSet as
+    | { coverType?: unknown; coverConfig?: { caseBind?: Partial<CaseBindSpec> } | null }
+    | null
+    | undefined
+  const coverType = typeof ts?.coverType === 'string' && ts.coverType.length > 0 ? ts.coverType : null
+  const caseBind = isValidCaseBind(ts?.coverConfig?.caseBind) ? ts!.coverConfig!.caseBind! : null
+  if (!coverType && !caseBind) return null
+  return {
+    // caseBind 만 있고 coverType 미지정인 비정상 데이터도 geometry 는 살린다(코드는 시드값 폴백).
+    coverType: coverType ?? 'hardcover_wrap',
+    ...(caseBind ? { coverConfig: { caseBind } } : {}),
+  }
+}
+
+/**
+ * D-3: 완료/가격 이벤트용 라이브 물리 페이지 수 단일 진실원.
+ * 포토북 내지(inner) 펼침면은 캔버스 1개 = 2 물리페이지(×2), 그 외는 캔버스 수 그대로.
+ * 캔버스가 0개면 fallbackPages(주문 시점 pages, 최소 1)로 폴백 — 기존 두 경로 동작과 동일.
+ */
+export function computeLivePageCount(
+  canvasCount: number,
+  isInnerSpread: boolean,
+  fallbackPages: number,
+): number {
+  const count = Number.isFinite(canvasCount) && canvasCount > 0 ? Math.floor(canvasCount) : 0
+  const physical = isInnerSpread ? count * 2 : count
+  if (physical > 0) return physical
+  return Number.isFinite(fallbackPages) && fallbackPages > 0 ? Math.floor(fallbackPages) : 1
 }

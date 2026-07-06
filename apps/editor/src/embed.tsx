@@ -32,9 +32,15 @@ import { useEmbedAutoSave } from './hooks/useEmbedAutoSave'
 import { useEmbedBackGuard } from './hooks/useEmbedBackGuard'
 import { createCanvas } from './utils/createCanvas'
 import { buildSpreadSnapshots } from './utils/buildSpreadSnapshots'
+import {
+  computeInnerContentSizeMm,
+  computeCoverOutputSizeMm,
+  computeLivePageCount,
+  resolveTemplateSetCoverMeta,
+} from './utils/photobookSpread'
 import { templatesApi, editSessionsApi, filesApi, apiClient, type EditSessionResponse } from './api'
 import { core, ServicePlugin } from '@storige/canvas-core'
-import type { PhotobookPricing } from '@storige/types'
+import type { PhotobookPricing, TemplateSetCoverMeta } from '@storige/types'
 import type { ApiError } from './api/client'
 import ToolBar from './components/editor/ToolBar'
 import FeatureSidebar from './components/editor/FeatureSidebar'
@@ -222,6 +228,21 @@ export interface SaveResult {
   thumbnail?: string
 }
 
+/**
+ * D-3 (2026-07-06): `editor.pricingChange` payload — 가격 영향 변경(페이지 증감 등)의 실시간 통지.
+ * 가격 계산 주체는 **호스트 서비스**(D-3 오너 결정) — 편집기는 변경된 값만 전달한다.
+ * 발신 조건(보수 기본): 초기화 완료 후 + 회원 세션 + 템플릿셋 pricing 설정 시에만.
+ */
+export interface PricingChangePayload {
+  sessionId: string | null
+  /** 현재 총 물리 페이지 수 (포토북 내지 펼침면 = 캔버스 ×2) — editor.complete 의 pageCount 와 동일 산식 */
+  pageCount: number
+  /** 템플릿셋 가변 가격 메타 (설정된 셋만 — 미설정이면 이벤트 자체가 발신되지 않음) */
+  pricing?: PhotobookPricing
+  /** 커버 종류 코드 (templateSet.coverType 설정 시에만, string 코드 — 고정 enum 아님) */
+  coverType?: string
+}
+
 export interface EditorState {
   ready: boolean
   modified: boolean
@@ -258,6 +279,9 @@ export type EmbedMessageEvent =
   // 호스트 명령(getState/saveNow)에 대한 응답
   | 'editor.state'
   | 'editor.saved'
+  // D-3 (2026-07-06, additive — needAuth 선례): 페이지 증감 등 가격 영향 변경 실시간 통지.
+  // 수신부는 event 스위치로 미지 이벤트를 무시하므로 비파괴. 게스트 세션·pricing 미설정 셋 미발신.
+  | 'editor.pricingChange'
 
 /** 호스트 → 편집기 명령 종류 */
 export type EmbedHostCommand = 'getState' | 'saveNow' | 'setBackGuard'
@@ -378,6 +402,9 @@ function EmbeddedEditor({
   // editor.complete emit 시 현재 총 pageCount 와 함께 파트너로 전달한다(파트너가 가격 계산).
   // null = 가변 가격 미사용(BOOK/LEAFLET 등). 기존 동작 비파괴.
   const templateSetPricingRef = useRef<PhotobookPricing | null>(null)
+  // D-4 (2026-07-06): 템플릿셋 커버 메타(coverType varchar + coverConfig.caseBind JSON) —
+  // Track 3 이 만드는 optional 필드를 옵셔널 체이닝으로 읽어 보관. null = 미설정(전 경로 기존 동작).
+  const templateSetCoverMetaRef = useRef<TemplateSetCoverMeta | null>(null)
   const [screenMode, setScreenMode] = useState<'mobile' | 'tablet' | 'desktop'>('desktop')
   const [isLoading, setIsLoading] = useState(true)
   const [loadingMessage, setLoadingMessage] = useState('에디터를 초기화하는 중...')
@@ -732,6 +759,10 @@ function EmbeddedEditor({
         // pricing 없으면 null(가변 가격 미사용) → emit 에서 생략(기존 동작 비파괴).
         templateSetPricingRef.current = (templateSet as { pricing?: PhotobookPricing | null }).pricing ?? null
 
+        // D-4 (2026-07-06): 커버 메타(coverType/coverConfig.caseBind) 보관 — pricingChange 의
+        // coverType 동봉 + 하드커버 출력 사이즈 계산에 사용. 미설정이면 null(기존 동작).
+        templateSetCoverMetaRef.current = resolveTemplateSetCoverMeta(templateSet)
+
         if (!isMounted) return
 
         // 2. Create canvas
@@ -872,6 +903,29 @@ function EmbeddedEditor({
             paperType: effectivePaperType,
             bindingType: effectiveBindingType,
           })
+        }
+
+        // D-4 (2026-07-06): templateSet.coverConfig.caseBind 를 스토어 spreadConfig.spec 에 병합.
+        // 화면 레이아웃은 computeSpreadDimensions(trim) 기반이라 **불변** — caseBind 는 출력(PDF)
+        // 사이즈 계산(computeSpreadOutputDimensions)과 metadata.spread 스냅샷에만 쓰인다.
+        // 폴백 템플릿셋(effective≠requested)에는 병합하지 않는다(지오메트리 오염 방지와 동일 원칙).
+        {
+          const templateSetCaseBind = templateSetCoverMetaRef.current?.coverConfig?.caseBind
+          if (templateSetCaseBind && effectiveTemplateSetId === requestedTemplateSetId) {
+            const settingsState = useSettingsStore.getState()
+            const loadedSpreadConfig = settingsState.spreadConfig
+            if (
+              loadedSpreadConfig?.spec &&
+              loadedSpreadConfig.regionScope !== 'inner' &&
+              !loadedSpreadConfig.spec.caseBind
+            ) {
+              settingsState.setSpreadConfig({
+                ...loadedSpreadConfig,
+                spec: { ...loadedSpreadConfig.spec, caseBind: templateSetCaseBind },
+              })
+              console.log('[EmbeddedEditor] D-4 caseBind merged into spreadConfig.spec (output-only):', templateSetCaseBind)
+            }
+          }
         }
 
         if (showMappingAlert) {
@@ -1089,6 +1143,49 @@ function EmbeddedEditor({
     setRestoreOffer(null)
   }, [deleteLocalBackup])
 
+  // D-3 (2026-07-06): editor.pricingChange — 페이지 추가/삭제 실시간 가격 이벤트 (additive).
+  //
+  // zustand allCanvas.length 구독: 페이지 증감의 모든 경로(BookNavigation 추가/삭제,
+  // SpreadPagePanel 의 deletePage 직접 호출 포함)가 스토어 변경으로 수렴하므로 단일 지점에서 잡힌다.
+  // 가드(보수 기본):
+  //  - isInitializedRef — 초기화(loadSpreadModeEditor 캔버스 생성 루프)·세션 복원 중 0건 발신.
+  //  - pricing 미설정 셋(templateSetPricingRef=null) 미발신 — BOOK/LEAFLET 등 기존 셋 무영향.
+  //  - 게스트 세션(guestToken 보유) 미발신 — 실제 가격 반영 주체(회원 주문 흐름)에만 통지.
+  //  - debounce ~300ms — 연속 증감(다중 삭제 등)을 1건으로 합침.
+  // pageCount 는 editor.complete 와 동일 산식(computeLivePageCount 단일 진실원, 내지 펼침면 ×2).
+  useEffect(() => {
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null
+    const unsubscribe = useAppStore.subscribe((state, prevState) => {
+      if (state.allCanvas.length === prevState.allCanvas.length) return
+      if (!isInitializedRef.current) return
+      if (!templateSetPricingRef.current) return
+      if (currentSession?.guestToken) return
+      if (debounceTimer) clearTimeout(debounceTimer)
+      debounceTimer = setTimeout(() => {
+        debounceTimer = null
+        // 발신 시점 재확인(디바운스 사이 상태 변화 대비 — 보수 기본 유지)
+        const pricingMeta = templateSetPricingRef.current
+        if (!pricingMeta || !isInitializedRef.current) return
+        const canvasCount = useAppStore.getState().allCanvas.length
+        const isInnerSpread = useSettingsStore.getState().spreadConfig?.regionScope === 'inner'
+        const payload: PricingChangePayload = {
+          sessionId: currentSession?.id || sessionId || null,
+          pageCount: computeLivePageCount(canvasCount, isInnerSpread, options?.pages || 1),
+          pricing: pricingMeta,
+          ...(templateSetCoverMetaRef.current?.coverType
+            ? { coverType: templateSetCoverMetaRef.current.coverType }
+            : {}),
+        }
+        postToParent(parentOrigin, 'editor.pricingChange', payload)
+        console.log('[EmbeddedEditor] editor.pricingChange emitted:', payload.pageCount)
+      }, 300)
+    })
+    return () => {
+      unsubscribe()
+      if (debounceTimer) clearTimeout(debounceTimer)
+    }
+  }, [parentOrigin, currentSession, sessionId, options?.pages])
+
   // Expose instance methods
   useEffect(() => {
     instanceRef.current = {
@@ -1180,12 +1277,14 @@ function EmbeddedEditor({
 
           // 현재 총 페이지 수(라이브 캔버스 수) — 포토북 페이지 가변 가격 emit 용 (2026-06-24).
           // 편집 중 내지 추가/삭제가 반영된 실측값. 없으면 주문 시점 pages 로 폴백(비파괴).
-          const liveCanvasCount = useAppStore.getState().allCanvas.length
           // 포토북 내지(inner) 펼침면(O-2): 한 캔버스=1펼침면=2 물리페이지 → 가격용 pageCount 는 ×2.
           // (비-내지/표지/BOOK 는 캔버스 수 그대로 = 기존 동작 byte-identical.)
-          const isInnerSpread = useSettingsStore.getState().spreadConfig?.regionScope === 'inner'
-          const livePhysicalPages = isInnerSpread ? liveCanvasCount * 2 : liveCanvasCount
-          const livePageCount = livePhysicalPages > 0 ? livePhysicalPages : (options?.pages || 1)
+          // Track 1 (2026-07-06): 산식을 computeLivePageCount 헬퍼로 단일 진실원화(complete 2경로+pricingChange).
+          const livePageCount = computeLivePageCount(
+            useAppStore.getState().allCanvas.length,
+            useSettingsStore.getState().spreadConfig?.regionScope === 'inner',
+            options?.pages || 1,
+          )
           const pricingMeta = templateSetPricingRef.current
 
           // S2 (2026-07-04): 완료 시점 캔버스 규격(mm) — 파트너 정합 검증용(additive).
@@ -1342,18 +1441,39 @@ function EmbeddedEditor({
           //   ServicePlugin 이 없다. saveMultiPagePDFAsBlob 은 this._editor(=표지) 의 FontPlugin 을
           //   쓰고 전달된 canvases 를 순회하므로, 표지 ServicePlugin 으로 내지 PDF 도 생성한다.
           if (coverPlugin && innerCanvases.length > 0) {
-            const innerW = (spreadCfg!.spec as any)?.coverWidthMm ?? options?.size?.width ?? 210
-            const innerH = (spreadCfg!.spec as any)?.coverHeightMm ?? options?.size?.height ?? 297
-            console.log('[EmbeddedEditor] Spread PDF 시작 — pages:', allCanvas.length, 'cover:', spreadCfg!.totalWidthMm, 'x', spreadCfg!.totalHeightMm, 'inner:', innerW, 'x', innerH)
+            // D-1 1단계 (2026-07-06): 포토북 내지(regionScope='inner')는 content.pdf 페이지 크기를
+            // innerSpec 기반 2-up(pageWidthMm×2 × pageHeightMm)으로 — 'content.pdf 1페이지=1펼침면' 계약.
+            // 비-포토북(BOOK 등)은 헬퍼가 null → 기존 폴백 체인 그대로(byte-parity).
+            const innerContentSize = computeInnerContentSizeMm(spreadCfg)
+            const innerW = innerContentSize?.widthMm
+              ?? (spreadCfg!.spec as any)?.coverWidthMm ?? options?.size?.width ?? 210
+            const innerH = innerContentSize?.heightMm
+              ?? (spreadCfg!.spec as any)?.coverHeightMm ?? options?.size?.height ?? 297
+            // D-4 (2026-07-06): 하드커버(caseBind) 표지는 출력 페이지 크기 = wrap 포함 사이즈.
+            // ServicePlugin 의 기존 printSize 메커니즘(페이지=printSize, 콘텐츠 trim 렌더 중앙 배치)
+            // 재사용 — canvas-core 무변경. caseBind 미설정이면 null → 기존 호출 byte-parity.
+            const coverOutputSize = computeCoverOutputSizeMm(spreadCfg)
+            console.log('[EmbeddedEditor] Spread PDF 시작 — pages:', allCanvas.length, 'cover:', spreadCfg!.totalWidthMm, 'x', spreadCfg!.totalHeightMm, 'coverOutput:', coverOutputSize?.widthMm, 'x', coverOutputSize?.heightMm, 'inner:', innerW, 'x', innerH)
 
             // 표지 cover PDF (스프레드 전체 크기) — 독립 try (실패해도 내지는 시도)
             let coverFileId: string | undefined
             try {
-              await finishMark('spread:cover:gen:start', { w: spreadCfg!.totalWidthMm, h: spreadCfg!.totalHeightMm })
+              await finishMark('spread:cover:gen:start', {
+                w: spreadCfg!.totalWidthMm, h: spreadCfg!.totalHeightMm,
+                ...(coverOutputSize ? { outW: coverOutputSize.widthMm, outH: coverOutputSize.heightMm } : {}),
+              })
               const coverBlob = await withWatchdog(
                 coverPlugin.saveMultiPagePDFAsBlob(
                   [allCanvas[0]] as any, [allEditors[0]], `cover-${currentSessionId}`,
-                  { width: spreadCfg!.totalWidthMm, height: spreadCfg!.totalHeightMm, cutSize: bleed, ...markOpt },
+                  {
+                    width: spreadCfg!.totalWidthMm, height: spreadCfg!.totalHeightMm, cutSize: bleed,
+                    // D-4: caseBind 有 → 페이지=출력(wrap) 사이즈 + 콘텐츠 중앙 오프셋(printSize 경로).
+                    // wrap 자체가 재단 여유 역할이므로 crop mark 게이트(markOpt)는 함께 쓰지 않는다
+                    // (게이트 ON 시 ServicePlugin 이 printSize 를 무시하는 기존 시맨틱과의 충돌 회피).
+                    ...(coverOutputSize
+                      ? { printSize: { width: coverOutputSize.widthMm, height: coverOutputSize.heightMm } }
+                      : markOpt),
+                  },
                   undefined, 300,
                 ),
                 120000, 'spread-cover-gen',
@@ -1474,9 +1594,12 @@ function EmbeddedEditor({
       // pageCount/size + pricing 동봉 — 인스턴스 complete 경로와 payload 파리티.
       // (pricing 은 pre-existing 갭: 인스턴스 경로만 싣고 있어 라이브 임베드에서 포토북
       //  가변가격 메타가 파트너에 전달되지 않던 것 — 적대 리뷰 major 지적으로 정렬.)
-      const liveCanvasCount2 = useAppStore.getState().allCanvas.length
-      const isInnerSpread2 = useSettingsStore.getState().spreadConfig?.regionScope === 'inner'
-      const livePageCount2 = (isInnerSpread2 ? liveCanvasCount2 * 2 : liveCanvasCount2) || (options?.pages || 1)
+      // Track 1 (2026-07-06): 산식을 computeLivePageCount 헬퍼로 단일 진실원화(complete 2경로+pricingChange).
+      const livePageCount2 = computeLivePageCount(
+        useAppStore.getState().allCanvas.length,
+        useSettingsStore.getState().spreadConfig?.regionScope === 'inner',
+        options?.pages || 1,
+      )
       const liveSize2 = useSettingsStore.getState().currentSettings.size
       const pricingMeta2 = templateSetPricingRef.current
       const result: EditorResult = {

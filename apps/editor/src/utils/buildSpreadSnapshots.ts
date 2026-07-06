@@ -4,6 +4,8 @@ import {
   type SpreadSpec,
   normalizeSpreadSpec,
   computeSpreadDimensions,
+  computeSpreadOutputDimensions,
+  isValidCaseBind,
   roundMm01,
   SPINE_FORMULA_VERSION,
 } from '@storige/types'
@@ -48,11 +50,19 @@ export function buildSpreadSnapshots(
   try {
     const normSpec = normalizeSpreadSpec(spreadConfig.spec)
     const dims = computeSpreadDimensions(normSpec)
+    // D-4 (2026-07-06): 싸바리(caseBind) 세션만 출력(wrap 포함) 사이즈를 additive 기록.
+    // 미설정 세션은 필드 자체를 생략해 기존 스냅샷과 byte-identical(기존 필드 불변).
+    const outputDims = isValidCaseBind(normSpec.caseBind)
+      ? computeSpreadOutputDimensions(normSpec)
+      : null
     const spread: SpreadSnapshot = {
       spec: normSpec,
       totalWidthMm: dims.totalWidthMm,
       totalHeightMm: dims.totalHeightMm,
       dpi: normSpec.dpi,
+      ...(outputDims
+        ? { outputWidthMm: outputDims.totalWidthMm, outputHeightMm: outputDims.totalHeightMm }
+        : {}),
     }
 
     const calc = spineConfig?.calculatedSpineWidth
