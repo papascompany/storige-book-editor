@@ -72,6 +72,14 @@ interface SynthesisJobData {
   composeSpreadTotalWidthMm?: number;
   composeSpreadTotalHeightMm?: number;
   composeSpreadDpi?: number;
+  /**
+   * D-4 (2026-07-06, C-4 Track 3): 하드커버 싸바리 등 '출력(wrap 포함) 사이즈'가 화면 trim 과
+   * 다른 상품의 cover 검증 기대치 (세션 metadata.spread.outputWidthMm/outputHeightMm).
+   * 존재 시 total 대신 이 값으로 검증(output 우선), 부재 시 total 폴백 = 기존 동작과 100% 동일.
+   * 내부 큐 metadata 전용 — 워커 external DTO(worker-job.dto.ts) 표면 불변.
+   */
+  composeSpreadOutputWidthMm?: number;
+  composeSpreadOutputHeightMm?: number;
 }
 
 // FilesService 인터페이스 (Worker에서 DB 조회용)
@@ -165,13 +173,12 @@ export class SynthesisProcessor {
       composeContentWidthMm,
       composeContentHeightMm,
       composeOutputMode,
-      composeSpreadTotalWidthMm,
-      composeSpreadTotalHeightMm,
-      composeSpreadDpi,
     } = job.data;
     const jobId = job.data.jobId;
     const queueJobId = job.id;
     const outputMode = composeOutputMode || 'merged';
+    // D-4: cover 검증 기대치 — output(wrap 포함) 우선, total 폴백. 부재=비스프레드 → 검증 skip(기존 동일).
+    const spreadCoverExpectation = this.resolveSpreadCoverExpectation(job.data);
 
     this.logger.log(
       `Processing compose-mixed synthesis job ${jobId} (queue: ${queueJobId}, outputMode: ${outputMode})`,
@@ -214,9 +221,7 @@ export class SynthesisProcessor {
           composeFrontEndpaperUrls,
           composeBackEndpaperUrls,
           composeContentPdfUrl,
-          composeSpreadTotalWidthMm,
-          composeSpreadTotalHeightMm,
-          composeSpreadDpi,
+          spreadCoverExpectation,
         });
         return r;
       }
@@ -267,13 +272,14 @@ export class SynthesisProcessor {
           const coverBytes = await this.synthesizerService.downloadFile(composeCoverUrl);
           const coverDoc = await PDFDocument.load(coverBytes);
           // P0-3: 스프레드 책이면(API가 metadata.spread 기대치를 push) 펼침면 cover MediaBox 무결성 검증.
-          if (composeSpreadTotalWidthMm && composeSpreadTotalHeightMm) {
+          // D-4: 기대치 = output(wrap 포함) 우선 · total 폴백 (resolveSpreadCoverExpectation).
+          if (spreadCoverExpectation) {
             coverSizeValidation = this.validateSpreadCoverSize(
               jobId,
               coverDoc,
-              composeSpreadTotalWidthMm,
-              composeSpreadTotalHeightMm,
-              composeSpreadDpi,
+              spreadCoverExpectation.widthMm,
+              spreadCoverExpectation.heightMm,
+              spreadCoverExpectation.dpi,
             );
           }
           const pages = await coverPdf.copyPages(coverDoc, coverDoc.getPageIndices());
@@ -393,9 +399,8 @@ export class SynthesisProcessor {
     composeFrontEndpaperUrls?: (string | null)[];
     composeBackEndpaperUrls?: (string | null)[];
     composeContentPdfUrl?: string;
-    composeSpreadTotalWidthMm?: number;
-    composeSpreadTotalHeightMm?: number;
-    composeSpreadDpi?: number;
+    /** D-4: cover 검증 기대치(output 우선·total 폴백 해석 완료값). 부재=비스프레드 → 검증 skip */
+    spreadCoverExpectation?: { widthMm: number; heightMm: number; dpi?: number };
   }): Promise<SynthesisResult> {
     const {
       jobId,
@@ -410,9 +415,7 @@ export class SynthesisProcessor {
       composeFrontEndpaperUrls,
       composeBackEndpaperUrls,
       composeContentPdfUrl,
-      composeSpreadTotalWidthMm,
-      composeSpreadTotalHeightMm,
-      composeSpreadDpi,
+      spreadCoverExpectation,
     } = args;
 
     // 생성/다운로드한 임시 파일들 — finally 에서 정리(출력물은 outputDir 라 별개).
@@ -478,7 +481,8 @@ export class SynthesisProcessor {
           scratchCleanups.push(dl.cleanup);
           const meta = await extractPdfMetadataQpdf(dl.path);
           // P0-3: 스프레드 책이면 펼침면 cover MediaBox 무결성 검증(측정-주입판).
-          if (composeSpreadTotalWidthMm && composeSpreadTotalHeightMm) {
+          // D-4: 기대치 = output(wrap 포함) 우선 · total 폴백.
+          if (spreadCoverExpectation) {
             // qpdf 가 MediaBox 를 못 해석(meta.pages 비어있음)한 '정상' 표지에서 치수가
             // undefined 가 되어 허위 COVER_SIZE 불일치/HARD-FAIL 이 나는 것을 방지:
             // 표지는 소형이라 pdf-lib 로 치수만 보강한다(OFF=pdf-lib getSize 와 동일 소스).
@@ -499,9 +503,9 @@ export class SynthesisProcessor {
               meta.pageCount,
               coverWidthPt,
               coverHeightPt,
-              composeSpreadTotalWidthMm,
-              composeSpreadTotalHeightMm,
-              composeSpreadDpi,
+              spreadCoverExpectation.widthMm,
+              spreadCoverExpectation.heightMm,
+              spreadCoverExpectation.dpi,
             );
           }
           // 표지 전체 페이지 그대로 보존(qpdf, 범위 생략=전체).
@@ -583,6 +587,49 @@ export class SynthesisProcessor {
         await this.safeDelete(f);
       }
     }
+  }
+
+  /**
+   * D-4 (2026-07-06, C-4 Track 3): compose-mixed cover 검증 기대치 해석 — output 우선 · total 폴백.
+   *
+   * - composeSpreadOutputWidthMm/HeightMm(하드커버 싸바리 wrap 포함 출력 사이즈)가 둘 다
+   *   양수로 존재하면 그 값을 기대치로 사용(output 우선).
+   * - 부재 시 기존 composeSpreadTotalWidthMm/HeightMm 폴백 → 기존 동작과 100% 동일.
+   * - 둘 다 부재(비스프레드)면 undefined → 검증 skip(기존 동일).
+   * SOFT/HARD 정책(SPREAD_SNAPSHOT_HARD_FAIL)·tolerance 계산은 불변 — 기대치 '값'만 바뀐다.
+   */
+  private resolveSpreadCoverExpectation(data: {
+    composeSpreadTotalWidthMm?: number;
+    composeSpreadTotalHeightMm?: number;
+    composeSpreadOutputWidthMm?: number;
+    composeSpreadOutputHeightMm?: number;
+    composeSpreadDpi?: number;
+  }): { widthMm: number; heightMm: number; dpi?: number } | undefined {
+    const {
+      composeSpreadTotalWidthMm,
+      composeSpreadTotalHeightMm,
+      composeSpreadOutputWidthMm,
+      composeSpreadOutputHeightMm,
+      composeSpreadDpi,
+    } = data;
+    if (
+      typeof composeSpreadOutputWidthMm === 'number' && composeSpreadOutputWidthMm > 0 &&
+      typeof composeSpreadOutputHeightMm === 'number' && composeSpreadOutputHeightMm > 0
+    ) {
+      return {
+        widthMm: composeSpreadOutputWidthMm,
+        heightMm: composeSpreadOutputHeightMm,
+        dpi: composeSpreadDpi,
+      };
+    }
+    if (composeSpreadTotalWidthMm && composeSpreadTotalHeightMm) {
+      return {
+        widthMm: composeSpreadTotalWidthMm,
+        heightMm: composeSpreadTotalHeightMm,
+        dpi: composeSpreadDpi,
+      };
+    }
+    return undefined;
   }
 
   /**

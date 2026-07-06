@@ -24,6 +24,7 @@ import {
   Checkbox,
   Tooltip,
   Upload,
+  AutoComplete,
 } from 'antd';
 import type { UploadProps } from 'antd';
 import {
@@ -73,6 +74,17 @@ const getFullThumbnailUrl = (url: string | null | undefined): string | null => {
   const resolved = resolveStorageUrl(url ?? undefined);
   return resolved || null;
 };
+
+// D-4 커버 3종 시드 코드 (2026-07-06, C-4 Track 3).
+// ⚠️ 고정 enum 금지(오너 결정 D-4) — 아래는 셀렉트 시드일 뿐, 자유 코드 입력 가능(AutoComplete).
+// packages/types 반영은 Track 1 통합 시 치환(현재는 admin 로컬 상수).
+const COVER_TYPE_SEED_OPTIONS = [
+  { value: 'hardcover_wrap', label: '하드커버 (싸바리) — hardcover_wrap' },
+  { value: 'softcover_variable_spine', label: '책등가변 소프트커버 — softcover_variable_spine' },
+  { value: 'ready_made', label: '기성커버 — ready_made' },
+];
+// caseBind(싸바리 geometry) 미사용이 명확한 시드 코드 — 그 외(하드커버·자유 코드)는 입력 노출.
+const COVER_TYPES_WITHOUT_CASEBIND = ['softcover_variable_spine', 'ready_made'];
 
 const templateTypeLabels: Record<TemplateType, string> = {
   [TemplateType.WING]: '날개',
@@ -321,6 +333,11 @@ export const TemplateSetForm = () => {
         bleedMm: (templateSet as any).bleedMm ?? 3,
         cropMarkEnabled: (templateSet as any).cropMarkEnabled ?? false,
         sizeToleranceMm: (templateSet as any).sizeToleranceMm ?? 0.2,
+        // D-4 커버 3종 메타 (2026-07-06) — 공유 타입 미반영분(Track 1 소유)은 any 로 로드. null=미사용.
+        coverType: (templateSet as any).coverType ?? undefined,
+        caseBindBoardThicknessMm: (templateSet as any).coverConfig?.caseBind?.boardThicknessMm,
+        caseBindTurnInMm: (templateSet as any).coverConfig?.caseBind?.turnInMm,
+        caseBindWrapMm: (templateSet as any).coverConfig?.caseBind?.wrapMarginMm,
         // 포토북 페이지 가변 가격 메타 (2026-06-24) — PHOTOBOOK 일 때만 입력 노출. null=미사용.
         usePricing: !!templateSet.pricing,
         pricingIncludedPages: templateSet.pricing?.includedPages ?? 16,
@@ -417,6 +434,27 @@ export const TemplateSetForm = () => {
     // 결정 3-5: coverEditable=false 일 때만 의미. 그 외엔 null 로 저장 (운영 데이터 깔끔 유지)
     const coverPreviewImage = !coverEditable ? (values.coverPreviewImage || null) : null;
 
+    // D-4 커버 3종 메타 (2026-07-06) — 코드 기반(자유 확장, 고정 enum 금지). 비우면 null=미사용(기존 동작).
+    const coverType: string | null =
+      typeof values.coverType === 'string' && values.coverType.trim() ? values.coverType.trim() : null;
+    // caseBind(싸바리 geometry)는 소프트커버/기성커버 시드 외 코드에서 입력값이 있을 때만 저장.
+    const caseBindApplicable = !!coverType && !COVER_TYPES_WITHOUT_CASEBIND.includes(coverType);
+    const hasCaseBindInput = [
+      values.caseBindBoardThicknessMm,
+      values.caseBindTurnInMm,
+      values.caseBindWrapMm,
+    ].some((v) => v !== undefined && v !== null);
+    const coverConfig =
+      caseBindApplicable && hasCaseBindInput
+        ? {
+            caseBind: {
+              boardThicknessMm: Math.max(0, Number(values.caseBindBoardThicknessMm ?? 0)),
+              turnInMm: Math.max(0, Number(values.caseBindTurnInMm ?? 0)),
+              wrapMarginMm: Math.max(0, Number(values.caseBindWrapMm ?? 0)),
+            },
+          }
+        : null;
+
     // 포토북 페이지 가변 가격 메타 (2026-06-24) — PHOTOBOOK + usePricing 일 때만 저장. 그 외 null(미사용).
     // storige 는 가격을 계산하지 않는다 — 이 메타는 편집완료 시 pageCount 와 함께 emit 되어 파트너 장바구니가 계산.
     const pricing =
@@ -447,6 +485,9 @@ export const TemplateSetForm = () => {
       endpaperConfig,
       coverEditable,
       coverPreviewImage,
+      // D-4 커버 3종 메타 (2026-07-06) — null=미사용, 기존 셋 동작 비파괴
+      coverType,
+      coverConfig,
       contentPdfEditable: values.contentPdfEditable !== false, // 기본 true
       pdfOutputMode: values.pdfOutputMode || 'duplex-merged',
       colorMode: values.colorMode || 'rgb',
@@ -906,6 +947,64 @@ export const TemplateSetForm = () => {
                         <InputNumber min={0} max={5} step={0.1} />
                       </Form.Item>
                     </Space>
+
+                    {/* D-4 커버 종류 (2026-07-06, C-4 Track 3) — 공통 3종 시드 + 자유 코드 확장 */}
+                    <Divider>커버 종류 (공통 3종 + 확장)</Divider>
+
+                    <Form.Item
+                      name="coverType"
+                      label="커버 종류 코드"
+                      extra="시드 3종 외 자유 코드 입력 가능(고정 목록 아님). 비워두면 미사용(기존 동작 그대로). 기성커버(ready_made)는 위 '표지 편집 가능'을 끄고 미리보기 이미지를 등록하는 기존 경로에 매핑됩니다. 하드커버(hardcover_wrap)는 아래 싸바리 수치로 출력(wrap 포함) 사이즈를 계산합니다."
+                    >
+                      <AutoComplete
+                        allowClear
+                        options={COVER_TYPE_SEED_OPTIONS}
+                        placeholder="미사용 (비워두면 기존 동작)"
+                        style={{ maxWidth: 440 }}
+                        filterOption={(input, option) =>
+                          String(option?.value ?? '').toLowerCase().includes(input.toLowerCase()) ||
+                          String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                        }
+                      />
+                    </Form.Item>
+
+                    <Form.Item
+                      noStyle
+                      shouldUpdate={(prev, curr) => prev.coverType !== curr.coverType}
+                    >
+                      {({ getFieldValue }) => {
+                        const currentCoverType: string | undefined = getFieldValue('coverType');
+                        const showCaseBind =
+                          !!currentCoverType &&
+                          !COVER_TYPES_WITHOUT_CASEBIND.includes(currentCoverType);
+                        if (!showCaseBind) return null;
+                        return (
+                          <Space size="large" wrap align="start">
+                            <Form.Item
+                              name="caseBindBoardThicknessMm"
+                              label="합지(보드) 두께 (mm)"
+                              extra="싸바리 geometry — 하드커버 보드 두께"
+                            >
+                              <InputNumber min={0} step={0.1} />
+                            </Form.Item>
+                            <Form.Item
+                              name="caseBindTurnInMm"
+                              label="접힘(turn-in) 여분 (mm)"
+                              extra="안쪽으로 접어 넘기는 여분"
+                            >
+                              <InputNumber min={0} step={0.5} />
+                            </Form.Item>
+                            <Form.Item
+                              name="caseBindWrapMm"
+                              label="wrap 여분 (mm)"
+                              extra="화면=trim 기준 / 출력=wrap 포함 사이즈"
+                            >
+                              <InputNumber min={0} step={0.5} />
+                            </Form.Item>
+                          </Space>
+                        );
+                      }}
+                    </Form.Item>
 
                     {/* 포토북 페이지 가변 가격 (2026-06-24) — type===PHOTOBOOK 일 때만 노출 */}
                     <Form.Item

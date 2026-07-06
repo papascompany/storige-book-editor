@@ -10,6 +10,7 @@ import {
   IsObject,
   ValidateNested,
   Max,
+  MaxLength,
   Min,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -65,6 +66,54 @@ export class PhotobookPricingDto {
   @IsNumber()
   @Min(0)
   perPageUnit: number;
+}
+
+/**
+ * 싸바리(caseBind) geometry DTO — D-4 커버 3종 (2026-07-06, C-4 Track 3).
+ * 하드커버 wrap 출력 사이즈 산출용 3필드 (mm).
+ */
+export class CoverCaseBindDto {
+  @ApiProperty({ minimum: 0, example: 2.5, description: '합지(보드) 두께 mm' })
+  @IsNumber()
+  @Min(0)
+  boardThicknessMm: number;
+
+  @ApiProperty({ minimum: 0, example: 15, description: '안쪽 접힘(turn-in) 여분 mm' })
+  @IsNumber()
+  @Min(0)
+  turnInMm: number;
+
+  @ApiProperty({ minimum: 0, example: 8, description: 'trim 대비 사방 wrap 여분 mm' })
+  @IsNumber()
+  @Min(0)
+  wrapMarginMm: number;
+}
+
+/**
+ * 기성커버 참조 DTO — 정본은 기존 coverPreviewImage 필드, 여기는 보조 참조(옵션).
+ */
+export class CoverReadyMadeDto {
+  @ApiPropertyOptional({ description: '기성커버 미리보기 이미지 URL(보조 참조)', nullable: true })
+  @IsOptional()
+  @IsString()
+  previewImageUrl?: string | null;
+}
+
+/**
+ * 커버 종류별 설정 DTO — D-4. NULL=미사용(기존 셋 비파괴).
+ */
+export class CoverConfigDto {
+  @ApiPropertyOptional({ type: CoverCaseBindDto, description: '싸바리 geometry (하드커버 계열)' })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => CoverCaseBindDto)
+  caseBind?: CoverCaseBindDto;
+
+  @ApiPropertyOptional({ type: CoverReadyMadeDto, description: '기성커버 참조(옵션)' })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => CoverReadyMadeDto)
+  readyMade?: CoverReadyMadeDto;
 }
 
 /**
@@ -182,6 +231,24 @@ export class CreateTemplateSetDto {
   @IsOptional()
   @IsString()
   coverPreviewImage?: string | null;
+
+  // ── D-4 커버 3종 메타 (2026-07-06, C-4 Track 3) — additive nullable ──
+  @ApiPropertyOptional({
+    example: 'hardcover_wrap',
+    description:
+      "커버 종류 코드. 시드 3종 'hardcover_wrap'|'softcover_variable_spine'|'ready_made' + 자유 코드 확장 가능(고정 enum 금지, D-4). null=미사용",
+    nullable: true,
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  coverType?: string | null;
+
+  @ApiPropertyOptional({ type: CoverConfigDto, description: '커버 종류별 설정 (caseBind geometry 등). null=미사용', nullable: true })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => CoverConfigDto)
+  coverConfig?: CoverConfigDto | null;
 
   @ApiPropertyOptional({ example: true, description: '내지 PDF 첨부 파일 편집 가능 여부 (기본 true, false=가이드만·편집차단)' })
   @IsOptional()
@@ -326,6 +393,19 @@ export class UpdateTemplateSetDto {
   @IsOptional()
   @IsString()
   coverPreviewImage?: string | null;
+
+  // ── D-4 커버 3종 메타 (2026-07-06) — 수정 시에도 영속되도록 UpdateDto 에 포함 ──
+  @ApiPropertyOptional({ example: 'hardcover_wrap', nullable: true, description: '커버 종류 코드(자유 확장). null=미사용' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  coverType?: string | null;
+
+  @ApiPropertyOptional({ type: CoverConfigDto, nullable: true })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => CoverConfigDto)
+  coverConfig?: CoverConfigDto | null;
 
   @ApiPropertyOptional({ example: true, description: '내지 PDF 첨부 파일 편집 가능 여부 (기본 true)' })
   @IsOptional()
