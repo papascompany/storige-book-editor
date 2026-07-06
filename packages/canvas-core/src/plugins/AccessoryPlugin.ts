@@ -25,6 +25,10 @@ class AccessoryPlugin extends PluginBase {
   hotkeys = []
   name = 'AccessoryPlugin'
 
+  // (누수 수정) bindObject 가 등록하는 object:moving 리스너를 객체 id별로 보관.
+  // 기존에는 익명 클로저라 해제 불가 → afterLoad/afterSave 재바인딩마다 리스너가 순증했다.
+  private _movingHandlers = new Map<string, (e: fabric.IEvent) => void>()
+
   constructor(canvas: fabric.Canvas, editor: Editor, options: PluginOption) {
     super(canvas, editor, options)
   }
@@ -222,13 +226,25 @@ class AccessoryPlugin extends PluginBase {
     })
   }
 
+  // (누수 수정) object:moving 리스너 등록 배관 — 같은 객체(id) 재바인딩 시 기존 리스너를
+  // 해제 후 교체해 bindObject 반복 호출(addAccessory/afterLoad/afterSave)에도 누적되지 않게 한다.
+  private _registerMovingHandler(objId: string, handler: (e: fabric.IEvent) => void): void {
+    const prev = this._movingHandlers.get(objId)
+    if (prev) {
+      this._canvas.off('object:moving', prev)
+    }
+    this._movingHandlers.set(objId, handler)
+    this._canvas.on('object:moving', handler)
+  }
+
   bindObject(obj: fabric.Object): void {
     console.log('bindObject', obj)
     if (!obj || !obj.accessory) return
 
     if (obj.accessory.movingArea === 'inner') {
       console.log('bindObject within inner')
-      this._canvas.on('object:moving', (e) => {
+      // (누수 수정) 익명 등록 → 명명 핸들러로 저장 등록 (본문 로직 불변)
+      const onMoving = (e: fabric.IEvent) => {
         if (e.target.id === obj.id) {
           const workspace = this._getWorkspace()
           if (!workspace) return
@@ -260,7 +276,8 @@ class AccessoryPlugin extends PluginBase {
 
           obj.setCoords()
         }
-      })
+      }
+      this._registerMovingHandler(obj.id, onMoving)
     } else {
       // movingPath가 없거나 path가 없는 경우 안전하게 처리
       if (!obj.movingPath || !obj.movingPath.path) {
@@ -320,7 +337,8 @@ class AccessoryPlugin extends PluginBase {
           }
         }
 
-        this._canvas.on('object:moving', (e) => {
+        // (누수 수정) 익명 등록 → 명명 핸들러로 저장 등록 (본문 로직 불변)
+        const onMoving = (e: fabric.IEvent) => {
           if (e.target.id === obj.id && isValidNumber(e.target.left) && isValidNumber(e.target.top)) {
             /// 가까운곳으로 이동
             const closestPoint = this.findClosestPoint(
@@ -339,7 +357,8 @@ class AccessoryPlugin extends PluginBase {
               obj.setCoords()
             }
           }
-        })
+        }
+        this._registerMovingHandler(obj.id, onMoving)
       } catch (error) {
         console.error('bindObject 처리 중 오류:', error, obj.id)
         // 에러가 발생해도 객체를 제거하지 않고 계속 진행
@@ -358,6 +377,12 @@ class AccessoryPlugin extends PluginBase {
     }
 
     const paper = await getPaper()
+    // (누수 수정) paper.setup() 은 호출마다 새 Project 를 PaperScope.projects 에 push 해 누적된다.
+    // 이전 호출이 남긴 project 를 먼저 제거해 상태 누적을 막는다 (paper 사용처는 이 파일뿐,
+    // 병합 출력은 setup 이 새로 만드는 project 기준이므로 결과 불변).
+    while (paper.projects.length > 0) {
+      paper.projects[paper.projects.length - 1].remove()
+    }
     paper.setup(new paper.Size(1, 1))
     paper.view.autoUpdate = false
 
@@ -425,6 +450,9 @@ class AccessoryPlugin extends PluginBase {
       editable: false,
       extensionType: 'clipping'
     })
+
+    // (누수 수정) pathData 추출이 끝났으므로 현재 project 의 paper 아이템(wcPath/acPath/merged)을 즉시 정리
+    paper.project.clear()
 
     // remove old workspace
     const prev = this._canvas.getObjects().find((obj) => obj.id === 'mergedWorkspace')
@@ -497,6 +525,9 @@ class AccessoryPlugin extends PluginBase {
   destroyed(): Promise<void> {
     this._canvas.off('mouse:down', this.startDrag)
     this._canvas.off('mouse:up', this.endDrag)
+    // (누수 수정) bindObject 가 등록한 object:moving 리스너 일괄 해제
+    this._movingHandlers.forEach((handler) => this._canvas.off('object:moving', handler))
+    this._movingHandlers.clear()
     return super.destroyed()
   }
 
