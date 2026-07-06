@@ -74,6 +74,56 @@ describe('buildSpreadSnapshots', () => {
     expect(buildSpreadSnapshots(null, null, 24)).toEqual({})
   })
 
+  // ── D-4 (2026-07-06): caseBind → metadata.spread 출력 사이즈 additive 기록 ──
+
+  it('caseBind 有: outputWidthMm/outputHeightMm 기록(wrap 포함), 기존 필드 불변', () => {
+    const { spread } = buildSpreadSnapshots(
+      {
+        spec: {
+          ...baseSpec,
+          caseBind: { boardThicknessMm: 2, turnInMm: 15, wrapMarginMm: 5 },
+        },
+      },
+      { paperType: 'mojo_80g', bindingType: 'perfect', calculatedSpineWidth: 10 },
+      24,
+    )
+    // 기존 필드 불변 (trim 기준)
+    expect(spread!.totalWidthMm).toBe(430)
+    expect(spread!.totalHeightMm).toBe(297)
+    // 출력 = trim + board×2 + (turnIn+wrap)×2 / 높이 = trim + (turnIn+wrap)×2
+    expect(spread!.outputWidthMm).toBe(430 + 2 * 2 + (15 + 5) * 2) // 474
+    expect(spread!.outputHeightMm).toBe(297 + (15 + 5) * 2) // 337
+    // 스냅샷 spec 에도 caseBind 보존(normalizeSpreadSpec additive)
+    expect(spread!.spec.caseBind).toEqual({ boardThicknessMm: 2, turnInMm: 15, wrapMarginMm: 5 })
+  })
+
+  it('caseBind 無: output 필드 자체 생략(기존 스냅샷 byte-identical)', () => {
+    const { spread } = buildSpreadSnapshots(
+      { spec: { ...baseSpec } },
+      { paperType: 'mojo_80g', bindingType: 'perfect', calculatedSpineWidth: 10 },
+      24,
+    )
+    expect('outputWidthMm' in spread!).toBe(false)
+    expect('outputHeightMm' in spread!).toBe(false)
+    expect('caseBind' in spread!.spec).toBe(false)
+  })
+
+  it('caseBind 비유효(NaN 필드): 미설정으로 간주 — output 미기록, 완료 무중단', () => {
+    const { spread } = buildSpreadSnapshots(
+      {
+        spec: {
+          ...baseSpec,
+          caseBind: { boardThicknessMm: NaN, turnInMm: 15, wrapMarginMm: 5 },
+        },
+      },
+      { paperType: 'mojo_80g', bindingType: 'perfect', calculatedSpineWidth: 10 },
+      24,
+    )
+    expect(spread).toBeDefined()
+    expect(spread!.outputWidthMm).toBeUndefined()
+    expect(spread!.spec.caseBind).toBeUndefined()
+  })
+
   it('비정상 spec(NaN) → catch 하여 빈 객체(완료 무중단)', () => {
     const { spread, spine } = buildSpreadSnapshots(
       { spec: { ...baseSpec, coverWidthMm: NaN } },
