@@ -16,6 +16,7 @@ import { NestFactory, HttpAdapterHost } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import { filterToPartnerRoutes } from './config/swagger-partner-routes';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
@@ -206,7 +207,15 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, config, {
     extraModels: [PayloadTooLargeResponseDto],
   });
-  SwaggerModule.setup('api/docs', app, document);
+  // 파트너 표면 큐레이션(SWEETBOOK_GAP_ROADMAP §8-10 조치안 B):
+  // `/api/docs`(+ `-json`/`-yaml`)는 파트너에게 안내된 공개 URL이므로 유지하되,
+  // production 에서는 내부/관리자/인증 표면을 감추고 파트너 대면 라우트만 노출한다.
+  // 개발/스테이징은 전체 문서를 노출(내부 개발 편의).
+  const isProduction = configService.get('NODE_ENV') === 'production';
+  const docsDocument = isProduction
+    ? filterToPartnerRoutes(document)
+    : document;
+  SwaggerModule.setup('api/docs', app, docsDocument);
 
   const port = process.env.PORT || 4000;
   await app.listen(port);
