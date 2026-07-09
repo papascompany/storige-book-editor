@@ -54,6 +54,7 @@ import { WorkspaceModal } from './components/modals'
 import { RestoreBackupBanner } from './components/RestoreBackupBanner'
 import { Sentry } from './lib/sentry'
 import { applyContentPdfGuides } from './utils/contentPdfGuide'
+import { detectOrientationMismatch, type OrientationMismatch } from './utils/orientationGuard'
 import { useExternalPhotosStore } from './stores/useExternalPhotosStore'
 import './index.css'
 
@@ -705,6 +706,9 @@ function EmbeddedEditor({
         let effectiveTemplateSetId = templateSetId || editSession?.templateSetId || ''
         let showMappingAlert = false
         let fallbackReason = ''
+        // 방향 불일치 가드레일 (2026-07-09): 호스트 주문 규격(width/height)과 로드된 templateSet
+        // 방향이 어긋나면(가로 선택했으나 가로 templateSet 미배선 → 세로 폴백 등) 채워진다. ready emit 에 additive 동봉.
+        let orientationMismatch: OrientationMismatch | null = null
 
         if (!effectiveTemplateSetId) {
           throw new Error('템플릿셋 ID가 필요합니다. (templateSetId)')
@@ -1019,6 +1023,39 @@ function EmbeddedEditor({
         isInitializedRef.current = true
         setIsLoading(false)
 
+        // 방향 불일치 가드레일 (2026-07-09) — 호스트 주문 규격(width/height)의 방향과 로드된
+        // templateSet 방향이 어긋나면(고객이 가로 선택 → 가로 dims 전달했으나 가로 templateSet
+        // 미배선으로 세로 셋 로드 등) 조용히 세로로 열리는 사고를 콘솔+Sentry+ready payload 로 표면화.
+        // 비차단: 편집은 그대로 진행. 샘플 폴백(showMappingAlert)·size 미전달·정사각은 스킵(오탐 방지).
+        if (!showMappingAlert) {
+          orientationMismatch = detectOrientationMismatch(options?.size, {
+            width: (templateSet as { width?: number }).width,
+            height: (templateSet as { height?: number }).height,
+          })
+          if (orientationMismatch) {
+            console.warn(
+              `[EmbeddedEditor] ⚠️ 방향 불일치: 주문 규격은 ${orientationMismatch.requested}(${orientationMismatch.requestedSize.width}×${orientationMismatch.requestedSize.height}) 인데 ` +
+                `templateSet(${effectiveTemplateSetId}) 은 ${orientationMismatch.template}(${orientationMismatch.templateSize.width}×${orientationMismatch.templateSize.height}) — ` +
+                `가로 templateSet 배선(storigeTemplateSetIdLandscape) 누락 가능. 편집은 계속 진행합니다.`,
+              orientationMismatch,
+            )
+            try {
+              Sentry.captureMessage('[orientation-mismatch] 주문 규격 ≠ templateSet 방향', {
+                level: 'warning',
+                extra: {
+                  templateSetId: effectiveTemplateSetId,
+                  requestedTemplateSetId,
+                  orderSeqno,
+                  sessionId: editSession?.id,
+                  ...orientationMismatch,
+                },
+              } as any)
+            } catch {
+              /* Sentry 미설정/네트워크 — 무시 */
+            }
+          }
+        }
+
         console.log('[EmbeddedEditor] Initialization complete')
         onReady?.()
         postToParent(parentOrigin, 'editor.ready', {
@@ -1027,6 +1064,8 @@ function EmbeddedEditor({
           version: '1.0.0',
           // 샘플 폴백 구동 시(DEV/allowSampleFallback) 호스트가 인지할 수 있도록 명시 (2026-06-11)
           ...(showMappingAlert ? { fallback: true, effectiveTemplateSetId } : {}),
+          // 방향 불일치 시 호스트(bookmoa 등)가 인지할 수 있도록 additive 동봉 (2026-07-09)
+          ...(orientationMismatch ? { orientationMismatch } : {}),
         })
       } catch (err) {
         console.error('[EmbeddedEditor] Initialization error:', err)
