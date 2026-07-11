@@ -47,6 +47,7 @@ import { Button } from '@/components/ui/button'
 import { showToast } from '@/stores/useToastStore'
 import { selectionTypeLabel } from '@/utils/layerDisplay'
 import { isAppearanceLocked } from '@/utils/objectPermissions'
+import { requiredEditKindOf } from '@/utils/requiredEditCheck'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -199,6 +200,17 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
     return activeSelection?.every((e) => (e as any).lockLayerOrder === true) ?? false
   }, [activeSelection])
 
+  // L7 (2026-07-11): 필수 편집(requiredEdit) — 선택 전부 기준 판정 (기존 토글 패턴).
+  // 텍스트·사진틀(frame)에만 의미 있으므로 그 외 타입 포함 선택은 항목 비활성.
+  const allRequiredEdit = useMemo(() => {
+    return activeSelection?.every((e) => (e as any).requiredEdit === true) ?? false
+  }, [activeSelection])
+
+  const requiredEditApplicable = useMemo(() => {
+    if (!activeSelection || activeSelection.length === 0) return false
+    return activeSelection.every((e) => requiredEditKindOf(e) !== null)
+  }, [activeSelection])
+
   // 선택 전부의 lockInfo.lockLevel 이 동일하면 그 값, 혼합/미잠금이면 'none'
   const selectionLockLevel = useMemo(() => {
     if (!activeSelection || activeSelection.length === 0) return 'none'
@@ -216,8 +228,9 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
       allDeleteLocked ||
       allContentLocked ||
       allOrderLocked ||
+      allRequiredEdit ||
       (selectionLockLevel !== 'none' && selectionLockLevel !== 'mixed'),
-    [allMovementLocked, allDeleteLocked, allContentLocked, allOrderLocked, selectionLockLevel]
+    [allMovementLocked, allDeleteLocked, allContentLocked, allOrderLocked, allRequiredEdit, selectionLockLevel]
   )
 
   // Actions
@@ -346,6 +359,19 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
     const next = !allOrderLocked
     activeSelection?.forEach((obj) => {
       ;(obj as any).lockLayerOrder = next ? true : false
+    })
+    updateObjects()
+  }
+
+  // L7: 관리자 전용 — 필수 편집 토글. requiredEdit=true 면 고객이 안 바꾸고 완료 시
+  // 비차단 경고 모달(requiredEditGate). 지정(재지정) 시 requiredEditTouched 를 초기화해
+  // 관리자 authoring 중 편집 흔적이 템플릿에 영속되는 것을 막는다(고객 무경고 구멍 방지).
+  const handleToggleRequiredEdit = () => {
+    const next = !allRequiredEdit
+    activeSelection?.forEach((obj) => {
+      if (requiredEditKindOf(obj) === null) return
+      ;(obj as any).requiredEdit = next
+      delete (obj as any).requiredEditTouched
     })
     updateObjects()
   }
@@ -616,6 +642,21 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
                         onSelect={(e) => e.preventDefault()}
                       >
                         순서 잠금 (레이어 순서 고정)
+                      </DropdownMenuCheckboxItem>
+                      {/* L7: 필수 편집 — 텍스트·사진틀 전용(그 외 타입은 비활성+툴팁). 보호(제한)가
+                          아니라 요구 플래그지만, 고객 편집 규칙 지정이라 같은 방패 드롭다운에 배치. */}
+                      <DropdownMenuCheckboxItem
+                        checked={allRequiredEdit && requiredEditApplicable}
+                        onCheckedChange={() => handleToggleRequiredEdit()}
+                        onSelect={(e) => e.preventDefault()}
+                        disabled={!requiredEditApplicable}
+                        title={
+                          requiredEditApplicable
+                            ? '고객이 이 요소를 편집하지 않고 완료하면 경고를 표시합니다'
+                            : '텍스트·사진틀에만 지정할 수 있어요'
+                        }
+                      >
+                        필수 편집 (미편집 완료 시 경고)
                       </DropdownMenuCheckboxItem>
                       <DropdownMenuSeparator />
                       <DropdownMenuLabel className="text-xs">

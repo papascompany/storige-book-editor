@@ -24,6 +24,7 @@ import { createRoot, Root } from 'react-dom/client'
 import { useAppStore } from './stores/useAppStore'
 import { rebindFrameInteractivity } from './utils/frameInteractive'
 import { applyObjectPermissions } from './utils/objectPermissions'
+import { trackRequiredEdits, collectUneditedRequiredForCustomer } from './utils/requiredEditGate'
 import { runWithAutosaveSuspended } from './utils/autosaveSuspend'
 import { useAuthStore } from './stores/useAuthStore'
 import { useSettingsStore } from './stores/useSettingsStore'
@@ -969,6 +970,8 @@ function EmbeddedEditor({
               rebindFrameInteractivity(allEditors[i], canvases[i])
               // Part B: 고객 임베드 세션 복원 시 객체별 이동/변형 잠금 적용(movable=false).
               applyObjectPermissions(canvases[i], useSettingsStore.getState().currentSettings.editMode)
+              // L7: 필수 편집 touched 추적 부착(멱등) — 로드 완료 지점.
+              trackRequiredEdits(canvases[i])
             }
             console.log('[EmbeddedEditor] Multi-page canvasData restored:', saved.length, 'pages')
           } else if (!Array.isArray(saved) && fabricCanvas) {
@@ -977,6 +980,7 @@ function EmbeddedEditor({
             const singleIdx = Math.max(0, canvases.indexOf(fabricCanvas))
             rebindFrameInteractivity(allEditors[singleIdx], fabricCanvas)
             applyObjectPermissions(fabricCanvas, useSettingsStore.getState().currentSettings.editMode)
+            trackRequiredEdits(fabricCanvas)
             console.log('[EmbeddedEditor] Single canvasData restored:', editSession.id)
           }
         }
@@ -1275,6 +1279,16 @@ function EmbeddedEditor({
 
         if (!currentSessionId) {
           throw new Error('편집 세션이 없습니다.')
+        }
+
+        // L7: 프로그래매틱(파트너 IIFE API) 완료 경로는 모달 없이 경고 로그만 — 파트너의
+        // await complete() 가 사용자 응답에 매달리거나 신규 reject 로 계약이 바뀌는 것을 방지.
+        // UI '편집완료' 버튼 경로(EditorHeader.handleFinish)는 비차단 확인 모달로 게이트된다.
+        {
+          const unedited = collectUneditedRequiredForCustomer()
+          if (unedited.length > 0) {
+            console.warn('[EmbeddedEditor] requiredEdit 미편집 요소', unedited.length, '개 존재 — 프로그래매틱 complete 는 경고 없이 진행:', unedited.map((i) => i.label))
+          }
         }
 
         try {

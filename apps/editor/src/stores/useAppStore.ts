@@ -19,6 +19,7 @@ import { bindPrintExcludeOverlay } from '@/utils/printExcludeOverlay'
 import { useEditorStore } from '@/stores/useEditorStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { TemplateType } from '@storige/types'
+import type { UneditedRequiredItem } from '@/utils/requiredEditCheck'
 
 // Fabric.js 타입 (실제 fabric 타입은 런타임에 로드됨)
  
@@ -52,6 +53,10 @@ interface AppState {
   // S2 (공유): 객체 삭제 확인 모달 상태 (전 상품 적용)
   deleteConfirmOpen: boolean
   deleteConfirmCount: number
+
+  // L7 (2026-07-11): 필수 편집 요소 미편집 경고 모달 상태 (비차단 — '그래도 완료' 가능)
+  requiredEditConfirmOpen: boolean
+  requiredEditConfirmItems: UneditedRequiredItem[]
 
   // UI 상태
   screenshots: string[]
@@ -119,6 +124,10 @@ interface AppActions {
   requestDeleteSelection: () => void
   confirmDeleteSelection: () => void
   cancelDeleteSelection: () => void
+
+  // L7: 필수 편집 경고 — 완료 게이트(requiredEditGate)가 요청, 모달 버튼이 resolve.
+  requestRequiredEditConfirm: (items: UneditedRequiredItem[]) => Promise<'proceed' | 'edit'>
+  resolveRequiredEditConfirm: (choice: 'proceed' | 'edit') => void
 
   // 객체 관리
   changeObjectValue: (value: number | string, key: string) => void
@@ -197,6 +206,9 @@ const numberValues = [
 // 스토어의 내부 상태를 위한 변수들 (React 상태와 분리)
 let blockedUpdate = false
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
+
+// L7: 필수 편집 경고 모달 promise resolver (요청↔버튼 응답 연결 — state 밖 모듈 보관)
+let requiredEditConfirmResolver: ((choice: 'proceed' | 'edit') => void) | null = null
 let throttleTimeout: ReturnType<typeof setTimeout> | null = null
 
 // Debounced 함수들 (cancel 가능하도록 외부에 선언)
@@ -334,6 +346,8 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
   activeSelection: [],
   deleteConfirmOpen: false,
   deleteConfirmCount: 0,
+  requiredEditConfirmOpen: false,
+  requiredEditConfirmItems: [],
   triggerSelectionRefresh: 0,
   screenshots: [],
   currentContentsBrowser: null,
@@ -1154,6 +1168,23 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
     set({ deleteConfirmOpen: false, deleteConfirmCount: 0, activeSelection: [] })
   },
   cancelDeleteSelection: () => set({ deleteConfirmOpen: false, deleteConfirmCount: 0 }),
+
+  // ── L7 (2026-07-11): 필수 편집 요소 미편집 경고 (비차단) ──
+  // requiredEditGate.confirmRequiredEditsBeforeComplete 가 요청하고 RequiredEditConfirmModal
+  // 버튼이 resolve. 'proceed'=그래도 완료(원 플로우 속행) / 'edit'=계속 편집(완료 중단).
+  requestRequiredEditConfirm: (items: UneditedRequiredItem[]) =>
+    new Promise<'proceed' | 'edit'>((resolve) => {
+      // 중복 완료 클릭 방어 — 앞선 미해결 요청은 '계속 편집' 으로 정리
+      requiredEditConfirmResolver?.('edit')
+      requiredEditConfirmResolver = resolve
+      set({ requiredEditConfirmOpen: true, requiredEditConfirmItems: items })
+    }),
+  resolveRequiredEditConfirm: (choice: 'proceed' | 'edit') => {
+    set({ requiredEditConfirmOpen: false, requiredEditConfirmItems: [] })
+    const resolver = requiredEditConfirmResolver
+    requiredEditConfirmResolver = null
+    resolver?.(choice)
+  },
 
   // 객체 값 변경
   changeObjectValue: (inputValue: number | string, key: string) => {
