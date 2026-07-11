@@ -19,18 +19,18 @@ import {
   type FabricThumbSource,
   type ThumbCache,
 } from '@/utils/layerThumbnails'
+import {
+  createLongPressTracker,
+  isTouchEnv,
+  resolveTouchDropTarget,
+  SHEET_SWIPE_CLOSE_PX,
+  sidePanelContainerClass,
+  type RowRect,
+} from '@/utils/layerTouchSheet'
 
 // S3 (공유 계층, 2026-06-23): 레이어 패널 DnD 재정렬.
-// 모바일/터치 환경에서는 native HTML5 drag 가 long-press·터치 스크롤과 충돌하므로 비활성
-// (BookNavigation 페이지 DnD 와 동일한 가드 — 데스크톱 전용).
-function isTouchEnv(): boolean {
-  if (typeof window === 'undefined' || !window.matchMedia) return false
-  try {
-    return window.matchMedia('(pointer: coarse)').matches
-  } catch {
-    return false
-  }
-}
+// 모바일/터치 환경에서는 native HTML5 drag 가 long-press·터치 스크롤과 충돌하므로 비활성.
+// L6 (2026-07-11): 터치는 바텀시트 + 롱프레스 터치 DnD 로 대체(isTouchEnv 는 공용 유틸로 이동).
 const TOUCH_ENV = isTouchEnv()
 
 // Icon mapping by selection type
@@ -555,25 +555,180 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
     setDragOver(null)
   }
 
+  // -------------------------------------------------------------------------
+  // L6: 터치 롱프레스 DnD (TOUCH_ENV 전용 — HTML5 DnD 는 터치 미지원)
+  // 롱프레스(~350ms, 이동 시 취소=스크롤 양보) 후에만 드래그 모드 진입.
+  // 드래그 모드에서는 touchmove preventDefault(비-passive)로 시트 스크롤을 잠그고
+  // 기존 dragSourceId/dragOver 상태를 재사용해 삽입 라인 인디케이터를 그린다.
+  // 드롭은 데스크톱과 동일 시맨틱으로 reorderObject 재사용(fabric 라이브 스택 기준).
+  // -------------------------------------------------------------------------
+  const rowElsRef = useRef(new Map<string, HTMLElement>())
+  const rowRefCbsRef = useRef(new Map<string, (el: HTMLElement | null) => void>())
+  const getRowRef = (id: string) => {
+    let cb = rowRefCbsRef.current.get(id)
+    if (!cb) {
+      cb = (el: HTMLElement | null) => {
+        if (el) rowElsRef.current.set(id, el)
+        else rowElsRef.current.delete(id)
+      }
+      rowRefCbsRef.current.set(id, cb)
+    }
+    return cb
+  }
+
+  // 드래그 활성 후 touchend 가 합성 click 으로 이어져 selectObject 가 오발동하는 것 방지
+  const suppressRowClickRef = useRef(false)
+  const touchDragCleanupRef = useRef<(() => void) | null>(null)
+
+  // 언마운트/페이지 전환 시 잔여 document 리스너·드래그 상태 정리
+  useEffect(() => () => touchDragCleanupRef.current?.(), [])
+
+  const collectRowRects = useCallback((): RowRect[] => {
+    const rows: RowRect[] = []
+    rowElsRef.current.forEach((el, id) => {
+      const r = el.getBoundingClientRect()
+      rows.push({ id, top: r.top, height: r.height })
+    })
+    return rows
+  }, [])
+
+  const handleRowTouchStart = (objectId: string) => (e: React.TouchEvent<HTMLDivElement>) => {
+    if (!TOUCH_ENV || e.touches.length !== 1) return
+    if (editingObject?.id === objectId) return
+    // 행 내부 버튼/입력 위 롱프레스는 드래그로 승격하지 않는다(버튼 오조작 방지)
+    if ((e.target as HTMLElement | null)?.closest?.('button, input')) return
+
+    // 이전 제스처 잔여 정리(멀티터치·비정상 종료 방어)
+    touchDragCleanupRef.current?.()
+
+    const touch = e.touches[0]
+    let dragActive = false
+    const tracker = createLongPressTracker({
+      onActivate: () => {
+        dragActive = true
+        suppressRowClickRef.current = true
+        setDragSourceId(objectId)
+      },
+    })
+
+    const teardown = () => {
+      tracker.cancel()
+      document.removeEventListener('touchmove', onMove)
+      document.removeEventListener('touchend', onEnd)
+      document.removeEventListener('touchcancel', onCancel)
+      touchDragCleanupRef.current = null
+      if (dragActive) {
+        dragActive = false
+        setDragSourceId(null)
+        setDragOver(null)
+        // 합성 click 은 touchend 직후 동기 발화 — 발화 안 한 경우(preventDefault)에도
+        // 플래그가 다음 정상 탭을 삼키지 않도록 태스크 큐에서 해제
+        setTimeout(() => {
+          suppressRowClickRef.current = false
+        }, 0)
+      }
+    }
+
+    const onMove = (ev: TouchEvent) => {
+      const t = ev.touches[0]
+      if (!t) return
+      if (!dragActive) {
+        // 활성 전 허용 반경 초과 = 스크롤 의도 → 롱프레스 취소(스크롤 방해 금지)
+        if (tracker.move(t.clientX, t.clientY) === 'cancelled') teardown()
+        return
+      }
+      // 드래그 모드: 시트 스크롤 차단(passive:false 필수) + 삽입 위치 계산
+      ev.preventDefault()
+      const target = resolveTouchDropTarget(t.clientY, collectRowRects(), objectId)
+      setDragOver((prev) =>
+        target
+          ? prev && prev.id === target.targetId && prev.above === target.above
+            ? prev
+            : { id: target.targetId, above: target.above }
+          : null
+      )
+    }
+
+    const onEnd = (ev: TouchEvent) => {
+      if (dragActive) {
+        // 합성 click(selectObject 오발동) 차단 — suppressRowClickRef 와 이중 방어
+        ev.preventDefault()
+        const t = ev.changedTouches[0]
+        if (t) {
+          const target = resolveTouchDropTarget(t.clientY, collectRowRects(), objectId)
+          if (target) {
+            // L2 A-6 동일 가드: 순서 잠금 source 는 reorderObject 내부 silent 차단 — 사유 안내
+            const src = objects.find((o) => o.id === objectId)
+            if (src?.lockLayerOrder === true) {
+              showToast('순서가 잠긴 요소예요 — 순서를 바꿀 수 없어요.', 'info')
+            } else {
+              reorderObject(objectId, target.targetId, target.above)
+            }
+          }
+        }
+      }
+      teardown()
+    }
+
+    const onCancel = () => teardown()
+
+    touchDragCleanupRef.current = teardown
+    document.addEventListener('touchmove', onMove, { passive: false })
+    document.addEventListener('touchend', onEnd)
+    document.addEventListener('touchcancel', onCancel)
+    tracker.start(touch.clientX, touch.clientY)
+  }
+
+  // L6: 바텀시트 핸들 스와이프 다운 닫힘(핸들 영역 한정 — 목록 스크롤과 무충돌)
+  const sheetSwipeStartYRef = useRef<number | null>(null)
+  const handleSheetHandleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    sheetSwipeStartYRef.current = e.touches[0]?.clientY ?? null
+  }
+  const handleSheetHandleTouchEnd = (e: React.TouchEvent<HTMLDivElement>) => {
+    const startY = sheetSwipeStartYRef.current
+    sheetSwipeStartYRef.current = null
+    const endY = e.changedTouches[0]?.clientY
+    if (startY !== null && endY !== undefined && endY - startY > SHEET_SWIPE_CLOSE_PX) {
+      onClose?.()
+    }
+  }
+
+  // L6: 터치 행 액션 상시 노출 — hover 불가 환경, 터치 타깃 ≥40px(h-10 w-10)
+  const actionBtnClass = TOUCH_ENV ? 'h-10 w-10' : 'h-7 w-7'
+
   return (
-    <div
-      className={cn(
-        'sidePanel w-[220px] h-[calc(100%-80px)] flex flex-col gap-2 bg-editor-panel',
-        'fixed right-[-220px] transition-all duration-300 ease-in-out z-[99]',
-        'shadow-[-2.2px_0_3.2px_0_rgba(0,0,0,0.02)] overflow-hidden',
-        show && 'right-0'
+    <div className={sidePanelContainerClass(TOUCH_ENV, show)}>
+      {/* L6: 터치=바텀시트 드래그 핸들(스와이프 다운 닫힘)+닫기 / 비터치=기존 모바일 닫기 바 */}
+      {TOUCH_ENV ? (
+        <div
+          className="top relative flex flex-col items-center pt-2.5 pb-1.5 w-full border-b border-editor-border touch-none"
+          onTouchStart={handleSheetHandleTouchStart}
+          onTouchEnd={handleSheetHandleTouchEnd}
+          role="button"
+          aria-label="레이어 시트 핸들 — 아래로 밀어 닫기"
+        >
+          <div className="sheet-handle h-1 w-10 rounded-full bg-editor-border" aria-hidden="true" />
+          <Button
+            variant="ghost"
+            size="icon"
+            className="absolute right-1 top-0.5 h-10 w-10"
+            onClick={onClose}
+            aria-label="레이어 시트 닫기"
+          >
+            <X className="h-5 w-5" />
+          </Button>
+        </div>
+      ) : (
+        <div className="top flex items-center justify-start p-3 w-full lg:hidden border-b border-editor-border">
+          <Button variant="ghost" size="icon" onClick={onClose}>
+            <X className="h-5 w-5" />
+          </Button>
+        </div>
       )}
-    >
-      {/* Close button (mobile) */}
-      <div className="top flex items-center justify-start p-3 w-full lg:hidden border-b border-editor-border">
-        <Button variant="ghost" size="icon" onClick={onClose}>
-          <X className="h-5 w-5" />
-        </Button>
-      </div>
 
       {/* Pages Section */}
       {canvas && pageInfo && (
-        <div id="pages" className="overflow-y-auto max-h-[440px]">
+        <div id="pages" className={TOUCH_ENV ? 'overflow-y-auto max-h-[20vh] shrink-0' : 'overflow-y-auto max-h-[440px]'}>
           <div className="section-header flex items-center justify-between px-4 py-2">
             <h3 className="text-sm font-semibold text-editor-text">페이지</h3>
             <Button variant="ghost" size="icon" onClick={handleAddPage}>
@@ -604,7 +759,11 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="delete-btn absolute top-1 right-1 opacity-0 hover:opacity-100 h-8 w-8"
+                      className={cn(
+                        'delete-btn absolute top-1 right-1 h-8 w-8',
+                        // L6: 터치는 hover 불가 — 상시 노출(반투명 바탕으로 썸네일 위 가독 확보)
+                        TOUCH_ENV ? 'opacity-100 bg-white/70' : 'opacity-0 hover:opacity-100'
+                      )}
                       onClick={(e) => handleDeletePage(e, c.id)}
                     >
                       <Trash className="h-4 w-4" />
@@ -633,7 +792,15 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
 
       {/* Objects Section */}
       {canvas && (
-        <div id="objects" className="flex-1 overflow-y-auto pb-4">
+        <div
+          id="objects"
+          className={
+            // L6: 터치 드래그 모드 중 시트 스크롤 잠금(preventDefault 와 이중 방어)
+            TOUCH_ENV
+              ? cn('flex-1 pb-4', dragSourceId ? 'overflow-hidden' : 'overflow-y-auto')
+              : 'flex-1 overflow-y-auto pb-4'
+          }
+        >
           <div className="section-header flex items-center justify-between px-4 py-2">
             <h3 className="text-sm font-semibold text-editor-text">요소</h3>
             {/* L5-①: 전체|겹침 토글 — 겹침은 선택 객체와 AABB 교차 행만(Canva Overlapping) */}
@@ -696,12 +863,14 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
                 return (
                   <div
                     key={obj.id}
+                    ref={TOUCH_ENV ? getRowRef(obj.id) : undefined}
                     draggable={dragEnabled && editingObject?.id !== obj.id}
                     onDragStart={dragEnabled ? handleObjDragStart(obj.id) : undefined}
                     onDragOver={dragEnabled ? handleObjDragOver(obj.id) : undefined}
                     onDragLeave={dragEnabled ? handleObjDragLeave(obj.id) : undefined}
                     onDrop={dragEnabled ? handleObjDrop(obj.id) : undefined}
                     onDragEnd={dragEnabled ? handleObjDragEnd : undefined}
+                    onTouchStart={TOUCH_ENV ? handleRowTouchStart(obj.id) : undefined}
                     className={cn(
                       'object-item w-full flex flex-row items-center gap-1 p-1 justify-between',
                       'rounded-lg mb-2 cursor-pointer border border-transparent',
@@ -712,7 +881,14 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
                       dragOver?.id === obj.id && dragOver.above && 'border-t-2 border-t-editor-accent',
                       dragOver?.id === obj.id && !dragOver.above && 'border-b-2 border-b-editor-accent'
                     )}
-                    onClick={(e) => selectObject(obj.id, e)}
+                    onClick={(e) => {
+                      // L6: 롱프레스 드래그 직후의 합성 click 은 선택으로 처리하지 않는다
+                      if (suppressRowClickRef.current) {
+                        suppressRowClickRef.current = false
+                        return
+                      }
+                      selectObject(obj.id, e)
+                    }}
                     onDoubleClick={() => startEditing(obj)}
                   >
                     <div className="left flex flex-row gap-2 flex-1 items-center overflow-hidden">
@@ -817,17 +993,24 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
                         </Button>
                       </div>
                     )}
-                    <div className="right w-16 h-[30px] relative shrink-0">
+                    <div className={TOUCH_ENV ? 'right shrink-0' : 'right w-16 h-[30px] relative shrink-0'}>
                       {obj.editable && (
                         /* A1-1: 4버튼(복제·삭제·잠금·표시)이 w-16 을 넘어 왼쪽으로 확장되므로
-                           행 hover 배경과 같은 색을 깔아 이름/배지 위에 겹쳐도 읽히게 한다 */
-                        <div className="actions absolute right-0 top-0 bottom-0 m-auto flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-editor-hover rounded-lg">
+                           행 hover 배경과 같은 색을 깔아 이름/배지 위에 겹쳐도 읽히게 한다.
+                           L6: 터치는 hover 부재 — 인라인 상시 노출(≥40px 타깃, 오버레이 배경 불필요) */
+                        <div
+                          className={
+                            TOUCH_ENV
+                              ? 'actions flex items-center gap-0'
+                              : 'actions absolute right-0 top-0 bottom-0 m-auto flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-editor-hover rounded-lg'
+                          }
+                        >
                           {/* L2 A-2 감산형: 고객 보호 행은 복제 버튼 미렌더 (L1 disabled 에서 승격) */}
                           {!hideCustomerActions && (
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-7 w-7"
+                              className={actionBtnClass}
                               title="복제"
                               onClick={(e) => handleDuplicateObject(e, obj.id)}
                             >
@@ -839,7 +1022,7 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-7 w-7"
+                              className={actionBtnClass}
                               title="삭제"
                               onClick={(e) => handleDeleteObject(e, obj.id)}
                             >
@@ -853,7 +1036,7 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                className="h-7 w-7"
+                                className={actionBtnClass}
                                 title="잠금 해제"
                                 onClick={(e) => handleUnlock(e, obj.id)}
                               >
@@ -863,7 +1046,7 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                className="h-7 w-7"
+                                className={actionBtnClass}
                                 title="잠금"
                                 onClick={(e) => handleLock(e, obj.id)}
                               >
@@ -875,7 +1058,7 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-7 w-7"
+                              className={actionBtnClass}
                               title="숨기기"
                               onClick={(e) => handleInvisible(e, obj.id)}
                             >
@@ -885,7 +1068,7 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-7 w-7"
+                              className={actionBtnClass}
                               onClick={(e) => handleVisible(e, obj.id)}
                             >
                               <EyeSlash className="h-4 w-4" />
