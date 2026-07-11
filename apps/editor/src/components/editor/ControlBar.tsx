@@ -46,6 +46,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { showToast } from '@/stores/useToastStore'
 import { selectionTypeLabel } from '@/utils/layerDisplay'
+import { isAppearanceLocked } from '@/utils/objectPermissions'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -458,6 +459,11 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
     }
   }
 
+  // L4-④ (CTO 결정): '내용편집 잠금' = 내용+스타일 모두 잠금. 비-editMode 에서
+  // contentEditable=false 선택이면 스타일 컨트롤(속성·색·효과·외곽선·그림자)을 감산(미노출).
+  // editMode(디자이너)는 면제 — objectPermissions.isAppearanceLocked 단일 판정.
+  const appearanceLocked = isAppearanceLocked(activeSelection, editMode)
+
   const Icon = selectionType ? getIconByType(selectionType) : SquaresFour
 
   if (!showBar || !selectionType) {
@@ -751,25 +757,35 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
           {/* Size control - for all types except background */}
           {selectionType !== SelectionType.background && <ObjectSize />}
 
-          {/* Text attributes - for text only */}
-          {selectionType === SelectionType.text && <TextAttributes />}
+          {/* L4-④: 내용편집 잠금(contentEditable=false) 요소는 스타일 컨트롤 감산(§2 원칙 3)
+              — 내용+스타일 모두 잠금(CTO 결정). 사유는 안내 문구 1줄로 설명(감산형+설명 병행). */}
+          {appearanceLocked ? (
+            <div className="px-4 py-2 text-[11px] text-editor-text-muted">
+              내용 잠금 요소 — 내용과 스타일을 변경할 수 없어요.
+            </div>
+          ) : (
+            <>
+              {/* Text attributes - for text only */}
+              {selectionType === SelectionType.text && <TextAttributes />}
 
-          {/* Fill control - for text, shapes, images */}
-          {(selectionType === SelectionType.text ||
-            selectionType === SelectionType.shape ||
-            selectionType === SelectionType.image ||
-            selectionType === SelectionType.templateElement) && <ObjectFill />}
+              {/* Fill control - for text, shapes, images */}
+              {(selectionType === SelectionType.text ||
+                selectionType === SelectionType.shape ||
+                selectionType === SelectionType.image ||
+                selectionType === SelectionType.templateElement) && <ObjectFill />}
 
-          {/* Text curve effect - for text only */}
-          {selectionType === SelectionType.text && <TextEffect />}
+              {/* Text curve effect - for text only */}
+              {selectionType === SelectionType.text && <TextEffect />}
 
-          {/* Stroke control - for all types except background, multiple */}
-          {selectionType !== SelectionType.background &&
-            selectionType !== SelectionType.multiple && <ObjectStroke />}
+              {/* Stroke control - for all types except background, multiple */}
+              {selectionType !== SelectionType.background &&
+                selectionType !== SelectionType.multiple && <ObjectStroke />}
 
-          {/* Shadow control - for all types except background, multiple */}
-          {selectionType !== SelectionType.background &&
-            selectionType !== SelectionType.multiple && <ObjectShadow />}
+              {/* Shadow control - for all types except background, multiple */}
+              {selectionType !== SelectionType.background &&
+                selectionType !== SelectionType.multiple && <ObjectShadow />}
+            </>
+          )}
 
           {/* Special effects removed */}
         </div>

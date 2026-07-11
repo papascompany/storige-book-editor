@@ -33,6 +33,7 @@ const ENABLE_RULER = import.meta.env.VITE_ENABLE_RULER !== 'false'
 import { useAppStore } from '@/stores/useAppStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { innerSpecToPlaceholderSpec } from '@/utils/photobookSpread'
+import { bindPrintExcludeOverlay } from '@/utils/printExcludeOverlay'
 import { DEFAULT_FONT_FAMILY, loadFonts, getFontList, resolveStorageUrl } from '@/utils/fontManager'
 import { apiClient } from '@/api/client'
 import type { fabric } from 'fabric'
@@ -322,6 +323,9 @@ function initPlugins(
 
   // 룰러는 사용자 토글 기반 — 시작 시 자동 enable 안 함
   // 토글은 EditorView가 useUiPrefStore.showRuler 변화에 반응해 ruler.enable()/disable() 호출
+
+  // L4-①: printExclude 화면 전용 오버레이 훅 (after:render, contextTop 순수 드로잉 — 저장/PDF/썸네일 무오염)
+  bindPrintExcludeOverlay(canvas)
 
   // 앱 스토어에 등록 (initId 전달)
   appStore.init(canvas, editor, initId)
