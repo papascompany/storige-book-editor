@@ -6,6 +6,7 @@ import { editSessionsApi, type EditSessionResponse } from '@/api/edit-sessions'
 import { core } from '@storige/canvas-core'
 import { rebindFrameInteractivity } from '@/utils/frameInteractive'
 import { applyObjectPermissions } from '@/utils/objectPermissions'
+import { isAutosaveSuspended, deferUntilAutosaveResumed } from '@/utils/autosaveSuspend'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import {
   shouldOfferRestore,
@@ -49,6 +50,9 @@ export function useEmbedAutoSave(config: AutoSaveConfig) {
   // Refs
   const saveTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const isSavingRef = useRef(false)
+  // L4-②: suspend 해제 후 지연 재시도가 stale closure 를 잡지 않도록 최신 함수 참조 유지
+  const saveToServerRef = useRef<(() => Promise<boolean>) | null>(null)
+  const saveToLocalRef = useRef<(() => void) | null>(null)
 
   // App Store
   const canvas = useAppStore((state) => state.canvas)
@@ -93,6 +97,12 @@ export function useEmbedAutoSave(config: AutoSaveConfig) {
     // L3 B-3 (적대 리뷰 major): 고객 시점 미리보기 중에는 저장 억제 — 미리보기가 강제한
     // lock 속성(직렬화 등재)이 백업/세션에 영속되는 누수 방지.
     if (useSettingsStore.getState().customerPreview) return
+    // L4-②: PDF 생성 창(excludeFromExport 임시 플래깅) 동안 toJSON 하면 printExclude/moldIcon
+    // 객체가 백업에서 누락 — 스킵 대신 생성 완료 후 1회 지연 실행.
+    if (isAutosaveSuspended()) {
+      deferUntilAutosaveResumed('embedAutoSave.saveToLocal', () => saveToLocalRef.current?.())
+      return
+    }
 
     try {
       const canvasData = collectCanvasData()
@@ -201,6 +211,14 @@ export function useEmbedAutoSave(config: AutoSaveConfig) {
     if (!sessionId || isSavingRef.current) return false
     // L3 B-3 (적대 리뷰 major): 미리보기 강제 상태가 서버 세션 JSON 에 영속되는 누수 방지.
     if (useSettingsStore.getState().customerPreview) return false
+    // L4-②: PDF 생성 창 동안 toJSON 하면 excludeFromExport 임시 플래깅 객체(printExclude/
+    // moldIcon)가 세션 canvasData 에서 영구 누락 — 스킵 대신 생성 완료 후 1회 지연 실행.
+    if (isAutosaveSuspended()) {
+      deferUntilAutosaveResumed('embedAutoSave.saveToServer', () => {
+        void saveToServerRef.current?.()
+      })
+      return false
+    }
 
     isSavingRef.current = true
     setSaving()
@@ -261,6 +279,10 @@ export function useEmbedAutoSave(config: AutoSaveConfig) {
     onSessionUpdate,
     onError,
   ])
+
+  // L4-②: 지연 재시도용 최신 참조 동기화 (렌더마다 갱신 — ref 라 재렌더 유발 없음)
+  saveToServerRef.current = saveToServer
+  saveToLocalRef.current = saveToLocal
 
   /**
    * Debounced 저장 (캔버스 변경 시 호출)

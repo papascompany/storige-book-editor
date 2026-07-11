@@ -42,6 +42,7 @@ import HistoryPanel from './HistoryPanel'
 import { showToast } from '@/stores/useToastStore'
 import { useUiPrefStore, type PageNavPosition, type Theme } from '@/stores/useUiPrefStore'
 import { applyObjectPermissions, revertObjectPermissions } from '@/utils/objectPermissions'
+import { runWithAutosaveSuspended } from '@/utils/autosaveSuspend'
 
 const SIZE_PRESETS: { label: string; width: number; height: number }[] = [
   { label: '정사각', width: 100, height: 100 },
@@ -276,7 +277,8 @@ export default function EditorHeader({
       const cutline = allCanvas[0].getObjects().find((obj: { id?: string }) => obj.id === 'cutline-template')
 
       // 여러 페이지 PDF 저장 함수 호출
-      await servicePlugin.saveMultiPagePDF(
+      // L4-②: PDF 생성 창(excludeFromExport 임시 플래깅) 동안 autosave suspend — 누락 방지.
+      await runWithAutosaveSuspended(() => servicePlugin.saveMultiPagePDF(
         allCanvas,
         allEditors,
         artwork.name || 'project',
@@ -290,7 +292,7 @@ export default function EditorHeader({
         // P0-3 (2026-06-02): 인쇄 화질 정합 — embed/스프레드 경로(300 DPI)와 통일.
         // 기존 72 DPI는 px→mm 변환이 ~4배 어긋나 인쇄물 물리 크기 불일치 원인이었음.
         300
-      )
+      ))
 
       // 원래 페이지로 돌아가기
       if (originalCanvasIndex >= 0) {
