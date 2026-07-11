@@ -6,6 +6,7 @@ import { useEditorStore } from '@/stores/useEditorStore'
 import { useImageStore } from '@/stores/useImageStore'
 import { rebindFrameInteractivity } from '@/utils/frameInteractive'
 import { applyObjectPermissions } from '@/utils/objectPermissions'
+import { trackRequiredEdits } from '@/utils/requiredEditGate'
 import {
   useSettingsStore,
   type EditorUseCase,
@@ -431,6 +432,8 @@ export function useEditorContents(): UseEditorContentsReturn {
                 // Part B: 고객(비 editMode) 진입 시 객체별 이동/변형 잠금 적용
                 // (관리자가 movable=false 로 지정한 객체를 lockMovement/Scaling/Rotation 으로 강제).
                 applyObjectPermissions(cvs, useSettingsStore.getState().currentSettings.editMode)
+                // L7: 필수 편집 touched 추적 부착(멱등) — 로드 완료 지점.
+                trackRequiredEdits(cvs)
 
                 cvs.requestRenderAll()
               }
@@ -744,7 +747,10 @@ export function useEditorContents(): UseEditorContentsReturn {
       // (loadCanvasData(JSON) 경로와 정합 — setupTemplateContent/loadProductBasedEditor 가 이 경로를 탐).
       {
         const editModeNow = useSettingsStore.getState().currentSettings.editMode
-        for (const c of allCanvas) applyObjectPermissions(c, editModeNow)
+        for (const c of allCanvas) {
+          applyObjectPermissions(c, editModeNow)
+          trackRequiredEdits(c) // L7: 필수 편집 touched 추적(멱등)
+        }
       }
 
       if (allCanvas.length > 0) {
@@ -1758,6 +1764,7 @@ export function useEditorContents(): UseEditorContentsReturn {
                     latestAllCanvas[newPageIndex],
                     useSettingsStore.getState().currentSettings.editMode
                   )
+                  trackRequiredEdits(latestAllCanvas[newPageIndex]) // L7(멱등)
                   clearTimeout(guardTimer)
                   settle()
                 })

@@ -6,6 +6,7 @@ import { editSessionsApi, type EditSessionResponse } from '@/api/edit-sessions'
 import { core } from '@storige/canvas-core'
 import { rebindFrameInteractivity } from '@/utils/frameInteractive'
 import { applyObjectPermissions } from '@/utils/objectPermissions'
+import { trackRequiredEdits } from '@/utils/requiredEditGate'
 import { isAutosaveSuspended, deferUntilAutosaveResumed } from '@/utils/autosaveSuspend'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import {
@@ -180,12 +181,14 @@ export function useEmbedAutoSave(config: AutoSaveConfig) {
           rebindFrameInteractivity(allEditors[i], allCanvas[i])
           // Part B: 로컬 백업 복원 시에도 객체별 이동/변형 잠금 적용.
           applyObjectPermissions(allCanvas[i], useSettingsStore.getState().currentSettings.editMode)
+          trackRequiredEdits(allCanvas[i]) // L7: 필수 편집 touched 추적(멱등)
         }
         console.log('[EmbedAutoSave] 멀티페이지 백업 복원:', saved.length, 'pages')
       } else if (canvas) {
         await core.loadFromJSON(canvas, saved)
         rebindFrameInteractivity(allEditors[Math.max(0, allCanvas.indexOf(canvas))], canvas)
         applyObjectPermissions(canvas, useSettingsStore.getState().currentSettings.editMode)
+        trackRequiredEdits(canvas) // L7(멱등)
         console.log('[EmbedAutoSave] 단일 백업 복원')
       } else {
         return false
