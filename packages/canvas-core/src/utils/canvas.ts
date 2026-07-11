@@ -161,6 +161,12 @@ export namespace core {
     'contentEditable',
     'printExclude',
     'evented',
+    // L7 (2026-07-11): 필수 편집 요소(Zakeke 'mandatory to edit' 패턴).
+    // requiredEdit===true 인 텍스트/사진틀을 고객이 안 바꾸고 완료하면 비차단 경고 모달.
+    // requiredEditTouched 는 고객 편집 발생 시 마킹(세션 영속 판정 — 재편집 시 재경고 방지).
+    // 미등재 시 저장 1회 왕복에 침묵 소실(B1 과 동일 함정).
+    'requiredEdit',
+    'requiredEditTouched',
     // spread 책등 가변 재배치용 meta(regionRef/anchor) 보존 — useTemplateSetSave와 정합
     'meta',
     // D1 외부 사진 주입 (2026-06-12): 공유방 사진 탭에서 추가된 이미지의 출처 URL.

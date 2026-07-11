@@ -43,6 +43,8 @@ import { showToast } from '@/stores/useToastStore'
 import { useUiPrefStore, type PageNavPosition, type Theme } from '@/stores/useUiPrefStore'
 import { applyObjectPermissions, revertObjectPermissions } from '@/utils/objectPermissions'
 import { runWithAutosaveSuspended } from '@/utils/autosaveSuspend'
+import { confirmRequiredEditsBeforeComplete } from '@/utils/requiredEditGate'
+import RequiredEditConfirmModal from './RequiredEditConfirmModal'
 
 const SIZE_PRESETS: { label: string; width: number; height: number }[] = [
   { label: '정사각', width: 100, height: 100 },
@@ -364,6 +366,12 @@ export default function EditorHeader({
   // 편집완료 (고객용)
   const handleFinish = useCallback(async () => {
     if (!ready || !canvas) return
+
+    // L7: 필수 편집 요소(requiredEdit) 미편집 경고 — 비차단 확인 모달.
+    // setLoading '이전'(오버레이 충돌 방지) + editor.complete emit '이전'(파트너 계약 무변경).
+    // [계속 편집] 선택 시 완료 중단 + 첫 미편집 요소 페이지 이동·선택. 관리자(editMode)는 무간섭.
+    const proceedRequired = await confirmRequiredEditsBeforeComplete()
+    if (!proceedRequired) return
 
     try {
       setFinishing(true)
@@ -1077,6 +1085,9 @@ export default function EditorHeader({
 
       {/* 단축키 도움말 모달 */}
       <KeyboardShortcutsModal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+
+      {/* L7: 필수 편집 요소 미편집 경고 모달 (편집완료 게이트 — embed·legacy 공통 마운트) */}
+      <RequiredEditConfirmModal />
 
       {/* 커맨드 팔레트 (Cmd+K) — admin "템플릿셋 수정" 모드는 confirm 거친 저장 경로 사용 */}
       <CommandPaletteModal

@@ -80,6 +80,10 @@ declare namespace fabric {
     printExclude?: boolean
     /** true = 레이어 순서 변경 잠금 (ObjectPlugin z-order/reorderObject 가드) */
     lockLayerOrder?: boolean
+    /** L7 (2026-07-11): true = 필수 편집 요소 — 고객 미편집 완료 시 비차단 경고 (텍스트·사진틀) */
+    requiredEdit?: boolean
+    /** L7: true = 고객 편집 발생 마킹 (텍스트 text:changed 시 세팅, 세션 영속 판정) */
+    requiredEditTouched?: boolean
     /** LockPlugin 고급 잠금 메타 (lockedAt 은 JSON 왕복 후 string 가능) */
     lockInfo?: {
       isLocked: boolean
