@@ -24,6 +24,7 @@ import { createRoot, Root } from 'react-dom/client'
 import { useAppStore } from './stores/useAppStore'
 import { rebindFrameInteractivity } from './utils/frameInteractive'
 import { applyObjectPermissions } from './utils/objectPermissions'
+import { runWithAutosaveSuspended } from './utils/autosaveSuspend'
 import { useAuthStore } from './stores/useAuthStore'
 import { useSettingsStore } from './stores/useSettingsStore'
 import { useSaveStore } from './stores/useSaveStore'
@@ -1501,8 +1502,10 @@ function EmbeddedEditor({
                 w: spreadCfg!.totalWidthMm, h: spreadCfg!.totalHeightMm,
                 ...(coverOutputSize ? { outW: coverOutputSize.widthMm, outH: coverOutputSize.heightMm } : {}),
               })
+              // L4-②: PDF 생성 창(excludeFromExport 임시 플래깅) 동안 autosave suspend —
+              // 발화분은 스킵이 아니라 생성 완료 후 1회 지연 실행(autosaveSuspend.ts).
               const coverBlob = await withWatchdog(
-                coverPlugin.saveMultiPagePDFAsBlob(
+                runWithAutosaveSuspended(() => coverPlugin.saveMultiPagePDFAsBlob(
                   [allCanvas[0]] as any, [allEditors[0]], `cover-${currentSessionId}`,
                   {
                     width: spreadCfg!.totalWidthMm, height: spreadCfg!.totalHeightMm, cutSize: bleed,
@@ -1514,7 +1517,7 @@ function EmbeddedEditor({
                       : markOpt),
                   },
                   undefined, 300,
-                ),
+                )),
                 120000, 'spread-cover-gen',
               )
               await finishMark('spread:cover:gen:done', { bytes: coverBlob.size })
@@ -1539,12 +1542,12 @@ function EmbeddedEditor({
               // 2026-06-10) + 페이지 진행 메시지(사용자 인지 + 행 지점 진단).
               const contentWatchdogMs = Math.max(180000, innerCanvases.length * 15000)
               const contentBlob = await withWatchdog(
-                coverPlugin.saveMultiPagePDFAsBlob(
+                runWithAutosaveSuspended(() => coverPlugin.saveMultiPagePDFAsBlob(
                   innerCanvases as any, innerEditors, `content-${currentSessionId}`,
                   { width: innerW, height: innerH, cutSize: bleed, ...markOpt },
                   undefined, 300,
                   (page, total) => setLoadingMessage(`내지 PDF 생성 중 (${page}/${total})...`),
-                ),
+                )),
                 contentWatchdogMs, 'spread-content-gen',
               )
               await finishMark('spread:content:gen:done', { bytes: contentBlob.size })
@@ -1587,11 +1590,11 @@ function EmbeddedEditor({
           if (servicePlugin) {
             await finishMark('single:gen:start', { mode: effectiveMode })
             const pdfBlob = await withWatchdog(
-              servicePlugin.saveMultiPagePDFAsBlob(
+              runWithAutosaveSuspended(() => servicePlugin.saveMultiPagePDFAsBlob(
                 [canvas], [editor], `session-${currentSessionId}`,
                 { width: options?.size?.width || 210, height: options?.size?.height || 297, cutSize: bleed, ...markOpt },
                 undefined, 300,
-              ),
+              )),
               120000, 'single-gen',
             )
             await finishMark('single:gen:done', { bytes: pdfBlob?.size })

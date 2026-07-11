@@ -7,6 +7,7 @@ import { ServicePlugin, core } from '@storige/canvas-core'
 import { designsApi, editSessionsApi, filesApi, storageApi } from '@/api'
 import { buildSpreadSnapshots } from '@/utils/buildSpreadSnapshots'
 import { computeInnerContentSizeMm, computeCoverOutputSizeMm } from '@/utils/photobookSpread'
+import { runWithAutosaveSuspended } from '@/utils/autosaveSuspend'
 import type { SpreadSynthesisJobData } from '@storige/types'
 
 // Fabric.js 타입 (런타임에 로드됨)
@@ -651,7 +652,8 @@ export function useWorkSave(): UseWorkSaveReturn {
       // — canvas-core 무변경. caseBind 미설정이면 null → 기존 호출 byte-parity.
       // (wrap 자체가 재단 여유 역할 — crop mark 게이트(markOpt)는 printSize 와 함께 쓰지 않는다.)
       const coverOutputSize = computeCoverOutputSizeMm(spreadCfg)
-      const coverPdfBlob = await spreadPlugin.saveMultiPagePDFAsBlob(
+      // L4-②: PDF 생성 창(excludeFromExport 임시 플래깅) 동안 autosave suspend — 누락 방지.
+      const coverPdfBlob = await runWithAutosaveSuspended(() => spreadPlugin.saveMultiPagePDFAsBlob(
         [spreadCanvas] as any,
         [spreadEditor],
         `spread_cover_${Date.now()}`,
@@ -663,7 +665,7 @@ export function useWorkSave(): UseWorkSaveReturn {
         },
         undefined,
         300,
-      )
+      ))
       const coverFile = new File(
         [coverPdfBlob],
         `spread_cover_${Date.now()}.pdf`,
@@ -701,14 +703,14 @@ export function useWorkSave(): UseWorkSaveReturn {
         throw new Error('내지의 ServicePlugin을 찾을 수 없습니다.')
       }
 
-      const contentPdfBlob = await firstInnerPlugin.saveMultiPagePDFAsBlob(
+      const contentPdfBlob = await runWithAutosaveSuspended(() => firstInnerPlugin.saveMultiPagePDFAsBlob(
         innerCanvases as any,
         innerEditors,
         `spread_content_${Date.now()}`,
         { width: innerWidthMm, height: innerHeightMm, cutSize, ...markOpt },
         undefined,
         300,
-      )
+      ))
 
       const contentFile = new File(
         [contentPdfBlob],

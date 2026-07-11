@@ -6,6 +6,7 @@ import { useAppStore } from '@/stores/useAppStore'
 import { useAutoSaveSnapshotsStore } from '@/stores/useAutoSaveSnapshotsStore'
 import { useAutoSaveThumbnail } from '@/hooks/useAutoSaveThumbnail'
 import { sessionsApi } from '@/api/sessions'
+import { isAutosaveSuspended, deferUntilAutosaveResumed } from '@/utils/autosaveSuspend'
 import { ServicePlugin } from '@storige/canvas-core'
 import type { EditPage, CanvasData } from '@storige/types'
 
@@ -145,6 +146,14 @@ export function useAutoSave() {
    */
   const saveToServer = useCallback(async (): Promise<boolean> => {
     if (!sessionId || isSavingRef.current) return false
+    // L4-②: PDF 생성 창(excludeFromExport 임시 플래깅) 동안 직렬화하면 printExclude/moldIcon
+    // 객체가 저장에서 누락 — 스킵 대신 생성 완료 후 1회 지연 실행(ref 로 최신 클로저).
+    if (isAutosaveSuspended()) {
+      deferUntilAutosaveResumed('autoSave.saveToServer', () => {
+        void saveToServerRef.current()
+      })
+      return false
+    }
 
     isSavingRef.current = true
     setSaving()
