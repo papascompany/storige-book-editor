@@ -15,6 +15,7 @@ import Editor, {
 } from '@storige/canvas-core'
 import type { AppMenu } from '@/types/menu'
 import { recalculateSpineWidth } from '@/utils/spineCalculator'
+import { bindPrintExcludeOverlay } from '@/utils/printExcludeOverlay'
 import { useEditorStore } from '@/stores/useEditorStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { TemplateType } from '@storige/types'
@@ -630,6 +631,10 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
       // P1-3: 내지 추가 경로의 캔버스에도 포인터 매핑 점프 가드 등록
       // (패널 열림/레이아웃 시프트 × 드래그 변환 레이스 → 객체 텔레포트 방지)
       newEditor.use(new PointerShiftGuardPlugin(newCanvas, newEditor))
+
+      // L4-①: addPage 경로(스프레드 내지)에도 printExclude 화면 전용 오버레이 훅 바인딩
+      // (createCanvas 경로와 동일 — after:render contextTop 순수 드로잉, 저장/PDF/썸네일 무오염)
+      bindPrintExcludeOverlay(newCanvas)
 
       // 스토어에 등록 (initializationId 전달하여 등록 허용)
       init(newCanvas, newEditor, initializationId || undefined)
