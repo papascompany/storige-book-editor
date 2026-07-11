@@ -20,6 +20,7 @@ import {
   VALIDATION_CONFIG,
   DEFAULT_BLEED_MM,
   LEGACY_SIZE_TOLERANCE_MM,
+  WIRED_FIX_METHODS,
 } from '../config/validation.config';
 import {
   detectCmykUsage,
@@ -661,6 +662,21 @@ export class PdfValidatorService {
   }
 
   /**
+   * C+ 게이팅: autoFixable 부여 단일 지점 (validate OFF/ON 경로 공용 헬퍼들이 호출).
+   * 킬스위치 WIRED_FIXABLE_GATING OFF(기본)면 레거시(항상 true — byte-identical),
+   * ON 이면 실행기가 배선된 fixMethod(WIRED_FIX_METHODS)에만 true.
+   * ⚠️ ON 전환 선결 게이트(FIXABLE→FAILED flip 소비처 2건 + 파트너 고지)는
+   *    validation.config.ts 의 WIRED_FIXABLE_GATING 주석 참조.
+   */
+  private wiredAutoFixable(
+    fixMethod: 'addBlankPages' | 'extendBleed' | 'adjustSpine' | 'resizeWithPadding',
+  ): boolean {
+    return (
+      !VALIDATION_CONFIG.WIRED_FIXABLE_GATING || WIRED_FIX_METHODS.has(fixMethod)
+    );
+  }
+
+  /**
    * 페이지 수 검증
    */
   private validatePageCount(
@@ -722,7 +738,7 @@ export class PdfValidatorService {
               actual: actualPages,
               pageMultiple,
             },
-            autoFixable: true,
+            autoFixable: this.wiredAutoFixable('addBlankPages'),
             fixMethod: 'addBlankPages',
           });
         }
@@ -779,7 +795,7 @@ export class PdfValidatorService {
               expected: Math.ceil(actualPages / 4) * 4,
               actual: actualPages,
             },
-            autoFixable: true,
+            autoFixable: this.wiredAutoFixable('addBlankPages'),
             fixMethod: 'addBlankPages',
           });
         }
@@ -794,7 +810,7 @@ export class PdfValidatorService {
                 expected: Math.ceil(actualPages / 4) * 4,
                 actual: actualPages,
               },
-              autoFixable: true,
+              autoFixable: this.wiredAutoFixable('addBlankPages'),
               fixMethod: 'addBlankPages',
             });
           }
@@ -821,7 +837,8 @@ export class PdfValidatorService {
             expected: expectedPages,
             actual: actualPages,
           },
-          autoFixable: actualPages < expectedPages,
+          autoFixable:
+            actualPages < expectedPages && this.wiredAutoFixable('addBlankPages'),
           fixMethod: actualPages < expectedPages ? 'addBlankPages' : undefined,
         });
       }
@@ -886,7 +903,9 @@ export class PdfValidatorService {
           },
           actual: { width: Math.round(widthMm * 10) / 10, height: Math.round(heightMm * 10) / 10 },
         },
-        autoFixable: true,
+        // C+ 게이팅(플래그 ON 시): resizeWithPadding 실행기 미배선 → autoFixable=false.
+        // fixMethod 는 의도 메타데이터로 보존(실행기 배선 시 WIRED_FIX_METHODS 에 추가만).
+        autoFixable: this.wiredAutoFixable('resizeWithPadding'),
         fixMethod: 'resizeWithPadding',
       });
     } else if (matchesWithBleed) {
@@ -925,7 +944,9 @@ export class PdfValidatorService {
           expected: expectedBleed,
           actual: 0,
         },
-        autoFixable: true,
+        // C+ 게이팅(플래그 ON 시): extendBleed 실행기 미배선 → autoFixable=false (경고라 상태 무영향,
+        // 모달의 '자동 보정 가능' 오표기만 제거). fixMethod 는 의도 보존.
+        autoFixable: this.wiredAutoFixable('extendBleed'),
         fixMethod: 'extendBleed',
       });
     }
@@ -1184,7 +1205,8 @@ export class PdfValidatorService {
             totalWidth: Math.round(widthMm),
           },
         },
-        autoFixable: true,
+        // C+ 게이팅(플래그 ON 시): adjustSpine 실행기 미배선(자동화 비대상 확정) → autoFixable=false.
+        autoFixable: this.wiredAutoFixable('adjustSpine'),
         fixMethod: 'adjustSpine',
       });
     }
@@ -1367,7 +1389,7 @@ export class PdfValidatorService {
             required: 'multiple of 4',
             suggestion: Math.ceil(pageCount / 4) * 4,
           },
-          autoFixable: true,
+          autoFixable: this.wiredAutoFixable('addBlankPages'),
           fixMethod: 'addBlankPages',
         });
       }

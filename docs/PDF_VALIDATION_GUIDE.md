@@ -37,9 +37,9 @@
 | 3 | 페이지수 초과 | 🔴에러 | `PAGE_COUNT_EXCEEDED` | > **1000p**(`DEFAULT_MAX_PAGES`) | 전체 | ✕ |
 | 4 | 제본 규격(페이지수) | 🔴에러 | `PAGE_COUNT_INVALID` | 무선(perfect)·내지 4배수 아님 | 내지 | addBlankPages |
 | 5 | 주문 페이지수 일치 | 🟡경고 | `PAGE_COUNT_MISMATCH` | 실제 ≠ 주문 `pages` | 전체 | addBlankPages |
-| 6 | 판형(사이즈) | 🔴에러 | `SIZE_MISMATCH` | 주문 `size`와 ±**1mm** 초과(재단 포함/불포함 모두 비교) | 전체 | resizeWithPadding |
-| 7 | 재단 여백(bleed) | 🟡경고 | `BLEED_MISSING` | 재단 여백 없음 | 전체 | extendBleed |
-| 8 | 책등(spine) | 🔴에러 | `SPINE_SIZE_MISMATCH` | 표지 총너비 ≠ `size.w×2 + spine + bleed×2` ±**2mm** (spine=`paperThickness×pages/2` **재계산**) | **표지** + `paperThickness` 있을 때만 | adjustSpine |
+| 6 | 판형(사이즈) | 🔴에러 | `SIZE_MISMATCH` | 주문 `size`와 ±**1mm** 초과(재단 포함/불포함 모두 비교) | 전체 | fixMethod=resizeWithPadding — **실행기 미제공**. `WORKER_WIRED_FIXABLE_GATING=true` 시 autoFixable=false(기본 OFF=레거시 true) |
+| 7 | 재단 여백(bleed) | 🟡경고 | `BLEED_MISSING` | 재단 여백 없음 | 전체 | fixMethod=extendBleed — **실행기 미제공**. 게이팅 ON 시 autoFixable=false(기본 OFF=레거시 true) |
+| 8 | 책등(spine) | 🔴에러 | `SPINE_SIZE_MISMATCH` | 표지 총너비 ≠ `size.w×2 + spine + bleed×2` ±**2mm** (spine=`paperThickness×pages/2` **재계산**) | **표지** + `paperThickness` 있을 때만 | fixMethod=adjustSpine — **실행기 미제공**. 게이팅 ON 시 autoFixable=false(기본 OFF=레거시 true) |
 | 9 | 가로형 페이지 | 🟡경고 | `LANDSCAPE_PAGE` | 가로 방향 페이지 감지 | 전체 | ✕ |
 | 10 | 사철 제본 규격 | 🔴에러 | `SADDLE_STITCH_INVALID` | 사철(saddle)·4배수 아님 | 내지(saddle) | addBlankPages |
 | 10b | 사철 중앙부 객체 | 🟡경고 | `CENTER_OBJECT_CHECK` | 중앙 걸침 객체 확인 필요 | 내지(saddle) | ✕ |
@@ -202,11 +202,23 @@ expectedTotalWidth = size.width×2 + (spineWidthMm ?? paperThickness×pages/2)
 
 ### 자동 수정 가능 에러
 
-| 코드 | 수정 방법 | 설명 |
-|------|----------|------|
-| `PAGE_COUNT_INVALID` | `addBlankPages` | 빈 페이지 추가로 4의 배수 맞춤 |
-| `SIZE_MISMATCH` | `resizeWithPadding` | 패딩 추가로 크기 조정 |
-| `SPINE_SIZE_MISMATCH` | `adjustSpine` | 책등 크기 자동 조정 |
+> **C+ 게이팅 (2026-07-11, 킬스위치 `WORKER_WIRED_FIXABLE_GATING` 기본 OFF)**:
+> ON 이면 `autoFixable=true` 는 실행기가 실제 배선된 fixMethod(`WIRED_FIX_METHODS`,
+> 현재 `addBlankPages` 뿐)에만 부여된다. 실행기 없는 fixMethod 는 `autoFixable=false` 로
+> 발행되며(fixMethod 필드는 의도 메타데이터로 유지), 미배선 에러가 **하나라도 포함된** 잡은
+> `FIXABLE` 이 아니라 `FAILED` 로 판정된다(단독뿐 아니라 배선 에러와 혼재해도 FAILED —
+> `errors.every(autoFixable)` 파생). 기본 OFF 상태는 레거시와 byte-identical.
+> ⚠️ ON 전환 선결 게이트: ① editor ContentPdfAttachModal(A4 하드코드+FIXABLE=첨부허용 소비)
+> ② 세션 검증 경로(FIXABLE→VALIDATED 가 FAILED→session.failed 로 flip) ③ bookmoa 사전 고지
+> — `.cursor/plans/NOTICE_bookmoa_autofixable_gating_2026-07-11.md` 참조.
+
+| 코드 | 수정 방법 | autoFixable (게이팅 ON 기준) | 설명 |
+|------|----------|------|------|
+| `PAGE_COUNT_INVALID` | `addBlankPages` | ✅ true | 빈 페이지 추가로 배수 맞춤 — `POST /worker-jobs/fix-pagecount(/external)` 로 실행 (LIVE) |
+| `SADDLE_STITCH_INVALID` | `addBlankPages` | ✅ true | 동일 실행기 (사철 4배수) |
+| `SIZE_MISMATCH` | `resizeWithPadding` | ❌ false (OFF 시 true) | **실행기 미제공** — 패딩 리사이즈는 블리드 백지/크롭 손실 리스크로 미리보기·동의 UX 와 함께 별도 구현 예정 |
+| `SPINE_SIZE_MISMATCH` | `adjustSpine` | ❌ false (OFF 시 true) | **실행기 미제공** — 표지 아트워크 재배치는 자동화 비대상(수동 재작업 영역) |
+| (경고) `BLEED_MISSING` | `extendBleed` | ❌ false (OFF 시 true) | **실행기 미제공** — 경고(비차단)이므로 상태 영향 없음, '자동 수정 가능' 표기만 제거됨 |
 
 ---
 
