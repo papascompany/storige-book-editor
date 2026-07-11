@@ -58,6 +58,8 @@ describe('EditSessionsService', () => {
 
   const mockTemplateSetsService = {
     findOneWithTemplates: jest.fn(),
+    // C+ G2: createValidationJobs 가 size 폴백/cropMark 주입에 findOne 사용.
+    findOne: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -331,6 +333,103 @@ describe('EditSessionsService', () => {
       expect(mockSessionRepository.manager.createQueryBuilder).not.toHaveBeenCalled();
       expect(result[0].templateSetName).toBeNull();
       expect(result[0]).not.toHaveProperty('canvasData');
+    });
+  });
+
+  // ── C+ G2 (2026-07-11): 세션 검증 잡 orderOptions.size — A4 하드코드 → templateSet 판형 폴백 ──
+  // A4 고정 디폴트는 비-A4 상품 세션의 생성 PDF 를 SIZE_MISMATCH 로 오검증했고
+  // (FIXABLE→VALIDATED 매핑이 마스킹), 워커 게이팅 ON 시 session.failed 로 flip 하는 원인.
+  describe('createValidationJobs orderOptions.size 소싱 (C+ G2)', () => {
+    beforeEach(() => {
+      // 리뷰 반영: undefined 반환 mock 은 서비스 내부 job.id 로깅에서 TypeError 를
+      // 던져(이너 catch 가 삼킴) 성공 경로가 예외 경로로 검증되던 위생 문제 — 실 성공으로.
+      mockWorkerJobsService.createValidationJob.mockResolvedValue({ id: 'job-g2' } as any);
+    });
+
+    const makeSession = (overrides: Partial<EditSessionEntity> = {}): EditSessionEntity =>
+      ({
+        id: 'session-g2',
+        contentFileId: 'file-content-1',
+        coverFileId: null,
+        templateSetId: null,
+        metadata: null,
+        ...overrides,
+      }) as EditSessionEntity;
+
+    const callPrivate = (session: EditSessionEntity): Promise<void> =>
+      (service as unknown as { createValidationJobs(s: EditSessionEntity): Promise<void> })
+        .createValidationJobs(session);
+
+    const lastOrderOptions = () =>
+      mockWorkerJobsService.createValidationJob.mock.calls.at(-1)?.[0]?.orderOptions;
+
+    it('metadata.size 있으면 그대로 사용 (templateSet 무관)', async () => {
+      mockTemplateSetsService.findOne = jest.fn();
+      await callPrivate(
+        makeSession({ metadata: { size: { width: 148, height: 210 } } as any, templateSetId: 'ts-1' }),
+      );
+      expect(lastOrderOptions().size).toEqual({ width: 148, height: 210 });
+    });
+
+    it('metadata.size 부재 + templateSet 있음 → templateSet 판형으로 폴백 (A4 아님)', async () => {
+      mockTemplateSetsService.findOne = jest
+        .fn()
+        .mockResolvedValue({ width: 250, height: 250, cropMarkEnabled: false });
+      await callPrivate(makeSession({ templateSetId: 'ts-250' }));
+      expect(mockTemplateSetsService.findOne).toHaveBeenCalledWith('ts-250');
+      expect(lastOrderOptions().size).toEqual({ width: 250, height: 250 });
+    });
+
+    it('metadata.size 부재 + templateSetId 없음 → 최후 A4 폴백 (레거시 동일)', async () => {
+      await callPrivate(makeSession({ templateSetId: null }));
+      expect(lastOrderOptions().size).toEqual({ width: 210, height: 297 });
+    });
+
+    it('templateSet 조회 실패 → A4 폴백 + 잡 생성은 계속 (완료 비차단)', async () => {
+      mockTemplateSetsService.findOne = jest.fn().mockRejectedValue(new Error('not found'));
+      await callPrivate(makeSession({ templateSetId: 'ts-missing' }));
+      expect(mockWorkerJobsService.createValidationJob).toHaveBeenCalled();
+      expect(lastOrderOptions().size).toEqual({ width: 210, height: 297 });
+    });
+
+    it('cropMarkEnabled=true 주입(2026-06-10 게이트)은 폴백 재구조화 후에도 동일 동작', async () => {
+      mockTemplateSetsService.findOne = jest.fn().mockResolvedValue({
+        width: 200,
+        height: 280,
+        cropMarkEnabled: true,
+        bleedMm: 3,
+        sizeToleranceMm: 0.2,
+      });
+      await callPrivate(makeSession({ templateSetId: 'ts-crop' }));
+      const oo = lastOrderOptions();
+      expect(oo.size).toEqual({ width: 200, height: 280 });
+      expect(oo.cropMarkEnabled).toBe(true);
+      expect(oo.trimSize).toEqual({ width: 200, height: 280 });
+      expect(oo.workSize).toEqual({ width: 206, height: 286 });
+      expect(oo.sizeToleranceMm).toBe(0.2);
+    });
+
+    it('교차: metadata.size 있음 + cropMarkEnabled=true — size 는 metadata 우선, trim/work 주입은 templateSet 독립 수행', async () => {
+      // 호이스트 재구조화가 지키려 한 우선순위 잠금: ①size 소싱(metadata > templateSet > A4)과
+      // ②cropMark 주입(templateSet 게이트)은 서로 독립이다.
+      mockTemplateSetsService.findOne = jest.fn().mockResolvedValue({
+        width: 200,
+        height: 280,
+        cropMarkEnabled: true,
+        bleedMm: 3,
+        sizeToleranceMm: 0.2,
+      });
+      await callPrivate(
+        makeSession({
+          templateSetId: 'ts-crop',
+          metadata: { size: { width: 148, height: 210 } } as any,
+        }),
+      );
+      const oo = lastOrderOptions();
+      expect(oo.size).toEqual({ width: 148, height: 210 }); // metadata 우선 유지
+      expect(oo.cropMarkEnabled).toBe(true);
+      expect(oo.trimSize).toEqual({ width: 200, height: 280 }); // 주입은 templateSet 기준
+      expect(oo.workSize).toEqual({ width: 206, height: 286 });
     });
   });
 });

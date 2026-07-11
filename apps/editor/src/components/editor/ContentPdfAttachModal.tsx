@@ -38,6 +38,13 @@ interface Props {
   currentContentPageCount: number
   /** 자동확장 가능 여부 (templateSet.canAddPage) */
   canAddPage: boolean
+  /**
+   * 검증 기준 재단 사이즈(mm) — templateSet 판형 (C+ G1, 2026-07-11).
+   * 종전 A4(210×297) 하드코드는 비-A4 상품의 정상 크기 PDF 를 SIZE_MISMATCH 로
+   * 오검증했고(FIXABLE=첨부허용이 마스킹), 워커 게이팅 ON 시 첨부 전면 차단으로
+   * flip 하는 원인이었다. 미제공 시에만 A4 폴백(레거시 호환).
+   */
+  trimSize?: { width: number; height: number }
   /** 닫기 */
   onClose: () => void
   /** 첨부 성공 + 페이지수 합의 끝났을 때 호출 */
@@ -54,6 +61,7 @@ export function ContentPdfAttachModal({
   sessionId,
   currentContentPageCount,
   canAddPage,
+  trimSize,
   onClose,
   onAttached,
 }: Props) {
@@ -166,8 +174,11 @@ export function ContentPdfAttachModal({
           fileId,
           fileType: 'content',
           orderOptions: {
-            // 결정 3-4: 검증 실패 시 거부. 정밀 옵션은 templateSet 에서 가져와도 됨.
-            size: { width: 210, height: 297 },
+            // 결정 3-4: 검증 실패 시 거부.
+            // C+ G1(2026-07-11): A4 하드코드 제거 — templateSet 판형(trimSize)으로 검증.
+            // bleed 3 은 유지해도 안전: validatePageSize 는 재단/재단+블리드×2 어느 쪽이든
+            // 매칭을 인정하므로 블리드 0 상품의 재단 크기 PDF 도 통과한다(경고만 비차단).
+            size: trimSize ?? { width: 210, height: 297 },
             pages: currentContentPageCount,
             binding: 'perfect',
             bleed: 3,
@@ -186,11 +197,16 @@ export function ContentPdfAttachModal({
         )
         const s = (job.data.status || '').toUpperCase()
         if (s === 'COMPLETED' || s === 'FIXABLE' || s === 'FAILED') {
+          // C+ G1: 검증 잡 result 는 프로세서가 { result } 로 감싸 저장하는 이중 중첩
+          // (job.result.result = { isValid, errors, warnings, metadata }) — 방어적으로
+          // 단일 중첩도 지원. 종전 코드는 result.pageCount/issues(존재하지 않는 필드)를
+          // 읽어 항상 undefined → 페이지수 0·이슈 미표시 버그였다.
+          const vr = job.data.result?.result ?? job.data.result
           result = {
             status: s === 'COMPLETED' ? 'completed' : s === 'FIXABLE' ? 'fixable' : 'failed',
-            pageCount: job.data.result?.pageCount,
-            issues: job.data.result?.issues ?? (job.data.errorMessage ? [{ code: 'WORKER_ERROR', message: job.data.errorMessage }] : []),
-            warnings: job.data.result?.warnings,
+            pageCount: vr?.metadata?.pageCount,
+            issues: vr?.errors?.length ? vr.errors : (job.data.errorMessage ? [{ code: 'WORKER_ERROR', message: job.data.errorMessage }] : []),
+            warnings: vr?.warnings,
           }
           break
         }
@@ -254,10 +270,16 @@ export function ContentPdfAttachModal({
       //    실패해도 첨부 자체는 성공 처리(가이드는 다음 로드/재시도에 생성 가능).
       setGuideRendering(true)
       try {
+        // ⚠️ editSessionId 는 보내지 않는다 (C+ G1 리뷰 적발, 2026-07-11).
+        //    DTO 상 '추적용'이지만 editSessionId 가 있으면 render 잡이 세션 workerStatus
+        //    상태기계(updateEditSessionWorkerStatus)에 진입해, 편집 중(미완료) 세션이
+        //    검증 없이 VALIDATED/FAILED 로 오염된다. 가이드 저장은 아래에서 모달이 직접
+        //    수행하므로 세션 연결 없이도 기능 손실이 없다.
+        //    (종전엔 pageCount:0 이 @Min(1) 400 으로 거부돼 잡 자체가 휴면이었음 —
+        //     pageCount 실값화(파싱 수정)로 처음 깨어나는 경로라 여기서 차단.)
         const renderRes = await apiClient.post<{ id: string }>('/worker-jobs/render-pages', {
           fileId,
           pageCount: pdfPages,
-          editSessionId: sessionId,
         })
         const rjid = renderRes.data.id
         let guide: any = null
@@ -383,10 +405,16 @@ export function ContentPdfAttachModal({
 
         {showPageMismatch && validationResult && uploadedFileId && (
           <>
+            {/* C+ G1 리뷰 반영(2026-07-11): 종전 '자동 확장' 라벨은 빈 약속 — targetPageCount
+                소비처가 없어 현재 편집 화면의 페이지수/가이드는 즉시 바뀌지 않는다(파싱
+                수정으로 이 모달이 처음 실노출되면서 드러남). 실제 효과(인쇄·표시는 첨부
+                PDF 페이지수 기준)를 그대로 말하는 카피로 정직화. */}
             <div style={{ background: '#fff8e1', padding: 12, borderRadius: 4, marginTop: 16 }}>
-              <strong>페이지 수 불일치 안내</strong>
+              <strong>페이지 수 확인</strong>
               <p style={{ fontSize: 13, marginTop: 8 }}>
-                PDF 가 <b>{validationResult.pageCount}페이지</b>, 현재 내지가 <b>{currentContentPageCount}페이지</b> 입니다. 어떻게 할까요?
+                PDF 가 <b>{validationResult.pageCount}페이지</b>, 현재 내지가 <b>{currentContentPageCount}페이지</b> 입니다.
+                그대로 첨부하면 <b>인쇄는 첨부한 PDF({validationResult.pageCount}페이지) 기준</b>이며,
+                지금 보이는 편집 화면의 페이지 수는 바뀌지 않습니다.
               </p>
             </div>
             <div style={{ marginTop: 16, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
@@ -400,7 +428,7 @@ export function ContentPdfAttachModal({
                 )}
                 style={{ background: '#1976d2', color: 'white', padding: '6px 16px', border: 0, borderRadius: 4, cursor: 'pointer' }}
               >
-                자동 확장 ({validationResult.pageCount}페이지로)
+                PDF 페이지수({validationResult.pageCount}p)로 첨부
               </button>
             </div>
           </>

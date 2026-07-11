@@ -1021,9 +1021,30 @@ export class EditSessionsService {
    */
   private async createValidationJobs(session: EditSessionEntity): Promise<void> {
     try {
+      // templateSet 은 ①size 폴백(C+ G2)과 ②cropMark 주입(2026-06-10) 둘 다에 쓰인다.
+      // 조회 실패해도 세션 완료는 계속(기존 try/catch 패턴 유지).
+      let templateSet: Awaited<ReturnType<TemplateSetsService['findOne']>> | null = null;
+      if (session.templateSetId) {
+        try {
+          templateSet = await this.templateSetsService.findOne(session.templateSetId);
+        } catch (error) {
+          this.logger.warn(
+            `[validation-jobs] templateSet ${session.templateSetId} 조회 실패(size 폴백/블리드·허용오차 주입 생략, 완료는 계속): ${error.message}`,
+          );
+        }
+      }
+
       // Get order options from metadata or use defaults
       const orderOptions: CreateValidationJobDto['orderOptions'] = {
-        size: session.metadata?.size || { width: 210, height: 297 },
+        // C+ G2(2026-07-11): metadata.size 부재 시 A4 하드코드 대신 templateSet 판형으로 폴백.
+        // A4 고정 디폴트는 비-A4 상품 세션의 생성 PDF 를 SIZE_MISMATCH 로 오검증했고
+        // (FIXABLE→VALIDATED 매핑이 마스킹), 게이팅 ON 시 session.failed 로 flip 하는 원인.
+        // templateSet 까지 없을 때만 최후 A4 폴백(레거시 동일).
+        size:
+          session.metadata?.size ||
+          (templateSet
+            ? { width: templateSet.width, height: templateSet.height }
+            : { width: 210, height: 297 }),
         pages: session.metadata?.pages || 1,
         binding: session.metadata?.binding || 'perfect',
         // ?? (|| 아님): 도련無(bleed=0) 상품의 명시적 0 을 보존한다.
@@ -1037,30 +1058,20 @@ export class EditSessionsService {
       //   P4 워커 validatePageSize 가 이 필드를 실제 사용(tolerance '?? 1' / workSize 케이스)하므로
       //   게이트 없이 주입하면 모든 templateSet 세션의 검증 허용오차가 1mm→0.2mm 로 좁아지는
       //   회귀가 발생(실제 발생 → 본 게이트로 수정). off 세션 = 필드 미주입 = 워커 현행(1mm).
-      // templateSet 조회 실패해도 세션 완료는 계속(기존 try/catch 패턴 재사용).
-      if (session.templateSetId) {
-        try {
-          const templateSet = await this.templateSetsService.findOne(session.templateSetId);
-          if (templateSet.cropMarkEnabled === true) {
-            const bleedMm = templateSet.bleedMm ?? 3;
-            const trimWidth = templateSet.width;
-            const trimHeight = templateSet.height;
-            orderOptions.bleedMm = bleedMm;
-            orderOptions.cropMarkEnabled = true;
-            orderOptions.sizeToleranceMm = templateSet.sizeToleranceMm ?? 0.2;
-            // 재단(trim) = 템플릿셋 판형. 작업(work) = 재단 + 사방 블리드*2.
-            // 워커 수신 필드명(trimSize/workSize)에 맞춤.
-            orderOptions.trimSize = { width: trimWidth, height: trimHeight };
-            orderOptions.workSize = {
-              width: trimWidth + bleedMm * 2,
-              height: trimHeight + bleedMm * 2,
-            };
-          }
-        } catch (error) {
-          this.logger.warn(
-            `[validation-jobs] templateSet ${session.templateSetId} 조회 실패(블리드/허용오차 주입 생략, 완료는 계속): ${error.message}`,
-          );
-        }
+      if (templateSet?.cropMarkEnabled === true) {
+        const bleedMm = templateSet.bleedMm ?? 3;
+        const trimWidth = templateSet.width;
+        const trimHeight = templateSet.height;
+        orderOptions.bleedMm = bleedMm;
+        orderOptions.cropMarkEnabled = true;
+        orderOptions.sizeToleranceMm = templateSet.sizeToleranceMm ?? 0.2;
+        // 재단(trim) = 템플릿셋 판형. 작업(work) = 재단 + 사방 블리드*2.
+        // 워커 수신 필드명(trimSize/workSize)에 맞춤.
+        orderOptions.trimSize = { width: trimWidth, height: trimHeight };
+        orderOptions.workSize = {
+          width: trimWidth + bleedMm * 2,
+          height: trimHeight + bleedMm * 2,
+        };
       }
 
       // Create validation job for cover file
