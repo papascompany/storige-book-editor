@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "postbuild": "node ../../scripts/check-source-exposure.mjs --dist dist",
     "build:prod": "vite build --base=/storige-editor/",
     "typecheck": "tsc -b",
     "build:embed": "vite build --config vite.embed.config.ts",
