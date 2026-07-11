@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import { applyObjectPermissions, revertObjectPermissions } from './objectPermissions'
+import {
+  applyObjectPermissions,
+  revertObjectPermissions,
+  isAppearanceLocked,
+} from './objectPermissions'
 
 /**
  * B1 (2026-07-04): contentEditable 축 강제/원복 회귀 테스트.
@@ -101,5 +105,73 @@ describe('revertObjectPermissions — 고객 시점 미리보기 원복 (L3 B-3)
     expect(text.editable).toBe(true)
     expect(text.lockMovementX).toBe(false)
     expect(text.hasControls).toBe(true)
+  })
+})
+
+/** L4-③: 그룹 자식 텍스트 contentEditable 강제/원복 (그룹 해제 후 진입 구멍 봉쇄) */
+function makeGroup(children: Flags[], over: Flags = {}) {
+  return makeObj({ type: 'group', getObjects: () => children, ...over })
+}
+
+describe('applyObjectPermissions — 그룹 자식 재귀 (L4-③)', () => {
+  it('customer: 그룹 내부 contentEditable=false 텍스트도 editable=false 강제', () => {
+    const child = makeObj({ contentEditable: false })
+    const group = makeGroup([child])
+    applyObjectPermissions(makeCanvas([group]), false)
+    expect(child.editable).toBe(false)
+  })
+
+  it('customer: 중첩 그룹(그룹 속 그룹)의 텍스트까지 강제', () => {
+    const deep = makeObj({ contentEditable: false })
+    const inner = makeGroup([deep])
+    const outer = makeGroup([inner])
+    applyObjectPermissions(makeCanvas([outer]), false)
+    expect(deep.editable).toBe(false)
+  })
+
+  it('customer: 마커 없는 그룹 자식은 무개입 (default-permissive)', () => {
+    const child = makeObj({})
+    const group = makeGroup([child])
+    applyObjectPermissions(makeCanvas([group]), false)
+    expect(child.editable).toBe(true)
+  })
+
+  it('admin(editMode): 그룹 자식의 강제분(editable=false)도 재귀 원복 — 저장 왕복 대칭', () => {
+    const child = makeObj({ contentEditable: false, editable: false })
+    const group = makeGroup([child])
+    applyObjectPermissions(makeCanvas([group]), true)
+    expect(child.editable).toBe(true)
+  })
+
+  it('그룹 자체의 movable 강제는 그룹(최상위) 단위로만 — 자식 lock 미전파(그룹 단위 조작 유지)', () => {
+    const child = makeObj({ type: 'rect' })
+    const group = makeGroup([child], { movable: false, hasControls: true })
+    applyObjectPermissions(makeCanvas([group]), false)
+    expect(group.lockMovementX).toBe(true)
+    expect(child.lockMovementX).toBeUndefined()
+  })
+})
+
+/** L4-④ (CTO 결정): '내용편집 잠금' = 내용+스타일 모두 잠금 — 스타일 컨트롤 게이트 판정 */
+describe('isAppearanceLocked (L4-④)', () => {
+  it('비-editMode + contentEditable=false → 스타일 잠금', () => {
+    expect(isAppearanceLocked([makeObj({ contentEditable: false })], false)).toBe(true)
+  })
+
+  it('editMode(디자이너)는 면제', () => {
+    expect(isAppearanceLocked([makeObj({ contentEditable: false })], true)).toBe(false)
+  })
+
+  it('contentEditable 미지정은 잠금 아님 (default-permissive)', () => {
+    expect(isAppearanceLocked([makeObj({})], false)).toBe(false)
+  })
+
+  it('빈 선택/null 은 잠금 아님', () => {
+    expect(isAppearanceLocked([], false)).toBe(false)
+    expect(isAppearanceLocked(null, false)).toBe(false)
+  })
+
+  it('다중선택: 하나라도 잠겨 있으면 잠금 취급', () => {
+    expect(isAppearanceLocked([makeObj({}), makeObj({ contentEditable: false })], false)).toBe(true)
   })
 })
