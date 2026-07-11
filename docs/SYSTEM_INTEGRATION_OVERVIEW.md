@@ -300,6 +300,11 @@ PROCESSING
       (수동 수정 필요)                (isValid: false)
 ```
 
+> **C+ 게이팅 (2026-07-11, `WORKER_WIRED_FIXABLE_GATING` 기본 OFF)**: ON 이면 autoFixable 은
+> 실행기가 배선된 fixMethod(현재 addBlankPages 뿐)에만 부여되어, SIZE_MISMATCH /
+> SPINE_SIZE_MISMATCH 가 포함된 잡은 FIXABLE 대신 FAILED 로 판정된다.
+> 상세·선결 게이트: `docs/PDF_VALIDATION_GUIDE.md` "자동 수정 가능 에러" 절.
+
 ### 3.2 PDF 합성 플로우 (주문 완료 시)
 
 ```

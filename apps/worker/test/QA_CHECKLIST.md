@@ -146,12 +146,17 @@
 
 ### 2.2 자동 수정 가능 항목
 
-| 항목 | autoFixable | fixMethod | 확인 |
-|------|------------|-----------|------|
-| 사철 페이지 수 불일치 | true | addBlankPages | ✅ |
-| 재단 여백 부족 | true | extendBleed | ✅ |
-| 책등 크기 불일치 | true | adjustSpine | ⏳ |
-| 페이지 크기 불일치 | true | resizeWithPadding | ⏳ |
+> **C+ 게이팅 (2026-07-11)**: 아래 autoFixable 기대값은 킬스위치
+> `WORKER_WIRED_FIXABLE_GATING` 상태에 따라 다르다 — **기본 OFF = 레거시(true)**,
+> ON 이면 실행기가 배선된 addBlankPages 만 true(나머지는 false, fixMethod 는 유지).
+> ON 상태로 QA 시 extendBleed/adjustSpine/resizeWithPadding 행의 false 는 **의도된 동작**이다.
+
+| 항목 | autoFixable (OFF 기본 / ON) | fixMethod | 실행기 | 확인 |
+|------|------------|-----------|------|------|
+| 사철 페이지 수 불일치 | true / true | addBlankPages | ✅ fix-pagecount LIVE | ✅ |
+| 재단 여백 부족 | true / **false** | extendBleed | ❌ 미제공 | ✅ |
+| 책등 크기 불일치 | true / **false** | adjustSpine | ❌ 미제공(자동화 비대상) | ⏳ |
+| 페이지 크기 불일치 | true / **false** | resizeWithPadding | ❌ 미제공 | ⏳ |
 
 ---
 

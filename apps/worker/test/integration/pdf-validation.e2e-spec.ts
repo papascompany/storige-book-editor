@@ -219,6 +219,8 @@ describe('PDF Validation E2E (WBS 5.3)', () => {
           (w) => w.code === WarningCode.BLEED_MISSING,
         );
         expect(bleedWarning).toBeDefined();
+        // 킬스위치 WORKER_WIRED_FIXABLE_GATING 기본 OFF: 레거시 autoFixable=true.
+        // (ON 동작은 pdf-validator.service.spec.ts 의 C+ 게이팅 describe 가 잠근다)
         expect(bleedWarning?.autoFixable).toBe(true);
       });
     });
