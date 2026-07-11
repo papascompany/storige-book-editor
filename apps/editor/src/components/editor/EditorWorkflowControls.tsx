@@ -168,6 +168,8 @@ export function EditorWorkflowControls({ templateSetId }: Props) {
           sessionId={guestSessionId}
           currentContentPageCount={currentContentPageCount}
           canAddPage={!!templateSet.canAddPage}
+          // C+ G1(2026-07-11): 검증 기준을 A4 하드코드 대신 templateSet 판형으로 주입.
+          trimSize={{ width: templateSet.width, height: templateSet.height }}
           onClose={() => setShowAttachModal(false)}
           onAttached={(result) => {
             setAttached({

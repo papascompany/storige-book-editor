@@ -35,11 +35,11 @@
 
 ## ⚠️ 내부 선결 게이트 (Storige — ON 전 필수, 적대검증 적발분)
 
-| # | 소비처 | 문제 | 필요한 조치 |
+| # | 소비처 | 문제 | 상태 |
 |---|---|---|---|
-| G1 | `apps/editor` ContentPdfAttachModal | 검증 orderOptions.size 가 **A4(210×297) 하드코드** + FIXABLE=첨부허용 소비. ON 시 비-A4 상품의 정상 크기 PDF 가 SIZE_MISMATCH→FAILED→**첨부 전면 차단**(해소 불가 막다른 길) | 실제 templateSet 사이즈 주입(하드코드 제거) + FAILED 시 재업로드 안내 UX. 그 전까지 ON 금지 |
-| G2 | `apps/api` 세션 검증 경로 (`worker-jobs.service.ts` updateJobStatus) | FIXABLE→`VALIDATED`(session.validated 웹훅=주문 진행) 매핑이 ON 시 FAILED→`session.failed`+workerError 로 flip. 편집기 **생성 PDF** 세션이 metadata.size 부재(A4 디폴트)·spine 회귀 시 사용자가 해소 불가능한 실패로 전환 | 세션 검증 orderOptions 의 A4 디폴트 해소(실 사이즈 보장) 또는 세션 경로 한정 FIXABLE 동등 처리 유지 결정. 그 전까지 ON 금지 |
-| G3 | bookmoa 고지 | 위 "파트너 관측 변화" 회신 수령 | 회신 후 ON |
+| G1 | `apps/editor` ContentPdfAttachModal | 검증 orderOptions.size 가 **A4(210×297) 하드코드** + FIXABLE=첨부허용 소비. ON 시 비-A4 상품의 정상 크기 PDF 가 SIZE_MISMATCH→FAILED→**첨부 전면 차단** | ✅ **해소(2026-07-11)** — templateSet 판형(trimSize prop) 주입 + 폴링 result 이중중첩 파싱 수정(종전 pageCount/issues 항상 undefined 버그 동시 해소). FAILED 시 실제 에러 목록 표시(재업로드 안내) 동작 |
+| G2 | `apps/api` 세션 검증 경로 (`worker-jobs.service.ts` updateEditSessionWorkerStatus) | FIXABLE→`VALIDATED`(session.validated 웹훅=주문 진행) 매핑이 ON 시 FAILED→`session.failed`+workerError 로 flip. 생성 PDF 세션의 A4 디폴트·spine 회귀 시 해소 불가 실패 | ✅ **해소(2026-07-11) — 양쪽 다 구현(택일 아님, 역할 상이)**: **G2a** size 폴백(metadata.size 부재 시 A4 대신 templateSet 판형 — 오검증 자체 제거) + **G2b** 세션 한정 FIXABLE 동등 처리(전에러 fixMethod 보유 VALIDATE 잡의 FAILED 를 세션 전이에서 VALIDATED 동등 취급, jobType 게이트 — spine 회귀 등 잔여 케이스 보존). 세션 상태 전이·웹훅 이벤트는 게이팅 ON/OFF 무관 종전 동일(웹훅 payload 내 result.errors[].autoFixable 값만 정직화로 변화) |
+| G3 | bookmoa 고지 | 위 "파트너 관측 변화" 회신 수령 | ⏳ **잔여** — 회신 후 ON |
 
 ## 변하지 않는 것
 
@@ -51,5 +51,7 @@
 
 ## 적용 절차
 
-1. (지금) 킬스위치 OFF 로 배포 — 무변화. 2. G1·G2 수정 배포. 3. G3 bookmoa 회신.
+1. ✅ 킬스위치 OFF 로 배포 — 무변화 (2026-07-11 master 2261df0).
+2. ✅ G1·G2 수정 (2026-07-11 — editor 는 Vercel CLI 수동배포, api 는 VPS 수동배포 필요).
+3. ⏳ G3 bookmoa 회신.
 4. VPS `.env` 에 `WORKER_WIRED_FIXABLE_GATING=true` + worker 재시작. 롤백 = env 제거 후 재시작(즉시).

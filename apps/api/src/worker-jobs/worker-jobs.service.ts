@@ -1730,7 +1730,19 @@ export class WorkerJobsService {
       newWorkerStatus = WorkerStatus.PROCESSING;
     } else if (
       updateDto.status === WorkerJobStatus.COMPLETED ||
-      updateDto.status === WorkerJobStatus.FIXABLE
+      updateDto.status === WorkerJobStatus.FIXABLE ||
+      // C+ G2(2026-07-11): 세션(생성 PDF) 경로 한정 FIXABLE 동등 처리.
+      // 워커 게이팅(WORKER_WIRED_FIXABLE_GATING) ON 시 실행기 없는 fixMethod
+      // (SIZE/SPINE)의 autoFixable 이 false 가 되어 잡 status 가 FIXABLE→FAILED 로
+      // 내려오지만, 세션의 종전 의미(자동수정급 이슈=VALIDATED 로 주문 진행,
+      // session.validated 웹훅)는 보존한다 — 게이팅 ON/OFF 무관하게 세션의
+      // '상태 전이·웹훅 이벤트'는 동일(웹훅 payload 내 result 의 autoFixable 값
+      // 자체는 게이팅의 의도된 정직화로 달라짐 — 고지문 참조). 판정: 검증(VALIDATE)
+      // 잡이면서 모든 에러가 fixMethod 를 가진 잡(= 게이팅 전 FIXABLE 이었을 잡)만
+      // 동등 처리 — jobType 게이트로 '검증 경로 한정'을 구조적으로 강제(향후 다른
+      // 프로세서가 FAILED 에 errors[] 형태 result 를 싣더라도 오VALIDATED 방지).
+      (job.jobType === WorkerJobType.VALIDATE &&
+        this.isFixableEquivalentFailure(updateDto))
     ) {
       // FIXABLE: 자동 수정 가능한 오류 → VALIDATED로 처리 (수정 후 진행 가능)
       // Check if all jobs for this session are completed/fixable
@@ -1752,7 +1764,11 @@ export class WorkerJobsService {
       //    payload 일관성을 위해 유지.
       await this.editSessionRepository.update(session.id, {
         workerStatus: newWorkerStatus,
-        ...(updateDto.status === WorkerJobStatus.FAILED
+        // C+ G2 리뷰 반영: 조건을 잡 status 가 아니라 '분기 결과(newWorkerStatus)'로 판정.
+        // fixable-동등 FAILED(→VALIDATED) 잡이 updateDto.status===FAILED 기준에 걸려
+        // findOne 시점의 stale workerError 를 재기록하는 것을 차단(컬럼 한정 기록 계약 유지,
+        // 병렬 FAILED 콜백의 workerError lost-update 방지). 종전 FIXABLE 경로와 SQL 동일.
+        ...(newWorkerStatus === WorkerStatus.FAILED
           ? { workerError: session.workerError }
           : {}),
       });
@@ -1766,6 +1782,30 @@ export class WorkerJobsService {
         await this.sendWebhookCallback(session, job, newWorkerStatus);
       }
     }
+  }
+
+  /**
+   * C+ G2: '게이팅 전 FIXABLE 이었을 FAILED' 판정 — 세션 상태 전이 한정 동등 처리용.
+   *
+   * 검증 잡의 result 는 프로세서가 { result } 로 감싸 PATCH 하므로 이중 중첩
+   * (updateDto.result.result = ValidationResultDto)이며, 방어적으로 단일 중첩도 지원한다.
+   * 모든 에러가 fixMethod(자동수정 의도 메타데이터)를 갖고 에러가 1건 이상일 때만 true —
+   * FILE_CORRUPTED/예외 FAILED(fixMethod 없음)나 result 부재 시엔 false(기존 FAILED 처리).
+   * ⚠️ 세션(생성 PDF) 경로 전용 — 파트너 대면 잡 status/autoFixable 정직화에는 영향 없음.
+   * ⚠️ 호출부에서 job.jobType === VALIDATE 게이트와 반드시 함께 쓸 것(검증 잡 한정 의미).
+   */
+  private isFixableEquivalentFailure(updateDto: UpdateJobStatusDto): boolean {
+    if (updateDto.status !== WorkerJobStatus.FAILED) return false;
+    const raw = updateDto.result as
+      | { result?: { errors?: unknown } ; errors?: unknown }
+      | undefined;
+    const vr = (raw?.result ?? raw) as { errors?: unknown } | undefined;
+    const errors = vr?.errors;
+    if (!Array.isArray(errors) || errors.length === 0) return false;
+    return errors.every(
+      (e) => typeof (e as { fixMethod?: unknown })?.fixMethod === 'string' &&
+        ((e as { fixMethod?: string }).fixMethod as string).length > 0,
+    );
   }
 
   /**

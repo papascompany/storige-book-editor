@@ -667,6 +667,11 @@ export class PdfValidatorService {
    * ON 이면 실행기가 배선된 fixMethod(WIRED_FIX_METHODS)에만 true.
    * ⚠️ ON 전환 선결 게이트(FIXABLE→FAILED flip 소비처 2건 + 파트너 고지)는
    *    validation.config.ts 의 WIRED_FIXABLE_GATING 주석 참조.
+   * ⚠️ 불변식(G2b 의존): fixMethod 를 발행하는 모든 에러/경고는 autoFixable 을
+   *    "반드시 이 헬퍼로" 부여할 것. 'fixMethod + autoFixable:false 하드코드' 조합을
+   *    새로 만들면, OFF 상태에서도 FAILED+전에러 fixMethod 잡이 생성되어 API 의
+   *    세션 FIXABLE 동등 처리(isFixableEquivalentFailure)가 진짜 실패 세션을
+   *    VALIDATED 로 오전이시킨다.
    */
   private wiredAutoFixable(
     fixMethod: 'addBlankPages' | 'extendBleed' | 'adjustSpine' | 'resizeWithPadding',
