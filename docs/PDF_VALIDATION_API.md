@@ -100,20 +100,26 @@ interface ValidationResultDto {
 | `FILE_TOO_LARGE` | 파일 크기 초과 (100MB) | ❌ |
 | `PAGE_COUNT_INVALID` | 페이지 수 오류 (제본 규칙 위반) | ✅ |
 | `PAGE_COUNT_EXCEEDED` | 페이지 수 초과 | ❌ |
-| `SIZE_MISMATCH` | 페이지 사이즈 불일치 | ✅ |
-| `SPINE_SIZE_MISMATCH` | 책등 사이즈 불일치 | ✅ |
+| `SIZE_MISMATCH` | 페이지 사이즈 불일치 | ✅ → ❌* |
+| `SPINE_SIZE_MISMATCH` | 책등 사이즈 불일치 | ✅ → ❌* |
 | `SADDLE_STITCH_INVALID` | 사철 제본 규격 오류 (4의 배수 아님) | ✅ |
 | `POST_PROCESS_CMYK` | 후가공 파일에 CMYK 색상 사용 | ❌ |
 | `SPREAD_SIZE_MISMATCH` | 스프레드 사이즈 불일치 | ❌ |
 
+> \* **C+ 게이팅 (2026-07-11, `WORKER_WIRED_FIXABLE_GATING` 기본 OFF)**: ON 이면
+> 실행기가 배선된 fixMethod(`addBlankPages` 뿐)에만 `autoFixable=true` 가 부여된다.
+> `SIZE_MISMATCH`·`SPINE_SIZE_MISMATCH`·(경고)`BLEED_MISSING` 은 실행기 미제공이라
+> ON 시 `autoFixable=false`(fixMethod 필드는 유지). 상세: PDF_VALIDATION_GUIDE.md
+> "자동 수정 가능 에러" 절.
+
 ### 자동 수정 방법 (fixMethod)
 
-| 수정 방법 | 설명 |
-|----------|------|
-| `addBlankPages` | 빈 페이지 추가 |
-| `extendBleed` | 재단 여백 확장 |
-| `adjustSpine` | 책등 크기 조정 |
-| `resizeWithPadding` | 패딩으로 크기 조정 |
+| 수정 방법 | 실행기 | 설명 |
+|----------|------|------|
+| `addBlankPages` | ✅ LIVE (`POST /worker-jobs/fix-pagecount(/external)`) | 빈 페이지 추가 |
+| `extendBleed` | ❌ 미제공 | 재단 여백 확장 (계획) |
+| `adjustSpine` | ❌ 미제공 | 책등 크기 조정 (자동화 비대상) |
+| `resizeWithPadding` | ❌ 미제공 | 패딩으로 크기 조정 (계획) |
 
 ---
 

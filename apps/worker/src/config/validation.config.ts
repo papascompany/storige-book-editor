@@ -37,6 +37,18 @@ export const VALIDATION_CONFIG = {
   LIGHTWEIGHT_SYNTHESIS:
     String(process.env.WORKER_LIGHTWEIGHT_SYNTHESIS || '').toLowerCase() === 'true',
 
+  // C+ 게이팅: autoFixable 정직화 킬스위치
+  /**
+   * true 면 autoFixable 을 실행기가 배선된 fixMethod(WIRED_FIX_METHODS)에만 부여한다.
+   * **기본 OFF** — 기본 상태에서 프로덕션 행동 변화 0 (레거시 autoFixable 그대로).
+   * ⚠️ ON 전환 선결 게이트(소비처가 FIXABLE→FAILED flip 에 안전해야 함):
+   *   ① editor ContentPdfAttachModal — orderOptions.size A4 하드코드 + FIXABLE=첨부허용 소비
+   *   ② API 세션 검증 경로 — FIXABLE→VALIDATED(session.validated) 가 FAILED→session.failed 로 flip
+   *   ③ bookmoa 사전 고지 (.cursor/plans/NOTICE_bookmoa_autofixable_gating_2026-07-11.md)
+   */
+  WIRED_FIXABLE_GATING:
+    String(process.env.WORKER_WIRED_FIXABLE_GATING || '').toLowerCase() === 'true',
+
   // C-2a: crop mark(재단 기하) 검증 킬스위치
   /**
    * true 면 TrimBox 기반 재단 기하 검증(validateCropMarks)을 수행한다. **기본 OFF** —
@@ -102,3 +114,24 @@ export const DEFAULT_BLEED_MM = 3;
  *    worker 는 전달받은 값을 소비할 뿐 이 기본값으로 판정하지 않는다.
  */
 export const DEFAULT_CROP_MARK_ENABLED = false;
+
+/**
+ * C+ 게이팅(2026-07-11): 실행기가 실제 배선된 fixMethod 만 등록하는 단일 소스.
+ *
+ * WIRED_FIXABLE_GATING(위 킬스위치) ON 일 때 pdf-validator 의 autoFixable 은
+ * `WIRED_FIX_METHODS.has(fixMethod)` 로만 부여된다 — 실행 수단이 없는 항목이
+ * FIXABLE(원클릭 해결 가능처럼 보이는 잡 상태)로 노출되는 것을 차단(정직한 계약).
+ * validation.processor 의 FIXABLE 파생(`errors.every(autoFixable)`)은 무수정 —
+ * 이 게이팅만으로 자동으로 정직해진다.
+ *
+ *  - 'addBlankPages': POST /worker-jobs/fix-pagecount(/external) → CONVERT 잡
+ *    padToMultiple → pdf-converter addPages (2026-06-25 LIVE. 유일한 배선 실행기).
+ *  - 'resizeWithPadding' / 'adjustSpine' / 'extendBleed': 실행기 미구현.
+ *    구현·배선 후 이 집합에 추가하면 해당 에러/경고의 autoFixable 이 자동
+ *    복원된다(파트너 모달은 autoFixable 게이트라 소비처 무수정).
+ *
+ * ⚠️ fixMethod 필드 자체는 '의도 메타데이터'로 계속 발행한다(제거 금지) —
+ *    실행기 출시 시 계약 변경 없이 재활성하기 위함.
+ * @see .cursor/plans/NOTICE_bookmoa_autofixable_gating_2026-07-11.md (파트너 고지·선결 게이트)
+ */
+export const WIRED_FIX_METHODS: ReadonlySet<string> = new Set(['addBlankPages']);

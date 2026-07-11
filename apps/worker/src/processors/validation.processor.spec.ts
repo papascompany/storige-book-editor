@@ -176,6 +176,45 @@ describe('ValidationProcessor', () => {
       );
     });
 
+    it('C+ 게이팅 소비 잠금: {autoFixable:false, fixMethod 존재} 는 FIXABLE 이 아니라 FAILED 다', async () => {
+      // 게이팅 ON 시 validator 가 만드는 신규 조합(SIZE_MISMATCH: fixMethod 는 보존하되
+      // autoFixable=false). processor 술어가 fixMethod 존재 기반으로 회귀하면
+      // (예: `e.autoFixable || !!e.fixMethod`) 이 테스트가 깨진다 — 침묵 무력화 방지.
+      const gatedResult: ValidationResultDto = {
+        isValid: false,
+        errors: [
+          {
+            code: ErrorCode.SIZE_MISMATCH,
+            message: '페이지 크기가 맞지 않습니다.',
+            details: { expected: { withBleed: { width: 216, height: 303 } }, actual: { width: 100, height: 100 } },
+            autoFixable: false,
+            fixMethod: 'resizeWithPadding',
+          },
+        ],
+        warnings: [],
+        metadata: {
+          pageCount: 4,
+          pageSize: { width: 100, height: 100 },
+          hasBleed: false,
+          colorMode: 'RGB',
+          resolution: 300,
+        },
+      };
+
+      mockValidatorService.validate.mockResolvedValue(gatedResult);
+
+      const job = createMockJob(jobData);
+      await processor.handleValidation(job);
+
+      expect(mockedAxios.patch).toHaveBeenLastCalledWith(
+        expect.stringContaining('/worker-jobs/external/test-uuid-123/status'),
+        expect.objectContaining({
+          status: 'FAILED',
+        }),
+        expect.any(Object),
+      );
+    });
+
     it('should update status to FIXABLE when all errors are auto-fixable', async () => {
       const fixableResult: ValidationResultDto = {
         isValid: false,
