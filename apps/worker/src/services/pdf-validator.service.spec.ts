@@ -5,6 +5,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import axios from 'axios';
 import { ValidationOptions, ErrorCode, WarningCode } from '../dto/validation-result.dto';
+import { VALIDATION_CONFIG } from '../config/validation.config';
 import { assertSafeDownloadUrl } from '../utils/url-safety';
 
 jest.mock('fs/promises');
@@ -284,7 +285,9 @@ describe('PdfValidatorService', () => {
 
       const bleedWarning = result.warnings.find(w => w.code === WarningCode.BLEED_MISSING);
       expect(bleedWarning).toBeDefined();
+      // 킬스위치 기본 OFF: 레거시 autoFixable=true 유지 (게이팅 ON 동작은 아래 C+ describe 참조)
       expect(bleedWarning?.autoFixable).toBe(true);
+      expect(bleedWarning?.fixMethod).toBe('extendBleed');
     });
 
     it('should detect PDF with bleed', async () => {
@@ -308,6 +311,119 @@ describe('PdfValidatorService', () => {
       expect(result.isValid).toBe(false);
       const sizeError = result.errors.find(e => e.code === ErrorCode.SIZE_MISMATCH);
       expect(sizeError).toBeDefined();
+    });
+
+    // ── C+ 게이팅 (2026-07-11, 킬스위치 WORKER_WIRED_FIXABLE_GATING 기본 OFF) ──
+    // ON 이면 autoFixable 은 실행기가 배선된 fixMethod(WIRED_FIX_METHODS={addBlankPages})에만
+    // 부여 — 실행 수단 없는 항목이 FIXABLE(원클릭 해결처럼 보이는 상태)로 노출되는 것을 차단.
+    // OFF(기본)는 레거시 byte-identical. fixMethod 는 양쪽 모두 의도 메타로 보존.
+    describe('C+ 게이팅: WIRED_FIXABLE_GATING 킬스위치', () => {
+      const cfg = VALIDATION_CONFIG as unknown as { WIRED_FIXABLE_GATING: boolean };
+      afterEach(() => {
+        cfg.WIRED_FIXABLE_GATING = false; // 기본(OFF) 복원
+      });
+
+      it('킬스위치는 기본 OFF 다 (WORKER_WIRED_FIXABLE_GATING 미설정)', () => {
+        expect(process.env.WORKER_WIRED_FIXABLE_GATING).toBeUndefined();
+        expect(cfg.WIRED_FIXABLE_GATING).toBe(false);
+      });
+
+      it('OFF(기본): SIZE_MISMATCH 는 레거시 autoFixable=true 유지', async () => {
+        mockedFs.readFile.mockResolvedValue(Buffer.from(await createMockPdf(4, 100, 100)));
+        const result = await service.validate('./size.pdf', defaultOptions);
+        const err = result.errors.find(e => e.code === ErrorCode.SIZE_MISMATCH);
+        expect(err?.autoFixable).toBe(true);
+        expect(err?.fixMethod).toBe('resizeWithPadding');
+      });
+
+      it('ON: SIZE_MISMATCH autoFixable=false + fixMethod=resizeWithPadding 보존', async () => {
+        cfg.WIRED_FIXABLE_GATING = true;
+        mockedFs.readFile.mockResolvedValue(Buffer.from(await createMockPdf(4, 100, 100)));
+        const result = await service.validate('./size.pdf', defaultOptions);
+        const err = result.errors.find(e => e.code === ErrorCode.SIZE_MISMATCH);
+        expect(err).toBeDefined();
+        expect(err?.autoFixable).toBe(false);
+        expect(err?.fixMethod).toBe('resizeWithPadding');
+      });
+
+      it('ON: SIZE_MISMATCH 단독 에러 파일은 errors.every(autoFixable)=false (processor FAILED 파생 잠금)', async () => {
+        // 페이지수(4=배수 충족)·판형만 어긋난 파일 → 에러는 SIZE_MISMATCH 뿐이어야 하고,
+        // 게이팅 후 전부 autoFixable=false → validation.processor 가 FIXABLE 대신 FAILED 로 판정.
+        cfg.WIRED_FIXABLE_GATING = true;
+        mockedFs.readFile.mockResolvedValue(Buffer.from(await createMockPdf(4, 100, 100)));
+        const result = await service.validate('./size-only.pdf', defaultOptions);
+        expect(result.isValid).toBe(false);
+        expect(result.errors.length).toBeGreaterThan(0);
+        expect(result.errors.every(e => e.code === ErrorCode.SIZE_MISMATCH)).toBe(true);
+        expect(result.errors.every(e => e.autoFixable)).toBe(false);
+      });
+
+      it('ON: 혼재 잡(SIZE_MISMATCH + PAGE_COUNT_INVALID)도 every(autoFixable)=false — FIXABLE→FAILED 스코프 잠금', async () => {
+        // 3p(배수 위반=addBlankPages true) + 100x100(판형 위반=false 혼재) →
+        // errors.every()=false. 파트너 고지 범위가 '단독'보다 넓음을 테스트로 명문화.
+        cfg.WIRED_FIXABLE_GATING = true;
+        mockedFs.readFile.mockResolvedValue(Buffer.from(await createMockPdf(3, 100, 100)));
+        const result = await service.validate('./mixed.pdf', {
+          ...defaultOptions,
+          orderOptions: { ...defaultOptions.orderOptions, pages: 3 },
+        });
+        const codes = result.errors.map(e => e.code);
+        expect(codes).toContain(ErrorCode.SIZE_MISMATCH);
+        expect(codes).toContain(ErrorCode.PAGE_COUNT_INVALID);
+        expect(result.errors.every(e => e.autoFixable)).toBe(false);
+      });
+
+      it('ON: SPINE_SIZE_MISMATCH autoFixable=false + fixMethod=adjustSpine 보존', async () => {
+        // wing 미전달 회귀 시나리오 재사용: 511mm 표지 vs 기대 411mm → SPINE_SIZE_MISMATCH.
+        cfg.WIRED_FIXABLE_GATING = true;
+        mockedFs.readFile.mockResolvedValue(Buffer.from(await createMockPdf(4, 511, 286)));
+        const result = await service.validate('./cover.pdf', {
+          fileType: 'cover',
+          orderOptions: {
+            size: { width: 200, height: 280 }, pages: 4, binding: 'perfect', bleed: 3,
+            spineWidthMm: 5,
+          },
+        } as ValidationOptions);
+        const err = result.errors.find(e => e.code === ErrorCode.SPINE_SIZE_MISMATCH);
+        expect(err).toBeDefined();
+        expect(err?.autoFixable).toBe(false);
+        expect(err?.fixMethod).toBe('adjustSpine');
+      });
+
+      it('ON: BLEED_MISSING 경고 autoFixable=false + fixMethod=extendBleed 보존 (경고라 isValid 무영향)', async () => {
+        cfg.WIRED_FIXABLE_GATING = true;
+        mockedFs.readFile.mockResolvedValue(Buffer.from(await createMockPdf(4, 210, 297)));
+        const result = await service.validate('./bleed.pdf', defaultOptions);
+        const warn = result.warnings.find(w => w.code === WarningCode.BLEED_MISSING);
+        expect(warn).toBeDefined();
+        expect(warn?.autoFixable).toBe(false);
+        expect(warn?.fixMethod).toBe('extendBleed');
+        expect(result.isValid).toBe(true);
+      });
+
+      it('ON: 배선된 addBlankPages 는 autoFixable=true 유지 (perfect %4)', async () => {
+        cfg.WIRED_FIXABLE_GATING = true;
+        mockedFs.readFile.mockResolvedValue(Buffer.from(await createMockPdf(3, 210, 297)));
+        const result = await service.validate('./pc.pdf', {
+          ...defaultOptions,
+          orderOptions: { ...defaultOptions.orderOptions, pages: 3 },
+        });
+        const err = result.errors.find(e => e.code === ErrorCode.PAGE_COUNT_INVALID);
+        expect(err?.autoFixable).toBe(true);
+        expect(err?.fixMethod).toBe('addBlankPages');
+      });
+
+      it('ON: PAGE_COUNT_MISMATCH(부족) 경고도 배선된 addBlankPages 라 autoFixable=true 유지', async () => {
+        cfg.WIRED_FIXABLE_GATING = true;
+        mockedFs.readFile.mockResolvedValue(Buffer.from(await createMockPdf(4, 210, 297)));
+        const result = await service.validate('./pcm.pdf', {
+          ...defaultOptions,
+          orderOptions: { ...defaultOptions.orderOptions, pages: 8 },
+        });
+        const warn = result.warnings.find(w => w.code === WarningCode.PAGE_COUNT_MISMATCH);
+        expect(warn?.autoFixable).toBe(true);
+        expect(warn?.fixMethod).toBe('addBlankPages');
+      });
     });
 
     it('should validate cover PDF page count', async () => {
