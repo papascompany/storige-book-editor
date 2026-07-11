@@ -208,8 +208,11 @@ expectedTotalWidth = size.width×2 + (spineWidthMm ?? paperThickness×pages/2)
 > 발행되며(fixMethod 필드는 의도 메타데이터로 유지), 미배선 에러가 **하나라도 포함된** 잡은
 > `FIXABLE` 이 아니라 `FAILED` 로 판정된다(단독뿐 아니라 배선 에러와 혼재해도 FAILED —
 > `errors.every(autoFixable)` 파생). 기본 OFF 상태는 레거시와 byte-identical.
-> ⚠️ ON 전환 선결 게이트: ① editor ContentPdfAttachModal(A4 하드코드+FIXABLE=첨부허용 소비)
-> ② 세션 검증 경로(FIXABLE→VALIDATED 가 FAILED→session.failed 로 flip) ③ bookmoa 사전 고지
+> **세션(생성 PDF) 경로는 예외적으로 보존**: 잡 status 는 FAILED 로 정직화되어도
+> 세션 상태 전이·웹훅 이벤트(session.validated/failed)는 게이팅 ON/OFF 무관 종전과
+> 동일하다(G2b — 전에러 fixMethod 보유 VALIDATE 잡의 FIXABLE 동등 처리).
+> ⚠️ ON 전환 선결 게이트: ①editor 첨부 모달 A4 하드코드 [해소 2026-07-11, trimSize 주입]
+> ②세션 검증 경로 flip [해소 2026-07-11, G2a size 폴백+G2b 동등 처리] ③bookmoa 사전 고지 [잔여]
 > — `.cursor/plans/NOTICE_bookmoa_autofixable_gating_2026-07-11.md` 참조.
 
 | 코드 | 수정 방법 | autoFixable (게이팅 ON 기준) | 설명 |

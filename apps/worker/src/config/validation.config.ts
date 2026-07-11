@@ -42,9 +42,12 @@ export const VALIDATION_CONFIG = {
    * true 면 autoFixable 을 실행기가 배선된 fixMethod(WIRED_FIX_METHODS)에만 부여한다.
    * **기본 OFF** — 기본 상태에서 프로덕션 행동 변화 0 (레거시 autoFixable 그대로).
    * ⚠️ ON 전환 선결 게이트(소비처가 FIXABLE→FAILED flip 에 안전해야 함):
-   *   ① editor ContentPdfAttachModal — orderOptions.size A4 하드코드 + FIXABLE=첨부허용 소비
-   *   ② API 세션 검증 경로 — FIXABLE→VALIDATED(session.validated) 가 FAILED→session.failed 로 flip
-   *   ③ bookmoa 사전 고지 (.cursor/plans/NOTICE_bookmoa_autofixable_gating_2026-07-11.md)
+   *   ① [해소 2026-07-11] editor ContentPdfAttachModal — A4 하드코드 → templateSet 판형
+   *      주입(trimSize prop) + 폴링 result 이중중첩 파싱 수정
+   *   ② [해소 2026-07-11] API 세션 검증 경로 — G2a size 폴백(templateSet 판형) +
+   *      G2b 세션 한정 FIXABLE 동등 처리(isFixableEquivalentFailure, VALIDATE 잡 게이트)
+   *      → 세션 상태 전이·웹훅 이벤트는 게이팅 ON/OFF 무관 보존
+   *   ③ [잔여] bookmoa 사전 고지 회신 (.cursor/plans/NOTICE_bookmoa_autofixable_gating_2026-07-11.md)
    */
   WIRED_FIXABLE_GATING:
     String(process.env.WORKER_WIRED_FIXABLE_GATING || '').toLowerCase() === 'true',
