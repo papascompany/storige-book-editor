@@ -39,7 +39,14 @@ UI(둘 다): ⓐ ControlBar — 기존 위치고정/삭제잠금 3종 세트 패
 
 ### B1 구현 상태 (2026-07-04, PR-2)
 - ✅ 구현: extendFabricOption 신규 2종(contentEditable/printExclude — lockInfo/lockLayerOrder/movable 는 기등재였음) · fabric.d.ts 2본 동기 · ServicePlugin printExclude(**_prepareSaveOperation 이전 플래깅** — 벡터화가 커스텀 속성을 복사하지 않아 이후 세팅 시 텍스트 침묵 실패, 적대 리뷰 critical 수정) + fillImage 동반 제외 · applyObjectPermissions contentEditable 강제+editMode 역오염 원복 · useImageStore/photoPlacement 사진틀 교체·자동배치 가드(editMode 면제) · ControlBar 토글 3종+잠금레벨 Select(LockPlugin 경유, 선택 복원) · z-order 4버튼 disabled · SidePanel 속성 배지 6종 · LockPlugin admin 선택 바이패스(프로그래매틱 한정) · 해제 경로 lockInfo 는 LockPlugin.unlock 경유(이중상태 방지).
-- ⚠️ 잔여(후속): ① template-element/fillImage 는 prevented 목록이라 배지 미표시 — 고객 캔버스 printExclude 시각 표식 정책 결정 필요(CS 리스크) ② PDF 생성 창 동안 자동저장 발화 시 excludeFromExport 객체 저장 누락(pre-existing 계열, moldIcon 동일 — autosave suspend 후속) ③ 그룹 내부 텍스트는 contentEditable 강제 미적용(대칭이라 오염 없음) ④ contentEditable=false 여도 TextAttributes 스타일 변경은 허용(내용 vs 스타일 — 정의 확정) ⑤ admin 다중선택 드래그 시 잠긴 멤버 동반 이동 ⑥ designer role 부여 경로 없음(멀티테넌시 user_site_roles 연동 대기) ⑦ printExclude 텍스트 포함 골든 PDF 육안검증 1회 권장.
+- ⚠️ 잔여 처리 현황 (L4 — 2026-07-11 갱신):
+  - ✅ ① [L4 해소, CTO 결정=표시형] printExclude 캔버스 상시 시각 표식 — `after:render` 훅에서 contextTop 순수 드로잉(점선 테두리+'인쇄 제외' 라벨, 고객·디자이너 공통). fabric 객체 무추가라 저장/PDF/썸네일 무오염. `apps/editor/src/utils/printExcludeOverlay.ts` + createCanvas·addPage 양 경로 바인딩.
+  - ✅ ② [L4 해소] PDF 생성 창 autosave suspend — `apps/editor/src/utils/autosaveSuspend.ts`(runWithAutosaveSuspended, 스킵이 아닌 지연 재시도 1회). 진입점 6곳(embed 3·useWorkSave 2·EditorHeader 1) 래핑 + 자동저장 3훅(useEmbedAutoSave/useAutoSave/useCanvasLocalBackup) 가드. moldIcon 동류 임시 플래깅도 같은 창(_createMultiPagePDF 내부)이라 동일 보호.
+  - ✅ ③ [L4 해소] 그룹(중첩 포함) 내부 텍스트 contentEditable 강제/원복 재귀 적용(applyObjectPermissions forEachObjectDeep). 'editable' 은 extendFabricOption 등재라 자식 단위 직렬화 — editMode 재귀 원복이 대칭이라 저장 왕복 오염 없음(코드로 검증, 회귀 스펙 동반).
+  - ✅ ④ [L4 해소, CTO 결정] '내용편집 잠금' 정의 확정 = **내용+스타일 모두 잠금**(Canva 'Lock position and appearance' 대응 — 템플릿 무결성 목적이므로 스타일 허용은 모순). 비-editMode 에서 contentEditable=false 선택 시 ControlBar 스타일 컨트롤 5종(TextAttributes/ObjectFill/TextEffect/ObjectStroke/ObjectShadow) 감산 + 안내 1줄. 판정=objectPermissions.isAppearanceLocked (editMode 면제, ObjectSize 는 movable 축이라 유지).
+  - 📌 ⑤ [규약 확정] admin 다중선택 드래그 시 잠긴 멤버 동반 이동 = L1 규약(의도된 editMode 면제 — 디자이너는 잠금 무시하고 자유 편집). 코드 변경 없음.
+  - ⏸️ ⑥ [blocked] designer role 부여 경로 — 멀티테넌시 user_site_roles(P3b) 연동 대기.
+  - ⬜ ⑦ printExclude 텍스트 포함 골든 PDF 육안검증 1회 — 별도 검증 트랙.
 
 ## 3. Phase A1 — 객체 컨트롤 4갭 (PR-3, ~3-4일)
 1. **레이어 행 hover 삭제·복제**: 삭제=requestDeleteSelection 공통경로(S2 확인모달 승계, useAppStore.ts:1103), 복제=CopyPlugin clone(핫키만 있던 것 버튼화). deleteable=false 객체는 버튼 disabled.
