@@ -328,7 +328,7 @@ export default function OperatorList() {
         columns={columns}
         dataSource={operators}
         loading={isLoading}
-        pagination={{ pageSize: 20, showSizeChanger: true }}
+        pagination={{ defaultPageSize: 20, showSizeChanger: true }}
       />
 
       {/* 운영자 등록 */}

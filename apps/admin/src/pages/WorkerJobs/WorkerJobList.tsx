@@ -16,7 +16,7 @@ import {
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { ReloadOutlined, EyeOutlined } from '@ant-design/icons';
-import { WorkerJob, WorkerJobStatus, WorkerJobType } from '@storige/types';
+import { OutputFile, WorkerJob, WorkerJobStatus, WorkerJobType } from '@storige/types';
 import { workerJobsApi } from '../../api/worker-jobs';
 import { sitesApi } from '../../api/sites';
 import { resolveStorageUrl } from '../../lib/axios';
@@ -45,6 +45,28 @@ const jobTypeLabels: Record<WorkerJobType, string> = {
   [WorkerJobType.SYNTHESIZE]: '합성',
   [WorkerJobType.RENDER_PAGES]: '내지가이드 래스터',
 };
+
+const outputFileTypeLabels: Record<OutputFile['type'], string> = {
+  cover: '표지',
+  content: '내지',
+  pages: '페이지',
+  set: '세트',
+};
+
+/**
+ * separate 모드 합성 잡의 개별 출력 파일(cover.pdf/content.pdf) 추출.
+ * synthesis processor 가 result.outputFiles 로 기록 — merged 잡은 없으므로 빈 배열.
+ */
+const getOutputFiles = (job: WorkerJob): OutputFile[] => {
+  if (!job.result || !('outputFiles' in job.result)) return [];
+  return job.result.outputFiles ?? [];
+};
+
+/** 파일 타입 라벨 — duplex-split('set')은 세트 순번(1-base) 병기 */
+const outputFileLabel = (file: OutputFile): string =>
+  file.type === 'set' && typeof file.setIndex === 'number'
+    ? `${outputFileTypeLabels[file.type]} ${file.setIndex + 1}`
+    : outputFileTypeLabels[file.type];
 
 export const WorkerJobList = () => {
   const [filterStatus, setFilterStatus] = useState<WorkerJobStatus | undefined>();
@@ -274,7 +296,7 @@ export const WorkerJobList = () => {
         rowKey="id"
         loading={isLoading}
         pagination={{
-          pageSize: 20,
+          defaultPageSize: 20,
           showSizeChanger: true,
           showTotal: (total) => `총 ${total}개`,
         }}
@@ -314,6 +336,24 @@ export const WorkerJobList = () => {
                   </a>
                 ) : '-'}
               </Descriptions.Item>
+              {/* T5 — separate 모드 잡: 표지/내지 개별 PDF 다운로드 링크 (merged 잡은 미표시) */}
+              {getOutputFiles(selectedJob).length > 0 && (
+                <Descriptions.Item label="개별 출력 파일">
+                  <Space direction="vertical" size={4}>
+                    {getOutputFiles(selectedJob).map((file, idx) => (
+                      <Space key={`${file.type}-${idx}`} size={8}>
+                        <Tag color="purple">{outputFileLabel(file)}</Tag>
+                        <a href={resolveStorageUrl(file.url)} target="_blank" rel="noopener noreferrer">
+                          {file.url.split('/').pop() || file.url}
+                        </a>
+                        {typeof file.pageCount === 'number' && (
+                          <Typography.Text type="secondary">{file.pageCount}p</Typography.Text>
+                        )}
+                      </Space>
+                    ))}
+                  </Space>
+                </Descriptions.Item>
+              )}
               <Descriptions.Item label="에러 메시지">
                 {selectedJob.errorMessage ? (
                   <Typography.Text type="danger">{selectedJob.errorMessage}</Typography.Text>

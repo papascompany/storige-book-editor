@@ -19,11 +19,12 @@ import {
   DeleteOutlined,
   SearchOutlined,
   CheckCircleOutlined,
+  DownloadOutlined,
   EditOutlined,
   FileImageOutlined,
 } from '@ant-design/icons';
 import { editSessionsApi, EditSessionResponse, SessionStatus, SessionMode } from '../../api/edit-sessions';
-import { resolveStorageUrl } from '../../lib/axios';
+import { axiosInstance, resolveStorageUrl } from '../../lib/axios';
 
 const { Title, Text } = Typography;
 
@@ -97,6 +98,37 @@ export const EditSessionList = () => {
 
   const handleComplete = (id: string) => {
     completeMutation.mutate(id);
+  };
+
+  // T5 — 표지/내지 개별 PDF 다운로드 (생산용).
+  // GET /files/:id/download (JWT 인증, blob 응답) — PdfBeforeAfterPreview 의 다운로드 패턴 재사용.
+  // ⚠ toFileInfoDto 에 fileUrl 을 추가하는 API 변경 금지(SEC-008 회귀) — 반드시 이 인증 엔드포인트 경유.
+  const [downloadingFileId, setDownloadingFileId] = useState<string | null>(null);
+
+  const handleDownloadFile = async (
+    fileId: string,
+    fallbackName: string,
+    mimeType?: string,
+  ): Promise<void> => {
+    setDownloadingFileId(fileId);
+    try {
+      const response = await axiosInstance.get(`/files/${fileId}/download`, {
+        responseType: 'blob',
+      });
+      const blob = new Blob([response.data], { type: mimeType || 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fallbackName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch {
+      message.error('파일 다운로드에 실패했습니다.');
+    } finally {
+      setDownloadingFileId(null);
+    }
   };
 
   const columns: ColumnsType<EditSessionResponse> = [
@@ -218,9 +250,48 @@ export const EditSessionList = () => {
     {
       title: '작업',
       key: 'actions',
-      width: 150,
-      render: (_, record) => (
+      width: 220,
+      render: (_, record) => {
+        // 클로저 내 narrowing 유지를 위해 const 로 추출 (coverFileId 는 string | null | undefined)
+        const { coverFileId, contentFileId } = record;
+        return (
         <Space>
+          {coverFileId && (
+            <Tooltip title="표지 파일 다운로드">
+              <Button
+                type="link"
+                icon={<DownloadOutlined />}
+                onClick={() =>
+                  handleDownloadFile(
+                    coverFileId,
+                    record.coverFile?.originalName || `cover_${record.id.substring(0, 8)}.pdf`,
+                    record.coverFile?.mimeType,
+                  )
+                }
+                loading={downloadingFileId === coverFileId}
+              >
+                표지
+              </Button>
+            </Tooltip>
+          )}
+          {contentFileId && (
+            <Tooltip title="내지 파일 다운로드">
+              <Button
+                type="link"
+                icon={<DownloadOutlined />}
+                onClick={() =>
+                  handleDownloadFile(
+                    contentFileId,
+                    record.contentFile?.originalName || `content_${record.id.substring(0, 8)}.pdf`,
+                    record.contentFile?.mimeType,
+                  )
+                }
+                loading={downloadingFileId === contentFileId}
+              >
+                내지
+              </Button>
+            </Tooltip>
+          )}
           {record.status === 'draft' && (
             <Tooltip title="완료 처리">
               <Button
@@ -246,7 +317,8 @@ export const EditSessionList = () => {
             />
           </Popconfirm>
         </Space>
-      ),
+        );
+      },
     },
   ];
 
@@ -289,7 +361,7 @@ export const EditSessionList = () => {
         rowKey="id"
         loading={isLoading}
         pagination={{
-          pageSize: 20,
+          defaultPageSize: 20,
           showSizeChanger: true,
           showTotal: (total) => `총 ${total}개`,
         }}
