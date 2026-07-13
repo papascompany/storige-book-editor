@@ -43,6 +43,7 @@ describe('WorkerJobsService.createComposeMixedJob — D-4 spread 기대치 push'
       {} as any, // filesService
       {} as any, // webhookService
       {} as any, // sitesService
+      {} as any, // templateSetsService
     );
   });
 

@@ -19,6 +19,7 @@ import { EditSessionEntity } from '../../edit-sessions/entities/edit-session.ent
 import { FilesService } from '../../files/files.service';
 import { WebhookService } from '../../webhook/webhook.service';
 import { SitesService } from '../../sites/sites.service';
+import { TemplateSetsService } from '../../templates/template-sets.service';
 import { WorkerJobType, WorkerJobStatus } from '@storige/types';
 
 describe('UpdateJobStatusDto (WK-1: errorCode/errorDetail)', () => {
@@ -150,6 +151,7 @@ describe('WorkerJobsService.updateJobStatus (WK-1: errorCode/errorDetail 영속�
         { provide: FilesService, useValue: { findById: jest.fn() } },
         { provide: WebhookService, useValue: { sendCallback: jest.fn() } },
         { provide: SitesService, useValue: { findOne: jest.fn() } },
+        { provide: TemplateSetsService, useValue: { findOne: jest.fn() } },
       ],
     }).compile();
 

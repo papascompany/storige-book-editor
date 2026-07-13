@@ -28,6 +28,7 @@ import {
 import { CreateSplitSynthesisJobDto } from './dto/create-split-synthesis-job.dto';
 import { CreateSpreadSynthesisJobDto } from './dto/create-spread-synthesis-job.dto';
 import { CreateRenderPagesJobDto } from './dto/create-render-pages-job.dto';
+import { CreateBleedFixJobDto } from './dto/create-bleed-fix-job.dto';
 import {
   CheckMergeableDto,
   CheckMergeableResponseDto,
@@ -41,6 +42,7 @@ import { FilesService } from '../files/files.service';
 import { WebhookService } from '../webhook/webhook.service';
 import { EditSessionEntity, WorkerStatus } from '../edit-sessions/entities/edit-session.entity';
 import { SitesService } from '../sites/sites.service';
+import { TemplateSetsService } from '../templates/template-sets.service';
 
 @Injectable()
 export class WorkerJobsService {
@@ -57,6 +59,8 @@ export class WorkerJobsService {
     private filesService: FilesService,
     private webhookService: WebhookService,
     private sitesService: SitesService,
+    // fix-bleed(2026-07-13) — templateSet 권위 editSize 산출용. ⚠️ 기존 스펙 호환을 위해 항상 마지막 파라미터.
+    private templateSetsService: TemplateSetsService,
   ) {}
 
   /**
@@ -437,6 +441,98 @@ export class WorkerJobsService {
         targetPages: 0,
         bleed: 0,
         padToMultiple: targetMultiple, // 현재 페이지수 → 다음 배수까지 백지 보정(addPages 재사용)
+      },
+    });
+
+    return savedJob;
+  }
+
+  /**
+   * 도련 자동 삽입 잡 (fix-bleed, 2026-07-13) — BLEED_MISSING(extendBleed) 실행기.
+   * 고객이 재단 사이즈(=templateSet 판형, 예 297×210)로 업로드한 PDF 를 작업 사이즈
+   * (판형 + 사방 bleedMm×2, 예 303×216)로 변환한 **새 파일**을 만든다.
+   *
+   * pdf-conversion(convert-pdf) 재사용: convertOptions 에 editSize/sizeToleranceMm 만 주입,
+   * mode 미지정 → 워커 resolveMode 가 실측 vs editSize±tol 로 자체결정
+   * (재단 사이즈 업로드=작음 → 'center' 무스케일 중앙 배치 = 정확히 사방 bleedMm 확장.
+   *  이미 작업 사이즈=passthrough / 더 큼=innerfit — 전부 안전한 기존 워커 경로, 워커 무수정).
+   *
+   * editSize 는 서버가 templateSetId 로 권위 산출 — @Public 라우트의 임의 사이즈 입력 차단.
+   * 비동기 — 반환 WorkerJob(jobId) 폴링(GET /worker-jobs/:id) → COMPLETED 시 updateJobStatus 가
+   * 결과를 새 fileId 로 등록(options.kind='bleed-fix' 게이트, 원본 site 승계). 원본 fileId 보존.
+   *
+   * ⚠️ editSessionId 절대 미주입 — 세션 workerStatus 상태기계 오염 방지
+   *    (inner-imposition 의 스푸리어스 webhook 적발 이력 참조, updateJobStatus 상단 주석).
+   */
+  async createBleedFixJob(dto: CreateBleedFixJobDto): Promise<WorkerJob> {
+    // 1) templateSet 권위 산출 — 미존재는 클라이언트 입력 오류로 400 (@Public 계약).
+    let editSize: { width: number; height: number };
+    let sizeToleranceMm: number;
+    try {
+      const templateSet = await this.templateSetsService.findOne(dto.templateSetId);
+      const bleedMm = templateSet.bleedMm ?? 3;
+      sizeToleranceMm = templateSet.sizeToleranceMm ?? 0.2;
+      // 작업(work) 사이즈 = 재단(판형) + 사방 블리드*2 (createInnerPdfImpositionJob 과 동일 규약)
+      editSize = {
+        width: templateSet.width + bleedMm * 2,
+        height: templateSet.height + bleedMm * 2,
+      };
+    } catch (err) {
+      // P2-4(2026-07-13 리뷰): NotFoundException(미존재)만 400 TEMPLATE_SET_NOT_FOUND 로
+      // 매핑. 종전 catch-all 은 DB 단절 등 인프라 예외까지 '클라이언트 입력 오류(400)'로
+      // 뭉개 원인 은폐 — 그 외 예외는 rethrow(전역 필터가 5xx 로 처리).
+      if (err instanceof NotFoundException) {
+        throw new BadRequestException({
+          code: 'TEMPLATE_SET_NOT_FOUND',
+          message: `템플릿셋을 찾을 수 없습니다: ${dto.templateSetId}`,
+        });
+      }
+      throw err;
+    }
+    if (!(editSize.width > 0) || !(editSize.height > 0)) {
+      throw new BadRequestException({
+        code: 'INVALID_WORK_SIZE',
+        message: `작업 사이즈 산출 불가(판형/bleed 무효): ${editSize.width}x${editSize.height}mm`,
+      });
+    }
+
+    // 2) 파일 존재(미존재 404 — fix-pagecount 동형) + PDF mime 검증.
+    const file = await this.filesService.findById(dto.fileId);
+    if (!(file.mimeType ?? '').toLowerCase().includes('pdf')) {
+      throw new BadRequestException({
+        code: 'FILE_NOT_PDF',
+        message: 'PDF 파일만 도련 보정이 가능합니다.',
+        details: { fileId: dto.fileId, mimeType: file.mimeType },
+      });
+    }
+    const fileUrl = this.toWorkerInputUrl(file); // s3 백엔드면 api://<id>, local 은 filePath
+
+    const job = this.workerJobRepository.create({
+      jobType: WorkerJobType.CONVERT,
+      status: WorkerJobStatus.PENDING,
+      // ⚠️ editSessionId/editSession 미주입(위 주석) — 세션 상태기계·웹훅 경로 완전 비켜감.
+      fileId: dto.fileId,
+      inputFileUrl: fileUrl,
+      siteId: file.siteId ?? null, // 원본 파일 site 승계(게스트 업로드는 null)
+      // kind 마커 → updateJobStatus 완료 훅이 결과를 새 fileId 로 등록(세션 무관).
+      options: {
+        kind: 'bleed-fix',
+        sourceFileId: dto.fileId,
+        templateSetId: dto.templateSetId,
+        editSize,
+        sizeToleranceMm,
+      },
+    });
+    const savedJob = await this.workerJobRepository.save(job);
+
+    await this.conversionQueue.add('convert-pdf', {
+      jobId: savedJob.id,
+      fileId: dto.fileId,
+      fileUrl,
+      convertOptions: {
+        // mode 미지정 → 워커 resolveMode 자체결정 (inner-imposition 과 동일 계약).
+        editSize,
+        sizeToleranceMm,
       },
     });
 
@@ -1406,6 +1502,17 @@ export class WorkerJobsService {
       await this.registerPageCountFixOutput(savedJob);
     }
 
+    // fix-bleed(2026-07-13) — 도련 삽입 결과(converted PDF)를 새 fileId 로 등록(세션 무관).
+    //   조건: CONVERT && options.kind==='bleed-fix' && COMPLETED. 마커 없는 일반 convert 무영향.
+    //   호출측(편집기 모달)은 GET /worker-jobs/:id 폴링 → outputFileId 로 보정본을 사용한다.
+    if (
+      job.jobType === WorkerJobType.CONVERT &&
+      job.options?.kind === 'bleed-fix' &&
+      updateJobStatusDto.status === WorkerJobStatus.COMPLETED
+    ) {
+      await this.registerBleedFixOutput(savedJob);
+    }
+
     return savedJob;
   }
 
@@ -1467,6 +1574,70 @@ export class WorkerJobsService {
     } catch (e) {
       this.logger.error(
         `[fix-pagecount] job ${job.id} 결과 등록 실패(무중단): ${(e as Error).message}`,
+      );
+    }
+  }
+
+  /**
+   * 도련 삽입(fix-bleed) 완료 결과를 새 File 로 등록하고 job.outputFileId 에 기록 (2026-07-13).
+   * registerPageCountFixOutput 동형 — **세션 되연결 없이** 등록만(잡에 editSessionId 자체가 없음).
+   * 원본 fileId(sourceFileId) 의 order/member 승계 + 잡 site 승계. 원본 파일은 보존(되돌리기 가능).
+   * best-effort(throw 금지) — status 업데이트(이미 저장됨)를 되돌리지 않는다.
+   */
+  private async registerBleedFixOutput(job: WorkerJob): Promise<void> {
+    try {
+      const outputFileUrl: string | undefined =
+        job.outputFileUrl ||
+        (job.result as any)?.outputFileUrl ||
+        (job.result as any)?.result?.outputFileUrl;
+
+      if (!outputFileUrl) {
+        this.logger.warn(`[fix-bleed] job ${job.id}: outputFileUrl 없음 → 등록 스킵`);
+        return;
+      }
+      if (job.outputFileId) return; // 멱등(중복 등록 방지)
+
+      const sourceFileId: string | undefined = job.options?.sourceFileId;
+      let orderSeqno: number | null = null;
+      let memberSeqno: number | null = null;
+      try {
+        if (sourceFileId) {
+          const src = await this.filesService.findById(sourceFileId);
+          orderSeqno = (src.orderSeqno as number) ?? null;
+          memberSeqno = (src.memberSeqno as number) ?? null;
+        }
+      } catch {
+        // 원본 메타 승계 실패는 무시(등록 자체는 계속)
+      }
+
+      const registered = await this.filesService.registerExternalFile(outputFileUrl, {
+        orderSeqno,
+        memberSeqno,
+        siteId: job.siteId, // 원본 잡 site 승계(외부 라우트 격리)
+        metadata: {
+          generatedBy: 'worker-bleed-fix',
+          sourceFileId: sourceFileId ?? null,
+          templateSetId: job.options?.templateSetId ?? null,
+          editSize: job.options?.editSize ?? null,
+          workerJobId: job.id,
+        },
+      });
+
+      try {
+        job.outputFileId = registered.id;
+        await this.workerJobRepository.save(job);
+      } catch (e) {
+        this.logger.warn(
+          `[fix-bleed] job ${job.id} outputFileId 기록 실패(무중단): ${(e as Error).message}`,
+        );
+      }
+
+      this.logger.log(
+        `[fix-bleed] job ${job.id} 완료 → outputFileId=${registered.id} (editSize ${job.options?.editSize?.width}x${job.options?.editSize?.height}mm)`,
+      );
+    } catch (e) {
+      this.logger.error(
+        `[fix-bleed] job ${job.id} 결과 등록 실패(무중단): ${(e as Error).message}`,
       );
     }
   }

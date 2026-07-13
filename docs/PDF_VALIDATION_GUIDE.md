@@ -38,7 +38,7 @@
 | 4 | 제본 규격(페이지수) | 🔴에러 | `PAGE_COUNT_INVALID` | 무선(perfect)·내지 4배수 아님 | 내지 | addBlankPages |
 | 5 | 주문 페이지수 일치 | 🟡경고 | `PAGE_COUNT_MISMATCH` | 실제 ≠ 주문 `pages` | 전체 | addBlankPages |
 | 6 | 판형(사이즈) | 🔴에러 | `SIZE_MISMATCH` | 주문 `size`와 ±**1mm** 초과(재단 포함/불포함 모두 비교) | 전체 | fixMethod=resizeWithPadding — **실행기 미제공**. `WORKER_WIRED_FIXABLE_GATING=true` 시 autoFixable=false(기본 OFF=레거시 true) |
-| 7 | 재단 여백(bleed) | 🟡경고 | `BLEED_MISSING` | 재단 여백 없음 | 전체 | fixMethod=extendBleed — **실행기 미제공**. 게이팅 ON 시 autoFixable=false(기본 OFF=레거시 true) |
+| 7 | 재단 여백(bleed) | 🟡경고 | `BLEED_MISSING` | 재단 여백 없음 | 전체 | fixMethod=extendBleed — **실행기 배선(2026-07-13)**: `POST /worker-jobs/fix-bleed`(하단 §도련 자동 삽입). 게이팅 ON/OFF 무관 autoFixable=true |
 | 8 | 책등(spine) | 🔴에러 | `SPINE_SIZE_MISMATCH` | 표지 총너비 ≠ `size.w×2 + spine + bleed×2` ±**2mm** (spine=`paperThickness×pages/2` **재계산**) | **표지** + `paperThickness` 있을 때만 | fixMethod=adjustSpine — **실행기 미제공**. 게이팅 ON 시 autoFixable=false(기본 OFF=레거시 true) |
 | 9 | 가로형 페이지 | 🟡경고 | `LANDSCAPE_PAGE` | 가로 방향 페이지 감지 | 전체 | ✕ |
 | 10 | 사철 제본 규격 | 🔴에러 | `SADDLE_STITCH_INVALID` | 사철(saddle)·4배수 아님 | 내지(saddle) | addBlankPages |
@@ -183,6 +183,41 @@ expectedTotalWidth = size.width×2 + (spineWidthMm ?? paperThickness×pages/2)
 
 ---
 
+## 도련 자동 삽입 (fix-bleed) — 2026-07-13 배선
+
+> 재단 여백 없음(`BLEED_MISSING`, 경고·비차단)을 자동 보정하는 경로. 고객이 **재단 사이즈**
+> (=templateSet 판형, 예 297×210)로 업로드한 PDF 를 **작업 사이즈**(판형 + 사방 `bleedMm`×2,
+> 예 303×216)로 변환한다 — 콘텐츠 **무스케일 중앙 배치**(사방 정확히 `bleedMm` 확장).
+> 기존 변환(`pdf-conversion`) 임포지션 부품 재사용(`resolveMode`/`applyImpositionMode('center')` — 워커 무수정).
+
+### 엔드포인트
+
+| 엔드포인트 | 인증 |
+|---|---|
+| `POST /worker-jobs/fix-bleed` | `@Public` (게스트 편집기 모달 — render-pages 전례) |
+
+**Body**: `{ fileId, templateSetId }` — ⚠️ 사이즈는 클라이언트가 보내지 않는다. 서버가
+`templateSetId` 로 판형(width/height)+`bleedMm`+`sizeToleranceMm` 을 권위 산출(임의 사이즈 입력 차단).
+
+**에러**: templateSet 미존재/비PDF/작업사이즈 무효 = `400`(`TEMPLATE_SET_NOT_FOUND`/`FILE_NOT_PDF`/`INVALID_WORK_SIZE`), 파일 미존재 = `404`.
+
+### 비동기 흐름
+
+1. 호출 → `WorkerJob`(`jobId`) 즉시 반환.
+2. 호출측은 `GET /worker-jobs/:id` 폴링 → `status` `COMPLETED` + `outputFileId`(=도련이 삽입된 **새 `fileId`**).
+3. **원본 `fileId`는 보존**된다. 잡에 `editSessionId` 는 주입되지 않는다(세션 상태 무영향).
+
+### 동작 (워커 resolveMode 자체결정)
+
+```
+editSize = { templateSet.width + bleedMm*2, templateSet.height + bleedMm*2 }
+실측 = editSize (±tol)  → passthrough (이미 작업 사이즈 — 무가공)
+실측 < editSize          → center     (무스케일 중앙 배치 = 사방 bleedMm 확장) ← 주 경로
+실측 > editSize          → innerfit   (비율유지 다운스케일 + 중앙)
+```
+
+---
+
 ## 에러 코드 (차단)
 
 에러가 발생하면 접수가 차단되며, 고객은 파일을 수정 후 재업로드해야 합니다.
@@ -204,7 +239,7 @@ expectedTotalWidth = size.width×2 + (spineWidthMm ?? paperThickness×pages/2)
 
 > **C+ 게이팅 (2026-07-11, 킬스위치 `WORKER_WIRED_FIXABLE_GATING` 기본 OFF)**:
 > ON 이면 `autoFixable=true` 는 실행기가 실제 배선된 fixMethod(`WIRED_FIX_METHODS`,
-> 현재 `addBlankPages` 뿐)에만 부여된다. 실행기 없는 fixMethod 는 `autoFixable=false` 로
+> 현재 `addBlankPages`·`extendBleed`(2026-07-13 배선))에만 부여된다. 실행기 없는 fixMethod 는 `autoFixable=false` 로
 > 발행되며(fixMethod 필드는 의도 메타데이터로 유지), 미배선 에러가 **하나라도 포함된** 잡은
 > `FIXABLE` 이 아니라 `FAILED` 로 판정된다(단독뿐 아니라 배선 에러와 혼재해도 FAILED —
 > `errors.every(autoFixable)` 파생). 기본 OFF 상태는 레거시와 byte-identical.
@@ -221,7 +256,7 @@ expectedTotalWidth = size.width×2 + (spineWidthMm ?? paperThickness×pages/2)
 | `SADDLE_STITCH_INVALID` | `addBlankPages` | ✅ true | 동일 실행기 (사철 4배수) |
 | `SIZE_MISMATCH` | `resizeWithPadding` | ❌ false (OFF 시 true) | **실행기 미제공** — 패딩 리사이즈는 블리드 백지/크롭 손실 리스크로 미리보기·동의 UX 와 함께 별도 구현 예정 |
 | `SPINE_SIZE_MISMATCH` | `adjustSpine` | ❌ false (OFF 시 true) | **실행기 미제공** — 표지 아트워크 재배치는 자동화 비대상(수동 재작업 영역) |
-| (경고) `BLEED_MISSING` | `extendBleed` | ❌ false (OFF 시 true) | **실행기 미제공** — 경고(비차단)이므로 상태 영향 없음, '자동 수정 가능' 표기만 제거됨 |
+| (경고) `BLEED_MISSING` | `extendBleed` | ✅ true | 재단→작업 사이즈 무스케일 중앙 배치 — `POST /worker-jobs/fix-bleed` 로 실행 (2026-07-13 배선, §도련 자동 삽입) |
 
 ---
 

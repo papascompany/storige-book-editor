@@ -64,6 +64,9 @@ const FROZEN_ROUTES: FrozenRoute[] = [
   // ── 워커 잡 표면 (§2) — 게스트 UX 의존 @Public 동결 ──
   { contract: 'POST /worker-jobs/compose-mixed (@Public 게스트 — bookmoa-mobile·Sharesnap 의존)', controller: WorkerJobsController, handler: 'createComposeMixed', method: RequestMethod.POST, path: 'compose-mixed', auth: 'public' },
   { contract: 'POST /worker-jobs/render-pages (@Public 게스트)', controller: WorkerJobsController, handler: 'createRenderPages', method: RequestMethod.POST, path: 'render-pages', auth: 'public' },
+  // ADDITIVE 2026-07-13 — fix-bleed(도련 자동 삽입) 실행기. editSize 는 서버가 templateSet 에서
+  // 권위 산출(body={fileId,templateSetId} 뿐 — 임의 사이즈 입력 차단). 게스트 편집기 모달 소비.
+  { contract: 'POST /worker-jobs/fix-bleed (@Public 게스트 — 2026-07-13 신설)', controller: WorkerJobsController, handler: 'createBleedFixJob', method: RequestMethod.POST, path: 'fix-bleed', auth: 'public' },
   { contract: 'GET /worker-jobs/external/:id (X-API-Key — 100p 폴링 의존)', controller: WorkerJobsController, handler: 'findOneExternal', method: RequestMethod.GET, path: 'external/:id', auth: 'api-key' },
 
   // ── 조회 표면 (§3) ──

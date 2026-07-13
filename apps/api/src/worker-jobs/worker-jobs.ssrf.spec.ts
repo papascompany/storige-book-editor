@@ -12,6 +12,7 @@ import { WorkerJobsService } from './worker-jobs.service';
 function makeService(): any {
   return new WorkerJobsService(
     {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any,
+    {} as any, // templateSetsService
   );
 }
 
