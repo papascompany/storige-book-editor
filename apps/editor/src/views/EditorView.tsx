@@ -5,7 +5,7 @@ import { useAppStore } from '@/stores/useAppStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useUiPrefStore } from '@/stores/useUiPrefStore'
 import { useEditorContents } from '@/hooks/useEditorContents'
-import { createCanvas } from '@/utils/createCanvas'
+import { createCanvas, safeDisposeCanvas, CanvasInitCancelledError } from '@/utils/createCanvas'
 import type { RulerPlugin } from '@storige/canvas-core'
 import ToolBar from '@/components/editor/ToolBar'
 import FeatureSidebar from '@/components/editor/FeatureSidebar'
@@ -371,7 +371,7 @@ export default function EditorView() {
 
         // cleanup 후에는 초기화 중단
         if (!isMounted) {
-          fabricCanvas.dispose()
+          safeDisposeCanvas(fabricCanvas)
           return
         }
 
@@ -410,7 +410,7 @@ export default function EditorView() {
 
         // cleanup 체크
         if (!isMounted) {
-          fabricCanvas.dispose()
+          safeDisposeCanvas(fabricCanvas)
           return
         }
 
@@ -440,6 +440,11 @@ export default function EditorView() {
 
         console.log('[EditorView] Editor initialized and content loaded successfully')
       } catch (error) {
+        if (error instanceof CanvasInitCancelledError) {
+          // StrictMode 이중 마운트/라우트 전환으로 교체된 초기화 — 정상 중단
+          console.log('[EditorView] Init superseded — cancelled cleanly')
+          return
+        }
         console.error('[EditorView] Failed to initialize editor:', error)
       } finally {
         if (isMounted) {

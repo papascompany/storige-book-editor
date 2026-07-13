@@ -580,7 +580,8 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
       configureFabricDefaults()
 
       // FabricJS 캔버스 인스턴스 생성 (core API 사용)
-      const newCanvas = await createFabricCanvas(canvasId, {
+      // id 문자열 대신 요소 직접 전달 — 동시 초기화 시 getElementById 요소 탈취 레이스 방지
+      const newCanvas = await createFabricCanvas(canvasElement, {
         index: index
       })
 

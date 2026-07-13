@@ -33,7 +33,7 @@ import { useEditorContents } from './hooks/useEditorContents'
 import { useEmbedAutoSave } from './hooks/useEmbedAutoSave'
 import { useEmbedBackGuard } from './hooks/useEmbedBackGuard'
 import { useCanvasContainerSizeSync } from './hooks/useCanvasContainerSizeSync'
-import { createCanvas } from './utils/createCanvas'
+import { createCanvas, safeDisposeCanvas, CanvasInitCancelledError } from './utils/createCanvas'
 import { buildSpreadSnapshots } from './utils/buildSpreadSnapshots'
 import {
   computeInnerContentSizeMm,
@@ -782,7 +782,7 @@ function EmbeddedEditor({
         const fabricCanvas = await createCanvas({}, canvasContainerRef.current!, initId)
 
         if (!isMounted) {
-          fabricCanvas.dispose()
+          safeDisposeCanvas(fabricCanvas)
           return
         }
 
@@ -817,7 +817,7 @@ function EmbeddedEditor({
         }
 
         if (!isMounted) {
-          fabricCanvas.dispose()
+          safeDisposeCanvas(fabricCanvas)
           return
         }
 
@@ -1079,6 +1079,12 @@ function EmbeddedEditor({
           ...(orientationMismatch ? { orientationMismatch } : {}),
         })
       } catch (err) {
+        if (err instanceof CanvasInitCancelledError) {
+          // StrictMode 이중 마운트/라우트 전환으로 교체된 초기화 — 정상 중단.
+          // 파트너 호스트로 가짜 editor.error 를 발신하지 않도록 조기 반환.
+          console.log('[EmbeddedEditor] Init superseded — cancelled cleanly')
+          return
+        }
         console.error('[EmbeddedEditor] Initialization error:', err)
 
         // API 에러 타입 확인
