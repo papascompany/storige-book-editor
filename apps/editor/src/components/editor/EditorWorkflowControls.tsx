@@ -170,6 +170,12 @@ export function EditorWorkflowControls({ templateSetId }: Props) {
           canAddPage={!!templateSet.canAddPage}
           // C+ G1(2026-07-11): 검증 기준을 A4 하드코드 대신 templateSet 판형으로 주입.
           trimSize={{ width: templateSet.width, height: templateSet.height }}
+          // T3(2026-07-13): 도련 자동변환 — 모달 orderOptions.bleed 하드코드(3) 치환용
+          // templateSet.bleedMm + BLEED_MISSING 시 fix-bleed 잡 생성용 templateSetId 주입.
+          // (bleedMm 은 API 컬럼(float, 기본 3)이나 @storige/types TemplateSet 미반영 —
+          //  useEditorContents 의 기존 읽기 패턴과 동일하게 옵셔널 캐스팅.)
+          bleedMm={(templateSet as TemplateSet & { bleedMm?: number | null }).bleedMm ?? 3}
+          templateSetId={templateSet.id}
           onClose={() => setShowAttachModal(false)}
           onAttached={(result) => {
             setAttached({
