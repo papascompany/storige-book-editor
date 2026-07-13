@@ -517,6 +517,7 @@ export const TemplateEditor = () => {
             일반적인 판형 (재단 기준, 작업 = 재단 + 사방 3mm):
             <ul style={{ margin: '4px 0', paddingLeft: 20 }}>
               <li>A4: 210 × 297 mm</li>
+              <li>A5: 148 × 210 mm</li>
               <li>B5: 182 × 257 mm</li>
               <li>46배판: 188 × 257 mm</li>
               <li>16절: 190 × 260 mm</li>
