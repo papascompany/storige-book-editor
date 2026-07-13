@@ -140,6 +140,10 @@ export class FilesService {
       memberSeqno?: number | null;
       metadata?: Record<string, any>;
       siteId?: string | null; // P2c S-3: 워커 출력 파일에 원본 잡의 site 승계(테넌트 소유)
+      /** 등록 파일의 실제 MIME — 미지정 시 기존 호출자(워커 PDF 출력) 호환 기본값 */
+      mimeType?: string;
+      /** 업로더가 보낸 원본 파일명 보존 — 미지정 시 디스크 파일명 */
+      originalName?: string;
     } = {},
   ): Promise<FileEntity> {
     if (!outputFileUrl) {
@@ -193,12 +197,12 @@ export class FilesService {
 
     const fileEntity = this.fileRepository.create({
       fileName,
-      originalName: fileName,
+      originalName: opts.originalName ?? fileName,
       filePath: resolvedPath,
       fileUrl: normalizedUrl,
       thumbnailUrl: null,
       fileSize,
-      mimeType: 'application/pdf',
+      mimeType: opts.mimeType ?? 'application/pdf',
       fileType: opts.fileType ?? FileType.CONTENT,
       orderSeqno: opts.orderSeqno ?? undefined,
       memberSeqno: opts.memberSeqno ?? undefined,

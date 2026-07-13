@@ -19,6 +19,8 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiConsumes, ApiBody
 import { Request, Response } from 'express';
 import { memoryStorage } from 'multer';
 import { StorageService } from './storage.service';
+import { FilesService } from '../files/files.service';
+import { FileType } from '../files/entities/file.entity';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -74,7 +76,10 @@ const multerOptionsPublic = {
 @ApiBearerAuth()
 @Controller('storage')
 export class StorageController {
-  constructor(private readonly storageService: StorageService) {}
+  constructor(
+    private readonly storageService: StorageService,
+    private readonly filesService: FilesService,
+  ) {}
 
   @Post('upload')
   @UseGuards(JwtAuthGuard, RolesGuard)
@@ -149,7 +154,23 @@ export class StorageController {
     }
 
     // category 는 강제로 'uploads' — 게스트가 임의 디렉토리 쓰기 방지
-    return await this.storageService.saveFile(file, 'uploads');
+    const saved = await this.storageService.saveFile(file, 'uploads');
+
+    // 업로드를 files 테이블에 정식 등록하고 응답 id 를 DB 레코드 id 로 통일.
+    // 종전에는 물리 파일명 uuid 만 반환해, 이 id 를 fileId 로 소비하는 라우트
+    // (validate·fix-bleed 의 filesService.findById)가 전부 FILE_NOT_FOUND 로
+    // 깨지는 통합 균열이 있었다(≤50MB 첨부 경로, 2026-07-13 E2E 적발).
+    // >50MB presigned 경로는 원래 files 레코드를 만들므로 이제 두 경로 시맨틱 일치.
+    const record = await this.filesService.registerExternalFile(saved.url, {
+      fileType: (file.mimetype ?? '').toLowerCase().includes('pdf')
+        ? FileType.CONTENT
+        : FileType.OTHER,
+      mimeType: file.mimetype,
+      originalName: file.originalname,
+      siteId: null, // 게스트 공개 업로드 — 테넌트 미상 (기존 게스트 파일 규약과 동일)
+    });
+
+    return { ...saved, id: record.id };
   }
 
   // Legacy endpoint for backward compatibility (old URLs: /storage/:category/:filename)
