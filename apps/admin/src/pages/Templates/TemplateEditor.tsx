@@ -511,13 +511,17 @@ export const TemplateEditor = () => {
             }
           </Form.Item>
 
+          {/* G-E (2026-07-14): 오너 규격표(재단 기준) 정본으로 교체 — 기존 B5 176×250·A5 148×210 제거.
+              가로형은 동일 규격의 W↔H 스왑. 비규격은 고객 입력값 그대로(+사방 3mm 작업). */}
           <div style={{ color: '#888', fontSize: 12, marginTop: 8 }}>
-            일반적인 판형:
+            일반적인 판형 (재단 기준, 작업 = 재단 + 사방 3mm):
             <ul style={{ margin: '4px 0', paddingLeft: 20 }}>
               <li>A4: 210 × 297 mm</li>
-              <li>A5: 148 × 210 mm</li>
-              <li>B5: 176 × 250 mm</li>
+              <li>B5: 182 × 257 mm</li>
               <li>46배판: 188 × 257 mm</li>
+              <li>16절: 190 × 260 mm</li>
+              <li>B6: 128 × 182 mm</li>
+              <li>정사각: 210 × 210 mm</li>
             </ul>
           </div>
         </Form>
