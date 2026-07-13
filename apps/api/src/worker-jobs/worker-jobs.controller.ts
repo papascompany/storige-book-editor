@@ -27,6 +27,7 @@ import { CreateSplitSynthesisJobDto } from './dto/create-split-synthesis-job.dto
 import { CheckMergeableDto, CheckMergeableResponseDto } from './dto/check-mergeable.dto';
 import { CreateComposeMixedJobDto } from './dto/create-compose-mixed-job.dto';
 import { CreateRenderPagesJobDto } from './dto/create-render-pages-job.dto';
+import { CreateBleedFixJobDto } from './dto/create-bleed-fix-job.dto';
 import { WorkerJob } from './entities/worker-job.entity';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -215,6 +216,26 @@ export class WorkerJobsController {
     @Body() dto: CreateRenderPagesJobDto,
   ): Promise<WorkerJob> {
     return await this.workerJobsService.createRenderPagesJob(dto);
+  }
+
+  /**
+   * 도련 자동 삽입(fix-bleed) 잡 생성 (2026-07-13) — BLEED_MISSING(extendBleed) 실행기.
+   *
+   * 재단 사이즈(=templateSet 판형) 업로드 PDF → 작업 사이즈(판형+bleedMm×2)로 변환
+   * (콘텐츠 무스케일 중앙 배치). editSize 는 서버가 templateSetId 로 권위 산출 —
+   * 클라이언트 임의 사이즈 입력 차단. 게스트 편집기 모달 호출 가능(@Public, render-pages 전례).
+   * 폴링: GET /worker-jobs/:id → COMPLETED 시 outputFileId(보정본 새 fileId). 원본 보존.
+   */
+  @Post('fix-bleed')
+  @Public()
+  @ApiOperation({ summary: '도련 자동 삽입 잡 생성 (재단→작업 사이즈, 무스케일 중앙 배치)' })
+  @ApiResponse({ status: 201, description: '잡 생성 성공', type: WorkerJob })
+  @ApiResponse({ status: 400, description: 'templateSet 미존재 / 비PDF / 작업 사이즈 무효' })
+  @ApiResponse({ status: 404, description: '파일 미존재' })
+  async createBleedFixJob(
+    @Body() dto: CreateBleedFixJobDto,
+  ): Promise<WorkerJob> {
+    return await this.workerJobsService.createBleedFixJob(dto);
   }
 
   /**

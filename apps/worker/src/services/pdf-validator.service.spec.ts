@@ -314,7 +314,8 @@ describe('PdfValidatorService', () => {
     });
 
     // ── C+ 게이팅 (2026-07-11, 킬스위치 WORKER_WIRED_FIXABLE_GATING 기본 OFF) ──
-    // ON 이면 autoFixable 은 실행기가 배선된 fixMethod(WIRED_FIX_METHODS={addBlankPages})에만
+    // ON 이면 autoFixable 은 실행기가 배선된 fixMethod(WIRED_FIX_METHODS=
+    // {addBlankPages, extendBleed(2026-07-13 fix-bleed 배선)})에만
     // 부여 — 실행 수단 없는 항목이 FIXABLE(원클릭 해결처럼 보이는 상태)로 노출되는 것을 차단.
     // OFF(기본)는 레거시 byte-identical. fixMethod 는 양쪽 모두 의도 메타로 보존.
     describe('C+ 게이팅: WIRED_FIXABLE_GATING 킬스위치', () => {
@@ -390,13 +391,15 @@ describe('PdfValidatorService', () => {
         expect(err?.fixMethod).toBe('adjustSpine');
       });
 
-      it('ON: BLEED_MISSING 경고 autoFixable=false + fixMethod=extendBleed 보존 (경고라 isValid 무영향)', async () => {
+      it('ON: BLEED_MISSING 경고 autoFixable=true 유지 — extendBleed 실행기 배선(2026-07-13, POST /worker-jobs/fix-bleed)', async () => {
+        // 2026-07-13 이전엔 미배선이라 ON 시 false 였다. fix-bleed 실행기 배선과 동일 커밋으로
+        // WIRED_FIX_METHODS 에 'extendBleed' 추가 → 게이팅 ON 에서도 정직하게 true.
         cfg.WIRED_FIXABLE_GATING = true;
         mockedFs.readFile.mockResolvedValue(Buffer.from(await createMockPdf(4, 210, 297)));
         const result = await service.validate('./bleed.pdf', defaultOptions);
         const warn = result.warnings.find(w => w.code === WarningCode.BLEED_MISSING);
         expect(warn).toBeDefined();
-        expect(warn?.autoFixable).toBe(false);
+        expect(warn?.autoFixable).toBe(true);
         expect(warn?.fixMethod).toBe('extendBleed');
         expect(result.isValid).toBe(true);
       });
