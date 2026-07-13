@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useEditorStore } from '@/stores/useEditorStore'
+import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useIsCustomer } from '@/stores/useAuthStore'
 import type { EditorContent } from '@/generated/graphql'
 
@@ -72,6 +73,9 @@ export function useLibraryPanel({
 }: UseLibraryPanelOptions): UseLibraryPanelResult {
   const templateSetId = useEditorStore((state) => state.templateSetId)
   const isCustomer = useIsCustomer()
+  // A1-4: 관리자(editMode) 템플릿 제작 화면에도 라이브러리 fetch 허용 (렌더 게이트 완화와 짝).
+  // editMode 는 관리자 확인 후 비동기 승격되므로 deps 에 반드시 포함(누락 시 fetch 미발화).
+  const editMode = useSettingsStore((state) => state.currentSettings.editMode)
 
   // Search state
   const [searchType, setSearchType] = useState('name')
@@ -98,7 +102,7 @@ export function useLibraryPanel({
 
   // Discover available tags once on mount (large fetch, no search)
   useEffect(() => {
-    if (!enableTags || !isCustomer || tagsDiscoveredRef.current) return
+    if (!enableTags || !(isCustomer || editMode) || tagsDiscoveredRef.current) return
     tagsDiscoveredRef.current = true
 
     const discoverTags = async () => {
@@ -124,11 +128,11 @@ export function useLibraryPanel({
       }
     }
     discoverTags()
-  }, [enableTags, isCustomer, templateSetId, fetcher, tagDiscoverySize])
+  }, [enableTags, isCustomer, editMode, templateSetId, fetcher, tagDiscoverySize])
 
   // Fetch contents — respects selectedTag + search + templateSetId
   useEffect(() => {
-    if (!isCustomer) return
+    if (!(isCustomer || editMode)) return
 
     const fetchContents = async () => {
       setLoadingContents(true)
@@ -167,6 +171,7 @@ export function useLibraryPanel({
     fetchContents()
   }, [
     isCustomer,
+    editMode,
     debouncedKeyword,
     selectedTag,
     templateSetId,
