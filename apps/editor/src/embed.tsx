@@ -32,6 +32,7 @@ import { useSaveStore } from './stores/useSaveStore'
 import { useEditorContents } from './hooks/useEditorContents'
 import { useEmbedAutoSave } from './hooks/useEmbedAutoSave'
 import { useEmbedBackGuard } from './hooks/useEmbedBackGuard'
+import { useCanvasContainerSizeSync } from './hooks/useCanvasContainerSizeSync'
 import { createCanvas } from './utils/createCanvas'
 import { buildSpreadSnapshots } from './utils/buildSpreadSnapshots'
 import {
@@ -433,6 +434,11 @@ function EmbeddedEditor({
 
   // 페이지 네비게이션 위치 (다중 페이지 템플릿셋에서 표지/내지 전환용) — admin EditorView 와 동일 배선
   const navPosition = useResolvedPageNavPosition()
+
+  // T6 (2026-07-13): 컨테이너 크기 변화 → 캔버스 dim 동기화 + 워크스페이스 재센터링.
+  // 기존에는 init 시 1회 setDimensions 뿐이라 객체 선택(ControlBar mount)·iframe 리사이즈에
+  // 캔버스가 밀린 채 방치됐다 — EditorView 와 동일 훅 배선(iOS Safari 3중 방어 가드 포함).
+  useCanvasContainerSizeSync(ready, canvasContainerRef)
 
   const { loadEmptyEditor, loadTemplateSetEditor } = useEditorContents()
 
@@ -1210,11 +1216,17 @@ function EmbeddedEditor({
         // 발신 시점 재확인(디바운스 사이 상태 변화 대비 — 보수 기본 유지)
         const pricingMeta = templateSetPricingRef.current
         if (!pricingMeta || !isInitializedRef.current) return
-        const canvasCount = useAppStore.getState().allCanvas.length
-        const isInnerSpread = useSettingsStore.getState().spreadConfig?.regionScope === 'inner'
+        const appState = useAppStore.getState()
+        const canvasCount = appState.allCanvas.length
+        const spreadCfg = useSettingsStore.getState().spreadConfig
+        const isInnerSpread = spreadCfg?.regionScope === 'inner'
+        // T5 (2026-07-13): 표지+내지 단일 세션 spread(비-inner)는 표지 캔버스 1장을 물리
+        // 페이지에서 제외(21→20). 캔버스 1(표지 단독 세션) 게이트 필수 — physical=0 방지.
+        const coverCanvasCount =
+          appState.isSpreadMode && spreadCfg?.regionScope !== 'inner' && canvasCount > 1 ? 1 : 0
         const payload: PricingChangePayload = {
           sessionId: currentSession?.id || sessionId || null,
-          pageCount: computeLivePageCount(canvasCount, isInnerSpread, options?.pages || 1),
+          pageCount: computeLivePageCount(canvasCount, isInnerSpread, options?.pages || 1, coverCanvasCount),
           pricing: pricingMeta,
           ...(templateSetCoverMetaRef.current?.coverType
             ? { coverType: templateSetCoverMetaRef.current.coverType }
@@ -1334,10 +1346,19 @@ function EmbeddedEditor({
           // 포토북 내지(inner) 펼침면(O-2): 한 캔버스=1펼침면=2 물리페이지 → 가격용 pageCount 는 ×2.
           // (비-내지/표지/BOOK 는 캔버스 수 그대로 = 기존 동작 byte-identical.)
           // Track 1 (2026-07-06): 산식을 computeLivePageCount 헬퍼로 단일 진실원화(complete 2경로+pricingChange).
+          // T5 (2026-07-13): 표지+내지 단일 세션 spread(비-inner)는 표지 캔버스 1장 제외(21→20).
+          // 캔버스 1(표지 단독 세션) 게이트 필수 — physical=0 방지. 포토북 inner ×2 산식 불변.
+          const appStateAtComplete = useAppStore.getState()
+          const spreadCfgAtComplete = useSettingsStore.getState().spreadConfig
           const livePageCount = computeLivePageCount(
-            useAppStore.getState().allCanvas.length,
-            useSettingsStore.getState().spreadConfig?.regionScope === 'inner',
+            appStateAtComplete.allCanvas.length,
+            spreadCfgAtComplete?.regionScope === 'inner',
             options?.pages || 1,
+            appStateAtComplete.isSpreadMode &&
+              spreadCfgAtComplete?.regionScope !== 'inner' &&
+              appStateAtComplete.allCanvas.length > 1
+              ? 1
+              : 0,
           )
           const pricingMeta = templateSetPricingRef.current
 
@@ -1651,10 +1672,19 @@ function EmbeddedEditor({
       // (pricing 은 pre-existing 갭: 인스턴스 경로만 싣고 있어 라이브 임베드에서 포토북
       //  가변가격 메타가 파트너에 전달되지 않던 것 — 적대 리뷰 major 지적으로 정렬.)
       // Track 1 (2026-07-06): 산식을 computeLivePageCount 헬퍼로 단일 진실원화(complete 2경로+pricingChange).
+      // T5 (2026-07-13): 표지+내지 단일 세션 spread(비-inner)는 표지 캔버스 1장 제외(21→20).
+      // 캔버스 1(표지 단독 세션) 게이트 필수 — physical=0 방지. 포토북 inner ×2 산식 불변.
+      const appStateAtFinish = useAppStore.getState()
+      const spreadCfgAtFinish = useSettingsStore.getState().spreadConfig
       const livePageCount2 = computeLivePageCount(
-        useAppStore.getState().allCanvas.length,
-        useSettingsStore.getState().spreadConfig?.regionScope === 'inner',
+        appStateAtFinish.allCanvas.length,
+        spreadCfgAtFinish?.regionScope === 'inner',
         options?.pages || 1,
+        appStateAtFinish.isSpreadMode &&
+          spreadCfgAtFinish?.regionScope !== 'inner' &&
+          appStateAtFinish.allCanvas.length > 1
+          ? 1
+          : 0,
       )
       const liveSize2 = useSettingsStore.getState().currentSettings.size
       const pricingMeta2 = templateSetPricingRef.current

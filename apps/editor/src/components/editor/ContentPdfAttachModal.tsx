@@ -12,7 +12,7 @@
  *
  * 결정 3-3: 첨부 성공 시 캔버스 편집 차단 (호출자가 readonly 처리).
  */
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { apiClient, toUserMessage } from '../../api/client'
 import { editSessionsApi } from '../../api/edit-sessions'
 import { useGuestStore } from '../../stores/useGuestStore'
@@ -24,11 +24,126 @@ interface Issue {
   autoFixable?: boolean
 }
 
-interface ValidationResult {
+export interface ValidationResult {
   status: 'completed' | 'fixable' | 'failed'
   pageCount?: number
+  /** 실측 페이지 크기(mm) — 검증 result metadata.pageSize (T3 도련 변환 안내 표기용) */
+  pageSize?: { width: number; height: number }
   issues?: Issue[]
   warnings?: Issue[]
+  /**
+   * T3 P2-6(2026-07-13, additive): 도련 자동변환(fix-bleed) 성공 마커 — 세션에 영속되는
+   * 검증 result 에 병기. 경고(BLEED_MISSING 등)는 원본(sourceFileId) 기준 검증이고 실제
+   * 첨부(contentPdfFileId)는 변환본(fixedFileId)임을 admin 열람자가 식별할 수 있게 한다.
+   * 기존 필드 구조는 무변경(변환 성공 시에만 추가).
+   */
+  bleedFixed?: {
+    sourceFileId: string
+    fixedFileId: string
+    targetSize: { width: number; height: number }
+  }
+}
+
+/**
+ * T3 P2-5(2026-07-13): fix-bleed 폴링 상한(회) — 파일 크기 비례 산출.
+ * 기본 40회(×1.5s ≈ 60s) + 100MB 당 20회(≈30s), 추가분 상한 160회 → 총 상한 200회(≈5분).
+ * 종전 60s 고정은 대용량(최대 2GB 허용)에서 항상 초과 → 변환 성공하고도 타임아웃 오탐.
+ */
+export function computeBleedFixPollLimit(fileSizeBytes: number): number {
+  const HUNDRED_MB = 100 * 1024 * 1024
+  const extra = Math.min(160, Math.ceil(Math.max(0, fileSizeBytes) / HUNDRED_MB) * 20)
+  return 40 + extra
+}
+
+/**
+ * T3(2026-07-13): 목표 작업 사이즈(mm) = 재단(판형) + 사방 bleedMm×2 — 클라 계산(표기·마커
+ * 전용, 실 변환값은 서버가 templateSet 으로 권위 산출). 폴백은 validate 의 size 폴백(A4)·
+ * bleed 폴백(3)과 동일 기준(레거시 호환).
+ */
+export function computeBleedFixTargetSize(
+  trimSize: { width: number; height: number } | undefined,
+  bleedMm: number | undefined,
+): { width: number; height: number } {
+  const trim = trimSize ?? { width: 210, height: 297 }
+  const b = bleedMm ?? 3
+  return { width: trim.width + b * 2, height: trim.height + b * 2 }
+}
+
+/**
+ * T3 P1-3(2026-07-13): fix-bleed 발화 게이트 — 불변식 '재단 사이즈 매치(=completed) + 도련
+ * 없음(BLEED_MISSING)일 때만'. 종전엔 failed 만 배제해 fixable(SIZE_MISMATCH+BLEED_MISSING
+ * 동반)에서도 발화 → 완전 오사이즈 업로드가 "자동으로 도련을 넣어 변환합니다" 경로로 유입됐다.
+ */
+export function shouldRunBleedFix(result: ValidationResult): boolean {
+  return (
+    result.status === 'completed' &&
+    (result.warnings ?? []).some((w) => w.code === 'BLEED_MISSING')
+  )
+}
+
+/** T3 P1-1/P1-2/P2-5(2026-07-13): fix-bleed 잡 폴링 결과 — runBleedFix 가 상태/문구로 매핑 */
+export type BleedFixPollOutcome =
+  | { kind: 'completed'; outputFileId: string }
+  /** COMPLETED 인데 grace 재폴링 후에도 outputFileId 미등록 — 등록 실패 판정 */
+  | { kind: 'completed-no-output' }
+  | { kind: 'failed' }
+  | { kind: 'timeout' }
+  /** P1-1: 모달 닫힘 취소 — 호출측은 상태 갱신 없이 조용히 중단 */
+  | { kind: 'cancelled' }
+
+export interface BleedFixPollOptions {
+  /** 폴링 상한(회) — computeBleedFixPollLimit(file.size) 로 산출 */
+  maxAttempts: number
+  /** P1-2: COMPLETED+outputFileId=null 레이스 grace 재폴링 횟수 (기본 5) */
+  graceAttempts?: number
+  /** 폴링 간격(ms) — 테스트 단축용 (기본 1500) */
+  intervalMs?: number
+  /** P1-1: 취소 신호 — true 면 즉시 cancelled 반환 */
+  isCancelled?: () => boolean
+}
+
+/**
+ * T3(2026-07-13): fix-bleed 잡 상태 폴링.
+ * P1-2: API 가 status=COMPLETED 를 먼저 저장한 뒤 별도 save 로 outputFileId 를 등록하는
+ * 2단계 쓰기라, 그 틈에 조회하면 COMPLETED+null — 즉시 '등록 실패' 처리하지 않고 grace
+ * 재폴링(기본 5회×간격) 후에도 null 이면 실패 판정한다.
+ */
+export async function pollBleedFixJob(
+  getJob: () => Promise<{ status: string; outputFileId?: string | null }>,
+  {
+    maxAttempts,
+    graceAttempts = 5,
+    intervalMs = 1500,
+    isCancelled = () => false,
+  }: BleedFixPollOptions,
+): Promise<BleedFixPollOutcome> {
+  const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
+  for (let a = 0; a < maxAttempts; a++) {
+    await sleep(intervalMs)
+    if (isCancelled()) return { kind: 'cancelled' }
+    const job = await getJob()
+    const s = (job.status || '').toUpperCase()
+    if (s === 'COMPLETED') {
+      let outputFileId = job.outputFileId ?? null
+      for (let g = 0; !outputFileId && g < graceAttempts; g++) {
+        await sleep(intervalMs)
+        if (isCancelled()) return { kind: 'cancelled' }
+        outputFileId = (await getJob()).outputFileId ?? null
+      }
+      return outputFileId ? { kind: 'completed', outputFileId } : { kind: 'completed-no-output' }
+    }
+    if (s === 'FAILED') return { kind: 'failed' }
+  }
+  return { kind: 'timeout' }
+}
+
+/** T3(2026-07-13): 도련 자동변환(fix-bleed) 진행 상태 — 모달 내 지속 배너/실패 안내용 */
+interface BleedFixState {
+  /** 검증 실측 크기(mm, 반올림 표기) — metadata.pageSize 누락 시 null(문구 생략) */
+  measured: { width: number; height: number } | null
+  /** 목표 작업 크기(mm, 반올림 표기) = trimSize + 2×bleedMm 클라 계산(표기 전용 — 실값은 서버 권위) */
+  target: { width: number; height: number }
+  status: 'converting' | 'done' | 'failed'
 }
 
 interface Props {
@@ -45,6 +160,16 @@ interface Props {
    * flip 하는 원인이었다. 미제공 시에만 A4 폴백(레거시 호환).
    */
   trimSize?: { width: number; height: number }
+  /**
+   * 검증/변환 기준 도련(mm) — templateSet.bleedMm (T3, 2026-07-13).
+   * 종전 orderOptions.bleed:3 하드코드 치환. 미제공 시 3(레거시 호환).
+   */
+  bleedMm?: number
+  /**
+   * 도련 자동변환(fix-bleed) 잡 생성용 templateSet id (T3, 2026-07-13).
+   * 미제공 시 BLEED_MISSING 이어도 변환 없이 기존 흐름 그대로(레거시 호환).
+   */
+  templateSetId?: string | null
   /** 닫기 */
   onClose: () => void
   /** 첨부 성공 + 페이지수 합의 끝났을 때 호출 */
@@ -62,6 +187,8 @@ export function ContentPdfAttachModal({
   currentContentPageCount,
   canAddPage,
   trimSize,
+  bleedMm,
+  templateSetId,
   onClose,
   onAttached,
 }: Props) {
@@ -75,6 +202,19 @@ export function ContentPdfAttachModal({
   const [showPageMismatch, setShowPageMismatch] = useState(false)
   const [guideRendering, setGuideRendering] = useState(false)
   const [uploadPct, setUploadPct] = useState(0)
+  const [bleedFix, setBleedFix] = useState<BleedFixState | null>(null)
+
+  /**
+   * P1-1(2026-07-13 리뷰): 모달 조기 닫힘 → 유령 첨부 방지.
+   * 백드롭 클릭(handleClose)으로 닫아도 진행 중 async 체인(검증 폴링→runBleedFix→
+   * applyAttachment→가이드 렌더)이 계속 실행되어, 닫힌 뒤 세션에 contentPdfFileId 를
+   * PATCH 하고 '첨부됨' 상태를 되살렸다. 닫기 시 true — 각 await 경계에서 확인해
+   * 상태 갱신·PATCH 없이 조용히 중단한다. 재오픈/업로드 시작 시 false 리셋.
+   */
+  const cancelledRef = useRef<boolean>(false)
+  useEffect(() => {
+    if (open) cancelledRef.current = false
+  }, [open])
 
   if (!open) return null
 
@@ -88,9 +228,11 @@ export function ContentPdfAttachModal({
     setShowPageMismatch(false)
     setGuideRendering(false)
     setUploadPct(0)
+    setBleedFix(null)
   }
 
   const handleClose = () => {
+    cancelledRef.current = true // P1-1: 진행 중 async 체인 무력화(각 await 경계 가드가 확인)
     reset()
     onClose()
   }
@@ -112,8 +254,81 @@ export function ContentPdfAttachModal({
     setFile(f)
   }
 
+  /**
+   * T3(2026-07-13): 도련 자동 삽입(fix-bleed) — 재단 사이즈로 업로드된 PDF 를 작업 사이즈
+   * (판형+bleedMm×2, 실값은 서버가 templateSet 으로 권위 산출)로 변환한 새 파일 id 반환.
+   * 실패/타임아웃/outputFileId 미등록(등록 best-effort — COMPLETED 인데 null 이론상 가능)
+   * 시 null — 호출측은 첨부를 중단해야 한다(원본 폴백 금지: 잘못된 크기 인쇄 유입 방지).
+   */
+  const runBleedFix = async (
+    sourceFileId: string,
+    tsId: string,
+    vres: ValidationResult,
+  ): Promise<string | null> => {
+    // 안내 배너 수치 — 실측=검증 metadata.pageSize, 목표=trimSize+2×bleedMm 클라 계산(반올림 표기).
+    // trimSize 폴백은 validate 의 size 폴백(A4)과 동일 기준(레거시 호환).
+    const target = computeBleedFixTargetSize(trimSize, bleedMm)
+    setBleedFix({
+      measured: vres.pageSize
+        ? { width: Math.round(vres.pageSize.width), height: Math.round(vres.pageSize.height) }
+        : null,
+      target: { width: Math.round(target.width), height: Math.round(target.height) },
+      status: 'converting',
+    })
+    try {
+      // 사이즈류 필드는 보내지 않는다 — 서버가 templateSet 으로 권위 산출(@Public 계약,
+      // forbidNonWhitelisted 로 여분 필드는 400).
+      const fixRes = await apiClient.post<{ id: string }>('/worker-jobs/fix-bleed', {
+        fileId: sourceFileId,
+        templateSetId: tsId,
+      })
+      const fixJobId = fixRes.data.id
+
+      // 폴링 — 기존 render-pages 패턴(1.5s 간격, 동일 라우트·동일 apiClient).
+      // outputFileId 는 잡 응답 최상위 필드(validate 의 result 이중중첩 방어와 무관).
+      // P2-5: 상한은 파일 크기 비례(기본 40회≈60s + 100MB 당 20회, 총 상한 200회≈5분)
+      //   — 종전 60s 고정은 대용량(최대 2GB)에서 항상 초과.
+      // P1-2: COMPLETED+outputFileId=null 레이스는 pollBleedFixJob 내부 grace 재폴링으로 흡수.
+      // P1-1: 모달 닫힘(cancelledRef) 시 cancelled — 상태 갱신 없이 조용히 중단.
+      const outcome = await pollBleedFixJob(
+        async () =>
+          (
+            await apiClient.get<{ status: string; outputFileId?: string | null }>(
+              `/worker-jobs/${fixJobId}`,
+            )
+          ).data,
+        {
+          maxAttempts: computeBleedFixPollLimit(file?.size ?? 0),
+          isCancelled: () => cancelledRef.current,
+        },
+      )
+
+      if (outcome.kind === 'cancelled') return null // P1-1: 조용히 중단(오류 표기도 없음)
+      if (outcome.kind === 'completed') {
+        setBleedFix((prev) => (prev ? { ...prev, status: 'done' } : prev))
+        return outcome.outputFileId
+      }
+      setBleedFix((prev) => (prev ? { ...prev, status: 'failed' } : prev))
+      setError(
+        outcome.kind === 'failed'
+          ? '도련 자동 변환에 실패했습니다. 파일 확인 후 다시 시도해주세요.'
+          : outcome.kind === 'completed-no-output'
+            ? '도련 변환 결과 등록에 실패했습니다. 다시 시도해주세요.'
+            : '도련 변환 시간 초과. 파일이 큰 경우 변환에 시간이 오래 걸릴 수 있습니다. 잠시 후 다시 시도해주세요.',
+      )
+      return null
+    } catch (err) {
+      if (cancelledRef.current) return null // P1-1: 닫힌 뒤 오류 — 상태 갱신 없이 중단
+      console.error('[ContentPdfAttachModal] fix-bleed', err)
+      setBleedFix((prev) => (prev ? { ...prev, status: 'failed' } : prev))
+      setError(toUserMessage(err, '도련 자동 변환에 실패했습니다.'))
+      return null
+    }
+  }
+
   const handleUploadAndValidate = async () => {
     if (!file) return
+    cancelledRef.current = false // P1-1: 업로드 시작 시 리셋
     setUploading(true)
     setError(null)
     try {
@@ -162,6 +377,7 @@ export function ContentPdfAttachModal({
           throw e
         }
       }
+      if (cancelledRef.current) return // P1-1: 업로드 중 닫힘 — 검증 잡 미생성·상태 미갱신
       setUploadedFileId(fileId)
       setUploading(false)
 
@@ -176,12 +392,15 @@ export function ContentPdfAttachModal({
           orderOptions: {
             // 결정 3-4: 검증 실패 시 거부.
             // C+ G1(2026-07-11): A4 하드코드 제거 — templateSet 판형(trimSize)으로 검증.
-            // bleed 3 은 유지해도 안전: validatePageSize 는 재단/재단+블리드×2 어느 쪽이든
-            // 매칭을 인정하므로 블리드 0 상품의 재단 크기 PDF 도 통과한다(경고만 비차단).
+            // T3(2026-07-13): bleed 하드코드(3) → templateSet.bleedMm prop 치환(미제공 시 3).
+            // validatePageSize 는 재단/재단+블리드×2 어느 쪽이든 매칭을 인정하므로
+            // 블리드 0 상품의 재단 크기 PDF 도 통과한다(bleed 0 이면 BLEED_MISSING 자체 미발화).
+            // ⚠️ sizeToleranceMm 는 보내지 않는다 — 워커 LEGACY 1mm 폴백 유지
+            //    (0.2 로 좁히면 실측 오차 PDF 오검증 실회귀, 2026-06-10 이력).
             size: trimSize ?? { width: 210, height: 297 },
             pages: currentContentPageCount,
             binding: 'perfect',
-            bleed: 3,
+            bleed: bleedMm ?? 3,
           },
         }
       )
@@ -192,6 +411,7 @@ export function ContentPdfAttachModal({
       let result: ValidationResult | null = null
       while (attempts < 30) {
         await new Promise((r) => setTimeout(r, 1000))
+        if (cancelledRef.current) return // P1-1: 검증 폴링 중 닫힘(pre-existing 갭) — 조용히 중단
         const job = await apiClient.get<{ status: string; result?: any; errorMessage?: string }>(
           `/worker-jobs/${jobId}`,
         )
@@ -205,6 +425,7 @@ export function ContentPdfAttachModal({
           result = {
             status: s === 'COMPLETED' ? 'completed' : s === 'FIXABLE' ? 'fixable' : 'failed',
             pageCount: vr?.metadata?.pageCount,
+            pageSize: vr?.metadata?.pageSize, // T3: 도련 변환 안내 배너 실측 표기용
             issues: vr?.errors?.length ? vr.errors : (job.data.errorMessage ? [{ code: 'WORKER_ERROR', message: job.data.errorMessage }] : []),
             warnings: vr?.warnings,
           }
@@ -212,6 +433,7 @@ export function ContentPdfAttachModal({
         }
         attempts++
       }
+      if (cancelledRef.current) return // P1-1: 마지막 조회 대기 중 닫힘 — 상태 미갱신
       setValidating(false)
 
       if (!result) {
@@ -226,6 +448,38 @@ export function ContentPdfAttachModal({
         return
       }
 
+      // T3(2026-07-13): 재단 사이즈 업로드(BLEED_MISSING 경고 = 재단 사이즈 매치·도련 없음
+      // 확정 신호) → fix-bleed 잡으로 작업 사이즈(판형+bleedMm×2) 변환본 생성. 이후 첨부와
+      // 가이드 래스터(applyAttachment 내 render-pages)는 전부 변환본 outputFileId 로 수행
+      // — 미리보기 사방 여백 중앙 정렬은 contentPdfGuide 경로 무수정으로 자동 성립하고,
+      // 최종 저장·인쇄(underlay=contentPdfFileId)도 변환본이 된다.
+      // templateSetId 미제공(레거시 호출자) 또는 경고 없음이면 기존 흐름 무변경.
+      // P1-3: completed 한정 게이트(shouldRunBleedFix) — fixable(SIZE_MISMATCH 동반) 미발화.
+      let effectiveFileId = fileId
+      if (shouldRunBleedFix(result) && templateSetId) {
+        const fixedFileId = await runBleedFix(fileId, templateSetId, result)
+        if (cancelledRef.current) return // P1-1: 변환 중 닫힘 — 첨부·상태 갱신 없이 중단
+        if (!fixedFileId) {
+          // 실패/타임아웃 — 원본 첨부로 폴백하지 않고 명확히 중단(잘못된 크기 인쇄 유입 방지).
+          // 오류 표기는 runBleedFix 가 수행(bleedFix.status='failed' 분기 렌더).
+          return
+        }
+        effectiveFileId = fixedFileId
+        // P2-6: 세션에 영속되는 검증 result 에 additive 마커 병기 — 경고=원본 기준,
+        // 첨부 파일=변환본(fixedFileId)임을 admin 열람자가 식별. 기존 필드 무변경.
+        result = {
+          ...result,
+          bleedFixed: {
+            sourceFileId: fileId,
+            fixedFileId,
+            targetSize: computeBleedFixTargetSize(trimSize, bleedMm),
+          },
+        }
+        // 페이지수 확인 모달(showPageMismatch) 경로도 변환본 fileId + 마커 포함 result 사용.
+        setValidationResult(result)
+        setUploadedFileId(fixedFileId)
+      }
+
       // 결정 3-2: PDF 페이지수 < 내지 수 → 자동확장 선택 모달
       const pdfPages = result.pageCount ?? 0
       if (pdfPages > currentContentPageCount && canAddPage) {
@@ -237,8 +491,9 @@ export function ContentPdfAttachModal({
       const targetPageCount = pdfPages > currentContentPageCount && canAddPage
         ? pdfPages
         : currentContentPageCount
-      await applyAttachment(fileId, pdfPages, targetPageCount, result)
+      await applyAttachment(effectiveFileId, pdfPages, targetPageCount, result)
     } catch (err) {
+      if (cancelledRef.current) return // P1-1: 닫힌 뒤 오류 — 상태 갱신 없이 중단
       console.error('[ContentPdfAttachModal]', err)
       setError(toUserMessage(err, '업로드/검증에 실패했습니다.'))
       setUploading(false)
@@ -252,6 +507,8 @@ export function ContentPdfAttachModal({
     targetPageCount: number,
     result: ValidationResult,
   ) => {
+    // P1-1: 진입 직전 가드 — 닫힌 모달에서 세션 PATCH('첨부됨' 부활) 금지
+    if (cancelledRef.current) return
     try {
       // 1) 세션에 첨부 + underlay(표시전용) 모드 저장 — 게스트 / 회원 분기
       const basePayload = {
@@ -285,11 +542,13 @@ export function ContentPdfAttachModal({
         let guide: any = null
         for (let a = 0; a < 40; a++) {
           await new Promise((r) => setTimeout(r, 1500))
+          if (cancelledRef.current) return // P1-1: 가이드 폴링 중 닫힘 — metadata PATCH·onAttached 없이 중단
           const job = await apiClient.get<{ status: string; result?: any }>(`/worker-jobs/${rjid}`)
           const s = (job.data.status || '').toUpperCase()
           if (s === 'COMPLETED') { guide = job.data.result; break }
           if (s === 'FAILED') break
         }
+        if (cancelledRef.current) return // P1-1: 마지막 조회 대기 중 닫힘
         if (guide?.pageImageUrls?.length) {
           const metaPayload = {
             metadata: {
@@ -313,6 +572,7 @@ export function ContentPdfAttachModal({
         setGuideRendering(false)
       }
 
+      if (cancelledRef.current) return // P1-1: metadata PATCH 대기 중 닫힘 — '첨부됨' 콜백 억제
       onAttached({
         contentPdfFileId: fileId,
         contentPdfPageCount: pdfPages,
@@ -322,6 +582,7 @@ export function ContentPdfAttachModal({
       reset()
       onClose()
     } catch (err) {
+      if (cancelledRef.current) return // P1-1: 닫힌 뒤 오류 — 상태 갱신 없이 중단
       console.error('[ContentPdfAttachModal] applyAttachment', err)
       setError(toUserMessage(err, '세션 업데이트에 실패했습니다.'))
     }
@@ -346,6 +607,17 @@ export function ContentPdfAttachModal({
         {guideRendering && (
           <div style={{ background: '#e3f2fd', padding: 12, borderRadius: 4, marginBottom: 12, color: '#1565c0', fontSize: 14 }}>
             내지 가이드를 생성하는 중입니다… (페이지 수에 따라 최대 1분)
+          </div>
+        )}
+
+        {/* T3(2026-07-13): 도련 자동변환 지속 배너 — 변환 시작부터 첨부 완료(모달 닫힘)까지 유지 */}
+        {bleedFix && bleedFix.status !== 'failed' && (
+          <div style={{ background: '#e8f5e9', padding: 12, borderRadius: 4, marginBottom: 12, color: '#2e7d32', fontSize: 14 }}>
+            {bleedFix.measured && (
+              <>고객님의 작업 사이즈가 <b>{bleedFix.measured.width}×{bleedFix.measured.height}mm</b>로 업로드 되었습니다.{' '}</>
+            )}
+            자동으로 도련을 넣어 <b>{bleedFix.target.width}×{bleedFix.target.height}mm</b>로 변환합니다.
+            {bleedFix.status === 'converting' ? ' (변환 중…)' : ' (변환 완료)'}
           </div>
         )}
 
@@ -397,6 +669,22 @@ export function ContentPdfAttachModal({
                 </li>
               ))}
             </ul>
+            <div style={{ marginTop: 16, textAlign: 'right' }}>
+              <button onClick={reset}>다시 시도</button>
+            </div>
+          </>
+        )}
+
+        {/* T3(2026-07-13): 도련 변환 실패 — 원본 폴백 없이 명확히 중단(잘못된 크기 인쇄 유입 방지) */}
+        {bleedFix?.status === 'failed' && (
+          <>
+            <div style={{ color: '#d32f2f', marginTop: 12, fontWeight: 600 }}>
+              도련 자동 변환 실패 — 첨부를 중단했습니다.
+            </div>
+            <p style={{ color: '#666', fontSize: 13 }}>
+              잘못된 크기로 인쇄되는 것을 막기 위해 원본 그대로는 첨부하지 않습니다. 다시 시도해주세요.
+            </p>
+            {error && <div style={{ color: '#d32f2f', fontSize: 13 }}>{error}</div>}
             <div style={{ marginTop: 16, textAlign: 'right' }}>
               <button onClick={reset}>다시 시도</button>
             </div>
