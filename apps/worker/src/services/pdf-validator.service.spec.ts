@@ -927,6 +927,111 @@ describe('PdfValidatorService', () => {
         expect(mixedWarning).toBeDefined();
       });
     });
+
+    // ============================================================
+    // 내지 판형 규격표 CI 잠금 (2026-07-14 오너 스펙)
+    // ============================================================
+    // 오너 확정 규격표 — 재단(mm), 작업 = 재단 + 사방 3mm:
+    //   A4 210×297(216×303) / B5 182×257(188×263) / 46배판 188×257(194×263) /
+    //   16절 190×260(196×266) / B6 128×182(134×188) / 정사각 210×210(216×216) /
+    //   비규격 = 고객 입력값 + 사방 3mm.
+    // 가로형/세로형은 방향(W↔H 스왑)만 다르고 동일 기준. 검증 기준값 = bookmoa 전달값.
+    // orderOptions 는 모달 규약대로 {size(재단), bleed(3)}만(+타입 필수 pages/binding) —
+    // sizeToleranceMm 미전송 = LEGACY 1mm 폴백(오차허용 체계 무접촉).
+    describe('내지 판형 규격표 (2026-07-14 오너 스펙)', () => {
+      const specOptions = (w: number, h: number): ValidationOptions => ({
+        fileType: 'content',
+        orderOptions: {
+          size: { width: w, height: h },
+          pages: 4,
+          binding: 'perfect',
+          bleed: 3,
+        },
+      });
+
+      const findSizeMismatch = (r: { errors: Array<{ code: string }> }) =>
+        r.errors.find((e) => e.code === ErrorCode.SIZE_MISMATCH);
+
+      // [규격명, 재단 W, 재단 H] — 비정사각 5규격 × {세로, 가로(W↔H)} + 정사각(방향 1종) + 비규격 예
+      const SPEC_TABLE: Array<[string, number, number]> = [
+        ['A4 세로', 210, 297],
+        ['A4 가로', 297, 210],
+        ['B5 세로', 182, 257],
+        ['B5 가로', 257, 182],
+        ['46배판 세로', 188, 257],
+        ['46배판 가로', 257, 188],
+        ['16절 세로', 190, 260],
+        ['16절 가로', 260, 190],
+        ['B6 세로', 128, 182],
+        ['B6 가로', 182, 128],
+        ['정사각', 210, 210],
+        ['비규격(고객 입력 205×290)', 205, 290],
+      ];
+
+      it.each(SPEC_TABLE)(
+        '%s: 재단 그대로 업로드 → 통과(SIZE_MISMATCH 미발행)',
+        async (_label, w, h) => {
+          mockedFs.readFile.mockResolvedValue(
+            Buffer.from(await createMockPdf(4, w, h)),
+          );
+          const result = await service.validate('./spec-trim.pdf', specOptions(w, h));
+          expect(findSizeMismatch(result)).toBeUndefined();
+          expect(result.isValid).toBe(true);
+        },
+      );
+
+      it.each(SPEC_TABLE)(
+        '%s: 재단+사방3mm(작업 사이즈) 업로드 → 통과 + hasBleed=true',
+        async (_label, w, h) => {
+          mockedFs.readFile.mockResolvedValue(
+            Buffer.from(await createMockPdf(4, w + 6, h + 6)),
+          );
+          const result = await service.validate('./spec-work.pdf', specOptions(w, h));
+          expect(findSizeMismatch(result)).toBeUndefined();
+          expect(result.metadata.hasBleed).toBe(true);
+          expect(result.isValid).toBe(true);
+        },
+      );
+
+      it.each(SPEC_TABLE)(
+        '%s: 오사이즈(+9mm) 업로드 → SIZE_MISMATCH',
+        async (_label, w, h) => {
+          // +9mm 는 재단(±1mm)·작업(재단+6mm, ±1mm) 어느 쪽에도 안 걸리는 대표 오사이즈
+          mockedFs.readFile.mockResolvedValue(
+            Buffer.from(await createMockPdf(4, w + 9, h + 9)),
+          );
+          const result = await service.validate('./spec-over.pdf', specOptions(w, h));
+          expect(findSizeMismatch(result)).toBeDefined();
+          expect(result.isValid).toBe(false);
+        },
+      );
+
+      // ── A안 무스왑 계약 잠금 ──
+      // 워커 validatePageSize 는 기대값의 W↔H 스왑을 절대 허용하지 않는다:
+      //  - 스왑 허용 시 "방향 오업로드"(세로 주문에 가로 파일)가 정상으로 마스킹되고,
+      //  - fix-bleed 등 자동 보정이 잘못된 축 기준으로 수행(innerfit 축소)되는 사고 경로가 열린다.
+      // 방향 정합은 기준값 유도측(templateSet=오리엔트된 판형 권위)에서 확정한다(A안).
+      // 이 테이블은 그 계약(워커 서비스 로직 무수정)을 CI 로 잠근다.
+      const NON_SQUARE_SPECS: Array<[string, number, number]> = [
+        ['A4', 210, 297],
+        ['B5', 182, 257],
+        ['46배판', 188, 257],
+        ['16절', 190, 260],
+        ['B6', 128, 182],
+      ];
+
+      it.each(NON_SQUARE_SPECS)(
+        'A안 무스왑 계약: %s 기대(세로)인데 실측이 정확한 W↔H 스왑(가로) → 여전히 SIZE_MISMATCH',
+        async (_label, w, h) => {
+          mockedFs.readFile.mockResolvedValue(
+            Buffer.from(await createMockPdf(4, h, w)),
+          );
+          const result = await service.validate('./spec-swap.pdf', specOptions(w, h));
+          expect(findSizeMismatch(result)).toBeDefined();
+          expect(result.isValid).toBe(false);
+        },
+      );
+    });
   });
 
   // ============================================================

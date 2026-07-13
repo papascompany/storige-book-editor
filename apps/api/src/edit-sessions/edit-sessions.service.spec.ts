@@ -432,4 +432,131 @@ describe('EditSessionsService', () => {
       expect(oo.workSize).toEqual({ width: 206, height: 286 });
     });
   });
+
+  // ── 방향 정합 (2026-07-14, 오너 규격표): size W↔H 스왑 정규화 + expectedOrientation ──
+  // templateSet = 오리엔트된 판형 권위(가로 A4 세트=297×210), metadata.size 는 bookmoa
+  // 미오리엔트 전달 이력(R-13). 워커 validatePageSize 는 무수정(축별 엄격 비교 유지) —
+  // 정규화는 기준값 유도측에서 "정확 스왑 관계"에만 수행. 스왑 아닌 불일치는 원본 보존.
+  describe('createValidationJobs 방향 정합 — size 스왑 정규화 + expectedOrientation (2026-07-14)', () => {
+    beforeEach(() => {
+      mockWorkerJobsService.createValidationJob.mockResolvedValue({ id: 'job-orient' } as any);
+    });
+
+    const makeSession = (overrides: Partial<EditSessionEntity> = {}): EditSessionEntity =>
+      ({
+        id: 'session-orient',
+        contentFileId: 'file-content-1',
+        coverFileId: null,
+        templateSetId: null,
+        metadata: null,
+        ...overrides,
+      }) as EditSessionEntity;
+
+    const callPrivate = (session: EditSessionEntity): Promise<void> =>
+      (service as unknown as { createValidationJobs(s: EditSessionEntity): Promise<void> })
+        .createValidationJobs(session);
+
+    const lastOrderOptions = () =>
+      mockWorkerJobsService.createValidationJob.mock.calls.at(-1)?.[0]?.orderOptions;
+
+    const warnSpy = () =>
+      jest.spyOn(
+        (service as unknown as { logger: { warn: (msg: string) => void } }).logger,
+        'warn',
+      );
+
+    it('① 가로 templateSet(297×210) + 미오리엔트 size{210×297} → 스왑 정규화 {297×210} + expectedOrientation=landscape + warn 계측', async () => {
+      mockTemplateSetsService.findOne = jest
+        .fn()
+        .mockResolvedValue({ width: 297, height: 210, cropMarkEnabled: false });
+      const spy = warnSpy();
+
+      await callPrivate(
+        makeSession({
+          templateSetId: 'ts-landscape-a4',
+          metadata: { size: { width: 210, height: 297 } } as any,
+        }),
+      );
+
+      const oo = lastOrderOptions();
+      expect(oo.size).toEqual({ width: 297, height: 210 });
+      expect(oo.expectedOrientation).toBe('landscape');
+      // bookmoa 교정 계측 로그: 세션 id + 원본→정규화 값
+      expect(spy).toHaveBeenCalledWith(expect.stringContaining('session-orient'));
+      expect(spy).toHaveBeenCalledWith(expect.stringContaining('210×297 → 297×210'));
+    });
+
+    it('② 정사각 templateSet(210×210) + size{210×210} → 무정규화 + expectedOrientation 미주입', async () => {
+      mockTemplateSetsService.findOne = jest
+        .fn()
+        .mockResolvedValue({ width: 210, height: 210, cropMarkEnabled: false });
+
+      await callPrivate(
+        makeSession({
+          templateSetId: 'ts-square',
+          metadata: { size: { width: 210, height: 210 } } as any,
+        }),
+      );
+
+      const oo = lastOrderOptions();
+      expect(oo.size).toEqual({ width: 210, height: 210 });
+      expect(oo.expectedOrientation).toBeUndefined();
+    });
+
+    it('③ 스왑 아닌 불일치(templateSet 297×210 + size 200×280) → 원본 보존(파트너 명시값 계약) — expectedOrientation 주입은 독립 수행', async () => {
+      mockTemplateSetsService.findOne = jest
+        .fn()
+        .mockResolvedValue({ width: 297, height: 210, cropMarkEnabled: false });
+      const spy = warnSpy();
+
+      await callPrivate(
+        makeSession({
+          templateSetId: 'ts-landscape-a4',
+          metadata: { size: { width: 200, height: 280 } } as any,
+        }),
+      );
+
+      const oo = lastOrderOptions();
+      expect(oo.size).toEqual({ width: 200, height: 280 }); // 정확 스왑 아님 → 무접촉
+      expect(oo.expectedOrientation).toBe('landscape'); // 비정사각 templateSet → 주입은 수행
+      expect(spy).not.toHaveBeenCalledWith(expect.stringContaining('방향 정규화'));
+    });
+
+    it('④ metadata.size 부재 + 가로 templateSet → templateSet 판형 폴백(기존 G2 회귀) + expectedOrientation=landscape', async () => {
+      mockTemplateSetsService.findOne = jest
+        .fn()
+        .mockResolvedValue({ width: 297, height: 210, cropMarkEnabled: false });
+
+      await callPrivate(makeSession({ templateSetId: 'ts-landscape-a4' }));
+
+      const oo = lastOrderOptions();
+      expect(oo.size).toEqual({ width: 297, height: 210 }); // G2 폴백 유지(스왑 대상 아님 — 동일값)
+      expect(oo.expectedOrientation).toBe('landscape');
+    });
+
+    it('⑤ templateSet 부재 → 무정규화 + expectedOrientation 미주입 (A4 최후 폴백 레거시 동일)', async () => {
+      await callPrivate(makeSession({ templateSetId: null }));
+
+      const oo = lastOrderOptions();
+      expect(oo.size).toEqual({ width: 210, height: 297 });
+      expect(oo.expectedOrientation).toBeUndefined();
+    });
+
+    it('⑥ 세로 templateSet(210×297) + 스왑 전달 size{297×210} → 세로로 정규화 + expectedOrientation=portrait (대칭)', async () => {
+      mockTemplateSetsService.findOne = jest
+        .fn()
+        .mockResolvedValue({ width: 210, height: 297, cropMarkEnabled: false });
+
+      await callPrivate(
+        makeSession({
+          templateSetId: 'ts-portrait-a4',
+          metadata: { size: { width: 297, height: 210 } } as any,
+        }),
+      );
+
+      const oo = lastOrderOptions();
+      expect(oo.size).toEqual({ width: 210, height: 297 });
+      expect(oo.expectedOrientation).toBe('portrait');
+    });
+  });
 });

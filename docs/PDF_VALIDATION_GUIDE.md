@@ -37,7 +37,7 @@
 | 3 | 페이지수 초과 | 🔴에러 | `PAGE_COUNT_EXCEEDED` | > **1000p**(`DEFAULT_MAX_PAGES`) | 전체 | ✕ |
 | 4 | 제본 규격(페이지수) | 🔴에러 | `PAGE_COUNT_INVALID` | 무선(perfect)·내지 4배수 아님 | 내지 | addBlankPages |
 | 5 | 주문 페이지수 일치 | 🟡경고 | `PAGE_COUNT_MISMATCH` | 실제 ≠ 주문 `pages` | 전체 | addBlankPages |
-| 6 | 판형(사이즈) | 🔴에러 | `SIZE_MISMATCH` | 주문 `size`와 ±**1mm** 초과(재단 포함/불포함 모두 비교) | 전체 | fixMethod=resizeWithPadding — **실행기 미제공**. `WORKER_WIRED_FIXABLE_GATING=true` 시 autoFixable=false(기본 OFF=레거시 true) |
+| 6 | 판형(사이즈) | 🔴에러 | `SIZE_MISMATCH` | 주문 `size`와 ±**1mm** 초과(재단 포함/불포함 모두 비교) — 기준값 규격은 하단 **§내지 판형 규격표(2026-07-14)** 참조 | 전체 | fixMethod=resizeWithPadding — **실행기 미제공**. `WORKER_WIRED_FIXABLE_GATING=true` 시 autoFixable=false(기본 OFF=레거시 true) |
 | 7 | 재단 여백(bleed) | 🟡경고 | `BLEED_MISSING` | 재단 여백 없음 | 전체 | fixMethod=extendBleed — **실행기 배선(2026-07-13)**: `POST /worker-jobs/fix-bleed`(하단 §도련 자동 삽입). 게이팅 ON/OFF 무관 autoFixable=true |
 | 8 | 책등(spine) | 🔴에러 | `SPINE_SIZE_MISMATCH` | 표지 총너비 ≠ `size.w×2 + spine + bleed×2` ±**2mm** (spine=`paperThickness×pages/2` **재계산**) | **표지** + `paperThickness` 있을 때만 | fixMethod=adjustSpine — **실행기 미제공**. 게이팅 ON 시 autoFixable=false(기본 OFF=레거시 true) |
 | 9 | 가로형 페이지 | 🟡경고 | `LANDSCAPE_PAGE` | 가로 방향 페이지 감지 | 전체 | ✕ |
@@ -83,6 +83,28 @@
 ```
 
 기대 스펙은 **프런트가 `orderOptions`에 실어 보냄**(서버가 주문에서 자동 도출하지 않음).
+
+---
+
+## 내지 판형 규격표 (2026-07-14)
+
+> 오너 확정 스펙(2026-07-14). `orderOptions.size` = **재단 사이즈(mm)**, 작업 사이즈 = 재단 + 사방 3mm(bleed). 세로형 기준 표기.
+
+| 판형 | 재단 (W×H mm) | 작업 (+사방 3mm) |
+|---|---|---|
+| A4 | 210×297 | 216×303 |
+| B5 | 182×257 | 188×263 |
+| 46배판 | 188×257 | 194×263 |
+| 16절 | 190×260 | 196×266 |
+| B6 | 128×182 | 134×188 |
+| 정사각 | 210×210 | 216×216 |
+| 비규격 | 고객 입력값 그대로 | 입력값 + 사방 3mm |
+
+**각주**:
+- **가로형/세로형**: 방향(W↔H 스왑)만 다르고 동일 기준(예: 가로 A4 재단 = 297×210). 판형 자체는 위 표 하나로 갈음.
+- **검증 기준값 = bookmoa 전달값**(`orderOptions.size`). 서버가 주문에서 자동 도출하지 않음(기존 계약 유지). 세션 검증 경로에서 미전달 시 templateSet 판형 폴백(C+ G2).
+- **스왑 정규화 서버 가드(2026-07-14)**: 세션 검증 잡 생성 시(`edit-sessions` `createValidationJobs`) 전달 `size`가 templateSet(오리엔트된 판형 권위)과 **정확히 W↔H 스왑 관계**(각 축 오차 <0.01mm·양쪽 비정사각)이면 templateSet 방향으로 정규화한다(미오리엔트 전달 이력 R-13 대응). 스왑이 아닌 불일치·정사각·templateSet 부재는 전달값 원본 보존. 워커 `validatePageSize` 는 축별 엄격 비교 무수정(스왑 허용 없음 — 방향 오업로드 마스킹·fix-bleed 축소 사고 방지). 아울러 비정사각 templateSet 세션에는 `expectedOrientation` 을 주입해 방향 불일치가 `ORIENTATION_MISMATCH` 경고(비차단)로 안내된다.
+- **오차 허용**: 기존 체계 그대로(기본 ±1mm, crop-mark opt-in 셋은 `sizeToleranceMm`) — 본 규격표는 기준값 정의이며 허용오차 체계를 바꾸지 않는다.
 
 ---
 

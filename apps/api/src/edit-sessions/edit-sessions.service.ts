@@ -1035,7 +1035,13 @@ export class EditSessionsService {
       }
 
       // Get order options from metadata or use defaults
-      const orderOptions: CreateValidationJobDto['orderOptions'] = {
+      // expectedOrientation(워커 R3 방향검증)은 워커 측 DTO(validation-result.dto.ts /
+      // validation.processor.ts)에만 정의된 필드 — API CreateValidationJobDto 미정의라
+      // 로컬 확장 타입으로 주입한다. 이 경로는 서비스 내부 직호출이며 orderOptions 는
+      // DB job.options·Bull 페이로드에 스프레드 복사로 필드 보존 전달됨(worker-jobs.service.ts).
+      const orderOptions: CreateValidationJobDto['orderOptions'] & {
+        expectedOrientation?: 'portrait' | 'landscape';
+      } = {
         // C+ G2(2026-07-11): metadata.size 부재 시 A4 하드코드 대신 templateSet 판형으로 폴백.
         // A4 고정 디폴트는 비-A4 상품 세션의 생성 PDF 를 SIZE_MISMATCH 로 오검증했고
         // (FIXABLE→VALIDATED 매핑이 마스킹), 게이팅 ON 시 session.failed 로 flip 하는 원인.
@@ -1052,6 +1058,48 @@ export class EditSessionsService {
         bleed: session.metadata?.bleed ?? 3,
         paperThickness: session.metadata?.paperThickness,
       };
+
+      // ── 내지 판형 방향 정합 (2026-07-14, 오너 규격표 스펙) ──
+      // templateSet.width/height = 오리엔트된 판형 권위(가로 A4 세트=297×210).
+      // metadata.size 는 bookmoa /embed 원본으로 미오리엔트 전달 실측 이력(R-13)이 있어,
+      // 가로 상품에서 정상 가로 PDF 가 SIZE_MISMATCH 로 오검증됐다(G-A).
+      // 워커 validatePageSize 는 축별 엄격 비교를 유지한다(스왑 허용 금지 —
+      // 방향 오업로드 마스킹 + fix-bleed innerfit 축소 사고 방지). 방향 정합은
+      // 기준값 유도측(여기)에서만 확정: templateSet 판형과 "정확히 W↔H 스왑 관계"인
+      // 전달값만 templateSet 방향으로 정규화. 정사각·스왑 아닌 불일치·templateSet 부재는
+      // 원본 보존(파트너 명시값 계약 불변).
+      const AXIS_EPS = 0.01; // mm — 정확 스왑/비정사각 판정 오차
+      if (templateSet) {
+        const tsWidth = templateSet.width;
+        const tsHeight = templateSet.height;
+        const tsNonSquare = Math.abs(tsWidth - tsHeight) > AXIS_EPS;
+        const { width: sizeWidth, height: sizeHeight } = orderOptions.size;
+        const sizeNonSquare = Math.abs(sizeWidth - sizeHeight) > AXIS_EPS;
+
+        if (
+          tsNonSquare &&
+          sizeNonSquare &&
+          Math.abs(sizeWidth - tsHeight) < AXIS_EPS &&
+          Math.abs(sizeHeight - tsWidth) < AXIS_EPS
+        ) {
+          orderOptions.size = { width: tsWidth, height: tsHeight };
+          // warn 레벨 유지 — bookmoa 전달값 교정 계측용(정규화 빈도·원본값 추적)
+          this.logger.warn(
+            `[validation-jobs] session ${session.id} orderOptions.size 방향 정규화: ` +
+              `${sizeWidth}×${sizeHeight} → ${tsWidth}×${tsHeight}mm ` +
+              `(templateSet ${session.templateSetId} 판형과 정확 W↔H 스왑 관계)`,
+          );
+        }
+
+        // 방향 의도 주입 — 비정사각 templateSet 세션 전체(cropMarkEnabled 게이트 밖).
+        // 워커 validatePageOrientation: 명시 시 어긋난 페이지를 ORIENTATION_MISMATCH
+        // 경고 1건(비차단)으로 집계 → 방향 오업로드가 SIZE_MISMATCH 만으로 침묵하는 대신
+        // 방향 안내로 표현된다. 정사각은 방향 개념 없음 → 미주입(워커 auto 동작 유지).
+        if (tsNonSquare) {
+          orderOptions.expectedOrientation =
+            tsWidth > tsHeight ? 'landscape' : 'portrait';
+        }
+      }
 
       // ── 블리드 / 재단선 / 사이즈 허용오차 + 재단/작업 사이즈 주입 (2026-06-10) ──
       // ⚠️ 마스터 게이트(cropMarkEnabled===true) 통과 세션만 주입.

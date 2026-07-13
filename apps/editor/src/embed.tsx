@@ -57,7 +57,12 @@ import { WorkspaceModal } from './components/modals'
 import { RestoreBackupBanner } from './components/RestoreBackupBanner'
 import { Sentry } from './lib/sentry'
 import { applyContentPdfGuides } from './utils/contentPdfGuide'
-import { detectOrientationMismatch, type OrientationMismatch } from './utils/orientationGuard'
+import {
+  classifyOrientation,
+  detectOrientationMismatch,
+  type OrientationMismatch,
+  type OrientationSize,
+} from './utils/orientationGuard'
 import { useExternalPhotosStore } from './stores/useExternalPhotosStore'
 import './index.css'
 
@@ -93,6 +98,75 @@ function withWatchdog<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
       setTimeout(() => reject(new Error(`WATCHDOG_TIMEOUT_${ms}ms:${label}`)), ms),
     ),
   ])
+}
+
+// ============================================================
+// G-E (2026-07-14): 단일모드 완료 PDF 방향 정합 헬퍼
+// ============================================================
+
+/** '정확히 W↔H 스왑'으로 인정하는 축별 오차(mm) — 이보다 큰 차이는 스왑이 아닌 별개 치수로 본다. */
+const PDF_SIZE_SWAP_EPSILON_MM = 0.01
+
+export interface SingleModePdfSizeMm {
+  width: number
+  height: number
+  /** 전달값이 templateSet 판형의 정확한 W↔H 스왑이어서 방향 정규화가 적용됐는지 */
+  swapped: boolean
+}
+
+/**
+ * 단일(비-spread) 완료 PDF 의 페이지 치수 결정 (G-E, 2026-07-14).
+ *
+ * 기본은 현행 그대로 — 호스트 전달값(options.size)을 각 축 독립 `|| 210 / || 297`(A4) 폴백으로
+ * 사용한다. 단, templateSet(오리엔트된 판형 권위)이 존재하고 **비정사각**이며, 전달값이
+ * templateSet 판형과 **정확히 W↔H 스왑 관계**(각 축 |Δ| < 0.01mm)일 때만 전달값을
+ * templateSet 방향으로 스왑 정규화한다(크기값은 전달값 보존, 축만 교환).
+ *
+ * A안 근거: 워커 validatePageSize 는 무스왑 계약을 유지한다(스왑 허용 시 방향 오업로드가
+ * 마스킹되고 fix-bleed innerfit 축소 사고 경로가 열림). 방향 정합은 이 기준값 유도측에서 확정.
+ *
+ * 정규화는 **PDF 생성 로컬 치수에만** 적용 — 세션 metadata·editor.complete postMessage 의
+ * size 는 파트너 전달값 원본을 보존한다(파트너 명시값 계약).
+ *
+ * 불변(정규화하지 않음) 케이스 — detectOrientationMismatch(utils/orientationGuard)와 의미 정합:
+ * - 전달값·templateSet 이 일치(스왑 아님)
+ * - 스왑이 아닌 무관 불일치(파트너 명시값 계약대로 원본 유지)
+ * - templateSet 정사각(방향 모호 — classifyOrientation 과 동일 기준, 토러런스 1mm)
+ * - size 미전달/무효(A4 폴백 — 폴백값으로는 정규화 판정을 하지 않는다)
+ * 정규화가 일어나는 조건(비정사각 + 정확한 스왑)은 항상 detectOrientationMismatch 가
+ * 불일치를 보고하는 케이스의 부분집합이다.
+ */
+export function resolveSingleModePdfSizeMm(
+  requestedSize: OrientationSize | null | undefined,
+  templateSize: OrientationSize | null | undefined,
+): SingleModePdfSizeMm {
+  // 현행(:1636) 폴백 시맨틱 보존: 각 축 독립 `|| 210 / || 297` (0/NaN 도 폴백)
+  const width = requestedSize?.width || 210
+  const height = requestedSize?.height || 297
+
+  const reqW = requestedSize?.width
+  const reqH = requestedSize?.height
+  const tplW = templateSize?.width
+  const tplH = templateSize?.height
+
+  // 전달값 양축이 유효할 때만 스왑 판정 — 폴백(A4)값으로는 정규화하지 않는다.
+  if (
+    typeof reqW === 'number' && Number.isFinite(reqW) && reqW > 0 &&
+    typeof reqH === 'number' && Number.isFinite(reqH) && reqH > 0 &&
+    typeof tplW === 'number' && typeof tplH === 'number'
+  ) {
+    // 정사각(방향 모호)·무효 templateSet 제외 — orientationGuard 의 판정식과 동일 기준
+    const templateOrientation = classifyOrientation(tplW, tplH)
+    const isExactSwap =
+      Math.abs(reqW - tplH) < PDF_SIZE_SWAP_EPSILON_MM &&
+      Math.abs(reqH - tplW) < PDF_SIZE_SWAP_EPSILON_MM
+    if ((templateOrientation === 'portrait' || templateOrientation === 'landscape') && isExactSwap) {
+      // 축만 교환(크기값은 전달값 보존) → templateSet 방향과 일치
+      return { width: reqH, height: reqW, swapped: true }
+    }
+  }
+
+  return { width, height, swapped: false }
 }
 
 // ============================================================
@@ -409,6 +483,9 @@ function EmbeddedEditor({
   // D-4 (2026-07-06): 템플릿셋 커버 메타(coverType varchar + coverConfig.caseBind JSON) —
   // Track 3 이 만드는 optional 필드를 옵셔널 체이닝으로 읽어 보관. null = 미설정(전 경로 기존 동작).
   const templateSetCoverMetaRef = useRef<TemplateSetCoverMeta | null>(null)
+  // G-E (2026-07-14): 로드된 templateSet 판형(단일 페이지, mm) — 단일모드 완료 PDF 치수의
+  // 방향 정합(resolveSingleModePdfSizeMm)에 사용. null = 판형 미보유(현행 폴백 그대로).
+  const templateSetSizeRef = useRef<{ width: number; height: number } | null>(null)
   const [screenMode, setScreenMode] = useState<'mobile' | 'tablet' | 'desktop'>('desktop')
   const [isLoading, setIsLoading] = useState(true)
   const [loadingMessage, setLoadingMessage] = useState('에디터를 초기화하는 중...')
@@ -774,6 +851,15 @@ function EmbeddedEditor({
         // D-4 (2026-07-06): 커버 메타(coverType/coverConfig.caseBind) 보관 — pricingChange 의
         // coverType 동봉 + 하드커버 출력 사이즈 계산에 사용. 미설정이면 null(기존 동작).
         templateSetCoverMetaRef.current = resolveTemplateSetCoverMeta(templateSet)
+
+        // G-E (2026-07-14): templateSet 판형(단일 페이지, mm) 보관 — 단일모드 완료 PDF 치수의
+        // 방향 정합에 사용(:1042 orientationMismatch 가드와 동일 소스). 비수치면 null(현행 폴백).
+        const tplSizeW = (templateSet as { width?: number }).width
+        const tplSizeH = (templateSet as { height?: number }).height
+        templateSetSizeRef.current =
+          typeof tplSizeW === 'number' && typeof tplSizeH === 'number'
+            ? { width: tplSizeW, height: tplSizeH }
+            : null
 
         if (!isMounted) return
 
@@ -1629,11 +1715,28 @@ function EmbeddedEditor({
           // ── 단일 페이지(표지/내지/템플릿 등) ──
           const servicePlugin = editor.getPlugin('ServicePlugin') as ServicePlugin | undefined
           if (servicePlugin) {
-            await finishMark('single:gen:start', { mode: effectiveMode })
+            // G-E (2026-07-14): 페이지 치수 — 전달값이 templateSet 판형과 정확히 W↔H 스왑이면
+            // templateSet 방향으로 정규화(PDF 생성 로컬 치수만 — 세션 metadata·editor.complete
+            // payload 의 size 는 전달값 원본 보존). 일치/무관 불일치/정사각/size 미전달은 현행 그대로.
+            const singlePdfSize = resolveSingleModePdfSizeMm(options?.size, templateSetSizeRef.current)
+            if (singlePdfSize.swapped) {
+              console.warn(
+                '[EmbeddedEditor] G-E: 단일모드 PDF 치수 방향 정규화 — 전달값이 templateSet 판형의 W↔H 스왑이라 templateSet 방향으로 생성합니다.',
+                {
+                  requested: options?.size,
+                  normalized: { width: singlePdfSize.width, height: singlePdfSize.height },
+                  templateSetSize: templateSetSizeRef.current,
+                },
+              )
+            }
+            await finishMark('single:gen:start', {
+              mode: effectiveMode,
+              ...(singlePdfSize.swapped ? { sizeSwapNormalized: true } : {}),
+            })
             const pdfBlob = await withWatchdog(
               runWithAutosaveSuspended(() => servicePlugin.saveMultiPagePDFAsBlob(
                 [canvas], [editor], `session-${currentSessionId}`,
-                { width: options?.size?.width || 210, height: options?.size?.height || 297, cutSize: bleed, ...markOpt },
+                { width: singlePdfSize.width, height: singlePdfSize.height, cutSize: bleed, ...markOpt },
                 undefined, 300,
               )),
               120000, 'single-gen',
