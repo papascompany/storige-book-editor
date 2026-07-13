@@ -105,6 +105,11 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
   const [editName, setEditName] = useState('')
   const nameInputRef = useRef<HTMLInputElement>(null)
 
+  // T4-① (2026-07-13): '페이지' 섹션은 하단 collapsible 로 강등(기본 접힘) — 헤더 Layers
+  // 아이콘이 여는 이 패널의 1차 목적은 레이어('요소')다. 페이지 섹션 제거는 금지:
+  // 비-spread 모드에서 페이지 추가/삭제의 유일한 진입점(BookNavigation 은 순수 네비).
+  const [pagesExpanded, setPagesExpanded] = useState(false)
+
   // L2 A-3: 보호 요소 안내 토스트 — 세션당 1회(반복 클릭 시 소음 방지)
   const protectedToastShownRef = useRef(false)
 
@@ -562,6 +567,8 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
   // 기존 dragSourceId/dragOver 상태를 재사용해 삽입 라인 인디케이터를 그린다.
   // 드롭은 데스크톱과 동일 시맨틱으로 reorderObject 재사용(fabric 라이브 스택 기준).
   // -------------------------------------------------------------------------
+  // T4-③: 행 요소 맵은 터치 DnD(collectRowRects) 외에 패널 열림 시 선택 행
+  // scrollIntoView 에도 쓰므로 데스크톱에서도 항상 ref 를 부착한다(수집 자체는 무비용).
   const rowElsRef = useRef(new Map<string, HTMLElement>())
   const rowRefCbsRef = useRef(new Map<string, (el: HTMLElement | null) => void>())
   const getRowRef = (id: string) => {
@@ -575,6 +582,19 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
     }
     return cb
   }
+
+  // T4-③ (2026-07-13): 패널 열림(show false→true) 전환 시 activeSelection 이 있으면
+  // 선택 행을 목록 뷰포트로 1회 스크롤({block:'nearest'} — 과스크롤 금지). 열림 전환
+  // 1회만 발화 — 패널이 열려 있는 동안의 선택 변경은 스크롤을 흔들지 않는다.
+  const prevShowRef = useRef(show)
+  useEffect(() => {
+    const wasShown = prevShowRef.current
+    prevShowRef.current = show
+    if (!show || wasShown) return
+    const selectedId = (activeSelection[0] as unknown as { id?: string } | undefined)?.id
+    if (!selectedId) return
+    rowElsRef.current.get(selectedId)?.scrollIntoView?.({ block: 'nearest' })
+  }, [show, activeSelection])
 
   // 드래그 활성 후 touchend 가 합성 click 으로 이어져 selectObject 가 오발동하는 것 방지
   const suppressRowClickRef = useRef(false)
@@ -719,78 +739,17 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
           </Button>
         </div>
       ) : (
-        <div className="top flex items-center justify-start p-3 w-full lg:hidden border-b border-editor-border">
-          <Button variant="ghost" size="icon" onClick={onClose}>
+        // T4-② (2026-07-13): 데스크톱에서도 보이는 '레이어' 제목+닫기 헤더 — 구 닫기 바는
+        // lg:hidden 이라 데스크톱(≥1024px)에서 제목조차 없어 "페이지 네비"로 오인됐다.
+        <div className="top flex items-center justify-between pl-4 pr-2 py-2 w-full border-b border-editor-border">
+          <h2 className="text-sm font-semibold text-editor-text">레이어</h2>
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onClose} aria-label="레이어 패널 닫기">
             <X className="h-5 w-5" />
           </Button>
         </div>
       )}
 
-      {/* Pages Section */}
-      {canvas && pageInfo && (
-        <div id="pages" className={TOUCH_ENV ? 'overflow-y-auto max-h-[20vh] shrink-0' : 'overflow-y-auto max-h-[440px]'}>
-          <div className="section-header flex items-center justify-between px-4 py-2">
-            <h3 className="text-sm font-semibold text-editor-text">페이지</h3>
-            <Button variant="ghost" size="icon" onClick={handleAddPage}>
-              <Plus className="h-4 w-4" />
-            </Button>
-          </div>
-          <div className="items px-4 pb-2">
-            {allCanvas.map((c, index) => (
-              <div
-                key={c.id || `page-${index}`}
-                className={cn(
-                  'page w-full flex flex-col items-center cursor-pointer relative mb-2',
-                  c.id === canvas.id && 'selected'
-                )}
-                onClick={() => handleSetPage(index)}
-              >
-                <div className="page-drag-handle absolute top-1 left-1 cursor-move opacity-0 hover:opacity-100">
-                  <DotsSixVertical className="h-4 w-4 text-editor-text-muted" />
-                </div>
-                <div
-                  className={cn(
-                    'screenshot-box w-full h-[120px] flex items-center justify-center',
-                    'bg-white rounded-xl border-2 overflow-hidden relative',
-                    c.id === canvas.id ? 'border-editor-accent/60' : 'border-editor-border/10'
-                  )}
-                >
-                  {(pageInfo.min || 1) < allCanvas.length && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className={cn(
-                        'delete-btn absolute top-1 right-1 h-8 w-8',
-                        // L6: 터치는 hover 불가 — 상시 노출(반투명 바탕으로 썸네일 위 가독 확보)
-                        TOUCH_ENV ? 'opacity-100 bg-white/70' : 'opacity-0 hover:opacity-100'
-                      )}
-                      onClick={(e) => handleDeletePage(e, c.id)}
-                    >
-                      <Trash className="h-4 w-4" />
-                    </Button>
-                  )}
-                  {screenshots[index] ? (
-                    <img
-                      src={screenshots[index]}
-                      alt={`Page ${index + 1}`}
-                      className="screenshot w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="screenshot w-full h-full bg-white" />
-                  )}
-                </div>
-                <div className="name text-xs text-editor-text mt-1 truncate w-full text-center">
-                  {(c as any).name || `Page ${index + 1}`}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <hr className="border-editor-border mx-4" />
-
-      {/* Objects Section */}
+      {/* Objects Section — T4-①: 레이어('요소')가 이 패널의 1차 목적이라 최상단 배치 */}
       {canvas && (
         <div
           id="objects"
@@ -863,7 +822,7 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
                 return (
                   <div
                     key={obj.id}
-                    ref={TOUCH_ENV ? getRowRef(obj.id) : undefined}
+                    ref={getRowRef(obj.id)} /* T4-③: 터치 DnD + 열림 시 scrollIntoView 공용 */
                     draggable={dragEnabled && editingObject?.id !== obj.id}
                     onDragStart={dragEnabled ? handleObjDragStart(obj.id) : undefined}
                     onDragOver={dragEnabled ? handleObjDragOver(obj.id) : undefined}
@@ -1080,6 +1039,94 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
                   </div>
                 )
               })}
+            </div>
+          )}
+        </div>
+      )}
+
+      <hr className="border-editor-border mx-4" />
+
+      {/* Pages Section — T4-①: 하단 collapsible(기본 접힘). 제거 금지 — 비-spread 모드에서
+          페이지 추가/삭제의 유일한 진입점(BookNavigation 은 순수 네비). */}
+      {canvas && pageInfo && (
+        <div id="pages" className="shrink-0">
+          <div className="section-header flex items-center justify-between px-4 py-2">
+            <button
+              type="button"
+              className="flex items-center gap-1 text-sm font-semibold text-editor-text"
+              onClick={() => setPagesExpanded((v) => !v)}
+              aria-expanded={pagesExpanded}
+              aria-controls="pages-items"
+            >
+              {pagesExpanded ? (
+                <ChevronUp className="h-4 w-4 text-editor-text-muted" aria-hidden="true" />
+              ) : (
+                <ChevronDown className="h-4 w-4 text-editor-text-muted" aria-hidden="true" />
+              )}
+              페이지
+            </button>
+            {/* 접힘 중 페이지 추가는 결과가 안 보여 오조작 — 펼친 상태에서만 노출 */}
+            {pagesExpanded && (
+              <Button variant="ghost" size="icon" onClick={handleAddPage} aria-label="페이지 추가">
+                <Plus className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
+          {pagesExpanded && (
+            <div
+              id="pages-items"
+              className={TOUCH_ENV ? 'overflow-y-auto max-h-[20vh]' : 'overflow-y-auto max-h-[440px]'}
+            >
+              <div className="items px-4 pb-2">
+                {allCanvas.map((c, index) => (
+                  <div
+                    key={c.id || `page-${index}`}
+                    className={cn(
+                      'page w-full flex flex-col items-center cursor-pointer relative mb-2',
+                      c.id === canvas.id && 'selected'
+                    )}
+                    onClick={() => handleSetPage(index)}
+                  >
+                    <div className="page-drag-handle absolute top-1 left-1 cursor-move opacity-0 hover:opacity-100">
+                      <DotsSixVertical className="h-4 w-4 text-editor-text-muted" />
+                    </div>
+                    <div
+                      className={cn(
+                        'screenshot-box w-full h-[120px] flex items-center justify-center',
+                        'bg-white rounded-xl border-2 overflow-hidden relative',
+                        c.id === canvas.id ? 'border-editor-accent/60' : 'border-editor-border/10'
+                      )}
+                    >
+                      {(pageInfo.min || 1) < allCanvas.length && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className={cn(
+                            'delete-btn absolute top-1 right-1 h-8 w-8',
+                            // L6: 터치는 hover 불가 — 상시 노출(반투명 바탕으로 썸네일 위 가독 확보)
+                            TOUCH_ENV ? 'opacity-100 bg-white/70' : 'opacity-0 hover:opacity-100'
+                          )}
+                          onClick={(e) => handleDeletePage(e, c.id)}
+                        >
+                          <Trash className="h-4 w-4" />
+                        </Button>
+                      )}
+                      {screenshots[index] ? (
+                        <img
+                          src={screenshots[index]}
+                          alt={`Page ${index + 1}`}
+                          className="screenshot w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="screenshot w-full h-full bg-white" />
+                      )}
+                    </div>
+                    <div className="name text-xs text-editor-text mt-1 truncate w-full text-center">
+                      {(c as any).name || `Page ${index + 1}`}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>

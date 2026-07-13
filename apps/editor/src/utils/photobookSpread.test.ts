@@ -335,18 +335,31 @@ describe('resolveTemplateSetCoverMeta (D-4 templateSet optional 읽기)', () => 
   })
 })
 
-describe('computeLivePageCount (D-3 단일 진실원)', () => {
-  it('inner 펼침면: 캔버스 12 → 물리 24페이지 (×2)', () => {
-    expect(computeLivePageCount(12, true, 1)).toBe(24)
+describe('computeLivePageCount (D-3 단일 진실원 + T5 coverCanvasCount)', () => {
+  it('inner 펼침면: 캔버스 12 → 물리 24페이지 (×2) — coverCanvasCount=0 불변', () => {
+    expect(computeLivePageCount(12, true, 1, 0)).toBe(24)
   })
 
-  it('비-inner(BOOK 등): 캔버스 수 그대로', () => {
-    expect(computeLivePageCount(25, false, 1)).toBe(25)
+  it('비-inner(BOOK 등): coverCanvasCount=0 이면 캔버스 수 그대로', () => {
+    expect(computeLivePageCount(25, false, 1)).toBe(25) // 기본값 하위호환(파라미터 생략)
+    expect(computeLivePageCount(1, false, 1, 0)).toBe(1) // 표지 단독 세션(게이트로 0 전달) 불변
+  })
+
+  it('T5: 표지+내지 단일 세션 spread — 표지 캔버스 1장 제외(21→20)', () => {
+    expect(computeLivePageCount(21, false, 20, 1)).toBe(20)
+  })
+
+  it('T5: 포토북 inner 세션은 coverCanvasCount 무영향(×2 산식 불변)', () => {
+    expect(computeLivePageCount(12, true, 1, 0)).toBe(24)
   })
 
   it('캔버스 0 → fallbackPages 폴백(기존 두 완료 경로 동작과 동일)', () => {
     expect(computeLivePageCount(0, true, 8)).toBe(8)
     expect(computeLivePageCount(0, false, 0)).toBe(1) // fallback 비유효 시 최소 1
+  })
+
+  it('T5 방어: 제외 후 0 이하이면 fallbackPages 폴백(음수 물리 페이지 금지)', () => {
+    expect(computeLivePageCount(1, false, 8, 1)).toBe(8)
   })
 })
 

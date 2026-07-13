@@ -338,7 +338,7 @@ export default function SiteList() {
         columns={columns}
         dataSource={sites}
         loading={isLoading}
-        pagination={{ pageSize: 20, showSizeChanger: true }}
+        pagination={{ defaultPageSize: 20, showSizeChanger: true }}
       />
 
       <Modal

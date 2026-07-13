@@ -7,6 +7,7 @@ import { WorkerJobsSweeperService } from './worker-jobs-sweeper.service';
 import { WorkerJob } from './entities/worker-job.entity';
 import { FilesModule } from '../files/files.module';
 import { WebhookModule } from '../webhook/webhook.module';
+import { TemplatesModule } from '../templates/templates.module';
 import { EditSessionEntity } from '../edit-sessions/entities/edit-session.entity';
 
 @Module({
@@ -25,6 +26,8 @@ import { EditSessionEntity } from '../edit-sessions/entities/edit-session.entity
     ),
     FilesModule,
     WebhookModule,
+    // fix-bleed(2026-07-13) — templateSet 권위 editSize 산출(TemplateSetsService).
+    TemplatesModule,
   ],
   controllers: [WorkerJobsController],
   // WK-4 — 고아 잡 스위퍼 cron (ScheduleModule.forRoot() 는 app.module 기존재)

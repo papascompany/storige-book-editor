@@ -1,6 +1,7 @@
 import { useMemo, useState, useEffect } from 'react'
 import { useAppStore, useSelectionType } from '@/stores/useAppStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
+import { useUiPrefStore } from '@/stores/useUiPrefStore'
 import { useIsCoarsePointer } from '@/hooks/useIsCoarsePointer'
 import { AlignPlugin, GroupPlugin, LockPlugin, ObjectPlugin, SelectionType } from '@storige/canvas-core'
 
@@ -136,6 +137,11 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
   // 어느 한쪽이라도 true 면 모바일 레이아웃. 두 신호를 모두 보아야 외장 키보드/마우스가
   // 연결된 태블릿 + 작은 viewport 같은 케이스에도 안전.
   const isMobile = mobileOverlay || isCoarsePointer
+  // T6-③ (2026-07-13): 데스크톱 폭 = FeatureSidebar 와 동일한 useUiPrefStore.sidebarWidth
+  // (240~480 clamp). 객체 선택 시 FeatureSidebar unmount ↔ ControlBar mount 스왑에서
+  // 두 패널 폭이 같아야(delta=0) 캔버스 컨테이너 좌측 엣지가 밀리지 않는다(구 280px 고정).
+  // 모바일 시트 분기는 fixed 오버레이(레이아웃 불변)라 무관 — 무접촉.
+  const sidebarWidth = useUiPrefStore((s) => s.sidebarWidth)
 
   // 모바일 시트는 기본 collapsed (헤더만 표시) — 캔버스 가림 최소화.
   // 사용자가 헤더 / 드래그 핸들 탭하면 expand. 새 객체 선택 시마다 collapsed 로 리셋.
@@ -506,10 +512,11 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
     ? `control-bar control-bar--mobile fixed left-0 right-0 bottom-0 z-[102] bg-editor-panel border-t border-editor-border flex flex-col overflow-hidden shadow-[0_-2px_12px_rgba(0,0,0,0.08)] transition-[height,max-height] duration-200 ${
         expanded ? 'h-[70vh] max-h-[70vh]' : 'h-[88px] max-h-[88px]'
       }`
-    : 'control-bar bg-editor-panel border-r border-editor-border flex flex-col w-[280px] min-w-[280px] max-w-[280px] h-full overflow-hidden'
+    : 'control-bar bg-editor-panel border-r border-editor-border flex flex-col h-full overflow-hidden'
+  // T6-③: 데스크톱은 FeatureSidebar 와 동일하게 inline style 로 폭 고정(min=max — flex 수축 방지).
   const containerStyle = isMobile
     ? { paddingBottom: 'env(safe-area-inset-bottom, 0px)' }
-    : undefined
+    : { width: sidebarWidth, minWidth: sidebarWidth, maxWidth: sidebarWidth }
 
   return (
     <div id="control-bar" className={containerClassName} style={containerStyle}>

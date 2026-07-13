@@ -110,6 +110,7 @@ describe('WorkerJobsService.updateEditSessionWorkerStatus — C+ G2 세션 전�
       {} as any, // filesService
       webhookService as any,
       {} as any, // sitesService
+      {} as any, // templateSetsService
     );
   });
 
