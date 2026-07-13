@@ -128,8 +128,12 @@ export const DEFAULT_CROP_MARK_ENABLED = false;
  * 이 게이팅만으로 자동으로 정직해진다.
  *
  *  - 'addBlankPages': POST /worker-jobs/fix-pagecount(/external) → CONVERT 잡
- *    padToMultiple → pdf-converter addPages (2026-06-25 LIVE. 유일한 배선 실행기).
- *  - 'resizeWithPadding' / 'adjustSpine' / 'extendBleed': 실행기 미구현.
+ *    padToMultiple → pdf-converter addPages (2026-06-25 LIVE. 최초 배선 실행기).
+ *  - 'extendBleed': POST /worker-jobs/fix-bleed → CONVERT 잡 convertOptions.editSize
+ *    (templateSet 판형+bleedMm×2 서버 권위 산출) → pdf-converter resolveMode/
+ *    applyImpositionMode('center' 무스케일 중앙 배치) (2026-07-13 배선. 워커 무수정 —
+ *    기존 임포지션 부품 소비만).
+ *  - 'resizeWithPadding' / 'adjustSpine': 실행기 미구현.
  *    구현·배선 후 이 집합에 추가하면 해당 에러/경고의 autoFixable 이 자동
  *    복원된다(파트너 모달은 autoFixable 게이트라 소비처 무수정).
  *
@@ -137,4 +141,7 @@ export const DEFAULT_CROP_MARK_ENABLED = false;
  *    실행기 출시 시 계약 변경 없이 재활성하기 위함.
  * @see .cursor/plans/NOTICE_bookmoa_autofixable_gating_2026-07-11.md (파트너 고지·선결 게이트)
  */
-export const WIRED_FIX_METHODS: ReadonlySet<string> = new Set(['addBlankPages']);
+export const WIRED_FIX_METHODS: ReadonlySet<string> = new Set([
+  'addBlankPages',
+  'extendBleed',
+]);

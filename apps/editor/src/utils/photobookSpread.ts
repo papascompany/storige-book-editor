@@ -228,16 +228,23 @@ export function resolveTemplateSetCoverMeta(templateSet: unknown): TemplateSetCo
 
 /**
  * D-3: 완료/가격 이벤트용 라이브 물리 페이지 수 단일 진실원.
- * 포토북 내지(inner) 펼침면은 캔버스 1개 = 2 물리페이지(×2), 그 외는 캔버스 수 그대로.
+ * 포토북 내지(inner) 펼침면은 캔버스 1개 = 2 물리페이지(×2),
+ * 그 외는 캔버스 수 − coverCanvasCount(표지 캔버스 제외분).
  * 캔버스가 0개면 fallbackPages(주문 시점 pages, 최소 1)로 폴백 — 기존 두 경로 동작과 동일.
+ *
+ * T5 (2026-07-13): coverCanvasCount 파라미터 추가 — 표지+내지 단일 세션 spread 세트
+ * (비-inner)에서 표지 캔버스 1장이 물리 페이지 수에 섞여 21로 집계되던 것을 20으로 정정.
+ * 기본값 0 = 기존 호출 byte-parity(BOOK/LEAFLET/포토북 inner ×2 산식 불변).
+ * 호출측 게이트: 표지 단독 세션(캔버스 1)은 0 을 전달해야 한다(physical=0 방지).
  */
 export function computeLivePageCount(
   canvasCount: number,
   isInnerSpread: boolean,
   fallbackPages: number,
+  coverCanvasCount: number = 0,
 ): number {
   const count = Number.isFinite(canvasCount) && canvasCount > 0 ? Math.floor(canvasCount) : 0
-  const physical = isInnerSpread ? count * 2 : count
+  const physical = isInnerSpread ? count * 2 : Math.max(0, count - coverCanvasCount)
   if (physical > 0) return physical
   return Number.isFinite(fallbackPages) && fallbackPages > 0 ? Math.floor(fallbackPages) : 1
 }

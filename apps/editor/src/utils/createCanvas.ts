@@ -39,6 +39,43 @@ import { apiClient } from '@/api/client'
 import type { fabric } from 'fabric'
 
 /**
+ * 초기화 세션이 취소/교체되어 캔버스 생성이 중단됨을 알리는 신호.
+ * 호출측(뷰)은 이 에러를 오류가 아닌 정상 중단으로 처리해야 한다
+ * (StrictMode 이중 마운트·빠른 라우트 전환에서 발생하는 기대 동작).
+ */
+export class CanvasInitCancelledError extends Error {
+  constructor(initId: string) {
+    super(`Canvas initialization cancelled (stale initId: ${initId})`)
+    this.name = 'CanvasInitCancelledError'
+  }
+}
+
+/**
+ * 캔버스 안전 dispose — DOM에서 이미 분리된 캔버스(fabric dispose가 removeChild로
+ * NotFoundError를 던지는 케이스)를 무해화하고 잔여 wrapper 엘리먼트까지 제거한다.
+ * StrictMode 이중 마운트에서 cleanup의 innerHTML='' 이후 in-flight 초기화가
+ * dispose를 시도할 때 콘솔 에러·고아 캔버스가 남던 결함의 공통 처리기.
+ */
+export const safeDisposeCanvas = (canvas: fabric.Canvas): void => {
+  try {
+    canvas.off()
+  } catch {
+    /* noop */
+  }
+  ;(canvas as fabric.Canvas & { disposed?: boolean }).disposed = true
+  try {
+    canvas.dispose()
+  } catch {
+    /* noop — 이미 DOM에서 분리된 경우 removeChild 실패 무해화 */
+  }
+  try {
+    ;(canvas as fabric.Canvas & { wrapperEl?: HTMLElement }).wrapperEl?.remove()
+  } catch {
+    /* noop */
+  }
+}
+
+/**
  * 캔버스 생성 함수
  * FabricJS 캔버스 인스턴스를 생성하고 플러그인을 초기화합니다.
  * @param customSettings - 사용자 정의 캔버스 설정
@@ -110,14 +147,28 @@ export const createCanvas = async (
   // 3. FabricJS 기본 설정 (1회만 실행됨)
   configureFabricDefaults()
 
+  // 초기화 세션 유효성 — await 경계마다 검사해 stale 초기화(StrictMode 이중 마운트,
+  // 빠른 라우트 전환)가 DOM/스토어/전역 리스너를 오염시키기 전에 중단한다.
+  // initId 미전달 호출자(페이지 추가 등 세션 내 경로)는 기존 동작 그대로.
+  const isInitStale = (): boolean =>
+    initId !== undefined && useAppStore.getState().initializationId !== initId
+
   // 4. FabricJS 캔버스 인스턴스 생성 (core API 사용)
-  const canvas = await createFabricCanvas(canvasId, {
+  // ⚠️ id 문자열이 아니라 요소를 직접 전달 — 같은 id('canvas0')의 초기화 두 개가 겹치면
+  // getElementById 조회가 상대편 요소를 훔쳐 바인딩하는 레이스가 있다(StrictMode 이중 마운트).
+  const canvas = await createFabricCanvas(canvasElement, {
     index: index,
     unitOptions: {
       unit: settings.unit,
       dpi: settings.dpi,
     },
   })
+
+  if (isInitStale()) {
+    safeDisposeCanvas(canvas)
+    customContainer.remove()
+    throw new CanvasInitCancelledError(initId!)
+  }
 
   // 5. FabricJS가 생성한 DOM 요소 구조 정리
   const fabricWrapper = canvasElement.parentElement
@@ -138,6 +189,15 @@ export const createCanvas = async (
 
   // 6. 폰트 목록 로드 (API에서)
   await loadFonts()
+
+  // loadFonts(네트워크) 동안 세션이 교체됐으면 플러그인 초기화 전에 중단 —
+  // stale initPlugins는 전역 리스너(핫키·contextMenu)와 #canvas-wrapper 전역
+  // 셀렉터 조작을 라이브 뷰에 누수시킨다(appStore.init의 initId 가드만으로는 부족).
+  if (isInitStale()) {
+    safeDisposeCanvas(canvas)
+    customContainer.remove()
+    throw new CanvasInitCancelledError(initId!)
+  }
 
   // 7. 플러그인 초기화
   initPlugins(canvas, editor, settings, initId)

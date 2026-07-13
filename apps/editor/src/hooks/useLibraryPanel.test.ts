@@ -6,6 +6,8 @@ import { useLibraryPanel } from './useLibraryPanel'
 // templateSetId 를 테스트별로 바꿀 수 있게 가변 변수로 보관.
 let mockTemplateSetId: string | null = null
 let mockIsCustomer = true
+// A1-4: 관리자(editMode) fetch 게이트 완화 검증용 — 실스토어 기본값에 기대지 않고 명시 mock.
+let mockEditMode = false
 
 vi.mock('@/stores/useEditorStore', () => ({
   useEditorStore: (selector: (s: { templateSetId: string | null }) => unknown) =>
@@ -16,6 +18,11 @@ vi.mock('@/stores/useAuthStore', () => ({
   useIsCustomer: () => mockIsCustomer,
 }))
 
+vi.mock('@/stores/useSettingsStore', () => ({
+  useSettingsStore: (selector: (s: { currentSettings: { editMode: boolean } }) => unknown) =>
+    selector({ currentSettings: { editMode: mockEditMode } }),
+}))
+
 // fetcher 헬퍼: success 응답 + 지정 items
 const ok = (items: unknown[]) => ({ success: true, data: { items, total: items.length } })
 
@@ -23,11 +30,13 @@ describe('useLibraryPanel', () => {
   beforeEach(() => {
     mockTemplateSetId = null
     mockIsCustomer = true
+    mockEditMode = false
     vi.clearAllMocks()
   })
 
-  it('비고객(isCustomer=false)이면 fetcher 를 호출하지 않는다', async () => {
+  it('비고객이고 editMode 도 아니면(isCustomer=false && editMode=false) fetcher 를 호출하지 않는다', async () => {
     mockIsCustomer = false
+    mockEditMode = false
     const fetcher = vi.fn().mockResolvedValue(ok([]))
     renderHook(() => useLibraryPanel({ fetcher }))
     // 약간 대기 후에도 호출 0
@@ -35,6 +44,17 @@ describe('useLibraryPanel', () => {
       await new Promise((r) => setTimeout(r, 50))
     })
     expect(fetcher).not.toHaveBeenCalled()
+  })
+
+  it('비고객이라도 editMode=true(관리자 템플릿 제작)면 fetcher 를 호출한다 (A1-4)', async () => {
+    mockIsCustomer = false
+    mockEditMode = true
+    const fetcher = vi.fn().mockResolvedValue(ok([{ id: '1', name: 'A' }]))
+    const { result } = renderHook(() => useLibraryPanel({ fetcher }))
+
+    await waitFor(() => expect(result.current.contents.length).toBe(1))
+    expect(fetcher).toHaveBeenCalled()
+    expect(result.current.contents[0]).toMatchObject({ id: '1', name: 'A' })
   })
 
   it('마운트 시 콘텐츠를 조회하고 contents 에 반영한다', async () => {

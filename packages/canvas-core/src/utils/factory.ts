@@ -70,9 +70,14 @@ function isCoarsePointer(): boolean {
 
 /**
  * FabricJS 캔버스 인스턴스 생성
+ *
+ * @param canvasOrId 캔버스 DOM 요소 또는 요소 id.
+ *   ⚠️ 가능하면 **요소 자체**를 넘겨라 — id 문자열은 내부적으로 getElementById 조회라,
+ *   같은 id 의 초기화 두 개가 겹치는 창(StrictMode 이중 마운트)에서 늦게 재개된 쪽이
+ *   상대편 요소를 훔쳐 바인딩하는 레이스가 있다(2026-07-13 dev 초기화 레이스 근본원인).
  */
 export async function createFabricCanvas(
-  canvasId: string,
+  canvasOrId: string | HTMLCanvasElement,
   options: FabricCanvasOptions = {}
 ): Promise<fabric.Canvas> {
   const fb = await getFabric()
@@ -96,7 +101,7 @@ export async function createFabricCanvas(
     allowTouchScrolling: false
   }
 
-  const canvas = new fb.Canvas(canvasId, {
+  const canvas = new fb.Canvas(canvasOrId, {
     ...defaultOptions,
     ...options,
     id: uuid()
