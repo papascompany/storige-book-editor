@@ -1,8 +1,10 @@
 /**
- * GUARDED 외부 라우트 contract test (Stage 0 — 동결 16라우트 밖 인증 시맨틱 고정)
+ * GUARDED 외부 라우트 contract test (Stage 0 — 동결 17라우트 밖 인증 시맨틱 고정)
  *
- * contract-freeze.spec.ts(FROZEN 표면)의 자매 spec. 파트너가 X-API-Key 로 호출하는
- * "동결 목록 밖" 외부 라우트 9종의 **가드·인증 시맨틱만** 리플렉션으로 고정한다.
+ * contract-freeze.spec.ts(FROZEN 표면 17개 — ADDITIVE fix-bleed 포함)의 자매 spec.
+ * 파트너가 X-API-Key 로 호출하는 "동결 목록 밖" 외부 라우트 10종의
+ * **가드·인증 시맨틱만** 리플렉션으로 고정한다.
+ * (FROZEN 17 ∩ GUARDED 10 = ∅ — ApiKeyGuard 전수 대조는 2026-07-15 적대 리뷰에서 실증)
  *
  * FROZEN 과의 차이:
  *  - 응답 shape 은 고정하지 않는다 (additive 진화 허용 — Stage 0 결정).
@@ -23,6 +25,7 @@ import { PATH_METADATA, METHOD_METADATA, GUARDS_METADATA } from '@nestjs/common/
 import { WorkerJobsController } from './worker-jobs/worker-jobs.controller';
 import { EditSessionsController } from './edit-sessions/edit-sessions.controller';
 import { AuthController } from './auth/auth.controller';
+import { ProductTemplateSetsController } from './templates/product-template-sets.controller';
 import { IS_PUBLIC_KEY } from './auth/decorators/public.decorator';
 import { ApiKeyGuard } from './auth/guards/api-key.guard';
 
@@ -60,6 +63,9 @@ const GUARDED_ROUTES: GuardedRoute[] = [
 
   // ── 임베드 세션 발급 (auth prefix) — 유일하게 @Throttle 한도까지 고정 ──
   { contract: 'POST /auth/shop-session (X-API-Key + Throttle 20/min — SEC-4)', controller: AuthController, handler: 'createShopSession', method: RequestMethod.POST, path: 'shop-session', throttle: { limit: 20, ttl: 60000 } },
+
+  // 템플릿 조회 — bookmoa 실소비 표면 (2026-07-15 적대 리뷰 P1-1로 등재: FROZEN/GUARDED 양쪽 누락 상태였음)
+  { contract: 'GET /product-template-sets/by-product (X-API-Key — bookmoa 소비)', controller: ProductTemplateSetsController, handler: 'findByProduct', method: RequestMethod.GET, path: 'by-product' },
 ];
 
 /** 컨트롤러 prefix — 경로 조립의 앞부분이 바뀌면 전 라우트가 이동한다 */
