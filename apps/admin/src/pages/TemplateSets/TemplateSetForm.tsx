@@ -65,6 +65,7 @@ import { templateSetsApi } from '../../api/template-sets';
 import { templatesApi } from '../../api/templates';
 import { libraryApi } from '../../api/library';
 import { axiosInstance, resolveStorageUrl } from '../../lib/axios';
+import { FormatPresetSelect } from '../../components/FormatPresetSelect';
 
 const { Title, Text } = Typography;
 
@@ -687,6 +688,17 @@ export const TemplateSetForm = () => {
                         <Radio value={EditorMode.SINGLE}>단일모드 (개별 페이지 편집)</Radio>
                         <Radio value={EditorMode.BOOK}>책모드 (스프레드 편집)</Radio>
                       </Radio.Group>
+                    </Form.Item>
+
+                    {/* 판형 프리셋 픽커 — DB 정본(format_presets) 값 복사 주입(재단 W/H + bleedMm).
+                        presetId 저장 없음(무스키마). width/height 는 Form.useWatch 로
+                        템플릿 필터에 자동 연동된다. */}
+                    <Form.Item label="판형 프리셋">
+                      <FormatPresetSelect
+                        onApply={({ trimW, trimH, bleedMm }) =>
+                          form.setFieldsValue({ width: trimW, height: trimH, bleedMm })
+                        }
+                      />
                     </Form.Item>
 
                     <Space size="large">

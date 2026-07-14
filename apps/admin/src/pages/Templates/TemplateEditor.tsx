@@ -6,6 +6,9 @@ import { ArrowLeftOutlined } from '@ant-design/icons';
 import { useAuthStore } from '../../stores/authStore';
 import { templatesApi } from '../../api/templates';
 import { computeSpreadDimensions, normalizeSpreadSpec } from '@storige/types';
+import { FormatPresetSelect } from '../../components/FormatPresetSelect';
+import type { FormatPresetApplyPayload } from '../../components/FormatPresetSelect';
+import { workSize } from '../../components/formatPresetHelpers';
 
 const { Option } = Select;
 
@@ -77,6 +80,11 @@ export const TemplateEditor = () => {
   const [selectedType, setSelectedType] = useState<TemplateType>('page');
   // 편집 모드(?id=)에서 템플릿 로딩 완료 여부(신규 모드는 모달이 채우므로 즉시 true)
   const [editTemplateLoaded, setEditTemplateLoaded] = useState(!templateId);
+  // 판형 프리셋 선택(방향 적용 재단 + 도련) — 값 복사 주입 정본(presetId 저장 금지).
+  // spread 타입은 1차 모달에서 보관했다가 2차 스프레드 모달의 '프리셋 적용' 버튼이 사용한다.
+  const [presetSelection, setPresetSelection] = useState<FormatPresetApplyPayload | null>(null);
+  // 치수 기준 — 'trim'(재단, 기본) / 'work'(작업 = 재단 + 2×도련). 비-spread width/height 주입에만 적용.
+  const [dimensionBasis, setDimensionBasis] = useState<'trim' | 'work'>('trim');
 
   // 편집 모드: 템플릿을 조회해 templateConfig/spreadConfig 를 채운다.
   // (이게 없으면 spread 템플릿을 id로 열 때 mode=spread/spec 이 전달되지 않아
@@ -144,6 +152,16 @@ export const TemplateEditor = () => {
   // 폼 인스턴스
   const [form] = Form.useForm();
   const [spreadForm] = Form.useForm();
+
+  // 프리셋 → 1차 모달 width/height 주입 (spread 는 필드 자체가 없으므로 스킵 — 2차 모달에서 적용)
+  const injectPresetIntoForm = (preset: FormatPresetApplyPayload, basis: 'trim' | 'work') => {
+    if (form.getFieldValue('type') === 'spread') return;
+    const dims =
+      basis === 'work'
+        ? workSize(preset.trimW, preset.trimH, preset.bleedMm)
+        : { widthMm: preset.trimW, heightMm: preset.trimH };
+    form.setFieldsValue({ width: dims.widthMm, height: dims.heightMm });
+  };
 
   // iframe으로 보낼 URL 생성
   const getEditorUrl = useCallback((config?: TemplateConfig, spread?: SpreadMinimalConfig) => {
@@ -487,6 +505,38 @@ export const TemplateEditor = () => {
             </Select>
           </Form.Item>
 
+          {/* 판형 프리셋 픽커 — DB 정본(format_presets) 값 복사 주입.
+              spread 는 여기서 선택만 보관 → 2차 스프레드 모달의 '프리셋 적용' 버튼이 사용. */}
+          <Form.Item label="판형 프리셋">
+            <FormatPresetSelect
+              onApply={(payload) => {
+                setPresetSelection(payload);
+                injectPresetIntoForm(payload, dimensionBasis);
+              }}
+              onCustom={() => setPresetSelection(null)}
+            />
+            <Form.Item noStyle shouldUpdate={(prev, curr) => prev.type !== curr.type}>
+              {({ getFieldValue }) =>
+                getFieldValue('type') !== 'spread' && (
+                  <div style={{ marginTop: 8 }}>
+                    <Radio.Group
+                      value={dimensionBasis}
+                      size="small"
+                      onChange={(e) => {
+                        const basis = e.target.value as 'trim' | 'work';
+                        setDimensionBasis(basis);
+                        if (presetSelection) injectPresetIntoForm(presetSelection, basis);
+                      }}
+                    >
+                      <Radio.Button value="trim">재단 (기본)</Radio.Button>
+                      <Radio.Button value="work">작업 (재단 + 2×도련)</Radio.Button>
+                    </Radio.Group>
+                  </div>
+                )
+              }
+            </Form.Item>
+          </Form.Item>
+
           <Form.Item noStyle shouldUpdate={(prev, curr) => prev.type !== curr.type}>
             {({ getFieldValue }) =>
               getFieldValue('type') !== 'spread' && (
@@ -511,19 +561,11 @@ export const TemplateEditor = () => {
             }
           </Form.Item>
 
-          {/* G-E (2026-07-14): 오너 규격표(재단 기준) 정본으로 교체 — 기존 B5 176×250·A5 148×210 제거.
-              가로형은 동일 규격의 W↔H 스왑. 비규격은 고객 입력값 그대로(+사방 3mm 작업). */}
+          {/* 판형 정본은 DB(format_presets) — 하드코딩 규격표 제거(판형 프리셋 트랙, 2026-07-14).
+              G-E 규격표는 '판형 관리' 화면 + 프리셋 픽커로 이관. */}
           <div style={{ color: '#888', fontSize: 12, marginTop: 8 }}>
-            일반적인 판형 (재단 기준, 작업 = 재단 + 사방 3mm):
-            <ul style={{ margin: '4px 0', paddingLeft: 20 }}>
-              <li>A4: 210 × 297 mm</li>
-              <li>A5: 148 × 210 mm</li>
-              <li>B5: 182 × 257 mm</li>
-              <li>46배판: 188 × 257 mm</li>
-              <li>16절: 190 × 260 mm</li>
-              <li>B6: 128 × 182 mm</li>
-              <li>정사각: 210 × 210 mm</li>
-            </ul>
+            판형은 위 프리셋에서 선택하거나 직접 입력하세요. (프리셋 주입은 재단 기준, 작업 = 재단 +
+            사방 도련)
           </div>
         </Form>
       </Modal>
@@ -589,6 +631,22 @@ export const TemplateEditor = () => {
                       <InputNumber min={50} max={1000} style={{ width: 150 }} />
                     </Form.Item>
                   </Space>
+
+                  {/* 1차 모달에서 보관한 판형 프리셋 → 표지 크기 주입(재단 기준).
+                      ⚠️ spreadForm 은 1차 form 과 별도 Form 인스턴스 — 반드시 spreadForm.setFieldsValue. */}
+                  {presetSelection && (
+                    <Button
+                      size="small"
+                      onClick={() =>
+                        spreadForm.setFieldsValue({
+                          coverWidthMm: presetSelection.trimW,
+                          coverHeightMm: presetSelection.trimH,
+                        })
+                      }
+                    >
+                      프리셋 적용 (재단 {presetSelection.trimW}×{presetSelection.trimH})
+                    </Button>
+                  )}
 
                   <Divider orientation="left">날개 설정</Divider>
                   <Form.Item
@@ -661,6 +719,24 @@ export const TemplateEditor = () => {
                       <InputNumber min={50} max={1000} style={{ width: 150 }} />
                     </Form.Item>
                   </Space>
+
+                  {/* 1차 모달에서 보관한 판형 프리셋 → 한 면(재단) + 블리드(도련) 주입.
+                      ⚠️ spreadForm 은 1차 form 과 별도 Form 인스턴스 — 반드시 spreadForm.setFieldsValue. */}
+                  {presetSelection && (
+                    <Button
+                      size="small"
+                      onClick={() =>
+                        spreadForm.setFieldsValue({
+                          pageWidthMm: presetSelection.trimW,
+                          pageHeightMm: presetSelection.trimH,
+                          cutSizeMm: presetSelection.bleedMm,
+                        })
+                      }
+                    >
+                      프리셋 적용 (한 면 {presetSelection.trimW}×{presetSelection.trimH} · 블리드{' '}
+                      {presetSelection.bleedMm}mm)
+                    </Button>
+                  )}
 
                   <Divider orientation="left">제본/여백</Divider>
                   <Space size="middle" style={{ display: 'flex' }}>

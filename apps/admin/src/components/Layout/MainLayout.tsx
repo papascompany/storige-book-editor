@@ -13,6 +13,7 @@ import {
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   AppstoreOutlined,
+  ColumnWidthOutlined,
   LinkOutlined,
   EditOutlined,
   FontSizeOutlined,
@@ -129,6 +130,12 @@ export const MainLayout = () => {
           label: '상품관리',
           onClick: () => navigate('/products'),
         },
+        {
+          key: '/format-presets',
+          icon: <ColumnWidthOutlined />,
+          label: '판형 관리',
+          onClick: () => navigate('/format-presets'),
+        },
       ],
     },
     {
@@ -231,7 +238,7 @@ export const MainLayout = () => {
 
     if (pathname.startsWith('/library')) {
       openKeys.push('/library');
-    } else if (pathname.startsWith('/templates') || pathname.startsWith('/template-sets') || pathname.startsWith('/categories') || pathname.startsWith('/product-template-sets') || pathname.startsWith('/products')) {
+    } else if (pathname.startsWith('/templates') || pathname.startsWith('/template-sets') || pathname.startsWith('/categories') || pathname.startsWith('/product-template-sets') || pathname.startsWith('/products') || pathname.startsWith('/format-presets')) {
       openKeys.push('/templates-group');
     } else if (pathname.startsWith('/edit-sessions') || pathname.startsWith('/reviews')) {
       openKeys.push('/edit-management');

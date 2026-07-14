@@ -281,6 +281,41 @@ CREATE TABLE IF NOT EXISTS binding_types (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------
+-- 6-1. Format Presets (판형 프리셋 — 재단 사이즈 mm, 세로형 기준 1행)
+--   신규 환경은 init.sql 에 반드시 포함할 것 (storage_settings 누락으로
+--   prod 마이그레이션 미적용 502 를 겪은 전철 방지 — migrations/ 와 동기 유지).
+--   시드 7종은 FormatPresetSeedService(OnModuleInit) 와 동일 — code 멱등.
+--   하드 삭제 금지(시드 부활 충돌) — is_active 소프트 토글만.
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS format_presets (
+  id             VARCHAR(36) PRIMARY KEY,
+  code           VARCHAR(50) UNIQUE NOT NULL,
+  name           VARCHAR(100) NOT NULL,
+  trim_width_mm  FLOAT NOT NULL,
+  trim_height_mm FLOAT NOT NULL,
+  bleed_mm       FLOAT NOT NULL DEFAULT 3,
+  sort_order     INT NOT NULL DEFAULT 0,
+  is_active      BOOLEAN NOT NULL DEFAULT TRUE,
+  site_id        VARCHAR(36) NULL,
+  created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_format_presets_active (is_active),
+  INDEX idx_format_presets_site (site_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT INTO format_presets
+  (id, code, name, trim_width_mm, trim_height_mm, bleed_mm, sort_order)
+VALUES
+  (UUID(), 'a4',        'A4',     210, 297, 3, 10),
+  (UUID(), 'a5',        'A5',     148, 210, 3, 20),
+  (UUID(), 'b5',        'B5',     182, 257, 3, 30),
+  (UUID(), 'baepan46',  '46배판', 188, 257, 3, 40),
+  (UUID(), 'jeol16',    '16절',   190, 260, 3, 50),
+  (UUID(), 'b6',        'B6',     128, 182, 3, 60),
+  (UUID(), 'square210', '정사각', 210, 210, 3, 70)
+ON DUPLICATE KEY UPDATE code = code;
+
+-- ---------------------------------------------------------------------
 -- 7. Files (Storige/Bookmoa 공용 파일 메타)
 -- ---------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS files (
