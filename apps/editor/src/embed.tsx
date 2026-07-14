@@ -46,6 +46,7 @@ import { core, ServicePlugin } from '@storige/canvas-core'
 import type { PhotobookPricing, TemplateSetCoverMeta } from '@storige/types'
 import type { ApiError } from './api/client'
 import ToolBar from './components/editor/ToolBar'
+import ObjectActionBar from './components/editor/ObjectActionBar'
 import FeatureSidebar from './components/editor/FeatureSidebar'
 import ControlBar from './components/editor/ControlBar'
 import SidePanel from './components/editor/SidePanel'
@@ -1957,6 +1958,8 @@ function EmbeddedEditor({
             {ready && <ControlBar />}
 
             <main className="flex-1 relative overflow-hidden bg-editor-workspace">
+              {/* 선택 객체 플로팅 액션 바 (E1 §5-3) — 임베드 소형 뷰포트 clamp 는 컴포넌트가 처리 */}
+              {ready && <ObjectActionBar />}
               <div id="canvas-wrapper" className="h-full w-full overflow-hidden relative">
                 <div id="workspace" className="workspace absolute inset-0 flex items-center justify-center">
                   <div className="inside-shadow absolute inset-0 shadow-inner pointer-events-none" />
