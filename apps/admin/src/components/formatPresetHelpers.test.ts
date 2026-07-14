@@ -1,6 +1,13 @@
 // formatPresetHelpers 순수 함수 단위테스트 — vitest (node 환경, DOM 불필요)
 import { describe, it, expect } from 'vitest';
-import { formatSizeLabel, isSquare, orientTrim, workSize } from './formatPresetHelpers';
+import {
+  checkTemplateDimAlignment,
+  formatSizeLabel,
+  isSquare,
+  orientTrim,
+  orientationOf,
+  workSize,
+} from './formatPresetHelpers';
 
 describe('isSquare', () => {
   it('W==H 면 정사각', () => {
@@ -62,5 +69,74 @@ describe('workSize', () => {
 describe('formatSizeLabel', () => {
   it("'W × H mm' 표기", () => {
     expect(formatSizeLabel(210, 297)).toBe('210 × 297 mm');
+  });
+});
+
+describe('checkTemplateDimAlignment', () => {
+  // 가로 A4 하드커버 세트(재단 297×210, bleed 3 → 작업 303×216) 기준
+  const landscapeA4Set = { width: 297, height: 210, bleedMm: 3 };
+
+  it('재단 정확 일치 → ok-trim', () => {
+    expect(
+      checkTemplateDimAlignment({ type: 'page', width: 297, height: 210 }, landscapeA4Set),
+    ).toEqual({ status: 'ok-trim' });
+  });
+
+  it('작업(재단+2×bleed) 일치 → ok-work', () => {
+    expect(
+      checkTemplateDimAlignment({ type: 'page', width: 303, height: 216 }, landscapeA4Set),
+    ).toEqual({ status: 'ok-work' });
+  });
+
+  it('하드커버 실사고 — 구 성책값 301×214 는 재단(297×210)·작업(303×216) 어느 쪽도 아님 → mismatch', () => {
+    expect(
+      checkTemplateDimAlignment({ type: 'page', width: 301, height: 214 }, landscapeA4Set),
+    ).toEqual({ status: 'mismatch' });
+  });
+
+  it('방향 스왑(세로 210×297 vs 가로 세트)은 정합 아님 → mismatch (방향 포함 정확 일치 규약)', () => {
+    expect(
+      checkTemplateDimAlignment({ type: 'page', width: 210, height: 297 }, landscapeA4Set),
+    ).toEqual({ status: 'mismatch' });
+  });
+
+  it('±0.01mm 허용오차 이내는 일치, 초과는 불일치', () => {
+    expect(
+      checkTemplateDimAlignment({ type: 'page', width: 297.01, height: 210 }, landscapeA4Set),
+    ).toEqual({ status: 'ok-trim' });
+    expect(
+      checkTemplateDimAlignment({ type: 'page', width: 297.02, height: 210 }, landscapeA4Set),
+    ).toEqual({ status: 'mismatch' });
+  });
+
+  it('bleed 0 세트는 재단=작업 → 재단 일치가 우선(ok-trim)', () => {
+    expect(
+      checkTemplateDimAlignment(
+        { type: 'page', width: 148, height: 210 },
+        { width: 148, height: 210, bleedMm: 0 },
+      ),
+    ).toEqual({ status: 'ok-trim' });
+  });
+
+  it('page류가 아니면 치수 무관 skip — spread/spine/wing/endpaper/cover', () => {
+    for (const type of ['spread', 'spine', 'wing', 'endpaper', 'cover']) {
+      expect(
+        checkTemplateDimAlignment({ type, width: 999, height: 999 }, landscapeA4Set),
+      ).toEqual({ status: 'skip' });
+    }
+  });
+});
+
+describe('orientationOf', () => {
+  it('W>H → landscape (가로내지 297×210)', () => {
+    expect(orientationOf(297, 210)).toBe('landscape');
+  });
+
+  it('W<H → portrait (기본내지 210×297)', () => {
+    expect(orientationOf(210, 297)).toBe('portrait');
+  });
+
+  it('W==H → square (210×210)', () => {
+    expect(orientationOf(210, 210)).toBe('square');
   });
 });

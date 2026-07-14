@@ -66,6 +66,11 @@ import { templatesApi } from '../../api/templates';
 import { libraryApi } from '../../api/library';
 import { axiosInstance, resolveStorageUrl } from '../../lib/axios';
 import { FormatPresetSelect } from '../../components/FormatPresetSelect';
+import {
+  checkTemplateDimAlignment,
+  workSize,
+  type TemplateDimAlignmentStatus,
+} from '../../components/formatPresetHelpers';
 
 const { Title, Text } = Typography;
 
@@ -105,10 +110,18 @@ const templateTypeColors: Record<TemplateType, string> = {
   [TemplateType.ENDPAPER]: 'gold',
 };
 
+// 치수 정합 배지 정보 — TemplateSetForm 에서 판형(width/height/bleedMm) 기준으로 계산해 주입.
+interface DimAlignmentInfo {
+  status: TemplateDimAlignmentStatus;
+  /** mismatch 일 때만 채움 — 판형 재단·작업 기대치 안내 */
+  tooltip?: string;
+}
+
 // Sortable Template Item Component
 interface SortableTemplateItemProps {
   item: TemplateRef & { template?: Template };
   index: number;
+  dimAlignment?: DimAlignmentInfo;
   onToggleRequired: (templateId: string) => void;
   onRemove: (templateId: string) => void;
 }
@@ -116,6 +129,7 @@ interface SortableTemplateItemProps {
 const SortableTemplateItem = ({
   item,
   index,
+  dimAlignment,
   onToggleRequired,
   onRemove,
 }: SortableTemplateItemProps) => {
@@ -173,6 +187,14 @@ const SortableTemplateItem = ({
             </Tag>
           )}
           {item.required && <Tag color="red">필수</Tag>}
+          {/* 치수 정합 배지 (2026-07-14) — page류만, skip 은 무표시. 비차단(경고만) */}
+          {dimAlignment?.status === 'ok-trim' && <Tag color="green">재단 일치</Tag>}
+          {dimAlignment?.status === 'ok-work' && <Tag color="blue">작업 일치</Tag>}
+          {dimAlignment?.status === 'mismatch' && (
+            <Tooltip title={dimAlignment.tooltip}>
+              <Tag color="red">치수 불일치</Tag>
+            </Tooltip>
+          )}
         </Space>
         {item.template && (
           <div>
@@ -576,9 +598,13 @@ export const TemplateSetForm = () => {
   // - 책등(spine)은 높이만 같으면 표시 (너비는 책 두께에 따라 다름)
   // - 스프레드(spread)는 spreadConfig.spec의 표지 크기로 비교
   //   (template.width는 총 스프레드 크기이므로 직접 비교 불가)
+  // - 내지(page)는 재단 또는 작업(재단+2×bleed) 치수 둘 다 허용 (2026-07-14 —
+  //   작업 사이즈로 저작된 정합 템플릿이 목록에서 배제되던 갭 해소)
   // - 다른 타입은 너비와 높이 모두 일치해야 표시
-  const width = Form.useWatch('width', form);
-  const height = Form.useWatch('height', form);
+  const width: number | undefined = Form.useWatch('width', form);
+  const height: number | undefined = Form.useWatch('height', form);
+  const bleedMmWatch: number | undefined = Form.useWatch('bleedMm', form);
+  const effectiveBleedMm = typeof bleedMmWatch === 'number' ? bleedMmWatch : 3;
   const filteredTemplates = allTemplates?.filter((t) => {
     if (t.type === TemplateType.SPINE) {
       // 책등은 높이만 일치하면 OK
@@ -593,9 +619,48 @@ export const TemplateSetForm = () => {
       // spreadConfig 없으면 높이만 비교 (fallback)
       return t.height === height;
     }
-    // 그 외 타입은 너비와 높이 모두 일치
+    if (typeof width === 'number' && typeof height === 'number') {
+      const { status } = checkTemplateDimAlignment(
+        { type: t.type, width: t.width, height: t.height },
+        { width, height, bleedMm: effectiveBleedMm },
+      );
+      if (status !== 'skip') {
+        // page류: 재단(ok-trim) 또는 작업(ok-work) 정합이면 표시
+        return status === 'ok-trim' || status === 'ok-work';
+      }
+    }
+    // 그 외 타입(wing/cover/endpaper)은 너비와 높이 모두 일치 (기존 로직 유지)
     return t.width === width && t.height === height;
   });
+
+  // 치수 정합 판정 — 연결된 템플릿별 배지 + 상단 비차단 경고용 (2026-07-14)
+  const dimAlignments = useMemo(() => {
+    const map = new Map<string, DimAlignmentInfo>();
+    if (typeof width !== 'number' || typeof height !== 'number') {
+      return map;
+    }
+    const work = workSize(width, height, effectiveBleedMm);
+    for (const item of templates) {
+      const tpl = item.template;
+      if (!tpl) continue;
+      const { status } = checkTemplateDimAlignment(
+        { type: tpl.type, width: tpl.width, height: tpl.height },
+        { width, height, bleedMm: effectiveBleedMm },
+      );
+      map.set(item.templateId, {
+        status,
+        tooltip:
+          status === 'mismatch'
+            ? `캔버스 ${tpl.width}×${tpl.height}mm — 판형 ${width}×${height}(재단)·${work.widthMm}×${work.heightMm}(작업)과 다름`
+            : undefined,
+      });
+    }
+    return map;
+  }, [templates, width, height, effectiveBleedMm]);
+
+  const dimMismatchCount = Array.from(dimAlignments.values()).filter(
+    (a) => a.status === 'mismatch',
+  ).length;
 
   if (isEditing && isLoadingSet) {
     return (
@@ -1261,6 +1326,17 @@ export const TemplateSetForm = () => {
                       }}
                     </Form.Item>
 
+                    {/* 치수 정합 비차단 경고 (2026-07-14) — 저장은 차단하지 않음(오너 확정) */}
+                    {dimMismatchCount > 0 && (
+                      <Alert
+                        type="warning"
+                        showIcon
+                        message={`${dimMismatchCount}개 템플릿의 캔버스 치수가 세트 판형과 정합하지 않습니다`}
+                        description="내지(page) 캔버스는 세트 판형(재단) 또는 작업(재단+2×블리드) 치수와 방향 포함 정확히 일치해야 합니다. 저장은 가능하지만 편집기/출력 정합 문제가 생길 수 있습니다."
+                        style={{ marginBottom: 16 }}
+                      />
+                    )}
+
                     <Card
                       size="small"
                       title={
@@ -1303,6 +1379,7 @@ export const TemplateSetForm = () => {
                                   key={item.templateId}
                                   item={item}
                                   index={index}
+                                  dimAlignment={dimAlignments.get(item.templateId)}
                                   onToggleRequired={handleToggleRequired}
                                   onRemove={handleRemoveTemplate}
                                 />

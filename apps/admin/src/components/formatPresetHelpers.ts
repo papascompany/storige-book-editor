@@ -46,3 +46,56 @@ export function workSize(trimWidthMm: number, trimHeightMm: number, bleedMm: num
 export function formatSizeLabel(widthMm: number, heightMm: number): string {
   return `${widthMm} × ${heightMm} mm`;
 }
+
+// ===== 치수 정합 가드 (2026-07-14) =====
+// 실사고 근거: 하드커버 세트에 구 성책값(301×214) 내지가 연결돼 있던 잔재를 수동 정리 — 재발 방지.
+// 규약: templateSet.width/height=판형(재단, 오리엔트됨). page류 템플릿 캔버스의 정합 치수는
+// 세트 판형(재단) 또는 작업(재단+2×bleed) — 방향 포함 정확 일치.
+// spread/spine/wing/endpaper/cover류는 표지 계열(제작 사이즈 정본)이라 검사 대상 아님(skip).
+
+export type TemplateDimAlignmentStatus = 'ok-trim' | 'ok-work' | 'mismatch' | 'skip';
+
+export interface TemplateDimAlignmentResult {
+  status: TemplateDimAlignmentStatus;
+}
+
+/** mm 비교 허용오차 — 부동소수 잔재 흡수용(±0.01mm). */
+const DIM_TOLERANCE_MM = 0.01;
+
+function nearlyEqualMm(a: number, b: number): boolean {
+  return Math.abs(a - b) <= DIM_TOLERANCE_MM;
+}
+
+/**
+ * page류 템플릿 캔버스 치수의 세트 판형 정합 판정.
+ * - 'ok-trim': 재단(세트 W×H)과 정확 일치(±0.01mm)
+ * - 'ok-work': 작업(재단+2×bleed)과 정확 일치(±0.01mm)
+ * - 'mismatch': 둘 다 아님(방향 스왑도 불일치 — 오리엔트된 판형과 방향 포함 일치가 규약)
+ * - 'skip': page류가 아님(spread/spine/wing/endpaper/cover류 — 검사 대상 아님)
+ */
+export function checkTemplateDimAlignment(
+  tpl: { type: string; width: number; height: number },
+  set: { width: number; height: number; bleedMm: number },
+): TemplateDimAlignmentResult {
+  if (tpl.type !== 'page') {
+    return { status: 'skip' };
+  }
+  if (nearlyEqualMm(tpl.width, set.width) && nearlyEqualMm(tpl.height, set.height)) {
+    return { status: 'ok-trim' };
+  }
+  const work = workSize(set.width, set.height, set.bleedMm);
+  if (nearlyEqualMm(tpl.width, work.widthMm) && nearlyEqualMm(tpl.height, work.heightMm)) {
+    return { status: 'ok-work' };
+  }
+  return { status: 'mismatch' };
+}
+
+export type Orientation = 'portrait' | 'landscape' | 'square';
+
+/** 방향 판정 — W>H 가로 / W<H 세로 / W==H 정사각. */
+export function orientationOf(widthMm: number, heightMm: number): Orientation {
+  if (widthMm === heightMm) {
+    return 'square';
+  }
+  return widthMm > heightMm ? 'landscape' : 'portrait';
+}
