@@ -519,6 +519,23 @@ export class AddTemplateDto {
 }
 
 /**
+ * 방향(orientation) 페어링 DTO — POST /template-sets/:id/pair (2026-07-14).
+ *
+ * ⚠️ pairedTemplateSetId/isOrientationDefault 는 Update DTO 에 넣지 않는다 —
+ * 대칭 저장 불변식(양쪽 행 동시 갱신)은 전용 라우트의 서비스 트랜잭션만 보장한다.
+ */
+export class PairTemplateSetDto {
+  @ApiProperty({
+    example: 'template-set-id-landscape',
+    description: '페어링 상대 템플릿셋 ID (같은 재단 규격의 정확 W↔H 스왑 ±0.01mm)',
+  })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(36)
+  pairedTemplateSetId: string;
+}
+
+/**
  * 템플릿 순서 변경 DTO
  */
 export class ReorderTemplatesDto {

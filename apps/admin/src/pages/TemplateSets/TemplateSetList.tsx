@@ -24,8 +24,8 @@ import {
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../stores/authStore';
-import { TemplateSet, TemplateSetType } from '@storige/types';
-import { templateSetsApi } from '../../api/template-sets';
+import { TemplateSetType } from '@storige/types';
+import { templateSetsApi, TemplateSetWithOrientation } from '../../api/template-sets';
 import { templatesApi } from '../../api/templates';
 import { ThumbnailImage } from '../../components/ThumbnailImage';
 
@@ -156,7 +156,7 @@ export const TemplateSetList = () => {
     window.open(url.toString(), '_blank');
   };
 
-  const columns: ColumnsType<TemplateSet> = [
+  const columns: ColumnsType<TemplateSetWithOrientation> = [
     {
       title: 'ID',
       dataIndex: 'id',
@@ -191,6 +191,8 @@ export const TemplateSetList = () => {
       render: (name: string, record) => (
         <Space>
           <Text>{name}</Text>
+          {/* 파생 초안 등 비활성 세트 식별 (2026-07-14) — is_active=false 만 명시 표시 */}
+          {record.isActive === false && <Tag>비활성</Tag>}
           <Button
             type="text"
             size="small"
@@ -224,6 +226,37 @@ export const TemplateSetList = () => {
       render: (_, record) => (
         <Text>{record.width} × {record.height}mm</Text>
       ),
+    },
+    {
+      // 방향 쌍 (2026-07-14) — 상대 이름은 목록 데이터에서 id 매칭(별도 fetch 없음)
+      title: '방향 쌍',
+      key: 'orientationPair',
+      width: 170,
+      render: (_, record) => {
+        const pairedId = record.pairedTemplateSetId;
+        if (!pairedId) {
+          return <Text type="secondary">-</Text>;
+        }
+        const partner = templateSets?.find((s) => s.id === pairedId);
+        return (
+          <Space size={4} wrap>
+            <Tooltip
+              title={
+                partner
+                  ? `방향 쌍: ${partner.name} (${partner.width} × ${partner.height}mm)`
+                  : `방향 쌍: ${pairedId}`
+              }
+            >
+              <Tag color="geekblue">⇄ {partner?.name ?? `${pairedId.slice(0, 8)}…`}</Tag>
+            </Tooltip>
+            {record.isOrientationDefault && (
+              <Tooltip title="기본 판형 — 짝 중 기본으로 노출되는 방향">
+                <Tag color="gold">★</Tag>
+              </Tooltip>
+            )}
+          </Space>
+        );
+      },
     },
     {
       title: '템플릿 수',

@@ -1,8 +1,10 @@
 // formatPresetHelpers 순수 함수 단위테스트 — vitest (node 환경, DOM 불필요)
 import { describe, it, expect } from 'vitest';
 import {
+  canPairOrientation,
   checkTemplateDimAlignment,
   formatSizeLabel,
+  isOrientationPairMatch,
   isSquare,
   orientTrim,
   orientationOf,
@@ -124,6 +126,49 @@ describe('checkTemplateDimAlignment', () => {
         checkTemplateDimAlignment({ type, width: 999, height: 999 }, landscapeA4Set),
       ).toEqual({ status: 'skip' });
     }
+  });
+});
+
+describe('canPairOrientation', () => {
+  it('W!=H → 방향 쌍 가능', () => {
+    expect(canPairOrientation(210, 297)).toBe(true);
+    expect(canPairOrientation(297, 210)).toBe(true);
+  });
+
+  it('정사각(±0.01mm 허용오차 포함)은 쌍 불가', () => {
+    expect(canPairOrientation(210, 210)).toBe(false);
+    expect(canPairOrientation(210, 210.01)).toBe(false);
+    expect(canPairOrientation(210, 210.02)).toBe(true);
+  });
+});
+
+describe('isOrientationPairMatch', () => {
+  const a4Portrait = { widthMm: 210, heightMm: 297 };
+
+  it('정확 W↔H 스왑 → 성립 (A4 세로 210×297 ↔ 가로 297×210)', () => {
+    expect(isOrientationPairMatch(a4Portrait, { widthMm: 297, heightMm: 210 })).toBe(true);
+  });
+
+  it('같은 방향(스왑 아님) → 불성립', () => {
+    expect(isOrientationPairMatch(a4Portrait, { widthMm: 210, heightMm: 297 })).toBe(false);
+  });
+
+  it('다른 재단 규격 → 불성립', () => {
+    expect(isOrientationPairMatch(a4Portrait, { widthMm: 297, heightMm: 211 })).toBe(false);
+    expect(isOrientationPairMatch(a4Portrait, { widthMm: 296, heightMm: 210 })).toBe(false);
+    expect(isOrientationPairMatch(a4Portrait, { widthMm: 257, heightMm: 182 })).toBe(false); // b5 가로
+  });
+
+  it('±0.01mm 이내는 성립, 초과는 불성립', () => {
+    expect(isOrientationPairMatch(a4Portrait, { widthMm: 297.01, heightMm: 210 })).toBe(true);
+    expect(isOrientationPairMatch(a4Portrait, { widthMm: 297.02, heightMm: 210 })).toBe(false);
+  });
+
+  it('정사각은 어느 쪽이든 불성립 (스왑값이 우연히 일치해도 차단)', () => {
+    const square = { widthMm: 210, heightMm: 210 };
+    expect(isOrientationPairMatch(square, square)).toBe(false);
+    expect(isOrientationPairMatch(a4Portrait, square)).toBe(false);
+    expect(isOrientationPairMatch(square, a4Portrait)).toBe(false);
   });
 });
 
