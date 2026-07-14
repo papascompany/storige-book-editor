@@ -30,6 +30,7 @@ import {
   TemplateSetQueryDto,
   AddTemplateDto,
   ReorderTemplatesDto,
+  PairTemplateSetDto,
 } from './dto/template-set.dto';
 
 @ApiTags('Template Sets')
@@ -125,6 +126,65 @@ export class TemplateSetsController {
   @ApiResponse({ status: 404, description: '템플릿셋 없음' })
   async copy(@Param('id') id: string) {
     return this.templateSetsService.copy(id);
+  }
+
+  // ─────────────────────────────────────────────────────
+  // 방향(orientation) 페어링 + 파생 (2026-07-14, 오너 승인 설계)
+  // ─────────────────────────────────────────────────────
+
+  @Post(':id/pair')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '방향 페어링 설정 (대칭 저장 — :id 가 기본 방향)' })
+  @ApiResponse({ status: 200, description: '페어링 성공' })
+  @ApiResponse({ status: 400, description: '규칙 위반 (자기자신/정사각/W↔H 스왑 불일치)' })
+  @ApiResponse({ status: 404, description: '템플릿셋 없음' })
+  @ApiResponse({ status: 409, description: '이미 다른 세트와 페어링됨' })
+  async pair(@Param('id') id: string, @Body() dto: PairTemplateSetDto) {
+    return this.templateSetsService.pair(id, dto.pairedTemplateSetId);
+  }
+
+  @Delete(':id/pair')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '방향 페어링 해제 (양쪽 대칭 해제)' })
+  @ApiResponse({ status: 200, description: '해제 성공' })
+  @ApiResponse({ status: 400, description: '페어링되어 있지 않음' })
+  @ApiResponse({ status: 404, description: '템플릿셋 없음' })
+  async unpair(@Param('id') id: string) {
+    return this.templateSetsService.unpair(id);
+  }
+
+  @Post(':id/orientation-default')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '방향 노출 기본 세팅 (짝 반대쪽 자동 해제)' })
+  @ApiResponse({ status: 200, description: '세팅 성공' })
+  @ApiResponse({ status: 404, description: '템플릿셋 없음' })
+  async setOrientationDefault(@Param('id') id: string) {
+    return this.templateSetsService.setOrientationDefault(id);
+  }
+
+  @Post(':id/derive-orientation')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      '반대 방향 세트 파생 (page류 변환 복제 + is_active=0 초안 + 즉시 대칭 페어링)',
+  })
+  @ApiResponse({ status: 201, description: '파생 성공' })
+  @ApiResponse({ status: 400, description: '정사각 판형 — 파생 무의미' })
+  @ApiResponse({ status: 404, description: '템플릿셋/참조 템플릿 없음' })
+  @ApiResponse({ status: 409, description: '이미 방향 짝이 있음' })
+  async deriveOrientation(@Param('id') id: string) {
+    return this.templateSetsService.deriveOrientation(id);
   }
 
   @Put(':id/templates')

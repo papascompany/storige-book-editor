@@ -2,9 +2,11 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ConflictException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { v4 as uuidv4 } from 'uuid';
 import { TemplateSet, TemplateSetItem } from './entities/template-set.entity';
 import { TemplateSetLibraryCategory } from './entities/template-set-library-category.entity';
 import { Template } from './entities/template.entity';
@@ -22,6 +24,13 @@ import {
   applySiteScope,
   TenantScope,
 } from '../common/helpers/tenant-scope.helper';
+import {
+  isNearlySquare,
+  isExactOrientationSwap,
+  orientationNameSuffix,
+  withOrientationSuffix,
+  transformCanvasDataOrientation,
+} from './orientation-derive.util';
 
 @Injectable()
 export class TemplateSetsService {
@@ -565,6 +574,274 @@ export class TemplateSetsService {
         'editorMode=single일 때 SPREAD 타입 템플릿은 허용되지 않습니다.',
       );
     }
+  }
+
+  // ─────────────────────────────────────────────────────
+  // 방향(orientation) 페어링 + 파생 (2026-07-14, 오너 승인 설계)
+  // 마이그레이션: apps/api/migrations/20260714_add_orientation_pair.sql
+  // 불변식: 대칭 저장(양쪽이 서로를 가리킴) / 짝 중 is_orientation_default 정확히 1개.
+  // 일반 PUT update 경로로는 두 필드를 설정할 수 없다(DTO 미노출 + forbidNonWhitelisted).
+  // ─────────────────────────────────────────────────────
+
+  /**
+   * 페어링 기하 규칙 검증 — admin 헬퍼(formatPresetHelpers ±0.01mm)와 동일 시맨틱.
+   * 존재/비삭제는 호출측 findOne 이 보장, 여기서는 정사각·정확 W↔H 스왑만 본다.
+   */
+  private assertOrientationPairGeometry(a: TemplateSet, b: TemplateSet): void {
+    if (isNearlySquare(a.width, a.height) || isNearlySquare(b.width, b.height)) {
+      throw new BadRequestException({
+        code: 'ORIENTATION_PAIR_SQUARE',
+        message: '정사각 판형은 방향 페어링이 무의미합니다(W↔H 스왑해도 동일).',
+      });
+    }
+    if (!isExactOrientationSwap(a.width, a.height, b.width, b.height)) {
+      throw new BadRequestException({
+        code: 'ORIENTATION_PAIR_DIM_MISMATCH',
+        message:
+          `페어링은 같은 재단 규격의 정확 W↔H 스왑(±0.01mm)만 허용합니다. ` +
+          `${a.width}x${a.height} ↔ ${b.width}x${b.height}`,
+      });
+    }
+  }
+
+  /**
+   * 방향 페어링 — 대칭 저장(트랜잭션). :id 쪽이 기본 방향(default)이 된다.
+   * 이미 서로 페어인 두 세트의 재호출은 멱등(default 재단언).
+   */
+  async pair(
+    id: string,
+    pairedTemplateSetId: string,
+  ): Promise<{ success: true; data: TemplateSet }> {
+    if (id === pairedTemplateSetId) {
+      throw new BadRequestException({
+        code: 'ORIENTATION_PAIR_SELF',
+        message: '자기 자신과는 페어링할 수 없습니다.',
+      });
+    }
+
+    const target = await this.findOne(id);
+    const partner = await this.findOne(pairedTemplateSetId);
+
+    if (target.pairedTemplateSetId && target.pairedTemplateSetId !== partner.id) {
+      throw new ConflictException({
+        code: 'ORIENTATION_ALREADY_PAIRED',
+        message: `이미 다른 세트와 페어링되어 있습니다: ${target.pairedTemplateSetId}. 먼저 해제하세요.`,
+      });
+    }
+    if (partner.pairedTemplateSetId && partner.pairedTemplateSetId !== target.id) {
+      throw new ConflictException({
+        code: 'ORIENTATION_ALREADY_PAIRED',
+        message: `상대 세트가 이미 다른 세트와 페어링되어 있습니다: ${partner.pairedTemplateSetId}. 먼저 해제하세요.`,
+      });
+    }
+
+    this.assertOrientationPairGeometry(target, partner);
+
+    await this.templateSetRepository.manager.transaction(async (manager) => {
+      await manager.update(TemplateSet, target.id, {
+        pairedTemplateSetId: partner.id,
+        isOrientationDefault: true,
+      });
+      await manager.update(TemplateSet, partner.id, {
+        pairedTemplateSetId: target.id,
+        isOrientationDefault: false,
+      });
+    });
+
+    target.pairedTemplateSetId = partner.id;
+    target.isOrientationDefault = true;
+    return { success: true, data: target };
+  }
+
+  /**
+   * 방향 페어링 해제 — 양쪽 모두 NULL + default 원복(비페어 세트는 자기 자신이 기본).
+   */
+  async unpair(id: string): Promise<{ success: true; data: TemplateSet }> {
+    const target = await this.findOne(id);
+
+    if (!target.pairedTemplateSetId) {
+      throw new BadRequestException({
+        code: 'ORIENTATION_NOT_PAIRED',
+        message: '페어링되어 있지 않은 템플릿셋입니다.',
+      });
+    }
+
+    const partnerId = target.pairedTemplateSetId;
+    await this.templateSetRepository.manager.transaction(async (manager) => {
+      await manager.update(TemplateSet, id, {
+        pairedTemplateSetId: null,
+        isOrientationDefault: true,
+      });
+      // 대칭 불변식상 상대는 반드시 나를 가리킨다 — 함께 해제(행이 없어도 affected 0 무해)
+      await manager.update(TemplateSet, partnerId, {
+        pairedTemplateSetId: null,
+        isOrientationDefault: true,
+      });
+    });
+
+    target.pairedTemplateSetId = null;
+    target.isOrientationDefault = true;
+    return { success: true, data: target };
+  }
+
+  /**
+   * 방향 노출 기본 세팅 — :id 를 default 로, 짝 반대쪽은 자동 해제(트랜잭션).
+   * 비페어 세트에도 허용(자기 자신 true 재단언 — 무해).
+   */
+  async setOrientationDefault(id: string): Promise<{ success: true; data: TemplateSet }> {
+    const target = await this.findOne(id);
+
+    await this.templateSetRepository.manager.transaction(async (manager) => {
+      await manager.update(TemplateSet, id, { isOrientationDefault: true });
+      if (target.pairedTemplateSetId) {
+        await manager.update(TemplateSet, target.pairedTemplateSetId, {
+          isOrientationDefault: false,
+        });
+      }
+    });
+
+    target.isOrientationDefault = true;
+    return { success: true, data: target };
+  }
+
+  /**
+   * 반대 방향 세트 파생 (오너 승인 설계 ③④, 2026-07-14).
+   *
+   * - 판형 W↔H 스왑 + 설정(bleedMm·sizeToleranceMm·cropMarkEnabled·pageCountRange·
+   *   editorMode·enabledMenus·pricing 등) 복사, 이름 ' (가로)'/' (세로)' 접미.
+   * - is_active=0 초안 — 사람 검수 후 활성.
+   * - page류 템플릿만 복제·변환(위치만 축별 비율 재배치 — orientation-derive.util).
+   *   spread(표지)/spine/wing/endpaper류는 이월하지 않음(책등·싸바리 기하 별도 저작).
+   *   ⚠️ 따라서 editorMode=book 파생 초안은 SPREAD 없이 시작 — 활성 전 표지 저작 필요
+   *   (create/update 의 validateBookModeTemplates 는 DTO 경로에만 적용되므로 저장 가능).
+   * - 생성 즉시 원본과 대칭 페어링(원본 default 유지). 이미 짝이 있으면 409.
+   */
+  async deriveOrientation(id: string): Promise<{ success: true; data: TemplateSet }> {
+    const original = await this.findOne(id);
+
+    if (original.pairedTemplateSetId) {
+      throw new ConflictException({
+        code: 'ORIENTATION_ALREADY_PAIRED',
+        message: `이미 방향 짝이 있는 템플릿셋입니다: ${original.pairedTemplateSetId}`,
+      });
+    }
+    if (isNearlySquare(original.width, original.height)) {
+      throw new BadRequestException({
+        code: 'ORIENTATION_DERIVE_SQUARE',
+        message: '정사각 판형은 방향 파생이 무의미합니다(W↔H 스왑해도 동일).',
+      });
+    }
+
+    const newWidth = original.height;
+    const newHeight = original.width;
+    const suffix = orientationNameSuffix(newWidth, newHeight);
+
+    // 원본 구성 템플릿 로드 (templates JSON 순서 보존)
+    const refs = original.templates || [];
+    const refIds = refs.map((r) => r.templateId);
+    const found = refIds.length > 0 ? await this.templateRepository.findByIds(refIds) : [];
+    const byId = new Map(found.map((t) => [t.id, t] as const));
+
+    // 참조 무결성 — 셋이 가리키는 템플릿이 사라졌으면 파생 중단(부분 파생 방지)
+    const missing = refs.filter((ref) => !byId.has(ref.templateId));
+    if (missing.length > 0) {
+      throw new NotFoundException(
+        `템플릿셋이 참조하는 템플릿을 찾을 수 없습니다: ${missing.map((m) => m.templateId).join(', ')}`,
+      );
+    }
+
+    const derived = await this.templateSetRepository.manager.transaction(async (manager) => {
+      // 1) page류 템플릿 복제·변환 — spread/spine/wing/endpaper/cover류 제외
+      const newRefs: TemplateRef[] = [];
+      for (const ref of refs) {
+        const tpl = byId.get(ref.templateId);
+        if (!tpl || tpl.type !== 'page') continue;
+
+        // canvasData top-level width/height(mm)가 정본 — 없으면 템플릿 행 치수로 폴백.
+        // (page 캔버스는 재단 또는 작업(재단+2×bleed) 치수일 수 있으나 W↔H 스왑은 양쪽 모두 정확.)
+        const oldWmm =
+          typeof tpl.canvasData?.width === 'number' && tpl.canvasData.width > 0
+            ? tpl.canvasData.width
+            : tpl.width;
+        const oldHmm =
+          typeof tpl.canvasData?.height === 'number' && tpl.canvasData.height > 0
+            ? tpl.canvasData.height
+            : tpl.height;
+
+        const newTemplate = this.templateRepository.create({
+          id: uuidv4(),
+          name: withOrientationSuffix(tpl.name, suffix),
+          thumbnailUrl: null, // 방향이 다른 원본 썸네일 오도 방지 (오너 설계 ④)
+          type: tpl.type,
+          width: tpl.height,
+          height: tpl.width,
+          editable: tpl.editable,
+          deleteable: tpl.deleteable,
+          canvasData: transformCanvasDataOrientation(tpl.canvasData, {
+            oldWmm,
+            oldHmm,
+            newWmm: oldHmm,
+            newHmm: oldWmm,
+          }),
+          spreadConfig: tpl.spreadConfig,
+          isDeleted: false,
+          categoryId: tpl.categoryId,
+          editCode: null, // unique 컬럼 — 복제 금지
+          templateCode: null, // unique 컬럼 — 복제 금지
+          isActive: true, // 오너 설계 ④: 복제 템플릿 is_active=1
+          createdBy: tpl.createdBy,
+          siteId: tpl.siteId,
+        });
+        await manager.save(Template, newTemplate);
+        newRefs.push({ templateId: newTemplate.id, required: ref.required });
+      }
+
+      // 2) 새 세트 — 판형 스왑 + 설정 복사, templates JSON 은 복제된 id 로 재작성
+      const newSet = this.templateSetRepository.create({
+        id: uuidv4(),
+        name: withOrientationSuffix(original.name, suffix),
+        thumbnailUrl: null,
+        type: original.type,
+        width: newWidth,
+        height: newHeight,
+        canAddPage: original.canAddPage,
+        pageCountRange: original.pageCountRange,
+        templates: newRefs,
+        editorMode: original.editorMode,
+        enabledMenus: original.enabledMenus,
+        endpaperConfig: original.endpaperConfig,
+        coverEditable: original.coverEditable,
+        coverPreviewImage: original.coverPreviewImage,
+        contentPdfEditable: original.contentPdfEditable,
+        pdfOutputMode: original.pdfOutputMode,
+        colorMode: original.colorMode,
+        bleedMm: original.bleedMm,
+        cropMarkEnabled: original.cropMarkEnabled,
+        sizeToleranceMm: original.sizeToleranceMm,
+        pricing: original.pricing,
+        coverType: original.coverType,
+        coverConfig: original.coverConfig,
+        description: original.description,
+        categoryId: original.categoryId,
+        productSpecs: original.productSpecs,
+        siteId: original.siteId,
+        isDeleted: false,
+        isActive: false, // 초안 — 사람 검수 후 활성 (오너 설계 ③)
+        pairedTemplateSetId: original.id,
+        isOrientationDefault: false, // 원본이 default 유지
+      });
+      await manager.save(TemplateSet, newSet);
+
+      // 3) 대칭 페어링 — 원본에 상대 ID 기록(원본 default 유지)
+      await manager.update(TemplateSet, original.id, {
+        pairedTemplateSetId: newSet.id,
+        isOrientationDefault: true,
+      });
+
+      return newSet;
+    });
+
+    return { success: true, data: derived };
   }
 
   /**

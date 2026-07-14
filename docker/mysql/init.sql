@@ -166,6 +166,9 @@ CREATE TABLE IF NOT EXISTS template_sets (
   templates        JSON NOT NULL,
   editor_mode      VARCHAR(20) NOT NULL DEFAULT 'single',
   content_pdf_editable BOOLEAN NOT NULL DEFAULT TRUE,
+  -- 방향(orientation) 페어링 (2026-07-14) — migrations/20260714_add_orientation_pair.sql 동기
+  paired_template_set_id VARCHAR(36) NULL,
+  is_orientation_default BOOLEAN NOT NULL DEFAULT TRUE,
   is_deleted       BOOLEAN NOT NULL DEFAULT FALSE,
   description      TEXT,
   category_id      VARCHAR(36),

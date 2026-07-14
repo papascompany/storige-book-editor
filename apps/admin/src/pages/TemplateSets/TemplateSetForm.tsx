@@ -66,6 +66,7 @@ import { templatesApi } from '../../api/templates';
 import { libraryApi } from '../../api/library';
 import { axiosInstance, resolveStorageUrl } from '../../lib/axios';
 import { FormatPresetSelect } from '../../components/FormatPresetSelect';
+import { OrientationPairSection } from './OrientationPairSection';
 import {
   checkTemplateDimAlignment,
   workSize,
@@ -703,7 +704,7 @@ export const TemplateSetForm = () => {
           }}
         >
           <Collapse
-            defaultActiveKey={['basic', 'page', 'template']}
+            defaultActiveKey={['basic', 'orientation', 'page', 'template']}
             items={[
               {
                 key: 'basic',
@@ -786,6 +787,18 @@ export const TemplateSetForm = () => {
                   </>
                 ),
               },
+              // 방향 쌍 (2026-07-14) — 서버 저장값 기준 액션이라 저장된 세트에서만 노출(id 필요).
+              // 신규(미저장) 세트에서는 섹션 자체를 숨긴다.
+              ...(id
+                ? [
+                    {
+                      key: 'orientation',
+                      label: '방향 쌍 (가로 ⇄ 세로)',
+                      forceRender: true,
+                      children: <OrientationPairSection templateSetId={id} />,
+                    },
+                  ]
+                : []),
               {
                 key: 'page',
                 label: '페이지 · 면지',

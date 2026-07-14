@@ -99,3 +99,20 @@ export function orientationOf(widthMm: number, heightMm: number): Orientation {
   }
   return widthMm > heightMm ? 'landscape' : 'portrait';
 }
+
+// ===== 방향 쌍 (orientation pair) — 2026-07-14 오너 확정 규칙 =====
+// 짝 성립 조건: 같은 재단 규격의 정확 W↔H 스왑(±0.01mm). 정사각·자기자신 불가.
+// 자기자신 제외는 id 비교 영역 — 치수만 다루는 이 모듈이 아닌 호출부 책임.
+
+/** 방향 쌍 가능 판형 여부 — 정사각(±0.01mm)은 방향 구분이 없어 쌍·파생 불가. */
+export function canPairOrientation(widthMm: number, heightMm: number): boolean {
+  return !nearlyEqualMm(widthMm, heightMm);
+}
+
+/** 두 재단 판형의 방향 쌍 성립 여부 — 정확 W↔H 스왑(±0.01mm), 어느 한쪽이라도 정사각이면 불성립. */
+export function isOrientationPairMatch(a: SizeMm, b: SizeMm): boolean {
+  if (!canPairOrientation(a.widthMm, a.heightMm) || !canPairOrientation(b.widthMm, b.heightMm)) {
+    return false;
+  }
+  return nearlyEqualMm(a.widthMm, b.heightMm) && nearlyEqualMm(a.heightMm, b.widthMm);
+}

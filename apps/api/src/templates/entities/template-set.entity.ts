@@ -252,6 +252,27 @@ export class TemplateSet {
   @Column({ name: 'cover_config', type: 'json', nullable: true })
   coverConfig: TemplateSetCoverConfig | null;
 
+  // ─────────────────────────────────────────────────────
+  // 방향(orientation) 페어링 (2026-07-14, 오너 승인 설계)
+  // 마이그레이션: apps/api/migrations/20260714_add_orientation_pair.sql
+  // 규칙 집행은 TemplateSetsService.pair/unpair/setOrientationDefault/deriveOrientation
+  // (일반 PUT update 경로로는 설정 불가 — 대칭 불변식 보호).
+  // ─────────────────────────────────────────────────────
+
+  /**
+   * 같은 재단 규격의 정확 W↔H 스왑(±0.01mm) 상대 세트 ID (additive nullable=비파괴).
+   * 대칭 저장 — 양쪽 행이 서로를 가리킨다(트랜잭션). NULL=페어 없음.
+   */
+  @Column({ name: 'paired_template_set_id', type: 'varchar', length: 36, nullable: true })
+  pairedTemplateSetId: string | null;
+
+  /**
+   * 방향 노출 기본 플래그 — 짝 중 정확히 1개만 true(한쪽 세팅 시 반대쪽 자동 해제).
+   * 비페어 세트는 true(자기 자신이 기본) — 기존 행 전체 기본값 1 로 비파괴.
+   */
+  @Column({ name: 'is_orientation_default', type: 'boolean', default: true })
+  isOrientationDefault: boolean;
+
   /**
    * ④ 연결된 라이브러리 카테고리 ID (2026-06-09) — 컬럼 아님(transient).
    * 조인 테이블 template_set_library_categories 에서 서비스가 populate. 빈/없음=전역 노출.
