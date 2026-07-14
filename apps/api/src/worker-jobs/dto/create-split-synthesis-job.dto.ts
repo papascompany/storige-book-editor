@@ -72,4 +72,9 @@ export class CreateSplitSynthesisJobDto {
   @IsOptional()
   @IsEnum(['high', 'normal', 'low'])
   priority?: 'high' | 'normal' | 'low';
+
+  /** Phase C — 호출 컨트롤러에서 자동 주입 (X-API-Key 사용 시 req.user.siteId) */
+  @IsOptional()
+  @IsUUID()
+  siteId?: string;
 }
