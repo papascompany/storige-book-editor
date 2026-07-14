@@ -79,7 +79,13 @@ export interface ReplaceTemplateSetPayload {
 }
 
 /**
- * 세션 검증 결과
+ * 세션 검증 결과 — GET /editor/sessions/:id/validate 응답 실물.
+ *
+ * ⚠️ 워커 PDF 검증 결과가 아니다. 이 엔드포인트는 API 의
+ * editorService.validateSession(세션 구성 검증: 필수 페이지·내지 수량)이
+ * `{valid, errors, warnings}` 를 그대로 반환한다(런타임 일치 확인, S-1 2026-07-15).
+ * 워커 PDF 검증 결과의 정본 타입은 @storige/types 의
+ * `WorkerValidationResult`({isValid, metadata}) — 혼동 금지.
  */
 export interface ValidationResult {
   valid: boolean

@@ -687,7 +687,12 @@ export interface WorkerJob {
   inputFileUrl?: string;
   outputFileUrl?: string;
   options?: ValidationOptions | ConversionOptions | SynthesisOptions;
-  result?: ValidationResult | ConversionResult | SynthesisResult;
+  /**
+   * 잡 결과. VALIDATE 잡의 런타임 실물은 `WorkerValidationResult`
+   * ({isValid, errors, warnings, metadata} — 워커 DTO 정본, S-1 2026-07-15).
+   * 구형 `ValidationResult`({valid, fileInfo})는 하위호환 선언으로만 유지.
+   */
+  result?: ValidationResult | WorkerValidationResult | ConversionResult | SynthesisResult;
   errorMessage?: string;
   createdAt: Date;
   completedAt?: Date;
@@ -701,6 +706,12 @@ export interface ValidationOptions {
   orderOptions: OrderOptions;
 }
 
+/**
+ * @deprecated 워커 런타임 발신 shape 과 불일치하는 구형 선언({valid, fileInfo}).
+ * 워커가 실제로 발신하는 검증 결과는 `WorkerValidationResult`({isValid, metadata}) 다.
+ * S-1 정본화(2026-07-15) — 신규 코드는 `WorkerValidationResult` 를 사용하라.
+ * 기존 참조 호환을 위해 유지: 필드 변경·삭제 금지(additive-only).
+ */
 export interface ValidationResult {
   valid: boolean;
   errors: ValidationError[];
@@ -714,15 +725,132 @@ export interface ValidationResult {
   };
 }
 
+/**
+ * @deprecated 구형 `ValidationResult` 전용 에러 선언. 워커 실물 에러는
+ * `WorkerValidationError`({code, message, details, autoFixable, fixMethod?}) 다.
+ */
 export interface ValidationError {
   code: string;
   message: string;
   severity: 'error' | 'warning';
 }
 
+/**
+ * @deprecated 구형 `ValidationResult` 전용 경고 선언. 워커 실물 경고는
+ * `WorkerValidationWarning`({code, message, details?, autoFixable, fixMethod?}) 다.
+ */
 export interface ValidationWarning {
   code: string;
   message: string;
+}
+
+// ============================================================================
+// Worker 검증 결과 정본 (Stage 0 S-1, 2026-07-15)
+// ----------------------------------------------------------------------------
+// 정본은 apps/worker/src/dto/validation-result.dto.ts 의 ValidationResultDto.
+// 아래 타입들은 그 DTO 와 필드 1:1 미러이며, 구조 일치는
+// apps/worker/src/dto/validation-result-contract.spec.ts 가 컴파일 타임에 고정한다.
+// (워커 DTO 의 enum 코드값은 여기서 string 상위 타입으로 수용 — 워커→정본 방향
+//  할당 가능성이 계약이다. 이 타입을 바꾸려면 위 spec 이 함께 green 이어야 한다.)
+// ============================================================================
+
+/** 워커 검증 에러 (워커 DTO `ValidationError` 미러 — code 는 워커 ErrorCode enum 값) */
+export interface WorkerValidationError {
+  /** 에러 코드 (워커 ErrorCode enum 값 문자열) */
+  code: string;
+  /** 사용자 표시 메시지 */
+  message: string;
+  /** 상세 정보 (유연한 구조) */
+  details: Record<string, unknown>;
+  /** 자동 수정 가능 여부 */
+  autoFixable: boolean;
+  /** 수정 방법 */
+  fixMethod?: 'addBlankPages' | 'extendBleed' | 'adjustSpine' | 'resizeWithPadding';
+}
+
+/** 워커 검증 경고 (워커 DTO `ValidationWarning` 미러 — code 는 워커 WarningCode enum 값) */
+export interface WorkerValidationWarning {
+  /** 경고 코드 (워커 WarningCode enum 값 문자열) */
+  code: string;
+  /** 사용자 표시 메시지 */
+  message: string;
+  /** 상세 정보 */
+  details?: unknown;
+  /** 자동 수정 가능 여부 */
+  autoFixable: boolean;
+  /** 수정 방법 */
+  fixMethod?: string;
+}
+
+/** 워커 PDF 메타데이터 (워커 DTO `PdfMetadata` 미러) */
+export interface WorkerPdfMetadata {
+  /** 페이지 수 */
+  pageCount: number;
+  /** 페이지 크기 (mm) */
+  pageSize: {
+    width: number;
+    height: number;
+  };
+  /** 재단 여백 포함 여부 */
+  hasBleed: boolean;
+  /** 재단 여백 크기 (mm) */
+  bleedSize?: number;
+  /** 책등 크기 (mm) */
+  spineSize?: number;
+  /** 해상도 (DPI) */
+  resolution?: number;
+  /** 컬러 모드 */
+  colorMode?: string;
+  /** 스프레드 감지 정보 */
+  spreadInfo?: {
+    /** 스프레드 형식 여부 */
+    isSpread: boolean;
+    /** 감지 점수 (0-100) */
+    score: number;
+    /** 신뢰도 */
+    confidence: 'high' | 'medium' | 'low';
+    /** 감지된 PDF 타입 */
+    detectedType: 'single' | 'spread' | 'mixed';
+  };
+  /** 별색 포함 여부 */
+  hasSpotColors?: boolean;
+  /** 별색 이름 목록 */
+  spotColors?: string[];
+  /** 투명도 포함 여부 */
+  hasTransparency?: boolean;
+  /** 오버프린트 포함 여부 */
+  hasOverprint?: boolean;
+  /** 이미지 개수 */
+  imageCount?: number;
+  /** 감지된 폰트 수 */
+  fontCount?: number;
+  /** 임베딩되지 않은 폰트 존재 여부 */
+  hasUnembeddedFonts?: boolean;
+  /** 임베딩되지 않은 폰트 이름 목록 */
+  unembeddedFonts?: string[];
+  /** C-2a: 첫 페이지 TrimBox 크기(mm, 소수1자리) — TrimBox 명시 선언 시에만 기록 */
+  trimBox?: { width: number; height: number };
+  /** C-2a: 재단 기하(TrimBox) 명시 선언 여부 — crop mark 검증 수행 시에만 기록 */
+  hasCropMarkGeometry?: boolean;
+}
+
+/**
+ * 워커 검증 결과 정본 (Stage 0 S-1, 2026-07-15).
+ *
+ * 워커가 실제로 발신하는 런타임 shape: `{isValid, errors, warnings, metadata}`.
+ * apps/worker/src/dto/validation-result.dto.ts `ValidationResultDto` 와 필드 1:1.
+ * 구형 `ValidationResult`({valid, fileInfo})는 런타임과 불일치하는 레거시 선언으로,
+ * @deprecated 별칭으로만 유지된다(삭제 금지).
+ */
+export interface WorkerValidationResult {
+  /** 검증 통과 여부 */
+  isValid: boolean;
+  /** 에러 목록 */
+  errors: WorkerValidationError[];
+  /** 경고 목록 */
+  warnings: WorkerValidationWarning[];
+  /** PDF 메타데이터 */
+  metadata: WorkerPdfMetadata;
 }
 
 // Conversion
