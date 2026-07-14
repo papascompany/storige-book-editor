@@ -145,7 +145,7 @@ PENDING ──발송 성공(2xx)──▶ DELIVERED
 
 ### 2.1 `partner_api_keys` — 파트너 키(env scope) [Stage 2]
 
-현행 `sites.editor_auth_code/worker_auth_code`(평문·단일 env)는 무접촉 유지. v1 키는 이 테이블에서 발급하며, ApiKeyGuard 확장은 **기존 키 조회 → 실패 시 partner_api_keys 조회** 순의 additive 폴백.
+현행 `sites.editor_auth_code/worker_auth_code`(평문·단일 env)는 무접촉 유지. v1 키는 이 테이블에서 발급한다. **`partner_api_keys` 조회 폴백은 v1 전용 가드(PartnerApiKeyGuard, §7.1)에만 실장하고 공용 `ApiKeyGuard`는 불변** — 공용 가드를 확장하면 v1 발급 키(test env 포함)가 기존 전 external 표면에서 유효해져 env 스코프가 우회되고(§7.3 논리 분리 붕괴) AD-1(기존 표면 무접촉)에 위배된다. 반대 방향(기존 sites 키의 v1 수용)은 v1 가드 안의 additive 폴백으로 허용.
 
 ```sql
 CREATE TABLE IF NOT EXISTS partner_api_keys (
@@ -300,7 +300,7 @@ CREATE TABLE IF NOT EXISTS webhook_configs (
   site_id         VARCHAR(36) NOT NULL,
   env             ENUM('test','live') NOT NULL DEFAULT 'live',
   url             VARCHAR(500) NOT NULL,
-  secret_hash     VARCHAR(128) NOT NULL,                -- 서명용 secret(1회 노출 후 해시 보관)
+  secret_enc      VARCHAR(256) NOT NULL,                -- HMAC 서명용 secret(at-rest 암호화 보관 — 서명 계산에 원문이 필요해 해시 보관 불가). 응답 노출은 발급 1회뿐
   secret_prefix   VARCHAR(12) NOT NULL,                 -- 표시용 마스킹
   events          JSON NOT NULL,                        -- 구독 이벤트 배열(빈 배열=전체)
   status          ENUM('active','disabled') NOT NULL DEFAULT 'active',
@@ -657,7 +657,7 @@ PENDING ─▶ VALIDATING ─▶ COMPOSING ─▶ COMPLETED
   - `Authorization: Bearer <key>` — 신규 문서 우선 표기(HTTP 생태계 표준·프록시 로깅 관행상 유리)
   - `X-API-Key: <key>` — 기존 파트너 관행 호환
 - 둘 다 오면 `Authorization` 우선, 값 불일치 시 `401 ERR_UNAUTHORIZED`(모호성 거부).
-- 검증 로직: 기존 `ApiKeyGuard`(sites editor/worker auth code 조회) 재사용 + Bearer 추출 어댑터를 v1 가드에서 래핑. 기존 ADR-3(X-API-Key 통일)과 충돌 없음 — 기존 표면은 X-API-Key 그대로, Bearer 수용은 v1 신규 표면에만.
+- 검증 로직: **v1 전용 가드(PartnerApiKeyGuard)** — 내부에서 기존 `ApiKeyGuard`의 sites 키 검증 로직을 재사용(위임)하고 Bearer 추출 어댑터+`partner_api_keys` 조회 폴백(env 스코프 검사 포함)을 얹는다. **공용 `ApiKeyGuard` 자체는 무수정**(§2.1과 동일 원칙 — v1 키가 기존 표면으로 새는 것을 구조적으로 차단). 기존 ADR-3(X-API-Key 통일)과 충돌 없음 — 기존 표면은 X-API-Key 그대로, Bearer 수용은 v1 신규 표면에만.
 - v1 요청 컨텍스트는 기존 `@CurrentSite()`(siteId/siteName/role/retentionDays)를 재사용하고, Stage 2부터 `env`·`apiKeyId`를 additive 확장.
 - **모든 v1 리소스는 site 스탬프 필수**(NULL-siteId 금지) — 기존 표면의 NULL 관용(CONTRACT_FREEZE §4.3)은 무접촉(오너 결정 사안, §9-8)이되 v1은 처음부터 강제.
 
@@ -690,7 +690,7 @@ PENDING ─▶ VALIDATING ─▶ COMPOSING ─▶ COMPLETED
 **기존 게이트(전 Stage 머지 전제 — 항상 green)**
 
 1. `contract-freeze.spec.ts` — 동결 표면(경로·메서드·인증·리밋) 리플렉션 고정. v1 작업이 이 spec을 건드리면 그 자체가 위반 신호.
-2. GUARDED 계약 테스트(Stage 0 작업 4 산출) — 동결 16라우트 밖 외부 라우트(validate/synthesize/split-synthesize/check-mergeable/fix-pagecount external, PATCH external/:id/status, imposition-preview, shop-session 계열)의 가드·인증 시맨틱 고정.
+2. GUARDED 계약 테스트(Stage 0 작업 4 산출) — 동결 17라우트(ADDITIVE fix-bleed 포함) 밖 외부 라우트 **10종**(validate/synthesize/split-synthesize/check-mergeable/fix-pagecount external, PATCH external/:id/status 2종, imposition-preview, shop-session, product-template-sets/by-product)의 가드·인증 시맨틱 고정.
 3. 웹훅 서명 3종 대조표 spec(pairwise 골든) — v1(base64) 발신 바이트 불변 증명.
 4. `pnpm --filter @storige/types build` → 전체 typecheck/build/test.
 
