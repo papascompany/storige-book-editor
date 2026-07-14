@@ -26,12 +26,20 @@ import {
   CloseOutlined,
   ImportOutlined,
 } from '@ant-design/icons';
-import { Template } from '@storige/types';
+import { Template, TemplateType } from '@storige/types';
 import { templatesApi } from '../../api/templates';
 import { categoriesApi } from '../../api/categories';
 import { ThumbnailImage } from '../../components/ThumbnailImage';
+import { orientationOf, type Orientation } from '../../components/formatPresetHelpers';
 
-const { Title } = Typography;
+const { Title, Text } = Typography;
+
+// 방향 배지 메타 (2026-07-14) — page류만 표기(spread/spine/wing/endpaper/cover는 '-')
+const orientationMeta: Record<Orientation, { label: string; color: string }> = {
+  landscape: { label: '가로', color: 'geekblue' },
+  portrait: { label: '세로', color: 'cyan' },
+  square: { label: '정사각', color: 'purple' },
+};
 
 // 썸네일 표시는 공통 컴포넌트 사용 (admin/components/ThumbnailImage)
 // — placeholder/로드 실패 UX 통일 + resolveStorageUrl 위임
@@ -346,6 +354,43 @@ export const TemplateList = () => {
         { text: '면지', value: 'endpaper' },
       ],
       onFilter: (value, record) => record.type === value,
+    },
+    {
+      // 방향 컬럼 (2026-07-14) — 판형(W×H) 컬럼이 따로 없어 치수를 함께 표기
+      title: '방향',
+      key: 'orientation',
+      width: 160,
+      render: (_, record) => {
+        const dims = `${record.width} × ${record.height}mm`;
+        if (record.type !== TemplateType.PAGE) {
+          // page류만 방향 판정 대상 — spread/spine/wing/endpaper/cover는 '-'
+          return (
+            <Space size={4}>
+              <span>-</span>
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                {dims}
+              </Text>
+            </Space>
+          );
+        }
+        const meta = orientationMeta[orientationOf(record.width, record.height)];
+        return (
+          <Space size={4}>
+            <Tag color={meta.color}>{meta.label}</Tag>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {dims}
+            </Text>
+          </Space>
+        );
+      },
+      filters: [
+        { text: '가로', value: 'landscape' },
+        { text: '세로', value: 'portrait' },
+        { text: '정사각', value: 'square' },
+      ],
+      onFilter: (value, record) =>
+        record.type === TemplateType.PAGE &&
+        orientationOf(record.width, record.height) === value,
     },
     {
       title: '상태',
