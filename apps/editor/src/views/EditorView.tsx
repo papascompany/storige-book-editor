@@ -15,6 +15,7 @@ import EditorHeader from '@/components/editor/EditorHeader'
 import { EditorWorkflowControls } from '@/components/editor/EditorWorkflowControls'
 import { CoverFocusBar } from '@/components/editor/CoverFocusBar'
 import EmptyCanvasHint from '@/components/editor/EmptyCanvasHint'
+import ObjectActionBar from '@/components/editor/ObjectActionBar'
 import { useImageStore } from '@/stores/useImageStore'
 import { showToast } from '@/stores/useToastStore'
 import { SpreadPagePanel } from '@/components/PagePanel/SpreadPagePanel'
@@ -767,6 +768,9 @@ export default function EditorView() {
 
               {/* 빈 캔버스 안내 (사용자 객체 없을 때) */}
               <EmptyCanvasHint />
+
+              {/* 선택 객체 플로팅 액션 바 (E1 §5-3) — 플래그 게이팅은 컴포넌트 내부 */}
+              {ready && <ObjectActionBar />}
 
               {/* Canvas Container */}
               <div
