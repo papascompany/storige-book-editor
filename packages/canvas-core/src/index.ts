@@ -34,6 +34,11 @@ export {
   default as TransformFeedbackPlugin,
   type TransformFeedbackOptions,
 } from './plugins/TransformFeedbackPlugin'
+// E1 §5-5 — 재단/안전영역 침범 실시간 경고 (경계 강조 + safeZoneViolation 이벤트)
+export {
+  default as SafeZoneWarningPlugin,
+  type SafeZoneWarningOptions,
+} from './plugins/SafeZoneWarningPlugin'
 
 export { PluginBase } from './plugin'
 
