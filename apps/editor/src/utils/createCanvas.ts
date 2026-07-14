@@ -19,6 +19,7 @@ import Editor, {
   RulerPlugin,
   ServicePlugin,
   SmartCodePlugin,
+  SmartGuidesPlugin,
   SpreadPlugin,
   TemplatePlugin,
   WorkspacePlugin,
@@ -30,6 +31,8 @@ import Editor, {
 const ENABLE_IMAGE_PROCESSING = import.meta.env.VITE_ENABLE_IMAGE_PROCESSING !== 'false'
 // Feature flag for ruler
 const ENABLE_RULER = import.meta.env.VITE_ENABLE_RULER !== 'false'
+// Feature flag for smart guides (객체 간 정렬 가이드/스냅 + 회전 각도 스냅, E1 §5-1) — 기본 on
+const ENABLE_SMART_GUIDES = import.meta.env.VITE_ENABLE_SMART_GUIDES !== 'false'
 import { useAppStore } from '@/stores/useAppStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { innerSpecToPlaceholderSpec } from '@/utils/photobookSpread'
@@ -328,6 +331,10 @@ function initPlugins(
     apiClient.getBaseUrl()
   )
 
+  // SmartGuidesPlugin은 VITE_ENABLE_SMART_GUIDES 환경변수로 제어 (기본 on)
+  // — RulerPlugin(중앙 스냅)과 경합 없음: workspace 중앙 스냅 반경에서는 SmartGuides 가 양보
+  const smartGuides = ENABLE_SMART_GUIDES ? new SmartGuidesPlugin(canvas, editor, {}) : null
+
   const filter = new FilterPlugin(canvas, editor)
   const effect = new EffectPlugin(canvas, editor)
   const smartCode = new SmartCodePlugin(canvas, editor)
@@ -353,6 +360,10 @@ function initPlugins(
   // RulerPlugin은 VITE_ENABLE_RULER 환경변수로 제어
   if (ruler) {
     editor.use(ruler)
+  }
+  // SmartGuidesPlugin — ruler 다음 등록 (moving 핸들러가 룰러 중앙 스냅 이후 실행되어 양보 판정이 안정)
+  if (smartGuides) {
+    editor.use(smartGuides)
   }
   editor.use(controls)
   editor.use(group)

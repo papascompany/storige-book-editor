@@ -84,6 +84,33 @@ async function buildPage1(fabric: any) {
     })
   )
 
+  // E1 §5-1: excludeFromExport 오버레이 케이스 — 스마트 가이드류 화면 전용 객체가
+  // PDF 에 유입되지 않아야 한다(leak 회귀를 능동 트리거: 유입 시 마젠타 선이
+  // 픽셀 diff 로 즉시 검출). 결정성 원칙 준수(벡터·고정 좌표·텍스트/폰트 미사용).
+  canvas.add(
+    new fabric.Line([0, 700, wsW, 700], {
+      // 가이드 계약: id 미부여 + excludeFromExport + extensionType 'guideline'
+      stroke: '#ff00ff',
+      strokeWidth: 10,
+      selectable: false,
+      evented: false,
+      excludeFromExport: true,
+      extensionType: 'guideline',
+    }),
+    new fabric.Rect({
+      left: 200,
+      top: 800,
+      width: 600,
+      height: 300,
+      fill: '#ff00ff',
+      opacity: 0.5,
+      selectable: false,
+      evented: false,
+      excludeFromExport: true,
+      extensionType: 'guideline',
+    })
+  )
+
   // SmartCode 경로(jsbarcode / qr-code-styling — Track A ② dynamic import 실행)
   const smart = new SmartCodePlugin(canvas, editor)
   editor.use(smart)

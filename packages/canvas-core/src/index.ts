@@ -27,6 +27,8 @@ export { default as LockPlugin, type LockLevel, type UserRole, type LockInfo } f
 export { default as SpreadPlugin } from './plugins/SpreadPlugin'
 export { default as PointerShiftGuardPlugin } from './plugins/PointerShiftGuardPlugin'
 export { default as FrameInteractionPlugin } from './plugins/FrameInteractionPlugin'
+// E1 §5-1 — 객체 간 정렬 가이드/스냅 + 회전 각도 스냅
+export { default as SmartGuidesPlugin, type SmartGuidesOptions } from './plugins/SmartGuidesPlugin'
 
 export { PluginBase } from './plugin'
 
