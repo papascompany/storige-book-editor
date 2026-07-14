@@ -17,6 +17,7 @@ import Editor, {
   PointerShiftGuardPlugin,
   PreviewPlugin,
   RulerPlugin,
+  SafeZoneWarningPlugin,
   ServicePlugin,
   SmartCodePlugin,
   SmartGuidesPlugin,
@@ -36,6 +37,8 @@ const ENABLE_RULER = import.meta.env.VITE_ENABLE_RULER !== 'false'
 const ENABLE_SMART_GUIDES = import.meta.env.VITE_ENABLE_SMART_GUIDES !== 'false'
 // Feature flag for transform feedback (변형 중 실시간 치수/각도/좌표, E1 §5-2) — 기본 on
 const ENABLE_TRANSFORM_FEEDBACK = import.meta.env.VITE_ENABLE_TRANSFORM_FEEDBACK !== 'false'
+// Feature flag for safe zone warning (재단/안전영역 침범 실시간 경고, E1 §5-5) — 기본 on
+const ENABLE_SAFEZONE_WARNING = import.meta.env.VITE_ENABLE_SAFEZONE_WARNING !== 'false'
 import { useAppStore } from '@/stores/useAppStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { innerSpecToPlaceholderSpec } from '@/utils/photobookSpread'
@@ -342,6 +345,11 @@ function initPlugins(
   const transformFeedback = ENABLE_TRANSFORM_FEEDBACK
     ? new TransformFeedbackPlugin(canvas, editor, {})
     : null
+  // SafeZoneWarningPlugin은 VITE_ENABLE_SAFEZONE_WARNING 환경변수로 제어 (기본 on)
+  // — WorkspacePlugin cut/safe border 좌표 재사용, 토스트는 editor 쪽 safeZoneViolation 구독
+  const safeZoneWarning = ENABLE_SAFEZONE_WARNING
+    ? new SafeZoneWarningPlugin(canvas, editor, {})
+    : null
 
   const filter = new FilterPlugin(canvas, editor)
   const effect = new EffectPlugin(canvas, editor)
@@ -375,6 +383,9 @@ function initPlugins(
   }
   if (transformFeedback) {
     editor.use(transformFeedback)
+  }
+  if (safeZoneWarning) {
+    editor.use(safeZoneWarning)
   }
   editor.use(controls)
   editor.use(group)
