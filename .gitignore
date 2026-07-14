@@ -48,6 +48,9 @@ rotate_verify_*.sh
 .cursor/plans/*SECRET_ROTATION*
 .cursor/plans/*DB_ROTATION*
 
+# 내부 전용 분석 산출물 — PUBLIC 레포 커밋 금지
+.cursor/plans/*EDITOR_BENCH*
+
 # Claude Code local memory (operational secrets — SSH/VPS/API keys)
 # 세션 간 자동 로드되는 로컬 메모리 — 절대 커밋 금지
 CLAUDE.local.md

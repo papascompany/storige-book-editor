@@ -38,6 +38,12 @@ jobs:
           node-version: 22
           cache: pnpm
 
+      - name: 유출 방지 검사 (외부 식별자 소스 유입 차단 — pnpm 불필요, 빠른 실패)
+        # 내부 정책상 금지된 외부 식별자가 소스에 유입됐는지 검사한다. 배포 번들
+        # (editor/admin)의 postbuild 게이트와 짝을 이루는 소스측 게이트. 모든 빌드
+        # 변형이 같은 src 를 쓰므로 소스 검사가 변형 무관 catch-all 이다.
+        run: node scripts/check-source-exposure.mjs
+
       - name: 시스템 의존성 (qpdf=골든 self-test · cairo/pango=node-canvas 소스 빌드)
         # node-canvas(canvas@2.11.2)는 fabric 5.x node 엔트리의 하드 요구인데 Node 22 용
         # 프리빌트가 없어 소스 빌드가 필요하다. canvas 는 jsdom 의 optionalDependency 라
