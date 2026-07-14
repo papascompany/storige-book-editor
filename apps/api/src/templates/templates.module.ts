@@ -9,7 +9,10 @@ import { CategoriesService } from './categories.service';
 import { CategoriesController } from './categories.controller';
 import { ProductTemplateSetsService } from './product-template-sets.service';
 import { ProductTemplateSetsController } from './product-template-sets.controller';
+import { FormatPresetsService } from './format-presets.service';
+import { FormatPresetsController } from './format-presets.controller';
 import { Template } from './entities/template.entity';
+import { FormatPreset } from './entities/format-preset.entity';
 import { Category } from './entities/category.entity';
 import { TemplateSet, TemplateSetItem } from './entities/template-set.entity';
 import { TemplateSetLibraryCategory } from './entities/template-set-library-category.entity';
@@ -43,6 +46,7 @@ if (process.env.BOOKMOA_DB_PASSWORD) {
       TemplateSetLibraryCategory,
       ProductTemplateSet,
       Product,
+      FormatPreset,
     ]),
     // Bookmoa 카테고리 (상품명 조회용) - 조건부 로드
     ...bookmoaImports,
@@ -52,12 +56,14 @@ if (process.env.BOOKMOA_DB_PASSWORD) {
     TemplateSetsController,
     CategoriesController,
     ProductTemplateSetsController,
+    FormatPresetsController,
   ],
   providers: [
     TemplatesService,
     TemplateSetsService,
     CategoriesService,
     ProductTemplateSetsService,
+    FormatPresetsService,
     // Bookmoa category repository (조건부)
     ...bookmoaProviders,
   ],
@@ -66,6 +72,7 @@ if (process.env.BOOKMOA_DB_PASSWORD) {
     TemplateSetsService,
     CategoriesService,
     ProductTemplateSetsService,
+    FormatPresetsService,
   ],
 })
 export class TemplatesModule {}

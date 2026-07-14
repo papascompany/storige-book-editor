@@ -10,6 +10,7 @@ import { Dashboard } from './pages/Dashboard';
 import { Profile } from './pages/Profile';
 import { TemplateList, TemplateEditor, TemplateImport } from './pages/Templates';
 import { TemplateSetList, TemplateSetForm } from './pages/TemplateSets';
+import { FormatPresetList } from './pages/FormatPresets';
 import { ProductTemplateSetList } from './pages/ProductTemplateSets';
 import { CategoryManagement } from './pages/Categories';
 import { ProductList } from './pages/Products';
@@ -80,6 +81,8 @@ function App() {
               <Route path="template-sets/:id" element={<TemplateSetForm />} />
               <Route path="product-template-sets" element={<ProductTemplateSetList />} />
               <Route path="categories" element={<CategoryManagement />} />
+              {/* 판형 프리셋 관리 (format_presets — 저작측 정본) */}
+              <Route path="format-presets" element={<FormatPresetList />} />
               {/* 라이브러리 그룹 */}
               <Route path="library/categories" element={<LibraryCategoryManagement />} />
               <Route path="library/fonts" element={<FontList />} />
