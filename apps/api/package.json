@@ -13,7 +13,8 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:e2e": "jest --config ./test/jest-e2e.config.js",
-    "collect:book-specs": "ts-node -T src/book-specs/cli/collect-book-specs.cli.ts"
+    "collect:book-specs": "ts-node -T src/book-specs/cli/collect-book-specs.cli.ts",
+    "openapi:partner": "ts-node -T src/scripts/export-openapi-partner.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",
