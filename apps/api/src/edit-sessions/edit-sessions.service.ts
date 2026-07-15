@@ -293,6 +293,34 @@ export class EditSessionsService {
   }
 
   /**
+   * [Stage 3 W4] EDITOR_SESSION 승격용 — 세션 + 최신 SYNTHESIZE 산출 파일(URL) 조회(조회 전용).
+   *
+   * resolveFiles(워커 COMPLETED 출력 우선, 없으면 에디터 원본 fallback) 재사용 — URL 만 반환.
+   * ⚠️ 소유/NULL-site/status 게이트는 호출측(BooksService 승격)이 caller site 컨텍스트로
+   *    수행한다(본 메서드는 조립만 — AD-1: 세션 상태 변경 없음). worker_jobs 는 조회만.
+   */
+  async getPromotionArtifact(
+    id: string,
+  ): Promise<{ session: EditSessionEntity; files: ExternalSessionFilesDto }> {
+    const session = await this.findById(id); // coverFile/contentFile 로드 + 미존재 404
+    // 세션 최신 SYNTHESIZE 잡 1건(created_at DESC) — 조회 전용 raw(findByOrderExternal 준용).
+    const rows: Array<{
+      status: string;
+      result: unknown;
+      outputFileUrl: string | null;
+    }> = await this.sessionRepository.manager.query(
+      `SELECT status, result, output_file_url AS outputFileUrl
+         FROM worker_jobs
+        WHERE edit_session_id = ? AND job_type = 'SYNTHESIZE'
+        ORDER BY created_at DESC
+        LIMIT 1`,
+      [id],
+    );
+    const files = this.resolveFiles(session, rows[0] ?? null);
+    return { session, files };
+  }
+
+  /**
    * 고객 첨부 내지 PDF "리더 스프레드" 임포지션 미리보기 (2026-06-16).
    *
    * 외부(bookmoa-mobile 등)가 "이 PDF가 책으로 묶이면 펼침면이 이렇게 보입니다"를
