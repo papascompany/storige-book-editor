@@ -1,6 +1,7 @@
 import { IsString, IsNotEmpty, IsObject, IsEnum, IsOptional, IsUUID, ValidateIf, IsNumber, IsIn, IsUrl, IsArray } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { WorkerJobType, OutputFile } from '@storige/types';
+import { PartnerEnv } from '../../partner-api/partner-api.constants';
 
 export class CreateValidationJobDto {
   @ApiPropertyOptional({ example: 'uuid', description: '편집 세션 ID' })
@@ -87,6 +88,18 @@ export class CreateValidationJobDto {
   @IsOptional()
   @IsUUID()
   siteId?: string;
+
+  /**
+   * [S2-5] 인증 컨텍스트 env — 호출 컨트롤러가 @CurrentSite().env 로 주입.
+   * ⚠️ 의도적으로 validation 데코레이터 없음(비화이트리스트): body 로 보내면
+   * forbidNonWhitelisted 400 — 호출자가 test env 를 자가선언할 수 없다.
+   * 'test' 면 서비스가 options.isTest=true 자동 스탬프(현 경로 전부 live=no-op 훅,
+   * 실발화는 Stage 3 v1 잡 생성 표면).
+   * ⚠️ `declare` 필수 — ES2022 useDefineForClassFields 로 일반 필드는 인스턴스
+   * own-property(undefined)로 실체화되어 whitelist 검증이 전 요청을 400 처리한다
+   * (vite.config shadow 급 함정 — 본 브랜치에서 실적발, dto.spec 4건 red 로 검출).
+   */
+  declare partnerEnv?: PartnerEnv;
 }
 
 export class CreateConversionJobDto {
@@ -222,6 +235,9 @@ export class CreateSynthesisJobDto {
   @IsOptional()
   @IsUUID()
   siteId?: string;
+
+  /** [S2-5] 인증 컨텍스트 env — CreateValidationJobDto.partnerEnv 주석 참조(비화이트리스트·declare 필수) */
+  declare partnerEnv?: PartnerEnv;
 }
 
 export class UpdateJobStatusDto {
