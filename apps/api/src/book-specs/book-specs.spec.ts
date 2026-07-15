@@ -1,15 +1,17 @@
 /**
- * Partner API v1 — BookSpecs 판형 마스터 spec (Stage 1-B, 2026-07-15)
+ * Partner API v1 — BookSpecs 판형 마스터 spec (Stage 1-B → Stage 1 통합 정합화)
  *
  * 고정하는 계약:
- *  1. 인증 시맨틱 — @Public(전역 JwtAuthGuard 우회) + ApiKeyGuard(X-API-Key).
- *     guarded-routes.spec 의 기존 외부 라우트와 동일 규약(트랙 A 통합 시
- *     PartnerApiKeyGuard 치환 예정 — 그때 이 단언도 함께 갱신).
+ *  1. 인증 시맨틱 — @PartnerV1Controller 조합 데코레이터: @Public(전역
+ *     JwtAuthGuard 우회) + PartnerApiKeyGuard(Bearer/X-API-Key 병행) +
+ *     PartnerRateLimitGuard + v1 필터/인터셉터 스택 (Stage 1 통합 반영).
  *  2. 성공 봉투 4필드 {success,message,data,pagination} — 설계서 §3.1.
+ *     핸들러는 순수 데이터(목록=PaginatedResult)만 반환, 봉투는
+ *     PartnerEnvelopeInterceptor 가 조립(이중 래핑 금지).
  *  3. calculated-size 수치 — 기존 SpineService 실물 계산과 대조
  *     (책등 = pageCount/2 × thickness + margin, 반올림 2자리).
- *  4. 페이지 경계 — min/max/increment 위반 = 400 ERR_PAGE_COUNT_OUT_OF_RANGE,
- *     비정수/0/음수/누락 = DTO 400.
+ *  4. 페이지 경계 — min/max/increment 위반 = 422 ERR_PAGE_COUNT_OUT_OF_RANGE
+ *     (설계서 §3.3 카탈로그 정본), 비정수/0/음수/누락 = DTO 400.
  *  5. 404 — 없음/비활성/타 사이트 = ERR_BOOK_SPEC_NOT_FOUND (존재 은닉).
  *
  * ⚠️ 워커 검증 상수 LEGACY_SIZE_TOLERANCE_MM=1 은 참조(정합 단언)만 —
@@ -21,11 +23,19 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import {
   BadRequestException,
-  NotFoundException,
+  CallHandler,
+  ExecutionContext,
   RequestMethod,
   ValidationPipe,
 } from '@nestjs/common';
-import { PATH_METADATA, METHOD_METADATA, GUARDS_METADATA } from '@nestjs/common/constants';
+import {
+  PATH_METADATA,
+  METHOD_METADATA,
+  GUARDS_METADATA,
+  EXCEPTION_FILTERS_METADATA,
+  INTERCEPTORS_METADATA,
+} from '@nestjs/common/constants';
+import { firstValueFrom, of } from 'rxjs';
 import { BookSpecsService } from './book-specs.service';
 import { BookSpecsController } from './book-specs.controller';
 import { BookSpec } from './entities/book-spec.entity';
@@ -34,7 +44,13 @@ import { SpineService } from '../products/spine.service';
 import { PaperTypeEntity } from '../products/entities/paper-type.entity';
 import { BindingTypeEntity } from '../products/entities/binding-type.entity';
 import { IS_PUBLIC_KEY } from '../auth/decorators/public.decorator';
-import { ApiKeyGuard } from '../auth/guards/api-key.guard';
+import { PartnerApiKeyGuard } from '../partner-api/guards/partner-api-key.guard';
+import { PartnerRateLimitGuard } from '../partner-api/guards/partner-rate-limit.guard';
+import { PartnerApiExceptionFilter } from '../partner-api/http/partner-api-exception.filter';
+import { PartnerApiException } from '../partner-api/http/partner-api.exceptions';
+import { PartnerEnvelopeInterceptor } from '../partner-api/http/partner-envelope.interceptor';
+import { PartnerAuditInterceptor } from '../partner-api/audit/partner-audit.interceptor';
+import { PartnerIdempotencyInterceptor } from '../partner-api/idempotency/partner-idempotency.interceptor';
 import { CalculatedSizeQueryDto, BookSpecListQueryDto } from './dto/book-spec.dto';
 import { CurrentSitePayload } from '../auth/decorators/current-site.decorator';
 import {
@@ -55,6 +71,17 @@ async function captureRejection(run: () => Promise<unknown>): Promise<unknown> {
     return err;
   }
   throw new Error('expected rejection, but resolved');
+}
+
+/**
+ * 핸들러 반환값을 실물 PartnerEnvelopeInterceptor 에 통과시켜 성공 봉투를
+ * 얻는다 — 컨트롤러는 순수 데이터만 반환하고 봉투는 인터셉터 책임(§3.1)이라는
+ * Stage 1 통합 규약을 유닛 레벨에서 그대로 재현한다.
+ */
+async function throughEnvelope<T>(result: T) {
+  const interceptor = new PartnerEnvelopeInterceptor();
+  const handler: CallHandler = { handle: () => of(result) };
+  return firstValueFrom(interceptor.intercept({} as ExecutionContext, handler));
 }
 
 /** spine-seed.service.ts 실계수와 동일한 픽스처 (mojo_80g/mojo_70g, perfect/saddle) */
@@ -143,10 +170,21 @@ describe('BookSpecs (Partner API v1 Stage 1-B)', () => {
         },
       ],
     })
-      // ApiKeyGuard 는 SitesService(DB) 의존 — 유닛에서는 통과 스텁으로 대체.
-      // 가드 "존재" 계약은 아래 리플렉션 단언이 별도로 고정한다.
-      .overrideGuard(ApiKeyGuard)
+      // v1 스택 enhancer 들은 DB/설정 의존 — 유닛에서는 통과 스텁으로 대체.
+      // 스택 "존재" 계약은 아래 리플렉션 단언이 별도로 고정하고,
+      // 실 HTTP 관통은 book-specs.v1.http.spec.ts(supertest)가 검증한다.
+      .overrideGuard(PartnerApiKeyGuard)
       .useValue({ canActivate: () => true })
+      .overrideGuard(PartnerRateLimitGuard)
+      .useValue({ canActivate: () => true })
+      .overrideFilter(PartnerApiExceptionFilter)
+      .useValue({ catch: () => undefined })
+      .overrideInterceptor(PartnerAuditInterceptor)
+      .useValue({ intercept: (_c: ExecutionContext, n: CallHandler) => n.handle() })
+      .overrideInterceptor(PartnerIdempotencyInterceptor)
+      .useValue({ intercept: (_c: ExecutionContext, n: CallHandler) => n.handle() })
+      .overrideInterceptor(PartnerEnvelopeInterceptor)
+      .useValue({ intercept: (_c: ExecutionContext, n: CallHandler) => n.handle() })
       .compile();
 
     service = module.get(BookSpecsService);
@@ -159,10 +197,22 @@ describe('BookSpecs (Partner API v1 Stage 1-B)', () => {
       expect(Reflect.getMetadata(PATH_METADATA, BookSpecsController)).toBe('v1/book-specs');
     });
 
-    it('@Public + ApiKeyGuard 조합 — 전역 JwtAuthGuard 우회 + X-API-Key 인증 (무인증 라우트 0)', () => {
+    it('@PartnerV1Controller 스택 — @Public + PartnerApiKeyGuard→RateLimit + 필터/인터셉터 (무인증 라우트 0)', () => {
       expect(Reflect.getMetadata(IS_PUBLIC_KEY, BookSpecsController)).toBe(true);
+      // 가드 순서 계약: 인증(req.user 세팅) → per-Key 리밋(req.user 필요)
       const guards: unknown[] = Reflect.getMetadata(GUARDS_METADATA, BookSpecsController) ?? [];
-      expect(guards).toContain(ApiKeyGuard);
+      expect(guards).toEqual([PartnerApiKeyGuard, PartnerRateLimitGuard]);
+      // 에러 봉투 필터 + 감사→멱등→봉투 인터셉터 스택(순서 의미 있음)
+      const filters: unknown[] =
+        Reflect.getMetadata(EXCEPTION_FILTERS_METADATA, BookSpecsController) ?? [];
+      expect(filters).toContain(PartnerApiExceptionFilter);
+      const interceptors: unknown[] =
+        Reflect.getMetadata(INTERCEPTORS_METADATA, BookSpecsController) ?? [];
+      expect(interceptors).toEqual([
+        PartnerAuditInterceptor,
+        PartnerIdempotencyInterceptor,
+        PartnerEnvelopeInterceptor,
+      ]);
     });
 
     it('GET 3종 라우트 경로/메서드 고정', () => {
@@ -182,19 +232,33 @@ describe('BookSpecs (Partner API v1 Stage 1-B)', () => {
 
   // ── 2. 봉투/목록/404 ─────────────────────────────────────────────────
   describe('목록/단건', () => {
-    it('성공 봉투 4필드 + pagination shape {total,limit,offset,hasNext}', async () => {
-      bookSpecRepo.findAndCount.mockResolvedValue([[makeSpec()], 37]);
+    it('목록 = PaginatedResult → 봉투 4필드 + pagination {total,limit,offset,hasNext} (§5.1 산식 offset+limit<total)', async () => {
+      bookSpecRepo.findAndCount.mockResolvedValue([[makeSpec()], 60]);
 
-      const res = await controller.list(site, { limit: 20, offset: 20 } as BookSpecListQueryDto);
+      const result = await controller.list(site, {
+        limit: 20,
+        offset: 20,
+      } as BookSpecListQueryDto);
+      const res = await throughEnvelope(result);
 
       expect(Object.keys(res).sort()).toEqual(['data', 'message', 'pagination', 'success']);
       expect(res.success).toBe(true);
       expect(res.message).toBe('Success');
-      expect(res.pagination).toEqual({ total: 37, limit: 20, offset: 20, hasNext: true });
+      expect(res.pagination).toEqual({ total: 60, limit: 20, offset: 20, hasNext: true });
       // 외부 노출 shape — 내부 UUID/siteId 비노출
-      expect(res.data[0]).not.toHaveProperty('id');
-      expect(res.data[0]).not.toHaveProperty('siteId');
-      expect(res.data[0].uid).toBe('bs_a4perfect01');
+      const items = res.data as Array<Record<string, unknown>>;
+      expect(items[0]).not.toHaveProperty('id');
+      expect(items[0]).not.toHaveProperty('siteId');
+      expect(items[0].uid).toBe('bs_a4perfect01');
+    });
+
+    it('마지막 페이지 — hasNext=false (offset+limit>=total)', async () => {
+      bookSpecRepo.findAndCount.mockResolvedValue([[makeSpec()], 37]);
+
+      const res = await throughEnvelope(
+        await controller.list(site, { limit: 20, offset: 20 } as BookSpecListQueryDto),
+      );
+      expect(res.pagination).toEqual({ total: 37, limit: 20, offset: 20, hasNext: false });
     });
 
     it('limit 은 최대 100 으로 캡, 기본 20/offset 0 (설계서 §5.1)', async () => {
@@ -223,21 +287,22 @@ describe('BookSpecs (Partner API v1 Stage 1-B)', () => {
 
     it('단건 pagination 은 null, 미존재 uid 는 404 ERR_BOOK_SPEC_NOT_FOUND', async () => {
       bookSpecRepo.findOne.mockResolvedValue(makeSpec());
-      const ok = await controller.findOne(site, 'bs_a4perfect01');
+      const view = await controller.findOne(site, 'bs_a4perfect01');
+      expect(view.uid).toBe('bs_a4perfect01');
+      const ok = await throughEnvelope(view);
       expect(ok.pagination).toBeNull();
-      expect(ok.data.uid).toBe('bs_a4perfect01');
+      expect((ok.data as { uid: string }).uid).toBe('bs_a4perfect01');
 
       bookSpecRepo.findOne.mockResolvedValue(null);
       const err = await captureRejection(() => controller.findOne(site, 'bs_missing'));
-      expect(err).toBeInstanceOf(NotFoundException);
-      const body = (err as NotFoundException).getResponse() as Record<string, unknown>;
-      expect(body.errorCode).toBe('ERR_BOOK_SPEC_NOT_FOUND');
-      expect(body.success).toBe(false);
+      expect(err).toBeInstanceOf(PartnerApiException);
+      expect((err as PartnerApiException).getStatus()).toBe(404);
+      expect((err as PartnerApiException).errorCode).toBe('ERR_BOOK_SPEC_NOT_FOUND');
     });
 
     it('비활성/타 사이트 판형은 조회 조건에서 배제된다 (활성+전역/자기site where)', async () => {
       bookSpecRepo.findOne.mockResolvedValue(null);
-      await expect(service.findByUid(SITE_A, 'bs_x')).rejects.toBeInstanceOf(NotFoundException);
+      await expect(service.findByUid(SITE_A, 'bs_x')).rejects.toBeInstanceOf(PartnerApiException);
 
       const arg = bookSpecRepo.findOne.mock.calls[0][0] as {
         where: Array<Record<string, unknown>>;
@@ -356,34 +421,32 @@ describe('BookSpecs (Partner API v1 Stage 1-B)', () => {
     });
   });
 
-  // ── 4. pageCount 경계 — 400 표준 에러 ───────────────────────────────
+  // ── 4. pageCount 경계 — 422 표준 에러 (설계서 §3.3 카탈로그 정본) ────
   describe('pageCount 경계', () => {
-    const expect400OutOfRange = async (pageCount: number, expectedErrorCode?: string) => {
+    const expect422OutOfRange = async (pageCount: number, expectedErrorCode?: string) => {
       bookSpecRepo.findOne.mockResolvedValue(makeSpec()); // pageMin 32 / max 400 / +2
       const err = await captureRejection(() =>
         service.calculateSize(SITE_A, 'bs_a4perfect01', pageCount),
       );
-      expect(err).toBeInstanceOf(BadRequestException);
-      const body = (err as BadRequestException).getResponse() as {
-        errorCode: string;
-        errors: Array<{ code: string }>;
-      };
-      expect(body.errorCode).toBe('ERR_PAGE_COUNT_OUT_OF_RANGE');
+      expect(err).toBeInstanceOf(PartnerApiException);
+      const exception = err as PartnerApiException;
+      expect(exception.getStatus()).toBe(422);
+      expect(exception.errorCode).toBe('ERR_PAGE_COUNT_OUT_OF_RANGE');
       if (expectedErrorCode) {
-        expect(body.errors.map((e) => e.code)).toContain(expectedErrorCode);
+        expect(exception.errorItems.map((e) => e.code)).toContain(expectedErrorCode);
       }
     };
 
-    it('pageMin 미만 = 400 ERR_PAGE_COUNT_OUT_OF_RANGE', async () => {
-      await expect400OutOfRange(30, 'PAGE_COUNT_RANGE');
+    it('pageMin 미만 = 422 ERR_PAGE_COUNT_OUT_OF_RANGE', async () => {
+      await expect422OutOfRange(30, 'PAGE_COUNT_RANGE');
     });
 
-    it('pageMax 초과 = 400 ERR_PAGE_COUNT_OUT_OF_RANGE', async () => {
-      await expect400OutOfRange(402, 'PAGE_COUNT_RANGE');
+    it('pageMax 초과 = 422 ERR_PAGE_COUNT_OUT_OF_RANGE', async () => {
+      await expect422OutOfRange(402, 'PAGE_COUNT_RANGE');
     });
 
-    it('pageIncrement 위반 = 400 + errors[].code PAGE_COUNT_INCREMENT 세분', async () => {
-      await expect400OutOfRange(33, 'PAGE_COUNT_INCREMENT');
+    it('pageIncrement 위반 = 422 + errors[].code PAGE_COUNT_INCREMENT 세분', async () => {
+      await expect422OutOfRange(33, 'PAGE_COUNT_INCREMENT');
     });
 
     it('비정수/0/음수/누락 pageCount 는 DTO 검증 400 (전역 ValidationPipe 동일 옵션)', async () => {

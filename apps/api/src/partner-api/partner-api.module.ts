@@ -13,6 +13,7 @@ import { PartnerEnvelopeInterceptor } from './http/partner-envelope.interceptor'
 import { PartnerApiKeyGuard } from './guards/partner-api-key.guard';
 import { PartnerRateLimitGuard } from './guards/partner-rate-limit.guard';
 import { partnerApiConfigProvider } from './partner-api.config';
+import { PARTNER_API_CONFIG } from './partner-api.constants';
 import { PartnerPingController } from './ping.controller';
 
 /**
@@ -24,6 +25,10 @@ import { PartnerPingController } from './ping.controller';
  * - ApiKeyGuard 는 공용 파일 무수정으로 프로바이더 등록만 하여
  *   PartnerApiKeyGuard 가 위임 재사용한다(§7.1).
  * - SitesService 는 SitesModule 이 @Global 이라 별도 import 불필요.
+ * - exports: 타 도메인 모듈(BookSpecsModule 등)이 @PartnerV1Controller 를
+ *   선언할 때, 컨트롤러 호스트 모듈에서 v1 스택(가드/필터/인터셉터)과 그
+ *   의존(감사·멱등 서비스, 설정 토큰)이 DI 로 해석되도록 공개한다 —
+ *   Stage 3+ 신규 v1 컨트롤러 모듈의 표준 통합 포인트.
  */
 @Module({
   imports: [TypeOrmModule.forFeature([PublicApiAuditLog, PartnerIdempotencyKey])],
@@ -40,6 +45,18 @@ import { PartnerPingController } from './ping.controller';
     PartnerIdempotencyService,
     PartnerIdempotencyInterceptor,
     PartnerIdempotencySweeper,
+  ],
+  exports: [
+    PARTNER_API_CONFIG,
+    ApiKeyGuard,
+    PartnerApiKeyGuard,
+    PartnerRateLimitGuard,
+    PartnerApiExceptionFilter,
+    PartnerEnvelopeInterceptor,
+    PartnerAuditService,
+    PartnerAuditInterceptor,
+    PartnerIdempotencyService,
+    PartnerIdempotencyInterceptor,
   ],
 })
 export class PartnerApiModule {}

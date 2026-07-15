@@ -1,16 +1,19 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { FindOptionsWhere, IsNull, Repository } from 'typeorm';
+import { ErrV1, PartnerV1ErrorItem } from '@storige/types';
 import { BookSpec } from './entities/book-spec.entity';
 import { TemplateSet } from '../templates/entities/template-set.entity';
 import { SpineService } from '../products/spine.service';
+import { PartnerApiException } from '../partner-api/http/partner-api.exceptions';
+import {
+  PAGINATION_DEFAULT_LIMIT,
+  PAGINATION_MAX_LIMIT,
+} from '../partner-api/http/pagination';
 import {
   BookSpecListQueryDto,
   BookSpecView,
   CalculatedSizeView,
-  V1Pagination,
-  V1_PAGINATION_DEFAULT_LIMIT,
-  V1_PAGINATION_MAX_LIMIT,
 } from './dto/book-spec.dto';
 
 /**
@@ -59,12 +62,14 @@ export class BookSpecsService {
   /**
    * 목록 — 필터(coverType/bindingType/isActive) + 페이지네이션(설계서 §5.1).
    * 기본 정렬 sort_order ASC, created_at DESC 보조.
+   * pagination 봉투 조립은 컨트롤러의 PaginatedResult.of() (v1 코어 규약) —
+   * 여기서는 실측치(total·적용된 limit/offset)만 돌려준다.
    */
   async list(
     siteId: string,
     query: BookSpecListQueryDto,
-  ): Promise<{ items: BookSpecView[]; pagination: V1Pagination }> {
-    const limit = Math.min(query.limit ?? V1_PAGINATION_DEFAULT_LIMIT, V1_PAGINATION_MAX_LIMIT);
+  ): Promise<{ items: BookSpecView[]; total: number; limit: number; offset: number }> {
+    const limit = Math.min(query.limit ?? PAGINATION_DEFAULT_LIMIT, PAGINATION_MAX_LIMIT);
     const offset = query.offset ?? 0;
 
     // 외부 대면 기본 = 활성 판형만. isActive 명시 시 해당 값으로 필터.
@@ -87,10 +92,7 @@ export class BookSpecsService {
       take: limit,
     });
 
-    return {
-      items: rows.map((r) => this.toView(r)),
-      pagination: { total, limit, offset, hasNext: offset + rows.length < total },
-    };
+    return { items: rows.map((r) => this.toView(r)), total, limit, offset };
   }
 
   /**
@@ -106,14 +108,13 @@ export class BookSpecsService {
     });
 
     if (!spec) {
-      // 트랙 A v1 예외 필터(에러 봉투 표준화) 병합 전 — 객체 페이로드로
-      // errorCode 를 실어 보낸다. 통합 시 필터가 requestId 등을 부착하는
-      // 표준 봉투로 치환될 예정 (이중 래핑 방지 포인트).
-      throw new NotFoundException({
-        success: false,
-        errorCode: 'ERR_BOOK_SPEC_NOT_FOUND',
-        message: `판형 '${uid}' 을(를) 찾을 수 없습니다`,
-      });
+      // v1 표준 예외 — PartnerApiExceptionFilter 가 에러 봉투(§3.2,
+      // requestId 부착)로 직렬화한다.
+      throw new PartnerApiException(
+        ErrV1.ERR_BOOK_SPEC_NOT_FOUND,
+        404,
+        `판형 '${uid}' 을(를) 찾을 수 없습니다`,
+      );
     }
     return spec;
   }
@@ -139,7 +140,7 @@ export class BookSpecsService {
   ): Promise<CalculatedSizeView> {
     const spec = await this.findByUid(siteId, uid);
 
-    this.assertPageRules(spec, pageCount);
+    this.assertPageRules(spec, pageCount); // 위반 = 422 (설계서 §3.3)
 
     const warnings: Array<{ code: string; message: string }> = [];
 
@@ -232,9 +233,15 @@ export class BookSpecsService {
     };
   }
 
-  /** 페이지 규칙 검증 — 위반 시 400 ERR_PAGE_COUNT_OUT_OF_RANGE */
+  /**
+   * 페이지 규칙 검증 — 위반 시 422 ERR_PAGE_COUNT_OUT_OF_RANGE.
+   *
+   * status 는 설계서 §3.3 ERR_* 카탈로그(정본)와 ErrV1 주석의 422 를 따른다 —
+   * 구문 위반(비정수/0/음수/누락)은 DTO 검증 400 ERR_VALIDATION_FAILED,
+   * 구문은 유효하나 판형 도메인 규칙(pageMin/Max/Increment) 위반은 422 로 분리.
+   */
   private assertPageRules(spec: BookSpec, pageCount: number): void {
-    const errors: Array<{ code: string; message: string }> = [];
+    const errors: PartnerV1ErrorItem[] = [];
 
     if (pageCount < spec.pageMin || pageCount > spec.pageMax) {
       errors.push({
@@ -250,12 +257,12 @@ export class BookSpecsService {
     }
 
     if (errors.length > 0) {
-      throw new BadRequestException({
-        success: false,
-        errorCode: 'ERR_PAGE_COUNT_OUT_OF_RANGE',
-        message: '페이지 수가 판형 규칙을 벗어났습니다',
+      throw new PartnerApiException(
+        ErrV1.ERR_PAGE_COUNT_OUT_OF_RANGE,
+        422,
+        '페이지 수가 판형 규칙을 벗어났습니다',
         errors,
-      });
+      );
     }
   }
 }

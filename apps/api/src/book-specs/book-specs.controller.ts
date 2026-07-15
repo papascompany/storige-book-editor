@@ -1,16 +1,14 @@
-import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
+import { Get, Param, Query } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiSecurity, ApiTags } from '@nestjs/swagger';
 import { BookSpecsService } from './book-specs.service';
-import { Public } from '../auth/decorators/public.decorator';
-import { ApiKeyGuard } from '../auth/guards/api-key.guard';
+import { PartnerV1Controller } from '../partner-api/partner-v1.decorator';
+import { PaginatedResult } from '../partner-api/http/pagination';
 import { CurrentSite, CurrentSitePayload } from '../auth/decorators/current-site.decorator';
 import {
   BookSpecListQueryDto,
   BookSpecView,
   CalculatedSizeQueryDto,
   CalculatedSizeView,
-  V1Envelope,
-  v1Envelope,
 } from './dto/book-spec.dto';
 
 /**
@@ -19,24 +17,21 @@ import {
  * 정본: docs/PARTNER_PLATFORM_API_V1_DESIGN_2026-07-07.md §1.2
  * 글로벌 prefix 'api' → 최종 경로 /api/v1/book-specs (설계서 모듈 배치 규약).
  *
- * 인증 — v1 무인증 라우트 0 원칙(설계서 §1.1):
- *   @Public(전역 JwtAuthGuard 우회) + ApiKeyGuard(X-API-Key) 조합 —
- *   guarded-routes.spec 의 기존 외부 라우트와 동일 규약.
- *   ⚠️ 병렬 트랙 A 가 PartnerApiKeyGuard(Bearer 병행, AD-5)를 구현 중 —
- *   통합 시 ApiKeyGuard → PartnerApiKeyGuard 치환 예정(이 파일이 치환 지점).
+ * v1 표준 스택 — @PartnerV1Controller 조합 데코레이터가 일괄 바인딩:
+ *   @Public(전역 JwtAuthGuard 우회) + PartnerApiKeyGuard(Bearer/X-API-Key 병행)
+ *   + PartnerRateLimitGuard(per-Key §5.2) + 에러 필터(§3.2) + 감사→멱등→봉투
+ *   인터셉터(§3.1). 핸들러는 순수 데이터만 반환 — 봉투 수동 래핑 금지
+ *   (이중 래핑 방지). 목록 라우트는 PaginatedResult 로 pagination 을 싣는다.
  *
- * 응답 봉투 — 트랙 A 의 v1 성공 인터셉터 병합 전이라 컨트롤러에서
- *   v1Envelope() 로 자체 구성한다. 인터셉터 통합 시 여기 수동 래핑을 제거해
- *   이중 래핑을 방지할 것.
+ * 레이트리밋 버킷: GET 3종(calculated-size 포함) 전부 기본 'general'(300/min)
+ *   — 읽기 전용 마스터 조회라 heavy(업로드/최종화 100/min) 대상 아님.
  *
  * v1 은 읽기 전용 — 검증측(워커) 상수·로직 무접촉. 기존 @Public spine
  * 3라우트(POST /products/spine/calculate 등)는 무접촉 병존(AD-1).
  */
-@ApiTags('Partner API v1 — BookSpecs')
+@ApiTags('partner-v1')
 @ApiSecurity('api-key')
-@Controller('v1/book-specs')
-@Public()
-@UseGuards(ApiKeyGuard)
+@PartnerV1Controller('book-specs')
 export class BookSpecsController {
   constructor(private readonly bookSpecsService: BookSpecsService) {}
 
@@ -46,9 +41,9 @@ export class BookSpecsController {
   async list(
     @CurrentSite() site: CurrentSitePayload,
     @Query() query: BookSpecListQueryDto,
-  ): Promise<V1Envelope<BookSpecView[]>> {
-    const { items, pagination } = await this.bookSpecsService.list(site.siteId, query);
-    return v1Envelope(items, pagination);
+  ): Promise<PaginatedResult<BookSpecView>> {
+    const { items, total, limit, offset } = await this.bookSpecsService.list(site.siteId, query);
+    return PaginatedResult.of(items, total, { limit, offset });
   }
 
   @Get(':uid')
@@ -58,8 +53,8 @@ export class BookSpecsController {
   async findOne(
     @CurrentSite() site: CurrentSitePayload,
     @Param('uid') uid: string,
-  ): Promise<V1Envelope<BookSpecView>> {
-    return v1Envelope(await this.bookSpecsService.getDetail(site.siteId, uid));
+  ): Promise<BookSpecView> {
+    return this.bookSpecsService.getDetail(site.siteId, uid);
   }
 
   @Get(':uid/calculated-size')
@@ -69,15 +64,18 @@ export class BookSpecsController {
       '응답의 각 mm 값대로 PDF 를 제작하면 워커 사이즈 검증을 ±sizeToleranceMm 내에서 통과한다',
   })
   @ApiResponse({ status: 200, description: '계산 성공' })
-  @ApiResponse({ status: 400, description: 'ERR_PAGE_COUNT_OUT_OF_RANGE / DTO 검증 실패' })
+  @ApiResponse({ status: 400, description: 'ERR_VALIDATION_FAILED — pageCount 비정수/0/음수/누락' })
+  @ApiResponse({
+    status: 422,
+    description:
+      'ERR_PAGE_COUNT_OUT_OF_RANGE — pageMin/Max/Increment 위반 (설계서 §3.3, errors[].code 세분)',
+  })
   @ApiResponse({ status: 404, description: 'ERR_BOOK_SPEC_NOT_FOUND' })
   async calculatedSize(
     @CurrentSite() site: CurrentSitePayload,
     @Param('uid') uid: string,
     @Query() query: CalculatedSizeQueryDto,
-  ): Promise<V1Envelope<CalculatedSizeView>> {
-    return v1Envelope(
-      await this.bookSpecsService.calculateSize(site.siteId, uid, query.pageCount),
-    );
+  ): Promise<CalculatedSizeView> {
+    return this.bookSpecsService.calculateSize(site.siteId, uid, query.pageCount);
   }
 }
