@@ -203,8 +203,12 @@ class SmartGuidesPlugin extends PluginBase {
 
     const snapped = snapAngle(target.angle ?? 0, this._angleStep, this._angleTolerance)
     if (snapped !== null && snapped !== target.angle) {
-      // fabric 자체 snapAngle 구현과 동일하게 angle 직접 라운딩 —
-      // FrameInteractionPlugin(object:rotating) 이 스냅된 각을 그대로 동기화한다.
+      // fabric 자체 snapAngle 구현과 동일하게 angle 직접 라운딩.
+      // 사진틀 동기화 정합은 **바인딩 순서**로 보장된다: fabric 이벤트는 등록 순서대로
+      // 발화하며, createCanvas 가 본 플러그인을 FrameInteractionPlugin 보다 먼저
+      // 생성(=먼저 바인딩)하므로 FrameInteraction 의 object:rotating 핸들러는 이미
+      // 스냅된 각을 받아 사진(fillImage)/마스크(clipPath)에 동일 적용한다
+      // (생성 순서 계약 — apps/editor/src/utils/createCanvas.ts).
       target.set('angle', snapped)
       target.setCoords()
     }
