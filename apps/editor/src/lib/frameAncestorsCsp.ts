@@ -48,12 +48,29 @@ export const STATIC_FRAME_ANCESTORS: readonly string[] = [
  * 제어문자 등으로 다른 CSP 지시어를 주입하지 못하도록 엄격한 화이트리스트
  * 패턴만 통과시킨다. 허용: http(s) 스킴 + (와일드카드 서브도메인) 호스트 + 포트.
  * 전면 와일드카드('*')·스킴 없는 값·경로 포함 값은 의도적으로 거부한다.
+ *
+ * [보안 P2-2] 추가 거부 2종:
+ *  - 퍼블릭 서픽스 단독 와일드카드(`https://*.com` 등 — `*.` 뒤 라벨 1개):
+ *    사실상 인터넷 전체 임베드 허용이므로 거부. 와일드카드는 최소
+ *    `*.example.com`(라벨 2개 이상)부터 허용한다.
+ *  - 범위 밖 포트(`:99999`, `:0` 등): 유효 포트는 1~65535 만.
  */
 const HOST_SOURCE_PATTERN =
-  /^https?:\/\/(\*\.)?[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?(:\d{1,5})?$/;
+  /^https?:\/\/(\*\.)?([a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?)(:(\d{1,5}))?$/;
 
 export function isValidAncestorSource(value: unknown): value is string {
-  return typeof value === 'string' && value.length <= 300 && HOST_SOURCE_PATTERN.test(value);
+  if (typeof value !== 'string' || value.length > 300) return false;
+  const match = HOST_SOURCE_PATTERN.exec(value);
+  if (!match) return false;
+  const [, wildcard, host, , , port] = match;
+  // 와일드카드는 등록 도메인 이하(`*.example.com`)만 — `*.com`/`*.kr` 같은
+  // TLD 단독 와일드카드(호스트 라벨 1개)는 거부.
+  if (wildcard && !host.includes('.')) return false;
+  if (port !== undefined) {
+    const portNum = Number(port);
+    if (portNum < 1 || portNum > 65535) return false;
+  }
+  return true;
 }
 
 /**
