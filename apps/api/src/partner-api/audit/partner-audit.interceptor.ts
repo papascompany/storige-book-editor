@@ -6,7 +6,6 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { Observable, tap } from 'rxjs';
-import { PARTNER_ENV_LIVE } from '../partner-api.constants';
 import { PartnerAuditService } from './partner-audit.service';
 import { resolveSuccessStatus } from '../http/success-status';
 import {
@@ -14,6 +13,7 @@ import {
   ensureRequestId,
   ensureStartedAt,
   requestPath,
+  resolvePartnerEnv,
 } from '../http/request-context';
 
 /**
@@ -40,7 +40,8 @@ export class PartnerAuditInterceptor implements NestInterceptor {
         this.auditService.record({
           requestId,
           siteId: req.user?.siteId ?? null,
-          env: req.user?.siteId ? PARTNER_ENV_LIVE : null,
+          env: req.user?.siteId ? resolvePartnerEnv(req.user) : null,
+          apiKeyId: req.user?.apiKeyId ?? null,
           method: req.method,
           path: requestPath(req),
           statusCode: resolveSuccessStatus(this.reflector, context),

@@ -59,6 +59,8 @@ services:
       # WH-001 위조불가 HMAC 서명(X-Storige-Signature-HMAC). 미설정 시 HMAC 헤더 생략(=서명 비활성).
       # .env 에 존재해도 이 environment 매핑이 없으면 컨테이너 런타임에 미주입되어 HMAC 이 silent no-op 가 됨(2026-06-23 적발).
       - WEBHOOK_SECRET=${WEBHOOK_SECRET}
+      # 웹훅 v2 config secret at-rest 암호화 키(64 hex). 미설정 시 v2 전면 비활성(무중단) — 위와 동일한 silent no-op 함정 방지용 매핑(2026-07-16).
+      - WEBHOOK_CONFIG_ENC_KEY=${WEBHOOK_CONFIG_ENC_KEY:-}
     volumes:
       - ./storage:/app/storage
     depends_on:
