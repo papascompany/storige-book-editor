@@ -17,6 +17,7 @@ import { BookAsset } from './entities/book-asset.entity';
 import {
   BOOK_ASSET_DIRECT_UPLOAD_MAX_BYTES,
   BOOK_ASSET_DIRECT_UPLOAD_MIME,
+  BOOK_MAX_ACTIVE_PHOTOS,
   BOOK_UID_PREFIX,
   isAssetCompatible,
   type BookAssetType,
@@ -281,6 +282,13 @@ export class BooksService {
       where: { bookId: book.id, assetType: 'photo', status: 'active' },
       select: ['sortOrder'],
     });
+    if (activePhotos.length >= BOOK_MAX_ACTIVE_PHOTOS) {
+      throw new PartnerApiException(
+        ErrV1.ERR_VALIDATION_FAILED,
+        422,
+        `사진 자산은 도서당 최대 ${BOOK_MAX_ACTIVE_PHOTOS}개까지 추가할 수 있습니다`,
+      );
+    }
     const nextSort =
       activePhotos.reduce((max, p) => Math.max(max, p.sortOrder), -1) + 1;
 
