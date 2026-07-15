@@ -111,3 +111,6 @@ docker/mysql/init.sql.bak.*
 # Agent 간 작업 지시 / 답변 임시 파일 — git 추적 X (회상/히스토리용 로컬 보관만)
 # Claude <-> Codex 협업 흐름에서 사용. 파일은 삭제하지 않고 로컬에 남겨두되 커밋은 안 함.
 .tmp_*.md
+
+# Partner API v1 OpenAPI export 산출물 (pnpm --filter @storige/api openapi:partner — CI 아티팩트로 배포)
+apps/api/openapi-partner.json

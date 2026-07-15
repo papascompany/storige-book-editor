@@ -63,6 +63,18 @@ jobs:
       - name: api 테스트 (contract-freeze + 서명 페어와이즈 + 전체 스펙)
         run: pnpm --filter @storige/api test
 
+      - name: Partner API v1 OpenAPI export (파트너 전용 스펙 — v1 태그 필터)
+        # 스크립트 내부 단언: 모든 경로 /api/v1/* + 필수 라우트(ping·book-specs 3종)
+        # 존재 — 내부 라우트 유입/누락 시 여기서 실패한다 (Stage 1 작업 5).
+        run: pnpm --filter @storige/api openapi:partner
+
+      - name: Partner API v1 OpenAPI 아티팩트 업로드
+        uses: actions/upload-artifact@v4
+        with:
+          name: openapi-partner
+          path: apps/api/openapi-partner.json
+          if-no-files-found: error
+
       - name: canvas-core 타입체크 + 테스트 (ServicePlugin.pdf 카나리 포함)
         run: |
           pnpm --filter @storige/canvas-core typecheck
