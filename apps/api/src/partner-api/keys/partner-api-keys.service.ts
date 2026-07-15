@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { LessThan, Repository } from 'typeorm';
 import { createHash, randomBytes, randomUUID } from 'crypto';
 import { PartnerEnv } from '../partner-api.constants';
 import { PartnerApiKey } from '../entities/partner-api-key.entity';
@@ -175,14 +175,10 @@ export class PartnerApiKeysService {
 
   /** grace 만료 배치 대상 일괄 revoked 승격 — 반환값=처리 건수 (sweeper 가 호출) */
   async expireGraceKeys(now: Date = new Date()): Promise<number> {
-    const result = await this.keysRepository
-      .createQueryBuilder()
-      .update(PartnerApiKey)
-      .set({ status: 'revoked', revokedAt: now })
-      .where('status = :status', { status: 'grace' })
-      .andWhere('grace_until IS NOT NULL')
-      .andWhere('grace_until <= :now', { now })
-      .execute();
+    const result = await this.keysRepository.update(
+      { status: 'grace', graceUntil: LessThan(now) },
+      { status: 'revoked', revokedAt: now },
+    );
     return result.affected ?? 0;
   }
 
