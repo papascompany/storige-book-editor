@@ -25,7 +25,6 @@ jest.mock('axios', () => ({
   __esModule: true,
 }));
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
 const axios = require('axios').default;
 
 describe('SynthesisProcessor — S2-5 test env(isTest) 더미 합성 분기', () => {
