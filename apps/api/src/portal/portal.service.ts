@@ -1,6 +1,8 @@
 import {
   BadRequestException,
   ForbiddenException,
+  HttpException,
+  HttpStatus,
   Injectable,
   Logger,
   NotFoundException,
@@ -57,6 +59,9 @@ function maskAuthCode(code: string): string {
   if (code.length <= 12) return '****';
   return `${code.slice(0, 12)}…`;
 }
+
+/** 사이트당 활성(비revoked·비만료) test 키 기본 상한 — env PORTAL_TEST_KEY_LIMIT 로 override */
+export const PORTAL_TEST_KEY_ACTIVE_LIMIT_DEFAULT = 20;
 
 /**
  * 파트너 포털 v0 (S2-4, D-7a 보수 스코프 — 이메일 인증 가입 제외).
@@ -170,7 +175,33 @@ export class PortalService {
       });
     }
     await this.sitesService.findOne(siteId); // 사이트 존재 검증 (404)
+
+    // 사이트당 활성 test 키 상한 — 셀프서브 무제한 발급(키 인벤토리 팽창·정리 부담) 차단.
+    // 활성 = status==='active'(포털은 발급/폐기만 노출 → grace 미발생). revoked 는 제외.
+    const activeTestKeys = (
+      await this.partnerApiKeysService.list(siteId)
+    ).filter((k) => k.env === 'test' && k.status === 'active');
+    const limit = this.getTestKeyActiveLimit();
+    if (activeTestKeys.length >= limit) {
+      throw new HttpException(
+        {
+          code: 'PORTAL_TEST_KEY_LIMIT',
+          message: `사이트당 활성 test 키 상한(${limit})에 도달했습니다. 기존 키를 폐기한 뒤 다시 발급하세요.`,
+        },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
     return this.partnerApiKeysService.issue(siteId, 'test', dto.name ?? null);
+  }
+
+  /** 활성 test 키 상한(런타임 env override 허용 — 테스트/운영 튜닝) */
+  private getTestKeyActiveLimit(): number {
+    const raw = process.env.PORTAL_TEST_KEY_LIMIT;
+    const parsed = raw ? Number.parseInt(raw, 10) : NaN;
+    return Number.isInteger(parsed) && parsed > 0
+      ? parsed
+      : PORTAL_TEST_KEY_ACTIVE_LIMIT_DEFAULT;
   }
 
   async revokeTestKey(
