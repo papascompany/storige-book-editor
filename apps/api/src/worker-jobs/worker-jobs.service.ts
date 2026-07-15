@@ -1793,7 +1793,9 @@ export class WorkerJobsService {
    */
   private async sendSynthesisCallback(job: WorkerJob): Promise<void> {
     const callbackUrl = job.options?.callbackUrl;
-    if (!callbackUrl) {
+    // [Stage 2] callbackUrl 이 없어도 v2 config(opt-in) 사이트면 발송 진행 —
+    // v2 비활성/미등록 사이트는 hasV2Config=false 로 기존과 동일하게 스킵.
+    if (!callbackUrl && !(await this.webhookService.hasV2Config(job.siteId))) {
       return;
     }
 
@@ -1824,7 +1826,11 @@ export class WorkerJobsService {
         timestamp: new Date().toISOString(),
       };
 
-      const success = await this.webhookService.sendCallback(callbackUrl, payload);
+      const success = await this.webhookService.sendCallback(
+        callbackUrl ?? '',
+        payload,
+        { siteId: job.siteId }, // [Stage 2] v2 opt-in 판정용 — config 없으면 기존 경로 그대로
+      );
 
       if (success) {
         this.logger.log(
@@ -1844,7 +1850,8 @@ export class WorkerJobsService {
    */
   private async sendValidationCallback(job: WorkerJob): Promise<void> {
     const callbackUrl = job.options?.callbackUrl;
-    if (!callbackUrl) {
+    // [Stage 2] callbackUrl 이 없어도 v2 config(opt-in) 사이트면 발송 진행
+    if (!callbackUrl && !(await this.webhookService.hasV2Config(job.siteId))) {
       return;
     }
 
@@ -1875,7 +1882,11 @@ export class WorkerJobsService {
         timestamp: new Date().toISOString(),
       };
 
-      const success = await this.webhookService.sendCallback(callbackUrl, payload);
+      const success = await this.webhookService.sendCallback(
+        callbackUrl ?? '',
+        payload,
+        { siteId: job.siteId }, // [Stage 2] v2 opt-in 판정용 — config 없으면 기존 경로 그대로
+      );
 
       if (success) {
         this.logger.log(
@@ -2029,7 +2040,12 @@ export class WorkerJobsService {
     job: WorkerJob,
     workerStatus: WorkerStatus,
   ): Promise<void> {
-    if (!session.callbackUrl) {
+    // [Stage 2] callbackUrl 이 없어도 v2 config(opt-in) 사이트면 발송 진행
+    const webhookSiteId = session.siteId ?? job.siteId;
+    if (
+      !session.callbackUrl &&
+      !(await this.webhookService.hasV2Config(webhookSiteId))
+    ) {
       this.logger.log(`No callback URL for session ${session.id}, skipping webhook`);
       return;
     }
@@ -2048,7 +2064,11 @@ export class WorkerJobsService {
         timestamp: new Date().toISOString(),
       };
 
-      const success = await this.webhookService.sendCallback(session.callbackUrl, payload);
+      const success = await this.webhookService.sendCallback(
+        session.callbackUrl ?? '',
+        payload,
+        { siteId: webhookSiteId }, // [Stage 2] v2 opt-in 판정용 — config 없으면 기존 경로 그대로
+      );
 
       if (success) {
         this.logger.log(`Webhook callback sent successfully for session ${session.id}`);
