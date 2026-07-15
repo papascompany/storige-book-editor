@@ -1829,7 +1829,10 @@ export class WorkerJobsService {
       const success = await this.webhookService.sendCallback(
         callbackUrl ?? '',
         payload,
-        { siteId: job.siteId }, // [Stage 2] v2 opt-in 판정용 — config 없으면 기존 경로 그대로
+        // [Stage 2] v2 opt-in 판정용 — config 없으면 기존 경로 그대로.
+        // env 미전달 = live 고정: 잡 완료 발신은 요청(파트너 키) env 컨텍스트가
+        // 없는 백그라운드 경로다. test env 발신은 v1 라우트(resolvePartnerEnv) 전용.
+        { siteId: job.siteId },
       );
 
       if (success) {
@@ -1885,7 +1888,10 @@ export class WorkerJobsService {
       const success = await this.webhookService.sendCallback(
         callbackUrl ?? '',
         payload,
-        { siteId: job.siteId }, // [Stage 2] v2 opt-in 판정용 — config 없으면 기존 경로 그대로
+        // [Stage 2] v2 opt-in 판정용 — config 없으면 기존 경로 그대로.
+        // env 미전달 = live 고정: 잡 완료 발신은 요청(파트너 키) env 컨텍스트가
+        // 없는 백그라운드 경로다. test env 발신은 v1 라우트(resolvePartnerEnv) 전용.
+        { siteId: job.siteId },
       );
 
       if (success) {
@@ -2067,7 +2073,9 @@ export class WorkerJobsService {
       const success = await this.webhookService.sendCallback(
         session.callbackUrl ?? '',
         payload,
-        { siteId: webhookSiteId }, // [Stage 2] v2 opt-in 판정용 — config 없으면 기존 경로 그대로
+        // [Stage 2] v2 opt-in 판정용 — config 없으면 기존 경로 그대로.
+        // env 미전달 = live 고정(잡 완료 발신 경로는 요청 env 컨텍스트 없음)
+        { siteId: webhookSiteId },
       );
 
       if (success) {

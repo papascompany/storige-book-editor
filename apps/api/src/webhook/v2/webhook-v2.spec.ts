@@ -517,4 +517,32 @@ describe('tryDispatchForSite — opt-in 경계', () => {
     expect(deliveryRepo.rows).toHaveLength(1);
     expect(deliveryRepo.rows[0].status).toBe('DELIVERED');
   });
+
+  // 배치1 정합화 — env 통합(S2-1): test env 발신은 delivery.isTest + 페이로드
+  // isTest:true 를 함께 반영한다. live 페이로드 바이트 불변은 위 테스트가 고정.
+  it('env=test 발신 → delivery.isTest=true + 페이로드 isTest:true 반영', async () => {
+    const { deliveryService, configRepo, deliveryRepo } = makeServices();
+    await seedConfig(configRepo, { env: 'test' as const, events: [] });
+    mockedAxios.post.mockResolvedValue({ status: 200, data: 'ok' });
+
+    const payload = {
+      event: 'synthesis.completed',
+      jobId: 'j-test',
+      status: 'completed',
+      outputFileUrl: '/storage/x.pdf',
+      timestamp: '2026-07-15T00:00:00.000Z',
+    };
+    const result = await deliveryService.tryDispatchForSite(
+      'site-a',
+      'test',
+      payload as never,
+    );
+    expect(result).toEqual({ delivered: true });
+
+    const [, body] = mockedAxios.post.mock.calls[0] as [string, string];
+    expect(JSON.parse(body)).toEqual({ ...payload, isTest: true });
+    expect(deliveryRepo.rows).toHaveLength(1);
+    expect(deliveryRepo.rows[0].isTest).toBe(true);
+    expect(deliveryRepo.rows[0].env).toBe('test');
+  });
 });

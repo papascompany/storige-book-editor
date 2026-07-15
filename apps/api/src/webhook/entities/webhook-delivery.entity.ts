@@ -18,7 +18,7 @@ import { WebhookDeliveryStatus } from '../v2/webhook-v2.constants';
  * - uid: 'whd_...' — 발송 헤더 X-Storige-Delivery 값. 파트너 대면 식별자.
  * - payload: 발송 당시 JSON 바이트 스냅샷 — 재시도는 항상 동일 바이트 재전송
  *   (delivery 단위 멱등 — 재시도 안전).
- * - prod 는 synchronize=false — migrations/20260715_c_add_webhook_v2_tables.sql 수동 실행.
+ * - prod 는 synchronize=false — migrations/20260715_d_add_webhook_v2_tables.sql 수동 실행.
  */
 @Entity('webhook_deliveries')
 @Index('uq_webhook_deliveries_uid', ['uid'], { unique: true })

@@ -127,7 +127,20 @@ export class WebhookDeliveryService {
       return { delivered: false };
     }
 
-    const delivery = await this.dispatch(config, payload.event, payload, false);
+    // env 통합(S2-1 정합화): test env 로 도달한 발신은 delivery.isTest 플래그와
+    // 페이로드 `isTest: true` 를 함께 반영 — 수신측이 test/live 를 페이로드만으로
+    // 구분 가능. live env 페이로드 바이트는 현행 그대로(불변식) 유지.
+    // (잡 완료 발신 경로는 env 컨텍스트가 없어 live 고정 — worker-jobs 주석 참조)
+    const isTest = env === 'test';
+    const dispatchPayload: unknown = isTest
+      ? { ...payload, isTest: true as const }
+      : payload;
+    const delivery = await this.dispatch(
+      config,
+      payload.event,
+      dispatchPayload,
+      isTest,
+    );
     return { delivered: delivery.status === 'DELIVERED' };
   }
 

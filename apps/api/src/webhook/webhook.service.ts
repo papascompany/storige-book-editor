@@ -127,6 +127,9 @@ export class WebhookService {
     context?: { siteId?: string | null; env?: 'test' | 'live' },
   ): Promise<boolean> {
     if (context?.siteId && this.webhookDeliveryService) {
+      // env 규약(S2-1 정합화): context.env 는 v1 라우트 경유 발신에서만
+      // resolvePartnerEnv(req.user) 값이 전달된다. 잡 완료 발신(worker-jobs)은
+      // 요청 컨텍스트가 없어 env 를 넘기지 않으며 live 로 폴백(현행 유지).
       const v2 = await this.webhookDeliveryService.tryDispatchForSite(
         context.siteId,
         context.env ?? PARTNER_ENV_LIVE,

@@ -19,7 +19,7 @@ import { WebhookConfigStatus } from '../v2/webhook-v2.constants';
  *   평문 컬럼 금지 원칙 — 응답 노출은 발급/회전 1회뿐(webhook-secret.crypto.ts).
  * - env: Stage 1 은 전 요청 'live' 고정(PARTNER_ENV_LIVE) — S2-1 env 모델 도입 시
  *   인증 컨텍스트의 env 로 대체(additive).
- * - prod 는 synchronize=false — migrations/20260715_c_add_webhook_v2_tables.sql 수동 실행.
+ * - prod 는 synchronize=false — migrations/20260715_d_add_webhook_v2_tables.sql 수동 실행.
  */
 @Entity('webhook_configs')
 @Index('uq_webhook_configs_site_env', ['siteId', 'env'], { unique: true })

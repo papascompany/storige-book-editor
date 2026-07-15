@@ -1,5 +1,5 @@
 -- =====================================================================
--- 20260715_c_add_webhook_v2_tables.sql
+-- 20260715_d_add_webhook_v2_tables.sql
 -- 웹훅 v2 테이블 2종 신설 (Stage 2 작업 5 — 신규 파트너 전용 opt-in).
 --
 -- 정본: docs/PARTNER_PLATFORM_API_V1_DESIGN_2026-07-07.md §2.7·§2.8
