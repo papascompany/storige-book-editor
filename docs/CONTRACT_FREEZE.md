@@ -58,7 +58,7 @@
 | `POST /files/multipart/abort` (@Public) | 100p(고아 abort) | FROZEN | |
 | `POST /files/:id/complete` (@Public, 단품) | 업로드 확정 | FROZEN | files.controller.ts:132-214 라우트군 |
 | **업로드 크기 경계** | | **FROZEN(경계값)** | multer **100MB**(:247/:324) · 100p **90MB 라우팅 임계**(client.ts:65-66, ≤90MB→multipart / >90MB→presigned) · presigned **2GB** · nginx `client_max_body_size **100M**`(docker/nginx/nginx.conf:56) |
-| **`503 + 본문 `STORIGE_NOT_S3`** 폴백 계약 | 100p(client.ts:328 `body.includes('STORIGE_NOT_S3')`) | **FROZEN(에러코드 문자열)** | driver=local 판별→multipart 폴백 트리거 |
+| **`503 + 본문 `STORAGE_NOT_S3`** 폴백 계약 | 100p(client.ts:328 `body.includes(...)` — ⚠️ 파트너 실물 미확인) | **FROZEN(에러코드 문자열)** | driver=local 판별→multipart 폴백 트리거. 실코드 발신값은 전수 `STORAGE_NOT_S3`(presigned-upload.service.ts:78 등) — 본 행의 종전 표기 `STORIGE_NOT_S3` 는 문서 오기였음(2026-07-15 정정). 100p client.ts:328 파트너 실물이 어느 문자열을 매칭하는지는 미확인 — **파트너측 확인 필요, 확인 전까지 코드 문자열 변경 금지** |
 | **`ALLOWED_CONTENT_TYPES`** (pdf/jpeg/png/webp/gif, **svg 제외**) | presigned 업로드 | **FROZEN(enum)** | presigned-upload.service.ts:24-31. 축소는 파트너 파손 |
 
 > ⚠️ **크기 경계 상충 확정**: nginx 100M ↔ bookmoa 2GB 클라 캡은 실측 상충. 대용량은 **반드시 presigned 직결 R2 경로**(nginx 우회)여야 동작. PrintCard 대용량 오프로드 설계 시 이 사실 전제.
