@@ -14,6 +14,7 @@ import {
   PartnerApiKeysService,
 } from '../partner-api/keys/partner-api-keys.service';
 import { MaskedPartnerApiKey } from '../partner-api/keys/partner-api-keys.dto';
+import { isForbiddenLiteralHost } from '../common/helpers/ssrf.helper';
 import { PortalIssueTestKeyDto, UpdatePortalSiteDto } from './portal.dto';
 
 /**
@@ -55,31 +56,6 @@ function maskAuthCode(code: string): string {
   if (!code) return '';
   if (code.length <= 12) return '****';
   return `${code.slice(0, 12)}…`;
-}
-
-/** 셀프서브 금지 호스트(내부/사설 리터럴) — 발신측 SSRF 가드(WH-002)의 사전 차단막 */
-function isForbiddenSelfServeHost(hostname: string): boolean {
-  const host = hostname.toLowerCase().replace(/^\[|\]$/g, '');
-  if (
-    host === 'localhost' ||
-    host === '0.0.0.0' ||
-    host === '::1' ||
-    host === 'host.docker.internal' ||
-    host.endsWith('.local') ||
-    host.endsWith('.internal')
-  ) {
-    return true;
-  }
-  // IPv4 리터럴 사설/루프백/링크로컬 대역
-  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
-  if (m) {
-    const [a, b] = [Number(m[1]), Number(m[2])];
-    if (a === 127 || a === 10 || a === 0) return true;
-    if (a === 192 && b === 168) return true;
-    if (a === 172 && b >= 16 && b <= 31) return true;
-    if (a === 169 && b === 254) return true;
-  }
-  return false;
 }
 
 /**
@@ -274,7 +250,9 @@ export class PortalService {
     if (url.protocol !== 'http:' && url.protocol !== 'https:') {
       throw new BadRequestException('uploadCallbackUrl 은 http(s)만 허용합니다.');
     }
-    if (isForbiddenSelfServeHost(url.hostname)) {
+    // 리터럴 내부/사설 호스트 조기 거부(IPv4·IPv6·IPv4-mapped 16진·정수 IP 정규화 포함).
+    // 정본 SSRF 방어선은 발신 시점(webhook.service isRemoteUrlPublic) — DNS 리바인딩 완화.
+    if (isForbiddenLiteralHost(url.hostname)) {
       throw new BadRequestException(
         'uploadCallbackUrl 에 내부/사설 주소는 등록할 수 없습니다.',
       );

@@ -35,9 +35,11 @@ import {
   MergeIssueDto,
 } from './dto/check-mergeable.dto';
 import * as fs from 'fs/promises';
-import { lookup } from 'dns/promises';
-import * as net from 'net';
 import axios from 'axios';
+import {
+  isPrivateIp,
+  isRemoteUrlPublic,
+} from '../common/helpers/ssrf.helper';
 import { FilesService } from '../files/files.service';
 import { WebhookService } from '../webhook/webhook.service';
 import { EditSessionEntity, WorkerStatus } from '../edit-sessions/entities/edit-session.entity';
@@ -289,59 +291,18 @@ export class WorkerJobsService {
     }
   }
 
-  /** SSRF 방어: http/https 스킴 + DNS 해석 결과가 사설/링크로컬/루프백이 아닌 경우만 true. */
+  /**
+   * SSRF 방어: http/https 스킴 + DNS 해석 결과가 사설/링크로컬/루프백이 아닌 경우만 true.
+   * 로직은 공용 유틸(common/helpers/ssrf.helper)로 이전 — webhook 발신 가드와 단일 출처.
+   * (인스턴스 메서드 유지: 기존 ssrf.spec 이 `svc.isRemoteUrlSafe` 를 호출.)
+   */
   private async isRemoteUrlSafe(raw: string): Promise<boolean> {
-    let u: URL;
-    try {
-      u = new URL(raw);
-    } catch {
-      return false;
-    }
-    if (u.protocol !== 'http:' && u.protocol !== 'https:') return false;
-    const host = u.hostname.toLowerCase();
-    const bare = host.startsWith('[') && host.endsWith(']') ? host.slice(1, -1) : host;
-    if (net.isIP(bare)) return !this.isPrivateIp(bare);
-    try {
-      const addrs = await lookup(bare, { all: true });
-      if (addrs.length === 0) return false;
-      return addrs.every((a) => !this.isPrivateIp(a.address));
-    } catch {
-      return false;
-    }
+    return isRemoteUrlPublic(raw);
   }
 
-  /** 사설/링크로컬/루프백 IP 판정(IPv4 대역 + IPv6 loopback/ULA/link-local). 불명은 차단(true). */
+  /** 사설/링크로컬/루프백 IP 판정 — 공용 유틸 위임(단일 출처). */
   private isPrivateIp(ip: string): boolean {
-    if (net.isIPv6(ip)) {
-      const l = ip.toLowerCase();
-      if (l === '::1' || l === '::') return true;
-      if (l.startsWith('fc') || l.startsWith('fd') || /^fe[89ab]/.test(l)) return true;
-      // IPv4-mapped 점표기(::ffff:169.254.169.254)
-      const m = l.match(/^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/);
-      if (m) return this.isPrivateIp(m[1]);
-      // IPv4-mapped 16진표기(::ffff:a9fe:a9fe) — WHATWG URL 이 [::ffff:169.254.169.254] 를
-      // 이 형태로 정규화하므로 반드시 처리(누락 시 메타데이터/루프백 SSRF 우회). 워커 url-safety 와 동일.
-      const mh = l.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
-      if (mh) {
-        const hi = parseInt(mh[1], 16);
-        const lo = parseInt(mh[2], 16);
-        return this.isPrivateIp(`${(hi >> 8) & 0xff}.${hi & 0xff}.${(lo >> 8) & 0xff}.${lo & 0xff}`);
-      }
-      return false;
-    }
-    const p = ip.split('.').map(Number);
-    if (p.length !== 4 || p.some((n) => Number.isNaN(n) || n < 0 || n > 255)) return true;
-    const v = ((p[0] << 24) >>> 0) + (p[1] << 16) + (p[2] << 8) + p[3];
-    const blocks: [number, number][] = [
-      [0x7f000000, 0xff000000], // 127/8
-      [0x0a000000, 0xff000000], // 10/8
-      [0xac100000, 0xfff00000], // 172.16/12
-      [0xc0a80000, 0xffff0000], // 192.168/16
-      [0xa9fe0000, 0xffff0000], // 169.254/16
-      [0x64400000, 0xffc00000], // 100.64/10
-      [0x00000000, 0xff000000], // 0/8
-    ];
-    return blocks.some(([b, m]) => ((v & m) >>> 0) === (b >>> 0));
+    return isPrivateIp(ip);
   }
 
   // ============================================================================

@@ -18,6 +18,12 @@ import { WebhookService, SynthesisWebhookPayload } from './webhook.service';
 import type { WebhookDeliveryService } from './v2/webhook-delivery.service';
 
 jest.mock('axios');
+// 발신 시점 SSRF 가드(2026-07-16)는 axios.post 직전 DNS 해석을 수행한다.
+// CALLBACK_URL(www.bookmoa.com)이 공인 IP 로 해석되도록 고정 — 발신 바이트 불변은
+// 이 가드 통과 이후(axios 인자)를 비교하므로 mock 은 결과에 영향 없다(실 네트워크 제거용).
+jest.mock('dns/promises', () => ({
+  lookup: jest.fn(async () => [{ address: '93.184.216.34', family: 4 }]),
+}));
 const mockedAxios = axios as jest.Mocked<typeof axios>;
 
 const payload: SynthesisWebhookPayload = {
