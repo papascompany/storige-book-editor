@@ -27,29 +27,31 @@ describe('normalizePaginationQuery (§5.1)', () => {
   it.each([['0'], ['-5'], ['1.5'], ['abc'], [['10', '20']]])(
     'limit=%p — 400 ERR_VALIDATION_FAILED + fieldErrors.limit',
     (bad) => {
+      let caught: unknown;
       try {
         normalizePaginationQuery({ limit: bad });
-        fail('should throw');
       } catch (err) {
-        expect(err).toBeInstanceOf(PartnerApiException);
-        const e = err as PartnerApiException;
-        expect(e.getStatus()).toBe(400);
-        expect(e.errorCode).toBe(ErrV1.ERR_VALIDATION_FAILED);
-        expect(e.fieldErrors?.limit).toBeDefined();
+        caught = err;
       }
+      expect(caught).toBeInstanceOf(PartnerApiException);
+      const e = caught as PartnerApiException;
+      expect(e.getStatus()).toBe(400);
+      expect(e.errorCode).toBe(ErrV1.ERR_VALIDATION_FAILED);
+      expect(e.fieldErrors?.limit).toBeDefined();
     },
   );
 
   it.each([['-1'], ['2.5'], ['xyz']])(
     'offset=%p — 400 ERR_VALIDATION_FAILED + fieldErrors.offset',
     (bad) => {
+      let caught: unknown;
       try {
         normalizePaginationQuery({ offset: bad });
-        fail('should throw');
       } catch (err) {
-        expect(err).toBeInstanceOf(PartnerApiException);
-        expect((err as PartnerApiException).fieldErrors?.offset).toBeDefined();
+        caught = err;
       }
+      expect(caught).toBeInstanceOf(PartnerApiException);
+      expect((caught as PartnerApiException).fieldErrors?.offset).toBeDefined();
     },
   );
 
