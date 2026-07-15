@@ -28,6 +28,7 @@ import { WorkerJobList } from './pages/WorkerJobs';
 import { WorkerTestPage } from './pages/WorkerTest';
 import { SiteList } from './pages/Sites';
 import { OperatorList } from './pages/Operators';
+import { MySitePage } from './pages/MySite';
 import { StorageSettings } from './pages/StorageSettings';
 
 const queryClient = new QueryClient({
@@ -72,6 +73,8 @@ function App() {
               <Route path="sites" element={<SiteList />} />
               {/* 운영자 관리 (P3a 멀티테넌시) */}
               <Route path="operators" element={<OperatorList />} />
+              {/* 내 사이트 — 파트너 포털 v0 (S2-4, SITE_ADMIN 셀프 뷰) */}
+              <Route path="my-site" element={<MySitePage />} />
               <Route path="storage-settings" element={<StorageSettings />} />
               {/* 템플릿 그룹 */}
               <Route path="templates" element={<TemplateList />} />
