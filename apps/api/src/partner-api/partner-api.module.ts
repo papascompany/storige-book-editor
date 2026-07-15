@@ -16,6 +16,9 @@ import { PartnerRateLimitGuard } from './guards/partner-rate-limit.guard';
 import { partnerApiConfigProvider } from './partner-api.config';
 import { PARTNER_API_CONFIG } from './partner-api.constants';
 import { PartnerPingController } from './ping.controller';
+import { PartnerApiKeysService } from './keys/partner-api-keys.service';
+import { PartnerApiKeysController } from './keys/partner-api-keys.controller';
+import { PartnerApiKeysSweeper } from './keys/partner-api-keys.sweeper';
 
 /**
  * Partner API v1 — 신규 파사드 모듈 (설계서 AD-1).
@@ -35,10 +38,12 @@ import { PartnerPingController } from './ping.controller';
   imports: [
     TypeOrmModule.forFeature([PublicApiAuditLog, PartnerIdempotencyKey, PartnerApiKey]),
   ],
-  controllers: [PartnerPingController],
+  controllers: [PartnerPingController, PartnerApiKeysController],
   providers: [
     partnerApiConfigProvider,
     ApiKeyGuard,
+    PartnerApiKeysService,
+    PartnerApiKeysSweeper,
     PartnerApiKeyGuard,
     PartnerRateLimitGuard,
     PartnerApiExceptionFilter,
@@ -52,6 +57,7 @@ import { PartnerPingController } from './ping.controller';
   exports: [
     PARTNER_API_CONFIG,
     ApiKeyGuard,
+    PartnerApiKeysService,
     PartnerApiKeyGuard,
     PartnerRateLimitGuard,
     PartnerApiExceptionFilter,
