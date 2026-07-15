@@ -23,6 +23,10 @@ import { PartnerEnvelopeInterceptor } from './http/partner-envelope.interceptor'
 import { PartnerAuditService } from './audit/partner-audit.service';
 import { PartnerAuditInterceptor } from './audit/partner-audit.interceptor';
 import { PublicApiAuditLog } from './entities/public-api-audit-log.entity';
+import { PartnerIdempotencyKey } from './entities/partner-idempotency-key.entity';
+import { PartnerIdempotencyService } from './idempotency/partner-idempotency.service';
+import { PartnerIdempotencyInterceptor } from './idempotency/partner-idempotency.interceptor';
+import { PARTNER_API_CONFIG } from './partner-api.constants';
 import { PartnerApiException } from './http/partner-api.exceptions';
 import { PartnerV1Controller } from './partner-v1.decorator';
 import { PartnerPingController } from './ping.controller';
@@ -92,10 +96,23 @@ describe('Partner API v1 코어 (봉투·인증·감사)', () => {
         PartnerEnvelopeInterceptor,
         PartnerAuditService,
         PartnerAuditInterceptor,
+        PartnerIdempotencyService,
+        PartnerIdempotencyInterceptor,
         { provide: SitesService, useValue: sitesServiceStub },
         {
           provide: getRepositoryToken(PublicApiAuditLog),
           useValue: { insert: auditInsert },
+        },
+        {
+          provide: getRepositoryToken(PartnerIdempotencyKey),
+          useValue: { insert: jest.fn(), findOne: jest.fn(), update: jest.fn(), delete: jest.fn() },
+        },
+        {
+          provide: PARTNER_API_CONFIG,
+          useValue: {
+            rateLimit: { general: { limitPerMin: 300 }, heavy: { limitPerMin: 100 } },
+            idempotencyTtlMs: 24 * 60 * 60 * 1000,
+          },
         },
       ],
     }).compile();

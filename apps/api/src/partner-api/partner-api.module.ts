@@ -2,8 +2,12 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ApiKeyGuard } from '../auth/guards/api-key.guard';
 import { PublicApiAuditLog } from './entities/public-api-audit-log.entity';
+import { PartnerIdempotencyKey } from './entities/partner-idempotency-key.entity';
 import { PartnerAuditService } from './audit/partner-audit.service';
 import { PartnerAuditInterceptor } from './audit/partner-audit.interceptor';
+import { PartnerIdempotencyService } from './idempotency/partner-idempotency.service';
+import { PartnerIdempotencyInterceptor } from './idempotency/partner-idempotency.interceptor';
+import { PartnerIdempotencySweeper } from './idempotency/partner-idempotency.sweeper';
 import { PartnerApiExceptionFilter } from './http/partner-api-exception.filter';
 import { PartnerEnvelopeInterceptor } from './http/partner-envelope.interceptor';
 import { PartnerApiKeyGuard } from './guards/partner-api-key.guard';
@@ -21,7 +25,7 @@ import { PartnerPingController } from './ping.controller';
  * - SitesService 는 SitesModule 이 @Global 이라 별도 import 불필요.
  */
 @Module({
-  imports: [TypeOrmModule.forFeature([PublicApiAuditLog])],
+  imports: [TypeOrmModule.forFeature([PublicApiAuditLog, PartnerIdempotencyKey])],
   controllers: [PartnerPingController],
   providers: [
     partnerApiConfigProvider,
@@ -31,6 +35,9 @@ import { PartnerPingController } from './ping.controller';
     PartnerEnvelopeInterceptor,
     PartnerAuditService,
     PartnerAuditInterceptor,
+    PartnerIdempotencyService,
+    PartnerIdempotencyInterceptor,
+    PartnerIdempotencySweeper,
   ],
 })
 export class PartnerApiModule {}
