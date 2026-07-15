@@ -26,6 +26,7 @@ export class SitesService implements OnModuleInit {
     expiresAt: number;
     allowedOrigins: Set<string>;
     frameAncestorsByOrigin: Map<string, string[]>; // origin → 해당 site 의 frameAncestors
+    allFrameAncestors: Set<string>; // 활성 사이트 전체 frameAncestors 합집합 (P-Stage2-3)
     webhookAllowedHosts: Set<string>;
   } | null = null;
 
@@ -173,11 +174,17 @@ export class SitesService implements OnModuleInit {
 
     const allowedOrigins = new Set<string>();
     const frameAncestorsByOrigin = new Map<string, string[]>();
+    const allFrameAncestors = new Set<string>();
     const webhookAllowedHosts = new Set<string>();
 
     for (const site of sites) {
       const origins = (site.allowedOrigins || []).filter(Boolean);
       const ancestors = (site.frameAncestors || []).filter(Boolean);
+
+      // P-Stage2-3: frame_ancestors 는 allowed_origins 등록 여부와 무관하게 전량 수집.
+      // (기존 frameAncestorsByOrigin 은 origin 이 등록된 site 의 값만 담아서,
+      //  allowed_origins 가 빈 site 의 frame_ancestors 가 조용히 누락되는 함정이 있었음)
+      for (const ancestor of ancestors) allFrameAncestors.add(ancestor);
 
       for (const origin of origins) {
         allowedOrigins.add(origin);
@@ -203,6 +210,7 @@ export class SitesService implements OnModuleInit {
       expiresAt: now + this.POLICY_CACHE_TTL_MS,
       allowedOrigins,
       frameAncestorsByOrigin,
+      allFrameAncestors,
       webhookAllowedHosts,
     };
     return this.policyCache;
@@ -214,14 +222,14 @@ export class SitesService implements OnModuleInit {
     return cache.allowedOrigins.has(origin);
   }
 
-  /** Editor 응답 CSP frame-ancestors 헤더에 들어갈 호스트 목록 (중복 제거) */
+  /**
+   * Editor 응답 CSP frame-ancestors 헤더에 들어갈 호스트 목록 (중복 제거).
+   * P-Stage2-3: FrameAncestorsController(GET /api/frame-ancestors) 가 소비 —
+   * 활성 사이트 전체의 frame_ancestors 합집합(allowed_origins 등록 여부 무관).
+   */
   async getAllFrameAncestors(): Promise<string[]> {
     const cache = await this.getPolicyCache();
-    const all = new Set<string>();
-    for (const arr of cache.frameAncestorsByOrigin.values()) {
-      for (const ancestor of arr) all.add(ancestor);
-    }
-    return Array.from(all);
+    return Array.from(cache.allFrameAncestors);
   }
 
   /** Webhook callback URL 호스트가 어느 사이트에든 등록되어 있는지 */
