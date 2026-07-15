@@ -141,7 +141,7 @@ PENDING ──발송 성공(2xx)──▶ DELIVERED
 - **PK**: `VARCHAR(36)` UUID(하우스 컨벤션 — `format_presets` 등과 동일). 외부 노출 식별자는 별도 `uid` 컬럼에 **접두 체계**를 사용: `bk_`(book) `bs_`(book_spec) `fin_`(finalization) `whd_`(delivery) `or_`(order) `oi_`(order_item) `evt_`(event) — 벤치마크의 uid 접두 관행 채택. 내부 UUID를 외부에 그대로 노출하지 않는다.
 - **컬럼**: snake_case(엔티티 프로퍼티는 camelCase + `@Column({name})` 매핑 — `site.entity.ts` 컨벤션).
 - **env**: `ENUM('test','live')` — 환경 스코프는 키·데이터·웹훅에 일관 적용(Stage 2 §7.3 논리 분리).
-- **FK**: 기존 테이블(sites·files·edit_sessions·worker_jobs)에 대한 참조는 **컬럼+인덱스만** 두고 DB 레벨 FK 제약은 걸지 않는다(기존 테이블 무접촉 원칙 + 소프트 삭제 파일과의 정합).
+- **FK**: 기존 테이블(sites·files·file_edit_sessions·worker_jobs)에 대한 참조는 **컬럼+인덱스만** 두고 DB 레벨 FK 제약은 걸지 않는다(기존 테이블 무접촉 원칙 + 소프트 삭제 파일과의 정합).
 
 ### 2.1 `partner_api_keys` — 파트너 키(env scope) [Stage 2]
 
@@ -232,11 +232,11 @@ CREATE TABLE IF NOT EXISTS books (
   site_id         VARCHAR(36) NOT NULL,                 -- NULL 금지 — v1은 전 리소스 site 스탬프 필수
   env             ENUM('test','live') NOT NULL DEFAULT 'live',
   creation_type   ENUM('PDF_UPLOAD','TEMPLATE','MIX_COVER_TEMPLATE','EDITOR_SESSION') NOT NULL,
-  book_spec_id    VARCHAR(36) NOT NULL,                 -- book_specs.id
+  book_spec_id    VARCHAR(36) NULL,                     -- book_specs.id (정정: NULLABLE — book_specs 시드 오너 승인 대기(§9-6)라 시드 없이도 DRAFT 생성 가능. finalization 페이지 규칙은 book_spec 연결 시에만)
   status          ENUM('DRAFT','FINALIZED') NOT NULL DEFAULT 'DRAFT',
   page_count      INT NULL,                             -- finalization 시 확정
   title           VARCHAR(200) NULL,
-  edit_session_id VARCHAR(36) NULL,                     -- EDITOR_SESSION 승격 원본(edit_sessions 참조)
+  edit_session_id VARCHAR(36) NULL,                     -- EDITOR_SESSION 승격 원본(file_edit_sessions 참조 — EditSession @Entity('file_edit_sessions'))
   partner_ref     VARCHAR(100) NULL,                    -- 파트너측 자체 참조 ID(자유)
   finalized_at    TIMESTAMP NULL,
   created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -604,14 +604,14 @@ CREATE TABLE IF NOT EXISTS credit_transactions (
 
 ### 6.1 creationType 4종 매핑 (AD-2)
 
-**대원칙**: books는 기존 edit_sessions/files/worker_jobs를 **대체하지 않는 파사드**다. 내부 오케스트레이션만 하고 기존 모듈 시맨틱은 무접촉.
+**대원칙**: books는 기존 file_edit_sessions/files/worker_jobs를 **대체하지 않는 파사드**다. 내부 오케스트레이션만 하고 기존 모듈 시맨틱은 무접촉.
 
 | creationType | 파트너 여정 | 내부 재사용(오케스트레이션) |
 |---|---|---|
 | `PDF_UPLOAD` | 표지/내지 PDF 투입 → finalize | `files`(직접 업로드 ≤100MB 또는 presigned/multipart 동결 표면의 fileId 참조) → 워커 `validate` → `synthesize`/`compose-mixed` → 산출 고정 |
-| `TEMPLATE` | 판형+템플릿 선택, 파라미터 바인딩 → finalize | `template_sets` 참조 + `binding_params` 저장 → 내부 `edit_sessions` 생성(렌더 파이프라인 재사용) → 워커 렌더/합성 |
+| `TEMPLATE` | 판형+템플릿 선택, 파라미터 바인딩 → finalize | `template_sets` 참조 + `binding_params` 저장 → 내부 `file_edit_sessions` 생성(렌더 파이프라인 재사용) → 워커 렌더/합성 |
 | `MIX_COVER_TEMPLATE` | 표지=템플릿 바인딩 + 내지=PDF → finalize | 표지: TEMPLATE 경로 / 내지: PDF_UPLOAD 경로 → `compose-mixed`(기존 outputMode 규약 재사용) |
-| `EDITOR_SESSION` | 임베드 편집기에서 완성한 세션을 책으로 승격 | 완료 상태 `edit_sessions`(**같은 site 소유 검증** — 교차 테넌트 승격 차단) → 세션 산출 PDF를 `book_assets`로 연결. **storige 차별재** — 임베드 편집기→책→생산의 공식 경로 |
+| `EDITOR_SESSION` | 임베드 편집기에서 완성한 세션을 책으로 승격 | 완료 상태 `file_edit_sessions`(**같은 site 소유 검증** — 교차 테넌트 승격 차단) → 세션 산출 PDF를 `book_assets`로 연결. **storige 차별재** — 임베드 편집기→책→생산의 공식 경로 |
 
 자산 유형 호환 매트릭스(`ERR_ASSET_INCOMPATIBLE` 판정 기준):
 
@@ -632,7 +632,7 @@ DRAFT ──(POST finalization: 자산 완비 + 페이지 규칙 통과 + 워커
 ```
 
 - 상태 2종만 둔다(단순성 우선). `FINALIZED → DRAFT` 되돌림(un-finalize)은 v1 범위 밖 — 필요 시 새 book 생성 유도. [게이트] orders 도입 시 "주문된 FINALIZED book 삭제 금지" 제약 추가.
-- 발주 후 디자인 동결(editLock) 트랙과의 관계: editLock은 edit_sessions 계층, FINALIZED는 book 계층 — 독립이되 EDITOR_SESSION 승격 책이 FINALIZED 되면 원 세션 lock을 권고(Stage 3 구현 시 결정, 동결 라우트 무접촉 범위에서만).
+- 발주 후 디자인 동결(editLock) 트랙과의 관계: editLock은 file_edit_sessions 계층, FINALIZED는 book 계층 — 독립이되 EDITOR_SESSION 승격 책이 FINALIZED 되면 원 세션 lock을 권고(Stage 3 구현 시 결정, 동결 라우트 무접촉 범위에서만).
 
 ### 6.3 finalization 실행 상태머신
 
@@ -676,7 +676,7 @@ PENDING ─▶ VALIDATING ─▶ COMPOSING ─▶ COMPLETED
 | 인증 | `ApiKeyGuard`·`@CurrentSite`·sites 키 2종 | Bearer 추출 어댑터, (Stage 2) `partner_api_keys`·env 스코프 |
 | 판형/사이즈 | `SpineService` 계산 로직·paper/binding 데이터·`LEGACY_SIZE_TOLERANCE_MM`(읽기만) | `book_specs` 마스터 테이블·calculated-size 라우트·시드 수집 스크립트 |
 | 파일 | `files` 저장 계층·presigned/multipart 동결 표면·retention/softDelete 정책·`ALLOWED_CONTENT_TYPES` | v1 자산 라우트(fileId 참조 투입)·`book_assets` |
-| 편집 세션 | `edit_sessions` 전 시맨틱·`/embed` postMessage 엔벨로프 | EDITOR_SESSION 승격 경로(조회+참조만) |
+| 편집 세션 | `file_edit_sessions` 전 시맨틱·`/embed` postMessage 엔벨로프 | EDITOR_SESSION 승격 경로(조회+참조만) |
 | 워커 | `worker_jobs`·Bull 큐·validate/synthesize/compose-mixed 프로세서·검증 상수 전부 | finalization 오케스트레이터(`book_finalizations`) |
 | 템플릿 | `templates`/`template_sets` 데이터 모델·기존 노출 경로 | v1 읽기 라우트(테넌트 스코프)·schema 추출기(Stage 5) |
 | 웹훅 | v1(base64) 발신 바이트·이벤트 7종·`X-Storige-*` 헤더·SSRF 가드 | `webhook_configs`/`webhook_deliveries`·재시도 백오프·retry/test API(HMAC 전용) |
