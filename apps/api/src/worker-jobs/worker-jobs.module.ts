@@ -10,6 +10,8 @@ import { FilesModule } from '../files/files.module';
 import { WebhookModule } from '../webhook/webhook.module';
 import { TemplatesModule } from '../templates/templates.module';
 import { EditSessionEntity } from '../edit-sessions/entities/edit-session.entity';
+// [Stage 3 W3, #4] 최종화 콜백 역참조(BookFinalizationsService) — 순환 모듈 forwardRef.
+import { BooksModule } from '../books/books.module';
 
 @Module({
   imports: [
@@ -29,6 +31,8 @@ import { EditSessionEntity } from '../edit-sessions/entities/edit-session.entity
     WebhookModule,
     // fix-bleed(2026-07-13) — templateSet 권위 editSize 산출(TemplateSetsService).
     TemplatesModule,
+    // [Stage 3 W3, #4] 최종화 콜백 역참조 — BookFinalizationsService 주입(순환 모듈 forwardRef).
+    forwardRef(() => BooksModule),
   ],
   controllers: [WorkerJobsController],
   // WK-4 — 고아 잡 스위퍼 cron (ScheduleModule.forRoot() 는 app.module 기존재)
