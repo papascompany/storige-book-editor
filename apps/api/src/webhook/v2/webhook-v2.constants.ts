@@ -55,9 +55,12 @@ export const WEBHOOK_DELIVERY_TIMEOUT_MS = 10_000;
 export const WEBHOOK_RESPONSE_SNIPPET_MAX = 2_000;
 
 /**
- * 구독 가능 이벤트 카탈로그 — 기존 발신 7종 승계(설계서 §1.5).
- * Stage 3 의 book.finalization.* 은 additive 추가 예정.
+ * 구독 가능 이벤트 카탈로그 — 기존 발신 7종 + Stage 3 book.finalization.* 2종(설계서 §1.5·§6.3).
  * `webhook.test` 는 POST /api/v1/webhooks/test 전용 — 구독 목록과 무관하게 발송.
+ *
+ * ⚠️ additive-only 성장(설계서 §3.3 카탈로그 규약): 추가는 허용, 기존 이벤트명
+ * 삭제/의미변경 금지. book.finalization.* 는 books finalization 오케스트레이터(W3)가
+ * COMPLETED/FAILED 시 발신하며, 기존 발신 7종 바이트는 무접촉(webhook-v1-invariance 게이트).
  */
 export const WEBHOOK_V2_SUBSCRIBABLE_EVENTS = [
   'validation.completed',
@@ -67,6 +70,9 @@ export const WEBHOOK_V2_SUBSCRIBABLE_EVENTS = [
   'synthesis.failed',
   'session.validated',
   'session.failed',
+  // Stage 3 W3 — 최종화 라이프사이클(폴링과 병행, opt-in 사이트만 발신)
+  'book.finalization.completed',
+  'book.finalization.failed',
 ] as const;
 
 export type WebhookV2SubscribableEvent =

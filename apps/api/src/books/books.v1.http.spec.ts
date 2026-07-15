@@ -20,6 +20,7 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { getRepositoryToken } from '@nestjs/typeorm';
+import { Readable } from 'stream';
 import request from 'supertest';
 import { ErrV1 } from '@storige/types';
 import { SitesService } from '../sites/sites.service';
@@ -38,8 +39,11 @@ import { PartnerIdempotencyService } from '../partner-api/idempotency/partner-id
 import { PartnerIdempotencyInterceptor } from '../partner-api/idempotency/partner-idempotency.interceptor';
 import { PARTNER_API_CONFIG, PARTNER_RATE_BUCKET_KEY } from '../partner-api/partner-api.constants';
 import { FilesService } from '../files/files.service';
+import { EditSessionsService } from '../edit-sessions/edit-sessions.service';
+import { SessionStatus } from '../edit-sessions/entities/edit-session.entity';
 import { BooksController } from './books.controller';
 import { BooksService } from './books.service';
+import { BookFinalizationsService } from './book-finalizations.service';
 import { Book } from './entities/book.entity';
 import { BookAsset } from './entities/book-asset.entity';
 import { BookSpec } from '../book-specs/entities/book-spec.entity';
@@ -103,6 +107,14 @@ describe('Books v1 실스택 HTTP 스모크 (Stage 3 W1+W2)', () => {
   // FilesService
   const filesFindById = jest.fn();
   const filesUploadFile = jest.fn();
+  const filesRegisterExternalFile = jest.fn();
+  const filesGetFileStream = jest.fn();
+  // EditSessionsService (W4 EDITOR_SESSION 승격)
+  const getPromotionArtifact = jest.fn();
+  // BookFinalizationsService (W3)
+  const startFinalization = jest.fn();
+  const getFinalization = jest.fn();
+  const getFinalizedPdf = jest.fn();
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
@@ -152,7 +164,22 @@ describe('Books v1 실스택 HTTP 스모크 (Stage 3 W1+W2)', () => {
         },
         {
           provide: FilesService,
-          useValue: { findById: filesFindById, uploadFile: filesUploadFile },
+          useValue: {
+            findById: filesFindById,
+            uploadFile: filesUploadFile,
+            registerExternalFile: filesRegisterExternalFile,
+            getFileStream: filesGetFileStream,
+          },
+        },
+        // W4 — BooksService EDITOR_SESSION 승격 원본 조회.
+        {
+          provide: EditSessionsService,
+          useValue: { getPromotionArtifact },
+        },
+        // W3 — BooksController 최종화 라우트 의존.
+        {
+          provide: BookFinalizationsService,
+          useValue: { startFinalization, getFinalization, getFinalizedPdf },
         },
         {
           provide: getRepositoryToken(PublicApiAuditLog),
@@ -428,5 +455,157 @@ describe('Books v1 실스택 HTTP 스모크 (Stage 3 W1+W2)', () => {
       const bucket = Reflect.getMetadata(PARTNER_RATE_BUCKET_KEY, proto[handler]);
       expect(bucket).toBe('heavy');
     }
+  });
+
+  it('⑩-b 최종화/PDF 라우트에 heavy 레이트버킷 부착(§5.2)', () => {
+    const proto = BooksController.prototype as unknown as Record<string, object>;
+    for (const handler of ['startFinalization', 'downloadPdf']) {
+      expect(Reflect.getMetadata(PARTNER_RATE_BUCKET_KEY, proto[handler])).toBe('heavy');
+    }
+  });
+
+  // ── W3 최종화 라우트 (봉투 + @Res 스트림 관통) ───────────────────────
+  describe('최종화 라우트(W3) — v1 스택 관통', () => {
+    it('POST .../finalization → 201 성공 봉투(4필드) — 최종화 view data', async () => {
+      startFinalization.mockResolvedValue({
+        uid: 'fin_1', bookUid: 'bk_test', status: 'VALIDATING', attempt: 1,
+        pageCount: null, outputFileId: null, errorCode: null, errorDetail: null,
+        createdAt: T0.toISOString(), startedAt: T0.toISOString(), completedAt: null,
+      });
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/books/bk_test/finalization')
+        .set('X-API-Key', KEY_A)
+        .expect(201);
+      expect(Object.keys(res.body).sort()).toEqual(['data', 'message', 'pagination', 'success'].sort());
+      expect(res.body.data.status).toBe('VALIDATING');
+      expect(res.body.data.uid).toBe('fin_1');
+    });
+
+    it('GET .../pdf → application/pdf 스트림(봉투 미래핑, @Res 관통) + heavy 버킷', async () => {
+      getFinalizedPdf.mockResolvedValue({ id: 'file-out-1' });
+      filesGetFileStream.mockResolvedValue({
+        stream: Readable.from([Buffer.from('%PDF-1.7 fake bytes')]),
+        file: { id: 'file-out-1' },
+        size: 19,
+      });
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/books/bk_test/pdf')
+        .set('X-API-Key', KEY_A)
+        .buffer(true)
+        .parse((r, cb) => {
+          const chunks: Buffer[] = [];
+          r.on('data', (c: Buffer) => chunks.push(Buffer.from(c)));
+          r.on('end', () => cb(null, Buffer.concat(chunks)));
+        })
+        .expect(200);
+      // 봉투로 감싸지지 않고 원본 PDF 바이트가 그대로 스트리밍돼야 한다(@Res 관통·인터셉터 우회).
+      expect(res.headers['content-type']).toContain('application/pdf');
+      expect(res.headers['content-disposition']).toContain('bk_test.pdf');
+      expect((res.body as Buffer).toString()).toContain('%PDF-1.7 fake bytes');
+      expect((res.body as Record<string, unknown>).success).toBeUndefined();
+    });
+
+    it('GET .../pdf 미FINALIZED → 404 ERR_NOT_FOUND 에러 봉투(예외필터 관통)', async () => {
+      const { PartnerApiException } = require('../partner-api/http/partner-api.exceptions');
+      getFinalizedPdf.mockRejectedValue(
+        new PartnerApiException(ErrV1.ERR_NOT_FOUND, 404, '최종 PDF 없음'),
+      );
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/books/bk_test/pdf')
+        .set('X-API-Key', KEY_A)
+        .expect(404);
+      expect(res.body.errorCode).toBe(ErrV1.ERR_NOT_FOUND);
+      expect(res.body.success).toBe(false);
+    });
+  });
+
+  // ── W4 EDITOR_SESSION 승격 (#5 교차테넌트·NULL-site 거부) ────────────
+  describe('EDITOR_SESSION 승격(W4)', () => {
+    const artifact = (o: Record<string, unknown> = {}) => ({
+      session: {
+        id: 'sess-1',
+        siteId: SITE_A,
+        status: SessionStatus.COMPLETE,
+        contentPdfPageCount: 40,
+        ...o,
+      },
+      files: { cover: null, content: null, merged: '/storage/outputs/sess-1/merged.pdf' },
+    });
+
+    it('sessionId 누락 → 400 ERR_VALIDATION_FAILED', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/books')
+        .set('X-API-Key', KEY_A)
+        .send({ creationType: 'EDITOR_SESSION' })
+        .expect(400);
+      expect(res.body.errorCode).toBe(ErrV1.ERR_VALIDATION_FAILED);
+    });
+
+    it('세션 없음 → 404 ERR_NOT_FOUND(존재 은닉)', async () => {
+      getPromotionArtifact.mockRejectedValue(
+        new (require('@nestjs/common').NotFoundException)({ code: 'SESSION_NOT_FOUND' }),
+      );
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/books')
+        .set('X-API-Key', KEY_A)
+        .send({ creationType: 'EDITOR_SESSION', sessionId: 'sess-x' })
+        .expect(404);
+      expect(res.body.errorCode).toBe(ErrV1.ERR_NOT_FOUND);
+    });
+
+    it('#5 교차 테넌트(session.siteId=site-b) → 404 ERR_NOT_FOUND', async () => {
+      getPromotionArtifact.mockResolvedValue(artifact({ siteId: SITE_B }));
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/books')
+        .set('X-API-Key', KEY_A)
+        .send({ creationType: 'EDITOR_SESSION', sessionId: 'sess-1' })
+        .expect(404);
+      expect(res.body.errorCode).toBe(ErrV1.ERR_NOT_FOUND);
+    });
+
+    it('#5 NULL-site 세션 명시 거부 → 404 ERR_NOT_FOUND(게스트 폴백 함정 차단)', async () => {
+      getPromotionArtifact.mockResolvedValue(artifact({ siteId: null }));
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/books')
+        .set('X-API-Key', KEY_A)
+        .send({ creationType: 'EDITOR_SESSION', sessionId: 'sess-1' })
+        .expect(404);
+      expect(res.body.errorCode).toBe(ErrV1.ERR_NOT_FOUND);
+    });
+
+    it('미완료 세션 → 409 ERR_SESSION_NOT_PROMOTABLE', async () => {
+      getPromotionArtifact.mockResolvedValue(artifact({ status: SessionStatus.EDITING }));
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/books')
+        .set('X-API-Key', KEY_A)
+        .send({ creationType: 'EDITOR_SESSION', sessionId: 'sess-1' })
+        .expect(409);
+      expect(res.body.errorCode).toBe(ErrV1.ERR_SESSION_NOT_PROMOTABLE);
+      expect(res.body.errors[0].code).toBe('SESSION_NOT_COMPLETE');
+    });
+
+    it('정상 승격 → 201 + editSessionId 스탬프 + pdf_contents 자산 연결', async () => {
+      getPromotionArtifact.mockResolvedValue(artifact());
+      filesRegisterExternalFile.mockResolvedValue({ id: 'file-out-1' });
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/books')
+        .set('X-API-Key', KEY_A)
+        .send({ creationType: 'EDITOR_SESSION', sessionId: 'sess-1', title: '승격북' })
+        .expect(201);
+      expect(res.body.data.creationType).toBe('EDITOR_SESSION');
+      expect(res.body.data.status).toBe('DRAFT');
+      // book 생성 payload 에 editSessionId 연결
+      const createdBook = bookCreate.mock.calls[0][0];
+      expect(createdBook.editSessionId).toBe('sess-1');
+      // 산출 PDF 를 registerExternalFile 로 등록(site 스탬프)
+      expect(filesRegisterExternalFile).toHaveBeenCalledWith(
+        '/storage/outputs/sess-1/merged.pdf',
+        expect.objectContaining({ siteId: SITE_A }),
+      );
+      // pdf_contents 자산 자동 연결
+      const createdAsset = assetCreate.mock.calls[0][0];
+      expect(createdAsset.assetType).toBe('pdf_contents');
+      expect(createdAsset.fileId).toBe('file-out-1');
+    });
   });
 });

@@ -1078,6 +1078,37 @@ export interface SynthesisWebhookPayload {
   timestamp: string;
 }
 
+/**
+ * Book finalization 웹훅 페이로드 (Partner API v1 Stage 3 W3).
+ *
+ * finalization 완료/실패 시 사이트 v2 webhook config(opt-in)로 발신 — 폴링
+ * (GET /api/v1/books/:uid/finalization)과 병행(설계서 §6.3). 기존 발신 7종과
+ * 별개 additive 이벤트(webhook-v2.constants WEBHOOK_V2_SUBSCRIBABLE_EVENTS 등재).
+ * 내부 UUID(id)는 비노출 — 외부 식별자(bk_.../fin_...)만 싣는다(§2.0).
+ */
+export interface BookFinalizationWebhookPayload {
+  event: 'book.finalization.completed' | 'book.finalization.failed';
+  /** 도서 외부 식별자 'bk_...' */
+  bookUid: string;
+  /** 최종화 이력 외부 식별자 'fin_...' */
+  finalizationUid: string;
+  status: 'completed' | 'failed';
+  /** 확정 페이지 수 — completed 시 채움 */
+  pageCount?: number | null;
+  /** 최종 PDF files.id — GET /api/v1/books/:uid/pdf 로 소유검증 후 스트림(§9-10) */
+  outputFileId?: string | null;
+  /** 실패 시 ERR_* (§3 카탈로그) */
+  errorCode?: string | null;
+  timestamp: string;
+  /** [S2-5] test env 더미 산출물 마커 — isTest 잡 결과에만 true(additive, live 결과 불변) */
+  isTest?: boolean;
+  /**
+   * [P1-2] 워커 validate 를 건너뛰고 최종화됐음(book_spec 미연결 or pageCount 미확정 →
+   * 대조 판형 부재). true 면 파트너는 미검증 FINALIZED 임을 인지하고 자체 게이팅 가능(§6.3).
+   */
+  validationSkipped?: boolean;
+}
+
 // ============================================================================
 // API Response Types
 // ============================================================================

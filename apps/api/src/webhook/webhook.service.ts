@@ -1,7 +1,11 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import axios from 'axios';
 import { createHmac } from 'crypto';
-import { SynthesisWebhookPayload, ValidationWebhookPayload } from '@storige/types';
+import {
+  SynthesisWebhookPayload,
+  ValidationWebhookPayload,
+  BookFinalizationWebhookPayload,
+} from '@storige/types';
 import { SitesService } from '../sites/sites.service';
 import { PARTNER_ENV_LIVE } from '../partner-api/partner-api.constants';
 import { WebhookDeliveryService } from './v2/webhook-delivery.service';
@@ -21,7 +25,12 @@ export interface SessionWebhookPayload {
 }
 
 // WebhookPayload: 모든 웹훅 페이로드 유형의 합집합
-export type WebhookPayload = SessionWebhookPayload | SynthesisWebhookPayload | ValidationWebhookPayload;
+// (Stage 3 W3 — BookFinalizationWebhookPayload additive: 기존 발신 3종 shape 무접촉)
+export type WebhookPayload =
+  | SessionWebhookPayload
+  | SynthesisWebhookPayload
+  | ValidationWebhookPayload
+  | BookFinalizationWebhookPayload;
 
 @Injectable()
 export class WebhookService {
@@ -234,12 +243,20 @@ export class WebhookService {
    * 기존 수신측 계약 호환을 위해 헤더는 계속 전송한다.
    */
   private generateSignature(payload: WebhookPayload): string {
-    // SynthesisWebhookPayload는 jobId 우선 (sessionId는 additive optional이므로 둘 다 존재 가능).
-    // SessionWebhookPayload는 jobId 없음 → sessionId 사용. 기존 시그니처 동작 보존.
-    const identifier =
-      'jobId' in payload ? payload.jobId : payload.sessionId;
-    const data = `${identifier}:${payload.event}:${payload.timestamp}`;
+    const data = `${this.payloadIdentifier(payload)}:${payload.event}:${payload.timestamp}`;
     return Buffer.from(data).toString('base64');
+  }
+
+  /**
+   * 서명용 페이로드 식별자 — jobId(합성/검증) 우선, sessionId(세션), finalizationUid
+   * (book.finalization.*, W3 additive) 순. 기존 발신 3종(jobId/sessionId)의 식별자
+   * 선택은 불변 — book.finalization.* 만 신규 분기(webhook-v1-invariance 게이트 보존).
+   */
+  private payloadIdentifier(payload: WebhookPayload): string {
+    if ('jobId' in payload) return payload.jobId;
+    if ('sessionId' in payload && payload.sessionId) return payload.sessionId;
+    if ('finalizationUid' in payload) return payload.finalizationUid;
+    return '';
   }
 
   /**
@@ -251,8 +268,7 @@ export class WebhookService {
   private generateHmacSignature(payload: WebhookPayload): string | undefined {
     const secret = process.env.WEBHOOK_SECRET;
     if (!secret) return undefined;
-    const identifier =
-      'jobId' in payload ? payload.jobId : payload.sessionId;
+    const identifier = this.payloadIdentifier(payload);
     const t = Math.floor(Date.now() / 1000);
     const data = `${t}.${identifier}:${payload.event}:${payload.timestamp}`;
     const v1 = createHmac('sha256', secret).update(data).digest('hex');
