@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  Inject,
+  forwardRef,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'crypto';
 import { FindOptionsWhere, In, IsNull, Repository } from 'typeorm';
@@ -12,6 +17,8 @@ import {
 import { BookSpec } from '../book-specs/entities/book-spec.entity';
 import { FilesService } from '../files/files.service';
 import { FileType } from '../files/entities/file.entity';
+import { EditSessionsService } from '../edit-sessions/edit-sessions.service';
+import { SessionStatus } from '../edit-sessions/entities/edit-session.entity';
 import { Book } from './entities/book.entity';
 import { BookAsset } from './entities/book-asset.entity';
 import {
@@ -54,6 +61,11 @@ export class BooksService {
     private readonly bookSpecRepo: Repository<BookSpec>,
     // files 는 신규 등록/조회만(AD-1: 기존 파일 상태 변경 없음) — 자산 파일 투입 재사용.
     private readonly filesService: FilesService,
+    // W4 — EDITOR_SESSION 승격 원본 조회(조회+참조만, AD-1: 세션 상태 변경 없음).
+    // ⚠️ forwardRef — books ↔ edit-sessions ↔ worker-jobs ↔ book-finalizations ES import
+    //   순환(#4 콜백이 신설)에서 EditSessionsService 참조가 undefined 로 실체화되는 것을 차단.
+    @Inject(forwardRef(() => EditSessionsService))
+    private readonly editSessionsService: EditSessionsService,
   ) {}
 
   private resolveEnv(site: CurrentSitePayload): 'test' | 'live' {
@@ -61,20 +73,25 @@ export class BooksService {
   }
 
   /**
-   * DRAFT 도서 생성.
+   * DRAFT 도서 생성 — creationType 분기(W4).
    *
-   * ⚠️ W4 스텁: EDITOR_SESSION 승격(sessionId)·TEMPLATE/MIX 바인딩(templateSetId)의
-   * 실제 소유/완료 검증과 자산 연결은 W4 다. 본 배치는 creationType 저장 + 빈 DRAFT
-   * 까지 — EDITOR_SESSION 은 sessionId 를 참조로만 저장(연결·검증 없음).
+   * - PDF_UPLOAD / MIX_COVER_TEMPLATE: 빈 DRAFT 생성 → 파트너가 자산 라우트(W2)로
+   *   투입 → finalization(W3) 오케스트레이션으로 실현.
+   * - EDITOR_SESSION: 완료 세션을 책으로 승격(핵심) — 소유/NULL-site/완료 검증 후
+   *   세션 산출 PDF 를 book_assets 로 자동 연결(createFromSession).
+   * - TEMPLATE: 내부 세션 생성이 게스트 폴백 함정(#6, 24h 고아화)이라 이번 스코프
+   *   최소화 — 빈 DRAFT 저장까지(자산/finalization 은 Stage 5 스키마 대기). finalization
+   *   은 표지 템플릿 렌더 미도입으로 422(ERR_ASSETS_INCOMPLETE) 반환.
    */
   async create(site: CurrentSitePayload, dto: CreateBookDto): Promise<BookView> {
     const bookSpecId = await this.resolveBookSpecId(site, dto.bookSpecUid);
 
-    // W4 스텁 — EDITOR_SESSION 한정 참조 저장. 소유/완료 실검증은 W4(교차 테넌트
-    // 승격 차단은 W4 게이트). templateSetId 는 본 배치에서 미저장(W4 바인딩 자산에서 처리).
-    const editSessionId =
-      dto.creationType === 'EDITOR_SESSION' ? dto.sessionId ?? null : null;
+    if (dto.creationType === 'EDITOR_SESSION') {
+      return this.createFromSession(site, dto, bookSpecId);
+    }
 
+    // PDF_UPLOAD / MIX_COVER_TEMPLATE / TEMPLATE — 빈 DRAFT(자산은 W2 라우트로 투입).
+    // templateSetId 는 본 배치에서 미저장(TEMPLATE 스코프 최소화 — Stage 5 바인딩 자산에서 처리).
     const book = this.bookRepo.create({
       uid: `${BOOK_UID_PREFIX}${randomUUID().replace(/-/g, '')}`,
       siteId: site.siteId,
@@ -84,13 +101,156 @@ export class BooksService {
       status: 'DRAFT',
       pageCount: dto.pageCount ?? null,
       title: dto.title ?? null,
-      editSessionId,
+      editSessionId: null,
       partnerRef: dto.partnerRef ?? null,
       finalizedAt: null,
     });
 
     const saved = await this.bookRepo.save(book);
     return this.toView(saved, dto.bookSpecUid ?? null);
+  }
+
+  /**
+   * EDITOR_SESSION 승격(W4 핵심) — 임베드 편집기 완료 세션을 책으로.
+   *
+   * 게이트 순서(설계서 §6.1 — storige 차별재):
+   *  ① sessionId 필수(400) → ② findById(미존재 404 존재 은닉)
+   *  → ③ #5 교차테넌트 + NULL-site 명시 거부 → 404 ERR_NOT_FOUND(IDOR/존재 은닉)
+   *     ⚠️ 기존 세션 가드의 `session.siteId &&` 통과 함정을 명시 차단(NULL=미소유=거부).
+   *  → ④ status=COMPLETE 아니면 409 ERR_SESSION_NOT_PROMOTABLE(SESSION_NOT_COMPLETE)
+   *  → ⑤ 세션 산출 PDF(merged 우선·content 폴백) → registerExternalFile 로 book 자체
+   *     files.id 확보 → ⑥ DRAFT book(editSessionId 연결) + pdf_contents 자산 자동 연결.
+   *
+   * env 정합: 세션은 env 무개념(siteId 스코프)이라 book 이 caller env(test|live)를 승계하고,
+   * test/live 격리는 book.env 계층에서 강제한다(세션은 공유). 소유 격리는 siteId 대조.
+   */
+  private async createFromSession(
+    site: CurrentSitePayload,
+    dto: CreateBookDto,
+    bookSpecId: string | null,
+  ): Promise<BookView> {
+    if (!dto.sessionId) {
+      throw new PartnerApiException(
+        ErrV1.ERR_VALIDATION_FAILED,
+        400,
+        '요청 검증에 실패했습니다',
+        [],
+        { sessionId: ['EDITOR_SESSION 승격에는 sessionId 가 필요합니다'] },
+      );
+    }
+
+    // ② 세션 조회(미존재 = 404 존재 은닉)
+    let artifact: Awaited<
+      ReturnType<EditSessionsService['getPromotionArtifact']>
+    >;
+    try {
+      artifact = await this.editSessionsService.getPromotionArtifact(dto.sessionId);
+    } catch (err) {
+      if (err instanceof NotFoundException) {
+        throw new PartnerApiException(
+          ErrV1.ERR_NOT_FOUND,
+          404,
+          `세션 '${dto.sessionId}' 을(를) 찾을 수 없습니다`,
+        );
+      }
+      throw err;
+    }
+    const { session, files } = artifact;
+
+    // ③ #5 교차테넌트 + NULL-site 명시 거부 — 둘 다 404(존재 은닉, IDOR 방지).
+    //   NULL-site 세션(게스트/레거시)은 어떤 테넌트도 승격 불가(기존 가드 통과 함정 차단).
+    if (!session.siteId || session.siteId !== site.siteId) {
+      throw new PartnerApiException(
+        ErrV1.ERR_NOT_FOUND,
+        404,
+        `세션 '${dto.sessionId}' 을(를) 찾을 수 없습니다`,
+      );
+    }
+
+    // ④ 완료 상태 검증
+    if (session.status !== SessionStatus.COMPLETE) {
+      throw new PartnerApiException(
+        ErrV1.ERR_SESSION_NOT_PROMOTABLE,
+        409,
+        `세션 '${dto.sessionId}' 은(는) 완료 상태가 아닙니다(status=${session.status})`,
+        [
+          {
+            code: 'SESSION_NOT_COMPLETE',
+            message: '완료(complete) 상태 세션만 책으로 승격할 수 있습니다',
+          },
+        ],
+      );
+    }
+
+    // ⑤ 산출 PDF URL — merged(합성 완료) 우선, content 폴백
+    const outputUrl = files.merged ?? files.content;
+    if (!outputUrl) {
+      throw new PartnerApiException(
+        ErrV1.ERR_SESSION_NOT_PROMOTABLE,
+        409,
+        `세션 '${dto.sessionId}' 의 산출 PDF 를 찾을 수 없습니다`,
+        [
+          {
+            code: 'SESSION_OUTPUT_MISSING',
+            message: '세션 합성 산출(merged/content)이 아직 없습니다',
+          },
+        ],
+      );
+    }
+    let registered;
+    try {
+      registered = await this.filesService.registerExternalFile(outputUrl, {
+        siteId: site.siteId, // 테넌트 소유 스탬프
+        fileType: FileType.CONTENT,
+        metadata: {
+          generatedBy: 'book-editor-session-promotion',
+          editSessionId: session.id,
+        },
+      });
+    } catch {
+      // 디스크 부재 등 — 산출물 미가용
+      throw new PartnerApiException(
+        ErrV1.ERR_SESSION_NOT_PROMOTABLE,
+        409,
+        `세션 '${dto.sessionId}' 의 산출 PDF 를 등록할 수 없습니다`,
+        [
+          {
+            code: 'SESSION_OUTPUT_UNAVAILABLE',
+            message: '세션 산출 파일이 디스크에 없습니다',
+          },
+        ],
+      );
+    }
+
+    // ⑥ DRAFT book(editSessionId 연결) + pdf_contents 자산 자동 연결(내부 링크 — 매트릭스 우회)
+    const book = await this.bookRepo.save(
+      this.bookRepo.create({
+        uid: `${BOOK_UID_PREFIX}${randomUUID().replace(/-/g, '')}`,
+        siteId: site.siteId,
+        env: this.resolveEnv(site),
+        creationType: 'EDITOR_SESSION',
+        bookSpecId,
+        status: 'DRAFT',
+        pageCount: dto.pageCount ?? session.contentPdfPageCount ?? null,
+        title: dto.title ?? null,
+        editSessionId: session.id,
+        partnerRef: dto.partnerRef ?? null,
+        finalizedAt: null,
+      }),
+    );
+    await this.bookAssetRepo.save(
+      this.bookAssetRepo.create({
+        bookId: book.id,
+        assetType: 'pdf_contents',
+        fileId: registered.id,
+        templateSetId: null,
+        bindingParams: null,
+        sortOrder: 0,
+        status: 'active',
+      }),
+    );
+
+    return this.toView(book, dto.bookSpecUid ?? null);
   }
 
   /** 목록 — 자기 site + env 스코프, status/creationType 필터, 페이지네이션(§5.1). */
