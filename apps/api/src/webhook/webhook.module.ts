@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bull';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { PartnerApiModule } from '../partner-api/partner-api.module';
 import { WebhookService } from './webhook.service';
+import { PartnerWebhooksController } from './v2/partner-webhooks.controller';
 import { WebhookConfig } from './entities/webhook-config.entity';
 import { WebhookDelivery } from './entities/webhook-delivery.entity';
 import { webhookV2ConfigProvider } from './v2/webhook-v2.config';
@@ -38,7 +40,11 @@ import {
         },
       },
     }),
+    // v1 컨트롤러 호스트 — @PartnerV1Controller 스택(가드/필터/인터셉터)과
+    // 그 의존(감사·멱등 서비스, 설정 토큰)의 DI 해석 제공(표준 통합 포인트)
+    PartnerApiModule,
   ],
+  controllers: [PartnerWebhooksController],
   providers: [
     WebhookService,
     webhookV2ConfigProvider,
