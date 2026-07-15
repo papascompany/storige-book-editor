@@ -24,3 +24,10 @@ export const PARTNER_RATE_BUCKET_KEY = 'partnerRateBucket';
 
 /** 레이트리밋 버킷 — general 300/min, heavy(업로드/최종화) 100/min (설계서 §5.2) */
 export type PartnerRateBucket = 'general' | 'heavy';
+
+/**
+ * 429 Retry-After 폴백(초) — per-Key 가드(PartnerRateLimitedException)가 아닌
+ * 429(전역 per-IP ThrottlerGuard 등)가 v1 필터로 들어왔고 가드가 헤더를 미리
+ * 세팅하지 않은 경우의 기본값. 전역 스로틀 윈도우(60초)와 동일.
+ */
+export const RETRY_AFTER_FALLBACK_SECONDS = 60;

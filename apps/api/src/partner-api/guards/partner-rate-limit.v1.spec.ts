@@ -9,7 +9,7 @@
  */
 import { Get, INestApplication, Post, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerException, ThrottlerModule } from '@nestjs/throttler';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import request from 'supertest';
 import { ErrV1 } from '@storige/types';
@@ -43,6 +43,13 @@ class RateLimitedController {
   @PartnerRateLimitBucket('heavy')
   heavy(): { ok: true } {
     return { ok: true };
+  }
+
+  @Get('global-throttled')
+  globalThrottled(): never {
+    // 전역 per-IP ThrottlerGuard(APP_GUARD) 유래 429 시뮬레이션 —
+    // per-Key 가드가 아닌 ThrottlerException 도 v1 필터가 잡아 봉투화한다.
+    throw new ThrottlerException();
   }
 }
 
@@ -156,6 +163,19 @@ describe('Partner API v1 per-Key 레이트리밋 (§5.2)', () => {
 
     // heavy 가 차단돼도 같은 키의 general 버킷은 독립
     await get(key).expect(200);
+  });
+
+  it('전역 ThrottlerGuard 유래 429(폴백 경로)도 Retry-After 헤더 부착 — 적대 리뷰 P1-1', async () => {
+    // per-Key 가드가 아닌 ThrottlerException(전역 per-IP APP_GUARD 유래)이
+    // v1 필터로 들어와도 ERR_RATE_LIMITED 봉투 + Retry-After 가 보장되어야 한다.
+    const res = await request(app.getHttpServer())
+      .get('/api/v1/rl-things/global-throttled')
+      .set('X-API-Key', 'rl-key-global-throttle')
+      .expect(429);
+
+    expect(res.body.success).toBe(false);
+    expect(res.body.errorCode).toBe(ErrV1.ERR_RATE_LIMITED);
+    expect(res.headers['retry-after']).toBe('60'); // 폴백 기본값(전역 윈도우 60초)
   });
 
   it('429 도 표준 에러 봉투 6필드', async () => {
