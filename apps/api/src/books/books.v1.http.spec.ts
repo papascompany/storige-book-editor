@@ -36,7 +36,7 @@ import { PartnerApiKey } from '../partner-api/entities/partner-api-key.entity';
 import { PartnerApiKeysService } from '../partner-api/keys/partner-api-keys.service';
 import { PartnerIdempotencyService } from '../partner-api/idempotency/partner-idempotency.service';
 import { PartnerIdempotencyInterceptor } from '../partner-api/idempotency/partner-idempotency.interceptor';
-import { PARTNER_API_CONFIG } from '../partner-api/partner-api.constants';
+import { PARTNER_API_CONFIG, PARTNER_RATE_BUCKET_KEY } from '../partner-api/partner-api.constants';
 import { FilesService } from '../files/files.service';
 import { BooksController } from './books.controller';
 import { BooksService } from './books.service';
@@ -409,5 +409,24 @@ describe('Books v1 실스택 HTTP 스모크 (Stage 3 W1+W2)', () => {
       .send({})
       .expect(400);
     expect(res.body.errorCode).toBe(ErrV1.ERR_VALIDATION_FAILED);
+  });
+
+  // 적대 리뷰 렌즈2 P1-1: 자산 업로드 라우트는 §5.2 heavy(100/min) 버킷이어야 함.
+  // 미부착 시 general(300/min)로 이탈 — 이 단언이 회귀를 고정한다.
+  it('⑩ 자산 업로드 5라우트에 heavy 레이트버킷 부착(§5.2)', () => {
+    const proto = BooksController.prototype as unknown as Record<
+      string,
+      object
+    >;
+    for (const handler of [
+      'postPdfCover',
+      'putPdfCover',
+      'postPdfContents',
+      'putPdfContents',
+      'postPhoto',
+    ]) {
+      const bucket = Reflect.getMetadata(PARTNER_RATE_BUCKET_KEY, proto[handler]);
+      expect(bucket).toBe('heavy');
+    }
   });
 });

@@ -19,6 +19,12 @@ export const BOOK_FINALIZATION_UID_PREFIX = 'fin_';
 export const BOOK_ASSET_DIRECT_UPLOAD_MAX_BYTES = 100 * 1024 * 1024;
 
 /**
+ * book 당 active photo 자산 상한 — 무제한 누적 방어(적대 리뷰 렌즈1 P2-2).
+ * 포토북 최대 페이지 규모를 넉넉히 상회하는 방어캡. 초과 시 422 ERR_VALIDATION_FAILED.
+ */
+export const BOOK_MAX_ACTIVE_PHOTOS = 500;
+
+/**
  * 직접 업로드 허용 MIME — 기존 files.uploadFile(PDF-only) 계약 승계(AD-1: files.service 무접촉).
  * 이미지/대용량 자산(photo 등)은 동결 업로드 표면으로 올린 fileId 참조 경로를 쓴다.
  */

@@ -18,6 +18,7 @@ import {
 } from '@nestjs/swagger';
 import { BooksService } from './books.service';
 import { PartnerV1Controller } from '../partner-api/partner-v1.decorator';
+import { PartnerRateLimitBucket } from '../partner-api/guards/partner-rate-limit.decorator';
 import { PaginatedResult } from '../partner-api/http/pagination';
 import { CurrentSite, CurrentSitePayload } from '../auth/decorators/current-site.decorator';
 import { BOOK_ASSET_DIRECT_UPLOAD_MAX_BYTES } from './books.constants';
@@ -82,6 +83,7 @@ export class BooksController {
   // 게이트: 테넌트 404 → FINALIZED 409 → 호환 422 → 기존재 409/404 순(서비스).
 
   @Post(':uid/pdf-cover')
+  @PartnerRateLimitBucket('heavy')
   @UseInterceptors(ASSET_UPLOAD)
   @ApiConsumes('application/json', 'multipart/form-data')
   @ApiOperation({ summary: '표지 PDF 신규 투입 — 기존재 시 409 ERR_ASSET_ALREADY_EXISTS' })
@@ -101,6 +103,7 @@ export class BooksController {
   }
 
   @Put(':uid/pdf-cover')
+  @PartnerRateLimitBucket('heavy')
   @UseInterceptors(ASSET_UPLOAD)
   @ApiConsumes('application/json', 'multipart/form-data')
   @ApiOperation({ summary: '표지 PDF 교체 — 미존재 시 404 ERR_ASSET_NOT_FOUND' })
@@ -119,6 +122,7 @@ export class BooksController {
   }
 
   @Post(':uid/pdf-contents')
+  @PartnerRateLimitBucket('heavy')
   @UseInterceptors(ASSET_UPLOAD)
   @ApiConsumes('application/json', 'multipart/form-data')
   @ApiOperation({ summary: '내지 PDF 신규 투입 — 기존재 시 409 ERR_ASSET_ALREADY_EXISTS' })
@@ -138,6 +142,7 @@ export class BooksController {
   }
 
   @Put(':uid/pdf-contents')
+  @PartnerRateLimitBucket('heavy')
   @UseInterceptors(ASSET_UPLOAD)
   @ApiConsumes('application/json', 'multipart/form-data')
   @ApiOperation({ summary: '내지 PDF 교체 — 미존재 시 404 ERR_ASSET_NOT_FOUND' })
@@ -156,6 +161,7 @@ export class BooksController {
   }
 
   @Post(':uid/photos')
+  @PartnerRateLimitBucket('heavy')
   @UseInterceptors(ASSET_UPLOAD)
   @ApiConsumes('application/json', 'multipart/form-data')
   @ApiOperation({ summary: '사진 자산 추가(다건, DRAFT 전용) — sort_order 자동 부여' })
