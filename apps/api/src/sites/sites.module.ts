@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { Site } from './entities/site.entity';
 import { SitesService } from './sites.service';
 import { SitesController } from './sites.controller';
+import { FrameAncestorsController } from './frame-ancestors.controller';
 
 /**
  * @Global — ApiKeyGuard가 SitesService를 의존하고, 여러 feature module이
@@ -11,7 +12,7 @@ import { SitesController } from './sites.controller';
 @Global()
 @Module({
   imports: [TypeOrmModule.forFeature([Site])],
-  controllers: [SitesController],
+  controllers: [SitesController, FrameAncestorsController],
   providers: [SitesService],
   exports: [SitesService],
 })
