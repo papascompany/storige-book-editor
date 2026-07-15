@@ -75,6 +75,9 @@ export class WorkerJobsController {
     return await this.workerJobsService.createValidationJob({
       ...createValidationJobDto,
       siteId: site?.siteId, // Phase C — 자동 사이트 식별
+      // [S2-5] 인증 컨텍스트 env 전파 훅 — 공용 ApiKeyGuard(sites 키)는 항상 live 라
+      // 현 경로 no-op. test 는 Stage 3 v1 잡 생성 표면에서만 도달(선행 인프라).
+      partnerEnv: site?.env,
     });
   }
 
@@ -157,6 +160,7 @@ export class WorkerJobsController {
     return await this.workerJobsService.createSynthesisJob({
       ...createSynthesisJobDto,
       siteId: site?.siteId, // Phase C — 자동 사이트 식별
+      partnerEnv: site?.env, // [S2-5] env 전파 훅 — validate/external 주석 참조(현 경로 live=no-op)
     });
   }
 
@@ -258,6 +262,7 @@ export class WorkerJobsController {
     return await this.workerJobsService.createSplitSynthesisJob({
       ...dto,
       siteId: site?.siteId, // Phase C — 자동 사이트 식별 (Stage 0 비대칭 봉합, validate/external 준용)
+      partnerEnv: site?.env, // [S2-5] env 전파 훅 — validate/external 주석 참조(현 경로 live=no-op)
     });
   }
 
