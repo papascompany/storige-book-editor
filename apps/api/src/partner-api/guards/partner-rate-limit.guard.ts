@@ -3,19 +3,18 @@ import { ThrottlerGuard } from '@nestjs/throttler';
 import { createHash } from 'crypto';
 import {
   PARTNER_API_CONFIG,
-  PARTNER_ENV_LIVE,
   PARTNER_RATE_BUCKET_KEY,
   PartnerRateBucket,
 } from '../partner-api.constants';
 import { PartnerApiConfig } from '../partner-api.config';
 import { PartnerRateLimitedException } from '../http/partner-api.exceptions';
-import { PartnerRequest } from '../http/request-context';
+import { PartnerRequest, resolvePartnerEnv } from '../http/request-context';
 
 /**
  * per-API-Key 레이트리밋 (설계서 §5.2) — ThrottlerGuard 커스텀.
  *
  * - 트래커 = `siteId:env:keyFingerprint`(키 원문 미사용 — SHA-256 앞 16자).
- *   Stage 2 partner_api_keys 도입 시 keyId 로 대체(additive).
+ *   env 는 인증 컨텍스트(Stage 2 — test/live 카운터 분리, sites 키는 live).
  * - 버킷: general 300/min · heavy(업로드/최종화) 100/min — env 로 조정
  *   (PARTNER_API_RATE_LIMIT_*_PER_MIN, partner-api.config.ts 중앙 파싱).
  * - 기존 전역 per-IP ThrottlerGuard(APP_GUARD)는 무수정 병존 — 이 가드는
@@ -70,7 +69,7 @@ export class PartnerRateLimitGuard extends ThrottlerGuard {
         .update(user.apiKey)
         .digest('hex')
         .slice(0, 16);
-      return `${user.siteId}:${PARTNER_ENV_LIVE}:${fingerprint}`;
+      return `${user.siteId}:${resolvePartnerEnv(user)}:${fingerprint}`;
     }
     // 방어적 폴백 — v1 은 인증 가드 뒤라 정상 경로에선 도달하지 않음
     return `ip:${req.ip ?? 'unknown'}`;
