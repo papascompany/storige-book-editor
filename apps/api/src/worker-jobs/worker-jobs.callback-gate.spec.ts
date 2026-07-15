@@ -233,4 +233,23 @@ describe('WorkerJobsService.updateJobStatus — finalization 콜백(#4) 분기',
       svc.updateJobStatus('vjob-1', { status: WorkerJobStatus.COMPLETED }),
     ).resolves.toBeDefined();
   });
+
+  it('[렌즈2 P2-4] onWorkerJobSettled 예외 격리 → updateJobStatus 성공 반환(PATCH 500 방지)', async () => {
+    const finService = {
+      onWorkerJobSettled: jest.fn(async () => {
+        throw new Error('transition boom');
+      }),
+    };
+    const { svc } = build(
+      makeJob({ options: { finalizationId: 'fin-1', fileType: 'content' } }),
+      finService,
+    );
+    // 콜백이 throw 해도 워커 PATCH 는 savedJob 을 성공 반환한다(교착 + 잡 재시도 폭주 방지).
+    // 기존 edit_session 갱신 경로 불변 — 콜백 예외는 finalization 계층에 격리.
+    const result = await svc.updateJobStatus('vjob-1', {
+      status: WorkerJobStatus.COMPLETED,
+    });
+    expect(result).toBeDefined();
+    expect(finService.onWorkerJobSettled).toHaveBeenCalledTimes(1);
+  });
 });
