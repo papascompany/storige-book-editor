@@ -25,7 +25,7 @@ export interface PartnerRequest extends Request {
   user?: PartnerAuthUser;
 }
 
-/** requestId 발급/재사용 — `req_` prefix + uuid 20자 (설계서 §3.2) */
+/** requestId 발급/재사용 — `req_` prefix + uuid 24자 (설계서 §3.2) */
 export function ensureRequestId(req: PartnerRequest): string {
   if (typeof req.partnerRequestId === 'string' && req.partnerRequestId) {
     return req.partnerRequestId;

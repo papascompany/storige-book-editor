@@ -126,9 +126,9 @@ export class BookSpecsService {
   /**
    * calculated-size — 페이지 수 기반 표지/내지/책등 실측 mm 계산.
    *
-   * - 페이지 규칙(pageMin/Max/Increment) 위반 = 400 ERR_PAGE_COUNT_OUT_OF_RANGE.
-   *   ※ 설계서 §3.3 카탈로그는 422 — 트랙 A 전역 필터 통합 시 status 재검토
-   *   포인트(Stage 1-B 작업지시는 400 표준 에러로 고정).
+   * - 페이지 규칙(pageMin/Max/Increment) 위반 = 422 ERR_PAGE_COUNT_OUT_OF_RANGE
+   *   (설계서 §3.3 카탈로그 정본 — v1 표준 스택 정합화로 422 확정).
+   *   구문 위반(타입/누락 등)만 DTO ValidationPipe 의 400 ERR_VALIDATION_FAILED.
    * - 책등 = 기존 SpineService.calculate() 재사용.
    * - sizeToleranceMm: templateSet 계약값(size_tolerance_mm) 우선, 없으면
    *   spec 값(기본 1 = 워커 LEGACY_SIZE_TOLERANCE_MM 정합 — 검증측 무접촉).
