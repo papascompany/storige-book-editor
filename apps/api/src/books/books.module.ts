@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Book } from './entities/book.entity';
 import { BookAsset } from './entities/book-asset.entity';
@@ -6,8 +6,13 @@ import { BookFinalization } from './entities/book-finalization.entity';
 import { BookSpec } from '../book-specs/entities/book-spec.entity';
 import { BooksController } from './books.controller';
 import { BooksService } from './books.service';
+import { BookFinalizationsService } from './book-finalizations.service';
 import { PartnerApiModule } from '../partner-api/partner-api.module';
 import { FilesModule } from '../files/files.module';
+import { WebhookModule } from '../webhook/webhook.module';
+import { BookSpecsModule } from '../book-specs/book-specs.module';
+import { WorkerJobsModule } from '../worker-jobs/worker-jobs.module';
+import { EditSessionsModule } from '../edit-sessions/edit-sessions.module';
 
 /**
  * Partner API v1 — Books(도서 aggregate) 모듈 (Stage 3, W1+W2).
@@ -26,9 +31,19 @@ import { FilesModule } from '../files/files.module';
     TypeOrmModule.forFeature([Book, BookAsset, BookFinalization, BookSpec]),
     PartnerApiModule,
     FilesModule,
+    // W3 최종화 오케스트레이터 의존:
+    //  - WorkerJobsModule: validate/synthesize 잡 생성 + 콜백 역참조(#4) 순환 → forwardRef.
+    //  - WebhookModule: book.finalization.* v2 발신(opt-in).
+    //  - BookSpecsModule: 페이지 규칙 재사용(assertPageRules — 단일 출처).
+    forwardRef(() => WorkerJobsModule),
+    WebhookModule,
+    BookSpecsModule,
+    // W4 EDITOR_SESSION 승격 원본 조회(조회+참조만, AD-1).
+    EditSessionsModule,
   ],
   controllers: [BooksController],
-  providers: [BooksService],
-  exports: [BooksService],
+  providers: [BooksService, BookFinalizationsService],
+  // BookFinalizationsService 는 WorkerJobsModule(#4 콜백)이 forwardRef 주입 — export 필수.
+  exports: [BooksService, BookFinalizationsService],
 })
 export class BooksModule {}

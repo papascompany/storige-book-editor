@@ -4,6 +4,9 @@ import {
   BadRequestException,
   UnprocessableEntityException,
   Logger,
+  Optional,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { InjectQueue } from '@nestjs/bull';
@@ -26,6 +29,7 @@ import {
   UpdateJobStatusDto,
 } from './dto/worker-job.dto';
 import { CreateSplitSynthesisJobDto } from './dto/create-split-synthesis-job.dto';
+import { ComposeMixedJobInput } from './dto/create-compose-mixed-job.dto';
 import { CreateSpreadSynthesisJobDto } from './dto/create-spread-synthesis-job.dto';
 import { CreateRenderPagesJobDto } from './dto/create-render-pages-job.dto';
 import { CreateBleedFixJobDto } from './dto/create-bleed-fix-job.dto';
@@ -49,6 +53,8 @@ import {
   PARTNER_ENV_TEST,
   PartnerEnv,
 } from '../partner-api/partner-api.constants';
+// [Stage 3 W3, #4] 최종화 콜백 역참조 — forwardRef 로 순환(books ⇄ worker-jobs) 차단.
+import { BookFinalizationsService } from '../books/book-finalizations.service';
 
 @Injectable()
 export class WorkerJobsService {
@@ -65,8 +71,16 @@ export class WorkerJobsService {
     private filesService: FilesService,
     private webhookService: WebhookService,
     private sitesService: SitesService,
-    // fix-bleed(2026-07-13) — templateSet 권위 editSize 산출용. ⚠️ 기존 스펙 호환을 위해 항상 마지막 파라미터.
+    // fix-bleed(2026-07-13) — templateSet 권위 editSize 산출용.
     private templateSetsService: TemplateSetsService,
+    // [Stage 3 W3, #4] 최종화 콜백 역참조 — @Optional + forwardRef(순환 모듈 books ⇄ worker-jobs).
+    //   updateJobStatus 가 options.finalizationId 마커 잡의 종결(COMPLETED/FIXABLE/FAILED) 시
+    //   book_finalizations 상태머신을 전진시킨다(기존 edit_session 갱신과 병렬 additive 분기).
+    //   ⚠️ 반드시 최후미 @Optional — 기존 9-인자 유닛스펙(callback-gate 등 7건)이 미주입
+    //   (undefined)해도 finalization 분기는 no-op(서비스 존재 + options.finalizationId 이중 게이트).
+    @Optional()
+    @Inject(forwardRef(() => BookFinalizationsService))
+    private readonly bookFinalizationsService?: BookFinalizationsService,
   ) {}
 
   /**
@@ -349,6 +363,10 @@ export class WorkerJobsService {
           fileType: createValidationJobDto.fileType,
           orderOptions,
           callbackUrl: createValidationJobDto.callbackUrl || undefined,
+          // [Stage 3 W3] finalization 역참조 마커(#4) — 부재=기존 옵션 바이트 불변(conditional spread)
+          ...(createValidationJobDto.finalizationId
+            ? { finalizationId: createValidationJobDto.finalizationId }
+            : {}),
         },
         createValidationJobDto.partnerEnv,
       ),
@@ -675,6 +693,10 @@ export class WorkerJobsService {
           orderId: createSynthesisJobDto.orderId,
           callbackUrl: createSynthesisJobDto.callbackUrl,
           outputFormat, // 출력 형식 저장
+          // [Stage 3 W3] finalization 역참조 마커(#4) — 부재=기존 옵션 바이트 불변(conditional spread)
+          ...(createSynthesisJobDto.finalizationId
+            ? { finalizationId: createSynthesisJobDto.finalizationId }
+            : {}),
         },
         createSynthesisJobDto.partnerEnv,
       ),
@@ -731,7 +753,7 @@ export class WorkerJobsService {
    * 기존 synthesis / split / spread 흐름과 분리된 별도 mode.
    * PHP 기존 호출 경로 회귀 보호 (mode='compose-mixed' 만 신규 worker handler 사용).
    */
-  async createComposeMixedJob(dto: any): Promise<WorkerJob> {
+  async createComposeMixedJob(dto: ComposeMixedJobInput): Promise<WorkerJob> {
     // P0-3: 스프레드 책 무결성 — 세션의 출력재현 단일소스(metadata.spread)를 조회해
     //  ① 워커 cover MediaBox 검증용 기대치(totalWidthMm/HeightMm/dpi)를 큐로 push,
     //  ② 확정 비즈니스 규칙(스프레드 책 = cover.pdf + content.pdf "분리 2파일")에 맞춰
@@ -788,28 +810,36 @@ export class WorkerJobsService {
       editSessionId: dto.editSessionId || null,
       inputFileUrl: dto.coverUrl || dto.contentPdfUrl || null,
       siteId: dto.siteId || null,
-      options: {
-        capability: 'compose-mixed',
-        editSessionId: dto.editSessionId,
-        coverUrl: dto.coverUrl,
-        coverEditable: dto.coverEditable !== false,
-        coverWidthMm: dto.coverWidthMm,
-        coverHeightMm: dto.coverHeightMm,
-        frontEndpaperUrls: dto.frontEndpaperUrls ?? [],
-        backEndpaperUrls: dto.backEndpaperUrls ?? [],
-        contentPdfUrl: dto.contentPdfUrl,
-        contentWidthMm: dto.contentWidthMm,
-        contentHeightMm: dto.contentHeightMm,
-        orderId: dto.orderId,
-        callbackUrl: dto.callbackUrl,
-        outputMode: effectiveOutputMode,
-        spreadTotalWidthMm: composeSpreadTotalWidthMm,
-        spreadTotalHeightMm: composeSpreadTotalHeightMm,
-        spreadDpi: composeSpreadDpi,
-        // D-4: 출력(wrap 포함) 사이즈 기대치 — additive, 부재=기존 total 검증
-        spreadOutputWidthMm: composeSpreadOutputWidthMm,
-        spreadOutputHeightMm: composeSpreadOutputHeightMm,
-      },
+      // [S2-5] test env 컨텍스트면 isTest:true 스탬프 — 워커가 실합성(compose-mixed) 대신
+      // TEST 워터마크 더미(handleTestSynthesis compose-mixed 분기) 산출 + outputs 24h retention.
+      // live/미전달(external sites 키)=키 없음 → 기존 옵션 바이트 불변(compose-mixed.spec 계약).
+      options: this.stampTestEnv(
+        {
+          capability: 'compose-mixed',
+          editSessionId: dto.editSessionId,
+          coverUrl: dto.coverUrl,
+          coverEditable: dto.coverEditable !== false,
+          coverWidthMm: dto.coverWidthMm,
+          coverHeightMm: dto.coverHeightMm,
+          frontEndpaperUrls: dto.frontEndpaperUrls ?? [],
+          backEndpaperUrls: dto.backEndpaperUrls ?? [],
+          contentPdfUrl: dto.contentPdfUrl,
+          contentWidthMm: dto.contentWidthMm,
+          contentHeightMm: dto.contentHeightMm,
+          orderId: dto.orderId,
+          callbackUrl: dto.callbackUrl,
+          outputMode: effectiveOutputMode,
+          spreadTotalWidthMm: composeSpreadTotalWidthMm,
+          spreadTotalHeightMm: composeSpreadTotalHeightMm,
+          spreadDpi: composeSpreadDpi,
+          // D-4: 출력(wrap 포함) 사이즈 기대치 — additive, 부재=기존 total 검증
+          spreadOutputWidthMm: composeSpreadOutputWidthMm,
+          spreadOutputHeightMm: composeSpreadOutputHeightMm,
+          // [Stage 3 W3] finalization 역참조 마커(#4) — 부재=기존 옵션 바이트 불변(conditional spread)
+          ...(dto.finalizationId ? { finalizationId: dto.finalizationId } : {}),
+        },
+        dto.partnerEnv,
+      ),
     });
     const savedJob = await this.workerJobRepository.save(job);
 
@@ -836,6 +866,10 @@ export class WorkerJobsService {
         composeSpreadOutputWidthMm,
         composeSpreadOutputHeightMm,
         callbackUrl: dto.callbackUrl,
+        // [S2-5] isTest 잡에만 conditional spread — live 잡 페이로드 키 집합 불변
+        // (createSynthesisJob/createSplitSynthesisJob 큐 페이로드 계약 준용). 워커
+        // handleSynthesis 가 job.data.isTest===true → handleTestSynthesis(compose-mixed 분기).
+        ...(dto.partnerEnv === PARTNER_ENV_TEST ? { isTest: true as const } : {}),
       },
       { priority: 5 },
     );
@@ -1515,6 +1549,9 @@ export class WorkerJobsService {
     // 잡은 기존과 완전 동일하게 스킵되며 추가 DB 조회도 없다(불변 조건).
     if (
       job.jobType === WorkerJobType.SYNTHESIZE &&
+      // [Stage 3 W3] finalization 내부 잡은 book.finalization.* 만 발신 — 중간 synthesis.*
+      //   억제(파트너에 내부 오케스트레이션 단계 누출 방지). 마커 부재=기존 파트너 잡(불변).
+      !job.options?.finalizationId &&
       (updateJobStatusDto.status === WorkerJobStatus.COMPLETED ||
         updateJobStatusDto.status === WorkerJobStatus.FAILED) &&
       (job.options?.callbackUrl ||
@@ -1530,6 +1567,9 @@ export class WorkerJobsService {
     // sendValidationCallback 내부 v2 분기가 죽은 코드였음).
     if (
       job.jobType === WorkerJobType.VALIDATE &&
+      // [Stage 3 W3] finalization 내부 validate 잡은 book.finalization.* 만 발신 —
+      //   중간 validation.* 억제. 마커 부재=기존 잡(불변).
+      !job.options?.finalizationId &&
       (updateJobStatusDto.status === WorkerJobStatus.COMPLETED ||
         updateJobStatusDto.status === WorkerJobStatus.FIXABLE ||
         updateJobStatusDto.status === WorkerJobStatus.FAILED) &&
@@ -1571,6 +1611,20 @@ export class WorkerJobsService {
       updateJobStatusDto.status === WorkerJobStatus.COMPLETED
     ) {
       await this.registerBleedFixOutput(savedJob);
+    }
+
+    // [Stage 3 W3, #4] books finalization 역참조 — options.finalizationId 마커 잡 종결 시
+    //   book_finalizations 상태머신 전진(VALIDATING→COMPOSING→COMPLETED / FAILED). 이중 게이트:
+    //   @Optional 서비스 미주입(기존 9-인자 유닛스펙 7건)·마커 부재(기존 파트너/세션 잡)면 no-op —
+    //   기존 edit_session 갱신 경로와 병렬 additive(기존 경로 완전 불변).
+    if (
+      this.bookFinalizationsService &&
+      job.options?.finalizationId &&
+      (updateJobStatusDto.status === WorkerJobStatus.COMPLETED ||
+        updateJobStatusDto.status === WorkerJobStatus.FIXABLE ||
+        updateJobStatusDto.status === WorkerJobStatus.FAILED)
+    ) {
+      await this.bookFinalizationsService.onWorkerJobSettled(savedJob);
     }
 
     return savedJob;
