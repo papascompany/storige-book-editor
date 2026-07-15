@@ -184,6 +184,8 @@ async function bootstrap() {
   app.setGlobalPrefix('api');
 
   // Swagger documentation
+  // ⚠️ /api/docs 접근 정책(현행: 공개 서빙)은 무변경 — 변경은 설계서 §9-3
+  //    오너 결정 사안. 여기서는 v1 태그 등록만 additive 로 수행한다.
   const config = new DocumentBuilder()
     .setTitle('Storige API')
     .setDescription('Print Shopping Mall API Documentation')
@@ -192,6 +194,13 @@ async function bootstrap() {
     .addApiKey(
       { type: 'apiKey', name: 'X-API-Key', in: 'header' },
       'api-key',
+    )
+    // Partner API v1 전용 태그 — @PartnerV1Controller 표면(/api/v1/*)이 이
+    // 태그로 그룹핑되며, openapi:partner export(scripts/export-openapi-partner.ts)가
+    // 이 태그 기준으로 파트너 전용 스펙을 필터한다.
+    .addTag(
+      'partner-v1',
+      'Partner Platform API v1 — 파트너 대면 표면 (/api/v1/*, Bearer/X-API-Key 병행 인증)',
     )
     .build();
   const document = SwaggerModule.createDocument(app, config, {

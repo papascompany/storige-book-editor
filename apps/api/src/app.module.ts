@@ -21,6 +21,8 @@ import { SeedModule } from './database/seeds/seed.module';
 import { FilesModule } from './files/files.module';
 import { SettingsModule } from './settings/settings.module';
 import { EditSessionsModule } from './edit-sessions/edit-sessions.module';
+import { PartnerApiModule } from './partner-api/partner-api.module';
+import { BookSpecsModule } from './book-specs/book-specs.module';
 import { PayloadTooLargeFilter } from './common/filters/payload-too-large.filter';
 
 // Bookmoa 모듈 조건부 로드 (BOOKMOA_DB_PASSWORD가 설정된 경우에만)
@@ -158,6 +160,12 @@ if (process.env.BOOKMOA_DB_PASSWORD) {
 
     // Edit sessions
     EditSessionsModule,
+
+    // Partner API v1 파사드 (/api/v1/* — AD-1: 기존 표면 무접촉)
+    PartnerApiModule,
+
+    // Partner API v1 — BookSpecs 판형 마스터 (Stage 1-B, 읽기 전용)
+    BookSpecsModule,
 
     // Bookmoa integration (conditionally loaded)
     ...conditionalModules,
