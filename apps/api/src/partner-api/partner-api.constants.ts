@@ -9,6 +9,9 @@
 /** sites 레거시 키(단일 env)의 기본 env — v1 신규 키는 req.user.env 가 정본 */
 export const PARTNER_ENV_LIVE = 'live' as const;
 
+/** test env (S2-5) — 잡 isTest 스탬프·웹훅 v2 페이로드 isTest 판정의 단일 리터럴 */
+export const PARTNER_ENV_TEST = 'test' as const;
+
 export type PartnerEnv = 'test' | 'live';
 
 /**
