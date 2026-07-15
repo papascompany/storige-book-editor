@@ -60,6 +60,17 @@ function makeRepo<T extends { id: string }>() {
         return [hit, hit.length] as const;
       },
     ),
+    // 조건부 UPDATE(CAS) — matched-rows 기준 affected (manualRetry 원자화 검증용)
+    update: jest.fn(
+      async (
+        where: Record<string, unknown>,
+        patch: Record<string, unknown>,
+      ) => {
+        const hit = rows.filter((r) => matches(r, where));
+        hit.forEach((r) => Object.assign(r, patch));
+        return { affected: hit.length };
+      },
+    ),
     delete: jest.fn(async ({ id }: { id: string }) => {
       const idx = rows.findIndex((r) => r.id === id);
       if (idx >= 0) rows.splice(idx, 1);
@@ -283,6 +294,185 @@ describe('재시도 1/5/30분 + 3회 소진 EXHAUSTED', () => {
     await expect(
       deliveryService.manualRetry('site-a', 'live', 'whd_exhausted1'),
     ).rejects.toMatchObject({ errorCode: ErrV1.ERR_DELIVERY_NOT_RETRYABLE });
+  });
+});
+
+// ─────────────── [P1-2] delivery stuck 복구 + [렌즈2 P2-1] retry race ───────
+
+describe('[P1-2] 인큐 실패에도 delivery 행 존속 + stale 행 수동 복구', () => {
+  const seedStuck = async (
+    deliveryRepo: DeliveryRepo,
+    overrides: Partial<WebhookDelivery>,
+  ): Promise<WebhookDelivery> => {
+    const row = Object.assign(new WebhookDelivery(), {
+      id: 'd-stuck',
+      uid: 'whd_stuck1',
+      configId: 'cfg-1',
+      siteId: 'site-a',
+      env: 'live' as const,
+      event: 'synthesis.completed',
+      isTest: false,
+      payload: JSON.stringify({ jobId: 'j1', event: 'synthesis.completed', timestamp: 'ts' }),
+      status: 'RETRYING' as const,
+      attempts: 1,
+      lastStatusCode: null,
+      lastResponse: null,
+      nextRetryAt: null,
+      deliveredAt: null,
+      createdAt: new Date(),
+      ...overrides,
+    });
+    await deliveryRepo.save(row);
+    return row;
+  };
+
+  it('queue.add throw 시에도 dispatch 는 throw 없이 RETRYING 행을 저장한다', async () => {
+    const { deliveryService, configRepo, deliveryRepo, queue } = makeServices();
+    const config = await seedConfig(configRepo);
+    mockedAxios.post.mockRejectedValue(new Error('conn refused'));
+    queue.add.mockRejectedValue(new Error('redis down'));
+
+    const delivery = await deliveryService.dispatch(
+      config,
+      'synthesis.completed',
+      { event: 'synthesis.completed', jobId: 'j1', timestamp: 'ts' },
+      false,
+    );
+
+    const row = deliveryRepo.rows.find((r) => r.id === delivery.id)!;
+    expect(row.status).toBe('RETRYING'); // 행 존속 — 상태/nextRetryAt 기록 보장
+    expect(row.attempts).toBe(1);
+    expect(row.nextRetryAt).not.toBeNull();
+  });
+
+  it('stale RETRYING(nextRetryAt+10분 경과) → 수동 retry 재진입 허용', async () => {
+    const { deliveryService, configRepo, deliveryRepo } = makeServices();
+    await seedConfig(configRepo);
+    await seedStuck(deliveryRepo, {
+      nextRetryAt: new Date(Date.now() - 11 * 60_000),
+    });
+    mockedAxios.post.mockResolvedValue({ status: 200, data: 'ok' });
+
+    const view = await deliveryService.manualRetry('site-a', 'live', 'whd_stuck1');
+    expect(view.status).toBe('DELIVERED');
+    expect(view.attempts).toBe(2);
+  });
+
+  it('신선한 RETRYING(재시도 예정 미경과) → 여전히 409', async () => {
+    const { deliveryService, configRepo, deliveryRepo } = makeServices();
+    await seedConfig(configRepo);
+    await seedStuck(deliveryRepo, {
+      nextRetryAt: new Date(Date.now() + 60_000), // 정상 진행 중 체인
+    });
+
+    await expect(
+      deliveryService.manualRetry('site-a', 'live', 'whd_stuck1'),
+    ).rejects.toMatchObject({ errorCode: ErrV1.ERR_DELIVERY_NOT_RETRYABLE });
+    expect(mockedAxios.post).not.toHaveBeenCalled();
+  });
+
+  it('stale PENDING(createdAt 폴백 +10분 경과) 허용 / 신선한 PENDING 409', async () => {
+    const { deliveryService, configRepo, deliveryRepo } = makeServices();
+    await seedConfig(configRepo);
+    mockedAxios.post.mockResolvedValue({ status: 200, data: 'ok' });
+
+    await seedStuck(deliveryRepo, {
+      id: 'd-p1',
+      uid: 'whd_pend_stale',
+      status: 'PENDING' as const,
+      attempts: 0,
+      createdAt: new Date(Date.now() - 11 * 60_000),
+    });
+    await seedStuck(deliveryRepo, {
+      id: 'd-p2',
+      uid: 'whd_pend_fresh',
+      status: 'PENDING' as const,
+      attempts: 0,
+      createdAt: new Date(),
+    });
+
+    const view = await deliveryService.manualRetry('site-a', 'live', 'whd_pend_stale');
+    expect(view.status).toBe('DELIVERED');
+
+    await expect(
+      deliveryService.manualRetry('site-a', 'live', 'whd_pend_fresh'),
+    ).rejects.toMatchObject({ errorCode: ErrV1.ERR_DELIVERY_NOT_RETRYABLE });
+  });
+
+  it('[렌즈2 P2-1] 이중 POST race — CAS affected=0 이면 409 + 발송 없음', async () => {
+    const { deliveryService, configRepo, deliveryRepo } = makeServices();
+    await seedConfig(configRepo);
+    await seedStuck(deliveryRepo, { status: 'EXHAUSTED' as const, attempts: 4 });
+
+    // 경합 패자 시뮬레이션 — 상태 CAS(WHERE id+status)가 0행 매칭
+    deliveryRepo.update.mockResolvedValueOnce({ affected: 0 });
+
+    await expect(
+      deliveryService.manualRetry('site-a', 'live', 'whd_stuck1'),
+    ).rejects.toMatchObject({ errorCode: ErrV1.ERR_DELIVERY_NOT_RETRYABLE });
+    expect(mockedAxios.post).not.toHaveBeenCalled();
+  });
+});
+
+// ─────────── [P2-1] delivery 뷰 — 응답 본문 파트너 비노출 ─────────────
+
+describe('[P2-1] 파트너 뷰에 수신측 응답 본문 비노출 (SSRF 반출 채널 축소)', () => {
+  it('실패 응답 본문은 DB 에만 저장 — 뷰는 사유 코드(HTTP_ERROR)만', async () => {
+    const { deliveryService, configRepo, deliveryRepo } = makeServices();
+    const config = await seedConfig(configRepo);
+    mockedAxios.post.mockRejectedValue({
+      message: 'Request failed with status code 500',
+      response: { status: 500, data: 'internal-admin-page-html' },
+    });
+
+    const delivery = await deliveryService.dispatch(
+      config,
+      'synthesis.completed',
+      { event: 'synthesis.completed', jobId: 'j1', timestamp: 'ts' },
+      false,
+    );
+
+    // DB 행은 운영 진단용 본문 유지
+    const row = deliveryRepo.rows.find((r) => r.id === delivery.id)!;
+    expect(row.lastResponse).toContain('internal-admin-page-html');
+
+    // 파트너 뷰(상세 포함)에는 본문 필드 자체가 없다
+    const view = await deliveryService.getDelivery('site-a', 'live', delivery.uid);
+    expect(view).not.toHaveProperty('lastResponse');
+    expect(JSON.stringify(view)).not.toContain('internal-admin-page-html');
+    expect(view.lastStatusCode).toBe(500);
+    expect(view.lastFailureReason).toBe('HTTP_ERROR');
+  });
+
+  it('네트워크 실패 → REQUEST_FAILED / 성공 → null', async () => {
+    const { deliveryService, configRepo } = makeServices();
+    const config = await seedConfig(configRepo);
+
+    mockedAxios.post.mockRejectedValueOnce(new Error('ECONNREFUSED'));
+    const failed = await deliveryService.dispatch(
+      config,
+      'synthesis.completed',
+      { event: 'synthesis.completed', jobId: 'j1', timestamp: 'ts' },
+      false,
+    );
+    const failedView = await deliveryService.getDelivery(
+      'site-a',
+      'live',
+      failed.uid,
+    );
+    expect(failedView.lastFailureReason).toBe('REQUEST_FAILED');
+    expect(failedView).not.toHaveProperty('lastResponse');
+
+    mockedAxios.post.mockResolvedValueOnce({ status: 200, data: 'ok' });
+    const ok = await deliveryService.dispatch(
+      config,
+      'synthesis.completed',
+      { event: 'synthesis.completed', jobId: 'j2', timestamp: 'ts' },
+      false,
+    );
+    const okView = await deliveryService.getDelivery('site-a', 'live', ok.uid);
+    expect(okView.lastFailureReason).toBeNull();
+    expect(okView).not.toHaveProperty('lastResponse');
   });
 });
 

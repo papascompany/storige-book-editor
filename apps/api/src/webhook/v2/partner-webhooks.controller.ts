@@ -132,7 +132,7 @@ export class PartnerWebhooksController {
   }
 
   @Get('deliveries/:uid')
-  @ApiOperation({ summary: '발송 이력 상세 (payload/응답 요약/attempts/nextRetryAt)' })
+  @ApiOperation({ summary: '발송 이력 상세 (payload/상태코드·실패사유코드/attempts/nextRetryAt)' })
   @ApiResponse({ status: 404, description: 'ERR_NOT_FOUND — 없음/타 사이트' })
   async getDelivery(
     @CurrentSite() site: CurrentSitePayload,
@@ -144,7 +144,7 @@ export class PartnerWebhooksController {
 
   @Post('deliveries/:uid/retry')
   @ApiOperation({
-    summary: '수동 재발송 (EXHAUSTED 전용) — 멱등(Idempotency-Key)',
+    summary: '수동 재발송 (EXHAUSTED 또는 10분 이상 stale 한 PENDING/RETRYING) — 멱등(Idempotency-Key)',
   })
   @ApiResponse({ status: 409, description: 'ERR_DELIVERY_NOT_RETRYABLE — 재시도 불가 상태' })
   async retryDelivery(
