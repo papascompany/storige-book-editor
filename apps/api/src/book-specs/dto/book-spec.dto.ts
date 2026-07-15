@@ -1,15 +1,20 @@
 import { IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  PAGINATION_DEFAULT_LIMIT,
+  PAGINATION_MAX_LIMIT,
+} from '../../partner-api/http/pagination';
 
 /**
  * Partner API v1 BookSpecs DTO 모음.
  * 정본: docs/PARTNER_PLATFORM_API_V1_DESIGN_2026-07-07.md §1.2·§3·§5.1
+ *
+ * 봉투/페이지네이션 shape 는 v1 코어 정본을 사용한다 —
+ * @storige/types PartnerV1SuccessEnvelope·PartnerV1Pagination +
+ * partner-api/http/pagination(PaginatedResult, PAGINATION_DEFAULT/MAX_LIMIT).
+ * (통합 전 임시 V1Envelope/v1Envelope 수동 래핑은 제거됨 — 이중 래핑 방지)
  */
-
-/** v1 목록 페이지네이션 기본값 (설계서 §5.1: limit 기본 20 / 최대 100 캡) */
-export const V1_PAGINATION_DEFAULT_LIMIT = 20;
-export const V1_PAGINATION_MAX_LIMIT = 100;
 
 /** GET /api/v1/book-specs 쿼리 */
 export class BookSpecListQueryDto {
@@ -33,7 +38,7 @@ export class BookSpecListQueryDto {
   @IsIn(['true', 'false'])
   isActive?: 'true' | 'false';
 
-  @ApiPropertyOptional({ default: V1_PAGINATION_DEFAULT_LIMIT, maximum: V1_PAGINATION_MAX_LIMIT })
+  @ApiPropertyOptional({ default: PAGINATION_DEFAULT_LIMIT, maximum: PAGINATION_MAX_LIMIT })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
@@ -56,32 +61,6 @@ export class CalculatedSizeQueryDto {
   @Min(1)
   @Max(100000)
   pageCount: number;
-}
-
-/** v1 목록 응답의 pagination 객체 (설계서 §5.1) */
-export interface V1Pagination {
-  total: number;
-  limit: number;
-  offset: number;
-  hasNext: boolean;
-}
-
-/**
- * v1 성공 봉투 {success,message,data,pagination} (설계서 §3.1).
- *
- * ⚠️ 트랙 A(partner-api 모듈)의 v1 성공 봉투 인터셉터가 병합되기 전이라
- *    컨트롤러에서 자체 구성한다. 인터셉터 통합 시 이 수동 래핑을 제거해
- *    이중 래핑({success,data:{success,data:...}})을 방지할 것 — 통합 포인트.
- */
-export interface V1Envelope<T> {
-  success: true;
-  message: string;
-  data: T;
-  pagination: V1Pagination | null;
-}
-
-export function v1Envelope<T>(data: T, pagination: V1Pagination | null = null): V1Envelope<T> {
-  return { success: true, message: 'Success', data, pagination };
 }
 
 /** 판형 목록/상세 공용 노출 shape — 내부 UUID(id)·siteId 는 비노출 */
