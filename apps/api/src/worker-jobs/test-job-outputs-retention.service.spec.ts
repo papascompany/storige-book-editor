@@ -105,6 +105,43 @@ describe('TestJobOutputsRetentionService — S2-5 test 잡 산출물 24h retenti
     });
   });
 
+  it('QueryBuilder 계약 — SYNTHESIZE·status IN·isTest LIKE·purged NOT LIKE·24h cutoff 인자 고정', async () => {
+    candidates = [];
+    const now = new Date('2026-07-16T00:00:00Z');
+    await service.sweepTestJobOutputs(now);
+
+    // 잡 유형 게이트
+    expect(qb.where).toHaveBeenCalledWith('job.jobType = :jobType', {
+      jobType: WorkerJobType.SYNTHESIZE,
+    });
+    // 종결 상태 IN — terminal 잡만
+    expect(qb.andWhere).toHaveBeenCalledWith(
+      'job.status IN (:...statuses)',
+      expect.objectContaining({
+        statuses: expect.arrayContaining([
+          WorkerJobStatus.COMPLETED,
+          WorkerJobStatus.FIXABLE,
+          WorkerJobStatus.FAILED,
+        ]),
+      }),
+    );
+    // isTest 프리필터 LIKE 마커(공백 없는 JSON.stringify 산출과 정합)
+    expect(qb.andWhere).toHaveBeenCalledWith('job.options LIKE :testMarker', {
+      testMarker: '%"isTest":true%',
+    });
+    // 이미 purge 된 잡 제외
+    expect(qb.andWhere).toHaveBeenCalledWith('job.options NOT LIKE :purgedMarker', {
+      purgedMarker: '%"testOutputsPurgedAt"%',
+    });
+    // 24h cutoff — 이 andWhere 가 제거되면(변이 ④) 이 assertion 이 red 가 되어야 한다.
+    // cutoff 값 = now - 24h (경계 회귀까지 고정).
+    const expectedCutoff = new Date('2026-07-15T00:00:00Z');
+    expect(qb.andWhere).toHaveBeenCalledWith(
+      'COALESCE(job.completedAt, job.createdAt) < :cutoff',
+      { cutoff: expectedCutoff },
+    );
+  });
+
   it('LIKE 오탐 방어 — options.isTest!==true 후보는 무접촉(삭제·마커 없음)', async () => {
     const dir = await seedOutputs(UUID);
     // 예: 중첩 문자열 등으로 LIKE 에 걸렸지만 실제 isTest 아님
