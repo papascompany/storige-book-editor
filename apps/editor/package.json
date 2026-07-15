@@ -35,6 +35,7 @@
     "@storige/ai": "workspace:*",
     "@storige/canvas-core": "workspace:*",
     "@storige/types": "workspace:*",
+    "@vercel/functions": "^3.7.5",
     "axios": "^1.16.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
