@@ -1,7 +1,7 @@
 import { Processor, Process } from '@nestjs/bull';
 import { Logger } from '@nestjs/common';
 import { Job } from 'bull';
-import { PDFDocument } from 'pdf-lib';
+import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { PdfSynthesizerService } from '../services/pdf-synthesizer.service';
 import { JobStatusService } from '../services/job-status.service';
 import { DomainError, ErrorCodes } from '../common/errors';
@@ -80,6 +80,14 @@ interface SynthesisJobData {
    */
   composeSpreadOutputWidthMm?: number;
   composeSpreadOutputHeightMm?: number;
+  /**
+   * [S2-5, 2026-07-16] test env 파트너 키 잡 마커 — API 잡 생성부가 isTest 잡에만
+   * conditional spread 로 등재(live 잡 페이로드 키 집합 불변). true 면 실합성 대신
+   * TEST 워터마크 더미 산출(handleTestSynthesis) — 실합성 리소스 소모 방지.
+   * 현 Stage 2 는 발화 경로 없음(잡 생성 external 라우트=sites 키 live 전용),
+   * 실발화는 Stage 3(v1 books 잡 생성 표면).
+   */
+  isTest?: boolean;
 }
 
 // FilesService 인터페이스 (Worker에서 DB 조회용)
@@ -126,6 +134,13 @@ export class SynthesisProcessor {
       return cached.result ?? { success: true, idempotentSkip: true };
     }
 
+    // [S2-5] test env 잡 — 실합성 파이프라인 대신 TEST 워터마크 더미 산출물 생성.
+    // 멱등 가드 뒤·mode 분기 앞: 재배달도 완료 마커로 동일하게 단락된다.
+    // 기존 3큐·프로세서 시맨틱 불변 — isTest 잡만 분기(live 잡은 이 라인 통과 비용 0).
+    if (job.data.isTest === true) {
+      return this.handleTestSynthesis(job);
+    }
+
     // ★ mode 단일 진실 공급원: Queue payload의 mode만 신뢰
     if (mode === 'split') {
       return this.handleSplitSynthesis(job as Job<SplitSynthesisJobData>);
@@ -145,6 +160,242 @@ export class SynthesisProcessor {
 
     // 기존 merge 로직
     return this.handleMergeSynthesis(job);
+  }
+
+  // ============================================================================
+  // [S2-5] Test env 더미 합성 (2026-07-16, 로드맵 §6 Stage 2 작업 1)
+  // ============================================================================
+
+  /** A4 세로 기본 판형(pt) — 요청 스펙에 판형 정보가 없는 mode(classic/split)의 폴백 */
+  private static readonly TEST_A4_PT = { width: 595.28, height: 841.89 } as const;
+  /** 더미 페이지 수 방어 상한 — 스펙 반영하되 test 잡이 디스크를 낭비하지 않도록 */
+  private static readonly TEST_MAX_PAGES = 500;
+
+  /**
+   * test env(isTest) 잡 — 실합성 대신 "TEST" 워터마크 더미 PDF 산출.
+   *
+   * 목적: test 키 파트너의 통합 개발 중 실합성(다운로드·qpdf/pdf-lib 머지) 리소스
+   * 소모 방지. 페이지 수·판형은 요청 스펙을 반영(split=pageTypes 매수,
+   * compose-mixed=mm 판형·면지 매수, classic=cover+content 최소 구성)하되 내용은
+   * 워터마크뿐이다. 산출 파일명/URL/result shape 은 각 mode 의 실경로와 동일 계약
+   * (콜백·폴링 소비자가 구분 없이 동작) + result.isTest=true 마커.
+   *
+   * 산출물 정리: outputs/{jobId} 는 API 측 TestJobOutputsRetentionService 가
+   * 24h 후 삭제한다(파일 엔티티 미경유 직접 write 라 expires_at 재사용 불가).
+   *
+   * spread/duplex-split 은 isTest 스탬프 경로가 없어 여기 도달하지 않는다 —
+   * 방어적으로 도달 시 classic(merged 더미) 폴백.
+   */
+  private async handleTestSynthesis(job: Job<SynthesisJobData>) {
+    const jobId = job.data.jobId;
+    const queueJobId = job.id;
+    const mode = job.data.mode;
+
+    this.logger.log(
+      `[test-env] synthesis job ${jobId} (queue: ${queueJobId}, mode=${mode ?? 'merge'}) — TEST 워터마크 더미 산출(실합성 미수행)`,
+    );
+
+    try {
+      await this.updateJobStatus(jobId, { status: 'PROCESSING' });
+
+      const outputDir = path.join(this.outputsPath, jobId);
+      await fs.mkdir(outputDir, { recursive: true });
+      const storageKeyBase = `outputs/${jobId}`;
+      const a4 = SynthesisProcessor.TEST_A4_PT;
+
+      const writeDummy = async (
+        filename: string,
+        pageCount: number,
+        widthPt: number,
+        heightPt: number,
+      ): Promise<string> => {
+        const bytes = await this.buildTestWatermarkPdf(
+          jobId,
+          pageCount,
+          widthPt,
+          heightPt,
+        );
+        await fs.writeFile(path.join(outputDir, filename), bytes);
+        return `/storage/${storageKeyBase}/${filename}`;
+      };
+
+      let result: SynthesisResult;
+
+      if (mode === 'split') {
+        // 요청 스펙 반영: pageTypes 의 cover/content 매수 그대로 더미 생성
+        const data = job.data as unknown as SplitSynthesisJobData;
+        const pageTypes = data.pageTypes ?? [];
+        const coverPages = Math.max(1, pageTypes.filter((t) => t === 'cover').length);
+        const contentPages = Math.max(
+          1,
+          pageTypes.filter((t) => t === 'content').length,
+        );
+        const totalPages = data.totalExpectedPages || coverPages + contentPages;
+        const outputFormat = data.outputFormat ?? 'merged';
+
+        result = { success: true, outputFileUrl: '', totalPages, isTest: true };
+
+        if (outputFormat === 'separate') {
+          const coverUrl = await writeDummy('cover.pdf', coverPages, a4.width, a4.height);
+          const contentUrl = await writeDummy('content.pdf', contentPages, a4.width, a4.height);
+          result.outputFiles = [
+            { type: 'cover', url: coverUrl },
+            { type: 'content', url: contentUrl },
+          ];
+          if (data.alsoGenerateMerged) {
+            result.outputFileUrl = await writeDummy('merged.pdf', totalPages, a4.width, a4.height);
+          }
+        } else {
+          result.outputFileUrl = await writeDummy('merged.pdf', totalPages, a4.width, a4.height);
+        }
+      } else if (mode === 'compose-mixed') {
+        // 요청 스펙 반영: mm 판형 + 면지 매수(내지 입력 PDF 는 다운로드하지 않으므로 1p 대표)
+        const MM_TO_PT = 2.834645669;
+        const coverPt = {
+          width: (job.data.composeCoverWidthMm ?? 210) * MM_TO_PT,
+          height: (job.data.composeCoverHeightMm ?? 297) * MM_TO_PT,
+        };
+        const contentPt = {
+          width: (job.data.composeContentWidthMm ?? 210) * MM_TO_PT,
+          height: (job.data.composeContentHeightMm ?? 297) * MM_TO_PT,
+        };
+        const frontCount = (job.data.composeFrontEndpaperUrls ?? []).length;
+        const backCount = (job.data.composeBackEndpaperUrls ?? []).length;
+        const contentPages = frontCount + 1 + backCount; // [앞면지 N, 내지 대표 1, 뒷면지 K]
+        const outputMode = job.data.composeOutputMode || 'merged';
+        const outputFiles: OutputFile[] = [];
+
+        if (outputMode === 'separate') {
+          const coverUrl = await writeDummy('cover.pdf', 1, coverPt.width, coverPt.height);
+          outputFiles.push({ type: 'cover', url: coverUrl, pageCount: 1 } as any);
+          const contentUrl = await writeDummy('content.pdf', contentPages, contentPt.width, contentPt.height);
+          outputFiles.push({ type: 'content', url: contentUrl, pageCount: contentPages } as any);
+          result = {
+            success: true,
+            outputFileUrl: contentUrl,
+            totalPages: 1 + contentPages,
+            isTest: true,
+          };
+        } else if (outputMode === 'content-only') {
+          const contentUrl = await writeDummy('content.pdf', contentPages, contentPt.width, contentPt.height);
+          outputFiles.push({ type: 'content', url: contentUrl, pageCount: contentPages } as any);
+          result = {
+            success: true,
+            outputFileUrl: contentUrl,
+            totalPages: contentPages,
+            isTest: true,
+          };
+        } else if (outputMode === 'single') {
+          const pagesUrl = await writeDummy('pages.pdf', 1, contentPt.width, contentPt.height);
+          outputFiles.push({ type: 'pages' as any, url: pagesUrl, pageCount: 1 } as any);
+          result = { success: true, outputFileUrl: pagesUrl, totalPages: 1, isTest: true };
+        } else {
+          const mergedUrl = await writeDummy('merged.pdf', 1 + contentPages, contentPt.width, contentPt.height);
+          result = {
+            success: true,
+            outputFileUrl: mergedUrl,
+            totalPages: 1 + contentPages,
+            isTest: true,
+          };
+        }
+
+        // 실경로(compose-mixed COMPLETED)와 동일한 result 확장 필드 유지
+        result = {
+          ...result,
+          capability: 'compose-mixed',
+          outputMode,
+          outputFiles,
+        } as any;
+      } else {
+        // classic merge(+ 방어 폴백): 표지 1p + 내지 1p 최소 구성
+        const outputFormat = job.data.outputFormat || 'merged';
+        const totalPages = 2;
+        const mergedUrl = await writeDummy('merged.pdf', totalPages, a4.width, a4.height);
+        result = { success: true, outputFileUrl: mergedUrl, totalPages, isTest: true };
+
+        if (outputFormat === 'separate') {
+          const coverUrl = await writeDummy('cover.pdf', 1, a4.width, a4.height);
+          const contentUrl = await writeDummy('content.pdf', 1, a4.width, a4.height);
+          result.outputFiles = [
+            { type: 'cover', url: coverUrl },
+            { type: 'content', url: contentUrl },
+          ];
+        }
+      }
+
+      await this.updateJobStatus(jobId, {
+        status: 'COMPLETED',
+        outputFileUrl: result.outputFileUrl || undefined,
+        outputFiles: result.outputFiles,
+        result,
+        queueJobId,
+      });
+
+      this.logger.log(
+        `[test-env] synthesis job ${jobId} 더미 산출 완료: ${result.totalPages} pages, outputFileUrl=${result.outputFileUrl || '(none)'}`,
+      );
+      return result;
+    } catch (error: any) {
+      this.logger.error(
+        `[test-env] synthesis job ${jobId} 더미 산출 실패: ${error.message}`,
+        error.stack,
+      );
+      captureJobException(error, {
+        jobId,
+        jobType: 'synthesize',
+        queueName: 'pdf-synthesis',
+      });
+      await this.updateJobStatus(jobId, {
+        status: 'FAILED',
+        errorMessage: error.message,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * "TEST" 워터마크 더미 PDF 생성 (pdf-lib, 표준폰트 — 외부 리소스 0).
+   * 각 페이지: 대형 회색 TEST + 하단 식별 문구(jobId·페이지 번호).
+   */
+  private async buildTestWatermarkPdf(
+    jobId: string,
+    pageCount: number,
+    widthPt: number,
+    heightPt: number,
+  ): Promise<Uint8Array> {
+    const doc = await PDFDocument.create();
+    const font = await doc.embedFont(StandardFonts.HelveticaBold);
+    const footerFont = await doc.embedFont(StandardFonts.Helvetica);
+    const n = Math.max(
+      1,
+      Math.min(Math.floor(pageCount), SynthesisProcessor.TEST_MAX_PAGES),
+    );
+    const gray = rgb(0.82, 0.82, 0.82);
+    const darkGray = rgb(0.45, 0.45, 0.45);
+
+    for (let i = 0; i < n; i++) {
+      const page = doc.addPage([widthPt, heightPt]);
+      const size = Math.min(widthPt, heightPt) / 3;
+      const textWidth = font.widthOfTextAtSize('TEST', size);
+      page.drawText('TEST', {
+        x: (widthPt - textWidth) / 2,
+        y: (heightPt - size * 0.7) / 2,
+        size,
+        font,
+        color: gray,
+      });
+      const footer = `Storige test-env dummy output — not for production (job ${jobId}, page ${i + 1}/${n})`;
+      const footerSize = 8;
+      const footerWidth = footerFont.widthOfTextAtSize(footer, footerSize);
+      page.drawText(footer, {
+        x: Math.max(8, (widthPt - footerWidth) / 2),
+        y: 12,
+        size: footerSize,
+        font: footerFont,
+        color: darkGray,
+      });
+    }
+    return doc.save();
   }
 
   /**

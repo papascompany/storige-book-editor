@@ -33,6 +33,13 @@ import { PartnerApiException } from '../../partner-api/http/partner-api.exceptio
 jest.mock('axios');
 const mockedAxios = axios as jest.Mocked<typeof axios>;
 
+// SSRF 2선 가드(발신 직전 isRemoteUrlPublic → dns/promises.lookup)의 실 네트워크 제거.
+// 기본은 공개 IP 로 해석(정상 발송 경로 무영향), 개별 케이스에서 내부 IP 로 재지정.
+jest.mock('dns/promises', () => ({
+  lookup: jest.fn().mockResolvedValue([{ address: '203.0.113.10', family: 4 }]),
+}));
+const mockedDnsLookup = jest.requireMock('dns/promises').lookup as jest.Mock;
+
 const ENC_KEY = Buffer.alloc(32, 7); // 테스트 전용 고정 키
 
 // ── 인메모리 repo 스텁 (where 부분일치 필터 — 테넌트 격리 검증에 충분) ──
@@ -260,6 +267,26 @@ describe('재시도 1/5/30분 + 3회 소진 EXHAUSTED', () => {
     expect(
       deliveryRepo.rows.find((r) => r.id === delivery.id)!.attempts,
     ).toBe(1);
+  });
+
+  it('SSRF 2선 가드 — 발신 대상이 내부 IP 로 해석되면 axios 미호출·발송 차단', async () => {
+    const { deliveryService, configRepo } = makeServices();
+    const config = await seedConfig(configRepo);
+    mockedAxios.post.mockResolvedValue({ status: 200, data: 'ok' });
+    // partner.bookmoa.com 이 리바인딩으로 메타데이터 IP 로 해석되는 상황
+    mockedDnsLookup.mockResolvedValueOnce([
+      { address: '169.254.169.254', family: 4 },
+    ]);
+
+    const delivery = await deliveryService.dispatch(
+      config,
+      'synthesis.completed',
+      { event: 'synthesis.completed', jobId: 'j1', timestamp: 'ts' },
+      false,
+    );
+
+    expect(mockedAxios.post).not.toHaveBeenCalled();
+    expect(delivery.status).not.toBe('DELIVERED');
   });
 
   it('EXHAUSTED → 수동 retry → PENDING 재진입(성공 시 DELIVERED), 그 외 상태는 409', async () => {

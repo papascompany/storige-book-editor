@@ -8,6 +8,7 @@ import { randomUUID } from 'crypto';
 import { ErrV1 } from '@storige/types';
 import { WebhookConfig } from '../entities/webhook-config.entity';
 import { WebhookDelivery } from '../entities/webhook-delivery.entity';
+import { isRemoteUrlPublic } from '../../common/helpers/ssrf.helper';
 // type-only import — webhook.service ↔ v2 서비스 간 런타임 순환 참조 방지
 // (webhook.service 가 v2 서비스를 value import 하므로 역방향은 타입만)
 import type { WebhookPayload } from '../webhook.service';
@@ -359,6 +360,20 @@ export class WebhookDeliveryService {
         t,
       ),
     };
+
+    // SSRF 2선 방어(정본): 발신 직전 실 IP 해석 후 사설/링크로컬/메타데이터 대역 차단.
+    // config.url 은 v1 파트너 API(파트너키 인증)로 등록되나, 등록 시점 리터럴 검사만으로는
+    // DNS 이름→내부 IP 리바인딩·IPv4-mapped 를 못 막으므로 발신 시점에 재해석한다.
+    // (webhook.service 레거시 경로와 동일 유틸 — 방어선 일원화)
+    if (!(await isRemoteUrlPublic(config.url))) {
+      delivery.lastResponse = this.snippet(
+        '발신 대상이 사설/내부 대역으로 해석됨 — SSRF 차단',
+      );
+      this.logger.error(
+        `[v2] delivery ${delivery.uid} SSRF 차단 — 발신 대상 비공개 대역 site=${delivery.siteId}`,
+      );
+      return false;
+    }
 
     try {
       this.logger.log(
