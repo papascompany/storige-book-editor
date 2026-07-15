@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { Observable, map } from 'rxjs';
 import { PartnerV1SuccessEnvelope } from '@storige/types';
+import { PaginatedResult } from './pagination';
 
 /**
  * v1 성공 봉투 인터셉터 (설계서 §3.1) — 필드 4종 고정
@@ -22,6 +23,14 @@ export class PartnerEnvelopeInterceptor implements NestInterceptor {
   ): Observable<PartnerV1SuccessEnvelope<unknown>> {
     return next.handle().pipe(
       map((result: unknown): PartnerV1SuccessEnvelope<unknown> => {
+        if (result instanceof PaginatedResult) {
+          return {
+            success: true,
+            message: 'Success',
+            data: result.items,
+            pagination: result.pagination,
+          };
+        }
         return {
           success: true,
           message: 'Success',

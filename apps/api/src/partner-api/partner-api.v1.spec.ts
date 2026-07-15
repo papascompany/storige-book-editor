@@ -9,7 +9,15 @@
  * DB 는 사용하지 않는다 — SitesService·감사 repo 를 스텁으로 대체
  * (대상 로직 자체는 실물: 가드/필터/인터셉터/봉투 직렬화 전부 실제 코드 경로).
  */
-import { Body, Get, HttpCode, INestApplication, Post, ValidationPipe } from '@nestjs/common';
+import {
+  Body,
+  Get,
+  HttpCode,
+  INestApplication,
+  Post,
+  Query,
+  ValidationPipe,
+} from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { getRepositoryToken } from '@nestjs/typeorm';
@@ -30,6 +38,7 @@ import { PartnerIdempotencyService } from './idempotency/partner-idempotency.ser
 import { PartnerIdempotencyInterceptor } from './idempotency/partner-idempotency.interceptor';
 import { PARTNER_API_CONFIG } from './partner-api.constants';
 import { PartnerApiException } from './http/partner-api.exceptions';
+import { PaginatedResult, normalizePaginationQuery } from './http/pagination';
 import { PartnerV1Controller } from './partner-v1.decorator';
 import { PartnerPingController } from './ping.controller';
 
@@ -64,6 +73,16 @@ class TestThingsController {
   @Get('items')
   items(): Array<{ id: number }> {
     return [{ id: 1 }, { id: 2 }];
+  }
+
+  /** 총 45건 고정 목록 — 페이지네이션 규약(§5.1) 통합 검증용 */
+  @Get('paged')
+  paged(@Query() query: Record<string, unknown>): PaginatedResult<{ id: number }> {
+    const page = normalizePaginationQuery(query);
+    const total = 45;
+    const count = Math.max(0, Math.min(page.limit, total - page.offset));
+    const items = Array.from({ length: count }, (_, i) => ({ id: page.offset + i }));
+    return PaginatedResult.of(items, total, page);
   }
 }
 
@@ -168,6 +187,40 @@ describe('Partner API v1 코어 (봉투·인증·감사)', () => {
       pagination: null,
     });
   });
+
+  // ── 페이지네이션 (§5.1) ──
+
+  it('목록 라우트 — pagination 봉투 {total,limit,offset,hasNext}', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/api/v1/test-things/paged')
+      .set('X-API-Key', KEY_A)
+      .expect(200);
+
+    expect(res.body.data).toHaveLength(20); // 기본 limit 20
+    expect(res.body.pagination).toEqual({ total: 45, limit: 20, offset: 0, hasNext: true });
+  });
+
+  it('limit=101 — 100으로 캡, offset 반영·hasNext 산식', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/api/v1/test-things/paged?limit=101&offset=40')
+      .set('X-API-Key', KEY_A)
+      .expect(200);
+
+    expect(res.body.data).toHaveLength(5); // 45-40
+    expect(res.body.pagination).toEqual({ total: 45, limit: 100, offset: 40, hasNext: false });
+  });
+
+  it.each(['limit=0', 'limit=-5', 'offset=-1'])(
+    '%s — 400 ERR_VALIDATION_FAILED 봉투',
+    async (qs) => {
+      const res = await request(app.getHttpServer())
+        .get(`/api/v1/test-things/paged?${qs}`)
+        .set('X-API-Key', KEY_A)
+        .expect(400);
+      expect(res.body.errorCode).toBe(ErrV1.ERR_VALIDATION_FAILED);
+      expect(res.body.fieldErrors).toBeTruthy();
+    },
+  );
 
   // ── 인증 (AD-5, §7.1) ──
 
