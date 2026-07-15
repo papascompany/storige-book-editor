@@ -5,10 +5,10 @@ import {
   NestInterceptor,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { HTTP_CODE_METADATA } from '@nestjs/common/constants';
 import { Observable, tap } from 'rxjs';
 import { PARTNER_ENV_LIVE } from '../partner-api.constants';
 import { PartnerAuditService } from './partner-audit.service';
+import { resolveSuccessStatus } from '../http/success-status';
 import {
   PartnerRequest,
   ensureRequestId,
@@ -43,26 +43,12 @@ export class PartnerAuditInterceptor implements NestInterceptor {
           env: req.user?.siteId ? PARTNER_ENV_LIVE : null,
           method: req.method,
           path: requestPath(req),
-          statusCode: this.resolveSuccessStatus(context),
+          statusCode: resolveSuccessStatus(this.reflector, context),
           errorCode: null,
           latencyMs: Date.now() - startedAt,
           ip: req.ip ?? null,
         });
       }),
     );
-  }
-
-  /**
-   * 성공 status 산출 — 인터셉터 시점의 res.statusCode 는 Nest 가 아직
-   * 라우트 기본값(POST=201)을 반영하기 전이라 메타데이터로 계산한다.
-   */
-  private resolveSuccessStatus(context: ExecutionContext): number {
-    const explicit = this.reflector.get<number | undefined>(
-      HTTP_CODE_METADATA,
-      context.getHandler(),
-    );
-    if (typeof explicit === 'number') return explicit;
-    const method = context.switchToHttp().getRequest<PartnerRequest>().method;
-    return method === 'POST' ? 201 : 200;
   }
 }
