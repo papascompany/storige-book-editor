@@ -20,7 +20,9 @@ export class CreateSiteDto {
   @ApiPropertyOptional({ example: 'https://www.bookmoa.co.kr/storige/proc/synthesis_callback.php' })
   @IsOptional()
   @IsUrl({ require_tld: false })
-  uploadCallbackUrl?: string;
+  // S2-4: 타입만 | null 확장 — @IsOptional 은 원래 null 도 스킵하므로 런타임 불변.
+  // (포털 셀프 PATCH 가 콜백 해제(null) 를 타입 안전하게 전달하기 위함)
+  uploadCallbackUrl?: string | null;
 
   @ApiPropertyOptional({
     description:
