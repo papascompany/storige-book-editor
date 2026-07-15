@@ -4,6 +4,7 @@ import { BullModule } from '@nestjs/bull';
 import { WorkerJobsController } from './worker-jobs.controller';
 import { WorkerJobsService } from './worker-jobs.service';
 import { WorkerJobsSweeperService } from './worker-jobs-sweeper.service';
+import { TestJobOutputsRetentionService } from './test-job-outputs-retention.service';
 import { WorkerJob } from './entities/worker-job.entity';
 import { FilesModule } from '../files/files.module';
 import { WebhookModule } from '../webhook/webhook.module';
@@ -31,7 +32,12 @@ import { EditSessionEntity } from '../edit-sessions/entities/edit-session.entity
   ],
   controllers: [WorkerJobsController],
   // WK-4 — 고아 잡 스위퍼 cron (ScheduleModule.forRoot() 는 app.module 기존재)
-  providers: [WorkerJobsService, WorkerJobsSweeperService],
+  // S2-5 — test env 잡 산출물 24h retention cron (매시 37분, 대상=options.isTest 잡 한정)
+  providers: [
+    WorkerJobsService,
+    WorkerJobsSweeperService,
+    TestJobOutputsRetentionService,
+  ],
   exports: [WorkerJobsService],
 })
 export class WorkerJobsModule {}
