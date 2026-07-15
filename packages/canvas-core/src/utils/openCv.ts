@@ -25,10 +25,16 @@ export async function getCv(): Promise<any> {
   if (cv) return cv
   if (cvLoadingPromise) return cvLoadingPromise
 
-  cvLoadingPromise = import('@techstark/opencv-js').then((module) => {
-    cv = (module as any).default || module
-    return cv
-  })
+  cvLoadingPromise = import('@techstark/opencv-js')
+    .then((module) => {
+      cv = (module as any).default || module
+      return cv
+    })
+    .catch((e) => {
+      // D-6b① — 실패 시 캐시 리셋: 네트워크 일시 장애 후 다음 호출에서 재시도 가능
+      cvLoadingPromise = null
+      throw e
+    })
   return cvLoadingPromise
 }
 
@@ -42,10 +48,16 @@ export async function getBackgroundRemoval(): Promise<{
   if (bgRemoval) return bgRemoval
   if (bgRemovalPromise) return bgRemovalPromise
 
-  bgRemovalPromise = import('@imgly/background-removal').then((mod) => {
-    bgRemoval = { preload: (mod as any).preload, removeBackground: (mod as any).removeBackground }
-    return bgRemoval
-  })
+  bgRemovalPromise = import('@imgly/background-removal')
+    .then((mod) => {
+      bgRemoval = { preload: (mod as any).preload, removeBackground: (mod as any).removeBackground }
+      return bgRemoval
+    })
+    .catch((e) => {
+      // D-6b① — 실패 시 캐시 리셋: 다음 호출에서 재시도 가능
+      bgRemovalPromise = null
+      throw e
+    })
   return bgRemovalPromise
 }
 
