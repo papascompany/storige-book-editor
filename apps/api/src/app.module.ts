@@ -23,6 +23,7 @@ import { SettingsModule } from './settings/settings.module';
 import { EditSessionsModule } from './edit-sessions/edit-sessions.module';
 import { PartnerApiModule } from './partner-api/partner-api.module';
 import { BookSpecsModule } from './book-specs/book-specs.module';
+import { PortalModule } from './portal/portal.module';
 import { PayloadTooLargeFilter } from './common/filters/payload-too-large.filter';
 
 // Bookmoa 모듈 조건부 로드 (BOOKMOA_DB_PASSWORD가 설정된 경우에만)
@@ -166,6 +167,9 @@ if (process.env.BOOKMOA_DB_PASSWORD) {
 
     // Partner API v1 — BookSpecs 판형 마스터 (Stage 1-B, 읽기 전용)
     BookSpecsModule,
+
+    // 파트너 포털 v0 — SITE_ADMIN 셀프서브 (/api/portal/* — S2-4, D-7a 보수 스코프)
+    PortalModule,
 
     // Bookmoa integration (conditionally loaded)
     ...conditionalModules,

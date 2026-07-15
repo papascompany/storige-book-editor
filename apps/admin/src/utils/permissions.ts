@@ -16,3 +16,13 @@
 export function isGlobalAdmin(role?: string): boolean {
   return role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'MANAGER';
 }
+
+/**
+ * S2-4 파트너 포털 v0 — SITE_ADMIN 배정이 하나라도 있는지 (내 사이트 메뉴 게이팅).
+ * 인자는 GET /auth/me 의 siteRoles 클레임(UserRole 은 string enum — 구조적 수용).
+ */
+export function hasSiteAdminAssignment(
+  siteRoles?: Array<{ role: string }>,
+): boolean {
+  return (siteRoles ?? []).some((r) => r.role === 'SITE_ADMIN');
+}
