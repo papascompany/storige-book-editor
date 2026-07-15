@@ -46,6 +46,7 @@ import { core, ServicePlugin } from '@storige/canvas-core'
 import type { PhotobookPricing, TemplateSetCoverMeta } from '@storige/types'
 import type { ApiError } from './api/client'
 import ToolBar from './components/editor/ToolBar'
+import ObjectActionBar from './components/editor/ObjectActionBar'
 import FeatureSidebar from './components/editor/FeatureSidebar'
 import ControlBar from './components/editor/ControlBar'
 import SidePanel from './components/editor/SidePanel'
@@ -55,6 +56,7 @@ import { SpreadPagePanel } from './components/PagePanel/SpreadPagePanel'
 import { useResolvedPageNavPosition } from './hooks/useResolvedPageNavPosition'
 import { WorkspaceModal } from './components/modals'
 import { RestoreBackupBanner } from './components/RestoreBackupBanner'
+import ObjectDeleteConfirm from './components/editor/ObjectDeleteConfirm'
 import { Sentry } from './lib/sentry'
 import { applyContentPdfGuides } from './utils/contentPdfGuide'
 import {
@@ -1957,6 +1959,8 @@ function EmbeddedEditor({
             {ready && <ControlBar />}
 
             <main className="flex-1 relative overflow-hidden bg-editor-workspace">
+              {/* 선택 객체 플로팅 액션 바 (E1 §5-3) — 임베드 소형 뷰포트 clamp 는 컴포넌트가 처리 */}
+              {ready && <ObjectActionBar />}
               <div id="canvas-wrapper" className="h-full w-full overflow-hidden relative">
                 <div id="workspace" className="workspace absolute inset-0 flex items-center justify-center">
                   <div className="inside-shadow absolute inset-0 shadow-inner pointer-events-none" />
@@ -2015,6 +2019,12 @@ function EmbeddedEditor({
         onRestore={handleRestoreBackup}
         onDismiss={handleDismissRestore}
       />
+
+      {/* S2 (공유): DEL/Backspace·휴지통·ObjectActionBar 삭제 확인 모달 — App.tsx 준용.
+          embed 는 독립 엔트리(createRoot)라 App 루트의 마운트가 닿지 않아
+          requestDeleteSelection() 이 상태만 세팅하고 소비자가 없었다(임베드 삭제 버튼
+          무동작 — 적대 리뷰 P1). 의존은 useAppStore 뿐이라 embed 에서도 동일 동작. */}
+      <ObjectDeleteConfirm />
     </div>
   )
 }

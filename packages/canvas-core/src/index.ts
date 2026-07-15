@@ -27,6 +27,18 @@ export { default as LockPlugin, type LockLevel, type UserRole, type LockInfo } f
 export { default as SpreadPlugin } from './plugins/SpreadPlugin'
 export { default as PointerShiftGuardPlugin } from './plugins/PointerShiftGuardPlugin'
 export { default as FrameInteractionPlugin } from './plugins/FrameInteractionPlugin'
+// E1 §5-1 — 객체 간 정렬 가이드/스냅 + 회전 각도 스냅
+export { default as SmartGuidesPlugin, type SmartGuidesOptions } from './plugins/SmartGuidesPlugin'
+// E1 §5-2 — 변형 중 실시간 치수/각도/좌표 피드백 (DOM 오버레이)
+export {
+  default as TransformFeedbackPlugin,
+  type TransformFeedbackOptions,
+} from './plugins/TransformFeedbackPlugin'
+// E1 §5-5 — 재단/안전영역 침범 실시간 경고 (경계 강조 + safeZoneViolation 이벤트)
+export {
+  default as SafeZoneWarningPlugin,
+  type SafeZoneWarningOptions,
+} from './plugins/SafeZoneWarningPlugin'
 
 export { PluginBase } from './plugin'
 

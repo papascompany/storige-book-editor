@@ -439,56 +439,12 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
     getPlugin<AlignPlugin>('AlignPlugin')?.setV(type)
   }
 
-  // 분포 (트랙 T) — 3개 이상의 객체를 axis 기준으로 균등 분포 (canvas-core에 없어서 editor에서 구현)
+  // 분포 (트랙 T → E1 §5-4): 로직은 AlignPlugin.distributeH/V 공개 API 로 이관 — 위임만.
+  // 버튼 노출 조건(3개+)은 JSX 그대로, offHistory 쌍·object:modified 발화는 플러그인이 유지.
   const distribute = (axis: 'horizontal' | 'vertical') => {
-    if (!canvas || !activeSelection || activeSelection.length < 3) return
-    canvas.offHistory()
-    try {
-      const objs = [...activeSelection]
-      const bounds = objs.map((o) => o.getBoundingRect(true))
-      if (axis === 'horizontal') {
-        // x축 기준으로 정렬 후 좌우 끝 사이에 균등 분포
-        const indexed = objs.map((o, i) => ({ o, b: bounds[i] }))
-        indexed.sort((a, b) => (a.b.left + a.b.width / 2) - (b.b.left + b.b.width / 2))
-        const first = indexed[0]
-        const last = indexed[indexed.length - 1]
-        const startX = first.b.left + first.b.width / 2
-        const endX = last.b.left + last.b.width / 2
-        const step = (endX - startX) / (indexed.length - 1)
-        indexed.forEach((entry, idx) => {
-          if (idx === 0 || idx === indexed.length - 1) return
-          const newCenterX = startX + step * idx
-          const cy = entry.o.getCenterPoint().y
-          canvas._centerObject(entry.o, new fabric.Point(newCenterX, cy))
-          entry.o.setCoords()
-          entry.o.dirty = true
-        })
-      } else {
-        const indexed = objs.map((o, i) => ({ o, b: bounds[i] }))
-        indexed.sort((a, b) => (a.b.top + a.b.height / 2) - (b.b.top + b.b.height / 2))
-        const first = indexed[0]
-        const last = indexed[indexed.length - 1]
-        const startY = first.b.top + first.b.height / 2
-        const endY = last.b.top + last.b.height / 2
-        const step = (endY - startY) / (indexed.length - 1)
-        indexed.forEach((entry, idx) => {
-          if (idx === 0 || idx === indexed.length - 1) return
-          const newCenterY = startY + step * idx
-          const cx = entry.o.getCenterPoint().x
-          canvas._centerObject(entry.o, new fabric.Point(cx, newCenterY))
-          entry.o.setCoords()
-          entry.o.dirty = true
-        })
-      }
-      canvas.discardActiveObject()
-      const newSel = new fabric.ActiveSelection(objs, { canvas })
-      canvas.setActiveObject(newSel)
-      newSel.setCoords()
-      canvas.requestRenderAll()
-      canvas.fire('object:modified', { target: newSel })
-    } finally {
-      canvas.onHistory()
-    }
+    const align = getPlugin<AlignPlugin>('AlignPlugin')
+    if (axis === 'horizontal') align?.distributeH()
+    else align?.distributeV()
   }
 
   // L4-④ (CTO 결정): '내용편집 잠금' = 내용+스타일 모두 잠금. 비-editMode 에서

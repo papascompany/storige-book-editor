@@ -190,6 +190,74 @@ class AlignPlugin extends PluginBase {
     this._canvas.onHistory()
   }
 
+  /**
+   * 가로 균등 분배 (E1 §5-4 — ControlBar 트랙 T 구현을 공개 API 로 이관, 동작 동일).
+   * 3개 이상 선택 시 x 축 center 기준 정렬 후 첫/끝 고정, 중간 객체를 center-to-center
+   * 간격 균등으로 재배치한다.
+   */
+  distributeH() {
+    this._distribute('horizontal')
+  }
+
+  /** 세로 균등 분배 — distributeH 와 동일 규약 (y 축). */
+  distributeV() {
+    this._distribute('vertical')
+  }
+
+  /**
+   * 균등 분배 공통 구현 — ControlBar.tsx 의 기존 distribute 로직 이동(offHistory/onHistory
+   * 쌍·object:modified 발화 시맨틱 유지). fabric 프라이빗 _centerObject 의존은
+   * setPositionByOrigin(center) 공개 API 로 정리(중심 기준 배치 동일).
+   */
+  private _distribute(axis: 'horizontal' | 'vertical') {
+    const objects = this._canvas.getActiveObjects()
+    if (!objects || objects.length < 3) return
+
+    this._canvas.offHistory()
+    try {
+      const objs = [...objects]
+      const bounds = objs.map((o) => o.getBoundingRect(true))
+      const horizontal = axis === 'horizontal'
+
+      // 축 기준 center 로 정렬 후 첫/끝 사이 균등 분배
+      const indexed = objs.map((o, i) => ({ o, b: bounds[i] }))
+      indexed.sort((a, b) =>
+        horizontal
+          ? a.b.left + a.b.width / 2 - (b.b.left + b.b.width / 2)
+          : a.b.top + a.b.height / 2 - (b.b.top + b.b.height / 2)
+      )
+      const first = indexed[0]
+      const last = indexed[indexed.length - 1]
+      const start = horizontal
+        ? first.b.left + first.b.width / 2
+        : first.b.top + first.b.height / 2
+      const end = horizontal ? last.b.left + last.b.width / 2 : last.b.top + last.b.height / 2
+      const step = (end - start) / (indexed.length - 1)
+
+      indexed.forEach((entry, idx) => {
+        if (idx === 0 || idx === indexed.length - 1) return
+        const newCenter = start + step * idx
+        const centerPoint = entry.o.getCenterPoint()
+        const point = horizontal
+          ? new fabric.Point(newCenter, centerPoint.y)
+          : new fabric.Point(centerPoint.x, newCenter)
+        entry.o.setPositionByOrigin(point, 'center', 'center')
+        entry.o.setCoords()
+        entry.o.dirty = true
+      })
+
+      // ActiveSelection 재생성으로 바운딩 박스 갱신 (setV/setH 다중 정렬과 동일 패턴)
+      this._canvas.discardActiveObject()
+      const newSel = new fabric.ActiveSelection(objs, { canvas: this._canvas })
+      this._canvas.setActiveObject(newSel)
+      newSel.setCoords()
+      this._canvas.requestRenderAll()
+      this._canvas.fire('object:modified', { target: newSel })
+    } finally {
+      this._canvas.onHistory()
+    }
+  }
+
   dispose() {}
 }
 

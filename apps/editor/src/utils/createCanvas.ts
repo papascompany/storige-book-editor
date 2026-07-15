@@ -17,10 +17,13 @@ import Editor, {
   PointerShiftGuardPlugin,
   PreviewPlugin,
   RulerPlugin,
+  SafeZoneWarningPlugin,
   ServicePlugin,
   SmartCodePlugin,
+  SmartGuidesPlugin,
   SpreadPlugin,
   TemplatePlugin,
+  TransformFeedbackPlugin,
   WorkspacePlugin,
   createFabricCanvas,
   configureFabricDefaults,
@@ -30,6 +33,12 @@ import Editor, {
 const ENABLE_IMAGE_PROCESSING = import.meta.env.VITE_ENABLE_IMAGE_PROCESSING !== 'false'
 // Feature flag for ruler
 const ENABLE_RULER = import.meta.env.VITE_ENABLE_RULER !== 'false'
+// Feature flag for smart guides (객체 간 정렬 가이드/스냅 + 회전 각도 스냅, E1 §5-1) — 기본 on
+const ENABLE_SMART_GUIDES = import.meta.env.VITE_ENABLE_SMART_GUIDES !== 'false'
+// Feature flag for transform feedback (변형 중 실시간 치수/각도/좌표, E1 §5-2) — 기본 on
+const ENABLE_TRANSFORM_FEEDBACK = import.meta.env.VITE_ENABLE_TRANSFORM_FEEDBACK !== 'false'
+// Feature flag for safe zone warning (재단/안전영역 침범 실시간 경고, E1 §5-5) — 기본 on
+const ENABLE_SAFEZONE_WARNING = import.meta.env.VITE_ENABLE_SAFEZONE_WARNING !== 'false'
 import { useAppStore } from '@/stores/useAppStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { innerSpecToPlaceholderSpec } from '@/utils/photobookSpread'
@@ -258,6 +267,17 @@ function initPlugins(
       })
     : null
 
+  // SmartGuidesPlugin은 VITE_ENABLE_SMART_GUIDES 환경변수로 제어 (기본 on)
+  // ⚠️ 생성 순서 계약 (P0, 2026-07-15): fabric 이벤트 핸들러는 **등록(=생성자 바인딩) 순서대로**
+  //   발화한다. SmartGuides 는 생성자에서 object:moving/rotating 을 바인딩하므로, 같은 이벤트를
+  //   생성자에서 바인딩하는 FrameInteractionPlugin(아래) 보다 **먼저 생성**되어야
+  //   "스냅 → 사진틀(fillImage/clipPath) 동기화" 순서가 보장된다. 뒤에 생성하면 프레임 동기화가
+  //   스냅 전 raw 좌표/각도로 실행되어 사진·마스크가 어긋난 채 저장된다(이동 최대 8/zoom px·회전 3°,
+  //   FrameInteractionPlugin._onTransformEnd 는 재동기화하지 않음).
+  //   RulerPlugin(위)과의 중앙 스냅 상호 양보(8px)는 SmartGuides 가 축별 거리 판정으로 스스로
+  //   양보하므로 등록 순서와 무관하게 동작한다.
+  const smartGuides = ENABLE_SMART_GUIDES ? new SmartGuidesPlugin(canvas, editor, {}) : null
+
   // renderType은 settings 스토어에서 계산된 값이나, 현재는 기본값 사용
   // TODO: useSettingsStore에 renderType computed 구현 필요
   const renderType = settingsStore.renderType || 'bounded'
@@ -294,6 +314,7 @@ function initPlugins(
   const lock = new LockPlugin(canvas, editor, mergedOptions)
   // 사진틀(프레임) 인터랙션 — 프레임=선택단위 그룹 이동/스케일 동기화 + 더블클릭 사진 조정 모드.
   // 캔버스 레벨 리스너라 EditorView/embed 양쪽에 한 번 등록으로 적용되고 loadFromJSON 복원 후에도 유지된다.
+  // ⚠️ 반드시 SmartGuidesPlugin(위) **이후** 생성 — 생성 순서 계약 참조(스냅이 프레임 동기화보다 먼저 발화).
   const frameInteraction = new FrameInteractionPlugin(canvas, editor, mergedOptions)
   const group = new GroupPlugin(canvas, editor)
   const history = new HistoryPlugin(canvas, editor)
@@ -328,6 +349,17 @@ function initPlugins(
     apiClient.getBaseUrl()
   )
 
+  // TransformFeedbackPlugin은 VITE_ENABLE_TRANSFORM_FEEDBACK 환경변수로 제어 (기본 on)
+  // — DOM 오버레이(wrapperEl 내)라 직렬화/PDF/히스토리 원천 무관
+  const transformFeedback = ENABLE_TRANSFORM_FEEDBACK
+    ? new TransformFeedbackPlugin(canvas, editor, {})
+    : null
+  // SafeZoneWarningPlugin은 VITE_ENABLE_SAFEZONE_WARNING 환경변수로 제어 (기본 on)
+  // — WorkspacePlugin cut/safe border 좌표 재사용, 토스트는 editor 쪽 safeZoneViolation 구독
+  const safeZoneWarning = ENABLE_SAFEZONE_WARNING
+    ? new SafeZoneWarningPlugin(canvas, editor, {})
+    : null
+
   const filter = new FilterPlugin(canvas, editor)
   const effect = new EffectPlugin(canvas, editor)
   const smartCode = new SmartCodePlugin(canvas, editor)
@@ -349,10 +381,22 @@ function initPlugins(
   editor.use(object)
   editor.use(lock)
   lock.setUserRole((mergedOptions as any).editMode ? 'admin' : 'user')
+  // SmartGuidesPlugin — editor.use 순서는 이벤트 발화 순서와 무관하다(fabric 바인딩은 각
+  // 플러그인 **생성자**에서 이미 완료). 발화 순서의 권위는 위 "생성 순서 계약" —
+  // ruler(중앙 스냅) → smartGuides(스냅) → frameInteraction(사진틀 동기화) 생성 순.
+  if (smartGuides) {
+    editor.use(smartGuides)
+  }
   editor.use(frameInteraction)
   // RulerPlugin은 VITE_ENABLE_RULER 환경변수로 제어
   if (ruler) {
     editor.use(ruler)
+  }
+  if (transformFeedback) {
+    editor.use(transformFeedback)
+  }
+  if (safeZoneWarning) {
+    editor.use(safeZoneWarning)
   }
   editor.use(controls)
   editor.use(group)

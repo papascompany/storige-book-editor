@@ -601,14 +601,21 @@ fabric.Canvas.prototype._loadHistory = function (
     // 1. 삭제할 객체 처리: 현재 있지만 히스토리에 없는 객체
     const objectsToRemove = []
     Object.keys(currentObjectsMap).forEach((id) => {
-      // 가이드 요소는 삭제하지 않음 - 더 포괄적으로 체크
-      const isGuideElement = id === 'cut-border' || 
-                             id === 'safe-zone-border' || 
+      const currentObj = currentObjectsMap[id]
+      // 가이드 요소는 삭제하지 않음 - 더 포괄적으로 체크.
+      // E1 (2026-07-15): 스냅샷(_historyNext)은 excludeFromExport/guideline 객체를
+      // 애초에 담지 않으므로, id 가 있어도 이 부류는 "히스토리에 없음 = 삭제 대상"이
+      // 아니다. 기존에는 id 3종 하드코딩뿐이라 center-guideline-h/v(RulerPlugin)가
+      // 첫 undo 에서 삭제되는 버그가 있었다 — extensionType/excludeFromExport 로 보강.
+      const isGuideElement = id === 'cut-border' ||
+                             id === 'safe-zone-border' ||
                              id === 'cutline-template' ||
-                             id.includes('cutline-template')
-      
+                             id.includes('cutline-template') ||
+                             currentObj.extensionType === 'guideline' ||
+                             currentObj.excludeFromExport === true
+
       if (!historyObjectsMap[id] && !isGuideElement) {
-        objectsToRemove.push(currentObjectsMap[id])
+        objectsToRemove.push(currentObj)
       }
     })
 

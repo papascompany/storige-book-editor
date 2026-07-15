@@ -15,12 +15,13 @@ import EditorHeader from '@/components/editor/EditorHeader'
 import { EditorWorkflowControls } from '@/components/editor/EditorWorkflowControls'
 import { CoverFocusBar } from '@/components/editor/CoverFocusBar'
 import EmptyCanvasHint from '@/components/editor/EmptyCanvasHint'
+import ObjectActionBar from '@/components/editor/ObjectActionBar'
 import { useImageStore } from '@/stores/useImageStore'
 import { showToast } from '@/stores/useToastStore'
 import { SpreadPagePanel } from '@/components/PagePanel/SpreadPagePanel'
 import { BookNavigation } from '@/components/PageNavigation/BookNavigation'
 import { useResolvedPageNavPosition } from '@/hooks/useResolvedPageNavPosition'
-import { useSpreadAutoAnchor, useSpreadOutOfBoundsToast, useObjectOutOfTrimToast } from '@/hooks/useCoverRegion'
+import { useSpreadAutoAnchor, useSpreadOutOfBoundsToast, useObjectOutOfTrimToast, useSafeZoneWarningToast } from '@/hooks/useCoverRegion'
 import { useCanvasThemeSync } from '@/hooks/useCanvasThemeSync'
 import { useCanvasLocalBackup } from '@/hooks/useCanvasLocalBackup'
 import { useCanvasContainerSizeSync } from '@/hooks/useCanvasContainerSizeSync'
@@ -545,6 +546,8 @@ export default function EditorView() {
   useSpreadOutOfBoundsToast(ready)
   // P2: 재단선(트림박스) 이탈 객체 경고 toast (화면 가이드 — 일반/스프레드 공통)
   useObjectOutOfTrimToast(ready)
+  // E1 §5-5: 재단/안전영역 침범 실시간 경고 toast (SafeZoneWarningPlugin 이벤트 브리지)
+  useSafeZoneWarningToast(ready)
   // 캔버스 측 다크 모드 동기화 — 룰러 + 객체 선택 핸들 (§8.3 다크 모드 Phase 3)
   useCanvasThemeSync(ready)
   // 5초마다 캔버스를 localStorage 에 백업 — iOS Safari WebContent 크래시 후 reload 시
@@ -767,6 +770,9 @@ export default function EditorView() {
 
               {/* 빈 캔버스 안내 (사용자 객체 없을 때) */}
               <EmptyCanvasHint />
+
+              {/* 선택 객체 플로팅 액션 바 (E1 §5-3) — 플래그 게이팅은 컴포넌트 내부 */}
+              {ready && <ObjectActionBar />}
 
               {/* Canvas Container */}
               <div
