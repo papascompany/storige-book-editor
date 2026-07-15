@@ -60,8 +60,11 @@ class CopyPlugin extends PluginBase {
    * (비-editMode)이 복제할 수 없다 — 보호 플래그가 사본에 복사돼 삭제 불가한 유령
    * 사본이 쌓이는 것 방지. ObjectPlugin.del 의 삭제 가드와 동일 규약(_options.editMode).
    * 핫키(ctrl+d)·우클릭 컨텍스트 메뉴·SidePanel 버튼이 전부 clone() 을 거치므로 일괄 방어.
+   *
+   * public (E1 §5-3): ObjectActionBar 가 복제 버튼 노출 게이팅에 동일 판정을 재사용한다
+   * — 규칙 이원화(드리프트) 방지. 판정 로직 불변.
    */
-  private isCloneProtected(obj: fabric.Object): boolean {
+  isCloneProtected(obj: fabric.Object): boolean {
     if (this._options?.editMode) return false
     const o = obj as any
     return (

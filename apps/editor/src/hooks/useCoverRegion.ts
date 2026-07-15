@@ -180,3 +180,36 @@ export function useObjectOutOfTrimToast(ready: boolean): void {
     }
   }, [ready, editor])
 }
+
+/**
+ * E1 §5-5: 재단/안전영역 침범 실시간 경고 toast (화면 가이드).
+ *
+ * `SafeZoneWarningPlugin`(canvas-core) 이 object:moving/scaling 중 침범 **진입 전이**
+ * 시 1회 발행하는 `safeZoneViolation` 이벤트를 구독해 안내 toast 를 띄운다
+ * (경계 강조 오버레이는 플러그인이 캔버스에서 직접 처리 — 여기는 문구만).
+ *
+ * 플러그인이 전이 기반 디바운스를 하지만, 드래그 반복으로 전이가 잦을 수 있어
+ * useObjectOutOfTrimToast 와 동일한 쿨다운을 한 겹 더 둔다.
+ */
+export function useSafeZoneWarningToast(ready: boolean): void {
+  const editor = useAppStore((s) => s.editor)
+
+  useEffect(() => {
+    if (!ready || !editor) return
+
+    let lastShownAt = 0
+    const COOLDOWN_MS = 2000
+
+    const handler = () => {
+      const now = Date.now()
+      if (now - lastShownAt < COOLDOWN_MS) return
+      lastShownAt = now
+      showToast('중요한 내용은 재단 안전선 안쪽에 배치해 주세요.', 'warning', 3500)
+    }
+
+    editor.on('safeZoneViolation', handler)
+    return () => {
+      editor.off?.('safeZoneViolation', handler)
+    }
+  }, [ready, editor])
+}
