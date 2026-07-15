@@ -1,10 +1,36 @@
-import { Body, Get, Param, Post, Query } from '@nestjs/common';
-import { ApiOperation, ApiResponse, ApiSecurity, ApiTags } from '@nestjs/swagger';
+import {
+  Body,
+  Get,
+  Param,
+  Post,
+  Put,
+  Query,
+  UploadedFile,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import {
+  ApiConsumes,
+  ApiOperation,
+  ApiResponse,
+  ApiSecurity,
+  ApiTags,
+} from '@nestjs/swagger';
 import { BooksService } from './books.service';
 import { PartnerV1Controller } from '../partner-api/partner-v1.decorator';
 import { PaginatedResult } from '../partner-api/http/pagination';
 import { CurrentSite, CurrentSitePayload } from '../auth/decorators/current-site.decorator';
+import { BOOK_ASSET_DIRECT_UPLOAD_MAX_BYTES } from './books.constants';
 import { BookListQueryDto, BookView, CreateBookDto } from './dto/book.dto';
+import { AssetInputDto, BookAssetView } from './dto/book-asset.dto';
+
+/**
+ * 자산 라우트 공용 멀티파트 옵션 — 직접 업로드 ≤100MB. fileFilter 는 두지 않고
+ * (JSON {fileId} 요청도 통과) MIME 검증은 서비스에서 v1 봉투(415)로 수행.
+ */
+const ASSET_UPLOAD = FileInterceptor('file', {
+  limits: { fileSize: BOOK_ASSET_DIRECT_UPLOAD_MAX_BYTES },
+});
 
 /**
  * Partner API v1 — Books(도서 aggregate) 컨트롤러 (Stage 3).
@@ -48,6 +74,101 @@ export class BooksController {
   ): Promise<PaginatedResult<BookView>> {
     const { items, total, limit, offset } = await this.booksService.list(site, query);
     return PaginatedResult.of(items, total, { limit, offset });
+  }
+
+  // ── 자산(W2) ────────────────────────────────────────────────────────
+  // ⚠️ 정적 하위 경로는 @Get(':uid') 보다 앞에 선언(Nest 선언 순서 라우팅).
+  // 각 라우트는 JSON {fileId} 또는 multipart(file) 두 입력을 함께 수용(fileId 우선).
+  // 게이트: 테넌트 404 → FINALIZED 409 → 호환 422 → 기존재 409/404 순(서비스).
+
+  @Post(':uid/pdf-cover')
+  @UseInterceptors(ASSET_UPLOAD)
+  @ApiConsumes('application/json', 'multipart/form-data')
+  @ApiOperation({ summary: '표지 PDF 신규 투입 — 기존재 시 409 ERR_ASSET_ALREADY_EXISTS' })
+  @ApiResponse({ status: 201, description: '{success,message,data} 봉투 — 생성된 자산' })
+  @ApiResponse({ status: 409, description: 'ERR_BOOK_NOT_DRAFT(FINALIZED) / ERR_ASSET_ALREADY_EXISTS / ERR_FILE_NOT_READY' })
+  @ApiResponse({ status: 422, description: 'ERR_ASSET_INCOMPATIBLE — creationType 불일치' })
+  async postPdfCover(
+    @CurrentSite() site: CurrentSitePayload,
+    @Param('uid') uid: string,
+    @Body() dto: AssetInputDto,
+    @UploadedFile() file?: Express.Multer.File,
+  ): Promise<BookAssetView> {
+    return this.booksService.putAsset(site, uid, 'pdf_cover', 'create', {
+      fileId: dto.fileId,
+      file,
+    });
+  }
+
+  @Put(':uid/pdf-cover')
+  @UseInterceptors(ASSET_UPLOAD)
+  @ApiConsumes('application/json', 'multipart/form-data')
+  @ApiOperation({ summary: '표지 PDF 교체 — 미존재 시 404 ERR_ASSET_NOT_FOUND' })
+  @ApiResponse({ status: 200, description: '교체 성공(기존 replaced + 신규 active)' })
+  @ApiResponse({ status: 404, description: 'ERR_NOT_FOUND(도서) / ERR_ASSET_NOT_FOUND(교체 대상 없음)' })
+  async putPdfCover(
+    @CurrentSite() site: CurrentSitePayload,
+    @Param('uid') uid: string,
+    @Body() dto: AssetInputDto,
+    @UploadedFile() file?: Express.Multer.File,
+  ): Promise<BookAssetView> {
+    return this.booksService.putAsset(site, uid, 'pdf_cover', 'replace', {
+      fileId: dto.fileId,
+      file,
+    });
+  }
+
+  @Post(':uid/pdf-contents')
+  @UseInterceptors(ASSET_UPLOAD)
+  @ApiConsumes('application/json', 'multipart/form-data')
+  @ApiOperation({ summary: '내지 PDF 신규 투입 — 기존재 시 409 ERR_ASSET_ALREADY_EXISTS' })
+  @ApiResponse({ status: 201, description: '{success,message,data} 봉투 — 생성된 자산' })
+  @ApiResponse({ status: 409, description: 'ERR_BOOK_NOT_DRAFT / ERR_ASSET_ALREADY_EXISTS / ERR_FILE_NOT_READY' })
+  @ApiResponse({ status: 422, description: 'ERR_ASSET_INCOMPATIBLE' })
+  async postPdfContents(
+    @CurrentSite() site: CurrentSitePayload,
+    @Param('uid') uid: string,
+    @Body() dto: AssetInputDto,
+    @UploadedFile() file?: Express.Multer.File,
+  ): Promise<BookAssetView> {
+    return this.booksService.putAsset(site, uid, 'pdf_contents', 'create', {
+      fileId: dto.fileId,
+      file,
+    });
+  }
+
+  @Put(':uid/pdf-contents')
+  @UseInterceptors(ASSET_UPLOAD)
+  @ApiConsumes('application/json', 'multipart/form-data')
+  @ApiOperation({ summary: '내지 PDF 교체 — 미존재 시 404 ERR_ASSET_NOT_FOUND' })
+  @ApiResponse({ status: 200, description: '교체 성공(기존 replaced + 신규 active)' })
+  @ApiResponse({ status: 404, description: 'ERR_NOT_FOUND(도서) / ERR_ASSET_NOT_FOUND' })
+  async putPdfContents(
+    @CurrentSite() site: CurrentSitePayload,
+    @Param('uid') uid: string,
+    @Body() dto: AssetInputDto,
+    @UploadedFile() file?: Express.Multer.File,
+  ): Promise<BookAssetView> {
+    return this.booksService.putAsset(site, uid, 'pdf_contents', 'replace', {
+      fileId: dto.fileId,
+      file,
+    });
+  }
+
+  @Post(':uid/photos')
+  @UseInterceptors(ASSET_UPLOAD)
+  @ApiConsumes('application/json', 'multipart/form-data')
+  @ApiOperation({ summary: '사진 자산 추가(다건, DRAFT 전용) — sort_order 자동 부여' })
+  @ApiResponse({ status: 201, description: '{success,message,data} 봉투 — 추가된 사진 자산' })
+  @ApiResponse({ status: 409, description: 'ERR_BOOK_NOT_DRAFT / ERR_FILE_NOT_READY' })
+  @ApiResponse({ status: 422, description: 'ERR_ASSET_INCOMPATIBLE — creationType 불일치' })
+  async postPhoto(
+    @CurrentSite() site: CurrentSitePayload,
+    @Param('uid') uid: string,
+    @Body() dto: AssetInputDto,
+    @UploadedFile() file?: Express.Multer.File,
+  ): Promise<BookAssetView> {
+    return this.booksService.addPhoto(site, uid, { fileId: dto.fileId, file });
   }
 
   @Get(':uid')

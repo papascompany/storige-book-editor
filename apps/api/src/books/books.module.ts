@@ -7,6 +7,7 @@ import { BookSpec } from '../book-specs/entities/book-spec.entity';
 import { BooksController } from './books.controller';
 import { BooksService } from './books.service';
 import { PartnerApiModule } from '../partner-api/partner-api.module';
+import { FilesModule } from '../files/files.module';
 
 /**
  * Partner API v1 — Books(도서 aggregate) 모듈 (Stage 3, W1+W2).
@@ -24,6 +25,7 @@ import { PartnerApiModule } from '../partner-api/partner-api.module';
   imports: [
     TypeOrmModule.forFeature([Book, BookAsset, BookFinalization, BookSpec]),
     PartnerApiModule,
+    FilesModule,
   ],
   controllers: [BooksController],
   providers: [BooksService],

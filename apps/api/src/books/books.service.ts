@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'crypto';
 import { FindOptionsWhere, In, IsNull, Repository } from 'typeorm';
@@ -10,9 +10,25 @@ import {
   PAGINATION_MAX_LIMIT,
 } from '../partner-api/http/pagination';
 import { BookSpec } from '../book-specs/entities/book-spec.entity';
+import { FilesService } from '../files/files.service';
+import { FileType } from '../files/entities/file.entity';
 import { Book } from './entities/book.entity';
-import { BOOK_UID_PREFIX } from './books.constants';
+import { BookAsset } from './entities/book-asset.entity';
+import {
+  BOOK_ASSET_DIRECT_UPLOAD_MAX_BYTES,
+  BOOK_ASSET_DIRECT_UPLOAD_MIME,
+  BOOK_UID_PREFIX,
+  isAssetCompatible,
+  type BookAssetType,
+} from './books.constants';
 import { BookListQueryDto, BookView, CreateBookDto } from './dto/book.dto';
+import { BookAssetView } from './dto/book-asset.dto';
+
+/** 자산 파일 투입 입력 — fileId 참조형 또는 직접 멀티파트 업로드형(둘 중 하나) */
+export interface AssetFileInput {
+  fileId?: string;
+  file?: Express.Multer.File;
+}
 
 /**
  * Partner API v1 — Books(도서 aggregate) 서비스 (Stage 3 W1).
@@ -30,9 +46,13 @@ export class BooksService {
   constructor(
     @InjectRepository(Book)
     private readonly bookRepo: Repository<Book>,
+    @InjectRepository(BookAsset)
+    private readonly bookAssetRepo: Repository<BookAsset>,
     // book_specs 는 조회+참조만 — bookSpecUid 검증 및 view 역해석(id→uid)용.
     @InjectRepository(BookSpec)
     private readonly bookSpecRepo: Repository<BookSpec>,
+    // files 는 신규 등록/조회만(AD-1: 기존 파일 상태 변경 없음) — 자산 파일 투입 재사용.
+    private readonly filesService: FilesService,
   ) {}
 
   private resolveEnv(site: CurrentSitePayload): 'test' | 'live' {
@@ -179,6 +199,230 @@ export class BooksService {
       createdAt: book.createdAt.toISOString(),
       updatedAt: book.updatedAt.toISOString(),
       finalizedAt: book.finalizedAt ? book.finalizedAt.toISOString() : null,
+    };
+  }
+
+  // ── 자산(W2) ────────────────────────────────────────────────────────
+
+  /**
+   * 단수 자산(pdf_cover/pdf_contents) 신규 투입(POST) 또는 교체(PUT).
+   *
+   * 게이트 순서(설계서 §6.1~6.2):
+   *  ① 테넌트 스코프 404 → ② FINALIZED 게이트(409 ERR_BOOK_NOT_DRAFT, 전 자산 변경 진입)
+   *  → ③ creationType×asset_type 호환(422 ERR_ASSET_INCOMPATIBLE)
+   *  → ④ 기존재 판정: POST 기존재=409 ERR_ASSET_ALREADY_EXISTS / PUT 미존재=404 ERR_ASSET_NOT_FOUND
+   *  → ⑤ 파일 해석/투입 → ⑥ 영속(PUT 은 기존 'replaced' 전환 + 신규 'active', 이력 보존).
+   */
+  async putAsset(
+    site: CurrentSitePayload,
+    uid: string,
+    assetType: BookAssetType,
+    mode: 'create' | 'replace',
+    input: AssetFileInput,
+  ): Promise<BookAssetView> {
+    const book = await this.findBookForSite(site, uid); // ①
+    this.assertDraft(book); // ②
+    this.assertCompatible(book, assetType); // ③
+
+    const existing = await this.findActiveAsset(book.id, assetType); // ④
+    if (mode === 'create' && existing) {
+      throw new PartnerApiException(
+        ErrV1.ERR_ASSET_ALREADY_EXISTS,
+        409,
+        `'${assetType}' 자산이 이미 존재합니다 — 교체는 PUT 을 사용하세요`,
+      );
+    }
+    if (mode === 'replace' && !existing) {
+      throw new PartnerApiException(
+        ErrV1.ERR_ASSET_NOT_FOUND,
+        404,
+        `교체할 '${assetType}' 자산이 없습니다 — 신규 투입은 POST 를 사용하세요`,
+      );
+    }
+
+    const fileId = await this.resolveAssetFile(site, input, assetType); // ⑤
+
+    // ⑥ 이력 보존: 기존 active → replaced 전환 후 신규 active 삽입(§2.5).
+    // (트랜잭션 미사용 — 실패 시 active 없음 상태로 회복 가능: 후속 POST 로 재투입)
+    if (existing) {
+      existing.status = 'replaced';
+      await this.bookAssetRepo.save(existing);
+    }
+    const saved = await this.bookAssetRepo.save(
+      this.bookAssetRepo.create({
+        bookId: book.id,
+        assetType,
+        fileId,
+        templateSetId: null,
+        bindingParams: null,
+        sortOrder: 0,
+        status: 'active',
+      }),
+    );
+    return this.toAssetView(saved);
+  }
+
+  /**
+   * 사진 자산(photo) 다건 추가(POST 전용, DRAFT 전용). sort_order 는 기존 active
+   * photo 최대값+1 로 부여(순서 유지). 교체 시맨틱 없음(다건 누적).
+   */
+  async addPhoto(
+    site: CurrentSitePayload,
+    uid: string,
+    input: AssetFileInput,
+  ): Promise<BookAssetView> {
+    const book = await this.findBookForSite(site, uid);
+    this.assertDraft(book);
+    this.assertCompatible(book, 'photo');
+
+    const fileId = await this.resolveAssetFile(site, input, 'photo');
+
+    const activePhotos = await this.bookAssetRepo.find({
+      where: { bookId: book.id, assetType: 'photo', status: 'active' },
+      select: ['sortOrder'],
+    });
+    const nextSort =
+      activePhotos.reduce((max, p) => Math.max(max, p.sortOrder), -1) + 1;
+
+    const saved = await this.bookAssetRepo.save(
+      this.bookAssetRepo.create({
+        bookId: book.id,
+        assetType: 'photo',
+        fileId,
+        templateSetId: null,
+        bindingParams: null,
+        sortOrder: nextSort,
+        status: 'active',
+      }),
+    );
+    return this.toAssetView(saved);
+  }
+
+  /** FINALIZED 게이트 — DRAFT 아니면 409 ERR_BOOK_NOT_DRAFT (AD-3). */
+  private assertDraft(book: Book): void {
+    if (book.status !== 'DRAFT') {
+      throw new PartnerApiException(
+        ErrV1.ERR_BOOK_NOT_DRAFT,
+        409,
+        `FINALIZED 도서는 자산을 변경할 수 없습니다(status=${book.status})`,
+      );
+    }
+  }
+
+  /** creationType×asset_type 호환(§6.1) — 불일치 시 422 ERR_ASSET_INCOMPATIBLE. */
+  private assertCompatible(book: Book, assetType: BookAssetType): void {
+    if (!isAssetCompatible(book.creationType, assetType)) {
+      throw new PartnerApiException(
+        ErrV1.ERR_ASSET_INCOMPATIBLE,
+        422,
+        `creationType '${book.creationType}' 에는 '${assetType}' 자산을 투입할 수 없습니다`,
+      );
+    }
+  }
+
+  private async findActiveAsset(
+    bookId: string,
+    assetType: BookAssetType,
+  ): Promise<BookAsset | null> {
+    return this.bookAssetRepo.findOne({
+      where: { bookId, assetType, status: 'active' },
+    });
+  }
+
+  /**
+   * 자산 파일 해석 — 두 입력 형태.
+   *  ① fileId 참조: files.findById → status='ready' + siteId===caller 검증.
+   *     미존재/소프트삭제/타 테넌트 = 404 ERR_NOT_FOUND(존재 은닉), 미확정 = 409 ERR_FILE_NOT_READY.
+   *  ② 직접 업로드: ≤100MB(413) + PDF(415) 사전 검증 후 files.uploadFile 재사용
+   *     (PDF-only 계약 승계 — 이미지/대용량은 ① 경로). caller site 스탬프.
+   * 둘 다 없으면 400 ERR_VALIDATION_FAILED.
+   */
+  private async resolveAssetFile(
+    site: CurrentSitePayload,
+    input: AssetFileInput,
+    assetType: BookAssetType,
+  ): Promise<string> {
+    if (input.fileId) {
+      let file;
+      try {
+        file = await this.filesService.findById(input.fileId);
+      } catch (err) {
+        if (err instanceof NotFoundException) {
+          throw new PartnerApiException(
+            ErrV1.ERR_NOT_FOUND,
+            404,
+            `파일 '${input.fileId}' 을(를) 찾을 수 없습니다`,
+          );
+        }
+        throw err;
+      }
+      // 교차 테넌트 = 존재 은닉 위해 404(403 아님, §3.3 IDOR 방지)
+      if (file.siteId !== site.siteId) {
+        throw new PartnerApiException(
+          ErrV1.ERR_NOT_FOUND,
+          404,
+          `파일 '${input.fileId}' 을(를) 찾을 수 없습니다`,
+        );
+      }
+      // 자기 파일이나 업로드 미확정(presigned complete 전) = 409(설계서 §3.3)
+      if (file.status !== 'ready') {
+        throw new PartnerApiException(
+          ErrV1.ERR_FILE_NOT_READY,
+          409,
+          `파일 '${input.fileId}' 업로드가 확정되지 않았습니다(status=${file.status})`,
+        );
+      }
+      return file.id;
+    }
+
+    if (input.file) {
+      if (input.file.size > BOOK_ASSET_DIRECT_UPLOAD_MAX_BYTES) {
+        throw new PartnerApiException(
+          ErrV1.ERR_FILE_TOO_LARGE,
+          413,
+          '직접 업로드 한도(100MB)를 초과했습니다 — presigned 업로드 후 fileId 참조 경로를 사용하세요',
+        );
+      }
+      if (!BOOK_ASSET_DIRECT_UPLOAD_MIME.includes(input.file.mimetype)) {
+        throw new PartnerApiException(
+          ErrV1.ERR_UNSUPPORTED_CONTENT_TYPE,
+          415,
+          '직접 업로드는 PDF 만 지원합니다 — 이미지/기타 자산은 업로드 표면의 fileId 참조를 사용하세요',
+        );
+      }
+      const saved = await this.filesService.uploadFile(
+        input.file,
+        this.mapAssetTypeToFileType(assetType),
+        undefined,
+        undefined,
+        undefined,
+        site.siteId,
+      );
+      return saved.id;
+    }
+
+    throw new PartnerApiException(
+      ErrV1.ERR_VALIDATION_FAILED,
+      400,
+      '요청 검증에 실패했습니다',
+      [],
+      { file: ['fileId 참조 또는 file 직접 업로드 중 하나가 필요합니다'] },
+    );
+  }
+
+  private mapAssetTypeToFileType(assetType: BookAssetType): FileType {
+    if (assetType === 'pdf_cover') return FileType.COVER;
+    if (assetType === 'pdf_contents') return FileType.CONTENT;
+    return FileType.OTHER; // photo 등
+  }
+
+  private toAssetView(asset: BookAsset): BookAssetView {
+    return {
+      assetType: asset.assetType,
+      fileId: asset.fileId,
+      sortOrder: asset.sortOrder,
+      status: asset.status,
+      createdAt: asset.createdAt.toISOString(),
     };
   }
 }
