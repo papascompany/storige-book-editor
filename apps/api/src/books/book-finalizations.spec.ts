@@ -262,4 +262,85 @@ describe('BookFinalizationsService — 상태머신(W3) + 콜백 역참조(#4) +
     await svc.onWorkerJobSettled(job as never);
     expect(webhookService.sendCallback.mock.calls.at(-1)[2]).toEqual({ siteId: 'site-a', env: 'test' });
   });
+
+  // ── [P1-2] validate skip 명시화(validation_skipped) ───────────────────
+
+  it('P1-2: spec 미연결 skip → validationSkipped=true(create·view)', async () => {
+    const view = await svc.startFinalization(SITE, 'bk_0001'); // spec 미연결 → skip
+    expect(finRepo.create.mock.calls[0][0].validationSkipped).toBe(true);
+    expect(view.validationSkipped).toBe(true);
+  });
+
+  it('P1-2: spec+pageCount validate → validationSkipped=false(검증 수행)', async () => {
+    booksService.findBookForSite.mockResolvedValue(makeBook({ bookSpecId: 'spec-1', pageCount: 40 }));
+    specRepo.findOne.mockResolvedValue({
+      id: 'spec-1', innerTrimWidthMm: 148, innerTrimHeightMm: 210, bleedMm: 3,
+      sizeToleranceMm: 1, pageIncrement: 2, bindingType: 'perfect', pageMin: 24, pageMax: 200,
+    });
+    const view = await svc.startFinalization(SITE, 'bk_0001');
+    expect(finRepo.create.mock.calls[0][0].validationSkipped).toBe(false);
+    expect(view.validationSkipped).toBe(false);
+  });
+
+  it('P1-2: skip 후 완료 웹훅 payload.validationSkipped=true(파트너 인지)', async () => {
+    finRepo.findOne.mockResolvedValue({
+      id: 'fin-1', uid: 'fin_1', bookId: 'book-1', attempt: 1, status: 'COMPOSING',
+      composeJobId: 'sjob-1', validationSkipped: true,
+    });
+    bookRepo.findOne.mockResolvedValue(makeBook());
+    const job = { id: 'sjob-1', status: WorkerJobStatus.COMPLETED, options: { finalizationId: 'fin-1' }, outputFileUrl: '/storage/outputs/x/merged.pdf', result: { totalPages: 12 } };
+    await svc.onWorkerJobSettled(job as never);
+    const payload = webhookService.sendCallback.mock.calls.at(-1)[1];
+    expect(payload.event).toBe('book.finalization.completed');
+    expect(payload.validationSkipped).toBe(true);
+  });
+
+  // ── [렌즈1 P2-2] 동시 착수 원자화(CAS dup-key → 409) ──────────────────
+
+  it('렌즈1 P2-2: 동시 착수 패자(dup-key) → 409 ERR_FINALIZATION_IN_PROGRESS', async () => {
+    // (book_id, attempt) 유니크 충돌을 PENDING INSERT 에서 시뮬레이트.
+    finRepo.save.mockRejectedValueOnce({ code: 'ER_DUP_ENTRY', errno: 1062 });
+    await expect(svc.startFinalization(SITE, 'bk_0001')).rejects.toMatchObject({
+      errorCode: ErrV1.ERR_FINALIZATION_IN_PROGRESS,
+      status: 409,
+    });
+    // 패자는 어떤 잡도 착수하지 않는다(이중 finalization 차단).
+    expect(workerJobsService.createSynthesisJob).not.toHaveBeenCalled();
+    expect(workerJobsService.createValidationJob).not.toHaveBeenCalled();
+  });
+
+  it('렌즈1 P2-2: dup-key 가 아닌 저장 오류는 그대로 전파(오분류 금지)', async () => {
+    finRepo.save.mockRejectedValueOnce(new Error('connection reset'));
+    await expect(svc.startFinalization(SITE, 'bk_0001')).rejects.toThrow('connection reset');
+  });
+
+  // ── [렌즈2 P2-3] 착수 시점 자산 스냅샷(TOCTOU) ────────────────────────
+
+  it('렌즈2 P2-3: 착수 시 plan_snapshot 고정(finRepo.create planSnapshot)', async () => {
+    await svc.startFinalization(SITE, 'bk_0001'); // PDF_UPLOAD spec 미연결 → synthesize
+    expect(finRepo.create.mock.calls[0][0].planSnapshot).toEqual({
+      mode: 'synthesize',
+      validateFileId: 'f_pdf_contents',
+      coverFileId: 'f_pdf_cover',
+      contentFileId: 'f_pdf_contents',
+    });
+  });
+
+  it('렌즈2 P2-3: validate 콜백은 스냅샷 자산으로 compose(진행 중 자산 교체 무시)', async () => {
+    // 진행 중 자산이 교체돼도(assetRepo 가 신자산 반환) compose 는 착수 스냅샷 자산을 써야 한다.
+    assetRepo.find.mockResolvedValue([
+      { id: 'a0', assetType: 'pdf_cover', fileId: 'MUTATED_cover', status: 'active' },
+      { id: 'a1', assetType: 'pdf_contents', fileId: 'MUTATED_contents', status: 'active' },
+    ]);
+    finRepo.findOne.mockResolvedValue({
+      id: 'fin-1', uid: 'fin_1', bookId: 'book-1', attempt: 1, status: 'VALIDATING', validateJobId: 'vjob-1',
+      planSnapshot: { mode: 'synthesize', validateFileId: 'f_pdf_contents', coverFileId: 'f_pdf_cover', contentFileId: 'f_pdf_contents' },
+    });
+    bookRepo.findOne.mockResolvedValue(makeBook());
+    const job = { id: 'vjob-1', status: WorkerJobStatus.COMPLETED, options: { finalizationId: 'fin-1' }, result: { totalPages: 40 } };
+    await svc.onWorkerJobSettled(job as never);
+    const arg = workerJobsService.createSynthesisJob.mock.calls[0][0];
+    expect(arg.coverFileId).toBe('f_pdf_cover'); // 스냅샷(구자산) — MUTATED_* 아님
+    expect(arg.contentFileId).toBe('f_pdf_contents');
+  });
 });

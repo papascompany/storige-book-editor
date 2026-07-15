@@ -638,11 +638,17 @@ DRAFT ──(POST finalization: 자산 완비 + 페이지 규칙 통과 + 워커
 
 ```
 PENDING ─▶ VALIDATING ─▶ COMPOSING ─▶ COMPLETED
-              │              │
-              └─▶ FAILED ◀───┘   (error_code = ERR_PDF_VALIDATION_FAILED 등)
+   │           │             │
+   │           └─▶ FAILED ◀──┘   (error_code = ERR_PDF_VALIDATION_FAILED / ERR_INTERNAL 등)
+   └─▶ (validate skip) ─▶ COMPOSING/COMPLETED    (validation_skipped=true)
 ```
 
-- `POST /finalization` 동작 순서: ① BookSpec 페이지 규칙(pageMin/Max/Increment) 사전 검증 → ② 기존 워커 `validate` 잡 → ③ `synthesize`/`compose-mixed` 잡 → ④ 산출물 `book_finalizations.output_file_id` 고정 → ⑤ 웹훅 `book.finalization.completed` 발송.
+- `POST /finalization` 동작 순서: ① 필수 자산 완비(422 `ERR_ASSETS_INCOMPLETE`) → ② BookSpec 페이지 규칙(pageMin/Max/Increment) **조건부** 사전 검증(book_spec 연결 + pageCount 확정 시만) → ③ 착수 행 원자 삽입(`(book_id, attempt)` 유니크 CAS) + 착수 시점 자산 `plan_snapshot` 고정 → ④ **조건부** 워커 `validate` 잡 → ⑤ `synthesize`/`compose-mixed` 잡 → ⑥ 산출물 `book_finalizations.output_file_id` 고정 → ⑦ 웹훅 `book.finalization.completed` 발송.
+- **조건부 validate 계약(초안 §6.3 ② 정정)**: 워커 `validate` 는 대상 판형(`orderOptions.size/pages`)을 하드 요구한다(pdf-validator 가 널가드 없이 접근). 따라서 **book_spec 연결 + pageCount 확정 시에만** validate(판형 대조)를 수행하고, 미연결/미확정이면 대조 판형이 없어 validate 를 **건너뛰고** 바로 합성/완료로 진행한다. 이 attempt 에는 `validation_skipped=true` 표식을 남겨 `BookFinalizationView`·웹훅 payload(`validationSkipped`)로 노출한다 — 파트너가 미검증 FINALIZED 를 인지·자체 게이팅할 수 있게 한다.
+  - ⚠️ **각주 — 미검증 FINALIZED 허용은 오너 결정 D-9**: validate 없이 FINALIZED 된 도서를 orders(생산)로 **자동 진입시키기 전 차단 게이트**가 필요하다(§9-2 경량 Orders 도입 결정에 종속). 결정 전까지 finalization 은 산출물만 고정하고 orders 자동화는 착수하지 않는다.
+- **동시 착수 원자화(적대 리뷰 렌즈1 P2-2 / 렌즈2 P2-3)**: 착수 행은 `(book_id, attempt)` 유니크 CAS 로 삽입한다. latestFinalization 조회 기반 진행 중 게이트는 순차 재호출만 막으므로, 무키·상이 Idempotency-Key 동시 2 POST 의 패자는 dup-key 로 `409 ERR_FINALIZATION_IN_PROGRESS` 를 받아 이중 finalization 을 차단한다.
+- **자산 스냅샷(TOCTOU, 렌즈2 P2-3)**: `assertDraft` 는 FINALIZED 만 차단해 진행 중(VALIDATING/COMPOSING, book=DRAFT) 자산 POST/PUT 이 열려 있다. finalization 은 착수 시점 자산을 `plan_snapshot` 에 고정하고 validate/compose 가 재조회 없이 이 스냅샷을 쓴다 → validate=구자산·compose=신자산(미검증) 불일치를 차단(진행 중 자산 교체는 허용하되 다음 attempt 에만 반영).
+- **콜백 예외 격리(렌즈2 P2-4)**: 워커 잡 종결 콜백(`onWorkerJobSettled`) 도중 예외는 finalization 을 `FAILED` 로 전이시키고 워커 PATCH 는 성공 반환한다(교착 + 재시도 compose 중복 방지).
 - **재호출 멱등**: 진행 중(`PENDING/VALIDATING/COMPOSING`) 재호출은 `409 ERR_FINALIZATION_IN_PROGRESS`, `COMPLETED` 후 재호출은 기존 결과 재전달(200). `FAILED` 후 재호출은 새 attempt 행 생성(attempt+1).
 - 폴링 표면 `GET /finalization`과 웹훅을 병행 제공(웹훅 미구성 파트너도 완주 가능 — 100p 폴링 관행 승계).
 - test env 책의 finalization은 Stage 2 환경 모델 규칙(워터마크 더미 산출물 + retention 24h)을 따른다.

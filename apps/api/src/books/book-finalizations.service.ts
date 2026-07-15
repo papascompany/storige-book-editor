@@ -30,22 +30,27 @@ import { BookFinalization } from './entities/book-finalization.entity';
 import {
   BOOK_FINALIZATION_UID_PREFIX,
   type BookAssetType,
+  type FinalizationPlan,
 } from './books.constants';
 import { BookFinalizationView } from './dto/book-finalization.dto';
 
 /**
- * 최종화 실행 계획 — creationType 별 자산 해석 결과.
- *  - synthesize: validate(내지) → synthesize(표지+내지) → merged 산출(PDF_UPLOAD, 표지분리 세션).
- *  - passthrough: validate(병합본) → 편집기 합성완료본을 그대로 최종 산출(EDITOR_SESSION 병합).
+ * MariaDB unique 위반 판별 (ER_DUP_ENTRY / errno 1062) — partner-idempotency 선례와 동형.
+ * (book_id, attempt) 유니크 충돌 = 동시 착수 패자 → 409 ERR_FINALIZATION_IN_PROGRESS.
  */
-interface FinalizationPlan {
-  mode: 'synthesize' | 'passthrough';
-  /** validate 잡 대상(내지/병합본) files.id */
-  validateFileId: string;
-  /** synthesize 표지 files.id (mode='synthesize'만) */
-  coverFileId?: string;
-  /** synthesize 내지 / passthrough 최종 산출 files.id */
-  contentFileId: string;
+function isDuplicateKeyError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const e = err as {
+    code?: string;
+    errno?: number;
+    driverError?: { code?: string; errno?: number };
+  };
+  return (
+    e.code === 'ER_DUP_ENTRY' ||
+    e.errno === 1062 ||
+    e.driverError?.code === 'ER_DUP_ENTRY' ||
+    e.driverError?.errno === 1062
+  );
 }
 
 /**
@@ -141,8 +146,13 @@ export class BookFinalizationsService {
     const plan = await this.resolvePlan(book);
     // ⑤ 페이지 규칙(연결 + pageCount 확정 시만)
     await this.assertPageRulesIfApplicable(book);
+    // ⑥ validate 대상 판형 해석(book_spec 연결 + pageCount 확정 시만) — 착수 전 1회 확정.
+    const spec = await this.resolveValidatableSpec(book);
 
-    // ⑥ 새 attempt 행(FAILED 후 재호출이면 attempt+1)
+    // ⑦ 새 attempt 행(FAILED 후 재호출이면 attempt+1). 착수 시점에 plan 을 스냅샷하고
+    //   (렌즈2 P2-3 TOCTOU — 진행 중 자산 교체와 무관하게 이번 attempt 고정) validate skip
+    //   여부(P1-2 미검증 표식)를 확정한다. 삽입은 (book_id, attempt) 유니크 CAS — 무키·상이
+    //   Idempotency-Key 동시 2 POST 의 패자는 dup-key → 409(렌즈1 P2-2 / 렌즈2 P2-3 동시성).
     const attempt = (latest?.attempt ?? 0) + 1;
     let fin = this.finalizationRepo.create({
       uid: `${BOOK_FINALIZATION_UID_PREFIX}${randomUUID().replace(/-/g, '')}`,
@@ -150,14 +160,17 @@ export class BookFinalizationsService {
       attempt,
       status: 'PENDING',
       startedAt: new Date(),
+      planSnapshot: plan, // 착수 시점 자산 고정(재조회 금지)
+      validationSkipped: !spec, // 대조 판형 부재 → validate skip(§6.3 조건부 계약)
     });
-    fin = await this.finalizationRepo.save(fin);
+    fin = await this.saveNewAttemptCas(fin, uid);
 
-    // ⑦ 착수 — 워커 validate 는 대상 판형(orderOptions.size/pages)을 하드 요구한다
+    // ⑧ 착수 — 워커 validate 는 대상 판형(orderOptions.size/pages)을 하드 요구한다
     //   (pdf-validator.service 는 size/pages 를 널가드 없이 접근). 따라서 book_spec 연결 +
-    //   pageCount 확정 시에만 validate(판형 대조) → VALIDATING. 미연결/미확정이면 검증 대상
-    //   판형이 없어 validate 를 건너뛰고 바로 합성/완료로 진행(파트너 자산 as-is). §6.3 정합.
-    const spec = await this.resolveValidatableSpec(book);
+    //   pageCount 확정 시에만 validate(판형 대조) → VALIDATING. 미연결/미확정이면 대조 판형이
+    //   없어 validate 를 건너뛰고(validation_skipped=true) 바로 합성/완료로 진행(파트너 자산
+    //   as-is). 이 조건부-validate 계약은 개정된 §6.3 정본을 따른다 — 미검증 FINALIZED 허용은
+    //   오너 결정 D-9(orders 자동진입 전 차단 게이트, §9)로 분리돼 있다.
     if (spec) {
       const validateJob = await this.workerJobsService.createValidationJob({
         fileId: plan.validateFileId,
@@ -310,7 +323,10 @@ export class BookFinalizationsService {
     fin: BookFinalization,
     validateJob: WorkerJob,
   ): Promise<void> {
-    const plan = await this.resolvePlan(book); // DRAFT 잠금 — 자산 불변 가정
+    // [렌즈2 P2-3] 착수 시점 스냅샷을 쓴다 — validate 대상과 동일 자산으로 compose(재조회 금지).
+    //   assertDraft 가 진행 중(DRAFT) 자산 교체를 허용하더라도 이번 attempt 는 착수 시점 자산에
+    //   고정(validate=구자산·compose=신자산 불일치 차단). 구 행(스냅샷 null)은 resolvePlan 폴백.
+    const plan = fin.planSnapshot ?? (await this.resolvePlan(book));
     const validatedPageCount = this.extractPageCount(validateJob) ?? book.pageCount;
     await this.dispatchComposeOrComplete(book, fin, plan, validatedPageCount);
   }
@@ -455,6 +471,7 @@ export class BookFinalizationsService {
       pageCount: fin.pageCount ?? null,
       outputFileId: fin.outputFileId ?? null,
       errorCode: fin.errorCode ?? null,
+      validationSkipped: fin.validationSkipped ?? false, // [P1-2] 미검증 FINALIZED 인지
       timestamp: new Date().toISOString(),
     };
     try {
@@ -617,6 +634,30 @@ export class BookFinalizationsService {
     });
   }
 
+  /**
+   * 새 attempt 행 삽입(PENDING) — (book_id, attempt) 유니크 CAS. 진행 중 재호출 게이트
+   * (latestFinalization 조회 기반)는 순차 재호출만 막고 동시 2 POST 는 TOCTOU 로 새는데,
+   * 이 원자 삽입이 패자를 dup-key → 409 로 차단한다(idempotency 선점 INSERT 선례와 동형).
+   * errorCode 는 진행 중 재호출과 동일(ERR_FINALIZATION_IN_PROGRESS) — 파트너는 코드로만 분기.
+   */
+  private async saveNewAttemptCas(
+    fin: BookFinalization,
+    uid: string,
+  ): Promise<BookFinalization> {
+    try {
+      return await this.finalizationRepo.save(fin);
+    } catch (err) {
+      if (isDuplicateKeyError(err)) {
+        throw new PartnerApiException(
+          ErrV1.ERR_FINALIZATION_IN_PROGRESS,
+          409,
+          `도서 '${uid}' 의 최종화가 동시 착수로 이미 진행 중입니다`,
+        );
+      }
+      throw err;
+    }
+  }
+
   /** 워커 result 에서 총 페이지 수 best-effort 추출(검증/합성 공통). */
   private extractPageCount(job: WorkerJob): number | null {
     const r = (job.result ?? {}) as {
@@ -665,6 +706,7 @@ export class BookFinalizationsService {
       status: fin.status,
       attempt: fin.attempt,
       pageCount: fin.pageCount,
+      validationSkipped: fin.validationSkipped ?? false,
       outputFileId: fin.outputFileId,
       errorCode: fin.errorCode,
       errorDetail: fin.errorDetail,
