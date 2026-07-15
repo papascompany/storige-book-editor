@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ApiKeyGuard } from '../auth/guards/api-key.guard';
 import { PublicApiAuditLog } from './entities/public-api-audit-log.entity';
 import { PartnerIdempotencyKey } from './entities/partner-idempotency-key.entity';
+import { PartnerApiKey } from './entities/partner-api-key.entity';
 import { PartnerAuditService } from './audit/partner-audit.service';
 import { PartnerAuditInterceptor } from './audit/partner-audit.interceptor';
 import { PartnerIdempotencyService } from './idempotency/partner-idempotency.service';
@@ -15,6 +16,9 @@ import { PartnerRateLimitGuard } from './guards/partner-rate-limit.guard';
 import { partnerApiConfigProvider } from './partner-api.config';
 import { PARTNER_API_CONFIG } from './partner-api.constants';
 import { PartnerPingController } from './ping.controller';
+import { PartnerApiKeysService } from './keys/partner-api-keys.service';
+import { PartnerApiKeysController } from './keys/partner-api-keys.controller';
+import { PartnerApiKeysSweeper } from './keys/partner-api-keys.sweeper';
 
 /**
  * Partner API v1 — 신규 파사드 모듈 (설계서 AD-1).
@@ -31,11 +35,15 @@ import { PartnerPingController } from './ping.controller';
  *   Stage 3+ 신규 v1 컨트롤러 모듈의 표준 통합 포인트.
  */
 @Module({
-  imports: [TypeOrmModule.forFeature([PublicApiAuditLog, PartnerIdempotencyKey])],
-  controllers: [PartnerPingController],
+  imports: [
+    TypeOrmModule.forFeature([PublicApiAuditLog, PartnerIdempotencyKey, PartnerApiKey]),
+  ],
+  controllers: [PartnerPingController, PartnerApiKeysController],
   providers: [
     partnerApiConfigProvider,
     ApiKeyGuard,
+    PartnerApiKeysService,
+    PartnerApiKeysSweeper,
     PartnerApiKeyGuard,
     PartnerRateLimitGuard,
     PartnerApiExceptionFilter,
@@ -49,6 +57,7 @@ import { PartnerPingController } from './ping.controller';
   exports: [
     PARTNER_API_CONFIG,
     ApiKeyGuard,
+    PartnerApiKeysService,
     PartnerApiKeyGuard,
     PartnerRateLimitGuard,
     PartnerApiExceptionFilter,
