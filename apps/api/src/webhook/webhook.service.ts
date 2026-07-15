@@ -5,6 +5,7 @@ import { SynthesisWebhookPayload, ValidationWebhookPayload } from '@storige/type
 import { SitesService } from '../sites/sites.service';
 import { PARTNER_ENV_LIVE } from '../partner-api/partner-api.constants';
 import { WebhookDeliveryService } from './v2/webhook-delivery.service';
+import { isRemoteUrlPublic } from '../common/helpers/ssrf.helper';
 
 export { SynthesisWebhookPayload, ValidationWebhookPayload };
 
@@ -66,10 +67,19 @@ export class WebhookService {
    * WEBHOOK_CONFIG_ENC_KEY 미설정(v2 비활성)이면 DB 조회 없이 false —
    * 기존 파트너/기존 배포의 타이밍에 영향 0. 호출측(worker-jobs)이
    * callbackUrl 부재 시 발신 스킵 판정을 보강하는 용도.
+   *
+   * [S2-5] env 파라미터 additive — isTest 잡의 게이트 판정은 test env config 로.
+   * 미전달=live(기존 호출 전부 동일 SQL — webhook-v1-invariance.spec 고정).
    */
-  async hasV2Config(siteId?: string | null): Promise<boolean> {
+  async hasV2Config(
+    siteId?: string | null,
+    env?: 'test' | 'live',
+  ): Promise<boolean> {
     if (!siteId || !this.webhookDeliveryService) return false;
-    return this.webhookDeliveryService.hasActiveConfig(siteId, PARTNER_ENV_LIVE);
+    return this.webhookDeliveryService.hasActiveConfig(
+      siteId,
+      env ?? PARTNER_ENV_LIVE,
+    );
   }
 
   /**
@@ -127,9 +137,11 @@ export class WebhookService {
     context?: { siteId?: string | null; env?: 'test' | 'live' },
   ): Promise<boolean> {
     if (context?.siteId && this.webhookDeliveryService) {
-      // env 규약(S2-1 정합화): context.env 는 v1 라우트 경유 발신에서만
-      // resolvePartnerEnv(req.user) 값이 전달된다. 잡 완료 발신(worker-jobs)은
-      // 요청 컨텍스트가 없어 env 를 넘기지 않으며 live 로 폴백(현행 유지).
+      // env 규약(S2-1 정합화): context.env 는 v1 라우트 경유 발신에서
+      // resolvePartnerEnv(req.user) 값이 전달된다.
+      // [S2-5] 잡 완료 발신(worker-jobs)은 잡 생성 시 스탬프된 options.isTest 를
+      // env='test' 로 되해석해 전달(jobWebhookEnv) — isTest 아닌 잡은 env 미전달
+      // =live 폴백(기존 발신 바이트 불변).
       const v2 = await this.webhookDeliveryService.tryDispatchForSite(
         context.siteId,
         context.env ?? PARTNER_ENV_LIVE,
@@ -144,10 +156,20 @@ export class WebhookService {
     }
 
     // Patch E (2026-05-03) + Phase 1-2 (2026-05-16):
-    // SSRF 방어 — env allowlist 우선, 실패 시 DB sites 동적 매칭.
+    // SSRF 방어 1선 — env allowlist 우선, 실패 시 DB sites 동적 매칭(호스트 문자열).
     if (!(await this.isAllowedCallbackUrl(callbackUrl))) {
       this.logger.error(
         `[Webhook] Blocked callback URL not in allowlist: ${callbackUrl} (env-allowed: ${this.allowedHosts.join(', ')})`,
+      );
+      return false;
+    }
+
+    // SSRF 방어 2선 — 정본 발신 시점 가드(2026-07-16). allowlist/DB 는 호스트 문자열만
+    // 대조하므로 "공개 DNS 이름 → 내부 IP A레코드"·IPv4-mapped IPv6·정수 IP 표기가 관통한다.
+    // 발신 직전에 실 IP 를 해석해 사설/링크로컬/루프백/메타데이터 대역이면 차단(DNS 리바인딩 완화).
+    if (!(await isRemoteUrlPublic(callbackUrl))) {
+      this.logger.error(
+        `[Webhook] Blocked callback URL resolving to private/internal address: ${callbackUrl}`,
       );
       return false;
     }

@@ -25,7 +25,7 @@ import {
 } from '@ant-design/icons';
 import { useAuthStore } from '../../stores/authStore';
 import { authApi } from '../../api/auth';
-import { isGlobalAdmin } from '../../utils/permissions';
+import { hasSiteAdminAssignment, isGlobalAdmin } from '../../utils/permissions';
 import './MainLayout.css';
 
 const { Header, Sider, Content } = Layout;
@@ -67,6 +67,11 @@ export const MainLayout = () => {
   const hasRole = !!user?.role;
   const showGlobalOnly = !hasRole || isGlobalAdmin(user?.role);
 
+  // S2-4 파트너 포털 v0 — SITE_ADMIN 배정이 하나라도 있는 사이트 운영자에게만
+  // "내 사이트" 노출. 전역 admin 은 기존 화면(기본설정) 그대로 — 메뉴 무변경.
+  const showMySite =
+    hasRole && !isGlobalAdmin(user?.role) && hasSiteAdminAssignment(user?.siteRoles);
+
   const menuItems: MenuProps['items'] = [
     {
       key: '/',
@@ -93,6 +98,16 @@ export const MainLayout = () => {
             icon: <CloudServerOutlined />,
             label: '저장소 설정',
             onClick: () => navigate('/storage-settings'),
+          },
+        ] as NonNullable<MenuProps['items']>)
+      : []),
+    ...(showMySite
+      ? ([
+          {
+            key: '/my-site',
+            icon: <GlobalOutlined />,
+            label: '내 사이트',
+            onClick: () => navigate('/my-site'),
           },
         ] as NonNullable<MenuProps['items']>)
       : []),

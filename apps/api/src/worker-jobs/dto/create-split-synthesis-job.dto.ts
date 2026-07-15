@@ -6,6 +6,7 @@ import {
   IsBoolean,
   IsUrl,
 } from 'class-validator';
+import { PartnerEnv } from '../../partner-api/partner-api.constants';
 
 /**
  * 분리 합성 작업 생성 DTO
@@ -77,4 +78,12 @@ export class CreateSplitSynthesisJobDto {
   @IsOptional()
   @IsUUID()
   siteId?: string;
+
+  /**
+   * [S2-5] 인증 컨텍스트 env — 호출 컨트롤러가 @CurrentSite().env 로 주입.
+   * ⚠️ 의도적으로 validation 데코레이터 없음(비화이트리스트) — body 자가선언 불가.
+   * ⚠️ `declare` 필수(ES2022 own-property 실체화 함정) —
+   * worker-job.dto.ts CreateValidationJobDto.partnerEnv 주석 참조.
+   */
+  declare partnerEnv?: PartnerEnv;
 }
