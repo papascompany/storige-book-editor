@@ -84,6 +84,27 @@ describe('isValidAncestorSource', () => {
     expect(isValidAncestorSource(v)).toBe(false);
   });
 
+  // [보안 P2-2] 퍼블릭 서픽스 단독 와일드카드 + 범위 밖 포트 거부
+  it.each([
+    'https://*.com', // TLD 단독 와일드카드 = 사실상 전 인터넷 허용
+    'https://*.kr',
+    'http://*.net',
+    'https://a.com:99999', // 포트 범위 밖 (>65535)
+    'https://a.com:0', // 포트 0
+    'https://*.example.com:70000', // 와일드카드 + 범위 밖 포트
+  ])('거부(P2-2): %s', (v) => {
+    expect(isValidAncestorSource(v)).toBe(false);
+  });
+
+  it.each([
+    'https://*.example.com', // 등록 도메인 이하 와일드카드는 계속 허용
+    'https://*.partner.example.com',
+    'https://a.com:1', // 포트 경계값
+    'https://a.com:65535',
+  ])('허용 유지(P2-2 경계): %s', (v) => {
+    expect(isValidAncestorSource(v)).toBe(true);
+  });
+
   it('비문자열 거부', () => {
     expect(isValidAncestorSource(null)).toBe(false);
     expect(isValidAncestorSource(42)).toBe(false);
