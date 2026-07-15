@@ -149,7 +149,15 @@ describe('WorkerJobsService.updateJobStatus (WK-1: errorCode/errorDetail 영속�
         { provide: getQueueToken('pdf-conversion'), useValue: { add: jest.fn() } },
         { provide: getQueueToken('pdf-synthesis'), useValue: { add: jest.fn() } },
         { provide: FilesService, useValue: { findById: jest.fn() } },
-        { provide: WebhookService, useValue: { sendCallback: jest.fn() } },
+        {
+          provide: WebhookService,
+          // P1-1 게이트 정합화 이후 callbackUrl 없는 종결 잡은 hasV2Config 로
+          // v2 opt-in 여부를 판정한다 — 실물 표면과 동일하게 스텁(false=미등록).
+          useValue: {
+            sendCallback: jest.fn(),
+            hasV2Config: jest.fn(async () => false),
+          },
+        },
         { provide: SitesService, useValue: { findOne: jest.fn() } },
         { provide: TemplateSetsService, useValue: { findOne: jest.fn() } },
       ],

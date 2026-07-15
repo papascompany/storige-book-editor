@@ -3,6 +3,8 @@ import axios from 'axios';
 import { createHmac } from 'crypto';
 import { SynthesisWebhookPayload, ValidationWebhookPayload } from '@storige/types';
 import { SitesService } from '../sites/sites.service';
+import { PARTNER_ENV_LIVE } from '../partner-api/partner-api.constants';
+import { WebhookDeliveryService } from './v2/webhook-delivery.service';
 
 export { SynthesisWebhookPayload, ValidationWebhookPayload };
 
@@ -52,7 +54,23 @@ export class WebhookService {
 
   // Phase 1-2 — SitesService 는 webhook 모듈이 cyclic 의존을 피할 수 있도록 @Optional.
   // 주입 안 되어도 (예: 부팅 초기) 기존 allowedHosts 만으로 동작.
-  constructor(@Optional() private readonly sitesService?: SitesService) {}
+  // Stage 2 — WebhookDeliveryService(v2 opt-in)도 @Optional: 미주입 시(기존
+  // 단위 테스트의 `new WebhookService()` 포함) v2 분기 자체가 없어 현행과 동일.
+  constructor(
+    @Optional() private readonly sitesService?: SitesService,
+    @Optional() private readonly webhookDeliveryService?: WebhookDeliveryService,
+  ) {}
+
+  /**
+   * [Stage 2] 사이트에 v2 active config 가 있는지 (webhook_configs opt-in).
+   * WEBHOOK_CONFIG_ENC_KEY 미설정(v2 비활성)이면 DB 조회 없이 false —
+   * 기존 파트너/기존 배포의 타이밍에 영향 0. 호출측(worker-jobs)이
+   * callbackUrl 부재 시 발신 스킵 판정을 보강하는 용도.
+   */
+  async hasV2Config(siteId?: string | null): Promise<boolean> {
+    if (!siteId || !this.webhookDeliveryService) return false;
+    return this.webhookDeliveryService.hasActiveConfig(siteId, PARTNER_ENV_LIVE);
+  }
 
   /**
    * URL이 허용된 호스트인지 검증.
@@ -94,8 +112,32 @@ export class WebhookService {
 
   /**
    * 웹훅 콜백 전송
+   *
+   * [Stage 2] context.siteId 가 주어지고 해당 사이트에 v2 active config
+   * (webhook_configs 행)가 있으면 v2 경로(사이트별 HMAC secret + delivery store +
+   * 1/5/30분 재시도)로 발송하고 여기서 반환한다 — **config 가 없는 사이트
+   * (기존 파트너 전원)는 아래 기존 경로를 바이트/헤더/타이밍 그대로 탄다.**
+   * v2 비활성(WEBHOOK_CONFIG_ENC_KEY 미설정) 시엔 config 조회조차 없다.
+   * 기존 파트너의 v2 전환(D-7c 게이트)은 파트너가 v1 API 로 config 를 직접
+   * 등록할 때만 일어난다 — 코드가 전환을 강제하는 경로 없음.
    */
-  async sendCallback(callbackUrl: string, payload: WebhookPayload): Promise<boolean> {
+  async sendCallback(
+    callbackUrl: string,
+    payload: WebhookPayload,
+    context?: { siteId?: string | null; env?: 'test' | 'live' },
+  ): Promise<boolean> {
+    if (context?.siteId && this.webhookDeliveryService) {
+      // env 규약(S2-1 정합화): context.env 는 v1 라우트 경유 발신에서만
+      // resolvePartnerEnv(req.user) 값이 전달된다. 잡 완료 발신(worker-jobs)은
+      // 요청 컨텍스트가 없어 env 를 넘기지 않으며 live 로 폴백(현행 유지).
+      const v2 = await this.webhookDeliveryService.tryDispatchForSite(
+        context.siteId,
+        context.env ?? PARTNER_ENV_LIVE,
+        payload,
+      );
+      if (v2) return v2.delivered; // v2 opt-in 사이트 — 레거시 경로 미진입
+    }
+
     if (!callbackUrl) {
       this.logger.warn('No callback URL provided, skipping webhook');
       return false;

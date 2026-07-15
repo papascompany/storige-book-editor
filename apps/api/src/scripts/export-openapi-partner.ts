@@ -31,6 +31,9 @@ import { PartnerAuditInterceptor } from '../partner-api/audit/partner-audit.inte
 import { PartnerIdempotencyInterceptor } from '../partner-api/idempotency/partner-idempotency.interceptor';
 import { BookSpecsController } from '../book-specs/book-specs.controller';
 import { BookSpecsService } from '../book-specs/book-specs.service';
+import { PartnerWebhooksController } from '../webhook/v2/partner-webhooks.controller';
+import { WebhookConfigService } from '../webhook/v2/webhook-config.service';
+import { WebhookDeliveryService } from '../webhook/v2/webhook-delivery.service';
 
 const PARTNER_V1_TAG = 'partner-v1';
 
@@ -40,6 +43,12 @@ const REQUIRED_PATHS = [
   '/api/v1/book-specs',
   '/api/v1/book-specs/{uid}',
   '/api/v1/book-specs/{uid}/calculated-size',
+  // Stage 2 작업 5 — Webhooks (설계서 §1.5 라우트 20~26)
+  '/api/v1/webhooks/config',
+  '/api/v1/webhooks/test',
+  '/api/v1/webhooks/deliveries',
+  '/api/v1/webhooks/deliveries/{uid}',
+  '/api/v1/webhooks/deliveries/{uid}/retry',
 ];
 
 const HTTP_METHODS = ['get', 'put', 'post', 'delete', 'options', 'head', 'patch', 'trace'];
@@ -105,9 +114,17 @@ async function main(): Promise<void> {
   const passthrough = { intercept: (_c: unknown, n: { handle: () => unknown }) => n.handle() };
 
   const moduleRef = await Test.createTestingModule({
-    controllers: [PartnerPingController, BookSpecsController],
+    controllers: [
+      PartnerPingController,
+      BookSpecsController,
+      PartnerWebhooksController,
+    ],
     // Swagger 는 라우트 메타데이터만 읽는다 — 실행 의존(DB·설정)은 스텁
-    providers: [{ provide: BookSpecsService, useValue: {} }],
+    providers: [
+      { provide: BookSpecsService, useValue: {} },
+      { provide: WebhookConfigService, useValue: {} },
+      { provide: WebhookDeliveryService, useValue: {} },
+    ],
   })
     .overrideGuard(PartnerApiKeyGuard)
     .useValue({ canActivate: () => true })

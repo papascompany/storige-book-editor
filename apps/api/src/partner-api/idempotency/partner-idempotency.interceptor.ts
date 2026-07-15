@@ -8,10 +8,7 @@ import {
 import { Reflector } from '@nestjs/core';
 import { Observable, catchError, concatMap, from, switchMap, throwError } from 'rxjs';
 import { ErrV1 } from '@storige/types';
-import {
-  IDEMPOTENCY_KEY_HEADER,
-  PARTNER_ENV_LIVE,
-} from '../partner-api.constants';
+import { IDEMPOTENCY_KEY_HEADER } from '../partner-api.constants';
 import {
   PartnerApiException,
   PartnerIdempotentReplaySignal,
@@ -22,6 +19,7 @@ import {
   PartnerRequest,
   ensureRequestId,
   requestPath,
+  resolvePartnerEnv,
 } from '../http/request-context';
 import { canonicalBodyHash } from './canonical-hash';
 import {
@@ -34,7 +32,7 @@ import {
  * (@PartnerV1Controller 조합 데코레이터가 모듈 레벨로 바인딩).
  *
  * - 적용: POST + `Idempotency-Key` 헤더 존재 시. GET/PUT/DELETE 는 자연 멱등으로 미캐시.
- * - scope = siteId + env('live' 고정, Stage 2 전) + method + path(실값) + key
+ * - scope = siteId + env(인증 컨텍스트 — Stage 2, sites 키는 live) + method + path(실값) + key
  * - 동일 키+동일 body → 최초 응답 스냅샷 재전달(+Idempotency-Replayed 헤더 — 필터 처리)
  * - 동일 키+다른 body → 422 ERR_IDEMPOTENCY_KEY_MISMATCH
  * - 처리 중 동일 키 → 409 ERR_IDEMPOTENCY_IN_PROGRESS
@@ -77,7 +75,7 @@ export class PartnerIdempotencyInterceptor implements NestInterceptor {
     const claimPromise = this.idempotencyService.claim(
       {
         siteId: user.siteId,
-        env: PARTNER_ENV_LIVE,
+        env: resolvePartnerEnv(user),
         method: req.method,
         path: requestPath(req),
         key,

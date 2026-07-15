@@ -1,14 +1,22 @@
 /**
  * Partner API v1 상수 (설계서 §4/§5/§7).
  *
- * env 스코프: Stage 2(partner_api_keys.env test|live) 전이므로 'live' 고정 상수.
- * Stage 2 에서 인증 컨텍스트의 env 로 대체(additive)한다.
+ * env 스코프: Stage 2 부터 인증 컨텍스트(req.user.env — partner_api_keys.env)가
+ * 정본. PARTNER_ENV_LIVE 는 sites 레거시 키(단일 env 체계) 경로의 기본값으로만
+ * 남는다 — 가드·멱등·감사 3곳의 실사용은 `user.env ?? PARTNER_ENV_LIVE`.
  */
 
-/** Stage 1 고정 env — Stage 2 환경 모델 도입 전까지 전 요청 'live' 취급 */
+/** sites 레거시 키(단일 env)의 기본 env — v1 신규 키는 req.user.env 가 정본 */
 export const PARTNER_ENV_LIVE = 'live' as const;
 
 export type PartnerEnv = 'test' | 'live';
+
+/**
+ * live 전용 라우트 메타데이터 키 (@PartnerLiveOnly — Stage 2 작업 3).
+ * test 키가 마킹된 라우트 호출 시 403 ERR_ENV_MISMATCH.
+ * 현 Stage 1 표면(GET 조회)은 전부 양 env 허용 — 발화 지점은 Stage 3+(finalization 등).
+ */
+export const PARTNER_LIVE_ONLY_KEY = 'partnerLiveOnly';
 
 /** 멱등 캐시 헤더명 (설계서 §4.1) */
 export const IDEMPOTENCY_KEY_HEADER = 'idempotency-key';
