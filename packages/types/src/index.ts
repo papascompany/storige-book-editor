@@ -2062,3 +2062,93 @@ export interface SpreadSynthesisWebhookPayload {
   errorMessage?: string;
   timestamp: string;
 }
+
+// ============================================================================
+// Partner API v1 (Stage 1 — docs/PARTNER_PLATFORM_API_V1_DESIGN_2026-07-07.md §3)
+// ============================================================================
+
+/**
+ * Partner API v1 에러 코드 카탈로그 (설계서 §3.3 — 29종).
+ *
+ * 계약 원칙: 파트너 분기는 errorCode(와 errors[].code)로만 한다.
+ * message 문자열 파싱 금지 — 메시지는 예고 없이 개선될 수 있다.
+ *
+ * additive-only 성장: 코드 추가는 허용, 기존 코드의 의미 변경·삭제·
+ * HTTP status 변경은 v1 내에서 금지(변경 필요 시 v2).
+ */
+export enum ErrV1 {
+  // 공통 (8)
+  ERR_UNAUTHORIZED = 'ERR_UNAUTHORIZED', // 401
+  ERR_FORBIDDEN = 'ERR_FORBIDDEN', // 403
+  ERR_ENV_MISMATCH = 'ERR_ENV_MISMATCH', // 403
+  ERR_NOT_FOUND = 'ERR_NOT_FOUND', // 404
+  ERR_VALIDATION_FAILED = 'ERR_VALIDATION_FAILED', // 400
+  ERR_RATE_LIMITED = 'ERR_RATE_LIMITED', // 429 (+Retry-After)
+  ERR_INTERNAL = 'ERR_INTERNAL', // 500
+  ERR_SERVICE_UNAVAILABLE = 'ERR_SERVICE_UNAVAILABLE', // 503
+
+  // 멱등성 (2) — 설계서 §4
+  ERR_IDEMPOTENCY_KEY_MISMATCH = 'ERR_IDEMPOTENCY_KEY_MISMATCH', // 422 동일 키+다른 body hash
+  ERR_IDEMPOTENCY_IN_PROGRESS = 'ERR_IDEMPOTENCY_IN_PROGRESS', // 409 동일 키 처리 중
+
+  // 업로드/파일 (4)
+  ERR_FILE_TOO_LARGE = 'ERR_FILE_TOO_LARGE', // 413
+  ERR_UNSUPPORTED_CONTENT_TYPE = 'ERR_UNSUPPORTED_CONTENT_TYPE', // 415
+  ERR_STORAGE_NOT_S3 = 'ERR_STORAGE_NOT_S3', // 503 (동결 문자열 STORAGE_NOT_S3 와 별개 표면)
+  ERR_FILE_NOT_READY = 'ERR_FILE_NOT_READY', // 409
+
+  // BookSpecs (2)
+  ERR_BOOK_SPEC_NOT_FOUND = 'ERR_BOOK_SPEC_NOT_FOUND', // 404
+  ERR_PAGE_COUNT_OUT_OF_RANGE = 'ERR_PAGE_COUNT_OUT_OF_RANGE', // 422
+
+  // Books/자산/최종화 (8)
+  ERR_BOOK_NOT_DRAFT = 'ERR_BOOK_NOT_DRAFT', // 409
+  ERR_ASSET_ALREADY_EXISTS = 'ERR_ASSET_ALREADY_EXISTS', // 409
+  ERR_ASSET_NOT_FOUND = 'ERR_ASSET_NOT_FOUND', // 404
+  ERR_ASSET_INCOMPATIBLE = 'ERR_ASSET_INCOMPATIBLE', // 422
+  ERR_ASSETS_INCOMPLETE = 'ERR_ASSETS_INCOMPLETE', // 422
+  ERR_FINALIZATION_IN_PROGRESS = 'ERR_FINALIZATION_IN_PROGRESS', // 409
+  ERR_PDF_VALIDATION_FAILED = 'ERR_PDF_VALIDATION_FAILED', // 422
+  ERR_SESSION_NOT_PROMOTABLE = 'ERR_SESSION_NOT_PROMOTABLE', // 409
+
+  // Webhooks (3)
+  ERR_WEBHOOK_CONFIG_NOT_FOUND = 'ERR_WEBHOOK_CONFIG_NOT_FOUND', // 404
+  ERR_WEBHOOK_URL_FORBIDDEN = 'ERR_WEBHOOK_URL_FORBIDDEN', // 422
+  ERR_DELIVERY_NOT_RETRYABLE = 'ERR_DELIVERY_NOT_RETRYABLE', // 409
+
+  // [오너 게이트] Orders/Credits (2) — Stage 6
+  ERR_ORDER_NOT_CANCELLABLE = 'ERR_ORDER_NOT_CANCELLABLE', // 409
+  ERR_INSUFFICIENT_CREDIT = 'ERR_INSUFFICIENT_CREDIT', // 402
+}
+
+/** v1 목록 응답 pagination 메타 (설계서 §5.1) */
+export interface PartnerV1Pagination {
+  total: number;
+  limit: number;
+  offset: number;
+  hasNext: boolean;
+}
+
+/** v1 성공 봉투 — 필드 4종 고정 (설계서 §3.1) */
+export interface PartnerV1SuccessEnvelope<T> {
+  success: true;
+  message: string;
+  data: T;
+  pagination: PartnerV1Pagination | null;
+}
+
+/** v1 에러 봉투의 errors[] 도메인 상세 항목 */
+export interface PartnerV1ErrorItem {
+  code: string;
+  message: string;
+}
+
+/** v1 에러 봉투 — 필드 6종 고정 (설계서 §3.2) */
+export interface PartnerV1ErrorEnvelope {
+  success: false;
+  errorCode: ErrV1;
+  message: string;
+  errors: PartnerV1ErrorItem[];
+  fieldErrors: Record<string, string[]> | null;
+  requestId: string;
+}
