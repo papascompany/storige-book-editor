@@ -11,6 +11,7 @@
  */
 import { Body, Get, HttpCode, INestApplication, Post, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { IsString } from 'class-validator';
 import request from 'supertest';
@@ -18,6 +19,7 @@ import { ErrV1 } from '@storige/types';
 import { SitesService } from '../sites/sites.service';
 import { ApiKeyGuard } from '../auth/guards/api-key.guard';
 import { PartnerApiKeyGuard } from './guards/partner-api-key.guard';
+import { PartnerRateLimitGuard } from './guards/partner-rate-limit.guard';
 import { PartnerApiExceptionFilter } from './http/partner-api-exception.filter';
 import { PartnerEnvelopeInterceptor } from './http/partner-envelope.interceptor';
 import { PartnerAuditService } from './audit/partner-audit.service';
@@ -88,10 +90,12 @@ describe('Partner API v1 코어 (봉투·인증·감사)', () => {
     auditInsert = jest.fn().mockResolvedValue(undefined);
 
     const moduleRef = await Test.createTestingModule({
+      imports: [ThrottlerModule.forRoot([{ ttl: 60000, limit: 300 }])],
       controllers: [PartnerPingController, TestThingsController],
       providers: [
         ApiKeyGuard,
         PartnerApiKeyGuard,
+        PartnerRateLimitGuard,
         PartnerApiExceptionFilter,
         PartnerEnvelopeInterceptor,
         PartnerAuditService,

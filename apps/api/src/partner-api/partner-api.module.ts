@@ -11,6 +11,7 @@ import { PartnerIdempotencySweeper } from './idempotency/partner-idempotency.swe
 import { PartnerApiExceptionFilter } from './http/partner-api-exception.filter';
 import { PartnerEnvelopeInterceptor } from './http/partner-envelope.interceptor';
 import { PartnerApiKeyGuard } from './guards/partner-api-key.guard';
+import { PartnerRateLimitGuard } from './guards/partner-rate-limit.guard';
 import { partnerApiConfigProvider } from './partner-api.config';
 import { PartnerPingController } from './ping.controller';
 
@@ -31,6 +32,7 @@ import { PartnerPingController } from './ping.controller';
     partnerApiConfigProvider,
     ApiKeyGuard,
     PartnerApiKeyGuard,
+    PartnerRateLimitGuard,
     PartnerApiExceptionFilter,
     PartnerEnvelopeInterceptor,
     PartnerAuditService,

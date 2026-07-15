@@ -14,6 +14,7 @@
  */
 import { Body, Get, INestApplication, Post, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import request from 'supertest';
 import { randomUUID } from 'crypto';
@@ -21,6 +22,7 @@ import { ErrV1 } from '@storige/types';
 import { SitesService } from '../../sites/sites.service';
 import { ApiKeyGuard } from '../../auth/guards/api-key.guard';
 import { PartnerApiKeyGuard } from '../guards/partner-api-key.guard';
+import { PartnerRateLimitGuard } from '../guards/partner-rate-limit.guard';
 import { PartnerApiExceptionFilter } from '../http/partner-api-exception.filter';
 import { PartnerEnvelopeInterceptor } from '../http/partner-envelope.interceptor';
 import { PartnerApiException } from '../http/partner-api.exceptions';
@@ -136,10 +138,12 @@ describe('Partner API v1 멱등성 (§4)', () => {
     repo = new InMemoryIdempotencyRepo();
 
     const moduleRef = await Test.createTestingModule({
+      imports: [ThrottlerModule.forRoot([{ ttl: 60000, limit: 300 }])],
       controllers: [IdemThingsController],
       providers: [
         ApiKeyGuard,
         PartnerApiKeyGuard,
+        PartnerRateLimitGuard,
         PartnerApiExceptionFilter,
         PartnerEnvelopeInterceptor,
         PartnerAuditService,
