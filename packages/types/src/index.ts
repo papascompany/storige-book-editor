@@ -1102,6 +1102,11 @@ export interface BookFinalizationWebhookPayload {
   timestamp: string;
   /** [S2-5] test env 더미 산출물 마커 — isTest 잡 결과에만 true(additive, live 결과 불변) */
   isTest?: boolean;
+  /**
+   * [P1-2] 워커 validate 를 건너뛰고 최종화됐음(book_spec 미연결 or pageCount 미확정 →
+   * 대조 판형 부재). true 면 파트너는 미검증 FINALIZED 임을 인지하고 자체 게이팅 가능(§6.3).
+   */
+  validationSkipped?: boolean;
 }
 
 // ============================================================================
