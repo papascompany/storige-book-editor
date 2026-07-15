@@ -440,6 +440,69 @@ describe('SmartGuidesPlugin — ⑤ 성능 마이크로벤치', () => {
   })
 })
 
+describe('SmartGuidesPlugin — ⑦ clear()/loadFromJSON 유령 참조 복원 (적대 리뷰 P1)', () => {
+  it('가이드 생성 → clear 시뮬레이션 → 다음 표시 요청에서 가이드가 재추가되고 visible 동작한다', () => {
+    const workspace = makeObj({ id: 'workspace', left: 0, top: 0, width: 1000, height: 1000 })
+    const candidate = makeObj({ id: 'c1', left: 100, top: 100, width: 80, height: 80 })
+    const moving = makeObj({ id: 'm1', left: 105, top: 500, width: 50, height: 50 })
+    const objects = [workspace, candidate, moving]
+    const { canvas } = setup(objects)
+
+    fireMoving(canvas, moving) // 가이드 2개 추가 + 1개 표시
+    fireMouseUp(canvas)
+    expect(objects.filter((o) => o.extensionType === 'guideline').length).toBe(2)
+
+    // canvas.clear()/loadFromJSON 시뮬레이션 — 객체 목록 전체 교체(플러그인 풀 참조는
+    // non-null 로 남지만 캔버스 미소속 유령이 된다) + 사용자 객체 재적재
+    objects.length = 0
+    const workspace2 = makeObj({ id: 'workspace', left: 0, top: 0, width: 1000, height: 1000 })
+    const candidate2 = makeObj({ id: 'c1', left: 100, top: 100, width: 80, height: 80 })
+    const moving2 = makeObj({ id: 'm1', left: 105, top: 500, width: 50, height: 50 })
+    objects.push(workspace2, candidate2, moving2)
+
+    fireMoving(canvas, moving2)
+
+    // 유령 참조로 시각층이 영구 사망하지 않는다 — 가이드 풀이 재생성·재추가된다
+    const guides = objects.filter((o) => o.extensionType === 'guideline')
+    expect(guides.length).toBe(2)
+    const visibleGuides = guides.filter((g) => g.visible === true)
+    expect(visibleGuides.length).toBe(1)
+    expect(visibleGuides[0].left).toBe(100)
+    expect(moving2.left).toBe(100) // 스냅 로직도 동작
+
+    // 다음 드래그에서 중복 추가되지 않는다 (풀링 유지)
+    fireMouseUp(canvas)
+    moving2.left = 105
+    fireMoving(canvas, moving2)
+    expect(objects.filter((o) => o.extensionType === 'guideline').length).toBe(2)
+  })
+
+  it('한쪽 가이드만 캔버스에서 사라진 짝 깨짐에서도 중복 없이 풀을 재구성한다', () => {
+    const workspace = makeObj({ id: 'workspace', left: 0, top: 0, width: 1000, height: 1000 })
+    const candidate = makeObj({ id: 'c1', left: 100, top: 100, width: 80, height: 80 })
+    const moving = makeObj({ id: 'm1', left: 105, top: 500, width: 50, height: 50 })
+    const objects = [workspace, candidate, moving]
+    const { canvas } = setup(objects)
+
+    fireMoving(canvas, moving)
+    fireMouseUp(canvas)
+
+    // 수직 가이드만 외부 요인으로 제거된 상황(부분 소실) 시뮬레이션
+    const guideV = objects.find(
+      (o) => o.extensionType === 'guideline' && (o.points as number[])[1] !== 0
+    )!
+    objects.splice(objects.indexOf(guideV), 1)
+    expect(objects.filter((o) => o.extensionType === 'guideline').length).toBe(1)
+
+    moving.left = 105
+    fireMoving(canvas, moving)
+
+    // 잔존측 제거 후 풀 전체 재생성 — 정확히 2개(중복/유실 없음)
+    expect(objects.filter((o) => o.extensionType === 'guideline').length).toBe(2)
+    expect(moving.left).toBe(100)
+  })
+})
+
 describe('SmartGuidesPlugin — dispose 완전 정리', () => {
   it('리스너 전량 해제 + 가이드 객체 제거', () => {
     const workspace = makeObj({ id: 'workspace', left: 0, top: 0, width: 1000, height: 1000 })

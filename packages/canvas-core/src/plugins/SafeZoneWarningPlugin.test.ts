@@ -363,6 +363,40 @@ describe('SafeZoneWarningPlugin — ③ 오버레이 계약 + ⑤ 정리', () =>
   })
 })
 
+describe('SafeZoneWarningPlugin — ⑥ clear()/loadFromJSON 유령 참조 복원 (적대 리뷰 P1)', () => {
+  it('오버레이 생성 → clear 시뮬레이션 → 다음 침범에서 오버레이가 재추가되고 visible 동작한다', () => {
+    const { cut, safe } = makeBorders()
+    const target = makeObj({ id: 'obj-1', left: 5, top: 100, width: 50, height: 50 })
+    const objects = [cut, safe, target]
+    const { canvas, editor } = setup(objects)
+
+    fireMoving(canvas, target) // 오버레이 생성 + 표시
+    canvas.fire('mouse:up', {}) // 리셋(복귀)
+    expect(overlayOf(objects)).toBeDefined()
+
+    // canvas.clear()/loadFromJSON 시뮬레이션 — 객체 목록 전체 교체(플러그인 풀 참조는
+    // non-null 로 남지만 캔버스 미소속 유령이 된다) + 경계/사용자 객체 재적재
+    objects.length = 0
+    const { cut: cut2, safe: safe2 } = makeBorders()
+    const target2 = makeObj({ id: 'obj-2', left: 5, top: 100, width: 50, height: 50 })
+    objects.push(cut2, safe2, target2)
+
+    fireMoving(canvas, target2)
+
+    // 유령 참조로 시각층이 영구 사망하지 않는다 — 오버레이가 재생성·재추가된다
+    const overlay = overlayOf(objects)
+    expect(overlay).toBeDefined()
+    expect(overlay!.visible).toBe(true)
+    expect(overlay!.left).toBe(20) // 안전영역 경계 rect 재사용도 그대로
+    expect(editor.emit).toHaveBeenCalledTimes(2) // 침범 전이마다 1회 (디바운스 유지)
+
+    // 반복 침범에도 오버레이는 1개만 존재 (풀링 유지)
+    canvas.fire('mouse:up', {})
+    fireMoving(canvas, target2)
+    expect(objects.filter((o) => o.extensionType === 'guideline').length).toBe(1)
+  })
+})
+
 describe('rect 헬퍼 — 판정 기하', () => {
   it('rectsIntersect: 교차/비교차', () => {
     const a = { left: 0, top: 0, width: 100, height: 100 }

@@ -224,9 +224,27 @@ class SmartGuidesPlugin extends PluginBase {
     this._candidateBounds = null
   }
 
+  /**
+   * 참조 객체가 현재 캔버스에 실제 소속되어 있는가.
+   * canvas.clear()/loadFromJSON(ServicePlugin.toPDF/loadJSON, 임시저장 불러오기,
+   * 백업 복원 등)은 캔버스 객체 목록을 갈아치우므로, 풀 참조가 non-null 이어도
+   * 캔버스 미소속 유령이 될 수 있다 — 이대로 두면 시각층(가이드)이 영구 사망한다
+   * (스냅 로직은 동작하나 가이드만 안 보임). SafeZoneWarningPlugin 과 동일 정책.
+   */
+  private _isAttached(obj: fabric.Object): boolean {
+    return this._canvas.getObjects().indexOf(obj) !== -1
+  }
+
   /** 가이드 라인 풀 생성 (lazy) — id 미부여·excludeFromExport·guideline */
   private _ensureGuides(): void {
-    if (this._guideV && this._guideH) return
+    const attachedV = this._guideV !== null && this._isAttached(this._guideV)
+    const attachedH = this._guideH !== null && this._isAttached(this._guideH)
+    if (attachedV && attachedH) return
+    // 유령 참조/짝 깨짐 — 잔존측을 제거하고 풀 전체를 재생성한다(짝 불변식 유지, 중복 방지)
+    if (this._guideV && attachedV) this._canvas.remove(this._guideV)
+    if (this._guideH && attachedH) this._canvas.remove(this._guideH)
+    this._guideV = null
+    this._guideH = null
     const common = {
       stroke: this._guideColor,
       strokeWidth: 1,
