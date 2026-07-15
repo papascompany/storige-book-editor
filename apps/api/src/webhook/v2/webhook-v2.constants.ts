@@ -40,6 +40,14 @@ export const WEBHOOK_RETRY_DELAYS_MS: readonly number[] = [
 /** 큐 재시도 횟수 — 인라인 최초 발송 1회 + 큐 재시도 3회 = 총 4회 시도 */
 export const WEBHOOK_MAX_QUEUE_RETRIES = 3;
 
+/**
+ * [P1-2] 수동 재발송 stale 판정 유예(ms) — PENDING/RETRYING 인데 예정 재시도
+ * 시각(nextRetryAt, 없으면 createdAt)에서 이 시간 이상 경과하면 재시도 체인이
+ * 죽은 것(인큐 실패/프로세스 중단/Redis 유실)으로 보고 수동 retry 재진입을 허용.
+ * 진행 중인 정상 체인(미경과)은 여전히 409.
+ */
+export const WEBHOOK_MANUAL_RETRY_STALE_MS = 600_000;
+
 /** 발송 HTTP 타임아웃(ms) — 기존 v1 발신과 동일값(계약 §1.5 승계) */
 export const WEBHOOK_DELIVERY_TIMEOUT_MS = 10_000;
 

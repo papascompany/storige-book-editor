@@ -22,6 +22,7 @@ import {
   WEBHOOK_DELIVERY_QUEUE,
   WEBHOOK_DELIVERY_TIMEOUT_MS,
   WEBHOOK_DELIVERY_UID_PREFIX,
+  WEBHOOK_MANUAL_RETRY_STALE_MS,
   WEBHOOK_MAX_QUEUE_RETRIES,
   WEBHOOK_RESPONSE_SNIPPET_MAX,
   WEBHOOK_RETRY_DELAYS_MS,
@@ -57,6 +58,15 @@ export interface WebhookDeliveryJobData {
   baseAttempts: number;
 }
 
+/**
+ * [P2-1] 파트너 대면 마지막 실패 사유 코드 — 수신측 응답 **본문은 뷰에 절대
+ * 포함하지 않는다**(SSRF 반출 채널 축소: 내부망 응답이 파트너 API 로 새는 것 차단).
+ * 본문 원문(lastResponse)은 DB 에만 저장(운영 진단용).
+ *  - HTTP_ERROR: 수신측이 비-2xx 상태코드로 응답 (lastStatusCode 참조)
+ *  - REQUEST_FAILED: 요청 자체 실패(연결/타임아웃) 또는 서버측 발송 전제 미충족
+ */
+export type WebhookDeliveryFailureReason = 'HTTP_ERROR' | 'REQUEST_FAILED';
+
 export interface WebhookDeliveryView {
   uid: string;
   event: string;
@@ -65,7 +75,8 @@ export interface WebhookDeliveryView {
   isTest: boolean;
   attempts: number;
   lastStatusCode: number | null;
-  lastResponse: string | null;
+  /** [P2-1] 응답 본문 대신 간략 사유 코드만 노출 (성공/미시도 = null) */
+  lastFailureReason: WebhookDeliveryFailureReason | null;
   nextRetryAt: Date | null;
   deliveredAt: Date | null;
   createdAt: Date;
@@ -205,16 +216,27 @@ export class WebhookDeliveryService {
       );
       return;
     }
-    await this.deliveryQueue.add(
-      { deliveryId: delivery.id, baseAttempts: delivery.attempts },
-      {
-        delay: WEBHOOK_RETRY_DELAYS_MS[0],
-        attempts: WEBHOOK_MAX_QUEUE_RETRIES,
-        backoff: { type: WEBHOOK_DELIVERY_BACKOFF },
-        removeOnComplete: true,
-        removeOnFail: 100,
-      },
-    );
+    // [P1-2] 인큐 실패(Redis 순단 등)가 dispatch 전체를 터뜨리면 호출측의
+    // 마지막 save 가 스킵돼 delivery 행이 미완 상태로 남는다 — 여기서 삼켜
+    // RETRYING 행 저장을 보장한다. 죽은 체인은 stale 판정(manualRetry)으로 복구.
+    try {
+      await this.deliveryQueue.add(
+        { deliveryId: delivery.id, baseAttempts: delivery.attempts },
+        {
+          delay: WEBHOOK_RETRY_DELAYS_MS[0],
+          attempts: WEBHOOK_MAX_QUEUE_RETRIES,
+          backoff: { type: WEBHOOK_DELIVERY_BACKOFF },
+          removeOnComplete: true,
+          removeOnFail: 100,
+        },
+      );
+    } catch (error) {
+      this.logger.error(
+        `[v2] delivery ${delivery.uid} 재시도 인큐 실패 — RETRYING 행만 기록(수동 retry 로 복구 가능): ${
+          (error as Error).message
+        }`,
+      );
+    }
   }
 
   /**
@@ -473,7 +495,16 @@ export class WebhookDeliveryService {
 
   /**
    * POST /api/v1/webhooks/deliveries/:uid/retry — 수동 재발송.
-   * EXHAUSTED 만 재진입 허용(§1.5) — 그 외 409 ERR_DELIVERY_NOT_RETRYABLE.
+   *
+   * 재진입 허용(§1.5 + P1-2 stale 복구):
+   *  - EXHAUSTED (기존 규약)
+   *  - PENDING/RETRYING 인데 stale — 예정 재시도 시각(nextRetryAt, PENDING 은
+   *    createdAt)에서 10분 이상 경과. 인큐 실패/프로세스 중단으로 체인이 죽은
+   *    행의 복구 경로. 진행 중 정상 행(미경과)은 여전히 409.
+   * 그 외 409 ERR_DELIVERY_NOT_RETRYABLE.
+   *
+   * [렌즈2 P2-1] 이중 POST race 원자화 — 관측 상태 조건부 UPDATE(CAS,
+   * WHERE id+status)로 재진입을 선점한다. 동시 요청 중 한쪽만 affected=1.
    */
   async manualRetry(
     siteId: string,
@@ -481,11 +512,11 @@ export class WebhookDeliveryService {
     uid: string,
   ): Promise<WebhookDeliveryView> {
     const delivery = await this.findScoped(siteId, env, uid);
-    if (delivery.status !== 'EXHAUSTED') {
+    if (!this.isManuallyRetryable(delivery)) {
       throw new PartnerApiException(
         ErrV1.ERR_DELIVERY_NOT_RETRYABLE,
         409,
-        `재발송은 EXHAUSTED 상태에서만 가능합니다 (현재: ${delivery.status})`,
+        `재발송은 EXHAUSTED 또는 10분 이상 정지(stale)된 발송만 가능합니다 (현재: ${delivery.status})`,
       );
     }
     const config = await this.configService.findActiveConfigCached(siteId, env);
@@ -497,11 +528,27 @@ export class WebhookDeliveryService {
       );
     }
 
-    // PENDING 재진입(§1.5) — 이후 인라인 1회 + 실패 시 새 재시도 체인
+    // PENDING 재진입(§1.5) — 관측 상태 CAS 로 선점 후 인라인 1회 + 실패 시 새 체인.
+    // config 재생성(새 id) 대비 최신 config 로 갱신.
+    const claimed = await this.deliveryRepository.update(
+      { id: delivery.id, status: delivery.status },
+      { status: 'PENDING' as const, configId: config.id, nextRetryAt: null },
+    );
+    // 관측 상태가 PENDING 인 stale 행은 CAS 로 값이 안 바뀌어 DB 드라이버의
+    // changed-rows 의미론에서 affected=0 일 수 있다 — 그 경우 경합 패자와 구분
+    // 불가하지만 결과 상태가 동일(PENDING)하고 delivery uid 로 수신측 dedupe
+    // 가 가능하므로 진행한다. 상태가 바뀌는 전이(EXHAUSTED/RETRYING→PENDING)만
+    // affected 게이트를 적용.
+    if (delivery.status !== 'PENDING' && (claimed.affected ?? 0) === 0) {
+      throw new PartnerApiException(
+        ErrV1.ERR_DELIVERY_NOT_RETRYABLE,
+        409,
+        '동시 재발송 요청과 경합했습니다 — 이미 재발송이 진행 중입니다',
+      );
+    }
     delivery.status = 'PENDING';
-    delivery.configId = config.id; // config 재생성(새 id) 대비 최신 config 로 갱신
+    delivery.configId = config.id;
     delivery.nextRetryAt = null;
-    await this.deliveryRepository.save(delivery);
 
     const success = await this.attemptHttp(delivery, config);
     delivery.attempts += 1;
@@ -517,6 +564,21 @@ export class WebhookDeliveryService {
   }
 
   // ── 내부 ─────────────────────────────────────────────────────────────
+
+  /**
+   * [P1-2] 수동 재발송 허용 판정 — EXHAUSTED 또는 stale PENDING/RETRYING.
+   * stale 기준: 예정 재시도 시각 + WEBHOOK_MANUAL_RETRY_STALE_MS 경과.
+   * (엔티티에 updatedAt 컬럼이 없어 PENDING(nextRetryAt=null)은 createdAt 폴백 —
+   * PENDING 이 10분 넘게 남아 있다는 것 자체가 dispatch 중단의 증거)
+   */
+  private isManuallyRetryable(delivery: WebhookDelivery): boolean {
+    if (delivery.status === 'EXHAUSTED') return true;
+    if (delivery.status !== 'PENDING' && delivery.status !== 'RETRYING') {
+      return false; // DELIVERED — 재발송 불가
+    }
+    const anchor = delivery.nextRetryAt ?? delivery.createdAt;
+    return anchor.getTime() + WEBHOOK_MANUAL_RETRY_STALE_MS <= Date.now();
+  }
 
   private async findScoped(
     siteId: string,
@@ -549,7 +611,9 @@ export class WebhookDeliveryService {
       isTest: delivery.isTest,
       attempts: delivery.attempts,
       lastStatusCode: delivery.lastStatusCode,
-      lastResponse: delivery.lastResponse,
+      // [P2-1] lastResponse(수신측 응답 본문)는 파트너 뷰 비노출 — 사유 코드만.
+      // DB 저장 자체는 유지(운영 진단용).
+      lastFailureReason: this.deriveFailureReason(delivery),
       nextRetryAt: delivery.nextRetryAt,
       deliveredAt: delivery.deliveredAt,
       createdAt: delivery.createdAt,
@@ -562,6 +626,15 @@ export class WebhookDeliveryService {
       }
     }
     return view;
+  }
+
+  /** [P2-1] 마지막 실패의 간략 사유 코드 — 성공(DELIVERED)/미시도 = null */
+  private deriveFailureReason(
+    delivery: WebhookDelivery,
+  ): WebhookDeliveryFailureReason | null {
+    if (delivery.status === 'DELIVERED') return null;
+    if (delivery.attempts === 0 && delivery.lastResponse === null) return null;
+    return delivery.lastStatusCode !== null ? 'HTTP_ERROR' : 'REQUEST_FAILED';
   }
 
   private stringifyBody(data: unknown): string {

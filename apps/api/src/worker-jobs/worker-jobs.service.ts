@@ -1476,22 +1476,31 @@ export class WorkerJobsService {
     }
 
     // Synthesis 작업 완료/실패 시 콜백 전송
+    // [Stage 2 P1-1] 게이트 = "callbackUrl 존재 OR v2 config(opt-in) 존재".
+    // hasV2Config 는 callbackUrl 부재 시에만 평가(|| 단락)되고, v2 비활성
+    // (WEBHOOK_CONFIG_ENC_KEY 미설정)이면 DB 조회 없이 false — callbackUrl 없는
+    // 잡은 기존과 완전 동일하게 스킵되며 추가 DB 조회도 없다(불변 조건).
     if (
       job.jobType === WorkerJobType.SYNTHESIZE &&
-      job.options?.callbackUrl &&
       (updateJobStatusDto.status === WorkerJobStatus.COMPLETED ||
-        updateJobStatusDto.status === WorkerJobStatus.FAILED)
+        updateJobStatusDto.status === WorkerJobStatus.FAILED) &&
+      (job.options?.callbackUrl ||
+        (await this.webhookService.hasV2Config(job.siteId)))
     ) {
       await this.sendSynthesisCallback(savedJob);
     }
 
     // Validation 작업 완료/수정필요/실패 시 직접 콜백 전송 (editSessionId 없이 callbackUrl만 있는 경우)
+    // [Stage 2 P1-1] 위 synthesis 게이트와 동일 정합화 — v2 opt-in 사이트는
+    // callbackUrl 없이도 발신 도달 가능해야 한다(종전엔 callbackUrl 선차단으로
+    // sendValidationCallback 내부 v2 분기가 죽은 코드였음).
     if (
       job.jobType === WorkerJobType.VALIDATE &&
-      job.options?.callbackUrl &&
       (updateJobStatusDto.status === WorkerJobStatus.COMPLETED ||
         updateJobStatusDto.status === WorkerJobStatus.FIXABLE ||
-        updateJobStatusDto.status === WorkerJobStatus.FAILED)
+        updateJobStatusDto.status === WorkerJobStatus.FAILED) &&
+      (job.options?.callbackUrl ||
+        (await this.webhookService.hasV2Config(job.siteId)))
     ) {
       await this.sendValidationCallback(savedJob);
     }
@@ -1793,11 +1802,11 @@ export class WorkerJobsService {
    */
   private async sendSynthesisCallback(job: WorkerJob): Promise<void> {
     const callbackUrl = job.options?.callbackUrl;
-    // [Stage 2] callbackUrl 이 없어도 v2 config(opt-in) 사이트면 발송 진행 —
-    // v2 비활성/미등록 사이트는 hasV2Config=false 로 기존과 동일하게 스킵.
-    if (!callbackUrl && !(await this.webhookService.hasV2Config(job.siteId))) {
-      return;
-    }
+    // [Stage 2 P1-1] 발신 여부 게이트("callbackUrl 존재 OR v2 config 존재")는
+    // 호출측(updateJobStatus)이 판정한다 — 여기서 hasV2Config 를 재조회하지
+    // 않는다(동일 판정 이중 조회 방지). callbackUrl 없이 도달한 경우
+    // sendCallback 이 v2 경로(tryDispatchForSite)로 발신하고, 그 사이 config
+    // 가 사라졌다면 빈 callbackUrl 폴스루로 안전하게 스킵(warn)된다.
 
     try {
       const isCompleted = job.status === WorkerJobStatus.COMPLETED;
@@ -1853,10 +1862,8 @@ export class WorkerJobsService {
    */
   private async sendValidationCallback(job: WorkerJob): Promise<void> {
     const callbackUrl = job.options?.callbackUrl;
-    // [Stage 2] callbackUrl 이 없어도 v2 config(opt-in) 사이트면 발송 진행
-    if (!callbackUrl && !(await this.webhookService.hasV2Config(job.siteId))) {
-      return;
-    }
+    // [Stage 2 P1-1] 발신 여부 게이트는 호출측(updateJobStatus)이 판정 —
+    // sendSynthesisCallback 의 동일 주석 참조(이중 조회 방지).
 
     try {
       const statusMap: Record<string, ValidationWebhookPayload['status']> = {
