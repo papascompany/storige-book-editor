@@ -704,6 +704,16 @@ export interface WorkerJob {
 export interface ValidationOptions {
   fileType: 'cover' | 'content';
   orderOptions: OrderOptions;
+  /**
+   * [S2-5, 2026-07-16] test env 파트너 키 컨텍스트로 생성된 잡 마커 (additive).
+   * API 잡 생성 서비스가 인증 컨텍스트 env==='test'일 때만 자동 스탬프한다 —
+   * 호출자가 body 로 직접 세팅할 수 없다(DTO 비화이트리스트).
+   * 현 시점(Stage 2) 잡 생성 표면은 전부 live(공용 ApiKeyGuard=sites 키)라 항상 미설정 —
+   * 실발화는 Stage 3(v1 books 잡 생성 표면)에서 일어난다.
+   * true 인 잡: 완료 웹훅 v2 발신 시 페이로드 isTest 반영 + 합성 산출물은 TEST
+   * 워터마크 더미 + outputs 24h retention(TestJobOutputsRetentionService).
+   */
+  isTest?: boolean;
 }
 
 /**
@@ -876,6 +886,8 @@ export interface SynthesisOptions {
   bindingType?: 'perfect' | 'saddle' | 'hardcover';
   generatePreview?: boolean;
   outputFormat?: 'merged' | 'separate'; // 요청 옵션, 기본값: 'merged'
+  /** [S2-5] test env 잡 마커 — `ValidationOptions.isTest` 주석 참조 (additive) */
+  isTest?: boolean;
 }
 
 /**
@@ -924,6 +936,8 @@ export interface SplitSynthesisOptions {
   totalExpectedPages: number;
   outputFormat: 'merged' | 'separate';
   alsoGenerateMerged?: boolean;
+  /** [S2-5] test env 잡 마커 — `ValidationOptions.isTest` 주석 참조 (additive) */
+  isTest?: boolean;
 }
 
 /**
@@ -940,6 +954,12 @@ export interface SplitSynthesisJobData {
   outputFormat: 'merged' | 'separate';
   alsoGenerateMerged?: boolean;
   callbackUrl?: string;
+  /**
+   * [S2-5] test env 잡 마커. ⚠️ 큐 페이로드는 명시 구성이므로(직렬화 등재 필요)
+   * API 잡 생성부가 isTest 잡에만 conditional spread 로 싣는다 — live 잡 페이로드 바이트 불변.
+   * 워커 SynthesisProcessor 는 이 플래그로 실합성 대신 TEST 워터마크 더미 산출 분기.
+   */
+  isTest?: boolean;
 }
 
 /**
@@ -1003,6 +1023,8 @@ export interface SynthesisResult {
   outputFiles?: OutputFile[]; // separate 모드에서만 추가 (cover → content 순서)
   previewUrl?: string;
   totalPages?: number; // merged PDF 기준 총 페이지 수
+  /** [S2-5] test env 더미 산출물 마커 — isTest 잡 결과에만 true (additive, live 결과 불변) */
+  isTest?: boolean;
 }
 
 /**

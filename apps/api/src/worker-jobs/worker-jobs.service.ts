@@ -43,6 +43,10 @@ import { WebhookService } from '../webhook/webhook.service';
 import { EditSessionEntity, WorkerStatus } from '../edit-sessions/entities/edit-session.entity';
 import { SitesService } from '../sites/sites.service';
 import { TemplateSetsService } from '../templates/template-sets.service';
+import {
+  PARTNER_ENV_TEST,
+  PartnerEnv,
+} from '../partner-api/partner-api.constants';
 
 @Injectable()
 export class WorkerJobsService {
@@ -62,6 +66,51 @@ export class WorkerJobsService {
     // fix-bleed(2026-07-13) — templateSet 권위 editSize 산출용. ⚠️ 기존 스펙 호환을 위해 항상 마지막 파라미터.
     private templateSetsService: TemplateSetsService,
   ) {}
+
+  /**
+   * [S2-5, 2026-07-16] test env 잡 마커 스탬프 — 잡 생성 옵션에 isTest:true 를
+   * 조건부로 얹는다. env 는 컨트롤러가 @CurrentSite().env(=resolvePartnerEnv 해석값)로
+   * 주입한 dto.partnerEnv — 미전달(내부/게스트/레거시)·'live' 는 그대로(키 자체가 없음
+   * = 기존 잡 options 바이트 불변).
+   *
+   * ⚠️ 현 구조에서 잡 생성 external 라우트는 공용 ApiKeyGuard(sites 키=항상 live) 전용
+   * 이라 v1 test 키(partner_api_keys)로는 인증 불가 — 이 스탬프는 **선행 인프라(no-op 훅)**
+   * 이며 실발화는 Stage 3(v1 books 잡 생성 표면)이다. external 라우트에 v1 키 인증을
+   * 추가하는 배선은 AD-1 위반으로 금지(로드맵 §6 Stage 2 작업 1).
+   */
+  private stampTestEnv<T extends Record<string, any>>(
+    options: T,
+    partnerEnv?: PartnerEnv,
+  ): T | (T & { isTest: true }) {
+    if (partnerEnv === PARTNER_ENV_TEST) {
+      return { ...options, isTest: true as const };
+    }
+    return options;
+  }
+
+  /**
+   * [S2-5] 잡 완료 웹훅 발신 컨텍스트용 env 해석 — isTest 잡만 'test', 그 외 undefined.
+   * undefined 는 WebhookService.sendCallback 이 live 로 폴백(기존 발신 바이트 불변,
+   * webhook-v1-invariance.spec 게이트).
+   */
+  private jobWebhookEnv(job: WorkerJob): PartnerEnv | undefined {
+    return job.options?.isTest === true ? PARTNER_ENV_TEST : undefined;
+  }
+
+  /**
+   * [S2-5] hasV2Config 게이트의 env-aware 래퍼 — isTest 잡만 test env config 로
+   * 판정하고, 그 외(기존 전원)는 **기존과 동일한 단일 인자 호출**을 유지한다
+   * (worker-jobs.callback-gate.spec 의 호출 계약 고정 — live 경로 완전 불변).
+   */
+  private hasV2ConfigForJob(
+    job: WorkerJob,
+    siteId?: string | null,
+  ): Promise<boolean> {
+    const env = this.jobWebhookEnv(job);
+    return env
+      ? this.webhookService.hasV2Config(siteId, env)
+      : this.webhookService.hasV2Config(siteId);
+  }
 
   /**
    * 워커 잡 입력용 파일 URL 해석. s3(R2) 백엔드 파일은 워커가 api://<fileId> 마커로
@@ -331,11 +380,17 @@ export class WorkerJobsService {
       fileId,
       inputFileUrl: fileUrl,
       siteId: createValidationJobDto.siteId || null, // Phase C
-      options: {
-        fileType: createValidationJobDto.fileType,
-        orderOptions,
-        callbackUrl: createValidationJobDto.callbackUrl || undefined,
-      },
+      // [S2-5] test env 컨텍스트면 isTest:true 스탬프(live/미전달=키 없음, 기존 불변).
+      // 검증 잡은 실검증을 그대로 수행(읽기 전용·경량) — isTest 는 완료 웹훅 v2 발신의
+      // env 판정(페이로드 isTest)에만 쓰인다. 더미 분기는 합성 잡 전용(로드맵 §6).
+      options: this.stampTestEnv(
+        {
+          fileType: createValidationJobDto.fileType,
+          orderOptions,
+          callbackUrl: createValidationJobDto.callbackUrl || undefined,
+        },
+        createValidationJobDto.partnerEnv,
+      ),
     });
 
     const savedJob = await this.workerJobRepository.save(job);
@@ -647,16 +702,21 @@ export class WorkerJobsService {
       fileId: coverFileId, // 대표 파일로 표지 사용
       inputFileUrl: coverUrl,
       siteId: createSynthesisJobDto.siteId || null, // Phase C
-      options: {
-        coverFileId,
-        contentFileId,
-        coverUrl,
-        contentUrl,
-        spineWidth: createSynthesisJobDto.spineWidth,
-        orderId: createSynthesisJobDto.orderId,
-        callbackUrl: createSynthesisJobDto.callbackUrl,
-        outputFormat, // 출력 형식 저장
-      },
+      // [S2-5] test env 컨텍스트면 isTest:true 스탬프 — 워커가 실합성 대신 TEST
+      // 워터마크 더미 산출 + outputs 24h retention 대상. live/미전달=키 없음(기존 불변).
+      options: this.stampTestEnv(
+        {
+          coverFileId,
+          contentFileId,
+          coverUrl,
+          contentUrl,
+          spineWidth: createSynthesisJobDto.spineWidth,
+          orderId: createSynthesisJobDto.orderId,
+          callbackUrl: createSynthesisJobDto.callbackUrl,
+          outputFormat, // 출력 형식 저장
+        },
+        createSynthesisJobDto.partnerEnv,
+      ),
     });
 
     const savedJob = await this.workerJobRepository.save(job);
@@ -684,6 +744,11 @@ export class WorkerJobsService {
         callbackUrl: createSynthesisJobDto.callbackUrl,
         outputFormat, // 출력 형식 전달
         bindingType: createSynthesisJobDto.bindingType, // 제본 방식 (saddle 등) — synthesizer가 분기 처리
+        // [S2-5] 큐 페이로드는 명시 구성이라 isTest 직렬화 등재 필요 — isTest 잡에만
+        // conditional spread(live 잡 페이로드 키 집합 불변, external-site-stamp spec 계약 준용).
+        ...(createSynthesisJobDto.partnerEnv === PARTNER_ENV_TEST
+          ? { isTest: true as const }
+          : {}),
       },
       jobOptions,
     );
@@ -962,14 +1027,18 @@ export class WorkerJobsService {
       pdfFileId: dto.pdfFileId,
       requestId: dto.requestId,
       siteId: dto.siteId || null, // Phase C — Stage 0 비대칭 봉합(validate/external 준용). 미전달=NULL(기존 동작 불변)
-      options: {
-        mode: 'split',
-        pageTypes,
-        totalExpectedPages: sortedPages.length,
-        outputFormat,
-        alsoGenerateMerged,
-        callbackUrl: dto.callbackUrl,
-      },
+      // [S2-5] test env 컨텍스트면 isTest:true 스탬프 — createSynthesisJob 주석 참조.
+      options: this.stampTestEnv(
+        {
+          mode: 'split',
+          pageTypes,
+          totalExpectedPages: sortedPages.length,
+          outputFormat,
+          alsoGenerateMerged,
+          callbackUrl: dto.callbackUrl,
+        },
+        dto.partnerEnv,
+      ),
     });
 
     // ★ Race condition 방어: unique violation 시 기존 job 반환
@@ -1017,6 +1086,9 @@ export class WorkerJobsService {
         outputFormat,
         alsoGenerateMerged,
         callbackUrl: dto.callbackUrl,
+        // [S2-5] isTest 잡에만 conditional spread — live 잡 페이로드 키 집합 불변
+        // (external-site-stamp spec "큐 페이로드 불변" 계약 준용).
+        ...(dto.partnerEnv === PARTNER_ENV_TEST ? { isTest: true as const } : {}),
       },
       jobOptions,
     );
@@ -1485,7 +1557,8 @@ export class WorkerJobsService {
       (updateJobStatusDto.status === WorkerJobStatus.COMPLETED ||
         updateJobStatusDto.status === WorkerJobStatus.FAILED) &&
       (job.options?.callbackUrl ||
-        (await this.webhookService.hasV2Config(job.siteId)))
+        // [S2-5] isTest 잡만 test env config 로 게이트 판정(기존 잡은 기존 호출 그대로)
+        (await this.hasV2ConfigForJob(job, job.siteId)))
     ) {
       await this.sendSynthesisCallback(savedJob);
     }
@@ -1500,7 +1573,8 @@ export class WorkerJobsService {
         updateJobStatusDto.status === WorkerJobStatus.FIXABLE ||
         updateJobStatusDto.status === WorkerJobStatus.FAILED) &&
       (job.options?.callbackUrl ||
-        (await this.webhookService.hasV2Config(job.siteId)))
+        // [S2-5] isTest 잡만 test env config 로 게이트 판정(기존 잡은 기존 호출 그대로)
+        (await this.hasV2ConfigForJob(job, job.siteId)))
     ) {
       await this.sendValidationCallback(savedJob);
     }
@@ -1839,9 +1913,10 @@ export class WorkerJobsService {
         callbackUrl ?? '',
         payload,
         // [Stage 2] v2 opt-in 판정용 — config 없으면 기존 경로 그대로.
-        // env 미전달 = live 고정: 잡 완료 발신은 요청(파트너 키) env 컨텍스트가
-        // 없는 백그라운드 경로다. test env 발신은 v1 라우트(resolvePartnerEnv) 전용.
-        { siteId: job.siteId },
+        // [S2-5] env = 잡 생성 시 스탬프된 options.isTest 로 해석(jobWebhookEnv):
+        // isTest 잡만 'test'(v2 발신 페이로드 isTest:true), 그 외 undefined→live 폴백
+        // (기존 발신 바이트 불변 — webhook-v1-invariance.spec 게이트).
+        { siteId: job.siteId, env: this.jobWebhookEnv(job) },
       );
 
       if (success) {
@@ -1896,9 +1971,8 @@ export class WorkerJobsService {
         callbackUrl ?? '',
         payload,
         // [Stage 2] v2 opt-in 판정용 — config 없으면 기존 경로 그대로.
-        // env 미전달 = live 고정: 잡 완료 발신은 요청(파트너 키) env 컨텍스트가
-        // 없는 백그라운드 경로다. test env 발신은 v1 라우트(resolvePartnerEnv) 전용.
-        { siteId: job.siteId },
+        // [S2-5] env = options.isTest 해석(jobWebhookEnv) — sendSynthesisCallback 주석 참조.
+        { siteId: job.siteId, env: this.jobWebhookEnv(job) },
       );
 
       if (success) {
@@ -2054,10 +2128,11 @@ export class WorkerJobsService {
     workerStatus: WorkerStatus,
   ): Promise<void> {
     // [Stage 2] callbackUrl 이 없어도 v2 config(opt-in) 사이트면 발송 진행
+    // [S2-5] isTest 잡은 test env config 로 판정(기본 live — 기존 호출 SQL 동일)
     const webhookSiteId = session.siteId ?? job.siteId;
     if (
       !session.callbackUrl &&
-      !(await this.webhookService.hasV2Config(webhookSiteId))
+      !(await this.hasV2ConfigForJob(job, webhookSiteId))
     ) {
       this.logger.log(`No callback URL for session ${session.id}, skipping webhook`);
       return;
@@ -2081,8 +2156,8 @@ export class WorkerJobsService {
         session.callbackUrl ?? '',
         payload,
         // [Stage 2] v2 opt-in 판정용 — config 없으면 기존 경로 그대로.
-        // env 미전달 = live 고정(잡 완료 발신 경로는 요청 env 컨텍스트 없음)
-        { siteId: webhookSiteId },
+        // [S2-5] env = options.isTest 해석(jobWebhookEnv) — sendSynthesisCallback 주석 참조.
+        { siteId: webhookSiteId, env: this.jobWebhookEnv(job) },
       );
 
       if (success) {
