@@ -7,6 +7,7 @@ import {
   Optional,
   Inject,
   forwardRef,
+  OnModuleInit,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { InjectQueue } from '@nestjs/bull';
@@ -57,7 +58,7 @@ import {
 import { BookFinalizationsService } from '../books/book-finalizations.service';
 
 @Injectable()
-export class WorkerJobsService {
+export class WorkerJobsService implements OnModuleInit {
   private readonly logger = new Logger(WorkerJobsService.name);
 
   constructor(
@@ -82,6 +83,23 @@ export class WorkerJobsService {
     @Inject(forwardRef(() => BookFinalizationsService))
     private readonly bookFinalizationsService?: BookFinalizationsService,
   ) {}
+
+  /**
+   * [P1-1] 배선 실패 관측 — books ⇄ worker-jobs forwardRef 가 깨지면 @Optional 이
+   * bookFinalizationsService 를 undefined 로 침묵 실체화해 finalization 마커 잡 콜백
+   * (onWorkerJobSettled)이 영원히 no-op → finalization 이 VALIDATING/COMPOSING 에서 교착한다.
+   * API 프로세스에선 반드시 주입돼야 하므로 미주입을 warn 으로 관측 가능하게 남긴다(침묵 마스킹
+   * 방지). books 모듈을 로드하지 않는 워커 전용 프로세스라면 정상 — 그래서 @Optional 은 유지한다.
+   */
+  onModuleInit(): void {
+    if (!this.bookFinalizationsService) {
+      this.logger.warn(
+        '[finalization] BookFinalizationsService 미주입 — books ⇄ worker-jobs forwardRef 배선을 ' +
+          '확인하세요. finalization 마커 잡 콜백(onWorkerJobSettled)이 no-op 처리됩니다. ' +
+          '(books 모듈을 로드하지 않는 워커 전용 프로세스라면 정상입니다.)',
+      );
+    }
+  }
 
   /**
    * [S2-5, 2026-07-16] test env 잡 마커 스탬프 — 잡 생성 옵션에 isTest:true 를
