@@ -1642,7 +1642,18 @@ export class WorkerJobsService implements OnModuleInit {
         updateJobStatusDto.status === WorkerJobStatus.FIXABLE ||
         updateJobStatusDto.status === WorkerJobStatus.FAILED)
     ) {
-      await this.bookFinalizationsService.onWorkerJobSettled(savedJob);
+      // [렌즈2 P2-4] 콜백 예외 격리 — onWorkerJobSettled 가 throw 해도 워커 PATCH 는 성공
+      //   반환한다(기존 edit_session 갱신·발신 경로 불변). 미격리 시 워커가 500 → 잡 재시도
+      //   폭주 + compose 중복. finalization 자체 FAILED 전이는 onWorkerJobSettled 내부에서
+      //   시도되므로(이중 방어) 여기선 로깅만 하고 삼킨다.
+      try {
+        await this.bookFinalizationsService.onWorkerJobSettled(savedJob);
+      } catch (err) {
+        this.logger.error(
+          `[finalization] onWorkerJobSettled 예외 격리(job=${savedJob.id}): ${(err as Error).message}`,
+          (err as Error).stack,
+        );
+      }
     }
 
     return savedJob;

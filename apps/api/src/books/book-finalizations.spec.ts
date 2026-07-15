@@ -343,4 +343,22 @@ describe('BookFinalizationsService — 상태머신(W3) + 콜백 역참조(#4) +
     expect(arg.coverFileId).toBe('f_pdf_cover'); // 스냅샷(구자산) — MUTATED_* 아님
     expect(arg.contentFileId).toBe('f_pdf_contents');
   });
+
+  // ── [렌즈2 P2-4] 콜백 전이 예외 격리(FAILED 전이) ─────────────────────
+
+  it('렌즈2 P2-4: 전이 예외(createSynthesisJob throw) → FAILED+ERR_INTERNAL+웹훅 failed(삼킴)', async () => {
+    finRepo.findOne.mockResolvedValue({
+      id: 'fin-1', uid: 'fin_1', bookId: 'book-1', attempt: 1, status: 'VALIDATING', validateJobId: 'vjob-1',
+      planSnapshot: { mode: 'synthesize', validateFileId: 'f_pdf_contents', coverFileId: 'f_pdf_cover', contentFileId: 'f_pdf_contents' },
+    });
+    bookRepo.findOne.mockResolvedValue(makeBook());
+    workerJobsService.createSynthesisJob.mockRejectedValue(new Error('queue down'));
+    const job = { id: 'vjob-1', status: WorkerJobStatus.COMPLETED, options: { finalizationId: 'fin-1' }, result: { totalPages: 40 } };
+    // 예외를 삼켜 교착을 막는다(재던짐 금지).
+    await expect(svc.onWorkerJobSettled(job as never)).resolves.toBeUndefined();
+    const finSaved = finRepo.save.mock.calls.at(-1)[0];
+    expect(finSaved.status).toBe('FAILED');
+    expect(finSaved.errorCode).toBe(ErrV1.ERR_INTERNAL);
+    expect(webhookService.sendCallback.mock.calls.at(-1)[1].event).toBe('book.finalization.failed');
+  });
 });

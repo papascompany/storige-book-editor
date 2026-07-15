@@ -282,37 +282,59 @@ export class BookFinalizationsService {
 
     const succeeded = job.status === WorkerJobStatus.COMPLETED;
 
-    // VALIDATING 단계 — validate 잡 종결
-    if (fin.status === 'VALIDATING' && fin.validateJobId === job.id) {
-      if (succeeded) {
-        await this.advanceAfterValidation(book, fin, job);
-      } else {
-        // FIXABLE(수정필요)·FAILED = 검증 실패 → 파트너가 자산 수정 후 재최종화
-        await this.failFinalization(
-          book,
-          fin,
-          ErrV1.ERR_PDF_VALIDATION_FAILED,
-          this.jobResultDetail(job),
-        );
+    // [렌즈2 P2-4] 전이 예외 격리 — advanceAfterValidation/completeFromCompose 가 throw 하면
+    //   (createSynthesisJob·registerExternalFile·bookRepo.save 실패 등) 미격리 시 워커 PATCH 가
+    //   500 이 되고 finalization 은 진행 중 상태로 잔류 → 재시도 시 compose 중복. 여기서 FAILED
+    //   전이로 상태머신을 종결시켜 교착을 차단한다(호출측 worker-jobs 도 try/catch 로 이중 방어).
+    try {
+      // VALIDATING 단계 — validate 잡 종결
+      if (fin.status === 'VALIDATING' && fin.validateJobId === job.id) {
+        if (succeeded) {
+          await this.advanceAfterValidation(book, fin, job);
+        } else {
+          // FIXABLE(수정필요)·FAILED = 검증 실패 → 파트너가 자산 수정 후 재최종화
+          await this.failFinalization(
+            book,
+            fin,
+            ErrV1.ERR_PDF_VALIDATION_FAILED,
+            this.jobResultDetail(job),
+          );
+        }
+        return;
       }
-      return;
-    }
 
-    // COMPOSING 단계 — synthesize 잡 종결
-    if (fin.status === 'COMPOSING' && fin.composeJobId === job.id) {
-      if (succeeded) {
-        await this.completeFromCompose(book, fin, job);
-      } else {
-        await this.failFinalization(
-          book,
-          fin,
-          ErrV1.ERR_PDF_VALIDATION_FAILED,
-          this.jobResultDetail(job),
+      // COMPOSING 단계 — synthesize 잡 종결
+      if (fin.status === 'COMPOSING' && fin.composeJobId === job.id) {
+        if (succeeded) {
+          await this.completeFromCompose(book, fin, job);
+        } else {
+          await this.failFinalization(
+            book,
+            fin,
+            ErrV1.ERR_PDF_VALIDATION_FAILED,
+            this.jobResultDetail(job),
+          );
+        }
+        return;
+      }
+      // 단계/잡 불일치 — 방어적 무시
+    } catch (err) {
+      this.logger.error(
+        `[finalization] ${fin.uid} 전이 예외 — FAILED 강제 전이(교착 방지): ${(err as Error).message}`,
+        (err as Error).stack,
+      );
+      try {
+        await this.failFinalization(book, fin, ErrV1.ERR_INTERNAL, {
+          reason: `전이 예외: ${(err as Error).message}`,
+        });
+      } catch (failErr) {
+        // FAILED 전이마저 실패(DB 장애 등) — 재던짐 금지(워커 PATCH 는 성공 반환). 진행 중
+        //   상태로 잔류하나 관측 가능하게 로깅(폴링/운영 후속 복구).
+        this.logger.error(
+          `[finalization] ${fin.uid} FAILED 전이마저 실패(교착 위험, 운영 확인 필요): ${(failErr as Error).message}`,
         );
       }
-      return;
     }
-    // 단계/잡 불일치 — 방어적 무시
   }
 
   // ── 내부 상태 전이 ───────────────────────────────────────────────────
