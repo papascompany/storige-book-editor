@@ -152,4 +152,36 @@ describe('WorkerJobsService.createComposeMixedJob — D-4 spread 기대치 push'
     expect(payload.composeOutputMode).toBe('merged');
     expect(payload.composeSpreadOutputWidthMm).toBeUndefined();
   });
+
+  // ── W5 / 정찰 #2 — compose-mixed test env 전파(워터마크 더미 실발화 게이트) ──
+  describe('partnerEnv 전파(#2) — test env 워터마크 더미 배선', () => {
+    it("partnerEnv='test' → options.isTest + 큐 페이로드 isTest=true (handleTestSynthesis 진입 게이트)", async () => {
+      editSessionRepository.findOne.mockResolvedValue({ id: 'sess-1', metadata: {} });
+      await service.createComposeMixedJob({ ...baseDto, partnerEnv: 'test' });
+      const options = workerJobRepository.create.mock.calls[0][0].options;
+      expect(options.isTest).toBe(true);
+      expect(queuePayload().isTest).toBe(true);
+    });
+
+    it("partnerEnv 미전달(external sites 키=live) → isTest 부재 (기존 옵션/페이로드 바이트 불변)", async () => {
+      editSessionRepository.findOne.mockResolvedValue({ id: 'sess-1', metadata: {} });
+      await service.createComposeMixedJob({ ...baseDto });
+      const options = workerJobRepository.create.mock.calls[0][0].options;
+      expect('isTest' in options).toBe(false);
+      expect('isTest' in queuePayload()).toBe(false);
+    });
+
+    it('finalizationId 마커(#4) → options 에 conditional 등재, 부재 시 미등재', async () => {
+      editSessionRepository.findOne.mockResolvedValue({ id: 'sess-1', metadata: {} });
+      await service.createComposeMixedJob({ ...baseDto, finalizationId: 'fin-9' });
+      expect(workerJobRepository.create.mock.calls[0][0].options.finalizationId).toBe('fin-9');
+
+      jest.clearAllMocks();
+      workerJobRepository.create.mockImplementation((x: any) => x);
+      workerJobRepository.save.mockImplementation(async (x: any) => ({ ...x, id: 'job-d4' }));
+      editSessionRepository.findOne.mockResolvedValue({ id: 'sess-1', metadata: {} });
+      await service.createComposeMixedJob({ ...baseDto });
+      expect('finalizationId' in workerJobRepository.create.mock.calls[0][0].options).toBe(false);
+    });
+  });
 });

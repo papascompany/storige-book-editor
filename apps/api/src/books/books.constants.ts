@@ -84,6 +84,26 @@ export const BOOK_FINALIZATION_STATUSES: readonly BookFinalizationStatus[] = [
 ];
 
 /**
+ * 최종화 실행 계획 — creationType 별 자산 해석 결과.
+ *  - synthesize: validate(내지) → synthesize(표지+내지) → merged 산출(PDF_UPLOAD, 표지분리 세션).
+ *  - passthrough: validate(병합본) → 편집기 합성완료본을 그대로 최종 산출(EDITOR_SESSION 병합).
+ *
+ * ⚠️ 착수(startFinalization) 시점에 해석해 book_finalizations.plan_snapshot 에 고정한다
+ *    (적대 리뷰 렌즈2 P2-3 TOCTOU): validate 는 착수 시점 자산으로, compose 는 재조회 없이
+ *    동일 스냅샷으로 진행 → 진행 중 자산 교체(assertDraft 가 DRAFT 중 허용)와 무관하게 이번
+ *    attempt 는 착수 시점 자산에 고정. entity/service 공유 타입(순환 import 방지 위해 여기 배치).
+ */
+export interface FinalizationPlan {
+  mode: 'synthesize' | 'passthrough';
+  /** validate 잡 대상(내지/병합본) files.id */
+  validateFileId: string;
+  /** synthesize 표지 files.id (mode='synthesize'만) */
+  coverFileId?: string;
+  /** synthesize 내지 / passthrough 최종 산출 files.id */
+  contentFileId: string;
+}
+
+/**
  * creationType × asset_type 호환 매트릭스 (설계서 §6.1 — ERR_ASSET_INCOMPATIBLE 판정 기준).
  *
  * | creationType       | pdf_cover | pdf_contents | photo | cover_binding | contents_binding |

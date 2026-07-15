@@ -100,6 +100,14 @@ export class CreateValidationJobDto {
    * (vite.config shadow 급 함정 — 본 브랜치에서 실적발, dto.spec 4건 red 로 검출).
    */
   declare partnerEnv?: PartnerEnv;
+
+  /**
+   * [Stage 3 W3] books finalization 역참조 마커(#4) — 서비스가 options.finalizationId
+   * 로 심어, 잡 완료 콜백(updateJobStatus)이 book_finalizations 상태머신을 전진시킨다.
+   * partnerEnv 와 동일하게 비화이트리스트 `declare`(파트너 body 자가주입 차단) — 오직
+   * 내부 오케스트레이터(BookFinalizationsService)만 전달. 부재=기존 잡(options 불변).
+   */
+  declare finalizationId?: string;
 }
 
 export class CreateConversionJobDto {
@@ -238,6 +246,9 @@ export class CreateSynthesisJobDto {
 
   /** [S2-5] 인증 컨텍스트 env — CreateValidationJobDto.partnerEnv 주석 참조(비화이트리스트·declare 필수) */
   declare partnerEnv?: PartnerEnv;
+
+  /** [Stage 3 W3] books finalization 역참조 마커(#4) — CreateValidationJobDto.finalizationId 주석 참조 */
+  declare finalizationId?: string;
 }
 
 export class UpdateJobStatusDto {

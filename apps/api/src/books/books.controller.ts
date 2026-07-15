@@ -5,10 +5,12 @@ import {
   Post,
   Put,
   Query,
+  Res,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import type { Response } from 'express';
 import {
   ApiConsumes,
   ApiOperation,
@@ -17,13 +19,16 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { BooksService } from './books.service';
+import { BookFinalizationsService } from './book-finalizations.service';
 import { PartnerV1Controller } from '../partner-api/partner-v1.decorator';
 import { PartnerRateLimitBucket } from '../partner-api/guards/partner-rate-limit.decorator';
 import { PaginatedResult } from '../partner-api/http/pagination';
 import { CurrentSite, CurrentSitePayload } from '../auth/decorators/current-site.decorator';
+import { FilesService } from '../files/files.service';
 import { BOOK_ASSET_DIRECT_UPLOAD_MAX_BYTES } from './books.constants';
 import { BookListQueryDto, BookView, CreateBookDto } from './dto/book.dto';
 import { AssetInputDto, BookAssetView } from './dto/book-asset.dto';
+import { BookFinalizationView } from './dto/book-finalization.dto';
 
 /**
  * 자산 라우트 공용 멀티파트 옵션 — 직접 업로드 ≤100MB. fileFilter 는 두지 않고
@@ -52,7 +57,14 @@ const ASSET_UPLOAD = FileInterceptor('file', {
 @ApiSecurity('api-key')
 @PartnerV1Controller('books')
 export class BooksController {
-  constructor(private readonly booksService: BooksService) {}
+  constructor(
+    private readonly booksService: BooksService,
+    // W3 — 최종화 오케스트레이터. 라우트는 본 컨트롤러에 둔다(별도 v1 컨트롤러 신설 시
+    // partner-v1-guarded 전수 스캔 목록에 등재 필요 — 기존 컨트롤러 재사용이 최소 변경).
+    private readonly bookFinalizationsService: BookFinalizationsService,
+    // W3 GET .../pdf 스트림(local/s3 무관 getFileStream).
+    private readonly filesService: FilesService,
+  ) {}
 
   @Post()
   @ApiOperation({ summary: '도서 생성(DRAFT) — creationType 필수' })
@@ -175,6 +187,73 @@ export class BooksController {
     @UploadedFile() file?: Express.Multer.File,
   ): Promise<BookAssetView> {
     return this.booksService.addPhoto(site, uid, { fileId: dto.fileId, file });
+  }
+
+  // ── 최종화(W3) ──────────────────────────────────────────────────────
+  // ⚠️ 정적 하위 경로(2 세그먼트라 @Get(':uid') 에 shadow 되진 않으나 선언 순서 관행 유지).
+  //   POST/GET .../finalization 은 상태머신 폴링 표면, GET .../pdf 는 소유검증 스트림(§9-10).
+
+  @Post(':uid/finalization')
+  @PartnerRateLimitBucket('heavy')
+  @ApiOperation({ summary: '최종화 착수 — DRAFT→FINALIZED 상태머신(폴링+웹훅 병행)' })
+  @ApiResponse({ status: 201, description: '{success,message,data} 봉투 — 최종화 이력(status/attempt)' })
+  @ApiResponse({ status: 409, description: 'ERR_FINALIZATION_IN_PROGRESS — 진행 중 재호출(COMPLETED 재호출=200 재전달)' })
+  @ApiResponse({ status: 422, description: 'ERR_ASSETS_INCOMPLETE / ERR_PAGE_COUNT_OUT_OF_RANGE' })
+  @ApiResponse({ status: 404, description: 'ERR_NOT_FOUND — 없음/타 site/타 env(존재 은닉)' })
+  async startFinalization(
+    @CurrentSite() site: CurrentSitePayload,
+    @Param('uid') uid: string,
+  ): Promise<BookFinalizationView> {
+    return this.bookFinalizationsService.startFinalization(site, uid);
+  }
+
+  @Get(':uid/finalization')
+  @ApiOperation({ summary: '최종화 상태 폴링 — 최신 attempt 이력' })
+  @ApiResponse({ status: 200, description: '{success,message,data} 봉투 — 최종화 이력(status/outputFileId)' })
+  @ApiResponse({ status: 404, description: 'ERR_NOT_FOUND — 도서/이력 없음' })
+  async getFinalization(
+    @CurrentSite() site: CurrentSitePayload,
+    @Param('uid') uid: string,
+  ): Promise<BookFinalizationView> {
+    return this.bookFinalizationsService.getFinalization(site, uid);
+  }
+
+  @Get(':uid/pdf')
+  @PartnerRateLimitBucket('heavy')
+  @ApiOperation({ summary: '최종 PDF 다운로드(소유검증 스트림) — FINALIZED 전용(§9-10)' })
+  @ApiResponse({ status: 200, description: 'application/pdf 스트림(local/s3 무관 상수메모리)' })
+  @ApiResponse({ status: 404, description: 'ERR_NOT_FOUND — 미FINALIZED/없음/타 테넌트(존재 은닉)' })
+  async downloadPdf(
+    @CurrentSite() site: CurrentSitePayload,
+    @Param('uid') uid: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    // 소유검증(테넌트 스코프)은 서비스가 수행 — 실패 시 v1 예외필터가 에러 봉투로 응답
+    // (@Res 미접촉 상태라 필터가 res 를 안전 처리). 성공 시에만 스트림 파이프.
+    const file = await this.bookFinalizationsService.getFinalizedPdf(site, uid);
+    const { stream, size } = await this.filesService.getFileStream(file.id);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${uid}.pdf"`);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    if (size != null && Number.isFinite(size) && size > 0) {
+      res.setHeader('Content-Length', String(size));
+    }
+    res.on('close', () => stream.destroy());
+    stream.on('error', (err: Error) => {
+      if (!res.headersSent) {
+        res.status(500).json({
+          success: false,
+          errorCode: 'ERR_INTERNAL',
+          message: '파일 스트리밍 중 오류가 발생했습니다',
+          errors: [],
+          fieldErrors: null,
+          requestId: null,
+        });
+      } else {
+        res.destroy(err);
+      }
+    });
+    stream.pipe(res);
   }
 
   @Get(':uid')

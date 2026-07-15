@@ -168,3 +168,88 @@ describe('WorkerJobsService.updateJobStatus — P1-1 발신 게이트(caller 경
     expect(sendCallbackSpy).not.toHaveBeenCalled(); // 기존과 동일 스킵
   });
 });
+
+// ── [Stage 3 W3, #4] finalization 역참조 분기 (updateJobStatus additive) ──
+describe('WorkerJobsService.updateJobStatus — finalization 콜백(#4) 분기', () => {
+  const makeJob = (overrides: Record<string, unknown> = {}) => ({
+    id: 'vjob-1',
+    jobType: WorkerJobType.VALIDATE,
+    editSessionId: null,
+    siteId: 'site-a',
+    options: {},
+    result: null,
+    status: WorkerJobStatus.PROCESSING,
+    ...overrides,
+  });
+
+  const build = (
+    job: Record<string, unknown>,
+    finService?: { onWorkerJobSettled: jest.Mock },
+  ) => {
+    const repo = { findOne: jest.fn(async () => job), save: jest.fn(async (e: unknown) => e) };
+    const webhook = { sendCallback: jest.fn(async () => true), hasV2Config: jest.fn(async () => true) };
+    const svc = new WorkerJobsService(
+      repo as never,
+      { findOne: jest.fn(), update: jest.fn() } as never,
+      { add: jest.fn() } as never,
+      { add: jest.fn() } as never,
+      { add: jest.fn() } as never,
+      {} as never,
+      webhook as never,
+      {} as never,
+      {} as never,
+      finService as never, // 10번째 @Optional — 미주입(undefined)도 검증
+    );
+    return { svc, webhook };
+  };
+
+  it('finalizationId 마커 잡 COMPLETED → onWorkerJobSettled 호출 + 중간 validation.* 억제', async () => {
+    const finService = { onWorkerJobSettled: jest.fn(async () => undefined) };
+    const { svc, webhook } = build(
+      makeJob({ options: { finalizationId: 'fin-1', fileType: 'content' } }),
+      finService,
+    );
+    await svc.updateJobStatus('vjob-1', { status: WorkerJobStatus.COMPLETED });
+    expect(finService.onWorkerJobSettled).toHaveBeenCalledTimes(1);
+    // 내부 오케스트레이션 잡 — 중간 validation.* 웹훅 억제(book.finalization.* 만 발신)
+    expect(webhook.sendCallback).not.toHaveBeenCalled();
+    expect(webhook.hasV2Config).not.toHaveBeenCalled();
+  });
+
+  it('마커 없는 기존 잡 → onWorkerJobSettled 미호출(서비스 주입돼도) + 기존 발신 경로 유지', async () => {
+    const finService = { onWorkerJobSettled: jest.fn(async () => undefined) };
+    const { svc, webhook } = build(
+      makeJob({ jobType: WorkerJobType.SYNTHESIZE, options: {} }),
+      finService,
+    );
+    await svc.updateJobStatus('vjob-1', { status: WorkerJobStatus.COMPLETED });
+    expect(finService.onWorkerJobSettled).not.toHaveBeenCalled();
+    expect(webhook.sendCallback).toHaveBeenCalledTimes(1); // 기존 synthesis 발신 그대로
+  });
+
+  it('서비스 미주입(기존 9-인자 유닛)이면 마커 잡이어도 no-op(크래시 없음)', async () => {
+    const { svc } = build(makeJob({ options: { finalizationId: 'fin-1' } }), undefined);
+    await expect(
+      svc.updateJobStatus('vjob-1', { status: WorkerJobStatus.COMPLETED }),
+    ).resolves.toBeDefined();
+  });
+
+  it('[렌즈2 P2-4] onWorkerJobSettled 예외 격리 → updateJobStatus 성공 반환(PATCH 500 방지)', async () => {
+    const finService = {
+      onWorkerJobSettled: jest.fn(async () => {
+        throw new Error('transition boom');
+      }),
+    };
+    const { svc } = build(
+      makeJob({ options: { finalizationId: 'fin-1', fileType: 'content' } }),
+      finService,
+    );
+    // 콜백이 throw 해도 워커 PATCH 는 savedJob 을 성공 반환한다(교착 + 잡 재시도 폭주 방지).
+    // 기존 edit_session 갱신 경로 불변 — 콜백 예외는 finalization 계층에 격리.
+    const result = await svc.updateJobStatus('vjob-1', {
+      status: WorkerJobStatus.COMPLETED,
+    });
+    expect(result).toBeDefined();
+    expect(finService.onWorkerJobSettled).toHaveBeenCalledTimes(1);
+  });
+});

@@ -8,6 +8,7 @@ import {
 import {
   BOOK_FINALIZATION_STATUSES,
   type BookFinalizationStatus,
+  type FinalizationPlan,
 } from '../books.constants';
 
 /**
@@ -25,6 +26,10 @@ import {
  */
 @Entity('book_finalizations')
 @Index('idx_book_finalizations_book', ['bookId', 'status'])
+// [렌즈1 P2-2 / 렌즈2 P2-3] 동시 착수 원자화 — (book_id, attempt) 유니크로 무키·상이
+//   Idempotency-Key 동시 2 POST 의 패자 INSERT 를 DB 레벨에서 차단(dup-key → 409).
+//   attempt 는 항상 max+1 로 증분(§6.3 멱등)이라 정상 경로는 자연 만족, 경쟁 삽입만 충돌한다.
+@Index('uq_book_finalizations_book_attempt', ['bookId', 'attempt'], { unique: true })
 export class BookFinalization {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -63,6 +68,22 @@ export class BookFinalization {
   /** 확정 페이지 수 */
   @Column({ name: 'page_count', type: 'int', nullable: true })
   pageCount: number | null;
+
+  /**
+   * [P1-2] 워커 validate 를 건너뛰고 최종화한 표식 — book_spec 미연결 or pageCount
+   * 미확정이라 대조 판형이 없어 조건부 validate 를 skip 했을 때 true(§6.3 조건부 계약).
+   * BookFinalizationView·웹훅 payload 에 노출해 파트너가 미검증 FINALIZED 를 인지한다.
+   */
+  @Column({ name: 'validation_skipped', type: 'boolean', default: false })
+  validationSkipped: boolean;
+
+  /**
+   * [렌즈2 P2-3] 착수 시점 자산 스냅샷(TOCTOU 방지) — validate/compose 가 재조회 없이
+   * 이 스냅샷을 쓴다. 진행 중(VALIDATING/COMPOSING) 자산 교체와 무관하게 이번 attempt 는
+   * 착수 시점 자산에 고정된다. 구 행(마이그레이션 이전)엔 null → 서비스가 resolvePlan 폴백.
+   */
+  @Column({ name: 'plan_snapshot', type: 'json', nullable: true })
+  planSnapshot: FinalizationPlan | null;
 
   /** 실패 시 ERR_* (§3 카탈로그) */
   @Column({ name: 'error_code', type: 'varchar', length: 60, nullable: true })
