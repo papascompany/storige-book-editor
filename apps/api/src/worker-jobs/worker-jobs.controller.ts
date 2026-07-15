@@ -253,8 +253,12 @@ export class WorkerJobsController {
   @ApiResponse({ status: 422, description: 'Invalid session data' })
   async createSplitSynthesisJobExternal(
     @Body() dto: CreateSplitSynthesisJobDto,
+    @CurrentSite() site?: CurrentSitePayload,
   ): Promise<WorkerJob> {
-    return await this.workerJobsService.createSplitSynthesisJob(dto);
+    return await this.workerJobsService.createSplitSynthesisJob({
+      ...dto,
+      siteId: site?.siteId, // Phase C — 자동 사이트 식별 (Stage 0 비대칭 봉합, validate/external 준용)
+    });
   }
 
   // ============================================================================
@@ -286,8 +290,12 @@ export class WorkerJobsController {
   @ApiResponse({ status: 401, description: 'Invalid API key' })
   async checkMergeableExternal(
     @Body() checkMergeableDto: CheckMergeableDto,
+    @CurrentSite() site?: CurrentSitePayload,
   ): Promise<CheckMergeableResponseDto> {
-    return await this.workerJobsService.checkMergeable(checkMergeableDto);
+    // Stage 0 비대칭 봉합 — 사이트 컨텍스트를 감사 로깅/후속 스코핑용으로만 전달.
+    // check-mergeable 은 worker_job 행을 만들지 않는 dry-run 조회라 스탬프 대상이 없고,
+    // 접근 차단/스코핑 강제는 NULL-siteId 정책(오너 결정 잔여 사안) 확정 전 도입하지 않는다.
+    return await this.workerJobsService.checkMergeable(checkMergeableDto, site);
   }
 
   // ============================================================================

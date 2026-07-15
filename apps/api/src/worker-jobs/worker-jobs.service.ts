@@ -113,8 +113,23 @@ export class WorkerJobsService {
   /**
    * 병합 가능 여부 체크 (dry-run)
    * 실제 파일 생성 없이 병합 가능 여부만 확인
+   *
+   * @param site 호출 사이트 컨텍스트(X-API-Key 경유 시 컨트롤러가 주입) — Stage 0
+   *   비대칭 봉합(2026-07-15). 현재는 감사 로깅·후속 스코핑용 전달만이며 **동작 불변**:
+   *   worker_job 행을 만들지 않는 순수 조회라 스탬프 대상이 없고, 접근 차단/스코핑
+   *   강제는 NULL-siteId 이원 정책(오너 결정 잔여 사안, CONTRACT_FREEZE §4.3) 확정
+   *   전에는 도입하지 않는다(보수 기본값 — 기존 파트너 호출 응답 동일).
    */
-  async checkMergeable(dto: CheckMergeableDto): Promise<CheckMergeableResponseDto> {
+  async checkMergeable(
+    dto: CheckMergeableDto,
+    site?: { siteId?: string; role?: string },
+  ): Promise<CheckMergeableResponseDto> {
+    if (site?.siteId) {
+      // 감사 로깅(Stage 0) — 후속 스코핑 도입 시 근거 데이터
+      this.logger.log(
+        `checkMergeable called by site=${site.siteId} (editSessionId=${dto.editSessionId})`,
+      );
+    }
     const issues: MergeIssueDto[] = [];
 
     // 1. 표지 파일 존재 확인
@@ -946,6 +961,7 @@ export class WorkerJobsService {
       sessionId: dto.sessionId,
       pdfFileId: dto.pdfFileId,
       requestId: dto.requestId,
+      siteId: dto.siteId || null, // Phase C — Stage 0 비대칭 봉합(validate/external 준용). 미전달=NULL(기존 동작 불변)
       options: {
         mode: 'split',
         pageTypes,
