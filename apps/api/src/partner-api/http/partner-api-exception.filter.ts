@@ -18,11 +18,11 @@ import {
   ensureRequestId,
   ensureStartedAt,
   requestPath,
+  resolvePartnerEnv,
 } from './request-context';
 import { PartnerAuditService } from '../audit/partner-audit.service';
 import {
   IDEMPOTENCY_REPLAYED_HEADER,
-  PARTNER_ENV_LIVE,
   RETRY_AFTER_FALLBACK_SECONDS,
 } from '../partner-api.constants';
 
@@ -90,7 +90,8 @@ export class PartnerApiExceptionFilter implements ExceptionFilter {
     this.auditService.record({
       requestId,
       siteId: req.user?.siteId ?? null,
-      env: req.user?.siteId ? PARTNER_ENV_LIVE : null,
+      env: req.user?.siteId ? resolvePartnerEnv(req.user) : null,
+      apiKeyId: req.user?.apiKeyId ?? null,
       method: req.method,
       path: requestPath(req),
       statusCode,

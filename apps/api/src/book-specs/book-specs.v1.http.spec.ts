@@ -27,6 +27,8 @@ import { PartnerAuditService } from '../partner-api/audit/partner-audit.service'
 import { PartnerAuditInterceptor } from '../partner-api/audit/partner-audit.interceptor';
 import { PublicApiAuditLog } from '../partner-api/entities/public-api-audit-log.entity';
 import { PartnerIdempotencyKey } from '../partner-api/entities/partner-idempotency-key.entity';
+import { PartnerApiKey } from '../partner-api/entities/partner-api-key.entity';
+import { PartnerApiKeysService } from '../partner-api/keys/partner-api-keys.service';
 import { PartnerIdempotencyService } from '../partner-api/idempotency/partner-idempotency.service';
 import { PartnerIdempotencyInterceptor } from '../partner-api/idempotency/partner-idempotency.interceptor';
 import { PARTNER_API_CONFIG } from '../partner-api/partner-api.constants';
@@ -103,6 +105,12 @@ describe('BookSpecs v1 실스택 HTTP 스모크 (Stage 1 통합)', () => {
         {
           provide: getRepositoryToken(PartnerIdempotencyKey),
           useValue: { insert: jest.fn(), findOne: jest.fn(), update: jest.fn(), delete: jest.fn() },
+        },
+        // Stage 2 — 가드 폴백 의존(partner_api_keys). 이 spec 은 sites 키 경로만 사용
+        PartnerApiKeysService,
+        {
+          provide: getRepositoryToken(PartnerApiKey),
+          useValue: { findOne: jest.fn().mockResolvedValue(null), update: jest.fn() },
         },
         {
           provide: PARTNER_API_CONFIG,
