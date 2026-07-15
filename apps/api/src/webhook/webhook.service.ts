@@ -5,6 +5,7 @@ import { SynthesisWebhookPayload, ValidationWebhookPayload } from '@storige/type
 import { SitesService } from '../sites/sites.service';
 import { PARTNER_ENV_LIVE } from '../partner-api/partner-api.constants';
 import { WebhookDeliveryService } from './v2/webhook-delivery.service';
+import { isRemoteUrlPublic } from '../common/helpers/ssrf.helper';
 
 export { SynthesisWebhookPayload, ValidationWebhookPayload };
 
@@ -155,10 +156,20 @@ export class WebhookService {
     }
 
     // Patch E (2026-05-03) + Phase 1-2 (2026-05-16):
-    // SSRF 방어 — env allowlist 우선, 실패 시 DB sites 동적 매칭.
+    // SSRF 방어 1선 — env allowlist 우선, 실패 시 DB sites 동적 매칭(호스트 문자열).
     if (!(await this.isAllowedCallbackUrl(callbackUrl))) {
       this.logger.error(
         `[Webhook] Blocked callback URL not in allowlist: ${callbackUrl} (env-allowed: ${this.allowedHosts.join(', ')})`,
+      );
+      return false;
+    }
+
+    // SSRF 방어 2선 — 정본 발신 시점 가드(2026-07-16). allowlist/DB 는 호스트 문자열만
+    // 대조하므로 "공개 DNS 이름 → 내부 IP A레코드"·IPv4-mapped IPv6·정수 IP 표기가 관통한다.
+    // 발신 직전에 실 IP 를 해석해 사설/링크로컬/루프백/메타데이터 대역이면 차단(DNS 리바인딩 완화).
+    if (!(await isRemoteUrlPublic(callbackUrl))) {
+      this.logger.error(
+        `[Webhook] Blocked callback URL resolving to private/internal address: ${callbackUrl}`,
       );
       return false;
     }
