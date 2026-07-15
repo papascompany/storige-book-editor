@@ -178,8 +178,24 @@ class SafeZoneWarningPlugin extends PluginBase {
     this._violating = false
   }
 
+  /**
+   * 참조 객체가 현재 캔버스에 실제 소속되어 있는가.
+   * canvas.clear()/loadFromJSON(ServicePlugin.toPDF/loadJSON, 임시저장 불러오기,
+   * 백업 복원 등)은 캔버스 객체 목록을 갈아치우므로, 풀 참조가 non-null 이어도
+   * 캔버스 미소속 유령이 될 수 있다 — 이대로 두면 시각층(오버레이)이 영구 사망한다
+   * (safeZoneViolation 이벤트/토스트는 동작하나 경계 강조만 안 보임).
+   * SmartGuidesPlugin._isAttached 와 동일 정책.
+   */
+  private _isAttached(obj: fabric.Object): boolean {
+    return this._canvas.getObjects().indexOf(obj) !== -1
+  }
+
   /** 오버레이 풀 생성 (lazy) — id 미부여·excludeFromExport·guideline (SmartGuides 패턴) */
   private _ensureOverlay(): fabric.Rect {
+    // 유령 참조(캔버스 미소속) — 참조를 리셋하고 재생성/재추가한다
+    if (this._overlay && !this._isAttached(this._overlay)) {
+      this._overlay = null
+    }
     if (this._overlay) return this._overlay
     const options = {
       fill: 'transparent',
