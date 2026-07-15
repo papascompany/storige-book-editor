@@ -34,9 +34,23 @@ class ImageProcessingPlugin extends PluginBase {
     }
   }
 
+  /**
+   * 배경제거(imgly ONNX 모델) 초기화 in-flight promise — 멱등 캐시.
+   * null = 미시작 / pending = 진행 중 / resolved = 준비 완료.
+   * 실패 시 null 로 리셋되어 다음 호출에서 재시도한다.
+   */
+  private modelReadyPromise: Promise<void> | null = null
+
+  /** 모델 초기화 완료 여부 — 로딩 UX(준비 중 메시지) 분기용 */
+  private modelReady = false
+
   constructor(canvas: fabric.Canvas, editor: Editor) {
     super(canvas, editor, {})
-    this.startService()
+    // D-6b① (2026-07-15): eager preload 제거 — 기존엔 여기서 startService() 를
+    // 즉시 실행해 ONNX 모델(ISNet fp16 ≈88MB)+ort wasm(≈23MB)을 모든 에디터/embed
+    // 캔버스 생성 시마다 CDN 에서 다운로드했다. 이제 실사용 진입점이
+    // ensureReady()(모델) / ensureCvReady()(OpenCV) 를 선행 await 하는 lazy 초기화.
+    // 플러그인 생성은 어떤 네트워크/무거운 초기화도 트리거하지 않는다.
   }
 
   /**
@@ -194,6 +208,9 @@ class ImageProcessingPlugin extends PluginBase {
       multiplier?: number
     }
   ): Promise<fabric.Path | undefined> {
+    // OpenCV 선행 로드 (createPrecisePathFromObject 가 사용) — 마스크 렌더 전에
+    // 초기화를 시작해 미초기화 크래시/후행 대기를 방지 (멱등)
+    await this.ensureCvReady()
 
     const maskImage = await this.extractMaskImageFromObject(object, opts)
 
@@ -258,6 +275,9 @@ class ImageProcessingPlugin extends PluginBase {
       multiplier?: number
     }
   ): Promise<fabric.Path | undefined> {
+    // OpenCV 선행 로드 (createPrecisePathFromObject 가 사용) — 멱등
+    await this.ensureCvReady()
+
     const multiplier = opts?.multiplier ?? 3
     const strokeWidthPx = Math.max(0, Math.round(opts?.strokeWidth ?? 0))
 
@@ -322,7 +342,36 @@ class ImageProcessingPlugin extends PluginBase {
     return path
   }
 
-  async startService() {
+  /**
+   * 배경제거 모델(≈111MB) lazy 초기화 — 멱등.
+   * - 동시 호출은 단일 in-flight promise 를 공유한다 (중복 다운로드 X).
+   * - 실패 시 promise 를 리셋해 다음 호출에서 재시도 가능하다.
+   * (D-6b①: 구 startService() 의 생성자 eager 실행을 대체)
+   */
+  ensureReady(): Promise<void> {
+    if (!this.modelReadyPromise) {
+      this.modelReadyPromise = this.initializeModel()
+        .then(() => {
+          this.modelReady = true
+        })
+        .catch((e) => {
+          this.modelReadyPromise = null
+          throw e
+        })
+    }
+    return this.modelReadyPromise
+  }
+
+  /**
+   * OpenCV(WASM ≈수 MB) lazy 초기화 — 칼선/크롭/윤곽 추출 등 OpenCV 만 쓰는
+   * 경로가 88MB ONNX 모델을 받지 않도록 모델 초기화(ensureReady)와 분리 유지.
+   * openCv.ts 의 module-level promise 캐시를 공유(멱등·실패 시 재시도 가능).
+   */
+  ensureCvReady(): Promise<any> {
+    return getCv()
+  }
+
+  private async initializeModel(): Promise<void> {
     let isWebGLSupported = false
     try {
       const canvas = document.createElement('canvas')
@@ -331,24 +380,20 @@ class ImageProcessingPlugin extends PluginBase {
         (canvas.getContext('webgl') || canvas.getContext('experimental-webgl'))
       )
       console.log('WebGL supported:', isWebGLSupported)
-    } catch (e) {
+    } catch {
       isWebGLSupported = false
     }
 
-    try {
-      const { preload } = await getBackgroundRemoval()
-      await preload({
-        ...this.config,
-        device: isWebGLSupported ? 'gpu' : 'cpu'
-      } as any)
-      console.log('Asset preloading succeeded')
-    } catch (e) {
-      console.warn('Asset preloading failed:', e)
-    }
+    const { preload } = await getBackgroundRemoval()
+    await preload({
+      ...this.config,
+      device: isWebGLSupported ? 'gpu' : 'cpu'
+    } as any)
+    console.log('Asset preloading succeeded')
   }
 
   async processImage(img: HTMLImageElement, useStrict: boolean = false) {
-    const cv = await getCv()
+    const cv = await this.ensureCvReady()
     const canvas = document.createElement('canvas')
     const ctx = canvas.getContext('2d')
     if (!ctx) {
@@ -511,6 +556,8 @@ class ImageProcessingPlugin extends PluginBase {
   }
 
   async getObjectPath(item: fabric.Object): Promise<fabric.Path | undefined> {
+    // OpenCV 선행 로드 — getObjectPathData 내부에서도 보장되지만 공개 진입점에서 명시 (멱등)
+    await this.ensureCvReady()
     const pathData = await this.getObjectPathData(item)
     if (!pathData) {
       console.error('Failed to generate path data')
@@ -537,9 +584,21 @@ class ImageProcessingPlugin extends PluginBase {
       return Promise.reject(new Error('Item is not an image'))
     }
 
-    this._editor.emit('longTask:start', { message: '배경 제거 중...' })
+    // 최초 사용 시 모델 초기화(모델+wasm 다운로드, 수 초)가 선행된다 —
+    // 준비 단계임을 구분해 표시 (기존 longTask 오버레이 패턴 재사용,
+    // canvas-core 는 editor 스토어를 모름 — 이벤트로만 통신).
+    this._editor.emit('longTask:start', {
+      message: this.modelReady ? '배경 제거 중...' : '배경 제거 도구 준비 중...'
+    })
 
     try {
+      // preload 실패는 구 startService 와 동일하게 non-fatal —
+      // removeBackground 가 on-demand 다운로드로 폴백한다.
+      await this.ensureReady().catch((e) => {
+        console.warn('Asset preloading failed (on-demand fallback):', e)
+      })
+      this._editor.emit('longTask:start', { message: '배경 제거 중...' })
+
       const { removeBackground } = await getBackgroundRemoval()
       const imgElement: any = item.getElement()
       const foregroundBlob = await removeBackground(imgElement.src)
@@ -696,7 +755,7 @@ class ImageProcessingPlugin extends PluginBase {
   }
 
   async getObjectPathData(object: fabric.Object) {
-    const cv = await getCv()
+    const cv = await this.ensureCvReady()
     const kSize = 1
     // 오브제가 path 인 경우 element 로 변환
     let imgElement: HTMLCanvasElement
@@ -1138,7 +1197,7 @@ class ImageProcessingPlugin extends PluginBase {
       multiplier?: number // 크기 배율(기본 1)
     }
   ): Promise<fabric.Path | undefined> {
-    const cv = await getCv()
+    const cv = await this.ensureCvReady()
     const threshold = opts?.threshold ?? 225
     const insetPx = Math.max(0, opts?.insetPx ?? 2)
     const smooth = opts?.smooth ?? true
@@ -1391,7 +1450,7 @@ class ImageProcessingPlugin extends PluginBase {
     contour: any,
     useHull: boolean
   ): Promise<[number, number][]> {
-    const cv = await getCv()
+    const cv = await this.ensureCvReady()
     const simplified = { delete: () => {} }
     const tempContour = { delete: () => {} }
 
@@ -1542,7 +1601,7 @@ class ImageProcessingPlugin extends PluginBase {
       strokeWidth?: number // 라인두께
     }
   ): Promise<fabric.Path | undefined> {
-    const cv = await getCv()
+    const cv = await this.ensureCvReady()
     const threshold = opts?.threshold ?? 225
     const insetPx = Math.max(0, opts?.insetPx ?? 2)
     const smooth = opts?.smooth ?? true

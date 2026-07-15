@@ -87,8 +87,12 @@ export default function AppClipping() {
   }, [selectedAccessory])
 
   // Handle segment image (background removal)
+  // D-6b①: 배경제거 리소스가 lazy 초기화로 전환되어 최초 클릭 시 초기화(수 초)가
+  // 선행된다 — 진행 중 재클릭 방지(isLoading 가드). 초기화 상태 표시는
+  // ImageProcessingPlugin 이 longTask 이벤트('배경 제거 도구 준비 중...')로 발행하고
+  // EditorView 전역 로딩 오버레이가 소비한다.
   const handleSegmentImage = useCallback(async () => {
-    if (!currentImage || !canvas) return
+    if (!currentImage || !canvas || isLoading) return
 
     setIsLoading(true)
     try {
@@ -109,7 +113,7 @@ export default function AppClipping() {
       setIsLoading(false)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentImage, canvas, getPlugin, segmentImage, cutSizeValue])
+  }, [currentImage, canvas, isLoading, getPlugin, segmentImage, cutSizeValue])
 
   // Handle accessory selection
   const handleSetAccessory = useCallback((value: string) => {
@@ -409,7 +413,11 @@ export default function AppClipping() {
           <div className="items flex flex-row gap-2 px-4">
             <div className="item">
               <div
-                className="image-box relative cursor-pointer transition-all hover:opacity-80"
+                className={`image-box relative transition-all ${
+                  isLoading
+                    ? 'pointer-events-none opacity-50'
+                    : 'cursor-pointer hover:opacity-80'
+                }`}
                 onClick={handleSegmentImage}
               >
                 <img
