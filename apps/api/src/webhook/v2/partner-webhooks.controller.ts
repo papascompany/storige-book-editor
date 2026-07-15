@@ -1,4 +1,4 @@
-import { Body, Delete, Get, Param, Post, Put, Query } from '@nestjs/common';
+import { Body, Delete, Get, Param, Post, Put, Query, Req } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiSecurity, ApiTags } from '@nestjs/swagger';
 import { ErrV1 } from '@storige/types';
 import { PartnerV1Controller } from '../../partner-api/partner-v1.decorator';
@@ -11,7 +11,11 @@ import {
   normalizePaginationQuery,
 } from '../../partner-api/http/pagination';
 import { PartnerApiException } from '../../partner-api/http/partner-api.exceptions';
-import { PARTNER_ENV_LIVE, PartnerEnv } from '../../partner-api/partner-api.constants';
+import { PartnerEnv } from '../../partner-api/partner-api.constants';
+import {
+  PartnerRequest,
+  resolvePartnerEnv,
+} from '../../partner-api/http/request-context';
 import { WebhookConfigService, WebhookConfigView } from './webhook-config.service';
 import {
   WebhookDeliveryService,
@@ -31,8 +35,9 @@ import { DeliveryListQueryDto, PutWebhookConfigDto } from './dto/webhook-v1.dto'
  * v1 웹훅 = v2 서명(HMAC 사이트별 secret) 전용 신규 표면 — 기존 v1(base64)
  * 발신 경로·바이트는 불변(동결). 기존 파트너 전환은 D-7c 게이트 선행.
  *
- * env: Stage 1 은 전 요청 'live' 고정(PARTNER_ENV_LIVE) — S2-1 파트너 키
- * env 모델 도입 시 인증 컨텍스트의 env 로 대체(additive 통합 포인트).
+ * env: S2-1 파트너 키 env 모델과 통합 — resolvePartnerEnv(req.user) 로
+ * 인증 키의 env 를 그대로 스코프한다(sites 레거시 키·미스탬프 구간=live).
+ * test 키로 등록한 config/발송 이력은 env='test' 로 완전 격리된다.
  */
 @ApiTags('partner-v1')
 @ApiSecurity('api-key')
@@ -43,8 +48,9 @@ export class PartnerWebhooksController {
     private readonly deliveryService: WebhookDeliveryService,
   ) {}
 
-  private env(): PartnerEnv {
-    return PARTNER_ENV_LIVE;
+  /** 인증 키의 env 스코프 — PartnerApiKeyGuard 가 스탬프한 req.user.env (없으면 live) */
+  private env(req: PartnerRequest): PartnerEnv {
+    return resolvePartnerEnv(req.user);
   }
 
   // ── config (라우트 20~22) ─────────────────────────────────────────────
@@ -58,9 +64,10 @@ export class PartnerWebhooksController {
   @ApiResponse({ status: 503, description: 'ERR_SERVICE_UNAVAILABLE — 서버 암호화 키 미설정' })
   async putConfig(
     @CurrentSite() site: CurrentSitePayload,
+    @Req() req: PartnerRequest,
     @Body() dto: PutWebhookConfigDto,
   ): Promise<WebhookConfigView> {
-    return this.configService.upsert(site.siteId, this.env(), {
+    return this.configService.upsert(site.siteId, this.env(req), {
       url: dto.url,
       events: dto.events,
       rotateSecret: dto.rotateSecret,
@@ -72,8 +79,9 @@ export class PartnerWebhooksController {
   @ApiResponse({ status: 404, description: 'ERR_WEBHOOK_CONFIG_NOT_FOUND' })
   async getConfig(
     @CurrentSite() site: CurrentSitePayload,
+    @Req() req: PartnerRequest,
   ): Promise<WebhookConfigView> {
-    return this.configService.get(site.siteId, this.env());
+    return this.configService.get(site.siteId, this.env(req));
   }
 
   @Delete('config')
@@ -81,8 +89,9 @@ export class PartnerWebhooksController {
   @ApiResponse({ status: 404, description: 'ERR_WEBHOOK_CONFIG_NOT_FOUND' })
   async deleteConfig(
     @CurrentSite() site: CurrentSitePayload,
+    @Req() req: PartnerRequest,
   ): Promise<{ deleted: true }> {
-    return this.configService.remove(site.siteId, this.env());
+    return this.configService.remove(site.siteId, this.env(req));
   }
 
   // ── test (라우트 23) ─────────────────────────────────────────────────
@@ -94,8 +103,9 @@ export class PartnerWebhooksController {
   @ApiResponse({ status: 404, description: 'ERR_WEBHOOK_CONFIG_NOT_FOUND' })
   async sendTest(
     @CurrentSite() site: CurrentSitePayload,
+    @Req() req: PartnerRequest,
   ): Promise<WebhookDeliveryView> {
-    return this.deliveryService.sendTest(site.siteId, this.env());
+    return this.deliveryService.sendTest(site.siteId, this.env(req));
   }
 
   // ── deliveries (라우트 24~26) ────────────────────────────────────────
@@ -104,6 +114,7 @@ export class PartnerWebhooksController {
   @ApiOperation({ summary: '발송 이력 목록 (페이지네이션 + event/status/since 필터)' })
   async listDeliveries(
     @CurrentSite() site: CurrentSitePayload,
+    @Req() req: PartnerRequest,
     @Query() query: DeliveryListQueryDto,
   ): Promise<PaginatedResult<WebhookDeliveryView>> {
     const page = normalizePaginationQuery({
@@ -113,7 +124,7 @@ export class PartnerWebhooksController {
     const since = this.parseSince(query.since);
     const { items, total } = await this.deliveryService.listDeliveries(
       site.siteId,
-      this.env(),
+      this.env(req),
       { event: query.event, status: query.status, since },
       page,
     );
@@ -125,9 +136,10 @@ export class PartnerWebhooksController {
   @ApiResponse({ status: 404, description: 'ERR_NOT_FOUND — 없음/타 사이트' })
   async getDelivery(
     @CurrentSite() site: CurrentSitePayload,
+    @Req() req: PartnerRequest,
     @Param('uid') uid: string,
   ): Promise<WebhookDeliveryView> {
-    return this.deliveryService.getDelivery(site.siteId, this.env(), uid);
+    return this.deliveryService.getDelivery(site.siteId, this.env(req), uid);
   }
 
   @Post('deliveries/:uid/retry')
@@ -137,9 +149,10 @@ export class PartnerWebhooksController {
   @ApiResponse({ status: 409, description: 'ERR_DELIVERY_NOT_RETRYABLE — 재시도 불가 상태' })
   async retryDelivery(
     @CurrentSite() site: CurrentSitePayload,
+    @Req() req: PartnerRequest,
     @Param('uid') uid: string,
   ): Promise<WebhookDeliveryView> {
-    return this.deliveryService.manualRetry(site.siteId, this.env(), uid);
+    return this.deliveryService.manualRetry(site.siteId, this.env(req), uid);
   }
 
   // ── 내부 ────────────────────────────────────────────────────────────
