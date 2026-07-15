@@ -23,6 +23,7 @@ import { SettingsModule } from './settings/settings.module';
 import { EditSessionsModule } from './edit-sessions/edit-sessions.module';
 import { PartnerApiModule } from './partner-api/partner-api.module';
 import { BookSpecsModule } from './book-specs/book-specs.module';
+import { BooksModule } from './books/books.module';
 import { PortalModule } from './portal/portal.module';
 import { PayloadTooLargeFilter } from './common/filters/payload-too-large.filter';
 
@@ -167,6 +168,9 @@ if (process.env.BOOKMOA_DB_PASSWORD) {
 
     // Partner API v1 — BookSpecs 판형 마스터 (Stage 1-B, 읽기 전용)
     BookSpecsModule,
+
+    // Partner API v1 — Books 도서 aggregate (Stage 3 — /api/v1/books)
+    BooksModule,
 
     // 파트너 포털 v0 — SITE_ADMIN 셀프서브 (/api/portal/* — S2-4, D-7a 보수 스코프)
     PortalModule,

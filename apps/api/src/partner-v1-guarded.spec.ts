@@ -28,6 +28,7 @@ import { IS_PUBLIC_KEY } from './auth/decorators/public.decorator';
 import { PartnerApiKeyGuard } from './partner-api/guards/partner-api-key.guard';
 import { PartnerPingController } from './partner-api/ping.controller';
 import { BookSpecsController } from './book-specs/book-specs.controller';
+import { BooksController } from './books/books.controller';
 import { PartnerWebhooksController } from './webhook/v2/partner-webhooks.controller';
 
 type Ctor = abstract new (...args: never[]) => unknown;
@@ -39,6 +40,7 @@ type Ctor = abstract new (...args: never[]) => unknown;
 const V1_CONTROLLERS: Array<{ name: string; controller: Ctor }> = [
   { name: 'PartnerPingController (v1)', controller: PartnerPingController },
   { name: 'BookSpecsController (v1/book-specs)', controller: BookSpecsController },
+  { name: 'BooksController (v1/books)', controller: BooksController },
   {
     name: 'PartnerWebhooksController (v1/webhooks)',
     controller: PartnerWebhooksController,
