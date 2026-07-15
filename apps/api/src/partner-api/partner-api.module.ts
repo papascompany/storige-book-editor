@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ApiKeyGuard } from '../auth/guards/api-key.guard';
 import { PublicApiAuditLog } from './entities/public-api-audit-log.entity';
 import { PartnerIdempotencyKey } from './entities/partner-idempotency-key.entity';
+import { PartnerApiKey } from './entities/partner-api-key.entity';
 import { PartnerAuditService } from './audit/partner-audit.service';
 import { PartnerAuditInterceptor } from './audit/partner-audit.interceptor';
 import { PartnerIdempotencyService } from './idempotency/partner-idempotency.service';
@@ -31,7 +32,9 @@ import { PartnerPingController } from './ping.controller';
  *   Stage 3+ 신규 v1 컨트롤러 모듈의 표준 통합 포인트.
  */
 @Module({
-  imports: [TypeOrmModule.forFeature([PublicApiAuditLog, PartnerIdempotencyKey])],
+  imports: [
+    TypeOrmModule.forFeature([PublicApiAuditLog, PartnerIdempotencyKey, PartnerApiKey]),
+  ],
   controllers: [PartnerPingController],
   providers: [
     partnerApiConfigProvider,
