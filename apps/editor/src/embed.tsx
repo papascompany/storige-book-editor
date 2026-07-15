@@ -56,6 +56,7 @@ import { SpreadPagePanel } from './components/PagePanel/SpreadPagePanel'
 import { useResolvedPageNavPosition } from './hooks/useResolvedPageNavPosition'
 import { WorkspaceModal } from './components/modals'
 import { RestoreBackupBanner } from './components/RestoreBackupBanner'
+import ObjectDeleteConfirm from './components/editor/ObjectDeleteConfirm'
 import { Sentry } from './lib/sentry'
 import { applyContentPdfGuides } from './utils/contentPdfGuide'
 import {
@@ -2018,6 +2019,12 @@ function EmbeddedEditor({
         onRestore={handleRestoreBackup}
         onDismiss={handleDismissRestore}
       />
+
+      {/* S2 (공유): DEL/Backspace·휴지통·ObjectActionBar 삭제 확인 모달 — App.tsx 준용.
+          embed 는 독립 엔트리(createRoot)라 App 루트의 마운트가 닿지 않아
+          requestDeleteSelection() 이 상태만 세팅하고 소비자가 없었다(임베드 삭제 버튼
+          무동작 — 적대 리뷰 P1). 의존은 useAppStore 뿐이라 embed 에서도 동일 동작. */}
+      <ObjectDeleteConfirm />
     </div>
   )
 }
