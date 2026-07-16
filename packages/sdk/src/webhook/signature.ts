@@ -348,10 +348,24 @@ interface ParsedHmacSignature {
 }
 
 /**
- * `t=<unixsec>,v1=<hex64>` 파싱.
+ * `t=<unixsec>,v1=<hex64>` 파싱 — **fail-closed**.
  *
- * 미지의 키는 무시한다(전방 호환 — 발신부가 향후 v2= 같은 스킴을 additive 로
- * 추가해도 이 파서는 깨지지 않는다). t·v1 이 없거나 형식이 어긋나면 null.
+ * ## 미지의 키는 무시한다 (전방 호환)
+ * 발신부가 향후 `v2=` 같은 스킴을 additive 로 추가해도 이 파서는 깨지지 않는다.
+ *
+ * ## 중복 키는 거부한다 (헤더 병합 스머글링 표면 제거)
+ * 정본 발신은 `t=<d+>,v1=<hex64>` **하나만** 보낸다 → 같은 키가 두 번 오는 것은
+ * 100% 비정상이다. 종전에는 뒤 값이 앞 값을 덮어써서 `t=X,v1=<위조>,v1=<유효>`
+ * 같은 입력이 통과했다. 위조 자체는 secret 없이 불가능하지만, 프록시가 중복
+ * 헤더를 `", "` 로 병합하면(`Headers` 의 append 의미론) 한 헤더 안에 두 서명이
+ * 들어오는 형태가 만들어진다 — 어느 쪽을 "그" 서명으로 볼지 파서마다 갈리는
+ * 고전적 스머글링 표면이다. 애매하면 거부한다.
+ *
+ * (키·값의 `trim()` 은 **유지**한다: 병합값 `t=1,v1=a, t=2,v1=b` 의 뒤쪽 ` t` 를
+ *  공백 때문에 "미지의 키"로 흘려보내면 앞쪽 쌍만 채택되어 오히려 fail-open 이
+ *  된다. trim 해야 중복으로 인식되어 거부된다.)
+ *
+ * t·v1 이 없거나 형식이 어긋나거나 중복이면 null.
  */
 function parseHmacSignature(raw: string): ParsedHmacSignature | null {
   let t: number | undefined;
@@ -363,11 +377,13 @@ function parseHmacSignature(raw: string): ParsedHmacSignature | null {
     const key = part.slice(0, eq).trim();
     const value = part.slice(eq + 1).trim();
     if (key === 't') {
+      if (t !== undefined) return null; // 중복 t
       if (!/^\d+$/.test(value)) return null;
       const parsed = Number(value);
       if (!Number.isSafeInteger(parsed)) return null;
       t = parsed;
     } else if (key === 'v1') {
+      if (v1 !== undefined) return null; // 중복 v1
       // 발신은 digest('hex') = 소문자 64자 고정
       if (!/^[0-9a-f]{64}$/.test(value)) return null;
       v1 = value;
