@@ -34,3 +34,26 @@ export type {
   WebhookVerifyResult,
   WebhookVerifySuccess,
 } from './signature';
+
+// ── 이벤트 카탈로그·페이로드 ────────────────────────────────────────────
+export {
+  isSubscribableEvent,
+  WEBHOOK_SUBSCRIBABLE_EVENTS,
+  WEBHOOK_TEST_EVENT,
+} from './events';
+export type {
+  BookFinalizationWebhookPayload,
+  SessionWebhookPayload,
+  StorigeWebhookPayload,
+  SynthesisWebhookPayload,
+  ValidationWebhookPayload,
+  WebhookEvent,
+  WebhookOutputFile,
+  WebhookPayloadBase,
+  WebhookSubscribableEvent,
+  WebhookTestPayload,
+} from './events';
+
+// ── 멱등(중복 배달 단락) ────────────────────────────────────────────────
+export { InMemoryWebhookDeduper } from './dedupe';
+export type { InMemoryWebhookDeduperOptions, WebhookDeduper } from './dedupe';
