@@ -1,8 +1,17 @@
 /**
- * 웹훅 이벤트 카탈로그·페이로드 — 서버 정본 대조(드리프트 감시) + 멱등 헬퍼.
+ * 웹훅 이벤트 카탈로그·페이로드 + 멱등 헬퍼.
  *
- * types-parity.spec.ts 와 같은 전략: SDK 자체 재선언 ↔ @storige/types 구조
- * 등가성을 컴파일 타임 상호 할당으로 못 박는다. 서버가 계약을 바꾸면 red.
+ * ⚠️ **감시 강도가 두 종류로 갈린다** — 뭉뚱그리면 방어를 과신하게 된다:
+ *
+ *  ① **페이로드 3종**(validation·synthesis·book.finalization): @storige/types 를
+ *     **실제 import** 해 컴파일 타임 상호 할당으로 못 박는다 → 서버가 이 타입들을
+ *     바꾸면 **자동 red**. (types-parity.spec.ts 와 동일 전략)
+ *
+ *  ② **이벤트 카탈로그**·SessionWebhookPayload: 정본이 `packages/types` 가 아니라
+ *     `apps/api` 안에 있어 **import 경로 자체가 없다** → 값 스냅샷·수기 대조뿐이다.
+ *     이건 "SDK 상수를 누가 몰래 바꿨는가"는 잡지만 **서버 변경은 못 잡는다**
+ *     (서버가 이벤트를 추가해도 여기는 green). 진짜 교차대조로 승격하려면 서버측
+ *     상수를 packages/types 로 옮겨야 한다 = 서버 변경이라 별도 트랙.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -27,10 +36,11 @@ describe('이벤트 카탈로그 (서버 webhook-v2.constants.ts 미러)', () =>
     expect(WEBHOOK_SUBSCRIBABLE_EVENTS).toHaveLength(9);
   });
 
-  it('카탈로그 값이 서버 WEBHOOK_V2_SUBSCRIBABLE_EVENTS 와 1:1', () => {
+  it('카탈로그 값이 서버 WEBHOOK_V2_SUBSCRIBABLE_EVENTS 와 1:1 (2026-07-16 채록 스냅샷)', () => {
     // 서버 정본(webhook-v2.constants.ts:65-76) 순서까지 그대로.
-    // ⚠️ @storige/types 가 이 상수를 export 하지 않아 값 스냅샷으로 대조한다
-    //    — 서버가 이벤트를 추가하면(additive) 여기서 red 가 나야 SDK 가 따라간다.
+    // ⚠️ **이건 서버 드리프트 감시가 아니다.** 정본이 apps/api 에 있어 import 경로가
+    //    없으므로 값 스냅샷을 박제할 뿐이다 — 서버가 이벤트를 **추가해도 이 테스트는
+    //    green** 이다(수기 추종 필요). 잡아 주는 것은 "SDK 상수의 무단 변경"뿐이다.
     expect([...WEBHOOK_SUBSCRIBABLE_EVENTS]).toEqual([
       'validation.completed',
       'validation.fixable',

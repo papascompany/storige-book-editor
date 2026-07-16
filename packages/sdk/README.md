@@ -154,6 +154,22 @@ const redisDeduper: WebhookDeduper = {
 - ⚠️ **`jobId` 로 dedupe 하지 말 것.** 한 job 이 `validation.completed` → `synthesis.completed`
   를 각각 발신하므로 jobId 기준 단락은 정상 이벤트를 삼킨다. uid 는 배달 1건에 1:1 이다.
 
+#### 🚨 멱등은 **신뢰성 통제이지 인증 통제가 아니다**
+
+`X-Storige-Delivery`(dedupe 키)는 **서명 밖**이다 — 서명 data 는
+`${t}.${identifier}:${event}:${timestamp}` 뿐이라, identifier 가 jobId/sessionId 로
+정해지는 페이로드에서는 uid 가 서명에 **들어가지 않는다**. 그런데 단락은 그 헤더값을
+직독한다.
+
+→ 유효 서명 1건을 캡처한 공격자는 **uid 헤더만 바꿔** 같은 서명을 replay 창(기본 300초)
+안에서 **반복 재생**할 수 있다(단락은 uid 가 다르니 안 걸리고, 서명은 uid 를 안 덮으니
+그대로 유효하다).
+
+**부작용이 있는 핸들러는 자체 도메인 멱등을 병행하라** — 주문 uid·(jobId, event) 조합 등
+**본인 도메인 키**로 "이미 처리했는가"를 판정하고, 상태 전이는 조건부 갱신(CAS)으로 하라.
+SDK 의 uid 단락은 그 위에 얹는 1차 필터(서버 재시도 접기)다. replay 창을 좁힐수록
+재생 가능 시간이 준다.
+
 ### `t` vs `timestamp` — 다른 값이다
 
 | | 위치 | 의미 | 재시도 시 |
@@ -216,8 +232,19 @@ pnpm --filter @storige/sdk lint
 ```
 
 계약 타입은 서버 `@storige/types` 를 **런타임 의존하지 않고 자체 재선언**한다(그 패키지는
-private 내부 도메인 모델이라 통째 배포 불가). 드리프트는 `types-parity.spec.ts` 와
-`webhook-events.spec.ts` 의 구조 등가성 단언이 감시한다 — 서버가 계약을 바꾸면 red 가 난다.
+private 내부 도메인 모델이라 통째 배포 불가). 드리프트 감시는 **대상마다 강도가 다르다** —
+"전부 자동 감시된다"고 믿으면 안 된다:
 
-웹훅 서명은 `webhook-signature.spec.ts` 가 **발신부 실코드 스냅샷 레플리카**와 페어와이즈로
-대조한다(서버측 대칭 파일: `apps/api/src/webhook/webhook-signature-pairwise.spec.ts`).
+| 대상 | 감시 방식 | 서버가 바꾸면? |
+|---|---|---|
+| v1 에러 코드·봉투·상수 | `types-parity.spec.ts` — `@storige/types` 를 **실제 import** 해 상호 할당 | ✅ 자동 red |
+| 웹훅 페이로드 3종(validation·synthesis·book.finalization) | `webhook-events.spec.ts` — 서버 타입 **실제 import** 후 구조 등가성 | ✅ 자동 red |
+| 웹훅 **이벤트 카탈로그**(9종) | `webhook-events.spec.ts` — **값 스냅샷 대조**. 정본이 `apps/api/.../webhook-v2.constants.ts` 에 있어 import 경로가 없다 | ⚠️ **자동 감지 불가** — 서버가 이벤트를 추가해도 green(수기 추종 필요) |
+| `SessionWebhookPayload` | 정본이 `apps/api/.../webhook.service.ts` 에 있어 import 불가 — **수기 대조** | ⚠️ 자동 감지 불가 |
+| 웹훅 서명 규약 | `webhook-signature.spec.ts` — 발신부 **스냅샷 레플리카**와 페어와이즈 | ⚠️ 레플리카 수기 갱신 |
+
+⚠️ 표의 두 번째 그룹은 **서버 상수가 `packages/types` 가 아니라 `apps/api` 에 있어서**
+생긴 한계다(진짜 교차대조로 승격하려면 서버측 상수 이동이 필요 = 별도 트랙).
+
+웹훅 서명 페어와이즈의 서버측 대칭 파일은 `apps/api/src/webhook/webhook-signature-pairwise.spec.ts`
+다 — 한쪽은 발신부를, 다른 쪽은 수신부를 스냅샷 레플리카로 박제해 서로를 대조한다.

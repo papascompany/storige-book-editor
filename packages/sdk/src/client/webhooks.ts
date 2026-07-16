@@ -3,8 +3,9 @@
  *
  * 전부 general 버킷(300/min).
  *
- * ⚠️ 이 리소스는 웹훅 **관리** 표면이다(설정/발송이력). 수신 측 서명 검증
- *    유틸리티는 별도 subpath(`@storige/sdk/webhook`)로 후속 단계에서 제공한다.
+ * ⚠️ 이 리소스는 웹훅 **관리** 표면이다(설정/발송이력). 수신 측 서명 검증·멱등·
+ *    프레임워크 어댑터는 별도 subpath **`@storige/sdk/webhook`** 에 있다
+ *    (Node 전용 — node:crypto 사용).
  *
  * env 스코프: config·발송 이력은 키의 env(test/live)로 완전 격리된다 —
  * test 키로 등록한 설정은 live 조회에 나타나지 않는다.
