@@ -105,6 +105,16 @@ export const DEFAULT_BACKOFF_MAX_MS = 8_000;
 /** 409 IN_PROGRESS 전용 짧은 백오프 — 원 요청 완료를 짧게 기다린다 */
 export const IDEMPOTENCY_IN_PROGRESS_BACKOFF_MS = 250;
 
+/**
+ * 429 Retry-After 자동 준수 상한(ms) — 기본 60초(서버 per-Key 리밋 윈도우와 동일).
+ *
+ * 서버 가드는 남은 윈도우(≤60초)를 보내므로 정상 경로는 이 상한에 걸리지 않는다.
+ * 상한을 두는 이유는 잘못 설정된 서버·중간 프록시가 `Retry-After: 86400` 같은
+ * 값을 보냈을 때 SDK 가 무한정 잠드는 것을 막기 위함이다 — 초과 시 재시도하지
+ * 않고 429 를 던져 호출측이 스케줄을 결정하게 한다.
+ */
+export const MAX_RETRY_AFTER_MS = 60_000;
+
 /** 요청 기본 타임아웃 — 대용량 업로드/PDF 다운로드는 호출측에서 늘린다 */
 export const DEFAULT_TIMEOUT_MS = 60_000;
 

@@ -105,8 +105,10 @@ export type KnownErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
  *
  * `string & {}` 은 union 이 `string` 으로 넓어지는 것을 막아 알려진 코드의
  * 자동완성을 유지하면서도 신규 서버 코드를 타입 에러 없이 받는다.
+ *
+ * 위 const `ErrorCode` 와 같은 이름의 타입 — 값/타입 네임스페이스가 분리된
+ * TS 선언 병합이다(enum 과 동일한 사용감: `ErrorCode.ERR_X` 값 + `ErrorCode` 타입).
  */
-// eslint-disable-next-line @typescript-eslint/ban-types
 export type ErrorCode = KnownErrorCode | (string & {});
 
 /** 알려진 v1 코드인지 판정(미지 코드 관용 분기용) */

@@ -46,6 +46,9 @@ module.exports = [
       '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
       'no-unused-vars': 'off',
       'no-undef': 'off',
+      // TS 선언 병합(같은 이름의 const + type — ErrorCode)을 base 규칙이
+      // 오탐한다. 타입 레벨 중복은 tsc 가 이미 잡는다.
+      'no-redeclare': 'off',
     },
   },
   {
