@@ -157,6 +157,30 @@ describe('페어와이즈 골든 — v2 발신 실코드 ↔ SDK 검증기', () 
     expect(result.identifier).toBe('sess-0001');
   });
 
+  /**
+   * 🚨 폴백 **순서** 잠금 — 종전엔 jobId·sessionId 를 **동시 보유**한 페이로드
+   * 테스트가 0건이라 `jobId ?? sessionId` 를 `sessionId ?? jobId` 로 뒤집어도
+   * 전 스펙이 green 이었다(변이 실증). 계약 임계 함수다 — 순서가 틀리면
+   * validation.*(jobId+sessionId 동봉) 유효 웹훅이 **전량 401 거부**된다.
+   */
+  it('jobId·sessionId 동시 보유 — v2 는 jobId 를 고른다(순서 반전 시 red)', () => {
+    // validation.* 의 실물 형태: job.editSessionId 가 있으면 둘 다 실린다
+    const payload = {
+      event: 'validation.completed',
+      jobId: 'job-both',
+      sessionId: 'sess-both',
+      fileType: 'cover',
+      status: 'completed',
+      timestamp: iso(),
+    };
+    const { headers } = v2Send(payload, V2_SECRET, 'whd_both');
+    const result = verifyWebhookSignature({ headers, payload, secret: V2_SECRET });
+    // 순서가 반전되면 발신(jobId)과 다른 data 를 조립 → SIGNATURE_MISMATCH
+    expectValid(result);
+    expect(result.identifier).toBe('job-both');
+    expect(result.identifier).not.toBe('sess-both');
+  });
+
   it('delivery uid 폴백(webhook.test) — identifier 3경로', () => {
     const uid = 'whd_3ff0a1';
     // sendTest():431-438 실물 페이로드 형태
@@ -266,6 +290,21 @@ describe('페어와이즈 골든 — v1 발신 실코드 ↔ SDK 검증기', () 
     });
     expect(forcedV2.valid).toBe(false);
     expect(forcedV2.valid === false && forcedV2.reason).toBe('SIGNATURE_MISMATCH');
+  });
+
+  it('jobId·sessionId 동시 보유 — v1 도 jobId 를 고른다(순서 반전 시 red)', () => {
+    const payload = {
+      event: 'validation.completed',
+      jobId: 'job-both-v1',
+      sessionId: 'sess-both-v1',
+      fileType: 'content',
+      status: 'completed',
+      timestamp: iso(),
+    };
+    const headers = v1Send(payload, V1_SECRET);
+    const result = verifyWebhookSignature({ headers, payload, secret: V1_SECRET });
+    expectValid(result);
+    expect(result.identifier).toBe('job-both-v1');
   });
 
   it('[문서화된 발신 기벽] jobId 키가 null 로 존재하면 문자열 "null" 로 서명된다', () => {
