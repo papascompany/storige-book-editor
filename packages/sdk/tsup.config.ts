@@ -13,15 +13,20 @@ import { defineConfig } from 'tsup';
  * tsup 기본 platform:'node' 가 자동 external 처리한다(external 등재 불요).
  * 대신 그 서브패스는 Node 전용이다 — 웹훅 수신은 서버측 동작이라 무해하다.
  *
- * ## 🚨 `node:` 프리픽스 보존 — **두 곳**이 벗기려 든다 (둘 다 꺼야 한다)
+ * ## 🚨 `node:` 프리픽스 보존 — 진범은 `removeNodeProtocol` 하나다
  * 종전 아티팩트는 위 주석의 주장과 어긋나 있었다: 소스의 `from 'node:crypto'` 가
- * dist 에선 `require('crypto')` / `from 'crypto'` 로 방출됐다. 범인이 둘이다 —
- * 하나만 고치면 그대로 벗겨진다(실측으로 확인):
+ * dist 에선 `require('crypto')` / `from 'crypto'` 로 방출됐다.
  *
- *  ① **tsup `removeNodeProtocol`** — 기본값이 `true` 라 tsup 이 스스로 벗긴다.
+ *  ① **tsup `removeNodeProtocol`** — 기본값 `true` 라 tsup 이 스스로 벗긴다.
+ *     **이것만 `false` 로 두면 target 과 무관하게 보존된다**(필요충분).
  *     (tsup 자체 주석: "다음 major 에서 기본값을 false 로 뒤집을 예정")
- *  ② **esbuild `target`** — target 이 프리픽스 지원을 보장 못 하면 벗긴다.
- *     실측: `--target=es2022` → `require("crypto")` / `--target=node18` → `require("node:crypto")`.
+ *  ② **esbuild `target: 'node18'`** — 프리픽스 보존과는 **무관**하다. `engines.node>=18`
+ *     과의 정합 근거로만 유지한다.
+ *
+ * ⚠️ 이 인과는 tsup 경유 격리 매트릭스로 실측 확정했다(적대 리뷰 렌즈2 재검):
+ *   `node18`+`removeNodeProtocol:false` → 보존 / **`es2022`+`removeNodeProtocol:false` → 보존**
+ *   / `node18`+기본(true) → 벗겨짐. raw esbuild 를 직접 호출하면 tsup 기본값을 우회해
+ *   target 이 원인처럼 보이지만, 실제 빌드 경로에선 tsup 기본값이 지배한다.
  *
  * 왜 보존해야 하나: 프리픽스 없는 `'crypto'` 는 번들러가 npm 패키지로 오인하거나
  * 브라우저 shim 으로 치환할 여지를 준다. 이 SDK 는 **Next 어댑터를 제공하므로
