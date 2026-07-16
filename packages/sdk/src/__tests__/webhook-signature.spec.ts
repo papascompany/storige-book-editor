@@ -375,6 +375,68 @@ describe('서명 거부 경로', () => {
   });
 });
 
+/**
+ * 파서 fail-closed — 정본 발신은 `t=<d+>,v1=<hex64>` **하나만** 보낸다.
+ * 같은 키가 두 번 오는 것은 100% 비정상이므로 애매함을 남기지 않고 거부한다.
+ */
+describe('HMAC 파서 fail-closed (중복 키 = 헤더 병합 스머글링 표면)', () => {
+  const payload = {
+    event: 'synthesis.completed',
+    jobId: 'job-parser',
+    status: 'completed',
+    outputFileUrl: '',
+    timestamp: iso(),
+  };
+
+  const verify = (raw: string): WebhookVerifyResult =>
+    verifyWebhookSignature({
+      headers: { 'x-storige-delivery': 'whd_p', 'x-storige-signature-hmac': raw },
+      payload,
+      secret: V2_SECRET,
+    });
+
+  it('v1 중복 → MALFORMED (종전엔 뒤 값이 앞을 덮어써 통과했다)', () => {
+    const nowMs = Date.now();
+    const valid = v2Send(payload, V2_SECRET, 'whd_p', nowMs).headers['x-storige-signature-hmac'] as string;
+    const v1Valid = valid.split(',')[1] as string; // 'v1=<hex64>'
+    const t = valid.split(',')[0] as string;
+    const result = verify(`${t},v1=${'0'.repeat(64)},${v1Valid}`);
+    expect(result.valid).toBe(false);
+    expect(result.valid === false && result.reason).toBe('MALFORMED_SIGNATURE');
+  });
+
+  it('t 중복 → MALFORMED', () => {
+    const nowMs = Date.now();
+    const valid = v2Send(payload, V2_SECRET, 'whd_p', nowMs).headers['x-storige-signature-hmac'] as string;
+    const result = verify(`t=${Math.floor(nowMs / 1000) - 1},${valid}`);
+    expect(result.valid).toBe(false);
+    expect(result.valid === false && result.reason).toBe('MALFORMED_SIGNATURE');
+  });
+
+  it('프록시가 중복 헤더를 ", " 로 병합해도 거부한다 — 유효 서명이 섞여 있어도', () => {
+    const nowMs = Date.now();
+    const real = v2Send(payload, V2_SECRET, 'whd_p', nowMs).headers['x-storige-signature-hmac'] as string;
+    const forged = `t=${Math.floor(nowMs / 1000)},v1=${'f'.repeat(64)}`;
+    // Headers 의 append 의미론: 같은 이름 중복 → ", " 결합. 그 결과가 이 형태다.
+    const merged = new Headers();
+    merged.append('x-storige-signature-hmac', forged);
+    merged.append('x-storige-signature-hmac', real);
+    const combined = merged.get('x-storige-signature-hmac') as string;
+    expect(combined).toContain(', '); // 병합이 실제로 일어났음을 박제
+
+    const result = verify(combined);
+    expect(result.valid).toBe(false);
+    // 공백 때문에 뒤쪽을 '미지의 키'로 흘려보내면 앞쪽(위조)만 채택되는 fail-open
+    // 이 된다 — trim + 중복 거부라야 여기서 막힌다.
+    expect(result.valid === false && result.reason).toBe('MALFORMED_SIGNATURE');
+  });
+
+  it('정상 단일 서명은 그대로 통과한다(과잉 차단 없음)', () => {
+    const { headers } = v2Send(payload, V2_SECRET, 'whd_p');
+    expectValid(verifyWebhookSignature({ headers, payload, secret: V2_SECRET }));
+  });
+});
+
 describe('replay 방지 (헤더 t 기준)', () => {
   const payload = {
     event: 'synthesis.completed',
