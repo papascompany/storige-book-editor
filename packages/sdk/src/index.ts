@@ -25,3 +25,73 @@
 
 /** SDK 버전 — package.json version 과 동기(릴리스 워크플로 게이트에서 대조). */
 export const SDK_VERSION = '0.1.0';
+
+// ── 에러(§3.2·§3.3) ─────────────────────────────────────────────────────
+export {
+  ErrorCode,
+  isKnownErrorCode,
+  StorigeApiError,
+  StorigeConnectionError,
+  StorigeError,
+  StorigeUsageError,
+} from './errors';
+export type { ErrorItem, KnownErrorCode } from './errors';
+
+// ── 봉투(§3.1)·페이지네이션(§5.1) ───────────────────────────────────────
+export { isErrorEnvelope, isSuccessEnvelope, toPage } from './envelope';
+export type {
+  Envelope,
+  ErrorEnvelope,
+  Page,
+  Pagination,
+  SuccessEnvelope,
+} from './envelope';
+
+// ── 계약 상수 ───────────────────────────────────────────────────────────
+export {
+  DEFAULT_BACKOFF_BASE_MS,
+  DEFAULT_BACKOFF_MAX_MS,
+  DEFAULT_MAX_RETRIES,
+  DEFAULT_TIMEOUT_MS,
+  DIRECT_UPLOAD_ALLOWED_MIME,
+  DIRECT_UPLOAD_MAX_BYTES,
+  EDITOR_PRESIGNED_THRESHOLD_BYTES,
+  IDEMPOTENCY_IN_PROGRESS_BACKOFF_MS,
+  IDEMPOTENCY_KEY_HEADER,
+  IDEMPOTENCY_KEY_MAX_LENGTH,
+  IDEMPOTENCY_REPLAYED_HEADER,
+  IDEMPOTENCY_TTL_MS,
+  PAGINATION_DEFAULT_LIMIT,
+  PAGINATION_MAX_LIMIT,
+  PRESIGNED_MAX_BYTES,
+  RATE_LIMIT_GENERAL_PER_MIN,
+  RATE_LIMIT_HEAVY_PER_MIN,
+  RETRY_AFTER_FALLBACK_SECONDS,
+  V1_PATH_PREFIX,
+} from './constants';
+
+// ── 도메인 타입 ─────────────────────────────────────────────────────────
+export { TERMINAL_FINALIZATION_STATUSES } from './types';
+export type {
+  BookAssetStatus,
+  BookAssetType,
+  BookAssetView,
+  BookCreationType,
+  BookFinalizationStatus,
+  BookFinalizationView,
+  BookListQuery,
+  BookSpecListQuery,
+  BookSpecView,
+  BookStatus,
+  BookView,
+  CalculatedSizeView,
+  CreateBookInput,
+  PartnerEnv,
+  PingView,
+  PutWebhookConfigInput,
+  WebhookConfigStatus,
+  WebhookConfigView,
+  WebhookDeliveryListQuery,
+  WebhookDeliveryStatus,
+  WebhookDeliveryView,
+} from './types';
