@@ -5,8 +5,14 @@ name: ci
 # master push/PR 마다 아래를 검증한다:
 #   1) apps/api jest — 파트너 동결 표면 contract test(src/contract-freeze.spec.ts) +
 #      웹훅 서명 페어와이즈(webhook-signature-pairwise.spec.ts) + 기존 스펙 전부
-#   2) packages/canvas-core vitest + tsc — 편집기 코어(ServicePlugin.pdf 카나리 포함)
-#   3) scripts/pdf-golden 비교 엔진 self-test (qpdf 필요)
+#   2) packages/sdk build+typecheck+test — 파트너 SDK. types-parity/webhook-events 의
+#      계약 드리프트 감시와 서명 페어와이즈(수신측)가 여기 걸려야 게이트가 된다
+#   3) packages/canvas-core vitest + tsc — 편집기 코어(ServicePlugin.pdf 카나리 포함)
+#   4) scripts/pdf-golden 비교 엔진 self-test (qpdf 필요)
+#
+# ⚠️ 루트 `turbo run test` 는 CI 가 호출하지 않는다 — per-package 명시 필터만 쓴다.
+#    새 패키지를 추가하면 **여기에 스텝을 추가해야** 게이트에 연결된다. 안 그러면
+#    그 패키지의 테스트는 전부 장식이 된다(SDK 가 실제로 그 상태였다).
 #
 # ⚠️ branch protection(필수 체크 지정)은 의도적으로 미설정 — master 직push 가 곧
 #    배포 트리거인 현행 운영과 충돌(오너 결정 대기). 현재는 push 후행 신호 + PR 게이트.
@@ -59,6 +65,16 @@ jobs:
 
       - name: types 선행 빌드 (모노레포 규약 — 다른 패키지가 dist 소비)
         run: pnpm --filter @storige/types build
+
+      - name: sdk 빌드 + 타입체크 + 테스트 (계약 드리프트 감시 + 서명 페어와이즈 수신측)
+        # types 선행 빌드 뒤여야 한다 — types-parity.spec 이 @storige/types dist 를
+        # 실제 import 해 구조 등가성을 대조한다(devDependency, 런타임 의존 아님).
+        # build 를 함께 도는 이유: dts 방출·번들 에러와 node: 프리픽스 보존 같은
+        # 아티팩트 수준 회귀는 test 만으로는 잡히지 않는다.
+        run: |
+          pnpm --filter @storige/sdk build
+          pnpm --filter @storige/sdk typecheck
+          pnpm --filter @storige/sdk test
 
       - name: api 테스트 (contract-freeze + 서명 페어와이즈 + 전체 스펙)
         run: pnpm --filter @storige/api test
