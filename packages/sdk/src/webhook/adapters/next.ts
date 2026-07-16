@@ -23,8 +23,13 @@
  *
  * export const runtime = 'nodejs';
  *
+ * // 부팅 시 env 검증 — `process.env.X!` 는 타입만 만족시킬 뿐 런타임 undefined 를
+ * // 막지 못한다. 검증된 값을 넘겨라(SDK 도 팩토리에서 한 번 더 막는다).
+ * const secret = process.env.STORIGE_WEBHOOK_SECRET;
+ * if (!secret) throw new Error('STORIGE_WEBHOOK_SECRET 이 설정되지 않았습니다');
+ *
  * export const POST = createNextWebhookRoute({
- *   secret: process.env.STORIGE_WEBHOOK_SECRET!,
+ *   secret,
  *   deduper: redisDeduper,
  *   handler: async (payload, ctx) => {
  *     if (payload.event === 'synthesis.completed') {
@@ -36,7 +41,12 @@
  * ```
  */
 
-import { processWebhookRequest, type WebhookHandlerOptions } from './core';
+import {
+  adapterFailureOutcome,
+  assertWebhookHandlerOptions,
+  processWebhookRequest,
+  type WebhookHandlerOptions,
+} from './core';
 
 /**
  * Next.js App Router `POST` Route Handler 생성.
@@ -51,10 +61,24 @@ import { processWebhookRequest, type WebhookHandlerOptions } from './core';
  *  - 400 `{error:<사유>}`                   서명 부재/형식 불량/만료/레거시 거부
  *  - 401 `{error:'SIGNATURE_MISMATCH'}`     서명 불일치
  *  - 500 `{error:'HANDLER_FAILED'}`         핸들러 예외 → 서버가 재시도
+ *  - 500 `{error:'ADAPTER_MISCONFIGURED'}`  수신측 설정 오류(StorigeUsageError)
+ *  - 500 `{error:'ADAPTER_ERROR'}`          예상 못 한 예외
+ *
+ * ## 반환된 라우트는 절대 reject 하지 않는다
+ * Next.js 자체는 라우트 예외를 500 으로 바꿔 주지만, 이 팩토리는 같은 시그니처로
+ * Remix·Hono·SvelteKit 등에도 꽂히므로 **프레임워크의 관용에 기대지 않는다**
+ * (express 어댑터와 동일한 계약 — 그쪽은 reject 가 곧 프로세스 종료다).
+ *
+ * @throws {StorigeUsageError} **팩토리 호출 시점**(모듈 로드) — secret 이
+ *   비문자열/빈 문자열이거나 toleranceSec 이 NaN 일 때. route.ts 는 모듈 로드 시
+ *   평가되므로 오설정이면 라우트가 **부팅에 실패한다**(의도된 조기 발견).
  */
 export function createNextWebhookRoute(
   options: WebhookHandlerOptions,
 ): (request: Request) => Promise<Response> {
+  // 부팅 시점 검증 — 오설정은 여기서 터진다(런타임 원격 트리거로 미루지 않는다)
+  assertWebhookHandlerOptions(options, 'createNextWebhookRoute');
+
   return async (request) => {
     let payload: unknown;
     try {
@@ -62,8 +86,13 @@ export function createNextWebhookRoute(
     } catch {
       return jsonResponse(400, { error: 'INVALID_JSON' });
     }
-    const outcome = await processWebhookRequest(request.headers, payload, options);
-    return jsonResponse(outcome.status, outcome.body);
+    try {
+      const outcome = await processWebhookRequest(request.headers, payload, options);
+      return jsonResponse(outcome.status, outcome.body);
+    } catch (error) {
+      const outcome = adapterFailureOutcome(error);
+      return jsonResponse(outcome.status, outcome.body);
+    }
   };
 }
 

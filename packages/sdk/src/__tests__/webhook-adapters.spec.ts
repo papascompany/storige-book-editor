@@ -391,10 +391,14 @@ describe('express 어댑터', () => {
     expect(res.statusCode).toBe(200);
   });
 
-  it('req.body 가 undefined 면 StorigeUsageError — 파서 누락을 조용히 서명불일치로 위장하지 않는다', async () => {
+  it('req.body 가 undefined 면 500 ADAPTER_MISCONFIGURED — 파서 누락을 조용히 서명불일치로 위장하지 않는다', async () => {
     const route = createExpressWebhookHandler({ secret: SECRET, handler: vi.fn() });
-    await expect(route({ headers: {} }, mockRes())).rejects.toThrow(StorigeUsageError);
-    await expect(route({ headers: {} }, mockRes())).rejects.toThrow(/express\.json\(\)/);
+    const res = mockRes();
+    // 🚨 던지면 안 된다: express 4 는 async rejection 을 next(err) 로 넘기지 않아
+    //    unhandledRejection → 프로세스 종료가 된다. 사유는 응답 코드로 전한다.
+    await expect(route({ headers: {} }, res)).resolves.toBeUndefined();
+    expect(res.statusCode).toBe(500);
+    expect(res.body).toEqual({ error: 'ADAPTER_MISCONFIGURED' });
   });
 
   it('배열 헤더(중복 수신)도 처리한다', async () => {
@@ -407,6 +411,139 @@ describe('express 어댑터', () => {
       res,
     );
     expect(res.statusCode).toBe(200);
+  });
+});
+
+/**
+ * 🚨 P0 회귀 방어 — 오설정이 **원격 무인증 크래시**가 되는 경로를 봉인한다.
+ *
+ * 실증(수정 전, 실 express 4 서버): secret 미주입 상태에서 HMAC 헤더에 아무 값이나
+ * 담은 **무인증 1요청**으로 `secret.length` TypeError → express 4 는 async rejection 을
+ * next(err) 로 넘기지 않음 → unhandledRejection → **프로세스 exit(1)**. 유효 서명이
+ * 필요 없으므로 스캐너가 반복하면 크래시 루프가 된다.
+ *
+ * 방어는 2중이다:
+ *  ① 팩토리(부팅) 시점 검증 — 오설정은 첫 웹훅이 아니라 배포에서 터진다
+ *  ② 어댑터 try/catch — 무슨 일이 있어도 핸들러가 reject 하지 않는다(=프로세스 생존)
+ */
+describe('P0 — 오설정 방어 (무인증 원격 크래시 봉인)', () => {
+  const BAD_SECRETS: ReadonlyArray<[string, unknown]> = [
+    ['undefined (env 미주입 — process.env.X! 의 실체)', undefined],
+    ['빈 문자열', ''],
+    ['null', null],
+    ['숫자', 123],
+    ['객체', {}],
+  ];
+
+  describe.each(BAD_SECRETS)('secret=%s', (_name, secret) => {
+    it('createExpressWebhookHandler 는 팩토리에서 던진다(부팅 실패)', () => {
+      expect(() =>
+        createExpressWebhookHandler({ secret: secret as string, handler: vi.fn() }),
+      ).toThrow(StorigeUsageError);
+    });
+
+    it('createNextWebhookRoute 는 팩토리에서 던진다(부팅 실패)', () => {
+      expect(() =>
+        createNextWebhookRoute({ secret: secret as string, handler: vi.fn() }),
+      ).toThrow(StorigeUsageError);
+    });
+  });
+
+  it('비문자열 secret 은 **종류만** 보고한다 — 값이 에러 로그로 새지 않는다', () => {
+    // Buffer.from(process.env.X) 로 넘기는 실수는 흔하다. 메시지에 실값이 실리면
+    // 그 시크릿이 그대로 스택트레이스·APM 에 남는다.
+    const leaky = Buffer.from('whsec_진짜비밀값');
+    const attempt = (): unknown =>
+      createExpressWebhookHandler({ secret: leaky as unknown as string, handler: vi.fn() });
+    expect(attempt).toThrow(/받은 종류: object/);
+    expect(attempt).not.toThrow(/whsec_진짜비밀값/);
+  });
+
+  it('toleranceSec: NaN 도 팩토리에서 던진다 — replay 보호가 침묵으로 꺼지지 않게', () => {
+    expect(() =>
+      createExpressWebhookHandler({ secret: SECRET, handler: vi.fn(), toleranceSec: NaN }),
+    ).toThrow(StorigeUsageError);
+    expect(() =>
+      createNextWebhookRoute({ secret: SECRET, handler: vi.fn(), toleranceSec: Number('abc') }),
+    ).toThrow(StorigeUsageError);
+  });
+
+  it('정상 옵션은 팩토리를 통과한다(과잉 차단 없음)', () => {
+    expect(() => createExpressWebhookHandler({ secret: SECRET, handler: vi.fn() })).not.toThrow();
+    expect(() =>
+      createNextWebhookRoute({ secret: SECRET, handler: vi.fn(), toleranceSec: 0 }),
+    ).not.toThrow();
+  });
+
+  it('🚨 팩토리 통과 후 secret 이 사라져도 프로세스를 죽이지 않는다 — 500 으로 바꾼다', async () => {
+    // 팩토리는 options 를 참조로 들고 있다 → 심층 방어(processWebhookRequest 매 요청 검사)
+    const options = { secret: SECRET, handler: vi.fn() };
+    const route = createExpressWebhookHandler(options);
+    (options as { secret: unknown }).secret = undefined;
+
+    const res = mockRes();
+    // 유효 서명 불요 — 헤더에 아무 값이나 담은 무인증 요청이 크래시 트리거였다
+    await expect(
+      route({ headers: { 'x-storige-signature-hmac': 'anything-goes' }, body: payloadOf() }, res),
+    ).resolves.toBeUndefined(); // ← reject 하면 express 4 에서 프로세스가 죽는다
+    expect(res.statusCode).toBe(500);
+    expect(res.body).toEqual({ error: 'ADAPTER_MISCONFIGURED' });
+  });
+
+  it('🚨 next 어댑터도 동일 — 예외 대신 500 Response 를 돌려준다', async () => {
+    const options = { secret: SECRET, handler: vi.fn() };
+    const route = createNextWebhookRoute(options);
+    (options as { secret: unknown }).secret = undefined;
+
+    const response = await route(
+      new Request('https://partner.example/w', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-storige-signature-hmac': 'anything-goes' },
+        body: JSON.stringify(payloadOf()),
+      }),
+    );
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({ error: 'ADAPTER_MISCONFIGURED' });
+  });
+
+  it('res.status 가 던져도 핸들러는 reject 하지 않는다(최후 방어선)', async () => {
+    const route = createExpressWebhookHandler({ secret: SECRET, handler: vi.fn() });
+    const brokenRes = {
+      status() {
+        throw new Error('이미 응답됨');
+      },
+      json() {
+        return undefined;
+      },
+    } as unknown as ExpressLikeResponse;
+    const payload = payloadOf();
+    await expect(
+      route({ headers: sign(payload, 'whd_broken'), body: payload }, brokenRes),
+    ).resolves.toBeUndefined();
+  });
+
+  it('예상 못 한 예외(비 StorigeUsageError)는 ADAPTER_ERROR 로 구분된다', async () => {
+    const route = createExpressWebhookHandler({ secret: SECRET, handler: vi.fn() });
+    const res = mockRes();
+    // headers getter 가 폭발 = 파이프라인 밖의 사고
+    const req = {
+      get headers(): Record<string, string> {
+        throw new Error('프록시 폭발');
+      },
+      body: payloadOf(),
+    };
+    await expect(route(req, res)).resolves.toBeUndefined();
+    expect(res.statusCode).toBe(500);
+    expect(res.body).toEqual({ error: 'ADAPTER_ERROR' });
+  });
+
+  it('processWebhookRequest 직접 배선은 오설정을 던진다 — 호출측이 감싸야 한다(문서화)', async () => {
+    await expect(
+      processWebhookRequest({}, payloadOf(), {
+        secret: undefined as unknown as string,
+        handler: vi.fn(),
+      }),
+    ).rejects.toThrow(StorigeUsageError);
   });
 });
 
