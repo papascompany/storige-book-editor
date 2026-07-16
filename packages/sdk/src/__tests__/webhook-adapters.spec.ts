@@ -273,6 +273,48 @@ describe('멱등 단락', () => {
   });
 });
 
+/**
+ * 멱등의 **한계** 박제 — dedupe 키(delivery uid)는 서명 밖이다.
+ *
+ * 이 단언이 깨지는 날 = 서버가 서명 data 에 uid 를 넣은 날(발신 계약 개선).
+ * 그때 이 테스트를 지우고 dedupe 를 인증 통제로 승격할 수 있다.
+ */
+describe('⚠️ 멱등 한계 — dedupe 키가 서명 밖이라 인증 통제가 아니다', () => {
+  it('uid 헤더만 바꾸면 같은 유효 서명이 tolerance 창 안에서 반복 재생된다', async () => {
+    const payload = payloadOf(); // jobId 보유 → 서명 identifier = jobId (uid 불참여)
+    const captured = sign(payload, 'whd_real');
+    const handler = vi.fn();
+    const deduper = new InMemoryWebhookDeduper();
+
+    // 공격자: 캡처한 서명을 그대로 두고 **uid 헤더만** 매번 바꿔 재전송
+    for (let i = 0; i < 5; i += 1) {
+      const outcome = await processWebhookRequest(
+        { ...captured, 'x-storige-delivery': `whd_forged_${i}` },
+        payload,
+        { secret: SECRET, handler, deduper },
+      );
+      expect(outcome.status).toBe(200); // 서명은 유효하다 — uid 를 덮지 않으므로
+    }
+
+    // ⚠️ 5회 전부 실행된다. 단락은 uid 기준인데 uid 는 서명 밖이라 위조 자유다.
+    expect(handler).toHaveBeenCalledTimes(5);
+
+    // → 그래서 부작용 있는 핸들러는 **자체 도메인 멱등**(주문 uid 등)을 병행해야
+    //   한다. SDK 의 uid 단락은 서버 재시도를 접는 신뢰성 통제일 뿐이다.
+  });
+
+  it('반면 uid 를 그대로 두면(정상 재시도) 1회로 접힌다 — 신뢰성 통제로는 유효', async () => {
+    const payload = payloadOf();
+    const headers = sign(payload, 'whd_honest');
+    const handler = vi.fn();
+    const deduper = new InMemoryWebhookDeduper();
+    for (let i = 0; i < 5; i += 1) {
+      await processWebhookRequest(headers, payload, { secret: SECRET, handler, deduper });
+    }
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('핸들러 실패 — 조용한 유실 차단', () => {
   it('핸들러가 던지면 500 + release → 다음 재시도가 다시 처리한다(at-least-once)', async () => {
     const payload = payloadOf();

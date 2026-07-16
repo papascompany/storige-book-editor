@@ -40,7 +40,7 @@ export class StorigeClient {
   /** 도서 aggregate(§1·§2.4~2.6·§6) — 11라우트 */
   readonly books: BooksResource;
 
-  /** 웹훅 관리(§1.5) — 7라우트. 수신 서명 검증은 후속 subpath */
+  /** 웹훅 관리(§1.5) — 7라우트. 수신 서명 검증은 `@storige/sdk/webhook` */
   readonly webhooks: WebhooksResource;
 
   constructor(options: StorigeClientOptions) {

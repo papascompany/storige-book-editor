@@ -30,6 +30,11 @@ export interface WebhookHandlerContext {
   /**
    * delivery uid(whd_...). **null 이면 멱등 단락이 수행되지 않았다** —
    * v1 발신 경로는 X-Storige-Delivery 를 보내지 않기 때문이다(dedupe.ts 참조).
+   *
+   * ⚠️ **서명 밖 값이다** — identifier 가 jobId/sessionId 로 정해지는 페이로드에선
+   * uid 가 서명 data 에 안 들어간다 → 헤더 변조로 바뀔 수 있다. 위 `identifier`
+   * 와 달리 **신뢰 근거가 아니다**. 멱등은 신뢰성 통제이지 인증 통제가 아니다 —
+   * dedupe.ts 모듈 JSDoc 필독.
    */
   deliveryUid: string | null;
   /** 서명 시각(unix 초). 레거시 통과 시 null. */
