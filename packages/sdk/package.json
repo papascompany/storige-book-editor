@@ -18,6 +18,11 @@
       "import": "./dist/client/index.mjs",
       "require": "./dist/client/index.js"
     },
+    "./webhook": {
+      "types": "./dist/webhook/index.d.ts",
+      "import": "./dist/webhook/index.mjs",
+      "require": "./dist/webhook/index.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
