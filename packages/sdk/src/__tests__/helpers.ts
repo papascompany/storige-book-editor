@@ -32,11 +32,17 @@ export function mockFetch(responses: MockResponseSpec[]): FetchMock {
   let index = 0;
 
   const fetchImpl = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    // ⚠️ 실 fetch 의미론을 그대로 쓴다. 종전처럼 `headers[k.toLowerCase()] = v` 로
+    //    직접 채우면 **같은 이름의 헤더가 덮어써진다** — 실 fetch 는 Headers 로
+    //    채우며 **append(결합)** 하므로(`Bearer A, Bearer B`) mock 이 통과시킨 요청이
+    //    실전에서 401 이 나는 괴리가 생긴다. Headers 를 거치면 결합·대소문자 정규화·
+    //    잘못된 헤더명 거부까지 실물과 같아진다.
+    // (forEach 를 쓰는 이유: tsconfig lib 이 DOM 이라 Headers 반복자 타입은
+    //  DOM.Iterable 이 있어야 잡힌다 — 공용 tsconfig 를 건드리지 않는다)
     const headers: Record<string, string> = {};
-    const rawHeaders = init?.headers as Record<string, string> | undefined;
-    if (rawHeaders) {
-      for (const [k, v] of Object.entries(rawHeaders)) headers[k.toLowerCase()] = v;
-    }
+    new Headers(init?.headers ?? {}).forEach((value, key) => {
+      headers[key] = value;
+    });
     calls.push({
       url: String(input),
       method: init?.method ?? 'GET',

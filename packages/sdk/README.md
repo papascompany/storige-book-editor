@@ -221,6 +221,13 @@ book.finalization.completed | book.finalization.failed
   이미지를 멀티파트로 보내면 415 다. 사실상 `fileId` 참조 전용이다.
 - 서버는 `X-RateLimit-*` 잔량 헤더를 보내지 않는다 → 선제 회피 불가. SDK 는 429 를 받은 뒤
   `Retry-After` 를 준수하는 **반응형** 대응만 한다.
+- **`options.headers` 에 SDK 예약 헤더를 넣으면 `StorigeUsageError`** (대소문자 무관):
+  `Authorization`·`Accept`·`User-Agent`·`Content-Type`·`Idempotency-Key`. 조용히 무시하지
+  않는 이유 — 실 fetch 는 같은 이름의 헤더를 **덮어쓰지 않고 결합**하므로
+  (`Authorization: Bearer 사용자값, Bearer SDK키`) 그냥 뒀다면 원인 모를 401 이 된다.
+  인증은 `apiKey`, UA 는 `userAgent`, 멱등키는 `options.idempotencyKey` 로 넘겨라
+  (멱등키는 그래야 길이 검증·멀티파트 내용 주소화를 거친다). 추적 헤더
+  (`X-Request-Id`·`traceparent`) 등은 자유롭게 쓸 수 있다.
 
 ## 개발
 

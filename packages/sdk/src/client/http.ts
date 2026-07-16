@@ -68,7 +68,15 @@ export interface RequestOptions {
   signal?: AbortSignal;
   /** 이 호출만 재시도 override */
   retry?: Partial<RetryOptions>;
-  /** 추가 헤더(인증 헤더는 덮어쓸 수 없다) */
+  /**
+   * 추가 헤더 — 추적 헤더(`X-Request-Id`·`traceparent`) 등에 쓴다.
+   *
+   * ⚠️ SDK 가 소유한 헤더는 **대소문자 무관하게 거부**한다(StorigeUsageError):
+   * `Authorization`·`Accept`·`User-Agent`·`Content-Type`·`Idempotency-Key`.
+   * 조용히 무시하지 않는 이유는 {@link RESERVED_HEADERS} 참조 — 실 fetch 는 같은
+   * 이름의 헤더를 **덮어쓰지 않고 결합**하므로(`Headers` append 의미론) 그냥
+   * 뒀다간 `Authorization: Bearer A, Bearer B` 가 나가 401 이 된다.
+   */
   headers?: Record<string, string>;
 }
 
@@ -103,6 +111,35 @@ const DEFAULT_RETRY: RetryOptions = {
   jitter: true,
   maxRetryAfterMs: MAX_RETRY_AFTER_MS,
 };
+
+/**
+ * SDK 가 소유해 사용자 override 를 거부하는 헤더(소문자 정규화).
+ *
+ * ## 왜 "무시"가 아니라 "거부"인가 — mock 이 거짓말을 하던 자리
+ * `buildHeaders` 는 사용자 헤더를 먼저 펼치고 SDK 값을 덮어쓴다. 그래서 정확히
+ * 같은 표기(`Authorization`)면 SDK 값이 이긴다. 하지만 **소문자로 넘기면**
+ * (`authorization`) 두 키가 객체에 **공존**하고, 실 fetch 는 레코드를 `Headers`
+ * 로 채우며 같은 이름을 **append(결합)** 한다:
+ *
+ *     실 fetch : "Bearer user-supplied, Bearer sdk-key"  → 서버 401
+ *     테스트 mock: "Bearer sdk-key"                      → green (거짓 안심)
+ *
+ * 즉 "인증 헤더는 덮어쓸 수 없다"는 종전 JSDoc 은 표기가 다르면 **거짓**이었고,
+ * 테스트는 그 괴리를 잡지 못했다. 예약 헤더를 거부하면 그 주장이 **참이 된다**.
+ *
+ * Content-Type 은 멀티파트에서 특히 위험하다 — SDK 가 일부러 비워 fetch 가
+ * boundary 를 붙이게 하는데, 사용자가 넣으면 boundary 없는 값이 결합돼 서버가
+ * 본문을 파싱하지 못한다. Idempotency-Key 는 `options.idempotencyKey` 로 넘겨야
+ * 길이 검증·멀티파트 내용 주소화(idempotency.ts)를 거치고 재시도 안전성 판정
+ * (retrySafe)에도 반영된다.
+ */
+const RESERVED_HEADERS: ReadonlyMap<string, string> = new Map([
+  ['authorization', 'apiKey 옵션으로 설정됩니다'],
+  ['accept', 'SDK 가 라우트별로 설정합니다'],
+  ['user-agent', 'userAgent 옵션을 쓰십시오'],
+  ['content-type', 'SDK 가 본문 종류에 따라 설정합니다(멀티파트는 fetch 가 boundary 를 붙여야 해 비워 둡니다)'],
+  [IDEMPOTENCY_KEY_HEADER.toLowerCase(), 'options.idempotencyKey 를 쓰십시오(길이 검증·멀티파트 내용 주소화가 적용됩니다)'],
+]);
 
 /** GET /books/:uid/pdf 등 봉투 없는 원본 스트림 응답 */
 export interface RawStream {
@@ -431,6 +468,9 @@ export class HttpClient {
    *    Bearer 와 X-API-Key 를 병행 수용하지만 **둘 다 왔는데 값이 다르면 401**
    *    (모호성 거부)이다. 굳이 두 헤더를 보낼 이유가 없고, 프록시가 한쪽을
    *    바꿔 끼우면 401 이 되므로 단독 전송이 안전하다.
+   *
+   * @throws {StorigeUsageError} options.headers 에 SDK 예약 헤더가 있을 때
+   *   ({@link RESERVED_HEADERS} — 대소문자 무관)
    */
   private buildHeaders(
     req: InternalRequest,
@@ -438,8 +478,9 @@ export class HttpClient {
     mode: 'json' | 'stream',
   ): { headers: Record<string, string>; hasIdempotencyKey: boolean } {
     const headers: Record<string, string> = {
-      // 사용자 헤더가 인증/멱등을 덮어쓰지 못하도록 먼저 펼친다
-      ...req.options?.headers,
+      // 사용자 헤더 — 예약 헤더는 여기서 걸러진다(뒤에서 덮어쓰는 것으로는
+      // 부족하다: 표기가 다르면 두 키가 공존해 실 fetch 가 값을 **결합**한다)
+      ...this.userHeaders(req.options?.headers),
       Authorization: `Bearer ${this.apiKey}`,
       Accept: mode === 'stream' ? 'application/pdf, application/json' : 'application/json',
       'User-Agent': this.userAgent,
@@ -464,6 +505,22 @@ export class HttpClient {
     }
 
     return { headers, hasIdempotencyKey: false };
+  }
+
+  /** 사용자 헤더 검사 — 예약 헤더는 조용히 버리지 않고 즉시 알린다 */
+  private userHeaders(headers: Record<string, string> | undefined): Record<string, string> {
+    if (headers === undefined) return {};
+    for (const name of Object.keys(headers)) {
+      const reason = RESERVED_HEADERS.get(name.toLowerCase());
+      if (reason !== undefined) {
+        throw new StorigeUsageError(
+          `options.headers 에 '${name}' 를 넣을 수 없습니다 — SDK 가 소유하는 헤더입니다 (${reason}). ` +
+            '실 fetch 는 같은 이름의 헤더를 덮어쓰지 않고 결합하므로 그대로 두면 ' +
+            '잘못된 값이 전송됩니다.',
+        );
+      }
+    }
+    return headers;
   }
 
   /** 본문을 소비하지 않고 errorCode 만 엿본다(재시도 판정용) */
