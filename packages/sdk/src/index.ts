@@ -17,10 +17,12 @@
  * ## 서브패스
  * - `@storige/sdk`         — 계약 타입·에러·상수(런타임 무관, 트리셰이킹 가능)
  * - `@storige/sdk/client`  — HTTP 클라이언트(StorigeClient)
+ * - `@storige/sdk/webhook` — 웹훅 수신(서명 검증·멱등·express/next 어댑터).
+ *                            node:crypto 를 쓰므로 **Node 전용**이다.
  *
- * 예약: `./webhook`(수신 서명 검증)·`./embed`(임베드 편집기)는 후속 단계.
- * 미구현 서브패스를 미리 선언하지 않는다 — 던지는 스텁은 계약 약속이 되어
- * 파트너를 오도한다. 패키지 미배포(private) 상태라 후속 추가는 additive 다.
+ * 예약: `./embed`(임베드 편집기)는 후속 단계. 미구현 서브패스를 미리 선언하지
+ * 않는다 — 던지는 스텁은 계약 약속이 되어 파트너를 오도한다. 패키지
+ * 미배포(private) 상태라 후속 추가는 additive 다.
  */
 
 /** SDK 버전 — package.json version 과 동기(릴리스 워크플로 게이트에서 대조). */
