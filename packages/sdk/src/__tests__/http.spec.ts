@@ -54,10 +54,49 @@ describe('HttpClient — 인증', () => {
     expect(Object.keys(call.headers)).not.toContain('x-storige-env');
   });
 
-  it('사용자 헤더가 Authorization 을 덮어쓸 수 없다', async () => {
+  /**
+   * 🚨 예약 헤더 방어 — 종전엔 "덮어쓸 수 없다"가 **표기에 따라 거짓**이었다.
+   *
+   * buildHeaders 가 사용자 헤더를 펼친 뒤 SDK 값을 덮어쓰므로 정확히 같은 표기
+   * (`Authorization`)면 SDK 가 이겼다. 하지만 소문자(`authorization`)로 넘기면
+   * 두 키가 객체에 공존하고, 실 fetch 는 이를 Headers 로 채우며 **결합**한다:
+   *   실물 → "Bearer 사용자값, Bearer sk_test_abc" → 서버 401
+   *   구 mock → "Bearer sk_test_abc" (덮어쓰기) → green = **거짓 안심**
+   * 이제 예약 헤더는 거부하고, mock 도 실 Headers 의미론을 쓴다.
+   */
+  it.each([
+    ['Authorization', 'Bearer 탈취시도'],
+    ['authorization', 'Bearer 탈취시도'], // ← 실 fetch 라면 결합돼 401 이 나던 표기
+    ['AUTHORIZATION', 'Bearer 탈취시도'],
+    ['Accept', 'application/xml'],
+    ['content-type', 'text/plain'],
+    ['User-Agent', 'evil/1.0'],
+    ['Idempotency-Key', 'bypass-검증'],
+  ])('예약 헤더 %s 는 즉시 StorigeUsageError — 대소문자 무관', async (name, value) => {
     const m = mockFetch([{ json: ok({ pong: true, serverTime: 'T' }) }]);
-    await client(m.fetch).ping({ headers: { Authorization: 'Bearer 탈취시도' } });
-    expect(m.calls[0]!.headers['authorization']).toBe('Bearer sk_test_abc');
+    await expect(client(m.fetch).ping({ headers: { [name]: value } })).rejects.toThrow(
+      StorigeUsageError,
+    );
+    expect(m.calls).toHaveLength(0); // 발신 전에 실패한다
+  });
+
+  it('예약 아닌 사용자 헤더(추적 등)는 그대로 실린다', async () => {
+    const m = mockFetch([{ json: ok({ pong: true, serverTime: 'T' }) }]);
+    await client(m.fetch).ping({ headers: { 'X-Request-Id': 'req-1', traceparent: 'tp-1' } });
+    const call = m.calls[0]!;
+    expect(call.headers['x-request-id']).toBe('req-1');
+    expect(call.headers['traceparent']).toBe('tp-1');
+    expect(call.headers['authorization']).toBe('Bearer sk_test_abc'); // 인증은 SDK 것 단독
+  });
+
+  it('mock 이 실 fetch 의 결합 의미론을 쓴다 — 이 괴리가 P2-6 을 숨겼다', async () => {
+    // helpers.mockFetch 가 Headers 를 거치는지 박제. 덮어쓰기 mock 이면 이 단언이 깨진다.
+    const m = mockFetch([{ json: ok({ pong: true, serverTime: 'T' }) }]);
+    await client(m.fetch).ping();
+    const captured = m.calls[0]!.headers;
+    // Headers 는 이름을 소문자로 정규화한다(원본은 'User-Agent' 표기였다)
+    expect(captured['user-agent']).toBe('@storige/sdk');
+    expect(captured['User-Agent']).toBeUndefined();
   });
 
   it('apiKey/baseUrl 누락 시 즉시 사용법 에러', () => {
