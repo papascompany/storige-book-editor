@@ -12,26 +12,23 @@
  *
  * ── 전수성(스냅샷) 보장 ──
  * AppModule 은 실 DB 연결(TypeORM forRoot) 때문에 테스트에서 compile 불가하므로
- * DiscoveryService 대신 **파일시스템 전수 스캔**으로 실제 v1 컨트롤러를 센다:
- * src/**\/*.controller.ts 전 파일을 require 하여 PATH_METADATA 가 'v1'/'v1/...' 인
- * export 클래스를 수집 → 아래 명시 목록과 집합 일치를 단언한다.
+ * DiscoveryService 대신 **파일시스템 전수 스캔**(testing/v1-controller-scan)으로 실제
+ * v1 컨트롤러를 센다 → 아래 명시 목록과 집합 일치를 단언한다.
  * (모듈 미등록 컨트롤러까지 잡으므로 DiscoveryService 보다 검출 범위가 넓다)
  *
  * ⚠️ 새 v1 컨트롤러(Stage 3+ books/templates/webhooks 등)를 추가하면
  *    반드시 아래 V1_CONTROLLERS 목록에 등재하라 — 미등재 시 집합 단언이 red.
+ *    (OpenAPI export 등재도 별도로 필요 — scripts/partner-openapi-surface.spec 참조)
  */
 import 'reflect-metadata';
-import { readdirSync } from 'fs';
-import { join, relative } from 'path';
-import { GUARDS_METADATA, PATH_METADATA } from '@nestjs/common/constants';
+import { GUARDS_METADATA } from '@nestjs/common/constants';
 import { IS_PUBLIC_KEY } from './auth/decorators/public.decorator';
 import { PartnerApiKeyGuard } from './partner-api/guards/partner-api-key.guard';
 import { PartnerPingController } from './partner-api/ping.controller';
 import { BookSpecsController } from './book-specs/book-specs.controller';
 import { BooksController } from './books/books.controller';
 import { PartnerWebhooksController } from './webhook/v2/partner-webhooks.controller';
-
-type Ctor = abstract new (...args: never[]) => unknown;
+import { Ctor, discoverV1Controllers } from './testing/v1-controller-scan';
 
 /**
  * v1 컨트롤러 명시 열거 — 새 v1 컨트롤러 추가 시 여기에 등재 필수.
@@ -46,42 +43,6 @@ const V1_CONTROLLERS: Array<{ name: string; controller: Ctor }> = [
     controller: PartnerWebhooksController,
   },
 ];
-
-/** src/ 이하 *.controller.ts 전 파일 경로 수집 (재귀) */
-function listControllerFiles(dir: string): string[] {
-  const out: string[] = [];
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const full = join(dir, entry.name);
-    if (entry.isDirectory()) {
-      if (entry.name === 'node_modules') continue;
-      out.push(...listControllerFiles(full));
-    } else if (entry.isFile() && entry.name.endsWith('.controller.ts')) {
-      out.push(full);
-    }
-  }
-  return out;
-}
-
-/** PATH_METADATA 가 v1 스코프('v1' 또는 'v1/...')인지 */
-function isV1Path(path: unknown): boolean {
-  return typeof path === 'string' && /^v1(\/|$)/.test(path);
-}
-
-/** 파일시스템 전수 스캔으로 실제 v1 컨트롤러 클래스 수집 */
-function discoverV1Controllers(): Map<Ctor, string> {
-  const discovered = new Map<Ctor, string>();
-  for (const file of listControllerFiles(__dirname)) {
-    // ts-jest 가 require 시점에 변환 — 클래스 정의(데코레이터 평가)만 일어난다
-    const mod = require(file) as Record<string, unknown>;
-    for (const exported of Object.values(mod)) {
-      if (typeof exported !== 'function') continue;
-      if (isV1Path(Reflect.getMetadata(PATH_METADATA, exported))) {
-        discovered.set(exported as Ctor, relative(__dirname, file));
-      }
-    }
-  }
-  return discovered;
-}
 
 describe('Partner API v1 — 가드 계약 (무인증 라우트 0 원칙)', () => {
   describe('전수성 스냅샷 — 실제 v1 컨트롤러 == 명시 목록', () => {

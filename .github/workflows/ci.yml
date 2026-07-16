@@ -64,8 +64,9 @@ jobs:
         run: pnpm --filter @storige/api test
 
       - name: Partner API v1 OpenAPI export (파트너 전용 스펙 — v1 태그 필터)
-        # 스크립트 내부 단언: 모든 경로 /api/v1/* + 필수 라우트(ping·book-specs 3종)
-        # 존재 — 내부 라우트 유입/누락 시 여기서 실패한다 (Stage 1 작업 5).
+        # 스크립트 내부 단언: 모든 경로 /api/v1/* + REQUIRED_PATHS(현 16경로/22오퍼레이션
+        # = ping·book-specs 3·books 11·webhooks 7) 존재 — 내부 라우트 유입/누락 시 실패.
+        # 등재 누락의 정본 게이트는 partner-openapi-surface.spec(FS 스캔 3중 대조, E-2).
         run: pnpm --filter @storige/api openapi:partner
 
       - name: Partner API v1 OpenAPI 아티팩트 업로드
