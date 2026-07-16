@@ -4,6 +4,8 @@
 
 import type { PingView } from '../types';
 import { BookSpecsResource } from './book-specs';
+import { BooksResource } from './books';
+import { WebhooksResource } from './webhooks';
 import { HttpClient, type HttpClientOptions, type RequestOptions } from './http';
 
 /**
@@ -32,12 +34,20 @@ export type StorigeClientOptions = HttpClientOptions;
 export class StorigeClient {
   private readonly http: HttpClient;
 
-  /** 판형 마스터(§1.2) */
+  /** 판형 마스터(§1.2) — GET 3종 */
   readonly bookSpecs: BookSpecsResource;
+
+  /** 도서 aggregate(§1·§2.4~2.6·§6) — 11라우트 */
+  readonly books: BooksResource;
+
+  /** 웹훅 관리(§1.5) — 7라우트. 수신 서명 검증은 후속 subpath */
+  readonly webhooks: WebhooksResource;
 
   constructor(options: StorigeClientOptions) {
     this.http = new HttpClient(options);
     this.bookSpecs = new BookSpecsResource(this.http);
+    this.books = new BooksResource(this.http);
+    this.webhooks = new WebhooksResource(this.http);
   }
 
   /**
