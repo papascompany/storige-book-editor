@@ -57,3 +57,16 @@ export type {
 // ── 멱등(중복 배달 단락) ────────────────────────────────────────────────
 export { InMemoryWebhookDeduper } from './dedupe';
 export type { InMemoryWebhookDeduperOptions, WebhookDeduper } from './dedupe';
+
+// ── 프레임워크 어댑터 ───────────────────────────────────────────────────
+export { createExpressWebhookHandler } from './adapters/express';
+export type { ExpressLikeRequest, ExpressLikeResponse } from './adapters/express';
+export { createNextWebhookRoute } from './adapters/next';
+/** 프레임워크 없이 직접 파이프라인을 쓰고 싶을 때 */
+export { processWebhookRequest } from './adapters/core';
+export type {
+  WebhookHandler,
+  WebhookHandlerContext,
+  WebhookHandlerOptions,
+  WebhookProcessOutcome,
+} from './adapters/core';
