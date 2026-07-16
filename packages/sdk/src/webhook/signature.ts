@@ -194,14 +194,18 @@ export interface VerifyWebhookSignatureOptions {
    *  - v2(사이트별 opt-in): 웹훅 config 발급/회전 시 1회 노출된 `whsec_...`
    *  - v1(레거시 전역): 서버 WEBHOOK_SECRET 과 공유한 값
    *
-   * HMAC 검증에 secret 이 필요한데 빈 문자열이면 **StorigeUsageError 를 던진다**
-   * (수신측 설정 실수를 조용한 검증 실패로 위장하지 않는다).
+   * HMAC 검증에 secret 이 필요한데 문자열이 아니거나 비어 있으면
+   * **StorigeUsageError 를 던진다**({@link assertWebhookSecret} 참조) —
+   * 수신측 설정 실수를 조용한 검증 실패로 위장하지 않는다.
    */
   secret: string;
   /**
    * replay 허용 창(초) — 기본 {@link DEFAULT_SIGNATURE_TOLERANCE_SEC}(300).
    * 헤더 `t` 기준이다(payload.timestamp 아님 — 모듈 상단 참조).
    * `0` 이하면 검사를 건너뛴다 — **권장하지 않는다**(replay 창이 무한해진다).
+   *
+   * NaN·Infinity 는 **StorigeUsageError** 다({@link assertToleranceSec} 참조).
+   * 검사를 끄려면 `0` 을 명시하라 — 침묵으로 꺼지는 경로를 두지 않는다.
    */
   toleranceSec?: number;
   /**
@@ -393,6 +397,87 @@ function fail(
   return { valid: false, reason, message };
 }
 
+// ── 입력 방어 (오설정 조기 발견) ────────────────────────────────────────
+
+/**
+ * 값의 **종류만** 문자열로 — 값 자체는 절대 담지 않는다(secret 이 로그로 샌다).
+ */
+function describeType(value: unknown): string {
+  if (value === null) return 'null';
+  return typeof value;
+}
+
+/**
+ * secret 단언 — 빈 문자열뿐 아니라 **비문자열도** 거부한다.
+ *
+ * ## 왜 타입만으로 부족한가 (실측된 원격 크래시 경로)
+ * `secret: string` 은 컴파일 타임 계약일 뿐이다. 파트너 코드의 정석 관용구
+ * `process.env.STORIGE_WEBHOOK_SECRET!` 는 **타입만 string 이고 런타임엔
+ * undefined** 다(env 미주입). 이 값이 검증기까지 흘러가면:
+ *
+ *   1. `secret.length` 에서 TypeError
+ *   2. express 4 는 async 핸들러의 rejection 을 next(err) 로 넘기지 **않는다**
+ *   3. → unhandledRejection → Node 15+ 기본 정책상 **프로세스 종료**
+ *
+ * 이 경로는 **유효 서명을 요구하지 않는다** — HMAC 헤더에 아무 값이나 넣은
+ * 무인증 1요청으로 수신 서버가 죽고, 스캐너가 반복하면 크래시 루프가 된다.
+ * 그래서 런타임 단언이 필요하고, 어댑터는 이 단언을 **팩토리(부팅) 시점**으로
+ * 끌어올려 첫 웹훅이 아니라 배포 시점에 실패하게 한다.
+ *
+ * @internal 어댑터 팩토리(adapters/core.ts)가 재사용한다. `webhook/index.ts` 는
+ * re-export 하지 않으므로 공개 API 표면에는 나타나지 않는다.
+ * @throws {StorigeUsageError} 문자열이 아니거나 빈 문자열일 때
+ */
+export function assertWebhookSecret(
+  secret: unknown,
+  context: string,
+): asserts secret is string {
+  if (typeof secret !== 'string') {
+    throw new StorigeUsageError(
+      `${context}: secret 은 문자열이어야 합니다 (받은 종류: ${describeType(secret)}). ` +
+        '환경변수 미주입이 가장 흔한 원인입니다 — `process.env.X!` 같은 non-null 단언은 ' +
+        '타입만 만족시킬 뿐 런타임 undefined 를 막지 못합니다. 부팅 시 env 를 검증하십시오.',
+    );
+  }
+  if (secret.length === 0) {
+    throw new StorigeUsageError(
+      `${context}: secret 이 빈 문자열입니다. ` +
+        'v2 는 웹훅 config 발급 시 1회 노출된 whsec_... 값을, v1 은 서버 WEBHOOK_SECRET 과 ' +
+        '공유한 값을 주입하십시오.',
+    );
+  }
+}
+
+/**
+ * toleranceSec 단언 — 유한한 수만 허용한다(미지정/null 은 기본값 경로).
+ *
+ * ## 왜 필요한가 — 침묵으로 꺼지는 replay 보호
+ * `toleranceSec: NaN` 이면 `NaN > 0` 이 false 라 **검사 자체가 스킵**된다 →
+ * 10년 전 캡처 서명도 통과한다. `Number(process.env.X)` / `parseInt('abc')` 는
+ * 값이 없거나 형식이 틀리면 조용히 NaN 을 낸다 — 전형적인 오설정 패턴이다.
+ * Infinity 도 `skew > Infinity` 가 항상 false 라 같은 결과다.
+ *
+ * secret 오설정은 던지는데 이건 침묵한다면 **비대칭**이다. 둘 다 던진다.
+ * 검사를 끄려면 `toleranceSec: 0` 을 명시하라(의도가 코드에 남는다).
+ *
+ * @internal 어댑터 팩토리가 재사용한다.
+ * @throws {StorigeUsageError} NaN·Infinity·비숫자일 때
+ */
+export function assertToleranceSec(toleranceSec: unknown, context: string): void {
+  // `options.toleranceSec ?? DEFAULT` 와 동일 의미론 — 미지정은 기본값(보호 ON)
+  if (toleranceSec === undefined || toleranceSec === null) return;
+  if (typeof toleranceSec !== 'number' || !Number.isFinite(toleranceSec)) {
+    const received =
+      typeof toleranceSec === 'number' ? String(toleranceSec) : describeType(toleranceSec);
+    throw new StorigeUsageError(
+      `${context}: toleranceSec 은 유한한 숫자여야 합니다 (받은 값: ${received}). ` +
+        'NaN 은 모든 비교가 false 라 replay 보호가 **조용히 꺼집니다** — ' +
+        'Number(process.env.X) / parseInt 가 NaN 을 내는 것이 흔한 원인입니다. ' +
+        '검사를 의도적으로 끄려면 toleranceSec: 0 을 명시하십시오.',
+    );
+  }
+}
+
 // ── 공개 API ────────────────────────────────────────────────────────────
 
 /**
@@ -424,13 +509,24 @@ function fail(
  * // result.identifier 로 재조회 후 처리
  * ```
  *
- * @throws {StorigeUsageError} HMAC 검증이 필요한데 secret 이 빈 문자열일 때
- *   (수신측 설정 실수 — 검증 실패로 위장하면 공격과 구분이 안 된다)
+ * ## 던지는 경우 — 오설정은 거부가 아니라 예외다
+ * 아래 둘은 **검증 실패(valid:false)가 아니라 StorigeUsageError** 다. 수신측
+ * 설정 실수를 서명 실패로 위장하면 공격과 구분이 안 되고, replay 보호가 꺼진
+ * 것도 모른 채 굴러간다. 직접 배선(어댑터 미사용) 시에는 **호출측이 try/catch
+ * 로 감싸야 한다** — 어댑터는 이미 감싸서 500 으로 바꾼다.
+ *
+ * @throws {StorigeUsageError} HMAC 검증이 필요한데 secret 이 문자열이 아니거나
+ *   비어 있을 때 ({@link assertWebhookSecret})
+ * @throws {StorigeUsageError} toleranceSec 이 NaN·Infinity 일 때
+ *   ({@link assertToleranceSec})
  */
 export function verifyWebhookSignature(
   options: VerifyWebhookSignatureOptions,
 ): WebhookVerifyResult {
   const { headers, payload, secret } = options;
+  // NaN 이면 `NaN > 0` 이 false 라 replay 검사가 조용히 스킵된다 → 기본값 해석
+  // 전에 막는다(레거시 경로도 오설정을 조기 발견하도록 경로 무관하게 검사).
+  assertToleranceSec(options.toleranceSec, 'verifyWebhookSignature');
   const toleranceSec = options.toleranceSec ?? DEFAULT_SIGNATURE_TOLERANCE_SEC;
   const allowInsecureLegacy = options.allowInsecureLegacy ?? false;
   const nowMs = (options.now ?? Date.now)();
@@ -466,13 +562,10 @@ export function verifyWebhookSignature(
   }
 
   // ── HMAC 검증 경로(정본) ──
-  if (secret.length === 0) {
-    throw new StorigeUsageError(
-      'verifyWebhookSignature: HMAC 서명 검증에 secret 이 필요합니다 (빈 문자열). ' +
-        'v2 는 웹훅 config 발급 시 1회 노출된 whsec_... 값을, v1 은 서버 WEBHOOK_SECRET 과 ' +
-        '공유한 값을 주입하십시오.',
-    );
-  }
+  // secret 이 **처음 필요해지는 지점**이라 단언도 여기 둔다(레거시 경로는 시크릿
+  // 불참여 → secret 없이도 성립). 타입 단언이 아니라 런타임 단언인 이유는
+  // assertWebhookSecret JSDoc 참조 — 이 한 줄이 무인증 원격 크래시를 막는다.
+  assertWebhookSecret(secret, 'verifyWebhookSignature');
 
   const parsed = parseHmacSignature(hmacHeader);
   if (parsed === null) {

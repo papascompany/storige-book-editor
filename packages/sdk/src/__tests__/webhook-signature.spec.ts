@@ -455,6 +455,60 @@ describe('replay 방지 (헤더 t 기준)', () => {
     );
   });
 
+  /**
+   * 🚨 침묵하는 replay OFF — `NaN > 0` 이 false 라 검사가 통째로 스킵됐다.
+   * secret:'' 는 던지는데 이건 조용히 지나가는 **비대칭**이 문제였다.
+   */
+  it.each([
+    ['NaN (Number(process.env.X) 의 전형)', Number('abc')],
+    ['NaN 리터럴', NaN],
+    ['Infinity (skew > Infinity 는 항상 false — 같은 결과)', Infinity],
+    ['-Infinity', -Infinity],
+    ['문자열 "300" (환경변수 미변환)', '300'],
+  ])('toleranceSec 이 %s 면 StorigeUsageError — 보호가 침묵으로 꺼지지 않는다', (_name, tolerance) => {
+    const { headers } = v2Send(payload, V2_SECRET, 'whd_nan');
+    expect(() =>
+      verifyWebhookSignature({
+        headers,
+        payload,
+        secret: V2_SECRET,
+        toleranceSec: tolerance as number,
+      }),
+    ).toThrow(StorigeUsageError);
+  });
+
+  it('🚨 회귀 잠금: NaN tolerance 로 10년 전 서명이 통과하지 않는다', () => {
+    const nowMs = Date.now();
+    const decadeAgo = nowMs - 10 * 365 * 24 * 60 * 60 * 1000;
+    const { headers } = v2Send(payload, V2_SECRET, 'whd_ancient', decadeAgo);
+    // 수정 전: NaN 검사 스킵 → 서명은 유효하므로 **통과**했다(캡처 replay 무제한)
+    expect(() =>
+      verifyWebhookSignature({
+        headers,
+        payload,
+        secret: V2_SECRET,
+        toleranceSec: NaN,
+        now: () => nowMs,
+      }),
+    ).toThrow(StorigeUsageError);
+  });
+
+  it('미지정·null 은 기본값 경로 — 보호는 켜진 채다(과잉 차단 없음)', () => {
+    const nowMs = Date.now();
+    const { headers } = v2Send(payload, V2_SECRET, 'whd_default', nowMs);
+    for (const tolerance of [undefined, null]) {
+      const result = verifyWebhookSignature({
+        headers,
+        payload,
+        secret: V2_SECRET,
+        toleranceSec: tolerance as number | undefined,
+        now: () => nowMs + 301_000,
+      });
+      // 기본 300초가 적용됐다는 증거 — 던지지도, 통과시키지도 않는다
+      expect(result.valid === false && result.reason).toBe('TIMESTAMP_OUT_OF_TOLERANCE');
+    }
+  });
+
   it('tolerance 검사는 서명 대조보다 먼저다 — 만료된 위조도 만료로 보고한다', () => {
     const nowMs = Date.now();
     const { headers } = v2Send(payload, 'wrong-secret', 'whd_t6', nowMs);
@@ -618,11 +672,45 @@ describe('입력 방어', () => {
     );
   });
 
-  it('secret 이 빈 문자열이면 StorigeUsageError — 검증 실패로 위장하지 않는다', () => {
+  it.each([
+    ['빈 문자열', ''],
+    ['undefined (env 미주입 — process.env.X! 의 런타임 실체)', undefined],
+    ['null', null],
+    ['숫자', 123],
+    ['객체(Buffer 오전달 등)', {}],
+  ])('secret 이 %s 면 StorigeUsageError — 검증 실패로 위장하지 않는다', (_name, secret) => {
     const { headers } = v2Send(payload, V2_SECRET, 'whd_nosecret');
-    expect(() => verifyWebhookSignature({ headers, payload, secret: '' })).toThrow(
-      StorigeUsageError,
-    );
+    // 🚨 수정 전에는 undefined 에서 `secret.length` TypeError 가 났다 → express 4 는
+    //    async rejection 을 next(err) 로 안 넘김 → unhandledRejection → 프로세스 종료.
+    //    유효 서명이 필요 없는 경로였다(HMAC 헤더 값은 아무거나면 성립).
+    expect(() =>
+      verifyWebhookSignature({ headers, payload, secret: secret as string }),
+    ).toThrow(StorigeUsageError);
+  });
+
+  it('secret 오설정은 서명 파싱보다 먼저 걸린다 — 형식 불량 헤더로도 크래시하지 않는다', () => {
+    // 공격자가 보내는 것: 유효 서명이 아니라 **아무 문자열**
+    expect(() =>
+      verifyWebhookSignature({
+        headers: { 'x-storige-signature-hmac': 'anything-goes' },
+        payload,
+        secret: undefined as unknown as string,
+      }),
+    ).toThrow(StorigeUsageError); // TypeError 가 아니다
+  });
+
+  it('레거시 경로는 secret 없이도 성립한다 — 시크릿이 서명에 불참여하므로', () => {
+    // secret 단언을 "필요해지는 지점"(HMAC 경로)에 둔 이유. 서버 WEBHOOK_SECRET
+    // 미설정 상태(레거시만 발신)에서 opt-in 한 수신측을 강제로 깨지 않는다.
+    const legacyOnly = v1Send(payload);
+    const result = verifyWebhookSignature({
+      headers: legacyOnly,
+      payload,
+      secret: undefined as unknown as string,
+      allowInsecureLegacy: true,
+    });
+    expectValid(result);
+    expect(result.insecureLegacy).toBe(true);
   });
 
   it('payload 가 객체가 아니면 서명이 맞을 수 없다 → 거부(크래시 금지)', () => {

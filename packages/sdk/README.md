@@ -47,17 +47,37 @@ identifier·event·timestamp 조합을 t 시각에 서명했다"* 뿐이고, 본
 *"JSON 파서보다 먼저 raw body 를 보존하라"* 곡예가 **없다**. `express.json()` 을
 그대로 쓰고, App Router 에선 `await request.json()` 한 줄이면 된다.
 
+### ⚠️ secret 은 부팅 시 검증하라 — `process.env.X!` 금지
+
+```ts
+// ❌ 하지 말 것 — `!` 는 **타입만** 속인다. env 가 없으면 런타임 값은 undefined 다.
+secret: process.env.STORIGE_WEBHOOK_SECRET!
+
+// ✅ 부팅 시 1회 검증하고 검증된 값을 넘긴다
+const secret = process.env.STORIGE_WEBHOOK_SECRET;
+if (!secret) throw new Error('STORIGE_WEBHOOK_SECRET 이 설정되지 않았습니다');
+```
+
+SDK 도 **팩토리 호출 시점에** secret(과 `toleranceSec`)을 검증해 `StorigeUsageError` 를
+던진다 — 오설정은 첫 웹훅이 아니라 **배포에서** 터지는 편이 낫다. 어댑터가 반환한
+핸들러는 그 뒤로 **어떤 경우에도 예외를 밖으로 흘리지 않는다**(500 으로 바꾼다):
+express 4 는 async 핸들러의 rejection 을 `next(err)` 로 넘기지 않아 잡히지 않은
+rejection 이 곧 **프로세스 종료**이기 때문이다.
+
 ### 빠른 시작 — express
 
 ```ts
 import express from 'express';
 import { createExpressWebhookHandler } from '@storige/sdk/webhook';
 
+const secret = process.env.STORIGE_WEBHOOK_SECRET;
+if (!secret) throw new Error('STORIGE_WEBHOOK_SECRET 이 설정되지 않았습니다');
+
 const app = express();
 app.use(express.json()); // ✅ 일반 파서로 충분 (raw body 불요)
 
 app.post('/webhooks/storige', createExpressWebhookHandler({
-  secret: process.env.STORIGE_WEBHOOK_SECRET!,
+  secret,
   deduper: redisDeduper, // 아래 "멱등" 참조 — 강력 권장
   handler: async (payload, ctx) => {
     if (payload.event === 'book.finalization.completed') {
@@ -77,15 +97,19 @@ import { createNextWebhookRoute } from '@storige/sdk/webhook';
 
 export const runtime = 'nodejs'; // node:crypto 사용 — Edge 런타임 불가
 
+const secret = process.env.STORIGE_WEBHOOK_SECRET;
+if (!secret) throw new Error('STORIGE_WEBHOOK_SECRET 이 설정되지 않았습니다');
+
 export const POST = createNextWebhookRoute({
-  secret: process.env.STORIGE_WEBHOOK_SECRET!,
+  secret,
   deduper: redisDeduper,
   handler: async (payload, ctx) => { /* ... */ },
 });
 ```
 
 표준 `Request`/`Response` 만 쓰므로 Remix action·Hono·SvelteKit 등에도 그대로 꽂힌다.
-프레임워크가 다르면 `processWebhookRequest` 로 직접 배선하면 된다.
+프레임워크가 다르면 `processWebhookRequest` 로 직접 배선하면 된다 —
+단 그때는 **호출측이 try/catch 로 감싸야 한다**(오설정은 거부가 아니라 예외다).
 
 ### 응답 규약 (서버 재시도 동작과 맞물린다)
 
@@ -97,6 +121,11 @@ export const POST = createNextWebhookRoute({
 | 400 | `{error:<사유>}` | 서명 부재·형식불량·만료·레거시 거부 |
 | 401 | `{error:'SIGNATURE_MISMATCH'}` | 서명 불일치 |
 | 500 | `{error:'HANDLER_FAILED'}` | 핸들러 예외 → 서버가 재시도 |
+| 500 | `{error:'ADAPTER_MISCONFIGURED'}` | **수신측 설정 오류** — 가장 흔한 원인은 `express.json()` 미마운트(`req.body === undefined`) |
+| 500 | `{error:'ADAPTER_ERROR'}` | 예상 못 한 예외 — 어댑터가 삼켜 프로세스를 지킨 것 |
+
+`ADAPTER_*` 는 5xx 라 서버가 재시도한다 → 설정을 고치면 재시도가 통과한다(유실 없음).
+`GET /api/v1/webhooks/deliveries` 의 `lastResponse` 에서 이 코드를 그대로 볼 수 있다.
 
 ### 멱등 — 선택이 아니라 필수
 

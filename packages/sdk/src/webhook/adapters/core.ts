@@ -5,6 +5,8 @@
  */
 
 import {
+  assertToleranceSec,
+  assertWebhookSecret,
   readHeader,
   verifyWebhookSignature,
   WEBHOOK_DELIVERY_HEADER,
@@ -12,6 +14,7 @@ import {
   type WebhookIdentifierStrategy,
   type WebhookVerifyFailureReason,
 } from '../signature';
+import { StorigeUsageError } from '../../index';
 import type { WebhookDeduper } from '../dedupe';
 import type { StorigeWebhookPayload } from '../events';
 
@@ -78,6 +81,55 @@ export interface WebhookProcessOutcome {
 }
 
 /**
+ * 어댑터 옵션의 **부팅 시점** 검증 — 팩토리가 호출한다.
+ *
+ * ## 왜 팩토리인가
+ * 오설정(secret 미주입·toleranceSec NaN)을 **첫 웹훅이 도착했을 때**가 아니라
+ * `createExpressWebhookHandler(...)` 를 부르는 **모듈 로드 시점**에 터뜨린다.
+ * 그러면 배포가 실패하고 즉시 눈에 띈다 — 반대로 런타임까지 미루면 오설정이
+ * 원격 요청으로 트리거되는 실패 경로가 되고(P0 실증: 무인증 1요청 프로세스
+ * 종료), 파트너는 "웹훅이 안 온다"만 보게 된다.
+ *
+ * secret 은 **경로 무관하게** 요구한다: 팩토리는 앞으로 올 요청이 HMAC 경로일지
+ * 레거시 경로일지 알 수 없으므로, HMAC 이 도착했을 때 필요한 값을 미리 못 박는다.
+ * (allowInsecureLegacy 를 쓰더라도 서버가 secret 을 설정하는 순간 HMAC 이 온다.)
+ *
+ * @throws {StorigeUsageError} secret 이 비문자열/빈 문자열이거나 toleranceSec 이 NaN·Infinity
+ */
+export function assertWebhookHandlerOptions(
+  options: WebhookHandlerOptions,
+  context: string,
+): void {
+  assertWebhookSecret(options.secret, context);
+  assertToleranceSec(options.toleranceSec, context);
+}
+
+/**
+ * 어댑터가 **예기치 못한 예외를 삼킬 때** 쓰는 응답.
+ *
+ * 핸들러 예외는 파이프라인이 이미 500 HANDLER_FAILED 로 바꾸므로 여기 오지
+ * 않는다. 여기 오는 것은 파이프라인 **밖**의 사고다:
+ *  - `ADAPTER_MISCONFIGURED` 수신측 설정 오류(StorigeUsageError) — 예: express.json()
+ *    미마운트, 팩토리 통과 후 options.secret 이 지워진 경우
+ *  - `ADAPTER_ERROR`         그 외 예상 못 한 예외
+ *
+ * 5xx 라 서버가 재시도한다 → 설정을 고치면 재시도가 통과한다(유실 없음).
+ * 파트너는 이 코드를 `GET /api/v1/webhooks/deliveries` 의 lastResponse 에서
+ * 그대로 볼 수 있다 — 프로세스가 죽는 것보다 진단이 쉽다.
+ *
+ * 본문에 message 를 싣지 않는 것은 파이프라인과 같은 원칙이다(서버가 응답을
+ * 저장하므로 불필요한 정보 노출을 피한다).
+ */
+export function adapterFailureOutcome(error: unknown): WebhookProcessOutcome {
+  return {
+    status: 500,
+    body: {
+      error: error instanceof StorigeUsageError ? 'ADAPTER_MISCONFIGURED' : 'ADAPTER_ERROR',
+    },
+  };
+}
+
+/**
  * 검증 실패 → HTTP 상태 매핑.
  *
  * 서버는 비-2xx 를 실패로 보고 재시도한다(1분/5분/30분). 그래서:
@@ -99,12 +151,22 @@ const FAILURE_STATUS: Record<WebhookVerifyFailureReason, number> = {
  *
  * 응답 본문에는 **사유 코드만** 싣고 사람이 읽는 message 는 싣지 않는다
  * (서버가 lastResponse 로 저장하므로 불필요한 정보 노출을 피한다).
+ *
+ * ⚠️ **직접 배선 시 try/catch 로 감싸라.** 오설정(secret·toleranceSec)은 거부가
+ * 아니라 StorigeUsageError 다. express 4 는 async rejection 을 next(err) 로
+ * 넘기지 않으므로 감싸지 않으면 unhandledRejection → 프로세스 종료가 된다.
+ * (SDK 어댑터를 쓰면 이미 감싸져 있다 — {@link adapterFailureOutcome})
+ *
+ * @throws {StorigeUsageError} 오설정 — 매 요청 검사한다. 팩토리 통과 후 options
+ *   가 변조되는 경우까지 덮는 심층 방어이며, 정상 경로에서는 팩토리에서 이미 걸린다.
  */
 export async function processWebhookRequest(
   headers: WebhookHeaders,
   payload: unknown,
   options: WebhookHandlerOptions,
 ): Promise<WebhookProcessOutcome> {
+  assertWebhookHandlerOptions(options, 'processWebhookRequest');
+
   const verification = verifyWebhookSignature({
     headers,
     payload,
