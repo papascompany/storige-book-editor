@@ -62,7 +62,9 @@
 | 15 | GET | `/api/v1/books/{bookUid}/finalization` | 🔑 | | 최종화 상태/결과 조회(폴링 표면 — 웹훅 병행) |
 | 16 | GET | `/api/v1/books/{bookUid}/pdf` | 🔑 | | 최종 산출 PDF 다운로드(FINALIZED 전용, 302 presigned 또는 스트림) |
 
-> 대용량(≤2GB) 파일 실바이트 업로드는 v1이 **재발명하지 않는다** — v1 자산 라우트는 ①멀티파트 소형 직접 업로드(≤100MB) ②기존 presigned/multipart 동결 표면으로 업로드한 `fileId` 참조 투입, 두 형태를 받는다. presigned 경로 자체는 동결 표면 그대로(무접촉).
+> 대용량(≤2GB) 파일 실바이트 업로드는 v1이 **재발명하지 않는다** — v1 자산 라우트는 ①멀티파트 소형 직접 업로드(≤100MB) ②기존 presigned/multipart 동결 표면으로 업로드한 `fileId` 참조 투입, 두 형태를 받는다. presigned 경로 자체는 동결 표면 그대로(무접촉). 임계 확정값·계약 경계는 **§5.3** 참조.
+
+> ⚠️ **멀티파트 업로드에는 `Idempotency-Key`를 쓰지 말 것** — 현 구현의 맹점으로 파일이 유실될 수 있다(§4.1 ⚠️, 라우트 #7·#9·#11).
 
 ### 1.4 Templates (읽기 + 스키마) — Stage 5
 
@@ -562,6 +564,18 @@ CREATE TABLE IF NOT EXISTS credit_transactions (
 | 처리 중 동일 키 | `409 ERR_IDEMPOTENCY_IN_PROGRESS` (원 요청 완료 대기 후 재시도 안내) |
 | TTL | **24h** (`expires_at` 인덱스 + 일 1회 sweep cron — 기존 retention cron 패턴 승계) |
 
+#### ⚠️ 멀티파트 맹점 — 업로드에는 Idempotency-Key를 쓰지 말 것 (2026-07-16 실측)
+
+**증상**: 자산 업로드 3라우트(`POST .../pdf-cover`·`.../pdf-contents`·`.../photos`)를 **multipart로** 호출하면서 같은 `Idempotency-Key`로 **다른 파일**을 올리면, 규약상 기대되는 `422 ERR_IDEMPOTENCY_KEY_MISMATCH`가 아니라 **최초 응답이 그대로 재전달**된다. 두 번째 파일은 저장되지 않고 **유실**되며 파트너는 성공 응답(+`Idempotency-Replayed: true`)을 받는다.
+
+**원인**: `request_hash`는 `PartnerIdempotencyInterceptor`가 `canonicalBodyHash(req.body)`로 산출하는데, 이 인터셉터는 **클래스 레벨**(`@PartnerV1Controller`), multer(`FileInterceptor`)는 **메서드 레벨**(`@UseInterceptors(ASSET_UPLOAD)`)이다. NestJS는 클래스 레벨 인터셉터를 메서드 레벨보다 **먼저** 실행하므로, 해시 산출 시점에 multipart 본문은 아직 파싱 전이라 `req.body`가 비어 있다. 결과적으로 모든 multipart 요청의 `request_hash`가 상수 `sha256(canonicalJson({}))` = `44136fa3…aff8a` 로 고정된다 — 본문 차이를 원리적으로 반영하지 못한다.
+
+**실증**(2026-07-16, 실스택 supertest 프로브): 서로 다른 바이트의 파일 2건을 동일 키로 전송 → 서비스는 서로 다른 바이트를 수신했으나 인터셉터가 산출한 `request_hash`는 **양쪽 동일**하며 빈 본문 해시와 일치. (프로브는 결함을 통과 테스트로 고착시키지 않기 위해 커밋하지 않음 — 재현 레시피는 본 절로 갈음)
+
+**현 규약(파트너 대면)**: **멀티파트 업로드에는 `Idempotency-Key`를 부여하지 않는다.** 불가피하면 **업로드마다 유니크한 키**를 써서 재전달 자체가 성립하지 않게 한다. JSON `{fileId}` 참조 투입 경로는 본문이 정상 파싱되므로 **영향 없음**(권장 경로).
+
+**근본 수정은 별건 트랙(E-1, 서버 결함)**: 멱등 인터셉터를 multer 뒤로 재배치하거나, multipart일 때 파일 바이트/`Content-Length`를 해시 입력에 포함하는 방향. 수정 전까지 SDK는 업로드 라우트에 키를 자동 부여해서는 안 된다(§4.1 "SDK는 자동 부여" 규칙의 **예외**).
+
 ### 4.2 구현 노트 (Stage 1)
 
 - NestJS 인터셉터로 구현, v1 컨트롤러에만 바인딩(AD-1 — 기존 표면 무접촉). 기존 내부 합성 3경로의 requestId 멱등(unique 인덱스)은 그대로 두고 **서로 간섭하지 않는다**.
@@ -597,6 +611,22 @@ CREATE TABLE IF NOT EXISTS credit_transactions (
 - 429 응답: `ERR_RATE_LIMITED` 봉투 + **`Retry-After`**(초) 헤더 필수.
 - 구현: ThrottlerGuard 커스텀 트래커(키 단위 식별자 = `siteId:env:keyId`), v1 스코프에만 바인딩. 한도표는 파트너 문서(가이드 §1.6 확장)에 공개.
 - test env 키는 별도(더 낮은) 한도 운용 가능 — Stage 2에서 확정.
+
+### 5.3 업로드 임계 (확정 — 2026-07-16 코드 실측)
+
+| 경로 | 임계 | 근거(코드 정본) |
+|---|---|---|
+| v1 자산 라우트 **직접(멀티파트) 업로드** | **100MB 단일** | `books.constants.ts` `BOOK_ASSET_DIRECT_UPLOAD_MAX_BYTES = 100*1024*1024` — multer `limits.fileSize`(컨트롤러)와 서비스 재검증(초과 시 422) 양쪽에 적용 |
+| **presigned/multipart 동결 표면** | **2GB** | 단일 2GB 트랙 B 산출(끝단 2GB 완주). v1이 재발명하지 않고 참조만 하는 표면 |
+| 워커 컨테이너 파일 상한 | **1GB(기본)** | `docker-compose.yml` `WORKER_MAX_FILE_SIZE=${WORKER_MAX_FILE_SIZE:-1073741824}` — `.env`로 조정 |
+| 기존 files 업로드 라우트 | 100MB(기본) | `files.service.ts` `STORAGE_MAX_FILE_SIZE` 기본 `100*1024*1024` — v1 직접 업로드 임계와 정합 |
+
+- **"90MB" 임계는 storige에 존재하지 않는다.** 레포 전수 grep 0건(상수·env·compose 전부). 파트너 측에 도는 90MB 수치는 storige 상수가 아니라 **외부 자작 클라이언트의 라우팅 마진**으로 보고됐다 — v1 문서·SDK는 **100MB**만 표기한다. (`books.constants.ts` 주석이 참조하는 "설계서 90/100MB 표기"는 본 문서에서 이미 정정 완료 — 100MB 단일)
+- ⚠️ **presigned는 v1 표면이 아니다** — 계약 경계 주의:
+  - 인증: v1 파트너 키가 아니라 **JWT 또는 `@Public` + per-IP** 레이트리밋.
+  - 응답: v1 봉투(§3.1/§3.2) **미적용**, per-Key 버킷(§5.2) **미적용**, 멱등(§4) **미적용**.
+  - 즉 파트너가 100MB를 초과해 업로드하려면 **v1과 다른 계약의 표면**을 거친 뒤 그 `fileId`를 v1 자산 라우트에 참조 투입해야 한다. SDK·문서 포털은 이 경계를 명시해야 한다(v1 봉투를 기대하고 presigned 응답을 파싱하면 깨진다).
+  - presigned를 v1 표면으로 승격(봉투·per-Key·파트너 키 인증)할지는 **별건 트랙** — 동결 표면 무접촉 원칙(AD-1)과 충돌하므로 오너 결정 사안.
 
 ---
 
@@ -757,9 +787,60 @@ Stage 1 코어(`feat/p1-partner-api-core`)와 BookSpecs(`feat/p1-book-specs`)를
 | v1 코어 모듈 (가드·봉투·감사·멱등·리밋·페이지네이션) | `apps/api/src/partner-api/` | exports 로 타 도메인 모듈(BookSpecsModule 등)에 스택 공급 |
 | BookSpecs 판형 마스터 GET 3라우트 | `apps/api/src/book-specs/` | v1 표준 스택 정합화 완료 — 수동 봉투 제거, pageCount 위반 422(§3.3 정본) |
 | v1 계약 spec | `apps/api/src/partner-api/partner-api.v1.spec.ts` · `partner-rate-limit.v1.spec.ts` · `partner-idempotency.v1.spec.ts` · `pagination.spec.ts` · `book-specs.spec.ts` · `book-specs.v1.http.spec.ts` | supertest 실스택 관통 포함 — CI 게이트(`.github/workflows/ci.yml` api 테스트 스텝) |
-| 파트너 전용 OpenAPI 스펙 export | `apps/api/src/scripts/export-openapi-partner.ts` (`pnpm --filter @storige/api openapi:partner` → `apps/api/openapi-partner.json`) | 'partner-v1' 태그 필터 + /api/v1/* 단언. CI 가 `openapi-partner` 아티팩트로 업로드. `/api/docs` 접근 정책은 무변경(§9-3 오너 사안) |
+| 파트너 전용 OpenAPI 스펙 export | `apps/api/src/scripts/export-openapi-partner.ts`(CLI) + `partner-openapi-surface.ts`(컨트롤러 목록·REQUIRED_PATHS·문서 빌더 **공유 정본**) (`pnpm --filter @storige/api openapi:partner` → `apps/api/openapi-partner.json`, gitignored) | 'partner-v1' 태그 필터 + /api/v1/* 단언. CI 가 `openapi-partner` 아티팩트로 업로드. `/api/docs` 접근 정책은 무변경(§9-3 오너 사안). **산출물 품질·용도는 부록 C.1**(코드생성 입력 아님) |
+| OpenAPI 커버리지 게이트 (2026-07-16 E-2) | `apps/api/src/scripts/partner-openapi-surface.spec.ts` + `apps/api/src/testing/v1-controller-scan.ts`(FS 전수 스캔 공용 헬퍼 — `partner-v1-guarded.spec.ts` 와 공유) | **신규 v1 컨트롤러/경로를 export 에 등재하지 않으면 red.** Stage 3 books 11라우트가 컨트롤러 미등재로 침묵 증발(11/22=50%)한 회귀의 재발 방지. 현재 22라우트/16경로 전량 커버 |
 | 마이그레이션 2건 | `apps/api/migrations/20260715_add_public_api_audit_logs.sql` · `20260715_b_add_partner_idempotency_keys.sql` | 배포 순서: 마이그레이션 직접 실행 → API 재배포 (프로덕션 synchronize off) |
 
 **잔여**: `docs/PLATFORM_INTEGRATION_GUIDE.md` 에 v1 표면·OpenAPI 스펙 등재 —
 타 세션이 동 파일을 수정 중이어서 이번 통합에서 의도적으로 무접촉(충돌 예약).
 가이드 등재는 해당 세션 종료 후 별도 커밋으로 수행한다.
+
+---
+
+## 부록 C. SDK·문서 포털 계약 노트 (Stage 4 실측 — 2026-07-16)
+
+Stage 4(SDK·문서 포털) 착수 전 **구현 실측**으로 확정한 계약 현황. 부록 A 개정 규율(구현이 설계와 달라지면 문서를 먼저 개정)에 따라 기록한다. 여기 적힌 항목은 추정이 아니라 코드·산출물 대조로 확인한 사실이다.
+
+### C.1 OpenAPI 산출물의 용도 — 코드생성 입력이 **아니다**
+
+`openapi-partner.json`(`pnpm --filter @storige/api openapi:partner`)의 현 품질 실측:
+
+| 항목 | 현황 |
+|---|---|
+| 라우트 커버리지 | **22라우트 / 16경로 = v1 표면 전량**(2026-07-16 E-2 수정 후. 그 전에는 BooksController 미등재로 11/22 = 50%) |
+| 요청 스키마 | 3종만 — `CreateBookDto` · `AssetInputDto` · `PutWebhookConfigDto` |
+| **응답 스키마** | **부재** — v1 컨트롤러의 `@ApiResponse`는 `status`+`description`만 있고 `type` 지정 **0건** |
+| **성공/에러 봉투** | **부재** — 봉투(§3.1·§3.2)는 런타임 인터셉터/필터 소관이라 데코레이터 메타데이터에 나타나지 않는다 |
+
+- **결론**: 현 산출물로 타입 있는 SDK 클라이언트를 생성하면 **응답이 전부 `any`/`unknown`** 이 된다. **코드생성 입력으로 쓰지 말 것.** 확정 용도는 ①**문서 포털 렌더**(경로·메서드·설명·상태코드) ②**계약 회귀 게이트**(라우트 표면 변화 감지).
+- SDK의 응답 타입은 OpenAPI가 아니라 **`@storige/types` + 본 설계서 §3**을 정본으로 손으로 정의한다.
+- 개선 경로(additive, 별건 트랙): `@ApiResponse({ type: BookView })` 부여 + 봉투 제네릭 래퍼(`@ApiExtraModels` + `allOf`) 도입 → 그때 비로소 코드생성 입력이 된다.
+
+### C.2 `GET /books/{uid}/pdf` — 봉투 없는 raw 스트림 (봉투 규약의 유일 예외)
+
+| 결과 | Content-Type | 본문 |
+|---|---|---|
+| 성공(200) | `application/pdf` | PDF 바이트 스트림(`Content-Disposition: attachment`) — **봉투 없음** |
+| 실패(404 등) | `application/json` | v1 에러 봉투(§3.2) |
+
+성공/실패의 응답 타입이 **이질적**이므로 SDK·클라이언트는 **Content-Type 분기**가 필수다. 이 라우트만 §3.1 봉투 규약의 예외이며, 다른 v1 라우트와 동일하게 파싱하면 깨진다.
+
+### C.3 멀티파트 업로드 + `Idempotency-Key` = 파일 유실 위험
+
+**§4.1 ⚠️ 절 참조.** SDK는 업로드 라우트(#7·#9·#11)에 `Idempotency-Key`를 **자동 부여하면 안 된다**(§4.1 "SDK는 자동 부여" 규칙의 예외). 근본 수정은 별건 트랙(E-1).
+
+### C.4 creationType 별 최종화 지원 현황
+
+| creationType | finalization 현황 |
+|---|---|
+| `PDF_UPLOAD` | ✅ 지원 — validate → synthesize/compose-mixed → 산출 고정 |
+| `EDITOR_SESSION` | ✅ 지원 — 세션 합성완료본 passthrough |
+| `TEMPLATE` · `MIX_COVER_TEMPLATE` | ⛔ **422 `ERR_ASSETS_INCOMPLETE`**(상세코드 `TEMPLATE_COVER_NOT_RENDERED`) — 표지 템플릿 렌더링 미도입(**Stage 5 종속** + 게스트 폴백 함정 #6) |
+
+도서 **생성**(`POST /books`)은 4종 모두 빈 DRAFT로 성공하지만, TEMPLATE 계열은 **최종화 단계에서** 422가 된다. 템플릿 바인딩 라우트(§1.3 #12 `POST .../cover`·#13 `POST .../contents`)는 **미구현**(Stage 5) — Stage 3이 구현한 books 라우트는 설계 13종 중 **11종**이다. SDK·포털은 TEMPLATE 계열을 "Stage 5 예정"으로 표기해야 한다.
+
+### C.5 `@PartnerLiveOnly` 발화 0 — **의도된 동작**(오탐 아님)
+
+- 현황: 데코레이터(`partner-live-only.decorator.ts`)와 가드 검사(test 키 → `403 ERR_ENV_MISMATCH`)는 구현·spec 고정 완료. 그러나 **프로덕션 v1 라우트 중 마킹된 것은 0건** — 유일 사용처는 `partner-api-keys.v1.spec.ts`의 테스트 픽스처 컨트롤러다.
+- **test 키로 `POST /books/{uid}/finalization`을 호출할 수 있는 것은 설계 의도다.** Stage 2 test 잡 인프라의 목적 자체가 "test 키로 최종화를 관통시켜 **워터마크 더미 산출물**을 받는 것"이기 때문이다: `partnerEnv='test'` → 워커 잡 `isTest: true` 전파 → SynthesisProcessor가 실합성 대신 **TEST 워터마크 더미 PDF** 산출 → `TestJobOutputsRetentionService`가 outputs 24h 보존. 따라서 finalization을 live 전용으로 막으면 **test 샌드박스가 무력화**된다.
+- 정리: **test env finalization은 워터마크 더미로 정상 동작**한다. `@PartnerLiveOnly`는 결함이 아니라 **§1.6/§1.7 오너 게이트 라우트**(orders 실주문·credits 실충전 — 실 과금/생산을 유발하는 표면)를 위해 **예약된 장치**이며, 그 Stage 착수 시 마킹된다.
