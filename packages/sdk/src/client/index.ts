@@ -8,6 +8,9 @@ export { StorigeClient } from './client';
 export type { StorigeClientOptions } from './client';
 
 export { BookSpecsResource } from './book-specs';
+export { BooksResource } from './books';
+export type { AssetFile, AssetInput, WaitForFinalizationOptions } from './books';
+export { WebhooksResource } from './webhooks';
 
 export { isIdempotentReplay } from './http';
 export type { HttpClientOptions, RawStream, RequestOptions, RetryOptions } from './http';
