@@ -245,8 +245,14 @@ function asRecord(payload: unknown): Record<string, unknown> {
   return {};
 }
 
-/** 대소문자 무시 헤더 조회 — Headers 인스턴스와 평범한 객체를 모두 지원 */
-function readHeader(headers: WebhookHeaders, name: string): string | undefined {
+/**
+ * 대소문자 무시 헤더 조회 — Headers 인스턴스와 평범한 객체를 모두 지원.
+ *
+ * @internal 어댑터(adapters/core.ts)가 재사용한다. `webhook/index.ts` 는 이걸
+ * re-export 하지 않으므로 공개 API 표면에는 나타나지 않는다 — 헤더 해석 규칙이
+ * 두 벌로 갈라져 조용히 어긋나는 것을 막기 위한 단일 출처다.
+ */
+export function readHeader(headers: WebhookHeaders, name: string): string | undefined {
   const maybeHeaders = headers as Headers;
   if (typeof maybeHeaders.get === 'function') {
     return maybeHeaders.get(name) ?? undefined;

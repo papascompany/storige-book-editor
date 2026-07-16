@@ -5,7 +5,9 @@
  */
 
 import {
+  readHeader,
   verifyWebhookSignature,
+  WEBHOOK_DELIVERY_HEADER,
   type WebhookHeaders,
   type WebhookIdentifierStrategy,
   type WebhookVerifyFailureReason,
@@ -124,7 +126,9 @@ export async function processWebhookRequest(
     };
   }
 
-  const deliveryUid = readDeliveryUid(headers);
+  // 서명 검증과 **같은 헤더 해석 규칙**을 쓴다(단일 출처) — 두 벌로 갈라지면
+  // "서명은 v2 로 검증했는데 dedupe 키는 못 읽는" 식의 어긋남이 조용히 생긴다.
+  const deliveryUid = readHeader(headers, WEBHOOK_DELIVERY_HEADER) ?? null;
   const context: WebhookHandlerContext = {
     event: verification.event,
     identifier: verification.identifier,
@@ -171,19 +175,4 @@ export async function processWebhookRequest(
   }
 
   return { status: 200, body: { received: true } };
-}
-
-function readDeliveryUid(headers: WebhookHeaders): string | null {
-  const maybeHeaders = headers as Headers;
-  if (typeof maybeHeaders.get === 'function') {
-    return maybeHeaders.get('X-Storige-Delivery');
-  }
-  const record = headers as Record<string, string | string[] | undefined>;
-  for (const key of Object.keys(record)) {
-    if (key.toLowerCase() !== 'x-storige-delivery') continue;
-    const value = record[key];
-    if (Array.isArray(value)) return value[0] ?? null;
-    return value ?? null;
-  }
-  return null;
 }
