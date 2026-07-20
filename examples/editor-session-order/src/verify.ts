@@ -1,18 +1,26 @@
 /**
  * 오프라인 검증(드라이런) — `node src/verify.ts`
  *
- * 두 가지를 서버 없이 단언한다:
- *   A. postMessage 게이트 — 브라우저가 실행하는 바로 그 모듈(public/editor-events.js)을
- *      import 해서 위조 오리진·다른 프레임·레거시 dual-emit 이 전부 막히는지 확인
- *   B. 승격 호출 시퀀스 — 주입식 fetch 로 실제 SDK 를 통과시켜 경로·메서드·헤더·
- *      봉투 언랩과 404/409 분기를 확인
+ * 서버 없이 단언한다:
+ *   A.  postMessage 게이트 — 브라우저가 실행하는 바로 그 모듈(public/editor-events.js)을
+ *       import 해서 위조 오리진·다른 프레임·레거시 dual-emit 이 전부 막히는지 확인.
+ *       `expectedSource` 를 빠뜨렸을 때 **던지는지**(fail-closed)까지 확인한다.
+ *   A'. 게스트 완료 분기 — `editor.complete`(needsAuth:true) 에서 승격을 **중단**하는지
+ *   B.  승격 호출 시퀀스 — 주입식 fetch 로 실제 SDK 를 통과시켜 경로·메서드·헤더·
+ *       봉투 언랩과 404/409 분기를 확인
+ *   B'. `bookSpecUid`/`pageCount` 전달 — 미검증 FINALIZED(D-9) 회피 배선
  */
 
 import assert from 'node:assert/strict';
 
 import { StorigeClient } from '@storige/sdk/client';
 
-import { parseEditorMessage, readCompletePayload } from '../public/editor-events.js';
+import {
+  decideCompleteAction,
+  parseEditorMessage,
+  readCompletePayload,
+  SKIP_SOURCE_CHECK,
+} from '../public/editor-events.js';
 import { PromoteRejected, promoteSession } from './promote.ts';
 
 const EDITOR_ORIGIN = 'https://editor.example.test';
@@ -102,16 +110,103 @@ function verifyMessageGate(): void {
   );
   assert.equal(future.ok, true, '모르는 이벤트에서 크래시하지 않는다');
 
+  // ⑤ expectedSource 생략은 **fail-closed** — 조용히 ② 게이트가 사라지면 안 된다.
+  //    한 줄 빠뜨린 통합이 "공격자 프레임 payload 도 ok:true" 가 되던 초판 구멍.
+  assert.throws(
+    () =>
+      parseEditorMessage(
+        { origin: EDITOR_ORIGIN, source: { id: 'attacker-frame' }, data: complete },
+        // @ts-expect-error expectedSource 는 필수다 — 타입에서도 막힌다
+        { allowedOrigins: ALLOWED },
+      ),
+    (error: unknown) => error instanceof TypeError,
+    'expectedSource 를 빠뜨리면 통과시키지 말고 던져야 한다',
+  );
+
+  // ⑤' 의도적 우회는 **명시 리터럴로만**. 이 문자열을 손으로 적어야만 ②가 꺼진다.
+  const skipped = parseEditorMessage(
+    { origin: EDITOR_ORIGIN, source: { id: 'any-frame' }, data: complete },
+    { allowedOrigins: ALLOWED, expectedSource: SKIP_SOURCE_CHECK },
+  );
+  assert.equal(skipped.ok, true, '명시적 우회 리터럴일 때만 ② 를 건너뛴다');
+
+  // ⑤'' contentWindow 가 아직 null(로드 전)이면 우회가 아니라 **불일치**다
+  assert.deepEqual(
+    parseEditorMessage(
+      { origin: EDITOR_ORIGIN, source: IFRAME_WINDOW, data: complete },
+      { allowedOrigins: ALLOWED, expectedSource: null },
+    ),
+    { ok: false, reason: 'SOURCE_WINDOW_MISMATCH' },
+  );
+
   // payload 파싱 — sessionId 없는 payload 는 null(승격을 시도조차 하지 않는다)
   assert.deepEqual(readCompletePayload(complete.payload), {
     sessionId: 'sess_abc',
+    needsAuth: false,
+    hasGuestToken: false,
     orderSeqno: 1234,
     pageCount: 24,
   });
   assert.equal(readCompletePayload({ files: {} }), null);
   assert.equal(readCompletePayload(null), null);
 
-  console.log('✓ A. postMessage 게이트 — 오리진 4종·타 프레임·레거시·버전 불일치 전부 차단');
+  console.log('✓ A. postMessage 게이트 — 오리진 4종·타 프레임·레거시·버전 불일치 차단 + expectedSource 누락 fail-closed');
+}
+
+// ── A'. 게스트 완료 분기 ────────────────────────────────────────────────
+
+/**
+ * 게스트 세션 완료의 **실제 발신 순서**를 재현한다.
+ *
+ * 편집기(apps/editor/src/embed.tsx)는 게스트 완료 시
+ *   ① `editor.complete` { needsAuth:true, guestToken, ... }   ← 먼저
+ *   ② `editor.needAuth` { guestToken, reason:'complete_save' } ← 나중
+ * 순으로 보낸다. 그래서 `editor.needAuth` 를 기다렸다 분기하면 **늦다** —
+ * 그 사이 승격을 때려 404 를 맞는다. 분기 근거는 complete payload 의 needsAuth 다.
+ */
+function verifyGuestBranch(): void {
+  const guestComplete = envelope('editor.complete', {
+    sessionId: 'sess_guest',
+    needsAuth: true,
+    guestToken: 'gt_demo_not_a_real_token',
+    pages: { initial: 1, final: 1 },
+    files: {},
+    savedAt: '2026-07-20T00:00:00.000Z',
+  });
+
+  const parsed = parseEditorMessage(
+    { origin: EDITOR_ORIGIN, source: IFRAME_WINDOW, data: guestComplete },
+    { allowedOrigins: ALLOWED, expectedSource: IFRAME_WINDOW },
+  );
+  assert.equal(parsed.ok, true, '게스트 complete 도 정식 엔벨로프다 — 게이트는 통과한다');
+
+  const guest = readCompletePayload(guestComplete.payload);
+  assert.equal(guest?.needsAuth, true, 'needsAuth 가 노출돼야 호출측이 분기할 수 있다');
+  assert.equal(guest?.hasGuestToken, true);
+  // 🔒 guestToken **값**은 돌려주지 않는다 — 로그·DOM 유출 시 세션 탈취로 이어진다
+  assert.equal(
+    Object.prototype.hasOwnProperty.call(guest ?? {}, 'guestToken'),
+    false,
+    '게스트 토큰 값은 파싱 결과에 담지 않는다(유무만)',
+  );
+
+  // 🚨 핵심 단언 — 게스트는 승격을 **시도조차 하지 않는다**
+  assert.equal(decideCompleteAction(guest), 'require-login');
+
+  // needsAuth 없이 guestToken 만 온 형태도 게스트로 본다(fail-closed)
+  assert.equal(
+    decideCompleteAction(readCompletePayload({ sessionId: 's', guestToken: 'gt_x' })),
+    'require-login',
+  );
+
+  // 회원 세션은 그대로 승격한다(게이트가 정상 경로를 막지 않는다)
+  assert.equal(
+    decideCompleteAction(readCompletePayload({ sessionId: 'sess_member' })),
+    'promote',
+  );
+  assert.equal(decideCompleteAction(readCompletePayload({ files: {} })), 'ignore');
+
+  console.log("✓ A'. 게스트 분기 — editor.complete(needsAuth:true) 에서 승격 중단(404 자초 방지)");
 }
 
 // ── B. 승격 호출 시퀀스 ─────────────────────────────────────────────────
@@ -237,7 +332,38 @@ async function verifyPromoteSequence(): Promise<void> {
   assert.equal(result.book.uid, 'bk_sess');
   assert.equal(result.finalization.status, 'PENDING');
 
+  // 🖨️ 판형 미전달 = 미검증 FINALIZED 예고. 웹훅을 기다리지 않고 지금 알 수 있다(D-9).
+  assert.equal(result.willSkipValidation, true, 'bookSpecUid 없이 승격하면 검증이 생략된다');
+
   console.log('✓ B. 승격 시퀀스 — POST /books(EDITOR_SESSION) → POST /finalization, 멱등키 자동 부여');
+}
+
+// ── B'. 판형 전달 (D-9 인쇄 게이트) ─────────────────────────────────────
+
+async function verifyBookSpecPassthrough(): Promise<void> {
+  const mock = createMock({
+    'POST /api/v1/books': () => ({ json: ok({ ...BOOK, bookSpecUid: 'bs_a4', pageCount: 24 }) }),
+    'POST /api/v1/books/bk_sess/finalization': () => ({ json: ok(FIN) }),
+  });
+
+  const result = await promoteSession(client(mock.fetch), {
+    sessionId: 'sess_abc',
+    partnerRef: 'demo-1',
+    bookSpecUid: 'bs_a4',
+    pageCount: 24,
+  });
+
+  // 옵션 파라미터가 **실제로 본문에 실려 나가는지** — 주석만 있고 배선이 없으면 소용없다
+  assert.deepEqual(mock.calls[0]?.json, {
+    creationType: 'EDITOR_SESSION',
+    sessionId: 'sess_abc',
+    partnerRef: 'demo-1',
+    bookSpecUid: 'bs_a4',
+    pageCount: 24,
+  });
+  assert.equal(result.willSkipValidation, false, '판형이 붙으면 검증이 돈다');
+
+  console.log("✓ B'. bookSpecUid/pageCount 전달 — 미검증 FINALIZED(D-9) 회피 경로가 배선돼 있다");
 }
 
 async function verifyPromoteRejections(): Promise<void> {
@@ -294,9 +420,11 @@ async function verifyPromoteRejections(): Promise<void> {
 
 async function main(): Promise<void> {
   verifyMessageGate();
+  verifyGuestBranch();
   await verifyPromoteSequence();
+  await verifyBookSpecPassthrough();
   await verifyPromoteRejections();
-  console.log('\n✓ editor-session-order 오프라인 검증 3/3 통과');
+  console.log('\n✓ editor-session-order 오프라인 검증 5/5 통과');
 }
 
 main().catch((error: unknown) => {

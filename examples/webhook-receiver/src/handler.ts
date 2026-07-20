@@ -16,15 +16,26 @@
  *   (본문만 믿어도 되는 경우는 그 값이 부수효과를 만들지 않을 때뿐이다 — 로그·UI 힌트)
  *
  * ## ② SDK 의 uid 단락은 **신뢰성** 통제이지 **인증** 통제가 아니다
- * dedupe 키인 `X-Storige-Delivery` 는 서명 밖 헤더다(identifier 가 jobId/sessionId 로
- * 정해지는 페이로드에서는 uid 가 서명 data 에 들어가지 않는다). 유효 서명 1건을
- * 캡처한 공격자는 **uid 헤더만 바꿔** 같은 서명을 replay 창 안에서 반복 재생할 수
- * 있다 — 단락은 uid 가 다르니 걸리지 않고, 서명은 uid 를 안 덮으니 그대로 유효하다.
+ * dedupe 키인 `X-Storige-Delivery` 는 **서명 밖 헤더**다. 서명 identifier 가
+ * jobId/sessionId 로 정해지는 페이로드(`validation.*` · `synthesis.*` · `session.*`)에서는
+ * uid 가 서명 data 에 들어가지 않는다 → 유효 서명 1건을 캡처한 공격자는 **재서명 없이
+ * uid 헤더만 바꿔** replay 창 안에서 반복 재생할 수 있다. 단락은 uid 가 다르니 걸리지
+ * 않고, 서명은 uid 를 안 덮으니 그대로 유효하다. (`src/verify.ts` ③' 가 실제로 재현한다)
+ *
+ * ⚠️ 반대로 `book.finalization.*` 는 jobId/sessionId 가 없어 **v2 identifier 가 곧
+ *    delivery uid** 다 → uid 가 서명 안에 있으므로 이 재생은 401 로 막힌다(③'').
+ *    "모든 이벤트가 uid 재생에 취약하다"는 서술은 틀렸다. 그러나 아래 방어는
+ *    이벤트 종류와 무관하게 걸어 두는 편이 옳다 — 어떤 이벤트가 어느 쪽인지
+ *    핸들러마다 따져 가며 방어를 켜고 끄는 것이 훨씬 더 잘 틀린다.
  *
  * → 부작용이 있는 핸들러는 **자체 도메인 멱등을 병행**하라. 아래 `DomainIdempotency`
  *   가 그 자리다: 주문 uid·(finalizationUid, event) 같은 **본인 도메인 키**로
  *   "이미 처리했는가"를 판정하고, 상태 전이는 조건부 갱신(CAS)으로 한다.
  *   SDK 의 uid 단락은 그 위에 얹는 1차 필터(서버 재시도 접기)다.
+ *
+ * ⚠️ 애초에 **v1 발신(전역 secret)에는 `X-Storige-Delivery` 자체가 없다** →
+ *    SDK 단락이 통째로 비활성이고(4회 재시도가 전부 핸들러에 도달), 남는 방어는
+ *    이 도메인 멱등뿐이다. v1 을 쓰면 이 파일이 유일한 방어선이다.
  */
 
 import type { WebhookHandler, WebhookHandlerContext } from '@storige/sdk/webhook';
