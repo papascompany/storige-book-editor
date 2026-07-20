@@ -1,0 +1,25 @@
+{
+  "name": "@storige/example-webhook-receiver",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Storige quickstart — 웹훅 수신 서버(서명 검증 · 중복 배달 단락 · 이벤트 분기)",
+  "scripts": {
+    "start": "node src/server.ts",
+    "verify": "node src/verify.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src --config ../eslint.config.js"
+  },
+  "dependencies": {
+    "@storige/sdk": "workspace:*",
+    "express": "^4.21.2"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=22.18"
+  }
+}

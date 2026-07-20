@@ -9,6 +9,7 @@ name: ci
 #      계약 드리프트 감시와 서명 페어와이즈(수신측)가 여기 걸려야 게이트가 된다
 #   3) packages/canvas-core vitest + tsc — 편집기 코어(ServicePlugin.pdf 카나리 포함)
 #   4) scripts/pdf-golden 비교 엔진 self-test (qpdf 필요)
+#   5) examples/* quickstart 예제 — **맨 뒤**(문서성 산출물이 계약 테스트를 가리지 않게)
 #
 # ⚠️ 루트 `turbo run test` 는 CI 가 호출하지 않는다 — per-package 명시 필터만 쓴다.
 #    새 패키지를 추가하면 **여기에 스텝을 추가해야** 게이트에 연결된다. 안 그러면
@@ -99,3 +100,19 @@ jobs:
 
       - name: PDF 골든 비교 엔진 self-test
         run: node --test scripts/pdf-golden/compare.test.mjs
+
+      - name: 파트너 quickstart 예제 (examples/* — 타입체크 + 오프라인/E2E 검증)
+        # sdk 빌드 뒤여야 한다 — 예제는 workspace:* 로 dist 를 실제 import 한다.
+        # verify 는 전부 외부 의존 0: 주문 예제 2종은 주입식 fetch 로 호출 시퀀스를,
+        # webhook-receiver 는 임시 포트에 실서버를 띄우고 서명을 직접 만들어 E2E 를 돈다.
+        # (이 스텝이 없으면 예제가 SDK 변경으로 조용히 썩는다 — 위 ⚠️ 참조)
+        #
+        # ⚠️ **의도적으로 맨 뒤다.** 예제는 문서성 산출물이라 api/sdk/canvas-core 계약
+        #    테스트보다 우선순위가 낮다. 앞에 두면 예제 하나가 깨졌을 때 그 뒤의
+        #    contract-freeze 수백 건이 **실행조차 되지 않아** 진짜 회귀가 가려진다.
+        run: |
+          for e in pdf-upload-order editor-session-order webhook-receiver; do
+            pnpm --filter "@storige/example-$e" typecheck
+            pnpm --filter "@storige/example-$e" lint
+            pnpm --filter "@storige/example-$e" verify
+          done

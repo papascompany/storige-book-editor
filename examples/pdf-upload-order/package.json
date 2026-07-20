@@ -1,0 +1,23 @@
+{
+  "name": "@storige/example-pdf-upload-order",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Storige Partner API v1 quickstart — PDF_UPLOAD 전 여정(판형 조회 → 도서 생성 → PDF 투입 → 최종화 → PDF 수령)",
+  "scripts": {
+    "start": "node src/main.ts",
+    "verify": "node src/verify.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src --config ../eslint.config.js"
+  },
+  "dependencies": {
+    "@storige/sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=22.18"
+  }
+}
