@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Storige quickstart — 편집기 임베드 주문</title>
+    <style>
+      body { margin: 0; font: 14px/1.6 system-ui, sans-serif; }
+      header { padding: 12px 16px; border-bottom: 1px solid #e5e5e5; display: flex; gap: 16px; align-items: baseline; }
+      h1 { font-size: 15px; margin: 0; }
+      #status { color: #555; }
+      #editor { width: 100%; height: 70vh; border: 0; display: block; }
+      #log { margin: 0; padding: 12px 16px; max-height: 25vh; overflow: auto; background: #fafafa; font: 12px/1.5 ui-monospace, monospace; white-space: pre-wrap; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>편집기 임베드 주문 (EDITOR_SESSION)</h1>
+      <span id="status">설정을 불러오는 중…</span>
+    </header>
+
+    <!--
+      편집기는 `parentOrigin` 이 지정된 경우에만 정식 엔벨로프를 발신하고,
+      targetOrigin 으로 그 값을 그대로 쓴다('*' 를 절대 쓰지 않는다).
+      → 호스트는 자기 오리진을 반드시 넘겨야 한다. src 는 /api/config 가 만들어 준다.
+    -->
+    <iframe id="editor" title="Storige 편집기" allow="clipboard-write"></iframe>
+
+    <pre id="log"></pre>
+
+    <script type="module">
+      import {
+        decideCompleteAction,
+        parseEditorMessage,
+        readCompletePayload,
+      } from './editor-events.js';
+
+      const logEl = document.getElementById('log');
+      const statusEl = document.getElementById('status');
+      const iframe = document.getElementById('editor');
+
+      const log = (line) => {
+        logEl.textContent += line + '\n';
+        logEl.scrollTop = logEl.scrollHeight;
+      };
+
+      /**
+       * 🔒 URL 을 로그/화면에 남기기 전에 **자격증명 파라미터를 지운다**.
+       * embedUrl 에는 회원 JWT(`token`)가 실려 있다 — 화면 로그·스크린샷·고객센터
+       * 첨부로 새는 순간 그 세션을 남이 이어 편집할 수 있다.
+       */
+      const maskUrl = (raw) => {
+        const url = new URL(raw);
+        for (const key of ['token', 'guestToken', 'access_token']) {
+          if (url.searchParams.has(key)) url.searchParams.set(key, '<redacted>');
+        }
+        return url.toString();
+      };
+
+      // ── 데모 로그인 ─────────────────────────────────────────────────────
+      // `/api/config` 는 **회원 JWT 가 박힌** embed URL 을 준다 → 무인증으로 열면
+      // 토큰 자판기가 된다. 그래서 세션 쿠키를 먼저 얻는다.
+      // ⚠️ 이 nonce 로그인은 인증의 **자리 표시**일 뿐이다(서버 콘솔을 읽을 수
+      //    있었는가). 파트너는 자기 로그인으로 통째로 교체하라.
+      const nonce = new URLSearchParams(location.hash.slice(1)).get('demo');
+      if (nonce !== null) {
+        await fetch('/api/session', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ nonce }),
+        });
+        // 주소창·히스토리에 nonce 를 남기지 않는다
+        history.replaceState(null, '', location.pathname);
+      }
+
+      // 파트너 API 키는 **여기 오지 않는다**. /api/config 는 편집기 URL과
+      // 허용 오리진만 준다(승격은 서버가 자기 키로 한다).
+      const configRes = await fetch('/api/config');
+      if (!configRes.ok) {
+        statusEl.textContent = '로그인 필요';
+        log('✗ /api/config → ' + configRes.status + ' — 서버 콘솔에 찍힌 1회용 로그인 URL 로 접속하라');
+        throw new Error('AUTH_REQUIRED');
+      }
+      const config = await configRes.json();
+      iframe.src = config.embedUrl;
+      statusEl.textContent = config.guest ? '편집 중 (게스트 — 승격 불가)' : '편집 중…';
+      // 🔒 원본이 아니라 마스킹본을 남긴다
+      log('embedUrl = ' + maskUrl(config.embedUrl));
+      log('allowedOrigins = ' + config.allowedOrigins.join(', '));
+      if (config.guest) {
+        log('⚠️ 게스트 모드 — STORIGE_EDITOR_TOKEN 미설정. 완료해도 승격은 404 다.');
+      }
+
+      window.addEventListener('message', async (event) => {
+        // 4단 게이트: 오리진 정확 일치 → 우리 iframe → 봉투 형식 → event 문자열.
+        // expectedSource 로 iframe.contentWindow 를 넘기는 것을 잊지 말 것.
+        const parsed = parseEditorMessage(event, {
+          allowedOrigins: config.allowedOrigins,
+          expectedSource: iframe.contentWindow,
+        });
+        if (!parsed.ok) return; // 남의 메시지·레거시 dual-emit — 조용히 무시
+
+        const { event: name, payload } = parsed.envelope;
+
+        switch (name) {
+          case 'editor.ready':
+            log('▶ editor.ready — 편집기 준비 완료');
+            break;
+
+          case 'editor.save':
+            log('▶ editor.save — 중간 저장');
+            break;
+
+          case 'editor.cancel':
+            statusEl.textContent = '편집 취소됨';
+            log('▶ editor.cancel');
+            break;
+
+          case 'editor.needAuth':
+            // ⚠️ 이 이벤트는 게스트 완료 시 `editor.complete`(needsAuth:true) **뒤에**
+            //    온다. 여기서 처음 분기하면 이미 늦다 — 아래 editor.complete 케이스가
+            //    needsAuth 로 먼저 분기하는 이유다. 이건 보조 신호로만 쓴다.
+            statusEl.textContent = '로그인이 필요합니다';
+            log('▶ editor.needAuth — 게스트 세션은 승격 불가(로그인 유도 필요)');
+            break;
+
+          case 'editor.error':
+            statusEl.textContent = '편집기 오류';
+            log('▶ editor.error — ' + JSON.stringify(payload));
+            break;
+
+          case 'editor.complete': {
+            const done = readCompletePayload(payload);
+            // 🚨 게스트 완료를 여기서 걸러야 한다. 편집기는 게스트 완료 시
+            //    editor.complete(needsAuth:true) 를 **먼저** 보내고 editor.needAuth 를
+            //    나중에 보낸다 — 무조건 승격하면 반드시 404 를 맞는다.
+            const action = decideCompleteAction(done);
+
+            if (action === 'ignore') {
+              log('▶ editor.complete — sessionId 없음(무시)');
+              return;
+            }
+
+            if (action === 'require-login') {
+              statusEl.textContent = '로그인이 필요합니다';
+              log(
+                '▶ editor.complete(needsAuth) — 게스트 세션이라 승격을 시도하지 않는다. ' +
+                  '로그인 후 sessionId=' + done.sessionId + ' 로 재편집 진입하라',
+              );
+              // 운영: 여기서 로그인 모달을 띄우고, 로그인 완료 후
+              //       /embed?sessionId=<이 세션>&token=<회원 JWT> 로 다시 열어
+              //       회원 세션으로 complete 시킨 뒤 승격한다.
+              return;
+            }
+
+            log('▶ editor.complete — sessionId=' + done.sessionId);
+            statusEl.textContent = '승격 중…';
+
+            // 🚨 승격은 **서버측**에서 한다. 파트너 API 키를 브라우저에 내려보내면
+            //    누구나 그 키로 테넌트 전체를 조작할 수 있다.
+            const res = await fetch('/api/promote', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ sessionId: done.sessionId }),
+            });
+            const result = await res.json();
+            if (!res.ok) {
+              statusEl.textContent = '승격 실패';
+              log('✗ 승격 실패 — ' + JSON.stringify(result));
+              return;
+            }
+            statusEl.textContent = '주문 생성 완료';
+            log('✓ bookUid=' + result.bookUid + ' finalization=' + result.finalizationStatus);
+            if (result.willSkipValidation) {
+              // 🖨️ 판형 미연결 = 인쇄 검증 없이 최종화된다. 자동 발주로 흘리지 마라.
+              log('⚠️ bookSpecUid 미전달 — 미검증 FINALIZED 로 최종화된다(D-9). 수동 검수 게이트 필요');
+            }
+            break;
+          }
+
+          default:
+            // 모르는 이벤트는 무시 — 카탈로그는 additive 로 자란다
+            log('· ' + name + ' (미처리)');
+        }
+      });
+    </script>
+  </body>
+</html>

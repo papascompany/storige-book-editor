@@ -1,0 +1,25 @@
+{
+  "name": "@storige/example-editor-session-order",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Storige quickstart — /embed iframe 편집 → 엔벨로프 v1 수신 → 서버측 EDITOR_SESSION 승격 → 최종화",
+  "scripts": {
+    "start": "node src/server.ts",
+    "verify": "node src/verify.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src public --config ../eslint.config.js"
+  },
+  "dependencies": {
+    "@storige/sdk": "workspace:*",
+    "express": "^4.21.2"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=22.18"
+  }
+}
