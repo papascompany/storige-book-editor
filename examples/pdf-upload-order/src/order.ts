@@ -102,10 +102,18 @@ export async function runPdfUploadOrder(
   // ── ④ 자산 투입 ──────────────────────────────────────────────────────
   // fileId 참조가 권장 경로다. 멀티파트는 서버 멱등 해시가 파일 내용을 반영하지
   // 못해 SDK 가 Idempotency-Key 를 **자동 부여하지 않는다**(README §멱등 참조).
-  const cover = await client.books.uploadPdfCover(book.uid, input.cover, multipartOptions(input.cover, book.uid, 'cover'));
+  const cover = await client.books.uploadPdfCover(
+    book.uid,
+    input.cover,
+    multipartOptions(input.cover, book.uid, 'cover'),
+  );
   log(`④ 표지 자산 ${cover.assetType} (fileId=${cover.fileId}, status=${cover.status})`);
 
-  const contents = await client.books.uploadPdfContents(book.uid, input.contents, multipartOptions(input.contents, book.uid, 'contents'));
+  const contents = await client.books.uploadPdfContents(
+    book.uid,
+    input.contents,
+    multipartOptions(input.contents, book.uid, 'contents'),
+  );
   log(`④ 내지 자산 ${contents.assetType} (fileId=${contents.fileId}, status=${contents.status})`);
 
   // ── ⑤ 최종화 착수 ────────────────────────────────────────────────────

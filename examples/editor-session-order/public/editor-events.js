@@ -62,8 +62,14 @@ export const EDITOR_EVENTS = Object.freeze([
  */
 
 /**
- * @typedef {{ ok: true, envelope: EditorEnvelope }
- *   | { ok: false, reason: 'ORIGIN_NOT_ALLOWED'|'SOURCE_WINDOW_MISMATCH'|'NOT_EDITOR_ENVELOPE'|'VERSION_MISMATCH' }} ParseResult
+ * @typedef {'ORIGIN_NOT_ALLOWED'
+ *   | 'SOURCE_WINDOW_MISMATCH'
+ *   | 'NOT_EDITOR_ENVELOPE'
+ *   | 'VERSION_MISMATCH'} RejectReason
+ */
+
+/**
+ * @typedef {{ ok: true, envelope: EditorEnvelope } | { ok: false, reason: RejectReason }} ParseResult
  */
 
 /**
