@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Storige quickstart — 편집기 임베드 주문</title>
+    <style>
+      body { margin: 0; font: 14px/1.6 system-ui, sans-serif; }
+      header { padding: 12px 16px; border-bottom: 1px solid #e5e5e5; display: flex; gap: 16px; align-items: baseline; }
+      h1 { font-size: 15px; margin: 0; }
+      #status { color: #555; }
+      #editor { width: 100%; height: 70vh; border: 0; display: block; }
+      #log { margin: 0; padding: 12px 16px; max-height: 25vh; overflow: auto; background: #fafafa; font: 12px/1.5 ui-monospace, monospace; white-space: pre-wrap; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>편집기 임베드 주문 (EDITOR_SESSION)</h1>
+      <span id="status">설정을 불러오는 중…</span>
+    </header>
+
+    <!--
+      편집기는 `parentOrigin` 이 지정된 경우에만 정식 엔벨로프를 발신하고,
+      targetOrigin 으로 그 값을 그대로 쓴다('*' 를 절대 쓰지 않는다).
+      → 호스트는 자기 오리진을 반드시 넘겨야 한다. src 는 /api/config 가 만들어 준다.
+    -->
+    <iframe id="editor" title="Storige 편집기" allow="clipboard-write"></iframe>
+
+    <pre id="log"></pre>
+
+    <script type="module">
+      import { parseEditorMessage, readCompletePayload } from './editor-events.js';
+
+      const logEl = document.getElementById('log');
+      const statusEl = document.getElementById('status');
+      const iframe = document.getElementById('editor');
+
+      const log = (line) => {
+        logEl.textContent += line + '\n';
+        logEl.scrollTop = logEl.scrollHeight;
+      };
+
+      // 파트너 API 키는 **여기 오지 않는다**. /api/config 는 편집기 URL과
+      // 허용 오리진만 준다(승격은 서버가 자기 키로 한다).
+      const config = await fetch('/api/config').then((r) => r.json());
+      iframe.src = config.embedUrl;
+      statusEl.textContent = '편집 중…';
+      log('embedUrl = ' + config.embedUrl);
+      log('allowedOrigins = ' + config.allowedOrigins.join(', '));
+
+      window.addEventListener('message', async (event) => {
+        // 4단 게이트: 오리진 정확 일치 → 우리 iframe → 봉투 형식 → event 문자열.
+        // expectedSource 로 iframe.contentWindow 를 넘기는 것을 잊지 말 것.
+        const parsed = parseEditorMessage(event, {
+          allowedOrigins: config.allowedOrigins,
+          expectedSource: iframe.contentWindow,
+        });
+        if (!parsed.ok) return; // 남의 메시지·레거시 dual-emit — 조용히 무시
+
+        const { event: name, payload } = parsed.envelope;
+
+        switch (name) {
+          case 'editor.ready':
+            log('▶ editor.ready — 편집기 준비 완료');
+            break;
+
+          case 'editor.save':
+            log('▶ editor.save — 중간 저장');
+            break;
+
+          case 'editor.cancel':
+            statusEl.textContent = '편집 취소됨';
+            log('▶ editor.cancel');
+            break;
+
+          case 'editor.needAuth':
+            // 게스트 세션이다. 이 상태의 세션은 site 소유가 없어(NULL-site)
+            // 서버가 승격을 404 로 거부한다 → 호스트가 로그인시켜야 한다.
+            statusEl.textContent = '로그인이 필요합니다';
+            log('▶ editor.needAuth — 게스트 세션은 승격 불가(로그인 유도 필요)');
+            break;
+
+          case 'editor.error':
+            statusEl.textContent = '편집기 오류';
+            log('▶ editor.error — ' + JSON.stringify(payload));
+            break;
+
+          case 'editor.complete': {
+            const done = readCompletePayload(payload);
+            if (done === null) {
+              log('▶ editor.complete — sessionId 없음(무시)');
+              return;
+            }
+            log('▶ editor.complete — sessionId=' + done.sessionId);
+            statusEl.textContent = '승격 중…';
+
+            // 🚨 승격은 **서버측**에서 한다. 파트너 API 키를 브라우저에 내려보내면
+            //    누구나 그 키로 테넌트 전체를 조작할 수 있다.
+            const res = await fetch('/api/promote', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ sessionId: done.sessionId }),
+            });
+            const result = await res.json();
+            if (!res.ok) {
+              statusEl.textContent = '승격 실패';
+              log('✗ 승격 실패 — ' + JSON.stringify(result));
+              return;
+            }
+            statusEl.textContent = '주문 생성 완료';
+            log('✓ bookUid=' + result.bookUid + ' finalization=' + result.finalizationStatus);
+            break;
+          }
+
+          default:
+            // 모르는 이벤트는 무시 — 카탈로그는 additive 로 자란다
+            log('· ' + name + ' (미처리)');
+        }
+      });
+    </script>
+  </body>
+</html>

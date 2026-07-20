@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "lib": ["ES2022", "DOM"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "verbatimModuleSyntax": true,
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    // 호스트 페이지의 메시지 검증 로직(public/editor-events.js)은 번들러 없이
+    // 브라우저가 그대로 읽는 순수 ESM 이다. JSDoc 타입으로 strict 검사에 태운다 —
+    // 그래야 verify.ts 가 import 해서 단언할 때 타입이 살아 있다.
+    "allowJs": true,
+    "checkJs": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "types": ["node"]
+  },
+  "include": ["src/**/*", "public/**/*.js"],
+  "exclude": ["node_modules"]
+}
