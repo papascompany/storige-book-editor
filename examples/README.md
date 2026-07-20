@@ -65,6 +65,11 @@ done
 
 CI(`.github/workflows/ci.yml`)가 같은 검증을 매 push/PR 마다 돈다.
 
+> ⚠️ **`verify` 는 오프라인 단언이다 — 라이브 스모크가 아니다.** 실 Storige 서버를 대상으로
+> 한 검증은 어느 예제도 아직 돌리지 않았다. `verify` 가 증명하는 것은 "이 코드가 어떤 HTTP
+> 호출을 어떤 본문·헤더로 내보내고, 어떤 응답에서 어떻게 분기하는가"까지다. 실제 키·실제
+> 편집기·실제 웹훅 발신을 붙인 확인은 파트너 환경에서 **별도로** 해야 한다.
+
 ## 아직 예제가 없는 것
 
 - **`creationType: 'TEMPLATE'` / `'MIX_COVER_TEMPLATE'`** — 서버측 바인딩(cover/contents)

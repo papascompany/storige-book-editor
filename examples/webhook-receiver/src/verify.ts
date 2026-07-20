@@ -4,12 +4,15 @@
  * 실제 express 서버를 임시 포트로 띄우고, **테스트 secret 으로 서명을 직접 만들어**
  * HTTP 로 던진다. 발신부(서버)가 없어도 수신 배선 전체가 진짜로 도는지 확인한다.
  *
- *   ① 정상 서명        → 200 {received:true} + 핸들러 1회 실행
- *   ② 위조 서명        → 401 {error:'SIGNATURE_MISMATCH'} + 핸들러 미실행
- *   ③ 중복 delivery uid → 200 {received:true,duplicate:true} + 핸들러 미실행
- *   ④ secret 미설정     → 팩토리가 던져 **부팅 실패**(첫 웹훅까지 미루지 않는다)
- *   ⑤ express.json() 누락 → 500 {error:'ADAPTER_MISCONFIGURED'} (401 로 위장하지 않는다)
- *   ⑥ replay 창 밖 t    → 400 {error:'TIMESTAMP_OUT_OF_TOLERANCE'}
+ *   ①   정상 서명        → 200 {received:true} + 핸들러 1회 실행
+ *   ②   위조 서명        → 401 {error:'SIGNATURE_MISMATCH'} + 핸들러 미실행
+ *   ③   중복 delivery uid → 200 {received:true,duplicate:true} + 핸들러 미실행
+ *   ③'  **서명 고정 + uid 헤더만 교체**(jobId 서명 페이로드) → 200, 핸들러 재진입,
+ *       그러나 도메인 멱등이 부수효과를 1회로 묶는다
+ *   ③'' 같은 조작을 book.finalization.* 에 하면 → 401 (uid 가 서명 안에 있다)
+ *   ④   secret 미설정     → 팩토리가 던져 **부팅 실패**(첫 웹훅까지 미루지 않는다)
+ *   ⑤   express.json() 누락 → 500 {error:'ADAPTER_MISCONFIGURED'} (401 로 위장하지 않는다)
+ *   ⑥   replay 창 밖 t    → 400 {error:'TIMESTAMP_OUT_OF_TOLERANCE'}
  *
  * ## 서명 규약 (발신부 정본)
  *   data   = `${t}.${identifier}:${event}:${timestamp}`
@@ -18,7 +21,13 @@
  *   timestamp  이벤트 시각(ISO, 재시도해도 불변) — 여기에 신선도 게이트를 걸면
  *              30분 뒤 재시도가 죽는다
  *   identifier v2 경로 = `jobId ?? sessionId ?? <X-Storige-Delivery 헤더값>`
- *              book.finalization.* 는 jobId/sessionId 가 없어 delivery uid 가 된다
+ *
+ * ## ⚠️ identifier 가 무엇이냐에 따라 uid 재생 공격의 성립 여부가 갈린다
+ *   - `synthesis.*` · `validation.*` · `session.*` → jobId/sessionId 로 서명
+ *     = **uid 는 서명 밖** → 캡처한 서명 그대로 uid 만 바꿔 재생 가능 (③')
+ *   - `book.finalization.*`                        → jobId/sessionId 가 없어 uid 로 서명
+ *     = **uid 가 서명 안** → uid 변조는 401 (③'')
+ *   두 경우를 한 문장으로 뭉뚱그리면 재현되지 않는 주장이 된다. 그래서 둘 다 돌린다.
  */
 
 import assert from 'node:assert/strict';
@@ -56,7 +65,11 @@ interface Delivery {
   payload: StorigeWebhookPayload;
 }
 
-function finalizationDelivery(deliveryUid = `whd_${randomUUID().replace(/-/g, '')}`): Delivery {
+function newDeliveryUid(): string {
+  return `whd_${randomUUID().replace(/-/g, '')}`;
+}
+
+function finalizationDelivery(deliveryUid = newDeliveryUid()): Delivery {
   return {
     deliveryUid,
     payload: {
@@ -68,6 +81,36 @@ function finalizationDelivery(deliveryUid = `whd_${randomUUID().replace(/-/g, ''
       outputFileId: 'file_out',
       validationSkipped: false,
       timestamp: new Date().toISOString(),
+    },
+  };
+}
+
+/**
+ * `synthesis.completed` — **jobId 로 서명되는** 페이로드.
+ *
+ * `book.finalization.*` 와 결정적으로 다르다: v2 발신 identifier 는
+ * `jobId ?? sessionId ?? delivery.uid` 라서 jobId 가 있으면 **delivery uid 가 서명에
+ * 들어가지 않는다**. 즉 유효 서명 1건으로 uid 만 갈아끼운 재생이 성립한다(③').
+ *
+ * `timestamp` 를 인자로 받는 이유: 재생은 **같은 payload 를 다른 객체로** 던져야
+ * 단언이 동어반복이 되지 않는다(같은 참조를 재사용하면 무엇을 비교해도 통과한다).
+ */
+function synthesisDelivery(
+  deliveryUid: string,
+  timestamp: string,
+  jobId = 'job_demo',
+): Delivery {
+  return {
+    deliveryUid,
+    payload: {
+      event: 'synthesis.completed',
+      jobId,
+      sessionId: 'sess_demo',
+      orderSeqno: 1234,
+      status: 'completed',
+      outputFileUrl: 'https://files.example.test/merged.pdf',
+      outputFormat: 'merged',
+      timestamp,
     },
   };
 }
@@ -140,10 +183,26 @@ async function post(
   return { status: res.status, body: await res.json() };
 }
 
-/** book.finalization.* 의 서명 필드 — identifier 는 delivery uid 다 */
+/**
+ * v2 발신 서명 필드 — identifier = `jobId ?? sessionId ?? delivery uid`.
+ * (SDK `webhook/signature.ts` resolveIdentifierV2 미러)
+ *
+ * ⚠️ 이 한 줄이 ③'/③'' 의 결과를 가른다:
+ *   - `book.finalization.*` → jobId/sessionId 가 없다 → **uid 가 서명 안에 있다**
+ *   - `synthesis.*` 등      → jobId 가 있다          → **uid 는 서명 밖이다**
+ */
 function fieldsOf(delivery: Delivery): { identifier: string; event: string; timestamp: string } {
+  const payload = delivery.payload as unknown as Record<string, unknown>;
+  const jobId = payload['jobId'];
+  const sessionId = payload['sessionId'];
+  const identifier =
+    typeof jobId === 'string' && jobId !== ''
+      ? jobId
+      : typeof sessionId === 'string' && sessionId !== ''
+        ? sessionId
+        : delivery.deliveryUid;
   return {
-    identifier: delivery.deliveryUid,
+    identifier,
     event: delivery.payload.event,
     timestamp: delivery.payload.timestamp,
   };
@@ -178,24 +237,66 @@ async function verifyDeliveries(): Promise<void> {
     assert.equal(app.handled.length, 1, '중복 배달은 핸들러를 다시 부르지 않는다');
     console.log('✓ ③ 중복 delivery uid → 200 {duplicate:true} + 핸들러 미실행');
 
-    // ③' 서명은 그대로 두고 **uid 헤더만** 바꾼 재생 — SDK 단락은 통과한다.
-    //     이것이 "멱등은 인증 통제가 아니다"의 실물이다. 도메인 멱등이 막는다.
-    const replayed: Delivery = {
-      deliveryUid: `whd_${randomUUID().replace(/-/g, '')}`,
-      payload: first.payload,
-    };
-    const replayRes = await post(app.url, replayed, signHeader(SECRET, fieldsOf(replayed)));
-    assert.equal(replayRes.status, 200);
+    // ③' **캡처한 서명을 한 글자도 바꾸지 않고**, uid 헤더만 갈아끼운 재생.
+    //
+    //     공격자 모델: 유효 서명 1건을 관측했을 뿐 secret 은 모른다 → 재서명 불가.
+    //     그래서 서명 문자열을 **재사용**한다(재서명하면 그건 시크릿 보유자의 시연이지
+    //     공격자 시나리오가 아니다).
+    //
+    //     성립 조건: identifier 가 jobId 로 정해지는 페이로드여야 한다. 그래야 uid 가
+    //     서명 data 밖이라 헤더를 바꿔도 서명이 여전히 유효하다.
+    //     (book.finalization.* 로는 성립하지 않는다 — ③'' 참조)
+    const capturedTs = new Date().toISOString();
+    const original = synthesisDelivery(newDeliveryUid(), capturedTs);
+    const capturedSignature = signHeader(SECRET, fieldsOf(original)); // ← 단 1회 서명
+
+    const originalRes = await post(app.url, original, capturedSignature);
+    assert.equal(originalRes.status, 200, '원본 배달은 정상 처리된다');
+    assert.deepEqual(originalRes.body, { received: true });
+    assert.equal(app.handled.length, 2);
+
+    // 같은 payload를 **별개 객체**로 다시 만든다 — 같은 참조를 재사용하면 도메인 키가
+    // 상수가 되어 granted 단언이 동어반복(vacuous)이 된다.
+    const replayed = synthesisDelivery(newDeliveryUid(), capturedTs);
+    assert.notEqual(replayed.payload, original.payload, '재생 payload 는 별개 객체다');
+    assert.notEqual(replayed.deliveryUid, original.deliveryUid, 'uid 만 갈아끼웠다');
+
+    const replayRes = await post(app.url, replayed, capturedSignature); // ← 서명 그대로
+    assert.equal(replayRes.status, 200, '서명이 uid 를 덮지 않으므로 그대로 유효하다');
     assert.deepEqual(replayRes.body, { received: true }, 'uid 가 다르므로 SDK 단락은 통과한다');
-    assert.equal(app.handled.length, 2, 'SDK 단락만으로는 핸들러 재진입을 막지 못한다');
-    // 그러나 부수효과는 **한 번만** 났다 — 도메인 키(book.finalization.completed:fin_demo)로
+    assert.equal(app.handled.length, 3, 'SDK 단락만으로는 핸들러 재진입을 막지 못한다');
+
+    // 그러나 부수효과는 **한 번만** 났다 — 도메인 키(synthesis.completed:job_demo)로
     // 막았기 때문이다. 이것이 "멱등은 인증 통제가 아니다"에 대한 실제 방어다.
     assert.deepEqual(
       app.granted,
-      ['book.finalization.completed:fin_demo'],
+      ['book.finalization.completed:fin_demo', 'synthesis.completed:job_demo'],
       '도메인 멱등이 uid 재생의 부수효과를 1회로 묶는다',
     );
-    console.log('✓ ③\' uid 변조 재생 — SDK 단락은 통과(핸들러 2회)하나 도메인 멱등이 부수효과를 1회로 묶는다');
+    console.log(
+      "✓ ③' 서명 고정 + uid 헤더만 교체(jobId 서명 페이로드) — 핸들러 2회 진입, 도메인 멱등이 부수효과를 1회로 묶는다",
+    );
+
+    // ③'' 같은 공격을 book.finalization.* 에 쓰면 **성립하지 않는다**.
+    //      v2 identifier = jobId ?? sessionId ?? delivery uid 인데 이 페이로드엔
+    //      jobId/sessionId 가 없다 → uid 가 서명 data 에 들어간다 → uid 를 바꾸면 서명 불일치.
+    const finTs = new Date().toISOString();
+    const finOriginal: Delivery = {
+      deliveryUid: newDeliveryUid(),
+      payload: { ...first.payload, timestamp: finTs },
+    };
+    const finSignature = signHeader(SECRET, fieldsOf(finOriginal));
+    const finTampered: Delivery = {
+      deliveryUid: newDeliveryUid(), // uid 만 교체
+      payload: { ...first.payload, timestamp: finTs },
+    };
+    const tamperedRes = await post(app.url, finTampered, finSignature);
+    assert.equal(tamperedRes.status, 401, 'uid 가 서명 안에 있으므로 변조가 탐지된다');
+    assert.deepEqual(tamperedRes.body, { error: 'SIGNATURE_MISMATCH' });
+    assert.equal(app.handled.length, 3, '401 은 핸들러에 닿지 않는다');
+    console.log(
+      "✓ ③'' 같은 조작을 book.finalization.* 에 하면 401 — v2 에서 uid 가 서명에 포함돼 공격이 성립하지 않는다",
+    );
   } finally {
     await app.close();
   }
@@ -268,7 +369,9 @@ async function main(): Promise<void> {
   verifyBootFailsWithoutSecret();
   await verifyMisconfigured();
   await verifyReplayWindow();
-  console.log('\n✓ webhook-receiver E2E 검증 통과 (정상·위조·중복·uid재생·부팅실패·오설정·replay)');
+  console.log(
+    '\n✓ webhook-receiver E2E 검증 통과 (정상·위조·중복·uid재생 성립/불성립·부팅실패·오설정·replay)',
+  );
 }
 
 main().catch((error: unknown) => {

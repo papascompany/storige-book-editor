@@ -18,10 +18,14 @@
 
 | | 내용 |
 |---|---|
-| A | 전 여정이 위 순서의 **9개 HTTP 호출**로 나가고, 전 호출이 `Authorization: Bearer` 단일 헤더를 쓰며, POST 3건에 `Idempotency-Key` 가 자동 부여된다 |
+| A | 전 여정이 위 순서의 **9개 HTTP 호출**로 나가고, 전 호출이 `Authorization: Bearer` 단일 헤더를 쓰며, POST **4건**(`/books` · `/pdf-cover` · `/pdf-contents` · `/finalization`)에 `Idempotency-Key` 가 자동 부여된다 |
 | B | 멀티파트 업로드는 멱등키가 **자동 부여되지 않고**, 명시 제공 시 SDK 가 `키:sha256(파일)` 로 내용 주소화한다 |
 | C | `409 ERR_FINALIZATION_IN_PROGRESS` 는 실패가 아니라 **기존 attempt 합류**로 이어진다(재착수 0회) |
 | D | `422 ERR_PAGE_COUNT_OUT_OF_RANGE` 는 도서를 만들기 **전에** 차단된다(고아 DRAFT 없음) |
+
+> ⚠️ **라이브 스모크는 아직 돌리지 않았다.** 위는 전부 주입식 fetch 로 도는 오프라인
+> 단언이라 **호출 시퀀스·본문·헤더**까지만 증명한다. 실 서버의 응답 형태·업로드 한도·
+> 최종화 소요시간은 파트너가 test 키로 직접 확인해야 한다.
 
 ## 전제
 
