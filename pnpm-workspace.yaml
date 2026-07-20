@@ -1,3 +1,8 @@
 packages:
   - 'apps/*'
   - 'packages/*'
+  # 파트너 quickstart 예제(examples/*) — @storige/sdk 가 private:true(미배포)라
+  # `workspace:*` 로 참조해야 실제 SDK 를 통과하는 검증이 가능하다.
+  # ⚠️ CI 는 per-package 명시 필터만 쓰므로(.github/workflows/ci.yml) 예제를 게이트에
+  #    연결하려면 그 파일에 스텝을 추가해야 한다 — 실제로 추가돼 있다.
+  - 'examples/*'

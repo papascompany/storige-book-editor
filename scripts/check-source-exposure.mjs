@@ -30,7 +30,9 @@ const targets = argv.filter((a) => a !== '--dist');
 const DENY = distMode ? DENY_DIST : DENY_SOURCE;
 const RE = new RegExp(DENY.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'i');
 
-const DEFAULT_TARGETS = ['apps', 'packages'];
+// examples 는 파트너에게 그대로 배포되는 코드라 소스 스캔 대상에 반드시 포함한다
+// (신규 소스 루트를 여기 추가하지 않으면 그 디렉터리는 게이트 밖에 남는다).
+const DEFAULT_TARGETS = ['apps', 'packages', 'examples'];
 // 제외 디렉터리: 내부 전용 문서(.cursor)·의존성·빌드 캐시는 정상적으로 목록을 포함하므로
 // 반드시 제외한다. dist 모드에서는 dist 자체를 봐야 하므로 뺀다.
 const SKIP_DIRS = new Set([

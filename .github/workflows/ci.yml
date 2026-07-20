@@ -76,6 +76,18 @@ jobs:
           pnpm --filter @storige/sdk typecheck
           pnpm --filter @storige/sdk test
 
+      - name: 파트너 quickstart 예제 (examples/* — 타입체크 + 오프라인/E2E 검증)
+        # sdk 빌드 뒤여야 한다 — 예제는 workspace:* 로 dist 를 실제 import 한다.
+        # verify 는 전부 외부 의존 0: 주문 예제 2종은 주입식 fetch 로 호출 시퀀스를,
+        # webhook-receiver 는 임시 포트에 실서버를 띄우고 서명을 직접 만들어 E2E 를 돈다.
+        # (이 스텝이 없으면 예제가 SDK 변경으로 조용히 썩는다 — 위 ⚠️ 참조)
+        run: |
+          for e in pdf-upload-order editor-session-order webhook-receiver; do
+            pnpm --filter "@storige/example-$e" typecheck
+            pnpm --filter "@storige/example-$e" lint
+            pnpm --filter "@storige/example-$e" verify
+          done
+
       - name: api 테스트 (contract-freeze + 서명 페어와이즈 + 전체 스펙)
         run: pnpm --filter @storige/api test
 
