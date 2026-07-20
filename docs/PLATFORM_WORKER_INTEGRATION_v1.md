@@ -24,6 +24,23 @@
 
 ---
 
+> ## 🚨 WH-001 웹훅 서명 정정 안내 (2026-06-23 컷오버 — 본문·Phase 0 표의 서명 서술보다 우선)
+>
+> 본문 §의 웹훅 서명 서술(`X-Storige-Signature` 헤더 + `signing_string = timestamp + "." + raw_body`)과 위 Phase 0 표의 "Base64 서명" 항목은 **프로덕션과 일치하지 않습니다.** WH-001(2026-06-23) 이후 배포 코드의 실제 계약은 다음과 같습니다 (`apps/api/src/webhook/webhook.service.ts` 실측 기준):
+>
+> | 항목 | 실제 프로덕션 계약 |
+> |---|---|
+> | 검증용 헤더 | **`X-Storige-Signature-HMAC: t=<unix초>,v1=<64자 hex>`** |
+> | 서명 대상 | raw body 아님 — canonical string **`<t>.<identifier>:<event>:<timestamp>`** |
+> | `identifier` | `body.jobId ?? body.sessionId` (synthesis/validation → `jobId`, 세션 콜백 → `sessionId`) |
+> | `timestamp` | JSON body 안의 ISO-8601 문자열 (`t`와 다름) |
+> | 알고리즘 | `v1 == HMAC-SHA256(WEBHOOK_SECRET, signing_string).hex()` — `WEBHOOK_SECRET` 설정 시에만 발송 |
+> | 구 `X-Storige-Signature` | 계약 호환용으로 계속 발송되나 **base64일 뿐 위조 가능 — 보안 검증에 신뢰 금지** |
+>
+> **구현 시 정본**: `.cursor/plans/WH001_PARTNER_CUTOVER/` 파트너별 문서(100pbooks·bookmoa-php·bookmoa-mobile·sharesnap·md2books) 또는 `packages/sdk`의 `/webhook` 모듈(검증·멱등·어댑터 구현 완비)을 따르세요. 아래 본문의 서명 관련 절은 이력 보존용으로만 남깁니다.
+
+---
+
 ## 0. TL;DR — 5분 요약
 
 ```
