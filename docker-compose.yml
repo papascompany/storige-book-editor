@@ -26,6 +26,9 @@ services:
       context: .
       dockerfile: docker/api/Dockerfile
     container_name: storige-api
+    # 2026-07-21 호스트 재부팅(커널 업데이트) 시 코어 서비스 전체가 미복귀 → ~15h 장애.
+    # 모니터링 스택만 unless-stopped 였음 — 코어 5종(api/worker/editor/mariadb/redis)에 동일 적용.
+    restart: unless-stopped
     ports:
       - "4000:4000"
     environment:
@@ -74,6 +77,7 @@ services:
       context: .
       dockerfile: docker/worker/Dockerfile
     container_name: storige-worker
+    restart: unless-stopped
     # 트랙 B-(e): 워커 메모리 상한(기본 4g). OOM 시 워커만 죽고 API/DB/박스는 보호.
     #   경량검증(ON) 은 상수 메모리라 여유롭고, 만약 OFF 폴백/대용량이 한도 초과해도 박스 안전.
     #   .env WORKER_MEM_LIMIT 로 조정(예: 증설 시 상향).
@@ -114,6 +118,9 @@ services:
       #   ⚠️ .env 에만 넣고 이 매핑을 빼먹으면 silent no-op(WH-001 실적발 전례) — 매핑 필수.
       #   ON 이어도 warning-only + templateSet.cropMarkEnabled opt-in 이중 게이트.
       - WORKER_CROP_MARK_VALIDATION=${WORKER_CROP_MARK_VALIDATION:-false}
+      # C+ G3: 미배선 fixMethod(resizeWithPadding 등) FIXABLE→실거부 게이팅. 기본 false.
+      #   ⚠️ .env 에만 넣으면 silent no-op(WH-001 전례와 동일) — 이 매핑 필수(2026-07-21 실적발).
+      - WORKER_WIRED_FIXABLE_GATING=${WORKER_WIRED_FIXABLE_GATING:-false}
       # Sentry (DSN 미설정 시 silent 동작)
       - SENTRY_DSN=${SENTRY_DSN_WORKER:-}
       - SENTRY_ENVIRONMENT=${SENTRY_ENVIRONMENT:-production}
@@ -132,6 +139,7 @@ services:
       context: .
       dockerfile: docker/editor/Dockerfile
     container_name: storige-editor
+    restart: unless-stopped
     ports:
       - "3000:80"
     networks:
@@ -145,6 +153,7 @@ services:
   mariadb:
     image: mariadb:11.2
     container_name: storige-mariadb
+    restart: unless-stopped
     ports:
       # 보안(2026-07-13): Docker 포트 매핑은 ufw 를 우회한다 — 루프백 한정 바인딩.
       # 외부 정당 소비자 없음(운영 접근은 SSH + docker exec). 컨테이너 간은 network 로 통신.
@@ -171,6 +180,7 @@ services:
   redis:
     image: redis:7.2-alpine
     container_name: storige-redis
+    restart: unless-stopped
     ports:
       # 보안(2026-07-13): 공인망 노출로 SLAVEOF 하이재킹 실사고(2026-05-03~) — 루프백 한정.
       # Redis 는 무인증이므로 절대 공인 바인딩 금지. 컨테이너 간은 network 로 통신.
