@@ -56,6 +56,8 @@ import {
 } from '../partner-api/partner-api.constants';
 // [Stage 3 W3, #4] 최종화 콜백 역참조 — forwardRef 로 순환(books ⇄ worker-jobs) 차단.
 import { BookFinalizationsService } from '../books/book-finalizations.service';
+// R-44 — 표지 검증 잡 서버 spine 재계산(fail-closed 주입)
+import { SpineService } from '../products/spine.service';
 
 @Injectable()
 export class WorkerJobsService implements OnModuleInit {
@@ -82,6 +84,11 @@ export class WorkerJobsService implements OnModuleInit {
     @Optional()
     @Inject(forwardRef(() => BookFinalizationsService))
     private readonly bookFinalizationsService?: BookFinalizationsService,
+    // R-44(2026-07-21) — 표지 검증 잡 서버 spine 재계산(injectServerSpine).
+    // ⚠️ 반드시 최후미 @Optional — 기존 positional 유닛스펙(9~10인자) 미주입 시
+    // spine 주입만 no-op(클라 값 유지 = 기존 동작)로 격리. 미주입은 onModuleInit warn.
+    @Optional()
+    private readonly spineService?: SpineService,
   ) {}
 
   /**
@@ -97,6 +104,12 @@ export class WorkerJobsService implements OnModuleInit {
         '[finalization] BookFinalizationsService 미주입 — books ⇄ worker-jobs forwardRef 배선을 ' +
           '확인하세요. finalization 마커 잡 콜백(onWorkerJobSettled)이 no-op 처리됩니다. ' +
           '(books 모듈을 로드하지 않는 워커 전용 프로세스라면 정상입니다.)',
+      );
+    }
+    if (!this.spineService) {
+      this.logger.warn(
+        '[spine-inject] SpineService 미주입 — ProductsModule 배선을 확인하세요. ' +
+          '표지 검증 잡의 서버 spine 재계산이 no-op(클라 값 유지) 처리됩니다.',
       );
     }
   }
@@ -365,6 +378,9 @@ export class WorkerJobsService implements OnModuleInit {
       createValidationJobDto.orderOptions,
     );
 
+    // R-44 — 표지 잡은 서버가 spine 을 재계산해 덮어씀(fail-closed, B-2 원칙).
+    await this.injectServerSpine(createValidationJobDto.fileType, orderOptions);
+
     // Create job record in database
     const job = this.workerJobRepository.create({
       jobType: WorkerJobType.VALIDATE,
@@ -393,15 +409,78 @@ export class WorkerJobsService implements OnModuleInit {
     const savedJob = await this.workerJobRepository.save(job);
 
     // Add to Bull queue
+    // R-44(2026-07-21): raw DTO 가 아니라 **머지본**을 싣는다 — 종전엔 site default
+    // 머지(B-2)와 서버 spine 주입이 DB job.options 에만 남고 워커에는 raw 가 가서
+    // silent 미적용이었다(백로그 "검증 잡 큐 site-default 머지 미적용 의심" 실확정).
     await this.validationQueue.add('validate-pdf', {
       jobId: savedJob.id,
       fileId,
       fileUrl,
       fileType: createValidationJobDto.fileType,
-      orderOptions: createValidationJobDto.orderOptions,
+      orderOptions,
     });
 
     return savedJob;
+  }
+
+  /**
+   * R-44 — 표지(cover) 검증 잡의 서버 spine 재계산 주입.
+   *
+   * 클라(spineWidthMm)를 신뢰하지 않고 pageCount/paperType/binding 으로 서버가
+   * 재산출해 덮어쓴다(가격 recompute 와 동일한 fail-closed 철학). 원본 클라 값은
+   * clientSpineWidthMm 로 보존(대조 계측). SOFT 정책:
+   *  - v2 산출 성공 → 덮어씀(spineSource='server'), 클라·서버 불일치는 warn 계측
+   *  - 지종 미해석/오류(SPINE_PARAMS_UNRESOLVED) 또는 v1 폴백 → 클라 값 유지(현행 동작)
+   *    — HARD 승격(차단)은 관찰기간 후 별도 게이트.
+   */
+  private async injectServerSpine(
+    fileType: string,
+    // mergeSiteWorkerDefaults 반환형(Record) 수용 — 필드 접근은 DTO orderOptions 계약 기준
+    orderOptions: Partial<CreateValidationJobDto['orderOptions']> & Record<string, any>,
+  ): Promise<void> {
+    if (!orderOptions) return;
+    // F2(스탬프 선소독): spineSource/clientSpineWidthMm 은 서버 전유 필드 —
+    // orderOptions 가 @IsObject 단독(중첩 무검증)이라 호출자가 위조 전송 가능하므로
+    // 모든 경로(비cover·미주입·v1 폴백·예외 포함)에서 무조건 소거하고, 'server'
+    // 스탬프는 아래 성공 경로만 재발급한다(감사 판별 1:1 보장).
+    delete orderOptions.spineSource;
+    delete orderOptions.clientSpineWidthMm;
+    if (fileType !== 'cover' || !this.spineService) return;
+    const binding = orderOptions.binding as string;
+    if (binding !== 'perfect' && binding !== 'hardcover') return;
+    const { paperType, pages } = orderOptions;
+    if (!paperType || typeof pages !== 'number' || pages < 1) return;
+
+    try {
+      const r = await this.spineService.calculate({
+        pageCount: pages,
+        paperType,
+        bindingType: binding,
+      });
+      if (r.formulaVersion !== 'v2') {
+        // v1 폴백(legacy 8코드 등)은 bookmoa 골든과 다른 값 — 클라 값을 덮지 않는다.
+        this.logger.warn(
+          `[spine-inject] 지종 '${paperType}' v2 두께 미보유(v1 폴백) — 클라 spineWidthMm 유지`,
+        );
+        return;
+      }
+      const client = orderOptions.spineWidthMm;
+      if (typeof client === 'number' && Math.abs(client - r.spineWidth) > 0.01) {
+        // warn 레벨 유지 — 클라 vs 서버 불일치 계측(관찰기간 mismatch율 리뷰용)
+        this.logger.warn(
+          `[spine-inject] 클라 spineWidthMm ${client} ≠ 서버 ${r.spineWidth}mm ` +
+            `(${binding}/${paperType}/${pages}p) — 서버 권위값으로 교체`,
+        );
+      }
+      orderOptions.clientSpineWidthMm = client;
+      orderOptions.spineWidthMm = r.spineWidth;
+      orderOptions.spineSource = 'server';
+    } catch (error) {
+      this.logger.warn(
+        `[spine-inject] SPINE_PARAMS_UNRESOLVED: '${paperType}'/${binding} 재계산 실패 ` +
+          `(${error.message}) — 클라 값 유지(SOFT)`,
+      );
+    }
   }
 
   // ============================================================================

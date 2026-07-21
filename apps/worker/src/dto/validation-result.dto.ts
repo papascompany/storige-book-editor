@@ -189,17 +189,26 @@ export interface ValidationOptions {
     };
     /** 주문 페이지 수 */
     pages: number;
-    /** 제본 방식 */
-    binding: 'perfect' | 'saddle' | 'spring';
+    /** 제본 방식 — R-44: bookmoa canonical hardcover/spiral additive('spring'=레거시 표기 보존) */
+    binding: 'perfect' | 'saddle' | 'spring' | 'spiral' | 'hardcover';
     /** 재단 여백 (mm) */
     bleed: number;
     /** 종이 두께 (mm, 책등 계산 fallback용) */
     paperThickness?: number;
     /**
-     * 책등 폭 (mm) — 프런트가 /products/spine/calculate 로 계산한 권위 값.
-     * 제공 시 표지 책등 검증이 이 값을 직접 사용(bindingMargin 포함). 미제공 시 paperThickness 로 fallback 재계산.
+     * 책등 폭 (mm) — API 가 /products/spine/calculate 로 재계산해 주입한 권위 값
+     * (R-44 injectServerSpine, spineSource='server'). 레거시 경로는 클라 계산값.
+     * 제공 시 표지 책등 검증이 이 값을 직접 사용. 미제공 시 paperThickness 로 fallback 재계산.
      */
     spineWidthMm?: number;
+    /** R-44: 내지 지종 라벨(감사·재계산 추적용 — 워커는 두께표를 직접 조회하지 않음) */
+    paperType?: string;
+    /** R-44: 표지 spine 검증 허용오차(mm) 오버라이드. 미제공 시 env/기본값(2mm) */
+    spineToleranceMm?: number;
+    /** R-44: spineWidthMm 출처('server'=API 재계산 주입) — details.spineSource 로 노출 */
+    spineSource?: 'server' | 'client';
+    /** R-44: 서버 덮어쓰기 전 클라 원본(대조 계측) */
+    clientSpineWidthMm?: number;
     /** 날개(wing/flap) 사용 여부 — 표지 총너비 = ... + (wingEnabled ? wingWidthMm×2 : 0) */
     wingEnabled?: boolean;
     /** 날개 한쪽 폭 (mm) */

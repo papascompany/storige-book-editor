@@ -62,6 +62,18 @@ export const VALIDATION_CONFIG = {
   CROP_MARK_VALIDATION:
     String(process.env.WORKER_CROP_MARK_VALIDATION || '').toLowerCase() === 'true',
 
+  // R-44: 표지 spine(전개폭) 검증 허용오차 — 관찰 1단계는 현행 2mm 유지.
+  /**
+   * 무선/양장 각각 env 로 조정(orderOptions.spineToleranceMm 이 최우선).
+   * 2단계 강화(무선 ±1.0 / 양장 ±1.5 제안)는 관찰기간 mismatch 로그 리뷰 후
+   * env 로만 내린다(코드 무변경 롤아웃) — bookmoa 회신 §C-3 확정 대기.
+   */
+  SPINE_TOLERANCE_MM_PERFECT: Number(process.env.SPINE_TOLERANCE_MM_PERFECT || '') || 2,
+  SPINE_TOLERANCE_MM_HARDCOVER: Number(process.env.SPINE_TOLERANCE_MM_HARDCOVER || '') || 2,
+  /** F13: orderOptions.spineToleranceMm 파트너 오버라이드 상한 — 무상한 값으로 표지
+   *  치수 검증을 무력화하는 페이로드 차단(워커측 클램프, 초과 시 warn 계측). */
+  SPINE_TOLERANCE_MM_MAX: Number(process.env.SPINE_TOLERANCE_MM_MAX || '') || 5,
+
   // 스프레드(펼침면) 감지
   /** 스프레드 판정 점수 임계값 */
   SPREAD_SCORE_THRESHOLD: 70,

@@ -112,8 +112,11 @@ describe('finalization DI 배선(P1-1) — books ⇄ worker-jobs', () => {
   });
 
   // ── ③ 배선 실패 관측(onModuleInit warn) — 침묵 마스킹 방지 ──
+  // R-44: spineService(@Optional 11번째)도 동일 관측 계약 — 기본 스텁 주입으로
+  // finalization 축과 격리해 각각 단독 검증한다.
   const makeWorkerJobsService = (
     finService?: Partial<BookFinalizationsService>,
+    spineService: unknown = { calculate: jest.fn() },
   ): WorkerJobsService =>
     new WorkerJobsService(
       {} as never, // workerJobRepository
@@ -126,6 +129,7 @@ describe('finalization DI 배선(P1-1) — books ⇄ worker-jobs', () => {
       {} as never, // sitesService
       {} as never, // templateSetsService
       finService as never, // @Optional bookFinalizationsService
+      spineService as never, // @Optional spineService (R-44)
     );
 
   it('③ 미주입이면 onModuleInit 이 warn(배선 실패 관측)', () => {
@@ -140,6 +144,15 @@ describe('finalization DI 배선(P1-1) — books ⇄ worker-jobs', () => {
     const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
     makeWorkerJobsService({ onWorkerJobSettled: jest.fn() }).onModuleInit();
     expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it('③-R44 SpineService 미주입이면 onModuleInit 이 warn(spine 주입 배선 실패 관측)', () => {
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+    // undefined 는 기본 매개변수(스텁)로 치환되므로 null 센티널로 '미주입' 재현
+    makeWorkerJobsService({ onWorkerJobSettled: jest.fn() }, null).onModuleInit();
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0][0])).toContain('SpineService 미주입');
     warn.mockRestore();
   });
 });
