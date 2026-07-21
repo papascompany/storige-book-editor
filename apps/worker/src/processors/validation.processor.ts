@@ -18,11 +18,20 @@ interface ValidationJobData {
   orderOptions: {
     size: { width: number; height: number };
     pages: number;
-    binding: 'perfect' | 'saddle' | 'spring';
+    // R-44: bookmoa canonical hardcover/spiral additive('spring'=레거시 표기 보존)
+    binding: 'perfect' | 'saddle' | 'spring' | 'spiral' | 'hardcover';
     bleed: number;
     paperThickness?: number;
-    /** 책등 폭(mm) — 프런트 계산 권위 값(있으면 우선 사용) */
+    /** 책등 폭(mm) — R-44 이후 API injectServerSpine 재계산 권위 값(있으면 우선 사용) */
     spineWidthMm?: number;
+    /** R-44: 내지 지종 라벨(감사 추적용) */
+    paperType?: string;
+    /** R-44: 표지 spine 검증 허용오차(mm) 오버라이드 */
+    spineToleranceMm?: number;
+    /** R-44: spineWidthMm 출처 스탬프 */
+    spineSource?: 'server' | 'client';
+    /** R-44: 서버 덮어쓰기 전 클라 원본 */
+    clientSpineWidthMm?: number;
     /** 날개 사용 여부 */
     wingEnabled?: boolean;
     /** 날개 한쪽 폭(mm) */

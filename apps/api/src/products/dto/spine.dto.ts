@@ -34,19 +34,39 @@ export class CalculateSpineDto {
 
   @ApiPropertyOptional({
     example: 0.5,
-    description: '커스텀 용지 두께 (mm 단위, paperType 무시)',
+    description: '커스텀 용지 두께 (mm/장, v1 공식용 — paperType 두께 무시)',
   })
   @IsOptional()
   @IsNumber()
+  @Min(0)
   customPaperThickness?: number;
 
   @ApiPropertyOptional({
     example: 2.0,
-    description: '커스텀 제본 마진 (mm 단위, bindingType 무시)',
+    description: '커스텀 제본 마진 (mm 단위, v1 공식용 — bindingType 마진 무시)',
   })
   @IsOptional()
   @IsNumber()
+  @Min(0)
   customBindingMargin?: number;
+
+  @ApiPropertyOptional({
+    example: 0.048,
+    description: 'R-44 v2: 커스텀 페이지당 두께(mm/페이지) — perfect v2 공식 강제 오버라이드',
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  customThicknessPerPage?: number;
+
+  @ApiPropertyOptional({
+    example: 0.095,
+    description: 'R-44 v2: 커스텀 장당 두께(mm/장) — hardcover v2 공식 강제 오버라이드',
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  customThicknessPerSheet?: number;
 }
 
 /**
@@ -82,6 +102,21 @@ export class SpineCalculationResultDto {
     description: '계산 공식',
   })
   formula: string;
+
+  @ApiProperty({
+    example: 'v2',
+    description: "적용 공식 버전 — 'v2'=bookmoa SSOT 정합, 'v1'=legacy 선형식",
+  })
+  formulaVersion: 'v1' | 'v2';
+
+  @ApiPropertyOptional({ example: 202, description: 'v2 무선: 홀수 +1 보정 후 유효 페이지수' })
+  effPages?: number;
+
+  @ApiPropertyOptional({ example: 10, description: 'v2 양장: 내지뭉치 두께(mm, 올림 정수)' })
+  pageThickMm?: number;
+
+  @ApiPropertyOptional({ example: '미색모조 80g', description: '해석된 지종 정규 code(별칭 입력 흡수)' })
+  resolvedPaperCode?: string;
 }
 
 /**

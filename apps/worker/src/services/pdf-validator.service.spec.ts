@@ -496,6 +496,172 @@ describe('PdfValidatorService', () => {
       });
     });
 
+    // ── R-44 (2026-07-21): 양장 싸바리 전개·details 계약·이중발행 해소 ─────────
+    describe('R-44 spine 검증 — 양장 전개·details·이중발행', () => {
+      const spineErr = (r: any) => r.errors.find((e: any) => e.code === ErrorCode.SPINE_SIZE_MISMATCH);
+      const sizeErr = (r: any) => r.errors.find((e: any) => e.code === ErrorCode.SIZE_MISMATCH);
+
+      const hardcoverOpts = (over: Record<string, any> = {}) =>
+        ({
+          fileType: 'cover',
+          orderOptions: {
+            size: { width: 210, height: 297 }, pages: 40, binding: 'hardcover', bleed: 3,
+            spineWidthMm: 8, spineSource: 'server', paperType: '아르떼130',
+            ...over,
+          },
+        }) as ValidationOptions;
+
+      it('AC#5 양장 골든: 전개 484×345 표지 → 통과 (mybookmake 골든 재현)', async () => {
+        // (210+8)×2 + 8 + 40 = 484 / (297+8) + 40 = 345 — 도련 추가 가산 없음
+        const pdfBytes = await createMockPdf(1, 484, 345);
+        mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
+        const result = await service.validate('./wrap.pdf', hardcoverOpts());
+        expect(spineErr(result)).toBeUndefined();
+      });
+
+      it('AC#6 양장 오차 밖(전개폭 490) → SPINE_SIZE_MISMATCH + details {expectedMm,actualMm,toleranceMm}', async () => {
+        const pdfBytes = await createMockPdf(1, 490, 345);
+        mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
+        const result = await service.validate('./wrap-bad.pdf', hardcoverOpts());
+        const err = spineErr(result);
+        expect(err).toBeDefined();
+        expect(err.details).toMatchObject({
+          expectedMm: 484,
+          toleranceMm: 2,
+          expected: { spine: 8, spineSource: 'server', layout: 'hardcover-wrap' },
+        });
+        expect(Math.round(err.details.actualMm)).toBe(490);
+      });
+
+      it('양장 높이 축 위반(484×340)도 SPINE_SIZE_MISMATCH — validatePageSize 대체 후 공백 없음', async () => {
+        const pdfBytes = await createMockPdf(1, 484, 340);
+        mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
+        const result = await service.validate('./wrap-h.pdf', hardcoverOpts());
+        expect(spineErr(result)).toBeDefined();
+      });
+
+      it('이중발행 해소: spine 기대치 보유 표지엔 SIZE_MISMATCH 미발행(SPINE 단독)', async () => {
+        // 전개 규격 표지는 단일 판형 기대치(210×297)와 항상 불일치 — 종전엔 SIZE_MISMATCH 동반
+        const pdfBytes = await createMockPdf(1, 490, 345);
+        mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
+        const result = await service.validate('./wrap-dual.pdf', hardcoverOpts());
+        expect(spineErr(result)).toBeDefined();
+        expect(sizeErr(result)).toBeUndefined();
+      });
+
+      it('spine 정보 없는 표지는 현행 validatePageSize 경로 유지(검증 공백 방지)', async () => {
+        const pdfBytes = await createMockPdf(1, 100, 100);
+        mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
+        const result = await service.validate('./cover-nospine.pdf', {
+          fileType: 'cover',
+          orderOptions: { size: { width: 210, height: 297 }, pages: 4, binding: 'perfect', bleed: 3 },
+        } as ValidationOptions);
+        expect(sizeErr(result)).toBeDefined();
+        expect(spineErr(result)).toBeUndefined();
+      });
+
+      it('무선 높이 축 additive: 폭 정합·높이 위반(416×250) → SPINE_SIZE_MISMATCH', async () => {
+        const pdfBytes = await createMockPdf(4, 416, 250);
+        mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
+        const result = await service.validate('./cover-h.pdf', {
+          fileType: 'cover',
+          orderOptions: {
+            size: { width: 200, height: 280 }, pages: 4, binding: 'perfect', bleed: 3,
+            spineWidthMm: 10,
+          },
+        } as ValidationOptions);
+        expect(spineErr(result)).toBeDefined();
+      });
+
+      it('F13 spineToleranceMm 상한 클램프: 10000 요청도 MAX(5) 로 캡 — 490 전개폭(오차6)은 여전히 실패', async () => {
+        const pdfBytes = await createMockPdf(1, 490, 345);
+        mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
+        const result = await service.validate(
+          './wrap-forge.pdf',
+          hardcoverOpts({ spineToleranceMm: 10000 }),
+        );
+        const err = spineErr(result);
+        expect(err).toBeDefined();
+        expect(err.details.toleranceMm).toBe(5);
+      });
+
+      it('F1/F4 양장 paperThickness 폴백도 합지4·min8 산식 — 정상 싸바리 표지(490×345) 통과', async () => {
+        // 200p·0.095mm/장 → calcHardcoverSpine = 14mm → 전개 (210+8)×2+14+40 = 490
+        // (무선식 폴백이었다면 기대 9.5mm → 485.5 → 4.5mm 오차로 확정 오탐)
+        const pdfBytes = await createMockPdf(1, 490, 345);
+        mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
+        const result = await service.validate('./wrap-fallback.pdf', {
+          fileType: 'cover',
+          orderOptions: {
+            size: { width: 210, height: 297 }, pages: 200, binding: 'hardcover', bleed: 3,
+            paperThickness: 0.095,
+          },
+        } as ValidationOptions);
+        expect(spineErr(result)).toBeUndefined();
+        expect(result.metadata.spineSize).toBe(14);
+      });
+
+      it('F1/F4 양장 폴백 유효성 위반(42p)은 기대치 없음 → validatePageSize 백스톱 복귀', async () => {
+        const pdfBytes = await createMockPdf(1, 490, 345);
+        mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
+        const result = await service.validate('./wrap-42p.pdf', {
+          fileType: 'cover',
+          orderOptions: {
+            size: { width: 210, height: 297 }, pages: 42, binding: 'hardcover', bleed: 3,
+            paperThickness: 0.095,
+          },
+        } as ValidationOptions);
+        expect(spineErr(result)).toBeUndefined();
+        expect(sizeErr(result)).toBeDefined(); // 검증 공백 아님 — 단일판형 경로가 잡는다
+      });
+
+      it('F6 서버 권위 spineWidthMm 소수 2자리 보존: 0.77 이 0.8 로 양자화되지 않음', async () => {
+        // 기대폭 = 200×2 + 0.77 + 6 = 406.77 → 407 근사 PDF 통과 + metadata.spineSize=0.77
+        const pdfBytes = await createMockPdf(4, 406.77, 286);
+        mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
+        const result = await service.validate('./thin-spine.pdf', {
+          fileType: 'cover',
+          orderOptions: {
+            size: { width: 200, height: 280 }, pages: 16, binding: 'perfect', bleed: 3,
+            spineWidthMm: 0.77,
+          },
+        } as ValidationOptions);
+        expect(spineErr(result)).toBeUndefined();
+        expect(result.metadata.spineSize).toBe(0.77);
+      });
+
+      it('F7/F9 pages 무효 + paperThickness만 → 게이트 false → validatePageSize 백스톱(NaN 전파 차단)', async () => {
+        const pdfBytes = await createMockPdf(1, 100, 100);
+        mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
+        const result = await service.validate('./nan-guard.pdf', {
+          fileType: 'cover',
+          orderOptions: {
+            size: { width: 210, height: 297 }, pages: 0, binding: 'perfect', bleed: 3,
+            paperThickness: 0.1,
+          },
+        } as ValidationOptions);
+        expect(spineErr(result)).toBeUndefined();
+        expect(sizeErr(result)).toBeDefined();
+      });
+
+      it('F8 spine 대체 표지엔 허위 BLEED_MISSING 미발행(extendBleed 자동보정 오발화 차단)', async () => {
+        const pdfBytes = await createMockPdf(1, 484, 345);
+        mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
+        const result = await service.validate('./wrap-bleed.pdf', hardcoverOpts());
+        const bleedWarn = result.warnings.find((w: any) => w.code === WarningCode.BLEED_MISSING);
+        expect(bleedWarn).toBeUndefined();
+      });
+
+      it('F11 높이 단독 불일치 → 평탄 details 는 높이 축 기준(axis=height)', async () => {
+        const pdfBytes = await createMockPdf(1, 484, 340);
+        mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
+        const result = await service.validate('./wrap-haxis.pdf', hardcoverOpts());
+        const err = spineErr(result);
+        expect(err.details).toMatchObject({ axis: 'height', expectedMm: 345 });
+        expect(Math.round(err.details.actualMm)).toBe(340);
+      });
+    });
+
     it('should download file from URL', async () => {
       const pdfBytes = await createMockPdf(4, 210, 297);
       mockedAxios.get.mockResolvedValue({

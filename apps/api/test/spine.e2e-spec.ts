@@ -404,4 +404,157 @@ describe('SpineController (e2e)', () => {
       });
     });
   });
+
+  // ── R-44 v2 공식 (bookmoa SSOT 정합) — AC#1~#5 HTTP 레벨 잠금 ─────────
+  describe('R-44 v2 공식 — /products/spine/calculate', () => {
+    beforeAll(async () => {
+      // v2 두께 보유 지종 시드(SpineSeedService 시드의 축소 재현)
+      await paperTypeRepository.save([
+        {
+          code: '미색모조 80g',
+          name: '미색모조 80g',
+          thickness: 0.096,
+          thicknessPerPageMm: 0.048,
+          category: 'body',
+          isActive: true,
+          sortOrder: 100,
+        },
+        {
+          code: '미색모조80',
+          name: '미색모조80',
+          thickness: 0.095,
+          thicknessPerSheetMm: 0.095,
+          category: 'body',
+          isActive: true,
+          sortOrder: 200,
+        },
+        {
+          code: '아르떼130',
+          name: '아르떼130',
+          thickness: 0.191,
+          thicknessPerSheetMm: 0.191,
+          aliases: ['아르떼(UW)130', '아르떼(NW)130'],
+          category: 'body',
+          isActive: true,
+          sortOrder: 201,
+        },
+      ]);
+    });
+
+    it('AC#1 무선 200p 미색모조 80g → 9.6mm (margin 무가산·v2)', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/products/spine/calculate')
+        .send({ pageCount: 200, paperType: '미색모조 80g', bindingType: 'perfect' })
+        .expect(201);
+      expect(res.body).toMatchObject({ spineWidth: 9.6, formulaVersion: 'v2', effPages: 200 });
+    });
+
+    it('AC#2 무선 201p → 홀수 보정 202p → 9.7mm', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/products/spine/calculate')
+        .send({ pageCount: 201, paperType: '미색모조 80g', bindingType: 'perfect' })
+        .expect(201);
+      expect(res.body).toMatchObject({ spineWidth: 9.7, formulaVersion: 'v2', effPages: 202 });
+    });
+
+    it('AC#3 무선 16p → 0.77mm — 소수 유지(정수화 금지)', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/products/spine/calculate')
+        .send({ pageCount: 16, paperType: '미색모조 80g', bindingType: 'perfect' })
+        .expect(201);
+      expect(res.body.spineWidth).toBe(0.77);
+    });
+
+    it('AC#4 양장 200p 미색모조80(0.095/장) → 14mm (합지4+내지10)', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/products/spine/calculate')
+        .send({ pageCount: 200, paperType: '미색모조80', bindingType: 'hardcover' })
+        .expect(201);
+      expect(res.body).toMatchObject({ spineWidth: 14, formulaVersion: 'v2', pageThickMm: 10 });
+    });
+
+    it('AC#5 양장 40p 아르떼130 → 8mm(최소치)', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/products/spine/calculate')
+        .send({ pageCount: 40, paperType: '아르떼130', bindingType: 'hardcover' })
+        .expect(201);
+      expect(res.body).toMatchObject({ spineWidth: 8, formulaVersion: 'v2', pageThickMm: 4 });
+    });
+
+    it('별칭 해석: bookmoa 라벨 "아르떼(UW)130" → 아르떼130 으로 계산(G-6 해소)', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/products/spine/calculate')
+        .send({ pageCount: 40, paperType: '아르떼(UW)130', bindingType: 'hardcover' })
+        .expect(201);
+      expect(res.body).toMatchObject({ spineWidth: 8, resolvedPaperCode: '아르떼130' });
+    });
+
+    it('binding-aware 해석: "미색모조80"+perfect → 무선행("미색모조 80g") 우선 → 9.6mm v2', async () => {
+      // code 정확일치는 양장행("미색모조80", perPage 없음)이지만, 요청 binding(perfect)에
+      // 필요한 perPage 보유 행을 우선해 SSOT 9.6 을 반환해야 한다 — bookmoa 주력 케이스.
+      const res = await request(app.getHttpServer())
+        .post('/products/spine/calculate')
+        .send({ pageCount: 200, paperType: '미색모조80', bindingType: 'perfect' })
+        .expect(201);
+      expect(res.body).toMatchObject({
+        spineWidth: 9.6,
+        formulaVersion: 'v2',
+        resolvedPaperCode: '미색모조 80g',
+      });
+    });
+
+    it('양장 4의 배수 위반 → 비차단 경고(HARDCOVER_PAGE_RULE) + 값은 반환(D-3 기본 정책)', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/products/spine/calculate')
+        .send({ pageCount: 42, paperType: '미색모조80', bindingType: 'hardcover' })
+        .expect(201);
+      expect(res.body.formulaVersion).toBe('v2');
+      const codes = res.body.warnings.map((w: any) => w.code);
+      expect(codes).toContain('HARDCOVER_PAGE_RULE');
+    });
+
+    it('legacy 코드(mojo_80g)는 v1 유지 — 하위호환 무회귀', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/products/spine/calculate')
+        .send({ pageCount: 200, paperType: 'mojo_80g', bindingType: 'perfect' })
+        .expect(201);
+      // v1: (200/2)×0.1 + 0.5 = 10.5
+      expect(res.body).toMatchObject({ spineWidth: 10.5, formulaVersion: 'v1' });
+    });
+
+    it('미해석 지종 + 커스텀 두께 없음 → 404 (기존 계약 유지)', async () => {
+      await request(app.getHttpServer())
+        .post('/products/spine/calculate')
+        .send({ pageCount: 100, paperType: '이라이트80', bindingType: 'perfect' })
+        .expect(404);
+    });
+
+    it('customThicknessPerSheet 오버라이드로 지종 없이 v2 양장 강제', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/products/spine/calculate')
+        .send({
+          pageCount: 200,
+          paperType: '이라이트80',
+          bindingType: 'hardcover',
+          customThicknessPerSheet: 0.095,
+        })
+        .expect(201);
+      expect(res.body).toMatchObject({ spineWidth: 14, formulaVersion: 'v2' });
+    });
+
+    it('F5 float-edge 서비스 도달: 100p×0.14 → toFixed3 후 ceil = 7 (naive ceil 이면 8)', async () => {
+      // 50×0.14 = 7.000000000000001 — toFixed(3)→Number→ceil 순서(원본 규칙)가
+      // 서비스 레벨(hardcoverSpineRaw 공유)에서도 보존됨을 HTTP 로 잠근다.
+      const res = await request(app.getHttpServer())
+        .post('/products/spine/calculate')
+        .send({
+          pageCount: 100,
+          paperType: '이라이트80',
+          bindingType: 'hardcover',
+          customThicknessPerSheet: 0.14,
+        })
+        .expect(201);
+      expect(res.body).toMatchObject({ spineWidth: 11, pageThickMm: 7, formulaVersion: 'v2' });
+    });
+  });
 });

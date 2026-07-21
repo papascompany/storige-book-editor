@@ -22,6 +22,8 @@ import {
   LEGACY_SIZE_TOLERANCE_MM,
   WIRED_FIX_METHODS,
 } from '../config/validation.config';
+// R-44 — 양장 싸바리 전개·폴백 spine 기대치(단일 산식, API/편집기와 동일 모듈)
+import { calcHardcoverSpine, hardcoverCoverSpreadFromSpine } from '@storige/types';
 import {
   detectCmykUsage,
   isGhostscriptAvailable,
@@ -166,7 +168,15 @@ export class PdfValidatorService {
       this.validatePageCount(pages.length, options, errors, warnings);
 
       // 6. 페이지 크기 검증
-      this.validatePageSize(widthMm, heightMm, options, errors, metadata);
+      // R-44: 표지 + spine 기대치 해석 가능이면 validatePageSize 를 건너뛰고
+      // validateSpine 의 전개폭·높이 검증으로 대체 — 표지 전개 규격이 단일 판형
+      // 기대치(SIZE_MISMATCH)와 이중발행되던 결함 해소. spine 정보 없는 표지는
+      // 현행 그대로(검증 공백 방지). validatePageSize 본문은 무접촉(48케이스 계약).
+      const coverSpineAuthoritative =
+        options.fileType === 'cover' && this.hasSpineExpectation(options.orderOptions);
+      if (!coverSpineAuthoritative) {
+        this.validatePageSize(widthMm, heightMm, options, errors, metadata);
+      }
 
       // 6-b. C-2a: crop mark(재단 기하) 검증 — 이중 게이트(orderOptions.cropMarkEnabled
       // opt-in + env WORKER_CROP_MARK_VALIDATION 킬스위치 기본 OFF), 전부 warning(비차단).
@@ -183,11 +193,17 @@ export class PdfValidatorService {
       }
 
       // 7. 재단 여백 검증
-      this.validateBleed(widthMm, heightMm, options, warnings, metadata);
+      // F8: spine 대체 표지는 validateBleed 도 건너뜀 — 전개폭 표지는 hasBleed 판정이
+      // 구조적으로 미설정이라 정상 표지 전건에 허위 BLEED_MISSING(자동보정 extendBleed
+      // 배선!)이 발행되던 결함. 도련 판정은 validateSpine 기대폭에 내재(무선=bleed×2
+      // 포함, 양장 전개=도련 개념 없음)라 검증 공백 없음.
+      if (!coverSpineAuthoritative) {
+        this.validateBleed(widthMm, heightMm, options, warnings, metadata);
+      }
 
-      // 8. 책등 크기 검증 (표지인 경우)
+      // 8. 책등 크기 검증 (표지인 경우) — R-44: 높이 축 포함(위 6 대체 시 공백 방지)
       if (options.fileType === 'cover') {
-        this.validateSpine(widthMm, options, errors, metadata);
+        this.validateSpine(widthMm, heightMm, options, errors, metadata);
       }
 
       // 9. 페이지 방향 검증 (WBS 2.1, R3 집계형 재구현)
@@ -556,7 +572,12 @@ export class PdfValidatorService {
 
       // 5~11. 페이지/사이즈/블리드/책등/방향/사철/스프레드 검증 — OFF 와 동일 헬퍼.
       this.validatePageCount(pageCount, options, errors, warnings);
-      this.validatePageSize(widthMm, heightMm, options, errors, metadata);
+      // R-44: OFF 경로와 동일 분기 — 표지+spine 해석 가능이면 validateSpine 이 대체.
+      const coverSpineAuthoritative =
+        options.fileType === 'cover' && this.hasSpineExpectation(options.orderOptions);
+      if (!coverSpineAuthoritative) {
+        this.validatePageSize(widthMm, heightMm, options, errors, metadata);
+      }
       // C-2a: crop mark(재단 기하) 검증(경량 경로) — OFF 와 동일 게이트/위치(validatePageSize 직후).
       // 1차: qpdf 추출 박스. 비신뢰(pdfinfo 폴백·간접참조 미해석)면 pdf-lib 실페이지
       // (위 폴백 분기에서 로드된 경우에만 node 존재)로 재시도, 그것도 없으면 skip(오탐 방지).
@@ -567,9 +588,12 @@ export class PdfValidatorService {
         }
         this.validateCropMarks(cropBoxes, options, warnings, metadata);
       }
-      this.validateBleed(widthMm, heightMm, options, warnings, metadata);
+      // F8: OFF 경로와 동일 — spine 대체 표지는 validateBleed 도 대체(허위 BLEED_MISSING 방지)
+      if (!coverSpineAuthoritative) {
+        this.validateBleed(widthMm, heightMm, options, warnings, metadata);
+      }
       if (options.fileType === 'cover') {
-        this.validateSpine(widthMm, options, errors, metadata);
+        this.validateSpine(widthMm, heightMm, options, errors, metadata);
       }
       this.validatePageOrientation(
         pages,
@@ -1157,57 +1181,143 @@ export class PdfValidatorService {
   }
 
   /**
+   * 표지 spine 기대치 해석 — 게이트(hasSpineExpectation)와 validateSpine 폭 결정이
+   * **반드시 같은 함수**를 쓴다(불변식: 게이트 true ⇔ 기대치 존재 — 어긋나면
+   * validatePageSize 를 건너뛰고 validateSpine 도 생략하는 검증 전무 공백 발생).
+   *
+   *  1) spineWidthMm(서버 주입 권위값) — round2 보존(F6: v2 무선 0.77 을 0.8 로 뭉개지 않음)
+   *  2) paperThickness 폴백 — pages 유효(≥1)일 때만(F7/F9: NaN 전파 차단).
+   *     양장은 합지4·min8 포함 산식(F1/F4: 무선식 폴백이면 정상 싸바리 표지가 확정 오탐),
+   *     유효성 위반(p<12·비4배수)이면 기대치 없음 → validatePageSize 백스톱 복귀.
+   *  3) 둘 다 없으면 undefined → 게이트 false(validatePageSize 경로 유지)
+   */
+  private resolveExpectedSpine(
+    orderOptions: ValidationOptions['orderOptions'],
+  ): number | undefined {
+    const { spineWidthMm, paperThickness, pages, binding } = orderOptions;
+    if (typeof spineWidthMm === 'number' && spineWidthMm >= 0) {
+      return Math.round(spineWidthMm * 100) / 100;
+    }
+    if (paperThickness && typeof pages === 'number' && pages >= 1) {
+      if (binding === 'hardcover') {
+        const r = calcHardcoverSpine({ pages, sheetThicknessMm: paperThickness });
+        return r.ok ? r.spineMm : undefined;
+      }
+      // ⚠️ 무선 폴백은 bindingMargin 을 모르므로 권위 공식보다 작을 수 있음(허용 오차로 흡수).
+      return Math.round(paperThickness * (pages / 2) * 10) / 10;
+    }
+    return undefined;
+  }
+
+  /**
+   * 표지에 spine 기대치가 해석 가능한가 — 콜사이트에서 validatePageSize/validateBleed
+   * 대체 여부(이중발행 해소)를 정하는 게이트. resolveExpectedSpine 과 단일 소스.
+   */
+  private hasSpineExpectation(orderOptions: ValidationOptions['orderOptions']): boolean {
+    return this.resolveExpectedSpine(orderOptions) !== undefined;
+  }
+
+  /**
    * 책등 크기 검증 (표지용)
+   *
+   * R-44(2026-07-21) 확장:
+   *  - 양장(hardcover)은 싸바리 전개 규격으로 검증 — 전개폭 (W+8)×2+spine+40,
+   *    전개높이 (H+8)+40 (mybookmake 골든 484×345, @storige/types 단일 산식).
+   *    도련은 전개 규격에 이미 포함된 개념이라 추가 가산하지 않음.
+   *  - 무선은 현행 산식 유지(W×2+spine+날개+도련×2) + 높이(H+도련×2) 검증 additive —
+   *    콜사이트에서 validatePageSize 를 대체하므로 높이 축이 공백이 되지 않게.
+   *  - details 에 { expectedMm, actualMm, toleranceMm } additive(bookmoa PdfValidationModal 계약).
+   *  - 허용오차: orderOptions.spineToleranceMm > env(제본별) > 2mm(현행 유지 — 관찰 1단계).
    */
   private validateSpine(
     widthMm: number,
+    heightMm: number,
     options: ValidationOptions,
     errors: ValidationError[],
     metadata: PdfMetadata,
   ): void {
-    const { size, pages, paperThickness, spineWidthMm, wingEnabled, wingWidthMm } =
+    const { size, spineWidthMm, wingEnabled, wingWidthMm, binding, spineToleranceMm, spineSource } =
       options.orderOptions;
 
-    // 책등 폭 결정:
-    //  1) spineWidthMm (프런트가 /products/spine/calculate 로 계산한 권위 값, bindingMargin 포함) 우선
-    //  2) 없으면 paperThickness 로 fallback 재계산 (레거시 호환). 둘 다 없으면 검증 생략.
-    let expectedSpine: number;
-    if (typeof spineWidthMm === 'number' && spineWidthMm >= 0) {
-      expectedSpine = Math.round(spineWidthMm * 10) / 10;
-    } else if (paperThickness) {
-      // ⚠️ fallback 공식은 bindingMargin 을 모르므로 권위 공식보다 작을 수 있음(허용 오차로 흡수).
-      expectedSpine = Math.round(paperThickness * (pages / 2) * 10) / 10;
-    } else {
-      return; // 책등 정보 없음 → 검증 생략
+    // 책등 폭 결정 — 게이트(hasSpineExpectation)와 단일 소스(resolveExpectedSpine).
+    const expectedSpine = this.resolveExpectedSpine(options.orderOptions);
+    if (expectedSpine === undefined) {
+      return; // 책등 정보 없음 → 검증 생략 (게이트도 false 라 validatePageSize 가 백스톱)
     }
     metadata.spineSize = expectedSpine;
 
-    // 날개(wing) 폭: 사용 시 양쪽(×2) 가산. 미사용/미전달이면 0 → 레거시 동작 동일.
-    const wingTotal =
-      wingEnabled && typeof wingWidthMm === 'number' && wingWidthMm > 0
-        ? wingWidthMm * 2
-        : 0;
+    const isHardcover = binding === 'hardcover';
+    // F13: 파트너 오버라이드는 상한 클램프 — 무상한 spineToleranceMm(예: 10000)로
+    // 표지 치수 검증을 전면 무력화하는 페이로드 차단(@IsObject 단독 DTO 라 워커측이 방어선).
+    const rawTolerance =
+      typeof spineToleranceMm === 'number' && spineToleranceMm > 0
+        ? spineToleranceMm
+        : isHardcover
+          ? VALIDATION_CONFIG.SPINE_TOLERANCE_MM_HARDCOVER
+          : VALIDATION_CONFIG.SPINE_TOLERANCE_MM_PERFECT;
+    const tolerance = Math.min(rawTolerance, VALIDATION_CONFIG.SPINE_TOLERANCE_MM_MAX);
+    if (tolerance !== rawTolerance) {
+      this.logger.warn(
+        `[spine] spineToleranceMm ${rawTolerance}mm 상한 클램프 → ${tolerance}mm (SPINE_TOLERANCE_MM_MAX)`,
+      );
+    }
 
-    // 표지 전체 너비 (앞표지 + 책등 + 뒤표지 + 날개×2 + 재단여백×2)
-    const bleed = options.orderOptions.bleed ?? DEFAULT_BLEED_MM;
-    const expectedTotalWidth = size.width * 2 + expectedSpine + wingTotal + bleed * 2;
+    let expectedTotalWidth: number;
+    let expectedTotalHeight: number;
+    let wingTotal = 0;
+    if (isHardcover) {
+      // 양장 = 싸바리 전개 인쇄물(§C-2 판정). 날개 개념 없음, 도련 추가 가산 없음.
+      const spread = hardcoverCoverSpreadFromSpine({
+        widthMm: size.width,
+        heightMm: size.height,
+        spineMm: expectedSpine,
+      });
+      expectedTotalWidth = spread.totalWMm;
+      expectedTotalHeight = spread.totalHMm;
+    } else {
+      // 무선(및 레거시 경로): 앞표지 + 책등 + 뒤표지 + 날개×2 + 재단여백×2
+      wingTotal =
+        wingEnabled && typeof wingWidthMm === 'number' && wingWidthMm > 0
+          ? wingWidthMm * 2
+          : 0;
+      const bleed = options.orderOptions.bleed ?? DEFAULT_BLEED_MM;
+      expectedTotalWidth = size.width * 2 + expectedSpine + wingTotal + bleed * 2;
+      expectedTotalHeight = size.height + bleed * 2;
+    }
 
-    // 허용 오차 2mm (책등은 좀 더 여유롭게)
-    const tolerance = 2;
-
-    if (Math.abs(widthMm - expectedTotalWidth) > tolerance) {
+    const widthOff = Math.abs(widthMm - expectedTotalWidth) > tolerance;
+    const heightOff = Math.abs(heightMm - expectedTotalHeight) > tolerance;
+    if (widthOff || heightOff) {
+      const label = isHardcover ? '싸바리 전개' : `책등${wingTotal > 0 ? '·날개' : ''}`;
       errors.push({
         code: ErrorCode.SPINE_SIZE_MISMATCH,
-        message: `표지 크기가 책등${wingTotal > 0 ? '·날개' : ''} 크기와 맞지 않습니다. (예상 전체 너비: ${Math.round(expectedTotalWidth)}mm, 현재: ${Math.round(widthMm)}mm)`,
+        message:
+          `표지 크기가 ${label} 규격과 맞지 않습니다. ` +
+          `(예상: ${Math.round(expectedTotalWidth)}×${Math.round(expectedTotalHeight)}mm, ` +
+          `현재: ${Math.round(widthMm)}×${Math.round(heightMm)}mm)`,
         details: {
+          // R-44 계약(bookmoa PdfValidationModal): 평탄 3필드 + 기존 expected/actual 구조 병존.
+          // F11: 평탄값은 어긋난 축 기준(폭 우선) — 높이 단독 불일치 때 정상 폭이 뜨는 오표시 방지.
+          expectedMm: Math.round((widthOff ? expectedTotalWidth : expectedTotalHeight) * 100) / 100,
+          actualMm: Math.round((widthOff ? widthMm : heightMm) * 100) / 100,
+          axis: widthOff ? 'width' : 'height',
+          toleranceMm: tolerance,
           expected: {
             totalWidth: Math.round(expectedTotalWidth),
+            totalHeight: Math.round(expectedTotalHeight),
             spine: expectedSpine,
-            spineSource: typeof spineWidthMm === 'number' ? 'provided' : 'recalculated',
+            spineSource:
+              spineSource === 'server'
+                ? 'server'
+                : typeof spineWidthMm === 'number'
+                  ? 'provided'
+                  : 'recalculated',
             wingTotal,
+            layout: isHardcover ? 'hardcover-wrap' : 'perfect-spread',
           },
           actual: {
             totalWidth: Math.round(widthMm),
+            totalHeight: Math.round(heightMm),
           },
         },
         // C+ 게이팅(플래그 ON 시): adjustSpine 실행기 미배선(자동화 비대상 확정) → autoFixable=false.

@@ -42,11 +42,23 @@ export class CreateValidationJobDto {
   orderOptions: {
     size: { width: number; height: number };
     pages: number;
-    binding: 'perfect' | 'saddle' | 'spring';
+    // R-44: bookmoa canonical 코드 hardcover/spiral additive('spring' 은 레거시 표기 보존)
+    binding: 'perfect' | 'saddle' | 'spring' | 'spiral' | 'hardcover';
     bleed: number;
     paperThickness?: number;
     /** 책등 폭(mm) — /products/spine/calculate 권위 값. 있으면 워커가 직접 사용(bindingMargin 포함) */
     spineWidthMm?: number;
+    /**
+     * R-44: 내지 지종 라벨/코드(bookmoa productMeta.innerPaper 그대로 가능 — aliases 흡수).
+     * cover+perfect/hardcover 잡이면 서버가 이 값으로 spine 재계산해 spineWidthMm 을 덮어씀.
+     */
+    paperType?: string;
+    /** R-44: 표지 spine 검증 허용오차(mm) 파트너 오버라이드. 미전달 시 워커 기본값 */
+    spineToleranceMm?: number;
+    /** R-44: 서버 주입 시 'server' 스탬프(injectServerSpine) — 워커/감사 판별용 */
+    spineSource?: 'server' | 'client';
+    /** R-44: 서버가 덮어쓰기 전 클라 원본 spineWidthMm(대조 계측 보존) */
+    clientSpineWidthMm?: number;
     /** 날개(wing/flap) 사용 여부 — 표지 총너비 검증에 반영 */
     wingEnabled?: boolean;
     /** 날개 한쪽 폭(mm) */

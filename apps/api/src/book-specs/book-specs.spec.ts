@@ -158,6 +158,9 @@ describe('BookSpecs (Partner API v1 Stage 1-B)', () => {
             findOne: jest.fn(async ({ where }: { where: { code: string } }) =>
               (PAPER_FIXTURES.find((p) => p.code === where.code) as PaperTypeEntity) ?? null,
             ),
+            // R-44 resolvePaperType 별칭 스캔 경유 — 픽스처는 legacy 코드뿐이라
+            // 활성 스캔은 그대로 반환(정확 코드 매칭은 위 findOne 폴백이 담당)
+            find: jest.fn(async () => PAPER_FIXTURES as PaperTypeEntity[]),
           },
         },
         {
