@@ -168,12 +168,14 @@ export class PdfValidatorService {
       this.validatePageCount(pages.length, options, errors, warnings);
 
       // 6. 페이지 크기 검증
-      // R-44: 표지 + spine 기대치 해석 가능이면 validatePageSize 를 건너뛰고
-      // validateSpine 의 전개폭·높이 검증으로 대체 — 표지 전개 규격이 단일 판형
-      // 기대치(SIZE_MISMATCH)와 이중발행되던 결함 해소. spine 정보 없는 표지는
-      // 현행 그대로(검증 공백 방지). validatePageSize 본문은 무접촉(48케이스 계약).
+      // R-44: 표지 + spine 해석 가능이면 validateSpine 전개폭·높이 검증이 대체(이중발행 해소).
+      // R-53 완화: 무선/양장 표지는 spine 미해석이어도 스킵 — 전개폭 표지가 단일 판형
+      // 기대치와 원리적으로 불일치해 정상 표지를 오차단하던 경로 제거(대신
+      // validateSpine 이 SPINE_PARAMS_UNRESOLVED 비차단 고지). saddle 등 비스프레드
+      // 표지·내지는 현행 그대로. validatePageSize 본문은 무접촉(48케이스 계약).
       const coverSpineAuthoritative =
-        options.fileType === 'cover' && this.hasSpineExpectation(options.orderOptions);
+        options.fileType === 'cover' &&
+        (this.isCoverSpreadBinding(options) || this.hasSpineExpectation(options.orderOptions));
       if (!coverSpineAuthoritative) {
         this.validatePageSize(widthMm, heightMm, options, errors, metadata);
       }
@@ -202,8 +204,9 @@ export class PdfValidatorService {
       }
 
       // 8. 책등 크기 검증 (표지인 경우) — R-44: 높이 축 포함(위 6 대체 시 공백 방지)
+      // R-53: 미해석 스프레드 표지는 SPINE_PARAMS_UNRESOLVED 경고(warnings) 발행
       if (options.fileType === 'cover') {
-        this.validateSpine(widthMm, heightMm, options, errors, metadata);
+        this.validateSpine(widthMm, heightMm, options, errors, warnings, metadata);
       }
 
       // 9. 페이지 방향 검증 (WBS 2.1, R3 집계형 재구현)
@@ -572,9 +575,11 @@ export class PdfValidatorService {
 
       // 5~11. 페이지/사이즈/블리드/책등/방향/사철/스프레드 검증 — OFF 와 동일 헬퍼.
       this.validatePageCount(pageCount, options, errors, warnings);
-      // R-44: OFF 경로와 동일 분기 — 표지+spine 해석 가능이면 validateSpine 이 대체.
+      // R-44/R-53: OFF 경로와 동일 분기 — 스프레드 표지는 스킵(해석 시 SPINE 대체,
+      // 미해석 시 SPINE_PARAMS_UNRESOLVED 비차단 고지).
       const coverSpineAuthoritative =
-        options.fileType === 'cover' && this.hasSpineExpectation(options.orderOptions);
+        options.fileType === 'cover' &&
+        (this.isCoverSpreadBinding(options) || this.hasSpineExpectation(options.orderOptions));
       if (!coverSpineAuthoritative) {
         this.validatePageSize(widthMm, heightMm, options, errors, metadata);
       }
@@ -593,7 +598,7 @@ export class PdfValidatorService {
         this.validateBleed(widthMm, heightMm, options, warnings, metadata);
       }
       if (options.fileType === 'cover') {
-        this.validateSpine(widthMm, heightMm, options, errors, metadata);
+        this.validateSpine(widthMm, heightMm, options, errors, warnings, metadata);
       }
       this.validatePageOrientation(
         pages,
@@ -1210,11 +1215,21 @@ export class PdfValidatorService {
   }
 
   /**
-   * 표지에 spine 기대치가 해석 가능한가 — 콜사이트에서 validatePageSize/validateBleed
-   * 대체 여부(이중발행 해소)를 정하는 게이트. resolveExpectedSpine 과 단일 소스.
+   * 표지에 spine 기대치가 해석 가능한가 — resolveExpectedSpine 과 단일 소스.
    */
   private hasSpineExpectation(orderOptions: ValidationOptions['orderOptions']): boolean {
     return this.resolveExpectedSpine(orderOptions) !== undefined;
+  }
+
+  /**
+   * R-53 완화 스킵 게이트: 표지 + 스프레드 제본(무선/양장)이면 spine 해석 여부와 무관하게
+   * 단일 판형 검증(validatePageSize/validateBleed)을 스킵한다 — 표지 폭은 W×2+spine 이라
+   * 단일 판형과 원리적으로 절대 불일치(해석 시 SPINE 검증이 대체, 미해석 시
+   * SPINE_PARAMS_UNRESOLVED 비차단 고지). saddle/spiral 표지는 현행 유지.
+   */
+  private isCoverSpreadBinding(options: ValidationOptions): boolean {
+    const binding = options.orderOptions.binding;
+    return options.fileType === 'cover' && (binding === 'perfect' || binding === 'hardcover');
   }
 
   /**
@@ -1234,15 +1249,38 @@ export class PdfValidatorService {
     heightMm: number,
     options: ValidationOptions,
     errors: ValidationError[],
+    warnings: ValidationWarning[],
     metadata: PdfMetadata,
   ): void {
     const { size, spineWidthMm, wingEnabled, wingWidthMm, binding, spineToleranceMm, spineSource } =
       options.orderOptions;
 
-    // 책등 폭 결정 — 게이트(hasSpineExpectation)와 단일 소스(resolveExpectedSpine).
+    // 책등 폭 결정 — 스킵 게이트(isCoverSpreadBinding+해석)와 단일 소스(resolveExpectedSpine).
     const expectedSpine = this.resolveExpectedSpine(options.orderOptions);
     if (expectedSpine === undefined) {
-      return; // 책등 정보 없음 → 검증 생략 (게이트도 false 라 validatePageSize 가 백스톱)
+      // R-53 완화(bookmoa §3-1 오너 확정): 무선/양장 표지인데 spine 미해석 —
+      // 단일 판형 SIZE 검증은 콜사이트에서 이미 스킵됐으므로(오차단 방지) 침묵하지 않고
+      // "표지 규격 검증 생략" 비차단 고지를 남긴다. 매핑 지종의 SPINE_SIZE_MISMATCH
+      // 차단은 아래 정상 경로 그대로(완화는 미해석 경로 한정).
+      if (this.isCoverSpreadBinding(options)) {
+        const { paperType, paperThickness, spineUnresolvedReason, pages } = options.orderOptions;
+        const reason =
+          spineUnresolvedReason ??
+          (binding === 'hardcover' && paperThickness && !(typeof pages === 'number' && pages >= 12 && pages % 4 === 0)
+            ? 'HARDCOVER_PAGE_RULE'
+            : paperType
+              ? 'UNMAPPED_PAPER'
+              : 'NO_SPINE_PARAMS');
+        warnings.push({
+          code: WarningCode.SPINE_PARAMS_UNRESOLVED,
+          message:
+            '책등 두께 정보가 없어 표지 규격 검증을 생략했습니다.' +
+            (paperType ? ` (지종: ${paperType})` : ''),
+          details: { paperType, binding, reason },
+          autoFixable: false,
+        });
+      }
+      return; // 비스프레드 제본(saddle 등) 표지는 콜사이트에서 validatePageSize 가 백스톱
     }
     metadata.spineSize = expectedSpine;
 

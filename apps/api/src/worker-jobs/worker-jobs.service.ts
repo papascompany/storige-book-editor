@@ -439,12 +439,13 @@ export class WorkerJobsService implements OnModuleInit {
     orderOptions: Partial<CreateValidationJobDto['orderOptions']> & Record<string, any>,
   ): Promise<void> {
     if (!orderOptions) return;
-    // F2(스탬프 선소독): spineSource/clientSpineWidthMm 은 서버 전유 필드 —
-    // orderOptions 가 @IsObject 단독(중첩 무검증)이라 호출자가 위조 전송 가능하므로
-    // 모든 경로(비cover·미주입·v1 폴백·예외 포함)에서 무조건 소거하고, 'server'
-    // 스탬프는 아래 성공 경로만 재발급한다(감사 판별 1:1 보장).
+    // F2(스탬프 선소독): spineSource/clientSpineWidthMm/spineUnresolvedReason 은 서버
+    // 전유 필드 — orderOptions 가 @IsObject 단독(중첩 무검증)이라 호출자가 위조 전송
+    // 가능하므로 모든 경로(비cover·미주입·v1 폴백·예외 포함)에서 무조건 소거하고,
+    // 스탬프는 아래 해당 경로만 재발급한다(감사 판별 1:1 보장).
     delete orderOptions.spineSource;
     delete orderOptions.clientSpineWidthMm;
+    delete orderOptions.spineUnresolvedReason;
     if (fileType !== 'cover' || !this.spineService) return;
     const binding = orderOptions.binding as string;
     if (binding !== 'perfect' && binding !== 'hardcover') return;
@@ -462,6 +463,10 @@ export class WorkerJobsService implements OnModuleInit {
         this.logger.warn(
           `[spine-inject] 지종 '${paperType}' v2 두께 미보유(v1 폴백) — 클라 spineWidthMm 유지`,
         );
+        // R-53: 클라 값도 없으면 워커 SPINE_PARAMS_UNRESOLVED 사유 스탬프
+        if (typeof orderOptions.spineWidthMm !== 'number') {
+          orderOptions.spineUnresolvedReason = 'V1_FALLBACK';
+        }
         return;
       }
       const client = orderOptions.spineWidthMm;
@@ -480,6 +485,10 @@ export class WorkerJobsService implements OnModuleInit {
         `[spine-inject] SPINE_PARAMS_UNRESOLVED: '${paperType}'/${binding} 재계산 실패 ` +
           `(${error.message}) — 클라 값 유지(SOFT)`,
       );
+      // R-53: 클라 값도 없으면 워커 SPINE_PARAMS_UNRESOLVED 사유 스탬프
+      if (typeof orderOptions.spineWidthMm !== 'number') {
+        orderOptions.spineUnresolvedReason = 'UNMAPPED_PAPER';
+      }
     }
   }
 

@@ -72,6 +72,13 @@ export enum WarningCode {
   TRIMBOX_SIZE_MISMATCH = 'TRIMBOX_SIZE_MISMATCH',
   /** TrimBox↔MediaBox/BleedBox 블리드 기하 부정합 (TrimBox 이탈 또는 BleedBox 크기 불일치) */
   TRIMBOX_BLEED_INCONSISTENT = 'TRIMBOX_BLEED_INCONSISTENT',
+  /**
+   * R-53(2026-07-23, bookmoa §3-1 완화 확정): 표지(cover)+무선/양장인데 책등 두께를
+   * 해석하지 못해 표지 규격(전개폭) 검증을 생략함 — 비차단 고지. 단일 판형 SIZE 검증도
+   * 함께 스킵(표지 폭은 W×2+spine 이라 단일 판형과 원리적으로 절대 불일치 → 오차단 방지).
+   * details: { paperType?, binding, reason: 'UNMAPPED_PAPER'|'V1_FALLBACK'|'HARDCOVER_PAGE_RULE'|'NO_SPINE_PARAMS' }
+   */
+  SPINE_PARAMS_UNRESOLVED = 'SPINE_PARAMS_UNRESOLVED',
 }
 
 /**
@@ -209,6 +216,12 @@ export interface ValidationOptions {
     spineSource?: 'server' | 'client';
     /** R-44: 서버 덮어쓰기 전 클라 원본(대조 계측) */
     clientSpineWidthMm?: number;
+    /**
+     * R-53: API injectServerSpine 이 spine 미해석 사유를 스탬프(서버 전유 —
+     * 'UNMAPPED_PAPER'=지종 미해석 404 / 'V1_FALLBACK'=legacy 두께만 보유).
+     * SPINE_PARAMS_UNRESOLVED 경고 details.reason 으로 노출.
+     */
+    spineUnresolvedReason?: 'UNMAPPED_PAPER' | 'V1_FALLBACK';
     /** 날개(wing/flap) 사용 여부 — 표지 총너비 = ... + (wingEnabled ? wingWidthMm×2 : 0) */
     wingEnabled?: boolean;
     /** 날개 한쪽 폭 (mm) */

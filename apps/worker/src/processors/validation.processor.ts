@@ -32,6 +32,8 @@ interface ValidationJobData {
     spineSource?: 'server' | 'client';
     /** R-44: 서버 덮어쓰기 전 클라 원본 */
     clientSpineWidthMm?: number;
+    /** R-53: API 주입 실패 사유 스탬프(UNMAPPED_PAPER/V1_FALLBACK) */
+    spineUnresolvedReason?: 'UNMAPPED_PAPER' | 'V1_FALLBACK';
     /** 날개 사용 여부 */
     wingEnabled?: boolean;
     /** 날개 한쪽 폭(mm) */
