@@ -140,11 +140,55 @@ describe('무선 책등(calcPerfectSpine) — youshindang 골든 파리티', () 
       expect(r).toMatchObject({ ok: true, spineMm: 19.2 });
     });
 
-    it('bookmoa 라벨 해석: "아르떼(UW)130" 이 무선표에서도 해석됨(90·105·310 은 계속 미매핑)', () => {
+    it('bookmoa 라벨 해석: "아르떼(UW)130" 이 무선표에서도 해석됨', () => {
       expect(resolveSpinePaper(PERFECT_SPINE_PAPERS, '아르떼(UW)130')?.label).toBe('아르떼130');
       expect(resolveSpinePaper(PERFECT_SPINE_PAPERS, '아르떼(NW)230')?.label).toBe('아르떼230');
-      expect(resolveSpinePaper(PERFECT_SPINE_PAPERS, '아르떼(UW)90')).toBeUndefined();
-      expect(resolveSpinePaper(PERFECT_SPINE_PAPERS, '아르떼(UW)310')).toBeUndefined();
+    });
+  });
+
+  describe('caliper 실측 배치(2026-07-22 오너 회신 — bookmoa reply3 §5, 모달 동일값)', () => {
+    const BATCH: Array<[label: string, perPage: number, perSheet: number]> = [
+      ['아르떼90', 0.055, 0.11],
+      ['아르떼105', 0.0775, 0.155],
+      ['아르떼310', 0.2, 0.4],
+      ['백색모조220', 0.125, 0.25],
+      ['백색모조260', 0.15, 0.3],
+      ['뉴플러스백색 80g', 0.0405, 0.081],
+      ['뉴플러스미색 80g', 0.0405, 0.081],
+      ['이라이트80', 0.065, 0.13],
+      ['드로잉220', 0.16, 0.32],
+      ['도화지170', 0.134, 0.268],
+    ];
+
+    it('10항목 양 표 편입 + per-page = per-sheet ÷ 2 정확 환산 잠금', () => {
+      for (const [label, perPage, perSheet] of BATCH) {
+        expect(perfT(label)).toBe(perPage);
+        expect(hardT(label)).toBe(perSheet);
+        expect(perPage * 2).toBeCloseTo(perSheet, 10);
+      }
+    });
+
+    it('bookmoa 모달 라이브값 파리티: 무선 이라이트80 200p → 13.0mm / 양장 → 17mm', () => {
+      const p = calcPerfectSpine({ pages: 200, pageThicknessMm: perfT('이라이트80') });
+      expect(p.ok && p.spineMm).toBe(13);
+      const h = calcHardcoverSpine({ pages: 200, sheetThicknessMm: hardT('이라이트80') });
+      expect(h.ok && h.spineMm).toBe(17); // 합지4 + ceil(100×0.130)=13
+    });
+
+    it('소수 4자리 보존: 무선 아르떼105 200p → 15.5mm (scale-3 반올림이면 15.6 — 계약 위반)', () => {
+      const r = calcPerfectSpine({ pages: 200, pageThicknessMm: perfT('아르떼105') });
+      expect(r.ok && r.spineMm).toBe(15.5);
+    });
+
+    it('별칭 해석: 모조220→백색모조220 · 뉴플러스(백색)80 · 아르떼(NW)310', () => {
+      expect(resolveSpinePaper(PERFECT_SPINE_PAPERS, '모조220')?.label).toBe('백색모조220');
+      expect(resolveSpinePaper(PERFECT_SPINE_PAPERS, '뉴플러스(백색)80')?.label).toBe('뉴플러스백색 80g');
+      expect(resolveSpinePaper(HARDCOVER_SPINE_PAPERS, '아르떼(NW)310')?.label).toBe('아르떼310');
+    });
+
+    it('여전히 미회신 지종은 미매핑 유지: 무선 아트지250·스노우지300', () => {
+      expect(resolveSpinePaper(PERFECT_SPINE_PAPERS, '아트지250')).toBeUndefined();
+      expect(resolveSpinePaper(PERFECT_SPINE_PAPERS, '스노우지300')).toBeUndefined();
     });
   });
 });
@@ -169,7 +213,8 @@ describe('지종 해석(resolveSpinePaper) — bookmoa 라벨 흡수', () => {
   });
 
   it('미해석 지종 → undefined (SPINE_PARAMS_UNRESOLVED 경로)', () => {
-    expect(resolveSpinePaper(PERFECT_SPINE_PAPERS, '이라이트80')).toBeUndefined();
+    // 이라이트80은 2026-07-22 caliper 배치로 편입 → 여전히 미회신인 아트지250 사용
+    expect(resolveSpinePaper(PERFECT_SPINE_PAPERS, '아트지250')).toBeUndefined();
     expect(resolveSpinePaper(PERFECT_SPINE_PAPERS, undefined)).toBeUndefined();
   });
 });

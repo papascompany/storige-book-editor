@@ -440,6 +440,28 @@ describe('SpineController (e2e)', () => {
           isActive: true,
           sortOrder: 201,
         },
+        // caliper 실측 배치(2026-07-22) 대표 2종 — 소수 4자리·양공식 공존 재현
+        {
+          code: '아르떼105',
+          name: '아르떼105',
+          thickness: 0.155,
+          thicknessPerPageMm: 0.0775,
+          thicknessPerSheetMm: 0.155,
+          aliases: ['아르떼(UW)105', '아르떼(NW)105'],
+          category: 'body',
+          isActive: true,
+          sortOrder: 202,
+        },
+        {
+          code: '이라이트80',
+          name: '이라이트80',
+          thickness: 0.13,
+          thicknessPerPageMm: 0.065,
+          thicknessPerSheetMm: 0.13,
+          category: 'body',
+          isActive: true,
+          sortOrder: 203,
+        },
       ]);
     });
 
@@ -503,6 +525,27 @@ describe('SpineController (e2e)', () => {
       });
     });
 
+    it('caliper 배치: 소수 4자리 보존 — perfect+"아르떼(UW)105" 200p → 15.5mm v2', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/products/spine/calculate')
+        .send({ pageCount: 200, paperType: '아르떼(UW)105', bindingType: 'perfect' })
+        .expect(201);
+      expect(res.body).toMatchObject({ spineWidth: 15.5, formulaVersion: 'v2' });
+    });
+
+    it('caliper 배치: bookmoa 모달 파리티 — 이라이트80 무선 200p → 13mm / 양장 → 17mm', async () => {
+      const p = await request(app.getHttpServer())
+        .post('/products/spine/calculate')
+        .send({ pageCount: 200, paperType: '이라이트80', bindingType: 'perfect' })
+        .expect(201);
+      expect(p.body).toMatchObject({ spineWidth: 13, formulaVersion: 'v2' });
+      const h = await request(app.getHttpServer())
+        .post('/products/spine/calculate')
+        .send({ pageCount: 200, paperType: '이라이트80', bindingType: 'hardcover' })
+        .expect(201);
+      expect(h.body).toMatchObject({ spineWidth: 17, formulaVersion: 'v2', pageThickMm: 13 });
+    });
+
     it('binding-aware 해석: "미색모조80"+perfect → 무선행("미색모조 80g") 우선 → 9.6mm v2', async () => {
       // code 정확일치는 양장행("미색모조80", perPage 없음)이지만, 요청 binding(perfect)에
       // 필요한 perPage 보유 행을 우선해 SSOT 9.6 을 반환해야 한다 — bookmoa 주력 케이스.
@@ -537,9 +580,10 @@ describe('SpineController (e2e)', () => {
     });
 
     it('미해석 지종 + 커스텀 두께 없음 → 404 (기존 계약 유지)', async () => {
+      // 이라이트80은 2026-07-22 caliper 배치로 편입 → 여전히 미회신인 아트지250 사용
       await request(app.getHttpServer())
         .post('/products/spine/calculate')
-        .send({ pageCount: 100, paperType: '이라이트80', bindingType: 'perfect' })
+        .send({ pageCount: 100, paperType: '아트지250', bindingType: 'perfect' })
         .expect(404);
     });
 

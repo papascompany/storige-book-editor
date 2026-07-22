@@ -75,6 +75,18 @@ export const HARDCOVER_SPINE_PAPERS: SpinePaperSpec[] = [
   { label: '스노우200(무림)', t: 0.200, aliases: ['스노우지200'] },
   { label: '스노우250(무림)', t: 0.260, aliases: ['스노우지250'] },
   { label: '스노우300(무림)', t: 0.320, aliases: ['스노우지300'] },
+  // ── 오너 caliper 실측 회신분(2026-07-22, bookmoa reply3 §5) — per-sheet = caliper ──
+  // 무선표와 동일 라벨 = DB 단일 행에 양(兩) 공식 두께 공존(perPage+perSheet 백필).
+  { label: '아르떼90', t: 0.110, aliases: ['아르떼(UW)90', '아르떼(NW)90'] },
+  { label: '아르떼105', t: 0.155, aliases: ['아르떼(UW)105', '아르떼(NW)105'] },
+  { label: '아르떼310', t: 0.400, aliases: ['아르떼(UW)310', '아르떼(NW)310'] },
+  { label: '백색모조220', t: 0.250, aliases: ['모조220'] },
+  { label: '백색모조260', t: 0.300, aliases: ['모조260'] },
+  { label: '뉴플러스백색 80g', t: 0.081, aliases: ['뉴플러스(백색)80'] },
+  { label: '뉴플러스미색 80g', t: 0.081, aliases: ['뉴플러스(미색)80'] },
+  { label: '이라이트80', t: 0.130 },
+  { label: '드로잉220', t: 0.320 },
+  { label: '도화지170', t: 0.268 },
 ];
 
 /**
@@ -123,6 +135,19 @@ export const PERFECT_SPINE_PAPERS: SpinePaperSpec[] = [
   { label: '아르떼190', t: 0.135, aliases: ['아르떼(UW)190', '아르떼(NW)190'] },
   { label: '아르떼210', t: 0.148, aliases: ['아르떼(UW)210', '아르떼(NW)210'] },
   { label: '아르떼230', t: 0.161, aliases: ['아르떼(UW)230', '아르떼(NW)230'] },
+  // ── 오너 caliper 실측 회신분(2026-07-22, bookmoa reply3 §5 — 모달과 동일값) ──
+  // per-page = caliper ÷ 2 정확 환산. ±공차는 중앙값 채택. 아르떼105·뉴플러스80은
+  // 소수 4자리 — DB thicknessPerPageMm DECIMAL(7,4) 확장 마이그레이션(20260722) 전제.
+  { label: '아르떼90', t: 0.055, aliases: ['아르떼(UW)90', '아르떼(NW)90'] },
+  { label: '아르떼105', t: 0.0775, aliases: ['아르떼(UW)105', '아르떼(NW)105'] },
+  { label: '아르떼310', t: 0.2, aliases: ['아르떼(UW)310', '아르떼(NW)310'] },
+  { label: '백색모조220', t: 0.125, aliases: ['모조220'] },
+  { label: '백색모조260', t: 0.15, aliases: ['모조260'] },
+  { label: '뉴플러스백색 80g', t: 0.0405, aliases: ['뉴플러스(백색)80'] },
+  { label: '뉴플러스미색 80g', t: 0.0405, aliases: ['뉴플러스(미색)80'] },
+  { label: '이라이트80', t: 0.065 },
+  { label: '드로잉220', t: 0.16 },
+  { label: '도화지170', t: 0.134 },
 ];
 
 /**
