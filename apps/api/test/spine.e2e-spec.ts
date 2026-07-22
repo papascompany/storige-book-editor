@@ -432,6 +432,8 @@ describe('SpineController (e2e)', () => {
           code: '아르떼130',
           name: '아르떼130',
           thickness: 0.191,
+          // 단일 행에 양(兩) 공식 두께 공존 — 아르떼 무선 확장(perPage 백필) 재현
+          thicknessPerPageMm: 0.096,
           thicknessPerSheetMm: 0.191,
           aliases: ['아르떼(UW)130', '아르떼(NW)130'],
           category: 'body',
@@ -487,6 +489,18 @@ describe('SpineController (e2e)', () => {
         .send({ pageCount: 40, paperType: '아르떼(UW)130', bindingType: 'hardcover' })
         .expect(201);
       expect(res.body).toMatchObject({ spineWidth: 8, resolvedPaperCode: '아르떼130' });
+    });
+
+    it('아르떼 무선 확장: 단일 행 양 공식 공존 — perfect+"아르떼(UW)130" 200p → 19.2mm v2', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/products/spine/calculate')
+        .send({ pageCount: 200, paperType: '아르떼(UW)130', bindingType: 'perfect' })
+        .expect(201);
+      expect(res.body).toMatchObject({
+        spineWidth: 19.2,
+        formulaVersion: 'v2',
+        resolvedPaperCode: '아르떼130',
+      });
     });
 
     it('binding-aware 해석: "미색모조80"+perfect → 무선행("미색모조 80g") 우선 → 9.6mm v2', async () => {
