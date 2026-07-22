@@ -125,6 +125,28 @@ describe('무선 책등(calcPerfectSpine) — youshindang 골든 파리티', () 
   it('두 표 상호 정합: 미색모조80 — 무선 페이지당 ×2 ≈ 양장 장당 (±0.002)', () => {
     expect(Math.abs(perfT('미색모조 80g') * 2 - hardT('미색모조80'))).toBeLessThanOrEqual(0.002);
   });
+
+  describe('아르떼 무선 확장(2026-07-21 오너 실측 승인 — per-sheet÷2 정확 환산)', () => {
+    it('무선 아르떼 5평량 편입 + 양장표 ×2 정합(±0.002)', () => {
+      for (const g of ['130', '160', '190', '210', '230']) {
+        const p = perfT(`아르떼${g}`);
+        expect(p).toBeGreaterThan(0);
+        expect(Math.abs(p * 2 - hardT(`아르떼${g}`))).toBeLessThanOrEqual(0.002);
+      }
+    });
+
+    it('무선 200p 아르떼130(0.096/페이지) → 19.2mm', () => {
+      const r = calcPerfectSpine({ pages: 200, pageThicknessMm: perfT('아르떼130') });
+      expect(r).toMatchObject({ ok: true, spineMm: 19.2 });
+    });
+
+    it('bookmoa 라벨 해석: "아르떼(UW)130" 이 무선표에서도 해석됨(90·105·310 은 계속 미매핑)', () => {
+      expect(resolveSpinePaper(PERFECT_SPINE_PAPERS, '아르떼(UW)130')?.label).toBe('아르떼130');
+      expect(resolveSpinePaper(PERFECT_SPINE_PAPERS, '아르떼(NW)230')?.label).toBe('아르떼230');
+      expect(resolveSpinePaper(PERFECT_SPINE_PAPERS, '아르떼(UW)90')).toBeUndefined();
+      expect(resolveSpinePaper(PERFECT_SPINE_PAPERS, '아르떼(UW)310')).toBeUndefined();
+    });
+  });
 });
 
 describe('지종 해석(resolveSpinePaper) — bookmoa 라벨 흡수', () => {
