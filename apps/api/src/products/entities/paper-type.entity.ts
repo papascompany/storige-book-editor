@@ -27,8 +27,10 @@ export class PaperTypeEntity {
   /**
    * R-44 v2 (2026-07-21): 무선(perfect) 공식용 페이지당 두께(mm/페이지).
    * youshindang 두께표 이식값. NULL = v1 전용 지종(legacy 8코드) → v1 공식 유지.
+   * scale 4 (2026-07-22): caliper÷2 환산값(아르떼105=0.0775·뉴플러스80=0.0405)이
+   * 소수 4자리 — scale 3이면 반올림돼 bookmoa 모달과 0.1mm 어긋난다(동일값 계약 위반).
    */
-  @Column({ type: 'decimal', precision: 6, scale: 3, nullable: true })
+  @Column({ type: 'decimal', precision: 7, scale: 4, nullable: true })
   thicknessPerPageMm: number | null;
 
   /**
