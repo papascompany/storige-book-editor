@@ -59,6 +59,8 @@ export class CreateValidationJobDto {
     spineSource?: 'server' | 'client';
     /** R-44: 서버가 덮어쓰기 전 클라 원본 spineWidthMm(대조 계측 보존) */
     clientSpineWidthMm?: number;
+    /** R-53: spine 미해석 사유 서버 스탬프(UNMAPPED_PAPER/V1_FALLBACK) — 워커 경고 details.reason */
+    spineUnresolvedReason?: 'UNMAPPED_PAPER' | 'V1_FALLBACK';
     /** 날개(wing/flap) 사용 여부 — 표지 총너비 검증에 반영 */
     wingEnabled?: boolean;
     /** 날개 한쪽 폭(mm) */

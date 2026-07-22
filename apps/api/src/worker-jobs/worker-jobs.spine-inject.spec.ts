@@ -202,4 +202,45 @@ describe('WorkerJobsService — R-44 spine 서버 재계산 주입(createValidat
     const [, payload] = validationQueue.add.mock.calls[0];
     expect(payload.orderOptions.spineSource).toBeUndefined();
   });
+
+  // ── R-53 (2026-07-23): spine 미해석 사유 스탬프 ──
+  it('R-53 v1 폴백 + 클라 spine 없음 → spineUnresolvedReason=V1_FALLBACK 스탬프', async () => {
+    spineService.calculate.mockResolvedValueOnce({
+      spineWidth: 24, formulaVersion: 'v1', paperThickness: 0.235,
+      bindingMargin: 0.5, warnings: [], formula: '',
+    });
+    await makeService().createValidationJob(coverDto({ paperType: '아트지250' }) as any);
+    const [, payload] = validationQueue.add.mock.calls[0];
+    expect(payload.orderOptions.spineUnresolvedReason).toBe('V1_FALLBACK');
+    expect(payload.orderOptions.spineWidthMm).toBeUndefined();
+  });
+
+  it('R-53 재계산 404 + 클라 spine 없음 → spineUnresolvedReason=UNMAPPED_PAPER 스탬프', async () => {
+    spineService.calculate.mockRejectedValueOnce(new Error("종이 타입 '드로잉999' 없음"));
+    await makeService().createValidationJob(coverDto({ paperType: '드로잉999' }) as any);
+    const [, payload] = validationQueue.add.mock.calls[0];
+    expect(payload.orderOptions.spineUnresolvedReason).toBe('UNMAPPED_PAPER');
+  });
+
+  it('R-53 v1 폴백이어도 클라 spine 있으면 사유 미스탬프(해석 경로 — 경고 불필요)', async () => {
+    spineService.calculate.mockResolvedValueOnce({
+      spineWidth: 24, formulaVersion: 'v1', paperThickness: 0.235,
+      bindingMargin: 0.5, warnings: [], formula: '',
+    });
+    await makeService().createValidationJob(
+      coverDto({ paperType: '아트지250', spineWidthMm: 23.5 }) as any,
+    );
+    const [, payload] = validationQueue.add.mock.calls[0];
+    expect(payload.orderOptions.spineUnresolvedReason).toBeUndefined();
+    expect(payload.orderOptions.spineWidthMm).toBe(23.5);
+  });
+
+  it('R-53 위조 spineUnresolvedReason 선소독: 스킵 경로(content)에서도 소거', async () => {
+    await makeService().createValidationJob({
+      ...coverDto({ spineUnresolvedReason: 'UNMAPPED_PAPER', spineWidthMm: 9.6 }),
+      fileType: 'content',
+    } as any);
+    const [, payload] = validationQueue.add.mock.calls[0];
+    expect(payload.orderOptions.spineUnresolvedReason).toBeUndefined();
+  });
 });

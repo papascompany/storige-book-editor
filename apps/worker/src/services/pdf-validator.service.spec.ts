@@ -549,15 +549,17 @@ describe('PdfValidatorService', () => {
         expect(sizeErr(result)).toBeUndefined();
       });
 
-      it('spine 정보 없는 표지는 현행 validatePageSize 경로 유지(검증 공백 방지)', async () => {
+      it('[R-53 갱신] spine 정보 없는 무선 표지 → 스킵 + SPINE_PARAMS_UNRESOLVED(NO_SPINE_PARAMS)', async () => {
         const pdfBytes = await createMockPdf(1, 100, 100);
         mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
         const result = await service.validate('./cover-nospine.pdf', {
           fileType: 'cover',
           orderOptions: { size: { width: 210, height: 297 }, pages: 4, binding: 'perfect', bleed: 3 },
         } as ValidationOptions);
-        expect(sizeErr(result)).toBeDefined();
+        expect(sizeErr(result)).toBeUndefined();
         expect(spineErr(result)).toBeUndefined();
+        const warn = result.warnings.find((w: any) => w.code === WarningCode.SPINE_PARAMS_UNRESOLVED);
+        expect(warn?.details).toMatchObject({ binding: 'perfect', reason: 'NO_SPINE_PARAMS' });
       });
 
       it('무선 높이 축 additive: 폭 정합·높이 위반(416×250) → SPINE_SIZE_MISMATCH', async () => {
@@ -601,7 +603,9 @@ describe('PdfValidatorService', () => {
         expect(result.metadata.spineSize).toBe(14);
       });
 
-      it('F1/F4 양장 폴백 유효성 위반(42p)은 기대치 없음 → validatePageSize 백스톱 복귀', async () => {
+      it('[R-53 갱신] 양장 폴백 유효성 위반(42p) → 스킵 + SPINE_PARAMS_UNRESOLVED(HARDCOVER_PAGE_RULE)', async () => {
+        // R-44 시점엔 validatePageSize 백스톱이었으나 R-53 완화(오너 확정)로
+        // 스프레드 표지는 단일판형 검증 자체를 스킵 — 비차단 고지로 대체.
         const pdfBytes = await createMockPdf(1, 490, 345);
         mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
         const result = await service.validate('./wrap-42p.pdf', {
@@ -612,7 +616,9 @@ describe('PdfValidatorService', () => {
           },
         } as ValidationOptions);
         expect(spineErr(result)).toBeUndefined();
-        expect(sizeErr(result)).toBeDefined(); // 검증 공백 아님 — 단일판형 경로가 잡는다
+        expect(sizeErr(result)).toBeUndefined();
+        const warn = result.warnings.find((w: any) => w.code === WarningCode.SPINE_PARAMS_UNRESOLVED);
+        expect(warn?.details).toMatchObject({ binding: 'hardcover', reason: 'HARDCOVER_PAGE_RULE' });
       });
 
       it('F6 서버 권위 spineWidthMm 소수 2자리 보존: 0.77 이 0.8 로 양자화되지 않음', async () => {
@@ -630,7 +636,7 @@ describe('PdfValidatorService', () => {
         expect(result.metadata.spineSize).toBe(0.77);
       });
 
-      it('F7/F9 pages 무효 + paperThickness만 → 게이트 false → validatePageSize 백스톱(NaN 전파 차단)', async () => {
+      it('[R-53 갱신] pages 무효 + paperThickness만 → NaN 없이 스킵 + 비차단 고지', async () => {
         const pdfBytes = await createMockPdf(1, 100, 100);
         mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
         const result = await service.validate('./nan-guard.pdf', {
@@ -641,7 +647,69 @@ describe('PdfValidatorService', () => {
           },
         } as ValidationOptions);
         expect(spineErr(result)).toBeUndefined();
+        expect(sizeErr(result)).toBeUndefined();
+        expect(
+          result.warnings.some((w: any) => w.code === WarningCode.SPINE_PARAMS_UNRESOLVED),
+        ).toBe(true);
+      });
+
+      // ── R-53 (2026-07-23, bookmoa §3-1 오너 확정): 미해석 스프레드 표지 완화 ──
+      it('R-53 미해석 무선 표지: SIZE/BLEED 미발행 + SPINE_PARAMS_UNRESOLVED(서버 스탬프 reason 우선)', async () => {
+        const pdfBytes = await createMockPdf(4, 430, 303);
+        mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
+        const result = await service.validate('./cover-unmapped.pdf', {
+          fileType: 'cover',
+          orderOptions: {
+            size: { width: 210, height: 297 }, pages: 4, binding: 'perfect', bleed: 3,
+            paperType: '아트지250', spineUnresolvedReason: 'V1_FALLBACK',
+          },
+        } as ValidationOptions);
+        expect(sizeErr(result)).toBeUndefined();
+        expect(result.warnings.find((w: any) => w.code === WarningCode.BLEED_MISSING)).toBeUndefined();
+        const warn = result.warnings.find((w: any) => w.code === WarningCode.SPINE_PARAMS_UNRESOLVED);
+        expect(warn).toMatchObject({
+          autoFixable: false,
+          details: { paperType: '아트지250', binding: 'perfect', reason: 'V1_FALLBACK' },
+        });
+        expect(warn?.message).toContain('아트지250');
+        expect(result.isValid).toBe(true); // 비차단 — 경고만으로 통과
+      });
+
+      it('R-53 reason 폴백: 서버 스탬프 없음 + paperType 있음 → UNMAPPED_PAPER', async () => {
+        const pdfBytes = await createMockPdf(4, 430, 303);
+        mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
+        const result = await service.validate('./cover-unmapped2.pdf', {
+          fileType: 'cover',
+          orderOptions: {
+            size: { width: 210, height: 297 }, pages: 4, binding: 'perfect', bleed: 3,
+            paperType: '드로잉999',
+          },
+        } as ValidationOptions);
+        const warn = result.warnings.find((w: any) => w.code === WarningCode.SPINE_PARAMS_UNRESOLVED);
+        expect(warn?.details).toMatchObject({ reason: 'UNMAPPED_PAPER' });
+      });
+
+      it('R-53 범위 밖: saddle 표지는 현행 validatePageSize 유지(완화 비대상)', async () => {
+        const pdfBytes = await createMockPdf(1, 100, 100);
+        mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
+        const result = await service.validate('./cover-saddle.pdf', {
+          fileType: 'cover',
+          orderOptions: { size: { width: 210, height: 297 }, pages: 4, binding: 'saddle', bleed: 3 },
+        } as ValidationOptions);
         expect(sizeErr(result)).toBeDefined();
+        expect(
+          result.warnings.some((w: any) => w.code === WarningCode.SPINE_PARAMS_UNRESOLVED),
+        ).toBe(false);
+      });
+
+      it('R-53 불변: 매핑 지종(spine 해석) 표지의 SPINE_SIZE_MISMATCH 차단은 유지', async () => {
+        const pdfBytes = await createMockPdf(1, 490, 345);
+        mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
+        const result = await service.validate('./wrap-still-blocks.pdf', hardcoverOpts());
+        expect(spineErr(result)).toBeDefined(); // 484 기대 vs 490 — 완화 무관 차단
+        expect(
+          result.warnings.some((w: any) => w.code === WarningCode.SPINE_PARAMS_UNRESOLVED),
+        ).toBe(false);
       });
 
       it('F8 spine 대체 표지엔 허위 BLEED_MISSING 미발행(extendBleed 자동보정 오발화 차단)', async () => {
