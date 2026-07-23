@@ -186,9 +186,53 @@ describe('무선 책등(calcPerfectSpine) — youshindang 골든 파리티', () 
       expect(resolveSpinePaper(HARDCOVER_SPINE_PAPERS, '아르떼(NW)310')?.label).toBe('아르떼310');
     });
 
-    it('여전히 미회신 지종은 미매핑 유지: 무선 아트지250·스노우지300', () => {
-      expect(resolveSpinePaper(PERFECT_SPINE_PAPERS, '아트지250')).toBeUndefined();
-      expect(resolveSpinePaper(PERFECT_SPINE_PAPERS, '스노우지300')).toBeUndefined();
+    it('실재하지 않는 라벨만 미매핑(오타 방어) — 정상 지종 커버리지는 R-55로 완성', () => {
+      expect(resolveSpinePaper(PERFECT_SPINE_PAPERS, '존재하지않는지종999')).toBeUndefined();
+      expect(resolveSpinePaper(HARDCOVER_SPINE_PAPERS, '존재하지않는지종999')).toBeUndefined();
+    });
+  });
+
+  describe('caliper 마지막 배치(2026-07-23 R-55 — 미매핑 잔여 0 완성, 모달 동일값)', () => {
+    it('무선 신규 6종 값 잠금(아트지·스노우지 80/250/300 — 250/300은 산지 중앙값)', () => {
+      expect(perfT('아트지 80g')).toBe(0.032);
+      expect(perfT('아트지 250g')).toBe(0.1165);
+      expect(perfT('아트지 300g')).toBe(0.1435);
+      expect(perfT('스노우지 80g')).toBe(0.0355);
+      expect(perfT('스노우지 250g')).toBe(0.13);
+      expect(perfT('스노우지 300g')).toBe(0.16);
+    });
+
+    it('양장 신규 3항목 + 단일행 공존(뉴플러스100)·÷2 정합', () => {
+      expect(hardT('백색모조120')).toBe(0.14);
+      expect(hardT('뉴플러스백색 100g')).toBe(0.101);
+      expect(hardT('뉴플러스미색 100g')).toBe(0.101);
+      // ÷2 정합(정확 케이스): 스노우지·아트지80은 양장 무림값과 정확 절반
+      expect(perfT('스노우지 80g') * 2).toBeCloseTo(hardT('스노우80(무림)'), 10);
+      expect(perfT('스노우지 250g') * 2).toBeCloseTo(hardT('스노우250(무림)'), 10);
+      expect(perfT('스노우지 300g') * 2).toBeCloseTo(hardT('스노우300(무림)'), 10);
+      expect(perfT('아트지 80g') * 2).toBeCloseTo(hardT('아트80(무림)'), 10);
+    });
+
+    it('미세 갱신 잠금(R-55 §1): 백모조 120g=0.070 · 뉴플러스100=0.0505 — 양장과 ÷2 정합', () => {
+      expect(perfT('백모조 120g')).toBe(0.07);
+      expect(perfT('뉴플러스백색 100g')).toBe(0.0505);
+      expect(perfT('백모조 120g') * 2).toBeCloseTo(hardT('백색모조120'), 10);
+      expect(perfT('뉴플러스백색 100g') * 2).toBeCloseTo(hardT('뉴플러스백색 100g'), 10);
+    });
+
+    it('bookmoa 모달 라이브값 파리티: 무선 아트지250 200p → 23.3mm / 양장 백색모조120 200p → 18mm', () => {
+      const p = calcPerfectSpine({ pages: 200, pageThicknessMm: perfT('아트지 250g') });
+      expect(p.ok && p.spineMm).toBe(23.3);
+      const h = calcHardcoverSpine({ pages: 200, sheetThicknessMm: hardT('백색모조120') });
+      expect(h.ok && h.spineMm).toBe(18); // 합지4 + ceil(100×0.140)=14
+    });
+
+    it('해석: "아트지250"(정규화)·"모조120"(binding별 분리) — 무선/양장 각각 올바른 행', () => {
+      expect(resolveSpinePaper(PERFECT_SPINE_PAPERS, '아트지250')?.label).toBe('아트지 250g');
+      expect(resolveSpinePaper(PERFECT_SPINE_PAPERS, '스노우지300')?.label).toBe('스노우지 300g');
+      expect(resolveSpinePaper(PERFECT_SPINE_PAPERS, '모조120')?.label).toBe('백모조 120g');
+      expect(resolveSpinePaper(HARDCOVER_SPINE_PAPERS, '모조120')?.label).toBe('백색모조120');
+      expect(resolveSpinePaper(HARDCOVER_SPINE_PAPERS, '뉴플러스(미색)100')?.label).toBe('뉴플러스미색 100g');
     });
   });
 });
@@ -213,8 +257,8 @@ describe('지종 해석(resolveSpinePaper) — bookmoa 라벨 흡수', () => {
   });
 
   it('미해석 지종 → undefined (SPINE_PARAMS_UNRESOLVED 경로)', () => {
-    // 이라이트80은 2026-07-22 caliper 배치로 편입 → 여전히 미회신인 아트지250 사용
-    expect(resolveSpinePaper(PERFECT_SPINE_PAPERS, '아트지250')).toBeUndefined();
+    // R-55로 정상 지종 커버리지 완성 — 미해석은 미등록 라벨(오타 등)만 해당
+    expect(resolveSpinePaper(PERFECT_SPINE_PAPERS, '존재하지않는지종999')).toBeUndefined();
     expect(resolveSpinePaper(PERFECT_SPINE_PAPERS, undefined)).toBeUndefined();
   });
 });
