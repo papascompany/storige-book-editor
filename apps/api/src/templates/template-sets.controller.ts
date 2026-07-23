@@ -32,6 +32,7 @@ import {
   ReorderTemplatesDto,
   PairTemplateSetDto,
 } from './dto/template-set.dto';
+import { DeriveOrientationDto } from './dto/derive-orientation.dto';
 
 @ApiTags('Template Sets')
 @Controller('template-sets')
@@ -177,14 +178,16 @@ export class TemplateSetsController {
   @ApiBearerAuth()
   @ApiOperation({
     summary:
-      '반대 방향 세트 파생 (page류 변환 복제 + is_active=0 초안 + 즉시 대칭 페어링)',
+      '반대 방향 세트 파생 (page류 변환 복제 + is_active=0 초안 + 즉시 대칭 페어링. includeCover 시 spread(full)만 면 단위 변환 이월 — 트랙 C)',
   })
   @ApiResponse({ status: 201, description: '파생 성공' })
   @ApiResponse({ status: 400, description: '정사각 판형 — 파생 무의미' })
   @ApiResponse({ status: 404, description: '템플릿셋/참조 템플릿 없음' })
   @ApiResponse({ status: 409, description: '이미 방향 짝이 있음' })
-  async deriveOrientation(@Param('id') id: string) {
-    return this.templateSetsService.deriveOrientation(id);
+  async deriveOrientation(@Param('id') id: string, @Body() dto?: DeriveOrientationDto) {
+    return this.templateSetsService.deriveOrientation(id, {
+      includeCover: dto?.includeCover === true,
+    });
   }
 
   @Put(':id/templates')

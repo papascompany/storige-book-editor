@@ -116,8 +116,9 @@ export const OrientationPairSection = ({ templateSetId }: OrientationPairSection
   });
 
   const deriveMutation = useMutation({
-    mutationFn: () => templateSetsApi.deriveOrientation(templateSetId),
-    onSuccess: (created) => {
+    mutationFn: (opts: { includeCover: boolean }) =>
+      templateSetsApi.deriveOrientation(templateSetId, opts),
+    onSuccess: ({ set: created, meta }) => {
       invalidate();
       message.success(
         <span>
@@ -132,6 +133,19 @@ export const OrientationPairSection = ({ templateSetId }: OrientationPairSection
         </span>,
         8,
       );
+      // 트랙 C: 표지 이월 결과 안내 — 제외 사유·검수 노트가 있으면 경고로 병기
+      if (meta && (meta.coverSkipped.length > 0 || meta.coverReviewNotes.length > 0)) {
+        const skipped = meta.coverSkipped
+          .map((s) => `표지 ${s.templateId.slice(0, 8)}… (${s.reason})`)
+          .join(', ');
+        const parts = [
+          meta.coverSkipped.length > 0 ? `이월 제외: ${skipped}` : null,
+          meta.coverReviewNotes.length > 0
+            ? `검수 노트 ${meta.coverReviewNotes.length}건 — 파생 표지를 반드시 확인하세요`
+            : null,
+        ].filter(Boolean);
+        message.warning(parts.join(' · '), 10);
+      }
     },
     onError: () => {
       message.error('반대 방향 세트 파생 생성에 실패했습니다.');
@@ -140,25 +154,44 @@ export const OrientationPairSection = ({ templateSetId }: OrientationPairSection
 
   const handleDeriveClick = () => {
     if (!current) return;
+    // antd Modal.confirm 의 content 는 1회 정적 렌더 — 클로저 변수 + uncontrolled
+    // Checkbox 로 최소 diff(리렌더 없는 정적 content 전제, 설계 §7-9).
+    let includeCover = false;
     Modal.confirm({
       title: '반대 방향 세트 파생 생성',
       width: 560,
       content: (
-        <ul style={{ paddingLeft: 20, margin: '8px 0' }}>
-          <li>
-            판형 W↔H 스왑(<b>{formatSizeLabel(current.height, current.width)}</b>) 세트가{' '}
-            <b>초안(비활성)</b>으로 생성됩니다 — 사람 검수 후 직접 활성화해야 노출됩니다.
-          </li>
-          <li>내지(page) 템플릿만 자동 재배치(축별 비율 위치 이동)로 이월됩니다.</li>
-          <li>표지류(스프레드·책등·날개·면지)는 이월되지 않습니다 — 별도 저작이 필요합니다.</li>
-          <li>생성 즉시 이 세트와 방향 쌍으로 연결됩니다(기본 판형은 현재 세트 유지).</li>
-        </ul>
+        <>
+          <ul style={{ paddingLeft: 20, margin: '8px 0' }}>
+            <li>
+              판형 W↔H 스왑(<b>{formatSizeLabel(current.height, current.width)}</b>) 세트가{' '}
+              <b>초안(비활성)</b>으로 생성됩니다 — 사람 검수 후 직접 활성화해야 노출됩니다.
+            </li>
+            <li>내지(page) 템플릿만 자동 재배치(축별 비율 위치 이동)로 이월됩니다.</li>
+            <li>
+              표지류(스프레드·책등·날개·면지)는 기본 이월되지 않습니다 — 아래 체크 시
+              스프레드는 면 단위 자동 변환으로 이월됩니다.
+            </li>
+            <li>생성 즉시 이 세트와 방향 쌍으로 연결됩니다(기본 판형은 현재 세트 유지).</li>
+            <li>
+              표지 자동 변환본은 <b>반드시 검수</b>가 필요합니다 — 책등 세로 텍스트 넘침·전폭
+              배경·flat 변환 템플릿(자동 제외됨)을 확인하세요.
+            </li>
+          </ul>
+          <Checkbox
+            onChange={(e) => {
+              includeCover = e.target.checked;
+            }}
+          >
+            표지(스프레드)도 면 단위 자동 변환으로 이월 (실험적)
+          </Checkbox>
+        </>
       ),
       okText: '파생 생성',
       cancelText: '취소',
       onOk: async () => {
         try {
-          await deriveMutation.mutateAsync();
+          await deriveMutation.mutateAsync({ includeCover });
         } catch {
           // 실패 메시지는 onError 에서 처리 — 모달은 닫는다
         }

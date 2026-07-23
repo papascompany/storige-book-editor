@@ -159,11 +159,29 @@ export const templateSetsApi = {
   /**
    * 반대 방향 세트 파생 생성 — 판형 W↔H 스왑 + 설정 복사, page류 템플릿만 비율 재배치 이월,
    * is_active=0(초안) 생성 즉시 원본과 페어링. 응답 = 새로 생성된 세트.
+   * [트랙 C] includeCover 시 표지(spread)도 면 단위 자동 변환 이월 — 응답 meta 로
+   * 제외 사유(coverSkipped)·검수 노트(coverReviewNotes) 안내.
    */
-  deriveOrientation: async (id: string): Promise<TemplateSetWithOrientation> => {
-    const response = await axiosInstance.post<{ success: boolean; data: TemplateSetWithOrientation }>(
-      `/template-sets/${id}/derive-orientation`
-    );
-    return response.data.data;
+  deriveOrientation: async (
+    id: string,
+    opts?: { includeCover?: boolean },
+  ): Promise<{
+    set: TemplateSetWithOrientation;
+    meta?: {
+      coverDerived: number;
+      coverSkipped: Array<{ templateId: string; reason: string }>;
+      coverReviewNotes: string[];
+    };
+  }> => {
+    const response = await axiosInstance.post<{
+      success: boolean;
+      data: TemplateSetWithOrientation;
+      meta?: {
+        coverDerived: number;
+        coverSkipped: Array<{ templateId: string; reason: string }>;
+        coverReviewNotes: string[];
+      };
+    }>(`/template-sets/${id}/derive-orientation`, { includeCover: !!opts?.includeCover });
+    return { set: response.data.data, meta: response.data.meta };
   },
 };

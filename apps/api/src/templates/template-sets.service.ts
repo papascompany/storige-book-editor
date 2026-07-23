@@ -31,6 +31,11 @@ import {
   withOrientationSuffix,
   transformCanvasDataOrientation,
 } from './orientation-derive.util';
+// 트랙 C (2026-07-23) — 표지 spread 면 단위 방향 파생
+import {
+  evaluateSpreadDeriveGate,
+  transformSpreadCanvasDataOrientation,
+} from './spread-orientation-derive.util';
 
 @Injectable()
 export class TemplateSetsService {
@@ -711,12 +716,26 @@ export class TemplateSetsService {
    *   editorMode·enabledMenus·pricing 등) 복사, 이름 ' (가로)'/' (세로)' 접미.
    * - is_active=0 초안 — 사람 검수 후 활성.
    * - page류 템플릿만 복제·변환(위치만 축별 비율 재배치 — orientation-derive.util).
-   *   spread(표지)/spine/wing/endpaper류는 이월하지 않음(책등·싸바리 기하 별도 저작).
-   *   ⚠️ 따라서 editorMode=book 파생 초안은 SPREAD 없이 시작 — 활성 전 표지 저작 필요
-   *   (create/update 의 validateBookModeTemplates 는 DTO 경로에만 적용되므로 저장 가능).
+   *   [트랙 C 2026-07-23] includeCover 명시 시 spread(full)만 면 단위 변환 이월
+   *   (spread-orientation-derive.util) — flat 계열·inner·spec 없음은 skip(meta 사유 안내,
+   *   파생 전체를 중단하지 않음). spine/wing/cover/endpaper 별도 type 은 계속 미이월.
+   *   ⚠️ includeCover 미지정 시 editorMode=book 파생 초안은 SPREAD 없이 시작 — 활성 전
+   *   표지 저작 필요(create/update 의 validateBookModeTemplates 는 DTO 경로 전용).
    * - 생성 즉시 원본과 대칭 페어링(원본 default 유지). 이미 짝이 있으면 409.
    */
-  async deriveOrientation(id: string): Promise<{ success: true; data: TemplateSet }> {
+  async deriveOrientation(
+    id: string,
+    options?: { includeCover?: boolean },
+  ): Promise<{
+    success: true;
+    data: TemplateSet;
+    meta?: {
+      coverDerived: number;
+      coverSkipped: Array<{ templateId: string; reason: string }>;
+      coverReviewNotes: string[];
+    };
+  }> {
+    const includeCover = options?.includeCover === true;
     const original = await this.findOne(id);
 
     if (original.pairedTemplateSetId) {
@@ -750,12 +769,59 @@ export class TemplateSetsService {
       );
     }
 
+    // 트랙 C — includeCover 결과 수집(응답 meta, includeCover 시에만 노출)
+    const coverSkipped: Array<{ templateId: string; reason: string }> = [];
+    const coverReviewNotes: string[] = [];
+    let coverDerived = 0;
+
     const derived = await this.templateSetRepository.manager.transaction(async (manager) => {
       // 1) page류 템플릿 복제·변환 — spread/spine/wing/endpaper/cover류 제외
       const newRefs: TemplateRef[] = [];
       for (const ref of refs) {
         const tpl = byId.get(ref.templateId);
-        if (!tpl || tpl.type !== 'page') continue;
+        if (!tpl) continue;
+
+        // [트랙 C] 표지 spread — includeCover 명시 시에만(기본 off = 현행 거동).
+        // 게이트 skip 은 파생 중단이 아님: 표지만 빠진 초안 + meta 사유 안내
+        // (표지 변환 불가가 내지 파생 전체를 막을 이유가 없음 — 현행보다 항상 같거나 나음).
+        if (tpl.type === 'spread' && includeCover) {
+          const spreadConfig = tpl.spreadConfig;
+          const gate = evaluateSpreadDeriveGate(spreadConfig);
+          if (!gate.ok || !spreadConfig) {
+            coverSkipped.push({
+              templateId: tpl.id,
+              reason: gate.ok ? 'SPREAD_SPEC_MISSING' : gate.reason,
+            });
+            continue;
+          }
+          const r = transformSpreadCanvasDataOrientation(tpl.canvasData, spreadConfig);
+          const newTemplate = this.templateRepository.create({
+            id: uuidv4(),
+            name: withOrientationSuffix(tpl.name, suffix),
+            thumbnailUrl: null, // 방향 오도 방지 (page 와 동일)
+            type: tpl.type, // = 'spread' (분기 가드로 보장)
+            width: r.widthMm, // spread 총치수(mm)
+            height: r.heightMm,
+            editable: tpl.editable,
+            deleteable: tpl.deleteable,
+            canvasData: r.canvasData,
+            spreadConfig: r.spreadConfig, // ★ 원본 복사 아님 — 파생본(spec·regions 재계산)
+            isDeleted: false,
+            categoryId: tpl.categoryId,
+            editCode: null, // unique 컬럼 — 복제 금지 (page 와 동일)
+            templateCode: null,
+            isActive: true,
+            createdBy: tpl.createdBy,
+            siteId: tpl.siteId,
+          });
+          await manager.save(Template, newTemplate);
+          newRefs.push({ templateId: newTemplate.id, required: ref.required });
+          coverDerived += 1;
+          coverReviewNotes.push(...r.reviewNotes.map((n) => `${tpl.id}: ${n}`));
+          continue;
+        }
+
+        if (tpl.type !== 'page') continue; // spine/wing/cover/endpaper 등 계속 skip
 
         // canvasData top-level width/height(mm)가 정본 — 없으면 템플릿 행 치수로 폴백.
         // (page 캔버스는 재단 또는 작업(재단+2×bleed) 치수일 수 있으나 W↔H 스왑은 양쪽 모두 정확.)
@@ -841,6 +907,14 @@ export class TemplateSetsService {
       return newSet;
     });
 
+    // 트랙 C: includeCover 시에만 meta 노출 — 미지정 응답은 기존과 byte-호환
+    if (includeCover) {
+      return {
+        success: true,
+        data: derived,
+        meta: { coverDerived, coverSkipped, coverReviewNotes },
+      };
+    }
     return { success: true, data: derived };
   }
 
