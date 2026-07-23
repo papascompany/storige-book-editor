@@ -483,6 +483,109 @@ describe('TemplateSetsService — orientation 페어링/파생', () => {
       expect(result.success).toBe(true);
     });
 
+    // ── 트랙 C (2026-07-23): includeCover 표지 이월 ──
+    it('[G-3] includeCover 미지정 → spread 미이월(현행 동일) + meta 미노출', async () => {
+      setsById['set-portrait'] = makePortraitSet();
+      const result = await service.deriveOrientation('set-portrait');
+      const templateSaves = txManager.save.mock.calls.filter(([entity]) => entity === Template);
+      expect(templateSaves).toHaveLength(1); // page 만
+      expect((result as { meta?: unknown }).meta).toBeUndefined();
+    });
+
+    it('[G-3] includeCover=true + spec 없는 spread → skip 사유(meta.coverSkipped), page 는 이월', async () => {
+      setsById['set-portrait'] = makePortraitSet(); // tpl-spread 는 spreadConfig null
+      const result = await service.deriveOrientation('set-portrait', { includeCover: true });
+      const templateSaves = txManager.save.mock.calls.filter(([entity]) => entity === Template);
+      expect(templateSaves).toHaveLength(1); // page 만 (spread skip — 파생 중단 아님)
+      expect(result.meta).toEqual({
+        coverDerived: 0,
+        coverSkipped: [{ templateId: 'tpl-spread', reason: 'SPREAD_SPEC_MISSING' }],
+        coverReviewNotes: [],
+      });
+    });
+
+    it('[G-3] includeCover=true + 유효 spread(full) → 면 단위 변환 이월 + 파생 spreadConfig', async () => {
+      const dpi = 150;
+      const mm = (v: number) => (v / 25.4) * dpi;
+      templatesById['tpl-spread'] = {
+        ...templatesById['tpl-spread'],
+        spreadConfig: {
+          version: 1,
+          spec: {
+            coverWidthMm: 214,
+            coverHeightMm: 301,
+            spineWidthMm: 1.2,
+            wingEnabled: false,
+            wingWidthMm: 0,
+            cutSizeMm: 3,
+            safeSizeMm: 3,
+            dpi,
+          },
+          regions: [],
+          totalWidthMm: 429.2,
+          totalHeightMm: 301,
+        } as Template['spreadConfig'],
+        canvasData: {
+          version: '5.5.2',
+          objects: [
+            {
+              type: 'rect',
+              id: 'workspace',
+              originX: 'center',
+              originY: 'center',
+              left: 0,
+              top: 0,
+              width: mm(435.2),
+              height: mm(307),
+              scaleX: 1,
+              scaleY: 1,
+            },
+            {
+              type: 'i-text',
+              id: 'title',
+              originX: 'center',
+              originY: 'center',
+              left: mm(321.6) - mm(429.2) / 2, // 앞표지 중앙(콘텐츠 321.6mm)
+              top: 0,
+              width: 100,
+              height: 40,
+              scaleX: 1,
+              scaleY: 1,
+              angle: 0,
+            },
+          ],
+          // 실덤프(d765713a)와 동일하게 top-level width/height 부재 형상 재현
+        } as unknown as Template['canvasData'],
+      };
+      setsById['set-portrait'] = makePortraitSet();
+
+      const result = await service.deriveOrientation('set-portrait', { includeCover: true });
+
+      const templateSaves = txManager.save.mock.calls.filter(([entity]) => entity === Template);
+      expect(templateSaves).toHaveLength(2); // spread + page (refs 순서 보존: spread 먼저)
+      const savedSpread = templateSaves[0][1] as Partial<Template>;
+      expect(savedSpread.type).toBe('spread');
+      expect(savedSpread.width).toBe(603.2); // (301×2)+1.2
+      expect(savedSpread.height).toBe(214);
+      expect(savedSpread.editCode).toBeNull();
+      expect(savedSpread.spreadConfig?.spec?.coverWidthMm).toBe(301); // 면 단위 스왑
+      expect(savedSpread.spreadConfig?.spec?.spineWidthMm).toBe(1.2); // spine 불변
+      expect(savedSpread.spreadConfig?.version).toBe(2); // SPREAD_CONFIG_VERSION 승급
+      // 제목 객체: 앞표지 면 보존(새 콘텐츠 302.2~603.2mm 범위)
+      const cd = savedSpread.canvasData as CanvasData;
+      const title = cd.objects.find((o) => o.id === 'title');
+      const contentXmm = ((((title?.left as number) + mm(603.2) / 2) * 25.4) / dpi);
+      expect(contentXmm).toBeGreaterThan(302.2);
+      expect(contentXmm).toBeLessThan(603.2);
+      // 세트 refs: spread 파생본 + page 파생본 순서 보존
+      const setSaves = txManager.save.mock.calls.filter(([entity]) => entity === TemplateSet);
+      const savedSet = setSaves[0][1] as Partial<TemplateSet>;
+      expect(savedSet.templates).toHaveLength(2);
+      expect(savedSet.templates?.[0].templateId).toBe(savedSpread.id);
+      expect(result.meta?.coverDerived).toBe(1);
+      expect(result.meta?.coverSkipped).toEqual([]);
+    });
+
     it('이미 방향 짝이 있으면 409 (파생 없음)', async () => {
       setsById['set-portrait'] = makePortraitSet({ pairedTemplateSetId: 'set-landscape' });
       await expect(service.deriveOrientation('set-portrait')).rejects.toThrow(ConflictException);
