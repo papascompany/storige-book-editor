@@ -121,6 +121,12 @@ services:
       # C+ G3: 미배선 fixMethod(resizeWithPadding 등) FIXABLE→실거부 게이팅. 기본 false.
       #   ⚠️ .env 에만 넣으면 silent no-op(WH-001 전례와 동일) — 이 매핑 필수(2026-07-21 실적발).
       - WORKER_WIRED_FIXABLE_GATING=${WORKER_WIRED_FIXABLE_GATING:-false}
+      # R-44 표지 spine 검증 허용오차(mm) — 2단계 승격은 .env 로만(무선 1.0/양장 1.5).
+      #   기본 2(관찰 1단계와 동일). MAX 는 orderOptions.spineToleranceMm 오버라이드 상한.
+      #   ⚠️ 동일 함정: .env 만으론 no-op — 이 매핑이 있어야 컨테이너에 주입된다.
+      - SPINE_TOLERANCE_MM_PERFECT=${SPINE_TOLERANCE_MM_PERFECT:-2}
+      - SPINE_TOLERANCE_MM_HARDCOVER=${SPINE_TOLERANCE_MM_HARDCOVER:-2}
+      - SPINE_TOLERANCE_MM_MAX=${SPINE_TOLERANCE_MM_MAX:-5}
       # Sentry (DSN 미설정 시 silent 동작)
       - SENTRY_DSN=${SENTRY_DSN_WORKER:-}
       - SENTRY_ENVIRONMENT=${SENTRY_ENVIRONMENT:-production}
