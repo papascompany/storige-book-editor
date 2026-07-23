@@ -321,7 +321,9 @@ function initPlugins(
   const copy = new CopyPlugin(canvas, editor, {
     getActiveCanvas: () => useAppStore.getState().canvas
   })
-  const align = new AlignPlugin(canvas, editor)
+  // E2 §3-2a: 분배 보호객체 제외 가드의 editMode(관리자) 면제 판정용 옵션 전달
+  // (additive — AlignPlugin 시그니처 하위호환, CopyPlugin editMode 규약과 동형).
+  const align = new AlignPlugin(canvas, editor, mergedOptions)
   // ImageProcessingPlugin은 이미지 처리 기능이 활성화된 경우에만 생성
   const image = ENABLE_IMAGE_PROCESSING ? new ImageProcessingPlugin(canvas, editor) : null
   const service = new ServicePlugin(canvas, editor, image, mergedOptions)
