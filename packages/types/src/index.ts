@@ -1469,6 +1469,65 @@ export function computeSpreadDimensions(spec: SpreadSpec): SpreadDimensions {
 }
 
 /**
+ * 트랙 C (2026-07-23): 스프레드 영역 좌→우 경계(mm) — 단일 기하 소스.
+ *
+ * SpreadLayoutEngine.computeLayout 의 영역 배치 시맨틱과 동일(widthMm<=0 영역 제외,
+ * 좌→우 REGION_ORDER 고정) — px 환산 없이 mm 로만 계산한다. canvas-core 와의
+ * 드리프트는 parity spec 이 봉쇄한다(SpreadLayoutEngine 쪽은 무변경).
+ * 소비자: 표지 방향 파생 유틸(면 분류·면 로컬 변환), spreadConfig.regions 재계산.
+ */
+export const SPREAD_REGION_ORDER: readonly SpreadRegionPosition[] = [
+  'back-wing',
+  'back-cover',
+  'spine',
+  'front-cover',
+  'front-wing',
+];
+
+/** 영역 한글 라벨 — canvas-core getRegionLabel 과 동일 문자열(파리티 spec 잠금). */
+export const SPREAD_REGION_LABELS: Record<SpreadRegionPosition, string> = {
+  'back-wing': '뒷날개',
+  'back-cover': '뒷표지',
+  'spine': '책등',
+  'front-cover': '앞표지',
+  'front-wing': '앞날개',
+};
+
+export interface SpreadRegionRangeMm {
+  position: SpreadRegionPosition;
+  /** 콘텐츠(trim) 좌상단 원점 기준 좌측 경계 (mm) */
+  x0Mm: number;
+  x1Mm: number;
+  widthMm: number;
+}
+
+export function computeSpreadRegionRangesMm(spec: SpreadSpec): SpreadRegionRangeMm[] {
+  const widths: Record<SpreadRegionPosition, number> = {
+    'back-wing': spec.wingEnabled ? spec.wingWidthMm : 0,
+    'back-cover': spec.coverWidthMm,
+    'spine': spec.spineWidthMm,
+    'front-cover': spec.coverWidthMm,
+    'front-wing': spec.wingEnabled ? spec.wingWidthMm : 0,
+  };
+  const ranges: SpreadRegionRangeMm[] = [];
+  let x = 0;
+  for (const position of SPREAD_REGION_ORDER) {
+    const widthMm = widths[position];
+    if (widthMm <= 0) continue; // computeLayout 과 동일: 비활성 영역 skip
+    ranges.push({ position, x0Mm: x, x1Mm: x + widthMm, widthMm });
+    x += widthMm;
+  }
+  // 총폭 검산 — computeSpreadDimensions 와 0.01mm 내 일치(불변식 위반 시 즉시 실패)
+  const total = computeSpreadDimensions(spec).totalWidthMm;
+  if (Math.abs(x - total) > 0.011) {
+    throw new Error(
+      `computeSpreadRegionRangesMm: 영역 합(${x}mm) ≠ computeSpreadDimensions(${total}mm)`,
+    );
+  }
+  return ranges;
+}
+
+/**
  * D-4 (2026-07-06): 스프레드 **출력(PDF) 사이즈** 계산 — 싸바리(caseBind) wrap 포함.
  *
  * 이중경계 원칙: 화면(trim 뷰)은 computeSpreadDimensions(위, **불변**)를 그대로 쓰고,
