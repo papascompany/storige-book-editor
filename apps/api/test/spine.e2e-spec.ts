@@ -462,6 +462,16 @@ describe('SpineController (e2e)', () => {
           isActive: true,
           sortOrder: 203,
         },
+        // R-55 마지막 배치 대표 — 산지 중앙값·소수 4자리(0.1165) 재현
+        {
+          code: '아트지 250g',
+          name: '아트지 250g',
+          thickness: 0.233,
+          thicknessPerPageMm: 0.1165,
+          category: 'body',
+          isActive: true,
+          sortOrder: 204,
+        },
       ]);
     });
 
@@ -533,6 +543,18 @@ describe('SpineController (e2e)', () => {
       expect(res.body).toMatchObject({ spineWidth: 15.5, formulaVersion: 'v2' });
     });
 
+    it('R-55 마지막 배치: "아트지250" 정규화 해석 + 소수 4자리 — 무선 200p → 23.3mm v2', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/products/spine/calculate')
+        .send({ pageCount: 200, paperType: '아트지250', bindingType: 'perfect' })
+        .expect(201);
+      expect(res.body).toMatchObject({
+        spineWidth: 23.3,
+        formulaVersion: 'v2',
+        resolvedPaperCode: '아트지 250g',
+      });
+    });
+
     it('caliper 배치: bookmoa 모달 파리티 — 이라이트80 무선 200p → 13mm / 양장 → 17mm', async () => {
       const p = await request(app.getHttpServer())
         .post('/products/spine/calculate')
@@ -580,10 +602,10 @@ describe('SpineController (e2e)', () => {
     });
 
     it('미해석 지종 + 커스텀 두께 없음 → 404 (기존 계약 유지)', async () => {
-      // 이라이트80은 2026-07-22 caliper 배치로 편입 → 여전히 미회신인 아트지250 사용
+      // R-55로 정상 지종 커버리지 완성 — 404 는 미등록 라벨(오타 등)만 해당
       await request(app.getHttpServer())
         .post('/products/spine/calculate')
-        .send({ pageCount: 100, paperType: '아트지250', bindingType: 'perfect' })
+        .send({ pageCount: 100, paperType: '존재하지않는지종999', bindingType: 'perfect' })
         .expect(404);
     });
 
