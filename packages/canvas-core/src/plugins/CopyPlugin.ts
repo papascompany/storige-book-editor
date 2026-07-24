@@ -4,6 +4,12 @@ import { fabric } from 'fabric'
 import CanvasHotkey from '../models/CanvasHotkey'
 import { PluginBase, PluginOption } from '../plugin'
 
+/**
+ * Alt+드래그 복제(C5)의 이동 임계 — 화면 px. 이 거리 미만은 단순 alt+클릭/지터로
+ * 간주해 복제하지 않는다(첫 object:moving 에서 판정). Ctrl+D 복제와 무관.
+ */
+const ALT_DRAG_CLONE_THRESHOLD_PX = 4
+
 class CopyPlugin extends PluginBase {
   name = 'CopyPlugin'
   events: string[] = []
@@ -36,6 +42,25 @@ class CopyPlugin extends PluginBase {
   // 핫키로 붙여넣기 실행 중 플래그
   private isHotkeyPasting: boolean = false
 
+  // ── C5 (E2): Alt+드래그 복제 ─────────────────────────────────────────
+  // 기본 on. createCanvas 가 VITE_ENABLE_ALT_DRAG_CLONE 를 주입(옵션 부재 시 on).
+  private altDragCloneEnabled: boolean = true
+  // mouse:down 에서 잡은 복제 후보(단일 비보호 객체) — 첫 이동에서 사본 삽입
+  private altCandidate: {
+    source: fabric.Object
+    startLeft: number
+    startTop: number
+    downX: number
+    downY: number
+  } | null = null
+  private altCloneStarted = false // 첫 이동에서 clone 파이프라인 진입(재진입 차단)
+  private altCloneInserted = false // clone 이 실제 캔버스에 삽입됨(비동기 이미지 대비)
+  private altHistoryOff = false // offHistory 개입 여부(onHistory 복원 판정)
+  private altEndPending = false // 비동기 clone 대기 중 종료(mouse:up/selection:cleared) 도착
+  private boundAltMouseDown: (opt: fabric.IEvent) => void = () => {}
+  private boundAltObjectMoving: (opt: fabric.IEvent) => void = () => {}
+  private boundAltEnd: (opt?: fabric.IEvent) => void = () => {}
+
   private getTargetCanvas(): fabric.Canvas {
     if (this._options?.getActiveCanvas) {
       const activeCanvas = this._options.getActiveCanvas()
@@ -52,7 +77,14 @@ class CopyPlugin extends PluginBase {
     this.boundPasteListener = this.pasteListener.bind(this)
     this.boundDuplicateListener = this.duplicateListener.bind(this)
 
+    // C5: Alt+드래그 복제 — 옵션 부재 시 on(기본 활성), 명시적 false 만 비활성
+    this.altDragCloneEnabled = this._options?.altDragClone !== false
+    this.boundAltMouseDown = this.altMouseDown.bind(this)
+    this.boundAltObjectMoving = this.altObjectMoving.bind(this)
+    this.boundAltEnd = this.altEnd.bind(this)
+
     this.initPaste()
+    this.initAltDragClone()
   }
 
   /**
@@ -127,12 +159,39 @@ class CopyPlugin extends PluginBase {
     // 바인딩된 함수를 사용하여 이벤트 리스너 제거
     window.removeEventListener('paste', this.boundPasteListener)
     window.removeEventListener('keydown', this.boundDuplicateListener)
+
+    // C5: Alt+드래그 복제 캔버스 리스너 해제(누수 방지) + 잔여 상태 마감
+    if (this.altDragCloneEnabled) {
+      this._canvas.off('mouse:down', this.boundAltMouseDown)
+      this._canvas.off('object:moving', this.boundAltObjectMoving)
+      this._canvas.off('mouse:up', this.boundAltEnd)
+      this._canvas.off('selection:cleared', this.boundAltEnd)
+      this.finalizeAltDrag()
+    }
   }
 
   initPaste() {
     // 바인딩된 함수를 사용하여 이벤트 리스너 등록
     window.addEventListener('paste', this.boundPasteListener)
     window.addEventListener('keydown', this.boundDuplicateListener)
+  }
+
+  /**
+   * C5 (E2): Alt+드래그 복제 트리거 등록. 데스크탑 전용(alt 키). 임베드 포함 전 경로에
+   * canvas-core 레벨로 자동 적용된다. 플래그 off 면 리스너를 아예 걸지 않는다(무비용).
+   *
+   * 시맨틱(Canva/PowerPoint): 원본이 드래그되어 나가고 사본이 시작 위치에 남는다.
+   * fabric transform 은 이미 원본을 추적 중이므로(mousedown), 사본을 시작 위치에 정적
+   * 삽입만 하면 되어 clone 비동기 레이스를 회피한다.
+   */
+  initAltDragClone() {
+    if (!this.altDragCloneEnabled) return
+    this._canvas.on('mouse:down', this.boundAltMouseDown)
+    this._canvas.on('object:moving', this.boundAltObjectMoving)
+    this._canvas.on('mouse:up', this.boundAltEnd)
+    // 핀치 시작(WorkspacePlugin 이 _currentTransform 중단 + discardActiveObject → selection:cleared)
+    // 등 mouse:up 미도래 비정상 종료의 안전망 — 플래그·히스토리 누수 방지.
+    this._canvas.on('selection:cleared', this.boundAltEnd)
   }
 
   duplicateListener(e: KeyboardEvent) {
@@ -392,6 +451,115 @@ class CopyPlugin extends PluginBase {
       if (cloned.left === undefined || cloned.top === undefined) return
       onCloned(cloned)
     })
+  }
+
+  // ── C5 (E2): Alt+드래그 복제 핸들러 ─────────────────────────────────
+  /** mouse/pointer 이벤트에서 화면 좌표+altKey 안전 추출(터치 폴백 — alt 는 데스크탑뿐). */
+  private altPoint(e: unknown): { x: number; y: number; altKey: boolean; hasPoint: boolean } {
+    type TouchPointList = { [i: number]: { clientX: number; clientY: number } }
+    const ev = e as
+      | { clientX?: number; clientY?: number; altKey?: boolean; touches?: TouchPointList; changedTouches?: TouchPointList }
+      | undefined
+    if (!ev) return { x: 0, y: 0, altKey: false, hasPoint: false }
+    if (typeof ev.clientX === 'number') {
+      return { x: ev.clientX, y: ev.clientY ?? 0, altKey: !!ev.altKey, hasPoint: true }
+    }
+    const t = ev.touches?.[0] ?? ev.changedTouches?.[0]
+    if (t) return { x: t.clientX, y: t.clientY, altKey: !!ev.altKey, hasPoint: true }
+    return { x: 0, y: 0, altKey: false, hasPoint: false }
+  }
+
+  /**
+   * mouse:down — alt + 단일 비보호 객체 위에서 시작하면 복제 후보로 표시(아직 clone 안 함).
+   * 시작 위치·인덱스 스냅샷만 잡아 두고, 실제 사본 삽입은 첫 이동에서 수행한다.
+   * - 빈 곳(target 없음): DraggingPlugin 의 alt-팬에 양보(후보 미설정).
+   * - 다중 선택(ActiveSelection): v1 복제 비대상 → 일반 이동 폴백(후보 미설정).
+   * - 보호객체: Ctrl+D 와 동일한 isCloneProtected 판정 재사용(규칙 이원화 금지).
+   */
+  private altMouseDown(opt: fabric.IEvent) {
+    // 직전 상호작용의 잔여 상태 정리(안전망 미도달 대비 — 히스토리 불변식 유지)
+    if (this.altCandidate || this.altHistoryOff) this.finalizeAltDrag()
+
+    const { altKey, x, y } = this.altPoint(opt.e)
+    if (!altKey) return
+    const target = opt.target as fabric.Object | undefined
+    if (!target) return
+    const active = this._canvas.getActiveObject() as fabric.Object | undefined
+    if (active && (active as { type?: string }).type === 'activeSelection') return
+    if (this.isCloneProtected(target)) return
+
+    this.altCandidate = {
+      source: target,
+      startLeft: target.left ?? 0,
+      startTop: target.top ?? 0,
+      downX: x,
+      downY: y
+    }
+  }
+
+  /**
+   * 첫 object:moving(이동 임계 통과) — offHistory 후 사본을 원본 시작 위치·원본 직하
+   * (insertAt 스냅샷 인덱스)에 삽입한다. 원본은 fabric transform 으로 계속 드래그된다.
+   * 히스토리는 mouse:up 의 onHistory 까지 억제되어 "사본 삽입 + 원본 이동" = 1 엔트리.
+   */
+  private altObjectMoving(opt: fabric.IEvent) {
+    const cand = this.altCandidate
+    if (!cand || this.altCloneStarted) return
+    // 다른 객체의 이동 이벤트는 무시(후보 원본만)
+    if (opt.target && opt.target !== cand.source) return
+    // 이동 임계(화면 px) — 좌표를 못 얻으면 통과로 간주(프로그램적 이동 대비)
+    const { x, y, hasPoint } = this.altPoint(opt.e)
+    if (hasPoint) {
+      const dist = Math.hypot(x - cand.downX, y - cand.downY)
+      if (dist < ALT_DRAG_CLONE_THRESHOLD_PX) return
+    }
+
+    this.altCloneStarted = true
+    const canvas = this._canvas
+    canvas.offHistory()
+    this.altHistoryOff = true
+
+    this.cloneObject(cand.source, (cloned) => {
+      cloned.set({
+        left: cand.startLeft,
+        top: cand.startTop,
+        evented: true,
+        id: uuid()
+      })
+      const objs = canvas.getObjects()
+      const idx = objs.indexOf(cand.source)
+      // 원본 직하(스냅샷 인덱스)에 삽입 — 원본은 위로 밀리고 사본이 자리에 남는다.
+      canvas.insertAt(cloned, idx >= 0 ? idx : objs.length, false)
+      canvas.requestRenderAll()
+      this.altCloneInserted = true
+      // 초고속(이미지 비동기) 드래그: 콜백 도착 전 종료가 왔으면 지금 마감(1엔트리)
+      if (this.altEndPending) this.finalizeAltDrag()
+    })
+  }
+
+  /**
+   * mouse:up / selection:cleared — 복제 후보 마감. 비동기 clone 이 아직 안 끝났으면
+   * 종료 신호만 남기고 콜백이 마감하게 한다(엔트리 분리 방지).
+   */
+  private altEnd(_opt?: fabric.IEvent) {
+    if (!this.altCandidate) return
+    if (this.altCloneStarted && !this.altCloneInserted) {
+      this.altEndPending = true
+      return
+    }
+    this.finalizeAltDrag()
+  }
+
+  /** offHistory 를 복원(1엔트리 확정)하고 모든 Alt+드래그 상태를 초기화한다. */
+  private finalizeAltDrag() {
+    if (this.altHistoryOff) {
+      this._canvas.onHistory()
+      this.altHistoryOff = false
+    }
+    this.altCandidate = null
+    this.altCloneStarted = false
+    this.altCloneInserted = false
+    this.altEndPending = false
   }
 }
 

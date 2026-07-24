@@ -39,6 +39,8 @@ const ENABLE_SMART_GUIDES = import.meta.env.VITE_ENABLE_SMART_GUIDES !== 'false'
 const ENABLE_TRANSFORM_FEEDBACK = import.meta.env.VITE_ENABLE_TRANSFORM_FEEDBACK !== 'false'
 // Feature flag for safe zone warning (재단/안전영역 침범 실시간 경고, E1 §5-5) — 기본 on
 const ENABLE_SAFEZONE_WARNING = import.meta.env.VITE_ENABLE_SAFEZONE_WARNING !== 'false'
+// Feature flag for alt+drag clone (Alt/Option 키를 누른 채 객체 드래그 시 복제, C5/E2) — 기본 on
+const ENABLE_ALT_DRAG_CLONE = import.meta.env.VITE_ENABLE_ALT_DRAG_CLONE !== 'false'
 import { useAppStore } from '@/stores/useAppStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { innerSpecToPlaceholderSpec } from '@/utils/photobookSpread'
@@ -319,7 +321,9 @@ function initPlugins(
   const group = new GroupPlugin(canvas, editor)
   const history = new HistoryPlugin(canvas, editor)
   const copy = new CopyPlugin(canvas, editor, {
-    getActiveCanvas: () => useAppStore.getState().canvas
+    getActiveCanvas: () => useAppStore.getState().canvas,
+    // C5 (E2): Alt+드래그 복제 (기본 on). CopyPlugin 이 clone 파이프라인을 공유.
+    altDragClone: ENABLE_ALT_DRAG_CLONE
   })
   // E2 §3-2a: 분배 보호객체 제외 가드의 editMode(관리자) 면제 판정용 옵션 전달
   // (additive — AlignPlugin 시그니처 하위호환, CopyPlugin editMode 규약과 동형).
@@ -328,7 +332,9 @@ function initPlugins(
   const image = ENABLE_IMAGE_PROCESSING ? new ImageProcessingPlugin(canvas, editor) : null
   const service = new ServicePlugin(canvas, editor, image, mergedOptions)
   const material = new AccessoryPlugin(canvas, editor, {})
-  const drag = new DraggingPlugin(canvas, editor)
+  // C5 (E2): 객체 위 alt+드래그를 CopyPlugin 복제에 양보하도록 동일 플래그 주입
+  // (빈 곳 alt+팬은 불변). off 면 종전 거동 복원.
+  const drag = new DraggingPlugin(canvas, editor, { altDragClone: ENABLE_ALT_DRAG_CLONE })
   // P1-3 (2026-06-12): 드래그 변환 진행 중 캔버스 레이아웃 이동/vpt 변경이 드래그
   // 변위로 전이되는 결함 차단 — 패널(ControlBar 280px) 열림 × 더블클릭 편집 레이스로
   // 객체가 -280px/zoom 텔레포트하던 라이브 P1 의 근본 수정.
