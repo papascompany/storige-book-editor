@@ -60,6 +60,10 @@ class CopyPlugin extends PluginBase {
   private altCloneInserted = false // clone 이 실제 캔버스에 삽입됨(비동기 이미지 대비)
   private altHistoryOff = false // offHistory 개입 여부(onHistory 복원 판정)
   private altEndPending = false // 비동기 clone 대기 중 종료(mouse:up/selection:cleared) 도착
+  // 제스처 세대 토큰 — 각 alt-드래그가 첫 이동에서 ++. 비동기 clone 콜백이 자기 세대를
+  // 대조해 직전 제스처의 stale 콜백을 no-op 화(공유 불리언 altCloneStarted 만으로는 재진입
+  // 제스처가 플래그를 다시 true 로 올려 stale 콜백이 가드를 통과하는 경합이 열림 — 단일·다중 공통).
+  private altGeneration = 0
   private boundAltMouseDown: (opt: fabric.IEvent) => void = () => {}
   private boundAltObjectMoving: (opt: fabric.IEvent) => void = () => {}
   private boundAltEnd: (opt?: fabric.IEvent) => void = () => {}
@@ -537,20 +541,24 @@ class CopyPlugin extends PluginBase {
     }
 
     this.altCloneStarted = true
+    // 이 제스처의 세대를 캡처 — 콜백 도착 시 자기 세대와 현재 세대를 대조해 직전 제스처의
+    // stale 콜백이 재진입 창에서 삽입/마감을 오염시키는 것을 차단한다.
+    const gen = ++this.altGeneration
     const canvas = this._canvas
     canvas.offHistory()
     this.altHistoryOff = true
 
     // 다중 선택(C5): ActiveSelection 멤버 일괄 복제 경로.
     if (cand.multi) {
-      this.altCloneActiveSelection(cand.multi.sel, cand.multi.sources, cand.startLeft, cand.startTop)
+      this.altCloneActiveSelection(cand.multi.sel, cand.multi.sources, cand.startLeft, cand.startTop, gen)
       return
     }
 
     this.cloneObject(cand.source, (cloned) => {
       // 비동기(이미지) clone 대기 중 dispose/새 상호작용으로 이미 마감됐으면 삽입 취소
-      // — disposed 캔버스 쓰기·직전 드래그의 유령 사본 유입 방지(finalizeAltDrag 가 플래그 하강).
-      if (!this.altCloneStarted) return
+      // — disposed 캔버스 쓰기 방지 + 세대 대조로 직전 제스처의 stale 콜백이 재진입 창을
+      //   오염(유령 사본 삽입)하는 것을 확정 차단(altCloneStarted 는 새 제스처가 재상승시킬 수 있음).
+      if (!this.altCloneStarted || gen !== this.altGeneration) return
       cloned.set({
         left: cand.startLeft,
         top: cand.startTop,
@@ -583,13 +591,15 @@ class CopyPlugin extends PluginBase {
     sel: fabric.ActiveSelection,
     sources: fabric.Object[],
     startLeft: number,
-    startTop: number
+    startTop: number,
+    gen: number
   ): void {
     const canvas = this._canvas
     sel.clone((cloned: fabric.Object) => {
       cloned.clone((clonedSel: fabric.ActiveSelection) => {
         // 비동기 clone 대기 중 dispose/새 상호작용으로 마감됐으면 삽입 취소(단일 경로와 동일 가드).
-        if (!this.altCloneStarted) return
+        // 세대 대조로 직전 제스처의 stale 콜백이 재진입 창을 오염시키는 것을 차단.
+        if (!this.altCloneStarted || gen !== this.altGeneration) return
         // 사본 AS 를 원본(들) 시작 위치로 되돌린 뒤 멤버 절대좌표 실체화(destroy → 행렬 baking).
         clonedSel.set({ left: startLeft, top: startTop })
         clonedSel.setCoords?.()
