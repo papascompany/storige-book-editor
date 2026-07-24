@@ -520,6 +520,9 @@ class CopyPlugin extends PluginBase {
     this.altHistoryOff = true
 
     this.cloneObject(cand.source, (cloned) => {
+      // 비동기(이미지) clone 대기 중 dispose/새 상호작용으로 이미 마감됐으면 삽입 취소
+      // — disposed 캔버스 쓰기·직전 드래그의 유령 사본 유입 방지(finalizeAltDrag 가 플래그 하강).
+      if (!this.altCloneStarted) return
       cloned.set({
         left: cand.startLeft,
         top: cand.startTop,

@@ -374,6 +374,24 @@ describe('CopyPlugin Alt+드래그 — ⑦⑧ 레이스/안전망', () => {
     expect(canvas.__historyProcessing).toBe(false)
   })
 
+  it('⑦-b 비동기 clone 대기 중 dispose → 콜백이 삽입을 취소(disposed 캔버스 쓰기 방지)', () => {
+    const src = makeObj({ id: 'src', left: 50, top: 50, asyncClone: true })
+    const objects = [src]
+    const { canvas, plugin } = setup(objects, src)
+
+    down(canvas, src, 100, 100)
+    src.left = 90
+    moving(canvas, src, 140, 100) // clone 시작 — 콜백 보류
+    expect(objects.length).toBe(1)
+
+    plugin.dispose() // 대기 중 dispose → finalizeAltDrag 로 플래그 하강 + onHistory 복원
+    expect(canvas.__historyProcessing).toBe(false)
+
+    // 뒤늦게 도착한 콜백은 삽입하지 않는다
+    ;(src.__pendingClone as () => void)()
+    expect(objects.length).toBe(1)
+  })
+
   it('⑧ selection:cleared(핀치 등 비정상 종료) 안전망 — onHistory 복원', () => {
     const src = makeObj({ id: 'src', left: 50, top: 50 })
     const objects = [src]
