@@ -60,52 +60,19 @@ class ObjectPlugin extends PluginBase {
         callback: () => this.del(),
         onlyForActiveObject: true
       },
-      {
-        name: '좌측 이동',
-        input: 'left',
-        onlyForActiveObject: true,
-        hideContext: true,
-        callback: () => {
-          const activeObject = this._canvas.getActiveObject()
-          // Part B: 화살표 이동은 .set('left') 로 lockMovementX 를 우회하므로 직접 가드.
-          // (드래그는 fabric 이 lockMovementX 를 존중하지만 키보드 이동은 별도 차단 필요.)
-          if (!activeObject || activeObject.lockMovementX) return
-          activeObject.set('left', activeObject.left! - 1)
-        }
-      },
-      {
-        name: '우측 이동',
-        input: 'right',
-        onlyForActiveObject: true,
-        hideContext: true,
-        callback: () => {
-          const activeObject = this._canvas.getActiveObject()
-          if (!activeObject || activeObject.lockMovementX) return
-          activeObject.set('left', activeObject.left! + 1)
-        }
-      },
-      {
-        name: '하단 이동',
-        input: 'down',
-        onlyForActiveObject: true,
-        hideContext: true,
-        callback: () => {
-          const activeObject = this._canvas.getActiveObject()
-          if (!activeObject || activeObject.lockMovementY) return
-          activeObject.set('top', activeObject.top! + 1)
-        }
-      },
-      {
-        name: '상단 이동',
-        input: 'up',
-        onlyForActiveObject: true,
-        hideContext: true,
-        callback: () => {
-          const activeObject = this._canvas.getActiveObject()
-          if (!activeObject || activeObject.lockMovementY) return
-          activeObject.set('top', activeObject.top! - 1)
-        }
-      },
+      // W4 §6-1: 화살표 이동 단일 소스(1px, Shift=10px). ControlsPlugin 의 중복 window keydown
+      // 핸들러를 제거하고 이 hotkeys 로 일원화했다 — 기존 이중 등록은 1키에 합산 2px 이동 +
+      // Shift+화살표가 ControlsPlugin(잠금 미가드)으로 이동잠금 객체를 10px 미는 보호 우회
+      // 결함이 있었다. 여기 nudge 는 잠금 축을 존중하고 setCoords+object:modified(undo 1엔트리)
+      // +렌더까지 수행한다. hotkeys 가 유일 소스라 C9 모달 자동생성(§6-2)이 정확해진다.
+      { name: '좌측 이동', input: 'left', onlyForActiveObject: true, hideContext: true, callback: () => this.nudge('left', -1) },
+      { name: '좌측 이동(10px)', input: 'shift+left', onlyForActiveObject: true, hideContext: true, callback: () => this.nudge('left', -10) },
+      { name: '우측 이동', input: 'right', onlyForActiveObject: true, hideContext: true, callback: () => this.nudge('left', 1) },
+      { name: '우측 이동(10px)', input: 'shift+right', onlyForActiveObject: true, hideContext: true, callback: () => this.nudge('left', 10) },
+      { name: '하단 이동', input: 'down', onlyForActiveObject: true, hideContext: true, callback: () => this.nudge('top', 1) },
+      { name: '하단 이동(10px)', input: 'shift+down', onlyForActiveObject: true, hideContext: true, callback: () => this.nudge('top', 10) },
+      { name: '상단 이동', input: 'up', onlyForActiveObject: true, hideContext: true, callback: () => this.nudge('top', -1) },
+      { name: '상단 이동(10px)', input: 'shift+up', onlyForActiveObject: true, hideContext: true, callback: () => this.nudge('top', -10) },
       {
         name: '스포이드',
         input: 'i',
@@ -116,6 +83,23 @@ class ObjectPlugin extends PluginBase {
         }
       }
     ]
+  }
+
+  /**
+   * W4 §6-1: 화살표 키 이동의 단일 구현. 잠금 축(lockMovementX/Y) 존중(키보드 이동은 fabric
+   * 이 자동 차단하지 않아 .set 우회를 직접 가드) + setCoords + object:modified(undo 1엔트리)
+   * + 렌더. ControlsPlugin 의 중복 window keydown 핸들러 제거로 이 경로가 유일 소스가 됐다.
+   */
+  private nudge(axis: 'left' | 'top', delta: number) {
+    const activeObject = this._canvas.getActiveObject()
+    if (!activeObject) return
+    if (axis === 'left' && activeObject.lockMovementX) return
+    if (axis === 'top' && activeObject.lockMovementY) return
+    const cur = axis === 'left' ? activeObject.left ?? 0 : activeObject.top ?? 0
+    activeObject.set(axis, cur + delta)
+    activeObject.setCoords()
+    this._canvas.fire('object:modified', { target: activeObject })
+    this._canvas.requestRenderAll()
   }
 
   up() {
