@@ -1,7 +1,7 @@
 import { fabric } from 'fabric'
 import Editor from '../Editor'
 import CanvasHotkey from '../models/CanvasHotkey'
-import { PluginBase } from '../plugin'
+import { PluginBase, PluginOption } from '../plugin'
 
 declare type ExtCanvas = fabric.Canvas & {
   isDragging: boolean
@@ -16,14 +16,19 @@ class DraggingPlugin extends PluginBase {
 
   dragMode = false
 
+  // C5 (E2): alt+드래그가 객체 위에서 시작되면 CopyPlugin 복제에 양보하기 위한 게이트.
+  // 기본 on. off 면 종전 거동(객체 위 alt+드래그도 팬) 복원 — 기능별 즉시 롤백 경로.
+  private _altDragCloneEnabled: boolean = true
+
   // 이벤트 핸들러 참조 저장 (cleanup용)
   private _boundMouseDown: ((opt: fabric.IEvent) => void) | null = null
   private _boundMouseMove: ((opt: fabric.IEvent) => void) | null = null
   private _boundMouseUp: (() => void) | null = null
 
-  constructor(canvas: fabric.Canvas, editor: Editor) {
-    super(canvas, editor, {})
+  constructor(canvas: fabric.Canvas, editor: Editor, options: PluginOption = {}) {
+    super(canvas, editor, options)
 
+    this._altDragCloneEnabled = options?.altDragClone !== false
     this.dragMode = false
     this.initDragging()
   }
@@ -135,8 +140,11 @@ class DraggingPlugin extends PluginBase {
     // 핸들러 참조 저장 (cleanup을 위해)
     this._boundMouseDown = function (this: ExtCanvas, opt: fabric.IEvent) {
       const { x, y, altKey } = getEventPoint(opt.e)
+      // C5 (E2): 객체 위에서 시작한 alt+드래그는 CopyPlugin 복제로 양보 → 팬 금지.
+      // 빈 곳(target 없음) alt+드래그는 기존대로 팬. 플래그 off 면 종전 거동(객체 위도 팬).
+      const altPanBlocked = altKey && !!opt.target && vm._altDragCloneEnabled
       // 터치에서는 altKey 가 항상 false → dragMode 일 때만 panning 시작
-      if (altKey || vm.dragMode) {
+      if ((altKey && !altPanBlocked) || vm.dragMode) {
         vm._canvas!.offHistory()
 
         vm._canvas.defaultCursor = 'grabbing'
