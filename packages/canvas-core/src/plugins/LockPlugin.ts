@@ -71,9 +71,11 @@ class LockPlugin extends PluginBase {
     return [
       {
         name: '잠금/해제 토글',
-        input: 'cmd+l',
+        // Windows(Ctrl)·Mac(⌘) 양쪽 실동작 + 모달 표기 정합(cmd 단독이면 Win 에서 오표기·무동작)
+        input: ['ctrl+l', 'cmd+l'],
         callback: () => this.toggleLock(),
-        onlyForActiveObject: true
+        onlyForActiveObject: true,
+        category: 'object'
       }
     ]
   }

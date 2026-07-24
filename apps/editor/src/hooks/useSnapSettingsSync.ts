@@ -16,11 +16,20 @@ import { useAppStore } from '@/stores/useAppStore'
  *   아무 스냅도 안 되는 데드존을 없앤다(적대 리뷰 함정 b).
  * - setter 는 순수 거동 게이트(early-return)라 직렬화·이벤트 바인딩·생성 순서 계약 무영향.
  */
+// 킬스위치: off 면 팝오버 UI 숨김(EditorHeader)뿐 아니라 이 배선도 강제 기본값(상시-ON)으로
+// 주입해 persist 된 OFF 상태를 무시한다 — 그래야 플래그가 거동까지 실제로 롤백한다(적대 리뷰).
+const SNAP_SETTINGS_ENABLED = import.meta.env.VITE_ENABLE_SNAP_SETTINGS !== 'false'
+
 export function useSnapSettingsSync(ready: boolean): void {
-  const snapGuidesEnabled = useUiPrefStore((s) => s.snapGuidesEnabled)
-  const snapCenterEnabled = useUiPrefStore((s) => s.snapCenterEnabled)
-  const snapAngleEnabled = useUiPrefStore((s) => s.snapAngleEnabled)
+  const persistedGuides = useUiPrefStore((s) => s.snapGuidesEnabled)
+  const persistedCenter = useUiPrefStore((s) => s.snapCenterEnabled)
+  const persistedAngle = useUiPrefStore((s) => s.snapAngleEnabled)
   const allEditors = useAppStore((s) => s.allEditors)
+
+  // 플래그 off → 기능 롤백: persist 무시하고 전부 ON(플러그인 생성 기본값과 동일).
+  const snapGuidesEnabled = SNAP_SETTINGS_ENABLED ? persistedGuides : true
+  const snapCenterEnabled = SNAP_SETTINGS_ENABLED ? persistedCenter : true
+  const snapAngleEnabled = SNAP_SETTINGS_ENABLED ? persistedAngle : true
 
   useEffect(() => {
     if (!ready) return

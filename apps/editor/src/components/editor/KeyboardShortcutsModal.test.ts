@@ -23,7 +23,7 @@ describe('formatHotkeyKeys', () => {
     expect(formatHotkeyKeys({ name: 'x', input: 'cmd+[' }, true)).toEqual(['⌘', '['])
   })
   it("ctrl+/cmd+ 배열은 플랫폼별 1개로 축약", () => {
-    const h: Reg = { name: 'Undo', input: ['ctrl+z', '⌘+z'] }
+    const h: Reg = { name: '실행 취소', input: ['ctrl+z', '⌘+z'] }
     expect(formatHotkeyKeys(h, true)).toEqual(['⌘', 'Z']) // Mac
     expect(formatHotkeyKeys(h, false)).toEqual(['Ctrl', 'Z']) // Win
   })
@@ -40,7 +40,7 @@ describe('buildShortcutGroups — 드리프트 차단·병합', () => {
     { name: '삭제', input: ['backspace', 'del'], pluginName: 'ObjectPlugin', category: 'object' },
     { name: '객체 이동', input: 'left', pluginName: 'ObjectPlugin', category: 'move', displayKeys: ['←', '→', '↑', '↓'] },
     { name: '우측 이동', input: 'right', pluginName: 'ObjectPlugin', category: 'move', hideInHelp: true }, // 제외
-    { name: 'Undo', input: ['ctrl+z', '⌘+z'], pluginName: 'HistoryPlugin' }, // 폴백→view
+    { name: '실행 취소', input: ['ctrl+z', '⌘+z'], pluginName: 'HistoryPlugin' }, // 폴백→view
   ]
 
   it('② hideInHelp 아닌 등록 hotkey 전부 그룹에 존재, hideInHelp 는 제외', () => {
@@ -48,7 +48,7 @@ describe('buildShortcutGroups — 드리프트 차단·병합', () => {
     expect(names).toContain('복사')
     expect(names).toContain('삭제')
     expect(names).toContain('객체 이동')
-    expect(names).toContain('Undo')
+    expect(names).toContain('실행 취소')
     expect(names).not.toContain('우측 이동') // hideInHelp
   })
 
@@ -73,7 +73,7 @@ describe('buildShortcutGroups — 드리프트 차단·병합', () => {
     const clip = groups.find((g) => g.title === '클립보드')
     expect(clip?.items.map((i) => i.description)).toContain('복사')
     const view = groups.find((g) => g.title === '보기·작업')
-    expect(view?.items.map((i) => i.description)).toContain('Undo')
+    expect(view?.items.map((i) => i.description)).toContain('실행 취소')
   })
 
   it('빈 등록이어도 앱소유 그룹은 생성(no-op editor 방어)', () => {
