@@ -34,50 +34,59 @@ class ObjectPlugin extends PluginBase {
         name: '뒤로',
         input: '[',
         callback: () => this.down(),
-        onlyForActiveObject: true
+        onlyForActiveObject: true,
+        category: 'arrange'
       },
       {
         name: '앞으로',
         input: ']',
         callback: () => this.up(),
-        onlyForActiveObject: true
+        onlyForActiveObject: true,
+        category: 'arrange'
       },
       {
         name: '가장 뒤로',
         input: 'cmd+[',
         callback: () => this.downTop(),
-        onlyForActiveObject: true
+        onlyForActiveObject: true,
+        category: 'arrange'
       },
       {
         name: '가장 앞으로',
         input: 'cmd+]',
         callback: () => this.upTop(),
-        onlyForActiveObject: true
+        onlyForActiveObject: true,
+        category: 'arrange'
       },
       {
         name: '삭제',
         input: ['backspace', 'del'],
         callback: () => this.del(),
-        onlyForActiveObject: true
+        onlyForActiveObject: true,
+        category: 'object'
       },
       // W4 §6-1: 화살표 이동 단일 소스(1px, Shift=10px). ControlsPlugin 의 중복 window keydown
       // 핸들러를 제거하고 이 hotkeys 로 일원화했다 — 기존 이중 등록은 1키에 합산 2px 이동 +
       // Shift+화살표가 ControlsPlugin(잠금 미가드)으로 이동잠금 객체를 10px 미는 보호 우회
       // 결함이 있었다. 여기 nudge 는 잠금 축을 존중하고 setCoords+object:modified(undo 1엔트리)
       // +렌더까지 수행한다. hotkeys 가 유일 소스라 C9 모달 자동생성(§6-2)이 정확해진다.
-      { name: '좌측 이동', input: 'left', onlyForActiveObject: true, hideContext: true, callback: () => this.nudge('left', -1) },
-      { name: '좌측 이동(10px)', input: 'shift+left', onlyForActiveObject: true, hideContext: true, callback: () => this.nudge('left', -10) },
-      { name: '우측 이동', input: 'right', onlyForActiveObject: true, hideContext: true, callback: () => this.nudge('left', 1) },
-      { name: '우측 이동(10px)', input: 'shift+right', onlyForActiveObject: true, hideContext: true, callback: () => this.nudge('left', 10) },
-      { name: '하단 이동', input: 'down', onlyForActiveObject: true, hideContext: true, callback: () => this.nudge('top', 1) },
-      { name: '하단 이동(10px)', input: 'shift+down', onlyForActiveObject: true, hideContext: true, callback: () => this.nudge('top', 10) },
-      { name: '상단 이동', input: 'up', onlyForActiveObject: true, hideContext: true, callback: () => this.nudge('top', -1) },
-      { name: '상단 이동(10px)', input: 'shift+up', onlyForActiveObject: true, hideContext: true, callback: () => this.nudge('top', -10) },
+      // 도움말 모달(§6-2): 대표 엔트리('left'/'shift+left')만 화살표 묶음 displayKeys 로 노출하고
+      // 나머지 방향은 hideInHelp 로 축약(등록·동작은 8종 전부 유지). hideContext(컨텍스트 은폐)와
+      // hideInHelp(도움말 은폐)는 독립 — 화살표는 컨텍스트엔 숨기고 도움말엔 노출.
+      { name: '객체 이동', input: 'left', onlyForActiveObject: true, hideContext: true, category: 'move', displayKeys: ['←', '→', '↑', '↓'], callback: () => this.nudge('left', -1) },
+      { name: '우측 이동', input: 'right', onlyForActiveObject: true, hideContext: true, category: 'move', hideInHelp: true, callback: () => this.nudge('left', 1) },
+      { name: '상단 이동', input: 'up', onlyForActiveObject: true, hideContext: true, category: 'move', hideInHelp: true, callback: () => this.nudge('top', -1) },
+      { name: '하단 이동', input: 'down', onlyForActiveObject: true, hideContext: true, category: 'move', hideInHelp: true, callback: () => this.nudge('top', 1) },
+      { name: '객체 이동 (10px)', input: 'shift+left', onlyForActiveObject: true, hideContext: true, category: 'move', displayKeys: ['⇧', '←', '→', '↑', '↓'], callback: () => this.nudge('left', -10) },
+      { name: '우측 이동(10px)', input: 'shift+right', onlyForActiveObject: true, hideContext: true, category: 'move', hideInHelp: true, callback: () => this.nudge('left', 10) },
+      { name: '상단 이동(10px)', input: 'shift+up', onlyForActiveObject: true, hideContext: true, category: 'move', hideInHelp: true, callback: () => this.nudge('top', -10) },
+      { name: '하단 이동(10px)', input: 'shift+down', onlyForActiveObject: true, hideContext: true, category: 'move', hideInHelp: true, callback: () => this.nudge('top', 10) },
       {
         name: '스포이드',
         input: 'i',
         onlyForActiveObject: true,
         hideContext: true,
+        category: 'object',
         callback: () => {
           this._editor.emit('eyedropper:trigger')
         }
