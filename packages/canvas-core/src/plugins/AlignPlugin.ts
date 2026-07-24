@@ -1,5 +1,6 @@
 import Editor from '../Editor'
 import { PluginBase, PluginOption } from '../plugin'
+import CanvasHotkey from '../models/CanvasHotkey'
 import { fabric } from 'fabric'
 
 /** 분배 보호 판정에 쓰는 이동 관련 플래그 표면 (fabric.Object 커스텀 확장 포함) */
@@ -12,7 +13,28 @@ interface DistributeProtectionFlags {
 class AlignPlugin extends PluginBase {
   name = 'AlignPlugin'
 
-  hotkeys = []
+  // D-E2-1 (§10): 분배 단축키 2종 additive. hideContext 는 함수형(contextMenu.ts setMenus
+  // 이 Function 분기 지원) — 3개 미만 선택 시 컨텍스트 메뉴 자동 은폐로 ControlBar ≥3 게이팅과
+  // 정합. category:'arrange' 필수 — 누락 시 C9 도움말 모달이 '객체'로 오분류(displayKeys 는
+  // formatHotkeyKeys 자동 파생이라 불요). 콜백 내부 <3 no-op 가드는 _distribute 에 이중 존재.
+  hotkeys: CanvasHotkey[] = [
+    {
+      name: '가로 균등 분포',
+      input: 'alt+shift+h',
+      onlyForActiveObject: true,
+      category: 'arrange',
+      hideContext: () => this._canvas.getActiveObjects().length < 3,
+      callback: () => this.distributeH()
+    },
+    {
+      name: '세로 균등 분포',
+      input: 'alt+shift+v',
+      onlyForActiveObject: true,
+      category: 'arrange',
+      hideContext: () => this._canvas.getActiveObjects().length < 3,
+      callback: () => this.distributeV()
+    }
+  ]
   events: string[] = []
 
   // E2 §3-2a: editMode(관리자) 면제 판정을 위해 options 수신 (additive — 미전달 시 {}

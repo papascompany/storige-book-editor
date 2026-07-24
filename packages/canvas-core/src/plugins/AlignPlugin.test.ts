@@ -333,3 +333,59 @@ describe('AlignPlugin.distribute — 보호객체 제외 가드 (E2 §3-2a)', ()
     expect(centerX(end)).toBe(300)
   })
 })
+
+describe('AlignPlugin — 분배 단축키 등록 (D-E2-1)', () => {
+  it('hotkeys 2건: alt+shift+h/v · category:arrange · onlyForActiveObject · 함수형 hideContext', () => {
+    const { plugin } = setup([])
+    const keys = plugin.hotkeys
+
+    expect(keys).toHaveLength(2)
+
+    const h = keys.find((k) => k.input === 'alt+shift+h')
+    const v = keys.find((k) => k.input === 'alt+shift+v')
+    expect(h).toBeDefined()
+    expect(v).toBeDefined()
+
+    expect(h!.name).toBe('가로 균등 분포')
+    expect(v!.name).toBe('세로 균등 분포')
+    for (const k of [h!, v!]) {
+      expect(k.onlyForActiveObject).toBe(true)
+      // ★ category:'arrange' 누락 시 C9 도움말 모달이 '객체'로 오분류(폴백) — 회귀 방지 앵커
+      expect(k.category).toBe('arrange')
+      // hideContext 는 boolean 이 아닌 함수형이어야 선택 수에 반응해 은폐/노출한다
+      expect(typeof k.hideContext).toBe('function')
+    }
+  })
+
+  it('hideContext: 선택 3개 미만이면 true(은폐), 3개 이상이면 false(노출) — ControlBar ≥3 정합', () => {
+    const two = [0, 1].map((i) =>
+      makeObj({ id: `t${i}`, left: i * 50, top: 0, width: 20, height: 20 })
+    )
+    const { plugin: p2 } = setup(two)
+    for (const k of p2.hotkeys) {
+      expect((k.hideContext as () => boolean)()).toBe(true)
+    }
+
+    const three = [0, 1, 2].map((i) =>
+      makeObj({ id: `x${i}`, left: i * 50, top: 0, width: 20, height: 20 })
+    )
+    const { plugin: p3 } = setup(three)
+    for (const k of p3.hotkeys) {
+      expect((k.hideContext as () => boolean)()).toBe(false)
+    }
+  })
+
+  it('callback: 가로 키→distributeH · 세로 키→distributeV 를 각 1회 호출', () => {
+    const { plugin } = setup([])
+    const spyH = vi.spyOn(plugin, 'distributeH').mockImplementation(() => {})
+    const spyV = vi.spyOn(plugin, 'distributeV').mockImplementation(() => {})
+
+    const h = plugin.hotkeys.find((k) => k.input === 'alt+shift+h')!
+    const v = plugin.hotkeys.find((k) => k.input === 'alt+shift+v')!
+    h.callback()
+    v.callback()
+
+    expect(spyH).toHaveBeenCalledTimes(1)
+    expect(spyV).toHaveBeenCalledTimes(1)
+  })
+})
