@@ -9,7 +9,10 @@
 //  ② 보호객체(movable=false 등) → 후보 미설정 → 객체 수 불변
 //  ③ alt 없는 드래그 → 불변
 //  ④ 이동 임계(4px) 미달 → 불변(단순 alt+클릭)
-//  ⑤ 다중 선택(ActiveSelection) → v1 복제 비대상(일반 이동 폴백) → 불변
+//  ⑤ 다중 선택(ActiveSelection) 복제(C5) — 멤버별 사본을 각 멤버 시작 절대좌표·대응 원본
+//     직하에 삽입, 히스토리 1엔트리(N 삽입이 offHistory 창에서 억제). 이중 clone→destroy 로
+//     그룹 행렬 baking(멤버 절대좌표 실체화)은 mock 으로 시뮬, 실 fabric 확증은 통합 spec.
+//     보호 멤버 포함=복제 생략 / 비동기(이미지) 멤버 / 대기 중 dispose / 멤버<2 방어 포함.
 //  ⑥ 빈 곳 alt+드래그(target 없음) → 후보 미설정(DraggingPlugin 팬에 양보)
 //  ⑦ 초고속(비동기 이미지) 드래그 — 콜백 도착 전 mouse:up → 콜백에서 삽입+1엔트리 마감
 //  ⑧ selection:cleared(핀치 등 비정상 종료) 안전망 → onHistory 복원
@@ -82,6 +85,73 @@ function makeObj(init: FakeObjectInit) {
 }
 
 /**
+ * ActiveSelection(다중 선택) 의 alt-드래그 복제 표면을 흉내낸 fake.
+ * 플러그인은 이중 clone(sel.clone→cloned.clone) → clonedSel.set(start) → destroy() → getObjects()
+ * 순으로 멤버 사본을 얻는다. 실 fabric destroy() 의 그룹행렬 baking(멤버 절대좌표 실체화)을
+ * 시뮬한다: destroy 시 각 사본 좌표 = clonedSel.left/top + (멤버 시작절대 − AS 시작).
+ * 즉 clonedSel 을 AS 시작 위치로 되돌리면 사본은 멤버 시작 절대좌표를 갖는다(reset 검증 가능).
+ * `cloned`/`clonedSel` 은 clone 시점의 (드래그된) 위치를 상속 → 플러그인이 start 로 되돌리지
+ * 않으면 사본이 드래그 위치에 남는다(회귀를 관측 가능하게). 실 baking 확증은 통합 spec.
+ */
+function makeActiveSelectionMock(config: {
+  sources: Array<Record<string, unknown>>
+  selLeft: number
+  selTop: number
+  /** 각 멤버의 시작 절대좌표(= destroy 후 사본이 land 해야 할 위치) */
+  memberAbsStarts: Array<{ left: number; top: number }>
+  /** 이미지 멤버 시뮬 — 최내곽 clone 콜백을 즉시 호출하지 않고 __pendingClone 으로 보류 */
+  asyncClone?: boolean
+}) {
+  const { sources, selLeft, selTop, memberAbsStarts, asyncClone } = config
+  const relOffsets = memberAbsStarts.map((p) => ({ dx: p.left - selLeft, dy: p.top - selTop }))
+  const sel: Record<string, unknown> = {
+    id: 'sel',
+    type: 'activeSelection',
+    left: selLeft,
+    top: selTop,
+    set(props: Record<string, unknown> | string, value?: unknown) {
+      if (typeof props === 'string') sel[props] = value
+      else Object.assign(sel, props)
+    },
+    setCoords: vi.fn(),
+    getObjects: () => sources,
+    clone(cb: (cloned: Record<string, unknown>) => void) {
+      // 이중 clone 1단계 — 현재(드래그된) AS 위치를 상속
+      const cloned: Record<string, unknown> = {
+        type: 'activeSelection',
+        left: sel.left,
+        top: sel.top,
+        clone(cb2: (clonedSel: Record<string, unknown>) => void) {
+          const copies = sources.map(() => makeObj({ type: 'rect' }))
+          const clonedSel: Record<string, unknown> = {
+            type: 'activeSelection',
+            left: cloned.left,
+            top: cloned.top,
+            set(props: Record<string, unknown> | string, value?: unknown) {
+              if (typeof props === 'string') clonedSel[props] = value
+              else Object.assign(clonedSel, props)
+            },
+            setCoords: vi.fn(),
+            getObjects: () => copies,
+            destroy() {
+              // 그룹행렬 baking 시뮬: 멤버 절대좌표 = clonedSel.left/top + relOffset
+              copies.forEach((c, i) => {
+                c.left = (clonedSel.left as number) + relOffsets[i].dx
+                c.top = (clonedSel.top as number) + relOffsets[i].dy
+              })
+            },
+          }
+          if (asyncClone) sel.__pendingClone = () => cb2(clonedSel)
+          else cb2(clonedSel)
+        },
+      }
+      cb(cloned)
+    },
+  }
+  return sel
+}
+
+/**
  * fabric Observable on/off/fire + 히스토리(offHistory/onHistory/insertAt) 시맨틱 mock.
  * 히스토리 엔트리는 실제 utils/history 규약을 최소 재현:
  *  - offHistory → historyProcessing=true → add/insertAt 의 object:added 저장 억제
@@ -141,6 +211,13 @@ function makeMockCanvas(
     },
     getObjects: () => objects,
     getActiveObject: () => activeObject,
+    getActiveObjects: () => {
+      const a = activeObject as
+        | { type?: string; getObjects?: () => Array<Record<string, unknown>> }
+        | null
+      if (a && a.type === 'activeSelection') return a.getObjects?.() ?? []
+      return a ? [a] : []
+    },
     offHistory() {
       offHistoryCalls++
       historyProcessing = true
@@ -257,7 +334,7 @@ describe('CopyPlugin Alt+드래그 — ① 단일 객체 복제', () => {
   })
 })
 
-describe('CopyPlugin Alt+드래그 — ②③④⑤⑥ 비대상 경로(불변)', () => {
+describe('CopyPlugin Alt+드래그 — ②③④⑥ 비대상 경로(불변)', () => {
   it('② 보호객체(movable=false)는 복제되지 않는다', () => {
     const src = makeObj({ id: 'src', left: 50, top: 50, movable: false })
     const objects = [src]
@@ -318,21 +395,6 @@ describe('CopyPlugin Alt+드래그 — ②③④⑤⑥ 비대상 경로(불변)'
     expect(canvas.__offHistoryCalls).toBe(0)
   })
 
-  it('⑤ 다중 선택(ActiveSelection)은 v1 복제 비대상 — 일반 이동 폴백', () => {
-    const a = makeObj({ id: 'a', left: 50, top: 50 })
-    const b = makeObj({ id: 'b', left: 80, top: 80 })
-    const selection = makeObj({ id: 'sel', type: 'activeSelection', left: 60, top: 60 })
-    const objects = [a, b]
-    const { canvas } = setup(objects, selection)
-
-    down(canvas, selection, 100, 100)
-    moving(canvas, selection, 130, 100)
-    up(canvas)
-
-    expect(objects.length).toBe(2) // 사본 없음
-    expect(canvas.__offHistoryCalls).toBe(0)
-  })
-
   it('⑥ 빈 곳 alt+드래그(target 없음)는 후보 미설정 — 팬에 양보', () => {
     const src = makeObj({ id: 'src', left: 50, top: 50 })
     const objects = [src]
@@ -340,6 +402,165 @@ describe('CopyPlugin Alt+드래그 — ②③④⑤⑥ 비대상 경로(불변)'
 
     down(canvas, undefined, 100, 100) // target 없음
     canvas.fire('object:moving', { e: { clientX: 130, clientY: 100, altKey: true }, target: undefined })
+    up(canvas)
+
+    expect(objects.length).toBe(1)
+    expect(canvas.__offHistoryCalls).toBe(0)
+  })
+})
+
+describe('CopyPlugin Alt+드래그 — ⑤ 다중 선택(ActiveSelection) 복제', () => {
+  it('⑤ alt+down(다중) → moving → up = 멤버별 사본, 각 사본=멤버 시작 절대좌표, z-order 원본 직하, 히스토리 1엔트리', () => {
+    const bg = makeObj({ id: 'bg', left: 0, top: 0 })
+    const a = makeObj({ id: 'a', left: 50, top: 50 }) // index 1
+    const b = makeObj({ id: 'b', left: 80, top: 80 }) // index 2
+    const objects = [bg, a, b]
+    const sel = makeActiveSelectionMock({
+      sources: [a, b],
+      selLeft: 50, // AS 시작(top-left) = (50,50)
+      selTop: 50,
+      memberAbsStarts: [
+        { left: 50, top: 50 },
+        { left: 80, top: 80 }
+      ]
+    })
+    const { canvas } = setup(objects, sel)
+
+    down(canvas, sel, 100, 100) // 시작 위치 (50,50) 스냅샷
+    sel.left = 90 // 드래그 시뮬(원본 AS 이동) — 사본은 시작 위치에 남아야 함
+    sel.top = 80
+    moving(canvas, sel, 130, 120) // 화면 이동 > 4px 임계
+    up(canvas)
+
+    // 멤버 2개 → 사본 2개 추가
+    expect(objects.length).toBe(5)
+    const copies = objects.filter((o) => o !== bg && o !== a && o !== b)
+    expect(copies).toHaveLength(2)
+    // 각 사본 = 대응 멤버의 시작 절대좌표(드래그 위치가 아니라 시작 위치 — reset 검증)
+    const byPos = (l: number, t: number) => copies.find((c) => c.left === l && c.top === t)
+    const copyA = byPos(50, 50)!
+    const copyB = byPos(80, 80)!
+    expect(copyA).toBeTruthy()
+    expect(copyB).toBeTruthy()
+    // 사본 id 는 신규(원본과 다름, 정의됨)
+    copies.forEach((c) => {
+      expect(c.id).toBeDefined()
+      expect(c.id).not.toBe('a')
+      expect(c.id).not.toBe('b')
+    })
+    // z-order: 각 사본이 대응 원본 직하 — [bg, copyA, a, copyB, b]
+    expect(objects).toEqual([bg, copyA, a, copyB, b])
+    // 히스토리 정확히 1엔트리(N 삽입이 offHistory 창에서 억제 → onHistory 1회만 커밋)
+    expect(canvas.__historyEntries.length).toBe(1)
+    expect(canvas.__offHistoryCalls).toBe(1)
+    expect(canvas.__onHistoryCalls).toBe(1)
+    // 모든 사본 삽입이 억제창 안에서 이뤄졌다(2엔트리 방지의 핵심)
+    expect(canvas.__insertLog).toHaveLength(2)
+    expect(canvas.__insertLog.every((l) => l.suppressed)).toBe(true)
+  })
+
+  it('⑤-b 다중 선택에 보호 멤버(movable=false)가 포함되면 복제하지 않는다 — 일반 이동 폴백', () => {
+    const a = makeObj({ id: 'a', left: 50, top: 50 })
+    const b = makeObj({ id: 'b', left: 80, top: 80, movable: false }) // 보호 멤버
+    const objects = [a, b]
+    const sel = makeActiveSelectionMock({
+      sources: [a, b],
+      selLeft: 50,
+      selTop: 50,
+      memberAbsStarts: [
+        { left: 50, top: 50 },
+        { left: 80, top: 80 }
+      ]
+    })
+    const { canvas } = setup(objects, sel)
+
+    down(canvas, sel, 100, 100)
+    sel.left = 90
+    moving(canvas, sel, 130, 100)
+    up(canvas)
+
+    expect(objects.length).toBe(2) // 사본 없음
+    expect(canvas.__offHistoryCalls).toBe(0) // 후보 미설정 → offHistory 미개입
+  })
+
+  it('⑤-c 비동기(이미지 멤버) 다중 clone — 콜백 도착 전 mouse:up → 콜백에서 전량 삽입 + 1엔트리', () => {
+    const a = makeObj({ id: 'a', left: 50, top: 50 })
+    const b = makeObj({ id: 'b', left: 80, top: 80 })
+    const objects = [a, b]
+    const sel = makeActiveSelectionMock({
+      sources: [a, b],
+      selLeft: 50,
+      selTop: 50,
+      memberAbsStarts: [
+        { left: 50, top: 50 },
+        { left: 80, top: 80 }
+      ],
+      asyncClone: true
+    })
+    const { canvas } = setup(objects, sel)
+
+    down(canvas, sel, 100, 100)
+    sel.left = 90
+    moving(canvas, sel, 140, 100) // clone 시작(offHistory) — 최내곽 콜백 보류
+    expect(objects.length).toBe(2) // 아직 미삽입
+    expect(canvas.__historyProcessing).toBe(true)
+
+    up(canvas) // 콜백 전 종료 — pending 신호만
+    expect(objects.length).toBe(2)
+    expect(canvas.__onHistoryCalls).toBe(0) // 아직 마감 안 됨
+
+    // 비동기 clone 콜백 도착 → 전량 삽입 + 마감
+    ;(sel.__pendingClone as () => void)()
+
+    expect(objects.length).toBe(4)
+    expect(canvas.__onHistoryCalls).toBe(1)
+    expect(canvas.__historyEntries.length).toBe(1)
+    expect(canvas.__historyProcessing).toBe(false)
+  })
+
+  it('⑤-d 비동기 다중 clone 대기 중 dispose → 콜백이 삽입을 취소', () => {
+    const a = makeObj({ id: 'a', left: 50, top: 50 })
+    const b = makeObj({ id: 'b', left: 80, top: 80 })
+    const objects = [a, b]
+    const sel = makeActiveSelectionMock({
+      sources: [a, b],
+      selLeft: 50,
+      selTop: 50,
+      memberAbsStarts: [
+        { left: 50, top: 50 },
+        { left: 80, top: 80 }
+      ],
+      asyncClone: true
+    })
+    const { canvas, plugin } = setup(objects, sel)
+
+    down(canvas, sel, 100, 100)
+    sel.left = 90
+    moving(canvas, sel, 140, 100) // clone 시작 — 콜백 보류
+    expect(objects.length).toBe(2)
+
+    plugin.dispose() // 대기 중 dispose → finalizeAltDrag 로 플래그 하강 + onHistory 복원
+    expect(canvas.__historyProcessing).toBe(false)
+
+    // 뒤늦게 도착한 콜백은 삽입하지 않는다(disposed 캔버스 쓰기 방지)
+    ;(sel.__pendingClone as () => void)()
+    expect(objects.length).toBe(2)
+  })
+
+  it('⑤-e 멤버 2개 미만 activeSelection(비정상)은 후보 미설정 — 복제 없음', () => {
+    const a = makeObj({ id: 'a', left: 50, top: 50 })
+    const objects = [a]
+    const sel = makeActiveSelectionMock({
+      sources: [a],
+      selLeft: 50,
+      selTop: 50,
+      memberAbsStarts: [{ left: 50, top: 50 }]
+    })
+    const { canvas } = setup(objects, sel)
+
+    down(canvas, sel, 100, 100)
+    sel.left = 90
+    moving(canvas, sel, 130, 100)
     up(canvas)
 
     expect(objects.length).toBe(1)

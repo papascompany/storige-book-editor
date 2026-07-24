@@ -45,13 +45,16 @@ class CopyPlugin extends PluginBase {
   // ── C5 (E2): Alt+드래그 복제 ─────────────────────────────────────────
   // 기본 on. createCanvas 가 VITE_ENABLE_ALT_DRAG_CLONE 를 주입(옵션 부재 시 on).
   private altDragCloneEnabled: boolean = true
-  // mouse:down 에서 잡은 복제 후보(단일 비보호 객체) — 첫 이동에서 사본 삽입
+  // mouse:down 에서 잡은 복제 후보 — 첫 이동에서 사본 삽입.
+  // 단일: source=원본 객체. 다중(C5): source=ActiveSelection + multi 페이로드(판별식, source===multi.sel).
   private altCandidate: {
     source: fabric.Object
     startLeft: number
     startTop: number
     downX: number
     downY: number
+    // 존재하면 다중 선택 경로 — ActiveSelection 멤버 일괄 복제(sources=원본 멤버 스냅샷).
+    multi?: { sel: fabric.ActiveSelection; sources: fabric.Object[] }
   } | null = null
   private altCloneStarted = false // 첫 이동에서 clone 파이프라인 진입(재진입 차단)
   private altCloneInserted = false // clone 이 실제 캔버스에 삽입됨(비동기 이미지 대비)
@@ -470,11 +473,11 @@ class CopyPlugin extends PluginBase {
   }
 
   /**
-   * mouse:down — alt + 단일 비보호 객체 위에서 시작하면 복제 후보로 표시(아직 clone 안 함).
-   * 시작 위치·인덱스 스냅샷만 잡아 두고, 실제 사본 삽입은 첫 이동에서 수행한다.
+   * mouse:down — alt + 비보호 객체(단일) 또는 다중 선택 위에서 시작하면 복제 후보로 표시
+   * (아직 clone 안 함). 시작 위치 스냅샷만 잡아 두고, 실제 사본 삽입은 첫 이동에서 수행한다.
    * - 빈 곳(target 없음): DraggingPlugin 의 alt-팬에 양보(후보 미설정).
-   * - 다중 선택(ActiveSelection): v1 복제 비대상 → 일반 이동 폴백(후보 미설정).
-   * - 보호객체: Ctrl+D 와 동일한 isCloneProtected 판정 재사용(규칙 이원화 금지).
+   * - 다중 선택(ActiveSelection): 멤버 일괄 복제(C5). 멤버 1개라도 보호면 복제 생략(일반 이동 폴백).
+   * - 단일 보호객체: Ctrl+D 와 동일한 isCloneProtected 판정 재사용(규칙 이원화 금지).
    */
   private altMouseDown(opt: fabric.IEvent) {
     // 직전 상호작용의 잔여 상태 정리(안전망 미도달 대비 — 히스토리 불변식 유지)
@@ -485,9 +488,28 @@ class CopyPlugin extends PluginBase {
     const target = opt.target as fabric.Object | undefined
     if (!target) return
     const active = this._canvas.getActiveObject() as fabric.Object | undefined
-    if (active && (active as { type?: string }).type === 'activeSelection') return
-    if (this.isCloneProtected(target)) return
 
+    if (active && (active as { type?: string }).type === 'activeSelection') {
+      // 다중 선택(C5): 멤버 전체를 원본(들) 시작 위치에 일괄 복제(Ctrl+D 다중 규약 미러).
+      const sel = active as fabric.ActiveSelection
+      const members = (this._canvas.getActiveObjects?.() ?? []) as fabric.Object[]
+      // 멤버 2개 미만이면 다중 아님(방어) — 후보 미설정.
+      if (members.length < 2) return
+      // 멤버 중 1개라도 보호면 복제 생략(clone() all-or-nothing 규약 미러) → 일반 이동 폴백.
+      if (members.some((m) => this.isCloneProtected(m))) return
+      this.altCandidate = {
+        source: sel,
+        startLeft: sel.left ?? 0,
+        startTop: sel.top ?? 0,
+        downX: x,
+        downY: y,
+        multi: { sel, sources: members.slice() }
+      }
+      return
+    }
+
+    // 단일 객체 경로.
+    if (this.isCloneProtected(target)) return
     this.altCandidate = {
       source: target,
       startLeft: target.left ?? 0,
@@ -519,6 +541,12 @@ class CopyPlugin extends PluginBase {
     canvas.offHistory()
     this.altHistoryOff = true
 
+    // 다중 선택(C5): ActiveSelection 멤버 일괄 복제 경로.
+    if (cand.multi) {
+      this.altCloneActiveSelection(cand.multi.sel, cand.multi.sources, cand.startLeft, cand.startTop)
+      return
+    }
+
     this.cloneObject(cand.source, (cloned) => {
       // 비동기(이미지) clone 대기 중 dispose/새 상호작용으로 이미 마감됐으면 삽입 취소
       // — disposed 캔버스 쓰기·직전 드래그의 유령 사본 유입 방지(finalizeAltDrag 가 플래그 하강).
@@ -537,6 +565,51 @@ class CopyPlugin extends PluginBase {
       this.altCloneInserted = true
       // 초고속(이미지 비동기) 드래그: 콜백 도착 전 종료가 왔으면 지금 마감(1엔트리)
       if (this.altEndPending) this.finalizeAltDrag()
+    })
+  }
+
+  /**
+   * C5 다중: ActiveSelection 을 복제해 각 멤버 사본을 원본(들) 시작 절대좌표·대응 원본 직하에
+   * 삽입한다. 원본 AS 는 fabric transform 으로 계속 드래그된다 — **discardActiveObject/
+   * setActiveObject 호출 금지**(원본 선택·드래그 유지).
+   *
+   * copyActiveSelection(Ctrl+D 다중)과 동일한 이중 clone(sel.clone→cloned.clone) 규약을
+   * 재사용해 커스텀 속성 상속을 그대로 상속한다(신규 직렬화 경로 없음). 사본 AS 를 원본(들)
+   * 시작 위치로 되돌린 뒤 destroy() 로 그룹 행렬을 각 멤버에 baking → 멤버가 시작 절대좌표를
+   * 갖는다(fabric 5.5.2 ActiveSelection.destroy → _restoreObjectsState). 최내곽 콜백 1회에서만
+   * 삽입하므로 비동기(이미지 멤버) clone 도 v1 상태기계로 "N 삽입 = 히스토리 1엔트리" 성립.
+   */
+  private altCloneActiveSelection(
+    sel: fabric.ActiveSelection,
+    sources: fabric.Object[],
+    startLeft: number,
+    startTop: number
+  ): void {
+    const canvas = this._canvas
+    sel.clone((cloned: fabric.Object) => {
+      cloned.clone((clonedSel: fabric.ActiveSelection) => {
+        // 비동기 clone 대기 중 dispose/새 상호작용으로 마감됐으면 삽입 취소(단일 경로와 동일 가드).
+        if (!this.altCloneStarted) return
+        // 사본 AS 를 원본(들) 시작 위치로 되돌린 뒤 멤버 절대좌표 실체화(destroy → 행렬 baking).
+        clonedSel.set({ left: startLeft, top: startTop })
+        clonedSel.setCoords?.()
+        clonedSel.destroy()
+        const members = (clonedSel.getObjects?.() ?? []) as fabric.Object[]
+        members.forEach((m, i) => {
+          m.set({ id: uuid(), evented: true })
+          m.setCoords?.()
+          // z-order: 각 사본을 대응 원본 직하에 삽입. 삽입마다 인덱스가 시프트하므로
+          // 매 반복 live 재조회(고정 스냅샷 인덱스 금지).
+          const objs = canvas.getObjects()
+          const src = sources[i]
+          const idx = src ? objs.indexOf(src) : -1
+          canvas.insertAt(m, idx >= 0 ? idx : objs.length, false)
+        })
+        canvas.requestRenderAll()
+        this.altCloneInserted = true
+        // 초고속(이미지 비동기) 드래그: 콜백 도착 전 종료가 왔으면 지금 마감(1엔트리).
+        if (this.altEndPending) this.finalizeAltDrag()
+      })
     })
   }
 
