@@ -41,6 +41,8 @@ const ENABLE_TRANSFORM_FEEDBACK = import.meta.env.VITE_ENABLE_TRANSFORM_FEEDBACK
 const ENABLE_SAFEZONE_WARNING = import.meta.env.VITE_ENABLE_SAFEZONE_WARNING !== 'false'
 // Feature flag for alt+drag clone (Alt/Option 키를 누른 채 객체 드래그 시 복제, C5/E2) — 기본 on
 const ENABLE_ALT_DRAG_CLONE = import.meta.env.VITE_ENABLE_ALT_DRAG_CLONE !== 'false'
+// Feature flag for touch long-press context menu (모바일 롱프레스 컨텍스트 메뉴, C6/E2) — 기본 on
+const ENABLE_TOUCH_CONTEXT_MENU = import.meta.env.VITE_ENABLE_TOUCH_CONTEXT_MENU !== 'false'
 import { useAppStore } from '@/stores/useAppStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { innerSpecToPlaceholderSpec } from '@/utils/photobookSpread'
@@ -438,6 +440,18 @@ function initPlugins(
 
   // L4-①: printExclude 화면 전용 오버레이 훅 (after:render, contextTop 순수 드로잉 — 저장/PDF/썸네일 무오염)
   bindPrintExcludeOverlay(canvas)
+
+  // C6 (E2): 모바일 터치 롱프레스 컨텍스트 메뉴 — coarse-pointer 환경에서만 활성(데스크탑 무영향).
+  // editor.init 이후라 wrapperEl·contextMenu 확정. embed/EditorView/TemplateEditorView 모두 이
+  // 단일 createCanvas 경유라 자동 적용. coarse 판정은 React 훅(useIsCoarsePointer) 대신 인라인
+  // matchMedia — 여기는 비-React async 유틸.
+  if (
+    ENABLE_TOUCH_CONTEXT_MENU &&
+    typeof window !== 'undefined' &&
+    window.matchMedia?.('(pointer: coarse)').matches
+  ) {
+    editor.enableTouchContextMenu({ haptic: true })
+  }
 
   // 앱 스토어에 등록 (initId 전달)
   appStore.init(canvas, editor, initId)

@@ -6,6 +6,7 @@ import { Lifecycle, PluginBase } from './plugin'
 import CanvasHotkey from './models/CanvasHotkey'
 import ContextMenuItem from './models/ContextMenuItem'
 import ContextMenu from './contextMenu'
+import { attachTouchContextMenu, TouchContextMenuOptions } from './touchContextMenu'
 import { isArray } from 'lodash-es'
 
 class Editor extends EventEmitter {
@@ -14,6 +15,9 @@ class Editor extends EventEmitter {
   public hooks: Map<keyof Lifecycle, AsyncSeriesHook<any, any>> = new Map()
 
   private contextMenu: ContextMenu | undefined
+
+  // C6: 터치 롱프레스 컨텍스트 메뉴 트리거 정리 함수(enableTouchContextMenu 가 설정, dispose 가 호출)
+  private touchContextMenuCleanup: (() => void) | undefined
 
   private plugins: Map<string, PluginBase> = new Map()
 
@@ -98,6 +102,11 @@ class Editor extends EventEmitter {
     }
     this.hotkeyBindings = []
 
+    // C6: 터치 롱프레스 트리거(wrapperEl pointer 리스너 4종 + 대기 타이머) 해제.
+    // 반드시 this.canvas=null 이전에 — wrapperEl 도달 필요. 멱등(undefined 가드).
+    this.touchContextMenuCleanup?.()
+    this.touchContextMenuCleanup = undefined
+
     // 컨텍스트 메뉴 DOM 리스너 해제 (canvas.wrapperEl 에 등록된 contextmenu/keydown/
     // mousedown/blur — 해제하지 않으면 wrapperEl 이 GC 되지 못함)
     this.contextMenu?.dispose()
@@ -158,6 +167,24 @@ class Editor extends EventEmitter {
 
   private initContextMenu(canvas: fabric.Canvas) {
     this.contextMenu = new ContextMenu(canvas, [])
+  }
+
+  /**
+   * C6: 모바일 터치 롱프레스 컨텍스트 메뉴를 활성화한다. 앱(createCanvas)이 coarse-pointer
+   * 환경에서 호출. wrapperEl 에 pointer 트리거를 부착하고, 롱프레스 발화 시 contextMenu.showAt
+   * 를 연다(이중발화 억제는 showAt/ContextMenu 내부가 처리 — Editor 는 트리거만 배선).
+   * 재호출 시 기존 트리거를 먼저 해제하며, dispose 에서 정리한다(멱등).
+   * `[key:string]:any` 인덱스 시그니처에 흡수돼 오타가 컴파일에서 안 잡히므로 명시 타입 선언.
+   */
+  enableTouchContextMenu(options?: TouchContextMenuOptions): void {
+    if (!this.canvas || !this.contextMenu) return
+    // 재호출 멱등: 기존 트리거 해제 후 재부착
+    this.touchContextMenuCleanup?.()
+    this.touchContextMenuCleanup = attachTouchContextMenu(
+      this.canvas,
+      this.contextMenu,
+      options ?? {}
+    )
   }
 
   private initActionHooks() {
