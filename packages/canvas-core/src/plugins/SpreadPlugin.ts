@@ -252,6 +252,7 @@ class SpreadPlugin extends PluginBase {
     this.renderGuides(this.currentLayout)
     this.renderLabels(this.currentLayout)
     this.renderBleedBorder(this.currentLayout)
+    this.renderSpineSafeInset(this.currentLayout) // A-3② 책등 세이프존 inset
 
     this._editor.emit('spreadLayoutUpdate', { layout: this.currentLayout })
   }
@@ -502,6 +503,7 @@ class SpreadPlugin extends PluginBase {
       this.renderGuides(newLayout)
       this.renderLabels(newLayout)
       this.renderBleedBorder(newLayout)
+      this.renderSpineSafeInset(newLayout) // A-3② 책등 세이프존 inset (spine 폭 추종)
 
       // 6. 레이아웃 갱신
       const oldLayout = this.currentLayout
@@ -920,6 +922,52 @@ class SpreadPlugin extends PluginBase {
 
     this._canvas.add(rect)
     this.bleedBorder = rect
+  }
+
+  /**
+   * A-3② (트랙 C, 2026-07-23): 책등 영역 세이프존 inset 가이드.
+   * 책등 좌우 경계에서 safeSizeMm 안쪽으로 세로 점선 2개 — 책등 텍스트가
+   * 접힘·재단 편차로 표지면에 걸리는 배치를 시각적으로 방지한다.
+   * 화면 전용(excludeFromExport — 저장/PDF 원천 제외), safe-zone-border 스타일 준용.
+   * guideLines 배열에 push — clearGuides/afterLoad→init() 정리·복구가 기존 인프라로 커버.
+   * 가드: safe/dpi 무효·spine 부재·spine 폭 ≤ inset×2(선 교차)면 미표시.
+   * inner 모드는 init() 이 initInner 로 조기 분기라 무접촉, flat-spread 는 고정 책등 기준 표시.
+   */
+  private renderSpineSafeInset(layout: SpreadLayout): void {
+    const { safeSizeMm, dpi } = this.currentSpec
+    if (!safeSizeMm || safeSizeMm <= 0 || !dpi || dpi <= 0) return
+    const spine = layout.regions.find((r) => r.position === 'spine')
+    if (!spine) return
+
+    const insetPx = (safeSizeMm / 25.4) * dpi
+    if (spine.width <= insetPx * 2) return
+
+    const origin = this.getContentOrigin()
+    const xs: Array<[string, number]> = [
+      ['spine-safe-inset-l', origin.x + spine.x + insetPx],
+      ['spine-safe-inset-r', origin.x + spine.x + spine.width - insetPx],
+    ]
+    for (const [id, x] of xs) {
+      const line = new fabric.Line([x, origin.y, x, origin.y + layout.totalHeightPx], {
+        id,
+        stroke: '#4a90d9', // safe-zone-border 계열(WorkspacePlugin 준용)
+        strokeWidth: 0.5,
+        strokeDashArray: [10, 10],
+        strokeUniform: true,
+        selectable: false,
+        evented: false,
+        hasControls: false,
+        hasBorders: false,
+        excludeFromExport: true, // 시스템 가이드 — 저장/재로드 직렬화·출력 제외
+      })
+      if (!line.meta) {
+        line.meta = {}
+      }
+      line.meta.system = 'spreadGuide' as SystemObjectType
+      this._canvas.add(line)
+      // clearGuides 가 함께 제거하도록 guideLines 배열에 포함(initInner 거터 전례)
+      this.guideLines.push(line)
+    }
   }
 
   /**
