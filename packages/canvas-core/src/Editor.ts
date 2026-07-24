@@ -47,6 +47,21 @@ class Editor extends EventEmitter {
     }
   }
 
+  /**
+   * C9 §6-2: 등록된 모든 플러그인 hotkey 를 pluginName 과 함께 열람(도움말 모달 자동 생성용).
+   * 열람 전용 — plugins Map 은 private 유지. bindingContextItems 와 동일 소스(plugin.hotkeys)라
+   * 모달·컨텍스트 메뉴·단축키 등록이 단일 진실을 공유(수동 동기화 드리프트 0).
+   */
+  getRegisteredHotkeys(): ReadonlyArray<CanvasHotkey & { pluginName: string }> {
+    const result: Array<CanvasHotkey & { pluginName: string }> = []
+    for (const plugin of this.plugins.values()) {
+      plugin.hotkeys?.forEach((hotkey) => {
+        result.push({ ...hotkey, pluginName: plugin.name })
+      })
+    }
+    return result
+  }
+
   init(canvas: fabric.Canvas) {
     this.canvas = canvas
     this.initContextMenu(canvas)
