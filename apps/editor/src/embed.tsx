@@ -33,6 +33,7 @@ import { useEditorContents } from './hooks/useEditorContents'
 import { useEmbedAutoSave } from './hooks/useEmbedAutoSave'
 import { useEmbedBackGuard } from './hooks/useEmbedBackGuard'
 import { useCanvasContainerSizeSync } from './hooks/useCanvasContainerSizeSync'
+import { useSnapSettingsSync } from './hooks/useSnapSettingsSync'
 import { createCanvas, safeDisposeCanvas, CanvasInitCancelledError } from './utils/createCanvas'
 import { buildSpreadSnapshots } from './utils/buildSpreadSnapshots'
 import {
@@ -518,6 +519,8 @@ function EmbeddedEditor({
   // 기존에는 init 시 1회 setDimensions 뿐이라 객체 선택(ControlBar mount)·iframe 리사이즈에
   // 캔버스가 밀린 채 방치됐다 — EditorView 와 동일 훅 배선(iOS Safari 3중 방어 가드 포함).
   useCanvasContainerSizeSync(ready, canvasContainerRef)
+  // §6-3: 스냅 설정 배선 — /embed 도 EditorView 와 동형(부재 시 팝오버 무반응 방지)
+  useSnapSettingsSync(ready)
 
   const { loadEmptyEditor, loadTemplateSetEditor } = useEditorContents()
 

@@ -17,10 +17,17 @@ class RulerPlugin extends PluginBase {
   private boundHandleObjectMoving: any
   private boundHandleMouseUp: any
   private boundUpdateCenterGuidelines: (() => void) | null = null
+  // §6-3: 중앙 스냅 런타임 토글 — 기본 on(현행 거동). off 면 중앙 가이드 표시·스냅 모두 스킵.
+  private _centerSnapEnabled: boolean = true
 
   constructor(canvas: fabric.Canvas, editor: Editor, options: RulerOptions) {
     super(canvas, editor, options)
     this.init(options)
+  }
+
+  /** §6-3: 중앙 스냅 런타임 토글. early-return 게이트만(리스너·룰러 표시 불변). */
+  setCenterSnapEnabled(enabled: boolean): void {
+    this._centerSnapEnabled = enabled
   }
 
   init(options: RulerOptions) {
@@ -230,6 +237,15 @@ class RulerPlugin extends PluginBase {
     // 워크스페이스 찾기
     const workspace = this._getWorkspace()
     if (!workspace) return
+
+    // §6-3: 중앙 스냅 OFF → 중앙 가이드 표시·스냅 모두 스킵(가이드↔동작 정합, 오펀 가이드 방지).
+    // SmartGuidesPlugin.setCenterYieldEnabled 와 함께 토글되어 중앙 근처 무-스냅 데드존을 막는다.
+    if (!this._centerSnapEnabled) {
+      if (this.centerGuidelineH) this.centerGuidelineH.set('visible', false)
+      if (this.centerGuidelineV) this.centerGuidelineV.set('visible', false)
+      this._canvas.requestRenderAll()
+      return
+    }
 
     const center = workspace.getCenterPoint()
     const objCenter = obj.getCenterPoint()
