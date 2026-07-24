@@ -362,14 +362,12 @@ class CopyPlugin extends PluginBase {
     // 복사 전 히스토리 비활성화
     canvas.offHistory()
 
-    activeObject?.clone((cloned: fabric.Object) => {
-      if (cloned.left === undefined || cloned.top === undefined) return
-
+    this.cloneObject(activeObject, (cloned) => {
       canvas.discardActiveObject()
 
       cloned.set({
-        left: cloned.left + grid,
-        top: cloned.top + grid,
+        left: (cloned.left as number) + grid,
+        top: (cloned.top as number) + grid,
         evented: true,
         id: uuid()
       })
@@ -380,6 +378,19 @@ class CopyPlugin extends PluginBase {
 
       // 복사 완료 후 히스토리 활성화
       canvas.onHistory()
+    })
+  }
+
+  /**
+   * 원본을 fabric `clone(cb)` 파이프라인으로 복제해 콜백에 전달하는 공유 프리미티브.
+   * 붙여넣기/복제(copyObject)와 Alt+드래그 복제(C5)가 이 경로를 공유한다 — `clone(cb)` 은
+   * 붙여넣기 프로덕션 경로와 동일한 커스텀 속성 상속 규약을 그대로 따르므로 신규 직렬화
+   * 경로가 생기지 않는다(canvasData 왕복·PDF 계약 무접촉). left/top 미정의 클론은 무시.
+   */
+  private cloneObject(source: fabric.Object, onCloned: (cloned: fabric.Object) => void): void {
+    source?.clone((cloned: fabric.Object) => {
+      if (cloned.left === undefined || cloned.top === undefined) return
+      onCloned(cloned)
     })
   }
 }
