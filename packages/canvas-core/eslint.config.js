@@ -126,8 +126,9 @@ module.exports = [
         test: 'readonly',
         // Browser styling/computed style
         getComputedStyle: 'readonly',
-        // Node (debugLog용 — typeof 검사로 가드되어 있음)
+        // Node (debugLog용 process — typeof 가드 / Buffer — 테스트의 PDF 바이너리 파싱용)
         process: 'readonly',
+        Buffer: 'readonly',
       },
     },
     plugins: {
