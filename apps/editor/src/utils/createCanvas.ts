@@ -319,6 +319,7 @@ function initPlugins(
   //    additive: ObjectPlugin 에만 주입(mergedOptions 원본 불변, 타 플러그인·embed 무영향).
   const object = new ObjectPlugin(canvas, editor, {
     ...mergedOptions,
+    // ⚠️ 감시(암묵적 결합): 이 어댑터는 editMode/embed 무관 무조건 주입되므로 — createCanvas 를 채택하는 모든 storige 표면은 반드시 <ObjectDeleteConfirm/> 를 마운트해야 삭제가 no-op 가 되지 않는다(현행 App.tsx 전역 + embed.tsx 마운트로 충족).
     onDeleteRequest: (): boolean => {
       useAppStore.getState().requestDeleteSelection()
       return true
