@@ -12,6 +12,19 @@ const lockAttrs: string[] = [
   'lockScalingY'
 ]
 
+/**
+ * ObjectPlugin 옵션(문서화용). PluginOption(Record<string, any>)의 구조적 하위타입이라
+ * 코어 시그니처 변경 없이 삭제 인수 콜백 계약만 명시한다.
+ *
+ * C6-b (E2 §5-5, 오너결정 D-E2-4): 컨텍스트 메뉴/롱프레스 '삭제'가 S2 확인 모달을 우회하고
+ * del() 로 직행하던 결함의 additive 처방. 앱(createCanvas)이 onDeleteRequest 를 주입하면 삭제
+ * hotkey 콜백이 이를 먼저 호출하고, true(=앱이 삭제 UX 인수)면 코어 del() 을 건너뛴다. 콜백
+ * 부재(외부 임베더)면 현행 즉시 삭제가 그대로 유지된다 — canvas-core 기본 동작 불변.
+ */
+export interface ObjectPluginOptions extends PluginOption {
+  onDeleteRequest?: () => boolean
+}
+
 class ObjectPlugin extends PluginBase {
   name = 'ObjectPlugin'
   events = []
@@ -61,7 +74,16 @@ class ObjectPlugin extends PluginBase {
       {
         name: '삭제',
         input: ['backspace', 'del'],
-        callback: () => this.del(),
+        // C6-b (E2 §5-5): 삭제 요청을 앱에 먼저 위임한다. onDeleteRequest 가 true 를 반환하면
+        // (앱이 확인 모달로 삭제 UX 를 인수) 코어 del() 을 호출하지 않는다. 콜백 부재(외부
+        // 임베더)면 현행 즉시 삭제 그대로. ★가드는 반드시 이 콜백층에만 둔다 — del() 코어에
+        // 두면 confirmDeleteSelection→del() 경로가 onDeleteRequest 를 재발화해 무한 모달
+        // 루프가 된다(컨텍스트 메뉴·롱프레스·데스크탑 우클릭 모두 이 콜백을 거쳐 정합).
+        callback: () => {
+          const opts = this._options as ObjectPluginOptions
+          if (opts.onDeleteRequest?.()) return
+          this.del()
+        },
         onlyForActiveObject: true,
         category: 'object',
         displayKeys: ['⌫'] // Backspace/Delete 공통(도움말 표기 단일화)
