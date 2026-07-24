@@ -312,7 +312,18 @@ function initPlugins(
       : null
 
   const workspace = new WorkspacePlugin(canvas, editor, mergedOptions)
-  const object = new ObjectPlugin(canvas, editor, mergedOptions)
+  // C6-b (E2 §5-5, 오너결정 D-E2-4): 컨텍스트 메뉴/롱프레스 '삭제'를 S2 확인 모달 경유로 정합.
+  // ObjectPlugin 삭제 hotkey 콜백이 onDeleteRequest 를 먼저 호출하고 true 면 코어 del() 을 건너뛴다.
+  // ⚠️ requestDeleteSelection 은 void 반환이라 반드시 boolean 어댑터로 감싼다(raw 주입 시 콜백층
+  //    가드가 항상 falsy 로 처리돼 우회가 안 됨). useAppStore 자체는 불변 — getState 로 액션만 호출.
+  //    additive: ObjectPlugin 에만 주입(mergedOptions 원본 불변, 타 플러그인·embed 무영향).
+  const object = new ObjectPlugin(canvas, editor, {
+    ...mergedOptions,
+    onDeleteRequest: (): boolean => {
+      useAppStore.getState().requestDeleteSelection()
+      return true
+    },
+  })
   // P1-5 (2026-06-02): 객체 잠금/삭제불가 — LockPlugin 배선.
   // editMode(관리자 템플릿 제작)면 'admin'(잠금 지정/해제 가능), 고객 편집이면 'user'.
   const lock = new LockPlugin(canvas, editor, mergedOptions)
