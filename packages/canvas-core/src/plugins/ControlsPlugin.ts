@@ -208,8 +208,8 @@ class ControlsPlugin extends PluginBase {
     // 커스텀 핸들 모양 적용 (한 번만)
     applyCustomControls()
 
-    // 방향키로 오브젝트 이동
-    this.initArrowKeyMovement()
+    // W4 §6-1: 방향키 이동은 ObjectPlugin.hotkeys 로 일원화(잠금 가드·Shift 10px). 여기서
+    // 중복 등록하던 window keydown 핸들러(잠금 미가드)는 제거 — 합산 2px·Shift 잠금우회 결함 해소.
 
     // 텍스트 객체 유니폼 스케일 강제 및 폰트 크기 동기화
     // 기존 객체에도 적용
@@ -303,54 +303,6 @@ class ControlsPlugin extends PluginBase {
     //this.cornerRotationControl()
   }
 
-  private handleArrowKeyMovement = (e: KeyboardEvent) => {
-    // 입력 요소에서 포커스가 있을 때는 무시
-    const target = e.target as HTMLElement
-    if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
-      return
-    }
-
-    const activeObject = this._canvas.getActiveObject()
-    if (!activeObject) return
-
-    const moveDistance = e.shiftKey ? 10 : 1 // Shift 키를 누르면 10px씩 이동
-
-    let shouldMove = false
-    
-    switch (e.key) {
-      case 'ArrowUp':
-        activeObject.set({ top: (activeObject.top || 0) - moveDistance })
-        shouldMove = true
-        break
-      case 'ArrowDown':
-        activeObject.set({ top: (activeObject.top || 0) + moveDistance })
-        shouldMove = true
-        break
-      case 'ArrowLeft':
-        activeObject.set({ left: (activeObject.left || 0) - moveDistance })
-        shouldMove = true
-        break
-      case 'ArrowRight':
-        activeObject.set({ left: (activeObject.left || 0) + moveDistance })
-        shouldMove = true
-        break
-    }
-
-    if (shouldMove) {
-      e.preventDefault()
-      activeObject.setCoords()
-      this._canvas.requestRenderAll()
-      this._canvas.fire('object:modified', { target: activeObject })
-    }
-  }
-
-  private initArrowKeyMovement() {
-    window.addEventListener('keydown', this.handleArrowKeyMovement)
-  }
-
-  dispose() {
-    window.removeEventListener('keydown', this.handleArrowKeyMovement)
-  }
 }
 
 export default ControlsPlugin
