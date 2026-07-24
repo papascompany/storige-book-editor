@@ -566,6 +566,52 @@ describe('CopyPlugin Alt+드래그 — ⑤ 다중 선택(ActiveSelection) 복제
     expect(objects.length).toBe(1)
     expect(canvas.__offHistoryCalls).toBe(0)
   })
+
+  // C5 세대 가드(재진입 경합 봉합): 비동기 clone 이 미완인 채 새 alt-드래그가 시작되면
+  // 첫 제스처의 stale 콜백이 공유 altCloneStarted 만으로는 가드를 통과(새 제스처가 재상승)
+  // — 제스처 세대 토큰 대조로 stale 콜백을 no-op 화해야 유령 사본·히스토리 오염이 없다.
+  it('⑤-f 비동기 다중 clone 대기 중 새 alt-드래그(재진입) → 첫 제스처 stale 콜백이 세대 불일치로 삽입 취소', () => {
+    const bg = makeObj({ id: 'bg', left: 0, top: 0 })
+    const a = makeObj({ id: 'a', left: 50, top: 50 })
+    const b = makeObj({ id: 'b', left: 80, top: 80 })
+    const objects = [bg, a, b]
+    const sel = makeActiveSelectionMock({
+      sources: [a, b],
+      selLeft: 50,
+      selTop: 50,
+      memberAbsStarts: [
+        { left: 50, top: 50 },
+        { left: 80, top: 80 }
+      ],
+      asyncClone: true
+    })
+    const { canvas, plugin } = setup(objects, sel)
+
+    // 제스처1: 다중 alt-드래그 → 임계 통과 → 이미지 멤버 clone 보류(미완)
+    down(canvas, sel, 100, 100)
+    sel.left = 90
+    moving(canvas, sel, 140, 100)
+    expect(typeof sel.__pendingClone).toBe('function')
+    expect(objects.length).toBe(3) // 아직 사본 삽입 0
+    up(canvas) // altEndPending=true (clone 미완)
+
+    // 제스처2: 곧바로 새 alt-드래그(단일 c) — altMouseDown 이 제스처1 잔여를 finalizeAltDrag 로
+    // 정리하고 새 후보를 잡는다. 제스처2 의 moving 이 altCloneStarted 를 다시 true 로 올린다.
+    const c = makeObj({ id: 'c', left: 200, top: 200 })
+    objects.push(c)
+    canvas.setActive(c)
+    down(canvas, c, 300, 300)
+    moving(canvas, c, 340, 300) // 임계 통과 → altGeneration++ → c 동기 clone 삽입
+    const afterG2 = objects.length
+    expect(afterG2).toBe(5) // bg,a,b,c + c사본
+
+    // 제스처1 의 지연된 stale 콜백 도착 → 세대 불일치로 no-op(유령 사본 미삽입).
+    // (세대 가드가 없으면 altCloneStarted=true 를 보고 통과해 제스처1 사본 2개가 삽입된다)
+    ;(sel.__pendingClone as () => void)()
+    expect(objects.length).toBe(afterG2)
+
+    plugin.dispose()
+  })
 })
 
 describe('CopyPlugin Alt+드래그 — ⑦⑧ 레이스/안전망', () => {
@@ -611,6 +657,37 @@ describe('CopyPlugin Alt+드래그 — ⑦⑧ 레이스/안전망', () => {
     // 뒤늦게 도착한 콜백은 삽입하지 않는다
     ;(src.__pendingClone as () => void)()
     expect(objects.length).toBe(1)
+  })
+
+  // 단일 경로 세대 가드 sentinel — ⑤-f 는 다중(:602) 가드만 잠그므로, 단일(:561) 가드의
+  // gen 조건을 별도로 잠근다(단일 async clone 미완 중 새 alt-드래그 재진입).
+  it('⑦-c 비동기 단일 clone 대기 중 새 alt-드래그(재진입) → 첫 제스처 stale 콜백이 세대 불일치로 삽입 취소', () => {
+    const bg = makeObj({ id: 'bg', left: 0, top: 0 })
+    const src = makeObj({ id: 'src', left: 50, top: 50, asyncClone: true })
+    const objects = [bg, src]
+    const { canvas, plugin } = setup(objects, src)
+
+    // 제스처1: 단일 alt-드래그 → 임계 통과 → 이미지 clone 보류(미완)
+    down(canvas, src, 100, 100)
+    moving(canvas, src, 140, 100)
+    expect(typeof src.__pendingClone).toBe('function')
+    expect(objects.length).toBe(2)
+    up(canvas) // altEndPending=true (clone 미완)
+
+    // 제스처2: 곧바로 새 alt-드래그(단일 c, 동기) — altMouseDown 이 제스처1 잔여 정리 후 새 후보.
+    const c = makeObj({ id: 'c', left: 200, top: 200 })
+    objects.push(c)
+    canvas.setActive(c)
+    down(canvas, c, 300, 300)
+    moving(canvas, c, 340, 300) // 임계 통과 → altGeneration++ → c 동기 clone 삽입
+    const afterG2 = objects.length
+    expect(afterG2).toBe(4) // bg, src, c, c사본
+
+    // 제스처1 의 지연된 stale 콜백 도착 → 세대 불일치로 no-op(단일 가드 :561 sentinel).
+    ;(src.__pendingClone as () => void)()
+    expect(objects.length).toBe(afterG2)
+
+    plugin.dispose()
   })
 
   it('⑧ selection:cleared(핀치 등 비정상 종료) 안전망 — onHistory 복원', () => {
