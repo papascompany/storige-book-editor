@@ -130,6 +130,19 @@ describe('ContextMenu — 데스크탑 우클릭 무회귀', () => {
     fire(container, 'contextmenu', { clientX: 300, clientY: 300 })
     expect(menuEl(container)!.style.left).toBe('300px') // 정상 재배치
   })
+
+  it('빈 곳 롱프레스(미표시)는 억제창을 arm 하지 않아 직후 우클릭이 삼켜지지 않는다', () => {
+    // active 없음 → onlyForActiveObject 항목 available 0 → showAt(touch) 미표시(false)
+    const { container, cm, canvas } = setup(ITEMS, null)
+    expect(cm.showAt(100, 100, { touch: true })).toBe(false)
+
+    // 직후(억제창 만료 전이라면 삼켜졌을 것) 우클릭 표시 주경로 = mousedown button:2(onClick).
+    // active 부여해 available>0 으로 만들고 정상 표시 확인.
+    ;(canvas as { getActiveObject: () => unknown }).getActiveObject = () => ({})
+    fire(container, 'mousedown', { button: 2, clientX: 300, clientY: 300 })
+    expect(menuEl(container)).not.toBeNull() // 억제 안 됨(빈 곳은 arm 안 함)
+    expect(menuEl(container)!.style.left).toBe('300px')
+  })
 })
 
 describe('ContextMenu — T-6 stale-dom 수정', () => {

@@ -129,6 +129,22 @@ class ContextMenu {
 
     this.shown = true
     this.container.appendChild(this.dom)
+
+    // 뷰포트 밖 오버플로 클램프(.context position:fixed → 뷰포트 기준). 모바일 가장자리
+    // 롱프레스에서 메뉴가 화면 밖으로 잘려 항목을 탭 못 하던 문제 + 데스크탑 우클릭 공통 개선.
+    // 레이아웃 미측정 환경(jsdom offsetWidth=0)은 클램프 건너뜀.
+    if (typeof window !== 'undefined') {
+      const w = this.dom.offsetWidth
+      const h = this.dom.offsetHeight
+      const vw = window.innerWidth
+      const vh = window.innerHeight
+      let cx = x
+      let cy = y
+      if (w > 0 && cx + w > vw) cx = Math.max(0, vw - w - 4)
+      if (h > 0 && cy + h > vh) cy = Math.max(0, vh - h - 4)
+      if (cx !== x) this.dom.style.left = `${cx}px`
+      if (cy !== y) this.dom.style.top = `${cy}px`
+    }
   }
 
   /**
@@ -139,16 +155,28 @@ class ContextMenu {
    * 없으면 show 가 자연히 미표시(빈 곳 롱프레스 = 무동작).
    */
   showAt(x: number, y: number, opts?: { touch?: boolean }): boolean {
-    if (opts?.touch) {
+    this.hideAll()
+    this.show(x, y)
+    // 억제창은 **메뉴가 실제로 표시된 경우에만** arm 한다 — 빈 곳 롱프레스(미표시) 후
+    // 우클릭(button 2)이 억제 가드에 삼켜지는 것 방지(적대 리뷰). T-3(네이티브 contextmenu)·
+    // T-5(합성 mousedown) 억제창을 발화(표시) 시각 기준으로 연다.
+    if (opts?.touch && this.shown) {
       const now = Date.now()
       this.suppressHideUntil = now + TOUCH_HIDE_SUPPRESS_MS
       this.suppressNativeContextmenuUntil = now + TOUCH_NATIVE_CTX_SUPPRESS_MS
     }
-    this.hideAll()
-    this.show(x, y)
     // 실제 메뉴가 표시됐는지 반환(빈 곳=available 0 이면 show 가 no-op → false).
     // 호출측(터치 트리거)은 이 값이 true 일 때만 haptic 을 울린다(빈 곳 헛진동 방지).
     return this.shown
+  }
+
+  /**
+   * C6 (T-5 보강): 터치 손 뗌(release) 시점에 히든 억제창을 재-arm 한다. 합성 mousedown 은
+   * touchend 이후에 도착하므로, 표시 시각 기준 창(showAt)만으로는 오래 눌렀다 떼는 경우 창이
+   * 만료돼 손 떼는 즉시 메뉴가 닫힌다. 트리거가 pointerup 에서 (메뉴가 열려 있을 때만) 호출.
+   */
+  armTouchHideSuppress(): void {
+    if (this.shown) this.suppressHideUntil = Date.now() + TOUCH_HIDE_SUPPRESS_MS
   }
 
   /// 이벤트 관련 메소드

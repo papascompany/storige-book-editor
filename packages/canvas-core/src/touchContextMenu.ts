@@ -42,6 +42,8 @@ export function attachTouchContextMenu(
   let pressTimer: ReturnType<typeof setTimeout> | null = null
   let startX = 0
   let startY = 0
+  // 이번 제스처에서 메뉴가 발화됐는지 — pointerup 에서 T-5 억제창 재-arm 판정
+  let firedThisGesture = false
 
   const clearTimer = () => {
     if (pressTimer !== null) {
@@ -60,15 +62,34 @@ export function attachTouchContextMenu(
     }
     startX = e.clientX
     startY = e.clientY
+    firedThisGesture = false
     clearTimer()
     pressTimer = setTimeout(() => {
       pressTimer = null
       // 발화 시점 재확인: 여전히 단일 터치 포인터일 때만
       if (activePointers.size !== 1) return
-      // T-4: 진행 중 fabric transform 중단 — bindPinch 패턴에서 discardActiveObject 는 제외
-      const cAny = canvas as unknown as { _currentTransform?: unknown }
-      if (cAny._currentTransform) cAny._currentTransform = undefined
+      // T-4: 진행 중 fabric transform 을 중단하되, 롱프레스 대기 동안 fabric 이 서브임계(<10px)
+      // 지터로 밀어놓은 위치를 변환 시작 시점(original)으로 복원한다. 미복원 시 그 이동이
+      // object:modified 없이(=undo 불가) 모델에 잔류해 canvasData 에 직렬화된다(적대 리뷰 MAJOR).
+      // discardActiveObject 는 제외(활성객체 유지 → onlyForActiveObject 메뉴 보존).
+      const cAny = canvas as unknown as {
+        _currentTransform?: {
+          target?: { set?: (o: { left: number; top: number }) => void; setCoords?: () => void }
+          original?: { left?: number; top?: number }
+        }
+      }
+      const tf = cAny._currentTransform
+      if (tf) {
+        const target = tf.target
+        const orig = tf.original
+        if (target?.set && orig && typeof orig.left === 'number' && typeof orig.top === 'number') {
+          target.set({ left: orig.left, top: orig.top })
+          target.setCoords?.()
+        }
+        cAny._currentTransform = undefined
+      }
       const shown = contextMenu.showAt(startX, startY, { touch: true })
+      if (shown) firedThisGesture = true
       if (shown && haptic) {
         try {
           const nav = navigator as unknown as { vibrate?: (pattern: number) => boolean }
@@ -93,6 +114,12 @@ export function attachTouchContextMenu(
     if (e.pointerType !== 'touch') return
     activePointers.delete(e.pointerId)
     clearTimer()
+    // T-5 보강: 이번 제스처에서 메뉴가 떠 있으면, 손 뗌 직후 도착할 합성 mousedown 이
+    // (표시 시각 기준 창이 만료된 뒤라도) 메뉴를 닫지 않도록 억제창을 release 기준으로 재-arm.
+    if (firedThisGesture) {
+      contextMenu.armTouchHideSuppress()
+      firedThisGesture = false
+    }
   }
 
   wrapper.addEventListener('pointerdown', onPointerDown)

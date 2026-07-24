@@ -55,8 +55,9 @@ describe('Editor.enableTouchContextMenu 배선', () => {
     ;(editor as any).enableTouchContextMenu({ haptic: true })
 
     expect(attachSpy).toHaveBeenCalledTimes(1)
-    const [passedCanvas, , passedOptions] = attachSpy.mock.calls[0]
+    const [passedCanvas, passedContextMenu, passedOptions] = attachSpy.mock.calls[0]
     expect(passedCanvas).toBe(canvas)
+    expect(passedContextMenu).toBeTruthy() // arg2 = contextMenu 인스턴스(엉뚱한 객체 전달 방지)
     expect(passedOptions).toEqual({ haptic: true })
   })
 

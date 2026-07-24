@@ -102,8 +102,9 @@ class Editor extends EventEmitter {
     }
     this.hotkeyBindings = []
 
-    // C6: 터치 롱프레스 트리거(wrapperEl pointer 리스너 4종 + 대기 타이머) 해제.
-    // 반드시 this.canvas=null 이전에 — wrapperEl 도달 필요. 멱등(undefined 가드).
+    // C6: 터치 롱프레스 트리거(wrapperEl pointer 리스너 4종 + 대기 타이머) 해제. 정리 함수는
+    // 부착 시점의 wrapperEl 을 클로저로 보유하므로 this.canvas=null 순서와 무관하나, 컨텍스트
+    // 메뉴 정리와 인접 배치. 멱등(undefined 가드).
     this.touchContextMenuCleanup?.()
     this.touchContextMenuCleanup = undefined
 
