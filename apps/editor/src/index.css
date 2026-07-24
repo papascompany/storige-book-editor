@@ -201,6 +201,24 @@ input:focus-visible {
   border-top: 1px solid #454545;
 }
 
+/* C6: 모바일 롱프레스 컨텍스트 메뉴 — 터치 환경에서 항목을 44px 히트영역으로 확대(HIG).
+   앱 CSS 단독(canvas-core 무접촉). 데스크탑(fine pointer)은 기존 조밀 레이아웃 유지. */
+@media (pointer: coarse) {
+  .context .item {
+    min-height: 44px;
+    padding: 10px 20px;
+    display: flex;
+    align-items: center;
+  }
+  .context .item .hotkey {
+    margin-left: auto;
+    padding-left: 16px;
+  }
+  .context .separator {
+    margin: 6px 0px;
+  }
+}
+
 .hotkey {
   color: #878b90;
   float: right;
