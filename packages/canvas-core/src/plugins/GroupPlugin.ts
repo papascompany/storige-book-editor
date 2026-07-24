@@ -11,19 +11,22 @@ class GroupPlugin extends PluginBase {
       name: '그룹',
       input: ['ctrl+g', 'cmd+g'],
       onlyForActiveObject: true,
+      category: 'object',
       callback: () => this.group(),
       hideContext: () => {
         const activeObject = this._canvas.getActiveObject()
         // ActiveSelection이고 2개 이상의 객체가 있을 때만 그룹 생성 가능
-        return !activeObject || 
-               !(activeObject instanceof fabric.ActiveSelection) || 
+        return !activeObject ||
+               !(activeObject instanceof fabric.ActiveSelection) ||
                activeObject.getObjects().length < 2
       }
     },
     {
       name: '그룹 해제',
-      input: 'cmd+backspace',
+      // Windows(Ctrl)·Mac(⌘) 양쪽 실동작 + 모달 표기 정합
+      input: ['ctrl+backspace', 'cmd+backspace'],
       onlyForActiveObject: true,
+      category: 'object',
       callback: () => this.unGroup(),
       hideContext: () => {
         const activeObject = this._canvas.getActiveObject()

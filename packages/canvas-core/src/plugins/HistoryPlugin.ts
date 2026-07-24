@@ -9,14 +9,14 @@ class HistoryPlugin extends PluginBase {
   events = ['historyUpdate']
   hotkeys: CanvasHotkey[] = [
     {
-      name: 'Undo',
+      name: '실행 취소',
       input: ['ctrl+z', '⌘+z'],
       onlyForActiveObject: false,
       callback: () => this.undo(),
       hideContext: true
     },
     {
-      name: 'Redo',
+      name: '다시 실행',
       input: ['ctrl+shift+z', '⌘+shift+z'],
       onlyForActiveObject: false,
       callback: () => this.redo(),
