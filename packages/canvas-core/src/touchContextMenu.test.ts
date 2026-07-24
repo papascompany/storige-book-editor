@@ -50,6 +50,7 @@ function makeContextMenu(shownReturn = true) {
   return {
     shown: shownReturn,
     showAt: vi.fn(() => shownReturn),
+    armTouchHideSuppress: vi.fn(),
   }
 }
 
@@ -151,6 +152,50 @@ describe('touchContextMenu — 발화 부수효과', () => {
 
     expect(canvas._currentTransform).toBeUndefined()
     expect(canvas.discardActiveObject).not.toHaveBeenCalled() // 활성객체 유지(T-6)
+  })
+
+  it('⑥-b T-4: 서브임계 지터로 밀린 객체를 original 위치로 복원(무-undo 오염 방지, 적대 리뷰 MAJOR)', () => {
+    const wrapper = makeWrapper()
+    const canvas = makeCanvas(wrapper)
+    const target: Record<string, unknown> = {
+      left: 106,
+      top: 103, // 대기 중 fabric 이 6px/3px 밀어놓음
+      set(o: { left: number; top: number }) {
+        target.left = o.left
+        target.top = o.top
+      },
+      setCoords: vi.fn(),
+    }
+    canvas._currentTransform = { target, original: { left: 100, top: 100 } }
+    const cm = makeContextMenu(true)
+    attachTouchContextMenu(canvas as never, cm as never)
+
+    wrapper.fire('pointerdown', pdown(1, 200, 200))
+    vi.advanceTimersByTime(500)
+
+    expect(target.left).toBe(100) // press 이전으로 복원
+    expect(target.top).toBe(100)
+    expect(target.setCoords).toHaveBeenCalled()
+    expect(canvas._currentTransform).toBeUndefined()
+  })
+
+  it('⑥-c release 시 armTouchHideSuppress 재-arm(T-5 늦은 손뗌 방어)', () => {
+    const wrapper = makeWrapper()
+    const cm = makeContextMenu(true)
+    attachTouchContextMenu(makeCanvas(wrapper) as never, cm as never)
+
+    wrapper.fire('pointerdown', pdown(1, 100, 100))
+    vi.advanceTimersByTime(500) // 발화
+    expect(cm.armTouchHideSuppress).not.toHaveBeenCalled()
+
+    wrapper.fire('pointerup', pdown(1, 100, 100)) // 손 뗌
+    expect(cm.armTouchHideSuppress).toHaveBeenCalledTimes(1)
+
+    // 발화 안 한 제스처(단순 탭)는 재-arm 안 함
+    cm.armTouchHideSuppress.mockClear()
+    wrapper.fire('pointerdown', pdown(2, 100, 100))
+    wrapper.fire('pointerup', pdown(2, 100, 100))
+    expect(cm.armTouchHideSuppress).not.toHaveBeenCalled()
   })
 
   it('⑦ haptic: 표시(true) 시 vibrate, 미표시(false=빈 곳)면 무진동', () => {
