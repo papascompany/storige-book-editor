@@ -5,6 +5,7 @@ import { useAppStore } from '@/stores/useAppStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useTemplateSave, type UpdateTemplateOptions } from '@/hooks/useTemplateSave'
 import { useCanvasContainerSizeSync } from '@/hooks/useCanvasContainerSizeSync'
+import { useSnapSettingsSync } from '@/hooks/useSnapSettingsSync'
 import { templatesApi } from '@/api'
 import { createCanvas, safeDisposeCanvas, CanvasInitCancelledError } from '@/utils/createCanvas'
 import { ServicePlugin, computeLayout } from '@storige/canvas-core'
@@ -140,6 +141,8 @@ export default function TemplateEditorView() {
   // 객체 선택 시 FeatureSidebar↔ControlBar 스왑으로 캔버스 폭이 바뀌어도 페이지가
   // 밀린 채 방치되지 않도록 EditorView 와 동일 훅 배선(이 뷰엔 리사이즈 동기화가 전무했다).
   useCanvasContainerSizeSync(ready, canvasContainerRef)
+  // §6-3: 스냅 설정 배선(admin 템플릿 편집에도 적용)
+  useSnapSettingsSync(ready)
 
   // 부모 창에 메시지 전송
   const sendMessageToParent = useCallback((message: TemplateEditorMessage) => {

@@ -40,6 +40,13 @@ interface UiPrefState {
   showRuler: boolean
   setShowRuler: (show: boolean) => void
   toggleRuler: () => void
+  /** §6-3 스냅 설정 (기본 전부 ON = 현행 거동). canvasData·PDF 산출물과 무관한 UI pref. */
+  snapGuidesEnabled: boolean // 스마트 정렬 가이드(객체 스냅)
+  snapCenterEnabled: boolean // 워크스페이스 중앙 스냅(룰러)
+  snapAngleEnabled: boolean // 회전 각도 스냅
+  setSnapGuidesEnabled: (v: boolean) => void
+  setSnapCenterEnabled: (v: boolean) => void
+  setSnapAngleEnabled: (v: boolean) => void
   /** FeatureSidebar 너비 (px). MIN/MAX 사이로 clamp 됨 */
   sidebarWidth: number
   setSidebarWidth: (w: number) => void
@@ -113,6 +120,12 @@ export const useUiPrefStore = create<UiPrefState>()(
       showRuler: false,
       setShowRuler: (showRuler) => set({ showRuler }),
       toggleRuler: () => set({ showRuler: !get().showRuler }),
+      snapGuidesEnabled: true,
+      snapCenterEnabled: true,
+      snapAngleEnabled: true,
+      setSnapGuidesEnabled: (snapGuidesEnabled) => set({ snapGuidesEnabled }),
+      setSnapCenterEnabled: (snapCenterEnabled) => set({ snapCenterEnabled }),
+      setSnapAngleEnabled: (snapAngleEnabled) => set({ snapAngleEnabled }),
       sidebarWidth: SIDEBAR_WIDTH_DEFAULT,
       setSidebarWidth: (w) => set({ sidebarWidth: clampSidebarWidth(w) }),
       sidebarCollapsed: false,
@@ -141,7 +154,7 @@ export const useUiPrefStore = create<UiPrefState>()(
     {
       name: 'storige-ui-pref',
       storage: createJSONStorage(() => localStorage),
-      version: 7,
+      version: 8,
       migrate: (persistedState, version) => {
         const state = (persistedState ?? {}) as Partial<UiPrefState>
         if (version < 3) {
@@ -159,6 +172,13 @@ export const useUiPrefStore = create<UiPrefState>()(
         }
         if (version < 7) {
           state.autoSaveToastEnabled = false
+        }
+        if (version < 8) {
+          // §6-3: 기존 사용자는 스냅 상시-ON 이 기본이었으므로 true 로 승격(얕은 병합이라
+          // 미이관 시 undefined→OFF 회귀). 신규 사용자는 impl 기본값(true) 사용.
+          state.snapGuidesEnabled = state.snapGuidesEnabled ?? true
+          state.snapCenterEnabled = state.snapCenterEnabled ?? true
+          state.snapAngleEnabled = state.snapAngleEnabled ?? true
         }
         // sidebarWidth가 범위를 벗어난 경우 보정
         if (typeof state.sidebarWidth === 'number') {

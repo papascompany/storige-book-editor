@@ -25,6 +25,7 @@ import { useSpreadAutoAnchor, useSpreadOutOfBoundsToast, useObjectOutOfTrimToast
 import { useCanvasThemeSync } from '@/hooks/useCanvasThemeSync'
 import { useCanvasLocalBackup } from '@/hooks/useCanvasLocalBackup'
 import { useCanvasContainerSizeSync } from '@/hooks/useCanvasContainerSizeSync'
+import { useSnapSettingsSync } from '@/hooks/useSnapSettingsSync'
 import { productsApi } from '@/api'
 import { getDefaultTemplateSetId } from '@/constants/defaultTemplateSet'
 import { getParamCompat } from '@/utils/searchParams'
@@ -580,6 +581,9 @@ export default function EditorView() {
   // T6 (2026-07-13): 로직을 useCanvasContainerSizeSync 훅으로 무변경 추출 —
   // /template·/embed 와 공유 (iOS Safari 3중 방어 가드 포함).
   useCanvasContainerSizeSync(ready, canvasContainerRef)
+
+  // §6-3: 스냅 설정(useUiPrefStore) → 플러그인 setter 배선(전 에디터). embed/Template 과 동형.
+  useSnapSettingsSync(ready)
 
   // Toggle side panel
   const toggleSidePanel = () => {

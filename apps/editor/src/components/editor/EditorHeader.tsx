@@ -24,6 +24,7 @@ import {
   Check,
   Box,
   Ruler,
+  Magnet,
   Undo2,
   Redo2,
   ChevronDown,
@@ -105,6 +106,14 @@ export default function EditorHeader({
   // 룰러 토글 (기본 OFF, 사용자 선호로 영속)
   const showRuler = useUiPrefStore((s) => s.showRuler)
   const toggleRuler = useUiPrefStore((s) => s.toggleRuler)
+  // §6-3 스냅 설정
+  const snapGuidesEnabled = useUiPrefStore((s) => s.snapGuidesEnabled)
+  const snapCenterEnabled = useUiPrefStore((s) => s.snapCenterEnabled)
+  const snapAngleEnabled = useUiPrefStore((s) => s.snapAngleEnabled)
+  const setSnapGuidesEnabled = useUiPrefStore((s) => s.setSnapGuidesEnabled)
+  const setSnapCenterEnabled = useUiPrefStore((s) => s.setSnapCenterEnabled)
+  const setSnapAngleEnabled = useUiPrefStore((s) => s.setSnapAngleEnabled)
+  const enableSnapSettings = import.meta.env.VITE_ENABLE_SNAP_SETTINGS !== 'false'
   // 테마 (light/dark/system)
   const theme = useUiPrefStore((s) => s.theme)
   const setTheme = useUiPrefStore((s) => s.setTheme)
@@ -861,6 +870,47 @@ export default function EditorHeader({
             </TooltipTrigger>
             <TooltipContent>룰러 {showRuler ? '끄기' : '켜기'}</TooltipContent>
           </Tooltip>
+
+          {/* 스냅 설정 팝오버 (§6-3) — 모바일(< sm) 에서 숨김. 3토글 전부 기본 ON. */}
+          {enableSnapSettings && (
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="스냅 설정"
+                  className="hidden sm:inline-flex h-9 w-9 text-editor-text-muted hover:bg-editor-hover"
+                >
+                  <Magnet className="h-5 w-5" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" sideOffset={6} className="w-56 p-2">
+                <div className="px-2 py-1.5 text-[12px] font-semibold text-editor-text-muted">
+                  스냅 설정
+                </div>
+                {(
+                  [
+                    { label: '스마트 정렬 가이드', checked: snapGuidesEnabled, set: setSnapGuidesEnabled },
+                    { label: '중앙 스냅', checked: snapCenterEnabled, set: setSnapCenterEnabled },
+                    { label: '각도 스냅', checked: snapAngleEnabled, set: setSnapAngleEnabled },
+                  ] as const
+                ).map((row) => (
+                  <label
+                    key={row.label}
+                    className="flex items-center justify-between gap-3 px-2 py-1.5 rounded-md hover:bg-editor-hover cursor-pointer text-[13px] text-editor-text"
+                  >
+                    <span>{row.label}</span>
+                    <input
+                      type="checkbox"
+                      checked={row.checked}
+                      onChange={(e) => row.set(e.target.checked)}
+                      className="h-4 w-4 accent-editor-accent cursor-pointer"
+                    />
+                  </label>
+                ))}
+              </PopoverContent>
+            </Popover>
+          )}
 
           {/* 테마 토글 — 모바일(< sm) 에서 숨김 */}
           <Tooltip>

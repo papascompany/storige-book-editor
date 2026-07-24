@@ -68,6 +68,13 @@ class SmartGuidesPlugin extends PluginBase {
   private _angleStep: number
   private _angleTolerance: number
   private _guideColor: string
+  // §6-3 스냅 설정(런타임 토글) — 기본 on(현행 거동). 순수 거동 게이트만 하고 생성자 옵션·
+  // 이벤트 바인딩은 불변(생성 순서 계약 P0 준수).
+  private _objectSnapEnabled = true
+  private _angleSnapEnabled = true
+  // 중앙스냅 토글에 연동 — false 면 RulerPlugin 중앙스냅에 축을 양보하지 않는다(중앙스냅 OFF +
+  // 객체스냅 ON 시 중앙 근처가 무-스냅이 되는 데드존 방지, 적대 리뷰 함정).
+  private _centerYieldEnabled = true
 
   private _candidateBounds: SnapBounds[] | null = null
   private _isDragging = false
@@ -140,11 +147,30 @@ class SmartGuidesPlugin extends PluginBase {
     return { left: tl.x, top: tl.y, right: br.x, bottom: br.y }
   }
 
+  /** §6-3: 객체 스냅(정렬 가이드/스냅) 런타임 토글. early-return 게이트만 — 리스너 불변. */
+  setObjectSnapEnabled(enabled: boolean): void {
+    this._objectSnapEnabled = enabled
+    if (!enabled) this._hideGuides()
+  }
+  /** §6-3: 각도(회전) 스냅 런타임 토글. */
+  setAngleSnapEnabled(enabled: boolean): void {
+    this._angleSnapEnabled = enabled
+  }
+  /** §6-3: 중앙축 룰러 양보 토글(중앙스냅 토글에 연동) — off 면 중앙 근처도 객체 스냅 적용. */
+  setCenterYieldEnabled(enabled: boolean): void {
+    this._centerYieldEnabled = enabled
+  }
+
   private _handleObjectMoving(e: fabric.IEvent): void {
     const target = e.target
     if (!target || this._isSystemObject(target)) return
 
     this._isDragging = true
+    // §6-3: 객체 스냅 OFF → 스냅·가이드 모두 스킵
+    if (!this._objectSnapEnabled) {
+      this._hideGuides()
+      return
+    }
     if (!this._candidateBounds) {
       this._candidateBounds = this._buildCandidateCache(target)
     }
@@ -164,7 +190,7 @@ class SmartGuidesPlugin extends PluginBase {
     let yieldX = false
     let yieldY = false
     const workspace = this._getWorkspace()
-    if (workspace) {
+    if (workspace && this._centerYieldEnabled) {
       const wsCenter = workspace.getCenterPoint()
       yieldX = Math.abs(objCenter.x - wsCenter.x) < WORKSPACE_CENTER_YIELD_CANVAS_PX
       yieldY = Math.abs(objCenter.y - wsCenter.y) < WORKSPACE_CENTER_YIELD_CANVAS_PX
@@ -196,6 +222,9 @@ class SmartGuidesPlugin extends PluginBase {
   private _handleObjectRotating(e: fabric.IEvent): void {
     const target = e.target
     if (!target || this._isSystemObject(target)) return
+
+    // §6-3: 각도 스냅 OFF → 라운딩 안 함
+    if (!this._angleSnapEnabled) return
 
     // Shift 홀드 시 스냅 해제 (데스크톱 전용 — 터치는 상시 스냅, 플래그로 개별 off 가능)
     const domEvent = e.e as MouseEvent | undefined
