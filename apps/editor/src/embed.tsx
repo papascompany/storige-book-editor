@@ -67,7 +67,23 @@ import {
   type OrientationSize,
 } from './utils/orientationGuard'
 import { useExternalPhotosStore } from './stores/useExternalPhotosStore'
+import { reloadOnceForStaleChunk } from './components/EditorErrorBoundary'
 import './index.css'
+
+// 배포 후 청크 재해시(stale chunk) 자동 리로드 — 임베드 번들 진입점.
+// 새 배포로 lazy 청크(예: AppEdit-<hash>.js) 파일명이 바뀌면, 배포 전 열어둔 호스트 페이지의
+// 옛 편집기 번들이 옛 파일명을 dynamic import 하다 404 → EditorErrorBoundary 로 떨어진다.
+// vite 의 window 'vite:preloadError' 를 받아 1회 새로고침으로 신규 자산을 받아 자동 복구한다.
+// 무한 루프는 sessionStorage 쿨다운(reloadOnceForStaleChunk)으로 차단하며, 자동저장 +
+// RestoreBackupBanner 로 편집 손실 없이 복원을 제안한다. 번들이 여러 번 로드돼도 리스너는 1회만.
+if (typeof window !== 'undefined' && !(window as unknown as { __storigeStaleChunkGuard?: boolean }).__storigeStaleChunkGuard) {
+  ;(window as unknown as { __storigeStaleChunkGuard?: boolean }).__storigeStaleChunkGuard = true
+  window.addEventListener('vite:preloadError', (event) => {
+    console.error('[vite:preloadError] stale chunk (embed) — attempting one-time reload', event)
+    event.preventDefault()
+    reloadOnceForStaleChunk()
+  })
+}
 
 // ============================================================
 // 편집완료(finish) 진단 · 안전 유틸

@@ -16,7 +16,6 @@ class FilterPlugin extends PluginBase {
   name = 'FilterPlugin'
   hotkeys = []
   events = []
-  private eventHandlers = new Map<string, Function>()
   private _tempFiltersStore: Map<string, any> | null = null
 
   constructor(canvas: fabric.Canvas, editor: Editor) {
@@ -474,17 +473,9 @@ class FilterPlugin extends PluginBase {
       return (filter as any).effectType !== effectType
     })
   }
-  // dispose 메서드 오버라이드
-  dispose() {
-    // 등록된 모든 이벤트 핸들러 제거
-    this.eventHandlers.forEach((handler: (...args: any[]) => void, id) => {
-      const eventName = id.split('_')[0]
-      this._editor.off(eventName, handler)
-    })
-    this.eventHandlers.clear()
-
-    super.dispose()
-  }
+  // 정리할 인스턴스 리스너가 없어 dispose 는 PluginBase 의 no-op 을 상속한다.
+  // (과거 override 는 항상 비어 있던 eventHandlers Map 을 순회하는 dead code 였고,
+  //  존재하지 않는 super.dispose() 를 호출해 Editor.dispose 에서 TypeError 를 냈다.)
 
   private getFabricFilterType(type: string): string {
     return type.charAt(0).toUpperCase() + type.slice(1)
