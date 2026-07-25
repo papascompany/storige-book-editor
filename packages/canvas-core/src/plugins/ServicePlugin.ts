@@ -264,7 +264,7 @@ class ServicePlugin extends PluginBase {
         core.ensureTextStyles(this._canvas)
         const result = this._canvas.toJSON(core.extendFabricOption)
 
-        console.log('Save JSON:', result)
+        dlog('service', 'Save JSON:', result)
 
         this._editor.hooks.get('afterSave').callAsync(result, () => {
           for (const item of shouldSave) {
@@ -299,7 +299,7 @@ class ServicePlugin extends PluginBase {
 
   afterSave(...args: any[]): Promise<void> {
     return new Promise((r) => {
-      console.log('afterSave: service plugin')
+      dlog('service', 'afterSave: service plugin')
       r(...args)
     })
   }
@@ -455,7 +455,7 @@ class ServicePlugin extends PluginBase {
             obj.dirty = true
           })
 
-          console.log('Load JSON:', jsonStr)
+          dlog('service', 'Load JSON:', jsonStr)
 
           this._editor.hooks.get('afterLoad').callAsync(jsonStr, async () => {
             // afterLoad: 로드된 객체에 폰트 적용
@@ -488,7 +488,7 @@ class ServicePlugin extends PluginBase {
                 allTextObjects.push(...collectTextObjects(obj))
               })
 
-              console.log(`📝 텍스트 객체 ${allTextObjects.length}개 발견`)
+              dlog('service', `📝 텍스트 객체 ${allTextObjects.length}개 발견`)
 
               // 각 텍스트 객체에 기본 폰트 + styles 폰트 모두 적용
               for (const obj of allTextObjects) {

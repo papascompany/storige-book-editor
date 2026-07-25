@@ -1,4 +1,5 @@
 import { useEffect, type RefObject } from 'react'
+import { syncFabricDevicePixelRatio } from '@storige/canvas-core'
 import { useAppStore } from '@/stores/useAppStore'
 
 /**
@@ -26,6 +27,8 @@ export function useCanvasContainerSizeSync(
     // 무한 반복되어 iOS Safari 가 페이지를 크래시시킴.
     let lastW = 0
     let lastH = 0
+    // dpr(레티나 배율) 추적 — 줌/모니터 이동/OS 배율 변경으로 dpr 만 바뀌는 경우 감지용.
+    let lastDpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1
     let rafId: number | null = null
 
     const apply = () => {
@@ -33,27 +36,48 @@ export function useCanvasContainerSizeSync(
       const w = el.clientWidth
       const h = el.clientHeight
       if (w <= 0 || h <= 0) return
-      // 1px 미만 변동은 무시 — 모바일 viewport 지터 흡수
-      if (Math.abs(w - lastW) < 1 && Math.abs(h - lastH) < 1) return
+      const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1
+      // dpr 변경은 CSS px 크기를 그대로 두므로(clientW/H 불변) 아래 지터 가드·getWidth()===w
+      // 가드에 걸려 스킵된다. 명시적으로 감지해 retina 백킹스토어 재정합을 강제한다
+      // (미대응 시 getPointer cssScale ≠ retina 배율 → 클릭 좌표가 원점서 멀수록 밀림).
+      const dprChanged = Math.abs(dpr - lastDpr) >= 0.01
+      // 1px 미만 변동은 무시 — 모바일 viewport 지터 흡수 (단, dpr 변경 시엔 통과)
+      if (!dprChanged && Math.abs(w - lastW) < 1 && Math.abs(h - lastH) < 1) return
       // 첫 동기화는 WorkspacePlugin.reset() 의 setZoomAuto 가 이미 처리.
       // 이후 호출(사이드바 토글/창 리사이즈/ControlBar 표시 등)에서만 워크스페이스 재정렬.
       const isFirstApply = lastW === 0 && lastH === 0
       lastW = w
       lastH = h
+      lastDpr = dpr
+
+      // dpr 이 바뀌었으면 fabric 의 캐시된 devicePixelRatio 를 먼저 갱신 — 그래야 이어지는
+      // setDimensions 의 _initRetinaScaling 이 새 dpr 로 백킹스토어를 재산출한다. (갱신 없이
+      // setDimensions 만 재호출하면 stale dpr 로 재산출돼 오프셋이 남는다.)
+      if (dprChanged) syncFabricDevicePixelRatio()
 
       const { allCanvas: canvases, allEditors: editors } = useAppStore.getState()
       canvases.forEach((cvs, i) => {
         try {
           if (!cvs || (cvs as any).disposed) return
-          // 현재 fabric 캔버스 크기와 같으면 스킵 (불필요한 setDimensions 방지)
-          if (cvs.getWidth?.() === w && cvs.getHeight?.() === h) return
+          // 현재 fabric 캔버스 크기와 같으면 스킵 (불필요한 setDimensions 방지).
+          // ⚠️ 단 dpr 이 바뀌었으면 논리 크기가 같아도 retina 백킹스토어 재적용이 필요하므로 가드 우회.
+          // (setDimensions 전에 캡처 — 순수 dpr 변경 판정에 재사용)
+          const sizeUnchanged = cvs.getWidth?.() === w && cvs.getHeight?.() === h
+          if (!dprChanged && sizeUnchanged) return
           cvs.setDimensions({ width: w, height: h })
+          // getPointer 오프셋(_offset) 재계산 — setDimensions 내부에서도 호출되지만
+          // dpr/레이아웃 변경 후 클릭 좌표 정합을 확실히 하기 위해 명시.
+          cvs.calcOffset?.()
 
           // 사이드 메뉴 토글/사이드바 드래그/창 리사이즈로 캔버스 폭이 바뀌면
           // 페이지(workspace)가 한쪽으로 치우쳐 보이는 문제 해결.
           // - 현재 줌에서 페이지가 새 영역에 들어가면: 줌 유지하고 중앙으로만 이동.
           // - 들어가지 않으면: 자동맞춤(setZoomAuto)으로 페이지 전체가 보이게 다시 스케일.
-          if (!isFirstApply) {
+          // 순수 dpr 변경(캔버스 논리 크기 불변)이면 위 setDimensions+calcOffset 으로 클릭좌표만
+          // 정합하고 재센터는 건너뛴다 — 사용자 pan/zoom 보존(모니터 이동·OS 배율 변경 시
+          // 뷰포트가 항등행렬/중앙으로 리셋되던 회귀 방지). 크기가 실제로 바뀐 경우는 기존대로 재정렬.
+          const pureDprChange = dprChanged && sizeUnchanged
+          if (!isFirstApply && !pureDprChange) {
             const ed = editors[i]
             const ws = ed?.getPlugin?.<any>('WorkspacePlugin')
             const workspace = cvs.getObjects?.().find?.((o: any) => o.id === 'workspace')
@@ -89,14 +113,46 @@ export function useCanvasContainerSizeSync(
       rafId = window.requestAnimationFrame(apply)
     }
 
+    // dpr(레티나 배율) 변경 감지 — 브라우저 줌은 'resize' 로도 잡히지만, 모니터 간 이동/OS
+    // 배율 변경은 CSS 레이아웃 크기를 바꾸지 않아 resize/ResizeObserver 가 발화하지 않는다.
+    // 현재 dpr 로 `(resolution: Ndppx)` MQL 을 걸고, dpr 이 바뀌면 change 로 apply 를 예약한 뒤
+    // 새 dpr 로 재무장한다.
+    // 타입명(MediaQueryList) 을 직접 쓰지 않는다 — 이 앱 eslint no-undef 가 DOM lib 타입을
+    // 미해석해 오탐하기 때문(ReturnType 으로 우회, 폴백 캐스트는 구조적 타입만 사용).
+    let dprMql: ReturnType<typeof window.matchMedia> | null = null
+    const disarmDprMql = () => {
+      if (!dprMql) return
+      try {
+        if (dprMql.removeEventListener) dprMql.removeEventListener('change', onDprChange)
+        else (dprMql as { removeListener?: (l: () => void) => void }).removeListener?.(onDprChange)
+      } catch { /* noop */ }
+      dprMql = null
+    }
+    function onDprChange() {
+      schedule()
+      armDprMql()
+    }
+    function armDprMql() {
+      if (typeof window === 'undefined' || !window.matchMedia) return
+      disarmDprMql()
+      try {
+        const dpr = window.devicePixelRatio || 1
+        dprMql = window.matchMedia(`(resolution: ${dpr}dppx)`)
+        if (dprMql.addEventListener) dprMql.addEventListener('change', onDprChange)
+        else (dprMql as { addListener?: (l: () => void) => void }).addListener?.(onDprChange)
+      } catch { /* noop — matchMedia 미지원/차단 환경 */ }
+    }
+
     // 초기 1회 동기화
     apply()
     const ro = new ResizeObserver(schedule)
     ro.observe(el)
     window.addEventListener('resize', schedule)
+    armDprMql()
     return () => {
       ro.disconnect()
       window.removeEventListener('resize', schedule)
+      disarmDprMql()
       if (rafId != null) window.cancelAnimationFrame(rafId)
     }
   }, [ready, containerRef])

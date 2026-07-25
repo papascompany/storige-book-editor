@@ -57,6 +57,32 @@ export interface FabricCanvasOptions {
 }
 
 /**
+ * fabric 의 캐시된 devicePixelRatio 를 현재 살아있는 `window.devicePixelRatio` 로 재동기화.
+ *
+ * ⚠️ 근본(클릭 좌표 오프셋의 원인): `fabric.devicePixelRatio` 는 fabric 모듈 로드 시 **1회만**
+ * 캡처된다. `getRetinaScaling()` 과 `_initRetinaScaling()`(setDimensions 가 내부 호출) 이 모두
+ * 이 캐시 값을 읽으므로, 페이지 로드 후 dpr 이 바뀌면(브라우저 줌·모니터 간 이동·OS 배율 변경)
+ * 캐시가 stale 해진다. 이 상태에서는 setDimensions 를 다시 호출해도 백킹스토어(upperCanvasEl.width)
+ * 가 새 dpr 로 재산출되지 않아, getPointer 의 cssScale(= upperCanvasEl.width / boundingWidth) 과
+ * retina 나눗셈 배율이 어긋난다 → 클릭 좌표가 원점에서 멀수록 비례해 밀린다.
+ *
+ * 이 함수로 캐시를 갱신한 뒤 `canvas.setDimensions(현재 CSS 크기)` 를 호출하면 백킹스토어가
+ * `cssWidth × liveDpr` 로 재산출되어 `cssScale === retinaScaling` 정합이 회복된다.
+ *
+ * @returns 캐시 값이 실제로 갱신됐으면 true (호출측이 setDimensions 재적용 여부 판단에 사용)
+ */
+export function syncFabricDevicePixelRatio(): boolean {
+  if (typeof window === 'undefined') return false
+  const live = window.devicePixelRatio || 1
+  const fb = fabric as unknown as { devicePixelRatio?: number }
+  const cached = fb.devicePixelRatio ?? 1
+  // 부동소수 여유(1e-3) — 동일 dpr 재호출에서 무의미한 재정합 방지
+  if (Math.abs(live - cached) < 1e-3) return false
+  fb.devicePixelRatio = live
+  return true
+}
+
+/**
  * coarse pointer (모바일/태블릿 터치) 디바이스 여부 — SSR 안전.
  */
 function isCoarsePointer(): boolean {
@@ -81,6 +107,11 @@ export async function createFabricCanvas(
   options: FabricCanvasOptions = {}
 ): Promise<fabric.Canvas> {
   const fb = await getFabric()
+
+  // 생성 시점의 살아있는 dpr 로 fabric 캐시를 맞춘다 — 모듈이 다른 dpr 에서 먼저 로드됐거나
+  // (예: 늦은 하이드레이션) 로드 후 dpr 이 바뀐 뒤 새 캔버스를 만드는 경우, 백킹스토어가
+  // stale dpr 로 산출돼 첫 프레임부터 클릭 좌표가 어긋나는 것을 방지한다.
+  syncFabricDevicePixelRatio()
 
   // 모바일/터치 디바이스에서는 retina scaling 을 끔 (iOS Safari 메모리 한계 회피).
   // DPR=3 (iPhone) 시 내부 캔버스가 9배 크기 → toDataURL/렌더링 비용 9배. 이걸 끄면

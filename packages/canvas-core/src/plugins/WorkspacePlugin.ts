@@ -7,6 +7,7 @@ import { mmToPxDisplay } from '../utils/math'
 import { CanvasSettings } from '../models'
 import { extractSvgElementsAsObjects, convertFabricObjectToSVGString } from '../utils/svg'
 import { connectWorkspacePlugin } from '../utils/history'
+import { dlog } from '../utils/debugLog'
 
 const _defaultZoomRatio = 0.8
 
@@ -60,7 +61,7 @@ class WorkspacePlugin extends PluginBase {
 
   constructor(canvas: fabric.Canvas, editor: Editor, options: WorkspacePluginOptions) {
     super(canvas, editor, options)
-    console.log('WorkspacePlugin created', options)
+    dlog('plugin', 'WorkspacePlugin created', options)
   }
 
   // 리소스 정리 메서드
@@ -200,7 +201,7 @@ class WorkspacePlugin extends PluginBase {
     if (typeof value === 'boolean') {
       this._options.showSafeBorder = value
     }
-    console.log('toggleSafeBorder', this._options.showSafeBorder)
+    dlog('plugin', 'toggleSafeBorder', this._options.showSafeBorder)
 
     // 기존 객체가 있으면 가시성만 변경, 없으면 생성
     if (this.safeSizeBorder) {
@@ -218,7 +219,7 @@ class WorkspacePlugin extends PluginBase {
     if (typeof value === 'boolean') {
       this._options.showCutBorder = value
     }
-    console.log('toggleCutBorder', this._options.showCutBorder)
+    dlog('plugin', 'toggleCutBorder', this._options.showCutBorder)
 
     // 기존 객체가 있으면 가시성만 변경, 없으면 생성
     if (this.cutBorder) {
@@ -421,8 +422,8 @@ class WorkspacePlugin extends PluginBase {
       // 캔버스 다시 그리기
       this._canvas.requestRenderAll()
 
-      console.log('Workspace centered at:', this.workspace.getCenterPoint())
-      console.log('Wrapper center:', { x: wrapperCenterX, y: wrapperCenterY })
+      dlog('plugin', 'Workspace centered at:', this.workspace.getCenterPoint())
+      dlog('plugin', 'Wrapper center:', { x: wrapperCenterX, y: wrapperCenterY })
     } catch (e) {
       console.error('Error in setZoomAuto:', e)
     }
@@ -430,7 +431,7 @@ class WorkspacePlugin extends PluginBase {
 
   // setOptions 메서드에도 비동기 처리 추가
   setOptions(options: Partial<WorkspacePluginOptions>) {
-    console.log('setOptions', options)
+    dlog('plugin', 'setOptions', options)
     const sizeChanged =
       options.size &&
       (options.size.width !== this._options.size.width ||
@@ -449,7 +450,7 @@ class WorkspacePlugin extends PluginBase {
       ...options
     }
 
-    console.log('setOptions - size changed', sizeChanged)
+    dlog('plugin', 'setOptions - size changed', sizeChanged)
 
     // editMode가 변경된 경우 page-outline 권한 업데이트
     if (editModeChanged) {
@@ -463,7 +464,7 @@ class WorkspacePlugin extends PluginBase {
       const effectiveHeight =
         this._options.unit === 'mm' ? mmToPxDisplay(canvasHeight) : canvasHeight
 
-      console.log('setOptions - 새 크기:', effectiveWidth, effectiveHeight)
+      dlog('plugin', 'setOptions - 새 크기:', effectiveWidth, effectiveHeight)
 
       // 객체 크기가 유효한지 확인
       if (effectiveWidth <= 0 || effectiveHeight <= 0) {
@@ -478,7 +479,7 @@ class WorkspacePlugin extends PluginBase {
         return
       }
 
-      console.log('workspace before setOptions', workspace)
+      dlog('plugin', 'workspace before setOptions', workspace)
       const templateBackground = this._canvas
         .getObjects()
         .find((obj: fabric.Object) => obj.id === 'template-background')
