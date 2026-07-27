@@ -9,6 +9,29 @@ import path from 'path'
 // 이미 내부적으로 legacy 알고리즘만 사용하도록 정리되어 있어 stub이
 // 작동할 일이 없는 dead code였음. ICC 정확도가 필요해지면 보류 목록 참조.
 
+/**
+ * 프로덕션 번들에서 제거할 디버그 콘솔 호출 (source-exposure 트랙).
+ *
+ * 소스에 흩어진 디버그 로그(canvas-core 175곳 + editor)는 운영 콘솔에 내부 파이프라인·
+ * 세션 payload 를 그대로 노출한다. dlog() 개별 치환 대신 **빌드 단계 제거**로 일괄 차단:
+ * pure 로 표기하면 minify 패스가 "결과 미사용" 호출을 통째로 지운다(인자 부작용은 보존).
+ * - dev 서버는 minify 를 하지 않으므로 개발 중 로그는 그대로 보인다(= dev 게이팅).
+ * - console.warn/error 는 남긴다 — Sentry breadcrumb·실장애 진단 신호라 지우면 손해.
+ */
+const PURE_DEBUG_CONSOLE = [
+  'console.log',
+  'console.debug',
+  'console.info',
+  'console.trace',
+  'console.table',
+  'console.dir',
+  'console.group',
+  'console.groupCollapsed',
+  'console.groupEnd',
+  'console.time',
+  'console.timeEnd',
+]
+
 // Check if building as library (embed mode)
 // Note: process.env is available in Node.js context (vite.config.ts runs in Node)
 const isLibraryBuild = process.env.BUILD_MODE === 'embed'
@@ -36,6 +59,10 @@ export default defineConfig(({ mode }) => {
     alias: {
       '@': path.resolve(__dirname, './src'),
     },
+  },
+  // 디버그 콘솔 제거는 minify 패스에서 일어난다 → dev/serve 는 무영향
+  esbuild: {
+    pure: PURE_DEBUG_CONSOLE,
   },
   // Vite dev pre-bundling 제외 — 사용자가 배경 제거 기능을 안 쓰면 로드 자체 안 됨
   // (dynamic import는 이미 적용되어 있고, 여기는 dev pre-bundle 회피 추가 최적화)

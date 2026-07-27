@@ -4,8 +4,12 @@ import type { FontSource } from '@/utils/fontManager'
 import { resolveStorageUrl } from '@/utils/fontManager'
 
 // Simple logger for font preview
+// ⚠️ info 는 간접 참조(객체 메서드)라 빌드의 pure(console.log) 제거가 닿지 않는다 →
+//    DEV 게이트를 직접 건다. error 는 운영에서도 남긴다(진단 신호).
 const logger = {
-  info: (message: string) => console.log(`[FontPreview] ${message}`),
+  info: (message: string) => {
+    if (import.meta.env.DEV) console.log(`[FontPreview] ${message}`)
+  },
   error: (message: string, error?: unknown) => console.error(`[FontPreview] ${message}`, error),
 }
 

@@ -85,8 +85,31 @@ function opencvStubPlugin(): Plugin {
 }
 
 // Embed/Library build configuration for PHP integration
+/**
+ * 프로덕션 번들에서 제거할 디버그 콘솔 호출 (source-exposure 트랙).
+ * 임베드 번들은 파트너 사이트에 그대로 실려 나가므로 SPA 번들과 동일 정책을 적용한다.
+ * (pure = minify 패스에서 "결과 미사용" 호출 제거. warn/error 는 진단 신호라 보존.)
+ * ⚠️ vite.config.ts 의 PURE_DEBUG_CONSOLE 와 동기 유지.
+ */
+const PURE_DEBUG_CONSOLE = [
+  'console.log',
+  'console.debug',
+  'console.info',
+  'console.trace',
+  'console.table',
+  'console.dir',
+  'console.group',
+  'console.groupCollapsed',
+  'console.groupEnd',
+  'console.time',
+  'console.timeEnd',
+]
+
 export default defineConfig({
   plugins: [backgroundRemovalStubPlugin(), opencvStubPlugin(), react()],
+  esbuild: {
+    pure: PURE_DEBUG_CONSOLE,
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
