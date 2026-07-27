@@ -21,7 +21,11 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-VPS="deploy@<VPS_HOST>"
+VPS="${STORIGE_VPS:-}"
+if [ -z "$VPS" ]; then
+  echo "STORIGE_VPS is not set (expected: deploy@<host>; see CLAUDE.local.md)" >&2
+  exit 1
+fi
 SENTRY_ENV="${SENTRY_ENVIRONMENT:-production}"
 SENTRY_RATE="${SENTRY_TRACES_SAMPLE_RATE:-0.1}"
 

@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 >
 > **At session start, also read `CLAUDE.local.md`** in the project root if it exists.
 > It contains operational context that must NOT be committed to git:
-> - VPS SSH details (`deploy@<VPS_HOST>`)
+> - VPS SSH details (SSH user@host)
 > - Vercel CLI account / projects
 > - Production domains and Docker service map
 > - Common deployment recipes (worker-only redeploy, log inspection, DB queries)
@@ -19,7 +19,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 > ```
 >
 > ⚠️ Never attempt SSH with arbitrary usernames (`root`, `ubuntu`, etc.) — fail2ban will ban this Mac's IP.
-> Always use exactly `ssh deploy@<VPS_HOST>`.
+> Always use exactly the `deploy@<host>` target recorded in `CLAUDE.local.md`.
 
 > ## 📋 Sprint State (Versioned Handoff)
 >
