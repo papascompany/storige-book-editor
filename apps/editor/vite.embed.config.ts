@@ -134,7 +134,13 @@ export default defineConfig({
   build: {
     // Library build for embedding in external pages (PHP, etc.)
     outDir: 'dist-embed',
-    sourcemap: true,
+    // 'hidden' — 파트너 사이트에 실려 나가는 번들이라 sourceMappingURL 주석을 남기지 않는다.
+    // ⚠️ 주석 제거만으로는 부족하다: docker-compose.yml 이 이 디렉터리를 그대로 마운트하고
+    //    docker/nginx/nginx.conf 의 `location /embed/` 가 **빌드 산출 디렉터리를 직접 서빙**한다.
+    //    실질 차단은 package.json 의 postbuild:embed(strip-sourcemaps --force-strip)가 담당하고,
+    //    nginx 쪽 `.map 404` 규칙이 이중화한다.
+    // 이 번들 경로에는 Sentry 초기화가 없어(initSentry 호출은 main.tsx 뿐) 업로드 대상이 아니다.
+    sourcemap: 'hidden',
     lib: {
       entry: path.resolve(__dirname, 'src/embed.tsx'),
       name: 'StorigeEditor',

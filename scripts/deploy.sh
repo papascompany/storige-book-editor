@@ -130,9 +130,16 @@ if [ -d "$BOOKMOA_PATH" ]; then
     cp apps/editor/dist-embed/editor-bundle.iife.js "$BOOKMOA_EMBED_PATH/"
     cp apps/editor/dist-embed/editor-bundle.css "$BOOKMOA_EMBED_PATH/"
 
-    # sourcemap은 개발 환경에서만 복사 (선택적)
-    if [ -f "apps/editor/dist-embed/editor-bundle.iife.js.map" ]; then
+    # sourcemap 은 복사하지 않는다 (source-exposure, 2026-07-27).
+    # 종전 주석은 '개발 환경에서만'이었지만 실제 조건이 파일 존재(-f)뿐이라 프로덕션에도 항상
+    # 복사됐다 — 파트너 서버에 원본 전문(sourcesContent)이 그대로 공개되는 경로였다.
+    # 임베드 번들 디버깅이 필요하면 COPY_EMBED_SOURCEMAP=1 로 명시 opt-in.
+    if [ "${COPY_EMBED_SOURCEMAP:-0}" = "1" ] && [ -f "apps/editor/dist-embed/editor-bundle.iife.js.map" ]; then
+        echo -e "  ${YELLOW}⚠ COPY_EMBED_SOURCEMAP=1 — 소스맵을 함께 복사한다(외부 공개 주의)${NC}"
         cp apps/editor/dist-embed/editor-bundle.iife.js.map "$BOOKMOA_EMBED_PATH/"
+    else
+        # 과거 배포로 남아 있을 수 있는 맵 정리
+        rm -f "$BOOKMOA_EMBED_PATH/editor-bundle.iife.js.map"
     fi
 
     echo -e "  ${GREEN}✓ Editor bundle copied to $BOOKMOA_EMBED_PATH${NC}"

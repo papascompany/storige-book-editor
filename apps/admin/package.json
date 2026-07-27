@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "postbuild": "node ../../scripts/check-source-exposure.mjs --dist dist",
+    "postbuild": "node ../../scripts/check-source-exposure.mjs --dist dist && node ../../scripts/strip-sourcemaps.mjs --dist dist",
     "preview": "vite preview",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "test": "vitest run",
@@ -34,6 +34,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0",
+    "@sentry/vite-plugin": "^5.4.0",
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
     "@typescript-eslint/eslint-plugin": "^8.20.0",

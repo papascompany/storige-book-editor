@@ -101,6 +101,11 @@ jobs:
       - name: PDF 골든 비교 엔진 self-test
         run: node --test scripts/pdf-golden/compare.test.mjs
 
+      - name: 소스맵 제거 게이트 self-test (editor/admin postbuild 판정 로직)
+        # CI 는 editor/admin 을 빌드하지 않으므로(무거움) 이 self-test 가 판정 로직의 유일한
+        # 회귀 가드다. 오탐 1건이 '맵 보존 → 원본 소스 공개 배포'로 직결된다.
+        run: node scripts/strip-sourcemaps.mjs --self-test
+
       - name: 파트너 quickstart 예제 (examples/* — 타입체크 + 오프라인/E2E 검증)
         # sdk 빌드 뒤여야 한다 — 예제는 workspace:* 로 dist 를 실제 import 한다.
         # verify 는 전부 외부 의존 0: 주문 예제 2종은 주입식 fetch 로 호출 시퀀스를,

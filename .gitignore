@@ -117,3 +117,6 @@ examples/*/out/
 
 # Partner API v1 OpenAPI export 산출물 (pnpm --filter @storige/api openapi:partner — CI 아티팩트로 배포)
 apps/api/openapi-partner.json
+
+# Sentry 번들러 플러그인 로컬 시크릿 (SENTRY_AUTH_TOKEN 등) — 절대 커밋 금지
+.env.sentry-build-plugin
