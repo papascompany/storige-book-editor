@@ -43,6 +43,11 @@ import HistoryPanel from './HistoryPanel'
 import { showToast } from '@/stores/useToastStore'
 import { useUiPrefStore, type PageNavPosition, type Theme } from '@/stores/useUiPrefStore'
 import { applyObjectPermissions, revertObjectPermissions } from '@/utils/objectPermissions'
+import {
+  extractSpreadRegionImagesFromCanvas,
+  type SpreadCaptureCanvas,
+} from '@/utils/cropRegions'
+import type { SpreadRegionPosition } from '@storige/types'
 import { runWithAutosaveSuspended } from '@/utils/autosaveSuspend'
 import { confirmRequiredEditsBeforeComplete } from '@/utils/requiredEditGate'
 import RequiredEditConfirmModal from './RequiredEditConfirmModal'
@@ -99,6 +104,8 @@ export default function EditorHeader({
   const [saving, setSaving] = useState(false)
   const [finishing, setFinishing] = useState(false)
   const [show3DMockup, setShow3DMockup] = useState(false)
+  // 3D 목업에 넣을 영역별 표지 이미지 — 모달을 열 때 1회 캡처하고 닫을 때 해제(dataURL 메모리 반환)
+  const [mockupImages, setMockupImages] = useState<Partial<Record<SpreadRegionPosition, string>>>({})
 
   // 페이지 네비게이션 위치 선호 (auto/right/bottom)
   const pageNavPosition = useUiPrefStore((s) => s.pageNavPosition)
@@ -131,6 +138,30 @@ export default function EditorHeader({
   const { ready, canvas, allCanvas, allEditors, getPlugin, setPage, isSpreadMode, updateAllWorkspaceSettings } = useAppStore()
   const { artwork, currentSettings, spreadConfig, updateSettings, setArtworkName } = useSettingsStore()
   const isAdmin = useIsAdmin()
+
+  // 3D 미리보기 — 표지 스프레드 캔버스(항상 index 0, useEditorContents §10-1)를 영역별로
+  // 캡처해 모달에 전달한다. 이미지 prop 이 비어 있어 앞표지/책등/뒷표지가 전부 빈 흰 판으로
+  // 보이던 결함 복구(2026-07-27). 캡처 실패(오염 캔버스 등)는 placeholder 로 폴백.
+  const open3DMockup = useCallback(() => {
+    const spec = useSettingsStore.getState().spreadConfig?.spec
+    const coverCanvas = (allCanvas[0] ?? canvas) as unknown as SpreadCaptureCanvas | null
+    let captured: Partial<Record<SpreadRegionPosition, string>> = {}
+    if (spec) {
+      try {
+        captured = extractSpreadRegionImagesFromCanvas(coverCanvas, spec)
+      } catch {
+        captured = {}
+      }
+    }
+    setMockupImages(captured)
+    setShow3DMockup(true)
+  }, [allCanvas, canvas])
+
+  // 닫을 때 dataURL 을 즉시 해제 — 표지 3장(≈수 MB)이 모달 수명 밖까지 남지 않도록.
+  const close3DMockup = useCallback(() => {
+    setShow3DMockup(false)
+    setMockupImages({})
+  }, [])
 
   // L3 B-3 (2026-07-06): 고객 시점 미리보기 — 디자이너가 보호 강제를 고객 모드 그대로
   // 체험(저장 없는 일시 모드). editMode 를 실제로 내리되 customerPreview 플래그가
@@ -939,7 +970,7 @@ export default function EditorHeader({
                 <Button
                   variant="ghost"
                   size="icon"
-                  onClick={() => setShow3DMockup(true)}
+                  onClick={open3DMockup}
                   disabled={!ready}
                   className="h-9 w-9 text-editor-text-muted hover:bg-editor-hover"
                 >
@@ -1160,10 +1191,13 @@ export default function EditorHeader({
       {/* 3D 미리보기 모달 — 표지 스프레드 전용(spine/cover). 포토북 내지(spec 없음)는 미해당 */}
       {show3DMockup && spreadConfig?.spec && (
         <BookMockup3D
+          coverImage={mockupImages['front-cover']}
+          spineImage={mockupImages['spine']}
+          backCoverImage={mockupImages['back-cover']}
           spineWidthMm={spreadConfig.spec.spineWidthMm}
           coverWidthMm={spreadConfig.spec.coverWidthMm}
           coverHeightMm={spreadConfig.spec.coverHeightMm}
-          onClose={() => setShow3DMockup(false)}
+          onClose={close3DMockup}
         />
       )}
     </TooltipProvider>
