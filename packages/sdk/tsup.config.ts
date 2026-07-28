@@ -40,6 +40,9 @@ export default defineConfig({
     index: 'src/index.ts',
     'client/index': 'src/client/index.ts',
     'webhook/index': 'src/webhook/index.ts',
+    // `./embed` 는 브라우저 전용(DOM·postMessage)이지만 node 빌트인을 쓰지 않으므로
+    // 아래 platform/target 설정과 충돌하지 않는다 — 방출물에 `node:` import 가 없다.
+    'embed/index': 'src/embed/index.ts',
   },
   format: ['cjs', 'esm'],
   dts: true,
