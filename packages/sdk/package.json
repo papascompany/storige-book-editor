@@ -23,6 +23,11 @@
       "import": "./dist/webhook/index.mjs",
       "require": "./dist/webhook/index.js"
     },
+    "./embed": {
+      "types": "./dist/embed/index.d.ts",
+      "import": "./dist/embed/index.mjs",
+      "require": "./dist/embed/index.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [

@@ -775,7 +775,7 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 ```json
 { "source": "storige-editor", "version": "1", "event": "editor.xxx", "payload": { }, "timestamp": "2026-06-20T00:00:00.000Z" }
 ```
-> `version` 은 **문자열 `"1"`**(`EMBED_MESSAGE_VERSION='1'`), `timestamp` 는 **ISO 8601 문자열**(`new Date().toISOString()`)입니다. 편집기는 인바운드 메시지에서 `version` 을 강제 검증하지 않으므로(현재 `origin`+`source` 만 검증) 호스트도 version 으로 게이팅하지 마세요.
+> `version` 은 **문자열 `"1"`**(`EMBED_MESSAGE_VERSION='1'`), `timestamp` 는 **ISO 8601 문자열**(`new Date().toISOString()`)입니다. 편집기는 인바운드 메시지에서 `version` 을 강제 검증하지 않으므로(검증 항목은 `e.origin`·`e.source`·봉투 `source` 3가지 — 3.2 참조) 호스트도 version 으로 게이팅하지 마세요.
 > `parentOrigin` 명시 시에만 발신하며, `targetOrigin` 에 `parentOrigin` 을 그대로 사용 — **와일드카드 금지**.
 
 | 방향 | 이벤트명 | 페이로드 | 설명 |
@@ -820,7 +820,8 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 ```json
 { "source": "storige-host", "version": "1", "command": "getState", "requestId": "abc", "payload": { } }
 ```
-> 편집기는 `e.origin === parentOrigin` 이고 `source === 'storige-host'` 인 메시지만 처리하며, `requestId` 를 echo합니다.
+> 편집기는 **① `e.origin === parentOrigin` ② `e.source === window.parent`(직접 부모 프레임에서 온 것) ③ 봉투 `source === 'storige-host'`** 세 조건을 모두 만족하는 메시지만 처리하며, `requestId` 를 echo합니다.
+> ⚠️ **②는 2026-07-29 additive 보강**입니다 — 같은 오리진의 **다른 프레임·팝업**이 명령을 주입하는 것을 막습니다. 표준 iframe 임베드(부모가 `iframe.contentWindow.postMessage(...)`)는 그대로 통과하므로 기존 파트너 영향은 없습니다. 단 **조부모가 `frames[0].frames[0]` 로 손자에게 직접 발신**하는 형태는 차단되니, 중첩 임베드에서는 **직접 부모가 중계**하세요(원래도 응답이 직접 부모로만 가서 요청-응답이 성립하지 않던 경로입니다).
 > **미지원 `command` 는 조용히 무시(no-op)됩니다** — 오류 이벤트도 예외도 발신하지 않습니다. 따라서 호스트는 **응답 이벤트 타임아웃으로 미지원을 판정**하되 실패로 취급하지 마세요(구버전 편집기 ↔ 신버전 호스트 조합에서 정상 동작). 반대로 `requestId` 를 매번 새로 부여하지 않으면 응답 상관이 어긋나므로, 요청-응답 명령에는 반드시 고유 `requestId` 를 실으세요.
 
 **레거시 dual-emit (EmbedView 라우트 한정, 하위호환):** `storige:ready`, `storige:saved`, `storige:completed`, `storige:cancel`, `storige:error`.

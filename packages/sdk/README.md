@@ -11,6 +11,7 @@ Storige Partner API v1 공식 SDK. **npm 런타임 의존성 0** (표준 런타�
 | `@storige/sdk` | 계약 타입·에러(29종)·봉투·상수 | 무관(트리셰이킹 가능) |
 | `@storige/sdk/client` | HTTP 클라이언트(`StorigeClient`) | fetch 있는 곳 어디나 |
 | `@storige/sdk/webhook` | 웹훅 **수신** — 서명 검증·멱등·어댑터 | **Node 전용**(node:crypto) |
+| `@storige/sdk/embed` | 임베드 편집기 마운트 + postMessage 계약 | **브라우저 전용**(DOM) |
 
 ---
 
@@ -228,6 +229,73 @@ book.finalization.completed | book.finalization.failed
   인증은 `apiKey`, UA 는 `userAgent`, 멱등키는 `options.idempotencyKey` 로 넘겨라
   (멱등키는 그래야 길이 검증·멀티파트 내용 주소화를 거친다). 추적 헤더
   (`X-Request-Id`·`traceparent`) 등은 자유롭게 쓸 수 있다.
+
+## `@storige/sdk/embed` — 임베드 편집기
+
+계약 정본: `docs/CONTRACT_FREEZE.md` §1-D · **§1-D-1**(호스트→편집기 수신 명령 v1) /
+`docs/PLATFORM_INTEGRATION_GUIDE.md` §3.
+
+```ts
+import { mountEditor, isEditorCommandUnsupported } from '@storige/sdk/embed';
+
+const editor = mountEditor({
+  editorOrigin: 'https://editor.papascompany.co.kr',
+  parentOrigin: 'https://app.example.com',   // 필수 — 누락·'*' 는 StorigeUsageError
+  container: 'editor-root',
+  params: { token, refreshToken, templateSetId: 'TS_8x8', orderSeqno: 12345 },
+  on: {
+    complete(payload) {
+      if (payload.needsAuth) return;         // 게스트 — guestAuthRequired 가 따로 온다
+      saveSessionToBackend(payload.sessionId, payload.files);  // files 는 중첩 구조
+    },
+    guestAuthRequired() {
+      promptLoginThenMigrate(editor.consumeGuestToken());      // 값은 여기서만 꺼낸다
+    },
+  },
+});
+
+await editor.whenReady();
+const { dirty } = await editor.getState();   // 요청-응답
+await editor.saveNow();                      // 요청-응답
+editor.setBackGuard(false);                  // fire-and-forget — void 다
+```
+
+### 이 서브패스가 막는 실수
+
+임베드 연동의 실패는 계약을 몰라서가 아니라 **한 줄을 빠뜨려서** 난다. 표의 왼쪽은 전부
+실제로 밟은 함정이다.
+
+| 함정 | 결과 | SDK 의 처리 |
+|---|---|---|
+| `parentOrigin` 누락 | 정식 엔벨로프 미발신 + 레거시가 `targetOrigin='*'` 로 `sessionId`(= 사실상 권한 토큰) 살포 | **필수 인자** + `'*'` 거부 → `StorigeUsageError` |
+| `expectedSource`(= `event.source`) 대조 누락 | 같은 오리진의 다른 프레임·팝업이 메시지 주입 (**과거 P1**) | `mountEditor` 가 iframe 을 소유해 **넘길 여지가 없다**. 저수준 `parseEditorMessage` 는 생략 시 **throw**(fail-closed) |
+| 명령 3종을 일괄 Promise 화 | `setBackGuard` 만 **영원히 pending** | 응답 유형별 타입 분리 — `setBackGuard(on): void` |
+| 응답 타임아웃을 실패로 처리 | 구버전 편집기에서 통합 전체가 실패 | `EditorCommandUnsupportedError`(**미지원 판정**) ↔ `EditorNotReadyError` ↔ `EditorCommandFailedError` 3분 |
+| 미지 이벤트에서 크래시 | 편집기가 이벤트 하나 추가하는 순간 파손 | 조용히 무시(관찰만 원하면 `unknownEvent`) |
+| `guestToken` 로깅·DOM 유출 | 세션 탈취(남이 이어서 편집) | 콜백은 `hasGuestToken` **불리언**만. 값은 `consumeGuestToken()` **1회성 소비** |
+| `editor.needAuth` 를 기다렸다 분기 | 게스트 세션에 주문/승격을 태움(→ 404) | `complete` 가 **먼저** 온다는 전제로 `needsAuth`/`action` 을 필수 필드로 노출 |
+| complete + needAuth 이중 처리 | 로그인 유도·마이그레이션 2회 실행 | SDK 가 **`guestToken` 을 키로** dedup — `sessionId` 는 `editor.needAuth` payload 에 **없어서** 키가 못 된다 |
+
+### 타임아웃 = "미지원", 실패가 아니다
+
+편집기는 **미지원 command 를 조용히 무시**한다(오류 이벤트도 예외도 없다). 그래서 호스트는
+응답 타임아웃으로 미지원을 판정하되 실패로 취급하면 안 된다 — 이것이 계약의 strict additive
+근거다(구버전 편집기 ↔ 신버전 호스트 양방향 안전).
+
+```ts
+try {
+  const state = await editor.getState();
+} catch (err) {
+  if (isEditorCommandUnsupported(err)) {
+    // 구버전 편집기 — 상태 폴링만 끄고 계속 진행 (실패 처리 금지)
+  } else throw err;   // EditorNotReadyError / EditorCommandFailedError 는 진짜 문제
+}
+```
+
+### 직접 iframe 을 관리한다면
+
+`buildEmbedUrl()`(parentOrigin 강제·레거시 `/` 경로 거부)과 `parseEditorMessage()`
+(4단 게이트, `expectedSource` 필수)만 가져다 써도 위 표의 앞 두 줄은 그대로 막힌다.
 
 ## 개발
 

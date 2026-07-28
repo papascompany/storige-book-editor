@@ -120,8 +120,13 @@ export function parseEditorMessage(message, options) {
   }
 
   // ② 우리가 띄운 iframe 인가 (명시적 우회 리터럴일 때만 건너뛴다)
-  if (options.expectedSource !== SKIP_SOURCE_CHECK && message.source !== options.expectedSource) {
-    return { ok: false, reason: 'SOURCE_WINDOW_MISMATCH' };
+  if (options.expectedSource !== SKIP_SOURCE_CHECK) {
+    // `source: null` 은 무조건 거부한다. 닫힌 윈도우·worker·MessagePort 발신이 이 형태인데,
+    // iframe 로드 전이라 expectedSource 가 null 인 순간에는 단순 `!==` 비교가
+    // `null !== null === false` 로 **통과**시켜 버린다(fail-open). SDK `./embed` 와 동일 하드가드.
+    if (message.source === null || message.source !== options.expectedSource) {
+      return { ok: false, reason: 'SOURCE_WINDOW_MISMATCH' };
+    }
   }
 
   // ③ 봉투 형식
