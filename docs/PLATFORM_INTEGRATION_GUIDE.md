@@ -808,7 +808,7 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 > ② editor.needAuth  { guestToken, reason: 'complete_save', ts }                                 ← 나중(하위호환)
 > ```
 >
-> **`editor.complete` 를 받으면 `needsAuth` 를 가장 먼저 확인하세요 — `true` 면 주문 생성·승격·합성을 일절 하지 말고 로그인 유도로 분기합니다.** `editor.needAuth` 를 기다렸다 분기하면 **이미 늦습니다**: ①에서 곧바로 승격을 시도하면 회원 소유가 아닌 세션이라 `404` 를 맞고, 뒤이어 도착한 ②가 화면을 덮어 원인 파악도 어려워집니다. 게스트 완료 payload 는 `pageCount`/`size`/`pricing` 이 없고 **`files` 도 빈 객체**이므로 `files.contentFileId` 로 정상 완료를 판별하려는 시도도 실패합니다.
+> **`editor.complete` 를 받으면 `needsAuth` 를 가장 먼저 확인하세요 — `true` 면 주문 생성·승격·합성을 일절 하지 말고 로그인 유도로 분기합니다.** `editor.needAuth` 를 기다렸다 분기하면 **이미 늦습니다**: ①에서 곧바로 승격을 시도하면 회원 소유가 아닌 세션이라 `404` 를 맞고, 뒤이어 도착한 ②가 화면을 덮어 원인 파악도 어려워집니다. 게스트 완료 payload 는 위 미포함 필드에 더해 **`files` 도 빈 객체**이므로, `files.contentFileId` 유무로 정상 완료를 판별하려는 시도도 실패합니다.
 > 방어적으로는 **`guestToken` 이 있는데 `needsAuth` 가 없는 형태도 게스트로 취급**하세요(fail-closed). 로그인 이후 처리는 3.3 의 "게스트 → 회원 전환" 을 따르세요.
 > **`editCode` 형식:** `EDIT-XXXXXXXX` = 접두 `EDIT-` + 세션ID 앞 8자 대문자(`EDIT-${id.substring(0,8).toUpperCase()}`). 순수 8자리 숫자가 아닙니다.
 > **`editor.pricingChange` (D-3, 2026-07-06 additive):** 편집 중 페이지 추가/삭제로 총 페이지 수가 바뀌면 ~300ms 디바운스로 발신됩니다. 가격 계산 주체는 **호스트**(storige 는 가격을 계산하지 않음) — `pageCount`(물리 페이지, 포토북 내지 펼침면 ×2)와 `pricing` 메타로 장바구니 표시가를 갱신하세요. **발신 조건(보수 기본):** 템플릿셋에 `pricing` 이 설정된 경우 + 회원 세션만(게스트 미발신) + 에디터 초기화/세션 복원 완료 후. `coverType` 은 템플릿셋에 커버 종류 코드(string, 확장 가능 — `hardcover_wrap`/`softcover_variable_spine`/`ready_made` 시드)가 설정된 경우에만 동봉. 미지 이벤트를 무시하는 기존 수신부는 영향 없음(additive).
