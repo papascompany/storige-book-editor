@@ -40,7 +40,7 @@
 - [ ] `postMessage` 수신에 오리진 **정확 일치** + 프레임 대조 게이트를 걸었다 — [3.2](/guide/embed/#3-2)
 - [ ] 게스트 완료 분기를 `editor.complete` payload 로 판정한다 — [3.2](/guide/embed/#3-2)
 - [ ] 모르는 편집기 이벤트에서 크래시하지 않는다 — [3.2](/guide/embed/#3-2)
-- [ ] 임베드 도메인이 편집기 CSP `frame-ancestors` 에 반영됐다(DB 변경만으로는 적용되지 않음) — [1.5](/guide/common/#1-5)
+- [ ] 임베드 도메인을 운영자가 `PUT /api/sites/:id` 의 `frameAncestors` 에 등록했고 실제 임베드로 반영을 확인했다(**편집기 재배포 불필요** · 캐시로 인한 반영 지연 있음 · 형식이 어긋난 값은 조용히 제외됨 · CORS `allowedOrigins` 와는 **별개 필드**) — [1.5](/guide/common/#1-5)
 - [ ] 세션 승격은 **파트너 서버**에서 하고 승격 요청자가 그 세션의 소유자인지 검증한다 — [1.7](/guide/common/#1-7)
 - [ ] 임베드 URL 의 토큰을 화면 로그·고객센터 첨부에 남기지 않는다 — [1.5](/guide/common/#1-5)
 
