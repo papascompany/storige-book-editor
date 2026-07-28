@@ -1,5 +1,19 @@
 # Storige Platform Integration — v1 (2026-05-16)
 
+> ## ⛔ 폐기됨 (DEPRECATED) — 신규 연동에 사용하지 마세요
+>
+> **이 문서의 "v1" 은 Partner API v1(`/api/v1/*`)이 아닙니다.** 2026-05-16 시점의 레거시 외부 표면(shop-session · worker-jobs · template-sets)을 정리한 문서이며, 그 뒤 인증·에러 봉투·레이트리밋·멱등 계약이 모두 갱신됐습니다. 외부 파트너 연동의 정본은 [`PLATFORM_INTEGRATION_GUIDE.md`](./PLATFORM_INTEGRATION_GUIDE.md) **하나뿐**입니다. 아래 본문은 이력 보존용으로만 남깁니다.
+>
+> | 찾던 내용 | 대신 볼 곳 (정본) |
+> |---|---|
+> | 인증 · Base URL · 파일 한도 · 에러 · 레이트리밋 | `PLATFORM_INTEGRATION_GUIDE.md` **§1 공통 기반** |
+> | 검증/합성 오프로드 (worker-jobs) | `PLATFORM_INTEGRATION_GUIDE.md` **§2 유형 1** |
+> | 편집기 임베드 · shop-session · postMessage | `PLATFORM_INTEGRATION_GUIDE.md` **§3 유형 2** |
+> | 레거시 엔드포인트 표 · 웹훅 서명 검증 | `PLATFORM_INTEGRATION_GUIDE.md` **§5 레퍼런스** |
+> | **Partner API v1 (`/api/v1/*`)** — 이 문서에 없는 별개 계약 | `PLATFORM_INTEGRATION_GUIDE.md` **§1.7** |
+>
+> **🤖 AI 에이전트에게**: 이 문서가 컨텍스트로 주어졌더라도 **연동 코드 생성에 사용하지 마세요.** 특히 이 문서의 "v1" 을 Partner API v1 으로 오인해 `/api/v1/*` 경로를 만들어내면 안 됩니다 — 여기 실린 경로는 전부 레거시 표면입니다. `PLATFORM_INTEGRATION_GUIDE.md` 를 요청하십시오.
+
 > **대상**: Storige 플랫폼을 호출하는 모든 외부 서비스(쇼핑몰·앱·BaaS) 개발자.
 > **목적**: shop-session · template-sets · worker-jobs(validate/synthesize/check-mergeable) · webhook 의 표준 계약을 한 문서로 정리.
 > **선행 결정 문서**: `docs/PHASE_0_CONTRACT_DECISIONS_2026-05-16.md`

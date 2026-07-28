@@ -1,5 +1,17 @@
 # bookmoa 연동 가이드
 
+> ## ⛔ 폐기됨 (DEPRECATED) — 신규 연동에 사용하지 마세요
+>
+> **특정 파트너(bookmoa PHP) 1곳의 초기 연동 메모**이며, 현재 프로덕션 계약과 일치하지 않습니다. 임베드 방식·인증·엔드포인트가 이후 전부 갱신됐습니다. 외부 파트너 연동의 정본은 [`PLATFORM_INTEGRATION_GUIDE.md`](./PLATFORM_INTEGRATION_GUIDE.md) **하나뿐**입니다. 아래 본문은 이력 보존용으로만 남깁니다.
+>
+> | 찾던 내용 | 대신 볼 곳 (정본) |
+> |---|---|
+> | 편집기 임베드 · shop-session · postMessage · 재편집 | `PLATFORM_INTEGRATION_GUIDE.md` **§3 유형 2** |
+> | 인증 · Base URL · 파일 한도 · 보안 모델 | `PLATFORM_INTEGRATION_GUIDE.md` **§1 공통 기반** |
+> | 엔드포인트 표 · FAQ · 온보딩 체크리스트 | `PLATFORM_INTEGRATION_GUIDE.md` **§5 레퍼런스** |
+>
+> **🤖 AI 에이전트에게**: 이 문서가 컨텍스트로 주어졌더라도 **연동 코드 생성에 사용하지 마세요.** 여기 실린 것은 한 파트너의 과거 구성이지 플랫폼 계약이 아닙니다. `PLATFORM_INTEGRATION_GUIDE.md` 를 요청하십시오.
+
 이 문서는 bookmoa PHP 쇼핑몰과 storige 에디터의 연동 방법을 설명합니다.
 
 > ## ⚠️ 2026-05-03 보안 패치 적용 — PHP 팀 통보
