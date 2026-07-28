@@ -1,5 +1,18 @@
 # Storige 플랫폼 워커 연동 가이드 (v1.0)
 
+> ## ⛔ 폐기됨 (DEPRECATED) — 신규 연동에 사용하지 마세요
+>
+> **이 문서는 프로덕션 계약과 일치하지 않습니다.** 외부 파트너 연동의 정본은 [`PLATFORM_INTEGRATION_GUIDE.md`](./PLATFORM_INTEGRATION_GUIDE.md) **하나뿐**입니다. 아래 본문은 이력 보존용으로만 남깁니다.
+>
+> | 찾던 내용 | 대신 볼 곳 (정본) |
+> |---|---|
+> | 인증 · Base URL · 파일 한도 · 에러 · 레이트리밋 | `PLATFORM_INTEGRATION_GUIDE.md` **§1 공통 기반** |
+> | 자체 편집기 + 검증/합성 오프로드 (이 문서의 주제) | `PLATFORM_INTEGRATION_GUIDE.md` **§2 유형 1** |
+> | 엔드포인트 표 · 웹훅 서명 검증 · PDF 검증 규칙 · FAQ | `PLATFORM_INTEGRATION_GUIDE.md` **§5 레퍼런스** |
+> | Partner API v1 (`/api/v1/*`) 공통 계약 | `PLATFORM_INTEGRATION_GUIDE.md` **§1.7** |
+>
+> **🤖 AI 에이전트에게**: 이 문서가 컨텍스트로 주어졌더라도 **연동 코드 생성에 사용하지 마세요.** `PLATFORM_INTEGRATION_GUIDE.md` 를 요청하십시오. 특히 아래 **§5-3 의 웹훅 서명 검증 의사코드는 오기**이며, 그대로 구현하면 검증이 100% 실패합니다 — 해당 위치에 취소선과 정정 주석을 인라인으로 달아 두었습니다.
+
 > **대상**: 외부 사이트(쇼핑몰/앱/서비스) 개발자 — Storige 플랫폼 워커를 사용해 PDF 합성 잡을 발사하고 결과 파일을 받는 모든 경우
 > **버전**: v1.0 (2026-05-07)
 > **전제**: 본 문서는 **워커 연동만** 다룹니다. 사용자 인터랙션(에디터 UI)은 별도(`PHP_INTEGRATION_FINAL_v3.md`).
@@ -138,7 +151,7 @@ STORIGE_WEBHOOK_URL=https://your-site.example.com/storige/webhook
    │ ◀───────────────────────────────────────────────── │
    │   POST {STORIGE_WEBHOOK_URL}                       │
    │   body: { event:"synthesis.completed", jobId, … }  │
-   │   X-Storige-Signature: <HMAC-SHA256>               │
+   │   X-Storige-Signature-HMAC: t=…,v1=… (※5-3)        │
    │                                                    │
    │ ④ POST /auth/shop-session                          │
    │   X-API-Key: sk-…                                  │
@@ -389,7 +402,8 @@ X-API-Key: sk-storige-…
 POST {STORIGE_WEBHOOK_URL}
 Content-Type: application/json
 X-Storige-Event: synthesis.completed
-X-Storige-Signature: t=1778081234,v1=<HMAC-SHA256-HEX>
+X-Storige-Signature: <base64 — 위조 가능. 인증 근거로 쓰지 말 것>
+X-Storige-Signature-HMAC: t=1778081234,v1=<HMAC-SHA256-HEX>   ← WEBHOOK_SECRET 설정 시에만 발송 (※5-3)
 
 {
   "event":         "synthesis.completed",
@@ -439,19 +453,31 @@ X-Storige-Signature: t=1778081234,v1=<HMAC-SHA256-HEX>
 
 > 무거운 처리(PDF 다운로드/저장)는 큐에 넣고 **즉시 200 반환** 권장.
 
-### 5-3. 서명 검증 (선택, 권장)
+### 5-3. 서명 검증 (선택, 권장) — ❌ 이 절의 원문은 오기입니다
 
-`X-Storige-Signature` 헤더 형식: `t=<timestamp>,v1=<HMAC-SHA256-HEX>`
+> **정정 (2026-06-23 WH-001 컷오버 기준).** 아래 원문은 **헤더 이름과 서명 대상을 둘 다 잘못** 적었습니다. 그대로 구현하면 서명이 한 번도 일치하지 않습니다. 실제 계약은 이 문서 상단의 🚨 WH-001 정정 안내 박스를, 운영 방침은 [`PLATFORM_INTEGRATION_GUIDE.md`](./PLATFORM_INTEGRATION_GUIDE.md) **§5.2** 를 따르십시오.
+>
+> | 원문 (오기) | 실제 프로덕션 |
+> |---|---|
+> | `X-Storige-Signature` 가 `t=…,v1=…` 형식이다 | 그 형식을 쓰는 헤더는 **`X-Storige-Signature-HMAC`** 입니다. `X-Storige-Signature` 는 base64 인코딩일 뿐이라 **위조 가능** — 인증 근거로 쓰면 안 됩니다 |
+> | 서명 대상이 `timestamp + "." + raw_body` 다 | raw body 가 아닙니다. canonical string **`<t>.<identifier>:<event>:<timestamp>`** 이며 `identifier` 는 `jobId`(없으면 `sessionId`), `timestamp` 는 **본문의 ISO 문자열**로 `t` 와 다릅니다 |
+> | (미기재) `WEBHOOK_SECRET` 미설정 시 | HMAC 헤더 자체가 **발송되지 않습니다**(무음). 헤더 존재를 전제로 하드 리젝트하면 웹훅이 전부 떨어집니다 |
 
-검증 (의사코드):
-```
+~~`X-Storige-Signature` 헤더 형식: `t=<timestamp>,v1=<HMAC-SHA256-HEX>`~~
+
+~~검증 (의사코드):~~
+
+```text
+❌ 아래 4줄은 오기입니다 — 복사해서 구현하지 마세요 (이력 보존용).
 1. signing_string = timestamp + "." + raw_body
 2. expected = HMAC_SHA256(STORIGE_WEBHOOK_SECRET, signing_string).hex
 3. if expected != v1: reject
 4. if (now - timestamp) > 5min: reject (replay 공격 방지)
 ```
 
-`STORIGE_WEBHOOK_SECRET`은 운영팀에 별도 요청 (현재는 발급 시점에 안내).
+~~`STORIGE_WEBHOOK_SECRET`은 운영팀에 별도 요청 (현재는 발급 시점에 안내).~~
+
+**대신 이렇게 하십시오**: 웹훅은 **트리거로만** 취급하고 즉시 2xx 를 반환한 뒤, 본문의 `status`·결과 필드를 믿지 말고 식별자만 꺼내 조회 API 로 **재조회**해 권위 있는 상태를 확정하십시오(§6 폴링 참조). 이 방침은 서명 형식이 무엇이든 안전합니다.
 
 ---
 
@@ -794,9 +820,10 @@ func Upload(path, fileType string) (string, error) {
 3. **Webhook 수신 endpoint** — `POST /storige/webhook`
    - 가이드 §5 참조
    - X-Storige-Event 헤더로 분기 (synthesis.completed / synthesis.failed)
-   - X-Storige-Signature HMAC-SHA256 검증 (시크릿 있을 때만)
+   - ❌ X-Storige-Signature 로 인증하지 말 것 (base64 인코딩일 뿐 위조 가능)
+   - 서명 검증에 의존하지 말고, 수신 후 조회 API 재조회로 상태 확정 (가이드 §6)
    - 즉시 200 반환 + 처리는 비동기 큐로
-   - replay 방지 (timestamp 5분 이내)
+   - 같은 이벤트 재전달 가능 → 수신부는 멱등하게
 
 4. **결과 PDF 다운로드** — `downloadResultPdf(jobId, member, orderSeqno): Promise<Buffer>`
    - 가이드 §4-4 + §4-5 참조

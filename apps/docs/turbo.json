@@ -1,0 +1,25 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "build": {
+      "outputs": ["site/**"],
+      "env": [
+        "STORIGE_OPENAPI_SPEC",
+        "STORIGE_DOCS_SITE_URL",
+        "STORIGE_DOCS_PUBLIC",
+        "STORIGE_DOCS_NOINDEX"
+      ],
+      "inputs": [
+        "build.mjs",
+        "site.config.mjs",
+        "theme.css",
+        "src/**",
+        "templates/**",
+        "content/**",
+        ".generated/**",
+        "../../docs/PLATFORM_INTEGRATION_GUIDE.md"
+      ]
+    }
+  }
+}

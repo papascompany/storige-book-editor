@@ -1,5 +1,16 @@
 # Storige 문서 인덱스
 
+> ## ⚠️ 이 인덱스는 2026-06-17 스냅샷입니다 — 외부 연동은 아래 정본을 먼저 보세요
+>
+> 이 파일은 그 시점의 문서 목록이라 이후 갱신·폐기를 반영하지 못합니다. 아래 두 문서가 목록보다 우선합니다.
+>
+> | 정본 | 무엇 |
+> |---|---|
+> | [`PLATFORM_INTEGRATION_GUIDE.md`](./PLATFORM_INTEGRATION_GUIDE.md) | **외부 파트너 연동의 유일한 정본.** 연동 유형 3종 결정(§0) · 공통 기반(§1) · 유형별 상세(§2~§4) · 레퍼런스(§5) |
+> | [`CONTRACT_FREEZE.md`](./CONTRACT_FREEZE.md) | 파트너 대면 표면의 **동결 계약** — 임의로 바꾸면 안 되는 항목의 목록 |
+>
+> §2 의 "플랫폼 워커 연동" · "bookmoa" 문서들은 **전부 폐기**됐습니다(각 파일 최상단 배너 참조). 신규 연동이나 AI 코드 생성에 사용하지 마세요.
+
 > **갱신**: 2026-06-17 · 멀티테넌시 P1(인증/테넌트 기반)+P2a(site_id 12테이블) 프로덕션 게이트 실행완료·LIVE / admin 비밀번호 변경 기능 / Vercel 배포 파이프라인 복구 (격리는 아직 비활성 = 동작 불변·비파괴)
 > **HTML 가이드 통합**: `Storige_개발가이드.html`, `WORKER_FLOW_시각화.html` 가 docs/ 로 합류 (이전엔 부모 디렉토리)
 
@@ -22,13 +33,20 @@
 
 ---
 
-## 🤝 2. 외부 사이트 연동 가이드 (현재)
+## 🤝 2. 외부 사이트 연동 가이드
 
-### 🆕 플랫폼 워커 연동 (언어 중립, 2026-05-07)
+### ⭐ 정본 (여기만 보면 됩니다)
 | 문서 | 형식 | 설명 |
 |------|------|------|
-| [`PLATFORM_WORKER_INTEGRATION_v1.md`](./PLATFORM_WORKER_INTEGRATION_v1.md) | MD | 외부 사이트 개발자용 자기완결 가이드 (curl/Node/Python/Go) |
-| [`PLATFORM_WORKER_INTEGRATION_AI_PROMPT.md`](./PLATFORM_WORKER_INTEGRATION_AI_PROMPT.md) | MD | AI에 가이드 첨부 후 즉시 코드 생성 프롬프트 |
+| [`PLATFORM_INTEGRATION_GUIDE.md`](./PLATFORM_INTEGRATION_GUIDE.md) | MD | **외부 파트너 연동 정본** — §0 연동 유형 3종 결정 매트릭스 · §1 공통 기반(인증·Base URL·파일 한도·보안·에러/레이트리밋·§1.7 Partner API v1 공통 계약) · §2 유형 1(자체 편집기+오프로드) · §3 유형 2(편집기 임베드) · §4 유형 3(제안/미구현) · §5 레퍼런스 |
+| [`CONTRACT_FREEZE.md`](./CONTRACT_FREEZE.md) | MD | 파트너 대면 표면의 **동결 계약** — 변경 시 파트너 파손을 유발하는 항목 |
+
+### ⛔ 폐기 (deprecated — 이력 보존용, 신규 연동 금지)
+| 문서 | 형식 | 폐기 사유 |
+|------|------|------|
+| [`PLATFORM_WORKER_INTEGRATION_v1.md`](./PLATFORM_WORKER_INTEGRATION_v1.md) | MD | 프로덕션 계약 불일치. **§5-3 웹훅 서명 의사코드가 오기**(그대로 구현하면 검증 100% 실패) — 해당 위치에 정정 주석 인라인 |
+| [`PLATFORM_WORKER_INTEGRATION_AI_PROMPT.md`](./PLATFORM_WORKER_INTEGRATION_AI_PROMPT.md) | MD | 위 폐기 문서를 첨부하도록 지시하는 AI 프롬프트. **입력 금지** |
+| [`PLATFORM_INTEGRATION_v1.md`](./PLATFORM_INTEGRATION_v1.md) | MD | 2026-05-16 레거시 표면 스냅샷. 여기의 "v1" 은 Partner API v1(`/api/v1/*`)이 **아님** |
 
 ### PHP 한정 (편집기 UI 포함)
 | 문서 | 형식 | 설명 |
@@ -40,7 +58,7 @@
 | [`PHP_INTEGRATION_KICKOFF_2026-05-04.md`](./PHP_INTEGRATION_KICKOFF_2026-05-04.md) | MD | 킥오프 문서 (v3로 흡수) |
 | [`SECURITY_PATCH_PHP_NOTICE_2026-05-03.md`](./SECURITY_PATCH_PHP_NOTICE_2026-05-03.md) | MD | 보안 패치 A-E PHP 통보 |
 | [`SECURITY_PATCH_PHP_NOTICE_2026-05-03.html`](./SECURITY_PATCH_PHP_NOTICE_2026-05-03.html) | HTML | 시각화 |
-| [`BOOKMOA_INTEGRATION_GUIDE.md`](./BOOKMOA_INTEGRATION_GUIDE.md) | MD | bookmoa 옵션 B/C 가이드 |
+| [`BOOKMOA_INTEGRATION_GUIDE.md`](./BOOKMOA_INTEGRATION_GUIDE.md) | MD | ⛔ **폐기** — bookmoa 옵션 B/C 가이드. 특정 파트너 1곳의 초기 메모라 플랫폼 계약이 아님 |
 | [`BOOKMOA_INTEGRATION_DIFF.md`](./BOOKMOA_INTEGRATION_DIFF.md) | MD | bookmoa 변경점 정리 |
 | [`bookmoa_integration_diff.html`](./bookmoa_integration_diff.html) | HTML | 시각화 |
 

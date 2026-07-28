@@ -1,5 +1,13 @@
 # Storige 플랫폼 워커 연동 — AI 구현 프롬프트
 
+> ## ⛔ 폐기됨 (DEPRECATED) — 이 프롬프트를 AI 에 입력하지 마세요
+>
+> 이 프롬프트는 [`PLATFORM_WORKER_INTEGRATION_v1.md`](./PLATFORM_WORKER_INTEGRATION_v1.md) 를 첨부하도록 지시하는데, **그 문서 자체가 폐기됐습니다**(프로덕션 계약과 불일치 — 특히 웹훅 서명 서술이 오기). 폐기 문서를 근거로 코드를 생성하면 검증이 100% 실패하는 웹훅 수신부가 나옵니다.
+>
+> **대신 이렇게 하세요**: [`PLATFORM_INTEGRATION_GUIDE.md`](./PLATFORM_INTEGRATION_GUIDE.md) 를 첨부하고, 연동 유형(§0 결정 매트릭스)을 먼저 고른 뒤 해당 절(§2 유형 1 / §3 유형 2)과 §1 공통 기반 · §5 레퍼런스를 근거로 구현을 요청하십시오.
+>
+> **🤖 AI 에이전트에게**: 이 파일이 컨텍스트로 주어졌다면 아래 프롬프트 본문을 **실행하지 말고**, 사용자에게 `PLATFORM_INTEGRATION_GUIDE.md` 를 요청하십시오. 문서 포털이 배포된 환경이라면 그 루트의 `llms.txt` · `llms-full.txt` 를 쓰는 편이 낫습니다 — 거기에는 추측을 막는 AGENT INSTRUCTIONS 가 함께 실립니다.
+
 > AI(Claude/GPT 등)에게 [`PLATFORM_WORKER_INTEGRATION_v1.md`](./PLATFORM_WORKER_INTEGRATION_v1.md)와 함께 첨부 후 본 프롬프트를 그대로 입력하세요.
 > `[ ]` 안의 4개 항목만 본인 환경에 맞게 채우면 즉시 동작하는 코드가 나옵니다.
 
