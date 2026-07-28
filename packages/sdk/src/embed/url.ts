@@ -144,6 +144,16 @@ export function buildEmbedUrl(options: BuildEmbedUrlOptions): string {
   if (!path.startsWith('/')) {
     throw new StorigeUsageError(`path 는 '/' 로 시작해야 합니다: ${path}`);
   }
+  // 🚨 오리진 탈출 차단 — `startsWith('/')` 만으로는 부족하다.
+  // `//evil.com/x`(protocol-relative)와 `/\evil.com`(백슬래시)은 둘 다 '/' 로 시작하지만
+  // `new URL(path, editorOrigin)` 이 **오리진째** 바꿔 놓는다. 그러면 iframe src 가 공격자
+  // 오리진이 되어 token·refreshToken 이 그 URL 쿼리로 나가고, mount 가 `new URL(url).origin`
+  // 으로 수신 화이트리스트를 재도출하므로 인바운드 게이트까지 공격자 오리진에 정박한다.
+  if (path.startsWith('//') || path.startsWith('/\\')) {
+    throw new StorigeUsageError(
+      `path 는 편집기 오리진 내부 경로여야 합니다 — 오리진을 바꾸는 형태는 거부합니다: ${path}`,
+    );
+  }
   if (path === '/') {
     throw new StorigeUsageError(
       "path='/' 는 레거시 라우트라 편집완료 메시지를 발신하지 않습니다 — '/embed' 를 쓰십시오.",
@@ -151,6 +161,12 @@ export function buildEmbedUrl(options: BuildEmbedUrlOptions): string {
   }
 
   const url = new URL(path, `${editorOrigin}/`);
+  // 조립 후 최종 단언 — 위 문자열 검사를 우회하는 미지의 형태가 있어도 여기서 fail-closed.
+  if (url.origin !== editorOrigin) {
+    throw new StorigeUsageError(
+      `path 가 편집기 오리진을 벗어났습니다(${url.origin} ≠ ${editorOrigin}): ${path}`,
+    );
+  }
 
   const entries: Array<[string, string | number | boolean | undefined]> = [
     ['token', params.token],

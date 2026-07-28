@@ -325,6 +325,29 @@ describe('buildEmbedUrl — parentOrigin 강제', () => {
     expect(() => buildEmbedUrl({ ...base, path: 'embed' })).toThrow(/'\/'/);
   });
 
+  // 🚨 적대 리뷰 실증 취약점: `startsWith('/')` 만으로는 오리진 탈출을 못 막는다.
+  // `//evil.com/x` 는 '/' 로 시작하지만 new URL 이 오리진째 바꿔, iframe src 가 공격자
+  // 오리진이 되고 token·refreshToken 이 쿼리로 유출되며 수신 화이트리스트까지 재정박된다.
+  it('path 로 편집기 오리진을 탈출할 수 없다(protocol-relative·백슬래시)', () => {
+    for (const escape of [
+      '//evil.test/x',
+      '//evil.test',
+      '/\\evil.test',
+      '/\\\\evil.test/x',
+    ]) {
+      expect(() => buildEmbedUrl({ ...base, path: escape })).toThrow(
+        /오리진/,
+      );
+    }
+  });
+
+  it('정상 경로는 편집기 오리진을 유지한다', () => {
+    for (const ok of ['/embed', '/embed/', '/embed/v2']) {
+      const url = buildEmbedUrl({ ...base, path: ok });
+      expect(new URL(url).origin).toBe(new URL(base.editorOrigin).origin);
+    }
+  });
+
   it('extraParams 로 parentOrigin 을 덮어쓸 수 없다', () => {
     expect(() =>
       buildEmbedUrl({
