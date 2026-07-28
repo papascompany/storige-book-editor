@@ -1,8 +1,9 @@
-# CONTRACT_FREEZE.md — Storige 플랫폼 계약 표면 동결 (v1.1)
+# CONTRACT_FREEZE.md — Storige 플랫폼 계약 표면 동결 (v1.2)
 
 > 작성 2026-07-03 · 근거: Phase 0 정찰 5팀(서명·재검증·보안·계약열거·구현준비) + 적대검증 2렌즈(계약 완전성·diff 회귀) 실코드 대조.
 > **무중단 원칙 절대**: 파트너 4종(bookmoa-mobile / Sharesnap / 100p_books / MD2Books)이 오늘 프로덕션에서 의존하는 표면은 시맨틱 변경·제거를 금지한다. 위반 변경은 Review Gate에서 오너 승인 없이 착수 금지.
 > **v1.1 변경**: 적대검증(FAIL, P0×3)이 잡은 누락 보강 — 업로드 표면 6종+크기 경계, frame-ancestors(死코드 오판정 → FROZEN 격상), 업로드 응답 shape·NOT_S3·content-type 화이트리스트, 100p 재분류.
+> **v1.2 추가 (2026-07-28)**: **호스트→편집기 수신 명령 계약 v1** 등재(§1-D-1). 신규 계약 제정이 아니라 **既 GUIDE 노출분의 사후 추인**(정식 계약 승격) — 발신 표면(8종 FROZEN + `editor.pricingChange` ADDITIVE)은 불변이며 넓히지 않는다.
 
 ## 0. 동결 규약 (Freeze Discipline)
 
@@ -71,12 +72,43 @@
 | postMessage 엔벨로프 v1 `{source:'storige-editor', version:'1', event, payload, timestamp}` | 임베드 2종 | FROZEN | editor.ready/save/complete/cancel/error/needAuth/state/saved |
 | editor.complete payload (files 중첩 + needsAuth/guestToken 인라인) | bookmoa | FROZEN | STALE-CLOSURE-001 |
 | `editor.pricingChange` 신규 이벤트 `{sessionId, pageCount, pricing?, coverType?}` (2026-07-06, D-3) | 포토북 호스트(opt-in) | **ADDITIVE** | needAuth 선례의 신규 이벤트명 추가 — 수신부 event 스위치는 미지 이벤트 무시(파트너 4종 영향 0). 발신은 pricing 설정 셋+회원 세션만. 기존 8종 payload 불변 |
+| **호스트→편집기 수신 명령 엔벨로프 v1** `{source:'storige-host', version:'1', command, requestId?, payload?}` + 명령 3종(`getState`/`saveNow`/`setBackGuard`) | 임베드 2종(파트너 4종 現 미발신 — GUIDE 노출분이라 발신 가능)·SDK `/embed` 예정 | **ADDITIVE(등재) → FROZEN(v1 시맨틱)** | **既 GUIDE 노출분의 사후 추인** — 상세·응답 유형·확장 규약은 **§1-D-1** |
 | 레거시 `storige:*` dual-emit | bookmoa | FROZEN(하위호환) | parentOrigin 미지정 시 targetOrigin='*' — 신규 연동 혼입 금지 |
 | shop-session 응답 shape (accessToken/refreshToken/expiresIn/member) | 임베드 2종 | FROZEN | |
 | `POST /worker-jobs/compose-mixed` (@Public, 게스트) | 게스트 편집 | FROZEN(게스트 UX) | siteId=dto.siteId‖null (NULL 격리 결함 §4.3) |
 | `POST /worker-jobs/render-pages` (@Public, 게스트) | 게스트 편집 | FROZEN(게스트 UX) | 동일 NULL 결함 |
 | `POST /worker-jobs/fix-bleed` (@Public, 게스트) — **ADDITIVE 2026-07-13 신설** | 게스트 편집(BLEED_MISSING extendBleed 실행기) | ADDITIVE→FROZEN(게스트 UX) | body=`{fileId,templateSetId}` 뿐 — editSize 는 서버가 templateSet 권위 산출(임의 사이즈 차단). 잡 siteId=원본 파일 승계‖null. 폴링 `GET /worker-jobs/:id`→`outputFileId`. contract-freeze.spec 동시 등재 |
 | 조회: `/edit-sessions/external?orderSeqno=`, `/edit-sessions/my`, `guest/migrate`, `spine/calculate`, `template-sets/:id/with-templates` | 4종 혼용 | FROZEN | 응답 `{data:[{files}]}` shape 포함 |
+
+### 1-D-1. ★호스트→편집기 수신 명령 계약 v1 (2026-07-28 등재 · 사후 추인)
+
+> **성격 = 신규 계약 제정이 아니라 既 노출분의 사후 추인(정식 계약 승격).** 수신 3종은 등재 이전에 이미 `docs/PLATFORM_INTEGRATION_GUIDE.md` 에 산문으로 외부 공개돼 있었다 — "편집기는 `e.origin === parentOrigin` 이고 `source === 'storige-host'` 인 메시지만 처리하며 `requestId` 를 echo한다"(임베드 섹션 개정 전 `:581` 산문 → 개정 후 `:792-794` 표 + `:823-824` 산문). 따라서 파트너가 이미 이 서술대로 명령을 보내고 있을 수 있으며, 본 등재는 **문서로 노출된 기존 편집기 동작을 계약 표면으로 확정**하는 것이다. 근거 원문 = `.cursor/plans/EMBED_OPENING_PLAN_2026-07-28.md` §7(기획세션 소유·읽기 전용).
+> **동결 표면을 넓히지 않는다**: 편집기 **발신**은 §1-D대로 **8종 FROZEN + `editor.pricingChange` 1종 ADDITIVE**가 정본이다(9종 아님). 아래 표의 응답 이벤트 `editor.state`/`editor.saved` 는 그 8종 중 2종을 가리키는 참조이지 신규 발신 표면이 아니다.
+
+**봉투 (FROZEN)** — `host → editor`:
+```
+{ source:'storige-host', version:'1', command, requestId?, payload? }
+```
+편집기 inbound 게이트(**v1 계약**) = ① `e.origin === parentOrigin` **AND** ② `e.source === window.parent` **AND** ③ 봉투 `data.source === 'storige-host'`. ②는 **D14 additive 봉합 항목**(등재 base `9b652e4` 의 수신부 `apps/editor/src/embed.tsx:580-583` 은 ①③ 만 검증 — 본 트랙 편집기 커밋에서 봉합, 아래 D14 항목 참조). 세 조건은 **정상 부모 프레임이면 모두 통과**하므로 既노출 발신자 영향 0. `requestId` 는 호스트가 부여하고 편집기가 응답 이벤트에 echo한다(요청-응답 상관).
+
+| command | payload | 응답 이벤트 | **응답 유형** | 분류 | 근거 |
+|---|---|---|---|---|---|
+| `getState` | `{}` | `editor.state{requestId, ready, dirty, sessionId}` | **요청-응답**(requestId echo) | **FROZEN**(명령명·응답 유형) | embed.tsx:586-593 |
+| `saveNow` | `{}` | `editor.saved{requestId, ok, error?}` | **요청-응답**(requestId echo) | **FROZEN** | embed.tsx:594-605(성공·실패 양쪽 응답) |
+| `setBackGuard` | `{enabled:boolean}` | **없음** | **fire-and-forget**(응답 없음) | **FROZEN** | embed.tsx:606-608 — postToParent 미호출 |
+
+> **응답 유형은 계약의 일부**다. 3종을 일괄 Promise로 감싸는 호스트/SDK 구현은 `setBackGuard` 만 영원히 pending 된다 — SDK `/embed` 는 타입 레벨로 분리 노출한다(`getState(): Promise<EditorState>` / `saveNow(): Promise<void>` / `setBackGuard(on:boolean): void`).
+
+**확장 규약 (strict additive)**
+- **미지원 `command` 는 편집기가 조용히 무시(no-op)** — 오류 이벤트도 예외도 발신하지 않는다(`embed.tsx:609-610` `default: break`, throw 없음). 이것이 strict additive 의 근거이며 구버전 편집기 ↔ 신버전 호스트 양방향을 안전하게 만든다. **호스트는 응답 이벤트 타임아웃으로 미지원을 판정하되 실패로 취급하지 않는다.**
+- **신규 명령은 위 표에 additive 추가만.** 기존 명령의 제거·이름변경·payload 시맨틱 변경·**응답 유형 전환**(fire-and-forget ↔ 요청-응답)은 금지. 신규 행은 **응답 유형을 반드시 명기**한다.
+- 확장 후보(`navigateToPage`/`setReadonly`/`requestThumbnail`/`reload`)는 구현 별건 — 편집기 수신부 구현 시점에 additive 등재한다.
+- ADDITIVE 조건②(contract test 동시 갱신): 본 표면은 **편집기측**이라 `apps/api/src/contract-freeze.spec.ts`(HTTP/웹훅 전용, postMessage 커버리지 0) 대상이 아니다 — 수신부 spec 은 D14 구현 커밋에서 동시 등재한다.
+
+**[D14 · additive 봉합] `e.source === window.parent` 대조**
+- 등재 base `9b652e4` 의 수신부는 origin + 봉투 `source` 필드만 검증하고 **`e.source` 대조가 없었다**(`embed.tsx:580-583`). 따라서 **parentOrigin 과 같은 출처의 다른 프레임/윈도우**가 명령을 주입할 수 있었다 — `saveNow` 강제, `setBackGuard{enabled:false}` 로 뒤로가기 가드 해제(`getState` 응답은 부모에게만 가므로 유출은 제한적). 조건부(호스트 XSS·오픈리다이렉트·서드파티 iframe 허용 시)라 심각도 **P2**지만 **계약 v1 확정 시점이 additive 봉합의 적기**라, 본 트랙 편집기 커밋에서 동시 봉합한다(수신부 trust gate 헬퍼로 3조건화). ⚠️ 편집기 커밋이 함께 병합되지 않으면 위 봉투 절의 조건 ②는 **미구현 상태로 남는다** — 병합 시 대조 확인 필요.
+- **既노출 발신자 호환(무중단 근거)**: `window.parent` 대조는 **정상 부모 프레임이면 통과**한다 → GUIDE 서술대로 이미 명령을 보내고 있는 파트너는 **영향 0**이고, 차단되는 것은 비정상 프레임 주입뿐이다. 기존 파트너 4종은 現 명령을 보내지 않으므로 추가로도 영향 0.
+- 호스트측 참조 구현 `parseEditorMessage`(`examples/editor-session-order/public/editor-events.js`)는 `expectedSource` 필수화로 이미 대칭 방어 완료 — **편집기측만 비대칭**이었다.
 
 ### 1-E. ★인프라/보안 계약 (적대검증 P0 정정)
 
