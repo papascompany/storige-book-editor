@@ -960,7 +960,7 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
   shop-session(JWT) → /embed iframe (parentOrigin 필수) → 편집 → editor.complete(sessionId)
 
 [합성 + 외부 수신 — 현재 빌딩블록 조합]
-  파트너 백엔드: POST /worker-jobs/compose-mixed { editSessionId, orderSeqno }
+  파트너 백엔드: POST /worker-jobs/compose-mixed { editSessionId, orderId? }
        │           ⚠️ 무인증(@Public)·테넌트 스코프 없음 (타 /external 라우트의 X-API-Key 와 대비)
        │
        ├─(A) 웹훅: uploadCallbackUrl 로 종료 콜백 수신 (X-Storige-Event/Signature)
