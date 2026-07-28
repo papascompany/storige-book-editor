@@ -44,7 +44,8 @@ Storige는 단일 인쇄 백엔드로서 여러 외부 파트너를 호스팅합
    - `editor_auth_code` 자동 생성 (`sk-storige-{48hex}` 형식 = `sk-storige-` 접두 + 24바이트 hex)
    - `worker_auth_code` 는 생성 시 명시하지 않으면 코드상 `editor_auth_code` 와 **동일 값**으로 시드됩니다 (`workerAuthCode = dto.workerAuthCode || editorAuthCode`). 단 `regenerate` 로 분리될 수 있으므로 파트너는 두 값이 다를 수 있다고 가정하고 단일 키로 취급하세요 (1.2 참조).
 3. Storige 운영자가 API Key를 보안 채널로 파트너에게 전달
-4. (프로덕션 전) `allowedOrigins` 수정(`PUT /api/sites/:id`) + (임베드 시) editor `vercel.json` frame-ancestors 반영 + `uploadCallbackUrl` 수정(`PUT /api/sites/:id`)
+4. (프로덕션 전) `allowedOrigins` 수정(`PUT /api/sites/:id`) + (임베드 시) `frameAncestors` 등록(`PUT /api/sites/:id`) + `uploadCallbackUrl` 수정(`PUT /api/sites/:id`)
+   > 임베드 도메인 허용은 **운영자의 `frameAncestors` 등록만으로 반영**됩니다 — 편집기 재배포는 필요 없습니다(캐시 2단으로 반영까지 최대 약 2분, 1.5 참조).
 
 **온보딩 요청 양식 (파트너 → Storige 팀):**
 
@@ -157,8 +158,11 @@ image/gif
 - ⚠️ **Origin 없는 요청은 무조건 통과합니다.** 따라서 서버간 API 키 호출은 Origin 제한을 받지 않으며, allowedOrigins는 브라우저 내 방어이지 테넌트 경계가 아닙니다.
 
 **iframe 임베드 (CSP frame-ancestors)**
-- 프로덕션 자체도메인 iframe 허용은 `apps/editor/vercel.json` 정적 정의에서만 적용됩니다. `site.frameAncestors` DB 필드는 현재 호출처가 없는 死코드입니다. `*.vercel.app`·localhost는 이미 포함되어 있습니다.
-- 따라서 새 파트너 도메인을 iframe 으로 임베드하려면 `apps/editor/vercel.json` 에 도메인 추가 후 master push(재배포)가 필요합니다. DB 변경만으로는 적용되지 않습니다.
+- `/embed` 응답의 `Content-Security-Policy: frame-ancestors` 는 **정적 baseline + 등록된 파트너 도메인**으로 합성됩니다. 정적 baseline(자체 도메인 계열 · `*.vercel.app` · localhost)은 편집기 배포에 고정돼 있고, 그 밖의 파트너 도메인은 운영자가 `PUT /api/sites/:id` 의 `frameAncestors` 에 등록하면 편집기가 `GET /api/frame-ancestors` 로 읽어 **재배포 없이** 반영합니다.
+- 반영 지연은 **최대 약 2분**입니다 — 서버 HTTP 캐시(`Cache-Control: max-age=60`)와 편집기 미들웨어 캐시(60초)가 **직렬로 겹치기** 때문입니다(60 + 60). 등록 직후 1분 남짓에 확인하고 "반영 실패"로 단정하지 마세요. 조회 실패·타임아웃 시에는 정적 baseline 이 그대로 적용되어 **기존 임베드가 끊기지 않습니다**.
+- 합성은 **추가만 가능**합니다(정적 baseline 의 상위집합만 만들어짐) — 등록으로 이미 허용된 도메인을 줄일 수는 없습니다.
+- 등록 가능한 값은 `https://app.example.com` / `https://*.example.com` 처럼 **스킴 + 호스트(+포트)** 형태뿐입니다. 경로가 붙은 값·스킴 없는 값·전면 와일드카드(`*`)·TLD 단독 와일드카드(`*.com` 류)는 CSP 합성 단계에서 **조용히 제외**되므로, 등록 후 실제 임베드로 반영을 확인하세요.
+- `frameAncestors` 등록은 **운영자 표면(`PUT /api/sites/:id`)** 전용입니다 — 파트너 셀프서비스 등록 경로는 없습니다(1.1 참조). 사이트당 최대 50개.
 
 **시크릿 취급**
 - API 키·refreshToken은 로그/리퍼러에 노출되지 않도록 주의 (임베드 URL에 토큰이 쿼리로 실립니다 — 1.2(B), 3장 참조).
@@ -693,9 +697,26 @@ fix-pagecount  호출 안 함
 ### 3.1 임베드 방법
 
 **진입점 (택1):**
-1. **iframe 라우트** — `https://editor.papascompany.co.kr/embed?...` 를 호스트가 띄움 (`EmbedView` → 완전배선 `EmbeddedEditor` 마운트).
-2. **IIFE 라이브러리 번들** — `window.StorigeEditor.create(config).mount(elId)` (PHP inline 등).
+1. **iframe 라우트 — 신규 연동 권장 기본** — `https://editor.papascompany.co.kr/embed?...` 를 호스트가 띄움 (`EmbedView` → 완전배선 `EmbeddedEditor` 마운트). 편집 기능이 **전부 살아 있는 풀피처 빌드**입니다.
+2. **IIFE 라이브러리 번들 — 레거시, 신규 연동 비권장** — `window.StorigeEditor.create(config).mount(elId)` (PHP inline 등).
    > IIFE 번들은 `vite.embed.config`(전역객체 `StorigeEditor` / `iife` 포맷 / `dist-embed` / entry `src/embed.tsx`)로 빌드되며, VPS nginx 에 `/embed/ → /app/editor-embed/` 서빙 location 이 존재합니다. 단 **최종 번들 파일명과 공개 도메인**(`editor.papascompany.co.kr` vs API VPS)은 배포 형상에 따라 다르므로, 정확한 `<script src>` URL 은 온보딩 시 운영팀에 확인하세요.
+
+> ⚠️ **IIFE 번들은 편집 기능이 축소된 빌드입니다 — 신규 파트너는 iframe `/embed` 를 쓰세요.**
+> IIFE 빌드는 빌드 타임 플래그와 스텁으로 아래 기능이 **제거/무력화**되어 있습니다. 같은 편집기처럼 보이지만 사용자가 쓸 수 있는 기능이 다릅니다.
+>
+> | 기능 | IIFE 번들 | iframe `/embed` |
+> |---|---|---|
+> | 사진/이미지 업로드 메뉴 | ❌ 제거 | ✅ |
+> | 템플릿 메뉴 | ❌ 제거 | ✅ |
+> | 프레임(사진틀) 메뉴 | ❌ 제거 | ✅ |
+> | QR / 바코드(smart-code) 메뉴 | ❌ 제거 | ✅ |
+> | 모양컷 · 이미지편집(image-processing) | ❌ 제거 | ✅ |
+> | 배경제거 | ❌ 스텁(호출 시 실패) | ✅ |
+> | OpenCV 기반 처리 | ❌ no-op 스텁 | ✅ |
+> | 눈금자(ruler) | ❌ 제거 | ✅ |
+>
+> 특히 **사진 업로드가 없다**는 점 때문에 IIFE 로 시작한 파트너는 "편집기에 사진을 못 올린다"는 문의를 반드시 겪습니다. IIFE 는 iframe 을 쓸 수 없는 레거시 PHP 인라인 페이지 전용으로만 유지되며, 신규 연동에는 제공하지 않습니다.
+> (AI 기능은 두 빌드 모두 프로덕션에서 비활성입니다.)
 
 **선행: shop-session JWT 발급 (파트너 서버)**
 
@@ -745,6 +766,8 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 | `allowSampleFallback` | 선택 | — | `1` 또는 DEV에서만 sample 폴백 |
 
 > 프로덕션에서 템플릿셋 로드 실패 시 `editor.error TEMPLATE_SET_NOT_FOUND` 를 발신합니다.
+> **`width`/`height` 는 메타 스냅샷일 뿐 캔버스 규격을 바꾸지 않습니다.** 실제 작업 규격(판형)의 권위는 템플릿셋·주문 옵션이며 임베드 편집기 안에서는 **read-only** 입니다(Canva 식 자유 커스텀 치수 불가). 완료 시점의 실제 규격은 `editor.complete` 의 `size` 로 되돌아오니, 파트너는 그 값으로 정합만 검증하세요 — 3.2 참조.
+> **재편집(`sessionId`)에 `templateSetId` 를 함께 보내면** 편집기가 세션 조회 1콜을 생략합니다. `sessionId` 만 보냈는데 세션 조회가 실패하면 편집기는 편집 화면 대신 "템플릿셋을 확인할 수 없습니다" 오류로 멈추므로, 파트너가 `templateSetId` 를 보관하고 있다면 함께 넘기는 편이 안전합니다.
 
 ### 3.2 postMessage 프로토콜
 
@@ -766,13 +789,28 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 | 편집기→부모 | `editor.state` | `{requestId, ready, dirty, sessionId}` | getState 응답 |
 | 편집기→부모 | `editor.saved` | `{requestId, ok, error}` | saveNow 응답 |
 | 편집기→부모 | `editor.pricingChange` | `{sessionId, pageCount, pricing?, coverType?}` | 가격 영향 변경(페이지 증감 등) 실시간 통지 (2026-07-06 additive) |
-| **부모→편집기** | `getState` | `{requestId}` | → `editor.state` 응답 |
-| **부모→편집기** | `saveNow` | `{requestId}` | 저장 후 `editor.saved` |
-| **부모→편집기** | `setBackGuard` | `{enabled}` | 뒤로가기 가드 on/off (응답 없음) |
+| **부모→편집기** | `getState` | `{requestId}` | **요청-응답** — `editor.state` 로 응답(`requestId` echo) |
+| **부모→편집기** | `saveNow` | `{requestId}` | **요청-응답** — 저장 후 `editor.saved` 로 응답(`requestId` echo) |
+| **부모→편집기** | `setBackGuard` | `{enabled}` | **fire-and-forget** — 뒤로가기 가드 on/off, **응답 이벤트 없음** |
 
-> **`editor.complete` 페이로드 구조 주의:** `coverFileId`·`contentFileId`·`thumbnailUrl` 은 최상위가 아니라 **`files` 객체 안에 중첩**되고, `pages` 는 **`{initial, final}` 객체**입니다.
+> **발신 8종(`ready`/`save`/`complete`/`cancel`/`error`/`needAuth`/`state`/`saved`)이 동결 계약**이고, **`editor.pricingChange` 1종은 ADDITIVE**입니다 — 조건부 발신(아래 발신 조건 참조)이라 동결 표면에 포함되지 않습니다. 수신 명령은 위 3종이 전부이며, 확장은 additive(추가만)로만 이뤄집니다.
+> **응답 유형을 구분하세요.** `setBackGuard` 는 응답이 없으므로 세 명령을 일괄 Promise 로 감싸면 이 명령만 영원히 pending 상태가 됩니다.
+
+> **`editor.complete` 페이로드 구조 주의:** `coverFileId`·`contentFileId`·`thumbnailUrl` 은 최상위가 아니라 **`files` 객체 안에 중첩**되고, `pages` 는 **`{initial, final}` 객체**입니다. 이 shape 은 **동결 계약**이라 평탄화되지 않습니다 — `payload.coverFileId` 를 읽는 파서는 항상 `undefined` 를 얻고, `pages` 를 숫자로 가정하면 그대로 깨집니다.
 > **페이지/규격 정합 (2026-07-04 additive):** `pages.final`·`pageCount` = 편집 완료 시점 실측 페이지 수(포토북 내지 펼침면은 ×2 물리페이지). `size` = 완료 시점 캔버스 규격(mm, 감사/정합 검증용 — 규격의 권위는 상품 옵션이며 embed 편집기에서는 규격 변경 UI 가 잠겨 있음). **파트너 장바구니는 `pageCount` 가 주문 옵션 페이지수와 다르면 가격을 재계산하고 고객에게 고지해야 합니다** — 결제 시점 서버 재계산에서도 동일 정합 검증 권장.
 > `pageCount`/`size`/`pricing` 은 legacy `storige:completed` 형식에도 동일하게 동봉됩니다. 단 **게스트(needsAuth=true) 완료 이벤트에는 미포함**(실제 완료가 아닌 로그인 유도 신호) — optional 처리 필수.
+>
+> 🚨 **게스트 완료 이벤트 순서 — `editor.complete` 가 `editor.needAuth` 보다 먼저 옵니다.**
+> 게스트(비회원) 세션에서 편집완료를 누르면 편집기는 아래 **순서로** 두 이벤트를 보냅니다.
+>
+> ```
+> ① editor.complete  { sessionId, needsAuth: true, guestToken, pages:{…}, files:{}, savedAt }   ← 먼저
+> ② editor.needAuth  { guestToken, reason: 'complete_save', ts }                                 ← 나중(하위호환)
+> ```
+>
+> **`editor.complete` 를 받으면 `needsAuth` 를 가장 먼저 확인하세요 — `true` 면 주문 생성·승격·합성을 일절 하지 말고 로그인 유도로 분기합니다.** `editor.needAuth` 를 기다렸다 분기하면 **이미 늦습니다**: ①에서 곧바로 후속 처리를 태우면 아직 회원 세션이 아닌 채로 진행되고, 뒤이어 도착한 ②가 화면을 덮어 원인 파악도 어려워집니다. 게스트 완료 payload 는 위 미포함 필드에 더해 **`files` 도 빈 객체**이므로, `files.contentFileId` 유무로 정상 완료를 판별하려는 시도도 실패합니다.
+> 또한 게스트 세션은 **책 승격**(Partner API v1 `POST /api/v1/books` `creationType=EDITOR_SESSION` — 2.0 의 유형 1 표면이며 유형 2 의 기본 경로는 아닙니다)의 대상이 아닙니다. 시도하면 `404` 가 나는데, 이유는 "회원 소유가 아니라서"가 **아니라** 게스트 세션 생성 라우트가 테넌트를 주입하지 않아 **`siteId` 가 비어 있고**, 승격 게이트가 `siteId` 없는 세션을 명시적으로 거부하기 때문입니다(교차테넌트 IDOR 방지). `guest/migrate` 는 `memberSeqno`·`guestToken` 만 바꾸고 `siteId` 는 그대로 두므로 **회원 전환 후에도 그 세션은 승격되지 않습니다** — 재편집과 `compose-mixed` 합성은 정상 동작하니, 유형 2 파트너는 3.3·3.4 경로를 그대로 쓰면 됩니다.
+> 방어적으로는 **`guestToken` 이 있는데 `needsAuth` 가 없는 형태도 게스트로 취급**하세요(fail-closed). 로그인 이후 처리는 3.3 의 "게스트 → 회원 전환" 을 따르세요.
 > **`editCode` 형식:** `EDIT-XXXXXXXX` = 접두 `EDIT-` + 세션ID 앞 8자 대문자(`EDIT-${id.substring(0,8).toUpperCase()}`). 순수 8자리 숫자가 아닙니다.
 > **`editor.pricingChange` (D-3, 2026-07-06 additive):** 편집 중 페이지 추가/삭제로 총 페이지 수가 바뀌면 ~300ms 디바운스로 발신됩니다. 가격 계산 주체는 **호스트**(storige 는 가격을 계산하지 않음) — `pageCount`(물리 페이지, 포토북 내지 펼침면 ×2)와 `pricing` 메타로 장바구니 표시가를 갱신하세요. **발신 조건(보수 기본):** 템플릿셋에 `pricing` 이 설정된 경우 + 회원 세션만(게스트 미발신) + 에디터 초기화/세션 복원 완료 후. `coverType` 은 템플릿셋에 커버 종류 코드(string, 확장 가능 — `hardcover_wrap`/`softcover_variable_spine`/`ready_made` 시드)가 설정된 경우에만 동봉. 미지 이벤트를 무시하는 기존 수신부는 영향 없음(additive).
 
@@ -783,15 +821,37 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 { "source": "storige-host", "version": "1", "command": "getState", "requestId": "abc", "payload": { } }
 ```
 > 편집기는 `e.origin === parentOrigin` 이고 `source === 'storige-host'` 인 메시지만 처리하며, `requestId` 를 echo합니다.
+> **미지원 `command` 는 조용히 무시(no-op)됩니다** — 오류 이벤트도 예외도 발신하지 않습니다. 따라서 호스트는 **응답 이벤트 타임아웃으로 미지원을 판정**하되 실패로 취급하지 마세요(구버전 편집기 ↔ 신버전 호스트 조합에서 정상 동작). 반대로 `requestId` 를 매번 새로 부여하지 않으면 응답 상관이 어긋나므로, 요청-응답 명령에는 반드시 고유 `requestId` 를 실으세요.
 
 **레거시 dual-emit (EmbedView 라우트 한정, 하위호환):** `storige:ready`, `storige:saved`, `storige:completed`, `storige:cancel`, `storige:error`.
-> ⚠️ **레거시 emit 은 `parentOrigin` 미지정 시 `targetOrigin='*'`(와일드카드)로 송신**되어 민감 페이로드가 노출될 수 있습니다(`EmbedView.tsx`: `parentOrigin || '*'`). 신규 파트너(특히 유형 3 Shopify)는 **반드시 `parentOrigin` 을 지정**하고 정식 `storige-editor` 엔벨로프를 사용하세요.
+> ⚠️ **레거시 emit 은 `parentOrigin` 미지정 시 `targetOrigin='*'`(와일드카드)로 송신**됩니다(`EmbedView.tsx`: `parentOrigin || '*'`). 레거시 페이로드는 필드 화이트리스트라 `token`·`guestToken` 같은 자격증명은 실리지 않지만, **`sessionId`(= `editSessionId`)와 `coverFileId`/`contentFileId` 가 그대로 노출**됩니다. `editSessionId` 는 사실상 권한 토큰입니다 — `POST /api/worker-jobs/compose-mixed` 가 무인증(`@Public`)이라 이 값을 가진 쪽은 누구나 그 세션의 합성 잡을 트리거할 수 있습니다(3.4·4.2 참조). 임베드 페이지에 다른 스크립트가 하나라도 있으면 그 스크립트가 값을 읽습니다. 신규 파트너(특히 유형 3 Shopify)는 **반드시 `parentOrigin` 을 지정**하고 정식 `storige-editor` 엔벨로프를 사용하세요. 정식 엔벨로프는 `parentOrigin` 이 없으면 아예 발신하지 않으며 와일드카드를 절대 쓰지 않습니다.
 
 ### 3.3 세션 저장 / 재편집
 
 - 완료 시 `sessionId` 를 파트너가 저장 → 재편집 키로 `/embed?sessionId=<id>&token=&refreshToken=&parentOrigin=` 재진입.
 - 재편집은 `sessionId` 만으로 `templateSetId`·`mode`·`orderSeqno`·spine 옵션을 세션 metadata에서 도출하여 멀티페이지 canvasData를 복원합니다.
 - 30초 주기 자동저장 (`PATCH /api/edit-sessions/:id`, 게스트면 `updateGuest`).
+
+**게스트 → 회원 전환 후 같은 세션 재오픈 (무로그인 퍼널)**
+
+게스트로 편집하다 완료를 누른 사용자를 로그인시킨 뒤에는, **새 세션을 만들지 말고 같은 `sessionId` 를 회원 토큰으로 다시 여세요.** 새로 만들면 게스트가 편집한 작업물이 그대로 버려집니다.
+
+1. `editor.complete`(`needsAuth:true`) 에서 받은 `guestToken` 을 보관하고 로그인을 유도합니다(3.2 의 이벤트 순서 주의).
+2. 로그인으로 회원이 확정되면 파트너 서버가 그 회원의 shop-session JWT 를 발급받습니다(3.1).
+3. **세션 소유권 이전** — 회원 JWT 로 `POST /api/edit-sessions/guest/migrate` 를 호출합니다. 이 호출이 게스트 세션을 회원 소유로 흡수하고 게스트 토큰을 무효화합니다.
+   ```bash
+   curl -X POST "https://api.papascompany.co.kr/api/edit-sessions/guest/migrate" \
+     -H "Authorization: Bearer <MEMBER_ACCESS_TOKEN>" \
+     -H "Content-Type: application/json" \
+     -d '{ "guestToken": "<GUEST_TOKEN>" }'
+   # → { "migratedCount": 1, "sessionIds": ["<same-session-id>"] }
+   ```
+   > 응답의 `sessionIds` 에는 그 `guestToken` 으로 만들어진 세션이 **전부** 들어옵니다(한 명이 여러 개를 편집했을 수 있음). 에러: 토큰 없음·만료·위조 `401`(전역 JWT 가드 — 이 라우트는 `@Public` 이 아닙니다), 토큰은 유효하나 회원 식별자가 없는 경우 `403 AUTH_REQUIRED`, `guestToken` 누락/8자 미만 `400 GUEST_TOKEN_REQUIRED`. **shop-session 으로 발급한 회원 accessToken 을 쓰세요** — 운영자(admin) 로그인 토큰은 회원 식별자가 없어 `403` 입니다.
+4. **같은 `sessionId` 로 재오픈** — `/embed?sessionId=<동일 id>&token=<회원 accessToken>&refreshToken=&parentOrigin=`. 작업물은 그대로 복원되고, 이제 편집완료를 누르면 게스트 분기 없이 **정상 완료**(`needsAuth` 없음 + `files` 채워짐 + PDF 생성)로 이어집니다.
+
+> ⚠️ **3번을 건너뛰고 4번만 하면 무한 루프**가 됩니다 — 세션에 게스트 토큰이 남아 있는 동안에는 회원 토큰으로 열어도 편집기가 다시 게스트 분기를 타서 `editor.complete{needsAuth:true}` 만 반복 발신합니다.
+> ⚠️ **게스트 세션은 발급 후 24시간**만 유효합니다(만료 후 게스트 저장은 `403 GUEST_SESSION_EXPIRED`). 무로그인 퍼널은 그 안에 전환을 마치도록 설계하세요.
+> ⚠️ `guestToken` 은 **세션 자격증명**입니다 — 로그·DOM·URL 에 남기지 말고 전환 처리에만 쓰세요.
 
 ### 3.4 완료 → 합성 → 다운로드
 
@@ -801,8 +861,9 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
    # ⚠️ 무인증(@Public) — X-API-Key 없음, 테넌트 스코프 없음 (타 /external 라우트와 대비)
    curl -X POST "https://api.papascompany.co.kr/api/worker-jobs/compose-mixed" \
      -H "Content-Type: application/json" \
-     -d '{ "editSessionId": "<id>", "orderSeqno": 12345 }'
+     -d '{ "editSessionId": "<id>", "orderId": "12345" }'
    ```
+   > ⚠️ 필드명은 **`orderId`(문자열)** 입니다. `orderSeqno` 처럼 DTO 에 없는 키를 보내면 전역 `forbidNonWhitelisted` 검증에 걸려 **`400`** 이 납니다(선택 필드라 생략해도 됩니다).
    > ⚠️ **보안 주의:** `compose-mixed` 는 `@Public`(ApiKeyGuard·테넌트 스코핑 없음, ThrottlerGuard 만)입니다. `editSessionId`(UUID) 만 알면 누구나 합성 잡을 트리거할 수 있습니다. `editSessionId` 를 비밀로 취급하고 가능한 한 **파트너 백엔드에서만** 호출하며, 브라우저 노출을 최소화하세요.
    > 스프레드(펼침면) 책은 서버가 `outputMode='separate'` 강제 → cover.pdf + content.pdf 2파일. `single` 보내도 무시. **단일파일 가정 금지.**
 3. 완료 수신: 웹훅(`uploadCallbackUrl`) 또는 폴링 `GET /api/worker-jobs/external/:id`.
@@ -821,6 +882,8 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 <script>
   const EDITOR_ORIGIN = "https://editor.papascompany.co.kr";
   const iframe = document.getElementById("storige");
+  // 게스트 완료는 editor.complete + editor.needAuth 두 이벤트로 도착한다 → 1회만 처리
+  const handledGuest = new Set();
 
   window.addEventListener("message", (e) => {
     if (e.origin !== EDITOR_ORIGIN) return;            // origin 검증 필수
@@ -832,12 +895,23 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
         console.log("ready", msg.payload.sessionId);
         break;
       case "editor.complete":
+        // 🚨 needsAuth 를 가장 먼저 확인한다. 게스트 완료는 editor.needAuth 보다 먼저 도착한다.
+        //    여기서 주문/합성을 태우면 안 된다(게스트 세션은 siteId 가 비어 v1 승격도 404).
+        //    guestToken 만 있고 needsAuth 가 없는 형태도 게스트로 본다(fail-closed).
+        if (msg.payload.needsAuth || msg.payload.guestToken) {
+          handledGuest.add(msg.payload.guestToken);         // 뒤따라올 needAuth 중복 차단
+          promptLoginThenMigrate(msg.payload.guestToken);   // 3.3 게스트 → 회원 전환
+          break;
+        }
         // sessionId 저장 → 주문확정 시 백엔드가 compose-mixed 호출
         // files.coverFileId / files.contentFileId (중첩 구조 주의)
         saveSessionToBackend(msg.payload.sessionId, msg.payload);
         break;
       case "editor.needAuth":
-        // 게스트 → 회원 마이그레이션 처리
+        // 하위호환 보조 신호 — 게스트 완료 시 편집기가 complete 직후 "항상" 함께 보낸다.
+        // (payload 는 {guestToken, reason, ts} 뿐 — sessionId 는 없다.)
+        // 가드 없이 여기서도 호출하면 로그인 유도/마이그레이션이 매번 두 번 실행된다.
+        if (handledGuest.has(msg.payload.guestToken)) break;
         promptLoginThenMigrate(msg.payload.guestToken);
         break;
       case "editor.error":
@@ -865,9 +939,11 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 - [ ] 리스너에서 `e.origin` + `source==='storige-editor'` 검증
 - [ ] 401 시 `/api/auth/shop-refresh-body {refreshToken}` 로 토큰 갱신 (cross-origin이라 body 변형 사용)
 - [ ] `editor.complete` 의 `sessionId` 저장 (재편집 키), `files`/`pages` 중첩 구조로 파싱
+- [ ] `editor.complete` 수신 시 **`needsAuth` 를 먼저 확인** — `true`(또는 `guestToken` 존재)면 주문/승격 금지, 로그인 유도로 분기 (`editor.needAuth` 를 기다리지 않는다)
 - [ ] 합성은 `compose-mixed` 명시적 트리거(무인증 — editSessionId 비밀유지), 스프레드=2파일 처리
-- [ ] 게스트 세션(`editor.needAuth`) 마이그레이션 흐름 구현
-- [ ] (프로덕션) `allowedOrigins` 수정(`PUT /api/sites/:id`) + editor `vercel.json` frame-ancestors 반영 + master push
+- [ ] 게스트 → 회원 전환 흐름 구현: `guest/migrate` 로 세션 소유권 이전 후 **같은 `sessionId`** 를 회원 토큰으로 재오픈 (3.3)
+- [ ] 신규 연동은 iframe `/embed` 사용 (IIFE 번들은 업로드·템플릿·프레임 등 기능이 빠진 레거시 — 3.1)
+- [ ] (프로덕션) `allowedOrigins` 수정(`PUT /api/sites/:id`) + 임베드 도메인 `frameAncestors` 등록(`PUT /api/sites/:id`) — 편집기 재배포 불필요, `frameAncestors` 반영은 캐시 2단으로 최대 약 2분(1.5)
 
 ---
 
@@ -884,7 +960,7 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
   shop-session(JWT) → /embed iframe (parentOrigin 필수) → 편집 → editor.complete(sessionId)
 
 [합성 + 외부 수신 — 현재 빌딩블록 조합]
-  파트너 백엔드: POST /worker-jobs/compose-mixed { editSessionId, orderSeqno }
+  파트너 백엔드: POST /worker-jobs/compose-mixed { editSessionId, orderId? }
        │           ⚠️ 무인증(@Public)·테넌트 스코프 없음 (타 /external 라우트의 X-API-Key 와 대비)
        │
        ├─(A) 웹훅: uploadCallbackUrl 로 종료 콜백 수신 (X-Storige-Event/Signature)
@@ -904,7 +980,7 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 | **웹훅 서명** | 사이트별 웹훅 설정(v2)을 발급하면 **HMAC 전용 발신**(`X-Storige-Signature-HMAC` + `X-Storige-Delivery`)이고, 설정이 없으면 레거시 발신(base64 `X-Storige-Signature` — **위조 가능**, 전역 시크릿 설정 시 HMAC 헤더 동반)으로 폴백합니다. | 신규 연동은 `PUT /api/v1/webhooks/config` 로 v2 설정을 발급받아 HMAC 검증 (5.2 참조). 레거시 폴백 구간에서는 웹훅을 트리거로만 취급하고 결과는 `download/external` 로 재확인. |
 | **compose-mixed 무인증** | `@Public`·테넌트 스코프 없음 → editSessionId 보유자면 누구나 트리거 가능 | 프로덕션화 시 `ApiKeyGuard`+테넌트 스코핑 추가 검토 (오너 결정) |
 | **Shopify 전용 Site 등록** | 미존재 (모든 Site는 운영자 생성) | 운영자가 `POST /api/sites` 로 Shopify 테넌트 생성 + 키 발급 |
-| **frame-ancestors (Shopify 도메인 iframe)** | DB 필드 死코드, `vercel.json` 정적 정의만 유효 | `apps/editor/vercel.json` 에 Shopify 임베드 도메인 추가 + master push |
+| **frame-ancestors (Shopify 도메인 iframe)** | 운영자 등록 → 동적 CSP 합성 배선 완료(1.5) | 운영자가 `PUT /api/sites/:id` 로 Shopify 임베드 도메인을 `frameAncestors` 에 등록 (편집기 재배포 불필요) |
 | **외부 결과 전달 표준 흐름** | 유형 1/2 빌딩블록은 존재하나 Shopify 주문 연결 어댑터는 미구현 | 파트너측 어댑터 + `uploadCallbackUrl` 등록 |
 | **회원번호 체계** | 파트너 자체 정수 회원번호 필요 | Shopify customer ID → 정수 시퀀스 1:1 매핑 결정 (해시변환 금지 — 충돌) |
 
@@ -955,6 +1031,7 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 | GET | `/api/edit-sessions/external` | @Public + X-API-Key | 주문별 편집세션 조회 (`?orderSeqno=`) |
 | GET | `/api/edit-sessions/:id/imposition-preview` | @Public + X-API-Key | 임포지션 프리뷰 |
 | POST | `/api/edit-sessions` | (회원/게스트) | 편집세션 생성 — `memberSeqno` falsy 시 `400 MEMBER_REQUIRED` |
+| POST | `/api/edit-sessions/guest/migrate` | **JWT (Bearer, shop-session 회원 토큰)** | 게스트 세션 → 회원 흡수. Body `{guestToken}` → `{migratedCount, sessionIds[]}`. 에러 `401`(토큰 없음/만료) · `403 AUTH_REQUIRED`(회원 식별자 없는 토큰) · `400 GUEST_TOKEN_REQUIRED`(누락/8자 미만). `siteId` 는 바뀌지 않음 → v1 승격 대상은 되지 않음. 3.3 |
 | GET/POST/PUT/DELETE | `/api/sites`, `/api/sites/:id` | JWT + ADMIN/MANAGER | 테넌트 생애주기 (운영자 전용, 파트너 비대상). **수정은 `PUT /api/sites/:id`** (`:id` 에 PATCH 라우트 없음) |
 | PATCH | `/api/sites/:id/regenerate` | JWT + ADMIN/MANAGER | 키 회전 (`{target:'editor'\|'worker'\|'both'}`) |
 
@@ -1111,7 +1188,7 @@ book.finalization.completed | book.finalization.failed
 
 **유형 2 추가**
 - [ ] `allowedOrigins` 수정 = `PUT /api/sites/:id` (CORS)
-- [ ] `apps/editor/vercel.json` frame-ancestors 반영 + master push (자체도메인 iframe)
+- [ ] 임베드 도메인 `frameAncestors` 등록 = `PUT /api/sites/:id` (CSP frame-ancestors — 편집기 재배포 불필요, 반영 최대 약 2분)
 - [ ] `uploadCallbackUrl` 수정 = `PUT /api/sites/:id` (웹훅 SSRF allowlist)
 - [ ] `/embed` 라우트 + `parentOrigin` 사용
 
@@ -1127,7 +1204,7 @@ book.finalization.completed | book.finalization.failed
 R2 CORS에 `ExposeHeaders: [ETag]` 가 없으면 브라우저가 파트 ETag를 못 읽어 실패합니다. R2 CORS에 파트너 origin + `ExposeHeaders: ETag` 등록이 필요합니다 (Storige 오너 작업). 실패 시 `/multipart/abort` 호출.
 
 **Q. 브라우저 요청이 CORS로 차단됩니다.**
-CORS는 (a) Origin 없음→무조건 허용 (b) env 정적 (c) `*.vercel.app`/`*.papascompany.co.kr` (d) DB `allowedOrigins` 합집합(60s 캐시) 순으로 결정됩니다. 프로덕션 도메인 허용은 `PUT /api/sites/:id` (DB만 변경, 재배포 불필요). 단, **iframe 임베드 CSP frame-ancestors는 DB가 아니라 `vercel.json` 정적 정의**이므로 별도 push가 필요합니다.
+CORS는 (a) Origin 없음→무조건 허용 (b) env 정적 (c) `*.vercel.app`/`*.papascompany.co.kr` (d) DB `allowedOrigins` 합집합(60s 캐시) 순으로 결정됩니다. 프로덕션 도메인 허용은 `PUT /api/sites/:id` (DB만 변경, 재배포 불필요). **iframe 임베드 CSP frame-ancestors도 같은 `PUT /api/sites/:id` 의 `frameAncestors` 등록으로 반영**됩니다(정적 baseline + 등록분 합성, 반영 최대 약 2분 — 서버·편집기 캐시 각 60초가 직렬로 겹침, 1.5 참조). CORS 와 frame-ancestors 는 별개 필드이므로 임베드 파트너는 **둘 다** 등록해야 합니다.
 
 **Q. iframe에서 postMessage가 안 옵니다.**
 `parentOrigin` 파라미터가 없으면 정식 postMessage가 전면 비활성됩니다(레거시 storige:* 만 와일드카드로 폴백). 또한 루트 `/` 는 레거시 라우트로 완료 메시지를 발신하지 않습니다 — 반드시 `/embed` 를 사용하세요.
@@ -1148,7 +1225,7 @@ CORS는 (a) Origin 없음→무조건 허용 (b) env 정적 (c) `*.vercel.app`/`
 `memberSeqno` 는 `@IsNumber()` 필수 필드라 **누락 시 일반 검증 `400`**(코드명 `MEMBER_REQUIRED` 아님)이 납니다. `memberSeqno=0` 은 유효한 number라 검증을 통과해 `sub='0'` 세션을 발급합니다(거부 안 함). `MEMBER_REQUIRED` 는 shop-session 이 아니라 `POST /api/edit-sessions`(세션 생성) 단계에서 `memberSeqno` 가 falsy(0/누락)일 때 발생합니다. 파트너 자체 정수 회원번호(0/음수 아님)를 채우세요.
 
 **Q. 게스트가 편집완료했는데 PDF가 없습니다.**
-회원 식별 없는 토큰(예: `memberSeqno=0`)은 게스트 세션으로 폴백되어, 편집완료 시 PDF 없이 `editor.needAuth` 만 발신합니다. 호스트가 로그인 유도 후 게스트→회원 세션 마이그레이션을 처리해야 합니다.
+회원 식별 없는 토큰(예: `memberSeqno=0`)은 게스트 세션으로 폴백되어, 편집완료 시 PDF 없이 `editor.complete{needsAuth:true}` → `editor.needAuth` 순으로 발신합니다(순서 주의 — 3.2). 호스트가 로그인 유도 후 게스트→회원 세션 마이그레이션을 처리해야 합니다 (절차는 3.3).
 
 ---
 
