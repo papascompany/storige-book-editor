@@ -46,7 +46,14 @@ pnpm --filter @storige/docs build -- --dev     # 누락 콘텐츠 허용(개별 
 | --- | --- | --- |
 | `STORIGE_OPENAPI_SPEC` | — | 스펙 경로 직접 지정 |
 | `STORIGE_DOCS_SITE_URL` | `''` | llms.txt 절대 URL 접두. 비면 루트-상대. 값이 있으면 그 호스트가 guard R1 화이트리스트에 자동 추가된다 |
-| `STORIGE_DOCS_NOINDEX` | — | `1` 이면 **빌드측 2축**을 켠다: 전 HTML 에 `noindex, nofollow` meta + `robots.txt` `Disallow: /`. 세 번째 축인 HTTP `X-Robots-Tag` 는 빌드가 아니라 `vercel.json` `headers` 소관이다(`.txt`·`.css` 산출물의 유일한 커버리지). 축별 커버리지와 한계는 `DEPLOY.md` §0-1 |
+| `STORIGE_DOCS_PUBLIC` | — | `1` 이면 **공개 모드**로 전환한다(명시 opt-in). 이것 하나로는 부족하다 — `vercel.json` 의 `X-Robots-Tag` 헤더도 함께 지워야 3축이 모두 걷힌다. 절차는 `DEPLOY.md` §0-1 |
+| `STORIGE_DOCS_NOINDEX` | — | 하위호환. `1` 이면 차단이며 `STORIGE_DOCS_PUBLIC` 보다 **우선**한다(둘 다 켜면 차단 + 경고). 이제는 차단이 기본값이라 새로 쓸 이유는 없다 |
+
+> ⚠️ **색인 차단이 기본값이다(fail-closed).** env 를 하나도 주지 않은 빌드 — `vercel.json`
+> 이 안 읽혔든, 대시보드 설정이 덮었든, 그냥 `node build.mjs` 를 돌렸든 — 는 **차단본**을
+> 낸다. 빌드측 2축(전 HTML 의 `noindex, nofollow` meta + `robots.txt` `Disallow: /`)이 켜지고,
+> 세 번째 축인 HTTP `X-Robots-Tag` 는 빌드가 아니라 `vercel.json` `headers` 소관이다
+> (`.txt`·`.css` 산출물의 유일한 커버리지). 축별 커버리지와 한계는 `DEPLOY.md` §0-1.
 
 > `robots.txt` 는 **모드와 무관하게 항상** 산출된다. 파일이 없으면 "차단 모드인데 누락"과
 > "공개 모드"가 산출물에서 구분되지 않기 때문이다.
