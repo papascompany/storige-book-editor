@@ -402,6 +402,45 @@ export interface EmbedMessageEnvelope<T = unknown> {
 }
 
 /**
+ * 호스트 → 편집기 명령의 신뢰 게이트 (inbound).
+ *
+ * 통과 조건 3종:
+ *   1. `e.origin === parentOrigin`            (기존)
+ *   2. `e.source === window.parent`           (**D14, 2026-07-28 additive 봉합**)
+ *   3. 봉투 `data.source === 'storige-host'`  (기존)
+ *
+ * D14 배경: 기존 게이트는 1·3 뿐이라 parentOrigin 과 **같은 출처의 다른 프레임/윈도우**
+ * (호스트 XSS·오픈리다이렉트·호스트가 허용한 서드파티 iframe)가 명령을 주입할 수 있었다 —
+ * `saveNow` 강제 트리거, `setBackGuard{enabled:false}` 로 이탈 가드 해제.
+ * 호스트측 SDK(`parseEditorMessage`)는 expectedSource 필수화로 이미 대칭 방어를 마쳤고
+ * 편집기측만 비대칭이었다.
+ *
+ * 既노출 발신자 호환(수신 3종은 GUIDE 에 이미 산문으로 노출됨 → 사후 추인):
+ * - iframe 임베드: 부모가 `iframe.contentWindow.postMessage(...)` 로 보내면 발신 윈도우가
+ *   곧 `window.parent` 이므로 **통과**. GUIDE 서술대로 명령을 보내온 파트너는 영향 0.
+ * - IIFE 인라인 마운트(top-level, iframe 아님): `window.parent === window` 이므로 호스트가
+ *   같은 문서에서 `window.postMessage(...)` 로 보낸 명령도 `e.source === window.parent` → **통과**.
+ *   (이 경로는 postToParent 가 top-level 송신을 스킵하므로 응답이 없다 — 기존 동작 그대로.)
+ * - 같은 출처의 형제/제3 프레임·팝업·MessagePort 발신 → `e.source !== window.parent` → **차단**.
+ *
+ * 발신 계약(8종 FROZEN + `editor.pricingChange` ADDITIVE)은 불변 — 수신부만 좁힌다.
+ * 미지원 command 의 조용한 no-op(strict additive) 도 호출부 `default: break` 로 그대로 유지된다.
+ */
+export function isTrustedHostCommandEvent(
+  e: Pick<MessageEvent, 'origin' | 'source' | 'data'>,
+  parentOrigin: string | undefined,
+): boolean {
+  if (!parentOrigin) return false
+  if (typeof window === 'undefined') return false
+  if (e.origin !== parentOrigin) return false
+  // D14: 발신 윈도우가 자신의 부모인지 대조 (top-level 이면 window.parent === window).
+  if (e.source !== window.parent) return false
+  const data = e.data as EmbedHostCommandEnvelope | undefined
+  if (!data || data.source !== EMBED_HOST_MESSAGE_SOURCE) return false
+  return true
+}
+
+/**
  * 부모 페이지로 postMessage 전송.
  *
  * 보안 규칙:
@@ -574,13 +613,13 @@ function EmbeddedEditor({
   //   · getState     → editor.state { ready, dirty, sessionId } 응답
   //   · saveNow      → 강제 저장 후 editor.saved { ok, error? } 응답
   //   · setBackGuard → { enabled } 로 편집기 내부 뒤로가기 가드 on/off (호스트가 제어 가져갈 때 off)
-  // 보안: parentOrigin 일치하는 메시지 + source==='storige-host' 만 처리.
+  // 보안: parentOrigin 일치 + 발신 윈도우가 부모(window.parent) + 봉투 source==='storige-host' 만 처리.
+  //       (D14 — e.source 대조로 같은 출처 다른 프레임의 명령 주입 차단. isTrustedHostCommandEvent 주석 참조)
   useEffect(() => {
     if (!parentOrigin || typeof window === 'undefined') return
     const onMessage = (e: MessageEvent) => {
-      if (e.origin !== parentOrigin) return
-      const data = e.data as EmbedHostCommandEnvelope | undefined
-      if (!data || data.source !== EMBED_HOST_MESSAGE_SOURCE) return
+      if (!isTrustedHostCommandEvent(e, parentOrigin)) return
+      const data = e.data as EmbedHostCommandEnvelope
       const requestId = data.requestId
       switch (data.command) {
         case 'getState':
