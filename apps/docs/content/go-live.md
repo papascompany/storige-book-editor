@@ -27,12 +27,12 @@
 - [ ] `429` 응답의 `Retry-After` 를 준수한다(잔량 헤더가 없어 선제 회피 불가) — [1.6](/guide/common/#1-6)
 - [ ] 자산 투입은 **`fileId` 참조**를 기본 경로로 쓴다 — [2.0](/guide/self-editor/#2-0)
 - [ ] 🚨 **멀티파트 업로드에 `Idempotency-Key` 를 재사용하지 않는다**(같은 키 + 다른 파일 = 조용한 유실) — [1.7](/guide/common/#1-7)
-- [ ] 직접 업로드 100 MB 를 넘는 파일은 presigned 표면에 올린 뒤 `fileId` 로 참조한다 — [1.4](/guide/common/#1-4)
+- [ ] 직접(멀티파트) 업로드 상한을 넘는 파일은 presigned 표면에 올린 뒤 `fileId` 로 참조한다(상한 수치는 정본 참조 — 서버 경유·직결·워커 검증이 각각 다른 값) — [1.4](/guide/common/#1-4)
 - [ ] `409 ERR_FINALIZATION_IN_PROGRESS` 를 **실패로 처리하지 않고** 기존 attempt 에 합류한다 — [1.7](/guide/common/#1-7)
 - [ ] 🖨️ 운영 주문 경로에서 `bookSpecUid` 를 **반드시** 넘겨 미검증 최종화(`validationSkipped`)를 만들지 않는다 — [1.7](/guide/common/#1-7)
 - [ ] `validationSkipped: true` 인 도서를 자동 발주로 흘리지 않는 게이트가 있다 — [1.7](/guide/common/#1-7)
 - [ ] `GET .../pdf` 수신을 `Content-Type` 으로 분기하고 전량 버퍼링 없이 스트림으로 저장한다 — [2.0](/guide/self-editor/#2-0)
-- [ ] 미구현 생성 유형(`TEMPLATE` · `MIX_COVER_TEMPLATE`)에 의존하는 흐름이 없다 — [1.7](/guide/common/#1-7)
+- [ ] 미구현 생성 유형(`TEMPLATE` · `MIX_COVER_TEMPLATE`)을 **생성 전에** 걸러낸다 — 생성은 `201` 로 통과하고 최종화에서 `422` 라, 필터가 없으면 최종화 불가능한 DRAFT 가 쌓인다 — [1.7](/guide/common/#1-7)
 
 ## 4. 임베드 (유형 2)
 
