@@ -14,6 +14,15 @@ dist-embed/
 build/
 .next/
 
+# 문서 포털(apps/docs) 산출물 — 결정적 생성물이라 커밋하지 않는다.
+#  - site/       : 빌드 결과(html·theme.css·llms.txt)
+#  - .generated/ : 빌드타임에 받아오는 openapi-partner.json
+# ⚠️ 출력 디렉터리 이름을 dist/ 나 build/ 로 바꾸지 말 것 —
+#    scripts/check-source-exposure.mjs 의 SKIP_DIRS 가 그 두 이름을 건너뛰므로
+#    유출 방지 게이트가 조용히 no-op 이 된다(초록인데 아무것도 안 본 상태).
+apps/docs/site/
+apps/docs/.generated/
+
 # Environment variables
 .env
 .env.local
