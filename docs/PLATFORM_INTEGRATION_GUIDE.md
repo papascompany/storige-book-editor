@@ -58,7 +58,7 @@ Storige는 단일 인쇄 백엔드로서 여러 외부 파트너를 호스팅합
                           <예: https://api.example.com/storige/webhook>
 회원번호 체계(정수):      <파트너 자체 정수 회원번호 발급 방식>
 보존정책(retentionDays):  <예: 14 / 0=영구>
-대용량 검증 필요?:        <현재 프로덕션 2GB까지 검증 가능(운영 .env 실값). 2GB 초과가 필요하면 운영팀 사전 협의 — 1.4 참조>
+대용량 검증 필요?:        <현재 2GB까지 검증 가능. 2GB 초과가 필요하면 운영팀 사전 협의 — 1.4 참조>
 환경:                     <dev | staging | prod>
 ```
 
@@ -87,7 +87,7 @@ X-API-Key: <YOUR_SITE_API_KEY>
 **키 종류·분리·보관 원칙:**
 - API Key는 **반드시 서버에서만** 사용 (브라우저에 노출 금지).
 - 키는 `sites` 테이블에 평문 저장되며 동등 비교로 조회됩니다 (해싱 없음). → **키 비밀유지가 서버간 보안의 전부입니다.**
-- 키 회전은 운영자가 `PATCH /api/sites/:id/regenerate {target:'editor'|'worker'|'both'}` 로 수행합니다 (파트너 직접 불가). `regenerate` 는 editor/worker 코드를 각각 **독립 난수**로 재생성하므로, 회전 후 두 값이 달라질 수 있습니다.
+- 키 회전은 **운영자만 수행**합니다 (파트너 직접 불가 — 운영팀에 요청). 회전 대상은 editor/worker 를 따로 또는 함께 지정할 수 있고, 각각 **독립 난수**로 재생성되므로 회전 후 두 값이 달라질 수 있습니다.
 - `WORKER_API_KEY`(내부 전용 환경키)는 절대 외부 파트너에게 공유되지 않습니다.
 
 **(C) Partner API v1 (`/api/v1/*`) — `Authorization: Bearer` 또는 `X-API-Key`**
@@ -126,15 +126,15 @@ image/gif
 - **`image/svg+xml` 은 명시적으로 제외됩니다.** 이유: `/files/:id/raw` 가 `@Public` 인라인 서빙이므로, SVG가 인라인 서빙되면 Stored XSS 위험이 있습니다.
 - 서버 경유 PDF 업로드는 `mimetype !== 'application/pdf'` 면 `400 UNSUPPORTED_FORMAT`.
 
-> ⚠️ **워커 PDF 검증 상한 — 현재 프로덕션 실배포값 2 GB.** 검증 상한은 env `WORKER_MAX_FILE_SIZE`(바이트)로 결정되며, 값이 세 곳에서 다르니 **운영 실값만 기준으로 삼으세요**.
+> ⚠️ **크기 상한 — 파트너가 기준으로 삼을 값은 셋뿐입니다.**
 >
-> | 층 | 값 | 출처 |
-> |---|---|---|
-> | 코드 기본값 | 100 MB | `apps/worker/src/config/validation.config.ts` — `Number(process.env.WORKER_MAX_FILE_SIZE) \|\| 100 * 1024 * 1024` |
-> | compose 기본값(env 미주입 시) | 1 GB | `docker-compose.yml` — `${WORKER_MAX_FILE_SIZE:-1073741824}` |
-> | **운영 실값 (프로덕션)** | **2 GB** | 운영 `.env` 의 `WORKER_MAX_FILE_SIZE=2147483648` 이 compose 기본값을 덮습니다 |
+> | 경로 | 현재 상한 |
+> |---|---|
+> | v1 직접 업로드(멀티파트) | **100 MB** |
+> | presigned 업로드 | **2 GB** |
+> | 워커 PDF 검증 | **2 GB** |
 >
-> 즉 `docker-compose.yml` 에 보이는 1 GB 는 **env 가 주입되지 않았을 때의 폴백일 뿐 운영값이 아닙니다.** 오늘 기준 presigned 업로드 상한(2 GB)과 검증 상한(2 GB)이 같으므로, 업로드에 성공한 PDF 는 크기 때문에 최종화에서 막히지 않습니다. 설정 상한 초과 파일을 `validate/external` 에 넣으면 즉시 `FAILED`('N MB를 초과합니다')로 거부됩니다. 2 GB 를 넘는 파일이 필요하면 온보딩 양식에 명시하세요(현재 상한은 업로드·검증 양쪽 모두 2 GB 입니다).
+> 업로드 상한과 검증 상한이 같으므로, 업로드에 성공한 PDF 는 크기 때문에 최종화에서 막히지 않습니다. 검증 상한을 넘는 파일을 `validate/external` 에 넣으면 즉시 `FAILED`('N MB를 초과합니다')로 거부됩니다. 2 GB 를 넘는 파일이 필요하면 온보딩 양식에 명시하세요 — 상한 상향은 운영팀 작업이며 사전 협의가 필요합니다.
 
 ### 1.5 보안 모델
 
@@ -162,7 +162,7 @@ image/gif
 
 **시크릿 취급**
 - API 키·refreshToken은 로그/리퍼러에 노출되지 않도록 주의 (임베드 URL에 토큰이 쿼리로 실립니다 — 1.2(B), 3장 참조).
-- 과거 PUBLIC 레포에서 키가 노출되어 2026-06-15 회전되었습니다. 회전은 `PATCH /api/sites/:id/regenerate`.
+- 파트너 API 키는 운영자가 회전할 수 있습니다. **회전 즉시 이전 키는 무효**가 되므로, 회전 통보를 받으면 파트너 서버의 키를 교체하세요. 회전이 필요하면 운영팀에 요청하세요 (1.2 참조).
 
 ### 1.6 에러 · 레이트리밋
 
@@ -249,7 +249,7 @@ image/gif
 
 - **presigned 업로드 표면은 v1 표면이 아닙니다**(§2.2 의 `/api/files/*` 경로 — 인증·에러 shape·리밋이 v1 과 다릅니다). 큰 파일이나 이미지는 그 표면으로 올려 `files.id` 를 받은 뒤, v1 자산 라우트에 `{"fileId": "..."}` 로 **참조**하세요.
 - presigned `complete` 확정 전의 `fileId` 를 참조하면 `409 ERR_FILE_NOT_READY`.
-- ⚠️ **업로드 상한과 검증 상한은 다릅니다.** 워커 PDF 검증 상한은 현재 프로덕션 **2 GB** 이므로(1.4 — 운영 `.env` 실값), 그보다 큰 PDF 는 업로드가 되더라도 최종화 단계에서 거부됩니다.
+- ⚠️ **업로드 상한과 검증 상한은 다릅니다.** 워커 PDF 검증 상한은 현재 **2 GB** 이므로(1.4), 그보다 큰 PDF 는 업로드가 되더라도 최종화 단계에서 거부됩니다.
 
 **생성 유형 (`creationType`) — 4종 중 2종만 최종화까지 동작**
 
@@ -576,7 +576,7 @@ PDF 검증 규칙 요약은 5장 표 참조 (15단계).
 
 > 배수 위반은 `autoFixable=true` 이므로 잡 status 가 `FIXABLE` 로 떨어집니다. `details.expected`(올림된 목표 페이지수)와 `fixMethod='addBlankPages'` 를 받아 파트너는 자동수정 흐름(2.6 fix-pagecount)으로 이어갈 수 있습니다.
 
-> **글로벌 안전상한은 별개로 유지:** `options.maxPages = 1000p` 는 위 데이터 주도 검증과 **무관하게 항상 적용**되는 절대 상한입니다. 파일크기 상한 역시 별개로 `WORKER_MAX_FILE_SIZE`(현재 프로덕션 2 GB 실배포 — §1.4)가 적용됩니다.
+> **글로벌 안전상한은 별개로 유지:** `options.maxPages = 1000p` 는 위 데이터 주도 검증과 **무관하게 항상 적용**되는 절대 상한입니다. 파일크기 상한 역시 별개로 적용됩니다(현재 2 GB — §1.4).
 
 **파트너 액션:** 제본 종류별로 위 값을 채워 전송하세요. 값 매핑은 2.5(canonical binding) 참조.
 
@@ -679,7 +679,7 @@ fix-pagecount  호출 안 함
 - [ ] `binding` 은 canonical 4종(`perfect`/`saddle`/`spiral`/`hardcover`)으로 매핑 전송 (2.5)
 - [ ] 데이터 주도 페이지수 검증 사용 시 `orderOptions.pageMultiple`/`pageCountMax`/`pageCountMin` 전송 (미전송 시 binding 폴백 — 2.4)
 - [ ] `FIXABLE`(배수 위반, `PAGE_COUNT_INVALID`) 수신 시 모달 → `fix-pagecount/external` → `outputFileId` 로 주문 (2.6)
-- [ ] 검증 PDF가 2 GB 초과(현재 프로덕션 상한 — §1.4)면 운영팀에 `WORKER_MAX_FILE_SIZE` 상향 사전 요청
+- [ ] 검증 PDF가 2 GB 초과(현재 상한 — §1.4)면 운영팀에 상한 상향 사전 요청
 - [ ] 폴링 또는 웹훅 중 택1, 웹훅이면 `uploadCallbackUrl` 사전 등록 (SSRF allowlist)
 - [ ] 결과는 `download/external`(X-API-Key)로만 회수, fileId 고객 브라우저 노출 자제
 - [ ] 보존정책: 이행 후 `POST /files/:id/expiry/external {expiresAt}` 또는 `DELETE /files/:id/external`
@@ -1082,7 +1082,7 @@ book.finalization.completed | book.finalization.failed
 
 | # | 검증 항목 | 기준 |
 |---|---|---|
-| 1 | 파일 크기 | 코드 기본 100 MB / compose 폴백 1 GB / **프로덕션 실값 2 GB** (env `WORKER_MAX_FILE_SIZE` — §1.4) |
+| 1 | 파일 크기 | **현재 검증 상한 2 GB** (§1.4) |
 | 2 | 파일 무결성 | PDF 구조 유효성 |
 | 3 | 페이지 수 / 제본 규격 | **데이터 주도**: `orderOptions.pageMultiple`/`pageCountMax`/`pageCountMin` 전송 시 그 값으로 검증, 미전송 시 binding 폴백. 배수 위반 → `PAGE_COUNT_INVALID`(FIXABLE), 상한 초과 → `PAGE_COUNT_EXCEEDED`(FAILED), 하한 미만 → `PAGE_COUNT_BELOW_MIN`(경고). binding 은 canonical 4종(`perfect`/`saddle`/`spiral`/`hardcover`). 글로벌 안전상한 `maxPages=1000p` 별도 유지. (2.4·2.5) |
 | 4 | 판형 | ±1 mm |
@@ -1106,7 +1106,7 @@ book.finalization.completed | book.finalization.failed
 **유형 1 추가**
 - [ ] presigned 직결 시 R2 CORS origin + `ExposeHeaders: ETag` 등록 (오너 작업)
 - [ ] `validate/external` `fileType`(enum) + `orderOptions` 전체 전달
-- [ ] 검증 PDF가 2 GB 초과(현재 프로덕션 상한 — §1.4) 시 `WORKER_MAX_FILE_SIZE` 상향 사전 요청
+- [ ] 검증 PDF가 2 GB 초과(현재 상한 — §1.4) 시 운영팀에 상한 상향 사전 요청
 - [ ] 보존정책(`expiry/external` / `DELETE external`) 설계
 
 **유형 2 추가**
@@ -1136,7 +1136,7 @@ CORS는 (a) Origin 없음→무조건 허용 (b) env 정적 (c) `*.vercel.app`/`
 현재 두 코드는 생성 시 동일 값으로 발급됩니다(worker 코드 미지정 시 editor 코드 복사). 단일 키를 전권 키로 취급하고 비밀유지하세요. `regenerate` 로 독립 회전되면 값이 달라질 수 있습니다.
 
 **Q. 1~2 GB 파일을 올릴 수 있나요?**
-네. presigned 업로드는 2 GB까지 허용하고, **워커 PDF 검증 상한도 현재 프로덕션 실값 2 GB** 입니다 — 두 상한이 같으므로 업로드에 성공한 파일이 크기 때문에 검증에서 막히지 않습니다. 상한은 env `WORKER_MAX_FILE_SIZE` 로 결정되며 층마다 값이 다릅니다: 코드 기본값 100 MB, `docker-compose.yml` 폴백 `${WORKER_MAX_FILE_SIZE:-1073741824}`(1 GB), **운영 `.env` 실값 `2147483648`(2 GB)**. `docker-compose.yml` 만 보고 1 GB 로 판단하지 마세요(§1.4 표). 설정 상한 초과 시 즉시 `FAILED`('N MB를 초과합니다')이며, 2 GB 를 넘는 파일이 필요하면 온보딩 시 협의하세요.
+네. presigned 업로드는 2 GB까지 허용하고, **워커 PDF 검증 상한도 현재 2 GB** 입니다 — 두 상한이 같으므로 업로드에 성공한 파일이 크기 때문에 검증에서 막히지 않습니다(§1.4 표). 단 **v1 직접 업로드(멀티파트)는 100 MB** 이므로, 그보다 큰 파일은 presigned 로 올린 뒤 `fileId` 로 참조하세요(1.7). 검증 상한 초과 시 즉시 `FAILED`('N MB를 초과합니다')이며, 2 GB 를 넘는 파일이 필요하면 온보딩 시 협의하세요.
 
 **Q. 페이지수가 제본 배수에 안 맞아 검증이 `FIXABLE` 로 떨어집니다.**
 `orderOptions.pageMultiple` 을 전송하면 워커가 그 배수로 페이지수를 검증합니다. 배수 위반 시 `ErrorCode.PAGE_COUNT_INVALID`(autoFixable, `fixMethod='addBlankPages'`, `details.expected`=올림된 목표 페이지수)로 `FIXABLE` 판정됩니다. 보정하려면 `POST /api/worker-jobs/fix-pagecount/external {fileId, targetMultiple}`(비동기 — jobId 반환) 후 `GET /api/worker-jobs/external/:id` 폴링으로 `outputFileId`(빈 페이지 추가된 새 fileId, 원본 보존)를 받아 주문에 사용하세요. `pageMultiple`/`pageCountMax`/`pageCountMin` 을 셋 다 미전송하면 기존 binding 폴백으로 동작합니다(비파괴). 상세는 2.4·2.6 참조. (fix-pagecount 는 2026-06-25 배포 완료·LIVE)
