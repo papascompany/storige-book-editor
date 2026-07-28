@@ -861,8 +861,9 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
    # ⚠️ 무인증(@Public) — X-API-Key 없음, 테넌트 스코프 없음 (타 /external 라우트와 대비)
    curl -X POST "https://api.papascompany.co.kr/api/worker-jobs/compose-mixed" \
      -H "Content-Type: application/json" \
-     -d '{ "editSessionId": "<id>", "orderSeqno": 12345 }'
+     -d '{ "editSessionId": "<id>", "orderId": "12345" }'
    ```
+   > ⚠️ 필드명은 **`orderId`(문자열)** 입니다. `orderSeqno` 처럼 DTO 에 없는 키를 보내면 전역 `forbidNonWhitelisted` 검증에 걸려 **`400`** 이 납니다(선택 필드라 생략해도 됩니다).
    > ⚠️ **보안 주의:** `compose-mixed` 는 `@Public`(ApiKeyGuard·테넌트 스코핑 없음, ThrottlerGuard 만)입니다. `editSessionId`(UUID) 만 알면 누구나 합성 잡을 트리거할 수 있습니다. `editSessionId` 를 비밀로 취급하고 가능한 한 **파트너 백엔드에서만** 호출하며, 브라우저 노출을 최소화하세요.
    > 스프레드(펼침면) 책은 서버가 `outputMode='separate'` 강제 → cover.pdf + content.pdf 2파일. `single` 보내도 무시. **단일파일 가정 금지.**
 3. 완료 수신: 웹훅(`uploadCallbackUrl`) 또는 폴링 `GET /api/worker-jobs/external/:id`.
