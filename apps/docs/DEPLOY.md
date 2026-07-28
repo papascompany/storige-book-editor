@@ -4,7 +4,9 @@
 > 프로젝트 생성·연결·배포는 전부 오너 액션이며, 자동화하지 않았다.
 
 빌드 설정은 `apps/docs/vercel.json` 에 있다. CI 게이트는 `.github/workflows/ci.yml`
-마지막 두 스텝(포털 빌드 + 산출물 업로드)이다.
+마지막 세 스텝(공개 모드 분기 빌드 → 차단 모드 빌드 + 단언 → 산출물 업로드)이다.
+업로드되는 아티팩트는 **차단본 하나뿐**이다(공개 모드 빌드는 코드경로 검증용이고 뒤 빌드가
+`site/` 를 덮어쓴다).
 
 ---
 
@@ -20,19 +22,43 @@
 
 ⓐⓑ 는 GUIDE §3/§4 인접이라 이 트랙에서 임의로 삭제하지 않았다.
 
-### 0-1. 색인 차단 게이트 — 무엇을 덮고 무엇을 못 덮나
+### 0-1. 색인 차단 게이트 — 기본값·커버리지·한계
 
-색인 차단이 기본값이다. 축은 **3개**, 스위치는 **2개**다.
+**색인 차단이 코드 기본값이다.** env 를 하나도 주입하지 않은 빌드는 차단본을 산출한다 —
+`vercel.json` 이 아예 안 읽혔든(Root Directory 오설정), 대시보드 설정이 덮었든, 로컬에서
+그냥 `node build.mjs` 를 돌렸든 결과는 같다. **설정이 실패하면 차단 쪽으로 실패한다.**
+그래서 `vercel.json` 에는 노출 게이트용 env 가 **없다** — 차단은 기본 동작이라 설정할 것이 없다.
+
+> 이건 의도적으로 뒤집은 것이다. 예전에는 `STORIGE_DOCS_NOINDEX=1` 이 **있어야만** 차단이었고,
+> 그 env 는 `vercel.json` 의 `build.env` 하나에만 걸려 있었다 — 즉 같은 파일의 `X-Robots-Tag`
+> 헤더와 **운명을 공유**했다. 그 파일이 안 읽히는 상황에서는 두 스위치가 **동시에** 사라지고,
+> 남는 산출물은 "robots.txt 없음"도 아닌 `Disallow:` (= 전체 크롤 허용) 였다. 즉 설정 실패의
+> 방향이 "실수로 공개"였다. 미배포 상태에서 실수로 공개되는 것보다 실수로 차단되는 편이 안전하다.
+
+축은 **3개**, 스위치는 **2개**다.
 
 | 축 | 켜는 곳 | 실제 커버리지 |
 | --- | --- | --- |
-| HTML `<meta name="robots" content="noindex, nofollow">` | `vercel.json` 의 `build.env.STORIGE_DOCS_NOINDEX=1` → `build.mjs` → `templates/layout.mjs` | **HTML 페이지 전부.** `llms.txt`·`llms-full.txt`·`theme.css` 는 HTML 이 아니라 `<meta>` 를 넣을 자리가 없다 |
-| HTTP `X-Robots-Tag: noindex, nofollow, noarchive` | `vercel.json` 의 `headers` 전용 블록 | **Vercel 이 서빙하는 모든 응답** — `.txt` 산출물 포함. `llms*.txt` 의 유일한 커버리지다 |
-| `robots.txt` `Disallow: /` | `build.mjs` 가 NOINDEX 모드에서 자동 산출(공개 모드에서는 허용본을 산출) | 크롤 자체를 차단 |
+| HTML `<meta name="robots" content="noindex, nofollow">` | `build.mjs` **기본값** → `templates/layout.mjs`. `STORIGE_DOCS_PUBLIC=1` 로만 꺼진다 | **HTML 페이지 전부.** `llms.txt`·`llms-full.txt`·`theme.css` 는 HTML 이 아니라 `<meta>` 를 넣을 자리가 없다 |
+| HTTP `X-Robots-Tag: noindex, nofollow, noarchive` | `vercel.json` `headers` 블록의 **마지막 항목** | **Vercel 이 서빙하는 모든 응답** — `.txt` 산출물 포함. `llms*.txt` 의 유일한 커버리지다 |
+| `robots.txt` `Disallow: /` | `build.mjs` **기본값**(공개 opt-in 시에만 허용본을 산출) | 크롤 자체를 차단 |
 
-따라서 **"공개" 액션은 두 곳을 지우는 것**이다: ① `build.env.STORIGE_DOCS_NOINDEX`,
-② `headers` 의 `X-Robots-Tag` 블록. ①만 지우면 헤더 때문에 계속 색인되지 않고,
-②만 지우면 meta 와 `robots.txt` 가 남는다. 한쪽만 지우고 "공개했다"고 판단하지 말 것.
+#### 공개로 전환하는 절차
+
+셋 다 해야 공개다. 순서는 무관하지만 3 없이 "공개했다"고 판단하지 말 것.
+
+1. Vercel 프로젝트 환경변수에 **`STORIGE_DOCS_PUBLIC=1`** 추가 — 공개할 환경(Production /
+   Preview)에만. 이게 robots meta 와 `robots.txt` 두 축을 끈다.
+2. `vercel.json` `headers` 에서 **`X-Robots-Tag` 항목 한 줄**을 지우고 커밋. 같은 블록의
+   CSP·`X-Frame-Options`·`Cache-Control` 은 건드리지 말 것(§7).
+3. 재배포 후 **§3-1 실측**으로 세 축이 전부 사라졌는지 확인.
+
+1 만 하면 헤더 때문에 계속 색인되지 않고, 2 만 하면 meta 와 `robots.txt` 가 남는다.
+
+하위호환: 예전 `STORIGE_DOCS_NOINDEX=1` 도 여전히 차단을 뜻하며 **공개 opt-in 보다 우선한다.**
+둘 다 켜져 있으면 빌드가 경고를 찍고 차단을 택한다 — 공개 시에는 이 env 가 `vercel.json`·
+프로젝트 환경변수·CI 어디에도 남아 있지 않아야 한다. 빌드 로그 둘째 줄(`노출 게이트 — …`)이
+그때그때 어느 모드로 산출됐는지 찍는다.
 
 > **⚠️ 이 게이트는 "비공개"가 아니다.** robots meta·`X-Robots-Tag`·`robots.txt` 는 전부
 > **크롤러의 자발적 준수에 기대는 규약**이다. 배포된 URL 은 인증 없이 누구나 읽을 수 있고,
@@ -68,7 +94,8 @@ Vercel 대시보드에서 새 프로젝트를 만들고 이 레포를 연결한 
 | 이름 | 언제 | 효과 |
 | --- | --- | --- |
 | `STORIGE_DOCS_SITE_URL` | 도메인 확정 후 | `llms.txt` 의 링크를 절대 URL 로 만든다. 값이 있으면 그 호스트가 guard R1 화이트리스트에 자동 추가된다 |
-| `STORIGE_DOCS_NOINDEX` | 위 §0-1 참조 | `vercel.json` 에 `1` 로 박혀 있다. HTML meta + `robots.txt` 를 담당한다. 공개 시 이 줄과 `X-Robots-Tag` 헤더 블록을 **함께** 지운다 |
+| `STORIGE_DOCS_PUBLIC` | **공개 전환 시에만**(§0-1) | `1` 이면 robots meta 와 `robots.txt Disallow: /` 를 끈다. **설정하지 않으면 차단이 기본값**이라 평시에는 아무 데도 넣지 않는다. 이것만으로는 공개되지 않는다 — `X-Robots-Tag` 헤더를 함께 지워야 한다 |
+| `STORIGE_DOCS_NOINDEX` | (하위호환) | `1` 이면 차단. 기본이 이미 차단이라 **새로 설정할 이유가 없다.** 남아 있으면 공개 opt-in 을 덮어쓴다 |
 
 ---
 
@@ -102,10 +129,10 @@ vercel deploy --prod
 
 ### 3-1. 배포 직후 노출 게이트 실측 (건너뛰지 말 것)
 
-헤더는 **빌드 산출물이 아니라 배포 플랫폼이 붙인다.** 로컬 빌드로는 확인할 수 없으므로
-프리뷰가 뜨자마자 실제 응답으로 확인한다. `llms-full.txt` 가 전 페이지 원문을 담은
-가장 민감한 파일이라 이 파일로 확인하는 것이 요점이다(HTML 만 확인하면 meta 때문에
-통과한 것처럼 보인다).
+`X-Robots-Tag` 는 **빌드 산출물이 아니라 배포 플랫폼이 붙인다.** 세 축 중 로컬 빌드로
+확인할 수 없는 유일한 축이고, 따라서 **실측이 유일한 확인 수단**이다. 프리뷰가 뜨자마자
+실제 응답으로 확인한다. `llms-full.txt` 가 전 페이지 원문을 담은 가장 민감한 파일이라
+이 파일로 확인하는 것이 요점이다(HTML 만 확인하면 meta 때문에 통과한 것처럼 보인다).
 
 ```bash
 U=<프리뷰-URL>
@@ -114,10 +141,19 @@ curl -s  "$U/robots.txt"                             # → User-agent: * / Disal
 curl -s  "$U/" | grep -i 'name="robots"'             # → <meta name="robots" content="noindex, nofollow">
 ```
 
-세 줄이 전부 나와야 §0-1 의 표가 사실이 된다. **`x-robots-tag` 가 비어 있으면**
-`vercel.json` 의 헤더 블록 2개(보안 헤더 + `X-Robots-Tag`)가 같은 `source` 라서 뒤 블록이
-누락된 것이다 — 그때는 두 블록을 하나로 합쳐 다시 배포한다(Vercel 은 매칭되는 헤더 항목을
-모두 적용하지만, 이 확인 없이 적용됐다고 단정하지 않는다).
+세 줄이 전부 나와야 §0-1 의 표가 사실이 된다. 하나라도 비면 **그 축은 안 걸린 것**이다:
+
+| 빈 줄 | 원인 | 조치 |
+| --- | --- | --- |
+| `x-robots-tag` | `vercel.json` 이 안 읽혔다(Root Directory 가 `apps/docs` 가 아니거나 대시보드 설정이 덮었다), 또는 헤더 항목이 지워졌다 | §1·§2 의 Root Directory 부터 확인. 헤더 항목들을 **한 블록**에 모아 둔 이유가 이것이다(§7) |
+| `robots.txt` 가 `Disallow:` (빈 값) | 어딘가에 `STORIGE_DOCS_PUBLIC=1` 이 들어가 있다 | 프로젝트 환경변수에서 제거 후 재배포 |
+| `<meta name="robots">` 없음 | 위와 동일(같은 스위치가 두 축을 함께 켠다) | 위와 동일 |
+
+빌드 로그 둘째 줄(`노출 게이트 — …`)이 그 배포가 어느 모드로 산출됐는지 먼저 알려 준다.
+로그가 "색인 차단"인데 `robots.txt` 가 허용본이면 보고 있는 배포가 그 빌드가 아니다.
+
+**공개로 전환한 뒤에도 같은 세 줄을 다시 돌린다** — 이번엔 셋 다 *비어 있어야* 한다.
+하나라도 남아 있으면 §0-1 의 3단계 중 빠진 게 있다.
 
 git 연동을 켜면 `master` push 마다 프로덕션이 갱신된다. `ignoreCommand` 가
 아래 경로 중 변경이 있을 때만 빌드한다:
@@ -156,9 +192,10 @@ cd ../..
   (예전엔 `.generated/` 를 무조건 우선해서 낡은 레퍼런스가 조용히 렌더됐다. Vercel 에는
   `.generated/` 가 없으므로 이 분기는 로컬 전용이다).
 - ③ 의 `postbuild` 가 `check-source-exposure.mjs site` 를 돌린다.
-- ③ 은 `robots.txt` 도 산출한다(§0-1). `STORIGE_DOCS_NOINDEX` 값에 따라 차단본/허용본이
-  갈리며, 모드와 무관하게 파일은 **항상** 나온다 — 파일이 없으면 "차단 모드인데 누락"과
-  "공개 모드"를 산출물에서 구분할 수 없기 때문이다.
+- ③ 은 `robots.txt` 도 산출한다(§0-1). **기본은 차단본**이고 `STORIGE_DOCS_PUBLIC=1` 일 때만
+  허용본이 나온다. 모드와 무관하게 파일은 **항상** 나온다 — 파일이 없으면 "차단 모드인데 누락"과
+  "공개 모드"를 산출물에서 구분할 수 없기 때문이다. 빌드에 노출 게이트용 env 를 넘기지 않는 것이
+  평시의 정상 상태다.
 
 `installCommand` 는 `--filter @storige/docs... --filter @storige/api...` 로 좁혔다.
 스펙 생성이 API 의존 트리를 필요로 하기 때문에 API 를 뺄 수 없다 — 즉 **문서 배포가
@@ -210,10 +247,15 @@ vercel promote <이전-배포-URL>    # 직전 Ready 배포로 되돌린다
 - `theme.css` 는 콘텐츠 해시가 붙지 않는 고정 이름이라 `Cache-Control` 을
   `max-age=0, must-revalidate` 로 뒀다. 배포 후 옛 CSS 가 남는 것을 막는다.
   `immutable` 로 바꾸지 말 것.
-- **`X-Robots-Tag` 는 `headers` 배열의 독립 블록이다.** 보안 헤더 블록과 일부러 분리했다 —
-  공개할 때 블록째 지우면 되고, 그 과정에서 CSP·`X-Frame-Options` 를 같이 날릴 위험이 없다.
+- **`headers` 는 `source: "/(.*)"` 블록 하나뿐이다.** 예전에는 `X-Robots-Tag` 만 같은 `source` 의
+  **별도 블록**으로 뒀는데(공개 시 블록째 지우려고), 같은 `source` 를 가진 두 블록이 누적
+  적용된다는 보장을 문서로 확인하지 못했다 — 뒤 블록이 무시되면 `.txt` 산출물의 유일한
+  커버리지가 조용히 사라진다. 그래서 한 블록으로 합쳤다. 공개할 때는 `X-Robots-Tag` **한 줄만**
+  지우고, 같은 블록의 CSP·`X-Frame-Options`·`Cache-Control` 은 남긴다. 어느 쪽이든
+  **§3-1 실측이 최종 확인**이다.
 - **`robots.txt` 는 빌드 산출물이다.** `site/` 에 손으로 파일을 두지 말 것 — 빌드가 `site/` 를
   통째로 지우고 다시 만든다. 내용을 바꾸려면 `build.mjs` 의 `renderRobots()` 를 고친다.
+  기본값이 차단본이라 `renderRobots()` 를 고칠 때 **분기 방향을 뒤집지 않도록** 주의한다.
 - `trailingSlash` 를 **설정하지 않았다.** 포털 내부 링크는 전부 `/guide/` 형태이고
   Vercel 기본 동작으로 해석된다. 켜면 `/llms.txt` 같은 확장자 경로의 동작을 다시
   검증해야 한다(E-4 산출물이라 깨지면 곧바로 손해다).

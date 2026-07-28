@@ -11,6 +11,10 @@
  *   기본      strict — 매니페스트 전 항목이 존재해야 한다(R5). 통합 게이트용.
  *   --dev     누락 콘텐츠를 경고로 낮춘다. shard 개별 게이트용(타 shard 파일이 아직 없어도 통과).
  *
+ * 노출 게이트
+ *   기본      색인 차단 — 전 HTML 에 robots meta + `robots.txt` `Disallow: /`.
+ *   공개      `STORIGE_DOCS_PUBLIC=1` 명시 opt-in (+ vercel.json 의 X-Robots-Tag 제거). 아래 상세.
+ *
  * 결정적이다: 타임스탬프·난수·네트워크 0. 같은 입력 → 같은 출력.
  */
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -42,16 +46,46 @@ const SITE_DIR = join(DOCS_DIR, 'site');
 const dev = process.argv.slice(2).includes('--dev');
 const mode = dev ? '--dev (누락 허용)' : 'strict';
 /**
- * 노출 게이트의 **빌드측 축**. 이 플래그가 켜지면 (a) 전 HTML 에 robots meta, (b) `robots.txt`
+ * 노출 게이트의 **빌드측 축**. 켜지면 (a) 전 HTML 에 robots meta, (b) `robots.txt`
  * `Disallow: /` 를 산출한다. 세 번째 축인 HTTP `X-Robots-Tag` 는 빌드가 아니라 `vercel.json`
  * `headers` 소관이다 — `.txt` 산출물에는 meta 를 넣을 자리가 없어서 헤더가 유일한 커버리지다.
- * 공개하려면 **이 env 와 그 헤더 블록을 함께** 지워야 한다(apps/docs/DEPLOY.md §0-1).
+ *
+ * ⚠️ **기본값은 차단이다(fail-closed).** env 를 하나도 주입하지 않은 빌드 — `vercel.json` 이
+ * 아예 안 읽혔든(Root Directory 오설정), 대시보드 설정이 덮었든, 누가 로컬에서 그냥
+ * `node build.mjs` 를 돌렸든 — 는 **차단본**을 산출한다.
+ *
+ * 예전에는 `STORIGE_DOCS_NOINDEX=1` 이 **있어야만** 차단이었다. 그런데 그 env 는
+ * `vercel.json` 의 `build.env` 하나에만 걸려 있었고, **같은 파일의 `X-Robots-Tag` 헤더와
+ * 운명을 공유**했다: 그 파일이 안 읽히는 상황에서는 두 스위치가 **동시에** 사라지고, 남는
+ * 산출물은 "robots.txt 없음"도 아닌 `Disallow:` (= 전체 크롤 허용) 였다. 설정 실패의 방향이
+ * "실수로 공개"였던 셈이다. 이제는 같은 실패가 "실수로 차단"으로 떨어진다.
+ *
+ * 공개 전환은 `STORIGE_DOCS_PUBLIC=1` **명시 opt-in** 이며, 그것만으로는 부족하다 —
+ * `vercel.json` 의 `X-Robots-Tag` 헤더도 함께 지우고 배포 후 실측해야 한다
+ * (apps/docs/DEPLOY.md §0-1 · §3-1).
+ *
+ * 하위호환: 예전 `STORIGE_DOCS_NOINDEX=1` 은 계속 차단을 뜻하고, 공개 opt-in 보다 **우선**한다.
  */
-const noindex = process.env.STORIGE_DOCS_NOINDEX === '1';
+const publicOptIn = process.env.STORIGE_DOCS_PUBLIC === '1';
+const legacyNoindex = process.env.STORIGE_DOCS_NOINDEX === '1';
+const noindex = legacyNoindex || !publicOptIn;
 const warnings = [];
 const missing = [];
+if (publicOptIn && legacyNoindex) {
+  warnings.push(
+    'STORIGE_DOCS_PUBLIC=1 과 STORIGE_DOCS_NOINDEX=1 이 동시에 켜져 있다 — 안전한 쪽(차단)을 택했다.' +
+      ' 공개하려면 STORIGE_DOCS_NOINDEX 를 어디에도 남기지 말 것.',
+  );
+}
 
 log(`Storige 문서 포털 빌드 — ${mode}`);
+log(
+  `노출 게이트 — ${
+    noindex
+      ? `색인 차단${legacyNoindex ? ' (STORIGE_DOCS_NOINDEX=1)' : ' (기본값 — 공개하려면 STORIGE_DOCS_PUBLIC=1)'}`
+      : '공개 (STORIGE_DOCS_PUBLIC=1 명시 opt-in) — vercel.json 의 X-Robots-Tag 도 지웠는지 확인하라'
+  }`,
+);
 
 // ── 1. GUIDE 슬라이스 ────────────────────────────────────────────────────────
 const guidePath = join(REPO_ROOT, GUIDE_PATH);
@@ -119,7 +153,7 @@ writeOut('theme.css', themeCss);
 // robots.txt — 모드와 무관하게 **항상** 산출한다. 없으면 404(=허용)로 해석되므로,
 // "차단 모드인데 파일이 없다"와 "공개 모드"가 산출물에서 구분되지 않는다.
 writeOut('robots.txt', renderRobots(noindex));
-log(`robots.txt 산출 — ${noindex ? '크롤 차단 (Disallow: /)' : '크롤 허용'}`);
+log(`robots.txt 산출 — ${noindex ? '크롤 차단 (Disallow: /)' : '크롤 허용 (Disallow: 빈 값)'}`);
 
 // ── 5. llms.txt (③ 소유 모듈 — 고정 경로 import) ─────────────────────────────
 const textFiles = await emitLlmsOutputs();
@@ -344,18 +378,20 @@ function resolveSpecPath() {
  * robots.txt 본문. 차단 모드는 `Disallow: /` 로 **크롤 자체**를 막는다.
  * 한계는 DEPLOY.md §0-1 에 적어 뒀다 — 크롤이 막히면 크롤러가 meta/헤더의 noindex 를 읽지도
  * 못하므로, 외부 링크가 걸린 URL 은 본문 없이 목록에 남을 수 있다.
+ *
+ * 허용본은 **명시 opt-in 으로만** 나온다. 설정이 안 먹은 빌드가 허용본을 뱉는 일은 없다.
  */
 function renderRobots(blocked) {
   return blocked
     ? [
-        '# 색인 차단 모드 (STORIGE_DOCS_NOINDEX=1)',
-        '# 공개하려면 이 env 와 vercel.json 의 X-Robots-Tag 헤더 블록을 함께 지운다.',
+        '# 색인 차단 — 이 포털의 기본값이다(설정 누락 시에도 이쪽이 나온다).',
+        '# 공개하려면 STORIGE_DOCS_PUBLIC=1 로 빌드하고 vercel.json 의 X-Robots-Tag 헤더도 함께 지운다.',
         'User-agent: *',
         'Disallow: /',
         '',
       ].join('\n')
     : [
-        '# 공개 모드 — 크롤 허용',
+        '# 공개 모드 — STORIGE_DOCS_PUBLIC=1 명시 opt-in 으로 켜졌다.',
         'User-agent: *',
         'Disallow:',
         '',
