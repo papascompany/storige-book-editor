@@ -10,7 +10,9 @@ name: ci
 #   3) packages/canvas-core vitest + tsc — 편집기 코어(ServicePlugin.pdf 카나리 포함)
 #   4) scripts/pdf-golden 비교 엔진 self-test (qpdf 필요)
 #   5) examples/* quickstart 예제 — **뒤쪽**(문서성 산출물이 계약 테스트를 가리지 않게)
-#   6) apps/docs 파트너 문서 포털 빌드 — **맨 뒤**(같은 이유. 5 와 6 은 우선순위 동급)
+#   6) apps/docs 파트너 문서 포털 빌드 — **맨 뒤**(같은 이유. 5 와 6 은 우선순위 동급).
+#      공개 모드 → 색인 차단 모드 순으로 두 번 돈다. 두 분기 모두 게이트에 걸되
+#      **아티팩트는 배포와 같은 색인 차단본 하나**만 남긴다(스텝 주석 참조).
 #
 # ⚠️ 루트 `turbo run test` 는 CI 가 호출하지 않는다 — per-package 명시 필터만 쓴다.
 #    새 패키지를 추가하면 **여기에 스텝을 추가해야** 게이트에 연결된다. 안 그러면
@@ -127,6 +129,29 @@ jobs:
             pnpm --filter "@storige/example-$e" verify
           done
 
+      - name: 문서 포털 공개 모드 빌드 (색인 차단 OFF 분기 게이트 — 산출물은 버린다)
+        # 아래 아티팩트 빌드는 색인 차단 모드 **하나만** 돈다. 그것뿐이면 공개 모드 코드경로
+        # (renderRobots(false) · layout 의 robots meta 미부착 분기)가 CI 에서 **한 번도
+        # 실행되지 않아**, 오너가 공개로 전환하는 날의 첫 실행이 곧 프로덕션이 된다.
+        # 여기서 공개 모드를 먼저 한 번 돌려 두 분기 모두 게이트에 건다.
+        #
+        # ⚠️ 순서 고정 — 이 스텝이 **먼저**여야 한다. 뒤의 차단 모드 빌드가 site/ 를 통째로
+        #    지우고 다시 쓰므로(build.mjs 의 rmSync(SITE_DIR)) 업로드되는 산출물은 항상
+        #    차단본 하나다. 순서를 뒤집으면 공개본이 아티팩트로 올라가 P1 이 그대로 재발한다.
+        #
+        # 공개 모드는 `STORIGE_DOCS_PUBLIC=1` **명시 opt-in** 으로 켠다(build.mjs). 차단이
+        # 기본값이라 env 를 빼면 이 스텝은 차단본을 만들어 아래 단언에서 실패한다 — 즉
+        # 이 env 는 "공개 분기를 실제로 태우겠다"는 선언이며, 여기서만 스텝 범위로 산다.
+        env:
+          STORIGE_DOCS_PUBLIC: '1'
+        run: |
+          pnpm --filter @storige/docs build
+          grep -qx 'Disallow:' apps/docs/site/robots.txt \
+            || { echo "::error::공개 모드인데 robots.txt 가 크롤 허용본이 아니다"; exit 1; }
+          tagged=$(grep -rl 'content="noindex, nofollow"' apps/docs/site --include='*.html' | wc -l)
+          [ "$tagged" -eq 0 ] \
+            || { echo "::error::공개 모드인데 HTML $tagged 개에 noindex meta 가 남아 있다"; exit 1; }
+
       - name: 파트너 문서 포털 빌드 (apps/docs — GUIDE 발행 채널 · guard R1~R5 + linkcheck)
         # 위 'OpenAPI export' 스텝의 산출물(apps/api/openapi-partner.json)을 **재사용**한다.
         # build.mjs 의 스펙 탐색 순서 3번째가 그 경로다. 같은 커밋이면 같은 스펙이므로
@@ -138,17 +163,42 @@ jobs:
         # R3(내부 포인터/시크릿 형태)·R4(링크·앵커 전수 해석)·R5(매니페스트)를 돌고,
         # postbuild 로 check-source-exposure 가 site/ 를 다시 스캔한다.
         #
+        # ⚠️ **아티팩트는 색인 차단 모드로 빌드한다 — 실제 배포 모드와 일치시켜야 오너가
+        #    오판하지 않는다.** 이 스텝에 STORIGE_DOCS_NOINDEX=1 이 없던 시절 아티팩트는
+        #    실측상 robots.txt 가 크롤 허용본, HTML 10개 중 noindex meta 0개인 **공개 모드**로
+        #    만들어졌다. 아래 업로드가 배포 전 육안 확인의 유일한 창이므로, 오너는 그걸 열고
+        #    "색인 차단이 꺼져 있다"고 오판하게 된다. 아티팩트는 배포(vercel.json 의 색인
+        #    차단, apps/docs/DEPLOY.md §0-1)와 **같은 모드**여야 한다는 게 여기 규칙이고,
+        #    아래 단언이 그 규칙을 매 실행 강제한다.
+        #    → 실제 공개 전환은 이 env 를 지우는 게 아니라, DEPLOY.md 의 전환 절차대로
+        #      vercel.json 의 색인 차단 설정과 X-Robots-Tag 헤더 블록까지 **함께** 걷는 일이다.
+        #
         # ⚠️ **의도적으로 맨 뒤다** — examples 스텝과 같은 이유다. 문서 포털은 문서성
         #    산출물이라 계약 테스트보다 우선순위가 낮다. 앞에 두면 GUIDE 의 오타 하나
         #    (linkcheck R4)가 그 뒤 contract-freeze 수백 건을 **실행조차 못 하게** 만든다.
         #
         # ⚠️ 루트 `pnpm build`(turbo)는 문서 포털을 제외한다(스펙 선행 생성이 필요해서).
         #    즉 **이 스텝이 포털의 유일한 CI 게이트다** — 지우면 포털 검증이 전부 사라진다.
-        run: pnpm --filter @storige/docs build
+        env:
+          STORIGE_DOCS_NOINDEX: '1'
+        run: |
+          pnpm --filter @storige/docs build
+          grep -qx 'Disallow: /' apps/docs/site/robots.txt \
+            || { echo "::error::차단 모드인데 robots.txt 가 'Disallow: /' 가 아니다"; exit 1; }
+          total=$(find apps/docs/site -name '*.html' | wc -l)
+          tagged=$(grep -rl 'content="noindex, nofollow"' apps/docs/site --include='*.html' | wc -l)
+          [ "$total" -gt 0 ] || { echo "::error::HTML 산출물이 0개다 — 빌드가 비었다"; exit 1; }
+          [ "$total" -eq "$tagged" ] \
+            || { echo "::error::HTML $total 개 중 $tagged 개만 noindex meta 를 달았다"; exit 1; }
+          echo "색인 차단 확인 — robots.txt Disallow: / · HTML $tagged/$total 에 noindex meta"
 
       - name: 문서 포털 산출물 업로드 (배포 전 오너 육안 확인용 — 자동 배포 아님)
         # storige-docs Vercel 프로젝트는 오너 승인 게이트에 걸려 있다(apps/docs/DEPLOY.md).
         # 그때까지 이 아티팩트가 "무엇이 실릴 것인가"를 보는 유일한 창이다.
+        #
+        # ⚠️ 이 아티팩트는 **색인 차단본 하나뿐**이다(위 스텝의 env + 순서 고정). 공개 모드
+        #    빌드는 검증만 하고 덮어써서 버린다 — 두 벌을 올리면 오너가 어느 쪽이 실릴지
+        #    분간할 수 없다.
         uses: actions/upload-artifact@v4
         with:
           name: docs-portal-site
