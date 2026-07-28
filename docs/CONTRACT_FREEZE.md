@@ -89,26 +89,30 @@
 ```
 { source:'storige-host', version:'1', command, requestId?, payload? }
 ```
-편집기 inbound 게이트(**v1 계약**) = ① `e.origin === parentOrigin` **AND** ② `e.source === window.parent` **AND** ③ 봉투 `data.source === 'storige-host'`. ②는 **D14 additive 봉합 항목**(등재 base `9b652e4` 의 수신부 `apps/editor/src/embed.tsx:580-583` 은 ①③ 만 검증 — 본 트랙 편집기 커밋에서 봉합, 아래 D14 항목 참조). 세 조건은 **정상 부모 프레임이면 모두 통과**하므로 既노출 발신자 영향 0. `requestId` 는 호스트가 부여하고 편집기가 응답 이벤트에 echo한다(요청-응답 상관).
+편집기 inbound 게이트(**v1 계약**) = ① `e.origin === parentOrigin` **AND** ② `e.source === window.parent` **AND** ③ 봉투 `data.source === 'storige-host'`. ②는 **D14 additive 봉합 항목**(등재 base 시점의 수신부는 ①③ 만 검증했다 — `git show 9b652e4:apps/editor/src/embed.tsx` 기준 580-583행. 본 트랙 편집기 커밋에서 `isTrustedHostCommandEvent()` 로 3조건화 완료, 아래 D14 항목 참조). 세 조건은 **정상 부모 프레임이면 모두 통과**하므로 既노출 발신자 영향 0. `requestId` 는 호스트가 부여하고 편집기가 응답 이벤트에 echo한다(요청-응답 상관).
 
 | command | payload | 응답 이벤트 | **응답 유형** | 분류 | 근거 |
 |---|---|---|---|---|---|
-| `getState` | `{}` | `editor.state{requestId, ready, dirty, sessionId}` | **요청-응답**(requestId echo) | **FROZEN**(명령명·응답 유형) | embed.tsx:586-593 |
-| `saveNow` | `{}` | `editor.saved{requestId, ok, error?}` | **요청-응답**(requestId echo) | **FROZEN** | embed.tsx:594-605(성공·실패 양쪽 응답) |
-| `setBackGuard` | `{enabled:boolean}` | **없음** | **fire-and-forget**(응답 없음) | **FROZEN** | embed.tsx:606-608 — postToParent 미호출 |
+| `getState` | `{}` | `editor.state{requestId, ready, dirty, sessionId}` | **요청-응답**(requestId echo) | **FROZEN**(명령명·응답 유형) | `embed.tsx` `case 'getState'` |
+| `saveNow` | `{}` | `editor.saved{requestId, ok, error?}` | **요청-응답**(requestId echo) | **FROZEN** | `embed.tsx` `case 'saveNow'` — 성공·실패 양쪽 응답 |
+| `setBackGuard` | `{enabled:boolean}` | **없음** | **fire-and-forget**(응답 없음) | **FROZEN** | `embed.tsx` `case 'setBackGuard'` — postToParent 미호출 |
+
+> 근거 열은 **심볼 앵커**다(줄번호 아님). 수신부는 `EmbeddedEditor` 의 `onMessage` `switch (data.command)` 안에 있고, 게이트는 `isTrustedHostCommandEvent()` 다 — 줄번호는 편집기 코드가 바뀔 때마다 어긋나므로 계약 문서에 고정하지 않는다.
 
 > **응답 유형은 계약의 일부**다. 3종을 일괄 Promise로 감싸는 호스트/SDK 구현은 `setBackGuard` 만 영원히 pending 된다 — SDK `/embed` 는 타입 레벨로 분리 노출한다(`getState(): Promise<EditorState>` / `saveNow(): Promise<void>` / `setBackGuard(on:boolean): void`).
 
 **확장 규약 (strict additive)**
-- **미지원 `command` 는 편집기가 조용히 무시(no-op)** — 오류 이벤트도 예외도 발신하지 않는다(`embed.tsx:609-610` `default: break`, throw 없음). 이것이 strict additive 의 근거이며 구버전 편집기 ↔ 신버전 호스트 양방향을 안전하게 만든다. **호스트는 응답 이벤트 타임아웃으로 미지원을 판정하되 실패로 취급하지 않는다.**
+- **미지원 `command` 는 편집기가 조용히 무시(no-op)** — 오류 이벤트도 예외도 발신하지 않는다(`embed.tsx` 의 `switch (data.command)` `default: break`, throw 없음). 이것이 strict additive 의 근거이며 구버전 편집기 ↔ 신버전 호스트 양방향을 안전하게 만든다. **호스트는 응답 이벤트 타임아웃으로 미지원을 판정하되 실패로 취급하지 않는다.**
 - **신규 명령은 위 표에 additive 추가만.** 기존 명령의 제거·이름변경·payload 시맨틱 변경·**응답 유형 전환**(fire-and-forget ↔ 요청-응답)은 금지. 신규 행은 **응답 유형을 반드시 명기**한다.
 - 확장 후보(`navigateToPage`/`setReadonly`/`requestThumbnail`/`reload`)는 구현 별건 — 편집기 수신부 구현 시점에 additive 등재한다.
 - ADDITIVE 조건②(contract test 동시 갱신): 본 표면은 **편집기측**이라 `apps/api/src/contract-freeze.spec.ts`(HTTP/웹훅 전용, postMessage 커버리지 0) 대상이 아니다 — 수신부 spec 은 D14 구현 커밋에서 동시 등재한다.
 
 **[D14 · additive 봉합] `e.source === window.parent` 대조**
-- 등재 base `9b652e4` 의 수신부는 origin + 봉투 `source` 필드만 검증하고 **`e.source` 대조가 없었다**(`embed.tsx:580-583`). 따라서 **parentOrigin 과 같은 출처의 다른 프레임/윈도우**가 명령을 주입할 수 있었다 — `saveNow` 강제, `setBackGuard{enabled:false}` 로 뒤로가기 가드 해제(`getState` 응답은 부모에게만 가므로 유출은 제한적). 조건부(호스트 XSS·오픈리다이렉트·서드파티 iframe 허용 시)라 심각도 **P2**지만 **계약 v1 확정 시점이 additive 봉합의 적기**라, 본 트랙 편집기 커밋에서 동시 봉합한다(수신부 trust gate 헬퍼로 3조건화). ⚠️ 편집기 커밋이 함께 병합되지 않으면 위 봉투 절의 조건 ②는 **미구현 상태로 남는다** — 병합 시 대조 확인 필요.
+- 등재 base `9b652e4` 의 수신부는 origin + 봉투 `source` 필드만 검증하고 **`e.source` 대조가 없었다**(`git show 9b652e4:apps/editor/src/embed.tsx` 580-583행 — base 고정 인용이라 현행 파일의 같은 줄이 아니다). 따라서 **parentOrigin 과 같은 출처의 다른 프레임/윈도우**가 명령을 주입할 수 있었다 — `saveNow` 강제, `setBackGuard{enabled:false}` 로 뒤로가기 가드 해제(`getState` 응답은 부모에게만 가므로 유출은 제한적). 조건부(호스트 XSS·오픈리다이렉트·서드파티 iframe 허용 시)라 심각도 **P2**지만 **계약 v1 확정 시점이 additive 봉합의 적기**라, 본 트랙 편집기 커밋에서 동시 봉합한다(수신부 trust gate 헬퍼 `isTrustedHostCommandEvent()` 로 3조건화). ⚠️ 문서·편집기 커밋은 같은 브랜치에 있어 함께 병합된다 — **분리 cherry-pick 시에만** 조건 ②가 미구현으로 남으므로 그때는 대조 확인 필요.
+- **통합 검증(2026-07-29)**: 편집기 vitest 529 PASS(D14 전용 9종 포함) · `tsc -b` 0 · eslint error 0 · api 829 PASS · SDK 336 PASS · 포털 빌드 통과(H2 6·guard 0·linkcheck 0). 배포 산출물 실증 — `dist-embed/editor-bundle.iife.js` 미니파이 번들에서 게이트 함수를 추출해 구동한 결과 **11/11 PASS**(정상 부모 통과 / 형제·팝업·`source:null` 차단 / IIFE top-level self-post 통과 / 기존 origin·봉투 게이트 회귀 0), 같은 번들에서 `e.source` 절만 제거한 변이본은 **5건 red** — 게이트가 실효임을 산출물 수준에서 확인. **발신 표면 무변경 실증**: `postToParent` 본문 diff 0 · 발신 이벤트명 집합 base=HEAD 동일(8 FROZEN + `editor.pricingChange`).
 - **既노출 발신자 호환(무중단 근거)**: `window.parent` 대조는 **정상 부모 프레임이면 통과**한다 → GUIDE 서술대로 이미 명령을 보내고 있는 파트너는 **영향 0**이고, 차단되는 것은 비정상 프레임 주입뿐이다. 기존 파트너 4종은 現 명령을 보내지 않으므로 추가로도 영향 0.
 - 호스트측 참조 구현 `parseEditorMessage`(`examples/editor-session-order/public/editor-events.js`)는 `expectedSource` 필수화로 이미 대칭 방어 완료 — **편집기측만 비대칭**이었다.
+- **참조 구현 fail-open 1건 동시 봉합(통합 검증에서 적발)**: 위 참조 구현의 ② 게이트가 `message.source !== options.expectedSource` 단순 비교라, iframe 로드 전이라 `expectedSource === null` 인 순간에 `source: null` 메시지(닫힌 윈도우·worker·MessagePort 발신)를 `null !== null === false` 로 **통과**시켰다 — 파일 자신의 주석이 명시한 의도("`null` 이면 ②에서 불일치 처리")와 어긋난다. `source === null` 하드가드로 봉합하고 `src/verify.ts` 에 회귀 케이스를 등재했다(변이 시 red 확인). SDK `./embed` 의 `parseEditorMessage` 는 처음부터 하드가드가 있어 **두 구현이 이제 동일 시맨틱**이다.
 
 ### 1-E. ★인프라/보안 계약 (적대검증 P0 정정)
 

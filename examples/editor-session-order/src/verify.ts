@@ -81,6 +81,18 @@ function verifyMessageGate(): void {
     { ok: false, reason: 'SOURCE_WINDOW_MISMATCH' },
   );
 
+  // ②' iframe 로드 전(expectedSource=null)에 온 `source:null` 메시지 — fail-open 봉합.
+  //     닫힌 윈도우·worker·MessagePort 발신이 이 형태다. 단순 `!==` 비교였다면
+  //     `null !== null === false` 로 **통과**해 버린다.
+  assert.deepEqual(
+    parseEditorMessage(
+      { origin: EDITOR_ORIGIN, source: null, data: complete },
+      { allowedOrigins: ALLOWED, expectedSource: null },
+    ),
+    { ok: false, reason: 'SOURCE_WINDOW_MISMATCH' },
+    'expectedSource=null 일 때 source:null 을 통과시키면 안 된다',
+  );
+
   // ③ 레거시 dual-emit(`{type:'storige:completed'}`) — 신규 연동은 듣지 않는다
   assert.deepEqual(
     parseEditorMessage(
