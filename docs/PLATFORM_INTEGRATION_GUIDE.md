@@ -62,7 +62,7 @@ Storige는 단일 인쇄 백엔드로서 여러 외부 파트너를 호스팅합
 환경:                     <dev | staging | prod>
 ```
 
-### 1.2 인증 (X-API-Key)
+### 1.2 인증 (X-API-Key · v1 Bearer)
 
 Storige는 외부 파트너를 두 방식으로 인증합니다.
 
@@ -89,6 +89,13 @@ X-API-Key: <YOUR_SITE_API_KEY>
 - 키는 `sites` 테이블에 평문 저장되며 동등 비교로 조회됩니다 (해싱 없음). → **키 비밀유지가 서버간 보안의 전부입니다.**
 - 키 회전은 운영자가 `PATCH /api/sites/:id/regenerate {target:'editor'|'worker'|'both'}` 로 수행합니다 (파트너 직접 불가). `regenerate` 는 editor/worker 코드를 각각 **독립 난수**로 재생성하므로, 회전 후 두 값이 달라질 수 있습니다.
 - `WORKER_API_KEY`(내부 전용 환경키)는 절대 외부 파트너에게 공유되지 않습니다.
+
+**(C) Partner API v1 (`/api/v1/*`) — `Authorization: Bearer` 또는 `X-API-Key`**
+
+- v1 전용 가드는 두 헤더를 **병행 수용**합니다. 둘 다 보내면 `Authorization` 이 우선이고, **두 값이 다르면 `401 ERR_UNAUTHORIZED`** 입니다 (어느 키로 인증할지 단정할 수 없어 모호성을 거부).
+- **v1 에는 무인증 라우트가 0건입니다.** `GET /api/v1/ping` 도 키를 요구하므로 온보딩 시 키 확인 스모크로 그대로 쓸 수 있습니다.
+- v1 발급 키에는 환경(`test` | `live`)이 내재하며 데이터가 완전히 격리됩니다. 위 (A) 의 `sites` 키로 v1 을 호출하면 `live` 로 취급됩니다. `test` 키가 live 전용 라우트를 호출하면 `403 ERR_ENV_MISMATCH` 이나, **오늘 기준 live 전용으로 마킹된 v1 라우트는 없습니다**.
+- v1 은 §5.1 의 레거시 외부 표면과 **별개 계약**입니다 (경로·에러 봉투·리밋·멱등이 다릅니다). 공통 계약은 1.7 참조.
 
 ### 1.3 Base URL · 환경
 
@@ -164,11 +171,198 @@ image/gif
 
 **공통 에러 코드:** `401`(invalid/suspended key), `400`(UNSUPPORTED_FORMAT / UNSUPPORTED_CONTENT_TYPE / class-validator 검증 오류 등), `404`(존재 은닉 포함), `503 STORAGE_NOT_S3`(presigned인데 driver≠s3).
 
+**Partner API v1 (`/api/v1/*`) 레이트리밋 — 위 표와 별개 체계입니다.**
+
+| 버킷 | 기본값 | 적용 라우트 |
+|---|---|---|
+| general | **300 req/min** (API 키 단위) | 아래 heavy 외 전부 |
+| heavy | **100 req/min** (API 키 단위) | 자산 투입 5종(`POST`/`PUT books/{uid}/pdf-cover` · `POST`/`PUT books/{uid}/pdf-contents` · `POST books/{uid}/photos`) + `POST books/{uid}/finalization` + `GET books/{uid}/pdf` |
+
+- 초과 시 `429 ERR_RATE_LIMITED` + **`Retry-After`**(초) 헤더. 이 값을 준수해 재시도하세요.
+- ⚠️ **`X-RateLimit-*` 잔량 헤더는 보내지 않습니다.** 선제 회피가 불가능하고 429 를 받은 뒤 대응하는 반응형 처리만 가능합니다. 다수 도서를 동시에 폴링하면 general 버킷에 닿을 수 있으니, 완료 통지는 **웹훅을 정본 경로**로 두고 폴링은 백스톱으로만 쓰세요.
+
+### 1.7 Partner API v1 (`/api/v1/*`) — 공통 계약
+
+> **신규 연동은 이 표면으로 시작하세요.** §5.1 의 레거시 외부 표면(`/api/files/*` · `/api/worker-jobs/*`)은 기존 파트너 호환을 위해 유지되지만, 경로·에러 봉투·멱등·리밋이 서로 다른 **별개 계약**입니다. 두 표면을 한 요청 흐름에 섞지 마세요.
+
+**표면 규모:** 16 경로 / 22 오퍼레이션 — `ping` 1 · `book-specs` 3 · `books` 11 · `webhooks` 7 (전량 목록은 5.1). 전부 파트너 키가 필요합니다.
+
+**Base URL:** `https://api.papascompany.co.kr` + `/api/v1` (예: `https://api.papascompany.co.kr/api/v1/ping`).
+
+**성공 봉투 — 필드 4종 고정**
+
+```json
+{ "success": true, "message": "Success", "data": { }, "pagination": null }
+```
+
+- 목록 라우트만 `pagination` 이 채워집니다: `{total, limit, offset, hasNext}`. 그 외에는 `null`.
+- 목록 쿼리 `limit` 기본값 20 · 최대 100이며, **초과값은 100으로 캡됩니다**(에러가 아닙니다). `offset` 은 0 기준.
+- ⚠️ **예외 1건 — `GET /api/v1/books/{uid}/pdf` 는 봉투가 없습니다.** 성공 시 `application/pdf` 바이너리가 그대로 스트리밍되고, 오류일 때만 JSON 에러 봉투가 옵니다. 수신측은 **`Content-Type` 으로 분기**해야 하며, 산출물이 GB 단위까지 커질 수 있으므로 전량 버퍼링(`arrayBuffer()` 등) 없이 스트림으로 소비하세요.
+
+**에러 봉투**
+
+```json
+{
+  "success": false,
+  "errorCode": "ERR_PAGE_COUNT_OUT_OF_RANGE",
+  "message": "사람용 설명",
+  "errors": [{ "code": "…", "message": "…" }],
+  "fieldErrors": { "pageCount": ["…"] },
+  "requestId": "…"
+}
+```
+
+- **분기는 반드시 `errorCode` 로 하세요.** `message` 는 사람용이며 예고 없이 개선됩니다.
+- 코드 카탈로그는 **additive 로만** 성장합니다(기존 코드의 의미·HTTP status 변경/삭제 없음). 따라서 **모르는 코드에서 크래시하지 말고** 기본 분기로 흘리세요.
+- `fieldErrors` 는 검증 실패(`ERR_VALIDATION_FAILED`)에서만 채워지고 그 외에는 `null`.
+- `requestId` 는 문의 시 그대로 전달하세요.
+
+**멱등 (`Idempotency-Key`)**
+
+| 항목 | 값 |
+|---|---|
+| 적용 조건 | **`POST` + `Idempotency-Key` 헤더가 있을 때만.** 헤더가 없으면 멱등 보호 없이 통과 |
+| 미적용 | `GET` · `PUT` · `DELETE` (자연 멱등) |
+| 키 형식 | 1~128자. 벗어나면 `400 ERR_VALIDATION_FAILED` |
+| 스코프 | 사이트 + env + method + 실제 경로 + 키 |
+| 보관 | **24시간**. 같은 키·같은 body 재호출은 최초 응답 스냅샷을 재전달하며 응답에 `Idempotency-Replayed: true` 가 붙습니다 |
+| 같은 키 + 다른 body | `422 ERR_IDEMPOTENCY_KEY_MISMATCH` |
+| 처리 중 같은 키 | `409 ERR_IDEMPOTENCY_IN_PROGRESS` — 짧은 백오프 후 재시도 |
+| 5xx | 선점이 해제되어 스냅샷이 남지 않습니다 → 같은 키로 재시도해도 안전 |
+
+> 🚨 **멀티파트 업로드에는 `Idempotency-Key` 를 그대로 쓰지 마세요.** 멱등 판정이 **요청 본문 해시**로 이루어지는데, `multipart/form-data` 요청에서는 본문 파싱이 멱등 판정보다 뒤에 일어나 **해시가 파일 내용과 무관한 상수**가 됩니다. 그 결과 같은 키로 **다른 파일**을 올리면 서버가 "같은 요청"으로 보고 첫 응답을 재전달하고, **두 번째 파일은 오류 없이 조용히 사라집니다.** 대응은 둘 중 하나입니다 — ① 멀티파트에는 키를 붙이지 않는다, ② 붙이려면 **업로드마다 유일한 키**(예: 파일 바이트 해시를 키에 합성)를 쓴다. 근본 회피는 **`fileId` 참조 경로**(본문이 JSON) 사용입니다 — 2.0 참조.
+
+**업로드 한도**
+
+| 경로 | 상한 | MIME |
+|---|---|---|
+| v1 직접(멀티파트) 자산 투입 | **100 MB** (초과 `413 ERR_FILE_TOO_LARGE`) | **PDF 전용** — 이미지는 `415 ERR_UNSUPPORTED_CONTENT_TYPE` |
+| presigned 업로드 표면 → `fileId` 참조 | **2 GB** | 1.4 의 화이트리스트 |
+
+- **presigned 업로드 표면은 v1 표면이 아닙니다**(§2.2 의 `/api/files/*` 경로 — 인증·에러 shape·리밋이 v1 과 다릅니다). 큰 파일이나 이미지는 그 표면으로 올려 `files.id` 를 받은 뒤, v1 자산 라우트에 `{"fileId": "..."}` 로 **참조**하세요.
+- presigned `complete` 확정 전의 `fileId` 를 참조하면 `409 ERR_FILE_NOT_READY`.
+- ⚠️ **업로드 상한과 검증 상한은 다릅니다.** 워커 PDF 검증 상한은 현재 프로덕션 1 GB 이므로(1.4), 그보다 큰 PDF 는 업로드가 되더라도 최종화 단계에서 거부됩니다.
+
+**생성 유형 (`creationType`) — 4종 중 2종만 동작**
+
+| 값 | 상태 | 용도 |
+|---|---|---|
+| `PDF_UPLOAD` | 운영 중 | 파트너가 만든 표지/내지 PDF 를 투입 (유형 1 — 2.0) |
+| `EDITOR_SESSION` | 운영 중 | 임베드 편집기의 완료 세션을 도서로 승격 (유형 2) |
+| `TEMPLATE` | **미구현** | 서버가 `422` 로 거부합니다 |
+| `MIX_COVER_TEMPLATE` | **미구현** | 서버가 `422` 로 거부합니다 |
+
+**`EDITOR_SESSION` 승격 (유형 2 → v1)**
+
+- `POST /api/v1/books` 에 `{creationType:'EDITOR_SESSION', sessionId}` 를 보내면, 세션 산출 PDF 가 `pdf_contents` 자산으로 **자동 연결된** DRAFT 도서가 생성됩니다. `PDF_UPLOAD` 와 달리 **수동 자산 투입 라우트를 호출하지 않습니다.**
+- 승격은 **파트너 서버에서** 하세요. 파트너 API 키를 브라우저에 내리면 그 키를 얻은 누구나 테넌트 전체의 도서를 만들고 읽을 수 있습니다.
+- 거부 3종:
+
+| 코드 | status | 원인 |
+|---|---|---|
+| `ERR_NOT_FOUND` | 404 | 세션 없음 **/ 다른 테넌트 세션 / 소유 사이트가 없는(게스트) 세션** — 세 경우를 한 코드로 뭉뚱그리는 것은 존재 은닉(IDOR 방지)이라 의도적입니다 |
+| `ERR_SESSION_NOT_PROMOTABLE` | 409 | `errors[]` 에 세부 코드 — `SESSION_NOT_COMPLETE`(편집 미완료) · `SESSION_OUTPUT_MISSING`(합성 산출 없음) · `SESSION_OUTPUT_UNAVAILABLE` |
+| `ERR_VALIDATION_FAILED` | 400 | `sessionId` 누락 |
+
+> **가장 흔한 실패는 게스트 세션입니다.** 회원 토큰 없이 편집기를 띄우면 세션에 소유 사이트가 남지 않아 **어떤 테넌트도 승격할 수 없습니다**. 게스트 완료 분기는 3.2 의 `editor.complete` payload 로 판정하세요.
+
+**최종화 (finalization)**
+
+- `POST /api/v1/books/{uid}/finalization` 으로 착수하고, 상태는 `PENDING → VALIDATING → COMPOSING → COMPLETED | FAILED` 로 전이합니다.
+- **`409 ERR_FINALIZATION_IN_PROGRESS` 는 실패가 아닙니다.** 이미 진행 중이라는 뜻이므로 `GET .../finalization` 으로 기존 attempt 에 합류하세요. 이걸 에러로 처리하면 실제로는 성공한 주문을 "실패"로 보여 주게 됩니다.
+- 최종화 **실패는 예외가 아니라 값**으로 옵니다 — 폴링 응답의 `status: 'FAILED'` + `errorCode` 로 분기하세요.
+- 🖨️ **`bookSpecUid`(판형)를 연결하지 않으면 워커 구조 검증이 통째로 생략됩니다.** 대조할 판형이 없으면 서버는 검증을 건너뛰고 최종화하며, 결과에 `validationSkipped: true` 가 실립니다. 그 도서는 재단·페이지수·여백이 한 번도 대조되지 않은 **미검증 상태**이므로 자동 발주로 흘리지 말고 자체 검수 게이트를 태우세요. 페이지수까지 대조하려면 `pageCount` 도 함께 넘겨야 합니다.
+
+**클라이언트 라이브러리**
+
+- TypeScript SDK `@storige/sdk` 는 **사내 배포 검토 중이며 현재 npm 에 배포돼 있지 않습니다.** 배포 전까지는 위 계약(헤더·봉투·상태코드)을 직접 구현하거나, 레포의 `examples/` 실행 예제 3종을 참고하세요.
+- 예제는 라이브 키 없이 도는 오프라인 검증(`verify`)을 포함합니다 — **실 서버 대상 스모크는 파트너 환경에서 별도로** 해야 합니다.
+
 ---
 
 ## 2. 유형 1 상세 — 자체 편집기 + 검증/합성 오프로드
 
 > 대표: 100p Books (자체 편집기로 PDF 생성 → Storige에 검증/합성/보존만 오프로드)
+
+### 2.0 v1 경로 (`/api/v1/books`) — 신규 연동 권장
+
+> 유형 1 에는 **두 경로**가 있습니다. 아래 2.1~2.7 은 기존 파트너가 쓰는 **레거시 워커 잡 경로**(`/api/worker-jobs/*`)이고, 이 절은 **Partner API v1 의 도서(book) 경로**입니다. 신규 연동은 v1 로 시작하세요. 공통 계약(인증·봉투·멱등·리밋)은 1.7 에 있습니다.
+
+**여정 (`creationType: 'PDF_UPLOAD'`)**
+
+```
+① GET  /api/v1/ping                             키 인증 확인 (v1 무인증 라우트 0)
+② GET  /api/v1/book-specs                       판형 목록·상세
+   GET  /api/v1/book-specs/{uid}/calculated-size?pageCount=N
+                                                 → 내지/표지/책등 실측 mm — "PDF 를 몇 mm 로 만들지" 확정
+③ POST /api/v1/books                            DRAFT 도서 생성
+④ POST /api/v1/books/{uid}/pdf-cover            표지 자산 투입   (교체는 PUT)
+   POST /api/v1/books/{uid}/pdf-contents         내지 자산 투입   (교체는 PUT)
+⑤ POST /api/v1/books/{uid}/finalization          최종화 착수(검증 → 합성)
+⑥ 웹훅 book.finalization.completed | .failed     정본 통지
+   GET  /api/v1/books/{uid}/finalization          폴링(백스톱)
+⑦ GET  /api/v1/books/{uid}/pdf                   최종 PDF 스트림
+```
+
+- ②의 `calculated-size` 는 재단·도련·표지 펼침면(앞+책등+뒤) 폭을 mm 로 돌려줍니다. 이 값대로 PDF 를 만들면 워커 사이즈 검증을 판형 허용오차 안에서 통과합니다. 책등 계수가 구성되지 않은 판형은 표지/책등 산출이 비고 `warnings` 로 사유가 옵니다.
+- 판형의 `pageMin`/`pageMax`/`pageIncrement` 위반은 `422 ERR_PAGE_COUNT_OUT_OF_RANGE` 입니다. **도서를 만들기 전에** 판형 규칙으로 먼저 거르면 고아 DRAFT 가 남지 않습니다.
+- ④의 순서 계약: 신규 투입은 `POST`(이미 있으면 `409 ERR_ASSET_ALREADY_EXISTS`), 교체는 `PUT`(대상이 없으면 `404 ERR_ASSET_NOT_FOUND`). FINALIZED 도서의 자산을 바꾸려 하면 `409 ERR_BOOK_NOT_DRAFT` — 새 도서를 만드세요.
+
+**자산 투입 — 두 입력 형태 (`fileId` 참조 권장)**
+
+각 자산 라우트는 JSON 과 멀티파트를 **함께** 받습니다. `fileId` 가 오면 그쪽이 우선입니다.
+
+| | `fileId` 참조 (JSON) | 직접 업로드 (멀티파트) |
+|---|---|---|
+| 상한 | **2 GB** (presigned 표면에 먼저 올린 파일) | **100 MB** |
+| MIME | 업로드 표면 규칙(1.4) | **PDF 전용** — 이미지는 `415` |
+| `Idempotency-Key` | 정상 동작 (본문이 JSON) | ⚠️ **함정 있음** (아래) |
+
+**(a) `fileId` 참조 — 권장**
+
+```bash
+curl -X POST "https://api.papascompany.co.kr/api/v1/books/<bookUid>/pdf-contents" \
+  -H "Authorization: Bearer <YOUR_PARTNER_API_KEY>" \
+  -H "Content-Type: application/json" \
+  -H "Idempotency-Key: <요청마다 고유한 값>" \
+  -d '{"fileId":"8b1f...uuid"}'
+```
+
+**(b) 직접 업로드 — 폼 필드명은 반드시 `file`**
+
+```bash
+curl -X POST "https://api.papascompany.co.kr/api/v1/books/<bookUid>/pdf-contents" \
+  -H "Authorization: Bearer <YOUR_PARTNER_API_KEY>" \
+  -F "file=@inner.pdf;type=application/pdf"
+```
+
+> ⚠️ **멀티파트 폼 필드명은 `file` 입니다.** 자동 생성된 OpenAPI 스펙에는 이 라우트의 `multipart/form-data` 스키마가 `{fileId}` 로 표기되어 있으나 **실제 서버 계약과 다릅니다**. 스펙의 멀티파트 스키마가 아니라 이 절을 따르세요.
+
+> 🚨 **멀티파트에 `Idempotency-Key` 를 붙이지 마세요(또는 업로드마다 유일한 키를 쓰세요).** 멱등 판정이 요청 본문 해시로 이루어지는데 멀티파트에서는 그 해시가 파일 내용과 무관한 **상수**가 됩니다 → 같은 키로 다른 파일을 올리면 첫 응답이 재전달되고 **두 번째 파일은 오류 없이 유실**됩니다. 상세와 회피책은 1.7 의 멱등 항목 참조. `fileId` 참조 경로에는 이 함정이 없습니다.
+
+- 사진 자산(`POST books/{uid}/photos`)도 직접 업로드는 PDF 필터를 통과해야 하므로, **이미지는 사실상 `fileId` 참조 전용**입니다.
+
+**완료 대기 · 결과 수령**
+
+- 정본 통지는 웹훅 `book.finalization.completed` / `.failed` 입니다. 폴링(`GET .../finalization`)은 웹훅 유실·지연에 대비한 백스톱으로 쓰세요 — 잔량 헤더가 없어 선제적 리밋 회피가 불가능합니다(1.6).
+- 최종 PDF 는 `GET /api/v1/books/{uid}/pdf` (FINALIZED 전용). **이 라우트만 봉투가 없습니다** — 성공은 `application/pdf` 스트림, 오류일 때만 JSON 봉투이므로 `Content-Type` 으로 분기하고 전량 버퍼링 없이 흘려 받으세요.
+
+**실패 코드 대응 (요약)**
+
+| 코드 | status | 대응 |
+|---|---|---|
+| `ERR_PAGE_COUNT_OUT_OF_RANGE` | 422 | 도서 생성 전에 판형 규칙으로 거를 것 |
+| `ERR_ASSETS_INCOMPLETE` | 422 | 표지/내지 보강 후 재착수 |
+| `ERR_ASSET_ALREADY_EXISTS` | 409 | 교체는 `PUT` |
+| `ERR_ASSET_NOT_FOUND` | 404 | 신규는 `POST` |
+| `ERR_BOOK_NOT_DRAFT` | 409 | FINALIZED 도서는 수정 불가 — 새 도서 |
+| `ERR_FILE_NOT_READY` | 409 | presigned `complete` 확정 후 참조 |
+| `ERR_FINALIZATION_IN_PROGRESS` | 409 | **실패 아님** — `GET .../finalization` 으로 합류 |
+| `ERR_UNSUPPORTED_CONTENT_TYPE` | 415 | 멀티파트는 PDF 만 — 이미지는 `fileId` 참조 |
+| `ERR_FILE_TOO_LARGE` | 413 | 100 MB 초과 — presigned 표면 + `fileId` 참조 |
+| `ERR_RATE_LIMITED` | 429 | `Retry-After` 준수 |
+
+> `TEMPLATE` · `MIX_COVER_TEMPLATE` 생성 유형은 **미구현**이며 서버가 `422` 로 거부합니다(1.7). 임베드 편집 세션의 승격(`EDITOR_SESSION`)은 1.7 참조.
 
 ### 2.1 시퀀스
 
@@ -372,7 +566,7 @@ PDF 검증 규칙 요약은 5장 표 참조 (15단계).
 
 > 배수 위반은 `autoFixable=true` 이므로 잡 status 가 `FIXABLE` 로 떨어집니다. `details.expected`(올림된 목표 페이지수)와 `fixMethod='addBlankPages'` 를 받아 파트너는 자동수정 흐름(2.6 fix-pagecount)으로 이어갈 수 있습니다.
 
-> **글로벌 안전상한은 별개로 유지:** `options.maxPages = 1000p` 는 위 데이터 주도 검증과 **무관하게 항상 적용**되는 절대 상한입니다. 파일크기 상한 역시 별개로 `WORKER_MAX_FILE_SIZE`(현재 프로덕션 2 GB 실배포 — §1.4)가 적용됩니다.
+> **글로벌 안전상한은 별개로 유지:** `options.maxPages = 1000p` 는 위 데이터 주도 검증과 **무관하게 항상 적용**되는 절대 상한입니다. 파일크기 상한 역시 별개로 `WORKER_MAX_FILE_SIZE`(현재 프로덕션 1 GB 실배포 — §1.4)가 적용됩니다.
 
 **파트너 액션:** 제본 종류별로 위 값을 채워 전송하세요. 값 매핑은 2.5(canonical binding) 참조.
 
@@ -697,7 +891,7 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 
 | 항목 | 현재 상태 | 필요 작업 |
 |---|---|---|
-| **웹훅 서명** | `X-Storige-Signature` 가 `base64({jobId 또는 sessionId}:{event}:{timestamp})` — **HMAC 아님 → 위조 가능**. `WEBHOOK_SECRET` 은 코드상 no-op. | HMAC 서명 보강 (5장 참조). 그 전까지는 웹훅 수신 후 반드시 `download/external` 로 재확인. |
+| **웹훅 서명** | 사이트별 웹훅 설정(v2)을 발급하면 **HMAC 전용 발신**(`X-Storige-Signature-HMAC` + `X-Storige-Delivery`)이고, 설정이 없으면 레거시 발신(base64 `X-Storige-Signature` — **위조 가능**, 전역 시크릿 설정 시 HMAC 헤더 동반)으로 폴백합니다. | 신규 연동은 `PUT /api/v1/webhooks/config` 로 v2 설정을 발급받아 HMAC 검증 (5.2 참조). 레거시 폴백 구간에서는 웹훅을 트리거로만 취급하고 결과는 `download/external` 로 재확인. |
 | **compose-mixed 무인증** | `@Public`·테넌트 스코프 없음 → editSessionId 보유자면 누구나 트리거 가능 | 프로덕션화 시 `ApiKeyGuard`+테넌트 스코핑 추가 검토 (오너 결정) |
 | **Shopify 전용 Site 등록** | 미존재 (모든 Site는 운영자 생성) | 운영자가 `POST /api/sites` 로 Shopify 테넌트 생성 + 키 발급 |
 | **frame-ancestors (Shopify 도메인 iframe)** | DB 필드 死코드, `vercel.json` 정적 정의만 유효 | `apps/editor/vercel.json` 에 Shopify 임베드 도메인 추가 + master push |
@@ -710,7 +904,9 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 
 ## 5. 레퍼런스
 
-### 5.1 전체 엔드포인트 표
+### 5.1 전체 엔드포인트 표 (레거시 외부 표면 · Partner API v1)
+
+**레거시 외부 표면** — 기존 파트너 호환용. 신규 연동은 아래 v1 표를 쓰세요.
 
 | Method | Path | 인증 | 용도 |
 |---|---|---|---|
@@ -754,7 +950,42 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 
 > **참고:** `/external` 이 붙지 않은 `synthesize`/`convert`/`split-synthesize` 등은 JWT + ADMIN/MANAGER 전용이며 파트너 대상이 아닙니다. 파트너는 반드시 `/external` 변형을 사용하세요. 또한 워커 출력 되연결(`registerExternalFile`)은 HTTP 엔드포인트가 아니라 내부 서비스 메서드입니다 — 외부에서 직접 등록하는 엔드포인트는 없습니다.
 
+**Partner API v1 (`/api/v1/*`) — 16 경로 / 22 오퍼레이션**
+
+전 라우트가 파트너 키 필수(`Authorization: Bearer` 또는 `X-API-Key` — 1.2(C)). 리밋 버킷은 general 300/min · heavy 100/min (1.6). `Idempotency-Key` 는 **POST 에 헤더가 있을 때만** 적용됩니다 (1.7).
+
+| Method | Path | 버킷 | 용도 |
+|---|---|---|---|
+| GET | `/api/v1/ping` | general | 연결·키 확인 (온보딩 스모크) |
+| GET | `/api/v1/book-specs` | general | 판형 목록 (페이지네이션 + `coverType`/`bindingType`/`isActive` 필터) |
+| GET | `/api/v1/book-specs/{uid}` | general | 판형 상세 |
+| GET | `/api/v1/book-specs/{uid}/calculated-size` | general | 페이지 수 기반 내지/표지/책등 실측 mm 산출 |
+| POST | `/api/v1/books` | general | 도서 생성(DRAFT) — `creationType` 필수 (1.7) |
+| GET | `/api/v1/books` | general | 도서 목록 (자기 site + env, `status`/`creationType` 필터) |
+| GET | `/api/v1/books/{uid}` | general | 도서 상세 |
+| POST | `/api/v1/books/{uid}/pdf-cover` | **heavy** | 표지 PDF 신규 투입 — 기존재 시 `409 ERR_ASSET_ALREADY_EXISTS` |
+| PUT | `/api/v1/books/{uid}/pdf-cover` | **heavy** | 표지 PDF 교체 — 미존재 시 `404 ERR_ASSET_NOT_FOUND` |
+| POST | `/api/v1/books/{uid}/pdf-contents` | **heavy** | 내지 PDF 신규 투입 |
+| PUT | `/api/v1/books/{uid}/pdf-contents` | **heavy** | 내지 PDF 교체 |
+| POST | `/api/v1/books/{uid}/photos` | **heavy** | 사진 자산 추가(다건, DRAFT 전용) — 이미지는 `fileId` 참조 전용(2.0) |
+| POST | `/api/v1/books/{uid}/finalization` | **heavy** | 최종화 착수 — 진행 중이면 `409 ERR_FINALIZATION_IN_PROGRESS`(실패 아님) |
+| GET | `/api/v1/books/{uid}/finalization` | general | 최종화 상태 폴링 (최신 attempt) |
+| GET | `/api/v1/books/{uid}/pdf` | **heavy** | 최종 PDF 다운로드 — **봉투 없는 raw 스트림**, FINALIZED 전용 (1.7) |
+| PUT | `/api/v1/webhooks/config` | general | 웹훅 설정 upsert — secret 은 생성/회전 응답에서 **1회만** 노출 |
+| GET | `/api/v1/webhooks/config` | general | 웹훅 설정 조회 (secret 은 prefix 마스킹) |
+| DELETE | `/api/v1/webhooks/config` | general | 웹훅 설정 삭제 (발송 중지, 이력은 보존) |
+| POST | `/api/v1/webhooks/test` | general | 테스트 이벤트 발송 (구독 목록 무관) |
+| GET | `/api/v1/webhooks/deliveries` | general | 발송 이력 목록 (`event`/`status`/`since` 필터) |
+| GET | `/api/v1/webhooks/deliveries/{uid}` | general | 발송 이력 상세 (상태코드·실패사유코드·attempts·다음 재시도 시각) |
+| POST | `/api/v1/webhooks/deliveries/{uid}/retry` | general | 수동 재발송 (소진됐거나 10분 이상 정체된 배달) |
+
+> 파라미터·요청 스키마·선언된 응답 코드는 서버 스펙에서 생성된 API 레퍼런스를 보세요. **응답 `data` 스키마는 서버에 선언돼 있지 않아 문서로 제공되지 않습니다** — 필드 구조는 실제 응답으로 확인하고, 분기는 `status`·`errorCode` 등 계약이 명시된 값으로만 하세요.
+
 ### 5.2 Webhook 서명 검증 (현 상태 정확히)
+
+> **발신 경로가 2종입니다.** 사이트에 웹훅 설정(v2)이 있으면 **(B) HMAC 전용 발신**, 없으면 **(A) 레거시 발신**으로 폴백합니다. 수신 코드는 자기 사이트가 어느 쪽인지 알고 작성해야 합니다 — 두 경로는 헤더 구성부터 다릅니다.
+
+**(A) 레거시 발신 — 웹훅 설정이 없는 사이트**
 
 - 헤더: `X-Storige-Event`, `X-Storige-Signature`
 - 알고리즘: **현재 `base64({identifier}:{event}:{timestamp})` — HMAC이 아닙니다.** `identifier` 는 페이로드에 `jobId` 가 있으면 `jobId`, 없으면(세션 페이로드) `sessionId` 를 사용합니다.
@@ -774,6 +1005,68 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 }
 ```
 > 세션 기반 콜백(`SessionWebhookPayload`)은 `jobId` 대신 `sessionId` 를 포함하며, 그 경우 서명 `identifier` 도 `sessionId` 가 됩니다.
+
+> 전역 `WEBHOOK_SECRET` 이 설정된 배포에서는 위 base64 헤더와 **함께** HMAC 헤더(`X-Storige-Signature-HMAC`)가 동반 발신됩니다. 다만 이 경로는 `X-Storige-Delivery` 를 **보내지 않으므로** 배달 단위 중복 판별이 불가능합니다 — 아래 (B) 의 중복 배달 항목 참조.
+
+**(B) v2 발신 — 사이트별 웹훅 설정(HMAC 전용)**
+
+**설정 발급**
+
+- `PUT /api/v1/webhooks/config` — body `{url, events?, rotateSecret?}`.
+- 응답의 서명 secret(`whsec_` + 48 hex)은 **발급/회전 응답에서 1회만 노출**됩니다. 재조회할 수 없으니 받는 즉시 보관하세요(`GET config` 는 prefix 마스킹만 반환). 회전은 `rotateSecret: true`.
+- `url` 은 허용 호스트(사이트 등록 도메인) 검증을 통과해야 하며, 위반 시 `422 ERR_WEBHOOK_URL_FORBIDDEN`.
+- `events` 미지정/빈 배열이면 **전체 구독**입니다.
+
+**구독 가능 이벤트 — v1 기준 9종** (+ `webhook.test` 는 `POST /api/v1/webhooks/test` 전용이며 구독 목록과 무관하게 발송)
+
+```
+validation.completed | validation.fixable | validation.failed
+synthesis.completed  | synthesis.failed
+session.validated    | session.failed
+book.finalization.completed | book.finalization.failed
+```
+
+> 위 9종 중 앞의 **7종은 레거시 동결 계약**이고, `book.finalization.*` 2종은 Partner API v1 의 도서 최종화와 함께 **추가된 이벤트**입니다. 카탈로그는 **additive 로만** 자랍니다 — **모르는 이벤트에서 던지지 마세요.** 던지면 5xx 로 응답되어 서버가 재시도를 반복하고 결국 소진 상태로 남습니다. 조용히 무시하는 것이 계약입니다.
+
+**발신 헤더**
+
+| 헤더 | 값 |
+|---|---|
+| `X-Storige-Event` | 이벤트명 |
+| `X-Storige-Delivery` | `whd_...` — **배달 1건에 1:1** 인 식별자(중복 판별 키) |
+| `X-Storige-Signature-HMAC` | `t=<unix초>,v1=<hex>` |
+
+- 레거시 base64 `X-Storige-Signature` 는 이 경로에서 **전송되지 않습니다**.
+- 서명 대상 문자열은 `{t}.{identifier}:{event}:{timestamp}` 이며, `identifier` 는 `jobId` → `sessionId` → 배달 uid 순으로 결정됩니다.
+
+**🚨 서명은 본문을 덮지 않습니다**
+
+- 서명 대상은 위 **4개 값뿐**입니다. `status`·`outputFileId`·`errorCode`·`pageCount`·`result` 같은 나머지 본문 필드는 서명 밖이라 변조를 탐지할 수 없습니다(raw body 해시가 아닙니다).
+- → **HTTPS 를 강제**하세요. 본문 무결성은 현재 전적으로 전송계층에 의존합니다.
+- → **결제·발주·상태확정 같은 부수효과의 근거는 본문이 아니라 재조회**에서 취하세요(`GET /api/v1/books/{uid}/finalization` 등). 본문은 "무언가 바뀌었다"는 트리거로만 쓰는 것이 안전합니다.
+- 대신 다른 웹훅 규격이 요구하는 *"JSON 파서보다 먼저 raw body 를 보존하라"* 는 곡예가 **필요 없습니다** — 일반 JSON 파서로 충분합니다.
+
+**신선도(replay) 판정**
+
+- 헤더의 `t`(서명 시각, unix 초)로 판정하고 창은 ±300초 안팎을 권장합니다. 창이 좁을수록 캡처된 서명의 재생 가능 시간이 줄어듭니다.
+- ⚠️ **본문의 `timestamp` 로 신선도를 판정하지 마세요.** `t` 는 재시도마다 갱신되지만 본문 `timestamp` 는 이벤트 시각으로 고정이라, 30분 뒤 재시도가 정상인데도 거부됩니다.
+
+**중복 배달 — 신뢰성 통제이지 인증 통제가 아닙니다**
+
+- 재시도는 인라인 최초 1회 + 큐 재시도 3회(**1분 / 5분 / 30분**) = 최대 4회이며, 여기에 수동 재발송이 더해질 수 있습니다. 타임아웃은 10초입니다.
+- 판별 키는 `X-Storige-Delivery` 입니다. ⚠️ **`jobId` 로 중복 판정하지 마세요** — 한 잡이 `validation.completed` 와 `synthesis.completed` 를 각각 발신하므로 정상 이벤트를 삼킵니다.
+- ⚠️ `X-Storige-Delivery` 는 **서명 밖 헤더**입니다. 서명 `identifier` 가 `jobId`/`sessionId` 로 정해지는 이벤트(`validation.*` · `synthesis.*` · `session.*`)에서는 유효 서명 1건을 캡처한 쪽이 **재서명 없이 uid 헤더만 바꿔** 신선도 창 안에서 재생할 수 있습니다. 반대로 `book.finalization.*` 은 `identifier` 가 곧 배달 uid 라 이 재생이 성립하지 않습니다.
+- → **부수효과가 있는 핸들러는 자체 도메인 멱등(주문 uid 등 본인 키 기준)을 병행**하고, 상태 전이는 조건부 갱신(CAS)으로 하세요. 이벤트마다 켜고 끄지 말고 전부에 거는 편이 안전합니다. 레거시 (A) 경로에는 배달 uid 자체가 없어 **도메인 멱등이 유일한 방어선**입니다.
+
+**응답 규약**
+
+| 상태 | 의미 |
+|---|---|
+| 2xx | 처리 완료 — 재시도 체인이 끊깁니다. **중복 배달을 단락했을 때도 2xx** 로 응답하세요 |
+| 4xx | 재시도하지 않습니다 (서명 불일치·형식 오류 등) |
+| 5xx | 서버가 재시도합니다 — 수신측 설정 오류를 5xx 로 두면 고친 뒤 재시도가 통과해 유실이 없습니다 |
+
+- 발신 결과는 `GET /api/v1/webhooks/deliveries` 로 확인할 수 있습니다(상태코드·실패 사유 코드·시도 횟수·다음 재시도 시각). 소진된 배달은 `POST /api/v1/webhooks/deliveries/{uid}/retry` 로 수동 재발송합니다.
 
 ### 5.3 PDF 검증 규칙 요약 (워커 15단계)
 
