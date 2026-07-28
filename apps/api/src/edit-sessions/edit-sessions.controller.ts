@@ -302,10 +302,10 @@ export class EditSessionsController {
 - cover/content: 워커 출력 > 에디터 원본 fallback
 - merged: 워커 출력만 (에디터 원본 없음)
 
-**운영 경로 예시**:
-- API 호출: GET http://58.229.105.98:4000/api/edit-sessions/external?orderSeqno=12345
-- 파일 다운로드: http://58.229.105.98:4000{files.cover 값}
-  예: http://58.229.105.98:4000/storage/outputs/job-uuid/merged.pdf`,
+**운영 경로 예시** (호스트는 공개 도메인 기준 — 내부 주소를 문서에 싣지 않는다):
+- API 호출: GET https://api.papascompany.co.kr/api/edit-sessions/external?orderSeqno=12345
+- 파일 다운로드: https://api.papascompany.co.kr{files.cover 값}
+  예: https://api.papascompany.co.kr/storage/outputs/job-uuid/merged.pdf`,
   })
   @ApiQuery({ name: 'orderSeqno', required: true, description: '주문 번호', type: Number })
   @ApiResponse({

@@ -9,11 +9,13 @@
   ],
   "scripts": {
     "dev": "turbo run dev",
-    "build": "turbo run build",
+    "build": "turbo run build --filter=!@storige/docs",
     "lint": "turbo run lint",
     "test": "turbo run test",
     "clean": "turbo run clean",
     "format": "prettier --write \"**/*.{ts,tsx,md,json}\"",
+    "docs:spec": "mkdir -p apps/docs/.generated && pnpm --filter @storige/types build && OPENAPI_PARTNER_OUT=\"$PWD/apps/docs/.generated/openapi-partner.json\" pnpm --filter @storige/api openapi:partner",
+    "docs:build": "pnpm run docs:spec && pnpm --filter @storige/docs build",
     "golden:compare": "node scripts/pdf-golden/compare.mjs",
     "golden:test": "node --test scripts/pdf-golden/compare.test.mjs",
     "check:exposure": "node scripts/check-source-exposure.mjs"

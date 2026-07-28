@@ -8,9 +8,10 @@
  * 출력하고 비0 종료한다(→ 빌드/CI 실패 = 배포 차단). 정책 상세는 내부 문서 참조.
  *
  * 사용:
- *   node scripts/check-source-exposure.mjs                # 소스 스캔(기본: apps, packages)
+ *   node scripts/check-source-exposure.mjs                # 소스 스캔(기본: apps, packages, examples, docs)
  *   node scripts/check-source-exposure.mjs --dist dist    # 빌드 산출물 스캔(보수적 목록)
  *   node scripts/check-source-exposure.mjs path1 path2    # 명시 경로 스캔
+ *                                                        # 예: apps/docs/site (문서 포털 postbuild)
  *
  * 참고: 금지 목록은 정책 준수를 위해 이 파일 내에 평문으로 두지 않는다(인코딩 보관).
  */
@@ -32,7 +33,9 @@ const RE = new RegExp(DENY.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).
 
 // examples 는 파트너에게 그대로 배포되는 코드라 소스 스캔 대상에 반드시 포함한다
 // (신규 소스 루트를 여기 추가하지 않으면 그 디렉터리는 게이트 밖에 남는다).
-const DEFAULT_TARGETS = ['apps', 'packages', 'examples'];
+// docs 는 파트너 문서 포털(apps/docs)의 **본문 입력**이다 — GUIDE 한 줄이 그대로 공개
+// 사이트에 실리므로 산출물 스캔만으로는 늦다(입력측에서 먼저 걸어야 한다).
+const DEFAULT_TARGETS = ['apps', 'packages', 'examples', 'docs'];
 // 제외 디렉터리: 내부 전용 문서(.cursor)·의존성·빌드 캐시는 정상적으로 목록을 포함하므로
 // 반드시 제외한다. dist 모드에서는 dist 자체를 봐야 하므로 뺀다.
 const SKIP_DIRS = new Set([
@@ -40,9 +43,14 @@ const SKIP_DIRS = new Set([
 ]);
 if (distMode) SKIP_DIRS.delete('dist');
 
+// .md/.txt 는 문서 포털(apps/docs) 때문에 코드와 동급 위험이다. 포털은 GUIDE(.md)를
+// 슬라이스해 공개 HTML 로 발행하고 llms.txt / llms-full.txt(.txt)에 전 페이지 원문을
+// 그대로 다시 싣는다 — 이 두 확장자가 빠져 있으면 산출물 스캔이 llms 파일을 통째로
+// 건너뛴다(가장 많은 원문을 담은 파일이 게이트 밖에 남는 상태였다).
 const TEXT_EXT = new Set([
   '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.json',
   '.css', '.scss', '.html', '.vue', '.svelte', '.map',
+  '.md', '.txt',
 ]);
 
 const hits = [];

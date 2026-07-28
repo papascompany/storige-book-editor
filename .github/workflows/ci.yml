@@ -9,7 +9,8 @@ name: ci
 #      계약 드리프트 감시와 서명 페어와이즈(수신측)가 여기 걸려야 게이트가 된다
 #   3) packages/canvas-core vitest + tsc — 편집기 코어(ServicePlugin.pdf 카나리 포함)
 #   4) scripts/pdf-golden 비교 엔진 self-test (qpdf 필요)
-#   5) examples/* quickstart 예제 — **맨 뒤**(문서성 산출물이 계약 테스트를 가리지 않게)
+#   5) examples/* quickstart 예제 — **뒤쪽**(문서성 산출물이 계약 테스트를 가리지 않게)
+#   6) apps/docs 파트너 문서 포털 빌드 — **맨 뒤**(같은 이유. 5 와 6 은 우선순위 동급)
 #
 # ⚠️ 루트 `turbo run test` 는 CI 가 호출하지 않는다 — per-package 명시 필터만 쓴다.
 #    새 패키지를 추가하면 **여기에 스텝을 추가해야** 게이트에 연결된다. 안 그러면
@@ -49,6 +50,10 @@ jobs:
         # 내부 정책상 금지된 외부 식별자가 소스에 유입됐는지 검사한다. 배포 번들
         # (editor/admin)의 postbuild 게이트와 짝을 이루는 소스측 게이트. 모든 빌드
         # 변형이 같은 src 를 쓰므로 소스 검사가 변형 무관 catch-all 이다.
+        #
+        # E-3: 스캔 대상에 docs/ 와 확장자 .md/.txt 를 추가했다. 문서 포털이 GUIDE(.md)를
+        # 그대로 공개 사이트로 발행하므로 **입력측에서 먼저** 걸어야 한다(산출물만 보면 늦다).
+        # 포털 산출물(apps/docs/site)은 아래 포털 빌드의 postbuild 가 한 번 더 스캔한다.
         run: node scripts/check-source-exposure.mjs
 
       - name: 시스템 의존성 (qpdf=골든 self-test · cairo/pango=node-canvas 소스 빌드)
@@ -121,3 +126,31 @@ jobs:
             pnpm --filter "@storige/example-$e" lint
             pnpm --filter "@storige/example-$e" verify
           done
+
+      - name: 파트너 문서 포털 빌드 (apps/docs — GUIDE 발행 채널 · guard R1~R5 + linkcheck)
+        # 위 'OpenAPI export' 스텝의 산출물(apps/api/openapi-partner.json)을 **재사용**한다.
+        # build.mjs 의 스펙 탐색 순서 3번째가 그 경로다. 같은 커밋이면 같은 스펙이므로
+        # 재생성은 낭비이고, 두 번 생성하면 두 산출물이 갈릴 여지만 생긴다.
+        #
+        # strict 모드(--dev 아님)로 돈다 — 매니페스트에 등재된 콘텐츠가 하나라도 없으면
+        # 실패한다(R5). 이게 "페이지가 조용히 빠진 채 배포되는" 유일한 자동 방지선이다.
+        # 빌드는 순서대로 guard R1(호스트 화이트리스트=IP-in-URL 차단)·R2(bare IPv4)·
+        # R3(내부 포인터/시크릿 형태)·R4(링크·앵커 전수 해석)·R5(매니페스트)를 돌고,
+        # postbuild 로 check-source-exposure 가 site/ 를 다시 스캔한다.
+        #
+        # ⚠️ **의도적으로 맨 뒤다** — examples 스텝과 같은 이유다. 문서 포털은 문서성
+        #    산출물이라 계약 테스트보다 우선순위가 낮다. 앞에 두면 GUIDE 의 오타 하나
+        #    (linkcheck R4)가 그 뒤 contract-freeze 수백 건을 **실행조차 못 하게** 만든다.
+        #
+        # ⚠️ 루트 `pnpm build`(turbo)는 문서 포털을 제외한다(스펙 선행 생성이 필요해서).
+        #    즉 **이 스텝이 포털의 유일한 CI 게이트다** — 지우면 포털 검증이 전부 사라진다.
+        run: pnpm --filter @storige/docs build
+
+      - name: 문서 포털 산출물 업로드 (배포 전 오너 육안 확인용 — 자동 배포 아님)
+        # storige-docs Vercel 프로젝트는 오너 승인 게이트에 걸려 있다(apps/docs/DEPLOY.md).
+        # 그때까지 이 아티팩트가 "무엇이 실릴 것인가"를 보는 유일한 창이다.
+        uses: actions/upload-artifact@v4
+        with:
+          name: docs-portal-site
+          path: apps/docs/site
+          if-no-files-found: error
