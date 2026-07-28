@@ -5,7 +5,7 @@
  * 입력  docs/PLATFORM_INTEGRATION_GUIDE.md  (읽기 전용 — 빌드가 절대 쓰지 않는다)
  *       apps/docs/content/*.md              (②③ 저술)
  *       openapi-partner.json                (빌드타임 생성물 — gitignored)
- * 출력  apps/docs/site/**                   (html · theme.css · llms.txt · llms-full.txt)
+ * 출력  apps/docs/site/**                   (html · theme.css · llms.txt · llms-full.txt · robots.txt)
  *
  * 모드
  *   기본      strict — 매니페스트 전 항목이 존재해야 한다(R5). 통합 게이트용.
@@ -13,7 +13,7 @@
  *
  * 결정적이다: 타임스탬프·난수·네트워크 0. 같은 입력 → 같은 출력.
  */
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -41,6 +41,13 @@ const SITE_DIR = join(DOCS_DIR, 'site');
 
 const dev = process.argv.slice(2).includes('--dev');
 const mode = dev ? '--dev (누락 허용)' : 'strict';
+/**
+ * 노출 게이트의 **빌드측 축**. 이 플래그가 켜지면 (a) 전 HTML 에 robots meta, (b) `robots.txt`
+ * `Disallow: /` 를 산출한다. 세 번째 축인 HTTP `X-Robots-Tag` 는 빌드가 아니라 `vercel.json`
+ * `headers` 소관이다 — `.txt` 산출물에는 meta 를 넣을 자리가 없어서 헤더가 유일한 커버리지다.
+ * 공개하려면 **이 env 와 그 헤더 블록을 함께** 지워야 한다(apps/docs/DEPLOY.md §0-1).
+ */
+const noindex = process.env.STORIGE_DOCS_NOINDEX === '1';
 const warnings = [];
 const missing = [];
 
@@ -99,7 +106,7 @@ for (const page of built) {
     headings: page.headings,
     body: page.html,
     provenance: page.provenance,
-    noindex: process.env.STORIGE_DOCS_NOINDEX === '1',
+    noindex,
   });
   const outFile = routeToFile(page.route);
   writeOut(outFile, html);
@@ -109,6 +116,11 @@ for (const page of built) {
 const themeCss = readFileSync(join(DOCS_DIR, 'theme.css'), 'utf8');
 writeOut('theme.css', themeCss);
 
+// robots.txt — 모드와 무관하게 **항상** 산출한다. 없으면 404(=허용)로 해석되므로,
+// "차단 모드인데 파일이 없다"와 "공개 모드"가 산출물에서 구분되지 않는다.
+writeOut('robots.txt', renderRobots(noindex));
+log(`robots.txt 산출 — ${noindex ? '크롤 차단 (Disallow: /)' : '크롤 허용'}`);
+
 // ── 5. llms.txt (③ 소유 모듈 — 고정 경로 import) ─────────────────────────────
 const textFiles = await emitLlmsOutputs();
 
@@ -116,6 +128,7 @@ const textFiles = await emitLlmsOutputs();
 const scanTargets = [
   ...emittedPages.map((p) => join(SITE_DIR, p.file)),
   join(SITE_DIR, 'theme.css'),
+  join(SITE_DIR, 'robots.txt'),
   ...textFiles.map((t) => join(SITE_DIR, t.file)),
 ];
 const hostAllowlist = [...HOST_ALLOWLIST];
@@ -275,23 +288,78 @@ async function emitLlmsOutputs() {
   return written;
 }
 
+/**
+ * 스펙 경로 해석.
+ *
+ * ⚠️ **순서만으로 고르지 않는다.** 예전에는 `.generated/` 사본을 무조건 우선했는데,
+ * `pnpm docs:spec` 을 한 번이라도 돌린 머신에는 그 사본이 영원히 남기 때문에
+ * `apps/api/openapi-partner.json` 이 새로 생성돼도 **낡은 레퍼런스가 조용히 렌더**됐다.
+ * 두 사본이 다르면 최신본(mtime)을 쓰고 경고를 남긴다 — 침묵만은 허용하지 않는다.
+ */
 function resolveSpecPath() {
-  const candidates = [
-    process.env.STORIGE_OPENAPI_SPEC,
-    join(DOCS_DIR, '.generated/openapi-partner.json'),
-    join(REPO_ROOT, 'apps/api/openapi-partner.json'),
-  ].filter(Boolean);
-  for (const candidate of candidates) if (existsSync(candidate)) return candidate;
-  fail(
-    `openapi-partner.json 을 찾을 수 없다. 탐색 순서:\n` +
-      `  1) $STORIGE_OPENAPI_SPEC\n` +
-      `  2) apps/docs/.generated/openapi-partner.json\n` +
-      `  3) apps/api/openapi-partner.json\n` +
-      `→ 생성 명령(레포 루트에서):\n` +
-      `   pnpm --filter @storige/types build\n` +
-      `   OPENAPI_PARTNER_OUT=$PWD/apps/docs/.generated/openapi-partner.json pnpm --filter @storige/api openapi:partner\n` +
-      `  (이 파일은 gitignored 빌드타임 생성물이라 레포에 없다.)`,
+  // 명시 지정은 무조건 존중한다(오타로 인한 조용한 폴백을 만들지 않기 위해 없으면 실패).
+  const override = process.env.STORIGE_OPENAPI_SPEC;
+  if (override) {
+    if (!existsSync(override)) fail(`$STORIGE_OPENAPI_SPEC 가 가리키는 스펙이 없다: ${override}`);
+    return override;
+  }
+
+  const generated = join(DOCS_DIR, '.generated/openapi-partner.json');
+  const fromApi = join(REPO_ROOT, 'apps/api/openapi-partner.json');
+  const found = [generated, fromApi].filter((p) => existsSync(p));
+
+  if (found.length === 0) {
+    fail(
+      `openapi-partner.json 을 찾을 수 없다. 탐색 대상:\n` +
+        `  1) $STORIGE_OPENAPI_SPEC (지정 시 단독 사용)\n` +
+        `  2) apps/docs/.generated/openapi-partner.json\n` +
+        `  3) apps/api/openapi-partner.json\n` +
+        `  (2·3 이 모두 있고 내용이 다르면 mtime 최신본을 쓰고 경고한다.)\n` +
+        `→ 생성 명령(레포 루트에서):\n` +
+        `   pnpm --filter @storige/types build\n` +
+        `   OPENAPI_PARTNER_OUT=$PWD/apps/docs/.generated/openapi-partner.json pnpm --filter @storige/api openapi:partner\n` +
+        `  (이 파일은 gitignored 빌드타임 생성물이라 레포에 없다.)`,
+    );
+  }
+  if (found.length === 1) return found[0];
+
+  // 둘 다 있다. 내용이 같으면 어느 쪽을 써도 산출물이 동일하다.
+  if (readFileSync(generated, 'utf8') === readFileSync(fromApi, 'utf8')) return generated;
+
+  const genTime = statSync(generated).mtimeMs;
+  const apiTime = statSync(fromApi).mtimeMs;
+  const winner = genTime >= apiTime ? generated : fromApi;
+  const loser = winner === generated ? fromApi : generated;
+  const stamp = (p) => new Date(statSync(p).mtimeMs).toISOString();
+  warnings.push(
+    `OpenAPI 스펙 사본 2개의 내용이 다르다 — 최신본을 쓴다(스테일 렌더 방지).\n` +
+      `    사용: ${relative(REPO_ROOT, winner)}  (mtime ${stamp(winner)})\n` +
+      `    무시: ${relative(REPO_ROOT, loser)}  (mtime ${stamp(loser)})\n` +
+      `    → 낡은 사본을 지우거나 \`pnpm docs:spec\` 으로 다시 생성하라.`,
   );
+  return winner;
+}
+
+/**
+ * robots.txt 본문. 차단 모드는 `Disallow: /` 로 **크롤 자체**를 막는다.
+ * 한계는 DEPLOY.md §0-1 에 적어 뒀다 — 크롤이 막히면 크롤러가 meta/헤더의 noindex 를 읽지도
+ * 못하므로, 외부 링크가 걸린 URL 은 본문 없이 목록에 남을 수 있다.
+ */
+function renderRobots(blocked) {
+  return blocked
+    ? [
+        '# 색인 차단 모드 (STORIGE_DOCS_NOINDEX=1)',
+        '# 공개하려면 이 env 와 vercel.json 의 X-Robots-Tag 헤더 블록을 함께 지운다.',
+        'User-agent: *',
+        'Disallow: /',
+        '',
+      ].join('\n')
+    : [
+        '# 공개 모드 — 크롤 허용',
+        'User-agent: *',
+        'Disallow:',
+        '',
+      ].join('\n');
 }
 
 function routeToFile(route) {

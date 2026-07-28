@@ -28,8 +28,8 @@ export class CreateBookDto {
 
   @ApiPropertyOptional({
     description:
-      'book_specs uid(bs_...). 생략 시 book_spec 없이 DRAFT 생성(시드 게이트). ' +
-      '존재/활성/테넌트 스코프 위반 시 404 ERR_BOOK_SPEC_NOT_FOUND',
+      'book_specs uid(bs_...). 생략하면 판형 없이 DRAFT 로 생성한다. ' +
+      '존재하지 않거나 비활성이거나 다른 테넌트의 판형이면 404 ERR_BOOK_SPEC_NOT_FOUND',
   })
   @IsOptional()
   @IsString()
@@ -46,8 +46,10 @@ export class CreateBookDto {
 
   @ApiPropertyOptional({
     description:
-      'EDITOR_SESSION 승격 원본 file_edit_sessions 참조. ⚠️ W4 스텁 — 완료/소유 실검증과 ' +
-      '세션 산출 PDF 의 book_assets 연결은 W4. 본 배치는 참조 저장(EDITOR_SESSION 한정)까지.',
+      'EDITOR_SESSION 승격에 사용할 편집 세션 식별자(creationType=EDITOR_SESSION 이면 필수). ' +
+      '서버가 세션의 완료(COMPLETE) 상태와 테넌트 소유를 검증한 뒤, 세션 산출 PDF 를 ' +
+      'pdf_contents 자산으로 자동 연결한 DRAFT 도서를 생성한다. 누락 400 ERR_VALIDATION_FAILED / ' +
+      '미존재·타테넌트·소유 사이트 없음 404 ERR_NOT_FOUND / 미완료·산출물 없음 409 ERR_SESSION_NOT_PROMOTABLE',
   })
   @IsOptional()
   @IsString()
@@ -56,7 +58,9 @@ export class CreateBookDto {
 
   @ApiPropertyOptional({
     description:
-      'TEMPLATE/MIX_COVER_TEMPLATE 바인딩 templateSet. ⚠️ W4 스텁 — 실검증·바인딩 자산 연결은 W4.',
+      'TEMPLATE/MIX_COVER_TEMPLATE 바인딩용 templateSet 식별자. 두 creationType 은 생성(201 DRAFT)까지만 ' +
+      '되고 최종화가 422 ERR_ASSETS_INCOMPLETE(TEMPLATE_COVER_NOT_RENDERED) 로 거부되므로, ' +
+      '현재 이 값은 저장·바인딩되지 않는다.',
   })
   @IsOptional()
   @IsString()

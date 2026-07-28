@@ -11,6 +11,13 @@
  *     있으나 실제 컨트롤러는 `FileInterceptor('file')` 이라 그대로 실으면 파트너가 틀린 필드를 쓴다.
  *   - `info.description`(내부 설계서 경로) · `securitySchemes` 원문(`bearerFormat:"JWT"` 오도)은
  *     읽지도 않는다.
+ *
+ * ⚠️ 오버라이드 드리프트 방지(핵심 불변식):
+ *   `descriptionOverrides` / `summaryOverrides` 는 스펙 원문을 **무조건 덮어쓴다**. 그래서 원문이
+ *   나중에 고쳐져도 오버라이드가 영원히 이기고, **스테일한 서술이 조용히 발행된다**(허위 문서화).
+ *   이를 막기 위해 오버라이드는 `{ text, expectedSource }` 형태만 허용하고, 렌더 시점에
+ *   스펙 원문과 `expectedSource` 를 대조해 다르면 **빌드를 깨뜨린다**. 등재해 놓고 스펙에서
+ *   대응을 찾지 못한 키(고아 오버라이드)도 마찬가지로 깨뜨린다 — 조용히 죽은 치환은 없다.
  */
 
 const METHOD_ORDER = ['get', 'post', 'put', 'patch', 'delete', 'head', 'options'];
@@ -23,6 +30,8 @@ const METHOD_ORDER = ['get', 'post', 'put', 'patch', 'delete', 'head', 'options'
 export function renderOpenApiMarkdown(spec, cfg) {
   const ops = collectOperations(spec);
   const groups = groupOperations(ops, cfg.groups);
+  /** 어떤 설정 키가 실제로 스펙에 적용됐는지 — 고아 등재를 뒤에서 잡는다. */
+  const usage = { descriptionOverrides: new Set(), summaryOverrides: new Set(), enumNotes: new Set() };
 
   const out = [];
   out.push('## API 레퍼런스 (자동 생성) {#api-reference}', '');
@@ -36,15 +45,68 @@ export function renderOpenApiMarkdown(spec, cfg) {
     if (group.operations.length === 0) continue;
     out.push(`### ${group.label} {#grp-${slugPath(group.prefix)}}`, '');
     for (const op of group.operations) {
-      out.push(...renderOperation(op, spec, cfg));
+      out.push(...renderOperation(op, spec, cfg, usage));
     }
   }
+
+  assertNoOrphans('descriptionOverrides', cfg.descriptionOverrides, usage.descriptionOverrides);
+  assertNoOrphans('summaryOverrides', cfg.summaryOverrides, usage.summaryOverrides);
+  assertNoOrphans('enumNotes', cfg.enumNotes, usage.enumNotes);
 
   const schemaCount = Object.keys(spec.components?.schemas ?? {}).length;
   return {
     markdown: out.join('\n'),
     stats: { paths: Object.keys(spec.paths ?? {}).length, operations: ops.length, schemas: schemaCount },
   };
+}
+
+/** 비교용 정규화 — 공백 접힘/줄바꿈 차이는 무시하고 **사실 변화만** 잡는다. */
+function normalizeText(value) {
+  return String(value ?? '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * 오버라이드 1건을 검증하고 치환 문자열을 돌려준다.
+ * 형태가 `{ text, expectedSource }` 가 아니거나 원문이 스냅샷과 다르면 즉시 throw(빌드 실패).
+ */
+function applyOverride(kind, key, entry, sourceValue) {
+  if (
+    typeof entry !== 'object' ||
+    entry === null ||
+    typeof entry.text !== 'string' ||
+    typeof entry.expectedSource !== 'string'
+  ) {
+    throw new Error(
+      `OPENAPI.${kind}['${key}'] 는 { text, expectedSource } 형태여야 한다.\n` +
+        `→ 오버라이드는 스펙 원문을 무조건 덮어쓰므로, 대조할 원문 스냅샷 없이는 등재할 수 없다.`,
+    );
+  }
+  const actual = normalizeText(sourceValue);
+  const expected = normalizeText(entry.expectedSource);
+  if (actual !== expected) {
+    throw new Error(
+      `OPENAPI.${kind}['${key}'] 의 expectedSource 가 스펙 원문과 다르다 — ` +
+        `서버 원문이 바뀌었는데 오버라이드가 옛 서술을 발행하려 한다(허위 문서화 위험).\n` +
+        `  스펙 원문 : ${actual || '(없음)'}\n` +
+        `  등재 스냅샷: ${expected || '(없음)'}\n` +
+        `→ 현재 동작을 다시 확인해 text 를 고친 뒤 expectedSource 를 새 원문으로 갱신하라. ` +
+        `원문만으로 충분해졌으면 오버라이드를 삭제하는 것이 낫다.`,
+    );
+  }
+  return entry.text;
+}
+
+/** 등재했으나 스펙에서 대응을 찾지 못한 키 = 조용히 죽은 치환. */
+function assertNoOrphans(kind, cfgMap, used) {
+  const orphans = Object.keys(cfgMap ?? {}).filter((key) => !used.has(key));
+  if (orphans.length) {
+    throw new Error(
+      `OPENAPI.${kind} 에 스펙 대응을 찾지 못한 키 ${orphans.length}건: ${orphans.join(', ')}\n` +
+        `→ 스펙에서 해당 속성/오퍼레이션이 사라졌거나 이름이 바뀌었다. 치환이 조용히 죽는 것을 막기 위해 빌드를 세운다.`,
+    );
+  }
 }
 
 function collectOperations(spec) {
@@ -76,14 +138,19 @@ function groupOperations(ops, groupDefs) {
   return groups;
 }
 
-function renderOperation({ path, method, op }, spec, cfg) {
+function renderOperation({ path, method, op }, spec, cfg, usage) {
   const out = [];
   const id = operationAnchor(method, path);
   const label = `${method.toUpperCase()} ${path}`;
 
   out.push(`#### ${label} {#${id}}`, '');
 
-  const summary = cfg.summaryOverrides?.[op.operationId] ?? op.summary;
+  const summaryOverride = cfg.summaryOverrides?.[op.operationId];
+  let summary = op.summary;
+  if (summaryOverride !== undefined) {
+    usage.summaryOverrides.add(op.operationId);
+    summary = applyOverride('summaryOverrides', op.operationId, summaryOverride, op.summary);
+  }
   if (summary) out.push(escapeMd(summary), '');
 
   // 파라미터
@@ -110,7 +177,7 @@ function renderOperation({ path, method, op }, spec, cfg) {
     const resolved = resolveRef(spec, jsonSchema);
     if (resolved.name) {
       out.push(`**요청 본문** \`application/json\` — ${resolved.name}`, '');
-      out.push(...renderSchemaTable(resolved.name, resolved.schema, cfg));
+      out.push(...renderSchemaTable(resolved.name, resolved.schema, cfg, usage));
     }
   }
 
@@ -145,14 +212,34 @@ function renderOperation({ path, method, op }, spec, cfg) {
   return out;
 }
 
-function renderSchemaTable(schemaName, schema, cfg) {
+function renderSchemaTable(schemaName, schema, cfg, usage) {
   const out = [];
   const required = new Set(schema.required ?? []);
   out.push('| 속성 | 타입 | 필수 | 설명 |', '| --- | --- | --- | --- |');
   for (const [prop, def] of Object.entries(schema.properties ?? {})) {
     const key = `${schemaName}.${prop}`;
-    const description = cfg.descriptionOverrides?.[key] ?? def.description ?? '';
+
+    const descOverride = cfg.descriptionOverrides?.[key];
+    let description = def.description ?? '';
+    if (descOverride !== undefined) {
+      usage.descriptionOverrides.add(key);
+      description = applyOverride('descriptionOverrides', key, descOverride, def.description);
+    }
+
     const notes = cfg.enumNotes?.[key] ?? {};
+    if (cfg.enumNotes?.[key] !== undefined) {
+      usage.enumNotes.add(key);
+      const allowed = new Set(def.enum ?? []);
+      const unknown = Object.keys(notes).filter((v) => !allowed.has(v));
+      if (unknown.length) {
+        throw new Error(
+          `OPENAPI.enumNotes['${key}'] 에 스펙 enum 에 없는 값 ${unknown.length}건: ${unknown.join(', ')}\n` +
+            `  스펙 허용값: ${[...allowed].join(', ') || '(enum 아님)'}\n` +
+            `→ 서버 enum 이 바뀌었다. 주석이 조용히 사라지는 것을 막기 위해 빌드를 세운다.`,
+        );
+      }
+    }
+
     const extra = def.enum
       ? ` 허용값: ${def.enum
           .map((v) => `\`${v}\`${notes[v] ? ` (${notes[v]})` : ''}`)

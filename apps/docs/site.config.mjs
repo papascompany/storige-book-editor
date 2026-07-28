@@ -157,12 +157,14 @@ export const NAV_ORDER = ['시작', '연동 가이드', '레퍼런스', '운영'
 export const LLMS_INTRO = 'content/llms-intro.md';
 
 /**
- * 아직 저술되지 않은 **전방 참조** 앵커 (shard ② 가 GUIDE 에 신설할 절).
- * `--dev` 에서만 경고로 낮추고 **strict 에서는 그대로 빌드를 깨뜨린다** —
- * ② 가 §2.0 을 실제로 신설했는지 기계적으로 확인하는 게이트다.
- * ② 작업이 끝나면 이 배열은 비어야 한다.
+ * 아직 저술되지 않은 **전방 참조** 앵커.
+ * `--dev` 에서만 경고로 낮추고 **strict 에서는 그대로 빌드를 깨뜨린다**.
+ *
+ * ⚠️ 비어 있는 것이 정상 상태다. 값이 남아 있으면 그 앵커는 `--dev` 에서 영구 면제되어
+ *    **진짜로 깨진 링크가 경고로 강등**된다. 대상 절이 실제로 저술되는 즉시 반드시 지운다.
+ *    (GUIDE §2.0 은 저술 완료 — `/guide/self-editor/#2-0` 를 여기서 제거했다.)
  */
-export const PENDING_ANCHORS = ['/guide/self-editor/#2-0'];
+export const PENDING_ANCHORS = [];
 
 /**
  * OpenAPI 렌더 정책 (계약 §3-G 를 **코드로 강제**하는 설정).
@@ -184,29 +186,57 @@ export const OPENAPI = {
   ],
 
   /**
-   * 요청 스키마 속성 설명 치환 — 내부 스프린트 표기(`W4 스텁`·`시드 게이트`)를
-   * 파트너가 읽을 수 있는 중립 문구로 바꾼다. **사실을 바꾸지 않는다**.
-   * 미치환분이 남으면 guard R3 가 산출물에서 잡아 빌드를 깨뜨린다(침묵 통과 불가).
+   * 요청 스키마 속성 설명 치환 — 서버 원문을 파트너 대면 마크업(코드 스팬·강조)으로 옮긴다.
+   * **사실을 바꾸지 않는다.** 사실이 틀렸으면 서버 원문(`@ApiProperty` description)을 고치는 게
+   * 근본 수정이고, 여기는 표현만 담당한다.
+   *
+   * ⚠️ 오버라이드는 스펙 원문을 **무조건** 덮어쓴다 — 원문이 나중에 고쳐져도 여기가 이긴다.
+   *    그래서 키마다 그 시점의 **원문 스냅샷(`expectedSource`)** 을 함께 등재해야 하고,
+   *    렌더 시 스펙 원문과 대조해 다르면 **빌드를 깨뜨린다**(render-openapi.mjs).
+   *    스테일한 서술이 조용히 발행되는 경로(허위 문서화)를 기계적으로 봉쇄하는 장치다.
+   *    `expectedSource` 는 서버 원문 그대로(마크업 없이) 적고, 공백만 정규화해 비교한다.
    */
   descriptionOverrides: {
-    'CreateBookDto.bookSpecUid':
-      '판형(book-specs) uid(`bs_...`). 생략하면 판형 없이 DRAFT 로 생성된다. 존재하지 않거나 비활성이거나 다른 테넌트의 판형이면 404 `ERR_BOOK_SPEC_NOT_FOUND`.',
-    'CreateBookDto.sessionId':
-      '`EDITOR_SESSION` 승격 시 참조할 편집 세션 식별자. 현재 배치는 **참조 저장까지만** 동작한다 — 세션 완료·소유 실검증과 세션 산출 PDF 의 자동 연결은 아직 제공되지 않는다.',
-    'CreateBookDto.templateSetId':
-      '`TEMPLATE`/`MIX_COVER_TEMPLATE` 바인딩용 templateSet 식별자. 두 creationType 은 현재 **미구현(서버가 422 응답)** 이라 이 필드는 동작하지 않는다.',
+    'CreateBookDto.bookSpecUid': {
+      text: '판형(book-specs) uid(`bs_...`). 생략하면 판형 없이 DRAFT 로 생성된다. 존재하지 않거나 비활성이거나 다른 테넌트의 판형이면 404 `ERR_BOOK_SPEC_NOT_FOUND`.',
+      expectedSource:
+        'book_specs uid(bs_...). 생략하면 판형 없이 DRAFT 로 생성한다. 존재하지 않거나 비활성이거나 다른 테넌트의 판형이면 404 ERR_BOOK_SPEC_NOT_FOUND',
+    },
+    'CreateBookDto.sessionId': {
+      text: '`EDITOR_SESSION` 승격에 사용할 편집 세션 식별자(`creationType=EDITOR_SESSION` 이면 **필수**). 서버가 세션의 완료(`COMPLETE`) 상태와 테넌트 소유를 검증한 뒤, 세션 산출 PDF 를 `pdf_contents` 자산으로 **자동 연결한** DRAFT 도서를 생성한다 — 자산 투입 라우트를 따로 호출하지 않는다. 거부: 누락 400 `ERR_VALIDATION_FAILED` · 미존재/타테넌트/소유 사이트 없음 404 `ERR_NOT_FOUND` · 미완료·산출물 없음 409 `ERR_SESSION_NOT_PROMOTABLE`.',
+      expectedSource:
+        'EDITOR_SESSION 승격에 사용할 편집 세션 식별자(creationType=EDITOR_SESSION 이면 필수). 서버가 세션의 완료(COMPLETE) 상태와 테넌트 소유를 검증한 뒤, 세션 산출 PDF 를 pdf_contents 자산으로 자동 연결한 DRAFT 도서를 생성한다. 누락 400 ERR_VALIDATION_FAILED / 미존재·타테넌트·소유 사이트 없음 404 ERR_NOT_FOUND / 미완료·산출물 없음 409 ERR_SESSION_NOT_PROMOTABLE',
+    },
+    'CreateBookDto.templateSetId': {
+      text: '`TEMPLATE`/`MIX_COVER_TEMPLATE` 바인딩용 templateSet 식별자. 두 creationType 은 **생성(201 DRAFT)까지만** 되고 최종화가 422 `ERR_ASSETS_INCOMPLETE`(`TEMPLATE_COVER_NOT_RENDERED`)로 거부되므로, 현재 이 값은 저장·바인딩되지 않는다.',
+      expectedSource:
+        'TEMPLATE/MIX_COVER_TEMPLATE 바인딩용 templateSet 식별자. 두 creationType 은 생성(201 DRAFT)까지만 되고 최종화가 422 ERR_ASSETS_INCOMPLETE(TEMPLATE_COVER_NOT_RENDERED) 로 거부되므로, 현재 이 값은 저장·바인딩되지 않는다.',
+    },
   },
 
-  /** 요약문 치환 — 내부 설계서 절 참조(§9-10) 제거. 그 외 summary 는 원문 그대로 렌더. */
+  /**
+   * 요약문 치환 — 내부 설계서 절 참조(§9-10) 제거. 그 외 summary 는 원문 그대로 렌더.
+   * descriptionOverrides 와 동일한 `{ text, expectedSource }` 계약을 따른다(드리프트 시 빌드 실패).
+   */
   summaryOverrides: {
-    BooksController_downloadPdf: '최종 PDF 다운로드 (소유 검증 스트림) — FINALIZED 전용',
+    BooksController_downloadPdf: {
+      text: '최종 PDF 다운로드 (소유 검증 스트림) — FINALIZED 전용',
+      expectedSource: '최종 PDF 다운로드(소유검증 스트림) — FINALIZED 전용(§9-10)',
+    },
   },
 
-  /** enum 값별 주석. 미구현 값을 있는 것처럼 두지 않기 위한 강제 표기(계약 §4-10). */
+  /**
+   * enum 값별 주석. 미구현 값을 있는 것처럼 두지 않기 위한 강제 표기(계약 §4-10).
+   * ⚠️ 이 주석은 **요청 스키마 표**(= 생성 시점) 안에 붙는다. 거부 시점을 반드시 명시하라 —
+   *    두 값은 생성 자체는 201 DRAFT 로 성공하고, 막히는 곳은 최종화다.
+   * 등재한 값이 스펙 enum 에 없으면 빌드가 깨진다(고아 주석 방지).
+   */
   enumNotes: {
     'CreateBookDto.creationType': {
-      TEMPLATE: '미구현 — 서버가 422 로 거부한다',
-      MIX_COVER_TEMPLATE: '미구현 — 서버가 422 로 거부한다',
+      TEMPLATE:
+        '생성은 201 DRAFT 로 되지만 **최종화**가 422 `ERR_ASSETS_INCOMPLETE`(`TEMPLATE_COVER_NOT_RENDERED`)로 거부된다',
+      MIX_COVER_TEMPLATE:
+        '생성은 201 DRAFT 로 되지만 **최종화**가 422 `ERR_ASSETS_INCOMPLETE`(`TEMPLATE_COVER_NOT_RENDERED`)로 거부된다',
     },
   },
 

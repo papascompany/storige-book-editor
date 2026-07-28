@@ -8,6 +8,14 @@
  * R1 절대 URL 호스트 화이트리스트 (IP-in-URL 은 여기서 전부 걸린다)
  * R2 bare IPv4 리터럴 0건 (루프백 예외만)
  * R3 내부 포인터 blocklist 0건
+ *
+ * ⚠️ **적용 범위는 산출물(site/**)뿐이다.** 레포 루트 `vercel.json` 은 이 게이트가 보지 않는다 —
+ *    포털 빌드의 입력이 아니기 때문이다. 그런데 그 파일에는 아직 내부 VPS IPv4 가 평문으로
+ *    남아 있고(오너 결정 대기), Vercel 프로젝트의 Root Directory 를 `apps/docs` 가 아니라
+ *    레포 루트로 두면 포털이 그 rewrites 를 상속해 `/api/*`·`/storage/*` 를 내부 주소로
+ *    평문 프록시한다. 즉 **R1/R2 가 초록이어도 이 경로는 막히지 않는다.**
+ *    → 그 구멍은 `scripts/check-source-exposure.mjs` 의 IP-URL / IP-CONFIG 규칙이 담당하고,
+ *      예외 사유와 오너 액션은 같은 파일의 `KNOWN_EXCEPTIONS` 에 등재돼 매 실행마다 출력된다.
  */
 import { readFileSync } from 'node:fs';
 
@@ -120,8 +128,29 @@ export function readTextFiles(paths) {
   return paths.map((path) => ({ path, text: readFileSync(path, 'utf8') }));
 }
 
+/**
+ * 리포트용 마스킹. 위반 리포트는 **PUBLIC 레포의 CI 로그**로 나간다(공개 Actions 로그는
+ * 누구나 읽는다). 적발한 IPv4·시크릿 실값을 그대로 찍으면 "내부 형상을 공개 표면에서
+ * 없애는 게이트"가 스스로 그 값을 공개 로그에 옮겨 적는다. 위치(file:line)와 규칙명만으로
+ * 조치에 충분하므로 값은 가린다.
+ *
+ * 호스트명(R1)은 가리지 않는다 — 대부분 화이트리스트 누락이라 **어떤 호스트인지 모르면
+ * 고칠 수 없고**, IP 형태의 호스트는 아래 IPv4 규칙이 어차피 덮는다.
+ */
+function redactForLog(text) {
+  return String(text)
+    .replace(IPV4_RE, (m, ip) =>
+      ip.split('.').every((o) => o.length <= 3 && Number(o) <= 255) ? '<IPv4 마스킹>' : m,
+    )
+    .replace(/whsec_[A-Za-z0-9]{16,}/g, 'whsec_<마스킹>')
+    .replace(/sk-storige-[0-9a-f]{8,}/g, 'sk-storige-<마스킹>');
+}
+
 export function formatViolations(violations) {
   return violations
-    .map((v) => `  [${v.rule}] ${v.file}:${v.line} — ${v.detail}\n        ${v.snippet}`)
+    .map(
+      (v) =>
+        `  [${v.rule}] ${v.file}:${v.line} — ${redactForLog(v.detail)}\n        ${redactForLog(v.snippet)}`,
+    )
     .join('\n');
 }

@@ -58,7 +58,7 @@ Storige는 단일 인쇄 백엔드로서 여러 외부 파트너를 호스팅합
                           <예: https://api.example.com/storige/webhook>
 회원번호 체계(정수):      <파트너 자체 정수 회원번호 발급 방식>
 보존정책(retentionDays):  <예: 14 / 0=영구>
-대용량 검증 필요?:        <현재 프로덕션 1GB까지 검증 가능. 1GB 초과(최대 2GB) 필요 시 운영팀 사전 협의 — 1.4 참조>
+대용량 검증 필요?:        <현재 프로덕션 2GB까지 검증 가능(운영 .env 실값). 2GB 초과가 필요하면 운영팀 사전 협의 — 1.4 참조>
 환경:                     <dev | staging | prod>
 ```
 
@@ -126,7 +126,15 @@ image/gif
 - **`image/svg+xml` 은 명시적으로 제외됩니다.** 이유: `/files/:id/raw` 가 `@Public` 인라인 서빙이므로, SVG가 인라인 서빙되면 Stored XSS 위험이 있습니다.
 - 서버 경유 PDF 업로드는 `mimetype !== 'application/pdf'` 면 `400 UNSUPPORTED_FORMAT`.
 
-> ⚠️ **워커 PDF 검증 상한 — 코드 기본값 100 MB, 현재 프로덕션 배포값 1 GB.** 검증 상한은 env `WORKER_MAX_FILE_SIZE`(바이트)로 결정됩니다 (코드 기본값 소스: `apps/worker/src/config/validation.config.ts` — `Number(process.env.WORKER_MAX_FILE_SIZE) || 100 * 1024 * 1024`). **현재 프로덕션은 `docker-compose.yml` 에서 `WORKER_MAX_FILE_SIZE=1073741824`(1 GB)로 배포되어, 오늘 기준 1 GB까지 검증을 통과합니다.** presigned 업로드 자체는 2 GB까지 가능하나, 1 GB 초과(최대 2 GB) 검증은 워커 스트리밍(트랙 B) 작업 완료 후 운영팀 상향이 필요합니다. 설정 상한 초과 파일을 `validate/external` 에 넣으면 즉시 `FAILED`('N MB를 초과합니다')로 거부됩니다. 대용량(>1 GB) 검증이 필요하면 온보딩 양식에 명시하세요.
+> ⚠️ **워커 PDF 검증 상한 — 현재 프로덕션 실배포값 2 GB.** 검증 상한은 env `WORKER_MAX_FILE_SIZE`(바이트)로 결정되며, 값이 세 곳에서 다르니 **운영 실값만 기준으로 삼으세요**.
+>
+> | 층 | 값 | 출처 |
+> |---|---|---|
+> | 코드 기본값 | 100 MB | `apps/worker/src/config/validation.config.ts` — `Number(process.env.WORKER_MAX_FILE_SIZE) \|\| 100 * 1024 * 1024` |
+> | compose 기본값(env 미주입 시) | 1 GB | `docker-compose.yml` — `${WORKER_MAX_FILE_SIZE:-1073741824}` |
+> | **운영 실값 (프로덕션)** | **2 GB** | 운영 `.env` 의 `WORKER_MAX_FILE_SIZE=2147483648` 이 compose 기본값을 덮습니다 |
+>
+> 즉 `docker-compose.yml` 에 보이는 1 GB 는 **env 가 주입되지 않았을 때의 폴백일 뿐 운영값이 아닙니다.** 오늘 기준 presigned 업로드 상한(2 GB)과 검증 상한(2 GB)이 같으므로, 업로드에 성공한 PDF 는 크기 때문에 최종화에서 막히지 않습니다. 설정 상한 초과 파일을 `validate/external` 에 넣으면 즉시 `FAILED`('N MB를 초과합니다')로 거부됩니다. 2 GB 를 넘는 파일이 필요하면 온보딩 양식에 명시하세요(현재 상한은 업로드·검증 양쪽 모두 2 GB 입니다).
 
 ### 1.5 보안 모델
 
@@ -241,16 +249,18 @@ image/gif
 
 - **presigned 업로드 표면은 v1 표면이 아닙니다**(§2.2 의 `/api/files/*` 경로 — 인증·에러 shape·리밋이 v1 과 다릅니다). 큰 파일이나 이미지는 그 표면으로 올려 `files.id` 를 받은 뒤, v1 자산 라우트에 `{"fileId": "..."}` 로 **참조**하세요.
 - presigned `complete` 확정 전의 `fileId` 를 참조하면 `409 ERR_FILE_NOT_READY`.
-- ⚠️ **업로드 상한과 검증 상한은 다릅니다.** 워커 PDF 검증 상한은 현재 프로덕션 1 GB 이므로(1.4), 그보다 큰 PDF 는 업로드가 되더라도 최종화 단계에서 거부됩니다.
+- ⚠️ **업로드 상한과 검증 상한은 다릅니다.** 워커 PDF 검증 상한은 현재 프로덕션 **2 GB** 이므로(1.4 — 운영 `.env` 실값), 그보다 큰 PDF 는 업로드가 되더라도 최종화 단계에서 거부됩니다.
 
-**생성 유형 (`creationType`) — 4종 중 2종만 동작**
+**생성 유형 (`creationType`) — 4종 중 2종만 최종화까지 동작**
 
 | 값 | 상태 | 용도 |
 |---|---|---|
 | `PDF_UPLOAD` | 운영 중 | 파트너가 만든 표지/내지 PDF 를 투입 (유형 1 — 2.0) |
 | `EDITOR_SESSION` | 운영 중 | 임베드 편집기의 완료 세션을 도서로 승격 (유형 2) |
-| `TEMPLATE` | **미구현** | 서버가 `422` 로 거부합니다 |
-| `MIX_COVER_TEMPLATE` | **미구현** | 서버가 `422` 로 거부합니다 |
+| `TEMPLATE` | **부분 — 최종화 불가** | 생성(`201` DRAFT)은 되지만 **최종화가 `422 ERR_ASSETS_INCOMPLETE`(`errors[0].code = TEMPLATE_COVER_NOT_RENDERED`)로 거부됩니다.** `templateSetId` 도 저장·바인딩되지 않습니다 |
+| `MIX_COVER_TEMPLATE` | **부분 — 최종화 불가** | 위와 동일 — 생성은 되고 최종화만 `422 ERR_ASSETS_INCOMPLETE`(`TEMPLATE_COVER_NOT_RENDERED`) |
+
+> ⚠️ **"거부"가 생성 단계라고 오해하지 마세요.** 두 유형은 `POST /api/v1/books` 가 `201` 로 성공하므로, 파트너 코드가 생성 성공을 "지원됨"으로 해석하면 **최종화 시점에야** 실패합니다. 표지 템플릿 렌더가 미도입이라 최종화에 필요한 표지 자산이 만들어지지 않는 것이 원인입니다. 현재 최종화 가능한 유형은 `PDF_UPLOAD` · `EDITOR_SESSION` 뿐입니다.
 
 **`EDITOR_SESSION` 승격 (유형 2 → v1)**
 
@@ -362,7 +372,7 @@ curl -X POST "https://api.papascompany.co.kr/api/v1/books/<bookUid>/pdf-contents
 | `ERR_FILE_TOO_LARGE` | 413 | 100 MB 초과 — presigned 표면 + `fileId` 참조 |
 | `ERR_RATE_LIMITED` | 429 | `Retry-After` 준수 |
 
-> `TEMPLATE` · `MIX_COVER_TEMPLATE` 생성 유형은 **미구현**이며 서버가 `422` 로 거부합니다(1.7). 임베드 편집 세션의 승격(`EDITOR_SESSION`)은 1.7 참조.
+> `TEMPLATE` · `MIX_COVER_TEMPLATE` 생성 유형은 **생성(`201` DRAFT)까지만 되고 최종화가 `422 ERR_ASSETS_INCOMPLETE`(`errors[0].code = TEMPLATE_COVER_NOT_RENDERED`)로 거부됩니다**(1.7) — 생성 성공을 지원 여부 판정에 쓰지 마세요. 임베드 편집 세션의 승격(`EDITOR_SESSION`)은 1.7 참조.
 
 ### 2.1 시퀀스
 
@@ -566,7 +576,7 @@ PDF 검증 규칙 요약은 5장 표 참조 (15단계).
 
 > 배수 위반은 `autoFixable=true` 이므로 잡 status 가 `FIXABLE` 로 떨어집니다. `details.expected`(올림된 목표 페이지수)와 `fixMethod='addBlankPages'` 를 받아 파트너는 자동수정 흐름(2.6 fix-pagecount)으로 이어갈 수 있습니다.
 
-> **글로벌 안전상한은 별개로 유지:** `options.maxPages = 1000p` 는 위 데이터 주도 검증과 **무관하게 항상 적용**되는 절대 상한입니다. 파일크기 상한 역시 별개로 `WORKER_MAX_FILE_SIZE`(현재 프로덕션 1 GB 실배포 — §1.4)가 적용됩니다.
+> **글로벌 안전상한은 별개로 유지:** `options.maxPages = 1000p` 는 위 데이터 주도 검증과 **무관하게 항상 적용**되는 절대 상한입니다. 파일크기 상한 역시 별개로 `WORKER_MAX_FILE_SIZE`(현재 프로덕션 2 GB 실배포 — §1.4)가 적용됩니다.
 
 **파트너 액션:** 제본 종류별로 위 값을 채워 전송하세요. 값 매핑은 2.5(canonical binding) 참조.
 
@@ -669,7 +679,7 @@ fix-pagecount  호출 안 함
 - [ ] `binding` 은 canonical 4종(`perfect`/`saddle`/`spiral`/`hardcover`)으로 매핑 전송 (2.5)
 - [ ] 데이터 주도 페이지수 검증 사용 시 `orderOptions.pageMultiple`/`pageCountMax`/`pageCountMin` 전송 (미전송 시 binding 폴백 — 2.4)
 - [ ] `FIXABLE`(배수 위반, `PAGE_COUNT_INVALID`) 수신 시 모달 → `fix-pagecount/external` → `outputFileId` 로 주문 (2.6)
-- [ ] 검증 PDF가 1 GB 초과(현재 프로덕션 상한)면 운영팀에 `WORKER_MAX_FILE_SIZE` 상향 사전 요청
+- [ ] 검증 PDF가 2 GB 초과(현재 프로덕션 상한 — §1.4)면 운영팀에 `WORKER_MAX_FILE_SIZE` 상향 사전 요청
 - [ ] 폴링 또는 웹훅 중 택1, 웹훅이면 `uploadCallbackUrl` 사전 등록 (SSRF allowlist)
 - [ ] 결과는 `download/external`(X-API-Key)로만 회수, fileId 고객 브라우저 노출 자제
 - [ ] 보존정책: 이행 후 `POST /files/:id/expiry/external {expiresAt}` 또는 `DELETE /files/:id/external`
@@ -1072,7 +1082,7 @@ book.finalization.completed | book.finalization.failed
 
 | # | 검증 항목 | 기준 |
 |---|---|---|
-| 1 | 파일 크기 | 코드 기본 100 MB / **프로덕션 현재 1 GB** (env `WORKER_MAX_FILE_SIZE`; 최대 2 GB는 운영팀 상향 대기) |
+| 1 | 파일 크기 | 코드 기본 100 MB / compose 폴백 1 GB / **프로덕션 실값 2 GB** (env `WORKER_MAX_FILE_SIZE` — §1.4) |
 | 2 | 파일 무결성 | PDF 구조 유효성 |
 | 3 | 페이지 수 / 제본 규격 | **데이터 주도**: `orderOptions.pageMultiple`/`pageCountMax`/`pageCountMin` 전송 시 그 값으로 검증, 미전송 시 binding 폴백. 배수 위반 → `PAGE_COUNT_INVALID`(FIXABLE), 상한 초과 → `PAGE_COUNT_EXCEEDED`(FAILED), 하한 미만 → `PAGE_COUNT_BELOW_MIN`(경고). binding 은 canonical 4종(`perfect`/`saddle`/`spiral`/`hardcover`). 글로벌 안전상한 `maxPages=1000p` 별도 유지. (2.4·2.5) |
 | 4 | 판형 | ±1 mm |
@@ -1084,7 +1094,7 @@ book.finalization.completed | book.finalization.failed
 | 11 | 해상도 | 150 DPI |
 | — | 판정 | 에러 ≥ 1 → `isValid=false` 차단 |
 
-> 결과는 잡 `result.errors` / `result.warnings` / `result.metadata` 에 담깁니다. `autoFixable` 이면 `FIXABLE`, 아니면 `FAILED`. (파일 크기 기준은 §1.4·FAQ 참조 — 코드 기본 100 MB, 현재 프로덕션 배포 1 GB.)
+> 결과는 잡 `result.errors` / `result.warnings` / `result.metadata` 에 담깁니다. `autoFixable` 이면 `FIXABLE`, 아니면 `FAILED`. (파일 크기 기준은 §1.4·FAQ 참조 — 코드 기본 100 MB, 현재 프로덕션 실값 2 GB.)
 
 ### 5.4 유형별 온보딩 체크리스트
 
@@ -1096,7 +1106,7 @@ book.finalization.completed | book.finalization.failed
 **유형 1 추가**
 - [ ] presigned 직결 시 R2 CORS origin + `ExposeHeaders: ETag` 등록 (오너 작업)
 - [ ] `validate/external` `fileType`(enum) + `orderOptions` 전체 전달
-- [ ] 검증 PDF가 1 GB 초과(현재 프로덕션 상한) 시 `WORKER_MAX_FILE_SIZE` 상향 사전 요청
+- [ ] 검증 PDF가 2 GB 초과(현재 프로덕션 상한 — §1.4) 시 `WORKER_MAX_FILE_SIZE` 상향 사전 요청
 - [ ] 보존정책(`expiry/external` / `DELETE external`) 설계
 
 **유형 2 추가**
@@ -1126,7 +1136,7 @@ CORS는 (a) Origin 없음→무조건 허용 (b) env 정적 (c) `*.vercel.app`/`
 현재 두 코드는 생성 시 동일 값으로 발급됩니다(worker 코드 미지정 시 editor 코드 복사). 단일 키를 전권 키로 취급하고 비밀유지하세요. `regenerate` 로 독립 회전되면 값이 달라질 수 있습니다.
 
 **Q. 1~2 GB 파일을 올릴 수 있나요?**
-presigned 업로드는 2 GB까지 허용합니다. 워커 PDF 검증 상한은 env `WORKER_MAX_FILE_SIZE` 로 결정되며, **코드 기본값은 100 MB이지만 현재 프로덕션 배포값은 1 GB**(`docker-compose.yml` `WORKER_MAX_FILE_SIZE=1073741824`)입니다. 즉 오늘 기준 1 GB까지 검증을 통과하고, 설정 상한 초과 시 즉시 `FAILED`('N MB를 초과합니다')입니다. 1 GB 초과(최대 2 GB) 검증은 워커 스트리밍(트랙 B) 완료 후 운영팀 상향이 필요하니 온보딩 시 협의하세요.
+네. presigned 업로드는 2 GB까지 허용하고, **워커 PDF 검증 상한도 현재 프로덕션 실값 2 GB** 입니다 — 두 상한이 같으므로 업로드에 성공한 파일이 크기 때문에 검증에서 막히지 않습니다. 상한은 env `WORKER_MAX_FILE_SIZE` 로 결정되며 층마다 값이 다릅니다: 코드 기본값 100 MB, `docker-compose.yml` 폴백 `${WORKER_MAX_FILE_SIZE:-1073741824}`(1 GB), **운영 `.env` 실값 `2147483648`(2 GB)**. `docker-compose.yml` 만 보고 1 GB 로 판단하지 마세요(§1.4 표). 설정 상한 초과 시 즉시 `FAILED`('N MB를 초과합니다')이며, 2 GB 를 넘는 파일이 필요하면 온보딩 시 협의하세요.
 
 **Q. 페이지수가 제본 배수에 안 맞아 검증이 `FIXABLE` 로 떨어집니다.**
 `orderOptions.pageMultiple` 을 전송하면 워커가 그 배수로 페이지수를 검증합니다. 배수 위반 시 `ErrorCode.PAGE_COUNT_INVALID`(autoFixable, `fixMethod='addBlankPages'`, `details.expected`=올림된 목표 페이지수)로 `FIXABLE` 판정됩니다. 보정하려면 `POST /api/worker-jobs/fix-pagecount/external {fileId, targetMultiple}`(비동기 — jobId 반환) 후 `GET /api/worker-jobs/external/:id` 폴링으로 `outputFileId`(빈 페이지 추가된 새 fileId, 원본 보존)를 받아 주문에 사용하세요. `pageMultiple`/`pageCountMax`/`pageCountMin` 을 셋 다 미전송하면 기존 binding 폴백으로 동작합니다(비파괴). 상세는 2.4·2.6 참조. (fix-pagecount 는 2026-06-25 배포 완료·LIVE)
