@@ -226,6 +226,25 @@ export const OPENAPI = {
   },
 
   /**
+   * 응답 설명 치환 — 키는 `operationId.상태코드`.
+   * summaryOverrides 와 **동일한** `{ text, expectedSource }` 계약을 따른다(드리프트 시 빌드 실패).
+   *
+   * 존재 이유: 응답 설명은 `@ApiResponse({ description })` 원문이 그대로 렌더되는 유일한 산문 슬롯이라
+   * **내부 설계서 절 참조가 파트너 대면으로 새는 경로**다. 파트너는 그 절을 볼 수 없으므로
+   * 참조가 남아 있으면 "어딘가에 더 있는데 못 보는 문서"라는 잘못된 신호만 준다.
+   *
+   * ⚠️ 근본 수정은 서버 원문에서 내부 절 참조를 빼는 것이다(여기는 그 전까지의 발행 차단층).
+   *    사실은 그대로 두고 **참조만** 제거한다 — 조건·에러코드를 바꾸면 허위 문서화다.
+   */
+  responseDescriptionOverrides: {
+    'BookSpecsController_calculatedSize.422': {
+      text: 'ERR_PAGE_COUNT_OUT_OF_RANGE — 판형의 `pageMin` / `pageMax` / `pageIncrement` 규칙 위반. 어떤 규칙인지는 `errors[].code` 로 세분된다.',
+      expectedSource:
+        'ERR_PAGE_COUNT_OUT_OF_RANGE — pageMin/Max/Increment 위반 (설계서 §3.3, errors[].code 세분)',
+    },
+  },
+
+  /**
    * enum 값별 주석. 미구현 값을 있는 것처럼 두지 않기 위한 강제 표기(계약 §4-10).
    * ⚠️ 이 주석은 **요청 스키마 표**(= 생성 시점) 안에 붙는다. 거부 시점을 반드시 명시하라 —
    *    두 값은 생성 자체는 201 DRAFT 로 성공하고, 막히는 곳은 최종화다.

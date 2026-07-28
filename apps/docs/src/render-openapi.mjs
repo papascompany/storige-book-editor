@@ -13,7 +13,8 @@
  *     읽지도 않는다.
  *
  * ⚠️ 오버라이드 드리프트 방지(핵심 불변식):
- *   `descriptionOverrides` / `summaryOverrides` 는 스펙 원문을 **무조건 덮어쓴다**. 그래서 원문이
+ *   `descriptionOverrides` / `summaryOverrides` / `responseDescriptionOverrides` 는 스펙 원문을
+ *   **무조건 덮어쓴다**. 그래서 원문이
  *   나중에 고쳐져도 오버라이드가 영원히 이기고, **스테일한 서술이 조용히 발행된다**(허위 문서화).
  *   이를 막기 위해 오버라이드는 `{ text, expectedSource }` 형태만 허용하고, 렌더 시점에
  *   스펙 원문과 `expectedSource` 를 대조해 다르면 **빌드를 깨뜨린다**. 등재해 놓고 스펙에서
@@ -31,7 +32,12 @@ export function renderOpenApiMarkdown(spec, cfg) {
   const ops = collectOperations(spec);
   const groups = groupOperations(ops, cfg.groups);
   /** 어떤 설정 키가 실제로 스펙에 적용됐는지 — 고아 등재를 뒤에서 잡는다. */
-  const usage = { descriptionOverrides: new Set(), summaryOverrides: new Set(), enumNotes: new Set() };
+  const usage = {
+    descriptionOverrides: new Set(),
+    summaryOverrides: new Set(),
+    responseDescriptionOverrides: new Set(),
+    enumNotes: new Set(),
+  };
 
   const out = [];
   out.push('## API 레퍼런스 (자동 생성) {#api-reference}', '');
@@ -51,6 +57,11 @@ export function renderOpenApiMarkdown(spec, cfg) {
 
   assertNoOrphans('descriptionOverrides', cfg.descriptionOverrides, usage.descriptionOverrides);
   assertNoOrphans('summaryOverrides', cfg.summaryOverrides, usage.summaryOverrides);
+  assertNoOrphans(
+    'responseDescriptionOverrides',
+    cfg.responseDescriptionOverrides,
+    usage.responseDescriptionOverrides,
+  );
   assertNoOrphans('enumNotes', cfg.enumNotes, usage.enumNotes);
 
   const schemaCount = Object.keys(spec.components?.schemas ?? {}).length;
@@ -205,7 +216,19 @@ function renderOperation({ path, method, op }, spec, cfg, usage) {
   }
   out.push('| 코드 | 설명 |', '| --- | --- |');
   for (const code of codes) {
-    out.push(`| \`${code}\` | ${cell(responses[code]?.description) || '—'} |`);
+    const respKey = `${op.operationId}.${code}`;
+    const respOverride = cfg.responseDescriptionOverrides?.[respKey];
+    let respDescription = responses[code]?.description;
+    if (respOverride !== undefined) {
+      usage.responseDescriptionOverrides.add(respKey);
+      respDescription = applyOverride(
+        'responseDescriptionOverrides',
+        respKey,
+        respOverride,
+        responses[code]?.description,
+      );
+    }
+    out.push(`| \`${code}\` | ${cell(respDescription) || '—'} |`);
   }
   out.push('');
 
