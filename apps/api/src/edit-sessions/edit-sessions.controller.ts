@@ -38,6 +38,7 @@ import { ImpositionPreviewResponseDto } from './dto/imposition-preview.dto';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Public } from '../auth/decorators/public.decorator';
 import { ApiKeyGuard } from '../auth/guards/api-key.guard';
+import { OptionalShopJwtGuard } from '../auth/guards/optional-shop-jwt.guard';
 import {
   CurrentSite,
   CurrentSitePayload,
@@ -130,22 +131,38 @@ export class EditSessionsController {
    *   CreateEditSessionDto 는 siteId 를 노출하고 service 는 `dto.siteId || null` 로 저장하므로,
    *   override 가 없으면 누구나 `POST /edit-sessions/guest {"siteId":"<피해자 site>"}` 로
    *   임의 테넌트 스탬프 세션을 심을 수 있었다("NULL-site fail-closed" 안전판의 우회 통로).
-   *   → dto.siteId 는 **무조건 버린다**. 스탬프 근거는 오직 §I-1(검증된 JWT)뿐이다.
+   *   → dto.siteId 는 **무조건 버린다**. 스탬프 근거는 오직 아래 I-1(검증된 JWT)뿐이다.
+   *
+   * 🏷️ siteId 스탬프 (2026-07-30) — I-1:
+   *   전역 JwtAuthGuard 는 @Public 에서 단락하므로 편집기가 Bearer 를 실어 보내도
+   *   req.user 가 비어 siteId 를 잃었다(= 회원 전환 후에도 승격 404 의 근본 원인).
+   *   OptionalShopJwtGuard 가 @Public 을 유지한 채 **서명 검증된** shop-session JWT
+   *   에서만 테넌트를 복원한다. 토큰 없음/위조/만료/site 없음 → **NULL 유지**.
+   *
+   *   ⚠️ NULL 세션이 승격에서 404 로 거부되는 것은 결함이 아니라 설계된 fail-closed 다
+   *      — 테넌트를 모르는 세션을 승격시키면 그것이 곧 교차테넌트 IDOR 이다.
+   *      추론(Origin·templateSetId·memberSeqno/orderSeqno)으로 메꾸지 않는다.
    */
   @Post('guest')
   @Public()
+  @UseGuards(OptionalShopJwtGuard)
   @ApiOperation({ summary: '게스트 편집 세션 생성 (Phase 4)' })
   @ApiResponse({ status: 201, description: '세션 생성 성공', type: EditSessionResponseDto })
   async createGuest(
     @Body() dto: CreateEditSessionDto,
+    @CurrentUser() user: any,
   ): Promise<EditSessionResponseDto> {
+    // 검증된 shop-session JWT 에서만 테넌트를 도출한다(그 외 전부 undefined → NULL).
+    const derivedSiteId =
+      user?.source === 'shop' && typeof user?.siteId === 'string' ? user.siteId : undefined;
+
     const session = await this.editSessionsService.create({
       ...dto,
       asGuest: true,
       memberSeqno: 0,
       orderSeqno: dto.orderSeqno ?? 0,
       // ⚠️ 위치 고정 — `...dto` **뒤**에 놓아야 클라이언트 값이 구조적으로 이길 수 없다.
-      siteId: undefined,
+      siteId: derivedSiteId,
     });
     // guestToken 은 응답 DTO 에 그대로 노출됨 (클라이언트가 보관)
     return this.editSessionsService.toResponseDto(session);

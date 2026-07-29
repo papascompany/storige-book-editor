@@ -1,7 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { JwtModule } from '@nestjs/jwt';
 import { EditSessionsController } from './edit-sessions.controller';
+import { OptionalShopJwtGuard } from '../auth/guards/optional-shop-jwt.guard';
 import { EditSessionsService } from './edit-sessions.service';
 import { SessionStatus, SessionMode } from './entities/edit-session.entity';
 import { SitesService } from '../sites/sites.service';
@@ -27,8 +29,12 @@ describe('EditSessionsController', () => {
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
+      // POST /edit-sessions/guest 의 route-scoped OptionalShopJwtGuard 가 JwtService 를
+      // 요구한다(2026-07-30 siteId 스탬프) — 프로덕션 EditSessionsModule 과 동일 배선.
+      imports: [JwtModule.register({ secret: 'spec-secret' })],
       controllers: [EditSessionsController],
       providers: [
+        OptionalShopJwtGuard,
         {
           provide: EditSessionsService,
           useValue: {
@@ -155,10 +161,10 @@ describe('EditSessionsController', () => {
     });
 
     it('T1 공격: body 에 피해자 siteId 를 실어도 service 에 전달되지 않는다', async () => {
-      await controller.createGuest({
-        mode: SessionMode.SPREAD,
-        siteId: 'victim-site-uuid',
-      } as any);
+      await controller.createGuest(
+        { mode: SessionMode.SPREAD, siteId: 'victim-site-uuid' } as any,
+        undefined, // 인증 컨텍스트 없음 = 무인증 공격자
+      );
 
       const passed = service.create.mock.calls[0][0];
       expect(passed.siteId).toBeUndefined();
@@ -169,10 +175,38 @@ describe('EditSessionsController', () => {
     });
 
     it('siteId 미전송(정상 클라이언트)도 종전대로 생성된다', async () => {
-      await controller.createGuest({ mode: SessionMode.SPREAD } as any);
+      await controller.createGuest({ mode: SessionMode.SPREAD } as any, undefined);
 
       const passed = service.create.mock.calls[0][0];
       expect(passed.siteId).toBeUndefined();
+    });
+
+    // ── 스탬프 도출 분기표 (I-1) — 근거는 "검증된 shop-session JWT" 하나뿐 ──
+    it('검증된 shop 컨텍스트가 있으면 그 siteId 로 스탬프한다', async () => {
+      await controller.createGuest({ mode: SessionMode.SPREAD } as any, {
+        source: 'shop',
+        siteId: 'site-a',
+      });
+
+      expect(service.create.mock.calls[0][0].siteId).toBe('site-a');
+    });
+
+    it('body siteId 는 shop 컨텍스트가 있어도 무시된다(JWT 가 이긴다)', async () => {
+      await controller.createGuest(
+        { mode: SessionMode.SPREAD, siteId: 'site-b' } as any,
+        { source: 'shop', siteId: 'site-a' },
+      );
+
+      expect(service.create.mock.calls[0][0].siteId).toBe('site-a');
+    });
+
+    it('source!=="shop" 컨텍스트는 스탬프 근거가 아니다 → NULL 유지', async () => {
+      await controller.createGuest({ mode: SessionMode.SPREAD } as any, {
+        source: 'admin',
+        siteId: 'site-a',
+      });
+
+      expect(service.create.mock.calls[0][0].siteId).toBeUndefined();
     });
   });
 
