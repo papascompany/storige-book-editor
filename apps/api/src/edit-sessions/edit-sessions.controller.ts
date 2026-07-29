@@ -7,6 +7,7 @@ import {
   Body,
   Param,
   Query,
+  Headers,
   UseGuards,
   ParseUUIDPipe,
   BadRequestException,
@@ -171,21 +172,43 @@ export class EditSessionsController {
   /**
    * 게스트 세션 업데이트 (canvasData / contentPdf*) — 인쇄 워크플로우 v1 Phase 4.
    *
-   * X-Guest-Token 헤더로 본인 세션임을 증명한 후 update 호출.
+   * X-Guest-Token 헤더(또는 guestToken 쿼리)로 본인 세션임을 증명한 후 update 호출.
    * userId=0 으로 service 호출 → service 가 isGuest 분기로 통과.
+   *
+   * 🔒 F-3 (2026-07-30): 종전 `if (guestTokenQuery && …)` 는 **토큰을 아예 안 보내면
+   *   소유 검사를 통째로 건너뛰었다** — 세션 UUID 만 알면 누구나 남의 게스트 세션
+   *   canvasData 를 덮어쓸 수 있었다. 그 세션이 이제 siteId 스탬프를 받아 인쇄 자산
+   *   승격 경로에 올라타므로, 이 구멍을 연 채로 승격을 열면 안 된다.
+   *   → 토큰 미전송은 403 GUEST_TOKEN_REQUIRED(fail-closed).
+   *
+   *   무중단: 편집기 클라이언트는 이미 query 로 **필수** 동봉하고(api/edit-sessions.ts
+   *   updateGuest 는 guestToken 이 필수 인자), 연동 가이드는 header 를 안내한다 →
+   *   **header/query 양쪽 수용**으로 기존 호출자 전원 통과.
    */
   @Patch('guest/:id')
   @Public()
   @ApiOperation({ summary: '게스트 세션 업데이트 (Phase 4)' })
   @ApiResponse({ status: 200, description: '세션 업데이트 성공', type: EditSessionResponseDto })
-  @ApiResponse({ status: 403, description: '게스트 토큰 불일치 또는 만료' })
+  @ApiResponse({ status: 403, description: '게스트 토큰 미전송/불일치 또는 만료' })
   async updateGuest(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateEditSessionDto,
     @Query('guestToken') guestTokenQuery?: string,
+    @Headers('x-guest-token') guestTokenHeader?: string,
   ): Promise<EditSessionResponseDto> {
     // X-Guest-Token 헤더가 안 되는 환경(예: 일부 CORS)을 위해 쿼리도 허용.
-    // 실제로는 클라이언트 fetch 가 header 로 전송 — 컨트롤러에서 @Req() 로 받음.
+    const presentedToken = guestTokenHeader || guestTokenQuery;
+
+    // ⚠️ 순서 고정 — 소유 증명을 **조회보다 먼저** 요구한다.
+    //   findById 를 먼저 하면 무인증 호출자에게 "그 세션이 존재하는가"를 알려주는
+    //   존재 오라클이 된다. 기존 클라이언트는 항상 토큰을 보내므로 동작 변화 없음.
+    if (!presentedToken) {
+      throw new ForbiddenException({
+        code: 'GUEST_TOKEN_REQUIRED',
+        message: '게스트 토큰이 필요합니다.',
+      });
+    }
+
     const session = await this.editSessionsService.findById(id);
     if (!session.guestToken) {
       throw new ForbiddenException({ code: 'NOT_A_GUEST_SESSION', message: '게스트 세션이 아닙니다.' });
@@ -193,7 +216,7 @@ export class EditSessionsController {
     if (session.guestExpiresAt && session.guestExpiresAt < new Date()) {
       throw new ForbiddenException({ code: 'GUEST_SESSION_EXPIRED', message: '게스트 세션이 만료되었습니다 (24h).' });
     }
-    if (guestTokenQuery && guestTokenQuery !== session.guestToken) {
+    if (presentedToken !== session.guestToken) {
       throw new ForbiddenException({ code: 'GUEST_TOKEN_MISMATCH', message: '게스트 토큰이 일치하지 않습니다.' });
     }
     // userId=0 (게스트) — service 가 isGuest 로 권한 검사 우회
@@ -229,7 +252,13 @@ export class EditSessionsController {
       });
     }
     const memberSeqno = parseInt(user.userId);
-    return this.editSessionsService.migrateGuestSessions(body.guestToken, memberSeqno);
+    // I-3 (2026-07-30): 호출자 테넌트를 넘겨 교차 site 흡수를 서비스에서 거부한다.
+    // caller siteId 가 없으면(레거시 리프레시 토큰 등) null → 서비스가 허용 + warn.
+    return this.editSessionsService.migrateGuestSessions(
+      body.guestToken,
+      memberSeqno,
+      typeof user?.siteId === 'string' ? user.siteId : null,
+    );
   }
 
   /**

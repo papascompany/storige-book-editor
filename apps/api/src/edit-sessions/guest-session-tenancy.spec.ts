@@ -234,6 +234,146 @@ describe('게스트 세션 테넌시 — siteId 스탬프 + 승격 게이트 e2e
     });
   });
 
+  // ── 게스트 업데이트 소유 검사 (F-3) ──────────────────────────────────
+  describe('PATCH /edit-sessions/guest/:id — 소유 증명 없이는 못 쓴다', () => {
+    /** 게스트 세션 하나를 만들고 {id, token} 반환 */
+    const seedGuest = async () => {
+      const res = await createGuest().expect(201);
+      return { id: res.body.id as string, token: res.body.guestToken as string };
+    };
+
+    const patch = (id: string) =>
+      request(app.getHttpServer()).patch(`/edit-sessions/guest/${id}`);
+
+    it('T12 공격: guestToken 없이 PATCH → 403 GUEST_TOKEN_REQUIRED', async () => {
+      const { id } = await seedGuest();
+
+      const res = await patch(id).send({ canvasData: { hacked: true } }).expect(403);
+
+      expect(res.body.code).toBe('GUEST_TOKEN_REQUIRED');
+      // 덮어쓰기가 실제로 일어나지 않았다
+      expect(stored(id).canvasData).toBeUndefined();
+    });
+
+    it('T13-a 무중단: query 로만 토큰 전송(현행 편집기) → 200', async () => {
+      const { id, token } = await seedGuest();
+
+      await patch(id)
+        .query({ guestToken: token })
+        .send({ canvasData: { ok: 1 } })
+        .expect(200);
+
+      expect(stored(id).canvasData).toEqual({ ok: 1 });
+    });
+
+    it('T13-b 무중단: X-Guest-Token 헤더로만 전송(연동 가이드) → 200', async () => {
+      const { id, token } = await seedGuest();
+
+      await patch(id)
+        .set('X-Guest-Token', token)
+        .send({ canvasData: { ok: 2 } })
+        .expect(200);
+
+      expect(stored(id).canvasData).toEqual({ ok: 2 });
+    });
+
+    it('틀린 토큰 → 403 GUEST_TOKEN_MISMATCH', async () => {
+      const { id } = await seedGuest();
+
+      const res = await patch(id)
+        .set('X-Guest-Token', '00000000-0000-4000-8000-999999999999')
+        .send({ canvasData: { hacked: true } })
+        .expect(403);
+
+      expect(res.body.code).toBe('GUEST_TOKEN_MISMATCH');
+    });
+  });
+
+  // ── 마이그레이션 테넌시 (I-2 / I-3) ──────────────────────────────────
+  describe('guest/migrate — siteId 무접촉 + 교차 site 거부', () => {
+    /** 스탬프된 게스트 세션 생성 */
+    const seed = async (siteId: string | null) => {
+      const headers: Record<string, string> = siteId
+        ? { Authorization: `Bearer ${signShop({ siteId })}` }
+        : {};
+      const res = await createGuest(headers).expect(201);
+      return { id: res.body.id as string, token: res.body.guestToken as string };
+    };
+
+    it('T7 공격: 세션 siteId=A 를 caller siteId=B 가 흡수 → 403 CROSS_SITE_MIGRATION_DENIED', async () => {
+      const { id, token } = await seed(SITE_A);
+
+      await expect(
+        sessionsService.migrateGuestSessions(token, 777, SITE_B),
+      ).rejects.toMatchObject({
+        response: expect.objectContaining({ code: 'CROSS_SITE_MIGRATION_DENIED' }),
+      });
+
+      // 요청 전체 거부 — 부분 흡수도, 조용한 덮어쓰기도 없다
+      expect(stored(id).siteId).toBe(SITE_A);
+      expect(stored(id).memberSeqno).toBe(0);
+      expect(stored(id).guestToken).toBe(token);
+    });
+
+    it('T7-b 한 건이라도 교차하면 전체 거부(부분 흡수 금지)', async () => {
+      const a = await seed(SITE_A);
+      // 같은 토큰을 공유하는 site B 세션을 하나 더 심는다(다중 세션 흡수 시나리오)
+      const b = await seed(SITE_B);
+      stored(b.id).guestToken = a.token;
+
+      await expect(
+        sessionsService.migrateGuestSessions(a.token, 777, SITE_A),
+      ).rejects.toMatchObject({
+        response: expect.objectContaining({ code: 'CROSS_SITE_MIGRATION_DENIED' }),
+      });
+
+      // 자기 site 세션(a)까지 포함해 **아무것도** 흡수되지 않는다
+      expect(stored(a.id).memberSeqno).toBe(0);
+      expect(stored(b.id).memberSeqno).toBe(0);
+    });
+
+    it('T8 동일 site: 흡수 성공 + siteId 는 여전히 A (I-2 무접촉)', async () => {
+      const { id, token } = await seed(SITE_A);
+
+      const out = await sessionsService.migrateGuestSessions(token, 777, SITE_A);
+
+      expect(out.migratedCount).toBe(1);
+      expect(stored(id).memberSeqno).toBe(777);
+      expect(stored(id).siteId).toBe(SITE_A); // 덮어쓰지 않는다
+      expect(stored(id).guestToken).toBeNull();
+    });
+
+    it('T9 세션 siteId=null: 흡수해도 NULL 그대로 (migrate 는 스탬프하지 않는다)', async () => {
+      const { id, token } = await seed(null);
+
+      const out = await sessionsService.migrateGuestSessions(token, 777, SITE_A);
+
+      expect(out.migratedCount).toBe(1);
+      expect(stored(id).memberSeqno).toBe(777);
+      expect(stored(id).siteId).toBeNull(); // caller 의 site 를 찍지 않는다
+    });
+
+    it('T10 caller siteId 없음(구형 리프레시 토큰): 허용 + siteId 불변', async () => {
+      const { id, token } = await seed(SITE_A);
+
+      const out = await sessionsService.migrateGuestSessions(token, 777, null);
+
+      expect(out.migratedCount).toBe(1);
+      expect(stored(id).siteId).toBe(SITE_A);
+    });
+
+    it('T11 만료 게스트 세션은 흡수하지 않는다', async () => {
+      const { id, token } = await seed(SITE_A);
+      stored(id).guestExpiresAt = new Date(Date.now() - 1000);
+
+      const out = await sessionsService.migrateGuestSessions(token, 777, SITE_A);
+
+      expect(out.migratedCount).toBe(0);
+      expect(stored(id).memberSeqno).toBe(0);
+      expect(stored(id).guestToken).toBe(token);
+    });
+  });
+
   // ── 승격 e2e (트랙 목표의 유일한 성공 증거 + IDOR 차단 증거) ───────────
   describe('승격 게이트 — createGuest 스탬프가 판정에 도달하는가', () => {
     /** 승격 가능 상태로 만든다(완료 + 산출 PDF) — 스탬프 자체는 건드리지 않는다 */
