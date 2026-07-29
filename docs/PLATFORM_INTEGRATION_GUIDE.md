@@ -809,7 +809,16 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 > ```
 >
 > **`editor.complete` 를 받으면 `needsAuth` 를 가장 먼저 확인하세요 — `true` 면 주문 생성·승격·합성을 일절 하지 말고 로그인 유도로 분기합니다.** `editor.needAuth` 를 기다렸다 분기하면 **이미 늦습니다**: ①에서 곧바로 후속 처리를 태우면 아직 회원 세션이 아닌 채로 진행되고, 뒤이어 도착한 ②가 화면을 덮어 원인 파악도 어려워집니다. 게스트 완료 payload 는 위 미포함 필드에 더해 **`files` 도 빈 객체**이므로, `files.contentFileId` 유무로 정상 완료를 판별하려는 시도도 실패합니다.
-> 또한 게스트 세션은 **책 승격**(Partner API v1 `POST /api/v1/books` `creationType=EDITOR_SESSION` — 2.0 의 유형 1 표면이며 유형 2 의 기본 경로는 아닙니다)의 대상이 아닙니다. 시도하면 `404` 가 나는데, 이유는 "회원 소유가 아니라서"가 **아니라** 게스트 세션 생성 라우트가 테넌트를 주입하지 않아 **`siteId` 가 비어 있고**, 승격 게이트가 `siteId` 없는 세션을 명시적으로 거부하기 때문입니다(교차테넌트 IDOR 방지). `guest/migrate` 는 `memberSeqno`·`guestToken` 만 바꾸고 `siteId` 는 그대로 두므로 **회원 전환 후에도 그 세션은 승격되지 않습니다** — 재편집과 `compose-mixed` 합성은 정상 동작하니, 유형 2 파트너는 3.3·3.4 경로를 그대로 쓰면 됩니다.
+> 또한 게스트 세션의 **책 승격**(Partner API v1 `POST /api/v1/books` `creationType=EDITOR_SESSION` — 2.0 의 유형 1 표면이며 유형 2 의 기본 경로는 아닙니다) 가능 여부는 **세션을 만들 때 편집기가 유효한 shop-session 토큰을 들고 있었는지**로 갈립니다(2026-07-30 변경).
+>
+> | 게스트 세션 생성 방식 | 저장되는 `siteId` | 회원 전환 후 승격 |
+> |---|---|---|
+> | `/embed` 로 진입(= `token` 필수, shop-session JWT 보유) | 그 토큰의 `siteId` | **가능** — 같은 사이트의 API 키로만 |
+> | 토큰 없이 생성(레거시 standalone `/`, 만료·위조 토큰) | `NULL` | **불가(404)** |
+>
+> 승격 게이트는 `siteId` 가 **없거나 호출한 API 키의 사이트와 다르면** `404` 로 거부합니다(교차테넌트 IDOR 방지 — 존재 은닉이라 "없음"과 "남의 것"이 같은 응답입니다). **`siteId` 가 비어 있는 세션이 승격되지 않는 것은 버그가 아니라 설계된 안전장치입니다** — 테넌트를 모르는 세션을 승격시키면 그 세션의 산출 PDF 가 엉뚱한 파트너의 책 자산이 되기 때문입니다. 따라서 storige 는 Origin·템플릿·회원번호 같은 간접 단서로 사이트를 **추측하지 않습니다**(전부 위조 가능하거나 파트너 간 중복).
+>
+> 실무 요약: 임베드 파트너는 항상 `/embed`+`token` 으로 진입하므로 별도 조치가 필요 없습니다. `guest/migrate` 는 종전대로 `memberSeqno`·`guestToken` 만 바꾸고 **`siteId` 는 절대 건드리지 않습니다**(생성 시점 테넌트가 영구 보존). 재편집과 `compose-mixed` 합성은 `siteId` 유무와 무관하게 정상 동작하니, 유형 2 파트너는 3.3·3.4 경로를 그대로 쓰면 됩니다.
 > 방어적으로는 **`guestToken` 이 있는데 `needsAuth` 가 없는 형태도 게스트로 취급**하세요(fail-closed). 로그인 이후 처리는 3.3 의 "게스트 → 회원 전환" 을 따르세요.
 > **`editCode` 형식:** `EDIT-XXXXXXXX` = 접두 `EDIT-` + 세션ID 앞 8자 대문자(`EDIT-${id.substring(0,8).toUpperCase()}`). 순수 8자리 숫자가 아닙니다.
 > **`editor.pricingChange` (D-3, 2026-07-06 additive):** 편집 중 페이지 추가/삭제로 총 페이지 수가 바뀌면 ~300ms 디바운스로 발신됩니다. 가격 계산 주체는 **호스트**(storige 는 가격을 계산하지 않음) — `pageCount`(물리 페이지, 포토북 내지 펼침면 ×2)와 `pricing` 메타로 장바구니 표시가를 갱신하세요. **발신 조건(보수 기본):** 템플릿셋에 `pricing` 이 설정된 경우 + 회원 세션만(게스트 미발신) + 에디터 초기화/세션 복원 완료 후. `coverType` 은 템플릿셋에 커버 종류 코드(string, 확장 가능 — `hardcover_wrap`/`softcover_variable_spine`/`ready_made` 시드)가 설정된 경우에만 동봉. 미지 이벤트를 무시하는 기존 수신부는 영향 없음(additive).
@@ -848,6 +857,7 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
    # → { "migratedCount": 1, "sessionIds": ["<same-session-id>"] }
    ```
    > 응답의 `sessionIds` 에는 그 `guestToken` 으로 만들어진 세션이 **전부** 들어옵니다(한 명이 여러 개를 편집했을 수 있음). 에러: 토큰 없음·만료·위조 `401`(전역 JWT 가드 — 이 라우트는 `@Public` 이 아닙니다), 토큰은 유효하나 회원 식별자가 없는 경우 `403 AUTH_REQUIRED`, `guestToken` 누락/8자 미만 `400 GUEST_TOKEN_REQUIRED`. **shop-session 으로 발급한 회원 accessToken 을 쓰세요** — 운영자(admin) 로그인 토큰은 회원 식별자가 없어 `403` 입니다.
+   > 🔒 **교차 사이트 흡수 거부 (2026-07-30)**: 흡수 대상 세션 중 **하나라도** 호출한 토큰의 사이트와 다른 사이트에서 만들어진 것이 있으면 요청 **전체**가 `403 CROSS_SITE_MIGRATION_DENIED` 로 거부됩니다(부분 흡수 없음). 자기 사이트에서 발급한 회원 토큰으로 호출하면 정상입니다. 또 **만료된 게스트 세션은 흡수 대상에서 제외**되므로 `migratedCount` 가 기대보다 작을 수 있습니다 — 24시간 창 안에 전환을 마치세요.
 4. **같은 `sessionId` 로 재오픈** — `/embed?sessionId=<동일 id>&token=<회원 accessToken>&refreshToken=&parentOrigin=`. 작업물은 그대로 복원되고, 이제 편집완료를 누르면 게스트 분기 없이 **정상 완료**(`needsAuth` 없음 + `files` 채워짐 + PDF 생성)로 이어집니다.
 
 > ⚠️ **3번을 건너뛰고 4번만 하면 무한 루프**가 됩니다 — 세션에 게스트 토큰이 남아 있는 동안에는 회원 토큰으로 열어도 편집기가 다시 게스트 분기를 타서 `editor.complete{needsAuth:true}` 만 반복 발신합니다.
@@ -897,7 +907,7 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
         break;
       case "editor.complete":
         // 🚨 needsAuth 를 가장 먼저 확인한다. 게스트 완료는 editor.needAuth 보다 먼저 도착한다.
-        //    여기서 주문/합성을 태우면 안 된다(게스트 세션은 siteId 가 비어 v1 승격도 404).
+        //    여기서 주문/합성을 태우면 안 된다(아직 회원 세션이 아니다).
         //    guestToken 만 있고 needsAuth 가 없는 형태도 게스트로 본다(fail-closed).
         if (msg.payload.needsAuth || msg.payload.guestToken) {
           handledGuest.add(msg.payload.guestToken);         // 뒤따라올 needAuth 중복 차단
@@ -1032,7 +1042,9 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 | GET | `/api/edit-sessions/external` | @Public + X-API-Key | 주문별 편집세션 조회 (`?orderSeqno=`) |
 | GET | `/api/edit-sessions/:id/imposition-preview` | @Public + X-API-Key | 임포지션 프리뷰 |
 | POST | `/api/edit-sessions` | (회원/게스트) | 편집세션 생성 — `memberSeqno` falsy 시 `400 MEMBER_REQUIRED` |
-| POST | `/api/edit-sessions/guest/migrate` | **JWT (Bearer, shop-session 회원 토큰)** | 게스트 세션 → 회원 흡수. Body `{guestToken}` → `{migratedCount, sessionIds[]}`. 에러 `401`(토큰 없음/만료) · `403 AUTH_REQUIRED`(회원 식별자 없는 토큰) · `400 GUEST_TOKEN_REQUIRED`(누락/8자 미만). `siteId` 는 바뀌지 않음 → v1 승격 대상은 되지 않음. 3.3 |
+| POST | `/api/edit-sessions/guest` | @Public (**Bearer 있으면 site 스탬프**) | 게스트 세션 생성. 토큰이 있으면 그 shop-session JWT 의 `siteId` 를 세션에 스탬프하고, 없거나 위조·만료면 `siteId=NULL` 로 생성(**401 이 되지 않음** — 무인증 생성은 계속 허용). Body 의 `siteId` 는 **무시**됩니다. 3.2 |
+| PATCH | `/api/edit-sessions/guest/:id` | @Public + **게스트 토큰 필수** | 게스트 세션 저장. `X-Guest-Token` 헤더 **또는** `?guestToken=` 쿼리 중 하나로 소유를 증명해야 합니다. 에러 `403 GUEST_TOKEN_REQUIRED`(미전송) · `403 GUEST_TOKEN_MISMATCH` · `403 GUEST_SESSION_EXPIRED`(24h) · `403 NOT_A_GUEST_SESSION` |
+| POST | `/api/edit-sessions/guest/migrate` | **JWT (Bearer, shop-session 회원 토큰)** | 게스트 세션 → 회원 흡수. Body `{guestToken}` → `{migratedCount, sessionIds[]}`. 에러 `401`(토큰 없음/만료) · `403 AUTH_REQUIRED`(회원 식별자 없는 토큰) · `403 CROSS_SITE_MIGRATION_DENIED`(타 사이트 세션 포함 — 요청 전체 거부) · `400 GUEST_TOKEN_REQUIRED`(누락/8자 미만). `siteId` 는 바뀌지 않음(생성 시점 테넌트 영구 보존) → 승격 가능 여부는 **생성 시점**에 결정됨. 3.3 |
 | GET/POST/PUT/DELETE | `/api/sites`, `/api/sites/:id` | JWT + ADMIN/MANAGER | 테넌트 생애주기 (운영자 전용, 파트너 비대상). **수정은 `PUT /api/sites/:id`** (`:id` 에 PATCH 라우트 없음) |
 | PATCH | `/api/sites/:id/regenerate` | JWT + ADMIN/MANAGER | 키 회전 (`{target:'editor'\|'worker'\|'both'}`) |
 
