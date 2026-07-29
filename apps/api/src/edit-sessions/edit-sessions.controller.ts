@@ -157,6 +157,31 @@ export class EditSessionsController {
     const derivedSiteId =
       user?.source === 'shop' && typeof user?.siteId === 'string' ? user.siteId : undefined;
 
+    // 🔒 F-5 (2026-07-30): 게스트 라우트에도 회원 라우트(Patch D)와 동일한 주문 스코프 가드.
+    //   종전에는 이 검사가 없어 `allowedOrderSeqnos:[111]` 토큰으로 `orderSeqno:222` 세션을
+    //   만들 수 있었고(회원 라우트는 403), 그 세션이 NULL-site 라 승격 404 로 자연 차단됐다.
+    //   siteId 스탬프가 붙으면서 그 결과물이 **승격 가능**해지므로 같은 커밋에서 함께 막는다.
+    //   교차테넌트는 아니지만(공격자도 그 site 의 정당한 고객), 파트너가 orderSeqno 로 세션을
+    //   찾아 승격하는 운용이면 타 고객 주문에 남의 PDF 가 붙는다.
+    //   ⚠️ 게스트는 orderSeqno 가 선택이므로 **명시한 경우에만** 검증한다(미지정은 기존대로 통과).
+    //   allowedOrderSeqnos 가 없는 토큰도 기존대로 통과 — 회원 라우트의 호환 모드와 동일.
+    if (
+      dto.orderSeqno !== undefined &&
+      dto.orderSeqno !== null &&
+      Array.isArray(user?.allowedOrderSeqnos) &&
+      user.allowedOrderSeqnos.length > 0 &&
+      !user.allowedOrderSeqnos.includes(Number(dto.orderSeqno))
+    ) {
+      throw new ForbiddenException({
+        code: 'ORDER_NOT_ALLOWED',
+        message: `이 토큰은 주문 ${dto.orderSeqno}에 대한 작업 권한이 없습니다.`,
+        details: {
+          allowedOrderSeqnos: user.allowedOrderSeqnos,
+          requestedOrderSeqno: dto.orderSeqno,
+        },
+      });
+    }
+
     const session = await this.editSessionsService.create({
       ...dto,
       asGuest: true,

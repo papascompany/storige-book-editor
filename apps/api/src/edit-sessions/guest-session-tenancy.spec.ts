@@ -195,6 +195,46 @@ describe('게스트 세션 테넌시 — siteId 스탬프 + 승격 게이트 e2e
       expect(stored(res.body.id).siteId).toBeNull();
     });
 
+    // F-5 (적대 리뷰 ATK-14): siteId 스탬프가 붙으면서 "주문 스코프를 벗어난 게스트 세션"이
+    // 승격 가능해졌다. 회원 라우트(Patch D)에만 있던 allowedOrderSeqnos 가드를 게스트에도 적용.
+    // 교차테넌트는 아니지만, 파트너가 orderSeqno 로 세션을 찾아 승격하면 타 고객 주문에 남의 PDF 가 붙는다.
+    it('T5-a 공격(ATK-14): 허용되지 않은 orderSeqno 로 게스트 세션 생성 → 403 ORDER_NOT_ALLOWED', async () => {
+      const token = signShop({ siteId: SITE_A, allowedOrderSeqnos: [111] });
+
+      await createGuest({ Authorization: `Bearer ${token}` }, { orderSeqno: 222 }).expect(403);
+    });
+
+    it('T5-b 무중단: 허용된 orderSeqno 는 그대로 통과(201 + siteId 스탬프)', async () => {
+      const token = signShop({ siteId: SITE_A, allowedOrderSeqnos: [111] });
+
+      const res = await createGuest(
+        { Authorization: `Bearer ${token}` },
+        { orderSeqno: 111 },
+      ).expect(201);
+
+      expect(stored(res.body.id).siteId).toBe(SITE_A);
+      expect(stored(res.body.id).orderSeqno).toBe(111);
+    });
+
+    it('T5-c 무중단: allowedOrderSeqnos 없는 토큰은 기존대로 통과(호환 모드)', async () => {
+      const token = signShop({ siteId: SITE_A });
+
+      const res = await createGuest(
+        { Authorization: `Bearer ${token}` },
+        { orderSeqno: 999 },
+      ).expect(201);
+
+      expect(stored(res.body.id).siteId).toBe(SITE_A);
+    });
+
+    it('T5-d 무중단: orderSeqno 미지정 게스트는 스코프 토큰이 있어도 통과(게스트는 선택 필드)', async () => {
+      const token = signShop({ siteId: SITE_A, allowedOrderSeqnos: [111] });
+
+      const res = await createGuest({ Authorization: `Bearer ${token}` }).expect(201);
+
+      expect(stored(res.body.id).siteId).toBe(SITE_A);
+    });
+
     it('T5 만료 토큰 → 201 + siteId=null', async () => {
       const expired = signShop({ siteId: SITE_A }, JWT_SECRET, '-1s');
 

@@ -65,6 +65,13 @@ export class OptionalShopJwtGuard implements CanActivate {
       source: 'shop',
       siteId,
       siteName: typeof payload.siteName === 'string' ? payload.siteName : undefined,
+      // F-5: 주문 스코프도 같은 서명 검증 JWT 에서 복원한다. 회원 라우트(Patch D)가 이 필드로
+      // orderSeqno 를 가드하는데, 게스트 라우트에서 이 값이 비면 같은 검사를 할 수 없어
+      // "허용되지 않은 주문의 게스트 세션"이 만들어지고 siteId 스탬프 때문에 승격까지 된다.
+      // 배열이 아니면 undefined → 호출부의 `Array.isArray` 호환 모드(검사 생략)로 떨어진다.
+      allowedOrderSeqnos: Array.isArray(payload.allowedOrderSeqnos)
+        ? payload.allowedOrderSeqnos
+        : undefined,
     };
     return true;
   }
