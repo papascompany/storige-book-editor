@@ -145,6 +145,37 @@ describe('EditSessionsController', () => {
     });
   });
 
+  // ── F-1 (2026-07-30): POST /edit-sessions/guest 는 @Public — body 는 무인증 임의 입력 ──
+  // dto.siteId 를 그대로 신뢰하면 누구나 임의 테넌트 스탬프 세션을 심을 수 있고,
+  // 그 세션이 곧 파트너 승격(교차테넌트 IDOR) 대상이 된다.
+  describe('POST /edit-sessions/guest — dto.siteId 위조 통로 차단(F-1)', () => {
+    beforeEach(() => {
+      service.create.mockResolvedValue({ id: 'sess-new' } as any);
+      service.toResponseDto.mockReturnValue({ id: 'sess-new' } as any);
+    });
+
+    it('T1 공격: body 에 피해자 siteId 를 실어도 service 에 전달되지 않는다', async () => {
+      await controller.createGuest({
+        mode: SessionMode.SPREAD,
+        siteId: 'victim-site-uuid',
+      } as any);
+
+      const passed = service.create.mock.calls[0][0];
+      expect(passed.siteId).toBeUndefined();
+      // 게스트 계약(무중단) — 나머지 스탬프는 종전 그대로
+      expect(passed.asGuest).toBe(true);
+      expect(passed.memberSeqno).toBe(0);
+      expect(passed.orderSeqno).toBe(0);
+    });
+
+    it('siteId 미전송(정상 클라이언트)도 종전대로 생성된다', async () => {
+      await controller.createGuest({ mode: SessionMode.SPREAD } as any);
+
+      const passed = service.create.mock.calls[0][0];
+      expect(passed.siteId).toBeUndefined();
+    });
+  });
+
   // ── 편집보관함 경량(summary) 모드 (2026-06-11): GET /edit-sessions/my?summary=1 ──
   describe('GET /edit-sessions/my (summary 경량 모드)', () => {
     const shopUser = { userId: '100', role: 'customer', source: 'shop' };

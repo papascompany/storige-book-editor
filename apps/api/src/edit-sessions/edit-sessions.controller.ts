@@ -125,6 +125,12 @@ export class EditSessionsController {
    *
    * 클라이언트는 응답의 guestToken 을 sessionStorage 에 저장하고,
    * 이후 PATCH /edit-sessions/guest/:id 호출 시 X-Guest-Token 헤더로 전송.
+   *
+   * 🔒 F-1 (2026-07-30): 본 라우트는 @Public — 즉 body 는 **무인증 임의 입력**이다.
+   *   CreateEditSessionDto 는 siteId 를 노출하고 service 는 `dto.siteId || null` 로 저장하므로,
+   *   override 가 없으면 누구나 `POST /edit-sessions/guest {"siteId":"<피해자 site>"}` 로
+   *   임의 테넌트 스탬프 세션을 심을 수 있었다("NULL-site fail-closed" 안전판의 우회 통로).
+   *   → dto.siteId 는 **무조건 버린다**. 스탬프 근거는 오직 §I-1(검증된 JWT)뿐이다.
    */
   @Post('guest')
   @Public()
@@ -138,6 +144,8 @@ export class EditSessionsController {
       asGuest: true,
       memberSeqno: 0,
       orderSeqno: dto.orderSeqno ?? 0,
+      // ⚠️ 위치 고정 — `...dto` **뒤**에 놓아야 클라이언트 값이 구조적으로 이길 수 없다.
+      siteId: undefined,
     });
     // guestToken 은 응답 DTO 에 그대로 노출됨 (클라이언트가 보관)
     return this.editSessionsService.toResponseDto(session);
