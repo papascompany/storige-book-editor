@@ -192,6 +192,13 @@ export class AuthService {
         source: 'shop',
         permissions: payload.permissions,
         ...(allowedOrderSeqnos.length > 0 && { allowedOrderSeqnos }),
+        // F-4 (2026-07-30) — site 컨텍스트 보존.
+        // refreshShopToken 은 `if (payload.siteId)` 로 보존을 시도하지만 refreshToken
+        // 자체가 siteId 를 담지 않아 그 분기가 **영원히 거짓**이었다 → 사일런트
+        // 리프레시(액세스 1h 만료) 이후 토큰이 site 를 영구 상실하고, 그때부터
+        // 생성되는 게스트 세션이 다시 NULL-site 가 된다(스탬프 커버리지 누수).
+        // 순수 additive — 기존 30d 리프레시 토큰은 종전대로 동작(점진 개선).
+        ...(payload.siteId ? { siteId: payload.siteId, siteName: payload.siteName } : {}),
       },
       { expiresIn: '30d' },
     );

@@ -7,6 +7,7 @@ import {
   Body,
   Param,
   Query,
+  Headers,
   UseGuards,
   ParseUUIDPipe,
   BadRequestException,
@@ -38,6 +39,7 @@ import { ImpositionPreviewResponseDto } from './dto/imposition-preview.dto';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Public } from '../auth/decorators/public.decorator';
 import { ApiKeyGuard } from '../auth/guards/api-key.guard';
+import { OptionalShopJwtGuard } from '../auth/guards/optional-shop-jwt.guard';
 import {
   CurrentSite,
   CurrentSitePayload,
@@ -125,19 +127,68 @@ export class EditSessionsController {
    *
    * 클라이언트는 응답의 guestToken 을 sessionStorage 에 저장하고,
    * 이후 PATCH /edit-sessions/guest/:id 호출 시 X-Guest-Token 헤더로 전송.
+   *
+   * 🔒 F-1 (2026-07-30): 본 라우트는 @Public — 즉 body 는 **무인증 임의 입력**이다.
+   *   CreateEditSessionDto 는 siteId 를 노출하고 service 는 `dto.siteId || null` 로 저장하므로,
+   *   override 가 없으면 누구나 `POST /edit-sessions/guest {"siteId":"<피해자 site>"}` 로
+   *   임의 테넌트 스탬프 세션을 심을 수 있었다("NULL-site fail-closed" 안전판의 우회 통로).
+   *   → dto.siteId 는 **무조건 버린다**. 스탬프 근거는 오직 아래 I-1(검증된 JWT)뿐이다.
+   *
+   * 🏷️ siteId 스탬프 (2026-07-30) — I-1:
+   *   전역 JwtAuthGuard 는 @Public 에서 단락하므로 편집기가 Bearer 를 실어 보내도
+   *   req.user 가 비어 siteId 를 잃었다(= 회원 전환 후에도 승격 404 의 근본 원인).
+   *   OptionalShopJwtGuard 가 @Public 을 유지한 채 **서명 검증된** shop-session JWT
+   *   에서만 테넌트를 복원한다. 토큰 없음/위조/만료/site 없음 → **NULL 유지**.
+   *
+   *   ⚠️ NULL 세션이 승격에서 404 로 거부되는 것은 결함이 아니라 설계된 fail-closed 다
+   *      — 테넌트를 모르는 세션을 승격시키면 그것이 곧 교차테넌트 IDOR 이다.
+   *      추론(Origin·templateSetId·memberSeqno/orderSeqno)으로 메꾸지 않는다.
    */
   @Post('guest')
   @Public()
+  @UseGuards(OptionalShopJwtGuard)
   @ApiOperation({ summary: '게스트 편집 세션 생성 (Phase 4)' })
   @ApiResponse({ status: 201, description: '세션 생성 성공', type: EditSessionResponseDto })
   async createGuest(
     @Body() dto: CreateEditSessionDto,
+    @CurrentUser() user: any,
   ): Promise<EditSessionResponseDto> {
+    // 검증된 shop-session JWT 에서만 테넌트를 도출한다(그 외 전부 undefined → NULL).
+    const derivedSiteId =
+      user?.source === 'shop' && typeof user?.siteId === 'string' ? user.siteId : undefined;
+
+    // 🔒 F-5 (2026-07-30): 게스트 라우트에도 회원 라우트(Patch D)와 동일한 주문 스코프 가드.
+    //   종전에는 이 검사가 없어 `allowedOrderSeqnos:[111]` 토큰으로 `orderSeqno:222` 세션을
+    //   만들 수 있었고(회원 라우트는 403), 그 세션이 NULL-site 라 승격 404 로 자연 차단됐다.
+    //   siteId 스탬프가 붙으면서 그 결과물이 **승격 가능**해지므로 같은 커밋에서 함께 막는다.
+    //   교차테넌트는 아니지만(공격자도 그 site 의 정당한 고객), 파트너가 orderSeqno 로 세션을
+    //   찾아 승격하는 운용이면 타 고객 주문에 남의 PDF 가 붙는다.
+    //   ⚠️ 게스트는 orderSeqno 가 선택이므로 **명시한 경우에만** 검증한다(미지정은 기존대로 통과).
+    //   allowedOrderSeqnos 가 없는 토큰도 기존대로 통과 — 회원 라우트의 호환 모드와 동일.
+    if (
+      dto.orderSeqno !== undefined &&
+      dto.orderSeqno !== null &&
+      Array.isArray(user?.allowedOrderSeqnos) &&
+      user.allowedOrderSeqnos.length > 0 &&
+      !user.allowedOrderSeqnos.includes(Number(dto.orderSeqno))
+    ) {
+      throw new ForbiddenException({
+        code: 'ORDER_NOT_ALLOWED',
+        message: `이 토큰은 주문 ${dto.orderSeqno}에 대한 작업 권한이 없습니다.`,
+        details: {
+          allowedOrderSeqnos: user.allowedOrderSeqnos,
+          requestedOrderSeqno: dto.orderSeqno,
+        },
+      });
+    }
+
     const session = await this.editSessionsService.create({
       ...dto,
       asGuest: true,
       memberSeqno: 0,
       orderSeqno: dto.orderSeqno ?? 0,
+      // ⚠️ 위치 고정 — `...dto` **뒤**에 놓아야 클라이언트 값이 구조적으로 이길 수 없다.
+      siteId: derivedSiteId,
     });
     // guestToken 은 응답 DTO 에 그대로 노출됨 (클라이언트가 보관)
     return this.editSessionsService.toResponseDto(session);
@@ -146,21 +197,43 @@ export class EditSessionsController {
   /**
    * 게스트 세션 업데이트 (canvasData / contentPdf*) — 인쇄 워크플로우 v1 Phase 4.
    *
-   * X-Guest-Token 헤더로 본인 세션임을 증명한 후 update 호출.
+   * X-Guest-Token 헤더(또는 guestToken 쿼리)로 본인 세션임을 증명한 후 update 호출.
    * userId=0 으로 service 호출 → service 가 isGuest 분기로 통과.
+   *
+   * 🔒 F-3 (2026-07-30): 종전 `if (guestTokenQuery && …)` 는 **토큰을 아예 안 보내면
+   *   소유 검사를 통째로 건너뛰었다** — 세션 UUID 만 알면 누구나 남의 게스트 세션
+   *   canvasData 를 덮어쓸 수 있었다. 그 세션이 이제 siteId 스탬프를 받아 인쇄 자산
+   *   승격 경로에 올라타므로, 이 구멍을 연 채로 승격을 열면 안 된다.
+   *   → 토큰 미전송은 403 GUEST_TOKEN_REQUIRED(fail-closed).
+   *
+   *   무중단: 편집기 클라이언트는 이미 query 로 **필수** 동봉하고(api/edit-sessions.ts
+   *   updateGuest 는 guestToken 이 필수 인자), 연동 가이드는 header 를 안내한다 →
+   *   **header/query 양쪽 수용**으로 기존 호출자 전원 통과.
    */
   @Patch('guest/:id')
   @Public()
   @ApiOperation({ summary: '게스트 세션 업데이트 (Phase 4)' })
   @ApiResponse({ status: 200, description: '세션 업데이트 성공', type: EditSessionResponseDto })
-  @ApiResponse({ status: 403, description: '게스트 토큰 불일치 또는 만료' })
+  @ApiResponse({ status: 403, description: '게스트 토큰 미전송/불일치 또는 만료' })
   async updateGuest(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateEditSessionDto,
     @Query('guestToken') guestTokenQuery?: string,
+    @Headers('x-guest-token') guestTokenHeader?: string,
   ): Promise<EditSessionResponseDto> {
     // X-Guest-Token 헤더가 안 되는 환경(예: 일부 CORS)을 위해 쿼리도 허용.
-    // 실제로는 클라이언트 fetch 가 header 로 전송 — 컨트롤러에서 @Req() 로 받음.
+    const presentedToken = guestTokenHeader || guestTokenQuery;
+
+    // ⚠️ 순서 고정 — 소유 증명을 **조회보다 먼저** 요구한다.
+    //   findById 를 먼저 하면 무인증 호출자에게 "그 세션이 존재하는가"를 알려주는
+    //   존재 오라클이 된다. 기존 클라이언트는 항상 토큰을 보내므로 동작 변화 없음.
+    if (!presentedToken) {
+      throw new ForbiddenException({
+        code: 'GUEST_TOKEN_REQUIRED',
+        message: '게스트 토큰이 필요합니다.',
+      });
+    }
+
     const session = await this.editSessionsService.findById(id);
     if (!session.guestToken) {
       throw new ForbiddenException({ code: 'NOT_A_GUEST_SESSION', message: '게스트 세션이 아닙니다.' });
@@ -168,7 +241,7 @@ export class EditSessionsController {
     if (session.guestExpiresAt && session.guestExpiresAt < new Date()) {
       throw new ForbiddenException({ code: 'GUEST_SESSION_EXPIRED', message: '게스트 세션이 만료되었습니다 (24h).' });
     }
-    if (guestTokenQuery && guestTokenQuery !== session.guestToken) {
+    if (presentedToken !== session.guestToken) {
       throw new ForbiddenException({ code: 'GUEST_TOKEN_MISMATCH', message: '게스트 토큰이 일치하지 않습니다.' });
     }
     // userId=0 (게스트) — service 가 isGuest 로 권한 검사 우회
@@ -204,7 +277,13 @@ export class EditSessionsController {
       });
     }
     const memberSeqno = parseInt(user.userId);
-    return this.editSessionsService.migrateGuestSessions(body.guestToken, memberSeqno);
+    // I-3 (2026-07-30): 호출자 테넌트를 넘겨 교차 site 흡수를 서비스에서 거부한다.
+    // caller siteId 가 없으면(레거시 리프레시 토큰 등) null → 서비스가 허용 + warn.
+    return this.editSessionsService.migrateGuestSessions(
+      body.guestToken,
+      memberSeqno,
+      typeof user?.siteId === 'string' ? user.siteId : null,
+    );
   }
 
   /**

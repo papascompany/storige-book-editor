@@ -500,10 +500,25 @@ export class EditSessionsService {
    * 작업:
    * - WHERE guest_token = ? → memberSeqno 채움
    * - guestToken / guestExpiresAt NULL 처리 (EVENT 가 더 이상 삭제 안 함)
+   *
+   * ── 테넌시 불변식 (2026-07-30) ────────────────────────────────────────────
+   * I-2: **non-null siteId 는 어떤 경로에서도 덮어쓰지 않는다.** 본 메서드는
+   *      memberSeqno/guestToken/guestExpiresAt 만 쓴다. NULL 을 채우지도 않는다 —
+   *      "guestToken 보유"는 세션 **소유** 증명이지 **발사 테넌트** 증명이 아니라서
+   *      여기서 caller 의 siteId 를 찍으면 그게 곧 테넌트 위조 통로가 된다.
+   * I-3: 세션 siteId 와 caller siteId 가 **둘 다 non-null 이고 불일치**하면
+   *      **요청 전체를 거부**한다(부분 흡수·조용한 스킵·조용한 덮어쓰기 전부 금지).
+   *
+   * callerSiteId 가 null 인 경우(예: siteId 를 담지 않던 구형 refreshToken)는
+   * **허용 + warn**. 근거: 본 메서드가 siteId 를 쓰지 않으므로 테넌시가 변하지 않고,
+   * 흡수된 세션은 여전히 원래 site 로 스탬프되어 타 site 키의 승격은 404 다.
+   * 여기서 거부하면 정상 사용자가 토큰 리프레시 한 번으로 마이그레이션 불가가 되는
+   * 신규 장애만 생긴다. — 의도된 완화.
    */
   async migrateGuestSessions(
     guestToken: string,
     memberSeqno: number,
+    callerSiteId?: string | null,
   ): Promise<{ migratedCount: number; sessionIds: string[] }> {
     const sessions = await this.sessionRepository.find({
       where: { guestToken },
@@ -512,8 +527,36 @@ export class EditSessionsService {
       return { migratedCount: 0, sessionIds: [] };
     }
 
+    // I-3 — 교차 site 흡수 거부(요청 전체).
+    if (callerSiteId) {
+      const foreign = sessions.filter((s) => s.siteId && s.siteId !== callerSiteId);
+      if (foreign.length > 0) {
+        this.logger.warn(
+          `[tenancy] CROSS_SITE_MIGRATION_DENIED — caller site=${callerSiteId}, ` +
+            `foreign=${foreign.length}/${sessions.length}, token=${guestToken.slice(0, 8)}…`,
+        );
+        throw new ForbiddenException({
+          code: 'CROSS_SITE_MIGRATION_DENIED',
+          message: '다른 사이트에서 생성된 게스트 세션은 흡수할 수 없습니다.',
+        });
+      }
+    } else {
+      this.logger.warn(
+        `[tenancy] guest migrate without caller site — token=${guestToken.slice(0, 8)}…, ` +
+          `member=${memberSeqno}, sessions=${sessions.length} (siteId 무변경이므로 허용)`,
+      );
+    }
+
+    // 만료 세션은 흡수하지 않는다 — EVENT 가 곧 DELETE 할 행을 회원 소유로 되살리지 않는다.
+    const now = new Date();
+    const live = sessions.filter((s) => !s.guestExpiresAt || s.guestExpiresAt > now);
+    if (live.length === 0) {
+      return { migratedCount: 0, sessionIds: [] };
+    }
+
     const sessionIds: string[] = [];
-    for (const session of sessions) {
+    for (const session of live) {
+      // ⚠️ I-2 — session.siteId 는 읽지도 쓰지도 않는다.
       session.memberSeqno = memberSeqno as any;
       session.guestToken = null;
       session.guestExpiresAt = null;
@@ -522,9 +565,9 @@ export class EditSessionsService {
     }
 
     this.logger.log(
-      `Migrated ${sessions.length} guest session(s) to member ${memberSeqno} (token=${guestToken.slice(0, 8)}…)`,
+      `Migrated ${live.length} guest session(s) to member ${memberSeqno} (token=${guestToken.slice(0, 8)}…)`,
     );
-    return { migratedCount: sessions.length, sessionIds };
+    return { migratedCount: live.length, sessionIds };
   }
 
   /**
