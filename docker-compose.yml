@@ -30,7 +30,12 @@ services:
     # 모니터링 스택만 unless-stopped 였음 — 코어 5종(api/worker/editor/mariadb/redis)에 동일 적용.
     restart: unless-stopped
     ports:
-      - "4000:4000"
+      # 보안(2026-07-30): Docker 포트 매핑은 ufw 를 우회한다(ufw 는 22/80/443 만 허용하는데
+      # :4000 이 외부에서 응답하던 것을 실측 확인). 정상 경로는 nginx 경유
+      # https://api.papascompany.co.kr/api 이고 파트너 가이드도 그 도메인만 안내한다.
+      # nginx 는 `proxy_pass http://api:4000`(컨테이너명)으로 붙으므로 이 매핑을 루프백으로
+      # 좁혀도 프록시·서비스 영향은 없다. 운영 접근은 SSH 터널 또는 docker exec.
+      - "127.0.0.1:4000:4000"
     environment:
       - NODE_ENV=production
       - DATABASE_HOST=mariadb
@@ -87,7 +92,12 @@ services:
     #   .env WORKER_MEM_LIMIT 로 조정(예: 증설 시 상향).
     mem_limit: ${WORKER_MEM_LIMIT:-4g}
     ports:
-      - "4001:4001"
+      # 보안(2026-07-30): Docker 포트 매핑은 ufw 를 우회한다 — :4001 이 외부에서 응답하고
+      # /health 가 200 을 돌려주던 것을 실측 확인. worker 는 내부 잡 처리 전용이라 외부 소비자가
+      # 없어야 하고, 실제로 최근 48h 외부 직접 호출 흔적 0건이었다.
+      # api→worker 는 컨테이너 네트워크로 붙으므로(worker 의 API_BASE_URL=http://api:4000/api)
+      # 루프백 제한이 잡 파이프라인에 영향을 주지 않는다.
+      - "127.0.0.1:4001:4001"
     environment:
       - NODE_ENV=production
       - REDIS_HOST=redis
@@ -151,7 +161,15 @@ services:
     container_name: storige-editor
     restart: unless-stopped
     ports:
-      - "3000:80"
+      # 보안(2026-07-30): Docker 포트 매핑은 ufw 를 우회한다 — 루프백 한정 바인딩.
+      # mariadb(3306)·redis(6379)는 2026-07-13 Redis SLAVEOF 하이재킹 사고 때 봉합됐으나
+      # editor 만 공인 바인딩으로 남아 있었다.
+      # 정당 소비자 0 실측: 이 컨테이너는 Vercel editor(editor.papascompany.co.kr)와 중복이고
+      # nginx 도 upstream 으로 쓰지 않는다(/embed/ 는 alias 로 dist-embed 를 직접 서빙).
+      # 공인 :3000 의 최근 24h 요청 100건이 전량 스캐너였다(CensysInspect · Go-http-client
+      # 취약점 프로브 · TLS 핸드셰이크 오폭). 즉 공격 표면만 제공하던 상태.
+      # 운영 접근이 필요하면 SSH 터널: ssh -L 3000:127.0.0.1:3000 deploy@<host>
+      - "127.0.0.1:3000:80"
     networks:
       - storige-network
 
