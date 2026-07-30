@@ -10,8 +10,9 @@ import { Repository, Brackets, In } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import * as path from 'path';
 import * as fs from 'fs/promises';
-import { createReadStream } from 'fs';
+import { createReadStream, createWriteStream } from 'fs';
 import type { Readable } from 'stream';
+import { pipeline } from 'stream/promises';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { v4 as uuidv4 } from 'uuid';
@@ -764,7 +765,30 @@ export class FilesService {
       `${baseName}_p${page}_w${width}_${uuidv4()}.tmp.png`,
     );
 
+    // GS 가 읽을 원본 경로 확보.
+    // ⚠️ s3-backed 파일은 filePath 가 `s3://uploads/...` 라 GS 가 로컬 경로로 취급해 실패한다
+    //   (2026-07-30 실측: 프로덕션 files 166건 중 110건이 s3://, 최근 업로드는 전부 s3).
+    //   getFileStream 은 storageBackend 분기를 갖고 있는데 이 경로만 누락돼 있었다 — GS 는
+    //   파이프가 아니라 seek 가능한 파일을 요구하므로(-dFirstPage) 임시 파일로 내린다.
+    //   Buffer(objectStorage.get) 가 아니라 스트림 파이프를 쓰는 이유는 원고 PDF 가 대용량일 수
+    //   있어 전량 버퍼링이 위험하기 때문이다.
+    let gsSourcePath = file.filePath;
+    let downloadedSourcePath: string | null = null;
+
     try {
+      if (file.storageBackend === 's3') {
+        if (!file.storageKey) {
+          throw new Error('s3-backed 파일에 storage_key 가 없습니다.');
+        }
+        downloadedSourcePath = path.join(
+          this.thumbnailPath,
+          `${baseName}_src_${uuidv4()}.tmp.pdf`,
+        );
+        const source = await this.objectStorage.getStream('s3', file.storageKey);
+        await pipeline(source, createWriteStream(downloadedSourcePath));
+        gsSourcePath = downloadedSourcePath;
+      }
+
       // Ghostscript를 사용해 PDF → PNG 변환
       // SEC-010: execFile(인자배열, 셸 없음)로 실행 — 따옴표/메타문자 이스케이프 불필요,
       // filePath 가 오염돼도 커맨드 인젝션 불가(argv 로 그대로 전달).
@@ -780,7 +804,7 @@ export class FilesService {
         '-dTextAlphaBits=4',
         '-dGraphicsAlphaBits=4',
         `-sOutputFile=${tempFilePath}`,
-        file.filePath,
+        gsSourcePath,
       ];
 
       this.logger.debug(`Executing Ghostscript: ${this.ghostscriptPath} ${gsArgs.join(' ')}`);
@@ -829,6 +853,16 @@ export class FilesService {
           error: error.message,
         },
       });
+    } finally {
+      // s3 에서 내린 임시 원본은 성공·실패 양쪽에서 반드시 지운다.
+      // (누적되면 thumbnails 디렉터리가 원본 PDF 로 차오르고, 원고가 평문으로 남는다.)
+      if (downloadedSourcePath) {
+        try {
+          await fs.unlink(downloadedSourcePath);
+        } catch {
+          // 무시 — 이미 지워졌거나 권한 문제. 썸네일 결과에는 영향 없다.
+        }
+      }
     }
   }
 

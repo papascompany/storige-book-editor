@@ -52,6 +52,17 @@ jest.mock('fs/promises', () => ({
   unlink: jest.fn().mockResolvedValue(undefined),
 }));
 
+// s3 원본 다운로드 경로용 — createWriteStream 만 교체한다.
+// ⚠️ fs 를 전면 대체하면 typeorm 이 끌어오는 path-scurry 가 `fs.realpath.native` 를 못 찾아
+//    스위트 자체가 로드에 실패한다(TypeError: Cannot read properties of undefined).
+jest.mock('fs', () => ({
+  ...jest.requireActual('fs'),
+  createWriteStream: jest.fn(() => ({})),
+}));
+jest.mock('stream/promises', () => ({
+  pipeline: jest.fn().mockResolvedValue(undefined),
+}));
+
 const execFileMock = execFile as unknown as jest.Mock;
 
 describe('FilesService 썸네일 GS 호출 (회귀 가드)', () => {
@@ -142,5 +153,73 @@ describe('FilesService 썸네일 GS 호출 (회귀 가드)', () => {
     expect(w200).toContain('_w200_');
     expect(w400).toContain('_w400_');
     expect(w200).not.toBe(w400);
+  });
+
+  describe('GS-3: s3-backed 파일 (storageBackend 분기)', () => {
+    /**
+     * 2026-07-30 프로덕션 실측: files 166건 중 110건이 `s3://uploads/...` 이고 최근 업로드는 전부 s3.
+     * GS 는 그 경로를 로컬 파일로 열려다 실패한다 — Ghostscript 를 이미지에 설치한 뒤에도
+     * 이 분기가 없으면 최근 파일 전량이 계속 THUMBNAIL_GENERATION_FAILED 로 떨어진다.
+     * getFileStream 은 같은 분기를 갖고 있었고 썸네일 경로만 누락돼 있었다.
+     */
+    const s3File = () =>
+      ({
+        id: '33333333-3333-3333-3333-333333333333',
+        siteId: null,
+        mimeType: 'application/pdf',
+        fileName: 'order.pdf',
+        filePath: 's3://uploads/1785132725847_4e19e5eb.pdf', // GS 가 열 수 없는 값
+        storageBackend: 's3',
+        storageKey: 'uploads/1785132725847_4e19e5eb.pdf',
+        fileType: FileType.OTHER,
+        thumbnailUrl: null,
+      }) as unknown as FileEntity;
+
+    it('GS 인자에 `s3://` 원본이 아니라 내려받은 로컬 임시 경로가 전달돼야 한다', async () => {
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [
+          FilesService,
+          {
+            provide: getRepositoryToken(FileEntity),
+            useValue: {
+              findOne: jest.fn().mockImplementation(async () => s3File()),
+              save: jest.fn().mockResolvedValue(undefined),
+              createQueryBuilder: jest.fn(),
+            },
+          },
+          {
+            provide: ConfigService,
+            useValue: { get: jest.fn((_k: string, d?: unknown) => d) },
+          },
+          {
+            provide: ObjectStorageService,
+            useValue: {
+              get: jest.fn(),
+              put: jest.fn(),
+              delete: jest.fn(),
+              getStream: jest.fn().mockResolvedValue({}),
+            },
+          },
+        ],
+      }).compile();
+
+      const s3Service = module.get<FilesService>(FilesService);
+      const storage = module.get<ObjectStorageService>(ObjectStorageService);
+      execFileMock.mockClear();
+
+      await s3Service.generateThumbnail('33333333-3333-3333-3333-333333333333', 1, 200);
+
+      // 원본을 s3 에서 스트림으로 가져왔는지 (Buffer 전량 로딩이 아니라)
+      expect(storage.getStream).toHaveBeenCalledWith(
+        's3',
+        'uploads/1785132725847_4e19e5eb.pdf',
+      );
+
+      // GS 의 입력 인자(마지막 원소)가 s3:// 가 아니라 로컬 .tmp.pdf 여야 한다
+      const { args } = lastCall();
+      const input = args[args.length - 1];
+      expect(input).not.toContain('s3://');
+      expect(input).toMatch(/\.tmp\.pdf$/);
+    });
   });
 });
