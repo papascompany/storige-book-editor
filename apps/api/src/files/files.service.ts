@@ -23,6 +23,18 @@ import { ObjectStorageService } from '../storage/object-storage.service';
 // SEC-010: 셸을 거치지 않는 execFile — 인자가 그대로 argv 로 전달돼 메타문자 해석/인젝션 불가.
 const execFileAsync = promisify(execFile);
 
+/**
+ * 썸네일 GS 래스터화 상한. worker 의 `GS_RASTER_TIMEOUT_MS`(30s)와 같은 정책이다.
+ * api 는 HTTP 요청 경로라 무한 대기가 곧 커넥션·워커 점유이므로 worker 보다 상한이 더 중요하다
+ * (execFile 의 timeout 기본값은 0 = 무제한이라 명시하지 않으면 손상 PDF 하나가 영구 점유한다).
+ */
+const GS_THUMBNAIL_TIMEOUT_MS = 30_000;
+/**
+ * stdout/stderr 상한. PNG 는 `-sOutputFile` 로 파일에 쓰이고 `-q` 로 배너를 끄므로
+ * 실제 버퍼에 담기는 것은 에러 메시지뿐이다(기본 1MB 를 넘겨 ENOBUFS 로 오진되는 것만 막는다).
+ */
+const GS_THUMBNAIL_MAX_BUFFER = 8 * 1024 * 1024;
+
 @Injectable()
 export class FilesService {
   private readonly logger = new Logger(FilesService.name);
@@ -741,13 +753,23 @@ export class FilesService {
     }
 
     // 임시 파일 경로 (Ghostscript 출력용)
-    const tempFilePath = path.join(this.thumbnailPath, `${baseName}_p${page}_temp.png`);
+    // ⚠️ 요청마다 고유해야 한다. 종전 `${baseName}_p${page}_temp.png` 는 width 가 빠져 있어
+    //   `?width=200` 과 `?width=400` 동시 요청이 같은 임시 파일을 공유했다 — GS 가 쓰는 중에
+    //   다른 요청이 덮어쓰거나 성공측 finally 가 unlink 해서, 뒤엉킨 결과가 최종 PNG 로 굳고
+    //   `Cache-Control: private, max-age=3600` 로 1시간 고정됐다.
+    //   width 만 넣으면 동일 (page,width) 동시 요청이 여전히 경합하므로 uuid 로 완전히 분리한다.
+    //   캐시 동일성은 최종 파일(thumbnailFilePath)이 담당하므로 임시명이 고유해도 무해하다.
+    const tempFilePath = path.join(
+      this.thumbnailPath,
+      `${baseName}_p${page}_w${width}_${uuidv4()}.tmp.png`,
+    );
 
     try {
       // Ghostscript를 사용해 PDF → PNG 변환
       // SEC-010: execFile(인자배열, 셸 없음)로 실행 — 따옴표/메타문자 이스케이프 불필요,
       // filePath 가 오염돼도 커맨드 인젝션 불가(argv 로 그대로 전달).
       const gsArgs = [
+        '-q', // 배너·진행 로그 억제 → stdout 을 에러 메시지 전용으로 유지
         '-dSAFER',
         '-dBATCH',
         '-dNOPAUSE',
@@ -762,7 +784,10 @@ export class FilesService {
       ];
 
       this.logger.debug(`Executing Ghostscript: ${this.ghostscriptPath} ${gsArgs.join(' ')}`);
-      await execFileAsync(this.ghostscriptPath, gsArgs);
+      await execFileAsync(this.ghostscriptPath, gsArgs, {
+        timeout: GS_THUMBNAIL_TIMEOUT_MS,
+        maxBuffer: GS_THUMBNAIL_MAX_BUFFER,
+      });
 
       // Sharp로 리사이즈
       await sharp(tempFilePath)

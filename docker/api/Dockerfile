@@ -30,6 +30,14 @@ FROM node:22-alpine
 
 WORKDIR /app
 
+# PDF 썸네일 래스터화용 Ghostscript.
+# 이 이미지에는 apk 설치가 하나도 없었고 compose api 서비스에도 GHOSTSCRIPT_PATH 매핑이 없어서
+# `GET /files/:id/thumbnail`(파트너 대외 계약 라우트, PLATFORM_INTEGRATION_GUIDE 등재)이
+# 프로덕션에서 상시 실패했다 — FilesService 의 기본값 'gs' 가 PATH 에 없어 ENOENT 로 떨어지고
+# THUMBNAIL_GENERATION_FAILED(400) 로 변환된다. 2026-07-30 `docker exec storige-api which gs` 로 확정.
+# worker 이미지처럼 imagemagick/qpdf 까지 넣지 않는다 — api 는 GS 래스터화 한 가지만 쓴다.
+RUN apk add --no-cache ghostscript
+
 # Install pnpm
 RUN npm install -g pnpm@9.15.0
 

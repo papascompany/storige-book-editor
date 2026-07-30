@@ -46,6 +46,10 @@ services:
       - WORKER_API_KEY=${WORKER_API_KEY}
       - CORS_ORIGIN=${CORS_ORIGIN}
       - STORAGE_PATH=/app/storage
+      # PDF 썸네일 래스터화(GET /files/:id/thumbnail). worker 서비스와 동일한 경로.
+      # 서비스 코드 기본값이 'gs' 라 PATH 로도 찾히지만, 이 매핑이 없으면 "왜 worker 에만 있나"가
+      # 반복 질문이 되고 WEBHOOK_SECRET 류의 silent no-op 함정과 구분이 어려워지므로 명시한다.
+      - GHOSTSCRIPT_PATH=${GHOSTSCRIPT_PATH:-/usr/bin/gs}
       # Sentry (DSN 미설정 시 silent 동작)
       - SENTRY_DSN=${SENTRY_DSN_API:-}
       - SENTRY_ENVIRONMENT=${SENTRY_ENVIRONMENT:-production}
