@@ -5,12 +5,15 @@ name: ci
 # master push/PR 마다 아래를 검증한다:
 #   1) apps/api jest — 파트너 동결 표면 contract test(src/contract-freeze.spec.ts) +
 #      웹훅 서명 페어와이즈(webhook-signature-pairwise.spec.ts) + 기존 스펙 전부
-#   2) packages/sdk build+typecheck+test — 파트너 SDK. types-parity/webhook-events 의
+#   2) apps/worker jest — PDF 파이프라인(GS 인자 공식·타임아웃/세마포어·합성 멱등 가드).
+#      네이티브/외부 바이너리 표면이 가장 큰 앱인데 2026-07-31 까지 CI 미연결이었다
+#      (아래 ⚠️ "장식이 된다"가 실현돼 있던 패키지)
+#   3) packages/sdk build+typecheck+test — 파트너 SDK. types-parity/webhook-events 의
 #      계약 드리프트 감시와 서명 페어와이즈(수신측)가 여기 걸려야 게이트가 된다
-#   3) packages/canvas-core vitest + tsc — 편집기 코어(ServicePlugin.pdf 카나리 포함)
-#   4) scripts/pdf-golden 비교 엔진 self-test (qpdf 필요)
-#   5) examples/* quickstart 예제 — **뒤쪽**(문서성 산출물이 계약 테스트를 가리지 않게)
-#   6) apps/docs 파트너 문서 포털 빌드 — **맨 뒤**(같은 이유. 5 와 6 은 우선순위 동급).
+#   4) packages/canvas-core vitest + tsc — 편집기 코어(ServicePlugin.pdf 카나리 포함)
+#   5) scripts/pdf-golden 비교 엔진 self-test (qpdf 필요)
+#   6) examples/* quickstart 예제 — **뒤쪽**(문서성 산출물이 계약 테스트를 가리지 않게)
+#   7) apps/docs 파트너 문서 포털 빌드 — **맨 뒤**(같은 이유. 6 과 7 은 우선순위 동급).
 #      공개 모드 → 색인 차단 모드 순으로 두 번 돈다. 두 분기 모두 게이트에 걸되
 #      **아티팩트는 배포와 같은 색인 차단본 하나**만 남긴다(스텝 주석 참조).
 #
@@ -36,7 +39,8 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # 25분: worker 테스트(490건) 추가분 여유. 종전 20분은 worker 없이 산정된 값.
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
 
@@ -99,6 +103,17 @@ jobs:
           name: openapi-partner
           path: apps/api/openapi-partner.json
           if-no-files-found: error
+
+      - name: worker 테스트 (PDF 파이프라인 — GS 인자 공식·타임아웃/세마포어·합성 멱등 가드)
+        # 감사 2026-07-30 §8: worker 는 네이티브/외부 바이너리 표면이 가장 큰 앱인데
+        # CI 미연결이었다(spec 전부가 로컬 수동 실행에만 의존 — 위 ⚠️ 의 실현 사례).
+        # 실 GS/qpdf 바이너리는 호출하지 않는다 — ghostscript-wk.spec 은
+        # GHOSTSCRIPT_PATH=/bin/sh 대역으로 spawn·타임아웃·SIGTERM 에스컬레이션 경로만
+        # 검증한다(실측: gs 부재 macOS 에서 17 suites/490 tests 통과). 시스템 의존성 추가 불필요.
+        # ⚠️ WK-3 스펙은 5s jest timeout 의 실시간 스폰 테스트라 러너 과부하 시 플레이크
+        #    여지가 있다(2026-07-30 로컬 전체 병렬 실행에서 1회 실측). 단독 스텝(순차)이라
+        #    위험은 낮지만, 재발 시 이 스펙만 --maxWorkers 조정 대상이다.
+        run: pnpm --filter @storige/worker test
 
       - name: canvas-core 타입체크 + 테스트 (ServicePlugin.pdf 카나리 포함)
         run: |
