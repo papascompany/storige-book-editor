@@ -109,7 +109,17 @@ describe('WK-3: runGhostscript 타임아웃 (GHOSTSCRIPT_PATH=/bin/sh 대역)', 
   it('timeoutMs 만료 시 프로세스를 죽이고 타임아웃 에러로 reject 해야 한다', async () => {
     const gs = loadWithEnv({ GHOSTSCRIPT_PATH: '/bin/sh', GS_CONCURRENCY: undefined });
     const started = Date.now();
-    await expect(gs.runGhostscript(['-c', 'sleep 5'], 300)).rejects.toThrow(/timed out after 300ms/);
+    // ⚠️ `exec` 필수 — CI(ubuntu) 의 /bin/sh 는 dash 인데, dash 는 `sh -c 'sleep 5'` 에서
+    //   sleep 을 fork 한다. kill('SIGTERM') 은 sh pid 만 죽이고 고아가 된 sleep 이 stdio
+    //   파이프를 물고 있어 close 가 5초(자연 종료)까지 지연된다 — CI 실측 5016ms 로
+    //   아래 단언이 결정적으로 실패했다(macOS bash·busybox ash 는 exec 최적화로 통과).
+    //   `exec` 를 붙이면 자식 pid 가 곧 sleep 이라 세 셸 모두에서 즉시 죽는다
+    //   (debian dash 실측: exec 없이 5020ms → exec 로 309ms).
+    //   프로덕션 경로는 셸 없이 gs 바이너리를 직접 spawn 하므로 이 문제와 무관하다
+    //   — 순수하게 /bin/sh 대역이라는 테스트 장치의 아티팩트다.
+    await expect(gs.runGhostscript(['-c', 'exec sleep 5'], 300)).rejects.toThrow(
+      /timed out after 300ms/,
+    );
     // SIGTERM 으로 즉시 종료 — sleep 5(5s)를 기다리지 않아야 한다.
     expect(Date.now() - started).toBeLessThan(3_000);
   }, 10_000);
