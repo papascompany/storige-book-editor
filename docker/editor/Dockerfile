@@ -26,7 +26,7 @@ COPY scripts ./scripts
 ENV SOURCEMAP_STRIP=1
 
 # Install dependencies
-RUN pnpm install
+RUN pnpm install --frozen-lockfile
 
 # Build packages first (types -> canvas-core -> editor)
 RUN pnpm --filter @storige/types build || true

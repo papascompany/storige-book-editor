@@ -1,0 +1,35 @@
+# .dockerignore — 이미지 빌드 컨텍스트 위생 (감사 §8 ⑧, 2026-08-01)
+#
+# 모든 서비스의 build context 가 레포 루트(`.`)라 이 파일 하나가 전 이미지에 적용된다.
+# 종전에는 부재해서 ① `COPY packages`/`COPY apps/*` 가 호스트 node_modules(pnpm 심링크)와
+# stale dist 를 이미지로 반입하고 ② 컨텍스트 전송량이 수 GB 로 부풀며 ③ VPS 루트 .env
+# (chmod600 시크릿)가 컨텍스트에 실렸다(COPY 대상은 아니었지만 방어선 0).
+#
+# ⚠️ Docker 의 패턴은 gitignore 와 달리 암묵 `**/` 프리픽스가 없다 — `.env` 는 루트만 매치.
+# ⚠️ `apps/editor/.env.production` 은 tracked 이고 vite 빌드가 읽는다 — 제외하면 안 된다.
+
+# VCS·에이전트 산출물·문서 (이미지 빌드 무관 대용량)
+.git
+.github
+.cursor
+docs
+docs2
+
+# 의존성·빌드 산출물 — 컨테이너 안에서 pnpm install / build 로 재생성한다
+node_modules
+**/node_modules
+**/dist
+**/dist-embed
+**/.turbo
+**/coverage
+**/.vercel
+
+# 시크릿 (루트 한정 — apps/editor/.env.production 은 tracked 빌드 입력이라 제외하지 않는다)
+.env
+.rotated-secrets*
+
+# 잡동사니
+**/.DS_Store
+*.log
+*.bak.*
+.tmp_*.md

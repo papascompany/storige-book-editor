@@ -17,7 +17,7 @@ COPY packages ./packages
 COPY apps/api ./apps/api
 
 # Install dependencies
-RUN pnpm install
+RUN pnpm install --frozen-lockfile
 
 # Build packages first
 RUN pnpm --filter @storige/types build || true
@@ -57,7 +57,7 @@ COPY --from=builder /app/apps/api/dist ./apps/api/dist
 COPY --from=builder /app/apps/api/package.json ./apps/api/
 
 # Install production dependencies only
-RUN pnpm install --prod
+RUN pnpm install --prod --frozen-lockfile
 
 # Create storage directory
 RUN mkdir -p /app/storage

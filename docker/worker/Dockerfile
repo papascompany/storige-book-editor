@@ -29,7 +29,7 @@ COPY packages ./packages
 COPY apps/worker ./apps/worker
 
 # Install dependencies
-RUN pnpm install 
+RUN pnpm install --frozen-lockfile
 
 # Build packages first
 RUN pnpm --filter @storige/types build || true
@@ -78,7 +78,7 @@ COPY --from=builder /app/apps/worker/package.json ./apps/worker/
 RUN apk add --no-cache --virtual .build-deps \
     python3 make g++ \
     cairo-dev pango-dev jpeg-dev giflib-dev librsvg-dev pixman-dev \
- && pnpm install --prod \
+ && pnpm install --prod --frozen-lockfile \
  && apk del .build-deps
 
 # Create storage directory

@@ -17,7 +17,7 @@ COPY packages ./packages
 COPY apps/admin ./apps/admin
 
 # Install dependencies
-RUN pnpm install 
+RUN pnpm install --frozen-lockfile
 
 # Build Admin
 RUN pnpm --filter @storige/admin build
