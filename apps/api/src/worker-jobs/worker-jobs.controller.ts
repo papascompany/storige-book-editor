@@ -444,6 +444,12 @@ export class WorkerJobsController {
     stream.on('error', (err: NodeJS.ErrnoException) => {
       this.logger.error(`downloadOutput stream error (${err.code ?? 'unknown'}): ${err.message}`);
       if (!res.headersSent) {
+        // 스트리밍용으로 걸어둔 헤더를 정리한다 — Express res.json() 은 기설정 Content-Type 을
+        // 덮지 않아, 정리 없이는 에러 JSON 이 application/pdf + attachment(+옛 Content-Length)로
+        // 나가 다운로더가 에러 본문을 .pdf 로 저장한다(적대 리뷰 실증, 3라우트 공통 일괄 수정).
+        res.removeHeader('Content-Type');
+        res.removeHeader('Content-Disposition');
+        res.removeHeader('Content-Length');
         if (err.code === 'ENOENT') {
           res.status(404).json({
             code: 'FILE_NOT_ON_DISK',

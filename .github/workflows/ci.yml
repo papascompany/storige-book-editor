@@ -139,9 +139,9 @@ jobs:
         run: pnpm --filter @storige/admin test
 
       - name: indesign-import 타입체크 + 테스트 (감사 §8 ⑤)
-        # test 스크립트의 `src/**/*.test.mjs` 글롭은 dash(ubuntu sh)에서 `src/*/*.test.mjs` 로
-        # 해석되는데, 테스트 파일이 전부 정확히 2단계 깊이라 15/15 매치된다(로컬 sh 실측).
-        # src/ 직하나 3단계에 테스트를 추가하면 이 글롭이 조용히 누락시킨다 — 추가 시 스크립트 갱신.
+        # test 스크립트의 글롭은 **인용**돼 있다(`node --test "src/**/*.test.mjs"`) — 셸(dash) 확장을
+        # 우회하고 node 내부 globstar 가 재귀 해석하므로 테스트 파일 깊이와 무관하게 매치된다.
+        # (종전 비인용 글롭은 dash 에서 2단계 고정이라 깊이 변경 시 조용히 누락 — 08-01 견고화.)
         run: |
           pnpm --filter @storige/indesign-import typecheck
           pnpm --filter @storige/indesign-import test
