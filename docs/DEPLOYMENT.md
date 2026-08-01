@@ -67,7 +67,7 @@
 
 | 카테고리 | 컨테이너 | 이미지 |
 |----------|----------|--------|
-| **App** | `storige-api` | NestJS (자체 빌드, node:22-alpine) |
+| **App** | `storige-api` | NestJS (자체 빌드, node:24-alpine) |
 | App | `storige-worker` | NestJS Bull worker (자체 빌드) |
 | App | `storige-nginx` | nginx:1.25-alpine (리버스 프록시) |
 | **Data** | `storige-mariadb` | mariadb:11.2 |
