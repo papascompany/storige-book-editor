@@ -67,6 +67,14 @@ export function ObjectDeleteConfirm() {
     return () => document.removeEventListener('keydown', onKeyDownCapture, true)
   }, [requestDeleteSelection])
 
+  // C6-fix(2026-08-01 실측 결함 ②): 모달 오픈 시 컨텍스트 메뉴 강제 닫기.
+  // 포인터 경유 오픈은 canvas-core 의 document pointerdown 해제가 선처리하지만,
+  // DEL/Backspace 핫키 등 비-포인터 경로에서 메뉴가 모달 위에 잔류(취소/삭제 버튼 가림)하는
+  // 것을 막는 벨트-앤-서스펜더.
+  useEffect(() => {
+    if (open) useAppStore.getState().editor?.hideContextMenu()
+  }, [open])
+
   // 모달 내 Enter=확인 / Esc=취소 (접근성)
   useEffect(() => {
     if (!open) return

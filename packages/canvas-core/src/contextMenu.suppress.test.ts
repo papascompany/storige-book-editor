@@ -145,6 +145,71 @@ describe('ContextMenu — 데스크탑 우클릭 무회귀', () => {
   })
 })
 
+describe('ContextMenu — C6-fix 아웃사이드 pointerdown 해제 (2026-08-01 실측 결함 2건)', () => {
+  // 실측 배경: ①터치 캔버스 탭은 fabric 의 touchstart preventDefault 로 합성 mousedown 이
+  // 없어 기존 히든이 못 닫았고, ②캔버스 밖 UI(액션바)는 container 스코프 밖이라 이벤트가
+  // 아예 안 왔다. document 캡처 pointerdown 해제가 둘 다 커버한다.
+  it('⑥ T-5 억제창 내에도 container 밖 요소 pointerdown 이 메뉴를 닫는다(합성 아님 → 억제 불필요)', () => {
+    const { cm } = setup(ITEMS, {})
+    cm.showAt(100, 100, { touch: true })
+    expect(cm.shown).toBe(true)
+
+    // 캔버스 밖 UI(액션바 버튼 상당) — wrapperEl 밖 + 표시 100ms 뒤(억제창 400ms 내)
+    vi.advanceTimersByTime(100)
+    const outside = document.createElement('button')
+    document.body.appendChild(outside)
+    outside.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+    expect(cm.shown).toBe(false)
+  })
+
+  it('⑦ 메뉴 내부(항목/항목 자식) pointerdown 은 메뉴를 닫지 않는다', () => {
+    const { container, cm } = setup(ITEMS, {})
+    cm.showAt(100, 100, { touch: true })
+
+    const item = menuEl(container)!.querySelector('.item') as HTMLElement
+    item.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+    expect(cm.shown).toBe(true)
+
+    const label = item.querySelector('.label') as HTMLElement
+    label.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+    expect(cm.shown).toBe(true)
+  })
+
+  it('⑧ 해제 리스너는 표시 수명주기에 묶인다 — 닫힘 후 무해, 재표시(비-touch 포함) 시 재부착', () => {
+    const { cm } = setup(ITEMS, {})
+    const outside = document.createElement('div')
+    document.body.appendChild(outside)
+
+    cm.showAt(100, 100, { touch: true })
+    outside.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+    expect(cm.shown).toBe(false)
+
+    // 닫힌 상태 재차 pointerdown — no-op
+    outside.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+    expect(cm.shown).toBe(false)
+
+    // 데스크탑 경로(비-touch) 재표시에도 동일하게 동작
+    cm.showAt(150, 150)
+    expect(cm.shown).toBe(true)
+    outside.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+    expect(cm.shown).toBe(false)
+  })
+
+  it('⑨ dispose 는 document 리스너를 잔류시키지 않는다(표시 중 dispose 포함)', () => {
+    const { cm } = setup(ITEMS, {})
+    cm.showAt(100, 100, { touch: true })
+
+    const spy = vi.spyOn(cm as unknown as { hideAll: () => void }, 'hideAll')
+    cm.dispose()
+    spy.mockClear() // dispose 자체는 hideAll 을 부르지 않지만 방어적으로 초기화
+
+    const outside = document.createElement('div')
+    document.body.appendChild(outside)
+    outside.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+    expect(spy).not.toHaveBeenCalled() // 리스너 해제됨 — 잔류 없음
+  })
+})
+
 describe('ContextMenu — T-6 stale-dom 수정', () => {
   it('⑤ 직전 표시 후 available 0 로 showAt → 옛 메뉴가 재출현하지 않는다', () => {
     // 1) active object 있는 상태로 표시

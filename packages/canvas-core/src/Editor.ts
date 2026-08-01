@@ -203,6 +203,16 @@ class Editor extends EventEmitter {
     )
   }
 
+  /**
+   * C6-fix: 컨텍스트 메뉴 강제 닫기. 모달 등 상위 오버레이가 열릴 때 앱이 호출해
+   * 메뉴가 오버레이 위에 잔류(버튼 가림)하는 것을 막는다(2026-08-01 실측 결함 ②).
+   * 포인터 경유가 아닌 오픈 경로(DEL 핫키 등)까지 커버하는 벨트-앤-서스펜더.
+   * 메뉴 미표시 상태에선 무해 no-op(멱등).
+   */
+  hideContextMenu(): void {
+    this.contextMenu?.hideAll()
+  }
+
   private initActionHooks() {
     // 이미 초기화되었는지 확인
     if (this.hooksInitialized) return

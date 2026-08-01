@@ -35,6 +35,7 @@ class ContextMenu {
   }
 
   hideAll() {
+    this.detachOutsideDismiss()
     if (this.dom && !this.parent) {
       if (this.shown) {
         this.hideSubMenus()
@@ -52,6 +53,7 @@ class ContextMenu {
   }
 
   hide() {
+    this.detachOutsideDismiss()
     if (this.dom && this.shown) {
       this.shown = false
       this.hideSubMenus()
@@ -69,6 +71,7 @@ class ContextMenu {
 
   hideSubMenus() {
     for (const menu of this.submenus) {
+      menu.detachOutsideDismiss()
       if (menu.shown) {
         menu.shown = false
         if (menu.dom && menu.container.contains(menu.dom)) {
@@ -112,6 +115,7 @@ class ContextMenu {
 
   dispose() {
     this.dom = null
+    this.detachOutsideDismiss()
     this.container.removeEventListener('contextmenu', this.onContextmenu)
     this.container.removeEventListener('keydown', this.onContextmenuByHotkey)
     this.container.removeEventListener('mousedown', this.onClick)
@@ -129,6 +133,10 @@ class ContextMenu {
 
     this.shown = true
     this.container.appendChild(this.dom)
+    // C6-fix(2026-08-01): 표시 중에만 document 캡처 pointerdown 아웃사이드 해제를 부착.
+    // (매 표시마다 재생성되는 submenu 인스턴스가 상시 document 리스너를 누적하지 않도록
+    //  show/hide 수명주기에 묶는다. 동일 핸들러 재부착은 브라우저가 dedupe — 무해.)
+    this.attachOutsideDismiss()
 
     // 뷰포트 밖 오버플로 클램프(.context position:fixed → 뷰포트 기준). 모바일 가장자리
     // 롱프레스에서 메뉴가 화면 밖으로 잘려 항목을 탭 못 하던 문제 + 데스크탑 우클릭 공통 개선.
@@ -179,6 +187,41 @@ class ContextMenu {
     if (this.shown) this.suppressHideUntil = Date.now() + TOUCH_HIDE_SUPPRESS_MS
   }
 
+  /** 이벤트 대상이 메뉴 내부(메뉴 컨테이너/항목/항목 자식)인지 판정 */
+  private isInsideMenu(target: HTMLElement): boolean {
+    return (
+      target === this.dom ||
+      target.parentElement === this.dom ||
+      target.classList.contains('item') ||
+      !!target.parentElement?.classList.contains('item')
+    )
+  }
+
+  /**
+   * C6-fix(2026-08-01 실측 결함 2건): 메뉴 밖 상호작용 해제를 document 캡처 pointerdown 으로 보강.
+   * 기존 mousedown(onClick) 히든의 실측 사각지대:
+   *  ① 터치 캔버스 탭 — fabric 이 touchstart 를 preventDefault 해 합성 mousedown 미발생 → 안 닫힘
+   *  ② 캔버스 밖 UI(액션바 휴지통 등) — container(wrapperEl) 스코프 밖이라 이벤트 미도달 →
+   *     삭제 확인 모달 위에 메뉴 잔류(버튼 가림)
+   * pointerdown 은 터치 합성 마우스 이벤트와 달리 preventDefault 영향권 밖의 네이티브 선행
+   * 이벤트라 억제창(T-5)이 불필요하다(합성 재발화가 없음). 화면 어디를 누르든 닫히는
+   * 네이티브 컨텍스트 메뉴 관례로 동작하며, 마우스 우클릭 재표시 경로(onClick button 2 ·
+   * onContextmenu)는 pointerdown 해제 직후 그대로 재표시되므로 무회귀.
+   */
+  private onPointerDownOutside = (e: Event) => {
+    if (!this.shown || !e.target) return
+    if (this.isInsideMenu(e.target as HTMLElement)) return
+    this.hideAll()
+  }
+
+  private attachOutsideDismiss() {
+    document.addEventListener('pointerdown', this.onPointerDownOutside, true)
+  }
+
+  private detachOutsideDismiss() {
+    document.removeEventListener('pointerdown', this.onPointerDownOutside, true)
+  }
+
   /// 이벤트 관련 메소드
   private onClick = (e: MouseEvent) => {
     if (!e.target) return
@@ -188,12 +231,7 @@ class ContextMenu {
 
     const target = e.target as HTMLElement
     // 클릭한 대상이 메뉴가 아니면 숨김
-    if (
-      target != this.dom &&
-      target.parentElement != this.dom &&
-      !target.classList.contains('item') &&
-      !target.parentElement?.classList.contains('item')
-    ) {
+    if (!this.isInsideMenu(target)) {
       this.hideAll()
 
       if (e.button === 2) {
@@ -210,12 +248,7 @@ class ContextMenu {
 
     const target = e.target as HTMLElement
 
-    if (
-      target != this.dom &&
-      target.parentElement != this.dom &&
-      !target.classList.contains('item') &&
-      !target.parentElement?.classList.contains('item')
-    ) {
+    if (!this.isInsideMenu(target)) {
       this.hideAll()
       this.show(e.clientX, e.clientY)
     }
