@@ -4,6 +4,16 @@
 > 임베드 번들(`dist-embed`) · VPS editor 컨테이너.
 > ⚠️ 이 문서에는 토큰·키·호스트 실값을 적지 않는다. 실값은 `CLAUDE.local.md`(gitignored) 소관.
 
+> ## ✅ 상태: 오너 액션 전량 완료 — hidden + 업로드 + 삭제 LIVE (2026-07-30)
+>
+> - **07-28**: `SOURCEMAP_STRIP=1` Production 등록 + CLI 배포 → 노출 차단 선행 적용.
+> - **07-30**: `SENTRY_ORG`/`SENTRY_PROJECT`/`SENTRY_AUTH_TOKEN` 3종을 editor·admin
+>   **Production + Preview** 에 등록 → **심볼리케이션 복구**(빌드 로그 `sentryUpload=on` ·
+>   `Uploaded files to Sentry` · editor 맵 24건/admin 6건 제거 실증). "노출 차단 = 심볼리케이션
+>   포기" 트레이드오프는 소멸했다. `SOURCEMAP_STRIP=1` 은 이중 안전판으로 유지.
+> - 따라서 §2(오너 액션)·§4(STRIP 단독 모드)·§5 표는 **이행 이력**이다. 현재 유효한 절차는
+>   §3(배포 후 검증)과 §6(롤백) — 새 프론트 앱을 추가할 때만 §2 를 재실행한다.
+
 ## 0. 한 줄 요약
 
 빌드가 **토큰 3종(`SENTRY_ORG`·`SENTRY_PROJECT`·`SENTRY_AUTH_TOKEN`)이 모두 있을 때만** 소스맵을
