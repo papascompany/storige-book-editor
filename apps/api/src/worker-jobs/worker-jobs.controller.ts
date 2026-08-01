@@ -15,6 +15,7 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery, ApiSecurit
 import { Response } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
+import { resolveStoragePath } from '../common/helpers/storage-path.helper';
 import { WorkerJobsService } from './worker-jobs.service';
 import {
   CreateValidationJobDto,
@@ -400,24 +401,11 @@ export class WorkerJobsController {
     }
 
     // outputFileUrl 형식: '/storage/temp/converted_xxx.pdf' 또는 'storage/...'
-    // 파일시스템 절대경로로 변환
+    // 해석+경계 가드는 공유 헬퍼로 — 종전 인라인 startsWith(base) 검사는 형제 접두사
+    // (/app/storage-evil)를 통과시키는 결함이 있었다(감사 §8 ⑦, files.service 와 동일 로직 통합).
     const storageBase = process.env.STORAGE_PATH || '/app/storage';
-    let absolutePath: string;
-    if (outputFileUrl.startsWith('/storage/')) {
-      // /storage/temp/x.pdf → /app/storage/temp/x.pdf
-      absolutePath = path.join(storageBase, outputFileUrl.replace(/^\/storage\//, ''));
-    } else if (outputFileUrl.startsWith('storage/')) {
-      absolutePath = path.join(storageBase, outputFileUrl.replace(/^storage\//, ''));
-    } else if (path.isAbsolute(outputFileUrl)) {
-      absolutePath = outputFileUrl; // 이미 절대경로
-    } else {
-      absolutePath = path.join(storageBase, outputFileUrl);
-    }
-
-    // 보안: storage 디렉토리 밖으로 path traversal 방지
-    const resolvedPath = path.resolve(absolutePath);
-    const resolvedBase = path.resolve(storageBase);
-    if (!resolvedPath.startsWith(resolvedBase)) {
+    const resolvedPath = resolveStoragePath(outputFileUrl, storageBase);
+    if (!resolvedPath) {
       throw new BadRequestException({
         code: 'INVALID_PATH',
         message: 'Output path is outside storage root',
@@ -442,7 +430,23 @@ export class WorkerJobsController {
     );
     res.setHeader('Content-Length', stat.size);
 
-    fs.createReadStream(resolvedPath).pipe(res);
+    // 스트림 가드 — files.controller/books.controller 의 기존 패턴과 동일.
+    // ① close: 클라이언트 중단 시 fd 누수 방지 ② error: existsSync 통과 후 open/read 사이에
+    // 파일이 지워지면(보존정책 sweep 등) unhandled 'error' 로 응답이 매달린다 — 헤더 전송 전이면
+    // JSON 에러, 전송 중이면 소켓을 끊어 불완전 다운로드가 완결로 오인되지 않게 한다.
+    const stream = fs.createReadStream(resolvedPath);
+    res.on('close', () => stream.destroy());
+    stream.on('error', (err: Error) => {
+      if (!res.headersSent) {
+        res.status(404).json({
+          code: 'FILE_NOT_ON_DISK',
+          message: `Output file disappeared during read: ${outputFileUrl}`,
+        });
+      } else {
+        res.destroy(err);
+      }
+    });
+    stream.pipe(res);
   }
 
   @Get(':id')

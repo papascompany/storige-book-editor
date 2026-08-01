@@ -9,6 +9,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Brackets, In } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import * as path from 'path';
+import { resolveStoragePath } from '../common/helpers/storage-path.helper';
 import * as fs from 'fs/promises';
 import { createReadStream, createWriteStream } from 'fs';
 import type { Readable } from 'stream';
@@ -168,21 +169,10 @@ export class FilesService {
 
     // outputFileUrl → 절대경로 변환 (downloadOutput 컨트롤러와 동일 규약)
     const storageBase = this.configService.get<string>('STORAGE_PATH', '/app/storage');
-    let absolutePath: string;
-    if (outputFileUrl.startsWith('/storage/')) {
-      absolutePath = path.join(storageBase, outputFileUrl.replace(/^\/storage\//, ''));
-    } else if (outputFileUrl.startsWith('storage/')) {
-      absolutePath = path.join(storageBase, outputFileUrl.replace(/^storage\//, ''));
-    } else if (path.isAbsolute(outputFileUrl)) {
-      absolutePath = outputFileUrl;
-    } else {
-      absolutePath = path.join(storageBase, outputFileUrl);
-    }
-
-    // 보안: storage 루트 밖 path traversal 방지
-    const resolvedPath = path.resolve(absolutePath);
-    const resolvedBase = path.resolve(storageBase);
-    if (!resolvedPath.startsWith(resolvedBase)) {
+    // 해석+경계 가드는 공유 헬퍼로 — 종전 인라인 startsWith(base) 검사는 형제 접두사
+    // (/app/storage-evil)를 통과시키는 결함이 있었다(감사 §8 ⑦, worker-jobs.controller 와 통합).
+    const resolvedPath = resolveStoragePath(outputFileUrl, storageBase);
+    if (!resolvedPath) {
       throw new BadRequestException({
         code: 'INVALID_PATH',
         message: 'Output path is outside storage root',
