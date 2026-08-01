@@ -126,25 +126,10 @@ function isConfigFile(path) {
 //
 // 규칙: ① 파일·규칙 단위로만 예외를 만든다 ② 사유와 **오너 액션**을 반드시 적는다
 //       ③ 해소되면 항목을 지운다(해소 후에도 남아 있으면 게이트가 "예외 해소됨"으로 경고).
-const KNOWN_EXCEPTIONS = [
-  {
-    file: 'vercel.json',
-    rules: ['IP-CONFIG', 'IP-URL'],
-    reason:
-      '레포 루트 vercel.json 의 `/api/:path*`·`/storage/:path*` rewrites destination 이 내부 VPS IPv4 평문. ' +
-      '이 파일을 사용하는 Vercel 프로젝트의 정체가 미확인이고(운영 문서의 VPS 도메인과 다른 주소다) ' +
-      '임의로 고치면 그 프로젝트의 API/스토리지 프록시가 끊긴다 → 오너 결정 사안이라 게이트가 차단하지 않는다.',
-    impact:
-      '문서 포털(apps/docs)의 Vercel Root Directory 를 `apps/docs` 가 아닌 레포 루트로 설정하면 ' +
-      '포털이 이 rewrites 를 상속해 /api/*·/storage/* 를 내부 주소로 평문 프록시한다. ' +
-      '현재 방어선은 대시보드 설정 1개뿐이다.',
-    ownerAction:
-      '① 루트 vercel.json 을 쓰는 Vercel 프로젝트 식별(없으면 파일 삭제) ' +
-      '② destination 을 도메인(운영 API 도메인)으로 교체하거나 파일을 해당 앱 디렉터리로 이관 ' +
-      '③ 문서 포털 프로젝트의 Root Directory 가 `apps/docs` 인지 재확인 ' +
-      '④ 교체 후 이 예외 항목을 삭제(그때부터 게이트가 실차단한다)',
-  },
-];
+// 이력: 루트 vercel.json IP-CONFIG/IP-URL 예외(유일 항목)는 1037c02 에서 파일 자체가
+//       dead config 로 확정·삭제되며 해소됐다(2026-07-29 규명, 2026-08-01 항목 제거).
+//       현재 예외 0건 = 게이트가 IPv4·금지 식별자를 전면 실차단한다.
+const KNOWN_EXCEPTIONS = [];
 
 // ── 스캔 ────────────────────────────────────────────────────────────────────
 
