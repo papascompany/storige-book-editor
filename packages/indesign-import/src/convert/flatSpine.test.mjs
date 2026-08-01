@@ -4,6 +4,7 @@
 //    (Node 래스터는 sharp 사용 — devDependency. 픽셀 공식: px = Math.round(mm/25.4*300).)
 import { test } from 'node:test';
 import assert from 'node:assert';
+import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -14,6 +15,14 @@ import { mmToPx } from '../geometry/units.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const fixtureIdml = resolve(__dirname, '../../fixtures/cover-sample.idml');
+
+// fixture 는 고객 디자인 자산이라 gitignored(fixtures/.gitignore — PUBLIC 레포 커밋 금지 정책).
+// CI 청정 체크아웃에는 없으므로 fixture-의존 테스트는 부재 시 skip 한다(2026-08-01 CI 첫 런
+// 12건 ENOENT 실적발). 로컬(fixture 보유)은 계속 full 검증 — skip 카운트가 0 이어야 정상.
+const hasFixture = existsSync(fixtureIdml);
+const fixtureTest = (name, fn) =>
+  test(name, { skip: hasFixture ? false : 'fixtures/cover-sample.idml 부재(gitignored 고객 자산) — 로컬 전용' }, fn);
+
 
 // MA-348/LA-383 실측 사양: 210×297mm 표지 + 10mm 책등, 총폭 430mm.
 const SPEC_430 = {
@@ -80,7 +89,7 @@ async function convertFixture(mode) {
   return convertIdmlToTemplate(buf, { mode, name: 'flat-spine test' });
 }
 
-test('flat-spine: 객체 구성과 z-order = [spine, back, front, ...textbox]', async () => {
+fixtureTest('flat-spine: 객체 구성과 z-order = [spine, back, front, ...textbox]', async () => {
   const { dto } = await convertFixture('flat-spine');
   const objs = dto.canvasData.objects;
   assert.strictEqual(objs[0].id, 'spine-artwork', 'z 최하단 = spine-artwork');
@@ -95,7 +104,7 @@ test('flat-spine: 객체 구성과 z-order = [spine, back, front, ...textbox]', 
   }
 });
 
-test('flat-spine: spine-artwork 는 크롭 중심 유도 left(≈0) + content 중앙 canvas anchor + 3배폭(150dpi 환산 일치)', async () => {
+fixtureTest('flat-spine: spine-artwork 는 크롭 중심 유도 left(≈0) + content 중앙 canvas anchor + 3배폭(150dpi 환산 일치)', async () => {
   const { dto } = await convertFixture('flat-spine');
   const spine = dto.canvasData.objects.find((o) => o.id === 'spine-artwork');
   // left 는 가정값 0 이 아니라 실제 크롭 중심(crops.spine.centerPx)에서 유도 —
@@ -120,7 +129,7 @@ test('flat-spine: spine-artwork 는 크롭 중심 유도 left(≈0) + content �
   assert.ok(Math.abs(spine.scaleX - 0.5) < 0.001, 'scale ≈ 0.5 (300→150dpi)');
 });
 
-test('flat-spine: back/front-artwork 는 region anchor + 표지 영역 참조', async () => {
+fixtureTest('flat-spine: back/front-artwork 는 region anchor + 표지 영역 참조', async () => {
   const { dto } = await convertFixture('flat-spine');
   const back = dto.canvasData.objects.find((o) => o.id === 'back-artwork');
   const front = dto.canvasData.objects.find((o) => o.id === 'front-artwork');
@@ -142,7 +151,7 @@ test('flat-spine: back/front-artwork 는 region anchor + 표지 영역 참조', 
   assert.ok(Math.abs(shownSum - cw) < 1.5, `3분할 표시폭 합(${shownSum}) ≈ 캔버스폭(${cw})`);
 });
 
-test('flat-spine: 아트워크 3장 모두 ARTWORK_LOCK 전 속성 적용', async () => {
+fixtureTest('flat-spine: 아트워크 3장 모두 ARTWORK_LOCK 전 속성 적용', async () => {
   const { dto } = await convertFixture('flat-spine');
   for (const id of ['spine-artwork', 'back-artwork', 'front-artwork']) {
     const o = dto.canvasData.objects.find((x) => x.id === id);
@@ -157,7 +166,7 @@ test('flat-spine: 아트워크 3장 모두 ARTWORK_LOCK 전 속성 적용', asyn
 // 명시. admin 이 src 를 스토리지 URL(api.papascompany.co.kr)로 치환하면 편집기(editor.*)에서
 // 교차출처 로드 — crossOrigin 없으면 fabric 비-CORS 로드 → 캔버스 taint →
 // 썸네일/미리보기 toDataURL·getImageData SecurityError(라이브 관측). dataURL 단계에선 무해.
-test('아트워크 image 출력에 crossOrigin:anonymous 명시 (hybrid + flat-spine 3장)', async () => {
+fixtureTest('아트워크 image 출력에 crossOrigin:anonymous 명시 (hybrid + flat-spine 3장)', async () => {
   const hybrid = await convertFixture('hybrid');
   const artwork = hybrid.dto.canvasData.objects.find((o) => o.id === 'idml-artwork');
   assert.strictEqual(artwork.crossOrigin, 'anonymous', 'hybrid idml-artwork');
@@ -169,7 +178,7 @@ test('아트워크 image 출력에 crossOrigin:anonymous 명시 (hybrid + flat-s
   }
 });
 
-test('flat-spine: 텍스트 오버레이는 styles:{} 유지(fabric 5.5 저장 크래시 방어)', async () => {
+fixtureTest('flat-spine: 텍스트 오버레이는 styles:{} 유지(fabric 5.5 저장 크래시 방어)', async () => {
   const { dto } = await convertFixture('flat-spine');
   const texts = dto.canvasData.objects.filter((o) => o.type === 'textbox');
   assert.ok(texts.length > 0);
@@ -178,7 +187,7 @@ test('flat-spine: 텍스트 오버레이는 styles:{} 유지(fabric 5.5 저장 �
   }
 });
 
-test('flat-spine: PNG 3장 흰 배경 합성(알파 제거 = 불투명 보장)', async () => {
+fixtureTest('flat-spine: PNG 3장 흰 배경 합성(알파 제거 = 불투명 보장)', async () => {
   const { dto } = await convertFixture('flat-spine');
   const sharp = (await import('sharp')).default;
   for (const id of ['spine-artwork', 'back-artwork', 'front-artwork']) {
@@ -190,7 +199,7 @@ test('flat-spine: PNG 3장 흰 배경 합성(알파 제거 = 불투명 보장)',
   }
 });
 
-test('conversionMode 스탬프: vector=full / hybrid=flat-spread / flat-spine=flat-spine', async () => {
+fixtureTest('conversionMode 스탬프: vector=full / hybrid=flat-spread / flat-spine=flat-spine', async () => {
   const vector = await convertFixture('vector');
   assert.strictEqual(vector.dto.spreadConfig.conversionMode, 'full');
   // vector 객체 구성 불변(아트워크 합성 없음)

@@ -8,6 +8,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
 import { createRequire } from 'node:module';
+import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -24,6 +25,14 @@ import { parseIdml, convertIdmlToTemplate } from '../index.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const fixtureIdml = resolve(__dirname, '../../fixtures/cover-sample.idml');
+
+// fixture 는 고객 디자인 자산이라 gitignored(fixtures/.gitignore — PUBLIC 레포 커밋 금지 정책).
+// CI 청정 체크아웃에는 없으므로 fixture-의존 테스트는 부재 시 skip 한다(2026-08-01 CI 첫 런
+// 12건 ENOENT 실적발). 로컬(fixture 보유)은 계속 full 검증 — skip 카운트가 0 이어야 정상.
+const hasFixture = existsSync(fixtureIdml);
+const fixtureTest = (name, fn) =>
+  test(name, { skip: hasFixture ? false : 'fixtures/cover-sample.idml 부재(gitignored 고객 자산) — 로컬 전용' }, fn);
+
 
 // pt→px@150dpi (toSpreadTemplate 과 동일 환산: pt × 150/72)
 const ptToPx = (pt) => Math.round(((pt * 150) / 72) * 100) / 100;
@@ -360,7 +369,7 @@ test('미해석 텍스트 색상(그라디언트 등): 검정 대체 + 경고(�
 
 // ─── 5) reader per-run 추출 + 3모드 공통 적용 (fixtures IDML 실물) ───
 
-test('reader: fixture u187 — per-run 보존(10/9/11pt) + 정규화 후 오프셋(끝공백 탈락 반영)', async () => {
+fixtureTest('reader: fixture u187 — per-run 보존(10/9/11pt) + 정규화 후 오프셋(끝공백 탈락 반영)', async () => {
   const doc = await parseIdml(await readFile(fixtureIdml));
   const fr = doc.items.find((it) => it.parentStory === 'u187');
   const st = fr.story;
@@ -379,7 +388,7 @@ test('reader: fixture u187 — per-run 보존(10/9/11pt) + 정규화 후 오프�
   );
 });
 
-test('reader: fixture u627 — 말미 Br-only run(7.13pt) 소멸 + 혼합 trk(-25) 보존 + Leading 14', async () => {
+fixtureTest('reader: fixture u627 — 말미 Br-only run(7.13pt) 소멸 + 혼합 trk(-25) 보존 + Leading 14', async () => {
   const doc = await parseIdml(await readFile(fixtureIdml));
   const st = doc.items.find((it) => it.parentStory === 'u627').story;
   assert.ok(!st.runs.some((r) => r.sizePt === 7.12871287129347), 'trim 으로 사라진 run 은 미출력');
@@ -389,7 +398,7 @@ test('reader: fixture u627 — 말미 Br-only run(7.13pt) 소멸 + 혼합 trk(-2
   for (const r of st.runs) assert.strictEqual(st.text.slice(r.start, r.end), r.text);
 });
 
-test('reader: fixture u1cc — Justification absent → 스타일 체인 기본(LeftJustified) 해석', async () => {
+fixtureTest('reader: fixture u1cc — Justification absent → 스타일 체인 기본(LeftJustified) 해석', async () => {
   const doc = await parseIdml(await readFile(fixtureIdml));
   const st = doc.items.find((it) => it.parentStory === 'u1cc').story;
   // NormalParagraphStyle(속성 0) → BasedOn [No paragraph style](Justification=LeftJustified)
@@ -399,7 +408,7 @@ test('reader: fixture u1cc — Justification absent → 스타일 체인 기본(
   assert.strictEqual(st.autoLeadingPct, 120);
 });
 
-test('3모드 공통: vector/hybrid/flat-spine 의 textbox per-run 산출물 동일(구현 1곳 전파)', async () => {
+fixtureTest('3모드 공통: vector/hybrid/flat-spine 의 textbox per-run 산출물 동일(구현 1곳 전파)', async () => {
   const buf = await readFile(fixtureIdml);
   const pick = (dto) =>
     dto.canvasData.objects.find((o) => o.type === 'textbox' && o.text === '저자 북모아');
