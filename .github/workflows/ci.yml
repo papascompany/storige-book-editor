@@ -120,6 +120,28 @@ jobs:
           pnpm --filter @storige/canvas-core typecheck
           pnpm --filter @storige/canvas-core test
 
+      - name: editor 타입체크 + 테스트 (감사 §8 ⑤ — CI 커버리지 공백 해소)
+        # ⚠️ canvas-core **build 선행 필수** — editor 의 tsconfig references 는 tsconfig.node.json
+        # 뿐이라 tsc -b 가 canvas-core 를 빌드해 주지 않고, node_modules 심링크의 **dist d.ts** 로
+        # 해석한다. dist 가 없거나 스테일이면 typecheck 이 깨진다(2026-08-01 로컬 실증: 7-11 자
+        # dist 가 07-24 hotkey 메타 필드를 결여 → HotkeyLike 45 에러, 재빌드로 0). vitest 는
+        # src alias 라 무관하지만 typecheck 이 이 스텝에 있으므로 빌드를 앞세운다.
+        run: |
+          pnpm --filter @storige/canvas-core build
+          pnpm --filter @storige/editor typecheck
+          pnpm --filter @storige/editor test
+
+      - name: admin 테스트 (감사 §8 ⑤)
+        run: pnpm --filter @storige/admin test
+
+      - name: indesign-import 타입체크 + 테스트 (감사 §8 ⑤)
+        # test 스크립트의 `src/**/*.test.mjs` 글롭은 dash(ubuntu sh)에서 `src/*/*.test.mjs` 로
+        # 해석되는데, 테스트 파일이 전부 정확히 2단계 깊이라 15/15 매치된다(로컬 sh 실측).
+        # src/ 직하나 3단계에 테스트를 추가하면 이 글롭이 조용히 누락시킨다 — 추가 시 스크립트 갱신.
+        run: |
+          pnpm --filter @storige/indesign-import typecheck
+          pnpm --filter @storige/indesign-import test
+
       - name: PDF 골든 비교 엔진 self-test
         run: node --test scripts/pdf-golden/compare.test.mjs
 
