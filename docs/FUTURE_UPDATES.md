@@ -26,7 +26,7 @@
   - API health 정상, JWT 발급(bcrypt) 정상, Bull 큐 처리 정상
   - Prometheus storige-api target up
 - **남은 사항**:
-  - Vercel admin/editor: ignoreCommand로 build skip 됨(변경 없음). 다음 editor/admin 코드 변경 시 root engines로 자동 Node 22 빌드.
+  - ~~Vercel admin/editor: root engines로 자동 Node 22 빌드~~ **[정정 2026-08-01]** 이 기록은 거짓이었다 — Vercel 은 **레포 루트 engines 를 읽지 않는다**(앱별 package.json engines 또는 Project Settings 만 유효, 2026-07-30 실측). 실제 승격은 `58a5166` 이 `apps/{editor,admin}/package.json` 에 `engines "24.x"` 를 명시하며 이뤄졌고, 빌드 로그 `Node.js Version "24.x" will be used instead` 로 검증됐다. Project Settings(20.x) 갱신은 별건 잔여(기한 2026-10-01).
   - Sentry profiling-node 재도입 검토 (Alpine native build 이슈로 제거됨, `f5e22d9`)는 별도 사이클
 
 ---

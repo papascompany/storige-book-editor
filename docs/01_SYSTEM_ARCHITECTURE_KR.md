@@ -542,8 +542,8 @@ graph TB
         subgraph "Services"
             MARIA[storige-mariadb<br/>mariadb:11.2]
             REDIS[storige-redis<br/>redis:7.2]
-            API[storige-api<br/>node:20]
-            WORKER[storige-worker<br/>node:20]
+            API[storige-api<br/>node:22]
+            WORKER[storige-worker<br/>node:22]
         end
 
         subgraph "Networks"

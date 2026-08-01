@@ -57,7 +57,7 @@ Docker 기반 배포 인프라 구축 완료:
 
 **특징**:
 - Multi-stage build (빌더 + 프로덕션)
-- Node.js 20 Alpine 베이스
+- Node.js 22 Alpine 베이스
 - pnpm 패키지 매니저 사용
 - Monorepo 구조 지원 (@storige/types 빌드)
 - 프로덕션 의존성만 설치
@@ -258,7 +258,7 @@ nginx
 ### 컨테이너화
 - **Docker Engine**: 24.0+
 - **Docker Compose**: 2.20+
-- **Base Image**: Node.js 20 Alpine, Nginx 1.25 Alpine
+- **Base Image**: Node.js 22 Alpine, Nginx 1.25 Alpine
 
 ### 데이터베이스
 - **MySQL**: 8.0
