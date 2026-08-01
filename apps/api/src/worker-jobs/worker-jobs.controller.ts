@@ -10,6 +10,7 @@ import {
   Res,
   NotFoundException,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery, ApiSecurity } from '@nestjs/swagger';
 import { Response } from 'express';
@@ -41,6 +42,8 @@ import { UserRole, WorkerJobStatus, WorkerJobType } from '@storige/types';
 @ApiBearerAuth()
 @Controller('worker-jobs')
 export class WorkerJobsController {
+  private readonly logger = new Logger(WorkerJobsController.name);
+
   constructor(private readonly workerJobsService: WorkerJobsService) {}
 
   // ============================================================================
@@ -434,14 +437,24 @@ export class WorkerJobsController {
     // ① close: 클라이언트 중단 시 fd 누수 방지 ② error: existsSync 통과 후 open/read 사이에
     // 파일이 지워지면(보존정책 sweep 등) unhandled 'error' 로 응답이 매달린다 — 헤더 전송 전이면
     // JSON 에러, 전송 중이면 소켓을 끊어 불완전 다운로드가 완결로 오인되지 않게 한다.
+    // 라벨은 err.code 로 분기한다 — ENOENT(삭제 레이스)만 404 로, EACCES/EIO 같은 I/O 장애를
+    // '파일이 사라졌다'로 오분류하면 운영 진단이 은폐된다(적대 리뷰 지적, files.controller 는 500).
     const stream = fs.createReadStream(resolvedPath);
     res.on('close', () => stream.destroy());
-    stream.on('error', (err: Error) => {
+    stream.on('error', (err: NodeJS.ErrnoException) => {
+      this.logger.error(`downloadOutput stream error (${err.code ?? 'unknown'}): ${err.message}`);
       if (!res.headersSent) {
-        res.status(404).json({
-          code: 'FILE_NOT_ON_DISK',
-          message: `Output file disappeared during read: ${outputFileUrl}`,
-        });
+        if (err.code === 'ENOENT') {
+          res.status(404).json({
+            code: 'FILE_NOT_ON_DISK',
+            message: `Output file disappeared during read: ${outputFileUrl}`,
+          });
+        } else {
+          res.status(500).json({
+            code: 'STREAM_ERROR',
+            message: '파일 스트리밍 중 오류가 발생했습니다.',
+          });
+        }
       } else {
         res.destroy(err);
       }

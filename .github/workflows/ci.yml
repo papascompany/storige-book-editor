@@ -126,7 +126,11 @@ jobs:
         # 해석한다. dist 가 없거나 스테일이면 typecheck 이 깨진다(2026-08-01 로컬 실증: 7-11 자
         # dist 가 07-24 hotkey 메타 필드를 결여 → HotkeyLike 45 에러, 재빌드로 0). vitest 는
         # src alias 라 무관하지만 typecheck 이 이 스텝에 있으므로 빌드를 앞세운다.
+        # @storige/ai 도 빌드한다 — editor 의 workspace 의존인데 exports 가 전부 dist/* 라,
+        # editor 소스가 첫 import 를 추가하는 순간 청정 설치 CI 에서만 TS2307 로 깨지는
+        # 동형 함정이 잠복한다(현재 import 0건, tsup 수 초 — 선제 제거).
         run: |
+          pnpm --filter @storige/ai build
           pnpm --filter @storige/canvas-core build
           pnpm --filter @storige/editor typecheck
           pnpm --filter @storige/editor test

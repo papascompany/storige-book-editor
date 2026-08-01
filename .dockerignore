@@ -24,6 +24,10 @@ node_modules
 **/coverage
 **/.vercel
 
+# 프로덕션 업로드 스토리지 — 어떤 Dockerfile 도 COPY 하지 않고 런타임은 bind mount 로 붙는다.
+# VPS 에서 수십 GB 로 성장하는 최대 컨텍스트 기여자라 반드시 차단(빌드 컨텍스트 무관 = 런타임 영향 0).
+storage
+
 # 시크릿 (루트 한정 — apps/editor/.env.production 은 tracked 빌드 입력이라 제외하지 않는다)
 .env
 .rotated-secrets*
