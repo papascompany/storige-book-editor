@@ -547,7 +547,104 @@ class SpreadPlugin extends PluginBase {
   }
 
   /**
-   * 객체 재배치 (resizeSpine 내부 호출)
+   * 날개(wing) 폭/사용여부 변경 (2026-08-03).
+   *
+   * 책등(resizeSpine)과 동형의 레이아웃 트랜잭션이며 **객체 재배치를 반드시 동반**한다 —
+   * 총폭이 바뀌는데 저장된 표지 아트워크는 절대좌표(중앙원점)라, 재배치 없이 폭만 바꾸면
+   * 표지 요소가 영역 대비 통째로 어긋난다(날개 주입안의 최대 리스크).
+   *
+   * 상품(주문) 단위로 날개 유무가 갈리는 운영을 위해 도입: 템플릿 spec 은 정적이므로
+   * 편집기 초기화 이후 주문 옵션으로 날개를 반영하려면 이 경로가 필요하다.
+   *
+   * - 내지(inner) 펼침면에는 날개 개념이 없어 no-op.
+   * - flat-spread(통짜 아트워크)는 폭 변경 시 인쇄물과 어긋나므로 no-op(resizeSpine 과 동일 정책).
+   * - 날개를 **끄는** 변경에서 해당 영역에 객체가 남아 있으면 갈 곳이 없어지므로,
+   *   재배치는 computeObjectReposition 의 자가치유(실측 bbox 재판정)에 위임된다.
+   */
+  async resizeWing(next: { wingEnabled?: boolean; wingWidthMm?: number }): Promise<void> {
+    if (this.regionScope === 'inner') {
+      console.warn('[SpreadPlugin] resizeWing: 내지(inner)는 날개 없음 — no-op')
+      return
+    }
+    if (this.conversionMode === 'flat-spread') {
+      console.warn('[SpreadPlugin] resizeWing 차단: flat-spread 는 전폭 아트워크 고정')
+      return
+    }
+    if (!this.currentLayout) {
+      console.warn('[SpreadPlugin] resizeWing: currentLayout is null, init() 호출 필요')
+      return
+    }
+
+    const oldSpec = this.currentSpec
+    const wingEnabled = next.wingEnabled ?? oldSpec.wingEnabled
+    const wingWidthMm = next.wingWidthMm ?? oldSpec.wingWidthMm
+    if (wingEnabled === oldSpec.wingEnabled && wingWidthMm === oldSpec.wingWidthMm) {
+      return
+    }
+    if (wingEnabled && !(Number.isFinite(wingWidthMm) && (wingWidthMm as number) > 0)) {
+      console.warn(`[SpreadPlugin] resizeWing: wingEnabled=true 인데 폭이 유효하지 않음(${wingWidthMm}) — no-op`)
+      return
+    }
+
+    const newSpec: SpreadSpec = { ...oldSpec, wingEnabled, wingWidthMm: wingWidthMm as number }
+    const newLayout = computeLayout(newSpec)
+
+    this.isLayoutTransaction = true
+    try {
+      this._canvas.renderOnAddRemove = false
+
+      const workspacePlugin = this._editor.getPlugin('WorkspacePlugin')
+      if (workspacePlugin) {
+        await workspacePlugin.setOptions({
+          size: {
+            width: newLayout.totalWidthMm,
+            height: newLayout.totalHeightMm,
+            cutSize: newSpec.cutSizeMm,
+            safeSize: newSpec.safeSizeMm,
+          },
+        })
+      }
+
+      const oldLayout = this.currentLayout
+      this.repositionObjects(oldLayout, newLayout)
+
+      this.clearGuides()
+      this.clearLabels()
+      this.clearBleedBorder()
+      this.renderGuides(newLayout)
+      this.renderLabels(newLayout)
+      this.renderBleedBorder(newLayout)
+      this.renderSpineSafeInset(newLayout)
+
+      this.currentLayout = newLayout
+      this.currentSpec = newSpec
+
+      this._canvas.renderOnAddRemove = true
+      this._editor.getPlugin('WorkspacePlugin')?.setZoomAuto()
+      this._canvas.requestRenderAll()
+
+      console.log(
+        `[SpreadPlugin] resizeWing 완료: enabled ${oldSpec.wingEnabled}→${wingEnabled}, ` +
+          `폭 ${oldSpec.wingWidthMm}→${wingWidthMm}mm, 총폭 ${oldLayout.totalWidthMm}→${newLayout.totalWidthMm}mm`
+      )
+
+      this._editor.emit('wingChange', {
+        oldWingEnabled: oldSpec.wingEnabled,
+        newWingEnabled: wingEnabled,
+        oldWingWidth: oldSpec.wingWidthMm,
+        newWingWidth: wingWidthMm,
+        oldLayout,
+        newLayout,
+      })
+
+      this.checkObjectsOutOfBounds(newLayout)
+    } finally {
+      this.isLayoutTransaction = false
+    }
+  }
+
+  /**
+   * 객체 재배치 (resizeSpine / resizeWing 내부 호출)
    */
   private repositionObjects(oldLayout: SpreadLayout, newLayout: SpreadLayout): void {
     const objects = this._canvas.getObjects()

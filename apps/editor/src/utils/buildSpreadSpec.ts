@@ -8,6 +8,36 @@
 
 import type { SpreadSpec, SpreadConfig, Template } from '@storige/types'
 
+/**
+ * 날개 오버라이드 해석 (주문 옵션 > 템플릿 spec).
+ *
+ * 규칙:
+ *  - 오버라이드 미전달 → 템플릿 값 그대로(기존 동작 byte-identical)
+ *  - `wingEnabled=false` → 폭과 무관하게 끔
+ *  - `wingEnabled=true` → **유효한 폭(>0)이 오버라이드나 템플릿에 있어야** 켠다.
+ *    폭 없이 켜면 computeLayout 이 폭 0 영역을 skip 해 "켰는데 안 보이는" 무성의한 상태가 된다.
+ *  - 폭만 전달 → 템플릿이 켜져 있을 때만 의미가 있으므로 enabled 는 템플릿 값 유지
+ */
+export function resolveWingOverride(
+  base: { wingEnabled: boolean; wingWidthMm: number },
+  override: { wingEnabled?: boolean; wingWidthMm?: number },
+): { wingEnabled: boolean; wingWidthMm: number } {
+  const width =
+    typeof override.wingWidthMm === 'number' && Number.isFinite(override.wingWidthMm) && override.wingWidthMm > 0
+      ? override.wingWidthMm
+      : base.wingWidthMm
+
+  if (override.wingEnabled === false) {
+    return { wingEnabled: false, wingWidthMm: width }
+  }
+  if (override.wingEnabled === true) {
+    return width > 0
+      ? { wingEnabled: true, wingWidthMm: width }
+      : { wingEnabled: false, wingWidthMm: width }
+  }
+  return { wingEnabled: base.wingEnabled, wingWidthMm: width }
+}
+
 export interface BuildSpreadSpecOptions {
   /** Template (spread 타입) */
   template: Template
@@ -17,6 +47,14 @@ export interface BuildSpreadSpecOptions {
   safeSizeMm?: number
   /** DPI (기본값: 150) */
   dpi?: number
+  /**
+   * 주문(상품) 옵션의 날개 사용 여부 오버라이드 (2026-08-03).
+   * 날개는 종전까지 템플릿 spec 전용 정적값이라, 같은 표지 템플릿을 쓰면서 상품별로
+   * 날개 유무가 갈리는 운영이 불가능했다. 미전달이면 템플릿 값 그대로 = 기존 동작 불변.
+   */
+  wingEnabled?: boolean
+  /** 주문(상품) 옵션의 날개 폭(mm) 오버라이드. 미전달이면 템플릿 값 그대로. */
+  wingWidthMm?: number
 }
 
 /**
@@ -60,13 +98,20 @@ export function buildSpreadSpec(options: BuildSpreadSpecOptions): SpreadSpec | n
     )
   }
 
+  const resolvedWing = resolveWingOverride(
+    { wingEnabled: spec.wingEnabled, wingWidthMm: spec.wingWidthMm },
+    { wingEnabled: options.wingEnabled, wingWidthMm: options.wingWidthMm },
+  )
+
   // 완전한 SpreadSpec 생성 (저장된 값 + 상품 스펙 보완)
   const spreadSpec: SpreadSpec = {
     coverWidthMm: spec.coverWidthMm,
     coverHeightMm: spec.coverHeightMm,
     spineWidthMm: spec.spineWidthMm || 0, // 초기값, 나중에 계산됨
-    wingEnabled: spec.wingEnabled,
-    wingWidthMm: spec.wingWidthMm,
+    // 주문 옵션 오버라이드 우선 — 단 '켜기'는 유효한 폭이 함께 와야 적용한다
+    // (폭 없이 켜면 computeLayout 이 폭 0 영역을 skip 해 조용히 무효가 된다).
+    wingEnabled: resolvedWing.wingEnabled,
+    wingWidthMm: resolvedWing.wingWidthMm,
     cutSizeMm: spec.cutSizeMm || cutSizeMm, // 저장된 값 우선, 없으면 상품 스펙
     safeSizeMm: spec.safeSizeMm || safeSizeMm,
     dpi: spec.dpi || dpi,

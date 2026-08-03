@@ -75,6 +75,14 @@ export default function EmbedView() {
       const pageCount = get('pageCount') ? Number(get('pageCount')) : undefined
       const paperType = get('paperType')
       const bindingType = get('bindingType')
+      // 표지 날개(2026-08-03): 날개는 종전까지 템플릿 spec 전용 정적값이라, 같은 표지 템플릿으로
+      // 상품별 날개 유무를 가를 수 없었다. 호스트(bookmoa 관리자)가 상품 세팅을 주문 옵션으로
+      // 전달하면 편집기가 반영한다. 미전달이면 템플릿 값 그대로 = 기존 동작 불변.
+      const wingEnabledRaw = get('wingEnabled')
+      const wingEnabled =
+        wingEnabledRaw === undefined ? undefined : wingEnabledRaw === '1' || wingEnabledRaw === 'true'
+      const wingWidthMmRaw = get('wingWidthMm')
+      const wingWidthMm = wingWidthMmRaw ? Number(wingWidthMmRaw) : undefined
       // 주문 메타 스냅샷용 (2026-06-11) — admin 세션/삭제 리스트에서 부수·인쇄제목·상품명 노출
       const quantity = get('quantity') ? Number(get('quantity')) : undefined
       const title = get('title')
@@ -128,7 +136,10 @@ export default function EmbedView() {
         apiBaseUrl,
         callbackUrl,
         parentOrigin,
-        options: { pageCount, paperType, bindingType, size, quantity, title, productName },
+        options: {
+          pageCount, paperType, bindingType, size, quantity, title, productName,
+          wingEnabled, wingWidthMm,
+        },
         // 레거시 dual-emit (정식 엔벨로프는 EmbeddedEditor 가 별도 발신)
         onReady: () => emitLegacy(parentOrigin, 'storige:ready', { templateSetId, sessionId }),
         onSave: (r: SaveResult) =>

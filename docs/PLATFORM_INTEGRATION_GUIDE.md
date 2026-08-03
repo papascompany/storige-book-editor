@@ -760,12 +760,20 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 | `orderSeqno` | 선택 | 도출 | 주문 식별 |
 | `mode` | 선택 | 도출 | `cover` \| `content` \| `both` \| `template` |
 | `pageCount`, `paperType`, `bindingType`, `quantity` | 선택 | 도출 | 세션 metadata orderOptions 우선, spine 폴백 |
+| `wingEnabled`, `wingWidthMm` | 선택 | 도출 | **표지 날개**(2026-08-03 신설). `wingEnabled=1|true`, 폭은 한 쪽 mm. 미전달 시 **템플릿 spec 값** 사용 |
 | `productId`, `productName`, `title`, `width`, `height` | 선택 | — | 메타 |
 | `coverFileId`, `contentFileId` | 선택 | — | 기존 파일 연결 |
 | `callbackUrl`, `apiBaseUrl` | 선택 | — | — |
 | `allowSampleFallback` | 선택 | — | `1` 또는 DEV에서만 sample 폴백 |
 
 > 프로덕션에서 템플릿셋 로드 실패 시 `editor.error TEMPLATE_SET_NOT_FOUND` 를 발신합니다.
+> **표지 날개 권위 규칙(2026-08-03):** 판형·책등과 달리 날개는 **상품(주문) 옵션이 템플릿 spec 보다 우선**합니다.
+> 같은 표지 템플릿으로 날개 상품/비날개 상품을 함께 운영하기 위한 설계입니다. 규칙 3가지 —
+> ① 미전달이면 템플릿 값 그대로(기존 동작 불변) ② `wingEnabled=true` 는 **유효한 폭(>0)이 함께 와야** 적용됩니다
+> (폭 없이 켜면 렌더에서 폭 0 영역이 skip 되어 "켰는데 안 보이는" 상태가 되므로 편집기가 거부) ③ 좌우 동일 폭 단일 모델입니다(앞/뒤 비대칭 미지원).
+> 날개를 주입하면 펼침면 총폭이 바뀌므로 편집기는 저장된 표지 아트워크를 영역 기준으로 재배치합니다.
+> 주문 시점 값은 세션 `metadata.orderOptions` 에 기록되어 재편집 진입에서 복원됩니다.
+>
 > **`width`/`height` 는 메타 스냅샷일 뿐 캔버스 규격을 바꾸지 않습니다.** 실제 작업 규격(판형)의 권위는 템플릿셋·주문 옵션이며 임베드 편집기 안에서는 **read-only** 입니다(Canva 식 자유 커스텀 치수 불가). 완료 시점의 실제 규격은 `editor.complete` 의 `size` 로 되돌아오니, 파트너는 그 값으로 정합만 검증하세요 — 3.2 참조.
 > **재편집(`sessionId`)에 `templateSetId` 를 함께 보내면** 편집기가 세션 조회 1콜을 생략합니다. `sessionId` 만 보냈는데 세션 조회가 실패하면 편집기는 편집 화면 대신 "템플릿셋을 확인할 수 없습니다" 오류로 멈추므로, 파트너가 `templateSetId` 를 보관하고 있다면 함께 넘기는 편이 안전합니다.
 

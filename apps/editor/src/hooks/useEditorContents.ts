@@ -61,6 +61,12 @@ export interface TemplateSetBasedSetupConfig {
    * 각 페이지엔 applyContentPdfGuides 가 해당 PDF 페이지 가이드를 배치.
    */
   underlayPageCount?: number
+  /**
+   * 표지 날개 오버라이드 (2026-08-03) — 주문(상품) 옵션이 템플릿 spec 보다 우선.
+   * 미전달이면 템플릿 값 그대로 = 기존 동작 불변. 좌우 동일 폭 단일 모델(SpreadSpec 규약).
+   */
+  wingEnabled?: boolean
+  wingWidthMm?: number
 }
 
 // 사용 케이스별 설정 타입 매핑
@@ -1487,6 +1493,10 @@ export function useEditorContents(): UseEditorContentsReturn {
             cutSizeMm: spreadGateOn ? spreadBleedMm * 2 : 2,
             safeSizeMm: 3,
             dpi: 150,
+            // 주문 옵션 날개 오버라이드 — 초기 레이아웃 계산(computeLayout) **이전**에
+            // 반영돼야 아트워크가 처음부터 정합한다(초기화 후 주입은 재배치 필요).
+            wingEnabled: config.wingEnabled,
+            wingWidthMm: config.wingWidthMm,
           })
 
       if (!spreadSpec) {

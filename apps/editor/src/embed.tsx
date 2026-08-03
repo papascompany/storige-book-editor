@@ -248,8 +248,15 @@ export interface EditorConfig {
     bleed?: number
     /** 종이 두께 */
     paperThickness?: number
-    /** 날개 설정 */
+    /**
+     * @deprecated 2026-08-03 — 선언만 있고 소비처가 0건인 죽은 필드였다(레거시 IIFE 하네스 호환용 유지).
+     * 날개는 아래 wingEnabled/wingWidthMm 로 전달한다(SpreadSpec 은 좌우 동일 폭 단일 모델).
+     */
     coverWing?: { front: number; back: number }
+    /** 표지 날개 사용 여부 — 주문(상품) 옵션. 미전달 시 템플릿 spec 값 사용 */
+    wingEnabled?: boolean
+    /** 표지 날개 한 쪽 폭(mm) — 주문(상품) 옵션. 미전달 시 템플릿 spec 값 사용 */
+    wingWidthMm?: number
     /** 종이 정보 */
     paper?: { type: string; weight: number }
   }
@@ -804,6 +811,9 @@ function EmbeddedEditor({
               quantity: options?.quantity,
               title: options?.title,
               productName: options?.productName,
+              // 날개(2026-08-03): 재편집 진입에서 총폭을 복원하려면 주문 시점 값이 필요하다.
+              wingEnabled: options?.wingEnabled,
+              wingWidthMm: options?.wingWidthMm,
               productId,
               orderSeqno,
             }).filter(([, value]) => value !== undefined)
@@ -1017,6 +1027,17 @@ function EmbeddedEditor({
           asNonEmptyString(options?.bindingType) ??
           asNonEmptyString(sessionOrderOptions.bindingType) ??
           asNonEmptyString(sessionSpineSnapshot.bindingType)
+        // 날개(2026-08-03): 책등과 동일한 우선순위 사다리 — props/URL > 세션 orderOptions.
+        // 재편집(/embed?sessionId 단독) 진입에서 주문 시점 날개 설정이 유실되면 총폭이 달라져
+        // 저장된 아트워크가 어긋나므로 복원이 필수다.
+        const effectiveWingEnabled =
+          typeof options?.wingEnabled === 'boolean'
+            ? options.wingEnabled
+            : typeof sessionOrderOptions.wingEnabled === 'boolean'
+              ? (sessionOrderOptions.wingEnabled as boolean)
+              : undefined
+        const effectiveWingWidthMm =
+          asPositiveNumber(options?.wingWidthMm) ?? asPositiveNumber(sessionOrderOptions.wingWidthMm)
 
         console.log('[EmbeddedEditor] Loading template set with options:', {
           templateSetId: effectiveTemplateSetId,
@@ -1042,6 +1063,8 @@ function EmbeddedEditor({
             underlayPageCount,
             paperType: effectivePaperType,
             bindingType: effectiveBindingType,
+            wingEnabled: effectiveWingEnabled,
+            wingWidthMm: effectiveWingWidthMm,
           })
         } catch (loadErr) {
           // 프로덕션 기본: 무음 샘플 폴백 금지 — 명확히 실패 표시 후 중단 (2026-06-11)
@@ -1061,6 +1084,8 @@ function EmbeddedEditor({
             underlayPageCount,
             paperType: effectivePaperType,
             bindingType: effectiveBindingType,
+            wingEnabled: effectiveWingEnabled,
+            wingWidthMm: effectiveWingWidthMm,
           })
         }
 
