@@ -142,11 +142,15 @@ ssh-add -l | head -1                                 # 비면: ssh-add ~/.ssh/id
   `SpreadPlugin.resizeWing`(**repositionObjects 동반** — 총폭 변경 시 아트워크 어긋남이 최대 리스크였고
   책등이 푼 방식 재사용). PLATFORM_INTEGRATION_GUIDE 에 권위 규칙 명시(**날개는 주문 옵션 우선**).
 
+- **Admin 조립 UX 4건 완료** (`c2f5a9c`): ①후보 필터 inner 폭 검증(순수 헬퍼 `matchesSpreadCandidate`
+  — 표지 경로는 **정확 비교 유지**해 무회귀) ②표지/내지 펼침면 구분 태그(폼·후보모달·TemplateList
+  표기+필터 분리) ③포토북 타입 필터 옵션 + ProductTemplateSets '리플렛' 오표기 수정 ④서버 400 메시지
+  노출(`serverErrorText`) + PAGE≥1 선제 검증·Alert + 내지 세트 전용 안내. admin 78/78(신규 11).
+
 **잔여(별도 트랙)**: ⓐ 편집기 세션 검증잡 orderOptions 에 날개 미포함(현재는 책등 미해석로 검증
 건너뜀 → 무해하나 해석 조건 갖춰지면 오탐 소지) ⓑ 워커 wingTotal 가산이 perfect 한정 — 양장 확장 시
-산식 필요 ⓒ Admin 템플릿셋 조립 UX(후보 필터 inner 미지원·표지/내지 spread 태그 미구분·
-포토북 타입 필터 누락·400 메시지 미노출) ⓓ 재편집 시 사진틀 재바인딩(B3 지적) ⓔ `instance.complete`
-프로그래매틱 경로는 캔버스 1장만 저장.
+산식 필요 ⓒ 재편집 시 사진틀 재바인딩(B3 지적) ⓓ `instance.complete` 프로그래매틱 경로는 캔버스
+1장만 저장 ⓔ 포토북 내지 세트 **실기 E2E 미실시**(등록→편집→완료 전 구간).
 
 ## 2. 잔여 — **오너 행동 0건** · 외부 회신 대기/관찰만 (코드 잔여 0)
 
