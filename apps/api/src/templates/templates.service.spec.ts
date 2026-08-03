@@ -187,6 +187,90 @@ describe('TemplatesService', () => {
     });
   });
 
+  // 포토북 내지 펼침면(regionScope='inner') — 등록 경로 회귀 가드.
+  // 배경: cover 전용 검증이 spec.coverWidthMm 를 무조건 요구해, spec 없이 innerSpec 만 보내는
+  // 편집기 저장 페이로드(buildInnerSpreadConfig)가 400 으로 막혀 등록 자체가 불가능했다.
+  describe('create (spread regionScope=inner)', () => {
+    const innerSpec = {
+      pageWidthMm: 210,
+      pageHeightMm: 297,
+      gutterMm: 10,
+      cutSizeMm: 6,
+      safeSizeMm: 5,
+      dpi: 150,
+    };
+    const makeInnerDto = (spreadConfig: Record<string, unknown> = {}) => ({
+      name: 'Photobook Inner Spread',
+      type: TemplateType.SPREAD,
+      canvasData: '{}',
+      spreadConfig: {
+        version: 1,
+        regionScope: 'inner',
+        innerSpec,
+        regions: [],
+        totalWidthMm: 0,
+        totalHeightMm: 0,
+        ...spreadConfig,
+      },
+    });
+
+    beforeEach(() => {
+      templateRepository.findOne.mockResolvedValue(null);
+    });
+
+    it('spec 없이 innerSpec 만으로 저장되고, 총치수를 서버가 재계산해 override 한다', async () => {
+      const dto = makeInnerDto();
+
+      const result = await service.create(dto as any, 'user-id');
+
+      expect(result).toEqual(mockTemplate);
+      // 한 면 × 2 = 펼침면 총폭, 높이는 한 면 그대로 (거터는 총폭에 가산하지 않는다)
+      expect((dto as any).width).toBe(420);
+      expect((dto as any).height).toBe(297);
+      expect((dto.spreadConfig as any).totalWidthMm).toBe(420);
+      expect((dto.spreadConfig as any).totalHeightMm).toBe(297);
+      // innerSpec 은 스트립되지 않고 보존되어야 한다
+      expect((dto.spreadConfig as any).innerSpec).toEqual(innerSpec);
+    });
+
+    it('innerSpec 누락 시 400', async () => {
+      const dto = makeInnerDto({ innerSpec: undefined });
+
+      await expect(service.create(dto as any, 'user-id')).rejects.toThrow(BadRequestException);
+      expect(templateRepository.save).not.toHaveBeenCalled();
+    });
+
+    it('pageWidthMm/pageHeightMm 이 0 이하면 400', async () => {
+      const dto = makeInnerDto({ innerSpec: { ...innerSpec, pageWidthMm: 0 } });
+
+      await expect(service.create(dto as any, 'user-id')).rejects.toThrow(BadRequestException);
+    });
+
+    it('gutterMm 이 음수면 400', async () => {
+      const dto = makeInnerDto({ innerSpec: { ...innerSpec, gutterMm: -1 } });
+
+      await expect(service.create(dto as any, 'user-id')).rejects.toThrow(BadRequestException);
+    });
+
+    it('conversionMode 는 표지 전용이라 inner 에서 400', async () => {
+      const dto = makeInnerDto({ conversionMode: 'flat-spread' });
+
+      await expect(service.create(dto as any, 'user-id')).rejects.toThrow(BadRequestException);
+    });
+
+    it('regionScope 미지정(레거시 cover)은 기존 cover 검증을 그대로 탄다 — 무회귀', async () => {
+      // spec 없이 regionScope 도 없으면 종전과 동일하게 cover 검증에서 400
+      const dto = {
+        name: 'Legacy Spread',
+        type: TemplateType.SPREAD,
+        canvasData: '{}',
+        spreadConfig: { version: 1, regions: [], totalWidthMm: 0, totalHeightMm: 0 },
+      };
+
+      await expect(service.create(dto as any, 'user-id')).rejects.toThrow(BadRequestException);
+    });
+  });
+
   describe('update (spread conversionMode preservation)', () => {
     it('should preserve existing conversionMode when incoming spreadConfig omits it', async () => {
       const baseSpec = {

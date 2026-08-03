@@ -1,5 +1,6 @@
 import { memo } from 'react'
 import { cn } from '@/lib/utils'
+import { computeThumbBox } from '@/utils/thumbnailAspect'
 import { TemplateType } from '@storige/types'
 import type { EditPage } from '@storige/types'
 
@@ -42,6 +43,10 @@ export const PageItem = memo(function PageItem({
   canDelete,
   isDragging,
 }: PageItemProps) {
+  // 판형 비율 썸네일 박스 — canvasData.width/height(mm)가 권위.
+  // 펼침면 내지는 여기서 자동으로 가로 긴 카드가 된다(폭 예산 고정 → 높이 유도).
+  const thumbBox = computeThumbBox(page.canvasData?.width, page.canvasData?.height)
+
   const handleClick = () => {
     onSelect(index)
   }
@@ -63,12 +68,14 @@ export const PageItem = memo(function PageItem({
       )}
       onClick={handleClick}
     >
-      {/* 썸네일 */}
+      {/* 썸네일 — 박스 크기를 판형 비율로 유도(고정 w-20 h-28 제거).
+          낱장 내지는 낱장 비율로, 펼침면 내지는 펼침면(가로 긴) 비율로 보인다. */}
       <div
         className={cn(
-          'w-20 h-28 bg-white border rounded shadow-sm overflow-hidden',
+          'bg-white border rounded shadow-sm overflow-hidden',
           'flex items-center justify-center'
         )}
+        style={{ width: thumbBox.width, height: thumbBox.height }}
       >
         {thumbnail ? (
           <img

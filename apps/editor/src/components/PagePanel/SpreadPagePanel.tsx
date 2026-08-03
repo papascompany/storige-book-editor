@@ -44,6 +44,13 @@ export const SpreadPagePanel = memo(function SpreadPagePanel({
   // 내지 페이지들
   const innerPages = pages.slice(1)
 
+  // 스프레드 썸네일도 판형 비율을 따르게 한다(종전 2:1 고정).
+  // 표지 스프레드는 대개 2:1 근처라 시각 변화가 거의 없고, 정방형·가로형 판형에서만 교정된다.
+  const spreadAspectRatio =
+    spreadPage?.canvasData?.width && spreadPage?.canvasData?.height
+      ? spreadPage.canvasData.width / spreadPage.canvasData.height
+      : undefined
+
   const handleSelectSpread = useCallback(() => {
     setPage(0)
   }, [setPage])
@@ -137,6 +144,7 @@ export const SpreadPagePanel = memo(function SpreadPagePanel({
                 isActive={currentPageIndex === 0}
                 onClick={handleSelectSpread}
                 compact={isVertical}
+                aspectRatio={spreadAspectRatio}
               />
             </div>
 

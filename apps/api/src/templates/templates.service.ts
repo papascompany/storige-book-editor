@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException, ConflictException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { normalizeSpreadSpec, computeSpreadDimensions } from '@storige/types';
+import { normalizeSpreadSpec, computeSpreadDimensions, roundMm01 } from '@storige/types';
 import type { SpreadConversionMode } from '@storige/types';
 import { Template } from './entities/template.entity';
 import { TemplateSet } from './entities/template-set.entity';
@@ -175,6 +175,16 @@ export class TemplatesService {
       throw new BadRequestException('type=spread일 때 spreadConfig는 필수입니다.');
     }
 
+    // 포토북 내지 펼침면(regionScope='inner')은 표지용 spec 대신 innerSpec 을 권위로 쓴다.
+    // (packages/types SpreadConfig 주석: "regionScope==='inner' 는 spec 대신 innerSpec 사용, spec 생략 가능")
+    // 편집기 저장 페이로드(buildInnerSpreadConfig)는 spec 을 아예 만들지 않으므로,
+    // 아래 cover 전용 검증(spec.coverWidthMm 필수)에 도달하면 400 이 나 등록 자체가 불가능했다.
+    // cover 경로는 이 분기 아래로 그대로 흘러 기존 동작 불변(byte-identical).
+    if (dto.spreadConfig.regionScope === 'inner') {
+      this.validateAndNormalizeInnerSpreadConfig(dto);
+      return;
+    }
+
     const rawSpec = dto.spreadConfig.spec;
     if (!rawSpec || !Number.isFinite(rawSpec.coverWidthMm) || !Number.isFinite(rawSpec.coverHeightMm)) {
       throw new BadRequestException('spreadConfig.spec에 유효한 coverWidthMm, coverHeightMm이 필요합니다.');
@@ -242,6 +252,76 @@ export class TemplatesService {
           );
         }
       }
+    }
+  }
+
+  /**
+   * 포토북 내지 펼침면(regionScope='inner') 전용 검증·정규화.
+   *
+   * 표지(cover)와 대칭 구조: 클라이언트가 보낸 총치수를 신뢰하지 않고 서버가 재계산해 override 한다.
+   *   totalWidthMm = 한 면 폭 × 2 (좌면+우면. 거터는 면 내부 안전영역이라 총폭에 가산하지 않는다)
+   *   totalHeightMm = 한 면 높이
+   * 이 규약은 편집기 buildInnerSpreadConfig(apps/editor/src/utils/photobookSpread.ts)와 동일하다.
+   */
+  private validateAndNormalizeInnerSpreadConfig(dto: CreateTemplateDto | UpdateTemplateDto): void {
+    const spreadConfig = dto.spreadConfig;
+    if (!spreadConfig) {
+      throw new BadRequestException('type=spread일 때 spreadConfig는 필수입니다.');
+    }
+    const innerSpec = spreadConfig.innerSpec;
+    if (
+      !innerSpec ||
+      !Number.isFinite(innerSpec.pageWidthMm) ||
+      !Number.isFinite(innerSpec.pageHeightMm)
+    ) {
+      throw new BadRequestException(
+        'regionScope=inner일 때 spreadConfig.innerSpec에 유효한 pageWidthMm, pageHeightMm이 필요합니다.',
+      );
+    }
+    if (innerSpec.pageWidthMm <= 0 || innerSpec.pageHeightMm <= 0) {
+      throw new BadRequestException('pageWidthMm, pageHeightMm은 양수여야 합니다.');
+    }
+    // 거터는 선택값이지만, 들어온다면 음수는 레이아웃(computeInnerSpreadLayout)을 깨뜨린다.
+    if (
+      innerSpec.gutterMm !== undefined &&
+      (!Number.isFinite(innerSpec.gutterMm) || innerSpec.gutterMm < 0)
+    ) {
+      throw new BadRequestException('gutterMm은 0 이상이어야 합니다.');
+    }
+
+    const totalWidthMm = roundMm01(innerSpec.pageWidthMm * 2);
+    const totalHeightMm = roundMm01(innerSpec.pageHeightMm);
+
+    // 클라이언트 값과 서버 계산값 차이 경고 (cover 경로와 동일한 관측성)
+    if (dto.width && Math.abs(dto.width - totalWidthMm) > 0.2) {
+      this.logger.warn(
+        `Inner spread width mismatch: client=${dto.width}mm, server=${totalWidthMm}mm`,
+      );
+    }
+    if (dto.height && Math.abs(dto.height - totalHeightMm) > 0.2) {
+      this.logger.warn(
+        `Inner spread height mismatch: client=${dto.height}mm, server=${totalHeightMm}mm`,
+      );
+    }
+
+    dto.width = totalWidthMm;
+    dto.height = totalHeightMm;
+    spreadConfig.totalWidthMm = totalWidthMm;
+    spreadConfig.totalHeightMm = totalHeightMm;
+    if (!spreadConfig.version) {
+      spreadConfig.version = 1;
+    }
+    // 내지 펼침면에는 표지 영역(back-cover/spine/front-cover) 개념이 없다.
+    // 좌/우 면은 innerSpec 으로 런타임 계산(computeInnerSpreadLayout)하므로 regions 는 비운다.
+    if (!spreadConfig.regions) {
+      spreadConfig.regions = [];
+    }
+    // conversionMode 는 표지 아트워크 분할 규약이라 내지에는 해당 없음 — 들어와도 무시하지 않고
+    // 명시적으로 거부해 "flat-spread 내지" 같은 무의미한 조합이 저장되는 것을 막는다.
+    if (spreadConfig.conversionMode !== undefined) {
+      throw new BadRequestException(
+        'regionScope=inner에는 conversionMode를 사용할 수 없습니다(표지 전용 필드).',
+      );
     }
   }
 

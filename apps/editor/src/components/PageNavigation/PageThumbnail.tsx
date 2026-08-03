@@ -29,6 +29,14 @@ interface PageThumbnailProps {
   insertHint?: 'before' | 'after' | null
 }
 
+/** 캔버스의 워크스페이스(=판형) 객체. 없으면 뷰포트 전체가 대상이 된다. */
+function getWorkspaceRect(canvas: fabric.Canvas): { left: number; top: number; width: number; height: number } | null {
+  const ws = canvas.getObjects().find((o) => (o as { id?: string }).id === 'workspace')
+  if (!ws) return null
+  const b = ws.getBoundingRect()
+  return b.width > 0 && b.height > 0 ? b : null
+}
+
 export const PageThumbnail = memo(function PageThumbnail({
   canvas,
   label,
@@ -46,11 +54,14 @@ export const PageThumbnail = memo(function PageThumbnail({
   insertHint,
 }: PageThumbnailProps) {
   const [dataUrl, setDataUrl] = useState<string | null>(null)
+  // 워크스페이스(판형) 가로세로비 — 카드 박스 높이를 여기서 유도한다.
+  const [aspect, setAspect] = useState<number | null>(null)
   const lastUpdateRef = useRef(0)
 
   useEffect(() => {
     if (!canvas) {
       setDataUrl(null)
+      setAspect(null)
       return
     }
 
@@ -59,12 +70,24 @@ export const PageThumbnail = memo(function PageThumbnail({
       if (now - lastUpdateRef.current < 250) return // throttle ~4fps
       lastUpdateRef.current = now
       try {
-        const url = canvas.toDataURL({
-          format: 'png',
-          multiplier: 0.15,
-          quality: 0.7,
-        })
+        // 워크스페이스(판형) 영역만 캡처한다. 크롭 없이 찍으면 에디터 '뷰포트' 비율의
+        // 이미지가 나와, 박스 비율을 고쳐도 페이지가 안쪽에 작게 떠 보인다.
+        // (선례: useAppStore 스크린샷 경로가 동일하게 workspace bbox 로 크롭)
+        const rect = getWorkspaceRect(canvas)
+        const url = rect
+          ? canvas.toDataURL({
+              format: 'png',
+              quality: 0.7,
+              left: rect.left,
+              top: rect.top,
+              width: rect.width,
+              height: rect.height,
+              // 목표 폭 ~176px(카드 88px @2x). 업스케일은 하지 않는다.
+              multiplier: Math.min(1, 176 / rect.width),
+            })
+          : canvas.toDataURL({ format: 'png', multiplier: 0.15, quality: 0.7 })
         setDataUrl(url)
+        setAspect(rect ? rect.width / rect.height : null)
       } catch {
         // 캔버스 비활성/제거된 경우 무시
       }
@@ -78,6 +101,23 @@ export const PageThumbnail = memo(function PageThumbnail({
       canvas.off('after:render', update)
     }
   }, [canvas])
+
+  // 카드 박스 — 판형 비율로 유도하되 **클램프 축이 방향별로 반대**다.
+  //   세로 패널(w-[112px]): 폭이 예산 → 폭 고정 88px, 높이 유도
+  //   가로 스트립(h-[100px]): 높이가 예산 → 높이 고정 76px, 폭 유도
+  // (가로에서 폭을 고정하면 세로형 판형 카드가 스트립 높이를 넘쳐 잘린다)
+  // 비율 미상(캡처 전/워크스페이스 부재)이면 종전 고정값을 그대로 쓴다.
+  const CARD_W = 88
+  const STRIP_H = 76
+  const isVertical = orientation === 'vertical'
+  const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, Math.round(v)))
+  const legacyH = isCover ? 64 : isVertical ? 60 : 72
+  const boxStyle =
+    !aspect || aspect <= 0
+      ? { width: CARD_W, height: legacyH }
+      : isVertical
+        ? { width: CARD_W, height: clamp(CARD_W / aspect, 36, 120) }
+        : { width: clamp(STRIP_H * aspect, 44, 168), height: STRIP_H }
 
   // 삽입선 (orientation 별로 좌/우 또는 상/하 가장자리에 표시 — overflow-hidden 카드 내부)
   const showInsertBar = !!insertHint
@@ -101,19 +141,17 @@ export const PageThumbnail = memo(function PageThumbnail({
       <button
         onClick={onClick}
         title={label}
-        className={cn(
-          'group flex-shrink-0 flex flex-col items-center gap-1 transition-all',
-          orientation === 'vertical' ? 'w-[88px]' : 'w-[88px]'
-        )}
+        className="group flex-shrink-0 flex flex-col items-center gap-1 transition-all"
+        style={{ width: boxStyle.width }}
       >
         <div
           className={cn(
             'relative w-full overflow-hidden rounded-lg bg-editor-surface-low border-2 transition-colors',
-            orientation === 'vertical' ? 'h-[64px]' : 'h-[64px]',
             active
               ? 'border-editor-accent ring-2 ring-editor-accent/30 shadow-md bg-editor-panel'
               : 'border-editor-border hover:border-editor-text-muted hover:bg-editor-panel'
           )}
+          style={{ height: boxStyle.height }}
         >
           {dataUrl ? (
             <img
@@ -152,13 +190,13 @@ export const PageThumbnail = memo(function PageThumbnail({
       aria-roledescription={draggable ? '드래그하여 페이지 순서 변경 가능' : undefined}
       className={cn(
         'group relative flex-shrink-0 rounded-md overflow-hidden bg-editor-panel border-2 transition-all',
-        orientation === 'vertical' ? 'w-[88px] h-[60px]' : 'w-[88px] h-[72px]',
         active
           ? 'border-editor-accent ring-2 ring-editor-accent/30 shadow-md'
           : 'border-editor-border hover:border-editor-text-muted',
         draggable && 'cursor-grab active:cursor-grabbing',
         isDragSource && 'opacity-40 ring-2 ring-editor-accent/40'
       )}
+      style={boxStyle}
     >
       {showInsertBar && <span aria-hidden className={insertBarClass} />}
       {dataUrl ? (
