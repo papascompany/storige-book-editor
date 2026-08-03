@@ -6,7 +6,7 @@
 > **08-01 PM(§1-PM: §2 잔여 8항목 일괄 처리 — Node24 전면 승격 LIVE·md2books 24 교체·ⓓⓖ 실증)** →
 > **08-01 밤~08-02(§1-PM-b C6-fix 배포·iOS 실기 완료·md2books 로깅 수정 / ⓕ'ⓗ' 제출물 최종화)**.
 > **08-03(포토북 펼침면 내지 트랙 — 등록 개통·편집·출력·날개 주입 / 썸네일 비율)**.
-> 최종 실측: **2026-08-03 20:10 KST**. `origin/master` = **`46a9dcf`** · **ci success** · 전 서비스 LIVE(Node 24).
+> 최종 실측: **2026-08-03 20:10 KST**. `origin/master` = **`1395e60`** · **ci success** · 전 서비스 LIVE(Node 24).
 > ⚠️ **VPS `~/storige` = `7bb74a2`** — 격차는 문서 커밋 3건뿐(`apps`/`packages` diff 0)이라 **재배포 불필요**.
 >    다음 백엔드 배포 시 자연 동기된다.
 > **오너 착수 대기 항목 0** — 코드 잔여 0. 남은 것은 **외부 회신 2건**(GitHub GC 완료 검증 · 파트너 실기기 회신)
@@ -18,7 +18,7 @@
 
 ```bash
 cd "/Users/yohan/Developer/Bookmoa Storige editor/storige"
-git fetch && git rev-parse --short origin/master    # 본 문서 기준: 46a9dcf
+git fetch && git rev-parse --short origin/master    # 본 문서 기준: 1395e60
 git worktree list && git status -sb                  # 타 세션 미커밋 무접촉
 ssh-add -l | head -1                                 # 비면: ssh-add ~/.ssh/id_ed25519
 ```
@@ -213,7 +213,7 @@ ssh-add -l | head -1                                 # 비면: ssh-add ~/.ssh/id
 
 ## 3. 상태 스냅샷 (2026-08-03 20:10 KST 실측 — 세션 종료 점검)
 
-- `origin/master` = `46a9dcf` · **ci success** · gitleaks success · 로컬=origin 동기, 미커밋(추적) 0
+- `origin/master` = `1395e60` · **ci success** · gitleaks success · 로컬=origin 동기, 미커밋(추적) 0
 - **런타임 Node 24.18.1 전면**: VPS api·worker(health 200·req.id 정상) · Vercel editor/admin
   (engines+Settings 24.x 이중화, update-required 0건) · CI 24 · md2books-worker 24
 - 라이브: API health 200 · editor 200 · admin 200 · Bull 큐 **0/0** · 활성 워커잡 0
