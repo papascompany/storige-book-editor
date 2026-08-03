@@ -174,6 +174,16 @@ ssh-add -l | head -1                                 # 비면: ssh-add ~/.ssh/id
   세션 경로 검증은 **shop-session 토큰**이 유일한 실물 경로다.
   테스트 데이터(세션 3·세트 1·템플릿 2) 전량 삭제, 큐 0/0 확인.
 
+- **제작 가이드 갱신** (`604522f`, `docs/TEMPLATE_AUTHORING_GUIDE_COVER_INNER.html`):
+  ① §7 **"펼침면 내지 정식 등록 경로 없음" 서술 철회**(부정확 — Admin 완비, API 한 곳만 차단이었고
+  이제 개통) → 실제 등록 절차 4단계 + **출력 계약 대조표**(표지 책 vs 내지 전용) 신설
+  ② **§5-1 표지 날개 규약 신설** — 판형·책등과 달리 날개만 주문 옵션 우선, 폭 없이 켜기 거부,
+  총폭 변경 시 아트워크 재배치 동반 ③ `pageCountRange` 는 **물리 페이지** 기준(펼침면 ÷2) 명시
+  ④ §9 **'펼침면 내지 세트' 체크리스트 5항목** 신설 ⑤ 하단 갱신 요약 + E2E 실증 내역.
+  기준 코드 표기 `a54ce4d`. 검증: div 균형 0 · 스테일 문구 0 · 체크리스트 26→31 · 렌더 확인.
+  ⚠️ **이 가이드는 08-02 초판에 오류가 있었다**(cutSizeMm 양변 합·pageCountRange·세트 판형 의미 3건은
+  08-02 조사에서, "등록 경로 없음"은 08-03 구현에서 정정). 가이드 인용 전 최신본인지 확인할 것.
+
 ## 2. 잔여 — **오너 행동 0건** · 외부 회신 대기/관찰만 (코드 잔여 0)
 
 | # | 항목 | 비고 |
@@ -239,5 +249,10 @@ ssh-add -l | head -1                                 # 비면: ssh-add ~/.ssh/id
 ## 5. 정본 문서
 - 직전 상세: `RESUME_PROMPT_2026-07-30.md`(§1-1~1-10 누적) · `RESUME_PROMPT_2026-07-29.md` · `RESUME_PROMPT_2026-07-27.md`
 - 소스맵: `docs/SOURCEMAP_EXPOSURE_RUNBOOK.md`(✅ 완료 상태) / Node24: `NODE24_UPGRADE_AUDIT_2026-07-30.md`
-- 파트너: `docs/PLATFORM_INTEGRATION_GUIDE.md` / Swagger allowlist: `apps/api/src/config/swagger-partner-routes.ts`
+- 파트너: `docs/PLATFORM_INTEGRATION_GUIDE.md`(08-03 날개 파라미터·권위 규칙 추가) /
+  Swagger allowlist: `apps/api/src/config/swagger-partner-routes.ts`
+- **템플릿 제작(운영자용)**: `docs/TEMPLATE_AUTHORING_GUIDE_COVER_INNER.html` — 책등 가변/고정 ·
+  단면/펼침면 내지 · 날개 규약 · 함정 체크리스트 31항목. 08-03 갱신본(`604522f`)이 최신.
+- 포토북: `.cursor/plans/PHOTOBOOK_TEMPLATE_DESIGN_2026-06-23.md` + `PHOTOBOOK_O2_DECISIONS_2026-07-04.md`
+  (O-2 결정) / 운영 요약 `.claude/skills/photobook-template/SKILL.md`
 - 운영 실값: `CLAUDE.local.md`(gitignored)
