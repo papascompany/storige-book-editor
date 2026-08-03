@@ -4,6 +4,7 @@ import { SpreadThumbnailItem } from './SpreadThumbnailItem'
 import { PageItem } from './PageItem'
 import { useEditorStore, useCanAddPage } from '@/stores/useEditorStore'
 import { useAppStore } from '@/stores/useAppStore'
+import { useSettingsStore } from '@/stores/useSettingsStore'
 import { cn } from '@/lib/utils'
 import { showToast } from '@/stores/useToastStore'
 import { BindingType } from '@storige/types'
@@ -38,6 +39,9 @@ export const SpreadPagePanel = memo(function SpreadPagePanel({
   const canAddMore = useCanAddPage()
   const canDeletePage = useEditorStore((state) => state.canDeletePage)
   const bindingType = useEditorStore((state) => state.bindingType)
+  // 내지 전용 펼침면 세트에는 '표지'가 없다 — 캔버스 0 도 '펼침면 1' 이다(2026-08-03 E2E 실측).
+  // 종전에는 무조건 '표지 스프레드'로 표기해 운영자·고객이 첫 펼침면을 표지로 오인했다.
+  const isInnerSpread = useSettingsStore((s) => s.spreadConfig?.regionScope === 'inner')
 
   // 스프레드 페이지 (항상 첫 번째)
   const spreadPage = pages[0]
@@ -139,7 +143,7 @@ export const SpreadPagePanel = memo(function SpreadPagePanel({
           <>
             <div ref={(el) => { if (el) itemRefs.current.set(0, el); else itemRefs.current.delete(0) }}>
               <SpreadThumbnailItem
-                label="표지 스프레드"
+                label={isInnerSpread ? '펼침면 1' : '표지 스프레드'}
                 thumbnailUrl={screenshots[0]}
                 isActive={currentPageIndex === 0}
                 onClick={handleSelectSpread}

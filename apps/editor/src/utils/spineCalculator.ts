@@ -266,6 +266,22 @@ async function recalculateSpineWidthSpreadMode(
   // 모든 책등 자동 재계산 트리거(초기 로드, 내지 추가/삭제 debounce)가 이 함수를 거치므로
   // 여기가 단일 차단 지점. (SpreadPlugin.resizeSpine 에도 방어적 no-op 가드 존재.)
   // spineWidth 는 템플릿 고정값을 그대로 반환해 호출측 로그/스냅샷 정합 유지.
+  // ── 내지 펼침면 가드 (책등 없음) ────────────────────────────────────────
+  // 포토북 내지(regionScope='inner')는 좌면+거터+우면 2-up 이라 책등 자체가 없다.
+  // 그런데 이 함수가 무조건 실행돼 책등 API 를 호출하고, placeholder spec 으로
+  // 레이아웃을 계산하다 `roundMm01: non-finite value NaN` 로 매 트리거마다 실패했다
+  // (2026-08-03 E2E 실측 — 콘솔 에러 반복). flat-spread 와 동일하게 여기서 차단한다.
+  if (settingsStore.spreadConfig?.regionScope === 'inner') {
+    return {
+      success: false,
+      spineWidth: null,
+      pageCount: 0,
+      warnings: [],
+      skipped: true, // 정상 스킵 — 계산 실패와 구분
+      error: '내지 펼침면(2-up)에는 책등이 없습니다.',
+    }
+  }
+
   const conversionMode = settingsStore.spreadConfig?.conversionMode ?? 'full'
   if (conversionMode === 'flat-spread') {
     const fixedSpineWidth = settingsStore.spreadConfig?.spec?.spineWidthMm ?? null
