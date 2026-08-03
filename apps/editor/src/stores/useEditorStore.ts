@@ -39,6 +39,12 @@ interface EditorState {
   pageCountRange: number[]
   // A13: 제본 방식(설정 시에만 제본별 최소/최대 페이지 가드 적용. null=제약 없음 — 비제본/미설정 상품 무영향)
   bindingType: BindingType | null
+  /**
+   * 캔버스 1장이 담는 **물리 페이지 수**. 낱장 내지=1, 펼침면(2-up) 내지=2.
+   * pageCountRange·제본 제약은 물리 페이지 기준이라, 펼침면 세션에서 캔버스 수를 그대로
+   * 비교하면 상한/하한이 정확히 절반으로 잘못 걸린다(2026-08-03).
+   */
+  pagesPerCanvas: number
 }
 
 interface EditorActions {
@@ -95,6 +101,7 @@ const initialState: EditorState = {
   canAddPage: true,
   pageCountRange: [1, 100],
   bindingType: null,
+  pagesPerCanvas: 1,
 }
 
 export const useEditorStore = create<EditorState & EditorActions>()(
@@ -281,7 +288,7 @@ export const useEditorStore = create<EditorState & EditorActions>()(
       },
 
       canDeletePage: (pageId: string) => {
-        const { pages, pageCountRange, bindingType } = get()
+        const { pages, pageCountRange, bindingType, pagesPerCanvas } = get()
         const page = pages.find((p) => p.id === pageId)
 
         if (!page) return false
@@ -290,28 +297,34 @@ export const useEditorStore = create<EditorState & EditorActions>()(
 
         // 내지(page) 타입인 경우 최소 수량 체크
         if (page.templateType === TemplateType.PAGE) {
-          const pageTypeCount = pages.filter((p) => p.templateType === TemplateType.PAGE).length
+          const canvasCount = pages.filter((p) => p.templateType === TemplateType.PAGE).length
+          // 펼침면 세션은 캔버스 1장 = 2p → 물리 페이지로 환산해 제약과 비교한다.
+          const physicalCount = canvasCount * (pagesPerCanvas || 1)
           // A13: 제본 최소페이지(무선 32p 등) — bindingType 설정 시에만 적용(null=제약 없음).
           //   pageCountRange 최소와 제본 최소 중 큰 값 미만으로는 삭제 불가.
           const bindMin = bindingType ? (BINDING_CONSTRAINTS[bindingType]?.minPages ?? 0) : 0
           const minCount = Math.max(pageCountRange[0] || 1, bindMin)
-          return pageTypeCount > minCount
+          // 한 장 지우면 pagesPerCanvas 만큼 줄어든다 — 지운 뒤에도 최소를 만족해야 허용
+          return physicalCount - (pagesPerCanvas || 1) >= minCount
         }
 
         return true
       },
 
       canAddMorePages: () => {
-        const { pages, canAddPage, pageCountRange, bindingType } = get()
+        const { pages, canAddPage, pageCountRange, bindingType, pagesPerCanvas } = get()
 
         if (!canAddPage) return false
 
-        const pageTypeCount = pages.filter((p) => p.templateType === TemplateType.PAGE).length
+        const canvasCount = pages.filter((p) => p.templateType === TemplateType.PAGE).length
+        const per = pagesPerCanvas || 1
+        const physicalCount = canvasCount * per
         // A13: 제본 최대페이지(중철 64p 등) — bindingType 설정 시에만 적용(null=제약 없음).
         const bindMax = bindingType ? (BINDING_CONSTRAINTS[bindingType]?.maxPages ?? Infinity) : Infinity
         const maxCount = Math.min(pageCountRange[pageCountRange.length - 1] || 100, bindMax)
 
-        return pageTypeCount < maxCount
+        // 한 장 추가하면 per 만큼 늘어난다 — 추가 후에도 최대를 넘지 않아야 허용
+        return physicalCount + per <= maxCount
       },
     }),
     {

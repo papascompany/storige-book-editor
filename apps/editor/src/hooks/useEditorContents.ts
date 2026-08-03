@@ -1819,6 +1819,8 @@ export function useEditorContents(): UseEditorContentsReturn {
         templateSetId: templateSet.id,
         templateSetName: templateSet.name,
         bindingType: toBindingType(config.bindingType),
+        // 펼침면(2-up) 내지는 캔버스 1장 = 물리 2페이지. 페이지 상/하한 비교의 단위를 맞춘다.
+        pagesPerCanvas: isPhotobookInner ? 2 : 1,
       })
 
       console.log(`[EditorContents:Spread] EditorStore pages set: ${editorPages.length} pages`)

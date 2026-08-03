@@ -599,11 +599,11 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
         newCanvas.wrapperEl = customContainer
       }
 
-      // 새 에디터 생성
+      // 새 에디터 생성 — init 은 registerCanvasPlugins 안에서 1회만 수행한다
+      // (여기서 또 부르면 ContextMenu 가 중복 생성돼 document 리스너가 두 벌 붙는다)
       const newEditor = new Editor()
-      newEditor.init(newCanvas)
 
-      // WorkspacePlugin 등록 (현재 설정에서 사이즈 가져오기)
+      // 워크스페이스 사이즈 결정 (현재 설정에서 가져오기)
       const settingsStore = (await import('@/stores/useSettingsStore')).useSettingsStore.getState()
       const spreadConfig = settingsStore.spreadConfig
       const currentSettings = settingsStore.currentSettings
@@ -641,15 +641,21 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
         ...currentSettings,
         size: pageSize,
       }
-      const workspacePlugin = new WorkspacePlugin(newCanvas, newEditor, workspaceOptions)
-      newEditor.use(workspacePlugin)
-      // P1-3: 내지 추가 경로의 캔버스에도 포인터 매핑 점프 가드 등록
-      // (패널 열림/레이아웃 시프트 × 드래그 변환 레이스 → 객체 텔레포트 방지)
-      newEditor.use(new PointerShiftGuardPlugin(newCanvas, newEditor))
-
-      // L4-①: addPage 경로(스프레드 내지)에도 printExclude 화면 전용 오버레이 훅 바인딩
-      // (createCanvas 경로와 동일 — after:render contextTop 순수 드로잉, 저장/PDF/썸네일 무오염)
-      bindPrintExcludeOverlay(newCanvas)
+      // createCanvas 와 **동일한 플러그인 세트**를 등록한다(2026-08-03).
+      // 종전에는 WorkspacePlugin+PointerShiftGuard 2개만 붙어서, 스프레드 모드의 2번째 이후
+      // 캔버스가 ObjectPlugin(삭제)·HistoryPlugin(되돌리기)·FrameInteractionPlugin(사진틀)·
+      // SpreadPlugin(거터/좌우면 가이드) 없이 사실상 편집 불가였다. 특히 포토북 내지 펼침면은
+      // 전 캔버스가 이 경로를 타므로 첫 장 말고는 전부 죽은 캔버스였다.
+      // ⚠️ registerCanvasPlugins 가 editor.init(canvas) 를 수행하므로 호출측에서 중복 init 금지
+      //    (ContextMenu 가 두 번 생성돼 document 리스너가 중복된다).
+      // ⚠️ 동적 import — createCanvas 가 useAppStore 를 참조하므로 정적 import 는 순환이 된다
+      //    (같은 함수의 useSettingsStore 로딩과 동일 패턴).
+      const { registerCanvasPlugins } = await import('@/utils/createCanvas')
+      const { workspace: workspacePlugin, spread: spreadPlugin } = registerCanvasPlugins(
+        newCanvas,
+        newEditor,
+        workspaceOptions as Parameters<typeof registerCanvasPlugins>[2]
+      )
 
       // 스토어에 등록 (initializationId 전달하여 등록 허용)
       init(newCanvas, newEditor, initializationId || undefined)
@@ -660,7 +666,10 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
 
       // 컨테이너가 표시된 후 WorkspacePlugin 초기화
       // init()이 workspace Rect 생성 + 이벤트 바인딩 + setZoomAuto()까지 처리
+      // (이 순서가 createCanvas 와 다른 이유 = 새 캔버스 컨테이너가 여기서야 표시되기 때문)
       workspacePlugin.init()
+      // 펼침면(표지/내지 공통) 가이드 — workspace 확정 후 초기화
+      spreadPlugin?.init()
 
       // useEditorStore.pages에 새 EditPage 추가 (SpreadPagePanel 동기화)
       const editorStore = useEditorStore.getState()

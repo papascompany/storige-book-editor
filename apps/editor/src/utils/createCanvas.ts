@@ -249,13 +249,23 @@ export const createMultipleCanvas = async (
 /**
  * 플러그인 초기화 함수
  */
-function initPlugins(
+/**
+ * 플러그인 **생성·등록**만 수행하고, 컨테이너 가시성에 의존하는 초기화
+ * (`workspace.init()` / `spread.init()` / 앱스토어 등록)는 호출자에게 맡긴다.
+ *
+ * 분리 이유(2026-08-03): 내지 추가 경로(`useAppStore.addPage`)는 캔버스 컨테이너가
+ * display:block 이 된 **뒤에** workspace.init() 을 불러야 setZoomAuto 가 올바른 크기를
+ * 잡는다. 그래서 addPage 는 자체 순서를 유지하면서 플러그인 세트만 공유해야 한다.
+ * 종전에는 addPage 가 WorkspacePlugin+PointerShiftGuard 2개만 등록해, 스프레드 모드의
+ * 2번째 이후 캔버스가 삭제·되돌리기·사진틀·거터 가이드 없이 편집 불가 상태였다.
+ *
+ * @returns 호출자가 순서를 제어해야 하는 플러그인 핸들
+ */
+export function registerCanvasPlugins(
   canvas: fabric.Canvas,
   editor: Editor,
-  settings: CanvasSettings,
-  initId?: string
-) {
-  const appStore = useAppStore.getState()
+  settings: CanvasSettings
+): { workspace: WorkspacePlugin; spread: SpreadPlugin | null } {
   const settingsStore = useSettingsStore.getState()
 
   // 플러그인 인스턴스 생성
@@ -440,13 +450,6 @@ function initPlugins(
   editor.use(template)
   editor.use(service)
 
-  workspace.init()
-
-  // SpreadPlugin 초기화 (spread가 있을 때만)
-  if (spread) {
-    spread.init()
-  }
-
   // 룰러는 사용자 토글 기반 — 시작 시 자동 enable 안 함
   // 토글은 EditorView가 useUiPrefStore.showRuler 변화에 반응해 ruler.enable()/disable() 호출
 
@@ -465,8 +468,30 @@ function initPlugins(
     editor.enableTouchContextMenu({ haptic: true })
   }
 
+  return { workspace, spread }
+}
+
+/**
+ * createCanvas 전용 초기화 — 플러그인 등록 후 컨테이너 의존 초기화까지 한 호흡으로 수행한다.
+ * (분리 전과 동일한 순서·동작 = 무회귀)
+ */
+function initPlugins(
+  canvas: fabric.Canvas,
+  editor: Editor,
+  settings: CanvasSettings,
+  initId?: string
+) {
+  const { workspace, spread } = registerCanvasPlugins(canvas, editor, settings)
+
+  workspace.init()
+
+  // SpreadPlugin 초기화 (spread가 있을 때만)
+  if (spread) {
+    spread.init()
+  }
+
   // 앱 스토어에 등록 (initId 전달)
-  appStore.init(canvas, editor, initId)
+  useAppStore.getState().init(canvas, editor, initId)
 }
 
 /**

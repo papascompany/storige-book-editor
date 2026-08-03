@@ -384,6 +384,73 @@ describe('useEditorStore', () => {
       expect(useEditorStore.getState().canDeletePage('page-1')).toBe(true);
     });
 
+    // 펼침면(2-up) 내지: 캔버스 1장 = 물리 2페이지 (2026-08-03)
+    // pageCountRange/제본 제약은 물리 페이지 기준이라 캔버스 수를 그대로 비교하면 상·하한이
+    // 정확히 절반으로 잘못 걸린다.
+    describe('pagesPerCanvas (펼침면 2-up 환산)', () => {
+      const mkPages = (n: number) =>
+        Array.from({ length: n }, (_, i) =>
+          createMockPage({
+            id: `p-${i}`,
+            deleteable: true,
+            required: false,
+            templateType: TemplateType.PAGE,
+          })
+        );
+
+      it('낱장(1)은 종전과 동일하게 캔버스 수로 비교한다', () => {
+        useEditorStore.setState({
+          pagesPerCanvas: 1,
+          canAddPage: true,
+          pageCountRange: [2, 4],
+          bindingType: null,
+        });
+        useEditorStore.getState().setPages(mkPages(4));
+        // 4장 = 4p = 상한 → 더 못 넣음
+        expect(useEditorStore.getState().canAddMorePages()).toBe(false);
+
+        useEditorStore.getState().setPages(mkPages(2));
+        // 2장 = 2p = 하한 → 지우면 미만이라 불가
+        expect(useEditorStore.getState().canDeletePage('p-0')).toBe(false);
+        expect(useEditorStore.getState().canAddMorePages()).toBe(true);
+      });
+
+      it('펼침면(2)은 캔버스 수 × 2 로 상·하한을 판정한다', () => {
+        useEditorStore.setState({
+          pagesPerCanvas: 2,
+          canAddPage: true,
+          pageCountRange: [4, 8],
+          bindingType: null,
+        });
+
+        // 2장 = 4p = 하한 → 삭제 불가(지우면 2p), 추가는 가능(6p)
+        useEditorStore.getState().setPages(mkPages(2));
+        expect(useEditorStore.getState().canDeletePage('p-0')).toBe(false);
+        expect(useEditorStore.getState().canAddMorePages()).toBe(true);
+
+        // 4장 = 8p = 상한 → 추가 불가, 삭제는 가능(6p)
+        useEditorStore.getState().setPages(mkPages(4));
+        expect(useEditorStore.getState().canAddMorePages()).toBe(false);
+        expect(useEditorStore.getState().canDeletePage('p-0')).toBe(true);
+
+        // 3장 = 6p → 추가 시 8p 로 상한 딱 맞음 → 허용
+        useEditorStore.getState().setPages(mkPages(3));
+        expect(useEditorStore.getState().canAddMorePages()).toBe(true);
+      });
+
+      it('환산이 없으면 상한이 절반으로 잘못 걸린다 — 회귀 감지용 대조', () => {
+        // 같은 4장을 pagesPerCanvas=1 로 보면 4p 라 상한(8p) 여유가 있다고 오판한다.
+        useEditorStore.setState({
+          pagesPerCanvas: 1,
+          canAddPage: true,
+          pageCountRange: [4, 8],
+          bindingType: null,
+        });
+        useEditorStore.getState().setPages(mkPages(4));
+        expect(useEditorStore.getState().canAddMorePages()).toBe(true); // 오판 재현
+      });
+    });
+
     it('canDeletePage should return false for required pages', () => {
       const page = createMockPage({
         id: 'page-1',
