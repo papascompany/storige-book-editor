@@ -248,3 +248,28 @@ export function computeLivePageCount(
   if (physical > 0) return physical
   return Number.isFinite(fallbackPages) && fallbackPages > 0 ? Math.floor(fallbackPages) : 1
 }
+
+/**
+ * 스프레드 세션의 캔버스를 **표지 / 내지(content)** 로 어떻게 나눌지 결정한다.
+ *
+ * - 표지+내지 스프레드 책(regionScope='cover' 또는 미존재): 캔버스 0 = 표지 → cover.pdf,
+ *   나머지 = content.pdf. `outputMode='separate'` 동결 계약 그대로.
+ * - **내지 전용 펼침면 세트(regionScope='inner'): 표지가 없다.** 캔버스 0 도 '펼침면 1' 이므로
+ *   전량이 content.pdf 이고 cover.pdf 는 생성하지 않는다.
+ *
+ * 종전에는 regionScope 와 무관하게 항상 0번을 표지로 떼어내, 내지 전용 세트에서
+ * 첫 펼침면이 cover.pdf 로 새고 content 가 (N−1) 이 되어 완료 payload 의
+ * pageCount(=N×2)와 어긋났다(2026-08-03 수정).
+ */
+export function splitSpreadOutputCanvases<T>(
+  canvases: readonly T[],
+  cfg: SpreadOutputConfigLike | null | undefined,
+): { coverCanvas: T | null; innerCanvases: T[]; contentPageCount: number } {
+  const innerOnly = cfg?.regionScope === 'inner'
+  const innerCanvases = innerOnly ? [...canvases] : canvases.slice(1)
+  return {
+    coverCanvas: innerOnly ? null : (canvases[0] ?? null),
+    innerCanvases,
+    contentPageCount: innerCanvases.length,
+  }
+}

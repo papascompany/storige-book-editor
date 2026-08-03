@@ -13,6 +13,7 @@ import {
   computeCoverOutputSizeMm,
   computeLivePageCount,
   resolveTemplateSetCoverMeta,
+  splitSpreadOutputCanvases,
 } from './photobookSpread'
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -366,5 +367,44 @@ describe('computeLivePageCount (D-3 단일 진실원 + T5 coverCanvasCount)', ()
 describe('SPREAD_CONFIG_VERSION 정합', () => {
   it('buildInnerSpreadConfig 는 현재 버전 상수를 쓴다', () => {
     expect(buildInnerSpreadConfig(innerSpec190).version).toBe(SPREAD_CONFIG_VERSION)
+  })
+})
+
+describe('splitSpreadOutputCanvases — 표지/내지 출력 분할 (2026-08-03)', () => {
+  const cover = { regionScope: 'cover' as const, innerSpec: undefined }
+  const inner = {
+    regionScope: 'inner' as const,
+    innerSpec: { pageWidthMm: 210, pageHeightMm: 297, gutterMm: 10, cutSizeMm: 6, safeSizeMm: 5, dpi: 150 },
+  }
+
+  it('표지+내지 책: 0번을 표지로 떼고 나머지가 content — 동결 계약 그대로', () => {
+    const r = splitSpreadOutputCanvases(['c0', 'c1', 'c2'], cover)
+    expect(r.coverCanvas).toBe('c0')
+    expect(r.innerCanvases).toEqual(['c1', 'c2'])
+    expect(r.contentPageCount).toBe(2)
+  })
+
+  it('regionScope 미존재(레거시)도 표지 분리 — 무회귀', () => {
+    const r = splitSpreadOutputCanvases(['c0', 'c1'], undefined)
+    expect(r.coverCanvas).toBe('c0')
+    expect(r.innerCanvases).toEqual(['c1'])
+  })
+
+  it('내지 전용 펼침면: 표지 없음 + 전량이 content (첫 펼침면 누락 방지)', () => {
+    const r = splitSpreadOutputCanvases(['s0', 's1', 's2'], inner)
+    expect(r.coverCanvas).toBeNull()
+    expect(r.innerCanvases).toEqual(['s0', 's1', 's2'])
+    expect(r.contentPageCount).toBe(3)
+  })
+
+  it('내지 전용은 캔버스 1장만으로도 유효하다', () => {
+    const r = splitSpreadOutputCanvases(['s0'], inner)
+    expect(r.coverCanvas).toBeNull()
+    expect(r.contentPageCount).toBe(1)
+  })
+
+  it('contentPageCount × 2 가 물리 페이지 수와 정합한다(펼침면=2p)', () => {
+    const r = splitSpreadOutputCanvases(['s0', 's1', 's2', 's3'], inner)
+    expect(r.contentPageCount * 2).toBe(pageCountFromSpreads(r.contentPageCount))
   })
 })

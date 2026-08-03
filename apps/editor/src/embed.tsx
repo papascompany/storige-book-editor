@@ -38,6 +38,7 @@ import { createCanvas, safeDisposeCanvas, CanvasInitCancelledError } from './uti
 import { buildSpreadSnapshots } from './utils/buildSpreadSnapshots'
 import {
   computeInnerContentSizeMm,
+  splitSpreadOutputCanvases,
   computeCoverOutputSizeMm,
   computeLivePageCount,
   resolveTemplateSetCoverMeta,
@@ -1608,7 +1609,12 @@ function EmbeddedEditor({
       // 멀티페이지/스프레드 책: 전체 페이지 배열을 저장(단일 캔버스로 덮어써 다른 페이지 유실 방지)
       const { isSpreadMode, allCanvas, allEditors } = useAppStore.getState()
       const spreadCfg = useSettingsStore.getState().spreadConfig
-      const isSpreadBook = isSpreadMode && allCanvas.length > 1 && !!spreadCfg
+      // 표지+내지 스프레드 책은 최소 2장(표지1+내지1)이어야 하지만, 내지 전용 펼침면 세트는
+      // 캔버스 1장(펼침면 1개)만으로도 유효한 완주 대상이다(2026-08-03).
+      const isSpreadBook =
+        isSpreadMode &&
+        !!spreadCfg &&
+        (spreadCfg.regionScope === 'inner' ? allCanvas.length >= 1 : allCanvas.length > 1)
       const canvasData = allCanvas.length > 1
         ? allCanvas.map((c) => c.toJSON(core.extendFabricOption))
         : (canvas?.toJSON(core.extendFabricOption) || null)
@@ -1662,8 +1668,14 @@ function EmbeddedEditor({
           // ── 스프레드 책: 표지(allCanvas[0]) cover PDF + 내지(allCanvas[1..]) 멀티페이지 content PDF ──
           // 표지와 내지는 판형 크기가 달라 한 PDF 로 합칠 수 없으므로 분리 생성/업로드.
           const coverPlugin = allEditors[0]?.getPlugin('ServicePlugin') as ServicePlugin | undefined
-          const innerCanvases = allCanvas.slice(1)
-          const innerEditors = allEditors.slice(1)
+          // D-1 후속(2026-08-03): **내지 전용 펼침면 세트(regionScope='inner')에는 표지가 없다.**
+          // 캔버스 0 도 '펼침면 1' 이므로 cover 로 분리하면 첫 펼침면이 content 에서 누락되고
+          // (content=N−1) 같은 완료 payload 의 pageCount(=N×2)와 어긋난다.
+          // ⚠️ 계약: 이 분기는 regionScope==='inner' 에서만 동작한다 — 표지+내지 스프레드 책의
+          //    outputMode='separate'(cover.pdf+content.pdf 2파일) 동결 계약은 무접촉이다.
+          const isInnerOnlySpread = spreadCfg?.regionScope === 'inner'
+          const { innerCanvases } = splitSpreadOutputCanvases(allCanvas, spreadCfg)
+          const { innerCanvases: innerEditors } = splitSpreadOutputCanvases(allEditors, spreadCfg)
           // ⚠️ 스프레드 내지 페이지 에디터는 addInnerPage 에서 WorkspacePlugin 만 등록되어
           //   ServicePlugin 이 없다. saveMultiPagePDFAsBlob 은 this._editor(=표지) 의 FontPlugin 을
           //   쓰고 전달된 canvases 를 순회하므로, 표지 ServicePlugin 으로 내지 PDF 도 생성한다.
@@ -1684,41 +1696,44 @@ function EmbeddedEditor({
 
             // 표지 cover PDF (스프레드 전체 크기) — 독립 try (실패해도 내지는 시도)
             let coverFileId: string | undefined
-            try {
-              await finishMark('spread:cover:gen:start', {
-                w: spreadCfg!.totalWidthMm, h: spreadCfg!.totalHeightMm,
-                ...(coverOutputSize ? { outW: coverOutputSize.widthMm, outH: coverOutputSize.heightMm } : {}),
-              })
-              // L4-②: PDF 생성 창(excludeFromExport 임시 플래깅) 동안 autosave suspend —
-              // 발화분은 스킵이 아니라 생성 완료 후 1회 지연 실행(autosaveSuspend.ts).
-              const coverBlob = await withWatchdog(
-                runWithAutosaveSuspended(() => coverPlugin.saveMultiPagePDFAsBlob(
-                  [allCanvas[0]] as any, [allEditors[0]], `cover-${currentSessionId}`,
-                  {
-                    width: spreadCfg!.totalWidthMm, height: spreadCfg!.totalHeightMm, cutSize: bleed,
-                    // D-4: caseBind 有 → 페이지=출력(wrap) 사이즈 + 콘텐츠 중앙 오프셋(printSize 경로).
-                    // wrap 자체가 재단 여유 역할이므로 crop mark 게이트(markOpt)는 함께 쓰지 않는다
-                    // (게이트 ON 시 ServicePlugin 이 printSize 를 무시하는 기존 시맨틱과의 충돌 회피).
-                    ...(coverOutputSize
-                      ? { printSize: { width: coverOutputSize.widthMm, height: coverOutputSize.heightMm } }
-                      : markOpt),
-                  },
-                  undefined, 300,
-                )),
-                120000, 'spread-cover-gen',
-              )
-              await finishMark('spread:cover:gen:done', { bytes: coverBlob.size })
-              setLoadingMessage('PDF를 업로드하는 중...')
-              const coverUpload = await filesApi.upload({
-                file: coverBlob, type: 'cover', orderSeqno: effectiveOrderSeqno,
-                metadata: { generatedBy: 'editor', editSessionId: currentSessionId, mode: 'spread', isSpreadCover: true },
-              })
-              coverFileId = coverUpload.id
-              console.log('[EmbeddedEditor] Spread cover PDF uploaded:', coverFileId)
-            } catch (coverErr) {
-              console.error('[EmbeddedEditor] Spread COVER PDF 실패:', (coverErr as Error)?.name, (coverErr as Error)?.message, (coverErr as Error)?.stack)
-              try { Sentry.captureException(coverErr, { tags: { finishPhase: 'spread-cover' } } as any) } catch { /* ignore */ }
-              await finishMark('spread:cover:gen:FAILED', { name: (coverErr as Error)?.name, message: (coverErr as Error)?.message })
+            // 내지 전용 세트는 표지 자체가 없으므로 생성/업로드를 건너뛴다.
+            if (!isInnerOnlySpread) {
+              try {
+                await finishMark('spread:cover:gen:start', {
+                  w: spreadCfg!.totalWidthMm, h: spreadCfg!.totalHeightMm,
+                  ...(coverOutputSize ? { outW: coverOutputSize.widthMm, outH: coverOutputSize.heightMm } : {}),
+                })
+                // L4-②: PDF 생성 창(excludeFromExport 임시 플래깅) 동안 autosave suspend —
+                // 발화분은 스킵이 아니라 생성 완료 후 1회 지연 실행(autosaveSuspend.ts).
+                const coverBlob = await withWatchdog(
+                  runWithAutosaveSuspended(() => coverPlugin.saveMultiPagePDFAsBlob(
+                    [allCanvas[0]] as any, [allEditors[0]], `cover-${currentSessionId}`,
+                    {
+                      width: spreadCfg!.totalWidthMm, height: spreadCfg!.totalHeightMm, cutSize: bleed,
+                      // D-4: caseBind 有 → 페이지=출력(wrap) 사이즈 + 콘텐츠 중앙 오프셋(printSize 경로).
+                      // wrap 자체가 재단 여유 역할이므로 crop mark 게이트(markOpt)는 함께 쓰지 않는다
+                      // (게이트 ON 시 ServicePlugin 이 printSize 를 무시하는 기존 시맨틱과의 충돌 회피).
+                      ...(coverOutputSize
+                        ? { printSize: { width: coverOutputSize.widthMm, height: coverOutputSize.heightMm } }
+                        : markOpt),
+                    },
+                    undefined, 300,
+                  )),
+                  120000, 'spread-cover-gen',
+                )
+                await finishMark('spread:cover:gen:done', { bytes: coverBlob.size })
+                setLoadingMessage('PDF를 업로드하는 중...')
+                const coverUpload = await filesApi.upload({
+                  file: coverBlob, type: 'cover', orderSeqno: effectiveOrderSeqno,
+                  metadata: { generatedBy: 'editor', editSessionId: currentSessionId, mode: 'spread', isSpreadCover: true },
+                })
+                coverFileId = coverUpload.id
+                console.log('[EmbeddedEditor] Spread cover PDF uploaded:', coverFileId)
+              } catch (coverErr) {
+                console.error('[EmbeddedEditor] Spread COVER PDF 실패:', (coverErr as Error)?.name, (coverErr as Error)?.message, (coverErr as Error)?.stack)
+                try { Sentry.captureException(coverErr, { tags: { finishPhase: 'spread-cover' } } as any) } catch { /* ignore */ }
+                await finishMark('spread:cover:gen:FAILED', { name: (coverErr as Error)?.name, message: (coverErr as Error)?.message })
+              }
             }
 
             // 내지 content 멀티페이지 PDF (내지 면 크기) — 독립 try
