@@ -6,7 +6,8 @@
 > **08-01 PM(§1-PM: §2 잔여 8항목 일괄 처리 — Node24 전면 승격 LIVE·md2books 24 교체·ⓓⓖ 실증)** →
 > **08-01 밤~08-02(§1-PM-b C6-fix 배포·iOS 실기 완료·md2books 로깅 수정 / ⓕ'ⓗ' 제출물 최종화)**.
 > **08-03(포토북 펼침면 내지 트랙 — 등록 개통·편집·출력·날개 주입 / 썸네일 비율)**.
-> 최종 실측: **2026-08-03 20:10 KST**. `origin/master` = **`1395e60`** · **ci success** · 전 서비스 LIVE(Node 24).
+> 최종 실측: **2026-08-03 20:10 KST**. **최종 코드 커밋 = `7bb74a2`**(이후는 문서 전용 커밋).
+> `origin/master` 는 이 문서를 커밋할 때마다 앞서므로 **해시를 신뢰하지 말고 `git fetch` 로 확인**할 것 · ci success · 전 서비스 LIVE(Node 24).
 > ⚠️ **VPS `~/storige` = `7bb74a2`** — 격차는 문서 커밋 3건뿐(`apps`/`packages` diff 0)이라 **재배포 불필요**.
 >    다음 백엔드 배포 시 자연 동기된다.
 > **오너 착수 대기 항목 0** — 코드 잔여 0. 남은 것은 **외부 회신 2건**(GitHub GC 완료 검증 · 파트너 실기기 회신)
@@ -18,7 +19,7 @@
 
 ```bash
 cd "/Users/yohan/Developer/Bookmoa Storige editor/storige"
-git fetch && git rev-parse --short origin/master    # 본 문서 기준: 1395e60
+git fetch && git rev-parse --short origin/master    # 본 문서의 최종 '코드' 커밋: 7bb74a2 (이후는 문서 커밋)
 git worktree list && git status -sb                  # 타 세션 미커밋 무접촉
 ssh-add -l | head -1                                 # 비면: ssh-add ~/.ssh/id_ed25519
 ```
@@ -213,11 +214,11 @@ ssh-add -l | head -1                                 # 비면: ssh-add ~/.ssh/id
 
 ## 3. 상태 스냅샷 (2026-08-03 20:10 KST 실측 — 세션 종료 점검)
 
-- `origin/master` = `1395e60` · **ci success** · gitleaks success · 로컬=origin 동기, 미커밋(추적) 0
+- **최종 코드 커밋 `7bb74a2`** (이후 문서 커밋만) · **ci success** · gitleaks success · 로컬=origin 동기 · 미커밋(추적) 0
 - **런타임 Node 24.18.1 전면**: VPS api·worker(health 200·req.id 정상) · Vercel editor/admin
   (engines+Settings 24.x 이중화, update-required 0건) · CI 24 · md2books-worker 24
 - 라이브: API health 200 · editor 200 · admin 200 · Bull 큐 **0/0** · 활성 워커잡 0
-- ⚠️ **VPS `~/storige` = `7bb74a2`**(문서 3커밋 뒤짐, `apps`/`packages` diff 0) — **재배포 불필요**
+- ✅ **VPS `~/storige` = `7bb74a2` = 최종 코드 커밋과 동일** — 코드 기준 완전 동기(뒤진 것은 문서 커밋뿐)
 - VPS 롤백 태그: **`storige-api:pre-inner-spread`(08-03, 내지 펼침면 개통 직전)** ·
   `storige-{api,worker}:pre-node24`(08-01 PM) · `pre-s8guard` · `pre-traps` ·
   `pre-gsfix` · `pre-nest10422` · md2books `:20260707`·`:20260801-node24`+구 컨테이너
