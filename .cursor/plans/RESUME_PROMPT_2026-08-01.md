@@ -6,9 +6,11 @@
 > **08-01 PM(§1-PM: §2 잔여 8항목 일괄 처리 — Node24 전면 승격 LIVE·md2books 24 교체·ⓓⓖ 실증)** →
 > **08-01 밤~08-02(§1-PM-b C6-fix 배포·iOS 실기 완료·md2books 로깅 수정 / ⓕ'ⓗ' 제출물 최종화)**.
 > **08-03(포토북 펼침면 내지 트랙 — 등록 개통·편집·출력·날개 주입 / 썸네일 비율)**.
-> 최종 실측: **2026-08-03 17:55 KST**. `origin/master` = **`cf95631`** · **ci success** · 전 서비스 LIVE(Node 24).
-> **§2 오너 행동 전량 종결(08-02: ⓕ' relay 발송 · ⓗ' Support 티켓 제출)** — 코드 잔여 0, 착수 대기 항목 0.
-> 남은 것은 **외부 회신 대기 2건(GitHub GC 완료 검증 · 파트너 실기기 회신)과 운영 관찰 2건**뿐.
+> 최종 실측: **2026-08-03 20:10 KST**. `origin/master` = **`46a9dcf`** · **ci success** · 전 서비스 LIVE(Node 24).
+> ⚠️ **VPS `~/storige` = `7bb74a2`** — 격차는 문서 커밋 3건뿐(`apps`/`packages` diff 0)이라 **재배포 불필요**.
+>    다음 백엔드 배포 시 자연 동기된다.
+> **오너 착수 대기 항목 0** — 코드 잔여 0. 남은 것은 **외부 회신 2건**(GitHub GC 완료 검증 · 파트너 실기기 회신)
+> **+ 운영 관찰 3건 + 별도 트랙 5건**(§2).
 
 ---
 
@@ -16,7 +18,7 @@
 
 ```bash
 cd "/Users/yohan/Developer/Bookmoa Storige editor/storige"
-git fetch && git rev-parse --short origin/master    # 본 문서 기준: 92e3cf8
+git fetch && git rev-parse --short origin/master    # 본 문서 기준: 46a9dcf
 git worktree list && git status -sb                  # 타 세션 미커밋 무접촉
 ssh-add -l | head -1                                 # 비면: ssh-add ~/.ssh/id_ed25519
 ```
@@ -184,7 +186,7 @@ ssh-add -l | head -1                                 # 비면: ssh-add ~/.ssh/id
   ⚠️ **이 가이드는 08-02 초판에 오류가 있었다**(cutSizeMm 양변 합·pageCountRange·세트 판형 의미 3건은
   08-02 조사에서, "등록 경로 없음"은 08-03 구현에서 정정). 가이드 인용 전 최신본인지 확인할 것.
 
-## 2. 잔여 — **오너 행동 0건** · 외부 회신 대기/관찰만 (코드 잔여 0)
+## 2. 잔여 — **오너 착수 대기 0건** · 외부 회신 2 + 관찰 3 + 별도 트랙 5 (코드 잔여 0)
 
 | # | 항목 | 비고 |
 |---|---|---|
@@ -194,6 +196,7 @@ ssh-add -l | head -1                                 # 비면: ssh-add ~/.ssh/id
 | 관찰 | Node24 승격 후속 | 실 PDF 잡 1건 골든 육안 + Sentry 이벤트 실도달 1회 관찰(자연 발생 대기). 이상 시 `pre-node24` 태그 즉시 롤백(api 는 nginx 재시작 동반) |
 | 관찰 | md2books-worker 실잡 | job.completed 1건 관찰 후 구 컨테이너/exited 정리(디스크 회수) |
 | 관찰 | **GitHub Support 회신(ⓗ' 후속) — 보안 잔여** | 회신 도착 시 **완료 검증 필수**: 요청서 §4 스크립트로 표본 4 SHA(`43fc2ead`·`b3e77b83`·`566e5cfa`·`2fa7f125`)가 **web 404 / API 422** 인지 확인해야 진짜 종결. 그때까지 구 히스토리(VPS IP·회전 완료 자격증명)는 SHA 직접 조회로 계속 노출 상태다. 로컬 `backup/*-pre-rebase-*` 3개는 검증 끝날 때까지 보존(**push 절대 금지**). 지연 시 티켓 리마인드 |
+| 관찰 | **포토북 내지 첫 실주문(08-03 트랙 후속)** | 등록→편집→완료→검증 전 구간 E2E 실증 완료(§1-08-03). 첫 실주문 발생 시 ① content.pdf 펼침면 수·크기 ② 워커 VALIDATE COMPLETED ③ 파트너 pageCount(=펼침면×2) 정합을 1회 육안 확인. 이상 시 롤백=`storige-api:pre-inner-spread` 태그(+nginx 재시작) |
 | 관찰 | **파트너 회신(ⓕ' 후속)** | 08-02 발송분에 대해 bookmoa-mobile·ShareSnap 이 **실기기 확인 결과**를 회신 예정. 이상 보고 시 요청 포맷=증상+세션 ID+기기/뷰포트. 롤백 수단: C5 다중=`VITE_ENABLE_ALT_DRAG_CLONE=false` · C6 롱프레스=`VITE_ENABLE_TOUCH_CONTEXT_MENU=false` · C6-b 모달=코드 레벨(플래그 없음, 되돌림 시 재배포) |
 
 **md2books 후속 완료(08-01 밤, 칩 트랙)**: ① queue.claim `[object Object]` 로깅 은폐 수정
@@ -208,18 +211,23 @@ ssh-add -l | head -1                                 # 비면: ssh-add ~/.ssh/id
 
 ---
 
-## 3. 상태 스냅샷 (2026-08-01 22:20 KST 실측)
+## 3. 상태 스냅샷 (2026-08-03 20:10 KST 실측 — 세션 종료 점검)
 
-- `origin/master` = `5a30121`(C6-fix) · **ci success** · gitleaks success
-- **런타임 Node 24.18.1 전면**: VPS api·worker(교체 완료, health 200·req.id 정상) · Vercel editor/admin
+- `origin/master` = `46a9dcf` · **ci success** · gitleaks success · 로컬=origin 동기, 미커밋(추적) 0
+- **런타임 Node 24.18.1 전면**: VPS api·worker(health 200·req.id 정상) · Vercel editor/admin
   (engines+Settings 24.x 이중화, update-required 0건) · CI 24 · md2books-worker 24
-- 라이브: API health 200 · editor 200 · admin 200 · Bull 큐 0/0 · VPS = master 동기
-- VPS 롤백 태그: **`storige-{api,worker}:pre-node24`(08-01 PM)** · `pre-s8guard` · `pre-traps` ·
-  `pre-gsfix` · `pre-nest10422` · md2books `:20260707`+구 컨테이너
+- 라이브: API health 200 · editor 200 · admin 200 · Bull 큐 **0/0** · 활성 워커잡 0
+- ⚠️ **VPS `~/storige` = `7bb74a2`**(문서 3커밋 뒤짐, `apps`/`packages` diff 0) — **재배포 불필요**
+- VPS 롤백 태그: **`storige-api:pre-inner-spread`(08-03, 내지 펼침면 개통 직전)** ·
+  `storige-{api,worker}:pre-node24`(08-01 PM) · `pre-s8guard` · `pre-traps` ·
+  `pre-gsfix` · `pre-nest10422` · md2books `:20260707`·`:20260801-node24`+구 컨테이너
 - 로컬 브랜치: `master` + `backup/*` 3(**push 절대 금지** — 구 히스토리 VPS IP 보유). 워크트리 잔존 0
 - 공인 바인딩: nginx 80/443 뿐. 소스맵: hidden+Sentry 업로드+삭제 LIVE(심볼리케이션 정상)
-- CI 게이트: **전 워크스페이스**(api 884 · worker 490 · canvas-core · sdk · editor 529 · admin 67 ·
-  indesign 139+skip · examples · docs 포털 · 골든/strip self-test) — Node 24 러너에서 green 실증
+- CI 게이트: **전 워크스페이스**(api **896** · worker 490 · canvas-core · sdk · editor **546** ·
+  admin **78** · indesign 139+skip · examples · docs 포털 · 골든/strip self-test) — Node 24 러너 green
+  (08-03 증가분: api +12 · editor +14 · admin +11 = 내지 펼침면·썸네일·날개·후보필터 신규 스펙)
+- 프로덕션 데이터 위생: 08-03 E2E 테스트 데이터 **전량 삭제 확인**(템플릿 0 · 세트 0 · 세션 0 ·
+  live inner spread 0). 실사용 포토북 내지 세트는 **아직 0건**
 
 ---
 
