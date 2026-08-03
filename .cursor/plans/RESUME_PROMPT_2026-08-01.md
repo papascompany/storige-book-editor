@@ -160,7 +160,19 @@ ssh-add -l | head -1                                 # 비면: ssh-add ~/.ssh/id
 **잔여(별도 트랙)**: ⓐ 편집기 세션 검증잡 orderOptions 에 날개 미포함(현재는 책등 미해석로 검증
 건너뜀 → 무해하나 해석 조건 갖춰지면 오탐 소지) ⓑ 워커 wingTotal 가산이 perfect 한정 — 양장 확장 시
 산식 필요 ⓒ 재편집 시 사진틀 재바인딩(B3 지적) ⓓ `instance.complete` 프로그래매틱 경로는 캔버스
-1장만 저장 ⓔ **편집완료(PDF 출력) 구간은 E2E 미실시** — 주문/세션이 필요해 별도 진행.
+1장만 저장.
+
+- **편집완료 PDF 출력 E2E 완료** (`7bb74a2`, api VPS 배포): shop-session 토큰으로 실 세션 생성 →
+  /embed 진입 → 편집완료 실행. **출력 계약 전량 통과**: `content.pdf` 만 업로드(cover.pdf 없음) ·
+  **4페이지 = 캔버스 4장 전부**(수정 전이면 N−1=3) · **페이지 크기 420.0×297.0mm**(펼침면 1장) ·
+  `spreadContentPageCount=4` · 세션 status=complete.
+  **E2E 가 또 실결함 1건 적발 → 수정·배포**: 워커 검증이 기대 크기를 세트 판형(한 면 210×297)으로
+  잡아 정상 PDF 가 **항상 SIZE_MISMATCH 로 FAILED**. content.pdf 는 '1페이지=1펼침면'(D-1)이라
+  실제가 420×297. → `resolveInnerSpreadContentSizeMm`(서버 권위: 세트의 spread 템플릿 innerSpec
+  조회)로 기대 크기·방향 보정. **재실행 결과 VALIDATE COMPLETED**(직전 FAILED). api 896/896.
+  ⚠️ 관찰: 관리자 JWT 는 `parseInt('admin-001')=NaN` 이라 구조적으로 편집 세션 수정 불가 —
+  세션 경로 검증은 **shop-session 토큰**이 유일한 실물 경로다.
+  테스트 데이터(세션 3·세트 1·템플릿 2) 전량 삭제, 큐 0/0 확인.
 
 ## 2. 잔여 — **오너 행동 0건** · 외부 회신 대기/관찰만 (코드 잔여 0)
 
