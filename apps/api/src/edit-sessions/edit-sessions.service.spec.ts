@@ -437,6 +437,85 @@ describe('EditSessionsService', () => {
   // templateSet = 오리엔트된 판형 권위(가로 A4 세트=297×210), metadata.size 는 bookmoa
   // 미오리엔트 전달 이력(R-13). 워커 validatePageSize 는 무수정(축별 엄격 비교 유지) —
   // 정규화는 기준값 유도측에서 "정확 스왑 관계"에만 수행. 스왑 아닌 불일치는 원본 보존.
+  // 2026-08-03 E2E 실측: 포토북 내지 세트의 content.pdf 는 '1페이지 = 1펼침면'(D-1)이라
+  // 실제 페이지가 420×297 인데 기대값이 세트 판형(210×297)이라 정상 PDF 가 매번
+  // SIZE_MISMATCH 로 오검증됐다. (기대: 210x297mm, 현재: 420x297mm)
+  describe('createValidationJobs — 내지 펼침면 content 크기 (2026-08-03)', () => {
+    beforeEach(() => {
+      mockWorkerJobsService.createValidationJob.mockResolvedValue({ id: 'job-inner' } as any);
+      mockTemplateSetsService.findOne = jest
+        .fn()
+        .mockResolvedValue({ width: 210, height: 297, cropMarkEnabled: false });
+    });
+
+    const mkSession = (overrides: Partial<EditSessionEntity> = {}): EditSessionEntity =>
+      ({
+        id: 'session-inner',
+        contentFileId: 'file-content-inner',
+        coverFileId: null,
+        templateSetId: 'ts-inner',
+        metadata: null,
+        ...overrides,
+      }) as EditSessionEntity;
+
+    const call = (session: EditSessionEntity): Promise<void> =>
+      (service as unknown as { createValidationJobs(s: EditSessionEntity): Promise<void> })
+        .createValidationJobs(session);
+
+    const lastOpts = () =>
+      mockWorkerJobsService.createValidationJob.mock.calls.at(-1)?.[0]?.orderOptions;
+
+    const withInnerSpread = (pageWidthMm = 210, pageHeightMm = 297) => {
+      mockTemplateSetsService.findOneWithTemplates = jest.fn().mockResolvedValue({
+        templateDetails: [
+          { type: 'spread', spreadConfig: { regionScope: 'inner', innerSpec: { pageWidthMm, pageHeightMm } } },
+        ],
+      });
+    };
+
+    it('내지 펼침면이면 기대 크기 = 한 면 × 2 (펼침면)', async () => {
+      withInnerSpread(210, 297);
+      await call(mkSession());
+      expect(lastOpts().size).toEqual({ width: 420, height: 297 });
+    });
+
+    it('metadata.size 가 있어도 내지 펼침면 크기가 우선한다(서버 권위)', async () => {
+      withInnerSpread(210, 297);
+      await call(mkSession({ metadata: { size: { width: 210, height: 297 } } as any }));
+      expect(lastOpts().size).toEqual({ width: 420, height: 297 });
+    });
+
+    it('방향도 펼침면 기준 — 세로 판형의 펼침면은 landscape', async () => {
+      withInnerSpread(210, 297);
+      await call(mkSession());
+      expect(lastOpts().expectedOrientation).toBe('landscape');
+    });
+
+    it('표지 spread(cover)는 기존 폴백 그대로 — 무회귀', async () => {
+      mockTemplateSetsService.findOneWithTemplates = jest.fn().mockResolvedValue({
+        templateDetails: [
+          { type: 'spread', spreadConfig: { regionScope: 'cover', spec: { coverWidthMm: 210, coverHeightMm: 297 } } },
+        ],
+      });
+      await call(mkSession());
+      expect(lastOpts().size).toEqual({ width: 210, height: 297 });
+    });
+
+    it('innerSpec 치수가 비유효하면 폴백(잡 생성은 계속)', async () => {
+      withInnerSpread(0, 297);
+      await call(mkSession());
+      expect(lastOpts().size).toEqual({ width: 210, height: 297 });
+      expect(mockWorkerJobsService.createValidationJob).toHaveBeenCalled();
+    });
+
+    it('findOneWithTemplates 실패해도 완료 비차단 + 기존 폴백', async () => {
+      mockTemplateSetsService.findOneWithTemplates = jest.fn().mockRejectedValue(new Error('boom'));
+      await call(mkSession());
+      expect(lastOpts().size).toEqual({ width: 210, height: 297 });
+      expect(mockWorkerJobsService.createValidationJob).toHaveBeenCalled();
+    });
+  });
+
   describe('createValidationJobs 방향 정합 — size 스왑 정규화 + expectedOrientation (2026-07-14)', () => {
     beforeEach(() => {
       mockWorkerJobsService.createValidationJob.mockResolvedValue({ id: 'job-orient' } as any);

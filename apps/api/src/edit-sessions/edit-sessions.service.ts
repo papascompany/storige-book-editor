@@ -72,6 +72,44 @@ export class EditSessionsService {
   }
 
   /**
+   * 내지 펼침면(regionScope='inner') 세트의 **content.pdf 실제 페이지 크기**를 해석한다.
+   *
+   * 배경(2026-08-03 E2E 실측): 포토북 내지 세트의 content.pdf 는 '1페이지 = 1펼침면'(D-1 결정)이라
+   * 실제 페이지가 `pageWidthMm×2 × pageHeightMm` 인데, 검증 잡의 기대 크기는 templateSet 판형
+   * (= 내지 한 면)이라 정상 PDF 가 항상 SIZE_MISMATCH 로 오검증됐다.
+   *   `페이지 크기가 맞지 않습니다. (기대: 210x297mm, 현재: 420x297mm)`
+   *
+   * 표지 spread(cover)·비스프레드 세트는 null 을 반환해 기존 폴백 체인을 그대로 탄다(무회귀).
+   */
+  private async resolveInnerSpreadContentSizeMm(
+    session: EditSessionEntity,
+  ): Promise<{ width: number; height: number } | null> {
+    try {
+      if (!session.templateSetId) return null;
+      const { templateDetails } = await this.templateSetsService.findOneWithTemplates(
+        session.templateSetId,
+      );
+      const spreadTpl = templateDetails.find((t) => t.type === ('spread' as any));
+      const cfg = spreadTpl?.spreadConfig as
+        | { regionScope?: string; innerSpec?: { pageWidthMm?: number; pageHeightMm?: number } }
+        | undefined;
+      if (cfg?.regionScope !== 'inner') return null;
+      const w = cfg.innerSpec?.pageWidthMm;
+      const h = cfg.innerSpec?.pageHeightMm;
+      if (!Number.isFinite(w) || !Number.isFinite(h) || (w as number) <= 0 || (h as number) <= 0) {
+        return null;
+      }
+      // content.pdf 1페이지 = 좌면+우면 (거터는 면 내부라 총폭에 미가산 — 편집기 규약과 동일)
+      return { width: (w as number) * 2, height: h as number };
+    } catch (e) {
+      this.logger.warn(
+        `[validation-jobs] 내지 펼침면 크기 해석 skip(기존 폴백 사용): ${(e as Error).message}`,
+      );
+      return null;
+    }
+  }
+
+  /**
    * 편집 세션 생성
    *
    * 인쇄 워크플로우 v1 Phase 4 (2026-05-19):
@@ -1105,6 +1143,9 @@ export class EditSessionsService {
         }
       }
 
+      // 내지 펼침면 세트 여부/크기 해석 (표지 spread·비스프레드는 null → 기존 폴백)
+      const innerSpreadContentSize = await this.resolveInnerSpreadContentSizeMm(session);
+
       // Get order options from metadata or use defaults
       // expectedOrientation(워커 R3 방향검증)은 워커 측 DTO(validation-result.dto.ts /
       // validation.processor.ts)에만 정의된 필드 — API CreateValidationJobDto 미정의라
@@ -1117,7 +1158,10 @@ export class EditSessionsService {
         // A4 고정 디폴트는 비-A4 상품 세션의 생성 PDF 를 SIZE_MISMATCH 로 오검증했고
         // (FIXABLE→VALIDATED 매핑이 마스킹), 게이팅 ON 시 session.failed 로 flip 하는 원인.
         // templateSet 까지 없을 때만 최후 A4 폴백(레거시 동일).
+        // 내지 펼침면 세트는 content.pdf 1페이지가 '펼침면'이라 세트 판형(한 면)이 아니라
+        // 펼침면 크기가 기대값이다. 해석되면 metadata.size 보다도 우선(서버 권위).
         size:
+          innerSpreadContentSize ||
           session.metadata?.size ||
           (templateSet
             ? { width: templateSet.width, height: templateSet.height }
@@ -1170,6 +1214,14 @@ export class EditSessionsService {
           orderOptions.expectedOrientation =
             tsWidth > tsHeight ? 'landscape' : 'portrait';
         }
+      }
+
+      // 내지 펼침면: 방향 기준도 세트 판형(한 면)이 아니라 **실제 content 페이지(펼침면)** 여야 한다.
+      // 세로 판형(210×297)의 펼침면은 420×297 = 가로라, 위 블록이 주입한 'portrait' 를 그대로 두면
+      // 정상 PDF 가 ORIENTATION_MISMATCH 경고로 집계된다(비차단이지만 오탐 노이즈).
+      if (innerSpreadContentSize) {
+        const { width: iw, height: ih } = innerSpreadContentSize;
+        orderOptions.expectedOrientation = iw > ih ? 'landscape' : 'portrait';
       }
 
       // ── 블리드 / 재단선 / 사이즈 허용오차 + 재단/작업 사이즈 주입 (2026-06-10) ──
