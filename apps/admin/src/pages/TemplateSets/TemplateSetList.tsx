@@ -382,6 +382,9 @@ export const TemplateSetList = () => {
           options={[
             { label: '책자', value: TemplateSetType.BOOK },
             { label: '리플렛', value: TemplateSetType.LEAFLET },
+            // 포토북은 라벨/색 맵에는 이미 있었는데 필터 옵션에만 빠져 있어,
+            // 목록에서 포토북 세트를 타입으로 걸러낼 수 없었다(2026-08-03).
+            { label: '포토북', value: TemplateSetType.PHOTOBOOK },
           ]}
         />
       </Space>

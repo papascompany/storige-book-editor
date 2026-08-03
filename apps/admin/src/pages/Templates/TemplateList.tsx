@@ -332,7 +332,7 @@ export const TemplateList = () => {
       dataIndex: 'type',
       key: 'type',
       width: 100,
-      render: (type: string) => {
+      render: (type: string, record: Template) => {
         const typeLabels: Record<string, { label: string; color: string }> = {
           page: { label: '내지', color: 'blue' },
           cover: { label: '표지', color: 'green' },
@@ -343,6 +343,16 @@ export const TemplateList = () => {
           endpaper: { label: '면지', color: 'gold' },
         };
         const typeInfo = typeLabels[type] || { label: type, color: 'default' };
+        // 스프레드는 용도(표지/내지 2-up)를 구분해 표기 — 목록에서 둘 다 '스프레드'로만
+        // 보여 운영자가 세트에 붙일 템플릿을 고를 수 없었다(2026-08-03).
+        if (type === 'spread') {
+          const isInner = record.spreadConfig?.regionScope === 'inner';
+          return (
+            <Tag color={isInner ? 'geekblue' : typeInfo.color}>
+              {isInner ? '스프레드(내지)' : '스프레드(표지)'}
+            </Tag>
+          );
+        }
         return <Tag color={typeInfo.color}>{typeInfo.label}</Tag>;
       },
       filters: [
@@ -350,10 +360,19 @@ export const TemplateList = () => {
         { text: '표지', value: 'cover' },
         { text: '책등', value: 'spine' },
         { text: '날개', value: 'wing' },
-        { text: '스프레드', value: 'spread' },
+        { text: '스프레드(표지)', value: 'spread-cover' },
+        { text: '스프레드(내지)', value: 'spread-inner' },
         { text: '면지', value: 'endpaper' },
       ],
-      onFilter: (value, record) => record.type === value,
+      onFilter: (value, record) => {
+        if (value === 'spread-inner') {
+          return record.type === 'spread' && record.spreadConfig?.regionScope === 'inner';
+        }
+        if (value === 'spread-cover') {
+          return record.type === 'spread' && record.spreadConfig?.regionScope !== 'inner';
+        }
+        return record.type === value;
+      },
     },
     {
       // 방향 컬럼 (2026-07-14) — 판형(W×H) 컬럼이 따로 없어 치수를 함께 표기

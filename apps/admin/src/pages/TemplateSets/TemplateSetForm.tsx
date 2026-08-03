@@ -93,6 +93,8 @@ const COVER_TYPE_SEED_OPTIONS = [
 // caseBind(싸바리 geometry) 미사용이 명확한 시드 코드 — 그 외(하드커버·자유 코드)는 입력 노출.
 const COVER_TYPES_WITHOUT_CASEBIND = ['softcover_variable_spine', 'ready_made'];
 
+import { matchesSpreadCandidate } from './spreadCandidate';
+
 const templateTypeLabels: Record<TemplateType, string> = {
   [TemplateType.WING]: '날개',
   [TemplateType.COVER]: '표지',
@@ -109,6 +111,33 @@ const templateTypeColors: Record<TemplateType, string> = {
   [TemplateType.PAGE]: 'default',
   [TemplateType.SPREAD]: 'green',
   [TemplateType.ENDPAPER]: 'gold',
+};
+
+/**
+ * 서버 검증 메시지를 사람이 읽을 한 줄로 만든다.
+ * NestJS ValidationPipe/BadRequestException 은 message 를 문자열 또는 문자열 배열로 준다.
+ * 종전에는 이걸 버리고 '템플릿셋 생성에 실패했습니다'만 띄워, 운영자가
+ * "PAGE 타입 템플릿이 최소 1개 필요합니다" 같은 실제 원인을 전혀 볼 수 없었다(2026-08-03).
+ */
+const serverErrorText = (e: unknown): string | null => {
+  const msg = (e as { response?: { data?: { message?: string | string[] } } })?.response?.data?.message;
+  if (Array.isArray(msg)) return msg.filter(Boolean).join(' / ') || null;
+  if (typeof msg === 'string' && msg.trim()) return msg;
+  return null;
+};
+
+/**
+ * 스프레드 템플릿의 용도 태그 — 표지 펼침면 vs 내지 펼침면(2-up).
+ * 종전에는 둘 다 '스프레드' 하나로만 표기돼 운영자가 목록에서 구분할 수 없었다(2026-08-03).
+ * spread 가 아니면 null.
+ */
+const spreadScopeTag = (t?: Pick<Template, 'type' | 'spreadConfig'> | null) => {
+  if (!t || t.type !== TemplateType.SPREAD) return null;
+  return t.spreadConfig?.regionScope === 'inner' ? (
+    <Tag color="geekblue">내지 펼침면</Tag>
+  ) : (
+    <Tag color="green">표지 펼침면</Tag>
+  );
 };
 
 // 치수 정합 배지 정보 — TemplateSetForm 에서 판형(width/height/bleedMm) 기준으로 계산해 주입.
@@ -187,6 +216,7 @@ const SortableTemplateItem = ({
               {templateTypeLabels[item.template.type]}
             </Tag>
           )}
+          {spreadScopeTag(item.template)}
           {item.required && <Tag color="red">필수</Tag>}
           {/* 치수 정합 배지 (2026-07-14) — page류만, skip 은 무표시. 비차단(경고만) */}
           {dimAlignment?.status === 'ok-trim' && <Tag color="green">재단 일치</Tag>}
@@ -303,8 +333,9 @@ export const TemplateSetForm = () => {
       message.success('템플릿셋이 생성되었습니다.');
       handleSuccess();
     },
-    onError: () => {
-      message.error('템플릿셋 생성에 실패했습니다.');
+    onError: (e) => {
+      const detail = serverErrorText(e);
+      message.error(detail ? `템플릿셋 생성 실패 — ${detail}` : '템플릿셋 생성에 실패했습니다.');
     },
   });
 
@@ -316,8 +347,9 @@ export const TemplateSetForm = () => {
       message.success('템플릿셋이 수정되었습니다.');
       handleSuccess();
     },
-    onError: () => {
-      message.error('템플릿셋 수정에 실패했습니다.');
+    onError: (e) => {
+      const detail = serverErrorText(e);
+      message.error(detail ? `템플릿셋 수정 실패 — ${detail}` : '템플릿셋 수정에 실패했습니다.');
     },
   });
 
@@ -421,6 +453,14 @@ export const TemplateSetForm = () => {
 
       if (invalidTemplates.length > 0) {
         message.error('책모드에서는 날개/표지/책등 템플릿을 사용할 수 없습니다.');
+        return;
+      }
+
+      // 서버(template-sets.service validateBookModeTemplates)와 동일한 PAGE≥1 규칙을
+      // 클라이언트에서 먼저 알려준다. 미러가 없으면 저장 시 400 만 뜨고 원인이 안 보였다.
+      const pageTemplates = templates.filter((t) => t.template?.type === TemplateType.PAGE);
+      if (pageTemplates.length === 0) {
+        message.error('책모드는 내지(PAGE) 템플릿이 최소 1개 필요합니다.');
         return;
       }
     }
@@ -612,13 +652,8 @@ export const TemplateSetForm = () => {
       return t.height === height;
     }
     if (t.type === TemplateType.SPREAD) {
-      // 스프레드는 표지 크기(coverWidth/Height)로 비교
-      const spec = t.spreadConfig?.spec;
-      if (spec) {
-        return spec.coverWidthMm === width && spec.coverHeightMm === height;
-      }
-      // spreadConfig 없으면 높이만 비교 (fallback)
-      return t.height === height;
+      // 표지/내지 펼침면 후보 판정은 순수 헬퍼가 단일 소스 (spreadCandidate.ts)
+      return matchesSpreadCandidate(t, width, height);
     }
     if (typeof width === 'number' && typeof height === 'number') {
       const { status } = checkTemplateDimAlignment(
@@ -1313,6 +1348,31 @@ export const TemplateSetForm = () => {
                               />
                             );
                           }
+                          const pageCount = templates.filter(
+                            (t) => t.template?.type === TemplateType.PAGE
+                          ).length;
+                          if (pageCount === 0) {
+                            return (
+                              <Alert
+                                type="warning"
+                                message="내지(PAGE) 템플릿이 최소 1개 필요합니다"
+                                description="이 상태로 저장하면 서버가 거부합니다. 내지 템플릿을 추가하세요."
+                                style={{ marginBottom: 16 }}
+                              />
+                            );
+                          }
+                          // 내지 펼침면 세트는 편집기가 page 템플릿 캔버스를 쓰지 않는다
+                          // (펼침면 수를 페이지 범위로 합성) — 운영자 혼동 방지 안내.
+                          if (spreadTemplates[0]?.template?.spreadConfig?.regionScope === 'inner') {
+                            return (
+                              <Alert
+                                type="info"
+                                message="내지 펼침면(2-up) 세트입니다"
+                                description="실제 펼침면 수는 페이지 범위(물리 페이지 ÷ 2, 올림)로 결정됩니다. 연결한 내지(PAGE) 템플릿의 캔버스는 편집기에서 사용되지 않으며, 현재 서버 규칙상 최소 1개가 형식적으로 필요합니다."
+                                style={{ marginBottom: 16 }}
+                              />
+                            );
+                          }
                           return (
                             <Alert
                               type="success"
@@ -1463,6 +1523,7 @@ export const TemplateSetForm = () => {
                           <Tag color={templateTypeColors[template.type]}>
                             {templateTypeLabels[template.type]}
                           </Tag>
+                          {spreadScopeTag(template)}
                         </Space>
                       }
                       description={`${template.width} × ${template.height}mm`}

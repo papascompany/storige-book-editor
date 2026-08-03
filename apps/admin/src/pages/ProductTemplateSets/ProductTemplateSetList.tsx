@@ -38,6 +38,16 @@ import { TemplateSet } from '@storige/types';
 import { useDebouncedCallback } from 'use-debounce';
 import { ThumbnailImage } from '../../components/ThumbnailImage';
 
+
+// 타입 라벨 — 종전 `type === 'book' ? '책자' : '리플렛'` 이분 삼항이라
+// 포토북 세트가 '리플렛'으로 잘못 표기됐다(2026-08-03). ProductList 와 동일 맵.
+const templateSetTypeLabels: Record<string, string> = {
+  book: '책자',
+  leaflet: '리플렛',
+  photobook: '포토북',
+};
+const templateSetTypeLabel = (t?: string): string => (t && templateSetTypeLabels[t]) || t || '-';
+
 const { Title, Text } = Typography;
 
 // 썸네일 표시는 공통 컴포넌트 사용 (admin/components/ThumbnailImage)
@@ -236,7 +246,7 @@ export const ProductTemplateSetList = () => {
             <Text>{ts?.name || '-'}</Text>
             {ts && (
               <Text type="secondary" style={{ fontSize: 12 }}>
-                {ts.type === 'book' ? '책자' : '리플렛'} · {ts.width}×{ts.height}mm
+                {templateSetTypeLabel(ts.type)} · {ts.width}×{ts.height}mm
               </Text>
             )}
             {(endpaperLabel || !coverEditable) && (
@@ -405,7 +415,7 @@ export const ProductTemplateSetList = () => {
               showSearch
               options={templateSets?.map((ts: TemplateSet) => ({
                 value: ts.id,
-                label: `${ts.name} (${ts.type === 'book' ? '책자' : '리플렛'} · ${ts.width}×${ts.height}mm)`,
+                label: `${ts.name} (${templateSetTypeLabel(ts.type)} · ${ts.width}×${ts.height}mm)`,
               }))}
             />
           </Form.Item>
