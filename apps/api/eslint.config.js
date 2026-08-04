@@ -15,6 +15,8 @@ module.exports = [
       globals: {
         process: 'readonly',
         Express: 'readonly',
+        // NodeJS 네임스페이스 타입(NodeJS.ErrnoException 등) — 미등록 시 no-undef 오탐
+        NodeJS: 'readonly',
         __dirname: 'readonly',
         __filename: 'readonly',
         module: 'readonly',

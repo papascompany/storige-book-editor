@@ -7,7 +7,6 @@ import {
   IsNumber,
   IsArray,
   IsIn,
-  IsObject,
   ValidateNested,
   Max,
   MaxLength,

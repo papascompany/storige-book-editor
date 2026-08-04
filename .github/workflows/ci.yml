@@ -91,6 +91,11 @@ jobs:
       - name: api 테스트 (contract-freeze + 서명 페어와이즈 + 전체 스펙)
         run: pnpm --filter @storige/api test
 
+      # 2026-08-04 게이트 신설 — 종전 CI 에 api lint 부재(NodeJS no-undef 1err 가
+      # honor system 상태였다). 기준선 결함 3건 해소와 함께 등재.
+      - name: api lint
+        run: pnpm --filter @storige/api lint
+
       - name: Partner API v1 OpenAPI export (파트너 전용 스펙 — v1 태그 필터)
         # 스크립트 내부 단언: 모든 경로 /api/v1/* + REQUIRED_PATHS(현 16경로/22오퍼레이션
         # = ping·book-specs 3·books 11·webhooks 7) 존재 — 내부 라우트 유입/누락 시 실패.
