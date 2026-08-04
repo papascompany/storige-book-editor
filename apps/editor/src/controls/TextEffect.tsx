@@ -3,8 +3,14 @@ import { useAppStore, useActiveSelection, useSelectionType } from '@/stores/useA
 import AppSection from '@/components/AppSection'
 import { Button } from '@/components/ui/button'
 import { Slider } from '@/components/ui/slider'
-import { SelectionType, createPath } from '@storige/canvas-core'
+import {
+  SelectionType,
+  applyCurveToText,
+  removeCurveFromText,
+  type CurvePathType,
+} from '@storige/canvas-core'
 import { cn } from '@/lib/utils'
+import { FlipHorizontal2 } from 'lucide-react'
 
 // Import curve images
 import curvedTextImage from '@/assets/image/curvedText.png'
@@ -25,6 +31,9 @@ export default function TextEffect() {
   const [curveDirection, setCurveDirection] = useState<CurveDirectionType>('upward')
   // 호 각도(도) — 180=반원(기본), 키우면 원 둘레를 더 감쌈 (배지/병뚜껑/라벨)
   const [arcDeg, setArcDeg] = useState(180)
+  // S-E3: 패스 모양(아치|웨이브) + Flip(패스 반대편 — fabric pathSide)
+  const [pathType, setPathType] = useState<CurvePathType>('arc')
+  const [flipped, setFlipped] = useState(false)
 
   const prevTextCountRef = useRef<number | undefined>(undefined)
   const isInitializingRef = useRef(false)
@@ -46,88 +55,70 @@ export default function TextEffect() {
     if (!activeSelection || !Array.isArray(activeSelection) || activeSelection.length === 0) {
       return false
     }
-     
+
     const obj = activeSelection[0] as any
     return obj?.path != null
   }, [activeSelection, refreshTick])
 
-  // Generate path data for curved text
-  // deg = 호 각도(도). 180=반원(기존 동작과 동일). 키우면 원을 더 감싼다.
-  // 상단(upward)은 sweep 1, 하단(downward)은 sweep 0 로 기존 방향성 유지.
-  const generatePathData = useCallback((r: number, reverse: boolean = false, deg: number = 180) => {
-    const d = Math.max(10, Math.min(deg, 350))
-    const h = (d / 2) * (Math.PI / 180)
-    const sx = r * Math.sin(h)
-    const cy = r * Math.cos(h)
-    const largeArc = d > 180 ? 1 : 0
-    if (!reverse) {
-      // 위쪽 호 (상단 중심)
-      return `M ${-sx}, ${-cy} A ${r} ${r} 0 ${largeArc} 1 ${sx}, ${-cy}`
-    }
-    // 아래쪽 호 (하단 중심)
-    return `M ${-sx}, ${cy} A ${r} ${r} 0 ${largeArc} 0 ${sx}, ${cy}`
-  }, [])
+  const isWave = pathType === 'wave'
 
   // Calculate radius based on text length
   const calcRadius = useCallback((count: number) => {
     if (!activeSelection || activeSelection.length === 0) return 200
 
-     
+
     const obj = activeSelection[0] as any
     const effectiveSize = (obj?.fontSize || 0) + gap / 2
     const textLength = effectiveSize * count
     return textLength / Math.PI
   }, [activeSelection, gap])
 
-  // Apply curve to text
-  const curveText = useCallback(async () => {
+  // 곡선 적용(공유 유틸) — offHistory→적용→onHistory 로 곡률 변경이 히스토리 1엔트리가 되게 한다
+  // (onHistory 가 상태 diff 를 스냅샷하므로 set 이 onHistory 앞이어야 엔트리에 잡힘)
+  const applyCurve = useCallback(async (overrides: {
+    radius?: number
+    direction?: CurveDirectionType
+    arcDeg?: number
+    pathType?: CurvePathType
+    gap?: number
+    flipped?: boolean
+  } = {}) => {
     if (!activeSelection || activeSelection.length === 0 || !canvas) return
 
-     
+
     const obj = activeSelection[0] as any
     if (!obj) return
 
+    const effType = overrides.pathType ?? pathType
+    const effRadius = overrides.radius ?? radius
+    const effDirection = overrides.direction ?? curveDirection
+    const effArcDeg = overrides.arcDeg ?? arcDeg
+    const effGap = overrides.gap ?? gap
+    const effFlipped = overrides.flipped ?? flipped
+
     canvas.offHistory?.()
 
-    const pathData = generatePathData(radius, curveDirection === 'downward', arcDeg)
-    const path = await createPath(pathData, {
-      id: 'curveText',
-      stroke: '#000',
-      strokeWidth: 0,
-      fill: '',
-      selectable: false,
-      scaleX: 1,
-      scaleY: 1,
-      width: (obj.width || 0) * (obj.scaleX || 1),
-    })
-
-    // Get path segments info
-
-    const fabric = (window as any).fabric
-    if (fabric?.util?.getPathSegmentsInfo) {
-
-      (path as any).segmentsInfo = fabric.util.getPathSegmentsInfo((path as any).path)
-    }
+    await applyCurveToText(
+      obj,
+      {
+        pathType: effType,
+        radius: effRadius,
+        direction: effDirection,
+        arcDeg: effArcDeg,
+        width: (obj.width || 0) * (obj.scaleX || 1),
+      },
+      { charSpacing: effGap, flip: effFlipped ? 'right' : 'left' }
+    )
 
     canvas.onHistory?.()
-
-    obj.set({
-      path,
-      extensionType: 'curveText',
-      curveRadius: radius,
-      charSpacing: gap,
-      curveDirection: curveDirection,
-      curveArcDeg: arcDeg,
-    })
-
     canvas.renderAll()
-  }, [activeSelection, canvas, radius, gap, curveDirection, arcDeg, generatePathData])
+  }, [activeSelection, canvas, radius, gap, curveDirection, arcDeg, pathType, flipped])
 
   // Add curve
   const addCurve = useCallback(async () => {
     if (!activeSelection || activeSelection.length === 0 || !canvas) return
 
-     
+
     const obj = activeSelection[0] as any
     if (!obj) return
 
@@ -140,56 +131,19 @@ export default function TextEffect() {
     setRadius(newRadius)
     setAverageRadius(r)
 
-    // Apply curve directly with new values
-    canvas.offHistory?.()
-
-    const pathData = generatePathData(newRadius, curveDirection === 'downward', arcDeg)
-    const path = await createPath(pathData, {
-      id: 'curveText',
-      stroke: '#000',
-      strokeWidth: 0,
-      fill: '',
-      selectable: false,
-      scaleX: 1,
-      scaleY: 1,
-      width: (obj.width || 0) * (obj.scaleX || 1),
-    })
-
-
-    const fabric = (window as any).fabric
-    if (fabric?.util?.getPathSegmentsInfo) {
-
-      (path as any).segmentsInfo = fabric.util.getPathSegmentsInfo((path as any).path)
-    }
-
-    canvas.onHistory?.()
-
-    obj.set({
-      path,
-      extensionType: 'curveText',
-      curveRadius: newRadius,
-      charSpacing: gap,
-      curveDirection: curveDirection,
-      curveArcDeg: arcDeg,
-    })
-
-    canvas.renderAll()
+    await applyCurve({ radius: newRadius })
     forceRefresh()
-  }, [activeSelection, canvas, radius, gap, curveDirection, arcDeg, calcRadius, generatePathData])
+  }, [activeSelection, canvas, radius, calcRadius, applyCurve])
 
   // Remove curve
   const removeCurve = useCallback(() => {
     if (!activeSelection || activeSelection.length === 0 || !canvas) return
 
-     
+
     const obj = activeSelection[0] as any
     if (!obj) return
 
-    obj.set({
-      path: null,
-      charSpacing: 0,
-      extensionType: undefined,
-    })
+    removeCurveFromText(obj)
 
     canvas.requestRenderAll()
 
@@ -197,12 +151,24 @@ export default function TextEffect() {
     setAverageRadius(0)
     setGap(0)
     setArcDeg(180)
+    setPathType('arc')
+    setFlipped(false)
     forceRefresh()
   }, [activeSelection, canvas])
 
   // Change curve direction
   const changeCurveDirection = useCallback((direction: CurveDirectionType) => {
     setCurveDirection(direction)
+  }, [])
+
+  // Change path shape (아치 ↔ 웨이브)
+  const changePathType = useCallback((type: CurvePathType) => {
+    setPathType(type)
+  }, [])
+
+  // Flip — 텍스트를 패스 반대편으로 (읽는 방향 유지)
+  const toggleFlip = useCallback(() => {
+    setFlipped((prev) => !prev)
   }, [])
 
   // Handle radius change (while dragging - only update state)
@@ -214,9 +180,9 @@ export default function TextEffect() {
   const handleRadiusCommit = useCallback((value: number[]) => {
     setRadius(value[0])
     if (hasPath && value[0] > 0) {
-      curveText()
+      applyCurve({ radius: value[0] })
     }
-  }, [hasPath, curveText])
+  }, [hasPath, applyCurve])
 
   // Handle gap change (while dragging - only update state)
   const handleGapChange = useCallback((value: number[]) => {
@@ -227,39 +193,39 @@ export default function TextEffect() {
   const handleGapCommit = useCallback((value: number[]) => {
     setGap(value[0])
     if (hasPath) {
-      curveText()
+      applyCurve({ gap: value[0] })
     }
-  }, [hasPath, curveText])
+  }, [hasPath, applyCurve])
 
   // Handle arc angle change — drag 중 라이브 반영 (아래 useEffect가 재적용)
   const handleAngleChange = useCallback((value: number[]) => {
     setArcDeg(value[0])
   }, [])
 
-  // Apply curve when direction changes only
+  // Apply curve when direction/shape/flip changes only
   useEffect(() => {
     // Skip during initialization to prevent infinite loop
     if (isInitializingRef.current) {
       return
     }
-    // Apply when direction or arc angle changes (radius and gap are handled by onValueCommit)
+    // Apply when direction, arc angle, shape or flip changes (radius and gap use onValueCommit)
     if (hasPath && radius > 0) {
-      curveText()
+      applyCurve()
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [curveDirection, arcDeg])
+  }, [curveDirection, arcDeg, pathType, flipped])
 
   // Initialize values when selection changes
   useEffect(() => {
     if (!activeSelection || activeSelection.length === 0) return
 
-     
+
     const obj = activeSelection[0] as any
     if (obj?.path && obj?.extensionType === 'curveText') {
       const objRadius = obj.curveRadius || 200
       const objGap = obj.charSpacing || 0
 
-      // Set initializing flag to prevent curveText from being called
+      // Set initializing flag to prevent applyCurve from being called
       isInitializingRef.current = true
 
       // Set averageRadius so that the current radius is within slider range
@@ -274,6 +240,8 @@ export default function TextEffect() {
       setGap(objGap)
       setCurveDirection(obj.curveDirection || 'upward')
       setArcDeg(obj.curveArcDeg || 180)
+      setPathType(obj.curvePathType === 'wave' ? 'wave' : 'arc')
+      setFlipped(obj.pathSide === 'right')
 
       // Reset flag after state updates are applied
       requestAnimationFrame(() => {
@@ -285,6 +253,8 @@ export default function TextEffect() {
       setAverageRadius(0)
       setGap(0)
       setArcDeg(180)
+      setPathType('arc')
+      setFlipped(false)
     }
   }, [activeSelection])
 
@@ -293,7 +263,7 @@ export default function TextEffect() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!activeSelection || activeSelection.length === 0) return
 
-       
+
       const obj = activeSelection[0] as any
       const target = e.target as HTMLTextAreaElement
 
@@ -301,7 +271,9 @@ export default function TextEffect() {
         obj?.type === 'i-text' &&
         target?.value &&
         target?.tagName === 'TEXTAREA' &&
-        obj?.extensionType === 'curveText'
+        obj?.extensionType === 'curveText' &&
+        // 웨이브는 radius=진폭이라 글자 수 기반 재계산 대상이 아님 (아치 전용 보정)
+        obj?.curvePathType !== 'wave'
       ) {
         const count = target.value.length
         prevTextCountRef.current ??= count
@@ -349,10 +321,43 @@ export default function TextEffect() {
             </Button>
           ) : (
             <div className="flex flex-col gap-5 mt-2">
-              {/* Radius */}
+              {/* Shape (아치/웨이브) + Flip */}
+              <div className="flex flex-col gap-3">
+                <label className="text-xs text-editor-text-muted">모양</label>
+                <div className="flex gap-1">
+                  {([
+                    { type: 'arc' as CurvePathType, label: '아치' },
+                    { type: 'wave' as CurvePathType, label: '웨이브' },
+                  ]).map((s) => (
+                    <Button
+                      key={s.type}
+                      variant="ghost"
+                      size="sm"
+                      aria-pressed={pathType === s.type}
+                      className={`flex-1 h-7 text-[11px] bg-editor-surface-lowest ${pathType === s.type ? 'text-primary' : 'text-editor-text-muted'}`}
+                      onClick={() => changePathType(s.type)}
+                    >
+                      {s.label}
+                    </Button>
+                  ))}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    title="뒤집기 — 텍스트를 곡선 반대편으로"
+                    aria-pressed={flipped}
+                    className={`flex-1 h-7 text-[11px] bg-editor-surface-lowest ${flipped ? 'text-primary' : 'text-editor-text-muted'}`}
+                    onClick={toggleFlip}
+                  >
+                    <FlipHorizontal2 className="h-3 w-3 mr-1" />
+                    뒤집기
+                  </Button>
+                </div>
+              </div>
+
+              {/* Radius (아치) / 진폭 (웨이브) */}
               <div className="flex flex-col gap-3">
                 <div className="flex justify-between items-center">
-                  <label className="text-xs text-editor-text-muted">반지름</label>
+                  <label className="text-xs text-editor-text-muted">{isWave ? '진폭' : '반지름'}</label>
                   <span className="text-xs text-editor-text">{Math.round(radius)}</span>
                 </div>
                 <Slider
@@ -365,40 +370,42 @@ export default function TextEffect() {
                 />
               </div>
 
-              {/* Arc angle — 원 둘레를 감싸는 정도 (180=반원, 키우면 원형/배지) */}
-              <div className="flex flex-col gap-3">
-                <div className="flex justify-between items-center">
-                  <label className="text-xs text-editor-text-muted">각도</label>
-                  <span className="text-xs text-editor-text">{Math.round(arcDeg)}°</span>
+              {/* Arc angle — 원 둘레를 감싸는 정도 (180=반원, 키우면 원형/배지) — 아치 전용 */}
+              {!isWave && (
+                <div className="flex flex-col gap-3">
+                  <div className="flex justify-between items-center">
+                    <label className="text-xs text-editor-text-muted">각도</label>
+                    <span className="text-xs text-editor-text">{Math.round(arcDeg)}°</span>
+                  </div>
+                  <Slider
+                    value={[arcDeg]}
+                    onValueChange={handleAngleChange}
+                    min={30}
+                    max={340}
+                    step={1}
+                  />
+                  {/* 빠른 각도 프리셋 (배지/라벨/병뚜껑) — 일반 버튼이라 한 번에 적용 */}
+                  <div className="flex gap-1">
+                    {[
+                      { label: '반원', deg: 180 },
+                      { label: '¾', deg: 270 },
+                      { label: '원형', deg: 320 },
+                    ].map((p) => (
+                      <Button
+                        key={p.deg}
+                        variant="ghost"
+                        size="sm"
+                        title={`${p.deg}°`}
+                        aria-pressed={Math.round(arcDeg) === p.deg}
+                        className={`flex-1 h-7 text-[11px] bg-editor-surface-lowest ${Math.round(arcDeg) === p.deg ? 'text-primary' : 'text-editor-text-muted'}`}
+                        onClick={() => setArcDeg(p.deg)}
+                      >
+                        {p.label}
+                      </Button>
+                    ))}
+                  </div>
                 </div>
-                <Slider
-                  value={[arcDeg]}
-                  onValueChange={handleAngleChange}
-                  min={30}
-                  max={340}
-                  step={1}
-                />
-                {/* 빠른 각도 프리셋 (배지/라벨/병뚜껑) — 일반 버튼이라 한 번에 적용 */}
-                <div className="flex gap-1">
-                  {[
-                    { label: '반원', deg: 180 },
-                    { label: '¾', deg: 270 },
-                    { label: '원형', deg: 320 },
-                  ].map((p) => (
-                    <Button
-                      key={p.deg}
-                      variant="ghost"
-                      size="sm"
-                      title={`${p.deg}°`}
-                      aria-pressed={Math.round(arcDeg) === p.deg}
-                      className={`flex-1 h-7 text-[11px] bg-editor-surface-lowest ${Math.round(arcDeg) === p.deg ? 'text-primary' : 'text-editor-text-muted'}`}
-                      onClick={() => setArcDeg(p.deg)}
-                    >
-                      {p.label}
-                    </Button>
-                  ))}
-                </div>
-              </div>
+              )}
 
               {/* Gap */}
               <div className="flex flex-col gap-3">
@@ -416,9 +423,9 @@ export default function TextEffect() {
                 />
               </div>
 
-              {/* Curve direction */}
+              {/* Curve direction — 아치: 위/아래 호, 웨이브: 위상(산/골 먼저) */}
               <div className="flex flex-col gap-3">
-                <label className="text-xs text-editor-text-muted">곡선</label>
+                <label className="text-xs text-editor-text-muted">방향</label>
                 <div className="flex flex-row w-full gap-2">
                   <div
                     className={cn(

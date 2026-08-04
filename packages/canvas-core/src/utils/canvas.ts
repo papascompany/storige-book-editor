@@ -113,6 +113,9 @@ export namespace core {
     'charSpacing',
     'curveDirection',
     'curveArcDeg',
+    // S-E3 (2026-08-04): 곡선 모양(arc|wave) — TextEffect/프리셋 UI 상태 복원용.
+    // path 자체는 fabric Text additionalProps 로 항상 직렬화되지만 이 구분자는 커스텀이라 등재 필수.
+    'curvePathType',
     'pathAlign',
     'fillImage',
     // 사진틀(프레임) 마스킹: 채워진 사진이 어떤 프레임에 속하는지 가리키는 링크.

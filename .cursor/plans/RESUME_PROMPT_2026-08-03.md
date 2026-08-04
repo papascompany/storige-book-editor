@@ -78,6 +78,10 @@ ssh-add -l | head -1                                # 비면: ssh-add ~/.ssh/id_
 | ⓐ | **GitHub Support GC**(보안) | 요청서 §4 스크립트로 표본 4 SHA(`43fc2ead`·`b3e77b83`·`566e5cfa`·`2fa7f125`)가 **web 404 / API 422** 인지 확인. 그때까지 구 히스토리(VPS IP·회전완료 자격증명)는 SHA 직접조회로 노출 지속. 로컬 `backup/*-pre-rebase-*` 3개 **push 절대 금지**, 검증까지 보존 |
 | ⓑ | 파트너 실기기 회신(C6-b relay) | 이상 보고 시 포맷=증상+세션ID+기기/뷰포트. 롤백: C5=`VITE_ENABLE_ALT_DRAG_CLONE=false` · C6=`VITE_ENABLE_TOUCH_CONTEXT_MENU=false` · C6-b=코드 레벨(재배포) |
 
+> **[08-04 ⓐ 재검증 실측]** 표본 4 SHA(`43fc2ead`·`b3e77b83`·`566e5cfa`·`2fa7f125`) 전부 web 200 / API 200(SHA 반환)
+> — GitHub GC **아직 미실행**, Support 회신 대기 지속. `backup/*-pre-rebase-*` 3개 보존·push 금지 유지.
+> **하루 1회 자동 재검증 스케줄은 추후 진행**(오너 지시 시 /schedule 등록, 스크립트=요청서 §4).
+
 ### 운영 관찰 3
 - **포토북 내지 첫 실주문** — 실사용 세트 **0건**. 첫 주문 시 ①content.pdf 펼침면 수·크기
   ②워커 VALIDATE COMPLETED ③파트너 pageCount(=펼침면×2) 정합 1회 육안. 롤백=`storige-api:pre-inner-spread`(+nginx 재시작)
