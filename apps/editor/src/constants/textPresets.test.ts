@@ -27,7 +27,7 @@ describe('TEXT_STYLE_PRESETS', () => {
 })
 
 describe('CURVE_TEXT_PRESETS', () => {
-  it('edicus 실측 4종: 위 아치/아래 아치/웨이브/원형', () => {
+  it('곡선 프리셋 4종: 위 아치/아래 아치/웨이브/원형', () => {
     expect(CURVE_TEXT_PRESETS.map((p) => p.id)).toEqual([
       'arc-up',
       'arc-down',
