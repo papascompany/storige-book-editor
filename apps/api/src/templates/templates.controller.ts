@@ -20,6 +20,8 @@ import { UserRole } from '@storige/types';
 import { PayloadTooLargeResponseDto } from '../common/dto/error-response.dto';
 import { CurrentScope } from '../auth/decorators/tenant-scope.decorator';
 import { TenantScope } from '../common/helpers/tenant-scope.helper';
+// P3b — 쓰기 라우트: SITE_ADMIN 허용 + TenantGuard + 서비스 assertSiteInScope 3중 스택.
+import { TenantGuard } from '../auth/guards/tenant.guard';
 
 @ApiTags('Templates')
 @ApiBearerAuth()
@@ -29,8 +31,8 @@ export class TemplatesController {
   constructor(private readonly templatesService: TemplatesService) {}
 
   @Post()
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @UseGuards(RolesGuard, TenantGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.SITE_ADMIN)
   @ApiOperation({ summary: 'Create a new template' })
   @ApiResponse({ status: 201, description: 'Template created successfully' })
   @ApiResponse({
@@ -38,8 +40,12 @@ export class TemplatesController {
     description: '요청 데이터 크기 초과',
     schema: { $ref: getSchemaPath(PayloadTooLargeResponseDto) },
   })
-  create(@Body() createTemplateDto: CreateTemplateDto, @CurrentUser() user?: User) {
-    return this.templatesService.create(createTemplateDto, user?.id);
+  create(
+    @CurrentScope() scope: TenantScope,
+    @Body() createTemplateDto: CreateTemplateDto,
+    @CurrentUser() user?: User,
+  ) {
+    return this.templatesService.create(createTemplateDto, user?.id, scope);
   }
 
   @Get()
@@ -59,8 +65,8 @@ export class TemplatesController {
   @ApiOperation({ summary: 'Get template by ID' })
   @ApiResponse({ status: 200, description: 'Template found' })
   @ApiResponse({ status: 404, description: 'Template not found' })
-  findOne(@Param('id') id: string) {
-    return this.templatesService.findOne(id);
+  findOne(@CurrentScope() scope: TenantScope, @Param('id') id: string) {
+    return this.templatesService.findOne(id, scope);
   }
 
   @Get('code/:editCode')
@@ -84,8 +90,8 @@ export class TemplatesController {
   }
 
   @Patch(':id')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @UseGuards(RolesGuard, TenantGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.SITE_ADMIN)
   @ApiOperation({ summary: 'Update template' })
   @ApiResponse({ status: 200, description: 'Template updated successfully' })
   @ApiResponse({
@@ -93,23 +99,30 @@ export class TemplatesController {
     description: '요청 데이터 크기 초과',
     schema: { $ref: getSchemaPath(PayloadTooLargeResponseDto) },
   })
-  update(@Param('id') id: string, @Body() updateTemplateDto: UpdateTemplateDto) {
-    return this.templatesService.update(id, updateTemplateDto);
+  update(
+    @CurrentScope() scope: TenantScope,
+    @Param('id') id: string,
+    @Body() updateTemplateDto: UpdateTemplateDto,
+  ) {
+    return this.templatesService.update(id, updateTemplateDto, scope);
   }
 
   @Get(':id/template-sets')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @UseGuards(RolesGuard, TenantGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.SITE_ADMIN)
   @ApiOperation({ summary: 'Get template sets using this template' })
   @ApiResponse({ status: 200, description: 'List of template sets using this template' })
   @ApiResponse({ status: 404, description: 'Template not found' })
-  getTemplateSetsUsingTemplate(@Param('id') id: string) {
-    return this.templatesService.getTemplateSetsUsingTemplate(id);
+  getTemplateSetsUsingTemplate(
+    @CurrentScope() scope: TenantScope,
+    @Param('id') id: string,
+  ) {
+    return this.templatesService.getTemplateSetsUsingTemplate(id, scope);
   }
 
   @Delete(':id')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN)
+  @UseGuards(RolesGuard, TenantGuard)
+  @Roles(UserRole.ADMIN, UserRole.SITE_ADMIN)
   @ApiOperation({ summary: 'Delete template (soft delete)' })
   @ApiQuery({ name: 'force', required: false, type: Boolean, description: 'Force delete even if used in template sets' })
   @ApiResponse({
@@ -126,18 +139,23 @@ export class TemplatesController {
   @ApiResponse({ status: 400, description: 'Template is being used in template sets' })
   @ApiResponse({ status: 404, description: 'Template not found' })
   remove(
+    @CurrentScope() scope: TenantScope,
     @Param('id') id: string,
     @Query('force') force?: string,
   ) {
-    return this.templatesService.remove(id, force === 'true');
+    return this.templatesService.remove(id, force === 'true', scope);
   }
 
   @Post(':id/copy')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @UseGuards(RolesGuard, TenantGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.SITE_ADMIN)
   @ApiOperation({ summary: 'Copy template' })
   @ApiResponse({ status: 201, description: 'Template copied successfully' })
-  copy(@Param('id') id: string, @CurrentUser() user?: User) {
-    return this.templatesService.copy(id, user?.id);
+  copy(
+    @CurrentScope() scope: TenantScope,
+    @Param('id') id: string,
+    @CurrentUser() user?: User,
+  ) {
+    return this.templatesService.copy(id, user?.id, scope);
   }
 }

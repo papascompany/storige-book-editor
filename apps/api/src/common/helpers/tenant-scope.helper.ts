@@ -1,3 +1,4 @@
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { SelectQueryBuilder, ObjectLiteral } from 'typeorm';
 import { UserRole } from '@storige/types';
 
@@ -86,4 +87,61 @@ export function applySiteScope<T extends ObjectLiteral>(
     });
   }
   return qb;
+}
+
+/**
+ * P3b 멀티테넌시 (2026-08-04) — 단건 행에 대한 테넌트 소유권 단정 (mutation/상세 가드).
+ *
+ * TenantGuard 는 요청에 **명시된** siteId(param/query/body)만 검증한다. `PUT /template-sets/:id`
+ * 처럼 리소스 id 로 접근하는 라우트는 행을 로드한 뒤 이 함수로 소유권을 강제해야
+ * 크로스 테넌트 변조(IDOR)가 막힌다.
+ *
+ * 정책:
+ * - 전역(SUPER_ADMIN/ADMIN/MANAGER): 통과.
+ * - 행 siteId ∈ scope.siteIds: 통과.
+ * - 행 siteId == NULL(시스템 공유): **기본 거부** — 사이트 운영자는 공유 리소스를 읽을 수는
+ *   있어도(목록 includeNull) 변조할 수는 없다. 읽기 상세처럼 공유 열람을 허용해야 하면
+ *   `allowNull: true` 를 명시.
+ */
+export function assertSiteInScope(
+  scope: TenantScope,
+  rowSiteId: string | null | undefined,
+  options: { allowNull?: boolean } = {},
+): void {
+  if (scope.isGlobal) return;
+  if (rowSiteId == null) {
+    if (options.allowNull) return;
+    throw new ForbiddenException({
+      code: 'TENANT_FORBIDDEN',
+      message: '시스템 공유 리소스는 사이트 운영자가 수정할 수 없습니다.',
+    });
+  }
+  if (scope.siteIds.includes(rowSiteId)) return;
+  throw new ForbiddenException({
+    code: 'TENANT_FORBIDDEN',
+    message: '이 사이트에 대한 권한이 없습니다.',
+  });
+}
+
+/**
+ * P3b 멀티테넌시 (2026-08-04) — 생성 시 저장할 siteId 확정.
+ *
+ * - 전역: 요청값 그대로(미지정이면 null = 시스템 공유, 기존 admin 동작 무변경).
+ * - 사이트 운영자: 요청값이 있으면 자기 site 인지 검증, 없으면 단일 배정 site 로 강제.
+ *   다중 배정인데 미지정이면 400 (어느 site 소유인지 모호 — NULL 공유 생성은 금지).
+ */
+export function resolveScopedSiteId(
+  scope: TenantScope,
+  requestedSiteId?: string | null,
+): string | null {
+  if (scope.isGlobal) return requestedSiteId ?? null;
+  if (requestedSiteId) {
+    assertSiteInScope(scope, requestedSiteId);
+    return requestedSiteId;
+  }
+  if (scope.siteIds.length === 1) return scope.siteIds[0];
+  throw new BadRequestException({
+    code: 'SITE_ID_REQUIRED',
+    message: '여러 사이트를 운영 중입니다. siteId 를 지정하세요.',
+  });
 }

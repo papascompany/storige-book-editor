@@ -8,6 +8,8 @@ import { TemplateSet } from './entities/template-set.entity';
 import { CreateTemplateDto, UpdateTemplateDto } from './dto/template.dto';
 import {
   applySiteScope,
+  assertSiteInScope,
+  resolveScopedSiteId,
   TenantScope,
 } from '../common/helpers/tenant-scope.helper';
 
@@ -49,7 +51,11 @@ export class TemplatesService {
     return count > 0;
   }
 
-  async create(createTemplateDto: CreateTemplateDto, userId?: string): Promise<Template> {
+  async create(
+    createTemplateDto: CreateTemplateDto,
+    userId?: string,
+    scope?: TenantScope,
+  ): Promise<Template> {
     // spread 타입 검증 및 정규화
     if (createTemplateDto.type === 'spread') {
       this.validateAndNormalizeSpreadConfig(createTemplateDto);
@@ -74,6 +80,10 @@ export class TemplatesService {
 
     const template = this.templateRepository.create({
       ...createTemplateDto,
+      // P3b — 사이트 운영자는 자기 site 소유로 강제(시스템 공유 NULL 생성 불가).
+      siteId: scope
+        ? resolveScopedSiteId(scope, createTemplateDto.siteId)
+        : (createTemplateDto.siteId ?? null),
       templateCode,
       editCode,
       createdBy: userId,
@@ -107,7 +117,7 @@ export class TemplatesService {
     return await query.getMany();
   }
 
-  async findOne(id: string): Promise<Template> {
+  async findOne(id: string, scope?: TenantScope): Promise<Template> {
     const template = await this.templateRepository.findOne({
       where: { id, isDeleted: false },
       relations: ['category', 'creator'],
@@ -116,6 +126,9 @@ export class TemplatesService {
     if (!template) {
       throw new NotFoundException(`Template with ID ${id} not found`);
     }
+
+    // P3b — 상세 읽기 테넌트 격리(시스템 공유 NULL 은 열람 허용).
+    if (scope) assertSiteInScope(scope, template.siteId, { allowNull: true });
 
     return template;
   }
@@ -133,8 +146,19 @@ export class TemplatesService {
     return template;
   }
 
-  async update(id: string, updateTemplateDto: UpdateTemplateDto): Promise<Template> {
+  async update(
+    id: string,
+    updateTemplateDto: UpdateTemplateDto,
+    scope?: TenantScope,
+  ): Promise<Template> {
     const template = await this.findOne(id);
+    if (scope) {
+      // P3b — 행 소유권 + (siteId 재배정 시) 대상 site 권한. null 재배정은 전역 전용.
+      assertSiteInScope(scope, template.siteId);
+      if (updateTemplateDto.siteId !== undefined) {
+        assertSiteInScope(scope, updateTemplateDto.siteId);
+      }
+    }
 
     // editCode 변경 시 중복 검사
     if (updateTemplateDto.editCode && updateTemplateDto.editCode !== template.editCode) {
@@ -328,7 +352,15 @@ export class TemplatesService {
   /**
    * 템플릿이 사용 중인 템플릿셋 목록 조회
    */
-  async getTemplateSetsUsingTemplate(templateId: string): Promise<TemplateSet[]> {
+  async getTemplateSetsUsingTemplate(
+    templateId: string,
+    scope?: TenantScope,
+  ): Promise<TemplateSet[]> {
+    // P3b — 대상 템플릿 열람 권한 확인(공유 NULL 허용).
+    if (scope) {
+      const target = await this.findOne(templateId, scope);
+      void target;
+    }
     const templateSets = await this.templateSetRepository.find({
       where: { isDeleted: false },
     });
@@ -342,11 +374,24 @@ export class TemplatesService {
    * 템플릿 삭제 (소프트 삭제)
    * @param force true인 경우 템플릿셋에서 사용 중이어도 삭제 (템플릿셋에서 해당 템플릿 참조 제거)
    */
-  async remove(id: string, force = false): Promise<{ affected: number; usedByTemplateSets: string[] }> {
+  async remove(
+    id: string,
+    force = false,
+    scope?: TenantScope,
+  ): Promise<{ affected: number; usedByTemplateSets: string[] }> {
     const template = await this.findOne(id);
+    if (scope) assertSiteInScope(scope, template.siteId);
 
     // 사용 중인 템플릿셋 확인
     const usedByTemplateSets = await this.getTemplateSetsUsingTemplate(id);
+
+    // P3b — force 삭제는 참조 중인 템플릿셋(타 소유 가능)도 수정하므로,
+    // 사이트 운영자는 사용처 전부가 자기 site 일 때만 허용.
+    if (force && scope && !scope.isGlobal) {
+      for (const ts of usedByTemplateSets) {
+        assertSiteInScope(scope, ts.siteId);
+      }
+    }
     const usedByTemplateSetNames = usedByTemplateSets.map((ts) => ts.name);
 
     if (usedByTemplateSets.length > 0 && !force) {
@@ -373,11 +418,16 @@ export class TemplatesService {
     };
   }
 
-  async copy(id: string, userId?: string): Promise<Template> {
+  async copy(id: string, userId?: string, scope?: TenantScope): Promise<Template> {
     const original = await this.findOne(id);
+    // P3b — 공유 템플릿 복제 허용(공유 풀 → 자기 site 사본 큐레이션 플로우).
+    if (scope) assertSiteInScope(scope, original.siteId, { allowNull: true });
+    const copySiteId =
+      scope && !scope.isGlobal ? resolveScopedSiteId(scope) : original.siteId;
 
     const copy = this.templateRepository.create({
       name: `${original.name} (Copy)`,
+      siteId: copySiteId,
       categoryId: original.categoryId,
       thumbnailUrl: original.thumbnailUrl,
       canvasData: original.canvasData,

@@ -3,6 +3,12 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import type { CanvasData, TemplateType, SpreadConfig } from '@storige/types';
 
 export class CreateTemplateDto {
+  /** P3b 멀티테넌시 — 소유 사이트. 사이트 운영자는 자기 site 로 강제(resolveScopedSiteId). */
+  @ApiPropertyOptional({ description: '소유 사이트 ID (미지정: 전역=시스템공유, 사이트운영자=자기 site)' })
+  @IsOptional()
+  @IsString()
+  siteId?: string;
+
   @ApiProperty({ example: '명함 템플릿 1' })
   @IsString()
   @IsNotEmpty()
@@ -86,6 +92,12 @@ export class CreateTemplateDto {
 }
 
 export class UpdateTemplateDto {
+  /** P3b — 소유 사이트 재배정(전역 admin 큐레이션용). 사이트 운영자는 자기 site 간 이동만. */
+  @ApiPropertyOptional({ description: '소유 사이트 ID 재배정' })
+  @IsOptional()
+  @IsString()
+  siteId?: string;
+
   @ApiPropertyOptional({ example: '명함 템플릿 1' })
   @IsOptional()
   @IsString()

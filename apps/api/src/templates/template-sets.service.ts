@@ -22,6 +22,8 @@ import { EditorMode } from '@storige/types';
 import type { TemplateRef, PaginatedResponse } from '@storige/types';
 import {
   applySiteScope,
+  assertSiteInScope,
+  resolveScopedSiteId,
   TenantScope,
 } from '../common/helpers/tenant-scope.helper';
 import {
@@ -75,8 +77,13 @@ export class TemplateSetsService {
   /**
    * 템플릿셋 생성
    */
-  async create(dto: CreateTemplateSetDto): Promise<TemplateSet> {
+  async create(
+    dto: CreateTemplateSetDto,
+    scope?: TenantScope,
+  ): Promise<TemplateSet> {
     const editorMode = dto.editorMode ?? EditorMode.SINGLE;
+    // P3b — 사이트 운영자는 자기 site 소유로 강제(시스템 공유 NULL 생성 불가).
+    const siteId = scope ? resolveScopedSiteId(scope, dto.siteId) : (dto.siteId ?? null);
 
     // 템플릿 유효성 검사
     if (dto.templates && dto.templates.length > 0) {
@@ -91,6 +98,7 @@ export class TemplateSetsService {
 
     const templateSet = this.templateSetRepository.create({
       name: dto.name,
+      siteId,
       thumbnailUrl,
       type: dto.type,
       width: dto.width,
@@ -181,6 +189,14 @@ export class TemplateSetsService {
     // P2b: 템플릿셋=hybrid. includeNull=true → 시스템공유(site_id=NULL) 셋 + 자기 site.
     if (scope) applySiteScope(qb, 'ts', scope, { includeNull: true });
 
+    // P3b — 테넌트 스위처 명시 필터. 스코프와 AND 교집합이라 비전역 사용자가
+    // 타 site 값을 넣어도 빈 결과일 뿐 유출되지 않는다.
+    if (query.siteId) {
+      qb.andWhere('ts.siteId = :switcherSiteId', {
+        switcherSiteId: query.siteId,
+      });
+    }
+
     // 정렬
     qb.orderBy('ts.createdAt', 'DESC');
 
@@ -201,7 +217,7 @@ export class TemplateSetsService {
   /**
    * 템플릿셋 상세 조회
    */
-  async findOne(id: string): Promise<TemplateSet> {
+  async findOne(id: string, scope?: TenantScope): Promise<TemplateSet> {
     const templateSet = await this.templateSetRepository.findOne({
       where: { id, isDeleted: false },
       relations: ['category'],
@@ -210,6 +226,9 @@ export class TemplateSetsService {
     if (!templateSet) {
       throw new NotFoundException(`템플릿셋을 찾을 수 없습니다: ${id}`);
     }
+
+    // P3b — 상세 읽기 테넌트 격리(시스템 공유 NULL 은 열람 허용).
+    if (scope) assertSiteInScope(scope, templateSet.siteId, { allowNull: true });
 
     // ④ 연결된 라이브러리 카테고리 populate
     templateSet.libraryCategoryIds = await this.loadLibraryCategoryIds(id);
@@ -245,8 +264,17 @@ export class TemplateSetsService {
   /**
    * 템플릿셋 수정
    */
-  async update(id: string, dto: UpdateTemplateSetDto): Promise<TemplateSet> {
+  async update(
+    id: string,
+    dto: UpdateTemplateSetDto,
+    scope?: TenantScope,
+  ): Promise<TemplateSet> {
     const templateSet = await this.findOne(id);
+    if (scope) {
+      // 행 소유권 + (siteId 재배정 시) 대상 site 권한 — null 재배정(공유 전환)은 전역 전용.
+      assertSiteInScope(scope, templateSet.siteId);
+      if (dto.siteId !== undefined) assertSiteInScope(scope, dto.siteId);
+    }
 
     const editorMode = dto.editorMode ?? templateSet.editorMode;
 
@@ -289,8 +317,12 @@ export class TemplateSetsService {
    * 어느 하나라도 > 0이면 BadRequestException, usage 카운트와 상품 ID 반환.
    * 운영 중 잘못된 삭제로 FK 위반/주문 깨짐을 방지.
    */
-  async remove(id: string): Promise<{ affected: number; usedByProducts: string[] }> {
+  async remove(
+    id: string,
+    scope?: TenantScope,
+  ): Promise<{ affected: number; usedByProducts: string[] }> {
     const templateSet = await this.findOne(id);
+    if (scope) assertSiteInScope(scope, templateSet.siteId);
 
     // 1. 이 템플릿셋을 사용 중인 상품 (활성 상품만)
     //    Product entity는 title + isActive (isDeleted 없음, name 대신 title)
@@ -338,11 +370,17 @@ export class TemplateSetsService {
   /**
    * 템플릿셋 복제
    */
-  async copy(id: string): Promise<TemplateSet> {
+  async copy(id: string, scope?: TenantScope): Promise<TemplateSet> {
     const original = await this.findOne(id);
+    // P3b — 시스템 공유 세트의 복제는 허용(큐레이션 플로우: 공유 풀 → 자기 site 사본).
+    if (scope) assertSiteInScope(scope, original.siteId, { allowNull: true });
+    // 사이트 운영자 사본은 자기 site 소유, 전역 admin 은 원본 소유 유지.
+    const copySiteId =
+      scope && !scope.isGlobal ? resolveScopedSiteId(scope) : original.siteId;
 
     const copy = this.templateSetRepository.create({
       name: `${original.name} (복사본)`,
+      siteId: copySiteId,
       thumbnailUrl: original.thumbnailUrl,
       type: original.type,
       width: original.width,
@@ -374,8 +412,13 @@ export class TemplateSetsService {
   /**
    * 템플릿셋에 템플릿 추가
    */
-  async addTemplate(id: string, dto: AddTemplateDto): Promise<TemplateSet> {
+  async addTemplate(
+    id: string,
+    dto: AddTemplateDto,
+    scope?: TenantScope,
+  ): Promise<TemplateSet> {
     const templateSet = await this.findOne(id);
+    if (scope) assertSiteInScope(scope, templateSet.siteId);
 
     // 템플릿 존재 확인
     const template = await this.templateRepository.findOne({
@@ -413,8 +456,13 @@ export class TemplateSetsService {
   /**
    * 템플릿셋에서 템플릿 제거
    */
-  async removeTemplate(id: string, templateId: string): Promise<TemplateSet> {
+  async removeTemplate(
+    id: string,
+    templateId: string,
+    scope?: TenantScope,
+  ): Promise<TemplateSet> {
     const templateSet = await this.findOne(id);
+    if (scope) assertSiteInScope(scope, templateSet.siteId);
 
     templateSet.templates = templateSet.templates.filter(
       (t) => t.templateId !== templateId,
@@ -426,8 +474,13 @@ export class TemplateSetsService {
   /**
    * 템플릿 순서 변경
    */
-  async reorderTemplates(id: string, dto: ReorderTemplatesDto): Promise<TemplateSet> {
+  async reorderTemplates(
+    id: string,
+    dto: ReorderTemplatesDto,
+    scope?: TenantScope,
+  ): Promise<TemplateSet> {
     const templateSet = await this.findOne(id);
+    if (scope) assertSiteInScope(scope, templateSet.siteId);
 
     // 모든 템플릿 ID가 유효한지 확인
     const existingIds = new Set(templateSet.templates.map((t) => t.templateId));
@@ -616,6 +669,7 @@ export class TemplateSetsService {
   async pair(
     id: string,
     pairedTemplateSetId: string,
+    scope?: TenantScope,
   ): Promise<{ success: true; data: TemplateSet }> {
     if (id === pairedTemplateSetId) {
       throw new BadRequestException({
@@ -626,6 +680,11 @@ export class TemplateSetsService {
 
     const target = await this.findOne(id);
     const partner = await this.findOne(pairedTemplateSetId);
+    // P3b — 양쪽 모두 변경되므로 양쪽 소유권 필요(크로스 테넌트 페어 금지).
+    if (scope) {
+      assertSiteInScope(scope, target.siteId);
+      assertSiteInScope(scope, partner.siteId);
+    }
 
     if (target.pairedTemplateSetId && target.pairedTemplateSetId !== partner.id) {
       throw new ConflictException({
@@ -661,8 +720,12 @@ export class TemplateSetsService {
   /**
    * 방향 페어링 해제 — 양쪽 모두 NULL + default 원복(비페어 세트는 자기 자신이 기본).
    */
-  async unpair(id: string): Promise<{ success: true; data: TemplateSet }> {
+  async unpair(
+    id: string,
+    scope?: TenantScope,
+  ): Promise<{ success: true; data: TemplateSet }> {
     const target = await this.findOne(id);
+    if (scope) assertSiteInScope(scope, target.siteId);
 
     if (!target.pairedTemplateSetId) {
       throw new BadRequestException({
@@ -672,6 +735,13 @@ export class TemplateSetsService {
     }
 
     const partnerId = target.pairedTemplateSetId;
+    // P3b — 상대쪽 행도 변경되므로 소유권 확인(행이 이미 없으면 검사 불필요 — 아래 update 무해).
+    if (scope && !scope.isGlobal) {
+      const partner = await this.templateSetRepository.findOne({
+        where: { id: partnerId },
+      });
+      if (partner) assertSiteInScope(scope, partner.siteId);
+    }
     await this.templateSetRepository.manager.transaction(async (manager) => {
       await manager.update(TemplateSet, id, {
         pairedTemplateSetId: null,
@@ -693,8 +763,19 @@ export class TemplateSetsService {
    * 방향 노출 기본 세팅 — :id 를 default 로, 짝 반대쪽은 자동 해제(트랜잭션).
    * 비페어 세트에도 허용(자기 자신 true 재단언 — 무해).
    */
-  async setOrientationDefault(id: string): Promise<{ success: true; data: TemplateSet }> {
+  async setOrientationDefault(
+    id: string,
+    scope?: TenantScope,
+  ): Promise<{ success: true; data: TemplateSet }> {
     const target = await this.findOne(id);
+    if (scope) assertSiteInScope(scope, target.siteId);
+    // P3b — 짝 세트도 default 해제 변경되므로 소유권 확인.
+    if (scope && !scope.isGlobal && target.pairedTemplateSetId) {
+      const partner = await this.templateSetRepository.findOne({
+        where: { id: target.pairedTemplateSetId },
+      });
+      if (partner) assertSiteInScope(scope, partner.siteId);
+    }
 
     await this.templateSetRepository.manager.transaction(async (manager) => {
       await manager.update(TemplateSet, id, { isOrientationDefault: true });
@@ -726,6 +807,7 @@ export class TemplateSetsService {
   async deriveOrientation(
     id: string,
     options?: { includeCover?: boolean },
+    scope?: TenantScope,
   ): Promise<{
     success: true;
     data: TemplateSet;
@@ -737,6 +819,9 @@ export class TemplateSetsService {
   }> {
     const includeCover = options?.includeCover === true;
     const original = await this.findOne(id);
+    // P3b — 파생은 원본에 페어링을 기록(원본 변조)하므로 쓰기 소유권 필요.
+    // 파생 세트/템플릿 siteId 는 아래 트랜잭션에서 original/tpl 의 siteId 를 승계.
+    if (scope) assertSiteInScope(scope, original.siteId);
 
     if (original.pairedTemplateSetId) {
       throw new ConflictException({

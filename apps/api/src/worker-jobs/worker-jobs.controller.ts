@@ -33,6 +33,10 @@ import { CreateBleedFixJobDto } from './dto/create-bleed-fix-job.dto';
 import { WorkerJob } from './entities/worker-job.entity';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
+// P3b 멀티테넌시 — 사이트 운영자 조회 라우트(목록/상세/통계) 테넌트 스코핑.
+import { TenantGuard } from '../auth/guards/tenant.guard';
+import { CurrentScope } from '../auth/decorators/tenant-scope.decorator';
+import { TenantScope } from '../common/helpers/tenant-scope.helper';
 import { ApiKeyGuard } from '../auth/guards/api-key.guard';
 import { CurrentSite, CurrentSitePayload } from '../auth/decorators/current-site.decorator';
 import { Public } from '../auth/decorators/public.decorator';
@@ -312,8 +316,14 @@ export class WorkerJobsController {
   // ============================================================================
 
   @Get()
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @UseGuards(RolesGuard, TenantGuard)
+  // P3b — 사이트 운영자 조회 허용(자기 site 잡만 — 서비스 applySiteScope 강제)
+  @Roles(
+    UserRole.ADMIN,
+    UserRole.MANAGER,
+    UserRole.SITE_ADMIN,
+    UserRole.SITE_MANAGER,
+  )
   @ApiOperation({ summary: 'Get all worker jobs with optional filters' })
   @ApiQuery({ name: 'status', required: false, enum: WorkerJobStatus })
   @ApiQuery({ name: 'jobType', required: false, enum: WorkerJobType })
@@ -321,21 +331,34 @@ export class WorkerJobsController {
   @ApiQuery({ name: 'limit', required: false, description: '최대 반환 수 (기본 200, 최대 1000) — DB-016' })
   @ApiResponse({ status: 200, description: 'List of worker jobs', type: [WorkerJob] })
   async findAll(
+    @CurrentScope() scope: TenantScope,
     @Query('status') status?: WorkerJobStatus,
     @Query('jobType') jobType?: WorkerJobType,
     @Query('siteId') siteId?: string, // Phase C-3
     @Query('limit') limit?: string, // DB-016
   ): Promise<WorkerJob[]> {
-    return await this.workerJobsService.findAll(status, jobType, siteId, limit ? Number(limit) : undefined);
+    return await this.workerJobsService.findAll(
+      status,
+      jobType,
+      siteId,
+      limit ? Number(limit) : undefined,
+      scope,
+    );
   }
 
   @Get('stats')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @UseGuards(RolesGuard, TenantGuard)
+  // P3b — 사이트 운영자는 자기 site 잡 통계만(서비스 applySiteScope 강제)
+  @Roles(
+    UserRole.ADMIN,
+    UserRole.MANAGER,
+    UserRole.SITE_ADMIN,
+    UserRole.SITE_MANAGER,
+  )
   @ApiOperation({ summary: 'Get job statistics grouped by status and type' })
   @ApiResponse({ status: 200, description: 'Job statistics' })
-  async getJobStats() {
-    return await this.workerJobsService.getJobStats();
+  async getJobStats(@CurrentScope() scope: TenantScope) {
+    return await this.workerJobsService.getJobStats(scope);
   }
 
   /**
@@ -473,11 +496,13 @@ export class WorkerJobsController {
   @ApiResponse({ status: 200, description: 'Worker job details', type: WorkerJob })
   @ApiResponse({ status: 404, description: 'Job not found' })
   async findOne(
+    @CurrentScope() scope: TenantScope,
     @Param('id') id: string,
     @CurrentSite() site?: CurrentSitePayload,
   ): Promise<WorkerJob> {
     // SEC-002: site/소유권 격리(external/:id 와 동일). 타 테넌트 잡 조회 차단.
-    return await this.workerJobsService.findOne(id, site);
+    // P3b: 사이트 운영자(admin JWT)도 자기 site 잡만 — scope 로 서비스에서 단정.
+    return await this.workerJobsService.findOne(id, site, scope);
   }
 
   /**

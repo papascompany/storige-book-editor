@@ -9,6 +9,8 @@ import {
 } from '@storige/types';
 
 export interface TemplateSetQueryParams {
+  /** P3b 테넌트 스위처 — 소유 site 필터(서버 TemplateSetQueryDto.siteId) */
+  siteId?: string;
   type?: TemplateSetType;
   categoryId?: string;
   isDeleted?: boolean;

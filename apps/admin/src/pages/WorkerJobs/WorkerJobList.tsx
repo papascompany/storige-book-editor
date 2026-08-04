@@ -20,6 +20,7 @@ import { OutputFile, WorkerJob, WorkerJobStatus, WorkerJobType } from '@storige/
 import { workerJobsApi } from '../../api/worker-jobs';
 import { sitesApi } from '../../api/sites';
 import { resolveStorageUrl } from '../../lib/axios';
+import { useAuthStore } from '../../stores/authStore';
 
 const { Title } = Typography;
 
@@ -73,11 +74,15 @@ export const WorkerJobList = () => {
   const [filterJobType, setFilterJobType] = useState<WorkerJobType | undefined>();
   const [selectedSiteId, setSelectedSiteId] = useState<string | undefined>(undefined);
   const [selectedJob, setSelectedJob] = useState<WorkerJob | null>(null);
+  // P3b — 헤더 테넌트 스위처 컨텍스트가 로컬 필터보다 우선(운영자는 자동 고정).
+  const currentSiteId = useAuthStore((s) => s.currentSiteId) ?? undefined;
+  const effectiveSiteId = currentSiteId ?? selectedSiteId;
 
-  // Phase C-3 — 사이트 dropdown
+  // Phase C-3 — 사이트 dropdown (전역 admin 전용 — 운영자는 GET /sites 403)
   const { data: sites = [] } = useQuery({
     queryKey: ['sites'],
     queryFn: () => sitesApi.list(),
+    enabled: !currentSiteId,
   });
   const siteOptions = sites.map((s) => ({ value: s.id, label: s.name }));
   const siteNameById: Record<string, string> = sites.reduce(
@@ -86,8 +91,8 @@ export const WorkerJobList = () => {
   );
 
   const { data: jobs, isLoading, refetch } = useQuery({
-    queryKey: ['worker-jobs', filterStatus, filterJobType, selectedSiteId],
-    queryFn: () => workerJobsApi.getAll(filterStatus, filterJobType, selectedSiteId),
+    queryKey: ['worker-jobs', filterStatus, filterJobType, effectiveSiteId],
+    queryFn: () => workerJobsApi.getAll(filterStatus, filterJobType, effectiveSiteId),
     refetchInterval: 5000, // Auto-refresh every 5 seconds
   });
 
@@ -255,14 +260,17 @@ export const WorkerJobList = () => {
       </Row>
 
       <Space style={{ marginBottom: 16 }}>
-        <Select
-          placeholder="사이트 필터"
-          style={{ width: 200 }}
-          value={selectedSiteId}
-          onChange={setSelectedSiteId}
-          allowClear
-          options={siteOptions}
-        />
+        {/* P3b — 헤더 스위처가 site 를 고정하면 로컬 필터 숨김(이중 컨트롤 방지) */}
+        {!currentSiteId && (
+          <Select
+            placeholder="사이트 필터"
+            style={{ width: 200 }}
+            value={selectedSiteId}
+            onChange={setSelectedSiteId}
+            allowClear
+            options={siteOptions}
+          />
+        )}
         <Select
           placeholder="상태 필터"
           style={{ width: 150 }}

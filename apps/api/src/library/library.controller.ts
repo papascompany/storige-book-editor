@@ -34,6 +34,8 @@ import {
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Public } from '../auth/decorators/public.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
+// P3b — 쓰기 라우트: SITE_ADMIN 허용 + TenantGuard + 서비스 assertSiteInScope 3중 스택.
+import { TenantGuard } from '../auth/guards/tenant.guard';
 import { UserRole } from '@storige/types';
 
 @ApiTags('Library')
@@ -64,30 +66,30 @@ export class LibraryController {
   }
 
   @Post('fonts')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @UseGuards(RolesGuard, TenantGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.SITE_ADMIN)
   @ApiOperation({ summary: 'Upload a new font' })
   @ApiResponse({ status: 201, description: 'Font created successfully' })
-  createFont(@Body() createFontDto: CreateFontDto) {
-    return this.libraryService.createFont(createFontDto);
+  createFont(@CurrentScope() scope: TenantScope, @Body() createFontDto: CreateFontDto) {
+    return this.libraryService.createFont(createFontDto, scope);
   }
 
   @Patch('fonts/:id')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @UseGuards(RolesGuard, TenantGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.SITE_ADMIN)
   @ApiOperation({ summary: 'Update font' })
   @ApiResponse({ status: 200, description: 'Font updated successfully' })
-  updateFont(@Param('id') id: string, @Body() updateFontDto: UpdateFontDto) {
-    return this.libraryService.updateFont(id, updateFontDto);
+  updateFont(@CurrentScope() scope: TenantScope, @Param('id') id: string, @Body() updateFontDto: UpdateFontDto) {
+    return this.libraryService.updateFont(id, updateFontDto, scope);
   }
 
   @Delete('fonts/:id')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN)
+  @UseGuards(RolesGuard, TenantGuard)
+  @Roles(UserRole.ADMIN, UserRole.SITE_ADMIN)
   @ApiOperation({ summary: 'Delete font' })
   @ApiResponse({ status: 200, description: 'Font deleted successfully' })
-  removeFont(@Param('id') id: string) {
-    return this.libraryService.removeFont(id);
+  removeFont(@CurrentScope() scope: TenantScope, @Param('id') id: string) {
+    return this.libraryService.removeFont(id, scope);
   }
 
   @Post('woff2ToTtf')
@@ -134,30 +136,30 @@ export class LibraryController {
   }
 
   @Post('backgrounds')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @UseGuards(RolesGuard, TenantGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.SITE_ADMIN)
   @ApiOperation({ summary: 'Upload a new background' })
   @ApiResponse({ status: 201, description: 'Background created successfully' })
-  createBackground(@Body() createBackgroundDto: CreateBackgroundDto) {
-    return this.libraryService.createBackground(createBackgroundDto);
+  createBackground(@CurrentScope() scope: TenantScope, @Body() createBackgroundDto: CreateBackgroundDto) {
+    return this.libraryService.createBackground(createBackgroundDto, scope);
   }
 
   @Patch('backgrounds/:id')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @UseGuards(RolesGuard, TenantGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.SITE_ADMIN)
   @ApiOperation({ summary: 'Update background' })
   @ApiResponse({ status: 200, description: 'Background updated successfully' })
-  updateBackground(@Param('id') id: string, @Body() updateBackgroundDto: UpdateBackgroundDto) {
-    return this.libraryService.updateBackground(id, updateBackgroundDto);
+  updateBackground(@CurrentScope() scope: TenantScope, @Param('id') id: string, @Body() updateBackgroundDto: UpdateBackgroundDto) {
+    return this.libraryService.updateBackground(id, updateBackgroundDto, scope);
   }
 
   @Delete('backgrounds/:id')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN)
+  @UseGuards(RolesGuard, TenantGuard)
+  @Roles(UserRole.ADMIN, UserRole.SITE_ADMIN)
   @ApiOperation({ summary: 'Delete background' })
   @ApiResponse({ status: 200, description: 'Background deleted successfully' })
-  removeBackground(@Param('id') id: string) {
-    return this.libraryService.removeBackground(id);
+  removeBackground(@CurrentScope() scope: TenantScope, @Param('id') id: string) {
+    return this.libraryService.removeBackground(id, scope);
   }
 
   // ============================================================================
@@ -195,30 +197,30 @@ export class LibraryController {
   }
 
   @Post('cliparts')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @UseGuards(RolesGuard, TenantGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.SITE_ADMIN)
   @ApiOperation({ summary: 'Upload a new clipart' })
   @ApiResponse({ status: 201, description: 'Clipart created successfully' })
-  createClipart(@Body() createClipartDto: CreateClipartDto) {
-    return this.libraryService.createClipart(createClipartDto);
+  createClipart(@CurrentScope() scope: TenantScope, @Body() createClipartDto: CreateClipartDto) {
+    return this.libraryService.createClipart(createClipartDto, scope);
   }
 
   @Patch('cliparts/:id')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @UseGuards(RolesGuard, TenantGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.SITE_ADMIN)
   @ApiOperation({ summary: 'Update clipart' })
   @ApiResponse({ status: 200, description: 'Clipart updated successfully' })
-  updateClipart(@Param('id') id: string, @Body() updateClipartDto: UpdateClipartDto) {
-    return this.libraryService.updateClipart(id, updateClipartDto);
+  updateClipart(@CurrentScope() scope: TenantScope, @Param('id') id: string, @Body() updateClipartDto: UpdateClipartDto) {
+    return this.libraryService.updateClipart(id, updateClipartDto, scope);
   }
 
   @Delete('cliparts/:id')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN)
+  @UseGuards(RolesGuard, TenantGuard)
+  @Roles(UserRole.ADMIN, UserRole.SITE_ADMIN)
   @ApiOperation({ summary: 'Delete clipart' })
   @ApiResponse({ status: 200, description: 'Clipart deleted successfully' })
-  removeClipart(@Param('id') id: string) {
-    return this.libraryService.removeClipart(id);
+  removeClipart(@CurrentScope() scope: TenantScope, @Param('id') id: string) {
+    return this.libraryService.removeClipart(id, scope);
   }
 
   // ============================================================================
@@ -247,30 +249,30 @@ export class LibraryController {
   }
 
   @Post('shapes')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @UseGuards(RolesGuard, TenantGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.SITE_ADMIN)
   @ApiOperation({ summary: 'Create a new shape' })
   @ApiResponse({ status: 201, description: 'Shape created successfully' })
-  createShape(@Body() createShapeDto: CreateShapeDto) {
-    return this.libraryService.createShape(createShapeDto);
+  createShape(@CurrentScope() scope: TenantScope, @Body() createShapeDto: CreateShapeDto) {
+    return this.libraryService.createShape(createShapeDto, scope);
   }
 
   @Patch('shapes/:id')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @UseGuards(RolesGuard, TenantGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.SITE_ADMIN)
   @ApiOperation({ summary: 'Update shape' })
   @ApiResponse({ status: 200, description: 'Shape updated successfully' })
-  updateShape(@Param('id') id: string, @Body() updateShapeDto: UpdateShapeDto) {
-    return this.libraryService.updateShape(id, updateShapeDto);
+  updateShape(@CurrentScope() scope: TenantScope, @Param('id') id: string, @Body() updateShapeDto: UpdateShapeDto) {
+    return this.libraryService.updateShape(id, updateShapeDto, scope);
   }
 
   @Delete('shapes/:id')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN)
+  @UseGuards(RolesGuard, TenantGuard)
+  @Roles(UserRole.ADMIN, UserRole.SITE_ADMIN)
   @ApiOperation({ summary: 'Delete shape' })
   @ApiResponse({ status: 200, description: 'Shape deleted successfully' })
-  removeShape(@Param('id') id: string) {
-    return this.libraryService.removeShape(id);
+  removeShape(@CurrentScope() scope: TenantScope, @Param('id') id: string) {
+    return this.libraryService.removeShape(id, scope);
   }
 
   // ============================================================================
@@ -299,30 +301,30 @@ export class LibraryController {
   }
 
   @Post('frames')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @UseGuards(RolesGuard, TenantGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.SITE_ADMIN)
   @ApiOperation({ summary: 'Create a new frame' })
   @ApiResponse({ status: 201, description: 'Frame created successfully' })
-  createFrame(@Body() createFrameDto: CreateFrameDto) {
-    return this.libraryService.createFrame(createFrameDto);
+  createFrame(@CurrentScope() scope: TenantScope, @Body() createFrameDto: CreateFrameDto) {
+    return this.libraryService.createFrame(createFrameDto, scope);
   }
 
   @Patch('frames/:id')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @UseGuards(RolesGuard, TenantGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.SITE_ADMIN)
   @ApiOperation({ summary: 'Update frame' })
   @ApiResponse({ status: 200, description: 'Frame updated successfully' })
-  updateFrame(@Param('id') id: string, @Body() updateFrameDto: UpdateFrameDto) {
-    return this.libraryService.updateFrame(id, updateFrameDto);
+  updateFrame(@CurrentScope() scope: TenantScope, @Param('id') id: string, @Body() updateFrameDto: UpdateFrameDto) {
+    return this.libraryService.updateFrame(id, updateFrameDto, scope);
   }
 
   @Delete('frames/:id')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN)
+  @UseGuards(RolesGuard, TenantGuard)
+  @Roles(UserRole.ADMIN, UserRole.SITE_ADMIN)
   @ApiOperation({ summary: 'Delete frame' })
   @ApiResponse({ status: 200, description: 'Frame deleted successfully' })
-  removeFrame(@Param('id') id: string) {
-    return this.libraryService.removeFrame(id);
+  removeFrame(@CurrentScope() scope: TenantScope, @Param('id') id: string) {
+    return this.libraryService.removeFrame(id, scope);
   }
 
   // ============================================================================
@@ -358,29 +360,29 @@ export class LibraryController {
   }
 
   @Post('categories')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @UseGuards(RolesGuard, TenantGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.SITE_ADMIN)
   @ApiOperation({ summary: 'Create a new category' })
   @ApiResponse({ status: 201, description: 'Category created successfully' })
-  createCategory(@Body() createCategoryDto: CreateCategoryDto) {
-    return this.libraryService.createCategory(createCategoryDto);
+  createCategory(@CurrentScope() scope: TenantScope, @Body() createCategoryDto: CreateCategoryDto) {
+    return this.libraryService.createCategory(createCategoryDto, scope);
   }
 
   @Patch('categories/:id')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @UseGuards(RolesGuard, TenantGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.SITE_ADMIN)
   @ApiOperation({ summary: 'Update category' })
   @ApiResponse({ status: 200, description: 'Category updated successfully' })
-  updateCategory(@Param('id') id: string, @Body() updateCategoryDto: UpdateCategoryDto) {
-    return this.libraryService.updateCategory(id, updateCategoryDto);
+  updateCategory(@CurrentScope() scope: TenantScope, @Param('id') id: string, @Body() updateCategoryDto: UpdateCategoryDto) {
+    return this.libraryService.updateCategory(id, updateCategoryDto, scope);
   }
 
   @Delete('categories/:id')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN)
+  @UseGuards(RolesGuard, TenantGuard)
+  @Roles(UserRole.ADMIN, UserRole.SITE_ADMIN)
   @ApiOperation({ summary: 'Delete category' })
   @ApiResponse({ status: 200, description: 'Category deleted successfully' })
-  removeCategory(@Param('id') id: string) {
-    return this.libraryService.removeCategory(id);
+  removeCategory(@CurrentScope() scope: TenantScope, @Param('id') id: string) {
+    return this.libraryService.removeCategory(id, scope);
   }
 }

@@ -21,6 +21,9 @@ import { TemplateSetsService } from './template-sets.service';
 import { Public } from '../auth/decorators/public.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
+// P3b 멀티테넌시 — 쓰기 라우트는 SITE_ADMIN 허용 + TenantGuard(명시 siteId 멤버십)
+// + 서비스 레벨 assertSiteInScope(행 소유권)의 3중 스택.
+import { TenantGuard } from '../auth/guards/tenant.guard';
 import { UserRole } from '@storige/types';
 import { CurrentScope } from '../auth/decorators/tenant-scope.decorator';
 import { TenantScope } from '../common/helpers/tenant-scope.helper';
@@ -40,14 +43,17 @@ export class TemplateSetsController {
   constructor(private readonly templateSetsService: TemplateSetsService) {}
 
   @Post()
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @UseGuards(RolesGuard, TenantGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.SITE_ADMIN)
   @ApiBearerAuth()
   @ApiOperation({ summary: '템플릿셋 생성' })
   @ApiResponse({ status: 201, description: '생성 성공' })
   @ApiResponse({ status: 400, description: '잘못된 요청' })
-  async create(@Body() dto: CreateTemplateSetDto) {
-    return this.templateSetsService.create(dto);
+  async create(
+    @CurrentScope() scope: TenantScope,
+    @Body() dto: CreateTemplateSetDto,
+  ) {
+    return this.templateSetsService.create(dto, scope);
   }
 
   @Get()
@@ -79,8 +85,8 @@ export class TemplateSetsController {
   @ApiOperation({ summary: '템플릿셋 상세 조회' })
   @ApiResponse({ status: 200, description: '조회 성공' })
   @ApiResponse({ status: 404, description: '템플릿셋 없음' })
-  async findOne(@Param('id') id: string) {
-    return this.templateSetsService.findOne(id);
+  async findOne(@CurrentScope() scope: TenantScope, @Param('id') id: string) {
+    return this.templateSetsService.findOne(id, scope);
   }
 
   @Get(':id/with-templates')
@@ -93,40 +99,41 @@ export class TemplateSetsController {
   }
 
   @Put(':id')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @UseGuards(RolesGuard, TenantGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.SITE_ADMIN)
   @ApiBearerAuth()
   @ApiOperation({ summary: '템플릿셋 수정' })
   @ApiResponse({ status: 200, description: '수정 성공' })
   @ApiResponse({ status: 404, description: '템플릿셋 없음' })
   async update(
+    @CurrentScope() scope: TenantScope,
     @Param('id') id: string,
     @Body() dto: UpdateTemplateSetDto,
   ) {
-    return this.templateSetsService.update(id, dto);
+    return this.templateSetsService.update(id, dto, scope);
   }
 
   @Delete(':id')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @UseGuards(RolesGuard, TenantGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.SITE_ADMIN)
   @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '템플릿셋 삭제 (소프트 삭제)' })
   @ApiResponse({ status: 200, description: '삭제 성공' })
   @ApiResponse({ status: 404, description: '템플릿셋 없음' })
-  async remove(@Param('id') id: string) {
-    return this.templateSetsService.remove(id);
+  async remove(@CurrentScope() scope: TenantScope, @Param('id') id: string) {
+    return this.templateSetsService.remove(id, scope);
   }
 
   @Post(':id/copy')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @UseGuards(RolesGuard, TenantGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.SITE_ADMIN)
   @ApiBearerAuth()
   @ApiOperation({ summary: '템플릿셋 복제' })
   @ApiResponse({ status: 201, description: '복제 성공' })
   @ApiResponse({ status: 404, description: '템플릿셋 없음' })
-  async copy(@Param('id') id: string) {
-    return this.templateSetsService.copy(id);
+  async copy(@CurrentScope() scope: TenantScope, @Param('id') id: string) {
+    return this.templateSetsService.copy(id, scope);
   }
 
   // ─────────────────────────────────────────────────────
@@ -134,8 +141,8 @@ export class TemplateSetsController {
   // ─────────────────────────────────────────────────────
 
   @Post(':id/pair')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @UseGuards(RolesGuard, TenantGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.SITE_ADMIN)
   @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '방향 페어링 설정 (대칭 저장 — :id 가 기본 방향)' })
@@ -143,38 +150,45 @@ export class TemplateSetsController {
   @ApiResponse({ status: 400, description: '규칙 위반 (자기자신/정사각/W↔H 스왑 불일치)' })
   @ApiResponse({ status: 404, description: '템플릿셋 없음' })
   @ApiResponse({ status: 409, description: '이미 다른 세트와 페어링됨' })
-  async pair(@Param('id') id: string, @Body() dto: PairTemplateSetDto) {
-    return this.templateSetsService.pair(id, dto.pairedTemplateSetId);
+  async pair(
+    @CurrentScope() scope: TenantScope,
+    @Param('id') id: string,
+    @Body() dto: PairTemplateSetDto,
+  ) {
+    return this.templateSetsService.pair(id, dto.pairedTemplateSetId, scope);
   }
 
   @Delete(':id/pair')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @UseGuards(RolesGuard, TenantGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.SITE_ADMIN)
   @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '방향 페어링 해제 (양쪽 대칭 해제)' })
   @ApiResponse({ status: 200, description: '해제 성공' })
   @ApiResponse({ status: 400, description: '페어링되어 있지 않음' })
   @ApiResponse({ status: 404, description: '템플릿셋 없음' })
-  async unpair(@Param('id') id: string) {
-    return this.templateSetsService.unpair(id);
+  async unpair(@CurrentScope() scope: TenantScope, @Param('id') id: string) {
+    return this.templateSetsService.unpair(id, scope);
   }
 
   @Post(':id/orientation-default')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @UseGuards(RolesGuard, TenantGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.SITE_ADMIN)
   @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '방향 노출 기본 세팅 (짝 반대쪽 자동 해제)' })
   @ApiResponse({ status: 200, description: '세팅 성공' })
   @ApiResponse({ status: 404, description: '템플릿셋 없음' })
-  async setOrientationDefault(@Param('id') id: string) {
-    return this.templateSetsService.setOrientationDefault(id);
+  async setOrientationDefault(
+    @CurrentScope() scope: TenantScope,
+    @Param('id') id: string,
+  ) {
+    return this.templateSetsService.setOrientationDefault(id, scope);
   }
 
   @Post(':id/derive-orientation')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @UseGuards(RolesGuard, TenantGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.SITE_ADMIN)
   @ApiBearerAuth()
   @ApiOperation({
     summary:
@@ -184,24 +198,31 @@ export class TemplateSetsController {
   @ApiResponse({ status: 400, description: '정사각 판형 — 파생 무의미' })
   @ApiResponse({ status: 404, description: '템플릿셋/참조 템플릿 없음' })
   @ApiResponse({ status: 409, description: '이미 방향 짝이 있음' })
-  async deriveOrientation(@Param('id') id: string, @Body() dto?: DeriveOrientationDto) {
-    return this.templateSetsService.deriveOrientation(id, {
-      includeCover: dto?.includeCover === true,
-    });
+  async deriveOrientation(
+    @CurrentScope() scope: TenantScope,
+    @Param('id') id: string,
+    @Body() dto?: DeriveOrientationDto,
+  ) {
+    return this.templateSetsService.deriveOrientation(
+      id,
+      { includeCover: dto?.includeCover === true },
+      scope,
+    );
   }
 
   @Put(':id/templates')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @UseGuards(RolesGuard, TenantGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.SITE_ADMIN)
   @ApiBearerAuth()
   @ApiOperation({ summary: '템플릿 구성 일괄 수정' })
   @ApiResponse({ status: 200, description: '수정 성공' })
   @ApiResponse({ status: 404, description: '템플릿셋 없음' })
   async updateTemplates(
+    @CurrentScope() scope: TenantScope,
     @Param('id') id: string,
     @Body() dto: ReorderTemplatesDto,
   ) {
-    return this.templateSetsService.reorderTemplates(id, dto);
+    return this.templateSetsService.reorderTemplates(id, dto, scope);
   }
 
   @Get(':id/products')
@@ -213,48 +234,51 @@ export class TemplateSetsController {
   }
 
   @Post(':id/templates')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @UseGuards(RolesGuard, TenantGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.SITE_ADMIN)
   @ApiBearerAuth()
   @ApiOperation({ summary: '템플릿셋에 템플릿 추가' })
   @ApiResponse({ status: 201, description: '추가 성공' })
   @ApiResponse({ status: 400, description: '판형 불일치' })
   @ApiResponse({ status: 404, description: '템플릿셋/템플릿 없음' })
   async addTemplate(
+    @CurrentScope() scope: TenantScope,
     @Param('id') id: string,
     @Body() dto: AddTemplateDto,
   ) {
-    return this.templateSetsService.addTemplate(id, dto);
+    return this.templateSetsService.addTemplate(id, dto, scope);
   }
 
   @Delete(':id/templates/:templateId')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @UseGuards(RolesGuard, TenantGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.SITE_ADMIN)
   @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '템플릿셋에서 템플릿 제거' })
   @ApiResponse({ status: 200, description: '제거 성공' })
   @ApiResponse({ status: 404, description: '템플릿셋 없음' })
   async removeTemplate(
+    @CurrentScope() scope: TenantScope,
     @Param('id') id: string,
     @Param('templateId') templateId: string,
   ) {
-    return this.templateSetsService.removeTemplate(id, templateId);
+    return this.templateSetsService.removeTemplate(id, templateId, scope);
   }
 
   @Put(':id/templates/reorder')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @UseGuards(RolesGuard, TenantGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.SITE_ADMIN)
   @ApiBearerAuth()
   @ApiOperation({ summary: '템플릿 순서 변경' })
   @ApiResponse({ status: 200, description: '순서 변경 성공' })
   @ApiResponse({ status: 400, description: '템플릿 목록 불일치' })
   @ApiResponse({ status: 404, description: '템플릿셋 없음' })
   async reorderTemplates(
+    @CurrentScope() scope: TenantScope,
     @Param('id') id: string,
     @Body() dto: ReorderTemplatesDto,
   ) {
-    return this.templateSetsService.reorderTemplates(id, dto);
+    return this.templateSetsService.reorderTemplates(id, dto, scope);
   }
 
   @Post('admin/update-thumbnails')

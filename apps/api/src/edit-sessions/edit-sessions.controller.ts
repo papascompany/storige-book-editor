@@ -40,6 +40,8 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Public } from '../auth/decorators/public.decorator';
 import { ApiKeyGuard } from '../auth/guards/api-key.guard';
 import { OptionalShopJwtGuard } from '../auth/guards/optional-shop-jwt.guard';
+// P3b 멀티테넌시 — siteId 목록 분기에서 사이트 운영자(siteRoles) 멤버십 판정.
+import { getTenantScope } from '../common/helpers/tenant-scope.helper';
 import {
   CurrentSite,
   CurrentSitePayload,
@@ -576,7 +578,13 @@ export class EditSessionsController {
       sessions = await this.editSessionsService.findByMemberSeqno(requestedSeqno);
     } else if (siteId) {
       // SEC-005: siteId 분기도 staff 또는 자기 site 만 허용(타 테넌트 세션 유출 차단).
-      if (!this.isStaffRole(user) && user?.siteId !== siteId) {
+      // P3b: 사이트 운영자(SITE_ADMIN/SITE_MANAGER)는 JWT siteRoles 멤버십의 site 허용.
+      const tenantScope = getTenantScope(user);
+      const siteAllowed =
+        this.isStaffRole(user) ||
+        user?.siteId === siteId ||
+        tenantScope.siteIds.includes(siteId);
+      if (!siteAllowed) {
         throw new ForbiddenException({
           code: 'FORBIDDEN_SITE_QUERY',
           message: '다른 사이트의 편집 세션은 조회할 수 없습니다.',

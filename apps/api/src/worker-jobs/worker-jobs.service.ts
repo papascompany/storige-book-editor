@@ -47,6 +47,12 @@ import {
 } from '../common/helpers/ssrf.helper';
 import { FilesService } from '../files/files.service';
 import { WebhookService } from '../webhook/webhook.service';
+// P3b 멀티테넌시 — 사이트 운영자 조회 스코핑(목록/통계 applySiteScope, 상세 assertSiteInScope).
+import {
+  applySiteScope,
+  assertSiteInScope,
+  TenantScope,
+} from '../common/helpers/tenant-scope.helper';
 import { EditSessionEntity, WorkerStatus } from '../edit-sessions/entities/edit-session.entity';
 import { SitesService } from '../sites/sites.service';
 import { TemplateSetsService } from '../templates/template-sets.service';
@@ -1556,8 +1562,12 @@ export class WorkerJobsService implements OnModuleInit {
     jobType?: WorkerJobType,
     siteId?: string, // Phase C-3
     limit?: number, // DB-016: 무제한 getMany OOM 방지
+    scope?: TenantScope, // P3b: 사이트 운영자 = 자기 site 잡만(명시 siteId 와 AND 교집합)
   ): Promise<WorkerJob[]> {
     const query = this.workerJobRepository.createQueryBuilder('job');
+
+    // P3b — 잡=소유 리소스: includeNull=false(시스템 NULL 잡은 사이트 운영자에게 비노출).
+    if (scope) applySiteScope(query, 'job', scope);
 
     if (status) {
       query.andWhere('job.status = :status', { status });
@@ -1597,6 +1607,7 @@ export class WorkerJobsService implements OnModuleInit {
   async findOne(
     id: string,
     caller?: { siteId?: string; role?: string },
+    scope?: TenantScope,
   ): Promise<WorkerJob> {
     const job = await this.workerJobRepository.findOne({ where: { id } });
 
@@ -1605,6 +1616,8 @@ export class WorkerJobsService implements OnModuleInit {
     }
 
     this.assertJobSiteAccess(job, caller);
+    // P3b — admin JWT 사이트 운영자: 자기 site 잡만(시스템 NULL 잡 비노출).
+    if (scope) assertSiteInScope(scope, job.siteId);
 
     return job;
   }
@@ -2302,12 +2315,17 @@ export class WorkerJobsService implements OnModuleInit {
     }
   }
 
-  async getJobStats(): Promise<any> {
-    const stats = await this.workerJobRepository
+  async getJobStats(scope?: TenantScope): Promise<any> {
+    const query = this.workerJobRepository
       .createQueryBuilder('job')
       .select('job.status', 'status')
       .addSelect('job.jobType', 'jobType')
-      .addSelect('COUNT(*)', 'count')
+      .addSelect('COUNT(*)', 'count');
+
+    // P3b — 사이트 운영자는 자기 site 잡 통계만.
+    if (scope) applySiteScope(query, 'job', scope);
+
+    const stats = await query
       .groupBy('job.status')
       .addGroupBy('job.jobType')
       .getRawMany();

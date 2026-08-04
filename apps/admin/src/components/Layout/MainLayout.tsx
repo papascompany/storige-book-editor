@@ -26,6 +26,7 @@ import {
 import { useAuthStore } from '../../stores/authStore';
 import { authApi } from '../../api/auth';
 import { hasSiteAdminAssignment, isGlobalAdmin } from '../../utils/permissions';
+import { TenantSwitcher } from './TenantSwitcher';
 import './MainLayout.css';
 
 const { Header, Sider, Content } = Layout;
@@ -290,6 +291,8 @@ export const MainLayout = () => {
               onClick={() => setCollapsed(!collapsed)}
               style={{ fontSize: '16px', width: 64, height: 64 }}
             />
+            {/* P3b — 테넌트 스위처(전역 admin 드롭다운 / 사이트 운영자 고정) */}
+            <TenantSwitcher />
           </Space>
 
           <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">

@@ -134,6 +134,13 @@ export class TemplateRefDto implements TemplateRef {
  * 템플릿셋 생성 DTO
  */
 export class CreateTemplateSetDto {
+  /** P3b 멀티테넌시 — 소유 사이트. 전역 admin 미지정=시스템 공유(null), 사이트 운영자는
+   *  resolveScopedSiteId 가 자기 site 로 강제(타 site 는 TenantGuard/헬퍼가 403). */
+  @ApiPropertyOptional({ description: '소유 사이트 ID (미지정: 전역=시스템공유, 사이트운영자=자기 site)' })
+  @IsOptional()
+  @IsString()
+  siteId?: string;
+
   @ApiProperty({ example: 'A4 책자 기본 세트' })
   @IsString()
   @IsNotEmpty()
@@ -293,6 +300,12 @@ export class CreateTemplateSetDto {
  * 템플릿셋 수정 DTO
  */
 export class UpdateTemplateSetDto {
+  /** P3b — 소유 사이트 재배정(전역 admin 큐레이션용). 사이트 운영자는 자기 site 간 이동만 가능. */
+  @ApiPropertyOptional({ description: '소유 사이트 ID 재배정' })
+  @IsOptional()
+  @IsString()
+  siteId?: string;
+
   @ApiPropertyOptional({ example: 'A4 책자 프리미엄 세트' })
   @IsOptional()
   @IsString()
@@ -450,6 +463,13 @@ export class UpdateTemplateSetDto {
  * 템플릿셋 조회 쿼리 DTO
  */
 export class TemplateSetQueryDto {
+  /** P3b — 테넌트 스위처 필터. 전역 admin: 해당 site 로 필터. 사이트 운영자: applySiteScope
+   *  와 교집합이라 자기 site 외 값은 빈 결과(유출 없음). */
+  @ApiPropertyOptional({ description: '사이트 ID 필터 (테넌트 스위처)' })
+  @IsOptional()
+  @IsString()
+  siteId?: string;
+
   @ApiPropertyOptional({ enum: TemplateSetType })
   @IsOptional()
   @IsEnum(TemplateSetType)

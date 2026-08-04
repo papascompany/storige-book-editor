@@ -56,11 +56,15 @@ export const TemplateSetList = () => {
   const [searchText, setSearchText] = useState('');
   const [selectedType, setSelectedType] = useState<TemplateSetType | undefined>();
   const { accessToken } = useAuthStore();
+  // P3b — 테넌트 스위처 컨텍스트: 전역 admin 은 선택 site 필터, 운영자는 자동 고정.
+  // (운영자는 서버 applySiteScope 가 권위 — 이 파라미터는 뷰 필터일 뿐이다.)
+  const currentSiteId = useAuthStore((s) => s.currentSiteId) ?? undefined;
 
   // Fetch template sets
   const { data: templateSets, isLoading } = useQuery({
-    queryKey: ['template-sets', selectedType],
-    queryFn: () => templateSetsApi.getAll({ type: selectedType }),
+    queryKey: ['template-sets', selectedType, currentSiteId],
+    queryFn: () =>
+      templateSetsApi.getAll({ type: selectedType, siteId: currentSiteId }),
   });
 
   // Fetch all templates (썸네일 fallback용)

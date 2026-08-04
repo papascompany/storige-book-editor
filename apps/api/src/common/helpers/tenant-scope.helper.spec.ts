@@ -1,4 +1,10 @@
-import { getTenantScope, applySiteScope } from './tenant-scope.helper';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import {
+  getTenantScope,
+  applySiteScope,
+  assertSiteInScope,
+  resolveScopedSiteId,
+} from './tenant-scope.helper';
 import { UserRole } from '@storige/types';
 
 /**
@@ -104,6 +110,79 @@ describe('tenant-scope.helper', () => {
       const qb = mockQb();
       applySiteScope(qb, 'product', { isGlobal: false, siteIds: [] });
       expect(qb.calls[0].sql).toContain('1 = 0');
+    });
+  });
+
+  // P3b — 단건 행 소유권 단정(변이/상세 IDOR 가드)
+  describe('assertSiteInScope', () => {
+    const site = (ids: string[]) => ({ isGlobal: false, siteIds: ids });
+    const GLOBAL = { isGlobal: true, siteIds: [] };
+
+    it('전역 → 항상 통과(행 siteId 무관)', () => {
+      expect(() => assertSiteInScope(GLOBAL, null)).not.toThrow();
+      expect(() => assertSiteInScope(GLOBAL, 'x')).not.toThrow();
+    });
+
+    it('자기 site 행 → 통과', () => {
+      expect(() => assertSiteInScope(site(['a', 'b']), 'b')).not.toThrow();
+    });
+
+    it('타 site 행 → 403 TENANT_FORBIDDEN', () => {
+      expect(() => assertSiteInScope(site(['a']), 'c')).toThrow(
+        ForbiddenException,
+      );
+    });
+
+    it('시스템 공유(NULL) 행 → 기본 거부(변이 차단)', () => {
+      expect(() => assertSiteInScope(site(['a']), null)).toThrow(
+        ForbiddenException,
+      );
+      expect(() => assertSiteInScope(site(['a']), undefined)).toThrow(
+        ForbiddenException,
+      );
+    });
+
+    it('시스템 공유(NULL) 행 + allowNull → 통과(상세 읽기)', () => {
+      expect(() =>
+        assertSiteInScope(site(['a']), null, { allowNull: true }),
+      ).not.toThrow();
+    });
+  });
+
+  // P3b — 생성 시 소유 siteId 확정
+  describe('resolveScopedSiteId', () => {
+    const GLOBAL = { isGlobal: true, siteIds: [] };
+
+    it('전역 + 미지정 → null(시스템 공유, 기존 admin 동작)', () => {
+      expect(resolveScopedSiteId(GLOBAL)).toBeNull();
+    });
+
+    it('전역 + 지정 → 그대로', () => {
+      expect(resolveScopedSiteId(GLOBAL, 's9')).toBe('s9');
+    });
+
+    it('운영자 + 미지정 + 단일 배정 → 자기 site 강제', () => {
+      expect(
+        resolveScopedSiteId({ isGlobal: false, siteIds: ['mine'] }),
+      ).toBe('mine');
+    });
+
+    it('운영자 + 자기 site 지정 → 통과', () => {
+      expect(
+        resolveScopedSiteId({ isGlobal: false, siteIds: ['a', 'b'] }, 'b'),
+      ).toBe('b');
+    });
+
+    it('운영자 + 타 site 지정 → 403', () => {
+      expect(() =>
+        resolveScopedSiteId({ isGlobal: false, siteIds: ['a'] }, 'z'),
+      ).toThrow(ForbiddenException);
+    });
+
+    it('운영자 + 미지정 + 다중 배정 → 400 SITE_ID_REQUIRED(모호·NULL 공유 생성 금지)', () => {
+      expect(() =>
+        resolveScopedSiteId({ isGlobal: false, siteIds: ['a', 'b'] }),
+      ).toThrow(BadRequestException);
     });
   });
 });

@@ -9,6 +9,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull } from 'typeorm';
 import {
   applySiteScope,
+  assertSiteInScope,
+  resolveScopedSiteId,
   TenantScope,
 } from '../common/helpers/tenant-scope.helper';
 import axios from 'axios';
@@ -62,8 +64,12 @@ export class LibraryService {
   // Fonts
   // ============================================================================
 
-  async createFont(createFontDto: CreateFontDto): Promise<LibraryFont> {
-    const font = this.fontRepository.create(createFontDto);
+  async createFont(createFontDto: CreateFontDto, scope?: TenantScope): Promise<LibraryFont> {
+    // P3b — 사이트 운영자 생성 에셋은 자기 site 소유(전역 admin 은 기존대로 시스템 공유 NULL).
+    const font = this.fontRepository.create({
+      ...createFontDto,
+      siteId: scope && !scope.isGlobal ? resolveScopedSiteId(scope) : null,
+    });
     return await this.fontRepository.save(font);
   }
 
@@ -87,14 +93,20 @@ export class LibraryService {
     return font;
   }
 
-  async updateFont(id: string, updateFontDto: UpdateFontDto): Promise<LibraryFont> {
+  async updateFont(
+    id: string,
+    updateFontDto: UpdateFontDto,
+    scope?: TenantScope,
+  ): Promise<LibraryFont> {
     const font = await this.findOneFont(id);
+    if (scope) assertSiteInScope(scope, font.siteId);
     Object.assign(font, updateFontDto);
     return await this.fontRepository.save(font);
   }
 
-  async removeFont(id: string): Promise<void> {
+  async removeFont(id: string, scope?: TenantScope): Promise<void> {
     const font = await this.findOneFont(id);
+    if (scope) assertSiteInScope(scope, font.siteId);
     await this.fontRepository.remove(font);
   }
 
@@ -206,8 +218,12 @@ export class LibraryService {
   // Backgrounds
   // ============================================================================
 
-  async createBackground(createBackgroundDto: CreateBackgroundDto): Promise<LibraryBackground> {
-    const background = this.backgroundRepository.create(createBackgroundDto);
+  async createBackground(createBackgroundDto: CreateBackgroundDto, scope?: TenantScope): Promise<LibraryBackground> {
+    // P3b — 사이트 운영자 생성 에셋은 자기 site 소유(전역 admin 은 기존대로 시스템 공유 NULL).
+    const background = this.backgroundRepository.create({
+      ...createBackgroundDto,
+      siteId: scope && !scope.isGlobal ? resolveScopedSiteId(scope) : null,
+    });
     return await this.backgroundRepository.save(background);
   }
 
@@ -245,14 +261,17 @@ export class LibraryService {
   async updateBackground(
     id: string,
     updateBackgroundDto: UpdateBackgroundDto,
+    scope?: TenantScope,
   ): Promise<LibraryBackground> {
     const background = await this.findOneBackground(id);
+    if (scope) assertSiteInScope(scope, background.siteId);
     Object.assign(background, updateBackgroundDto);
     return await this.backgroundRepository.save(background);
   }
 
-  async removeBackground(id: string): Promise<void> {
+  async removeBackground(id: string, scope?: TenantScope): Promise<void> {
     const background = await this.findOneBackground(id);
+    if (scope) assertSiteInScope(scope, background.siteId);
     await this.backgroundRepository.remove(background);
   }
 
@@ -260,8 +279,12 @@ export class LibraryService {
   // Cliparts
   // ============================================================================
 
-  async createClipart(createClipartDto: CreateClipartDto): Promise<LibraryClipart> {
-    const clipart = this.clipartRepository.create(createClipartDto);
+  async createClipart(createClipartDto: CreateClipartDto, scope?: TenantScope): Promise<LibraryClipart> {
+    // P3b — 사이트 운영자 생성 에셋은 자기 site 소유(전역 admin 은 기존대로 시스템 공유 NULL).
+    const clipart = this.clipartRepository.create({
+      ...createClipartDto,
+      siteId: scope && !scope.isGlobal ? resolveScopedSiteId(scope) : null,
+    });
     return await this.clipartRepository.save(clipart);
   }
 
@@ -296,14 +319,20 @@ export class LibraryService {
     return clipart;
   }
 
-  async updateClipart(id: string, updateClipartDto: UpdateClipartDto): Promise<LibraryClipart> {
+  async updateClipart(
+    id: string,
+    updateClipartDto: UpdateClipartDto,
+    scope?: TenantScope,
+  ): Promise<LibraryClipart> {
     const clipart = await this.findOneClipart(id);
+    if (scope) assertSiteInScope(scope, clipart.siteId);
     Object.assign(clipart, updateClipartDto);
     return await this.clipartRepository.save(clipart);
   }
 
-  async removeClipart(id: string): Promise<void> {
+  async removeClipart(id: string, scope?: TenantScope): Promise<void> {
     const clipart = await this.findOneClipart(id);
+    if (scope) assertSiteInScope(scope, clipart.siteId);
     await this.clipartRepository.remove(clipart);
   }
 
@@ -326,8 +355,12 @@ export class LibraryService {
   // Shapes
   // ============================================================================
 
-  async createShape(createShapeDto: CreateShapeDto): Promise<LibraryShape> {
-    const shape = this.shapeRepository.create(createShapeDto);
+  async createShape(createShapeDto: CreateShapeDto, scope?: TenantScope): Promise<LibraryShape> {
+    // P3b — 사이트 운영자 생성 에셋은 자기 site 소유(전역 admin 은 기존대로 시스템 공유 NULL).
+    const shape = this.shapeRepository.create({
+      ...createShapeDto,
+      siteId: scope && !scope.isGlobal ? resolveScopedSiteId(scope) : null,
+    });
     return await this.shapeRepository.save(shape);
   }
 
@@ -362,14 +395,20 @@ export class LibraryService {
     return shape;
   }
 
-  async updateShape(id: string, updateShapeDto: UpdateShapeDto): Promise<LibraryShape> {
+  async updateShape(
+    id: string,
+    updateShapeDto: UpdateShapeDto,
+    scope?: TenantScope,
+  ): Promise<LibraryShape> {
     const shape = await this.findOneShape(id);
+    if (scope) assertSiteInScope(scope, shape.siteId);
     Object.assign(shape, updateShapeDto);
     return await this.shapeRepository.save(shape);
   }
 
-  async removeShape(id: string): Promise<void> {
+  async removeShape(id: string, scope?: TenantScope): Promise<void> {
     const shape = await this.findOneShape(id);
+    if (scope) assertSiteInScope(scope, shape.siteId);
     await this.shapeRepository.remove(shape);
   }
 
@@ -377,8 +416,12 @@ export class LibraryService {
   // Frames
   // ============================================================================
 
-  async createFrame(createFrameDto: CreateFrameDto): Promise<LibraryFrame> {
-    const frame = this.frameRepository.create(createFrameDto);
+  async createFrame(createFrameDto: CreateFrameDto, scope?: TenantScope): Promise<LibraryFrame> {
+    // P3b — 사이트 운영자 생성 에셋은 자기 site 소유(전역 admin 은 기존대로 시스템 공유 NULL).
+    const frame = this.frameRepository.create({
+      ...createFrameDto,
+      siteId: scope && !scope.isGlobal ? resolveScopedSiteId(scope) : null,
+    });
     return await this.frameRepository.save(frame);
   }
 
@@ -413,14 +456,20 @@ export class LibraryService {
     return frame;
   }
 
-  async updateFrame(id: string, updateFrameDto: UpdateFrameDto): Promise<LibraryFrame> {
+  async updateFrame(
+    id: string,
+    updateFrameDto: UpdateFrameDto,
+    scope?: TenantScope,
+  ): Promise<LibraryFrame> {
     const frame = await this.findOneFrame(id);
+    if (scope) assertSiteInScope(scope, frame.siteId);
     Object.assign(frame, updateFrameDto);
     return await this.frameRepository.save(frame);
   }
 
-  async removeFrame(id: string): Promise<void> {
+  async removeFrame(id: string, scope?: TenantScope): Promise<void> {
     const frame = await this.findOneFrame(id);
+    if (scope) assertSiteInScope(scope, frame.siteId);
     await this.frameRepository.remove(frame);
   }
 
@@ -428,8 +477,12 @@ export class LibraryService {
   // Categories
   // ============================================================================
 
-  async createCategory(createCategoryDto: CreateCategoryDto): Promise<LibraryCategory> {
-    const category = this.categoryRepository.create(createCategoryDto);
+  async createCategory(createCategoryDto: CreateCategoryDto, scope?: TenantScope): Promise<LibraryCategory> {
+    // P3b — 사이트 운영자 생성 에셋은 자기 site 소유(전역 admin 은 기존대로 시스템 공유 NULL).
+    const category = this.categoryRepository.create({
+      ...createCategoryDto,
+      siteId: scope && !scope.isGlobal ? resolveScopedSiteId(scope) : null,
+    });
     return await this.categoryRepository.save(category);
   }
 
@@ -492,14 +545,20 @@ export class LibraryService {
     return category;
   }
 
-  async updateCategory(id: string, updateCategoryDto: UpdateCategoryDto): Promise<LibraryCategory> {
+  async updateCategory(
+    id: string,
+    updateCategoryDto: UpdateCategoryDto,
+    scope?: TenantScope,
+  ): Promise<LibraryCategory> {
     const category = await this.findOneCategory(id);
+    if (scope) assertSiteInScope(scope, category.siteId);
     Object.assign(category, updateCategoryDto);
     return await this.categoryRepository.save(category);
   }
 
-  async removeCategory(id: string): Promise<void> {
+  async removeCategory(id: string, scope?: TenantScope): Promise<void> {
     const category = await this.findOneCategory(id);
+    if (scope) assertSiteInScope(scope, category.siteId);
 
     // Check if category has children
     const children = await this.categoryRepository.find({

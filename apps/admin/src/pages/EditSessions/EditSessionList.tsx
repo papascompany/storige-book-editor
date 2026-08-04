@@ -25,6 +25,7 @@ import {
 } from '@ant-design/icons';
 import { editSessionsApi, EditSessionResponse, SessionStatus, SessionMode } from '../../api/edit-sessions';
 import { axiosInstance, resolveStorageUrl } from '../../lib/axios';
+import { useAuthStore } from '../../stores/authStore';
 
 const { Title, Text } = Typography;
 
@@ -43,22 +44,28 @@ export const EditSessionList = () => {
   const [searchMemberSeqno, setSearchMemberSeqno] = useState('');
   const [searchOrderSeqno, setSearchOrderSeqno] = useState('');
   const [selectedSiteId, setSelectedSiteId] = useState<string | undefined>(undefined);
+  // P3b — 헤더 테넌트 스위처가 컨텍스트를 고정하면 페이지 로컬 site 필터보다 우선.
+  // 사이트 운영자는 스위처가 자기 site 로 자동 고정 → 목록이 siteId 분기로 조회된다
+  // (siteId 없이 호출하면 서버가 '본인 세션' 분기로 떨어져 빈 목록이 되는 문제 방지).
+  const currentSiteId = useAuthStore((s) => s.currentSiteId) ?? undefined;
+  const effectiveSiteId = currentSiteId ?? selectedSiteId;
 
-  // Phase C-3 — 사이트 dropdown 옵션
+  // Phase C-3 — 사이트 dropdown 옵션 (전역 admin 전용 — 운영자는 GET /sites 403)
   const { data: sites = [] } = useQuery({
     queryKey: ['sites'],
     queryFn: () => sitesApi.list(),
+    enabled: !currentSiteId,
   });
   const siteOptions = sites.map((s) => ({ value: s.id, label: s.name }));
 
   // Fetch edit sessions
   const { data, isLoading } = useQuery({
-    queryKey: ['edit-sessions', searchMemberSeqno, searchOrderSeqno, selectedSiteId],
+    queryKey: ['edit-sessions', searchMemberSeqno, searchOrderSeqno, effectiveSiteId],
     queryFn: () =>
       editSessionsApi.getAll({
         memberSeqno: searchMemberSeqno ? parseInt(searchMemberSeqno) : undefined,
         orderSeqno: searchOrderSeqno ? parseInt(searchOrderSeqno) : undefined,
-        siteId: selectedSiteId,
+        siteId: effectiveSiteId,
       }),
   });
 
@@ -329,14 +336,17 @@ export const EditSessionList = () => {
       </div>
 
       <Space style={{ marginBottom: 16 }}>
-        <Select
-          placeholder="사이트 선택"
-          allowClear
-          style={{ width: 200 }}
-          value={selectedSiteId}
-          onChange={setSelectedSiteId}
-          options={siteOptions}
-        />
+        {/* P3b — 헤더 스위처가 site 를 고정하면 로컬 필터 숨김(이중 컨트롤 방지) */}
+        {!currentSiteId && (
+          <Select
+            placeholder="사이트 선택"
+            allowClear
+            style={{ width: 200 }}
+            value={selectedSiteId}
+            onChange={setSelectedSiteId}
+            options={siteOptions}
+          />
+        )}
         <Input
           placeholder="회원번호 검색"
           prefix={<SearchOutlined />}
