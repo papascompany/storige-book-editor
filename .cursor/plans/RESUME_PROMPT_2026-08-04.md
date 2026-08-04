@@ -1,7 +1,9 @@
 # RESUME PROMPT — 2026-08-04 (세션 정본 · S-E3 구현)
 
 > **이 문서가 최신 정본이다.** 직전 정본: `RESUME_PROMPT_2026-08-03.md` (포토북 펼침면 트랙).
-> 이번 세션: **[S-E3] 텍스트 프리셋 + 곡선 텍스트** (edicus 트랙 F5+F6) 구현 완료 — **커밋 대기**(오너 승인 게이트).
+> 이번 세션: **[S-E3] 텍스트 프리셋 + 곡선 텍스트** (edicus 트랙 F5+F6) — **머지·프로덕션 배포 완료**.
+> PR #12 → 머지 `18c4a2e` (ci+gitleaks success) → Vercel editor Production Ready →
+> **라이브 실측**: editor.papascompany.co.kr 텍스트 패널에 스타일 3종+곡선 4종 표시 확인.
 
 ---
 
@@ -47,11 +49,18 @@
   (검증 후 삭제함 — 남기면 로컬 기본 진입이 샘플 템플릿셋 대신 빈 캔버스가 됨).
 - 기준선 결함(별건): `apps/editor/src/test/setup.ts` lint 에러 2건('Storage' no-undef) — editor `pnpm lint` 가 exit 1.
 
-## 3. 다음 안전 행동
-1. 오너 확인 후 커밋/push (PUBLIC 레포 — push 전 `gitleaks detect --log-opts="origin/master..HEAD"`)
-2. fe-qa 3뷰포트(모바일 퍼스트) 실기 확인 — 프리셋 그리드가 좁은 패널에서 2열 유지 여부
-3. 이후 타순: **[S-E4] 사진 사용 횟수 배지** (독립·선행 없음)
+## 3. 머지 경과 (2026-08-04 오후)
+- 커밋 3건: `206f2d7`(feat S-E3) · `f341558`(docs resume) · `6c43b74`(fix 식별자)
+- **함정 재확인**: CI `check-source-exposure.mjs` + editor `postbuild`(dist 스캔)가 소스 내
+  외부 벤치 식별자("edicus")를 DENY — 주석·테스트명도 걸린다. `.cursor/`·docs 는 스캔 제외.
+- PR #12 전 체크 green → 머지 `18c4a2e`(관행: "Merge <브랜치> — 설명" 머지 커밋, 브랜치 삭제)
+- 머지 시점 master 에 병행 세션 커밋 2건(`5e95a20` api lint 게이트, `d481728` 멀티테넌시 P3b) 선착 — 충돌 없음
+- Vercel editor Production Ready(51s) · master ci+gitleaks success · 라이브 패널 실측 확인
 
-## 4. 상태 스냅샷
-- 브랜치: `feat/s-e3-text-presets-curve` (origin/master=713cccc 기준, 미커밋 변경 7파일)
+## 4. 다음 안전 행동
+1. fe-qa 3뷰포트(모바일 퍼스트) 실기 확인 — 프리셋 그리드가 좁은 패널에서 2열 유지 여부
+2. 이후 타순: **[S-E4] 사진 사용 횟수 배지** (독립·선행 없음)
+
+## 5. 상태 스냅샷
+- master = `18c4a2e` (origin 동기) · 작업 브랜치 삭제됨(로컬·원격)
 - 워킹트리 기존 잔재(이 세션 무관·보존): RESUME_PROMPT_2026-07-30.md 수정본, docs/SHOPIFY_* untracked 8건
