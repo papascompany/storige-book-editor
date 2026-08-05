@@ -175,10 +175,41 @@ high 다수(DB MIME 라벨 신뢰 · 무인증 응답에 siteId/내부경로 노
 `Record<WorkerJobType,…>` 를 깨 **CI 는 통과하는데 Vercel admin 배포만 red** 가 된다
 (editor 는 `vite build` 단독이라 타입체크를 타지 않아 더 늦게 드러난다).
 
+### 5-9. VPS 배포 실행 + 사이드카 기동 (2026-08-05 밤) — **실기에서만 잡힌 결함 1건**
+
+**배포 완료**: 빌드캐시 90GB 정리(디스크 85%→28%) → git pull → api·worker 재빌드·recreate →
+**nginx 재시작**(리터럴 proxy_pass) → rembg 사이드카 빌드·기동(profile `cutout`).
+라이브: `api/health` **queues 에 `cutout` 등장**(관측 배선 검증) · editor/admin 200 · 디스크 34%.
+⚠️ **CUTOUT_ENABLED 는 api·worker 양쪽 모두 `false` 유지** — 기능은 아직 꺼져 있다.
+
+⚠️ **롤백 태그 없음**: `docker compose build` 가 기존 태그를 덮어쓴 뒤 구 이미지가 이미 GC 돼
+`pre-cutout` 태그를 만들 수 없었다. 롤백 경로는 **git**: `git checkout 5e95a20 && docker compose
+up -d --build api worker`(+nginx 재시작). 다음부터는 **build 전에** 태그를 찍을 것.
+
+#### ★ 결함 — rembg `model` 은 쿼리가 아니라 multipart 바디 필드 (커밋 `3f6fd20`)
+`POST /api/remove` 의 쿼리 파라미터는 `bgc`·`extras` 뿐이고 `model` 은 **폼 필드**다(OpenAPI 실측).
+쿼리로 보내면 **에러 없이 무시되고 기본 모델(u2net)로 추론**된다 — HTTP 200 + 정상 PNG 가 나와
+어떤 자동 검증에도 안 걸리고, `CutoutJobResult.model` 만 거짓이 돼 **D-12b 라이선스 감사가 통째로
+틀어진다**. 모델 캐시에 `u2net.onnx` 만 받아진 것으로 발견. 스펙에 회귀 잠금 + 배포 문서 스모크
+명령도 같은 오용이라 교정.
+
+#### ★ 실측 — BiRefNet 계열은 이 박스에서 **OOM**, u2net 만 동작
+| 모델 | 결과 | 근거 |
+|---|---|---|
+| `u2net`(Apache-2.0, 176MB) | ✅ **3.6s / RSS 1.0GB** | 3GiB 한도 내 안정 |
+| `birefnet-general`(MIT, 973MB) | ❌ **cgroup OOM** | 커널 로그 `anon-rss 3,127,968kB` 에서 kill |
+| `birefnet-general-lite`(MIT, 224MB) | ❌ **cgroup OOM** | 파일은 작아도 활성화 메모리가 큼 |
+
+→ **compose 기본값 `REMBG_MODEL=birefnet-general` 은 첫 실사용에서 OOM 한다.** 플래그를 켜기 전에
+반드시 결정 필요(§6-1). 현재는 CUTOUT_ENABLED=false 라 호출 경로가 없어 무해.
+
 ## 6. 다음 안전 행동
-1. ~~PR #15 머지~~ ✅ 완료(`14a881c`). **잔여 = VPS 수동 배포** — api·worker 는 자동배포가 아니다.
-   `docs/DEPLOYMENT.md` §배경제거 절차(디스크 점검 → 사이드카 빌드 → 예열 → **계약 스모크** →
-   플래그 ON)를 따라 수행하고, ⚠️ api recreate 후 **nginx 재시작 필수**(리터럴 proxy_pass).
+1. **★ 오너 결정 — `REMBG_MODEL` 확정(D-12b 재상신)**: BEN2 는 rembg 에 없고, 대체안
+   birefnet-general/-lite 는 **이 박스에서 OOM** 한다(§5-9 실측). 선택지 =
+   (a) **`u2net`**(Apache-2.0, 유일하게 동작, 3.6s — 라이선스도 가장 깨끗) /
+   (b) rembg `mem_limit` 상향 + `WORKER_MEM_LIMIT` 하향으로 BiRefNet 재시도(인쇄 파이프라인
+   메모리 경합 리스크 — 스파이크가 경고한 바로 그 지점) / (c) VPS 증설.
+   결정 후 `.env` `REMBG_MODEL` 설정 → **그 다음에** CUTOUT_ENABLED=true.
 2. **샤드 3**: 편집기 연결 — `useImageStore.segmentImage` 시그니처 유지하고 내부만 잡 요청/폴링으로
    교체(AppClipping 호출부 무변경) + canvasData base64 → URL 참조 전환(=D-6b③ 완결) +
    **08-05 발견한 모양컷 진입 도달 불가 결함 동시 해소**.
