@@ -322,7 +322,11 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
 
         set({ uploaded: [...uploaded, item] })
         // Track 2 (D-2): 자동편집 입력 등록 — fire-and-forget(업로드 UX 비블로킹).
-        void get().registerUploadedPhoto(file)
+        // S-E4: storage URL 을 업로드 객체에 링크 — 자동편집 채움(src=storage URL)과
+        // 패널 썸네일(src=dataURL)의 사용 횟수 집계를 잇는다(photoUsage 키 합산).
+        void get().registerUploadedPhoto(file).then((meta) => {
+          if (meta?.url) (item as FabricObject & { storagePhotoUrl?: string }).storagePhotoUrl = meta.url
+        })
         return item
       }
 
@@ -385,7 +389,10 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
       canvas.setActiveObject(item)
       set({ uploaded: [...uploaded, item] })
       // Track 2 (D-2): 자동편집 입력 등록 — fire-and-forget(업로드 UX 비블로킹).
-      void get().registerUploadedPhoto(file)
+      // S-E4: storage URL 링크(uploadSimple 과 동일 — photoUsage 키 합산용).
+      void get().registerUploadedPhoto(file).then((meta) => {
+        if (meta?.url) (item as FabricObject & { storagePhotoUrl?: string }).storagePhotoUrl = meta.url
+      })
       return item
     } catch (e) {
       console.error('[useImageStore.uploadFile]', e)
@@ -651,7 +658,10 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
           set({ uploaded: [...uploaded, item] })
           // Track 2 (D-2): 래스터 사진만 자동편집 입력 등록(벡터/SVG 는 사진틀 채움 대상 아님).
           if (!isVectorFile && !isSvgFile) {
-            void get().registerUploadedPhoto(file)
+            // S-E4: storage URL 링크(uploadSimple 과 동일 — photoUsage 키 합산용).
+            void get().registerUploadedPhoto(file).then((meta) => {
+              if (meta?.url) (item as FabricObject & { storagePhotoUrl?: string }).storagePhotoUrl = meta.url
+            })
           }
         }
         return item
