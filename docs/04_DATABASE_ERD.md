@@ -317,7 +317,7 @@ erDiagram
 
     worker_jobs {
         varchar(36) id PK
-        varchar(30) job_type "validation|conversion|synthesis"
+        varchar(30) job_type "VALIDATE|CONVERT|SYNTHESIZE|RENDER_PAGES|CUTOUT"
         varchar(20) status "pending|processing|completed|failed"
         varchar(36) edit_session_id FK
         varchar(36) file_id

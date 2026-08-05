@@ -354,12 +354,16 @@ graph LR
         JV[VALIDATE]
         JC[CONVERT]
         JS[SYNTHESIZE]
+        JR[RENDER_PAGES]
+        JX["CUTOUT<br/>(2026-08-05)"]
     end
 
     subgraph "Processors"
         PV[ValidationProcessor]
         PC[ConversionProcessor]
         PS[SynthesisProcessor]
+        PR[RenderProcessor]
+        PX[CutoutProcessor]
     end
 
     subgraph "Services"
@@ -387,6 +391,37 @@ graph LR
     SS --> WH
 ```
 
+#### 2.3.1-b 배경제거(CUTOUT) 추론 사이드카 — 2026-08-05 신설
+
+편집기의 배경 제거를 클라이언트 추론에서 **서버 오프로드**로 옮기면서 추가된 경로다(오너 결정 D-6a=B).
+
+```mermaid
+graph LR
+    ED[editor] -->|POST /worker-jobs/cutout| API[api]
+    API -->|image-cutout 큐| WK[worker · CutoutProcessor]
+    WK -->|multipart POST /api/remove| RB["rembg 사이드카<br/>(python, 내부망 전용)"]
+    RB -->|알파 PNG| WK
+    WK -->|/storage/cutouts/&lt;jobId&gt;/*.png| ST[(storage)]
+    WK -->|PATCH status + result| API
+    ED -->|GET /worker-jobs/:id/cutout-status| API
+```
+
+**왜 사이드카인가**: 워커 이미지 베이스가 `node:24-alpine`(musl)이라 `onnxruntime-node` 계열은
+**설치는 성공하고 런타임 import 에서 터진다**(실측). 추론은 별도 python(glibc) 컨테이너가 전담하고
+워커는 ML 네이티브 의존을 일절 갖지 않는다.
+
+| 항목 | 값 |
+|---|---|
+| 큐 / 잡 이름 | `image-cutout` / `remove-background` (동시성 1) |
+| 잡 타입 | `WorkerJobType.CUTOUT` — `job_type` 은 varchar(30)이라 DDL 변경 없음 |
+| 기능 플래그 | `CUTOUT_ENABLED` (**기본 false**, api·worker **양쪽 모두** 필요) |
+| 사이드카 | compose profile `cutout` — 기본 `up -d` 에 미포함, 포트 미노출(내부망 전용) |
+| 입력 상한 | 장변 2560px 캡(`computeInferenceCap`) · 30MB · 40MP · 실제 포맷은 바이트로 판정 |
+| 산출물 | `/storage/cutouts/<jobId>/<uuid>.png` — 보존 cron 기본 7일 |
+
+⚠️ **모델은 라이선스가 제각각이다.** 기본값은 env `REMBG_MODEL` 하나로 교체 가능하며,
+상업 사용 가부·실측 메모리는 `.cursor/plans/CUTOUT_WORKER_STACK_SPIKE_2026-08-05.md` 를 정본으로 본다.
+
 #### 2.3.2 Bull Queue 설정
 
 ```mermaid
@@ -395,6 +430,7 @@ graph TB
         Q1[pdf-validation]
         Q2[pdf-conversion]
         Q3[pdf-synthesis]
+        Q4["image-cutout<br/>(2026-08-05 신설)"]
     end
 
     subgraph "Job Options"
