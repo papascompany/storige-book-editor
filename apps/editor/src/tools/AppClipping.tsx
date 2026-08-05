@@ -1,7 +1,7 @@
 import { useCallback, useState, useMemo, useEffect } from 'react'
 import { Upload as UploadSimple, HelpCircle as Question } from 'lucide-react'
 import { useAppStore } from '@/stores/useAppStore'
-import { useImageStore } from '@/stores/useImageStore'
+import { useImageStore, checkMobileFileSize } from '@/stores/useImageStore'
 import { useSettingsStore, useSettingsSize, useSettingsUnit } from '@/stores/useSettingsStore'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -156,6 +156,11 @@ export default function AppClipping() {
       if (!files || files.length === 0) return
 
       const file = files[0]
+
+      // D-6b② (2026-08-05): 모양컷 업로드 가드 — 이 경로만 모바일 4MB 가드가 없어
+      // 대용량 원본이 배경제거 파이프(추론 픽셀 캡 이전 단계)에 직행했다(Wave0 §3).
+      if (!checkMobileFileSize(file)) return
+
       const imagePlugin = getPlugin<ImageProcessingPlugin>('ImageProcessingPlugin')
        
       const fabricImage = await core.fileToImage(canvas, file, imagePlugin as any)
