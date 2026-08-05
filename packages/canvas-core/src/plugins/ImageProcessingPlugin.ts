@@ -18,6 +18,9 @@ interface BgRemovalConfig {
   }
 }
 
+// D-6b② 픽셀 캡 — 순수 모듈(utils/inferenceCap)에서 가져옴 (테스트 분리용)
+import { computeInferenceCap } from '../utils/inferenceCap'
+
 class ImageProcessingPlugin extends PluginBase {
   name = 'ImageProcessingPlugin'
   events = []
@@ -601,20 +604,43 @@ class ImageProcessingPlugin extends PluginBase {
 
       const { removeBackground } = await getBackgroundRemoval()
       const imgElement: any = item.getElement()
-      const foregroundBlob = await removeBackground(imgElement.src)
+
+      // D-6b② 픽셀 캡: 장변 초과 시 사전 다운스케일 본을 추론 입력으로 사용.
+      // 결과(전경)는 캡 해상도가 되므로 아래에서 스케일 보상해 화면 크기를 유지한다.
+      const naturalW = imgElement.naturalWidth || imgElement.width || item.width || 0
+      const naturalH = imgElement.naturalHeight || imgElement.height || item.height || 0
+      const cap = computeInferenceCap(naturalW, naturalH)
+      let inferenceSrc: string = imgElement.src
+      if (cap.engaged) {
+        const capCanvas = document.createElement('canvas')
+        capCanvas.width = cap.targetWidth
+        capCanvas.height = cap.targetHeight
+        const ctx = capCanvas.getContext('2d')
+        if (ctx) {
+          ctx.drawImage(imgElement, 0, 0, cap.targetWidth, cap.targetHeight)
+          inferenceSrc = capCanvas.toDataURL('image/png')
+        }
+      }
+
+      const foregroundBlob = await removeBackground(inferenceSrc)
       const foregroundUrl = URL.createObjectURL(foregroundBlob)
       const foreground = await this.loadCanvasImageFromUrl(foregroundUrl)
       const center = item.getCenterPoint()
+
+      // 스케일 보상: 전경 자연 치수 기준으로 원본의 화면 크기를 재현.
+      // 캡 미적용이면 fgW===item.width 라 scaleX===item.scaleX — 기존 동작과 동일식.
+      const fgW = (foreground.width as number) || cap.targetWidth || 1
+      const fgH = (foreground.height as number) || cap.targetHeight || 1
+      const visualW = (item.width || fgW) * (item.scaleX || 1)
+      const visualH = (item.height || fgH) * (item.scaleY || 1)
       const foregroundObj = foreground.set({
         id: uuid(),
         originX: 'center',
         originY: 'center',
         left: center.x,
         top: center.y,
-        width: item.width,
-        height: item.height,
-        scaleX: item.scaleX,
-        scaleY: item.scaleY,
+        scaleX: visualW / fgW,
+        scaleY: visualH / fgH,
         absolutePositioned: true
       })
       return foregroundObj as any

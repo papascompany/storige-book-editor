@@ -73,17 +73,36 @@
   패널 dataURL 키 정합. **자동편집 실기(storage API 필요)는 미검증 잔여.**
 - 검증: editor 565 green(신규 13·성능 가드) · dev 실기 DnD 주입으로 배지→필터→undo 전 사이클.
 
-## 5. 다음 안전 행동
-1. 이후 타순(edicus 트랙): **[S-P2A]** 컷아웃 편집 UX — **오너 게이트 대기**.
-   D-6a(클라 유지 A 권고, ☐)·D-6b②픽셀 캡·③dataURL→storage(미결) — OWNER_DECISIONS_2026-07-07.md §D-6.
-   ⚠️ S-P2A 설계의 마스크 영속화=③, 메모리 가드=② 와 직결 — 결정 없이 착수 시 재작업 위험.
-   "오너 기입 시까지 코드 변경 0" 보수 기본값 준수.
-2. ~~S-E4 잔여: 자동편집 채움 배지 정합 실기~~ → **08-05 프로덕션 실기 부분 완료**:
-   업로드→배치→배지1→undo→소멸 전 사이클 프로덕션 재현 ✓, storage 등록 경고 0(실패 시
-   console.warn 확정 경로) ✓. **채움 단계만 잔여** — 프레임 라이브러리 미등록 환경이라
-   원클릭 불가, 포토북 템플릿셋(admin 등록 사진틀) 세션에서 1회 실기 필요.
+## 5. 오너 게이트 해소 + D-6b② 구현 (2026-08-05 오후)
 
-## 6. 상태 스냅샷 (2026-08-05 오전)
-- master = `a2c5c1b` (S-E4 머지, ci+gitleaks success, Vercel editor Production Ready)
-- 작업 브랜치 2개(s-e3/s-e4) 모두 머지·삭제 완료(로컬·원격)
+### 5-1. 오너 결정 확정 (채팅 — OWNER_DECISIONS_2026-07-07.md §D-6 기입 완료)
+- **D-6a = B(워커 오프로드) 확정** — Wave0 권고 A 기각. S-P2A는 worker 'cutout' 잡 아키텍처.
+  인프라 비용(잡당 피크 0.5~1GB·concurrency 1) 수용.
+- **D-6b②③ 모두 승인** — ② 픽셀 캡은 양 아키텍처 공통이라 즉시 구현(아래), ③ dataURL→storage는
+  클라 선행 구현 없이 **워커 잡 설계에 통합**(B 확정에 따른 중복 방지 재정렬).
+
+### 5-2. D-6b② 구현 — feat/d6b2-cutout-pixel-cap (PR #14)
+- canvas-core `utils/inferenceCap`(순수 모듈, 장변 2560) + `getForeground` 캡·스케일 보상
+  (미적용 시 기존과 동일식 — 불변식 테스트) + AppClipping 업로드 가드(유일 무가드 경로).
+- ⚠️ 로컬 함정 재확인: fabric import 테스트는 canvas.node 미빌드로 스위트 4개 죽음(§3-3 기준선,
+  stash 전후 동일 실측) — 순수 모듈 분리(curveText 전례)로 회피. CI는 무관.
+
+### 5-3. S-P2A-B 실행 계획 (다음 세션 — D-6a=B 반영 샤드)
+1. worker 'cutout' Bull 잡 신설(4번째 타입) — node용 배경제거 스택 선정 스파이크
+   (@imgly/background-removal-node vs onnxruntime-node+ISNet, 의존성 추가 = 오너 승인 대상),
+   concurrency 1, 픽셀 캡 재사용(inferenceCap — canvas-core 배럴 export 완료)
+2. API 엔드포인트(잡 생성/상태/결과 URL) + sites 기능 플래그 게이팅 + JWT/사이트 키 가드
+3. 결과 마스크/합성 PNG → `/app/storage` 저장 + URL 반환(**=D-6b③ 통합 지점**)
+4. 에디터: segmentImage 클라 추론 → 잡 요청/폴링 교체(플래그 뒤 점진 전환, 클라 폴백 유지 여부 결정)
+5. 모달 보정 UX(브러쉬·표시모드 4종·모달 로컬 undo) — 기술설계 §3.5
+6. 칼선 핸드오프([S-P2B] 입력 계약)
+
+## 6. 다음 안전 행동
+1. PR #14(D-6b②) CI 확인 → 머지(오너)
+2. S-P2A-B 샤드 1(워커 스택 스파이크)부터 착수 — 의존성 추가는 결정표로 상신
+3. S-E4 잔여(경미): 자동편집 채움 배지 정합 — 포토북 템플릿셋 세션에서 1회 실기
+
+## 7. 상태 스냅샷 (2026-08-05 오후)
+- master = `4e6c739`(docs) · 코드 최신 = S-E4 머지 `a2c5c1b` (전 서비스 LIVE)
+- 활성 브랜치: `feat/d6b2-cutout-pixel-cap`(PR #14 — D-6b②). s-e3/s-e4는 머지·삭제 완료
 - 워킹트리 기존 잔재(이 세션 무관·보존): RESUME_PROMPT_2026-07-30.md 수정본, docs/SHOPIFY_* untracked 8건

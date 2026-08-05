@@ -67,6 +67,7 @@ export * from './utils/logger'
 export * from './utils/pointerShift'
 // S-E3 — 곡선(패스) 텍스트 수식·적용 유틸 (TextEffect 후편집 + AppText 프리셋 공유 정본)
 export * from './utils/curveText'
+export * from './utils/inferenceCap'
 // P2-11/A — OpenCV/배경제거 lazy-loader + warmup helpers
 export { getCv, getBackgroundRemoval, warmupOpenCv, warmupBackgroundRemoval } from './utils/openCv'
 

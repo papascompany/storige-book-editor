@@ -26,8 +26,11 @@ const MOBILE_MAX_FILE_LABEL = '4MB'
  * 모바일 환경에서 파일 크기 사전 가드.
  * - 데스크톱: 항상 허용
  * - 모바일: MOBILE_MAX_FILE_BYTES 초과 시 toast 안내 + false 반환 (호출자가 abort)
+ *
+ * D-6b② (2026-08-05): 모양컷(AppClipping) 업로드 경로에도 배선하기 위해 export —
+ * Wave0 실측에서 이 경로만 가드가 없어 12MP 원본이 배경제거 파이프에 직행했다.
  */
-function checkMobileFileSize(file: File): boolean {
+export function checkMobileFileSize(file: File): boolean {
   if (!TOUCH_ENV) return true
   if (file.size <= MOBILE_MAX_FILE_BYTES) return true
   const sizeMb = (file.size / 1024 / 1024).toFixed(1)
