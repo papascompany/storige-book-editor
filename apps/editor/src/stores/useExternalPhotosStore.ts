@@ -31,6 +31,9 @@ export const useExternalPhotosStore = create<ExternalPhotosState & ExternalPhoto
 /**
  * 모든 캔버스를 스캔해 externalPhotoUrl 이 일치하는 이미지 객체가 있는지 검사.
  * (그룹 내부까지는 v1 미탐색 — 공유방 사진은 직접 배치가 기본 경로)
+ * @deprecated S-E4(2026-08-04): 패널 배지는 utils/photoUsage.buildPhotoUsageCountMap
+ * (1패스 O(objects), src 키 포함, 그룹 탐색)로 대체됨. 사진별 O(objects) 재스캔이라
+ * 대량 사진에 부적합 — 신규 사용 금지.
  */
 export function isPhotoUsed(allCanvas: Array<{ getObjects: () => Array<Record<string, unknown>> }>, url: string): boolean {
   for (const canvas of allCanvas) {

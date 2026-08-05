@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Upload as UploadSimple, Check, Wand2 } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Upload as UploadSimple, Wand2 } from 'lucide-react'
 import { useAppStore } from '@/stores/useAppStore'
 import { useImageStore, useUploaded, useUploadedPhotoMeta } from '@/stores/useImageStore'
-import { useExternalPhotosStore, isPhotoUsed } from '@/stores/useExternalPhotosStore'
+import { useExternalPhotosStore } from '@/stores/useExternalPhotosStore'
+import { buildPhotoUsageCountMap, photoUsageCount } from '@/utils/photoUsage'
 import { useIsCoarsePointer } from '@/hooks/useIsCoarsePointer'
 import { Button } from '@/components/ui/button'
 import { ImageProcessingPlugin, SelectionType, core } from '@storige/canvas-core'
@@ -18,6 +19,22 @@ const AUTOFILL_SORT_OPTIONS: { value: PhotoSortMode; label: string }[] = [
   { value: 'location', label: '장소별' },
   { value: 'random', label: '랜덤' },
 ]
+
+// S-E4: 사용 횟수 집계 debounce — 이벤트 폭주(자동편집·다중 삭제·undo 복원) 시
+// 프레임당 재스캔을 막는다(기술설계 §3.4: ≥300ms).
+const USAGE_RECOUNT_DEBOUNCE_MS = 300
+
+/** S-E4: 썸네일 우상단 사용 횟수 배지 — 0이면 렌더하지 않는다(호출부 가드). */
+function UsageBadge({ count }: { count: number }) {
+  return (
+    <span
+      className="absolute top-1 right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-orange-500 text-white text-[10px] font-semibold flex items-center justify-center leading-none"
+      aria-label={`문서에서 ${count}회 사용됨`}
+    >
+      {count > 99 ? '99+' : count}
+    </span>
+  )
+}
 
 export default function AppImage() {
   const canvas = useAppStore((state) => state.canvas)
@@ -52,26 +69,39 @@ export default function AppImage() {
     if (hasExternal) setActiveTab('external')
   }, [hasExternal])
 
-  // 캔버스 객체 추가/삭제 시 '사용됨' 뱃지 재계산 (다른 경로의 삭제·undo 포함)
+  // S-E4: 캔버스 객체 추가/삭제·undo/redo 시 사용 횟수 재집계 트리거.
+  // (구 D1 배선 확장 — 외부주입 전용 → 내 업로드 포함, allCanvas 선택자 구독으로
+  //  늦게 뜨는 페이지 재구독, history:undo/redo 직접 구독, 300ms debounce)
+  const hasUploads = uploaded.length > 0
+  const recountTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
-    if (!hasExternal) return
-    const canvases = useAppStore.getState().allCanvas
-    const handler = () => bumpUsage()
-    canvases.forEach((c: any) => {
+    if (!hasExternal && !hasUploads) return
+    if (allCanvas.length === 0) return
+    const handler = () => {
+      if (recountTimerRef.current) clearTimeout(recountTimerRef.current)
+      recountTimerRef.current = setTimeout(() => {
+        recountTimerRef.current = null
+        bumpUsage()
+      }, USAGE_RECOUNT_DEBOUNCE_MS)
+    }
+    const events = ['object:added', 'object:removed', 'history:undo', 'history:redo']
+    allCanvas.forEach((c: any) => {
       try {
-        c.on('object:added', handler)
-        c.on('object:removed', handler)
+        events.forEach((ev) => c.on(ev, handler))
       } catch { /* noop */ }
     })
     return () => {
-      canvases.forEach((c: any) => {
+      if (recountTimerRef.current) {
+        clearTimeout(recountTimerRef.current)
+        recountTimerRef.current = null
+      }
+      allCanvas.forEach((c: any) => {
         try {
-          c.off('object:added', handler)
-          c.off('object:removed', handler)
+          events.forEach((ev) => c.off(ev, handler))
         } catch { /* noop */ }
       })
     }
-  }, [hasExternal, bumpUsage])
+  }, [hasExternal, hasUploads, allCanvas, bumpUsage])
 
   // Track 2 (D-2): 빈 사진틀 존재 재판정 배선 — 채움/삭제(fillImage add·frame remove)가
   // object:added/removed 로 관측되므로 그때마다 frameTick 을 올려 노출 조건을 갱신한다.
@@ -113,19 +143,41 @@ export default function AppImage() {
 
   const showAutofill = emptyFrameExists && autofillPhotos.length > 0
 
-  // 사용 여부 맵 — usageTick 변경 시 전체 캔버스 재스캔
-  const usedMap = useMemo(() => {
-    const map = new Map<string, boolean>()
-    if (!hasExternal) return map
-    const allCanvas = useAppStore.getState().allCanvas
-    externalPhotos.forEach((p) => map.set(p.url, isPhotoUsed(allCanvas, p.url)))
-    return map
+  // S-E4: 사용 횟수 맵 — usageTick 변경 시 전 캔버스 1패스 재집계 O(objects).
+  // (구 usedMap 은 사진별 재스캔 O(사진×객체) — 300장×50페이지 요건 미달이라 교체)
+  const usageCountMap = useMemo(() => {
+    if (!hasExternal && !hasUploads) return new Map<string, number>()
+    const canvases = allCanvas.length > 0 ? allCanvas : canvas ? [canvas] : []
+    return buildPhotoUsageCountMap(canvases)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [externalPhotos, usageTick, hasExternal])
+  }, [usageTick, hasExternal, hasUploads, allCanvas, canvas])
 
   const visiblePhotos = useMemo(
-    () => (unusedOnly ? externalPhotos.filter((p) => !usedMap.get(p.url)) : externalPhotos),
-    [externalPhotos, unusedOnly, usedMap],
+    () =>
+      unusedOnly
+        ? externalPhotos.filter((p) => photoUsageCount(usageCountMap, [p.url]) === 0)
+        : externalPhotos,
+    [externalPhotos, unusedOnly, usageCountMap],
+  )
+
+  // S-E4: '내 업로드' 필터 — 업로드 객체의 dataURL(src) + storage URL 합산 키.
+  const [myUnusedOnly, setMyUnusedOnly] = useState(false)
+  const uploadedKeysOf = useCallback((image: unknown): Array<string | undefined> => {
+    const imgObj = image as { getSrc?: () => string; storagePhotoUrl?: string }
+    let src: string | undefined
+    try {
+      src = imgObj.getSrc?.()
+    } catch {
+      src = undefined
+    }
+    return [src, imgObj.storagePhotoUrl]
+  }, [])
+  const visibleUploaded = useMemo(
+    () =>
+      myUnusedOnly
+        ? uploaded.filter((image) => photoUsageCount(usageCountMap, uploadedKeysOf(image)) === 0)
+        : uploaded,
+    [uploaded, myUnusedOnly, usageCountMap, uploadedKeysOf],
   )
 
   // Handle upload
@@ -412,13 +464,14 @@ export default function AppImage() {
               ) : (
                 <div className="grid grid-cols-3 gap-2">
                   {visiblePhotos.map((photo) => {
-                    const used = usedMap.get(photo.url)
+                    // S-E4: '사용됨' 체크 → 사용 횟수 배지로 승격 (0=비표시)
+                    const count = photoUsageCount(usageCountMap, [photo.url])
                     return (
                       <div
                         key={photo.url}
-                        className={`relative aspect-square rounded-lg overflow-hidden cursor-pointer bg-editor-surface-low border hover:border-editor-accent transition-all ${
+                        className={`relative aspect-square rounded-lg overflow-hidden cursor-pointer bg-editor-surface-low border border-editor-border hover:border-editor-accent transition-all ${
                           addingUrl === photo.url ? 'opacity-50' : ''
-                        } ${used ? 'border-editor-border' : 'border-editor-border'}`}
+                        }`}
                         onClick={() => addExternalPhoto(photo)}
                         title={photo.name || ''}
                       >
@@ -428,11 +481,7 @@ export default function AppImage() {
                           loading="lazy"
                           className="w-full h-full object-cover"
                         />
-                        {used && (
-                          <span className="absolute top-1 right-1 w-4.5 h-4.5 rounded-full bg-green-600 flex items-center justify-center" style={{ width: 18, height: 18 }}>
-                            <Check className="w-3 h-3 text-white" />
-                          </span>
-                        )}
+                        {count > 0 && <UsageBadge count={count} />}
                       </div>
                     )
                   })}
@@ -458,22 +507,58 @@ export default function AppImage() {
             {/* My Contents (Uploaded Images) */}
             {uploaded.length > 0 && (
               <div className="px-4 py-3">
-                <div className="text-sm font-medium text-editor-text mb-3">나의 콘텐츠</div>
-                <div className="grid grid-cols-2 gap-3">
-                  {uploaded.map((image, index) => (
-                    <div
-                      key={index}
-                      className="aspect-square rounded-lg overflow-hidden cursor-pointer bg-editor-surface-low border border-editor-border hover:border-editor-accent hover:scale-105 transition-all"
-                      onClick={() => addToCanvas(image)}
+                <div className="flex items-center justify-between mb-3">
+                  <div className="text-sm font-medium text-editor-text">나의 콘텐츠</div>
+                  {/* S-E4: 사용/미사용 필터 (공유방 탭과 동일 패턴) */}
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      className={`text-xs px-2 py-0.5 rounded-full border transition-colors ${
+                        !myUnusedOnly
+                          ? 'border-editor-accent text-editor-text'
+                          : 'border-editor-border text-editor-text-muted'
+                      }`}
+                      onClick={() => setMyUnusedOnly(false)}
                     >
-                      <img
-                        src={(image as { getSrc?: () => string }).getSrc?.() || ''}
-                        alt=""
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-                  ))}
+                      전체
+                    </button>
+                    <button
+                      className={`text-xs px-2 py-0.5 rounded-full border transition-colors ${
+                        myUnusedOnly
+                          ? 'border-editor-accent text-editor-text'
+                          : 'border-editor-border text-editor-text-muted'
+                      }`}
+                      onClick={() => setMyUnusedOnly(true)}
+                    >
+                      안 쓴 사진
+                    </button>
+                  </div>
                 </div>
+                {visibleUploaded.length === 0 ? (
+                  <p className="text-xs text-editor-text-muted py-6 text-center">
+                    모든 사진을 사용했습니다.
+                  </p>
+                ) : (
+                  <div className="grid grid-cols-2 gap-3">
+                    {visibleUploaded.map((image, index) => {
+                      // S-E4: 문서 내 사용 횟수 배지 (0=비표시)
+                      const count = photoUsageCount(usageCountMap, uploadedKeysOf(image))
+                      return (
+                        <div
+                          key={index}
+                          className="relative aspect-square rounded-lg overflow-hidden cursor-pointer bg-editor-surface-low border border-editor-border hover:border-editor-accent hover:scale-105 transition-all"
+                          onClick={() => addToCanvas(image)}
+                        >
+                          <img
+                            src={(image as { getSrc?: () => string }).getSrc?.() || ''}
+                            alt=""
+                            className="w-full h-full object-cover"
+                          />
+                          {count > 0 && <UsageBadge count={count} />}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
               </div>
             )}
           </div>
