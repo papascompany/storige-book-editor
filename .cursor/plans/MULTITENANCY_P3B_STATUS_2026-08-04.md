@@ -39,7 +39,27 @@
 ## 프로덕션 영향 판단
 - 기존 데이터는 template_sets/templates/library 전부 siteId=NULL(공유) → allowNull 읽기 경로로
   **현행 거동 무변경**. 전역 admin(ADMIN/SUPER_ADMIN/MANAGER)은 scope.isGlobal 로 전 라우트 무변경.
-- 마이그레이션 불필요(컬럼 기존재). 배포는 API(VPS 수동)+admin(Vercel 자동) — master 머지 시.
+- 마이그레이션 불필요(컬럼 기존재).
+
+## ✅ 배포 완료 — LIVE (2026-08-04 밤)
+
+| 단계 | 결과 |
+|---|---|
+| master 머지 | `d481728`(feat) → CI+gitleaks **success** |
+| 후속 | `5e95a20` 기준선 lint 3건 해소 + **CI api lint 게이트 신설** → CI success |
+| admin | Vercel 자동배포 Ready |
+| API | VPS 수동배포(빌드→up→**nginx 재시작**) · 롤백 태그 `storige-api:pre-p3b` |
+
+**라이브 검증(실측)**: health ok · admin 로그인 200 · `GET /template-sets?siteId=…` **200**
+(구 API 였다면 forbidNonWhitelisted 400 — 스큐 해소 실증) · `GET /worker-jobs/stats` **200**.
+**2026-08-05 23:20 재확인**: 병행 트랙이 `3f6fd20` 으로 재배포한 현 빌드에서도 위 3종 그대로 200/ok.
+
+### 기준선 lint + CI 갭 (동반 해소, `5e95a20`)
+- `eslint.config.js` globals 에 `NodeJS` 등재 — `NodeJS.ErrnoException` no-undef 는 **오탐**이었다(설정 누락).
+- `template.dto` IsEnum · `template-set.dto` IsObject 미사용 import 제거.
+- ⚠️ **CI 에 api lint 게이트가 아예 없었다**(examples lint 만 존재) → error 가 나도 CI green 인
+  honor system. ci.yml api job 에 lint 스텝 추가로 봉합. **editor lint 는 기저 실패 2건**
+  (`apps/editor/src/test/setup.ts` 'Storage' no-undef)이라 이번에 등재하지 않았다 — 그 결함 해소 후 등재.
 
 ## 잔여 (P3b 후속 — 별도 슬라이스)
 1. products/product-template-sets/템플릿 categories/format-presets — 목록 스코핑(P2b 미적용)부터 필요
@@ -49,3 +69,5 @@
 5. 시스템 에셋 "내 site 노출 토글"(§5.2 큐레이션 조인) · 온보딩 위저드
 6. TenantGuard 가 MANAGER 를 비전역 취급하는 P1 잔재 — MANAGER 가 명시 siteId 요청 시 403 엣지
    (기존 플로우는 siteId 미전송이라 무영향, 정리 시 getTenantScope 와 일원화)
+7. ⭐ **SITE_ADMIN 실계정 E2E 0회** — 코드·라우트는 라이브지만 실제 운영자 계정으로
+   스위처 고정 / 목록 격리 / 타 site 변조 403 을 밟아본 적이 없다. **다음 세션 최우선.**

@@ -191,3 +191,7 @@ high 다수(DB MIME 라벨 신뢰 · 무인증 응답에 siteId/내부경로 노
 - 작업 브랜치 3개(s-e3·s-e4·d6b2) 전부 머지·삭제 완료 — **코드 잔여 0**
 - ⚠️ 세션 중 모델 전환(→ claude-opus-5). 커밋 trailer 는 전환 이후 `Claude Opus 5` 사용
 - 워킹트리 기존 잔재(이 세션 무관·보존): RESUME_PROMPT_2026-07-30.md 수정본, docs/SHOPIFY_* untracked 8건
+- 🔀 **병행 트랙(멀티테넌시, 이 문서 범위 밖)**: P3b SITE_ADMIN 데이터라우트+테넌트 스위처가
+  `d481728`+`5e95a20` 로 LIVE(api/admin). 인계본 `RESUME_PROMPT_2026-08-05_MULTITENANCY.md`
+  · 상세 `MULTITENANCY_P3B_STATUS_2026-08-04.md`. 부산물로 **CI 에 api lint 게이트 신설**됨
+  (api lint error 는 이제 CI red — editor lint 기저 실패 2건은 미등재 상태 유지).
