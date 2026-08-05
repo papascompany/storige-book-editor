@@ -146,9 +146,15 @@ GPU 이전 경로). 차선 A(워커 내장+베이스 교체), 조건부 F(SaaS $
   샤드 2~3에서 반드시 완주.
 - D-12c(국외이전)는 자체호스팅 확정으로 소멸.
 
-### 5-8. S-P2A-B 샤드 2 완료 — 컷아웃 서버 슬라이스 (PR #15, ci green · 머지 대기)
-브랜치 `feat/s-p2a-cutout-worker` / 커밋 `2d0c5ae`(23파일 +2677). **플래그 기본 꺼짐 + rembg 는
-compose profile `cutout` 뒤** → 머지해도 프로덕션 동작 변화 0.
+### 5-8. S-P2A-B 샤드 2 완료 — 컷아웃 서버 슬라이스 (**머지 `14a881c`**, master ci+gitleaks green)
+커밋 `2d0c5ae`(23파일 +2677). **플래그 기본 꺼짐 + rembg 는 compose profile `cutout` 뒤** →
+머지 후 프로덕션 동작 변화 0(실측 확인).
+
+**머지 후 라이브 실측(2026-08-05)**: editor/admin 200 · admin 프로덕션 빌드 **성공**(31s —
+jobTypeLabels 결함이 실제로 막혔음을 증명) · `api/health` = ok, **큐는 여전히 validation/
+conversion/synthesis 3종**. ⚠️ **api·worker 는 수동 배포**라 `image-cutout` 큐는 VPS 에서
+`docker compose up -d --build api worker` 를 돌려야 나타난다 — 그 전까지 컷아웃 코드는
+레포에만 있고 프로덕션 런타임에는 없다.
 
 **구조**: 공유 계약을 types 에 먼저 확정한 뒤 worker/api/docker 3축 배타 소유로 병렬 구현 →
 적대 리뷰 3렌즈 → 통합자(메인)가 결함 수정 → 재검증 2렌즈. 신규 테스트 44건.
@@ -170,9 +176,9 @@ high 다수(DB MIME 라벨 신뢰 · 무인증 응답에 siteId/내부경로 노
 (editor 는 `vite build` 단독이라 타입체크를 타지 않아 더 늦게 드러난다).
 
 ## 6. 다음 안전 행동
-1. **PR #15 머지 판단**(오너) — 머지 시 api·worker 코드가 프로덕션에 올라가지만 플래그 OFF 라 무동작.
-   실제 활성화는 `docs/DEPLOYMENT.md` §배경제거 절차(디스크 점검 → 사이드카 빌드 → 예열 →
-   **계약 스모크** → 플래그 ON) 를 따라 별도로 수행.
+1. ~~PR #15 머지~~ ✅ 완료(`14a881c`). **잔여 = VPS 수동 배포** — api·worker 는 자동배포가 아니다.
+   `docs/DEPLOYMENT.md` §배경제거 절차(디스크 점검 → 사이드카 빌드 → 예열 → **계약 스모크** →
+   플래그 ON)를 따라 수행하고, ⚠️ api recreate 후 **nginx 재시작 필수**(리터럴 proxy_pass).
 2. **샤드 3**: 편집기 연결 — `useImageStore.segmentImage` 시그니처 유지하고 내부만 잡 요청/폴링으로
    교체(AppClipping 호출부 무변경) + canvasData base64 → URL 참조 전환(=D-6b③ 완결) +
    **08-05 발견한 모양컷 진입 도달 불가 결함 동시 해소**.
