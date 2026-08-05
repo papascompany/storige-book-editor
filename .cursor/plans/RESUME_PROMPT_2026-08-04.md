@@ -81,7 +81,7 @@
 - **D-6b②③ 모두 승인** — ② 픽셀 캡은 양 아키텍처 공통이라 즉시 구현(아래), ③ dataURL→storage는
   클라 선행 구현 없이 **워커 잡 설계에 통합**(B 확정에 따른 중복 방지 재정렬).
 
-### 5-2. D-6b② 구현 — feat/d6b2-cutout-pixel-cap (PR #14)
+### 5-2. D-6b② 구현 — 머지 `4d1c2b1` (PR #14, ci+gitleaks success, 프로덕션 배포 완료)
 - canvas-core `utils/inferenceCap`(순수 모듈, 장변 2560) + `getForeground` 캡·스케일 보상
   (미적용 시 기존과 동일식 — 불변식 테스트) + AppClipping 업로드 가드(유일 무가드 경로).
 - ⚠️ 로컬 함정 재확인: fabric import 테스트는 canvas.node 미빌드로 스위트 4개 죽음(§3-3 기준선,
@@ -97,12 +97,30 @@
 5. 모달 보정 UX(브러쉬·표시모드 4종·모달 로컬 undo) — 기술설계 §3.5
 6. 칼선 핸드오프([S-P2B] 입력 계약)
 
+### 5-4. 프로덕션 배포 검증 (2026-08-05, 머지 `4d1c2b1` 직후)
+- 배포 Ready(51s) · master ci(test 2m52s)+gitleaks success.
+- **번들 실물 확인**(캡이 실제로 실렸는지): `canvas-core-CS6ZUXFI.js` 에 `const Dn=2560` +
+  `getForeground` 내 배선 확인 — `Hn(naturalW,naturalH)` → `engaged` 시 canvas
+  `drawImage`→`toDataURL` → `removeBackground(캡본)`. **소스 정합 증명 완료.**
+- S-E4 배지 회귀 없음: 동일 자산 참조 썸네일 2개가 같은 값(2), 신규 1장은 1 — 자산 키 집계 정합.
+- ⚠️ **실기 추론(캡 발동 런타임)은 여전히 미검증** — 아래 5-5 사유. 수식·불변식은 CI 단위 8건이 커버.
+
+### 5-5. 실기 중 발견 — 모양컷 배경제거 진입 도달 불가 (기존 결함, 이번 변경과 무관)
+`AppClipping.currentImage` 는 **컴포넌트 로컬 state**이고, 업로드 핸들러가 `hideSidePanel()` 로
+패널을 닫아 언마운트시킨다. 재진입 시 복원 effect가 있으나 `id==='innerItem' &&
+extensionType==='clipping'` 객체를 요구 — 책(BOOK) 템플릿에선 생성되지 않아 `currentImage`
+가 null 로 남고 '효과(배경제거)' 클릭이 **무반응**(early return)이다. 프로덕션 실측:
+12MP 합성 사진 업로드·렌더는 정상, 이후 효과 클릭 시 imgly 네트워크 요청 0건.
+→ Wave0의 "모양컷=미완 플로우" 판정과 일치. **D-6a=B 로 S-P2A가 이 진입점을 재구축하므로
+그 스코프에서 함께 해소**(별도 수정 안 함). 스티커/컷아웃 상품 세션에서는 재현 여부 재확인 필요.
+
 ## 6. 다음 안전 행동
-1. PR #14(D-6b②) CI 확인 → 머지(오너)
-2. S-P2A-B 샤드 1(워커 스택 스파이크)부터 착수 — 의존성 추가는 결정표로 상신
-3. S-E4 잔여(경미): 자동편집 채움 배지 정합 — 포토북 템플릿셋 세션에서 1회 실기
+1. S-P2A-B 샤드 1(워커 스택 스파이크)부터 착수 — 의존성 추가는 결정표로 상신
+2. S-E4 잔여(경미): 자동편집 채움 배지 정합 — 포토북 템플릿셋 세션에서 1회 실기
+3. 캡 실기: S-P2A 워커 전환 시 서버측에서 자연히 검증됨(클라 경로는 그때 교체)
 
 ## 7. 상태 스냅샷 (2026-08-05 오후)
-- master = `4e6c739`(docs) · 코드 최신 = S-E4 머지 `a2c5c1b` (전 서비스 LIVE)
-- 활성 브랜치: `feat/d6b2-cutout-pixel-cap`(PR #14 — D-6b②). s-e3/s-e4는 머지·삭제 완료
+- master = **`4d1c2b1`**(D-6b② 머지) · Vercel editor Production Ready · 전 서비스 LIVE
+- 작업 브랜치 3개(s-e3·s-e4·d6b2) 전부 머지·삭제 완료 — **코드 잔여 0**
+- ⚠️ 세션 중 모델 전환(→ claude-opus-5). 커밋 trailer 는 전환 이후 `Claude Opus 5` 사용
 - 워킹트리 기존 잔재(이 세션 무관·보존): RESUME_PROMPT_2026-07-30.md 수정본, docs/SHOPIFY_* untracked 8건
