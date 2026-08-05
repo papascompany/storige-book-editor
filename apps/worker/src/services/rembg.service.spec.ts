@@ -72,7 +72,7 @@ describe('RembgService', () => {
   });
 
   describe('removeBackground', () => {
-    it('multipart 규약대로 조립하고 모델을 쿼리로 붙인다', async () => {
+    it('multipart 규약대로 조립하고 모델을 **바디 필드**로 보낸다', async () => {
       process.env.REMBG_URL = 'http://rembg:7000';
       process.env.REMBG_ENDPOINT = '/api/remove';
       mockedAxios.post.mockResolvedValue(okResponse());
@@ -89,12 +89,17 @@ describe('RembgService', () => {
         Buffer,
         { headers: Record<string, string> },
       ];
-      expect(url).toBe('http://rembg:7000/api/remove?model=u2net');
+      // ★ 회귀 잠금: POST 는 model 을 쿼리로 받지 않는다(bgc·extras 만). 쿼리로 보내면
+      //   에러 없이 무시되고 기본 모델로 추론돼 결과 model 필드만 거짓이 된다(프로덕션 실적발).
+      expect(url).toBe('http://rembg:7000/api/remove');
+      expect(url).not.toContain('model=');
 
       const boundary = /boundary=(.+)$/.exec(config.headers['Content-Type'])?.[1];
       expect(boundary).toBeTruthy();
       const text = body.toString('latin1');
       expect(text.startsWith(`--${boundary}\r\n`)).toBe(true);
+      // model 파트가 바디에 실제로 들어갔는지 — 이게 빠지면 조용히 기본 모델로 돈다
+      expect(text).toContain('Content-Disposition: form-data; name="model"\r\n\r\nu2net\r\n');
       expect(text).toContain('Content-Disposition: form-data; name="file"; filename="input.png"');
       // 헤더와 본문 사이는 빈 줄 하나, 종료는 `--boundary--\r\n`
       expect(text).toContain('\r\n\r\nIMAGEBYTES\r\n');

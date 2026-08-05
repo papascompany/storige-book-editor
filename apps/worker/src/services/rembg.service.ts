@@ -97,10 +97,22 @@ export class RembgService {
    */
   async removeBackground(input: Buffer, requestedModel?: string): Promise<RemoveBackgroundResult> {
     const model = this.resolveModel(requestedModel);
-    const url = this.buildUrl(model);
+    const url = this.buildUrl();
 
     // multipart 는 손으로 조립한다 — 워커에 신규 의존(form-data 등)을 추가하지 않기 위함.
+    //
+    // ⚠️ **model 은 반드시 바디 필드다.** rembg 의 `GET /api/remove` 는 model 을 쿼리로 받지만
+    //    `POST /api/remove` 의 쿼리 파라미터는 bgc·extras 뿐이고 model 은 multipart 필드다
+    //    (OpenAPI 실측, v2.0.77). 쿼리로 보내면 **에러 없이 무시되고 기본 모델(u2net)로 추론**돼
+    //    결과는 정상처럼 보이는데 CutoutJobResult.model 만 거짓이 된다 — 라이선스 감사 추적
+    //    (D-12b)이 통째로 틀어지는 조용한 실패라, 실기 스모크에서만 잡혔다.
     const boundary = `----storige${uuidv4().replace(/-/g, '')}`;
+    const modelPart = Buffer.from(
+      `--${boundary}\r\n` +
+        `Content-Disposition: form-data; name="model"\r\n\r\n` +
+        `${model}\r\n`,
+      'utf8',
+    );
     const head = Buffer.from(
       `--${boundary}\r\n` +
         `Content-Disposition: form-data; name="file"; filename="input.png"\r\n` +
@@ -108,7 +120,7 @@ export class RembgService {
       'utf8',
     );
     const tail = Buffer.from(`\r\n--${boundary}--\r\n`, 'utf8');
-    const body = Buffer.concat([head, input, tail]);
+    const body = Buffer.concat([modelPart, head, input, tail]);
 
     let status: number;
     let data: Buffer;
@@ -160,11 +172,12 @@ export class RembgService {
     return { png: data, model };
   }
 
-  /** 대상 URL 조립 — 호스트/경로는 env 고정, 모델만 검증된 쿼리 파라미터로 붙인다. */
-  private buildUrl(model: string): string {
+  /**
+   * 대상 URL 조립 — 호스트·경로는 **오직 env** 에서만 온다(SSRF 가드).
+   * 모델은 쿼리가 아니라 multipart 바디 필드로 보낸다(removeBackground 주석 참조).
+   */
+  private buildUrl(): string {
     const ep = this.endpoint.startsWith('/') ? this.endpoint : `/${this.endpoint}`;
-    const url = new URL(`${this.baseUrl}${ep}`);
-    url.searchParams.set('model', model);
-    return url.toString();
+    return new URL(`${this.baseUrl}${ep}`).toString();
   }
 }

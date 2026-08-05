@@ -401,11 +401,16 @@ docker exec storige-worker sh -lc '
   head -c 100000 /dev/urandom > /tmp/noise.bin
   # 실제 PNG 로 테스트하려면 storage 의 업로드 이미지 하나를 쓰면 된다
   f=$(find /app/storage/uploads -name "*.png" | head -1); echo "input=$f"
+  # ⚠️ model 은 **쿼리가 아니라 폼 필드**다. POST /api/remove 의 쿼리 파라미터는 bgc·extras 뿐이라
+  #    ?model= 로 보내면 에러 없이 무시되고 기본 모델(u2net)로 추론된다(2026-08-05 프로덕션 실적발).
   curl -s -o /tmp/out.png -w "%{http_code} %{size_download}\n" \
-    -F "file=@$f" "http://rembg:7000/api/remove?model=birefnet-general"
+    -F "file=@$f" -F "model=birefnet-general" "http://rembg:7000/api/remove"
   file /tmp/out.png
 '
 # 기대: 200 + PNG image data (알파 채널). 422/500 이면 모델 키·extras 문제.
+
+# ★ 실제로 그 모델이 쓰였는지 캐시로 확인 — model 을 잘못 보내면 u2net.onnx 만 받아진다
+docker exec storige-rembg ls -la /home/rembg/.u2net/
 ```
 
 ### ③ 켜는 순서 (`CUTOUT_ENABLED`)
