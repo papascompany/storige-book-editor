@@ -40,8 +40,9 @@
 3. [로컬 개발 환경](#로컬-개발-환경)
 4. [프로덕션 배포](#프로덕션-배포)
 5. [환경 변수 설정](#환경-변수-설정)
-6. [모니터링 및 로깅](#모니터링-및-로깅)
-7. [문제 해결](#문제-해결)
+6. [배경제거(CUTOUT) 사이드카 — rembg](#배경제거cutout-사이드카--rembg)
+7. [모니터링 및 로깅](#모니터링-및-로깅)
+8. [문제 해결](#문제-해결)
 
 ---
 
@@ -63,7 +64,7 @@
 - **Node.js**: **22.x LTS** (Jod, EOL 2027-04-30)
 - **pnpm**: 9.x
 
-### Docker 컨테이너 구성 (총 11개)
+### Docker 컨테이너 구성 (기본 11개 + 선택 1개)
 
 | 카테고리 | 컨테이너 | 이미지 |
 |----------|----------|--------|
@@ -78,6 +79,7 @@
 | Monitoring | `storige-redis-exporter` | oliver006/redis_exporter:v1.66.0-alpine |
 | **Logging** (P2-10) | `storige-loki` | grafana/loki:3.2.1 |
 | Logging | `storige-promtail` | grafana/promtail:3.2.1 |
+| **선택** (S-P2A) | `storige-rembg` | python:3.12-slim + rembg 2.0.77 (자체 빌드) — compose profile `cutout` 로만 기동. [배경제거 사이드카](#배경제거cutout-사이드카--rembg) 참조 |
 
 ---
 
@@ -334,6 +336,176 @@ MAX_FILE_SIZE=52428800
 MAX_RETRY_ATTEMPTS=3
 GHOSTSCRIPT_PATH=/usr/bin/gs
 ```
+
+---
+
+## 배경제거(CUTOUT) 사이드카 — rembg
+
+> 신규 (2026-08, S-P2A). 에디터 이미지 배경제거(CUTOUT) 잡의 **추론 전용** 컨테이너.
+> **기본은 꺼져 있다** — `CUTOUT_ENABLED=false`(미설정=꺼짐) + compose profile `cutout` 미기동.
+> 아무 것도 하지 않으면 기존 스택 동작은 완전히 동일하다.
+
+### 왜 별도 컨테이너인가
+
+워커 이미지 베이스가 `node:24-alpine`(musl)이라 `onnxruntime-node` 계열은 **설치는 성공하고 런타임 `import` 에서 터진다**(실측 확인). 그래서 워커에는 ML 네이티브 의존을 일절 넣지 않고, 추론은 glibc 기반 python 사이드카(`storige-rembg`)가 HTTP 로 전담한다. 워커 → 사이드카 호출은 compose 내부 네트워크의 `http://rembg:7000` 이다.
+
+> 🔒 **`ports:` 매핑이 없는 것은 의도**다. Docker 포트 매핑은 ufw 를 우회하고(2026-07-13 Redis, 2026-07-30 :4000/:4001/:3000 실적발), rembg 서버는 **무인증**이며 경로 순회 CVE 이력이 있다. 정당 소비자는 워커뿐이므로 절대 공인 바인딩하지 말 것. 디버깅은 `docker exec` 또는 SSH 터널.
+
+### ① 이미지 빌드 · 기동
+
+```bash
+ssh deploy@<host>
+cd ~/storige && git pull origin master
+
+# ★ 선행: 디스크 헤드룸 확인 — 이 이미지는 GB 급이고 모델 가중치가 추가로 쌓인다.
+#   실측(2026-08) 프로덕션은 / 사용률 85%, docker build cache 만 90GB 회수 가능이었다.
+df -h /
+docker system df
+docker builder prune -f          # 여유가 20GB 미만이면 반드시 선행
+
+# profile 을 지정해야 빌드/기동된다 (기본 up -d 에는 포함되지 않음)
+docker compose --profile cutout up -d --build rembg
+
+# 상태 확인 (healthy 까지 최대 ~1분: start_period 60s)
+docker compose --profile cutout ps rembg
+docker logs --tail 50 storige-rembg
+```
+
+> ⚠️ **"전체 재배포"(`docker compose up -d --build`)는 rembg 를 재빌드·재기동하지 않는다.** profile 뒤에 있기 때문. 배경제거 관련 변경 후에는 위 `--profile cutout` 명령을 **따로** 실행할 것.
+
+### ② 최초 요청 시 모델 가중치 다운로드가 일어난다
+
+rembg 는 가중치를 이미지에 담지 않고 **첫 추론 시점에 내려받는다**(`U2NET_HOME=/home/rembg/.u2net`). 기본 모델 `birefnet-general` 은 fp32 ONNX **약 973MB** 라, 예열하지 않으면 첫 CUTOUT 잡이 다운로드 시간까지 떠안아 `REMBG_TIMEOUT_MS`(기본 180000) 안에 못 끝날 수 있다.
+
+캐시는 named volume `rembg_models` 에 남으므로 **컨테이너 재생성해도 다시 받지 않는다**. 켜기 전에 한 번 예열해 둘 것:
+
+```bash
+# 모델 사전 다운로드(예열) — 진행 로그가 뜬다
+docker exec storige-rembg python3 -c "from rembg import new_session; new_session('birefnet-general')"
+
+# 사이드카 도달 확인 (워커 컨테이너에서 내부 네트워크로)
+docker exec storige-worker wget -qO- http://rembg:7000/api > /dev/null && echo "rembg reachable"
+
+# 캐시 확인
+docker exec storige-rembg ls -lh /home/rembg/.u2net
+```
+
+### ②-b 사이드카 계약 스모크 (플래그 켜기 전에 1회)
+
+healthcheck 는 FastAPI 문서 라우트(`/api`)만 친다 — **실제 배경제거 라우트가 도는지는 검증하지 않는다.**
+모델 키 오타·extras 누락(`[cli]` 만 설치하면 서버는 뜨고 추론에서만 죽는다)은 이 단계에서만 잡힌다.
+
+```bash
+# 워커 컨테이너 안에서 내부망으로 호출 (rembg 는 외부 포트가 없다)
+docker exec storige-worker sh -lc '
+  head -c 100000 /dev/urandom > /tmp/noise.bin
+  # 실제 PNG 로 테스트하려면 storage 의 업로드 이미지 하나를 쓰면 된다
+  f=$(find /app/storage/uploads -name "*.png" | head -1); echo "input=$f"
+  curl -s -o /tmp/out.png -w "%{http_code} %{size_download}\n" \
+    -F "file=@$f" "http://rembg:7000/api/remove?model=birefnet-general"
+  file /tmp/out.png
+'
+# 기대: 200 + PNG image data (알파 채널). 422/500 이면 모델 키·extras 문제.
+```
+
+### ③ 켜는 순서 (`CUTOUT_ENABLED`)
+
+**반드시 사이드카가 healthy 해진 뒤에** 플래그를 켠다. 순서를 뒤집으면 잡이 생성되고 사이드카가 없어 `ECONNREFUSED` 로 실패한다.
+
+```bash
+# 1) 사이드카 기동·예열 (위 ①②) 후 healthy 확인
+docker inspect -f '{{.State.Health.Status}}' storige-rembg   # → healthy
+
+# 2) .env 에 플래그 추가
+nano ~/storige/.env
+#   CUTOUT_ENABLED=true
+#   (선택) REMBG_MODEL=birefnet-general  REMBG_TIMEOUT_MS=180000  REMBG_MEM_LIMIT=3g
+
+# 3) api + worker 재기동 → ⚠️ api 가 recreate 되면 nginx 재시작 필수(리터럴 proxy_pass 고정 IP 트랩)
+#    ★ worker 를 빠뜨리면 잡은 생성되는데 전건 FAILED 가 된다(플래그는 양쪽 모두 필요).
+docker compose up -d api worker && docker compose restart nginx
+
+# 4) 주입 확인 (.env 에만 넣고 compose environment 매핑이 없으면 silent no-op — 이 레포 실적발 3회)
+docker exec storige-api printenv CUTOUT_ENABLED         # → true
+docker exec storige-worker printenv CUTOUT_ENABLED      # → true  (★ 이게 비면 전건 실패)
+docker exec storige-worker printenv REMBG_URL REMBG_MODEL
+```
+
+### ④ 롤백 (즉시 원상복구)
+
+```bash
+# 1) 플래그 off → 신규 CUTOUT 잡 생성 중단
+nano ~/storige/.env      # CUTOUT_ENABLED=false
+docker compose up -d api && docker compose restart nginx
+
+# 2) 사이드카 중지 (이미지·모델 캐시는 보존 → 재기동이 빠르다)
+docker compose --profile cutout stop rembg
+
+# 3) 완전 제거가 필요하면 (모델 캐시 볼륨까지)
+docker compose --profile cutout rm -sf rembg
+docker volume rm storige_rembg_models     # ⚠️ 다음 기동 시 ~973MB 재다운로드
+```
+
+플래그가 `false` 인 동안 나머지 파이프라인(검증·변환·합성)은 영향받지 않는다.
+
+### ⑤ 산출물 보존기간 — 자동 정리된다
+
+컷아웃 결과 PNG 는 `/app/storage/cutouts/<jobId>/` 에 쌓인다. 생성 라우트가 무인증(`@Public`)이라
+정리 주체가 없으면 디스크 소진 경로가 되므로, API 에 정리 cron 이 함께 들어가 있다
+(`CutoutOutputsRetentionService`, 매시 53분, **기본 7일** 경과분 삭제).
+
+```bash
+# 보존기간 조정(선택) — .env
+#   CUTOUT_RETENTION_DAYS=7
+# 현재 누적량 확인
+du -sh ~/storige/storage/cutouts 2>/dev/null
+```
+
+⚠️ 이 정리는 `worker_jobs.options.cutoutOutputsPurgedAt` 마커로 재처리를 막는다. 산출물을 손으로
+지웠다면 마커가 없어 다음 사이클에 한 번 더 `rm -rf`(force)가 돌 뿐 무해하다.
+
+### ⑥ ⚠️ 모델 라이선스 주의 — 가중치마다 조건이 다르다
+
+**rembg 본체는 MIT 지만, 다운로드되는 가중치는 각 원저작 프로젝트의 라이선스를 따른다.** 상업 서비스(인쇄 판매)에 쓰는 이상 모델을 바꿀 때마다 라이선스를 확인해야 한다.
+
+| `REMBG_MODEL` 값 | 원저작 | 라이선스 | 판단 |
+|---|---|---|---|
+| **`birefnet-general`** (기본값) | [ZhengPeng7/BiRefNet](https://github.com/ZhengPeng7/BiRefNet) | **MIT** (공개 데이터셋 DIS5K 학습분) | ✅ 상업 사용 가능. fp32 ONNX ≈973MB, 입력 1024². 품질 상위 티어 |
+| `birefnet-general-lite` | 동일 | **MIT** | ✅ swin_v1_tiny 백본 — 메모리·지연 대폭 감소, 품질 소폭 하락. 8GB 박스 상시 ON 시 1순위 대안 |
+| `u2net` | [xuebinqin/U-2-Net](https://github.com/xuebinqin/U-2-Net) | **Apache-2.0** | ✅ 최경량 폴백. 품질은 가장 낮음 |
+| `bria-rmbg` | BRIA AI RMBG-1.4 | **비상업 전용** | ❌ **사용 금지** |
+| `u2net_custom` / `dis_custom` / `ben_custom` | (외부 가중치 경로 지정) | — | ❌ **지정 금지** — `model_path` 가 CVE-2026-40086 경로 순회 벡터 |
+
+**기본값을 `birefnet-general` 로 정한 근거**: 오너가 원한 **BEN2 는 rembg 2.0.77 내장 세션 목록에 없다**(경로를 직접 넘기는 `ben_custom` 만 존재 = 위 금지 항목). 같은 의도(MIT · 품질 상위 티어)에 가장 가까운 내장 모델이 `birefnet-general` 이라 이를 채택했고, **모델 교체는 `REMBG_MODEL` 값 하나만 바꾸면 된다**(코드 변경 없음).
+
+```bash
+# 모델 교체 예 (경량 전환)
+nano ~/storige/.env       # REMBG_MODEL=birefnet-general-lite / REMBG_MEM_LIMIT=1g
+docker compose up -d worker
+docker compose --profile cutout up -d rembg
+docker exec storige-rembg python3 -c "from rembg import new_session; new_session('birefnet-general-lite')"
+```
+
+### 환경 변수
+
+| 변수 | 대상 컨테이너 | 기본값 | 설명 |
+|---|---|---|---|
+| `CUTOUT_ENABLED` | **api · worker** | `false` | 기능 플래그. **양쪽 모두** 필요하다 — 워커에 빠지면 API 는 잡을 접수하는데 워커가 전건 FAILED 로 떨어뜨린다. 값은 `true` 또는 `1` |
+| `CUTOUT_MAX_INPUT_PIXELS` | worker | `40000000` | 디코드 픽셀 예산(40MP). 바이트 상한을 통과하는 대형 저압축 이미지 차단 |
+| `CUTOUT_RETENTION_DAYS` | api | `7` | 산출물 보존기간. 정리 cron 은 API 에 있다 |
+| `REMBG_URL` | worker | `http://rembg:7000` | 사이드카 베이스 URL(내부 네트워크) |
+| `REMBG_ENDPOINT` | worker | `/api/remove` | rembg 추론 엔드포인트(POST=multipart `file`, `model` 파라미터) |
+| `REMBG_MODEL` | worker | `birefnet-general` | 모델 교체 지점 (위 라이선스 표 참조) |
+| `REMBG_TIMEOUT_MS` | worker | `180000` | 사이드카 왕복 타임아웃. 예열 후 하향 가능 |
+| `CUTOUT_MAX_INPUT_BYTES` | worker | `31457280` (30MB) | 사이드카로 올릴 원본 이미지 상한 |
+| `REMBG_MEM_LIMIT` | rembg | `3g` | 컨테이너 메모리 상한 |
+| `REMBG_THREADS` | rembg | `2` | uvicorn 워커 스레드 |
+| `REMBG_OMP_NUM_THREADS` | rembg | `2` | ONNX Runtime 스레드 |
+| `REMBG_LOG_LEVEL` | rembg | `info` | rembg 서버 로그 레벨 |
+
+> ⚠️ **메모리 예산**: 기본 모델(973MB fp32) 세션 초기화 + 1024² 추론까지 고려해 `mem_limit` 을 3g 로 잡았다. worker 기본 4g 와 **동시 피크** 시 8GB 박스가 빠듯하므로, 상시 ON 운영으로 넘어가기 전에 `REMBG_MODEL=birefnet-general-lite` + `REMBG_MEM_LIMIT=1g` 또는 `WORKER_MEM_LIMIT` 하향을 검토할 것. OOM 시 `docker inspect -f '{{.State.OOMKilled}}' storige-rembg` 로 확인된다.
+
+**출처**: [rembg README](https://github.com/danielgatis/rembg) · [CVE-2026-40086 (GHSA-3wqj-33cg-xc48)](https://github.com/advisories/GHSA-3wqj-33cg-xc48) · [rembg PyPI](https://pypi.org/project/rembg/)
 
 ---
 
