@@ -57,10 +57,28 @@
 - 머지 시점 master 에 병행 세션 커밋 2건(`5e95a20` api lint 게이트, `d481728` 멀티테넌시 P3b) 선착 — 충돌 없음
 - Vercel editor Production Ready(51s) · master ci+gitleaks success · 라이브 패널 실측 확인
 
-## 4. 다음 안전 행동
-1. fe-qa 3뷰포트(모바일 퍼스트) 실기 확인 — 프리셋 그리드가 좁은 패널에서 2열 유지 여부
-2. 이후 타순: **[S-E4] 사진 사용 횟수 배지** (독립·선행 없음)
+## 4. 후속 완료 (2026-08-05 오전) — fe-qa + [S-E4]
 
-## 5. 상태 스냅샷
-- master = `18c4a2e` (origin 동기) · 작업 브랜치 삭제됨(로컬·원격)
+### 4-1. fe-qa 3뷰포트 (S-E3 프리셋 UI, 프로덕션 실측)
+모바일 375(드로어)·태블릿 768·데스크톱 1280 전부 통과 — 곡선 프리셋 2열 그리드 유지, 콘솔 에러 0.
+⚠️ 브라우저 팬 함정: 팬 숨김 상태에서 computer 클릭이 30s 타임아웃 — `javascript_tool` 로
+`button[title="…"]` 클릭 우회(도구 버튼 라벨은 aria-label 아닌 **title 속성**).
+
+### 4-2. [S-E4] 사진 사용 횟수 배지 (PR #13 → 머지 `a2c5c1b` → 프로덕션 배포)
+- **부분 기보유 정정**: 공유방(외부) 사진 '사용됨' 체크+'안 쓴 사진' 필터는 D1 기보유였다.
+  실제 격차 = 횟수 표시 · '내 업로드' 탭 부재 · O(사진×객체) 집계 병목.
+- `utils/photoUsage` 1패스 집계(그룹 중첩·이중 키 합산) · 양 탭 오렌지 배지+필터 ·
+  undo/redo 구독+300ms 디바운스+늦은 페이지 재구독 · 구 `isPhotoUsed` @deprecated.
+- 업로드 객체 `storagePhotoUrl` 링크(화면 전용·비직렬화) — 자동편집 채움(src=storage URL)과
+  패널 dataURL 키 정합. **자동편집 실기(storage API 필요)는 미검증 잔여.**
+- 검증: editor 565 green(신규 13·성능 가드) · dev 실기 DnD 주입으로 배지→필터→undo 전 사이클.
+
+## 5. 다음 안전 행동
+1. 이후 타순(edicus 트랙): **[S-P2A]** 컷아웃 편집 UX — 선행 Wave 0 실측 완료(F8),
+   오너 미결 D-6b②③(컷아웃 경량화) 확인 후 착수
+2. S-E4 잔여(경미): 자동편집 채움 사진 배지 정합 실기 — storage API 살아있는 환경에서 1회
+
+## 6. 상태 스냅샷 (2026-08-05 오전)
+- master = `a2c5c1b` (S-E4 머지, ci+gitleaks success, Vercel editor Production Ready)
+- 작업 브랜치 2개(s-e3/s-e4) 모두 머지·삭제 완료(로컬·원격)
 - 워킹트리 기존 잔재(이 세션 무관·보존): RESUME_PROMPT_2026-07-30.md 수정본, docs/SHOPIFY_* untracked 8건
