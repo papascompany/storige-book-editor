@@ -1,5 +1,6 @@
 import {
   Controller,
+  ParseUUIDPipe,
   Get,
   Post,
   Body,
@@ -13,6 +14,8 @@ import {
   Logger,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery, ApiSecurity } from '@nestjs/swagger';
+import { ConfigService } from '@nestjs/config';
+import { Throttle } from '@nestjs/throttler';
 import { Response } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -23,6 +26,7 @@ import {
   CreateConversionJobDto,
   CreatePageCountFixJobDto,
   CreateSynthesisJobDto,
+  CreateCutoutJobDto,
   UpdateJobStatusDto,
 } from './dto/worker-job.dto';
 import { CreateSplitSynthesisJobDto } from './dto/create-split-synthesis-job.dto';
@@ -38,9 +42,40 @@ import { TenantGuard } from '../auth/guards/tenant.guard';
 import { CurrentScope } from '../auth/decorators/tenant-scope.decorator';
 import { TenantScope } from '../common/helpers/tenant-scope.helper';
 import { ApiKeyGuard } from '../auth/guards/api-key.guard';
+// 컷아웃 @Public 라우트의 테넌트 복원(서명 검증된 shop-session JWT 한정).
+import { OptionalShopJwtGuard } from '../auth/guards/optional-shop-jwt.guard';
 import { CurrentSite, CurrentSitePayload } from '../auth/decorators/current-site.decorator';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Public } from '../auth/decorators/public.decorator';
-import { UserRole, WorkerJobStatus, WorkerJobType } from '@storige/types';
+import { UserRole, WorkerJobStatus, WorkerJobType, CutoutJobResult } from '@storige/types';
+
+/**
+ * 컷아웃 실패 사유의 사용자 표시 문구 (2026-08-05).
+ *
+ * 워커 원문 errorMessage 는 시스템 예외 문자열이라 내부 IP·절대경로가 실린다.
+ * `GET /worker-jobs/:id/cutout-status` 는 무인증 라우트이므로 원문을 그대로 내보내지 않고
+ * errorCode 로 분류된 고정 문구만 준다. 진단 원문은 워커 로그·Sentry 에 그대로 남는다.
+ */
+function toCutoutUserMessage(
+  errorCode: string | null | undefined,
+  raw: string | null | undefined,
+): string | null {
+  if (!raw && !errorCode) return null;
+  switch (errorCode) {
+    case 'CUTOUT_INPUT_TOO_LARGE':
+      return '이미지가 너무 커서 배경을 제거할 수 없습니다. 더 작은 이미지로 다시 시도해 주세요.';
+    case 'CUTOUT_UNSUPPORTED_FORMAT':
+      return '지원하지 않는 이미지 형식입니다. PNG·JPEG·WebP 파일을 사용해 주세요.';
+    case 'CUTOUT_DISABLED':
+      return '배경 제거 기능이 현재 비활성화되어 있습니다.';
+    case 'INVALID_OUTPUT_OPTIONS':
+      return '배경 제거 설정이 올바르지 않습니다.';
+    case 'SERVICE_UNAVAILABLE':
+      return '배경 제거 서비스를 일시적으로 사용할 수 없습니다. 잠시 후 다시 시도해 주세요.';
+    default:
+      return '배경 제거에 실패했습니다. 잠시 후 다시 시도해 주세요.';
+  }
+}
 
 @ApiTags('Worker Jobs')
 @ApiBearerAuth()
@@ -48,7 +83,26 @@ import { UserRole, WorkerJobStatus, WorkerJobType } from '@storige/types';
 export class WorkerJobsController {
   private readonly logger = new Logger(WorkerJobsController.name);
 
-  constructor(private readonly workerJobsService: WorkerJobsService) {}
+  constructor(
+    private readonly workerJobsService: WorkerJobsService,
+    private readonly configService: ConfigService,
+  ) {}
+
+  /**
+   * 컷아웃 기능 플래그 — `CUTOUT_ENABLED` (**기본 false**, 미설정=꺼짐).
+   * 꺼져 있으면 컷아웃 라우트는 404 로 응답해 기능의 존재 자체를 숨긴다.
+   */
+  private assertCutoutEnabled(): void {
+    const raw = String(this.configService.get<string>('CUTOUT_ENABLED') ?? '')
+      .trim()
+      .toLowerCase();
+    if (raw !== 'true' && raw !== '1') {
+      throw new NotFoundException({
+        code: 'NOT_FOUND',
+        message: 'Cannot resolve route',
+      });
+    }
+  }
 
   // ============================================================================
   // Create Jobs (Queue Operations)
@@ -248,6 +302,104 @@ export class WorkerJobsController {
     @Body() dto: CreateBleedFixJobDto,
   ): Promise<WorkerJob> {
     return await this.workerJobsService.createBleedFixJob(dto);
+  }
+
+  // ============================================================================
+  // Cutout (배경제거 서버 오프로드) — S-P2A-B, 2026-08-05
+  // ============================================================================
+
+  /**
+   * 배경제거(컷아웃) 잡 생성.
+   *
+   * 게스트 편집기가 직접 호출한다(@Public + OptionalShopJwtGuard — 검증된 shop-session 이
+   * 있을 때만 테넌트 컨텍스트 복원, 없으면 그대로 통과). 잡의 siteId 는 body 가 아니라
+   * **원본 파일에서 승계**하므로 무인증 임의 테넌트 스탬프 통로가 없다.
+   *
+   * 🔒 @Throttle 10/min — 배경제거는 잡당 수백 MB~GB 를 쓰는 **무인증 컴퓨트**다.
+   *    전역 300/min 으로는 단일 IP 가 사이드카를 포화시켜 인쇄 파이프라인까지 굶긴다.
+   *
+   * 폴링: `GET /worker-jobs/:id/cutout-status` (기존 `GET /worker-jobs/:id` 는 JWT 필수라
+   *       게스트가 401 — 그래서 전용 조회 라우트를 둔다).
+   */
+  @Post('cutout')
+  @Public()
+  @UseGuards(OptionalShopJwtGuard)
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  @ApiOperation({ summary: '배경제거(컷아웃) 잡 생성 — CUTOUT_ENABLED=true 일 때만' })
+  @ApiResponse({ status: 201, description: '잡 생성 성공' })
+  @ApiResponse({ status: 400, description: '비이미지 MIME / 비허용 모델 키' })
+  @ApiResponse({ status: 404, description: '파일 미존재 또는 기능 비활성(CUTOUT_ENABLED)' })
+  async createCutoutJob(
+    @Body() dto: CreateCutoutJobDto,
+    @CurrentUser() user?: { siteId?: string; role?: string; source?: string },
+  ): Promise<{ id: string; status: WorkerJobStatus }> {
+    this.assertCutoutEnabled();
+
+    // 검증된 shop-session 이 있을 때만 테넌트 컨텍스트로 넘긴다 — 서비스가 이 값으로
+    // 입력 파일의 site 를 대조한다(없으면 site 스탬프된 파일은 404 = confused deputy 차단).
+    const caller =
+      user?.source === 'shop' && typeof user?.siteId === 'string'
+        ? { siteId: user.siteId }
+        : undefined;
+    const job = await this.workerJobsService.createCutoutJob(dto, caller);
+
+    // ⚠️ 잡 엔티티를 그대로 반환하면 무인증 응답에 siteId(파일 소유 테넌트)와
+    //    inputFileUrl(내부 절대 저장경로)이 실린다 — 아래 조회 라우트와 동일하게 좁게 투영한다.
+    return { id: job.id, status: job.status };
+  }
+
+  /**
+   * 컷아웃 잡 상태·결과 폴링 (게스트 도달 가능).
+   *
+   * ⚠️ `jobType === CUTOUT` 인 잡만 응답하고 그 외는 404 — 무인증 라우트로 다른 잡 타입의
+   *    정보가 새지 않게 하고, 타입 불일치도 미존재와 같은 404 로 존재 오라클을 차단한다.
+   * ⚠️ 응답은 좁은 투영(id/status/result/error/completedAt)만 — 잡 엔티티를 그대로 주면
+   *    siteId·inputFileUrl 같은 테넌트 메타데이터가 무인증 표면에 노출된다.
+   * ⚠️ 기존 `GET /worker-jobs/:id` 의 인증은 건드리지 않는다(회귀 위험).
+   *
+   * @Throttle 120/min — 생성(10/min)보다 넉넉한 이유: 편집기 폴링이 1.5초 간격(=40회/분)이라
+   *   60/min 이면 한 잡이 1분을 넘기는 순간 폴링이 스스로 429 로 끊긴다. 잡 1건 조회는 인덱스
+   *   PK 조회 1회라 비용이 낮으므로, 컴퓨트를 여는 POST 만 좁게 잠근다.
+   */
+  @Get(':id/cutout-status')
+  @Public()
+  @UseGuards(OptionalShopJwtGuard)
+  @Throttle({ default: { limit: 120, ttl: 60000 } })
+  @ApiOperation({ summary: '컷아웃 잡 상태 조회 (CUTOUT 잡 한정, 그 외 404)' })
+  @ApiResponse({ status: 200, description: '잡 상태/결과' })
+  @ApiResponse({ status: 404, description: '잡 미존재·비CUTOUT 잡·기능 비활성' })
+  async getCutoutStatus(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user?: { siteId?: string; role?: string; source?: string },
+  ): Promise<{
+    id: string;
+    status: WorkerJobStatus;
+    result: CutoutJobResult | null;
+    errorCode: string | null;
+    errorMessage: string | null;
+    completedAt: Date | null;
+  }> {
+    this.assertCutoutEnabled();
+
+    // 검증된 shop-session 이 있을 때만 테넌트 격리 근거로 넘긴다(없으면 undefined = 기존 통과).
+    const caller =
+      user?.source === 'shop' && typeof user?.siteId === 'string'
+        ? { siteId: user.siteId }
+        : undefined;
+    const job = await this.workerJobsService.findCutoutJob(id, caller);
+
+    return {
+      id: job.id,
+      status: job.status,
+      // 워커가 넣는 값의 런타임 형상은 CutoutJobResult(계약) — 엔티티 컬럼은 json(any).
+      result: (job.result as CutoutJobResult | null) ?? null,
+      errorCode: job.errorCode,
+      // ⚠️ 워커 원문 errorMessage 를 그대로 주면 안 된다 — 무인증 표면에 내부 정보가 샌다
+      //    (예: `connect ECONNREFUSED <도커 내부 IP>:7000`, `ENOENT /app/storage/uploads/...`).
+      //    사용자에게는 errorCode 기반 고정 문구만 주고, 원문은 워커 로그·Sentry 에 남는다.
+      errorMessage: toCutoutUserMessage(job.errorCode, job.errorMessage),
+      completedAt: job.completedAt,
+    };
   }
 
   /**

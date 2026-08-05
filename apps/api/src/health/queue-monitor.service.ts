@@ -2,7 +2,7 @@
  * Bull 큐 적체 / 실패 감시 서비스
  *
  * 정책:
- *  - 매 1분마다 3개 큐의 상태를 체크
+ *  - 매 1분마다 등록된 큐(pdf-validation/conversion/synthesis + image-cutout)의 상태를 체크
  *  - waiting + active 가 임계치 초과 → 적체 알람 (Sentry warning + 콘솔)
  *  - failed 누적 카운트가 직전 체크 대비 증가 → 실패 알람 (Sentry error)
  *  - 1번 알람 후 쿨다운 5분 (스팸 방지)
@@ -13,10 +13,11 @@
  *  - QUEUE_MONITOR_INTERVAL_MS — 체크 주기 ms (기본: 60000)
  *  - QUEUE_MONITOR_COOLDOWN_MS — 쿨다운 ms (기본: 300000 = 5분)
  */
-import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, Logger, Optional, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
 import * as Sentry from '@sentry/node';
+import { CUTOUT_QUEUE_NAME } from '@storige/types';
 
 export interface QueueState {
   waiting: number;
@@ -65,12 +66,19 @@ export class QueueMonitorService implements OnModuleInit, OnModuleDestroy {
     'pdf-validation': { prevFailed: 0, lastBacklogAlertAt: 0, lastFailedAlertAt: 0 },
     'pdf-conversion': { prevFailed: 0, lastBacklogAlertAt: 0, lastFailedAlertAt: 0 },
     'pdf-synthesis': { prevFailed: 0, lastBacklogAlertAt: 0, lastFailedAlertAt: 0 },
+    // 컷아웃(2026-08-05 S-P2A-B) — 큐 미주입이면 queueMap 이 순회하지 않아 no-op.
+    [CUTOUT_QUEUE_NAME]: { prevFailed: 0, lastBacklogAlertAt: 0, lastFailedAlertAt: 0 },
   };
 
   constructor(
     @InjectQueue('pdf-validation') private validationQueue: Queue,
     @InjectQueue('pdf-conversion') private conversionQueue: Queue,
     @InjectQueue('pdf-synthesis') private synthesisQueue: Queue,
+    // 컷아웃 큐. @Optional 인 이유는 health.controller 주석 참조 —
+    // 미주입이면 적체/실패 알람 대상에서 image-cutout 만 빠진다.
+    @Optional()
+    @InjectQueue(CUTOUT_QUEUE_NAME)
+    private readonly cutoutQueue?: Queue,
   ) {}
 
   onModuleInit(): void {
@@ -82,6 +90,13 @@ export class QueueMonitorService implements OnModuleInit, OnModuleDestroy {
     this.logger.log(
       `Queue monitor started — interval=${this.intervalMs}ms, backlogThreshold=${this.backlogThreshold}, cooldown=${this.cooldownMs}ms`,
     );
+    // 관측 구멍의 침묵 마스킹 방지(metrics.service 와 동일 사유).
+    if (!this.cutoutQueue) {
+      this.logger.warn(
+        `[cutout] ${CUTOUT_QUEUE_NAME} 큐 미주입 — HealthModule 의 BullModule.registerQueue 배선을 ` +
+          '확인하세요. 컷아웃 큐의 적체/실패 알람이 동작하지 않습니다.',
+      );
+    }
 
     // 초기 1회는 prevFailed 베이스라인만 채움 (알람 안 보냄)
     this.bootstrap().catch((err) => this.logger.error('Bootstrap failed', err));
@@ -163,6 +178,10 @@ export class QueueMonitorService implements OnModuleInit, OnModuleDestroy {
       ['pdf-validation', this.validationQueue],
       ['pdf-conversion', this.conversionQueue],
       ['pdf-synthesis', this.synthesisQueue],
+      // 큐 미배선 시 순회 대상에서 제외(존재하지 않는 큐를 0 으로 보고하지 않는다).
+      ...(this.cutoutQueue
+        ? ([[CUTOUT_QUEUE_NAME, this.cutoutQueue]] as [string, Queue][])
+        : []),
     ];
   }
 

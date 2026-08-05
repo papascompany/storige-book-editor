@@ -672,6 +672,13 @@ export enum WorkerJobType {
    * 최종 인쇄엔 미반영(원본 PDF 그대로). 워커 GS pdfToImage 재사용.
    */
   RENDER_PAGES = 'RENDER_PAGES',
+  /**
+   * 배경제거(컷아웃) 서버 오프로드 (2026-08-05, D-6a=B·D-12a=C).
+   * 큐 `image-cutout` / 잡명 `remove-background` / 동시성 1.
+   * 추론은 워커 프로세스가 아니라 rembg 사이드카 컨테이너가 수행한다
+   * (워커 베이스가 Alpine/musl 이라 onnxruntime-node 계열을 적재할 수 없음 — 스파이크 §1-1).
+   */
+  CUTOUT = 'CUTOUT',
 }
 
 export enum WorkerJobStatus {
@@ -681,6 +688,93 @@ export enum WorkerJobStatus {
   /** 오류가 있으나 모두 자동 수정 가능한 경우 (예: 블리드 미설정, 여백 페이지 부족) */
   FIXABLE = 'FIXABLE',
   FAILED = 'FAILED',
+}
+
+// ----------------------------------------------------------------------------
+// Cutout (배경제거) — 서버 오프로드 계약 (2026-08-05, S-P2A-B 샤드2)
+// ----------------------------------------------------------------------------
+
+/** 컷아웃 큐 이름 — API 프로듀서와 워커 컨슈머의 단일 진실 공급원 */
+export const CUTOUT_QUEUE_NAME = 'image-cutout';
+/** 컷아웃 잡 이름 */
+export const CUTOUT_JOB_NAME = 'remove-background';
+
+/**
+ * 배경제거 추론 입력 픽셀 캡 — 장변 상한 (D-6b②).
+ *
+ * 세그멘테이션 모델은 내부 고정 해상도(예: 1024²)로 추론하고 마스크를 "입력 해상도"로
+ * 업스케일하므로, 12MP 원본을 그대로 넣으면 품질 이득 없이 피크 메모리만 폭증한다
+ * (클라 실측 500~800MB). 장변 2560 사전 다운스케일은 인쇄 해상도로 충분하면서
+ * 메모리·전송량 상한을 만든다. 클라(브라우저)·워커(서버) 양쪽이 같은 값을 쓴다.
+ */
+export const CUTOUT_MAX_LONG_EDGE = 2560;
+
+export interface InferenceCapResult {
+  targetWidth: number;
+  targetHeight: number;
+  /** false = 캡 미적용(원본 그대로 사용해야 함) */
+  engaged: boolean;
+}
+
+/**
+ * 픽셀 캡 계산(순수 함수) — 장변이 maxLongEdge 를 넘으면 비율 유지 축소 치수 반환.
+ * 브라우저/노드 공용이라 DOM·fabric 무의존이어야 한다.
+ */
+export function computeInferenceCap(
+  width: number,
+  height: number,
+  maxLongEdge: number = CUTOUT_MAX_LONG_EDGE,
+): InferenceCapResult {
+  const w = Math.max(1, Math.floor(width));
+  const h = Math.max(1, Math.floor(height));
+  const longEdge = Math.max(w, h);
+  if (longEdge <= maxLongEdge) {
+    return { targetWidth: w, targetHeight: h, engaged: false };
+  }
+  const ratio = maxLongEdge / longEdge;
+  return {
+    targetWidth: Math.max(1, Math.round(w * ratio)),
+    targetHeight: Math.max(1, Math.round(h * ratio)),
+    engaged: true,
+  };
+}
+
+/**
+ * 컷아웃 잡 페이로드 (Bull queue payload).
+ * ⚠️ 큐 페이로드는 명시 구성이다 — 필드 추가 시 API 생성부·워커 컨슈머를 동시에 고쳐야 한다.
+ */
+export interface CutoutJobData {
+  jobId: string;
+  /** 입력 이미지 위치 — '/storage/...' 상대 URL 또는 's3 마커(api://<fileId>)' */
+  fileUrl: string;
+  /** 원본 파일 ID — 추적·재편집 라운드트립용 */
+  sourceFileId?: string;
+  /** 추론 입력 장변 상한(px). 미지정 시 워커가 CUTOUT_MAX_LONG_EDGE 적용 */
+  maxLongEdge?: number;
+  /**
+   * 배경제거 모델 키(rembg 세션명). 미지정 시 워커 env `REMBG_MODEL`.
+   * ⚠️ 라이선스가 모델마다 다르다 — 상업 사용 가부는 D-12b 결정표 참조.
+   * 런타임 교체가 가능해야 한다는 것이 오너 결정의 완화 조건이다.
+   */
+  model?: string;
+}
+
+/** 컷아웃 잡 결과 — worker_jobs.result 에 그대로 저장되고 편집기가 소비한다 */
+export interface CutoutJobResult {
+  /** 배경 제거 결과 PNG(알파) 상대 URL — '/storage/cutouts/<jobId>/<uuid>.png' */
+  cutoutUrl: string;
+  /** 추론에 실제로 사용한 입력 치수(캡 적용 후) */
+  inputWidth: number;
+  inputHeight: number;
+  /** 원본 치수 — 편집기 스케일 보상용 */
+  sourceWidth: number;
+  sourceHeight: number;
+  /** 픽셀 캡 발동 여부 */
+  capEngaged: boolean;
+  /** 실제 사용된 모델 키 — 라이선스 감사 추적용 */
+  model: string;
+  /** 워커 스탬프(UTC ISO) */
+  processedAt: string;
 }
 
 export interface WorkerJob {

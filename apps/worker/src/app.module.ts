@@ -3,18 +3,21 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BullModule } from '@nestjs/bull';
 import { LoggerModule } from 'nestjs-pino';
+import { CUTOUT_QUEUE_NAME } from '@storige/types';
 
 // Services
 import { PdfValidatorService } from './services/pdf-validator.service';
 import { PdfConverterService } from './services/pdf-converter.service';
 import { PdfSynthesizerService } from './services/pdf-synthesizer.service';
 import { PdfPageRendererService } from './services/pdf-page-renderer.service';
+import { RembgService } from './services/rembg.service';
 
 // Processors
 import { ValidationProcessor } from './processors/validation.processor';
 import { ConversionProcessor } from './processors/conversion.processor';
 import { SynthesisProcessor } from './processors/synthesis.processor';
 import { RenderProcessor } from './processors/render.processor';
+import { CutoutProcessor } from './processors/cutout.processor';
 
 // Controllers
 import { HealthController } from './health/health.controller';
@@ -91,6 +94,9 @@ import { HealthController } from './health/health.controller';
       { name: 'pdf-validation' },
       { name: 'pdf-conversion' },
       { name: 'pdf-synthesis' },
+      // 배경제거 컷아웃(2026-08-05). 컨슈머 등록은 상시지만 실제 처리는
+      // CUTOUT_ENABLED=true 일 때만 — 게이트는 CutoutProcessor 안에 있다.
+      { name: CUTOUT_QUEUE_NAME },
     ),
   ],
   controllers: [HealthController],
@@ -100,12 +106,14 @@ import { HealthController } from './health/health.controller';
     PdfConverterService,
     PdfSynthesizerService,
     PdfPageRendererService,
+    RembgService,
 
     // Processors
     ValidationProcessor,
     ConversionProcessor,
     SynthesisProcessor,
     RenderProcessor,
+    CutoutProcessor,
   ],
 })
 export class AppModule {}

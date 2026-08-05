@@ -146,14 +146,39 @@ GPU 이전 경로). 차선 A(워커 내장+베이스 교체), 조건부 F(SaaS $
   샤드 2~3에서 반드시 완주.
 - D-12c(국외이전)는 자체호스팅 확정으로 소멸.
 
-## 6. 다음 안전 행동 — 샤드 2 착수 가능
-1. **샤드 2**: `CUTOUT_WORKER_STACK_SPIKE_2026-08-05.md` §5 구현 계약 12항 순서대로.
-   첫 스텝 = rembg 사이드카 compose 서비스 + `image-cutout` 큐/`WorkerJobType.CUTOUT` 배선
-   (DB 마이그레이션 불필요 — job_type varchar(30))
-2. 착수 직후 **BEN2 vs 현행 imgly 20장 품질 실측 1회** — BEN2 선택이 DIS5K 리스크를 감수할 만한지
-   근거를 남기고, 미달 시 U2Net 폴백 스위치로 즉시 전환
-3. S-E4 잔여(경미): 자동편집 채움 배지 정합 — 포토북 템플릿셋 세션에서 1회 실기
-4. 캡 실기: 워커 전환 시 서버측에서 자연히 검증됨(클라 경로는 그때 교체)
+### 5-8. S-P2A-B 샤드 2 완료 — 컷아웃 서버 슬라이스 (PR #15, ci green · 머지 대기)
+브랜치 `feat/s-p2a-cutout-worker` / 커밋 `2d0c5ae`(23파일 +2677). **플래그 기본 꺼짐 + rembg 는
+compose profile `cutout` 뒤** → 머지해도 프로덕션 동작 변화 0.
+
+**구조**: 공유 계약을 types 에 먼저 확정한 뒤 worker/api/docker 3축 배타 소유로 병렬 구현 →
+적대 리뷰 3렌즈 → 통합자(메인)가 결함 수정 → 재검증 2렌즈. 신규 테스트 44건.
+
+⚠️ **BEN2 는 rembg 백엔드에 없다**(1차 자료 확인 — 있는 건 `ben_custom` 뿐이고 그게 CVE 벡터다).
+D-12b 의 의도(MIT·품질 상위)에 가장 가까운 **`birefnet-general`(MIT)** 을 기본값으로 하고,
+`u2net`(Apache-2.0) 폴백은 **env `REMBG_MODEL` 하나로 교체** 가능하게 했다(완화 조건 충족).
+→ **오너 확인 필요**: 이 대체가 D-12b 의도와 맞는지.
+
+**적대 리뷰가 잡은 실 결함(전부 해소)** — 병렬 구현의 비용이 그대로 드러난 사례:
+blocker 5(테넌트 미대조=confused deputy · 픽셀 예산 부재 · compose 워커 플래그 미매핑 ·
+health.module 큐 미등록 · **admin jobTypeLabels 누락 → admin 프로덕션 빌드 실패**) +
+high 다수(DB MIME 라벨 신뢰 · 무인증 응답에 siteId/내부경로 노출 · errorMessage 원문 유출 ·
+보존정책 부재 · 조회 격리가 토큰을 빼면 무력화되는 역전).
+
+**기지 함정 재확인**: ①`.env` 만 넣고 compose `environment` 매핑을 빠뜨리면 silent no-op
+(이번엔 no-op 이 아니라 기능 100% FAILED — 4회째) ②enum 확장이 admin 의 exhaustive
+`Record<WorkerJobType,…>` 를 깨 **CI 는 통과하는데 Vercel admin 배포만 red** 가 된다
+(editor 는 `vite build` 단독이라 타입체크를 타지 않아 더 늦게 드러난다).
+
+## 6. 다음 안전 행동
+1. **PR #15 머지 판단**(오너) — 머지 시 api·worker 코드가 프로덕션에 올라가지만 플래그 OFF 라 무동작.
+   실제 활성화는 `docs/DEPLOYMENT.md` §배경제거 절차(디스크 점검 → 사이드카 빌드 → 예열 →
+   **계약 스모크** → 플래그 ON) 를 따라 별도로 수행.
+2. **샤드 3**: 편집기 연결 — `useImageStore.segmentImage` 시그니처 유지하고 내부만 잡 요청/폴링으로
+   교체(AppClipping 호출부 무변경) + canvasData base64 → URL 참조 전환(=D-6b③ 완결) +
+   **08-05 발견한 모양컷 진입 도달 불가 결함 동시 해소**.
+3. 모델 품질 실측(BEN2 부재로 재정의): `birefnet-general` vs `u2net` vs 현행 imgly 20장 비교 —
+   사이드카 기동 후 수행. 결과에 따라 `REMBG_MODEL` 확정.
+4. S-E4 잔여(경미): 자동편집 채움 배지 정합 — 포토북 템플릿셋 세션에서 1회 실기
 
 ## 7. 상태 스냅샷 (2026-08-05 오후)
 - master = **`4d1c2b1`**(D-6b② 머지) · Vercel editor Production Ready · 전 서비스 LIVE

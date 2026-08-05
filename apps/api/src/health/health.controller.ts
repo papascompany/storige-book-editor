@@ -1,8 +1,9 @@
-import { Controller, Get, Header, Res, UseGuards } from '@nestjs/common';
+import { Controller, Get, Header, Optional, Res, UseGuards } from '@nestjs/common';
 import type { Response } from 'express';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
+import { CUTOUT_QUEUE_NAME } from '@storige/types';
 import { Public } from '../auth/decorators/public.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { QueueMonitorService } from './queue-monitor.service';
@@ -17,6 +18,13 @@ export class HealthController {
     @InjectQueue('pdf-synthesis') private synthesisQueue: Queue,
     private readonly queueMonitor: QueueMonitorService,
     private readonly metricsService: MetricsService,
+    // 컷아웃 큐(2026-08-05 S-P2A-B) — 관측 3곳(health/metrics/queue-monitor) 공통 등록.
+    // ⚠️ @Optional 필수 — HealthModule 의 BullModule.registerQueue 와 health.controller.spec
+    //    의 테스트 모듈이 큐 3종만 제공한다. 미주입이면 헬스 응답에서 cutout 키만 빠지고
+    //    나머지는 그대로 동작한다(부트 실패로 전 서비스를 죽이지 않는다).
+    @Optional()
+    @InjectQueue(CUTOUT_QUEUE_NAME)
+    private readonly cutoutQueue?: Queue,
   ) {}
 
   /**
@@ -53,17 +61,19 @@ export class HealthController {
             validation: { type: 'object' },
             conversion: { type: 'object' },
             synthesis: { type: 'object' },
+            cutout: { type: 'object' },
           },
         },
       },
     },
   })
   async check() {
-    const [validationCounts, conversionCounts, synthesisCounts] =
+    const [validationCounts, conversionCounts, synthesisCounts, cutoutCounts] =
       await Promise.all([
         this.getQueueCounts(this.validationQueue),
         this.getQueueCounts(this.conversionQueue),
         this.getQueueCounts(this.synthesisQueue),
+        this.cutoutQueue ? this.getQueueCounts(this.cutoutQueue) : undefined,
       ]);
 
     return {
@@ -76,6 +86,8 @@ export class HealthController {
         validation: validationCounts,
         conversion: conversionCounts,
         synthesis: synthesisCounts,
+        // 큐 미배선 시 키 자체를 생략 — 0 으로 보고하면 "정상인데 잡이 없다"로 오독된다.
+        ...(cutoutCounts ? { cutout: cutoutCounts } : {}),
       },
     };
   }

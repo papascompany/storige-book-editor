@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsObject, IsEnum, IsOptional, IsUUID, ValidateIf, IsNumber, IsIn, IsUrl, IsArray } from 'class-validator';
+import { IsString, IsNotEmpty, IsObject, IsEnum, IsOptional, IsUUID, ValidateIf, IsNumber, IsIn, IsUrl, IsArray, MaxLength } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { WorkerJobType, OutputFile } from '@storige/types';
 import { PartnerEnv } from '../../partner-api/partner-api.constants';
@@ -186,6 +186,37 @@ export class CreatePageCountFixJobDto {
   siteId?: string;
 }
 
+/**
+ * 배경제거(컷아웃) 잡 DTO — S-P2A-B (2026-08-05, D-6a=B·D-12a=C).
+ *
+ * 원본 이미지 파일 1장의 배경을 제거한 PNG(알파)를 워커(=rembg 사이드카)가 만든다.
+ * 비동기 — 반환 WorkerJob(jobId) 폴링(`GET /worker-jobs/:id/cutout-status`). 원본 파일 보존.
+ *
+ * ⚠️ 이 라우트는 `@Public`(게스트 편집기) = **body 는 무인증 임의 입력**이다.
+ *   - siteId 는 의도적으로 **필드로 두지 않는다** — 스탬프 근거는 원본 file.siteId 승계뿐이라
+ *     클라이언트가 임의 테넌트를 주장할 통로 자체가 없다(edit-sessions guest F-1 선례).
+ *   - maxLongEdge(추론 픽셀 캡)도 클라 입력을 받지 않는다 — 서버가 CUTOUT_MAX_LONG_EDGE 로
+ *     권위 결정한다(무인증 컴퓨트에 임의 해상도 상한을 허용하면 캡이 무의미해진다).
+ */
+export class CreateCutoutJobDto {
+  @ApiProperty({ example: 'uuid', description: '배경을 제거할 원본 이미지 파일 ID' })
+  @IsUUID()
+  @IsNotEmpty()
+  fileId: string;
+
+  @ApiPropertyOptional({
+    example: 'u2net',
+    description:
+      '배경제거 모델 키(rembg 세션명). 미지정 시 워커 env 기본값. ' +
+      '서버 화이트리스트(WorkerJobsService.CUTOUT_ALLOWED_MODELS) 밖 값은 400 — ' +
+      "특히 '*_custom' 세션은 임의 ONNX 경로 로드(CVE-2026-40086) 때문에 무조건 거부.",
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  model?: string;
+}
+
 export class CreateSynthesisJobDto {
   @ApiPropertyOptional({ example: 'uuid', description: '편집 세션 ID' })
   @IsOptional()
@@ -292,6 +323,12 @@ export class UpdateJobStatusDto {
   @IsArray()
   outputFiles?: OutputFile[];
 
+  /**
+   * 잡 결과(자유 형식 객체). `@IsObject()` 만 걸고 @ValidateNested 는 없다 —
+   * 즉 중첩 키는 whitelist 대상이 아니라 그대로 통과한다.
+   * (2026-08-05 확인: 워커 CUTOUT 콜백의 `CutoutJobResult`(cutoutUrl/inputWidth/…)도
+   *  전역 ValidationPipe(forbidNonWhitelisted)를 그대로 통과 — WK-1 유형 재발 없음.)
+   */
   @ApiPropertyOptional()
   @IsOptional()
   @IsObject()

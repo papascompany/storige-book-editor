@@ -3,6 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
   UnprocessableEntityException,
+  ServiceUnavailableException,
   Logger,
   Optional,
   Inject,
@@ -11,7 +12,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { InjectQueue } from '@nestjs/bull';
-import { Repository } from 'typeorm';
+import { Repository, MoreThan } from 'typeorm';
 import { Queue } from 'bull';
 import { WorkerJob } from './entities/worker-job.entity';
 import {
@@ -21,12 +22,17 @@ import {
   ValidationWebhookPayload,
   TemplateType,
   PageTypes,
+  CUTOUT_QUEUE_NAME,
+  CUTOUT_JOB_NAME,
+  CUTOUT_MAX_LONG_EDGE,
+  CutoutJobData,
 } from '@storige/types';
 import {
   CreateValidationJobDto,
   CreateConversionJobDto,
   CreatePageCountFixJobDto,
   CreateSynthesisJobDto,
+  CreateCutoutJobDto,
   UpdateJobStatusDto,
 } from './dto/worker-job.dto';
 import { CreateSplitSynthesisJobDto } from './dto/create-split-synthesis-job.dto';
@@ -40,6 +46,7 @@ import {
   MergeIssueDto,
 } from './dto/check-mergeable.dto';
 import * as fs from 'fs/promises';
+import * as path from 'path';
 import axios from 'axios';
 import {
   isPrivateIp,
@@ -95,6 +102,13 @@ export class WorkerJobsService implements OnModuleInit {
     // spine 주입만 no-op(클라 값 유지 = 기존 동작)로 격리. 미주입은 onModuleInit warn.
     @Optional()
     private readonly spineService?: SpineService,
+    // 컷아웃 큐(2026-08-05 S-P2A-B) — WorkerJobsModule 이 등록하므로 런타임엔 항상 주입된다.
+    // ⚠️ 반드시 최후미 @Optional — 기존 positional 유닛스펙 8건이 9~10인자로 `new
+    //    WorkerJobsService(...)` 하고, DI 스펙들도 큐 토큰 3종만 제공한다. 필수 주입으로 두면
+    //    그 전부가 즉시 red 가 된다. 미주입 시 createCutoutJob 만 503 으로 fail-closed.
+    @Optional()
+    @InjectQueue(CUTOUT_QUEUE_NAME)
+    private readonly cutoutQueue?: Queue,
   ) {}
 
   /**
@@ -745,6 +759,272 @@ export class WorkerJobsService implements OnModuleInit {
     });
 
     return savedJob;
+  }
+
+  // ============================================================================
+  // Cutout Jobs — 배경제거 서버 오프로드 (S-P2A-B, 2026-08-05)
+  // ============================================================================
+
+  /**
+   * 컷아웃 입력 허용 MIME — 래스터 3종만.
+   * (SVG 는 벡터라 추론 대상이 아니고 파서 표면만 늘린다. PDF·GIF 도 제외.)
+   */
+  static readonly CUTOUT_INPUT_MIME_TYPES: readonly string[] = [
+    'image/png',
+    'image/jpeg',
+    'image/webp',
+  ];
+
+  /**
+   * 배경제거 모델 키(rembg 내장 세션명) 화이트리스트 — 확장은 D-12b(라이선스) 결정 사안.
+   *  - `birefnet-general`      : 사이드카 기본(compose `REMBG_MODEL` 기본값)과 동일. MIT.
+   *  - `birefnet-general-lite` : 메모리 압박 시 경량 대안(compose 주석의 완화 경로).
+   *  - `u2net`                 : Apache-2.0 폴백. "런타임 파라미터 1개로 전환 가능" 이
+   *                              D-12b 의 완화 설계 의무이고, 이 `model` 이 그 스위치다.
+   *
+   * 🚨 임의 키를 열지 말 것 — rembg 는 `*_custom` 세션(u2net_custom·dis_custom 등)으로
+   *    **임의 경로의 ONNX 를 로드**할 수 있고 경로 순회 이력(CVE-2026-40086)이 있다.
+   *    화이트리스트 + `_custom` 명시 거부의 이중 게이트를 유지한다.
+   *
+   * ⚠️ 여기서 검증하는 것은 **클라이언트가 명시한 경우뿐**이다. 미지정이면 워커가 자신의
+   *    env 기본값(REMBG_MODEL)을 쓰므로, 사이드카 기본 모델 교체는 이 목록과 무관하다.
+   */
+  static readonly CUTOUT_ALLOWED_MODELS: readonly string[] = [
+    'birefnet-general',
+    'birefnet-general-lite',
+    'u2net',
+  ];
+
+  /**
+   * 배경제거(컷아웃) 잡 생성 — createBleedFixJob 과 동일 골격(서버 권위 파라미터).
+   *
+   * 원본 이미지 1장 → 워커(rembg 사이드카)가 알파 PNG 를 만들고 `CutoutJobResult` 를
+   * `worker_jobs.result` 로 돌려준다. 원본 파일은 보존되고 새 파일 등록은 하지 않는다
+   * (등록은 후속 범위 — `registerExternalFile` 기본 mimeType 이 application/pdf 라
+   *  PNG 에 그대로 쓰면 `GET /files/:id/raw` 가 404 나는 함정이 있다, 스파이크 §5-4).
+   *
+   * ⚠️ editSessionId 절대 미주입 — 세션 workerStatus 상태기계 오염 방지
+   *    (createBleedFixJob 주석과 동일 이유).
+   */
+  async createCutoutJob(
+    dto: CreateCutoutJobDto,
+    caller?: { siteId?: string; role?: string },
+  ): Promise<WorkerJob> {
+    // 1) 모델 키 — 클라 명시 시에만 화이트리스트 검증(미지정은 워커 env 기본값).
+    const model = this.normalizeCutoutModel(dto.model);
+
+    // 2) 파일 존재(미존재 404 — filesService.findById) + **테넌트 대조** + 이미지 MIME.
+    const file = await this.filesService.findById(dto.fileId);
+    this.assertCutoutFileAccess(file, caller);
+
+    // 업로드가 끝나지 않은 레코드(presign 만 받고 미업로드 등)로 잡을 만들면 워커가
+    // ENOENT 로 실패한다 — 무인증 경로에서 실패 잡을 양산할 수 있으니 여기서 막는다.
+    // (GET /files/:id/raw 의 status 게이트와 동일 규약)
+    if (file.status && file.status !== 'ready') {
+      throw new NotFoundException({
+        code: 'FILE_NOT_FOUND',
+        message: '파일을 찾을 수 없습니다.',
+        details: { fileId: dto.fileId },
+      });
+    }
+
+    const mimeType = (file.mimeType ?? '').toLowerCase().split(';')[0].trim();
+    if (!WorkerJobsService.CUTOUT_INPUT_MIME_TYPES.includes(mimeType)) {
+      throw new BadRequestException({
+        code: 'FILE_NOT_IMAGE',
+        message: '배경제거는 PNG/JPEG/WebP 이미지만 가능합니다.',
+        details: {
+          fileId: dto.fileId,
+          mimeType: file.mimeType,
+          allowed: WorkerJobsService.CUTOUT_INPUT_MIME_TYPES,
+        },
+      });
+    }
+
+    // 3) 큐 미배선(유닛스펙 형태의 부분 구성)에서는 잡을 만들지 않는다 — DB 에 영원한
+    //    PENDING 고아를 남기느니 즉시 503 으로 fail-closed.
+    if (!this.cutoutQueue) {
+      throw new ServiceUnavailableException({
+        code: 'CUTOUT_QUEUE_UNAVAILABLE',
+        message: '배경제거 큐가 준비되지 않았습니다.',
+      });
+    }
+
+    // 4) 멱등 재사용 — 같은 (fileId, model) 로 최근 성공한 잡이 있으면 재추론하지 않는다.
+    //    무인증 라우트라 같은 입력을 무한 재제출해 CPU·디스크를 소진시키는 경로를 막는다.
+    //    (산출물은 /storage 에 남아 있으므로 그 URL 을 그대로 다시 준다)
+    const reusable = await this.findReusableCutoutJob(dto.fileId, model);
+    if (reusable) {
+      this.logger.log(
+        `Cutout job reuse: file=${dto.fileId} model=${model ?? 'default'} → job=${reusable.id}`,
+      );
+      return reusable;
+    }
+
+    const fileUrl = this.toWorkerInputUrl(file); // s3 백엔드면 api://<id>, local 은 filePath
+
+    const job = this.workerJobRepository.create({
+      jobType: WorkerJobType.CUTOUT,
+      status: WorkerJobStatus.PENDING,
+      // ⚠️ editSessionId/editSession 미주입(위 주석) — 세션 상태기계·웹훅 경로 완전 비켜감.
+      fileId: dto.fileId,
+      inputFileUrl: fileUrl,
+      siteId: file.siteId ?? null, // 원본 파일 site 승계(게스트 업로드는 null)
+      options: {
+        kind: 'cutout',
+        sourceFileId: dto.fileId,
+        maxLongEdge: CUTOUT_MAX_LONG_EDGE,
+        ...(model ? { model } : {}),
+      },
+    });
+    const savedJob = await this.workerJobRepository.save(job);
+
+    const payload: CutoutJobData = {
+      jobId: savedJob.id,
+      fileUrl,
+      sourceFileId: dto.fileId,
+      // 픽셀 캡은 서버 권위 — 클라 입력을 받지 않는다(무인증 컴퓨트 상한).
+      maxLongEdge: CUTOUT_MAX_LONG_EDGE,
+      ...(model ? { model } : {}),
+    };
+    await this.cutoutQueue.add(CUTOUT_JOB_NAME, payload);
+
+    return savedJob;
+  }
+
+  /**
+   * 컷아웃 잡 조회 — **jobType 이 CUTOUT 인 잡만** 반환하고 그 외는 404.
+   *
+   * 전용 폴링 라우트(`GET /worker-jobs/:id/cutout-status`)가 `@Public` 이라, 타입을 좁히지
+   * 않으면 무인증 호출자가 임의 jobId 로 다른 잡의 상태·결과를 읽는 통로가 된다.
+   * 타입 불일치도 미존재와 **동일한 404** 로 던져 존재 오라클까지 막는다
+   * (assertJobSiteAccess 의 404 관행과 동일).
+   */
+  async findCutoutJob(
+    id: string,
+    caller?: { siteId?: string; role?: string },
+  ): Promise<WorkerJob> {
+    const job = await this.workerJobRepository.findOne({ where: { id } });
+
+    if (!job || job.jobType !== WorkerJobType.CUTOUT) {
+      throw new NotFoundException({
+        code: 'JOB_NOT_FOUND',
+        message: `Worker job with ID ${id} not found`,
+      });
+    }
+
+    // ⚠️ 여기서 공용 assertJobSiteAccess 를 쓰면 안 된다 — 그 함수의 첫 줄이
+    //    `if (!caller || role==='worker') return` 이라 **토큰을 빼면 검사가 사라진다**
+    //    (인증할수록 권한이 줄어드는 역전). 이 라우트는 @Public 이므로 caller 부재를
+    //    '격리 면제'가 아니라 '테넌트 미상'으로 해석해야 한다.
+    //    → site 스탬프된 잡은 같은 site 의 검증된 shop-session 에게만 보인다.
+    if (job.siteId && job.siteId !== caller?.siteId) {
+      throw new NotFoundException({
+        code: 'JOB_NOT_FOUND',
+        message: `Worker job with ID ${id} not found`,
+      });
+    }
+
+    return job;
+  }
+
+  /**
+   * 컷아웃 입력 파일 테넌트 대조 — `POST /worker-jobs/cutout` 이 `@Public` 이라
+   * 이 검사가 없으면 **confused deputy** 가 된다(임의 fileId 로 남의 파일 파생물 생성).
+   *
+   * 규칙:
+   * - 내부 워커 키(role='worker')는 바이패스.
+   * - 파일에 site 스탬프가 없으면(게스트/공유 업로드) 허용 — 무인증 경로의 유일한 허용면이며,
+   *   보호는 fileId 가 추측 불가한 UUID 라는 성질(`GET /files/:id/raw` 와 동일 posture)이다.
+   * - 파일에 site 가 있으면 **검증된 shop-session 의 siteId 와 일치할 때만** 허용.
+   *   익명 호출자는 site 스탬프된 파일에 절대 접근할 수 없다.
+   * 불일치는 존재 오라클 차단을 위해 404(FILE_NOT_FOUND).
+   */
+  private assertCutoutFileAccess(
+    file: { id: string; siteId?: string | null },
+    caller?: { siteId?: string; role?: string },
+  ): void {
+    if (caller?.role === 'worker') return;
+    if (!file.siteId) return;
+    if (caller?.siteId && file.siteId === caller.siteId) return;
+    throw new NotFoundException({
+      code: 'FILE_NOT_FOUND',
+      message: '파일을 찾을 수 없습니다.',
+      details: { fileId: file.id },
+    });
+  }
+
+  /** 멱등 재사용 유효 시간 — 이 시간 안의 성공 잡은 재추론 없이 그대로 돌려준다. */
+  private static readonly CUTOUT_REUSE_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+  /**
+   * 같은 (fileId, model) 의 최근 성공 잡 조회. 없으면 null.
+   *
+   * ⚠️ **산출물 실존까지 확인한다.** 보존 cron 이 지웠거나(7일) 운영자가 디스크 확보를 위해
+   * 손으로 지운 경우, 파일 없는 URL 을 24시간 내내 되돌려주면 편집기가 깨진 이미지를 받고
+   * 재시도해도 같은 응답이 반복돼 스스로 낫지 않는다. 마커 제외 + 실물 확인 이중 방어.
+   */
+  private async findReusableCutoutJob(
+    fileId: string,
+    model?: string,
+  ): Promise<WorkerJob | null> {
+    const since = new Date(Date.now() - WorkerJobsService.CUTOUT_REUSE_WINDOW_MS);
+    const candidates = await this.workerJobRepository.find({
+      where: {
+        fileId,
+        jobType: WorkerJobType.CUTOUT,
+        status: WorkerJobStatus.COMPLETED,
+        createdAt: MoreThan(since),
+      },
+      order: { createdAt: 'DESC' },
+      take: 10,
+    });
+
+    const storageBase = process.env.STORAGE_PATH || '/app/storage';
+    for (const job of candidates) {
+      // 모델은 options 에만 있으므로(컬럼 아님) 후보를 좁힌 뒤 코드에서 대조한다.
+      const opts = (job.options ?? {}) as { model?: string; cutoutOutputsPurgedAt?: string };
+      if ((opts.model ?? undefined) !== model) continue;
+      if (opts.cutoutOutputsPurgedAt) continue; // 보존 cron 이 이미 지운 잡
+
+      const url = (job.result as { cutoutUrl?: string } | null)?.cutoutUrl;
+      if (!url || !url.startsWith('/storage/')) continue;
+      try {
+        await fs.access(path.join(storageBase, url.slice('/storage/'.length)));
+      } catch {
+        continue; // 산출물이 실제로 없으면 재사용하지 않고 새로 만든다
+      }
+      return job;
+    }
+    return null;
+  }
+
+  /**
+   * 모델 키 정규화 + 화이트리스트 검증. 미지정이면 undefined(워커 env 기본값 사용).
+   */
+  private normalizeCutoutModel(raw?: string): string | undefined {
+    if (raw === undefined || raw === null) return undefined;
+    const model = String(raw).trim().toLowerCase();
+    if (model.length === 0) return undefined;
+
+    // 🚨 `*_custom` 세션은 임의 ONNX 경로 로드 → 경로 순회(CVE-2026-40086). 무조건 거부.
+    //    화이트리스트가 이미 막지만, 목록이 넓어져도 이 금지는 남도록 별도 게이트로 둔다.
+    if (model.includes('_custom')) {
+      throw new BadRequestException({
+        code: 'CUTOUT_MODEL_FORBIDDEN',
+        message: '허용되지 않는 배경제거 모델입니다.',
+      });
+    }
+
+    if (!WorkerJobsService.CUTOUT_ALLOWED_MODELS.includes(model)) {
+      throw new BadRequestException({
+        code: 'CUTOUT_MODEL_NOT_ALLOWED',
+        message: '허용되지 않는 배경제거 모델입니다.',
+        details: { allowed: WorkerJobsService.CUTOUT_ALLOWED_MODELS },
+      });
+    }
+
+    return model;
   }
 
   // ============================================================================

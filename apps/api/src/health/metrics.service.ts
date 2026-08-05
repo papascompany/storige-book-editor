@@ -1,9 +1,10 @@
-import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, Logger, Optional, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Queue } from 'bull';
 import * as client from 'prom-client';
+import { CUTOUT_QUEUE_NAME } from '@storige/types';
 import { FileEntity } from '../files/entities/file.entity';
 
 /**
@@ -33,6 +34,11 @@ export class MetricsService implements OnModuleInit, OnModuleDestroy {
     @InjectQueue('pdf-conversion') private conversionQueue: Queue,
     @InjectQueue('pdf-synthesis') private synthesisQueue: Queue,
     @InjectRepository(FileEntity) private fileRepository: Repository<FileEntity>,
+    // 컷아웃 큐(2026-08-05 S-P2A-B). @Optional 인 이유는 health.controller 주석 참조 —
+    // 미주입이면 image-cutout 시계열만 비고, 나머지 메트릭은 그대로 수집된다.
+    @Optional()
+    @InjectQueue(CUTOUT_QUEUE_NAME)
+    private readonly cutoutQueue?: Queue,
   ) {
     this.registry = new client.Registry();
     this.registry.setDefaultLabels({ app: 'storige-api' });
@@ -82,6 +88,14 @@ export class MetricsService implements OnModuleInit, OnModuleDestroy {
     this.logger.log(
       `Metrics service started — refresh interval ${this.refreshIntervalMs}ms`,
     );
+    // 관측 구멍의 침묵 마스킹 방지 — 컷아웃을 켜 두고 큐를 등록하지 않으면
+    // Prometheus/Grafana 에 image-cutout 시계열이 영원히 안 뜬다.
+    if (!this.cutoutQueue) {
+      this.logger.warn(
+        `[cutout] ${CUTOUT_QUEUE_NAME} 큐 미주입 — HealthModule 의 BullModule.registerQueue 배선을 ` +
+          '확인하세요. 컷아웃 큐 메트릭이 수집되지 않습니다.',
+      );
+    }
   }
 
   onModuleDestroy(): void {
@@ -103,6 +117,10 @@ export class MetricsService implements OnModuleInit, OnModuleDestroy {
       ['pdf-validation', this.validationQueue],
       ['pdf-conversion', this.conversionQueue],
       ['pdf-synthesis', this.synthesisQueue],
+      // 큐 미배선 시 라벨을 만들지 않는다(0 시계열은 "정상 유휴"로 오독된다).
+      ...(this.cutoutQueue
+        ? ([[CUTOUT_QUEUE_NAME, this.cutoutQueue]] as [string, Queue][])
+        : []),
     ];
 
     for (const [name, queue] of queues) {
