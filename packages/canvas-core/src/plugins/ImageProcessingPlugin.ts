@@ -5,6 +5,8 @@ import { fabric } from 'fabric'
 import { PluginBase } from '../plugin'
 // P2-11/A — OpenCV lazy-loader 분리. module-level 캐시 공유.
 import { getCv } from '../utils/openCv'
+// 모양컷 '효과' 경로 진단 — 프로덕션에서도 window.__storigeTrace 로 읽을 수 있다.
+import { traceStep, yieldToBrowser } from '../utils/perfTrace'
 
 class ImageProcessingPlugin extends PluginBase {
   name = 'ImageProcessingPlugin'
@@ -29,6 +31,13 @@ class ImageProcessingPlugin extends PluginBase {
    * 근사화 후에도 이 값을 넘으면 균등 샘플링으로 솎아낸다(폭발 방지 최후 안전판).
    */
   static readonly CONTOUR_MAX_POINTS = 2000
+
+  /**
+   * convexHull 입력 점 예산. `findLargestContour` 는 선택된 컨투어의 모든 점을 모으는데,
+   * 경계가 복잡한 산출물에서는 수십만 점이 되어 matFromArray/convexHull 이 폭발한다.
+   * 형태는 균등 샘플링으로 보존하면서 이 상한을 지킨다.
+   */
+  static readonly HULL_MAX_INPUT_POINTS = 20000
 
   constructor(canvas: fabric.Canvas, editor: Editor) {
     super(canvas, editor, {})
@@ -458,11 +467,16 @@ class ImageProcessingPlugin extends PluginBase {
         height
       )
 
+      const tEncode = performance.now()
       const dataURL = canvas.toDataURL('image/png', 1)
+      traceStep('objAsImage:encode', tEncode, { w: width, h: height, urlKB: Math.round(dataURL.length / 1024) })
+
       const scale = (objectPath.height! * objectPath.scaleY! + distance) / height
+      const tDecode = performance.now()
       fabric.Image.fromURL(
         dataURL,
         (img) => {
+          traceStep('objAsImage:decode', tDecode)
           resolve(img)
         },
         {
@@ -697,20 +711,45 @@ class ImageProcessingPlugin extends PluginBase {
 
     // 최종 추출된 좌표
 
+    const tAlpha = performance.now()
     const hasAlpha = this.tellHasAlpha(imgElement)
+    traceStep('tellHasAlpha', tAlpha, {
+      w: imgElement.width,
+      h: imgElement.height,
+      hasAlpha: hasAlpha ? 1 : 0
+    })
 
     if (hasAlpha) {
       // OpenCV 는 **여기서만** 필요하다 — 알파 윤곽 추출 경로. 위 getObjectPath 주석 참조.
+      const tCv = performance.now()
       const cv = await this.ensureCvReady()
+      traceStep('ensureCvReady', tCv)
+      await yieldToBrowser()
       // ⚠️ 원본 해상도로 컨투어를 돌리지 않는다(2026-08-06 실적발). 배경제거 결과처럼 알파 경계가
       //    복잡한 대형 이미지(최대 2560×3413)에서는 findContours·근사화가 폭발해 메인 스레드가
       //    사실상 멈춘다. 칼선은 부드러운 외곽선이라 축소본으로 구해도 충분하고(오히려 노이즈가
       //    줄어든다), 좌표는 smoothContour 에서 선형 역보정한다.
+      const tCap = performance.now()
       const { element: capped, scale } = this.capElementForContour(imgElement)
+      traceStep('capForContour', tCap, { w: capped.width, h: capped.height, scale: Math.round(scale * 100) / 100 })
+
+      const tPre = performance.now()
       const binary = await this.preProcessImage(cv, capped, hasAlpha, kSize)
+      traceStep('preProcessImage', tPre)
+      await yieldToBrowser()
+
       const largestContour: [any, boolean] = this.findLargestContour(cv, binary)
+      await yieldToBrowser()
+
+      const tSmooth = performance.now()
       const points = await this.smoothContour(object, largestContour[0], largestContour[1], scale)
-      return this.generateCurvedPath(points, hasAlpha)
+      traceStep('smoothContour', tSmooth, { points: points.length })
+      await yieldToBrowser()
+
+      const tPath = performance.now()
+      const path = this.generateCurvedPath(points, hasAlpha)
+      traceStep('generateCurvedPath', tPath, { pathLen: path ? path.length : 0 })
+      return path
     } else {
       return this.createExpandedPath(object, 0).path
     }
@@ -1528,6 +1567,7 @@ class ImageProcessingPlugin extends PluginBase {
 
   // 윤곽선 생성 후 모든 윤곽선을 덮는 최대 윤곽선을 그려서 반환
   private findLargestContour(cv: any, binary: any): [any, boolean] {
+    const tContour = performance.now()
     // Find all contours
     const contours = new cv.MatVector()
     const hierarchy = new cv.Mat()
@@ -1535,10 +1575,12 @@ class ImageProcessingPlugin extends PluginBase {
 
     // Collect all contours with their areas
     const contourAreas: { contour: any; area: number }[] = []
-    for (let i = 0; i < contours.size(); i++) {
+    const totalContours = contours.size()
+    for (let i = 0; i < totalContours; i++) {
       const contour = contours.get(i)
       const area = cv.contourArea(contour)
-      console.log('contour area', area)
+      // ⚠️ 여기 있던 컨투어별 console.log 는 제거했다 — 경계가 복잡한 산출물에서는
+      //    수만 번 호출되어 그 자체가 지연 요인이었다(개발자도구가 열려 있으면 특히).
       // Filter out small contours
       if (area > 1000) {
         contourAreas.push({ contour, area })
@@ -1555,11 +1597,27 @@ class ImageProcessingPlugin extends PluginBase {
     const selectedContours = contourAreas.slice(0, n)
 
     // Combine selected contours into one set of points
+    // ⚠️ 여기서 선택된 컨투어의 **모든 점**을 모은다. 경계가 복잡한 산출물(UI 캡처·머리카락 등)에서는
+    //    수십만 점이 되어 아래 matFromArray/convexHull 이 폭발한다 → 점 예산으로 상한을 둔다.
     const points: [number, number][] = []
-    selectedContours.forEach(({ contour }) => {
-      for (let j = 0; j < contour.rows; j++) {
+    let droppedContours = 0
+    for (const { contour } of selectedContours) {
+      if (points.length >= ImageProcessingPlugin.HULL_MAX_INPUT_POINTS) {
+        droppedContours++
+        continue
+      }
+      // 컨투어 하나가 예산을 통째로 먹지 않도록 균등 간격으로 훑는다(형태 보존).
+      const step = Math.max(1, Math.ceil(contour.rows / ImageProcessingPlugin.HULL_MAX_INPUT_POINTS))
+      for (let j = 0; j < contour.rows; j += step) {
         points.push([contour.data32S[j * 2], contour.data32S[j * 2 + 1]])
       }
+    }
+    traceStep('findLargestContour', tContour, {
+      totalContours,
+      kept: contourAreas.length,
+      droppedContours,
+      points: points.length,
+      useHull: useHull ? 1 : 0
     })
 
     contours.delete()

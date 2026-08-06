@@ -68,6 +68,8 @@ export * from './utils/pointerShift'
 // S-E3 — 곡선(패스) 텍스트 수식·적용 유틸 (TextEffect 후편집 + AppText 프리셋 공유 정본)
 export * from './utils/curveText'
 export * from './utils/inferenceCap'
+// 모양컷 '효과' 경로 진단 — 프리즈가 풀린 뒤 window.__storigeTrace 로 단계별 소요를 읽는다.
+export { traceStep, resetTrace, type TraceEntry } from './utils/perfTrace'
 // P2-11/A — OpenCV/배경제거 lazy-loader + warmup helpers
 // ⚠️ getBackgroundRemoval / warmupBackgroundRemoval 은 제거됐다(D-12d, 2026-08-06) —
 //    배경제거 추론은 서버(rembg 사이드카)가 하고, 진입점은 editor 의 api/cutout.ts 다.

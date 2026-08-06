@@ -16,7 +16,9 @@ import {
   type ClippingAccessory,
   core,
   ImageProcessingPlugin,
+  resetTrace,
   selectFiles,
+  traceStep,
   WorkspacePlugin
 } from '@storige/canvas-core'
 import removeBgImage from '@/assets/image/remove_bg.png'
@@ -157,13 +159,19 @@ export default function AppClipping() {
         start: () => setIsLoading(true),
         finish: () => setIsLoading(false)
       }
+      // 이번 실행분만 남긴다 — 프리즈가 풀린 뒤 window.__storigeTrace 로 단계별 소요를 읽는다.
+      resetTrace()
+      const tSeg = performance.now()
       const image = await segmentImage(target, canvas, imagePlugin!, loadingBar, {
         model: CUTOUT_SUBJECT_MODELS[cutoutSubject]
       })
+      traceStep('segmentImage(서버왕복+트림)', tSeg)
 
       if (image) {
         if (isClippingWorkspace()) {
+          const tRender = performance.now()
           await renderWorkspace(image, canvas, cutSizeValue)
+          traceStep('renderWorkspace(칼선)', tRender)
         } else {
           replaceOnCanvas(target, image, canvas)
         }
