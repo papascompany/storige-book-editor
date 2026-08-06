@@ -160,13 +160,13 @@ export default defineConfig(({ mode, command }) => {
   esbuild: {
     pure: PURE_DEBUG_CONSOLE,
   },
-  // Vite dev pre-bundling 제외 — 사용자가 배경 제거 기능을 안 쓰면 로드 자체 안 됨
+  // Vite dev pre-bundling 제외 — 사용자가 해당 기능을 안 쓰면 로드 자체 안 됨
   // (dynamic import는 이미 적용되어 있고, 여기는 dev pre-bundle 회피 추가 최적화)
+  // ⚠️ onnxruntime-web / @imgly/background-removal 은 제거됐다(D-12d, 2026-08-06) —
+  //    배경제거 추론이 서버(rembg 사이드카)로 이관되어 브라우저 ML 스택이 사라졌다.
   optimizeDeps: {
     exclude: [
       '@techstark/opencv-js',  // 10MB (CV 작업 시에만 로드)
-      'onnxruntime-web',       // 24MB (배경 제거 시에만 로드)
-      '@imgly/background-removal',
     ],
   },
   server: {
@@ -225,14 +225,6 @@ export default defineConfig(({ mode, command }) => {
                 // OpenCV.js - image processing (very large)
                 if (id.includes('opencv') || id.includes('@techstark/opencv-js')) {
                   return 'vendor-opencv'
-                }
-                // ONNX Runtime - ML inference for background removal
-                if (id.includes('onnxruntime')) {
-                  return 'vendor-onnx'
-                }
-                // Background removal
-                if (id.includes('@imgly/background-removal')) {
-                  return 'vendor-bg-removal'
                 }
                 // PDF libraries
                 if (id.includes('pdf-lib') || id.includes('jspdf')) {

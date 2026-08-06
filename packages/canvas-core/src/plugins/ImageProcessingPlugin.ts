@@ -3,56 +3,21 @@ import * as d3 from 'd3'
 import { v4 as uuid } from 'uuid'
 import { fabric } from 'fabric'
 import { PluginBase } from '../plugin'
-// P2-11/A — OpenCV/배경제거 lazy-loader 분리. 같은 module-level 캐시 공유.
-import { getCv, getBackgroundRemoval } from '../utils/openCv'
-
-// Config type for background removal (inline to avoid static import)
-interface BgRemovalConfig {
-  debug?: boolean
-  rescale?: boolean
-  model?: string
-  device?: string
-  output?: {
-    quality?: number
-    format?: string
-  }
-}
-
-// D-6b② 픽셀 캡 — 순수 모듈(utils/inferenceCap)에서 가져옴 (테스트 분리용)
-import { computeInferenceCap } from '../utils/inferenceCap'
+// P2-11/A — OpenCV lazy-loader 분리. module-level 캐시 공유.
+import { getCv } from '../utils/openCv'
 
 class ImageProcessingPlugin extends PluginBase {
   name = 'ImageProcessingPlugin'
   events = []
   hotkeys = []
 
-  private config: BgRemovalConfig = {
-    debug: false,
-    rescale: true,
-    model: 'isnet_fp16',
-    device: 'gpu',
-    output: {
-      quality: 0.5,
-      format: 'image/png'
-    }
-  }
-
-  /**
-   * 배경제거(imgly ONNX 모델) 초기화 in-flight promise — 멱등 캐시.
-   * null = 미시작 / pending = 진행 중 / resolved = 준비 완료.
-   * 실패 시 null 로 리셋되어 다음 호출에서 재시도한다.
-   */
-  private modelReadyPromise: Promise<void> | null = null
-
-  /** 모델 초기화 완료 여부 — 로딩 UX(준비 중 메시지) 분기용 */
-  private modelReady = false
-
   constructor(canvas: fabric.Canvas, editor: Editor) {
     super(canvas, editor, {})
-    // D-6b① (2026-07-15): eager preload 제거 — 기존엔 여기서 startService() 를
-    // 즉시 실행해 ONNX 모델(ISNet fp16 ≈88MB)+ort wasm(≈23MB)을 모든 에디터/embed
-    // 캔버스 생성 시마다 CDN 에서 다운로드했다. 이제 실사용 진입점이
-    // ensureReady()(모델) / ensureCvReady()(OpenCV) 를 선행 await 하는 lazy 초기화.
+    // D-6b① (2026-07-15): eager preload 제거 — 기존엔 여기서 startService() 를 즉시 실행해
+    // ONNX 모델(≈88MB)+ort wasm(≈23MB)을 모든 캔버스 생성마다 받았다.
+    // D-12d (2026-08-06, 샤드3): 배경제거 추론 자체가 서버(rembg 사이드카)로 이관되면서
+    // `@imgly/background-removal`(AGPL-3.0) 의존을 제거했다 — 이 플러그인에 남은 무거운
+    // 초기화는 OpenCV 뿐이고 `ensureCvReady()` 로 여전히 lazy 다.
     // 플러그인 생성은 어떤 네트워크/무거운 초기화도 트리거하지 않는다.
   }
 
@@ -346,53 +311,11 @@ class ImageProcessingPlugin extends PluginBase {
   }
 
   /**
-   * 배경제거 모델(≈111MB) lazy 초기화 — 멱등.
-   * - 동시 호출은 단일 in-flight promise 를 공유한다 (중복 다운로드 X).
-   * - 실패 시 promise 를 리셋해 다음 호출에서 재시도 가능하다.
-   * (D-6b①: 구 startService() 의 생성자 eager 실행을 대체)
-   */
-  ensureReady(): Promise<void> {
-    if (!this.modelReadyPromise) {
-      this.modelReadyPromise = this.initializeModel()
-        .then(() => {
-          this.modelReady = true
-        })
-        .catch((e) => {
-          this.modelReadyPromise = null
-          throw e
-        })
-    }
-    return this.modelReadyPromise
-  }
-
-  /**
-   * OpenCV(WASM ≈수 MB) lazy 초기화 — 칼선/크롭/윤곽 추출 등 OpenCV 만 쓰는
-   * 경로가 88MB ONNX 모델을 받지 않도록 모델 초기화(ensureReady)와 분리 유지.
+   * OpenCV(WASM ≈수 MB) lazy 초기화 — 칼선/크롭/윤곽 추출이 실제로 필요할 때만 받는다.
    * openCv.ts 의 module-level promise 캐시를 공유(멱등·실패 시 재시도 가능).
    */
   ensureCvReady(): Promise<any> {
     return getCv()
-  }
-
-  private async initializeModel(): Promise<void> {
-    let isWebGLSupported = false
-    try {
-      const canvas = document.createElement('canvas')
-      isWebGLSupported = !!(
-        window.WebGLRenderingContext &&
-        (canvas.getContext('webgl') || canvas.getContext('experimental-webgl'))
-      )
-      console.log('WebGL supported:', isWebGLSupported)
-    } catch {
-      isWebGLSupported = false
-    }
-
-    const { preload } = await getBackgroundRemoval()
-    await preload({
-      ...this.config,
-      device: isWebGLSupported ? 'gpu' : 'cpu'
-    } as any)
-    console.log('Asset preloading succeeded')
   }
 
   async processImage(img: HTMLImageElement, useStrict: boolean = false) {
@@ -582,75 +505,14 @@ class ImageProcessingPlugin extends PluginBase {
     return objectPath as any
   }
 
-  async getForeground(item: fabric.Object): Promise<fabric.Image> {
-    if (item.type !== 'image') {
-      return Promise.reject(new Error('Item is not an image'))
-    }
-
-    // 최초 사용 시 모델 초기화(모델+wasm 다운로드, 수 초)가 선행된다 —
-    // 준비 단계임을 구분해 표시 (기존 longTask 오버레이 패턴 재사용,
-    // canvas-core 는 editor 스토어를 모름 — 이벤트로만 통신).
-    this._editor.emit('longTask:start', {
-      message: this.modelReady ? '배경 제거 중...' : '배경 제거 도구 준비 중...'
-    })
-
-    try {
-      // preload 실패는 구 startService 와 동일하게 non-fatal —
-      // removeBackground 가 on-demand 다운로드로 폴백한다.
-      await this.ensureReady().catch((e) => {
-        console.warn('Asset preloading failed (on-demand fallback):', e)
-      })
-      this._editor.emit('longTask:start', { message: '배경 제거 중...' })
-
-      const { removeBackground } = await getBackgroundRemoval()
-      const imgElement: any = item.getElement()
-
-      // D-6b② 픽셀 캡: 장변 초과 시 사전 다운스케일 본을 추론 입력으로 사용.
-      // 결과(전경)는 캡 해상도가 되므로 아래에서 스케일 보상해 화면 크기를 유지한다.
-      const naturalW = imgElement.naturalWidth || imgElement.width || item.width || 0
-      const naturalH = imgElement.naturalHeight || imgElement.height || item.height || 0
-      const cap = computeInferenceCap(naturalW, naturalH)
-      let inferenceSrc: string = imgElement.src
-      if (cap.engaged) {
-        const capCanvas = document.createElement('canvas')
-        capCanvas.width = cap.targetWidth
-        capCanvas.height = cap.targetHeight
-        const ctx = capCanvas.getContext('2d')
-        if (ctx) {
-          ctx.drawImage(imgElement, 0, 0, cap.targetWidth, cap.targetHeight)
-          inferenceSrc = capCanvas.toDataURL('image/png')
-        }
-      }
-
-      const foregroundBlob = await removeBackground(inferenceSrc)
-      const foregroundUrl = URL.createObjectURL(foregroundBlob)
-      const foreground = await this.loadCanvasImageFromUrl(foregroundUrl)
-      const center = item.getCenterPoint()
-
-      // 스케일 보상: 전경 자연 치수 기준으로 원본의 화면 크기를 재현.
-      // 캡 미적용이면 fgW===item.width 라 scaleX===item.scaleX — 기존 동작과 동일식.
-      const fgW = (foreground.width as number) || cap.targetWidth || 1
-      const fgH = (foreground.height as number) || cap.targetHeight || 1
-      const visualW = (item.width || fgW) * (item.scaleX || 1)
-      const visualH = (item.height || fgH) * (item.scaleY || 1)
-      const foregroundObj = foreground.set({
-        id: uuid(),
-        originX: 'center',
-        originY: 'center',
-        left: center.x,
-        top: center.y,
-        scaleX: visualW / fgW,
-        scaleY: visualH / fgH,
-        absolutePositioned: true
-      })
-      return foregroundObj as any
-    } catch (e) {
-      console.error(e)
-      throw e
-    } finally {
-      this._editor.emit('longTask:end')
-    }
-  }
+  /**
+   * ⚠️ 제거됨 — 배경제거 추론은 서버(rembg 사이드카)가 한다. D-12d(2026-08-06, 샤드3).
+   *
+   * 종전 `getForeground()` 는 `@imgly/background-removal`(AGPL-3.0)로 브라우저에서 ONNX 추론을
+   * 했다. 라이선스 의무(D-12d)와 모바일 메모리 문제로 서버 오프로드로 전환했고, 진입점은
+   * editor 의 `useImageStore.segmentImage()`(→ `api/cutout.ts`)다.
+   * 이 플러그인에는 결과 후처리(알파 기준 트림 `processImage`, 윤곽 `getObjectPath`)만 남는다.
+   */
 
   async getForegroundByAlpha(
     item: fabric.Object,

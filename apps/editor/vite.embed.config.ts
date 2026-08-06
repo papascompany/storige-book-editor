@@ -6,35 +6,10 @@ import path from 'path'
 // @pf/color-runtime import 0건 + canvas-core가 이미 legacy 알고리즘만 사용해
 // dead code였음. ICC 도입은 보류 목록 참조.
 
-// @imgly/background-removal을 스텁으로 대체하는 플러그인 (WASM 모델 포함하여 큰 사이즈)
-function backgroundRemovalStubPlugin(): Plugin {
-  const virtualModuleId = '@imgly/background-removal'
-  const resolvedVirtualModuleId = '\0' + virtualModuleId
-  const stubCode = `
-    // Background removal stub - feature disabled
-    export async function removeBackground() {
-      throw new Error('Background removal is not available in this build')
-    }
-    export async function preload() {
-      // No-op stub
-    }
-    export default { removeBackground, preload }
-  `
-  return {
-    name: 'background-removal-stub',
-    enforce: 'pre',
-    resolveId(id) {
-      if (id === virtualModuleId) {
-        return { id: resolvedVirtualModuleId, moduleSideEffects: false }
-      }
-    },
-    load(id) {
-      if (id === resolvedVirtualModuleId) {
-        return stubCode
-      }
-    },
-  }
-}
+// ⚠️ @imgly/background-removal 스텁 플러그인은 제거됐다(D-12d, 2026-08-06) —
+// 배경제거 추론이 서버(rembg 사이드카)로 이관되면서 그 의존 자체가 사라졌다.
+// 임베드 IIFE 에서 배경제거를 쓰려면 OpenCV 스텁(아래)도 함께 풀어야 한다
+// (서버 결과의 알파 트림이 OpenCV 경로다).
 
 // OpenCV.js를 스텁으로 대체하는 플러그인 (번들 사이즈 ~45MB 감소)
 function opencvStubPlugin(): Plugin {
@@ -106,7 +81,7 @@ const PURE_DEBUG_CONSOLE = [
 ]
 
 export default defineConfig({
-  plugins: [backgroundRemovalStubPlugin(), opencvStubPlugin(), react()],
+  plugins: [opencvStubPlugin(), react()],
   esbuild: {
     pure: PURE_DEBUG_CONSOLE,
   },

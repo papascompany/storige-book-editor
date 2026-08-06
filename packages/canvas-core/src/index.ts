@@ -69,6 +69,8 @@ export * from './utils/pointerShift'
 export * from './utils/curveText'
 export * from './utils/inferenceCap'
 // P2-11/A — OpenCV/배경제거 lazy-loader + warmup helpers
-export { getCv, getBackgroundRemoval, warmupOpenCv, warmupBackgroundRemoval } from './utils/openCv'
+// ⚠️ getBackgroundRemoval / warmupBackgroundRemoval 은 제거됐다(D-12d, 2026-08-06) —
+//    배경제거 추론은 서버(rembg 사이드카)가 하고, 진입점은 editor 의 api/cutout.ts 다.
+export { getCv, warmupOpenCv } from './utils/openCv'
 
 export default Editor
