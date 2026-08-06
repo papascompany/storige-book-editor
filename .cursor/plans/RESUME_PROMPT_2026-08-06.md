@@ -98,6 +98,22 @@ CVE-2026-40086 벡터라 금지), BiRefNet 계열은 이 박스에서 **cgroup O
 캔버스(BOOK 등)에서 '효과'가 동작하게만 고쳤다면 **사용자 디자인이 통째로 지워졌을 것**이다.
 → 컨텍스트를 판별해 일반 캔버스에서는 원본을 결과로 **제자리 교체**한다.
 
+**검증(실측)**
+
+| 무엇 | 결과 |
+|---|---|
+| 종단 왕복(로컬 dev ↔ 프로덕션 API) | upload 1.1s → 잡 → 워커 `rembg[u2net] 22488B→39882B` → 결과 로드 |
+| 결과 알파 | 900×600, 모서리 α=0 / 중앙 α=254 RGB(41,128,184) — 배경 제거 정확, CORS 픽셀 읽기 OK |
+| 진입 결함 | 모양컷 패널 '효과' 클릭 → 잡 생성(**종전 무반응**) |
+| **라이브 프로덕션 편집기** | 배포 후 실기: 잡 `fd34ece4` 생성 → `rembg[u2net] 21787B→38564B` → 산출물 완료(0.9s) |
+| 테스트 | editor 45스위트 581(cutout 19) · canvas-core 42스위트 479 · tsc 0 · SPA/embed 빌드 통과 |
+
+⚠️ **자동 검증이 닿지 못한 구간**: 결과의 OpenCV 트림(`processImage`) 이후 캔버스 배치까지의 **화면 확인**.
+로컬 dev 에서는 `@techstark/opencv-js`(UMD)가 dev ESM 로더에서 초기화 실패해(`Cannot set properties of
+undefined (setting 'cv')`, `getCv` 미변경·기존 조건) 트림 단계를 태울 수 없었고, 라이브에서는 백그라운드
+탭 타이머 throttling 때문에 폴링이 분 단위로 늘어져 완료 화면까지 확인하지 못했다. **눈으로 볼 QA 1회가
+남아 있다**(§2-4).
+
 
 계약: `CUTOUT_WORKER_STACK_SPIKE_2026-08-05.md` §5-10.
 - `useImageStore.segmentImage(image, canvas, imagePlugin, loadingBar) → Promise<FabricImage>`
