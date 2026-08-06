@@ -11,6 +11,13 @@ class ImageProcessingPlugin extends PluginBase {
   events = []
   hotkeys = []
 
+  /**
+   * 윤곽(칼선) 추출 입력의 장변 상한(px). 배경제거 서버 산출물은 최대 2560 장변이라
+   * 그대로 넣으면 findContours 가 폭발한다(2026-08-06 실적발). 칼선 용도에는 이 정도면
+   * 충분하고 좌표는 선형 역보정하므로 최종 path 정밀도는 유지된다.
+   */
+  static readonly CONTOUR_MAX_LONG_EDGE = 1280
+
   constructor(canvas: fabric.Canvas, editor: Editor) {
     super(canvas, editor, {})
     // D-6b① (2026-07-15): eager preload 제거 — 기존엔 여기서 startService() 를 즉시 실행해
@@ -318,67 +325,71 @@ class ImageProcessingPlugin extends PluginBase {
     return getCv()
   }
 
-  async processImage(img: HTMLImageElement, useStrict: boolean = false) {
-    const cv = await this.ensureCvReady()
+  /**
+   * 알파 기준 트림 — 투명 여백을 잘라낸 dataURL 을 돌려준다.
+   *
+   * ⚠️ **OpenCV 를 쓰지 않는다**(2026-08-06 프로덕션 실적발). 종전에는
+   * `imread → split → threshold → findContours → boundingRect 합집합` 으로 같은 사각형을 구했는데,
+   * 배경제거 결과처럼 **알파 경계가 복잡한 대형 이미지**(머리카락 등, 최대 2560×3413)에서는
+   * findContours 가 폭발적으로 느려져 메인 스레드가 사실상 멈췄다(무한 로딩으로 보임).
+   *
+   * 컨투어의 바운딩박스 합집합 = 임계값을 넘는 **모든 픽셀의 min/max** 와 같으므로,
+   * 픽셀 1회 순회로 동일한 결과를 얻는다(8.7MP 기준 수백 ms).
+   *
+   * @param useStrict true 면 임계값 218(거의 불투명만) — 기존 규약 유지, false 면 20.
+   */
+  async processImage(
+    img: HTMLImageElement | HTMLCanvasElement,
+    useStrict: boolean = false
+  ): Promise<string> {
+    const width = (img as HTMLImageElement).naturalWidth || img.width
+    const height = (img as HTMLImageElement).naturalHeight || img.height
+
     const canvas = document.createElement('canvas')
-    const ctx = canvas.getContext('2d')
+    canvas.width = width
+    canvas.height = height
+    // willReadFrequently: getImageData 를 한 번만 하지만, 힌트가 있으면 브라우저가
+    // GPU 텍스처 왕복 대신 CPU 백킹을 써서 대형 이미지에서 눈에 띄게 빠르다.
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })
     if (!ctx) {
       throw new Error('Failed to get 2d context from canvas')
     }
-    canvas.width = img.width
-    canvas.height = img.height
-    ctx.drawImage(img, 0, 0)
+    ctx.drawImage(img as CanvasImageSource, 0, 0)
 
-    // OpenCV processing
-    const src = cv.imread(canvas)
-    const rgbaPlanes = new cv.MatVector()
-    cv.split(src, rgbaPlanes)
+    const threshold = useStrict ? 218 : 20
+    const { data } = ctx.getImageData(0, 0, width, height)
 
-    const alpha = rgbaPlanes.get(3) // Alpha channel
-    const binary = new cv.Mat()
-    cv.threshold(alpha, binary, useStrict ? 218 : 20, 255, cv.THRESH_BINARY)
-
-    const contours = new cv.MatVector()
-    const hierarchy = new cv.Mat()
-    cv.findContours(binary, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
-
-    let x = Number.MAX_VALUE,
-      y = Number.MAX_VALUE
-    let x2 = 0,
-      y2 = 0
-    for (let i = 0; i < contours.size(); i++) {
-      const rect = cv.boundingRect(contours.get(i))
-      x = Math.min(x, rect.x)
-      y = Math.min(y, rect.y)
-      x2 = Math.max(x2, rect.x + rect.width)
-      y2 = Math.max(y2, rect.y + rect.height)
+    let minX = width
+    let minY = height
+    let maxX = -1
+    let maxY = -1
+    for (let y = 0; y < height; y++) {
+      const rowStart = y * width * 4
+      for (let x = 0; x < width; x++) {
+        if (data[rowStart + x * 4 + 3] > threshold) {
+          if (x < minX) minX = x
+          if (x > maxX) maxX = x
+          if (y < minY) minY = y
+          if (y > maxY) maxY = y
+        }
+      }
     }
 
-    // Add a small margin to ensure we don't cut off important parts
-    const margin = 0 // Set to 0 for strict cropping, or adjust as needed
-    const width = x2 - x - margin
-    const height = y2 - y - margin
+    // 임계값을 넘는 픽셀이 하나도 없으면(전부 투명) 자를 근거가 없다 — 원본을 그대로 돌려준다.
+    if (maxX < 0 || maxY < 0) {
+      return canvas.toDataURL('image/png')
+    }
 
-    // Ensure coordinates are within the image bounds
-    x = Math.max(0, x + margin)
-    y = Math.max(0, y + margin)
-
-    const dst = src.roi(new cv.Rect(x, y, width, height))
-
-    // to dataURL
+    const cropW = maxX - minX + 1
+    const cropH = maxY - minY + 1
     const dstCanvas = document.createElement('canvas')
-    dstCanvas.width = width
-    dstCanvas.height = height
-    cv.imshow(dstCanvas, dst)
-
-    // Clean up
-    src.delete()
-    rgbaPlanes.delete()
-    alpha.delete()
-    binary.delete()
-    contours.delete()
-    hierarchy.delete()
-    dst.delete()
+    dstCanvas.width = cropW
+    dstCanvas.height = cropH
+    const dstCtx = dstCanvas.getContext('2d')
+    if (!dstCtx) {
+      throw new Error('Failed to get 2d context from canvas')
+    }
+    dstCtx.drawImage(canvas, minX, minY, cropW, cropH, 0, 0, cropW, cropH)
 
     return dstCanvas.toDataURL('image/png')
   }
@@ -665,13 +676,43 @@ class ImageProcessingPlugin extends PluginBase {
     if (hasAlpha) {
       // OpenCV 는 **여기서만** 필요하다 — 알파 윤곽 추출 경로. 위 getObjectPath 주석 참조.
       const cv = await this.ensureCvReady()
-      const binary = await this.preProcessImage(cv, imgElement, hasAlpha, kSize)
+      // ⚠️ 원본 해상도로 컨투어를 돌리지 않는다(2026-08-06 실적발). 배경제거 결과처럼 알파 경계가
+      //    복잡한 대형 이미지(최대 2560×3413)에서는 findContours·근사화가 폭발해 메인 스레드가
+      //    사실상 멈춘다. 칼선은 부드러운 외곽선이라 축소본으로 구해도 충분하고(오히려 노이즈가
+      //    줄어든다), 좌표는 smoothContour 에서 선형 역보정한다.
+      const { element: capped, scale } = this.capElementForContour(imgElement)
+      const binary = await this.preProcessImage(cv, capped, hasAlpha, kSize)
       const largestContour: [any, boolean] = this.findLargestContour(cv, binary)
-      const points = await this.smoothContour(object, largestContour[0], largestContour[1])
+      const points = await this.smoothContour(object, largestContour[0], largestContour[1], scale)
       return this.generateCurvedPath(points, hasAlpha)
     } else {
       return this.createExpandedPath(object, 0).path
     }
+  }
+
+  /**
+   * 윤곽 추출 입력 해상도 캡 — 장변이 `CONTOUR_MAX_LONG_EDGE` 를 넘으면 축소본을 만든다.
+   * @returns element(축소본 또는 원본) 와 역보정 배율(원본/축소, 캡 미발동 시 1)
+   */
+  private capElementForContour(
+    imgElement: HTMLCanvasElement
+  ): { element: HTMLCanvasElement; scale: number } {
+    const longEdge = Math.max(imgElement.width, imgElement.height)
+    if (longEdge <= ImageProcessingPlugin.CONTOUR_MAX_LONG_EDGE) {
+      return { element: imgElement, scale: 1 }
+    }
+
+    const ratio = ImageProcessingPlugin.CONTOUR_MAX_LONG_EDGE / longEdge
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.max(1, Math.round(imgElement.width * ratio))
+    canvas.height = Math.max(1, Math.round(imgElement.height * ratio))
+    const ctx = canvas.getContext('2d')
+    if (!ctx) {
+      // 축소에 실패하면 원본으로 진행한다 — 느릴 뿐 결과는 같다.
+      return { element: imgElement, scale: 1 }
+    }
+    ctx.drawImage(imgElement, 0, 0, canvas.width, canvas.height)
+    return { element: canvas, scale: 1 / ratio }
   }
 
   loadCanvasImageFromUrl(url: string): Promise<fabric.Image> {
@@ -1340,7 +1381,9 @@ class ImageProcessingPlugin extends PluginBase {
   private async smoothContour(
     object: fabric.Object,
     contour: any,
-    useHull: boolean
+    useHull: boolean,
+    /** 컨투어를 축소본에서 구한 경우의 역보정 배율(원본/축소). 1 이면 보정 없음. */
+    contourScale: number = 1
   ): Promise<[number, number][]> {
     const cv = await this.ensureCvReady()
     const simplified = { delete: () => {} }
@@ -1366,8 +1409,9 @@ class ImageProcessingPlugin extends PluginBase {
       const points: [number, number][] = []
 
       for (let j = 0; j < result.data32S.length; j += 2) {
-        const x = result.data32S[j]
-        const y = result.data32S[j + 1]
+        // 축소본에서 구한 좌표를 원본 픽셀 좌표로 되돌린다(아래 변환은 선형이라 안전).
+        const x = result.data32S[j] * contourScale
+        const y = result.data32S[j + 1] * contourScale
 
         const currentX = (x + object.left!) * (object.scaleX ?? 1)
         const currentY = (y + object.top!) * (object.scaleY ?? 1)

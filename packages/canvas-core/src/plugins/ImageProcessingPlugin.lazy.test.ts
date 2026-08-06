@@ -104,6 +104,42 @@ describe('ImageProcessingPlugin — lazy 초기화 (D-6b① · D-12d)', () => {
     expect(plugin.preProcessImage).toHaveBeenCalledWith({ __mockCv: true }, expect.anything(), true, 1)
   })
 
+  it('윤곽 좌표는 축소본 배율만큼 선형 역보정된다 (칼선 다운스케일 회귀 잠금)', async () => {
+    const { plugin } = makePlugin()
+    // 축소본(1/2)에서 얻은 컨투어 좌표 → 원본 좌표로 2배 복원되어야 한다.
+    const contour = {
+      rows: 2,
+      cols: 1,
+      type: () => 4,
+      data32S: [10, 20, 30, 40],
+      delete: vi.fn(),
+    }
+    const object: any = { left: 0, top: 0, scaleX: 1, scaleY: 1 }
+
+    const points = await (plugin as any).smoothContour(object, contour, false, 2)
+
+    expect(points).toEqual([
+      [20, 40],
+      [60, 80],
+    ])
+  })
+
+  it('배율 1(캡 미발동)이면 좌표를 그대로 쓴다', async () => {
+    const { plugin } = makePlugin()
+    const contour = { rows: 1, cols: 1, type: () => 4, data32S: [7, 9], delete: vi.fn() }
+    const object: any = { left: 0, top: 0, scaleX: 1, scaleY: 1 }
+
+    const points = await (plugin as any).smoothContour(object, contour, false)
+
+    expect(points).toEqual([[7, 9]])
+  })
+
+  it('윤곽 입력 장변 캡 상수가 서버 산출물(2560)보다 작게 유지된다', () => {
+    const cap = (ImageProcessingPlugin as any).CONTOUR_MAX_LONG_EDGE
+    expect(cap).toBeGreaterThan(0)
+    expect(cap).toBeLessThan(2560)
+  })
+
   it('브라우저 추론 진입점(getForeground)은 존재하지 않는다 — 서버 오프로드 전환 (D-12d)', () => {
     const { plugin } = makePlugin()
 
