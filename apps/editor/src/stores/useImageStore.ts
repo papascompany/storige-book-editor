@@ -137,7 +137,9 @@ interface ImageActions {
     image: FabricImage,
     canvas: FabricCanvas,
     imagePlugin: ImageProcessingPlugin,
-    loadingBar: LoadingBar
+    loadingBar: LoadingBar,
+    /** 서버 모델 선택(미지정 시 서버 env 기본값). 스파이크 §5-10 시그니처 규약을 깨지 않는 선택 인자. */
+    options?: { model?: string }
   ) => Promise<FabricImage>
 
   // 모양을 몰드로 설정
@@ -1024,7 +1026,8 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
     image: FabricImage,
     canvas: FabricCanvas,
     imagePlugin: ImageProcessingPlugin,
-    loadingBar: LoadingBar
+    loadingBar: LoadingBar,
+    options?: { model?: string }
   ): Promise<FabricImage> => {
     if (!image) {
       throw new Error('이미지가 없습니다')
@@ -1053,6 +1056,7 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
       const { element: cutoutElement, result } = await requestCutout(
         image.getElement() as HTMLImageElement,
         {
+          model: options?.model,
           onPhase: (phase) => {
             const message =
               phase === 'upload'

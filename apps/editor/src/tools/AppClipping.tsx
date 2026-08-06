@@ -3,6 +3,8 @@ import { Upload as UploadSimple, HelpCircle as Question } from 'lucide-react'
 import { useAppStore } from '@/stores/useAppStore'
 import { useImageStore, checkMobileFileSize } from '@/stores/useImageStore'
 import { showToast } from '@/stores/useToastStore'
+import { useUiPrefStore } from '@/stores/useUiPrefStore'
+import { CUTOUT_SUBJECT_MODELS, type CutoutSubject } from '@/api/cutout'
 import { useSettingsStore, useSettingsSize, useSettingsUnit } from '@/stores/useSettingsStore'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -26,6 +28,12 @@ const ringUrl =
   'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIwIiBoZWlnaHQ9IjEyMCIgdmlld0JveD0iMCAwIDEyMCAxMjAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxjaXJjbGUgY3g9IjYwIiBjeT0iNjAiIHI9IjU1IiBzdHJva2U9IndoaXRlIiBzdHJva2Utd2lkdGg9IjEwIi8+CjxjaXJjbGUgY3g9IjYwIiBjeT0iNjAiIHI9IjIxIiBmaWxsPSJ3aGl0ZSIgc3Ryb2tlPSIjRDRFMkM3IiBzdHJva2Utd2lkdGg9IjEwIi8+Cjwvc3ZnPgo='
 const standUrl =
   'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjIwMCIgdmlld0JveD0iMCAwIDQwMCAyMDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHg9IjUiIHk9IjUiIHdpZHRoPSIzOTAiIGhlaWdodD0iMTkwIiBmaWxsPSJ3aGl0ZSIgc3Ryb2tlPSIjRDRFMkM3IiBzdHJva2Utd2lkdGg9IjEwIi8+Cjwvc3ZnPgo='
+
+/** 배경제거 피사체 선택지 — 값은 서버 모델로 매핑된다(`CUTOUT_SUBJECT_MODELS`). */
+const SUBJECT_OPTIONS: { value: CutoutSubject; label: string; hint: string }[] = [
+  { value: 'person', label: '인물', hint: '사람 사진 — 인물 전용 모델로 몸통까지 정확하게 남깁니다' },
+  { value: 'general', label: '일반', hint: '상품·캐릭터·반려동물 등 사람이 아닌 피사체' }
+]
 
 const accessories: ClippingAccessory[] = [
   {
@@ -70,6 +78,9 @@ export default function AppClipping() {
   // const showSafeBorder = useShowSafeBorder()
 
   const segmentImage = useImageStore((state) => state.segmentImage)
+  // 배경제거 피사체 — 서버 모델을 가른다(인물 전용 모델은 사람에 압도적, 그 외에는 범용이 낫다).
+  const cutoutSubject = useUiPrefStore((state) => state.cutoutSubject)
+  const setCutoutSubject = useUiPrefStore((state) => state.setCutoutSubject)
 
   const [currentImage, setCurrentImage] = useState<fabric.Group | fabric.Image | null>(null)
   const [selectedAccessory, setSelectedAccessory] = useState<ClippingAccessory | null>(null)
@@ -146,7 +157,9 @@ export default function AppClipping() {
         start: () => setIsLoading(true),
         finish: () => setIsLoading(false)
       }
-      const image = await segmentImage(target, canvas, imagePlugin!, loadingBar)
+      const image = await segmentImage(target, canvas, imagePlugin!, loadingBar, {
+        model: CUTOUT_SUBJECT_MODELS[cutoutSubject]
+      })
 
       if (image) {
         if (isClippingWorkspace()) {
@@ -497,6 +510,36 @@ export default function AppClipping() {
       <div className="sections flex flex-col overflow-y-auto">
         {/* Effects Section */}
         <AppSection title="효과">
+          {/* 피사체 선택 — 인물이면 인물 전용 모델이 훨씬 정확하고, 그 외에는 범용이 낫다.
+              선택은 localStorage 에 남아 다음 세션에도 유지된다(useUiPrefStore). */}
+          <div className="px-4 pb-2">
+            <div
+              role="group"
+              aria-label="배경제거 피사체"
+              className="inline-flex w-full rounded-md border border-editor-border overflow-hidden"
+            >
+              {SUBJECT_OPTIONS.map((opt) => {
+                const active = cutoutSubject === opt.value
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    aria-pressed={active}
+                    disabled={isLoading}
+                    onClick={() => setCutoutSubject(opt.value)}
+                    title={opt.hint}
+                    className={`flex-1 h-8 text-sm transition-colors disabled:opacity-50 ${
+                      active
+                        ? 'bg-editor-accent text-white hover:bg-editor-accent-hover'
+                        : 'bg-transparent text-editor-text hover:bg-editor-hover'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
           <div className="items flex flex-row gap-2 px-4">
             <div className="item">
               <div

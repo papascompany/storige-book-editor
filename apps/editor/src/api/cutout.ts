@@ -30,6 +30,23 @@ const POLL_TIMEOUT_MS = 210_000
  */
 const PNG_TO_JPEG_THRESHOLD_BYTES = 20 * 1024 * 1024
 
+/**
+ * 피사체별 모델 프리셋 — 서버 화이트리스트(`WorkerJobsService.CUTOUT_ALLOWED_MODELS`)의 부분집합이다.
+ *
+ * 두 모델은 성격이 갈린다(2026-08-06 동일 원본 실측, 알파 히스토그램 기준):
+ *  - `person`  : `u2net_human_seg` — 인물 전용. 반투명 2.7% · 2.9s. 사람이면 압도적으로 정확하다.
+ *  - `general` : `isnet-general-use` — 범용. 반투명 18.0% · 4.5s. 상품·캐릭터·반려동물은 이쪽.
+ *
+ * ⚠️ 기본값을 바꿀 때는 서버 기본(`REMBG_MODEL`)과 어긋나도 무방하다 — 클라가 명시하면
+ *    그 값이 우선이고, 서버 기본은 model 미지정 잡에만 적용된다.
+ */
+export const CUTOUT_SUBJECT_MODELS = {
+  person: 'u2net_human_seg',
+  general: 'isnet-general-use',
+} as const
+
+export type CutoutSubject = keyof typeof CUTOUT_SUBJECT_MODELS
+
 export class CutoutError extends Error {
   constructor(
     message: string,

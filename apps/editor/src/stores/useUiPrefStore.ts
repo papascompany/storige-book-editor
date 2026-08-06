@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
+import type { CutoutSubject } from '@/api/cutout'
 
 /**
  * UI 사용자 선호 — 페이지 네비 위치, 패널 토글 등
@@ -73,6 +74,12 @@ interface UiPrefState {
   autoSaveToastEnabled: boolean
   setAutoSaveToastEnabled: (enabled: boolean) => void
   toggleAutoSaveToast: () => void
+  /**
+   * 배경제거 피사체 종류 — 서버 모델을 가른다(api/cutout.ts `CUTOUT_SUBJECT_MODELS`).
+   * 기본 'person'(서버 기본 모델과 동일). 사용자가 바꾸면 다음 세션에도 유지된다.
+   */
+  cutoutSubject: CutoutSubject
+  setCutoutSubject: (subject: CutoutSubject) => void
 }
 
 /**
@@ -150,11 +157,13 @@ export const useUiPrefStore = create<UiPrefState>()(
       setAutoSaveToastEnabled: (autoSaveToastEnabled) => set({ autoSaveToastEnabled }),
       toggleAutoSaveToast: () =>
         set((s) => ({ autoSaveToastEnabled: !s.autoSaveToastEnabled })),
+      cutoutSubject: 'person',
+      setCutoutSubject: (cutoutSubject) => set({ cutoutSubject }),
     }),
     {
       name: 'storige-ui-pref',
       storage: createJSONStorage(() => localStorage),
-      version: 8,
+      version: 9,
       migrate: (persistedState, version) => {
         const state = (persistedState ?? {}) as Partial<UiPrefState>
         if (version < 3) {
@@ -179,6 +188,10 @@ export const useUiPrefStore = create<UiPrefState>()(
           state.snapGuidesEnabled = state.snapGuidesEnabled ?? true
           state.snapCenterEnabled = state.snapCenterEnabled ?? true
           state.snapAngleEnabled = state.snapAngleEnabled ?? true
+        }
+        if (version < 9) {
+          // 배경제거 피사체 선택 신설 — 서버 기본 모델과 같은 'person' 으로 시작한다.
+          state.cutoutSubject = 'person'
         }
         // sidebarWidth가 범위를 벗어난 경우 보정
         if (typeof state.sidebarWidth === 'number') {
