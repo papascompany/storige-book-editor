@@ -407,8 +407,21 @@ class ImageProcessingPlugin extends PluginBase {
     multiplier: number = 1
   ): Promise<fabric.Image> {
     return new Promise((resolve, reject) => {
-      const width = (objectPath.width! * objectPath.scaleX! + distance) * multiplier
-      const height = (objectPath.height! * objectPath.scaleY! + distance) * multiplier
+      const fullWidth = (objectPath.width! * objectPath.scaleX! + distance) * multiplier
+      const fullHeight = (objectPath.height! * objectPath.scaleY! + distance) * multiplier
+
+      // ⚠️ 장변 캡 (2026-08-06 실적발). 이 이미지는 **윤곽 재추출 입력**으로 쓰이고 최종 칼선은
+      //    벡터 path 라 고해상도가 필요 없다. 배경제거 결과(장변 최대 2560)를 그대로 태우면
+      //    아래 toDataURL 이 9MP PNG 를 인코딩하고 fabric 이 다시 디코드해 메모리가 폭증했다.
+      //    아래 `scale` 이 height 기준이라, 줄인 만큼 scale 이 커져 **최종 표시 크기는 그대로**다.
+      const longEdge = Math.max(fullWidth, fullHeight)
+      const shrink =
+        longEdge > ImageProcessingPlugin.CONTOUR_MAX_LONG_EDGE
+          ? ImageProcessingPlugin.CONTOUR_MAX_LONG_EDGE / longEdge
+          : 1
+      const width = Math.max(1, Math.round(fullWidth * shrink))
+      const height = Math.max(1, Math.round(fullHeight * shrink))
+
       const canvas = document.createElement('canvas')
       canvas.width = width
       canvas.height = height
@@ -419,12 +432,13 @@ class ImageProcessingPlugin extends PluginBase {
         return
       }
 
-      console.log('objToImage Size', width, height)
-
       /// add path as obj to canvas and screenshot canvas
       context.drawImage(
         objectPath.toCanvasElement({
-          enableRetinaScaling: true
+          // ⚠️ retina 배율 금지 — DPR 2~3 이면 여기서 만들어지는 중간 캔버스가 4~9배로 커진다
+          //    (2560×3413 경로 · DPR 3 → 7680×10239 ≈ 79MP ≈ 314MB). 곧바로 width×height 로
+          //    축소해 그릴 뿐이라 배율은 결과에 기여하지 않고 메모리만 태웠다.
+          enableRetinaScaling: false
         }),
         0,
         0,
