@@ -65,8 +65,12 @@ api·worker 재빌드 → recreate → nginx 재시작 · `docker exec storige-w
 = `u2net_human_seg` 확인 · 라이브 프로브에서 신규 2종 통과·`u2net_custom` 차단 유지.
 ⚠️ **수용된 리스크**: 두 가중치의 학습 데이터셋(Supervisely Person / DIS5K) 상업 조항은
 **미확인·회색지대**다 — 1차 결정에서 u2net 을 고른 이유('데이터셋 얽힘 최소')를 품질과 맞바꿨다.
-⚠️ `u2net_human_seg` 는 **인물 전용** — 상품·캐릭터·반려동물은 `isnet-general-use` 를 잡 파라미터로
-명시하는 편이 낫다(편집기 UI 선택지는 미구현).
+⚠️ `u2net_human_seg` 는 **인물 전용** — 상품·캐릭터·반려동물은 `isnet-general-use` 가 낫다.
+✅ **편집기 선택 UI 완료**(`0d289cc`): 모양컷 '효과' 섹션의 **인물/일반 세그먼트 버튼**.
+선택은 `useUiPrefStore.cutoutSubject`(persist v9)에 남아 다음 세션에도 유지된다.
+`segmentImage(..., options?: { model })` 는 **선택 인자**라 §5-10 시그니처 규약은 유지된다.
+⚠️ **비인물 품질은 미실측** — 오너 QA 는 인물 사진 1장뿐이다. '일반'이 상품·캐릭터에서 실제로
+나은지는 실기 확인이 남아 있다.
 
 <details><summary>1차 결정 경위(참고)</summary>
 
