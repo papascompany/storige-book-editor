@@ -395,19 +395,25 @@ docker exec storige-rembg ls -lh /home/rembg/.u2net
 healthcheck 는 FastAPI 문서 라우트(`/api`)만 친다 — **실제 배경제거 라우트가 도는지는 검증하지 않는다.**
 모델 키 오타·extras 누락(`[cli]` 만 설치하면 서버는 뜨고 추론에서만 죽는다)은 이 단계에서만 잡힌다.
 
+⚠️ **워커 컨테이너에 `curl` 은 없다**(alpine 베이스 — `wget` 만 있고 multipart 를 못 만든다, 2026-08-06 실측).
+그래서 스모크는 **워커의 실제 클라이언트 코드(`RembgService`)를 그대로 호출**한다. multipart 조립·모델
+바디 필드·PNG 매직 검증까지 프로덕션과 동일 경로를 타므로 curl 보다 강한 검증이다.
+
 ```bash
-# 워커 컨테이너 안에서 내부망으로 호출 (rembg 는 외부 포트가 없다)
-docker exec storige-worker sh -lc '
-  head -c 100000 /dev/urandom > /tmp/noise.bin
-  # 실제 PNG 로 테스트하려면 storage 의 업로드 이미지 하나를 쓰면 된다
-  f=$(find /app/storage/uploads -name "*.png" | head -1); echo "input=$f"
-  # ⚠️ model 은 **쿼리가 아니라 폼 필드**다. POST /api/remove 의 쿼리 파라미터는 bgc·extras 뿐이라
-  #    ?model= 로 보내면 에러 없이 무시되고 기본 모델(u2net)로 추론된다(2026-08-05 프로덕션 실적발).
-  curl -s -o /tmp/out.png -w "%{http_code} %{size_download}\n" \
-    -F "file=@$f" -F "model=u2net" "http://rembg:7000/api/remove"
-  file /tmp/out.png
-'
-# 기대: 200 + PNG image data (알파 채널). 422/500 이면 모델 키·extras 문제.
+docker exec storige-worker sh -lc 'cd /app && node -e "
+const fs=require(\"fs\");
+const {RembgService}=require(\"/app/apps/worker/dist/services/rembg.service.js\");
+const dir=\"/app/storage/library\";
+const f=fs.readdirSync(dir).filter(n=>n.endsWith(\".png\")).map(n=>({n,s:fs.statSync(dir+\"/\"+n).size})).sort((a,b)=>a.s-b.s)[3];
+const buf=fs.readFileSync(dir+\"/\"+f.n); const t0=Date.now();
+new RembgService().removeBackground(buf,\"u2net\").then(r=>{
+  const ct=r.png[25];  // PNG IHDR color type: 6=RGBA
+  console.log(\"model=\"+r.model+\" out=\"+r.png.length+\"B ms=\"+(Date.now()-t0)+\" colorType=\"+ct);
+}).catch(e=>{console.error(\"FAIL\",e.code||e.name,e.message);process.exit(1)});
+"'
+# 기대: model=u2net · colorType=6(알파 있음) · 1초 내외(u2net 기준 실측 0.98s)
+# ⚠️ model 은 **쿼리가 아니라 폼 필드**다. POST /api/remove 의 쿼리는 bgc·extras 뿐이라
+#    ?model= 로 보내면 에러 없이 무시되고 기본 모델로 추론된다(2026-08-05 실적발, 수정 3f6fd20).
 
 # ★ 실제로 그 모델이 쓰였는지 캐시로 확인 — model 을 잘못 보내면 u2net.onnx 만 받아진다
 docker exec storige-rembg ls -la /home/rembg/.u2net/
@@ -436,7 +442,23 @@ docker compose up -d api worker && docker compose restart nginx
 docker exec storige-api printenv CUTOUT_ENABLED         # → true
 docker exec storige-worker printenv CUTOUT_ENABLED      # → true  (★ 이게 비면 전건 실패)
 docker exec storige-worker printenv REMBG_URL REMBG_MODEL
+
+# 5) 라이브 게이트 프로브 — 잡을 만들지 않고 밖에서 확인한다(존재하지 않는 UUID 사용).
+#    플래그가 꺼져 있으면 컷아웃 라우트는 {"code":"NOT_FOUND","message":"Cannot resolve route"} 를 준다.
+U=$(uuidgen | tr 'A-Z' 'a-z'); API=https://api.papascompany.co.kr/api
+curl -s -X POST "$API/worker-jobs/cutout" -H 'Content-Type: application/json' -d "{\"fileId\":\"$U\"}"
+#   → ON 이면 {"code":"FILE_NOT_FOUND",...}  /  OFF 면 {"code":"NOT_FOUND","message":"Cannot resolve route"}
+curl -s -X POST "$API/worker-jobs/cutout" -H 'Content-Type: application/json' \
+  -d "{\"fileId\":\"$U\",\"model\":\"u2net_custom\"}"   # → 400 CUTOUT_MODEL_FORBIDDEN (CVE 가드)
+curl -s -X POST "$API/worker-jobs/cutout" -H 'Content-Type: application/json' \
+  -d "{\"fileId\":\"$U\",\"model\":\"bria-rmbg\"}"      # → 400 CUTOUT_MODEL_NOT_ALLOWED (비상업 차단)
 ```
+
+> ⚠️ **잡 종단(큐→워커→산출물)은 이 절차만으로는 확인되지 않는다.** 컷아웃 잡은 `files` 레코드의
+> `fileId` 를 요구하는데, 프로덕션은 `STORAGE_DRIVER=local` 이라 presigned 업로드가 503 이고
+> `/files/upload`·`/files/upload/external` 은 둘 다 **PDF 전용 필터**라, 게스트 이미지를 `files` 에
+> 등록하는 경로가 아직 없다(2026-08-06 실측). 편집기 연결(샤드 3)에서 이 경로를 함께 배선한 뒤
+> 실사용 흐름으로 종단 검증한다.
 
 ### ④ 롤백 (즉시 원상복구)
 

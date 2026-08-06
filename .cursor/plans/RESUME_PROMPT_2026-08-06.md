@@ -4,8 +4,9 @@
 > **참조용으로만** 보고, 현재 상태·다음 행동은 이 문서를 따른다.
 > 병행 트랙 인계본: `RESUME_PROMPT_2026-08-05_MULTITENANCY.md` (api/admin 소유 — **이 트랙이 건드리지 않는다**).
 >
-> 작성 2026-08-06 00:30 KST · 기준 master **`8a57a40`**(문서 커밋이 계속 앞서므로 **해시를 믿지 말고 `git fetch`**).
-> **코드 잔여 0 · 전 서비스 LIVE · 오너 결정 대기 1건(D-12b)**.
+> 작성 2026-08-06 00:30 KST · **갱신 2026-08-06 11:30 KST**(D-12b 확정 → 컷아웃 **활성화 완료**).
+> 기준 master **`4a4cd9b`**(문서 커밋이 계속 앞서므로 **해시를 믿지 말고 `git fetch`**).
+> **코드 잔여 0 · 전 서비스 LIVE · 컷아웃 기능 ON · 오너 결정 대기 0건**.
 
 ---
 
@@ -35,38 +36,63 @@ curl -s https://api.papascompany.co.kr/api/health | python3 -m json.tool | head 
 | D-6b② 배경제거 픽셀 캡 | ✅ 머지 `4d1c2b1` · 번들 배선 확인 | PR #14 |
 | [S-P2A-B] 샤드1 스택 스파이크 | ✅ 결정표 D-12 확정(코드 0) | `CUTOUT_WORKER_STACK_SPIKE_2026-08-05.md` |
 | [S-P2A-B] 샤드2 서버 슬라이스 | ✅ 머지 `14a881c` + 후속 수정 `3f6fd20` | PR #15 |
-| **컷아웃 VPS 배포·사이드카 기동** | ✅ 완료 — **단 기능은 꺼져 있음** | §2 |
+| **컷아웃 VPS 배포·사이드카 기동** | ✅ 완료 | §2 |
+| **D-12b 모델 확정 → 컷아웃 ON** | ✅ **2026-08-06 11:20 완료** — `u2net` 확정·`CUTOUT_ENABLED=true` LIVE | `4a4cd9b` · §2-2 |
 
 **현재 프로덕션**: editor/admin 200 · `api/health` ok(**queues 4종 = validation·conversion·synthesis·cutout**) ·
-rembg 사이드카 healthy · 디스크 34% · `CUTOUT_ENABLED=false`(api·worker 양쪽).
+rembg 사이드카 healthy · 디스크 34% · **`CUTOUT_ENABLED=true`(api·worker 양쪽) · `REMBG_MODEL=u2net`**.
 
 ---
 
 ## 2. ★ 다음 세션이 가장 먼저 할 일
 
-### 2-1. 오너 결정 대기 — `REMBG_MODEL` 확정 (D-12b 재상신)
-**컷아웃 기능을 켤 수 없는 유일한 이유다.** 오너가 고른 BEN2 는 rembg 백엔드에 **존재하지 않고**
-(있는 건 `ben_custom` = CVE-2026-40086 경로 순회 벡터라 사용 금지), 대체로 잡은 birefnet 계열은
-**프로덕션에서 OOM** 했다.
+### 2-1. ✅ [완료] D-12b `REMBG_MODEL` 확정 — **u2net**
+2026-08-06 오너 결정: **(a) u2net 확정**(Apache-2.0). BEN2 는 rembg 백엔드에 부재(`ben_custom` 은
+CVE-2026-40086 벡터라 금지), BiRefNet 계열은 이 박스에서 **cgroup OOM**(RSS 3.13GB > 3g) 이라
+동작하는 유일한 선택지였다. 품질 열위(머리카락·반투명 경계)는 수용 — 증설 후 재검토 여지.
 
 | 모델 | 결과 | 라이선스 |
 |---|---|---|
-| `u2net` | ✅ **3.6s / RSS 1.0GB** — 유일하게 동작 | Apache-2.0 (얽힘 최소) |
-| `birefnet-general` (973MB) | ❌ cgroup OOM (RSS 3.13GB / 한도 3GiB) | MIT (DIS5K 회색) |
-| `birefnet-general-lite` (224MB) | ❌ cgroup OOM | MIT (DIS5K 회색) |
+| **`u2net`** ✅ 확정 | **0.98~3.6s / RSS 1.0GB** — 유일하게 동작 | Apache-2.0 (얽힘 최소) |
+| `birefnet-general` (973MB) | ❌ cgroup OOM | MIT (DIS5K 회색) |
+| `birefnet-general-lite` (224MB) | ❌ cgroup OOM (파일 크기 무관) | MIT (DIS5K 회색) |
 
-선택지: **(a) u2net 확정**(권고 — 동작·라이선스 모두 최선) / (b) rembg 한도 상향 + `WORKER_MEM_LIMIT`
-하향으로 BiRefNet 재시도(**인쇄 파이프라인 메모리 경합** — 스파이크가 경고한 지점) / (c) VPS 증설.
-→ 결정 후 `~/storige/.env` 에 `REMBG_MODEL=` 설정 → **그 다음에** `CUTOUT_ENABLED=true`.
+배선(`4a4cd9b`): compose 기본값·워커 코드 기본값을 u2net 으로 **동시 고정** + 프로덕션 `.env` 에
+`REMBG_MODEL=u2net` 명시(이중 고정). `birefnet-*` 는 API 화이트리스트에 남아 있으나 **지금 지정하면
+그 잡은 OOM 으로 실패**한다.
 
-⚠️ **현재 compose 기본값은 `birefnet-general`** 이라 그대로 켜면 첫 잡에서 OOM 한다.
+### 2-2. ✅ [완료] 기능 활성화 (2026-08-06 11:20 KST)
+`docs/DEPLOYMENT.md` §배경제거 절차대로 수행. 실측 근거:
 
-### 2-2. 기능 활성화 절차 (결정 후)
-`docs/DEPLOYMENT.md` §배경제거 를 그대로 따른다: 디스크 점검 → (이미 기동됨) → 모델 예열 →
-**계약 스모크**(`-F model=...` — 쿼리 아님) → `.env` 플래그 → `docker compose up -d api worker` →
-**nginx 재시작** → `docker exec storige-worker printenv CUTOUT_ENABLED` 로 **워커에도 주입됐는지 확인**.
+| 단계 | 결과 |
+|---|---|
+| 롤백 태그(빌드 전) | `storige-worker:pre-cutout-u2net` · `storige-api:pre-cutout-u2net` |
+| 모델 예열 | `U2netSession` 생성 OK (캐시 168MB 기존분 재사용) |
+| **계약 스모크**(워커 실코드 `RembgService`) | `model=u2net` · 32KB→38KB · **982ms** · PNG colorType=6(알파) |
+| `.env` | `CUTOUT_ENABLED=true` · `REMBG_MODEL=u2net` 추가(백업 `.env.bak.pre-cutout-on`) |
+| 재기동 | worker 재빌드 → `up -d api worker` → **nginx restart** |
+| env 주입 | api `true` · worker `true`/`u2net`/`http://rembg:7000` |
+| 라이브 게이트 프로브 | ON 확인(`FILE_NOT_FOUND`) · `u2net_custom`→400 CVE가드 · `bria-rmbg`→400 |
+| 큐·헬스 | `api/health` ok, queues 4종 |
+
+⚠️ **워커에 `curl` 이 없어** 문서의 curl 스모크는 실행 불가였다 → `RembgService` 직접 호출로 교체(문서 반영).
+⚠️ **잡 종단(큐→워커→산출물)은 아직 미검증** — 아래 2-3 의 P0 갭 때문. 구성요소는 각각 검증됨
+(rembg 실추론 프로덕션 ✅ / CutoutProcessor 유닛 10/10 ✅ / API 게이트 라이브 ✅).
 
 ### 2-3. 샤드 3 — 편집기 연결 (다음 구현)
+
+**★ P0 선결 갭(2026-08-06 발견): 게스트 이미지를 `files` 에 등록할 경로가 없다.**
+컷아웃 잡은 `files.id`(UUID)를 요구하는데 —
+- 프로덕션은 `STORAGE_DRIVER=local` → `POST /files/presigned-upload-public` 은 **503 STORAGE_NOT_S3**
+- `POST /files/upload` · `POST /files/upload/external` 은 **둘 다 `mimetype !== 'application/pdf'` 400 필터**
+- 편집기의 실제 이미지 업로드는 `POST /storage/upload?category=uploads` = **storage 모듈이라 `files` 레코드가 없다**
+
+→ 샤드 3 은 "base64 → fileId 참조 전환" 이전에 **이미지 → `files` 등록 경로**를 먼저 정해야 한다.
+선택지: (i) `/files/upload` 계열의 MIME 필터를 이미지까지 확장(게스트용 무인증 라우트 신설 필요) /
+(ii) `/storage/upload` 결과를 `files` 에 등록하는 브릿지 / (iii) R2(s3) 드라이버 전환으로 presigned 개통
+(저장계층 R2 추상화는 이미 있고 오너 프로비저닝 대기 상태).
+
+
 계약: `CUTOUT_WORKER_STACK_SPIKE_2026-08-05.md` §5-10.
 - `useImageStore.segmentImage(image, canvas, imagePlugin, loadingBar) → Promise<FabricImage>`
   **시그니처를 유지**하고 내부만 잡 요청/폴링으로 교체 → `AppClipping` 호출부 무변경.
@@ -99,7 +125,8 @@ editor ◀──GET /worker-jobs/:id/cutout-status── api ◀──PATCH─�
 |---|---|
 | 큐 / 잡 | `image-cutout` / `remove-background` · 동시성 1 |
 | 잡 타입 | `WorkerJobType.CUTOUT` — `job_type` varchar(30) → **DDL 변경 없음** |
-| 플래그 | `CUTOUT_ENABLED` **기본 false · api·worker 양쪽 필요 · 값은 `true`\|`1`** |
+| 플래그 | `CUTOUT_ENABLED` **기본 false · api·worker 양쪽 필요 · 값은 `true`\|`1`** — 프로덕션 현재 **true** |
+| 모델 | `REMBG_MODEL` 기본 **`u2net`**(D-12b 확정). birefnet 계열은 화이트리스트에 있으나 **현 박스에서 OOM** |
 | 사이드카 | compose profile `cutout`(기본 `up -d` 미포함) · **포트 미노출** · rembg 2.0.77 핀 |
 | 가드 | 장변 2560 캡 · 30MB · 40MP · **바이트 기반 포맷 판정** · 모델 화이트리스트(`_custom` 이중 차단) |
 | 테넌트 | 익명은 site 스탬프된 파일·잡에 접근 불가. 게스트(NULL-site)만 익명 허용 |
@@ -142,7 +169,17 @@ python + onnxruntime import 로 첫 리슨까지 약 2분. healthcheck `start_pe
 `javascript_tool` 로 `document.querySelector('button[title="이미지"]').click()` 우회.
 로컬 dev 는 zoom=0 으로 초기화되므로 `setViewportTransform` 이 필요할 수 있다.
 
-### 4-7. 계속 유효한 기존 함정
+### 4-7. 워커 컨테이너에 `curl` 이 없다 (문서의 스모크 명령이 실행 불가였다)
+alpine 베이스라 `wget` 만 있고 multipart 를 못 만든다. 사이드카 계약 스모크는 **워커의 실제 클라이언트
+코드를 직접 호출**한다(`require('/app/apps/worker/dist/services/rembg.service.js')`) — 조립·모델 필드·
+PNG 매직 검증까지 프로덕션 경로와 동일해 curl 보다 강하다. 명령 전문은 `docs/DEPLOYMENT.md` §②-b.
+
+### 4-8. `files` 등록 경로가 이미지에 대해 존재하지 않는다 (샤드 3 선결)
+`/files/upload`·`/files/upload/external` 은 `mimetype !== 'application/pdf'` → 400 이고, presigned 는
+`STORAGE_DRIVER=local` 이라 503 이다. 편집기 업로드는 `/storage/upload` 라 `files` 레코드를 만들지 않는다.
+**컷아웃 잡은 `files.id` 를 요구하므로**, 이 갭을 메우기 전에는 실사용 종단이 성립하지 않는다(§2-3).
+
+### 4-9. 계속 유효한 기존 함정
 - **api recreate 후 nginx 재시작 필수**(리터럴 `proxy_pass` + resolver 없음 → 502)
 - CI 유출 게이트가 **주석·테스트명의 외부 벤치 식별자**까지 DENY (editor `postbuild` 도 dist 스캔)
 - 로컬 canvas-core 의 fabric import 테스트 4스위트는 `canvas.node` 미빌드로 실패(**기준선** — CI 무관)
@@ -151,14 +188,17 @@ python + onnxruntime import 로 첫 리슨까지 약 2분. healthcheck `start_pe
 
 ---
 
-## 5. 상태 스냅샷 (2026-08-06 00:30 KST 실측)
+## 5. 상태 스냅샷 (2026-08-06 11:30 KST 실측)
 
-- master **`8a57a40`** · 작업 브랜치 전부 머지·삭제(**코드 잔여 0**) · 미커밋 = 사용자 소유 1건
-- 프로덕션: editor/admin **200** · api/health **ok**(큐 4종) · rembg **healthy** · 디스크 **34%**(캐시 90GB 정리 후)
-- 메모리(호스트 7.9GB): rembg 상한 3g(유휴 ~40MB) · worker 4g · 여유 ~5.6GB
-- **`CUTOUT_ENABLED=false`** (api·worker) · `REMBG_MODEL=birefnet-general`(⚠️ OOM — §2-1)
-- 모델 캐시(named volume `storige_rembg_models`): u2net 176MB · birefnet-general 973MB · -lite 224MB
+- master **`4a4cd9b`** · 작업 브랜치 전부 머지·삭제(**코드 잔여 0**) · 미커밋 = 사용자 소유 1건
+- 프로덕션: api/health **ok**(큐 4종) · rembg **healthy** · 디스크 **34%** · api/worker/nginx 재기동 완료
+- 메모리(호스트 7.9GB): rembg 상한 3g(u2net 피크 RSS 1.0GB) · worker 4g · 여유 ~5.6GB
+- **`CUTOUT_ENABLED=true`(api·worker) · `REMBG_MODEL=u2net`** — `.env` 명시 + compose·코드 기본값도 u2net
+- 롤백: `storige-worker:pre-cutout-u2net` · `storige-api:pre-cutout-u2net` · `.env.bak.pre-cutout-on`
+  (기능만 끄려면 `.env` `CUTOUT_ENABLED=false` → `up -d api worker` → **nginx restart**)
+- 모델 캐시(named volume `storige_rembg_models`): u2net 168MB · birefnet-general 928MB · -lite 214MB
 - 테스트 기준선: api **930** · worker **511** · editor 44스위트 · canvas-core(로컬 4스위트 실패=기준선)
+  · 이번 회귀 확인: worker rembg 11/11 · worker cutout processor 10/10 · api worker-jobs 170/170
 
 ---
 
@@ -187,13 +227,14 @@ storige 프로젝트를 이어서 진행합니다.
 3. git fetch && git log --oneline -5 && git status -sb
    (미커밋 RESUME_PROMPT_2026-07-30.md 는 사용자 소유 — 보존)
 
-현재 상태: 컷아웃 서버 오프로드(S-P2A-B 샤드2)까지 머지·배포 완료. rembg 사이드카는 프로덕션에서
-healthy 하지만 CUTOUT_ENABLED=false 로 꺼져 있음. 코드 잔여 0.
+현재 상태: 컷아웃 서버 오프로드가 프로덕션에서 **켜져 있음**(CUTOUT_ENABLED=true, REMBG_MODEL=u2net,
+D-12b 확정 완료). 오너 결정 대기 0건 · 코드 잔여 0.
 
-가장 먼저: §2-1 오너 결정(REMBG_MODEL) 확인. 결정이 있으면 §2-2 활성화 절차,
-없으면 §2-3 샤드3(편집기 연결)을 결정과 무관한 범위부터 진행.
+다음 할 일은 §2-3 샤드3(편집기 연결)이고, **착수 전에 P0 갭부터 결정**해야 한다:
+게스트 이미지를 files 에 등록할 경로가 현재 없다(§2-3 · §4-8). 3안 중 택1이 필요.
 
-주의: §4 함정 7건 — 특히 rembg model 은 바디 필드(4-1), enum 확장 시 admin 라벨 맵 동반 갱신(4-2),
-compose env 매핑 누락(4-3), 배포 전 롤백 태그(4-4), api recreate 후 nginx 재시작(4-7).
+주의: §4 함정 9건 — rembg model 은 바디 필드(4-1), enum 확장 시 admin 라벨 맵 동반 갱신(4-2),
+compose env 매핑 누락(4-3), 배포 전 롤백 태그(4-4), 워커에 curl 없음(4-7), files 등록 갭(4-8),
+api recreate 후 nginx 재시작(4-9).
 로컬 테스트는 PATH="/opt/homebrew/opt/node@22/bin:$PATH" 로 Node 22 를 앞세울 것.
 ```
