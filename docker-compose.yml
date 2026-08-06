@@ -159,11 +159,14 @@ services:
       - REMBG_URL=${REMBG_URL:-http://rembg:7000}
       - REMBG_ENDPOINT=${REMBG_ENDPOINT:-/api/remove}
       # 모델 교체는 이 값 하나로 끝난다(rembg 내장 세션 키).
-      #   기본 birefnet-general(MIT, 품질 상위 티어) / 저메모리·저지연 대안 birefnet-general-lite
-      #   / 최경량 폴백 u2net(Apache-2.0). ⚠️ bria-rmbg 는 비상업 라이선스라 사용 금지.
+      #   기본 u2net(Apache-2.0) — D-12b 오너 확정(2026-08-06). 이 박스에서 유일하게 동작한다.
+      #   ⚠️ birefnet-general·-lite(MIT)는 **이 하드웨어에서 cgroup OOM 한다**(RSS 3.13GB > mem_limit 3g,
+      #      2026-08-06 프로덕션 실측). 파일 크기와 무관하다 — lite(224MB)도 동일하게 죽는다.
+      #      쓰려면 REMBG_MEM_LIMIT 상향 + WORKER_MEM_LIMIT 하향(인쇄 파이프라인과 메모리 경합) 또는 증설이 선행.
+      #   ⚠️ bria-rmbg 는 비상업 라이선스라 사용 금지.
       #   ⚠️ `*_custom` 계열(u2net_custom·dis_custom·ben_custom)은 model_path 를 받는 CVE-2026-40086
       #      경로 순회 벡터이므로 지정하지 않는다.
-      - REMBG_MODEL=${REMBG_MODEL:-birefnet-general}
+      - REMBG_MODEL=${REMBG_MODEL:-u2net}
       # 사이드카 왕복 타임아웃(ms). 최초 1회는 모델 가중치 다운로드(수백MB~1GB)가 겹칠 수 있어
       #   기본을 넉넉히 잡았다. 사전 워밍 후에는 하향 가능(운영 절차: docs/DEPLOYMENT.md).
       - REMBG_TIMEOUT_MS=${REMBG_TIMEOUT_MS:-180000}
@@ -210,9 +213,11 @@ services:
     #    (2026-07-13·07-30 실사고 2건), rembg 서버는 무인증 + CVE-2026-40086 이력이 있다.
     #    소비자는 같은 compose 네트워크의 worker 뿐이고 http://rembg:7000 으로 도달한다.
     #    디버깅이 필요하면 docker exec 또는 SSH 터널을 쓴다.
-    # 기본 모델 birefnet-general 은 fp32 ONNX 약 973MB — 세션 초기화·1024² 추론까지 고려해 3g.
-    #   ⚠️ worker(기본 4g)와 동시 피크 시 8GB 박스가 빠듯하다. 상시 ON 운영 전에는
-    #      REMBG_MODEL=birefnet-general-lite(경량) + REMBG_MEM_LIMIT=1g 또는 WORKER_MEM_LIMIT 하향을 검토.
+    # 기본 모델 u2net 은 176MB ONNX — 실측 피크 RSS 1.0GB(3.6s/장)라 3g 안에서 여유가 있다.
+    #   ⚠️ 이 3g 는 BiRefNet 을 담으려고 잡은 값인데 **그래도 부족했다**(실측 RSS 3.13GB → OOM).
+    #      즉 상한을 내리는 건 안전하지만(u2net 기준 1.5g면 충분), 올린다고 BiRefNet 이 되는 것도 아니다.
+    #      worker(기본 4g)와 동시 피크 시 8GB 박스가 빠듯하므로 상시 ON 운영에서 여유가 필요하면
+    #      REMBG_MEM_LIMIT 하향이 먼저다.
     mem_limit: ${REMBG_MEM_LIMIT:-3g}
     environment:
       - REMBG_PORT=7000

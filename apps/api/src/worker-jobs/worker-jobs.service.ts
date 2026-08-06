@@ -777,10 +777,12 @@ export class WorkerJobsService implements OnModuleInit {
 
   /**
    * 배경제거 모델 키(rembg 내장 세션명) 화이트리스트 — 확장은 D-12b(라이선스) 결정 사안.
-   *  - `birefnet-general`      : 사이드카 기본(compose `REMBG_MODEL` 기본값)과 동일. MIT.
-   *  - `birefnet-general-lite` : 메모리 압박 시 경량 대안(compose 주석의 완화 경로).
-   *  - `u2net`                 : Apache-2.0 폴백. "런타임 파라미터 1개로 전환 가능" 이
-   *                              D-12b 의 완화 설계 의무이고, 이 `model` 이 그 스위치다.
+   *  - `u2net`                 : 사이드카 기본(compose `REMBG_MODEL` 기본값)과 동일. Apache-2.0.
+   *                              D-12b 오너 확정(2026-08-06) — 현 하드웨어에서 유일하게 동작한다.
+   *  - `birefnet-general`      : MIT. ⚠️ 현 프로덕션 박스에서는 **cgroup OOM 한다**(실측 RSS 3.13GB).
+   *                              화이트리스트에 남겨 둔 것은 증설·한도 재배분 후를 위한 것이지
+   *                              지금 지정하면 그 잡은 실패한다.
+   *  - `birefnet-general-lite` : MIT. 위와 동일하게 OOM(파일은 224MB지만 활성화 메모리가 크다).
    *
    * 🚨 임의 키를 열지 말 것 — rembg 는 `*_custom` 세션(u2net_custom·dis_custom 등)으로
    *    **임의 경로의 ONNX 를 로드**할 수 있고 경로 순회 이력(CVE-2026-40086)이 있다.
@@ -790,9 +792,9 @@ export class WorkerJobsService implements OnModuleInit {
    *    env 기본값(REMBG_MODEL)을 쓰므로, 사이드카 기본 모델 교체는 이 목록과 무관하다.
    */
   static readonly CUTOUT_ALLOWED_MODELS: readonly string[] = [
+    'u2net',
     'birefnet-general',
     'birefnet-general-lite',
-    'u2net',
   ];
 
   /**

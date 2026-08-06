@@ -421,6 +421,8 @@ graph LR
 
 ⚠️ **모델은 라이선스가 제각각이다.** 기본값은 env `REMBG_MODEL` 하나로 교체 가능하며,
 상업 사용 가부·실측 메모리는 `.cursor/plans/CUTOUT_WORKER_STACK_SPIKE_2026-08-05.md` 를 정본으로 본다.
+확정 모델은 **`u2net`(Apache-2.0)** — D-12b 오너 결정(2026-08-06). BiRefNet 계열은 라이선스는 가능하나
+현 프로덕션 박스에서 cgroup OOM 한다(실측 RSS 3.13GB > mem_limit 3g).
 
 #### 2.3.2 Bull Queue 설정
 

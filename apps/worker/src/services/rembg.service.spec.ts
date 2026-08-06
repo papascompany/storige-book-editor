@@ -50,9 +50,11 @@ describe('RembgService', () => {
       expect(new RembgService().resolveModel()).toBe('birefnet-general-lite');
     });
 
-    it('env 미설정이면 코드 기본값은 compose 기본값과 같은 birefnet-general 이다', () => {
+    it('env 미설정이면 코드 기본값은 compose 기본값과 같은 u2net 이다 (D-12b 확정)', () => {
       delete process.env.REMBG_MODEL;
-      expect(new RembgService().resolveModel()).toBe('birefnet-general');
+      // ⚠️ birefnet 계열로 바꾸면 프로덕션 박스에서 cgroup OOM 한다(2026-08-06 실측).
+      //    compose `REMBG_MODEL:-u2net` 기본값과 이 값은 항상 같이 움직여야 한다.
+      expect(new RembgService().resolveModel()).toBe('u2net');
     });
 
     it('허용 문자 밖(경로·쿼리 오염 시도)은 거부한다', () => {

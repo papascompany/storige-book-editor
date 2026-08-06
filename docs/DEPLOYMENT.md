@@ -375,13 +375,13 @@ docker logs --tail 50 storige-rembg
 
 ### ② 최초 요청 시 모델 가중치 다운로드가 일어난다
 
-rembg 는 가중치를 이미지에 담지 않고 **첫 추론 시점에 내려받는다**(`U2NET_HOME=/home/rembg/.u2net`). 기본 모델 `birefnet-general` 은 fp32 ONNX **약 973MB** 라, 예열하지 않으면 첫 CUTOUT 잡이 다운로드 시간까지 떠안아 `REMBG_TIMEOUT_MS`(기본 180000) 안에 못 끝날 수 있다.
+rembg 는 가중치를 이미지에 담지 않고 **첫 추론 시점에 내려받는다**(`U2NET_HOME=/home/rembg/.u2net`). 기본 모델 `u2net` 은 **176MB** 라 부담이 작지만(BiRefNet 계열을 쓸 경우 973MB), 예열하지 않으면 첫 CUTOUT 잡이 다운로드 시간까지 떠안아 `REMBG_TIMEOUT_MS`(기본 180000) 안에 못 끝날 수 있다.
 
 캐시는 named volume `rembg_models` 에 남으므로 **컨테이너 재생성해도 다시 받지 않는다**. 켜기 전에 한 번 예열해 둘 것:
 
 ```bash
 # 모델 사전 다운로드(예열) — 진행 로그가 뜬다
-docker exec storige-rembg python3 -c "from rembg import new_session; new_session('birefnet-general')"
+docker exec storige-rembg python3 -c "from rembg import new_session; new_session('u2net')"
 
 # 사이드카 도달 확인 (워커 컨테이너에서 내부 네트워크로)
 docker exec storige-worker wget -qO- http://rembg:7000/api > /dev/null && echo "rembg reachable"
@@ -404,7 +404,7 @@ docker exec storige-worker sh -lc '
   # ⚠️ model 은 **쿼리가 아니라 폼 필드**다. POST /api/remove 의 쿼리 파라미터는 bgc·extras 뿐이라
   #    ?model= 로 보내면 에러 없이 무시되고 기본 모델(u2net)로 추론된다(2026-08-05 프로덕션 실적발).
   curl -s -o /tmp/out.png -w "%{http_code} %{size_download}\n" \
-    -F "file=@$f" -F "model=birefnet-general" "http://rembg:7000/api/remove"
+    -F "file=@$f" -F "model=u2net" "http://rembg:7000/api/remove"
   file /tmp/out.png
 '
 # 기대: 200 + PNG image data (알파 채널). 422/500 이면 모델 키·extras 문제.
@@ -424,7 +424,9 @@ docker inspect -f '{{.State.Health.Status}}' storige-rembg   # → healthy
 # 2) .env 에 플래그 추가
 nano ~/storige/.env
 #   CUTOUT_ENABLED=true
-#   (선택) REMBG_MODEL=birefnet-general  REMBG_TIMEOUT_MS=180000  REMBG_MEM_LIMIT=3g
+#   REMBG_MODEL=u2net          ← compose 기본값과 같지만, 모델은 라이선스·메모리 결정사항이라
+#                                 운영 파일에 명시해 둔다(누가 기본값을 바꿔도 프로덕션은 고정).
+#   (선택) REMBG_TIMEOUT_MS=180000  REMBG_MEM_LIMIT=3g
 
 # 3) api + worker 재기동 → ⚠️ api 가 recreate 되면 nginx 재시작 필수(리터럴 proxy_pass 고정 IP 트랩)
 #    ★ worker 를 빠뜨리면 잡은 생성되는데 전건 FAILED 가 된다(플래그는 양쪽 모두 필요).
@@ -448,7 +450,7 @@ docker compose --profile cutout stop rembg
 
 # 3) 완전 제거가 필요하면 (모델 캐시 볼륨까지)
 docker compose --profile cutout rm -sf rembg
-docker volume rm storige_rembg_models     # ⚠️ 다음 기동 시 ~973MB 재다운로드
+docker volume rm storige_rembg_models     # ⚠️ 다음 기동 시 재다운로드(u2net 176MB / birefnet 973MB)
 ```
 
 플래그가 `false` 인 동안 나머지 파이프라인(검증·변환·합성)은 영향받지 않는다.
@@ -475,20 +477,21 @@ du -sh ~/storige/storage/cutouts 2>/dev/null
 
 | `REMBG_MODEL` 값 | 원저작 | 라이선스 | 판단 |
 |---|---|---|---|
-| **`birefnet-general`** (기본값) | [ZhengPeng7/BiRefNet](https://github.com/ZhengPeng7/BiRefNet) | **MIT** (공개 데이터셋 DIS5K 학습분) | ✅ 상업 사용 가능. fp32 ONNX ≈973MB, 입력 1024². 품질 상위 티어 |
-| `birefnet-general-lite` | 동일 | **MIT** | ✅ swin_v1_tiny 백본 — 메모리·지연 대폭 감소, 품질 소폭 하락. 8GB 박스 상시 ON 시 1순위 대안 |
-| `u2net` | [xuebinqin/U-2-Net](https://github.com/xuebinqin/U-2-Net) | **Apache-2.0** | ✅ 최경량 폴백. 품질은 가장 낮음 |
+| **`u2net`** (기본값) | [xuebinqin/U-2-Net](https://github.com/xuebinqin/U-2-Net) | **Apache-2.0** | ✅ **D-12b 확정(2026-08-06)**. 176MB, 실측 3.6s/장 · 피크 RSS 1.0GB — 현 박스에서 유일하게 동작 |
+| `birefnet-general` | [ZhengPeng7/BiRefNet](https://github.com/ZhengPeng7/BiRefNet) | **MIT** (공개 데이터셋 DIS5K 학습분) | ⚠️ 라이선스는 가능하나 **현 하드웨어에서 cgroup OOM**(실측 RSS 3.13GB > 3g). 증설·한도 재배분 전에는 쓰지 말 것 |
+| `birefnet-general-lite` | 동일 | **MIT** | ⚠️ 동일하게 OOM. 파일은 224MB지만 **활성화 메모리는 파일 크기와 무관**하다(실측) |
 | `bria-rmbg` | BRIA AI RMBG-1.4 | **비상업 전용** | ❌ **사용 금지** |
 | `u2net_custom` / `dis_custom` / `ben_custom` | (외부 가중치 경로 지정) | — | ❌ **지정 금지** — `model_path` 가 CVE-2026-40086 경로 순회 벡터 |
 
-**기본값을 `birefnet-general` 로 정한 근거**: 오너가 원한 **BEN2 는 rembg 2.0.77 내장 세션 목록에 없다**(경로를 직접 넘기는 `ben_custom` 만 존재 = 위 금지 항목). 같은 의도(MIT · 품질 상위 티어)에 가장 가까운 내장 모델이 `birefnet-general` 이라 이를 채택했고, **모델 교체는 `REMBG_MODEL` 값 하나만 바꾸면 된다**(코드 변경 없음).
+**기본값을 `u2net` 으로 정한 근거(D-12b, 2026-08-06 오너 확정)**: 오너가 처음 고른 **BEN2 는 rembg 2.0.77 내장 세션 목록에 없고**(경로를 직접 넘기는 `ben_custom` 만 존재 = 위 금지 항목), 그 대체로 잡았던 BiRefNet 계열은 **이 박스에서 전부 OOM** 했다(2026-08-06 프로덕션 실측). 남은 유일한 동작 모델이자 라이선스 얽힘도 가장 적은 `u2net`(Apache-2.0)으로 확정했다. **모델 교체는 `REMBG_MODEL` 값 하나만 바꾸면 된다**(코드 변경 없음).
 
 ```bash
-# 모델 교체 예 (경량 전환)
-nano ~/storige/.env       # REMBG_MODEL=birefnet-general-lite / REMBG_MEM_LIMIT=1g
+# 모델 교체 예 — ⚠️ BiRefNet 은 메모리 재배분/증설 없이 바꾸면 첫 잡에서 OOM 한다.
+nano ~/storige/.env       # REMBG_MODEL=birefnet-general-lite / REMBG_MEM_LIMIT=4g / WORKER_MEM_LIMIT=3g
 docker compose up -d worker
 docker compose --profile cutout up -d rembg
 docker exec storige-rembg python3 -c "from rembg import new_session; new_session('birefnet-general-lite')"
+# 교체 후 반드시 실추론 1회 + OOM 확인: docker inspect -f '{{.State.OOMKilled}}' storige-rembg
 ```
 
 ### 환경 변수
@@ -500,7 +503,7 @@ docker exec storige-rembg python3 -c "from rembg import new_session; new_session
 | `CUTOUT_RETENTION_DAYS` | api | `7` | 산출물 보존기간. 정리 cron 은 API 에 있다 |
 | `REMBG_URL` | worker | `http://rembg:7000` | 사이드카 베이스 URL(내부 네트워크) |
 | `REMBG_ENDPOINT` | worker | `/api/remove` | rembg 추론 엔드포인트(POST=multipart `file`, `model` 파라미터) |
-| `REMBG_MODEL` | worker | `birefnet-general` | 모델 교체 지점 (위 라이선스 표 참조) |
+| `REMBG_MODEL` | worker | `u2net` | 모델 교체 지점 (위 라이선스 표 참조) |
 | `REMBG_TIMEOUT_MS` | worker | `180000` | 사이드카 왕복 타임아웃. 예열 후 하향 가능 |
 | `CUTOUT_MAX_INPUT_BYTES` | worker | `31457280` (30MB) | 사이드카로 올릴 원본 이미지 상한 |
 | `REMBG_MEM_LIMIT` | rembg | `3g` | 컨테이너 메모리 상한 |
@@ -508,7 +511,7 @@ docker exec storige-rembg python3 -c "from rembg import new_session; new_session
 | `REMBG_OMP_NUM_THREADS` | rembg | `2` | ONNX Runtime 스레드 |
 | `REMBG_LOG_LEVEL` | rembg | `info` | rembg 서버 로그 레벨 |
 
-> ⚠️ **메모리 예산**: 기본 모델(973MB fp32) 세션 초기화 + 1024² 추론까지 고려해 `mem_limit` 을 3g 로 잡았다. worker 기본 4g 와 **동시 피크** 시 8GB 박스가 빠듯하므로, 상시 ON 운영으로 넘어가기 전에 `REMBG_MODEL=birefnet-general-lite` + `REMBG_MEM_LIMIT=1g` 또는 `WORKER_MEM_LIMIT` 하향을 검토할 것. OOM 시 `docker inspect -f '{{.State.OOMKilled}}' storige-rembg` 로 확인된다.
+> ⚠️ **메모리 예산**: `mem_limit` 3g 는 원래 BiRefNet(973MB fp32)을 담으려던 값인데 **그래도 모자랐다**(실측 RSS 3.13GB → OOM). 확정 모델 `u2net` 은 피크 RSS 1.0GB 라 3g 안에서 여유가 있고, 8GB 박스에서 worker(기본 4g)와의 동시 피크가 걱정되면 `REMBG_MEM_LIMIT` 을 **1.5g 로 낮추는 쪽**이 맞다(올려도 BiRefNet 이 되지는 않는다). OOM 시 `docker inspect -f '{{.State.OOMKilled}}' storige-rembg` 로 확인된다.
 
 **출처**: [rembg README](https://github.com/danielgatis/rembg) · [CVE-2026-40086 (GHSA-3wqj-33cg-xc48)](https://github.com/advisories/GHSA-3wqj-33cg-xc48) · [rembg PyPI](https://pypi.org/project/rembg/)
 

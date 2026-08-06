@@ -139,6 +139,11 @@
 존재하지 않고(있는 것은 `ben_custom` = CVE 벡터), 그 대체로 잡았던 birefnet 계열은 **하드웨어가 못 버틴다.**
 compose 기본값 `REMBG_MODEL=birefnet-general` 은 첫 실사용에서 OOM 하므로 **플래그 ON 전에 반드시 변경**해야 한다.
 
+✅ **[2026-08-06 결정 반영]** D-12b 재상신 → 오너가 **(a) `u2net` 확정**. compose·워커 코드 기본값을
+`u2net` 으로 바꾸고(이 문단이 요구한 변경), 프로덕션 `.env` 에도 `REMBG_MODEL=u2net` 을 명시했다.
+`birefnet-*` 는 API 화이트리스트에 남아 있으나 **지금 지정하면 그 잡은 OOM 으로 실패**한다 —
+증설 또는 `REMBG_MEM_LIMIT` 상향 + `WORKER_MEM_LIMIT` 하향이 선행 조건.
+
 ### C. 운영 실측치 (참고)
 - 사이드카 콜드스타트: 첫 리슨까지 **약 2분**(python + onnxruntime import). healthcheck `start_period` 를 이보다 짧게 잡으면 오탐한다.
 - 모델 최초 다운로드는 요청 시점에 일어난다(기동 시 아님) — 예열을 안 하면 첫 잡이 타임아웃 위험.

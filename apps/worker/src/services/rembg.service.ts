@@ -27,9 +27,10 @@ const DEFAULT_REMBG_TIMEOUT_MS = 120_000;
  * env 미주입 환경에서도 **compose 기본값과 같은 모델**로 동작하도록 맞춰 둔다
  * (불일치 시 "모델이 바뀐 줄 모른 채 품질만 나빠지는" 관측 불가 상태가 된다).
  * ⚠️ 모델마다 라이선스가 다르다 — 상업 사용 가부는 D-12b 결정표를 따를 것.
- * birefnet-general = MIT(ZhengPeng7/BiRefNet). 폴백 u2net = Apache-2.0.
+ * u2net = Apache-2.0(xuebinqin/U-2-Net) — D-12b 오너 확정(2026-08-06).
+ * ⚠️ birefnet 계열(MIT)로 되돌리지 말 것: 프로덕션 박스에서 cgroup OOM 한다(실측 RSS 3.13GB).
  */
-const DEFAULT_REMBG_MODEL = 'birefnet-general';
+const DEFAULT_REMBG_MODEL = 'u2net';
 
 /** rembg 세션(모델) 키 허용 문자 — URL 오염 방지용 화이트리스트 */
 const MODEL_KEY_PATTERN = /^[A-Za-z0-9._-]{1,64}$/;
