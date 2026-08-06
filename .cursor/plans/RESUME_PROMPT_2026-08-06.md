@@ -59,7 +59,10 @@ rembg 사이드카 healthy · 디스크 34% · **`CUTOUT_ENABLED=true`(api·work
 | **`u2net_human_seg`** ✅ 기본 | **2.7%** | 2.9s | 인물 전체 온전 |
 | `isnet-general-use` (화이트리스트 개방) | 18.0% | 4.5s | 인물 전체 온전, 범용 대안 |
 
-배선: compose·워커 코드 기본값 = `u2net_human_seg`, API 화이트리스트에 두 모델 추가.
+배선(`f6da11a`): compose·워커 코드 기본값 = `u2net_human_seg`, API 화이트리스트에 두 모델 추가.
+**프로덕션 배포 완료(2026-08-06 18:29 KST)** — 롤백 태그 `storige-{api,worker}:pre-humanseg` ·
+api·worker 재빌드 → recreate → nginx 재시작 · `docker exec storige-worker printenv REMBG_MODEL`
+= `u2net_human_seg` 확인 · 라이브 프로브에서 신규 2종 통과·`u2net_custom` 차단 유지.
 ⚠️ **수용된 리스크**: 두 가중치의 학습 데이터셋(Supervisely Person / DIS5K) 상업 조항은
 **미확인·회색지대**다 — 1차 결정에서 u2net 을 고른 이유('데이터셋 얽힘 최소')를 품질과 맞바꿨다.
 ⚠️ `u2net_human_seg` 는 **인물 전용** — 상품·캐릭터·반려동물은 `isnet-general-use` 를 잡 파라미터로
