@@ -375,13 +375,13 @@ docker logs --tail 50 storige-rembg
 
 ### ② 최초 요청 시 모델 가중치 다운로드가 일어난다
 
-rembg 는 가중치를 이미지에 담지 않고 **첫 추론 시점에 내려받는다**(`U2NET_HOME=/home/rembg/.u2net`). 기본 모델 `u2net` 은 **176MB** 라 부담이 작지만(BiRefNet 계열을 쓸 경우 973MB), 예열하지 않으면 첫 CUTOUT 잡이 다운로드 시간까지 떠안아 `REMBG_TIMEOUT_MS`(기본 180000) 안에 못 끝날 수 있다.
+rembg 는 가중치를 이미지에 담지 않고 **첫 추론 시점에 내려받는다**(`U2NET_HOME=/home/rembg/.u2net`). 기본 모델 `u2net_human_seg` 는 **176MB** 라 부담이 작지만(BiRefNet 계열을 쓸 경우 973MB), 예열하지 않으면 첫 CUTOUT 잡이 다운로드 시간까지 떠안아 `REMBG_TIMEOUT_MS`(기본 180000) 안에 못 끝날 수 있다.
 
 캐시는 named volume `rembg_models` 에 남으므로 **컨테이너 재생성해도 다시 받지 않는다**. 켜기 전에 한 번 예열해 둘 것:
 
 ```bash
 # 모델 사전 다운로드(예열) — 진행 로그가 뜬다
-docker exec storige-rembg python3 -c "from rembg import new_session; new_session('u2net')"
+docker exec storige-rembg python3 -c "from rembg import new_session; new_session('u2net_human_seg')"
 
 # 사이드카 도달 확인 (워커 컨테이너에서 내부 네트워크로)
 docker exec storige-worker wget -qO- http://rembg:7000/api > /dev/null && echo "rembg reachable"
@@ -406,12 +406,12 @@ const {RembgService}=require(\"/app/apps/worker/dist/services/rembg.service.js\"
 const dir=\"/app/storage/library\";
 const f=fs.readdirSync(dir).filter(n=>n.endsWith(\".png\")).map(n=>({n,s:fs.statSync(dir+\"/\"+n).size})).sort((a,b)=>a.s-b.s)[3];
 const buf=fs.readFileSync(dir+\"/\"+f.n); const t0=Date.now();
-new RembgService().removeBackground(buf,\"u2net\").then(r=>{
+new RembgService().removeBackground(buf,\"u2net_human_seg\").then(r=>{
   const ct=r.png[25];  // PNG IHDR color type: 6=RGBA
   console.log(\"model=\"+r.model+\" out=\"+r.png.length+\"B ms=\"+(Date.now()-t0)+\" colorType=\"+ct);
 }).catch(e=>{console.error(\"FAIL\",e.code||e.name,e.message);process.exit(1)});
 "'
-# 기대: model=u2net · colorType=6(알파 있음) · 1초 내외(u2net 기준 실측 0.98s)
+# 기대: model=u2net_human_seg · colorType=6(알파 있음) · 1초 내외(u2net 기준 실측 0.98s)
 # ⚠️ model 은 **쿼리가 아니라 폼 필드**다. POST /api/remove 의 쿼리는 bgc·extras 뿐이라
 #    ?model= 로 보내면 에러 없이 무시되고 기본 모델로 추론된다(2026-08-05 실적발, 수정 3f6fd20).
 
@@ -430,7 +430,7 @@ docker inspect -f '{{.State.Health.Status}}' storige-rembg   # → healthy
 # 2) .env 에 플래그 추가
 nano ~/storige/.env
 #   CUTOUT_ENABLED=true
-#   REMBG_MODEL=u2net          ← compose 기본값과 같지만, 모델은 라이선스·메모리 결정사항이라
+#   REMBG_MODEL=u2net_human_seg  ← compose 기본값과 같지만, 모델은 라이선스·메모리 결정사항이라
 #                                 운영 파일에 명시해 둔다(누가 기본값을 바꿔도 프로덕션은 고정).
 #   (선택) REMBG_TIMEOUT_MS=180000  REMBG_MEM_LIMIT=3g
 
@@ -472,7 +472,7 @@ docker compose --profile cutout stop rembg
 
 # 3) 완전 제거가 필요하면 (모델 캐시 볼륨까지)
 docker compose --profile cutout rm -sf rembg
-docker volume rm storige_rembg_models     # ⚠️ 다음 기동 시 재다운로드(u2net 176MB / birefnet 973MB)
+docker volume rm storige_rembg_models     # ⚠️ 다음 기동 시 재다운로드(u2net 계열 176MB / birefnet 973MB)
 ```
 
 플래그가 `false` 인 동안 나머지 파이프라인(검증·변환·합성)은 영향받지 않는다.
@@ -499,13 +499,21 @@ du -sh ~/storige/storage/cutouts 2>/dev/null
 
 | `REMBG_MODEL` 값 | 원저작 | 라이선스 | 판단 |
 |---|---|---|---|
-| **`u2net`** (기본값) | [xuebinqin/U-2-Net](https://github.com/xuebinqin/U-2-Net) | **Apache-2.0** | ✅ **D-12b 확정(2026-08-06)**. 176MB, 실측 3.6s/장 · 피크 RSS 1.0GB — 현 박스에서 유일하게 동작 |
+| **`u2net_human_seg`** (기본값) | [xuebinqin/U-2-Net](https://github.com/xuebinqin/U-2-Net) 계열 · Supervisely Person 학습 | 코드 **Apache-2.0** / 데이터셋 상업 조항 **미확인** | ✅ **D-12b 재결정(2026-08-06 오너 QA 후)**. 인물 실측 반투명 2.7% · 2.9s. ⚠️ **인물 전용** — 상품·캐릭터·반려동물은 열위일 수 있다 |
+| `isnet-general-use` | [xuebinqin/DIS](https://github.com/xuebinqin/DIS) | 코드 Apache-2.0 / DIS5K **회색지대** | ✅ 화이트리스트 개방(범용 대안). 실측 반투명 18.0% · 4.5s — 피사체가 사람이 아닐 때 잡 파라미터로 명시 |
+| `u2net` | [xuebinqin/U-2-Net](https://github.com/xuebinqin/U-2-Net) | **Apache-2.0** | ⚠️ 최경량 폴백. **인물에서 몸통을 배경으로 판정**한다(실측 반투명 24.2% — 정장·셔츠가 지워짐) |
 | `birefnet-general` | [ZhengPeng7/BiRefNet](https://github.com/ZhengPeng7/BiRefNet) | **MIT** (공개 데이터셋 DIS5K 학습분) | ⚠️ 라이선스는 가능하나 **현 하드웨어에서 cgroup OOM**(실측 RSS 3.13GB > 3g). 증설·한도 재배분 전에는 쓰지 말 것 |
 | `birefnet-general-lite` | 동일 | **MIT** | ⚠️ 동일하게 OOM. 파일은 224MB지만 **활성화 메모리는 파일 크기와 무관**하다(실측) |
 | `bria-rmbg` | BRIA AI RMBG-1.4 | **비상업 전용** | ❌ **사용 금지** |
 | `u2net_custom` / `dis_custom` / `ben_custom` | (외부 가중치 경로 지정) | — | ❌ **지정 금지** — `model_path` 가 CVE-2026-40086 경로 순회 벡터 |
 
-**기본값을 `u2net` 으로 정한 근거(D-12b, 2026-08-06 오너 확정)**: 오너가 처음 고른 **BEN2 는 rembg 2.0.77 내장 세션 목록에 없고**(경로를 직접 넘기는 `ben_custom` 만 존재 = 위 금지 항목), 그 대체로 잡았던 BiRefNet 계열은 **이 박스에서 전부 OOM** 했다(2026-08-06 프로덕션 실측). 남은 유일한 동작 모델이자 라이선스 얽힘도 가장 적은 `u2net`(Apache-2.0)으로 확정했다. **모델 교체는 `REMBG_MODEL` 값 하나만 바꾸면 된다**(코드 변경 없음).
+**기본값 변천(D-12b)**: 오너가 처음 고른 **BEN2 는 rembg 2.0.77 내장 세션 목록에 없고**(경로를 직접 넘기는 `ben_custom` 만 존재 = 위 금지 항목), 그 대체로 잡았던 BiRefNet 계열은 **이 박스에서 전부 OOM** 했다. 그래서 `u2net` 으로 확정했으나, **오너 실기 QA 에서 인물 사진의 몸통이 반투명하게 지워지는 문제**가 드러났다(같은 사진 실측 반투명 24.2%). 세 모델을 같은 원본으로 비교해 `u2net_human_seg`(2.7%)로 재확정하고, 범용 대안 `isnet-general-use`(18.0%)를 화이트리스트에 함께 열었다. **모델 교체는 `REMBG_MODEL` 값 하나만 바꾸면 된다**(코드 변경 없음).
+
+| 실측(2026-08-06, 동일 인물 사진 1180×1178) | 반투명 픽셀 | 소요 | 결과 |
+|---|---|---|---|
+| `u2net` | 24.2% | 1.3s | 얼굴만 남고 정장·셔츠가 반투명하게 소실 |
+| **`u2net_human_seg`** | **2.7%** | 2.9s | 인물 전체 온전 |
+| `isnet-general-use` | 18.0% | 4.5s | 인물 전체 온전(머리카락 끝이 더 부드럽게 잔존) |
 
 ```bash
 # 모델 교체 예 — ⚠️ BiRefNet 은 메모리 재배분/증설 없이 바꾸면 첫 잡에서 OOM 한다.
@@ -525,7 +533,7 @@ docker exec storige-rembg python3 -c "from rembg import new_session; new_session
 | `CUTOUT_RETENTION_DAYS` | api | `7` | 산출물 보존기간. 정리 cron 은 API 에 있다 |
 | `REMBG_URL` | worker | `http://rembg:7000` | 사이드카 베이스 URL(내부 네트워크) |
 | `REMBG_ENDPOINT` | worker | `/api/remove` | rembg 추론 엔드포인트(POST=multipart `file`, `model` 파라미터) |
-| `REMBG_MODEL` | worker | `u2net` | 모델 교체 지점 (위 라이선스 표 참조) |
+| `REMBG_MODEL` | worker | `u2net_human_seg` | 모델 교체 지점 (위 라이선스 표 참조) |
 | `REMBG_TIMEOUT_MS` | worker | `180000` | 사이드카 왕복 타임아웃. 예열 후 하향 가능 |
 | `CUTOUT_MAX_INPUT_BYTES` | worker | `31457280` (30MB) | 사이드카로 올릴 원본 이미지 상한 |
 | `REMBG_MEM_LIMIT` | rembg | `3g` | 컨테이너 메모리 상한 |
@@ -533,7 +541,7 @@ docker exec storige-rembg python3 -c "from rembg import new_session; new_session
 | `REMBG_OMP_NUM_THREADS` | rembg | `2` | ONNX Runtime 스레드 |
 | `REMBG_LOG_LEVEL` | rembg | `info` | rembg 서버 로그 레벨 |
 
-> ⚠️ **메모리 예산**: `mem_limit` 3g 는 원래 BiRefNet(973MB fp32)을 담으려던 값인데 **그래도 모자랐다**(실측 RSS 3.13GB → OOM). 확정 모델 `u2net` 은 피크 RSS 1.0GB 라 3g 안에서 여유가 있고, 8GB 박스에서 worker(기본 4g)와의 동시 피크가 걱정되면 `REMBG_MEM_LIMIT` 을 **1.5g 로 낮추는 쪽**이 맞다(올려도 BiRefNet 이 되지는 않는다). OOM 시 `docker inspect -f '{{.State.OOMKilled}}' storige-rembg` 로 확인된다.
+> ⚠️ **메모리 예산**: `mem_limit` 3g 는 원래 BiRefNet(973MB fp32)을 담으려던 값인데 **그래도 모자랐다**(실측 RSS 3.13GB → OOM). 확정 모델 `u2net_human_seg` 는 피크 RSS 1.0GB 대 라 3g 안에서 여유가 있고, 8GB 박스에서 worker(기본 4g)와의 동시 피크가 걱정되면 `REMBG_MEM_LIMIT` 을 **1.5g 로 낮추는 쪽**이 맞다(올려도 BiRefNet 이 되지는 않는다). OOM 시 `docker inspect -f '{{.State.OOMKilled}}' storige-rembg` 로 확인된다.
 
 **출처**: [rembg README](https://github.com/danielgatis/rembg) · [CVE-2026-40086 (GHSA-3wqj-33cg-xc48)](https://github.com/advisories/GHSA-3wqj-33cg-xc48) · [rembg PyPI](https://pypi.org/project/rembg/)
 

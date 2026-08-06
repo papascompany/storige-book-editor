@@ -777,8 +777,13 @@ export class WorkerJobsService implements OnModuleInit {
 
   /**
    * 배경제거 모델 키(rembg 내장 세션명) 화이트리스트 — 확장은 D-12b(라이선스) 결정 사안.
-   *  - `u2net`                 : 사이드카 기본(compose `REMBG_MODEL` 기본값)과 동일. Apache-2.0.
-   *                              D-12b 오너 확정(2026-08-06) — 현 하드웨어에서 유일하게 동작한다.
+   *  - `u2net_human_seg`       : 사이드카 기본(compose `REMBG_MODEL` 기본값)과 동일.
+   *                              **인물 전용** — D-12b 재결정(2026-08-06). 같은 사진 실측에서
+   *                              반투명 픽셀 24.2%→2.7% 로 떨어져 몸통이 지워지던 문제가 해소됐다.
+   *                              ⚠️ 사람이 아닌 피사체(상품·캐릭터·반려동물)는 오히려 열위일 수 있다.
+   *  - `isnet-general-use`     : **범용** 대안(실측 반투명 18.0%, 4.5s). 피사체가 사람이 아닐 때
+   *                              클라이언트가 이 값을 명시해 쓰라고 열어 둔 항목이다.
+   *  - `u2net`                 : Apache-2.0 최경량 폴백. 인물에서는 몸통을 배경으로 판정한다(위 실측).
    *  - `birefnet-general`      : MIT. ⚠️ 현 프로덕션 박스에서는 **cgroup OOM 한다**(실측 RSS 3.13GB).
    *                              화이트리스트에 남겨 둔 것은 증설·한도 재배분 후를 위한 것이지
    *                              지금 지정하면 그 잡은 실패한다.
@@ -792,6 +797,8 @@ export class WorkerJobsService implements OnModuleInit {
    *    env 기본값(REMBG_MODEL)을 쓰므로, 사이드카 기본 모델 교체는 이 목록과 무관하다.
    */
   static readonly CUTOUT_ALLOWED_MODELS: readonly string[] = [
+    'u2net_human_seg',
+    'isnet-general-use',
     'u2net',
     'birefnet-general',
     'birefnet-general-lite',

@@ -27,10 +27,12 @@ const DEFAULT_REMBG_TIMEOUT_MS = 120_000;
  * env 미주입 환경에서도 **compose 기본값과 같은 모델**로 동작하도록 맞춰 둔다
  * (불일치 시 "모델이 바뀐 줄 모른 채 품질만 나빠지는" 관측 불가 상태가 된다).
  * ⚠️ 모델마다 라이선스가 다르다 — 상업 사용 가부는 D-12b 결정표를 따를 것.
- * u2net = Apache-2.0(xuebinqin/U-2-Net) — D-12b 오너 확정(2026-08-06).
+ * u2net_human_seg = U-2-Net 계열 **인물 전용** — D-12b 재결정(2026-08-06 오너 QA 후).
+ * 같은 사진 실측에서 반투명 픽셀 24.2%(u2net) → 2.7% 로, 정장·셔츠가 지워지던 문제가 해소됐다.
  * ⚠️ birefnet 계열(MIT)로 되돌리지 말 것: 프로덕션 박스에서 cgroup OOM 한다(실측 RSS 3.13GB).
+ * ⚠️ 사람이 아닌 피사체는 `isnet-general-use`(범용)를 잡 파라미터로 명시하는 쪽이 낫다.
  */
-const DEFAULT_REMBG_MODEL = 'u2net';
+const DEFAULT_REMBG_MODEL = 'u2net_human_seg';
 
 /** rembg 세션(모델) 키 허용 문자 — URL 오염 방지용 화이트리스트 */
 const MODEL_KEY_PATTERN = /^[A-Za-z0-9._-]{1,64}$/;

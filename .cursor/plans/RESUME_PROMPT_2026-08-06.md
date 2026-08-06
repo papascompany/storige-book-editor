@@ -48,7 +48,26 @@ rembg 사이드카 healthy · 디스크 34% · **`CUTOUT_ENABLED=true`(api·work
 
 ## 2. ★ 다음 세션이 가장 먼저 할 일
 
-### 2-1. ✅ [완료] D-12b `REMBG_MODEL` 확정 — **u2net**
+### 2-1. ✅ [완료] D-12b `REMBG_MODEL` 확정 — **u2net_human_seg** (3차·최종)
+
+**2026-08-06 오너 실기 QA 결과 u2net 기각.** 인물 사진에서 얼굴만 남고 정장·셔츠가 반투명하게
+지워졌다. 같은 원본(1180×1178)으로 세 모델 실측:
+
+| 모델 | 반투명 픽셀 | 소요 | 결과 |
+|---|---|---|---|
+| `u2net` | **24.2%** | 1.3s | 몸통이 배경으로 판정됨(salient object detection 특성) |
+| **`u2net_human_seg`** ✅ 기본 | **2.7%** | 2.9s | 인물 전체 온전 |
+| `isnet-general-use` (화이트리스트 개방) | 18.0% | 4.5s | 인물 전체 온전, 범용 대안 |
+
+배선: compose·워커 코드 기본값 = `u2net_human_seg`, API 화이트리스트에 두 모델 추가.
+⚠️ **수용된 리스크**: 두 가중치의 학습 데이터셋(Supervisely Person / DIS5K) 상업 조항은
+**미확인·회색지대**다 — 1차 결정에서 u2net 을 고른 이유('데이터셋 얽힘 최소')를 품질과 맞바꿨다.
+⚠️ `u2net_human_seg` 는 **인물 전용** — 상품·캐릭터·반려동물은 `isnet-general-use` 를 잡 파라미터로
+명시하는 편이 낫다(편집기 UI 선택지는 미구현).
+
+<details><summary>1차 결정 경위(참고)</summary>
+
+#### [보존] D-12b 1차 — u2net
 2026-08-06 오너 결정: **(a) u2net 확정**(Apache-2.0). BEN2 는 rembg 백엔드에 부재(`ben_custom` 은
 CVE-2026-40086 벡터라 금지), BiRefNet 계열은 이 박스에서 **cgroup OOM**(RSS 3.13GB > 3g) 이라
 동작하는 유일한 선택지였다. 품질 열위(머리카락·반투명 경계)는 수용 — 증설 후 재검토 여지.
@@ -62,6 +81,8 @@ CVE-2026-40086 벡터라 금지), BiRefNet 계열은 이 박스에서 **cgroup O
 배선(`4a4cd9b`): compose 기본값·워커 코드 기본값을 u2net 으로 **동시 고정** + 프로덕션 `.env` 에
 `REMBG_MODEL=u2net` 명시(이중 고정). `birefnet-*` 는 API 화이트리스트에 남아 있으나 **지금 지정하면
 그 잡은 OOM 으로 실패**한다.
+
+</details>
 
 ### 2-2. ✅ [완료] 기능 활성화 (2026-08-06 11:20 KST)
 `docs/DEPLOYMENT.md` §배경제거 절차대로 수행. 실측 근거:

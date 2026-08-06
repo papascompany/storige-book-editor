@@ -159,14 +159,17 @@ services:
       - REMBG_URL=${REMBG_URL:-http://rembg:7000}
       - REMBG_ENDPOINT=${REMBG_ENDPOINT:-/api/remove}
       # 모델 교체는 이 값 하나로 끝난다(rembg 내장 세션 키).
-      #   기본 u2net(Apache-2.0) — D-12b 오너 확정(2026-08-06). 이 박스에서 유일하게 동작한다.
+      #   기본 u2net_human_seg(인물 전용) — D-12b **재결정**(2026-08-06 오너 QA 후).
+      #   실측: 같은 인물 사진에서 반투명 픽셀 u2net 24.2% → 2.7%. u2net 은 얼굴만 남기고
+      #   정장·셔츠를 배경으로 판정했다(salient object detection 특성).
+      #   ⚠️ 사람이 아닌 피사체는 잡 파라미터로 `isnet-general-use`(범용, 반투명 18.0%)를 명시할 것.
       #   ⚠️ birefnet-general·-lite(MIT)는 **이 하드웨어에서 cgroup OOM 한다**(RSS 3.13GB > mem_limit 3g,
       #      2026-08-06 프로덕션 실측). 파일 크기와 무관하다 — lite(224MB)도 동일하게 죽는다.
       #      쓰려면 REMBG_MEM_LIMIT 상향 + WORKER_MEM_LIMIT 하향(인쇄 파이프라인과 메모리 경합) 또는 증설이 선행.
       #   ⚠️ bria-rmbg 는 비상업 라이선스라 사용 금지.
       #   ⚠️ `*_custom` 계열(u2net_custom·dis_custom·ben_custom)은 model_path 를 받는 CVE-2026-40086
       #      경로 순회 벡터이므로 지정하지 않는다.
-      - REMBG_MODEL=${REMBG_MODEL:-u2net}
+      - REMBG_MODEL=${REMBG_MODEL:-u2net_human_seg}
       # 사이드카 왕복 타임아웃(ms). 최초 1회는 모델 가중치 다운로드(수백MB~1GB)가 겹칠 수 있어
       #   기본을 넉넉히 잡았다. 사전 워밍 후에는 하향 가능(운영 절차: docs/DEPLOYMENT.md).
       - REMBG_TIMEOUT_MS=${REMBG_TIMEOUT_MS:-180000}
