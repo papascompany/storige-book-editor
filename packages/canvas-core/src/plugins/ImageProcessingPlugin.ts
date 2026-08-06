@@ -18,6 +18,18 @@ class ImageProcessingPlugin extends PluginBase {
    */
   static readonly CONTOUR_MAX_LONG_EDGE = 1280
 
+  /**
+   * 윤곽 근사화(approxPolyDP) epsilon 비율 — 둘레 길이에 대한 비율이라 이미지 크기와 무관하게 안정적.
+   * 0.0008 = 둘레의 0.08%. 칼선 형태는 보존하면서 점 수를 크게 줄인다(각져 보이면 더 낮출 것).
+   */
+  static readonly CONTOUR_APPROX_EPSILON_RATIO = 0.0008
+
+  /**
+   * 윤곽 점 개수 상한. d3 곡선 path 는 점 수에 비례해 문자열이 커지고 fabric.Path 파싱도 느려진다.
+   * 근사화 후에도 이 값을 넘으면 균등 샘플링으로 솎아낸다(폭발 방지 최후 안전판).
+   */
+  static readonly CONTOUR_MAX_POINTS = 2000
+
   constructor(canvas: fabric.Canvas, editor: Editor) {
     super(canvas, editor, {})
     // D-6b① (2026-07-15): eager preload 제거 — 기존엔 여기서 startService() 를 즉시 실행해
@@ -1400,8 +1412,7 @@ class ImageProcessingPlugin extends PluginBase {
     contourScale: number = 1
   ): Promise<[number, number][]> {
     const cv = await this.ensureCvReady()
-    const simplified = { delete: () => {} }
-    const tempContour = { delete: () => {} }
+    let simplified: any = null
 
     // 더글라스 피커 알고리즘 적용으로 다각형 근사화
     try {
@@ -1412,9 +1423,23 @@ class ImageProcessingPlugin extends PluginBase {
       if (contour.type() !== cv.CV_32SC2) {
         console.error('Invalid contour type')
       }
-      console.log('useHull', useHull)
 
-      const result = contour
+      // ⚠️ 근사화는 **주석만 있고 실제 호출이 없었다**(2026-08-06 실적발).
+      //    원본 컨투어가 그대로 d3 곡선 path 로 흘러, 알파 경계가 복잡한 산출물
+      //    (예: isnet-general-use — 반투명 18%)에서 점이 수만 개가 되며 메인 스레드가 멈췄다.
+      //    인물 전용 모델(반투명 2.7%)은 경계가 단순해 우연히 통과하던 상태였다.
+      let result = contour
+      try {
+        const peri = cv.arcLength(contour, true)
+        const epsilon = Math.max(0.5, peri * ImageProcessingPlugin.CONTOUR_APPROX_EPSILON_RATIO)
+        simplified = new cv.Mat()
+        cv.approxPolyDP(contour, simplified, epsilon, true)
+        // 3점 미만이면 도형이 아니다 — 근사가 과했다는 뜻이라 원본을 쓴다.
+        if (simplified.rows >= 3) result = simplified
+      } catch (e) {
+        // cv 빌드에 approxPolyDP 가 없거나 실패해도 칼선은 나와야 한다(원본 폴백).
+        console.warn('[ImageProcessingPlugin] approxPolyDP 생략:', e)
+      }
 
       if (contour.rows === 0) {
         console.error('Failed to simplify contour')
@@ -1442,15 +1467,33 @@ class ImageProcessingPlugin extends PluginBase {
           points.push([currentX, currentY])
         }
       }
-      return points
+
+      // 최후 안전판: 근사화가 실패했거나(폴백) 그래도 점이 많으면 균등 샘플링한다.
+      // d3 곡선 path 는 점 수에 비례해 문자열이 커지고, fabric.Path 파싱이 그만큼 느려진다.
+      return ImageProcessingPlugin.capContourPoints(points)
     } catch (error) {
       console.error('Error in smoothContour:', error)
       return []
     } finally {
       contour.delete()
-      simplified.delete()
-      tempContour.delete()
+      simplified?.delete?.()
     }
+  }
+
+  /**
+   * 윤곽 점 개수 상한 — 초과하면 형태를 유지하도록 **균등 간격**으로 솎아낸다.
+   * (앞뒤를 자르면 도형이 열리므로 반드시 균등 샘플링이어야 한다)
+   */
+  private static capContourPoints(points: [number, number][]): [number, number][] {
+    const max = ImageProcessingPlugin.CONTOUR_MAX_POINTS
+    if (points.length <= max) return points
+
+    const step = points.length / max
+    const sampled: [number, number][] = []
+    for (let i = 0; i < max; i++) {
+      sampled.push(points[Math.floor(i * step)])
+    }
+    return sampled
   }
 
   // 그레이로 변환 후 노이즈 제거 및 이진화

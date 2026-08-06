@@ -134,6 +134,59 @@ describe('ImageProcessingPlugin — lazy 초기화 (D-6b① · D-12d)', () => {
     expect(points).toEqual([[7, 9]])
   })
 
+  it('윤곽 근사화(approxPolyDP)를 실제로 호출한다 — 주석만 있고 호출이 없던 회귀 잠금', async () => {
+    const { plugin } = makePlugin()
+    const approxPolyDP = vi.fn((_src: any, dst: any) => {
+      dst.rows = 4
+      dst.data32S = [0, 0, 10, 0, 10, 10, 0, 10]
+    })
+    const arcLength = vi.fn(() => 400)
+    getCvMock.mockResolvedValueOnce({
+      CV_32SC2: 4,
+      arcLength,
+      approxPolyDP,
+      Mat: function (this: any) {
+        this.rows = 0
+        this.data32S = [] as number[]
+        this.delete = vi.fn()
+      },
+    })
+
+    // 원본 컨투어는 점이 아주 많다고 가정 — 근사화 결과(4점)가 쓰여야 한다.
+    const many: number[] = []
+    for (let i = 0; i < 5000; i++) many.push(i * 10, 0)
+    const contour = { rows: 2500, cols: 1, type: () => 4, data32S: many, delete: vi.fn() }
+    const object: any = { left: 0, top: 0, scaleX: 1, scaleY: 1 }
+
+    const points = await (plugin as any).smoothContour(object, contour, false)
+
+    expect(arcLength).toHaveBeenCalledTimes(1)
+    expect(approxPolyDP).toHaveBeenCalledTimes(1)
+    expect(points).toEqual([
+      [0, 0],
+      [10, 0],
+      [10, 10],
+      [0, 10],
+    ])
+  })
+
+  it('근사화가 없는 cv 빌드에서도 칼선은 나오되 점 수는 상한으로 제한된다', async () => {
+    const { plugin } = makePlugin()
+    // 기본 mock cv 에는 arcLength/approxPolyDP 가 없다 → 폴백(원본 컨투어) 경로.
+    const many: number[] = []
+    for (let i = 0; i < 9000; i++) many.push(i * 10, 0) // 간격 10 > nearThreshold(1.5) 라 전부 통과
+    const contour = { rows: 9000, cols: 1, type: () => 4, data32S: many, delete: vi.fn() }
+    const object: any = { left: 0, top: 0, scaleX: 1, scaleY: 1 }
+
+    const points = await (plugin as any).smoothContour(object, contour, false)
+
+    const cap = (ImageProcessingPlugin as any).CONTOUR_MAX_POINTS
+    expect(points.length).toBeLessThanOrEqual(cap)
+    // 균등 샘플링이라 도형이 열리지 않는다 — 시작점은 보존되고 끝쪽 좌표까지 포함한다.
+    expect(points[0]).toEqual([0, 0])
+    expect(points[points.length - 1][0]).toBeGreaterThan(80000)
+  })
+
   it('윤곽 입력 장변 캡 상수가 서버 산출물(2560)보다 작게 유지된다', () => {
     const cap = (ImageProcessingPlugin as any).CONTOUR_MAX_LONG_EDGE
     expect(cap).toBeGreaterThan(0)
