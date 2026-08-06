@@ -2,6 +2,7 @@ import { useCallback, useState, useMemo, useEffect } from 'react'
 import { Upload as UploadSimple, HelpCircle as Question } from 'lucide-react'
 import { useAppStore } from '@/stores/useAppStore'
 import { useImageStore, checkMobileFileSize } from '@/stores/useImageStore'
+import { showToast } from '@/stores/useToastStore'
 import { useSettingsStore, useSettingsSize, useSettingsUnit } from '@/stores/useSettingsStore'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -86,13 +87,56 @@ export default function AppClipping() {
     return selectedAccessory ? selectedAccessory.value : ''
   }, [selectedAccessory])
 
+  /**
+   * 배경제거 대상 이미지를 고른다.
+   *
+   * `currentImage` 는 **모양컷 워크스페이스의 innerItem** 일 때만 채워진다(render/renderWorkspace).
+   * 종전에는 이것이 없으면 그대로 return 해서, 모양컷을 거치지 않은 템플릿(BOOK 등)에서는
+   * '효과' 클릭이 **아무 반응도 없었다**(2026-08-05 발견, 샤드3 동시 해소 항목).
+   * → 활성 선택 이미지 → (모호하지 않은 경우) 캔버스의 단일 이미지 순으로 폴백한다.
+   */
+  const resolveTargetImage = useCallback((): fabric.Image | fabric.Group | null => {
+    if (currentImage) return currentImage
+    if (!canvas) return null
+
+    const active = canvas.getActiveObject() as unknown as (fabric.Object & { type?: string }) | null
+    if (active && active.type === 'image') return active as unknown as fabric.Image
+
+    // 선택이 없어도 캔버스에 이미지가 하나뿐이면 대상이 모호하지 않다.
+    const images = canvas.getObjects().filter(
+      (obj: fabric.Object & { id?: string; type?: string }) =>
+        obj.type === 'image' && obj.id !== 'workspace'
+    )
+    return images.length === 1 ? (images[0] as unknown as fabric.Image) : null
+  }, [currentImage, canvas])
+
+  /**
+   * 모양컷 컨텍스트인지 — 워크스페이스 outline(id='workspace' + extensionType='clipping')이 있는가.
+   *
+   * ⚠️ `renderWorkspace` 는 `canvasInstance.clear()` 로 시작한다. 모양컷이 아닌 캔버스(BOOK 등)에서
+   *    이것을 호출하면 **사용자 디자인이 통째로 지워진다.** 그래서 컨텍스트를 판별해,
+   *    일반 캔버스에서는 결과를 원본 자리에 교체만 한다.
+   */
+  const isClippingWorkspace = useCallback((): boolean => {
+    if (!canvas) return false
+    return canvas.getObjects().some(
+      (obj: fabric.Object & { id?: string; extensionType?: string }) =>
+        obj.extensionType === 'clipping' && (obj.id === 'workspace' || obj.id === 'innerItem')
+    )
+  }, [canvas])
+
   // Handle segment image (background removal)
-  // D-6b①: 배경제거 리소스가 lazy 초기화로 전환되어 최초 클릭 시 초기화(수 초)가
-  // 선행된다 — 진행 중 재클릭 방지(isLoading 가드). 초기화 상태 표시는
-  // ImageProcessingPlugin 이 longTask 이벤트('배경 제거 도구 준비 중...')로 발행하고
-  // EditorView 전역 로딩 오버레이가 소비한다.
+  // S-P2A-B 샤드3(2026-08-06): 추론이 서버(rembg)로 오프로드됐다 — 업로드·큐 대기·다운로드가
+  // 수 초 걸리므로 진행 중 재클릭 방지(isLoading 가드)는 그대로 유지한다. 진행 표시는
+  // useImageStore.segmentImage 가 longTask 이벤트로 발행하고 EditorView 오버레이가 소비한다.
   const handleSegmentImage = useCallback(async () => {
-    if (!currentImage || !canvas || isLoading) return
+    if (!canvas || isLoading) return
+
+    const target = resolveTargetImage()
+    if (!target) {
+      showToast('배경을 제거할 이미지를 먼저 선택해 주세요.', 'info')
+      return
+    }
 
     setIsLoading(true)
     try {
@@ -102,18 +146,56 @@ export default function AppClipping() {
         start: () => setIsLoading(true),
         finish: () => setIsLoading(false)
       }
-      const image = await segmentImage(currentImage, canvas, imagePlugin!, loadingBar)
+      const image = await segmentImage(target, canvas, imagePlugin!, loadingBar)
 
       if (image) {
-        await renderWorkspace(image, canvas, cutSizeValue)
+        if (isClippingWorkspace()) {
+          await renderWorkspace(image, canvas, cutSizeValue)
+        } else {
+          replaceOnCanvas(target, image, canvas)
+        }
       }
     } catch (e) {
       console.error('배경 제거 오류:', e)
+      // 서버 오프로드 경로의 실패(기능 비활성·타임아웃·용량)는 사용자에게 알린다 —
+      // API 가 무인증 표면용으로 이미 안전한 문구만 내려준다.
+      const message = e instanceof Error ? e.message : '배경 제거에 실패했습니다.'
+      if (message !== '배경이 이미 제거된 이미지입니다') {
+        showToast(message, 'error', 5000)
+      }
     } finally {
       setIsLoading(false)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentImage, canvas, isLoading, getPlugin, segmentImage, cutSizeValue])
+  }, [canvas, isLoading, getPlugin, segmentImage, cutSizeValue, resolveTargetImage, isClippingWorkspace])
+
+  /**
+   * 일반 캔버스(모양컷 아님)에서 원본을 배경제거 결과로 **제자리 교체**한다.
+   * 위치·회전은 원본을 따르고, 크기는 store 가 이미 화면 크기에 맞춰 보상해 둔 값을 쓴다.
+   */
+  const replaceOnCanvas = (
+    original: fabric.Image | fabric.Group,
+    next: fabric.Image,
+    canvasInstance: fabric.Canvas
+  ) => {
+    const center = original.getCenterPoint()
+    next.set({
+      originX: 'center',
+      originY: 'center',
+      left: center.x,
+      top: center.y,
+      angle: original.angle ?? 0,
+      // store 는 모양컷 전제로 비선택 상태를 만든다 — 일반 캔버스에서는 다시 다룰 수 있어야 한다.
+      selectable: true,
+      evented: true,
+      hasControls: true
+    })
+    next.setCoords()
+    canvasInstance.remove(original as unknown as fabric.Object)
+    canvasInstance.add(next as unknown as fabric.Object)
+    canvasInstance.setActiveObject(next as unknown as fabric.Object)
+    canvasInstance.requestRenderAll()
+  }
 
   // Handle accessory selection
   const handleSetAccessory = useCallback((value: string) => {

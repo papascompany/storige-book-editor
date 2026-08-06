@@ -4,6 +4,7 @@ import { core, ImageProcessingPlugin, selectFiles, SelectionType } from '@storig
 import { useAppStore } from '@/stores/useAppStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { storageApi } from '@/api'
+import { requestCutout } from '@/api/cutout'
 import { CUTTING_LINE_CONFIG } from '@/constants/cutting'
 import { showToast } from '@/stores/useToastStore'
 import { parsePhotoExif } from '@/utils/photoAutofill'
@@ -1032,44 +1033,84 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
     loadingBar.start()
     canvas.offHistory()
 
-     
-    const hasRemoved = imagePlugin.tellHasAlpha(image.getElement() as any)
+    // 진행 표시는 canvas-core 가 쓰던 것과 같은 longTask 이벤트로 발행한다
+    // (EditorView 전역 오버레이가 소비 — 서버 왕복이 수 초라 표시가 없으면 멈춘 것처럼 보인다).
+    const editor = useAppStore.getState().editor
 
-    if (hasRemoved) {
-      alert('배경이 제거된 이미지 입니다.')
+    try {
+
+      const hasRemoved = imagePlugin.tellHasAlpha(image.getElement() as any)
+
+      if (hasRemoved) {
+        alert('배경이 제거된 이미지 입니다.')
+        throw new Error('배경이 이미 제거된 이미지입니다')
+      }
+
+      // S-P2A-B 샤드3: 추론을 서버(rembg 사이드카)로 오프로드한다.
+      // 종전 `imagePlugin.getForeground()`(=@imgly/background-removal, AGPL-3.0 · 브라우저 ONNX)를
+      // 대체한다 — 픽셀 캡·업로드·잡·폴링은 api/cutout.ts 가 담당한다(D-12b/D-12d).
+      editor?.emit('longTask:start', { message: '배경 제거 준비 중...' })
+      const { element: cutoutElement, result } = await requestCutout(
+        image.getElement() as HTMLImageElement,
+        {
+          onPhase: (phase) => {
+            const message =
+              phase === 'upload'
+                ? '이미지 올리는 중...'
+                : phase === 'queue'
+                  ? '배경 제거 중...'
+                  : '결과 불러오는 중...'
+            editor?.emit('longTask:start', { message })
+          },
+        },
+      )
+
+      // 서버 결과는 **원본 프레임에 알파만 입힌** PNG 다. 종전 클라 경로는 getForeground 가
+      // 전경만 남긴 이미지를 줬으므로, 동일한 산출을 얻으려면 여기서 투명 여백을 잘라야 한다
+      // (모양컷 워크스페이스가 item.height 기준으로 스케일하므로 여백이 남으면 그림이 작아진다).
+      // processImage 는 OpenCV(순수) 경로라 imgly 제거와 무관하다.
+      const imageURLResult = imagePlugin.processImage(cutoutElement)
+      // processImage가 Promise<string>인 경우 await로 풀어줌
+      const imageURL = typeof (imageURLResult as any)?.then === 'function'
+        ? await (imageURLResult as Promise<string>)
+        : (imageURLResult as unknown as string)
+      const center = image.getCenterPoint()
+
+      // core API를 사용하여 이미지 로드
+      const img = await core.imageFromURL(imageURL, {
+        id: uuid(),
+        selectable: false,
+        evented: false,
+        hasControls: false,
+        originX: 'center',
+        originY: 'center',
+        left: center.x,
+        top: center.y,
+      })
+
+      // 화면 크기 보상 — 결과는 **추론 입력 좌표계**(장변 캡 적용본) 기준이라, 캡이 걸린 원본은
+      // 결과 픽셀 수가 원본보다 적다. 트림(processImage)은 잘라내기만 하고 픽셀당 크기를 바꾸지
+      // 않으므로 `화면크기 / inputWidth` 가 정확한 배율이다.
+      // (모양컷 경로는 renderWorkspace 가 다시 스케일하므로 무해하고, 일반 캔버스 교체 경로에서
+      //  원본과 같은 크기로 놓이게 하는 것이 이 계산의 목적이다.)
+      const visualW = (image.width ?? 0) * (image.scaleX ?? 1)
+      const visualH = (image.height ?? 0) * (image.scaleY ?? 1)
+      if (result.inputWidth > 0 && result.inputHeight > 0 && visualW > 0 && visualH > 0) {
+        img.set({
+          scaleX: visualW / result.inputWidth,
+          scaleY: visualH / result.inputHeight,
+        })
+        img.setCoords()
+      }
+
+      return img
+    } finally {
+      // ⚠️ 종전에는 실패 경로에서 offHistory 가 복구되지 않아 이후 편집이 히스토리에
+      //    기록되지 않았다. 서버 왕복은 네트워크·타임아웃 실패가 정상 범위라 반드시 복구한다.
+      canvas.onHistory()
       loadingBar.finish()
-      throw new Error('배경이 이미 제거된 이미지입니다')
+      editor?.emit('longTask:end')
     }
-    const segmented = await imagePlugin.getForeground(image)
-
-    if (!segmented) {
-      console.error('No item')
-      loadingBar.finish()
-      throw new Error('No item')
-    }
-
-    const imageURLResult = imagePlugin.processImage(segmented.getElement() as HTMLImageElement)
-    // processImage가 Promise<string>인 경우 await로 풀어줌
-    const imageURL = typeof (imageURLResult as any)?.then === 'function'
-      ? await (imageURLResult as Promise<string>)
-      : (imageURLResult as unknown as string)
-    const center = image.getCenterPoint()
-
-    // core API를 사용하여 이미지 로드
-    const img = await core.imageFromURL(imageURL, {
-      id: uuid(),
-      selectable: false,
-      evented: false,
-      hasControls: false,
-      originX: 'center',
-      originY: 'center',
-      left: center.x,
-      top: center.y,
-    })
-
-    canvas.onHistory()
-    loadingBar.finish()
-    return img
   },
 
   // 모양을 몰드로 설정
