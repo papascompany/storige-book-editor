@@ -38,6 +38,8 @@ curl -s https://api.papascompany.co.kr/api/health | python3 -m json.tool | head 
 | [S-P2A-B] 샤드2 서버 슬라이스 | ✅ 머지 `14a881c` + 후속 수정 `3f6fd20` | PR #15 |
 | **컷아웃 VPS 배포·사이드카 기동** | ✅ 완료 | §2 |
 | **D-12b 모델 확정 → 컷아웃 ON** | ✅ **2026-08-06 11:20 완료** — `u2net` 확정·`CUTOUT_ENABLED=true` LIVE | `4a4cd9b` · §2-2 |
+| **[S-P2A-B] 샤드3 편집기 연결** | ✅ **2026-08-06 12:00 완료** — 종단 실측 성공(로컬 dev↔프로덕션 API) | `10c4f3f` · §2-3 |
+| **D-12d imgly(AGPL) 제거** | ✅ 완료 — 번들에서 imgly·onnxruntime 참조 0건 | `8132b0f` |
 
 **현재 프로덕션**: editor/admin 200 · `api/health` ok(**queues 4종 = validation·conversion·synthesis·cutout**) ·
 rembg 사이드카 healthy · 디스크 34% · **`CUTOUT_ENABLED=true`(api·worker 양쪽) · `REMBG_MODEL=u2net`**.
@@ -79,18 +81,22 @@ CVE-2026-40086 벡터라 금지), BiRefNet 계열은 이 박스에서 **cgroup O
 ⚠️ **잡 종단(큐→워커→산출물)은 아직 미검증** — 아래 2-3 의 P0 갭 때문. 구성요소는 각각 검증됨
 (rembg 실추론 프로덕션 ✅ / CutoutProcessor 유닛 10/10 ✅ / API 게이트 라이브 ✅).
 
-### 2-3. 샤드 3 — 편집기 연결 (다음 구현)
+### 2-3. ✅ [완료] 샤드 3 — 편집기 연결 (2026-08-06)
 
-**★ P0 선결 갭(2026-08-06 발견): 게스트 이미지를 `files` 에 등록할 경로가 없다.**
-컷아웃 잡은 `files.id`(UUID)를 요구하는데 —
-- 프로덕션은 `STORAGE_DRIVER=local` → `POST /files/presigned-upload-public` 은 **503 STORAGE_NOT_S3**
-- `POST /files/upload` · `POST /files/upload/external` 은 **둘 다 `mimetype !== 'application/pdf'` 400 필터**
-- 편집기의 실제 이미지 업로드는 `POST /storage/upload?category=uploads` = **storage 모듈이라 `files` 레코드가 없다**
+오너 결정 = **(ii) storage→files 브릿지**. 확인해 보니 그 브릿지는 **이미 존재**했다 —
+`POST /storage/upload-public` 이 `@Public` + `registerExternalFile` 로 `files.id` 를 돌려준다(§4-8).
+그래서 신설 없이 그 경로를 소비하는 것으로 끝났다.
 
-→ 샤드 3 은 "base64 → fileId 참조 전환" 이전에 **이미지 → `files` 등록 경로**를 먼저 정해야 한다.
-선택지: (i) `/files/upload` 계열의 MIME 필터를 이미지까지 확장(게스트용 무인증 라우트 신설 필요) /
-(ii) `/storage/upload` 결과를 `files` 에 등록하는 브릿지 / (iii) R2(s3) 드라이버 전환으로 presigned 개통
-(저장계층 R2 추상화는 이미 있고 오너 프로비저닝 대기 상태).
+| 구현 | 내용 |
+|---|---|
+| `apps/editor/src/api/cutout.ts`(신규) | 입력 준비(장변 2560 캡·필요 시 JPEG 강등) → 업로드 → 잡 → 폴링(1.5s/210s) → 결과 로드. 에러 코드 분류(기능 off·429·CVE 가드·타임아웃) |
+| `useImageStore.segmentImage` | **시그니처 유지** — 내부만 서버 왕복으로 교체. 결과 후처리(`processImage` 알파 트림) 재사용으로 산출 형상 보존. 화면 크기 보상 = `화면크기/inputWidth` |
+| `AppClipping` | 대상 폴백(innerItem → 활성 선택 → 단일 이미지) + **워크스페이스 컨텍스트 판별** + 실패 토스트 |
+| canvas-core | `getForeground()`·imgly 로더 제거, 의존 삭제(D-12d 종결) |
+
+**★ 이 과정에서 발견한 더 큰 결함**: `renderWorkspace` 는 `canvas.clear()` 로 시작한다. 모양컷이 아닌
+캔버스(BOOK 등)에서 '효과'가 동작하게만 고쳤다면 **사용자 디자인이 통째로 지워졌을 것**이다.
+→ 컨텍스트를 판별해 일반 캔버스에서는 원본을 결과로 **제자리 교체**한다.
 
 
 계약: `CUTOUT_WORKER_STACK_SPIKE_2026-08-05.md` §5-10.
@@ -103,10 +109,12 @@ CVE-2026-40086 벡터라 금지), BiRefNet 계열은 이 박스에서 **cgroup O
   extensionType==='clipping'` 객체를 요구하는데 BOOK 템플릿에선 생성되지 않아 **'효과' 클릭이 무반응**이다.
 
 ### 2-4. 그 밖의 잔여(경미)
+- **컷아웃 실기 QA(권장 다음 작업)**: 프로덕션 editor 에서 사람 사진 1장으로 모양컷·일반 캔버스 각각
+  1회씩. 자동 검증이 닿지 않는 것은 **품질**(u2net 의 머리카락·반투명 경계)과 모바일 UX 다.
 - S-E4: 자동편집 채움 사진 배지 정합 실기 — 포토북 템플릿셋 세션에서 1회.
-- D-12d(AGPL): imgly 의존 제거로 해소하기로 결정됨 — 샤드 3에서 클라 추론 경로가 빠질 때 함께.
-  **제거 전까지 SPA `/embed` 는 AGPL 코드 포함**(임베드 IIFE 는 이미 스텁 치환이라 파트너 배포물은 무관).
+- ✅ D-12d(AGPL) 해소 완료(`8132b0f`) — SPA `/embed` 의 AGPL 포함 상태가 끝났다.
 - 별건: 잡 폴링 `GET /worker-jobs/:id` 게스트 401(fix-bleed·render-pages·compose-mixed 3회 반복) — 공통 수정 판단.
+  (컷아웃은 전용 `@Public` 라우트를 따로 둬서 이 문제를 비켜간다.)
 
 ---
 
@@ -174,10 +182,16 @@ alpine 베이스라 `wget` 만 있고 multipart 를 못 만든다. 사이드카 
 코드를 직접 호출**한다(`require('/app/apps/worker/dist/services/rembg.service.js')`) — 조립·모델 필드·
 PNG 매직 검증까지 프로덕션 경로와 동일해 curl 보다 강하다. 명령 전문은 `docs/DEPLOYMENT.md` §②-b.
 
-### 4-8. `files` 등록 경로가 이미지에 대해 존재하지 않는다 (샤드 3 선결)
+### 4-8. 게스트 이미지의 `files` 등록 통로는 **`/storage/upload-public` 하나뿐이다** ★
 `/files/upload`·`/files/upload/external` 은 `mimetype !== 'application/pdf'` → 400 이고, presigned 는
-`STORAGE_DRIVER=local` 이라 503 이다. 편집기 업로드는 `/storage/upload` 라 `files` 레코드를 만들지 않는다.
-**컷아웃 잡은 `files.id` 를 요구하므로**, 이 갭을 메우기 전에는 실사용 종단이 성립하지 않는다(§2-3).
+`STORAGE_DRIVER=local` 이라 503 이다. 반면 `POST /storage/upload-public` 은 `@Public` 이면서 내부에서
+`filesService.registerExternalFile` 까지 수행해 **`files.id` 를 돌려준다**(2026-07-13 통합 균열 수정분).
+컷아웃 잡이 요구하는 것이 그 id 라, 샤드3 는 이 경로를 쓴다.
+
+> ⚠️ 정정: 08-06 중간 기록에 "게스트 이미지를 files 에 등록할 경로가 없다"고 적었으나 **틀렸다** —
+> `/files/*` 와 presigned 만 보고 storage 모듈을 확인하지 않은 결과다. 브릿지는 이미 있었다.
+> 다만 편집기의 일반 이미지 업로드(`storageApi.uploadFile` → `/storage/upload?category=uploads`)는
+> **JWT 라우트이고 files 레코드도 만들지 않는다** — 게스트 경로와 다르다는 점은 여전히 주의.
 
 ### 4-9. 계속 유효한 기존 함정
 - **api recreate 후 nginx 재시작 필수**(리터럴 `proxy_pass` + resolver 없음 → 502)
@@ -197,8 +211,11 @@ PNG 매직 검증까지 프로덕션 경로와 동일해 curl 보다 강하다. 
 - 롤백: `storige-worker:pre-cutout-u2net` · `storige-api:pre-cutout-u2net` · `.env.bak.pre-cutout-on`
   (기능만 끄려면 `.env` `CUTOUT_ENABLED=false` → `up -d api worker` → **nginx restart**)
 - 모델 캐시(named volume `storige_rembg_models`): u2net 168MB · birefnet-general 928MB · -lite 214MB
-- 테스트 기준선: api **930** · worker **511** · editor 44스위트 · canvas-core(로컬 4스위트 실패=기준선)
+- 테스트 기준선: api **930** · worker **511** · **editor 45스위트 581**(신규 cutout 16) ·
+  canvas-core **42스위트 479**(로컬 실패 4 = `canvas.node` 미빌드 기준선)
   · 이번 회귀 확인: worker rembg 11/11 · worker cutout processor 10/10 · api worker-jobs 170/170
+- ⚠️ **editor lint 는 기준선이 red** 다(`src/test/setup.ts` 의 `no-undef` 2건) — 내 변경 전에도 동일.
+  샤드3 작업과 무관하므로 손대지 않았다. 정리하려면 eslint env 에 `browser` 전역(Storage)을 열면 된다.
 
 ---
 
@@ -227,14 +244,14 @@ storige 프로젝트를 이어서 진행합니다.
 3. git fetch && git log --oneline -5 && git status -sb
    (미커밋 RESUME_PROMPT_2026-07-30.md 는 사용자 소유 — 보존)
 
-현재 상태: 컷아웃 서버 오프로드가 프로덕션에서 **켜져 있음**(CUTOUT_ENABLED=true, REMBG_MODEL=u2net,
-D-12b 확정 완료). 오너 결정 대기 0건 · 코드 잔여 0.
+현재 상태: 컷아웃 서버 오프로드가 프로덕션에서 **켜져 있고**(CUTOUT_ENABLED=true, REMBG_MODEL=u2net),
+**샤드3(편집기 연결)까지 머지·배포 완료**. imgly(AGPL) 제거로 D-12d 도 종결. 오너 결정 대기 0건 · 코드 잔여 0.
 
-다음 할 일은 §2-3 샤드3(편집기 연결)이고, **착수 전에 P0 갭부터 결정**해야 한다:
-게스트 이미지를 files 에 등록할 경로가 현재 없다(§2-3 · §4-8). 3안 중 택1이 필요.
+다음 할 일은 §2-4 의 **컷아웃 실기 QA** — 프로덕션 editor 에서 사람 사진으로 모양컷·일반 캔버스
+각 1회. 자동 검증이 닿지 않는 것은 품질(u2net 경계)과 모바일 UX 다.
 
 주의: §4 함정 9건 — rembg model 은 바디 필드(4-1), enum 확장 시 admin 라벨 맵 동반 갱신(4-2),
-compose env 매핑 누락(4-3), 배포 전 롤백 태그(4-4), 워커에 curl 없음(4-7), files 등록 갭(4-8),
-api recreate 후 nginx 재시작(4-9).
+compose env 매핑 누락(4-3), 배포 전 롤백 태그(4-4), 워커에 curl 없음(4-7),
+게스트 files 등록은 /storage/upload-public 뿐(4-8), api recreate 후 nginx 재시작(4-9).
 로컬 테스트는 PATH="/opt/homebrew/opt/node@22/bin:$PATH" 로 Node 22 를 앞세울 것.
 ```

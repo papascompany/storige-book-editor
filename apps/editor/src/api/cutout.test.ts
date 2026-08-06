@@ -46,10 +46,22 @@ afterEach(() => {
 })
 
 describe('resolveCutoutUrl', () => {
-  it('상대 /storage 경로를 API origin 기준 절대 URL 로 바꾼다 (/api 접미사 제거)', () => {
+  it('VITE_API_URL 이 있으면 그 origin 을 쓴다 — API base 가 프록시 상대경로여도 storage 는 원본에서 받는다', () => {
+    vi.stubEnv('VITE_API_URL', 'https://storage.example.com')
+    getDirectBaseUrl.mockReturnValue('/api')
+
+    expect(resolveCutoutUrl('/storage/cutouts/job-1/out.png')).toBe(
+      'https://storage.example.com/storage/cutouts/job-1/out.png',
+    )
+    vi.unstubAllEnvs()
+  })
+
+  it('VITE_API_URL 이 없으면 API base 에서 /api 접미사를 떼어 만든다', () => {
+    vi.stubEnv('VITE_API_URL', '')
     expect(resolveCutoutUrl('/storage/cutouts/job-1/out.png')).toBe(
       'https://api.example.com/storage/cutouts/job-1/out.png',
     )
+    vi.unstubAllEnvs()
   })
 
   it('이미 절대 URL 이면 그대로 둔다', () => {
@@ -152,6 +164,31 @@ describe('pollCutoutJob', () => {
       completedAt: '2026-08-06T02:00:00.000Z',
     },
   }
+
+  it('★ 서버는 status 를 **대문자**로 준다(COMPLETED) — 실측 계약, 소문자 비교로 되돌리지 말 것', async () => {
+    // 2026-08-06 프로덕션 실측: GET /worker-jobs/:id/cutout-status → {"status":"COMPLETED"}.
+    // WorkerJobStatus enum 값이 대문자라, 여기서 toLowerCase 정규화를 빼면 폴링이 영원히 끝나지 않는다.
+    get.mockResolvedValueOnce({ ...completed, data: { ...completed.data, status: 'COMPLETED' } })
+
+    const result = await pollCutoutJob('job-1', { intervalMs: 0 })
+    expect(result.model).toBe('u2net')
+  })
+
+  it('★ 실패도 대문자로 온다(FAILED)', async () => {
+    get.mockResolvedValueOnce({
+      data: {
+        id: 'job-1',
+        status: 'FAILED',
+        result: null,
+        errorCode: 'SERVICE_UNAVAILABLE',
+        errorMessage: '배경 제거 서비스를 일시적으로 사용할 수 없습니다. 잠시 후 다시 시도해 주세요.',
+        completedAt: null,
+      },
+    })
+    await expect(pollCutoutJob('job-1', { intervalMs: 0 })).rejects.toMatchObject({
+      code: 'SERVICE_UNAVAILABLE',
+    })
+  })
 
   it('pending 을 지나 completed 가 되면 결과를 돌려준다', async () => {
     get

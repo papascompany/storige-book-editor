@@ -78,12 +78,20 @@ function toCutoutError(e: unknown, fallback: string): CutoutError {
  *
  * nginx 가 `/storage/*` 를 무인증·ACAO `*` 로 서빙하므로 `crossOrigin='anonymous'` 로 로드해도
  * 캔버스가 tainted 되지 않는다(이후 `processImage` 의 OpenCV 트림이 픽셀을 읽어야 한다).
- * base 는 API origin 에서 `/api` 접미사를 떼어 만든다.
+ *
+ * origin 은 `VITE_API_URL`(스토리지 직접 접근용 — `fontManager.resolveStorageUrl` 과 같은 규약)을
+ * 먼저 본다. API base 가 상대경로('/api', dev 프록시)인 환경에서도 storage 는 원본에서 받아야
+ * 하기 때문이다. 미설정이면 API base 에서 `/api` 접미사를 떼어 쓴다.
  */
 export function resolveCutoutUrl(cutoutUrl: string): string {
   if (/^https?:\/\//i.test(cutoutUrl)) return cutoutUrl
+  const path = cutoutUrl.startsWith('/') ? cutoutUrl : `/${cutoutUrl}`
+
+  const storageOrigin = (import.meta.env?.VITE_API_URL as string | undefined)?.replace(/\/+$/, '')
+  if (storageOrigin) return `${storageOrigin}${path}`
+
   const origin = apiClient.getDirectBaseUrl().replace(/\/+$/, '').replace(/\/api$/, '')
-  return `${origin}${cutoutUrl.startsWith('/') ? '' : '/'}${cutoutUrl}`
+  return `${origin}${path}`
 }
 
 /**
