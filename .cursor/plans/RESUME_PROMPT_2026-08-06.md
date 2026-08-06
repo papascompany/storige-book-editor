@@ -114,15 +114,22 @@ undefined (setting 'cv')`, `getCv` 미변경·기존 조건) 트림 단계를 �
 탭 타이머 throttling 때문에 폴링이 분 단위로 늘어져 완료 화면까지 확인하지 못했다. **눈으로 볼 QA 1회가
 남아 있다**(§2-4).
 
+설계 계약 정본은 `CUTOUT_WORKER_STACK_SPIKE_2026-08-05.md` §5-10 (시그니처 유지 규약의 근거).
 
-계약: `CUTOUT_WORKER_STACK_SPIKE_2026-08-05.md` §5-10.
-- `useImageStore.segmentImage(image, canvas, imagePlugin, loadingBar) → Promise<FabricImage>`
-  **시그니처를 유지**하고 내부만 잡 요청/폴링으로 교체 → `AppClipping` 호출부 무변경.
-- canvasData 를 base64 인라인 → **fileId/URL 참조**로 전환(**=D-6b③ 완결**). `ensureImageCrossOrigin`
-  경로 확인, 신규 prop 은 `extendFabricOption` 등재 여부 판단(화면 전용이면 미등재).
-- **동시 해소 필수**: 모양컷 진입 도달 불가 결함 — `AppClipping.currentImage` 가 컴포넌트 로컬 state 인데
-  업로드 핸들러의 `hideSidePanel()` 이 언마운트시켜 소실된다. 복원 effect 는 `id==='innerItem' &&
-  extensionType==='clipping'` 객체를 요구하는데 BOOK 템플릿에선 생성되지 않아 **'효과' 클릭이 무반응**이다.
+⚠️ **남은 범위 하나**: canvasData 의 컷아웃 결과는 아직 `processImage` 가 만든 **base64 dataURL** 이다
+(=D-6b③ 미완결). 종전 클라 추론과 동일한 형상이라 회귀는 아니지만, 세션 저장 payload 가 커지는 문제는
+그대로다. fileId/URL 참조로 바꾸려면 트림 결과를 다시 업로드하거나 트림을 서버로 옮겨야 한다 —
+`ensureImageCrossOrigin` 경로와 `extendFabricOption` 등재 여부(화면 전용이면 미등재)를 함께 판단할 것.
+
+### 2-3b. ✅ [완료] 모양컷 업로드 프리즈 — 별건 기존 결함 (오너 QA 실적발)
+QA 중 발견: 모양컷 패널에서 사진(JPEG)을 올리면 캔버스가 빈 채 '처리 중' 고정 + 브라우저
+**'응답 없는 페이지'**. **샤드3 이전 배포에서도 동일 재현**(A/B: `storige-editor-iz1y6d9dx`) —
+서버 오프로드와 무관한 기존 결함이었다.
+
+원인: `getObjectPath()`/`getObjectPathData()` 가 각각 진입부에서 `ensureCvReady()` 를 무조건 호출.
+그런데 **알파 없는 이미지의 칼선은 `createExpandedPath()` 로 끝나 OpenCV 를 쓰지 않는다** —
+쓰지도 않을 10MB opencv-js 를 받아 메인 스레드에서 컴파일하느라 UI 가 멈춘 것.
+→ 로드를 실제 사용 분기(hasAlpha 윤곽 추출)로 이동(`b3d26df`). 회귀 잠금 2건 추가.
 
 ### 2-4. 그 밖의 잔여(경미)
 - **컷아웃 실기 QA(권장 다음 작업)**: 프로덕션 editor 에서 사람 사진 1장으로 모양컷·일반 캔버스 각각
@@ -209,7 +216,14 @@ PNG 매직 검증까지 프로덕션 경로와 동일해 curl 보다 강하다. 
 > 다만 편집기의 일반 이미지 업로드(`storageApi.uploadFile` → `/storage/upload?category=uploads`)는
 > **JWT 라우트이고 files 레코드도 만들지 않는다** — 게스트 경로와 다르다는 점은 여전히 주의.
 
-### 4-9. 계속 유효한 기존 함정
+### 4-9. lazy 로더는 **진입점이 아니라 실사용 분기**에서 불러야 한다 ★
+`getObjectPath` 가 "공개 진입점에서 명시(멱등)"이라는 선의로 `ensureCvReady()` 를 선행 호출한
+탓에, OpenCV 를 한 줄도 쓰지 않는 경로(알파 없는 이미지 칼선)가 10MB 파싱·컴파일을 떠안아
+브라우저가 '응답 없음'까지 갔다(2026-08-06 실적발, `b3d26df`).
+멱등 캐시가 있다고 해서 **호출 위치가 공짜인 것은 아니다** — 첫 호출자가 비용을 전부 문다.
+같은 패턴이 남아 있는지 볼 것: `ensureCvReady()` 호출부 중 그 함수가 정말 cv 를 쓰는지.
+
+### 4-10. 계속 유효한 기존 함정
 - **api recreate 후 nginx 재시작 필수**(리터럴 `proxy_pass` + resolver 없음 → 502)
 - CI 유출 게이트가 **주석·테스트명의 외부 벤치 식별자**까지 DENY (editor `postbuild` 도 dist 스캔)
 - 로컬 canvas-core 의 fabric import 테스트 4스위트는 `canvas.node` 미빌드로 실패(**기준선** — CI 무관)
@@ -266,8 +280,8 @@ storige 프로젝트를 이어서 진행합니다.
 다음 할 일은 §2-4 의 **컷아웃 실기 QA** — 프로덕션 editor 에서 사람 사진으로 모양컷·일반 캔버스
 각 1회. 자동 검증이 닿지 않는 것은 품질(u2net 경계)과 모바일 UX 다.
 
-주의: §4 함정 9건 — rembg model 은 바디 필드(4-1), enum 확장 시 admin 라벨 맵 동반 갱신(4-2),
+주의: §4 함정 10건 — rembg model 은 바디 필드(4-1), enum 확장 시 admin 라벨 맵 동반 갱신(4-2),
 compose env 매핑 누락(4-3), 배포 전 롤백 태그(4-4), 워커에 curl 없음(4-7),
-게스트 files 등록은 /storage/upload-public 뿐(4-8), api recreate 후 nginx 재시작(4-9).
+게스트 files 등록은 /storage/upload-public 뿐(4-8), lazy 로더 위치(4-9), api recreate 후 nginx 재시작(4-10).
 로컬 테스트는 PATH="/opt/homebrew/opt/node@22/bin:$PATH" 로 Node 22 를 앞세울 것.
 ```
