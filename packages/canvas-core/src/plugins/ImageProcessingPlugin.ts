@@ -482,8 +482,11 @@ class ImageProcessingPlugin extends PluginBase {
   }
 
   async getObjectPath(item: fabric.Object): Promise<fabric.Path | undefined> {
-    // OpenCV 선행 로드 — getObjectPathData 내부에서도 보장되지만 공개 진입점에서 명시 (멱등)
-    await this.ensureCvReady()
+    // ⚠️ 여기서 OpenCV 를 선행 로드하지 **않는다**(2026-08-06 프로덕션 실적발).
+    //    알파가 없는 이미지(= 일반 JPEG 사진)의 칼선은 createExpandedPath 로 끝나 OpenCV 가
+    //    전혀 필요 없는데, 종전에는 진입점에서 무조건 로드해 10MB 파싱/컴파일이 메인 스레드를
+    //    점유했다 → 모양컷 업로드 직후 브라우저 '응답 없는 페이지'.
+    //    로드는 실제로 cv 를 쓰는 분기(getObjectPathData 의 hasAlpha 경로)에서만 한다.
     const pathData = await this.getObjectPathData(item)
     if (!pathData) {
       console.error('Failed to generate path data')
@@ -643,7 +646,6 @@ class ImageProcessingPlugin extends PluginBase {
   }
 
   async getObjectPathData(object: fabric.Object) {
-    const cv = await this.ensureCvReady()
     const kSize = 1
     // 오브제가 path 인 경우 element 로 변환
     let imgElement: HTMLCanvasElement
@@ -661,6 +663,8 @@ class ImageProcessingPlugin extends PluginBase {
     const hasAlpha = this.tellHasAlpha(imgElement)
 
     if (hasAlpha) {
+      // OpenCV 는 **여기서만** 필요하다 — 알파 윤곽 추출 경로. 위 getObjectPath 주석 참조.
+      const cv = await this.ensureCvReady()
       const binary = await this.preProcessImage(cv, imgElement, hasAlpha, kSize)
       const largestContour: [any, boolean] = this.findLargestContour(cv, binary)
       const points = await this.smoothContour(object, largestContour[0], largestContour[1])

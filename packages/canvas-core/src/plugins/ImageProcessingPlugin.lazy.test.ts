@@ -68,6 +68,42 @@ describe('ImageProcessingPlugin — lazy 초기화 (D-6b① · D-12d)', () => {
     expect(getCvMock).toHaveBeenCalledTimes(1)
   })
 
+  // ─────────────────────────────────────────────────────────────────
+  // 모양컷 업로드 프리즈 회귀 잠금 (2026-08-06 프로덕션 실적발)
+  //
+  // 알파가 없는 이미지(= 일반 JPEG 사진)의 칼선은 createExpandedPath 로 끝나 OpenCV 가 전혀
+  // 필요 없는데, 종전에는 getObjectPath/getObjectPathData 진입점에서 무조건 로드해
+  // 10MB 파싱·컴파일이 메인 스레드를 점유했다 → 브라우저 '응답 없는 페이지'.
+  // ─────────────────────────────────────────────────────────────────
+  const makeItem = () => ({ type: 'image', id: 'img-1', getElement: () => ({ width: 8, height: 8 }) })
+
+  it('알파 없는 이미지의 칼선은 OpenCV 를 로드하지 않는다 (프리즈 회귀 잠금)', async () => {
+    const { plugin } = makePlugin()
+    plugin.tellHasAlpha = vi.fn(() => false)
+    plugin.createExpandedPath = vi.fn(() => ({ path: 'M 0 0 L 8 8' }))
+
+    const pathData = await plugin.getObjectPathData(makeItem())
+
+    expect(pathData).toBe('M 0 0 L 8 8')
+    expect(plugin.createExpandedPath).toHaveBeenCalledTimes(1)
+    expect(getCvMock).not.toHaveBeenCalled() // ★ 이 단언이 프리즈를 막는다
+  })
+
+  it('알파가 있으면 그때 OpenCV 를 로드한다(윤곽 추출에 실제로 필요)', async () => {
+    const { plugin } = makePlugin()
+    plugin.tellHasAlpha = vi.fn(() => true)
+    plugin.preProcessImage = vi.fn(async () => ({ __binary: true }))
+    plugin.findLargestContour = vi.fn(() => [{ __contour: true }, false])
+    plugin.smoothContour = vi.fn(async () => [{ x: 0, y: 0 }])
+    plugin.generateCurvedPath = vi.fn(() => 'M 1 1')
+
+    const pathData = await plugin.getObjectPathData(makeItem())
+
+    expect(pathData).toBe('M 1 1')
+    expect(getCvMock).toHaveBeenCalledTimes(1)
+    expect(plugin.preProcessImage).toHaveBeenCalledWith({ __mockCv: true }, expect.anything(), true, 1)
+  })
+
   it('브라우저 추론 진입점(getForeground)은 존재하지 않는다 — 서버 오프로드 전환 (D-12d)', () => {
     const { plugin } = makePlugin()
 
