@@ -366,6 +366,9 @@ importers:
       '@storige/types':
         specifier: workspace:*
         version: link:../../packages/types
+      '@techstark/opencv-js':
+        specifier: ^4.9.0-release.3
+        version: 4.9.0-release.3
       '@vercel/functions':
         specifier: ^3.7.5
         version: 3.7.5(@aws-sdk/credential-provider-web-identity@3.972.52)(ws@8.21.1)

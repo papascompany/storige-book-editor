@@ -73,6 +73,8 @@ export { traceStep, traceEnter, resetTrace, TRACE_STORAGE_KEY, type TraceEntry }
 // P2-11/A — OpenCV/배경제거 lazy-loader + warmup helpers
 // ⚠️ getBackgroundRemoval / warmupBackgroundRemoval 은 제거됐다(D-12d, 2026-08-06) —
 //    배경제거 추론은 서버(rembg 사이드카)가 하고, 진입점은 editor 의 api/cutout.ts 다.
-export { getCv, warmupOpenCv } from './utils/openCv'
+// ⚠️ 2026-08-07: ESM import 가 UMD 를 깨뜨려 무한 대기하던 문제로 `<script>` 태그 로드로 전환 —
+//    소비 앱은 부트스트랩에서 configureOpenCv({ scriptUrl }) 로 자산 URL 을 주입해야 한다.
+export { getCv, warmupOpenCv, configureOpenCv, OPENCV_READY_TIMEOUT_MS } from './utils/openCv'
 
 export default Editor

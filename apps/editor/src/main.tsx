@@ -5,6 +5,9 @@ import App from './App'
 import { EditorErrorBoundary, reloadOnceForStaleChunk } from './components/EditorErrorBoundary'
 import './index.css'
 import { initSentry, Sentry } from './lib/sentry'
+// OpenCV 자산 URL 주입(side-effect) — 모양컷 칼선의 getCv() 가 <script> 태그 로드를 쓰도록.
+// ⚠️ embed.tsx 에는 넣지 않는다(스텁 유지 + 10MB 자산 미유입). utils/opencvLoader.ts 주석 참조.
+import './utils/opencvLoader'
 
 // Sentry 초기화 (다른 코드보다 먼저)
 initSentry()

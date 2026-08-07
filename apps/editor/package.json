@@ -36,6 +36,7 @@
     "@sentry/react": "^7.119.2",
     "@storige/ai": "workspace:*",
     "@storige/canvas-core": "workspace:*",
+    "@techstark/opencv-js": "^4.9.0-release.3",
     "@storige/types": "workspace:*",
     "@vercel/functions": "^3.7.5",
     "axios": "^1.16.0",

@@ -281,6 +281,10 @@ export default function AppClipping() {
       canvas.onHistory()
     } catch (e) {
       console.error('업로드 오류:', e)
+      // OpenCV 로드 타임아웃 등 — render() 가 이미 canvas.clear() 를 했을 수 있어
+      // 조용히 끝내면 사용자에겐 '사진이 사라진' 것으로 보인다. 반드시 알린다.
+      const message = e instanceof Error && e.message ? e.message : '이미지 처리에 실패했습니다. 다시 시도해 주세요.'
+      showToast(message, 'error', 5000)
       canvas.onHistory()
     } finally {
       setIsLoading(false)
