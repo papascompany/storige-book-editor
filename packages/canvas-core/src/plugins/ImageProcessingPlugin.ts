@@ -6,7 +6,7 @@ import { PluginBase } from '../plugin'
 // P2-11/A — OpenCV lazy-loader 분리. module-level 캐시 공유.
 import { getCv } from '../utils/openCv'
 // 모양컷 '효과' 경로 진단 — 프로덕션에서도 window.__storigeTrace 로 읽을 수 있다.
-import { traceStep, yieldToBrowser } from '../utils/perfTrace'
+import { traceEnter, traceStep, yieldToBrowser } from '../utils/perfTrace'
 
 class ImageProcessingPlugin extends PluginBase {
   name = 'ImageProcessingPlugin'
@@ -474,6 +474,7 @@ class ImageProcessingPlugin extends PluginBase {
         height
       )
 
+      traceEnter('objAsImage:encode')
       const tEncode = performance.now()
       const dataURL = canvas.toDataURL('image/png', 1)
       traceStep('objAsImage:encode', tEncode, { w: width, h: height, urlKB: Math.round(dataURL.length / 1024) })
@@ -718,6 +719,7 @@ class ImageProcessingPlugin extends PluginBase {
 
     // 최종 추출된 좌표
 
+    traceEnter('tellHasAlpha')
     const tAlpha = performance.now()
     const hasAlpha = this.tellHasAlpha(imgElement)
     traceStep('tellHasAlpha', tAlpha, {
@@ -728,6 +730,7 @@ class ImageProcessingPlugin extends PluginBase {
 
     if (hasAlpha) {
       // OpenCV 는 **여기서만** 필요하다 — 알파 윤곽 추출 경로. 위 getObjectPath 주석 참조.
+      traceEnter('ensureCvReady')
       const tCv = performance.now()
       const cv = await this.ensureCvReady()
       traceStep('ensureCvReady', tCv)
@@ -740,19 +743,23 @@ class ImageProcessingPlugin extends PluginBase {
       const { element: capped, scale } = this.capElementForContour(imgElement)
       traceStep('capForContour', tCap, { w: capped.width, h: capped.height, scale: Math.round(scale * 100) / 100 })
 
+      traceEnter('preProcessImage')
       const tPre = performance.now()
       const binary = await this.preProcessImage(cv, capped, hasAlpha, kSize)
       traceStep('preProcessImage', tPre)
       await yieldToBrowser()
 
+      traceEnter('findLargestContour')
       const largestContour: [any, boolean] = this.findLargestContour(cv, binary)
       await yieldToBrowser()
 
+      traceEnter('smoothContour')
       const tSmooth = performance.now()
       const points = await this.smoothContour(object, largestContour[0], largestContour[1], scale)
       traceStep('smoothContour', tSmooth, { points: points.length })
       await yieldToBrowser()
 
+      traceEnter('generateCurvedPath')
       const tPath = performance.now()
       const path = this.generateCurvedPath(points, hasAlpha)
       traceStep('generateCurvedPath', tPath, { pathLen: path ? path.length : 0 })

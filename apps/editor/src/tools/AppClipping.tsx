@@ -18,6 +18,7 @@ import {
   ImageProcessingPlugin,
   resetTrace,
   selectFiles,
+  traceEnter,
   traceStep,
   WorkspacePlugin
 } from '@storige/canvas-core'
@@ -161,6 +162,7 @@ export default function AppClipping() {
       }
       // 이번 실행분만 남긴다 — 프리즈가 풀린 뒤 window.__storigeTrace 로 단계별 소요를 읽는다.
       resetTrace()
+      traceEnter('segmentImage(서버왕복+트림)')
       const tSeg = performance.now()
       const image = await segmentImage(target, canvas, imagePlugin!, loadingBar, {
         model: CUTOUT_SUBJECT_MODELS[cutoutSubject]
@@ -169,6 +171,7 @@ export default function AppClipping() {
 
       if (image) {
         if (isClippingWorkspace()) {
+          traceEnter('renderWorkspace(칼선)')
           const tRender = performance.now()
           await renderWorkspace(image, canvas, cutSizeValue)
           traceStep('renderWorkspace(칼선)', tRender)
