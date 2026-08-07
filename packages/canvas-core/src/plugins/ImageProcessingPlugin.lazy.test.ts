@@ -187,6 +187,46 @@ describe('ImageProcessingPlugin — lazy 초기화 (D-6b① · D-12d)', () => {
     expect(points[points.length - 1][0]).toBeGreaterThan(80000)
   })
 
+  it('컨투어 스캔에서 버리는 복사본은 즉시 해제한다 — wasm 힙 누수 회귀 잠금', () => {
+    const { plugin } = makePlugin()
+    const made: any[] = []
+    const mkContour = (area: number) => {
+      const m = { rows: 2, data32S: [0, 0, 1, 1], delete: vi.fn(), __area: area }
+      made.push(m)
+      return m
+    }
+    const contours = [mkContour(50), mkContour(5000), mkContour(10)] // 1개만 면적 통과
+    const cv = {
+      CV_32SC2: 4,
+      MatVector: function (this: any) {
+        this.size = () => contours.length
+        this.get = (i: number) => contours[i]
+        this.delete = vi.fn()
+      },
+      Mat: function (this: any) {
+        this.delete = vi.fn()
+      },
+      findContours: vi.fn(),
+      contourArea: (c: any) => c.__area,
+      matFromArray: vi.fn(() => ({ delete: vi.fn() })),
+      convexHull: vi.fn(),
+    }
+
+    ;(plugin as any).findLargestContour(cv, {})
+
+    // 면적 미달 2개는 루프에서, 통과한 1개는 점 추출 후 — 결국 전부 해제되어야 한다.
+    for (const m of made) {
+      expect(m.delete).toHaveBeenCalled()
+    }
+  })
+
+  it('컨투어 스캔 상한이 있고 hull 점 예산보다 작다', () => {
+    const scan = (ImageProcessingPlugin as any).CONTOUR_SCAN_LIMIT
+    const hull = (ImageProcessingPlugin as any).HULL_MAX_INPUT_POINTS
+    expect(scan).toBeGreaterThan(0)
+    expect(scan).toBeLessThanOrEqual(hull)
+  })
+
   it('윤곽 입력 장변 캡 상수가 서버 산출물(2560)보다 작게 유지된다', () => {
     const cap = (ImageProcessingPlugin as any).CONTOUR_MAX_LONG_EDGE
     expect(cap).toBeGreaterThan(0)

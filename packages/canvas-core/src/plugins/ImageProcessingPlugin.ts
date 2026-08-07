@@ -39,6 +39,13 @@ class ImageProcessingPlugin extends PluginBase {
    */
   static readonly HULL_MAX_INPUT_POINTS = 20000
 
+  /**
+   * 컨투어 스캔 개수 상한. 알파 경계가 잘게 쪼개지면 `findContours` 가 수만~수십만 개를 만들고,
+   * 전수 순회는 wasm 경계 왕복만으로도 분 단위가 된다(2026-08-07 실적발 — 실제 Chrome 에서
+   * '효과' 후 6분 넘게 응답 없음). 면적 큰 것만 쓰므로 앞쪽 일부만 훑어도 결과는 사실상 같다.
+   */
+  static readonly CONTOUR_SCAN_LIMIT = 5000
+
   constructor(canvas: fabric.Canvas, editor: Editor) {
     super(canvas, editor, {})
     // D-6b① (2026-07-15): eager preload 제거 — 기존엔 여기서 startService() 를 즉시 실행해
@@ -1576,7 +1583,11 @@ class ImageProcessingPlugin extends PluginBase {
     // Collect all contours with their areas
     const contourAreas: { contour: any; area: number }[] = []
     const totalContours = contours.size()
-    for (let i = 0; i < totalContours; i++) {
+    // ⚠️ 스캔 상한 (2026-08-07 실적발). 알파 경계가 잘게 쪼개지면 컨투어가 수만~수십만 개가 되고,
+    //    전수 순회는 wasm 경계 왕복만으로도 분 단위가 된다. 면적 내림차순으로 큰 것만 쓰므로
+    //    앞쪽 일부만 훑어도 결과는 사실상 같다.
+    const scanned = Math.min(totalContours, ImageProcessingPlugin.CONTOUR_SCAN_LIMIT)
+    for (let i = 0; i < scanned; i++) {
       const contour = contours.get(i)
       const area = cv.contourArea(contour)
       // ⚠️ 여기 있던 컨투어별 console.log 는 제거했다 — 경계가 복잡한 산출물에서는
@@ -1584,6 +1595,10 @@ class ImageProcessingPlugin extends PluginBase {
       // Filter out small contours
       if (area > 1000) {
         contourAreas.push({ contour, area })
+      } else {
+        // ★ `MatVector.get()` 은 **복사본**을 준다. 버리는 것을 해제하지 않으면 wasm 힙이 계속
+        //    커지고 할당이 점점 느려져, 컨투어가 많은 이미지에서 사실상 멈춘다(누수 실적발).
+        contour.delete()
       }
     }
 
@@ -1614,11 +1629,18 @@ class ImageProcessingPlugin extends PluginBase {
     }
     traceStep('findLargestContour', tContour, {
       totalContours,
+      scanned,
       kept: contourAreas.length,
       droppedContours,
       points: points.length,
       useHull: useHull ? 1 : 0
     })
+
+    // 점을 다 뽑았으니 원본 컨투어 복사본은 전부 해제한다.
+    // (반환값은 아래에서 matFromArray/convexHull 로 **새로 만든** Mat 이라 안전하다)
+    for (const { contour } of contourAreas) {
+      contour.delete()
+    }
 
     contours.delete()
     hierarchy.delete()
