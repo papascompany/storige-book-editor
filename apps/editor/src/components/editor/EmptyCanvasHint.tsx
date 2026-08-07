@@ -11,7 +11,13 @@ import { cn } from '@/lib/utils'
  */
 
 const SYSTEM_IDS = new Set(['workspace', 'cut-border', 'safe-zone-border', 'template-background'])
-const SYSTEM_EXTENSION_TYPES = new Set(['guideline', 'background', 'overlay', 'outline', 'moldIcon', 'clipping'])
+/**
+ * ⚠️ `clipping` 은 여기 넣지 않는다(2026-08-07 실적발).
+ * 모양컷은 사용자가 올린 사진에도 `extensionType='clipping'` 을 붙인다(`id='innerItem'`).
+ * 이를 시스템 객체로 세면 **사진을 올린 뒤에도 "디자인을 시작해보세요" 가 계속 떠서**
+ * 사용자에게는 사진이 사라진 것처럼 보인다. 칼선(outline)·아이콘만 시스템으로 취급한다.
+ */
+const SYSTEM_EXTENSION_TYPES = new Set(['guideline', 'background', 'overlay', 'outline', 'moldIcon'])
 
 function countUserObjects(canvas: any): number {
   if (!canvas || !canvas.getObjects) return 0

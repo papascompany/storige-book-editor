@@ -468,7 +468,11 @@ export default function AppClipping() {
 
       // Set zoom
       workspacePlugin?.setZoomAuto(0.7)
-      canvasInstance.requestRenderAll()
+      // ⚠️ requestRenderAll 만으로는 부족하다(2026-08-07 실적발). 예약은 requestAnimationFrame 이라
+      //    직전 구간이 메인 스레드를 오래 잡았거나 탭이 비활성이면 프레임이 오지 않아, 객체·좌표·
+      //    뷰포트가 전부 정상인데도 **캔버스가 빈 화면으로 남는다**(사용자에겐 '사진이 사라진' 것).
+      //    실제로 renderAll() 을 한 번 강제하면 즉시 나타났다. 여기서는 즉시 그린다.
+      canvasInstance.renderAll()
 
       editor?.emit('sizeChange')
       canvasInstance.clearHistory()
