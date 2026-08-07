@@ -256,7 +256,17 @@ export function extractContoursPure(input: ContourExtractInput): ContourExtractR
   // 면적 내림차순 → 필터(>1000) → 스캔 상한
   const sorted = components.slice().sort((a, b) => b.area - a.area)
   const considered = sorted.slice(0, Math.max(1, input.scanLimit))
-  const kept = considered.filter((c) => c.area > 1000)
+  let kept = considered.filter((c) => c.area > 1000)
+  let keptFallback = 0
+
+  // 전부 필터에 걸리면(작은 피사체·잘게 쪼개진 컷아웃) 큰 순서대로라도 쓴다 —
+  // 빈 칼선은 renderWorkspace 가 캔버스를 비운 채 조용히 끝나 '사진이 사라진' UX 가 된다
+  // (2026-08-07 최악 케이스 실측: 104 컴포넌트 전부 ≤1000 → kept 0 → 빈 화면).
+  // 종전 cv 경로도 같은 필터라 동일하게 비었을 것 — 이것은 의도적 동작 개선이다.
+  if (kept.length === 0 && considered.length > 0) {
+    kept = considered.slice(0, 50)
+    keptFallback = 1
+  }
 
   if (kept.length === 0) {
     return { points: [], useHull: false, meta: { totalContours: components.length, kept: 0 } }
@@ -281,6 +291,7 @@ export function extractContoursPure(input: ContourExtractInput): ContourExtractR
     meta: {
       totalContours: components.length,
       kept: kept.length,
+      keptFallback,
       pooled: pool.length,
       simplified: outline.length
     }

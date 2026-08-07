@@ -96,6 +96,24 @@ describe('extractContoursPure — 종전 cv 규약 동등성', () => {
     expect(res.points.length).toBeLessThan(40)
   })
 
+  it('전 컴포넌트가 면적 필터에 걸리면 큰 순서대로 폴백한다 — 빈 칼선("사진 사라짐" UX) 방지', () => {
+    // 20×20=400 ≤1000 짜리 작은 블롭 3개 — 종전 규약이면 전부 필터 → 빈 결과였다
+    const input = makeInput(200, 200, [
+      { x: 10, y: 10, w: 20, h: 20 },
+      { x: 90, y: 90, w: 20, h: 20 },
+      { x: 160, y: 30, w: 20, h: 20 }
+    ])
+
+    const res = extractContoursPure(input)
+
+    expect(res.points.length).toBeGreaterThan(2)
+    expect(res.meta?.keptFallback).toBe(1)
+    expect(res.useHull).toBe(true)
+    const b = bounds(res.points)
+    expect(b.minX).toBeLessThanOrEqual(10)
+    expect(b.maxX).toBeGreaterThanOrEqual(179)
+  })
+
   it('완전 투명 입력: 빈 결과(다운스트림이 오류 경로로 처리)', () => {
     const input = makeInput(64, 64, [])
     const res = extractContoursPure(input)
