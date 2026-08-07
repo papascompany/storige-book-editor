@@ -76,5 +76,13 @@ export { traceStep, traceEnter, resetTrace, TRACE_STORAGE_KEY, type TraceEntry }
 // ⚠️ 2026-08-07: ESM import 가 UMD 를 깨뜨려 무한 대기하던 문제로 `<script>` 태그 로드로 전환 —
 //    소비 앱은 부트스트랩에서 configureOpenCv({ scriptUrl }) 로 자산 URL 을 주입해야 한다.
 export { getCv, warmupOpenCv, configureOpenCv, OPENCV_READY_TIMEOUT_MS } from './utils/openCv'
+// 2026-08-07: OpenCV 는 메인 스레드에서 실행 불능(실측) → 윤곽 추출을 워커로 주입.
+export {
+  configureContourExtractor,
+  getContourExtractor,
+  type ContourExtractInput,
+  type ContourExtractResult,
+  type ContourExtractor
+} from './utils/contourExtractor'
 
 export default Editor

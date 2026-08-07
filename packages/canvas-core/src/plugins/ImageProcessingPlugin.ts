@@ -7,6 +7,8 @@ import { PluginBase } from '../plugin'
 import { getCv } from '../utils/openCv'
 // 모양컷 '효과' 경로 진단 — 프로덕션에서도 window.__storigeTrace 로 읽을 수 있다.
 import { traceEnter, traceStep, yieldToBrowser } from '../utils/perfTrace'
+// 알파 윤곽 추출은 워커로 오프로드된다(주입식) — contourExtractor.ts 헤더 참조.
+import { getContourExtractor } from '../utils/contourExtractor'
 
 class ImageProcessingPlugin extends PluginBase {
   name = 'ImageProcessingPlugin'
@@ -729,19 +731,53 @@ class ImageProcessingPlugin extends PluginBase {
     })
 
     if (hasAlpha) {
-      // OpenCV 는 **여기서만** 필요하다 — 알파 윤곽 추출 경로. 위 getObjectPath 주석 참조.
+      // ⚠️ 원본 해상도로 컨투어를 돌리지 않는다(2026-08-06 실적발). 배경제거 결과처럼 알파 경계가
+      //    복잡한 대형 이미지(최대 2560×3413)에서는 findContours·근사화가 폭발한다.
+      //    칼선은 부드러운 외곽선이라 축소본으로 충분하고, 좌표는 선형 역보정한다.
+      const tCap = performance.now()
+      const { element: capped, scale } = this.capElementForContour(imgElement)
+      traceStep('capForContour', tCap, { w: capped.width, h: capped.height, scale: Math.round(scale * 100) / 100 })
+
+      // ★ 정상 경로: 워커 추출기(주입돼 있으면). OpenCV 는 메인 스레드에서 실행이 끝나지
+      //   않는 것이 실측으로 확정돼(2026-08-07, contourExtractor.ts 헤더 참조) cv 사용부
+      //   전체를 워커로 옮겼다. 메인 스레드에는 픽셀 읽기·좌표 매핑·d3 path 생성만 남는다.
+      const extractor = getContourExtractor()
+      if (extractor) {
+        const tRead = performance.now()
+        const imageData = this.readImageData(capped)
+        traceStep('readImageData', tRead, { w: imageData.width, h: imageData.height })
+
+        traceEnter('contourWorker')
+        const tWorker = performance.now()
+        const extracted = await extractor({
+          data: imageData.data,
+          width: imageData.width,
+          height: imageData.height,
+          kSize,
+          scanLimit: ImageProcessingPlugin.CONTOUR_SCAN_LIMIT,
+          hullMaxInputPoints: ImageProcessingPlugin.HULL_MAX_INPUT_POINTS,
+          approxEpsilonRatio: ImageProcessingPlugin.CONTOUR_APPROX_EPSILON_RATIO
+        })
+        traceStep('contourWorker', tWorker, {
+          points: extracted.points.length,
+          ...(extracted.meta ?? {})
+        })
+
+        const points = this.mapContourPoints(extracted.points, object, scale)
+
+        traceEnter('generateCurvedPath')
+        const tPath = performance.now()
+        const path = this.generateCurvedPath(points, hasAlpha)
+        traceStep('generateCurvedPath', tPath, { pathLen: path ? path.length : 0 })
+        return path
+      }
+
+      // 폴백(미주입: 임베드 스텁·테스트) — 종전 메인 스레드 cv 경로 그대로.
       traceEnter('ensureCvReady')
       const tCv = performance.now()
       const cv = await this.ensureCvReady()
       traceStep('ensureCvReady', tCv)
       await yieldToBrowser()
-      // ⚠️ 원본 해상도로 컨투어를 돌리지 않는다(2026-08-06 실적발). 배경제거 결과처럼 알파 경계가
-      //    복잡한 대형 이미지(최대 2560×3413)에서는 findContours·근사화가 폭발해 메인 스레드가
-      //    사실상 멈춘다. 칼선은 부드러운 외곽선이라 축소본으로 구해도 충분하고(오히려 노이즈가
-      //    줄어든다), 좌표는 smoothContour 에서 선형 역보정한다.
-      const tCap = performance.now()
-      const { element: capped, scale } = this.capElementForContour(imgElement)
-      traceStep('capForContour', tCap, { w: capped.width, h: capped.height, scale: Math.round(scale * 100) / 100 })
 
       traceEnter('preProcessImage')
       const tPre = performance.now()
@@ -767,6 +803,49 @@ class ImageProcessingPlugin extends PluginBase {
     } else {
       return this.createExpandedPath(object, 0).path
     }
+  }
+
+  /** 캡 적용본에서 RGBA 픽셀을 읽는다(워커 전송용). */
+  private readImageData(element: HTMLCanvasElement): ImageData {
+    const canvas = document.createElement('canvas')
+    canvas.width = element.width
+    canvas.height = element.height
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })
+    if (!ctx) {
+      throw new Error('Failed to get 2d context from canvas')
+    }
+    ctx.drawImage(element, 0, 0)
+    return ctx.getImageData(0, 0, canvas.width, canvas.height)
+  }
+
+  /**
+   * 워커가 돌려준 캡 좌표계 윤곽점을 객체 좌표계로 매핑한다 —
+   * smoothContour 의 좌표 변환부와 동일 수식(선형 역보정 → 객체 오프셋/스케일 → 근접점 솎기).
+   * cv 를 쓰지 않는 순수 계산이라 메인 스레드에 남긴다.
+   */
+  private mapContourPoints(
+    raw: [number, number][],
+    object: fabric.Object,
+    contourScale: number
+  ): [number, number][] {
+    const points: [number, number][] = []
+    const nearThreshold = 1.5 * (object.scaleY ?? 1)
+    for (const [rx, ry] of raw) {
+      const x = rx * contourScale
+      const y = ry * contourScale
+      const currentX = (x + object.left!) * (object.scaleX ?? 1)
+      const currentY = (y + object.top!) * (object.scaleY ?? 1)
+      if (
+        points.length === 0 ||
+        Math.hypot(
+          currentX - points[points.length - 1][0],
+          currentY - points[points.length - 1][1]
+        ) > nearThreshold
+      ) {
+        points.push([currentX, currentY])
+      }
+    }
+    return ImageProcessingPlugin.capContourPoints(points)
   }
 
   /**

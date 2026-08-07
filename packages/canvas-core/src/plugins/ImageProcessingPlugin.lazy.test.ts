@@ -233,6 +233,51 @@ describe('ImageProcessingPlugin — lazy 초기화 (D-6b① · D-12d)', () => {
     expect(cap).toBeLessThan(2560)
   })
 
+  it('워커 추출 결과의 좌표 매핑은 smoothContour 와 동일 수식이다 (2026-08-07 워커 전환 회귀 잠금)', () => {
+    const { plugin } = makePlugin()
+    const object: any = { left: 10, top: 20, scaleX: 2, scaleY: 2 }
+    // 캡 배율 2 → 원좌표 복원 후 (x+left)*scaleX
+    const mapped = (plugin as any).mapContourPoints(
+      [
+        [5, 5],
+        [50, 50],
+      ],
+      object,
+      2
+    )
+    expect(mapped).toEqual([
+      [(5 * 2 + 10) * 2, (5 * 2 + 20) * 2],
+      [(50 * 2 + 10) * 2, (50 * 2 + 20) * 2],
+    ])
+  })
+
+  it('추출기가 주입되면 알파 경로는 cv(getCv)를 전혀 부르지 않는다 — 메인 스레드 프리즈 재발 잠금', async () => {
+    const { configureContourExtractor } = await import('../utils/contourExtractor')
+    const extractor = vi.fn(async () => ({
+      points: [
+        [0, 0],
+        [10, 0],
+        [10, 10],
+      ] as [number, number][],
+      useHull: false,
+    }))
+    configureContourExtractor(extractor)
+    try {
+      const { plugin } = makePlugin()
+      plugin.tellHasAlpha = vi.fn(() => true)
+      ;(plugin as any).readImageData = vi.fn(() => ({ data: new Uint8ClampedArray(4), width: 1, height: 1 }))
+      const item: any = { type: 'image', id: 'i', left: 0, top: 0, scaleX: 1, scaleY: 1, getElement: () => ({ width: 8, height: 8 }) }
+
+      const pathData = await plugin.getObjectPathData(item)
+
+      expect(extractor).toHaveBeenCalledTimes(1)
+      expect(typeof pathData).toBe('string')
+      expect(getCvMock).not.toHaveBeenCalled() // ★ 메인 스레드 cv 로드 없음
+    } finally {
+      configureContourExtractor(null)
+    }
+  })
+
   it('브라우저 추론 진입점(getForeground)은 존재하지 않는다 — 서버 오프로드 전환 (D-12d)', () => {
     const { plugin } = makePlugin()
 
