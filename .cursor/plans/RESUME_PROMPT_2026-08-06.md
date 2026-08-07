@@ -159,6 +159,26 @@ QA 중 발견: 모양컷 패널에서 사진(JPEG)을 올리면 캔버스가 빈
 쓰지도 않을 10MB opencv-js 를 받아 메인 스레드에서 컴파일하느라 UI 가 멈춘 것.
 → 로드를 실제 사용 분기(hasAlpha 윤곽 추출)로 이동(`b3d26df`). 회귀 잠금 2건 추가.
 
+### 2-3c. ✅ [완료 2026-08-07] '효과' 프리즈 최종 종결 — OpenCV 제거(순수 JS 칼선)
+
+오너 QA 가 연쇄 적발한 프리즈의 최종 원인과 해법. **6커밋의 실측 서사**:
+
+| 단계 | 실측 | 조치 |
+|---|---|---|
+| 계측 인프라 | 멈춘 탭은 콘솔도 안 열린다 | `traceStep`+**localStorage flush**(`__storigeTrace`) — 다른 탭에서 멈춘 지점 판독(`cdf79aa`→`fd1a1f2`) |
+| 범인 특정 | `▶ ensureCvReady` 진입 후 무기록 | dist/opencv.js(UMD)가 ESM 스코프에서 `this===undefined` 로 파손 |
+| 1차: `<script>` 태그 전환(`831ee35`) | **여전히 굳음** — 전면 탭 프로브 10분+ 무응답 | asm.js 아님·CSP 아님까지 반증 |
+| 2차: Web Worker 오프로드(`c89b09b`) | **워커 안에서도 초기화 미완**(60s 타임아웃) — 단 **UI 는 생존**, 타임아웃→토스트 정상 | 이 파일은 어디서도 실행이 안 끝난다 확정 |
+| 3차: **OpenCV 제거**(`6120c80`) | 칼선 파이프라인을 순수 JS 로 재구현 | `pureContour.ts` — 마스크→연결성분→Moore 추적→hull→DP |
+| 폴백(`19b2854`) | 최악 케이스 kept=0 → 빈 칼선 | 전부 필터되면 큰 순서대로 사용(`keptFallback`) |
+
+**최종 실측(실제 Chrome·프로덕션)**: contourExtract **10ms**(단순)·**9ms/104컴포넌트**(최악, 종전 무한 프리즈) ·
+renderWorkspace 133ms · 캔버스 결과 표시 · UI 상시 응답. 임베드는 오히려 개선(스텁 no-op → 실동작).
+
+잔여(후속 과제): 레거시 cv 메서드 3종(`createOffsetPathFromShape`·`createPrecisePathFromObject`·
+`drawCaseOutlinePrecise` — 모양틀/케이스 아웃라인)은 여전히 cv 의존이라 **동작 불능이나 이제 굳지는
+않는다**(getCv 20s 타임아웃). 같은 pureContour 패턴으로 이식하면 된다.
+
 ### 2-4. 그 밖의 잔여(경미)
 - **컷아웃 실기 QA(권장 다음 작업)**: 프로덕션 editor 에서 사람 사진 1장으로 모양컷·일반 캔버스 각각
   1회씩. 자동 검증이 닿지 않는 것은 **품질**(u2net 의 머리카락·반투명 경계)과 모바일 UX 다.
