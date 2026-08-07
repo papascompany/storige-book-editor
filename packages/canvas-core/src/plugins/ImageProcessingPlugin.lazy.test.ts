@@ -89,104 +89,6 @@ describe('ImageProcessingPlugin — lazy 초기화 (D-6b① · D-12d)', () => {
     expect(getCvMock).not.toHaveBeenCalled() // ★ 이 단언이 프리즈를 막는다
   })
 
-  it('알파가 있으면 그때 OpenCV 를 로드한다(윤곽 추출에 실제로 필요)', async () => {
-    const { plugin } = makePlugin()
-    plugin.tellHasAlpha = vi.fn(() => true)
-    plugin.preProcessImage = vi.fn(async () => ({ __binary: true }))
-    plugin.findLargestContour = vi.fn(() => [{ __contour: true }, false])
-    plugin.smoothContour = vi.fn(async () => [{ x: 0, y: 0 }])
-    plugin.generateCurvedPath = vi.fn(() => 'M 1 1')
-
-    const pathData = await plugin.getObjectPathData(makeItem())
-
-    expect(pathData).toBe('M 1 1')
-    expect(getCvMock).toHaveBeenCalledTimes(1)
-    expect(plugin.preProcessImage).toHaveBeenCalledWith({ __mockCv: true }, expect.anything(), true, 1)
-  })
-
-  it('윤곽 좌표는 축소본 배율만큼 선형 역보정된다 (칼선 다운스케일 회귀 잠금)', async () => {
-    const { plugin } = makePlugin()
-    // 축소본(1/2)에서 얻은 컨투어 좌표 → 원본 좌표로 2배 복원되어야 한다.
-    const contour = {
-      rows: 2,
-      cols: 1,
-      type: () => 4,
-      data32S: [10, 20, 30, 40],
-      delete: vi.fn(),
-    }
-    const object: any = { left: 0, top: 0, scaleX: 1, scaleY: 1 }
-
-    const points = await (plugin as any).smoothContour(object, contour, false, 2)
-
-    expect(points).toEqual([
-      [20, 40],
-      [60, 80],
-    ])
-  })
-
-  it('배율 1(캡 미발동)이면 좌표를 그대로 쓴다', async () => {
-    const { plugin } = makePlugin()
-    const contour = { rows: 1, cols: 1, type: () => 4, data32S: [7, 9], delete: vi.fn() }
-    const object: any = { left: 0, top: 0, scaleX: 1, scaleY: 1 }
-
-    const points = await (plugin as any).smoothContour(object, contour, false)
-
-    expect(points).toEqual([[7, 9]])
-  })
-
-  it('윤곽 근사화(approxPolyDP)를 실제로 호출한다 — 주석만 있고 호출이 없던 회귀 잠금', async () => {
-    const { plugin } = makePlugin()
-    const approxPolyDP = vi.fn((_src: any, dst: any) => {
-      dst.rows = 4
-      dst.data32S = [0, 0, 10, 0, 10, 10, 0, 10]
-    })
-    const arcLength = vi.fn(() => 400)
-    getCvMock.mockResolvedValueOnce({
-      CV_32SC2: 4,
-      arcLength,
-      approxPolyDP,
-      Mat: function (this: any) {
-        this.rows = 0
-        this.data32S = [] as number[]
-        this.delete = vi.fn()
-      },
-    })
-
-    // 원본 컨투어는 점이 아주 많다고 가정 — 근사화 결과(4점)가 쓰여야 한다.
-    const many: number[] = []
-    for (let i = 0; i < 5000; i++) many.push(i * 10, 0)
-    const contour = { rows: 2500, cols: 1, type: () => 4, data32S: many, delete: vi.fn() }
-    const object: any = { left: 0, top: 0, scaleX: 1, scaleY: 1 }
-
-    const points = await (plugin as any).smoothContour(object, contour, false)
-
-    expect(arcLength).toHaveBeenCalledTimes(1)
-    expect(approxPolyDP).toHaveBeenCalledTimes(1)
-    expect(points).toEqual([
-      [0, 0],
-      [10, 0],
-      [10, 10],
-      [0, 10],
-    ])
-  })
-
-  it('근사화가 없는 cv 빌드에서도 칼선은 나오되 점 수는 상한으로 제한된다', async () => {
-    const { plugin } = makePlugin()
-    // 기본 mock cv 에는 arcLength/approxPolyDP 가 없다 → 폴백(원본 컨투어) 경로.
-    const many: number[] = []
-    for (let i = 0; i < 9000; i++) many.push(i * 10, 0) // 간격 10 > nearThreshold(1.5) 라 전부 통과
-    const contour = { rows: 9000, cols: 1, type: () => 4, data32S: many, delete: vi.fn() }
-    const object: any = { left: 0, top: 0, scaleX: 1, scaleY: 1 }
-
-    const points = await (plugin as any).smoothContour(object, contour, false)
-
-    const cap = (ImageProcessingPlugin as any).CONTOUR_MAX_POINTS
-    expect(points.length).toBeLessThanOrEqual(cap)
-    // 균등 샘플링이라 도형이 열리지 않는다 — 시작점은 보존되고 끝쪽 좌표까지 포함한다.
-    expect(points[0]).toEqual([0, 0])
-    expect(points[points.length - 1][0]).toBeGreaterThan(80000)
-  })
-
   it('컨투어 스캔에서 버리는 복사본은 즉시 해제한다 — wasm 힙 누수 회귀 잠금', () => {
     const { plugin } = makePlugin()
     const made: any[] = []
@@ -276,6 +178,28 @@ describe('ImageProcessingPlugin — lazy 초기화 (D-6b① · D-12d)', () => {
     } finally {
       configureContourExtractor(null)
     }
+  })
+
+  it('미주입이어도 알파 경로는 순수 추출기로 cv 없이 완주한다 — 2026-08-07 OpenCV 제거의 핵심 불변식', async () => {
+    const { configureContourExtractor } = await import('../utils/contourExtractor')
+    configureContourExtractor(null) // 기본 = extractContoursPure
+    const { plugin } = makePlugin()
+    plugin.tellHasAlpha = vi.fn(() => true)
+    // 8×8 에 4×4 불투명 블록 — 면적 필터(>1000)에 걸리지 않도록 필터 통과 크기가 아니어도
+    // 파이프라인 완주(빈 결과 포함)가 cv 무호출로 이루어지는지가 요점이다.
+    const data = new Uint8ClampedArray(8 * 8 * 4)
+    for (let y = 2; y < 6; y++)
+      for (let x = 2; x < 6; x++) {
+        const p = (y * 8 + x) * 4
+        data[p] = 255
+        data[p + 3] = 255
+      }
+    ;(plugin as any).readImageData = vi.fn(() => ({ data, width: 8, height: 8 }))
+    const item: any = { type: 'image', id: 'i', left: 0, top: 0, scaleX: 1, scaleY: 1, getElement: () => ({ width: 8, height: 8 }) }
+
+    await plugin.getObjectPathData(item)
+
+    expect(getCvMock).not.toHaveBeenCalled() // ★ 기본 경로도 cv 0회 — 프리즈 원인 완전 제거
   })
 
   it('브라우저 추론 진입점(getForeground)은 존재하지 않는다 — 서버 오프로드 전환 (D-12d)', () => {

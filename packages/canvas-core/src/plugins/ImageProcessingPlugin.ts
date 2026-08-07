@@ -9,6 +9,7 @@ import { getCv } from '../utils/openCv'
 import { traceEnter, traceStep, yieldToBrowser } from '../utils/perfTrace'
 // 알파 윤곽 추출은 워커로 오프로드된다(주입식) — contourExtractor.ts 헤더 참조.
 import { getContourExtractor } from '../utils/contourExtractor'
+import { extractContoursPure } from '../utils/pureContour'
 
 class ImageProcessingPlugin extends PluginBase {
   name = 'ImageProcessingPlugin'
@@ -738,62 +739,34 @@ class ImageProcessingPlugin extends PluginBase {
       const { element: capped, scale } = this.capElementForContour(imgElement)
       traceStep('capForContour', tCap, { w: capped.width, h: capped.height, scale: Math.round(scale * 100) / 100 })
 
-      // ★ 정상 경로: 워커 추출기(주입돼 있으면). OpenCV 는 메인 스레드에서 실행이 끝나지
-      //   않는 것이 실측으로 확정돼(2026-08-07, contourExtractor.ts 헤더 참조) cv 사용부
-      //   전체를 워커로 옮겼다. 메인 스레드에는 픽셀 읽기·좌표 매핑·d3 path 생성만 남는다.
-      const extractor = getContourExtractor()
-      if (extractor) {
-        const tRead = performance.now()
-        const imageData = this.readImageData(capped)
-        traceStep('readImageData', tRead, { w: imageData.width, h: imageData.height })
+      // ★ OpenCV 를 쓰지 않는다(2026-08-07 최종 실적발). dist/opencv.js 는 메인 스레드에서도,
+      //   Web Worker 안에서도 초기화가 끝나지 않았다 — pureContour.ts 헤더에 실측 경위.
+      //   기본은 순수 JS 추출기이고, configureContourExtractor 로 대체 구현(예: 워커) 주입도 가능.
+      const tRead = performance.now()
+      const imageData = this.readImageData(capped)
+      traceStep('readImageData', tRead, { w: imageData.width, h: imageData.height })
 
-        traceEnter('contourWorker')
-        const tWorker = performance.now()
-        const extracted = await extractor({
-          data: imageData.data,
-          width: imageData.width,
-          height: imageData.height,
-          kSize,
-          scanLimit: ImageProcessingPlugin.CONTOUR_SCAN_LIMIT,
-          hullMaxInputPoints: ImageProcessingPlugin.HULL_MAX_INPUT_POINTS,
-          approxEpsilonRatio: ImageProcessingPlugin.CONTOUR_APPROX_EPSILON_RATIO
-        })
-        traceStep('contourWorker', tWorker, {
-          points: extracted.points.length,
-          ...(extracted.meta ?? {})
-        })
-
-        const points = this.mapContourPoints(extracted.points, object, scale)
-
-        traceEnter('generateCurvedPath')
-        const tPath = performance.now()
-        const path = this.generateCurvedPath(points, hasAlpha)
-        traceStep('generateCurvedPath', tPath, { pathLen: path ? path.length : 0 })
-        return path
+      const extractInput = {
+        data: imageData.data,
+        width: imageData.width,
+        height: imageData.height,
+        kSize,
+        scanLimit: ImageProcessingPlugin.CONTOUR_SCAN_LIMIT,
+        hullMaxInputPoints: ImageProcessingPlugin.HULL_MAX_INPUT_POINTS,
+        approxEpsilonRatio: ImageProcessingPlugin.CONTOUR_APPROX_EPSILON_RATIO
       }
-
-      // 폴백(미주입: 임베드 스텁·테스트) — 종전 메인 스레드 cv 경로 그대로.
-      traceEnter('ensureCvReady')
-      const tCv = performance.now()
-      const cv = await this.ensureCvReady()
-      traceStep('ensureCvReady', tCv)
+      const injected = getContourExtractor()
+      traceEnter('contourExtract')
+      const tExtract = performance.now()
+      const extracted = injected ? await injected(extractInput) : extractContoursPure(extractInput)
+      traceStep('contourExtract', tExtract, {
+        mode: injected ? 'injected' : 'pure',
+        points: extracted.points.length,
+        ...(extracted.meta ?? {})
+      })
       await yieldToBrowser()
 
-      traceEnter('preProcessImage')
-      const tPre = performance.now()
-      const binary = await this.preProcessImage(cv, capped, hasAlpha, kSize)
-      traceStep('preProcessImage', tPre)
-      await yieldToBrowser()
-
-      traceEnter('findLargestContour')
-      const largestContour: [any, boolean] = this.findLargestContour(cv, binary)
-      await yieldToBrowser()
-
-      traceEnter('smoothContour')
-      const tSmooth = performance.now()
-      const points = await this.smoothContour(object, largestContour[0], largestContour[1], scale)
-      traceStep('smoothContour', tSmooth, { points: points.length })
-      await yieldToBrowser()
+      const points = this.mapContourPoints(extracted.points, object, scale)
 
       traceEnter('generateCurvedPath')
       const tPath = performance.now()
@@ -1536,82 +1509,6 @@ class ImageProcessingPlugin extends PluginBase {
   }
 
   // 추출된 윤곽선을 부드럽게 만든 후 포인터 반환
-  private async smoothContour(
-    object: fabric.Object,
-    contour: any,
-    useHull: boolean,
-    /** 컨투어를 축소본에서 구한 경우의 역보정 배율(원본/축소). 1 이면 보정 없음. */
-    contourScale: number = 1
-  ): Promise<[number, number][]> {
-    const cv = await this.ensureCvReady()
-    let simplified: any = null
-
-    // 더글라스 피커 알고리즘 적용으로 다각형 근사화
-    try {
-      if (contour.rows === 0 || contour.cols !== 1) {
-        console.error('Invalid contour')
-      }
-
-      if (contour.type() !== cv.CV_32SC2) {
-        console.error('Invalid contour type')
-      }
-
-      // ⚠️ 근사화는 **주석만 있고 실제 호출이 없었다**(2026-08-06 실적발).
-      //    원본 컨투어가 그대로 d3 곡선 path 로 흘러, 알파 경계가 복잡한 산출물
-      //    (예: isnet-general-use — 반투명 18%)에서 점이 수만 개가 되며 메인 스레드가 멈췄다.
-      //    인물 전용 모델(반투명 2.7%)은 경계가 단순해 우연히 통과하던 상태였다.
-      let result = contour
-      try {
-        const peri = cv.arcLength(contour, true)
-        const epsilon = Math.max(0.5, peri * ImageProcessingPlugin.CONTOUR_APPROX_EPSILON_RATIO)
-        simplified = new cv.Mat()
-        cv.approxPolyDP(contour, simplified, epsilon, true)
-        // 3점 미만이면 도형이 아니다 — 근사가 과했다는 뜻이라 원본을 쓴다.
-        if (simplified.rows >= 3) result = simplified
-      } catch (e) {
-        // cv 빌드에 approxPolyDP 가 없거나 실패해도 칼선은 나와야 한다(원본 폴백).
-        console.warn('[ImageProcessingPlugin] approxPolyDP 생략:', e)
-      }
-
-      if (contour.rows === 0) {
-        console.error('Failed to simplify contour')
-      }
-
-      const points: [number, number][] = []
-
-      for (let j = 0; j < result.data32S.length; j += 2) {
-        // 축소본에서 구한 좌표를 원본 픽셀 좌표로 되돌린다(아래 변환은 선형이라 안전).
-        const x = result.data32S[j] * contourScale
-        const y = result.data32S[j + 1] * contourScale
-
-        const currentX = (x + object.left!) * (object.scaleX ?? 1)
-        const currentY = (y + object.top!) * (object.scaleY ?? 1)
-
-        const nearThreshold = 1.5 * object.scaleY!
-        // 현재 좌표와 이전 좌표의 거리가 1 이상일 경우만 추가
-        if (
-          points.length === 0 ||
-          Math.hypot(
-            currentX - points[points.length - 1][0],
-            currentY - points[points.length - 1][1]
-          ) > nearThreshold
-        ) {
-          points.push([currentX, currentY])
-        }
-      }
-
-      // 최후 안전판: 근사화가 실패했거나(폴백) 그래도 점이 많으면 균등 샘플링한다.
-      // d3 곡선 path 는 점 수에 비례해 문자열이 커지고, fabric.Path 파싱이 그만큼 느려진다.
-      return ImageProcessingPlugin.capContourPoints(points)
-    } catch (error) {
-      console.error('Error in smoothContour:', error)
-      return []
-    } finally {
-      contour.delete()
-      simplified?.delete?.()
-    }
-  }
-
   /**
    * 윤곽 점 개수 상한 — 초과하면 형태를 유지하도록 **균등 간격**으로 솎아낸다.
    * (앞뒤를 자르면 도형이 열리므로 반드시 균등 샘플링이어야 한다)
@@ -1628,121 +1525,54 @@ class ImageProcessingPlugin extends PluginBase {
     return sampled
   }
 
-  // 그레이로 변환 후 노이즈 제거 및 이진화
-  private async preProcessImage(cv: any, imgElement: HTMLCanvasElement, hasAlpha: boolean, kSize: number): Promise<any> {
-    const canvas = document.createElement('canvas')
-    const ctx = canvas.getContext('2d')
-    if (!ctx) {
-      throw new Error('Failed to get 2d context from canvas')
-    }
-    canvas.width = imgElement.width
-    canvas.height = imgElement.height
-    ctx.drawImage(imgElement, 0, 0)
-
-    const src = cv.imread(canvas)
-    const gray = new cv.Mat()
-    cv.cvtColor(src, gray, cv.COLOR_BGR2GRAY)
-
-    const blur = new cv.Mat()
-    if (hasAlpha) {
-      cv.GaussianBlur(gray, blur, new cv.Size(kSize, kSize), 0)
-    }
-
-    const binary = new cv.Mat()
-    cv.threshold(!hasAlpha ? gray : blur, binary, 0, 255, cv.THRESH_BINARY)
-
-    src.delete()
-    gray.delete()
-    blur.delete()
-
-    return binary
-  }
-
-  // 윤곽선 생성 후 모든 윤곽선을 덮는 최대 윤곽선을 그려서 반환
+  /**
+   * [레거시 cv 경로 전용] 최대 윤곽 추출 — createPrecisePathFromObject / drawCaseOutlinePrecise 가 쓴다.
+   * ⚠️ 칼선('효과'/모양컷 업로드) 경로는 이것을 쓰지 않는다 — pureContour.ts(순수 JS)가 정본이다.
+   *    이 메서드는 cv 인스턴스를 인자로 받으므로 getCv() 가 성공한 환경(임베드 스텁 등)에서만 돈다.
+   */
   private findLargestContour(cv: any, binary: any): [any, boolean] {
-    const tContour = performance.now()
-    // Find all contours
     const contours = new cv.MatVector()
     const hierarchy = new cv.Mat()
     cv.findContours(binary, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
 
-    // Collect all contours with their areas
     const contourAreas: { contour: any; area: number }[] = []
     const totalContours = contours.size()
-    // ⚠️ 스캔 상한 (2026-08-07 실적발). 알파 경계가 잘게 쪼개지면 컨투어가 수만~수십만 개가 되고,
-    //    전수 순회는 wasm 경계 왕복만으로도 분 단위가 된다. 면적 내림차순으로 큰 것만 쓰므로
-    //    앞쪽 일부만 훑어도 결과는 사실상 같다.
     const scanned = Math.min(totalContours, ImageProcessingPlugin.CONTOUR_SCAN_LIMIT)
     for (let i = 0; i < scanned; i++) {
       const contour = contours.get(i)
       const area = cv.contourArea(contour)
-      // ⚠️ 여기 있던 컨투어별 console.log 는 제거했다 — 경계가 복잡한 산출물에서는
-      //    수만 번 호출되어 그 자체가 지연 요인이었다(개발자도구가 열려 있으면 특히).
-      // Filter out small contours
       if (area > 1000) {
         contourAreas.push({ contour, area })
       } else {
-        // ★ `MatVector.get()` 은 **복사본**을 준다. 버리는 것을 해제하지 않으면 wasm 힙이 계속
-        //    커지고 할당이 점점 느려져, 컨투어가 많은 이미지에서 사실상 멈춘다(누수 실적발).
-        contour.delete()
+        contour.delete() // MatVector.get 은 복사본 — 즉시 해제(누수 방지)
       }
     }
-
-    // Sort contours by area in descending order
     contourAreas.sort((a, b) => b.area - a.area)
 
-    const size = contourAreas.length
-    const useHull = size > 1
-    // Select the largest n contours
-    const n = useHull ? size : 1
-    const selectedContours = contourAreas.slice(0, n)
-
-    // Combine selected contours into one set of points
-    // ⚠️ 여기서 선택된 컨투어의 **모든 점**을 모은다. 경계가 복잡한 산출물(UI 캡처·머리카락 등)에서는
-    //    수십만 점이 되어 아래 matFromArray/convexHull 이 폭발한다 → 점 예산으로 상한을 둔다.
+    const useHull = contourAreas.length > 1
     const points: [number, number][] = []
-    let droppedContours = 0
-    for (const { contour } of selectedContours) {
+    for (const { contour } of contourAreas) {
       if (points.length >= ImageProcessingPlugin.HULL_MAX_INPUT_POINTS) {
-        droppedContours++
+        contour.delete()
         continue
       }
-      // 컨투어 하나가 예산을 통째로 먹지 않도록 균등 간격으로 훑는다(형태 보존).
       const step = Math.max(1, Math.ceil(contour.rows / ImageProcessingPlugin.HULL_MAX_INPUT_POINTS))
       for (let j = 0; j < contour.rows; j += step) {
         points.push([contour.data32S[j * 2], contour.data32S[j * 2 + 1]])
       }
-    }
-    traceStep('findLargestContour', tContour, {
-      totalContours,
-      scanned,
-      kept: contourAreas.length,
-      droppedContours,
-      points: points.length,
-      useHull: useHull ? 1 : 0
-    })
-
-    // 점을 다 뽑았으니 원본 컨투어 복사본은 전부 해제한다.
-    // (반환값은 아래에서 matFromArray/convexHull 로 **새로 만든** Mat 이라 안전하다)
-    for (const { contour } of contourAreas) {
       contour.delete()
     }
-
     contours.delete()
     hierarchy.delete()
 
     if (useHull) {
-      // Convert points to a Mat
       const pointsMat = cv.matFromArray(points.length, 1, cv.CV_32SC2, points.flat())
-      // Find the convex hull
       const hull = new cv.Mat()
       cv.convexHull(pointsMat, hull, false, true)
       pointsMat.delete()
-
       return [hull, true]
-    } else {
-      return [cv.matFromArray(points.length, 1, cv.CV_32SC2, points.flat()), false]
     }
+    return [cv.matFromArray(points.length, 1, cv.CV_32SC2, points.flat()), false]
   }
 
   /**
