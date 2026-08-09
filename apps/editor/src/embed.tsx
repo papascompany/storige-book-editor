@@ -34,6 +34,7 @@ import { useEmbedAutoSave } from './hooks/useEmbedAutoSave'
 import { useEmbedBackGuard } from './hooks/useEmbedBackGuard'
 import { useCanvasContainerSizeSync } from './hooks/useCanvasContainerSizeSync'
 import { useSnapSettingsSync } from './hooks/useSnapSettingsSync'
+import { useObjectOutOfTrimToast, useSafeZoneWarningToast } from './hooks/useCoverRegion'
 import { createCanvas, safeDisposeCanvas, CanvasInitCancelledError } from './utils/createCanvas'
 import { buildSpreadSnapshots } from './utils/buildSpreadSnapshots'
 import {
@@ -584,6 +585,12 @@ function EmbeddedEditor({
   useCanvasContainerSizeSync(ready, canvasContainerRef)
   // §6-3: 스냅 설정 배선 — /embed 도 EditorView 와 동형(부재 시 팝오버 무반응 방지)
   useSnapSettingsSync(ready)
+  // F4 잔여(2026-08-09): 재단/안전영역 경고 toast — EditorView 와 대칭 배선.
+  // 종전에는 SafeZoneWarningPlugin 의 주황 오버레이만 뜨고(canvas-core 레벨) 문구 안내가
+  // 없어, 파트너 정본 경로(/embed)의 고객이 침범 사실을 알기 어려웠다. 순수 화면 경고 —
+  // 저장/출력 무영향, 훅 가드는 ready/editor 뿐이라 embed 에서 그대로 성립.
+  useObjectOutOfTrimToast(ready)
+  useSafeZoneWarningToast(ready)
 
   const { loadEmptyEditor, loadTemplateSetEditor } = useEditorContents()
 
