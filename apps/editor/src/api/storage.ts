@@ -17,6 +17,21 @@ interface UploadedFile {
   size: number;
 }
 
+/**
+ * `/storage/upload-public` 응답 — 컨트롤러 반환값 그대로의 **평면 객체**.
+ * (API 에는 전역 응답 래핑 인터셉터가 없다 — `{ success, data }` 아님.)
+ * `url` 은 `/storage/uploads/<filename>` **상대 경로**라, 이미지 src 로 쓰려면
+ * 호출부가 `resolveAssetUrl` 로 절대화해야 한다.
+ */
+export interface PublicUploadResult {
+  id: string;
+  url: string;
+  originalName?: string;
+  filename?: string;
+  mimetype?: string;
+  size?: number;
+}
+
 /** presigned 완료 결과를 기존 UploadedFile(ApiResponse) 형태로 정규화. */
 function toUploadedFileResponse(
   res: { fileId: string; url: string },
@@ -122,6 +137,40 @@ export const storageApi = {
         },
         // 임베드 호스트 프록시 우회 → Storige API 직결. 호스트가 base 를 자사 프록시
         // (예: Vercel 4.5MB 본문 한도)로 덮어쓴 경우 대용량 업로드가 413 나는 것을 방지.
+        baseURL: apiClient.getDirectBaseUrl(),
+      }
+    );
+    return response.data;
+  },
+
+  /**
+   * 게스트(비로그인) 이미지 업로드 — `/storage/upload-public` (@Public).
+   *
+   * ⚠️ 위 `uploadFile` 은 `/storage/upload`(ADMIN/MANAGER 전용)이라 **게스트는 401** 이다.
+   * 편집기 고객 플로우(자동편집 입력 등록 등)는 반드시 이 통로를 쓴다.
+   *
+   * 응답은 컨트롤러 반환값 그대로인 **평면 객체**(`{ id, url, ... }`) — API 는 전역 응답 래핑
+   * 인터셉터가 없어 `{ success, data }` 형태가 아니다. 서버가 files 레코드까지 등록하므로
+   * `id` 는 물리 파일명이 아니라 **DB 레코드 id** 다(validate/fix-bleed 의 findById 와 정합).
+   *
+   * 한계: multerOptionsPublic 50MB 캡 + MIME 화이트리스트(jpeg/png/webp/pdf) → 초과 시 413/415.
+   */
+  uploadFilePublic: async (
+    file: File | Blob,
+    filename?: string
+  ): Promise<PublicUploadResult> => {
+    const name = filename ?? (file as File).name ?? 'upload';
+    const formData = new FormData();
+    formData.append('file', file, name);
+
+    const response = await apiClient.post<PublicUploadResult>(
+      '/storage/upload-public?category=uploads',
+      formData,
+      {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+        // 임베드 호스트 프록시 우회 → Storige API 직결(호스트 본문 한도 413 전례).
         baseURL: apiClient.getDirectBaseUrl(),
       }
     );

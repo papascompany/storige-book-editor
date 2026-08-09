@@ -8,6 +8,7 @@ import { requestCutout } from '@/api/cutout'
 import { CUTTING_LINE_CONFIG } from '@/constants/cutting'
 import { showToast } from '@/stores/useToastStore'
 import { parsePhotoExif } from '@/utils/photoAutofill'
+import { resolveAssetUrl } from '@/utils/resolveAssetUrl'
 import type { UploadedPhotoMeta } from '@/utils/photoPlacement'
 
 // Feature flag for image processing (OpenCV) features
@@ -181,13 +182,21 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
       const exif = await parsePhotoExif(file)
       // storage 업로드 URL 기준(안정 참조). objectURL/dataURL 은 세션 휘발이라
       // 자동편집 결과(fillImage src)의 저장/재편집 라운드트립이 깨진다.
-      const result = await storageApi.uploadFile(file, 'uploads')
-      if (!result.success || !result.data?.url) {
+      //
+      // ⚠️ 게스트 통로(`/storage/upload-public`)로만 올린다 — 종전 `storageApi.uploadFile` 은
+      // `/storage/upload`(JWT+@Roles)라 비로그인 고객에게 **401** 이었고, 자동편집(배지/EXIF)
+      // 입력 등록이 전량 실패하고 있었다(fire-and-forget 이라 편집 자체는 무영향, 2026-08-09 수정).
+      const result = await storageApi.uploadFilePublic(file)
+      // 응답 url 은 `/storage/uploads/...` 상대 경로다. meta.url 은 ExternalPhoto.url 과 같은
+      // 자리(자동편집 fillImage src)에 쓰이므로 API origin 기준 절대 URL 이어야 한다 —
+      // 상대로 두면 editor/임베드 호스트 origin 으로 해석돼 404 다.
+      const url = resolveAssetUrl(result?.url)
+      if (!url) {
         console.warn('[useImageStore.registerUploadedPhoto] storage 업로드 실패 — 자동편집 대상 제외:', file.name)
         return undefined
       }
       const meta: UploadedPhotoMeta = {
-        url: result.data.url,
+        url,
         name: file.name,
         // ⚠️ uploadedAt = file.lastModified(기기 파일 수정시각) — 호스트 업로드시각이 아님.
         uploadedAt: Number.isFinite(file.lastModified)
