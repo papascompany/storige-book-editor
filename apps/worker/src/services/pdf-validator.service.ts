@@ -32,6 +32,11 @@ import {
   detectImageResolutionFromPdf,
   detectFonts,
 } from '../utils/ghostscript';
+// R2 (2026-08-10): poppler 기반 폰트·해상도 정밀 검출 — 실패 시 null 로 기존 정규식 폴백.
+import {
+  detectFontsPoppler,
+  detectImageResolutionPoppler,
+} from '../utils/poppler-preflight';
 // 트랙 B-(d) 경량(ON) 검증 경로 전용 유틸 (OFF 경로는 import 만 하고 사용하지 않음).
 import { downloadToTempFile } from '../utils/stream-download';
 import { assertSafeDownloadUrl } from '../utils/url-safety';
@@ -280,10 +285,23 @@ export class PdfValidatorService {
         this.detectColorMode(pdfBytes, inputPath, options.fileType),
         detectSpotColors('', pdfBytes),
         detectTransparencyAndOverprint('', pdfBytes),
-        detectImageResolutionFromPdf(pdfBytes, VALIDATION_CONFIG.MIN_ACCEPTABLE_DPI),
+        // R2: poppler(pdfimages -list — CTM 반영 실배치 DPI) 우선. null(미설치/실패) 이면
+        // 기존 정규식 검출('페이지 전체 채움' 가정)로 폴백 — 종전보다 나빠지는 경로 없음.
+        detectImageResolutionPoppler(
+          inputPath,
+          VALIDATION_CONFIG.MIN_ACCEPTABLE_DPI,
+        ).then(
+          (r) =>
+            r ??
+            detectImageResolutionFromPdf(
+              pdfBytes,
+              VALIDATION_CONFIG.MIN_ACCEPTABLE_DPI,
+            ),
+        ),
+        // R2: poppler(pdffonts — ObjStm 포함 정식 파싱) 우선, 실패 시 기존 정규식 폴백.
         // detectFonts 는 자체 try/catch 로 실패 시 안전기본값(hasUnembeddedFonts:false)을
         // 반환하므로 추가 가드 없이 결과를 그대로 사용한다.
-        detectFonts(pdfBytes),
+        detectFontsPoppler(inputPath).then((r) => r ?? detectFonts(pdfBytes)),
       ]);
 
       // 12~16. 색상/별색/투명도/해상도/폰트 검출 결과 → errors/warnings/metadata 매핑.
@@ -446,9 +464,10 @@ export class PdfValidatorService {
     }
 
     // 16. 폰트 임베딩 결과 처리 (요구사항6)
-    // detectFonts 는 정규식 기반(현행 방식)으로 폰트 객체를 스캔하며, 실패 시 안전기본값을
-    // 반환하므로 별도 가드가 없다. 임베딩되지 않은 폰트는 인쇄소에서 글꼴 누락/치환을
-    // 유발하므로 비차단 경고로 노출한다(기존 통과/에러 동작은 변경하지 않음).
+    // 검출 원천은 poppler pdffonts(정식 파싱, R2) 우선 + 정규식 폴백 — 어느 쪽이든
+    // 동일한 FontDetectionResult 형태로 들어오며 실패 시 안전기본값이라 별도 가드가 없다.
+    // 임베딩되지 않은 폰트는 인쇄소에서 글꼴 누락/치환을 유발하므로 비차단 경고로
+    // 노출한다(기존 통과/에러 동작은 변경하지 않음).
     metadata.fontCount = fontResult.fontCount;
     metadata.hasUnembeddedFonts = fontResult.hasUnembeddedFonts;
     metadata.unembeddedFonts = fontResult.unembeddedFonts;
@@ -649,8 +668,17 @@ export class PdfValidatorService {
       );
       const spotColorResult = scan.spot;
       const transparencyResult = scan.transparency;
-      const resolutionResult = scan.resolution;
-      const fontResult = scan.fonts;
+      // R2 (2026-08-10): 폰트·해상도는 poppler 정밀 검출 우선(ObjStm 전수·실배치 DPI).
+      // null(미설치/타임아웃/암호화) 이면 스트리밍 스캔 결과 유지 — OFF 경로와 동일 폴백 규약.
+      const [popplerResolution, popplerFonts] = await Promise.all([
+        detectImageResolutionPoppler(
+          dl.path,
+          VALIDATION_CONFIG.MIN_ACCEPTABLE_DPI,
+        ),
+        detectFontsPoppler(dl.path),
+      ]);
+      const resolutionResult = popplerResolution ?? scan.resolution;
+      const fontResult = popplerFonts ?? scan.fonts;
 
       // OFF·ON 공통 매핑(추출 메서드).
       this.applyDetectionWarnings(

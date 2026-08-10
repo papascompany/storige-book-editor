@@ -52,6 +52,14 @@ jest.mock('../utils/ghostscript', () => ({
   }),
 }));
 
+// R2: poppler 정밀 검출은 기본 null(미가용) 모킹 — 기존 74 테스트는 전부 '정규식 폴백'
+// 경로의 계약을 검증한다(poppler 부재 환경에서도 종전과 동일해야 한다는 계약 그 자체).
+// poppler 우선 동작은 아래 'R2 poppler 우선' describe 에서 mockResolvedValueOnce 로 검증.
+jest.mock('../utils/poppler-preflight', () => ({
+  detectFontsPoppler: jest.fn().mockResolvedValue(null),
+  detectImageResolutionPoppler: jest.fn().mockResolvedValue(null),
+}));
+
 const mockedFs = fs as jest.Mocked<typeof fs>;
 const mockedAxios = axios as jest.Mocked<typeof axios>;
 
@@ -1564,6 +1572,107 @@ describe('PdfValidatorService', () => {
       await service.validate('./test.pdf', options);
 
       expect(detectFonts).toHaveBeenCalled();
+    });
+  });
+
+  // ============================================================
+  // R2 (2026-08-10): poppler 우선 / 정규식 폴백 계약
+  // ============================================================
+  describe('R2 poppler 우선 검출 계약', () => {
+    const {
+      detectFontsPoppler,
+      detectImageResolutionPoppler,
+    } = require('../utils/poppler-preflight');
+    const {
+      detectFonts,
+      detectImageResolutionFromPdf,
+    } = require('../utils/ghostscript');
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+    });
+
+    const baseOptions: ValidationOptions = {
+      fileType: 'content',
+      orderOptions: {
+        size: { width: 210, height: 297 },
+        pages: 1,
+        binding: 'perfect',
+        bleed: 0,
+      },
+    };
+
+    const makePdf = async () => {
+      const pdfBytes = await PDFDocument.create().then((doc) => {
+        doc.addPage([210 * 2.83465, 297 * 2.83465]);
+        return doc.save();
+      });
+      mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
+    };
+
+    it('poppler 폰트 결과가 있으면 정규식 detectFonts 를 호출하지 않고 그 결과로 경고를 만든다', async () => {
+      await makePdf();
+      detectFontsPoppler.mockResolvedValueOnce({
+        fontCount: 2,
+        fonts: [],
+        hasUnembeddedFonts: true,
+        unembeddedFonts: ['Helvetica'],
+        allFontsEmbedded: false,
+      });
+
+      const result = await service.validate('./test.pdf', baseOptions);
+
+      expect(detectFonts).not.toHaveBeenCalled();
+      const w = result.warnings.find(
+        (x) => x.code === WarningCode.FONT_NOT_EMBEDDED,
+      );
+      expect(w).toBeDefined();
+      expect(w?.message).toContain('Helvetica');
+      expect(result.metadata.hasUnembeddedFonts).toBe(true);
+    });
+
+    it('poppler 해상도 결과가 있으면 정규식 검출을 호출하지 않고 실배치 DPI 로 경고한다', async () => {
+      await makePdf();
+      detectImageResolutionPoppler.mockResolvedValueOnce({
+        imageCount: 1,
+        hasLowResolution: true,
+        minResolution: 72,
+        avgResolution: 72,
+        lowResImages: [
+          {
+            index: 1,
+            pixelWidth: 600,
+            pixelHeight: 400,
+            displayWidthMm: 211.7,
+            displayHeightMm: 105.8,
+            effectiveDpiX: 72,
+            effectiveDpiY: 96,
+            minEffectiveDpi: 72,
+          },
+        ],
+        images: [],
+      });
+
+      const result = await service.validate('./test.pdf', baseOptions);
+
+      expect(detectImageResolutionFromPdf).not.toHaveBeenCalled();
+      const w = result.warnings.find(
+        (x) => x.code === WarningCode.RESOLUTION_LOW,
+      );
+      expect(w).toBeDefined();
+      expect(w?.details?.minResolution).toBe(72);
+      expect(result.metadata.imageCount).toBe(1);
+    });
+
+    it('poppler null(미가용)이면 정규식 폴백을 호출한다 — 종전 동작 보존', async () => {
+      await makePdf();
+      // 기본 모킹이 null — 폴백 경로 그대로.
+      await service.validate('./test.pdf', baseOptions);
+
+      expect(detectFontsPoppler).toHaveBeenCalled();
+      expect(detectImageResolutionPoppler).toHaveBeenCalled();
+      expect(detectFonts).toHaveBeenCalled();
+      expect(detectImageResolutionFromPdf).toHaveBeenCalled();
     });
   });
 
