@@ -105,11 +105,11 @@
 
 | R | 내용 | 규모 | 게이트 |
 |---|---|---|---|
-| R1 | F4 embed 토스트 배선 | ✅ **완료(이 세션)** | — |
-| R2 | 프리플라이트 정밀화: Poppler(pdffonts·pdfimages -list) 도입 + qpdf --json — 정규식 휴리스틱을 정식 도구로 승격(ObjStm 미탐 해소) | 중 | 없음(컨테이너 apt 추가) |
+| R1 | F4 embed 토스트 배선 | ✅ **완료(08-09)** | — |
+| R2 | 프리플라이트 정밀화: Poppler(pdffonts·pdfimages -list) 승격 — 정규식 휴리스틱 폴백화(ObjStm 미탐 해소·실배치 DPI) | ✅ **완료(08-10 LIVE)** | — |
 | R3 | TAC 잉크총량 warn: inkcov 합산+지종 테이블 한계 연동 | 소 | 없음 |
 | R4 | fix 실행기 1차: 화이트 오버프린트 제거·주석/폼 제거·박스 정규화(qpdf/GS) — wiredAutoFixable 경유 | 중 | 없음 |
-| R5 | 최종 산출 정규화: 평탄화+CMYK 변환+OutputIntent(X-1a 스타일) | 대 | ⚠️ **ICC 프로파일 선정=오너/인쇄소 협의** |
+| R5 | 최종 산출 정규화: 평탄화+CMYK 변환+OutputIntent(X-1a 스타일) | 대 | ✅ **ICC 결정(08-10 오너)**: Japan Color 2001 Coated(국내 매엽 오프셋 관행). ⚠️ Adobe 배포 ICC 는 재배포 제한 — **PUBLIC 레포 커밋 금지**, 컨테이너 빌드 시 취득 또는 VPS 배치+env 경로 주입. 자유배포 폴백=ECI ISO Coated v2 |
 | R6 | 칼선 제품화: 워커 CutContour Separation 출력+곡률/오프셋/자기교차 검증+embed cutline 부착 | 중 | 스티커 상품 로드맵 |
 | R7 | CV-LEGACY 정리: 모양틀 경로 pureContour 이식+drawCaseOutlinePrecise 삭제 | 소 | 없음(08-07 P2 승계) |
 | R8 | 편집기 유효 DPI 경고 배지(업계 표준 갭) | 소 | 없음 |
@@ -123,4 +123,10 @@ Adobe 전 제품 미도입(재론 불필요 — 근거 §3).
 ## 5. 세션 기록
 
 - 08-09: R1 완결(embed.tsx 배선+tsc 0err+editor 48/596 green). 게스트 401 수정(f2f66cb)은 별건 선행.
-- 다음 착수 = R2 (워커 — Dockerfile poppler-utils + 검출 서비스 승격 + 스펙).
+- 08-10: **R2 완결·프로덕션 LIVE**(cf13b55). poppler-preflight.ts 신설(pdffonts/pdfimages -list,
+  실패=null→정규식 폴백, applyDetectionWarnings 무접촉) + OFF/ON 양 경로 배선.
+  poppler-utils 는 컨테이너 기설치(B-(d))라 Dockerfile 무변경. 검증: worker 523(511+12) ·
+  실바이너리 e2e(로컬 26.04: 미임베드 Helvetica+실배치 14DPI 검출) · **프로덕션 컨테이너
+  (25.12) dist 스모크 동일 결과** · 롤백 태그 `pre-r2-poppler` · health ok/큐 failed 0.
+- 08-10: R5 게이트 해소 — ICC=Japan Color 2001 Coated 오너 결정(위 표 참조).
+- 다음 착수 = R3 (TAC 잉크총량 warn — inkcov 합산+지종 테이블 연동).
