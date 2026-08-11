@@ -67,7 +67,20 @@ export async function convertSvgTextToPath(
 
   // Parse SVG string
   const parser = new DOMParser();
-  const svgDoc = parser.parseFromString(svgString, 'image/svg+xml');
+  let svgDoc = parser.parseFromString(svgString, 'image/svg+xml');
+
+  // R9 (2026-08-11): 곡선(패스) 텍스트 프래그먼트의 다중 루트 허용.
+  // fabric 5.x Text#toSVG 는 text-on-path 객체에서 <g>(텍스트) + <g>(가이드 패스)의
+  // "루트 2개" 프래그먼트를 반환한다(dist Text#toSVG: textSvg + path markup).
+  // XML 은 단일 루트만 허용하므로 그대로는 파스 에러 → 기존엔 여기서 throw 되어
+  // 곡선 텍스트가 전부 래스터(PNG) 폴백으로 떨어졌다(P1-6 rotate 이관이 실행 불능).
+  // 파스 실패 시 <svg> 루트로 감싸 재파싱한다. 래퍼는 출력에도 유지 —
+  // 다운스트림 fabric.loadSVGFromString 역시 단일 루트를 요구하므로 함께 유효해진다.
+  // (단일 루트 입력은 첫 파싱이 성공해 기존 출력 형태 그대로 — 비곡선 무영향)
+  if (svgDoc.querySelector('parsererror')) {
+    const wrapped = `<svg xmlns="http://www.w3.org/2000/svg">${svgString}</svg>`;
+    svgDoc = parser.parseFromString(wrapped, 'image/svg+xml');
+  }
 
   // Check for parsing errors
   const parserError = svgDoc.querySelector('parsererror');
