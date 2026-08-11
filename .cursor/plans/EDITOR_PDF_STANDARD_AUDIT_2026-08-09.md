@@ -108,12 +108,12 @@
 | R1 | F4 embed 토스트 배선 | ✅ **완료(08-09)** | — |
 | R2 | 프리플라이트 정밀화: Poppler(pdffonts·pdfimages -list) 승격 — 정규식 휴리스틱 폴백화(ObjStm 미탐 해소·실배치 DPI) | ✅ **완료(08-10 LIVE)** | — |
 | R3 | TAC 잉크총량 warn: GS ink_cov 페이지 평균+한계 주입 자리 | ✅ **완료(08-11 LIVE)** | R3b 잔여=API 가 지종별 tacLimitPercent 주입(지종표+injectServerSpine 패턴 — API 트랙) |
-| R4 | fix 실행기 1차: 화이트 오버프린트 제거·주석/폼 제거·박스 정규화(qpdf/GS) — wiredAutoFixable 경유 | 중 | 없음 |
+| R4 | fix 실행기 1차 | ✅ **R4a 완료(08-11 LIVE)**: 주석/폼 검출(qpdf --json, Link/Popup 제외)+ANNOTATIONS_DETECTED warn+재증류 4경로 -dPreserveAnnots=false 자동 제거(왕복 스모크 1→0 실증). ⚠️ R4b 백로그=화이트 오버프린트 제거(콘텐츠 스트림 수술 필요)·pass-through 경로 잔존 | — |
 | R5 | 최종 산출 정규화: 평탄화+CMYK 변환+OutputIntent(X-1a 스타일) | 대 | ✅ **ICC 결정(08-10 오너)**: Japan Color 2001 Coated(국내 매엽 오프셋 관행). ⚠️ Adobe 배포 ICC 는 재배포 제한 — **PUBLIC 레포 커밋 금지**, 컨테이너 빌드 시 취득 또는 VPS 배치+env 경로 주입. 자유배포 폴백=ECI ISO Coated v2 |
 | R6 | 칼선 제품화: 워커 CutContour Separation 출력+곡률/오프셋/자기교차 검증+embed cutline 부착 | 중 | 스티커 상품 로드맵 |
-| R7 | CV-LEGACY 정리: 모양틀 경로 pureContour 이식+drawCaseOutlinePrecise 삭제 | 소 | 없음(08-07 P2 승계) |
-| R8 | 편집기 유효 DPI 경고 배지(업계 표준 갭) | 소 | 없음 |
-| R9 | F6 곡선 텍스트 마감: tspan rotate 변환 테스트+골든 실기 | 소 | 없음 |
+| R7 | CV-LEGACY 정리 | ✅ **완료(08-11 LIVE, a6008ea 머지)** — 3종 pureContour 이식(preciseOutline.ts 신설)·모양틀/목업 외곽선 **최초 실동작**·래스터 캡 안전판. 잔여=실기 육안 1회(모양틀 칼선 형상) | — |
+| R8 | 편집기 유효 DPI 경고 | ✅ **완료(08-11 LIVE, b678982 머지)** — ImageDpiWarningPlugin(전이 1회·150DPI)+토스트 양 뷰 배선 | — |
+| R9 | 곡선 텍스트 마감 | ✅ **완료(08-11 LIVE, 23daa43 머지)** — **중대 적발**: 벡터화가 도입 이래 실행 불능(fabric 다중 루트 SVG 파스 에러→래스터 폴백). +14줄 수정으로 최초 개통+21테스트 잠금. ⚠️ 잔여=실기 골든 1회(곡선 텍스트 PDF 벡터 산출 육안 — 래스터→벡터 전환 확인) | — |
 | R10 | F8 마스크 보정 브러시 UX | 대 | 없음 |
 
 **보류(오너 결정 대기)**: F10 분판(상품군 추가 시 서버측만) · F11 VDP(B2B 수요) · F12 D-4 결정표 ·
@@ -137,4 +137,12 @@ Adobe 전 제품 미도입(재론 불필요 — 근거 §3).
   ×100 중복 적발·수정. 스모크: 전면 리치블랙 349.8%/라이트 1% 정확, worker 530 ·
   api 930 green · 롤백 태그 `pre-r3-tac`. 판정 기준=페이지 평균(국소 최대의 하한,
   오탐 없음·국소 미탐 가능 — details.basis 명시). 정밀(국소) TAC 는 백로그.
-- 다음 착수 = R4 (fix 실행기 1차 — 화이트 오버프린트 제거·주석/폼 제거·박스 정규화).
+- 08-11 (Wave 1 오케스트레이션): **R4a+R7+R8+R9 완결·LIVE**. 본선(R4a=69bfdac)+워크트리
+  에이전트 3기 병렬(R7/R8/R9) → 순차 머지(f8b2a84·fbeda61·690ff2f) → editor 자동배포+
+  worker 수동배포(롤백 태그 pre-r4a). 게이트: canvas-core **52스위트 615**(canvas.node
+  네이티브 재빌드로 구 기준선 4스위트 해소 — `pnpm rebuild canvas` 후 node-pre-gyp
+  install --fallback-to-build, 로컬 한정)·editor 596·worker 538·api 930 전부 green.
+  R4a 왕복 스모크: FreeText 주석 1 검출→재증류→0.
+- 실기 확인 잔여(오너/fe-qa): ①곡선 텍스트 골든 1회(래스터→벡터 전환) ②모양틀 칼선
+  형상 1회 ③DPI 경고 토스트 발화 1회.
+- 다음 = Wave 2: R5(산출 정규화 — ICC 결정 완료)·R6(칼선 별색)·R10(마스크 브러시)·R3b(API 주입).
