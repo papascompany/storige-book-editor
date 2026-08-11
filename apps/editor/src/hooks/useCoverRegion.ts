@@ -215,6 +215,46 @@ export function useSafeZoneWarningToast(ready: boolean): void {
 }
 
 /**
+ * R8: 배치 이미지 유효 DPI 실시간 경고 toast (화면 가이드 — 업계 표준 table stakes).
+ *
+ * `ImageDpiWarningPlugin`(canvas-core) 이 object:added/modified 시 이미지 유효 DPI 가
+ * 인쇄 최소 기준(150DPI) **미만으로 진입하는 전이**에서 1회 발행하는 `imageLowDpi`
+ * 이벤트를 구독해 안내 toast 를 띄운다 (판정·객체별 디바운스는 플러그인 담당 — 여기는 문구만).
+ *
+ * 플러그인이 객체별 전이 디바운스를 하지만, 여러 이미지 동시 배치(세션 로드 등)로
+ * 발행이 몰릴 수 있어 useSafeZoneWarningToast 와 동일한 쿨다운을 한 겹 더 둔다.
+ * 순수 화면 경고 — 저장/출력/차단 동작 없음.
+ */
+export function useImageLowDpiToast(ready: boolean): void {
+  const editor = useAppStore((s) => s.editor)
+
+  useEffect(() => {
+    if (!ready || !editor) return
+
+    let lastShownAt = 0
+    const COOLDOWN_MS = 2000
+
+    const handler = (payload: { dpi: number; objectId?: string }) => {
+      const dpi = Math.round(payload?.dpi ?? 0)
+      if (dpi <= 0) return
+      const now = Date.now()
+      if (now - lastShownAt < COOLDOWN_MS) return
+      lastShownAt = now
+      showToast(
+        `이미지가 확대되어 인쇄 권장 해상도(150DPI)에 못 미칩니다(현재 약 ${dpi}DPI). 크기를 줄이거나 더 큰 이미지를 사용해 주세요.`,
+        'warning',
+        4000,
+      )
+    }
+
+    editor.on('imageLowDpi', handler)
+    return () => {
+      editor.off?.('imageLowDpi', handler)
+    }
+  }, [ready, editor])
+}
+
+/**
  * A-3① (트랙 C, 2026-07-23): 무선제본 얇은 책등 텍스트 배치 경고 toast.
  *
  * 무선 책등이 SPINE_TEXT_MIN_WIDTH_MM(3mm) 미만이면 책등 글자가 접힘·재단

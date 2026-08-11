@@ -34,7 +34,7 @@ import { useEmbedAutoSave } from './hooks/useEmbedAutoSave'
 import { useEmbedBackGuard } from './hooks/useEmbedBackGuard'
 import { useCanvasContainerSizeSync } from './hooks/useCanvasContainerSizeSync'
 import { useSnapSettingsSync } from './hooks/useSnapSettingsSync'
-import { useObjectOutOfTrimToast, useSafeZoneWarningToast } from './hooks/useCoverRegion'
+import { useObjectOutOfTrimToast, useSafeZoneWarningToast, useImageLowDpiToast } from './hooks/useCoverRegion'
 import { createCanvas, safeDisposeCanvas, CanvasInitCancelledError } from './utils/createCanvas'
 import { buildSpreadSnapshots } from './utils/buildSpreadSnapshots'
 import {
@@ -591,6 +591,8 @@ function EmbeddedEditor({
   // 저장/출력 무영향, 훅 가드는 ready/editor 뿐이라 embed 에서 그대로 성립.
   useObjectOutOfTrimToast(ready)
   useSafeZoneWarningToast(ready)
+  // R8: 배치 이미지 유효 DPI(<150) 경고 toast — EditorView 와 대칭 배선 (embed 누락=F4 사고 전례)
+  useImageLowDpiToast(ready)
 
   const { loadEmptyEditor, loadTemplateSetEditor } = useEditorContents()
 

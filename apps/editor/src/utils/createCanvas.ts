@@ -11,6 +11,7 @@ import Editor, {
   FrameInteractionPlugin,
   GroupPlugin,
   HistoryPlugin,
+  ImageDpiWarningPlugin,
   ImageProcessingPlugin,
   LockPlugin,
   ObjectPlugin,
@@ -39,6 +40,8 @@ const ENABLE_SMART_GUIDES = import.meta.env.VITE_ENABLE_SMART_GUIDES !== 'false'
 const ENABLE_TRANSFORM_FEEDBACK = import.meta.env.VITE_ENABLE_TRANSFORM_FEEDBACK !== 'false'
 // Feature flag for safe zone warning (재단/안전영역 침범 실시간 경고, E1 §5-5) — 기본 on
 const ENABLE_SAFEZONE_WARNING = import.meta.env.VITE_ENABLE_SAFEZONE_WARNING !== 'false'
+// Feature flag for image DPI warning (배치 이미지 유효 DPI 실시간 경고, R8) — 기본 on
+const ENABLE_IMAGE_DPI_WARNING = import.meta.env.VITE_ENABLE_IMAGE_DPI_WARNING !== 'false'
 // Feature flag for alt+drag clone (Alt/Option 키를 누른 채 객체 드래그 시 복제, C5/E2) — 기본 on
 const ENABLE_ALT_DRAG_CLONE = import.meta.env.VITE_ENABLE_ALT_DRAG_CLONE !== 'false'
 // Feature flag for touch long-press context menu (모바일 롱프레스 컨텍스트 메뉴, C6/E2) — 기본 on
@@ -391,6 +394,11 @@ export function registerCanvasPlugins(
   const safeZoneWarning = ENABLE_SAFEZONE_WARNING
     ? new SafeZoneWarningPlugin(canvas, editor, {})
     : null
+  // ImageDpiWarningPlugin은 VITE_ENABLE_IMAGE_DPI_WARNING 환경변수로 제어 (기본 on)
+  // — 유효 DPI < 150 진입 전이 시 imageLowDpi 발행, 토스트는 editor 쪽 useImageLowDpiToast 구독
+  const imageDpiWarning = ENABLE_IMAGE_DPI_WARNING
+    ? new ImageDpiWarningPlugin(canvas, editor, {})
+    : null
 
   const filter = new FilterPlugin(canvas, editor)
   const effect = new EffectPlugin(canvas, editor)
@@ -429,6 +437,9 @@ export function registerCanvasPlugins(
   }
   if (safeZoneWarning) {
     editor.use(safeZoneWarning)
+  }
+  if (imageDpiWarning) {
+    editor.use(imageDpiWarning)
   }
   editor.use(controls)
   editor.use(group)
