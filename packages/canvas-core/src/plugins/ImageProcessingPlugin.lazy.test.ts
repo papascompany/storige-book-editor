@@ -4,7 +4,8 @@
 //  (1) 생성자가 어떤 네트워크/무거운 초기화도 트리거하지 않는다.
 //      — 기존엔 생성자가 startService() 를 즉시 실행해 ONNX 모델(≈88MB)+
 //        ort wasm(≈23MB)을 모든 에디터/embed 캔버스 생성 시마다 다운로드했다.
-//  (2) ensureCvReady() 는 OpenCV lazy-loader 로만 위임한다.
+//  (2) [R7 2026-08-11 갱신] cv 레거시 표면(ensureCvReady 등)이 존재하지 않고,
+//      정밀 경로(createPrecisePathFromObject)는 cv 없이 순수 JS 로 완주한다.
 //  (3) **D-12d 라이선스 잠금**: 브라우저 배경제거(@imgly/background-removal, AGPL-3.0)가
 //      다시 들어오지 않는다 — getForeground() 부재 + package.json 의존 부재로 잠근다.
 //      추론은 서버(rembg 사이드카)가 하고 진입점은 editor 의 api/cutout.ts 다.
@@ -14,7 +15,32 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // fabric 은 node 테스트 환경에서 native canvas 바인딩을 요구해 로드 불가 → mock
 // (Editor.dispose.test.ts / AccessoryPlugin.leak.test.ts 와 동일 패턴)
-vi.mock('fabric', () => ({ fabric: {} }))
+// R7: createPrecisePathFromObject(순수 경로)가 쓰는 최소 표면(util.transformPoint/Point/Path)만 채운다.
+vi.mock('fabric', () => ({
+  fabric: {
+    util: {
+      transformPoint: (p: { x: number; y: number }, m: number[]) => ({
+        x: m[0] * p.x + m[2] * p.y + m[4],
+        y: m[1] * p.x + m[3] * p.y + m[5]
+      })
+    },
+    Point: class {
+      x: number
+      y: number
+      constructor(x: number, y: number) {
+        this.x = x
+        this.y = y
+      }
+    },
+    Path: class {
+      pathData: unknown
+      constructor(pathData: unknown, options: Record<string, unknown>) {
+        this.pathData = pathData
+        Object.assign(this, options)
+      }
+    }
+  }
+}))
 
 const { hotkeysMock } = vi.hoisted(() => {
   const fn: any = vi.fn()
@@ -30,8 +56,9 @@ vi.mock('../contextMenu', () => ({
   }
 }))
 
-// openCv lazy-loader mock — 플러그인이 이 진입점 외의 경로로 wasm 을
-// 로드하지 않는다는 전제 하에, 호출 횟수로 초기화 트리거 여부를 단언한다.
+// openCv lazy-loader mock — R7 이후 플러그인은 openCv 를 임포트하지 않는다.
+// 이 mock 은 회귀 tripwire 다: 누군가 cv 임포트/호출을 되살리면 아래
+// `getCvMock).not.toHaveBeenCalled()` 잠금이 터진다.
 const { getCvMock } = vi.hoisted(() => ({
   getCvMock: vi.fn(async () => ({ __mockCv: true }))
 }))
@@ -59,13 +86,14 @@ describe('ImageProcessingPlugin — lazy 초기화 (D-6b① · D-12d)', () => {
     expect(getCvMock).not.toHaveBeenCalled()
   })
 
-  it('ensureCvReady() 는 openCv lazy-loader 로 위임하고 cv 인스턴스를 반환한다', async () => {
+  it('cv 레거시 표면이 존재하지 않는다 — R7 이식 잠금 (ensureCvReady/drawCaseOutlinePrecise/findLargestContour/getSimpleContourPoints)', () => {
     const { plugin } = makePlugin()
 
-    const cv = await plugin.ensureCvReady()
-
-    expect(cv).toEqual({ __mockCv: true })
-    expect(getCvMock).toHaveBeenCalledTimes(1)
+    expect((plugin as { ensureCvReady?: unknown }).ensureCvReady).toBeUndefined()
+    expect((plugin as { drawCaseOutlinePrecise?: unknown }).drawCaseOutlinePrecise).toBeUndefined()
+    expect((plugin as { findLargestContour?: unknown }).findLargestContour).toBeUndefined()
+    expect((plugin as { getSimpleContourPoints?: unknown }).getSimpleContourPoints).toBeUndefined()
+    expect(getCvMock).not.toHaveBeenCalled()
   })
 
   // ─────────────────────────────────────────────────────────────────
@@ -89,37 +117,97 @@ describe('ImageProcessingPlugin — lazy 초기화 (D-6b① · D-12d)', () => {
     expect(getCvMock).not.toHaveBeenCalled() // ★ 이 단언이 프리즈를 막는다
   })
 
-  it('컨투어 스캔에서 버리는 복사본은 즉시 해제한다 — wasm 힙 누수 회귀 잠금', () => {
+  // ─────────────────────────────────────────────────────────────────
+  // R7 (2026-08-11): 정밀 경로(createPrecisePathFromObject) 순수 JS 이식 잠금
+  // — 순수 계산부의 상세 검증은 utils/preciseOutline.test.ts, 여기는 배선만 잠근다.
+  // ─────────────────────────────────────────────────────────────────
+  const makeRaster = (w: number, h: number, block: { x: number; y: number; size: number }) => {
+    const data = new Uint8ClampedArray(w * h * 4)
+    for (let y = block.y; y < block.y + block.size; y++)
+      for (let x = block.x; x < block.x + block.size; x++) {
+        const p = (y * w + x) * 4
+        data[p] = 255
+        data[p + 3] = 255
+      }
+    return { data, width: w, height: h }
+  }
+
+  it('createPrecisePathFromObject 는 cv 없이 순수 경로로 완주하고 계약(fabric.Path·scale)을 지킨다 — R7', async () => {
     const { plugin } = makePlugin()
-    const made: any[] = []
-    const mkContour = (area: number) => {
-      const m = { rows: 2, data32S: [0, 0, 1, 1], delete: vi.fn(), __area: area }
-      made.push(m)
-      return m
-    }
-    const contours = [mkContour(50), mkContour(5000), mkContour(10)] // 1개만 면적 통과
-    const cv = {
-      CV_32SC2: 4,
-      MatVector: function (this: any) {
-        this.size = () => contours.length
-        this.get = (i: number) => contours[i]
-        this.delete = vi.fn()
-      },
-      Mat: function (this: any) {
-        this.delete = vi.fn()
-      },
-      findContours: vi.fn(),
-      contourArea: (c: any) => c.__area,
-      matFromArray: vi.fn(() => ({ delete: vi.fn() })),
-      convexHull: vi.fn(),
+    ;(plugin as any).readImageData = vi.fn(() => makeRaster(32, 32, { x: 8, y: 8, size: 16 }))
+    const object: any = {
+      width: 32,
+      height: 32,
+      scaleX: 2,
+      scaleY: 2,
+      toCanvasElement: vi.fn(() => ({ width: 32, height: 32 })),
+      calcTransformMatrix: () => [1, 0, 0, 1, 0, 0]
     }
 
-    ;(plugin as any).findLargestContour(cv, {})
+    const path = await plugin.createPrecisePathFromObject(object, {
+      threshold: 128,
+      insetPx: 2,
+      multiplier: 1
+    })
 
-    // 면적 미달 2개는 루프에서, 통과한 1개는 점 추출 후 — 결국 전부 해제되어야 한다.
-    for (const m of made) {
-      expect(m.delete).toHaveBeenCalled()
+    expect(getCvMock).not.toHaveBeenCalled() // ★ cv 0회 — 정밀 경로도 순수 JS
+    expect(path).toBeDefined()
+    expect(typeof (path as any).pathData).toBe('string')
+    expect((path as any).pathData).toContain('M')
+    // 반환 계약: left/top 0 + scale = objectScale / multiplier (호출부 2곳이 소비)
+    expect((path as any).left).toBe(0)
+    expect((path as any).top).toBe(0)
+    expect((path as any).scaleX).toBe(2)
+    expect((path as any).scaleY).toBe(2)
+  })
+
+  it('정밀 경로 래스터는 장변 캡을 넘지 않는 배율로만 생성된다 — 해상도 폭발(b019994) 재발 잠금', async () => {
+    const { plugin } = makePlugin()
+    ;(plugin as any).readImageData = vi.fn(() => makeRaster(16, 16, { x: 4, y: 4, size: 8 }))
+    const object: any = {
+      width: 2560, // 마스크 이미지(이미 dpr×multiplier 곱해진 대형) 시나리오
+      height: 2560,
+      scaleX: 1,
+      scaleY: 1,
+      toCanvasElement: vi.fn(() => ({ width: 1280, height: 1280 })),
+      calcTransformMatrix: () => [1, 0, 0, 1, 0, 0]
     }
+
+    const path = await plugin.createPrecisePathFromObject(object, {
+      threshold: 128,
+      insetPx: 0,
+      multiplier: 3
+    })
+
+    // 요청 3× 그대로면 7680px 래스터 — 캡 반영 배율(3 × 1280/7680 = 0.5)로만 호출해야 한다.
+    expect(object.toCanvasElement).toHaveBeenCalledTimes(1)
+    expect(object.toCanvasElement.mock.calls[0][0].multiplier).toBeCloseTo(0.5, 10)
+    expect(object.toCanvasElement.mock.calls[0][0].enableRetinaScaling).toBe(false)
+    // scale 계약은 캡과 무관하게 **요청 배율** 기준이다
+    expect((path as any).scaleX).toBeCloseTo(1 / 3, 10)
+    expect(getCvMock).not.toHaveBeenCalled()
+  })
+
+  it('전부 투명한 래스터면 undefined 를 반환한다 (종전 빈 윤곽 규약)', async () => {
+    const { plugin } = makePlugin()
+    ;(plugin as any).readImageData = vi.fn(() => ({
+      data: new Uint8ClampedArray(8 * 8 * 4),
+      width: 8,
+      height: 8
+    }))
+    const object: any = {
+      width: 8,
+      height: 8,
+      scaleX: 1,
+      scaleY: 1,
+      toCanvasElement: vi.fn(() => ({ width: 8, height: 8 })),
+      calcTransformMatrix: () => [1, 0, 0, 1, 0, 0]
+    }
+
+    const path = await plugin.createPrecisePathFromObject(object, { threshold: 128 })
+
+    expect(path).toBeUndefined()
+    expect(getCvMock).not.toHaveBeenCalled()
   })
 
   it('컨투어 스캔 상한이 있고 hull 점 예산보다 작다', () => {
