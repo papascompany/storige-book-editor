@@ -56,6 +56,17 @@ const PRINT_PRESERVE_ARGS = [
   '-dPreserveDeviceN=true',
 ];
 
+/**
+ * R4a (2026-08-11): pdfwrite 재증류 시 인쇄 무관 요소 제거 — 주석/폼 필드.
+ *
+ * 고객이 교정 코멘트(스티키노트·하이라이트)나 양식 필드가 남은 PDF 를 제출하는
+ * 고전 사고 대응(GWG: 주석/폼 제거는 무손실 표준 fixup). pdfwrite 는 기본값으로
+ * annotation 을 보존하므로 명시적으로 끈다. 주석 없는 입력에서는 산출 불변 —
+ * 골든 파리티 안전. ⚠️ 경량(qpdf) 병합·pass-through 경로는 재증류를 안 하므로
+ * 이 제거가 적용되지 않는다 — 검증 단계의 ANNOTATIONS_DETECTED 경고가 보완.
+ */
+const PRINT_SANITIZE_ARGS = ['-dPreserveAnnots=false'];
+
 export interface GsOptions {
   /** 입력 파일 경로 */
   input: string;
@@ -247,6 +258,7 @@ export function buildAddBleedArgs(
     '-sDEVICE=pdfwrite',
     '-dCompatibilityLevel=1.4',
     ...PRINT_PRESERVE_ARGS,
+    ...PRINT_SANITIZE_ARGS,
     `-dDEVICEWIDTHPOINTS=${targetWidthPt}`,
     `-dDEVICEHEIGHTPOINTS=${targetHeightPt}`,
     `-dFIXEDMEDIA`,
@@ -304,6 +316,7 @@ export async function resizePdf(
     '-sDEVICE=pdfwrite',
     '-dCompatibilityLevel=1.4',
     ...PRINT_PRESERVE_ARGS,
+    ...PRINT_SANITIZE_ARGS,
     `-dDEVICEWIDTHPOINTS=${widthPt}`,
     `-dDEVICEHEIGHTPOINTS=${heightPt}`,
     '-dFIXEDMEDIA',
@@ -381,6 +394,7 @@ export async function centerOnPage(
     '-sDEVICE=pdfwrite',
     '-dCompatibilityLevel=1.4',
     ...PRINT_PRESERVE_ARGS,
+    ...PRINT_SANITIZE_ARGS,
     `-dDEVICEWIDTHPOINTS=${pageWpt}`,
     `-dDEVICEHEIGHTPOINTS=${pageHpt}`,
     '-dFIXEDMEDIA',
@@ -446,6 +460,7 @@ export async function mergePdfs(
     '-sDEVICE=pdfwrite',
     '-dCompatibilityLevel=1.4',
     ...PRINT_PRESERVE_ARGS,
+    ...PRINT_SANITIZE_ARGS,
     `-sOutputFile=${outputPath}`,
     ...inputPaths,
   ];

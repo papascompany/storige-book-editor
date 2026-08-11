@@ -61,6 +61,8 @@ describe('WK-2: buildAddBleedArgs (블리드 인자 공식)', () => {
     expect(args).toContain('-dPreserveOverprintSettings=true');
     expect(args).toContain('-dPreserveSeparation=true');
     expect(args).toContain('-dPreserveDeviceN=true');
+    // R4a: 재증류 시 주석/폼 제거(교정 코멘트 사고 대응) — 제거되면 재발
+    expect(args).toContain('-dPreserveAnnots=false');
     expect(args).toContain('-sDEVICE=pdfwrite');
     expect(args).toContain('-sOutputFile=/out.pdf');
   });

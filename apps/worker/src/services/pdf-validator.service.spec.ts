@@ -62,6 +62,11 @@ jest.mock('../utils/poppler-preflight', () => ({
   detectImageResolutionPoppler: jest.fn().mockResolvedValue(null),
 }));
 
+// R4a: 주석 검출 기본 null(검출 부재 = 경고 스킵). R4a describe 에서 개별 override.
+jest.mock('../utils/annotations-qpdf', () => ({
+  detectAnnotationsQpdf: jest.fn().mockResolvedValue(null),
+}));
+
 const mockedFs = fs as jest.Mocked<typeof fs>;
 const mockedAxios = axios as jest.Mocked<typeof axios>;
 
@@ -1795,6 +1800,89 @@ describe('PdfValidatorService', () => {
       ).toBeUndefined();
       expect(result.metadata.maxTacPercent).toBeUndefined();
       expect(result.metadata.tacLimitPercent).toBeUndefined();
+    });
+  });
+
+  // ============================================================
+  // R4a (2026-08-11): 주석/양식 경고 계약
+  // ============================================================
+  describe('R4a 주석/양식 경고', () => {
+    const { detectAnnotationsQpdf } = require('../utils/annotations-qpdf');
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+    });
+
+    // 4페이지 무선 + 정사이즈 = 주석 경고 외 차단 사유 없음(기존 해상도 테스트와 동일 전제)
+    const options: ValidationOptions = {
+      fileType: 'content',
+      orderOptions: {
+        size: { width: 210, height: 297 },
+        pages: 4,
+        binding: 'perfect',
+        bleed: 0,
+      },
+    };
+
+    const makePdf = async () => {
+      const pdfBytes = await PDFDocument.create().then((doc) => {
+        for (let i = 0; i < 4; i++) doc.addPage([210 * 2.83465, 297 * 2.83465]);
+        return doc.save();
+      });
+      mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
+    };
+
+    it('교정 주석 검출 시 비차단 경고+메타데이터를 남긴다', async () => {
+      await makePdf();
+      detectAnnotationsQpdf.mockResolvedValueOnce({
+        annotationCount: 3,
+        pagesWithAnnotations: [1, 4],
+        subtypeCounts: { FreeText: 2, Highlight: 1 },
+        hasAcroForm: false,
+      });
+
+      const result = await service.validate('./annots.pdf', options);
+
+      const w = result.warnings.find(
+        (x) => x.code === WarningCode.ANNOTATIONS_DETECTED,
+      );
+      expect(w).toBeDefined();
+      expect(w?.message).toContain('주석 3개');
+      expect(w?.details?.subtypeCounts).toEqual({ FreeText: 2, Highlight: 1 });
+      expect(w?.autoFixable).toBe(false);
+      expect(result.metadata.annotationCount).toBe(3);
+      expect(result.metadata.hasAcroForm).toBe(false);
+      // 비차단 — errors 로 승격되지 않는다
+      expect(result.isValid).toBe(true);
+    });
+
+    it('0건이면 경고 없이 메타데이터만 스탬프한다', async () => {
+      await makePdf();
+      detectAnnotationsQpdf.mockResolvedValueOnce({
+        annotationCount: 0,
+        pagesWithAnnotations: [],
+        subtypeCounts: {},
+        hasAcroForm: false,
+      });
+
+      const result = await service.validate('./clean.pdf', options);
+
+      expect(
+        result.warnings.find((x) => x.code === WarningCode.ANNOTATIONS_DETECTED),
+      ).toBeUndefined();
+      expect(result.metadata.annotationCount).toBe(0);
+      expect(result.metadata.hasAcroForm).toBe(false);
+    });
+
+    it('검출 부재(null)면 경고·메타 모두 없다', async () => {
+      await makePdf();
+      const result = await service.validate('./na.pdf', options);
+
+      expect(
+        result.warnings.find((x) => x.code === WarningCode.ANNOTATIONS_DETECTED),
+      ).toBeUndefined();
+      expect(result.metadata.annotationCount).toBeUndefined();
+      expect(result.metadata.hasAcroForm).toBeUndefined();
     });
   });
 

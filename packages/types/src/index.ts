@@ -943,6 +943,10 @@ export interface WorkerPdfMetadata {
   maxTacPercent?: number;
   /** R3: 적용된 TAC 경고 한계(%) — 측정 성공 시에만 기록 (additive) */
   tacLimitPercent?: number;
+  /** R4a (2026-08-11): 인쇄 유의 주석 수(Link/Popup 제외) — 검출 성공 시에만 기록 (additive) */
+  annotationCount?: number;
+  /** R4a: 양식(AcroForm) 필드 존재 여부 — 검출 성공 시에만 기록 (additive) */
+  hasAcroForm?: boolean;
 }
 
 /**

@@ -86,6 +86,12 @@ export enum WarningCode {
    * (전면 리치블랙 배경 등)로, 오탐 없는 보수적 신호다. details.basis 참조.
    */
   INK_TAC_EXCEEDED = 'INK_TAC_EXCEEDED',
+  /**
+   * R4a (2026-08-11): 주석/양식 필드 감지 — 비차단 warning. Link/Popup 제외 집계.
+   * GS 재증류 경로(pdfwrite)는 -dPreserveAnnots=false 로 자동 제거하지만,
+   * 경량(qpdf) 병합·pass-through 경로에는 잔존할 수 있어 재업로드 권장 문구를 쓴다.
+   */
+  ANNOTATIONS_DETECTED = 'ANNOTATIONS_DETECTED',
 }
 
 /**
@@ -176,6 +182,10 @@ export interface PdfMetadata {
   maxTacPercent?: number;
   /** R3: 적용된 TAC 한계(%) — ink_cov 측정 성공 시에만 기록 */
   tacLimitPercent?: number;
+  /** R4a: 인쇄 유의 주석 수(Link/Popup 제외) — 검출 성공 시에만 기록 */
+  annotationCount?: number;
+  /** R4a: 양식(AcroForm) 필드 존재 여부 — 검출 성공 시에만 기록 */
+  hasAcroForm?: boolean;
 }
 
 /**
@@ -382,6 +392,22 @@ export interface InkTacPageResult {
   page: number;
   /** 페이지 평균 TAC(%) = (c+m+y+k)×100, 소수 1자리 */
   tacPercent: number;
+}
+
+// ============================================================
+// R4a (2026-08-11): 주석/양식 검출 결과
+// ============================================================
+
+/** 주석/양식 검출 결과 (검출 실패 시 결과 자체가 부재 — null) */
+export interface AnnotationDetectionResult {
+  /** 인쇄 유의 주석 수 (Link/Popup 서브타입 제외) */
+  annotationCount: number;
+  /** 주석이 있는 페이지 번호(1-base) */
+  pagesWithAnnotations: number[];
+  /** 서브타입별 개수 (예: { FreeText: 2, Highlight: 1, Widget: 3 }) */
+  subtypeCounts: Record<string, number>;
+  /** 양식(AcroForm) 필드 존재 여부 */
+  hasAcroForm: boolean;
 }
 
 /** TAC 측정 결과 (측정 실패/생략 시 결과 자체가 부재 — null/undefined) */

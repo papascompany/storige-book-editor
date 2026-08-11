@@ -38,6 +38,8 @@ import {
   detectFontsPoppler,
   detectImageResolutionPoppler,
 } from '../utils/poppler-preflight';
+// R4a (2026-08-11): 주석/양식 검출 — 실패 시 null(경고 스킵).
+import { detectAnnotationsQpdf } from '../utils/annotations-qpdf';
 // 트랙 B-(d) 경량(ON) 검증 경로 전용 유틸 (OFF 경로는 import 만 하고 사용하지 않음).
 import { downloadToTempFile } from '../utils/stream-download';
 import { assertSafeDownloadUrl } from '../utils/url-safety';
@@ -46,7 +48,7 @@ import {
   QpdfMetadataResult,
 } from '../utils/pdf-metadata-qpdf';
 import { scanPdfStreaming } from '../utils/streaming-pdf-scan';
-import { SpotColorResult, TransparencyResult, ImageResolutionResult, FontDetectionResult, InkTacResult } from '../dto/validation-result.dto';
+import { SpotColorResult, TransparencyResult, ImageResolutionResult, FontDetectionResult, InkTacResult, AnnotationDetectionResult } from '../dto/validation-result.dto';
 
 // 기본 설정 (VALIDATION_CONFIG에서 가져오거나 폴백)
 const DEFAULT_MAX_FILE_SIZE = VALIDATION_CONFIG.MAX_FILE_SIZE;
@@ -282,6 +284,7 @@ export class PdfValidatorService {
         transparencyResult,
         resolutionResult,
         fontResult,
+        annotationResult,
       ] = await Promise.all([
         this.detectColorMode(pdfBytes, inputPath, options.fileType),
         detectSpotColors('', pdfBytes),
@@ -303,6 +306,8 @@ export class PdfValidatorService {
         // detectFonts 는 자체 try/catch 로 실패 시 안전기본값(hasUnembeddedFonts:false)을
         // 반환하므로 추가 가드 없이 결과를 그대로 사용한다.
         detectFontsPoppler(inputPath).then((r) => r ?? detectFonts(pdfBytes)),
+        // R4a: 주석/양식 검출(qpdf --json) — 실패 null(경고 스킵).
+        detectAnnotationsQpdf(inputPath),
       ]);
 
       // 12~16. 색상/별색/투명도/해상도/폰트 검출 결과 → errors/warnings/metadata 매핑.
@@ -320,6 +325,8 @@ export class PdfValidatorService {
       );
       // R3: TAC 경고 — applyDetectionWarnings(변경 금지 계약)와 분리된 additive 단계.
       this.applyInkTacWarning(colorModeResult.inkTac, options, warnings, metadata);
+      // R4a: 주석/양식 경고 — 동일하게 분리된 additive 단계.
+      this.applyAnnotationWarning(annotationResult, warnings, metadata);
 
       this.logger.log(
         `Validation complete: ${errors.length === 0 ? 'PASS' : 'FAIL'} (errors: ${errors.length}, warnings: ${warnings.length})`,
@@ -550,6 +557,47 @@ export class PdfValidatorService {
   }
 
   /**
+   * R4a (2026-08-11): 주석/양식 경고 매핑 — OFF·ON 공통, additive 단계.
+   *
+   * 검출 부재(null = qpdf 실패/암호화)는 조용히 스킵. 비차단 warning 전용.
+   * GS 재증류 경로(pdfwrite)는 PRINT_SANITIZE_ARGS(-dPreserveAnnots=false)로
+   * 자동 제거하지만 경량(qpdf) 병합·pass-through 는 재증류를 안 하므로,
+   * 문구는 제거를 보장하지 않고 재업로드 권장으로 쓴다(과약속 금지).
+   */
+  private applyAnnotationWarning(
+    det: AnnotationDetectionResult | null,
+    warnings: ValidationWarning[],
+    metadata: PdfMetadata,
+  ): void {
+    if (!det) return;
+
+    // 검출 성공 시 항상 스탬프(운영 계측) — 0건이면 경고 없이 기록만.
+    metadata.annotationCount = det.annotationCount;
+    metadata.hasAcroForm = det.hasAcroForm;
+
+    if (det.annotationCount === 0 && !det.hasAcroForm) return;
+
+    const parts: string[] = [];
+    if (det.annotationCount > 0) {
+      parts.push(`주석 ${det.annotationCount}개(${det.pagesWithAnnotations.slice(0, 5).join(', ')}페이지${det.pagesWithAnnotations.length > 5 ? ' 외' : ''})`);
+    }
+    if (det.hasAcroForm) parts.push('양식 필드');
+    warnings.push({
+      code: WarningCode.ANNOTATIONS_DETECTED,
+      message: `PDF 에 ${parts.join('와 ')}가 있습니다(교정 코멘트·하이라이트·입력폼 등). 인쇄 산출물에서 의도와 다르게 나타나거나 누락될 수 있으니, 주석을 정리(평탄화/삭제)한 PDF 재업로드를 권장합니다.`,
+      details: {
+        annotationCount: det.annotationCount,
+        pagesWithAnnotations: det.pagesWithAnnotations.slice(0, 20),
+        subtypeCounts: det.subtypeCounts,
+        hasAcroForm: det.hasAcroForm,
+        // GS 재증류 산출 경로에서는 자동 제거됨 — 운영 참고용.
+        autoRemovedOnRedistill: true,
+      },
+      autoFixable: false,
+    });
+  }
+
+  /**
    * 트랙 B-(d): 경량(스트리밍) 검증 ON 경로.
    *
    * 기존 validate()(OFF) 는 파일 전체를 메모리(Uint8Array)에 올리고 pdf-lib 로 load 하므로
@@ -755,6 +803,8 @@ export class PdfValidatorService {
       // R3: TAC 경고 — OFF 경로와 동일한 additive 단계(detectColorMode 가 ON 에서도
       // 같은 GS 게이트로 ink_cov 를 측정한다 — dl.path 입력, fileSize 는 precomputed).
       this.applyInkTacWarning(colorModeResult.inkTac, options, warnings, metadata);
+      // R4a: 주석/양식 경고 — OFF 와 동일 additive 단계(qpdf 파일 기반이라 상수 메모리).
+      this.applyAnnotationWarning(await detectAnnotationsQpdf(dl.path), warnings, metadata);
 
       this.logger.log(
         `Validation complete: ${errors.length === 0 ? 'PASS' : 'FAIL'} (errors: ${errors.length}, warnings: ${warnings.length})`,
