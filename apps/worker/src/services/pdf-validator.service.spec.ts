@@ -63,8 +63,15 @@ jest.mock('../utils/poppler-preflight', () => ({
 }));
 
 // R4a: 주석 검출 기본 null(검출 부재 = 경고 스킵). R4a describe 에서 개별 override.
+// R4b: 기하 검출 동거 — 동일 규약.
 jest.mock('../utils/annotations-qpdf', () => ({
   detectAnnotationsQpdf: jest.fn().mockResolvedValue(null),
+  detectPageGeometryQpdf: jest.fn().mockResolvedValue(null),
+}));
+
+// R4b: 화이트 오버프린트 스캔 기본 null. R4b describe 에서 개별 override.
+jest.mock('../utils/white-overprint-scan', () => ({
+  detectWhiteOverprintQpdf: jest.fn().mockResolvedValue(null),
 }));
 
 const mockedFs = fs as jest.Mocked<typeof fs>;
@@ -1883,6 +1890,106 @@ describe('PdfValidatorService', () => {
       ).toBeUndefined();
       expect(result.metadata.annotationCount).toBeUndefined();
       expect(result.metadata.hasAcroForm).toBeUndefined();
+    });
+  });
+
+  // ============================================================
+  // R4b (2026-08-11): 화이트 오버프린트·페이지 기하 경고 계약
+  // ============================================================
+  describe('R4b 화이트 오버프린트·페이지 기하', () => {
+    const { detectWhiteOverprintQpdf } = require('../utils/white-overprint-scan');
+    const { detectPageGeometryQpdf } = require('../utils/annotations-qpdf');
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+    });
+
+    const options: ValidationOptions = {
+      fileType: 'content',
+      orderOptions: {
+        size: { width: 210, height: 297 },
+        pages: 4,
+        binding: 'perfect',
+        bleed: 0,
+      },
+    };
+
+    const makePdf = async () => {
+      const pdfBytes = await PDFDocument.create().then((doc) => {
+        for (let i = 0; i < 4; i++) doc.addPage([210 * 2.83465, 297 * 2.83465]);
+        return doc.save();
+      });
+      mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
+    };
+
+    it('화이트 오버프린트 검출 → 소멸 위험 문구의 비차단 경고 + 메타 스탬프', async () => {
+      await makePdf();
+      detectWhiteOverprintQpdf.mockResolvedValueOnce({
+        hasWhiteOverprint: true,
+        textPages: [2],
+        pathPages: [3],
+        scannedStreams: 4,
+      });
+
+      const result = await service.validate('./wop.pdf', options);
+
+      const w = result.warnings.find(
+        (x) => x.code === WarningCode.WHITE_OVERPRINT_DETECTED,
+      );
+      expect(w).toBeDefined();
+      expect(w?.message).toContain('보이지 않게');
+      expect(w?.details?.gwgSeverity).toBe('error-grade'); // 텍스트 포함 시
+      expect(result.metadata.hasWhiteOverprint).toBe(true);
+      expect(result.isValid).toBe(true); // 비차단
+    });
+
+    it('스캔 성공+미검출이면 경고 없이 메타 false 스탬프', async () => {
+      await makePdf();
+      detectWhiteOverprintQpdf.mockResolvedValueOnce({
+        hasWhiteOverprint: false,
+        textPages: [],
+        pathPages: [],
+        scannedStreams: 2,
+      });
+
+      const result = await service.validate('./clean.pdf', options);
+      expect(
+        result.warnings.find((x) => x.code === WarningCode.WHITE_OVERPRINT_DETECTED),
+      ).toBeUndefined();
+      expect(result.metadata.hasWhiteOverprint).toBe(false);
+    });
+
+    it('페이지 기하 이상 → PAGE_GEOMETRY_ABNORMAL 1건 집계(UserUnit·Rotate·CropBox)', async () => {
+      await makePdf();
+      detectPageGeometryQpdf.mockResolvedValueOnce({
+        userUnitPages: [1],
+        rotatedPages: [2, 3],
+        cropBoxMismatchPages: [],
+      });
+
+      const result = await service.validate('./geom.pdf', options);
+
+      const w = result.warnings.find(
+        (x) => x.code === WarningCode.PAGE_GEOMETRY_ABNORMAL,
+      );
+      expect(w).toBeDefined();
+      expect(w?.message).toContain('UserUnit');
+      expect(w?.details?.rotatedPages).toEqual([2, 3]);
+      expect(result.isValid).toBe(true);
+    });
+
+    it('기하 전부 정상(빈 배열)이면 경고 없음', async () => {
+      await makePdf();
+      detectPageGeometryQpdf.mockResolvedValueOnce({
+        userUnitPages: [],
+        rotatedPages: [],
+        cropBoxMismatchPages: [],
+      });
+
+      const result = await service.validate('./ok.pdf', options);
+      expect(
+        result.warnings.find((x) => x.code === WarningCode.PAGE_GEOMETRY_ABNORMAL),
+      ).toBeUndefined();
     });
   });
 

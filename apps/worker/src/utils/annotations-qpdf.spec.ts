@@ -1,4 +1,7 @@
-import { parseAnnotationsFromQpdfJson } from './annotations-qpdf';
+import {
+  parseAnnotationsFromQpdfJson,
+  parsePageGeometryFromQpdfJson,
+} from './annotations-qpdf';
 
 /**
  * R4a 주석/양식 검출 파서 회귀 잠금.
@@ -110,5 +113,68 @@ describe('parseAnnotationsFromQpdfJson', () => {
       subtypeCounts: {},
       hasAcroForm: false,
     });
+  });
+});
+
+describe('parsePageGeometryFromQpdfJson (R4b)', () => {
+  it('UserUnit≠1·Rotate≠0·명시 CropBox≠상속 MediaBox 를 페이지별로 집계한다', () => {
+    const d = doc(
+      [{ object: '1 0 R' }, { object: '2 0 R' }, { object: '3 0 R' }],
+      {
+        'obj:1 0 R': {
+          value: { '/UserUnit': 2, '/MediaBox': [0, 0, 595, 842] },
+        },
+        'obj:2 0 R': {
+          value: { '/Rotate': 90, '/MediaBox': [0, 0, 595, 842] },
+        },
+        'obj:3 0 R': {
+          value: {
+            '/MediaBox': [0, 0, 595, 842],
+            '/CropBox': [10, 10, 585, 832],
+          },
+        },
+        trailer: { value: { '/Root': '5 0 R' } },
+        'obj:5 0 R': { value: {} },
+      },
+    );
+    const r = parsePageGeometryFromQpdfJson(d);
+    expect(r.userUnitPages).toEqual([1]);
+    expect(r.rotatedPages).toEqual([2]);
+    expect(r.cropBoxMismatchPages).toEqual([3]);
+  });
+
+  it('정상 문서(Rotate 0/360·CropBox=MediaBox·UserUnit 1)는 전부 빈 배열', () => {
+    const d = doc(
+      [{ object: '1 0 R' }],
+      {
+        'obj:1 0 R': {
+          value: {
+            '/UserUnit': 1,
+            '/Rotate': 360,
+            '/MediaBox': [0, 0, 595, 842],
+            '/CropBox': [0, 0, 595, 842.3], // 0.5pt 허용치 이내
+          },
+        },
+        trailer: { value: { '/Root': '5 0 R' } },
+        'obj:5 0 R': { value: {} },
+      },
+    );
+    const r = parsePageGeometryFromQpdfJson(d);
+    expect(r).toEqual({ userUnitPages: [], rotatedPages: [], cropBoxMismatchPages: [] });
+  });
+
+  it('MediaBox 는 부모 상속으로 해석해 CropBox 와 대조한다', () => {
+    const d = doc(
+      [{ object: '1 0 R' }],
+      {
+        'obj:1 0 R': {
+          value: { '/Parent': '9 0 R', '/CropBox': [0, 0, 300, 300] },
+        },
+        'obj:9 0 R': { value: { '/MediaBox': [0, 0, 595, 842] } },
+        trailer: { value: { '/Root': '5 0 R' } },
+        'obj:5 0 R': { value: {} },
+      },
+    );
+    expect(parsePageGeometryFromQpdfJson(d).cropBoxMismatchPages).toEqual([1]);
   });
 });

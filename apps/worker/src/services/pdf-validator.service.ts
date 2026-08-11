@@ -39,7 +39,13 @@ import {
   detectImageResolutionPoppler,
 } from '../utils/poppler-preflight';
 // R4a (2026-08-11): 주석/양식 검출 — 실패 시 null(경고 스킵).
-import { detectAnnotationsQpdf } from '../utils/annotations-qpdf';
+// R4b: 페이지 기하 이상 검출 동거.
+import {
+  detectAnnotationsQpdf,
+  detectPageGeometryQpdf,
+} from '../utils/annotations-qpdf';
+// R4b (2026-08-11): 화이트 오버프린트 정밀 스캔(QDF) — 실패 시 null.
+import { detectWhiteOverprintQpdf } from '../utils/white-overprint-scan';
 // 트랙 B-(d) 경량(ON) 검증 경로 전용 유틸 (OFF 경로는 import 만 하고 사용하지 않음).
 import { downloadToTempFile } from '../utils/stream-download';
 import { assertSafeDownloadUrl } from '../utils/url-safety';
@@ -48,7 +54,7 @@ import {
   QpdfMetadataResult,
 } from '../utils/pdf-metadata-qpdf';
 import { scanPdfStreaming } from '../utils/streaming-pdf-scan';
-import { SpotColorResult, TransparencyResult, ImageResolutionResult, FontDetectionResult, InkTacResult, AnnotationDetectionResult } from '../dto/validation-result.dto';
+import { SpotColorResult, TransparencyResult, ImageResolutionResult, FontDetectionResult, InkTacResult, AnnotationDetectionResult, PageGeometryResult, WhiteOverprintResult } from '../dto/validation-result.dto';
 
 // 기본 설정 (VALIDATION_CONFIG에서 가져오거나 폴백)
 const DEFAULT_MAX_FILE_SIZE = VALIDATION_CONFIG.MAX_FILE_SIZE;
@@ -285,6 +291,8 @@ export class PdfValidatorService {
         resolutionResult,
         fontResult,
         annotationResult,
+        geometryResult,
+        whiteOverprintResult,
       ] = await Promise.all([
         this.detectColorMode(pdfBytes, inputPath, options.fileType),
         detectSpotColors('', pdfBytes),
@@ -308,6 +316,12 @@ export class PdfValidatorService {
         detectFontsPoppler(inputPath).then((r) => r ?? detectFonts(pdfBytes)),
         // R4a: 주석/양식 검출(qpdf --json) — 실패 null(경고 스킵).
         detectAnnotationsQpdf(inputPath),
+        // R4b: 페이지 기하 이상 — 실패 null.
+        detectPageGeometryQpdf(inputPath),
+        // R4b: 화이트 오버프린트 — QDF 평문화가 비싸 대형 파일은 생략(null).
+        pdfBytes.length <= VALIDATION_CONFIG.LARGE_FILE_THRESHOLD
+          ? detectWhiteOverprintQpdf(inputPath)
+          : Promise.resolve(null),
       ]);
 
       // 12~16. 색상/별색/투명도/해상도/폰트 검출 결과 → errors/warnings/metadata 매핑.
@@ -327,6 +341,9 @@ export class PdfValidatorService {
       this.applyInkTacWarning(colorModeResult.inkTac, options, warnings, metadata);
       // R4a: 주석/양식 경고 — 동일하게 분리된 additive 단계.
       this.applyAnnotationWarning(annotationResult, warnings, metadata);
+      // R4b: 화이트 오버프린트·페이지 기하 경고.
+      this.applyWhiteOverprintWarning(whiteOverprintResult, warnings, metadata);
+      this.applyPageGeometryWarning(geometryResult, warnings);
 
       this.logger.log(
         `Validation complete: ${errors.length === 0 ? 'PASS' : 'FAIL'} (errors: ${errors.length}, warnings: ${warnings.length})`,
@@ -598,6 +615,68 @@ export class PdfValidatorService {
   }
 
   /**
+   * R4b (2026-08-11): 화이트 오버프린트 경고 — 흰색+오버프린트 페인트 = 인쇄 시 소멸.
+   * GWG 는 텍스트를 error 등급으로 분류하나 기존 품질계 관행(비차단)을 유지하되
+   * 소멸 위험을 문구로 명시한다. 검출 부재(null=미스캔·대형파일)는 스킵.
+   */
+  private applyWhiteOverprintWarning(
+    det: WhiteOverprintResult | null,
+    warnings: ValidationWarning[],
+    metadata: PdfMetadata,
+  ): void {
+    if (!det) return;
+    metadata.hasWhiteOverprint = det.hasWhiteOverprint;
+    if (!det.hasWhiteOverprint) return;
+
+    const parts: string[] = [];
+    if (det.textPages.length > 0) parts.push(`텍스트(${det.textPages.join(', ')}페이지)`);
+    if (det.pathPages.length > 0) parts.push(`도형(${det.pathPages.join(', ')}페이지)`);
+    warnings.push({
+      code: WarningCode.WHITE_OVERPRINT_DETECTED,
+      message: `흰색 ${parts.join('·')}에 오버프린트가 설정되어 있습니다 — 인쇄 시 해당 요소가 **보이지 않게 됩니다**. 디자인 프로그램에서 흰색 요소의 오버프린트를 해제한 뒤 다시 업로드해 주세요.`,
+      details: {
+        textPages: det.textPages,
+        pathPages: det.pathPages,
+        scannedStreams: det.scannedStreams,
+        basis: 'qdf_operator_scan',
+        // GWG 2022 R0007(텍스트=error)/R0008(패스=warning) — 우리 관행상 비차단 경고
+        gwgSeverity: det.textPages.length > 0 ? 'error-grade' : 'warning-grade',
+      },
+      autoFixable: false,
+    });
+  }
+
+  /**
+   * R4b: 페이지 기하 이상 경고 — UserUnit(스케일 왜곡 위험)·Rotate·CropBox 불일치.
+   * Rotate/CropBox 는 GS 재증류가 정규화하므로 정보성, UserUnit 만 주의 톤.
+   */
+  private applyPageGeometryWarning(
+    det: PageGeometryResult | null,
+    warnings: ValidationWarning[],
+  ): void {
+    if (!det) return;
+    const issues: string[] = [];
+    if (det.userUnitPages.length > 0)
+      issues.push(`페이지 스케일 계수(UserUnit) 사용: ${det.userUnitPages.join(', ')}페이지 — 실제 인쇄 크기가 표기와 다를 수 있습니다`);
+    if (det.rotatedPages.length > 0)
+      issues.push(`회전(Rotate) 페이지: ${det.rotatedPages.join(', ')} — 변환 과정에서 방향을 정규화합니다`);
+    if (det.cropBoxMismatchPages.length > 0)
+      issues.push(`표시영역(CropBox)≠실판형: ${det.cropBoxMismatchPages.join(', ')}페이지 — 뷰어에서 보이던 범위와 인쇄 범위가 다를 수 있습니다`);
+    if (issues.length === 0) return;
+
+    warnings.push({
+      code: WarningCode.PAGE_GEOMETRY_ABNORMAL,
+      message: `페이지 설정 특이사항이 있습니다: ${issues.join(' / ')}`,
+      details: {
+        userUnitPages: det.userUnitPages,
+        rotatedPages: det.rotatedPages,
+        cropBoxMismatchPages: det.cropBoxMismatchPages,
+      },
+      autoFixable: false,
+    });
+  }
+
+  /**
    * 트랙 B-(d): 경량(스트리밍) 검증 ON 경로.
    *
    * 기존 validate()(OFF) 는 파일 전체를 메모리(Uint8Array)에 올리고 pdf-lib 로 load 하므로
@@ -804,7 +883,17 @@ export class PdfValidatorService {
       // 같은 GS 게이트로 ink_cov 를 측정한다 — dl.path 입력, fileSize 는 precomputed).
       this.applyInkTacWarning(colorModeResult.inkTac, options, warnings, metadata);
       // R4a: 주석/양식 경고 — OFF 와 동일 additive 단계(qpdf 파일 기반이라 상수 메모리).
-      this.applyAnnotationWarning(await detectAnnotationsQpdf(dl.path), warnings, metadata);
+      // R4b: 기하·화이트 오버프린트 동거(화이트 OP 는 대형 파일 생략 — QDF 팽창 비용).
+      const [annotDet, geomDet, wopDet] = await Promise.all([
+        detectAnnotationsQpdf(dl.path),
+        detectPageGeometryQpdf(dl.path),
+        dl.size <= VALIDATION_CONFIG.LARGE_FILE_THRESHOLD
+          ? detectWhiteOverprintQpdf(dl.path)
+          : Promise.resolve(null),
+      ]);
+      this.applyAnnotationWarning(annotDet, warnings, metadata);
+      this.applyWhiteOverprintWarning(wopDet, warnings, metadata);
+      this.applyPageGeometryWarning(geomDet, warnings);
 
       this.logger.log(
         `Validation complete: ${errors.length === 0 ? 'PASS' : 'FAIL'} (errors: ${errors.length}, warnings: ${warnings.length})`,

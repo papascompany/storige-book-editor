@@ -92,6 +92,18 @@ export enum WarningCode {
    * 경량(qpdf) 병합·pass-through 경로에는 잔존할 수 있어 재업로드 권장 문구를 쓴다.
    */
   ANNOTATIONS_DETECTED = 'ANNOTATIONS_DETECTED',
+  /**
+   * R4b (2026-08-11): 화이트 오버프린트 — 흰색 채움/획 + 오버프린트 ON 페인트.
+   * 인쇄 시 해당 객체 소멸(GWG R0007 텍스트=error 급 사고). 비차단 warning 이되
+   * 문구는 소멸 위험을 명시. 검출은 QDF 연산자 스캔(오탐 0 방향 보수 판정).
+   */
+  WHITE_OVERPRINT_DETECTED = 'WHITE_OVERPRINT_DETECTED',
+  /**
+   * R4b: 페이지 기하 이상(UserUnit≠1·Rotate≠0·CropBox≠MediaBox) — GWG R0002~R0006
+   * 슬라이스. Rotate/CropBox 는 재증류가 정규화하므로 정보성, UserUnit 은 스케일
+   * 왜곡 위험 고지. details.issues 로 세분.
+   */
+  PAGE_GEOMETRY_ABNORMAL = 'PAGE_GEOMETRY_ABNORMAL',
 }
 
 /**
@@ -186,6 +198,8 @@ export interface PdfMetadata {
   annotationCount?: number;
   /** R4a: 양식(AcroForm) 필드 존재 여부 — 검출 성공 시에만 기록 */
   hasAcroForm?: boolean;
+  /** R4b: 화이트 오버프린트 존재 여부 — 스캔 성공 시에만 기록 */
+  hasWhiteOverprint?: boolean;
 }
 
 /**
@@ -408,6 +422,28 @@ export interface AnnotationDetectionResult {
   subtypeCounts: Record<string, number>;
   /** 양식(AcroForm) 필드 존재 여부 */
   hasAcroForm: boolean;
+}
+
+/** R4b: 페이지 기하 이상 집계 (검출 실패 시 null) */
+export interface PageGeometryResult {
+  /** /UserUnit ≠ 1 페이지(1-base) — 페이지 스케일 왜곡(GWG error 급) */
+  userUnitPages: number[];
+  /** /Rotate ≠ 0 페이지 — 재증류가 굽기 처리(정보성) */
+  rotatedPages: number[];
+  /** 페이지 명시 /CropBox ≠ 상속 /MediaBox 페이지 — 재증류가 정규화(정보성) */
+  cropBoxMismatchPages: number[];
+}
+
+/** R4b: 화이트 오버프린트 스캔 결과 (스캔 실패/생략 시 null) */
+export interface WhiteOverprintResult {
+  /** 흰색 채움/획 + 오버프린트 ON 페인트 존재 여부 */
+  hasWhiteOverprint: boolean;
+  /** 텍스트 페인트로 검출된 페이지(1-base) — GWG 는 텍스트를 error 등급으로 분류 */
+  textPages: number[];
+  /** 패스/도형 페인트로 검출된 페이지(1-base) */
+  pathPages: number[];
+  /** 스캔한 페이지 콘텐츠 스트림 수 (Form XObject 내부는 v1 미스캔 — 한계 명시) */
+  scannedStreams: number;
 }
 
 /** TAC 측정 결과 (측정 실패/생략 시 결과 자체가 부재 — null/undefined) */

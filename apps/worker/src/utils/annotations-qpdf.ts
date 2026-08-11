@@ -1,7 +1,10 @@
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { Logger } from '@nestjs/common';
-import { AnnotationDetectionResult } from '../dto/validation-result.dto';
+import {
+  AnnotationDetectionResult,
+  PageGeometryResult,
+} from '../dto/validation-result.dto';
 
 const execFileAsync = promisify(execFile);
 const logger = new Logger('AnnotationsQpdf');
@@ -114,11 +117,10 @@ export function parseAnnotationsFromQpdfJson(doc: any): AnnotationDetectionResul
 }
 
 /**
- * qpdf --json 으로 주석/폼을 검출한다. 실패 시 null(경고 스킵 — 검증 무영향).
+ * qpdf --json(pages+objmap) 문서 객체 공용 취득 — 실패 시 null.
+ * (annotations·geometry 검출이 공유. 경고 code 3 stdout 회수는 pdf-metadata-qpdf 규약)
  */
-export async function detectAnnotationsQpdf(
-  filePath: string,
-): Promise<AnnotationDetectionResult | null> {
+export async function fetchQpdfJson(filePath: string): Promise<any | null> {
   try {
     let stdout: string;
     try {
@@ -136,17 +138,124 @@ export async function detectAnnotationsQpdf(
         throw e;
       }
     }
-    const result = parseAnnotationsFromQpdfJson(JSON.parse(stdout));
-    if (result.annotationCount > 0 || result.hasAcroForm) {
-      logger.debug(
-        `annotations: ${result.annotationCount} (pages ${result.pagesWithAnnotations.join(',')}), acroForm=${result.hasAcroForm}`,
-      );
-    }
-    return result;
+    return JSON.parse(stdout);
   } catch (err: any) {
     logger.warn(
-      `annotation detection failed for '${filePath}' (${err?.code ?? err?.message}) — 경고 스킵`,
+      `qpdf --json fetch failed for '${filePath}' (${err?.code ?? err?.message})`,
     );
     return null;
   }
+}
+
+/**
+ * qpdf --json 으로 주석/폼을 검출한다. 실패 시 null(경고 스킵 — 검증 무영향).
+ */
+export async function detectAnnotationsQpdf(
+  filePath: string,
+): Promise<AnnotationDetectionResult | null> {
+  const doc = await fetchQpdfJson(filePath);
+  if (!doc) return null;
+  const result = parseAnnotationsFromQpdfJson(doc);
+  if (result.annotationCount > 0 || result.hasAcroForm) {
+    logger.debug(
+      `annotations: ${result.annotationCount} (pages ${result.pagesWithAnnotations.join(',')}), acroForm=${result.hasAcroForm}`,
+    );
+  }
+  return result;
+}
+
+// ============================================================
+// R4b (2026-08-11): 페이지 기하 이상 검출 — GWG R0002~R0006 슬라이스
+// ============================================================
+
+/**
+ * 페이지 기하 이상을 집계한다(순수 — 테스트 대상).
+ *
+ * - /UserUnit ≠ 1 : 페이지 스케일 왜곡(GWG error 급) — 재증류로도 안 고쳐질 수 있어 고지.
+ * - /Rotate ≠ 0(mod 360) : 뷰어 회전 의존 — GS 재증류가 굽기(bake) 처리하므로 정보성.
+ * - 페이지 명시 /CropBox ≠ 상속 /MediaBox : 뷰어 표시영역과 실판형 불일치 — 재증류가
+ *   정규화하므로 정보성. (CropBox 는 상속 가능하나 v1 은 페이지 명시 선언만 본다 —
+ *   부모 상속 CropBox 는 드물고, 오탐 방지가 우선)
+ */
+export function parsePageGeometryFromQpdfJson(doc: any): PageGeometryResult {
+  const pageList: any[] = Array.isArray(doc?.pages) ? doc.pages : [];
+  const objmap: Record<string, any> = Array.isArray(doc?.qpdf)
+    ? doc.qpdf[1] ?? {}
+    : {};
+
+  const userUnitPages: number[] = [];
+  const rotatedPages: number[] = [];
+  const cropBoxMismatchPages: number[] = [];
+  const TOL_PT = 0.5;
+
+  pageList.forEach((p, idx) => {
+    const pageDict = unwrapObject(objmap, p?.object ?? '');
+    if (!pageDict) return;
+    const pageNo = idx + 1;
+
+    const userUnit = resolveMaybeRef(objmap, pageDict['/UserUnit']);
+    if (typeof userUnit === 'number' && Math.abs(userUnit - 1) > 1e-9) {
+      userUnitPages.push(pageNo);
+    }
+
+    const rotate = resolveMaybeRef(objmap, pageDict['/Rotate']);
+    if (typeof rotate === 'number' && ((rotate % 360) + 360) % 360 !== 0) {
+      rotatedPages.push(pageNo);
+    }
+
+    // 페이지 명시 CropBox vs 상속 MediaBox (둘 다 해석 가능할 때만 — 오탐 방지)
+    const cropRaw = pageDict['/CropBox'];
+    if (cropRaw !== undefined) {
+      const crop = resolveMaybeRef(objmap, cropRaw);
+      const media = resolveInheritedMediaBoxLocal(objmap, pageDict, p?.object ?? '');
+      if (
+        Array.isArray(crop) &&
+        crop.length === 4 &&
+        crop.every((v: any) => typeof v === 'number') &&
+        media
+      ) {
+        const mismatch = crop.some(
+          (v: number, i: number) => Math.abs(v - media[i]) > TOL_PT,
+        );
+        if (mismatch) cropBoxMismatchPages.push(pageNo);
+      }
+    }
+  });
+
+  return { userUnitPages, rotatedPages, cropBoxMismatchPages };
+}
+
+/** MediaBox 상속 해석 — pdf-metadata-qpdf.resolveInheritedMediaBox 와 동일 규약(사본) */
+function resolveInheritedMediaBoxLocal(
+  objmap: Record<string, any>,
+  pageDict: any,
+  pageRef: string,
+): number[] | null {
+  const seen = new Set<string>();
+  let node: any = pageDict;
+  let nodeRef: string | null = pageRef;
+  while (node && typeof node === 'object') {
+    const mb = node['/MediaBox'];
+    if (Array.isArray(mb) && mb.length === 4) {
+      const nums = mb.map((n: any) => (typeof n === 'number' ? n : Number(n)));
+      if (nums.some((v: number) => !Number.isFinite(v))) return null;
+      return nums;
+    }
+    const parentRef: string | undefined = node['/Parent'];
+    if (!parentRef || typeof parentRef !== 'string') break;
+    if (nodeRef) seen.add(nodeRef);
+    if (seen.has(parentRef)) break;
+    node = unwrapObject(objmap, parentRef);
+    nodeRef = parentRef;
+  }
+  return null;
+}
+
+/** 페이지 기하 이상 검출 — 실패 시 null(경고 스킵). */
+export async function detectPageGeometryQpdf(
+  filePath: string,
+): Promise<PageGeometryResult | null> {
+  const doc = await fetchQpdfJson(filePath);
+  if (!doc) return null;
+  return parsePageGeometryFromQpdfJson(doc);
 }

@@ -947,6 +947,8 @@ export interface WorkerPdfMetadata {
   annotationCount?: number;
   /** R4a: 양식(AcroForm) 필드 존재 여부 — 검출 성공 시에만 기록 (additive) */
   hasAcroForm?: boolean;
+  /** R4b (2026-08-11): 화이트 오버프린트 존재 여부 — 스캔 성공 시에만 기록 (additive) */
+  hasWhiteOverprint?: boolean;
 }
 
 /**
