@@ -79,6 +79,13 @@ export enum WarningCode {
    * details: { paperType?, binding, reason: 'UNMAPPED_PAPER'|'V1_FALLBACK'|'HARDCOVER_PAGE_RULE'|'NO_SPINE_PARAMS' }
    */
   SPINE_PARAMS_UNRESOLVED = 'SPINE_PARAMS_UNRESOLVED',
+  /**
+   * R3 (2026-08-11): TAC(잉크총량) 한계 초과 — 비차단 warning 전용(GWG 2022 도 TAC 는
+   * warning 등급). 판정 기준은 GS ink_cov 의 **페이지 평균** 잉크량 합(c+m+y+k)이라
+   * 국소 최대 TAC 와 다르다 — 페이지 평균이 한계를 넘으면 사실상 전면 과다잉크
+   * (전면 리치블랙 배경 등)로, 오탐 없는 보수적 신호다. details.basis 참조.
+   */
+  INK_TAC_EXCEEDED = 'INK_TAC_EXCEEDED',
 }
 
 /**
@@ -165,6 +172,10 @@ export interface PdfMetadata {
   trimBox?: { width: number; height: number };
   /** C-2a: 재단 기하(TrimBox) 명시 선언 여부 — crop mark 검증 수행 시에만 기록 */
   hasCropMarkGeometry?: boolean;
+  /** R3: 최대 페이지 평균 TAC(%) — ink_cov 측정 성공 시에만 기록 */
+  maxTacPercent?: number;
+  /** R3: 적용된 TAC 한계(%) — ink_cov 측정 성공 시에만 기록 */
+  tacLimitPercent?: number;
 }
 
 /**
@@ -210,6 +221,12 @@ export interface ValidationOptions {
     spineWidthMm?: number;
     /** R-44: 내지 지종 라벨(감사·재계산 추적용 — 워커는 두께표를 직접 조회하지 않음) */
     paperType?: string;
+    /**
+     * R3 (2026-08-11): TAC(잉크총량) 경고 한계(%) — API 가 지종별 값을 주입하는 자리
+     * (R-44 spineWidthMm 와 동일한 '서버 주입 권위값' 패턴 — 워커는 지종표를 직접
+     * 조회하지 않는다). 미제공 시 env TAC_WARN_PERCENT → 기본 320(GWG SheetCMYK).
+     */
+    tacLimitPercent?: number;
     /** R-44: 표지 spine 검증 허용오차(mm) 오버라이드. 미제공 시 env/기본값(2mm) */
     spineToleranceMm?: number;
     /** R-44: spineWidthMm 출처('server'=API 재계산 주입) — details.spineSource 로 노출 */
@@ -351,6 +368,34 @@ export interface InkCoverageResult {
   colorMode: 'CMYK' | 'RGB' | 'GRAY' | 'MIXED';
 }
 
+// ============================================================
+// R3 (2026-08-11): TAC(잉크총량) 측정 결과
+// ============================================================
+
+/**
+ * 페이지별 TAC 측정치.
+ * ⚠️ 기준: GS `ink_cov`(전통 잉크량 — 페이지 평균 채널값 합×100). 기존 검출의
+ * `inkcov`(픽셀 마킹 비율)와 디바이스가 다르다 — 마킹 비율 합산은 TAC 가 아니다.
+ */
+export interface InkTacPageResult {
+  /** 페이지 번호 (1-base, 분석 순서) */
+  page: number;
+  /** 페이지 평균 TAC(%) = (c+m+y+k)×100, 소수 1자리 */
+  tacPercent: number;
+}
+
+/** TAC 측정 결과 (측정 실패/생략 시 결과 자체가 부재 — null/undefined) */
+export interface InkTacResult {
+  /** 페이지별 TAC */
+  pages: InkTacPageResult[];
+  /** 최대 페이지 평균 TAC(%) */
+  maxTacPercent: number;
+  /** 최대 TAC 페이지 번호 (1-base) */
+  maxTacPage: number;
+  /** 분석된 페이지 수 (GS_MAX_PAGES 캡 반영 — 캡 초과분은 미분석) */
+  analyzedPages: number;
+}
+
 /**
  * 통합 컬러 모드 감지 결과
  */
@@ -363,6 +408,11 @@ export interface ColorModeResult {
   cmykStructure: CmykStructureResult;
   /** 2차 GS inkcov 결과 (선택적) */
   inkCoverage?: InkCoverageResult;
+  /**
+   * R3: GS ink_cov TAC 측정 결과 (선택적 — inkcov 와 같은 게이트에서만 시도,
+   * 측정 실패는 null 흡수 후 부재). additive — 기존 소비자 무영향.
+   */
+  inkTac?: InkTacResult;
   /** 경고 메시지 */
   warnings: string[];
 }

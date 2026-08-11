@@ -93,6 +93,14 @@ export const VALIDATION_CONFIG = {
   RECOMMENDED_DPI: 300,
   /** 최소 허용 해상도 (DPI) - 이 값 미만이면 경고 */
   MIN_ACCEPTABLE_DPI: 150,
+
+  // R3 (2026-08-11): TAC(잉크총량) 경고
+  /**
+   * TAC 경고 임계(%). 기본 320 = GWG 2022 SheetCMYK(매엽 오프셋) 한계.
+   * 우선순위: orderOptions.tacLimitPercent(API 가 지종별로 주입 — R-44 spine 패턴) →
+   * env TAC_WARN_PERCENT → 이 기본값. 비차단 warn 전용(GWG 도 TAC 는 warning 등급).
+   */
+  TAC_WARN_PERCENT: Number(process.env.TAC_WARN_PERCENT) || 320,
 } as const;
 
 export type ValidationConfig = typeof VALIDATION_CONFIG;

@@ -7,6 +7,8 @@ import { VALIDATION_CONFIG } from '../config/validation.config';
 import {
   InkCoverageResult,
   InkCoveragePageResult,
+  InkTacResult,
+  InkTacPageResult,
   SpotColorResult,
   TransparencyResult,
   ImageResolutionResult,
@@ -663,6 +665,92 @@ function parseInkCoverage(output: string): InkCoverageResult {
     totalCmykUsage,
     colorMode,
   };
+}
+
+// ============================================================
+// R3 (2026-08-11): TAC(잉크총량) 측정 — GS ink_cov
+// ============================================================
+
+/**
+ * `ink_cov` 출력을 InkTacResult 로 파싱한다(순수 — 테스트 대상).
+ *
+ * 출력 형식은 inkcov 와 동일한 4채널 라인("0.04093  0.10046  0.14113  0.06259 CMYK OK")
+ * 이지만 의미가 다르다: inkcov=채널을 마킹한 픽셀 비율, **ink_cov=페이지 평균 잉크량**.
+ * TAC 는 후자의 합(×100)으로만 계산해야 한다.
+ *
+ * 측정치가 페이지 '평균'이므로 국소 최대 TAC 의 하한이다 — 평균이 한계를 넘으면
+ * 사실상 전면 과다잉크(전면 리치블랙 배경 등) 확정. 정밀(국소) TAC 는 별도 설계(백로그).
+ */
+export function parseInkTacOutput(output: string): InkTacResult | null {
+  const pages: InkTacPageResult[] = [];
+  const lines = output.trim().split('\n');
+
+  for (const line of lines) {
+    const match = line.match(
+      /^\s*(\d+\.?\d*)\s+(\d+\.?\d*)\s+(\d+\.?\d*)\s+(\d+\.?\d*)/,
+    );
+    if (!match) continue;
+    const [, c, m, y, k] = match;
+    const sum =
+      parseFloat(c) + parseFloat(m) + parseFloat(y) + parseFloat(k);
+    if (!Number.isFinite(sum)) continue;
+    pages.push({
+      page: pages.length + 1,
+      tacPercent: Math.round(sum * 1000) / 10, // ×100, 소수 1자리
+    });
+  }
+
+  if (pages.length === 0) return null;
+
+  let maxTacPercent = 0;
+  let maxTacPage = 1;
+  for (const p of pages) {
+    if (p.tacPercent > maxTacPercent) {
+      maxTacPercent = p.tacPercent;
+      maxTacPage = p.page;
+    }
+  }
+
+  return { pages, maxTacPercent, maxTacPage, analyzedPages: pages.length };
+}
+
+/**
+ * GS `ink_cov` 로 페이지 평균 TAC 를 측정한다.
+ *
+ * 게이팅·캡은 detectCmykUsage(inkcov)와 동일 계층(콜러=detectColorMode 의 GS 게이트
+ * 안에서만 호출됨, GS_MAX_PAGES 캡). 실패는 **null 흡수**(R2 poppler 와 동일 규약) —
+ * TAC 는 비차단 경고 전용이라 측정 실패가 검증을 방해하면 안 된다.
+ */
+export async function detectInkTac(
+  inputPath: string,
+  maxPages?: number,
+): Promise<InkTacResult | null> {
+  const effectiveMaxPages = maxPages ?? VALIDATION_CONFIG.GS_MAX_PAGES;
+
+  const args = [
+    '-q',
+    '-dBATCH',
+    '-dNOPAUSE',
+    '-dSAFER',
+    '-sDEVICE=ink_cov',
+    `-dLastPage=${effectiveMaxPages}`,
+    '-o', '-',
+    inputPath,
+  ];
+
+  try {
+    const output = await runGhostscriptWithTimeout(args);
+    const result = parseInkTacOutput(output);
+    if (result) {
+      logger.debug(
+        `ink_cov result: ${result.analyzedPages} pages, maxTAC=${result.maxTacPercent}% (p${result.maxTacPage})`,
+      );
+    }
+    return result;
+  } catch (error) {
+    logger.warn(`ink_cov analysis failed: ${error.message}`);
+    return null;
+  }
 }
 
 // ============================================================

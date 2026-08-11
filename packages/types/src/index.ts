@@ -939,6 +939,10 @@ export interface WorkerPdfMetadata {
   trimBox?: { width: number; height: number };
   /** C-2a: 재단 기하(TrimBox) 명시 선언 여부 — crop mark 검증 수행 시에만 기록 */
   hasCropMarkGeometry?: boolean;
+  /** R3 (2026-08-11): 최대 페이지 평균 TAC(%) — GS ink_cov 측정 성공 시에만 기록 (additive) */
+  maxTacPercent?: number;
+  /** R3: 적용된 TAC 경고 한계(%) — 측정 성공 시에만 기록 (additive) */
+  tacLimitPercent?: number;
 }
 
 /**

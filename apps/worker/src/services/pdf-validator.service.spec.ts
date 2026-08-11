@@ -50,6 +50,8 @@ jest.mock('../utils/ghostscript', () => ({
     unembeddedFonts: [],
     allFontsEmbedded: true,
   }),
+  // R3: 기본 null = TAC 측정 부재(경고 스킵). R3 describe 에서 개별 override.
+  detectInkTac: jest.fn().mockResolvedValue(null),
 }));
 
 // R2: poppler 정밀 검출은 기본 null(미가용) 모킹 — 기존 74 테스트는 전부 '정규식 폴백'
@@ -1673,6 +1675,126 @@ describe('PdfValidatorService', () => {
       expect(detectImageResolutionPoppler).toHaveBeenCalled();
       expect(detectFonts).toHaveBeenCalled();
       expect(detectImageResolutionFromPdf).toHaveBeenCalled();
+    });
+  });
+
+  // ============================================================
+  // R3 (2026-08-11): TAC(잉크총량) 경고 계약
+  // ============================================================
+  describe('R3 TAC 잉크총량 경고', () => {
+    beforeEach(() => {
+      jest.clearAllMocks();
+    });
+
+    const baseOptions = (extra: Record<string, unknown> = {}): ValidationOptions => ({
+      fileType: 'content',
+      orderOptions: {
+        size: { width: 210, height: 297 },
+        pages: 1,
+        binding: 'perfect',
+        bleed: 0,
+        ...extra,
+      },
+    });
+
+    const makePdf = async () => {
+      const pdfBytes = await PDFDocument.create().then((doc) => {
+        doc.addPage([210 * 2.83465, 297 * 2.83465]);
+        return doc.save();
+      });
+      mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
+    };
+
+    /** detectColorMode 를 스파이해 inkTac 만 주입 — GS 게이트 내부와 무관하게 매핑 계약 검증 */
+    const spyColorMode = (inkTac: unknown) =>
+      jest.spyOn(service, 'detectColorMode').mockResolvedValue({
+        colorMode: 'CMYK',
+        confidence: 'high',
+        cmykStructure: { hasCmykSignature: true, suspectedCmyk: true, signatures: [] },
+        inkTac,
+        warnings: [],
+      } as any);
+
+    it('페이지 평균 TAC 가 한계(기본 320%)를 넘으면 비차단 경고 + 메타데이터를 남긴다', async () => {
+      await makePdf();
+      spyColorMode({
+        pages: [
+          { page: 1, tacPercent: 120.5 },
+          { page: 2, tacPercent: 361.2 },
+        ],
+        maxTacPercent: 361.2,
+        maxTacPage: 2,
+        analyzedPages: 2,
+      });
+
+      const result = await service.validate('./tac.pdf', baseOptions());
+
+      const w = result.warnings.find((x) => x.code === WarningCode.INK_TAC_EXCEEDED);
+      expect(w).toBeDefined();
+      expect(w?.message).toContain('361.2%');
+      expect(w?.message).toContain('2페이지');
+      expect(w?.message).toContain('320%');
+      expect(w?.details?.basis).toBe('ink_cov_page_average');
+      expect(w?.details?.limitSource).toBe('config');
+      expect(w?.details?.exceededPageCount).toBe(1);
+      expect(w?.autoFixable).toBe(false);
+      expect(result.metadata.maxTacPercent).toBe(361.2);
+      expect(result.metadata.tacLimitPercent).toBe(320);
+      // 비차단: TAC 경고만으로 isValid 가 꺾이지 않는다
+      expect(result.errors.find((e) => String(e.code).includes('TAC'))).toBeUndefined();
+    });
+
+    it('orderOptions.tacLimitPercent(API 지종별 주입)가 기본 한계보다 우선한다', async () => {
+      await makePdf();
+      spyColorMode({
+        pages: [{ page: 1, tacPercent: 260 }],
+        maxTacPercent: 260,
+        maxTacPage: 1,
+        analyzedPages: 1,
+      });
+
+      // 기본 320% 로는 통과하는 260% 가, 주입 한계 250% 에서는 경고돼야 한다.
+      const result = await service.validate(
+        './tac.pdf',
+        baseOptions({ tacLimitPercent: 250, paperType: 'mat-120' }),
+      );
+
+      const w = result.warnings.find((x) => x.code === WarningCode.INK_TAC_EXCEEDED);
+      expect(w).toBeDefined();
+      expect(w?.details?.limitPercent).toBe(250);
+      expect(w?.details?.limitSource).toBe('order');
+      expect(w?.details?.paperType).toBe('mat-120');
+      expect(result.metadata.tacLimitPercent).toBe(250);
+    });
+
+    it('한계 이내면 경고 없이 메타데이터만 스탬프한다(운영 계측)', async () => {
+      await makePdf();
+      spyColorMode({
+        pages: [{ page: 1, tacPercent: 180 }],
+        maxTacPercent: 180,
+        maxTacPage: 1,
+        analyzedPages: 1,
+      });
+
+      const result = await service.validate('./tac.pdf', baseOptions());
+
+      expect(
+        result.warnings.find((x) => x.code === WarningCode.INK_TAC_EXCEEDED),
+      ).toBeUndefined();
+      expect(result.metadata.maxTacPercent).toBe(180);
+      expect(result.metadata.tacLimitPercent).toBe(320);
+    });
+
+    it('측정 부재(GS 미가용·대형파일·ink_cov 실패)면 경고·메타 모두 없다 — 검증 무영향', async () => {
+      await makePdf();
+      // 기본 detectInkTac 모킹 = null → detectColorMode 실경로여도 inkTac 부재.
+      const result = await service.validate('./tac.pdf', baseOptions());
+
+      expect(
+        result.warnings.find((x) => x.code === WarningCode.INK_TAC_EXCEEDED),
+      ).toBeUndefined();
+      expect(result.metadata.maxTacPercent).toBeUndefined();
+      expect(result.metadata.tacLimitPercent).toBeUndefined();
     });
   });
 

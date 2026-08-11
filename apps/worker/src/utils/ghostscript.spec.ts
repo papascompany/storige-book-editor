@@ -18,6 +18,7 @@ import {
   detectTransparencyAndOverprint,
   detectImageResolutionFromPdf,
   detectFonts,
+  parseInkTacOutput,
 } from './ghostscript';
 
 describe('Ghostscript Utilities', () => {
@@ -730,6 +731,45 @@ describe('Ghostscript Utilities', () => {
           expect(typeof firstImage.minEffectiveDpi).toBe('number');
         }
       });
+    });
+  });
+
+  // ============================================================
+  // R3 (2026-08-11): parseInkTacOutput — ink_cov 페이지 평균 TAC 파싱
+  // ============================================================
+  describe('parseInkTacOutput (R3)', () => {
+    it('페이지별 채널 합×100 으로 TAC 를 계산하고 최대 페이지를 짚는다', () => {
+      // ink_cov 실출력 형식: "C  M  Y  K CMYK OK" (페이지 평균 잉크량 0~1)
+      const out =
+        ' 0.04093  0.10046  0.14113  0.06259 CMYK OK\n' +
+        ' 0.90000  0.85000  0.80000  0.95000 CMYK OK\n' +
+        ' 0.00000  0.00000  0.00000  0.12000 CMYK OK\n';
+
+      const r = parseInkTacOutput(out);
+
+      expect(r).not.toBeNull();
+      expect(r!.analyzedPages).toBe(3);
+      expect(r!.pages[0].tacPercent).toBeCloseTo(34.5, 1); // (0.04093+0.10046+0.14113+0.06259)*100
+      expect(r!.pages[1].tacPercent).toBeCloseTo(350, 1); // 전면 리치블랙류
+      expect(r!.pages[2].tacPercent).toBeCloseTo(12, 1);
+      expect(r!.maxTacPercent).toBeCloseTo(350, 1);
+      expect(r!.maxTacPage).toBe(2);
+    });
+
+    it('4채널 라인이 하나도 없으면 null (측정 부재 = 경고 스킵 규약)', () => {
+      expect(parseInkTacOutput('GPL Ghostscript 10.0\nno pages')).toBeNull();
+      expect(parseInkTacOutput('')).toBeNull();
+    });
+
+    it('비수치/잡음 라인은 건너뛰고 유효 페이지만 집계한다', () => {
+      const out =
+        'Processing pages 1 through 2.\n' +
+        ' 0.10000  0.10000  0.10000  0.10000 CMYK OK\n' +
+        'Page 2\n' +
+        ' 0.20000  0.20000  0.20000  0.20000 CMYK OK\n';
+      const r = parseInkTacOutput(out);
+      expect(r!.analyzedPages).toBe(2);
+      expect(r!.maxTacPercent).toBeCloseTo(80, 1);
     });
   });
 });

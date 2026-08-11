@@ -26,6 +26,7 @@ import {
 import { calcHardcoverSpine, hardcoverCoverSpreadFromSpine } from '@storige/types';
 import {
   detectCmykUsage,
+  detectInkTac,
   isGhostscriptAvailable,
   detectSpotColors,
   detectTransparencyAndOverprint,
@@ -45,7 +46,7 @@ import {
   QpdfMetadataResult,
 } from '../utils/pdf-metadata-qpdf';
 import { scanPdfStreaming } from '../utils/streaming-pdf-scan';
-import { SpotColorResult, TransparencyResult, ImageResolutionResult, FontDetectionResult } from '../dto/validation-result.dto';
+import { SpotColorResult, TransparencyResult, ImageResolutionResult, FontDetectionResult, InkTacResult } from '../dto/validation-result.dto';
 
 // 기본 설정 (VALIDATION_CONFIG에서 가져오거나 폴백)
 const DEFAULT_MAX_FILE_SIZE = VALIDATION_CONFIG.MAX_FILE_SIZE;
@@ -317,6 +318,8 @@ export class PdfValidatorService {
         warnings,
         metadata,
       );
+      // R3: TAC 경고 — applyDetectionWarnings(변경 금지 계약)와 분리된 additive 단계.
+      this.applyInkTacWarning(colorModeResult.inkTac, options, warnings, metadata);
 
       this.logger.log(
         `Validation complete: ${errors.length === 0 ? 'PASS' : 'FAIL'} (errors: ${errors.length}, warnings: ${warnings.length})`,
@@ -487,6 +490,63 @@ export class PdfValidatorService {
         autoFixable: false,
       });
     }
+  }
+
+  /**
+   * R3 (2026-08-11): TAC(잉크총량) 경고 매핑 — OFF·ON 공통, additive 단계.
+   *
+   * applyDetectionWarnings(임의 변경 금지 계약)와 의도적으로 분리했다. TAC 는 비차단
+   * warning 전용(GWG 2022 도 warning 등급)이며, 측정 부재(inkTac 없음 = GS 미가용·
+   * 대형파일 생략·RGB 구조·ink_cov 실패)는 조용히 스킵한다 — 검증 결과에 영향 0.
+   *
+   * 한계 해석 순서: orderOptions.tacLimitPercent(API 지종별 주입 — R-44 서버 주입
+   * 패턴) → VALIDATION_CONFIG.TAC_WARN_PERCENT(env TAC_WARN_PERCENT → 기본 320).
+   *
+   * ⚠️ 판정 기준은 ink_cov 의 **페이지 평균** 잉크량 합 — 국소 최대 TAC 의 하한이다.
+   * 평균이 한계를 넘으면 사실상 전면 과다잉크 확정(오탐 없음), 국소 초과는 미탐 가능
+   * (정밀 TAC 는 백로그 — details.basis 로 기준을 명시해 하류 소비자 혼동 방지).
+   */
+  private applyInkTacWarning(
+    inkTac: InkTacResult | undefined,
+    options: ValidationOptions,
+    warnings: ValidationWarning[],
+    metadata: PdfMetadata,
+  ): void {
+    if (!inkTac) return;
+
+    const injectedLimit = options.orderOptions.tacLimitPercent;
+    const limitPercent =
+      injectedLimit != null && Number.isFinite(injectedLimit) && injectedLimit > 0
+        ? injectedLimit
+        : VALIDATION_CONFIG.TAC_WARN_PERCENT;
+
+    // 측정 성공 시 항상 스탬프(초과 여부 무관) — 운영 계측·리포트용.
+    metadata.maxTacPercent = inkTac.maxTacPercent;
+    metadata.tacLimitPercent = limitPercent;
+
+    if (inkTac.maxTacPercent <= limitPercent) return;
+
+    const exceededPages = inkTac.pages.filter((p) => p.tacPercent > limitPercent);
+    warnings.push({
+      code: WarningCode.INK_TAC_EXCEEDED,
+      message: `잉크총량(TAC)이 최대 ${inkTac.maxTacPercent}%(${inkTac.maxTacPage}페이지, 페이지 평균 기준)로 허용 한계 ${limitPercent}%를 초과합니다. 어두운 배경·리치블랙 영역의 잉크량을 줄여 주세요(건조 불량·뒷묻음 위험).`,
+      details: {
+        maxTacPercent: inkTac.maxTacPercent,
+        maxTacPage: inkTac.maxTacPage,
+        limitPercent,
+        limitSource: injectedLimit != null ? 'order' : 'config',
+        basis: 'ink_cov_page_average',
+        analyzedPages: inkTac.analyzedPages,
+        exceededPageCount: exceededPages.length,
+        // 대형 문서 폭주 방지 — 상세 목록은 상위 10페이지만.
+        exceededPages: exceededPages
+          .slice()
+          .sort((a, b) => b.tacPercent - a.tacPercent)
+          .slice(0, 10),
+        paperType: options.orderOptions.paperType,
+      },
+      autoFixable: false,
+    });
   }
 
   /**
@@ -692,6 +752,9 @@ export class PdfValidatorService {
         warnings,
         metadata,
       );
+      // R3: TAC 경고 — OFF 경로와 동일한 additive 단계(detectColorMode 가 ON 에서도
+      // 같은 GS 게이트로 ink_cov 를 측정한다 — dl.path 입력, fileSize 는 precomputed).
+      this.applyInkTacWarning(colorModeResult.inkTac, options, warnings, metadata);
 
       this.logger.log(
         `Validation complete: ${errors.length === 0 ? 'PASS' : 'FAIL'} (errors: ${errors.length}, warnings: ${warnings.length})`,
@@ -1825,8 +1888,12 @@ export class PdfValidatorService {
         };
       }
 
-      // inkcov 분석 실행
-      const inkCoverage = await detectCmykUsage(inputPath);
+      // inkcov 분석 실행 (+R3: ink_cov TAC 측정 병렬 — 같은 GS 게이트 안, wall-time 수렴.
+      // detectInkTac 은 실패를 null 로 흡수하므로 기존 inkcov 예외 폴백 분기는 불변)
+      const [inkCoverage, inkTac] = await Promise.all([
+        detectCmykUsage(inputPath),
+        detectInkTac(inputPath),
+      ]);
 
       // 후가공 파일 + CMYK 사용 = 오류 (별도 처리 필요시 여기서 throw)
       if (fileType === 'post_process' && inkCoverage.totalCmykUsage) {
@@ -1847,6 +1914,7 @@ export class PdfValidatorService {
         confidence: 'high',
         cmykStructure,
         inkCoverage,
+        inkTac: inkTac ?? undefined,
         warnings,
       };
     } catch (error) {
