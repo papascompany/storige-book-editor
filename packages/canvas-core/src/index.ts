@@ -39,6 +39,12 @@ export {
   default as SafeZoneWarningPlugin,
   type SafeZoneWarningOptions,
 } from './plugins/SafeZoneWarningPlugin'
+// R8 — 배치 이미지 유효 DPI 실시간 경고 (저해상 진입 전이 imageLowDpi 이벤트)
+export {
+  default as ImageDpiWarningPlugin,
+  type ImageDpiWarningOptions,
+  type ImageLowDpiPayload,
+} from './plugins/ImageDpiWarningPlugin'
 
 export { PluginBase } from './plugin'
 
