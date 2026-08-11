@@ -244,13 +244,43 @@ function samplePoints(points: [number, number][], budget: number): [number, numb
   return out
 }
 
+/** 이진 마스크에서 직접 윤곽을 추출할 때의 입력(R7 — 정밀 경로 이식용 공유 코어). */
+export interface MaskContourInput {
+  /** w×h 이진 마스크(1=전경). 마스크 판정 규약은 호출부 책임(알파 임계·erode 등). */
+  mask: Uint8Array
+  width: number
+  height: number
+  /** 컨투어 스캔 상한(CONTOUR_SCAN_LIMIT) */
+  scanLimit: number
+  /** convexHull 입력 점 예산(HULL_MAX_INPUT_POINTS) */
+  hullMaxInputPoints: number
+  /** 근사 epsilon = 둘레 × 이 비율(CONTOUR_APPROX_EPSILON_RATIO) */
+  approxEpsilonRatio: number
+}
+
 /**
  * 기본 윤곽 추출기 — `ContourExtractor` 계약의 순수 JS 구현.
  * 종전 cv 파이프라인의 면적 필터·스캔 상한·hull 규칙·근사 규약을 그대로 따른다.
  */
 export function extractContoursPure(input: ContourExtractInput): ContourExtractResult {
   const { data, width: w, height: h } = input
-  const mask = buildMask(data, w, h)
+  return extractContoursFromMask({
+    mask: buildMask(data, w, h),
+    width: w,
+    height: h,
+    scanLimit: input.scanLimit,
+    hullMaxInputPoints: input.hullMaxInputPoints,
+    approxEpsilonRatio: input.approxEpsilonRatio
+  })
+}
+
+/**
+ * 마스크 기반 윤곽 추출 코어 — extractContoursPure 와 정밀 경로(preciseOutline.ts)가 공유한다.
+ * 연결 성분→Moore 추적→(다중이면) hull→DP 근사 파이프라인과 면적>1000 필터·전량 필터 시
+ * 큰 순서 폴백은 extractContoursPure 규약 그대로다.
+ */
+export function extractContoursFromMask(input: MaskContourInput): ContourExtractResult {
+  const { mask, width: w, height: h } = input
   const { labels, components } = labelComponents(mask, w, h)
 
   // 면적 내림차순 → 필터(>1000) → 스캔 상한

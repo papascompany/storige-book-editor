@@ -3,13 +3,14 @@ import * as d3 from 'd3'
 import { v4 as uuid } from 'uuid'
 import { fabric } from 'fabric'
 import { PluginBase } from '../plugin'
-// P2-11/A — OpenCV lazy-loader 분리. module-level 캐시 공유.
-import { getCv } from '../utils/openCv'
 // 모양컷 '효과' 경로 진단 — 프로덕션에서도 window.__storigeTrace 로 읽을 수 있다.
 import { traceEnter, traceStep, yieldToBrowser } from '../utils/perfTrace'
 // 알파 윤곽 추출은 워커로 오프로드된다(주입식) — contourExtractor.ts 헤더 참조.
 import { getContourExtractor } from '../utils/contourExtractor'
 import { extractContoursPure } from '../utils/pureContour'
+// R7(2026-08-11): 정밀 경로(구 cv distanceTransform→findContours)의 순수 JS 이식 코어.
+// 이 플러그인은 더 이상 OpenCV 를 임포트하지 않는다 — openCv.ts 로더는 다른 소비자용으로만 남는다.
+import { computePreciseOutline } from '../utils/preciseOutline'
 
 class ImageProcessingPlugin extends PluginBase {
   name = 'ImageProcessingPlugin'
@@ -36,8 +37,8 @@ class ImageProcessingPlugin extends PluginBase {
   static readonly CONTOUR_MAX_POINTS = 2000
 
   /**
-   * convexHull 입력 점 예산. `findLargestContour` 는 선택된 컨투어의 모든 점을 모으는데,
-   * 경계가 복잡한 산출물에서는 수십만 점이 되어 matFromArray/convexHull 이 폭발한다.
+   * convexHull 입력 점 예산. 윤곽 추출기(pureContour)는 선택된 컨투어의 경계점을 모으는데,
+   * 경계가 복잡한 산출물에서는 수십만 점이 되어 hull 계산이 폭발한다.
    * 형태는 균등 샘플링으로 보존하면서 이 상한을 지킨다.
    */
   static readonly HULL_MAX_INPUT_POINTS = 20000
@@ -54,8 +55,9 @@ class ImageProcessingPlugin extends PluginBase {
     // D-6b① (2026-07-15): eager preload 제거 — 기존엔 여기서 startService() 를 즉시 실행해
     // ONNX 모델(≈88MB)+ort wasm(≈23MB)을 모든 캔버스 생성마다 받았다.
     // D-12d (2026-08-06, 샤드3): 배경제거 추론 자체가 서버(rembg 사이드카)로 이관되면서
-    // `@imgly/background-removal`(AGPL-3.0) 의존을 제거했다 — 이 플러그인에 남은 무거운
-    // 초기화는 OpenCV 뿐이고 `ensureCvReady()` 로 여전히 lazy 다.
+    // `@imgly/background-removal`(AGPL-3.0) 의존을 제거했다.
+    // R7 (2026-08-11): 마지막 OpenCV 의존(정밀 경로 3종)도 순수 JS 로 이식/제거 —
+    // 이 플러그인에는 무거운 초기화가 아예 없다.
     // 플러그인 생성은 어떤 네트워크/무거운 초기화도 트리거하지 않는다.
   }
 
@@ -214,10 +216,7 @@ class ImageProcessingPlugin extends PluginBase {
       multiplier?: number
     }
   ): Promise<fabric.Path | undefined> {
-    // OpenCV 선행 로드 (createPrecisePathFromObject 가 사용) — 마스크 렌더 전에
-    // 초기화를 시작해 미초기화 크래시/후행 대기를 방지 (멱등)
-    await this.ensureCvReady()
-
+    // R7: OpenCV 선행 로드 제거 — createPrecisePathFromObject 는 순수 JS 다.
     const maskImage = await this.extractMaskImageFromObject(object, opts)
 
 
@@ -281,9 +280,7 @@ class ImageProcessingPlugin extends PluginBase {
       multiplier?: number
     }
   ): Promise<fabric.Path | undefined> {
-    // OpenCV 선행 로드 (createPrecisePathFromObject 가 사용) — 멱등
-    await this.ensureCvReady()
-
+    // R7: OpenCV 선행 로드 제거 — createPrecisePathFromObject 는 순수 JS 다.
     const multiplier = opts?.multiplier ?? 3
     const strokeWidthPx = Math.max(0, Math.round(opts?.strokeWidth ?? 0))
 
@@ -348,13 +345,8 @@ class ImageProcessingPlugin extends PluginBase {
     return path
   }
 
-  /**
-   * OpenCV(WASM ≈수 MB) lazy 초기화 — 칼선/크롭/윤곽 추출이 실제로 필요할 때만 받는다.
-   * openCv.ts 의 module-level promise 캐시를 공유(멱등·실패 시 재시도 가능).
-   */
-  ensureCvReady(): Promise<any> {
-    return getCv()
-  }
+  // R7(2026-08-11): ensureCvReady() 제거 — 이 플러그인의 cv 사용부(정밀 경로 3종)가 전부
+  // 순수 JS 로 이식/삭제되어 로더 위임 자체가 사라졌다. openCv.ts 는 삭제하지 않는다(별도 소비자).
 
   /**
    * 알파 기준 트림 — 투명 여백을 잘라낸 dataURL 을 돌려준다.
@@ -548,7 +540,7 @@ class ImageProcessingPlugin extends PluginBase {
     //    알파가 없는 이미지(= 일반 JPEG 사진)의 칼선은 createExpandedPath 로 끝나 OpenCV 가
     //    전혀 필요 없는데, 종전에는 진입점에서 무조건 로드해 10MB 파싱/컴파일이 메인 스레드를
     //    점유했다 → 모양컷 업로드 직후 브라우저 '응답 없는 페이지'.
-    //    로드는 실제로 cv 를 쓰는 분기(getObjectPathData 의 hasAlpha 경로)에서만 한다.
+    //    R7(2026-08-11): hasAlpha 경로도 순수 JS 추출기(pureContour)라 cv 로드는 어디에도 없다.
     const pathData = await this.getObjectPathData(item)
     if (!pathData) {
       console.error('Failed to generate path data')
@@ -1252,6 +1244,21 @@ class ImageProcessingPlugin extends PluginBase {
     }
   }
 
+  /**
+   * 알파 기반 정밀 경로 추출 — 순수 JS (R7, 2026-08-11 cv 이식).
+   *
+   * 종전 cv 파이프라인(split→threshold→distanceTransform→findContours→hull)을
+   * `computePreciseOutline`(preciseOutline.ts)으로 대체했다 — opencv-js 는 이 프로젝트의
+   * 어떤 환경에서도 초기화가 끝나지 않았다(pureContour.ts 헤더 실측).
+   *
+   * 보존한 종전 계약: 시그니처·옵션 의미(threshold=알파 초과 이진화, insetPx=요청 배율
+   * 래스터 좌표계의 안쪽 오프셋, smooth=d3 곡선 보간, multiplier=래스터 배율) ·
+   * calcTransformMatrix 월드 좌표 변환 · 반환 fabric.Path(left/top 0, scale=objectScale/multiplier).
+   *
+   * ⚠️ 픽셀 예산(b019994 재발 방지): 입력이 마스크 이미지(이미 dpr×multiplier 곱해진 대형)일
+   * 수 있어, 요청 배율 그대로 래스터하면 수억 픽셀이 된다. 장변 캡을 넘지 않는 배율로만
+   * 래스터하고 좌표를 선형 역보정한다 — 최종 칼선은 벡터 path 라 정밀도는 유지된다.
+   */
   async createPrecisePathFromObject(
     object: fabric.Object,
     opts?: {
@@ -1261,51 +1268,52 @@ class ImageProcessingPlugin extends PluginBase {
       multiplier?: number // 크기 배율(기본 1)
     }
   ): Promise<fabric.Path | undefined> {
-    const cv = await this.ensureCvReady()
     const threshold = opts?.threshold ?? 225
     const insetPx = Math.max(0, opts?.insetPx ?? 2)
     const smooth = opts?.smooth ?? true
+    const requestedMultiplier = opts?.multiplier ?? 1
+
+    // 장변 캡 — 래스터 생성 **전에** 배율을 줄여야 중간 캔버스 폭발이 없다.
+    const baseLongEdge = Math.max(object.width ?? 1, object.height ?? 1, 1)
+    const capRatio = Math.min(
+      1,
+      ImageProcessingPlugin.CONTOUR_MAX_LONG_EDGE / (baseLongEdge * requestedMultiplier)
+    )
 
     const element = object.toCanvasElement({
-      multiplier: (opts?.multiplier ?? 1),
+      multiplier: requestedMultiplier * capRatio,
       withoutTransform: true,
       enableRetinaScaling: false,
     }) as HTMLCanvasElement
 
-    const src = cv.imread(element)
-    const planes = new cv.MatVector()
-    cv.split(src, planes)
-    const alpha = planes.get(3)
-    const bin = new cv.Mat()
-    cv.threshold(alpha, bin, threshold, 255, cv.THRESH_BINARY)
+    // 스트로크 패딩 등으로 예상보다 커진 래스터에 대비한 이중 안전판(대부분 no-op)
+    const { element: capped, scale: postScale } = this.capElementForContour(element)
+    // capped 좌표 × coordScale = 요청 배율 래스터 좌표
+    const coordScale = postScale / capRatio
 
-    const dist = new cv.Mat()
-    cv.distanceTransform(bin, dist, cv.DIST_L2, 3)
-    const dist8u = new cv.Mat()
-    const insetMask = new cv.Mat()
-    cv.threshold(dist, insetMask, insetPx, 255, cv.THRESH_BINARY)
-    insetMask.convertTo(dist8u, cv.CV_8U)
-
-    const [contourMat] = this.findLargestContour(cv, dist8u)
+    const imageData = this.readImageData(capped)
+    const extracted = computePreciseOutline({
+      data: imageData.data,
+      width: imageData.width,
+      height: imageData.height,
+      alphaThreshold: threshold,
+      insetPx: insetPx / coordScale,
+      scanLimit: ImageProcessingPlugin.CONTOUR_SCAN_LIMIT,
+      hullMaxInputPoints: ImageProcessingPlugin.HULL_MAX_INPUT_POINTS,
+      approxEpsilonRatio: ImageProcessingPlugin.CONTOUR_APPROX_EPSILON_RATIO
+    })
+    if (extracted.points.length === 0) return undefined
 
     const m = object.calcTransformMatrix()
     const points: [number, number][] = []
-    for (let j = 0; j < contourMat.data32S.length; j += 2) {
-      const x = contourMat.data32S[j]
-      const y = contourMat.data32S[j + 1]
-      const world = fabric.util.transformPoint(new fabric.Point(x, y), m)
+    for (const [cx, cy] of extracted.points) {
+      const world = fabric.util.transformPoint(
+        new fabric.Point(cx * coordScale, cy * coordScale),
+        m
+      )
       points.push([world.x, world.y])
     }
     const pathData = this.generateCurvedPath(points, smooth)
-
-    src.delete()
-    planes.delete()
-    alpha.delete()
-    bin.delete()
-    dist.delete()
-    insetMask.delete()
-    dist8u.delete()
-    contourMat.delete()
 
     if (!pathData) return undefined
 
@@ -1316,8 +1324,8 @@ class ImageProcessingPlugin extends PluginBase {
       originY: 'top',
       left: 0,
       top: 0,
-      scaleX: object.scaleX! / (opts?.multiplier ?? 1),
-      scaleY: object.scaleY! / (opts?.multiplier ?? 1),
+      scaleX: object.scaleX! / requestedMultiplier,
+      scaleY: object.scaleY! / requestedMultiplier,
     })
 
     return path
@@ -1469,44 +1477,7 @@ class ImageProcessingPlugin extends PluginBase {
     return line(points)
   }
 
-  private getSimpleContourPoints(cv: any, object: fabric.Object, binary: any): [number, number][] {
-    const points: [number, number][] = []
-    // Find contours
-    const contours = new cv.MatVector()
-    const hierarchy = new cv.Mat()
-    cv.findContours(binary, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
-
-    // Assuming we want the largest contour from the new set of contours
-    let largestContour = null
-    let largestArea = 0
-    for (let i = 0; i < contours.size(); i++) {
-      const contour = contours.get(i)
-      const area = cv.contourArea(contour)
-      if (area > largestArea) {
-        largestArea = area
-        largestContour = contour
-      }
-    }
-
-    if (!largestContour) {
-      throw new Error('Failed to find largest contour')
-    }
-
-    for (let j = 0; j < largestContour.data32S.length; j += 2) {
-      const x = largestContour.data32S[j]
-      const y = largestContour.data32S[j + 1]
-      points.push([
-        (x + object.left!) * (object.scaleX ?? 1),
-        (y + object.top!) * (object.scaleY ?? 1)
-      ])
-    }
-
-    binary.delete()
-    contours.delete()
-    hierarchy.delete()
-
-    return points
-  }
+  // R7(2026-08-11): cv 전용 헬퍼 getSimpleContourPoints(호출부 0건) 제거.
 
   // 추출된 윤곽선을 부드럽게 만든 후 포인터 반환
   /**
@@ -1525,156 +1496,10 @@ class ImageProcessingPlugin extends PluginBase {
     return sampled
   }
 
-  /**
-   * [레거시 cv 경로 전용] 최대 윤곽 추출 — createPrecisePathFromObject / drawCaseOutlinePrecise 가 쓴다.
-   * ⚠️ 칼선('효과'/모양컷 업로드) 경로는 이것을 쓰지 않는다 — pureContour.ts(순수 JS)가 정본이다.
-   *    이 메서드는 cv 인스턴스를 인자로 받으므로 getCv() 가 성공한 환경(임베드 스텁 등)에서만 돈다.
-   */
-  private findLargestContour(cv: any, binary: any): [any, boolean] {
-    const contours = new cv.MatVector()
-    const hierarchy = new cv.Mat()
-    cv.findContours(binary, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
-
-    const contourAreas: { contour: any; area: number }[] = []
-    const totalContours = contours.size()
-    const scanned = Math.min(totalContours, ImageProcessingPlugin.CONTOUR_SCAN_LIMIT)
-    for (let i = 0; i < scanned; i++) {
-      const contour = contours.get(i)
-      const area = cv.contourArea(contour)
-      if (area > 1000) {
-        contourAreas.push({ contour, area })
-      } else {
-        contour.delete() // MatVector.get 은 복사본 — 즉시 해제(누수 방지)
-      }
-    }
-    contourAreas.sort((a, b) => b.area - a.area)
-
-    const useHull = contourAreas.length > 1
-    const points: [number, number][] = []
-    for (const { contour } of contourAreas) {
-      if (points.length >= ImageProcessingPlugin.HULL_MAX_INPUT_POINTS) {
-        contour.delete()
-        continue
-      }
-      const step = Math.max(1, Math.ceil(contour.rows / ImageProcessingPlugin.HULL_MAX_INPUT_POINTS))
-      for (let j = 0; j < contour.rows; j += step) {
-        points.push([contour.data32S[j * 2], contour.data32S[j * 2 + 1]])
-      }
-      contour.delete()
-    }
-    contours.delete()
-    hierarchy.delete()
-
-    if (useHull) {
-      const pointsMat = cv.matFromArray(points.length, 1, cv.CV_32SC2, points.flat())
-      const hull = new cv.Mat()
-      cv.convexHull(pointsMat, hull, false, true)
-      pointsMat.delete()
-      return [hull, true]
-    }
-    return [cv.matFromArray(points.length, 1, cv.CV_32SC2, points.flat()), false]
-  }
-
-  /**
-   * 케이스 clipPath 적용 결과에서 '보이는 부분'만 외곽선 생성
-   * @param object 대상 객체
-   * @param opts 옵션
-   */
-  async drawCaseOutlinePrecise(
-    object: fabric.Object,
-    opts?: {
-      threshold?: number // 알파 임계값(기본 225)
-      insetPx?: number // 안쪽으로 당길 픽셀(기본 2)
-      smooth?: boolean // 곡선 보간(기본 true)
-      stroke?: string // 라인색
-      strokeWidth?: number // 라인두께
-    }
-  ): Promise<fabric.Path | undefined> {
-    const cv = await this.ensureCvReady()
-    const threshold = opts?.threshold ?? 225
-    const insetPx = Math.max(0, opts?.insetPx ?? 2)
-    const smooth = opts?.smooth ?? true
-
-    // 1) 보이는 모습 그대로 렌더(clip 포함) → 알파 마스크 얻기
-    const element = object.toCanvasElement({
-      multiplier: 1,
-      withoutTransform: true,
-      enableRetinaScaling: true
-    }) as HTMLCanvasElement
-
-    // 2) 알파 기반 이진화
-    const src = cv.imread(element)
-    const planes = new cv.MatVector()
-    cv.split(src, planes)
-    const alpha = planes.get(3)
-    const bin = new cv.Mat()
-    cv.threshold(alpha, bin, threshold, 255, cv.THRESH_BINARY)
-
-    // 3) 거리 변환으로 '정확한 안쪽 오프셋' 적용
-    const dist = new cv.Mat()
-    cv.distanceTransform(bin, dist, cv.DIST_L2, 3)
-    const dist8u = new cv.Mat()
-    // insetPx 만큼 안쪽으로 당기기: 거리 >= insetPx 인 픽셀만 유지
-    const insetMask = new cv.Mat()
-    cv.threshold(dist, insetMask, insetPx, 255, cv.THRESH_BINARY)
-    insetMask.convertTo(dist8u, cv.CV_8U)
-
-    // 4) 가장 큰 윤곽선 찾기
-    const [contourMat] = this.findLargestContour(cv, dist8u)
-
-    // 5) 좌표 변환(회전/왜곡 보정)
-    const m = object.calcTransformMatrix()
-    const points: [number, number][] = []
-    for (let j = 0; j < contourMat.data32S.length; j += 2) {
-      const x = contourMat.data32S[j]
-      const y = contourMat.data32S[j + 1]
-      // 로컬 좌표를 월드(전역) 좌표로 변환
-      const world = fabric.util.transformPoint(new fabric.Point(x, y), m)
-      points.push([world.x, world.y])
-    }
-    const pathData = this.generateCurvedPath(points, smooth)
-
-    // 메모리 정리
-    src.delete()
-    planes.delete()
-    alpha.delete()
-    bin.delete()
-    dist.delete()
-    insetMask.delete()
-    dist8u.delete()
-    contourMat.delete()
-
-    if (!pathData) {
-      return
-    }
-
-    const path = new fabric.Path(pathData, {
-      id: `${object.id}_outline`,
-      extensionType: 'outline',
-      absolutePositioned: true,
-      originX: 'left',
-      originY: 'top',
-      left: 0,
-      top: 0,
-      fill: '',
-      stroke: opts?.stroke ?? '#111',
-      strokeWidth: opts?.strokeWidth ?? 1.5,
-      strokeUniform: true,
-      selectable: false,
-      evented: false
-    })
-
-    // 기존 outline 제거 후 바인딩
-    const prev = this._canvas
-      .getObjects()
-      .find((o) => o.extensionType === 'outline' && o.id === path.id)
-    if (prev) this._canvas.remove(prev)
-    this._canvas.add(path)
-    this.bindWithOutline(object, path)
-    this._canvas.renderAll()
-    return path
-  }
-
+  // R7(2026-08-11): 레거시 cv 경로 전면 제거 —
+  //  - drawCaseOutlinePrecise: 호출부 0건 → 삭제
+  //  - findLargestContour: 위 삭제로 사용처 소멸(순수 대체는 pureContour.extractContoursFromMask)
+  //  이 플러그인은 더 이상 cv 를 참조하지 않는다. openCv.ts 로더 자체는 별도 소비자용으로 유지.
 }
 
 export default ImageProcessingPlugin
