@@ -108,7 +108,7 @@
 | R1 | F4 embed 토스트 배선 | ✅ **완료(08-09)** | — |
 | R2 | 프리플라이트 정밀화: Poppler(pdffonts·pdfimages -list) 승격 — 정규식 휴리스틱 폴백화(ObjStm 미탐 해소·실배치 DPI) | ✅ **완료(08-10 LIVE)** | — |
 | R3 | TAC 잉크총량 warn: GS ink_cov 페이지 평균+한계 주입 자리 | ✅ **완료(08-11 LIVE)** | R3b 잔여=API 가 지종별 tacLimitPercent 주입(지종표+injectServerSpine 패턴 — API 트랙) |
-| R4 | fix 실행기 1차 | ✅ **R4a 완료(08-11 LIVE)**: 주석/폼 검출(qpdf --json, Link/Popup 제외)+ANNOTATIONS_DETECTED warn+재증류 4경로 -dPreserveAnnots=false 자동 제거(왕복 스모크 1→0 실증). ⚠️ R4b 백로그=화이트 오버프린트 제거(콘텐츠 스트림 수술 필요)·pass-through 경로 잔존 | — |
+| R4 | fix 실행기 1차 | ✅ **전체 완료(08-11 LIVE)**. R4a=주석/폼 검출+재증류 자동 제거(왕복 1→0 실증). R4b=**화이트 오버프린트 정밀 검출**(QDF 연산자 스캔 — q/Q 스택·색·gs OP/op·Tr 추적, 텍스트/도형 분리, 라이브 실증: 흰 도형+OP 검출·검정 대조군 false)+기하 이상 검출(UserUnit/Rotate/CropBox). 잔여 백로그=화이트 OP **자동 제거**(콘텐츠 수술 — 검출·재업로드 유도로 충분성 관찰 후 판단) | — |
 | R5 | 최종 산출 정규화: 평탄화+CMYK 변환+OutputIntent(X-1a 스타일) | 대 | ✅ **ICC 결정(08-10 오너)**: Japan Color 2001 Coated(국내 매엽 오프셋 관행). ⚠️ Adobe 배포 ICC 는 재배포 제한 — **PUBLIC 레포 커밋 금지**, 컨테이너 빌드 시 취득 또는 VPS 배치+env 경로 주입. 자유배포 폴백=ECI ISO Coated v2 |
 | R6 | 칼선 제품화: 워커 CutContour Separation 출력+곡률/오프셋/자기교차 검증+embed cutline 부착 | 중 | 스티커 상품 로드맵 |
 | R7 | CV-LEGACY 정리 | ✅ **완료(08-11 LIVE, a6008ea 머지)** — 3종 pureContour 이식(preciseOutline.ts 신설)·모양틀/목업 외곽선 **최초 실동작**·래스터 캡 안전판. 잔여=실기 육안 1회(모양틀 칼선 형상) | — |
@@ -143,6 +143,9 @@ Adobe 전 제품 미도입(재론 불필요 — 근거 §3).
   네이티브 재빌드로 구 기준선 4스위트 해소 — `pnpm rebuild canvas` 후 node-pre-gyp
   install --fallback-to-build, 로컬 한정)·editor 596·worker 538·api 930 전부 green.
   R4a 왕복 스모크: FreeText 주석 1 검출→재증류→0.
+- 08-11 (R4b): 화이트 오버프린트+기하 검출 LIVE(7e0d8eb, 롤백 태그 pre-r4b).
+  worker 22스위트 559 · api 930 · 컨테이너 실증(흰 도형+setoverprint→검출/검정→false/
+  OP 무존재 페이지=스캔 생략 빠른 음성). **R4 트랙 종결.**
 - 실기 확인 잔여(오너/fe-qa): ①곡선 텍스트 골든 1회(래스터→벡터 전환) ②모양틀 칼선
   형상 1회 ③DPI 경고 토스트 발화 1회.
 - 다음 = Wave 2: R5(산출 정규화 — ICC 결정 완료)·R6(칼선 별색)·R10(마스크 브러시)·R3b(API 주입).
