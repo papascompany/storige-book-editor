@@ -674,9 +674,12 @@ function parseInkCoverage(output: string): InkCoverageResult {
 /**
  * `ink_cov` 출력을 InkTacResult 로 파싱한다(순수 — 테스트 대상).
  *
- * 출력 형식은 inkcov 와 동일한 4채널 라인("0.04093  0.10046  0.14113  0.06259 CMYK OK")
- * 이지만 의미가 다르다: inkcov=채널을 마킹한 픽셀 비율, **ink_cov=페이지 평균 잉크량**.
- * TAC 는 후자의 합(×100)으로만 계산해야 한다.
+ * 출력 형식은 inkcov 와 같은 4채널 라인이지만 **스케일이 다르다** (프로덕션 GS 10.x
+ * 실측, 2026-08-11 컨테이너 스모크로 확정):
+ *   - inkcov  : 0~1 분율 ("0.04093  0.10046 ... CMYK OK") — 채널을 마킹한 픽셀 비율
+ *   - ink_cov : 0~100 **퍼센트** ("89.99  85.00  80.00  94.99 CMYK OK") — 페이지 평균 잉크량
+ * 따라서 TAC(%) = 4채널 합 그대로다. ×100 을 곱하면 안 된다(최초 구현의 실수 —
+ * 전면 CMYK(0.9/0.85/0.8/0.95) 실측에서 34980% 로 적발돼 수정).
  *
  * 측정치가 페이지 '평균'이므로 국소 최대 TAC 의 하한이다 — 평균이 한계를 넘으면
  * 사실상 전면 과다잉크(전면 리치블랙 배경 등) 확정. 정밀(국소) TAC 는 별도 설계(백로그).
@@ -696,7 +699,7 @@ export function parseInkTacOutput(output: string): InkTacResult | null {
     if (!Number.isFinite(sum)) continue;
     pages.push({
       page: pages.length + 1,
-      tacPercent: Math.round(sum * 1000) / 10, // ×100, 소수 1자리
+      tacPercent: Math.round(sum * 10) / 10, // ink_cov 는 이미 % 스케일 — 합 그대로, 소수 1자리
     });
   }
 
