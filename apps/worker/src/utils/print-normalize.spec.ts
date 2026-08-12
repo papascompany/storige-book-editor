@@ -45,6 +45,8 @@ describe('buildNormalizeArgs', () => {
     expect(args).toContain('-sProcessColorModel=DeviceCMYK');
     expect(args).toContain(`-sOutputICCProfile=${opts.iccPath}`);
     expect(args).toContain('-dPDFX');
+    // -dSAFER 가 PDFX def 의 ICC file 읽기를 차단(invalidfileaccess 실증) — 명시 허용 필수
+    expect(args).toContain(`--permit-file-read=${opts.iccPath}`);
     // 보존(트랙 B 정합)·주석 제거(R4a 정합)
     expect(args).toContain('-dPreserveSeparation=true');
     expect(args).toContain('-dPreserveOverprintSettings=true');

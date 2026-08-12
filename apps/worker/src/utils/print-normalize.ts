@@ -104,6 +104,9 @@ export function buildNormalizeArgs(
     '-dNOPAUSE',
     '-dBATCH',
     '-dSAFER',
+    // -dSAFER 는 PDFX def 의 PostScript `file` 연산자가 ICC 를 읽는 것을 차단한다
+    // (invalidfileaccess — 2026-08-11 컨테이너 실증). ICC 경로만 명시 허용.
+    `--permit-file-read=${opts.iccPath}`,
     '-sDEVICE=pdfwrite',
     // 평탄화 = 1.3 재증류(투명도 미지원 레벨로 강제 → GS 가 평탄화 수행)
     `-dCompatibilityLevel=${opts.flatten ? '1.3' : '1.4'}`,
