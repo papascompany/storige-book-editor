@@ -12,6 +12,8 @@ import { captureJobException } from '../sentry/sentry.init';
 import { VALIDATION_CONFIG } from '../config/validation.config';
 import { downloadToTempFile } from '../utils/stream-download';
 import { extractPdfMetadataQpdf } from '../utils/pdf-metadata-qpdf';
+// R5 (2026-08-11): 최종 인쇄 산출 정규화 — 기본 OFF(no-op)·fail-open. 6개 산출 지점 공통.
+import { maybeNormalizeForPrint } from '../utils/print-normalize';
 import {
   assemblePdf as qpdfAssemble,
   extractPages as qpdfExtractPages,
@@ -607,6 +609,7 @@ export class SynthesisProcessor {
         }
         const mergedPath = path.join(outputDir, 'merged.pdf');
         await fs.writeFile(mergedPath, await finalPdf.save());
+        await maybeNormalizeForPrint(mergedPath); // R5: 기본 OFF·fail-open
         const mergedUrl = `/storage/${storageKeyBase}/merged.pdf`;
         result = { success: true, outputFileUrl: mergedUrl, totalPages: finalPdf.getPageCount() };
       }
@@ -816,6 +819,7 @@ export class SynthesisProcessor {
         mergedParts.push(...(await buildContentParts()));
         const mergedPath = path.join(outputDir, 'merged.pdf');
         const mergedCount = await assembleToFile(mergedParts, mergedPath);
+        await maybeNormalizeForPrint(mergedPath); // R5: 기본 OFF·fail-open
         const mergedUrl = `/storage/${storageKeyBase}/merged.pdf`;
         result = { success: true, outputFileUrl: mergedUrl, totalPages: mergedCount };
       }
@@ -1026,6 +1030,7 @@ export class SynthesisProcessor {
       await fs.mkdir(path.join(this.outputsPath, jobId), { recursive: true });
 
       // merged 파일 복사
+      await maybeNormalizeForPrint(localResult.mergedPath); // R5: 기본 OFF·fail-open
       await fs.copyFile(localResult.mergedPath, mergedStoragePath);
       const mergedUrl = `/storage/${storageKeyBase}/${mergedFilename}`;
 
@@ -1376,6 +1381,7 @@ export class SynthesisProcessor {
         );
 
         const mergedStoragePath = path.join(this.outputsPath, jobId, 'merged.pdf');
+        await maybeNormalizeForPrint(mergedPath); // R5: 기본 OFF·fail-open
         await fs.copyFile(mergedPath, mergedStoragePath);
         result.outputFileUrl = `/storage/${storageKeyBase}/merged.pdf`;
       } else if (outputFormat === 'separate') {
@@ -1410,6 +1416,7 @@ export class SynthesisProcessor {
             jobId,
             'merged.pdf',
           );
+          await maybeNormalizeForPrint(mergedPath); // R5: 기본 OFF·fail-open
           await fs.copyFile(mergedPath, mergedStoragePath);
           result.outputFileUrl = `/storage/${storageKeyBase}/merged.pdf`;
         }
@@ -1918,6 +1925,7 @@ export class SynthesisProcessor {
       let mergedStoragePath: string | null = null;
       if (localResult.mergedPath) {
         mergedStoragePath = path.join(outputDir, 'merged.pdf');
+        await maybeNormalizeForPrint(localResult.mergedPath); // R5: 기본 OFF·fail-open
         await fs.copyFile(localResult.mergedPath, mergedStoragePath);
       }
 

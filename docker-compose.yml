@@ -158,6 +158,17 @@ services:
       - CUTOUT_ENABLED=${CUTOUT_ENABLED:-false}
       - REMBG_URL=${REMBG_URL:-http://rembg:7000}
       - REMBG_ENDPOINT=${REMBG_ENDPOINT:-/api/remove}
+      # R5: 최종 인쇄 산출 정규화(X-1a 스타일 — CMYK 변환+OutputIntent+선택 평탄화).
+      #   기본 false = 완전 no-op(유저·관리자 산출 무변경). ON 은 컨테이너 스모크+오너 승인 후.
+      #   실패는 fail-open(원본 유지) — 정규화가 주문 산출을 막는 일은 없다.
+      #   ICC 는 레포 커밋 금지(Adobe 재배포 제한) — storage/icc/ 배치 후 경로 주입.
+      #   ⚠️ .env 에만 넣고 이 매핑을 빼면 silent no-op — 위와 동일 함정.
+      - PRINT_NORMALIZE=${PRINT_NORMALIZE:-false}
+      - PRINT_NORMALIZE_FLATTEN=${PRINT_NORMALIZE_FLATTEN:-false}
+      - PRINT_NORMALIZE_MAX_BYTES=${PRINT_NORMALIZE_MAX_BYTES:-52428800}
+      - PRINT_ICC_PROFILE_PATH=${PRINT_ICC_PROFILE_PATH:-}
+      - PRINT_ICC_IDENTIFIER=${PRINT_ICC_IDENTIFIER:-JC200103}
+      - PRINT_ICC_CONDITION=${PRINT_ICC_CONDITION:-Japan Color 2001 Coated}
       # 모델 교체는 이 값 하나로 끝난다(rembg 내장 세션 키).
       #   기본 u2net_human_seg(인물 전용) — D-12b **재결정**(2026-08-06 오너 QA 후).
       #   실측: 같은 인물 사진에서 반투명 픽셀 u2net 24.2% → 2.7%. u2net 은 얼굴만 남기고
