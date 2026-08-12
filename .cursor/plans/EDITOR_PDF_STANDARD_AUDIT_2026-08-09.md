@@ -109,7 +109,7 @@
 | R2 | 프리플라이트 정밀화: Poppler(pdffonts·pdfimages -list) 승격 — 정규식 휴리스틱 폴백화(ObjStm 미탐 해소·실배치 DPI) | ✅ **완료(08-10 LIVE)** | — |
 | R3 | TAC 잉크총량 warn: GS ink_cov 페이지 평균+한계 주입 자리 | ✅ **완료(08-11 LIVE)** | R3b 잔여=API 가 지종별 tacLimitPercent 주입(지종표+injectServerSpine 패턴 — API 트랙) |
 | R4 | fix 실행기 1차 | ✅ **전체 완료(08-11 LIVE)**. R4a=주석/폼 검출+재증류 자동 제거(왕복 1→0 실증). R4b=**화이트 오버프린트 정밀 검출**(QDF 연산자 스캔 — q/Q 스택·색·gs OP/op·Tr 추적, 텍스트/도형 분리, 라이브 실증: 흰 도형+OP 검출·검정 대조군 false)+기하 이상 검출(UserUnit/Rotate/CropBox). 잔여 백로그=화이트 OP **자동 제거**(콘텐츠 수술 — 검출·재업로드 유도로 충분성 관찰 후 판단) | — |
-| R5 | 최종 산출 정규화: 평탄화+CMYK 변환+OutputIntent(X-1a 스타일) | 대 | ✅ **ICC 결정(08-10 오너)**: Japan Color 2001 Coated(국내 매엽 오프셋 관행). ⚠️ Adobe 배포 ICC 는 재배포 제한 — **PUBLIC 레포 커밋 금지**, 컨테이너 빌드 시 취득 또는 VPS 배치+env 경로 주입. 자유배포 폴백=ECI ISO Coated v2 |
+| R5 | 최종 산출 정규화 | ✅ **다크 배포 완료(08-11, 922f66c)** — maybeNormalizeForPrint(X-1a 스타일: CMYK 변환+OutputIntent+선택 평탄화) 산출 6지점 배선. **PRINT_NORMALIZE 기본 OFF = 프로덕션 무변경**·fail-open·대형 스킵. ICC=Japan Color 2001 Coated VPS `storage/icc/` 배치(레포 밖). 컨테이너 실증 5종: OFF no-op·RGB→CMYK(`1 0 0 rg`→`0 .965 .906 0 k`)·OutputIntents 부착·**별색 /MyBrand 보존**·주석 제거 정합. 함정 2건 적발·수정: SAFER ICC 읽기 차단(--permit-file-read)+**빌드 캐시 스테일**(dist grep 역검증으로 적발 — no-cache 재빌드). ⚠️ **ON 전환 = 오너 게이트**: 실주문 대표 상품 골든 육안 후 .env PRINT_NORMALIZE=true + worker 재기동. 롤백=플래그 제거 |
 | R6 | 칼선 제품화: 워커 CutContour Separation 출력+곡률/오프셋/자기교차 검증+embed cutline 부착 | 중 | 스티커 상품 로드맵 |
 | R7 | CV-LEGACY 정리 | ✅ **완료(08-11 LIVE, a6008ea 머지)** — 3종 pureContour 이식(preciseOutline.ts 신설)·모양틀/목업 외곽선 **최초 실동작**·래스터 캡 안전판. 잔여=실기 육안 1회(모양틀 칼선 형상) | — |
 | R8 | 편집기 유효 DPI 경고 | ✅ **완료(08-11 LIVE, b678982 머지)** — ImageDpiWarningPlugin(전이 1회·150DPI)+토스트 양 뷰 배선 | — |
@@ -146,6 +146,11 @@ Adobe 전 제품 미도입(재론 불필요 — 근거 §3).
 - 08-11 (R4b): 화이트 오버프린트+기하 검출 LIVE(7e0d8eb, 롤백 태그 pre-r4b).
   worker 22스위트 559 · api 930 · 컨테이너 실증(흰 도형+setoverprint→검출/검정→false/
   OP 무존재 페이지=스캔 생략 빠른 음성). **R4 트랙 종결.**
+- 08-11 (R5): 다크 배포+컨테이너 5종 실증(위 표). PRINT_ICC_PROFILE_PATH .env 추가
+  (플래그는 미설정=OFF). ⚠️ **워커 배포 함정 실증**: compose build 캐시가 신규 커밋을
+  안 태울 수 있다 — 배포 후 반드시 컨테이너 dist 를 grep 역검증, 스테일이면
+  `docker compose build --no-cache worker`.
 - 실기 확인 잔여(오너/fe-qa): ①곡선 텍스트 골든 1회(래스터→벡터 전환) ②모양틀 칼선
-  형상 1회 ③DPI 경고 토스트 발화 1회.
-- 다음 = Wave 2: R5(산출 정규화 — ICC 결정 완료)·R6(칼선 별색)·R10(마스크 브러시)·R3b(API 주입).
+  형상 1회 ③DPI 경고 토스트 발화 1회 ④**R5 ON 게이트**: 대표 상품(포토북·명함) 실주문
+  PDF 로 정규화 전/후 육안 대조 → 승인 시 .env PRINT_NORMALIZE=true+워커 재기동.
+- 다음 = Wave 2 잔여: R6(칼선 CutContour 별색)·R10(마스크 브러시)·R3b(API 주입).
