@@ -21,6 +21,7 @@ import { useAppStore } from '../stores/useAppStore'
 import { useSettingsStore } from '../stores/useSettingsStore'
 import { templateSetsApi } from '../api/template-sets'
 import { editSessionsApi } from '../api/edit-sessions'
+import { apiClient } from '../api/client'
 import { permuteContentPdfPageOrder } from './innerPageReorder'
 
 const GUIDE_SYSTEM = 'innerPdfGuide'
@@ -87,6 +88,31 @@ export async function persistContentPdfPageOrderAfterReorder(opts: {
 /** 이 세션이 '앉히기' 대상(내지 PDF 표시전용)인지 */
 function isUnderlaySession(editSession: any): boolean {
   return editSession?.contentPdfMode === 'underlay'
+}
+
+/**
+ * 주문 화면에서 이미 올린 내지 PDF 는 세션 `contentFileId` 에만 들어 있는 경우가 많다
+ * (create DTO 에 contentPdfFileId 가 없음). underlay 로 승격할 수 있으면 그 fileId 를 돌려준다.
+ * 완료 세션의 편집 산출물(contentFileId)은 승격하지 않는다.
+ */
+export function resolveUnderlaySource(editSession: any): {
+  fileId: string
+  pageCount: number | null
+} | null {
+  if (!editSession) return null
+  if (editSession.contentPdfMode === 'replace') return null
+  if (editSession.contentPdfFileId) {
+    return {
+      fileId: String(editSession.contentPdfFileId),
+      pageCount: Number(editSession.contentPdfPageCount) || null,
+    }
+  }
+  if (editSession.status === 'complete') return null
+  if (!editSession.contentFileId) return null
+  return {
+    fileId: String(editSession.contentFileId),
+    pageCount: Number(editSession.contentPdfPageCount) || null,
+  }
 }
 
 /** 기존 가이드/레이블 제거 — 재호출(로드 후 첨부 등) 시 중복 적재 방지 */
@@ -328,4 +354,79 @@ export async function seatContentPdf(
   }
 
   return { addedPages, guidesPlaced }
+}
+
+async function rasterContentPdfGuide(
+  fileId: string,
+  pageCount?: number | null,
+): Promise<{ sourceFileId: string; pageImageUrls: string[]; resolution?: number; renderedAt?: string } | null> {
+  try {
+    const renderRes = await apiClient.post<{ id: string }>('/worker-jobs/render-pages', {
+      fileId,
+      ...(pageCount && pageCount > 0 ? { pageCount } : {}),
+    })
+    const jobId = renderRes.data.id
+    for (let a = 0; a < 40; a++) {
+      await new Promise((r) => setTimeout(r, 1500))
+      const job = await apiClient.get<{
+        status: string
+        result?: { pageImageUrls?: string[]; resolution?: number; renderedAt?: string }
+      }>(`/worker-jobs/${jobId}`)
+      const s = (job.data.status || '').toUpperCase()
+      if (s === 'COMPLETED') {
+        const urls = job.data.result?.pageImageUrls
+        if (!urls?.length) return null
+        return {
+          sourceFileId: fileId,
+          pageImageUrls: urls,
+          resolution: job.data.result?.resolution,
+          renderedAt: job.data.result?.renderedAt,
+        }
+      }
+      if (s === 'FAILED') return null
+    }
+  } catch (e) {
+    console.warn('[contentPdfGuide] rasterContentPdfGuide failed', e)
+  }
+  return null
+}
+
+/**
+ * 주문 화면에서 이미 올린 내지 PDF 를 편집기에 앉힌다.
+ * 세션이 underlay 가 아니어도 contentFileId 만 있으면 승격한다(완료 세션 제외).
+ * 가이드 래스터가 없으면 render-pages 를 한 번 돌린다.
+ */
+export async function ensureSeatExistingContentPdf(
+  editSession: any,
+  templateSetId?: string | null,
+  options?: { focusFirstInnerPage?: boolean },
+): Promise<SeatContentPdfResult & { sourceFileId?: string }> {
+  const source = resolveUnderlaySource(editSession)
+  if (!source) return { addedPages: 0, guidesPlaced: false }
+
+  let session: Record<string, unknown> = {
+    ...(editSession as Record<string, unknown>),
+    contentPdfMode: 'underlay',
+    contentPdfFileId: source.fileId,
+    contentPdfPageCount: source.pageCount ?? editSession?.contentPdfPageCount ?? null,
+  }
+
+  const existingGuide = (editSession?.metadata as { contentPdfGuide?: { pageImageUrls?: string[] } } | undefined)
+    ?.contentPdfGuide
+  if (!existingGuide?.pageImageUrls?.length) {
+    const guide = await rasterContentPdfGuide(source.fileId, source.pageCount)
+    if (guide) {
+      session = {
+        ...session,
+        contentPdfPageCount: guide.pageImageUrls.length,
+        metadata: {
+          ...((editSession?.metadata as Record<string, unknown> | undefined) ?? {}),
+          contentPdfGuide: guide,
+        },
+      }
+    }
+  }
+
+  const result = await seatContentPdf(session, templateSetId, options)
+  return { ...result, sourceFileId: source.fileId }
 }

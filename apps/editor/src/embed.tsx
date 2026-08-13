@@ -62,7 +62,7 @@ import { RestoreBackupBanner } from './components/RestoreBackupBanner'
 import ObjectDeleteConfirm from './components/editor/ObjectDeleteConfirm'
 import { EditorWorkflowControls } from './components/editor/EditorWorkflowControls'
 import { Sentry } from './lib/sentry'
-import { seatContentPdf } from './utils/contentPdfGuide'
+import { ensureSeatExistingContentPdf } from './utils/contentPdfGuide'
 import {
   classifyOrientation,
   detectOrientationMismatch,
@@ -1195,10 +1195,9 @@ function EmbeddedEditor({
 
         // 3-A. 내지 PDF 표시전용 앉히기 (underlay 모드) — 캔버스 복원 후.
         // 가이드는 excludeFromExport 라 export/저장에서 제외, 최종 인쇄는 첨부 원본 PDF 그대로.
-        // W1(2026-08-13): 첨부 직후 경로와 동일한 seatContentPdf 사용 — 여기서는 페이지 확장이
-        // 이미 loadTemplateSetEditor(underlayPageCount)에서 끝나 no-op 이고 가이드만 배치된다.
+        // W1: seat. 주문 화면에서 올린 contentFileId 도 underlay 로 승격해 앉힌다.
         if (editSession) {
-          await seatContentPdf(editSession, effectiveTemplateSetId)
+          await ensureSeatExistingContentPdf(editSession, effectiveTemplateSetId)
         }
 
         // W1-G2: 첨부 진입점이 쓸 실효 templateSetId 확정 (폴백 구동 시에는 첨부 비노출).

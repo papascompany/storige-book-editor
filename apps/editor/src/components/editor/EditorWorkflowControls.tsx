@@ -22,7 +22,7 @@ import { useAuthStore } from '../../stores/useAuthStore'
 import { useGuestStore } from '../../stores/useGuestStore'
 import { useAppStore } from '../../stores/useAppStore'
 import { editSessionsApi, type EditSessionResponse } from '../../api/edit-sessions'
-import { seatContentPdf } from '../../utils/contentPdfGuide'
+import { ensureSeatExistingContentPdf, seatContentPdf } from '../../utils/contentPdfGuide'
 import { showToast } from '../../stores/useToastStore'
 import { ContentPdfAttachModal } from './ContentPdfAttachModal'
 
@@ -109,13 +109,12 @@ export function EditorWorkflowControls({
   }, [ownsSession, token, templateSet, guestSessionId, ensureGuestSession])
 
   /**
-   * W1-G3(2026-08-13): 소유 세션(레거시 `/`)의 로드 시 앉히기 — /embed 와 대칭.
-   * 종전엔 EditorView 에 applyContentPdfGuides 호출이 0건이라, 이미 PDF 를 첨부한 세션으로
-   * 다시 들어와도 화면에는 아무것도 안 깔렸다. 캔버스 준비(ready) 후 세션을 조회해 앉힌다.
-   * 임베드는 embed.tsx 가 로드 시 직접 앉히므로 여기서는 하지 않는다(이중 적용 방지).
+   * 로드 시 앉히기 + 첨부 배지.
+   * - 소유 세션(레거시 `/`): 여기서 앉힌다.
+   * - 임베드: 앉히기는 embed.tsx 가 하고, 여기서는 주문에서 이미 올린 파일 배지만 맞춘다
+   *   (없으면 "내지 PDF 첨부" 가 또 떠 고객이 두 번째 파일을 올리게 된다).
    */
   useEffect(() => {
-    if (!ownsSession) return
     if (!ready || !attachSessionId || !templateSet) return
     if (seatedSessionRef.current === attachSessionId) return
     seatedSessionRef.current = attachSessionId
@@ -125,16 +124,17 @@ export function EditorWorkflowControls({
       try {
         const session: EditSessionResponse = await editSessionsApi.get(attachSessionId)
         if (cancelled) return
-        if ((session as { contentPdfMode?: string }).contentPdfMode !== 'underlay') return
-        if (session.contentPdfFileId) {
+        const fileId = session.contentPdfFileId || session.contentFileId
+        if (fileId) {
           setAttached({
-            fileId: session.contentPdfFileId,
+            fileId,
             pageCount: session.contentPdfPageCount ?? 0,
           })
         }
-        await seatContentPdf(session, templateSet.id)
+        if (ownsSession) {
+          await ensureSeatExistingContentPdf(session, templateSet.id)
+        }
       } catch (err) {
-        // 세션 만료/조회 실패 — 첨부 UI 는 그대로 두고 조용히 스킵(다음 첨부에 재시도)
         console.warn('[EditorWorkflowControls] 로드 시 내지 PDF 앉히기 스킵:', err)
         seatedSessionRef.current = null
       }

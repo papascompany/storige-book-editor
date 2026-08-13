@@ -655,7 +655,10 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
       const { workspace: workspacePlugin, spread: spreadPlugin } = registerCanvasPlugins(
         newCanvas,
         newEditor,
-        workspaceOptions as Parameters<typeof registerCanvasPlugins>[2]
+        workspaceOptions as Parameters<typeof registerCanvasPlugins>[2],
+        // 책 내지(+ 버튼 / 내지 PDF 확장)에 표지 SpreadPlugin 을 붙이지 않는다.
+        // 포토북 펼침면만 inner SpreadPlugin 이 등록된다.
+        { allowCoverSpread: false },
       )
 
       // 스토어에 등록 (initializationId 전달하여 등록 허용)

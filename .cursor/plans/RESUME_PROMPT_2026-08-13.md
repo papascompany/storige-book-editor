@@ -95,6 +95,13 @@ curl -s https://api.papascompany.co.kr/api/health | python3 -m json.tool | head 
 - 삭제 안전성: 추가 항이 전부 `NOT EXISTS(...)` 내부 OR 체인 = **덜 지우는 방향**(메인 세션 직접 확인). 뮤테이션 테스트로 회귀 검출력도 실증.
 - ⚠️ **미검증**: 실 DB 에서 새 SQL(JSON_SEARCH 최초 사용) 실행 경로. 배포 후 `FILE_ORPHAN_DRY_RUN=1` 상태로 cron 1회 로그 확인 필요.
 
+## 1-C. 주문 내지 PDF UX (2026-08-13 실기)
+
+콘솔 403 `시스템 공유 리소스…` + 내지가 표지처럼 분할 + 주문 PDF 가 자동 앉지 않음.
+- GET `/worker-jobs/:id` 읽기에 `allowNull` — shop JWT 가 validate/render-pages 폴링 가능
+- `addPage` 책 내지에 cover SpreadPlugin 금지 (표지 영역 분할 제거)
+- 주문 `contentFileId` 를 underlay 소스로 승격해 로드 시 자동 앉히기, 중복 첨부 버튼은 첨부됨 배지
+
 ## 1-B. W4-G4 (페이지 재정렬) — **프로덕션 LIVE**
 
 > 커밋 `04ede40` → master push → Vercel `storige-editor` Production **Ready**

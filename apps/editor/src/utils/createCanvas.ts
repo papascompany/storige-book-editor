@@ -267,7 +267,15 @@ export const createMultipleCanvas = async (
 export function registerCanvasPlugins(
   canvas: fabric.Canvas,
   editor: Editor,
-  settings: CanvasSettings
+  settings: CanvasSettings,
+  pluginOpts?: {
+    /**
+     * 책(표지 스프레드 + 단면 내지)에서 내지 추가 시 cover SpreadPlugin 을 붙이지 않는다.
+     * 붙이면 내지가 표지처럼 책등/앞뒤 영역으로 나뉜다 (2026-08-13 실기).
+     * 포토북 내지 펼침면(regionScope=inner)은 이 플래그와 무관하게 항상 등록.
+     */
+    allowCoverSpread?: boolean
+  },
 ): { workspace: WorkspacePlugin; spread: SpreadPlugin | null } {
   const settingsStore = useSettingsStore.getState()
 
@@ -311,16 +319,17 @@ export function registerCanvasPlugins(
   // inner 도 SpreadPlugin 생성자 계약상 spec(표지 SpreadSpec)을 요구하므로 placeholder 합성
   // (렌더는 innerSpec 으로만 수행 — placeholder 는 currentSpec 비-null 유지용, 표지경로 미진입).
   const isInnerSpread = spreadConfig?.regionScope === 'inner' && !!spreadConfig.innerSpec
-  const spread = spreadConfig?.spec
+  const allowCoverSpread = pluginOpts?.allowCoverSpread !== false
+  const spread = isInnerSpread
     ? new SpreadPlugin(canvas, editor, {
-        spec: spreadConfig.spec,
-        conversionMode: spreadConfig.conversionMode ?? 'full',
+        spec: innerSpecToPlaceholderSpec(spreadConfig!.innerSpec!),
+        regionScope: 'inner',
+        innerSpec: spreadConfig!.innerSpec!,
       })
-    : isInnerSpread
+    : allowCoverSpread && spreadConfig?.spec
       ? new SpreadPlugin(canvas, editor, {
-          spec: innerSpecToPlaceholderSpec(spreadConfig!.innerSpec!),
-          regionScope: 'inner',
-          innerSpec: spreadConfig!.innerSpec!,
+          spec: spreadConfig.spec,
+          conversionMode: spreadConfig.conversionMode ?? 'full',
         })
       : null
 

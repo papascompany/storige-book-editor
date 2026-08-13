@@ -37,8 +37,13 @@ const seatContentPdf = vi.fn(async (..._args: unknown[]) => ({
   addedPages: 2,
   guidesPlaced: true,
 }))
+const ensureSeatExistingContentPdf = vi.fn(async (..._args: unknown[]) => ({
+  addedPages: 0,
+  guidesPlaced: false,
+}))
 vi.mock('../../utils/contentPdfGuide', () => ({
   seatContentPdf: (...a: unknown[]) => seatContentPdf(...a),
+  ensureSeatExistingContentPdf: (...a: unknown[]) => ensureSeatExistingContentPdf(...a),
 }))
 
 const showToast = vi.fn()
@@ -108,6 +113,8 @@ beforeEach(() => {
   guestState.sessionId = null
   getTemplateSetWithTemplates.mockResolvedValue({ templateSet: bookTemplateSet, templateDetails: [] })
   seatContentPdf.mockResolvedValue({ addedPages: 2, guidesPlaced: true })
+  ensureSeatExistingContentPdf.mockResolvedValue({ addedPages: 0, guidesPlaced: false })
+  sessionGet.mockResolvedValue({ id: 'sess-1' })
 })
 
 describe('EditorWorkflowControls — 임베드(명시 세션) 마운트', () => {
@@ -116,8 +123,9 @@ describe('EditorWorkflowControls — 임베드(명시 세션) 마운트', () => 
 
     expect(await screen.findByRole('button', { name: /내지 PDF 첨부/ })).toBeTruthy()
     expect(ensureGuestSession).not.toHaveBeenCalled()
-    // 임베드에서는 로드 시 앉히기를 embed.tsx 가 수행 — 여기서 중복 호출하지 않는다
-    expect(sessionGet).not.toHaveBeenCalled()
+    // 배지 동기화는 조회하지만 앉히기는 embed.tsx 가 한다
+    await waitFor(() => expect(sessionGet).toHaveBeenCalledWith('sess-1'))
+    expect(ensureSeatExistingContentPdf).not.toHaveBeenCalled()
     expect(seatContentPdf).not.toHaveBeenCalled()
   })
 
@@ -196,19 +204,24 @@ describe('EditorWorkflowControls — 레거시 `/`(소유 세션)', () => {
 
     render(<EditorWorkflowControls templateSetId="ts-book" />)
 
-    await waitFor(() => expect(seatContentPdf).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(ensureSeatExistingContentPdf).toHaveBeenCalledTimes(1))
     expect(sessionGet).toHaveBeenCalledWith('guest-sess')
     expect(await screen.findByRole('button', { name: /첨부됨 \(24p\)/ })).toBeTruthy()
   })
 
-  it('underlay 세션이 아니면 앉히지 않는다', async () => {
+  it('주문 contentFileId 만 있어도 첨부됨 배지를 보여 준다', async () => {
     guestState.sessionId = 'guest-sess'
-    sessionGet.mockResolvedValue({ id: 'guest-sess', contentPdfMode: null })
+    sessionGet.mockResolvedValue({
+      id: 'guest-sess',
+      contentPdfMode: null,
+      contentFileId: 'shop-pdf',
+      contentPdfPageCount: 8,
+    })
 
     render(<EditorWorkflowControls templateSetId="ts-book" />)
 
-    await waitFor(() => expect(sessionGet).toHaveBeenCalled())
-    expect(seatContentPdf).not.toHaveBeenCalled()
+    await waitFor(() => expect(ensureSeatExistingContentPdf).toHaveBeenCalledTimes(1))
+    expect(await screen.findByRole('button', { name: /첨부됨 \(8p\)/ })).toBeTruthy()
   })
 
   it('캔버스가 준비되기 전에는 조회·배치하지 않는다', async () => {

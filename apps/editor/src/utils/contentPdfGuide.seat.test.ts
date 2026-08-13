@@ -49,6 +49,10 @@ vi.mock('../api/edit-sessions', () => ({
   },
 }))
 
+vi.mock('../api/client', () => ({
+  apiClient: { post: vi.fn(), get: vi.fn() },
+}))
+
 // ── 스토어 스텁 ─────────────────────────────────────────────────────
 interface FakeCanvas {
   objects: Record<string, unknown>[]
@@ -113,6 +117,7 @@ import {
   ensureUnderlayPages,
   persistContentPdfPageOrderAfterReorder,
   rememberContentPdfPageOrder,
+  resolveUnderlaySource,
   seatContentPdf,
   UNDERLAY_MAX_PAGES,
 } from './contentPdfGuide'
@@ -323,6 +328,36 @@ describe('seatContentPdf — 확장 + 배치 합성', () => {
       )
       expect(guides).toHaveLength(1)
     }
+  })
+})
+
+describe('resolveUnderlaySource', () => {
+  it('contentPdfFileId 가 있으면 그걸 쓴다', () => {
+    expect(
+      resolveUnderlaySource({
+        contentPdfFileId: 'pdf-1',
+        contentFileId: 'out-1',
+        contentPdfPageCount: 4,
+      }),
+    ).toEqual({ fileId: 'pdf-1', pageCount: 4 })
+  })
+
+  it('주문 화면에서 올린 contentFileId 를 underlay 소스로 승격한다', () => {
+    expect(
+      resolveUnderlaySource({ contentFileId: 'shop-1', status: 'editing' }),
+    ).toEqual({ fileId: 'shop-1', pageCount: null })
+  })
+
+  it('완료 세션의 편집 산출물은 승격하지 않는다', () => {
+    expect(
+      resolveUnderlaySource({ contentFileId: 'out-1', status: 'complete' }),
+    ).toBeNull()
+  })
+
+  it('replace 모드는 앉히지 않는다', () => {
+    expect(
+      resolveUnderlaySource({ contentPdfFileId: 'pdf-1', contentPdfMode: 'replace' }),
+    ).toBeNull()
   })
 })
 

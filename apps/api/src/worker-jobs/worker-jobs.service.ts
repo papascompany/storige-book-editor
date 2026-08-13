@@ -2344,8 +2344,13 @@ export class WorkerJobsService implements OnModuleInit {
     }
 
     this.assertJobSiteAccess(job, caller);
-    // P3b — admin JWT 사이트 운영자: 자기 site 잡만(시스템 NULL 잡 비노출).
-    if (scope) assertSiteInScope(scope, job.siteId);
+    // P3b — admin JWT 사이트 운영자: 자기 site 잡만.
+    // ⚠️ GET 은 읽기. validate/render-pages 는 @Public 생성이라 siteId=NULL 인 경우가
+    //    정상이다. shop-session JWT(고객 임베드)가 그 잡을 폴링할 때 allowNull 없으면
+    //    403 "시스템 공유 리소스는 사이트 운영자가 수정할 수 없습니다" 가 난다
+    //    (2026-08-13 실기: ContentPdfAttachModal 업로드+검증). UUID 를 아는 호출만
+    //    도달한다(assertJobSiteAccess 가 타 테넌트 스탬프 잡은 404).
+    if (scope) assertSiteInScope(scope, job.siteId, { allowNull: true });
 
     return job;
   }

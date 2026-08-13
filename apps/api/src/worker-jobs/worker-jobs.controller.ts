@@ -508,7 +508,8 @@ export class WorkerJobsController {
     //    (worker-jobs.service.ts resolveComposeMixedSiteId) **write 위조는 막았지만
     //    read 표면은 넓어졌다** — 이 트레이드오프가 정책 결정 대상이다:
     //      · findAll: applySiteScope(includeNull 기본 false) → 사이트 운영자 목록에서 사라짐
-    //      · findOne: assertSiteInScope(rowSiteId=null, allowNull 미지정) → 403 TENANT_FORBIDDEN
+    //      · findOne: 읽기라 allowNull — shop JWT 가 @Public validate/render-pages
+    //        폴링 가능. 타 테넌트 스탬프 잡은 assertJobSiteAccess 가 404
     //      · GET /worker-jobs/external/:id: assertJobSiteAccess 가 NULL 잡을 통과시킴
     //        → jobId 를 아는 **어느 테넌트 키로도** 상태·outputFileUrl 조회 가능
     //    (산출물 경로 자체가 무인증 공개라 실질 노출 = 오너 결정 대기.)
