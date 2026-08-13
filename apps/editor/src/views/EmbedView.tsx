@@ -83,6 +83,13 @@ export default function EmbedView() {
         wingEnabledRaw === undefined ? undefined : wingEnabledRaw === '1' || wingEnabledRaw === 'true'
       const wingWidthMmRaw = get('wingWidthMm')
       const wingWidthMm = wingWidthMmRaw ? Number(wingWidthMmRaw) : undefined
+      // 내지 PDF 첨부 진입점(W1-G2, 2026-08-13): book 모드면 기본 노출.
+      // 첨부를 쓰지 않는 호스트는 `contentPdfAttach=0|false` 로 끈다(미전달=노출).
+      const contentPdfAttachRaw = get('contentPdfAttach')
+      const contentPdfAttach =
+        contentPdfAttachRaw === undefined
+          ? undefined
+          : !(contentPdfAttachRaw === '0' || contentPdfAttachRaw === 'false')
       // 주문 메타 스냅샷용 (2026-06-11) — admin 세션/삭제 리스트에서 부수·인쇄제목·상품명 노출
       const quantity = get('quantity') ? Number(get('quantity')) : undefined
       const title = get('title')
@@ -138,7 +145,7 @@ export default function EmbedView() {
         parentOrigin,
         options: {
           pageCount, paperType, bindingType, size, quantity, title, productName,
-          wingEnabled, wingWidthMm,
+          wingEnabled, wingWidthMm, contentPdfAttach,
         },
         // 레거시 dual-emit (정식 엔벨로프는 EmbeddedEditor 가 별도 발신)
         onReady: () => emitLegacy(parentOrigin, 'storige:ready', { templateSetId, sessionId }),

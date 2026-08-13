@@ -447,9 +447,35 @@ URL 파라미터 없이 `/` 진입 시 자동 로드되는 샘플:
    - `fixable` → 자동 보정 가능 (사용자 확인 모달)
    - `failed` → **첨부 거부** (결정 3-4)
 5. 통과 + PDF 페이지수 > 현재 내지 수 + `canAddPage=true` → 자동 확장 선택 모달 (결정 3-2)
-6. `PATCH /edit-sessions/[guest/]:id` 에 `contentPdfFileId` 저장
+6. `PATCH /edit-sessions/[guest/]:id` 에 `contentPdfFileId` + `contentPdfMode='underlay'` 저장
+7. `POST /worker-jobs/render-pages`(110dpi 래스터) 폴링 → `metadata.contentPdfGuide.pageImageUrls` 저장
+8. **(W1, 2026-08-13) 즉시 앉히기** — `seatContentPdf()` 가 재로드 없이 ①내지 페이지를 PDF 페이지 수로
+   확장하고 ②각 내지에 가이드를 배치한 뒤 ③첫 내지 페이지로 이동. 완료 토스트로 표시전용 계약을 안내.
 
 **결정 3-3 배타**: PDF 첨부 상태에서 캔버스 수정 시 API 가 `400 PDF_ATTACHED_EXCLUSIVE` 거부.
+
+#### 13.2-A 앉히기(seating) 계약 — W1 (2026-08-13)
+
+정본 모듈: `apps/editor/src/utils/contentPdfGuide.ts`
+
+| 함수 | 역할 |
+|---|---|
+| `ensureUnderlayPages(pageCount)` | 내지 캔버스를 PDF 페이지 수까지 **추가만** 한다(감소 없음). 상한 `UNDERLAY_MAX_PAGES=200`(워커 래스터 상한 정렬). 스프레드 모드 아님·`regionScope='inner'`(포토북 내지 전용 세트)는 대상 외 |
+| `applyContentPdfGuides(session, tsId)` | 내지마다 가이드 이미지를 `excludeFromExport` 잠금 배경으로 배치. **멱등** — 재호출 시 기존 가이드/레이블 제거 후 재배치 |
+| `seatContentPdf(session, tsId, opts)` | 위 둘의 합성. 호출 지점 3곳이 공유 |
+
+**호출 지점(대칭 — 비대칭이 G1·G3 결함의 원인이었다)**
+1. `/embed` 세션 로드 직후 (`embed.tsx`) — 확장은 `loadTemplateSetEditor(underlayPageCount)` 가 이미 수행 → 가이드만
+2. 첨부 완료 직후 (`EditorWorkflowControls.onAttached`) — 재로드 없이 확장+배치, `focusFirstInnerPage`
+3. `EditorView(/)` 로드 (`EditorWorkflowControls` 가 소유 게스트 세션을 조회해 수행)
+
+**첨부 진입점 노출(G2)**: `EditorWorkflowControls` 는 이제 `/embed` 에도 마운트된다.
+- 임베드는 `sessionId`(+게스트면 `guestToken`)를 **명시 주입** → 별도 게스트 세션을 만들지 않는다(첨부가 엉뚱한 세션에 붙는 사고 방지).
+- 호스트 opt-out: `/embed?contentPdfAttach=0`. 폴백 템플릿셋 구동 시에는 비노출(판형 불일치 검증 방지).
+- 레더·면지 안내 배너는 레거시 `/` 에만 유지(임베드 배선은 G8 트랙).
+
+**알려진 비대칭(설계상 수용)**: 즉시 확장으로 생긴 내지는 **빈 페이지**, 재로드로 생긴 내지는 마지막 내지
+템플릿 복제본이다. underlay 는 표시전용(원본 PDF 인쇄)이라 내지 템플릿 아트워크는 인쇄에 영향이 없다.
 
 ### 13.3 게스트 (24h 자동 삭제)
 

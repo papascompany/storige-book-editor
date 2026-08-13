@@ -170,6 +170,13 @@ interface Props {
    * 미제공 시 BLEED_MISSING 이어도 변환 없이 기존 흐름 그대로(레거시 호환).
    */
   templateSetId?: string | null
+  /**
+   * 게스트 세션 토큰 override (W1, 2026-08-13).
+   * /embed 는 자체적으로 세션을 만들며(회원 실패 시 게스트 폴백) 그 토큰을 useGuestStore 에
+   * 넣지 않는다 → 스토어만 보면 게스트 PATCH 경로를 못 찾는다. 명시 세션을 쓰는 호출자가
+   * 해당 세션의 guestToken 을 직접 주입한다. 미제공 시 기존대로 스토어 값 사용.
+   */
+  guestToken?: string | null
   /** 닫기 */
   onClose: () => void
   /** 첨부 성공 + 페이지수 합의 끝났을 때 호출 */
@@ -178,6 +185,17 @@ interface Props {
     contentPdfPageCount: number
     targetPageCount: number  // 자동확장 후 내지 페이지 수
     validationResult: ValidationResult
+    /**
+     * W1-G1(2026-08-13): 방금 생성된 가이드 래스터 결과(additive).
+     * 호출자가 세션 재조회 없이 즉시 편집기에 앉힐 수 있도록 그대로 넘긴다.
+     * 래스터 실패/타임아웃(best-effort)이면 undefined — 첨부 자체는 성공이다.
+     */
+    contentPdfGuide?: {
+      sourceFileId: string
+      resolution?: number
+      pageImageUrls: string[]
+      renderedAt?: string
+    }
   }) => void
 }
 
@@ -189,10 +207,13 @@ export function ContentPdfAttachModal({
   trimSize,
   bleedMm,
   templateSetId,
+  guestToken: guestTokenProp,
   onClose,
   onAttached,
 }: Props) {
-  const guestToken = useGuestStore((s) => s.guestToken)
+  const storeGuestToken = useGuestStore((s) => s.guestToken)
+  // 명시 주입(임베드 세션) 우선 — 미제공 시 기존 게스트 스토어 값(레거시 / 경로)
+  const guestToken = guestTokenProp ?? storeGuestToken
   const [file, setFile] = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
   const [validating, setValidating] = useState(false)
@@ -525,6 +546,14 @@ export function ContentPdfAttachModal({
 
       // 2) 가이드 래스터 잡 트리거 + 폴링 → metadata.contentPdfGuide 저장 (best-effort)
       //    실패해도 첨부 자체는 성공 처리(가이드는 다음 로드/재시도에 생성 가능).
+      // W1-G1: 세션에 저장한 payload 를 그대로 onAttached 로도 넘겨(호출자가 재조회 없이 즉시
+      //        편집기에 앉힌다). 래스터 실패 시 undefined 유지 = 첨부만 성공.
+      let attachedGuide: {
+        sourceFileId: string
+        resolution?: number
+        pageImageUrls: string[]
+        renderedAt?: string
+      } | undefined
       setGuideRendering(true)
       try {
         // ⚠️ editSessionId 는 보내지 않는다 (C+ G1 리뷰 적발, 2026-07-11).
@@ -550,16 +579,13 @@ export function ContentPdfAttachModal({
         }
         if (cancelledRef.current) return // P1-1: 마지막 조회 대기 중 닫힘
         if (guide?.pageImageUrls?.length) {
-          const metaPayload = {
-            metadata: {
-              contentPdfGuide: {
-                sourceFileId: fileId,
-                resolution: guide.resolution,
-                pageImageUrls: guide.pageImageUrls,
-                renderedAt: guide.renderedAt,
-              },
-            },
+          attachedGuide = {
+            sourceFileId: fileId,
+            resolution: guide.resolution,
+            pageImageUrls: guide.pageImageUrls,
+            renderedAt: guide.renderedAt,
           }
+          const metaPayload = { metadata: { contentPdfGuide: attachedGuide } }
           if (guestToken) {
             await editSessionsApi.updateGuest(sessionId, guestToken, metaPayload)
           } else {
@@ -578,6 +604,7 @@ export function ContentPdfAttachModal({
         contentPdfPageCount: pdfPages,
         targetPageCount,
         validationResult: result,
+        ...(attachedGuide ? { contentPdfGuide: attachedGuide } : {}),
       })
       reset()
       onClose()
@@ -624,8 +651,10 @@ export function ContentPdfAttachModal({
         {!validationResult && (
           <>
             <p style={{ color: '#666', fontSize: 14, marginBottom: 12 }}>
-              직접 작성한 PDF 를 첨부하면 각 페이지가 내지에 <strong>가이드</strong>로 표시됩니다.
-              최종 내지 인쇄는 <strong>첨부한 원본 PDF 그대로</strong> 입니다(편집 내용은 내지 인쇄에 반영되지 않습니다).
+              직접 작성한 PDF 를 첨부하면 각 페이지가 내지에 <strong>가이드</strong>로 즉시 배치되어
+              위치·순서를 화면에서 확인할 수 있습니다.
+              최종 내지 인쇄는 <strong>첨부한 원본 PDF 그대로</strong> 입니다 —
+              가이드 위에 올린 텍스트·이미지는 <strong>내지 인쇄에 반영되지 않습니다</strong>.
             </p>
             <input type="file" accept="application/pdf" onChange={handleFileChange} disabled={uploading || validating} />
             {uploading && file && file.size > 50 * 1024 * 1024 && (
@@ -693,16 +722,15 @@ export function ContentPdfAttachModal({
 
         {showPageMismatch && validationResult && uploadedFileId && (
           <>
-            {/* C+ G1 리뷰 반영(2026-07-11): 종전 '자동 확장' 라벨은 빈 약속 — targetPageCount
-                소비처가 없어 현재 편집 화면의 페이지수/가이드는 즉시 바뀌지 않는다(파싱
-                수정으로 이 모달이 처음 실노출되면서 드러남). 실제 효과(인쇄·표시는 첨부
-                PDF 페이지수 기준)를 그대로 말하는 카피로 정직화. */}
+            {/* C+ G1 리뷰(2026-07-11)에서 '자동 확장'은 빈 약속이라 정직화했었다(소비처 0건).
+                W1-G5(2026-08-13)로 호출자가 targetPageCount 를 실제로 소비해 첨부 즉시 내지가
+                늘어나므로, 카피를 실제 동작에 맞춰 되돌린다. 인쇄 기준(첨부 원본)은 불변. */}
             <div style={{ background: '#fff8e1', padding: 12, borderRadius: 4, marginTop: 16 }}>
               <strong>페이지 수 확인</strong>
               <p style={{ fontSize: 13, marginTop: 8 }}>
                 PDF 가 <b>{validationResult.pageCount}페이지</b>, 현재 내지가 <b>{currentContentPageCount}페이지</b> 입니다.
-                그대로 첨부하면 <b>인쇄는 첨부한 PDF({validationResult.pageCount}페이지) 기준</b>이며,
-                지금 보이는 편집 화면의 페이지 수는 바뀌지 않습니다.
+                그대로 첨부하면 편집 화면의 내지가 <b>PDF 페이지 수({validationResult.pageCount}페이지)로 즉시 확장</b>되고
+                각 페이지에 PDF 가 배치됩니다. <b>인쇄는 첨부한 PDF 원본 그대로</b>입니다.
               </p>
             </div>
             <div style={{ marginTop: 16, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>

@@ -8,21 +8,49 @@
  *   - templateSet.coverEditable=false → LeatherCoverPreview 안내 배너
  *   - 게스트 세션 자동 생성 (token 없을 때, templateSetId 있을 때만)
  *
- * 사용:
- *   <EditorWorkflowControls templateSetId="..." />
+ * W1(2026-08-13) — 사용처 2곳 대칭(G2·G3):
+ *   - EditorView(`/`, 레거시): `<EditorWorkflowControls templateSetId="..." />`
+ *     → 게스트 세션을 스스로 만들고(기존 동작), 그 세션이 underlay 면 로드 시 자동으로 앉힌다.
+ *   - EmbeddedEditor(`/embed`, 파트너 정본): `sessionId`(+게스트면 `guestToken`) 를 명시 주입
+ *     → 게스트 세션 자동생성·자동 앉히기를 하지 않는다(세션 소유·로드 앉히기는 embed 가 수행).
+ *   두 경우 모두 **첨부 완료 시점**에는 여기서 `seatContentPdf` 로 즉시 앉힌다(G1·G5).
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { templateSetsApi } from '../../api/template-sets'
 import type { TemplateSet } from '@storige/types'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useGuestStore } from '../../stores/useGuestStore'
+import { useAppStore } from '../../stores/useAppStore'
+import { editSessionsApi, type EditSessionResponse } from '../../api/edit-sessions'
+import { seatContentPdf } from '../../utils/contentPdfGuide'
+import { showToast } from '../../stores/useToastStore'
 import { ContentPdfAttachModal } from './ContentPdfAttachModal'
 
 interface Props {
   templateSetId?: string | null
+  /**
+   * 명시 편집 세션 id (임베드). 주어지면 게스트 세션 자동생성을 하지 않고 이 세션에 첨부한다.
+   * 미지정 시 기존 동작(게스트 세션 자동 생성/복원) — EditorView(`/`) 경로.
+   */
+  sessionId?: string | null
+  /** 명시 세션이 게스트 세션인 경우의 토큰 (임베드 게스트 폴백) */
+  guestToken?: string | null
+  /**
+   * floating 패널의 우측 오프셋(px). 우측 페이지 네비(150px)와 겹치지 않게 호출자가 지정.
+   * 기본 16 = 기존 위치 그대로.
+   */
+  offsetRight?: number
+  /** 첨부 완료 알림 (호출자 세션 상태 동기화용) */
+  onAttached?: (result: { contentPdfFileId: string; contentPdfPageCount: number }) => void
 }
 
-export function EditorWorkflowControls({ templateSetId }: Props) {
+export function EditorWorkflowControls({
+  templateSetId,
+  sessionId,
+  guestToken,
+  offsetRight = 16,
+  onAttached,
+}: Props) {
   const [templateSet, setTemplateSet] = useState<TemplateSet | null>(null)
   const [showAttachModal, setShowAttachModal] = useState(false)
   const [attached, setAttached] = useState<{
@@ -33,6 +61,14 @@ export function EditorWorkflowControls({ templateSetId }: Props) {
   const token = useAuthStore((s) => s.token)
   const guestSessionId = useGuestStore((s) => s.sessionId)
   const ensureGuestSession = useGuestStore((s) => s.ensureGuestSession)
+  const ready = useAppStore((s) => s.ready)
+
+  /** 첨부 대상 세션 — 명시 주입(임베드) 우선, 없으면 게스트 세션(레거시 /) */
+  const attachSessionId = sessionId ?? guestSessionId
+  /** 세션 소유자 여부: 명시 주입이 없으면 이 컴포넌트가 세션을 만들고 로드 앉히기까지 책임진다 */
+  const ownsSession = !sessionId
+  /** 로드 시 자동 앉히기 1회 가드 (세션 id 기준) */
+  const seatedSessionRef = useRef<string | null>(null)
 
   // templateSet 로딩 (coverEditable / endpaperConfig 확인용)
   useEffect(() => {
@@ -41,21 +77,26 @@ export function EditorWorkflowControls({ templateSetId }: Props) {
       return
     }
     let cancelled = false
+    // ⚠️ 공개 엔드포인트(`/with-templates`, @Public)로 읽는다 — `GET /template-sets/:id` 는
+    //    JWT 필수라 **비로그인 고객(게스트)에게 401**이고, 그러면 templateSet 이 null 로 남아
+    //    이 컨트롤 전체가 렌더되지 않는다(= 첨부 진입점 자체가 사라짐). 2026-08-13 실기 적발.
     templateSetsApi
-      .getTemplateSet(templateSetId)
-      .then((ts) => {
-        if (!cancelled) setTemplateSet(ts)
+      .getTemplateSetWithTemplates(templateSetId)
+      .then((res) => {
+        if (!cancelled) setTemplateSet((res?.templateSet ?? null) as TemplateSet | null)
       })
       .catch((err) => {
-        console.warn('[EditorWorkflowControls] getTemplateSet failed:', err)
+        console.warn('[EditorWorkflowControls] getTemplateSetWithTemplates failed:', err)
       })
     return () => {
       cancelled = true
     }
   }, [templateSetId])
 
-  // 게스트 세션 자동 생성 (token 없고 templateSet 로드 완료 후)
+  // 게스트 세션 자동 생성 (token 없고 templateSet 로드 완료 후).
+  // 명시 세션(임베드)이 주입되면 스킵 — 별도 게스트 세션을 만들면 첨부가 엉뚱한 세션에 붙는다.
   useEffect(() => {
+    if (!ownsSession) return
     if (token) return
     if (!templateSet) return
     if (guestSessionId) return
@@ -65,13 +106,52 @@ export function EditorWorkflowControls({ templateSetId }: Props) {
     }).catch((err) => {
       console.warn('[EditorWorkflowControls] ensureGuestSession failed:', err)
     })
-  }, [token, templateSet, guestSessionId, ensureGuestSession])
+  }, [ownsSession, token, templateSet, guestSessionId, ensureGuestSession])
+
+  /**
+   * W1-G3(2026-08-13): 소유 세션(레거시 `/`)의 로드 시 앉히기 — /embed 와 대칭.
+   * 종전엔 EditorView 에 applyContentPdfGuides 호출이 0건이라, 이미 PDF 를 첨부한 세션으로
+   * 다시 들어와도 화면에는 아무것도 안 깔렸다. 캔버스 준비(ready) 후 세션을 조회해 앉힌다.
+   * 임베드는 embed.tsx 가 로드 시 직접 앉히므로 여기서는 하지 않는다(이중 적용 방지).
+   */
+  useEffect(() => {
+    if (!ownsSession) return
+    if (!ready || !attachSessionId || !templateSet) return
+    if (seatedSessionRef.current === attachSessionId) return
+    seatedSessionRef.current = attachSessionId
+
+    let cancelled = false
+    ;(async () => {
+      try {
+        const session: EditSessionResponse = await editSessionsApi.get(attachSessionId)
+        if (cancelled) return
+        if ((session as { contentPdfMode?: string }).contentPdfMode !== 'underlay') return
+        if (session.contentPdfFileId) {
+          setAttached({
+            fileId: session.contentPdfFileId,
+            pageCount: session.contentPdfPageCount ?? 0,
+          })
+        }
+        await seatContentPdf(session, templateSet.id)
+      } catch (err) {
+        // 세션 만료/조회 실패 — 첨부 UI 는 그대로 두고 조용히 스킵(다음 첨부에 재시도)
+        console.warn('[EditorWorkflowControls] 로드 시 내지 PDF 앉히기 스킵:', err)
+        seatedSessionRef.current = null
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [ownsSession, ready, attachSessionId, templateSet])
 
   if (!templateSet) return null
 
   const isBookMode = templateSet.editorMode === 'book' || templateSet.type === 'book'
   const canAttach = isBookMode // 책 모드에서만 PDF 첨부 의미 있음
-  const currentContentPageCount = (templateSet as any).pageCountRange?.[0] ?? 16
+  // 현재 내지 수: 살아있는 캔버스(표지=0 제외)가 실측값. 아직 로드 전이면 템플릿 범위 최소값.
+  const liveInnerPageCount = useAppStore.getState().allCanvas.length - 1
+  const currentContentPageCount =
+    liveInnerPageCount > 0 ? liveInnerPageCount : ((templateSet as any).pageCountRange?.[0] ?? 16)
 
   const isLeather = templateSet.coverEditable === false
   const endpaper = (templateSet as any).endpaperConfig as
@@ -86,7 +166,7 @@ export function EditorWorkflowControls({ templateSetId }: Props) {
         style={{
           position: 'fixed',
           top: 80,
-          right: 16,
+          right: offsetRight,
           zIndex: 100,
           display: 'flex',
           flexDirection: 'column',
@@ -94,7 +174,10 @@ export function EditorWorkflowControls({ templateSetId }: Props) {
           pointerEvents: 'none',
         }}
       >
-        {isLeather && (
+        {/* 레더커버·면지 안내 배너는 레거시 `/` 경로에서만 유지한다.
+            임베드(명시 세션)의 안내 배선은 G8(레더커버 배선·면지) 트랙에서 별도로 다룬다 —
+            W1 의 파트너 UI 변경 면적을 '첨부 진입점' 하나로 묶기 위한 의도적 제한. */}
+        {ownsSession && isLeather && (
           <div
             style={{
               pointerEvents: 'auto',
@@ -115,7 +198,7 @@ export function EditorWorkflowControls({ templateSetId }: Props) {
           </div>
         )}
 
-        {endpaper && (endpaper.frontCount > 0 || endpaper.backCount > 0) && (
+        {ownsSession && endpaper && (endpaper.frontCount > 0 || endpaper.backCount > 0) && (
           <div
             style={{
               pointerEvents: 'auto',
@@ -136,7 +219,7 @@ export function EditorWorkflowControls({ templateSetId }: Props) {
           </div>
         )}
 
-        {canAttach && (guestSessionId || token) && (
+        {canAttach && attachSessionId && (
           <button
             type="button"
             disabled={!!attached}
@@ -162,10 +245,11 @@ export function EditorWorkflowControls({ templateSetId }: Props) {
       </div>
 
       {/* PDF 첨부 모달 */}
-      {showAttachModal && guestSessionId && (
+      {showAttachModal && attachSessionId && (
         <ContentPdfAttachModal
           open={showAttachModal}
-          sessionId={guestSessionId}
+          sessionId={attachSessionId}
+          guestToken={guestToken}
           currentContentPageCount={currentContentPageCount}
           canAddPage={!!templateSet.canAddPage}
           // C+ G1(2026-07-11): 검증 기준을 A4 하드코드 대신 templateSet 판형으로 주입.
@@ -183,6 +267,52 @@ export function EditorWorkflowControls({ templateSetId }: Props) {
               pageCount: result.contentPdfPageCount,
             })
             setShowAttachModal(false)
+            onAttached?.({
+              contentPdfFileId: result.contentPdfFileId,
+              contentPdfPageCount: result.contentPdfPageCount,
+            })
+            // W1-G1·G5: 재로드 없이 즉시 앉히기 — 내지 페이지를 PDF 페이지 수로 확장하고
+            // 방금 래스터된 가이드를 각 내지에 배치한다. 모달이 세션 PATCH 를 이미 끝냈으므로
+            // 여기서는 같은 payload 로 만든 세션 형태 객체를 그대로 쓴다(재조회 불필요).
+            void seatContentPdf(
+              {
+                contentPdfMode: 'underlay',
+                contentPdfFileId: result.contentPdfFileId,
+                contentPdfPageCount: result.contentPdfPageCount,
+                metadata: result.contentPdfGuide
+                  ? { contentPdfGuide: result.contentPdfGuide }
+                  : {},
+              },
+              templateSet.id,
+              { focusFirstInnerPage: true },
+            )
+              .then(({ addedPages, guidesPlaced }) => {
+                seatedSessionRef.current = attachSessionId
+                if (guidesPlaced) {
+                  showToast(
+                    `내지 PDF ${result.contentPdfPageCount}p 를 편집기에 배치했습니다` +
+                      (addedPages > 0 ? ` (페이지 ${addedPages}개 추가)` : '') +
+                      ' — 표시전용, 인쇄는 첨부 원본 그대로입니다.',
+                    'success',
+                    6000,
+                  )
+                } else {
+                  // 가이드 래스터가 실패/타임아웃(best-effort) — 첨부 자체는 성공.
+                  showToast(
+                    '내지 PDF 는 첨부됐지만 미리보기 생성이 지연되고 있습니다. 잠시 후 새로고침하면 표시됩니다.',
+                    'warning',
+                    6000,
+                  )
+                }
+              })
+              .catch((err) => {
+                console.warn('[EditorWorkflowControls] 첨부 직후 앉히기 실패:', err)
+                showToast(
+                  '내지 PDF 는 첨부됐지만 화면 배치에 실패했습니다. 새로고침해주세요.',
+                  'warning',
+                  6000,
+                )
+              })
           }}
         />
       )}

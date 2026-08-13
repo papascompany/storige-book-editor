@@ -32,6 +32,7 @@ import {
   spreadCountFromPageCount,
 } from '@/utils/photobookSpread'
 import { resolveAssetUrl } from '@/utils/resolveAssetUrl'
+import { UNDERLAY_MAX_PAGES } from '@/utils/contentPdfGuide'
 import type {
   EditorContent,
   EditorTemplate,
@@ -1618,7 +1619,8 @@ export function useEditorContents(): UseEditorContentsReturn {
       // 9. 페이지수 조정 (config.pageCount가 있는 경우)
       let adjustedPageTemplates = [...pageTemplates]
       const requestedPageCount = config.pageCount
-      const UNDERLAY_MAX_PAGES = 200 // 워커 CONTENT_PDF_GUIDE_MAX_PAGES 정렬(메모리 안전상한)
+      // UNDERLAY_MAX_PAGES(=200, 워커 CONTENT_PDF_GUIDE_MAX_PAGES 정렬)는 contentPdfGuide 와 공유
+      // — 즉시 앉히기(ensureUnderlayPages)와 로드 경로가 같은 상한을 쓰도록 단일 선언(2026-08-13).
 
       if (config.underlayPageCount && config.underlayPageCount > 0) {
         // 내지 PDF 표시전용: pageCountRange 클램프 없이 정확히 PDF 페이지수만큼 내지 생성.

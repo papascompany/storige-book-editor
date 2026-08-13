@@ -764,6 +764,7 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 | `productId`, `productName`, `title`, `width`, `height` | 선택 | — | 메타 |
 | `coverFileId`, `contentFileId` | 선택 | — | 기존 파일 연결 |
 | `callbackUrl`, `apiBaseUrl` | 선택 | — | — |
+| `contentPdfAttach` | 선택 | 선택 | **내지 PDF 첨부 진입점**(2026-08-13 신설). 미전달=**노출**(book 모드 템플릿셋 한정). 끄려면 `contentPdfAttach=0` \| `false` |
 | `allowSampleFallback` | 선택 | — | `1` 또는 DEV에서만 sample 폴백 |
 
 > 프로덕션에서 템플릿셋 로드 실패 시 `editor.error TEMPLATE_SET_NOT_FOUND` 를 발신합니다.
@@ -797,11 +798,12 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 | 편집기→부모 | `editor.state` | `{requestId, ready, dirty, sessionId}` | getState 응답 |
 | 편집기→부모 | `editor.saved` | `{requestId, ok, error}` | saveNow 응답 |
 | 편집기→부모 | `editor.pricingChange` | `{sessionId, pageCount, pricing?, coverType?}` | 가격 영향 변경(페이지 증감 등) 실시간 통지 (2026-07-06 additive) |
+| 편집기→부모 | `editor.contentPdfAttached` | `{sessionId, contentPdfFileId, contentPdfPageCount, mode:'underlay'}` | 고객이 내지 PDF 를 첨부해 편집기에 앉힌 시점 (2026-08-13 additive) |
 | **부모→편집기** | `getState` | `{requestId}` | **요청-응답** — `editor.state` 로 응답(`requestId` echo) |
 | **부모→편집기** | `saveNow` | `{requestId}` | **요청-응답** — 저장 후 `editor.saved` 로 응답(`requestId` echo) |
 | **부모→편집기** | `setBackGuard` | `{enabled}` | **fire-and-forget** — 뒤로가기 가드 on/off, **응답 이벤트 없음** |
 
-> **발신 8종(`ready`/`save`/`complete`/`cancel`/`error`/`needAuth`/`state`/`saved`)이 동결 계약**이고, **`editor.pricingChange` 1종은 ADDITIVE**입니다 — 조건부 발신(아래 발신 조건 참조)이라 동결 표면에 포함되지 않습니다. 수신 명령은 위 3종이 전부이며, 확장은 additive(추가만)로만 이뤄집니다.
+> **발신 8종(`ready`/`save`/`complete`/`cancel`/`error`/`needAuth`/`state`/`saved`)이 동결 계약**이고, **`editor.pricingChange`·`editor.contentPdfAttached` 2종은 ADDITIVE**입니다 — 조건부 발신(아래 발신 조건 참조)이라 동결 표면에 포함되지 않습니다. 수신 명령은 위 3종이 전부이며, 확장은 additive(추가만)로만 이뤄집니다.
 > **응답 유형을 구분하세요.** `setBackGuard` 는 응답이 없으므로 세 명령을 일괄 Promise 로 감싸면 이 명령만 영원히 pending 상태가 됩니다.
 
 > **`editor.complete` 페이로드 구조 주의:** `coverFileId`·`contentFileId`·`thumbnailUrl` 은 최상위가 아니라 **`files` 객체 안에 중첩**되고, `pages` 는 **`{initial, final}` 객체**입니다. 이 shape 은 **동결 계약**이라 평탄화되지 않습니다 — `payload.coverFileId` 를 읽는 파서는 항상 `undefined` 를 얻고, `pages` 를 숫자로 가정하면 그대로 깨집니다.
@@ -830,6 +832,16 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 > 방어적으로는 **`guestToken` 이 있는데 `needsAuth` 가 없는 형태도 게스트로 취급**하세요(fail-closed). 로그인 이후 처리는 3.3 의 "게스트 → 회원 전환" 을 따르세요.
 > **`editCode` 형식:** `EDIT-XXXXXXXX` = 접두 `EDIT-` + 세션ID 앞 8자 대문자(`EDIT-${id.substring(0,8).toUpperCase()}`). 순수 8자리 숫자가 아닙니다.
 > **`editor.pricingChange` (D-3, 2026-07-06 additive):** 편집 중 페이지 추가/삭제로 총 페이지 수가 바뀌면 ~300ms 디바운스로 발신됩니다. 가격 계산 주체는 **호스트**(storige 는 가격을 계산하지 않음) — `pageCount`(물리 페이지, 포토북 내지 펼침면 ×2)와 `pricing` 메타로 장바구니 표시가를 갱신하세요. **발신 조건(보수 기본):** 템플릿셋에 `pricing` 이 설정된 경우 + 회원 세션만(게스트 미발신) + 에디터 초기화/세션 복원 완료 후. `coverType` 은 템플릿셋에 커버 종류 코드(string, 확장 가능 — `hardcover_wrap`/`softcover_variable_spine`/`ready_made` 시드)가 설정된 경우에만 동봉. 미지 이벤트를 무시하는 기존 수신부는 영향 없음(additive).
+
+> **내지 PDF 첨부 + `editor.contentPdfAttached` (2026-08-13 additive):** 고객이 직접 만든 내지 PDF 를
+> 편집기 안에서 첨부하면(우측 상단 "📎 내지 PDF 첨부"), 검증·도련 자동변환을 거쳐 **각 내지 페이지에
+> 즉시 배치**되고 편집 화면의 내지 수가 PDF 페이지 수로 확장됩니다(표시 상한 200p).
+> **인쇄 계약은 표시전용입니다** — 최종 내지 인쇄물은 **첨부한 원본 PDF 그대로**이며, 가이드 위에 올린
+> 텍스트·이미지는 내지 인쇄에 반영되지 않습니다(표지는 종전대로 편집 결과가 인쇄됨).
+> **노출 조건:** book 모드 템플릿셋 + 편집 세션이 있는 진입(`sessionId` 재편집, 또는 `orderSeqno`+`mode`
+> 신규 진입). 쓰지 않는 호스트는 `contentPdfAttach=0` 으로 끕니다.
+> **호스트 조치:** 첨부 시 총 페이지 수가 바뀌므로(가격·주문 수량 영향) 이 이벤트로 주문 정보를 갱신하세요.
+> 첨부한 PDF 는 세션의 `contentPdfFileId` 에 저장되며 합성(`compose-mixed`)의 내지 입력이 됩니다.
 
 `editor.error` code 종류: `AUTH_EXPIRED`, `NETWORK_ERROR`, `SAVE_FAILED`, `INVALID_DATA`, `SESSION_NOT_FOUND`, `TEMPLATE_SET_NOT_FOUND`.
 

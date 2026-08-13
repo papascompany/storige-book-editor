@@ -701,7 +701,11 @@ export default function EditorView() {
       {/* 인쇄 워크플로우 v1 Phase 5-D (2026-05-19) — 면지/PDF첨부/레더커버 floating controls.
           침습 최소 통합: 캔버스/페이지 로직 미변경, 우측 상단 floating UI 만 추가. */}
       {!isAdminTemplateSetEdit && templateSetId && (
-        <EditorWorkflowControls templateSetId={templateSetId} />
+        <EditorWorkflowControls
+          templateSetId={templateSetId}
+          /* 우측 세로 페이지 네비(150px) 위에 겹치지 않게 비켜 놓는다 (2026-08-13 실기 적발) */
+          offsetRight={navPosition === 'right' ? 166 : 16}
+        />
       )}
 
       {/* Admin "템플릿셋 수정" 모드 안내 배너 — 일반 사용자/PHP 흐름과 시각적 구분.

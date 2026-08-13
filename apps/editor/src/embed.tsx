@@ -60,8 +60,9 @@ import { useResolvedPageNavPosition } from './hooks/useResolvedPageNavPosition'
 import { WorkspaceModal } from './components/modals'
 import { RestoreBackupBanner } from './components/RestoreBackupBanner'
 import ObjectDeleteConfirm from './components/editor/ObjectDeleteConfirm'
+import { EditorWorkflowControls } from './components/editor/EditorWorkflowControls'
 import { Sentry } from './lib/sentry'
-import { applyContentPdfGuides } from './utils/contentPdfGuide'
+import { seatContentPdf } from './utils/contentPdfGuide'
 import {
   classifyOrientation,
   detectOrientationMismatch,
@@ -260,6 +261,14 @@ export interface EditorConfig {
     wingWidthMm?: number
     /** 종이 정보 */
     paper?: { type: string; weight: number }
+    /**
+     * 내지 PDF 첨부 진입점 노출 (W1-G2, 2026-08-13).
+     *
+     * book 모드 templateSet 이면 **기본 노출(true)** — 고객이 직접 만든 내지 PDF 를 첨부하면
+     * 편집기에 즉시 앉혀 보여준다(표시전용: 인쇄는 첨부 원본 PDF 그대로).
+     * 첨부를 쓰지 않는 호스트는 `/embed?contentPdfAttach=0` (또는 이 옵션 false)으로 끈다.
+     */
+    contentPdfAttach?: boolean
   }
   /** 편집 완료 콜백 */
   onComplete?: (result: EditorResult) => void
@@ -388,6 +397,10 @@ export type EmbedMessageEvent =
   // D-3 (2026-07-06, additive — needAuth 선례): 페이지 증감 등 가격 영향 변경 실시간 통지.
   // 수신부는 event 스위치로 미지 이벤트를 무시하므로 비파괴. 게스트 세션·pricing 미설정 셋 미발신.
   | 'editor.pricingChange'
+  // W1-G2 (2026-08-13, additive): 고객이 내지 PDF 를 첨부해 편집기에 앉힌 시점 통지.
+  // payload = { sessionId, contentPdfFileId, contentPdfPageCount, mode:'underlay' }.
+  // 호스트가 주문 페이지수/가격을 갱신하거나 첨부 사실을 표시하는 데 쓸 수 있다(미수신=무해).
+  | 'editor.contentPdfAttached'
 
 /** 호스트 → 편집기 명령 종류 */
 export type EmbedHostCommand = 'getState' | 'saveNow' | 'setBackGuard'
@@ -558,6 +571,12 @@ function EmbeddedEditor({
   const [loadingMessage, setLoadingMessage] = useState('에디터를 초기화하는 중...')
   const [error, setError] = useState<string | null>(null)
   const [currentSession, setCurrentSession] = useState<EditSessionResponse | null>(null)
+  /**
+   * W1-G2(2026-08-13): 내지 PDF 첨부 진입점에 넘길 실효 templateSetId.
+   * 초기화 루프가 확정한 `effectiveTemplateSetId` 중 **폴백이 아닌 경우에만** 채운다
+   * (샘플 폴백 위에서 첨부하면 판형이 다른 templateSet 기준으로 검증/변환된다).
+   */
+  const [attachTemplateSetId, setAttachTemplateSetId] = useState<string | null>(null)
   const [showWorkspaceModal, setShowWorkspaceModal] = useState(false)
   // 내부 뒤로가기 가드 on/off. 호스트가 storige.setBackGuard{enabled:false} 로 직접 제어를 가져가면 끈다.
   const [internalBackGuard, setInternalBackGuard] = useState(true)
@@ -1174,11 +1193,18 @@ function EmbeddedEditor({
 
         if (!isMounted) return
 
-        // 3-A. 내지 PDF 표시전용 가이드 배치 (underlay 모드) — 캔버스 복원 후.
+        // 3-A. 내지 PDF 표시전용 앉히기 (underlay 모드) — 캔버스 복원 후.
         // 가이드는 excludeFromExport 라 export/저장에서 제외, 최종 인쇄는 첨부 원본 PDF 그대로.
+        // W1(2026-08-13): 첨부 직후 경로와 동일한 seatContentPdf 사용 — 여기서는 페이지 확장이
+        // 이미 loadTemplateSetEditor(underlayPageCount)에서 끝나 no-op 이고 가이드만 배치된다.
         if (editSession) {
-          await applyContentPdfGuides(editSession, effectiveTemplateSetId)
+          await seatContentPdf(editSession, effectiveTemplateSetId)
         }
+
+        // W1-G2: 첨부 진입점이 쓸 실효 templateSetId 확정 (폴백 구동 시에는 첨부 비노출).
+        setAttachTemplateSetId(
+          effectiveTemplateSetId === requestedTemplateSetId ? effectiveTemplateSetId : null,
+        )
 
         // 3-A'. D1 외부 사진 주입 (EDITOR.md §20.1) — 호스트가 세션 metadata 로
         // 주입한 공유방 사진 목록을 스토어에 적재. 목록이 있으면 이미지 패널에
@@ -2109,6 +2135,40 @@ function EmbeddedEditor({
             <p className="text-editor-text">{loadingMessage || '로딩 중...'}</p>
           </div>
         </div>
+      )}
+
+      {/* W1-G2 (2026-08-13): 내지 PDF 첨부 진입점 — 파트너 정본 경로(/embed)에 마운트.
+          종전엔 레거시 `/`(EditorView)에만 있어 임베드 고객은 PDF 를 첨부할 수 없었다.
+          book 모드 templateSet 이면 기본 노출, 호스트가 contentPdfAttach=false 로 끈다.
+          세션은 embed 가 소유 — sessionId(+게스트면 guestToken)를 명시 주입해
+          컨트롤이 별도 게스트 세션을 만들지 않게 한다. */}
+      {ready && attachTemplateSetId && currentSession?.id && options?.contentPdfAttach !== false && (
+        <EditorWorkflowControls
+          templateSetId={attachTemplateSetId}
+          sessionId={currentSession.id}
+          guestToken={currentSession.guestToken ?? null}
+          /* 우측 세로 페이지 네비(150px) 위에 겹치지 않게 비켜 놓는다 */
+          offsetRight={navPosition === 'right' ? 166 : 16}
+          onAttached={({ contentPdfFileId, contentPdfPageCount }) => {
+            // 로컬 세션 상태 동기화 — 이후 저장/완료·재마운트가 첨부 사실을 그대로 본다.
+            setCurrentSession((prev) =>
+              prev
+                ? ({
+                    ...prev,
+                    contentPdfFileId,
+                    contentPdfPageCount,
+                    contentPdfMode: 'underlay',
+                  } as EditSessionResponse)
+                : prev,
+            )
+            postToParent(parentOrigin, 'editor.contentPdfAttached', {
+              sessionId: currentSession.id,
+              contentPdfFileId,
+              contentPdfPageCount,
+              mode: 'underlay',
+            })
+          }}
+        />
       )}
 
       {/* 저장된 작업 불러오기 모달 */}
