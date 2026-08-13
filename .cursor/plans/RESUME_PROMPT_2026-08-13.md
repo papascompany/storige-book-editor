@@ -106,7 +106,12 @@ curl -s https://api.papascompany.co.kr/api/health | python3 -m json.tool | head 
    이라 삭제는 일어나지 않는다(실측). 오류 시 Sentry `alert.type=orphan-query-failed` 로도 뜬다.
 3. **파트너 안내** — 통합가이드 §3.4/§3.4.1 갱신분(빈 입력 400 승격·결과 회수 경로 정정·자동조립 신설)을
    bookmoa-mobile·100p Books·MD2Books 에 릴레이. **빈 입력 400 은 관측 가능한 동작 변화**다(호출 이력 0건이라 실파손은 없음).
-4. **W4** — G8(레더커버 배선·면지 — 임베드 배너는 W1 에서 의도적으로 보류) → G4(페이지 재정렬 UI) → G9(반복 규칙).
+4. **W4 — G8 은 착수 보류(실측 근거)**. `template_sets` 23행 중 `cover_editable=0` **0건** ·
+   `endpaper_config` **전부 NULL** → 레더커버·면지는 **프로덕션에 해당 상품이 없다**.
+   `LeatherCoverPreview.tsx` 가 임포트 0건인 것도 '미배선 결함'이 아니라 **아직 안 파는 상품**이기 때문이다.
+   해당 상품 등록 시점에 배선하는 것이 맞다(그때 실기 확인도 가능).
+   → **W4 실착수 순서는 G4(페이지 재정렬 UI, 중형) → G9(반복 규칙)**.
+5. **파트너 릴레이** — 공지문 초안 `docs/PARTNER_NOTICE_2026-08-13_compose_mixed.md` 작성 완료. 발송은 오너 판단.
 
 ## 3. 함정 색인 (신설분만 — 08-11 §3 는 계속 유효)
 
