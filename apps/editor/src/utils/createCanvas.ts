@@ -318,8 +318,10 @@ export function registerCanvasPlugins(
   // 포토북 내지(O-2): regionScope==='inner' + innerSpec 이면 2-up 펼침면 렌더 경로.
   // inner 도 SpreadPlugin 생성자 계약상 spec(표지 SpreadSpec)을 요구하므로 placeholder 합성
   // (렌더는 innerSpec 으로만 수행 — placeholder 는 currentSpec 비-null 유지용, 표지경로 미진입).
-  const isInnerSpread = spreadConfig?.regionScope === 'inner' && !!spreadConfig.innerSpec
   const allowCoverSpread = pluginOpts?.allowCoverSpread !== false
+  const isInnerSpread =
+    !!spreadConfig?.innerSpec &&
+    (spreadConfig.regionScope === 'inner' || pluginOpts?.allowCoverSpread === false)
   const spread = isInnerSpread
     ? new SpreadPlugin(canvas, editor, {
         spec: innerSpecToPlaceholderSpec(spreadConfig!.innerSpec!),

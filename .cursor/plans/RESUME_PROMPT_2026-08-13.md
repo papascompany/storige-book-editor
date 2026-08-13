@@ -117,6 +117,18 @@ curl -s https://api.papascompany.co.kr/api/health | python3 -m json.tool | head 
 - 검증: types+canvas-core build · editor `tsc -b` 0err · coverFinishing 7 + objectPermissions 22 + workflow 9 · api DTO+service finishing 통과.
 - ⚠️ Admin 이 finishing 을 저장하려면 API 를 같이 배포해야 한다(`forbidNonWhitelisted`).
 
+## 1-E. 시드 n + 템플릿 탭 교체 풀 + G9 last/cycle
+
+책모드 조립: 표지 칸 ⊥ 내지 단위. 스프레드 1개·PAGE 강제 없음.
+- types `print-template.ts`: classify / assemble / validate / expandPrintSeeds / filterSwapCandidates
+- API `validateBookModeTemplates` → `validatePrintTemplateAssembly`
+- Admin: 구성 요약 + `coverConfig.innerRepeat` last|cycle
+- 에디터 로드: 기본 표지 + 내지 시드 1…n. 주문 페이지가 더 길면 last(기본) 또는 cycle
+- 사이드 TEMPLATE: 연결된 같은 유형·같은 판형만 교체(`AppTemplateSwap`). 연결 없으면 기존 SVG `AppTemplate`
+- 혼합 세트(표지 + 내지펼침면): `innerSpec` 을 store 에 붙이고, 추가 캔버스만 inner SpreadPlugin
+
+⚠️ Admin `innerRepeat` 저장은 API DTO 필요(`forbidNonWhitelisted`). API 같이 배포.
+
 ## 1-C. 주문 내지 PDF UX (2026-08-13 실기)
 
 콘솔 403 `시스템 공유 리소스…` + 내지가 표지처럼 분할 + 주문 PDF 가 자동 앉지 않음.
@@ -151,7 +163,7 @@ curl -s https://api.papascompany.co.kr/api/health | python3 -m json.tool | head 
    통합가이드 §3.4/§3.4.1 갱신분(빈 입력 400 승격·결과 회수 경로 정정·자동조립 신설)을
    bookmoa-mobile·100p Books·MD2Books 에 릴레이. **빈 입력 400 은 관측 가능한 동작 변화**다(호출 이력 0건이라 실파손은 없음).
 5. **G8 라이브 실기 1회** — 페브릭 템플릿셋(`coverEditable=false` + finishing 일부 ON)을 Admin 저장 → 고객 표지에서 소재 배경 잠금·후가공 칩 노출·내지 배경 메뉴 유지. 인쇄는 화면 후가공 미반영(B1).
-6. **W4 잔여 = G9(반복 규칙)** + **시드 n장·교체 풀** (용어 정본 `PRINT_TEMPLATE_GLOSSARY.md` §시드/교체). 후가공 별색 분판은 G8 후속(B1).
+6. **시드 n·교체 풀·G9 라이브 실기** — 표지+내지 1~n 세트 로드, 템플릿 탭에서 같은 유형 교체, 시드보다 긴 주문에서 last/cycle. 후가공 별색 분판은 G8 후속(B1).
 
 ## 3. 함정 색인 (신설분만 — 08-11 §3 는 계속 유효)
 
@@ -161,7 +173,7 @@ curl -s https://api.papascompany.co.kr/api/health | python3 -m json.tool | head 
 - **즉시 확장 페이지는 빈 페이지**(재로드는 마지막 내지 템플릿 복제) — underlay 는 원본 PDF 인쇄라 인쇄 영향 0. 설계상 수용, 문서화됨(EDITOR.md §13.2-A).
 - **첨부 진입점 노출 조건**: book 모드 + **세션 존재**(재편집 `sessionId` 또는 신규 `orderSeqno`+`mode`). 세션 없는 진입(`templateSetId` 만)에서는 안 뜬다 — 파트너가 "안 보인다" 하면 여기부터 확인.
 - **페브릭 잠금은 캔버스 0만**: 내지 배경을 잠그면 포토북 내지가 깨진다. BACKGROUND 메뉴 감산도 표지 페이지 한정.
-- **`coverConfig.finishing` 저장은 API DTO 필요**: 전역 `forbidNonWhitelisted`. Admin 만 먼저 올리면 저장 400.
+- **`coverConfig.finishing`/`innerRepeat` 저장은 API DTO 필요**: 전역 `forbidNonWhitelisted`. Admin 만 먼저 올리면 저장 400.
 - **`LeatherCoverPreview` 로 캔버스 대체 금지** (G8 B4).
 - dev 서버 실기 시 캔버스가 백지로 보이는 현상은 **기존 환경 이슈**(stash 로 베이스라인에서도 재현 — canvas0 0×0). 내 변경과 무관.
 

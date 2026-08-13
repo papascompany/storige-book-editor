@@ -6,7 +6,13 @@ import { useEditorStore } from '@/stores/useEditorStore'
 import { useImageStore } from '@/stores/useImageStore'
 import { rebindFrameInteractivity } from '@/utils/frameInteractive'
 import { applyObjectPermissions, applyCoverMaterialLock, isCoverPageCanvas } from '@/utils/objectPermissions'
-import { resolveCoverFinishing } from '@storige/types'
+import {
+  resolveCoverFinishing,
+  assemblePrintTemplates,
+  expandPrintSeeds,
+  type PrintTemplateLike,
+  type InnerRepeatMode,
+} from '@storige/types'
 import { trackRequiredEdits } from '@/utils/requiredEditGate'
 import {
   useSettingsStore,
@@ -15,6 +21,7 @@ import {
   type ContentEditSetupConfig,
   type EmptyEditorSetupConfig,
   type GeneralSetupConfig,
+  type LinkedPrintTemplate,
 } from '@/stores/useSettingsStore'
 import Editor, { ServicePlugin, SvgUtils, TemplatePlugin, mmToPxDisplay, computeLayout, SpreadPlugin, type ImageProcessingPlugin } from '@storige/canvas-core'
 import { contentsApi, storageApi, templateSetsApi, templatesApi } from '@/api'
@@ -209,6 +216,7 @@ export function useEditorContents(): UseEditorContentsReturn {
     setEnabledMenus,
     setPrintMarkConfig,
     setCoverFinishing,
+    setLinkedPrintTemplates,
   } = useSettingsStore(
     useShallow((state) => ({
       setupProductBased: state.setupProductBased,
@@ -218,6 +226,7 @@ export function useEditorContents(): UseEditorContentsReturn {
       setEnabledMenus: state.setEnabledMenus,
       setPrintMarkConfig: state.setPrintMarkConfig,
       setCoverFinishing: state.setCoverFinishing,
+      setLinkedPrintTemplates: state.setLinkedPrintTemplates,
     }))
   )
 
@@ -914,6 +923,7 @@ export function useEditorContents(): UseEditorContentsReturn {
     try {
       editor?.emit('longTask:start', { message: '빈 에디터를 준비하는 중...' })
       setCoverFinishing(false, [])
+      setLinkedPrintTemplates([])
 
       await setupEmptyEditorStore(config)
       await initWorkspace()
@@ -925,7 +935,7 @@ export function useEditorContents(): UseEditorContentsReturn {
     } finally {
       editor?.emit('longTask:end')
     }
-  }, [editor, setupEmptyEditorStore, initWorkspace, setCoverFinishing])
+  }, [editor, setupEmptyEditorStore, initWorkspace, setCoverFinishing, setLinkedPrintTemplates])
 
   const loadGeneralEditor = useCallback(async (config?: GeneralSetupConfig): Promise<void> => {
     console.log('[EditorContents] Loading general editor', config)
@@ -961,6 +971,19 @@ export function useEditorContents(): UseEditorContentsReturn {
 
       console.log('[EditorContents] Template set loaded:', templateSet.name)
       console.log('[EditorContents] Original template details count:', originalTemplateDetails.length)
+
+      setLinkedPrintTemplates(
+        originalTemplateDetails.map((t): LinkedPrintTemplate => ({
+          id: t.id,
+          name: t.name,
+          type: t.type,
+          width: t.width,
+          height: t.height,
+          thumbnailUrl: t.thumbnailUrl ?? null,
+          canvasData: t.canvasData ?? null,
+          spreadConfig: t.spreadConfig ?? null,
+        })),
+      )
 
       // 1-A. 템플릿셋이 지정한 도구 메뉴 화이트리스트를 settings store 에 반영.
       // null/undefined = 모두 노출(legacy/기본). 배열이면 그 키만 ToolBar 에 노출.
@@ -1015,11 +1038,11 @@ export function useEditorContents(): UseEditorContentsReturn {
       console.log('[EditorContents] EditorMode:', editorMode)
 
       if (editorMode === 'book') {
-        // ========================================================================
-        // Spread Mode 초기화 (§4.5 설계서)
-        // ========================================================================
-        await loadSpreadModeEditor(config, templateSet, originalTemplateDetails)
-        return
+        const assembled = assemblePrintTemplates(originalTemplateDetails as PrintTemplateLike[])
+        if (assembled.coverDefault || assembled.innerUnit === 'spread') {
+          await loadSpreadModeEditor(config, templateSet, originalTemplateDetails)
+          return
+        }
       }
 
       // ========================================================================
@@ -1059,23 +1082,15 @@ export function useEditorContents(): UseEditorContentsReturn {
           effectivePageCount = currentPageCount
         }
 
-        // 페이지수가 더 많으면 마지막 내지 템플릿 복제
+        // 페이지수가 더 많으면 시드 반복 (G9 last|cycle). page id 는 아래 setPages 에서 idx 로 구분.
         if (effectivePageCount > currentPageCount && pageTemplates.length > 0) {
-          const lastPageTemplate = pageTemplates[pageTemplates.length - 1]
-          const pagesToAdd = effectivePageCount - currentPageCount
-
-          console.log(`[EditorContents] Adding ${pagesToAdd} pages by cloning last page template`)
-
-          for (let i = 0; i < pagesToAdd; i++) {
-            templateDetails.push({
-              ...lastPageTemplate,
-              id: uuid(),  // 새 ID 생성
-              name: `${lastPageTemplate.name || '내지'} (${currentPageCount + i + 1})`,
-              order: templateDetails.length,
-            } as any)
-          }
-
-          console.log(`[EditorContents] Template details after page adjustment: ${templateDetails.length}`)
+          const innerRepeat: InnerRepeatMode =
+            (templateSet as { coverConfig?: { innerRepeat?: string } }).coverConfig?.innerRepeat === 'cycle'
+              ? 'cycle'
+              : 'last'
+          const extra = expandPrintSeeds(pageTemplates, effectivePageCount, innerRepeat).slice(currentPageCount)
+          console.log(`[EditorContents] Adding ${extra.length} pages via ${innerRepeat}`)
+          templateDetails.push(...extra)
         }
       }
 
@@ -1473,21 +1488,24 @@ export function useEditorContents(): UseEditorContentsReturn {
     ): Promise<void> {
       console.log('[EditorContents:Spread] Loading spread mode editor')
 
-      // 1. spread 템플릿 찾기 (type === 'spread')
-      const spreadTemplate = originalTemplateDetails.find((t: any) => t.type === 'spread')
+      const assembled = assemblePrintTemplates(originalTemplateDetails as PrintTemplateLike[])
+      const innerRepeat: InnerRepeatMode =
+        (templateSet as { coverConfig?: { innerRepeat?: string } }).coverConfig?.innerRepeat === 'cycle'
+          ? 'cycle'
+          : 'last'
+      const coverTemplate = assembled.coverDefault as (typeof originalTemplateDetails)[0] | null
+      const isInnerOnly = !coverTemplate && assembled.innerUnit === 'spread'
+      const spreadTemplate = (coverTemplate ?? assembled.innerSeeds[0]) as typeof originalTemplateDetails[0] | undefined
       if (!spreadTemplate) {
-        throw new Error('Spread 템플릿을 찾을 수 없습니다.')
+        throw new Error('표지 또는 내지 템플릿을 찾을 수 없습니다.')
       }
 
-      // 1-A. 포토북 내지 펼침면(2-up, O-2): spread 템플릿의 spreadConfig.regionScope==='inner' 이면
-      // 표지(cover) 대신 좌/우 면+거터 레이아웃으로 N개 펼침면 캔버스를 만든다(콘텐츠 생성 트리거).
-      // cover/legacy(regionScope 미존재) → isPhotobookInner=false → 기존 표지 경로 byte-identical.
-      // (내지는 표지와 별개 세션 — 전역 spreadConfig 를 inner 로 둔다. 표지=별도 cover 세션.)
-      const photobookInnerSpec =
-        (spreadTemplate.spreadConfig as SpreadConfig | undefined)?.regionScope === 'inner'
-          ? ((spreadTemplate.spreadConfig as SpreadConfig).innerSpec as SpreadInnerSpec | undefined)
-          : undefined
-      const isPhotobookInner = !!photobookInnerSpec
+      const firstInnerSpread = assembled.innerUnit === 'spread' ? assembled.innerSeeds[0] : undefined
+      const photobookInnerSpec = firstInnerSpread
+        ? ((firstInnerSpread as { spreadConfig?: SpreadConfig }).spreadConfig?.innerSpec as SpreadInnerSpec | undefined)
+        : undefined
+      const isPhotobookInner = isInnerOnly && !!photobookInnerSpec
+      const isSpreadInners = assembled.innerUnit === 'spread'
 
       // #2 (2026-06-10, CTO 감사 §4-(라)-2): 화면↔PDF 블리드 지오메트리 정합 (spread).
       // P3 출력 게이트(cropMarkEnabled===true && bleedMm>0)가 켜진 templateSet 에서만
@@ -1547,6 +1565,7 @@ export function useEditorContents(): UseEditorContentsReturn {
             totalWidthMm: spreadLayout!.totalWidthMm,
             totalHeightMm: spreadLayout!.totalHeightMm,
             conversionMode: templateConversionMode,
+            ...(photobookInnerSpec && !isPhotobookInner ? { innerSpec: photobookInnerSpec } : {}),
           }
 
       console.log('[EditorContents:Spread] SpreadConfig calculated:', spreadConfig)
@@ -1628,17 +1647,17 @@ export function useEditorContents(): UseEditorContentsReturn {
       // 7-1. 책등 설정 초기화 (내지 추가 시 debouncedRecalcSpine이 호출되므로 미리 설정)
       initSpineConfig(config.paperType || null, config.bindingType || null)
 
-      // 8. 내지 페이지 템플릿 필터링 (type === 'page')
-      const pageTemplates = originalTemplateDetails.filter((t: any) => t.type === 'page')
-      console.log('[EditorContents:Spread] Page templates count:', pageTemplates.length)
+      // 8. 내지 시드 (낱장 또는 펼침면). 표지 풀의 2번째부터는 시드가 아니라 교체 후보.
+      const pageTemplates = assembled.innerSeeds as typeof originalTemplateDetails
+      console.log('[EditorContents:Spread] Inner seeds:', pageTemplates.length, assembled.innerUnit)
 
       // 9. 페이지수 조정 (config.pageCount가 있는 경우)
-      let adjustedPageTemplates = [...pageTemplates]
+      let adjustedPageTemplates = isInnerOnly ? pageTemplates.slice(1) : [...pageTemplates]
       const requestedPageCount = config.pageCount
       // UNDERLAY_MAX_PAGES(=200, 워커 CONTENT_PDF_GUIDE_MAX_PAGES 정렬)는 contentPdfGuide 와 공유
       // — 즉시 앉히기(ensureUnderlayPages)와 로드 경로가 같은 상한을 쓰도록 단일 선언(2026-08-13).
 
-      if (config.underlayPageCount && config.underlayPageCount > 0) {
+      if (config.underlayPageCount && config.underlayPageCount > 0 && !isSpreadInners) {
         // 내지 PDF 표시전용: pageCountRange 클램프 없이 정확히 PDF 페이지수만큼 내지 생성.
         // 첨부 PDF가 책 페이지수를 정의 — 제조 유효성(무선 32p 등)은 워커/주문 검증이 별도 처리.
         const target = Math.min(config.underlayPageCount, UNDERLAY_MAX_PAGES)
@@ -1686,49 +1705,22 @@ export function useEditorContents(): UseEditorContentsReturn {
           effectivePageCount = currentPageCount
         }
 
-        // 페이지수가 더 많으면 마지막 내지 템플릿 복제
-        if (effectivePageCount > currentPageCount && pageTemplates.length > 0) {
-          const lastPageTemplate = pageTemplates[pageTemplates.length - 1]
-          const pagesToAdd = effectivePageCount - currentPageCount
-
-          console.log(`[EditorContents:Spread] Adding ${pagesToAdd} pages by cloning last page template`)
-
-          for (let i = 0; i < pagesToAdd; i++) {
-            adjustedPageTemplates.push({
-              ...lastPageTemplate,
-              id: uuid(),
-              name: `${lastPageTemplate.name || '내지'} (${currentPageCount + i + 1})`,
-              order: adjustedPageTemplates.length,
-            })
-          }
-
-          console.log(`[EditorContents:Spread] Adjusted page templates count: ${adjustedPageTemplates.length}`)
+        if (effectivePageCount > currentPageCount && pageTemplates.length > 0 && !isSpreadInners) {
+          const expanded = expandPrintSeeds(pageTemplates, effectivePageCount, innerRepeat)
+          adjustedPageTemplates = isInnerOnly ? expanded.slice(1) : expanded
         }
       }
 
-      // 9-A. 포토북 내지(inner): 물리 페이지수 → 펼침면 수. page 0(첫 펼침면)은 setupEmptyEditorStore 로
-      // 이미 생성됐고, 나머지 (spreadCount-1) 개를 합성 내지 템플릿으로 채우면 아래 페이지 생성 루프·
-      // editorPages·메타데이터가 그대로 N개 펼침면을 만든다(각 캔버스=1펼침면, addInnerPage→createCanvas
-      // 가 inner 사이징+SpreadPlugin inner 렌더 적용 — eb77f0b). 한 캔버스=한 펼침면 ⇒ 좌/우 페어 구조 무결.
-      if (isPhotobookInner) {
-        const pcRange: number[] = (templateSet as any).pageCountRange || []
-        let physicalPages = config.pageCount ?? (pcRange.length ? Math.min(...pcRange) : 2)
+      if (isSpreadInners && !config.underlayPageCount) {
+        const pcRange: number[] = (templateSet as { pageCountRange?: number[] }).pageCountRange || []
+        let physicalPages = config.pageCount ?? (pcRange.length ? Math.min(...pcRange) : assembled.innerSeeds.length * 2)
         if (pcRange.length) {
           physicalPages = Math.max(Math.min(...pcRange), Math.min(Math.max(...pcRange), physicalPages))
         }
         const spreadCount = Math.max(1, spreadCountFromPageCount(physicalPages))
-        adjustedPageTemplates = []
-        for (let i = 1; i < spreadCount; i++) {
-          adjustedPageTemplates.push({
-            id: uuid(),
-            type: 'page',
-            name: `펼침면 ${i + 1}`,
-            order: i,
-            canvasData: null,
-            required: false,
-          } as any)
-        }
-        console.log(`[EditorContents:Spread] Photobook inner: ${spreadCount} 펼침면 (물리 ${physicalPages}p)`)
+        const expanded = expandPrintSeeds(assembled.innerSeeds, spreadCount, innerRepeat)
+        adjustedPageTemplates = isInnerOnly ? expanded.slice(1) : expanded
+        console.log(`[EditorContents:Spread] 내지펼침면 ${spreadCount}장 (물리 ${physicalPages}p, ${innerRepeat})`)
       }
 
       // 10. 내지 페이지 캔버스 생성 및 로드
@@ -1824,9 +1816,9 @@ export function useEditorContents(): UseEditorContentsReturn {
       for (let i = 0; i < adjustedPageTemplates.length; i++) {
         const pt = adjustedPageTemplates[i]
         editorPages.push({
-          id: pt.id,
+          id: `${String(pt.id)}#${i + 1}`,
           templateId: pt.id,
-          templateType: TemplateType.PAGE,
+          templateType: isSpreadInners ? TemplateType.SPREAD : TemplateType.PAGE,
           canvasData: { version: '5.3.0', objects: [], width: spreadSpec.coverWidthMm, height: spreadSpec.coverHeightMm },
           sortOrder: i + 1,
           required: pt.required !== false,
@@ -1845,7 +1837,7 @@ export function useEditorContents(): UseEditorContentsReturn {
         templateSetName: templateSet.name,
         bindingType: toBindingType(config.bindingType),
         // 펼침면(2-up) 내지는 캔버스 1장 = 물리 2페이지. 페이지 상/하한 비교의 단위를 맞춘다.
-        pagesPerCanvas: isPhotobookInner ? 2 : 1,
+        pagesPerCanvas: isSpreadInners ? 2 : 1,
       })
 
       console.log(`[EditorContents:Spread] EditorStore pages set: ${editorPages.length} pages`)
@@ -1863,7 +1855,7 @@ export function useEditorContents(): UseEditorContentsReturn {
         id: t.id,
         type: 'template',
         name: t.name || `Page ${index + 1}`,
-        pageType: 'page',
+        pageType: isSpreadInners ? 'spread' : 'page',
         order: index + 1,
       }))
 
@@ -1885,7 +1877,7 @@ export function useEditorContents(): UseEditorContentsReturn {
 
       console.log('[EditorContents:Spread] Spread mode editor loaded successfully')
     }
-  }, [editor, setupEmptyEditorStore, setEditorTemplates, initWorkspace, loadCanvasData, setCoverFinishing, setEnabledMenus, setPrintMarkConfig])
+  }, [editor, setupEmptyEditorStore, setEditorTemplates, initWorkspace, loadCanvasData, setCoverFinishing, setEnabledMenus, setPrintMarkConfig, setLinkedPrintTemplates])
 
   /**
    * 템플릿 콘텐츠 설정

@@ -5,6 +5,7 @@
 
 // 책등(세네카) 계산 순수 엔진 (R-44) — API·워커·표지 파생 공용 단일 산식
 export * from './spine-calc';
+export * from './print-template';
 
 // ============================================================================
 // User & Authentication
@@ -259,6 +260,8 @@ export interface TemplateSetCoverConfig {
   caseBind?: CaseBindSpec;
   /** 페브릭 표지 후가공 허용. 없으면 전부 OFF */
   finishing?: CoverFinishingConfig;
+  /** 내지 시드보다 페이지가 많을 때. last=마지막 복제(기본), cycle=시드 순환 */
+  innerRepeat?: 'last' | 'cycle';
 }
 
 export function resolveCoverFinishing(
@@ -283,6 +286,7 @@ export function buildTemplateSetCoverConfig(input: {
   coverEditable: boolean | undefined;
   caseBind?: Partial<CaseBindSpec> | null;
   finishing?: CoverFinishingConfig | null;
+  innerRepeat?: 'last' | 'cycle' | null;
 }): TemplateSetCoverConfig | null {
   const caseBind = isValidCaseBind(input.caseBind) ? input.caseBind : undefined;
   let finishing: CoverFinishingConfig | undefined;
@@ -293,10 +297,12 @@ export function buildTemplateSetCoverConfig(input: {
     if (input.finishing.silver) next.silver = true;
     if (next.emboss || next.gold || next.silver) finishing = next;
   }
-  if (!caseBind && !finishing) return null;
+  const innerRepeat = input.innerRepeat === 'cycle' || input.innerRepeat === 'last' ? input.innerRepeat : undefined;
+  if (!caseBind && !finishing && !innerRepeat) return null;
   return {
     ...(caseBind ? { caseBind } : {}),
     ...(finishing ? { finishing } : {}),
+    ...(innerRepeat ? { innerRepeat } : {}),
   };
 }
 

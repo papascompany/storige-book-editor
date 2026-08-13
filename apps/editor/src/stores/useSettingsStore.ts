@@ -9,6 +9,17 @@ import {
 } from '@storige/canvas-core'
 import type { EditorTemplate } from '@/generated/graphql'
 import type { SpreadConfig, EditorMenuKey, CoverFinishingKind } from '@storige/types'
+
+export interface LinkedPrintTemplate {
+  id: string
+  name?: string
+  type?: string
+  width?: number
+  height?: number
+  thumbnailUrl?: string | null
+  canvasData?: { objects?: unknown[] } | null
+  spreadConfig?: SpreadConfig | null
+}
 import { computeSpreadDimensions } from '@storige/types'
 
 // Types (will be replaced with GraphQL generated types later)
@@ -276,6 +287,11 @@ interface SettingsState {
    */
   coverMaterialLocked: boolean
   coverFinishingAllowed: CoverFinishingKind[]
+  /**
+   * 현재 템플릿셋에 연결된 원본 템플릿(시드+교체 풀).
+   * 사이드 템플릿 탭이 이 목록만 보여 준다.
+   */
+  linkedPrintTemplates: LinkedPrintTemplate[]
   artwork: {
     name: string
     product: WowPressLinkedProduct | null
@@ -353,6 +369,7 @@ interface SettingsActions {
   // 도구 메뉴 화이트리스트 관리 (템플릿셋이 지정)
   setEnabledMenus: (menus: EditorMenuKey[] | null) => void
   setCoverFinishing: (locked: boolean, allowed: CoverFinishingKind[]) => void
+  setLinkedPrintTemplates: (templates: LinkedPrintTemplate[]) => void
 
   // P3: 작업사이즈/재단마커 출력 설정 관리 (templateSet 에서 운반)
   setPrintMarkConfig: (config: PrintMarkConfig | null) => void
@@ -387,6 +404,7 @@ const initialState: SettingsState = {
   enabledMenus: null,
   coverMaterialLocked: false,
   coverFinishingAllowed: [],
+  linkedPrintTemplates: [],
   printMarkConfig: null,
   artwork: {
     name: '나의 새로운 작업',
@@ -822,6 +840,10 @@ export const useSettingsStore = create<SettingsState & SettingsActions>()((set, 
 
   setCoverFinishing: (locked, allowed) => {
     set({ coverMaterialLocked: locked, coverFinishingAllowed: allowed })
+  },
+
+  setLinkedPrintTemplates: (templates) => {
+    set({ linkedPrintTemplates: templates ?? [] })
   },
 
   // P3: 작업사이즈/재단마커 출력 설정. null = 미설정(게이트 OFF). loadTemplateSetEditor 가 호출.

@@ -136,6 +136,11 @@ export class CoverConfigDto {
   @ValidateNested()
   @Type(() => CoverFinishingDto)
   finishing?: CoverFinishingDto;
+
+  @ApiPropertyOptional({ enum: ['last', 'cycle'], description: '내지 시드 반복 last|cycle' })
+  @IsOptional()
+  @IsIn(['last', 'cycle'])
+  innerRepeat?: 'last' | 'cycle';
 }
 
 /**

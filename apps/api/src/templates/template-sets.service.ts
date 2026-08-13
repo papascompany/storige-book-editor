@@ -18,7 +18,7 @@ import {
   AddTemplateDto,
   ReorderTemplatesDto,
 } from './dto/template-set.dto';
-import { EditorMode } from '@storige/types';
+import { EditorMode, validatePrintTemplateAssembly } from '@storige/types';
 import type { TemplateRef, PaginatedResponse } from '@storige/types';
 import {
   applySiteScope,
@@ -571,53 +571,12 @@ export class TemplateSetsService {
   }
 
   /**
-   * 책모드 템플릿 구성 검증
-   * - SPREAD 템플릿 정확히 1개 필수
-   * - WING/COVER/SPINE 타입 불허
-   * - PAGE 타입 1개 이상 필수
+   * 책모드 템플릿 구성 검증.
+   * 표지 0~n(같은 구조) + 내지낱장 n 또는 내지펼침면 n. 스프레드 1개·PAGE 강제 없음.
    */
   private validateBookModeTemplates(templates: Template[]): void {
-    const spreadTemplates = templates.filter((t) => t.type === 'spread');
-    const wingTemplates = templates.filter((t) => t.type === 'wing');
-    const coverTemplates = templates.filter((t) => t.type === 'cover');
-    const spineTemplates = templates.filter((t) => t.type === 'spine');
-    const pageTemplates = templates.filter((t) => t.type === 'page');
-
-    // SPREAD 타입 정확히 1개
-    if (spreadTemplates.length === 0) {
-      throw new BadRequestException(
-        'editorMode=book일 때 SPREAD 타입 템플릿이 정확히 1개 필요합니다.',
-      );
-    }
-    if (spreadTemplates.length > 1) {
-      throw new BadRequestException(
-        'editorMode=book일 때 SPREAD 타입 템플릿은 1개만 허용됩니다.',
-      );
-    }
-
-    // WING/COVER/SPINE 타입 불허
-    if (wingTemplates.length > 0) {
-      throw new BadRequestException(
-        'editorMode=book일 때 WING 타입 템플릿은 허용되지 않습니다. SPREAD 템플릿에 날개가 포함됩니다.',
-      );
-    }
-    if (coverTemplates.length > 0) {
-      throw new BadRequestException(
-        'editorMode=book일 때 COVER 타입 템플릿은 허용되지 않습니다. SPREAD 템플릿에 표지가 포함됩니다.',
-      );
-    }
-    if (spineTemplates.length > 0) {
-      throw new BadRequestException(
-        'editorMode=book일 때 SPINE 타입 템플릿은 허용되지 않습니다. SPREAD 템플릿에 책등이 포함됩니다.',
-      );
-    }
-
-    // PAGE 타입 1개 이상
-    if (pageTemplates.length === 0) {
-      throw new BadRequestException(
-        'editorMode=book일 때 PAGE 타입 템플릿이 최소 1개 필요합니다.',
-      );
-    }
+    const err = validatePrintTemplateAssembly(templates);
+    if (err) throw new BadRequestException(err);
   }
 
   /**

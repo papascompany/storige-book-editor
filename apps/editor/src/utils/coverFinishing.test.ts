@@ -59,6 +59,12 @@ describe('buildTemplateSetCoverConfig', () => {
     ).toEqual({ finishing: { gold: true } })
   })
 
+  it('innerRepeat 만 있어도 coverConfig 를 만든다', () => {
+    expect(buildTemplateSetCoverConfig({ coverEditable: true, innerRepeat: 'cycle' })).toEqual({
+      innerRepeat: 'cycle',
+    })
+  })
+
   it('둘 다 없으면 null (기존 셋 비파괴)', () => {
     expect(buildTemplateSetCoverConfig({ coverEditable: false })).toBeNull()
     expect(

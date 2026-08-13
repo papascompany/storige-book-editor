@@ -610,7 +610,10 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
       const currentSettings = settingsStore.currentSettings
 
       let pageSize: { width: number; height: number; cutSize: number; safeSize: number }
-      if (spreadConfig?.regionScope === 'inner' && spreadConfig.innerSpec) {
+      const useInnerSpreadSize =
+        !!spreadConfig?.innerSpec &&
+        (spreadConfig.regionScope === 'inner' || get().allCanvas.length > 0)
+      if (useInnerSpreadSize && spreadConfig?.innerSpec) {
         // 포토북 내지(O-2): 2-up 펼침면 — 폭=한 면×2, 높이=한 면. (한 펼침면=1 캔버스라
         // 좌/우 페어가 구조적으로 함께 이동·삭제·재정렬 → 페어 무결성 보장.)
         const isp = spreadConfig.innerSpec
@@ -680,7 +683,7 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
       editorStore.addPage({
         id: canvasId,
         templateId: canvasId,
-        templateType: TemplateType.PAGE,
+        templateType: useInnerSpreadSize ? TemplateType.SPREAD : TemplateType.PAGE,
         canvasData: { version: '5.3.0', objects: [], width: pageSize.width, height: pageSize.height },
         sortOrder: editorStore.pages.length,
         required: false,

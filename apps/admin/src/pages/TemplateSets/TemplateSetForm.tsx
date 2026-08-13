@@ -61,6 +61,10 @@ import {
   ALL_EDITOR_MENU_KEYS,
   EditorMenuKey,
   buildTemplateSetCoverConfig,
+  validatePrintTemplateAssembly,
+  assemblePrintTemplates,
+  printKindLabel,
+  classifyPrintTemplate,
 } from '@storige/types';
 import { templateSetsApi } from '../../api/template-sets';
 import { templatesApi } from '../../api/templates';
@@ -396,6 +400,7 @@ export const TemplateSetForm = () => {
         finishingEmboss: !!(templateSet as any).coverConfig?.finishing?.emboss,
         finishingGold: !!(templateSet as any).coverConfig?.finishing?.gold,
         finishingSilver: !!(templateSet as any).coverConfig?.finishing?.silver,
+        innerRepeat: (templateSet as any).coverConfig?.innerRepeat === 'cycle' ? 'cycle' : 'last',
         // 포토북 페이지 가변 가격 메타 (2026-06-24) — PHOTOBOOK 일 때만 입력 노출. null=미사용.
         usePricing: !!templateSet.pricing,
         pricingIncludedPages: templateSet.pricing?.includedPages ?? 16,
@@ -439,30 +444,12 @@ export const TemplateSetForm = () => {
   const handleSubmit = async (values: any) => {
     const editorMode = values.editorMode || EditorMode.SINGLE;
 
-    // 책모드 검증
     if (editorMode === EditorMode.BOOK) {
-      const spreadTemplates = templates.filter(t => t.template?.type === TemplateType.SPREAD);
-      const invalidTemplates = templates.filter(t =>
-        t.template?.type === TemplateType.WING ||
-        t.template?.type === TemplateType.COVER ||
-        t.template?.type === TemplateType.SPINE
+      const assemblyErr = validatePrintTemplateAssembly(
+        templates.map((t) => t.template).filter((t): t is Template => !!t),
       );
-
-      if (spreadTemplates.length !== 1) {
-        message.error('책모드는 스프레드 템플릿이 정확히 1개 필요합니다.');
-        return;
-      }
-
-      if (invalidTemplates.length > 0) {
-        message.error('책모드에서는 날개/표지/책등 템플릿을 사용할 수 없습니다.');
-        return;
-      }
-
-      // 서버(template-sets.service validateBookModeTemplates)와 동일한 PAGE≥1 규칙을
-      // 클라이언트에서 먼저 알려준다. 미러가 없으면 저장 시 400 만 뜨고 원인이 안 보였다.
-      const pageTemplates = templates.filter((t) => t.template?.type === TemplateType.PAGE);
-      if (pageTemplates.length === 0) {
-        message.error('책모드는 내지(PAGE) 템플릿이 최소 1개 필요합니다.');
+      if (assemblyErr) {
+        message.error(assemblyErr);
         return;
       }
     }
@@ -525,6 +512,7 @@ export const TemplateSetForm = () => {
         gold: !!values.finishingGold,
         silver: !!values.finishingSilver,
       },
+      innerRepeat: values.innerRepeat === 'cycle' ? 'cycle' : 'last',
     });
 
     // 포토북 페이지 가변 가격 메타 (2026-06-24) — PHOTOBOOK + usePricing 일 때만 저장. 그 외 null(미사용).
@@ -747,6 +735,7 @@ export const TemplateSetForm = () => {
             finishingEmboss: false,
             finishingGold: false,
             finishingSilver: false,
+            innerRepeat: 'last',
           }}
         >
           <Collapse
@@ -853,6 +842,17 @@ export const TemplateSetForm = () => {
                   <>
                     <Form.Item name="canAddPage" label="내지 추가 허용" valuePropName="checked">
                       <Switch checkedChildren="허용" unCheckedChildren="불가" />
+                    </Form.Item>
+
+                    <Form.Item
+                      name="innerRepeat"
+                      label="내지 시드 반복"
+                      extra="주문 페이지가 시드보다 많을 때. 마지막 복제 또는 내지 1·2·3 순환."
+                    >
+                      <Radio.Group>
+                        <Radio.Button value="last">마지막 복제</Radio.Button>
+                        <Radio.Button value="cycle">순환</Radio.Button>
+                      </Radio.Group>
                     </Form.Item>
 
                     <Form.Item noStyle shouldUpdate={(prev, curr) => prev.canAddPage !== curr.canAddPage}>
@@ -1361,62 +1361,31 @@ export const TemplateSetForm = () => {
                       {({ getFieldValue }) => {
                         const editorMode = getFieldValue('editorMode');
                         const spreadTemplates = templates.filter(t => t.template?.type === TemplateType.SPREAD);
-                        const invalidTemplates = templates.filter(t =>
-                          t.template?.type === TemplateType.WING ||
-                          t.template?.type === TemplateType.COVER ||
-                          t.template?.type === TemplateType.SPINE
-                        );
 
                         if (editorMode === EditorMode.BOOK) {
-                          if (spreadTemplates.length !== 1) {
+                          const details = templates.map((t) => t.template).filter((t): t is Template => !!t);
+                          const err = validatePrintTemplateAssembly(details);
+                          if (err) {
                             return (
-                              <Alert
-                                type="warning"
-                                message="책모드에서는 스프레드 템플릿이 정확히 1개 필요합니다"
-                                style={{ marginBottom: 16 }}
-                              />
+                              <Alert type="error" message={err} style={{ marginBottom: 16 }} />
                             );
                           }
-                          if (invalidTemplates.length > 0) {
-                            return (
-                              <Alert
-                                type="error"
-                                message="책모드에서는 날개/표지/책등 템플릿을 사용할 수 없습니다"
-                                description="스프레드 템플릿 1개와 내지(PAGE) 템플릿만 사용하세요"
-                                style={{ marginBottom: 16 }}
-                              />
-                            );
-                          }
-                          const pageCount = templates.filter(
-                            (t) => t.template?.type === TemplateType.PAGE
-                          ).length;
-                          if (pageCount === 0) {
-                            return (
-                              <Alert
-                                type="warning"
-                                message="내지(PAGE) 템플릿이 최소 1개 필요합니다"
-                                description="이 상태로 저장하면 서버가 거부합니다. 내지 템플릿을 추가하세요."
-                                style={{ marginBottom: 16 }}
-                              />
-                            );
-                          }
-                          // 내지 펼침면 세트는 편집기가 page 템플릿 캔버스를 쓰지 않는다
-                          // (펼침면 수를 페이지 범위로 합성) — 운영자 혼동 방지 안내.
-                          if (spreadTemplates[0]?.template?.spreadConfig?.regionScope === 'inner') {
-                            return (
-                              <Alert
-                                type="info"
-                                message="내지펼침면 세트입니다"
-                                description="펼침면 수는 페이지 범위 ÷ 2. 내지낱장(PAGE)은 지금 서버 규칙상 형식 1개가 필요합니다. 표지3분할/표지펼침면과 한 세트에 같이 넣는 조립은 별도 갭입니다."
-                                style={{ marginBottom: 16 }}
-                              />
-                            );
-                          }
+                          const assembled = assemblePrintTemplates(details);
+                          const coverLabel = assembled.coverDefault
+                            ? printKindLabel(classifyPrintTemplate(assembled.coverDefault))
+                            : '표지 없음';
+                          const innerLabel =
+                            assembled.innerUnit === 'spread'
+                              ? `내지펼침면 ${assembled.innerSeeds.length}장`
+                              : assembled.innerUnit === 'sheet'
+                                ? `내지낱장 ${assembled.innerSeeds.length}장`
+                                : '내지 없음';
+                          const coverAlts = Math.max(0, assembled.coverPool.length - (assembled.coverDefault ? 1 : 0));
                           return (
                             <Alert
                               type="success"
                               message="템플릿 구성이 올바릅니다"
-                              description="스프레드 템플릿 1개 + 내지 템플릿 N개"
+                              description={`${coverLabel}${coverAlts ? ` (교체 ${coverAlts})` : ''} + ${innerLabel}. 목록 순서 = 기본 시드. 같은 유형은 편집기 템플릿 탭에서 교체됩니다.`}
                               style={{ marginBottom: 16 }}
                             />
                           );

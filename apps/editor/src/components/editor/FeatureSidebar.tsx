@@ -18,6 +18,8 @@ import AppImage from '@/tools/AppImage'
 import AppElement from '@/tools/AppElement'
 import AppBackground from '@/tools/AppBackground'
 import AppTemplate from '@/tools/AppTemplate'
+import AppTemplateSwap from '@/tools/AppTemplateSwap'
+import { useSettingsStore } from '@/stores/useSettingsStore'
 import AppFrame from '@/tools/AppFrame'
 import SmartCodes from '@/tools/SmartCodes'
 import { LazyAiPanel } from '@/components/AiPanel'
@@ -49,6 +51,7 @@ interface FeatureSidebarProps {
 }
 
 export default function FeatureSidebar({ className, mobileOverlay = false }: FeatureSidebarProps) {
+  const linkedCount = useSettingsStore((s) => s.linkedPrintTemplates.length)
   const currentMenu = useAppStore((state) => state.currentMenu)
   const tapMenu = useAppStore((state) => state.tapMenu)
   const activeSelection = useAppStore((state) => state.activeSelection)
@@ -202,7 +205,7 @@ export default function FeatureSidebar({ className, mobileOverlay = false }: Fea
       case 'BACKGROUND':
         return <AppBackground />
       case 'TEMPLATE':
-        return <AppTemplate />
+        return linkedCount > 0 ? <AppTemplateSwap /> : <AppTemplate />
       case 'FRAME':
         return <AppFrame />
       case 'CLIPPING':
