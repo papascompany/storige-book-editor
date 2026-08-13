@@ -764,9 +764,31 @@ export class EditSessionsService {
    *
    * 인쇄 워크플로우 v1 Phase 5 (2026-05-19):
    * - 게스트 세션도 complete 호출 가능 (userId=0 통과)
-   * - contentPdfFileId 또는 endpaperConfig 또는 coverEditable=false 가 있으면
-   *   compose-mixed 잡 enqueue 분기 — Worker 가 표지+면지+내지+면지 합본 생성.
    * - 기존 SPREAD / 일반 흐름은 그대로 유지 (PHP 영향 0).
+   *
+   * ⚠️ [주석 정정 2026-08-13] 이 메서드는 **compose-mixed 잡을 발행하지 않는다**.
+   *   이전 주석은 "contentPdfFileId / endpaperConfig / coverEditable=false 가 있으면
+   *   compose-mixed 잡 enqueue 분기" 라고 적었으나, 본문에 그런 분기는 없다.
+   *   본문이 실제로 하는 일은 아래가 전부다(로직 무변경, 주석만 실제 동작에 정렬):
+   *     1) 책 세션(mode===SPREAD 또는 metadata.spread)이면 스프레드 스냅샷 검증
+   *        (기본 SOFT — env SPREAD_SNAPSHOT_HARD_FAIL='true' 일 때만 차단)
+   *     2) status=COMPLETE / completedAt 저장
+   *     3) mode !== SPREAD 인 경우에만 createValidationJobs + applyPdfOutputMode
+   *     4) 모든 경로에서 createInnerPdfImpositionJob (내부 opt-in 게이트, 기본 no-op)
+   *   합본(표지+앞면지+내지+뒷면지)은 **외부 호출자가 명시적으로 호출**하는
+   *   `POST /api/worker-jobs/compose-mixed` (worker-jobs.controller.ts:281-288, @Public)
+   *   에서만 발행된다 — 세션 완료가 자동으로 발행하지 않는다는 사실은 그대로다.
+   *
+   * ℹ️ [보강 2026-08-13 G7] 세션 자산으로부터의 자동 조립은 이제 **구현돼 있다**
+   *   (이전 판본 주석의 '미구현' 서술 정정). 단 위치는 이 메서드가 아니라
+   *   compose-mixed 라우트다 — 요청 body 의 `assembleFromSession === true` 일 때에 한해
+   *   worker-jobs.service.ts 가 이 세션에서 표지(coverFile)·내지(contentPdfFileId 우선,
+   *   없으면 contentFile)·면지 매수·판형·callbackUrl·siteId 를 도출해 빈 필드만 채운다
+   *   (assembleComposeInputFromSession, worker-jobs.service.ts:1223 / 분기 게이트 :1567).
+   *   달라진 것은 compose-mixed 쪽뿐이고, **이 complete() 의 동작은 변함이 없다**:
+   *   여전히 잡 발행은 호출자 트리거이며, 자동조립도 그 호출 안에서 일어난다.
+   *   인가는 그 경로에만 붙는다(검증된 shop-session siteId ↔ session.siteId 일치 +
+   *   주문 스코프, 실패 시 404 SESSION_NOT_FOUND). 미전달/false 면 기존 경로 그대로다.
    */
   async complete(id: string, userId: number): Promise<EditSessionEntity> {
     const session = await this.findById(id);
@@ -822,7 +844,8 @@ export class EditSessionsService {
     if (completed.mode !== SessionMode.SPREAD) {
       await this.createValidationJobs(completed);
       // 단일/낱장 상품의 PDF 출력 모드(TemplateSet.pdfOutputMode) 적용.
-      // 책(spread) 셋은 위 분기에서 제외 — 기존 compose-mixed 경로 우선.
+      // 책(spread) 셋은 위 분기(mode !== SPREAD)에서 이미 제외 — 책의 최종 합본은
+      // 외부 호출자가 직접 발행하는 compose-mixed 잡이 담당한다(여기서 발행하지 않음).
       await this.applyPdfOutputMode(completed);
     } else {
       this.logger.log(

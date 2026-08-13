@@ -63,6 +63,10 @@ import {
 import { EditSessionEntity, WorkerStatus } from '../edit-sessions/entities/edit-session.entity';
 import { SitesService } from '../sites/sites.service';
 import { TemplateSetsService } from '../templates/template-sets.service';
+// [자동조립 opt-in] 판형·면지·표지 편집여부 도출 대상 엔티티(타입 전용 참조).
+import type { TemplateSet } from '../templates/entities/template-set.entity';
+// [자동조립 opt-in] spreadConfig(regionScope/innerSpec)는 templates 행에 있다(타입 전용 참조).
+import type { Template } from '../templates/entities/template.entity';
 import {
   PARTNER_ENV_TEST,
   PartnerEnv,
@@ -1149,12 +1153,445 @@ export class WorkerJobsService implements OnModuleInit {
   // ============================================================================
 
   /**
+   * [자동조립] 세션 자산이 하나도 없어 워커가 **백지**를 산출하게 되는 입력을 차단한다.
+   *
+   * 자산 정의(워커 실동작 기준):
+   *  - 표지: `coverEditable !== false && coverUrl` 일 때만 실제 PDF 가 실린다.
+   *    (apps/worker/src/processors/synthesis.processor.ts:518-531 separate / :589-590 merged)
+   *    coverEditable=false 이거나 coverUrl 부재면 워커는 `addPage([coverPt])` = 백지.
+   *  - 내지: `contentPdfUrl` (:483-488 buildContentPdf / :602 merged)
+   *  - 면지: 배열의 **non-null 원소**만 자산. null 원소는 빈 페이지 생성 지시다(:478-481).
+   *
+   * 셋 다 0건이면 워커는 A4 백지 1p 를 COMPLETED 로 내보낸다(고객에겐 성공으로 보이는 백지
+   * 주문). 오너 결정(2026-08-13)으로 자동조립 여부와 무관하게 400 으로 승격한다.
+   */
+  private assertComposeMixedInputNotEmpty(dto: ComposeMixedJobInput): void {
+    const hasCover = dto.coverEditable !== false && !!dto.coverUrl;
+    const hasContent = !!dto.contentPdfUrl;
+    const hasEndpaperAsset = [
+      ...(dto.frontEndpaperUrls ?? []),
+      ...(dto.backEndpaperUrls ?? []),
+    ].some((u) => typeof u === 'string' && u.trim().length > 0);
+
+    if (!hasCover && !hasContent && !hasEndpaperAsset) {
+      throw new BadRequestException({
+        code: 'EMPTY_COMPOSE_INPUT',
+        message:
+          '합성할 표지/내지 자산이 없습니다. coverUrl·contentPdfUrl 중 하나 이상이 필요합니다.',
+        details: { editSessionId: dto.editSessionId ?? null },
+      });
+    }
+  }
+
+  /**
+   * [자동조립 opt-in, 2026-08-13] 편집 세션에서 compose-mixed 입력을 도출한다.
+   *
+   * ⚠️ **빈 자리만** 채운다 — dto 에 명시값이 있으면 언제나 dto 가 이긴다(per-field 우선순위).
+   * ⚠️ 워커는 무변경 — 도출값은 기존 큐 키(composeCoverUrl·composeContentPdfUrl·
+   *    composeFront/BackEndpaperUrls·composeCover/ContentWidthMm/HeightMm)로만 흐른다.
+   *
+   * ── 도출 출처(코드 확인 근거) ──────────────────────────────────────────────
+   *  - 세션 로드: edit-sessions.service.ts:317-319 과 동일한 relations(coverFile/contentFile).
+   *    (edit-sessions 모듈은 읽기 전용 참조 — 본 서비스는 이미 주입된 editSessionRepository 사용)
+   *  - 표지 PDF   ← session.coverFile            (edit-session.entity.ts:60-62)
+   *  - 첨부 내지  ← session.contentPdfFileId     (edit-session.entity.ts:119-120)
+   *      · 첨부와 편집은 배타(entity :117-118), underlay 편집도 **인쇄는 첨부 원본 그대로**
+   *        (entity :133-144) → 첨부가 있으면 항상 첨부가 내지다.
+   *  - 편집 내지  ← session.contentFile          (edit-session.entity.ts:67-69)
+   *  - 워커 입력 URL 변환 ← toWorkerInputUrl (worker-jobs.service.ts:186-188, s3=api://<id>)
+   *  - 판형(mm)   ← templateSet.width/height     (template-set.entity.ts:88-98)
+   *  - 표지 판형  ← metadata.spread 의 outputWidthMm/HeightMm(우선) · totalWidthMm/HeightMm(폴백)
+   *                 — createComposeMixedJob 본문 P0-3·D-4 블록과 동일 출처. 펼침면 책의 빈 표지
+   *                 치수이며, 둘 다 없으면 templateSet 판형.
+   *  - 면지 매수  ← templateSet.endpaperConfig.frontCount/backCount (template-set.entity.ts:147-154)
+   *      · null 원소 = 빈 면지 페이지(create-compose-mixed-job.dto.ts:51-58 계약).
+   *  - 표지 편집여부 ← templateSet.coverEditable (template-set.entity.ts:156-161)
+   *      · **요구 판정에만** 쓴다(레더커버는 표지 PDF 가 없는 게 정상). 큐 값으로 스탬프하지
+   *        않는다 — 워커는 coverUrl 부재 시 coverEditable 값과 무관하게 빈 표지를 만든다
+   *        (synthesis.processor.ts:518-531·589-590) → 산출 동일.
+   *  - 콜백 URL   ← session.callbackUrl          (edit-session.entity.ts:105-106)
+   *  - 잡 siteId  ← session.siteId               (edit-session.entity.ts:101-103, dto.siteId 보다 우선)
+   *
+   * ── 인가(자동조립 경로 한정) ──────────────────────────────────────────────
+   * 호출자 siteId(검증된 shop-session JWT) 와 session.siteId 가 **둘 다 존재하고 일치**할
+   * 때만 허용한다. 하나라도 없거나 다르면 미존재와 같은 404(SESSION_NOT_FOUND) — 존재 은닉.
+   * books.service.ts:160-168 의 정답 패턴을 따르며, `session.siteId &&` 형태의 약한 검사
+   * (edit-sessions.service.ts:386-394)는 의도적으로 복사하지 않는다(NULL-site 통과 구멍).
+   * 추가로 토큰에 주문 스코프가 있으면 session.orderSeqno 도 대조한다(같은 테넌트 내
+   * 타 고객 세션 조립 차단 — 아래 게이트 주석의 형제 라우트 근거 참조).
+   */
+  private async assembleComposeInputFromSession(
+    dto: ComposeMixedJobInput,
+    caller?: { siteId?: string; allowedOrderSeqnos?: unknown },
+  ): Promise<ComposeMixedJobInput> {
+    const missing: string[] = [];
+
+    if (!dto.editSessionId) {
+      throw new BadRequestException({
+        code: 'SESSION_ASSEMBLY_INCOMPLETE',
+        message: '자동조립에는 editSessionId 가 필요합니다.',
+        missing: ['editSessionId'],
+      });
+    }
+
+    // 미존재·인가 실패는 **동일한 404** — 세션 존재 오라클 차단(books 패턴).
+    const notFound = () =>
+      new NotFoundException({
+        code: 'SESSION_NOT_FOUND',
+        message: '편집 세션을 찾을 수 없습니다.',
+        details: { sessionId: dto.editSessionId },
+      });
+
+    const session = await this.editSessionRepository.findOne({
+      where: { id: dto.editSessionId },
+      relations: ['coverFile', 'contentFile'],
+    });
+    if (!session) throw notFound();
+    if (!caller?.siteId || !session.siteId || session.siteId !== caller.siteId) {
+      this.logger.warn(
+        `[compose-mixed:assemble] 인가 거부(404) session=${dto.editSessionId} ` +
+          `sessionSite=${session.siteId ?? 'NULL'} callerSite=${caller?.siteId ?? 'NONE'}`,
+      );
+      throw notFound();
+    }
+
+    // 🔒 주문 스코프(2026-08-13) — siteId 일치만으로는 **같은 테넌트의 타 고객 세션**을
+    //    조립해 그 표지/내지를 합본으로 뽑아낼 수 있다(세션 UUID 는 편집기 URL·
+    //    /embed?sessionId= 등에 노출되는 값이라 파일 UUID 보다 확보가 쉽다).
+    //    형제 라우트가 이미 닫은 취약점 클래스와 동일하므로 같은 근거 필드로 가드한다
+    //    (edit-sessions.controller.ts:91-101 Patch D, :163-180 F-5 — 후자는 결과를
+    //     "타 고객 주문에 남의 PDF 가 붙는다"로 명시).
+    //    ⚠️ 형제 라우트는 403 ORDER_NOT_ALLOWED 지만 여기서는 존재 은닉을 우선해 동일 404 로
+    //       던진다(허용 여부가 곧 "그 세션이 존재한다"는 오라클이 되지 않도록).
+    //    ⚠️ allowedOrderSeqnos 가 없는 토큰은 기존대로 통과 — Patch D/F-5 호환 모드와 동일해
+    //       현행 파트너 배선(주문 스코프 미발급 토큰)에 영향 0.
+    const allowedOrderSeqnos = caller?.allowedOrderSeqnos;
+    if (
+      Array.isArray(allowedOrderSeqnos) &&
+      allowedOrderSeqnos.length > 0 &&
+      !allowedOrderSeqnos.map(Number).includes(Number(session.orderSeqno))
+    ) {
+      this.logger.warn(
+        `[compose-mixed:assemble] 주문 스코프 거부(404) session=${dto.editSessionId} ` +
+          `sessionOrder=${session.orderSeqno ?? 'NULL'} allowed=${allowedOrderSeqnos.length}건`,
+      );
+      throw notFound();
+    }
+
+    // 템플릿셋(판형·면지·표지 편집여부) + 템플릿 상세(spreadConfig) — 미존재/미지정은
+    // 도출 불가로 취급(인프라 예외는 rethrow, createBleedFixJob:655-666 선례).
+    // templateDetails 가 필요한 이유: 표지 유무·내지 페이지 크기의 권위 신호인
+    // spreadConfig(regionScope/innerSpec)는 templateSet 이 아니라 templates 행에 있다
+    // (templates/entities/template.entity.ts:87).
+    let templateSet: TemplateSet | undefined;
+    let templateDetails: Template[] = [];
+    if (session.templateSetId) {
+      try {
+        const loaded = await this.templateSetsService.findOneWithTemplates(
+          session.templateSetId,
+        );
+        templateSet = loaded.templateSet;
+        templateDetails = loaded.templateDetails ?? [];
+      } catch (err) {
+        if (!(err instanceof NotFoundException)) throw err;
+        this.logger.warn(
+          `[compose-mixed:assemble] templateSet 미존재: ${session.templateSetId} (판형/면지 도출 skip)`,
+        );
+      }
+    }
+
+    // 펼침면 스펙 — 표지 유무(regionScope)와 내지 2-up 페이지 크기(innerSpec)의 권위 출처.
+    const spreadConfigs = templateDetails
+      .map((t) => t?.spreadConfig)
+      .filter((c): c is NonNullable<Template['spreadConfig']> => !!c);
+    // 내지 전용 펼침면 세트(2026-08-03 개통)는 표지 자체가 없고 편집기가 cover PDF 를
+    // 생성·업로드조차 하지 않는다(apps/editor/src/embed.tsx:1736 isInnerOnlySpread, :1760).
+    // cover_editable 은 NOT NULL DEFAULT 1 이라 이 조합을 '표지 결손'으로 오판하면
+    // 이 상품군 전체가 자동조립 불가가 된다.
+    const innerOnlySpread =
+      spreadConfigs.length > 0 &&
+      spreadConfigs.every((c) => c.regionScope === 'inner');
+    const innerSpec = spreadConfigs.find((c) => c.regionScope === 'inner')?.innerSpec;
+
+    // ── 표지 ──
+    const coverUrl =
+      dto.coverUrl ??
+      (session.coverFile ? this.toWorkerInputUrl(session.coverFile) : undefined);
+
+    // ── 내지: 첨부 PDF 우선(배타 규약), 없으면 편집 산출물 ──
+    let contentPdfUrl = dto.contentPdfUrl;
+    if (!contentPdfUrl && session.contentPdfFileId) {
+      try {
+        const attached = await this.filesService.findById(session.contentPdfFileId);
+        contentPdfUrl = this.toWorkerInputUrl(attached);
+      } catch (err) {
+        if (!(err instanceof NotFoundException)) throw err;
+        this.logger.warn(
+          `[compose-mixed:assemble] 첨부 내지 파일 미존재: ${session.contentPdfFileId}`,
+        );
+      }
+    }
+    if (!contentPdfUrl && session.contentFile) {
+      contentPdfUrl = this.toWorkerInputUrl(session.contentFile);
+    }
+
+    // ── 판형(mm) ──
+    const spread = (session.metadata as Record<string, any> | null)?.spread;
+    const positive = (v: unknown): number | undefined =>
+      typeof v === 'number' && v > 0 ? v : undefined;
+
+    // ── 내지 페이지 크기 ──
+    // ⚠️ 이 값은 워커에서 **빈 면지 페이지 치수**로만 쓰인다
+    //    (synthesis.processor.ts:447-450 contentPt → :486·:502 addPage([contentPt])).
+    //    따라서 templateSet 판형(재단 trim) 원본이 아니라 **실제 내지 PDF 페이지 크기**와
+    //    맞춰야 한 PDF 안에서 면지와 내지의 페이지 크기가 어긋나지 않는다.
+    //  ① 펼침면 내지(2-up)는 한 페이지가 두 면이다 — pageWidthMm*2 × pageHeightMm
+    //     (apps/editor/src/utils/photobookSpread.ts:174-185 computeInnerContentSizeMm).
+    //  ② cropMarkEnabled && bleedMm>0 이면 편집기가 작업사이즈(trim + bleed*2)로 페이지를
+    //     만든다(packages/canvas-core/src/plugins/ServicePlugin.ts:731-748 useEditSize,
+    //     apps/editor/src/embed.tsx:1722-1725 markOpt → :1809 내지 호출).
+    const innerTrimWidthMm =
+      positive(innerSpec?.pageWidthMm) !== undefined
+        ? (innerSpec!.pageWidthMm as number) * 2
+        : positive(templateSet?.width);
+    const innerTrimHeightMm =
+      positive(innerSpec?.pageHeightMm) ?? positive(templateSet?.height);
+    const useEditSize =
+      templateSet?.cropMarkEnabled === true && (templateSet?.bleedMm ?? 0) > 0;
+    const bleedPad = useEditSize ? (templateSet!.bleedMm as number) * 2 : 0;
+    const contentWidthMm =
+      dto.contentWidthMm ??
+      (innerTrimWidthMm !== undefined ? innerTrimWidthMm + bleedPad : undefined);
+    const contentHeightMm =
+      dto.contentHeightMm ??
+      (innerTrimHeightMm !== undefined ? innerTrimHeightMm + bleedPad : undefined);
+    // 펼침면 책의 빈 표지는 펼침 전체 폭이어야 한다(출력 wrap 포함 사이즈 우선 — D-4 규약).
+    const coverWidthMm =
+      dto.coverWidthMm ??
+      positive(spread?.outputWidthMm) ??
+      positive(spread?.totalWidthMm) ??
+      positive(templateSet?.width);
+    const coverHeightMm =
+      dto.coverHeightMm ??
+      positive(spread?.outputHeightMm) ??
+      positive(spread?.totalHeightMm) ??
+      positive(templateSet?.height);
+
+    // ── 면지: 매수만큼 null(빈 면지) 배열 ──
+    const endpaper = templateSet?.endpaperConfig ?? null;
+    const blanks = (count: unknown): (string | null)[] | undefined =>
+      typeof count === 'number' && count > 0 ? new Array<string | null>(count).fill(null) : undefined;
+    const frontEndpaperUrls = dto.frontEndpaperUrls ?? blanks(endpaper?.frontCount);
+    const backEndpaperUrls = dto.backEndpaperUrls ?? blanks(endpaper?.backCount);
+
+    // ⚠️ 편집가능 면지: 고객이 편집한 면지 산출물을 가리키는 참조가 스키마 어디에도 없다
+    //    (edit_sessions 는 cover/content 두 파일만 보유 — entity:60-72). 빈 면지로 대체하면
+    //    고객 편집물이 조용히 사라지므로 fail-closed 로 막는다. (프로덕션 실측 2026-08-13:
+    //    template_sets.endpaper_config 23행 전부 NULL → 현재 도달 0건)
+    if (endpaper?.frontEditable === true && (endpaper?.frontCount ?? 0) > 0 && !dto.frontEndpaperUrls) {
+      missing.push('frontEndpaperUrls(편집가능 면지 산출물 참조 없음)');
+    }
+    if (endpaper?.backEditable === true && (endpaper?.backCount ?? 0) > 0 && !dto.backEndpaperUrls) {
+      missing.push('backEndpaperUrls(편집가능 면지 산출물 참조 없음)');
+    }
+
+    // ── 필수 자산 판정 ──
+    // 표지는 outputMode 가 표지를 쓰는 경우(separate/merged)에만 요구한다.
+    //  · content-only(레더커버)·single(낱장)은 워커가 표지를 아예 만들지 않는다
+    //    (synthesis.processor.ts:552-580).
+    //  · 기성커버(coverEditable=false)는 표지 PDF 가 없는 것이 정상 상태다.
+    //
+    // ⚠️ dto.outputMode 원본으로 판정하면 안 되는 경우가 하나 있다 — 스프레드 책은
+    //    본문의 P0-3 블록이 'content-only'|'single' 을 'separate' 로 **강제**하므로
+    //    (createComposeMixedJob 내 effectiveOutputMode, 아래 :1452-1458 상당),
+    //    판정과 실행 모드가 어긋나면 워커가 coverUrl 없이 빈 cover.pdf 1p 를 만들고
+    //    COMPLETED 로 끝낸다(synthesis.processor.ts:518-531) = 이 트랙이 막으려던 백지 산출.
+    //    강제 조건과 동일하게 metadata.spread 스냅샷 유무로 선판정한다.
+    const spreadForcesSeparate =
+      dto.coverEditable !== false && !!spread?.totalWidthMm && !!spread?.totalHeightMm;
+    const coverUsedByOutputMode =
+      spreadForcesSeparate ||
+      (dto.outputMode !== 'content-only' && dto.outputMode !== 'single');
+    const coverExpected =
+      coverUsedByOutputMode &&
+      dto.coverEditable !== false &&
+      templateSet?.coverEditable !== false &&
+      // 내지 전용 펼침면 세트는 표지를 생산하지 않는다(위 innerOnlySpread 주석 참조).
+      !innerOnlySpread;
+    if (coverExpected && !coverUrl) missing.push('coverUrl');
+    if (!contentPdfUrl) missing.push('contentPdfUrl');
+
+    // 빈 페이지가 실제로 생성되는 경우에만 치수 미해석을 실패로 본다
+    // (치수 부재 시 워커는 A4 고정 폴백 — synthesis.processor.ts:445-450).
+    const willRenderBlankCover = coverUsedByOutputMode && !coverUrl;
+    if (willRenderBlankCover && (!coverWidthMm || !coverHeightMm)) {
+      missing.push('coverWidthMm/coverHeightMm');
+    }
+    const hasBlankEndpaper = [
+      ...(frontEndpaperUrls ?? []),
+      ...(backEndpaperUrls ?? []),
+    ].some((u) => u === null);
+    if (hasBlankEndpaper && (!contentWidthMm || !contentHeightMm)) {
+      missing.push('contentWidthMm/contentHeightMm');
+    }
+
+    if (missing.length > 0) {
+      throw new BadRequestException({
+        code: 'SESSION_ASSEMBLY_INCOMPLETE',
+        message: '세션에서 합성 입력을 완성할 수 없습니다.',
+        missing,
+        details: { sessionId: session.id },
+      });
+    }
+
+    // 결정 8: dto 없으면 session.callbackUrl 폴백(웹훅 미발신 사각 해소).
+    // ⚠️ 감사 가능성: callbackUrl 은 '자산 출처'가 아니라 '결과 배달지'라 호출자가 고른 값이
+    //    세션 권위를 이길 수 있다. 임의 도메인은 3중 완화(site webhook v2 config 우선 —
+    //    webhook.service.ts:148-159 · 호스트 allowlist · 사설 IP 차단)로 대개 막히지만
+    //    allowlist 판정은 전역이므로, 어느 쪽이 이겼는지 로그에 남긴다(아래 assemble 요약).
+    //    주 위험(타 고객 세션 조립)은 위 주문 스코프 게이트에서 닫힌다.
+    const callbackUrlSource = dto.callbackUrl
+      ? 'dto'
+      : session.callbackUrl
+        ? 'session'
+        : 'none';
+    const callbackUrl = dto.callbackUrl ?? session.callbackUrl ?? undefined;
+
+    // 도출 결과 병합 — 값이 없는 키는 **넣지 않는다**(conditional spread)로 기존 옵션/큐
+    // 페이로드의 키 집합·직렬화 형상을 그대로 유지한다.
+    const assembled: ComposeMixedJobInput = {
+      ...dto,
+      ...(coverUrl !== undefined ? { coverUrl } : {}),
+      ...(contentPdfUrl !== undefined ? { contentPdfUrl } : {}),
+      ...(coverWidthMm !== undefined ? { coverWidthMm } : {}),
+      ...(coverHeightMm !== undefined ? { coverHeightMm } : {}),
+      ...(contentWidthMm !== undefined ? { contentWidthMm } : {}),
+      ...(contentHeightMm !== undefined ? { contentHeightMm } : {}),
+      ...(frontEndpaperUrls !== undefined ? { frontEndpaperUrls } : {}),
+      ...(backEndpaperUrls !== undefined ? { backEndpaperUrls } : {}),
+      // 웹훅 미발신 사각 해소 — 잡 완료 발신은 job.options.callbackUrl 을 본다(:2312·:2373).
+      ...(callbackUrl !== undefined ? { callbackUrl } : {}),
+      // 잡 테넌트 스탬프는 세션 권위(dto.siteId 보다 우선) — NULL 스탬프 잡은
+      // assertJobSiteAccess(:1886-1895)에서 전 테넌트에 열린다.
+      siteId: session.siteId,
+    };
+
+    this.logger.log(
+      `[compose-mixed:assemble] session=${session.id} site=${session.siteId} ` +
+        `cover=${assembled.coverUrl ? 'Y' : 'N'} content=${assembled.contentPdfUrl ? 'Y' : 'N'} ` +
+        `front=${(assembled.frontEndpaperUrls ?? []).length} back=${(assembled.backEndpaperUrls ?? []).length} ` +
+        `size=${assembled.contentWidthMm ?? '-'}x${assembled.contentHeightMm ?? '-'}mm ` +
+        `innerOnly=${innerOnlySpread ? 'Y' : 'N'} editSize=${useEditSize ? 'Y' : 'N'} ` +
+        `callbackUrl=${callbackUrlSource}`,
+    );
+
+    return assembled;
+  }
+
+  /**
+   * [테넌트 스탬프 위조 차단, 2026-08-13] compose-mixed 잡의 `siteId` 결정.
+   *
+   * `POST /worker-jobs/compose-mixed` 는 `@Public` 이라(worker-jobs.controller.ts:276-278)
+   * body 의 `siteId` 는 **무인증 호출자가 고른 값**이다. 종전에는 그 값이 그대로
+   * `job.siteId` 로 기록됐고(이 함수 도입 전 `siteId: dto.siteId || null`),
+   * 다른 라우트들이 `@CurrentSite()` 로 서버 도출한 값을 넣는 것과 달리
+   * (worker-jobs.controller.ts:139·190·224·461) 검증 주체가 없었다.
+   *
+   * 그래서 임의 테넌트 UUID 를 실으면:
+   *  ① 잡이 그 사이트 소유로 귀속되고(assertJobSiteAccess:2310-2318 이 그 테넌트에만 개방),
+   *  ② 완료 시 **그 사이트의 v2 웹훅 엔드포인트로 발신**될 수 있다
+   *     (updateJobStatus:2382-2391 게이트 → hasV2ConfigForJob(job, job.siteId)
+   *      → webhook.service.ts:83-92 hasV2Config → tryDispatchForSite).
+   *     v1 과 달리 v2 는 목적지 URL 이 **사이트 config** 에서 나오므로, 호출자가
+   *     callbackUrl 을 주지 않아도 남의 파트너 서버로 잡 결과가 배달된다.
+   *
+   * ── 새 규칙 ────────────────────────────────────────────────────────────
+   *  - 자동조립 경로(`assembled=true`): `dto.siteId` 는 이미 `session.siteId` 로
+   *    덮여 있고(assembleComposeInputFromSession:1474-1476), 그 값은 caller 와
+   *    일치가 강제된 세션 권위값이다 → **그대로 유지**.
+   *  - 수동 경로: 검증된 shop-session(OptionalShopJwtGuard) 의 caller.siteId 와
+   *    **일치할 때만** 채택. 불일치·caller 부재면 **무시하고 NULL 스탬프**.
+   *
+   * ⚠️ 400 을 던지지 않는다(무중단 최우선 — 프로덕션 compose-mixed 호출 이력 0건이지만
+   *    조용한 하향이 안전). NULL 스탬프는 이 라우트가 도입될 때의 기본값이자
+   *    `siteId` 미전달 호출자와 동일한 상태이므로 회귀가 아니다.
+   * ⚠️ NULL 잡은 assertJobSiteAccess 상 전 테넌트에 열린다(:2306 '공유/레거시'). 그러나
+   *    위조 잡의 내용은 이미 위조자 본인이 만든 것이고, 반대로 위조 스탬프는 피해 사이트로
+   *    **결과를 밀어내는**(웹훅) 능동적 경로라 NULL 이 엄격히 안전한 쪽이다.
+   *
+   * ── 기존 호출자 영향: '게이트 불변' ≠ '배달 경로 불변' ─────────────────────
+   *  · **판정(게이트) 은 불변**: updateJobStatus 의 발신 여부 판정은
+   *    `callbackUrl || hasV2ConfigForJob(...)` 단락이라, v1 callbackUrl 을 넣던
+   *    호출자는 siteId 와 무관하게 종전대로 발신 대상이다.
+   *  · **배달 경로는 달라질 수 있다**: 실제 발신은
+   *    sendSynthesisCallback → webhook.service.sendCallback(url, payload, {siteId}) 로 가고,
+   *    sendCallback 은 `context.siteId` 가 있고 그 사이트에 v2 active config 가 있으면
+   *    tryDispatchForSite(v2: 사이트별 HMAC + X-Storige-Delivery + 재시도 스토어)로
+   *    먼저 배달하고 반환한다(webhook.service.ts:143-159). siteId 가 NULL 이 되면
+   *    이 분기를 건너뛰고 **v1 레거시 경로**(전역 시크릿 서명)로 같은 URL 에 배달된다.
+   *    → body.siteId + callbackUrl 을 함께 보내던 파트너가 v2 config 를 켜 두었다면
+   *      수신 서명이 v1 로 바뀐다. 프로덕션 compose-mixed 호출 이력 0건(2026-08-13 실측)
+   *      이라 실피해자는 없으나, 문서(§3.4 3번)에 '수동 경로 잡은 v2 배달 대상 아님'을
+   *      명시해 두었다.
+   * ⚠️ 로그에 값 자체를 남기지 않는다(테넌트 UUID = 타 사이트 식별자). 길이 + 앞 4자만,
+   *    로그 인젝션 방지를 위해 UUID 문자셋 밖 문자는 제거한다.
+   */
+  private resolveComposeMixedSiteId(
+    dto: ComposeMixedJobInput,
+    caller: { siteId?: string } | undefined,
+    assembled: boolean,
+  ): string | null {
+    const requested = dto.siteId || null;
+    if (!requested) return null;
+    // 세션 권위(자동조립) — 인가 게이트를 이미 통과한 값.
+    if (assembled) return requested;
+    if (caller?.siteId && caller.siteId === requested) return requested;
+
+    const hint = `len=${requested.length} prefix=${requested.slice(0, 4).replace(/[^0-9a-fA-F-]/g, '')}`;
+    this.logger.warn(
+      `[compose-mixed] body.siteId 무시(NULL 스탬프) — 검증된 shop-session 과 불일치. ` +
+        `caller=${caller?.siteId ? 'shop-session' : 'none'} body(${hint})`,
+    );
+    return null;
+  }
+
+  /**
    * Compose-mixed 잡 생성 — [표지, 앞면지N, 내지, 뒷면지K] 합본 PDF 생성.
    *
    * 기존 synthesis / split / spread 흐름과 분리된 별도 mode.
    * PHP 기존 호출 경로 회귀 보호 (mode='compose-mixed' 만 신규 worker handler 사용).
+   *
+   * ── 자동조립 opt-in (2026-08-13) ──────────────────────────────────────────
+   * `rawDto.assembleFromSession === true` 일 때만 세션에서 파일·판형을 도출해
+   * **빈 자리만** 채운다(per-field 우선순위: dto 명시값 > 도출값). 미전달이면
+   * 아래 본문은 rawDto 를 그대로 받아 **기존과 한 줄도 다르지 않게** 동작한다.
+   *
+   * ⚠️ 인가는 자동조립 경로에만 적용된다(assembleComposeInputFromSession).
+   *    기존 URL 직접 공급 경로에는 검사를 추가하지 않는다 — 무중단 최우선.
+   *
+   * ── 빈 입력 400 승격 (오너 결정 2026-08-13) ───────────────────────────────
+   * 자동조립 여부와 무관하게 표지·내지 자산이 0건이면 400(EMPTY_COMPOSE_INPUT).
+   * 종전엔 워커가 A4 백지 1p 를 COMPLETED 로 산출했다
+   * (apps/worker/src/processors/synthesis.processor.ts:441-450·589-590·602·617-618).
+   *
+   * ── 테넌트 스탬프 위조 차단 (2026-08-13) ─────────────────────────────────
+   * `job.siteId` 는 더 이상 body 값을 그대로 받지 않는다 — 자동조립은 세션 권위,
+   * 수동 경로는 검증된 shop-session 과 일치할 때만 채택, 그 외 NULL 스탬프.
+   * 판정·근거는 resolveComposeMixedSiteId 참조(400 없음 = 무중단).
    */
-  async createComposeMixedJob(dto: ComposeMixedJobInput): Promise<WorkerJob> {
+  async createComposeMixedJob(
+    rawDto: ComposeMixedJobInput,
+    caller?: { siteId?: string; allowedOrderSeqnos?: unknown },
+  ): Promise<WorkerJob> {
+    // ── 분기 게이트(최상단) — opt-in 이 아니면 rawDto 를 그대로 흘려보낸다.
+    const assembledFromSession = rawDto.assembleFromSession === true;
+    const dto: ComposeMixedJobInput = assembledFromSession
+      ? await this.assembleComposeInputFromSession(rawDto, caller)
+      : rawDto;
+
+    // 빈 입력 차단(전 경로 공통) — 백지 COMPLETED 산출 방지.
+    this.assertComposeMixedInputNotEmpty(dto);
+
     // P0-3: 스프레드 책 무결성 — 세션의 출력재현 단일소스(metadata.spread)를 조회해
     //  ① 워커 cover MediaBox 검증용 기대치(totalWidthMm/HeightMm/dpi)를 큐로 push,
     //  ② 확정 비즈니스 규칙(스프레드 책 = cover.pdf + content.pdf "분리 2파일")에 맞춰
@@ -1210,7 +1647,9 @@ export class WorkerJobsService implements OnModuleInit {
       status: WorkerJobStatus.PENDING,
       editSessionId: dto.editSessionId || null,
       inputFileUrl: dto.coverUrl || dto.contentPdfUrl || null,
-      siteId: dto.siteId || null,
+      // [테넌트 스탬프 위조 차단 2026-08-13] `dto.siteId || null` 직접 대입 금지 —
+      // 이 라우트는 @Public 이라 body.siteId 가 무검증 입력이다(resolveComposeMixedSiteId 주석).
+      siteId: this.resolveComposeMixedSiteId(dto, caller, assembledFromSession),
       // [S2-5] test env 컨텍스트면 isTest:true 스탬프 — 워커가 실합성(compose-mixed) 대신
       // TEST 워터마크 더미(handleTestSynthesis compose-mixed 분기) 산출 + outputs 24h retention.
       // live/미전달(external sites 키)=키 없음 → 기존 옵션 바이트 불변(compose-mixed.spec 계약).

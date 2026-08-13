@@ -55,6 +55,43 @@ curl -s https://api.papascompany.co.kr/api/health | python3 -m json.tool | head 
   - 결과 ②`applyContentPdfGuides` 의 `contentPdfEditable` 조회가 401 → catch 폴백으로 **항상 '편집 허용'** = 잠금 설정 무력화.
   - 조치: 두 곳 모두 공개 라우트 `GET /template-sets/:id/with-templates`(@Public)로 교체. 편집기 내 JWT 전용 호출자는 이제 0건(grep 확인).
 
+## 1-A. W3 (G7) — compose-mixed 세션 자동 조립 + 문서 정정 **(코드 완료·미배포)**
+
+> 서브에이전트 오케스트레이션 3라운드(정찰 6 → 문서정정 6 → 구현 7 → 마무리 7 = 26에이전트).
+> **API 는 VPS 수동 배포라 아직 프로덕션 미반영** — 배포는 오너 승인 게이트.
+
+### 1-A-1. 정찰이 뒤집은 전제 + 프로덕션 실측
+- G7 의 정체 = **문서 결함이 주, 미구현 기능이 부**. 워커는 **무변경**으로 성립(서버가 기존 큐 키를 채움).
+- 실측(2026-08-13): compose-mixed 호출 이력 **0건** · 세션 `site_id` 스탬프율 88/97(7월 19/19) ·
+  `template_sets.endpaper_config` **23행 전부 NULL**(= 정찰이 1순위 blocker 로 본 '편집가능 면지'가 실재 0건).
+- 산출물 `/storage/outputs/<jobId>/*.pdf` 는 **무인증 공개** 서빙(206 실측). `GET /worker-jobs/:id/output` 은
+  사이트 API 키로 **401**(ApiKeyGuard 미적용) — **파트너 경로가 아니다**(문서에 잘못 적혀 있던 것을 정정).
+
+### 1-A-2. 오너 결정
+| 결정 | 값 |
+|---|---|
+| 빈 입력(자산 0건) 처리 | **400 `EMPTY_COMPOSE_INPUT` 전면 승격** (종전: 백지 1p COMPLETED) |
+
+### 1-A-3. 구현 (전부 additive · 워커/에디터/스키마 0줄)
+- `assembleFromSession?: boolean` opt-in. **미전달 시 기존 경로 바이트 불변**(분기 게이트 최상단, 큐 키 집합 동일 — 단언으로 잠금).
+- 세션 도출: 표지(`session.coverFile`) · 내지(`contentPdfFileId` 우선 → `contentFile`) · 면지(endpaperConfig 개수만큼 null) ·
+  치수(metadata.spread → templateSet, 펼침면/작업사이즈 보정) · `job.siteId`=session.siteId · callbackUrl 폴백.
+- **인가**: `@Public` 유지 + `OptionalShopJwtGuard` additive → 호출자 siteId ↔ session.siteId 일치 **+ 주문 스코프
+  (`allowedOrderSeqnos`)**. 실패는 전부 동일한 `404 SESSION_NOT_FOUND`(존재 은닉, books 패턴).
+  ※ 주문 스코프는 적대검증이 MAJOR 로 적발 — siteId 만으로는 **같은 테넌트의 타 고객 세션**이 열렸다.
+- 도출 실패 → `400 SESSION_ASSEMBLY_INCOMPLETE {missing[]}`.
+- **siteId 위조 차단**: 무인증 라우트라 body `siteId` 를 그대로 스탬프하던 것을 **호출자 siteId 와 일치할 때만 채택**(그 외 NULL + warn).
+  파급: NULL 잡은 v2 웹훅 게이트가 닫혀 타 테넌트 엔드포인트로 배달되지 않는다.
+- **고아정리 역참조 정합**(데이터 손실 방지): compose 옵션 절이 `file_url` 하고만 비교해 `api://<id>`·`file_path` 를
+  전부 miss 하던 것을 입력 URL 절과 같은 5형식 규약으로 통일. 적대검증이 **같은 결함이 `createSynthesisJob`
+  내지 참조에도 있음을 MAJOR 로 추가 적발** → 함께 해소. 고아 쿼리 실패의 침묵 장애도 Sentry 알림으로 승격.
+
+### 1-A-4. 검증
+- api **993 pass / 69 suites**(기준선 930 + 신규 63) · `tsc` 0err · lint 0err(경고는 기존분).
+- 동결 계약 `contract-freeze.spec.ts`(auth:'public') 통과 — 가드는 ApiKeyGuard 가 아니라 additive.
+- 삭제 안전성: 추가 항이 전부 `NOT EXISTS(...)` 내부 OR 체인 = **덜 지우는 방향**(메인 세션 직접 확인). 뮤테이션 테스트로 회귀 검출력도 실증.
+- ⚠️ **미검증**: 실 DB 에서 새 SQL(JSON_SEARCH 최초 사용) 실행 경로. 배포 후 `FILE_ORPHAN_DRY_RUN=1` 상태로 cron 1회 로그 확인 필요.
+
 ## 2. 다음 타순
 
 1. **실주문 실기 1회** — 실제 내지 PDF 첨부 → 즉시 앉히기·페이지 확장·최종 산출(원본 PDF) 육안 확인.

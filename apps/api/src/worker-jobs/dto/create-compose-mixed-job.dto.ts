@@ -103,7 +103,30 @@ export class CreateComposeMixedJobDto {
   @IsString()
   orderId?: string;
 
-  /** Phase C — 호출 컨트롤러에서 자동 주입 */
+  /**
+   * [자동조립 opt-in, 2026-08-13] true 일 때만 서버가 `editSessionId` 세션에서
+   * 표지/내지/면지/판형을 도출해 **빈 자리만** 채운다(dto 명시값이 항상 우선).
+   *
+   * ⚠️ 미전달/false = 기존 경로와 한 줄도 다르지 않게 동작한다(무중단 최우선).
+   * ⚠️ 자동조립 경로에만 인가가 걸린다 — 검증된 shop-session JWT 의 siteId 와
+   *    세션 siteId 가 **둘 다 존재하고 일치**할 때만 허용, 아니면 404 SESSION_NOT_FOUND.
+   */
+  @ApiPropertyOptional({
+    default: false,
+    description: '세션 자동조립(opt-in) — 빈 필드만 세션/템플릿셋에서 도출',
+  })
+  @IsOptional()
+  @IsBoolean()
+  assembleFromSession?: boolean;
+
+  /**
+   * Phase C — 다른 라우트에서는 컨트롤러가 `@CurrentSite()` 로 자동 주입한다.
+   *
+   * ⚠️ [2026-08-13] compose-mixed 라우트는 `@Public` 이라 이 필드가 **무인증 호출자 입력**이다.
+   *    잡 스탬프로 그대로 채택되지 않는다 — 검증된 shop-session 의 siteId 와 일치할 때만
+   *    채택되고, 불일치·토큰 부재면 무시(NULL 스탬프)된다(400 아님, 무중단).
+   *    판정 근거: worker-jobs.service.ts `resolveComposeMixedSiteId`.
+   */
   @IsOptional()
   @IsUUID()
   siteId?: string;
@@ -136,6 +159,11 @@ export interface ComposeMixedJobInput {
   callbackUrl?: string;
   orderId?: string;
   siteId?: string;
+  /**
+   * [자동조립 opt-in] 외부 라우트 DTO 와 동일 의미(위 필드 주석 참조).
+   * 미전달=기존 동작 불변 — finalization 오케스트레이터(W3)는 전달하지 않는다.
+   */
+  assembleFromSession?: boolean;
   /** [S2-5] 인증 컨텍스트 env — 미전달=live(기존 불변). 'test'=isTest 더미 산출. */
   partnerEnv?: PartnerEnv;
   /** [Stage 3 W3] books finalization 역참조 마커(#4) — 부재=기존 옵션 불변 */

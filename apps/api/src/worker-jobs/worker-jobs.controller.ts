@@ -257,15 +257,57 @@ export class WorkerJobsController {
    *
    * 게스트도 호출 가능 (@Public). 향후 X-Guest-Token 또는 ApiKey 분기 추가 가능.
    * 기존 PHP synthesize/external 경로와 완전 분리 — 회귀 보호.
+   *
+   * ── 자동조립 opt-in (2026-08-13) ──────────────────────────────────────────
+   * body.assembleFromSession=true 일 때만 서버가 세션에서 표지/내지/면지/판형을 도출한다.
+   * 그 경로에만 인가가 걸리므로 `@Public` 은 **유지**하고(CONTRACT_FREEZE §2 동결 계약,
+   * contract-freeze.spec.ts:65 auth:'public'), 컷아웃 라우트 선례와 동일하게
+   * additive `OptionalShopJwtGuard` 로 검증된 shop-session 의 테넌트만 복원한다.
+   * 토큰이 없거나 위조면 가드는 그대로 통과시키고(401 없음) 자동조립만 404 로 막힌다.
+   * ⚠️ 기존 경로(URL 직접 공급)에는 어떤 인가 검사도 추가하지 않는다 — 무중단 최우선.
+   *
+   * 🔒 주문 스코프(2026-08-13 적대검증 MAJOR): siteId 일치만으로는 **동일 테넌트 내
+   *    타 고객 세션**을 조립해 그 표지/내지를 합본으로 뽑아낼 수 있다(세션 UUID 는
+   *    편집기 URL·/embed?sessionId= 등으로 노출되는 값이다). 형제 라우트가 이미 닫은
+   *    취약점 클래스이므로(edit-sessions.controller.ts:91-101 Patch D, :163-180 F-5)
+   *    같은 근거 필드 `allowedOrderSeqnos` 를 서비스로 넘겨 세션 orderSeqno 를 가드한다.
+   *    가드가 이미 서명 검증된 JWT 에서 복원해 준다(optional-shop-jwt.guard.ts:70-75).
+   *
+   * 🔒 테넌트 스탬프(2026-08-13): 이 라우트가 `@Public` 인 이상 **body.siteId 는 인가 주체가
+   *    아니다**. 여기서 복원한 caller 가 잡 스탬프의 유일한 검증 근거이며, 서비스가
+   *    `resolveComposeMixedSiteId` 로 대조해 불일치·부재면 NULL 스탬프한다(400 없음).
+   *    다른 라우트(:139·190·224·461)는 `@CurrentSite()` 서버 도출값이라 이 문제가 없다.
    */
   @Post('compose-mixed')
   @Public()
+  @UseGuards(OptionalShopJwtGuard)
   @ApiOperation({ summary: 'Compose-mixed 잡 생성 (Phase 5)' })
   @ApiResponse({ status: 201, description: '잡 생성 성공', type: WorkerJob })
+  @ApiResponse({ status: 400, description: '빈 입력(EMPTY_COMPOSE_INPUT) / 자동조립 불완전(SESSION_ASSEMBLY_INCOMPLETE)' })
+  @ApiResponse({ status: 404, description: '자동조립 대상 세션 미존재·타 테넌트(SESSION_NOT_FOUND)' })
   async createComposeMixed(
     @Body() dto: CreateComposeMixedJobDto,
+    @CurrentUser()
+    user?: {
+      siteId?: string;
+      role?: string;
+      source?: string;
+      allowedOrderSeqnos?: unknown;
+    },
   ): Promise<WorkerJob> {
-    return await this.workerJobsService.createComposeMixedJob(dto);
+    // 검증된 shop-session 이 있을 때만 테넌트 컨텍스트로 넘긴다(cutout 라우트와 동일 규약).
+    // 없으면 undefined → 자동조립 요청은 서비스에서 404(SESSION_NOT_FOUND) 로 fail-closed.
+    // allowedOrderSeqnos 는 배열일 때만 전달 — 없으면 호환 모드(주문 검사 생략, 형제 라우트 동일).
+    const caller =
+      user?.source === 'shop' && typeof user?.siteId === 'string'
+        ? {
+            siteId: user.siteId,
+            allowedOrderSeqnos: Array.isArray(user.allowedOrderSeqnos)
+              ? user.allowedOrderSeqnos
+              : undefined,
+          }
+        : undefined;
+    return await this.workerJobsService.createComposeMixedJob(dto, caller);
   }
 
   /**
@@ -460,6 +502,16 @@ export class WorkerJobsController {
     // Stage 0 비대칭 봉합 — 사이트 컨텍스트를 감사 로깅/후속 스코핑용으로만 전달.
     // check-mergeable 은 worker_job 행을 만들지 않는 dry-run 조회라 스탬프 대상이 없고,
     // 접근 차단/스코핑 강제는 NULL-siteId 정책(오너 결정 잔여 사안) 확정 전 도입하지 않는다.
+    //
+    // ⚠️ NULL-siteId 정책 미결 항목 (2026-08-13 추가) — `POST /worker-jobs/compose-mixed`.
+    //    수동 경로가 body.siteId 를 무시하고 NULL 을 스탬프하도록 하드닝되면서
+    //    (worker-jobs.service.ts resolveComposeMixedSiteId) **write 위조는 막았지만
+    //    read 표면은 넓어졌다** — 이 트레이드오프가 정책 결정 대상이다:
+    //      · findAll: applySiteScope(includeNull 기본 false) → 사이트 운영자 목록에서 사라짐
+    //      · findOne: assertSiteInScope(rowSiteId=null, allowNull 미지정) → 403 TENANT_FORBIDDEN
+    //      · GET /worker-jobs/external/:id: assertJobSiteAccess 가 NULL 잡을 통과시킴
+    //        → jobId 를 아는 **어느 테넌트 키로도** 상태·outputFileUrl 조회 가능
+    //    (산출물 경로 자체가 무인증 공개라 실질 노출 = 오너 결정 대기.)
     return await this.workerJobsService.checkMergeable(checkMergeableDto, site);
   }
 

@@ -75,7 +75,7 @@ curl -s https://api.papascompany.co.kr/api/health | python3 -m json.tool | head 
 | G4 | 페이지 재정렬/매핑 없음 — PDF↔페이지 고정 1:1, PagePanel DnD 0건, spread 모드 DnD 부재 | contentPdfGuide.ts:45-47·PagePanel.tsx:24-37 | 코드(중형) |
 | G5 | 첨부 직후 페이지 수 즉시 확장 미구현(targetPageCount 미소비 — 재로드 시에만 PDF 페이지수로 생성) | ContentPdfAttachModal.tsx:694-723 | 코드 |
 | G6 | **'작업'의 의미 미확정** — underlay 는 표시전용(가이드 위 편집은 인쇄 미반영, 원본 인쇄). 앉힌 내지 위에 얹은 객체를 인쇄에 반영하려면 오버레이 합성 신설 필요 | edit-sessions.service.ts:876-882 | ⚠️ 오너 결정 |
-| G7 | compose-mixed 가 editSessionId 만으로 자동 조립 불가(호출자가 URL 전부 공급) + 통합가이드 curl 예시가 코드와 불일치(그대로 쓰면 빈 산출) | worker-jobs.service.ts:1157-1283 vs PLATFORM_INTEGRATION_GUIDE.md:878-886 | 코드+문서 |
+| G7 | **통합가이드 compose-mixed 예시대로 호출하면 에러 없이 '성공한 백지 PDF'** — DTO 필수 필드 0건(@IsOptional 14/필수 0)이라 `{editSessionId, orderId}` 만으로 201, 서버는 세션에서 `metadata.spread` 만 읽고(best-effort try/catch, 세션 없어도 통과) 파일은 자동 해석하지 않음 → coverUrl 없으면 A4 백지 1p + 내지 skip 으로 status=COMPLETED. ⚠️ 성격 보정: **문서 결함이 주(主)**이고, "editSessionId 만으로 세션 자동 조립"은 결함이 아니라 **현재 미구현 기능**(별도 트랙 검토 대상 — 이번 트랙에서 약속하지 않음) | create-compose-mixed-job.dto.ts:20-110 · worker-jobs.service.ts:1173-1206 · synthesis.processor.ts:432·445·588-590·602·617-618 vs PLATFORM_INTEGRATION_GUIDE.md:890-896 | 문서(주) + 미구현 기능 |
 | G8 | LeatherCoverPreview 미배선(coverEditable=false 여도 표지 편집 노출·배너만)·면지 배너 / 전용·book 모드에서 endpaper 템플릿 페이지 전개 무시 | loadSpreadModeEditor:1460·1615 | 코드 |
 | G9 | 페이지 가변 반복 규칙 = 마지막 페이지 복제 고정(좌/우 교대 등 패턴 메타 없음)·포토북 inner 후속 펼침면 반복 미정 | useEditorContents.ts:1623-1642 | 설계+코드 |
 
@@ -87,8 +87,20 @@ curl -s https://api.papascompany.co.kr/api/health | python3 -m json.tool | head 
 2. **W2 (오너 결정 선행)**: G6 — '앉힌 내지 위 작업'의 인쇄 반영 여부.
    (a) 표시전용 유지(현행 계약, 안내 문구 강화) (b) 오버레이 인쇄 합성(내지PDF 위에 세션 객체
    레이어를 겹쳐 인쇄 — 워커 합성 신설, 중형). 결정 후 구현.
-3. **W3**: G7 — editSessionId 자동 조립(세션의 contentPdfFileId/coverUrl/endpaperConfig 해석)
-   또는 문서 정정. 파트너 계약이라 additive 로.
+3. **W3**: G7 — **통합가이드 compose-mixed 예시 정정(문서 전용, 코드·계약 무변경)** 으로
+   '성공한 백지 PDF' 사고를 차단. editSessionId 자동 조립(세션의 contentPdfFileId/coverUrl/
+   endpaperConfig 해석)은 현재 **미구현 기능** — 별도 트랙 검토 대상이며 여기서 약속하지 않는다.
+   - ⚠️ **문서 트랙 밖 에스컬레이션(코드 사안, 오너 결정)**: `POST /worker-jobs/compose-mixed` 는
+     `@Public` 인데 서버가 **호출자가 보낸 `dto.siteId` 를 그대로 잡에 기록**한다
+     (worker-jobs.service.ts:1215 `siteId: dto.siteId || null`). 무인증 호출자가 임의 테넌트의
+     siteId 를 실으면 잡이 그 사이트 소유로 귀속되고, 그 사이트의 v2 웹훅 설정이 있으면
+     콜백까지 그 파트너 엔드포인트로 발신될 수 있다(:1958-1967 게이트 `hasV2ConfigForJob(job, job.siteId)`).
+     → 통합가이드 허용 필드 표에서 `siteId` 행은 **제거**(광고 금지)했고, 코드 차원 조치
+     (컨트롤러에서 body siteId strip 또는 ApiKeyGuard+@CurrentSite 도입)는 미착수.
+   - ⚠️ **표지 회수 구멍**: `separate`(스프레드 책 강제 모드)의 `cover.pdf` 를 바이트로 내려주는
+     파트너용 라우트가 없다 — `GET /worker-jobs/:id/output` 은 `result.outputFileUrl`(=content.pdf)
+     하나만 스트리밍(worker-jobs.controller.ts:569-572), cover 는 `outputFiles[].url` 경로로만 노출.
+     가이드에는 '운영자 확정' 으로 명시했으나 실제 전달 수단은 오너 결정 필요.
 4. **W4**: G8(레더커버·면지 배선) → G4(재정렬 UI) → G9(반복 규칙).
 
 ## 3. 함정 색인 (이 세션 신설 — 위반 시 재발)
@@ -134,7 +146,8 @@ W1 = G1+G2+G3+G5: PDF 내지 첨부 직후 편집기에 즉시 '앉혀 보여주
   마운트(현재 레거시 / 전용) ③EditorView 로드 배선 대칭 ④페이지 수 즉시 확장.
 W2 = G6(⚠️ 오너 결정 선행): 앉힌 내지 위 '작업'의 인쇄 반영 여부 — 표시전용 유지 vs
   오버레이 인쇄 합성(워커 신설). 결정 받고 진행.
-W3 = G7: compose-mixed editSessionId 자동 조립(additive) + 통합가이드 문서 정정.
+W3 = G7: 통합가이드 compose-mixed 문서 정정(문서 전용 — 코드·파트너 계약 무변경).
+  editSessionId 자동 조립은 미구현 기능이라 별도 트랙 결정 대상(이번 트랙 범위 아님).
 W4 = G8(레더커버 배선·면지)→G4(페이지 재정렬 UI)→G9(반복 규칙).
 
 주의(§3): 워커 배포 후 dist grep 역검증 필수(캐시 함정). /embed 가 파트너 정본 경로 —

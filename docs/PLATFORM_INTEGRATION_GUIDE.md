@@ -1,6 +1,7 @@
 # Storige 플랫폼 연동 가이드 (외부 파트너용)
 
 > **작성일:** 2026-06-20
+> **최종 갱신:** 2026-08-13 — `compose-mixed` 빈 입력 `400 EMPTY_COMPOSE_INPUT` 승격(3.4) · 세션 자동조립 `assembleFromSession` 신설(3.4.1) · `compose-mixed` body `siteId` 하드닝(검증된 shop-session 과 일치할 때만 채택, 그 외 `NULL` — 3.4)
 > **대상:** 외부 파트너 개발자
 > **상태:** 배포용 정본
 
@@ -18,7 +19,7 @@ Storige는 단일 인쇄 백엔드로서 여러 외부 파트너를 호스팅합
 |---|---|---|---|---|---|---|
 | **유형 1** | 파트너 (자체 편집기) | PDF 생성/검증·합성·이행만 오프로드 | 100p Books | 아니오 (서버간 API) | `GET /files/:id/download/external` 다운로드 (폴링/웹훅) | 운영 중 |
 | **유형 2** | Storige (`/embed` 임베드) | 편집·저장·합성·다운로드 전부 | bookmoa-mobile, ShareSnap | 예 (iframe 또는 IIFE) | Storige 내부 합성 → 다운로드 | 운영 중 |
-| **유형 3** | Storige (`/embed` 임베드) | 임베드 편집 + 외부가 합성 결과파일만 수신 | Shopify (제안) | 예 | 웹훅 + `download/external` 조합 | **미구현 (제안)** |
+| **유형 3** | Storige (`/embed` 임베드) | 임베드 편집 + 외부가 합성 결과파일만 수신 | Shopify (제안) | 예 | 웹훅/폴링 + 잡 output 회수 (compose-mixed 는 `files` 미등록 → `download/external` 불가, 3.4) | **미구현 (제안)** |
 
 > **파트너 분류 근거(코드 검증):**
 > - **유형 1 = 100p Books 단독.** 100p Books 어댑터는 서버사이드에서 `X-API-Key` 로 `upload/external`·`validate/external`·`download/external` + 보존 cron 만 사용하며 iframe/embed/postMessage 호출이 전혀 없습니다(진짜 자체편집기 오프로드 = 전략적 통합: PDF 저장/검증만 위탁).
@@ -542,7 +543,7 @@ curl "https://api.papascompany.co.kr/api/files/<fileId>/download/external" \
   -H "X-API-Key: <YOUR_SITE_API_KEY>" \
   -o result.pdf
 ```
-> `assertSiteAccess`: file.siteId가 NULL이거나 caller.siteId와 일치할 때만 허용, 불일치 시 `404`. 스트리밍(2 GB도 heap 상수). **외부 파트너의 결과 PDF 회수는 이 엔드포인트만 사용합니다** (`/worker-jobs/:id/output` 은 내부 JWT 전용 — 5.1 참조).
+> `assertSiteAccess`: file.siteId가 NULL이거나 caller.siteId와 일치할 때만 허용, 불일치 시 `404`. 스트리밍(2 GB도 heap 상수). **`files` 레코드가 있는 잡(유형 1: 검증·페이지수 보정·임포지션 등 `outputFileId` 를 남기는 잡)의 결과 PDF 는 이 엔드포인트로 회수합니다.** compose-mixed 산출물은 `files` 미등록이라 `fileId` 자체가 없으므로 이 경로가 성립하지 않습니다 — 그 경우 잡의 `outputFileUrl`/`result.outputFiles[].url`(스토리지 경로)을 그대로 GET 합니다 (3.4 · 5.1).
 
 ### 2.3 검증결과 해석
 
@@ -841,7 +842,9 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 > **노출 조건:** book 모드 템플릿셋 + 편집 세션이 있는 진입(`sessionId` 재편집, 또는 `orderSeqno`+`mode`
 > 신규 진입). 쓰지 않는 호스트는 `contentPdfAttach=0` 으로 끕니다.
 > **호스트 조치:** 첨부 시 총 페이지 수가 바뀌므로(가격·주문 수량 영향) 이 이벤트로 주문 정보를 갱신하세요.
-> 첨부한 PDF 는 세션의 `contentPdfFileId` 에 저장되며 합성(`compose-mixed`)의 내지 입력이 됩니다.
+> 첨부한 PDF 는 세션의 `contentPdfFileId` 에 저장됩니다. 합성 시에는 이 fileId 를 `compose-mixed` 의
+> `contentPdfUrl`(`api://<contentPdfFileId>`)로 **호스트가 직접 전달**해야 내지로 들어갑니다 — 세션에서
+> 자동으로 물려받지 않습니다(3.4).
 
 `editor.error` code 종류: `AUTH_EXPIRED`, `NETWORK_ERROR`, `SAVE_FAILED`, `INVALID_DATA`, `SESSION_NOT_FOUND`, `TEMPLATE_SET_NOT_FOUND`.
 
@@ -887,18 +890,200 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 ### 3.4 완료 → 합성 → 다운로드
 
 1. 사용자 편집완료(`handleFinish`) → 전체 페이지 canvasData 저장 → `ServicePlugin` PDF 생성 → `filesApi.upload` → `editSessionsApi.complete` → `editor.complete` 발신.
-2. 파트너 백엔드: 주문확정 시 `POST /api/worker-jobs/compose-mixed` 로 세션 기반 합성 트리거 (호스트가 명시적 호출, 자동발행 아님).
+2. 파트너 백엔드: 주문확정 시 `POST /api/worker-jobs/compose-mixed` 로 **호출자가 파일 참조를 공급하는** 합성 트리거 (호스트가 명시적 호출, 자동발행 아님).
+   > 🚩 **기본값에서 `editSessionId` 는 합성 입력이 아닙니다.** 서버는 이 세션에서 `metadata.spread`(펼침면 기대치) 하나만 읽어 스프레드 판정·표지 치수 검증에 쓰고, 잡에 `editSessionId` 를 기록(추적)합니다. **세션을 열어 편집 결과 PDF 를 자동으로 찾아 붙이는 일은 하지 않습니다** — 합성에 들어갈 파일은 호출자가 `coverUrl`·`frontEndpaperUrls`·`contentPdfUrl`·`backEndpaperUrls` 로 **직접** 지정해야 합니다.
+   > ✅ **예외 — `assembleFromSession: true` (2026-08-13 추가).** 이 플래그를 **명시적으로 켠 요청에 한해** 서버가 세션에서 표지·내지·면지·판형을 도출해 **비어 있는 필드만** 채웁니다. 인증(shop-session JWT)이 필요하며, 미전달 시 위 기본 동작이 그대로 유지됩니다. 상세는 **3.4.1** 참조.
+   > 다만 '기록만' 되는 것은 아닙니다 — `editSessionId` 를 넣으면 잡 종료 시 그 **세션의 `workerStatus` 가 갱신**되고(모든 세션 잡이 종료됐으면 `VALIDATED`, 아니면 `PROCESSING`), 그 전이에 맞물려 **세션 웹훅(`session.validated`/`session.failed`)이 트리거될 수 있습니다**(아래 3번). 세션 상태를 다른 용도로 쓰고 있다면 이 부작용을 감안하세요.
    ```bash
    # ⚠️ 무인증(@Public) — X-API-Key 없음, 테넌트 스코프 없음 (타 /external 라우트와 대비)
    curl -X POST "https://api.papascompany.co.kr/api/worker-jobs/compose-mixed" \
      -H "Content-Type: application/json" \
-     -d '{ "editSessionId": "<id>", "orderId": "12345" }'
+     -d '{
+       "editSessionId": "<edit-session-uuid>",
+       "coverUrl": "api://<coverFileId>",
+       "coverEditable": true,
+       "coverWidthMm": 210,
+       "coverHeightMm": 297,
+       "frontEndpaperUrls": ["/storage/uploads/front1.pdf", null],
+       "backEndpaperUrls": [null],
+       "contentPdfUrl": "api://<contentFileId>",
+       "contentWidthMm": 210,
+       "contentHeightMm": 297,
+       "outputMode": "separate",
+       "callbackUrl": "https://partner.example.com/api/storige/webhook",
+       "orderId": "ORD-2026-99999"
+     }'
    ```
-   > ⚠️ 필드명은 **`orderId`(문자열)** 입니다. `orderSeqno` 처럼 DTO 에 없는 키를 보내면 전역 `forbidNonWhitelisted` 검증에 걸려 **`400`** 이 납니다(선택 필드라 생략해도 됩니다).
+   > 🛑 **자산이 하나도 없으면 `400 EMPTY_COMPOSE_INPUT` 입니다 (2026-08-13 변경).** 종전에는 `{"editSessionId": "...", "orderId": "..."}` 만 보내도 `201` 이 떨어지고 워커가 **A4 백지 1페이지를 `COMPLETED` 로** 산출했습니다. 이제 서버가 잡 생성 전에 자산 유무를 검사해 **0건이면 큐에 넣지 않고 `400`** 을 돌려줍니다.
+   > ```json
+   > { "code": "EMPTY_COMPOSE_INPUT",
+   >   "message": "합성할 표지/내지 자산이 없습니다. coverUrl·contentPdfUrl 중 하나 이상이 필요합니다.",
+   >   "details": { "editSessionId": "<uuid 또는 null>" } }
+   > ```
+   >
+   > **"자산 0건" 의 정확한 정의**(워커 실동작과 1:1) — 아래 셋이 **모두** 거짓일 때만 `400` 입니다.
+   >
+   > | 자산 | 성립 조건 | 주의 |
+   > |---|---|---|
+   > | 표지 | `coverEditable !== false` **그리고** `coverUrl` 이 있음 | ⚠️ `coverEditable:false` 면 `coverUrl` 을 보내도 **자산으로 세지 않습니다** — 워커가 그 값을 무시하고 빈 표지를 만들기 때문입니다. `{"coverUrl":"api://…","coverEditable":false}` 단독 요청은 `400` 입니다 |
+   > | 내지 | `contentPdfUrl` 이 있음 | — |
+   > | 면지 | `frontEndpaperUrls`/`backEndpaperUrls` 안에 **빈 문자열이 아닌 실제 참조**가 1건 이상 | ⚠️ `null` 원소는 "빈 면지 페이지를 만들라"는 지시라 **자산이 아닙니다**. `[null, null]` 만 보내면 `400` |
+   >
+   > ⚠️ **`400` 은 자산이 0건일 때뿐입니다 — 부분 백지는 여전히 `201` 로 통과합니다.** 이 검사는 "전부 비었는가" 만 봅니다. 한 종류라도 있으면 잡은 정상 생성되고, 빠진 자리는 종전과 똑같이 조용히 메워집니다:
+   >
+   > - `contentPdfUrl` 만 보냄 → 기본 `merged` 에서 표지 자리에 **빈 페이지**(`coverWidthMm`/`coverHeightMm`, 미전달 시 210×297mm)가 들어간 `merged.pdf` 가 `COMPLETED`.
+   > - `coverUrl` 만 보냄 → **내지가 통째로 빠진** 표지 1장짜리 PDF 가 `COMPLETED`(내지 누락에는 어떤 경고도 없습니다).
+   > - 면지 참조만 보냄 → 표지는 빈 페이지, 내지는 없음 상태로 `COMPLETED`.
+   > - `editSessionId` 가 **스프레드(펼침면) 책 세션**이면 서버가 `outputMode='separate'` 를 강제하므로(아래 outputMode 표) 부분 백지의 형태도 `merged.pdf` 1p 가 아니라 **`cover.pdf`(빈 1페이지) + `content.pdf`** 입니다 — `merged.pdf` 만 점검하는 방어는 이 흐름을 놓칩니다.
+   >
+   > ⚠️ **`editSessionId` 는 여전히 검증되지 않습니다**(`assembleFromSession` 을 켜지 않은 기본 경로 한정) — 없거나 존재하지 않는 세션이어도 `404` 가 아니라 통과합니다(스프레드 스냅샷 조회는 best-effort try/catch — 잡 생성은 계속됨). 세션 존재를 서버가 확인해 주길 원하면 **3.4.1** 의 `assembleFromSession` 경로를 쓰세요(그 경로에서는 미존재·타 테넌트가 `404 SESSION_NOT_FOUND`).
+   >
+   > ✅ **방어 2줄(여전히 필요):** `400` 은 "전부 비었을 때"만 막아 주므로, 부분 누락은 호출자가 계속 방어해야 합니다. (a) 요청 직전에 `coverUrl`·`contentPdfUrl` 이 실제로 채워졌는지 호출자 코드에서 검증하고, (b) 완료 후 **폴링(`GET /api/worker-jobs/external/:id`, X-API-Key)** 응답의 `result.totalPages` 를 기대 페이지 수와 대조하세요(`separate` 는 `result.outputFiles[].pageCount` 로도 대조 가능하지만, 기본 `merged` 는 `outputFiles` 가 **빈 배열**이라 반드시 `totalPages` 를 봐야 합니다). ⚠️ **이 두 값은 웹훅 페이로드에 실리지 않습니다** — 웹훅만 받는 파트너는 이 대조를 위해 폴링을 한 번 더 해야 합니다. "웹훅이 `completed` 로 왔다" 는 것만으로는 내용이 들어갔다는 증거가 되지 않습니다.
+
+   **허용 필드 (`CreateComposeMixedJobDto`) — 파트너 호출에서는 아래 표의 필드만 사용하세요.** 표에 없는 키는 DTO 에 없어 전역 `forbidNonWhitelisted` 로 `400` 이거나, DTO 에 있더라도 내부 전용이라 파트너 대상이 아닙니다.
+
+   | 필드 | 타입 | 기본/필수 | 비고 |
+   |---|---|---|---|
+   | `editSessionId` | UUID | optional (`assembleFromSession:true` 면 **필수**) | 스프레드 기대치 조회 + 잡 추적용. 기본 경로에서는 **합성 입력 아님** (3.4.1) |
+   | `assembleFromSession` | boolean | optional (default `false`) | **opt-in 세션 자동조립**(3.4.1). `true` 면 서버가 빈 필드를 세션에서 채움 — shop-session JWT 필요 |
+   | `coverUrl` | 파일참조 | conditional (`coverEditable=true` 면 사실상 필수) | 없으면 빈 표지 페이지가 생성됨 |
+   | `coverEditable` | boolean | optional (default `true`) | `false` → `coverUrl` 무시하고 빈 표지 페이지 생성 (레더 커버). ⚠️ 이때 `coverUrl` 은 **자산으로 세지 않음**(위 `EMPTY_COMPOSE_INPUT` 표) |
+   | `coverWidthMm` / `coverHeightMm` | number ≥1 | optional (default 210 / 297) | 빈 표지 페이지 치수 |
+   | `frontEndpaperUrls` / `backEndpaperUrls` | `(string\|null)[]` | optional | `null` 원소 = 빈 면지 페이지 (= 자산 아님) |
+   | `contentPdfUrl` | 파일참조 | optional (실질 필수) | 없으면 내지가 **무음으로 빠짐** — 표지/면지가 있으면 `400` 도 나지 않음 |
+   | `contentWidthMm` / `contentHeightMm` | number ≥1 | optional (default 210 / 297) | 빈 면지 페이지 치수 |
+   | `outputMode` | string | optional (default `merged`) | 아래 4종 설명 참조 |
+   | `callbackUrl` | string | recommended | 완료 웹훅 수신지 (파일참조 제약 없음 — `https://` 정상) |
+   | `orderId` | string | optional | 외부 주문번호. 웹훅에 echo-back |
+
+   > ⚠️ **파일참조(`coverUrl`·`contentPdfUrl`·면지 배열) 는 `http://`·`https://` 를 거부합니다** (`IsSafeFileRef`, SSRF/미인증 큐적재 방어 → `400`). 허용되는 형태는 `api://<fileId>`(권장 — `editor.complete` 의 `files.coverFileId`/`files.contentFileId`, 첨부 내지의 `contentPdfFileId` 를 그대로 사용), 스토리지 경로(`/storage/...`), 그리고 배열 원소의 `null`(=빈 면지) 뿐입니다.
+   > ⚠️ 필드명은 **`orderId`(문자열)** 입니다. `orderSeqno` 처럼 DTO 에 없는 키를 보내면 전역 `forbidNonWhitelisted` 검증에 걸려 **`400`** 이 납니다(선택 필드라 생략해도 됩니다). 같은 이유로 `partnerEnv` 같은 내부 인터페이스 전용 키도 보내면 `400` 입니다.
    > ⚠️ **보안 주의:** `compose-mixed` 는 `@Public`(ApiKeyGuard·테넌트 스코핑 없음, ThrottlerGuard 만)입니다. `editSessionId`(UUID) 만 알면 누구나 합성 잡을 트리거할 수 있습니다. `editSessionId` 를 비밀로 취급하고 가능한 한 **파트너 백엔드에서만** 호출하며, 브라우저 노출을 최소화하세요.
-   > 스프레드(펼침면) 책은 서버가 `outputMode='separate'` 강제 → cover.pdf + content.pdf 2파일. `single` 보내도 무시. **단일파일 가정 금지.**
-3. 완료 수신: 웹훅(`uploadCallbackUrl`) 또는 폴링 `GET /api/worker-jobs/external/:id`.
-4. `GET /api/files/:fileId/download/external` (X-API-Key)로 결과 PDF 회수.
+   > 🔒 예외적으로 `assembleFromSession:true` 경로에는 인가가 걸립니다(검증된 shop-session + 사이트 일치 + 주문 스코프, 실패 시 `404`) — 3.4.1. 기본 경로(파일 참조 직접 공급)의 무인증 특성은 그대로입니다.
+   > 🔒 **`siteId` 는 파트너 제어 필드가 아닙니다 (2026-08-13 변경).** 이 라우트는 `@Public` 이라 body 의 `siteId` 가 무검증 입력이므로, 서버는 **검증된 shop-session(`Authorization: Bearer …`)의 사이트와 일치할 때만** 그 값을 채택하고 그 외에는 **무시하고 `NULL` 로 저장**합니다(자동조립 경로는 세션의 `siteId` 를 씁니다 — 3.4.1). 종전에는 body 값이 그대로 기록돼 임의 테넌트로 귀속시킬 수 있었습니다. `400` 은 나지 않고 조용히 `NULL` 이 되므로, **웹훅이 필요하면 `callbackUrl` 을 직접 넣으세요**(아래 3번).
+
+   **`outputMode` 4종** (미전달 시 워커가 `merged` 로 폴백)
+
+   | 값 | 산출 | 주의 |
+   |---|---|---|
+   | `merged` (기본) | `merged.pdf` 1파일 — [표지, 앞면지, 내지, 뒷면지] 합본 | 표지/내지 중 **한쪽만** 없으면 빈 페이지·skip 으로 조용히 진행하고, **둘 다(+면지까지) 없으면 `400 EMPTY_COMPOSE_INPUT`** (위 경고) |
+   | `separate` | `cover.pdf` + `content.pdf` 2파일 | 스프레드 책(세션 `metadata.spread` 존재) **이면서 `coverEditable !== false`** 일 때 서버가 이 값을 **강제**. 레더커버(`coverEditable=false`)는 강제 대상이 아니라 요청한 모드(미전달 시 `merged`)로 진행되므로 내지만 필요하면 `content-only` 를 명시하세요. ⚠️ **`outputFileUrl` 은 `content.pdf` 하나만 가리킵니다** — 표지는 `outputFiles[]` 의 `type:'cover'` 항목으로만 노출되므로 회수 경로를 따로 확인하세요(아래 4번) |
+   | `content-only` | `content.pdf` 1파일 — [앞면지, 내지, 뒷면지] | 표지만 산출물에서 빠짐 (**면지는 포함** — 레더커버용) |
+   | `single` | `pages.pdf` 1파일 — `contentPdfUrl` 만 담음 | ⚠️ **표지·면지를 경고 없이 버립니다** (로그·웹훅 어디에도 "빠졌다" 신호가 없음). 표지/면지를 보낼 거면 쓰지 마세요 |
+
+   > DTO 의 `outputMode` enum 선언에는 `merged` 가 없지만 런타임 검증은 `@IsString` 뿐이라 `"merged"` 도 그대로 통과합니다(= 미전달과 동일).
+   > 스프레드(펼침면) 책은 서버가 `outputMode='separate'` 강제(단 `coverEditable !== false` 일 때) → cover.pdf + content.pdf 2파일. `single` 보내도 무시. **단일파일 가정 금지.**
+3. 완료 수신: 웹훅 또는 폴링 `GET /api/worker-jobs/external/:id` (X-API-Key).
+   > ⚠️ **웹훅은 자동으로 오지 않습니다.** compose-mixed 잡의 종료 웹훅은 (a) 요청에 **`callbackUrl` 을 넣었거나**, (b) 잡에 `siteId` 가 있고 그 사이트에 v2 웹훅 설정이 있을 때만 발신됩니다. 이 라우트는 `@Public`(API 키를 받지 않음)이라 `siteId` 가 자동 주입되지 않으므로, 실질적으로 **요청에 `callbackUrl` 을 직접 넣는 것이 유일하게 확실한 경로**입니다. 둘 다 없으면 **`synthesis.completed`/`synthesis.failed` 는 발신되지 않습니다** — 그 경우 폴링으로만 확인됩니다.
+   > ℹ️ 예외: `assembleFromSession:true` 로 호출하면 잡에 **세션의 `siteId` 가 스탬프**되고 `callbackUrl` 도 세션 값으로 폴백되므로, (b) 경로(사이트 v2 웹훅 설정)만으로도 `synthesis.*` 가 발신될 수 있습니다 (3.4.1).
+   > ⚠️ **기본(수동) 경로 잡은 v2 배달 대상이 아닙니다 (2026-08-13 변경).** body 의 `siteId` 는 검증된 shop-session 과 일치할 때만 채택되고 그 외에는 `NULL` 이므로(위 🔒), (b) 경로가 닫힙니다. 이때 `callbackUrl` 로 가는 웹훅은 **v1 레거시 헤더/서명**(전역 시크릿 기반)으로 배달되며, 사이트별 HMAC·`X-Storige-Delivery`·재시도 스토어가 붙는 **v2 배달은 일어나지 않습니다**. 수신기가 v2 서명만 검증한다면 자동조립 경로(3.4.1)를 쓰거나 shop-session Bearer 를 함께 보내세요.
+   > ℹ️ 단, 요청에 `editSessionId` 를 넣었고 **그 세션이 자체 `callbackUrl`**(세션 생성 시 호스트가 넣는 필드)을 가지고 있으면, 잡 종료 시 세션의 그 URL 로 **`session.validated`(또는 `session.failed`)가 별도로 발신**됩니다 — 요청의 `callbackUrl`·`siteId` 와 무관한 경로입니다. 이 세션 이벤트는 `synthesis.*` 와 페이로드 형식이 다르며(5.2), 합성 결과는 `payload.result`(잡의 `result` 를 그대로 실음) 안에 들어갑니다. 두 경로를 모두 켜 두면 **한 잡에 두 종류의 웹훅**이 도착하니 수신측에서 `event` 로 분기하세요.
+   > ⚠️ `callbackUrl` 은 사이트별 `uploadCallbackUrl` 을 자동으로 물려받지 않습니다(compose-mixed 는 site default 병합 경로가 아님). 다만 **호스트**는 `sites` DB(`uploadCallbackUrl`/`domain`) 또는 `WEBHOOK_ALLOWED_HOSTS` 에 등록돼 있어야 실제로 전송됩니다 — 미등록이면 무음 차단(5.2).
+4. 결과 회수: 폴링/웹훅으로 받은 **`outputFileUrl`(및 `separate` 면 `result.outputFiles[].url`)을 그대로 GET** 합니다.
+   ```bash
+   # 1) 상태·산출 경로 조회 (파트너 표준 — API 키)
+   curl "https://api.papascompany.co.kr/api/worker-jobs/external/<jobId>" -H "X-API-Key: <SITE_API_KEY>"
+   #    → { status:"COMPLETED", outputFileUrl:"/storage/outputs/<jobId>/content.pdf",
+   #        result:{ outputFiles:[{name:"cover.pdf",url:"/storage/outputs/<jobId>/cover.pdf"}, …] } }
+
+   # 2) 바이트 회수 — 해당 경로를 그대로 GET (스토리지 정적 서빙)
+   curl "https://api.papascompany.co.kr/storage/outputs/<jobId>/content.pdf" -o content.pdf
+   curl "https://api.papascompany.co.kr/storage/outputs/<jobId>/cover.pdf"   -o cover.pdf   # separate 일 때
+   ```
+   > ✅ **실측(2026-08-13)**: `/storage/outputs/<jobId>/<name>.pdf` 는 `206 application/pdf` 로 응답합니다.
+   > 즉 `separate` 의 `cover.pdf` 도 **`outputFiles[].url` 로 그대로 회수**할 수 있습니다(별도 라우트 불필요).
+   > ⚠️ compose-mixed 는 산출물을 `files` 레코드로 **등록하지 않습니다**(`registerExternalFile` 미호출) → 잡에 `outputFileId` 가 없고 웹훅 페이로드에도 없습니다. **다른 잡에서 쓰는 `GET /api/files/:fileId/download/external` 은 compose-mixed 에 성립하지 않습니다.**
+   > ⚠️ **`GET /api/worker-jobs/:jobId/output` 은 파트너 경로가 아닙니다.** 이 라우트에는 `ApiKeyGuard` 가 붙어 있지 않아 **유효한 사이트 API 키로 호출해도 `401`** 입니다(2026-08-13 실측). 내부 JWT(admin 미리보기) 전용으로 보세요.
+   > 🚨 **산출물 URL 은 비밀로 취급하세요.** 이 스토리지 경로는 **무인증 공개**이며 접근 통제는 `jobId`(UUID) 은닉에만 의존합니다 — 로그·클라이언트 코드·고객 화면에 그대로 노출하지 마세요.
+   > 🚨 **`separate` 주의:** `outputFileUrl` 은 `content.pdf` **하나만** 가리킵니다. 표지는 반드시 `result.outputFiles[]` 에서 `cover.pdf` 항목을 따로 받아야 합니다. 스프레드 책은 서버가 `separate` 를 강제하므로(아래 조건 참조) 이 흐름에 해당합니다 — **두 항목을 모두 받았는지 대조**하세요.
+
+#### 3.4.1 세션 자동조립 (`assembleFromSession`) — opt-in (2026-08-13)
+
+기본 경로에서는 합성에 들어갈 파일 참조를 파트너가 전부 직접 채워야 합니다(3.4). `editor.complete` 의 `files.coverFileId`/`files.contentFileId` 를 파트너 DB 에 보관하지 않는 연동이라면, **요청에 `assembleFromSession: true` 를 넣어** 서버가 세션에서 직접 도출하게 할 수 있습니다.
+
+> ✅ **완전한 opt-in 입니다.** `assembleFromSession` 을 보내지 않거나 `false` 로 보내면 기존 동작과 **한 줄도 다르지 않습니다** — 인증 요구도, 세션 조회도 추가되지 않습니다. 기존 파트너는 아무 조치가 필요 없습니다.
+
+**① 서버가 채우는 값 — 빈 자리만 채우고, `dto` 명시값이 항상 이깁니다**
+
+| 큐로 나가는 값 | 우선순위 (왼쪽이 이김) | 비고 |
+|---|---|---|
+| `coverUrl` | `dto.coverUrl` → 세션의 표지 파일 | 저장 백엔드에 따라 `api://<fileId>` 또는 스토리지 경로로 변환됨 |
+| `contentPdfUrl` | `dto.contentPdfUrl` → 세션의 **첨부 내지**(`contentPdfFileId`) → 세션의 편집 내지 파일 | 첨부와 편집은 배타 — **첨부가 있으면 언제나 첨부 원본**이 인쇄본입니다(underlay 편집 세션 포함) |
+| `frontEndpaperUrls` / `backEndpaperUrls` | `dto` 배열 → 템플릿셋 `endpaperConfig` 의 앞/뒤 매수만큼 `null`(빈 면지) 배열 | 매수가 0/미설정이면 키 자체를 넣지 않음 |
+| `contentWidthMm` / `contentHeightMm` | `dto` 값 → 템플릿 내지 스펙(펼침면은 한 면 폭 ×2) → 템플릿셋 판형. 재단선+도련 설정이 켜져 있으면 도련 2배가 더해짐 | **빈 면지 페이지 치수**로 쓰입니다 — 실제 내지 PDF 페이지 크기와 맞추기 위한 값 |
+| `coverWidthMm` / `coverHeightMm` | `dto` 값 → 세션 `metadata.spread` 의 출력(wrap 포함) 치수 → 동 `total*` 치수 → 템플릿셋 판형 | 펼침면 책의 **빈 표지** 치수 |
+| `callbackUrl` | `dto.callbackUrl` → **세션 생성 시 호스트가 넣은 세션 `callbackUrl`** | 종전에는 요청에 넣지 않으면 웹훅이 안 오는 사각이 있었습니다(3.4 3번) |
+| 잡의 `siteId` | **body 의 `siteId` 로는 결정되지 않습니다** — 자동조립 경로는 세션의 `siteId`, 기본(수동) 경로는 **검증된 shop-session 과 일치할 때만** 채택하고 그 외에는 `NULL` | 자동조립 잡은 테넌트에 귀속되므로 **사이트 v2 웹훅 설정만으로도 `synthesis.*` 발신**이 성립합니다. 반대로 `NULL` 잡은 v2 배달 대상이 아니므로 `callbackUrl` 을 직접 넣어야 웹훅이 옵니다 |
+
+그 밖의 필드(`outputMode`·`orderId`·`coverEditable` 등)는 자동조립 대상이 아니며 보낸 값이 그대로 쓰입니다.
+
+**② 인가 — 이 경로에만 적용됩니다**
+
+- 요청에 **검증된 `shop-session` accessToken**(`Authorization: Bearer …`)이 있어야 합니다. 라우트 자체는 종전대로 `@Public` 이라 **토큰이 없거나 위조여도 `401` 이 나지 않고**, 대신 자동조립이 아래 `404` 로 막힙니다.
+- 토큰의 사이트와 **세션이 만들어진 사이트가 일치**해야 합니다.
+- 토큰에 주문 스코프(`allowedOrderSeqnos`)가 실려 있으면 **세션의 주문번호가 그 목록 안**에 있어야 합니다. (같은 테넌트 안에서 다른 고객의 세션을 조립해 가는 것을 막습니다. 주문 스코프가 없는 토큰은 종전 호환 모드로 이 검사를 건너뜁니다.)
+- 위 셋 중 **무엇이 실패해도 응답은 동일한 `404`** 입니다 — 세션 존재 여부가 새어 나가지 않도록 미존재와 구분하지 않습니다.
+  ```json
+  { "code": "SESSION_NOT_FOUND", "message": "편집 세션을 찾을 수 없습니다.",
+    "details": { "sessionId": "<uuid>" } }
+  ```
+  > ⚠️ **사이트 스탬프가 없는 오래된 세션**(`siteId` 가 비어 있는 세션)도 이 검사를 통과할 수 없어 `404` 입니다. 그런 세션은 파일 참조를 직접 공급하는 기본 경로로 합성하세요.
+
+**③ 도출 실패 — `400 SESSION_ASSEMBLY_INCOMPLETE`**
+
+인가는 통과했지만 세션·템플릿셋에서 필요한 값을 완성하지 못하면 잡을 만들지 않고 `400` 을 돌려줍니다. `missing` 배열에 어떤 값이 비었는지 담깁니다.
+
+```json
+{ "code": "SESSION_ASSEMBLY_INCOMPLETE",
+  "message": "세션에서 합성 입력을 완성할 수 없습니다.",
+  "missing": ["coverUrl", "contentPdfUrl"],
+  "details": { "sessionId": "<uuid>" } }
+```
+
+`missing` 에 들어올 수 있는 값과 의미:
+
+| 값 | 언제 | 대처 |
+|---|---|---|
+| `editSessionId` | `assembleFromSession:true` 인데 `editSessionId` 를 안 보냄 | `editSessionId` 를 함께 보내세요. ⚠️ **이 케이스만 봉투가 다릅니다** — 세션 조회 이전에 던져지므로 `message` 가 `"자동조립에는 editSessionId 가 필요합니다."` 이고 **`details` 키가 없습니다**(위 예시 JSON 과 달리 `details.sessionId` 를 읽으면 `undefined`) |
+| `coverUrl` | 표지가 산출물에 들어가는 조합인데 세션에 표지 PDF 가 없음 | 편집 완료가 끝났는지 확인, 또는 `coverUrl` 을 직접 지정. (`coverEditable:false` 인 레더커버, 템플릿셋이 표지 비편집인 경우, 표지가 없는 **내지 전용 펼침면 세트**, `outputMode` 가 `content-only`/`single` 인 경우에는 요구하지 않습니다.) ⚠️ **단 스프레드(펼침면) 세션은 예외** — 세션 `metadata.spread` 에 `totalWidthMm`/`totalHeightMm` 이 있고 `coverEditable !== false` 이면 서버가 `outputMode='separate'` 를 **강제**하므로(3.4 `outputMode` 표), `content-only`/`single` 을 보내도 `coverUrl` 이 여전히 요구됩니다 |
+| `contentPdfUrl` | 세션에 첨부 내지도 편집 내지도 없음 | 편집 완료/PDF 첨부가 끝난 뒤 호출하세요 |
+| `coverWidthMm/coverHeightMm` | 빈 표지 페이지를 실제로 만들어야 하는데 판형을 못 구함 | 값을 직접 보내거나 템플릿셋 판형을 확인 |
+| `contentWidthMm/contentHeightMm` | 빈 면지 페이지를 만들어야 하는데 판형을 못 구함 | 동상 |
+| `frontEndpaperUrls` / `backEndpaperUrls` (`편집가능 면지 산출물 참조 없음`) | 아래 ④ 참조 | 면지 참조를 직접 보내세요 |
+
+**④ 면지 — 편집 가능한 면지는 자동조립 대상이 아닙니다**
+
+템플릿셋의 면지 설정이 **`frontEditable`/`backEditable = true`** 인 경우, 고객이 편집한 면지 산출물을 가리키는 참조가 **저장 스키마에 존재하지 않습니다**(세션은 표지·내지 두 파일만 보유). 서버가 이를 빈 면지로 대체하면 고객 편집물이 조용히 사라지므로, 그 조합은 자동조립을 거부하고 `SESSION_ASSEMBLY_INCOMPLETE` 로 막습니다 — 해당 면지 배열을 **직접** 보내세요. 편집 불가 면지(빈 면지 N장)는 매수만큼 `null` 배열로 정상 자동조립됩니다.
+
+**⑤ 호출 예시**
+
+```bash
+# 파일 참조를 하나도 보내지 않고, 세션에서 전부 도출
+curl -X POST "https://api.papascompany.co.kr/api/worker-jobs/compose-mixed" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <shop-session accessToken>" \
+  -d '{
+    "assembleFromSession": true,
+    "editSessionId": "<edit-session-uuid>",
+    "orderId": "ORD-2026-99999"
+  }'
+# → 201 WorkerJob (options 에 도출된 coverUrl/contentPdfUrl/판형/면지가 채워져 있음)
+# → 401 은 나지 않습니다. 토큰이 없거나 사이트/주문이 맞지 않으면 404 SESSION_NOT_FOUND
+```
+
+일부만 덮어쓰고 싶으면 그 필드만 함께 보내면 됩니다(보낸 값이 이깁니다):
+
+```bash
+  -d '{
+    "assembleFromSession": true,
+    "editSessionId": "<edit-session-uuid>",
+    "outputMode": "separate",
+    "contentPdfUrl": "api://<파트너가 따로 관리하는 contentFileId>",
+    "callbackUrl": "https://partner.example.com/api/storige/webhook"
+  }'
+```
+
+> ℹ️ 자동조립을 거쳐도 **3.4 의 `EMPTY_COMPOSE_INPUT` 검사는 그대로 적용**됩니다(도출을 끝낸 뒤에 검사). 다만 자동조립은 `contentPdfUrl` 을 항상 요구하므로, 세션에서 자산을 못 찾은 경우는 실무상 먼저 `SESSION_ASSEMBLY_INCOMPLETE` 로 걸립니다. 어느 쪽이든 결과는 `400` 이고 백지 산출은 발생하지 않습니다.
 
 ### 3.5 부모페이지 통합 코드 스니펫
 
@@ -972,6 +1157,10 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 - [ ] `editor.complete` 의 `sessionId` 저장 (재편집 키), `files`/`pages` 중첩 구조로 파싱
 - [ ] `editor.complete` 수신 시 **`needsAuth` 를 먼저 확인** — `true`(또는 `guestToken` 존재)면 주문/승격 금지, 로그인 유도로 분기 (`editor.needAuth` 를 기다리지 않는다)
 - [ ] 합성은 `compose-mixed` 명시적 트리거(무인증 — editSessionId 비밀유지), 스프레드=2파일 처리
+- [ ] `compose-mixed` 요청에 **파일 참조를 직접 채움**(`coverUrl`/`contentPdfUrl` = `api://<fileId>`). **전부 비면** `400 EMPTY_COMPOSE_INPUT` 이지만, **한쪽만 빠지면 `400` 없이 부분 백지/내지 누락이 `COMPLETED` 로** 나갑니다 (3.4)
+- [ ] (선택) 파일 참조를 보관하지 않는 연동이면 `assembleFromSession:true` + `editSessionId` + shop-session `Authorization` 헤더로 서버 자동조립 사용 — 편집 가능 면지는 자동조립 대상이 아님 (3.4.1)
+- [ ] 웹훅을 받을 거면 `compose-mixed` 요청에 **`callbackUrl` 을 직접 포함** (이 라우트는 사이트 `uploadCallbackUrl` 을 자동 사용하지 않음), 결과 바이트는 `download/external` 이 아니라 **잡의 `outputFileUrl`/`outputFiles[].url` 을 그대로 GET** 해서 회수(`separate` 는 cover·content 2건 모두) (3.4)
+- [ ] 완료 후 **폴링 응답의** `result.totalPages`(`separate` 는 `result.outputFiles[].pageCount` 도 가능)를 기대 페이지 수와 대조 — 웹훅 페이로드에는 이 값들이 없어 **폴링에서만 확인 가능** (백지 산출 조기 검출)
 - [ ] 게스트 → 회원 전환 흐름 구현: `guest/migrate` 로 세션 소유권 이전 후 **같은 `sessionId`** 를 회원 토큰으로 재오픈 (3.3)
 - [ ] 신규 연동은 iframe `/embed` 사용 (IIFE 번들은 업로드·템플릿·프레임 등 기능이 빠진 레거시 — 3.1)
 - [ ] (프로덕션) `allowedOrigins` 수정(`PUT /api/sites/:id`) + 임베드 도메인 `frameAncestors` 등록(`PUT /api/sites/:id`) — 편집기 재배포 불필요, `frameAncestors` 반영은 캐시 2단으로 최대 약 2분(1.5)
@@ -991,15 +1180,25 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
   shop-session(JWT) → /embed iframe (parentOrigin 필수) → 편집 → editor.complete(sessionId)
 
 [합성 + 외부 수신 — 현재 빌딩블록 조합]
-  파트너 백엔드: POST /worker-jobs/compose-mixed { editSessionId, orderId? }
+  파트너 백엔드: POST /worker-jobs/compose-mixed
+       │   { editSessionId?, coverUrl, contentPdfUrl, frontEndpaperUrls?, backEndpaperUrls?,
+       │     outputMode?, callbackUrl, orderId? }
+       │           ⚠️ 파일 참조는 호출자가 공급 — 전부 비면 400 EMPTY_COMPOSE_INPUT,
+       │              한쪽만 빠지면 400 없이 부분 백지 PDF 가 COMPLETED (3.4)
+       │           ⚠️ 파일참조 필드는 http(s) 거부 → api://<fileId> 또는 /storage/... 만
        │           ⚠️ 무인증(@Public)·테넌트 스코프 없음 (타 /external 라우트의 X-API-Key 와 대비)
+       │           ℹ️ 대안: { assembleFromSession:true, editSessionId } + shop-session Bearer
+       │              → 서버가 세션에서 표지·내지·면지·판형 도출 (인가 실패 시 404) (3.4.1)
        │
-       ├─(A) 웹훅: uploadCallbackUrl 로 종료 콜백 수신 (X-Storige-Event/Signature)
-       │        또는
+       ├─(A) 웹훅: 요청에 넣은 callbackUrl 로 종료 콜백 수신 (X-Storige-Event/Signature)
+       │        (callbackUrl 도 siteId 도 없으면 미발신)   또는
        └─(B) 폴링: GET /worker-jobs/external/:id (X-API-Key)
        │
        ▼
-  GET /files/:fileId/download/external (X-API-Key) → 외부 시스템(Shopify)으로 적재
+  웹훅/폴링으로 outputFileUrl·outputFiles[] 확인 → 그 스토리지 경로를 그대로 GET (무인증 공개 — URL 비밀유지)
+  로 바이트 회수 → 외부 시스템(Shopify)으로 적재
+       ⚠️ compose-mixed 산출물은 files 등록이 없어 outputFileId·download/external 이 없다
+       ⚠️ separate 는 output 라우트가 content.pdf 만 내려줌 — cover.pdf 전달 방법은 운영자 확정 (3.4)
 ```
 
 ### 4.2 현재 갭 / 추가구현 필요 항목 (명시)
@@ -1008,8 +1207,8 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 
 | 항목 | 현재 상태 | 필요 작업 |
 |---|---|---|
-| **웹훅 서명** | 사이트별 웹훅 설정(v2)을 발급하면 **HMAC 전용 발신**(`X-Storige-Signature-HMAC` + `X-Storige-Delivery`)이고, 설정이 없으면 레거시 발신(base64 `X-Storige-Signature` — **위조 가능**, 전역 시크릿 설정 시 HMAC 헤더 동반)으로 폴백합니다. | 신규 연동은 `PUT /api/v1/webhooks/config` 로 v2 설정을 발급받아 HMAC 검증 (5.2 참조). 레거시 폴백 구간에서는 웹훅을 트리거로만 취급하고 결과는 `download/external` 로 재확인. |
-| **compose-mixed 무인증** | `@Public`·테넌트 스코프 없음 → editSessionId 보유자면 누구나 트리거 가능 | 프로덕션화 시 `ApiKeyGuard`+테넌트 스코핑 추가 검토 (오너 결정) |
+| **웹훅 서명** | 사이트별 웹훅 설정(v2)을 발급하면 **HMAC 전용 발신**(`X-Storige-Signature-HMAC` + `X-Storige-Delivery`)이고, 설정이 없으면 레거시 발신(base64 `X-Storige-Signature` — **위조 가능**, 전역 시크릿 설정 시 HMAC 헤더 동반)으로 폴백합니다. | 신규 연동은 `PUT /api/v1/webhooks/config` 로 v2 설정을 발급받아 HMAC 검증 (5.2 참조). 레거시 폴백 구간에서는 웹훅을 트리거로만 취급하고 결과는 `GET /api/worker-jobs/external/:id` 의 `outputFileUrl`/`result.outputFiles` 로 재확인(`download/external` 재확인은 `fileId` 가 있는 잡에 한함 — compose-mixed 는 3.4 의 회수 경로). |
+| **compose-mixed 무인증** | 기본 경로(파일 참조 직접 공급)는 여전히 `@Public`·테넌트 스코프 없음 → editSessionId 보유자면 누구나 트리거 가능. 단 `assembleFromSession:true` 경로는 shop-session JWT + 사이트 일치 + 주문 스코프로 인가되고 실패 시 `404` (3.4.1) | 기본 경로의 프로덕션화 시 `ApiKeyGuard`+테넌트 스코핑 추가 검토 (오너 결정) |
 | **Shopify 전용 Site 등록** | 미존재 (모든 Site는 운영자 생성) | 운영자가 `POST /api/sites` 로 Shopify 테넌트 생성 + 키 발급 |
 | **frame-ancestors (Shopify 도메인 iframe)** | 운영자 등록 → 동적 CSP 합성 배선 완료(1.5) | 운영자가 `PUT /api/sites/:id` 로 Shopify 임베드 도메인을 `frameAncestors` 에 등록 (편집기 재배포 불필요) |
 | **외부 결과 전달 표준 흐름** | 유형 1/2 빌딩블록은 존재하나 Shopify 주문 연결 어댑터는 미구현 | 파트너측 어댑터 + `uploadCallbackUrl` 등록 |
@@ -1054,9 +1253,9 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 | POST | `/api/worker-jobs/check-mergeable/external` | X-API-Key | 합성 가능 dry-run |
 | POST | `/api/worker-jobs/fix-pagecount/external` | X-API-Key (`@Public`+ApiKeyGuard+`@CurrentSite`) | **(LIVE)** 페이지수 보정 — 빈 페이지 추가로 배수 정합. Body `{fileId, targetMultiple}` → jobId, 폴링 시 `outputFileId`(새 fileId, 원본 보존). 2.6 |
 | POST | `/api/worker-jobs/fix-pagecount` | 내부 RolesGuard | **(LIVE)** 페이지수 보정 — 내부 전용 변형 |
-| POST | `/api/worker-jobs/compose-mixed` | **@Public (무인증·테넌트 스코프 없음)** | 세션 기반 합성 트리거. ⚠️ editSessionId(UUID)만으로 트리거 가능 → 세션ID 비밀유지·브라우저 노출 최소화 |
+| POST | `/api/worker-jobs/compose-mixed` | **@Public (무인증·테넌트 스코프 없음)** — 단 `assembleFromSession:true` 경로는 shop-session Bearer 필요(실패 시 `404`) | 합성 트리거 — 기본은 **파일 참조를 호출자가 공급**(`coverUrl`/`contentPdfUrl`/면지 배열)하고 `editSessionId` 는 스프레드 기대치 조회·잡 추적용. **`assembleFromSession:true` 를 명시하면 서버가 세션에서 표지·내지·면지·판형을 도출**(빈 필드만, dto 우선 — 3.4.1). 표지·내지·면지 자산이 **0건이면 `400 EMPTY_COMPOSE_INPUT`**, 한쪽만 빠지면 종전대로 부분 백지가 `COMPLETED`(3.4). 산출물은 `files` 미등록 → `outputFileId` 없음 → 결과 바이트는 `outputFileUrl`/`result.outputFiles[].url`(스토리지 경로)을 그대로 GET. ⚠️ 기본 경로는 editSessionId(UUID)만으로 트리거 가능 → 세션ID 비밀유지·브라우저 노출 최소화 |
 | GET | `/api/worker-jobs/external/:id` | X-API-Key | 잡 상태 폴링 |
-| GET | `/api/worker-jobs/:id/output` | **JWT (전역 가드, @Public 아님)** | admin Before/After 미리보기용 **내부** 라우트. 파트너는 사용 불가 → 결과 PDF 는 `download/external` 사용 |
+| GET | `/api/worker-jobs/:id/output` | **JWT (전역 가드, @Public 아님 — `@Roles` 없음)** | 잡 결과 PDF 스트리밍(`result.outputFileUrl` 1개). **admin 미리보기 전용 — 파트너 사용 불가.** `ApiKeyGuard` 미적용이라 유효한 사이트 API 키로도 `401`(2026-08-13 실측). 파트너는 `outputFileUrl` 을 직접 GET 하세요(3.4). `@CurrentSite` 격리 적용(타 테넌트 잡은 404) |
 | PATCH | `/api/worker-jobs/external/:id/status` | **X-API-Key (@Public+ApiKeyGuard)** | 워커 콜백용. worker 키(내부)=전체 잡 바이패스, editor/테넌트 키=자기 site 잡만 갱신(P2c S-3) |
 | PATCH | `/api/worker-jobs/:id/status` | JWT (전역 가드) | 내부 워커 상태 업데이트 변형 |
 | GET | `/api/edit-sessions/external` | @Public + X-API-Key | 주문별 편집세션 조회 (`?orderSeqno=`) |
@@ -1109,8 +1308,8 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 
 - 헤더: `X-Storige-Event`, `X-Storige-Signature`
 - 알고리즘: **현재 `base64({identifier}:{event}:{timestamp})` — HMAC이 아닙니다.** `identifier` 는 페이로드에 `jobId` 가 있으면 `jobId`, 없으면(세션 페이로드) `sessionId` 를 사용합니다.
-- ⚠️ **보안 주의:** base64는 인코딩일 뿐 서명이 아니므로 **위조 가능**합니다. `WEBHOOK_SECRET` 환경변수는 코드상 사용되지 않는 no-op입니다.
-- **권장 대응:** 웹훅 수신을 트리거로만 취급하고, 실제 결과는 반드시 `GET /api/files/:id/download/external`(X-API-Key) 또는 `GET /api/worker-jobs/external/:id` 로 재확인하세요. HMAC 보강은 향후 작업으로 제안됩니다.
+- ⚠️ **보안 주의:** base64는 인코딩일 뿐 서명이 아니므로 `X-Storige-Signature` **하나만으로는 위조 가능**합니다. 다만 전역 `WEBHOOK_SECRET` 이 설정된 배포에서는 같은 요청에 위조 불가 HMAC 헤더(`X-Storige-Signature-HMAC`)가 **동반 발신**됩니다 — 검증은 그쪽으로 하세요(아래 동반 발신 항목).
+- **권장 대응:** HMAC 헤더(동반 발신 또는 (B) v2)가 있으면 그것을 1차 검증으로 쓰고, 없으면 웹훅 수신을 트리거로만 취급한 뒤 실제 결과를 `GET /api/worker-jobs/external/:id`(X-API-Key) 또는 `GET /api/files/:id/download/external`(X-API-Key — **fileId 가 있는 잡에 한함**, compose-mixed 는 해당 없음 3.4) 로 재확인하세요.
 - 전송 주체: **API 의 `WebhookService`** (워커가 아님). 워커→API 상태 보고 후 API 가 `callbackUrl` 로 POST.
 - 전송 특성: 타임아웃 10초, 1회 재시도. `callbackUrl` 호스트는 `sites` DB 또는 `WEBHOOK_ALLOWED_HOSTS` 에 등록돼야 전송됩니다 (SSRF 방어). 미등록 시 **무음으로 전송 안 됨**(서버 로그 `Blocked callback URL not in allowlist` 기록, 파트너는 아무 요청도 받지 못함 — HTTP 403 이 가는 게 아님).
 
@@ -1126,7 +1325,7 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 ```
 > 세션 기반 콜백(`SessionWebhookPayload`)은 `jobId` 대신 `sessionId` 를 포함하며, 그 경우 서명 `identifier` 도 `sessionId` 가 됩니다.
 
-> 전역 `WEBHOOK_SECRET` 이 설정된 배포에서는 위 base64 헤더와 **함께** HMAC 헤더(`X-Storige-Signature-HMAC`)가 동반 발신됩니다. 다만 이 경로는 `X-Storige-Delivery` 를 **보내지 않으므로** 배달 단위 중복 판별이 불가능합니다 — 아래 (B) 의 중복 배달 항목 참조.
+> 전역 `WEBHOOK_SECRET` 이 설정된 배포에서는 위 base64 헤더와 **함께** HMAC 헤더(`X-Storige-Signature-HMAC`)가 동반 발신됩니다(`WEBHOOK_SECRET` 미설정이면 이 헤더만 빠지고 나머지는 동일). 포맷은 `t=<unixsec>,v1=<hex>` 이고 서명 대상 문자열은 `{t}.{identifier}:{event}:{timestamp}`(`identifier` 는 위 base64 와 동일 규칙) 를 `WEBHOOK_SECRET` 으로 HMAC-SHA256 한 값입니다. 다만 이 경로는 `X-Storige-Delivery` 를 **보내지 않으므로** 배달 단위 중복 판별이 불가능합니다 — 아래 (B) 의 중복 배달 항목 참조.
 
 **(B) v2 발신 — 사이트별 웹훅 설정(HMAC 전용)**
 
