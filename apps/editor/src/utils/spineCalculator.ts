@@ -60,6 +60,29 @@ function getTemplateType(template: any): string | undefined {
  * 현재 에디터의 내지(page) 템플릿 개수를 계산합니다.
  * 실제 allCanvas 배열에서 page 타입만 카운트합니다.
  */
+/** 표지 칸을 제외한 내지의 인쇄 페이지 수. 펼침면은 pagesPerCanvas(보통 2)를 곱한다. */
+export function innerPrintPageCount(input: {
+  pageListLength: number
+  canvasCount: number
+  pagesPerCanvas: number
+  hasCoverSlot: boolean
+}): number {
+  const canvases = input.pageListLength > 0 ? input.pageListLength : input.canvasCount
+  const innerCanvasCount = Math.max(0, canvases - (input.hasCoverSlot ? 1 : 0))
+  const per = input.pagesPerCanvas > 0 ? input.pagesPerCanvas : 1
+  return innerCanvasCount * per
+}
+
+export function countInnerPrintPages(): number {
+  const editorStore = useEditorStore.getState()
+  return innerPrintPageCount({
+    pageListLength: editorStore.pages.length,
+    canvasCount: useAppStore.getState().allCanvas.length,
+    pagesPerCanvas: editorStore.pagesPerCanvas,
+    hasCoverSlot: useSettingsStore.getState().hasCoverSlot !== false,
+  })
+}
+
 export function countPageTemplates(): number {
   const editorTemplates = useSettingsStore.getState().editorTemplates
   const allCanvas = useAppStore.getState().allCanvas
@@ -309,19 +332,11 @@ async function recalculateSpineWidthSpreadMode(
     settingsStore.setSpineConfig({ paperType, bindingType })
   }
 
-  // 내지 페이지 수 계산 (useEditorStore.pages를 주요 소스로 사용)
-  // allCanvas.length는 React Strict Mode race condition으로 부정확할 수 있음
-  const editorPages = useEditorStore.getState().pages
-  const editorPageCount = editorPages.filter((p) => p.templateType === 'page').length
+  // 내지 인쇄 페이지 수. 표지 슬롯은 빼고, 내지펼침면은 캔버스 1장 = 물리 2p.
+  const pageCount = countInnerPrintPages()
 
-  // fallback: editorPages가 아직 설정되지 않은 경우 (초기 로드 시) allCanvas 사용
-  const allCanvas = appStore.allCanvas
-  const allCanvasInnerCount = allCanvas.length - 1
-
-  const innerPageCanvasCount = editorPageCount > 0 ? editorPageCount : Math.max(allCanvasInnerCount, 0)
-
-  if (innerPageCanvasCount <= 0) {
-    console.log('[SpineCalculator:Spread] 내지 캔버스 없음, 스킵')
+  if (pageCount <= 0) {
+    console.log('[SpineCalculator:Spread] 내지 페이지 없음, 스킵')
     return {
       success: false,
       spineWidth: null,
@@ -331,16 +346,11 @@ async function recalculateSpineWidthSpreadMode(
     }
   }
 
-  const pageCount = innerPageCanvasCount // 단면 인쇄: 캔버스 1개 = 인쇄 1p
-
   // 현재 책등 너비 (변경 전)
   const currentSpineWidth = settingsStore.spineConfig.calculatedSpineWidth ?? settingsStore.spreadConfig?.spec?.spineWidthMm ?? null
 
   console.log(`[SpineCalculator:Spread] 책등 너비 계산 시작:`)
-  console.log(`  - 내지 수 (editorStore.pages): ${editorPageCount}개`)
-  console.log(`  - 내지 수 (allCanvas fallback): ${allCanvasInnerCount}개`)
-  console.log(`  - 사용된 내지 수: ${innerPageCanvasCount}개`)
-  console.log(`  - 인쇄 페이지 수 (단면): ${pageCount}p`)
+  console.log(`  - 인쇄 페이지 수: ${pageCount}p`)
   console.log(`  - 용지: ${paperType}, 제본: ${bindingType}`)
   console.log(`  - 현재 책등 너비: ${currentSpineWidth}mm`)
 

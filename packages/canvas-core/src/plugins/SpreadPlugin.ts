@@ -45,7 +45,7 @@ interface SpreadPluginOptions extends PluginOption {
   /**
    * IDML 가져오기 변환 모드 (spreadConfig.conversionMode). 미지정 시 'full'.
    * - 'flat-spread': 전폭 아트워크 1장 — 책등 가변 금지(resizeSpine 방어적 no-op)
-   * - 'flat-spine' : 3분할 아트워크 — 책등 가변 허용, spine-artwork 는 재배치 불변
+   * - 'flat-spine' : 3분할 아트워크 — 책등 구역만 수식 폭으로 스케일
    */
   conversionMode?: SpreadConversionMode
   /**
@@ -116,6 +116,13 @@ class SpreadPlugin extends PluginBase {
   /** 현재 변환 모드 */
   getConversionMode(): SpreadConversionMode {
     return this.conversionMode
+  }
+
+  /** 표지 없는 내지펼침면: 첫 캔버스가 표지 플러그인/가이드로 남는 것을 막는다. */
+  adoptInnerSpec(spec: NonNullable<SpreadPluginOptions['innerSpec']>): void {
+    this.regionScope = 'inner'
+    this.innerSpec = spec
+    this.initInner()
   }
 
   // ============================================================================
@@ -674,6 +681,18 @@ class SpreadPlugin extends PluginBase {
       // 불변이므로 무이동·무스케일이 정답. back/front-artwork 는 region anchor 로 평행이동.)
       const objMeta = obj.meta as Partial<SpreadObjectMeta> | undefined
       if (objMeta?.flatArtwork === 'spine') {
+        const oldSpine = oldLayout.regions.find((r) => r.position === 'spine')
+        const newSpine = newLayout.regions.find((r) => r.position === 'spine')
+        if (oldSpine && newSpine && oldSpine.width > 0 && newSpine.width !== oldSpine.width) {
+          const strategy = getSpineResizeStrategy(obj)
+          const result = strategy.apply(obj, oldSpine, newSpine)
+          if (result.scaleX !== undefined) obj.set({ scaleX: result.scaleX })
+          obj.set({
+            left: outOrigin.x + result.x,
+            top: outOrigin.y + result.y,
+          })
+          obj.setCoords()
+        }
         continue
       }
 

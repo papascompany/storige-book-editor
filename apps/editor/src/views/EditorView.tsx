@@ -114,6 +114,8 @@ export default function EditorView() {
     tapMenu,
   } = useAppStore()
   const { getUseCaseFromParams } = useSettingsStore()
+  const hasCoverSlot = useSettingsStore((s) => s.hasCoverSlot)
+  const usePageStrip = isSpreadMode || !hasCoverSlot
   const showRuler = useUiPrefStore((s) => s.showRuler)
 
   // B0-① (2026-07-04): editMode 는 URL 파라미터만으로 부여하지 않는다.
@@ -806,7 +808,7 @@ export default function EditorView() {
 
             {/* 우측 페이지 네비 (스프레드=세로 SpreadPagePanel / 일반=세로 BookNavigation) */}
             {navPosition === 'right' &&
-              (isSpreadMode ? (
+              (usePageStrip ? (
                 <SpreadPagePanel orientation="vertical" />
               ) : (
                 <BookNavigation orientation="vertical" />
@@ -819,7 +821,7 @@ export default function EditorView() {
 
           {/* 하단 페이지 네비 (스프레드=가로 SpreadPagePanel / 일반=가로 BookNavigation) */}
           {navPosition === 'bottom' &&
-            (isSpreadMode ? (
+            (usePageStrip ? (
               <SpreadPagePanel orientation="horizontal" />
             ) : (
               <BookNavigation orientation="horizontal" />

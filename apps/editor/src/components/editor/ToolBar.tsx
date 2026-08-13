@@ -68,8 +68,9 @@ export default function ToolBar({ horizontal = false }: ToolBarProps) {
   // useEditorContents.loadTemplateSetEditor 가 templateSet.enabledMenus 를 store 에 저장.
   const enabledMenus = useSettingsStore((state) => state.enabledMenus)
   const coverMaterialLocked = useSettingsStore((state) => state.coverMaterialLocked)
+  const hasCoverSlot = useSettingsStore((state) => state.hasCoverSlot)
   const allCanvas = useAppStore((state) => state.allCanvas)
-  const isCoverPage = !!canvas && allCanvas[0] === canvas
+  const isCoverPage = hasCoverSlot && !!canvas && allCanvas[0] === canvas
 
   const upload = useImageStore((state) => state.upload)
   const uploadSimple = useImageStore((state) => state.uploadSimple)

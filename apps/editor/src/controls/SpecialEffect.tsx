@@ -45,7 +45,8 @@ export default function SpecialEffect() {
   const allowed = useSettingsStore((s) => s.coverFinishingAllowed)
   const materialLocked = useSettingsStore((s) => s.coverMaterialLocked)
   const allCanvas = useAppStore((s) => s.allCanvas)
-  const isCoverPage = !!canvas && allCanvas[0] === canvas
+  const hasCoverSlot = useSettingsStore((s) => s.hasCoverSlot)
+  const isCoverPage = hasCoverSlot && !!canvas && allCanvas[0] === canvas
 
   const filterPlugin = useMemo(() => {
     return getPlugin<FilterPlugin>('FilterPlugin')

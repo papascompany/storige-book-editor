@@ -187,6 +187,11 @@ describe('isCoverPageCanvas', () => {
     expect(isCoverPageCanvas(cover, [])).toBe(false)
     expect(isCoverPageCanvas(null, [cover])).toBe(false)
   })
+
+  it('표지 슬롯이 없으면 캔버스 0 도 표지가 아니다', () => {
+    const first = {}
+    expect(isCoverPageCanvas(first, [first], false)).toBe(false)
+  })
 })
 
 describe('applyCoverMaterialLock', () => {

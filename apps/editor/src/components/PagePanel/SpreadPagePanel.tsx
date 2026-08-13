@@ -57,9 +57,9 @@ export const SpreadPagePanel = memo(function SpreadPagePanel({
   const canAddMore = useCanAddPage()
   const canDeletePage = useEditorStore((state) => state.canDeletePage)
   const bindingType = useEditorStore((state) => state.bindingType)
-  // 내지 전용 펼침면 세트에는 '표지'가 없다 — 캔버스 0 도 '펼침면 1' 이다(2026-08-03 E2E 실측).
-  // 종전에는 무조건 '표지 스프레드'로 표기해 운영자·고객이 첫 펼침면을 표지로 오인했다.
   const isInnerSpread = useSettingsStore((s) => s.spreadConfig?.regionScope === 'inner')
+  const hasCoverSlot = useSettingsStore((s) => s.hasCoverSlot)
+  const treatAllAsInners = isInnerSpread || !hasCoverSlot
 
   // 스프레드 페이지 (항상 첫 번째)
   const spreadPage = pages[0]
@@ -129,7 +129,7 @@ export const SpreadPagePanel = memo(function SpreadPagePanel({
 
   const reorderItems = pages.map((page, i) => ({
     index: i,
-    isCover: isInnerSpread ? false : i === 0,
+    isCover: treatAllAsInners ? false : i === 0,
     id: page.id,
   }))
   const dragEnabled =
@@ -189,7 +189,7 @@ export const SpreadPagePanel = memo(function SpreadPagePanel({
     if (hasUnderlay) {
       void persistContentPdfPageOrderAfterReorder({
         newIndices,
-        innerStart: isInnerSpread ? 0 : 1,
+        innerStart: treatAllAsInners ? 0 : 1,
         sessionId,
         guestToken,
       })
@@ -240,77 +240,101 @@ export const SpreadPagePanel = memo(function SpreadPagePanel({
             : 'flex-row items-center overflow-x-auto overflow-y-hidden px-4'
         )}
       >
-        {/* 스프레드 썸네일 */}
-        {spreadPage && (
+        {treatAllAsInners ? (
+          <div className={cn('flex gap-2', isVertical ? 'flex-col items-center' : 'flex-row items-start pt-2')}>
+            {pages.map((page, index) => (
+              <div
+                key={page.id}
+                className="shrink-0 group"
+                ref={(el) => {
+                  if (el) itemRefs.current.set(index, el)
+                  else itemRefs.current.delete(index)
+                }}
+              >
+                <PageItem
+                  page={page}
+                  index={index}
+                  thumbnail={screenshots[index]}
+                  isActive={currentPageIndex === index}
+                  onSelect={(i) => setPage(i)}
+                  onDelete={handleDeletePage}
+                  canDelete={!page.required && pages.length > 1}
+                  isDragging={dragSourceIdx === index}
+                  draggable={dragEnabled}
+                  onDragStart={handleDragStart(index)}
+                  onDragOver={handleDragOver(index)}
+                  onDragLeave={handleDragLeave(index)}
+                  onDrop={handleDrop(index)}
+                  onDragEnd={handleDragEnd}
+                  insertHint={
+                    dragOver && dragOver.idx === index
+                      ? dragOver.before
+                        ? 'before'
+                        : 'after'
+                      : null
+                  }
+                />
+              </div>
+            ))}
+          </div>
+        ) : (
           <>
-            <div ref={(el) => { if (el) itemRefs.current.set(0, el); else itemRefs.current.delete(0) }}>
-              <SpreadThumbnailItem
-                label={isInnerSpread ? '펼침면 1' : '표지 스프레드'}
-                thumbnailUrl={screenshots[0]}
-                isActive={currentPageIndex === 0}
-                onClick={handleSelectSpread}
-                compact={isVertical}
-                aspectRatio={spreadAspectRatio}
-                draggable={dragEnabled && isInnerSpread}
-                onDragStart={isInnerSpread ? handleDragStart(0) : undefined}
-                onDragOver={isInnerSpread ? handleDragOver(0) : undefined}
-                onDragLeave={isInnerSpread ? handleDragLeave(0) : undefined}
-                onDrop={isInnerSpread ? handleDrop(0) : undefined}
-                onDragEnd={isInnerSpread ? handleDragEnd : undefined}
-                isDragSource={dragSourceIdx === 0}
-                insertHint={
-                  dragOver && dragOver.idx === 0
-                    ? dragOver.before
-                      ? 'before'
-                      : 'after'
-                    : null
-                }
-              />
+            {spreadPage && (
+              <>
+                <div ref={(el) => { if (el) itemRefs.current.set(0, el); else itemRefs.current.delete(0) }}>
+                  <SpreadThumbnailItem
+                    label="표지 스프레드"
+                    thumbnailUrl={screenshots[0]}
+                    isActive={currentPageIndex === 0}
+                    onClick={handleSelectSpread}
+                    compact={isVertical}
+                    aspectRatio={spreadAspectRatio}
+                    isDragSource={false}
+                    insertHint={null}
+                  />
+                </div>
+                <div className={cn('bg-gray-300 shrink-0', isVertical ? 'w-16 h-px' : 'h-16 w-px')} />
+              </>
+            )}
+            <div className={cn('flex gap-2', isVertical ? 'flex-col items-center' : 'flex-row items-start pt-2')}>
+              {innerPages.map((page, index) => (
+                <div
+                  key={page.id}
+                  className="shrink-0 group"
+                  ref={(el) => {
+                    const pageIdx = index + 1
+                    if (el) itemRefs.current.set(pageIdx, el)
+                    else itemRefs.current.delete(pageIdx)
+                  }}
+                >
+                  <PageItem
+                    page={page}
+                    index={index}
+                    thumbnail={screenshots[index + 1]}
+                    isActive={currentPageIndex === index + 1}
+                    onSelect={handleSelectInnerPage}
+                    onDelete={handleDeletePage}
+                    canDelete={!page.required && innerPages.length > 1}
+                    isDragging={dragSourceIdx === index + 1}
+                    draggable={dragEnabled}
+                    onDragStart={handleDragStart(index + 1)}
+                    onDragOver={handleDragOver(index + 1)}
+                    onDragLeave={handleDragLeave(index + 1)}
+                    onDrop={handleDrop(index + 1)}
+                    onDragEnd={handleDragEnd}
+                    insertHint={
+                      dragOver && dragOver.idx === index + 1
+                        ? dragOver.before
+                          ? 'before'
+                          : 'after'
+                        : null
+                    }
+                  />
+                </div>
+              ))}
             </div>
-
-            {/* 구분선 (방향에 따라) */}
-            <div className={cn('bg-gray-300 shrink-0', isVertical ? 'w-16 h-px' : 'h-16 w-px')} />
           </>
         )}
-
-        {/* 내지 썸네일들 */}
-        <div className={cn('flex gap-2', isVertical ? 'flex-col items-center' : 'flex-row items-start pt-2')}>
-          {innerPages.map((page, index) => (
-            <div
-              key={page.id}
-              className="shrink-0 group"
-              ref={(el) => {
-                const pageIdx = index + 1
-                if (el) itemRefs.current.set(pageIdx, el)
-                else itemRefs.current.delete(pageIdx)
-              }}
-            >
-              <PageItem
-                page={page}
-                index={index}
-                thumbnail={screenshots[index + 1]}
-                isActive={currentPageIndex === index + 1}
-                onSelect={handleSelectInnerPage}
-                onDelete={handleDeletePage}
-                canDelete={!page.required && innerPages.length > 1}
-                isDragging={dragSourceIdx === index + 1}
-                draggable={dragEnabled}
-                onDragStart={handleDragStart(index + 1)}
-                onDragOver={handleDragOver(index + 1)}
-                onDragLeave={handleDragLeave(index + 1)}
-                onDrop={handleDrop(index + 1)}
-                onDragEnd={handleDragEnd}
-                insertHint={
-                  dragOver && dragOver.idx === index + 1
-                    ? dragOver.before
-                      ? 'before'
-                      : 'after'
-                    : null
-                }
-              />
-            </div>
-          ))}
-        </div>
       </div>
 
       {/* 페이지 추가 버튼 - 가로면 오른쪽 / 세로면 하단 고정 */}

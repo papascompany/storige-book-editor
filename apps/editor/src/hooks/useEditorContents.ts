@@ -23,7 +23,7 @@ import {
   type GeneralSetupConfig,
   type LinkedPrintTemplate,
 } from '@/stores/useSettingsStore'
-import Editor, { ServicePlugin, SvgUtils, TemplatePlugin, mmToPxDisplay, computeLayout, SpreadPlugin, type ImageProcessingPlugin } from '@storige/canvas-core'
+import Editor, { ServicePlugin, SvgUtils, TemplatePlugin, mmToPxDisplay, computeLayout, SpreadPlugin, WorkspacePlugin, type ImageProcessingPlugin } from '@storige/canvas-core'
 import { contentsApi, storageApi, templateSetsApi, templatesApi } from '@/api'
 import { createCanvas } from '@/utils/createCanvas'
 import { recalculateSpineWidth, initSpineConfig } from '@/utils/spineCalculator'
@@ -52,7 +52,11 @@ import { TemplateType } from '@storige/types'
 function applyCustomerLocks(canvas: fabric.Canvas | null | undefined): void {
   const { currentSettings, coverMaterialLocked } = useSettingsStore.getState()
   applyObjectPermissions(canvas, currentSettings.editMode)
-  const isCover = isCoverPageCanvas(canvas, useAppStore.getState().allCanvas)
+  const isCover = isCoverPageCanvas(
+    canvas,
+    useAppStore.getState().allCanvas,
+    useSettingsStore.getState().hasCoverSlot,
+  )
   applyCoverMaterialLock(canvas, coverMaterialLocked && isCover, currentSettings.editMode)
 }
 
@@ -217,6 +221,7 @@ export function useEditorContents(): UseEditorContentsReturn {
     setPrintMarkConfig,
     setCoverFinishing,
     setLinkedPrintTemplates,
+    setHasCoverSlot,
   } = useSettingsStore(
     useShallow((state) => ({
       setupProductBased: state.setupProductBased,
@@ -227,6 +232,7 @@ export function useEditorContents(): UseEditorContentsReturn {
       setPrintMarkConfig: state.setPrintMarkConfig,
       setCoverFinishing: state.setCoverFinishing,
       setLinkedPrintTemplates: state.setLinkedPrintTemplates,
+      setHasCoverSlot: state.setHasCoverSlot,
     }))
   )
 
@@ -924,6 +930,7 @@ export function useEditorContents(): UseEditorContentsReturn {
       editor?.emit('longTask:start', { message: '빈 에디터를 준비하는 중...' })
       setCoverFinishing(false, [])
       setLinkedPrintTemplates([])
+      setHasCoverSlot(true)
 
       await setupEmptyEditorStore(config)
       await initWorkspace()
@@ -935,7 +942,7 @@ export function useEditorContents(): UseEditorContentsReturn {
     } finally {
       editor?.emit('longTask:end')
     }
-  }, [editor, setupEmptyEditorStore, initWorkspace, setCoverFinishing, setLinkedPrintTemplates])
+  }, [editor, setupEmptyEditorStore, initWorkspace, setCoverFinishing, setLinkedPrintTemplates, setHasCoverSlot])
 
   const loadGeneralEditor = useCallback(async (config?: GeneralSetupConfig): Promise<void> => {
     console.log('[EditorContents] Loading general editor', config)
@@ -1039,10 +1046,13 @@ export function useEditorContents(): UseEditorContentsReturn {
 
       if (editorMode === 'book') {
         const assembled = assemblePrintTemplates(originalTemplateDetails as PrintTemplateLike[])
+        setHasCoverSlot(!!assembled.coverDefault)
         if (assembled.coverDefault || assembled.innerUnit === 'spread') {
           await loadSpreadModeEditor(config, templateSet, originalTemplateDetails)
           return
         }
+      } else {
+        setHasCoverSlot(true)
       }
 
       // ========================================================================
@@ -1622,21 +1632,46 @@ export function useEditorContents(): UseEditorContentsReturn {
 
       if (latestCanvas && latestEditor) {
         const existingSpread = latestEditor.getPlugin<SpreadPlugin>('SpreadPlugin')
-        if (existingSpread) {
-          // createCanvas 가 spreadConfig 설정 이전에 플러그인을 만든 드문 경로 대비:
-          // 변환 모드를 템플릿 값으로 동기화 (flat-spread 책등 고정 가드 정합)
+        if (isPhotobookInner && photobookInnerSpec) {
+          const isp = photobookInnerSpec
+          const workspacePlugin = latestEditor.getPlugin<WorkspacePlugin>('WorkspacePlugin')
+          if (workspacePlugin) {
+            await workspacePlugin.setOptions({
+              size: {
+                width: isp.pageWidthMm * 2,
+                height: isp.pageHeightMm,
+                cutSize: isp.cutSizeMm,
+                safeSize: isp.safeSizeMm,
+              },
+            })
+          }
+          const workspaces = (latestCanvas.getObjects() as fabric.Object[]).filter(
+            (obj) => (obj as ExtendedFabricObject).id === 'workspace',
+          )
+          workspaces.slice(1).forEach((extra) => latestCanvas.remove(extra))
+          if (existingSpread && typeof existingSpread.adoptInnerSpec === 'function') {
+            existingSpread.adoptInnerSpec(isp)
+          } else if (!existingSpread) {
+            const spreadPlugin = new SpreadPlugin(latestCanvas, latestEditor, {
+              spec: spreadSpec,
+              conversionMode: templateConversionMode,
+              regionScope: 'inner',
+              innerSpec: isp,
+            })
+            latestEditor.use(spreadPlugin)
+            spreadPlugin.init()
+          }
+          latestCanvas.requestRenderAll()
+        } else if (existingSpread) {
           existingSpread.setConversionMode(templateConversionMode)
         } else {
           console.log('[EditorContents:Spread] Dynamically registering SpreadPlugin')
           const spreadPlugin = new SpreadPlugin(latestCanvas, latestEditor, {
             spec: spreadSpec,
             conversionMode: templateConversionMode,
-            // 포토북 내지(inner): 좌/우 면+거터 렌더 경로. cover 는 기존(미지정=cover).
-            regionScope: isPhotobookInner ? 'inner' : 'cover',
-            innerSpec: isPhotobookInner ? photobookInnerSpec! : undefined,
+            regionScope: 'cover',
           })
           latestEditor.use(spreadPlugin)
-          // init() 호출하여 currentLayout 설정 + 가이드/라벨 렌더링
           spreadPlugin.init()
         }
       }
@@ -1861,11 +1896,11 @@ export function useEditorContents(): UseEditorContentsReturn {
 
       setEditorTemplates([spreadMetadata, ...pageMetadata])
 
-      // 12. 책등 자동 리사이징 (initSpineConfig는 step 7-1에서 이미 호출됨)
-      if (config.paperType && config.bindingType) {
+      // 12. 표지3분할 책등: 내지 수(펼침면은 ×2)로 수식 재계산. 표지펼침면/내지전용은 내부에서 skip.
+      if (!isPhotobookInner) {
         const spineResult = await recalculateSpineWidth({
-          paperType: config.paperType,
-          bindingType: config.bindingType,
+          paperType: config.paperType || undefined,
+          bindingType: config.bindingType || undefined,
         })
 
         if (spineResult.success) {
@@ -1877,7 +1912,7 @@ export function useEditorContents(): UseEditorContentsReturn {
 
       console.log('[EditorContents:Spread] Spread mode editor loaded successfully')
     }
-  }, [editor, setupEmptyEditorStore, setEditorTemplates, initWorkspace, loadCanvasData, setCoverFinishing, setEnabledMenus, setPrintMarkConfig, setLinkedPrintTemplates])
+  }, [editor, setupEmptyEditorStore, setEditorTemplates, initWorkspace, loadCanvasData, setCoverFinishing, setEnabledMenus, setPrintMarkConfig, setLinkedPrintTemplates, setHasCoverSlot])
 
   /**
    * 템플릿 콘텐츠 설정

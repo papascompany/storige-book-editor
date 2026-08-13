@@ -53,11 +53,13 @@ function forEachObjectDeep(
   }
 }
 
-/** 책 규약: 캔버스 0 = 표지. 내지 배경은 잠그지 않는다. */
+/** 책 규약: 표지 슬롯이 있을 때만 캔버스 0 = 표지. 표지 없는 세트는 전부 내지. */
 export function isCoverPageCanvas(
   canvas: unknown,
   allCanvas: ReadonlyArray<unknown>,
+  hasCoverSlot = true,
 ): boolean {
+  if (!hasCoverSlot) return false
   return !!canvas && allCanvas.length > 0 && allCanvas[0] === canvas
 }
 
