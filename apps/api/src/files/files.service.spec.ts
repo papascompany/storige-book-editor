@@ -126,4 +126,113 @@ describe('FilesService (Phase 0 safety net)', () => {
       expect(wheres.some((s) => s.includes('expires_at < :now'))).toBe(true);
     });
   });
+
+  /**
+   * 고아 판정 역참조 — compose-mixed options JSON (2026-08-13).
+   *
+   * 배경: compose-mixed 자동조립(assembleFromSession)은 파일참조를 **file_url 이 아니라**
+   *   `api://<fileId>`(s3 백엔드) 또는 `file_path`(local) 로 싣는다
+   *   (worker-jobs.service.ts:190-192 toWorkerInputUrl). 종전 절은 file_url 하고만 비교해
+   *   자동조립 잡이 물고 있는 표지/내지/면지 파일을 전부 miss → **고아 오판·삭제 위험**.
+   *
+   * ⚠️ 방향: 이 절은 `NOT EXISTS` 안에 OR 로 들어간다 = 참조가 하나라도 걸리면 후보에서 제외.
+   *   즉 매칭 형식을 늘리는 것은 항상 '덜 지우는' 보수적 방향이다. 아래 테스트는
+   *   (a) NOT EXISTS 방향, (b) 4개 옵션 키 × URL 표기 5종 대조를 잠근다.
+   */
+  describe('findOrphanCandidates — compose-mixed 역참조 (데이터손실 방지)', () => {
+    /** worker_jobs NOT EXISTS 절을 공백 정규화해 반환 */
+    const workerJobClause = async (): Promise<string> => {
+      await service.findOrphanCandidates(24, 30, 200);
+      const clause = mockQueryBuilder.andWhere.mock.calls
+        .map((c) => String(c[0]))
+        .find((sql) => sql.includes('worker_jobs'));
+      expect(clause).toBeDefined();
+      return (clause as string).replace(/\s+/g, ' ').trim();
+    };
+
+    it('worker_jobs 역참조는 NOT EXISTS 방향이다 — 참조가 걸리면 고아가 아니다', async () => {
+      const sql = await workerJobClause();
+      expect(sql.startsWith('NOT EXISTS (')).toBe(true);
+      expect(sql).toContain('SELECT 1 FROM worker_jobs w');
+    });
+
+    it.each(['coverUrl', 'contentPdfUrl', 'contentUrl'])(
+      '스칼라 옵션 $.%s 가 api://<id> · file_path · file_url · s3://<key> · %%/<key> 전부와 대조된다',
+      async (key) => {
+        const sql = await workerJobClause();
+        const expr = `JSON_VALUE(w.options, '$.${key}')`;
+        // 자동조립(s3) — 이번 수정의 핵심. 종전엔 이 형식이 없어 전량 miss 였다.
+        expect(sql).toContain(`${expr} = CONCAT('api://', f.id)`);
+        // 자동조립(local)
+        expect(sql).toContain(`${expr} = f.file_path`);
+        // 외부 파트너 직접 호출(공개 URL) — 기존 규약 유지(회귀 방지)
+        expect(sql).toContain(`${expr} = f.file_url`);
+        // storage_key 기반 2종은 NULL 가드와 함께여야 한다(NULL substring 매칭 사고 방지)
+        expect(sql).toContain(
+          `(f.storage_key IS NOT NULL AND ${expr} = CONCAT('s3://', f.storage_key))`,
+        );
+        expect(sql).toContain(
+          `(f.storage_key IS NOT NULL AND ${expr} LIKE CONCAT('%/', f.storage_key))`,
+        );
+      },
+    );
+
+    it.each(['frontEndpaperUrls', 'backEndpaperUrls'])(
+      '배열 옵션 $.%s 는 원소 단위(JSON_CONTAINS/JSON_SEARCH)로 5종 전부와 대조된다',
+      async (key) => {
+        const sql = await workerJobClause();
+        const doc = `JSON_EXTRACT(w.options, '$.${key}')`;
+        expect(sql).toContain(`JSON_CONTAINS(${doc}, JSON_QUOTE(CONCAT('api://', f.id)))`);
+        expect(sql).toContain(`JSON_CONTAINS(${doc}, JSON_QUOTE(f.file_path))`);
+        expect(sql).toContain(`JSON_CONTAINS(${doc}, JSON_QUOTE(f.file_url))`);
+        expect(sql).toContain(
+          `(f.storage_key IS NOT NULL AND JSON_CONTAINS(${doc}, JSON_QUOTE(CONCAT('s3://', f.storage_key))))`,
+        );
+        expect(sql).toContain(
+          `(f.storage_key IS NOT NULL AND JSON_SEARCH(${doc}, 'one', CONCAT('%/', f.storage_key)) IS NOT NULL)`,
+        );
+      },
+    );
+
+    it('기존 역참조(컬럼 3종 · 입력 URL · id 기반 JSON 경로)는 유지된다', async () => {
+      const sql = await workerJobClause();
+      for (const frag of [
+        'w.file_id = f.id',
+        'w.output_file_id = f.id',
+        'w.pdf_file_id = f.id',
+        "w.input_file_url = CONCAT('api://', f.id)",
+        "JSON_VALUE(w.options, '$.spreadPdfFileId') = f.id",
+        "JSON_VALUE(w.options, '$.pdfFileId') = f.id",
+        "JSON_CONTAINS(JSON_EXTRACT(w.options, '$.contentPdfFileIds'), JSON_QUOTE(f.id))",
+      ]) {
+        expect(sql).toContain(frag);
+      }
+    });
+
+    /**
+     * synthesis(createSynthesisJob) 내지 역참조 — 2026-08-13 추가.
+     *
+     * 이 잡은 **표지만** 컬럼에 남긴다(worker-jobs.service.ts:1086-1087
+     * fileId=coverFileId · inputFileUrl=coverUrl). 내지는 options.contentFileId /
+     * options.contentUrl 에만 존재하므로(:1093-1096), 이 경로가 빠지면 게스트 세션
+     * 하드 DELETE + grace 경과 후 **내지만** 고아로 오판·삭제된다(표지는 생존).
+     */
+    it('synthesis 잡의 내지·표지 id 경로($.contentFileId·$.coverFileId)가 역참조된다', async () => {
+      const sql = await workerJobClause();
+      expect(sql).toContain("JSON_VALUE(w.options, '$.contentFileId') = f.id");
+      expect(sql).toContain("JSON_VALUE(w.options, '$.coverFileId') = f.id");
+    });
+
+    it('edit_session 참조 절(3컬럼)도 NOT EXISTS 로 유지된다', async () => {
+      await service.findOrphanCandidates(24, 30, 200);
+      const clause = mockQueryBuilder.andWhere.mock.calls
+        .map((c) => String(c[0]).replace(/\s+/g, ' ').trim())
+        .find((sql) => sql.includes('file_edit_sessions'));
+      expect(clause).toBeDefined();
+      expect(clause?.startsWith('NOT EXISTS (')).toBe(true);
+      expect(clause).toContain('s.cover_file_id = f.id');
+      expect(clause).toContain('s.content_file_id = f.id');
+      expect(clause).toContain('s.content_pdf_file_id = f.id');
+    });
+  });
 });

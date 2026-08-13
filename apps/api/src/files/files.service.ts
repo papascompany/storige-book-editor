@@ -592,6 +592,11 @@ export class FilesService {
    *  5) NOT EXISTS 어떤 file_edit_sessions 의 cover_file_id / content_file_id / content_pdf_file_id
    *  6) NOT EXISTS 어떤 worker_jobs 의 file_id / output_file_id / pdf_file_id (id 직접)
    *     또는 input_file_url / output_file_url 가 api://<id> · file_path · s3://<key> · %/<key> 포함
+   *     또는 options JSON 역참조 — id 경로(spreadPdfFileId·pdfFileId·contentPdfFileIds[]
+   *       + synthesis 의 coverFileId·contentFileId)
+   *     + URL 경로(compose-mixed 의 coverUrl·contentPdfUrl·front/backEndpaperUrls[]
+   *       + synthesis 의 contentUrl)가
+   *     api://<id> · file_path · file_url · s3://<key> · %/<key> 중 하나와 일치
    *
    * ⚠️ 세션/잡 참조 조회는 deleted_at 무시(soft-deleted 세션의 참조도 유효 — 복구 대비).
    * ⚠️ storage_key NULL 이면 key 기반 url 매칭은 건너뜀(NULL substring 매칭 사고 방지).
@@ -607,6 +612,44 @@ export class FilesService {
     const now = Date.now();
     const pfCutoff = new Date(now - pendingFailedGraceHours * 60 * 60 * 1000);
     const readyCutoff = new Date(now - readyGraceDays * 24 * 60 * 60 * 1000);
+
+    // ── 파일 1건이 잡 옵션에 실릴 수 있는 URL 표기 전부 ──
+    // ⚠️ 이 목록이 좁으면 '참조 있음'을 놓쳐 파일이 고아로 오판·삭제된다(데이터손실).
+    //   실제 발행자:
+    //    - 자동조립(compose-mixed assembleFromSession, worker-jobs.service.ts:190-192 toWorkerInputUrl)
+    //      → s3 백엔드는 `api://<fileId>`, local 은 `f.file_path`
+    //    - synthesis(createSynthesisJob:1072·1077) 의 coverUrl/contentUrl — 동일 toWorkerInputUrl
+    //    - 외부 파트너 직접 호출 → 공개 URL(`f.file_url`) 또는 절대 URL(…/<storage_key>)
+    //   입력 URL 절(w.input_file_url/…)이 이미 쓰는 규약과 동일하게 맞춘다(+ file_url).
+    //   storage_key 는 nullable → NULL substring 매칭 사고 방지용 IS NOT NULL 가드 필수.
+    const urlForms = (expr: string): string =>
+      [
+        `${expr} = CONCAT('api://', f.id)`,
+        `${expr} = f.file_path`,
+        `${expr} = f.file_url`,
+        `(f.storage_key IS NOT NULL AND ${expr} = CONCAT('s3://', f.storage_key))`,
+        `(f.storage_key IS NOT NULL AND ${expr} LIKE CONCAT('%/', f.storage_key))`,
+      ]
+        .map((c) => `(${c})`)
+        .join(' OR ');
+    // 스칼라 옵션(coverUrl·contentPdfUrl): JSON_VALUE 는 unquote 하므로 문자열 직접 비교.
+    const scalarUrlRef = (jsonPath: string): string =>
+      urlForms(`JSON_VALUE(w.options, '${jsonPath}')`);
+    // 배열 옵션(front/backEndpaperUrls): 원소 단위 비교 = JSON_CONTAINS(+ JSON_QUOTE).
+    //   경로 부재 시 JSON_EXTRACT→NULL, JSON_CONTAINS(NULL,…)→NULL = OR 에서 false(안전).
+    //   절대 URL(…/<key>) 원소는 JSON_CONTAINS 로 못 잡으므로 JSON_SEARCH 와일드카드 사용.
+    const arrayUrlRef = (jsonPath: string): string => {
+      const doc = `JSON_EXTRACT(w.options, '${jsonPath}')`;
+      return [
+        `JSON_CONTAINS(${doc}, JSON_QUOTE(CONCAT('api://', f.id)))`,
+        `JSON_CONTAINS(${doc}, JSON_QUOTE(f.file_path))`,
+        `JSON_CONTAINS(${doc}, JSON_QUOTE(f.file_url))`,
+        `(f.storage_key IS NOT NULL AND JSON_CONTAINS(${doc}, JSON_QUOTE(CONCAT('s3://', f.storage_key))))`,
+        `(f.storage_key IS NOT NULL AND JSON_SEARCH(${doc}, 'one', CONCAT('%/', f.storage_key)) IS NOT NULL)`,
+      ]
+        .map((c) => `(${c})`)
+        .join(' OR ');
+    };
 
     const qb = this.fileRepository
       .createQueryBuilder('f')
@@ -637,7 +680,17 @@ export class FilesService {
       // ⚠️ 데이터손실 방지: 일부 잡은 파일참조를 컬럼이 아닌 options JSON 안에만 둔다 —
       //    spread-merge(createSpreadSynthesisJob): options.spreadPdfFileId(id) · options.contentPdfFileIds[](id 배열)
       //    compose-mixed(createComposeMixedJob): options.coverUrl · options.contentPdfUrl · options.front/backEndpaperUrls[](url)
+      //    synthesis(createSynthesisJob): options.coverFileId·contentFileId(id) · options.coverUrl·contentUrl(url)
+      //      ⚠️ 이 잡은 **표지만** 컬럼에 남는다(worker-jobs.service.ts:1086-1087
+      //         fileId=coverFileId · inputFileUrl=coverUrl). 내지(contentFileId·contentUrl)는
+      //         options 에만 존재 → 컬럼만 보면 게스트 내지가 고아로 오판·삭제된다.
       //    컬럼만 보면 이들이 고아로 오판된다 → JSON 경로까지 역참조(JSON_CONTAINS/->>) 추가.
+      // ⚠️ URL 은 file_url 만이 아니다 — compose-mixed 자동조립(assembleFromSession)과
+      //    synthesis 의 contentUrl/coverUrl 은 toWorkerInputUrl 을 거쳐
+      //    api://<id>(s3) / file_path(local) 을 싣는다. urlForms 5종 전부 대조(위 helper 참조).
+      // ⚠️ 이 열거는 worker-jobs.service.ts 의 `options:` 블록 전수(419·604·697·753·886·
+      //    1091·1641·1851·2019·2184 라인대)와 대조해 유지한다. 새 잡 유형이 파일참조를
+      //    options 안에만 두면 반드시 여기에 경로를 추가할 것.
       .andWhere(
         `NOT EXISTS (
            SELECT 1 FROM worker_jobs w
@@ -655,11 +708,14 @@ export class FilesService {
               OR (w.options IS NOT NULL AND (
                    JSON_VALUE(w.options, '$.spreadPdfFileId') = f.id
                 OR JSON_VALUE(w.options, '$.pdfFileId') = f.id
+                OR JSON_VALUE(w.options, '$.coverFileId') = f.id
+                OR JSON_VALUE(w.options, '$.contentFileId') = f.id
                 OR JSON_CONTAINS(JSON_EXTRACT(w.options, '$.contentPdfFileIds'), JSON_QUOTE(f.id))
-                OR JSON_VALUE(w.options, '$.coverUrl') = f.file_url
-                OR JSON_VALUE(w.options, '$.contentPdfUrl') = f.file_url
-                OR JSON_CONTAINS(JSON_EXTRACT(w.options, '$.frontEndpaperUrls'), JSON_QUOTE(f.file_url))
-                OR JSON_CONTAINS(JSON_EXTRACT(w.options, '$.backEndpaperUrls'), JSON_QUOTE(f.file_url))
+                OR ${scalarUrlRef('$.coverUrl')}
+                OR ${scalarUrlRef('$.contentUrl')}
+                OR ${scalarUrlRef('$.contentPdfUrl')}
+                OR ${arrayUrlRef('$.frontEndpaperUrls')}
+                OR ${arrayUrlRef('$.backEndpaperUrls')}
               ))
          )`,
       )

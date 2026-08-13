@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
+import * as Sentry from '@sentry/node';
 import { ConfigService } from '@nestjs/config';
 import { FilesService } from './files.service';
 import { StorageConfigService } from '../settings/storage-config.service';
@@ -74,7 +75,18 @@ export class FileOrphanService {
           this.batchLimit,
         );
       } catch (err) {
-        this.logger.error(`[orphan] findOrphanCandidates 실패: ${(err as Error).message}`);
+        // ⚠️ 침묵장애 방지(2026-08-13): 여기서 던지면 sweep 이 매시 조용히 no-op 이 된다.
+        //   판정 쿼리는 MariaDB JSON 함수(JSON_VALUE/JSON_CONTAINS/JSON_SEARCH)에 의존하고
+        //   레거시 행의 비정상 options·collation 조합에서 실패할 여지가 있는데, 로그 한 줄만
+        //   남으면 고아 누적 방어가 무기한 정지된 사실을 아무도 모른다("로그 초록인데 미적용").
+        //   삭제가 아니라 미삭제 방향이라 데이터손실은 없으나 반드시 알람으로 승격한다.
+        const msg = `[orphan] findOrphanCandidates 실패: ${(err as Error).message}`;
+        this.logger.error(msg);
+        Sentry.withScope((scope) => {
+          scope.setLevel('error');
+          scope.setTag('alert.type', 'orphan-query-failed');
+          Sentry.captureException(err);
+        });
         return;
       }
       if (!candidates.length) return;
