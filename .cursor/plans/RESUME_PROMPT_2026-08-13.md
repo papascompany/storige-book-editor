@@ -95,10 +95,12 @@ curl -s https://api.papascompany.co.kr/api/health | python3 -m json.tool | head 
 - 삭제 안전성: 추가 항이 전부 `NOT EXISTS(...)` 내부 OR 체인 = **덜 지우는 방향**(메인 세션 직접 확인). 뮤테이션 테스트로 회귀 검출력도 실증.
 - ⚠️ **미검증**: 실 DB 에서 새 SQL(JSON_SEARCH 최초 사용) 실행 경로. 배포 후 `FILE_ORPHAN_DRY_RUN=1` 상태로 cron 1회 로그 확인 필요.
 
-## 1-B. W4-G4 (페이지 재정렬) — 구현 · **이 커밋으로 editor 배포**
+## 1-B. W4-G4 (페이지 재정렬) — **프로덕션 LIVE**
 
-> 2026-08-13 Grok 세션. editor 전용(api/worker 0줄). 단위테스트 26 + W1 9 pass · `tsc -b` 0err.
-> 실기(책 템플릿 DnD → 페이지 전환·저장 재로드)는 배포 후 1회.
+> 커밋 `04ede40` → master push → Vercel `storige-editor` Production **Ready**
+> (`storige-editor-kimbsz3j8`, alias `editor.papascompany.co.kr`). api/worker 무변경.
+> 단위테스트 26 + W1 9 pass · `tsc -b` 0err.
+> ⚠️ **미수행**: 책 템플릿 DnD → 페이지 전환·저장 재로드 실기 1회.
 
 - `SpreadPagePanel` 내지 HTML5 DnD (표지 고정, 내지전용 펼침면은 전 페이지, 터치는 비활성).
 - `reorderByIndex` 가 DOM 컨테이너 순서도 맞춤(`setPage` DOM 인덱스 함정) + 스프레드면 책등 debounce.
