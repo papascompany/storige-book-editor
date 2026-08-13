@@ -117,7 +117,13 @@ curl -s https://api.papascompany.co.kr/api/health | python3 -m json.tool | head 
 - 검증: types+canvas-core build · editor `tsc -b` 0err · coverFinishing 7 + objectPermissions 22 + workflow 9 · api DTO+service finishing 통과.
 - ⚠️ Admin 이 finishing 을 저장하려면 API 를 같이 배포해야 한다(`forbidNonWhitelisted`).
 
-## 1-E. 시드 n + 템플릿 탭 교체 풀 + G9 last/cycle
+## 1-E. 시드 n + 템플릿 탭 교체 풀 + G9 last/cycle — **프로덕션 LIVE**
+
+> 커밋 `f8d0684` → master push →
+> Vercel editor `storige-editor-4e3geoq27` Production **Ready** (alias `editor.papascompany.co.kr`) ·
+> admin `storige-admin-r9ii1hciw` Production **Ready** (alias `admin.papascompany.co.kr`) ·
+> VPS `docker compose up -d --build api` + nginx restart. health 200.
+> 역검증: API dist `CoverConfigDto.innerRepeat` · 라이브 editor 번들 `linkedPrintTemplates` · admin 번들 `내지 시드 반복`.
 
 책모드 조립: 표지 칸 ⊥ 내지 단위. 스프레드 1개·PAGE 강제 없음.
 - types `print-template.ts`: classify / assemble / validate / expandPrintSeeds / filterSwapCandidates
