@@ -95,7 +95,13 @@ curl -s https://api.papascompany.co.kr/api/health | python3 -m json.tool | head 
 - 삭제 안전성: 추가 항이 전부 `NOT EXISTS(...)` 내부 OR 체인 = **덜 지우는 방향**(메인 세션 직접 확인). 뮤테이션 테스트로 회귀 검출력도 실증.
 - ⚠️ **미검증**: 실 DB 에서 새 SQL(JSON_SEARCH 최초 사용) 실행 경로. 배포 후 `FILE_ORPHAN_DRY_RUN=1` 상태로 cron 1회 로그 확인 필요.
 
-## 1-D. G8 페브릭·기성 표지 (B1~B4) — 구현 완료 · 배포 대기
+## 1-D. G8 페브릭·기성 표지 (B1~B4) — **프로덕션 LIVE**
+
+> 커밋 `075d335` → master push →
+> Vercel editor `storige-editor-1gcfyerta` Production **Ready(55s)** (alias `editor.papascompany.co.kr`) ·
+> admin `storige-admin-hc8jlq6mf` Production **Ready(37s)** (alias `admin.papascompany.co.kr`) ·
+> VPS `docker compose up -d --build api` + nginx restart. health 200.
+> 역검증: API dist `CoverConfigDto.finishing` 존재 · 라이브 editor 번들에 `coverMaterialLocked`/`coverFinishingAllowed` · canvas-core 청크에 `silver`.
 
 오너 2026-08-13 결정:
 | 결정 | 값 |
