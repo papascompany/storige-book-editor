@@ -1,14 +1,28 @@
-import { memo, useCallback, useEffect, useRef } from 'react'
+import { memo, useCallback, useEffect, useRef, useState, type DragEvent } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Plus } from 'lucide-react'
 import { SpreadThumbnailItem } from './SpreadThumbnailItem'
 import { PageItem } from './PageItem'
 import { useEditorStore, useCanAddPage } from '@/stores/useEditorStore'
 import { useAppStore } from '@/stores/useAppStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
+import { useGuestStore } from '@/stores/useGuestStore'
 import { cn } from '@/lib/utils'
 import { showToast } from '@/stores/useToastStore'
 import { BindingType } from '@storige/types'
-import type { EditPage } from '@storige/types'
+
+import { computeInnerReorder } from '@/utils/innerPageReorder'
+import { persistContentPdfPageOrderAfterReorder } from '@/utils/contentPdfGuide'
+
+function isTouchEnv(): boolean {
+  if (typeof window === 'undefined' || !window.matchMedia) return false
+  try {
+    return window.matchMedia('(pointer: coarse)').matches
+  } catch {
+    return false
+  }
+}
+const TOUCH_ENV = isTouchEnv()
 
 interface SpreadPagePanelProps {
   className?: string
@@ -29,11 +43,15 @@ export const SpreadPagePanel = memo(function SpreadPagePanel({
   orientation = 'horizontal',
 }: SpreadPagePanelProps) {
   const isVertical = orientation === 'vertical'
+  const [params] = useSearchParams()
+  const sessionId = params.get('sessionId')
+  const guestToken = useGuestStore((s) => s.guestToken)
   const pages = useEditorStore((state) => state.pages)
   const currentPageIndex = useEditorStore((state) => state.currentPageIndex)
   const setPage = useAppStore((state) => state.setPage)
   const addPage = useAppStore((state) => state.addPage)
   const deletePage = useAppStore((state) => state.deletePage)
+  const reorderByIndex = useAppStore((state) => state.reorderByIndex)
   const allCanvas = useAppStore((state) => state.allCanvas)
   const screenshots = useAppStore((state) => state.screenshots)
   const canAddMore = useCanAddPage()
@@ -106,6 +124,90 @@ export const SpreadPagePanel = memo(function SpreadPagePanel({
     deletePage(canvas.id)
   }, [pages, allCanvas, deletePage, canDeletePage, bindingType])
 
+  const [dragSourceIdx, setDragSourceIdx] = useState<number | null>(null)
+  const [dragOver, setDragOver] = useState<{ idx: number; before: boolean } | null>(null)
+
+  const reorderItems = pages.map((page, i) => ({
+    index: i,
+    isCover: isInnerSpread ? false : i === 0,
+    id: page.id,
+  }))
+  const dragEnabled =
+    !TOUCH_ENV && allCanvas.length > 1 && pages.length === allCanvas.length
+
+  const handleDragStart = (idx: number) => (e: DragEvent<HTMLDivElement>) => {
+    if (!dragEnabled) return
+    setDragSourceIdx(idx)
+    try {
+      e.dataTransfer.effectAllowed = 'move'
+      e.dataTransfer.setData('text/plain', String(idx))
+    } catch {
+      /* 일부 브라우저는 setData 없이 dragstart 를 무시한다 */
+    }
+  }
+
+  const resolveInsertBefore = (e: DragEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect()
+    return isVertical
+      ? e.clientY < rect.top + rect.height / 2
+      : e.clientX < rect.left + rect.width / 2
+  }
+
+  const handleDragOver = (idx: number) => (e: DragEvent<HTMLDivElement>) => {
+    if (!dragEnabled || dragSourceIdx === null) return
+    if (idx === dragSourceIdx) return
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    const before = resolveInsertBefore(e)
+    setDragOver((prev) =>
+      prev && prev.idx === idx && prev.before === before ? prev : { idx, before },
+    )
+  }
+
+  const handleDragLeave = (idx: number) => () => {
+    setDragOver((prev) => (prev && prev.idx === idx ? null : prev))
+  }
+
+  const handleDrop = (idx: number) => (e: DragEvent<HTMLDivElement>) => {
+    if (!dragEnabled || dragSourceIdx === null) return
+    e.preventDefault()
+    const before = resolveInsertBefore(e)
+    const newIndices = computeInnerReorder(reorderItems, dragSourceIdx, idx, before)
+    setDragSourceIdx(null)
+    setDragOver(null)
+    if (!newIndices) return
+    reorderByIndex(newIndices)
+    const hasUnderlay = allCanvas.some((c) => {
+      try {
+        return (c.getObjects?.() ?? []).some(
+          (o: { meta?: { system?: string } }) => o?.meta?.system === 'innerPdfGuide',
+        )
+      } catch {
+        return false
+      }
+    })
+    if (hasUnderlay) {
+      void persistContentPdfPageOrderAfterReorder({
+        newIndices,
+        innerStart: isInnerSpread ? 0 : 1,
+        sessionId,
+        guestToken,
+      })
+      showToast(
+        '화면 순서만 바뀝니다. 인쇄는 첨부한 내지 PDF 원본 순서입니다.',
+        'info',
+        3500,
+      )
+    } else {
+      showToast('페이지 순서가 변경되었습니다', 'success', 2000)
+    }
+  }
+
+  const handleDragEnd = () => {
+    setDragSourceIdx(null)
+    setDragOver(null)
+  }
+
   // 활성 페이지 썸네일 ref 맵
   const itemRefs = useRef<Map<number, HTMLDivElement>>(new Map())
 
@@ -149,6 +251,20 @@ export const SpreadPagePanel = memo(function SpreadPagePanel({
                 onClick={handleSelectSpread}
                 compact={isVertical}
                 aspectRatio={spreadAspectRatio}
+                draggable={dragEnabled && isInnerSpread}
+                onDragStart={isInnerSpread ? handleDragStart(0) : undefined}
+                onDragOver={isInnerSpread ? handleDragOver(0) : undefined}
+                onDragLeave={isInnerSpread ? handleDragLeave(0) : undefined}
+                onDrop={isInnerSpread ? handleDrop(0) : undefined}
+                onDragEnd={isInnerSpread ? handleDragEnd : undefined}
+                isDragSource={dragSourceIdx === 0}
+                insertHint={
+                  dragOver && dragOver.idx === 0
+                    ? dragOver.before
+                      ? 'before'
+                      : 'after'
+                    : null
+                }
               />
             </div>
 
@@ -177,6 +293,20 @@ export const SpreadPagePanel = memo(function SpreadPagePanel({
                 onSelect={handleSelectInnerPage}
                 onDelete={handleDeletePage}
                 canDelete={!page.required && innerPages.length > 1}
+                isDragging={dragSourceIdx === index + 1}
+                draggable={dragEnabled}
+                onDragStart={handleDragStart(index + 1)}
+                onDragOver={handleDragOver(index + 1)}
+                onDragLeave={handleDragLeave(index + 1)}
+                onDrop={handleDrop(index + 1)}
+                onDragEnd={handleDragEnd}
+                insertHint={
+                  dragOver && dragOver.idx === index + 1
+                    ? dragOver.before
+                      ? 'before'
+                      : 'after'
+                    : null
+                }
               />
             </div>
           ))}

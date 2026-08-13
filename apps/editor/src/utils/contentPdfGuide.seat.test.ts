@@ -42,6 +42,13 @@ vi.mock('../api/template-sets', () => ({
   },
 }))
 
+vi.mock('../api/edit-sessions', () => ({
+  editSessionsApi: {
+    update: vi.fn(),
+    updateGuest: vi.fn(),
+  },
+}))
+
 // ── 스토어 스텁 ─────────────────────────────────────────────────────
 interface FakeCanvas {
   objects: Record<string, unknown>[]
@@ -104,6 +111,8 @@ vi.mock('../stores/useSettingsStore', () => ({
 import {
   applyContentPdfGuides,
   ensureUnderlayPages,
+  persistContentPdfPageOrderAfterReorder,
+  rememberContentPdfPageOrder,
   seatContentPdf,
   UNDERLAY_MAX_PAGES,
 } from './contentPdfGuide'
@@ -131,6 +140,7 @@ const guideSession = (pageCount: number, pageImageUrls?: string[]) => ({
 
 beforeEach(() => {
   vi.clearAllMocks()
+  rememberContentPdfPageOrder(undefined)
   appState.isSpreadMode = true
   settingsState.spreadConfig = { regionScope: 'cover' }
   wireGrowingAddInnerPage()
@@ -233,6 +243,32 @@ describe('applyContentPdfGuides — 멱등 배치', () => {
     }
   })
 
+  it('contentPdfPageOrder 가 있으면 그 원본 PDF 페이지를 슬롯에 깐다', async () => {
+    setCanvases(3)
+    await applyContentPdfGuides({
+      contentPdfMode: 'underlay',
+      metadata: {
+        contentPdfGuide: { pageImageUrls: ['/a.png', '/b.png', '/c.png'] },
+        contentPdfPageOrder: [2, 0, 1],
+      },
+    })
+    expect(imageFromURL).toHaveBeenNthCalledWith(
+      1,
+      'https://api.example.com/c.png',
+      expect.any(Object),
+    )
+    expect(imageFromURL).toHaveBeenNthCalledWith(
+      2,
+      'https://api.example.com/a.png',
+      expect.any(Object),
+    )
+    expect(imageFromURL).toHaveBeenNthCalledWith(
+      3,
+      'https://api.example.com/b.png',
+      expect.any(Object),
+    )
+  })
+
   it('underlay 모드가 아니면 아무것도 하지 않는다', async () => {
     setCanvases(2)
     await applyContentPdfGuides({
@@ -287,5 +323,20 @@ describe('seatContentPdf — 확장 + 배치 합성', () => {
       )
       expect(guides).toHaveLength(1)
     }
+  })
+})
+
+describe('persistContentPdfPageOrderAfterReorder', () => {
+  it('세션이 있으면 metadata.contentPdfPageOrder 를 shallow-merge PATCH 한다', async () => {
+    const { editSessionsApi } = await import('../api/edit-sessions')
+    const next = await persistContentPdfPageOrderAfterReorder({
+      newIndices: [0, 3, 1, 2],
+      innerStart: 1,
+      sessionId: 'sess-1',
+    })
+    expect(next).toEqual([2, 0, 1])
+    expect(editSessionsApi.update).toHaveBeenCalledWith('sess-1', {
+      metadata: { contentPdfPageOrder: [2, 0, 1] },
+    })
   })
 })

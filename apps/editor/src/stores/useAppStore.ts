@@ -15,6 +15,7 @@ import Editor, {
 } from '@storige/canvas-core'
 import type { AppMenu } from '@/types/menu'
 import { recalculateSpineWidth } from '@/utils/spineCalculator'
+import { syncCanvasContainerOrder } from '@/utils/innerPageReorder'
 import { bindPrintExcludeOverlay } from '@/utils/printExcludeOverlay'
 import { useEditorStore } from '@/stores/useEditorStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
@@ -783,6 +784,13 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
     const newCanvases = newIndices.map((i) => allCanvas[i])
     const newEditors = newIndices.map((i) => allEditors[i])
 
+    // setPage 는 `#canvas-containers > .canvas-container` 의 DOM 인덱스로
+    // 표시/숨김을 바꾼다. 배열만 바꾸고 DOM 을 안 맞추면 재정렬 후 다른 페이지가 보인다.
+    syncCanvasContainerOrder(
+      document.getElementById('canvas-containers'),
+      newCanvases,
+    )
+
     // useEditorStore.pages 동기화 (1:1 인덱스 매핑)
     const ed = useEditorStore.getState()
     const newPageIds: string[] = []
@@ -806,6 +814,12 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
 
     // 재정렬로 인덱스가 이동했으므로 전체 재캡처 (부분 갱신 시 썸네일 어긋남)
     get().takeCanvasScreenshot()
+
+    // 내지 매수가 같아도 책등 공식은 페이지 수 기준 — 순서가 바뀌어도 호출은 멱등.
+    // 스프레드가 아니면 no-op 에 가깝지만 가드 후 호출한다.
+    if (get().isSpreadMode) {
+      get().debouncedRecalcSpine()
+    }
   },
 
   deletePage: (canvasId: string) => {

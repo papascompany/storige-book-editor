@@ -20,6 +20,8 @@ import { resolveStorageUrl } from './fontManager'
 import { useAppStore } from '../stores/useAppStore'
 import { useSettingsStore } from '../stores/useSettingsStore'
 import { templateSetsApi } from '../api/template-sets'
+import { editSessionsApi } from '../api/edit-sessions'
+import { permuteContentPdfPageOrder } from './innerPageReorder'
 
 const GUIDE_SYSTEM = 'innerPdfGuide'
 const LABEL_SYSTEM = 'innerPdfGuideLabel'
@@ -29,6 +31,58 @@ const LABEL_SYSTEM = 'innerPdfGuideLabel'
  * 메모리 안전 상한 — useEditorContents 의 로드 경로도 이 상수를 공유한다(중복 선언 제거).
  */
 export const UNDERLAY_MAX_PAGES = 200
+
+/**
+ * G4: 내지 슬롯 → 원본 PDF 페이지 인덱스.
+ * 세션 metadata.contentPdfPageOrder (shallow-merge 안전, contentPdfGuide 를 덮지 않음).
+ * 메모리 캐시는 같은 세션 안에서 재배치(재로드 전)에 쓰인다.
+ */
+let rememberedPageOrder: number[] | undefined
+
+export function readContentPdfPageOrder(editSession: unknown): number[] | undefined {
+  const meta = (editSession as { metadata?: { contentPdfPageOrder?: unknown } } | null)
+    ?.metadata
+  const order = meta?.contentPdfPageOrder
+  if (
+    !Array.isArray(order) ||
+    order.length === 0 ||
+    !order.every((n) => Number.isInteger(n) && Number(n) >= 0)
+  ) {
+    return undefined
+  }
+  return order.map((n) => Number(n))
+}
+
+export function rememberContentPdfPageOrder(order: number[] | undefined): void {
+  rememberedPageOrder = order
+}
+
+export async function persistContentPdfPageOrderAfterReorder(opts: {
+  newIndices: number[]
+  innerStart: number
+  sessionId?: string | null
+  guestToken?: string | null
+}): Promise<number[]> {
+  const next = permuteContentPdfPageOrder(
+    rememberedPageOrder,
+    opts.newIndices,
+    opts.innerStart,
+  )
+  rememberedPageOrder = next
+  const sessionId = opts.sessionId
+  if (!sessionId) return next
+  const payload = { metadata: { contentPdfPageOrder: next } }
+  try {
+    if (opts.guestToken) {
+      await editSessionsApi.updateGuest(sessionId, opts.guestToken, payload)
+    } else {
+      await editSessionsApi.update(sessionId, payload)
+    }
+  } catch (e) {
+    console.warn('[contentPdfGuide] persist pageOrder failed', e)
+  }
+  return next
+}
 
 /** 이 세션이 '앉히기' 대상(내지 PDF 표시전용)인지 */
 function isUnderlaySession(editSession: any): boolean {
@@ -58,6 +112,9 @@ export async function applyContentPdfGuides(
     const guide = editSession?.metadata?.contentPdfGuide
     if (!isUnderlaySession(editSession) || !guide?.pageImageUrls?.length) return
 
+    const pageOrder = readContentPdfPageOrder(editSession) ?? rememberedPageOrder
+    if (pageOrder) rememberedPageOrder = pageOrder
+
     // contentPdfEditable 조회 (없으면 편집 허용 기본).
     // ⚠️ 공개 엔드포인트(`/with-templates`, @Public) — `GET /template-sets/:id` 는 JWT 필수라
     //    게스트 세션에서 401 → catch 폴백으로 항상 '편집 허용'이 되어 잠금 설정이 무력화됐다
@@ -76,9 +133,12 @@ export async function applyContentPdfGuides(
     if (allCanvas.length <= 1) return // 스프레드(0) 외 내지 페이지 없음
 
     // 내지 페이지: allCanvas[1..N] (index 0 = 스프레드 표지)
+    // G4: pageOrder[k] 가 있으면 슬롯 k 에 원본 PDF 페이지 pageOrder[k] 를 깐다.
     for (let i = 1; i < allCanvas.length; i++) {
       const canvas: any = allCanvas[i]
-      const url = guide.pageImageUrls[i - 1]
+      const slot = i - 1
+      const pdfIndex = pageOrder?.[slot] ?? slot
+      const url = Number.isInteger(pdfIndex) ? guide.pageImageUrls[pdfIndex] : undefined
 
       // 멱등: 직전 호출(세션 로드 등)이 깔아둔 가이드/레이블을 먼저 제거한다.
       removeExistingGuides(canvas)
@@ -253,6 +313,9 @@ export async function seatContentPdf(
   },
 ): Promise<SeatContentPdfResult> {
   if (!isUnderlaySession(editSession)) return { addedPages: 0, guidesPlaced: false }
+
+  // 새 앉히기: 세션에 저장된 매핑만 채택. 없으면 identity 로 리셋(이전 세션 누수 방지).
+  rememberContentPdfPageOrder(readContentPdfPageOrder(editSession))
 
   const addedPages = await ensureUnderlayPages(editSession?.contentPdfPageCount)
   await applyContentPdfGuides(editSession, templateSetId)

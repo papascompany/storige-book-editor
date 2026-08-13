@@ -9,6 +9,7 @@ import { TemplateType } from '@storige/types'
 import { PageThumbnail } from './PageThumbnail'
 import { cn } from '@/lib/utils'
 import { showToast } from '@/stores/useToastStore'
+import { computeInnerReorder } from '@/utils/innerPageReorder'
 
 // 모바일/터치 환경에서는 native HTML5 drag가 불안정 + long-press와 충돌 → drag 비활성
 function isTouchEnv(): boolean {
@@ -395,45 +396,4 @@ export const BookNavigation = memo(function BookNavigation({
   )
 })
 
-/**
- * DD-5-B-v2: 내지 페이지간 reorder 순열 계산.
- * 표지(isCover)는 원래 인덱스를 유지하고, 내지(PAGE)만 source→target 위치로 이동.
- * 표지를 source/target으로 받으면 null 반환 (drag 막기 위함).
- *
- * @param items 표시 순서의 PageMeta 배열 (m.index === allCanvas 인덱스)
- * @param sourceIdx allCanvas 기준 source 인덱스
- * @param targetIdx allCanvas 기준 target(드롭 위치) 인덱스
- * @param insertBefore target의 앞쪽 vs 뒤쪽에 삽입
- * @returns reorderByIndex에 넘길 0..N-1 순열, no-op이거나 invalid면 null
- */
-export function computeInnerReorder(
-  items: PageMeta[],
-  sourceIdx: number,
-  targetIdx: number,
-  insertBefore: boolean
-): number[] | null {
-  // 내지 인덱스만 추출 (allCanvas 기준)
-  const innerIndices = items.filter((m) => !m.isCover).map((m) => m.index)
-  const srcInner = innerIndices.indexOf(sourceIdx)
-  const tgtInner = innerIndices.indexOf(targetIdx)
-  if (srcInner < 0 || tgtInner < 0) return null
-
-  // 삽입 위치 계산 (source 제거에 따른 인덱스 보정)
-  let insertAt = insertBefore ? tgtInner : tgtInner + 1
-  if (srcInner < insertAt) insertAt -= 1
-  if (insertAt === srcInner) return null // no-op
-
-  const reordered = [...innerIndices]
-  const [moved] = reordered.splice(srcInner, 1)
-  reordered.splice(insertAt, 0, moved)
-
-  // 전체 순열 조립 — 표지 위치는 원본 유지, 내지 위치는 새 순서로
-  const newIndices: number[] = items.map((m) => m.index)
-  let r = 0
-  for (let i = 0; i < items.length; i++) {
-    if (!items[i].isCover) {
-      newIndices[i] = reordered[r++]
-    }
-  }
-  return newIndices
-}
+export { computeInnerReorder } from '@/utils/innerPageReorder'

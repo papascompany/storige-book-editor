@@ -477,6 +477,16 @@ URL 파라미터 없이 `/` 진입 시 자동 로드되는 샘플:
 **알려진 비대칭(설계상 수용)**: 즉시 확장으로 생긴 내지는 **빈 페이지**, 재로드로 생긴 내지는 마지막 내지
 템플릿 복제본이다. underlay 는 표시전용(원본 PDF 인쇄)이라 내지 템플릿 아트워크는 인쇄에 영향이 없다.
 
+#### 13.2-B 내지 페이지 재정렬(G4, 2026-08-13)
+
+스프레드 모드 정본 UI(`SpreadPagePanel`)에서 내지 썸네일을 드래그해 순서를 바꿀 수 있다.
+표지 스프레드(캔버스 0)는 고정. 내지 전용 펼침면 세트(`regionScope='inner'`)는 전 페이지가 이동한다.
+터치(`pointer: coarse`)는 BookNavigation 과 같이 비활성.
+
+재정렬은 `reorderByIndex` 한 곳 — DOM 컨테이너 순서도 같이 맞춘다(`setPage` 가 DOM 인덱스를 쓰기 때문).
+내지 PDF 가 앉아 있으면 `metadata.contentPdfPageOrder`(슬롯→원본 PDF 페이지)를 갱신해
+재로드 후에도 가이드가 따라온다. **인쇄는 첨부 원본 PDF 순서 그대로**(G6 표시전용).
+
 ### 13.3 게스트 (24h 자동 삭제)
 
 **Store**: `apps/editor/src/stores/useGuestStore.ts`

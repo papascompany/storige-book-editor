@@ -95,28 +95,37 @@ curl -s https://api.papascompany.co.kr/api/health | python3 -m json.tool | head 
 - 삭제 안전성: 추가 항이 전부 `NOT EXISTS(...)` 내부 OR 체인 = **덜 지우는 방향**(메인 세션 직접 확인). 뮤테이션 테스트로 회귀 검출력도 실증.
 - ⚠️ **미검증**: 실 DB 에서 새 SQL(JSON_SEARCH 최초 사용) 실행 경로. 배포 후 `FILE_ORPHAN_DRY_RUN=1` 상태로 cron 1회 로그 확인 필요.
 
+## 1-B. W4-G4 (페이지 재정렬) — 구현 · **이 커밋으로 editor 배포**
+
+> 2026-08-13 Grok 세션. editor 전용(api/worker 0줄). 단위테스트 26 + W1 9 pass · `tsc -b` 0err.
+> 실기(책 템플릿 DnD → 페이지 전환·저장 재로드)는 배포 후 1회.
+
+- `SpreadPagePanel` 내지 HTML5 DnD (표지 고정, 내지전용 펼침면은 전 페이지, 터치는 비활성).
+- `reorderByIndex` 가 DOM 컨테이너 순서도 맞춤(`setPage` DOM 인덱스 함정) + 스프레드면 책등 debounce.
+- 내지 PDF 매핑: `metadata.contentPdfPageOrder`(shallow-merge 안전). 인쇄는 원본 PDF 순서(G6).
+- 정본 순열: `utils/innerPageReorder.ts` (`computeInnerReorder` 는 BookNavigation 과 공유).
+
 ## 2. 다음 타순
 
-1. **실주문 실기 1회** — 실제 내지 PDF 첨부 → 즉시 앉히기·페이지 확장·최종 산출(원본 PDF) 육안 확인.
+1. **G4 라이브 실기 1회** — 책 템플릿에서 내지 DnD → 페이지 전환이 맞는 캔버스인지·저장 후 재로드 순서.
+   내지 PDF 첨부가 있으면 가이드가 `contentPdfPageOrder` 를 따라오는지 + 인쇄는 원본 순서라는 토스트.
+2. **실주문 실기 1회** — 실제 내지 PDF 첨부 → 즉시 앉히기·페이지 확장·최종 산출(원본 PDF) 육안 확인.
    `/embed` 는 세션이 있어야 첨부가 뜨므로 실주문(또는 재편집 `sessionId`) 경로로 확인할 것.
    롤백이 필요하면 `vercel promote <직전 Ready URL>`(직전 Production = 3h 전 Canceled 이므로
    `vercel list storige-editor` 에서 마지막 Ready 를 찾아 promote).
-2. **고아정리 cron 1회 관찰** — 새벽 03:00 KST 이후 `docker logs storige-api | grep -i orphan` 으로
+3. **고아정리 cron 1회 관찰** — 새벽 03:00 KST 이후 `docker logs storige-api | grep -i orphan` 으로
    새 SQL(JSON_SEARCH 최초 사용) 실행 오류 없음 + 후보 표본 확인. `FILE_ORPHAN_DRY_RUN` 미설정 = **dry-run ON**
    이라 삭제는 일어나지 않는다(실측). 오류 시 Sentry `alert.type=orphan-query-failed` 로도 뜬다.
-3. **파트너 안내** — 통합가이드 §3.4/§3.4.1 갱신분(빈 입력 400 승격·결과 회수 경로 정정·자동조립 신설)을
+4. **파트너 안내** — 공지문 `docs/PARTNER_NOTICE_2026-08-13_compose_mixed.md` 작성 완료. 발송은 오너 판단.
+   통합가이드 §3.4/§3.4.1 갱신분(빈 입력 400 승격·결과 회수 경로 정정·자동조립 신설)을
    bookmoa-mobile·100p Books·MD2Books 에 릴레이. **빈 입력 400 은 관측 가능한 동작 변화**다(호출 이력 0건이라 실파손은 없음).
-4. **W4 — G8 은 착수 보류(실측 근거)**. `template_sets` 23행 중 `cover_editable=0` **0건** ·
-   `endpaper_config` **전부 NULL** → 레더커버·면지는 **프로덕션에 해당 상품이 없다**.
-   `LeatherCoverPreview.tsx` 가 임포트 0건인 것도 '미배선 결함'이 아니라 **아직 안 파는 상품**이기 때문이다.
-   해당 상품 등록 시점에 배선하는 것이 맞다(그때 실기 확인도 가능).
-   → **W4 실착수 순서는 G4(페이지 재정렬 UI, 중형) → G9(반복 규칙)**.
-5. **파트너 릴레이** — 공지문 초안 `docs/PARTNER_NOTICE_2026-08-13_compose_mixed.md` 작성 완료. 발송은 오너 판단.
+5. **W4 잔여 = G9(반복 규칙)**. G8(레더커버·면지)은 착수 보류 — 프로덕션에 해당 상품 0건.
 
 ## 3. 함정 색인 (신설분만 — 08-11 §3 는 계속 유효)
 
 - **게스트 401 라우트**: 편집기 고객 경로에서 `GET /template-sets/:id` 금지. 공개본은 `/with-templates`. (테스트가 이 불변식을 잠금 — 두 테스트 파일 모두 JWT 라우트 호출 시 throw)
 - **앉히기는 항상 `seatContentPdf` 한 곳**: /embed 로드·첨부 직후·EditorView 로드 3곳 대칭. 한쪽만 고치면 G1/G3 재발.
+- **페이지 재정렬은 `reorderByIndex` + `syncCanvasContainerOrder`**: 배열만 바꾸면 `setPage` 가 다른 페이지를 보여 준다. 표지(캔버스 0)는 고정.
 - **즉시 확장 페이지는 빈 페이지**(재로드는 마지막 내지 템플릿 복제) — underlay 는 원본 PDF 인쇄라 인쇄 영향 0. 설계상 수용, 문서화됨(EDITOR.md §13.2-A).
 - **첨부 진입점 노출 조건**: book 모드 + **세션 존재**(재편집 `sessionId` 또는 신규 `orderSeqno`+`mode`). 세션 없는 진입(`templateSetId` 만)에서는 안 뜬다 — 파트너가 "안 보인다" 하면 여기부터 확인.
 - dev 서버 실기 시 캔버스가 백지로 보이는 현상은 **기존 환경 이슈**(stash 로 베이스라인에서도 재현 — canvas0 0×0). 내 변경과 무관.

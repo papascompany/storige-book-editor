@@ -1,4 +1,4 @@
-import { memo } from 'react'
+import { memo, type DragEvent, type MouseEvent } from 'react'
 import { cn } from '@/lib/utils'
 import { computeThumbBox } from '@/utils/thumbnailAspect'
 import { TemplateType } from '@storige/types'
@@ -13,6 +13,13 @@ interface PageItemProps {
   onDelete?: (pageId: string) => void
   canDelete: boolean
   isDragging?: boolean
+  draggable?: boolean
+  onDragStart?: (e: DragEvent<HTMLDivElement>) => void
+  onDragOver?: (e: DragEvent<HTMLDivElement>) => void
+  onDragLeave?: (e: DragEvent<HTMLDivElement>) => void
+  onDrop?: (e: DragEvent<HTMLDivElement>) => void
+  onDragEnd?: (e: DragEvent<HTMLDivElement>) => void
+  insertHint?: 'before' | 'after' | null
 }
 
 const templateTypeLabels: Record<TemplateType, string> = {
@@ -42,6 +49,13 @@ export const PageItem = memo(function PageItem({
   onDelete,
   canDelete,
   isDragging,
+  draggable,
+  onDragStart,
+  onDragOver,
+  onDragLeave,
+  onDrop,
+  onDragEnd,
+  insertHint,
 }: PageItemProps) {
   // 판형 비율 썸네일 박스 — canvasData.width/height(mm)가 권위.
   // 펼침면 내지는 여기서 자동으로 가로 긴 카드가 된다(폭 예산 고정 → 높이 유도).
@@ -51,12 +65,18 @@ export const PageItem = memo(function PageItem({
     onSelect(index)
   }
 
-  const handleDelete = (e: React.MouseEvent) => {
+  const handleDelete = (e: MouseEvent) => {
     e.stopPropagation()
     if (onDelete && canDelete) {
       onDelete(page.id)
     }
   }
+
+  const insertBarClass = cn(
+    'pointer-events-none absolute z-10 bg-blue-500',
+    insertHint === 'before' && 'left-0 right-0 top-0 h-[3px]',
+    insertHint === 'after' && 'left-0 right-0 bottom-0 h-[3px]',
+  )
 
   return (
     <div
@@ -64,10 +84,19 @@ export const PageItem = memo(function PageItem({
         'relative flex flex-col items-center p-2 rounded-lg cursor-pointer transition-all',
         'hover:bg-gray-100',
         isActive && 'ring-2 ring-blue-500 bg-blue-50',
-        isDragging && 'opacity-50'
+        isDragging && 'opacity-50',
+        draggable && 'cursor-grab active:cursor-grabbing',
       )}
       onClick={handleClick}
+      draggable={draggable}
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+      onDragEnd={onDragEnd}
+      aria-roledescription={draggable ? '드래그하여 페이지 순서 변경 가능' : undefined}
     >
+      {insertHint && <span aria-hidden className={insertBarClass} />}
       {/* 썸네일 — 박스 크기를 판형 비율로 유도(고정 w-20 h-28 제거).
           낱장 내지는 낱장 비율로, 펼침면 내지는 펼침면(가로 긴) 비율로 보인다. */}
       <div
