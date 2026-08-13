@@ -1051,8 +1051,10 @@ export function useEditorContents(): UseEditorContentsReturn {
           await loadSpreadModeEditor(config, templateSet, originalTemplateDetails)
           return
         }
+        useSettingsStore.getState().setSpreadConfig(null)
       } else {
         setHasCoverSlot(true)
+        useSettingsStore.getState().setSpreadConfig(null)
       }
 
       // ========================================================================
@@ -1663,7 +1665,11 @@ export function useEditorContents(): UseEditorContentsReturn {
           }
           latestCanvas.requestRenderAll()
         } else if (existingSpread) {
-          existingSpread.setConversionMode(templateConversionMode)
+          if (typeof existingSpread.adoptCoverSpec === 'function') {
+            existingSpread.adoptCoverSpec(spreadSpec, templateConversionMode)
+          } else {
+            existingSpread.setConversionMode(templateConversionMode)
+          }
         } else {
           console.log('[EditorContents:Spread] Dynamically registering SpreadPlugin')
           const spreadPlugin = new SpreadPlugin(latestCanvas, latestEditor, {

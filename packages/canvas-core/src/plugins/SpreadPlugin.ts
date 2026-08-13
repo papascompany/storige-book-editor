@@ -125,6 +125,14 @@ class SpreadPlugin extends PluginBase {
     this.initInner()
   }
 
+  /** 표지3분할/표지펼침면으로 되돌린다. 같은 탭에서 내지펼침면 다음에 열리면 regionScope 가 inner 로 남을 수 있다. */
+  adoptCoverSpec(spec: SpreadSpec, mode?: SpreadConversionMode | null): void {
+    this.regionScope = 'cover'
+    this.innerSpec = null
+    this.conversionMode = mode ?? 'full'
+    this.init(spec)
+  }
+
   // ============================================================================
   // Lifecycle
   // ============================================================================
