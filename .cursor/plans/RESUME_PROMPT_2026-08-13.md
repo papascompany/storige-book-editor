@@ -173,5 +173,6 @@ curl -s https://api.papascompany.co.kr/api/health | python3 -m json.tool | head 
 | 앉히기 계약·첨부 진입점 | `docs/EDITOR.md` §13.2 / §13.2-A |
 | 파트너 계약(파라미터·이벤트) | `docs/PLATFORM_INTEGRATION_GUIDE.md` |
 | 표지·낱장 UX 감사 + 오너 지시 | `docs/COVER_TEMPLATE_UX_AUDIT_2026-08-13.html` |
+| **인쇄 템플릿 용어 정본** | `docs/PRINT_TEMPLATE_GLOSSARY.md` — 표지펼침면=책등고정, 표지3분할=책등가변 |
 | 업계표준 트랙(R1~R10) | `EDITOR_PDF_STANDARD_AUDIT_2026-08-09.md` |
 | 운영 실값 | `CLAUDE.local.md`(gitignored) |

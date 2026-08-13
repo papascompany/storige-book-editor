@@ -347,9 +347,11 @@ export const TemplateList = () => {
         // 보여 운영자가 세트에 붙일 템플릿을 고를 수 없었다(2026-08-03).
         if (type === 'spread') {
           const isInner = record.spreadConfig?.regionScope === 'inner';
+          if (isInner) return <Tag color="geekblue">내지펼침면</Tag>;
+          const fixed = record.spreadConfig?.conversionMode === 'flat-spread';
           return (
-            <Tag color={isInner ? 'geekblue' : typeInfo.color}>
-              {isInner ? '스프레드(내지)' : '스프레드(표지)'}
+            <Tag color={fixed ? 'cyan' : typeInfo.color}>
+              {fixed ? '표지펼침면' : '표지3분할'}
             </Tag>
           );
         }
@@ -360,16 +362,22 @@ export const TemplateList = () => {
         { text: '표지', value: 'cover' },
         { text: '책등', value: 'spine' },
         { text: '날개', value: 'wing' },
-        { text: '스프레드(표지)', value: 'spread-cover' },
-        { text: '스프레드(내지)', value: 'spread-inner' },
+        { text: '표지펼침면', value: 'spread-cover-fixed' },
+        { text: '표지3분할', value: 'spread-cover-split' },
+        { text: '내지펼침면', value: 'spread-inner' },
         { text: '면지', value: 'endpaper' },
       ],
       onFilter: (value, record) => {
         if (value === 'spread-inner') {
           return record.type === 'spread' && record.spreadConfig?.regionScope === 'inner';
         }
-        if (value === 'spread-cover') {
-          return record.type === 'spread' && record.spreadConfig?.regionScope !== 'inner';
+        if (value === 'spread-cover-fixed') {
+          return record.type === 'spread' && record.spreadConfig?.regionScope !== 'inner'
+            && record.spreadConfig?.conversionMode === 'flat-spread';
+        }
+        if (value === 'spread-cover-split') {
+          return record.type === 'spread' && record.spreadConfig?.regionScope !== 'inner'
+            && record.spreadConfig?.conversionMode !== 'flat-spread';
         }
         return record.type === value;
       },

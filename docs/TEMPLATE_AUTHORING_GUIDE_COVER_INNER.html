@@ -80,15 +80,15 @@
 <div class="wrap">
 
   <h1>표지·내지 템플릿 제작 가이드</h1>
-  <p class="sub">책등 가변 · 책등 고정 펼침면 · 내지 단면/펼침면 — 어떤 규칙으로 만들어야 등록 후 정상 동작하는가<br>
-  <span class="src">기준 코드: origin/master a54ce4d · 2026-08-03 갱신 · 코드 조사 10영역 + 적대 검증 40건 + <b>프로덕션 E2E 3회</b>(실결함 3건 적발·수정)</span></p>
+  <p class="sub">표지펼침면(책등 고정) · 표지3분할(책등 가변) · 내지낱장 · 내지펼침면<br>
+  <span class="src">용어 정본: docs/PRINT_TEMPLATE_GLOSSARY.md · 2026-08-13 용어 정정 · 제작 규칙은 08-03 E2E 기준</span></p>
 
   <div class="toc">
     <a href="#s0">0. 결정 3개</a>
     <a href="#s1">1. 좌표·단위·블리드</a>
     <a href="#s2">2. 표지의 뼈대</a>
-    <a href="#s3">3. 갈래 A — 책등 가변</a>
-    <a href="#s4">4. 갈래 B — 책등 고정</a>
+    <a href="#s3">3. 표지3분할</a>
+    <a href="#s4">4. 표지펼침면</a>
     <a href="#s5">5. 책등 폭 공식</a>
     <a href="#s5-1">5-1. 날개 규약</a>
     <a href="#s6">6. 가변이 동작하는 원리</a>
@@ -100,39 +100,38 @@
   <!-- ═══════════════════ 0 ═══════════════════ -->
   <h2 id="s0"><span class="n">0</span> 먼저 결정할 것 3개</h2>
 
-  <div class="danger"><b>전제 정정 — "소프트커버=가변 / 하드커버=고정"은 코드와 다르다.</b>
-  무선(<code>perfect</code>)과 양장(<code>hardcover</code>) <b>둘 다 페이지 수에 따라 책등이 변한다</b>. 계산식만 다를 뿐이다
-  (양장은 정수 mm·최소 8mm로 양자화된다). <b>책등을 실제로 고정시키는 유일한 장치는 제본이 아니라
-  템플릿의 <code>conversionMode='flat-spread'</code></b> 다. 즉 "고정 펼침면 커버"는 제본 종류가 아니라
-  <b>표지 원고를 통짜 아트워크로 넣었는가</b>의 문제다.</div>
+  <div class="danger"><b>이름부터 맞춘다.</b>
+  <b>표지펼침면</b> = 앞·책등·뒤가 한 장의 <u>고정 폭</u> 원고. 포토북 하드커버·페브릭·기성.
+  <b>표지3분할</b> = 뒷표지 / 책등 / 앞표지(+날개). 내지 수량에 따라 <u>책등 구역만</u> 가변.
+  제본(무선/양장)이 이 이름을 바꾸지 않는다. “스프레드” 한 단어로 둘을 부르지 않는다.
+  정본: <code>docs/PRINT_TEMPLATE_GLOSSARY.md</code></div>
 
   <div class="tree">
     <div class="node a">
       <div class="q">Q1</div>
       <div class="body">
-        <div class="t">이 상품은 <b>페이지 수가 변하는가?</b></div>
+        <div class="t">표지는 <b>표지펼침면</b>인가, <b>표지3분할</b>인가?</div>
         <div class="d">
-          <b>변한다</b>(<code>canAddPage=true</code>) → 책등도 변해야 한다 → <span class="pill p-vi">갈래 A · 가변</span><br>
-          <b>고정이다</b> → 통짜 아트워크를 써도 안전 → <span class="pill p-ac">갈래 B · 고정</span>
+          <b>표지펼침면</b>(책등 고정, <code>flat-spread</code>) — 통짜 1장. 내지 수가 늘어도 책등 파일을 키우지 않음.<br>
+          <b>표지3분할</b>(책등 가변, <code>full</code> / IDML <code>flat-spine</code>) — 뒷/등/앞. 등 구역만 내지 수를 따름.
         </div>
       </div>
     </div>
     <div class="node">
       <div class="q">Q2</div>
       <div class="body">
-        <div class="t">표지 원고를 <b>어떤 형태로</b> 넣는가? → <code>conversionMode</code></div>
+        <div class="t">내지는 <b>낱장</b>인가, <b>펼침면</b>인가? (상품이 정한다)</div>
         <div class="d">
-          <code>full</code> 벡터(객체별 편집) · <code>flat-spine</code> 아트워크 <b>3분할</b> PNG · <code>flat-spread</code> 전폭 <b>통짜</b> PNG 1장<br>
-          <span class="pill p-bad">주의</span> <code>flat-spread</code> 를 고르면 Q1 이 자동으로 "고정"이 된다 — <b>에러 없이 조용히</b> 책등이 안 변한다.
+          <b>내지낱장</b> = <code>page</code> · 내지 1, 내지 2는 다른 시드 가능.<br>
+          <b>내지펼침면</b> = <code>regionScope:'inner'</code> · 캔버스 1장=좌+우. <b>포토북 전용이 아니다.</b>
         </div>
       </div>
     </div>
     <div class="node b">
       <div class="q">Q3</div>
       <div class="body">
-        <div class="t">내지를 <b>한 면씩</b> 편집하는가, <b>펼친 두 면</b>을 한 캔버스로 편집하는가?</div>
-        <div class="d"><b>단면</b> = <code>TemplateType.PAGE</code>(책·리플렛 기본) / <b>펼침면</b> = <code>SPREAD</code> + <code>regionScope:'inner'</code>(포토북)<br>
-        <span class="pill p-ok">2026-08-03</span> 펼침면 내지 등록·편집·출력 전 구간이 <b>열렸다</b>(§7 참조).</div>
+        <div class="t">기성·페브릭인가? (표지 구조와 별개)</div>
+        <div class="d">소재를 배경으로 깔고 고객 잠금이면 <code>coverEditable=false</code>. 보통 <b>표지펼침면</b>과 짝. 후가공 on/off 는 템플릿셋.</div>
       </div>
     </div>
   </div>
@@ -173,9 +172,10 @@
   화면 가이드가 빡빡해 보여도 실제 여유는 그보다 크다 — 다만 <b>가이드 안쪽에 배치하는 것을 기준</b>으로 삼는 편이 안전하다.</div>
 
   <!-- ═══════════════════ 2 ═══════════════════ -->
-  <h2 id="s2"><span class="n">2</span> 표지 템플릿의 뼈대 — "3장"이 아니라 "1장"</h2>
-  <p>표지는 앞표지·책등·뒤표지를 <b>각각 별도 템플릿으로 만들지 않는다</b>(그 방식은 <code>editorMode='single'</code> 레거시다).
-  <b>펼침면 캔버스 1장</b>을 만들고 내부를 <code>regions</code> 로 분할한다. 영역 순서는 좌→우 고정이다.</p>
+  <h2 id="s2"><span class="n">2</span> 표지는 항상 캔버스 1장 — 안의 구조가 다르다</h2>
+  <p>앞·등·뒤를 <b>템플릿 파일 세 개로 나누지 않는다</b>(<code>type=cover/spine</code> 레거시).
+  <b>캔버스는 하나</b>다. 그 안을 표지펼침면(통짜)으로 둘지, 표지3분할(뒷/등/앞 구역)로 둘지가 갈린다.
+  3분할의 영역 순서는 좌→우 고정이다.</p>
 
   <div class="spread">
     <div class="sp-wing"><span class="lbl">뒷날개</span><span class="mm">back-wing</span></div>
@@ -215,7 +215,7 @@
   <b>표지 한 면 폭·높이·날개</b>이고, 총폭을 손으로 맞추려 애쓸 필요가 없다.</div>
 
   <!-- ═══════════════════ 3 ═══════════════════ -->
-  <h2 id="s3"><span class="n">3</span> 갈래 A — 책등 가변 표지</h2>
+  <h2 id="s3"><span class="n">3</span> 표지3분할 — 책등 가변</h2>
 
   <div class="spread">
     <div class="sp-cover"><span class="lbl">뒤표지</span><span class="mm">폭 불변 · 바깥으로 밀림</span></div>
@@ -255,7 +255,7 @@
   </ul>
 
   <!-- ═══════════════════ 4 ═══════════════════ -->
-  <h2 id="s4"><span class="n">4</span> 갈래 B — 책등 고정 펼침면 표지</h2>
+  <h2 id="s4"><span class="n">4</span> 표지펼침면 — 책등 고정</h2>
 
   <div class="spread">
     <div class="sp-cover"><span class="lbl">뒤표지</span><span class="mm">전폭 통짜 PNG 1장의 일부</span></div>
@@ -391,22 +391,22 @@
   </ul></div>
 
   <!-- ═══════════════════ 7 ═══════════════════ -->
-  <h2 id="s7"><span class="n">7</span> 내지 템플릿 — 단면 vs 펼침면</h2>
+  <h2 id="s7"><span class="n">7</span> 내지 — 내지낱장 vs 내지펼침면</h2>
 
-  <p><b>스위치는 2단이다.</b> ① 세트의 템플릿 목록에 <code>type='spread'</code> 가 하나라도 있으면 <b>펼침면 모드</b>로 편집기가 열린다.
-  ② 그 spread 의 <code>spreadConfig.regionScope</code> 가 <code>'cover'</code>(기본)냐 <code>'inner'</code>냐로 표지 스프레드인지 내지 펼침면인지가 갈린다.</p>
+  <p>내지는 <b>상품이 고른다.</b> 포토북 타입이어야만 펼침면인 것이 아니다.
+  ① <code>type='page'</code> = 내지낱장. ② <code>type='spread'</code> + <code>regionScope:'inner'</code> = 내지펼침면.
+  표지 칸(<code>regionScope:'cover'</code>)과 섞어 부르지 않는다.</p>
 
   <div class="grid cards2">
     <div class="card">
-      <h4>단면 <code>TemplateType.PAGE</code></h4>
-      <div class="d">캔버스 1장 = 인쇄 1페이지. <code>spreadConfig</code> 없음.<br>
-      <b>책·리플렛의 기본.</b> 책등 계산이 이 캔버스 개수를 센다.</div>
+      <h4>내지낱장 <code>TemplateType.PAGE</code></h4>
+      <div class="d">캔버스 1장 = 인쇄 1페이지. 내지 1·내지 2는 다른 시드.<br>
+      일반 책자. 표지3분할의 책등 계산은 이 장 수를 센다.</div>
     </div>
     <div class="card">
-      <h4>펼침면 <code>SPREAD</code> + <code>regionScope:'inner'</code></h4>
-      <div class="d">캔버스 1장 = 좌면+우면 <b>2페이지</b>.<br>
-      <code>spreadConfig.innerSpec</code> 사용(<code>spec</code> 아님).<br>
-      <b>포토북</b>처럼 사진이 가운데를 넘어가는 상품용.</div>
+      <h4>내지펼침면 <code>regionScope:'inner'</code></h4>
+      <div class="d">캔버스 1장 = 좌+우 <b>2페이지</b>. <code>innerSpec</code>.<br>
+      화보·압축앨범·포토북 등 펼침 편집 상품. 디자이너가 상품마다 구성.</div>
     </div>
   </div>
 

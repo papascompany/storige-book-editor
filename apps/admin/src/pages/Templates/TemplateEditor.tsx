@@ -5,7 +5,7 @@ import { Button, message, Modal, Form, Input, Select, InputNumber, Space, Spin, 
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import { useAuthStore } from '../../stores/authStore';
 import { templatesApi } from '../../api/templates';
-import { computeSpreadDimensions, normalizeSpreadSpec } from '@storige/types';
+import { computeSpreadDimensions, normalizeSpreadSpec, type SpreadConversionMode } from '@storige/types';
 import { FormatPresetSelect } from '../../components/FormatPresetSelect';
 import type { FormatPresetApplyPayload } from '../../components/FormatPresetSelect';
 import { workSize } from '../../components/formatPresetHelpers';
@@ -33,16 +33,13 @@ interface TemplateConfig {
   height: number;
 }
 
-// 스프레드 영역 범위 — 'cover'(표지, 기본) / 'inner'(포토북 내지 펼침면 2-up)
+// 칸: 표지 / 내지펼침면. 표지 구조(펼침면 vs 3분할)는 conversionMode.
 type SpreadRegionScope = 'cover' | 'inner';
 
-// 스프레드 최소 설정 타입
-// regionScope==='inner' 면 cover 필드 대신 내지 펼침면 필드(page*/gutter/cut/safe/dpi)를 사용한다.
-// regionScope 미존재/'cover' = 기존 동작(byte-identical).
 interface SpreadMinimalConfig {
-  // regionScope: 미존재 시 'cover'로 폴백(레거시 호환)
   regionScope?: SpreadRegionScope;
-  // --- cover (regionScope==='cover') ---
+  /** 표지 칸일 때. flat-spread=표지펼침면(책등 고정), full=표지3분할(책등 가변) */
+  conversionMode?: SpreadConversionMode;
   coverWidthMm: number;
   coverHeightMm: number;
   wingEnabled: boolean;
@@ -128,6 +125,7 @@ export const TemplateEditor = () => {
             const spec = sc.spec;
             setSpreadConfig({
               regionScope: 'cover',
+              conversionMode: sc.conversionMode === 'flat-spread' ? 'flat-spread' : (sc.conversionMode === 'flat-spine' ? 'flat-spine' : 'full'),
               coverWidthMm: spec.coverWidthMm,
               coverHeightMm: spec.coverHeightMm,
               wingEnabled: spec.wingEnabled ?? (spec.wingWidthMm ?? 0) > 0,
@@ -213,6 +211,7 @@ export const TemplateEditor = () => {
             wingEnabled: spread.wingEnabled,
             wingWidthMm: spread.wingWidthMm,
             initialSpineWidthMm: spread.initialSpineWidthMm,
+            conversionMode: spread.conversionMode === 'flat-spread' ? 'flat-spread' : 'full',
           };
           params.set('spec', JSON.stringify(coverSpec));
         }
@@ -297,6 +296,10 @@ export const TemplateEditor = () => {
         setTemplateConfig(values);
         setConfigModalVisible(false);
         setSpreadConfigModalVisible(true);
+        spreadForm.setFieldsValue({
+          coverStructure:
+            spreadConfig?.conversionMode === 'flat-spread' ? 'fixed-spread' : 'split-variable',
+        });
       } else {
         setTemplateConfig(values);
         setConfigModalVisible(false);
@@ -332,6 +335,7 @@ export const TemplateEditor = () => {
         // 표지(cover): 기존 동작 그대로(byte-identical) — cover 전용 minimal config.
         setSpreadConfig({
           regionScope: 'cover',
+          conversionMode: values.coverStructure === 'fixed-spread' ? 'flat-spread' : 'full',
           coverWidthMm: values.coverWidthMm,
           coverHeightMm: values.coverHeightMm,
           wingEnabled: values.wingEnabled,
@@ -396,14 +400,14 @@ export const TemplateEditor = () => {
             {templateConfig.type === 'spread'
               ? (spreadConfig ? (() => {
                   if (spreadConfig.regionScope === 'inner') {
-                    // 포토북 내지 펼침면(2-up): 펼침면 = 한 면 × 2
                     const pw = spreadConfig.pageWidthMm ?? 210;
                     const ph = spreadConfig.pageHeightMm ?? 297;
-                    return `spread(내지) | ${pw * 2} × ${ph} mm (한 면 ${pw}×${ph})`;
+                    return `내지펼침면 | ${pw * 2} × ${ph} mm (한 면 ${pw}×${ph})`;
                   }
                   const spec = normalizeSpreadSpec(spreadConfig);
                   const dims = computeSpreadDimensions(spec);
-                  return `spread | ${dims.totalWidthMm} × ${dims.totalHeightMm} mm (표지 ${spreadConfig.coverWidthMm}×${spreadConfig.coverHeightMm})`;
+                  const coverKind = spreadConfig.conversionMode === 'flat-spread' ? '표지펼침면' : '표지3분할';
+                  return `${coverKind} | ${dims.totalWidthMm} × ${dims.totalHeightMm} mm (한 면 ${spreadConfig.coverWidthMm}×${spreadConfig.coverHeightMm})`;
                 })() : 'spread | 설정 중...')
               : `${templateConfig.type} | ${templateConfig.width} × ${templateConfig.height} mm`}
           </span>
@@ -586,6 +590,7 @@ export const TemplateEditor = () => {
           layout="vertical"
           initialValues={{
             regionScope: 'cover',
+            coverStructure: 'split-variable',
             coverWidthMm: 210,
             coverHeightMm: 297,
             wingEnabled: true,
@@ -600,11 +605,14 @@ export const TemplateEditor = () => {
             dpi: 150,
           }}
         >
-          {/* 영역 범위 선택 — 'cover'(표지, 기본) / 'inner'(포토북 내지 펼침면) */}
-          <Form.Item name="regionScope" label="스프레드 종류">
+          <Form.Item
+            name="regionScope"
+            label="이 템플릿의 칸"
+            extra="표지인가 내지인가. 책등 고정·가변이 아닙니다."
+          >
             <Radio.Group>
-              <Radio.Button value="cover">표지 (Cover)</Radio.Button>
-              <Radio.Button value="inner">내지 펼침면 (Inner 2-up)</Radio.Button>
+              <Radio.Button value="cover">표지</Radio.Button>
+              <Radio.Button value="inner">내지펼침면</Radio.Button>
             </Radio.Group>
           </Form.Item>
 
@@ -613,6 +621,17 @@ export const TemplateEditor = () => {
             {({ getFieldValue }) =>
               (getFieldValue('regionScope') ?? 'cover') !== 'inner' && (
                 <>
+                  <Divider orientation="left">표지 구조</Divider>
+                  <Form.Item
+                    name="coverStructure"
+                    extra="표지펼침면: 앞·등·뒤가 한 장, 책등 폭 고정(포토북 하드커버·페브릭·기성). 표지3분할: 뒷/등/앞(+날개), 내지 수에 따라 책등 구역만 가변."
+                  >
+                    <Radio.Group>
+                      <Radio.Button value="split-variable">표지3분할 (책등 가변)</Radio.Button>
+                      <Radio.Button value="fixed-spread">표지펼침면 (책등 고정)</Radio.Button>
+                    </Radio.Group>
+                  </Form.Item>
+
                   <Divider orientation="left">표지 크기</Divider>
                   <Space size="middle" style={{ display: 'flex' }}>
                     <Form.Item
@@ -674,29 +693,30 @@ export const TemplateEditor = () => {
                     }
                   </Form.Item>
 
-                  <Divider orientation="left">책등 설정 (선택)</Divider>
-                  <Form.Item
-                    name="initialSpineWidthMm"
-                    label="초기 책등 너비 (mm)"
-                    extra="입력하지 않으면 상품 스펙에서 자동 계산됩니다"
-                  >
-                    <InputNumber min={1} max={100} style={{ width: 150 }} placeholder="자동 계산" />
+                  <Divider orientation="left">책등 폭 (mm)</Divider>
+                  <Form.Item noStyle shouldUpdate={(prev, curr) => prev.coverStructure !== curr.coverStructure}>
+                    {({ getFieldValue: gv }) => {
+                      const fixed = gv('coverStructure') === 'fixed-spread'
+                      return (
+                        <Form.Item
+                          name="initialSpineWidthMm"
+                          extra={
+                            fixed
+                              ? '표지펼침면: 이 값이 책등 폭입니다. 내지 수가 늘어도 변하지 않습니다.'
+                              : '표지3분할: 저작 기준 폭. 고객이 내지를 늘리면 책등 구역만 이 값에서 다시 계산됩니다. 비우면 7.5mm.'
+                          }
+                        >
+                          <InputNumber min={1} max={100} style={{ width: 150 }} placeholder={fixed ? '필수' : '자동(7.5)'} />
+                        </Form.Item>
+                      )
+                    }}
                   </Form.Item>
-
-                  <div style={{ color: '#888', fontSize: 12, marginTop: 16 }}>
-                    <strong>참고:</strong>
-                    <ul style={{ margin: '4px 0', paddingLeft: 20 }}>
-                      <li>스프레드 템플릿은 책모드 전용입니다</li>
-                      <li>표지 크기는 상품 스펙과 일치해야 합니다</li>
-                      <li>책등 너비는 내지 페이지 수에 따라 동적으로 변경됩니다</li>
-                    </ul>
-                  </div>
                 </>
               )
             }
           </Form.Item>
 
-          {/* ── 내지 펼침면(inner 2-up): 포토북 내지 포맷 ── */}
+          {/* 내지펼침면: 상품이 펼침 편집일 때. 포토북 전용이 아님. */}
           <Form.Item noStyle shouldUpdate={(prev, curr) => prev.regionScope !== curr.regionScope}>
             {({ getFieldValue }) =>
               getFieldValue('regionScope') === 'inner' && (

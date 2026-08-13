@@ -208,11 +208,12 @@ export interface PhotobookPricing {
 // ============================================================================
 
 /**
- * 커버 종류 시드 코드 3종 (D-4). ⚠️ **고정 enum 아님** — 커버 종류는 상품 구성에 따라
- * 추가될 수 있으므로 저장/전송은 자유 문자열(varchar) 코드로 하고, 이 상수는 기본 시드일 뿐이다.
- * - 'hardcover_wrap'            : 하드커버(싸바리) — caseBind geometry 로 출력 사이즈 확장
- * - 'softcover_variable_spine'  : 책등가변 일반커버(소프트커버) — 현행 SpreadSpec 경로
- * - 'ready_made'                : 기성커버 — coverEditable=false + coverPreviewImage 경로
+ * 커버 SKU 시드 코드 3종 (D-4). ⚠️ **템플릿 기하가 아니다** — 표지펼침면/표지3분할은 conversionMode.
+ * 저장/전송은 자유 문자열. 이 상수는 시드일 뿐이다.
+ * - 'hardcover_wrap'            : 싸바리 출력 여분(caseBind). 화면 레이아웃과 무관
+ * - 'softcover_variable_spine'  : 무선 등 페이지 가변 SKU 라벨(표지3분할과 자주 짝)
+ * - 'ready_made'                : 기성·페브릭 SKU. 보통 표지펼침면 + coverEditable=false
+ * 한글 정본: docs/PRINT_TEMPLATE_GLOSSARY.md
  */
 export const COVER_TYPE_SEED_CODES = [
   'hardcover_wrap',
@@ -2030,13 +2031,10 @@ export interface SpreadLayout {
  * 스프레드 설정 (저장용)
  */
 /**
- * 템플릿 변환 모드 (IDML 가져오기 유형 3종)
- * - 'full'        : 벡터 변환 — 모든 객체 개별 편집 가능 (현행 vector 모드. 미존재 시 기본값)
- * - 'flat-spread' : 전폭 300dpi PNG 1장(id='idml-artwork') + 텍스트 오버레이.
- *                   책등 고정 — 편집기에서 책등 가변(resizeSpine) 차단 대상.
- * - 'flat-spine'  : 아트워크 3분할 PNG(spine/back/front-artwork) + 텍스트 오버레이.
- *                   spine PNG 는 책등 중심 3배폭(canvas anchor, scene x=0), back/front 는 region anchor
- *                   → 책등 가변 허용(대칭 레이아웃 전제: spine 중심 불변, back/front 는 region 추종).
+ * 표지 구조(+ IDML 변환). 한글 정본: 표지펼침면 / 표지3분할 (docs/PRINT_TEMPLATE_GLOSSARY.md).
+ * - 'full'        : **표지3분할** 벡터. 뒷/등/앞(+날개) 구역. 내지 수에 따라 책등 구역만 가변.
+ * - 'flat-spread' : **표지펼침면**. 전폭 아트 1장. 책등 폭 고정(resizeSpine 차단).
+ * - 'flat-spine'  : **표지3분할** 래스터. 뒤/등/앞 PNG 3장. 등 PNG만 폭 추종. IDML 전용.
  */
 export type SpreadConversionMode = 'full' | 'flat-spread' | 'flat-spine';
 
@@ -2059,14 +2057,14 @@ export interface SpreadConfig {
   regions: SpreadRegion[];
   totalWidthMm: number;
   totalHeightMm: number;
-  /** IDML 가져오기 변환 모드. JSON 필드라 마이그레이션 불필요. 미존재 시 'full' 간주. */
+  /** 표지 구조. 미존재 시 'full'(표지3분할). 표지펼침면은 'flat-spread'. */
   conversionMode?: SpreadConversionMode;
   /**
-   * 포토북(O-2): 이 스프레드가 표지인지 내지(2-up 펼침면)인지. 미존재 시 'cover'(기존 호환).
-   * 'inner' 면 spec 대신 innerSpec 으로 좌/우 면 레이아웃을 계산한다(computeInnerSpreadLayout).
+   * 칸: 표지('cover') / 내지펼침면('inner'). 미존재 시 'cover'.
+   * 책등 고정·가변이 아니다. 내지펼침면은 포토북 전용이 아니다.
    */
   regionScope?: 'cover' | 'inner';
-  /** 포토북 내지 펼침면(2-up) 스펙. regionScope==='inner' 일 때 사용. */
+  /** 내지펼침면 한 면+거터. regionScope==='inner' 일 때. */
   innerSpec?: SpreadInnerSpec;
 }
 

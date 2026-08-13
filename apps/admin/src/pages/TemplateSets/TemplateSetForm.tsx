@@ -127,18 +127,16 @@ const serverErrorText = (e: unknown): string | null => {
   return null;
 };
 
-/**
- * 스프레드 템플릿의 용도 태그 — 표지 펼침면 vs 내지 펼침면(2-up).
- * 종전에는 둘 다 '스프레드' 하나로만 표기돼 운영자가 목록에서 구분할 수 없었다(2026-08-03).
- * spread 가 아니면 null.
- */
+/** 칸+표지 구조. 정본: docs/PRINT_TEMPLATE_GLOSSARY.md */
 const spreadScopeTag = (t?: Pick<Template, 'type' | 'spreadConfig'> | null) => {
   if (!t || t.type !== TemplateType.SPREAD) return null;
-  return t.spreadConfig?.regionScope === 'inner' ? (
-    <Tag color="geekblue">내지 펼침면</Tag>
-  ) : (
-    <Tag color="green">표지 펼침면</Tag>
-  );
+  if (t.spreadConfig?.regionScope === 'inner') {
+    return <Tag color="geekblue">내지펼침면</Tag>;
+  }
+  if (t.spreadConfig?.conversionMode === 'flat-spread') {
+    return <Tag color="cyan">표지펼침면</Tag>;
+  }
+  return <Tag color="green">표지3분할</Tag>;
 };
 
 // 치수 정합 배지 정보 — TemplateSetForm 에서 판형(width/height/bleedMm) 기준으로 계산해 주입.
@@ -777,7 +775,7 @@ export const TemplateSetForm = () => {
                         options={[
                           { label: '책자 (날개+표지+책등+내지)', value: TemplateSetType.BOOK },
                           { label: '리플렛 (표지+내지)', value: TemplateSetType.LEAFLET },
-                          { label: '포토북 (펼침면 표지/내지·사진틀)', value: TemplateSetType.PHOTOBOOK },
+                          { label: '포토북 (분류 라벨 · 내지 단위는 템플릿이 정함)', value: TemplateSetType.PHOTOBOOK },
                         ]}
                         onChange={(value) => {
                           // 포토북은 스프레드(펼침면) 편집이므로 책모드를 강제 파생.
@@ -796,7 +794,7 @@ export const TemplateSetForm = () => {
                       name="editorMode"
                       label="에디터 모드"
                       rules={[{ required: true, message: '에디터 모드를 선택하세요' }]}
-                      extra="책모드는 스프레드 템플릿을 사용하며, 단일모드는 기존 방식입니다"
+                      extra="레거시 스위치. 표지펼침면·표지3분할·내지펼침면은 템플릿의 칸/구조로 정합니다."
                     >
                       <Radio.Group>
                         <Radio value={EditorMode.SINGLE}>단일모드 (개별 페이지 편집)</Radio>
@@ -1408,8 +1406,8 @@ export const TemplateSetForm = () => {
                             return (
                               <Alert
                                 type="info"
-                                message="내지 펼침면(2-up) 세트입니다"
-                                description="실제 펼침면 수는 페이지 범위(물리 페이지 ÷ 2, 올림)로 결정됩니다. 연결한 내지(PAGE) 템플릿의 캔버스는 편집기에서 사용되지 않으며, 현재 서버 규칙상 최소 1개가 형식적으로 필요합니다."
+                                message="내지펼침면 세트입니다"
+                                description="펼침면 수는 페이지 범위 ÷ 2. 내지낱장(PAGE)은 지금 서버 규칙상 형식 1개가 필요합니다. 표지3분할/표지펼침면과 한 세트에 같이 넣는 조립은 별도 갭입니다."
                                 style={{ marginBottom: 16 }}
                               />
                             );

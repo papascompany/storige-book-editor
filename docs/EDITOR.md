@@ -414,7 +414,7 @@ URL 파라미터 없이 `/` 진입 시 자동 로드되는 샘플:
 
 ---
 
-## §13 인쇄 워크플로우 v1 — 면지 / PDF 첨부 / 게스트 / 레더커버 / 마이페이지 (2026-05-19)
+## §13 인쇄 워크플로우 v1 — 면지 / PDF 첨부 / 게스트 / 기성·페브릭 표지 / 마이페이지 (2026-05-19)
 
 > 자세한 외부 통합 사양: [`docs/PHP_NOTICE_2026-05-19_pdf_attach_endpapers.md`](./PHP_NOTICE_2026-05-19_pdf_attach_endpapers.md)
 > 운영 계획서: `Bookmoa_platform_Plan.md` (Phase 4·5·6 단일 진실)

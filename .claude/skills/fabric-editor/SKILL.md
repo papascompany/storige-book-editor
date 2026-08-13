@@ -365,7 +365,8 @@ pnpm --filter @storige/editor test         # vitest unit
 ### 면지 / 표지 / 레더커버 메타
 
 - `TemplateSet.endpaperConfig: { frontCount, backCount, frontEditable, backEditable } | null`
-- `TemplateSet.coverEditable: boolean` (기본 true. 레더커버 = false)
+- `TemplateSet.coverEditable: boolean` (기본 true. false = 기성·페브릭 소재 잠금)
+- 한글 정본: `docs/PRINT_TEMPLATE_GLOSSARY.md` — **표지펼침면**=책등 고정, **표지3분할**=책등 가변, **내지펼침면**=상품이 고름. `type=spread` 는 칸이 여러 면인 캔버스일 뿐.
 - `TemplateSet.coverPreviewImage: string | null` (coverEditable=false 일 때만 의미)
 - `TemplateType.ENDPAPER = 'endpaper'`
 

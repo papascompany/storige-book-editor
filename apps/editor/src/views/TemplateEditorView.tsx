@@ -84,6 +84,10 @@ export default function TemplateEditorView() {
         }
         innerSpecRef.current = is
       } else {
+        const mode = parsed?.conversionMode
+        if (mode === 'full' || mode === 'flat-spread' || mode === 'flat-spine') {
+          existingConversionModeRef.current = mode
+        }
         const normalized = normalizeSpreadSpec(parsed)
         // Validate finite + positive
         if (normalized.coverWidthMm <= 0 || normalized.coverHeightMm <= 0) {
@@ -235,6 +239,9 @@ export default function TemplateEditorView() {
             regions: spreadLayoutRef.current.regions,
             totalWidthMm: dims.totalWidthMm,
             totalHeightMm: dims.totalHeightMm,
+            ...(existingConversionModeRef.current
+              ? { conversionMode: existingConversionModeRef.current }
+              : {}),
           })
         }
 
@@ -290,8 +297,10 @@ export default function TemplateEditorView() {
           try {
             const template = await templatesApi.getTemplate(templateId)
             setTemplateName(template.name)
-            // 기존 conversionMode 보관 (저장 시 병합 보존)
-            existingConversionModeRef.current = template.spreadConfig?.conversionMode
+            // URL spec 에 표지 구조가 있으면 그걸 우선(Admin 에서 펼침면/3분할을 바꾼 경우).
+            if (existingConversionModeRef.current === undefined) {
+              existingConversionModeRef.current = template.spreadConfig?.conversionMode
+            }
 
             // 캔버스에 템플릿 데이터 로드
             const servicePlugin = newEditor?.getPlugin('ServicePlugin') as ServicePlugin
