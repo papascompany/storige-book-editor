@@ -55,10 +55,13 @@ curl -s https://api.papascompany.co.kr/api/health | python3 -m json.tool | head 
   - 결과 ②`applyContentPdfGuides` 의 `contentPdfEditable` 조회가 401 → catch 폴백으로 **항상 '편집 허용'** = 잠금 설정 무력화.
   - 조치: 두 곳 모두 공개 라우트 `GET /template-sets/:id/with-templates`(@Public)로 교체. 편집기 내 JWT 전용 호출자는 이제 0건(grep 확인).
 
-## 1-A. W3 (G7) — compose-mixed 세션 자동 조립 + 문서 정정 **(코드 완료·미배포)**
+## 1-A. W3 (G7) — compose-mixed 세션 자동 조립 + 문서 정정 **(프로덕션 LIVE)**
 
-> 서브에이전트 오케스트레이션 3라운드(정찰 6 → 문서정정 6 → 구현 7 → 마무리 7 = 26에이전트).
-> **API 는 VPS 수동 배포라 아직 프로덕션 미반영** — 배포는 오너 승인 게이트.
+> 서브에이전트 오케스트레이션 4라운드(정찰 6 → 문서정정 6 → 구현 7 → 마무리 7 = 26에이전트).
+> 커밋 `be2b5dc`(고아정리) + `defaf9a`(W3) → VPS 수동 배포 완료(2026-08-13 15:42 KST,
+> `docker compose up -d --build api` + `docker compose restart nginx`). health 200·502 없음.
+> **프로덕션 실측 스모크**: 빈 입력 → `400 EMPTY_COMPOSE_INPUT` / 자동조립 무인증 → `404 SESSION_NOT_FOUND`
+> (둘 다 잡 미생성 확인 — 최근 10분 worker_jobs 0행). 부팅 로그 오류 0.
 
 ### 1-A-1. 정찰이 뒤집은 전제 + 프로덕션 실측
 - G7 의 정체 = **문서 결함이 주, 미구현 기능이 부**. 워커는 **무변경**으로 성립(서버가 기존 큐 키를 채움).
