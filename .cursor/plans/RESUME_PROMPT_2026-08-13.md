@@ -1,4 +1,4 @@
-# RESUME PROMPT — 2026-08-13 (세션 정본 · 내지 PDF 편집기 트랙 W1 완료)
+# RESUME PROMPT — 2026-08-13 (세션 정본 · 내지 PDF 편집기 트랙 W1 + W3 완료·LIVE)
 
 > **이 문서가 최신 날짜 정본이다.** 직전 정본 `RESUME_PROMPT_2026-08-11.md`(트랙 개시·갭 목록 G1~G9)는
 > 여전히 유효한 배경 문서 — §2-1(재구현 금지 목록)·§2-2(갭 표)는 그대로 참조한다.
@@ -15,7 +15,7 @@ ssh-add -l | head -1          # 비면: ssh-add ~/.ssh/id_ed25519
 curl -s https://api.papascompany.co.kr/api/health | python3 -m json.tool | head -8
 ```
 - `CLAUDE.local.md`(gitignored) 먼저 — SSH/Vercel/키/레시피 실값.
-- 로컬 테스트: `PATH="/opt/homebrew/opt/node@22/bin:$PATH"`. 기준선 editor **619**(596+W1 23) · canvas-core 615 · worker 570 · api 930.
+- 로컬 테스트: `PATH="/opt/homebrew/opt/node@22/bin:$PATH"`. 기준선 editor **619**(596+W1 23) · canvas-core 615 · worker 570 · api **993**(930+W3 63).
 - ⚠️ 워커 배포 후 `docker exec storige-worker grep -c <신규문자열> dist/...` 역검증(캐시 함정). api 재배포 시 nginx 재시작.
 
 ## 1. 이 세션에서 한 일 — W1 (G1·G2·G3·G5) **프로덕션 LIVE**
@@ -101,9 +101,12 @@ curl -s https://api.papascompany.co.kr/api/health | python3 -m json.tool | head 
    `/embed` 는 세션이 있어야 첨부가 뜨므로 실주문(또는 재편집 `sessionId`) 경로로 확인할 것.
    롤백이 필요하면 `vercel promote <직전 Ready URL>`(직전 Production = 3h 전 Canceled 이므로
    `vercel list storige-editor` 에서 마지막 Ready 를 찾아 promote).
-2. **W3 (G7)** — `compose-mixed` 가 `editSessionId` 만으로 자동 조립되게 additive 확장 + 통합가이드 curl 예시 정정(현재 예시 그대로 쓰면 빈 산출).
-3. **W4** — G8(레더커버 배선·면지 — 임베드 배너는 W1 에서 의도적으로 보류) → G4(페이지 재정렬 UI) → G9(반복 규칙).
-4. 배포 후 실기 1회: 실제 내지 PDF 첨부 → 즉시 앉히기·페이지 확장·인쇄 산출(원본 PDF) 확인.
+2. **고아정리 cron 1회 관찰** — 새벽 03:00 KST 이후 `docker logs storige-api | grep -i orphan` 으로
+   새 SQL(JSON_SEARCH 최초 사용) 실행 오류 없음 + 후보 표본 확인. `FILE_ORPHAN_DRY_RUN` 미설정 = **dry-run ON**
+   이라 삭제는 일어나지 않는다(실측). 오류 시 Sentry `alert.type=orphan-query-failed` 로도 뜬다.
+3. **파트너 안내** — 통합가이드 §3.4/§3.4.1 갱신분(빈 입력 400 승격·결과 회수 경로 정정·자동조립 신설)을
+   bookmoa-mobile·100p Books·MD2Books 에 릴레이. **빈 입력 400 은 관측 가능한 동작 변화**다(호출 이력 0건이라 실파손은 없음).
+4. **W4** — G8(레더커버 배선·면지 — 임베드 배너는 W1 에서 의도적으로 보류) → G4(페이지 재정렬 UI) → G9(반복 규칙).
 
 ## 3. 함정 색인 (신설분만 — 08-11 §3 는 계속 유효)
 
