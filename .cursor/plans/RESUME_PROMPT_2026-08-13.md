@@ -151,7 +151,7 @@ curl -s https://api.papascompany.co.kr/api/health | python3 -m json.tool | head 
    통합가이드 §3.4/§3.4.1 갱신분(빈 입력 400 승격·결과 회수 경로 정정·자동조립 신설)을
    bookmoa-mobile·100p Books·MD2Books 에 릴레이. **빈 입력 400 은 관측 가능한 동작 변화**다(호출 이력 0건이라 실파손은 없음).
 5. **G8 라이브 실기 1회** — 페브릭 템플릿셋(`coverEditable=false` + finishing 일부 ON)을 Admin 저장 → 고객 표지에서 소재 배경 잠금·후가공 칩 노출·내지 배경 메뉴 유지. 인쇄는 화면 후가공 미반영(B1).
-6. **W4 잔여 = G9(반복 규칙)**. 후가공 별색 분판은 G8 후속(B1).
+6. **W4 잔여 = G9(반복 규칙)** + **시드 n장·교체 풀** (용어 정본 `PRINT_TEMPLATE_GLOSSARY.md` §시드/교체). 후가공 별색 분판은 G8 후속(B1).
 
 ## 3. 함정 색인 (신설분만 — 08-11 §3 는 계속 유효)
 
