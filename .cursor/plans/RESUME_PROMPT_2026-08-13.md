@@ -18,7 +18,12 @@ curl -s https://api.papascompany.co.kr/api/health | python3 -m json.tool | head 
 - 로컬 테스트: `PATH="/opt/homebrew/opt/node@22/bin:$PATH"`. 기준선 editor **619**(596+W1 23) · canvas-core 615 · worker 570 · api 930.
 - ⚠️ 워커 배포 후 `docker exec storige-worker grep -c <신규문자열> dist/...` 역검증(캐시 함정). api 재배포 시 nginx 재시작.
 
-## 1. 이 세션에서 한 일 — W1 (G1·G2·G3·G5) 코드 완료, **미커밋**
+## 1. 이 세션에서 한 일 — W1 (G1·G2·G3·G5) **프로덕션 LIVE**
+
+> 커밋 `50ffeef` → master push → Vercel `storige-editor` Production **Ready(44s)** →
+> 라이브 실기 확인: `editor.papascompany.co.kr/?templateSetId=sample-8x8-book-24p` 에서
+> "📎 내지 PDF 첨부" 렌더 + 게스트 세션 발급 + 모달 신규 카피 노출(=신 번들 확인).
+> api/worker 무변경 → VPS 배포 불필요.
 
 ### 1-1. 오너 결정 (2026-08-13)
 | 결정 | 값 |
@@ -52,7 +57,10 @@ curl -s https://api.papascompany.co.kr/api/health | python3 -m json.tool | head 
 
 ## 2. 다음 타순
 
-1. **배포 결정(오너)** — 현재 **미커밋**. master push = editor Vercel **자동 프로덕션 배포**(= 파트너 임베드에 첨부 버튼 노출 시작). 커밋/푸시 승인 필요.
+1. **실주문 실기 1회** — 실제 내지 PDF 첨부 → 즉시 앉히기·페이지 확장·최종 산출(원본 PDF) 육안 확인.
+   `/embed` 는 세션이 있어야 첨부가 뜨므로 실주문(또는 재편집 `sessionId`) 경로로 확인할 것.
+   롤백이 필요하면 `vercel promote <직전 Ready URL>`(직전 Production = 3h 전 Canceled 이므로
+   `vercel list storige-editor` 에서 마지막 Ready 를 찾아 promote).
 2. **W3 (G7)** — `compose-mixed` 가 `editSessionId` 만으로 자동 조립되게 additive 확장 + 통합가이드 curl 예시 정정(현재 예시 그대로 쓰면 빈 산출).
 3. **W4** — G8(레더커버 배선·면지 — 임베드 배너는 W1 에서 의도적으로 보류) → G4(페이지 재정렬 UI) → G9(반복 규칙).
 4. 배포 후 실기 1회: 실제 내지 PDF 첨부 → 즉시 앉히기·페이지 확장·인쇄 산출(원본 PDF) 확인.
