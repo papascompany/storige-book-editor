@@ -5,7 +5,8 @@ import { useAppStore } from '@/stores/useAppStore'
 import { useEditorStore } from '@/stores/useEditorStore'
 import { useImageStore } from '@/stores/useImageStore'
 import { rebindFrameInteractivity } from '@/utils/frameInteractive'
-import { applyObjectPermissions } from '@/utils/objectPermissions'
+import { applyObjectPermissions, applyCoverMaterialLock, isCoverPageCanvas } from '@/utils/objectPermissions'
+import { resolveCoverFinishing } from '@storige/types'
 import { trackRequiredEdits } from '@/utils/requiredEditGate'
 import {
   useSettingsStore,
@@ -40,6 +41,13 @@ import type {
 import type { fabric } from 'fabric'
 import type { EditorMode, SpreadConfig, EditPage, SpreadInnerSpec } from '@storige/types'
 import { TemplateType } from '@storige/types'
+
+function applyCustomerLocks(canvas: fabric.Canvas | null | undefined): void {
+  const { currentSettings, coverMaterialLocked } = useSettingsStore.getState()
+  applyObjectPermissions(canvas, currentSettings.editMode)
+  const isCover = isCoverPageCanvas(canvas, useAppStore.getState().allCanvas)
+  applyCoverMaterialLock(canvas, coverMaterialLocked && isCover, currentSettings.editMode)
+}
 
 // Fabric.js Object 확장 타입 (canvas-core에서 사용하는 커스텀 속성 포함)
 interface ExtendedFabricObject extends fabric.Object {
@@ -200,6 +208,7 @@ export function useEditorContents(): UseEditorContentsReturn {
     setEditorTemplates,
     setEnabledMenus,
     setPrintMarkConfig,
+    setCoverFinishing,
   } = useSettingsStore(
     useShallow((state) => ({
       setupProductBased: state.setupProductBased,
@@ -208,6 +217,7 @@ export function useEditorContents(): UseEditorContentsReturn {
       setEditorTemplates: state.setEditorTemplates,
       setEnabledMenus: state.setEnabledMenus,
       setPrintMarkConfig: state.setPrintMarkConfig,
+      setCoverFinishing: state.setCoverFinishing,
     }))
   )
 
@@ -438,7 +448,7 @@ export function useEditorContents(): UseEditorContentsReturn {
 
                 // Part B: 고객(비 editMode) 진입 시 객체별 이동/변형 잠금 적용
                 // (관리자가 movable=false 로 지정한 객체를 lockMovement/Scaling/Rotation 으로 강제).
-                applyObjectPermissions(cvs, useSettingsStore.getState().currentSettings.editMode)
+                applyCustomerLocks(cvs)
                 // L7: 필수 편집 touched 추적 부착(멱등) — 로드 완료 지점.
                 trackRequiredEdits(cvs)
 
@@ -753,9 +763,8 @@ export function useEditorContents(): UseEditorContentsReturn {
       // Part B: SVG 템플릿 경로도 고객 진입 시 객체별 이동/변형 잠금 적용
       // (loadCanvasData(JSON) 경로와 정합 — setupTemplateContent/loadProductBasedEditor 가 이 경로를 탐).
       {
-        const editModeNow = useSettingsStore.getState().currentSettings.editMode
         for (const c of allCanvas) {
-          applyObjectPermissions(c, editModeNow)
+          applyCustomerLocks(c)
           trackRequiredEdits(c) // L7: 필수 편집 touched 추적(멱등)
         }
       }
@@ -904,6 +913,7 @@ export function useEditorContents(): UseEditorContentsReturn {
 
     try {
       editor?.emit('longTask:start', { message: '빈 에디터를 준비하는 중...' })
+      setCoverFinishing(false, [])
 
       await setupEmptyEditorStore(config)
       await initWorkspace()
@@ -915,7 +925,7 @@ export function useEditorContents(): UseEditorContentsReturn {
     } finally {
       editor?.emit('longTask:end')
     }
-  }, [editor, setupEmptyEditorStore, initWorkspace])
+  }, [editor, setupEmptyEditorStore, initWorkspace, setCoverFinishing])
 
   const loadGeneralEditor = useCallback(async (config?: GeneralSetupConfig): Promise<void> => {
     console.log('[EditorContents] Loading general editor', config)
@@ -956,9 +966,15 @@ export function useEditorContents(): UseEditorContentsReturn {
       // null/undefined = 모두 노출(legacy/기본). 배열이면 그 키만 ToolBar 에 노출.
       // ToolBar 가 useSettingsStore.enabledMenus 를 구독해 자동 필터링.
       const templateSetEnabledMenus = (templateSet as any).enabledMenus
-      setEnabledMenus(
-        Array.isArray(templateSetEnabledMenus) ? templateSetEnabledMenus : null
+      const finishing = resolveCoverFinishing(
+        (templateSet as { coverEditable?: boolean }).coverEditable,
+        (templateSet as { coverConfig?: { finishing?: { emboss?: boolean; gold?: boolean; silver?: boolean } } })
+          .coverConfig?.finishing,
       )
+      setCoverFinishing(finishing.materialLocked, finishing.allowed)
+      const menus = Array.isArray(templateSetEnabledMenus) ? templateSetEnabledMenus : null
+      // 배경 메뉴는 표지 페이지에서만 ToolBar 가 감산한다. 내지 배경은 유지.
+      setEnabledMenus(menus)
 
       // P3 (2026-06-10): 작업사이즈(재단+블리드)/재단마커 PDF 출력 설정 운반.
       // templateSet 의 bleedMm/cropMarkEnabled 컬럼(API JSON)을 settings store 로 옮겨둔다.
@@ -1772,10 +1788,7 @@ export function useEditorContents(): UseEditorContentsReturn {
                 servicePlugin.loadJSON(dataToLoad, () => {
                   console.log(`[EditorContents:Spread] loadJSON completed for inner page ${newPageIndex}`)
                   // Part B: 스프레드 내지 페이지도 고객 진입 시 객체별 이동/변형 잠금 적용.
-                  applyObjectPermissions(
-                    latestAllCanvas[newPageIndex],
-                    useSettingsStore.getState().currentSettings.editMode
-                  )
+                  applyCustomerLocks(latestAllCanvas[newPageIndex])
                   trackRequiredEdits(latestAllCanvas[newPageIndex]) // L7(멱등)
                   clearTimeout(guardTimer)
                   settle()
@@ -1872,7 +1885,7 @@ export function useEditorContents(): UseEditorContentsReturn {
 
       console.log('[EditorContents:Spread] Spread mode editor loaded successfully')
     }
-  }, [editor, setupEmptyEditorStore, setEditorTemplates, initWorkspace, loadCanvasData])
+  }, [editor, setupEmptyEditorStore, setEditorTemplates, initWorkspace, loadCanvasData, setCoverFinishing, setEnabledMenus, setPrintMarkConfig])
 
   /**
    * 템플릿 콘텐츠 설정

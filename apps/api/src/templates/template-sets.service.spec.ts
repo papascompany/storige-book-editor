@@ -202,6 +202,28 @@ describe('TemplateSetsService', () => {
       );
     });
 
+    it('coverConfig.finishing 을 생성 시 영속 매핑한다 (G8)', async () => {
+      const createDto = {
+        name: 'Fabric Cover Set',
+        type: TemplateSetType.BOOK,
+        width: 210,
+        height: 297,
+        coverEditable: false,
+        coverConfig: {
+          finishing: { emboss: true, gold: false, silver: true },
+        },
+      };
+
+      await service.create(createDto as any);
+
+      expect(templateSetRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          coverEditable: false,
+          coverConfig: { finishing: { emboss: true, gold: false, silver: true } },
+        }),
+      );
+    });
+
     it('coverType 미지정(기존 페이로드)은 null 로 저장 — 기존 셋 동작 비파괴 (D-4)', async () => {
       const createDto = {
         name: 'Legacy Set',

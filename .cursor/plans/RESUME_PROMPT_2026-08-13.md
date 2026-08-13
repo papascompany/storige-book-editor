@@ -95,6 +95,22 @@ curl -s https://api.papascompany.co.kr/api/health | python3 -m json.tool | head 
 - 삭제 안전성: 추가 항이 전부 `NOT EXISTS(...)` 내부 OR 체인 = **덜 지우는 방향**(메인 세션 직접 확인). 뮤테이션 테스트로 회귀 검출력도 실증.
 - ⚠️ **미검증**: 실 DB 에서 새 SQL(JSON_SEARCH 최초 사용) 실행 경로. 배포 후 `FILE_ORPHAN_DRY_RUN=1` 상태로 cron 1회 로그 확인 필요.
 
+## 1-D. G8 페브릭·기성 표지 (B1~B4) — 구현 완료 · 배포 대기
+
+오너 2026-08-13 결정:
+| 결정 | 값 |
+|---|---|
+| B1 후가공 인쇄 | **화면 표시만**. 별색/분판은 후속 |
+| B2 은박 | 금박 경로 실버 팔레트 복제 (`#C0C8D4`) |
+| B3 컷팅 | 페브릭 표지 UI 숨김 |
+| B4 `coverEditable=false` | 소재 배경 잠금 + 후가공. `LeatherCoverPreview` 캔버스 대체 **금지** |
+
+- `coverConfig.finishing` JSON (emboss/gold/silver). Admin 저장은 `buildTemplateSetCoverConfig` 로 caseBind 와 병합.
+- 고객: 표지(캔버스 0) 배경만 잠금. 배경 메뉴도 표지에서만 숨김. `SpecialEffect` 형압·금·은.
+- 워커/인쇄 경로 무변경(빈 표지 PDF 유지).
+- 검증: types+canvas-core build · editor `tsc -b` 0err · coverFinishing 7 + objectPermissions 22 + workflow 9 · api DTO+service finishing 통과.
+- ⚠️ Admin 이 finishing 을 저장하려면 API 를 같이 배포해야 한다(`forbidNonWhitelisted`).
+
 ## 1-C. 주문 내지 PDF UX (2026-08-13 실기)
 
 콘솔 403 `시스템 공유 리소스…` + 내지가 표지처럼 분할 + 주문 PDF 가 자동 앉지 않음.
@@ -128,7 +144,8 @@ curl -s https://api.papascompany.co.kr/api/health | python3 -m json.tool | head 
 4. **파트너 안내** — 공지문 `docs/PARTNER_NOTICE_2026-08-13_compose_mixed.md` 작성 완료. 발송은 오너 판단.
    통합가이드 §3.4/§3.4.1 갱신분(빈 입력 400 승격·결과 회수 경로 정정·자동조립 신설)을
    bookmoa-mobile·100p Books·MD2Books 에 릴레이. **빈 입력 400 은 관측 가능한 동작 변화**다(호출 이력 0건이라 실파손은 없음).
-5. **W4 잔여 = G9(반복 규칙)**. G8(레더커버·면지)은 착수 보류 — 프로덕션에 해당 상품 0건.
+5. **G8 라이브 실기 1회** — 페브릭 템플릿셋(`coverEditable=false` + finishing 일부 ON)을 Admin 저장 → 고객 표지에서 소재 배경 잠금·후가공 칩 노출·내지 배경 메뉴 유지. 인쇄는 화면 후가공 미반영(B1).
+6. **W4 잔여 = G9(반복 규칙)**. 후가공 별색 분판은 G8 후속(B1).
 
 ## 3. 함정 색인 (신설분만 — 08-11 §3 는 계속 유효)
 
@@ -137,6 +154,9 @@ curl -s https://api.papascompany.co.kr/api/health | python3 -m json.tool | head 
 - **페이지 재정렬은 `reorderByIndex` + `syncCanvasContainerOrder`**: 배열만 바꾸면 `setPage` 가 다른 페이지를 보여 준다. 표지(캔버스 0)는 고정.
 - **즉시 확장 페이지는 빈 페이지**(재로드는 마지막 내지 템플릿 복제) — underlay 는 원본 PDF 인쇄라 인쇄 영향 0. 설계상 수용, 문서화됨(EDITOR.md §13.2-A).
 - **첨부 진입점 노출 조건**: book 모드 + **세션 존재**(재편집 `sessionId` 또는 신규 `orderSeqno`+`mode`). 세션 없는 진입(`templateSetId` 만)에서는 안 뜬다 — 파트너가 "안 보인다" 하면 여기부터 확인.
+- **페브릭 잠금은 캔버스 0만**: 내지 배경을 잠그면 포토북 내지가 깨진다. BACKGROUND 메뉴 감산도 표지 페이지 한정.
+- **`coverConfig.finishing` 저장은 API DTO 필요**: 전역 `forbidNonWhitelisted`. Admin 만 먼저 올리면 저장 400.
+- **`LeatherCoverPreview` 로 캔버스 대체 금지** (G8 B4).
 - dev 서버 실기 시 캔버스가 백지로 보이는 현상은 **기존 환경 이슈**(stash 로 베이스라인에서도 재현 — canvas0 0×0). 내 변경과 무관.
 
 ## 4. 정본 포인터
@@ -146,5 +166,6 @@ curl -s https://api.papascompany.co.kr/api/health | python3 -m json.tool | head 
 | 트랙 배경·갭 표(G1~G9) | `RESUME_PROMPT_2026-08-11.md` §2 |
 | 앉히기 계약·첨부 진입점 | `docs/EDITOR.md` §13.2 / §13.2-A |
 | 파트너 계약(파라미터·이벤트) | `docs/PLATFORM_INTEGRATION_GUIDE.md` |
+| 표지·낱장 UX 감사 + 오너 지시 | `docs/COVER_TEMPLATE_UX_AUDIT_2026-08-13.html` |
 | 업계표준 트랙(R1~R10) | `EDITOR_PDF_STANDARD_AUDIT_2026-08-09.md` |
 | 운영 실값 | `CLAUDE.local.md`(gitignored) |

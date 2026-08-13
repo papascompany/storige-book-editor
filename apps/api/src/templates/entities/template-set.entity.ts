@@ -154,15 +154,17 @@ export class TemplateSet {
   } | null;
 
   /**
-   * 표지 편집 가능 여부 — Phase 2.
-   * 기본 true (일반 책 표지). 레더 커버 / 화보집은 false.
+   * 표지 편집 가능 여부.
+   * true: 일반 표지 편집.
+   * false (2026-08-13 재정의): 페브릭·기성 — 소재 배경 잠금 + 후가공만.
+   * 캔버스를 미리보기 이미지로 대체하지 않는다.
    */
   @Column({ name: 'cover_editable', type: 'boolean', default: true })
   coverEditable: boolean;
 
   /**
-   * 레더 커버 / 화보집용 표지 미리보기 이미지 storage URL — Phase 2.
-   * 결정 3-5: 별도 필드. `coverEditable=false` 일 때만 의미 있음.
+   * 관리자 목록 썸네일용 표지 미리보기 URL.
+   * `coverEditable=false` 일 때만 의미 있음. 고객 캔버스를 대체하지 않는다.
    */
   @Column({ name: 'cover_preview_image', type: 'varchar', length: 500, nullable: true })
   coverPreviewImage: string | null;

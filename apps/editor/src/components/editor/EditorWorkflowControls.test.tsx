@@ -134,6 +134,7 @@ describe('EditorWorkflowControls — 임베드(명시 세션) 마운트', () => 
 
     await screen.findByRole('button', { name: /내지 PDF 첨부/ })
     expect(screen.queryByText(/레더 커버/)).toBeNull()
+    expect(screen.queryByText(/페브릭/)).toBeNull()
     expect(screen.queryByText(/앞면지/)).toBeNull()
   })
 

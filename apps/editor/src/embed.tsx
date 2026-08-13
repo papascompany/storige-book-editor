@@ -23,7 +23,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { createRoot, Root } from 'react-dom/client'
 import { useAppStore } from './stores/useAppStore'
 import { rebindFrameInteractivity } from './utils/frameInteractive'
-import { applyObjectPermissions } from './utils/objectPermissions'
+import { applyObjectPermissions, applyCoverMaterialLock } from './utils/objectPermissions'
 import { trackRequiredEdits, collectUneditedRequiredForCustomer } from './utils/requiredEditGate'
 import { runWithAutosaveSuspended } from './utils/autosaveSuspend'
 import { useAuthStore } from './stores/useAuthStore'
@@ -1176,6 +1176,11 @@ function EmbeddedEditor({
               rebindFrameInteractivity(allEditors[i], canvases[i])
               // Part B: 고객 임베드 세션 복원 시 객체별 이동/변형 잠금 적용(movable=false).
               applyObjectPermissions(canvases[i], useSettingsStore.getState().currentSettings.editMode)
+              applyCoverMaterialLock(
+                canvases[i],
+                useSettingsStore.getState().coverMaterialLocked && i === 0,
+                useSettingsStore.getState().currentSettings.editMode,
+              )
               // L7: 필수 편집 touched 추적 부착(멱등) — 로드 완료 지점.
               trackRequiredEdits(canvases[i])
             }
@@ -1186,6 +1191,11 @@ function EmbeddedEditor({
             const singleIdx = Math.max(0, canvases.indexOf(fabricCanvas))
             rebindFrameInteractivity(allEditors[singleIdx], fabricCanvas)
             applyObjectPermissions(fabricCanvas, useSettingsStore.getState().currentSettings.editMode)
+            applyCoverMaterialLock(
+              fabricCanvas,
+              useSettingsStore.getState().coverMaterialLocked,
+              useSettingsStore.getState().currentSettings.editMode,
+            )
             trackRequiredEdits(fabricCanvas)
             console.log('[EmbeddedEditor] Single canvasData restored:', editSession.id)
           }

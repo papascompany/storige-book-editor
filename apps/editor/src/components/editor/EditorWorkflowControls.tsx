@@ -5,7 +5,7 @@
  * 우측 상단 floating UI 로 다음 기능 노출.
  *
  *   - 내지 PDF 첨부 버튼 (book mode + 내지 가능 시) → ContentPdfAttachModal
- *   - templateSet.coverEditable=false → LeatherCoverPreview 안내 배너
+ *   - templateSet.coverEditable=false → 페브릭·기성 소재 잠금 안내 배너 (레거시 `/` 만)
  *   - 게스트 세션 자동 생성 (token 없을 때, templateSetId 있을 때만)
  *
  * W1(2026-08-13) — 사용처 2곳 대칭(G2·G3):
@@ -191,9 +191,9 @@ export function EditorWorkflowControls({
               boxShadow: '0 2px 6px rgba(0,0,0,0.1)',
             }}
           >
-            <strong>🏷 레더 커버</strong>
+            <strong>🏷 페브릭 · 기성 표지</strong>
             <div style={{ marginTop: 4 }}>
-              표지는 사전 인쇄된 레더로 대체됩니다. 빈 표지 페이지로 인쇄용 PDF 생성.
+              표지 소재(배경)는 바꿀 수 없습니다. 허용된 후가공만 텍스트와 이미지에 적용됩니다.
             </div>
           </div>
         )}

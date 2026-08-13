@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Storige 표지·낱장 UX 감사 — Canva / Blurb / Moo 대조</title>
+<style>
+  :root {
+    --bg: #070b14;
+    --panel: #10182a;
+    --line: #243049;
+    --text: #e8edf7;
+    --muted: #8b97ad;
+    --ok: #3dcf8e;
+    --warn: #e8b84a;
+    --bad: #ef6b6b;
+    --accent: #6ea8ff;
+    --paper: #f4efe6;
+    --ink: #1a1a1a;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); font-family: "Pretendard", "Apple SD Gothic Neo", sans-serif; }
+  body { padding: 32px 20px 80px; }
+  .wrap { max-width: 1180px; margin: 0 auto; }
+  h1 { font-family: "Noto Serif KR", serif; font-weight: 700; font-size: 28px; margin: 0 0 8px; }
+  .sub { color: var(--muted); font-size: 14px; line-height: 1.6; margin-bottom: 28px; }
+  .verdict {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 28px;
+  }
+  .vcard {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 14px 12px;
+  }
+  .vcard b { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; letter-spacing: .04em; }
+  .pill { display: inline-block; font-size: 12px; font-weight: 700; padding: 3px 8px; border-radius: 999px; }
+  .pill.ok { background: #163526; color: var(--ok); }
+  .pill.warn { background: #33290e; color: var(--warn); }
+  .pill.bad { background: #3a1515; color: var(--bad); }
+  .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
+  .tabs button {
+    background: #0c1322; color: var(--muted); border: 1px solid var(--line); border-radius: 999px;
+    padding: 8px 14px; cursor: pointer; font-size: 13px;
+  }
+  .tabs button.on { color: #fff; border-color: var(--accent); background: #13233f; }
+  section.panel { display: none; }
+  section.panel.on { display: block; }
+  .grid { display: grid; grid-template-columns: 1.1fr 1fr; gap: 16px; }
+  .box { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px; }
+  .box h2 { margin: 0 0 10px; font-size: 16px; }
+  .box p, .box li { color: #c5cede; font-size: 13.5px; line-height: 1.55; }
+  .box ul { margin: 8px 0 0; padding-left: 18px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { border-bottom: 1px solid var(--line); padding: 8px 6px; text-align: left; vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; }
+  .stage {
+    background: #0a0f1c; border-radius: 12px; min-height: 280px; position: relative;
+    overflow: hidden; border: 1px dashed #2a3550;
+  }
+  .label { position: absolute; top: 10px; left: 12px; font-size: 11px; color: var(--muted); letter-spacing: .08em; }
+  /* mock canvases */
+  .spread {
+    position: absolute; left: 50%; top: 54%; transform: translate(-50%,-50%);
+    height: 168px; display: flex; box-shadow: 0 12px 40px #0008;
+  }
+  .spread .pg { background: var(--paper); color: var(--ink); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; }
+  .spread .back { width: 110px; border-right: 1px dashed #b9a98a; }
+  .spread .spine { width: 22px; background: #d8c7a4; writing-mode: vertical-rl; font-size: 10px; }
+  .spread .spine.grow { width: 36px; background: #c9b17a; }
+  .spread .spine.lock { width: 18px; background: #8d8d8d; color: #fff; }
+  .spread .front { width: 110px; border-left: 1px dashed #b9a98a; }
+  .spread.flat .pg { background-size: cover; background-image: linear-gradient(90deg,#ead7b6 0 33%,#c9b17a 33% 40%,#f0e4cc 40%); }
+  .leather {
+    position: absolute; left: 50%; top: 54%; transform: translate(-50%,-50%);
+    width: 150px; height: 190px; border-radius: 4px;
+    background: radial-gradient(circle at 30% 20%, #7a3b2e, #3a1610);
+    box-shadow: 0 16px 40px #000a; display: flex; align-items: flex-end; justify-content: center;
+    color: #f3d7a0; font-size: 11px; padding-bottom: 12px; letter-spacing: .12em;
+  }
+  .leather::after { content: ""; position: absolute; inset: 10px 12px 28px; border: 1px solid #f3d7a044; }
+  .ghost { opacity: .35; filter: grayscale(.4); }
+  .sheet-row { position: absolute; left: 50%; top: 54%; transform: translate(-50%,-50%); display: flex; gap: 10px; }
+  .sheet { width: 92px; height: 130px; background: var(--paper); color: var(--ink); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; box-shadow: 0 10px 28px #0007; }
+  .sheet.back { transform: rotateY(8deg); }
+  .note { font-size: 12px; color: var(--muted); margin-top: 10px; }
+  .src { font-family: ui-monospace, monospace; font-size: 11px; color: #9db4d6; }
+  h3 { font-size: 14px; margin: 16px 0 8px; }
+  @media (max-width: 860px) {
+    .verdict, .grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>표지·낱장 템플릿 UX 감사</h1>
+  <p class="sub">
+    기준 코드: storige master · 2026-08-13.<br>
+    질문: 책등가변 / 책등고정 펼침면 / 페브릭(기성) 표지 / 표지 없는 낱장(단면·양면·다면)이
+    Canva · Blurb · Moo 와 이질감 없이 구현돼 있는가.
+  </p>
+
+  <div class="verdict">
+    <div class="vcard"><b>책등가변 소프트커버</b><span class="pill warn">엔진 있음 · 고객 안내 약함</span></div>
+    <div class="vcard"><b>펼침면 책등 고정</b><span class="pill warn">엔진 있음 · 상품으로 안 보임</span></div>
+    <div class="vcard"><b>페브릭·기성 표지</b><span class="pill warn">잠금은 맞음 · 보기+후가공 미완</span></div>
+    <div class="vcard"><b>낱장 단면/양면/다면</b><span class="pill warn">출력 계약 있음 · 상품 UX 없음</span></div>
+  </div>
+
+  <div class="tabs" id="tabs">
+    <button class="on" data-t="var">1. 책등가변 표지</button>
+    <button data-t="fix">2. 책등고정 펼침면</button>
+    <button data-t="fab">3. 페브릭·기성 표지</button>
+    <button data-t="sheet">4. 낱장 (단면·양면·다면)</button>
+    <button data-t="matrix">5. 업계 매트릭스</button>
+    <button data-t="owner">6. 오너 지시 목록</button>
+  </div>
+
+  <section class="panel on" id="var">
+    <div class="grid">
+      <div class="box">
+        <div class="stage">
+          <div class="label">STORIGE · editorMode=book · conversionMode=full</div>
+          <div class="spread">
+            <div class="pg back">뒤</div>
+            <div class="pg spine grow">책등</div>
+            <div class="pg front">앞</div>
+          </div>
+        </div>
+        <p class="note">한 캔버스에 뒤+책등+앞. 내지 추가 시 spineCalculator → resizeSpine. 고객 헤더에 책등 mm는 안 나옴.</p>
+      </div>
+      <div class="box">
+        <h2>코드에 있는 것</h2>
+        <ul>
+          <li>표지 단위 = <span class="src">TemplateType.SPREAD</span> 1장. 영역은 SpreadPlugin + computeLayout.</li>
+          <li>책등 가변 = <span class="src">conversionMode: 'full'</span> (기본). 내지 수·용지·제본으로 폭 재계산.</li>
+          <li>SKU 시드 = <span class="src">softcover_variable_spine</span> (admin coverType, 고객 화면 0).</li>
+          <li>페이지 네비 = SpreadPagePanel (표지 스프레드 + 내지 1,2,3…).</li>
+          <li>CoverFocusBar는 <b>스프레드 모드에서 숨김</b> (<span class="src">EditorView !isSpreadMode</span>). embed에는 없음.</li>
+        </ul>
+        <h2>Blurb / Canva 대비</h2>
+        <ul>
+          <li>Blurb는 표지를 “랩 한 장”으로 보여주고 책등 폭을 숫자로 알려 준다. Storige는 영역 가이드만.</li>
+          <li>Canva Print는 표지 목업이 먼저다. Storige는 바로 편집 캔버스.</li>
+          <li>책등 경고(최소 페이지, 5mm 미만)가 <b>콘솔</b>로만 나감 — 고객 토스트 아님.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel" id="fix">
+    <div class="grid">
+      <div class="box">
+        <div class="stage">
+          <div class="label">STORIGE · conversionMode=flat-spread</div>
+          <div class="spread flat">
+            <div class="pg back">전폭 아트</div>
+            <div class="pg spine lock">고정</div>
+            <div class="pg front">전폭 아트</div>
+          </div>
+        </div>
+        <p class="note">IDML 가져오기 유형. 전폭 PNG 1장 + 텍스트. 내지 추가해도 책등이 안 늘어남.</p>
+      </div>
+      <div class="box">
+        <h2>코드에 있는 것</h2>
+        <ul>
+          <li><span class="src">SpreadConversionMode = 'full' | 'flat-spread' | 'flat-spine'</span></li>
+          <li>flat-spread: SpineCalculator가 재계산 스킵. SpreadPlugin.resizeSpine no-op.</li>
+          <li>flat-spine: 아트 3분할, 책등 가변은 허용(중심 고정).</li>
+          <li>모드는 <b>템플릿 JSON</b>이지 상품 선택 화면이 아님. 고객은 가변/고정 차이를 모름.</li>
+        </ul>
+        <h2>Blurb 대비</h2>
+        <ul>
+          <li>Blurb의 “image wrap / printed wrap”은 주문 단계에서 고른다.</li>
+          <li>Storige는 운영자가 IDML을 어떻게 넣었는지로 결정. UX 이질감의 핵심은 <b>선택지가 안 보임</b>.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel" id="fab">
+    <div class="grid">
+      <div class="box">
+        <div class="stage">
+          <div class="label">정본 UX (오너 08-13) — 캔버스에 소재 배경 + 후가공만</div>
+          <div class="spread">
+            <div class="pg back" style="background:#5a2a22;color:#f3d7a0">소재</div>
+            <div class="pg spine" style="background:#3a1610;color:#f3d7a0">잠금</div>
+            <div class="pg front" style="background:#6b3328;color:#f3d7a0">금박·형압</div>
+          </div>
+        </div>
+        <p class="note">표지 템플릿에 페브릭을 배경으로 깔고 잠근다. 고객은 그 템플릿을 그대로 본다. 정적 이미지 치환이 아니다.</p>
+      </div>
+      <div class="box">
+        <h2>오너가 정한 계약 (2026-08-13)</h2>
+        <ul>
+          <li>소재는 <b>템플릿 제작 시 배경에 적용</b>. 고객이 소재를 바꾸지 못함(잠금 맞음).</li>
+          <li>고객은 소재가 입혀진 <b>표지 템플릿 캔버스</b>를 봐야 함. 미리보기 이미지로 캔버스를 대체하면 안 됨.</li>
+          <li>후가공은 텍스트·PNG에 형압 / 금박 / 은박 정도. 템플릿 제작 시 관리자가 제공 여부를 고름.</li>
+        </ul>
+        <h2>지금 코드 (어긋난 부분)</h2>
+        <ul>
+          <li><span class="src">coverEditable=false</span> + <span class="src">LeatherCoverPreview</span> = 캔버스 대신 정지 이미지, 인쇄 표지는 빈 PDF. <b>이 모델은 폐기.</b> 컴포넌트 import 0건이라 고객 경로는 아직 일반 표지와 동일.</li>
+          <li>배경 잠금 수단은 이미 있음: 객체 <span class="src">movable=false</span> / LockPlugin / <span class="src">enabledMenus</span>에서 BACKGROUND 제외.</li>
+          <li>후가공 화면 효과: <span class="src">SpecialEffect</span> 엠보싱·박(금)·컷팅. <b>은박 없음.</b> 인쇄 별색 분판이 아니라 화면 필터.</li>
+          <li><span class="src">enabledMenus</span>는 TEXT/IMAGE 통째 온오프. “박만 허용” 같은 후가공 스위치는 없음.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel" id="sheet">
+    <div class="grid">
+      <div class="box">
+        <div class="stage">
+          <div class="label">STORIGE · LEAFLET + editorMode=single</div>
+          <div class="sheet-row">
+            <div class="sheet">1</div>
+            <div class="sheet back">2</div>
+            <div class="sheet">3</div>
+          </div>
+        </div>
+        <p class="note">페이지 리스트일 뿐. “앞면/뒷면 뒤집기”나 카드 목업은 없음.</p>
+      </div>
+      <div class="box">
+        <h2>코드에 있는 것</h2>
+        <ul>
+          <li>타입 <span class="src">LEAFLET</span> = 표지+내지 메타. 실제 편집은 editorMode=single이면 페이지 N장.</li>
+          <li>네비 = BookNavigation (표지면 isCover 잠금 DnD). SpreadPagePanel 아님.</li>
+          <li>출력만 갈림: <span class="src">pdfOutputMode</span> single / duplex-merged / duplex-split. Admin 저장, 워커 적용. 편집기 캔버스는 동일.</li>
+          <li>명함 조판은 워커 card-imposition. 편집기에 재단기 미리보기 없음.</li>
+        </ul>
+        <h2>Moo / Canva 대비</h2>
+        <ul>
+          <li>Moo는 상품이 먼저다. 명함이면 앞↔뒤 플립, 포스터면 1장.</li>
+          <li>Storige는 문서 편집기다. 단면/양면/다면이 <b>출력 옵션</b>이지 화면 메타포가 아님.</li>
+          <li>다면 리플렛(3단 접지) 전용 접선·패널 가이드는 코드에 없음. 일반 페이지+블리드만.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel" id="matrix">
+    <div class="box">
+      <h2>한 줄 결론</h2>
+      <p>
+        <b>인쇄 엔진(스프레드·책등 공식·출력 모드)은 업계 수준에 가깝다.</b>
+        고객이 느끼는 이질감은 엔진 부재가 아니라 <b>상품 종류가 한 가지 편집기 껍데기로 보인다는 점</b>이다.
+        Canva/Blurb/Moo는 상품을 고르면 화면 문법이 바뀐다. Storige는 isSpreadMode 한 비트로 책/낱장을 가른다.
+      </p>
+      <h3>구성이 겹치는 세 축 (운영자도 헷갈림)</h3>
+      <table>
+        <tr><th>축</th><th>역할</th><th>고객에게 보이나</th></tr>
+        <tr><td><span class="src">conversionMode</span></td><td>IDML/아트 변환 · 책등 가변 여부</td><td>아니오</td></tr>
+        <tr><td><span class="src">coverType</span></td><td>SKU 시드 (싸바리/소프트/기성)</td><td>아니오 (admin 코드)</td></tr>
+        <tr><td><span class="src">coverEditable</span></td><td>레더·화보 잠금</td><td>컴포넌트 미마운트</td></tr>
+      </table>
+      <h3>업계 대조</h3>
+      <table>
+        <tr>
+          <th></th><th>Storige 지금</th><th>Blurb</th><th>Moo</th><th>Canva Print</th>
+        </tr>
+        <tr>
+          <td>책 표지</td>
+          <td>한 캔버스 스프레드 + 영역 가이드</td>
+          <td>랩 미리보기 + 책등 mm 표시</td>
+          <td>해당 약함</td>
+          <td>3D 목업 우선</td>
+        </tr>
+        <tr>
+          <td>책등 가변</td>
+          <td>자동 재계산, 안내 약함</td>
+          <td>페이지 수와 연동해 명시</td>
+          <td>—</td>
+          <td>상품별로 고정 또는 숨김</td>
+        </tr>
+        <tr>
+          <td>기성·패브릭</td>
+          <td>소재는 템플릿 배경으로 잠가야 함. 지금은 정지 이미지 치환 설계(미배선)와 어긋남</td>
+          <td>표지 잠금 + 내지부터, 랩은 보임</td>
+          <td>—</td>
+          <td>잠금 레이어 + 허용된 장식만</td>
+        </tr>
+        <tr>
+          <td>낱장 양면</td>
+          <td>페이지 1,2… + 출력 모드</td>
+          <td>—</td>
+          <td>앞/뒤 플립이 본체</td>
+          <td>앞/뒤 탭</td>
+        </tr>
+        <tr>
+          <td>접지 다면</td>
+          <td>없음 (페이지 나열)</td>
+          <td>—</td>
+          <td>패널/접선 가이드</td>
+          <td>접지 템플릿</td>
+        </tr>
+      </table>
+      <h3>제대로 된 것 (재구현 금지)</h3>
+      <ul>
+        <li>책 모드 표지=펼침 1캔버스는 업계 정석이다. CoverFocusBar를 스프레드에서 끈 것도 맞다.</li>
+        <li>내지 단면 + 표지만 스프레드(BOOK)는 Blurb softcover와 같다.</li>
+        <li>포토북 내지 2-up(regionScope=inner)은 Mixbook/Blurb photo에 대응. 표지와 세션을 나눈 것은 구현 선택.</li>
+        <li>출력 분리(cover.pdf + content.pdf)는 인쇄소 계약이지 UX 결함이 아니다.</li>
+      </ul>
+      <h3>이질감이 나는 이유 (우선순위)</h3>
+      <ol>
+        <li>상품 타입이 헤더/네비 카피에 안 나온다. “A4 기본 책자 430×297”만 보임.</li>
+        <li>페브릭 표지를 정지 이미지로 바꾸려 한 옛 G8 설계. 정본은 소재 배경이 깔린 템플릿 캔버스.</li>
+        <li>낱장에 앞·뒤·접지 문법이 없고 책과 같은 페이지 스트립.</li>
+        <li>책등 폭·고정/가변 상태가 사람 언어로 안 나옴 (콘솔 경고만).</li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="panel" id="owner">
+    <div class="box">
+      <h2>오너가 이후에 지시할 내용</h2>
+      <p>아래만 결정·지시하면 된다. 엔진 재작성은 지시하지 말 것.</p>
+      <h3>A. 바로 지시해도 되는 것 (계약이 이미 섰음)</h3>
+      <table>
+        <tr><th>#</th><th>지시 문장</th><th>왜</th></tr>
+        <tr>
+          <td>A1</td>
+          <td>G8을 다시 연다. LeatherCoverPreview로 캔버스를 대체하지 마라. 표지 템플릿(소재 배경 포함)을 그대로 보여 주고, 배경·소재 객체만 고객 잠금.</td>
+          <td>오너 계약과 옛 설계가 반대. 컴포넌트 폐기 또는 관리자 썸네일 전용.</td>
+        </tr>
+        <tr>
+          <td>A2</td>
+          <td>템플릿 제작(admin iframe)에서 페브릭 소재를 배경으로 깔고 저장하는 절차를 운영 매뉴얼+잠금 플래그로 고정.</td>
+          <td>배경 잠금 API(movable / LockPlugin / BACKGROUND 메뉴 숨김)는 이미 있음.</td>
+        </tr>
+        <tr>
+          <td>A3</td>
+          <td>표지 후가공 허용을 템플릿셋 설정으로 둔다: 형압 / 금박 / 은박, 대상은 텍스트와 PNG. 기본은 전부 OFF.</td>
+          <td>enabledMenus는 TEXT/IMAGE 통째라 너무 큼. 후가공 전용 플래그가 필요.</td>
+        </tr>
+      </table>
+      <h3>B. 지시하기 전에 한 줄만 정해 줄 것</h3>
+      <table>
+        <tr><th>#</th><th>결정</th><th>선택지</th></tr>
+        <tr>
+          <td>B1</td>
+          <td>후가공의 인쇄 의미</td>
+          <td><strong>결정 2026-08-13:</strong> 화면 표시만. 별색/분판 PDF는 후속.</td>
+        </tr>
+        <tr>
+          <td>B2</td>
+          <td>은박</td>
+          <td><strong>결정:</strong> 금박 경로 실버 팔레트 복제 (#C0C8D4). 별도 에셋 없음.</td>
+        </tr>
+        <tr>
+          <td>B3</td>
+          <td>컷팅 효과</td>
+          <td><strong>결정:</strong> 페브릭 표지 UI에서 숨김. 형압·금·은만.</td>
+        </tr>
+        <tr>
+          <td>B4</td>
+          <td>coverEditable=false 의미 재정의</td>
+          <td><strong>결정:</strong> 소재 배경 잠금 + 후가공. LeatherCoverPreview 캔버스 대체 폐기.</td>
+        </tr>
+      </table>
+      <h3>C. 지금은 지시하지 말 것</h3>
+      <ul>
+        <li>G8을 “미리보기 이미지 마운트”로 다시 열기 — 방금 폐기한 설계.</li>
+        <li>면지 전용 페이지 전개 — 상품 0건, 이번 표지 계약과 무관.</li>
+        <li>책등 엔진·낱장 조판 엔진 재작성.</li>
+        <li>후가공을 새 캔버스 앱으로 분리.</li>
+      </ul>
+      <p class="note">복붙용 한 줄: “G8 재개. 페브릭 표지는 템플릿 캔버스를 보여 주고 소재 배경만 잠근다. 형압·금박·은박은 텍스트/PNG에만, 템플릿셋 설정으로 on/off. LeatherCoverPreview로 캔버스 대체 금지. 인쇄 별색은 B1 결정 후.”</p>
+    </div>
+  </section>
+</div>
+<script>
+  const tabs = document.querySelectorAll('.tabs button');
+  const panels = document.querySelectorAll('section.panel');
+  tabs.forEach((b) => b.addEventListener('click', () => {
+    tabs.forEach((x) => x.classList.toggle('on', x === b));
+    panels.forEach((p) => p.classList.toggle('on', p.id === b.dataset.t));
+  }));
+</script>
+</body>
+</html>

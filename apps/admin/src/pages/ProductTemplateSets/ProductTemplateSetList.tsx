@@ -252,7 +252,7 @@ export const ProductTemplateSetList = () => {
             {(endpaperLabel || !coverEditable) && (
               <Space size={4} wrap>
                 {endpaperLabel && <Tag color="gold">{endpaperLabel}</Tag>}
-                {!coverEditable && <Tag color="purple">레더커버</Tag>}
+                {!coverEditable && <Tag color="purple">페브릭·기성</Tag>}
               </Space>
             )}
           </Space>

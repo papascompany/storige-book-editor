@@ -8,7 +8,7 @@ import {
   pxToMmDisplay,
 } from '@storige/canvas-core'
 import type { EditorTemplate } from '@/generated/graphql'
-import type { SpreadConfig, EditorMenuKey } from '@storige/types'
+import type { SpreadConfig, EditorMenuKey, CoverFinishingKind } from '@storige/types'
 import { computeSpreadDimensions } from '@storige/types'
 
 // Types (will be replaced with GraphQL generated types later)
@@ -270,6 +270,12 @@ interface SettingsState {
    * ToolBar 가 ALL_MENUS 를 이 화이트리스트로 필터링.
    */
   enabledMenus: EditorMenuKey[] | null
+  /**
+   * 페브릭·기성 표지 (coverEditable=false): 소재 배경 잠금 + 후가공 허용 목록.
+   * loadTemplateSetEditor 가 templateSet 에서 채운다.
+   */
+  coverMaterialLocked: boolean
+  coverFinishingAllowed: CoverFinishingKind[]
   artwork: {
     name: string
     product: WowPressLinkedProduct | null
@@ -346,6 +352,7 @@ interface SettingsActions {
 
   // 도구 메뉴 화이트리스트 관리 (템플릿셋이 지정)
   setEnabledMenus: (menus: EditorMenuKey[] | null) => void
+  setCoverFinishing: (locked: boolean, allowed: CoverFinishingKind[]) => void
 
   // P3: 작업사이즈/재단마커 출력 설정 관리 (templateSet 에서 운반)
   setPrintMarkConfig: (config: PrintMarkConfig | null) => void
@@ -378,6 +385,8 @@ const initialState: SettingsState = {
   },
   spreadConfig: null,
   enabledMenus: null,
+  coverMaterialLocked: false,
+  coverFinishingAllowed: [],
   printMarkConfig: null,
   artwork: {
     name: '나의 새로운 작업',
@@ -809,6 +818,10 @@ export const useSettingsStore = create<SettingsState & SettingsActions>()((set, 
   // null = 모두 노출 (기본). loadTemplateSetEditor 가 호출.
   setEnabledMenus: (menus) => {
     set({ enabledMenus: menus ?? null })
+  },
+
+  setCoverFinishing: (locked, allowed) => {
+    set({ coverMaterialLocked: locked, coverFinishingAllowed: allowed })
   },
 
   // P3: 작업사이즈/재단마커 출력 설정. null = 미설정(게이트 OFF). loadTemplateSetEditor 가 호출.

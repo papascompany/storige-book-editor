@@ -101,6 +101,23 @@ export class CoverReadyMadeDto {
 /**
  * 커버 종류별 설정 DTO — D-4. NULL=미사용(기존 셋 비파괴).
  */
+export class CoverFinishingDto {
+  @ApiPropertyOptional({ description: '형압(화면 표시)', default: false })
+  @IsOptional()
+  @IsBoolean()
+  emboss?: boolean;
+
+  @ApiPropertyOptional({ description: '금박(화면 표시)', default: false })
+  @IsOptional()
+  @IsBoolean()
+  gold?: boolean;
+
+  @ApiPropertyOptional({ description: '은박(화면 표시)', default: false })
+  @IsOptional()
+  @IsBoolean()
+  silver?: boolean;
+}
+
 export class CoverConfigDto {
   @ApiPropertyOptional({ type: CoverCaseBindDto, description: '싸바리 geometry (하드커버 계열)' })
   @IsOptional()
@@ -113,6 +130,12 @@ export class CoverConfigDto {
   @ValidateNested()
   @Type(() => CoverReadyMadeDto)
   readyMade?: CoverReadyMadeDto;
+
+  @ApiPropertyOptional({ type: CoverFinishingDto, description: '페브릭 표지 후가공 허용(기본 전부 OFF)' })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => CoverFinishingDto)
+  finishing?: CoverFinishingDto;
 }
 
 /**
@@ -228,12 +251,12 @@ export class CreateTemplateSetDto {
   @Type(() => PhotobookPricingDto)
   pricing?: PhotobookPricingDto | null;
 
-  @ApiPropertyOptional({ example: true, description: '표지 편집 가능 여부 (기본 true, 레더커버=false)' })
+  @ApiPropertyOptional({ example: true, description: '표지 편집 가능 여부 (기본 true, false=페브릭·기성 소재 잠금)' })
   @IsOptional()
   @IsBoolean()
   coverEditable?: boolean;
 
-  @ApiPropertyOptional({ description: '레더커버 미리보기 storage URL (coverEditable=false 일 때만 의미)', nullable: true })
+  @ApiPropertyOptional({ description: '관리자 썸네일용 표지 미리보기 URL (coverEditable=false 일 때만 의미)', nullable: true })
   @IsOptional()
   @IsString()
   coverPreviewImage?: string | null;
@@ -250,7 +273,7 @@ export class CreateTemplateSetDto {
   @MaxLength(50)
   coverType?: string | null;
 
-  @ApiPropertyOptional({ type: CoverConfigDto, description: '커버 종류별 설정 (caseBind geometry 등). null=미사용', nullable: true })
+  @ApiPropertyOptional({ type: CoverConfigDto, description: '커버 종류별 설정 (caseBind + finishing). null=미사용', nullable: true })
   @IsOptional()
   @ValidateNested()
   @Type(() => CoverConfigDto)

@@ -3,6 +3,8 @@ import {
   applyObjectPermissions,
   revertObjectPermissions,
   isAppearanceLocked,
+  applyCoverMaterialLock,
+  isCoverPageCanvas,
 } from './objectPermissions'
 
 /**
@@ -173,5 +175,38 @@ describe('isAppearanceLocked (L4-④)', () => {
 
   it('다중선택: 하나라도 잠겨 있으면 잠금 취급', () => {
     expect(isAppearanceLocked([makeObj({}), makeObj({ contentEditable: false })], false)).toBe(true)
+  })
+})
+
+describe('isCoverPageCanvas', () => {
+  it('allCanvas[0] 만 표지로 본다', () => {
+    const cover = {}
+    const inner = {}
+    expect(isCoverPageCanvas(cover, [cover, inner])).toBe(true)
+    expect(isCoverPageCanvas(inner, [cover, inner])).toBe(false)
+    expect(isCoverPageCanvas(cover, [])).toBe(false)
+    expect(isCoverPageCanvas(null, [cover])).toBe(false)
+  })
+})
+
+describe('applyCoverMaterialLock', () => {
+  it('고객 + locked: background 만 이동/선택 잠금', () => {
+    const bg = makeObj({ type: 'image', extensionType: 'background', selectable: true, evented: true })
+    const text = makeObj({ type: 'textbox', selectable: true, evented: true })
+    applyCoverMaterialLock(makeCanvas([bg, text]), true, false)
+    expect(bg.lockMovementX).toBe(true)
+    expect(bg.selectable).toBe(false)
+    expect(bg.evented).toBe(false)
+    expect(bg.hasControls).toBe(false)
+    expect(text.lockMovementX).toBeUndefined()
+    expect(text.selectable).toBe(true)
+  })
+
+  it('editMode 또는 locked=false 는 무개입', () => {
+    const bg = makeObj({ type: 'image', extensionType: 'background', selectable: true })
+    applyCoverMaterialLock(makeCanvas([bg]), true, true)
+    expect(bg.selectable).toBe(true)
+    applyCoverMaterialLock(makeCanvas([bg]), false, false)
+    expect(bg.selectable).toBe(true)
   })
 })

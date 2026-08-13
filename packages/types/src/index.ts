@@ -241,9 +241,62 @@ export function isValidCaseBind(cb: Partial<CaseBindSpec> | null | undefined): c
   );
 }
 
+/**
+ * 페브릭·기성 표지 후가공 (화면 표시, 2026-08-13).
+ * 기본 전부 OFF. coverEditable=false 일 때만 의미가 있다.
+ */
+export type CoverFinishingKind = 'emboss' | 'gold' | 'silver';
+
+export interface CoverFinishingConfig {
+  emboss?: boolean;
+  gold?: boolean;
+  silver?: boolean;
+}
+
 /** 템플릿셋 coverConfig JSON 형상 (트랙 간 동결 인터페이스 ③) */
 export interface TemplateSetCoverConfig {
   caseBind?: CaseBindSpec;
+  /** 페브릭 표지 후가공 허용. 없으면 전부 OFF */
+  finishing?: CoverFinishingConfig;
+}
+
+export function resolveCoverFinishing(
+  coverEditable: boolean | undefined,
+  finishing: CoverFinishingConfig | null | undefined,
+): { materialLocked: boolean; allowed: CoverFinishingKind[] } {
+  if (coverEditable !== false) {
+    return { materialLocked: false, allowed: [] };
+  }
+  const allowed: CoverFinishingKind[] = [];
+  if (finishing?.emboss) allowed.push('emboss');
+  if (finishing?.gold) allowed.push('gold');
+  if (finishing?.silver) allowed.push('silver');
+  return { materialLocked: true, allowed };
+}
+
+/**
+ * Admin 저장용 coverConfig 병합. caseBind 와 finishing 을 한쪽만 있어도 유지한다.
+ * coverEditable!==false 이면 finishing 은 저장하지 않는다(전부 OFF 와 동일).
+ */
+export function buildTemplateSetCoverConfig(input: {
+  coverEditable: boolean | undefined;
+  caseBind?: Partial<CaseBindSpec> | null;
+  finishing?: CoverFinishingConfig | null;
+}): TemplateSetCoverConfig | null {
+  const caseBind = isValidCaseBind(input.caseBind) ? input.caseBind : undefined;
+  let finishing: CoverFinishingConfig | undefined;
+  if (input.coverEditable === false && input.finishing) {
+    const next: CoverFinishingConfig = {};
+    if (input.finishing.emboss) next.emboss = true;
+    if (input.finishing.gold) next.gold = true;
+    if (input.finishing.silver) next.silver = true;
+    if (next.emboss || next.gold || next.silver) finishing = next;
+  }
+  if (!caseBind && !finishing) return null;
+  return {
+    ...(caseBind ? { caseBind } : {}),
+    ...(finishing ? { finishing } : {}),
+  };
 }
 
 /**
@@ -282,15 +335,15 @@ export interface TemplateSet {
    */
   endpaperConfig?: EndpaperConfig | null;
   /**
-   * 표지 편집 가능 여부 — Phase 2 (2026-05-19).
+   * 표지 편집 가능 여부 — Phase 2 (2026-05-19), 2026-08-13 재정의.
    * - true (기본): 일반 책 표지 — 편집기에서 디자인 가능
-   * - false: 레더 커버 / 화보집 — 표지는 미리보기 이미지로만 노출, 빈 PDF + 네이밍으로 인쇄
+   * - false: 페브릭·기성 — 표지 템플릿 캔버스를 그대로 보여 주고 소재 배경만 잠금.
+   *   후가공(형압·금박·은박)은 coverConfig.finishing. 캔버스를 미리보기 이미지로 대체하지 않음.
    */
   coverEditable: boolean;
   /**
-   * 레더 커버 / 화보집용 표지 미리보기 이미지 storage URL — Phase 2 (2026-05-19).
-   * 결정 3-5: 별도 필드. 표지 템플릿 객체로 우회하지 않음.
-   * `coverEditable=false` 일 때만 의미 있음.
+   * 관리자 목록 썸네일용 표지 미리보기 이미지 storage URL.
+   * `coverEditable=false` 일 때만 저장. 고객 편집기 캔버스를 대체하지 않는다.
    */
   coverPreviewImage?: string | null;
   /**

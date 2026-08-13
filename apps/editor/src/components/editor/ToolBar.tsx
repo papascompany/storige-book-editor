@@ -67,6 +67,9 @@ export default function ToolBar({ horizontal = false }: ToolBarProps) {
   // - 배열: 그 키만 노출 (빈 배열 → 모든 도구 메뉴 숨김)
   // useEditorContents.loadTemplateSetEditor 가 templateSet.enabledMenus 를 store 에 저장.
   const enabledMenus = useSettingsStore((state) => state.enabledMenus)
+  const coverMaterialLocked = useSettingsStore((state) => state.coverMaterialLocked)
+  const allCanvas = useAppStore((state) => state.allCanvas)
+  const isCoverPage = !!canvas && allCanvas[0] === canvas
 
   const upload = useImageStore((state) => state.upload)
   const uploadSimple = useImageStore((state) => state.uploadSimple)
@@ -113,15 +116,20 @@ export default function ToolBar({ horizontal = false }: ToolBarProps) {
 
     // edit mode (admin 편집 미리보기) 에서는 화이트리스트 무시하고 전체 노출.
     // 일반 사용자에게는 enabledMenus 적용.
+    // 페브릭 표지(소재 잠금)는 표지 페이지에서만 배경 메뉴를 숨긴다.
     const availableMenus = editMode
       ? ALL_MENUS
-      : ALL_MENUS.filter((m) => isAllowed(m.type))
+      : ALL_MENUS.filter((m) => {
+          if (!isAllowed(m.type)) return false
+          if (coverMaterialLocked && isCoverPage && m.type === 'BACKGROUND') return false
+          return true
+        })
 
     // 업로드 메뉴는 빌드 플래그 + 화이트리스트 모두 통과해야 노출.
     const showUpload = ENABLE_UPLOAD_MENU && (editMode || isAllowed('UPLOAD'))
 
     return [...(showUpload ? [uploadMenu] : []), ...availableMenus]
-  }, [editMode, enabledMenus, ready, canvas, getPlugin, upload, uploadSimple])
+  }, [editMode, enabledMenus, ready, canvas, getPlugin, upload, uploadSimple, coverMaterialLocked, isCoverPage])
 
   const handleMenuClick = (menu: AppMenu) => {
     if (menu.onTap) {

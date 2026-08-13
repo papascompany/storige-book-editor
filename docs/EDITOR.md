@@ -499,15 +499,19 @@ URL 파라미터 없이 `/` 진입 시 자동 로드되는 샘플:
 
 **Editor App 마운트**: `App.tsx` 에서 `useGuestStore.initializeFromStorage()` 1회 호출.
 
-### 13.4 레더 커버 (`coverEditable=false`)
+### 13.4 페브릭·기성 표지 (`coverEditable=false`, 2026-08-13 재정의)
 
-**컴포넌트**: `apps/editor/src/components/editor/LeatherCoverPreview.tsx`
+고객은 표지 템플릿 캔버스를 **그대로** 본다. `LeatherCoverPreview` 로 캔버스를 대체하지 않는다.
 
-`templateSet.coverEditable === false` 인 경우 표지 캔버스 대신 표시할 미리보기 컴포넌트. `coverPreviewImage` storage URL 을 표지 비율로 렌더링.
+- 소재는 템플릿 제작 시 배경(`extensionType=background`)으로 깐다.
+- 고객 경로: 표지(캔버스 0) 배경만 잠금. 내지는 잠그지 않는다.
+- 후가공(형압·금박·은박)은 텍스트/PNG, `coverConfig.finishing` 으로 on/off. 기본 전부 OFF. **화면 표시만**(인쇄 별색 분판은 후속).
+- 컷팅 효과는 페브릭 표지 UI 에서 숨긴다.
+- `coverPreviewImage` 는 관리자 목록 썸네일 전용.
 
-**Worker compose-mixed**: `coverEditable=false` 전달 시 빈 표지 페이지 자동 생성. 실제 표지는 사전 인쇄된 레더/화보집 표지로 대체됨.
+**Worker compose-mixed**: 현행 유지 — `coverEditable=false` 면 빈 표지 페이지(화면 후가공은 인쇄에 안 실림).
 
-**Editor 안내**: `EditorWorkflowControls` 가 "🏷 레더 커버" 배너 표시.
+**Editor 안내**: 레거시 `/` 에서만 "페브릭 · 기성 표지" 배너. 임베드는 노출하지 않음.
 
 ### 13.5 편집완료 로그인 유도 + 회원 전환
 
@@ -538,7 +542,8 @@ URL 파라미터 없이 `/` 진입 시 자동 로드되는 샘플:
 | 게스트 store | `apps/editor/src/stores/useGuestStore.ts` |
 | 워크플로우 floating UI | `apps/editor/src/components/editor/EditorWorkflowControls.tsx` |
 | PDF 첨부 모달 | `apps/editor/src/components/editor/ContentPdfAttachModal.tsx` |
-| 레더 커버 미리보기 | `apps/editor/src/components/editor/LeatherCoverPreview.tsx` |
+| 표지 후가공 컨트롤 | `apps/editor/src/controls/SpecialEffect.tsx` |
+| 관리자 썸네일 미리보기(캔버스 대체 금지) | `apps/editor/src/components/editor/LeatherCoverPreview.tsx` |
 | 로그인 유도 모달 | `apps/editor/src/components/editor/GuestAuthPromptModal.tsx` |
 | 마이페이지 view | `apps/editor/src/views/MyWorksView.tsx` |
 | Admin 면지/표지 폼 | `apps/admin/src/pages/TemplateSets/TemplateSetForm.tsx` |

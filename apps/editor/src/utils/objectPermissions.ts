@@ -53,6 +53,43 @@ function forEachObjectDeep(
   }
 }
 
+/** 책 규약: 캔버스 0 = 표지. 내지 배경은 잠그지 않는다. */
+export function isCoverPageCanvas(
+  canvas: unknown,
+  allCanvas: ReadonlyArray<unknown>,
+): boolean {
+  return !!canvas && allCanvas.length > 0 && allCanvas[0] === canvas
+}
+
+/**
+ * 페브릭·기성 표지: 소재 배경(extensionType=background)만 고객 잠금.
+ * 템플릿 캔버스는 그대로 보인다. editMode 면 적용하지 않는다.
+ */
+export function applyCoverMaterialLock(
+  canvas: fabric.Canvas | null | undefined,
+  locked: boolean,
+  editMode: boolean | undefined,
+): void {
+  if (!canvas || !locked || editMode) return
+  let changed = false
+  for (const obj of canvas.getObjects() as fabric.Object[]) {
+    if ((obj as { extensionType?: string }).extensionType !== 'background') continue
+    obj.set({
+      lockMovementX: true,
+      lockMovementY: true,
+      lockScalingX: true,
+      lockScalingY: true,
+      lockRotation: true,
+      hasControls: false,
+      selectable: false,
+      evented: false,
+    })
+    obj.setCoords()
+    changed = true
+  }
+  if (changed) canvas.requestRenderAll()
+}
+
 export function applyObjectPermissions(
   canvas: fabric.Canvas | null | undefined,
   editMode: boolean | undefined,

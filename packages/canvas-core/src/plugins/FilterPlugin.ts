@@ -121,6 +121,12 @@ class FilterPlugin extends PluginBase {
     this.overlayEffect(object, { effect: 'gold', color: '#FFD700' })
   }
 
+  /** 금박과 동일 경로, 실버 팔레트 (화면 표시) */
+  silver(object: fabric.Object) {
+    object.effects ??= []
+    this.overlayEffect(object, { effect: 'silver', color: '#C0C8D4' })
+  }
+
   cutting(object: fabric.Object) {
     object.effects ??= []
     this.overlayEffect(object, { effect: 'cutting', color: '#dbecea' })
@@ -289,6 +295,9 @@ class FilterPlugin extends PluginBase {
           case 'gold':
             this.applyGoldFilter(object)
             break
+          case 'silver':
+            this.applySilverFilter(object)
+            break
           case 'emboss':
             this.applyEmbossFilter(object)
             break
@@ -347,6 +356,21 @@ class FilterPlugin extends PluginBase {
 
     // 새 필터 추가
     image.filters = [...existingFilters, goldFilter, saturationFilter]
+  }
+
+  private applySilverFilter(image: fabric.Image) {
+    const existingFilters = image.filters || []
+    const silverFilter = new fabric.Image.filters.BlendColor({
+      color: '#C0C8D4',
+      mode: 'multiply',
+      alpha: 0.65,
+      effectType: 'silver',
+    } as any)
+    const saturationFilter = new fabric.Image.filters.Saturation({
+      saturation: -0.25,
+      effectType: 'silver',
+    } as any)
+    image.filters = [...existingFilters, silverFilter, saturationFilter]
   }
 
   /**
@@ -439,6 +463,9 @@ class FilterPlugin extends PluginBase {
     switch (effectType) {
       case 'gold':
         color = '#FFD700' // 황금색
+        break
+      case 'silver':
+        color = '#C0C8D4'
         break
       case 'emboss':
         color = '#CCCCCC' // 밝은 회색

@@ -60,6 +60,7 @@ import {
   EDITOR_MENU_DEFS,
   ALL_EDITOR_MENU_KEYS,
   EditorMenuKey,
+  buildTemplateSetCoverConfig,
 } from '@storige/types';
 import { templateSetsApi } from '../../api/template-sets';
 import { templatesApi } from '../../api/templates';
@@ -394,6 +395,9 @@ export const TemplateSetForm = () => {
         caseBindBoardThicknessMm: (templateSet as any).coverConfig?.caseBind?.boardThicknessMm,
         caseBindTurnInMm: (templateSet as any).coverConfig?.caseBind?.turnInMm,
         caseBindWrapMm: (templateSet as any).coverConfig?.caseBind?.wrapMarginMm,
+        finishingEmboss: !!(templateSet as any).coverConfig?.finishing?.emboss,
+        finishingGold: !!(templateSet as any).coverConfig?.finishing?.gold,
+        finishingSilver: !!(templateSet as any).coverConfig?.finishing?.silver,
         // 포토북 페이지 가변 가격 메타 (2026-06-24) — PHOTOBOOK 일 때만 입력 노출. null=미사용.
         usePricing: !!templateSet.pricing,
         pricingIncludedPages: templateSet.pricing?.includedPages ?? 16,
@@ -508,16 +512,22 @@ export const TemplateSetForm = () => {
       values.caseBindTurnInMm,
       values.caseBindWrapMm,
     ].some((v) => v !== undefined && v !== null);
-    const coverConfig =
-      caseBindApplicable && hasCaseBindInput
-        ? {
-            caseBind: {
+    const coverConfig = buildTemplateSetCoverConfig({
+      coverEditable,
+      caseBind:
+        caseBindApplicable && hasCaseBindInput
+          ? {
               boardThicknessMm: Math.max(0, Number(values.caseBindBoardThicknessMm ?? 0)),
               turnInMm: Math.max(0, Number(values.caseBindTurnInMm ?? 0)),
               wrapMarginMm: Math.max(0, Number(values.caseBindWrapMm ?? 0)),
-            },
-          }
-        : null;
+            }
+          : null,
+      finishing: {
+        emboss: !!values.finishingEmboss,
+        gold: !!values.finishingGold,
+        silver: !!values.finishingSilver,
+      },
+    });
 
     // 포토북 페이지 가변 가격 메타 (2026-06-24) — PHOTOBOOK + usePricing 일 때만 저장. 그 외 null(미사용).
     // storige 는 가격을 계산하지 않는다 — 이 메타는 편집완료 시 pageCount 와 함께 emit 되어 파트너 장바구니가 계산.
@@ -736,6 +746,9 @@ export const TemplateSetForm = () => {
             bleedMm: 3,
             cropMarkEnabled: false,
             sizeToleranceMm: 0.2,
+            finishingEmboss: false,
+            finishingGold: false,
+            finishingSilver: false,
           }}
         >
           <Collapse
@@ -925,9 +938,9 @@ export const TemplateSetForm = () => {
                       label="표지 편집 가능"
                       valuePropName="checked"
                       initialValue={true}
-                      extra="레더 커버 / 화보집 등 표지를 사전 인쇄하는 경우 끄세요. 표지 미리보기 이미지로 대체됩니다."
+                      extra="끄면 페브릭·기성 표지: 고객은 소재가 깔린 템플릿을 보고, 배경은 잠기며 아래에서 켠 후가공만 편집합니다."
                     >
-                      <Switch checkedChildren="편집 가능" unCheckedChildren="레더 커버 (편집 불가)" />
+                      <Switch checkedChildren="편집 가능" unCheckedChildren="소재 잠금 (후가공만)" />
                     </Form.Item>
 
                     <Form.Item
@@ -968,7 +981,7 @@ export const TemplateSetForm = () => {
                         const resolvedPreview = currentPreview ? resolveStorageUrl(currentPreview) : null;
 
                         return (
-                          <Form.Item label="표지 미리보기 이미지 (레더 커버용)">
+                          <Form.Item label="표지 미리보기 이미지 (관리자 썸네일)">
                             <Space direction="vertical" style={{ width: '100%' }}>
                               {resolvedPreview && (
                                 <img
@@ -995,11 +1008,39 @@ export const TemplateSetForm = () => {
                                 <Input />
                               </Form.Item>
                               <Text type="secondary" style={{ fontSize: 12 }}>
-                                편집기에서는 이 이미지가 표지로만 표시되며, 인쇄용 PDF 의 표지는 빈 페이지로 생성됩니다.
+                                선택. 관리자 목록 썸네일용입니다. 고객 편집기는 표지 템플릿 캔버스(소재 배경)를 그대로 보여 줍니다.
                               </Text>
                             </Space>
                           </Form.Item>
                         );
+                      }}
+                    </Form.Item>
+
+                    <Form.Item
+                      noStyle
+                      shouldUpdate={(prev, curr) => prev.coverEditable !== curr.coverEditable}
+                    >
+                      {({ getFieldValue }) => {
+                        if (getFieldValue('coverEditable') !== false) return null
+                        return (
+                          <>
+                            <Divider>표지 후가공 (화면 표시 · 기본 모두 끔)</Divider>
+                            <Space size="large" wrap>
+                              <Form.Item name="finishingEmboss" label="형압" valuePropName="checked">
+                                <Switch checkedChildren="허용" unCheckedChildren="숨김" />
+                              </Form.Item>
+                              <Form.Item name="finishingGold" label="금박" valuePropName="checked">
+                                <Switch checkedChildren="허용" unCheckedChildren="숨김" />
+                              </Form.Item>
+                              <Form.Item name="finishingSilver" label="은박" valuePropName="checked">
+                                <Switch checkedChildren="허용" unCheckedChildren="숨김" />
+                              </Form.Item>
+                            </Space>
+                            <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 16 }}>
+                              텍스트와 PNG에만 적용됩니다. 인쇄 별색 분판은 포함하지 않습니다.
+                            </Text>
+                          </>
+                        )
                       }}
                     </Form.Item>
 

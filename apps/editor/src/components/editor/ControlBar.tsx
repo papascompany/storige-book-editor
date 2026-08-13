@@ -66,7 +66,7 @@ import ObjectStroke from '@/controls/ObjectStroke'
 import TextAttributes from '@/controls/TextAttributes'
 import TextEffect from '@/controls/TextEffect'
 import MoveToCoverRegion from '@/controls/MoveToCoverRegion'
-// import SpecialEffect from '@/controls/SpecialEffect'
+import SpecialEffect from '@/controls/SpecialEffect'
 
 // Icon mapping by selection type
 const getIconByType = (type: SelectionType) => {
@@ -791,7 +791,7 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
             </>
           )}
 
-          {/* Special effects removed */}
+          <SpecialEffect />
         </div>
 
         <div className="h-10 w-1 p-10"></div>
