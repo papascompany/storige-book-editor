@@ -28,11 +28,12 @@ import {
 import { UserRole } from '@storige/types';
 import { useAuthStore } from '../../stores/authStore';
 import { portalApi, type PortalPartnerKey } from '../../api/portal';
+import { formatOriginList, parseOriginList } from '../../utils/originList';
 
 const { Title, Text, Paragraph } = Typography;
 
 interface SettingsFormValues {
-  allowedOrigins?: string[];
+  allowedOrigins?: string;
   uploadCallbackUrl?: string;
 }
 
@@ -98,7 +99,7 @@ export default function MySitePage() {
   useEffect(() => {
     if (site) {
       form.setFieldsValue({
-        allowedOrigins: site.allowedOrigins ?? [],
+        allowedOrigins: formatOriginList(site.allowedOrigins),
         uploadCallbackUrl: site.uploadCallbackUrl ?? undefined,
       });
     }
@@ -107,7 +108,7 @@ export default function MySitePage() {
   const updateMutation = useMutation({
     mutationFn: (values: SettingsFormValues) =>
       portalApi.updateSite(siteId!, {
-        allowedOrigins: values.allowedOrigins ?? [],
+        allowedOrigins: parseOriginList(values.allowedOrigins),
         uploadCallbackUrl: values.uploadCallbackUrl?.trim()
           ? values.uploadCallbackUrl.trim()
           : null,
@@ -321,18 +322,8 @@ export default function MySitePage() {
         <Form form={form} layout="vertical">
           <Form.Item
             name="allowedOrigins"
-            label="CORS 허용 origin (콤마 또는 줄바꿈 구분)"
-            tooltip="브라우저에서 Storige API 를 호출할 origin. path 없이 https://host 형식만."
-            getValueFromEvent={(e) => {
-              const raw = (e?.target?.value ?? e ?? '') as string;
-              return raw
-                .split(/[\n,]+/)
-                .map((s) => s.trim())
-                .filter(Boolean);
-            }}
-            getValueProps={(value: string[] | undefined) => ({
-              value: Array.isArray(value) ? value.join('\n') : value,
-            })}
+            label="CORS 허용 origin (줄마다 하나, 또는 콤마)"
+            tooltip="저장할 때 줄바꿈/콤마로 나눕니다. 입력 중 Enter 로 줄을 넣을 수 있습니다."
           >
             <Input.TextArea
               rows={3}

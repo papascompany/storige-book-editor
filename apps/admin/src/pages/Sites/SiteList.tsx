@@ -26,6 +26,7 @@ import {
   CopyOutlined,
 } from '@ant-design/icons';
 import { sitesApi, type Site, type CreateSiteDto } from '../../api/sites';
+import { formatOriginList, parseOriginList } from '../../utils/originList';
 
 const { Title, Text } = Typography;
 
@@ -161,6 +162,11 @@ export default function SiteList() {
       checkWorkorder: site.checkWorkorder,
       checkCutting: site.checkCutting,
       checkSafezone: site.checkSafezone,
+      allowedOrigins: formatOriginList(site.allowedOrigins) as unknown as string[],
+      frameAncestors: formatOriginList(site.frameAncestors) as unknown as string[],
+      editorBundleUrl: site.editorBundleUrl ?? undefined,
+      editorCssUrl: site.editorCssUrl ?? undefined,
+      editorVersion: site.editorVersion ?? undefined,
     });
     setIsModalOpen(true);
   };
@@ -173,10 +179,15 @@ export default function SiteList() {
 
   const handleSubmit = async () => {
     const values = await form.validateFields();
+    const dto: CreateSiteDto = {
+      ...values,
+      allowedOrigins: parseOriginList(values.allowedOrigins as unknown as string),
+      frameAncestors: parseOriginList(values.frameAncestors as unknown as string),
+    };
     if (editingSite) {
-      updateMutation.mutate({ id: editingSite.id, dto: values });
+      updateMutation.mutate({ id: editingSite.id, dto });
     } else {
-      createMutation.mutate(values);
+      createMutation.mutate(dto);
     }
   };
 
@@ -439,43 +450,23 @@ export default function SiteList() {
 
           <Form.Item
             name="allowedOrigins"
-            label="CORS 허용 origin (콤마 또는 줄바꿈 구분)"
-            tooltip="외부 사이트 브라우저가 Storige API 를 호출할 때 허용할 origin. 예: https://www.bookmoa.co.kr"
-            getValueFromEvent={(e) => {
-              const raw = (e?.target?.value ?? e ?? '') as string;
-              return raw
-                .split(/[\n,]+/)
-                .map((s) => s.trim())
-                .filter(Boolean);
-            }}
-            getValueProps={(value: string[] | undefined) => ({
-              value: Array.isArray(value) ? value.join('\n') : value,
-            })}
+            label="CORS 허용 origin (줄마다 하나, 또는 콤마)"
+            tooltip="저장할 때 줄바꿈/콤마로 나눕니다. 입력 중 Enter 로 줄을 넣을 수 있습니다. 예: https://www.printy.kr"
           >
             <Input.TextArea
               rows={3}
-              placeholder={'https://www.bookmoa.co.kr\nhttps://bookmoa-mobile.vercel.app'}
+              placeholder={'https://www.example.com\nhttps://shop.example.com'}
             />
           </Form.Item>
 
           <Form.Item
             name="frameAncestors"
             label="iframe embed 허용 parent origin"
-            tooltip="외부 사이트가 Storige Editor 를 iframe 으로 임베드할 때 허용할 parent origin (CSP frame-ancestors 합성)."
-            getValueFromEvent={(e) => {
-              const raw = (e?.target?.value ?? e ?? '') as string;
-              return raw
-                .split(/[\n,]+/)
-                .map((s) => s.trim())
-                .filter(Boolean);
-            }}
-            getValueProps={(value: string[] | undefined) => ({
-              value: Array.isArray(value) ? value.join('\n') : value,
-            })}
+            tooltip="외부 사이트가 Storige Editor 를 iframe 으로 임베드할 때 허용할 parent origin (CSP frame-ancestors). 줄마다 하나."
           >
             <Input.TextArea
               rows={3}
-              placeholder={'https://www.bookmoa.co.kr\nhttps://bookmoa-mobile.vercel.app'}
+              placeholder={'https://www.example.com\nhttps://shop.example.com'}
             />
           </Form.Item>
 
