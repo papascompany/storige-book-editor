@@ -222,6 +222,7 @@ export function useEditorContents(): UseEditorContentsReturn {
     setCoverFinishing,
     setLinkedPrintTemplates,
     setHasCoverSlot,
+    setPageTrimMm,
   } = useSettingsStore(
     useShallow((state) => ({
       setupProductBased: state.setupProductBased,
@@ -233,6 +234,7 @@ export function useEditorContents(): UseEditorContentsReturn {
       setCoverFinishing: state.setCoverFinishing,
       setLinkedPrintTemplates: state.setLinkedPrintTemplates,
       setHasCoverSlot: state.setHasCoverSlot,
+      setPageTrimMm: state.setPageTrimMm,
     }))
   )
 
@@ -942,7 +944,7 @@ export function useEditorContents(): UseEditorContentsReturn {
     } finally {
       editor?.emit('longTask:end')
     }
-  }, [editor, setupEmptyEditorStore, initWorkspace, setCoverFinishing, setLinkedPrintTemplates, setHasCoverSlot])
+  }, [editor, setupEmptyEditorStore, initWorkspace, setCoverFinishing, setLinkedPrintTemplates, setHasCoverSlot, setPageTrimMm])
 
   const loadGeneralEditor = useCallback(async (config?: GeneralSetupConfig): Promise<void> => {
     console.log('[EditorContents] Loading general editor', config)
@@ -1043,6 +1045,7 @@ export function useEditorContents(): UseEditorContentsReturn {
         editorMode = 'book' as EditorMode
       }
       console.log('[EditorContents] EditorMode:', editorMode)
+      setPageTrimMm({ width: templateSet.width, height: templateSet.height })
 
       if (editorMode === 'book') {
         const assembled = assemblePrintTemplates(originalTemplateDetails as PrintTemplateLike[])
@@ -1918,7 +1921,7 @@ export function useEditorContents(): UseEditorContentsReturn {
 
       console.log('[EditorContents:Spread] Spread mode editor loaded successfully')
     }
-  }, [editor, setupEmptyEditorStore, setEditorTemplates, initWorkspace, loadCanvasData, setCoverFinishing, setEnabledMenus, setPrintMarkConfig, setLinkedPrintTemplates, setHasCoverSlot])
+  }, [editor, setupEmptyEditorStore, setEditorTemplates, initWorkspace, loadCanvasData, setCoverFinishing, setEnabledMenus, setPrintMarkConfig, setLinkedPrintTemplates, setHasCoverSlot, setPageTrimMm])
 
   /**
    * 템플릿 콘텐츠 설정

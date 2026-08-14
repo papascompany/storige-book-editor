@@ -613,6 +613,7 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
       const useInnerSpreadSize =
         !!spreadConfig?.innerSpec &&
         (spreadConfig.regionScope === 'inner' || get().allCanvas.length > 0)
+      const pageTrim = settingsStore.pageTrimMm
       if (useInnerSpreadSize && spreadConfig?.innerSpec) {
         // 포토북 내지(O-2): 2-up 펼침면 — 폭=한 면×2, 높이=한 면. (한 펼침면=1 캔버스라
         // 좌/우 페어가 구조적으로 함께 이동·삭제·재정렬 → 페어 무결성 보장.)
@@ -622,6 +623,14 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
           height: isp.pageHeightMm,
           cutSize: isp.cutSizeMm,
           safeSize: isp.safeSizeMm,
+        }
+      } else if (pageTrim && get().allCanvas.length > 0) {
+        // 표지 스프레드 다음 내지: 판형(한 면)이지 표지 총폭(430)이 아니다.
+        pageSize = {
+          width: pageTrim.width,
+          height: pageTrim.height,
+          cutSize: currentSettings.size.cutSize,
+          safeSize: currentSettings.size.safeSize ?? 5,
         }
       } else if (spreadConfig?.spec) {
         // 스프레드 모드: 내지는 표지 크기 사용

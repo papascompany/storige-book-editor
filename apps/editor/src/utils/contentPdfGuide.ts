@@ -28,6 +28,7 @@ import {
   DEFAULT_GUIDE_DPI,
   neededInnerCanvases,
   pdfSizeMmFromRaster,
+  pixelsToMm,
   sheetSeatSlots,
   spreadPdfIndices,
   spreadSeatSlots,
@@ -140,8 +141,9 @@ function seatingContext(): {
   const pairOnSpread = cfg?.regionScope === 'inner' || !!cfg?.innerSpec
   const innerStart = cfg?.regionScope === 'inner' || settings.hasCoverSlot === false ? 0 : 1
   const size = settings.currentSettings?.size
-  const leafWidthMm = cfg?.innerSpec?.pageWidthMm || size?.width || 210
-  const leafHeightMm = cfg?.innerSpec?.pageHeightMm || size?.height || 297
+  const trim = settings.pageTrimMm
+  const leafWidthMm = cfg?.innerSpec?.pageWidthMm || trim?.width || size?.width || 210
+  const leafHeightMm = cfg?.innerSpec?.pageHeightMm || trim?.height || size?.height || 297
   const workspaceWidthMm = pairOnSpread ? leafWidthMm * 2 : leafWidthMm
   return { innerStart, pairOnSpread, leafWidthMm, leafHeightMm, workspaceWidthMm }
 }
@@ -155,11 +157,16 @@ async function placeGuideImage(
 ): Promise<void> {
   const objs = canvas.getObjects() as Array<{ id?: string }>
   const ws = objs.find((o) => o.id === 'workspace') as WorkspaceBox | undefined
-  if (!ws || !img.width || !img.height || !(workspaceWidthMm > 0)) return
+  if (!ws || !img.width || !img.height) return
   const wsW = (ws.width || 0) * (ws.scaleX || 1)
   if (!(wsW > 0)) return
+  const dpi = useSettingsStore.getState().currentSettings?.dpi || 150
+  // 이 캔버스 워크스페이스의 실제 mm. 표지 totalWidth(430)를 내지에 쓰면 A4가 반으로 줄어든다.
+  const canvasMm = pixelsToMm(wsW, dpi)
+  const scaleRefMm = canvasMm > 0 ? canvasMm : workspaceWidthMm
+  if (!(scaleRefMm > 0)) return
   const pdf = pdfSizeMmFromRaster(img.width, img.height, guideDpi)
-  const scale = uniformMmScale(img.width, pdf.width, wsW, workspaceWidthMm)
+  const scale = uniformMmScale(img.width, pdf.width, wsW, scaleRefMm)
   const pt = workspacePoint(ws, slot.centerFracX, slot.centerFracY)
   img.set({
     left: pt.x,

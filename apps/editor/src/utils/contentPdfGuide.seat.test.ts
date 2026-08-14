@@ -110,6 +110,7 @@ const settingsState = {
     innerSpec?: { pageWidthMm: number; pageHeightMm: number }
   } | null,
   hasCoverSlot: true,
+  pageTrimMm: { width: 210, height: 297 },
   currentSettings: { size: { width: 210, height: 297 }, dpi: 150 },
 }
 
@@ -169,6 +170,8 @@ beforeEach(() => {
   appState.isSpreadMode = true
   settingsState.spreadConfig = { regionScope: 'cover' }
   settingsState.hasCoverSlot = true
+  settingsState.pageTrimMm = { width: 210, height: 297 }
+  settingsState.currentSettings = { size: { width: 210, height: 297 }, dpi: 150 }
   wireGrowingAddInnerPage()
   imageFromURL.mockImplementation(async (_url: string, opts: Record<string, unknown>) => ({
     width: 100,
@@ -311,6 +314,35 @@ describe('applyContentPdfGuides — 멱등 배치', () => {
       metadata: { contentPdfGuide: { pageImageUrls: ['/p1.png'] } },
     })
     expect(imageFromURL).not.toHaveBeenCalled()
+  })
+
+  it('표지 총폭(430)이 스토어에 있어도 내지 워크스페이스 mm로 앉힌다', async () => {
+    setCanvases(1)
+    settingsState.currentSettings = { size: { width: 430, height: 297 }, dpi: 150 }
+    settingsState.pageTrimMm = { width: 210, height: 297 }
+    settingsState.hasCoverSlot = true
+    settingsState.spreadConfig = { regionScope: 'cover' }
+    // 210mm @ 150dpi ≈ 1240px 워크스페이스, 210mm @ 110dpi 이미지
+    const ws = appState.allCanvas[1].objects[0] as { width: number; height: number }
+    ws.width = (210 / 25.4) * 150
+    ws.height = (297 / 25.4) * 150
+    const imgW = (210 / 25.4) * 110
+    imageFromURL.mockImplementation(async (_url: string, opts: Record<string, unknown>) => ({
+      width: imgW,
+      height: (297 / 25.4) * 110,
+      ...opts,
+      set(this: Record<string, unknown>, patch: Record<string, unknown>) {
+        Object.assign(this, patch)
+      },
+    }))
+    await applyContentPdfGuides(guideSession(1, ['/a4.png']))
+    const guide = appState.allCanvas[1].objects.find(
+      (o) => (o as { meta?: { system?: string } }).meta?.system === 'innerPdfGuide',
+    ) as { scaleX?: number; scaleY?: number }
+    expect(guide.scaleX).toBeCloseTo(150 / 110, 5)
+    expect(guide.scaleX).toBe(guide.scaleY)
+    const wrong = (210 / 430) * (ws.width / imgW)
+    expect(guide.scaleX).not.toBeCloseTo(wrong, 5)
   })
 
   it('내지펼침면은 한 캔버스에 좌·우 두 장을 원본 비율로 깐다', async () => {

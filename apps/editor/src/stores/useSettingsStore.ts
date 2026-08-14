@@ -296,6 +296,11 @@ interface SettingsState {
    * 표지 칸이 있는 세트인가. 없으면 페이지 네비에 표지 슬롯을 그리지 않는다.
    */
   hasCoverSlot: boolean
+  /**
+   * 내지 한 면 재단(mm). 표지 스프레드 totalWidth 와 다르다.
+   * A4 책 표지 430×297 이어도 내지는 210×297.
+   */
+  pageTrimMm: { width: number; height: number } | null
   artwork: {
     name: string
     product: WowPressLinkedProduct | null
@@ -375,6 +380,7 @@ interface SettingsActions {
   setCoverFinishing: (locked: boolean, allowed: CoverFinishingKind[]) => void
   setLinkedPrintTemplates: (templates: LinkedPrintTemplate[]) => void
   setHasCoverSlot: (hasCover: boolean) => void
+  setPageTrimMm: (size: { width: number; height: number } | null) => void
 
   // P3: 작업사이즈/재단마커 출력 설정 관리 (templateSet 에서 운반)
   setPrintMarkConfig: (config: PrintMarkConfig | null) => void
@@ -411,6 +417,7 @@ const initialState: SettingsState = {
   coverFinishingAllowed: [],
   linkedPrintTemplates: [],
   hasCoverSlot: true,
+  pageTrimMm: null,
   printMarkConfig: null,
   artwork: {
     name: '나의 새로운 작업',
@@ -854,6 +861,14 @@ export const useSettingsStore = create<SettingsState & SettingsActions>()((set, 
 
   setHasCoverSlot: (hasCover) => {
     set({ hasCoverSlot: hasCover !== false })
+  },
+
+  setPageTrimMm: (size) => {
+    if (!size || !(size.width > 0) || !(size.height > 0)) {
+      set({ pageTrimMm: null })
+      return
+    }
+    set({ pageTrimMm: { width: size.width, height: size.height } })
   },
 
   // P3: 작업사이즈/재단마커 출력 설정. null = 미설정(게이트 OFF). loadTemplateSetEditor 가 호출.
