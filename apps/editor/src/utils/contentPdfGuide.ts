@@ -8,7 +8,8 @@
  * templateSet.contentPdfEditable===false 면 내지 기존 객체를 잠그고(LockPlugin)
  * 첫 내지 페이지에 "편집 불가" 레이블을 표시한다.
  *
- * 좌표: workspace 객체의 박스(left/top/width/height/scale/origin)에 가이드를 맞춘다.
+ * 좌표: 원본 mm 균일 스케일 + trim 칸 중심(펼침면은 좌=PDF 2k, 우=2k+1).
+ * 축 독립 늘리기 금지. 작업사이즈 페이지는 접힘선에서 안쪽 블리드가 겹친다.
  *
  * W1(2026-08-13): 종전엔 세션 **재로드** 시에만 배치돼 첨부 직후 화면은 그대로였다(G1).
  * `seatContentPdf()` 가 재로드 없이 ①내지 페이지 수를 PDF 페이지 수로 확장(G5)하고
@@ -23,6 +24,18 @@ import { templateSetsApi } from '../api/template-sets'
 import { editSessionsApi } from '../api/edit-sessions'
 import { apiClient } from '../api/client'
 import { permuteContentPdfPageOrder } from './innerPageReorder'
+import {
+  DEFAULT_GUIDE_DPI,
+  neededInnerCanvases,
+  pdfSizeMmFromRaster,
+  sheetSeatSlots,
+  spreadPdfIndices,
+  spreadSeatSlots,
+  type SeatSlot,
+  uniformMmScale,
+  workspacePoint,
+  type WorkspaceBox,
+} from './contentPdfSeatLayout'
 
 const GUIDE_SYSTEM = 'innerPdfGuide'
 const LABEL_SYSTEM = 'innerPdfGuideLabel'
@@ -115,6 +128,54 @@ export function resolveUnderlaySource(editSession: any): {
   }
 }
 
+function seatingContext(): {
+  innerStart: number
+  pairOnSpread: boolean
+  leafWidthMm: number
+  leafHeightMm: number
+  workspaceWidthMm: number
+} {
+  const settings = useSettingsStore.getState()
+  const cfg = settings.spreadConfig
+  const pairOnSpread = cfg?.regionScope === 'inner' || !!cfg?.innerSpec
+  const innerStart = cfg?.regionScope === 'inner' || settings.hasCoverSlot === false ? 0 : 1
+  const size = settings.currentSettings?.size
+  const leafWidthMm = cfg?.innerSpec?.pageWidthMm || size?.width || 210
+  const leafHeightMm = cfg?.innerSpec?.pageHeightMm || size?.height || 297
+  const workspaceWidthMm = pairOnSpread ? leafWidthMm * 2 : leafWidthMm
+  return { innerStart, pairOnSpread, leafWidthMm, leafHeightMm, workspaceWidthMm }
+}
+
+async function placeGuideImage(
+  canvas: { insertAt: (o: unknown, idx: number, n: boolean) => void; getObjects: () => unknown[]; requestRenderAll: () => void },
+  img: { width?: number; height?: number; set: (p: Record<string, unknown>) => void; meta?: { system?: string } },
+  slot: SeatSlot,
+  workspaceWidthMm: number,
+  guideDpi: number,
+): Promise<void> {
+  const objs = canvas.getObjects() as Array<{ id?: string }>
+  const ws = objs.find((o) => o.id === 'workspace') as WorkspaceBox | undefined
+  if (!ws || !img.width || !img.height || !(workspaceWidthMm > 0)) return
+  const wsW = (ws.width || 0) * (ws.scaleX || 1)
+  if (!(wsW > 0)) return
+  const pdf = pdfSizeMmFromRaster(img.width, img.height, guideDpi)
+  const scale = uniformMmScale(img.width, pdf.width, wsW, workspaceWidthMm)
+  const pt = workspacePoint(ws, slot.centerFracX, slot.centerFracY)
+  img.set({
+    left: pt.x,
+    top: pt.y,
+    originX: 'center',
+    originY: 'center',
+    angle: ws.angle || 0,
+    scaleX: scale,
+    scaleY: scale,
+  })
+  img.meta = { system: GUIDE_SYSTEM }
+  const wsIdx = objs.findIndex((o) => o.id === 'workspace')
+  canvas.insertAt(img, wsIdx >= 0 ? wsIdx + 1 : 0, false)
+  canvas.requestRenderAll()
+}
+
 /** 기존 가이드/레이블 제거 — 재호출(로드 후 첨부 등) 시 중복 적재 방지 */
 function removeExistingGuides(canvas: any): void {
   try {
@@ -156,51 +217,50 @@ export async function applyContentPdfGuides(
     }
 
     const { allCanvas, allEditors } = useAppStore.getState()
-    if (allCanvas.length <= 1) return // 스프레드(0) 외 내지 페이지 없음
+    const seat = seatingContext()
+    if (allCanvas.length <= seat.innerStart) return
 
-    // 내지 페이지: allCanvas[1..N] (index 0 = 스프레드 표지)
-    // G4: pageOrder[k] 가 있으면 슬롯 k 에 원본 PDF 페이지 pageOrder[k] 를 깐다.
-    for (let i = 1; i < allCanvas.length; i++) {
+    const guideDpi =
+      Number((guide as { resolution?: number }).resolution) > 0
+        ? Number((guide as { resolution?: number }).resolution)
+        : DEFAULT_GUIDE_DPI
+    const urls = guide.pageImageUrls as string[]
+    const sheetSlots = sheetSeatSlots(seat.leafWidthMm, seat.leafHeightMm)
+    const pairSlots = spreadSeatSlots(seat.leafWidthMm, seat.leafHeightMm)
+
+    for (let i = seat.innerStart; i < allCanvas.length; i++) {
       const canvas: any = allCanvas[i]
-      const slot = i - 1
-      const pdfIndex = pageOrder?.[slot] ?? slot
-      const url = Number.isInteger(pdfIndex) ? guide.pageImageUrls[pdfIndex] : undefined
-
-      // 멱등: 직전 호출(세션 로드 등)이 깔아둔 가이드/레이블을 먼저 제거한다.
+      const innerIndex = i - seat.innerStart
       removeExistingGuides(canvas)
 
-      // 1) 가이드 배경 배치
-      if (url) {
+      const placements: { url?: string; slot: SeatSlot }[] = seat.pairOnSpread
+        ? (() => {
+            const idx = spreadPdfIndices(innerIndex, pageOrder)
+            return [
+              { url: urls[idx.left], slot: pairSlots[0] },
+              { url: urls[idx.right], slot: pairSlots[1] },
+            ]
+          })()
+        : [
+            {
+              url: urls[pageOrder?.[innerIndex] ?? innerIndex],
+              slot: sheetSlots[0],
+            },
+          ]
+
+      for (const p of placements) {
+        if (!p.url) continue
         try {
-          const img: any = await imageFromURL(resolveStorageUrl(url), {
+          const img: any = await imageFromURL(resolveStorageUrl(p.url), {
             excludeFromExport: true,
             selectable: false,
             evented: false,
             hasControls: false,
             hasBorders: false,
           })
-          const objs = canvas.getObjects()
-          const ws: any = objs.find((o: any) => o.id === 'workspace')
-          if (ws && img.width && img.height) {
-            const wsW = (ws.width || 0) * (ws.scaleX || 1)
-            const wsH = (ws.height || 0) * (ws.scaleY || 1)
-            img.set({
-              left: ws.left,
-              top: ws.top,
-              originX: ws.originX || 'left',
-              originY: ws.originY || 'top',
-              angle: ws.angle || 0,
-              scaleX: wsW / img.width,
-              scaleY: wsH / img.height,
-            })
-          }
-          img.meta = { system: GUIDE_SYSTEM }
-          // workspace 바로 위(배경 위, 사용자 객체 아래)에 삽입
-          const wsIdx = objs.findIndex((o: any) => o.id === 'workspace')
-          canvas.insertAt(img, wsIdx >= 0 ? wsIdx + 1 : 0, false)
-          canvas.requestRenderAll()
+          await placeGuideImage(canvas, img, p.slot, seat.workspaceWidthMm, guideDpi)
         } catch (e) {
-          console.warn('[contentPdfGuide] place failed page', i, e)
+          console.warn('[contentPdfGuide] place failed page', i, p.slot.side, e)
         }
       }
 
@@ -227,10 +287,10 @@ export async function applyContentPdfGuides(
     }
 
     // 3) 첫 내지 페이지 레이블 (편집 불가 시)
-    if (!editable && allCanvas[1]) {
+    if (!editable && allCanvas[seat.innerStart]) {
       try {
         const fabric: any = getFabricSync()
-        const c: any = allCanvas[1]
+        const c: any = allCanvas[seat.innerStart]
         const ws: any = c.getObjects().find((o: any) => o.id === 'workspace')
         const left = ws?.left ?? 24
         const top = ws?.top ?? 24
@@ -270,8 +330,8 @@ export async function applyContentPdfGuides(
  * 계약:
  * - **추가만** 한다(감소 없음) — 로드 경로도 `target > current` 일 때만 늘리므로 대칭이고,
  *   사용자가 직접 추가한 페이지를 첨부가 지우지 않는다.
- * - 스프레드 모드(표지=캔버스0) 전용. 포토북 내지 전용 세트(regionScope='inner')는 캔버스0이
- *   이미 펼침면이라 가이드의 인덱스 규약(1..N=내지)과 어긋나므로 대상에서 제외한다.
+ * - 표지 칸이 있으면 캔버스0을 건너뛴다. 표지없음·내지펼침면은 캔버스0부터.
+ * - 내지펼침면은 PDF 2장 = 캔버스 1장(좌·우). 단면은 1장 = 1캔버스.
  *
  * @returns 실제로 추가된 페이지 수
  */
@@ -286,26 +346,20 @@ export async function ensureUnderlayPages(pageCount?: number | null): Promise<nu
   }
 
   const app = useAppStore.getState()
-  if (!app.isSpreadMode) {
-    console.warn('[contentPdfGuide] ensureUnderlayPages: 스프레드 모드 아님 — 확장 스킵')
-    return 0
-  }
-  if (useSettingsStore.getState().spreadConfig?.regionScope === 'inner') {
-    // 내지 전용 펼침면 세트: 캔버스0=펼침면 — 표지 인덱스 규약 불일치(가이드도 미대응)
-    return 0
-  }
-
-  const before = app.allCanvas.length - 1
+  const seat = seatingContext()
+  const needed = neededInnerCanvases(target, seat.pairOnSpread)
+  const before = Math.max(0, app.allCanvas.length - seat.innerStart)
   let inner = before
-  // 상한 회수 가드: addInnerPage 가 실패(컨테이너 부재 등)해도 무한 루프에 빠지지 않게 한다.
-  for (let guard = 0; inner < target && guard < UNDERLAY_MAX_PAGES; guard++) {
-    await useAppStore.getState().addInnerPage()
-    const next = useAppStore.getState().allCanvas.length - 1
+  const grow = async () => {
+    const state = useAppStore.getState()
+    if (state.isSpreadMode) await state.addInnerPage()
+    else await state.addPage()
+  }
+  for (let guard = 0; inner < needed && guard < UNDERLAY_MAX_PAGES; guard++) {
+    await grow()
+    const next = Math.max(0, useAppStore.getState().allCanvas.length - seat.innerStart)
     if (next <= inner) {
-      console.warn('[contentPdfGuide] addInnerPage 가 페이지를 늘리지 못함 — 확장 중단', {
-        inner,
-        target,
-      })
+      console.warn('[contentPdfGuide] 페이지를 늘리지 못함 — 확장 중단', { inner, needed })
       break
     }
     inner = next
@@ -350,7 +404,8 @@ export async function seatContentPdf(
 
   if (options?.focusFirstInnerPage) {
     const { allCanvas, setPage } = useAppStore.getState()
-    if (allCanvas.length > 1) setPage(1)
+    const innerStart = seatingContext().innerStart
+    if (allCanvas.length > innerStart) setPage(innerStart)
   }
 
   return { addedPages, guidesPlaced }

@@ -101,9 +101,17 @@ const appState = {
   allCanvas: [] as FakeCanvas[],
   allEditors: [] as unknown[],
   addInnerPage: vi.fn(),
+  addPage: vi.fn(),
   setPage: vi.fn(),
 }
-const settingsState = { spreadConfig: { regionScope: 'cover' } as { regionScope?: string } | null }
+const settingsState = {
+  spreadConfig: { regionScope: 'cover' } as {
+    regionScope?: string
+    innerSpec?: { pageWidthMm: number; pageHeightMm: number }
+  } | null,
+  hasCoverSlot: true,
+  currentSettings: { size: { width: 210, height: 297 }, dpi: 150 },
+}
 
 vi.mock('../stores/useAppStore', () => ({
   useAppStore: { getState: () => appState },
@@ -128,12 +136,24 @@ function setCanvases(innerCount: number): void {
   appState.allEditors = appState.allCanvas.map(() => ({ getPlugin: () => undefined }))
 }
 
-/** addInnerPage 기본 구현 — 캔버스를 실제로 1장 늘린다 */
+function growOneCanvas(): void {
+  appState.allCanvas = [...appState.allCanvas, makeCanvas()]
+  appState.allEditors = [...appState.allEditors, { getPlugin: () => undefined }]
+}
+
+/** addInnerPage / addPage 기본 구현 — 캔버스를 실제로 1장 늘린다 */
 function wireGrowingAddInnerPage(): void {
   appState.addInnerPage.mockImplementation(async () => {
-    appState.allCanvas = [...appState.allCanvas, makeCanvas()]
-    appState.allEditors = [...appState.allEditors, { getPlugin: () => undefined }]
+    growOneCanvas()
   })
+  appState.addPage.mockImplementation(async () => {
+    growOneCanvas()
+  })
+}
+
+function setInnerOnlyCanvases(count: number): void {
+  appState.allCanvas = Array.from({ length: count }, () => makeCanvas())
+  appState.allEditors = appState.allCanvas.map(() => ({ getPlugin: () => undefined }))
 }
 
 const guideSession = (pageCount: number, pageImageUrls?: string[]) => ({
@@ -148,6 +168,7 @@ beforeEach(() => {
   rememberContentPdfPageOrder(undefined)
   appState.isSpreadMode = true
   settingsState.spreadConfig = { regionScope: 'cover' }
+  settingsState.hasCoverSlot = true
   wireGrowingAddInnerPage()
   imageFromURL.mockImplementation(async (_url: string, opts: Record<string, unknown>) => ({
     width: 100,
@@ -187,18 +208,27 @@ describe('ensureUnderlayPages — 첨부 직후 내지 즉시 확장(G5)', () =>
     expect(appState.allCanvas.length - 1).toBe(UNDERLAY_MAX_PAGES)
   })
 
-  it('스프레드 모드가 아니면 손대지 않는다', async () => {
-    setCanvases(1)
+  it('단면(비스프레드)은 addPage 로 1장=1캔버스 확장한다', async () => {
+    setInnerOnlyCanvases(1)
     appState.isSpreadMode = false
-    expect(await ensureUnderlayPages(10)).toBe(0)
+    settingsState.hasCoverSlot = false
+    settingsState.spreadConfig = null
+    expect(await ensureUnderlayPages(4)).toBe(3)
+    expect(appState.addPage).toHaveBeenCalledTimes(3)
     expect(appState.addInnerPage).not.toHaveBeenCalled()
+    expect(appState.allCanvas).toHaveLength(4)
   })
 
-  it("내지 전용 펼침면 세트(regionScope='inner')는 대상이 아니다", async () => {
-    setCanvases(1)
-    settingsState.spreadConfig = { regionScope: 'inner' }
-    expect(await ensureUnderlayPages(10)).toBe(0)
-    expect(appState.addInnerPage).not.toHaveBeenCalled()
+  it("내지 전용 펼침면은 PDF 2장=캔버스 1장으로 확장한다", async () => {
+    setInnerOnlyCanvases(1)
+    settingsState.hasCoverSlot = false
+    settingsState.spreadConfig = {
+      regionScope: 'inner',
+      innerSpec: { pageWidthMm: 210, pageHeightMm: 297 },
+    }
+    expect(await ensureUnderlayPages(8)).toBe(3)
+    expect(appState.addInnerPage).toHaveBeenCalledTimes(3)
+    expect(appState.allCanvas).toHaveLength(4)
   })
 
   it('addInnerPage 가 페이지를 늘리지 못하면 즉시 중단한다(무한 루프 금지)', async () => {
@@ -281,6 +311,39 @@ describe('applyContentPdfGuides — 멱등 배치', () => {
       metadata: { contentPdfGuide: { pageImageUrls: ['/p1.png'] } },
     })
     expect(imageFromURL).not.toHaveBeenCalled()
+  })
+
+  it('내지펼침면은 한 캔버스에 좌·우 두 장을 원본 비율로 깐다', async () => {
+    setInnerOnlyCanvases(1)
+    settingsState.hasCoverSlot = false
+    settingsState.spreadConfig = {
+      regionScope: 'inner',
+      innerSpec: { pageWidthMm: 210, pageHeightMm: 297 },
+    }
+    imageFromURL.mockImplementation(async (_url: string, opts: Record<string, unknown>) => ({
+      width: 100,
+      height: 80,
+      ...opts,
+      set(this: Record<string, unknown>, patch: Record<string, unknown>) {
+        Object.assign(this, patch)
+      },
+    }))
+    await applyContentPdfGuides(
+      guideSession(2, ['/l.png', '/r.png']),
+    )
+    const guides = appState.allCanvas[0].objects.filter(
+      (o) => (o as { meta?: { system?: string } }).meta?.system === 'innerPdfGuide',
+    )
+    expect(guides).toHaveLength(2)
+    expect(imageFromURL).toHaveBeenNthCalledWith(1, 'https://api.example.com/l.png', expect.any(Object))
+    expect(imageFromURL).toHaveBeenNthCalledWith(2, 'https://api.example.com/r.png', expect.any(Object))
+    const a = guides[0] as { scaleX?: number; scaleY?: number; originX?: string }
+    const b = guides[1] as { scaleX?: number; scaleY?: number }
+    expect(a.originX).toBe('center')
+    expect(a.scaleX).toBe(a.scaleY)
+    expect(b.scaleX).toBe(b.scaleY)
+    expect(a.scaleX).not.toBe(200 / 100)
+    expect(a.scaleY).not.toBe(300 / 80)
   })
 })
 
