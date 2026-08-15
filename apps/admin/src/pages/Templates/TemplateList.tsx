@@ -289,14 +289,38 @@ export const TemplateList = () => {
       title: '템플릿명',
       dataIndex: 'name',
       key: 'name',
+      width: 360,
+      ellipsis: true,
       sorter: (a, b) => a.name.localeCompare(b.name),
+      onCell: () => ({ style: { maxWidth: 360 } }),
       render: (name: string, record: Template) => (
-        <Space>
-          <span>{name}</span>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            minWidth: 0,
+            maxWidth: '100%',
+          }}
+        >
+          <span
+            title={name}
+            style={{
+              flex: 1,
+              minWidth: 0,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              wordBreak: 'keep-all',
+            }}
+          >
+            {name}
+          </span>
           <Button
             type="text"
             size="small"
             icon={<EditOutlined />}
+            style={{ flexShrink: 0 }}
             onClick={(e) => {
               e.stopPropagation();
               const newName = prompt('템플릿명 수정', name);
@@ -305,7 +329,7 @@ export const TemplateList = () => {
               }
             }}
           />
-        </Space>
+        </div>
       ),
     },
     {
@@ -554,6 +578,7 @@ export const TemplateList = () => {
         dataSource={filteredTemplates}
         rowKey="id"
         loading={isLoading}
+        scroll={{ x: 1480 }}
         pagination={{
           defaultPageSize: 10,
           showSizeChanger: true,

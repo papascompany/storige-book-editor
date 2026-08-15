@@ -191,16 +191,33 @@ export const TemplateSetList = () => {
       title: '템플릿셋명',
       dataIndex: 'name',
       key: 'name',
+      width: 360,
+      ellipsis: true,
       sorter: (a, b) => a.name.localeCompare(b.name),
+      onCell: () => ({ style: { maxWidth: 360 } }),
       render: (name: string, record) => (
-        <Space>
-          <Text>{name}</Text>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            minWidth: 0,
+            maxWidth: '100%',
+          }}
+        >
+          <Text
+            ellipsis={{ tooltip: name }}
+            style={{ flex: 1, minWidth: 0, wordBreak: 'keep-all' }}
+          >
+            {name}
+          </Text>
           {/* 파생 초안 등 비활성 세트 식별 (2026-07-14) — is_active=false 만 명시 표시 */}
           {record.isActive === false && <Tag>비활성</Tag>}
           <Button
             type="text"
             size="small"
             icon={<EditOutlined />}
+            style={{ flexShrink: 0 }}
             onClick={(e) => {
               e.stopPropagation();
               const newName = prompt('템플릿셋명 수정', name);
@@ -209,7 +226,7 @@ export const TemplateSetList = () => {
               }
             }}
           />
-        </Space>
+        </div>
       ),
     },
     {
@@ -398,6 +415,7 @@ export const TemplateSetList = () => {
         dataSource={filteredTemplates}
         rowKey="id"
         loading={isLoading}
+        scroll={{ x: 1620 }}
         pagination={{
           defaultPageSize: 10,
           showSizeChanger: true,
