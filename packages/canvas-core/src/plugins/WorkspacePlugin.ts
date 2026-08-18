@@ -510,8 +510,15 @@ class WorkspacePlugin extends PluginBase {
       this.workspace = workspace
 
       // 크기 변경을 비동기적으로 처리
+      // 발화 시점의 this.workspace 재참조는 reset() 재할당 레이스로 엉뚱한(새) rect 를
+      // 리사이즈할 수 있으므로, 이 시점의 rect 를 지역 변수로 캡처해 사용한다.
+      const targetWorkspace = workspace
       setTimeout(() => {
-        this.workspace.set({
+        // 캡처한 rect 가 이미 canvas 에서 제거됐으면 no-op (stale rect 리사이즈 방지)
+        if (!this._canvas || !this._canvas.getContext()) return
+        if (!this._canvas.getObjects().includes(targetWorkspace)) return
+
+        targetWorkspace.set({
           width: effectiveWidth,
           height: effectiveHeight,
           scaleX: 1,
@@ -519,7 +526,7 @@ class WorkspacePlugin extends PluginBase {
           dirty: true
         })
 
-        this.workspace.setCoords()
+        targetWorkspace.setCoords()
         this._canvas.requestRenderAll()
 
         // 다른 요소 업데이트
@@ -882,6 +889,12 @@ class WorkspacePlugin extends PluginBase {
     }
 
     // reset
+    // 인자 없이 새 Rect 를 생성하는 경로에서는 canvas 에 남아 있는 기존 workspace rect
+    // (예: createCanvas 기본 사이즈로 만든 정사각 rect)도 제거해야 한다. 아래 제거 루프는
+    // id==='workspace' 를 보존하므로, 새 rect 생성 경로만 기존 rect 까지 지우도록 구분한다.
+    // (_getWorkspace 는 first-match — 옛 rect 잔존 시 setZoomAuto/썸네일이 옛 크기로 핏되는 이중화 결함)
+    // ⚠️ 인자로 workspace 를 받은 경로(loadJSON 복원 rect)는 기존 동작 그대로 보존한다.
+    const createdNewWorkspace = !workspace
     this.workspace = workspace
     if (!this.workspace) {
       const canvasWidth = this._options.size.width + this._options.size.cutSize
@@ -925,7 +938,8 @@ class WorkspacePlugin extends PluginBase {
     this._canvas.discardActiveObject()
 
     this._canvas.getObjects().forEach((obj: fabric.Object) => {
-      if (obj.id !== 'workspace') {
+      // 새 rect 생성 경로: 새 rect 는 아직 add 전이므로 기존 workspace rect 포함 전부 제거해도 안전
+      if (createdNewWorkspace || obj.id !== 'workspace') {
         this._canvas.remove(obj)
       }
     })

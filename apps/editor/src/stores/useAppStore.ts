@@ -580,10 +580,24 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
       // FabricJS 기본 설정 (1회만 실행됨)
       configureFabricDefaults()
 
+      // 현재 설정 로드 — createFabricCanvas 보다 먼저 필요 (unitOptions 주입).
+      // ⚠️ 동적 import — createCanvas 유틸과 동일 사유로 useSettingsStore 정적 import 는 순환.
+      // 스프레드 내지 시드 시점에는 setupEmptyEditor(unit:'mm')가 선행돼 currentSettings 확정
+      // (store 기본값도 mm/150 — 미확정 창이 없다).
+      const settingsStore = (await import('@/stores/useSettingsStore')).useSettingsStore.getState()
+      const spreadConfig = settingsStore.spreadConfig
+      const currentSettings = settingsStore.currentSettings
+
       // FabricJS 캔버스 인스턴스 생성 (core API 사용)
       // id 문자열 대신 요소 직접 전달 — 동시 초기화 시 getElementById 요소 탈취 레이스 방지
+      // unitOptions 주입 — 종전엔 미주입이라 이 경로(addPage/addInnerPage)의 캔버스는
+      // canvas.unitOptions===undefined 영구 → 이미지 업로드 mm 스케일 보정에서 TypeError.
       const newCanvas = await createFabricCanvas(canvasElement, {
-        index: index
+        index: index,
+        unitOptions: {
+          unit: currentSettings.unit,
+          dpi: currentSettings.dpi,
+        },
       })
 
       // FabricJS wrapper 처리
@@ -604,11 +618,7 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
       // (여기서 또 부르면 ContextMenu 가 중복 생성돼 document 리스너가 두 벌 붙는다)
       const newEditor = new Editor()
 
-      // 워크스페이스 사이즈 결정 (현재 설정에서 가져오기)
-      const settingsStore = (await import('@/stores/useSettingsStore')).useSettingsStore.getState()
-      const spreadConfig = settingsStore.spreadConfig
-      const currentSettings = settingsStore.currentSettings
-
+      // 워크스페이스 사이즈 결정 (위에서 로드한 현재 설정 사용)
       let pageSize: { width: number; height: number; cutSize: number; safeSize: number }
       const useInnerSpreadSize =
         !!spreadConfig?.innerSpec &&

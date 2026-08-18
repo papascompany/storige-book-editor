@@ -864,6 +864,11 @@ export function useEditorContents(): UseEditorContentsReturn {
     try {
       editor?.emit('longTask:start', { message: '상품 정보를 설정하는 중...' })
 
+      // 로더 간 신호 누수 차단: templateSet 상품을 연 뒤 리마운트 없이 이 로더로 오면
+      // stale linkedPrintTemplates/spreadConfig 가 모양컷(CLIPPING) 게이트를 오작동시킨다.
+      setLinkedPrintTemplates([])
+      useSettingsStore.getState().setSpreadConfig(null)
+
       // 1. settings 스토어 설정 - 이 단계에서 size, dpi 등 설정이 적용됨
       console.log('[EditorContents] Calling setupProductBased...')
       await setupProductBased(config)
@@ -917,7 +922,7 @@ export function useEditorContents(): UseEditorContentsReturn {
     } finally {
       editor?.emit('longTask:end')
     }
-  }, [editor, canvas, setupProductBased, initWorkspace, setEditorTemplates, fetchSvgContent, setupTemplateFromSvgString])
+  }, [editor, canvas, setupProductBased, initWorkspace, setEditorTemplates, fetchSvgContent, setupTemplateFromSvgString, setLinkedPrintTemplates])
 
   const loadContentEditor = useCallback(async (config: ContentEditSetupConfig): Promise<void> => {
     console.log('[EditorContents] Loading content editor', config)
@@ -952,6 +957,10 @@ export function useEditorContents(): UseEditorContentsReturn {
     try {
       editor?.emit('longTask:start', { message: '에디터를 준비하는 중...' })
 
+      // 로더 간 신호 누수 차단 — loadProductBasedEditor 와 동일(모양컷 게이트 오작동 방지).
+      setLinkedPrintTemplates([])
+      useSettingsStore.getState().setSpreadConfig(null)
+
       await setupGeneralStore(config)
       await initWorkspace()
 
@@ -962,7 +971,7 @@ export function useEditorContents(): UseEditorContentsReturn {
     } finally {
       editor?.emit('longTask:end')
     }
-  }, [editor, setupGeneralStore, initWorkspace])
+  }, [editor, setupGeneralStore, initWorkspace, setLinkedPrintTemplates])
 
   /**
    * 템플릿셋 기반 에디터 로드
@@ -1667,21 +1676,30 @@ export function useEditorContents(): UseEditorContentsReturn {
             spreadPlugin.init()
           }
           latestCanvas.requestRenderAll()
-        } else if (existingSpread) {
-          if (typeof existingSpread.adoptCoverSpec === 'function') {
-            existingSpread.adoptCoverSpec(spreadSpec, templateConversionMode)
-          } else {
-            existingSpread.setConversionMode(templateConversionMode)
-          }
         } else {
-          console.log('[EditorContents:Spread] Dynamically registering SpreadPlugin')
-          const spreadPlugin = new SpreadPlugin(latestCanvas, latestEditor, {
-            spec: spreadSpec,
-            conversionMode: templateConversionMode,
-            regionScope: 'cover',
-          })
-          latestEditor.use(spreadPlugin)
-          spreadPlugin.init()
+          // C-2 심층방어: isPhotobookInner 분기와 동일하게 여분 workspace rect 정리 —
+          // loadCanvasData 가 canvasData 에 실려온 workspace 를 추가하면 _getWorkspace(first-match)
+          // 기준이 이중화돼 setZoomAuto/재단선 뷰포트가 옛 rect 크기로 핏될 수 있다. 첫 번째만 남긴다.
+          const coverWorkspaces = (latestCanvas.getObjects() as fabric.Object[]).filter(
+            (obj) => (obj as ExtendedFabricObject).id === 'workspace',
+          )
+          coverWorkspaces.slice(1).forEach((extra) => latestCanvas.remove(extra))
+          if (existingSpread) {
+            if (typeof existingSpread.adoptCoverSpec === 'function') {
+              existingSpread.adoptCoverSpec(spreadSpec, templateConversionMode)
+            } else {
+              existingSpread.setConversionMode(templateConversionMode)
+            }
+          } else {
+            console.log('[EditorContents:Spread] Dynamically registering SpreadPlugin')
+            const spreadPlugin = new SpreadPlugin(latestCanvas, latestEditor, {
+              spec: spreadSpec,
+              conversionMode: templateConversionMode,
+              regionScope: 'cover',
+            })
+            latestEditor.use(spreadPlugin)
+            spreadPlugin.init()
+          }
         }
       }
 
@@ -1857,13 +1875,23 @@ export function useEditorContents(): UseEditorContentsReturn {
       })
 
       // 내지 페이지들
+      // C-2: canvasData.width/height 는 썸네일 비율 메타(PageItem.computeThumbBox 권위) —
+      // +추가 경로(useAppStore.addInnerPage)와 동일 값이어야 시드분·추가분 썸네일 비율이
+      // 일치한다. 펼침면 내지=innerSpec 2-up(한 면×2 × 한 면), 낱장 내지=판형 trim(templateSet).
+      // 종전엔 표지 스펙(coverWidthMm×coverHeightMm)을 기록해 시드 썸네일만 깨졌다.
+      const innerPageDims =
+        isSpreadInners && photobookInnerSpec
+          ? { width: photobookInnerSpec.pageWidthMm * 2, height: photobookInnerSpec.pageHeightMm }
+          : typeof templateSet.width === 'number' && typeof templateSet.height === 'number'
+            ? { width: templateSet.width, height: templateSet.height }
+            : { width: spreadSpec.coverWidthMm, height: spreadSpec.coverHeightMm }
       for (let i = 0; i < adjustedPageTemplates.length; i++) {
         const pt = adjustedPageTemplates[i]
         editorPages.push({
           id: `${String(pt.id)}#${i + 1}`,
           templateId: pt.id,
           templateType: isSpreadInners ? TemplateType.SPREAD : TemplateType.PAGE,
-          canvasData: { version: '5.3.0', objects: [], width: spreadSpec.coverWidthMm, height: spreadSpec.coverHeightMm },
+          canvasData: { version: '5.3.0', objects: [], width: innerPageDims.width, height: innerPageDims.height },
           sortOrder: i + 1,
           required: pt.required !== false,
           deleteable: pt.required === false,
@@ -1918,6 +1946,31 @@ export function useEditorContents(): UseEditorContentsReturn {
           console.warn(`[EditorContents:Spread] Spine calculation skipped: ${spineResult.error}`)
         }
       }
+
+      // 13. C-2: 시드 루프(내지 생성)는 ready=false·패널 마운트로 레이아웃이 변동하는 중에
+      // 실행돼, 캔버스마다 생성 시점의 서로 다른(stale) 컨테이너 크기로 뷰포트가 동결될 수 있다.
+      // 로딩 오버레이 해제(ready) 직전에 전 캔버스의 setZoomAuto 를 RAF 1회로 병합해 일괄
+      // 재정렬 — 시드분·+추가분의 재단선/가이드 뷰포트 기준을 통일한다(사용자 체감 리셋 없음).
+      await new Promise<void>((resolve) => {
+        const runRealign = (): void => {
+          const { allCanvas: canvasesToAlign, allEditors: editorsToAlign } = useAppStore.getState()
+          canvasesToAlign.forEach((cvs, i) => {
+            try {
+              if (!cvs || (cvs as unknown as { disposed?: boolean }).disposed) return
+              editorsToAlign[i]?.getPlugin<WorkspacePlugin>('WorkspacePlugin')?.setZoomAuto()
+              cvs.requestRenderAll()
+            } catch (e) {
+              console.warn(`[EditorContents:Spread] realign skip (canvas ${i}):`, e)
+            }
+          })
+          resolve()
+        }
+        if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+          window.requestAnimationFrame(() => runRealign())
+        } else {
+          runRealign()
+        }
+      })
 
       console.log('[EditorContents:Spread] Spread mode editor loaded successfully')
     }

@@ -28,7 +28,8 @@ declare namespace fabric {
 
     name?: string
 
-    unitOptions: {
+    // optional — addPage 경로 등 주입 누락 캔버스에서 undefined 가능. 무방어 접근을 tsc가 잡는다.
+    unitOptions?: {
       unit: 'px' | 'mm'
       dpi: number
     }

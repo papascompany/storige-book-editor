@@ -513,7 +513,7 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
         const workspaceCenter = workspace.getCenterPoint()
 
         // canvas setting이 mm인 경우 스케일 보정
-        const scale = canvas.unitOptions.unit === 'mm' ? (canvas.unitOptions.dpi || 150) / 72 : 1
+        const scale = canvas.unitOptions?.unit === 'mm' ? (canvas.unitOptions.dpi || 150) / 72 : 1
 
         if (type === SelectionType.frame) {
           // 프레임 처리

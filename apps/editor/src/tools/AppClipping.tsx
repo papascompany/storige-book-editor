@@ -38,6 +38,28 @@ const SUBJECT_OPTIONS: { value: CutoutSubject; label: string; hint: string }[] =
   { value: 'general', label: '일반', hint: '상품·캐릭터·반려동물 등 사람이 아닌 피사체' }
 ]
 
+/**
+ * book/스프레드 상품 컨텍스트인가 — 모양컷 render()는 `canvas.clear()` 로 시작하므로
+ * 이런 상품에서 실행하면 workspace/재단선/안전선이 통째로 지워지고, 이어지는
+ * `clearHistory()` 가 undo 복구까지 차단한다(2026-08-18 동화책 하드커버 실사고).
+ * 다중 캔버스 · spreadConfig · 연결된 인쇄 템플릿 중 하나라도 있으면 book 으로 판정.
+ * ⚠️ hasCoverSlot 은 기본값이 true 라 단독 신호로 쓰면 모양컷 단품까지 오차단한다.
+ *    (동일 조건이 ToolBar/CommandPaletteModal 에도 있다 — AppClipping 은 lazy 청크라
+ *     여기서 export 하면 eager 번들로 끌려 들어가 코드 스플리팅이 깨진다.)
+ */
+const isSpreadProductContext = (): boolean => {
+  const { allCanvas } = useAppStore.getState()
+  const { spreadConfig, linkedPrintTemplates, enabledMenus } = useSettingsStore.getState()
+  // admin 이 화이트리스트로 CLIPPING 을 명시적으로 켠 세트는 게이트를 우회한다(운영 복구 수단).
+  if (enabledMenus != null && (enabledMenus as string[]).includes('CLIPPING')) return false
+  // ⚠️ linkedPrintTemplates 는 book 여부가 아니라 'templateSet 로드 여부' 신호다
+  //    (loadTemplateSetEditor 가 단일모드 포함 모든 세트에서 채움) — spread 템플릿 존재로 좁힌다.
+  const hasSpreadTemplate = linkedPrintTemplates.some(
+    (t) => t.type === 'spread' || t.spreadConfig != null,
+  )
+  return allCanvas.length > 1 || spreadConfig != null || hasSpreadTemplate
+}
+
 const accessories: ClippingAccessory[] = [
   {
     label: '키링',
@@ -254,6 +276,14 @@ export default function AppClipping() {
   const handleSetWorkspace = useCallback(async () => {
     if (!canvas) return
 
+    // book/스프레드 상품 가드 — offHistory 전에 반환해 off/on 쌍 정합을 유지한다.
+    // (handleSegmentImage 에는 2026-08-05에 isClippingWorkspace 가드가 들어갔지만
+    //  업로드 경로에는 누락돼 있었다 — 여기가 파괴적 render() 의 유일한 진입점.)
+    if (isSpreadProductContext()) {
+      showToast('이 상품에서는 모양컷을 사용할 수 없습니다.', 'info')
+      return
+    }
+
     canvas.offHistory()
     hideSidePanel()
 
@@ -294,6 +324,12 @@ export default function AppClipping() {
   // Render image to canvas
    
   const render = async (item: any, canvasInstance: fabric.Canvas) => {
+    // 2차 방어 — handleSetWorkspace 가드를 우회해 호출돼도 book 캔버스는 지우지 않는다.
+    if (isSpreadProductContext()) {
+      showToast('이 상품에서는 모양컷을 사용할 수 없습니다.', 'info')
+      return
+    }
+
     // Clear canvas
     canvasInstance.clipPath = undefined
     canvasInstance.clear()
@@ -313,6 +349,13 @@ export default function AppClipping() {
     try {
       if (!item) {
         console.error('No item')
+        return
+      }
+
+      // 2차 방어 — 아래 clear() 가 book 캔버스의 workspace/재단선/안전선을 삭제하지 못하게.
+      // 모양컷 단품(단일 캔버스·spreadConfig 없음·연결 템플릿 없음)에서는 항상 통과한다.
+      if (isSpreadProductContext()) {
+        showToast('이 상품에서는 모양컷을 사용할 수 없습니다.', 'info')
         return
       }
 

@@ -25,6 +25,8 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { useAppStore } from '@/stores/useAppStore'
+import { useSettingsStore } from '@/stores/useSettingsStore'
+import { showToast } from '@/stores/useToastStore'
 import { useUiPrefStore } from '@/stores/useUiPrefStore'
 import { useEditorStore } from '@/stores/useEditorStore'
 import { useCommandFavoritesStore } from '@/stores/useCommandFavoritesStore'
@@ -54,6 +56,25 @@ interface CommandAction {
 
 interface ActionContext {
   close: () => void
+}
+
+/**
+ * book/스프레드 상품 컨텍스트인가 — 모양컷(CLIPPING)은 canvas.clear() 기반의 파괴적
+ * 도구라 이런 상품에서 열 수 없다(ToolBar 는 메뉴 자체를 숨기므로, 팔레트 경로만 봉합).
+ * 조건은 ToolBar/AppClipping 과 동일: 다중 캔버스 · spreadConfig · 연결된 인쇄 템플릿.
+ * ⚠️ hasCoverSlot 은 기본값 true 라 단독 신호로 쓰지 않는다(모양컷 단품 오차단).
+ */
+const isSpreadProductContext = (): boolean => {
+  const { allCanvas } = useAppStore.getState()
+  const { spreadConfig, linkedPrintTemplates, enabledMenus } = useSettingsStore.getState()
+  // admin 이 화이트리스트로 CLIPPING 을 명시적으로 켠 세트는 게이트를 우회한다(운영 복구 수단).
+  if (enabledMenus != null && (enabledMenus as string[]).includes('CLIPPING')) return false
+  // ⚠️ linkedPrintTemplates 는 book 여부가 아니라 'templateSet 로드 여부' 신호다
+  //    (loadTemplateSetEditor 가 단일모드 포함 모든 세트에서 채움) — spread 템플릿 존재로 좁힌다.
+  const hasSpreadTemplate = linkedPrintTemplates.some(
+    (t) => t.type === 'spread' || t.spreadConfig != null,
+  )
+  return allCanvas.length > 1 || spreadConfig != null || hasSpreadTemplate
 }
 
 interface CommandPaletteModalProps {
@@ -89,6 +110,12 @@ function buildActions(props: Pick<CommandPaletteModalProps, 'onFinish' | 'onOpen
     keywords: m.keywords,
     icon: m.icon,
     run: ({ close }) => {
+      // 모양컷은 book/스프레드 상품에서 파괴적(캔버스 전체 재구성) — 팔레트 우회 진입 차단.
+      if (m.type === 'CLIPPING' && isSpreadProductContext()) {
+        showToast('이 상품에서는 모양컷을 사용할 수 없습니다.', 'info')
+        close()
+        return
+      }
       useAppStore.getState().tapMenu({ type: m.type, label: m.label, icon: m.icon })
       close()
     },

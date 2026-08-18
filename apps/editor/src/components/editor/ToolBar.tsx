@@ -72,6 +72,19 @@ export default function ToolBar({ horizontal = false }: ToolBarProps) {
   const allCanvas = useAppStore((state) => state.allCanvas)
   const isCoverPage = hasCoverSlot && !!canvas && allCanvas[0] === canvas
 
+  // book/스프레드 상품 판별 — 모양컷(CLIPPING) render() 는 canvas.clear() 로 시작해
+  // 이런 상품의 workspace/재단선/안전선을 실제 삭제한다(clearHistory 로 undo 도 불가).
+  // enabledMenus 를 지정하지 않은 세트(null=전체 노출)에 대한 코드측 기본 안전선.
+  // ⚠️ hasCoverSlot 은 기본값 true 라 판별 신호로 쓰지 않는다(모양컷 단품 오차단).
+  const spreadConfig = useSettingsStore((state) => state.spreadConfig)
+  const linkedPrintTemplates = useSettingsStore((state) => state.linkedPrintTemplates)
+  // ⚠️ linkedPrintTemplates 는 book 여부가 아니라 'templateSet 로드 여부' 신호다
+  //    (loadTemplateSetEditor 가 단일모드 포함 모든 세트에서 채움) — spread 템플릿 존재로 좁힌다.
+  const isSpreadProduct =
+    allCanvas.length > 1 ||
+    spreadConfig != null ||
+    linkedPrintTemplates.some((t) => t.type === 'spread' || t.spreadConfig != null)
+
   const upload = useImageStore((state) => state.upload)
   const uploadSimple = useImageStore((state) => state.uploadSimple)
 
@@ -123,6 +136,11 @@ export default function ToolBar({ horizontal = false }: ToolBarProps) {
       : ALL_MENUS.filter((m) => {
           if (!isAllowed(m.type)) return false
           if (coverMaterialLocked && isCoverPage && m.type === 'BACKGROUND') return false
+          // book/스프레드 상품에서는 모양컷 숨김 — 파괴적 캔버스 재구성 도구라 비호환.
+          // enabledMenus 미지정(null=전체 노출) 세트에 대한 기본 안전선이며, admin 이
+          // 화이트리스트로 CLIPPING 을 명시적으로 켠 세트는 게이트를 우회한다(운영 복구 수단).
+          // (editMode 는 admin 미리보기라 전체 노출 유지 — AppClipping 내부 가드가 2차 방어.)
+          if (enabledMenus == null && isSpreadProduct && m.type === 'CLIPPING') return false
           return true
         })
 
@@ -130,7 +148,7 @@ export default function ToolBar({ horizontal = false }: ToolBarProps) {
     const showUpload = ENABLE_UPLOAD_MENU && (editMode || isAllowed('UPLOAD'))
 
     return [...(showUpload ? [uploadMenu] : []), ...availableMenus]
-  }, [editMode, enabledMenus, ready, canvas, getPlugin, upload, uploadSimple, coverMaterialLocked, isCoverPage])
+  }, [editMode, enabledMenus, ready, canvas, getPlugin, upload, uploadSimple, coverMaterialLocked, isCoverPage, isSpreadProduct])
 
   const handleMenuClick = (menu: AppMenu) => {
     if (menu.onTap) {

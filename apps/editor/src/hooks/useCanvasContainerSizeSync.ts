@@ -43,8 +43,10 @@ export function useCanvasContainerSizeSync(
       const dprChanged = Math.abs(dpr - lastDpr) >= 0.01
       // 1px 미만 변동은 무시 — 모바일 viewport 지터 흡수 (단, dpr 변경 시엔 통과)
       if (!dprChanged && Math.abs(w - lastW) < 1 && Math.abs(h - lastH) < 1) return
-      // 첫 동기화는 WorkspacePlugin.reset() 의 setZoomAuto 가 이미 처리.
-      // 이후 호출(사이드바 토글/창 리사이즈/ControlBar 표시 등)에서만 워크스페이스 재정렬.
+      // 첫 동기화는 WorkspacePlugin.reset() 의 setZoomAuto 가 이미 처리 — 단, 캔버스가
+      // ready 전 레이아웃 변동 중에 생성돼 stale 컨테이너 크기로 동결된 경우(기존 fabric
+      // 치수 ≠ 새 w/h)는 첫 apply 에서도 재정렬한다(C-2: 시드분·추가분 뷰포트 기준 통일).
+      // 스킵은 '기존 치수 == 새 w/h'인 캔버스에만 적용(캔버스별 판정 — 아래 sizeUnchanged).
       const isFirstApply = lastW === 0 && lastH === 0
       lastW = w
       lastH = h
@@ -63,6 +65,11 @@ export function useCanvasContainerSizeSync(
           // ⚠️ 단 dpr 이 바뀌었으면 논리 크기가 같아도 retina 백킹스토어 재적용이 필요하므로 가드 우회.
           // (setDimensions 전에 캡처 — 순수 dpr 변경 판정에 재사용)
           const sizeUnchanged = cvs.getWidth?.() === w && cvs.getHeight?.() === h
+          // setZoomAuto 는 wrapper 의 getBoundingClientRect() 소수폭으로 캔버스 크기를 잡아
+          // clientWidth 정수(w/h)와 상시 불일치할 수 있다 — 첫 apply '보존' 판정용으로 1px
+          // 허용오차 판정을 setDimensions 전에 함께 캡처(no-op 가드·pureDprChange 는 현행 유지).
+          const nearlyUnchanged =
+            Math.abs((cvs.getWidth?.() ?? 0) - w) < 1 && Math.abs((cvs.getHeight?.() ?? 0) - h) < 1
           if (!dprChanged && sizeUnchanged) return
           cvs.setDimensions({ width: w, height: h })
           // getPointer 오프셋(_offset) 재계산 — setDimensions 내부에서도 호출되지만
@@ -77,7 +84,12 @@ export function useCanvasContainerSizeSync(
           // 정합하고 재센터는 건너뛴다 — 사용자 pan/zoom 보존(모니터 이동·OS 배율 변경 시
           // 뷰포트가 항등행렬/중앙으로 리셋되던 회귀 방지). 크기가 실제로 바뀐 경우는 기존대로 재정렬.
           const pureDprChange = dprChanged && sizeUnchanged
-          if (!isFirstApply && !pureDprChange) {
+          // 첫 apply 재센터 스킵을 '해당 캔버스의 기존 fabric 치수가 새 w/h 와 동일할 때'로
+          // 좁힘 — 치수가 달랐다면 생성 시점 setZoomAuto 기준이 이미 stale 이므로 재정렬 필요.
+          // (동일치수 스킵·1px 지터·RAF 병합 3중 가드는 위에서 그대로 유지 — 치수 비교 가드
+          //  안쪽의 재센터 조건만 확장이라 무한 루프 특성 불변.)
+          const skipFirstApplyRecenter = isFirstApply && nearlyUnchanged
+          if (!skipFirstApplyRecenter && !pureDprChange) {
             const ed = editors[i]
             const ws = ed?.getPlugin?.<any>('WorkspacePlugin')
             const workspace = cvs.getObjects?.().find?.((o: any) => o.id === 'workspace')
