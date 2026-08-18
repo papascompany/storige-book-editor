@@ -9,6 +9,7 @@ import { applyObjectPermissions, applyCoverMaterialLock } from '@/utils/objectPe
 import { trackRequiredEdits } from '@/utils/requiredEditGate'
 import { isAutosaveSuspended, deferUntilAutosaveResumed } from '@/utils/autosaveSuspend'
 import { useSettingsStore } from '@/stores/useSettingsStore'
+import { Sentry } from '@/lib/sentry'
 import {
   shouldOfferRestore,
   type EmbedLocalBackup,
@@ -39,6 +40,19 @@ interface AutoSaveConfig {
 }
 
 /**
+ * restoreFromLocalDetailed 결과 (R4 복원 교정).
+ * - ok: 백업 전량 복원 완료(이때만 dirty 마킹 + 백업 삭제 후처리 수행).
+ * - partial: 페이지 증설 실패 등으로 일부만 복원됨 — 백업 보존, 후처리 없음.
+ * - restored / requested: 실제 복원된 캔버스 수 / 백업이 요구한 페이지 수.
+ */
+export interface RestoreFromLocalOutcome {
+  ok: boolean
+  requested: number
+  restored: number
+  partial: boolean
+}
+
+/**
  * Embed 에디터용 자동저장 Hook
  * - editSessionsApi 사용 (bookmoa 연동)
  * - 주기적 자동저장
@@ -54,6 +68,18 @@ export function useEmbedAutoSave(config: AutoSaveConfig) {
   // L4-②: suspend 해제 후 지연 재시도가 stale closure 를 잡지 않도록 최신 함수 참조 유지
   const saveToServerRef = useRef<(() => Promise<boolean>) | null>(null)
   const saveToLocalRef = useRef<(() => void) | null>(null)
+  // R2 덮어쓰기 가드: 서버에 마지막으로 반영된 canvasData 배열 길이.
+  // 세션 로드 응답(currentSession.canvasData)으로 1회 시드 → 이후 저장 성공 시 갱신.
+  const lastServerCanvasLenRef = useRef<number | null>(null)
+  // 초기화 완료 후 allCanvas 축소 관찰 = 사용자 페이지 삭제로 간주(훅에 명시적 삭제 액션
+  // 플래그가 없어 페이지 구조 축소를 프록시로 쓴다). 저장 성공 시 소비(리셋).
+  const pageDeleteObservedRef = useRef(false)
+  const prevCanvasCountRef = useRef(0)
+  // R4 무편집 백업 억제: 초기화 이후 "실제 사용자 편집" 이벤트가 1건이라도 있었는지.
+  // 복원(loadFromJSON)이 발화하는 시스템 이벤트는 세지 않는다(isRestoringRef 가드).
+  // 저장 성공 시 리셋(반영된 편집은 더 이상 언마운트 백업 사유가 아님).
+  const userEditedRef = useRef(false)
+  const isRestoringRef = useRef(false)
 
   // App Store
   const canvas = useAppStore((state) => state.canvas)
@@ -89,6 +115,30 @@ export function useEmbedAutoSave(config: AutoSaveConfig) {
     if (!canvas) return null
     return canvas.toJSON(core.extendFabricOption)
   }, [canvas, allCanvas])
+
+  /**
+   * R2 가드 기준선 시드 — 세션 로드 응답의 canvasData 배열 길이(최초 1회만).
+   * 이후에는 저장 성공 경로가 기준선을 갱신한다.
+   */
+  useEffect(() => {
+    if (lastServerCanvasLenRef.current !== null) return
+    const data: unknown = currentSession?.canvasData
+    if (Array.isArray(data)) lastServerCanvasLenRef.current = data.length
+  }, [currentSession])
+
+  /**
+   * 사용자 페이지 삭제 관찰 (R2 가드 프록시): 초기화 완료 후 allCanvas 가 줄면
+   * 명시적 삭제 액션(BookNavigation 삭제 → deleteInnerPage)으로 간주한다.
+   * R2 절단 버그(시드 반감 + 복원 루프 min 절단)는 allCanvas 축소 없이 직렬화 길이만
+   * 짧아지므로 이 플래그가 서지 않는다 → 경고 대상으로 정확히 분리된다.
+   */
+  useEffect(() => {
+    const prev = prevCanvasCountRef.current
+    prevCanvasCountRef.current = allCanvas.length
+    if (allCanvas.length < prev && (!initializedRef || initializedRef.current)) {
+      pageDeleteObservedRef.current = true
+    }
+  }, [allCanvas, initializedRef])
 
   /**
    * 로컬 백업 저장
@@ -159,63 +209,127 @@ export function useEmbedAutoSave(config: AutoSaveConfig) {
   /**
    * 로컬 백업을 캔버스에 복원 (사용자 [복원] 발동 시에만 호출 — 자동 복원 금지).
    *
-   * collectCanvasData() 의 역방향:
-   *  - 배열 백업 → allCanvas[i] 에 순서대로 loadFromJSON (멀티페이지 전체 복원,
-   *    min(saved.length, allCanvas.length) 로 페이지수 불일치 시 안전 절단).
+   * collectCanvasData() 의 역방향 (R4 복원 교정):
+   *  - 배열 백업 → allCanvas[i] 에 순서대로 loadFromJSON. 백업이 현재 캔버스 수보다
+   *    길면 스프레드 구성(spreadConfig 존재) 세션에 한해 addInnerPage() 로 부족분을
+   *    증설한 뒤 전량 복원한다 — 종전 min() 절단은 페이지를 늘릴 수 없어 복원이 체감
+   *    no-op 이면서 성공 처리돼 백업만 삭제되던 footgun.
    *  - 객체 백업 → 활성 canvas 에 loadFromJSON (단일/표지전용 세션).
-   * 복원 성공 후 dirty 마킹 → 사용자가 저장하면 서버 반영, 백업은 삭제(중복 제안 방지).
-   * 실패 시 백업을 보존(삭제하지 않음)해 사용자가 재시도/이탈 시 데이터를 잃지 않게 한다.
+   *
+   * 결과 계약:
+   *  - ok=true(전량 복원): dirty 마킹 + 백업 삭제(기존 후처리) — 이때만.
+   *  - restored=0: 실패 처리 + 백업 보존(markDirty/삭제 없음).
+   *  - partial=true(증설 실패로 일부만 복원): 백업 보존 + 후처리 없음 — 부분본이
+   *    자동저장으로 서버 canvasData 를 절단 덮어쓰지 않게 dirty 마킹도 하지 않는다.
    */
-  const restoreFromLocal = useCallback(async (): Promise<boolean> => {
+  const restoreFromLocalDetailed = useCallback(async (): Promise<RestoreFromLocalOutcome> => {
     const backup = loadFromLocal()
-    if (!backup || backup.canvasData == null) return false
+    if (!backup || backup.canvasData == null) {
+      return { ok: false, requested: 0, restored: 0, partial: false }
+    }
 
+    // 복원(loadFromJSON)이 발화하는 object:added 등을 "사용자 편집" 으로 세지 않기 위한
+    // 플래그 (R4 무편집 백업 억제와 정합).
+    isRestoringRef.current = true
     try {
       const saved = backup.canvasData
-      const allEditors = useAppStore.getState().allEditors || []
+      const editMode = () => useSettingsStore.getState().currentSettings.editMode
       if (Array.isArray(saved)) {
-        if (saved.length === 0) return false
-        for (let i = 0; i < saved.length && i < allCanvas.length; i++) {
-          if (saved[i]) await core.loadFromJSON(allCanvas[i], saved[i])
-          // 복원 직후 사진틀 인터랙션 재바인딩 (핸들러 미직렬화 → 미재바인딩 시 채우기 불능).
-          rebindFrameInteractivity(allEditors[i], allCanvas[i])
-          // Part B: 로컬 백업 복원 시에도 객체별 이동/변형 잠금 적용.
-          applyObjectPermissions(allCanvas[i], useSettingsStore.getState().currentSettings.editMode)
-          applyCoverMaterialLock(
-            allCanvas[i],
-            useSettingsStore.getState().coverMaterialLocked && i === 0,
-            useSettingsStore.getState().currentSettings.editMode,
-          )
-          trackRequiredEdits(allCanvas[i]) // L7: 필수 편집 touched 추적(멱등)
+        if (saved.length === 0) return { ok: false, requested: 0, restored: 0, partial: false }
+
+        // ② 부족분 증설 — 스프레드 구성 세션에서만(addInnerPage 는 스프레드 전용).
+        //    증설이 무진전이면 즉시 중단(무한루프 방지) → 아래 partial 경로로 빠진다.
+        if (useSettingsStore.getState().spreadConfig) {
+          while (useAppStore.getState().allCanvas.length < saved.length) {
+            const before = useAppStore.getState().allCanvas.length
+            await useAppStore.getState().addInnerPage()
+            if (useAppStore.getState().allCanvas.length <= before) break
+          }
         }
+
+        // 증설 이후의 최신 배열 — 클로저 allCanvas 는 증설분을 못 본다(getState 필수).
+        const canvases = useAppStore.getState().allCanvas
+        const editors = useAppStore.getState().allEditors || []
+        let restored = 0
+        for (let i = 0; i < saved.length && i < canvases.length; i++) {
+          if (saved[i]) {
+            await core.loadFromJSON(canvases[i], saved[i])
+            restored++
+          }
+          // 복원 직후 사진틀 인터랙션 재바인딩 (핸들러 미직렬화 → 미재바인딩 시 채우기 불능).
+          rebindFrameInteractivity(editors[i], canvases[i])
+          // Part B: 로컬 백업 복원 시에도 객체별 이동/변형 잠금 적용.
+          applyObjectPermissions(canvases[i], editMode())
+          applyCoverMaterialLock(
+            canvases[i],
+            useSettingsStore.getState().coverMaterialLocked && i === 0,
+            editMode(),
+          )
+          trackRequiredEdits(canvases[i]) // L7: 필수 편집 touched 추적(멱등)
+        }
+
+        // ① 실제 복원 0건 → 실패 + 백업 보존. 종전에는 빈 루프도 성공 처리돼 배너만 닫히고
+        //    백업이 삭제되는 "체감 no-op" 이었다.
+        if (restored === 0) {
+          console.warn(
+            '[EmbedAutoSave] 복원된 캔버스 0건 (백업', saved.length, 'p / 캔버스',
+            canvases.length, 'p) — 백업 보존',
+          )
+          return { ok: false, requested: saved.length, restored: 0, partial: false }
+        }
+
+        if (saved.length > canvases.length) {
+          console.warn(
+            '[EmbedAutoSave] 부분 복원:', restored, '/', saved.length, 'p (증설 불가) — 백업 보존',
+          )
+          return { ok: false, requested: saved.length, restored, partial: true }
+        }
+
         console.log('[EmbedAutoSave] 멀티페이지 백업 복원:', saved.length, 'pages')
+        // ③ 전량 복원 성공 시에만 기존 후처리.
+        // 복원된 내용은 아직 서버에 없다 — dirty 로 마킹해 사용자가 저장하면 반영되게 한다.
+        // 복원본은 서버 미반영 실사용자 콘텐츠 — '무편집'으로 분류하면 이후 저장 실패 시
+        // 언마운트 백업이 생략돼 유일본을 잃는다(userEditedRef 는 isRestoringRef 로 미집계).
+        userEditedRef.current = true
+        // 복원 직후 사용자가 마지막 증설 페이지에 남지 않게 첫 페이지로 이동.
+        useAppStore.getState().setPage(0)
+        markDirty()
+        // 복원 완료 → 백업 삭제(같은 백업으로 중복 제안 방지). 미저장 상태는 dirty 가드 +
+        // beforeunload 경고가 보호하고, 이후 자동저장이 서버에 반영한다.
+        deleteLocalBackup()
+        return { ok: true, requested: saved.length, restored, partial: false }
       } else if (canvas) {
         await core.loadFromJSON(canvas, saved)
-        rebindFrameInteractivity(allEditors[Math.max(0, allCanvas.indexOf(canvas))], canvas)
-        applyObjectPermissions(canvas, useSettingsStore.getState().currentSettings.editMode)
-        applyCoverMaterialLock(
-          canvas,
-          useSettingsStore.getState().coverMaterialLocked,
-          useSettingsStore.getState().currentSettings.editMode,
-        )
+        const canvases = useAppStore.getState().allCanvas
+        const editors = useAppStore.getState().allEditors || []
+        rebindFrameInteractivity(editors[Math.max(0, canvases.indexOf(canvas))], canvas)
+        applyObjectPermissions(canvas, editMode())
+        applyCoverMaterialLock(canvas, useSettingsStore.getState().coverMaterialLocked, editMode())
         trackRequiredEdits(canvas) // L7(멱등)
         console.log('[EmbedAutoSave] 단일 백업 복원')
-      } else {
-        return false
+        userEditedRef.current = true
+        markDirty()
+        deleteLocalBackup()
+        return { ok: true, requested: 1, restored: 1, partial: false }
       }
-
-      // 복원된 내용은 아직 서버에 없다 — dirty 로 마킹해 사용자가 저장하면 반영되게 한다.
-      markDirty()
-      // 복원 완료 → 백업 삭제(같은 백업으로 중복 제안 방지). 미저장 상태는 dirty 가드 +
-      // beforeunload 경고가 보호하고, 이후 자동저장이 서버에 반영한다.
-      deleteLocalBackup()
-      return true
+      // 캔버스가 하나도 없어 복원 불가 — 백업 보존.
+      return { ok: false, requested: 1, restored: 0, partial: false }
     } catch (error) {
       console.error('[EmbedAutoSave] 백업 복원 실패:', error)
       // 실패 시 백업 보존 — 데이터 유실 방지.
-      return false
+      return { ok: false, requested: 0, restored: 0, partial: false }
+    } finally {
+      isRestoringRef.current = false
     }
-  }, [loadFromLocal, allCanvas, canvas, markDirty, deleteLocalBackup])
+  }, [loadFromLocal, canvas, markDirty, deleteLocalBackup])
+
+  /**
+   * 기존 boolean 계약 유지 (embed.tsx [복원] 버튼 등) — 전량 복원 성공 시에만 true.
+   * 부분/0건 복원은 false + 백업 보존이라 호출부 배너가 닫히지 않는다(재시도 가능).
+   */
+  const restoreFromLocal = useCallback(async (): Promise<boolean> => {
+    return (await restoreFromLocalDetailed()).ok
+  }, [restoreFromLocalDetailed])
 
   /**
    * 서버에 저장
@@ -239,6 +353,29 @@ export function useEmbedAutoSave(config: AutoSaveConfig) {
     try {
       const canvasData = collectCanvasData()
 
+      // R2 덮어쓰기 가드(보수적 — 차단 아님): 직전 서버 반영 길이보다 짧은 배열을 사용자
+      // 페이지 삭제 관찰 없이 저장하려 하면 표면화한다. 재진입 시드 반감 + 복원 루프 절단이
+      // 자동저장으로 서버 canvas_data 를 영구 축소 덮어쓴 실사고(17→9) 탐지용.
+      const nextLen = Array.isArray(canvasData) ? canvasData.length : null
+      const prevLen = lastServerCanvasLenRef.current
+      if (
+        nextLen !== null &&
+        prevLen !== null &&
+        nextLen < prevLen &&
+        !pageDeleteObservedRef.current
+      ) {
+        console.warn(
+          `[EmbedAutoSave] canvasData 페이지 수 감소 감지 (${prevLen} → ${nextLen}) — ` +
+            '사용자 페이지 삭제 액션 없음. 절단 저장 의심(저장은 수행됨).',
+        )
+        try {
+          Sentry.captureMessage(
+            '[embed-autosave] canvasData shrink without user page deletion',
+            { level: 'warning', extra: { sessionId, prevLen, nextLen } },
+          )
+        } catch { /* Sentry 미초기화 등 — 저장 흐름에 영향 금지 */ }
+      }
+
       // 게스트 세션이면 guestToken 동봉(updateGuest), 아니면 회원 update
       const guestToken = currentSession?.guestToken
       const updatedSession = guestToken
@@ -250,6 +387,12 @@ export function useEmbedAutoSave(config: AutoSaveConfig) {
       resetRetry()
       deleteLocalBackup()
       markClean()
+
+      // R2 가드 기준선 갱신 + 삭제 관찰 플래그 소비.
+      if (nextLen !== null) lastServerCanvasLenRef.current = nextLen
+      pageDeleteObservedRef.current = false
+      // R4: 서버에 반영된 편집은 더 이상 언마운트 백업 사유가 아니다.
+      userEditedRef.current = false
 
       onSessionUpdate?.(updatedSession)
 
@@ -331,6 +474,9 @@ export function useEmbedAutoSave(config: AutoSaveConfig) {
       // 게이트는 embed 의 isInitializedRef(복원 완료 시점에만 true) — useAppStore.ready 는
       // 캔버스 등록 시점에 이미 true 라 게이트로 무효(AutoSaveConfig.initializedRef 주석 참조).
       if (initializedRef && !initializedRef.current) return
+      // R4: 복원(loadFromJSON) 중 발화한 이벤트는 사용자 편집으로 세지 않는다 —
+      // 언마운트 백업은 실제 사용자 편집이 1건 이상일 때만 기록한다(dirty 자체는 현행 유지).
+      if (!isRestoringRef.current) userEditedRef.current = true
       markDirty()
       debouncedSave()
     }
@@ -437,6 +583,14 @@ export function useEmbedAutoSave(config: AutoSaveConfig) {
       debouncedSave.cancel()
 
       if (isDirty && sessionId && canvas) {
+        // R4 무편집 백업 억제: 초기화 이후 실제 사용자 편집이 0건이면 백업을 쓰지 않는다.
+        // 시스템 발 dirty(복원 직후 markDirty, 프로그램적 객체 변경)만으로 백업이 재작성되면
+        // backup.savedAt > session.updatedAt 이 상시 성립해 재진입마다 복원 배너가 뜬다.
+        // dirty 메커니즘 자체는 완화하지 않는다 — "백업 파일 기록" 단계만 억제.
+        if (!userEditedRef.current) {
+          console.log('[EmbedAutoSave] 사용자 편집 0건 — 언마운트 백업 생략')
+          return
+        }
         // 동기적으로 로컬 백업 (언마운트 시에는 async 불가)
         try {
           const canvasData = collectCanvasData()
@@ -484,6 +638,17 @@ export function useEmbedAutoSave(config: AutoSaveConfig) {
     [loadFromLocal],
   )
 
+  /**
+   * R2 가드 기준선 수동 갱신 — 훅 밖 직접 저장 경로(handleFinish 의 editSessionsApi.update 등)가
+   * 서버 반영에 성공했을 때 호출한다. 미호출 시 finish 이후 가드의 탐지 창이 stale 기준선으로
+   * 남는다(오탐 방향은 아님 — 미탐 창만 생김).
+   */
+  const markServerSynced = useCallback((canvasLen: number): void => {
+    if (Number.isFinite(canvasLen) && canvasLen >= 0) {
+      lastServerCanvasLenRef.current = canvasLen
+    }
+  }, [])
+
   return {
     // Actions
     saveNow,
@@ -491,9 +656,11 @@ export function useEmbedAutoSave(config: AutoSaveConfig) {
     loadFromLocal,
     deleteLocalBackup,
     restoreFromLocal,
+    restoreFromLocalDetailed,
     evaluateRestore,
     markDirty,
     markClean,
+    markServerSynced,
 
     // Trigger debounced save on change
     triggerSave: debouncedSave,

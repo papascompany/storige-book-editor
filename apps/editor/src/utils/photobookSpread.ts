@@ -165,17 +165,22 @@ export interface OutputPageSizeMm {
 }
 
 /**
- * D-1 1단계: 포토북 내지(regionScope='inner') content.pdf 의 **페이지 크기**를 계산한다.
+ * D-1 1단계: 포토북 내지 content.pdf 의 **페이지 크기**를 계산한다.
  * 'content.pdf 1페이지 = 1펼침면' 계약 — 2-up trim = pageWidthMm×2 × pageHeightMm.
  *
- * inner 가 아니거나 innerSpec 이 비유효하면 null 반환 → 호출측은 기존 폴백
- * (spec.coverWidthMm/주문 옵션)으로 진행한다(BOOK/LEAFLET byte-parity).
+ * R7 (2026-08-18): 표지+내지 결합 세션(regionScope 미지정/'cover')이라도 innerSpec 이
+ * 실려 있으면(useEditorContents — innerUnit==='spread' 세트) 내지 content.pdf 페이지
+ * 크기는 innerSpec 2-up 이다. 종전 regionScope==='inner' 게이트만으로는 이 경우 null
+ * → 호출측 폴백 spec.coverWidthMm(표지 패널 247.4×276)로 흘러 내지 content PDF 가
+ * 전건 SIZE_MISMATCH(기대 426×216)였다.
+ *
+ * innerSpec 이 없거나 비유효하면 null 반환 → 호출측은 기존 폴백
+ * (spec.coverWidthMm/주문 옵션)으로 진행한다(낱장 내지 BOOK/LEAFLET byte-parity).
  */
 export function computeInnerContentSizeMm(
   cfg: SpreadOutputConfigLike | null | undefined,
 ): OutputPageSizeMm | null {
-  if (cfg?.regionScope !== 'inner') return null
-  const inner = cfg.innerSpec
+  const inner = cfg?.innerSpec
   if (!inner) return null
   if (!isPositiveFinite(inner.pageWidthMm) || !isPositiveFinite(inner.pageHeightMm)) return null
   return {

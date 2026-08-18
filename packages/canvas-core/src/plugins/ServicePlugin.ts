@@ -43,6 +43,44 @@ class ServicePlugin extends PluginBase {
    */
   private static readonly PRINT_MAX_IMAGE_DIMENSION = 3508
 
+  /**
+   * R6 (2026-08-18): PDF 저장 전 글리프 검증 대상 텍스트 수집.
+   *
+   * export 경로(_prepareObjectsForSvgExport 의 !excludeFromExport 게이트 + fabric toSVG 의
+   * excludeFromExport 제외)와 **동일한 게이트**를 적용한다 — 출력물에 실리지 않는 객체의
+   * 폰트 누락은 사용자 경고/콘솔 로그 대상이 아니다.
+   *
+   * 제외 대상:
+   * - excludeFromExport === true 객체와 그 하위 전체(제외 그룹의 자식은 toSVG 에도 안 실림)
+   * - meta.system 시스템 마커 객체(SpreadPlugin 치수 라벨 등 — fabric 기본 fontFamily
+   *   'Times New Roman' 으로 생성돼 'WOFF2 font URL not found' 콘솔 노이즈의 원인)
+   *
+   * 사용자 텍스트의 진짜 폰트 누락 검증/경고는 그대로 유지된다.
+   */
+  static collectGlyphValidationTargets(obj: fabric.Object): fabric.Object[] {
+    const target = obj as fabric.Object & {
+      meta?: { system?: unknown }
+      _objects?: fabric.Object[]
+    }
+    const results: fabric.Object[] = []
+
+    if (target.excludeFromExport === true || target.meta?.system) {
+      return results
+    }
+
+    if (obj.type === 'text' || obj.type === 'i-text' || obj.type === 'textbox') {
+      results.push(obj)
+    }
+
+    if (obj.type === 'group' && target._objects) {
+      for (const child of target._objects) {
+        results.push(...ServicePlugin.collectGlyphValidationTargets(child))
+      }
+    }
+
+    return results
+  }
+
   constructor(
     canvas: fabric.Canvas,
     editor: Editor,
@@ -620,26 +658,13 @@ class ServicePlugin extends PluginBase {
             
             const allMissingChars: Map<string, string[]> = new Map() // 폰트명 -> 미지원 문자 배열
 
-            const collectTextObjects = (obj: fabric.Object): fabric.Object[] => {
-              const results: fabric.Object[] = []
-              if (obj.type === 'text' || obj.type === 'i-text' || obj.type === 'textbox') {
-                results.push(obj)
-              }
-              if (obj.type === 'group' && (obj as any)._objects) {
-                const group = obj as fabric.Group
-                group._objects.forEach((child) => {
-                  results.push(...collectTextObjects(child))
-                })
-              }
-              return results
-            }
-
             // 1) 폰트별 사용 문자 집합 수집(중복 제거) — 텍스트마다 검증하던 것을 폰트당 1회로 축소
+            // R6: 수집기는 export 게이트(excludeFromExport/meta.system) 적용 static 헬퍼로 일원화.
             const fontCharSets = new Map<string, Set<string>>()
             for (const canvas of canvases) {
               const textObjects: fabric.Object[] = []
               canvas.getObjects().forEach((obj) => {
-                textObjects.push(...collectTextObjects(obj))
+                textObjects.push(...ServicePlugin.collectGlyphValidationTargets(obj))
               })
               for (const textObj of textObjects) {
                 const text = (textObj as any).text || ''

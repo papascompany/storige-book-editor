@@ -100,6 +100,53 @@ describe('shouldOfferRestore', () => {
     })
   })
 
+  describe('경량 동등성 억제 — 서버 canvasData 전달 시 (R4)', () => {
+    it('페이지 수 + 페이지별 objects 개수가 전부 동일하면 백업이 최신이어도 offer:false', () => {
+      const backup = makeBackup({
+        canvasData: [{ objects: [{ type: 'rect' }, { type: 'textbox' }] }, { objects: [] }],
+      })
+      const session = makeSession({
+        canvasData: [{ objects: [{ type: 'a' }, { type: 'b' }] }, { objects: [] }],
+      })
+      // makeBackup(10:00) > makeSession(09:00) — 시각상 백업 최신인데도 동등 내용이라 억제
+      expect(shouldOfferRestore(backup, session)).toEqual({ offer: false, confident: false })
+    })
+
+    it('페이지 수가 다르면 억제하지 않고 시각 비교(백업 최신 → offer:true)', () => {
+      const backup = makeBackup({ canvasData: [{ objects: [] }, { objects: [] }] })
+      const session = makeSession({ canvasData: [{ objects: [] }] })
+      const decision = shouldOfferRestore(backup, session)
+      expect(decision.offer).toBe(true)
+      expect(decision.confident).toBe(true)
+    })
+
+    it('objects 개수가 다르면 억제하지 않는다', () => {
+      const backup = makeBackup({ canvasData: [{ objects: [{ type: 'rect' }] }] })
+      const session = makeSession({ canvasData: [{ objects: [] }] })
+      expect(shouldOfferRestore(backup, session).offer).toBe(true)
+    })
+
+    it('단일(객체) 백업 vs 1페이지 배열 서버 — 개수 동일이면 동등 취급 offer:false', () => {
+      const backup = makeBackup({ canvasData: { objects: [{ type: 'rect' }] } })
+      const session = makeSession({ canvasData: [{ objects: [{ type: 'rect' }] }] })
+      expect(shouldOfferRestore(backup, session)).toEqual({ offer: false, confident: false })
+    })
+
+    it('서버 canvasData 형태 미상(숫자 등)이면 억제하지 않고 시각 비교로 폴백', () => {
+      const backup = makeBackup()
+      const session = makeSession({ canvasData: 42 })
+      const decision = shouldOfferRestore(backup, session)
+      expect(decision.offer).toBe(true)
+      expect(decision.confident).toBe(true)
+    })
+
+    it('서버 canvasData 가 null 이면(저장본 없음) 억제하지 않는다', () => {
+      const backup = makeBackup()
+      const session = makeSession({ canvasData: null })
+      expect(shouldOfferRestore(backup, session).offer).toBe(true)
+    })
+  })
+
   describe('시각 모호/불가 → 안전측 노출 (confident:false)', () => {
     it('서버 updatedAt 이 없으면 offer:true, confident:false', () => {
       const decision = shouldOfferRestore(makeBackup(), makeSession({ updatedAt: null }))

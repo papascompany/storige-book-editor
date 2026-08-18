@@ -210,10 +210,11 @@ describe('EditorWorkflowControls — 레거시 `/`(소유 세션)', () => {
     expect(await screen.findByRole('button', { name: /첨부됨 \(24p\)/ })).toBeTruthy()
   })
 
-  it('주문 contentFileId 만 있어도 첨부됨 배지를 보여 준다', async () => {
+  it('주문 contentFileId 만 있어도(미완료 세션 + 편집완료 마커 없음) 첨부됨 배지를 보여 준다', async () => {
     guestState.sessionId = 'guest-sess'
     sessionGet.mockResolvedValue({
       id: 'guest-sess',
+      status: 'editing',
       contentPdfMode: null,
       contentFileId: 'shop-pdf',
       contentPdfPageCount: 8,
@@ -223,6 +224,74 @@ describe('EditorWorkflowControls — 레거시 `/`(소유 세션)', () => {
 
     await waitFor(() => expect(ensureSeatExistingContentPdf).toHaveBeenCalledTimes(1))
     expect(await screen.findByRole('button', { name: /첨부됨 \(8p\)/ })).toBeTruthy()
+  })
+
+  it('편집완료 산출물(contentFileId + spreadContentPageCount 마커)은 첨부 배지로 오인하지 않는다 (R5)', async () => {
+    guestState.sessionId = 'guest-sess'
+    sessionGet.mockResolvedValue({
+      id: 'guest-sess',
+      status: 'editing', // 자동저장이 complete → editing 으로 되돌린 재편집 세션
+      contentPdfMode: null,
+      contentFileId: 'editor-output-content-pdf',
+      contentPdfPageCount: null,
+      metadata: { spreadContentPageCount: 8 },
+    })
+
+    render(<EditorWorkflowControls templateSetId="ts-book" />)
+
+    await waitFor(() => expect(sessionGet).toHaveBeenCalledWith('guest-sess'))
+    expect(await screen.findByRole('button', { name: /내지 PDF 첨부/ })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /첨부됨/ })).toBeNull()
+  })
+
+  it('완료 이력(status=complete) 세션의 contentFileId 도 첨부로 간주하지 않는다 (R5)', async () => {
+    guestState.sessionId = 'guest-sess'
+    sessionGet.mockResolvedValue({
+      id: 'guest-sess',
+      status: 'complete',
+      contentPdfMode: null,
+      contentFileId: 'editor-output-content-pdf',
+      contentPdfPageCount: null,
+    })
+
+    render(<EditorWorkflowControls templateSetId="ts-book" />)
+
+    await waitFor(() => expect(sessionGet).toHaveBeenCalledWith('guest-sess'))
+    expect(await screen.findByRole('button', { name: /내지 PDF 첨부/ })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /첨부됨/ })).toBeNull()
+  })
+
+  it('진짜 첨부(contentPdfFileId)는 편집완료 마커가 있어도 배지를 유지한다 (혼합 케이스)', async () => {
+    guestState.sessionId = 'guest-sess'
+    sessionGet.mockResolvedValue({
+      id: 'guest-sess',
+      status: 'editing',
+      contentPdfMode: 'underlay',
+      contentPdfFileId: 'real-attach-pdf',
+      contentFileId: 'editor-output-content-pdf',
+      contentPdfPageCount: 24,
+      metadata: { spreadContentPageCount: 8 },
+    })
+
+    render(<EditorWorkflowControls templateSetId="ts-book" />)
+
+    expect(await screen.findByRole('button', { name: /첨부됨 \(24p\)/ })).toBeTruthy()
+  })
+
+  it('pageCount 가 없으면 "(0p)" 대신 페이지 수 표기를 생략한다 (R5)', async () => {
+    guestState.sessionId = 'guest-sess'
+    sessionGet.mockResolvedValue({
+      id: 'guest-sess',
+      status: 'editing',
+      contentPdfMode: 'underlay',
+      contentPdfFileId: 'real-attach-pdf',
+      contentPdfPageCount: null,
+    })
+
+    render(<EditorWorkflowControls templateSetId="ts-book" />)
+
+    expect(await screen.findByRole('button', { name: '✓ PDF 첨부됨' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /0p/ })).toBeNull()
   })
 
   it('캔버스가 준비되기 전에는 조회·배치하지 않는다', async () => {

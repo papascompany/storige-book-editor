@@ -449,6 +449,29 @@ describe('resolveUnderlaySource', () => {
     ).toBeNull()
   })
 
+  it('편집완료 마커(spreadContentPageCount)가 있으면 status=editing 이어도 contentFileId 를 승격하지 않는다 (R5)', () => {
+    // 자동저장이 status 를 'editing' 으로 되돌린 재편집 세션 — 자기 산출물 재승격 루프 차단
+    expect(
+      resolveUnderlaySource({
+        contentFileId: 'out-1',
+        status: 'editing',
+        metadata: { spreadContentPageCount: 8 },
+      }),
+    ).toBeNull()
+  })
+
+  it('진짜 첨부(contentPdfFileId)는 편집완료 마커가 있어도 우선 유지된다 (W1 계약)', () => {
+    expect(
+      resolveUnderlaySource({
+        contentPdfFileId: 'pdf-1',
+        contentFileId: 'out-1',
+        contentPdfPageCount: 4,
+        status: 'editing',
+        metadata: { spreadContentPageCount: 8 },
+      }),
+    ).toEqual({ fileId: 'pdf-1', pageCount: 4 })
+  })
+
   it('replace 모드는 앉히지 않는다', () => {
     expect(
       resolveUnderlaySource({ contentPdfFileId: 'pdf-1', contentPdfMode: 'replace' }),

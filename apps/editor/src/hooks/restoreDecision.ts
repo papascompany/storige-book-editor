@@ -23,6 +23,14 @@ export interface RestoreSessionInfo {
   id: string
   /** 서버가 마지막으로 세션을 저장한 시각(ISO 8601). 신뢰 비교 기준. */
   updatedAt?: string | null
+  /**
+   * 서버에 저장된 canvasData (선택 — additive, 미전달 시 종전 시각 비교만 수행).
+   * 전달되면 백업과의 경량 동등성 비교(페이지 수 + 페이지별 objects 개수)로
+   * "실질 동일 내용" 백업의 복원 제안을 억제한다 — 무편집 unmount 백업 재작성이
+   * backup.savedAt > session.updatedAt 을 상시 성립시켜 재진입마다 배너가 뜨던
+   * footgun 방어(R4).
+   */
+  canvasData?: unknown
 }
 
 /**
@@ -38,6 +46,36 @@ export interface RestoreDecision {
   confident: boolean
   /** offer=true 일 때 백업 시각(배너 "N분 전" 표시용) */
   backupAt?: Date
+}
+
+/** 페이지 1장의 경량 지표 — fabric JSON 이면 objects 개수(없으면 0), 형태 미상이면 null. */
+function pageObjectCount(page: unknown): number | null {
+  if (page !== null && typeof page === 'object') {
+    const objects = (page as { objects?: unknown }).objects
+    return Array.isArray(objects) ? objects.length : 0
+  }
+  return null
+}
+
+/**
+ * canvasData 의 경량 시그니처 — 페이지별 objects 개수 배열.
+ * 단일(객체) 데이터는 1페이지로 취급. 형태를 알 수 없으면 null(비교 불가 → 억제하지 않음).
+ * 저비용 판정용이라 객체 내용까지는 비교하지 않는다(페이지 수 + 개수 동일 = 동일 취급).
+ */
+export function canvasDataSignature(data: unknown): number[] | null {
+  if (data == null) return null
+  if (Array.isArray(data)) {
+    if (data.length === 0) return null
+    const sig: number[] = []
+    for (const page of data) {
+      const count = pageObjectCount(page)
+      if (count === null) return null
+      sig.push(count)
+    }
+    return sig
+  }
+  const count = pageObjectCount(data)
+  return count === null ? null : [count]
 }
 
 /**
@@ -70,6 +108,22 @@ export function shouldOfferRestore(
   // 세션 식별자 일치 검증 (남의 세션 백업 방어)
   if (!session || !session.id || backup.sessionId !== session.id) {
     return { offer: false, confident: false }
+  }
+
+  // R4 — 경량 동등성 억제: 서버 canvasData 가 전달됐고 백업과 페이지 수·페이지별 objects
+  // 개수가 전부 동일하면, 백업은 무편집 unmount 재작성일 가능성이 높다 → 제안하지 않는다.
+  // 시그니처를 만들 수 없으면(형태 미상) 억제하지 않고 종전 시각 비교로 폴백(안전측).
+  if (session.canvasData !== undefined) {
+    const backupSig = canvasDataSignature(backup.canvasData)
+    const serverSig = canvasDataSignature(session.canvasData)
+    if (
+      backupSig !== null &&
+      serverSig !== null &&
+      backupSig.length === serverSig.length &&
+      backupSig.every((count, i) => count === serverSig[i])
+    ) {
+      return { offer: false, confident: false }
+    }
   }
 
   const backupMs = Date.parse(backup.savedAt)

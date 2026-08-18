@@ -215,11 +215,21 @@ describe('computeInnerContentSizeMm (D-1 1단계)', () => {
     expect(size).toEqual({ widthMm: 380, heightMm: 190 })
   })
 
-  it('비-inner(cover/미지정) → null (BOOK/LEAFLET 기존 경로 byte-parity)', () => {
+  it('innerSpec 없는 비-inner(cover/미지정) → null (BOOK/LEAFLET 기존 경로 byte-parity)', () => {
     expect(computeInnerContentSizeMm({ regionScope: 'cover', spec: coverSpec })).toBeNull()
     expect(computeInnerContentSizeMm({ spec: coverSpec })).toBeNull()
     expect(computeInnerContentSizeMm(null)).toBeNull()
     expect(computeInnerContentSizeMm(undefined)).toBeNull()
+  })
+
+  it('표지+내지 결합(cover/미지정)이라도 innerSpec 있으면 2-up (R7 — 표지 패널 폴백 SIZE_MISMATCH 근본수정)', () => {
+    expect(
+      computeInnerContentSizeMm({ regionScope: 'cover', spec: coverSpec, innerSpec: innerSpec190 }),
+    ).toEqual({ widthMm: 380, heightMm: 190 })
+    expect(computeInnerContentSizeMm({ spec: coverSpec, innerSpec: innerSpec190 })).toEqual({
+      widthMm: 380,
+      heightMm: 190,
+    })
   })
 
   it('inner 인데 innerSpec 누락/비유효 → null (폴백 체인 유지)', () => {

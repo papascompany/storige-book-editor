@@ -62,7 +62,7 @@ import { RestoreBackupBanner } from './components/RestoreBackupBanner'
 import ObjectDeleteConfirm from './components/editor/ObjectDeleteConfirm'
 import { EditorWorkflowControls } from './components/editor/EditorWorkflowControls'
 import { Sentry } from './lib/sentry'
-import { ensureSeatExistingContentPdf } from './utils/contentPdfGuide'
+import { ensureSeatExistingContentPdf, UNDERLAY_MAX_PAGES } from './utils/contentPdfGuide'
 import {
   classifyOrientation,
   detectOrientationMismatch,
@@ -621,7 +621,7 @@ function EmbeddedEditor({
   )
 
   // Auto-save hook integration
-  const { saveNow, restoreFromLocal, evaluateRestore, deleteLocalBackup } =
+  const { saveNow, restoreFromLocal, evaluateRestore, deleteLocalBackup, markClean, markServerSynced } =
     useEmbedAutoSave({
       sessionId: currentSession?.id || sessionId || null,
       currentSession,
@@ -1093,6 +1093,14 @@ function EmbeddedEditor({
             bindingType: effectiveBindingType,
             wingEnabled: effectiveWingEnabled,
             wingWidthMm: effectiveWingWidthMm,
+            // R2 (2026-08-18): 펼침면 세트 재진입 — canvasData 실측 캔버스 수를 시드에 그대로
+            // 전달한다. 종전엔 이 값이 pageCount(물리 페이지 수 시맨틱)로만 흘러 펼침면 세트에서
+            // spreadCountFromPageCount 반감 + pageCountRange 클램프를 거쳐 시드가 저장본보다
+            // 적어졌고, 아래 복원 루프가 뒷페이지를 무음 절단했다(DB 실측 17→9).
+            // 낱장 세트는 이 필드를 소비하지 않는다(기존 pageCount 경로 그대로).
+            ...(restoredInnerPageCount != null
+              ? { restoredInnerCanvasCount: restoredInnerPageCount }
+              : {}),
           })
         } catch (loadErr) {
           // 프로덕션 기본: 무음 샘플 폴백 금지 — 명확히 실패 표시 후 중단 (2026-06-11)
@@ -1166,6 +1174,54 @@ function EmbeddedEditor({
         } else if (editSession?.canvasData) {
           setLoadingMessage('저장된 작업을 복원하는 중...')
           const saved = editSession.canvasData
+
+          // R2-절단 금지 (2026-08-18): 시드 결과 캔버스 수가 저장본보다 적으면 부족분을 증설한다.
+          // 종전에는 아래 복원 루프가 min(saved.length, canvases.length)로 무음 절단하고, 이후
+          // 자동저장이 절단본을 서버 canvas_data 에 영구 덮어썼다(DB 실측 cd_len 17→9).
+          // R2-수신(restoredInnerCanvasCount)으로 시드가 이미 맞으면 증설 0 — 심층방어 경로.
+          if (Array.isArray(saved) && saved.length > 0) {
+            const preState = useAppStore.getState()
+            // 손상/적대적 canvasData 폭주 방지 — 총 캔버스 수를 underlay 와 동일 상한으로 제한.
+            const rawDeficit = saved.length - preState.allCanvas.length
+            const deficit = Math.min(
+              rawDeficit,
+              Math.max(0, UNDERLAY_MAX_PAGES - preState.allCanvas.length),
+            )
+            if (rawDeficit > deficit) {
+              console.error(
+                `[EmbeddedEditor] 복원 캔버스 ${saved.length}장 > 상한 ${UNDERLAY_MAX_PAGES} — 상한까지만 증설`,
+              )
+            }
+            if (deficit > 0 && preState.isSpreadMode) {
+              console.warn(`[EmbeddedEditor] 복원 캔버스 부족 ${deficit}장 — 내지 증설 후 전량 복원`)
+              for (let k = 0; k < deficit; k++) {
+                await useAppStore.getState().addInnerPage()
+              }
+              // addInnerPage 는 새 페이지로 전환하므로 첫 페이지(표지/첫 펼침면)로 복귀.
+              useAppStore.getState().setPage(0)
+            }
+            const grownCount = useAppStore.getState().allCanvas.length
+            if (saved.length > grownCount) {
+              // 증설 실패/비스프레드 다페이지 — 무음 절단 금지: 명시적으로 표면화한다.
+              console.error(
+                `[EmbeddedEditor] 세션 복원 캔버스 부족 — 저장본 ${saved.length}장, 캔버스 ${grownCount}장: 뒷페이지가 복원되지 않습니다.`,
+              )
+              try {
+                Sentry.captureMessage('[embed-restore] canvas deficit — saved pages exceed canvases', {
+                  level: 'error',
+                  extra: {
+                    sessionId: editSession.id,
+                    savedPages: saved.length,
+                    canvases: grownCount,
+                    isSpreadMode: preState.isSpreadMode,
+                  },
+                } as any)
+              } catch {
+                /* Sentry 미설정/네트워크 — 무시 */
+              }
+            }
+          }
+
           const { allCanvas: canvases, allEditors } = useAppStore.getState()
 
           if (Array.isArray(saved) && saved.length > 0) {
@@ -1183,6 +1239,10 @@ function EmbeddedEditor({
               )
               // L7: 필수 편집 touched 추적 부착(멱등) — 로드 완료 지점.
               trackRequiredEdits(canvases[i])
+              // R3 (2026-08-18): 재단선/안전선 가이드 재생성 — excludeFromExport 라 canvasData 에
+              // 직렬화되지 않아 loadFromJSON 이 캔버스를 대체하면 사라진다. HistoryPlugin 이
+              // undo/redo 후 쓰는 것과 동일 메커니즘(WorkspacePlugin 이 이 이벤트를 구독).
+              allEditors[i]?.emit('restoreGuideElements')
             }
             console.log('[EmbeddedEditor] Multi-page canvasData restored:', saved.length, 'pages')
           } else if (!Array.isArray(saved) && fabricCanvas) {
@@ -1197,6 +1257,8 @@ function EmbeddedEditor({
               useSettingsStore.getState().currentSettings.editMode,
             )
             trackRequiredEdits(fabricCanvas)
+            // R3 (2026-08-18): 단일 캔버스 복원도 가이드 재생성 — 멀티페이지 분기와 동일 사유.
+            allEditors[singleIdx]?.emit('restoreGuideElements')
             console.log('[EmbeddedEditor] Single canvasData restored:', editSession.id)
           }
         }
@@ -1391,7 +1453,13 @@ function EmbeddedEditor({
     restoreEvaluatedRef.current = true
 
     const session = currentSession
-      ? { id: currentSession.id, updatedAt: currentSession.updatedAt }
+      ? {
+          id: currentSession.id,
+          updatedAt: currentSession.updatedAt,
+          // 서버 canvasData 를 함께 전달해야 경량 동등성 억제(시그니처 동일 → offer:false)가
+          // 실제로 발동한다 — 미전달 시 시각 비교 폴백만 남아 무편집 배너가 반복된다.
+          canvasData: currentSession.canvasData,
+        }
       : sessionId
         ? { id: sessionId, updatedAt: null }
         : null
@@ -1402,12 +1470,26 @@ function EmbeddedEditor({
     }
   }, [ready, currentSession, sessionId, evaluateRestore])
 
-  // [복원] — 백업을 캔버스에 로드(멀티페이지 전체). 성공 시 배너 닫기.
+  // [복원] — 백업을 캔버스에 로드(멀티페이지 전체). 성공 시 배너 닫고 즉시 서버 저장 1회.
   const handleRestoreBackup = useCallback(async (): Promise<boolean> => {
     const ok = await restoreFromLocal()
-    if (ok) setRestoreOffer(null)
+    if (ok) {
+      setRestoreOffer(null)
+      // R4 (2026-08-18): 복원본을 즉시 서버에 반영 — restoreFromLocal 은 dirty 마킹만 하므로
+      // 사용자가 곧바로 이탈하면 복원이 서버 세션에 남지 않는다. 실패해도 비차단
+      // (dirty 가드 + 주기 자동저장이 이어서 보호).
+      try {
+        await saveNow()
+      } catch (err) {
+        console.warn('[EmbeddedEditor] 복원 직후 서버 저장 실패(비차단):', err)
+      }
+    } else {
+      // 부분/0건 복원 — 배너는 열어두되(재시도 가능) 무반응으로 보이지 않게 사용자에게 알린다.
+      const { showToast } = await import('./stores/useToastStore')
+      showToast('복원하지 못한 페이지가 있습니다. 다시 시도하거나 무시를 눌러주세요.', 'warning')
+    }
     return ok
-  }, [restoreFromLocal])
+  }, [restoreFromLocal, saveNow])
 
   // [무시] — 백업 삭제 후 배너 닫기. 캔버스는 그대로(서버 세션 유지).
   const handleDismissRestore = useCallback(() => {
@@ -1692,6 +1774,12 @@ function EmbeddedEditor({
       const guestToken = currentSession?.guestToken
       if (guestToken) {
         await editSessionsApi.updateGuest(currentSessionId, guestToken, { canvasData })
+        // R4 (2026-08-18): 서버 저장 성공 — 자동저장 훅과 동일 북키핑(clean 마킹 + 로컬 백업
+        // 삭제). 종전엔 이 경로가 dirty/백업을 그대로 둬 unmount 백업이 늘 재작성되고
+        // backup.savedAt > session.updatedAt 이 상시 성립 → 재진입마다 복원 배너가 떴다.
+        markClean()
+        deleteLocalBackup()
+        if (Array.isArray(canvasData)) markServerSynced(canvasData.length)
         // STALE-CLOSURE-001: editor.complete에 needsAuth/guestToken 인라인 포함
         const guestResult: EditorResult = {
           sessionId: currentSessionId,
@@ -1717,6 +1805,13 @@ function EmbeddedEditor({
       await finishMark('canvasData:save:start', { pages: Array.isArray(canvasData) ? canvasData.length : 1 })
       await editSessionsApi.update(currentSessionId, { canvasData })
       await finishMark('canvasData:save:done')
+      // R4 (2026-08-18): canvasData 서버 저장 성공 **직후에만** clean 마킹 + 로컬 백업 삭제
+      // (이후 PDF/complete 단계 실패와 무관 — 서버 canvasData 는 이미 최신). 종전엔 편집완료가
+      // dirty/백업을 그대로 둬 unmount 백업 재작성 → 재진입마다 복원 배너 상시 노출.
+      markClean()
+      deleteLocalBackup()
+      // R2 가드 기준선도 갱신 — 직접 저장 경로가 훅의 saveToServer 를 우회하므로 수동 동기.
+      if (Array.isArray(canvasData)) markServerSynced(canvasData.length)
 
       // Generate PDF
       try {
@@ -1977,7 +2072,7 @@ function EmbeddedEditor({
     } finally {
       setIsLoading(false)
     }
-  }, [canvas, editor, sessionId, currentSession, options, mode, orderSeqno, onComplete, onError, parentOrigin])
+  }, [canvas, editor, sessionId, currentSession, options, mode, orderSeqno, onComplete, onError, parentOrigin, markClean, deleteLocalBackup, markServerSynced])
 
   // 내 작업에 저장 핸들러 - EditorHeader에서 호출됨
   const handleSaveWork = useCallback(async () => {

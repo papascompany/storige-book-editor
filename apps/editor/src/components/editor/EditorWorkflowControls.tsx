@@ -55,7 +55,7 @@ export function EditorWorkflowControls({
   const [showAttachModal, setShowAttachModal] = useState(false)
   const [attached, setAttached] = useState<{
     fileId: string
-    pageCount: number
+    pageCount: number | null
   } | null>(null)
 
   const token = useAuthStore((s) => s.token)
@@ -124,11 +124,22 @@ export function EditorWorkflowControls({
       try {
         const session: EditSessionResponse = await editSessionsApi.get(attachSessionId)
         if (cancelled) return
-        const fileId = session.contentPdfFileId || session.contentFileId
+        // R5(2026-08-18): 편집완료 산출물 content.pdf(contentFileId 로 저장됨)를 고객 첨부로
+        // 오인하지 않는다. 진짜 고객 첨부 = contentPdfFileId 존재 또는 contentPdfMode==='underlay'.
+        // contentFileId 폴백은 편집완료 마커(metadata.spreadContentPageCount)나 완료 이력
+        // (status==='complete') 세션에서는 첨부로 간주하지 않는다.
+        const contentPdfMode = (
+          session as EditSessionResponse & { contentPdfMode?: 'replace' | 'underlay' | null }
+        ).contentPdfMode
+        const isEditorOutput =
+          session.metadata?.spreadContentPageCount != null || session.status === 'complete'
+        const fileId =
+          session.contentPdfFileId ||
+          (contentPdfMode === 'underlay' || !isEditorOutput ? session.contentFileId : null)
         if (fileId) {
           setAttached({
             fileId,
-            pageCount: session.contentPdfPageCount ?? 0,
+            pageCount: session.contentPdfPageCount ?? null,
           })
         }
         if (ownsSession) {
@@ -238,7 +249,7 @@ export function EditorWorkflowControls({
             }}
           >
             {attached
-              ? `✓ PDF 첨부됨 (${attached.pageCount}p)`
+              ? `✓ PDF 첨부됨${attached.pageCount ? ` (${attached.pageCount}p)` : ''}`
               : '📎 내지 PDF 첨부'}
           </button>
         )}

@@ -41,6 +41,7 @@ import {
 } from '@/utils/photobookSpread'
 import { resolveAssetUrl } from '@/utils/resolveAssetUrl'
 import { UNDERLAY_MAX_PAGES } from '@/utils/contentPdfGuide'
+import { Sentry } from '@/lib/sentry'
 import type {
   EditorContent,
   EditorTemplate,
@@ -87,6 +88,14 @@ export interface TemplateSetBasedSetupConfig {
    */
   wingEnabled?: boolean
   wingWidthMm?: number
+  /**
+   * 재진입 복원용 — 세션 canvasData 실측 내지 캔버스 수(= canvasData.length − 1) (R2, 2026-08-18).
+   * 펼침면(innerUnit='spread') 세트 시드에서 이 값을 spreadCount 로 **그대로** 사용한다 —
+   * 물리 페이지 수로 오인한 반감(spreadCountFromPageCount)·pageCountRange 클램프를 적용하지
+   * 않아, 사용자가 편집 중 추가한 페이지를 시드가 되돌리지(→ 복원 루프 무음 절단) 않는다.
+   * 낱장(non-spread) 세트 경로에서는 미사용 — 기존 동작 불변.
+   */
+  restoredInnerCanvasCount?: number
 }
 
 // 사용 케이스별 설정 타입 매핑
@@ -805,17 +814,22 @@ export function useEditorContents(): UseEditorContentsReturn {
    * 주의: 스토어에서 직접 최신 설정을 가져와야 함 (useCallback의 stale closure 문제 방지)
    */
   const initWorkspace = useCallback(async (): Promise<void> => {
-    if (!editor || !canvas) return
+    // R1 (2026-08-18): 클로저 editor/canvas 가 아닌 스토어 최신 참조 사용 — loadCanvasData 와
+    // 동일 패턴. embed.tsx 초기화 useEffect(deps=[])가 마운트 시점 null 을 캡처한 채 이 훅의
+    // 로더를 호출하므로, 클로저 가드는 embed 경로에서 initWorkspace 를 통째 no-op 시켰다
+    // (빈 표지 flat-spread 가 createCanvas 기본 105×105mm 정사각으로 잔존 — DB 실측).
+    const latestEditor = useAppStore.getState().editor
+    const latestCanvas = useAppStore.getState().canvas
+    if (!latestEditor || !latestCanvas) return
 
     // 캔버스가 dispose되었는지 확인 (React Strict Mode 이중 마운트 대응)
-    if (!canvas.getContext()) {
+    if ((latestCanvas as fabric.Canvas & { disposed?: boolean }).disposed || !latestCanvas.getContext()) {
       console.warn('[EditorContents] Canvas has been disposed, skipping initWorkspace')
       return
     }
 
     try {
-       
-      const workspacePlugin = getPlugin<any>('WorkspacePlugin')
+      const workspacePlugin = latestEditor.getPlugin<WorkspacePlugin>('WorkspacePlugin')
 
       if (workspacePlugin) {
         // 스토어에서 직접 최신 설정 가져오기 (stale closure 방지)
@@ -832,7 +846,7 @@ export function useEditorContents(): UseEditorContentsReturn {
     } catch (e) {
       console.error('워크스페이스 초기화 오류:', e)
     }
-  }, [editor, canvas, getPlugin])
+  }, [])
 
   // 사용 케이스 기반 로더들
   const loadForUseCase = useCallback(async <T extends EditorUseCase>(
@@ -1634,6 +1648,42 @@ export function useEditorContents(): UseEditorContentsReturn {
       } else {
         console.log('[EditorContents:Spread] No spread objects, initializing workspace only')
         await initWorkspace()
+
+        // R1 심층방어 (2026-08-18): initWorkspace 가 어떤 이유로든 무위였다면 workspace rect 가
+        // createCanvas 기본(105×105mm)에 잔존 — 빈 표지(flat-spread)가 정사각으로 열리고 이후
+        // 저장/재편집까지 오염된다. workspace 폭이 스프레드 총폭과 어긋나면 setOptions+init 을
+        // 직접 재적용한다(기존 isPhotobookInner 분기와 동형 — 그 경로는 아래에서 자체 재적용).
+        if (!isPhotobookInner) {
+          const guardState = useAppStore.getState()
+          const guardEditor = guardState.editor
+          const guardCanvas = guardState.canvas
+          if (guardEditor && guardCanvas && guardCanvas.getContext()) {
+            const expectedWidthPx = mmToPxDisplay(spreadConfig.totalWidthMm + spreadSpec.cutSizeMm)
+            const wsRect = (guardCanvas.getObjects() as fabric.Object[]).find(
+              (obj) => (obj as ExtendedFabricObject).id === 'workspace',
+            )
+            const actualWidthPx = wsRect ? (wsRect.width ?? 0) * (wsRect.scaleX ?? 1) : 0
+            if (!wsRect || Math.abs(actualWidthPx - expectedWidthPx) > 1) {
+              console.warn('[EditorContents:Spread] workspace 폭 ≠ 스프레드 총폭 — 직접 재적용:', {
+                actualWidthPx,
+                expectedWidthPx,
+                totalWidthMm: spreadConfig.totalWidthMm,
+              })
+              const guardWorkspacePlugin = guardEditor.getPlugin<WorkspacePlugin>('WorkspacePlugin')
+              if (guardWorkspacePlugin) {
+                await guardWorkspacePlugin.setOptions({
+                  size: {
+                    width: spreadConfig.totalWidthMm,
+                    height: spreadConfig.totalHeightMm,
+                    cutSize: spreadSpec.cutSizeMm,
+                    safeSize: spreadSpec.safeSizeMm,
+                  },
+                })
+                guardWorkspacePlugin.init()
+              }
+            }
+          }
+        }
       }
 
       // 6. SpreadPlugin 동적 등록 (워크스페이스 초기화 이후)
@@ -1774,15 +1824,50 @@ export function useEditorContents(): UseEditorContentsReturn {
       }
 
       if (isSpreadInners && !config.underlayPageCount) {
-        const pcRange: number[] = (templateSet as { pageCountRange?: number[] }).pageCountRange || []
-        let physicalPages = config.pageCount ?? (pcRange.length ? Math.min(...pcRange) : assembled.innerSeeds.length * 2)
-        if (pcRange.length) {
-          physicalPages = Math.max(Math.min(...pcRange), Math.min(Math.max(...pcRange), physicalPages))
+        const restoredCanvasCount =
+          typeof config.restoredInnerCanvasCount === 'number' &&
+          Number.isFinite(config.restoredInnerCanvasCount) &&
+          config.restoredInnerCanvasCount > 0
+            ? Math.floor(config.restoredInnerCanvasCount)
+            : null
+        if (restoredCanvasCount !== null) {
+          // R2 (2026-08-18): 재진입 — canvasData 실측 캔버스 수가 시드 수의 단일 진실원.
+          // 반감·pageCountRange 클램프 미적용: 사용자가 추가한 페이지를 시드가 되돌리면
+          // embed 복원 루프(min)가 저장본 뒷페이지를 무음 절단하고, 이후 자동저장이 절단본을
+          // 서버에 영구 덮어쓴다(DB 실측 17→9). isInnerOnly 는 캔버스 0 도 펼침면이므로 +1.
+          // 손상/적대적 canvasData 의 폭주 방지 — underlay 경로와 동일 상한(200) 후 표면화.
+          const rawSpreadCount = Math.max(
+            1,
+            isInnerOnly ? restoredCanvasCount + 1 : restoredCanvasCount,
+          )
+          const spreadCount = Math.min(rawSpreadCount, UNDERLAY_MAX_PAGES)
+          if (rawSpreadCount > UNDERLAY_MAX_PAGES) {
+            console.error(
+              `[EditorContents:Spread] 복원 캔버스 수 ${rawSpreadCount} > 상한 ${UNDERLAY_MAX_PAGES} — 상한으로 절사`,
+            )
+            try {
+              Sentry.captureMessage('[template-set-restore] restored canvas count over cap', {
+                level: 'warning',
+                extra: { rawSpreadCount, cap: UNDERLAY_MAX_PAGES },
+              })
+            } catch {
+              /* Sentry 미설정/네트워크 — 무시 */
+            }
+          }
+          const expanded = expandPrintSeeds(assembled.innerSeeds, spreadCount, innerRepeat)
+          adjustedPageTemplates = isInnerOnly ? expanded.slice(1) : expanded
+          console.log(`[EditorContents:Spread] 내지펼침면 ${spreadCount}장 (복원 캔버스 실측 ${restoredCanvasCount}, ${innerRepeat})`)
+        } else {
+          const pcRange: number[] = (templateSet as { pageCountRange?: number[] }).pageCountRange || []
+          let physicalPages = config.pageCount ?? (pcRange.length ? Math.min(...pcRange) : assembled.innerSeeds.length * 2)
+          if (pcRange.length) {
+            physicalPages = Math.max(Math.min(...pcRange), Math.min(Math.max(...pcRange), physicalPages))
+          }
+          const spreadCount = Math.max(1, spreadCountFromPageCount(physicalPages))
+          const expanded = expandPrintSeeds(assembled.innerSeeds, spreadCount, innerRepeat)
+          adjustedPageTemplates = isInnerOnly ? expanded.slice(1) : expanded
+          console.log(`[EditorContents:Spread] 내지펼침면 ${spreadCount}장 (물리 ${physicalPages}p, ${innerRepeat})`)
         }
-        const spreadCount = Math.max(1, spreadCountFromPageCount(physicalPages))
-        const expanded = expandPrintSeeds(assembled.innerSeeds, spreadCount, innerRepeat)
-        adjustedPageTemplates = isInnerOnly ? expanded.slice(1) : expanded
-        console.log(`[EditorContents:Spread] 내지펼침면 ${spreadCount}장 (물리 ${physicalPages}p, ${innerRepeat})`)
       }
 
       // 10. 내지 페이지 캔버스 생성 및 로드
