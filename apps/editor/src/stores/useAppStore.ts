@@ -697,6 +697,20 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
       // 펼침면(표지/내지 공통) 가이드 — workspace 확정 후 초기화
       spreadPlugin?.init()
 
+      // 새 캔버스는 컨테이너 표시 전에 생성돼 fabric 치수가 0/스테일일 수 있는데,
+      // 리사이즈 이벤트가 없으면 useCanvasContainerSizeSync 가 발화하지 않아 첫 표시가
+      // 빈 화면으로 남는다(페이지 전환 시에야 자가치유). 표시 직후 래퍼 실측으로 동기.
+      const wrapperEl = document.getElementById('canvas-wrapper')
+      if (wrapperEl) {
+        const w = wrapperEl.clientWidth
+        const h = wrapperEl.clientHeight
+        if (w > 0 && h > 0 && (newCanvas.getWidth() !== w || newCanvas.getHeight() !== h)) {
+          newCanvas.setDimensions({ width: w, height: h })
+          newCanvas.calcOffset?.()
+          workspacePlugin.setZoomAuto()
+        }
+      }
+
       // useEditorStore.pages에 새 EditPage 추가 (SpreadPagePanel 동기화)
       const editorStore = useEditorStore.getState()
       editorStore.addPage({
