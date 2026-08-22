@@ -6,6 +6,7 @@ import {
   SessionStatus,
   SessionMode,
 } from './entities/edit-session.entity';
+import { EditSessionVersionEntity } from './entities/edit-session-version.entity';
 import { WorkerJobsService } from '../worker-jobs/worker-jobs.service';
 import { TemplateSetsService } from '../templates/template-sets.service';
 import { WorkerJobStatus } from '@storige/types';
@@ -52,6 +53,15 @@ describe('EditSessionsService', () => {
     },
   };
 
+  // P1-4: canvasData 덮어쓰기 직전 스냅샷 저장소
+  const mockVersionRepository = {
+    find: jest.fn().mockResolvedValue([]),
+    findOne: jest.fn(),
+    create: jest.fn((v: any) => ({ id: 'ver-1', ...v })),
+    save: jest.fn(async (v: any) => v),
+    delete: jest.fn(),
+  };
+
   const mockWorkerJobsService = {
     createValidationJob: jest.fn(),
   };
@@ -71,6 +81,10 @@ describe('EditSessionsService', () => {
         {
           provide: getRepositoryToken(EditSessionEntity),
           useValue: mockSessionRepository,
+        },
+        {
+          provide: getRepositoryToken(EditSessionVersionEntity),
+          useValue: mockVersionRepository,
         },
         {
           provide: WorkerJobsService,
@@ -636,6 +650,122 @@ describe('EditSessionsService', () => {
       const oo = lastOrderOptions();
       expect(oo.size).toEqual({ width: 210, height: 297 });
       expect(oo.expectedOrientation).toBe('portrait');
+    });
+  });
+
+  describe('P1-4 canvasData 덮어쓰기 직전 스냅샷 (file_edit_session_versions)', () => {
+    const mkSession = (canvasData: any, extra: Partial<EditSessionEntity> = {}): EditSessionEntity =>
+      ({
+        id: 'sess-1',
+        memberSeqno: 7,
+        guestToken: null,
+        status: SessionStatus.EDITING,
+        canvasData,
+        metadata: null,
+        ...extra,
+      }) as EditSessionEntity;
+
+    beforeEach(() => {
+      mockVersionRepository.find.mockResolvedValue([]);
+      mockSessionRepository.save.mockImplementation(async (s: any) => s);
+    });
+
+    it('update(canvasData) 는 이전 값을 스냅샷으로 저장한 뒤 덮어쓴다 (autosave)', async () => {
+      const prev = [{ v: 1 }, { v: 2 }];
+      mockSessionRepository.findOne.mockResolvedValue(mkSession(prev));
+      const next = [{ v: 1 }, { v: 2 }, { v: 3 }];
+
+      await service.update('sess-1', { canvasData: next } as any, 7);
+
+      expect(mockVersionRepository.save).toHaveBeenCalledTimes(1);
+      const saved = mockVersionRepository.save.mock.calls[0][0];
+      expect(saved.canvasData).toBe(prev);
+      expect(saved.pageCount).toBe(2);
+      expect(saved.nextPageCount).toBe(3);
+      expect(saved.reason).toBe('autosave');
+      expect(saved.createdBy).toBe(7);
+      expect(mockSessionRepository.save.mock.calls[0][0].canvasData).toBe(next);
+    });
+
+    it('최초 저장(이전 canvasData 없음)·동일 내용은 스냅샷하지 않는다', async () => {
+      mockSessionRepository.findOne.mockResolvedValue(mkSession(null));
+      await service.update('sess-1', { canvasData: [{ a: 1 }] } as any, 7);
+      expect(mockVersionRepository.save).not.toHaveBeenCalled();
+
+      service['lastVersionAt'].clear();
+      mockSessionRepository.findOne.mockResolvedValue(mkSession([{ a: 1 }]));
+      await service.update('sess-1', { canvasData: [{ a: 1 }] } as any, 7);
+      expect(mockVersionRepository.save).not.toHaveBeenCalled();
+    });
+
+    it('autosave 는 세션당 60s debounce — 연속 저장은 1건만', async () => {
+      mockSessionRepository.findOne.mockResolvedValue(mkSession([{ a: 1 }]));
+      await service.update('sess-1', { canvasData: [{ a: 2 }] } as any, 7);
+      mockSessionRepository.findOne.mockResolvedValue(mkSession([{ a: 2 }]));
+      await service.update('sess-1', { canvasData: [{ a: 3 }] } as any, 7);
+      expect(mockVersionRepository.save).toHaveBeenCalledTimes(1);
+    });
+
+    it('페이지 수 감소(shrink)는 debounce 를 무시하고 즉시 보존한다 — R2 절단 포착', async () => {
+      mockSessionRepository.findOne.mockResolvedValue(mkSession(Array(16).fill({})));
+      await service.update('sess-1', { canvasData: Array(17).fill({}) } as any, 7);
+      mockSessionRepository.findOne.mockResolvedValue(mkSession(Array(16).fill({})));
+      await service.update('sess-1', { canvasData: Array(8).fill({}) } as any, 7);
+
+      expect(mockVersionRepository.save).toHaveBeenCalledTimes(2);
+      const shrink = mockVersionRepository.save.mock.calls[1][0];
+      expect(shrink.reason).toBe('shrink');
+      expect(shrink.pageCount).toBe(16);
+      expect(shrink.nextPageCount).toBe(8);
+    });
+
+    it('스냅샷 저장 실패는 세션 저장을 막지 않는다', async () => {
+      mockSessionRepository.findOne.mockResolvedValue(mkSession([{ a: 1 }]));
+      mockVersionRepository.save.mockRejectedValueOnce(new Error('no table'));
+      const updated = await service.update('sess-1', { canvasData: [{ a: 2 }] } as any, 7);
+      expect(updated.canvasData).toEqual([{ a: 2 }]);
+    });
+
+    it('트림: 10건 초과 시 오래된 것부터 삭제하되 shrink 최근 5건은 보호', async () => {
+      const rows = Array.from({ length: 14 }, (_, i) => ({
+        id: `v${i}`,
+        reason: i % 2 === 0 ? 'shrink' : 'autosave',
+        createdAt: new Date(2026, 7, 22, 0, 14 - i), // v0 최신
+      }));
+      mockVersionRepository.find.mockResolvedValue(rows);
+      mockSessionRepository.findOne.mockResolvedValue(mkSession([{ a: 1 }]));
+
+      await service.update('sess-1', { canvasData: [{ a: 2 }] } as any, 7);
+
+      expect(mockVersionRepository.delete).toHaveBeenCalledTimes(1);
+      const deleted: string[] = mockVersionRepository.delete.mock.calls[0][0];
+      // shrink v0,v2,v4,v6,v8 보호 → 총 10건 유지 → 삭제 4건이며 보호 id 는 없다
+      expect(deleted).toHaveLength(4);
+      for (const id of ['v0', 'v2', 'v4', 'v6', 'v8']) expect(deleted).not.toContain(id);
+      expect(deleted).toEqual(['v11', 'v12', 'v13', 'v10'].sort());
+    });
+
+    it('restoreVersion: 복원 직전 현재 상태를 restore 스냅샷으로 보존하고 canvasData 를 교체한다', async () => {
+      const current = Array(8).fill({ cur: true });
+      const old = Array(16).fill({ old: true });
+      mockSessionRepository.findOne.mockResolvedValue(mkSession(current));
+      mockVersionRepository.findOne.mockResolvedValue({ id: 'ver-old', canvasData: old, pageCount: 16 });
+
+      const restored = await service.restoreVersion('sess-1', 'ver-old', 7);
+
+      expect(restored.canvasData).toBe(old);
+      const snap = mockVersionRepository.save.mock.calls[0][0];
+      expect(snap.reason).toBe('restore');
+      expect(snap.canvasData).toBe(current);
+    });
+
+    it('restoreVersion: 다른 세션의 스냅샷 id 는 404', async () => {
+      mockSessionRepository.findOne.mockResolvedValue(mkSession([{}]));
+      mockVersionRepository.findOne.mockResolvedValue(null);
+      await expect(service.restoreVersion('sess-1', 'ver-x', 7)).rejects.toThrow();
+      expect(mockVersionRepository.findOne).toHaveBeenCalledWith({
+        where: { id: 'ver-x', session: { id: 'sess-1' } },
+      });
     });
   });
 });

@@ -34,6 +34,7 @@ import { BookFinalizationsService } from './book-finalizations.service';
 
 import { WorkerJob } from '../worker-jobs/entities/worker-job.entity';
 import { EditSessionEntity } from '../edit-sessions/entities/edit-session.entity';
+import { EditSessionVersionEntity } from '../edit-sessions/entities/edit-session-version.entity';
 import { Book } from './entities/book.entity';
 import { BookAsset } from './entities/book-asset.entity';
 import { BookFinalization } from './entities/book-finalization.entity';
@@ -61,6 +62,7 @@ describe('finalization DI 배선(P1-1) — books ⇄ worker-jobs', () => {
         // repos
         { provide: getRepositoryToken(WorkerJob), useFactory: repoStub },
         { provide: getRepositoryToken(EditSessionEntity), useFactory: repoStub },
+        { provide: getRepositoryToken(EditSessionVersionEntity), useFactory: repoStub },
         { provide: getRepositoryToken(Book), useFactory: repoStub },
         { provide: getRepositoryToken(BookAsset), useFactory: repoStub },
         { provide: getRepositoryToken(BookFinalization), useFactory: repoStub },

@@ -26,6 +26,7 @@ import { ErrV1 } from '@storige/types';
 import { EditSessionsController } from './edit-sessions.controller';
 import { EditSessionsService } from './edit-sessions.service';
 import { EditSessionEntity, SessionMode, SessionStatus } from './entities/edit-session.entity';
+import { EditSessionVersionEntity } from './entities/edit-session-version.entity';
 import { OptionalShopJwtGuard } from '../auth/guards/optional-shop-jwt.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ApiKeyGuard } from '../auth/guards/api-key.guard';
@@ -99,6 +100,7 @@ describe('게스트 세션 테넌시 — siteId 스탬프 + 승격 게이트 e2e
         // "route-scoped 가드가 실제로 테넌트를 복원한다"가 증거가 된다.
         { provide: APP_GUARD, useClass: JwtAuthGuard },
         { provide: getRepositoryToken(EditSessionEntity), useValue: sessionRepo },
+        { provide: getRepositoryToken(EditSessionVersionEntity), useValue: { find: jest.fn().mockResolvedValue([]), findOne: jest.fn(), create: jest.fn((v) => v), save: jest.fn(async (v) => v), delete: jest.fn() } },
         { provide: WorkerJobsService, useValue: { createValidationJob: jest.fn() } },
         { provide: TemplateSetsService, useValue: { findOneWithTemplates: jest.fn() } },
         { provide: ConfigService, useValue: { get: jest.fn().mockReturnValue(JWT_SECRET) } },

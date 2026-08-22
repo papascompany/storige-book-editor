@@ -15,6 +15,10 @@ import {
   SessionStatus,
   SessionMode,
 } from './entities/edit-session.entity';
+import {
+  EditSessionVersionEntity,
+  type EditSessionVersionReason,
+} from './entities/edit-session-version.entity';
 import { CreateEditSessionDto } from './dto/create-edit-session.dto';
 import { UpdateEditSessionDto } from './dto/update-edit-session.dto';
 import {
@@ -42,6 +46,8 @@ export class EditSessionsService {
   constructor(
     @InjectRepository(EditSessionEntity)
     private sessionRepository: Repository<EditSessionEntity>,
+    @InjectRepository(EditSessionVersionEntity)
+    private versionRepository: Repository<EditSessionVersionEntity>,
     @Inject(forwardRef(() => WorkerJobsService))
     private workerJobsService: WorkerJobsService,
     private templateSetsService: TemplateSetsService,
@@ -471,6 +477,12 @@ export class EditSessionsService {
           message: '내지 PDF 첨부(replace) 상태에서는 편집 캔버스를 변경할 수 없습니다. PDF 를 먼저 제거하거나 underlay 모드로 첨부하세요.',
         });
       }
+      // P1-4 (2026-08-22): 덮어쓰기 직전 스냅샷 — 실패해도 저장은 계속(로깅만)
+      try {
+        await this.snapshotBeforeOverwrite(session, dto.canvasData, userId);
+      } catch (e) {
+        this.logger.warn(`[versions] snapshot 실패 (무시) session=${id}: ${(e as Error)?.message}`);
+      }
       session.canvasData = dto.canvasData;
     }
 
@@ -523,6 +535,165 @@ export class EditSessionsService {
     this.logger.log(`Updated edit session ${id}${isGuest ? ' (guest)' : ''}`);
 
     return updated;
+  }
+
+  // ───────────────────────────────────────────────────────────────
+  // P1-4 (2026-08-22) — canvasData 덮어쓰기 직전 스냅샷 (file_edit_session_versions)
+  //
+  // 구조 원인: 프로덕션 /embed 세션 모델(file_edit_sessions)은 update() 가 canvasData 를
+  // 그대로 덮어써 절단(R2)·오저장이 영구화됐다. 레거시 edit_sessions 의 버전 테이블은
+  // 이 모델과 무관(프로덕션 0행). 여기서 **이전 값**을 보존해 복구 경로를 연다.
+  // ───────────────────────────────────────────────────────────────
+  /** 세션당 통상(autosave) 스냅샷 최소 간격 */
+  static readonly VERSION_DEBOUNCE_MS = 60_000;
+  /** 세션당 보존 건수(전체) */
+  static readonly VERSION_KEEP = 10;
+  /** shrink(페이지 수 감소) 스냅샷은 트림에서 최근 N 건 보호 */
+  static readonly SHRINK_KEEP = 5;
+
+  private lastVersionAt: Map<string, number> = new Map();
+
+  /** canvasData 의 캔버스 수 — 배열이면 길이, 객체면 1, 없으면 0 */
+  static countCanvases(canvasData: unknown): number {
+    if (canvasData == null) return 0;
+    return Array.isArray(canvasData) ? canvasData.length : 1;
+  }
+
+  /**
+   * update() 가 canvasData 를 덮어쓰기 직전에 호출. 이전 값이 없거나(최초 저장) 동일하면 저장하지 않는다.
+   * page_count 감소는 절단 의심(shrink) — debounce 무시. 통상은 세션당 60s debounce.
+   */
+  async snapshotBeforeOverwrite(
+    session: EditSessionEntity,
+    nextCanvasData: unknown,
+    createdBy: number,
+    reasonOverride?: EditSessionVersionReason,
+  ): Promise<EditSessionVersionEntity | null> {
+    const prev = session.canvasData;
+    if (prev == null) return null;
+    const prevCount = EditSessionsService.countCanvases(prev);
+    const nextCount = EditSessionsService.countCanvases(nextCanvasData);
+    const reason: EditSessionVersionReason =
+      reasonOverride ?? (nextCount < prevCount ? 'shrink' : 'autosave');
+
+    const now = Date.now();
+    if (reason === 'autosave') {
+      const last = this.lastVersionAt.get(session.id) ?? 0;
+      if (now - last < EditSessionsService.VERSION_DEBOUNCE_MS) return null;
+    }
+    // 동일 내용이면 스냅샷 무의미(자동저장 무변경 저장 흡수)
+    if (reason !== 'restore' && JSON.stringify(prev) === JSON.stringify(nextCanvasData)) {
+      return null;
+    }
+
+    const version = this.versionRepository.create({
+      session: { id: session.id } as EditSessionEntity,
+      canvasData: prev,
+      pageCount: prevCount,
+      nextPageCount: nextCount,
+      reason,
+      sessionStatus: session.status ?? null,
+      createdBy: Number.isFinite(createdBy) ? createdBy : null,
+    });
+    const saved = await this.versionRepository.save(version);
+    this.lastVersionAt.set(session.id, now);
+    if (reason === 'shrink') {
+      this.logger.warn(
+        `[versions] shrink 스냅샷 session=${session.id} ${prevCount}→${nextCount} (version=${saved.id})`,
+      );
+    }
+    await this.trimVersions(session.id);
+    return saved;
+  }
+
+  /** 세션당 VERSION_KEEP 초과분 삭제 — shrink 는 최근 SHRINK_KEEP 건 보호 */
+  private async trimVersions(sessionId: string): Promise<void> {
+    const all = await this.versionRepository.find({
+      where: { session: { id: sessionId } },
+      select: ['id', 'reason', 'createdAt'],
+      order: { createdAt: 'DESC' },
+    });
+    if (all.length <= EditSessionsService.VERSION_KEEP) return;
+    let shrinkSeen = 0;
+    const protectedIds = new Set<string>();
+    for (const v of all) {
+      if (v.reason === 'shrink' && shrinkSeen < EditSessionsService.SHRINK_KEEP) {
+        protectedIds.add(v.id);
+        shrinkSeen++;
+      }
+    }
+    const toDelete: string[] = [];
+    let kept = 0;
+    for (const v of all) {
+      if (protectedIds.has(v.id)) { kept++; continue; }
+      if (kept < EditSessionsService.VERSION_KEEP) { kept++; continue; }
+      toDelete.push(v.id);
+    }
+    if (toDelete.length) await this.versionRepository.delete(toDelete);
+  }
+
+  /** 세션의 스냅샷 목록(canvasData 제외 — 경량) */
+  async listVersions(sessionId: string): Promise<
+    Array<{
+      id: string;
+      createdAt: Date;
+      pageCount: number;
+      nextPageCount: number | null;
+      reason: EditSessionVersionReason;
+      sessionStatus: string | null;
+    }>
+  > {
+    const rows = await this.versionRepository.find({
+      where: { session: { id: sessionId } },
+      select: ['id', 'createdAt', 'pageCount', 'nextPageCount', 'reason', 'sessionStatus'],
+      order: { createdAt: 'DESC' },
+    });
+    return rows.map((v) => ({
+      id: v.id,
+      createdAt: v.createdAt,
+      pageCount: v.pageCount,
+      nextPageCount: v.nextPageCount,
+      reason: v.reason,
+      sessionStatus: v.sessionStatus,
+    }));
+  }
+
+  async getVersion(sessionId: string, versionId: string): Promise<EditSessionVersionEntity> {
+    const version = await this.versionRepository.findOne({
+      where: { id: versionId, session: { id: sessionId } },
+    });
+    if (!version) {
+      throw new NotFoundException({
+        code: 'VERSION_NOT_FOUND',
+        message: '세션 스냅샷을 찾을 수 없습니다.',
+        details: { sessionId, versionId },
+      });
+    }
+    return version;
+  }
+
+  /**
+   * 스냅샷으로 canvasData 복원. 복원 직전의 현재 상태는 reason='restore' 로 보존(되돌리기).
+   * 호출측(컨트롤러)이 소유 검사를 끝낸 뒤 호출한다. status 는 건드리지 않는다.
+   */
+  async restoreVersion(
+    sessionId: string,
+    versionId: string,
+    userId: number,
+  ): Promise<EditSessionEntity> {
+    const session = await this.findById(sessionId);
+    const version = await this.getVersion(sessionId, versionId);
+    try {
+      await this.snapshotBeforeOverwrite(session, version.canvasData, userId, 'restore');
+    } catch (e) {
+      this.logger.warn(`[versions] restore 전 스냅샷 실패 (무시) session=${sessionId}: ${(e as Error)?.message}`);
+    }
+    session.canvasData = version.canvasData;
+    const saved = await this.sessionRepository.save(session);
+    this.logger.log(
+      `[versions] restored session=${sessionId} from version=${versionId} (pages=${version.pageCount})`,
+    );
+    return saved;
   }
 
   /**

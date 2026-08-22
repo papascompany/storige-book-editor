@@ -433,6 +433,26 @@ CREATE TABLE IF NOT EXISTS file_edit_sessions (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------
+-- 8b. file_edit_sessions canvasData 덮어쓰기 직전 스냅샷 (P1-4, 2026-08-22)
+--     정책/운영: apps/api/migrations/20260822_add_file_edit_session_versions.sql
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS file_edit_session_versions (
+  id               VARCHAR(36)  NOT NULL,
+  session_id       VARCHAR(36)  NOT NULL,
+  canvas_data      JSON         NOT NULL,
+  page_count       INT          NOT NULL DEFAULT 0,
+  next_page_count  INT          NULL,
+  reason           VARCHAR(16)  NOT NULL DEFAULT 'autosave',
+  session_status   VARCHAR(20)  NULL,
+  created_by       BIGINT       NULL,
+  created_at       TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  INDEX idx_fesv_session_created (session_id, created_at),
+  CONSTRAINT fk_fesv_session FOREIGN KEY (session_id)
+    REFERENCES file_edit_sessions(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------------------
 -- 9. Worker Jobs (file_edit_sessions ManyToOne)
 -- ---------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS worker_jobs (

@@ -224,11 +224,20 @@ export class EditSessionsController {
     @Headers('x-guest-token') guestTokenHeader?: string,
   ): Promise<EditSessionResponseDto> {
     // X-Guest-Token 헤더가 안 되는 환경(예: 일부 CORS)을 위해 쿼리도 허용.
-    const presentedToken = guestTokenHeader || guestTokenQuery;
+    await this.assertGuestOwnership(id, guestTokenHeader || guestTokenQuery);
+    // userId=0 (게스트) — service 가 isGuest 로 권한 검사 우회
+    const updated = await this.editSessionsService.update(id, dto, 0);
+    return this.editSessionsService.toResponseDto(updated);
+  }
 
-    // ⚠️ 순서 고정 — 소유 증명을 **조회보다 먼저** 요구한다.
-    //   findById 를 먼저 하면 무인증 호출자에게 "그 세션이 존재하는가"를 알려주는
-    //   존재 오라클이 된다. 기존 클라이언트는 항상 토큰을 보내므로 동작 변화 없음.
+  /**
+   * 게스트 세션 소유 증명(F-3 fail-closed). updateGuest·guest versions 공용.
+   *
+   * ⚠️ 순서 고정 — 소유 증명을 **조회보다 먼저** 요구한다.
+   *   findById 를 먼저 하면 무인증 호출자에게 "그 세션이 존재하는가"를 알려주는
+   *   존재 오라클이 된다. 기존 클라이언트는 항상 토큰을 보내므로 동작 변화 없음.
+   */
+  private async assertGuestOwnership(id: string, presentedToken: string | undefined): Promise<void> {
     if (!presentedToken) {
       throw new ForbiddenException({
         code: 'GUEST_TOKEN_REQUIRED',
@@ -246,9 +255,38 @@ export class EditSessionsController {
     if (presentedToken !== session.guestToken) {
       throw new ForbiddenException({ code: 'GUEST_TOKEN_MISMATCH', message: '게스트 토큰이 일치하지 않습니다.' });
     }
-    // userId=0 (게스트) — service 가 isGuest 로 권한 검사 우회
-    const updated = await this.editSessionsService.update(id, dto, 0);
-    return this.editSessionsService.toResponseDto(updated);
+  }
+
+  // ─── P1-4 (2026-08-22) 게스트 세션 스냅샷 목록/복원 — @Get(':id/…') 보다 먼저 선언 ───
+
+  @Get('guest/:id/versions')
+  @Public()
+  @ApiOperation({ summary: '게스트 세션 canvasData 스냅샷 목록 (P1-4)' })
+  @ApiResponse({ status: 403, description: '게스트 토큰 미전송/불일치 또는 만료' })
+  async listGuestVersions(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('guestToken') guestTokenQuery?: string,
+    @Headers('x-guest-token') guestTokenHeader?: string,
+  ) {
+    await this.assertGuestOwnership(id, guestTokenHeader || guestTokenQuery);
+    return this.editSessionsService.listVersions(id);
+  }
+
+  @Post('guest/:id/versions/:vid/restore')
+  @Public()
+  @ApiOperation({ summary: '게스트 세션 스냅샷 복원 (P1-4) — 복원 직전 상태는 restore 스냅샷으로 보존' })
+  @ApiResponse({ status: 200, type: EditSessionResponseDto })
+  @ApiResponse({ status: 403, description: '게스트 토큰 미전송/불일치 또는 만료' })
+  @ApiResponse({ status: 404, description: '세션/스냅샷 없음' })
+  async restoreGuestVersion(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('vid', ParseUUIDPipe) vid: string,
+    @Query('guestToken') guestTokenQuery?: string,
+    @Headers('x-guest-token') guestTokenHeader?: string,
+  ): Promise<EditSessionResponseDto> {
+    await this.assertGuestOwnership(id, guestTokenHeader || guestTokenQuery);
+    const restored = await this.editSessionsService.restoreVersion(id, vid, 0);
+    return this.editSessionsService.toResponseDto(restored);
   }
 
   /**
@@ -645,6 +683,59 @@ export class EditSessionsController {
     return this.editSessionsService.toResponseDto(session);
   }
 
+  // ─── P1-4 (2026-08-22) 회원 세션 스냅샷 목록/상세/복원 — 소유자 또는 admin/manager ───
+
+  @Get(':id/versions')
+  @ApiOperation({ summary: '세션 canvasData 스냅샷 목록 (P1-4) — canvasData 제외 경량' })
+  @ApiResponse({ status: 403, description: '권한 없음' })
+  @ApiResponse({ status: 404, description: '세션을 찾을 수 없음' })
+  async listVersions(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: any,
+  ) {
+    await this.assertOwnerOrStaff(id, user);
+    return this.editSessionsService.listVersions(id);
+  }
+
+  @Get(':id/versions/:vid')
+  @ApiOperation({ summary: '세션 스냅샷 상세 (canvasData 포함) (P1-4)' })
+  @ApiResponse({ status: 403, description: '권한 없음' })
+  @ApiResponse({ status: 404, description: '세션/스냅샷 없음' })
+  async getVersion(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('vid', ParseUUIDPipe) vid: string,
+    @CurrentUser() user: any,
+  ) {
+    await this.assertOwnerOrStaff(id, user);
+    const v = await this.editSessionsService.getVersion(id, vid);
+    return {
+      id: v.id,
+      sessionId: id,
+      createdAt: v.createdAt,
+      pageCount: v.pageCount,
+      nextPageCount: v.nextPageCount,
+      reason: v.reason,
+      sessionStatus: v.sessionStatus,
+      canvasData: v.canvasData,
+    };
+  }
+
+  @Post(':id/versions/:vid/restore')
+  @ApiOperation({ summary: '세션 스냅샷 복원 (P1-4) — 복원 직전 상태는 restore 스냅샷으로 보존' })
+  @ApiResponse({ status: 200, type: EditSessionResponseDto })
+  @ApiResponse({ status: 403, description: '권한 없음' })
+  @ApiResponse({ status: 404, description: '세션/스냅샷 없음' })
+  async restoreVersion(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('vid', ParseUUIDPipe) vid: string,
+    @CurrentUser() user: any,
+  ): Promise<EditSessionResponseDto> {
+    await this.assertOwnerOrStaff(id, user);
+    const userId = user?.userId ? parseInt(user.userId) : 0;
+    const restored = await this.editSessionsService.restoreVersion(id, vid, userId);
+    return this.editSessionsService.toResponseDto(restored);
+  }
+
   /**
    * 세션 업데이트
    */
@@ -738,6 +829,19 @@ export class EditSessionsController {
   private isStaffRole(user: any): boolean {
     const role = String(user?.role || '').toLowerCase();
     return role === 'admin' || role === 'manager' || role === 'super_admin';
+  }
+
+  /** 세션 소유자(memberSeqno 일치) 또는 admin/manager — findOne(:id) 과 동일 판정 */
+  private async assertOwnerOrStaff(id: string, user: any): Promise<void> {
+    const session = await this.editSessionsService.findById(id);
+    const userId = user?.userId ? parseInt(user.userId) : 0;
+    const isOwner = userId > 0 && Number(session.memberSeqno) === userId;
+    if (!isOwner && !this.isStaffRole(user)) {
+      throw new ForbiddenException({
+        code: 'PERMISSION_DENIED',
+        message: '이 세션에 접근할 권한이 없습니다.',
+      });
+    }
   }
 
   /** admin/manager 전용 가드 (삭제 리스트/복구) */

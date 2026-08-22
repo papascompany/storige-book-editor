@@ -16,6 +16,7 @@ import { UpdateJobStatusDto, CreateValidationJobDto } from './worker-job.dto';
 import { WorkerJobsService } from '../worker-jobs.service';
 import { WorkerJob } from '../entities/worker-job.entity';
 import { EditSessionEntity } from '../../edit-sessions/entities/edit-session.entity';
+import { EditSessionVersionEntity } from '../../edit-sessions/entities/edit-session-version.entity';
 import { FilesService } from '../../files/files.service';
 import { WebhookService } from '../../webhook/webhook.service';
 import { SitesService } from '../../sites/sites.service';
@@ -145,6 +146,7 @@ describe('WorkerJobsService.updateJobStatus (WK-1: errorCode/errorDetail 영속�
         WorkerJobsService,
         { provide: getRepositoryToken(WorkerJob), useValue: workerJobRepo },
         { provide: getRepositoryToken(EditSessionEntity), useValue: { findOne: jest.fn() } },
+        { provide: getRepositoryToken(EditSessionVersionEntity), useValue: { find: jest.fn(), findOne: jest.fn(), create: jest.fn(), save: jest.fn(), delete: jest.fn() } },
         { provide: getQueueToken('pdf-validation'), useValue: { add: jest.fn() } },
         { provide: getQueueToken('pdf-conversion'), useValue: { add: jest.fn() } },
         { provide: getQueueToken('pdf-synthesis'), useValue: { add: jest.fn() } },

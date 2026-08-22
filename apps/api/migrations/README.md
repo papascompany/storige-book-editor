@@ -33,6 +33,7 @@ SHOW COLUMNS FROM products LIKE 'allowCustomSize';
 |---|---|---|
 | 2026-05-01 | [`20260501_add_products_allowCustomSize.sql`](./20260501_add_products_allowCustomSize.sql) | `products.allowCustomSize` BOOLEAN 컬럼 추가 (옵션 C — 외부 쇼핑몰 사이즈 override 허용) |
 | 2026-05-01 | [`20260501_add_edit_session_versions.sql`](./20260501_add_edit_session_versions.sql) | `edit_session_versions` 테이블 신규 (BB-Phase 3 — 자동저장 시점 versions LRU 20) |
+| 2026-08-22 | [`20260822_add_file_edit_session_versions.sql`](./20260822_add_file_edit_session_versions.sql) | `file_edit_session_versions` 테이블 신규 (P1-4 — 프로덕션 /embed 세션 canvasData 덮어쓰기 직전 스냅샷, 세션당 10건·shrink 5건 보호) |
 
 ## 신규 환경 셋업
 
