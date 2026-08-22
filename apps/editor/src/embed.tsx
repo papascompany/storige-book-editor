@@ -1330,6 +1330,8 @@ function EmbeddedEditor({
         {
           const profile = loadProfile.summary()
           console.log(`[EmbeddedEditor][load-profile] ${formatLoadProfile(profile)}`, profile)
+          // 프로덕션은 console 이 pure-제거되므로(vite esbuild.pure) 실측 조회용으로 window 에도 노출.
+          try { (window as any).__storigeLoadProfile = profile } catch { /* noop */ }
           // 30s+ 재진입 실측용 — 단계/반복 집계를 Sentry 에 1회 남긴다(flush 대기 없음).
           try {
             Sentry.captureMessage('[load-profile] embed ready', {
