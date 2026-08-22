@@ -206,8 +206,14 @@ class FontPlugin extends PluginBase {
 
       // 3. 브라우저가 폰트 메트릭을 완전히 계산할 시간 확보
       // requestAnimationFrame 2회 + 추가 대기
-      await new Promise(resolve => requestAnimationFrame(resolve))
-      await new Promise(resolve => requestAnimationFrame(resolve))
+      // ⚠️ 숨김 탭/오프스크린 iframe 에서는 RAF 가 정지해 영원히 대기 → setTimeout 과 race (applyFont 와 동일).
+      const rafOrTimeout = () =>
+        Promise.race([
+          new Promise<void>(resolve => requestAnimationFrame(() => resolve())),
+          new Promise<void>(resolve => setTimeout(resolve, 200)),
+        ])
+      await rafOrTimeout()
+      await rafOrTimeout()
       await new Promise(resolve => setTimeout(resolve, 30))
 
       // 4. 최종 검증

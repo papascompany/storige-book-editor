@@ -451,9 +451,12 @@ export class TextSizeCalculator {
    * 브라우저가 폰트를 완전히 적용하도록 여러 렌더링 사이클 대기
    */
   private static async waitForFontRendering(): Promise<void> {
-    // 3번의 렌더링 사이클 대기
+    // 3번의 렌더링 사이클 대기 (숨김 탭/오프스크린 iframe 에서 RAF 정지 → setTimeout 과 race)
     for (let i = 0; i < 3; i++) {
-      await new Promise(resolve => requestAnimationFrame(resolve))
+      await Promise.race([
+        new Promise<void>(resolve => requestAnimationFrame(() => resolve())),
+        new Promise<void>(resolve => setTimeout(resolve, 200)),
+      ])
     }
     
     // 추가로 100ms 대기

@@ -2036,8 +2036,14 @@ export function useEditorContents(): UseEditorContentsReturn {
       // 실행돼, 캔버스마다 생성 시점의 서로 다른(stale) 컨테이너 크기로 뷰포트가 동결될 수 있다.
       // 로딩 오버레이 해제(ready) 직전에 전 캔버스의 setZoomAuto 를 RAF 1회로 병합해 일괄
       // 재정렬 — 시드분·+추가분의 재단선/가이드 뷰포트 기준을 통일한다(사용자 체감 리셋 없음).
+      // ⚠️ P1-5 (2026-08-22): requestAnimationFrame 은 숨김 탭·오프스크린 cross-origin iframe 에서
+      //   정지/스로틀된다 → 여기서 영원히 대기해 로드가 "콘텐츠를 불러오는 중" 에 멈췄다(실측 2분+).
+      //   setTimeout 과 race 해 RAF 가 안 오면 200ms 후 진행한다(FontPlugin 과 동일 패턴). 1회만 실행.
       await new Promise<void>((resolve) => {
+        let done = false
         const runRealign = (): void => {
+          if (done) return
+          done = true
           const { allCanvas: canvasesToAlign, allEditors: editorsToAlign } = useAppStore.getState()
           canvasesToAlign.forEach((cvs, i) => {
             try {
@@ -2052,6 +2058,7 @@ export function useEditorContents(): UseEditorContentsReturn {
         }
         if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
           window.requestAnimationFrame(() => runRealign())
+          setTimeout(runRealign, 200)
         } else {
           runRealign()
         }
