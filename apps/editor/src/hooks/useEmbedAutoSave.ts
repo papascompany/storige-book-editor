@@ -336,6 +336,13 @@ export function useEmbedAutoSave(config: AutoSaveConfig) {
    */
   const saveToServer = useCallback(async (): Promise<boolean> => {
     if (!sessionId || isSavingRef.current) return false
+    // P1-4 (2026-08-22): 초기화/재초기화 창(캔버스 dispose~ready 전)에는 어떤 입구(호스트 saveNow·
+    // 헤더 저장·지연 저장)로도 PATCH 하지 않는다 — collectCanvasData 가 null/부분 배열을 만들어
+    // 방금 복원한 서버 canvasData 를 되덮는다. 지연(defer)이 아니라 거부: 그 시점 상태는 저장 가치가 없다.
+    if (initializedRef && !initializedRef.current) {
+      console.warn('[EmbedAutoSave] 초기화 중 — 서버 저장 거부(REINITIALIZING)')
+      return false
+    }
     // L3 B-3 (적대 리뷰 major): 미리보기 강제 상태가 서버 세션 JSON 에 영속되는 누수 방지.
     if (useSettingsStore.getState().customerPreview) return false
     // L4-②: PDF 생성 창 동안 toJSON 하면 excludeFromExport 임시 플래깅 객체(printExclude/
@@ -420,6 +427,7 @@ export function useEmbedAutoSave(config: AutoSaveConfig) {
       isSavingRef.current = false
     }
   }, [
+    initializedRef,
     sessionId,
     currentSession,
     collectCanvasData,

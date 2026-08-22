@@ -205,4 +205,30 @@ describe('useEmbedAutoSave — R2 canvasData 축소 저장 가드 (경고 표면
     })
     expect(localStorage.getItem(LOCAL_BACKUP_KEY)).toBeNull()
   })
+
+  // P1-4 (2026-08-22): 초기화/재초기화 창(initializedRef=false)에는 어떤 입구로도 PATCH 하지 않는다 —
+  // 호스트 saveNow 가 캔버스 dispose~ready 사이에 오면 collectCanvasData 가 null/부분 배열을 만들어
+  // 방금 복원한 서버 canvasData 를 되덮는다. 거부(false)이지 지연이 아니다.
+  it('initializedRef=false 동안 saveNow 는 PATCH 없이 false 를 반환하고, true 가 되면 정상 저장한다', async () => {
+    setCanvases([fakeCanvas('c0'), fakeCanvas('c1')])
+    const initializedRef = { current: false }
+    const { result } = renderHook(() =>
+      useEmbedAutoSave({ sessionId: SESSION_ID, currentSession: null, initializedRef }),
+    )
+
+    let saved: boolean | undefined
+    await act(async () => {
+      saved = await result.current.saveNow()
+    })
+    expect(saved).toBe(false)
+    expect(updateMock).not.toHaveBeenCalled()
+    expect(updateGuestMock).not.toHaveBeenCalled()
+
+    initializedRef.current = true
+    await act(async () => {
+      saved = await result.current.saveNow()
+    })
+    expect(saved).toBe(true)
+    expect(updateMock).toHaveBeenCalledTimes(1)
+  })
 })

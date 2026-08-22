@@ -39,7 +39,7 @@ import { AutoSaveIndicator } from './AutoSaveIndicator'
 import { BookMockup3D } from '../Mockup3D/BookMockup3D'
 import KeyboardShortcutsModal from './KeyboardShortcutsModal'
 import CommandPaletteModal from './CommandPaletteModal'
-import HistoryPanel from './HistoryPanel'
+import HistoryPanel, { type SessionVersionsSource } from './HistoryPanel'
 import { showToast } from '@/stores/useToastStore'
 import { useUiPrefStore, type PageNavPosition, type Theme } from '@/stores/useUiPrefStore'
 import { applyObjectPermissions, revertObjectPermissions } from '@/utils/objectPermissions'
@@ -88,6 +88,14 @@ interface EditorHeaderProps {
    * SIZE_MISMATCH/가격 불일치 사고 소지 — EDITOR_SAVE_LOAD_AND_SIZE_GAP_WORKORDER §3.
    */
   orderContext?: boolean
+  /**
+   * P1-4 (2026-08-22): 임베드 세션 버전 이력 소스(목록/여기로 복원). embed.tsx 가 주입.
+   * 주어지면 변경 이력 패널이 서버 스냅샷 목록을 보여주고, 모바일(< sm)에서도 숨기지 않는다
+   * (bookmoa-mobile 등 모바일 호스트 고객도 절단 복구 진입점이 필요).
+   */
+  sessionVersions?: SessionVersionsSource | null
+  /** false 면 변경 이력 패널의 레거시(/editor/sessions + persist sessionId) 시점 분기를 끈다(임베드). 기본 true */
+  legacySessionVersions?: boolean
 }
 
 export default function EditorHeader({
@@ -99,6 +107,8 @@ export default function EditorHeader({
   onOpenWorkspace,
   isAdminTemplateSetEdit = false,
   orderContext = false,
+  sessionVersions = null,
+  legacySessionVersions = true,
 }: EditorHeaderProps) {
   const [previewMode, setPreviewMode] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -698,7 +708,15 @@ export default function EditorHeader({
       <nav className="h-14 bg-editor-panel border-b border-editor-border shadow-sm flex items-center px-4 z-[100]">
         {/* 좌측: 로고 + Undo/Redo + 자동저장 인디케이터 */}
         <div className="flex items-center gap-2">
-          <span className="font-bold text-base tracking-tight text-editor-accent select-none mr-2">
+          {/* P1-4: 임베드 세션 버전 소스가 있으면 <sm 에서 변경 이력 버튼(36px)을 노출하는 대신
+              워드마크를 숨겨 좌측 그룹 폭을 유지한다(360~375px 호스트에서 편집완료 클리핑 방지). */}
+          <span
+            className={
+              sessionVersions
+                ? 'hidden sm:inline font-bold text-base tracking-tight text-editor-accent select-none mr-2'
+                : 'font-bold text-base tracking-tight text-editor-accent select-none mr-2'
+            }
+          >
             Storige
           </span>
           <Tooltip>
@@ -747,9 +765,10 @@ export default function EditorHeader({
             </span>
           )}
 
-          {/* 변경 이력 요약 popover — 모바일(< sm) 에서 숨김 */}
-          <span className="hidden sm:contents">
-            <HistoryPanel />
+          {/* 변경 이력 요약 popover — 모바일(< sm) 에서 숨김. 단 임베드 세션 버전 소스가 있으면
+              모바일에서도 노출(P1-4 절단 복구 진입점). */}
+          <span className={sessionVersions ? 'contents' : 'hidden sm:contents'}>
+            <HistoryPanel sessionVersions={sessionVersions} legacyVersions={legacySessionVersions} />
           </span>
         </div>
 

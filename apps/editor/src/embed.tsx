@@ -19,7 +19,7 @@
  * ```
  */
 
-import React, { useEffect, useRef, useState, useCallback } from 'react'
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { createRoot, Root } from 'react-dom/client'
 import { useAppStore } from './stores/useAppStore'
 import { rebindFrameInteractivity } from './utils/frameInteractive'
@@ -72,6 +72,8 @@ import {
 import { useExternalPhotosStore } from './stores/useExternalPhotosStore'
 import { reloadOnceForStaleChunk } from './components/EditorErrorBoundary'
 import { createLoadProfiler, formatLoadProfile } from './utils/loadProfiler'
+import { mergeRestoredSession, restoredCanvasCount } from './utils/sessionVersions'
+import type { SessionVersionsSource } from './components/editor/HistoryPanel'
 import './index.css'
 
 // 배포 후 청크 재해시(stale chunk) 자동 리로드 — 임베드 번들 진입점.
@@ -557,6 +559,22 @@ function EmbeddedEditor({
 }: EmbeddedEditorProps) {
   const canvasContainerRef = useRef<HTMLDivElement>(null)
   const isInitializedRef = useRef(false)
+  /**
+   * P1-4 (2026-08-22) 서버 버전 복원 → in-place 재초기화.
+   *  - reinitNonce: 메인 초기화 effect 의 유일한 dep. 증가시키면 cleanup(캔버스 dispose+store reset)
+   *    후 동일 초기화 경로가 재실행된다(재진입과 동일 = 시드·복원 루프·앉히기·가이드 전부 재사용).
+   *  - reinitSessionRef: 재초기화가 사용할 세션(복원 응답). 세션 재조회/재생성 경로를 건너뛴다
+   *    (게스트 세션은 GET :id 가 403 이고, orderSeqno 폴백은 새 게스트 세션을 만들 수 있다).
+   *  - reinitSuppressReadyEmitRef: 재초기화에서는 호스트로 editor.ready 를 다시 쏘지 않는다
+   *    (호스트가 ready 에 묶어둔 1회성 로직 재발화 방지). 내부 ready 상태는 정상 세팅.
+   */
+  const [reinitNonce, setReinitNonce] = useState(0)
+  const reinitSessionRef = useRef<EditSessionResponse | null>(null)
+  const reinitSuppressReadyEmitRef = useRef(false)
+  /** 복원 직전 캔버스 수 — 재초기화 완료 후 페이지 수 변화 시 pricingChange 1회 발신 판단용 */
+  const reinitPricingBaselineRef = useRef<number | null>(null)
+  /** 복원 핸들러가 재초기화 완료/실패를 기다리는 settle 핸들(성공 토스트를 실제 완료 시점에 맞춘다) */
+  const reinitSettleRef = useRef<{ resolve: () => void; reject: (e: Error) => void } | null>(null)
   // 포토북 페이지 가변 가격 메타 (2026-06-24) — 로드된 템플릿셋의 pricing 을 보관해
   // editor.complete emit 시 현재 총 pageCount 와 함께 파트너로 전달한다(파트너가 가격 계산).
   // null = 가변 가격 미사용(BOOK/LEAFLET 등). 기존 동작 비파괴.
@@ -622,7 +640,7 @@ function EmbeddedEditor({
   )
 
   // Auto-save hook integration
-  const { saveNow, restoreFromLocal, evaluateRestore, deleteLocalBackup, markClean, markServerSynced } =
+  const { saveNow, restoreFromLocal, evaluateRestore, deleteLocalBackup, markClean, markServerSynced, triggerSave } =
     useEmbedAutoSave({
       sessionId: currentSession?.id || sessionId || null,
       currentSession,
@@ -639,8 +657,13 @@ function EmbeddedEditor({
 
   // 브라우저 "뒤로 가기" 데이터 무결성 가드 — 경고 없이 빠져나가 작업 유실되는 것 방지.
   // 변경사항이 있으면 confirm 으로 경고 + 강제 자동저장(flush) 후 이탈, 없으면 그대로 이탈.
+  // P1-4: 재초기화(ready false→true)마다 sentinel 을 재push 하지 않도록 '최초 ready 이후 고정' 값으로 전달.
+  const [backGuardArmed, setBackGuardArmed] = useState(false)
+  useEffect(() => {
+    if (ready) setBackGuardArmed(true)
+  }, [ready])
   useEmbedBackGuard({
-    enabled: internalBackGuard && ready && !!(currentSession?.id || sessionId),
+    enabled: internalBackGuard && backGuardArmed && !!(currentSession?.id || sessionId),
     getIsDirty: () => useSaveStore.getState().isDirty,
     saveNow,
   })
@@ -670,7 +693,14 @@ function EmbeddedEditor({
         case 'saveNow':
           Promise.resolve()
             .then(() => saveNow())
-            .then(() => postToParent(parentOrigin, 'editor.saved', { requestId, ok: true }))
+            // P1-4: saveNow 가 false 면(재초기화 중 거부 등) ok:false 로 정직하게 응답
+            .then((saved) =>
+              postToParent(parentOrigin, 'editor.saved', {
+                requestId,
+                ok: saved !== false,
+                ...(saved === false ? { error: 'EDITOR_BUSY' } : {}),
+              }),
+            )
             .catch((err) =>
               postToParent(parentOrigin, 'editor.saved', {
                 requestId,
@@ -748,7 +778,10 @@ function EmbeddedEditor({
 
         // 토큰 우선순위 처리: 파라미터 > localStorage > 에러
         let effectiveToken: string | null = null
-        if (token) {
+        // P1-4: 재초기화에서는 마운트 시점 prop 토큰으로 localStorage 를 되덮지 않는다
+        // (사일런트 리프레시로 갱신된 토큰을 만료본으로 교체 → 불필요한 401/리프레시 왕복).
+        const isReinit = !!reinitSessionRef.current
+        if (token && !(isReinit && localStorage.getItem('auth_token'))) {
           effectiveToken = token
           localStorage.setItem('auth_token', token)
           console.log('[EmbeddedEditor] Using token from parameter')
@@ -803,7 +836,14 @@ function EmbeddedEditor({
         //   (orderSeqno+mode 제공 시 기존 경로 — 주문 검색/생성 폴백 — 동작 불변)
         let editSession: EditSessionResponse | null = null
 
-        if (sessionId) {
+        // P1-4: 서버 버전 복원 직후 재초기화 — 복원 응답 세션을 그대로 사용(재조회/재생성 금지).
+        const reinitSession = reinitSessionRef.current
+        if (reinitSession) {
+          reinitSessionRef.current = null
+          editSession = reinitSession
+          setLoadingMessage('선택한 시점으로 되돌리는 중...')
+          console.log('[EmbeddedEditor] Re-init with restored session:', editSession.id)
+        } else if (sessionId) {
           setLoadingMessage('편집 세션을 불러오는 중...')
           // 기존 세션 불러오기
           try {
@@ -1333,7 +1373,8 @@ function EmbeddedEditor({
           // 프로덕션은 console 이 pure-제거되므로(vite esbuild.pure) 실측 조회용으로 window 에도 노출.
           try { (window as any).__storigeLoadProfile = profile } catch { /* noop */ }
           // 30s+ 재진입 실측용 — 단계/반복 집계를 Sentry 에 1회 남긴다(flush 대기 없음).
-          try {
+          // P1-4: 버전 복원 재초기화는 로드 통계에서 제외(오염 방지).
+          if (!reinitSuppressReadyEmitRef.current) try {
             Sentry.captureMessage('[load-profile] embed ready', {
               level: profile.totalMs > 15_000 ? 'warning' : 'info',
               tags: { loadSlow: profile.totalMs > 15_000 ? 'yes' : 'no' },
@@ -1379,6 +1420,20 @@ function EmbeddedEditor({
         }
 
         console.log('[EmbeddedEditor] Initialization complete')
+        if (reinitSuppressReadyEmitRef.current) {
+          // P1-4 재초기화: 호스트 ready 핸드셰이크는 최초 1회만. 내부 상태만 갱신하고 종료.
+          reinitSuppressReadyEmitRef.current = false
+          console.log('[EmbeddedEditor] Re-init complete — editor.ready re-emit suppressed')
+          // 복원으로 캔버스 수가 바뀌었으면 가격 이벤트 1회 발신(초기화 게이트로 구독이 침묵했던 구간 보정).
+          const baseline = reinitPricingBaselineRef.current
+          reinitPricingBaselineRef.current = null
+          if (baseline != null && baseline !== useAppStore.getState().allCanvas.length) {
+            emitPricingChangeRef.current()
+          }
+          reinitSettleRef.current?.resolve()
+          reinitSettleRef.current = null
+          return
+        }
         onReady?.()
         postToParent(parentOrigin, 'editor.ready', {
           sessionId: editSession?.id,
@@ -1397,6 +1452,11 @@ function EmbeddedEditor({
           return
         }
         console.error('[EmbeddedEditor] Initialization error:', err)
+        // P1-4: 복원 재초기화 실패 — 대기 중인 복원 Promise 를 실패로 귀결(패널이 토스트로 표시)
+        if (reinitSettleRef.current) {
+          reinitSettleRef.current.reject(err instanceof Error ? err : new Error(String(err)))
+          reinitSettleRef.current = null
+        }
 
         // API 에러 타입 확인
         const apiError = err as ApiError
@@ -1468,8 +1528,9 @@ function EmbeddedEditor({
       reset()
       isInitializedRef.current = false
     }
+    // P1-4: reinitNonce 만 dep — 복원 후 in-place 재초기화 트리거. 나머지 props 는 마운트 시점 고정(종전과 동일).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [reinitNonce])
 
   // 자동저장 복원 제안 — 세션 로드 완료(ready) 후 1회 평가 (자동 복원 금지, 판정만).
   //
@@ -1502,6 +1563,121 @@ function EmbeddedEditor({
       setRestoreOffer({ confident: decision.confident, backupAt: decision.backupAt })
     }
   }, [ready, currentSession, sessionId, evaluateRestore])
+
+  /**
+   * P1-4 (2026-08-22) — 서버 버전 스냅샷 "여기로 복원".
+   * 순서(데이터 유실 방지가 전부):
+   *  1. dirty 면 먼저 서버 플러시(saveNow) — 서버가 복원 직전 상태를 reason='restore' 로 보존하므로
+   *     최신 편집까지 되돌릴 수 있게 한다. 플러시 실패 시 복원 중단(미저장 편집 유실 금지).
+   *  2. 자동저장 차단: isInitializedRef=false(캔버스 이벤트 dirty 마킹 차단) + debounce 취소 + markClean
+   *     (인터벌 저장은 isDirty 게이트). ⚠️ runWithAutosaveSuspended 는 쓰지 않는다 — 지연 등록된 저장이
+   *     재초기화 도중 반쯤 시드된 캔버스를 PATCH 할 수 있다.
+   *  3. 서버 복원(회원/게스트 분기) → 응답 세션(canvasData 포함)으로 in-place 재초기화.
+   *  4. 로컬 백업 폐기(옛 상태 복원 배너 방지) + R2 기준선을 복원본 길이로 갱신(shrink 오경고 방지).
+   * 실패 시 자동저장 게이트를 원복하고 throw — 패널이 토스트로 표시.
+   */
+  // 최신 세션/자동저장 함수 참조 — 자동저장마다 currentSession·saveNow 등의 identity 가 바뀌므로
+  // 콜백 identity 를 sessionId prop 에만 묶는다(소스 useMemo 가 렌더마다 무효화되어 목록을 재요청하지 않게).
+  const currentSessionRef = useRef<EditSessionResponse | null>(null)
+  currentSessionRef.current = currentSession
+  const autosaveFnsRef = useRef({ saveNow, triggerSave, markClean, markServerSynced })
+  autosaveFnsRef.current = { saveNow, triggerSave, markClean, markServerSynced }
+  const handleRestoreSessionVersion = useCallback(
+    async (versionId: string): Promise<void> => {
+      const { saveNow: flush, triggerSave: debounced, markClean: clean, markServerSynced: synced } =
+        autosaveFnsRef.current
+      // 세션 식별: 로드된 세션 > sessionId prop(자동저장 훅과 동일 규약)
+      const loaded = currentSessionRef.current
+      const session: Pick<EditSessionResponse, 'id' | 'guestToken'> | null = loaded?.id
+        ? loaded
+        : sessionId
+          ? { id: sessionId, guestToken: null }
+          : null
+      if (!session?.id) throw new Error('세션이 없어 복원할 수 없습니다.')
+      if (useSettingsStore.getState().customerPreview) {
+        throw new Error('고객 화면 미리보기 중에는 복원할 수 없어요 — 미리보기를 끄고 다시 시도해주세요.')
+      }
+      // 진행 중인 서버 저장(PATCH)이 복원 뒤에 착지하면 서버=옛 상태가 된다 — 끝날 때까지 거부.
+      if (useSaveStore.getState().status === 'saving') {
+        throw new Error('저장이 진행 중입니다. 잠시 후 다시 시도해주세요.')
+      }
+
+      if (useSaveStore.getState().isDirty) {
+        const flushed = await flush()
+        if (!flushed) {
+          throw new Error('편집 중인 내용을 먼저 저장하지 못했습니다. 잠시 후 다시 시도해주세요.')
+        }
+      }
+
+      // 자동저장 차단 창 진입 — 이 시점 이후 캔버스 이벤트는 dirty 로 마킹되지 않고, 대기 중 debounce 는 취소.
+      // (플러시를 거쳤거나 원래 clean 이므로 isDirty=false → 인터벌 저장도 침묵, saveToServer 는 거부)
+      const wasInitialized = isInitializedRef.current
+      isInitializedRef.current = false
+      debounced.cancel()
+
+      let restored: EditSessionResponse
+      try {
+        restored = session.guestToken
+          ? await editSessionsApi.restoreGuestVersion(session.id, session.guestToken, versionId)
+          : await editSessionsApi.restoreVersion(session.id, versionId)
+      } catch (err) {
+        // 서버 미교체(또는 응답 실패) — 게이트 원복. 로컬/서버 상태 무접촉.
+        isInitializedRef.current = wasInitialized
+        const e = err as { response?: { status?: number }; message?: string }
+        // 응답 유실(네트워크/5xx)은 서버에서 이미 복원됐을 수 있다 — 사용자에게 확인 경로를 안내.
+        if (!e?.response || (e.response.status ?? 0) >= 500) {
+          throw new Error(
+            `${e?.message ?? '네트워크 오류'} — 서버에는 적용됐을 수 있습니다. 새로고침 후 확인해주세요.`,
+          )
+        }
+        throw err
+      }
+
+      // 서버 복원 성공 — 이제부터 라이브(옛 상태)는 버릴 대상. clean 처리 후 재초기화.
+      // ⚠️ 로컬 백업(localStorage)은 지우지 않는다 — 서버에 한 번도 반영되지 않은 편집의 유일본일 수 있다
+      //   (복원 배너 [복원] 으로 여전히 적용 가능). 다음 재진입 배너는 backup.savedAt <= session.updatedAt
+      //   비교가 자연 억제한다(복원으로 updatedAt 갱신).
+      clean()
+      const merged = mergeRestoredSession(loaded, restored)
+      const restoredLen = restoredCanvasCount(merged.canvasData)
+      if (restoredLen != null) synced(restoredLen)
+
+      console.log('[EmbeddedEditor] Session version restored — re-init:', {
+        sessionId: session.id,
+        versionId,
+        pages: restoredLen,
+      })
+      // 재초기화 완료(ready)까지 기다려 "되돌렸습니다" 가 실제 완료 시점에 뜨게 한다. 실패(템플릿 조회 등)는 reject.
+      await new Promise<void>((resolve, reject) => {
+        reinitSettleRef.current = { resolve, reject }
+        reinitSessionRef.current = merged
+        reinitSuppressReadyEmitRef.current = true
+        reinitPricingBaselineRef.current = useAppStore.getState().allCanvas.length
+        setCurrentSession(merged)
+        setReinitNonce((n) => n + 1)
+      })
+    },
+    [sessionId],
+  )
+
+  /** P1-4 — 헤더 변경 이력 패널에 주입할 세션 버전 소스(세션 확보 + ready 후에만). id/토큰에만 의존. */
+  const sessionIdForVersions = currentSession?.id ?? sessionId ?? null
+  const guestTokenForVersions = currentSession?.guestToken ?? null
+  // replace 모드(내지 PDF 가 캔버스를 대체)는 편집 캔버스가 산출물이 아니므로 UI 에서 비노출.
+  // (서버 restoreVersion 은 update() 의 PDF_ATTACHED_EXCLUSIVE 가드를 거치지 않는다 — API 후속 과제.)
+  const contentPdfModeForVersions =
+    (currentSession as (EditSessionResponse & { contentPdfMode?: string | null }) | null)?.contentPdfMode ?? null
+  const sessionVersionsSource = useMemo<SessionVersionsSource | null>(() => {
+    if (!ready || !sessionIdForVersions) return null
+    if (contentPdfModeForVersions === 'replace') return null
+    const id = sessionIdForVersions
+    const guestToken = guestTokenForVersions
+    return {
+      list: () =>
+        guestToken ? editSessionsApi.listGuestVersions(id, guestToken) : editSessionsApi.listVersions(id),
+      restore: handleRestoreSessionVersion,
+    }
+  }, [ready, sessionIdForVersions, guestTokenForVersions, contentPdfModeForVersions, handleRestoreSessionVersion])
 
   // [복원] — 백업을 캔버스에 로드(멀티페이지 전체). 성공 시 배너 닫고 즉시 서버 저장 1회.
   const handleRestoreBackup = useCallback(async (): Promise<boolean> => {
@@ -1540,8 +1716,36 @@ function EmbeddedEditor({
   //  - 게스트 세션(guestToken 보유) 미발신 — 실제 가격 반영 주체(회원 주문 흐름)에만 통지.
   //  - debounce ~300ms — 연속 증감(다중 삭제 등)을 1건으로 합침.
   // pageCount 는 editor.complete 와 동일 산식(computeLivePageCount 단일 진실원, 내지 펼침면 ×2).
+  // P1-4 (2026-08-22): 발신 본체를 ref 로 노출 — 서버 버전 복원(재초기화)로 캔버스 수가 바뀐 경우
+  // 초기화 게이트(isInitializedRef=false) 때문에 구독이 침묵하므로, 재초기화 완료 지점에서 1회 직접 발신한다.
+  const emitPricingChangeRef = useRef<() => void>(() => {})
   useEffect(() => {
     let debounceTimer: ReturnType<typeof setTimeout> | null = null
+    const emitNow = () => {
+      // 발신 시점 재확인(디바운스 사이 상태 변화 대비 — 보수 기본 유지)
+      const pricingMeta = templateSetPricingRef.current
+      if (!pricingMeta || !isInitializedRef.current) return
+      if (currentSession?.guestToken) return
+      const appState = useAppStore.getState()
+      const canvasCount = appState.allCanvas.length
+      const spreadCfg = useSettingsStore.getState().spreadConfig
+      const isInnerSpread = spreadCfg?.regionScope === 'inner'
+      // T5 (2026-07-13): 표지+내지 단일 세션 spread(비-inner)는 표지 캔버스 1장을 물리
+      // 페이지에서 제외(21→20). 캔버스 1(표지 단독 세션) 게이트 필수 — physical=0 방지.
+      const coverCanvasCount =
+        appState.isSpreadMode && spreadCfg?.regionScope !== 'inner' && canvasCount > 1 ? 1 : 0
+      const payload: PricingChangePayload = {
+        sessionId: currentSession?.id || sessionId || null,
+        pageCount: computeLivePageCount(canvasCount, isInnerSpread, options?.pages || 1, coverCanvasCount),
+        pricing: pricingMeta,
+        ...(templateSetCoverMetaRef.current?.coverType
+          ? { coverType: templateSetCoverMetaRef.current.coverType }
+          : {}),
+      }
+      postToParent(parentOrigin, 'editor.pricingChange', payload)
+      console.log('[EmbeddedEditor] editor.pricingChange emitted:', payload.pageCount)
+    }
+    emitPricingChangeRef.current = emitNow
     const unsubscribe = useAppStore.subscribe((state, prevState) => {
       if (state.allCanvas.length === prevState.allCanvas.length) return
       if (!isInitializedRef.current) return
@@ -1550,27 +1754,7 @@ function EmbeddedEditor({
       if (debounceTimer) clearTimeout(debounceTimer)
       debounceTimer = setTimeout(() => {
         debounceTimer = null
-        // 발신 시점 재확인(디바운스 사이 상태 변화 대비 — 보수 기본 유지)
-        const pricingMeta = templateSetPricingRef.current
-        if (!pricingMeta || !isInitializedRef.current) return
-        const appState = useAppStore.getState()
-        const canvasCount = appState.allCanvas.length
-        const spreadCfg = useSettingsStore.getState().spreadConfig
-        const isInnerSpread = spreadCfg?.regionScope === 'inner'
-        // T5 (2026-07-13): 표지+내지 단일 세션 spread(비-inner)는 표지 캔버스 1장을 물리
-        // 페이지에서 제외(21→20). 캔버스 1(표지 단독 세션) 게이트 필수 — physical=0 방지.
-        const coverCanvasCount =
-          appState.isSpreadMode && spreadCfg?.regionScope !== 'inner' && canvasCount > 1 ? 1 : 0
-        const payload: PricingChangePayload = {
-          sessionId: currentSession?.id || sessionId || null,
-          pageCount: computeLivePageCount(canvasCount, isInnerSpread, options?.pages || 1, coverCanvasCount),
-          pricing: pricingMeta,
-          ...(templateSetCoverMetaRef.current?.coverType
-            ? { coverType: templateSetCoverMetaRef.current.coverType }
-            : {}),
-        }
-        postToParent(parentOrigin, 'editor.pricingChange', payload)
-        console.log('[EmbeddedEditor] editor.pricingChange emitted:', payload.pageCount)
+        emitNow()
       }, 300)
     })
     return () => {
@@ -2224,6 +2408,10 @@ function EmbeddedEditor({
         onOpenWorkspace={handleOpenWorkspace}
         /* S1 (2026-07-04): embed = 주문 컨텍스트 — 작업 사이즈를 읽기전용으로 강등 */
         orderContext
+        /* P1-4 (2026-08-22): 서버 버전 이력 패널 + 여기로 복원. 임베드는 레거시(/editor/sessions,
+           persist 된 useEditorStore.sessionId) 분기를 항상 끈다 — 다른 세션 이력 노출/리로드 복원 방지. */
+        sessionVersions={sessionVersionsSource}
+        legacySessionVersions={false}
       />
 
       <div className={`flex-1 flex relative overflow-hidden ${screenMode !== 'desktop' ? 'flex-col' : 'flex-row'}`}>

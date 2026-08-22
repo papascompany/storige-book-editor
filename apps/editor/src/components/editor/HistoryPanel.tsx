@@ -11,6 +11,12 @@ import { sessionsApi } from '@/api/sessions'
 import { HistoryPlugin } from '@storige/canvas-core'
 import { resolveAssetUrl as resolveThumbnailUrl } from '@/utils/resolveAssetUrl'
 import { cn } from '@/lib/utils'
+import type { EditSessionVersionSummary } from '@/api/edit-sessions'
+import {
+  describeVersionReason,
+  formatVersionPages,
+  sortVersionsNewestFirst,
+} from '@/utils/sessionVersions'
 
 // 썸네일 URL 정규화는 공유 헬퍼 resolveAssetUrl 로 일원화(P0-B, 2026-06-15).
 // 백엔드는 `/storage/files/...` 상대 경로를 반환하므로 API origin 을 prefix 한다.
@@ -21,6 +27,40 @@ interface BackendVersion {
   pageCount: number
   createdBy: string | null
   thumbnailUrl: string | null
+}
+
+/**
+ * P1-4 (2026-08-22) — 임베드(/embed, file_edit_sessions) 세션 버전 소스.
+ * 임베드는 useEditorStore.sessionId 를 쓰지 않고 세션을 embed.tsx 가 소유하므로,
+ * 목록/복원을 콜백으로 주입받는다. 복원 후 라이브 재하이드레이션도 embed 가 수행한다
+ * (레거시 경로의 window.location.reload 와 달리 iframe 내 in-place 재초기화).
+ */
+export interface SessionVersionsSource {
+  /** 스냅샷 목록(최신순 권장 — 패널이 한 번 더 정렬) */
+  list: () => Promise<EditSessionVersionSummary[]>
+  /** 해당 스냅샷으로 복원 + 라이브 적용. 실패 시 throw. */
+  restore: (versionId: string) => Promise<void>
+}
+
+export interface HistoryPanelProps {
+  /** 임베드 세션 버전 소스. 주어지면 레거시(sessionsApi) 분기 대신 이 소스를 사용. */
+  sessionVersions?: SessionVersionsSource | null
+  /**
+   * 레거시 시점 분기(useEditorStore.sessionId persist + /editor/sessions) 사용 여부. 기본 true.
+   * 임베드는 false — 같은 origin 의 레거시 `/` 방문에서 persist 된 sessionId 가 남아 있으면
+   * 소스가 null 인 창(ready 이전·replace 세션)에 다른 세션의 이력이 뜨고 리로드 복원까지 가능했다.
+   */
+  legacyVersions?: boolean
+}
+
+/** 서버 오류 메시지 정규화 — class-validator 400 은 string[] 로 오고, 5xx 는 영문 고정 문구 */
+function describeApiError(err: unknown, fallback: string): string {
+  const e = err as { response?: { status?: number; data?: { message?: unknown; code?: string } }; message?: string }
+  const raw = e?.response?.data?.message
+  if (Array.isArray(raw)) return raw.map(String).join(', ')
+  if (typeof raw === 'string' && raw && (e?.response?.status ?? 0) < 500) return raw
+  if (typeof e?.message === 'string' && e.message && !e.response) return e.message
+  return fallback
 }
 
 /**
@@ -47,13 +87,15 @@ function formatRelative(date: Date | null): string {
   return date.toLocaleString('ko-KR', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
-export default function HistoryPanel() {
+export default function HistoryPanel({ sessionVersions = null, legacyVersions = true }: HistoryPanelProps = {}) {
   const [open, setOpen] = useState(false)
   const ready = useAppStore((s) => s.ready)
   const canvas = useAppStore((s) => s.canvas)
   const getPlugin = useAppStore((s) => s.getPlugin)
   const lastSavedAt = useSaveStore((s) => s.lastSavedAt)
   const isDirty = useSaveStore((s) => s.isDirty)
+  /** P1-4: 서버 저장이 진행 중이면 복원을 잠시 막는다(진행 중 PATCH 가 복원본을 되덮는 경합 차단) */
+  const isSavingNow = useSaveStore((s) => s.status === 'saving')
   const allEditors = useAppStore((s) => s.allEditors)
   const snapshots = useAutoSaveSnapshotsStore((s) => s.snapshots)
   const clearSnapshots = useAutoSaveSnapshotsStore((s) => s.clearSnapshots)
@@ -61,6 +103,9 @@ export default function HistoryPanel() {
   const sessionId = useEditorStore((s) => s.sessionId)
   const userId = useEditorStore((s) => s.userId)
   const [backendVersions, setBackendVersions] = useState<BackendVersion[] | null>(null)
+  /** P1-4 — 임베드 세션 버전 목록(null=미로드/로드 중, 배열=로드 완료) */
+  const [sessionVersionList, setSessionVersionList] = useState<EditSessionVersionSummary[] | null>(null)
+  const [sessionVersionError, setSessionVersionError] = useState<string | null>(null)
   const [restoringId, setRestoringId] = useState<string | null>(null)
   /** P0-4: 복원 confirm 대기 중인 versionId (실수 클릭 방지). null이면 일반 list 모드 */
   const [confirmingId, setConfirmingId] = useState<string | null>(null)
@@ -116,9 +161,35 @@ export default function HistoryPanel() {
     setOpen(false)
   }
 
-  // BB-Phase 3 — popover 열릴 때 백엔드 versions 페치 (sessionId 있을 때만)
+  // P1-4 — popover 열릴 때 임베드 세션 버전 목록 페치(소스가 주입된 경우만)
   useEffect(() => {
-    if (!open || !sessionId) {
+    if (!open || !sessionVersions) {
+      setSessionVersionList(null)
+      setSessionVersionError(null)
+      return
+    }
+    let cancelled = false
+    setSessionVersionError(null)
+    sessionVersions
+      .list()
+      .then((list) => {
+        if (cancelled) return
+        setSessionVersionList(sortVersionsNewestFirst(Array.isArray(list) ? list : []))
+      })
+      .catch((err: any) => {
+        console.warn('[HistoryPanel] 세션 버전 목록 실패:', err?.message ?? err)
+        if (cancelled) return
+        setSessionVersionList([])
+        setSessionVersionError(describeApiError(err, '목록을 불러오지 못했습니다. 잠시 후 다시 열어주세요.'))
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [open, sessionVersions])
+
+  // BB-Phase 3 — popover 열릴 때 백엔드 versions 페치 (sessionId 있을 때만, 임베드 소스가 없을 때)
+  useEffect(() => {
+    if (!open || !sessionId || sessionVersions || !legacyVersions) {
       setBackendVersions(null)
       return
     }
@@ -136,7 +207,7 @@ export default function HistoryPanel() {
     return () => {
       cancelled = true
     }
-  }, [open, sessionId, userId])
+  }, [open, sessionId, userId, sessionVersions, legacyVersions])
 
   // P0-4 — 복원 클릭 시 confirm 단계 enter (즉시 API 호출하지 않음)
   const handleRestoreClick = useCallback((versionId: string) => {
@@ -146,6 +217,22 @@ export default function HistoryPanel() {
   // P0-4 — confirm 후 실제 복원 수행 + 성공 시 자동 페이지 reload
   const handleRestoreConfirm = useCallback(
     async (versionId: string) => {
+      // P1-4 — 임베드 세션 버전: embed 가 서버 복원 + in-place 재하이드레이션을 수행(리로드 없음)
+      if (sessionVersions) {
+        setRestoringId(versionId)
+        try {
+          await sessionVersions.restore(versionId)
+          showToast('선택한 시점으로 되돌렸습니다. 직전 상태는 "복원 직전" 시점으로 목록에 남아요.', 'success', 4000)
+          setOpen(false)
+        } catch (err: any) {
+          console.error('[HistoryPanel] 세션 버전 복원 실패:', err)
+          showToast(`복원 실패: ${describeApiError(err, '알 수 없는 오류')}`, 'error', 6000)
+        } finally {
+          setRestoringId(null)
+          setConfirmingId(null)
+        }
+        return
+      }
       if (!sessionId) return
       setRestoringId(versionId)
       try {
@@ -167,7 +254,7 @@ export default function HistoryPanel() {
         setConfirmingId(null)
       }
     },
-    [sessionId, userId]
+    [sessionId, userId, sessionVersions]
   )
 
   // P0-4 — confirm 취소
@@ -216,10 +303,130 @@ export default function HistoryPanel() {
           </Button>
         </div>
 
-        {/* 자동저장 스냅샷 list — BB-Phase 3 백엔드 versions 우선, 없으면 localStorage minimal */}
+        {/* 자동저장 스냅샷 list — P1-4 임베드 세션 버전 > BB-Phase 3 백엔드 versions > localStorage minimal */}
         <div className="border-t border-editor-border mt-3 pt-2">
-          {/* 백엔드 versions가 로드된 경우 (sessionId 있음 + 페치 성공) */}
-          {sessionId && backendVersions !== null ? (
+          {sessionVersions ? (
+            <div data-testid="session-versions">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-[11px] font-semibold text-editor-text-muted flex items-center gap-1">
+                  <FileText className="h-3.5 w-3.5" />
+                  저장 시점{sessionVersionList ? ` (${sessionVersionList.length})` : ''}
+                </span>
+              </div>
+              {sessionVersionList === null ? (
+                <p className="text-[11px] text-editor-text-muted leading-snug py-1" role="status">
+                  시점을 불러오는 중…
+                </p>
+              ) : sessionVersionError ? (
+                <p className="text-[11px] text-red-600 leading-snug py-1" role="alert">
+                  {sessionVersionError}
+                </p>
+              ) : sessionVersionList.length === 0 ? (
+                <p className="text-[11px] text-editor-text-muted leading-snug py-1">
+                  아직 저장 시점이 없습니다. 편집 후 자동저장되면 시점이 만들어집니다.
+                </p>
+              ) : (
+                <ul className="space-y-1 max-h-52 overflow-y-auto scrollbar-hide" aria-label="저장 시점 목록">
+                  {sessionVersionList.map((v) => {
+                    const date = new Date(v.createdAt)
+                    const restoring = restoringId === v.id
+                    const confirming = confirmingId === v.id
+                    const reason = describeVersionReason(v.reason)
+                    const pagesText = formatVersionPages(v)
+                    return (
+                      <li
+                        key={v.id}
+                        className={cn(
+                          'rounded transition-colors',
+                          confirming
+                            ? 'bg-editor-accent/5 border border-editor-accent/30'
+                            : 'hover:bg-editor-hover',
+                        )}
+                        title={confirming ? undefined : date.toLocaleString('ko-KR')}
+                      >
+                        {confirming ? (
+                          <div className="px-2 py-2 flex flex-col gap-1.5">
+                            <p className="text-[11px] text-editor-text leading-snug">
+                              <span className="font-semibold text-editor-accent">{formatRelative(date)}</span>{' '}
+                              시점으로 되돌립니다 ({pagesText}).
+                            </p>
+                            <p className="text-[10px] text-editor-text-muted leading-snug">
+                              편집 중인 내용은 먼저 저장되고, 현재 상태는 &quot;복원 직전&quot; 시점으로 목록에 남아
+                              다시 고를 수 있습니다.
+                            </p>
+                            <div className="flex gap-1.5 mt-0.5">
+                              <button
+                                type="button"
+                                onClick={() => handleRestoreConfirm(v.id)}
+                                disabled={restoring || isSavingNow}
+                                className={cn(
+                                  'flex-1 text-[10px] px-2 py-1.5 rounded border border-editor-accent bg-editor-accent text-white hover:bg-editor-accent-hover transition-colors flex items-center justify-center gap-1',
+                                  restoring && 'opacity-60 cursor-wait',
+                                  !restoring && isSavingNow && 'opacity-50 cursor-not-allowed',
+                                )}
+                                aria-label="여기로 복원 확인"
+                                title={isSavingNow ? '저장 중 — 잠시 후 복원할 수 있어요' : undefined}
+                              >
+                                <Undo2 className="h-3 w-3" />
+                                {restoring ? '되돌리는 중…' : isSavingNow ? '저장 중…' : '여기로 복원'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={handleRestoreCancel}
+                                disabled={restoring}
+                                className="flex-1 text-[10px] px-2 py-1.5 rounded border border-editor-border bg-editor-surface-low hover:bg-editor-hover text-editor-text-muted transition-colors"
+                                aria-label="복원 취소"
+                              >
+                                취소
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2 px-2 py-1">
+                            <div className="flex flex-col min-w-0 flex-1">
+                              <span className="text-[11px] text-editor-text truncate flex items-center gap-1.5">
+                                {formatRelative(date)}
+                                <span
+                                  className={cn(
+                                    'inline-flex items-center px-1.5 py-px rounded-full text-[9px] font-medium border',
+                                    reason.tone === 'warning' && 'bg-amber-500/15 text-amber-700 border-amber-300/60',
+                                    reason.tone === 'info' && 'bg-sky-500/15 text-sky-700 border-sky-300/60',
+                                    reason.tone === 'neutral' && 'bg-editor-surface-low text-editor-text-muted border-editor-border',
+                                  )}
+                                >
+                                  {reason.label}
+                                </span>
+                              </span>
+                              <span className="text-[10px] text-editor-text-muted">{pagesText}</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleRestoreClick(v.id)}
+                              disabled={restoringId !== null || confirmingId !== null || isSavingNow}
+                              className={cn(
+                                'text-[10px] px-1.5 py-1 rounded border border-editor-border bg-editor-surface-low hover:bg-editor-hover hover:border-editor-accent text-editor-text-muted transition-colors flex items-center gap-1',
+                                (restoringId !== null || confirmingId !== null || isSavingNow) && 'opacity-50 cursor-not-allowed',
+                              )}
+                              title={isSavingNow ? '저장 중 — 잠시 후 복원할 수 있어요' : '이 시점으로 되돌리기'}
+                              aria-label={`${formatRelative(date)} 시점으로 복원`}
+                            >
+                              <Undo2 className="h-3 w-3" />
+                              복원
+                            </button>
+                          </div>
+                        )}
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+              <p className="mt-1.5 text-[10px] text-editor-text-muted leading-snug">
+                편집이 저장될 때 1분에 한 번 시점을 남기고, 페이지 수가 줄어들기 직전에는 즉시 남깁니다. 최근
+                10개를 유지합니다(페이지 감소 직전 시점은 추가 보호). 장 수는 편집 화면 기준 — 표지와 각
+                펼침면을 1장으로 셉니다.
+              </p>
+            </div>
+          ) : legacyVersions && sessionId && backendVersions !== null ? (
             <>
               <div className="flex items-center justify-between mb-1.5">
                 <span className="text-[11px] font-semibold text-editor-text-muted flex items-center gap-1">

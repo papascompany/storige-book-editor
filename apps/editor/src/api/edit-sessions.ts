@@ -85,6 +85,23 @@ export interface UpdateEditSessionRequest {
 }
 
 /**
+ * P1-4 (2026-08-22) — 세션 canvasData 스냅샷(서버 버전 이력) 항목.
+ * 서버 `file_edit_session_versions` 의 경량 목록 필드(canvasData 제외).
+ *  - reason: autosave(60s debounce 보존) | shrink(페이지 수 감소 직전 즉시 보존) | restore(복원 직전 상태 보존)
+ *  - pageCount: 스냅샷에 담긴(=덮어쓰이기 직전) 페이지 수, nextPageCount: 그때 덮어쓴 새 페이지 수
+ */
+export type EditSessionVersionReason = 'autosave' | 'shrink' | 'restore'
+
+export interface EditSessionVersionSummary {
+  id: string
+  createdAt: string
+  pageCount: number
+  nextPageCount: number | null
+  reason: EditSessionVersionReason
+  sessionStatus: string | null
+}
+
+/**
  * Edit Sessions API (bookmoa 연동용)
  */
 export const editSessionsApi = {
@@ -163,6 +180,55 @@ export const editSessionsApi = {
       ...payload,
       asGuest: true,
     })
+    return response.data
+  },
+
+  /**
+   * P1-4 — 세션 스냅샷 목록(회원: 소유자/staff). 게스트 세션은 listGuestVersions 사용.
+   */
+  listVersions: async (id: string): Promise<EditSessionVersionSummary[]> => {
+    const response = await apiClient.get<EditSessionVersionSummary[]>(`/edit-sessions/${id}/versions`)
+    return Array.isArray(response.data) ? response.data : []
+  },
+
+  /**
+   * P1-4 — 스냅샷 복원(회원). 서버가 복원 직전 현재 상태를 reason='restore' 로 보존한 뒤
+   * canvasData 를 교체하고 갱신된 세션(canvasData 포함)을 돌려준다.
+   */
+  restoreVersion: async (id: string, versionId: string): Promise<EditSessionResponse> => {
+    const response = await apiClient.post<EditSessionResponse>(
+      `/edit-sessions/${id}/versions/${versionId}/restore`,
+      {},
+      // 비멱등(매 호출 restore 스냅샷 생성) — 5xx 자동 재시도 금지(10건 캡 안의 옛 시점을 밀어낼 수 있음)
+      { __noRetry: true },
+    )
+    return response.data
+  },
+
+  /**
+   * P1-4 — 게스트 세션 스냅샷 목록. 토큰은 updateGuest 와 동일하게 쿼리로 전송
+   * (API CORS allowedHeaders 에 x-guest-token 이 없어 커스텀 헤더는 preflight 에서 막힌다).
+   */
+  listGuestVersions: async (id: string, guestToken: string): Promise<EditSessionVersionSummary[]> => {
+    const response = await apiClient.get<EditSessionVersionSummary[]>(
+      `/edit-sessions/guest/${id}/versions?guestToken=${encodeURIComponent(guestToken)}`,
+    )
+    return Array.isArray(response.data) ? response.data : []
+  },
+
+  /**
+   * P1-4 — 게스트 세션 스냅샷 복원. 응답 세션에는 guestToken 이 없을 수 있으므로 호출측이 보존한다.
+   */
+  restoreGuestVersion: async (
+    id: string,
+    guestToken: string,
+    versionId: string,
+  ): Promise<EditSessionResponse> => {
+    const response = await apiClient.post<EditSessionResponse>(
+      `/edit-sessions/guest/${id}/versions/${versionId}/restore?guestToken=${encodeURIComponent(guestToken)}`,
+      {},
+      { __noRetry: true },
+    )
     return response.data
   },
 

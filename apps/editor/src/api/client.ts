@@ -258,8 +258,12 @@ class ApiClient {
 
         // 재시도 로직
         const retryCount = config?.__retryCount || 0;
+        // P1-4 (2026-08-22): 비멱등 POST(예: 버전 복원 — 매 호출마다 restore 스냅샷이 쌓임)는
+        // 호출측이 __noRetry 로 자동 재시도를 끈다. 기본 동작(재시도)은 불변.
+        const noRetry = !!(config as AxiosRequestConfig & { __noRetry?: boolean } | undefined)?.__noRetry;
         const shouldRetry =
           config &&
+          !noRetry &&
           retryCount < RETRY_CONFIG.maxRetries &&
           error.response?.status &&
           RETRYABLE_STATUS_CODES.includes(error.response.status);
