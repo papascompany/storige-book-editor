@@ -2,12 +2,20 @@
 
 > **이 문서가 최신 날짜 정본이다.** 직전 스프린트 상세는 `RESUME_PROMPT_2026-08-18.md`(동화책 결함 2트랙+8/21 라이브 재검증), 그 이전은 8/14·8/13 참조.
 
-## 0. 현재 라이브 상태 (2026-08-22 기준)
+## 0. 현재 라이브 상태 (2026-08-22 세션 종료 기준)
 
-- **master = origin/master = baaa795**, 워킹트리 클린(예외: 8/14 RESUME 문서 M — 타 세션 산출물 보존, `.tmp-verify-combos/` untracked 무시)
+- **master = origin/master = c704e77**, 워킹트리 클린(`.tmp-verify-combos/`·docs/*.html untracked 무시). ⚠️ 8/14 RESUME 문서의 타 세션 미커밋 수정분(+35줄 docs-only)이 `git commit -am` 실수로 **5ed8082 에 함께 커밋·push 됨** — 내용 손실 없음(master 보존), 이력 재작성 안 함
+- **이번 세션 LIVE**: editor `4733b3e`(R5 정밀화)·`c8aeac3`/`5ed8082`(로드 프로파일러)·`c704e77`(RAF 무한대기 수정) = Vercel 자동배포·번들 실증 / API `a4887f1`(P1-4 버전 스냅샷) = 마이그레이션 `20260822_add_file_edit_session_versions.sql` 적용 후 VPS 재빌드+nginx 재시작, health 200·신규 라우트 fail-closed 확인
 - 배포: editor/admin=Vercel master push 자동(단 **docs-only 커밋은 ignoreCommand로 Canceled 표시됨 — 정상**), API/워커=VPS 수동(`CLAUDE.local.md` §6). 프로덕션 editor alias=746d182 빌드 실측 확인(8/21)
 - 최근 라이브 커밋: `746d182`(+페이지 추가 즉시표시) ← `ab4b794`(왕복 R1~R7) ← `c5c9525`(동화책 4결함) ← `f8d0684`(시드 n장·교체 풀·G9)
 - 검증 기준선: editor vitest 57파일/700 전부 PASS·tsc 0err. canvas-core 기존 실패 6파일/8건(canvas.node ABI NODE_MODULE_VERSION 불일치 등)+lint no-undef 11+4건은 **베이스라인**(이번 트랙 무관, 별도 정리 후보)
+
+## 1-A. 이번 세션 완료 (8/22) — §3 P1-3·P1-4·P1-5 전부 LIVE
+
+- **P1-3 R5 정밀화 `4733b3e`**: 완료 시 `metadata.editorOutputContentFileId` 기록(spread 2경로+단일 content). `isEditorOutputContentFile(session)` 단일 판별식(contentPdfGuide) — 마커 있으면 값 일치로만 차단(정당한 재첨부는 배지 복귀), 없으면 레거시(spreadContentPageCount/status) 유지. 배지·resolveUnderlaySource 공용. editor 707 PASS
+- **P1-4 서버 버전 스냅샷 `a4887f1`**: 구조 원인 확정 — 버전 테이블은 레거시 `edit_sessions`에만 있고 프로덕션 `/embed` 모델 `file_edit_sessions.update()`는 canvasData 그대로 덮어씀. 신규 `file_edit_session_versions`: update() 에서 **이전 값** 보존(autosave 60s debounce / page_count 감소=shrink 즉시 / 동일 내용 스킵 / 세션당 10건·shrink 5건 보호 / 실패해도 저장 무중단). 라우트 `GET|POST /edit-sessions/:id/versions[/:vid][/restore]`(소유자·staff) + `guest/:id/versions[/:vid/restore]`(게스트 토큰 fail-closed 공용 헬퍼 `assertGuestOwnership`). restore 직전 상태는 reason=restore 보존. api 1004 PASS. **라이브 E2E**: 9→5 절단 PATCH→shrink 스냅샷 자동→restore→9장 복귀+restore 스냅샷 확인. UI(이력 패널/복원 버튼)는 미구현 — API 만
+- **P1-5 재진입 성능 `c8aeac3`+`5ed8082`+`c704e77`**: `utils/loadProfiler` 단계 계측(ready 시 1회 콘솔+Sentry info, `window.__storigeLoadProfile` 노출 — 프로덕션 console pure-제거). **실측으로 원인 특정**: `useEditorContents` 시드 종료 뷰포트 재정렬(c5c9525 ④)이 `requestAnimationFrame` 만 대기 → 숨김 탭/오프스크린 cross-origin iframe 에서 RAF 정지 → **'콘텐츠를 불러오는 중' 무한 정지**(2분+ 재현). rAF∥setTimeout(200) race 로 수정(FontPlugin.loadFont·RenderOptimizer.waitForFontRendering 동일). 수정 후 숨김 탭 재진입 **4.0s**(시드 3.5s=9캔버스 ≈390ms/장, 복원 9p 148ms, 나머지 <0.4s). 잔여 최적화 대상은 addInnerPage 시드뿐
+- 실측 방법(재사용): ShareSnap dev 키로 shop-session 토큰을 로컬 헬퍼 서버에서 발급→`/embed?...&token=` 302. 프로브 세션(order 990822)은 softDelete 정리. 관찰: 텍스트 패널 "다른 영역으로 이동" 목록이 내지 펼침면도 전부 "표지(펼침면)" 로 표기됨(라벨 버그 후보, 미수정)
 
 ## 1. 직전 완료 — 동화책 하드커버 세트 결함 트랙 (8/18~21, 전부 LIVE)
 
@@ -32,9 +40,9 @@
 2. bookmoa 장바구니 #1 "그림책·동화책 하드커버(A4)" 테스트 항목 삭제(8/21 검증 부산물)
 
 **P1 — 코드 후속**
-3. R5 판별 정밀화: 완료 시 metadata에 editorOutputContentFileId 기록→차단을 그 값 일치로 좁힘 + 배지/resolveUnderlaySource 판별식 유틸 일원화(리뷰 minor 잔존)
-4. 서버측 세션 버전 이력 부재(edit_session_versions/edit_histories 프로덕션 0행) — 절단·덮어쓰기 복구 불가의 구조 원인. 경량 버전 스냅샷 설계 후보
-5. 재진입 로드 30s+ (내지 9캔버스 시드) 성능 프로파일
+3. ~~R5 판별 정밀화~~ ✅ 8/22 LIVE(4733b3e)
+4. ~~서버측 세션 버전 이력~~ ✅ 8/22 API LIVE(a4887f1). 후속: 편집기/admin **복원 UI**(목록+'여기로 복원'), shrink 발생 시 Sentry/운영 알림, 보관함 이어서편집 시 shrink 이력 있으면 배너
+5. ~~재진입 30s+~~ ✅ 8/22 원인(RAF 무한대기) 수정 LIVE(c704e77), 프로파일러 상시. 후속: 오너 실기에서 `window.__storigeLoadProfile`/Sentry `[load-profile]` 확인, 시드 addInnerPage ≈390ms/장 최적화(템플릿 로드·스크린샷 debounce 검토), 텍스트 패널 영역 라벨 버그
 6. 부수효과 관찰 2건: photoPlacement dpi 72→150 경고 강화 / px 상품 추가페이지 pxToMm 분기 첫 활성
 7. lint no-undef 베이스라인(editor 4·canvas-core 11) + canvas-core 테스트 ABI 실패 6파일 정리
 
@@ -53,4 +61,5 @@
 2. 이 문서 + `git log --oneline -10` + `git status -sb` (타 세션 미커밋 보존, 8/14 RESUME M은 무접촉)
 3. SSH 필요 시 `ssh-add -l` 확인, `deploy@` 대상만(fail2ban)
 4. 함정 상기: vite.config.js shadow / 빌드게이트 5함정(로그 초록≠적용, 배포는 state·번들 문자열로 실증) / fabric styles·loadJSON 치수 오염 / iOS ResizeObserver 3중 가드 완화 금지 / canvas-core 테스트 하네스 함정 / API 재배포 시 nginx 재시작
-5. 검증 기준선: editor 700 PASS·canvas-core 베이스라인 실패 6파일은 기존 것(§0)
+5. 검증 기준선: editor **711** PASS(58파일)·api **1004** PASS(70)·canvas-core 베이스라인 실패 6파일은 기존 것(§0)
+6. P1-4 API 변경은 **마이그레이션 선행**(적용 완료) — 롤백 시 `DROP TABLE file_edit_session_versions` + API 이전 이미지
