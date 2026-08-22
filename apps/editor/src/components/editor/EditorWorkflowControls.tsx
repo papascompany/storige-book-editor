@@ -22,7 +22,7 @@ import { useAuthStore } from '../../stores/useAuthStore'
 import { useGuestStore } from '../../stores/useGuestStore'
 import { useAppStore } from '../../stores/useAppStore'
 import { editSessionsApi, type EditSessionResponse } from '../../api/edit-sessions'
-import { ensureSeatExistingContentPdf, seatContentPdf } from '../../utils/contentPdfGuide'
+import { ensureSeatExistingContentPdf, isEditorOutputContentFile, seatContentPdf } from '../../utils/contentPdfGuide'
 import { showToast } from '../../stores/useToastStore'
 import { ContentPdfAttachModal } from './ContentPdfAttachModal'
 
@@ -126,16 +126,16 @@ export function EditorWorkflowControls({
         if (cancelled) return
         // R5(2026-08-18): 편집완료 산출물 content.pdf(contentFileId 로 저장됨)를 고객 첨부로
         // 오인하지 않는다. 진짜 고객 첨부 = contentPdfFileId 존재 또는 contentPdfMode==='underlay'.
-        // contentFileId 폴백은 편집완료 마커(metadata.spreadContentPageCount)나 완료 이력
-        // (status==='complete') 세션에서는 첨부로 간주하지 않는다.
+        // contentFileId 폴백의 산출물 판별은 contentPdfGuide.isEditorOutputContentFile 단일 판별식
+        // (R5 정밀화: metadata.editorOutputContentFileId 일치 → 레거시 마커/status 폴백).
         const contentPdfMode = (
           session as EditSessionResponse & { contentPdfMode?: 'replace' | 'underlay' | null }
         ).contentPdfMode
-        const isEditorOutput =
-          session.metadata?.spreadContentPageCount != null || session.status === 'complete'
         const fileId =
           session.contentPdfFileId ||
-          (contentPdfMode === 'underlay' || !isEditorOutput ? session.contentFileId : null)
+          (contentPdfMode === 'underlay' || !isEditorOutputContentFile(session)
+            ? session.contentFileId
+            : null)
         if (fileId) {
           setAttached({
             fileId,

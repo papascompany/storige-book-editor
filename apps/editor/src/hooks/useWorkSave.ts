@@ -749,6 +749,8 @@ export function useWorkSave(): UseWorkSaveReturn {
         contentFileId: contentPdfFileId,
         metadata: {
           spreadContentPageCount: innerCanvases.length,
+          // R5 정밀화: 산출물 fileId 기록 → 재진입 시 첨부 오인/underlay 재승격 차단을 값 일치로 좁힘
+          editorOutputContentFileId: contentPdfFileId,
           ...(spreadSnapshots.spread ? { spread: spreadSnapshots.spread } : {}),
           ...(spreadSnapshots.spine ? { spine: spreadSnapshots.spine } : {}),
         },

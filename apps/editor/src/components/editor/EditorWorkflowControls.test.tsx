@@ -41,10 +41,17 @@ const ensureSeatExistingContentPdf = vi.fn(async (..._args: unknown[]) => ({
   addedPages: 0,
   guidesPlaced: false,
 }))
-vi.mock('../../utils/contentPdfGuide', () => ({
-  seatContentPdf: (...a: unknown[]) => seatContentPdf(...a),
-  ensureSeatExistingContentPdf: (...a: unknown[]) => ensureSeatExistingContentPdf(...a),
-}))
+vi.mock('../../utils/contentPdfGuide', async () => {
+  const actual = await vi.importActual<typeof import('../../utils/contentPdfGuide')>(
+    '../../utils/contentPdfGuide',
+  )
+  return {
+    // 판별식은 실구현 사용(배지·승격 단일 판별식 회귀 포착)
+    isEditorOutputContentFile: actual.isEditorOutputContentFile,
+    seatContentPdf: (...a: unknown[]) => seatContentPdf(...a),
+    ensureSeatExistingContentPdf: (...a: unknown[]) => ensureSeatExistingContentPdf(...a),
+  }
+})
 
 const showToast = vi.fn()
 vi.mock('../../stores/useToastStore', () => ({ showToast: (...a: unknown[]) => showToast(...a) }))
@@ -252,6 +259,40 @@ describe('EditorWorkflowControls — 레거시 `/`(소유 세션)', () => {
       contentPdfMode: null,
       contentFileId: 'editor-output-content-pdf',
       contentPdfPageCount: null,
+    })
+
+    render(<EditorWorkflowControls templateSetId="ts-book" />)
+
+    await waitFor(() => expect(sessionGet).toHaveBeenCalledWith('guest-sess'))
+    expect(await screen.findByRole('button', { name: /내지 PDF 첨부/ })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /첨부됨/ })).toBeNull()
+  })
+
+  it('정밀 마커(editorOutputContentFileId)와 다른 contentFileId 는 완료 이력이 있어도 첨부 배지로 복귀한다 (R5 정밀화)', async () => {
+    guestState.sessionId = 'guest-sess'
+    sessionGet.mockResolvedValue({
+      id: 'guest-sess',
+      status: 'complete',
+      contentPdfMode: null,
+      contentFileId: 'reattached-shop-pdf',
+      contentPdfPageCount: 16,
+      metadata: { editorOutputContentFileId: 'editor-output-content-pdf', spreadContentPageCount: 8 },
+    })
+
+    render(<EditorWorkflowControls templateSetId="ts-book" />)
+
+    expect(await screen.findByRole('button', { name: /첨부됨 \(16p\)/ })).toBeTruthy()
+  })
+
+  it('정밀 마커와 일치하는 contentFileId 는 첨부 배지로 오인하지 않는다 (R5 정밀화)', async () => {
+    guestState.sessionId = 'guest-sess'
+    sessionGet.mockResolvedValue({
+      id: 'guest-sess',
+      status: 'editing',
+      contentPdfMode: null,
+      contentFileId: 'editor-output-content-pdf',
+      contentPdfPageCount: null,
+      metadata: { editorOutputContentFileId: 'editor-output-content-pdf' },
     })
 
     render(<EditorWorkflowControls templateSetId="ts-book" />)

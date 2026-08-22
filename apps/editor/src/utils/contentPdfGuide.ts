@@ -105,13 +105,30 @@ function isUnderlaySession(editSession: any): boolean {
 }
 
 /**
- * 주문 화면에서 이미 올린 내지 PDF 는 세션 `contentFileId` 에만 들어 있는 경우가 많다
- * (create DTO 에 contentPdfFileId 가 없음). underlay 로 승격할 수 있으면 그 fileId 를 돌려준다.
- * 완료 세션의 편집 산출물(contentFileId)은 승격하지 않는다.
+ * 세션의 `contentFileId` 가 고객 첨부가 아니라 **편집기 완료 산출물(content.pdf)** 인지 판별한다.
+ * 첨부 배지(EditorWorkflowControls)와 underlay 승격(resolveUnderlaySource)이 공유하는 단일 판별식.
  *
  * R5(2026-08-18): status 가드만으로는 부족 — 자동저장이 status 를 'editing' 으로 되돌리면
- * 편집완료 산출물 content.pdf(contentFileId)가 재진입마다 underlay 로 재승격되는 루프가 생긴다.
- * 편집완료 마커(metadata.spreadContentPageCount)가 있으면 contentFileId 폴백을 차단한다.
+ * 편집완료 산출물 content.pdf 가 재진입마다 첨부로 오인/underlay 재승격되는 루프가 생긴다.
+ * R5 정밀화(2026-08-22): 완료 시 `metadata.editorOutputContentFileId` 에 산출물 fileId 를 기록하고,
+ * 마커가 있으면 **그 값과 contentFileId 가 일치할 때만** 산출물로 본다 — 완료 이력 세션에 향후
+ * 정당한 contentFileId 재첨부가 생기면 값이 달라지므로 자연히 첨부로 복귀한다.
+ * 마커가 없는 레거시 세션은 종전 규칙(spreadContentPageCount 마커 또는 status==='complete')을 유지한다.
+ * ⚠️ 진짜 고객 첨부(contentPdfFileId / contentPdfMode==='underlay') 판단은 호출측 W1 계약 그대로.
+ */
+export function isEditorOutputContentFile(editSession: any): boolean {
+  if (!editSession?.contentFileId) return false
+  const marker = editSession.metadata?.editorOutputContentFileId
+  if (marker != null && marker !== '') {
+    return String(marker) === String(editSession.contentFileId)
+  }
+  return editSession.metadata?.spreadContentPageCount != null || editSession.status === 'complete'
+}
+
+/**
+ * 주문 화면에서 이미 올린 내지 PDF 는 세션 `contentFileId` 에만 들어 있는 경우가 많다
+ * (create DTO 에 contentPdfFileId 가 없음). underlay 로 승격할 수 있으면 그 fileId 를 돌려준다.
+ * 편집기 완료 산출물(contentFileId, `isEditorOutputContentFile`)은 승격하지 않는다.
  * ⚠️ 진짜 고객 첨부(contentPdfFileId) 분기는 W1 계약 그대로 — 항상 우선한다.
  */
 export function resolveUnderlaySource(editSession: any): {
@@ -126,9 +143,8 @@ export function resolveUnderlaySource(editSession: any): {
       pageCount: Number(editSession.contentPdfPageCount) || null,
     }
   }
-  if (editSession.status === 'complete') return null
-  if (editSession.metadata?.spreadContentPageCount != null) return null
   if (!editSession.contentFileId) return null
+  if (isEditorOutputContentFile(editSession)) return null
   return {
     fileId: String(editSession.contentFileId),
     pageCount: Number(editSession.contentPdfPageCount) || null,

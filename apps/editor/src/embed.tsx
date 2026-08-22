@@ -1941,6 +1941,8 @@ function EmbeddedEditor({
                 ...(contentFileId ? { contentFileId } : {}),
                 metadata: {
                   spreadContentPageCount: innerCanvases.length,
+                  // R5 정밀화: 산출물 fileId 기록 → 재진입 시 첨부 오인/underlay 재승격 차단을 값 일치로 좁힘
+                  ...(contentFileId ? { editorOutputContentFileId: contentFileId } : {}),
                   ...(snapshots.spread ? { spread: snapshots.spread } : {}),
                   ...(snapshots.spine ? { spine: snapshots.spine } : {}),
                 },
@@ -1992,9 +1994,16 @@ function EmbeddedEditor({
                 file: pdfBlob, type: fileType, orderSeqno: effectiveOrderSeqno,
                 metadata: { generatedBy: 'editor', editSessionId: currentSessionId, mode: effectiveMode },
               })
-              const updatePayload: { coverFileId?: string; contentFileId?: string } = {}
-              if (effectiveMode === 'content') updatePayload.contentFileId = uploadResponse.id
-              else updatePayload.coverFileId = uploadResponse.id
+              const updatePayload: {
+                coverFileId?: string
+                contentFileId?: string
+                metadata?: Record<string, unknown>
+              } = {}
+              if (effectiveMode === 'content') {
+                updatePayload.contentFileId = uploadResponse.id
+                // R5 정밀화: 단일모드 내지 산출물도 마커 기록(첨부 오인 방지, API metadata 는 shallow merge)
+                updatePayload.metadata = { editorOutputContentFileId: uploadResponse.id }
+              } else updatePayload.coverFileId = uploadResponse.id
               await editSessionsApi.update(currentSessionId, updatePayload)
               console.log('[EmbeddedEditor] PDF uploaded:', uploadResponse.id)
             }

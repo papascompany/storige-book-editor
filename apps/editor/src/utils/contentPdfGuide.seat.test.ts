@@ -124,6 +124,7 @@ vi.mock('../stores/useSettingsStore', () => ({
 import {
   applyContentPdfGuides,
   ensureUnderlayPages,
+  isEditorOutputContentFile,
   persistContentPdfPageOrderAfterReorder,
   rememberContentPdfPageOrder,
   resolveUnderlaySource,
@@ -470,6 +471,49 @@ describe('resolveUnderlaySource', () => {
         metadata: { spreadContentPageCount: 8 },
       }),
     ).toEqual({ fileId: 'pdf-1', pageCount: 4 })
+  })
+
+  it('정밀 마커(editorOutputContentFileId)가 contentFileId 와 일치하면 승격하지 않는다 (R5 정밀화)', () => {
+    expect(
+      resolveUnderlaySource({
+        contentFileId: 'out-1',
+        status: 'editing',
+        metadata: { editorOutputContentFileId: 'out-1' },
+      }),
+    ).toBeNull()
+  })
+
+  it('정밀 마커가 있고 contentFileId 가 다르면(정당한 재첨부) 레거시 마커/완료 이력이 있어도 승격한다 (R5 정밀화)', () => {
+    expect(
+      resolveUnderlaySource({
+        contentFileId: 'shop-2',
+        contentPdfPageCount: 12,
+        status: 'complete',
+        metadata: { editorOutputContentFileId: 'out-1', spreadContentPageCount: 8 },
+      }),
+    ).toEqual({ fileId: 'shop-2', pageCount: 12 })
+  })
+
+  describe('isEditorOutputContentFile (배지·승격 공유 판별식)', () => {
+    it('contentFileId 가 없으면 false', () => {
+      expect(isEditorOutputContentFile({ status: 'complete', metadata: { editorOutputContentFileId: 'x' } })).toBe(false)
+      expect(isEditorOutputContentFile(null)).toBe(false)
+    })
+    it('마커 일치 → true, 불일치 → false (레거시 신호 무시)', () => {
+      expect(isEditorOutputContentFile({ contentFileId: 'a', metadata: { editorOutputContentFileId: 'a' } })).toBe(true)
+      expect(
+        isEditorOutputContentFile({
+          contentFileId: 'b',
+          status: 'complete',
+          metadata: { editorOutputContentFileId: 'a', spreadContentPageCount: 8 },
+        }),
+      ).toBe(false)
+    })
+    it('마커 없음 → 레거시 규칙(spreadContentPageCount 또는 status=complete)', () => {
+      expect(isEditorOutputContentFile({ contentFileId: 'a', status: 'editing' })).toBe(false)
+      expect(isEditorOutputContentFile({ contentFileId: 'a', status: 'complete' })).toBe(true)
+      expect(isEditorOutputContentFile({ contentFileId: 'a', status: 'editing', metadata: { spreadContentPageCount: 8 } })).toBe(true)
+    })
   })
 
   it('replace 모드는 앉히지 않는다', () => {
