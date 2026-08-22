@@ -4,11 +4,20 @@
 
 ## 0. 현재 라이브 상태 (2026-08-22 세션 종료 기준)
 
-- **master = origin/master = c704e77**, 워킹트리 클린(`.tmp-verify-combos/`·docs/*.html untracked 무시). ⚠️ 8/14 RESUME 문서의 타 세션 미커밋 수정분(+35줄 docs-only)이 `git commit -am` 실수로 **5ed8082 에 함께 커밋·push 됨** — 내용 손실 없음(master 보존), 이력 재작성 안 함
-- **이번 세션 LIVE**: editor `4733b3e`(R5 정밀화)·`c8aeac3`/`5ed8082`(로드 프로파일러)·`c704e77`(RAF 무한대기 수정) = Vercel 자동배포·번들 실증 / API `a4887f1`(P1-4 버전 스냅샷) = 마이그레이션 `20260822_add_file_edit_session_versions.sql` 적용 후 VPS 재빌드+nginx 재시작, health 200·신규 라우트 fail-closed 확인
+- **master = origin/master = c03b2c2**(P1-4 복원 UI, §1-B) ← 31ace47 ← c704e77, 워킹트리 클린(`.tmp-verify-combos/`·docs/*.html untracked 무시). ⚠️ 8/14 RESUME 문서의 타 세션 미커밋 수정분(+35줄 docs-only)이 `git commit -am` 실수로 **5ed8082 에 함께 커밋·push 됨** — 내용 손실 없음(master 보존), 이력 재작성 안 함
+- **이번 세션 LIVE**: editor `c03b2c2`(P1-4 복원 UI, Vercel izpr4d777 번들 실증)·`4733b3e`(R5 정밀화)·`c8aeac3`/`5ed8082`(로드 프로파일러)·`c704e77`(RAF 무한대기 수정) = Vercel 자동배포·번들 실증 / API `a4887f1`(P1-4 버전 스냅샷) = 마이그레이션 `20260822_add_file_edit_session_versions.sql` 적용 후 VPS 재빌드+nginx 재시작, health 200·신규 라우트 fail-closed 확인
 - 배포: editor/admin=Vercel master push 자동(단 **docs-only 커밋은 ignoreCommand로 Canceled 표시됨 — 정상**), API/워커=VPS 수동(`CLAUDE.local.md` §6). 프로덕션 editor alias=746d182 빌드 실측 확인(8/21)
 - 최근 라이브 커밋: `746d182`(+페이지 추가 즉시표시) ← `ab4b794`(왕복 R1~R7) ← `c5c9525`(동화책 4결함) ← `f8d0684`(시드 n장·교체 풀·G9)
-- 검증 기준선: editor vitest 57파일/700 전부 PASS·tsc 0err. canvas-core 기존 실패 6파일/8건(canvas.node ABI NODE_MODULE_VERSION 불일치 등)+lint no-undef 11+4건은 **베이스라인**(이번 트랙 무관, 별도 정리 후보)
+- 검증 기준선: editor vitest 61파일/**731** 전부 PASS·tsc 0err. canvas-core 기존 실패 6파일/8건(canvas.node ABI NODE_MODULE_VERSION 불일치 등)+lint no-undef 11+4건은 **베이스라인**(이번 트랙 무관, 별도 정리 후보)
+
+## 1-B. 8/22 야간 세션 — P1-4 복원 UI(이력 패널 + 여기로 복원) `c03b2c2` LIVE
+
+- **UI 배치**: 별도 모달이 아니라 헤더 **기존 "변경 이력" 팝오버(HistoryPanel)** 에 임베드 세션 버전 소스(`sessionVersions` prop) 분기를 추가. 목록(최신순·사유 배지 `자동 저장`/`페이지 감소 직전`(경고톤)/`복원 직전`·장 수·"9장 → 이후 5장으로 줄어듦")·확인 단계→**여기로 복원**·로딩/빈/오류·서버 저장 중 비활성. 레거시 분기(/editor/sessions + persist `useEditorStore.sessionId`)는 임베드에서 `legacySessionVersions={false}` 로 **항상 차단**(타 세션 이력 노출·iframe 리로드 복원 방지). 모바일(<sm)은 워드마크를 숨기고 패널 노출(bookmoa-mobile 고객 진입점)
+- **복원 = in-place 재초기화(설계 결정)**: 라이브 캔버스에 canvasData 를 직접 재하이드레이션하지 않고, 복원 응답 세션을 `reinitSessionRef` 로 주입한 뒤 메인 init effect 를 `reinitNonce` 로 재실행(cleanup=dispose+reset → 재진입과 100% 동일 경로: R2 시드·복원 루프·R3 가이드·앉히기·undo 스택 초기화). 게스트는 GET :id 403·orderSeqno 폴백 재생성 위험이 있어 세션 재조회/재생성을 건너뛴다. `editor.ready` 재발신·Sentry load-profile 억제, 캔버스 수 변경 시 `pricingChange` 1회, backGuard sentinel 은 최초 ready 이후 고정
+- **핸들러 순서(데이터 유실 방지)**: dirty→`saveNow` 플러시(실패 시 중단) → `status==='saving'` 거부 → `isInitializedRef=false`+debounce 취소 → 서버 restore(회원 `POST :id/versions/:vid/restore` / 게스트 `?guestToken=` — CORS allowedHeaders 에 커스텀 헤더 없음) → `markClean`·`markServerSynced(복원 길이)` → 재초기화 완료(ready)까지 await(토스트 시점 정합). **로컬 백업은 보존**(서버 미반영 유일본일 수 있음; 다음 재진입 배너는 updatedAt 비교가 자연 억제). 네트워크/5xx 실패는 "서버에는 적용됐을 수 있음 — 새로고침" 안내
+- **적대 리뷰(55 에이전트, 확정 25) 반영 핵심**: `useEmbedAutoSave.saveToServer` 가 `initializedRef=false` 창(재초기화 중)에 **PATCH 거부** — 호스트 역명령 `saveNow` 가 null/부분 배열로 복원본을 되덮는 경로 차단(major). 호스트 `editor.saved` 는 `ok:false, error:'EDITOR_BUSY'` 로 정직 응답. restore POST 는 `__noRetry`(비멱등, 5xx 재시도 시 restore 스냅샷이 10건 캡을 밀어냄). 복원 핸들러 identity 는 ref 기반(자동저장마다 목록 재요청 방지)
+- 검증: editor vitest **731 PASS**(+20: 헬퍼 5·패널 7·embed 배선 7·saveToServer 가드 1)·tsc 0err·lint 0err(경고 기존)·로컬 prod build OK. **배포 실증**: Vercel `izpr4d777` Ready → 프로덕션 alias 청크에서 `여기로 복원`(searchParams 청크)·`REINITIALIZING`/`EDITOR_BUSY`(EmbedView 청크)·`listGuestVersions` 문자열 확인
+- **미해소(후속)**: ⓐ API `restoreVersion` 이 `PDF_ATTACHED_EXCLUSIVE`(replace 모드) 가드를 거치지 않음 — UI 만 비노출 ⓑ `assertOwnerOrStaff` siteId 미비교(findOne/update 와 동일 기준선) ⓒ 서버 동일 (session,version) 연속 restore 스냅샷 dedup 없음 ⓓ 게스트 분기·replace 비노출·pricingChange 1회는 하네스 한계(currentSession 은 init 에서만 세팅)로 **코드 정독 근거**, 테스트 없음 ⓔ 재초기화 실패 시 "다시 시도"(reload)는 orderSeqno 폴백 게스트 세션에서 같은 세션에 못 돌아감(기존 동작) ⓕ **실세션 UI 왕복 실기 미확인** — 자동모드 분류기가 ShareSnap 키 기반 shop-session 토큰 발급을 차단(권한무시 모드 또는 오너 실기 필요). 실기 레시피: 세션 생성 → 편집·자동저장 2회(≥60s 간격) 또는 PATCH 로 canvasData 축소(shrink 스냅샷 즉시) → 헤더 🕘 변경 이력 → 시점 행 [복원] → [여기로 복원] → 로딩 후 캔버스 수 복귀·`복원 직전` 행 추가 확인. 모바일 360/375px 헤더 폭도 실기 스크린샷 1회 권장(워드마크 숨김으로 폭 상쇄, 미실측)
 
 ## 1-A. 이번 세션 완료 (8/22) — §3 P1-3·P1-4·P1-5 전부 LIVE
 
@@ -36,12 +45,13 @@
 ## 3. 잔여 작업 (우선순위)
 
 **P0 — 오너 실기 확인(다음 세션 첫 안건)**
+0. **P1-4 복원 UI 실기 왕복**(§1-B ⓕ 레시피) — 헤더 🕘 변경 이력 → 시점 [복원] → [여기로 복원] → 캔버스 수 복귀·`복원 직전` 행 생성·모바일 375px 헤더 폭 확인
 1. 동화책 왕복 실기: **새 세션으로** 편집완료(PDF 생성)→보관함 이어서편집→16p 추가→재진입 페이지 유지·배지·배너 확인. 기존 세션 7032398026281은 8p 절단본으로 영구(복구 불가). content PDF VALIDATE가 이제 426×216으로 통과하는지 워커 로그 확인(R7 검증)
 2. bookmoa 장바구니 #1 "그림책·동화책 하드커버(A4)" 테스트 항목 삭제(8/21 검증 부산물)
 
 **P1 — 코드 후속**
 3. ~~R5 판별 정밀화~~ ✅ 8/22 LIVE(4733b3e)
-4. ~~서버측 세션 버전 이력~~ ✅ 8/22 API LIVE(a4887f1). 후속: 편집기/admin **복원 UI**(목록+'여기로 복원'), shrink 발생 시 Sentry/운영 알림, 보관함 이어서편집 시 shrink 이력 있으면 배너
+4. ~~서버측 세션 버전 이력~~ ✅ 8/22 API LIVE(a4887f1) + **편집기 복원 UI LIVE(c03b2c2, §1-B)**. 후속: §1-B 미해소 ⓐⓑⓒ(API, VPS 배포 필요)·ⓕ 실기 왕복(오너/권한무시 모드)·admin 세션 상세의 이력 뷰·shrink 발생 시 Sentry/운영 알림·보관함 이어서편집 시 shrink 이력 있으면 배너
 5. ~~재진입 30s+~~ ✅ 8/22 원인(RAF 무한대기) 수정 LIVE(c704e77), 프로파일러 상시. 후속: 오너 실기에서 `window.__storigeLoadProfile`/Sentry `[load-profile]` 확인, 시드 addInnerPage ≈390ms/장 최적화(템플릿 로드·스크린샷 debounce 검토), 텍스트 패널 영역 라벨 버그
 6. 부수효과 관찰 2건: photoPlacement dpi 72→150 경고 강화 / px 상품 추가페이지 pxToMm 분기 첫 활성
 7. lint no-undef 베이스라인(editor 4·canvas-core 11) + canvas-core 테스트 ABI 실패 6파일 정리
