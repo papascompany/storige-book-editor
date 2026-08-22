@@ -71,6 +71,7 @@ import {
 } from './utils/orientationGuard'
 import { useExternalPhotosStore } from './stores/useExternalPhotosStore'
 import { reloadOnceForStaleChunk } from './components/EditorErrorBoundary'
+import { createLoadProfiler, formatLoadProfile } from './utils/loadProfiler'
 import './index.css'
 
 // 배포 후 청크 재해시(stale chunk) 자동 리로드 — 임베드 번들 진입점.
@@ -730,6 +731,8 @@ function EmbeddedEditor({
     let isMounted = true
 
     const initializeEditor = async () => {
+      // P1-5 (2026-08-22): 로드 단계 프로파일 — ready 시점에 1회 요약(콘솔+Sentry info)
+      const loadProfile = createLoadProfiler()
       try {
         setIsLoading(true)
         setLoadingMessage('에디터를 초기화하는 중...')
@@ -918,6 +921,10 @@ function EmbeddedEditor({
         }
 
         let templateSet;
+        loadProfile.mark('session:resolved', {
+          hasSession: !!editSession,
+          savedPages: Array.isArray(editSession?.canvasData) ? editSession.canvasData.length : editSession?.canvasData ? 1 : 0,
+        })
         try {
           setLoadingMessage('템플릿셋 정보를 불러오는 중...')
           const result = await templatesApi.getTemplateSetWithTemplates(effectiveTemplateSetId)
@@ -962,9 +969,11 @@ function EmbeddedEditor({
 
         if (!isMounted) return
 
+        loadProfile.mark('templateSet:loaded')
         // 2. Create canvas
         setLoadingMessage('캔버스를 초기화하는 중...')
         const fabricCanvas = await createCanvas({}, canvasContainerRef.current!, initId)
+        loadProfile.mark('canvas:created')
 
         if (!isMounted) {
           safeDisposeCanvas(fabricCanvas)
@@ -1008,6 +1017,7 @@ function EmbeddedEditor({
 
         // 3. Load content based on template set
         setLoadingMessage('콘텐츠를 불러오는 중...')
+        loadProfile.mark('content:start')
         // 내지 PDF 표시전용(underlay): 첨부 PDF 페이지수만큼 내지 자동 임포지션.
         const underlayPageCount =
           (editSession as any)?.contentPdfMode === 'underlay' &&
@@ -1173,6 +1183,7 @@ function EmbeddedEditor({
           )
         } else if (editSession?.canvasData) {
           setLoadingMessage('저장된 작업을 복원하는 중...')
+          loadProfile.mark('workspace:seeded', { canvases: useAppStore.getState().allCanvas.length })
           const saved = editSession.canvasData
 
           // R2-절단 금지 (2026-08-18): 시드 결과 캔버스 수가 저장본보다 적으면 부족분을 증설한다.
@@ -1195,7 +1206,9 @@ function EmbeddedEditor({
             if (deficit > 0 && preState.isSpreadMode) {
               console.warn(`[EmbeddedEditor] 복원 캔버스 부족 ${deficit}장 — 내지 증설 후 전량 복원`)
               for (let k = 0; k < deficit; k++) {
+                const lapEnd = loadProfile.lapStart('restore:grow')
                 await useAppStore.getState().addInnerPage()
+                lapEnd()
               }
               // addInnerPage 는 새 페이지로 전환하므로 첫 페이지(표지/첫 펼침면)로 복귀.
               useAppStore.getState().setPage(0)
@@ -1227,6 +1240,7 @@ function EmbeddedEditor({
           if (Array.isArray(saved) && saved.length > 0) {
             // 멀티페이지: 각 페이지 canvasData를 대응 캔버스에 로드
             for (let i = 0; i < saved.length && i < canvases.length; i++) {
+              const lapEnd = loadProfile.lapStart('restore:page')
               if (saved[i]) await core.loadFromJSON(canvases[i], saved[i])
               // 복원 직후 사진틀 인터랙션 재바인딩 (핸들러는 직렬화 안 됨 → 미재바인딩 시 채우기 불능).
               rebindFrameInteractivity(allEditors[i], canvases[i])
@@ -1243,7 +1257,9 @@ function EmbeddedEditor({
               // 직렬화되지 않아 loadFromJSON 이 캔버스를 대체하면 사라진다. HistoryPlugin 이
               // undo/redo 후 쓰는 것과 동일 메커니즘(WorkspacePlugin 이 이 이벤트를 구독).
               allEditors[i]?.emit('restoreGuideElements')
+              lapEnd()
             }
+            loadProfile.mark('restore:done', { pages: saved.length })
             console.log('[EmbeddedEditor] Multi-page canvasData restored:', saved.length, 'pages')
           } else if (!Array.isArray(saved) && fabricCanvas) {
             // 단일 캔버스 (legacy 및 cover 전용 세션)
@@ -1259,6 +1275,7 @@ function EmbeddedEditor({
             trackRequiredEdits(fabricCanvas)
             // R3 (2026-08-18): 단일 캔버스 복원도 가이드 재생성 — 멀티페이지 분기와 동일 사유.
             allEditors[singleIdx]?.emit('restoreGuideElements')
+            loadProfile.mark('restore:done', { pages: 1 })
             console.log('[EmbeddedEditor] Single canvasData restored:', editSession.id)
           }
         }
@@ -1270,6 +1287,7 @@ function EmbeddedEditor({
         // W1: seat. 주문 화면에서 올린 contentFileId 도 underlay 로 승격해 앉힌다.
         if (editSession) {
           await ensureSeatExistingContentPdf(editSession, effectiveTemplateSetId)
+          loadProfile.mark('seat:done')
         }
 
         // W1-G2: 첨부 진입점이 쓸 실효 templateSetId 확정 (폴백 구동 시에는 첨부 비노출).
@@ -1308,6 +1326,19 @@ function EmbeddedEditor({
         if (!isMounted) return
 
         // 4. Complete initialization
+        loadProfile.mark('ready')
+        {
+          const profile = loadProfile.summary()
+          console.log(`[EmbeddedEditor][load-profile] ${formatLoadProfile(profile)}`, profile)
+          // 30s+ 재진입 실측용 — 단계/반복 집계를 Sentry 에 1회 남긴다(flush 대기 없음).
+          try {
+            Sentry.captureMessage('[load-profile] embed ready', {
+              level: profile.totalMs > 15_000 ? 'warning' : 'info',
+              tags: { loadSlow: profile.totalMs > 15_000 ? 'yes' : 'no' },
+              extra: { sessionId: editSession?.id ?? null, templateSetId: effectiveTemplateSetId, ...profile },
+            } as any)
+          } catch { /* Sentry 미설정 — 무시 */ }
+        }
         setReady(true)
         isInitializedRef.current = true
         setIsLoading(false)
