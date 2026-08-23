@@ -707,7 +707,7 @@ export default function EditorHeader({
     <TooltipProvider>
       <nav className="h-14 bg-editor-panel border-b border-editor-border shadow-sm flex items-center px-4 z-[100]">
         {/* 좌측: 로고 + Undo/Redo + 자동저장 인디케이터 */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           {/* P1-4: 임베드 세션 버전 소스가 있으면 <sm 에서 변경 이력 버튼(36px)을 노출하는 대신
               워드마크를 숨겨 좌측 그룹 폭을 유지한다(360~375px 호스트에서 편집완료 클리핑 방지). */}
           <span
@@ -772,15 +772,18 @@ export default function EditorHeader({
           </span>
         </div>
 
-        {/* 중앙: 작업명 + 사이즈 표시 */}
-        <div className="flex-1 flex items-center justify-center gap-3">
+        {/* 중앙: 작업명 + 사이즈 표시.
+            P1-4 실기(2026-08-23, 375px): flex-1 컨테이너에 min-w-0 이 없고 input 이 고유폭(≈140px)+min-w-[80px]
+            을 고수해 nav 가 396px 로 넘쳐 우측 '편집완료' 가 잘렸다(기존 결함, 변경 이력 버튼 모바일 노출로 체감↑).
+            컨테이너/입력을 축소 가능하게 하고 좌·우 그룹은 shrink-0 으로 보호한다. */}
+        <div className="flex-1 min-w-0 flex items-center justify-center gap-3">
           <input
             key={artwork.name || 'untitled'}
             type="text"
             defaultValue={artwork.name || ''}
             placeholder="제목을 입력해주세요"
             aria-label="작업명"
-            className="bg-transparent border-none outline-none text-editor-text text-sm font-medium text-center min-w-[80px] max-w-[140px] sm:max-w-[180px] md:max-w-[200px] lg:max-w-[280px] focus:ring-1 focus:ring-editor-accent/50 rounded px-2 py-1"
+            className="bg-transparent border-none outline-none text-editor-text text-sm font-medium text-center w-full min-w-0 sm:min-w-[80px] max-w-[140px] sm:max-w-[180px] md:max-w-[200px] lg:max-w-[280px] focus:ring-1 focus:ring-editor-accent/50 rounded px-2 py-1"
             onBlur={(e) => {
               const value = (e.target as HTMLInputElement).value.trim()
               if (!value) {
@@ -903,7 +906,7 @@ export default function EditorHeader({
         </div>
 
         {/* 우측: 보기 옵션 + 불러오기 + 편집완료 + 도움말 */}
-        <div className="flex items-center gap-1 md:gap-2">
+        <div className="flex items-center gap-1 md:gap-2 shrink-0">
           {/* 룰러 토글 — 모바일(< sm) 에서 숨김 */}
           <Tooltip>
             <TooltipTrigger asChild>
