@@ -4,7 +4,7 @@
 
 ## 0. 현재 라이브 상태 (2026-08-22 세션 종료 기준)
 
-- **master = origin/master = e119b10**(테넌트 격리 확장, VPS LIVE) ← 2459932 ← 157ff6d(이동 라벨) ← e0bf8dc ← a40ad66(375px 헤더) ← cca2d5d(팝오버 z) ← 489ade6 ← 1030444(API 후속 3건, VPS LIVE) ← c03b2c2(P1-4 복원 UI), 워킹트리 클린(`.tmp-verify-combos/`·docs/*.html untracked 무시). ⚠️ 8/14 RESUME 문서의 타 세션 미커밋 수정분(+35줄 docs-only)이 `git commit -am` 실수로 **5ed8082 에 함께 커밋·push 됨** — 내용 손실 없음(master 보존), 이력 재작성 안 함
+- **master = origin/master = 0809064**(목록 테넌트 격리, VPS LIVE) ← 71f1132 ← e119b10(:id 테넌트 격리, VPS LIVE) ← 2459932 ← 157ff6d(이동 라벨) ← e0bf8dc ← a40ad66(375px 헤더) ← cca2d5d(팝오버 z) ← 489ade6 ← 1030444(API 후속 3건, VPS LIVE) ← c03b2c2(P1-4 복원 UI), 워킹트리 클린(`.tmp-verify-combos/`·docs/*.html untracked 무시). ⚠️ 8/14 RESUME 문서의 타 세션 미커밋 수정분(+35줄 docs-only)이 `git commit -am` 실수로 **5ed8082 에 함께 커밋·push 됨** — 내용 손실 없음(master 보존), 이력 재작성 안 함
 - **이번 세션 LIVE**: API `1030444`(versions 후속 3건, VPS 재빌드+nginx 재시작, dist 실증)·editor `c03b2c2`(P1-4 복원 UI, Vercel izpr4d777 번들 실증)·`4733b3e`(R5 정밀화)·`c8aeac3`/`5ed8082`(로드 프로파일러)·`c704e77`(RAF 무한대기 수정) = Vercel 자동배포·번들 실증 / API `a4887f1`(P1-4 버전 스냅샷) = 마이그레이션 `20260822_add_file_edit_session_versions.sql` 적용 후 VPS 재빌드+nginx 재시작, health 200·신규 라우트 fail-closed 확인
 - 배포: editor/admin=Vercel master push 자동(단 **docs-only 커밋은 ignoreCommand로 Canceled 표시됨 — 정상**), API/워커=VPS 수동(`CLAUDE.local.md` §6). 프로덕션 editor alias=746d182 빌드 실측 확인(8/21)
 - 최근 라이브 커밋: `746d182`(+페이지 추가 즉시표시) ← `ab4b794`(왕복 R1~R7) ← `c5c9525`(동화책 4결함) ← `f8d0684`(시드 n장·교체 풀·G9)
@@ -13,7 +13,8 @@
 ## 1-E. 8/23 — 테넌트 격리 확장 `e119b10` **VPS LIVE**(findOne·PATCH·complete·DELETE·versions 공용)
 
 - 서비스 공용 `assertTenantScope(session, caller)`: 비-staff·비-worker 호출자의 JWT siteId ≠ 세션 siteId(둘 다 존재) → **404 SESSION_NOT_FOUND**(findById 응답과 동일·존재 오라클 차단). **소유자 판정보다 먼저** → 교차 site 는 비소유자도 404(같은 site 비소유자는 기존 403). caller 미지정(게스트 라우트·내부 호출)·siteId 부재(레거시 JWT/구 세션)·staff·worker 통과. update/complete/delete 시그니처에 `caller?` 추가, assertOwnerOrStaff(versions)도 같은 헬퍼
-- **오너 결정(8/23)**: 같은 회사 다중 site(bookmoa PHP ↔ bookmoa-mobile) 간 세션 공유 불가를 수용. 목록 라우트(`GET /edit-sessions?orderSeqno`)는 memberSeqno 필터만(siteId 미대조) — 확장 여부는 별건
+- **오너 결정(8/23)**: 같은 회사 다중 site(bookmoa PHP ↔ bookmoa-mobile) 간 세션 공유 불가를 수용
+- **`0809064` 목록 라우트 확장 VPS LIVE**: `GET /edit-sessions`(orderSeqno/memberSeqno/siteId/self 전 분기)·`GET /edit-sessions/my`(기본/summary=편집보관함)에 `filterTenantScope` — 비-staff·siteId 보유 JWT 는 자기 site(+레거시 NULL) 세션만(조용한 누락), 제외분 있으면 `[tenant-scope] <route>` warn 로그. 순수 판정 `isInTenantScope` 를 assertTenantScope 와 공유. list-tenant-scope.spec +5, api **1038 PASS**. 라이브 프로브: 타 site 동일 memberSeqno JWT 로 `?orderSeqno`·`/my`·`/my?summary=1`·self 목록 전부 미노출, 원소유자 노출, warn 3건 확인
 - 검증: tenant-scope.spec +10(서비스 순수 판정·update/complete/delete·컨트롤러 findOne/caller 전달), api **1033 PASS**, tsc 0err. VPS 재빌드+nginx 재시작, health 200, dist `assertTenantScope` 6지점. **라이브 교차 테넌트 프로브**: ShareSnap 세션 ↔ 100p Books 키로 발급한 같은 memberSeqno JWT → GET/PATCH/versions/complete/DELETE 전부 404, 원소유자 GET/PATCH 200·canvasData 무손상, 프로브 세션 softDelete
 
 ## 1-D. 8/23 — P1-4 복원 UI **실기 왕복 PASS**(권한무시 모드, 크롬 top-level `/embed`) + 실기 발견 2건 수정 LIVE
@@ -72,7 +73,7 @@
 
 **P1 — 코드 후속**
 3. ~~R5 판별 정밀화~~ ✅ 8/22 LIVE(4733b3e)
-4. ~~서버측 세션 버전 이력~~ ✅ API a4887f1 + 편집기 복원 UI c03b2c2(§1-B) + API 후속 3건 1030444(§1-C) + 실기 왕복 PASS(§1-D) + **findOne/PATCH/complete/DELETE siteId 격리 e119b10(§1-E)**. 트랙 종결·admin 세션 상세의 이력 뷰·shrink 발생 시 Sentry/운영 알림·보관함 이어서편집 시 shrink 이력 있으면 배너
+4. ~~서버측 세션 버전 이력~~ ✅ API a4887f1 + 편집기 복원 UI c03b2c2(§1-B) + API 후속 3건 1030444(§1-C) + 실기 왕복 PASS(§1-D) + **findOne/PATCH/complete/DELETE siteId 격리 e119b10 + 목록 라우트 0809064(§1-E)**. 트랙 종결. 세션 API 의 테넌트 격리 = :id 계열·versions·목록·/external 전부 동일 규칙·admin 세션 상세의 이력 뷰·shrink 발생 시 Sentry/운영 알림·보관함 이어서편집 시 shrink 이력 있으면 배너
 5. ~~재진입 30s+~~ ✅ 8/22 원인(RAF 무한대기) 수정 LIVE(c704e77), 프로파일러 상시. 후속: 오너 실기에서 `window.__storigeLoadProfile`/Sentry `[load-profile]` 확인, 시드 addInnerPage ≈390ms/장 최적화(템플릿 로드·스크린샷 debounce 검토). ~~텍스트 패널 영역 라벨 버그~~ ✅ 157ff6d
 6. 부수효과 관찰 2건: photoPlacement dpi 72→150 경고 강화 / px 상품 추가페이지 pxToMm 분기 첫 활성
 7. lint no-undef 베이스라인(editor 4·canvas-core 11) + canvas-core 테스트 ABI 실패 6파일 정리
