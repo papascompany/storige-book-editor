@@ -12,6 +12,7 @@ import {
   ParseUUIDPipe,
   BadRequestException,
   ForbiddenException,
+  NotFoundException,
   Logger,
 } from '@nestjs/common';
 import {
@@ -831,15 +832,37 @@ export class EditSessionsController {
     return role === 'admin' || role === 'manager' || role === 'super_admin';
   }
 
-  /** 세션 소유자(memberSeqno 일치) 또는 admin/manager — findOne(:id) 과 동일 판정 */
+  /**
+   * 세션 소유자(memberSeqno 일치) 또는 admin/manager — findOne(:id) 과 동일 판정.
+   *
+   * 테넌트 격리(2026-08-23, versions 라우트 3종): 비-staff 호출자는 소유자 판정을 통과해도
+   * JWT 의 siteId 와 세션의 siteId 가 모두 존재하면서 불일치하면 404 SESSION_NOT_FOUND 로
+   * 차단한다(memberSeqno 는 site 별 독립 번호공간이므로 타 site 의 같은 seqno 회원이 소유자로
+   * 오판되는 교차 테넌트 접근 봉합). findById 의 not-found 404 와 **동일 응답**으로 던져
+   * 존재 오라클을 차단(getImpositionPreview P2c 패턴과 동일 문구). staff 는 전 테넌트 운영자로
+   * 예외, user.siteId 또는 session.siteId 가 없으면(레거시 JWT/구 세션) 기존 동작대로 통과.
+   */
   private async assertOwnerOrStaff(id: string, user: any): Promise<void> {
     const session = await this.editSessionsService.findById(id);
     const userId = user?.userId ? parseInt(user.userId) : 0;
     const isOwner = userId > 0 && Number(session.memberSeqno) === userId;
-    if (!isOwner && !this.isStaffRole(user)) {
+    const isStaff = this.isStaffRole(user);
+    if (!isOwner && !isStaff) {
       throw new ForbiddenException({
         code: 'PERMISSION_DENIED',
         message: '이 세션에 접근할 권한이 없습니다.',
+      });
+    }
+    if (
+      !isStaff &&
+      user?.siteId &&
+      session.siteId &&
+      session.siteId !== user.siteId
+    ) {
+      throw new NotFoundException({
+        code: 'SESSION_NOT_FOUND',
+        message: '편집 세션을 찾을 수 없습니다.',
+        details: { sessionId: id },
       });
     }
   }

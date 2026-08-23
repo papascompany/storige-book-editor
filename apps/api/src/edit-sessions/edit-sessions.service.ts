@@ -585,6 +585,27 @@ export class EditSessionsService {
     if (reason !== 'restore' && JSON.stringify(prev) === JSON.stringify(nextCanvasData)) {
       return null;
     }
+    // restore 중복 억제 (2026-08-23): 클라이언트/프록시 재시도로 같은 (session, version) restore 가
+    // 연속 호출되면 매번 restore 스냅샷이 쌓여 VERSION_KEEP 트림이 오래된 autosave 시점을 밀어낸다.
+    //  (1) 현재 상태가 이미 복원 대상과 동일 = 멱등 재호출 → 보존할 '직전 상태' 없음
+    //  (2) 세션의 가장 최근 스냅샷이 현재 상태와 동일 → 직전 상태가 이미 보존됨
+    // 조회 실패는 삼키고 스냅샷을 진행한다(보수: 누락보다 중복이 낫다).
+    if (reason === 'restore') {
+      const prevJson = JSON.stringify(prev);
+      if (prevJson === JSON.stringify(nextCanvasData)) return null;
+      try {
+        const latest = await this.versionRepository.findOne({
+          where: { session: { id: session.id } },
+          select: ['id', 'reason', 'canvasData'],
+          order: { createdAt: 'DESC' },
+        });
+        if (latest && JSON.stringify(latest.canvasData) === prevJson) return null;
+      } catch (e) {
+        this.logger.warn(
+          `[versions] restore 중복 확인 조회 실패 (스냅샷 진행) session=${session.id}: ${(e as Error)?.message}`,
+        );
+      }
+    }
 
     const version = this.versionRepository.create({
       session: { id: session.id } as EditSessionEntity,
@@ -682,6 +703,17 @@ export class EditSessionsService {
     userId: number,
   ): Promise<EditSessionEntity> {
     const session = await this.findById(sessionId);
+    // PDF 첨부 ↔ 편집 배타(replace 모드) — update() 와 동일 가드. 복원도 canvasData 변경이므로
+    // 스냅샷 생성·save 이전(부수효과 0)에 차단한다. underlay 모드는 허용.
+    if (
+      session.contentPdfFileId &&
+      (session.contentPdfMode ?? 'replace') !== 'underlay'
+    ) {
+      throw new BadRequestException({
+        code: 'PDF_ATTACHED_EXCLUSIVE',
+        message: '내지 PDF 첨부(replace) 상태에서는 편집 캔버스를 변경할 수 없습니다. PDF 를 먼저 제거하거나 underlay 모드로 첨부하세요.',
+      });
+    }
     const version = await this.getVersion(sessionId, versionId);
     try {
       await this.snapshotBeforeOverwrite(session, version.canvasData, userId, 'restore');
