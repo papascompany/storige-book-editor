@@ -4,11 +4,18 @@
 
 ## 0. 현재 라이브 상태 (2026-08-22 세션 종료 기준)
 
-- **master = origin/master = c03b2c2**(P1-4 복원 UI, §1-B) ← 31ace47 ← c704e77, 워킹트리 클린(`.tmp-verify-combos/`·docs/*.html untracked 무시). ⚠️ 8/14 RESUME 문서의 타 세션 미커밋 수정분(+35줄 docs-only)이 `git commit -am` 실수로 **5ed8082 에 함께 커밋·push 됨** — 내용 손실 없음(master 보존), 이력 재작성 안 함
-- **이번 세션 LIVE**: editor `c03b2c2`(P1-4 복원 UI, Vercel izpr4d777 번들 실증)·`4733b3e`(R5 정밀화)·`c8aeac3`/`5ed8082`(로드 프로파일러)·`c704e77`(RAF 무한대기 수정) = Vercel 자동배포·번들 실증 / API `a4887f1`(P1-4 버전 스냅샷) = 마이그레이션 `20260822_add_file_edit_session_versions.sql` 적용 후 VPS 재빌드+nginx 재시작, health 200·신규 라우트 fail-closed 확인
+- **master = origin/master = 1030444+**(API 후속 3건 §1-C, VPS LIVE) ← c48af14 ← c03b2c2(P1-4 복원 UI, §1-B), 워킹트리 클린(`.tmp-verify-combos/`·docs/*.html untracked 무시). ⚠️ 8/14 RESUME 문서의 타 세션 미커밋 수정분(+35줄 docs-only)이 `git commit -am` 실수로 **5ed8082 에 함께 커밋·push 됨** — 내용 손실 없음(master 보존), 이력 재작성 안 함
+- **이번 세션 LIVE**: API `1030444`(versions 후속 3건, VPS 재빌드+nginx 재시작, dist 실증)·editor `c03b2c2`(P1-4 복원 UI, Vercel izpr4d777 번들 실증)·`4733b3e`(R5 정밀화)·`c8aeac3`/`5ed8082`(로드 프로파일러)·`c704e77`(RAF 무한대기 수정) = Vercel 자동배포·번들 실증 / API `a4887f1`(P1-4 버전 스냅샷) = 마이그레이션 `20260822_add_file_edit_session_versions.sql` 적용 후 VPS 재빌드+nginx 재시작, health 200·신규 라우트 fail-closed 확인
 - 배포: editor/admin=Vercel master push 자동(단 **docs-only 커밋은 ignoreCommand로 Canceled 표시됨 — 정상**), API/워커=VPS 수동(`CLAUDE.local.md` §6). 프로덕션 editor alias=746d182 빌드 실측 확인(8/21)
 - 최근 라이브 커밋: `746d182`(+페이지 추가 즉시표시) ← `ab4b794`(왕복 R1~R7) ← `c5c9525`(동화책 4결함) ← `f8d0684`(시드 n장·교체 풀·G9)
 - 검증 기준선: editor vitest 61파일/**731** 전부 PASS·tsc 0err. canvas-core 기존 실패 6파일/8건(canvas.node ABI NODE_MODULE_VERSION 불일치 등)+lint no-undef 11+4건은 **베이스라인**(이번 트랙 무관, 별도 정리 후보)
+
+## 1-C. 8/23 — P1-4 API 후속 3건 `1030444` **VPS LIVE** + 편집기 게이팅 정합
+
+- worktree 격리 3샤드 병렬 구현 → 샤드별 적대 검토 GO → master 통합(hunk 충돌 0). ⓐ `restoreVersion` 에 update() 와 동일한 **PDF_ATTACHED_EXCLUSIVE** 가드(contentPdfFileId && mode!=='underlay' → 400, 스냅샷·save 이전) ⓑ `assertOwnerOrStaff`(versions 3라우트): 비-staff 는 JWT siteId ≠ 세션 siteId 면 **404 SESSION_NOT_FOUND**(존재 오라클 차단, 둘 중 하나라도 없으면 통과·staff 예외). findOne/update 는 기존 기준선 유지 = 오너 결정 ⓒ `snapshotBeforeOverwrite(restore)`: 현재==복원대상(멱등 재호출) 또는 최신 스냅샷==현재 면 생략(재시도로 restore 스냅샷이 10건 캡을 밀어내던 문제). 스펙 3파일 +18
+- 검증: api 1021/1022 PASS(`partner-api-keys.v1.spec` 1건은 전체 병렬 26s 타임아웃 **플레이크** — 단독·기준선 PASS)·tsc 0err. **배포 실증**: VPS `git pull`→`compose build api`→`up -d api`→`restart nginx` → health 200, `/edit-sessions/:id/versions` 무인증 401, guest 라우트 가짜 토큰 404, 컨테이너 dist 에 3지점 문자열(중복확인·PDF_ATTACHED_EXCLUSIVE×2·siteId 비교) 확인
+- 편집기: 이력 패널 비노출 판정을 서버와 동일(`contentPdfFileId && (mode ?? 'replace') !== 'underlay'`)로 정합(종전 `mode==='replace'` 만 → null 모드 첨부 세션에서 패널이 떠 400 토스트)
+- 잔여: ⓒ 는 최신 1건만 비교(A→B→A 복원 순서의 중복은 허용, 요구 범위 밖) / findOne·PATCH 의 siteId 격리 확장은 같은 회사 다중 site(bookmoa PHP↔mobile) 세션 공유 가능성 때문에 오너 결정
 
 ## 1-B. 8/22 야간 세션 — P1-4 복원 UI(이력 패널 + 여기로 복원) `c03b2c2` LIVE
 
@@ -51,7 +58,7 @@
 
 **P1 — 코드 후속**
 3. ~~R5 판별 정밀화~~ ✅ 8/22 LIVE(4733b3e)
-4. ~~서버측 세션 버전 이력~~ ✅ 8/22 API LIVE(a4887f1) + **편집기 복원 UI LIVE(c03b2c2, §1-B)**. 후속: §1-B 미해소 ⓐⓑⓒ(API, VPS 배포 필요)·ⓕ 실기 왕복(오너/권한무시 모드)·admin 세션 상세의 이력 뷰·shrink 발생 시 Sentry/운영 알림·보관함 이어서편집 시 shrink 이력 있으면 배너
+4. ~~서버측 세션 버전 이력~~ ✅ API a4887f1 + 편집기 복원 UI c03b2c2(§1-B) + **API 후속 3건 1030444 VPS LIVE(§1-C)**. 후속: ⓕ 실기 왕복(오너/권한무시 모드)·admin 세션 상세의 이력 뷰·shrink 발생 시 Sentry/운영 알림·보관함 이어서편집 시 shrink 이력 있으면 배너
 5. ~~재진입 30s+~~ ✅ 8/22 원인(RAF 무한대기) 수정 LIVE(c704e77), 프로파일러 상시. 후속: 오너 실기에서 `window.__storigeLoadProfile`/Sentry `[load-profile]` 확인, 시드 addInnerPage ≈390ms/장 최적화(템플릿 로드·스크린샷 debounce 검토), 텍스트 패널 영역 라벨 버그
 6. 부수효과 관찰 2건: photoPlacement dpi 72→150 경고 강화 / px 상품 추가페이지 pxToMm 분기 첫 활성
 7. lint no-undef 베이스라인(editor 4·canvas-core 11) + canvas-core 테스트 ABI 실패 6파일 정리

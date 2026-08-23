@@ -1663,13 +1663,14 @@ function EmbeddedEditor({
   /** P1-4 — 헤더 변경 이력 패널에 주입할 세션 버전 소스(세션 확보 + ready 후에만). id/토큰에만 의존. */
   const sessionIdForVersions = currentSession?.id ?? sessionId ?? null
   const guestTokenForVersions = currentSession?.guestToken ?? null
-  // replace 모드(내지 PDF 가 캔버스를 대체)는 편집 캔버스가 산출물이 아니므로 UI 에서 비노출.
-  // (서버 restoreVersion 은 update() 의 PDF_ATTACHED_EXCLUSIVE 가드를 거치지 않는다 — API 후속 과제.)
-  const contentPdfModeForVersions =
-    (currentSession as (EditSessionResponse & { contentPdfMode?: string | null }) | null)?.contentPdfMode ?? null
+  // 내지 PDF 첨부(replace 모드 — mode 미설정 null 도 서버는 replace 로 본다)는 편집 캔버스가 산출물이
+  // 아니므로 비노출. 서버 restoreVersion 도 동일 판정으로 400 PDF_ATTACHED_EXCLUSIVE(1030444) — UI 와 정합.
+  const sessionWithPdf = currentSession as (EditSessionResponse & { contentPdfMode?: string | null }) | null
+  const pdfExclusiveForVersions =
+    !!sessionWithPdf?.contentPdfFileId && (sessionWithPdf?.contentPdfMode ?? 'replace') !== 'underlay'
   const sessionVersionsSource = useMemo<SessionVersionsSource | null>(() => {
     if (!ready || !sessionIdForVersions) return null
-    if (contentPdfModeForVersions === 'replace') return null
+    if (pdfExclusiveForVersions) return null
     const id = sessionIdForVersions
     const guestToken = guestTokenForVersions
     return {
@@ -1677,7 +1678,7 @@ function EmbeddedEditor({
         guestToken ? editSessionsApi.listGuestVersions(id, guestToken) : editSessionsApi.listVersions(id),
       restore: handleRestoreSessionVersion,
     }
-  }, [ready, sessionIdForVersions, guestTokenForVersions, contentPdfModeForVersions, handleRestoreSessionVersion])
+  }, [ready, sessionIdForVersions, guestTokenForVersions, pdfExclusiveForVersions, handleRestoreSessionVersion])
 
   // [복원] — 백업을 캔버스에 로드(멀티페이지 전체). 성공 시 배너 닫고 즉시 서버 저장 1회.
   const handleRestoreBackup = useCallback(async (): Promise<boolean> => {
