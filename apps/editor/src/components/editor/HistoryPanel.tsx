@@ -277,7 +277,9 @@ export default function HistoryPanel({ sessionVersions = null, legacyVersions = 
           <History className="h-5 w-5" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" sideOffset={8} className="w-80 p-3">
+      {/* P1-4 실기(2026-08-23): align=end 는 트리거(헤더 좌측 x≈157)에서 왼쪽으로 펼쳐져 z-[101] ToolBar/FeatureSidebar(z-100)
+          아래 가려졌다(기본 z-50). 오른쪽으로 펼치고 z 를 올린다. */}
+      <PopoverContent align="start" sideOffset={8} collisionPadding={8} className="w-80 p-3 z-[150]">
         <div className="text-[12px] font-semibold text-editor-text mb-2 flex items-center gap-2">
           <History className="h-4 w-4 text-editor-accent" />
           변경 이력 요약
