@@ -12,7 +12,6 @@ import {
   ParseUUIDPipe,
   BadRequestException,
   ForbiddenException,
-  NotFoundException,
   Logger,
 } from '@nestjs/common';
 import {
@@ -26,7 +25,7 @@ import {
   getSchemaPath,
 } from '@nestjs/swagger';
 import * as Sentry from '@sentry/node';
-import { EditSessionsService } from './edit-sessions.service';
+import { EditSessionsService, type TenantCaller } from './edit-sessions.service';
 import { CreateEditSessionDto } from './dto/create-edit-session.dto';
 import { UpdateEditSessionDto } from './dto/update-edit-session.dto';
 import {
@@ -667,6 +666,8 @@ export class EditSessionsController {
     @CurrentUser() user: any,
   ): Promise<EditSessionResponseDto> {
     const session = await this.editSessionsService.findById(id);
+    // 테넌트 격리(2026-08-23): 비-staff 가 타 site 세션에 닿으면 404(존재 비누설) — 소유자 판정보다 먼저.
+    this.editSessionsService.assertTenantScope(session, this.tenantCaller(user));
 
     // 권한 확인: 세션 소유자 (memberSeqno 일치) 또는 admin/manager 역할
     const userId = user?.userId ? parseInt(user.userId) : 0;
@@ -760,7 +761,7 @@ export class EditSessionsController {
     @CurrentUser() user: any,
   ): Promise<EditSessionResponseDto> {
     const userId = user?.userId ? parseInt(user.userId) : 0;
-    const session = await this.editSessionsService.update(id, dto, userId);
+    const session = await this.editSessionsService.update(id, dto, userId, this.tenantCaller(user));
     return this.editSessionsService.toResponseDto(session);
   }
 
@@ -781,7 +782,7 @@ export class EditSessionsController {
     @CurrentUser() user: any,
   ): Promise<EditSessionResponseDto> {
     const userId = user?.userId ? parseInt(user.userId) : 0;
-    const session = await this.editSessionsService.complete(id, userId);
+    const session = await this.editSessionsService.complete(id, userId, this.tenantCaller(user));
     return this.editSessionsService.toResponseDto(session);
   }
 
@@ -798,7 +799,7 @@ export class EditSessionsController {
     @CurrentUser() user: any,
   ): Promise<{ success: boolean }> {
     const userId = user?.userId ? parseInt(user.userId) : 0;
-    await this.editSessionsService.delete(id, userId);
+    await this.editSessionsService.delete(id, userId, this.tenantCaller(user));
     return { success: true };
   }
 
@@ -844,27 +845,25 @@ export class EditSessionsController {
    */
   private async assertOwnerOrStaff(id: string, user: any): Promise<void> {
     const session = await this.editSessionsService.findById(id);
+    // 테넌트 격리 — findOne/PATCH/complete/DELETE 와 공용 판정(서비스 assertTenantScope), 소유자 판정보다 먼저.
+    this.editSessionsService.assertTenantScope(session, this.tenantCaller(user));
     const userId = user?.userId ? parseInt(user.userId) : 0;
     const isOwner = userId > 0 && Number(session.memberSeqno) === userId;
-    const isStaff = this.isStaffRole(user);
-    if (!isOwner && !isStaff) {
+    if (!isOwner && !this.isStaffRole(user)) {
       throw new ForbiddenException({
         code: 'PERMISSION_DENIED',
         message: '이 세션에 접근할 권한이 없습니다.',
       });
     }
-    if (
-      !isStaff &&
-      user?.siteId &&
-      session.siteId &&
-      session.siteId !== user.siteId
-    ) {
-      throw new NotFoundException({
-        code: 'SESSION_NOT_FOUND',
-        message: '편집 세션을 찾을 수 없습니다.',
-        details: { sessionId: id },
-      });
-    }
+  }
+
+  /** JWT user → 테넌트 판정용 caller (siteId/role 만). user 부재면 null(내부 호출과 동일 = 통과) */
+  private tenantCaller(user: any): TenantCaller | null {
+    if (!user) return null;
+    return {
+      siteId: typeof user.siteId === 'string' ? user.siteId : null,
+      role: typeof user.role === 'string' ? user.role : null,
+    };
   }
 
   /** admin/manager 전용 가드 (삭제 리스트/복구) */

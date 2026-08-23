@@ -39,6 +39,12 @@ import {
 } from '../worker-jobs/imposition.util';
 import { ImpositionPreviewResponseDto } from './dto/imposition-preview.dto';
 
+/** 호출자 테넌트 컨텍스트 — JWT 의 siteId/role(shop JWT 는 siteId 존재, admin-app JWT 는 없음) */
+export interface TenantCaller {
+  siteId?: string | null;
+  role?: string | null;
+}
+
 @Injectable()
 export class EditSessionsService {
   private readonly logger = new Logger(EditSessionsService.name);
@@ -445,12 +451,46 @@ export class EditSessionsService {
    * - PDF 첨부 / 검증 결과 / 페이지수 필드(`contentPdf*`) 갱신 지원.
    * - 결정 3-3: PDF 첨부 시 `canvasData` 동시 수정은 클라가 막아야 함 (API 는 1차 가드만).
    */
+  /** 운영자(staff) 역할 — admin-app UserRole(대문자)·shop JWT(소문자) 모두 대소문자 무관 */
+  static isStaffRole(role: string | null | undefined): boolean {
+    const r = String(role ?? '').toLowerCase();
+    return r === 'admin' || r === 'manager' || r === 'super_admin';
+  }
+
+  /**
+   * 테넌트 격리 (2026-08-23, findOne/PATCH/complete/DELETE/versions 공통).
+   *
+   * memberSeqno 는 site 별 독립 번호공간이라 "같은 memberSeqno·다른 siteId" 의 customer JWT 가
+   * 소유자로 오판된다. 비-staff·비-worker 호출자가 JWT siteId 와 다른 site 의 세션에 닿으면
+   * findById 의 not-found 와 **동일한** 404 SESSION_NOT_FOUND 로 차단한다(존재 오라클 방지).
+   * staff(admin/manager/super_admin)·worker 는 전 테넌트 운영 주체로 예외, caller 미지정(내부 호출)·
+   * user.siteId 또는 session.siteId 부재(레거시 JWT/구 세션)는 기존 동작대로 통과.
+   * ⚠️ 같은 회사의 다중 site(예: bookmoa PHP ↔ bookmoa-mobile)는 서로의 세션을 볼 수 없게 된다 — 오너 결정(8/23).
+   */
+  assertTenantScope(
+    session: Pick<EditSessionEntity, 'id' | 'siteId'>,
+    caller?: TenantCaller | null,
+  ): void {
+    if (!caller) return;
+    const role = String(caller.role ?? '').toLowerCase();
+    if (role === 'worker' || EditSessionsService.isStaffRole(role)) return;
+    if (caller.siteId && session.siteId && caller.siteId !== session.siteId) {
+      throw new NotFoundException({
+        code: 'SESSION_NOT_FOUND',
+        message: '편집 세션을 찾을 수 없습니다.',
+        details: { sessionId: session.id },
+      });
+    }
+  }
+
   async update(
     id: string,
     dto: UpdateEditSessionDto,
     userId: number,
+    caller?: TenantCaller | null,
   ): Promise<EditSessionEntity> {
     const session = await this.findById(id);
+    this.assertTenantScope(session, caller);
 
     // 권한 확인: 회원 세션은 소유자만 / 게스트 세션은 토큰 보유자(클라이언트가 token 같이 보내는 흐름은 추후)
     const isGuest = !!session.guestToken;
@@ -993,8 +1033,13 @@ export class EditSessionsService {
    *   인가는 그 경로에만 붙는다(검증된 shop-session siteId ↔ session.siteId 일치 +
    *   주문 스코프, 실패 시 404 SESSION_NOT_FOUND). 미전달/false 면 기존 경로 그대로다.
    */
-  async complete(id: string, userId: number): Promise<EditSessionEntity> {
+  async complete(
+    id: string,
+    userId: number,
+    caller?: TenantCaller | null,
+  ): Promise<EditSessionEntity> {
     const session = await this.findById(id);
+    this.assertTenantScope(session, caller);
 
     const isGuest = !!session.guestToken;
     if (!isGuest && Number(session.memberSeqno) !== userId) {
@@ -1519,8 +1564,9 @@ export class EditSessionsService {
   /**
    * 세션 삭제 (소프트 삭제)
    */
-  async delete(id: string, userId: number): Promise<void> {
+  async delete(id: string, userId: number, caller?: TenantCaller | null): Promise<void> {
     const session = await this.findById(id);
+    this.assertTenantScope(session, caller);
 
     if (Number(session.memberSeqno) !== userId) {
       throw new ForbiddenException({
