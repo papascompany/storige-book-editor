@@ -47,7 +47,11 @@ describe('EditSessionsController versions 라우트 테넌트 격리 (assertOwne
             findById: jest.fn().mockResolvedValue(sessionOfSiteA),
             // 2026-08-23: 테넌트 판정이 서비스 공용 assertTenantScope 로 이동 — 실구현을 물린다
             assertTenantScope: (sess: unknown, caller: unknown) =>
-              EditSessionsService.prototype.assertTenantScope.call(null, sess as any, caller as any),
+              EditSessionsService.prototype.assertTenantScope.call(
+                EditSessionsService.prototype,
+                sess as any,
+                caller as any,
+              ),
             listVersions: jest.fn().mockResolvedValue(versionsPayload),
             getVersion: jest.fn().mockResolvedValue({
               id: VERSION_ID,

@@ -360,12 +360,21 @@ export class EditSessionsController {
 
     // 경량(summary) 모드 — canvasData 미포함 목록 (편집보관함)
     if (summary === '1' || summary === 'true') {
-      const sessions = await this.editSessionsService.findMyRecentSummary(memberSeqno);
+      const sessions = this.filterTenantScope(
+        await this.editSessionsService.findMyRecentSummary(memberSeqno),
+        user,
+        'my(summary)',
+      );
       return { sessions, total: sessions.length };
     }
 
     // 기본 모드 — 현행 응답 불변 (canvasData 전문 포함)
-    const sessions = await this.editSessionsService.findMyRecent(memberSeqno);
+    // 테넌트 격리(2026-08-23): memberSeqno 는 site 별 번호공간이라 타 site 의 같은 번호 회원 세션이 섞인다.
+    const sessions = this.filterTenantScope(
+      await this.editSessionsService.findMyRecent(memberSeqno),
+      user,
+      'my',
+    );
     return {
       sessions: sessions.map((s) => this.editSessionsService.toResponseDto(s)),
       total: sessions.length,
@@ -643,6 +652,11 @@ export class EditSessionsController {
       sessions = sessions.filter((s: any) => s.siteId === siteId);
     }
 
+    // 테넌트 격리(2026-08-23): 모든 분기 공통 — 비-staff 는 자기 site(+레거시 NULL) 세션만.
+    // orderSeqno/memberSeqno 는 site 별 번호공간이라 동일 번호의 타 site 세션이 섞일 수 있다
+    // (:id 계열 assertTenantScope·/external P2c 와 동일 규칙).
+    sessions = this.filterTenantScope(sessions, user, 'list');
+
     return {
       sessions: sessions.map((s) => this.editSessionsService.toResponseDto(s)),
       total: sessions.length,
@@ -855,6 +869,26 @@ export class EditSessionsController {
         message: '이 세션에 접근할 권한이 없습니다.',
       });
     }
+  }
+
+  /**
+   * 목록 라우트 테넌트 필터 — caller 범위 밖 세션을 조용히 제외(404 대신 누락). 제외분이 있으면
+   * warn 로그(호스트가 잘못된 site 키/JWT 로 접근하는 신호 — Sentry 알림은 SEC-005 와 달리 두지 않음).
+   */
+  private filterTenantScope<T extends { siteId?: string | null }>(
+    sessions: T[],
+    user: any,
+    route: string,
+  ): T[] {
+    const caller = this.tenantCaller(user);
+    if (!caller?.siteId) return sessions;
+    const kept = sessions.filter((s) => this.editSessionsService.isInTenantScope(s, caller));
+    if (kept.length !== sessions.length) {
+      this.logger.warn(
+        `[tenant-scope] ${route}: 타 site 세션 ${sessions.length - kept.length}건 제외 (site=${caller.siteId}, member=${user?.userId ?? '-'})`,
+      );
+    }
+    return kept;
   }
 
   /** JWT user → 테넌트 판정용 caller (siteId/role 만). user 부재면 null(내부 호출과 동일 = 통과) */

@@ -467,14 +467,26 @@ export class EditSessionsService {
    * user.siteId 또는 session.siteId 부재(레거시 JWT/구 세션)는 기존 동작대로 통과.
    * ⚠️ 같은 회사의 다중 site(예: bookmoa PHP ↔ bookmoa-mobile)는 서로의 세션을 볼 수 없게 된다 — 오너 결정(8/23).
    */
+  /**
+   * 테넌트 범위 판정(순수) — assertTenantScope 와 목록 라우트 필터가 공유.
+   * true = 노출 가능(caller 없음·staff·worker·caller siteId 없음·세션 siteId 없음(레거시)·같은 site).
+   */
+  isInTenantScope(
+    session: { siteId?: string | null },
+    caller?: TenantCaller | null,
+  ): boolean {
+    if (!caller) return true;
+    const role = String(caller.role ?? '').toLowerCase();
+    if (role === 'worker' || EditSessionsService.isStaffRole(role)) return true;
+    if (!caller.siteId || !session.siteId) return true;
+    return caller.siteId === session.siteId;
+  }
+
   assertTenantScope(
     session: Pick<EditSessionEntity, 'id' | 'siteId'>,
     caller?: TenantCaller | null,
   ): void {
-    if (!caller) return;
-    const role = String(caller.role ?? '').toLowerCase();
-    if (role === 'worker' || EditSessionsService.isStaffRole(role)) return;
-    if (caller.siteId && session.siteId && caller.siteId !== session.siteId) {
+    if (!this.isInTenantScope(session, caller)) {
       throw new NotFoundException({
         code: 'SESSION_NOT_FOUND',
         message: '편집 세션을 찾을 수 없습니다.',
