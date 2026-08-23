@@ -2,6 +2,7 @@ import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import type { fabric } from 'fabric'
 import { useAppStore } from '@/stores/useAppStore'
 import { useEditorStore } from '@/stores/useEditorStore'
+import { useSettingsStore } from '@/stores/useSettingsStore'
 import { buildPageMeta, type PageMeta } from '@/components/PageNavigation/BookNavigation'
 import { cn } from '@/lib/utils'
 
@@ -112,10 +113,17 @@ export const CoverFocusBar = memo(function CoverFocusBar() {
   const allCanvas = useAppStore((s) => s.allCanvas)
 
   // 페이지 메타 (표지/내지 분류 + 위치별 라벨)
+  // 펼침면 내지 세트: 첫 SPREAD 만 표지(표지 슬롯이 있고 내지 전용 regionScope 가 아닐 때)
+  const hasCoverSlot = useSettingsStore(
+    (st) => st.hasCoverSlot !== false && st.spreadConfig?.regionScope !== 'inner',
+  )
   const meta = useMemo<PageMeta[]>(() => {
     if (pages.length === 0) return []
-    return buildPageMeta(pages.map((p) => ({ id: p.id, type: p.templateType })))
-  }, [pages])
+    return buildPageMeta(
+      pages.map((p) => ({ id: p.id, type: p.templateType })),
+      { hasCoverSlot },
+    )
+  }, [pages, hasCoverSlot])
 
   // 표지 그룹 추출 (인접한 표지 페이지들의 인덱스 묶음).
   // 한 책에 표지가 여러 그룹일 일은 거의 없지만, 안전하게 active page가 속한 그룹만 표시한다.

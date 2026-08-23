@@ -3,6 +3,7 @@ import { ArrowRightLeft, Undo2 } from 'lucide-react'
 import { moveObjectToCanvas, type SpreadPlugin } from '@storige/canvas-core'
 import { useAppStore, useActiveSelection } from '@/stores/useAppStore'
 import { useEditorStore } from '@/stores/useEditorStore'
+import { useSettingsStore } from '@/stores/useSettingsStore'
 import { showToast } from '@/stores/useToastStore'
 import { useCrossCanvasMoveStore } from '@/stores/useCrossCanvasMoveStore'
 import { buildPageMeta, type PageMeta } from '@/components/PageNavigation/BookNavigation'
@@ -60,10 +61,17 @@ export default function MoveToCoverRegion() {
   const pushCrossMove = useCrossCanvasMoveStore((s) => s.pushMove)
   const clearLastCrossMove = useCrossCanvasMoveStore((s) => s.clearLast)
 
+  // 펼침면 내지 세트: 첫 SPREAD 만 표지(표지 슬롯이 있고 내지 전용 regionScope 가 아닐 때)
+  const hasCoverSlot = useSettingsStore(
+    (st) => st.hasCoverSlot !== false && st.spreadConfig?.regionScope !== 'inner',
+  )
   const meta = useMemo<PageMeta[]>(() => {
     if (pages.length === 0) return []
-    return buildPageMeta(pages.map((p) => ({ id: p.id, type: p.templateType })))
-  }, [pages])
+    return buildPageMeta(
+      pages.map((p) => ({ id: p.id, type: p.templateType })),
+      { hasCoverSlot },
+    )
+  }, [pages, hasCoverSlot])
 
   const activeGroup = useMemo(() => {
     if (meta.length === 0) return null

@@ -114,17 +114,42 @@ export function isCoverType(type: TemplateType): boolean {
   )
 }
 
-export function buildPageMeta(details: Array<{ id: string; type?: string }>): PageMeta[] {
-  // 1차 패스: 표지 관련 페이지 개수 계산 (SPREAD는 단독 1개로 취급)
+export interface BuildPageMetaOptions {
+  /**
+   * 세트에 표지 슬롯이 있는지(useSettingsStore.hasCoverSlot && regionScope!=='inner'). 기본 true.
+   * 펼침면 내지 세트(포토북/동화책)는 내지도 templateType=SPREAD 로 등록되므로(useEditorContents
+   * 펼침면 시드), **첫 SPREAD 만 표지 펼침면**이고 나머지 SPREAD 는 내지 펼침면이다. false 면
+   * 모든 SPREAD 가 내지 펼침면(표지 없는 내지 전용 세트).
+   */
+  hasCoverSlot?: boolean
+}
+
+export function buildPageMeta(
+  details: Array<{ id: string; type?: string }>,
+  options: BuildPageMetaOptions = {},
+): PageMeta[] {
+  const hasCoverSlot = options.hasCoverSlot !== false
+  // 표지 펼침면 = 첫 SPREAD(표지 슬롯이 있을 때만). 그 뒤의 SPREAD 는 내지 펼침면.
+  // (2026-08-23 수정: 종전엔 모든 SPREAD 를 표지로 간주해 펼침면 내지 8장이 전부 "표지(펼침면)" 표지
+  //  그룹이 되었고, 텍스트 패널 "다른 영역으로 이동" 이 내지 8장을 표지 영역으로 나열했다.)
+  const firstSpreadIndex = details.findIndex(
+    (t) => ((t.type as TemplateType) || TemplateType.PAGE) === TemplateType.SPREAD,
+  )
+  const coverSpreadIndex = hasCoverSlot ? firstSpreadIndex : -1
+  const isCoverAt = (type: TemplateType, i: number): boolean =>
+    type === TemplateType.SPREAD ? i === coverSpreadIndex : isCoverType(type)
+
+  // 1차 패스: 표지 관련 페이지 개수 계산 (표지 SPREAD 는 단독 1개로 취급)
   const coverIndices: number[] = []
   details.forEach((t, i) => {
     const type = (t.type as TemplateType) || TemplateType.PAGE
-    if (isCoverType(type)) coverIndices.push(i)
+    if (isCoverAt(type, i)) coverIndices.push(i)
   })
   const totalCovers = coverIndices.length
 
   // 2차 패스: 라벨링
   let pageCounter = 0
+  let spreadCounter = 0
   let coverCounter = 0
   return details.map((t, i) => {
     const type = (t.type as TemplateType) || TemplateType.PAGE
@@ -134,7 +159,13 @@ export function buildPageMeta(details: Array<{ id: string; type?: string }>): Pa
       return { index: i, label: `${pageCounter}쪽`, isCover: false, id: `${t.id}-${i}` }
     }
 
-    if (isCoverType(type)) {
+    if (type === TemplateType.SPREAD && i !== coverSpreadIndex) {
+      // 내지 펼침면 — SpreadPagePanel 의 번호 매김과 동일하게 1부터
+      spreadCounter += 1
+      return { index: i, label: `펼침면 ${spreadCounter}`, isCover: false, id: `${t.id}-${i}` }
+    }
+
+    if (isCoverAt(type, i)) {
       const { label, position } = inferCoverLabel(type, coverCounter, totalCovers)
       coverCounter += 1
       return {
