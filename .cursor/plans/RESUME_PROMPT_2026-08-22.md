@@ -4,7 +4,7 @@
 
 ## 0. 현재 라이브 상태 (2026-08-22 세션 종료 기준)
 
-- **master = origin/master = a40ad66**(375px 헤더) ← cca2d5d(팝오버 z) ← 489ade6 ← 1030444(API 후속 3건, VPS LIVE) ← c03b2c2(P1-4 복원 UI), 워킹트리 클린(`.tmp-verify-combos/`·docs/*.html untracked 무시). ⚠️ 8/14 RESUME 문서의 타 세션 미커밋 수정분(+35줄 docs-only)이 `git commit -am` 실수로 **5ed8082 에 함께 커밋·push 됨** — 내용 손실 없음(master 보존), 이력 재작성 안 함
+- **master = origin/master = 157ff6d**(이동 라벨) ← e0bf8dc ← a40ad66(375px 헤더) ← cca2d5d(팝오버 z) ← 489ade6 ← 1030444(API 후속 3건, VPS LIVE) ← c03b2c2(P1-4 복원 UI), 워킹트리 클린(`.tmp-verify-combos/`·docs/*.html untracked 무시). ⚠️ 8/14 RESUME 문서의 타 세션 미커밋 수정분(+35줄 docs-only)이 `git commit -am` 실수로 **5ed8082 에 함께 커밋·push 됨** — 내용 손실 없음(master 보존), 이력 재작성 안 함
 - **이번 세션 LIVE**: API `1030444`(versions 후속 3건, VPS 재빌드+nginx 재시작, dist 실증)·editor `c03b2c2`(P1-4 복원 UI, Vercel izpr4d777 번들 실증)·`4733b3e`(R5 정밀화)·`c8aeac3`/`5ed8082`(로드 프로파일러)·`c704e77`(RAF 무한대기 수정) = Vercel 자동배포·번들 실증 / API `a4887f1`(P1-4 버전 스냅샷) = 마이그레이션 `20260822_add_file_edit_session_versions.sql` 적용 후 VPS 재빌드+nginx 재시작, health 200·신규 라우트 fail-closed 확인
 - 배포: editor/admin=Vercel master push 자동(단 **docs-only 커밋은 ignoreCommand로 Canceled 표시됨 — 정상**), API/워커=VPS 수동(`CLAUDE.local.md` §6). 프로덕션 editor alias=746d182 빌드 실측 확인(8/21)
 - 최근 라이브 커밋: `746d182`(+페이지 추가 즉시표시) ← `ab4b794`(왕복 R1~R7) ← `c5c9525`(동화책 4결함) ← `f8d0684`(시드 n장·교체 풀·G9)
@@ -15,7 +15,8 @@
 - 레시피(재사용): `scratchpad/shop_token.py`(ShareSnap dev 키→shop-session, memberSeqno 990001/order 990823) → `/embed?templateSetId=6563895e(동화책 국배판 하드커버+내지펼침면)&token&refreshToken&orderSeqno&mode=both&pageCount=16` → 텍스트 1개 추가→자동저장(canvasData 9장) → curl `PATCH canvasData[:5]`(R2 절단 재현, 서버 shrink 스냅샷 즉시) → `/embed?sessionId=…` 재진입
 - **실측**: 재진입 5장(절단본) → 🕘 변경 이력 → `페이지 감소 직전 · 9장 → 이후 5장으로 줄어듦` [복원] → 확인 카드 → [여기로 복원] → 로딩 ≈1.1s → **캔버스 9장 복귀 ≈2.2s**, 완료 시점에 성공 토스트, 팝오버 닫힘, 헤더 저장됨. 서버 canvasData 9장 + 이력 `restore 5→9` 추가. **ⓒ dedup 실증**: 현재와 동일한 shrink 시점 재복원 → 버전 수 2 유지(스냅샷 미생성). 모바일 375px 팝오버 2행·배지·각주 정상
 - **실기 발견→수정 LIVE**: `cca2d5d` 변경 이력 팝오버가 좌측 ToolBar(z-101) 아래 가려짐(기본 z-50·align=end 가 왼쪽 전개) → align=start + z-[150] / `a40ad66` 375px 헤더 nav 396px 넘침으로 '편집완료' 21px 잘림(기존 결함: 워드마크 시절 ≈418px) → 중앙 제목 입력 `min-w-0`+`w-full`·좌우 그룹 `shrink-0` → nav 375 정합, 편집완료 완전 노출(index-Db3QLBhX 실측)
-- 정리: 프로브 세션 588aed3a softDelete(GET 404), 토큰 파일 삭제. 관찰(미수정): 재진입 직후 "마지막 자동저장: 없음"(lastSavedAt 세션 내 한정 — 기존), 텍스트 패널 "다른 영역으로 이동" 라벨 전부 "표지(펼침면)"(8/22 관찰 재확인)
+- 정리: 프로브 세션 588aed3a·(990824 분) softDelete, 토큰 파일 삭제. 관찰(미수정): 재진입 직후 "마지막 자동저장: 없음"(lastSavedAt 세션 내 한정 — 기존)
+- **`157ff6d` "다른 영역으로 이동" 라벨 버그 수정 LIVE**: 원인 = 펼침면 내지도 `templateType=SPREAD`(useEditorContents 시드)인데 `buildPageMeta` 가 모든 SPREAD 를 표지로 분류 → 내지 8장이 "표지(펼침면)" 표지 그룹이 되어 MoveToCoverRegion(텍스트/객체 패널)이 내지를 표지 영역으로 나열. 수정 = 첫 SPREAD 만 표지(표지 슬롯 있을 때), 이후 SPREAD 는 `펼침면 n`(isCover=false); MoveToCoverRegion·CoverFocusBar 에 `hasCoverSlot && regionScope!=='inner'` 주입. 분리형 표지(COVER/SPINE/COVER) 라벨 회귀 가드 테스트 포함(buildPageMeta.test.ts 4건, editor 735 PASS). 라이브: 동화책 세트 텍스트 패널에서 블록 비노출 확인(index-rEyxm5c9)
 
 ## 1-C. 8/23 — P1-4 API 후속 3건 `1030444` **VPS LIVE** + 편집기 게이팅 정합
 
@@ -66,7 +67,7 @@
 **P1 — 코드 후속**
 3. ~~R5 판별 정밀화~~ ✅ 8/22 LIVE(4733b3e)
 4. ~~서버측 세션 버전 이력~~ ✅ API a4887f1 + 편집기 복원 UI c03b2c2(§1-B) + API 후속 3건 1030444(§1-C) + **실기 왕복 PASS(§1-D)**. 트랙 종결. 후속(선택): findOne/PATCH siteId 격리 확장(오너 결정)·admin 세션 상세의 이력 뷰·shrink 발생 시 Sentry/운영 알림·보관함 이어서편집 시 shrink 이력 있으면 배너
-5. ~~재진입 30s+~~ ✅ 8/22 원인(RAF 무한대기) 수정 LIVE(c704e77), 프로파일러 상시. 후속: 오너 실기에서 `window.__storigeLoadProfile`/Sentry `[load-profile]` 확인, 시드 addInnerPage ≈390ms/장 최적화(템플릿 로드·스크린샷 debounce 검토), 텍스트 패널 영역 라벨 버그
+5. ~~재진입 30s+~~ ✅ 8/22 원인(RAF 무한대기) 수정 LIVE(c704e77), 프로파일러 상시. 후속: 오너 실기에서 `window.__storigeLoadProfile`/Sentry `[load-profile]` 확인, 시드 addInnerPage ≈390ms/장 최적화(템플릿 로드·스크린샷 debounce 검토). ~~텍스트 패널 영역 라벨 버그~~ ✅ 157ff6d
 6. 부수효과 관찰 2건: photoPlacement dpi 72→150 경고 강화 / px 상품 추가페이지 pxToMm 분기 첫 활성
 7. lint no-undef 베이스라인(editor 4·canvas-core 11) + canvas-core 테스트 ABI 실패 6파일 정리
 
