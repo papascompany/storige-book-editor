@@ -452,3 +452,83 @@ describe('autofillPhotosIntoFrames — 혼합 입력 4모드 라운드트립', (
     expect(srcOf('f3')).toBe('https://s/c.jpg')
   })
 })
+
+// ────────────────────────────────────────────────────────────────────────────
+// 저해상도 경고 × 캔버스 dpi 기준 (2026-08-18 부수효과 ①의 회귀 가드)
+//
+// 배경: addPage/addInnerPage 로 만들어진 캔버스는 종전 unitOptions 미주입이라
+//   canvas.unitOptions === undefined 였고, canvasDpi() 가 72(px=pt) 로 폴백했다.
+//   그 결과 mm 상품(캔버스 좌표 = 150dpi px)의 **내지 페이지**에서만
+//   effectiveDpi 가 실제의 72/150 = 0.48배로 산출돼,
+//     ⓐ 멀쩡한 사진에 저해상도 경고가 뜨고(오탐)
+//     ⓑ 토스트에 표시되는 "최저 NNNdpi" 숫자 자체가 2.08배 낮게 나왔다.
+//   c5c9525(8/18)의 unitOptions 주입으로 두 증상이 함께 사라진다 —
+//   즉 이 부수효과는 "경고 완화"가 아니라 **오탐 제거 + 표시값 교정**이다.
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('autofillPhotosIntoFrames — 저해상도 경고는 캔버스 dpi 를 따른다', () => {
+  /** 100mm 프레임의 캔버스 px = 100/25.4*150 ≈ 590px (mm 상품 좌표 규약: 150dpi px) */
+  const FRAME_150DPI_PX = 590
+  const loadImage1000 = async (url: string) => ({ width: 1000, height: 1000, src: url })
+  const onePhoto = [{ url: 'https://s/a.jpg', name: 'a.jpg' }]
+
+  const runOn = (unitOptions: any) =>
+    autofillPhotosIntoFrames(
+      [liveCanvas(
+        [{ id: 'f1', extensionType: 'frame', width: FRAME_150DPI_PX, height: FRAME_150DPI_PX }],
+        unitOptions,
+      )],
+      onePhoto,
+      { fillFrame: fakeFillFrame, loadImage: loadImage1000, imagePlugin: {} },
+    )
+
+  it('mm/150 캔버스: 1000px 사진 / 100mm 프레임 = 254dpi → 경고 없음', async () => {
+    const result = await runOn({ unit: 'mm', dpi: 150 })
+    expect(result.filledCount).toBe(1)
+    expect(result.lowResWarnings).toHaveLength(0)
+  })
+
+  it('unitOptions 미주입(=8/18 이전 addPage 캔버스): 같은 사진이 122dpi 로 오탐 경고', async () => {
+    // 회귀 가드 — 이 케이스가 다시 "경고 없음"이 되면 폴백 의미가 바뀐 것이고,
+    // "경고 있음"으로 남아 있는 한 addPage 주입 누락은 즉시 이 차이로 드러난다.
+    const result = await runOn(undefined)
+    expect(result.lowResWarnings).toHaveLength(1)
+    expect(result.lowResWarnings[0].effectiveDpi).toBe(122) // 1000*72/590
+    expect(result.lowResWarnings[0].thresholdDpi).toBe(150)
+  })
+
+  it('px 상품 캔버스(unit=px): 현행 규약대로 72 기준 — 590 프레임은 122dpi 경고', async () => {
+    // ⚠️ 현행 동작의 고정일 뿐 "정답"의 고정은 아니다. PDF 내보내기 파이프라인
+    //   (ServicePlugin._createMultiPagePDF)은 px 캔버스 좌표를 pxToMm(x, settings.dpi) 로
+    //   환산한다 — 즉 px 좌표를 settings.dpi(보통 150) 기준으로 본다. 여기 72(pt) 기준과
+    //   서로 다르므로, px 상품에서 프레임 기능을 쓰게 되면 저해상도 경고가 dpi/72 배만큼
+    //   과다 산출된다. 현재 프레임(사진틀)은 mm 상품 전용이라 노출이 없다.
+    //   정합화 여부는 오너 결정 대기 — RESUME 2026-08-24 §2 ④ 참조.
+    const result = await runOn({ unit: 'px' })
+    expect(result.lowResWarnings).toHaveLength(1)
+    expect(result.lowResWarnings[0].effectiveDpi).toBe(122)
+  })
+
+  it('캔버스마다 자기 dpi 를 쓴다(혼재 시 첫 캔버스 기준으로 뭉뚱그리지 않음)', async () => {
+    const mmCanvas = liveCanvas(
+      [{ id: 'mm1', extensionType: 'frame', width: FRAME_150DPI_PX, height: FRAME_150DPI_PX }],
+      { unit: 'mm', dpi: 150 },
+    )
+    const legacyCanvas = liveCanvas(
+      [{ id: 'lg1', extensionType: 'frame', width: FRAME_150DPI_PX, height: FRAME_150DPI_PX }],
+      undefined,
+    )
+    const result = await autofillPhotosIntoFrames(
+      [mmCanvas, legacyCanvas],
+      [
+        { url: 'https://s/a.jpg', name: 'a.jpg' },
+        { url: 'https://s/b.jpg', name: 'b.jpg' },
+      ],
+      { fillFrame: fakeFillFrame, loadImage: loadImage1000, imagePlugin: {} },
+    )
+    expect(result.filledCount).toBe(2)
+    // mm 캔버스 쪽만 통과 → 경고는 legacy 캔버스 1건뿐
+    expect(result.lowResWarnings).toHaveLength(1)
+    expect(result.lowResWarnings[0].effectiveDpi).toBe(122)
+  })
+})
