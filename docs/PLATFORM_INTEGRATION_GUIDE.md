@@ -1,7 +1,7 @@
 # Storige 플랫폼 연동 가이드 (외부 파트너용)
 
 > **작성일:** 2026-06-20
-> **최종 갱신:** 2026-08-13 — `compose-mixed` 빈 입력 `400 EMPTY_COMPOSE_INPUT` 승격(3.4) · 세션 자동조립 `assembleFromSession` 신설(3.4.1) · `compose-mixed` body `siteId` 하드닝(검증된 shop-session 과 일치할 때만 채택, 그 외 `NULL` — 3.4)
+> **최종 갱신:** 2026-08-24 — `editor.saved` 가 `ok:false, error:'EDITOR_BUSY'` 를 응답할 수 있음(3.2 표 하단) · 세션 API 테넌트 격리 확장: 회원 세션 상세/수정/완료/삭제/버전/목록/보관함 전부 JWT `siteId` ↔ 세션 `siteId` 대조(1.5) · [이전 2026-08-13] `compose-mixed` 빈 입력 `400 EMPTY_COMPOSE_INPUT` 승격(3.4) · 세션 자동조립 `assembleFromSession` 신설(3.4.1) · `compose-mixed` body `siteId` 하드닝(3.4)
 > **대상:** 외부 파트너 개발자
 > **상태:** 배포용 정본
 
@@ -152,6 +152,14 @@ image/gif
 **테넌트 식별 = API 키만**
 - 테넌트는 **어떤 API 키가 매칭되었는지로만** 결정됩니다. Origin이나 별도 site 헤더는 테넌트 결정에 쓰이지 않습니다.
 - Origin↔키 결합(confused-deputy 방어)은 현재 없습니다. 파트너 키는 비-브라우저 컨텍스트에서 어디서든 동작합니다 → **키 비밀유지가 유일한 보안 경계입니다.**
+
+**세션 API 테넌트 격리 (2026-08-23 확장)**
+- `memberSeqno` 는 **사이트별 독립 번호공간**입니다(파트너 A 의 회원 123 ≠ 파트너 B 의 회원 123). 이제 회원 세션 라우트 전부가 shop-session JWT 의 `siteId` 와 세션의 `siteId` 를 대조합니다:
+  - `GET /api/edit-sessions/:id` · `PATCH /api/edit-sessions/:id` · `PATCH :id/complete` · `DELETE :id` · `GET|POST :id/versions[...]` — 타 사이트 세션이면 소유 여부와 무관하게 **`404 SESSION_NOT_FOUND`** (존재 은닉 — "없음"과 "남의 것"이 같은 응답).
+  - `GET /api/edit-sessions`(orderSeqno/memberSeqno 조회) · `GET /api/edit-sessions/my`(편집보관함) — 타 사이트 세션은 **조용히 목록에서 제외**됩니다(에러 없음, `total` 도 제외 후 값).
+- 통과 조건: JWT 에 `siteId` 가 없거나(레거시 토큰) 세션에 `siteId` 가 없으면(구 데이터) 기존 동작 그대로 통과합니다. Storige 운영자(admin/manager)와 내부 워커는 전 테넌트 예외입니다.
+- **실무 영향**: 한 회원의 세션은 **그 세션을 만든 사이트의 shop-session JWT 로만** 보이고 수정됩니다. 한 파트너가 여러 Site 를 발급받아 운영하는 경우, 서로 다른 Site 의 JWT 로는 상대 Site 에서 만든 세션의 재편집·보관함 노출·합성 준비가 되지 않습니다 — 같은 회원 풀을 공유하려면 Site 를 하나로 쓰세요. 재편집이 갑자기 `404` 가 나거나 보관함이 비면, 진입 JWT 를 발급한 API 키의 Site 와 세션 생성 시점의 Site 가 같은지부터 확인하세요(서버 로그에 `[tenant-scope]` 경고가 남습니다).
+- 참고: 게스트 세션 저장(`guest/:id` + `guestToken`)·`compose-mixed`(3.4)·`/external`(X-API-Key) 경로는 각자의 기존 격리 규칙 그대로이며 이번 확장의 영향이 없습니다.
 
 **CORS / allowedOrigins (브라우저 한정, 테넌트 경계와 별개)**
 - 결정 순서: (a) Origin 없음(curl/서버간) → **무조건 허용**; (b) 정적 env `CORS_ORIGIN`/localhost → 허용; (c) `*.vercel.app` / `*.papascompany.co.kr` 정규식 → 허용; (d) DB의 활성 사이트 `allowed_origins` 합집합(60초 캐시) → 허용; 그 외 차단+로깅.
@@ -806,6 +814,7 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 
 > **발신 8종(`ready`/`save`/`complete`/`cancel`/`error`/`needAuth`/`state`/`saved`)이 동결 계약**이고, **`editor.pricingChange`·`editor.contentPdfAttached` 2종은 ADDITIVE**입니다 — 조건부 발신(아래 발신 조건 참조)이라 동결 표면에 포함되지 않습니다. 수신 명령은 위 3종이 전부이며, 확장은 additive(추가만)로만 이뤄집니다.
 > **응답 유형을 구분하세요.** `setBackGuard` 는 응답이 없으므로 세 명령을 일괄 Promise 로 감싸면 이 명령만 영원히 pending 상태가 됩니다.
+> ⚠️ **`editor.saved` 는 `ok:false` 일 수 있습니다 (2026-08-23).** 편집기가 초기화/재초기화 중(진입 로딩, 고객이 "변경 이력 → 여기로 복원"을 실행한 직후의 캔버스 재구성 구간)에 `saveNow` 를 받으면 저장을 **거부**하고 `{requestId, ok:false, error:'EDITOR_BUSY'}` 로 응답합니다 — 이 창에 저장하면 미완성 캔버스가 서버 작업물을 덮어쓰기 때문입니다. 호스트는 `ok` 를 반드시 분기하고, `EDITOR_BUSY` 면 잠시 후(1~3초) 재시도하거나 이탈 플로우를 그대로 진행하세요(직전 자동저장본은 서버에 안전). 종전에는 이 창에서도 `ok:true` 가 왔으므로, `ok` 를 무시하던 수신기는 동작이 달라지지 않지만 저장 확인 후 이탈하는 수신기는 재시도 처리가 필요합니다.
 
 > **`editor.complete` 페이로드 구조 주의:** `coverFileId`·`contentFileId`·`thumbnailUrl` 은 최상위가 아니라 **`files` 객체 안에 중첩**되고, `pages` 는 **`{initial, final}` 객체**입니다. 이 shape 은 **동결 계약**이라 평탄화되지 않습니다 — `payload.coverFileId` 를 읽는 파서는 항상 `undefined` 를 얻고, `pages` 를 숫자로 가정하면 그대로 깨집니다.
 > **페이지/규격 정합 (2026-07-04 additive):** `pages.final`·`pageCount` = 편집 완료 시점 실측 페이지 수(포토북 내지 펼침면은 ×2 물리페이지). `size` = 완료 시점 캔버스 규격(mm, 감사/정합 검증용 — 규격의 권위는 상품 옵션이며 embed 편집기에서는 규격 변경 UI 가 잠겨 있음). **파트너 장바구니는 `pageCount` 가 주문 옵션 페이지수와 다르면 가격을 재계산하고 고객에게 고지해야 합니다** — 결제 시점 서버 재계산에서도 동일 정합 검증 권장.
@@ -1154,6 +1163,8 @@ curl -X POST "https://api.papascompany.co.kr/api/worker-jobs/compose-mixed" \
 - [ ] `/embed` 라우트 사용 (루트 `/` 는 레거시 — 완료 메시지 미발신)
 - [ ] 리스너에서 `e.origin` + `source==='storige-editor'` 검증
 - [ ] 401 시 `/api/auth/shop-refresh-body {refreshToken}` 로 토큰 갱신 (cross-origin이라 body 변형 사용)
+- [ ] `saveNow` 역명령을 쓴다면 `editor.saved` 의 **`ok` 분기** — `ok:false, error:'EDITOR_BUSY'` 면 잠시 후 재시도 (3.2)
+- [ ] 재편집·보관함은 **세션을 만든 Site 의 JWT** 로만 접근됨 — 다중 Site 운영 시 세션 공유 불가, 예기치 않은 `404`/빈 목록이면 키↔Site 대조 (1.5 세션 API 테넌트 격리)
 - [ ] `editor.complete` 의 `sessionId` 저장 (재편집 키), `files`/`pages` 중첩 구조로 파싱
 - [ ] `editor.complete` 수신 시 **`needsAuth` 를 먼저 확인** — `true`(또는 `guestToken` 존재)면 주문/승격 금지, 로그인 유도로 분기 (`editor.needAuth` 를 기다리지 않는다)
 - [ ] 합성은 `compose-mixed` 명시적 트리거(무인증 — editSessionId 비밀유지), 스프레드=2파일 처리
