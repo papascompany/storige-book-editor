@@ -1245,11 +1245,15 @@ function EmbeddedEditor({
             }
             if (deficit > 0 && preState.isSpreadMode) {
               console.warn(`[EmbeddedEditor] 복원 캔버스 부족 ${deficit}장 — 내지 증설 후 전량 복원`)
-              for (let k = 0; k < deficit; k++) {
-                const lapEnd = loadProfile.lapStart('restore:grow')
-                await useAppStore.getState().addInnerPage()
-                lapEnd()
-              }
+              // 썸네일 캡처는 구간 종료 후 1회로 접는다 — 증설 1장이 썸네일 debounce(200ms)보다
+              // 오래 걸려서, 감싸지 않으면 매 장마다 전 캔버스 재캡처가 돌아 O(N²) 가 된다.
+              await useAppStore.getState().runBulkPageOps(async () => {
+                for (let k = 0; k < deficit; k++) {
+                  const lapEnd = loadProfile.lapStart('restore:grow')
+                  await useAppStore.getState().addInnerPage()
+                  lapEnd()
+                }
+              })
               // addInnerPage 는 새 페이지로 전환하므로 첫 페이지(표지/첫 펼침면)로 복귀.
               useAppStore.getState().setPage(0)
             }

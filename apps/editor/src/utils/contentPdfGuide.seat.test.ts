@@ -103,6 +103,9 @@ const appState = {
   addInnerPage: vi.fn(),
   addPage: vi.fn(),
   setPage: vi.fn(),
+  // 실제 스토어의 대량 구간 래퍼 — 여기서는 썸네일 배칭 부수효과 없이 그대로 실행한다.
+  // (seatContentPdf 의 증설 루프가 이 래퍼를 경유하므로 fake 에도 있어야 한다.)
+  runBulkPageOps: vi.fn(async <T,>(fn: () => Promise<T>) => await fn()),
 }
 const settingsState = {
   spreadConfig: { regionScope: 'cover' } as {

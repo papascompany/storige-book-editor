@@ -384,15 +384,18 @@ export async function ensureUnderlayPages(pageCount?: number | null): Promise<nu
     if (state.isSpreadMode) await state.addInnerPage()
     else await state.addPage()
   }
-  for (let guard = 0; inner < needed && guard < UNDERLAY_MAX_PAGES; guard++) {
-    await grow()
-    const next = Math.max(0, useAppStore.getState().allCanvas.length - seat.innerStart)
-    if (next <= inner) {
-      console.warn('[contentPdfGuide] 페이지를 늘리지 못함 — 확장 중단', { inner, needed })
-      break
+  // 증설 구간의 썸네일 캡처는 종료 후 1회로 접는다(embed 재진입 시드와 동일 사유 — O(N²) 방지).
+  await app.runBulkPageOps(async () => {
+    for (let guard = 0; inner < needed && guard < UNDERLAY_MAX_PAGES; guard++) {
+      await grow()
+      const next = Math.max(0, useAppStore.getState().allCanvas.length - seat.innerStart)
+      if (next <= inner) {
+        console.warn('[contentPdfGuide] 페이지를 늘리지 못함 — 확장 중단', { inner, needed })
+        break
+      }
+      inner = next
     }
-    inner = next
-  }
+  })
   return Math.max(0, inner - before)
 }
 

@@ -140,6 +140,19 @@ interface AppActions {
   // P2: options 로 포맷/해상도(jpg·72dpi 등) 추가 지정 가능 (기본 png/320px = 기존 비파괴).
   takeCanvasScreenshot: (changedIndex?: number, options?: ThumbnailFormatOptions) => void
 
+  /**
+   * 대량 페이지 생성/삭제를 한 덩어리로 감싼다 — 구간 내 썸네일 캡처를 미루고 종료 시 1회만 캡처.
+   *
+   * 왜 필요한가(2026-08-24 §2 ⑤): 썸네일 debounce 는 200ms 인데 addPage 1회가 그보다 오래
+   * 걸린다(재진입 시드 실측 ≈390ms/장). 그래서 루프 매 반복마다 debounce 가 만료돼 그 시점까지의
+   * **전 캔버스**를 재캡처했다(takeCanvasScreenshot() 무인자 = 'all'). N장 증설이면 toDataURL
+   * 호출이 1+2+…+N = O(N²) 회. 9장이면 45회다.
+   *
+   * 반드시 이 래퍼로 감싼다(try/finally 내장) — 수동 begin/end 는 예외 경로에서 썸네일이
+   * 영구 정지될 수 있다.
+   */
+  runBulkPageOps: <T>(fn: () => Promise<T>) => Promise<T>
+
   // 렌더링
   render: (immediate?: boolean) => void
   debouncedRender: () => void
@@ -258,6 +271,11 @@ let screenshotFormatOptions: Required<ThumbnailFormatOptions> = {
 // 인덱스가 이동하는 경우). 변경 발생 캔버스만 재캡처해 100p 문서에서
 // 편집 1회당 toDataURL 100회 → 1회로 줄인다.
 let pendingScreenshotIndices: Set<number> | 'all' = 'all'
+
+// >0 이면 썸네일 캡처를 예약하지 않고 dirty 집합만 누적한다(runBulkPageOps 구간).
+// 카운터인 이유: 중첩 호출(내지 PDF 확장 안에서 또 증설)에도 안쪽 종료가 바깥 구간을
+// 조기 해제하지 않게 하기 위함.
+let bulkPageOpDepth = 0
 
 const debouncedTakeScreenshot = debounce((allCanvas: any[], set: any, get: any) => {
   // 캔버스가 유효한지 확인
@@ -480,6 +498,8 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
 
     // 다음 세션 첫 캡처는 전체 재캡처
     pendingScreenshotIndices = 'all'
+    // 대량 구간 카운터도 초기화 — 예외로 종료된 세션이 다음 세션의 썸네일을 정지시키지 않게.
+    bulkPageOpDepth = 0
 
     // 타이머 정리
     if (debounceTimer) {
@@ -731,16 +751,27 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
 
       console.log(`새 페이지 추가됨: ${canvasId}`)
 
-      // 내지 추가 시 책등 너비 재계산
-      recalculateSpineWidth().then((result) => {
-        if (result.success) {
-          console.log(`[AppStore] 책등 너비 재계산 완료: ${result.spineWidth}mm (내지 ${result.pageCount}p)`)
-        } else if (result.error) {
-          console.warn(`[AppStore] 책등 재계산 스킵: ${result.error}`)
-        }
-      }).catch((error) => {
-        console.error('[AppStore] 책등 재계산 오류:', error)
-      })
+      // 내지 추가 시 책등 너비 재계산.
+      // 스프레드 모드는 **반드시 debouncedRecalcSpine 경유** — 여기서 직접 부르면
+      // 재진입 시드(embed 복원의 restore:grow 루프)가 페이지마다 책등 API 왕복 +
+      // 표지 캔버스 resizeSpine 을 발사한다(9장 = 9회). debounce(300ms)+AbortController 가
+      // 그걸 마지막 1회로 접는다. 또 직접 호출분은 abort 대상이 아니라서, 늦게 도착한
+      // 중간 pageCount 응답이 최종 응답보다 나중에 resizeSpine 을 덮어쓸 여지도 있었다
+      // (경합 — 최종 책등 폭이 스테일 페이지 수로 확정될 수 있음).
+      // 비스프레드(일반 책)는 debouncedRecalcSpine 이 즉시 return 하므로 직접 호출 유지.
+      if (get().isSpreadMode) {
+        get().debouncedRecalcSpine()
+      } else {
+        recalculateSpineWidth().then((result) => {
+          if (result.success) {
+            console.log(`[AppStore] 책등 너비 재계산 완료: ${result.spineWidth}mm (내지 ${result.pageCount}p)`)
+          } else if (result.error) {
+            console.warn(`[AppStore] 책등 재계산 스킵: ${result.error}`)
+          }
+        }).catch((error) => {
+          console.error('[AppStore] 책등 재계산 오류:', error)
+        })
+      }
     } catch (error) {
       console.error('새 페이지 추가 중 오류:', error)
     }
@@ -1332,7 +1363,26 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
     } else if (typeof changedIndex !== 'number' || changedIndex < 0) {
       pendingScreenshotIndices = 'all'
     }
+    // 대량 구간에서는 예약하지 않는다 — dirty 는 위에서 이미 누적됐고,
+    // runBulkPageOps 종료 시 'all' 로 한 번만 캡처한다.
+    if (bulkPageOpDepth > 0) {
+      debouncedTakeScreenshot.cancel()
+      return
+    }
     debouncedTakeScreenshot(allCanvas, set, get)
+  },
+
+  runBulkPageOps: async <T,>(fn: () => Promise<T>): Promise<T> => {
+    bulkPageOpDepth++
+    try {
+      return await fn()
+    } finally {
+      bulkPageOpDepth = Math.max(0, bulkPageOpDepth - 1)
+      if (bulkPageOpDepth === 0) {
+        // 인덱스가 이동했을 수 있으므로 전체 재캡처 1회.
+        get().takeCanvasScreenshot()
+      }
+    }
   },
 
   // 렌더링
