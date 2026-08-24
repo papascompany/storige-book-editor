@@ -134,6 +134,11 @@ export default [
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' }],
       'no-unused-vars': 'off',
+      // TS 파일에서 core no-undef 는 끈다 — typescript-eslint 공식 권고.
+      // 미정의 식별자는 tsc 가 이미 TS2304 로 잡고, 이 룰은 lib.dom 전역을 languageOptions.globals
+      // 에 **손으로 열거**해야만 통과한다. 열거가 빠진 전역(performance·Storage 등)이 곧 오탐이 되고,
+      // 그 오탐이 "베이스라인 4건"으로 굳어 lint 게이트를 무력화한 게 2026-08-18~24 상태였다.
+      'no-undef': 'off',
       'react/react-in-jsx-scope': 'off',
       'react/prop-types': 'off',
       'react-hooks/rules-of-hooks': 'warn',

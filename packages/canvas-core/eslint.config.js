@@ -140,6 +140,12 @@ module.exports = [
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' }],
       'no-unused-vars': 'off',
+      // TS 파일에서 core no-undef 는 끈다 — typescript-eslint 공식 권고.
+      // 미정의 식별자는 tsc 가 이미 TS2304 로 잡는다. 반면 이 룰은 lib.dom 전역을 위
+      // globals 목록에 **손으로 열거**해야만 통과하고, 앰비언트 선언(types/fabric.d.ts 의
+      // Transform·IEvent 등 declare 내부 타입)은 열거로도 통과시킬 수 없다. 그 결과가
+      // "베이스라인 28건"이었고 lint 게이트가 사실상 꺼져 있었다(2026-08-24 정리).
+      'no-undef': 'off',
       'no-async-promise-executor': 'off',
       'no-unexpected-multiline': 'off',
     },
