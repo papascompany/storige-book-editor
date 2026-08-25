@@ -121,9 +121,27 @@ jobs:
         run: pnpm --filter @storige/worker test
 
       - name: canvas-core 타입체크 + 테스트 (ServicePlugin.pdf 카나리 포함)
+        # ⚠️ 이 스텝은 node-canvas 가 실제로 로드돼야 의미가 있다. 위 '시스템 의존성' 스텝이
+        #    소스 빌드 재료(cairo/pango/jpeg/gif/rsvg/pixman)를 깔아 두는 이유가 이것이다.
+        #    canvas 로드가 실패하면 테스트가 '실패'하는 게 아니라 **수집이 줄어든다** —
+        #    실측(2026-08-25) 정상 623 tests/54 files 가 파손 시 551 tests 만 수집되고
+        #    "6 files failed" 로만 보였다(72건이 실패도 스킵도 아닌 부재). 그 상태가 여러
+        #    스프린트 동안 "기존 베이스라인 실패 6파일(ABI)" 로 인계돼 회귀 판정에서
+        #    제외되고 있었다. vitest.setup.ts 프리플라이트가 이제 그 경우 하드 실패시킨다.
         run: |
           pnpm --filter @storige/canvas-core typecheck
           pnpm --filter @storige/canvas-core test
+
+      # 2026-08-25 게이트 신설 — 종전 CI 에 canvas-core lint 부재(no-undef 28err 가
+      # "베이스라인"으로 굳어 있었고, 게이트가 없으니 아무도 깨지지 않았다). 오탐 근본
+      # 제거(bf8ab1d)로 0err 가 된 시점에 등재해 재발을 막는다. api lint 스텝과 짝.
+      #
+      # ⚠️ lint 스크립트는 `eslint .` 다 — `eslint src` 가 아니다. 해소한 28건 중 20건이
+      #    types/fabric.d.ts 에 있었는데 src 범위로는 그 파일이 게이트 밖에 남는다.
+      #    (dist/node_modules/*.js 는 eslint.config.js 의 ignores 가 제외한다.)
+      #    경고 48건은 기존치라 게이트 대상이 아니다 — 실패는 error 에서만 난다.
+      - name: canvas-core lint
+        run: pnpm --filter @storige/canvas-core lint
 
       - name: editor 타입체크 + 테스트 (감사 §8 ⑤ — CI 커버리지 공백 해소)
         # ⚠️ canvas-core **build 선행 필수** — editor 의 tsconfig references 는 tsconfig.node.json
