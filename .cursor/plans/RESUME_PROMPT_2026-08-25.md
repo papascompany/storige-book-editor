@@ -51,11 +51,27 @@ PKG_CONFIG_PATH="$(brew --prefix)/lib/pkgconfig:$(brew --prefix jpeg-turbo)/lib/
 
 회귀 가드 4건 추가(`photoPlacement.test.ts`): mm/150 254dpi→무경고 / unitOptions 미주입은 같은 사진이 122dpi 오탐(주입 누락 즉시 검출) / px 캔버스 현행 규약 / 캔버스별 자기 dpi 사용.
 
-**신규 관찰(오너 결정 대기)**: px 상품에서 두 규약이 어긋난다 — `photoPlacement.canvasDpi` 는 px 좌표를 **72dpi(pt)** 로 보는데, `ServicePlugin._createMultiPagePDF` 는 `pxToMm(x, settings.dpi)` 로 본다(보통 150). 어긋난 배율만큼 저해상도 경고가 과다 산출된다. **현재 사진틀(frame)은 mm 상품 전용이라 실노출 0** — 정합화 여부는 결정 사항.
+**신규 관찰 → 프로덕션 DB 조회로 종결(2026-08-25)**: 코드상 px 상품에서 두 규약이 어긋난다 — `photoPlacement.canvasDpi` 는 px 좌표를 **72dpi(pt)** 로 보는데, `ServicePlugin._createMultiPagePDF` 는 `pxToMm(x, settings.dpi)` 로 본다(보통 150). 어긋난 배율만큼 저해상도 경고가 과다 산출된다.
+
+**판정: 프로덕션에 px 단위 상품 0건 = 실노출 없음. 정합화 불요.** 근거(전수):
+
+| 경로 | 결과 |
+|---|---|
+| `products.template.editorPreset.settings.unit` — 편집기가 `unit` 을 읽는 **유일한 DB 소스**(`useSettingsStore:533`) | 상품 5건 전부 `template` 자체가 NULL → unit 0건 |
+| `format_presets`(7) | **스키마가 mm 전용**(`trim_width_mm`/`trim_height_mm`) — px 가 구조적으로 불가 |
+| `sites.default_unit`(10) | 전부 `mm`. 타입 도메인도 `'mm'\|'inch'` 라 px 는 값 자체가 없음 |
+| `templates`(71)·`template_sets`(43) | unit 경로 없음 + 원문 `unit…px` 0건 |
+| `file_edit_sessions`(106)·`editor_designs`(1) | `canvas_data`/`metadata` 0건 |
+
+⚠️ **조회 함정**: `canvas_data` 에는 `mm` 도 0건이라 그 컬럼 스캔만으로는 판단할 수 없다 — `unitOptions` 는 런타임 캔버스 속성이라 **직렬화되지 않는다**. 판정 근거는 canvas_data 가 아니라 위 설정 소스 테이블들이다. (`file_edit_sessions` 에서 `unit` 이 걸린 1건은 base64 문자열의 우연한 일치 `…ahLunitpJp…` — 필드가 아니다.)
+
+코드 측 교차 확인: 라이브 연동 경로 `/embed` 의 공개 타입이 `size: { width, height, unit: 'mm' }` **리터럴 고정**이고, templateSet 흐름(`useEditorContents:1145·1624`)과 USE_CASE_CONFIGS 4종 기본값도 전부 `'mm'`. px 캔버스는 레거시 `/` 라우트에서 `products.template.editorPreset` 이 채워진 경우에만 발생하는데 그 데이터가 없다.
+
+**향후 조건부 재개**: px 단위 상품을 도입하면 **사진틀(frame) 기능을 열기 전에** 두 규약을 맞출 것. 이 조건은 `photoPlacement.test.ts` 의 px 케이스 주석에 기록돼 있다.
 
 ### ④ 부수효과 ② pxToMm 분기 — 코드 대조로 정합 확인, 코드 변경 불요
 
-`ServicePlugin` 의 px 분기 3곳(콘텐츠 `L748` / 칼선 페이지 `L1603` / 효과 페이지 `L1785·L1798`)은 모두 `bound`=상품 `size`(캔버스 단위) 를 `pdf`(항상 mm 단위)로 환산한다. 주입 이전에는 **추가 페이지 캔버스만** `unitOptions` 가 없어 else 분기(=값을 mm 로 간주)를 탔다 → px 상품의 효과/칼선 페이지가 `size.width` px 를 그대로 mm 페이지 크기로 잡는 결함이 잠복했다. 주입으로 페이지 0 과 추가 페이지가 **동일 기준**이 됐다 = 결함 해소 방향. 라이브 노출 여부는 px 단위 상품 존재 여부에 달렸고, 이는 프로덕션 DB 1회 조회로만 확정된다(**권한무시 모드 필요 — 아래 §2**).
+`ServicePlugin` 의 px 분기 3곳(콘텐츠 `L748` / 칼선 페이지 `L1603` / 효과 페이지 `L1785·L1798`)은 모두 `bound`=상품 `size`(캔버스 단위) 를 `pdf`(항상 mm 단위)로 환산한다. 주입 이전에는 **추가 페이지 캔버스만** `unitOptions` 가 없어 else 분기(=값을 mm 로 간주)를 탔다 → px 상품의 효과/칼선 페이지가 `size.width` px 를 그대로 mm 페이지 크기로 잡는 결함이 잠복했다. 주입으로 페이지 0 과 추가 페이지가 **동일 기준**이 됐다 = 결함 해소 방향. 라이브 노출 여부는 px 단위 상품 존재 여부에 달렸는데, **조회 결과 0건이라 이 잠복 결함은 실제로 발현된 적이 없다**(위 ④ 표).
 
 ### ⑤ 재진입 시드 성능 — 페이지당 낭비 2종 제거 (3ddce60)
 
@@ -77,19 +93,18 @@ PKG_CONFIG_PATH="$(brew --prefix)/lib/pkgconfig:$(brew --prefix jpeg-turbo)/lib/
 3. bookmoa 장바구니 #1 "그림책·동화책 하드커버(A4)" 테스트 항목 삭제(8/21 부산물)
 
 **P1 — 코드 후속(다음 세션 착수 순서)**
-4. **px 단위 상품 실재 여부 1회 조회**(권한무시 모드) — `print_templates`/프리셋에 `unit='px'` 가 있는지. 있으면 ④의 두 dpi 규약 불일치가 실노출이 되므로 정합화 결정, 없으면 ④ 관찰 종결
-5. 재진입 시드 잔여 비용 실측 후 2차 최적화 판단(위 ⑤ "남은 계측")
-6. (관찰) 재진입 직후 "마지막 자동저장: 없음" 표기(lastSavedAt 세션 내 한정 — 기존 동작, UX 판단)
-7. (제안, 미실행) CI 에 canvas-core lint 스텝 부재 — 이번에 0err 가 됐으므로 지금이 게이트 등재 적기. api eslint 설정도 같은 "globals 손열거" 구조라 동일 오탐이 재발할 수 있다(현재는 열거가 맞아 0err)
+4. 재진입 시드 잔여 비용 실측 후 2차 최적화 판단(위 ⑤ "남은 계측")
+5. (관찰) 재진입 직후 "마지막 자동저장: 없음" 표기(lastSavedAt 세션 내 한정 — 기존 동작, UX 판단)
+6. (제안, 미실행) CI 에 canvas-core lint 스텝 부재 — 이번에 0err 가 됐으므로 지금이 게이트 등재 적기. api eslint 설정도 같은 "globals 손열거" 구조라 동일 오탐이 재발할 수 있다(현재는 열거가 맞아 0err)
 
 **P2 — 기존 백로그(트랙별 정본 참조)**
-8. 업계표준 R6·R10·R3b(RESUME 08-11) / R5 다크 ON=오너게이트
-9. 파일 보존 P1(고아정리·per-product)·P2(스트리밍 검증) — 고아 파일 6건 실증분 존재
-10. 멀티테넌시 P3b(SITE_ADMIN @Roles·TenantGuard·테넌트 스위처, 설계 06-17)
-11. 포토북 S2 삭제모달 설계결정 / 사진인화 POD MVP(설계 06-17, 오너 게이트)
-12. ⓑstage1b 프론트 쿠키 전환·Bull attempts·BQ-03·ⓒ게이트B 히스토리 정화 force-push(오너)
+7. 업계표준 R6·R10·R3b(RESUME 08-11) / R5 다크 ON=오너게이트
+8. 파일 보존 P1(고아정리·per-product)·P2(스트리밍 검증) — 고아 파일 6건 실증분 존재
+9. 멀티테넌시 P3b(SITE_ADMIN @Roles·TenantGuard·테넌트 스위처, 설계 06-17)
+10. 포토북 S2 삭제모달 설계결정 / 사진인화 POD MVP(설계 06-17, 오너 게이트)
+11. ⓑstage1b 프론트 쿠키 전환·Bull attempts·BQ-03·ⓒ게이트B 히스토리 정화 force-push(오너)
 
-**오너 결정 대기**: 동화책 caseBind 미설정(D-4 상이)·cover VALIDATE 경고(SPINE_PARAMS_UNRESOLVED·base14 폰트)·G-6 백필·branch protection·R2 프로비저닝·폰트 시딩(0건!)·px 상품 dpi 규약 정합화(§1 ④)
+**오너 결정 대기**: 동화책 caseBind 미설정(D-4 상이)·cover VALIDATE 경고(SPINE_PARAMS_UNRESOLVED·base14 폰트)·G-6 백필·branch protection·R2 프로비저닝·폰트 시딩(0건!)
 
 ## 3. 새 세션 시작 체크리스트 (순서 고정)
 
