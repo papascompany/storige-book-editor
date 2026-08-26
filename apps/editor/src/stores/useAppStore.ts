@@ -15,6 +15,7 @@ import Editor, {
 } from '@storige/canvas-core'
 import type { AppMenu } from '@/types/menu'
 import { recalculateSpineWidth } from '@/utils/spineCalculator'
+import { isRequestCancelled } from '@/api/spine'
 import { lap } from '@/utils/loadProfiler'
 import { syncCanvasContainerOrder } from '@/utils/innerPageReorder'
 import { bindPrintExcludeOverlay } from '@/utils/printExcludeOverlay'
@@ -1602,14 +1603,20 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
       const newController = new AbortController()
       set({ spineResizeAbortController: newController })
 
-      recalculateSpineWidth()
+      // 스토어 컨트롤러를 HTTP 까지 관통시킨다 — 종전에는 대기 중 setTimeout 만 막혀,
+      // 이미 발사된 요청은 계속 살아 있었다(spineApi.calculate 가 signal 미수신이었음).
+      recalculateSpineWidth({ signal: newController.signal })
         .then((result) => {
           if (result.success) {
             console.log(`[AppStore] 책등 너비 재계산 완료 (즉시): ${result.spineWidth}mm (내지 ${result.pageCount}p)`)
           }
         })
         .catch((error) => {
-          if (error.name !== 'AbortError') {
+          // axios 취소는 CanceledError(code='ERR_CANCELED') 라 'AbortError' 이름 비교로는
+          // 절대 걸러지지 않는다. 실제로는 recalculateSpineWidth 가 자체 try/catch 로
+          // 모든 에러를 반환값으로 바꾸므로 이 catch 는 API 에러를 보지 못하지만,
+          // 틀린 판별식을 남겨두면 다음 사람이 그대로 복사한다.
+          if (!isRequestCancelled(error)) {
             console.error('[AppStore] 책등 재계산 오류:', error)
           }
         })
@@ -1637,14 +1644,20 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
     setTimeout(() => {
       if (newController.signal.aborted) return
 
-      recalculateSpineWidth()
+      // 스토어 컨트롤러를 HTTP 까지 관통시킨다 — 종전에는 대기 중 setTimeout 만 막혀,
+      // 이미 발사된 요청은 계속 살아 있었다(spineApi.calculate 가 signal 미수신이었음).
+      recalculateSpineWidth({ signal: newController.signal })
         .then((result) => {
           if (result.success) {
             console.log(`[AppStore] 책등 너비 재계산 완료: ${result.spineWidth}mm (내지 ${result.pageCount}p)`)
           }
         })
         .catch((error) => {
-          if (error.name !== 'AbortError') {
+          // axios 취소는 CanceledError(code='ERR_CANCELED') 라 'AbortError' 이름 비교로는
+          // 절대 걸러지지 않는다. 실제로는 recalculateSpineWidth 가 자체 try/catch 로
+          // 모든 에러를 반환값으로 바꾸므로 이 catch 는 API 에러를 보지 못하지만,
+          // 틀린 판별식을 남겨두면 다음 사람이 그대로 복사한다.
+          if (!isRequestCancelled(error)) {
             console.error('[AppStore] 책등 재계산 오류:', error)
           }
         })

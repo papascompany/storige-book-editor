@@ -2,7 +2,7 @@
  * 책등 너비 동적 계산 유틸리티
  * 내지 수에 따라 책등 너비를 계산하고 캔버스에 적용합니다.
  */
-import { spineApi } from '@/api'
+import { spineApi, isRequestCancelled } from '@/api/spine'
 import { useAppStore } from '@/stores/useAppStore'
 import { useEditorStore } from '@/stores/useEditorStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
@@ -24,6 +24,8 @@ export interface RecalculateSpineOptions {
   paperType: string
   bindingType: string
   templateSetHeight?: number  // 템플릿셋 높이 (mm)
+  /** 호출자(useAppStore.spineResizeAbortController)의 취소를 HTTP 까지 전달한다. 옵셔널. */
+  signal?: AbortSignal
 }
 
 export interface RecalculateSpineResult {
@@ -34,6 +36,57 @@ export interface RecalculateSpineResult {
   error?: string
   /** 정상 스킵(예: flat-spread 책등 고정 가드) — error 문자열(실패)과 구분하기 위한 플래그 */
   skipped?: boolean
+  /**
+   * 더 최신 재계산이 발사돼 이 결과는 적용하지 않았다(경합 가드).
+   * `skipped`(종국적 no-op)와 의미가 다르므로 필드를 분리한다 — 이쪽은 '일시적 선점'이라
+   * 곧 최신 세대가 같은 자리에 값을 적용한다. `error` 는 설정하지 않는다(정상 흐름).
+   */
+  superseded?: boolean
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// 세대(generation) 가드 — 스테일 응답이 최신 응답을 덮어쓰는 경합을 막는다.
+//
+// 배경: 542fa18 의 runBulkPageOps 구간 게이트로 "재진입 증설 루프" 기인 다중 in-flight 는
+// 구조적으로 사라졌지만, 구간 밖 사용자 연타('+내지' 400~600ms 간격 + API 지연)는 여전히
+// 여러 요청을 동시에 띄운다. 늦게 도착한 구(舊) pageCount 응답이 최신 응답보다 나중에
+// 효과를 적용하면 최종 책등 폭이 스테일 값으로 확정된다.
+//
+// 왜 스토어가 아니라 이 모듈인가: 호출자 6곳 중 4곳(특히 deletePage — SpreadPagePanel 의
+// 삭제 UI 가 직접 부른다)이 useAppStore 의 AbortController 를 우회한다. 스토어에 두면
+// 그 4곳이 가드를 못 탄다.
+//
+// 왜 promise chain 직렬화가 아닌가: axios timeout 이 30s(api/client.ts)라 요청 1건이
+// 매달리면 이후 모든 재계산이 최대 30초 정지한다 — 더 드문 실패를 더 흔한 실패와
+// 맞바꾸는 셈. 이 가드는 직렬화가 아니라 "적용 시점 순서 판정"이라 그 정지가 없다.
+//
+// AbortSignal 은 이 가드의 **보완재**다: 취소는 '응답 도착 전'에만 듣고,
+// 도착 후 효과 적용 구간은 세대 비교만이 막을 수 있다. 둘 다 필요하다.
+let spineCalcGeneration = 0
+let spineCalcInFlight: AbortController | null = null
+
+/**
+ * 새 세대를 연다. **모든 조기 return 을 통과한 뒤**에 불러야 한다 —
+ * 함수 진입부에서 올리면 스킵된 호출이 살아있는 in-flight 를 무효화해
+ * "책등이 아예 적용되지 않음"이 된다.
+ *
+ * 이전 in-flight 는 이 시점에 구세대로 확정되므로(응답이 와도 아래 가드가 효과를 막는다)
+ * 소켓·서버 부하를 아끼려고 즉시 끊는다.
+ */
+function beginSpineCalcGeneration(external?: AbortSignal): { gen: number; signal: AbortSignal } {
+  spineCalcInFlight?.abort()
+  const controller = new AbortController()
+  spineCalcInFlight = controller
+  if (external) {
+    if (external.aborted) controller.abort()
+    else external.addEventListener('abort', () => controller.abort(), { once: true })
+  }
+  return { gen: ++spineCalcGeneration, signal: controller.signal }
+}
+
+/** 내가 발사한 뒤 더 새로운 재계산이 시작됐는가 — true 면 어떤 효과도 적용해선 안 된다. */
+function isSuperseded(gen: number): boolean {
+  return gen !== spineCalcGeneration
 }
 
 /**
@@ -181,13 +234,23 @@ export async function recalculateSpineWidth(
 
   console.log(`[SpineCalculator] 책등 너비 계산: pageCount=${pageCount}, paperType=${paperType}, bindingType=${bindingType}`)
 
+  // 조기 return(paperType 미설정 / spine 템플릿 없음)을 모두 통과한 뒤에만 세대를 연다.
+  const { gen: myGen, signal } = beginSpineCalcGeneration(options?.signal)
+
   try {
     // API로 책등 폭 계산
     const spineResult = await spineApi.calculate({
       pageCount,
       paperType,
       bindingType,
-    })
+    }, { signal })
+
+    // 가드 ①: 응답을 기다리는 사이 더 새로운 재계산이 발사됐다면 아무것도 적용하지 않는다.
+    // 이 await 경계가 이 경로에서 유일한 인터리브 지점이다 — 아래 workspace 변경·줌 조정은
+    // 전부 동기라 한 번의 검사로 효과 전체(202~254행)가 차단된다.
+    if (isSuperseded(myGen)) {
+      return { success: false, spineWidth: null, pageCount, warnings: [], superseded: true }
+    }
 
     console.log(`[SpineCalculator] 계산된 책등 너비: ${spineResult.spineWidth}mm`)
 
@@ -260,6 +323,12 @@ export async function recalculateSpineWidth(
       warnings: spineResult.warnings,
     }
   } catch (error) {
+    // 취소 = 더 새로운 재계산이 이 요청을 끊은 것이다. 에러가 아니므로 조용히 삼킨다.
+    // (axios 는 CanceledError 를 던진다 — name 이 'AbortError' 가 아니라서
+    //  이름 비교로는 절대 걸러지지 않는다. isRequestCancelled 참조.)
+    if (isRequestCancelled(error)) {
+      return { success: false, spineWidth: null, pageCount, warnings: [], superseded: true }
+    }
     console.error('[SpineCalculator] 책등 계산 오류:', error)
     return {
       success: false,
@@ -354,13 +423,23 @@ async function recalculateSpineWidthSpreadMode(
   console.log(`  - 용지: ${paperType}, 제본: ${bindingType}`)
   console.log(`  - 현재 책등 너비: ${currentSpineWidth}mm`)
 
+  // 조기 return(inner / flat-spread / 내지 0장)을 모두 통과한 뒤에만 세대를 연다.
+  // 두 경로가 하나의 카운터를 공유한다 — 모드는 세션 전역이라 "가장 최근 발사가 이긴다"가
+  // 공통 규약이다.
+  const { gen: myGen, signal } = beginSpineCalcGeneration(options?.signal)
+
   try {
     // API로 책등 폭 계산
     const spineResult = await spineApi.calculate({
       pageCount,
       paperType,
       bindingType,
-    })
+    }, { signal })
+
+    // 가드 ①: resizeSpine 진입 자체를 막는다. 레이아웃을 건드리기 전이라 되돌릴 것이 없다.
+    if (isSuperseded(myGen)) {
+      return { success: false, spineWidth: null, pageCount, warnings: [], superseded: true }
+    }
 
     console.log(`[SpineCalculator:Spread] API 응답: 책등 너비 ${spineResult.spineWidth}mm (${currentSpineWidth}mm → ${spineResult.spineWidth}mm, 변화: ${currentSpineWidth != null ? (spineResult.spineWidth - currentSpineWidth).toFixed(1) : 'N/A'}mm)`)
 
@@ -389,6 +468,30 @@ async function recalculateSpineWidthSpreadMode(
       }
     }
 
+    // 가드 ②(보험): resizeSpine 은 await 라 그 안에서도 인터리브가 가능하다.
+    // 여기 도달했다는 건 레이아웃은 이미 내 값으로 바뀐 뒤라는 뜻이다 — 되돌릴 수 없으므로
+    // **스토어 쓰기만** 건너뛴다.
+    //
+    // 왜 쓰지 않는가(트레이드오프를 정직하게): 선점한 신 세대는 이미 자기 가드 ①을 통과해
+    // 곧(또는 이미) 스토어를 자기 값으로 쓴다. 여기서 구 값을 쓰면 **그 최신 스토어 값을
+    // 되덮을 수 있다** — 이 파일이 막으려는 스테일 쓰기 그 자체다. 그래서 쓰지 않는다.
+    //
+    // ⚠️ 대가: 신 세대가 그 뒤 **실패**하면 플러그인=내 값 / 스토어=그 이전 값 으로 갈린 채
+    //    남는다(덮어줄 주체가 없다). 쓰는 쪽을 택하면 이 케이스는 일관되지만 위의 스테일
+    //    되덮기가 열린다 — 양쪽 다 실패 모드가 있고, 더 흔하고 더 해로운 쪽(스테일 되덮기)을
+    //    막는 선택이다. 갈림이 남아도 다음 페이지 추가/삭제의 재계산이 양쪽을 다시 맞춘다.
+    //    (가드 ②는 오늘 기준 도달 경로가 확인되지 않았다 — resizeSpine 은 네트워크가 아닌
+    //     동기 레이아웃 위주라 그 await 창이 매우 짧다. 방어적 보험으로 남긴다.)
+    if (isSuperseded(myGen)) {
+      return {
+        success: false,
+        spineWidth: spineResult.spineWidth,
+        pageCount,
+        warnings: spineResult.warnings,
+        superseded: true,
+      }
+    }
+
     // 스토어에 계산된 값 저장
     settingsStore.setSpineConfig({
       paperType,
@@ -406,6 +509,10 @@ async function recalculateSpineWidthSpreadMode(
       warnings: spineResult.warnings,
     }
   } catch (error) {
+    // 취소는 정상 흐름(더 새로운 재계산이 끊은 것) — 콘솔을 더럽히지 않는다.
+    if (isRequestCancelled(error)) {
+      return { success: false, spineWidth: null, pageCount, warnings: [], superseded: true }
+    }
     console.error('[SpineCalculator:Spread] 책등 계산 오류:', error)
     return {
       success: false,
