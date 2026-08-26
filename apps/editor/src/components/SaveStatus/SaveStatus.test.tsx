@@ -74,6 +74,28 @@ describe('SaveStatus', () => {
     expect(screen.queryByText(/방금 전/)).not.toBeInTheDocument();
   });
 
+  describe('재진입 시드(seedLastSavedAt) 표시', () => {
+    it('시드된 시각을 저장 시각으로 표시한다', () => {
+      // 재진입 직후: 이번 세션 자동저장은 아직 없고, 서버 세션 updatedAt 만 시드된 상태
+      useSaveStore.getState().seedLastSavedAt(new Date());
+
+      render(<SaveStatus showLastSaved={true} />);
+
+      expect(screen.getByText('저장됨')).toBeInTheDocument();
+      expect(screen.getByText(/방금 전/)).toBeInTheDocument();
+    });
+
+    it('시드 후 편집이 발생하면 시각을 감춘다 (저장됨 오도 방지)', () => {
+      useSaveStore.getState().seedLastSavedAt(new Date());
+      useSaveStore.getState().markDirty();
+
+      render(<SaveStatus showLastSaved={true} />);
+
+      expect(screen.getByText('저장되지 않음')).toBeInTheDocument();
+      expect(screen.queryByText(/방금 전/)).not.toBeInTheDocument();
+    });
+  });
+
   it('applies custom className', () => {
     render(<SaveStatus className="custom-class" />);
 

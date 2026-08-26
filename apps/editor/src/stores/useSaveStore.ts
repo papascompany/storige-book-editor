@@ -42,6 +42,12 @@ interface SaveActions {
   setFailed: (error: string) => void
   setUnsaved: () => void
 
+  /**
+   * 서버 세션의 최종 갱신 시각으로 표시용 lastSavedAt 을 시드한다(재진입 표기 전용).
+   * status/isDirty/error 는 절대 건드리지 않는다 — 아래 구현 주석 참고.
+   */
+  seedLastSavedAt: (at: Date) => void
+
   // 더티 상태
   markDirty: () => void
   markClean: () => void
@@ -115,6 +121,27 @@ export const useSaveStore = create<SaveState & SaveActions>()((set, get) => ({
       lastModifiedAt: new Date(),
       isDirty: true,
     })
+  },
+
+  /**
+   * 재진입 표기 시드 — 서버 세션의 updatedAt 을 표시용 lastSavedAt 으로 채운다.
+   *
+   * 배경: 이 스토어는 persist 미들웨어가 없는 메모리 전용이고 lastSavedAt 은 setSaved()
+   * (= 이번 브라우저 세션의 자동저장 성공) 에서만 채워진다. 그래서 재진입 직후에는 늘 null 이라
+   * 히스토리 패널이 '기록 없음' 을 표시했다. 서버는 이미 진실을 갖고 있으므로 그 값을 시드한다.
+   *
+   * 불변식(오도 방지의 핵심): status·isDirty·error 를 절대 건드리지 않는다.
+   * "마지막으로 저장된 시각" 과 "지금 편집분이 저장됐는가" 는 다른 명제다 — 시드가 후자를
+   * 건드리면 편집 중인 내용을 '저장됨' 으로 오도하게 된다. lastSavedAt 은 SaveStatus·
+   * AutoSaveIndicator·HistoryPanel 어디서도 dirty 판정 입력이 아니므로 표시만 갱신하면 된다.
+   */
+  seedLastSavedAt: (at: Date) => {
+    // Invalid Date / 비-Date 방어 — 서버 문자열 파싱 실패가 그대로 UI 에 새지 않게 한다.
+    if (!(at instanceof Date) || Number.isNaN(at.getTime())) return
+    const prev = get().lastSavedAt
+    // 더 최신일 때만 — 진행 중인 저장 결과(setSaved)를 과거 시각으로 되돌리지 않는다.
+    if (prev && prev.getTime() >= at.getTime()) return
+    set({ lastSavedAt: at })
   },
 
   // 더티 상태

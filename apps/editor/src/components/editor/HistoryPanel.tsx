@@ -69,7 +69,7 @@ function describeApiError(err: unknown, fallback: string): string {
  * 헤더의 History 아이콘 버튼을 누르면 popover로 표시:
  * - 되돌릴 수 있는 단계 수 (canvas.historyUndo.length)
  * - 다시 실행 가능한 단계 수 (historyRedo.length)
- * - 마지막 자동저장 시각 (useSaveStore.lastSavedAt)
+ * - 마지막 저장 시각 (useSaveStore.lastSavedAt)
  * - 현재 dirty 여부
  *
  * 향후 확장 (Phase 2 — cover.md 향후 작업 표 참고):
@@ -79,7 +79,9 @@ function describeApiError(err: unknown, fallback: string): string {
  */
 
 function formatRelative(date: Date | null): string {
-  if (!date) return '없음'
+  // null 은 lastSavedAt 경로에서만 온다(버전 목록은 항상 실제 Date). '없음' 은 "저장이 안 됐다"로
+  // 읽혀 오도되므로 "아직 저장 기록이 없다"는 사실만 말한다.
+  if (!date) return '기록 없음'
   const diff = Date.now() - date.getTime()
   if (diff < 60_000) return '방금 전'
   if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}분 전`
@@ -288,7 +290,10 @@ export default function HistoryPanel({ sessionVersions = null, legacyVersions = 
         <div className="space-y-2 text-sm">
           <Row icon={RotateCcw} label="되돌릴 수 있는 단계" value={`${undoLen}단계`} />
           <Row icon={RotateCcw} label="다시 실행 가능" value={`${redoLen}단계`} flipIcon />
-          <Row icon={Save} label="마지막 자동저장" value={formatRelative(lastSavedAt)} />
+          {/* 라벨을 '마지막 저장' 으로 넓힌 이유: 시드 원천인 세션 updatedAt 은 @UpdateDateColumn 이라
+              자동저장 외 PATCH(편집완료·contentPdf 첨부·검증결과 캐시)로도 갱신된다. '자동저장' 이라
+              단정하면 시드값과 어긋난다. */}
+          <Row icon={Save} label="마지막 저장" value={formatRelative(lastSavedAt)} />
           <Row icon={Clock} label="현재 변경됨" value={isDirty ? '예 ●' : '아니오 ○'} />
         </div>
 

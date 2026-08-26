@@ -65,6 +65,64 @@ describe('useSaveStore', () => {
     });
   });
 
+  describe('seedLastSavedAt (재진입 표기 시드)', () => {
+    it('메모리에 기록이 없으면 서버 시각으로 시드한다', () => {
+      const serverAt = new Date('2026-08-20T10:00:00.000Z');
+
+      expect(useSaveStore.getState().lastSavedAt).toBeNull();
+      useSaveStore.getState().seedLastSavedAt(serverAt);
+
+      expect(useSaveStore.getState().lastSavedAt).toEqual(serverAt);
+    });
+
+    it('이미 더 최신 기록이 있으면 과거 시각으로 되돌리지 않는다', () => {
+      // 이번 세션의 자동저장 성공(setSaved) 이 먼저 일어난 뒤 늦게 도착한 세션 응답 시나리오
+      useSaveStore.getState().setSaved();
+      const afterSave = useSaveStore.getState().lastSavedAt;
+
+      useSaveStore.getState().seedLastSavedAt(new Date('2020-01-01T00:00:00.000Z'));
+
+      expect(useSaveStore.getState().lastSavedAt).toBe(afterSave);
+    });
+
+    it('Invalid Date / 비-Date 입력은 무시한다', () => {
+      useSaveStore.getState().seedLastSavedAt(new Date('not-a-date'));
+      expect(useSaveStore.getState().lastSavedAt).toBeNull();
+
+      // 서버 문자열이 그대로 넘어오는 배선 사고 방어 (타입은 Date 지만 런타임은 보장되지 않음)
+      useSaveStore.getState().seedLastSavedAt('2026-08-20T10:00:00.000Z' as unknown as Date);
+      expect(useSaveStore.getState().lastSavedAt).toBeNull();
+    });
+
+    it('시드는 status·isDirty·error 를 바꾸지 않는다 (오도 방지 불변식)', () => {
+      // 편집 중(dirty) 상태에서 시드해도 "저장됨" 으로 둔갑하면 안 된다
+      useSaveStore.getState().markDirty();
+      useSaveStore.getState().seedLastSavedAt(new Date('2026-08-20T10:00:00.000Z'));
+      const state = useSaveStore.getState();
+
+      expect(state.status).toBe('unsaved');
+      expect(state.isDirty).toBe(true);
+      expect(state.lastSavedAt).toEqual(new Date('2026-08-20T10:00:00.000Z'));
+    });
+
+    it('시드 후 편집이 발생하면 status 가 unsaved 로 내려간다', () => {
+      useSaveStore.getState().seedLastSavedAt(new Date('2026-08-20T10:00:00.000Z'));
+      expect(useSaveStore.getState().status).toBe('saved');
+
+      useSaveStore.getState().markDirty();
+
+      expect(useSaveStore.getState().status).toBe('unsaved');
+      expect(useSaveStore.getState().isDirty).toBe(true);
+    });
+
+    it('reset 은 시드값도 비운다', () => {
+      useSaveStore.getState().seedLastSavedAt(new Date('2026-08-20T10:00:00.000Z'));
+      useSaveStore.getState().reset();
+
+      expect(useSaveStore.getState().lastSavedAt).toBeNull();
+    });
+  });
+
   describe('dirty state', () => {
     it('markDirty should set isDirty and status', () => {
       useSaveStore.getState().markDirty();
