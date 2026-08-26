@@ -1,11 +1,11 @@
-# RESUME PROMPT — 2026-08-25
+# RESUME PROMPT — 2026-08-25 (8/26 이어짐)
 
-> **이 문서가 최신 날짜 정본이다.** 직전 스프린트는 `RESUME_PROMPT_2026-08-24.md`(P1-4 트랙 종결·테넌트 격리 전면 확장·파트너 문서), 그 이전 상세는 8/22·8/18 참조.
+> **이 문서가 최신 정본이다.** 같은 스프린트가 8/26 까지 이어져 여기에 계속 기록한다(별도 8/26 문서 없음). 직전 스프린트는 `RESUME_PROMPT_2026-08-24.md`(P1-4 트랙 종결·테넌트 격리 전면 확장·파트너 문서), 그 이전 상세는 8/22·8/18 참조.
 
-## 0. 현재 라이브 상태 (2026-08-25 세션 종료 기준)
+## 0. 현재 라이브 상태 (2026-08-26 세션 종료 기준)
 
-- **master = origin/master = 3ddce60**, 워킹트리 클린(`.tmp-verify-combos/`·docs/SHOPIFY_*·docs/SITE_CATALOG_* untracked 는 타 세션 산출물 — 무접촉, 커밋 시 항상 명시 add)
-- 배포: editor/admin=Vercel master push 자동, API/워커=VPS 수동(`CLAUDE.local.md` §6, api recreate 시 **nginx 재시작 필수**). 이번 세션 변경은 **editor 전용** — API/워커 무변경
+- **master = origin/master = 02178c7**, 워킹트리 클린(`.tmp-verify-combos/`·docs/SHOPIFY_*·docs/SITE_CATALOG_* untracked 는 타 세션 산출물 — 무접촉, 커밋 시 항상 명시 add)
+- 배포: editor/admin=Vercel master push 자동, API/워커=VPS 수동(`CLAUDE.local.md` §6, api recreate 시 **nginx 재시작 필수**). 이번 스프린트 변경은 **editor·canvas-core·CI 전용** — API/워커 무변경
 - 이번 배포 실증: Vercel `helbt4b01` Ready → 라이브 청크 문자열 대조 PASS
   (`index-DjYUrNgl.js` 에 `runBulkPageOps:async e=>{H++;try{...}finally{...}}` · `debouncedRecalcSpine():Z().then(` · `H>0){oe.cancel()`, `EmbedView-lhzHHm4n.js` 에 `runBulkPageOps(async(`). editor/ 200 · /embed 200
 
@@ -17,7 +17,8 @@
 | editor tsc / lint | 0err / no-undef 4err "베이스라인" | **0err / 0err** (no-undef 근본 제거) |
 | canvas-core vitest | "기존 실패 6파일(ABI)" | **54/54 파일·623/623 PASS** — 실패 6파일은 베이스라인이 아니라 로컬 네이티브 모듈 파손이었다 |
 | canvas-core lint | no-undef 11+ "베이스라인" | **0err** (28err → 0) |
-| api jest | 75파일/1038 PASS | 불변(이번 세션 미변경). `partner-api-keys.v1.spec` 병렬 26s 타임아웃 = 플레이크(단독 PASS) |
+| api jest | 75파일/1038 PASS | 불변(이번 스프린트 미변경). `partner-api-keys.v1.spec` 병렬 26s 타임아웃 = 플레이크(단독 PASS) |
+| CI 게이트 | canvas-core lint 부재 | **등재됨**(02178c7) — run 32801584699 success, 54파일/623 수집 + lint 0err 실증 |
 
 - 라이브 커밋 계보: `3ddce60`(perf 재진입 시드) ← `cb1a741`(dpi 회귀 가드) ← `5877780`(canvas-core 프리플라이트) ← `bf8ab1d`(lint no-undef) ← `df40954`(8/24 정본)
 
@@ -84,6 +85,18 @@ PKG_CONFIG_PATH="$(brew --prefix)/lib/pkgconfig:$(brew --prefix jpeg-turbo)/lib/
 
 **남은 계측**: 실기 체감은 오너 재진입 1회로 확인 필요(`window.__storigeLoadProfile` 의 `restore:grow` lap). 두 낭비를 제거해도 페이지당 잔여 비용(플러그인 등록·`workspacePlugin.init()`+`setZoomAuto`·`setPage` 의 O(N) DOM 표시전환)이 남는다 — 실측 후 다음 후보 결정.
 
+### ⑥ 후속 — CI 에 canvas-core lint 게이트 등재 (02178c7, 2026-08-26)
+
+종전 CI 에 canvas-core lint 스텝이 **없었다**. no-undef 28err 가 "베이스라인"으로 굳어도 아무 빌드도 깨지지 않은 이유다. 오탐 근본 제거로 0err 가 된 시점에 등재했다(배치 = `api lint` 와 동일 패턴, 해당 패키지 test 직후).
+
+**lint 범위를 `eslint src` → `eslint .` 로 확대**한 것이 핵심이다 — 해소한 28건 중 **20건이 `types/fabric.d.ts`** 에 있었는데 `src` 범위로는 그 파일이 게이트 밖에 남아 "게이트를 달았지만 정작 재발 지점은 안 보는" 상태가 된다. 확대 후에도 0err(경고 48건은 기존치·error 아님, `dist/**`·`node_modules/**`·`*.js` 는 eslint.config.js ignores 가 제외).
+
+typecheck+test 스텝에는 **node-canvas 전제**를 주석으로 명시했다(로드 실패 시 '실패'가 아니라 수집 축소 623→551 — ⑥-b 경위).
+
+**CI 실증**: run `32801584699` success — canvas-core 두 스텝 모두 success, 테스트 **54파일/623 전량 수집**, lint **0 errors/48 warnings**.
+
+**⚠️ 발견(미해결, 아래 P1 6번)**: `canvas-core` 는 `eslint`·`@typescript-eslint/*` 를 devDependency 로 **하나도 선언하지 않는다**. 루트 `package.json` 도 선언하지 않으며, `eslint-plugin-react` 의 **auto-install-peer** 로 루트에 링크가 생긴 것을 쓰고 있다(팬텀 의존성). 현재는 락파일에 고정돼 CI clean install 에서도 결정적으로 동작함을 실증했지만, 루트의 eslint 플러그인 구성이 바뀌면 조용히 사라질 수 있다.
+
 ## 2. 잔여 작업 (우선순위)
 
 **P0 — 오너 액션(코드 아님)**
@@ -95,14 +108,15 @@ PKG_CONFIG_PATH="$(brew --prefix)/lib/pkgconfig:$(brew --prefix jpeg-turbo)/lib/
 **P1 — 코드 후속(다음 세션 착수 순서)**
 4. 재진입 시드 잔여 비용 실측 후 2차 최적화 판단(위 ⑤ "남은 계측")
 5. (관찰) 재진입 직후 "마지막 자동저장: 없음" 표기(lastSavedAt 세션 내 한정 — 기존 동작, UX 판단)
-6. (제안, 미실행) CI 에 canvas-core lint 스텝 부재 — 이번에 0err 가 됐으므로 지금이 게이트 등재 적기. api eslint 설정도 같은 "globals 손열거" 구조라 동일 오탐이 재발할 수 있다(현재는 열거가 맞아 0err)
+6. **canvas-core eslint devDeps 선언**(팬텀 의존성 해소 — 위 ⑥ 후속). `eslint`·`@typescript-eslint/eslint-plugin`·`@typescript-eslint/parser`·`@eslint/js` 를 `packages/canvas-core/package.json` 에 명시. **락파일 갱신이 따르므로 별도 작업으로 분리했다** — 8/26 세션에서 실행하지 않은 이유는 `pnpm install` 이 루트 `ignoredOptionalDependencies: ["canvas"]` 때문에 재빌드해 둔 로컬 node-canvas 를 걷어낼 위험이 있어서다(⑥-b 재빌드 레시피 참조). 착수 시 현재 해석 버전으로 핀하면 diff 최소: eslint 9.39.1 / @typescript-eslint 8.48.1 / @eslint/js 9.39.2
+7. (제안, 미실행) api eslint 설정도 canvas-core 와 같은 "globals 손열거" 구조라 동일 오탐이 재발할 수 있다(현재는 열거가 맞아 0err). 같은 `no-undef: 'off'` 처방 적용 검토
 
 **P2 — 기존 백로그(트랙별 정본 참조)**
-7. 업계표준 R6·R10·R3b(RESUME 08-11) / R5 다크 ON=오너게이트
-8. 파일 보존 P1(고아정리·per-product)·P2(스트리밍 검증) — 고아 파일 6건 실증분 존재
-9. 멀티테넌시 P3b(SITE_ADMIN @Roles·TenantGuard·테넌트 스위처, 설계 06-17)
-10. 포토북 S2 삭제모달 설계결정 / 사진인화 POD MVP(설계 06-17, 오너 게이트)
-11. ⓑstage1b 프론트 쿠키 전환·Bull attempts·BQ-03·ⓒ게이트B 히스토리 정화 force-push(오너)
+8. 업계표준 R6·R10·R3b(RESUME 08-11) / R5 다크 ON=오너게이트
+9. 파일 보존 P1(고아정리·per-product)·P2(스트리밍 검증) — 고아 파일 6건 실증분 존재
+10. 멀티테넌시 P3b(SITE_ADMIN @Roles·TenantGuard·테넌트 스위처, 설계 06-17)
+11. 포토북 S2 삭제모달 설계결정 / 사진인화 POD MVP(설계 06-17, 오너 게이트)
+12. ⓑstage1b 프론트 쿠키 전환·Bull attempts·BQ-03·ⓒ게이트B 히스토리 정화 force-push(오너)
 
 **오너 결정 대기**: 동화책 caseBind 미설정(D-4 상이)·cover VALIDATE 경고(SPINE_PARAMS_UNRESOLVED·base14 폰트)·G-6 백필·branch protection·R2 프로비저닝·폰트 시딩(0건!)
 
@@ -112,4 +126,5 @@ PKG_CONFIG_PATH="$(brew --prefix)/lib/pkgconfig:$(brew --prefix jpeg-turbo)/lib/
 2. 이 문서 + `git log --oneline -10` + `git status -sb` (타 세션 미커밋 보존, **`git add` 는 항상 명시 목록**·`-a`/`-A` 금지)
 3. SSH 필요 시 `ssh-add -l` 확인, `deploy@` 대상만(fail2ban)
 4. 함정 상기: vite.config.js shadow / 빌드게이트 5함정(배포는 state·번들 문자열·컨테이너 dist 로 실증) / fabric styles·loadJSON 치수 오염 / SPREAD=표지 아님(buildPageMeta hasCoverSlot) / isInitializedRef 창에 저장 입구 금지 / API 재배포 시 nginx 재시작 / 실기·프로덕션 키 작업은 권한무시 모드 / **canvas-core 테스트는 Node 22·24 에서만(§1 ⑥-b)**
-5. 검증 기준선: **§0 표** — 종전 "canvas-core 실패 6파일·lint no-undef" 는 **더 이상 베이스라인이 아니다**. 실패하면 회귀이거나 로컬 canvas 파손 둘 중 하나이고, 후자는 프리플라이트가 이름을 대며 멈춘다
+5. CI 는 canvas-core lint 를 게이트로 잡는다(02178c7) — `pnpm --filter @storige/canvas-core lint` 는 `eslint .`(types/ 포함)이고 error 0 이 조건이다
+6. 검증 기준선: **§0 표** — 종전 "canvas-core 실패 6파일·lint no-undef" 는 **더 이상 베이스라인이 아니다**. 실패하면 회귀이거나 로컬 canvas 파손 둘 중 하나이고, 후자는 프리플라이트가 이름을 대며 멈춘다
