@@ -4,7 +4,7 @@
 
 ## 0. 현재 라이브 상태 (2026-08-26 세션 종료 기준)
 
-- **master = origin/master = 1126d70**, 워킹트리 클린(`.tmp-verify-combos/`·docs/SHOPIFY_*·docs/SITE_CATALOG_* untracked 는 타 세션 산출물 — 무접촉, 커밋 시 항상 명시 add)
+- **master = origin/master = 558eb6f**(+ 이 문서 커밋), 워킹트리 클린(`.tmp-verify-combos/`·docs/SHOPIFY_*·docs/SITE_CATALOG_* untracked 는 타 세션 산출물 — 무접촉, 커밋 시 항상 명시 add)
 - 배포: editor/admin=Vercel master push 자동, API/워커=VPS 수동(`CLAUDE.local.md` §6, api recreate 시 **nginx 재시작 필수**). 이번 스프린트 변경은 **editor·canvas-core·CI 전용** — API/워커 무변경
 - 이번 배포 실증: Vercel `helbt4b01` Ready → 라이브 청크 문자열 대조 PASS
   (`index-DjYUrNgl.js` 에 `runBulkPageOps:async e=>{H++;try{...}finally{...}}` · `debouncedRecalcSpine():Z().then(` · `H>0){oe.cancel()`, `EmbedView-lhzHHm4n.js` 에 `runBulkPageOps(async(`). editor/ 200 · /embed 200
@@ -17,7 +17,9 @@
 | editor tsc / lint | 0err / no-undef 4err "베이스라인" | **0err / 0err** (no-undef 근본 제거) |
 | canvas-core vitest | "기존 실패 6파일(ABI)" | **54/54 파일·623/623 PASS** — 실패 6파일은 베이스라인이 아니라 로컬 네이티브 모듈 파손이었다 |
 | canvas-core lint | no-undef 11+ "베이스라인" | **0err** (28err → 0) |
-| api jest | 75파일/1038 PASS | 불변(이번 스프린트 미변경). `partner-api-keys.v1.spec` 병렬 26s 타임아웃 = 플레이크(단독 PASS) |
+| api jest | 75파일/1038 PASS | **75파일/1046 PASS**(contract-freeze 신규 8) |
+| api 병렬 플레이크 | `partner-api-keys.v1.spec` 1종 | **2종** — `guest-session-tenancy.spec` 추가(2026-08-26 전체 병렬에서 1회 실패, 단독 3/3·전체 3회 재현 안 됨). 둘 다 단독 PASS 면 회귀 아님 |
+| 동결 게이트 | Files·WorkerJobs·EditSessions 3컨트롤러 | **5컨트롤러** — TemplateSets·ProductTemplateSets 등재(558eb6f) |
 | CI 게이트 | canvas-core lint 부재 | **등재됨**(02178c7) — run 32801584699 success. devDeps 선언 후 clean install 재실증(69a6038, run 32926301746) |
 | api lint | globals 손열거 의존 | **no-undef off**(7a71060) — 0 errors 유지, 오탐 재발 경로 차단 |
 
@@ -147,10 +149,39 @@ typecheck+test 스텝에는 **node-canvas 전제**를 주석으로 명시했다(
 ⚠️ **잔여**: 가드 ② 도달 시 신 세대가 그 뒤 **실패**하면 플러그인=구값/스토어=그 이전 값으로 갈린 채 남는다(덮어줄 주체 없음). 반대로 쓰면 스테일 되덮기가 열려 더 해롭다 — 트레이드오프를 코드 주석에 명시했다. 다음 재계산이 양쪽을 맞춘다. 가드 ②는 오늘 기준 도달 경로 미확인(방어적 보험).
 
 
+### ⑨ 프린티 회신 + 동결 게이트 갭 해소 (3987d2a · 558eb6f, 2026-08-26)
+
+북모아와 같은 구조로 분리한 **프린티**(site `009c26d5…`, active, 키·origins 설정 완료, 2026-08-14 생성) 팀이 템플릿셋 테넌트 스코프 3건을 질의. **DB 실조회 + 코드/문서 대조**로 답하고, 그 과정에서 드러난 게이트 갭을 당일 해소했다.
+
+**Q1 — `template_sets.site_id` 실값**: 지목된 4건(`f0335fda`·`a2cc2939`·`e66588b2`·`83e6ec80`) 전부 `NULL`. **더 중요한 건 테이블 전체 43행이 전부 NULL** 이라는 것 — 특정 site 귀속 템플릿셋이 **0건**이라 "프린티가 bookmoa 의 공백을 타는 중"이라는 전제 자체가 성립하지 않는다.
+
+그리고 이 NULL 은 레거시가 아니라 **설계된 시스템공유**임이 코드 3곳으로 확정된다:
+- `common/helpers/tenant-scope.helper.ts` — `applySiteScope(..., {includeNull})` 기본값 **false(안전 우선)** + 주석 "템플릿/라이브러리처럼 시스템공유를 함께 노출해야 하는 경우에만 명시적으로 true"
+- `templates/template-sets.service.ts` `findAll` — `includeNull: true` + 주석 "**P2b: 템플릿셋=hybrid**"
+- 같은 파일 `findOne` — `assertSiteInScope(..., { allowNull: true })`
+
+⇒ **주문/파일/편집세션 = 격리, 템플릿셋 = 의도적 공유.** 서로 다른 정책이 각각 코드에 새겨져 있다. (`product_template_sets` 5행도 전부 NULL.)
+
+**Q2 — `with-templates` @Public 무스코프는 계약이다**: `docs/CONTRACT_FREEZE.md` FROZEN 등재("4종 혼용") + 파트너 OpenAPI allowlist(CI 게이트). 코드도 의도 — 같은 컨트롤러의 다른 읽기 3개(`findAll`/`compatible`/`findOne`)는 **전부** `@CurrentScope` 를 받는데 이것만 안 받는다(인증 이전 편집기 부트스트랩). **닫을 계획 없음**(변경 시 CONTRACT_FREEZE §4 절차).
+
+**Q3 — 프린티 온보딩 조치 불요**: 이미 NULL 이라 '내릴' 것이 없고 복제도 불필요(공용 1벌이 사이트별 N벌로 갈라져 악화). 장래 스코프 도입 시에도 `includeNull: true` 유지 → 공용 셋은 계속 보인다. 전용 셋이 필요해지면 `POST /template-sets/:id/copy` 가 비전역 스코프에서 복제본을 **호출자 site 로 자동 귀속**시킨다.
+
+**갭 해소(558eb6f)**: 두 라우트가 문서·allowlist 에는 있는데 **리플렉션 동결 게이트에는 빠져 있었다** — 문서상 FROZEN 인데 자동 검증이 없어 데코레이터 이탈을 CI 가 못 잡았다.
+
+| 등재 | 인증 | 비고 |
+|---|---|---|
+| `GET /template-sets/:id/with-templates` | `@Public` 무인증 | 문서에 이미 FROZEN |
+| `GET /product-template-sets/by-product` | `@Public`+`ApiKeyGuard` | 문서 미등재였음 → 행 신설(사후 추인). **ApiKeyGuard 이탈 = 조용한 완전 공개**라 비대칭 위험 |
+
+컨트롤러 prefix 2건도 동결. **뮤테이션 양방향 실증**: `@Public` 제거 → 'public' 단언 실패 / `ApiKeyGuard` 제거 → 'api-key' 단언 실패(둘 다 원복 확인). 런타임 동작 무변경. 코드 주석에 "무스코프는 결함이 아니라 계약"을 명시해 다음 작업자의 오인 수정을 막았다.
+
+회신문 정본: `docs/partner-notices/PARTNER_ANSWER_PRINTY_TEMPLATE_SET_SCOPE_2026-08-26.md`(게이트 등재 완료로 갱신됨). **오너 액션: 프린티 팀 발송.**
+
+
 ## 2. 잔여 작업 (우선순위)
 
 **P0 — 오너 액션(코드 아님)**
-1. **파트너 회신문 4종 발송** — `docs/partner-notices/PARTNER_NOTICE_*_2026-08-24.md` 를 각 사 보안 채널로(키 회전 때와 동일 경로)
+1. **파트너 회신문 발송** — ⓐ `PARTNER_NOTICE_*_2026-08-24.md` 4종(테넌트 격리·EDITOR_BUSY 통지) ⓑ `PARTNER_ANSWER_PRINTY_TEMPLATE_SET_SCOPE_2026-08-26.md`(프린티 질의 3건 회신 — 게이트 등재 완료 반영본). 각 사 보안 채널로(키 회전 때와 동일 경로)
 2. 동화책 왕복 실기(8/22 이월): **새 세션으로** 편집완료(PDF 생성)→보관함 이어서편집→16p 추가→재진입 유지 확인 + content PDF VALIDATE 426×216 워커 로그(R7) + 복원 UI 실주문 iframe 1회 눈확인
    - **이번 세션 추가**: 같은 왕복에서 `__storigeLoadProfile` 의 `restore:grow` lap 을 기록해 ⑤ 개선 폭 실측(기준 ≈390ms/장)
 3. bookmoa 장바구니 #1 "그림책·동화책 하드커버(A4)" 테스트 항목 삭제(8/21 부산물)
