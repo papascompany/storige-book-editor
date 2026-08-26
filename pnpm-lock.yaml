@@ -763,6 +763,9 @@ importers:
         specifier: ^2.2.1
         version: 2.3.0
     devDependencies:
+      '@eslint/js':
+        specifier: ^9.39.2
+        version: 9.39.2
       '@types/d3':
         specifier: ^7.4.3
         version: 7.4.3
@@ -784,6 +787,15 @@ importers:
       '@types/uuid':
         specifier: ^10.0.0
         version: 10.0.0
+      '@typescript-eslint/eslint-plugin':
+        specifier: ^8.20.0
+        version: 8.48.1(@typescript-eslint/parser@8.48.1(eslint@9.39.1(jiti@1.21.7))(typescript@5.9.3))(eslint@9.39.1(jiti@1.21.7))(typescript@5.9.3)
+      '@typescript-eslint/parser':
+        specifier: ^8.20.0
+        version: 8.48.1(eslint@9.39.1(jiti@1.21.7))(typescript@5.9.3)
+      eslint:
+        specifier: ^9.18.0
+        version: 9.39.1(jiti@1.21.7)
       tsup:
         specifier: ^8.5.1
         version: 8.5.1(jiti@1.21.7)(postcss@8.5.6)(typescript@5.9.3)

@@ -46,6 +46,7 @@
     "tapable": "^2.2.1"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.2",
     "@types/d3": "^7.4.3",
     "@types/events": "^3.0.3",
     "@types/fabric": "^5.3.10",
@@ -53,6 +54,9 @@
     "@types/lodash-es": "^4.17.7",
     "@types/node": "^24.0.0",
     "@types/uuid": "^10.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.20.0",
+    "@typescript-eslint/parser": "^8.20.0",
+    "eslint": "^9.18.0",
     "tsup": "^8.5.1",
     "typescript": "^5.7.2",
     "uuid": "^10.0.0",
