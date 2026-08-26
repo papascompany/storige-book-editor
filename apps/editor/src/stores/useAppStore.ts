@@ -15,6 +15,7 @@ import Editor, {
 } from '@storige/canvas-core'
 import type { AppMenu } from '@/types/menu'
 import { recalculateSpineWidth } from '@/utils/spineCalculator'
+import { lap } from '@/utils/loadProfiler'
 import { syncCanvasContainerOrder } from '@/utils/innerPageReorder'
 import { bindPrintExcludeOverlay } from '@/utils/printExcludeOverlay'
 import { useEditorStore } from '@/stores/useEditorStore'
@@ -277,6 +278,19 @@ let pendingScreenshotIndices: Set<number> | 'all' = 'all'
 // 조기 해제하지 않게 하기 위함.
 let bulkPageOpDepth = 0
 
+// 대량 구간 안에서 실제로 썸네일 재캡처 요청이 있었는지. 구간이 아무것도 하지 않았으면
+// 종료 시 전 캔버스 toDataURL 플러시를 돌릴 이유가 없다(내지 PDF 앉히기는 부족분이 0이어도
+// 구간을 무조건 연다 — contentPdfGuide.ts:388). 최외곽 진입에서 내리고 요청 시 올린다.
+let bulkPageOpDirty = false
+
+// 대량 구간 안에서 책등 재계산 요청이 있었는지.
+// ⚠️ debounce(300ms)는 이 루프에서 배칭 도구가 아니다 — addPage 1회가 재진입 시드 실측
+//    ≈390ms 라 타이머가 매 반복 만료돼 9장 증설이 API 왕복 9회로 나간다(2026-08-26 적대검증
+//    CONFIRMED). 썸네일과 **같은 구간 게이트**로 통일해 구간 종료 후 1회만 발사한다.
+//    부수효과로, 중간 pageCount 로 계산된 요청 자체가 생기지 않으므로 늦게 도착한 스테일
+//    응답이 최종 책등 폭을 덮어쓰는 경합도 이 경로에서는 구조적으로 사라진다.
+let spineRecalcPending = false
+
 const debouncedTakeScreenshot = debounce((allCanvas: any[], set: any, get: any) => {
   // 캔버스가 유효한지 확인
   if (!allCanvas || allCanvas.length === 0) return
@@ -500,6 +514,8 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
     pendingScreenshotIndices = 'all'
     // 대량 구간 카운터도 초기화 — 예외로 종료된 세션이 다음 세션의 썸네일을 정지시키지 않게.
     bulkPageOpDepth = 0
+    bulkPageOpDirty = false
+    spineRecalcPending = false
 
     // 타이머 정리
     if (debounceTimer) {
@@ -572,6 +588,11 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
         : 0
 
       const canvasId = `canvas${index}`
+
+      // ── 재진입 증설 sub-lap 계측 (2026-08-26) ────────────────────────────
+      // restore:grow(총합 ≈390ms/장)를 항목별로 분해한다. embed 로드 구간에서만 활성이고
+      // 그 밖에서는 lap() 이 공유 no-op 상수를 돌려주므로 평상시 '+페이지' 경로는 비용 0.
+      const endCreate = lap('grow:createCanvas')
 
       // 캔버스 컨테이너 요소
       const canvasContainer = document.getElementById('canvas-containers')
@@ -684,6 +705,9 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
         ...currentSettings,
         size: pageSize,
       }
+      endCreate()
+
+      const endPlugins = lap('grow:plugins')
       // createCanvas 와 **동일한 플러그인 세트**를 등록한다(2026-08-03).
       // 종전에는 WorkspacePlugin+PointerShiftGuard 2개만 붙어서, 스프레드 모드의 2번째 이후
       // 캔버스가 ObjectPlugin(삭제)·HistoryPlugin(되돌리기)·FrameInteractionPlugin(사진틀)·
@@ -702,20 +726,27 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
         // 포토북 펼침면만 inner SpreadPlugin 이 등록된다.
         { allowCoverSpread: false },
       )
+      endPlugins()
 
       // 스토어에 등록 (initializationId 전달하여 등록 허용)
+      const endStoreInit = lap('grow:storeInit')
       init(newCanvas, newEditor, initializationId || undefined)
+      endStoreInit()
 
       // 새 페이지로 전환 (컨테이너가 display:block으로 변경됨)
       const nextIndex = allCanvas.length // init 후에는 allCanvas가 업데이트됨
+      const endSetPage = lap('grow:setPage')
       setPage(nextIndex)
+      endSetPage()
 
       // 컨테이너가 표시된 후 WorkspacePlugin 초기화
       // init()이 workspace Rect 생성 + 이벤트 바인딩 + setZoomAuto()까지 처리
       // (이 순서가 createCanvas 와 다른 이유 = 새 캔버스 컨테이너가 여기서야 표시되기 때문)
+      const endWsInit = lap('grow:wsInit')
       workspacePlugin.init()
       // 펼침면(표지/내지 공통) 가이드 — workspace 확정 후 초기화
       spreadPlugin?.init()
+      endWsInit()
 
       // 새 캔버스는 컨테이너 표시 전에 생성돼 fabric 치수가 0/스테일일 수 있는데,
       // 리사이즈 이벤트가 없으면 useCanvasContainerSizeSync 가 발화하지 않아 첫 표시가
@@ -724,13 +755,30 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
       if (wrapperEl) {
         const w = wrapperEl.clientWidth
         const h = wrapperEl.clientHeight
-        if (w > 0 && h > 0 && (newCanvas.getWidth() !== w || newCanvas.getHeight() !== h)) {
+        // 1px 허용오차 — setZoomAuto 는 wrapper 의 getBoundingClientRect() 소수폭으로
+        // 캔버스를 잡아 clientWidth 정수와 상시 불일치할 수 있다. 이 블록의 목적은
+        // "치수가 0/스테일이라 첫 표시가 빈 화면" 구제이고 1px 미만 차이는 그 실패 모드를
+        // 만들 수 없다(useCanvasContainerSizeSync 의 nearlyUnchanged 와 동일 기준).
+        // 비유한값은 종전처럼 무조건 구제한다(허용오차 도입이 판정을 좁히지 않도록).
+        const cw = newCanvas.getWidth()
+        const ch = newCanvas.getHeight()
+        const stale =
+          !Number.isFinite(cw) || !Number.isFinite(ch) ||
+          Math.abs(cw - w) >= 1 || Math.abs(ch - h) >= 1
+        if (w > 0 && h > 0 && stale) {
+          // hit/skip 을 서로 다른 lap 키로 나눠 count 만으로 이 블록의 실효를 판정한다
+          // (lapStart 는 extra 를 받지 않는다).
+          const endSync = lap('grow:wrapperSync:hit')
           newCanvas.setDimensions({ width: w, height: h })
           newCanvas.calcOffset?.()
           workspacePlugin.setZoomAuto()
+          endSync()
+        } else {
+          lap('grow:wrapperSync:skip')()
         }
       }
 
+      const endTail = lap('grow:tail')
       // useEditorStore.pages에 새 EditPage 추가 (SpreadPagePanel 동기화)
       const editorStore = useEditorStore.getState()
       editorStore.addPage({
@@ -748,6 +796,7 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
       // 객체 목록 및 스크린샷 업데이트
       updateObjects()
       takeCanvasScreenshot()
+      endTail()
 
       console.log(`새 페이지 추가됨: ${canvasId}`)
 
@@ -1366,6 +1415,7 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
     // 대량 구간에서는 예약하지 않는다 — dirty 는 위에서 이미 누적됐고,
     // runBulkPageOps 종료 시 'all' 로 한 번만 캡처한다.
     if (bulkPageOpDepth > 0) {
+      bulkPageOpDirty = true
       debouncedTakeScreenshot.cancel()
       return
     }
@@ -1373,14 +1423,25 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
   },
 
   runBulkPageOps: async <T,>(fn: () => Promise<T>): Promise<T> => {
+    // 최외곽 진입에서만 누적 플래그를 내린다(중첩 구간이 바깥 누적을 지우지 않게).
+    if (bulkPageOpDepth === 0) bulkPageOpDirty = false
     bulkPageOpDepth++
     try {
       return await fn()
     } finally {
       bulkPageOpDepth = Math.max(0, bulkPageOpDepth - 1)
       if (bulkPageOpDepth === 0) {
-        // 인덱스가 이동했을 수 있으므로 전체 재캡처 1회.
-        get().takeCanvasScreenshot()
+        // 인덱스가 이동했을 수 있으므로 전체 재캡처 1회 — 단 구간 안에서 실제 요청이
+        // 있었을 때만. 아무 일도 없던 구간까지 플러시하면 전 캔버스 toDataURL 이 헛돈다.
+        if (bulkPageOpDirty) {
+          bulkPageOpDirty = false
+          get().takeCanvasScreenshot()
+        }
+        // 구간 중 접어둔 책등 재계산을 여기서 1회만 발사한다(위 spineRecalcPending 주석).
+        if (spineRecalcPending) {
+          spineRecalcPending = false
+          get().debouncedRecalcSpine()
+        }
       }
     }
   },
@@ -1515,6 +1576,21 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
 
     if (!isSpreadMode) return
 
+    // 대량 구간(runBulkPageOps)에서는 발사하지 않고 종료 시 1회로 접는다.
+    // debounce 300ms 는 addPage(≈390ms/장)보다 짧아 루프에서 매 반복 만료되므로
+    // 배칭 도구가 되지 못한다 — 썸네일과 동일한 구간 게이트로 통일.
+    if (bulkPageOpDepth > 0) {
+      // 종전과 동일하게 "새 트리거는 이전 예약을 무효화한다" 불변식을 유지한다 —
+      // 구간 진입 직전에 걸려 있던 타이머를 살려두면 그게 구간 한복판에서 중간 pageCount 로
+      // 발사돼, 구간 종료 후의 최종 요청과 in-flight 로 겹칠 수 있다.
+      if (spineResizeAbortController) {
+        spineResizeAbortController.abort()
+        set({ spineResizeAbortController: null })
+      }
+      spineRecalcPending = true
+      return
+    }
+
     // restoring 중이면 debounce 비활성 (즉시 실행)
     if (restoring) {
       // 이전 요청 취소
@@ -1538,7 +1614,11 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
           }
         })
         .finally(() => {
-          set({ spineResizeAbortController: null })
+          // 정상 분기(:하단)와 동일한 identity 가드 — 무조건 null 로 밀면 이 사이에
+          // 새로 만들어진 컨트롤러까지 지워져 다음 abort 체인이 조용히 끊긴다.
+          if (get().spineResizeAbortController === newController) {
+            set({ spineResizeAbortController: null })
+          }
         })
 
       return

@@ -91,3 +91,42 @@ export function formatLoadProfile(s: LoadProfileSummary): string {
   const slow = s.slowest ? ` slowest=${s.slowest.phase} ${s.slowest.ms}ms` : ''
   return `total=${s.totalMs}ms${slow} | ${[...parts, ...lapParts].join(' > ')}`
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// 활성 프로파일러 레지스트리 (2026-08-26)
+//
+// 배경: loadProfile 인스턴스는 embed.tsx 의 initializeEditor 지역 변수라, 재진입 증설 루프의
+// 실제 비용을 쓰는 useAppStore.addPage 에서는 접근할 수 없었다. 그래서 restore:grow 는
+// "1장 = 390ms" 라는 총합만 알려줄 뿐 그 안의 배분(플러그인 등록 / setPage / 워크스페이스
+// init / 래퍼 동기)을 분해하지 못했다. 모듈 레벨 슬롯 하나를 두어 임의 모듈이 lap 을 남길 수
+// 있게 한다.
+//
+// 프로덕션 안전: 미등록이면 lap() 은 **공유 no-op 상수**를 반환한다(할당 0, 분기 1회).
+// 등록은 embed 로드 구간(createLoadProfiler ~ ready) 뿐이며 finally 로 반드시 해제한다.
+// ────────────────────────────────────────────────────────────────────────────
+
+const NOOP_LAP = (): void => {}
+
+let activeProfiler: LoadProfiler | null = null
+
+/** 로드 구간 시작 시 등록. 이후 임의 모듈의 lap() 이 이 프로파일러에 집계된다. */
+export function setActiveLoadProfiler(p: LoadProfiler): void {
+  activeProfiler = p
+}
+
+/**
+ * 로드 구간 종료 시 해제. **자기 자신일 때만** 비운다 —
+ * StrictMode 이중 마운트로 두 초기화가 겹치면 나중 것이 슬롯을 갖고 있는데,
+ * 먼저 끝난 쪽이 무조건 null 로 밀면 살아 있는 로드의 계측이 끊긴다.
+ */
+export function clearActiveLoadProfiler(p: LoadProfiler): void {
+  if (activeProfiler === p) activeProfiler = null
+}
+
+/**
+ * 활성 프로파일러에 반복 구간 1회를 기록한다. 반환된 함수를 구간 끝에서 호출.
+ * 미등록(=평상시 편집)이면 no-op 상수를 돌려주므로 호출측에 비용이 없다.
+ */
+export function lap(key: string): () => void {
+  return activeProfiler ? activeProfiler.lapStart(key) : NOOP_LAP
+}

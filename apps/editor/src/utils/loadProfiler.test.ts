@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { createLoadProfiler, formatLoadProfile } from './loadProfiler'
+import {
+  createLoadProfiler,
+  formatLoadProfile,
+  setActiveLoadProfiler,
+  clearActiveLoadProfiler,
+  lap,
+} from './loadProfiler'
 
 function fakeClock(steps: number[]) {
   let i = 0
@@ -42,5 +48,46 @@ describe('loadProfiler (P1-5 재진입 로드 단계 계측)', () => {
     const p = createLoadProfiler()
     p.mark('x')
     expect(p.summary().phases[0].phase).toBe('x')
+  })
+})
+
+describe('활성 프로파일러 레지스트리', () => {
+  it('미등록이면 lap 은 no-op 이고 매번 같은 상수를 돌려준다(할당 0)', () => {
+    const a = lap('x')
+    const b = lap('y')
+    expect(a).toBe(b)
+    expect(() => a()).not.toThrow()
+  })
+
+  it('등록 중에는 활성 프로파일러에 집계된다', () => {
+    const p = createLoadProfiler(fakeClock([0, 0, 50, 50, 120, 120]))
+    setActiveLoadProfiler(p)
+    try {
+      lap('grow:plugins')()
+      lap('grow:plugins')()
+    } finally {
+      clearActiveLoadProfiler(p)
+    }
+    expect(p.summary().laps['grow:plugins']).toEqual({ count: 2, totalMs: 120, maxMs: 70 })
+  })
+
+  it('해제 후에는 다시 no-op 으로 돌아간다', () => {
+    const p = createLoadProfiler()
+    setActiveLoadProfiler(p)
+    clearActiveLoadProfiler(p)
+    lap('after')()
+    expect(p.summary().laps).toEqual({})
+  })
+
+  it('clear 는 자기 자신일 때만 비운다(겹친 초기화가 살아 있는 계측을 끊지 않음)', () => {
+    const first = createLoadProfiler()
+    const second = createLoadProfiler()
+    setActiveLoadProfiler(first)
+    setActiveLoadProfiler(second)
+    clearActiveLoadProfiler(first) // 먼저 끝난 쪽이 해제 시도 — 슬롯은 second 소유
+    lap('still-counted')()
+    clearActiveLoadProfiler(second)
+    expect(second.summary().laps['still-counted']?.count).toBe(1)
+    expect(first.summary().laps).toEqual({})
   })
 })

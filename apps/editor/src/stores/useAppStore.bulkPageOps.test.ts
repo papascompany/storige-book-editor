@@ -76,6 +76,21 @@ describe('useAppStore.runBulkPageOps — 썸네일 캡처 배칭', () => {
     expect(capture).toBe(2)
   })
 
+  it('아무 요청도 없던 구간은 종료 시 플러시하지 않는다', async () => {
+    // 내지 PDF 앉히기(contentPdfGuide)는 부족분이 0이어도 구간을 무조건 연다.
+    // 그때마다 전 캔버스 toDataURL 이 헛돌면 페이지 수에 비례한 낭비가 된다.
+    await useAppStore.getState().runBulkPageOps(async () => {
+      /* 페이지 증설 없음 */
+    })
+    settle()
+    expect(capture).toBe(0)
+
+    // 다음 평상시 캡처는 정상 동작(플래그가 정지 상태로 남지 않는다)
+    useAppStore.getState().takeCanvasScreenshot()
+    settle()
+    expect(capture).toBe(2)
+  })
+
   it('구간 안에서 예외가 나도 깊이가 풀리고(썸네일 영구 정지 없음) 예외는 전파된다', async () => {
     await expect(
       useAppStore.getState().runBulkPageOps(async () => {
