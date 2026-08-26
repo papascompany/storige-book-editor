@@ -71,7 +71,12 @@ import {
 } from './utils/orientationGuard'
 import { useExternalPhotosStore } from './stores/useExternalPhotosStore'
 import { reloadOnceForStaleChunk } from './components/EditorErrorBoundary'
-import { createLoadProfiler, formatLoadProfile } from './utils/loadProfiler'
+import {
+  createLoadProfiler,
+  formatLoadProfile,
+  setActiveLoadProfiler,
+  clearActiveLoadProfiler,
+} from './utils/loadProfiler'
 import { mergeRestoredSession, restoredCanvasCount } from './utils/sessionVersions'
 import type { SessionVersionsSource } from './components/editor/HistoryPanel'
 import './index.css'
@@ -763,6 +768,9 @@ function EmbeddedEditor({
     const initializeEditor = async () => {
       // P1-5 (2026-08-22): 로드 단계 프로파일 — ready 시점에 1회 요약(콘솔+Sentry info)
       const loadProfile = createLoadProfiler()
+      // 로드 구간 동안만 전역 슬롯에 등록 — useAppStore.addPage 등 다른 모듈이 sub-lap 을
+      // 남길 수 있게 한다(구간 밖에서는 lap() 이 no-op 이라 평상시 비용 0).
+      setActiveLoadProfiler(loadProfile)
       try {
         setIsLoading(true)
         setLoadingMessage('에디터를 초기화하는 중...')
@@ -924,6 +932,20 @@ function EmbeddedEditor({
 
         if (editSession) {
           setCurrentSession(editSession)
+          // 재진입 표기 시드 — useSaveStore.lastSavedAt 은 메모리 전용이라 재진입 직후 늘 null 이고,
+          // 히스토리 패널이 '마지막 저장: 기록 없음' 을 표시했다. 서버가 진실을 갖고 있으므로 채운다.
+          //
+          // ⚠️ canvasData 게이트가 필수다 — 방금 생성된 세션은 createPayload 에 canvasData 가 없어
+          //    updatedAt == 생성시각이다. 게이트 없이 시드하면 저장한 적 없는 새 세션이
+          //    "마지막 저장: 방금 전" 이라는 거짓을 표시한다.
+          // ⚠️ 시드는 표시 전용이다 — seedLastSavedAt 은 status·isDirty 를 건드리지 않는다.
+          //    "마지막으로 저장된 시각" 과 "지금 편집분이 저장됐는가" 는 다른 명제다.
+          if (editSession.canvasData != null && editSession.updatedAt) {
+            const savedAt = new Date(editSession.updatedAt)
+            if (!Number.isNaN(savedAt.getTime())) {
+              useSaveStore.getState().seedLastSavedAt(savedAt)
+            }
+          }
         }
 
         if (!isMounted) return
@@ -1494,6 +1516,9 @@ function EmbeddedEditor({
         const errPayload = { code: errorCode, message: errorMessage }
         onError?.(errPayload)
         postToParent(parentOrigin, 'editor.error', errPayload)
+      } finally {
+        // 죽은 프로파일러에 lap 이 계속 쌓이지 않도록 반드시 해제(성공/실패/조기 return 공통).
+        clearActiveLoadProfiler(loadProfile)
       }
     }
 
