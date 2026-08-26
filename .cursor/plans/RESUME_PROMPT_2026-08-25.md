@@ -4,7 +4,7 @@
 
 ## 0. 현재 라이브 상태 (2026-08-26 세션 종료 기준)
 
-- **master = origin/master = c0f3dde**, 워킹트리 클린(`.tmp-verify-combos/`·docs/SHOPIFY_*·docs/SITE_CATALOG_* untracked 는 타 세션 산출물 — 무접촉, 커밋 시 항상 명시 add)
+- **master = origin/master = 1126d70**, 워킹트리 클린(`.tmp-verify-combos/`·docs/SHOPIFY_*·docs/SITE_CATALOG_* untracked 는 타 세션 산출물 — 무접촉, 커밋 시 항상 명시 add)
 - 배포: editor/admin=Vercel master push 자동, API/워커=VPS 수동(`CLAUDE.local.md` §6, api recreate 시 **nginx 재시작 필수**). 이번 스프린트 변경은 **editor·canvas-core·CI 전용** — API/워커 무변경
 - 이번 배포 실증: Vercel `helbt4b01` Ready → 라이브 청크 문자열 대조 PASS
   (`index-DjYUrNgl.js` 에 `runBulkPageOps:async e=>{H++;try{...}finally{...}}` · `debouncedRecalcSpine():Z().then(` · `H>0){oe.cancel()`, `EmbedView-lhzHHm4n.js` 에 `runBulkPageOps(async(`). editor/ 200 · /embed 200
@@ -13,7 +13,7 @@
 
 | 대상 | 이전 기록 | **현재 정본** |
 |---|---|---|
-| editor vitest | 62파일/735 PASS | **64파일/763 PASS** (누적 신규 28) |
+| editor vitest | 62파일/735 PASS | **66파일/785 PASS** (누적 신규 50) |
 | editor tsc / lint | 0err / no-undef 4err "베이스라인" | **0err / 0err** (no-undef 근본 제거) |
 | canvas-core vitest | "기존 실패 6파일(ABI)" | **54/54 파일·623/623 PASS** — 실패 6파일은 베이스라인이 아니라 로컬 네이티브 모듈 파손이었다 |
 | canvas-core lint | no-undef 11+ "베이스라인" | **0err** (28err → 0) |
@@ -126,6 +126,27 @@ typecheck+test 스텝에는 **node-canvas 전제**를 주석으로 명시했다(
 **⚠️ "빨라졌다"고 말할 근거는 아직 없다.** 확정된 것은 (a) 9장 증설 책등 왕복 9→1(스펙 실증) (b) 빈 구간 toDataURL 플러시 제거 (c) 정확성 결함 2건 해소뿐이다.
 
 
+### ⑧ 책등 스테일 응답 경합 마감 (1126d70, 2026-08-26)
+
+⑦-D 가 "루프 기인분만 소멸, 구간 밖 연타는 열려 있다"고 남긴 잔여를 닫았다. 정찰 3 → 구현 1 → **3렌즈 적대검증** → 통합 게이트(8에이전트).
+
+**2중 방어 — 둘 다 필요하다**
+1. `spineApi.calculate(params, {signal})` → axios config 로 **AbortSignal 을 실제 HTTP 까지 관통**. `apiClient.post` 3번째 인자가 axios 로 그대로 넘어가 `client.ts` 는 무변경.
+2. **세대 가드** — abort 는 '응답 도착 전'까지만 듣는다. 이미 resolve 돼 await 체인 중간인 요청의 효과 적용은 세대 비교만이 막는다. 효과 적용 **직전마다** 검사(스프레드는 await 경계 2개 → 가드 2개).
+
+설계 결정: 세대 카운터는 **스토어가 아니라 spineCalculator 모듈** — 호출자 6곳 중 4곳(특히 deletePage)이 스토어 AbortController 를 우회한다. 세대는 **모든 조기 return 통과 후**에만 연다(진입부에서 올리면 스킵된 호출이 살아있는 in-flight 를 무효화 → 책등 아예 미적용). promise 직렬화는 기각(axios timeout 30s 매달림).
+
+**취소 판별식 정정**: axios 1.x 는 `CanceledError`(name='CanceledError', code='ERR_CANCELED')를 던진다 — **'AbortError' 가 아니다**(4케이스 실측). 기존 `error.name !== 'AbortError'` 는 취소를 에러로 오분류했다. 판별식이 실제로 필요한 자리는 useAppStore 의 `.catch` 가 아니라 **spineCalculator 의 catch 2곳**이다(recalculateSpineWidth 가 모든 에러를 반환값으로 삼켜 바깥 catch 에 안 간다).
+
+반환 계약: 스테일 선점 = `superseded`(신규 필드). `skipped`(종국적 no-op)와 분리, `error` 미설정.
+
+**검증은 전부 뮤테이션 실증**: `isSuperseded`→`return false` 시 6스펙 즉시 실패(메시지가 결함 그대로 — "expected 4 to be 4.5") / signal 관통 3줄 제거 시 `api/spine.test.ts` 2스펙 실패(**같은 뮤테이션에서 spineRace 는 13/13 초록** — 그 파일은 `@/api/spine` 을 통째 mock 하므로 관통이 커버리지 밖이었다) / 비스프레드 취소 가드 제거 시 S7c 만 실패. 신규 파일 20회 반복 0 실패.
+
+⚠️ **워크플로 운영 교훈**: 3렌즈를 **같은 워킹트리에서 병렬**로 돌리며 각자 뮤테이션 실험을 시켰더니, 렌즈2가 렌즈0의 소스 뮤테이션을 "플레이크 3회"로 오관측했다. 클린 트리 20회 재실행 0 실패로 확정. **뮤테이션 실험을 시키는 검증 에이전트는 직렬화하거나 worktree 격리할 것.**
+
+⚠️ **잔여**: 가드 ② 도달 시 신 세대가 그 뒤 **실패**하면 플러그인=구값/스토어=그 이전 값으로 갈린 채 남는다(덮어줄 주체 없음). 반대로 쓰면 스테일 되덮기가 열려 더 해롭다 — 트레이드오프를 코드 주석에 명시했다. 다음 재계산이 양쪽을 맞춘다. 가드 ②는 오늘 기준 도달 경로 미확인(방어적 보험).
+
+
 ## 2. 잔여 작업 (우선순위)
 
 **P0 — 오너 액션(코드 아님)**
@@ -136,10 +157,9 @@ typecheck+test 스텝에는 **node-canvas 전제**를 주석으로 명시했다(
 
 **P1 — 코드 후속(다음 세션 착수 순서)**
 4. **재진입 시드 실측**(오너 실기 1회 선행) — `window.__storigeLoadProfile.laps` 의 `grow:*` sub-lap 으로 390ms/장 배분 확보 + 같은 실기에서 Chrome DevTools Performance 녹화(Recalculate Style/Layout 총시간·Forced reflow 경고 수). **읽기 전용으로** 뜰 것(자동저장이 발화하면 절단 방지 로직과 얽힌다). `grow:wrapperSync:hit` count 가 0에 가까우면 1px 허용오차는 이득 없음으로 결론
-5. **책등 스테일 응답 경합 마감** — 구간 밖 연타 경로가 열려 있다. `apps/editor/src/api/spine.ts` 의 `spineApi.calculate` 에 AbortSignal 을 뚫고 `spineCalculator.ts` 에서 스테일 응답 폐기. (⚠️ useAppStore 안 promise 직렬화는 **기각** — axios timeout 30s 라 요청 1건이 매달리면 이후 재계산이 최대 30초 정지)
-6. **FontPlugin 동일 CSS 재기입 스킵**(A-1) — 정찰이 증명했으나 canvas-core 소유권 미배정으로 미착수. `grow:plugins` 가 지배적으로 나오면 우선 착수
-7. api lint 범위 사각지대 — `apps/api/scripts/*.ts`·`storage/test/*.ts` 는 lint·typecheck 어느 쪽도 대상이 아니고, `test/**/*.ts` 11개는 eslint ignores + tsconfig 밖이라 e2e ts-jest 컴파일에만 의존. 해소하려면 `projectService: true` 전환 또는 test/scripts 전용 config 블록
-8. (관찰) 시드 표기의 잔여 — 레거시 `/` 경로(EditorView+useAutoSave)는 시드 대상이 아니라 '기록 없음' 유지(임베드가 실사용 경로라 수용) · 게스트 세션은 `GET /edit-sessions/:id` 403 이라 세션 자체가 안 실려 시드 미적용(해소는 API 변경) · `updatedAt` 은 @UpdateDateColumn 이라 워커 검증캐시 PATCH 가 마지막 편집 저장보다 늦으면 표시 시각이 더 최신으로 보일 수 있다
+5. **FontPlugin 동일 CSS 재기입 스킵**(A-1) — 정찰이 증명했으나 canvas-core 소유권 미배정으로 미착수. `grow:plugins` 가 지배적으로 나오면 우선 착수
+6. api lint 범위 사각지대 — `apps/api/scripts/*.ts`·`storage/test/*.ts` 는 lint·typecheck 어느 쪽도 대상이 아니고, `test/**/*.ts` 11개는 eslint ignores + tsconfig 밖이라 e2e ts-jest 컴파일에만 의존. 해소하려면 `projectService: true` 전환 또는 test/scripts 전용 config 블록
+7. (관찰) 시드 표기의 잔여 — 레거시 `/` 경로(EditorView+useAutoSave)는 시드 대상이 아니라 '기록 없음' 유지(임베드가 실사용 경로라 수용) · 게스트 세션은 `GET /edit-sessions/:id` 403 이라 세션 자체가 안 실려 시드 미적용(해소는 API 변경) · `updatedAt` 은 @UpdateDateColumn 이라 워커 검증캐시 PATCH 가 마지막 편집 저장보다 늦으면 표시 시각이 더 최신으로 보일 수 있다
 
 **P2 — 기존 백로그(트랙별 정본 참조)**
 8. 업계표준 R6·R10·R3b(RESUME 08-11) / R5 다크 ON=오너게이트
