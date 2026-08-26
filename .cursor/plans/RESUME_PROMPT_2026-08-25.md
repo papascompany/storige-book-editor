@@ -18,7 +18,7 @@
 | canvas-core vitest | "기존 실패 6파일(ABI)" | **54/54 파일·623/623 PASS** — 실패 6파일은 베이스라인이 아니라 로컬 네이티브 모듈 파손이었다 |
 | canvas-core lint | no-undef 11+ "베이스라인" | **0err** (28err → 0) |
 | api jest | 75파일/1038 PASS | **76파일/1047 PASS**(contract-freeze +8 · supertest-ipv4-binding +1) |
-| api 전체실행 플레이크 | 희생자 무작위 ~14% | **근본 수정 완료**(0d65984, §1 ⑩) — supertest 주소 패밀리 정합. 30회 0 실패. 잔존 플레이크는 `partner-api-keys.v1.spec` 병렬 타임아웃 1종뿐 |
+| api 전체실행 플레이크 | 희생자 무작위 ~14% + partner-api-keys 타임아웃 | **전부 종결**(0d65984·2089ea7, §1 ⑩) — 둘 다 supertest 주소 패밀리 버그(4xx 변종/침묵 데몬 변종). 누적 46회 0 실패. **등재된 플레이크 0종** |
 | 동결 게이트 | Files·WorkerJobs·EditSessions 3컨트롤러 | **5컨트롤러** — TemplateSets·ProductTemplateSets 등재(558eb6f) |
 | CI 게이트 | canvas-core lint 부재 | **등재됨**(02178c7) — run 32801584699 success. devDeps 선언 후 clean install 재실증(69a6038, run 32926301746) |
 | api lint | globals 손열거 의존 | **no-undef off**(7a71060) — 0 errors 유지, 오탐 재발 경로 차단 |
@@ -202,16 +202,28 @@ dns.lookup 경유 비동기라 직후 address()=null → 원 구현이 listen(0)
 전체 76스위트/1047 PASS · **수정 후 30회 반복 0 실패**(수정 전 ~14%).
 
 **잔여(문서화됨)**: v6 루프백 특정 리스너와의 공존 충돌은 이론상 가능 — 이 Mac 실측
-v6 루프백 리스너는 well-known 2개뿐(ephemeral 0). `partner-api-keys.v1.spec` 병렬
-타임아웃 플레이크는 별건으로 존속(단독 PASS 기준 유지).
+v6 루프백 리스너는 well-known 2개뿐(ephemeral 0). ~~partner-api-keys 타임아웃~~ → **동근원 변종으로 확정·종결**(2089ea7, ⑪ 참조).
+
+### ⑪ partner-api-keys 타임아웃 종결 + new.bookmoa.com 베타 준비 (2089ea7·45e42dd·20dcca6, 2026-08-26)
+
+**A. 마지막 플레이크 종결** — "단독 PASS·전체 병렬 26s 타임아웃"은 ⑩ 버그의 **침묵 데몬 변종**이었다. 스쿼터가 Go 데몬(즉시 4xx)이면 403/404, "accept 후 무응답" 리스너(실측 상주 2개)면 행→jest testTimeout 발현. 해싱 고비용 가설은 반증(SHA-256 단일 digest, bcrypt 0회) · CPU 기아 반증(busy-loop 10개 하 3.6s 불변) · 결정적 데모(pre-fix=HANG / post-fix=8ms) · 누적 46회 무실패. 코드 변경은 spec 헤더 기록 17줄뿐. **등재 플레이크 0종.**
+
+**B. new.bookmoa.com 베타 전환 3건**(파트너 요청):
+1. 콜백 구조 — 동의(잡별 callbackUrl 전달 구조, 조치 불필요)
+2. **site `b5aef7a9` 갱신 LIVE**: `frame_ancestors`·`allowed_origins` 에 새 도메인 멱등 추가(JSON_CONTAINS 가드) + **구 도메인 3필드(domain·upload_callback_url·return_url_base) 신 도메인 전환**(오너 지시). 라이브 검증: `/api/frame-ancestors` 합집합 + `/embed` CSP 실헤더 반영 확인. ⚠️ **함정 발견**: 이 필드들은 웹훅 SSRF 허용 호스트 목록(`webhookAllowedHosts`)을 만든다 — 전환 없이는 새 프로젝트의 콜백이 막혔을 수 있다. 병행 안전: 허용 호스트가 frame_ancestors 호스트를 포함하므로 구 오리진이 allowlist 에 있는 한 구 콜백도 허용
+3. **R2 CORS = 오너 Cloudflare 대시보드 액션**: 전제는 사실(storage_settings.driver='s3' LIVE — 메모리의 'R2 대기'는 스테일, 07-06 프로비저닝). S3 API PutBucketCors 는 AccessDenied(토큰이 Object R/W 스코프). → R2 `storige-files` Settings → CORS 에 `https://new.bookmoa.com` 추가(ETag ExposeHeaders 유지)
+
+회신문: `docs/partner-notices/PARTNER_ANSWER_BOOKMOA_NEW_DOMAIN_2026-08-26.md`. **오너 액션 2건: R2 CORS 추가 + 회신문 발송.**
+
 
 ## 2. 잔여 작업 (우선순위)
 
 **P0 — 오너 액션(코드 아님)**
-1. **파트너 회신문 발송** — ⓐ `PARTNER_NOTICE_*_2026-08-24.md` 4종(테넌트 격리·EDITOR_BUSY 통지) ⓑ `PARTNER_ANSWER_PRINTY_TEMPLATE_SET_SCOPE_2026-08-26.md`(프린티 질의 3건 회신 — 게이트 등재 완료 반영본). 각 사 보안 채널로(키 회전 때와 동일 경로)
-2. 동화책 왕복 실기(8/22 이월): **새 세션으로** 편집완료(PDF 생성)→보관함 이어서편집→16p 추가→재진입 유지 확인 + content PDF VALIDATE 426×216 워커 로그(R7) + 복원 UI 실주문 iframe 1회 눈확인
+1. **R2 CORS 오너 액션(베타 게이트)** — Cloudflare 대시보드 → R2 `storige-files` → Settings → CORS 에 `https://new.bookmoa.com` 추가(§1 ⑪-3, 토큰 스코프상 대시보드만 가능)
+2. **파트너 회신문 발송** — ⓐ `PARTNER_NOTICE_*_2026-08-24.md` 4종(테넌트 격리·EDITOR_BUSY 통지) ⓑ `PARTNER_ANSWER_PRINTY_TEMPLATE_SET_SCOPE_2026-08-26.md`(프린티 질의 3건 회신 — 게이트 등재 완료 반영본). 각 사 보안 채널로(키 회전 때와 동일 경로)
+3. 동화책 왕복 실기(8/22 이월): **새 세션으로** 편집완료(PDF 생성)→보관함 이어서편집→16p 추가→재진입 유지 확인 + content PDF VALIDATE 426×216 워커 로그(R7) + 복원 UI 실주문 iframe 1회 눈확인
    - **이번 세션 추가**: 같은 왕복에서 `__storigeLoadProfile` 의 `restore:grow` lap 을 기록해 ⑤ 개선 폭 실측(기준 ≈390ms/장)
-3. bookmoa 장바구니 #1 "그림책·동화책 하드커버(A4)" 테스트 항목 삭제(8/21 부산물)
+4. bookmoa 장바구니 #1 "그림책·동화책 하드커버(A4)" 테스트 항목 삭제(8/21 부산물)
 
 **P1 — 코드 후속(다음 세션 착수 순서)**
 4. **재진입 시드 실측**(오너 실기 1회 선행) — `window.__storigeLoadProfile.laps` 의 `grow:*` sub-lap 으로 390ms/장 배분 확보 + 같은 실기에서 Chrome DevTools Performance 녹화(Recalculate Style/Layout 총시간·Forced reflow 경고 수). **읽기 전용으로** 뜰 것(자동저장이 발화하면 절단 방지 로직과 얽힌다). `grow:wrapperSync:hit` count 가 0에 가까우면 1px 허용오차는 이득 없음으로 결론
