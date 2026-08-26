@@ -18,7 +18,7 @@
 | canvas-core vitest | "기존 실패 6파일(ABI)" | **54/54 파일·623/623 PASS** — 실패 6파일은 베이스라인이 아니라 로컬 네이티브 모듈 파손이었다 |
 | canvas-core lint | no-undef 11+ "베이스라인" | **0err** (28err → 0) |
 | api jest | 75파일/1038 PASS | **75파일/1046 PASS**(contract-freeze 신규 8) |
-| api 병렬 플레이크 | `partner-api-keys.v1.spec` 1종 | **2종** — `guest-session-tenancy.spec` 추가(2026-08-26 전체 병렬에서 1회 실패, 단독 3/3·전체 3회 재현 안 됨). 둘 다 단독 PASS 면 회귀 아님 |
+| api 전체실행 플레이크 | `partner-api-keys.v1.spec` 1종 | **희생자가 매번 바뀌는 전체실행 플레이크**(약 14%, §1 ⑩). 특정 스펙 것이 아니며 **단독 실행은 항상 PASS** — 단독 재실행이 통과하면 회귀 아님 |
 | 동결 게이트 | Files·WorkerJobs·EditSessions 3컨트롤러 | **5컨트롤러** — TemplateSets·ProductTemplateSets 등재(558eb6f) |
 | CI 게이트 | canvas-core lint 부재 | **등재됨**(02178c7) — run 32801584699 success. devDeps 선언 후 clean install 재실증(69a6038, run 32926301746) |
 | api lint | globals 손열거 의존 | **no-undef off**(7a71060) — 0 errors 유지, 오탐 재발 경로 차단 |
@@ -176,6 +176,43 @@ typecheck+test 스텝에는 **node-canvas 전제**를 주석으로 명시했다(
 컨트롤러 prefix 2건도 동결. **뮤테이션 양방향 실증**: `@Public` 제거 → 'public' 단언 실패 / `ApiKeyGuard` 제거 → 'api-key' 단언 실패(둘 다 원복 확인). 런타임 동작 무변경. 코드 주석에 "무스코프는 결함이 아니라 계약"을 명시해 다음 작업자의 오인 수정을 막았다.
 
 회신문 정본: `docs/partner-notices/PARTNER_ANSWER_PRINTY_TEMPLATE_SET_SCOPE_2026-08-26.md`(게이트 등재 완료로 갱신됨). **오너 액션: 프린티 팀 발송.**
+
+
+### ⑩ api 전체실행 플레이크 — 조사했으나 **원인 미확정**(2026-08-26)
+
+⑨에서 "`guest-session-tenancy.spec` 플레이크 추가"라고 적은 것은 **오분류였다.** 특정 스펙의 결함이 아니다 — 실행마다 **희생자가 바뀐다.**
+
+**관측된 희생자 3종**(전부 다른 스펙·다른 테스트)
+- `guest-session-tenancy.spec` › 틀린 토큰 → `seedGuest` 의 `expect(201)` 이 **403** 수신
+- `portal.v0.spec` › PATCH 셀프 설정 › origin 정규화
+- `partner-api-keys.v1.spec` › 전역 ThrottlerGuard 유래 429 Retry-After
+
+**측정치(전부 실측, 이 Mac 10코어)**
+
+| 조건 | 실패 |
+|---|---|
+| 전체 · 기본 9워커 | 0 / 10 |
+| 전체 · `--maxWorkers=20`(과다구독) | 1 / 10 |
+| 전체 · `--runInBand`(완전 직렬) | **1 / 4** |
+| 해당 스펙 단독 | 0 / 15 |
+| e2e 스펙 8개만 · runInBand | 0 / 10 |
+
+전체실행 누적 약 4/28 ≈ **14%**. CI 는 최근 30런 전부 success(로컬 전용 가능성).
+
+**반증된 가설(추측 아님 — 실측/코드로 각각 기각)**
+1. ~~워커 경합~~ — **`--runInBand` 에서 재현됐다.** 병렬성이 0인데 나므로 경합이 원인이 아니다. 이 반증 하나로 "워커 수 조정" 처방도 무효다
+2. ~~특정 스펙 결함~~ — 단독 0/15, 희생자 3종
+3. ~~토큰 만료~~ — `expiresIn:'1h'`, portal 은 JWT 미사용(`x-test-user` 헤더)
+4. ~~스로틀/레이트리밋~~ — 해당 테스트 모듈에 ThrottlerGuard 부재
+5. ~~미종료 Nest 앱(fd 누수)~~ — 앱 띄우는 e2e 8개 **전부** `afterAll` 에서 `app.close()`
+6. ~~`process.env` 누수~~ — env 쓰기 스펙 7개 전부 복원
+7. ~~정규화 순서 비결정성~~ — `.map` 은 순서 보존
+
+**남은 범위**: 파일 간 + 전체 75스펙 필요 + 시간 의존(runInBand 는 파일 순서가 같은데도 결과가 갈린다). e2e 8개만으로는 재현 안 되므로 **비-e2e 스펙 중 무언가가 트리거**다.
+
+⚠️ **가장 유력한 단서 하나(미해결)**: `guest-session-tenancy` 의 403 은 **코드 경로상 도달 불가**다. `createGuest` 의 유일한 403 은 `ORDER_NOT_ALLOWED` 인데 그 분기는 `dto.orderSeqno !== undefined` 를 먼저 요구하고, `seedGuest()` 는 `{mode}` 만 보낸다(orderSeqno 미전송). 즉 **관측된 응답이 핸들러 로직과 모순된다** — 응답이 다른 앱 인스턴스에서 왔거나, `req.user`/DTO 가 오염된 것이다. 내 모델이 불완전하다는 뜻이므로 여기서 결론을 내지 않았다.
+
+**다음 세션 착수안(반증 가능한 형태)**: 전체 실행에 계측을 넣어 그 라우트의 `req.user`·`dto.orderSeqno`·앱 인스턴스 id 를 실패 시점에 찍는다. 그다음 75스펙을 이분 탐색해 최소 트리거 집합을 찾는다. **추측으로 "플레이크"라 적고 넘기지 말 것** — 파일 간 상태 오염이면 프로덕션 코드의 문제일 수도 있다.
 
 
 ## 2. 잔여 작업 (우선순위)
