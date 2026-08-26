@@ -4,7 +4,7 @@
 
 ## 0. 현재 라이브 상태 (2026-08-26 세션 종료 기준)
 
-- **master = origin/master = 02178c7**, 워킹트리 클린(`.tmp-verify-combos/`·docs/SHOPIFY_*·docs/SITE_CATALOG_* untracked 는 타 세션 산출물 — 무접촉, 커밋 시 항상 명시 add)
+- **master = origin/master = c0f3dde**, 워킹트리 클린(`.tmp-verify-combos/`·docs/SHOPIFY_*·docs/SITE_CATALOG_* untracked 는 타 세션 산출물 — 무접촉, 커밋 시 항상 명시 add)
 - 배포: editor/admin=Vercel master push 자동, API/워커=VPS 수동(`CLAUDE.local.md` §6, api recreate 시 **nginx 재시작 필수**). 이번 스프린트 변경은 **editor·canvas-core·CI 전용** — API/워커 무변경
 - 이번 배포 실증: Vercel `helbt4b01` Ready → 라이브 청크 문자열 대조 PASS
   (`index-DjYUrNgl.js` 에 `runBulkPageOps:async e=>{H++;try{...}finally{...}}` · `debouncedRecalcSpine():Z().then(` · `H>0){oe.cancel()`, `EmbedView-lhzHHm4n.js` 에 `runBulkPageOps(async(`). editor/ 200 · /embed 200
@@ -13,12 +13,13 @@
 
 | 대상 | 이전 기록 | **현재 정본** |
 |---|---|---|
-| editor vitest | 62파일/735 PASS | **63파일/743 PASS** (신규 8 = dpi 가드 4 + 배칭 계약 4) |
+| editor vitest | 62파일/735 PASS | **64파일/763 PASS** (누적 신규 28) |
 | editor tsc / lint | 0err / no-undef 4err "베이스라인" | **0err / 0err** (no-undef 근본 제거) |
 | canvas-core vitest | "기존 실패 6파일(ABI)" | **54/54 파일·623/623 PASS** — 실패 6파일은 베이스라인이 아니라 로컬 네이티브 모듈 파손이었다 |
 | canvas-core lint | no-undef 11+ "베이스라인" | **0err** (28err → 0) |
 | api jest | 75파일/1038 PASS | 불변(이번 스프린트 미변경). `partner-api-keys.v1.spec` 병렬 26s 타임아웃 = 플레이크(단독 PASS) |
-| CI 게이트 | canvas-core lint 부재 | **등재됨**(02178c7) — run 32801584699 success, 54파일/623 수집 + lint 0err 실증 |
+| CI 게이트 | canvas-core lint 부재 | **등재됨**(02178c7) — run 32801584699 success. devDeps 선언 후 clean install 재실증(69a6038, run 32926301746) |
+| api lint | globals 손열거 의존 | **no-undef off**(7a71060) — 0 errors 유지, 오탐 재발 경로 차단 |
 
 - 라이브 커밋 계보: `3ddce60`(perf 재진입 시드) ← `cb1a741`(dpi 회귀 가드) ← `5877780`(canvas-core 프리플라이트) ← `bf8ab1d`(lint no-undef) ← `df40954`(8/24 정본)
 
@@ -97,6 +98,34 @@ typecheck+test 스텝에는 **node-canvas 전제**를 주석으로 명시했다(
 
 **⚠️ 발견(미해결, 아래 P1 6번)**: `canvas-core` 는 `eslint`·`@typescript-eslint/*` 를 devDependency 로 **하나도 선언하지 않는다**. 루트 `package.json` 도 선언하지 않으며, `eslint-plugin-react` 의 **auto-install-peer** 로 루트에 링크가 생긴 것을 쓰고 있다(팬텀 의존성). 현재는 락파일에 고정돼 CI clean install 에서도 결정적으로 동작함을 실증했지만, 루트의 eslint 플러그인 구성이 바뀌면 조용히 사라질 수 있다.
 
+### ⑦ 8/26 병렬 트랙 4건 (69a6038 · 7a71060 · cd1225c · 542fa18 · c0f3dde)
+
+정찰 4 → 구현 3 → 통합검증 1, 총 8에이전트. 파일 소유권을 배타 분할해 교차 침범 0건. 통합검증 **GO**.
+
+**A. canvas-core eslint devDeps 선언 (69a6038)** — 팬텀 의존성 해소. canvas-core 도 루트도 `eslint`·`@typescript-eslint/*` 를 선언하지 않고 `eslint-plugin-react` 의 **auto-install-peer** 로 생긴 루트 링크에 얹혀 있었다. 기존 패키지와 같은 레인지로 선언해 **락파일 12줄 추가·버전 변경 0**. `--lockfile-only` 로만 갱신했다(전체 install 은 `ignoredOptionalDependencies:["canvas"]` 탓에 재빌드한 node-canvas 를 걷어낼 위험). CI run `32926301746` 이 clean `--frozen-lockfile` install 로 실증.
+
+**B. api eslint no-undef off (7a71060)** — 끄기 전후 lint 산출물 동일(36/0/36). "tsc 가 이미 잡는다" 전제가 **린트 대상 317개 == tsconfig 프로그램 317개**로 정확히 성립함을 실증. 오탐 재발 경로도 실재 확인(globals 에서 `NodeJS` 한 줄 제거 → 즉시 오탐 1건). ⚠️ api 고유: `parserOptions.project` 덕에 lib.es2022.full(DOM 포함) 전역이 자동 주입돼 손열거가 떠받치는 범위는 @types/node·@types/jest·Express 뿐이다(project 제거 대조 실험에서 'URL' 오탐 17건 발생). lint 범위 확대는 **제외** — `eslint .` 로 넓히면 scripts/·test/ 가 tsconfig include(`src/**/*`) 밖이라 project 파싱 에러가 난다(별도 트랙).
+
+**C. "마지막 저장: 없음" 해소 (cd1225c + c0f3dde 배선)** — `useSaveStore` 는 persist 없는 메모리 전용이라 재진입 직후 `lastSavedAt` 이 늘 null 이었다. 서버 `updatedAt` 으로 시드하는 `seedLastSavedAt` 신설. **불변식: status·isDirty·error 무접촉** — "마지막으로 저장된 시각"과 "지금 편집분이 저장됐는가"는 다른 명제다. 라벨도 정정("마지막 자동저장"→"마지막 저장", `updatedAt` 이 @UpdateDateColumn 이라 편집완료·첨부·검증캐시 PATCH 로도 갱신되므로 / "없음"→"기록 없음"). 호출부에 **`canvasData != null` 게이트 필수** — 없으면 방금 생성된 세션이 "방금 전" 거짓 표기.
+
+**D. ⚠️ 8/25 커밋 3ddce60 의 주장 2건이 반증됐다 (542fa18 로 정정)**
+
+적대검증이 CONFIRMED 로 반증했다. **정본의 종전 ⑤ 서술도 이에 따라 정정한다**:
+
+| 3ddce60 의 주장 | 실제 |
+|---|---|
+| "debouncedRecalcSpine 경유로 마지막 1회로 접는다" | **접히지 않았다.** debounce 창 300ms < addPage 1회 ≈390ms(그 커밋이 스스로 인용한 실측치) → 타이머가 매 반복 만료. 9장이면 여전히 API 9회 |
+| "부수적으로 경합도 닫힌다" | **닫히지 않았다.** AbortController 는 대기 타이머만 막고 **발사된 HTTP 에는 전달되지 않는다**(spineApi.calculate 가 signal 미수신) |
+
+정정: 썸네일과 **동일한 구간 게이트**(`bulkPageOpDepth>0`)로 통일해 `runBulkPageOps` finally 에서 1회만 발사. 구간 진입 직전 예약도 abort 한다(살려두면 구간 한복판에서 중간 pageCount 로 발사돼 최종 요청과 in-flight 중복). `useAppStore.spineBatching.test.ts` 의 **대조군 spec 이 결함 자체를 실증**한다(390ms 간격 9회 → 9회 호출). 경합은 루프 기인분만 구조적으로 소멸했고, 구간 밖 연타는 여전히 열려 있다(아래 P1).
+
+함께 고친 것: 빈 구간 무조건 플러시 제거(contentPdfGuide 는 부족분 0이어도 구간을 연다) · 죽은 `restoring` 분기의 abort 체인 identity 가드 · wrapper 치수 1px 허용오차.
+
+**계측 배선(실측은 다음 실기)**: `loadProfiler` 에 활성 슬롯 + identity-safe 등록/해제 + `lap(key)`. 미등록 시 **공유 no-op 상수** 반환 → 평상시 비용 분기 1회·할당 0. addPage 에 `grow:createCanvas|plugins|storeInit|setPage|wsInit|wrapperSync:hit|skip|tail`. `restore:grow` 는 총합 대조군 유지.
+
+**⚠️ "빨라졌다"고 말할 근거는 아직 없다.** 확정된 것은 (a) 9장 증설 책등 왕복 9→1(스펙 실증) (b) 빈 구간 toDataURL 플러시 제거 (c) 정확성 결함 2건 해소뿐이다.
+
+
 ## 2. 잔여 작업 (우선순위)
 
 **P0 — 오너 액션(코드 아님)**
@@ -106,10 +135,11 @@ typecheck+test 스텝에는 **node-canvas 전제**를 주석으로 명시했다(
 3. bookmoa 장바구니 #1 "그림책·동화책 하드커버(A4)" 테스트 항목 삭제(8/21 부산물)
 
 **P1 — 코드 후속(다음 세션 착수 순서)**
-4. 재진입 시드 잔여 비용 실측 후 2차 최적화 판단(위 ⑤ "남은 계측")
-5. (관찰) 재진입 직후 "마지막 자동저장: 없음" 표기(lastSavedAt 세션 내 한정 — 기존 동작, UX 판단)
-6. **canvas-core eslint devDeps 선언**(팬텀 의존성 해소 — 위 ⑥ 후속). `eslint`·`@typescript-eslint/eslint-plugin`·`@typescript-eslint/parser`·`@eslint/js` 를 `packages/canvas-core/package.json` 에 명시. **락파일 갱신이 따르므로 별도 작업으로 분리했다** — 8/26 세션에서 실행하지 않은 이유는 `pnpm install` 이 루트 `ignoredOptionalDependencies: ["canvas"]` 때문에 재빌드해 둔 로컬 node-canvas 를 걷어낼 위험이 있어서다(⑥-b 재빌드 레시피 참조). 착수 시 현재 해석 버전으로 핀하면 diff 최소: eslint 9.39.1 / @typescript-eslint 8.48.1 / @eslint/js 9.39.2
-7. (제안, 미실행) api eslint 설정도 canvas-core 와 같은 "globals 손열거" 구조라 동일 오탐이 재발할 수 있다(현재는 열거가 맞아 0err). 같은 `no-undef: 'off'` 처방 적용 검토
+4. **재진입 시드 실측**(오너 실기 1회 선행) — `window.__storigeLoadProfile.laps` 의 `grow:*` sub-lap 으로 390ms/장 배분 확보 + 같은 실기에서 Chrome DevTools Performance 녹화(Recalculate Style/Layout 총시간·Forced reflow 경고 수). **읽기 전용으로** 뜰 것(자동저장이 발화하면 절단 방지 로직과 얽힌다). `grow:wrapperSync:hit` count 가 0에 가까우면 1px 허용오차는 이득 없음으로 결론
+5. **책등 스테일 응답 경합 마감** — 구간 밖 연타 경로가 열려 있다. `apps/editor/src/api/spine.ts` 의 `spineApi.calculate` 에 AbortSignal 을 뚫고 `spineCalculator.ts` 에서 스테일 응답 폐기. (⚠️ useAppStore 안 promise 직렬화는 **기각** — axios timeout 30s 라 요청 1건이 매달리면 이후 재계산이 최대 30초 정지)
+6. **FontPlugin 동일 CSS 재기입 스킵**(A-1) — 정찰이 증명했으나 canvas-core 소유권 미배정으로 미착수. `grow:plugins` 가 지배적으로 나오면 우선 착수
+7. api lint 범위 사각지대 — `apps/api/scripts/*.ts`·`storage/test/*.ts` 는 lint·typecheck 어느 쪽도 대상이 아니고, `test/**/*.ts` 11개는 eslint ignores + tsconfig 밖이라 e2e ts-jest 컴파일에만 의존. 해소하려면 `projectService: true` 전환 또는 test/scripts 전용 config 블록
+8. (관찰) 시드 표기의 잔여 — 레거시 `/` 경로(EditorView+useAutoSave)는 시드 대상이 아니라 '기록 없음' 유지(임베드가 실사용 경로라 수용) · 게스트 세션은 `GET /edit-sessions/:id` 403 이라 세션 자체가 안 실려 시드 미적용(해소는 API 변경) · `updatedAt` 은 @UpdateDateColumn 이라 워커 검증캐시 PATCH 가 마지막 편집 저장보다 늦으면 표시 시각이 더 최신으로 보일 수 있다
 
 **P2 — 기존 백로그(트랙별 정본 참조)**
 8. 업계표준 R6·R10·R3b(RESUME 08-11) / R5 다크 ON=오너게이트
@@ -127,4 +157,5 @@ typecheck+test 스텝에는 **node-canvas 전제**를 주석으로 명시했다(
 3. SSH 필요 시 `ssh-add -l` 확인, `deploy@` 대상만(fail2ban)
 4. 함정 상기: vite.config.js shadow / 빌드게이트 5함정(배포는 state·번들 문자열·컨테이너 dist 로 실증) / fabric styles·loadJSON 치수 오염 / SPREAD=표지 아님(buildPageMeta hasCoverSlot) / isInitializedRef 창에 저장 입구 금지 / API 재배포 시 nginx 재시작 / 실기·프로덕션 키 작업은 권한무시 모드 / **canvas-core 테스트는 Node 22·24 에서만(§1 ⑥-b)**
 5. CI 는 canvas-core lint 를 게이트로 잡는다(02178c7) — `pnpm --filter @storige/canvas-core lint` 는 `eslint .`(types/ 포함)이고 error 0 이 조건이다
-6. 검증 기준선: **§0 표** — 종전 "canvas-core 실패 6파일·lint no-undef" 는 **더 이상 베이스라인이 아니다**. 실패하면 회귀이거나 로컬 canvas 파손 둘 중 하나이고, 후자는 프리플라이트가 이름을 대며 멈춘다
+6. **debounce 는 배칭 도구가 아니다** — 반복 1회가 debounce 창보다 길면 매 반복 만료된다. 루프 배칭은 `runBulkPageOps` 구간 게이트를 쓸 것(3ddce60 이 이 착각으로 잘못된 주장을 했고 542fa18 이 정정 — §1 ⑦-D)
+7. 검증 기준선: **§0 표** — 종전 "canvas-core 실패 6파일·lint no-undef" 는 **더 이상 베이스라인이 아니다**. 실패하면 회귀이거나 로컬 canvas 파손 둘 중 하나이고, 후자는 프리플라이트가 이름을 대며 멈춘다
