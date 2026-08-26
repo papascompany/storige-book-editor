@@ -17,8 +17,8 @@
 | editor tsc / lint | 0err / no-undef 4err "베이스라인" | **0err / 0err** (no-undef 근본 제거) |
 | canvas-core vitest | "기존 실패 6파일(ABI)" | **54/54 파일·623/623 PASS** — 실패 6파일은 베이스라인이 아니라 로컬 네이티브 모듈 파손이었다 |
 | canvas-core lint | no-undef 11+ "베이스라인" | **0err** (28err → 0) |
-| api jest | 75파일/1038 PASS | **75파일/1046 PASS**(contract-freeze 신규 8) |
-| api 전체실행 플레이크 | `partner-api-keys.v1.spec` 1종 | **희생자가 매번 바뀌는 전체실행 플레이크**(약 14%, §1 ⑩). 특정 스펙 것이 아니며 **단독 실행은 항상 PASS** — 단독 재실행이 통과하면 회귀 아님 |
+| api jest | 75파일/1038 PASS | **76파일/1047 PASS**(contract-freeze +8 · supertest-ipv4-binding +1) |
+| api 전체실행 플레이크 | 희생자 무작위 ~14% | **근본 수정 완료**(0d65984, §1 ⑩) — supertest 주소 패밀리 정합. 30회 0 실패. 잔존 플레이크는 `partner-api-keys.v1.spec` 병렬 타임아웃 1종뿐 |
 | 동결 게이트 | Files·WorkerJobs·EditSessions 3컨트롤러 | **5컨트롤러** — TemplateSets·ProductTemplateSets 등재(558eb6f) |
 | CI 게이트 | canvas-core lint 부재 | **등재됨**(02178c7) — run 32801584699 success. devDeps 선언 후 clean install 재실증(69a6038, run 32926301746) |
 | api lint | globals 손열거 의존 | **no-undef off**(7a71060) — 0 errors 유지, 오탐 재발 경로 차단 |
@@ -178,42 +178,32 @@ typecheck+test 스텝에는 **node-canvas 전제**를 주석으로 명시했다(
 회신문 정본: `docs/partner-notices/PARTNER_ANSWER_PRINTY_TEMPLATE_SET_SCOPE_2026-08-26.md`(게이트 등재 완료로 갱신됨). **오너 액션: 프린티 팀 발송.**
 
 
-### ⑩ api 전체실행 플레이크 — 조사했으나 **원인 미확정**(2026-08-26)
+### ⑩ api 전체실행 플레이크 — **원인 확정 + 근본 수정 LIVE** (0d65984, 2026-08-26)
 
-⑨에서 "`guest-session-tenancy.spec` 플레이크 추가"라고 적은 것은 **오분류였다.** 특정 스펙의 결함이 아니다 — 실행마다 **희생자가 바뀐다.**
+한때 "guest-session-tenancy 플레이크"로 오분류했던 전체실행 무작위 실패(~14%)의 정체:
+**supertest 요청이 우리 서버가 아니라 이 Mac 의 상주 데몬으로 배달되고 있었다.**
 
-**관측된 희생자 3종**(전부 다른 스펙·다른 테스트)
-- `guest-session-tenancy.spec` › 틀린 토큰 → `seedGuest` 의 `expect(201)` 이 **403** 수신
-- `portal.v0.spec` › PATCH 셀프 설정 › origin 정규화
-- `partner-api-keys.v1.spec` › 전역 ThrottlerGuard 유래 429 Retry-After
+**메커니즘**: supertest serverAddress = `listen(0)`(IPv6 '::' 바인딩) + URL 은 하드코딩
+`127.0.0.1`(IPv4). macOS 는 v4/v6 바인딩 분리 취급 → 커널이 v6 공간에서 고른 포트의
+IPv4 쪽을 Orca·agy(Go 계열, 실측 9개)가 점유 중이어도 listen 성공 → 그 파일의 전 요청이
+남의 서버로. 포획된 "404 page not found"(Go 표준 라이브러리 시그니처)가 스모킹 건.
 
-**측정치(전부 실측, 이 Mac 10코어)**
+**종전 관측 전부 설명됨**: 희생자 무작위=포트 추첨 · 단독 통과=새 추첨 · runInBand
+재현=병렬성 무관 · CI 무발현=상주 데몬 없음+Linux dual-stack 은 EADDRINUSE ·
+"도달 불가 403/404"=우리 응답이 아니었음.
 
-| 조건 | 실패 |
-|---|---|
-| 전체 · 기본 9워커 | 0 / 10 |
-| 전체 · `--maxWorkers=20`(과다구독) | 1 / 10 |
-| 전체 · `--runInBand`(완전 직렬) | **1 / 4** |
-| 해당 스펙 단독 | 0 / 15 |
-| e2e 스펙 8개만 · runInBand | 0 / 10 |
+**수정**(`apps/api/test/setup.ts`): serverAddress 랩 — 바인딩이 IPv6 면 URL 을 [::1] 로
+재작성(패밀리 정합). ⚠️ `listen(0,'127.0.0.1')` 강제안은 기각 — host 있는 listen 은
+dns.lookup 경유 비동기라 직후 address()=null → 원 구현이 listen(0) 재실행(실측).
+함께 넣은 진단 계층: 상태 불일치 시 응답 body 를 에러 메시지에 표시(_assertStatus 랩).
 
-전체실행 누적 약 4/28 ≈ **14%**. CI 는 최근 30런 전부 success(로컬 전용 가능성).
+**검증**: `supertest-ipv4-binding.spec` 이 IPv4 스쿼터+같은 포트 v6 바인딩으로 버그를
+**결정적 재현**(뮤테이션: 패치 제거 시 'SQUATTER' 수신 실패, Linux 는 함정 부재로 통과).
+전체 76스위트/1047 PASS · **수정 후 30회 반복 0 실패**(수정 전 ~14%).
 
-**반증된 가설(추측 아님 — 실측/코드로 각각 기각)**
-1. ~~워커 경합~~ — **`--runInBand` 에서 재현됐다.** 병렬성이 0인데 나므로 경합이 원인이 아니다. 이 반증 하나로 "워커 수 조정" 처방도 무효다
-2. ~~특정 스펙 결함~~ — 단독 0/15, 희생자 3종
-3. ~~토큰 만료~~ — `expiresIn:'1h'`, portal 은 JWT 미사용(`x-test-user` 헤더)
-4. ~~스로틀/레이트리밋~~ — 해당 테스트 모듈에 ThrottlerGuard 부재
-5. ~~미종료 Nest 앱(fd 누수)~~ — 앱 띄우는 e2e 8개 **전부** `afterAll` 에서 `app.close()`
-6. ~~`process.env` 누수~~ — env 쓰기 스펙 7개 전부 복원
-7. ~~정규화 순서 비결정성~~ — `.map` 은 순서 보존
-
-**남은 범위**: 파일 간 + 전체 75스펙 필요 + 시간 의존(runInBand 는 파일 순서가 같은데도 결과가 갈린다). e2e 8개만으로는 재현 안 되므로 **비-e2e 스펙 중 무언가가 트리거**다.
-
-⚠️ **가장 유력한 단서 하나(미해결)**: `guest-session-tenancy` 의 403 은 **코드 경로상 도달 불가**다. `createGuest` 의 유일한 403 은 `ORDER_NOT_ALLOWED` 인데 그 분기는 `dto.orderSeqno !== undefined` 를 먼저 요구하고, `seedGuest()` 는 `{mode}` 만 보낸다(orderSeqno 미전송). 즉 **관측된 응답이 핸들러 로직과 모순된다** — 응답이 다른 앱 인스턴스에서 왔거나, `req.user`/DTO 가 오염된 것이다. 내 모델이 불완전하다는 뜻이므로 여기서 결론을 내지 않았다.
-
-**다음 세션 착수안(반증 가능한 형태)**: 전체 실행에 계측을 넣어 그 라우트의 `req.user`·`dto.orderSeqno`·앱 인스턴스 id 를 실패 시점에 찍는다. 그다음 75스펙을 이분 탐색해 최소 트리거 집합을 찾는다. **추측으로 "플레이크"라 적고 넘기지 말 것** — 파일 간 상태 오염이면 프로덕션 코드의 문제일 수도 있다.
-
+**잔여(문서화됨)**: v6 루프백 특정 리스너와의 공존 충돌은 이론상 가능 — 이 Mac 실측
+v6 루프백 리스너는 well-known 2개뿐(ephemeral 0). `partner-api-keys.v1.spec` 병렬
+타임아웃 플레이크는 별건으로 존속(단독 PASS 기준 유지).
 
 ## 2. 잔여 작업 (우선순위)
 
