@@ -49,6 +49,14 @@ module.exports = [
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' }],
       'no-unused-vars': 'off',
+      // TS 파일에서 core no-undef 는 끈다 — typescript-eslint 공식 권고.
+      // 미정의 식별자는 tsc 가 이미 TS2304 로 잡는다(린트 대상 317개 == tsconfig
+      // 프로그램 317개, `tsc --noEmit` EXIT=0). 반면 이 룰은 @types/node·@types/jest·
+      // Express 의 앰비언트 전역을 languageOptions.globals 에 **손으로 열거**해야만 통과한다.
+      // 여기서는 parserOptions.project 덕분에 lib.es2022.full(DOM 포함) 전역이 자동
+      // 주입돼 오탐 범위가 좁아졌을 뿐, 열거 누락 = 오탐 구조는 그대로다
+      // (NodeJS 한 줄만 빼도 즉시 오탐 발생). 끄기 전후 산출물 동일 = 36/0/36.
+      'no-undef': 'off',
       'no-case-declarations': 'off',
     },
   },
