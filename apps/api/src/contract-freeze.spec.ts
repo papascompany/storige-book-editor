@@ -1,7 +1,7 @@
 /**
  * 동결 표면 contract test (Phase 0 — docs/CONTRACT_FREEZE.md 집행기)
  *
- * 파트너 4종(bookmoa-mobile·Sharesnap·100p·MD2Books)이 의존하는 외부 HTTP 표면의
+ * 파트너 4종(bookmoa-mobile·Sharesnap·100p·MD2Books)+프린티가 의존하는 외부 HTTP 표면의
  * "경로·HTTP 메서드·인증 시맨틱(@Public / ApiKeyGuard)·레이트리밋 존재"를
  * Nest 데코레이터 메타데이터 리플렉션으로 단언한다.
  *
@@ -24,6 +24,8 @@ import { PATH_METADATA, METHOD_METADATA, GUARDS_METADATA } from '@nestjs/common/
 import { FilesController } from './files/files.controller';
 import { WorkerJobsController } from './worker-jobs/worker-jobs.controller';
 import { EditSessionsController } from './edit-sessions/edit-sessions.controller';
+import { TemplateSetsController } from './templates/template-sets.controller';
+import { ProductTemplateSetsController } from './templates/product-template-sets.controller';
 import { IS_PUBLIC_KEY } from './auth/decorators/public.decorator';
 import { ApiKeyGuard } from './auth/guards/api-key.guard';
 
@@ -71,6 +73,21 @@ const FROZEN_ROUTES: FrozenRoute[] = [
 
   // ── 조회 표면 (§3) ──
   { contract: 'GET /edit-sessions/external?orderSeqno= (X-API-Key)', controller: EditSessionsController, handler: 'findByOrderExternal', method: RequestMethod.GET, path: 'external', auth: 'api-key' },
+
+  // ── 템플릿 조회 표면 (§3 조회) — 편집기 부트스트랩 · 파트너 상품페이지 ──
+  // 2026-08-26 등재. 종전 이 두 라우트는 CONTRACT_FREEZE.md 와 파트너 OpenAPI allowlist
+  // (config/swagger-partner-routes.ts)에는 있었으나 **이 리플렉션 게이트에는 빠져 있었다** —
+  // 문서상 FROZEN 인데 자동 검증이 없어, @Public 이나 ApiKeyGuard 가 실수로 떨어져도
+  // CI 가 잡지 못했다(프린티 팀 질의 2026-08-26 에서 드러난 갭).
+  //
+  // ⚠️ with-templates 의 '무스코프'는 결함이 아니라 계약이다. 같은 컨트롤러의 다른 읽기
+  //    라우트 3개(findAll/compatible/findOne)는 전부 @CurrentScope 를 받는데 이것만 받지
+  //    않는다 — 인증 이전 단계(편집기 부트스트랩)에서 호출되기 때문. 스코프를 넣는 변경은
+  //    파트너 4종 전체에 영향이 있으므로 CONTRACT_FREEZE §4 절차를 거친다.
+  { contract: 'GET /template-sets/:id/with-templates (@Public 무인증 — 편집기 부트스트랩, 4종 혼용)', controller: TemplateSetsController, handler: 'findOneWithTemplates', method: RequestMethod.GET, path: ':id/with-templates', auth: 'public' },
+  // by-product 는 @Public + ApiKeyGuard 조합이다(무인증 아님). ApiKeyGuard 가 떨어지면
+  // 조용히 완전 공개가 되는 비대칭 위험이 있어 함께 동결한다.
+  { contract: 'GET /product-template-sets/by-product (X-API-Key — 파트너 상품페이지)', controller: ProductTemplateSetsController, handler: 'findByProduct', method: RequestMethod.GET, path: 'by-product', auth: 'api-key' },
 ];
 
 /** 컨트롤러 prefix 동결 — 경로 조립의 앞부분이 바뀌면 전 라우트가 이동한다 */
@@ -78,6 +95,8 @@ const FROZEN_CONTROLLER_PREFIX: Array<[Ctor, string]> = [
   [FilesController, 'files'],
   [WorkerJobsController, 'worker-jobs'],
   [EditSessionsController, 'edit-sessions'],
+  [TemplateSetsController, 'template-sets'],
+  [ProductTemplateSetsController, 'product-template-sets'],
 ];
 
 function handlerOf(route: FrozenRoute): ((...args: unknown[]) => unknown) | undefined {
