@@ -28,7 +28,9 @@
 | `upload_callback_url` | `https://bookmoa-mobile.vercel.app/api/storige/webhook` | **워커 웹훅 수신처** — 잡별 callbackUrl 미지정 시 폴백으로 쓰일 수 있는 값 |
 | `return_url_base` | `https://bookmoa-mobile.vercel.app` | 편집 완료 후 복귀 링크 베이스 |
 
-구 프로젝트가 살아 있는 동안은 동작하지만, 구 프로젝트 폐기 시점에 세 필드의 교체 여부를 알려주시면 반영하겠습니다(특히 `upload_callback_url` 은 폴백 경로라 우선 판단 권장).
+**[갱신] 세 필드 모두 새 도메인으로 전환 완료했습니다**: `domain=new.bookmoa.com` · `upload_callback_url=https://new.bookmoa.com/api/storige/webhook` · `return_url_base=https://new.bookmoa.com`.
+
+전환하며 중요한 것 하나를 확인했습니다 — 이 필드들은 표시용만이 아니라 **웹훅 발송의 SSRF 허용 호스트 목록**을 만듭니다. 전환하지 않았다면 내일 새 프로젝트가 실어 보내는 `new.bookmoa.com` 콜백이 웹훅 가드에 막혔을 수 있습니다(①의 "조치 불필요"에 숨어 있던 함정). 병행 기간 안전도 확인했습니다: 허용 호스트는 `frame_ancestors` 호스트를 포함하므로, 구 오리진이 allowlist 에 남아 있는 한 **구 프로젝트발 잡의 콜백(구 도메인)도 계속 허용**됩니다. 구 프로젝트 완전 폐기 시점에 allowlist 의 구 오리진 제거를 요청 주세요.
 
 ## ③ R2 CORS — 전제는 사실로 확인했습니다. 단, 저희 운영 채널로는 적용 불가라 오너 액션으로 넘깁니다
 
