@@ -41,7 +41,12 @@ S3 API(`PutBucketCors`)로 즉시 적용을 시도했으나 **AccessDenied** —
 > Cloudflare 대시보드 → R2 → `storige-files` → Settings → CORS Policy
 > `AllowedOrigins` 에 `https://new.bookmoa.com` 추가 (기존 항목 유지, `ExposeHeaders` 의 `ETag` 유지 — 멀티파트 완료가 ETag 를 요구합니다)
 
-적용되는 대로 이 채널로 알려드리면, 귀측 최종 스모크(편집기 iframe + 업로드) 진행하시면 됩니다.
+**[갱신 2026-08-27] ✅ 적용 완료 + 끝단 실증까지 마쳤습니다.** 대시보드에서 `AllowedOrigins` 에 `https://new.bookmoa.com` 추가(기존 항목·`ExposeHeaders: ["ETag"]`·`MaxAgeSeconds: 3600` 불변). R2 엔드포인트에 preflight 실측:
+
+- `Origin: https://new.bookmoa.com` + `Access-Control-Request-Method: PUT` → **204 + `Access-Control-Allow-Origin: https://new.bookmoa.com`** (PUT/POST/GET/HEAD 허용)
+- 대조군(미등록 오리진) → 403, allow 헤더 없음
+
+**베타 게이트 3건 전부 완료입니다. 귀측 최종 스모크(편집기 iframe + 업로드)만 남았습니다.**
 
 ## 문의
 

@@ -211,7 +211,7 @@ v6 루프백 리스너는 well-known 2개뿐(ephemeral 0). ~~partner-api-keys �
 **B. new.bookmoa.com 베타 전환 3건**(파트너 요청):
 1. 콜백 구조 — 동의(잡별 callbackUrl 전달 구조, 조치 불필요)
 2. **site `b5aef7a9` 갱신 LIVE**: `frame_ancestors`·`allowed_origins` 에 새 도메인 멱등 추가(JSON_CONTAINS 가드) + **구 도메인 3필드(domain·upload_callback_url·return_url_base) 신 도메인 전환**(오너 지시). 라이브 검증: `/api/frame-ancestors` 합집합 + `/embed` CSP 실헤더 반영 확인. ⚠️ **함정 발견**: 이 필드들은 웹훅 SSRF 허용 호스트 목록(`webhookAllowedHosts`)을 만든다 — 전환 없이는 새 프로젝트의 콜백이 막혔을 수 있다. 병행 안전: 허용 호스트가 frame_ancestors 호스트를 포함하므로 구 오리진이 allowlist 에 있는 한 구 콜백도 허용
-3. **R2 CORS = 오너 Cloudflare 대시보드 액션**: 전제는 사실(storage_settings.driver='s3' LIVE — 메모리의 'R2 대기'는 스테일, 07-06 프로비저닝). S3 API PutBucketCors 는 AccessDenied(토큰이 Object R/W 스코프). → R2 `storige-files` Settings → CORS 에 `https://new.bookmoa.com` 추가(ETag ExposeHeaders 유지)
+3. **R2 CORS ✅ 완료(2026-08-27)**: 오너 로그인(계정 Yohan73@gmail.com = R2 계정 ID `58bf1bf0…` 일치 확인) 후 브라우저 협업으로 대시보드에서 `https://new.bookmoa.com` 추가(기존 항목·ETag·MaxAge 불변). **끝단 실증**: R2 preflight 204+allow-origin 반환, 미등록 오리진 403(대조군). 계정·경로 정보는 CLAUDE.local.md §5.5 신설
 
 회신문: `docs/partner-notices/PARTNER_ANSWER_BOOKMOA_NEW_DOMAIN_2026-08-26.md`. **오너 액션 2건: R2 CORS 추가 + 회신문 발송.**
 
@@ -219,11 +219,10 @@ v6 루프백 리스너는 well-known 2개뿐(ephemeral 0). ~~partner-api-keys �
 ## 2. 잔여 작업 (우선순위)
 
 **P0 — 오너 액션(코드 아님)**
-1. **R2 CORS 오너 액션(베타 게이트)** — Cloudflare 대시보드 → R2 `storige-files` → Settings → CORS 에 `https://new.bookmoa.com` 추가(§1 ⑪-3, 토큰 스코프상 대시보드만 가능)
-2. **파트너 회신문 발송** — ⓐ `PARTNER_NOTICE_*_2026-08-24.md` 4종(테넌트 격리·EDITOR_BUSY 통지) ⓑ `PARTNER_ANSWER_PRINTY_TEMPLATE_SET_SCOPE_2026-08-26.md`(프린티 질의 3건 회신 — 게이트 등재 완료 반영본). 각 사 보안 채널로(키 회전 때와 동일 경로)
-3. 동화책 왕복 실기(8/22 이월): **새 세션으로** 편집완료(PDF 생성)→보관함 이어서편집→16p 추가→재진입 유지 확인 + content PDF VALIDATE 426×216 워커 로그(R7) + 복원 UI 실주문 iframe 1회 눈확인
+1. **파트너 회신문 발송** — ⓐ `PARTNER_NOTICE_*_2026-08-24.md` 4종(테넌트 격리·EDITOR_BUSY 통지) ⓑ `PARTNER_ANSWER_PRINTY_TEMPLATE_SET_SCOPE_2026-08-26.md`(프린티 질의 3건 회신 — 게이트 등재 완료 반영본). 각 사 보안 채널로(키 회전 때와 동일 경로)
+2. 동화책 왕복 실기(8/22 이월): **새 세션으로** 편집완료(PDF 생성)→보관함 이어서편집→16p 추가→재진입 유지 확인 + content PDF VALIDATE 426×216 워커 로그(R7) + 복원 UI 실주문 iframe 1회 눈확인
    - **이번 세션 추가**: 같은 왕복에서 `__storigeLoadProfile` 의 `restore:grow` lap 을 기록해 ⑤ 개선 폭 실측(기준 ≈390ms/장)
-4. bookmoa 장바구니 #1 "그림책·동화책 하드커버(A4)" 테스트 항목 삭제(8/21 부산물)
+3. bookmoa 장바구니 #1 "그림책·동화책 하드커버(A4)" 테스트 항목 삭제(8/21 부산물)
 
 **P1 — 코드 후속(다음 세션 착수 순서)**
 4. **재진입 시드 실측**(오너 실기 1회 선행) — `window.__storigeLoadProfile.laps` 의 `grow:*` sub-lap 으로 390ms/장 배분 확보 + 같은 실기에서 Chrome DevTools Performance 녹화(Recalculate Style/Layout 총시간·Forced reflow 경고 수). **읽기 전용으로** 뜰 것(자동저장이 발화하면 절단 방지 로직과 얽힌다). `grow:wrapperSync:hit` count 가 0에 가까우면 1px 허용오차는 이득 없음으로 결론
