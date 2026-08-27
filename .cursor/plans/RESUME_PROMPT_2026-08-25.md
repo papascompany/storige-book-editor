@@ -213,7 +213,7 @@ v6 루프백 리스너는 well-known 2개뿐(ephemeral 0). ~~partner-api-keys �
 2. **site `b5aef7a9` 갱신 LIVE**: `frame_ancestors`·`allowed_origins` 에 새 도메인 멱등 추가(JSON_CONTAINS 가드) + **구 도메인 3필드(domain·upload_callback_url·return_url_base) 신 도메인 전환**(오너 지시). 라이브 검증: `/api/frame-ancestors` 합집합 + `/embed` CSP 실헤더 반영 확인. ⚠️ **함정 발견**: 이 필드들은 웹훅 SSRF 허용 호스트 목록(`webhookAllowedHosts`)을 만든다 — 전환 없이는 새 프로젝트의 콜백이 막혔을 수 있다. 병행 안전: 허용 호스트가 frame_ancestors 호스트를 포함하므로 구 오리진이 allowlist 에 있는 한 구 콜백도 허용
 3. **R2 CORS ✅ 완료(2026-08-27)**: 오너 로그인(계정 Yohan73@gmail.com = R2 계정 ID `58bf1bf0…` 일치 확인) 후 브라우저 협업으로 대시보드에서 `https://new.bookmoa.com` 추가(기존 항목·ETag·MaxAge 불변). **끝단 실증**: R2 preflight 204+allow-origin 반환, 미등록 오리진 403(대조군). 계정·경로 정보는 CLAUDE.local.md §5.5 신설
 
-회신문: `docs/partner-notices/PARTNER_ANSWER_BOOKMOA_NEW_DOMAIN_2026-08-26.md`. **오너 액션 2건: R2 CORS 추가 + 회신문 발송.**
+회신문: `docs/partner-notices/PARTNER_ANSWER_BOOKMOA_NEW_DOMAIN_2026-08-26.md` — **발송 완료, 파트너 최종 스모크 3단 전부 통과 회신 수신(2026-08-27)**: ① 대시보드 실측(CORS 등재) ② preflight 204+allow-origin 에코 ③ **실업로드 e2e**(부교재 내지 슬롯 실PDF — presign→PUT→complete 201→검증 잡 생성·폴링 200→워커 판정 정상). **new.bookmoa.com 베타 전환 트랙 완전 종결.** 잔여 = 구 프로젝트 완전 폐기 시 allowlist 구 오리진(`bookmoa-mobile.vercel.app`) 제거(파트너 요청 대기, ⑪-B-2 병행 안전 참조).
 
 
 ## 2. 잔여 작업 (우선순위)
@@ -231,6 +231,7 @@ v6 루프백 리스너는 well-known 2개뿐(ephemeral 0). ~~partner-api-keys �
 7. (관찰) 시드 표기의 잔여 — 레거시 `/` 경로(EditorView+useAutoSave)는 시드 대상이 아니라 '기록 없음' 유지(임베드가 실사용 경로라 수용) · 게스트 세션은 `GET /edit-sessions/:id` 403 이라 세션 자체가 안 실려 시드 미적용(해소는 API 변경) · `updatedAt` 은 @UpdateDateColumn 이라 워커 검증캐시 PATCH 가 마지막 편집 저장보다 늦으면 표시 시각이 더 최신으로 보일 수 있다
 
 **P2 — 기존 백로그(트랙별 정본 참조)**
+0. (대기) bookmoa 구 프로젝트 폐기 시 site `b5aef7a9` allowlist 의 구 오리진 제거 — 파트너 요청이 오면 실행(⑪-B). R2 CORS 의 구 도메인 항목들은 `*.vercel.app` 와일드카드라 별도 정리 불필요
 8. 업계표준 R6·R10·R3b(RESUME 08-11) / R5 다크 ON=오너게이트
 9. 파일 보존 P1(고아정리·per-product)·P2(스트리밍 검증) — 고아 파일 6건 실증분 존재
 10. 멀티테넌시 P3b(SITE_ADMIN @Roles·TenantGuard·테넌트 스위처, 설계 06-17)
