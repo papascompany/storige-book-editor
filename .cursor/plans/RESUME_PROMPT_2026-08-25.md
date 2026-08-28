@@ -244,7 +244,7 @@ printy 감사 문의(S1~S4)를 코드+DB+라이브로 **사실 확정 회신**(b
 - **printy e2e 완료(2026-08-28, 오너 직접 통지)** — D5 의 마지막 외부 트리거 충족
 - **🔴 D5 확정(2026-08-28 오너 승인): cutover 실행일 = 2026-09-04.** 양 채널 공지 발송·공지문 갱신 완료. **9/4 실행 절차**: ① `docker/nginx/nginx.conf` 의 `/storage-signed/outputs/` 블록 **아래**에 신설 —
   `location /storage/outputs/ { return 410; add_header X-Storige-Notice "gone — use GET /api/worker-jobs/external/:id/output-url" always; }`
-  (최장 접두 매칭이라 `/storage/` 보다 우선. uploads·designs·thumbnails 무변경) ② 커밋·푸시 → VPS `git pull && docker compose up -d nginx` ③ 실증: 구 무인증 outputs URL → 410 / 서명 URL → 200 / uploads 경로 → 200 ④ 양 채널 실행 완료 통지 ⑤ 관측 후 D6 착수(백필 41건 §2-B' 선행 검토 포함)
+  (최장 접두 매칭이라 `/storage/` 보다 우선. uploads·designs·thumbnails 무변경) ② 커밋·푸시 → VPS `git pull && docker compose up -d nginx` ③ 실증: 구 무인증 outputs URL → 410 / 서명 URL → 200 / uploads 경로 → 200 ④ 양 채널 실행 완료 통지 ⑤ 관측 후 D6 착수(백필 41건 §2-B' 선행 검토 포함). **공지 도달 증빙: bookmoa 접수 확인(2026-08-28, 원장 기록·조치 없음 재확인)** — printy 는 발송만(수신 확인 미도착이어도 9/4 실행에 지장 없음: 코드 전환 완료 상태)
 
 
 ## 2. 잔여 작업 (우선순위)
