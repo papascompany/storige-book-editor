@@ -462,6 +462,12 @@ curl -X POST ".../api/files/multipart/sign" -H "Content-Type: application/json" 
 # → {url, partNumber, expiresIn:900}  → 이 url로 PUT, 응답 헤더 ETag 보관
 
 # 완료 (각 파트 etag 결합)
+#   ✅ 권장(2026-08-28): complete 호출에 shop-session Bearer 를 함께 실으세요 —
+#   업로드 파일이 귀사 사이트로 귀속(site 스탬프)되어 테넌트 격리(다른 사이트 키의
+#   조회·삭제 차단)가 적용됩니다. Bearer 없이도 종전과 동일하게 동작하지만(무중단),
+#   그 경우 파일은 무귀속(NULL)으로 남아 격리 대상이 아닙니다.
+#   Bearer 발급: POST /api/auth/shop-session (X-API-Key) — §1.2 참조.
+#   예: -H "Authorization: Bearer <SHOP_SESSION_JWT>" (single-part :id/complete 도 동일)
 curl -X POST ".../api/files/multipart/complete" -H "Content-Type: application/json" \
   -d '{"fileId":"<id>","parts":[{"partNumber":1,"etag":"\"abc\""}],"uploadToken":"<token>"}'
 ```
@@ -988,22 +994,34 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
    > ⚠️ **기본(수동) 경로 잡은 v2 배달 대상이 아닙니다 (2026-08-13 변경).** body 의 `siteId` 는 검증된 shop-session 과 일치할 때만 채택되고 그 외에는 `NULL` 이므로(위 🔒), (b) 경로가 닫힙니다. 이때 `callbackUrl` 로 가는 웹훅은 **v1 레거시 헤더/서명**(전역 시크릿 기반)으로 배달되며, 사이트별 HMAC·`X-Storige-Delivery`·재시도 스토어가 붙는 **v2 배달은 일어나지 않습니다**. 수신기가 v2 서명만 검증한다면 자동조립 경로(3.4.1)를 쓰거나 shop-session Bearer 를 함께 보내세요.
    > ℹ️ 단, 요청에 `editSessionId` 를 넣었고 **그 세션이 자체 `callbackUrl`**(세션 생성 시 호스트가 넣는 필드)을 가지고 있으면, 잡 종료 시 세션의 그 URL 로 **`session.validated`(또는 `session.failed`)가 별도로 발신**됩니다 — 요청의 `callbackUrl`·`siteId` 와 무관한 경로입니다. 이 세션 이벤트는 `synthesis.*` 와 페이로드 형식이 다르며(5.2), 합성 결과는 `payload.result`(잡의 `result` 를 그대로 실음) 안에 들어갑니다. 두 경로를 모두 켜 두면 **한 잡에 두 종류의 웹훅**이 도착하니 수신측에서 `event` 로 분기하세요.
    > ⚠️ `callbackUrl` 은 사이트별 `uploadCallbackUrl` 을 자동으로 물려받지 않습니다(compose-mixed 는 site default 병합 경로가 아님). 다만 **호스트**는 `sites` DB(`uploadCallbackUrl`/`domain`) 또는 `WEBHOOK_ALLOWED_HOSTS` 에 등록돼 있어야 실제로 전송됩니다 — 미등록이면 무음 차단(5.2).
-4. 결과 회수: 폴링/웹훅으로 받은 **`outputFileUrl`(및 `separate` 면 `result.outputFiles[].url`)을 그대로 GET** 합니다.
+4. 결과 회수 — **권장(2026-08-28 신설): 서명 URL 재발급 API** 로 인증 회수합니다.
    ```bash
-   # 1) 상태·산출 경로 조회 (파트너 표준 — API 키)
-   curl "https://api.papascompany.co.kr/api/worker-jobs/external/<jobId>" -H "X-API-Key: <SITE_API_KEY>"
-   #    → { status:"COMPLETED", outputFileUrl:"/storage/outputs/<jobId>/content.pdf",
-   #        result:{ outputFiles:[{name:"cover.pdf",url:"/storage/outputs/<jobId>/cover.pdf"}, …] } }
+   # 1) 서명 URL 발급 (파트너 표준 — API 키, 잡의 모든 산출물을 한 번에)
+   curl "https://api.papascompany.co.kr/api/worker-jobs/external/<jobId>/output-url" -H "X-API-Key: <SITE_API_KEY>"
+   #    → { jobId, expiresInSec: 300,
+   #        files:[ {name:"content.pdf", url:"/storage-signed/outputs/<jobId>/content.pdf?md5=…&expires=…"},
+   #                {name:"cover.pdf",   url:"/storage-signed/outputs/<jobId>/cover.pdf?md5=…&expires=…"} ] }
 
-   # 2) 바이트 회수 — 해당 경로를 그대로 GET (스토리지 정적 서빙)
-   curl "https://api.papascompany.co.kr/storage/outputs/<jobId>/content.pdf" -o content.pdf
-   curl "https://api.papascompany.co.kr/storage/outputs/<jobId>/cover.pdf"   -o cover.pdf   # separate 일 때
+   # 2) 바이트 회수 — files[].url 을 그대로 GET (만료 시 410 → 1) 재호출로 재발급)
+   curl "https://api.papascompany.co.kr/storage-signed/outputs/<jobId>/content.pdf?md5=…&expires=…" -o content.pdf
    ```
+   > ✅ **서명 URL 은 단명(기본 300초)입니다.** DB 에는 URL 을 저장하지 말고 **`jobId` 를 저장**하세요 —
+   > 다운로드가 필요할 때마다 1) 을 다시 호출하면 됩니다(재발급은 멱등·저비용). 서명 불일치는 `403`,
+   > 만료는 `410` 입니다.
+   > ✅ 인증·테넌트: 사이트 API 키 필수. 자기 사이트 잡이 아니면 `404`(존재 은닉) 입니다.
+
+   **유예 경로(전환 기간 한정)**: 종전의 공개 URL 직접 GET 도 **당분간 유효**합니다.
+   ```bash
+   # (유예) 폴링/웹훅의 outputFileUrl / result.outputFiles[].url 을 그대로 GET
+   curl "https://api.papascompany.co.kr/storage/outputs/<jobId>/content.pdf" -o content.pdf
+   ```
+   > ⚠️ **이 무인증 공개 경로는 예고 후 종료(cutover) 예정입니다.** 종료 최소 1주 전에 온보딩
+   > 채널로 공지합니다. 신규 연동은 처음부터 서명 URL 재발급 API 를 사용하세요.
    > ✅ **실측(2026-08-13)**: `/storage/outputs/<jobId>/<name>.pdf` 는 `206 application/pdf` 로 응답합니다.
    > 즉 `separate` 의 `cover.pdf` 도 **`outputFiles[].url` 로 그대로 회수**할 수 있습니다(별도 라우트 불필요).
    > ⚠️ compose-mixed 는 산출물을 `files` 레코드로 **등록하지 않습니다**(`registerExternalFile` 미호출) → 잡에 `outputFileId` 가 없고 웹훅 페이로드에도 없습니다. **다른 잡에서 쓰는 `GET /api/files/:fileId/download/external` 은 compose-mixed 에 성립하지 않습니다.**
    > ⚠️ **`GET /api/worker-jobs/:jobId/output` 은 파트너 경로가 아닙니다.** 이 라우트에는 `ApiKeyGuard` 가 붙어 있지 않아 **유효한 사이트 API 키로 호출해도 `401`** 입니다(2026-08-13 실측). 내부 JWT(admin 미리보기) 전용으로 보세요.
-   > 🚨 **산출물 URL 은 비밀로 취급하세요.** 이 스토리지 경로는 **무인증 공개**이며 접근 통제는 `jobId`(UUID) 은닉에만 의존합니다 — 로그·클라이언트 코드·고객 화면에 그대로 노출하지 마세요.
+   > 🚨 **(유예 경로의) 산출물 URL 은 비밀로 취급하세요.** 그 스토리지 경로는 **무인증 공개**이며 접근 통제는 `jobId`(UUID) 은닉에만 의존합니다 — 로그·클라이언트 코드·고객 화면에 그대로 노출하지 마세요. **서명 URL 재발급 API(위 권장 경로)로 전환하면 이 제약이 사라집니다**(단명 서명이라 노출 창이 300초로 줄고, 만료 후엔 재발급 인증이 필요).
    > 🚨 **`separate` 주의:** `outputFileUrl` 은 `content.pdf` **하나만** 가리킵니다. 표지는 반드시 `result.outputFiles[]` 에서 `cover.pdf` 항목을 따로 받아야 합니다. 스프레드 책은 서버가 `separate` 를 강제하므로(아래 조건 참조) 이 흐름에 해당합니다 — **두 항목을 모두 받았는지 대조**하세요.
 
 #### 3.4.1 세션 자동조립 (`assembleFromSession`) — opt-in (2026-08-13)
@@ -1170,7 +1188,7 @@ curl -X POST "https://api.papascompany.co.kr/api/worker-jobs/compose-mixed" \
 - [ ] 합성은 `compose-mixed` 명시적 트리거(무인증 — editSessionId 비밀유지), 스프레드=2파일 처리
 - [ ] `compose-mixed` 요청에 **파일 참조를 직접 채움**(`coverUrl`/`contentPdfUrl` = `api://<fileId>`). **전부 비면** `400 EMPTY_COMPOSE_INPUT` 이지만, **한쪽만 빠지면 `400` 없이 부분 백지/내지 누락이 `COMPLETED` 로** 나갑니다 (3.4)
 - [ ] (선택) 파일 참조를 보관하지 않는 연동이면 `assembleFromSession:true` + `editSessionId` + shop-session `Authorization` 헤더로 서버 자동조립 사용 — 편집 가능 면지는 자동조립 대상이 아님 (3.4.1)
-- [ ] 웹훅을 받을 거면 `compose-mixed` 요청에 **`callbackUrl` 을 직접 포함** (이 라우트는 사이트 `uploadCallbackUrl` 을 자동 사용하지 않음), 결과 바이트는 `download/external` 이 아니라 **잡의 `outputFileUrl`/`outputFiles[].url` 을 그대로 GET** 해서 회수(`separate` 는 cover·content 2건 모두) (3.4)
+- [ ] 웹훅을 받을 거면 `compose-mixed` 요청에 **`callbackUrl` 을 직접 포함** (이 라우트는 사이트 `uploadCallbackUrl` 을 자동 사용하지 않음), 결과 바이트는 `download/external` 이 아니라 **`GET /api/worker-jobs/external/:id/output-url` 로 서명 URL 을 재발급받아** 회수(`separate` 는 `files[]` 에 cover·content 2건 모두 포함 — 권장). 유예 중에는 종전 `outputFileUrl` 직접 GET 도 동작하나 cutover 예정 (3.4)
 - [ ] 완료 후 **폴링 응답의** `result.totalPages`(`separate` 는 `result.outputFiles[].pageCount` 도 가능)를 기대 페이지 수와 대조 — 웹훅 페이로드에는 이 값들이 없어 **폴링에서만 확인 가능** (백지 산출 조기 검출)
 - [ ] 게스트 → 회원 전환 흐름 구현: `guest/migrate` 로 세션 소유권 이전 후 **같은 `sessionId`** 를 회원 토큰으로 재오픈 (3.3)
 - [ ] 신규 연동은 iframe `/embed` 사용 (IIFE 번들은 업로드·템플릿·프레임 등 기능이 빠진 레거시 — 3.1)
@@ -1266,6 +1284,7 @@ curl -X POST "https://api.papascompany.co.kr/api/worker-jobs/compose-mixed" \
 | POST | `/api/worker-jobs/fix-pagecount` | 내부 RolesGuard | **(LIVE)** 페이지수 보정 — 내부 전용 변형 |
 | POST | `/api/worker-jobs/compose-mixed` | **@Public (무인증·테넌트 스코프 없음)** — 단 `assembleFromSession:true` 경로는 shop-session Bearer 필요(실패 시 `404`) | 합성 트리거 — 기본은 **파일 참조를 호출자가 공급**(`coverUrl`/`contentPdfUrl`/면지 배열)하고 `editSessionId` 는 스프레드 기대치 조회·잡 추적용. **`assembleFromSession:true` 를 명시하면 서버가 세션에서 표지·내지·면지·판형을 도출**(빈 필드만, dto 우선 — 3.4.1). 표지·내지·면지 자산이 **0건이면 `400 EMPTY_COMPOSE_INPUT`**, 한쪽만 빠지면 종전대로 부분 백지가 `COMPLETED`(3.4). 산출물은 `files` 미등록 → `outputFileId` 없음 → 결과 바이트는 `outputFileUrl`/`result.outputFiles[].url`(스토리지 경로)을 그대로 GET. ⚠️ 기본 경로는 editSessionId(UUID)만으로 트리거 가능 → 세션ID 비밀유지·브라우저 노출 최소화 |
 | GET | `/api/worker-jobs/external/:id` | X-API-Key | 잡 상태 폴링 |
+| GET | `/api/worker-jobs/external/:id/output-url` | **X-API-Key** (자기 사이트 잡만 — 타 테넌트 잡은 `404`) | **산출물 서명 URL 재발급(2026-08-28 신설, 권장 회수 경로)** — 잡의 모든 산출물(`separate` 는 cover·content 2건)에 대해 단명(기본 300초) 서명 URL 을 반환. `files[].url` 을 그대로 GET(만료 `410` → 재호출). **URL 박제 대신 `jobId` 저장**이 정식 패턴. 유예 중인 무인증 `/storage/outputs/` 직접 GET 을 대체한다(3.4) |
 | GET | `/api/worker-jobs/:id/output` | **JWT (전역 가드, @Public 아님 — `@Roles` 없음)** | 잡 결과 PDF 스트리밍(`result.outputFileUrl` 1개). **admin 미리보기 전용 — 파트너 사용 불가.** `ApiKeyGuard` 미적용이라 유효한 사이트 API 키로도 `401`(2026-08-13 실측). 파트너는 `outputFileUrl` 을 직접 GET 하세요(3.4). `@CurrentSite` 격리 적용(타 테넌트 잡은 404) |
 | PATCH | `/api/worker-jobs/external/:id/status` | **X-API-Key (@Public+ApiKeyGuard)** | 워커 콜백용. worker 키(내부)=전체 잡 바이패스, editor/테넌트 키=자기 site 잡만 갱신(P2c S-3) |
 | PATCH | `/api/worker-jobs/:id/status` | JWT (전역 가드) | 내부 워커 상태 업데이트 변형 |
