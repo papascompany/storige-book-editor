@@ -9,7 +9,9 @@ module.exports = [
     languageOptions: {
       parser: tsparser,
       parserOptions: {
-        project: './tsconfig.json',
+        // lint 전용 프로그램(tsconfig.eslint.json) — 빌드 tsconfig 는 src 만 포함하므로
+        // test/·scripts/ 를 린트 범위에 넣으려면 별도 프로젝트가 필요하다(빌드 무영향)
+        project: './tsconfig.eslint.json',
         sourceType: 'module',
       },
       globals: {
@@ -61,6 +63,6 @@ module.exports = [
     },
   },
   {
-    ignores: ['dist/**', 'node_modules/**', 'test/**', '*.js'],
+    ignores: ['dist/**', 'node_modules/**', '**/*.js'],
   },
 ];

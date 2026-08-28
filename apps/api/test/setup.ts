@@ -28,7 +28,6 @@ process.env.DB_DATABASE = 'storige_test';
 // 어떤 예외가 던져졌는지(응답 body 의 code/message)를 알 수 없었다. 상태 불일치
 // 에러 메시지에 응답 body 를 덧붙인다 — 모든 spec 에 자동 적용되는 진단 계층이며
 // 통과하는 테스트에는 어떤 영향도 없다(에러 객체가 만들어질 때만 문자열을 늘린다).
-// eslint-disable-next-line @typescript-eslint/no-require-imports
 const supertestForDiag = require('supertest');
 
 // ── supertest 접속 주소 패밀리 정합 (2026-08-26 — 전체실행 플레이크 근본 수정) ──
