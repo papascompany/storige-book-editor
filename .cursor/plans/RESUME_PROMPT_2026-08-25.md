@@ -233,6 +233,7 @@ printy 감사 문의(S1~S4)를 코드+DB+라이브로 **사실 확정 회신**(b
 - **⑮ 3단계 완료(6b810a1·da8e826, 2026-08-28)**: 가이드 갱신(§3.4 재발급 API 권장 승격+공개 URL 유예 격하·cutover 예고 명문화 / §5.1 output-url 행 / §2.2 complete Bearer 안내 / 유형2 체크리스트) + 공지문 `PARTNER_NOTICE_OUTPUT_SIGNED_URL_2026-08-28.md`(printy·bookmoa 공통, 발송=오너) + **bookmoa 채널로 전환 안내·D5 조율 개시 전달 완료**(전환 체크리스트 2건: jobId 저장+재발급 소비 / complete Bearer 첨부)
 - **bookmoa 접수 회신(2026-08-28, 원장 R-149)**: 스펙·유예 확인 완료, 전환 2항목은 **베타 주간이라 착수 시점을 bookmoa 오너 결정에 상신** 후 진행(1~2일 규모 동의). 완료 시 채널 통지 → D5 확정 순서 확약
 - 다음 트리거: **bookmoa "전환 완료" 채널 통지 → D5 cutover 날짜 확정**(최소 1주 전 공지, printy 무영향 재확인 후 무인증 /storage/outputs/ 종료) → 관측 → **D6**(NULL-파괴 게이트 + allowlist 승격). **printy 도 세션 채널 전달 완료(2026-08-28 — 회신문 ①+공지 ②+권장 조치 3건: proxy-download 재발급 전환·complete Bearer·download/external 기접수분)**. 이 트랙은 외부 대기 상태 — 트리거는 양사의 '전환 완료' 채널 통지
+- **bookmoa 후속 질의 2건 회신(2026-08-28)**: ① 백필=로드맵 부재였으나 **D6 선행 검토로 설계안 §2-B' 등재**(세션 역참조 귀속 가능 41/225 실측, 미참조 182는 잡 체인·고아 트랙 교차) ② expiry/external 은 **귀속 파일에 대해 DELETE 와 함께 4연산 전부 닫힘**(assertSiteAccess 공통 게이트 — "DELETE 만"이 아님). NULL 파일 4연산은 여전히 열림(D6 대상). printy 지연삭제 경로 정정: 즉시 hard 아닌 sweep softDelete→48h 복구창→purge
 
 
 ## 2. 잔여 작업 (우선순위)
