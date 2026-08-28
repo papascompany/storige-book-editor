@@ -295,7 +295,7 @@ export class PresignedUploadService {
         },
       }),
     );
-    return this.finalize(file, retentionDays);
+    return this.finalize(file, retentionDays, caller);
   }
 
   async abortMultipart(fileId: string, uploadToken: string): Promise<void> {
@@ -332,7 +332,7 @@ export class PresignedUploadService {
   ): Promise<FileEntity> {
     await this.assertS3Driver();
     const file = await this.requirePending(fileId, caller, uploadToken);
-    return this.finalize(file, retentionDays);
+    return this.finalize(file, retentionDays, caller);
   }
 
   // ── 공통 검증/마무리 ─────────────────────────────────────────
@@ -362,6 +362,7 @@ export class PresignedUploadService {
   private async finalize(
     file: FileEntity,
     retentionDays?: number | null,
+    caller?: { siteId?: string; role?: string },
   ): Promise<FileEntity> {
     const { client, bucket } = await this.objectStorage.ensureS3();
     const { HeadObjectCommand } = await import('@aws-sdk/client-s3');
@@ -405,8 +406,24 @@ export class PresignedUploadService {
         );
       }
     }
+    // ── S3-A안(2026-08-28, D1 승인): 옵션형 테넌트 스탬프 ──────────────────
+    // presigned 경로는 @Public 무인증(동결)이라 발급 시점에 site 를 알 수 없어
+    // files.site_id 가 NULL 로 대량 생산돼 왔다(격리 결함 — PLATFORM_EXPANSION_PLAN §8).
+    // complete 에 검증된 shop-session 이 실려 온 경우에 한해 여기서 귀속시킨다.
+    // ⚠️ 덮어쓰기 금지(!file.siteId) — 이미 귀속된 파일의 caller 불일치는
+    //    requirePending 의 기존 대조가 404 로 앞서 거부한다.
+    // 🚨 **최초 확정(pending→ready 전이) 1회에만 스탬프한다(firstFinalize).**
+    //    ready 파일은 uploadToken 이 소거돼 있어 requirePending 이 토큰 검사 없이
+    //    멱등 통과시키는데, 그 재호출 경로에서도 스탬프를 허용하면 fileId 만 아는
+    //    타 테넌트가 Bearer 를 실어 남의 NULL 파일을 자기 site 로 **소급 하이재킹**
+    //    할 수 있다(진짜 소유자가 이후 site 대조 404 를 맞는 신규 파손 벡터 —
+    //    스펙 T6 이 실제로 적발). 첫 complete 가 무토큰이면 NULL 로 확정·불소급.
+    const firstFinalize = file.status !== 'ready';
     file.fileSize = actualSize;
     file.status = 'ready';
+    if (firstFinalize && !file.siteId && caller?.siteId && caller.role !== 'worker') {
+      file.siteId = caller.siteId;
+    }
     file.multipartUploadId = null;
     file.uploadToken = null; // ready 확정 시 소유 토큰 소거(이후 재사용 불가)
     // ── pending TTL 해제 → 영구 or retention 재설정 ──

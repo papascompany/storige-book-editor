@@ -44,6 +44,7 @@ import {
 import { FileType } from './entities/file.entity';
 import { Public } from '../auth/decorators/public.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { OptionalShopJwtGuard } from '../auth/guards/optional-shop-jwt.guard';
 import { CurrentSite, CurrentSitePayload } from '../auth/decorators/current-site.decorator';
 import { ApiKeyGuard } from '../auth/guards/api-key.guard';
 
@@ -184,11 +185,25 @@ export class FilesController {
   // ── multipart: complete ──────────────────────────────────────
   @Post('multipart/complete')
   @Public()
+  @UseGuards(OptionalShopJwtGuard)
   @Throttle({ default: { limit: 30, ttl: 60000 } })
   @ApiOperation({ summary: '멀티파트 완료(파트 etag 결합 + HeadObject 검증)' })
   @ApiResponse({ status: 200, type: FileResponseDto })
-  async multipartComplete(@Body() dto: MultipartCompleteDto): Promise<FileResponseDto> {
-    const file = await this.presignedUpload.completeMultipart(dto.fileId, dto.parts, dto.uploadToken);
+  async multipartComplete(
+    @Body() dto: MultipartCompleteDto,
+    @CurrentUser() user: any,
+  ): Promise<FileResponseDto> {
+    // S3-A안(2026-08-28, D1): 검증된 shop-session 이 실려 오면 완료 확정 시 파일에
+    // 그 site 를 스탬프한다(테넌트 귀속). 토큰 없음/위조/비-shop → 종전대로 NULL(무중단).
+    // 근거 원칙은 edit-sessions.createGuest 의 I-1 과 동일 — 스탬프 근거는 서명 검증된
+    // JWT 뿐이며, body 로 site 를 주장할 자리는 애초에 없다.
+    const caller =
+      user?.source === 'shop' && typeof user?.siteId === 'string'
+        ? { siteId: user.siteId as string, role: 'shop' }
+        : undefined;
+    const file = await this.presignedUpload.completeMultipart(
+      dto.fileId, dto.parts, dto.uploadToken, caller,
+    );
     return this.filesService.toResponseDto(file);
   }
 
@@ -207,6 +222,7 @@ export class FilesController {
   //    'multipart/complete'(:id='multipart')를 가로채면 단품 DTO로 검증돼 400 난다(라우트 충돌).
   @Post(':id/complete')
   @Public()
+  @UseGuards(OptionalShopJwtGuard)
   @Throttle({ default: { limit: 30, ttl: 60000 } })
   @ApiOperation({ summary: '직결 업로드 완료 확정(HeadObject 검증)' })
   @ApiResponse({ status: 200, description: 'ready 확정', type: FileResponseDto })
@@ -214,8 +230,14 @@ export class FilesController {
   async completeUpload(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: CompleteUploadDto,
+    @CurrentUser() user: any,
   ): Promise<FileResponseDto> {
-    const file = await this.presignedUpload.completeSingle(id, dto.uploadToken);
+    // S3-A안(2026-08-28, D1): multipart/complete 와 동일한 옵션형 site 스탬프.
+    const caller =
+      user?.source === 'shop' && typeof user?.siteId === 'string'
+        ? { siteId: user.siteId as string, role: 'shop' }
+        : undefined;
+    const file = await this.presignedUpload.completeSingle(id, dto.uploadToken, caller);
     return this.filesService.toResponseDto(file);
   }
 
