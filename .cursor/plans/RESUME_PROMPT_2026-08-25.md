@@ -216,10 +216,22 @@ v6 루프백 리스너는 well-known 2개뿐(ephemeral 0). ~~partner-api-keys �
 회신문: `docs/partner-notices/PARTNER_ANSWER_BOOKMOA_NEW_DOMAIN_2026-08-26.md` — **발송 완료, 파트너 최종 스모크 3단 전부 통과 회신 수신(2026-08-27)**: ① 대시보드 실측(CORS 등재) ② preflight 204+allow-origin 에코 ③ **실업로드 e2e**(부교재 내지 슬롯 실PDF — presign→PUT→complete 201→검증 잡 생성·폴링 200→워커 판정 정상). **new.bookmoa.com 베타 전환 트랙 완전 종결.** 잔여 = 구 프로젝트 완전 폐기 시 allowlist 구 오리진(`bookmoa-mobile.vercel.app`) 제거(파트너 요청 대기, ⑪-B-2 병행 안전 참조).
 
 
+### ⑫ 테넌시 S3·S4 전역 결정 트랙 — (C) 경로 (b855796, 2026-08-28)
+
+printy 감사 문의(S1~S4)를 코드+DB+라이브로 **사실 확정 회신**(b855796). printy 진단 거의 전부 정확 — 특히 S3 삭제는 **soft 아닌 즉시 hardDelete(48h 복구창 없음)** 로 printy 서술보다 무겁다. 상세는 회신문/§1 직전 요약 참조.
+
+**핵심 판단: S3(presigned NULL-site)·S4(compose-mixed 공개)는 printy 고유가 아니라 bookmoa-mobile·100p·MD2 가 공유하는 전역 표면**이다. 한 파트너 문의만으로 상류를 조이면 다른 파트너(특히 100p/MD2 대용량 무인증 업로드·정리)를 깬다. 그래서 개별 배선이 아니라 결정 트랙으로 승격.
+
+**오너 지시 = (C)**: 회신 먼저 → **bookmoa 답 정렬 대기** → 설계안 상신. 정렬 스캐폴드 = `.cursor/plans/TENANCY_S3_S4_DECISION_TRACK_2026-08-28.md`(확정 사실·대안 A~D 판정·bookmoa 정렬 4칸·승격 조건). **코드 무변경**(동결 계약+오너 결정 트랙 준수).
+
+- 다음 트리거: bookmoa-mobile 세션이 스캐폴드의 정렬 4칸(회수 방식·업로드 경로·위험 인식·cutover 창)에 답하면 → `TENANCY_S3_S4_DESIGN_<날짜>.md` 승격(A안 배선 + S4 outputs-한정 nginx 서명 토큰 축) → 오너 결정 게이트
+- 지금 실행 안 하는 이유: A안조차 전역 파트너 영향이 있어 bookmoa 정렬 전 배선은 부적절(전역 사안을 한 파트너 관점으로 고정하는 위험)
+
+
 ## 2. 잔여 작업 (우선순위)
 
 **P0 — 오너 액션(코드 아님)**
-1. **파트너 회신문 발송** — ⓐ `PARTNER_NOTICE_*_2026-08-24.md` 4종(테넌트 격리·EDITOR_BUSY 통지) ⓑ `PARTNER_ANSWER_PRINTY_TEMPLATE_SET_SCOPE_2026-08-26.md`(프린티 질의 3건 회신 — 게이트 등재 완료 반영본). 각 사 보안 채널로(키 회전 때와 동일 경로)
+1. **파트너 회신문 발송** — ⓐ `PARTNER_NOTICE_*_2026-08-24.md` 4종(테넌트 격리·EDITOR_BUSY) ⓑ `PARTNER_ANSWER_PRINTY_TEMPLATE_SET_SCOPE_2026-08-26.md`(프린티 템플릿셋 스코프 3건) ⓒ `PARTNER_ANSWER_BOOKMOA_NEW_DOMAIN_2026-08-26.md`(new.bookmoa.com 3건, 게이트 완료) ⓓ `PARTNER_ANSWER_PRINTY_UPLOAD_TENANCY_2026-08-27.md`(presigned 테넌시·산출물 회수 S1~S4 사실 확정). 각 사 보안 채널로
 2. 동화책 왕복 실기(8/22 이월): **새 세션으로** 편집완료(PDF 생성)→보관함 이어서편집→16p 추가→재진입 유지 확인 + content PDF VALIDATE 426×216 워커 로그(R7) + 복원 UI 실주문 iframe 1회 눈확인
    - **이번 세션 추가**: 같은 왕복에서 `__storigeLoadProfile` 의 `restore:grow` lap 을 기록해 ⑤ 개선 폭 실측(기준 ≈390ms/장)
 3. bookmoa 장바구니 #1 "그림책·동화책 하드커버(A4)" 테스트 항목 삭제(8/21 부산물)
