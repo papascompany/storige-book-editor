@@ -4,14 +4,14 @@
 
 ## 0. 현재 라이브 상태 (2026-08-28 세션 종료 기준)
 
-- **master = origin/master = 60f5e2d**, 워킹트리 클린(`.tmp-verify-combos/`·docs/SHOPIFY_*·docs/SITE_CATALOG_* untracked 는 타 세션 산출물 — 무접촉, `git add` 항상 명시 목록)
+- **master = origin/master = 990b418**, 워킹트리 클린(`.tmp-verify-combos/`·docs/SHOPIFY_*·docs/SITE_CATALOG_* untracked 는 타 세션 산출물 — 무접촉, `git add` 항상 명시 목록)
 - 배포: editor/admin=Vercel master push 자동 / API·워커=VPS 수동(`CLAUDE.local.md` §6). ⚠️ api recreate 시 nginx 재시작, **nginx 볼륨 변경 시엔 restart 가 아니라 `up -d`(recreate)**
 
 ### 검증 기준선 (이보다 낮으면 회귀)
 
 | 대상 | 기준 |
 |---|---|
-| api jest | **78스위트/1071 PASS** · contract-freeze 73 · lint 0err |
+| api jest | **78스위트/1071 PASS** · contract-freeze 73 · lint 0err(범위=src+test+scripts, 990b418) |
 | editor vitest | **66파일/785 PASS** · tsc 0err · eslint 0err |
 | canvas-core | 54파일/623 PASS(⚠️ 로컬은 Node 22/24 전용 — 26 은 프리플라이트가 하드 실패) · lint 0err |
 | 플레이크 | **등재 0종** — "전체실행 무작위 실패"와 "partner-api-keys 타임아웃"은 supertest 주소 패밀리 버그로 근본 해소(0d65984). 재발 시 spec 아닌 로컬 포트 스쿼터부터 의심 |
@@ -45,7 +45,7 @@
 
 **P1 — 코드 후속**
 4. 재진입 시드 2차 최적화(실측 후 판단 — FontPlugin A-1 은 canvas-core 소유권 배정 필요)
-5. api lint 범위 사각지대(scripts/·test/ — projectService 전환 또는 별도 config 블록)
+5. ~~api lint 범위 사각지대~~ ✅ **완료(990b418, 08-28)**: tsconfig.eslint.json(빌드 무영향)+ignore 해제+글롭 정리. lint 0err(44 warn)·jest 78/1071 재확인. 잔여 44 warn 은 전부 warn 레벨(no-unused-vars 위주) — 필요 시 별도 정리
 6. (관찰) 시드 표기 잔여 — 레거시 `/` 경로·게스트 세션 미적용, updatedAt 의미 폭
 
 **P2 — 기존 백로그**: bookmoa 구 프로젝트 폐기 시 allowlist 구 오리진 제거(파트너 요청 대기) / 업계표준 R6·R10·R3b / 파일 보존 P1·P2(고아 — D6 백필과 교차) / 멀티테넌시 P3b / 포토북 S2 / ⓑstage1b·Bull attempts·BQ-03·히스토리 정화 force-push
