@@ -231,7 +231,8 @@ printy 감사 문의(S1~S4)를 코드+DB+라이브로 **사실 확정 회신**(b
 - **VPS 배포 + 라이브 3단 실증**: health 200·컨테이너 dist 역검증(firstFinalize 존재). E2E — Bearer 실은 complete → `site_id=b5aef7a9(bookmoa)` 스탬프 / 무토큰 → NULL(무중단) / **교차 삭제: 스탬프 파일은 타 테넌트 키 404 차단(격리 실효 증명)·소유자 200·NULL 파일은 여전히 타 키 200(알려진 잔여 — D6 게이트 근거, 프로브 정리 겸 시연)**
 - **⑭ S4 2단계 구현·배포·라이브 실증 완료(a0a6b5a, 2026-08-28)**: `GET /worker-jobs/external/:id/output-url`(X-API-Key, TTL 300s, separate 다중 서명, ADDITIVE→FROZEN 동시 등재) + nginx `/storage-signed/outputs/` secure_link(불일치 403·만료 410·no-store). 시크릿=gitignored conf(.example 커밋)+env 쌍(VPS 에서 생성·비출력, **파일 부재 시 nginx 기동 실패로 즉시 발견**). D3 구현: 스탬프 잡=site 대조 404 / NULL 잡=`OUTPUT_URL_NULL_JOB_SITE_ALLOWLIST` 미설정 시 유효 키 전부(additive 무중단)·설정 시 목록만. 검증: 13스펙+뮤테이션 2건(IDOR·allowlist), api 78스위트/1071 PASS·freeze 73/73. **라이브 8분기 실증**: 발급 200(content+cover 2건)·서명 GET 200·md5 변조 403·무서명 403·expires 변조 403(서명 불일치 선행 — 정상)·**정당서명+과거만료 410**(VPS 시크릿으로 실증)·기존 무인증 URL 200(유예 D4)·무키 401. ⚠️ nginx 는 볼륨 추가라 restart 아닌 **up -d(recreate)** 로 반영
 - **⑮ 3단계 완료(6b810a1·da8e826, 2026-08-28)**: 가이드 갱신(§3.4 재발급 API 권장 승격+공개 URL 유예 격하·cutover 예고 명문화 / §5.1 output-url 행 / §2.2 complete Bearer 안내 / 유형2 체크리스트) + 공지문 `PARTNER_NOTICE_OUTPUT_SIGNED_URL_2026-08-28.md`(printy·bookmoa 공통, 발송=오너) + **bookmoa 채널로 전환 안내·D5 조율 개시 전달 완료**(전환 체크리스트 2건: jobId 저장+재발급 소비 / complete Bearer 첨부)
-- 다음 트리거: **bookmoa "전환 완료" 회신 → D5 cutover 날짜 확정**(최소 1주 전 공지, printy 무영향 재확인 후 무인증 /storage/outputs/ 종료) → 관측 → **D6**(NULL-파괴 게이트 + allowlist 승격). printy 쪽 공지문 발송은 오너 액션(P0)
+- **bookmoa 접수 회신(2026-08-28, 원장 R-149)**: 스펙·유예 확인 완료, 전환 2항목은 **베타 주간이라 착수 시점을 bookmoa 오너 결정에 상신** 후 진행(1~2일 규모 동의). 완료 시 채널 통지 → D5 확정 순서 확약
+- 다음 트리거: **bookmoa "전환 완료" 채널 통지 → D5 cutover 날짜 확정**(최소 1주 전 공지, printy 무영향 재확인 후 무인증 /storage/outputs/ 종료) → 관측 → **D6**(NULL-파괴 게이트 + allowlist 승격). printy 쪽 공지문 발송은 오너 액션(P0). **이 트랙은 외부 대기 상태 — 이쪽에서 더 할 일 없음**
 
 
 ## 2. 잔여 작업 (우선순위)
