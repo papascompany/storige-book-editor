@@ -48,17 +48,20 @@ printy 문의 S3(presigned NULL-site)·S4(compose-mixed 산출물 공개)는 **p
 - (iii) X-API-Key 에도 site 컨텍스트 부여
 - 어느 안이든 **가이드 §3.4·5.1 회수 절차를 쓰는 기존 파트너 cutover 공지 필수**(무중단)
 
-## bookmoa 정렬 — 채워질 자리 (대기)
+## bookmoa 정렬 — ✅ 완료 (2026-08-28, bookmoa-mobile-65 세션 회신)
 
-bookmoa-mobile 세션에서 확인/회신할 것(printy 와 같은 질문 프레임):
-- [ ] bookmoa 가 compose-mixed 산출물을 **현재 어떻게 회수**하는가(공개 URL 직접 GET? 서버 중계?)
-- [ ] bookmoa 고객 업로드가 presigned 무인증 경로인가, 아니면 회원 세션 경유인가(→ S3 노출면)
-- [ ] bookmoa 가 S4 산출물 공개를 위험으로 보는지, jobId 은닉 방어를 신뢰하는지
-- [ ] cutover 를 감내할 수 있는 창(설계안이 공개 URL 을 조일 경우)
+| 칸 | bookmoa 답(원장 기준) | 설계 함의 |
+|---|---|---|
+| 1. 산출물 회수 방식 | **클라이언트 직접 노출** — outputFileUrl 을 주문 항목(coverUrl/contentUrl/merged)에 저장, Orders·관리자 다운로드 버튼이 그 공개 URL 을 그대로 연다(서버 중계 없음). R-96 원장에 공개 직링크 의존 명시 기록 | **S4 우선순위 최상** — printy(서버 중계)보다 노출 심함 |
+| 2. 업로드 경로 | **브라우저→R2 presigned 무인증 직결**(R-104 확정, 08-27 신도메인 스모크로 `/files/:id/complete` 브라우저 직접 201 실측). files/upload 프록시는 관리자 전용화 | **S3 NULL-site 주 사용자가 bookmoa** — 노출면 큼 |
+| 3. 위험 인식 | **둘 다 실질 위험(수용 아님)**. 근거: bookmoa 자체가 R-92/R-95 에서 order-files 공개 직링크를 "URL 유출=위협모델"로 판정해 **private+300초 서명 URL 로 이미 전환한 전례**. 최종 인쇄 PDF=고객 저작물·개인정보. hardDelete 복구창 0 = 타 테넌트 버그 하나로 원본 소실 | **조이는 방향 지지** — 서명 URL 이 bookmoa 에 이미 검증된 패턴 |
+| 4. cutover 창 | **사전 공지 1주 + 신구 병행이면 무중단 가능**. bookmoa 코드 변경 1~2일(서명 URL 소비=만료 시 재조회, 또는 서버 중계 전환, R-92 경험). cutover 날짜는 bookmoa 가 맞춤 | 서명 URL 소비 클라이언트가 이미 존재 → 재사용 |
 
-→ 위 4칸이 채워지면 A안 우선 + S4 (ii) outputs-한정 서명 토큰을 축으로 설계안 승격.
+**🔴 bookmoa 필수 조건(설계 blocker)**: 기존 주문에 **이미 박제된 구 공개 URL** 이 즉시 죽으면 과거 주문 PDF 다운로드가 전부 깨진다. → 설계에 **① 기존 산출물 grandfathering(구 공개 URL 유예 서빙) 또는 ② jobId→서명 URL 재발급 API** 를 반드시 포함. 그게 있으면 cutover 는 bookmoa 가 맞춘다.
+
+**printy vs bookmoa 정렬 차이**: printy=서버 중계(공개 URL 클라 미노출) / bookmoa=클라 직접 노출. **bookmoa 가 더 노출됨** → S4 를 S3 보다 먼저 볼 근거. 단 서명 URL 전환 시 printy 는 무영향(이미 서버 중계라 URL 을 안 씀), bookmoa 는 소비 코드 1~2일. → **설계는 bookmoa 제약(grandfathering)을 축으로 잡되 printy 무중단 유지.**
 
 ## 승격 조건
 
-bookmoa 4칸 완료 → `TENANCY_S3_S4_DESIGN_<날짜>.md`(설계안: A안 배선 diff 범위·이원 정책
+**bookmoa 4칸 완료(2026-08-28) →** `TENANCY_S3_S4_DESIGN_<날짜>.md`(설계안: A안 배선 diff 범위·이원 정책
 화이트리스트 데이터·nginx secure_link 설계·cutover 공지문·회귀 테스트 계획) → 오너 결정 게이트.

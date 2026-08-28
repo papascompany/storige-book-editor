@@ -224,8 +224,9 @@ printy 감사 문의(S1~S4)를 코드+DB+라이브로 **사실 확정 회신**(b
 
 **오너 지시 = (C)**: 회신 먼저 → **bookmoa 답 정렬 대기** → 설계안 상신. 정렬 스캐폴드 = `.cursor/plans/TENANCY_S3_S4_DECISION_TRACK_2026-08-28.md`(확정 사실·대안 A~D 판정·bookmoa 정렬 4칸·승격 조건). **코드 무변경**(동결 계약+오너 결정 트랙 준수).
 
-- 다음 트리거: bookmoa-mobile 세션이 스캐폴드의 정렬 4칸(회수 방식·업로드 경로·위험 인식·cutover 창)에 답하면 → `TENANCY_S3_S4_DESIGN_<날짜>.md` 승격(A안 배선 + S4 outputs-한정 nginx 서명 토큰 축) → 오너 결정 게이트
-- 지금 실행 안 하는 이유: A안조차 전역 파트너 영향이 있어 bookmoa 정렬 전 배선은 부적절(전역 사안을 한 파트너 관점으로 고정하는 위험)
+- **bookmoa 정렬 완료(2026-08-28, bookmoa-mobile-65 세션)**: ① 산출물 회수=**클라 직접 노출**(printy 서버중계보다 노출↑→S4 우선) ② 업로드=presigned 무인증 직결(bookmoa 가 NULL-site 주 사용자) ③ 둘 다 실질 위험·조이기 지지(자사 R-92 서명URL 전환 전례) ④ 1주 공지+병행이면 무중단, 코드 1~2일. **🔴 blocker: 기존 주문 박제 URL 즉시 사멸 금지 → grandfathering/재발급 API 필수**
+- **설계안 상신 완료**: `.cursor/plans/TENANCY_S3_S4_DESIGN_2026-08-28.md` — S3 A안(complete 옵션 스탬프, 동결 저촉 없음)·이원 정책·NULL-파괴 게이트 / S4 nginx secure_link(outputs 한정, 모듈 실측 포함)+재발급 API(grandfathering). 오너 결정 게이트 D1~D6. **nginx secure_link+auth_request 모듈 실측 확인, outputs=워커 로컬디스크(R2 아님)**
+- **다음 트리거 = 오너 결정 D1~D6**(설계안 §5). D1(S3 A안)·D3(발급 권한)·D4(grandfathering) 승인 즉시 1·2단계 착수 가능. **여전히 코드 무변경 — 결정 대기**
 
 
 ## 2. 잔여 작업 (우선순위)
