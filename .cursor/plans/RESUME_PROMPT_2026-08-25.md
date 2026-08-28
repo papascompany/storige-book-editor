@@ -245,6 +245,7 @@ printy 감사 문의(S1~S4)를 코드+DB+라이브로 **사실 확정 회신**(b
 - **🔴 D5 확정(2026-08-28 오너 승인): cutover 실행일 = 2026-09-04.** 양 채널 공지 발송·공지문 갱신 완료. **9/4 실행 절차**: ① `docker/nginx/nginx.conf` 의 `/storage-signed/outputs/` 블록 **아래**에 신설 —
   `location /storage/outputs/ { return 410; add_header X-Storige-Notice "gone — use GET /api/worker-jobs/external/:id/output-url" always; }`
   (최장 접두 매칭이라 `/storage/` 보다 우선. uploads·designs·thumbnails 무변경) ② 커밋·푸시 → VPS `git pull && docker compose up -d nginx` ③ 실증: 구 무인증 outputs URL → 410 / 서명 URL → 200 / uploads 경로 → 200 ④ 양 채널 실행 완료 통지 ⑤ 관측 후 D6 착수(백필 41건 §2-B' 선행 검토 포함). **공지 도달 증빙: bookmoa 접수 확인 + printy 도달 확인(2026-08-28)** — printy 세션이 일반 권한 모드라 피어 메시지가 승인 보류로 지연됐었고, 오너가 bypass 전환 후 일괄 도달 실측(멀티세션 소통 함정 — 메모리 reference-cross-session-permission-mode). 중요 통지는 레포 문서 경로 병행이 정본
+- **printy D5 공식 동의(2026-08-28, 채널 정상화 직후)**: 9/4 이의 없음 + **자발 소스 전수 감사** — /storage/outputs/ 리터럴 0건·저장 산출물 URL 필드 읽기 0건(쓰기만·소비처 없음)·전 다운로드 proxy(jobId→재발급) 경유. 기존 저장 URL 은 9/4 후 죽은 문자열이나 무해, "읽기 시작하면 결함" 경고 핸드오프 박제. ⓐ e2e 는 오너 직접 수행분 접수(기록 정합 명시). **→ cutover 전 조건 전부 완결: 양사 동의+도달 증빙+유예 의존 0 재확인(3중). 9/4 실행만 남음**
 
 
 ## 2. 잔여 작업 (우선순위)
