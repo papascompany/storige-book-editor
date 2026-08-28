@@ -570,6 +570,34 @@ export class WorkerJobsController {
    * 외부 연동용 작업 상태 조회 (API Key 인증)
    * bookmoa 등 외부 시스템에서 서버 간 통신으로 호출
    */
+  /**
+   * S4 2단계(2026-08-28, D3·D4) — 합성 산출물 서명 URL 재발급 (X-API-Key).
+   *
+   * compose-mixed 등 SYNTHESIZE 산출물의 인증 회수 경로. 반환 URL 은 nginx
+   * secure_link 가 검증하는 /storage-signed/… (TTL 기본 300s, 만료 시 재호출).
+   * 파트너는 "산출물 URL 박제" 대신 **jobId 저장 → 필요 시 재발급** 으로 전환한다
+   * (bookmoa grandfathering 요구의 해소 경로 — 설계안 §3-B 방식 B).
+   * 기존 무인증 /storage/outputs/ 는 유예(D4)로 병행 서빙 — cutover 는 D5 별도.
+   */
+  @Get('external/:id/output-url')
+  @Public()
+  @UseGuards(ApiKeyGuard)
+  @ApiSecurity('api-key')
+  @ApiOperation({ summary: '합성 산출물 서명 URL 재발급 (외부 API key 인증)' })
+  @ApiResponse({ status: 200, description: '서명 URL 목록 (files[].url 을 그대로 GET)' })
+  @ApiResponse({ status: 404, description: '잡 없음 / 타 테넌트 잡(존재 은닉)' })
+  @ApiResponse({ status: 400, description: 'JOB_OUTPUT_NOT_READY / NOT_SIGNABLE' })
+  @ApiResponse({ status: 503, description: 'SIGNED_URL_NOT_CONFIGURED' })
+  async issueOutputUrlExternal(
+    @Param('id') id: string,
+    @CurrentSite() site?: CurrentSitePayload,
+  ) {
+    return await this.workerJobsService.issueOutputUrls(id, {
+      siteId: site?.siteId,
+      role: site?.role,
+    });
+  }
+
   @Get('external/:id')
   @Public()
   @UseGuards(ApiKeyGuard)

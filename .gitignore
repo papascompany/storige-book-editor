@@ -129,3 +129,6 @@ apps/api/openapi-partner.json
 
 # Sentry 번들러 플러그인 로컬 시크릿 (SENTRY_AUTH_TOKEN 등) — 절대 커밋 금지
 .env.sentry-build-plugin
+
+# S4 서명 시크릿 실값(예시는 .example)
+docker/nginx/secure-link-secret.conf

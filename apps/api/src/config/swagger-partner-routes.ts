@@ -46,6 +46,7 @@ export const SWAGGER_PARTNER_ROUTES: ReadonlySet<string> = new Set<string>([
   'POST /api/worker-jobs/compose-mixed',
   'POST /api/worker-jobs/render-pages',
   'GET /api/worker-jobs/external/{id}',
+  'GET /api/worker-jobs/external/{id}/output-url',
   'PATCH /api/worker-jobs/external/{id}/status',
   // 편집 세션 — 주문별 조회/임포지션 프리뷰
   'GET /api/edit-sessions/external',

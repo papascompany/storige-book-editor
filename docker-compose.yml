@@ -9,6 +9,8 @@ services:
       - "443:443"
     volumes:
       - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      # S4 서명 시크릿 (gitignored — 없으면 nginx 기동 실패로 즉시 발견. .example 참조)
+      - ./docker/nginx/secure-link-secret.conf:/etc/nginx/secure-link-secret.conf:ro
       - ./storage:/app/storage:ro
       - ./apps/editor/dist-embed:/app/editor-embed:ro
       # Let's Encrypt 인증서 (host의 /etc/letsencrypt 직접 마운트)
@@ -46,6 +48,10 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - JWT_SECRET=${JWT_SECRET}
+      # S4 산출물 서명(2026-08-28) — nginx secure-link-secret.conf 의 값과 동일해야 한다
+      - OUTPUT_SIGN_SECRET=${OUTPUT_SIGN_SECRET:-}
+      - OUTPUT_URL_TTL_SEC=${OUTPUT_URL_TTL_SEC:-300}
+      - OUTPUT_URL_NULL_JOB_SITE_ALLOWLIST=${OUTPUT_URL_NULL_JOB_SITE_ALLOWLIST:-}
       - API_KEYS=${API_KEYS}
       # P2c: ApiKeyGuard 가 내부 워커 키를 식별해 외부 라우트 테넌트 스코프를 바이패스(워커 콜백·파일 무중단)
       - WORKER_API_KEY=${WORKER_API_KEY}

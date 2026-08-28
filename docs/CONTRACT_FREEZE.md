@@ -79,6 +79,7 @@
 | `POST /worker-jobs/render-pages` (@Public, 게스트) | 게스트 편집 | FROZEN(게스트 UX) | 동일 NULL 결함 |
 | `POST /worker-jobs/fix-bleed` (@Public, 게스트) — **ADDITIVE 2026-07-13 신설** | 게스트 편집(BLEED_MISSING extendBleed 실행기) | ADDITIVE→FROZEN(게스트 UX) | body=`{fileId,templateSetId}` 뿐 — editSize 는 서버가 templateSet 권위 산출(임의 사이즈 차단). 잡 siteId=원본 파일 승계‖null. 폴링 `GET /worker-jobs/:id`→`outputFileId`. contract-freeze.spec 동시 등재 |
 | 조회: `/edit-sessions/external?orderSeqno=`, `/edit-sessions/my`, `guest/migrate`, `spine/calculate`, `template-sets/:id/with-templates` | 4종 혼용 | FROZEN | 응답 `{data:[{files}]}` shape 포함 · **contract-freeze.spec 등재 2026-08-26**(종전 리플렉션 게이트 밖이었다 — 문서만 동결) |
+| `GET /worker-jobs/external/:id/output-url` (X-API-Key) — **ADDITIVE 2026-08-28 신설** | 합성 산출물 인증 회수(printy·bookmoa) | ADDITIVE→FROZEN | nginx secure_link 서명 URL 재발급(TTL 300s 기본). 스탬프 잡=site 대조 404, NULL 잡=`OUTPUT_URL_NULL_JOB_SITE_ALLOWLIST` 미설정 시 유효 키 전부(현행 read 시맨틱)·설정 시 목록만. 기존 무인증 `/storage/outputs/` 는 유예(D4) — cutover 는 D5(파트너 조율). contract-freeze.spec 동시 등재 |
 | `GET /product-template-sets/by-product` (@Public + ApiKeyGuard) — **등재 2026-08-26 · 사후 추인** | 파트너 상품페이지/임베드 부트스트랩 | FROZEN | 무인증 아님(X-API-Key). ApiKeyGuard 이탈 시 **조용한 완전 공개**라 비대칭 위험 — contract-freeze.spec 동시 등재. site 스코프 미적용(템플릿=hybrid 설계, `product_template_sets` 전행 site_id=NULL) |
 
 ### 1-D-1. ★호스트→편집기 수신 명령 계약 v1 (2026-07-28 등재 · 사후 추인)

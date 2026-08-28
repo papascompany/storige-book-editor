@@ -70,6 +70,11 @@ const FROZEN_ROUTES: FrozenRoute[] = [
   // 권위 산출(body={fileId,templateSetId} 뿐 — 임의 사이즈 입력 차단). 게스트 편집기 모달 소비.
   { contract: 'POST /worker-jobs/fix-bleed (@Public 게스트 — 2026-07-13 신설)', controller: WorkerJobsController, handler: 'createBleedFixJob', method: RequestMethod.POST, path: 'fix-bleed', auth: 'public' },
   { contract: 'GET /worker-jobs/external/:id (X-API-Key — 100p 폴링 의존)', controller: WorkerJobsController, handler: 'findOneExternal', method: RequestMethod.GET, path: 'external/:id', auth: 'api-key' },
+  // S4 2단계(2026-08-28, D3·D4) — 합성 산출물 서명 URL 재발급. ADDITIVE→FROZEN:
+  // 파트너가 "URL 박제" 대신 jobId 저장으로 전환하는 정식 회수 경로라, 등재 시점부터
+  // 경로·인증(X-API-Key) 시맨틱을 동결한다. ApiKeyGuard 이탈 시 서명 발급이 무인증
+  // 개방되는 표면이므로 by-product 와 같은 비대칭 위험 클래스다.
+  { contract: 'GET /worker-jobs/external/:id/output-url (X-API-Key — 산출물 서명 재발급, ADDITIVE 2026-08-28)', controller: WorkerJobsController, handler: 'issueOutputUrlExternal', method: RequestMethod.GET, path: 'external/:id/output-url', auth: 'api-key' },
 
   // ── 조회 표면 (§3) ──
   { contract: 'GET /edit-sessions/external?orderSeqno= (X-API-Key)', controller: EditSessionsController, handler: 'findByOrderExternal', method: RequestMethod.GET, path: 'external', auth: 'api-key' },

@@ -14,6 +14,10 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { InjectQueue } from '@nestjs/bull';
 import { Repository, MoreThan } from 'typeorm';
 import { Queue } from 'bull';
+import {
+  signOutputUrl,
+  SignedOutputUrl,
+} from './output-url-signer';
 import { WorkerJob } from './entities/worker-job.entity';
 import {
   WorkerJobType,
@@ -2330,6 +2334,86 @@ export class WorkerJobsService implements OnModuleInit {
     if (job.siteId && job.siteId !== caller.siteId) {
       throw new NotFoundException(`Worker job with ID ${job.id} not found`);
     }
+  }
+
+  /**
+   * S4 2단계(2026-08-28, D3·D4) — 합성 산출물 **서명 URL 재발급**.
+   *
+   * compose-mixed 등 SYNTHESIZE 산출물의 유일한 문서화 회수 경로가 무인증 공개
+   * URL 이었다(가이드 §3.4 — "URL 을 비밀로 취급"). 이 메서드가 인증(X-API-Key)
+   * 경로를 신설한다. 반환 URL 은 nginx secure_link 가 검증하는 `/storage-signed/…`.
+   *
+   * 테넌트 판정(D3):
+   *  - 스탬프 잡: caller.siteId 일치 필요 — 불일치는 404(존재 은닉).
+   *  - NULL 잡: env OUTPUT_URL_NULL_JOB_SITE_ALLOWLIST(콤마 site id) 설정 시 그
+   *    목록의 site 만, **미설정 시 유효 키 전부 허용** — 현행 read 표면
+   *    (GET external/:id 의 NULL-pass)과 동일 시맨틱으로 시작해 additive 무중단을
+   *    지키고, 조임은 운영 설정으로 승격한다(관측 후 — 설계안 D6 트랙과 연동).
+   *  ⚠️ findCutoutJob 의 교훈: caller 부재를 '면제'로 해석하지 않는다 — 이 경로는
+   *     ApiKeyGuard 뒤라 caller 가 항상 있지만, 방어적으로 부재 시 404.
+   *
+   * 시크릿 미설정(OUTPUT_SIGN_SECRET) → 503 SIGNED_URL_NOT_CONFIGURED(fail-closed).
+   */
+  async issueOutputUrls(
+    id: string,
+    caller?: { siteId?: string; role?: string },
+  ): Promise<{ jobId: string; files: SignedOutputUrl[]; expiresInSec: number }> {
+    const secret = process.env.OUTPUT_SIGN_SECRET;
+    if (!secret || secret.length < 16) {
+      throw new ServiceUnavailableException({
+        code: 'SIGNED_URL_NOT_CONFIGURED',
+        message: '서명 URL 시크릿이 설정되지 않았습니다(OUTPUT_SIGN_SECRET).',
+      });
+    }
+    if (!caller?.siteId) {
+      // ApiKeyGuard 뒤라 정상 흐름에선 도달 불가 — 방어적 fail-closed.
+      throw new NotFoundException(`Worker job with ID ${id} not found`);
+    }
+    const job = await this.workerJobRepository.findOne({ where: { id } });
+    if (!job) {
+      throw new NotFoundException(`Worker job with ID ${id} not found`);
+    }
+    if (job.siteId) {
+      if (job.siteId !== caller.siteId) {
+        throw new NotFoundException(`Worker job with ID ${id} not found`);
+      }
+    } else {
+      const allowRaw = process.env.OUTPUT_URL_NULL_JOB_SITE_ALLOWLIST;
+      if (allowRaw && allowRaw.trim().length > 0) {
+        const allow = allowRaw.split(',').map((x) => x.trim()).filter(Boolean);
+        if (!allow.includes(caller.siteId)) {
+          throw new NotFoundException(`Worker job with ID ${id} not found`);
+        }
+      }
+    }
+    // 산출물 수집 — 단일 outputFileUrl + separate 모드의 result.outputFiles[].url.
+    const urls = new Set<string>();
+    if (job.outputFileUrl) urls.add(job.outputFileUrl);
+    const extra = (job.result as { outputFiles?: Array<{ url?: string }> } | null)?.outputFiles;
+    if (Array.isArray(extra)) {
+      for (const f of extra) if (f?.url) urls.add(f.url);
+    }
+    if (urls.size === 0) {
+      throw new BadRequestException({
+        code: 'JOB_OUTPUT_NOT_READY',
+        message: '잡 산출물이 아직 없습니다(미완료이거나 산출물 없는 잡 유형).',
+        details: { status: job.status },
+      });
+    }
+    const ttl = Math.max(30, Number(process.env.OUTPUT_URL_TTL_SEC) || 300);
+    const files: SignedOutputUrl[] = [];
+    for (const u of urls) {
+      const signed = signOutputUrl(u, secret, ttl);
+      if (signed) files.push(signed);
+    }
+    if (files.length === 0) {
+      // outputs 경로가 아닌 산출물(예: content-pdf-guides)은 이 표면의 대상이 아니다.
+      throw new BadRequestException({
+        code: 'JOB_OUTPUT_NOT_SIGNABLE',
+        message: '이 잡의 산출물은 서명 대상 경로(/storage/outputs/)가 아닙니다.',
+      });
+    }
+    return { jobId: job.id, files, expiresInSec: ttl };
   }
 
   async findOne(
