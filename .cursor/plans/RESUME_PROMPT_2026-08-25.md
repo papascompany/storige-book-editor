@@ -229,7 +229,8 @@ printy 감사 문의(S1~S4)를 코드+DB+라이브로 **사실 확정 회신**(b
 - **오너 결정(2026-08-28): D1·D3·D4 승인** — S3 A안부터 착수 지시
 - **⑬ S3 A안 구현·배포·라이브 실증 완료(c050729)**: 두 complete 핸들러에 OptionalShopJwtGuard+caller → finalize 옵션형 스탬프. FilesModule 에 JwtModule 자체 등록(edit-sessions 패턴). **구현 중 스펙 T6 이 결함 적발** — ready 멱등 재호출(무토큰 통과)에서 스탬프가 발화하면 fileId 아는 타 테넌트가 남의 NULL 파일을 **소급 하이재킹** 가능(신규 파손 벡터) → firstFinalize(pending→ready 전이 1회)로 차단. 뮤테이션 양방향 실증(스탬프 제거→T1·T7 실패 / 가드 제거→T6 실패). 동결 70/70 무변경·api 77스위트/1055 PASS·lint 0
 - **VPS 배포 + 라이브 3단 실증**: health 200·컨테이너 dist 역검증(firstFinalize 존재). E2E — Bearer 실은 complete → `site_id=b5aef7a9(bookmoa)` 스탬프 / 무토큰 → NULL(무중단) / **교차 삭제: 스탬프 파일은 타 테넌트 키 404 차단(격리 실효 증명)·소유자 200·NULL 파일은 여전히 타 키 200(알려진 잔여 — D6 게이트 근거, 프로브 정리 겸 시연)**
-- 다음 = **2단계(S4)**: 서명 URL 발급 API + nginx secure_link(outputs 한정, 신규 잡부터) — D3(사이트 키+NULL 잡 화이트리스트)·D4(재발급 API+유예 병행) 승인분. 이후 파트너 키 첨부 이행 안내(bookmoa: 업로드 complete 에 Bearer 첨부 1줄) → 관측 → D6(NULL-파괴 게이트)
+- **⑭ S4 2단계 구현·배포·라이브 실증 완료(a0a6b5a, 2026-08-28)**: `GET /worker-jobs/external/:id/output-url`(X-API-Key, TTL 300s, separate 다중 서명, ADDITIVE→FROZEN 동시 등재) + nginx `/storage-signed/outputs/` secure_link(불일치 403·만료 410·no-store). 시크릿=gitignored conf(.example 커밋)+env 쌍(VPS 에서 생성·비출력, **파일 부재 시 nginx 기동 실패로 즉시 발견**). D3 구현: 스탬프 잡=site 대조 404 / NULL 잡=`OUTPUT_URL_NULL_JOB_SITE_ALLOWLIST` 미설정 시 유효 키 전부(additive 무중단)·설정 시 목록만. 검증: 13스펙+뮤테이션 2건(IDOR·allowlist), api 78스위트/1071 PASS·freeze 73/73. **라이브 8분기 실증**: 발급 200(content+cover 2건)·서명 GET 200·md5 변조 403·무서명 403·expires 변조 403(서명 불일치 선행 — 정상)·**정당서명+과거만료 410**(VPS 시크릿으로 실증)·기존 무인증 URL 200(유예 D4)·무키 401. ⚠️ nginx 는 볼륨 추가라 restart 아닌 **up -d(recreate)** 로 반영
+- 다음 = **3단계**: 가이드 §3.4·5.1 갱신 + 파트너 공지(재발급 API 안내 + bookmoa: jobId 저장 전환·업로드 complete Bearer 첨부 1줄) → bookmoa 소비 전환(1~2일) → **D5 cutover 날짜 조율**(bookmoa 채널) → 관측 → D6(NULL-파괴 게이트)
 
 
 ## 2. 잔여 작업 (우선순위)
