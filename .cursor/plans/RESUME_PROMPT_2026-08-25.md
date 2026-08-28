@@ -237,6 +237,9 @@ printy 감사 문의(S1~S4)를 코드+DB+라이브로 **사실 확정 회신**(b
 - **bookmoa 후속(2026-08-28)**: 실측 원장 반영 완료 + **ⓑ(complete Bearer)만 조기 분리 적용을 자사 오너에 권고 상신**(무중단 헤더 1줄 — 승인 시 bookmoa 신규 업로드 무귀속 노출이 먼저 닫힘). ⓐ(산출물 jobId 전환)는 기존 일정 대기 → **D5 의 실질 트리거는 ⓐ 완료**로 좁혀짐
 - **양사 전환 코드 배포 완료(2026-08-28 확인)**: printy ⓑ=ca2fd2a(배포·라이브 실증)·ⓐ=a54ef6e(DEPLOYED, GH success·Vercel Ready, 핸드오프 c2aed00) — cutover 통지는 printy 기준 "ⓐ e2e 통과 후"(잔여 e2e 3건: ⓐ 실동작·카드결제 R-147·R-148 담기). bookmoa=오너 승인으로 R-149 ⓐ·ⓑ 착수(진행 중) + proxy-download 관리자 분기 claims 결속 필수 적용(06e2bf1, 프로덕션 프로브 403/200 실측)
 - **printy 키 상류 선제 실측(Storige 측, 2026-08-28)**: printy 사이트 키로 재발급 200(content+cover)·서명 URL GET 200 — printy 잔여 e2e 1번("printy 키 실측 없음")의 상류 리스크 제거, 채널 통지 완료. printy 귀속 파일은 아직 0건(첫 실업로드 후 교차 확인 제안)
+- **bookmoa 전환 완료 접수(2026-08-28)**: ⓑ 실업로드 귀속 DB 실측 확정(`660a05e5…` = beta-smoke-valid.pdf 11,057B ready, site_id=b5aef7a9) → ⓑ 완료 판정. **ⓐ 정정**: bookmoa 재실측 결과 전 경로 이미 jobId 경유·박제 URL 0건 → **cutover 에 bookmoa 코드 변경 불요**(정렬 1번 칸 "클라 직접 노출"은 과대 평가로 정정, 스캐폴드 반영). grandfathering 실수요 사실상 소멸
+- **outputs 소비자 전수 실측**: SYNTHESIZE 잡 전체 12건(최종 2026-06-13), **최근 30일 0건** — 유예 경로 현재 실사용자 없음(100p·MD2 합성 미사용 확인)
+- **D5 프레임 제안 발신**: cutover 실행일 = printy ⓐ e2e 통과 통지일 + 7일(공지 약속). 확정은 오너 D5 게이트 경유. **남은 트리거 = printy e2e 통지 1건 + 오너 확정**
 
 
 ## 2. 잔여 작업 (우선순위)
