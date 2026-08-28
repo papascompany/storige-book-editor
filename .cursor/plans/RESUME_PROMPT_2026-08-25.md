@@ -226,7 +226,10 @@ printy 감사 문의(S1~S4)를 코드+DB+라이브로 **사실 확정 회신**(b
 
 - **bookmoa 정렬 완료(2026-08-28, bookmoa-mobile-65 세션)**: ① 산출물 회수=**클라 직접 노출**(printy 서버중계보다 노출↑→S4 우선) ② 업로드=presigned 무인증 직결(bookmoa 가 NULL-site 주 사용자) ③ 둘 다 실질 위험·조이기 지지(자사 R-92 서명URL 전환 전례) ④ 1주 공지+병행이면 무중단, 코드 1~2일. **🔴 blocker: 기존 주문 박제 URL 즉시 사멸 금지 → grandfathering/재발급 API 필수**
 - **설계안 상신 완료**: `.cursor/plans/TENANCY_S3_S4_DESIGN_2026-08-28.md` — S3 A안(complete 옵션 스탬프, 동결 저촉 없음)·이원 정책·NULL-파괴 게이트 / S4 nginx secure_link(outputs 한정, 모듈 실측 포함)+재발급 API(grandfathering). 오너 결정 게이트 D1~D6. **nginx secure_link+auth_request 모듈 실측 확인, outputs=워커 로컬디스크(R2 아님)**
-- **다음 트리거 = 오너 결정 D1~D6**(설계안 §5). D1(S3 A안)·D3(발급 권한)·D4(grandfathering) 승인 즉시 1·2단계 착수 가능. **여전히 코드 무변경 — 결정 대기**
+- **오너 결정(2026-08-28): D1·D3·D4 승인** — S3 A안부터 착수 지시
+- **⑬ S3 A안 구현·배포·라이브 실증 완료(c050729)**: 두 complete 핸들러에 OptionalShopJwtGuard+caller → finalize 옵션형 스탬프. FilesModule 에 JwtModule 자체 등록(edit-sessions 패턴). **구현 중 스펙 T6 이 결함 적발** — ready 멱등 재호출(무토큰 통과)에서 스탬프가 발화하면 fileId 아는 타 테넌트가 남의 NULL 파일을 **소급 하이재킹** 가능(신규 파손 벡터) → firstFinalize(pending→ready 전이 1회)로 차단. 뮤테이션 양방향 실증(스탬프 제거→T1·T7 실패 / 가드 제거→T6 실패). 동결 70/70 무변경·api 77스위트/1055 PASS·lint 0
+- **VPS 배포 + 라이브 3단 실증**: health 200·컨테이너 dist 역검증(firstFinalize 존재). E2E — Bearer 실은 complete → `site_id=b5aef7a9(bookmoa)` 스탬프 / 무토큰 → NULL(무중단) / **교차 삭제: 스탬프 파일은 타 테넌트 키 404 차단(격리 실효 증명)·소유자 200·NULL 파일은 여전히 타 키 200(알려진 잔여 — D6 게이트 근거, 프로브 정리 겸 시연)**
+- 다음 = **2단계(S4)**: 서명 URL 발급 API + nginx secure_link(outputs 한정, 신규 잡부터) — D3(사이트 키+NULL 잡 화이트리스트)·D4(재발급 API+유예 병행) 승인분. 이후 파트너 키 첨부 이행 안내(bookmoa: 업로드 complete 에 Bearer 첨부 1줄) → 관측 → D6(NULL-파괴 게이트)
 
 
 ## 2. 잔여 작업 (우선순위)
