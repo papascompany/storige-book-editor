@@ -18,7 +18,9 @@ GET /api/worker-jobs/external/<jobId>/output-url      (X-API-Key)
 - 서명 URL 은 **단명(기본 300초)** 입니다. **DB 에는 URL 이 아니라 `jobId` 를 저장**하고, 다운로드 시점마다 재발급하세요(멱등·저비용). 만료는 `410`, 서명 불일치는 `403`, 타 테넌트 잡은 `404` 입니다.
 - 라이브 실증 완료: 발급 200 · 서명 GET 200 · 변조 403 · 만료 410 · 무키 401.
 
-**유예(grandfathering)**: 종전 무인증 `/storage/outputs/…` 직접 GET 은 **당분간 그대로 동작**합니다. 기존 주문에 박제된 URL 은 죽지 않습니다. 무인증 경로 종료(cutover)는 **양사 전환 완료 후, 최소 1주 전 공지**로 진행합니다(bookmoa 요청 조건 반영).
+**유예(grandfathering)**: 종전 무인증 `/storage/outputs/…` 직접 GET 은 cutover 전까지 그대로 동작합니다.
+
+> **[확정 2026-08-28] cutover 실행일 = 2026-09-04.** 양사 전환 완료(printy ⓐ·ⓑ 배포+e2e 통과 / bookmoa ⓑ 귀속 실측+ⓐ 코드 불요 판명)와 최소 1주 공지 약속을 충족해 확정합니다. 9/4 부터 무인증 `/storage/outputs/` 는 `410 Gone` 으로 닫히며, 회수는 서명 URL 재발급 API 로만 가능합니다. 다른 `/storage/` 하위(uploads·designs·thumbnails)는 무변경입니다.
 
 ## 2. 신설 ② — 업로드 완료 시 테넌트 귀속 (S3 1단계)
 

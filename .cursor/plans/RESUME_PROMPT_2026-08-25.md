@@ -241,7 +241,10 @@ printy 감사 문의(S1~S4)를 코드+DB+라이브로 **사실 확정 회신**(b
 - **outputs 소비자 전수 실측**: SYNTHESIZE 잡 전체 12건(최종 2026-06-13), **최근 30일 0건** — 유예 경로 현재 실사용자 없음(100p·MD2 합성 미사용 확인)
 - **D5 프레임 제안 발신**: cutover 실행일 = printy ⓐ e2e 통과 통지일 + 7일(공지 약속). 확정은 오너 D5 게이트 경유. **남은 트리거 = printy e2e 통지 1건 + 오너 확정**
 - **bookmoa D5 동의(2026-08-28, 원장 R-149 마감)**: "printy 통지+7일" 프레임 동의·**회피 기간 없음**(cutover 무영향+유예 소비 0 실측). 최종 실행일만 채널 공지 요청. **bookmoa 측 트랙 완전 종결** — 이후 이 트랙에서 bookmoa 에 필요한 소통은 cutover 실행일 공지 1건뿐
-- **printy e2e 완료(2026-08-28, 오너 직접 통지)** — D5 의 마지막 외부 트리거 충족. 프레임상 cutover 최소 실행일 = 통지일+7일 = **2026-09-04**. 오너 날짜 확정(D5 게이트) 대기
+- **printy e2e 완료(2026-08-28, 오너 직접 통지)** — D5 의 마지막 외부 트리거 충족
+- **🔴 D5 확정(2026-08-28 오너 승인): cutover 실행일 = 2026-09-04.** 양 채널 공지 발송·공지문 갱신 완료. **9/4 실행 절차**: ① `docker/nginx/nginx.conf` 의 `/storage-signed/outputs/` 블록 **아래**에 신설 —
+  `location /storage/outputs/ { return 410; add_header X-Storige-Notice "gone — use GET /api/worker-jobs/external/:id/output-url" always; }`
+  (최장 접두 매칭이라 `/storage/` 보다 우선. uploads·designs·thumbnails 무변경) ② 커밋·푸시 → VPS `git pull && docker compose up -d nginx` ③ 실증: 구 무인증 outputs URL → 410 / 서명 URL → 200 / uploads 경로 → 200 ④ 양 채널 실행 완료 통지 ⑤ 관측 후 D6 착수(백필 41건 §2-B' 선행 검토 포함)
 
 
 ## 2. 잔여 작업 (우선순위)
