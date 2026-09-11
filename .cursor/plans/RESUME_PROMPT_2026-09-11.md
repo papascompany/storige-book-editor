@@ -4,8 +4,10 @@
 
 ## 0. 현재 라이브 상태 (2026-09-11 기준)
 
-- **master = origin/master (2026-09-11 오후 푸시 완료). VPS `~/storige` 는 `94edb89` 에 머물러 있다 — API 재배포 불요**
-  - 푸시분은 문서·env 템플릿·미참조 파일 삭제뿐이라 VPS 동기화가 필수가 아니다. 다음 API 배포 때 자연히 따라온다
+- **로컬 master = origin/master + ahead 2 — 🚨 미푸시(오너 승인 대기).** VPS `~/storige` 는 `94edb89` 유지 — API 재배포 불요
+  - ahead 2 = ① FontPlugin A-1(`packages/canvas-core/src`) ② 이 문서 갱신
+  - 🚨 **푸시 = editor 프로덕션 배포다.** `apps/editor/vercel.json` 의 `ignoreCommand` 감시 경로에 `../../packages/canvas-core` 가 있어 ①이 **Vercel 빌드를 트리거**한다(admin 감시 경로에는 canvas-core 가 없어 admin 은 스킵). 09-11 오후까지의 푸시분은 문서·템플릿뿐이라 무해했지만 이번은 다르다 — **오너 승인 후 푸시**
+  - 09-11 오후 푸시분(문서·env 템플릿·미참조 파일 삭제)은 VPS 동기화가 필수가 아니다. 다음 API 배포 때 자연히 따라온다
   - 해시를 여기 박지 않는다: 이 문서를 포함한 커밋의 해시는 쓰는 시점에 알 수 없다. **정확한 HEAD 는 `git log --oneline -5` 로 읽어라**
   - ⚠️ **자기참조 함정 3연속 적발**: 08-28 정본(`990b418` ← 실제 `39b787c`), 이 문서 최초판(`9e085c4` ← 실제 `94edb89`), 그리고 09-11 오후 갱신 초안(`25ff568` ← 실제는 그 갱신 커밋 자신)까지 전부 같은 실수였다. **해결책은 갱신 후 HEAD 를 다시 읽는 게 아니라 자기 해시를 애초에 쓰지 않는 것이다** — 위처럼 origin 기준 + ahead N 으로 적어라
   - 워킹트리 클린
@@ -31,7 +33,7 @@ docker compose exec -T nginx sh -c 'nginx -T 2>/dev/null | grep -c "찾을 문�
 |---|---|---|
 | api jest | **78스위트/1071 PASS** · contract-freeze 73 · lint 0err(44 warn) | ✅ 3회 연속 동일 |
 | editor vitest | **66파일/785 PASS** · tsc 0err · eslint 0err(78 warn) | ✅ 2회 연속 동일 |
-| canvas-core | **54파일/623 PASS** · lint 0err(48 warn) | ✅ 2026-09-11 실측 — 기대치 정확히 일치(`node -v` v22.22.2 고정) |
+| canvas-core | **55파일/628 PASS** · lint 0err(48 warn) | ✅ 2026-09-11 저녁 재실측 — A-1 회귀 테스트 1파일/5테스트 편입(종전 54/623, 증발 0). `node -v` v22.22.2 고정 |
 | 플레이크 | **등재 0종** | ✅ 3연속 전체실행 재현 0건 |
 
 > ⚠️ **런타임 함정**: 이 맥의 `/opt/homebrew/opt/node@24` 심볼릭 링크는 **Node 26 을 가리킨다**.
@@ -177,9 +179,20 @@ compose-mixed·split·spread 가 **전부 SYNTHESIZE 로 기록**된다 — 위 
    - `firstFinalize` 게이트를 **FROZEN(보안 계약)** 으로 명문화. 제거 시 소급 하이재킹 벡터 재개방이라는 근거와 `presigned-upload.service.ts:415-424` 라인, 고정 스펙 T6 을 함께 적었다
    - Bearer 옵션 소비는 ADDITIVE, 스탬프 근거의 유일성(서명 검증된 JWT 뿐)은 FROZEN 으로 3행 등재
    - §4.3 스테일 정정 완료: D1·D3·D4 는 8/28 승인·집행 완료, 잔여는 D6 착수 시점뿐. 백필 41건/NULL 225건이 8/28 실측 후 재실측 없음도 등재
-8. FontPlugin A-1(동일 CSS 재기입 스킵, `packages/canvas-core/src/plugins/FontPlugin.ts:669`) — canvas-core 소유권 배정 필요. ⚠️ 착수 게이팅을 `grow:plugins` 수치로 하면 안 된다: `createFontCSS` 가 생성자에서 await 없이 호출돼 내부 rAF+300ms 가 그 lap 에 계상되지 않는다
+8. ~~FontPlugin A-1(동일 CSS 재기입 스킵)~~ **✅ 2026-09-11 저녁 완료** — `packages/canvas-core/src/plugins/FontPlugin.ts` `createFontCSS`
+   - 기존 `<style id="dynamic-font-faces">` 의 `textContent` 가 새로 만든 `code` 와 동일하면 재기입도 정착 대기(rAF+300ms)도 건너뛴다. 호출처는 **생성자 1곳뿐**(`:133`)이라 스킵이 실제로 걸리는 건 같은 폰트 목록으로 FontPlugin 이 재생성될 때다(에디터 재초기화·StrictMode 이중 마운트)
+   - ⚠️ **스킵 검사는 `fontUrlByName` 을 채우는 forEach 뒤에 둔다.** 앞으로 올리면 새 인스턴스의 URL 맵이 빈 채 남아 `_getWoff2FontUrl` 이 CSSOM 폴백으로만 돈다. 회귀 테스트 ③(`FontPlugin.fontCss.test.ts`)이 이 순서를 고정한다
+   - 300ms 는 CSS 파싱을 기다리던 패딩이었다 — 실제 폰트 로드 완료 판정은 뒤따르는 `preloadEssentialFonts` 의 FontFaceObserver 가 따로 한다
+   - 지시대로 착수 게이팅에 `grow:plugins` 수치를 쓰지 않았다(생성자에서 await 없이 호출돼 rAF+300ms 가 그 lap 에 미계상)
 9. (관찰) 시드 표기 잔여 — 레거시 `/` 경로·게스트 세션 미적용, updatedAt 의미 폭
-10. (P2) `apps/editor`·`apps/admin` 의 `engines.node`(24.x)가 실검증 런타임(26)과 불일치 — 매 pnpm 실행마다 Unsupported engine 경고. CI Node 버전 확인 후 정합
+10. ~~(P2) `apps/editor`·`apps/admin` 의 `engines.node`(24.x) ↔ 실검증 런타임(26) 불일치~~ **✅ 2026-09-11 저녁 종결 — 조사 결과 변경 없음이 정답. `24.x` 를 넓히지 마라**
+   - CI 실측: `.github/workflows/ci.yml` `setup-node: node-version: 24`. **선언 3곳(root `>=24`·editor `24.x`·admin `24.x`)이 CI 와 이미 정합**이다 — 정합시킬 불일치가 없다
+   - 🚨 **`24.x` → `>=24` 완화는 금지.** Vercel 은 범위를 newest-first 로 intersect 해 **가용 최신 메이저를 자동 채택**한다(공식 문서 실확인: `>=20.0.0` → latest **24.x**). 개방 범위로 두면 Vercel 이 26.x 를 추가하는 날 프로덕션 빌드가 **무단 승격**된다. 이 고정은 `58a5166` 이 의도적으로 건 자물쇠이고 근거 정본은 `NODE24_UPGRADE_AUDIT_2026-07-30.md:63`. **경고를 없애려고 이걸 푸는 게 이 항목의 함정이다**
+   - root `>=24` 는 Vercel 이 **읽지 않는다**(rootDirectory=`apps/editor` 에서 처음 만난 package.json 하나만 보고 멈춘다 — 같은 감사 `:94`). 로컬·CI 전용 선언이라 완화·고정 어느 쪽도 배포 영향 0
+   - **경고의 정체는 이 맥이다.** Cellar 실측: 실제 설치본은 `22.22.2` · `25.1.0` · `26.5.1` 뿐이고 **Node 24 는 없다**. `/opt/homebrew/opt/node@24`·`node@25`·`node@26` 은 전부 `node` 포뮬러의 **별칭 심링크**라 셋 다 `Cellar/node/26.5.1` 을 가리킨다(§0 의 함정은 링크 파손이 아니라 Homebrew 별칭 동작이다). 즉 경고는 잡음이 아니라 **참인 신호** — "이 레포가 고정한 런타임이 아닌 것으로 돌고 있다"
+   - [대조군] 기본 Node 26 으로 canvas-core 를 돌리면 `vitest.setup.ts` 프리플라이트가 **55파일 전부 하드 실패**(node-canvas ABI). node@22 고정 제약은 현재도 유효하다
+   - 경고를 실제로 없애려면 로컬에 **진짜 Node 24 를 설치**(`brew install node@24`)하거나 `.npmrc` 에 `use-node-version` 을 거는 수밖에 없다 — 둘 다 개발환경 변경이라 **오너 결정 사항**(미실행)
+   - 덤: Node 20 폐기(2026-10-01, D-19) 대응의 Vercel Settings 이중화(감사 `:87`)도 **이미 닫혀 있다** — `vercel project ls --update-required` → "No projects found ... using a deprecated Node.js version"(읽기 전용 실측)
 
 **D6 (cutover 관측 후 착수)**: NULL-파괴 게이트 + 이원 정책 allowlist 승격 + 백필.
 ⚠️ 백필 41건/NULL 225건은 **2026-08-28 실측치** — 이후 재실측 없음. 집행 전 4수치 재실행 필수.
@@ -266,8 +279,7 @@ compose-mixed·split·spread 가 **전부 SYNTHESIZE 로 기록**된다 — 위 
 ### 다음 세션 진입점
 
 **즉시 착수 가능(오너 승인 불요)** — §3 P1 잔여:
-- **8** FontPlugin A-1 — canvas-core 소유권 배정 필요. ⚠️ 착수 게이팅을 `grow:plugins` 수치로 하지 마라(생성자에서 await 없이 호출돼 rAF+300ms 가 그 lap 에 미계상)
-- **10** (P2) `apps/editor`·`apps/admin` `engines.node` 24.x ↔ 실런타임 26 불일치 — CI Node 버전 확인 후 정합
+- ~~**8** FontPlugin A-1~~ · ~~**10** engines.node~~ → **둘 다 09-11 저녁 세션에서 종결**(§7-2). 즉시 착수 가능한 P1 잔여는 **0건**이다
 
 **오너 결정 대기**: §3 P0-2 회신문 미발송 5건 · P0-3 동화책 왕복 실기 · D6 착수 시점 · §7-1 권고 3건
 
@@ -291,4 +303,40 @@ compose-mixed·split·spread 가 **전부 SYNTHESIZE 로 기록**된다 — 위 
 
 **권고(미실행, 오너 판단)**: ⓐ 읽기전용 축에 `model: sonnet` 지정으로 정찰 비용 절감 ⓑ 설치본의 Bash 제약 1줄을 `_ai-governance` 에 역반영해 드리프트 해소 ⓒ storige 전용 규칙(nginx inode·node@22 고정·supertest 포트 패밀리)을 `.claude/rules/` 로 분리
 
+---
 
+## 7-2. 2026-09-11 저녁 세션 로그
+
+**커밋 2건 — 🚨 미푸시(origin/master + ahead 2).** 푸시가 editor 프로덕션 배포를 트리거하므로 오너 승인 대기(§0).
+
+### 한 일
+
+| # | 항목 | 결과 |
+|---|---|---|
+| 1 | **P1-8 FontPlugin A-1** | ✅ 구현 + 회귀 테스트 5건. 동일 CSS 면 재기입·rAF+300ms 정착 대기 스킵 |
+| 2 | **P2-10 engines.node** | ✅ **무변경으로 종결** — 이미 정합이고 `24.x` 완화는 금지(Vercel 무단 승격 벡터) |
+
+### 검증 증거 (변경 위험에 비례, 각 1회 · `node -v` v22.22.2 고정)
+
+| 검증 | 결과 |
+|---|---|
+| `pnpm --filter @storige/canvas-core test` | **55파일/628 PASS** — 기준선 54/623 + 신규 1파일/5테스트, 수집 증발 0 |
+| `pnpm --filter @storige/canvas-core typecheck` | **EXIT=0** |
+| `pnpm --filter @storige/canvas-core lint` | **0 err / 48 warn** — 기준선 동일(초안의 미사용 eslint-disable 1건은 타입 명시로 제거) |
+| `pnpm --filter @storige/editor test` | **66파일/785 PASS** — 기준선 동일. 인접면(`createCanvas.pluginOrder` 플러그인 체인) 확인용 |
+| [대조군] 기본 Node 26 으로 canvas-core test | **55파일 전부 하드 실패**(프리플라이트) — node@22 고정 제약 유효성 재확인 |
+| api jest | **미실행** — 변경면이 `packages/canvas-core/src` 한 파일 + 테스트라 api 무영향 |
+| 프로덕션 접근 | **읽기 전용 1회**(`vercel project ls --update-required`). 쓰기·배포·재기동 **0건** |
+
+### 이번 세션이 남기는 함정
+
+- 🚨 **`engines.node: "24.x"` 를 경고 때문에 넓히지 마라** — §3-10. 이 항목은 "고쳐라"가 아니라 "건드리지 마라"로 끝났다. 다음 세션이 같은 경고를 보고 같은 유혹을 받는다
+- **Homebrew `node@24`/`node@25`/`node@26` 은 전부 `node` 포뮬러 별칭**이라 현재 Cellar 의 26.5.1 을 가리킨다. 이 맥에 **진짜 Node 24 는 없다**(실측: 22.22.2 / 25.1.0 / 26.5.1). §0 의 "node@24 심볼릭 링크가 26 을 가리킨다"는 파손이 아니라 정상 별칭 동작이다
+- **`ignoreCommand` 감시 경로가 앱마다 다르다** — `packages/canvas-core` 는 **editor 에만** 있다. canvas-core 변경 푸시 = editor 만 재배포(admin 스킵). 푸시 영향 판단 시 두 `vercel.json` 을 각각 봐라
+- **스킵 최적화는 부수효과 수집 코드 뒤에 둔다** — A-1 의 조기 return 을 `fontUrlByName` 을 채우는 forEach 앞으로 올리면 맵이 빈 채 남는다. 조기 return 을 넣을 때 "그 앞에서 무엇이 채워지는가"를 먼저 본다
+
+### 다음 세션 진입점
+
+- **오너 승인 대기(최우선)**: 이 2커밋 **푸시 여부** — 푸시 시 editor 프로덕션 재배포
+- **오너 결정 대기**: §3 P0-2 회신문 미발송 5건 · P0-3 동화책 왕복 실기 · D6 착수 시점 · §7-1 권고 3건 · 로컬 Node 24 설치 여부(§3-10)
+- **즉시 착수 가능한 P1 잔여 0건.** 다음 코드 트랙은 D6 이고, 착수 전 §2 "합성 잡 3개월 공백" 반영 + 백필 4수치 재실행이 선행이다
