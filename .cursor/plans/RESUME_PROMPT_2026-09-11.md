@@ -4,7 +4,11 @@
 
 ## 0. 현재 라이브 상태 (2026-09-11 기준)
 
-- **master = origin/master = `9e085c4`**, VPS `~/storige` = 동일 커밋. 워킹트리 클린
+- **origin/master = `94edb89` = VPS `~/storige`. 로컬 master 는 여기서 ahead 2, 미푸시** — `25ff568`(P1 마감 3건) + 이 문서 갱신 커밋
+  - 해시를 여기 박지 않는다: 이 문서를 포함한 커밋의 해시는 쓰는 시점에 알 수 없다. **정확한 HEAD 는 `git log --oneline -3` 으로 읽어라**
+  - 미푸시분은 문서·env 템플릿·미참조 파일 삭제뿐이라 **API 재배포 불요**. 푸시는 오너 판단(editor/admin Vercel 자동배포 유발)
+  - ⚠️ **자기참조 함정 3연속 적발**: 08-28 정본(`990b418` ← 실제 `39b787c`), 이 문서 최초판(`9e085c4` ← 실제 `94edb89`), 그리고 09-11 오후 갱신 초안(`25ff568` ← 실제는 그 갱신 커밋 자신)까지 전부 같은 실수였다. **해결책은 갱신 후 HEAD 를 다시 읽는 게 아니라 자기 해시를 애초에 쓰지 않는 것이다** — 위처럼 origin 기준 + ahead N 으로 적어라
+  - 워킹트리 클린
   (untracked `.tmp-verify-combos/`·`docs/SHOPIFY_*`·`docs/SITE_CATALOG_*`·`docs/PLATFORM_INTEGRATION_GUIDE.backup-2026-07-09.md` 는 타 세션 산출물 — 무접촉, `git add` 항상 명시 목록)
 - 배포: editor/admin=Vercel master push 자동 / API·워커=VPS 수동(`CLAUDE.local.md` §6)
 
@@ -27,7 +31,7 @@ docker compose exec -T nginx sh -c 'nginx -T 2>/dev/null | grep -c "찾을 문�
 |---|---|---|
 | api jest | **78스위트/1071 PASS** · contract-freeze 73 · lint 0err(44 warn) | ✅ 3회 연속 동일 |
 | editor vitest | **66파일/785 PASS** · tsc 0err · eslint 0err(78 warn) | ✅ 2회 연속 동일 |
-| canvas-core | 54파일/623 PASS · lint 0err(48 warn) | ⚠️ **테스트 미실측** (아래 함정) |
+| canvas-core | **54파일/623 PASS** · lint 0err(48 warn) | ✅ 2026-09-11 실측 — 기대치 정확히 일치(`node -v` v22.22.2 고정) |
 | 플레이크 | **등재 0종** | ✅ 3연속 전체실행 재현 0건 |
 
 > ⚠️ **런타임 함정**: 이 맥의 `/opt/homebrew/opt/node@24` 심볼릭 링크는 **Node 26 을 가리킨다**.
@@ -44,13 +48,17 @@ docker compose exec -T nginx sh -c 'nginx -T 2>/dev/null | grep -c "찾을 문�
 
 > 실행 전 프로브에서 **실제 산출물이 무인증 200 으로 받아졌다**(없는 파일명 프로브는 404 라 미노출로 오인하기 쉽다 — 판별에 실제 파일을 써라).
 
-## 2. 🔴 이번 세션 최우선 — 미발신 통지 2건
+## 2. 🟡 통지 발신 — bookmoa 완료 / printy 잔여 1건
 
-**문서는 작성·커밋됐고 채널 발신만 남았다.** 08-28 정본 §3 이 "중요 통지는 레포 문서 병행이 정본 경로" 로 규정한 그 문서다.
+**2026-09-11 세션 발신 결과**: bookmoa 수신분(①+②) 1건으로 묶어 발신 완료 — 세션 `bookmoa-mobile-48`, `msg_id 5bf001be-db4e-49eb-8bd6-8314ed8d39c5`, `notify_when_idle` 구독. **printy 수신분(①)은 미발신** — 발신 시점에 printy 세션이 미기동이었다(§5 참조).
 
-1. `docs/partner-notices/PARTNER_NOTICE_OUTPUT_CUTOVER_DONE_2026-09-11.md` → **printy·bookmoa 양사**
+> ⚠️ **발신 성공(msg_id) ≠ 도달 ≠ 회신.** bookmoa 회신 2건(구 URL 410 교차실측 / jobId output 라우트 상태코드)이 들어와야 이 항목이 닫힌다. 무응답이면 수신 세션의 권한모드(bypass 여부)를 오너에게 확인 요청.
+
+08-28 정본 §3 이 "중요 통지는 레포 문서 병행이 정본 경로" 로 규정한 그 문서다.
+
+1. `docs/partner-notices/PARTNER_NOTICE_OUTPUT_CUTOVER_DONE_2026-09-11.md` → printy·bookmoa 양사 (**bookmoa ✅ 발신 / printy 🔴 미발신**)
    - 지연 사실(9/4→9/11) 명시본. 양사에 구 URL 410 **교차 실측 1회** 요청 포함(printy 가 8/28 예약해 둔 항목)
-2. `docs/partner-notices/PARTNER_NOTICE_BOOKMOA_JOB_OUTPUT_401_2026-09-11.md` → **bookmoa 단독** (D5 무관 별건)
+2. `docs/partner-notices/PARTNER_NOTICE_BOOKMOA_JOB_OUTPUT_401_2026-09-11.md` → bookmoa 단독 (D5 무관 별건) — **✅ 발신 완료**
    - bookmoa `api/storige/files/proxy-download.js:100` 이 `/worker-jobs/:id/output` 을 `X-API-Key` 로 호출
    - 이 라우트는 전역 `JwtAuthGuard`(`apps/api/src/auth/auth.module.ts:48`) 아래 `@Public`·`ApiKeyGuard` **둘 다 없음**(`worker-jobs.controller.ts:623`) → 유효 사이트 키로도 **401**. 라이브 실측 401 확인
    - 가이드 §3.4 가 2026-08-13 실측으로 이미 명시하던 사실. 8/28 원장 R-149 의 "코드 변경 불요" 는 라우팅 감사 근거였고 라이브 실측 미수행. printy 는 같은 지점을 8/28 에 실호출로 적발해 서명 URL 로 전환함
@@ -59,16 +67,25 @@ docker compose exec -T nginx sh -c 'nginx -T 2>/dev/null | grep -c "찾을 문�
 ## 3. 잔여 작업
 
 **P0 — 오너 액션**
-1. 위 §2 통지 2건 발신
+1. ~~위 §2 통지 2건 발신~~ → **printy 수신분 1건만 잔여**. 오너가 `~/Developer/claude/printy` 에서 세션을 띄우면 `ListAgents` 재식별 후 즉시 발신한다(2026-09-11 세션에서 오너 지시로 이 경로 확정)
 2. 파트너 회신문 **미발송 5건**: ⓐ 8/24 통지 4종 + ⓑ 프린티 템플릿셋 스코프
    (~~ⓒ new.bookmoa.com~~ = 발송 완료·파트너 회신 수신 08-27·트랙 종결 / ~~ⓓ 프린티 업로드 테넌시~~ = 세션 채널 전달 완료 08-28, 보안 채널 공식 발송만 잔여 — **08-28 정본 §2 의 "4종" 은 과대 계상이었다**)
 3. 동화책 왕복 실기 1회로 묶음 해소: 재진입 유지 확인 + `window.__storigeLoadProfile.laps` 의 `grow:*` 캡처(읽기 전용) + bookmoa 장바구니 #1 테스트 항목 삭제
 
 **P1 — 코드**
-4. **canvas-core 기준선 마감**: `PATH="/opt/homebrew/opt/node@22/bin:$PATH" pnpm --filter @storige/canvas-core test` (기대 54파일/623). 이 축은 과거 "커버리지 72건 조용히 증발" 전력이 있어 수집 수까지 대조할 것
-5. **P1-5 잔여 1파일**: `apps/api/storage/test/*.ts` 가 여전히 린트·타입체크 밖(`generate-fixtures.ts` 는 지금 린트하면 파싱 에러). `tsconfig.eslint.json` include + `package.json` lint 글롭에 `storage/test` 추가. 08-28 정본의 "✅ 완료" 는 **부분 완료**였다
-6. **`.env.example` 에 `OUTPUT_*` 3키 등재**(값 없이): `OUTPUT_SIGN_SECRET`(= `secure-link-secret.conf` 와 동일값 필수)·`OUTPUT_URL_TTL_SEC=300`·`OUTPUT_URL_NULL_JOB_SITE_ALLOWLIST`. 현재 0건이라 신규 환경은 발급 API 전건 503
-7. **CONTRACT_FREEZE 에 S3 A안 등재**: `POST /files/multipart/complete`·`POST /files/:id/complete` 의 shop-session Bearer 옵션 스탬프(c050729, 배포·라이브 실증 완료)가 계약 문서에 없다(파일 전체 `Bearer` 0건). 등재 없으면 다음 작업자가 `firstFinalize` 게이트를 불필요한 복잡도로 오인해 제거 → **소급 하이재킹 벡터 재개방**. §4.3 의 "오너 결정 대기" 도 스테일(D1·D3·D4 는 8/28 승인됨)
+4. ~~canvas-core 기준선 마감~~ **✅ 2026-09-11 완료** — `PATH="/opt/homebrew/opt/node@22/bin:$PATH" pnpm --filter @storige/canvas-core test` → **54파일/623 PASS**, 기대치 정확히 일치(수집 수 대조 완료, 증발 0). 재실측 시 같은 PATH 고정 필수
+5. ~~P1-5 잔여 1파일~~ **✅ 2026-09-11 완료 — 단, 편입이 아니라 제거로 닫았다**(`25ff568`)
+   - 지시대로 `tsconfig.eslint.json` include + lint 글롭에 `storage/test` 를 넣어 보니, 유일한 `.ts` 인 `generate-fixtures.ts` 가 `apps/worker/test/fixtures/pdf/generate-fixtures.ts` 와 **바이트 동일한 사본**(`diff` 무차이)이고 **참조처 0건**이며 api 에 없는 `pdf-lib` 를 import 한다(파일 헤더 스스로 worker 에서 실행하라고 적고 있다)
+   - 편입하면 린트는 0err 이지만 `tsc --noEmit -p tsconfig.eslint.json` 이 **TS2307 로 깨진다** — `eslint.config.js` 주석에 "린트 대상 == tsconfig 프로그램, tsc EXIT=0" 으로 기록된 불변식을 무너뜨린다(CI 게이트는 아니지만 진단 명령이 상시 빨강)
+   - 오너 결정으로 **사본 삭제 + 범위 추가 원복**. 사각지대가 원천 소멸하고 불변식도 유지된다. 픽스처 PDF·README 무접촉
+   - 재발 방지 주석을 `apps/api/eslint.config.js` 에 남겼다 — **`storage/test` 를 include 에 다시 넣지 말 것**
+6. ~~`.env.example` 에 `OUTPUT_*` 3키 등재~~ **✅ 2026-09-11 완료** — 루트 `.env.example` + `apps/api/.env.example` **양쪽**에 값 없이 등재
+   - compose 매핑(`docker-compose.yml:52-54`)은 이미 있었다 — 누락은 템플릿뿐이었고, 그 상태로 신규 환경을 세우면 발급 API 전건 503 이 맞았다
+   - `secure-link-secret.conf` 동일값 필수(불일치 = 발급 200/회수 전건 403)를 주석으로 명시
+7. ~~CONTRACT_FREEZE 에 S3 A안 등재~~ **✅ 2026-09-11 완료** — `docs/CONTRACT_FREEZE.md` **v1.3**, 신설 §1-C-1
+   - `firstFinalize` 게이트를 **FROZEN(보안 계약)** 으로 명문화. 제거 시 소급 하이재킹 벡터 재개방이라는 근거와 `presigned-upload.service.ts:415-424` 라인, 고정 스펙 T6 을 함께 적었다
+   - Bearer 옵션 소비는 ADDITIVE, 스탬프 근거의 유일성(서명 검증된 JWT 뿐)은 FROZEN 으로 3행 등재
+   - §4.3 스테일 정정 완료: D1·D3·D4 는 8/28 승인·집행 완료, 잔여는 D6 착수 시점뿐. 백필 41건/NULL 225건이 8/28 실측 후 재실측 없음도 등재
 8. FontPlugin A-1(동일 CSS 재기입 스킵, `packages/canvas-core/src/plugins/FontPlugin.ts:669`) — canvas-core 소유권 배정 필요. ⚠️ 착수 게이팅을 `grow:plugins` 수치로 하면 안 된다: `createFontCSS` 가 생성자에서 await 없이 호출돼 내부 rAF+300ms 가 그 lap 에 계상되지 않는다
 9. (관찰) 시드 표기 잔여 — 레거시 `/` 경로·게스트 세션 미적용, updatedAt 의미 폭
 10. (P2) `apps/editor`·`apps/admin` 의 `engines.node`(24.x)가 실검증 런타임(26)과 불일치 — 매 pnpm 실행마다 Unsupported engine 경고. CI Node 버전 확인 후 정합
@@ -99,7 +116,14 @@ docker compose exec -T nginx sh -c 'nginx -T 2>/dev/null | grep -c "찾을 문�
 ## 5. 양사 세션 채널 가이드
 
 - **bookmoa**: cwd `~/Developer/claude/bookmoa-mobile` / **printy**: cwd `~/Developer/claude/printy`
-- ⚠️ **세션 이름은 재시작 시 바뀐다** — `ListAgents` 로 cwd 기준 재식별. 2026-09-11 시점엔 `bookmoa-mobile-2f`·`printy-bf` 가 interactive 였다
+- ⚠️ **세션 이름은 재시작 시 바뀐다** — `ListAgents` 로 cwd 기준 재식별. 이름은 같은 날 안에서도 바뀐다(09-11 오전 `bookmoa-mobile-2f`·`printy-bf` → 오후 `bookmoa-mobile-48`, printy 소멸)
+- 🚨 **`ListAgents` 는 cwd 를 보여주지 않는다.** 이름만 보고 찍지 말 것. 실제 식별법(2026-09-11 사용):
+  ```bash
+  ls -lt ~/.claude/projects/-Users-yohan-Developer-claude-printy/*.jsonl | head -3
+  ls -lt ~/.claude/projects/-Users-yohan-Developer-claude-bookmoa-mobile/*.jsonl | head -3
+  ```
+  디렉터리명이 cwd 이고, mtime 이 `ListAgents` 의 "started N ago" 와 맞물리는 것이 그 세션이다
+- ⚠️ **이름 오인 함정(2026-09-11 실사례)**: peer 목록의 `printcard-studio-fd` 는 cwd `~/Developer/claude/PrintCard-Studio` 로 **printy 가 아니다**(별개 프로젝트). 여기에 파트너 통지를 보내면 오발신이다
 - ⚠️ **크로스세션 권한모드 함정**: 수신 세션이 bypass 가 아니면 피어 메시지가 승인 보류로 지연. **발신 성공(msg_id) ≠ 도달.** 무응답이면 오너에게 모드 확인 요청
 - 레포 정본: `docs/partner-notices/` · `docs/PLATFORM_INTEGRATION_GUIDE.md` · `docs/CONTRACT_FREEZE.md`
 - 8/28~9/11 파트너 측 변화 **0건**(양 레포 storige 연동 파일 무변경, 문의·불만 0건)
@@ -112,3 +136,26 @@ docker compose exec -T nginx sh -c 'nginx -T 2>/dev/null | grep -c "찾을 문�
 4. 함정 상기: **nginx 파일 bind-mount inode(§0)** / **node@24→Node26(§0)** / vite.config.js shadow / 빌드게이트 5함정 / fabric styles·loadJSON / SPREAD≠표지 / isInitializedRef 저장 입구 금지 / **debounce 는 배칭 도구 아님** / **supertest 포트 패밀리**(불가능한 응답=남의 서버 의심) / 크로스세션 권한모드
 5. 검증 기준선 = §0 표. 실기·프로덕션 키 작업은 권한무시 모드
 6. 세션 종료 시 `RESUME_PROMPT_<날짜>.md` 갱신 없이 종료 금지
+
+---
+
+## 7. 2026-09-11 오후 세션 로그 (이 갱신분)
+
+**한 일**
+- bookmoa 통지 ①+② 발신(msg_id `5bf001be…`, `notify_when_idle` 구독) — §2
+- P1-4 canvas-core 기준선 실측 마감(54파일/623) — §0 표 갱신
+- P1-5·6·7 코드/문서 마감 → 커밋 `25ff568`(로컬, **미푸시**)
+
+**검증 증거 (이번 변경 범위에 비례한 최소 1회)**
+| 검증 | 결과 |
+|---|---|
+| `pnpm --filter @storige/canvas-core test` (node v22.22.2 고정) | 54파일/623 PASS — 기대치 일치 |
+| `pnpm lint` (apps/api) | **0 err / 44 warn** — 기준선 동일 |
+| `tsc --noEmit -p tsconfig.eslint.json` (apps/api) | **EXIT=0** — 불변식 복원 확인 |
+| api jest | **미실행**(문서·env 템플릿·미참조 파일 삭제뿐이라 무영향 범위). 다음 세션이 코드를 건드리면 §0 기준선 78스위트/1071 로 대조할 것 |
+
+**다음 세션 최초 3동작**
+1. bookmoa 회신 2건(410 교차실측 / jobId output 상태코드) 도착 여부 확인 → §2 닫기
+2. printy 세션 기동 여부 확인 → 기동돼 있으면 통지 ① 즉시 발신(§2·§5)
+3. `25ff568` 푸시 여부 오너 확인 (푸시 시 editor/admin Vercel 자동배포 — 코드 무변경이라 no-op 배포)
+
