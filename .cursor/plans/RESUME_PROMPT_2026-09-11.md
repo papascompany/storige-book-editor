@@ -359,13 +359,39 @@ compose-mixed·split·spread 가 **전부 SYNTHESIZE 로 기록**된다 — 위 
 | 대상 | 결과 |
 |---|---|
 | CI `ci` (Node 24) | **success** — canvas-core typecheck·test·lint 게이트가 CI 런타임에서도 통과 |
-| CI `gitleaks` | success (로컬 수동 스캔도 `no leaks found` — `core.hooksPath` 미설정이라 `.githooks/pre-commit` 은 **비활성**이다) |
+| CI `gitleaks` | success (로컬 수동 스캔도 `no leaks found`) |
 | Vercel editor | **● Ready**, alias `editor.papascompany.co.kr` |
 | Vercel admin | **● Ready** (27s) — 예측은 "스킵"이었다. §0 fail-open 절 참조 |
 | 배포본 지문 | `/assets/canvas-core-*.js` 에 A-1 문자열 `폰트 CSS 동일` **1건** + [대조군] 기존 문자열 `폰트 CSS 생성 완료` 1건 → 변경분이 실제로 실렸다 |
 | 스모크 | editor `/` 200 · `/embed` 200 · admin `/` 200 · api `/api/health` 200 |
 
 > ⚠️ 엔트리 청크(`/assets/index-*.js`)만 grep 하면 **둘 다 0건**이라 "안 실렸다"로 오판한다 — FontPlugin 은 `canvas-core-*.js` 청크에 있다. **대조군 문자열을 같이 세지 않았으면 이 오판을 못 걸렀다**(§2 판정축 규칙의 재적용 사례).
+
+### 로컬 pre-commit 훅 활성화 (오너 지시, 2026-09-11 저녁)
+
+`core.hooksPath` 가 미설정이라 `.githooks/pre-commit`(gitleaks staged 스캔)이 **비활성**이었다. 이 맥에서 활성화했다:
+
+```bash
+git config core.hooksPath .githooks   # --local 스코프. 해제: git config --unset core.hooksPath
+```
+
+머신 설정이라 커밋되지 않는다 — **새 클론·다른 머신에서는 매번 다시 걸어야 한다**(훅 파일 주석이 자동 설치를 의도적으로 안 한다고 명시).
+
+양쪽 경로 실증(테스트 파일은 즉시 unstage·삭제, 잔여 0건 확인):
+
+| 경로 | 결과 |
+|---|---|
+| 스테이지 비어 있음 | EXIT=0 통과 |
+| 시크릿 스테이지 | 106 bytes 스캔 · **leaks 2건 · EXIT=1 차단** |
+
+> 🚨 **훅 자가검증 함정**: 첫 시도에 AWS 공식 예시 키 `AKIAIOSFODNN7EXAMPLE` 로 테스트했더니 **통과**했다.
+> 훅이 무력한 게 아니라 `.gitleaks.toml` allowlist 의 `(?i)example|placeholder|dummy|sample|test[-_]?key` 가
+> 그 키의 `EXAMPLE` 부분을 면제한 것이다. **훅·스캐너 자가검증에 쓰는 가짜 시크릿에는 allowlist 어휘
+> (example·placeholder·dummy·sample·test-key·change-me·your-…-here·REDACTED)를 넣지 마라** —
+> "차단 실패" 로 오판한다. 판정 전에 allowlist 를 먼저 읽어라(§2 판정축 규칙의 또 다른 사례).
+
+> 참고: `gitleaks` v8.30.1 에서 `protect` 는 `--help` 의 Available Commands 에 **없다**(hidden legacy).
+> 그래도 동작은 한다 — 실측에서 staged diff 를 정상 스캔했다(로그의 `0 commits scanned` 는 커밋 카운터일 뿐, `scanned ~106 bytes` 가 실제 스캔량이다). 향후 제거되면 훅을 `gitleaks git --staged` 계열로 옮겨야 한다.
 
 ### 다음 세션 진입점
 
