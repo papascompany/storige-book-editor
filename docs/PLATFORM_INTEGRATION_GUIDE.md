@@ -1010,18 +1010,21 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
    > 만료는 `410` 입니다.
    > ✅ 인증·테넌트: 사이트 API 키 필수. 자기 사이트 잡이 아니면 `404`(존재 은닉) 입니다.
 
-   **유예 경로(전환 기간 한정)**: 종전의 공개 URL 직접 GET 도 **당분간 유효**합니다.
+   **~~유예 경로(전환 기간 한정)~~ — 2026-09-11 cutover(D5)로 종료되었습니다.**
    ```bash
-   # (유예) 폴링/웹훅의 outputFileUrl / result.outputFiles[].url 을 그대로 GET
-   curl "https://api.papascompany.co.kr/storage/outputs/<jobId>/content.pdf" -o content.pdf
+   # ❌ 더 이상 동작하지 않습니다
+   curl -i "https://api.papascompany.co.kr/storage/outputs/<jobId>/content.pdf"
+   # → HTTP/1.1 410 Gone
+   #   X-Storige-Notice: gone — use GET /api/worker-jobs/external/:id/output-url
    ```
-   > ⚠️ **이 무인증 공개 경로는 예고 후 종료(cutover) 예정입니다.** 종료 최소 1주 전에 온보딩
-   > 채널로 공지합니다. 신규 연동은 처음부터 서명 URL 재발급 API 를 사용하세요.
-   > ✅ **실측(2026-08-13)**: `/storage/outputs/<jobId>/<name>.pdf` 는 `206 application/pdf` 로 응답합니다.
-   > 즉 `separate` 의 `cover.pdf` 도 **`outputFiles[].url` 로 그대로 회수**할 수 있습니다(별도 라우트 불필요).
+   > 🔴 **무인증 공개 경로는 2026-09-11 자로 폐쇄됐습니다(D5 cutover).** 산출물 회수는 위 1)·2) 의
+   > **서명 URL 재발급 API 가 유일한 경로**입니다. `/storage/` 하위의 uploads·designs·thumbnails 는 무변경입니다.
+   > ℹ️ **이력**: 폐쇄 전에는 `/storage/outputs/<jobId>/<name>.pdf` 가 `206 application/pdf` 로 응답했고
+   > `separate` 의 `cover.pdf` 도 `outputFiles[].url` 로 회수됐습니다. 지금은 두 경우 모두 서명 URL 로 회수합니다
+   > (`separate` 는 재발급 응답의 `files[]` 에 cover·content 2건이 모두 담깁니다).
    > ⚠️ compose-mixed 는 산출물을 `files` 레코드로 **등록하지 않습니다**(`registerExternalFile` 미호출) → 잡에 `outputFileId` 가 없고 웹훅 페이로드에도 없습니다. **다른 잡에서 쓰는 `GET /api/files/:fileId/download/external` 은 compose-mixed 에 성립하지 않습니다.**
    > ⚠️ **`GET /api/worker-jobs/:jobId/output` 은 파트너 경로가 아닙니다.** 이 라우트에는 `ApiKeyGuard` 가 붙어 있지 않아 **유효한 사이트 API 키로 호출해도 `401`** 입니다(2026-08-13 실측). 내부 JWT(admin 미리보기) 전용으로 보세요.
-   > 🚨 **(유예 경로의) 산출물 URL 은 비밀로 취급하세요.** 그 스토리지 경로는 **무인증 공개**이며 접근 통제는 `jobId`(UUID) 은닉에만 의존합니다 — 로그·클라이언트 코드·고객 화면에 그대로 노출하지 마세요. **서명 URL 재발급 API(위 권장 경로)로 전환하면 이 제약이 사라집니다**(단명 서명이라 노출 창이 300초로 줄고, 만료 후엔 재발급 인증이 필요).
+   > ✅ **URL 은닉 의존 위험은 cutover 로 해소됐습니다.** 종전 무인증 경로는 접근 통제를 `jobId`(UUID) 은닉에만 의존했으나, 이제 서명 URL 재발급 API 가 유일 경로라 노출 창이 단명 서명(기본 300초)으로 제한되고 만료 후에는 재발급 인증이 필요합니다. 다만 **발급받은 서명 URL 자체는 단명 자격증명**이므로 로그·클라이언트 코드·고객 화면에 박제하지 마세요 — DB 에는 `jobId` 만 저장합니다.
    > 🚨 **`separate` 주의:** `outputFileUrl` 은 `content.pdf` **하나만** 가리킵니다. 표지는 반드시 `result.outputFiles[]` 에서 `cover.pdf` 항목을 따로 받아야 합니다. 스프레드 책은 서버가 `separate` 를 강제하므로(아래 조건 참조) 이 흐름에 해당합니다 — **두 항목을 모두 받았는지 대조**하세요.
 
 #### 3.4.1 세션 자동조립 (`assembleFromSession`) — opt-in (2026-08-13)
@@ -1188,7 +1191,7 @@ curl -X POST "https://api.papascompany.co.kr/api/worker-jobs/compose-mixed" \
 - [ ] 합성은 `compose-mixed` 명시적 트리거(무인증 — editSessionId 비밀유지), 스프레드=2파일 처리
 - [ ] `compose-mixed` 요청에 **파일 참조를 직접 채움**(`coverUrl`/`contentPdfUrl` = `api://<fileId>`). **전부 비면** `400 EMPTY_COMPOSE_INPUT` 이지만, **한쪽만 빠지면 `400` 없이 부분 백지/내지 누락이 `COMPLETED` 로** 나갑니다 (3.4)
 - [ ] (선택) 파일 참조를 보관하지 않는 연동이면 `assembleFromSession:true` + `editSessionId` + shop-session `Authorization` 헤더로 서버 자동조립 사용 — 편집 가능 면지는 자동조립 대상이 아님 (3.4.1)
-- [ ] 웹훅을 받을 거면 `compose-mixed` 요청에 **`callbackUrl` 을 직접 포함** (이 라우트는 사이트 `uploadCallbackUrl` 을 자동 사용하지 않음), 결과 바이트는 `download/external` 이 아니라 **`GET /api/worker-jobs/external/:id/output-url` 로 서명 URL 을 재발급받아** 회수(`separate` 는 `files[]` 에 cover·content 2건 모두 포함 — 권장). 유예 중에는 종전 `outputFileUrl` 직접 GET 도 동작하나 cutover 예정 (3.4)
+- [ ] 웹훅을 받을 거면 `compose-mixed` 요청에 **`callbackUrl` 을 직접 포함** (이 라우트는 사이트 `uploadCallbackUrl` 을 자동 사용하지 않음), 결과 바이트는 `download/external` 이 아니라 **`GET /api/worker-jobs/external/:id/output-url` 로 서명 URL 을 재발급받아** 회수(`separate` 는 `files[]` 에 cover·content 2건 모두 포함 — 권장). 종전 `outputFileUrl` 직접 GET 은 2026-09-11 cutover 로 **`410 Gone`** 입니다 (3.4)
 - [ ] 완료 후 **폴링 응답의** `result.totalPages`(`separate` 는 `result.outputFiles[].pageCount` 도 가능)를 기대 페이지 수와 대조 — 웹훅 페이로드에는 이 값들이 없어 **폴링에서만 확인 가능** (백지 산출 조기 검출)
 - [ ] 게스트 → 회원 전환 흐름 구현: `guest/migrate` 로 세션 소유권 이전 후 **같은 `sessionId`** 를 회원 토큰으로 재오픈 (3.3)
 - [ ] 신규 연동은 iframe `/embed` 사용 (IIFE 번들은 업로드·템플릿·프레임 등 기능이 빠진 레거시 — 3.1)
@@ -1284,7 +1287,7 @@ curl -X POST "https://api.papascompany.co.kr/api/worker-jobs/compose-mixed" \
 | POST | `/api/worker-jobs/fix-pagecount` | 내부 RolesGuard | **(LIVE)** 페이지수 보정 — 내부 전용 변형 |
 | POST | `/api/worker-jobs/compose-mixed` | **@Public (무인증·테넌트 스코프 없음)** — 단 `assembleFromSession:true` 경로는 shop-session Bearer 필요(실패 시 `404`) | 합성 트리거 — 기본은 **파일 참조를 호출자가 공급**(`coverUrl`/`contentPdfUrl`/면지 배열)하고 `editSessionId` 는 스프레드 기대치 조회·잡 추적용. **`assembleFromSession:true` 를 명시하면 서버가 세션에서 표지·내지·면지·판형을 도출**(빈 필드만, dto 우선 — 3.4.1). 표지·내지·면지 자산이 **0건이면 `400 EMPTY_COMPOSE_INPUT`**, 한쪽만 빠지면 종전대로 부분 백지가 `COMPLETED`(3.4). 산출물은 `files` 미등록 → `outputFileId` 없음 → 결과 바이트는 `outputFileUrl`/`result.outputFiles[].url`(스토리지 경로)을 그대로 GET. ⚠️ 기본 경로는 editSessionId(UUID)만으로 트리거 가능 → 세션ID 비밀유지·브라우저 노출 최소화 |
 | GET | `/api/worker-jobs/external/:id` | X-API-Key | 잡 상태 폴링 |
-| GET | `/api/worker-jobs/external/:id/output-url` | **X-API-Key** (자기 사이트 잡만 — 타 테넌트 잡은 `404`) | **산출물 서명 URL 재발급(2026-08-28 신설, 권장 회수 경로)** — 잡의 모든 산출물(`separate` 는 cover·content 2건)에 대해 단명(기본 300초) 서명 URL 을 반환. `files[].url` 을 그대로 GET(만료 `410` → 재호출). **URL 박제 대신 `jobId` 저장**이 정식 패턴. 유예 중인 무인증 `/storage/outputs/` 직접 GET 을 대체한다(3.4) |
+| GET | `/api/worker-jobs/external/:id/output-url` | **X-API-Key** (자기 사이트 잡만 — 타 테넌트 잡은 `404`) | **산출물 서명 URL 재발급(2026-08-28 신설, 권장 회수 경로)** — 잡의 모든 산출물(`separate` 는 cover·content 2건)에 대해 단명(기본 300초) 서명 URL 을 반환. `files[].url` 을 그대로 GET(만료 `410` → 재호출). **URL 박제 대신 `jobId` 저장**이 정식 패턴. 무인증 `/storage/outputs/` 직접 GET 은 2026-09-11 cutover 로 폐쇄됐고, 이 라우트가 **유일한 회수 경로**다(3.4) |
 | GET | `/api/worker-jobs/:id/output` | **JWT (전역 가드, @Public 아님 — `@Roles` 없음)** | 잡 결과 PDF 스트리밍(`result.outputFileUrl` 1개). **admin 미리보기 전용 — 파트너 사용 불가.** `ApiKeyGuard` 미적용이라 유효한 사이트 API 키로도 `401`(2026-08-13 실측). 파트너는 `outputFileUrl` 을 직접 GET 하세요(3.4). `@CurrentSite` 격리 적용(타 테넌트 잡은 404) |
 | PATCH | `/api/worker-jobs/external/:id/status` | **X-API-Key (@Public+ApiKeyGuard)** | 워커 콜백용. worker 키(내부)=전체 잡 바이패스, editor/테넌트 키=자기 site 잡만 갱신(P2c S-3) |
 | PATCH | `/api/worker-jobs/:id/status` | JWT (전역 가드) | 내부 워커 상태 업데이트 변형 |
