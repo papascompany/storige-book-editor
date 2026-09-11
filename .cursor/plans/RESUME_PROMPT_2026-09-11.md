@@ -227,7 +227,7 @@ compose-mixed·split·spread 가 **전부 SYNTHESIZE 로 기록**된다 — 위 
    - 덤: Node 20 폐기(2026-10-01, D-19) 대응의 Vercel Settings 이중화(감사 `:87`)도 **이미 닫혀 있다** — `vercel project ls --update-required` → "No projects found ... using a deprecated Node.js version"(읽기 전용 실측)
 
 **D6 (cutover 관측 후 착수)**: NULL-파괴 게이트 + 이원 정책 allowlist 승격 + 백필.
-🚨 **착수 차단 조건 신설(§8-1)**: 게이트가 "잡에 siteId 가 붙는다"를 전제하는데 **파트너 정규 경로에 그 수단이 없다.** 해소 전 착수 금지.
+🚨 **하드 블로커(§8-1, 2026-09-11 확정)**: 게이트가 "잡에 siteId 가 붙는다"를 전제하는데 **파트너 정규 경로에 그 수단이 아예 없다.** bookmoa 잡은 실측상 **전건 NULL** 이다. **해소 전 D6 착수 금지 — 권고가 아니라 차단이다.**
 ⚠️ 백필 41건/NULL 225건은 **2026-08-28 실측치** — 이후 재실측 없음. 집행 전 4수치 재실행 필수.
 설계안 §2-B' 단서대로 "해당 파트너의 기존 회수가 자기 키로 이뤄지는지" 관측이 **백필보다 선행**.
 
@@ -587,28 +587,40 @@ if (caller?.siteId === requested)  → 채택   ← 검증된 shop-session JWT �
 
 | 호출 형태 | siteId | D6 이후 |
 |---|---|---|
-| `editSessionId` 자동조립 | 스탬프됨 | 무영향 |
-| shop-session JWT + 일치 `body.siteId` | 스탬프됨 | 무영향 |
-| **`X-API-Key` 만 + `body.siteId`** | **NULL** | **404 — 방금 고친 다운로드가 재사망** |
+| `assembleFromSession:true` + shop JWT | 스탬프됨(`session.siteId`) | 무영향 |
+| shop JWT + 일치하는 `body.siteId` | 스탬프됨 | 무영향 |
+| `X-API-Key` + `body.siteId` | **NULL** + WARN | **404** |
+| **`X-API-Key`, `body.siteId` 미전송** ← **bookmoa 실제** | **NULL**, WARN 도 안 찍힘 | **404 — 방금 고친 다운로드가 재사망** |
+
+> ⚠️ **2026-09-11 정정 2건(당사 오류).** bookmoa 가 잡아냈다:
+> ① **`editSessionId` 동반 ≠ 자동조립 경로.** 실제 스위치는 별도 플래그 `assembleFromSession === true`(`:1591`)다. 최초 통지가 둘을 동일시해 표 1행을 틀리게 적었다
+> ② **WARN 로그 판별법이 bookmoa 케이스에서 작동하지 않는다.** `logger.warn` 은 `:1555` 인데 `requested` 가 null 이면 `:1549` 에서 먼저 return 한다 — **siteId 미전송이면 WARN 이 아예 안 찍힌다.** 있지도 않을 로그를 기다리게 할 뻔했다
+> 🔑 **`assembled` 는 siteId 를 만들지 않는다 — 호출자가 준 `dto.siteId` 를 인가만 한다.** 자동조립에서 siteId 가 붙는 건 조립기가 미리 `dto.siteId = session.siteId` 를 채우기 때문이다(`:1480`). 함수명이 `resolve…` 라 "가용 권위에서 도출"로 오독된다 — **이름이 의미를 보장하지 않는다**(§2 규칙의 재적용)
 
 배경은 2026-08-13 테넌트 스탬프 위조 차단이다(`worker-jobs.compose-mixed-site-stamp.spec.ts`). `@Public` 라우트라 `body.siteId` 가 무검증 입력이어서 ① 잡이 임의 테넌트로 귀속되고 ② 완료 시 **그 사이트의 v2 웹훅으로 잡 결과가 배달**되는 취약점이 있었다.
 **write 위조는 막았지만, API 키 호출자가 자기 잡에 siteId 를 붙일 수단을 남기지 않았다.** 그 공백이 지금 드러난 것이다.
 
-> 🚨 **D6 착수 차단 조건**: NULL-파괴 게이트는 "잡에 siteId 가 붙는다"를 암묵 전제한다. **파트너의 정규 호출 경로에 그 수단이 없으므로 게이트만 켜면 정상 파트너가 깨진다.** §2 의 "합성 잡 3개월 공백" 과 성격이 같다 — **암묵 전제를 실측으로 깨야 한다.**
+> 🚨 **D6 하드 블로커**: NULL-파괴 게이트는 "잡에 siteId 가 붙는다"를 암묵 전제한다. **파트너의 정규 호출 경로에 그 수단이 없으므로 게이트만 켜면 정상 파트너가 깨진다.** §2 의 "합성 잡 3개월 공백" 과 성격이 같다 — **암묵 전제를 실측으로 깨야 한다.**
+>
+> 🔴 **예고가 아니라 진행형 리스크다(bookmoa 지적, 수용).** 첫 실합성이 D6 이후에 일어나면 **고객이 처음 쓰는 순간** 이번에 고친 다운로드가 404 로 죽는다. 그쪽엔 계측(`storige:proxy-download:issue` statusCode 404)으로 보이지만 **고객에겐 "찾을 수 없습니다" 로만 보인다** — 이번 R-172 와 똑같은 "원인이 안 보이는 실패" 모양이다.
 
 ### 선택지 (오너 결정 대기 — 당사 미착수)
 
 - **ⓐ** `compose-mixed` 가 **검증된 API 키의 siteId 도 권위로 인정**. ADDITIVE(JWT·자동조립 경로 무변경)이고 위조 차단 원칙도 유지된다(키가 실제 검증된 경우만). **원칙상 정답으로 보이나 `@Public` 라우트의 인증 표면 변경**이라 오너 결정 사항
 - **ⓑ** D6 allowlist 에 해당 파트너 영구 등재 — 게이트의 의미가 약해진다
-- **ⓒ** 파트너에게 자동조립 경로(`editSessionId` 동반) 사용 요구 — 그쪽 구현 변경
+- ~~**ⓒ** 파트너에게 자동조립 경로 사용 요구~~ → **🚫 폐기.** 자동조립 경로는 **검증된 shop-session JWT 를 요구**한다(`:1254` — `!caller?.siteId || !session.siteId || session.siteId !== caller.siteId` 면 throw). **API 키 호출자는 진입 자체가 불가능**하다. `assembleFromSession:true` 를 실어도 JWT 없이는 404 다
 
-bookmoa 에는 **"지금 아무것도 하지 말고 대기"** 로 통지했고, ⓒ로 결정되면 그때 알리기로 했다.
+**→ 선택지는 ⓐ 또는 ⓑ 뿐이다.**
 
-### 즉시 확정 가능한 갈림길 — ACK 대기 1건
+> **ⓐ 설계 메모**: 단순 "API 키를 권위로 인정" 이 아니라 **검증된 API 키의 siteId 를 채택하되 `editSessionId` 가 있으면 `session.siteId` 와 일치할 때만** 으로 하면, 종전(`body.siteId` 를 그대로 믿던 상태)보다 검증이 한 겹 두꺼워진다. 위조 차단 원칙 유지.
 
-bookmoa 가 `compose-mixed` 에 **`editSessionId` 를 싣고 있는지** 한 줄 회신을 요청했다.
-싣고 있으면 자동조립 경로라 **D6 무영향**이고, 수동 경로(coverUrl/contentPdfUrl 직접 공급)면 NULL 이다.
-> 보조 판별: 첫 실합성 때 당사 로그에 `[compose-mixed] body.siteId 무시(NULL 스탬프)` WARN 이 뜨면 NULL, 안 뜨면 스탬프된 것이다.
+bookmoa 에는 **"계속 대기 · siteId 를 새로 싣지 말 것"** 으로 통지했다(ⓐ 없이 실으면 3행으로 떨어져 달라지는 게 없다).
+
+### ACK 종결 — 갈림길 확정됨
+
+bookmoa 회신: **`editSessionId` 는 두 경로 모두 항상 동반**한다(compose-mixed 분기는 `if (!payload.editSessionId) return 400` 서버 가드까지 있고, synthesize/external 분기는 `triggerSynthesis` 첫 줄 `if (!s?.sessionId) return` 조기 반환 — §2 의 합성 3개월 0건 원인과 같은 코드).
+**그러나 `body.siteId` 는 전송 0건**이다(`grep -rn "siteId" api/` 0건, payload 에 키 자체가 없음).
+→ **위 표 4행 = bookmoa 실제 호출 형태. 전건 NULL 확정.**
 
 ### 부수 확정 2건
 
