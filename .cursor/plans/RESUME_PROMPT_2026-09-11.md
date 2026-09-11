@@ -70,7 +70,7 @@ docker compose exec -T nginx sh -c 'nginx -T 2>/dev/null | grep -c "찾을 문�
 >   ```
 >   재료는 brew 의 cairo·pango·jpeg-turbo·giflib·pixman·pkgconf(설치됨). librsvg 는 미설치지만 선택 의존이라 무관
 > - ⚠️ **`pnpm install` 이 canvas 를 재설치하면 ABI 가 되돌아갈 수 있다.** 프리플라이트가 즉시 하드 실패로 알려주므로(조용한 축소가 아니다) 그때 위 재빌드를 다시 돌려라
-> - ⚠️ `node@25`·`node@26` opt 링크는 **아직 `node`(26.5.1) 를 가리키는 낡은 별칭**이다. `node@26` 은 우연히 값이 맞고 **`node@25` 는 여전히 틀리다** — 버전 고정에 쓰지 마라
+> - ✅ `node@25` 고아 링크는 **제거 완료**(2026-09-11 저녁). homebrew-core 에 없는 포뮬러였고 `node` 가 25.x 이던 시절의 잔재였다. 현재 opt 링크는 전부 정합: `node`/`node.js`/`nodejs`/`node@26` → 26.5.1(정식 별칭) · `node@22` → 22.22.2 · `node@24` → 24.20.0
 
 ## 1. ✅ D5 cutover 완료 (2026-09-11, 예정 9/4 대비 7일 지연 실행)
 
@@ -439,6 +439,22 @@ P2-10 을 "무변경 종결" 로 닫으면서 남겨둔 **오너 결정 사항 2
 ### 남는 함정
 
 - 🚨 **`pnpm rebuild canvas` 는 no-op 이다.** canvas 가 루트 직접 의존이 아니라 pnpm 이 아무것도 하지 않고 조용히 끝난다(출력 0줄). 바이너리 mtime 을 안 봤으면 "재빌드했다"고 오판할 뻔했다 — **명령이 성공했다는 것과 일이 일어났다는 것은 다르다.** 실제 경로는 `.pnpm` 저장소에서 직접 `node-gyp rebuild`(§0)
-- 🚨 **`node@25` opt 링크는 아직 26.5.1 을 가리킨다.** 경로 이름으로 버전을 믿지 말고 `node -v` 로 확인해라
+- **`node@N` 경로 이름은 버전을 보장하지 않는다** — 미설치 버전의 opt 링크는 `node` 포뮬러를 가리키는 낡은 별칭으로 남는다(`node@25` 가 26.5.1 을 가리키고 있었다. 제거 완료). 버전 고정 전에 `node -v` 로 실값을 확인해라
 - **`canvas.node` 단일 ABI** — `pnpm install` 후 프리플라이트가 터지면 재빌드 신호다. 프리플라이트가 "조용한 수집 축소" 가 아니라 하드 실패로 설계돼 있어서 이 회귀는 항상 눈에 띈다(2026-08-25 설계 의도가 그대로 작동)
 - 이 3건은 전부 **머신 설정**이라 커밋되지 않는다. 새 클론·다른 머신에서는 훅 등록·node@24·canvas ABI 를 각각 다시 맞춰야 한다
+
+### 7-3-1. 인접 프로젝트 영향도 실측 (오너 확인 요청)
+
+위 3개 머신 변경이 `~/Developer/claude` 하위 타 프로젝트에 미치는 영향 **0건**으로 확인했다.
+
+| 변경 | 영향 | 근거 |
+|---|---|---|
+| `brew install node@24` | 없음 | keg-only → 링크 안 됨. `which node` = `/opt/homebrew/bin/node` → **26.5.1 불변**(설치 로그 "not linked because node is already linked") |
+| `node@25` 링크 제거 | 없음 | `~/Developer/claude` 전체 + 셸 dotfile 에 `opt/node@` 하드코딩 **0건** |
+| `canvas` ABI 재컴파일 | 없음 | 시스템 전역 `canvas.node` 17개 중 **오늘 mtime 은 storige 것 하나뿐**. 나머지는 2026-03-31 / 06-15 원본 유지 |
+
+> 전파 경로가 애초에 없다: pnpm 전역 스토어(`~/Library/pnpm/store/v10`)에는 **canvas 빌드 산출물이 없다**(스토어는 패키지 소스만 보관, `.node` 는 프로젝트별 생성). 게다가 재빌드를 pnpm install-script 러너가 아니라 node-gyp 직접 호출로 해서 side-effects 캐시 항목도 생기지 않았다.
+
+**🔶 선재 문제(오늘과 무관, 미조치)**: 인접 프로젝트들의 canvas 는 **ABI 127(Node 22)** 인데 기본 `node` 는 26.5.1 = **ABI 147** 이다 — 기본 node 로는 **이미 로드가 안 된다**.
+실측: `PrintCard Studio` · `100p_books` 둘 다 `127 → 147 요구`. 동일 조건 가능성: `storywork`(canvas 12개) · `Tagmanager/shelfsync` · `antigravity/MD2Books`.
+바이너리는 3·6월 것이고 기본 node 가 26.5.1 이 된 건 8/1 이라 **오늘 작업 이전부터 그랬다**. 해당 프로젝트는 `node@22`(무접촉, 22.22.2 그대로)로 돌리거나 재빌드하면 된다. **범위 밖이라 손대지 않았다 — 오너 판단 사항.**
