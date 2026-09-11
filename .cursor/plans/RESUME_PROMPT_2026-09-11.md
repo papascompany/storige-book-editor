@@ -4,10 +4,28 @@
 
 ## 0. 현재 라이브 상태 (2026-09-11 기준)
 
-- **로컬 master = origin/master + ahead 2 — 🚨 미푸시(오너 승인 대기).** VPS `~/storige` 는 `94edb89` 유지 — API 재배포 불요
-  - ahead 2 = ① FontPlugin A-1(`packages/canvas-core/src`) ② 이 문서 갱신
-  - 🚨 **푸시 = editor 프로덕션 배포다.** `apps/editor/vercel.json` 의 `ignoreCommand` 감시 경로에 `../../packages/canvas-core` 가 있어 ①이 **Vercel 빌드를 트리거**한다(admin 감시 경로에는 canvas-core 가 없어 admin 은 스킵). 09-11 오후까지의 푸시분은 문서·템플릿뿐이라 무해했지만 이번은 다르다 — **오너 승인 후 푸시**
-  - 09-11 오후 푸시분(문서·env 템플릿·미참조 파일 삭제)은 VPS 동기화가 필수가 아니다. 다음 API 배포 때 자연히 따라온다
+- **master = origin/master (2026-09-11 저녁 `ed21d8b` 까지 푸시 완료, 오너 승인 후 실행).** VPS `~/storige` 는 `94edb89` 유지 — API 재배포 불요
+  - 푸시분 = ① FontPlugin A-1(`packages/canvas-core/src`) ② 세션 로그. VPS 동기화 불요는 동일(코드는 editor 번들 전용, API·워커 무관)
+  - 배포 결과: **editor · admin 둘 다 Ready**(editor `dpl_7XkDZaKDwZnaBLYAGQFEKUR27Pvd`, alias `editor.papascompany.co.kr`). CI `ci`·`gitleaks` 둘 다 success
+
+### 🚨 ignoreCommand 는 fail-open 이다 — 감시 경로만으로 배포 여부를 예측하지 마라 (2026-09-11 저녁 실측, 예측 오류 1건)
+
+이 세션이 "canvas-core 는 editor 감시 경로에만 있으니 **admin 은 스킵**" 이라고 적었는데 **틀렸다. admin 도 실제로 빌드됐다**(Ready, 27s).
+이번 푸시는 admin 의 감시 경로(`./`·types·ui·indesign-import·scripts·lock)를 **하나도** 건드리지 않았다.
+
+양 앱 `ignoreCommand` 의 첫 절이 원인이다:
+
+```sh
+if [ -z "$P" ] || ! git cat-file -e "$P^{commit}" 2>/dev/null; then exit 1; fi   # exit 1 = 스킵 안 함 = 빌드
+```
+
+- `VERCEL_GIT_PREVIOUS_SHA` 는 **마지막으로 실제 빌드된(Ready) 배포**의 SHA다 — 스킵(Canceled)된 배포는 이 값을 갱신하지 않는다
+- Vercel 은 **shallow clone(depth 10)** 으로 받는다. 스킵이 연속되면 그 SHA 가 점점 멀어지다가 클론 밖으로 나간다 → `git cat-file -e` 실패 → **fail-open → 전체 빌드**
+- 실측 대조: 마지막 Ready admin 배포 = `e372d8b`, `git rev-list --count e372d8b..ed21d8b` = **10** → 경계 밖. 반면 30분 전 `ef6e192` 빌드는 `$P` 가 도달 가능해 `"Ignored Build Step command returned exit code 0"` 로 정상 스킵됐다(같은 로그에 문자열로 남는다)
+
+> **규칙**: 스킵은 **자기제한적**이다 — 스킵이 약 10커밋 쌓이면 다음 푸시는 감시 경로와 무관하게 빌드된다.
+> 따라서 "감시 경로를 안 건드렸으니 배포 안 된다"는 **보장이 아니다**. 배포 영향을 단언하려면 `vercel list <project>` 의 Status/Duration 을 실측해라(3~4초 Canceled = 스킵, 20초+ Ready = 실빌드).
+> fail-open 방향 자체는 옳다(판정 불가 시 빌드). 틀린 건 예측이지 설계가 아니다.
   - 해시를 여기 박지 않는다: 이 문서를 포함한 커밋의 해시는 쓰는 시점에 알 수 없다. **정확한 HEAD 는 `git log --oneline -5` 로 읽어라**
   - ⚠️ **자기참조 함정 3연속 적발**: 08-28 정본(`990b418` ← 실제 `39b787c`), 이 문서 최초판(`9e085c4` ← 실제 `94edb89`), 그리고 09-11 오후 갱신 초안(`25ff568` ← 실제는 그 갱신 커밋 자신)까지 전부 같은 실수였다. **해결책은 갱신 후 HEAD 를 다시 읽는 게 아니라 자기 해시를 애초에 쓰지 않는 것이다** — 위처럼 origin 기준 + ahead N 으로 적어라
   - 워킹트리 클린
@@ -315,6 +333,7 @@ compose-mixed·split·spread 가 **전부 SYNTHESIZE 로 기록**된다 — 위 
 |---|---|---|
 | 1 | **P1-8 FontPlugin A-1** | ✅ 구현 + 회귀 테스트 5건. 동일 CSS 면 재기입·rAF+300ms 정착 대기 스킵 |
 | 2 | **P2-10 engines.node** | ✅ **무변경으로 종결** — 이미 정합이고 `24.x` 완화는 금지(Vercel 무단 승격 벡터) |
+| 3 | 푸시 + 배포 실측 | editor·admin 둘 다 Ready · CI 2종 success. **예측 오류 1건 적발 → §0 에 fail-open 절 신설** |
 
 ### 검증 증거 (변경 위험에 비례, 각 1회 · `node -v` v22.22.2 고정)
 
@@ -332,11 +351,23 @@ compose-mixed·split·spread 가 **전부 SYNTHESIZE 로 기록**된다 — 위 
 
 - 🚨 **`engines.node: "24.x"` 를 경고 때문에 넓히지 마라** — §3-10. 이 항목은 "고쳐라"가 아니라 "건드리지 마라"로 끝났다. 다음 세션이 같은 경고를 보고 같은 유혹을 받는다
 - **Homebrew `node@24`/`node@25`/`node@26` 은 전부 `node` 포뮬러 별칭**이라 현재 Cellar 의 26.5.1 을 가리킨다. 이 맥에 **진짜 Node 24 는 없다**(실측: 22.22.2 / 25.1.0 / 26.5.1). §0 의 "node@24 심볼릭 링크가 26 을 가리킨다"는 파손이 아니라 정상 별칭 동작이다
-- **`ignoreCommand` 감시 경로가 앱마다 다르다** — `packages/canvas-core` 는 **editor 에만** 있다. canvas-core 변경 푸시 = editor 만 재배포(admin 스킵). 푸시 영향 판단 시 두 `vercel.json` 을 각각 봐라
+- 🚨 **`ignoreCommand` 는 fail-open** — 감시 경로가 앱마다 다른 건 맞지만(`packages/canvas-core` 는 editor 에만 있다) **그것만으로 배포 여부를 예측하면 틀린다.** 이번 세션이 "admin 은 스킵" 으로 예측했다가 실측에서 뒤집혔다. 기전·판별법은 §0 의 전용 절 참조
 - **스킵 최적화는 부수효과 수집 코드 뒤에 둔다** — A-1 의 조기 return 을 `fontUrlByName` 을 채우는 forEach 앞으로 올리면 맵이 빈 채 남는다. 조기 return 을 넣을 때 "그 앞에서 무엇이 채워지는가"를 먼저 본다
+
+### 배포 실측 (푸시 후)
+
+| 대상 | 결과 |
+|---|---|
+| CI `ci` (Node 24) | **success** — canvas-core typecheck·test·lint 게이트가 CI 런타임에서도 통과 |
+| CI `gitleaks` | success (로컬 수동 스캔도 `no leaks found` — `core.hooksPath` 미설정이라 `.githooks/pre-commit` 은 **비활성**이다) |
+| Vercel editor | **● Ready**, alias `editor.papascompany.co.kr` |
+| Vercel admin | **● Ready** (27s) — 예측은 "스킵"이었다. §0 fail-open 절 참조 |
+| 배포본 지문 | `/assets/canvas-core-*.js` 에 A-1 문자열 `폰트 CSS 동일` **1건** + [대조군] 기존 문자열 `폰트 CSS 생성 완료` 1건 → 변경분이 실제로 실렸다 |
+| 스모크 | editor `/` 200 · `/embed` 200 · admin `/` 200 · api `/api/health` 200 |
+
+> ⚠️ 엔트리 청크(`/assets/index-*.js`)만 grep 하면 **둘 다 0건**이라 "안 실렸다"로 오판한다 — FontPlugin 은 `canvas-core-*.js` 청크에 있다. **대조군 문자열을 같이 세지 않았으면 이 오판을 못 걸렀다**(§2 판정축 규칙의 재적용 사례).
 
 ### 다음 세션 진입점
 
-- **오너 승인 대기(최우선)**: 이 2커밋 **푸시 여부** — 푸시 시 editor 프로덕션 재배포
 - **오너 결정 대기**: §3 P0-2 회신문 미발송 5건 · P0-3 동화책 왕복 실기 · D6 착수 시점 · §7-1 권고 3건 · 로컬 Node 24 설치 여부(§3-10)
 - **즉시 착수 가능한 P1 잔여 0건.** 다음 코드 트랙은 D6 이고, 착수 전 §2 "합성 잡 3개월 공백" 반영 + 백필 4수치 재실행이 선행이다
