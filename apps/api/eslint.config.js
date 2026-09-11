@@ -10,7 +10,11 @@ module.exports = [
       parser: tsparser,
       parserOptions: {
         // lint 전용 프로그램(tsconfig.eslint.json) — 빌드 tsconfig 는 src 만 포함하므로
-        // test/·scripts/ 를 린트 범위에 넣으려면 별도 프로젝트가 필요하다(빌드 무영향)
+        // test/·scripts/ 를 린트 범위에 넣으려면 별도 프로젝트가 필요하다(빌드 무영향).
+        // 2026-09-11: 이 3범위가 api 의 .ts 전량이다. `storage/` 는 픽스처 PDF·README 만
+        // 남아 .ts 0개 — 여기 있던 generate-fixtures.ts 는 apps/worker/test/fixtures/pdf/
+        // 동명 파일과 바이트 동일한 사본(참조처 0건, api 에 없는 pdf-lib import)이라 삭제했다.
+        // 다시 추가하지 말 것: include 에 넣으면 아래 EXIT=0 불변식이 TS2307 로 깨진다.
         project: './tsconfig.eslint.json',
         sourceType: 'module',
       },

@@ -1,9 +1,10 @@
-# CONTRACT_FREEZE.md — Storige 플랫폼 계약 표면 동결 (v1.2)
+# CONTRACT_FREEZE.md — Storige 플랫폼 계약 표면 동결 (v1.3)
 
 > 작성 2026-07-03 · 근거: Phase 0 정찰 5팀(서명·재검증·보안·계약열거·구현준비) + 적대검증 2렌즈(계약 완전성·diff 회귀) 실코드 대조.
 > **무중단 원칙 절대**: 파트너 4종(bookmoa-mobile / Sharesnap / 100p_books / MD2Books)이 오늘 프로덕션에서 의존하는 표면은 시맨틱 변경·제거를 금지한다. 위반 변경은 Review Gate에서 오너 승인 없이 착수 금지.
 > **v1.1 변경**: 적대검증(FAIL, P0×3)이 잡은 누락 보강 — 업로드 표면 6종+크기 경계, frame-ancestors(死코드 오판정 → FROZEN 격상), 업로드 응답 shape·NOT_S3·content-type 화이트리스트, 100p 재분류.
 > **v1.2 추가 (2026-07-28)**: **호스트→편집기 수신 명령 계약 v1** 등재(§1-D-1). 신규 계약 제정이 아니라 **既 GUIDE 노출분의 사후 추인**(정식 계약 승격) — 발신 표면(8종 FROZEN + `editor.pricingChange` ADDITIVE)은 불변이며 넓히지 않는다.
+> **v1.3 추가 (2026-09-11)**: **S3-A안 옵션형 site 스탬프** 등재(§1-C-1). 2026-08-28 구현·배포된 `c050729` 가 계약 문서에 전무했다(파일 전체 `Bearer` 0건). 신규 계약 제정이 아니라 **이미 라이브인 표면의 사후 추인** — 특히 `firstFinalize` 게이트는 최적화가 아니라 **동결 대상 보안 계약**이다. 동시에 §4.3 의 "오너 결정 대기" 표기를 정정(D1·D3·D4 는 2026-08-28 승인·집행 완료).
 
 ## 0. 동결 규약 (Freeze Discipline)
 
@@ -63,6 +64,22 @@
 | **`ALLOWED_CONTENT_TYPES`** (pdf/jpeg/png/webp/gif, **svg 제외**) | presigned 업로드 | **FROZEN(enum)** | presigned-upload.service.ts:24-31. 축소는 파트너 파손 |
 
 > ⚠️ **크기 경계 상충 확정**: nginx 100M ↔ bookmoa 2GB 클라 캡은 실측 상충. 대용량은 **반드시 presigned 직결 R2 경로**(nginx 우회)여야 동작. PrintCard 대용량 오프로드 설계 시 이 사실 전제.
+
+### 1-C-1. ★S3-A안 — presigned complete 의 옵션형 site 스탬프 (2026-08-28 배포 · 2026-09-11 등재 · 사후 추인)
+
+> 근거 커밋 `c050729`(오너 결정 D1) · 설계 `TENANCY_S3_S4_DESIGN_2026-08-28.md` §2-A 1단계 · 배포·라이브 실증 완료.
+> **등재 이유**: 이 표면이 문서에 없으면 다음 작업자가 `firstFinalize` 게이트를 불필요한 복잡도로 오인해 제거하고,
+> 그 순간 **소급 하이재킹 벡터가 재개방**된다. 아래 3행은 성능·리팩터 사유로 건드릴 수 없다.
+
+| 표면 | 분류 | 계약 내용 | 근거 |
+|---|---|---|---|
+| `POST /files/multipart/complete` · `POST /files/:id/complete` 의 **`Authorization: Bearer <shop-session JWT>` 옵션 소비** | **ADDITIVE** | 서명 검증된 shop-session 이 실려 오면 그 `siteId` 로 파일을 귀속. **토큰 없음/위조/비-shop(`source!=='shop'`) → 종전대로 `site_id=NULL`** — 100p 키없는 server-to-server·게스트 경로 무영향이 무중단 조건이다 | `files.controller.ts:186-188`·`:223-225`(`@UseGuards(OptionalShopJwtGuard)` — **절대 거부하지 않는** 옵션 가드) |
+| **`firstFinalize` 게이트** (`pending→ready` 전이 1회로 스탬프 한정) | **FROZEN(보안 계약)** | 🚨 **제거·완화 금지.** `ready` 멱등 재호출은 `uploadToken` 이 소거된 상태라 무토큰 통과한다. 게이트가 없으면 `fileId` 만 아는 타 테넌트가 Bearer 를 실어 **남의 NULL 파일을 자기 site 로 소급 하이재킹**하고, 진짜 소유자는 이후 site 대조에서 404 를 맞는다(기존에 없던 신규 파손 벡터) | `presigned-upload.service.ts:415-424` (`const firstFinalize = file.status !== 'ready'` → `firstFinalize && !file.siteId && caller?.siteId && caller.role !== 'worker'`) |
+| 스탬프 **근거의 유일성** | **FROZEN** | 스탬프 근거는 **서명 검증된 JWT 뿐**. 본문 필드·헤더·쿼리의 siteId 주장은 채택 금지(`edit-sessions.createGuest` I-1 원칙, compose-mixed 수동 경로와 동일 규약) | `worker-jobs.service.ts:1583`·`:1556`(불일치 시 NULL 스탬프 + 경고 로그) |
+
+**동결 저촉 없음 실증**: `@Public` 유지 · `ApiKeyGuard` 불추가 · 응답 shape 불변 → `contract-freeze.spec` 무변경 통과
+(스펙은 경로·메서드·`IS_PUBLIC`·`ApiKeyGuard` 유무만 단언한다). 계약 고정 스펙은 `presigned-complete-stamp.spec` 8종이며
+그중 **T6 이 `firstFinalize` 불소급을 고정**한다 — 이 스펙이 깨지면 위 2행을 되돌린 것이다.
 
 ### 1-D. 임베드/게스트 표면
 
@@ -154,7 +171,10 @@
 ## 4. 알려진 결함 (오너 결정)
 - **4.1** 발신부 HMAC ↔ bookmoa HMAC 경로 형식 불일치 — v2 opt-in 전 bookmoa 수신부 재작성.
 - **4.2** Sharesnap retry 서명 누락 허용 vs bookmoa 필수 — 발신부 재시도 서명 포함을 계약 동결로 고정.
-- **4.3** NULL-siteId 파일은 `assertSiteAccess`(files.service.ts:333) 무조건 통과 → 테넌트 격리 불가. compose-mixed/render-pages 게스트가 NULL 스탬프. NULL 거부 강화는 레거시 회귀 → 이원 정책(기존 의존분 화이트리스트 + 신규 site 스탬프) 오너 결정.
+- **4.3** NULL-siteId 파일은 `assertSiteAccess`(files.service.ts:333) 무조건 통과 → 테넌트 격리 불가. compose-mixed/render-pages 게스트가 NULL 스탬프.
+  - ⚠️ **2026-09-11 정정**: 종전의 "오너 결정" 표기는 스테일이다. 이원 정책의 **신규 site 스탬프 쪽은 오너 승인(D1)을 받아 2026-08-28 집행 완료**(§1-C-1, `c050729`)이며 D3·D4 도 같은 날 승인됐다.
+  - **잔여 미결은 D6 뿐**: ① NULL-파괴 게이트 ② 기존 의존분 allowlist 승격 ③ 레거시 NULL 백필. 착수 시점만 오너 결정 대기이며, 설계 §2-B' 단서대로 "해당 파트너의 기존 회수가 자기 키로 이뤄지는지" **관측이 백필보다 선행**한다.
+  - ⚠️ 집행 전 수치 재실측 필수 — 백필 41건/NULL 225건은 **2026-08-28 실측치이고 이후 재실측이 없다**.
 
 ## 5. thumbnail = MODIFY-TARGET
 `GET /files/:id/thumbnail`(files.controller.ts:662) = @Public 무인증 + Throttle 없음 + PDF 전용. raw가 404로 막은 민감 PDF를 UUID만으로 첫 페이지 유출. **소비처 0건 확정**(로컬 editor/admin/api + 파트너 4종 레포 전수 grep, GET /files/:id/thumbnail 호출 0). 수정안은 §Review Gate / code_changes 참조.
