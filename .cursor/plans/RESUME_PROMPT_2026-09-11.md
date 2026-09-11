@@ -4,9 +4,9 @@
 
 ## 0. 현재 라이브 상태 (2026-09-11 기준)
 
-- **origin/master = `94edb89` = VPS `~/storige`. 로컬 master 는 여기서 ahead 2, 미푸시** — `25ff568`(P1 마감 3건) + 이 문서 갱신 커밋
-  - 해시를 여기 박지 않는다: 이 문서를 포함한 커밋의 해시는 쓰는 시점에 알 수 없다. **정확한 HEAD 는 `git log --oneline -3` 으로 읽어라**
-  - 미푸시분은 문서·env 템플릿·미참조 파일 삭제뿐이라 **API 재배포 불요**. 푸시는 오너 판단(editor/admin Vercel 자동배포 유발)
+- **master = origin/master (2026-09-11 오후 푸시 완료). VPS `~/storige` 는 `94edb89` 에 머물러 있다 — API 재배포 불요**
+  - 푸시분은 문서·env 템플릿·미참조 파일 삭제뿐이라 VPS 동기화가 필수가 아니다. 다음 API 배포 때 자연히 따라온다
+  - 해시를 여기 박지 않는다: 이 문서를 포함한 커밋의 해시는 쓰는 시점에 알 수 없다. **정확한 HEAD 는 `git log --oneline -5` 로 읽어라**
   - ⚠️ **자기참조 함정 3연속 적발**: 08-28 정본(`990b418` ← 실제 `39b787c`), 이 문서 최초판(`9e085c4` ← 실제 `94edb89`), 그리고 09-11 오후 갱신 초안(`25ff568` ← 실제는 그 갱신 커밋 자신)까지 전부 같은 실수였다. **해결책은 갱신 후 HEAD 를 다시 읽는 게 아니라 자기 해시를 애초에 쓰지 않는 것이다** — 위처럼 origin 기준 + ahead N 으로 적어라
   - 워킹트리 클린
   (untracked `.tmp-verify-combos/`·`docs/SHOPIFY_*`·`docs/SITE_CATALOG_*`·`docs/PLATFORM_INTEGRATION_GUIDE.backup-2026-07-09.md` 는 타 세션 산출물 — 무접촉, `git add` 항상 명시 목록)
@@ -48,15 +48,51 @@ docker compose exec -T nginx sh -c 'nginx -T 2>/dev/null | grep -c "찾을 문�
 
 > 실행 전 프로브에서 **실제 산출물이 무인증 200 으로 받아졌다**(없는 파일명 프로브는 404 라 미노출로 오인하기 쉽다 — 판별에 실제 파일을 써라).
 
-## 2. 🟡 통지 발신 — bookmoa 완료 / printy 잔여 1건
+## 2. 🟢 통지 발신 완료 — printy 교차검증 종결 / bookmoa 회신 대기
 
-**2026-09-11 세션 발신 결과**: bookmoa 수신분(①+②) 1건으로 묶어 발신 완료 — 세션 `bookmoa-mobile-48`, `msg_id 5bf001be-db4e-49eb-8bd6-8314ed8d39c5`, `notify_when_idle` 구독. **printy 수신분(①)은 미발신** — 발신 시점에 printy 세션이 미기동이었다(§5 참조).
+**2026-09-11 세션 발신 결과 — 양사 전건 발신 완료**
 
-> ⚠️ **발신 성공(msg_id) ≠ 도달 ≠ 회신.** bookmoa 회신 2건(구 URL 410 교차실측 / jobId output 라우트 상태코드)이 들어와야 이 항목이 닫힌다. 무응답이면 수신 세션의 권한모드(bypass 여부)를 오너에게 확인 요청.
+| 수신 | 세션 | msg_id | 내용 |
+|---|---|---|---|
+| bookmoa | `bookmoa-mobile-48` | `5bf001be…` | ①+② 묶음 |
+| bookmoa | `20260911 북모아 마지막 세션 작업 확인` | `cbedf22b…` | ①+② 요약 재송(48 세션 처리 여부 불명 대비) + ACK 요청 |
+| printy | `20260911 프린티 마지막 세션 작업 요약` | `31e13d19…` | ① 전문 + ACK 요청 |
+
+3건 모두 `notify_when_idle` 구독.
+
+### ✅ 크로스세션 전달 경로 실증 (2026-09-11)
+
+printy 가 **ACK + 요청 3건 전부 회신**했다. `msg_id` 만으로는 알 수 없던 도달·처리가 실제 회신으로 증명됐고,
+수신 세션 권한모드(bypass) 문제도 없음이 확인됐다. **회신이 유일한 도달 증거**라는 원칙은 그대로 유지한다.
+
+### ✅ printy — D5 교차검증 종결
+
+printy 측 라이브 실측(2026-09-11):
+
+| 프로브 | 결과 |
+|---|---|
+| `/storage/outputs/<임의 uuid>/content.pdf` | 410 + `x-storige-notice` + `no-store` |
+| `/storage/outputs/probe/cover.pdf` | 410 (헤더 3종 동일) |
+| [대조군] `/storage/uploads/probe.pdf` | 404 (경로 생존) |
+| [대조군] `/storage/designs/probe.json` | 404 (경로 생존) |
+| `/api/health` | 200 |
+
+> 대조군을 붙인 판단이 정확했다 — **410 단독으로는 "전면 차단" 과 구분되지 않는다.** 폐쇄가 outputs 한 갈래뿐임은 404 대조군이 있어야 증명된다.
+> ⚠️ 단 임의 id 프로브는 *"없는 파일도 410"* 까지만 증명한다. **"실제 산출물도 410"** 은 당사가 09-11 라이브에서 실파일로 직접 확인한 분이 커버한다(§1 — 실행 직전 프로브에서 실제 산출물이 무인증 200 이었고 없는 파일명은 404 라 미노출로 오인할 뻔했던 그 구분). printy 에 service_role 키가 없는 건 정상이며 추가 실측 불요 — **두 실측 합산으로 커버리지 완결, 이 건 종결**.
+
+printy 측 의존 재감사(R-166~R-170 동기화 68파일 유입분 반영해 8/28 결과 재사용 없이 재실행):
+무인증 `/storage/outputs/` 직접 GET **0건**(grep 히트는 전부 Supabase Storage `/storage/v1/object/...` — 별개 표면) ·
+`proxy-download.js` 가 매 다운로드마다 `external/{jobId}/output-url` 재발급 · `order_asset_claims` 에 **URL 아닌 jobId** 저장.
+→ 9/4~9/11 지연 구간도 printy 무영향(유예 경로 소비 코드가 애초에 0건).
+printy 레포 `docs/SESSION-HANDOFF-2026-08-23.md` 의 "재통지 오면 410 1회 실측" 예약 해제는 **printy 오너 승인 사안**(당사 승인 대상 아님).
+
+### 🟡 bookmoa — 회신 대기 (이 항목이 §2 를 닫는 유일한 잔여)
+
+실측 2건 필요: ⓐ 구 URL 410 교차실측 ⓑ `GET /api/worker-jobs/<jobId>/output` (X-API-Key) 상태코드 — **401 이면 고객 합성 PDF 다운로드 파손 baseline 확정**.
 
 08-28 정본 §3 이 "중요 통지는 레포 문서 병행이 정본 경로" 로 규정한 그 문서다.
 
-1. `docs/partner-notices/PARTNER_NOTICE_OUTPUT_CUTOVER_DONE_2026-09-11.md` → printy·bookmoa 양사 (**bookmoa ✅ 발신 / printy 🔴 미발신**)
+1. `docs/partner-notices/PARTNER_NOTICE_OUTPUT_CUTOVER_DONE_2026-09-11.md` → printy·bookmoa 양사 — **양사 ✅ 발신 완료**
    - 지연 사실(9/4→9/11) 명시본. 양사에 구 URL 410 **교차 실측 1회** 요청 포함(printy 가 8/28 예약해 둔 항목)
 2. `docs/partner-notices/PARTNER_NOTICE_BOOKMOA_JOB_OUTPUT_401_2026-09-11.md` → bookmoa 단독 (D5 무관 별건) — **✅ 발신 완료**
    - bookmoa `api/storige/files/proxy-download.js:100` 이 `/worker-jobs/:id/output` 을 `X-API-Key` 로 호출
@@ -67,7 +103,7 @@ docker compose exec -T nginx sh -c 'nginx -T 2>/dev/null | grep -c "찾을 문�
 ## 3. 잔여 작업
 
 **P0 — 오너 액션**
-1. ~~위 §2 통지 2건 발신~~ → **printy 수신분 1건만 잔여**. 오너가 `~/Developer/claude/printy` 에서 세션을 띄우면 `ListAgents` 재식별 후 즉시 발신한다(2026-09-11 세션에서 오너 지시로 이 경로 확정)
+1. ~~위 §2 통지 2건 발신~~ **✅ 2026-09-11 양사 발신 완료**(§2 표). 잔여는 **회신 수신** — ACK 및 실측 3건(bookmoa 410/401, printy 410)
 2. 파트너 회신문 **미발송 5건**: ⓐ 8/24 통지 4종 + ⓑ 프린티 템플릿셋 스코프
    (~~ⓒ new.bookmoa.com~~ = 발송 완료·파트너 회신 수신 08-27·트랙 종결 / ~~ⓓ 프린티 업로드 테넌시~~ = 세션 채널 전달 완료 08-28, 보안 채널 공식 발송만 잔여 — **08-28 정본 §2 의 "4종" 은 과대 계상이었다**)
 3. 동화책 왕복 실기 1회로 묶음 해소: 재진입 유지 확인 + `window.__storigeLoadProfile.laps` 의 `grow:*` 캡처(읽기 전용) + bookmoa 장바구니 #1 테스트 항목 삭제
@@ -119,12 +155,17 @@ docker compose exec -T nginx sh -c 'nginx -T 2>/dev/null | grep -c "찾을 문�
 - ⚠️ **세션 이름은 재시작 시 바뀐다** — `ListAgents` 로 cwd 기준 재식별. 이름은 같은 날 안에서도 바뀐다(09-11 오전 `bookmoa-mobile-2f`·`printy-bf` → 오후 `bookmoa-mobile-48`, printy 소멸)
 - 🚨 **`ListAgents` 는 cwd 를 보여주지 않는다.** 이름만 보고 찍지 말 것. 실제 식별법(2026-09-11 사용):
   ```bash
-  ls -lt ~/.claude/projects/-Users-yohan-Developer-claude-printy/*.jsonl | head -3
-  ls -lt ~/.claude/projects/-Users-yohan-Developer-claude-bookmoa-mobile/*.jsonl | head -3
+  # 1) 후보 트랜스크립트 = 디렉터리명이 곧 cwd, mtime 이 ListAgents 의 "started N ago" 와 맞물리는 것
+  ls -lt ~/.claude/projects/-Users-yohan-Developer-claude-printy/*.jsonl | head -2
+  ls -lt ~/.claude/projects/-Users-yohan-Developer-claude-bookmoa-mobile/*.jsonl | head -2
+  # 2) 확증 — jsonl 안의 cwd 필드 + 첫 사용자 메시지가 세션 이름과 대응하는지 대조
+  python3 -c "import sys,json;[print(d.get('cwd')) for l in open(sys.argv[1]) for d in [json.loads(l)] if d.get('cwd')][:1]" <파일>
   ```
-  디렉터리명이 cwd 이고, mtime 이 `ListAgents` 의 "started N ago" 와 맞물리는 것이 그 세션이다
+  ⚠️ mtime 상관만으로 끝내지 마라. **jsonl 의 `cwd` 필드 + 첫 사용자 메시지** 까지 봐야 이름↔cwd 가 1:1 로 묶인다
+  (2026-09-11 실사용: 프린티 세션 첫 메시지 "마지막 세션에서 작업한 내용을 요약" ↔ 이름 "…작업 요약" / 북모아 "마지막 세션 작업을 확인" ↔ "…작업 확인")
 - ⚠️ **이름 오인 함정(2026-09-11 실사례)**: peer 목록의 `printcard-studio-fd` 는 cwd `~/Developer/claude/PrintCard-Studio` 로 **printy 가 아니다**(별개 프로젝트). 여기에 파트너 통지를 보내면 오발신이다
 - ⚠️ **크로스세션 권한모드 함정**: 수신 세션이 bypass 가 아니면 피어 메시지가 승인 보류로 지연. **발신 성공(msg_id) ≠ 도달.** 무응답이면 오너에게 모드 확인 요청
+- ✅ **2026-09-11 실증**: printy 가 ACK+실측 회신 → 경로 정상·수신측 bypass 확인. 실무 규칙은 "**메시지에 ACK 한 줄을 명시 요청**하고 `notify_when_idle` 을 함께 건다" — 회신만이 도달 증거다
 - 레포 정본: `docs/partner-notices/` · `docs/PLATFORM_INTEGRATION_GUIDE.md` · `docs/CONTRACT_FREEZE.md`
 - 8/28~9/11 파트너 측 변화 **0건**(양 레포 storige 연동 파일 무변경, 문의·불만 0건)
 
@@ -154,8 +195,27 @@ docker compose exec -T nginx sh -c 'nginx -T 2>/dev/null | grep -c "찾을 문�
 | `tsc --noEmit -p tsconfig.eslint.json` (apps/api) | **EXIT=0** — 불변식 복원 확인 |
 | api jest | **미실행**(문서·env 템플릿·미참조 파일 삭제뿐이라 무영향 범위). 다음 세션이 코드를 건드리면 §0 기준선 78스위트/1071 로 대조할 것 |
 
-**다음 세션 최초 3동작**
-1. bookmoa 회신 2건(410 교차실측 / jobId output 상태코드) 도착 여부 확인 → §2 닫기
-2. printy 세션 기동 여부 확인 → 기동돼 있으면 통지 ① 즉시 발신(§2·§5)
-3. `25ff568` 푸시 여부 오너 확인 (푸시 시 editor/admin Vercel 자동배포 — 코드 무변경이라 no-op 배포)
+**오후 추가분 (오너 지시: 세션 기동 후 발신 + 푸시 + 서브에이전트 점검)**
+- printy·bookmoa 신규 세션 식별 확증 후 발신 3건 완료 → **printy 교차검증 종결**(§2)
+- 크로스세션 전달 경로 실증 완료(§5)
+- **푸시 완료** — origin/master 갱신. VPS 는 `94edb89` 유지(재배포 불요)
+
+### 7-1. 서브에이전트 세팅 실측 (2026-09-11)
+
+| 항목 | 상태 |
+|---|---|
+| 프로젝트 `.claude/agents/` | **없음** — storige 전용 에이전트 0개 |
+| 사용자 전역 `~/.claude/agents/` | **o5-* 7종**(architect·repo-scout·implementer·test-build·security-reviewer·frontend-qa·final-reviewer), 전부 2026-09-11 10:31 일괄 설치 |
+| 도구 권한 | 최소권한 적정 — 읽기전용 5종은 Edit/Write 없음, `o5-implementer` 만 Edit+Write, `o5-test-build` 는 Edit(테스트 하네스 한정) |
+| `model:` 지정 | **7종 전부 미지정 → 부모 모델 상속**. repo-scout 같은 정찰축까지 Opus 로 도는 비용 구조 |
+| 정본 대비 드리프트 | 설치본이 `_ai-governance/.../deployment/agents` 보다 **앞서 있다** — 읽기전용 6종에 "Bash 는 read/inspect 전용(`sed -i`·`tee`·`mv`·`rm`·`git commit` 금지)" 1줄, `o5-test-build` 는 description 강화. **거버넌스 레포에 역반영 안 됨** |
+| 미설치 | 정본 `source/.../agents/coordinator.md` — 메인 에이전트가 조정 책임을 지므로 의도적 제외로 보이나 명문 근거 없음 |
+| 프로젝트 `.claude/rules/` | **없음**(전역 지침의 3계층 중 ③). 경로 한정 규칙·함정이 전부 이 RESUME 에 몰려 있다 |
+| 이번 세션 사용 | **0건** — 전역 지침 "위임 억제" 부합. 파일 소유권이 겹치고 규모가 작아 단독 수행이 옳았다 |
+
+**권고(미실행, 오너 판단)**: ⓐ 읽기전용 축에 `model: sonnet` 지정으로 정찰 비용 절감 ⓑ 설치본의 Bash 제약 1줄을 `_ai-governance` 에 역반영해 드리프트 해소 ⓒ storige 전용 규칙(nginx inode·node@22 고정·supertest 포트 패밀리)을 `.claude/rules/` 로 분리
+
+**다음 세션 최초 2동작**
+1. bookmoa 회신 2건(410 교차실측 / jobId output 상태코드) 도착 여부 확인 → §2 닫기 (**§2 잔여는 이것 하나뿐**)
+2. VPS `~/storige` 는 `94edb89` — 다음 API 배포 때 자연 동기화. 지금 당길 필요 없음
 
