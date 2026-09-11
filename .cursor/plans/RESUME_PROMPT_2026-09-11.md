@@ -86,9 +86,49 @@ printy 측 의존 재감사(R-166~R-170 동기화 68파일 유입분 반영해 8
 → 9/4~9/11 지연 구간도 printy 무영향(유예 경로 소비 코드가 애초에 0건).
 printy 레포 `docs/SESSION-HANDOFF-2026-08-23.md` 의 "재통지 오면 410 1회 실측" 예약 해제는 **printy 오너 승인 사안**(당사 승인 대상 아님).
 
-### 🟡 bookmoa — 회신 대기 (이 항목이 §2 를 닫는 유일한 잔여)
+### ✅ bookmoa — ACK 수신 + 서버로그 실측으로 ② 긴급도 하향
 
-실측 2건 필요: ⓐ 구 URL 410 교차실측 ⓑ `GET /api/worker-jobs/<jobId>/output` (X-API-Key) 상태코드 — **401 이면 고객 합성 PDF 다운로드 파손 baseline 확정**.
+bookmoa 회신: 키·jobId 미보유로 라이브 실측 불가(시크릿 열람 금지 규칙 준수 — 올바른 판단), 대신 **소스 전수 대조**로 확인.
+`worker-jobs` 호출 6건 중 `proxy-download.js` 만 non-external(나머지 5건 전부 `external/*`) — 비대칭이 당사 주장과 정합.
+`!upstream.ok` 가 상태코드는 통과시키되 본문을 일반 메시지로 마스킹 → 401 이 "원본 파일을 가져올 수 없습니다" 로만 보인다는 점도 확인.
+
+**🚨 당사 서버로그 실측(2026-09-11) — 통지 ② 의 긴급도 전제를 정정한다**
+
+`storige-api` 컨테이너 전체 수명(약 2주, request 로그 1,497건) 기준:
+
+| 라우트 | 총 호출 | 실제 UUID |
+|---|---|---|
+| `/api/worker-jobs/{id}/output` (문제의 non-external) | 4 | **0** (전부 당사 합성 프로브 `00000000-0000-4000-8000-…`) |
+| `/api/worker-jobs/external/{id}/output-url` (정상 경로) | 9 | **3** (서명 URL 경로는 실제로 돌고 있다 — printy 분으로 추정) |
+
+로그 신뢰성 대조(같은 기간 실트래픽 정상 관측): `external/{id}/status` 87 · `external/{id}` 49 ·
+`files/multipart/sign` 53 · `files/{id}/download/external` 18 · `auth/shop-session` 19 → **샘플링·필터링 아님**.
+
+> **결론**: bookmoa 프록시는 당사 API 를 직접 호출하므로, 고객이 jobId 모드 다운로드를 시도했다면 실패해도
+> **실제 UUID + 401** 이 로그에 남는다. 2주간 0건 = **최근 2주간 고객의 jobId 모드 시도 자체가 없었다**.
+> 통지 ② 의 "고객 다운로드가 이미 파손 상태일 개연성" → **코드상 파손은 사실이나 진행 중인 장애가 아니다** 로 정정.
+> 핫픽스 아님. 질문이 "왜 2주간 아무도 안 탔나"(기능 미사용 / 다른 경로 사용 / 프론트 진입 차단)로 바뀐다 — bookmoa 만 답할 수 있다.
+
+⚠️ **잔여 불확실성 2건**(이게 뒤집히면 위 결론도 뒤집힌다):
+① bookmoa 프록시의 `apiBase` 실값이 `https://api.papascompany.co.kr` 가 맞는지 — 다른 곳을 가리키면 당사 로그에 안 보이는 게 당연해진다(bookmoa 확인 요청 발신)
+② 로그 창이 컨테이너 수명 2주뿐 — 그 이전은 알 수 없다
+
+### 🟡 bookmoa 잔여 — 실측 2건은 오너/키 보유 세션 몫
+
+ⓐ 구 URL 410 교차실측 ⓑ `GET /api/worker-jobs/<실제 jobId>/output` (유효 X-API-Key) 상태코드.
+⚠️ 단 ⓑ 는 **코드 증명이 이미 결정적**이다(전역 `JwtAuthGuard` + 해당 핸들러에 `@Public`·`ApiKeyGuard` 부재 → 유효 키도 무의미).
+실측의 가치는 "401 여부" 가 아니라 **고객 영향 baseline** 인데, 그건 위 로그 실측이 더 강하게 답했다.
+
+### 📐 bookmoa 제기 설계 쟁점 — 서명 URL 전환 시 책임 소재 (사실 확인 완료)
+
+| 쟁점 | 판정 |
+|---|---|
+| 스트리밍(≤2GB, 메모리 버퍼링 회피) | **해소.** `location /storage-signed/outputs/` 가 `alias` 로 파일 직접 서빙 — nginx sendfile·Range 처리, Node 파이프 경유 없음. 현행 프록시보다 개선 |
+| `Content-Disposition` 파일명 | **쟁점 성립.** 서명 경로는 `Cache-Control: private, no-store`·`nosniff`·CORS 만 붙이고 **Disposition 미설정**(nginx.conf 실확인) |
+
+전환 선택지: ⓐ 프록시 유지 + 업스트림만 교체(변경 최소, 바이트 1홉 추가) / ⓑ 302 리다이렉트(경유 0, 파일명은 URL 경로명·PDF 인라인 표시 가능) / ⓒ 당사 서명 경로에 Disposition 지원 추가.
+> 🚨 ⓒ 주의: 서명식이 `md5("<expires><uri><secret>")` 로 **uri 만 덮는다**. `?filename=` 단순 반영은 **무서명 파라미터를 헤더에 반영**하는 것이라 인젝션 벡터다. 파일명을 서명 대상에 포함하거나 엄격 화이트리스트 sanitize 선행 필수 — **당사 작업·오너 결정 사안**.
+> 현 상태 기본 권고는 **ⓐ**.
 
 08-28 정본 §3 이 "중요 통지는 레포 문서 병행이 정본 경로" 로 규정한 그 문서다.
 
