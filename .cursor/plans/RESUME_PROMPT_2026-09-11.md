@@ -51,12 +51,26 @@ docker compose exec -T nginx sh -c 'nginx -T 2>/dev/null | grep -c "찾을 문�
 |---|---|---|
 | api jest | **78스위트/1071 PASS** · contract-freeze 73 · lint 0err(44 warn) | ✅ 3회 연속 동일 |
 | editor vitest | **66파일/785 PASS** · tsc 0err · eslint 0err(78 warn) | ✅ 2회 연속 동일 |
-| canvas-core | **55파일/628 PASS** · lint 0err(48 warn) | ✅ 2026-09-11 저녁 재실측 — A-1 회귀 테스트 1파일/5테스트 편입(종전 54/623, 증발 0). `node -v` v22.22.2 고정 |
+| canvas-core | **55파일/628 PASS** · lint 0err(48 warn) | ✅ 2026-09-11 저녁 재실측 — A-1 회귀 테스트 1파일/5테스트 편입(종전 54/623, 증발 0). **Node 24.20.0**(22.22.2 에서도 동일 수치로 실측 후 24 로 전환) |
 | 플레이크 | **등재 0종** | ✅ 3연속 전체실행 재현 0건 |
 
-> ⚠️ **런타임 함정**: 이 맥의 `/opt/homebrew/opt/node@24` 심볼릭 링크는 **Node 26 을 가리킨다**.
-> canvas-core 는 반드시 `PATH="/opt/homebrew/opt/node@22/bin:$PATH"` 고정 후 `node -v`(v22.22.2) 확인하고 실행.
-> 08-28 정본의 "Node 22/24 전용" 표기는 이 머신에서 사실상 **22 전용**이다.
+> ✅ **런타임 통일 완료(2026-09-11 저녁, 오너 지시).** 종전의 "node@24 링크가 Node 26 을 가리킨다 → canvas-core 는 node@22 고정" 함정은 **원천 해소**됐다.
+> `brew install node@24`(24.20.0, keg-only) 로 실포뮬러를 깔자 `/opt/homebrew/opt/node@24` 가 `../Cellar/node@24/24.20.0` 로 교정됐고,
+> `canvas` 네이티브 애드온을 Node 24 로 재컴파일해 **로컬 = CI = Vercel = Node 24** 가 됐다.
+>
+> ```bash
+> PATH="/opt/homebrew/opt/node@24/bin:$PATH"   # node -v → v24.20.0. engine 경고 0건
+> ```
+>
+> - ⚠️ **`canvas.node` 는 단일 ABI다.** Node 24 용(ABI 137)으로 바뀌었으므로 **node@22 로 돌리면 이제 반대로 깨진다**(실측: `NODE_MODULE_VERSION 137` vs 127). 22 로 되돌리려면 아래 재빌드를 node@22 에서 다시 하면 된다
+> - 재빌드 절차(`pnpm rebuild canvas` 는 **no-op** 이다 — canvas 가 루트 직접 의존이 아니라 아무것도 안 한다):
+>   ```bash
+>   cd node_modules/.pnpm/canvas@2.11.2_encoding@0.1.13/node_modules/canvas
+>   PATH="/opt/homebrew/opt/node@24/bin:$PATH" npx -y node-gyp@10 rebuild   # 소스 빌드, ld 경고만
+>   ```
+>   재료는 brew 의 cairo·pango·jpeg-turbo·giflib·pixman·pkgconf(설치됨). librsvg 는 미설치지만 선택 의존이라 무관
+> - ⚠️ **`pnpm install` 이 canvas 를 재설치하면 ABI 가 되돌아갈 수 있다.** 프리플라이트가 즉시 하드 실패로 알려주므로(조용한 축소가 아니다) 그때 위 재빌드를 다시 돌려라
+> - ⚠️ `node@25`·`node@26` opt 링크는 **아직 `node`(26.5.1) 를 가리키는 낡은 별칭**이다. `node@26` 은 우연히 값이 맞고 **`node@25` 는 여전히 틀리다** — 버전 고정에 쓰지 마라
 
 ## 1. ✅ D5 cutover 완료 (2026-09-11, 예정 9/4 대비 7일 지연 실행)
 
@@ -184,7 +198,7 @@ compose-mixed·split·spread 가 **전부 SYNTHESIZE 로 기록**된다 — 위 
 3. 동화책 왕복 실기 1회로 묶음 해소: 재진입 유지 확인 + `window.__storigeLoadProfile.laps` 의 `grow:*` 캡처(읽기 전용) + bookmoa 장바구니 #1 테스트 항목 삭제
 
 **P1 — 코드**
-4. ~~canvas-core 기준선 마감~~ **✅ 2026-09-11 완료** — `PATH="/opt/homebrew/opt/node@22/bin:$PATH" pnpm --filter @storige/canvas-core test` → **54파일/623 PASS**, 기대치 정확히 일치(수집 수 대조 완료, 증발 0). 재실측 시 같은 PATH 고정 필수
+4. ~~canvas-core 기준선 마감~~ **✅ 2026-09-11 완료** — 당시 `node@22` 로 **54파일/623 PASS**. 이후 A-1 편입으로 55/628, **그리고 저녁에 런타임을 node@24 로 통일**했다(§0). 재실측은 이제 `PATH="/opt/homebrew/opt/node@24/bin:$PATH"` 고정
 5. ~~P1-5 잔여 1파일~~ **✅ 2026-09-11 완료 — 단, 편입이 아니라 제거로 닫았다**(`25ff568`)
    - 지시대로 `tsconfig.eslint.json` include + lint 글롭에 `storage/test` 를 넣어 보니, 유일한 `.ts` 인 `generate-fixtures.ts` 가 `apps/worker/test/fixtures/pdf/generate-fixtures.ts` 와 **바이트 동일한 사본**(`diff` 무차이)이고 **참조처 0건**이며 api 에 없는 `pdf-lib` 를 import 한다(파일 헤더 스스로 worker 에서 실행하라고 적고 있다)
    - 편입하면 린트는 0err 이지만 `tsc --noEmit -p tsconfig.eslint.json` 이 **TS2307 로 깨진다** — `eslint.config.js` 주석에 "린트 대상 == tsconfig 프로그램, tsc EXIT=0" 으로 기록된 불변식을 무너뜨린다(CI 게이트는 아니지만 진단 명령이 상시 빨강)
@@ -207,9 +221,9 @@ compose-mixed·split·spread 가 **전부 SYNTHESIZE 로 기록**된다 — 위 
    - CI 실측: `.github/workflows/ci.yml` `setup-node: node-version: 24`. **선언 3곳(root `>=24`·editor `24.x`·admin `24.x`)이 CI 와 이미 정합**이다 — 정합시킬 불일치가 없다
    - 🚨 **`24.x` → `>=24` 완화는 금지.** Vercel 은 범위를 newest-first 로 intersect 해 **가용 최신 메이저를 자동 채택**한다(공식 문서 실확인: `>=20.0.0` → latest **24.x**). 개방 범위로 두면 Vercel 이 26.x 를 추가하는 날 프로덕션 빌드가 **무단 승격**된다. 이 고정은 `58a5166` 이 의도적으로 건 자물쇠이고 근거 정본은 `NODE24_UPGRADE_AUDIT_2026-07-30.md:63`. **경고를 없애려고 이걸 푸는 게 이 항목의 함정이다**
    - root `>=24` 는 Vercel 이 **읽지 않는다**(rootDirectory=`apps/editor` 에서 처음 만난 package.json 하나만 보고 멈춘다 — 같은 감사 `:94`). 로컬·CI 전용 선언이라 완화·고정 어느 쪽도 배포 영향 0
-   - **경고의 정체는 이 맥이다.** Cellar 실측: 실제 설치본은 `22.22.2` · `25.1.0` · `26.5.1` 뿐이고 **Node 24 는 없다**. `/opt/homebrew/opt/node@24`·`node@25`·`node@26` 은 전부 `node` 포뮬러의 **별칭 심링크**라 셋 다 `Cellar/node/26.5.1` 을 가리킨다(§0 의 함정은 링크 파손이 아니라 Homebrew 별칭 동작이다). 즉 경고는 잡음이 아니라 **참인 신호** — "이 레포가 고정한 런타임이 아닌 것으로 돌고 있다"
-   - [대조군] 기본 Node 26 으로 canvas-core 를 돌리면 `vitest.setup.ts` 프리플라이트가 **55파일 전부 하드 실패**(node-canvas ABI). node@22 고정 제약은 현재도 유효하다
-   - 경고를 실제로 없애려면 로컬에 **진짜 Node 24 를 설치**(`brew install node@24`)하거나 `.npmrc` 에 `use-node-version` 을 거는 수밖에 없다 — 둘 다 개발환경 변경이라 **오너 결정 사항**(미실행)
+   - **경고의 정체는 이 맥이었다.** 조사 시점 Cellar 실측: 설치본이 `22.22.2`·`25.1.0`·`26.5.1` 뿐이고 **Node 24 가 없었다**. 즉 경고는 잡음이 아니라 **참인 신호**였다 — "이 레포가 고정한 런타임이 아닌 것으로 돌고 있다"
+   - ✅ **해소됨(같은 날 저녁, 오너 지시)**: `brew install node@24`(24.20.0) + `canvas` 재컴파일로 **로컬을 Node 24 로 통일**했다. engine 경고 **0건**, canvas-core 55/628·editor 66/785 전부 Node 24 에서 재실측 통과. 절차·주의는 §0 런타임 절
+   - **선언은 끝까지 한 줄도 바꾸지 않았다.** 고친 것은 런타임이지 `engines` 가 아니다 — 이 항목의 핵심은 그대로다
    - 덤: Node 20 폐기(2026-10-01, D-19) 대응의 Vercel Settings 이중화(감사 `:87`)도 **이미 닫혀 있다** — `vercel project ls --update-required` → "No projects found ... using a deprecated Node.js version"(읽기 전용 실측)
 
 **D6 (cutover 관측 후 착수)**: NULL-파괴 게이트 + 이원 정책 allowlist 승격 + 백필.
@@ -230,7 +244,7 @@ compose-mixed·split·spread 가 **전부 SYNTHESIZE 로 기록**된다 — 위 
 | P1-5 lint | ✅ 완료 | **부분 완료였다** → 09-11 종결. 잔여 1파일이 worker 정본의 **바이트 동일 사본**이라 편입이 아니라 **제거**로 닫음 |
 | R-149 | "코드 변경 불요" | **라우팅 감사만 근거, 라이브 실측 미수행**이었다. 실측 결과 라우트는 401 이 맞으나 **실호출 0건**이라 진행 중 장애는 아님(§2) |
 | nginx 배포 | `up -d nginx` | **`up -d --force-recreate nginx`**(파일 bind-mount inode) |
-| canvas-core 런타임 | "Node 22/24" | 이 맥에서 **22 전용**(node@24 링크가 26) |
+| canvas-core 런타임 | "Node 22/24" | 09-11 오전엔 **22 전용**(node@24 링크가 26)이었으나, 저녁에 `brew install node@24` + canvas 재컴파일로 **24 로 통일**(§0). 이제 **22 가 깨진다** |
 | 채널 | `bookmoa-mobile-65` / `20260827 Printy 개발 계속` | 이름은 같은 날에도 바뀐다 — **`ListAgents` 만으로는 cwd 를 알 수 없다**(§5 의 확증 절차 필수) |
 
 또한 설계안 `TENANCY_S3_S4_DESIGN_2026-08-28.md` 는 두 곳이 실제 구현과 어긋난 채 남아 있다(정정 안 함, RESUME 쪽이 정본):
@@ -262,7 +276,7 @@ compose-mixed·split·spread 가 **전부 SYNTHESIZE 로 기록**된다 — 위 
 1. `CLAUDE.local.md` 먼저(호스트·레시피·§5.5 Cloudflare — 값 출력 금지)
 2. 이 문서 + `git log --oneline -10` + `git status -sb`(타 세션 미커밋 보존)
 3. SSH 필요 시 `ssh-add -l` → 없으면 `ssh-add ~/.ssh/id_ed25519`. `deploy@` 대상만(fail2ban)
-4. 함정 상기: **nginx 파일 bind-mount inode(§0)** / **node@24→Node26(§0)** / vite.config.js shadow / 빌드게이트 5함정 / fabric styles·loadJSON / SPREAD≠표지 / isInitializedRef 저장 입구 금지 / **debounce 는 배칭 도구 아님** / **supertest 포트 패밀리**(불가능한 응답=남의 서버 의심) / 크로스세션 권한모드
+4. 함정 상기: **nginx 파일 bind-mount inode(§0)** / **canvas 단일 ABI — 로컬은 node@24 고정, `pnpm install` 후 재빌드 필요(§0)** / vite.config.js shadow / 빌드게이트 5함정 / fabric styles·loadJSON / SPREAD≠표지 / isInitializedRef 저장 입구 금지 / **debounce 는 배칭 도구 아님** / **supertest 포트 패밀리**(불가능한 응답=남의 서버 의심) / 크로스세션 권한모드
 5. 검증 기준선 = §0 표. 실기·프로덕션 키 작업은 권한무시 모드
 6. 세션 종료 시 `RESUME_PROMPT_<날짜>.md` 갱신 없이 종료 금지
 
@@ -350,7 +364,8 @@ compose-mixed·split·spread 가 **전부 SYNTHESIZE 로 기록**된다 — 위 
 ### 이번 세션이 남기는 함정
 
 - 🚨 **`engines.node: "24.x"` 를 경고 때문에 넓히지 마라** — §3-10. 이 항목은 "고쳐라"가 아니라 "건드리지 마라"로 끝났다. 다음 세션이 같은 경고를 보고 같은 유혹을 받는다
-- **Homebrew `node@24`/`node@25`/`node@26` 은 전부 `node` 포뮬러 별칭**이라 현재 Cellar 의 26.5.1 을 가리킨다. 이 맥에 **진짜 Node 24 는 없다**(실측: 22.22.2 / 25.1.0 / 26.5.1). §0 의 "node@24 심볼릭 링크가 26 을 가리킨다"는 파손이 아니라 정상 별칭 동작이다
+- **Homebrew 미설치 버전의 `node@N` opt 링크는 `node` 포뮬러를 가리키는 낡은 별칭이다** — 조사 시점 `node@24`·`node@25`·`node@26` 셋 다 26.5.1 이었다. `brew install node@24` 로 24 는 교정됐지만 **`node@25` 는 여전히 틀리다**(26.5.1). `node@N` 경로를 버전 고정에 쓰기 전에 `node -v` 로 실값을 확인해라 — 경로 이름이 버전을 보장하지 않는다(§2 "이름이 의미를 보장하지 않는다"의 런타임판)
+- 🚨 **`canvas.node` 는 단일 ABI** — 로컬 런타임을 Node 24 로 통일하면서 재컴파일했다. `pnpm install` 이 canvas 를 재설치하면 되돌아갈 수 있고, 그땐 프리플라이트가 하드 실패로 알려준다. 재빌드 절차는 §0(**`pnpm rebuild canvas` 는 no-op 이다**)
 - 🚨 **`ignoreCommand` 는 fail-open** — 감시 경로가 앱마다 다른 건 맞지만(`packages/canvas-core` 는 editor 에만 있다) **그것만으로 배포 여부를 예측하면 틀린다.** 이번 세션이 "admin 은 스킵" 으로 예측했다가 실측에서 뒤집혔다. 기전·판별법은 §0 의 전용 절 참조
 - **스킵 최적화는 부수효과 수집 코드 뒤에 둔다** — A-1 의 조기 return 을 `fontUrlByName` 을 채우는 forEach 앞으로 올리면 맵이 빈 채 남는다. 조기 return 을 넣을 때 "그 앞에서 무엇이 채워지는가"를 먼저 본다
 
@@ -397,3 +412,33 @@ git config core.hooksPath .githooks   # --local 스코프. 해제: git config --
 
 - **오너 결정 대기**: §3 P0-2 회신문 미발송 5건 · P0-3 동화책 왕복 실기 · D6 착수 시점 · §7-1 권고 3건 · 로컬 Node 24 설치 여부(§3-10)
 - **즉시 착수 가능한 P1 잔여 0건.** 다음 코드 트랙은 D6 이고, 착수 전 §2 "합성 잡 3개월 공백" 반영 + 백필 4수치 재실행이 선행이다
+
+---
+
+## 7-3. 런타임 통일 (2026-09-11 저녁, 오너 지시 — 커밋 없음, 머신 설정)
+
+P2-10 을 "무변경 종결" 로 닫으면서 남겨둔 **오너 결정 사항 2개를 오너가 집행 지시**해 그대로 실행했다.
+**레포 파일은 한 줄도 바뀌지 않았다** — `engines` 선언도, 코드도 그대로다. 바뀐 건 이 맥의 런타임뿐이다.
+
+| 조치 | 결과 |
+|---|---|
+| `git config core.hooksPath .githooks` | pre-commit gitleaks 활성(§7-2) |
+| `brew install node@24` | **24.20.0 keg-only 설치.** `/opt/homebrew/opt/node@24` 가 `../Cellar/node@24/24.20.0` 로 **교정** — 종전 함정 원천 소멸 |
+| `canvas` 네이티브 재컴파일 | ABI 127 → **137**. `node-gyp@10 rebuild`, 소스 빌드, ld 경고만 |
+
+### Node 24 재실측 (전부 기준선 일치)
+
+| 검증 | 결과 |
+|---|---|
+| engine 경고 | **0건**(종전 Node 26 에서 2건, Node 22 에서 3건) |
+| canvas-core test | **55파일/628 PASS** — Node 22 실측과 정확히 동일 |
+| canvas-core typecheck / lint | EXIT=0 / **0 err · 48 warn** |
+| editor test | **66파일/785 PASS** |
+| [대조군] node@22 | 이제 **하드 실패**(`NODE_MODULE_VERSION 137` vs 127) — 일방향 전환이 실제로 일어났음을 확인 |
+
+### 남는 함정
+
+- 🚨 **`pnpm rebuild canvas` 는 no-op 이다.** canvas 가 루트 직접 의존이 아니라 pnpm 이 아무것도 하지 않고 조용히 끝난다(출력 0줄). 바이너리 mtime 을 안 봤으면 "재빌드했다"고 오판할 뻔했다 — **명령이 성공했다는 것과 일이 일어났다는 것은 다르다.** 실제 경로는 `.pnpm` 저장소에서 직접 `node-gyp rebuild`(§0)
+- 🚨 **`node@25` opt 링크는 아직 26.5.1 을 가리킨다.** 경로 이름으로 버전을 믿지 말고 `node -v` 로 확인해라
+- **`canvas.node` 단일 ABI** — `pnpm install` 후 프리플라이트가 터지면 재빌드 신호다. 프리플라이트가 "조용한 수집 축소" 가 아니라 하드 실패로 설계돼 있어서 이 회귀는 항상 눈에 띈다(2026-08-25 설계 의도가 그대로 작동)
+- 이 3건은 전부 **머신 설정**이라 커밋되지 않는다. 새 클론·다른 머신에서는 훅 등록·node@24·canvas ABI 를 각각 다시 맞춰야 한다
