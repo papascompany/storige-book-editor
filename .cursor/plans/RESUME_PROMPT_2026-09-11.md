@@ -227,6 +227,7 @@ compose-mixed·split·spread 가 **전부 SYNTHESIZE 로 기록**된다 — 위 
    - 덤: Node 20 폐기(2026-10-01, D-19) 대응의 Vercel Settings 이중화(감사 `:87`)도 **이미 닫혀 있다** — `vercel project ls --update-required` → "No projects found ... using a deprecated Node.js version"(읽기 전용 실측)
 
 **D6 (cutover 관측 후 착수)**: NULL-파괴 게이트 + 이원 정책 allowlist 승격 + 백필.
+🚨 **착수 차단 조건 신설(§8-1)**: 게이트가 "잡에 siteId 가 붙는다"를 전제하는데 **파트너 정규 경로에 그 수단이 없다.** 해소 전 착수 금지.
 ⚠️ 백필 41건/NULL 225건은 **2026-08-28 실측치** — 이후 재실측 없음. 집행 전 4수치 재실행 필수.
 설계안 §2-B' 단서대로 "해당 파트너의 기존 회수가 자기 키로 이뤄지는지" 관측이 **백필보다 선행**.
 
@@ -554,9 +555,62 @@ bookmoa 세션이 ⓐ안(프록시 유지 + 업스트림만 `external/{jobId}/ou
 
 > 참고: 워커는 산출물에 `type`(`cover`/`content`/`pages`)을 다는데 **서명 응답은 버리고 `{name,url,expires}` 만 낸다.** 그쪽의 "산출물 이름은 동결 계약이 아니다" 판단이 맞다. 안정적 판별자가 필요하면 응답에 `type` 추가가 가능하다(**ADDITIVE, 기존 필드 무변경**) — 필요 여부를 회신 요청했다.
 
-### 잔여 — ACK 2건 대기
+### ACK 수신 완료 (bookmoa `d1fb225` 배포)
 
-① `outputMode` 명시 전송 여부 ② 400·503 처리 반영 여부, 그리고 `type` 필드 추가 필요 여부.
-`notify_when_idle` 을 함께 걸었다(§5 규칙 — **회신만이 도달 증거**다).
+| 항목 | 회신 |
+|---|---|
+| ① `outputMode` | **명시 전송 중** — `body.outputMode \|\| (coverEditable===false ? 'content-only' : 'separate')`. 당사 기본값에 기댄 적 없음. 그쪽 회신의 "기본 separate" 는 **자기 클라이언트 기본값**이라는 뜻이었다(표현이 당사 서버 기본값으로 읽혔던 것) |
+| ⑵ 스프레드 강제 | 원장·주석에 등재("merged 요청 = 1파일" 가정 금지) |
+| ⑶ 400·503 | **반영 완료** — `JOB_OUTPUT_NOT_READY` → **409 + 재시도 안내**(계측 제외), `NOT_SIGNABLE`·`503` → 계측. 업스트림 본문은 **에러 코드 화이트리스트 대조에만** 쓰고 고객 미노출(내부 경로 유출 차단, 테스트로 고정) |
+| ③ 410/403 vs 404 | 분리 반영. **재시도 대신 계측** — 발급 직후 즉시 GET 이라 410/403 은 정상 동작에서 나올 수 없고 시계 어긋남·URL 조립 결함의 **지문**이다. 재시도는 그 지문을 지운다(당사 동의) |
+| `type` 필드 | **불필요 — 추가하지 말 것.** ⑴ 의 `files[0]=outputFileUrl` 순서 보장이 결정적이었다. 이름이 전부 빗나가도 첫 폴백이 주 산출물에 떨어지므로 `type` 을 받아도 선택 로직이 나아지지 않는다. 되돌림 방지 주석까지 박음 |
 
-**당사 코드 변경은 이 트랙 전체에서 0건이다.** `type` 추가를 요청받으면 그때 첫 코드 작업이 생긴다.
+**→ 당사 코드 변경은 이 트랙 전체에서 0건으로 종결.** `type` 추가 요청이 오지 않았으므로 코드 작업은 발생하지 않았다.
+
+---
+
+## 8-1. 🚨 D6 설계 결함 — 게이트의 전제가 파트너 정규 경로와 어긋난다 (2026-09-11, 오너 결정 대기)
+
+bookmoa 가 던진 질문 하나("`X-API-Key` 로 만든 compose-mixed 잡에 siteId 가 스탬프되는가")가 **D6 의 전제를 무너뜨렸다.** 그쪽 예측이 정확했다.
+
+### 실측 — API 키는 이 라우트의 siteId 권위가 아니다
+
+`POST /worker-jobs/compose-mixed` 는 `@Public` + `OptionalShopJwtGuard` 다(contract-freeze 로 `auth:'public'` 동결). `worker-jobs.service.ts:1543 resolveComposeMixedSiteId`:
+
+```
+requested = dto.siteId || null
+if (!requested)                    → NULL
+if (assembled)                     → 채택   ← editSessionId 자동조립(세션 권위)
+if (caller?.siteId === requested)  → 채택   ← 검증된 shop-session JWT 와 일치
+그 외                               → NULL + WARN 로그
+```
+
+| 호출 형태 | siteId | D6 이후 |
+|---|---|---|
+| `editSessionId` 자동조립 | 스탬프됨 | 무영향 |
+| shop-session JWT + 일치 `body.siteId` | 스탬프됨 | 무영향 |
+| **`X-API-Key` 만 + `body.siteId`** | **NULL** | **404 — 방금 고친 다운로드가 재사망** |
+
+배경은 2026-08-13 테넌트 스탬프 위조 차단이다(`worker-jobs.compose-mixed-site-stamp.spec.ts`). `@Public` 라우트라 `body.siteId` 가 무검증 입력이어서 ① 잡이 임의 테넌트로 귀속되고 ② 완료 시 **그 사이트의 v2 웹훅으로 잡 결과가 배달**되는 취약점이 있었다.
+**write 위조는 막았지만, API 키 호출자가 자기 잡에 siteId 를 붙일 수단을 남기지 않았다.** 그 공백이 지금 드러난 것이다.
+
+> 🚨 **D6 착수 차단 조건**: NULL-파괴 게이트는 "잡에 siteId 가 붙는다"를 암묵 전제한다. **파트너의 정규 호출 경로에 그 수단이 없으므로 게이트만 켜면 정상 파트너가 깨진다.** §2 의 "합성 잡 3개월 공백" 과 성격이 같다 — **암묵 전제를 실측으로 깨야 한다.**
+
+### 선택지 (오너 결정 대기 — 당사 미착수)
+
+- **ⓐ** `compose-mixed` 가 **검증된 API 키의 siteId 도 권위로 인정**. ADDITIVE(JWT·자동조립 경로 무변경)이고 위조 차단 원칙도 유지된다(키가 실제 검증된 경우만). **원칙상 정답으로 보이나 `@Public` 라우트의 인증 표면 변경**이라 오너 결정 사항
+- **ⓑ** D6 allowlist 에 해당 파트너 영구 등재 — 게이트의 의미가 약해진다
+- **ⓒ** 파트너에게 자동조립 경로(`editSessionId` 동반) 사용 요구 — 그쪽 구현 변경
+
+bookmoa 에는 **"지금 아무것도 하지 말고 대기"** 로 통지했고, ⓒ로 결정되면 그때 알리기로 했다.
+
+### 즉시 확정 가능한 갈림길 — ACK 대기 1건
+
+bookmoa 가 `compose-mixed` 에 **`editSessionId` 를 싣고 있는지** 한 줄 회신을 요청했다.
+싣고 있으면 자동조립 경로라 **D6 무영향**이고, 수동 경로(coverUrl/contentPdfUrl 직접 공급)면 NULL 이다.
+> 보조 판별: 첫 실합성 때 당사 로그에 `[compose-mixed] body.siteId 무시(NULL 스탬프)` WARN 이 뜨면 NULL, 안 뜨면 스탬프된 것이다.
+
+### 부수 확정 2건
+
+- **D6 백필에서 bookmoa 는 제외** — 그쪽 결속 jobId **0건** 확인(주문 49건 중 `synthesisJobId|jobId` 0 · `order_asset_claims` 의 `kind='job'` 0). 과거 SYNTHESIZE COMPLETED 10건은 그쪽 주문과 무관하다. 백필 4수치 재실측 시 이 축은 빼도 된다
+- **응답의 `name` 은 항상 비어있지 않다** — `signOutputUrl` 이 빈 세그먼트(`''`·`.`·`..`)를 걸러 `null` 을 반환하므로 이름 없는 산출물은 응답에 실리지 않는다. bookmoa 가 자체 발견한 판정축 결함(`outputName !== null` 로 모드 판정 → 이름 없으면 계측 누락)의 수정 방향 자체는 옳지만(값 유무에 판정을 걸지 않는다 — §2 규칙과 동형), **그 케이스는 당사 응답에서 발생할 수 없다**
