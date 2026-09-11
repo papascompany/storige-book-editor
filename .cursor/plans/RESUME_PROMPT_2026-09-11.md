@@ -110,7 +110,11 @@ bookmoa 회신: 키·jobId 미보유로 라이브 실측 불가(시크릿 열람
 > 핫픽스 아님. 질문이 "왜 2주간 아무도 안 탔나"(기능 미사용 / 다른 경로 사용 / 프론트 진입 차단)로 바뀐다 — bookmoa 만 답할 수 있다.
 
 ~~⚠️ 잔여 불확실성 2건~~ → **둘 다 해소**(2026-09-11 후속 실측):
-① `apiBase` — **무의미해졌다.** bookmoa DB 실측 결과 **jobId 가 전 기간 0건**(주문 49건 중 `items[].storige.synthesisJobId|jobId` 보유 0 · `order_asset_claims` 의 `kind='job'` 0/54). 호출할 jobId 가 애초에 없었으므로 apiBase 가 어디든 로그 0건이 설명된다. bookmoa 가 '못 잰 0' 배제를 같은 쿼리에 넣어 검증했다(items 50건 전부 `storige` 키 보유 · fileId 37 · sessionId 37 → **fileId 모드는 실사용 중**, jobId 만 0)
+① `apiBase` — **무의미해졌다.** bookmoa DB 실측 결과 **jobId 가 전 기간 0건**(주문 49건 중 `items[].storige.synthesisJobId|jobId` 보유 0 · `order_asset_claims` 의 `kind='job'` 0/54). 호출할 jobId 가 애초에 없었으므로 apiBase 가 어디든 로그 0건이 설명된다. bookmoa 가 '못 잰 0' 배제를 같은 쿼리에 넣어 검증했다(items 50건 전부 `storige` 키 보유 · fileId 37 → **업로드형은 실사용 중**, jobId 만 0)
+  - ⚠️ **정정(2026-09-11 후속)**: 앞서 등재한 "sessionId 37건" 은 **오류였다**. bookmoa 가 자기 판정축 오류 2건을 스스로 잡아 정정했다 —
+    ⑴ `status:'edited'` 는 완료 지문이 아니라 **주문 생성 시점 기본값**(`AppContext` 가 미상 status 를 `'edited'` 로 폴백) ⑵ 업로드형이 `{sessionId: null}` 을 **명시적으로 박아** jsonb `?`(키 존재) 판정이 무효
+    → 완료 경로에서만 박히는 지문으로 재측정: `lastEditedBy in (customer,admin)` 0 · `editVersion>1` 0 · `savedAt` 0 · `thumbnailUrl` 0 / `coverFileId`+`contentFileId` 둘 다 보유 **37(전부)**
+    → **bookmoa 편집기형 주문 0건 · 업로드형 37건**이 정확한 표기다
 ② 로그 창 2주 — **DB 로 기간 제한 없이 교차 확인 완료**(아래)
 
 > 결과 PDF 다운로드 버튼은 `resultJobId` 가 있을 때만 조건부 렌더된다 → **그 버튼이 한 번도 뜬 적이 없다.** 당사 로그의 "실제 UUID 0건" 과 같은 사실의 양쪽 면이다.
@@ -139,8 +143,34 @@ compose-mixed·split·spread 를 포함한 **모든 합성 변형이 SYNTHESIZE 
 > **관측 사실**: 합성 잡 마지막 생성 2026-06-13, 이후 약 3개월 0건. 같은 기간 업로드·검증은 9/9 까지 활발.
 > **원인 미확정**: SYNTHESIZE 는 과거 10건 COMPLETED 로 정상 동작 이력이 있다(site 스탬프 5건 = 2026-05-03, NULL 7건 = 6/13까지).
 > 따라서 "기능이 깨졌다" 가 아니라 **"6월 이후 아무도 트리거하지 않았다"** 가 사실이다.
-> ⓐ 오픈 전이라 제작까지 간 주문 없음 / ⓑ 트리거 미작동 — 둘 다 이 데이터와 양립한다. **추정을 사실로 적지 않는다.**
+> ~~ⓐ 오픈 전 미도달 / ⓑ 트리거 미작동~~ → **ⓐ 확정, 결함 아님**(bookmoa 코드 실측):
+> `triggerSynthesis` 첫 줄이 `if (!s?.sessionId) return { error: '세션 정보가 없습니다' }` — **조기 반환이라 합성 요청이 나갈 수 없다.**
+> 편집기형 주문이 0건이므로 **트리거 조건이 발생한 적이 없다**. 미작동이 아니라 미도달이다.
 > ⚠️ D6 백필·파일 보존 트랙이 "합성 트래픽이 있다" 를 암묵 전제하고 있다면 이 공백을 먼저 반영해야 한다.
+
+#### 단, "아무도 편집기에 안 들어왔다" 는 아니다 — 진입점은 살아 있다
+
+bookmoa 가 "진입점 생존은 확인하지 않았다(추정이 되므로 오너 판단)" 로 남긴 지점을 **당사 DB 로 확인**했다.
+
+`file_edit_sessions` × site (전 기간):
+
+| site | 건수 | 기간 | status |
+|---|---|---|---|
+| **bookmoa-mobile (rot 06-15)** | **62** | 2026-06-02 ~ **2026-09-02** | editing 30 · draft 17 · **complete 15** |
+| 북모아 메인 | 32 | 2026-04-28 ~ 2026-06-15 | editing 23 · draft 6 · complete 3 |
+| ShareSnap | 19 | 2026-06-13 ~ 2026-08-23 | draft 12 · complete 4 · editing 3 |
+| (NULL) 4 · Default Site 1 | | | |
+
+bookmoa-mobile: `completed_at` 보유 **18건** / mode = cover 56 · both 4 · content 2.
+
+> **편집기 진입은 9/2 까지 이어졌고 complete 15건이 있다. 그런데 편집기형 주문 0건 · 합성 잡 6/13 이후 0건** — 사이 어딘가에서 끊긴다.
+> ⚠️ **당사 데이터로는 갈리지 않는다**: mode 가 cover 56/62 라, 이 세션들이 *업로드형 37건의 표지 편집 단계*일 가능성이 있다.
+> 그렇다면 "편집기형 0건" 과 모순이 없다. `file_edit_sessions.order_seqno`·`member_seqno` 를 bookmoa 주문과 대조해야 갈린다 — **bookmoa 몫**.
+
+🚨 **판정축 함정 재발 방지**: `file_edit_sessions.worker_status` 를 "워커 도달" 지표로 쓰려다 전 사이트로 넓혀 확인했더니
+**118행 전부·전 기간·모든 사이트 100% NULL — 한 번도 채워진 적 없는 컬럼**이었다. 판정축에서 뺐다.
+bookmoa 가 `sessionId` 를 jsonb 키 존재로 셌다가 잡아낸 것과 **같은 함정**이다.
+→ **단일 컬럼으로 0 을 주장하지 마라. 같은 쿼리에 대조군(값이 잡히는 다른 필드)을 반드시 넣어라.**
 
 ### 🟢 bookmoa — R-172 개설 완료, 당사 잔여 없음
 
