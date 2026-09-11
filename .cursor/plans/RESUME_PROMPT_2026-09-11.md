@@ -118,7 +118,7 @@ bookmoa 소스 전수 대조로도 확인됨 — `worker-jobs` 호출 6건 중 �
 프록시가 당사를 직접 호출하므로 고객 시도가 있었다면 실패해도 **실제 UUID + 401** 이 남는다. 0건 = **시도 자체가 없었다.**
 bookmoa DB 교차: jobId 보유 주문 **전 기간 0건** → 결과 PDF 다운로드 버튼(`resultJobId` 조건부 렌더)이 **한 번도 뜬 적 없다.**
 
-**→ 핫픽스 아님. `R-172` 개설(bookmoa) · 조사 완료 · 코드 미착수 · ⓐ안 확정 · 착수 시점은 오너가 나중으로 미룸. 당사 변경 없음.**
+**→ 핫픽스 아님. `R-172` 개설(bookmoa) · ⓐ안 확정 · ✅ 2026-09-11 저녁 bookmoa 전환·배포 완료(§8). 당사 코드 변경 0건.**
 bookmoa 인계문 `docs/SESSION-HANDOFF-2026-09-11.md` 에 ⓐ안 근거와 **서명식이 uri 만 덮어 `?filename=` 이 인젝션 벡터**라는 점까지 담겼고,
 **착수 시 당사에 통보**하기로 합의됨. (별건 R-171 도달 불가 코드 정리는 bookmoa `cbfcc71` 로 완료.)
 
@@ -315,7 +315,7 @@ compose-mixed·split·spread 가 **전부 SYNTHESIZE 로 기록**된다 — 위 
 
 **오너 결정 대기**: §3 P0-2 회신문 미발송 5건 · P0-3 동화책 왕복 실기 · D6 착수 시점 · §7-1 권고 3건
 
-**파트너 트랙**: R-172(bookmoa, ⓐ안 확정, 코드 미착수) — **당사 변경 없음**. bookmoa 가 착수 확정 시 알려오기로 함.
+**파트너 트랙**: ~~R-172(bookmoa, 코드 미착수)~~ → **✅ bookmoa 전환·프로덕션 배포 완료**(2026-09-11 저녁, §8). 당사 코드 변경 0건. 계약 확인 회신 발신 완료, **ACK 2건 대기**(§8).
 
 > ⚠️ **D6 착수 전 필수**: §2 의 **합성 잡 3개월 공백**(SYNTHESIZE 최종 2026-06-13)을 먼저 반영하라.
 > 백필 41건/NULL 225건은 2026-08-28 실측치이고 이후 재실측이 없다 — 4수치 재실행이 선행이다.
@@ -522,3 +522,41 @@ Vercel 배포 Ready. deprecation 발화 0건. Storige 아웃바운드 TLS(`api.p
 - 감사가 제기한 **CI 캐시 스테일 ABI 위험은 성립하지 않음**을 위 ① 로 확인 → 불필요한 CI 설정 변경을 막았다
 
 **미조치(오너 판단)**: vitest+jsdom AbortSignal(Node 24, 현재 해당 테스트 0건) · **`next@14.2.35` EOL(2025-10-26) 보안 패치 미수령** — Node 버전보다 이쪽이 더 큰 상시 리스크다
+
+---
+
+## 8. R-172 ⓐ안 전환 완료 — bookmoa 통지 수신 + 계약 확인 회신 (2026-09-11 저녁)
+
+bookmoa 세션이 ⓐ안(프록시 유지 + 업스트림만 `external/{jobId}/output-url` 재발급) 전환을 **프로덕션 배포까지 완료**하고 통지해 왔다(그쪽 커밋 `7d53d55` · vitest 159파일 3773건 · new.bookmoa.com 배포). §2 에 "착수 시 통보하기로 함" 으로 적어 둔 그 통보다.
+
+- 종전: `GET /worker-jobs/{jobId}/output` (X-API-Key) — 전역 `JwtAuthGuard` 아래 `@Public`·`ApiKeyGuard` 둘 다 없어 유효 키로도 401 이던 라우트
+- 현행: ① `GET /worker-jobs/external/{jobId}/output-url` 로 서명 URL 재발급 → ② 그 URL 을 **키 없이** GET 해 중계. fileId 모드는 무변경
+- **ⓒ안(서명 경로 파일명 지원)은 철회됐다** — `?filename=` 이 무서명 파라미터라 헤더 인젝션 벡터라는 당사 설명에 동의. `Content-Disposition` 은 그쪽 프록시가 RFC 6266 으로 계속 조립한다. **당사 작업 없음**
+- 🔴 **실호출 증거는 아직 0건**이다(그쪽이 정직하게 밝힘). 결속된 실 jobId 가 0건이라 실합성 e2e 를 못 돌렸고, 이번 전환은 코드 대조 + 공지 계약 기반이다. 첫 실합성 때 증거가 확보된다 — §2 의 "합성 잡 3개월 공백" 과 같은 뿌리다
+- 그쪽이 401·403·5xx 업스트림 실패를 **계측으로 남기기 시작**했다. 종전엔 프록시가 실패를 마스킹해 서버에 흔적이 0이었고 그게 3개월 미발견의 직접 원인이다 — 당사 로그 실측(`/worker-jobs/{id}/output` 실제 UUID 0건)과 일치하는 진단
+
+### 계약 해석 대조 결과 (당사 코드 실대조, 회신 발신 완료)
+
+| 그쪽 해석 | 판정 | 근거 |
+|---|---|---|
+| `url` 은 오리진 루트 상대 경로 | ✅ 맞음 | `output-url-signer.ts` — `/storage-signed/outputs/…?md5=&expires=` |
+| 타 테넌트 404 | ✅ 맞음 | `worker-jobs.service.ts:2377` NotFound(존재 은닉) |
+| 만료 410 · 서명 불일치 403 | ✅ 맞으나 **표면이 섞였다** | 410/403 은 **nginx 가 서명 URL GET 에서**, 404 는 **당사 API 가 발급 시점에** |
+| `compose-mixed` 기본 `outputMode='separate'` | 🔴 **정정** | 워커 기본은 **`'merged'`**(`synthesis.processor.ts:432` `composeOutputMode \|\| 'merged'`). API 는 `dto.outputMode` 를 그대로 통과(`service.ts:1613`) — **명시 전송 안 하면 `merged.pdf` 1건** |
+
+### 당사가 추가로 통지한 5건
+
+1. **`files[0]` 은 항상 `outputFileUrl`** — `issueOutputUrls` 가 Set 에 `outputFileUrl` 을 먼저 넣는다. separate 모드는 `result.outputFileUrl = contentUrl` 이라 순서가 **[content.pdf, cover.pdf]**. → 그쪽 `merged > content > 첫 번째` 는 **우연이 아니라 구조적으로 모든 모드에서 맞다**(single 모드 `pages.pdf` 가 폴백 경로)
+2. **스프레드 책은 `outputMode` 를 `'separate'` 로 강제**(`service.ts:1602-1627`) — `merged` 요청도 2파일이 올 수 있다
+3. **400·503 처리 누락** — `400 JOB_OUTPUT_NOT_READY` · `400 JOB_OUTPUT_NOT_SIGNABLE` · `503 SIGNED_URL_NOT_CONFIGURED`
+4. **TTL 기본 300초**(최소 30, `OUTPUT_URL_TTL_SEC`) — 매 다운로드 재발급이라 무해, URL 캐시하면 5분 뒤 410
+5. 🔴 **D6 예고**: `OUTPUT_URL_NULL_JOB_SITE_ALLOWLIST` 가 켜지면 allowlist 밖 호출자의 **NULL-site 잡은 404**. 현재 미설정이라 통과 중. **D6 착수 전 bookmoa 와 조율 필수** — 그쪽 기존 잡이 NULL-site 면 영향권이다
+
+> 참고: 워커는 산출물에 `type`(`cover`/`content`/`pages`)을 다는데 **서명 응답은 버리고 `{name,url,expires}` 만 낸다.** 그쪽의 "산출물 이름은 동결 계약이 아니다" 판단이 맞다. 안정적 판별자가 필요하면 응답에 `type` 추가가 가능하다(**ADDITIVE, 기존 필드 무변경**) — 필요 여부를 회신 요청했다.
+
+### 잔여 — ACK 2건 대기
+
+① `outputMode` 명시 전송 여부 ② 400·503 처리 반영 여부, 그리고 `type` 필드 추가 필요 여부.
+`notify_when_idle` 을 함께 걸었다(§5 규칙 — **회신만이 도달 증거**다).
+
+**당사 코드 변경은 이 트랙 전체에서 0건이다.** `type` 추가를 요청받으면 그때 첫 코드 작업이 생긴다.
