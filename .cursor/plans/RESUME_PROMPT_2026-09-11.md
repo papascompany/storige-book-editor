@@ -48,7 +48,7 @@ docker compose exec -T nginx sh -c 'nginx -T 2>/dev/null | grep -c "찾을 문�
 
 > 실행 전 프로브에서 **실제 산출물이 무인증 200 으로 받아졌다**(없는 파일명 프로브는 404 라 미노출로 오인하기 쉽다 — 판별에 실제 파일을 써라).
 
-## 2. 🟢 통지 발신 완료 — printy 교차검증 종결 / bookmoa 회신 대기
+## 2. ✅ 통지 트랙 종결 — 양사 회신 완료 (파생 관측 1건은 §3 으로 이월)
 
 **2026-09-11 세션 발신 결과 — 양사 전건 발신 완료**
 
@@ -109,11 +109,46 @@ bookmoa 회신: 키·jobId 미보유로 라이브 실측 불가(시크릿 열람
 > 통지 ② 의 "고객 다운로드가 이미 파손 상태일 개연성" → **코드상 파손은 사실이나 진행 중인 장애가 아니다** 로 정정.
 > 핫픽스 아님. 질문이 "왜 2주간 아무도 안 탔나"(기능 미사용 / 다른 경로 사용 / 프론트 진입 차단)로 바뀐다 — bookmoa 만 답할 수 있다.
 
-⚠️ **잔여 불확실성 2건**(이게 뒤집히면 위 결론도 뒤집힌다):
-① bookmoa 프록시의 `apiBase` 실값이 `https://api.papascompany.co.kr` 가 맞는지 — 다른 곳을 가리키면 당사 로그에 안 보이는 게 당연해진다(bookmoa 확인 요청 발신)
-② 로그 창이 컨테이너 수명 2주뿐 — 그 이전은 알 수 없다
+~~⚠️ 잔여 불확실성 2건~~ → **둘 다 해소**(2026-09-11 후속 실측):
+① `apiBase` — **무의미해졌다.** bookmoa DB 실측 결과 **jobId 가 전 기간 0건**(주문 49건 중 `items[].storige.synthesisJobId|jobId` 보유 0 · `order_asset_claims` 의 `kind='job'` 0/54). 호출할 jobId 가 애초에 없었으므로 apiBase 가 어디든 로그 0건이 설명된다. bookmoa 가 '못 잰 0' 배제를 같은 쿼리에 넣어 검증했다(items 50건 전부 `storige` 키 보유 · fileId 37 · sessionId 37 → **fileId 모드는 실사용 중**, jobId 만 0)
+② 로그 창 2주 — **DB 로 기간 제한 없이 교차 확인 완료**(아래)
 
-### 🟡 bookmoa 잔여 — 실측 2건은 오너/키 보유 세션 몫
+> 결과 PDF 다운로드 버튼은 `resultJobId` 가 있을 때만 조건부 렌더된다 → **그 버튼이 한 번도 뜬 적이 없다.** 당사 로그의 "실제 UUID 0건" 과 같은 사실의 양쪽 면이다.
+
+### 🔍 파생 발견 — 합성 잡 3개월 공백 (플랫폼 전체, 원인 미확정)
+
+bookmoa 의 "왜 아무도 안 탔나" 질문을 당사 관측면에서 확인하다 드러났다. **bookmoa 고유 현상이 아니다.**
+
+API 로그(컨테이너 수명 2주): `compose-mixed` **0** · `synthesize/external` **0** · `synthesize` **0** ·
+`render-pages` **0** · `split-synthesis` **0** / `validate/external` 42
+→ 합성 계열 **전 라우트 0건**. "호출 갔는데 실패" 가 아니라 **호출이 없었다**.
+
+`worker_jobs` 전 기간 교차 확인:
+
+| job_type | 건수 | 최종 |
+|---|---|---|
+| VALIDATE | FIXABLE 105 · COMPLETED 67 · FAILED 50 | **2026-09-09** |
+| CUTOUT | COMPLETED 28 | 2026-08-18 |
+| RENDER_PAGES | COMPLETED 9 | 2026-08-14 |
+| CONVERT | COMPLETED 3 | 2026-07-13 |
+| **SYNTHESIZE** | COMPLETED 10 · FAILED 2 | **2026-06-13** |
+
+⚠️ `WorkerJobType` enum 은 VALIDATE·CONVERT·SYNTHESIZE·RENDER_PAGES·CUTOUT **5종뿐**이고
+compose-mixed·split·spread 를 포함한 **모든 합성 변형이 SYNTHESIZE 로 기록**된다 — 위 행이 합성 전량이다.
+
+> **관측 사실**: 합성 잡 마지막 생성 2026-06-13, 이후 약 3개월 0건. 같은 기간 업로드·검증은 9/9 까지 활발.
+> **원인 미확정**: SYNTHESIZE 는 과거 10건 COMPLETED 로 정상 동작 이력이 있다(site 스탬프 5건 = 2026-05-03, NULL 7건 = 6/13까지).
+> 따라서 "기능이 깨졌다" 가 아니라 **"6월 이후 아무도 트리거하지 않았다"** 가 사실이다.
+> ⓐ 오픈 전이라 제작까지 간 주문 없음 / ⓑ 트리거 미작동 — 둘 다 이 데이터와 양립한다. **추정을 사실로 적지 않는다.**
+> ⚠️ D6 백필·파일 보존 트랙이 "합성 트래픽이 있다" 를 암묵 전제하고 있다면 이 공백을 먼저 반영해야 한다.
+
+### 🟢 bookmoa — R-172 개설 완료, 당사 잔여 없음
+
+bookmoa 가 원장 **R-172** 로 개설(긴급도 하향 · 진행 중 장애 아님 · 핫픽스 아님 명기). **코드 미착수**, 착수 시점은 bookmoa 오너 결정.
+전환 방식은 **ⓐ안 확정**(프록시 유지 + 업스트림만 `external/{id}/output-url` 교체) — 파일명·인라인 표시가 현행과 동일해 회귀 위험 최소.
+**확정 전까지 당사 변경 없음.** bookmoa 는 이미 `Content-Disposition` 조립 시 CRLF·따옴표·제어문자를 제거한다(H-4) — ⓒ안을 나중에 하면 당사도 동급 필요.
+
+### ~~🟡 bookmoa 잔여 — 실측 2건은 오너/키 보유 세션 몫~~ (상위 실측으로 대체됨)
 
 ⓐ 구 URL 410 교차실측 ⓑ `GET /api/worker-jobs/<실제 jobId>/output` (유효 X-API-Key) 상태코드.
 ⚠️ 단 ⓑ 는 **코드 증명이 이미 결정적**이다(전역 `JwtAuthGuard` + 해당 핸들러에 `@Public`·`ApiKeyGuard` 부재 → 유효 키도 무의미).
