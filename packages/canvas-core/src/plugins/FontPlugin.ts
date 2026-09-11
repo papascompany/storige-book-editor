@@ -660,6 +660,20 @@ class FontPlugin extends PluginBase {
 
       const styleId = 'dynamic-font-faces'
       let style = document.getElementById(styleId) as HTMLStyleElement | null
+
+      // A-1: 이미 붙어 있는 CSS 와 완전히 동일하면 재기입도 정착 대기(rAF+300ms)도 건너뛴다.
+      // @font-face 규칙은 textContent 대입 시점에 CSSOM 에 동기 반영되므로, 내용이 같다면
+      // 앞서 만들어진 규칙이 그대로 유효하고 브라우저가 다시 파싱할 것도 없다.
+      // createFontCSS 는 생성자에서만 호출되므로 이 분기가 걸리는 경우는 **같은 폰트 목록으로
+      // FontPlugin 이 재생성될 때**다(에디터 재초기화·StrictMode 이중 마운트 등).
+      // ⚠️ fontUrlByName 채우기는 위 forEach 에서 이미 끝났다 — 스킵해도 새 인스턴스의
+      //    URL 맵은 정상 구성된다. 이 검사를 forEach 앞으로 올리면 맵이 빈 채로 남는다.
+      if (style && style.textContent === code) {
+        dlog('font', '📝 폰트 CSS 동일 — 재기입/정착 대기 스킵')
+        resolve()
+        return
+      }
+
       if (!style) {
         style = document.createElement('style')
         style.id = styleId
