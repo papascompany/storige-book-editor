@@ -1,9 +1,11 @@
-# CONTRACT_FREEZE.md — Storige 플랫폼 계약 표면 동결 (v1.3)
+# CONTRACT_FREEZE.md — Storige 플랫폼 계약 표면 동결 (v1.4)
 
 > 작성 2026-07-03 · 근거: Phase 0 정찰 5팀(서명·재검증·보안·계약열거·구현준비) + 적대검증 2렌즈(계약 완전성·diff 회귀) 실코드 대조.
 > **무중단 원칙 절대**: 파트너 4종(bookmoa-mobile / Sharesnap / 100p_books / MD2Books)이 오늘 프로덕션에서 의존하는 표면은 시맨틱 변경·제거를 금지한다. 위반 변경은 Review Gate에서 오너 승인 없이 착수 금지.
 > **v1.1 변경**: 적대검증(FAIL, P0×3)이 잡은 누락 보강 — 업로드 표면 6종+크기 경계, frame-ancestors(死코드 오판정 → FROZEN 격상), 업로드 응답 shape·NOT_S3·content-type 화이트리스트, 100p 재분류.
 > **v1.2 추가 (2026-07-28)**: **호스트→편집기 수신 명령 계약 v1** 등재(§1-D-1). 신규 계약 제정이 아니라 **既 GUIDE 노출분의 사후 추인**(정식 계약 승격) — 발신 표면(8종 FROZEN + `editor.pricingChange` ADDITIVE)은 불변이며 넓히지 않는다.
+> **v1.4 개정 (2026-09-12)**: 🚨 **FROZEN 항목 1행 개정** — §1-C-1 "스탬프 근거의 유일성"이 근거를 "서명 검증된 JWT 뿐" 으로 적고 있었으나, 그 문구 그대로는 **D6 NULL-파괴 게이트가 정상 파트너를 파손**한다(`compose-mixed` 를 `X-API-Key` 로 호출하는 파트너에게 자기 잡에 siteId 를 붙일 수단이 없어 전건 NULL 스탬프 — RESUME 2026-09-11 §8-1). 오너 결정(ⓐ안)에 따라 **DB 에서 검증된 활성 사이트 자격증명**을 근거에 추가했다. 금지 대상은 그대로다: **호출자가 주장한** siteId(본문·헤더·쿼리 값)는 여전히 채택 금지. 상세는 §1-C-2.
+>
 > **v1.3 추가 (2026-09-11)**: **S3-A안 옵션형 site 스탬프** 등재(§1-C-1). 2026-08-28 구현·배포된 `c050729` 가 계약 문서에 전무했다(파일 전체 `Bearer` 0건). 신규 계약 제정이 아니라 **이미 라이브인 표면의 사후 추인** — 특히 `firstFinalize` 게이트는 최적화가 아니라 **동결 대상 보안 계약**이다. 동시에 §4.3 의 "오너 결정 대기" 표기를 정정(D1·D3·D4 는 2026-08-28 승인·집행 완료).
 
 ## 0. 동결 규약 (Freeze Discipline)
@@ -75,11 +77,48 @@
 |---|---|---|---|
 | `POST /files/multipart/complete` · `POST /files/:id/complete` 의 **`Authorization: Bearer <shop-session JWT>` 옵션 소비** | **ADDITIVE** | 서명 검증된 shop-session 이 실려 오면 그 `siteId` 로 파일을 귀속. **토큰 없음/위조/비-shop(`source!=='shop'`) → 종전대로 `site_id=NULL`** — 100p 키없는 server-to-server·게스트 경로 무영향이 무중단 조건이다 | `files.controller.ts:186-188`·`:223-225`(`@UseGuards(OptionalShopJwtGuard)` — **절대 거부하지 않는** 옵션 가드) |
 | **`firstFinalize` 게이트** (`pending→ready` 전이 1회로 스탬프 한정) | **FROZEN(보안 계약)** | 🚨 **제거·완화 금지.** `ready` 멱등 재호출은 `uploadToken` 이 소거된 상태라 무토큰 통과한다. 게이트가 없으면 `fileId` 만 아는 타 테넌트가 Bearer 를 실어 **남의 NULL 파일을 자기 site 로 소급 하이재킹**하고, 진짜 소유자는 이후 site 대조에서 404 를 맞는다(기존에 없던 신규 파손 벡터) | `presigned-upload.service.ts:415-424` (`const firstFinalize = file.status !== 'ready'` → `firstFinalize && !file.siteId && caller?.siteId && caller.role !== 'worker'`) |
-| 스탬프 **근거의 유일성** | **FROZEN** | 스탬프 근거는 **서명 검증된 JWT 뿐**. 본문 필드·헤더·쿼리의 siteId 주장은 채택 금지(`edit-sessions.createGuest` I-1 원칙, compose-mixed 수동 경로와 동일 규약) | `worker-jobs.service.ts:1583`·`:1556`(불일치 시 NULL 스탬프 + 경고 로그) |
+| 스탬프 **근거의 유일성** | **FROZEN**<br>(근거 1종 추가 — v1.4) | 스탬프 근거는 ① **서명 검증된 JWT** 와 ② **DB 에서 검증된 활성 사이트 자격증명**(`X-API-Key` → `status:'active'` 행 조회, v1.4 추가) **뿐**. 🚫 **호출자가 주장한** siteId(본문 필드·헤더·쿼리 값)는 채택 금지 — 변하지 않았다(`edit-sessions.createGuest` I-1 원칙). ②가 ①과 같은 급인 이유: 값이 요청에서 오지 않고 **서버가 비밀 자격증명으로 DB 에서 도출**하므로 위조에 키 탈취가 필요하다 | `worker-jobs.service.ts:1543-1607` `resolveComposeMixedSiteId`(①=②분기, 불일치 시 NULL 스탬프 + 경고 로그) |
 
 **동결 저촉 없음 실증**: `@Public` 유지 · `ApiKeyGuard` 불추가 · 응답 shape 불변 → `contract-freeze.spec` 무변경 통과
 (스펙은 경로·메서드·`IS_PUBLIC`·`ApiKeyGuard` 유무만 단언한다). 계약 고정 스펙은 `presigned-complete-stamp.spec` 8종이며
 그중 **T6 이 `firstFinalize` 불소급을 고정**한다 — 이 스펙이 깨지면 위 2행을 되돌린 것이다.
+
+### §1-C-2 compose-mixed 사이트 키 스탬프 (D6-ⓐ, 2026-09-12)
+
+> 근거: 오너 결정 ⓐ안 · 문제 정의 `RESUME_PROMPT_2026-09-11.md` §8-1(D6 하드 블로커).
+> **왜 필요했나**: 2026-08-13 테넌트 스탬프 위조 차단이 `body.siteId` 무검증 채택을 막으면서,
+> **`X-API-Key` 호출자가 자기 잡에 siteId 를 붙일 수단이 남지 않았다**. 그 결과 파트너 정규 경로
+> (키 + `body.siteId` 미전송)로 만든 잡은 **전건 NULL-site** 이고, D6 NULL-파괴 게이트를 켜면
+> 그 파트너의 산출물 다운로드가 **404** 가 된다. 위조 차단은 write 위조만 막고 정당한 귀속 수단을
+> 만들지 않은 것이 공백의 정체다.
+
+| 표면 | 분류 | 계약 내용 | 근거 |
+|---|---|---|---|
+| `POST /worker-jobs/compose-mixed` 의 **`X-API-Key` 옵션 소비** | **ADDITIVE** | 활성 사이트 키가 실려 오면 그 사이트로 잡을 귀속. **키 없음/무효/폐기(`status!=='active'`)/내부 `WORKER_API_KEY` → 종전대로 NULL 스탬프**. 무인증 게스트 호출 무영향이 무중단 조건 | `worker-jobs.controller.ts` `@UseGuards(OptionalShopJwtGuard, OptionalApiKeySiteGuard)` |
+| **`OptionalApiKeySiteGuard` 의 무조건 통과** | **FROZEN(동결 계약)** | 🚨 **throw 추가 금지.** 이 가드가 401 을 던지는 순간 `auth:'public'` 동결이 의미상 깨지고 무인증 게스트(bookmoa-mobile·Sharesnap 의존)가 파손된다. `ApiKeyGuard` 로 교체하는 것도 같은 파손 | `optional-api-key-site.guard.ts` 불변식 1 |
+| **`caller`(JWT) 와 `apiKeySite`(키) 의 분리** | **FROZEN(보안 계약)** | 🚨 **한 객체로 합치지 말 것.** 합치면 자동조립 인가 게이트(`assembleComposeInputFromSession` 의 `caller.siteId` 일치 검사)가 API 키로 통과되고, API 키에는 `allowedOrderSeqnos` 주문 스코프가 없어 **호환 모드(검사 생략)** 로 떨어진다 → 같은 테넌트의 **타 고객 세션**을 합본으로 뽑는 권한 상승 | `optional-api-key-site.guard.ts` 불변식 2 · 컨트롤러 3번째 인자 분리 |
+
+**채택 규칙**(`resolveComposeMixedSiteId`, 위→아래 우선):
+① 자동조립 → `session.siteId`(세션 권위, **키로 덮어쓰지 않는다**) ② 검증된 shop-session JWT == `body.siteId` → 채택
+③ 검증된 사이트 키 → 채택, 단 ⓐ `body.siteId` 가 키와 불일치 / ⓑ `editSessionId` 세션이 **타 테넌트 소유**로 확인됨 /
+ⓒ shop-session JWT 가 다른 테넌트 → 전부 **NULL 스탬프** ④ 그 외 NULL(종전 불변).
+
+> ⚠️ ③-ⓑ 의 "확인됨" 은 **양성 판정 한정**이다. 세션 부재·조회 실패·`siteId IS NULL`(레거시 무소유)은
+> "상충 소유자 없음" 으로 **채택**한다 — 여기서 거부하면 정상 파트너가 다시 깨진다.
+> 🚨 세션 소유 정보는 수동 경로가 **이미 읽는** 조회를 재사용한다(추가 쿼리 없음). 그 대입이
+> `repository.create` 보다 **먼저** 일어나야 ③-ⓑ 가 작동한다 — 조회 블록을 뒤로 옮기거나 앞에
+> 조기 return 을 끼우면 교차 테넌트 검사가 **조용히** 무력화된다. 순서가 곧 계약이다.
+
+**동결 저촉 없음 실증**: `@Public` 유지 · `ApiKeyGuard` 불추가(별도 클래스) · 응답 shape 불변 · 400/401 신설 0건
+→ `contract-freeze.spec` **73종 무변경 통과**(스펙은 `guards.includes(ApiKeyGuard) === false` 로 "X-API-Key 가
+**필수가 아님**" 을 잠그며, 키를 *쳐다보는 것* 은 금지 대상이 아니다).
+계약 고정 스펙: `worker-jobs.compose-mixed-site-stamp.spec` §5(12종) · `optional-api-key-site.guard.spec`(12종) ·
+`worker-jobs.controller.compose-mixed-caller.spec` 의 apiKeySite 배선(3종).
+
+> 🔴 **미검증 잔여**: 실 파트너 호출로 스탬프가 붙는 것은 **라이브 실증 전**이다. compose-mixed 프로덕션
+> 호출 이력이 0건이고(2026-08-13 실측, 2026-09-11 재확인) 결속된 실 jobId 가 없어 e2e 를 돌릴 대상이 없다.
+> **D6 게이트를 켜기 전에 첫 실합성으로 `job.siteId` 가 NULL 이 아님을 확인할 것** — 이 확인 없이 게이트를
+> 켜면 ⓐ를 한 효과가 없고 §8-1 의 404 가 그대로 재현된다.
 
 ### 1-D. 임베드/게스트 표면
 
@@ -92,7 +131,7 @@
 | **호스트→편집기 수신 명령 엔벨로프 v1** `{source:'storige-host', version:'1', command, requestId?, payload?}` + 명령 3종(`getState`/`saveNow`/`setBackGuard`) | 임베드 2종(파트너 4종 現 미발신 — GUIDE 노출분이라 발신 가능)·SDK `/embed` 예정 | **ADDITIVE(등재) → FROZEN(v1 시맨틱)** | **既 GUIDE 노출분의 사후 추인** — 상세·응답 유형·확장 규약은 **§1-D-1** |
 | 레거시 `storige:*` dual-emit | bookmoa | FROZEN(하위호환) | parentOrigin 미지정 시 targetOrigin='*' — 신규 연동 혼입 금지 |
 | shop-session 응답 shape (accessToken/refreshToken/expiresIn/member) | 임베드 2종 | FROZEN | |
-| `POST /worker-jobs/compose-mixed` (@Public, 게스트) | 게스트 편집 | FROZEN(게스트 UX) | siteId=dto.siteId‖null (NULL 격리 결함 §4.3) |
+| `POST /worker-jobs/compose-mixed` (@Public, 게스트) | 게스트 편집 | FROZEN(게스트 UX) | siteId = 세션권위‖검증JWT‖**검증 사이트키(v1.4)**‖null — `dto.siteId` 직접 대입은 2026-08-13 폐기(§1-C-2). 무인증 게스트는 여전히 NULL(격리 결함 §4.3) |
 | `POST /worker-jobs/render-pages` (@Public, 게스트) | 게스트 편집 | FROZEN(게스트 UX) | 동일 NULL 결함 |
 | `POST /worker-jobs/fix-bleed` (@Public, 게스트) — **ADDITIVE 2026-07-13 신설** | 게스트 편집(BLEED_MISSING extendBleed 실행기) | ADDITIVE→FROZEN(게스트 UX) | body=`{fileId,templateSetId}` 뿐 — editSize 는 서버가 templateSet 권위 산출(임의 사이즈 차단). 잡 siteId=원본 파일 승계‖null. 폴링 `GET /worker-jobs/:id`→`outputFileId`. contract-freeze.spec 동시 등재 |
 | 조회: `/edit-sessions/external?orderSeqno=`, `/edit-sessions/my`, `guest/migrate`, `spine/calculate`, `template-sets/:id/with-templates` | 4종 혼용 | FROZEN | 응답 `{data:[{files}]}` shape 포함 · **contract-freeze.spec 등재 2026-08-26**(종전 리플렉션 게이트 밖이었다 — 문서만 동결) |
@@ -172,6 +211,8 @@
 - **4.1** 발신부 HMAC ↔ bookmoa HMAC 경로 형식 불일치 — v2 opt-in 전 bookmoa 수신부 재작성.
 - **4.2** Sharesnap retry 서명 누락 허용 vs bookmoa 필수 — 발신부 재시도 서명 포함을 계약 동결로 고정.
 - **4.3** NULL-siteId 파일은 `assertSiteAccess`(files.service.ts:333) 무조건 통과 → 테넌트 격리 불가. compose-mixed/render-pages 게스트가 NULL 스탬프.
+  - ✅ **2026-09-12(§1-C-2)**: compose-mixed 는 **사이트 키 호출분에 한해** 해소됐다(키 → 서버 도출 스탬프). 무인증 게스트와 `render-pages` 는 미해소.
+  - 🚨 **D6 착수 전 필수**: NULL-파괴 게이트는 "잡에 siteId 가 붙는다"를 전제한다. ⓐ 배포 **이전에 만들어진** 파트너 잡은 전건 NULL 이므로 게이트 대상이다 — 백필 범위 산정에 ⓐ 배포 시각을 경계로 쓸 것.
   - ⚠️ **2026-09-11 정정**: 종전의 "오너 결정" 표기는 스테일이다. 이원 정책의 **신규 site 스탬프 쪽은 오너 승인(D1)을 받아 2026-08-28 집행 완료**(§1-C-1, `c050729`)이며 D3·D4 도 같은 날 승인됐다.
   - **잔여 미결은 D6 뿐**: ① NULL-파괴 게이트 ② 기존 의존분 allowlist 승격 ③ 레거시 NULL 백필. 착수 시점만 오너 결정 대기이며, 설계 §2-B' 단서대로 "해당 파트너의 기존 회수가 자기 키로 이뤄지는지" **관측이 백필보다 선행**한다.
   - ⚠️ 집행 전 수치 재실측 필수 — 백필 41건/NULL 225건은 **2026-08-28 실측치이고 이후 재실측이 없다**.

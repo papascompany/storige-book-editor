@@ -1,10 +1,12 @@
 # RESUME PROMPT — 2026-09-11
 
-> **이 문서가 최신 날짜 정본이다.** 8/25~8/28 상세 이력(④~⑮)은 `RESUME_PROMPT_2026-08-25.md`, 8/28 세션 종료 상태는 `RESUME_PROMPT_2026-08-28.md`(이력 아카이브) 참조.
+> ⚠️ **최신 정본은 `RESUME_PROMPT_2026-09-12.md` 다(D6-ⓐ 구현).** 이 문서는 9/11 상세 이력 아카이브다. 8/25~8/28 상세 이력(④~⑮)은 `RESUME_PROMPT_2026-08-25.md`, 8/28 세션 종료 상태는 `RESUME_PROMPT_2026-08-28.md`(이력 아카이브) 참조.
 
 ## 0. 현재 라이브 상태 (2026-09-11 기준)
 
-- **master = origin/master (2026-09-11 저녁 `ed21d8b` 까지 푸시 완료, 오너 승인 후 실행).** VPS `~/storige` 는 `94edb89` 유지 — API 재배포 불요
+- **master = origin/master (2026-09-11 저녁분 전량 푸시 완료, 오너 승인 후 실행).** VPS `~/storige` 는 `94edb89` 유지 — API 재배포 불요
+  - 🔧 **2026-09-12 정정**: 이 줄에 원래 `ed21d8b` 가 박혀 있었으나 이후 문서 커밋 9건이 쌓여 낡았다 — **같은 함정의 4번째 발생**이다.
+    처방대로 해시를 **지웠다**(갱신 후 HEAD 를 다시 읽는 게 아니라 애초에 자기 해시를 쓰지 않는 것이 해결책). 정확한 HEAD 는 항상 `git log --oneline -5`.
   - 푸시분 = ① FontPlugin A-1(`packages/canvas-core/src`) ② 세션 로그. VPS 동기화 불요는 동일(코드는 editor 번들 전용, API·워커 무관)
   - 배포 결과: **editor · admin 둘 다 Ready**(editor `dpl_7XkDZaKDwZnaBLYAGQFEKUR27Pvd`, alias `editor.papascompany.co.kr`). CI `ci`·`gitleaks` 둘 다 success
 

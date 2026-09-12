@@ -89,6 +89,41 @@ describe('WorkerJobsController.createComposeMixed — 자동조립 caller 배선
     const bodyWithSite = { ...(dto as object), siteId: 'site-FORGED' } as never;
     await controller.createComposeMixed(bodyWithSite, undefined);
 
-    expect(workerJobsService.createComposeMixedJob).toHaveBeenCalledWith(bodyWithSite, undefined);
+    // [D6-ⓐ 2026-09-12] 3번째 인자 = 사이트 키 컨텍스트. 키 없는 호출은 undefined.
+    expect(workerJobsService.createComposeMixedJob).toHaveBeenCalledWith(
+      bodyWithSite,
+      undefined,
+      undefined,
+    );
+  });
+
+  // ── [D6-ⓐ] 사이트 키 컨텍스트 배선 ─────────────────────────────────────
+  // 🚨 caller(2번째)와 apiKeySite(3번째)는 **끝까지 분리**돼야 한다. 한 객체로 합치면
+  //    자동조립 인가 게이트(assembleComposeInputFromSession 의 caller.siteId 일치 검사)가
+  //    API 키로 통과되고, API 키에는 allowedOrderSeqnos 주문 스코프가 없어 호환 모드로
+  //    떨어진다 → 같은 테넌트의 **타 고객 세션**을 합본으로 뽑는 권한 상승.
+  describe('사이트 키 컨텍스트(apiKeySite) 배선', () => {
+    const apiKeySite = { siteId: 'site-KEY', siteName: 'KEY' };
+
+    it('3번째 인자로 그대로 전달된다', () => {
+      return controller.createComposeMixed(dto, undefined, apiKeySite).then(() => {
+        expect(workerJobsService.createComposeMixedJob.mock.calls[0][2]).toEqual(apiKeySite);
+      });
+    });
+
+    it('caller 와 섞이지 않는다 — 키만 있으면 caller 는 여전히 undefined', async () => {
+      await controller.createComposeMixed(dto, undefined, apiKeySite);
+      expect(callerArg()).toBeUndefined();
+    });
+
+    it('shop-session 과 키가 동시에 있어도 각자 자기 자리로 간다', async () => {
+      await controller.createComposeMixed(
+        dto,
+        { source: 'shop', siteId: 'site-JWT', allowedOrderSeqnos: [111] },
+        apiKeySite,
+      );
+      expect(callerArg()).toEqual({ siteId: 'site-JWT', allowedOrderSeqnos: [111] });
+      expect(workerJobsService.createComposeMixedJob.mock.calls[0][2]).toEqual(apiKeySite);
+    });
   });
 });

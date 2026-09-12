@@ -259,4 +259,121 @@ describe('compose-mixed — job.siteId 스탬프 규칙(위조 차단)', () => {
       expect(context).toEqual({ siteId: null, env: undefined });
     });
   });
+
+  // ────────────────────────────────────────────────────────────────────────
+  // 5. [D6-ⓐ 2026-09-12] 검증된 사이트 키를 스탬프 권위로 인정
+  //
+  // 왜: 2026-08-13 위조 차단이 `body.siteId` 무검증 채택을 막으면서, **API 키 호출자가
+  // 자기 잡에 siteId 를 붙일 수단이 남지 않았다**. 파트너 정규 경로(키 + body.siteId
+  // 미전송)는 전건 NULL 스탬프가 되고, D6 NULL-파괴 게이트를 켜면 그 파트너의 산출물
+  // 다운로드가 404 로 죽는다(RESUME 2026-09-11 §8-1 하드 블로커).
+  //
+  // 이 블록이 잠그는 계약:
+  //  1. 키만 있고 body.siteId 가 없어도 **키 소유 사이트로 스탬프**(= 파트너 실제 호출 형태).
+  //  2. 위조 차단은 유지 — 키와 다른 body.siteId / 타 테넌트 세션 / 상충 JWT 는 전부 NULL.
+  //  3. 자동조립은 여전히 세션 권위 — 키로 덮어쓰지 않는다.
+  //  4. 스탬프 근거가 늘어도 워커 입력(큐 페이로드)은 불변.
+  // ────────────────────────────────────────────────────────────────────────
+  describe('[D6-ⓐ] 검증된 사이트 키 = 스탬프 권위', () => {
+    /** OptionalApiKeySiteGuard 가 복원해 주는 컨텍스트(컨트롤러가 3번째 인자로 전달) */
+    const keyA = { siteId: 'site-A' };
+
+    beforeEach(() => {
+      // 기본: 세션은 존재하지만 소유 테넌트 정보 없음(= 상충 소유자 없음)
+      editSessionRepository.findOne.mockResolvedValue({ id: 'sess-1', metadata: {} });
+    });
+
+    it('🔑 키만 + body.siteId 미전송 → 키 소유 사이트로 스탬프 (파트너 실제 호출 형태)', async () => {
+      await service.createComposeMixedJob({ ...manualDto }, undefined, keyA);
+      expect(createdJob().siteId).toBe('site-A');
+    });
+
+    it('키 + 일치하는 body.siteId → 채택', async () => {
+      await service.createComposeMixedJob({ ...manualDto, siteId: 'site-A' }, undefined, keyA);
+      expect(createdJob().siteId).toBe('site-A');
+    });
+
+    it('키 + editSessionId 미전달 → 채택(세션 대조 불가 = 상충 없음)', async () => {
+      await service.createComposeMixedJob(
+        { ...manualDto, editSessionId: undefined },
+        undefined,
+        keyA,
+      );
+      expect(createdJob().siteId).toBe('site-A');
+    });
+
+    it('키 + 세션 소유가 같은 테넌트 → 채택', async () => {
+      editSessionRepository.findOne.mockResolvedValue({
+        id: 'sess-1',
+        siteId: 'site-A',
+        metadata: {},
+      });
+      await service.createComposeMixedJob({ ...manualDto }, undefined, keyA);
+      expect(createdJob().siteId).toBe('site-A');
+    });
+
+    it('키 + 세션 siteId 가 NULL(레거시 무소유) → 채택 — 여기서 거부하면 정상 파트너가 깨진다', async () => {
+      editSessionRepository.findOne.mockResolvedValue({
+        id: 'sess-1',
+        siteId: null,
+        metadata: {},
+      });
+      await service.createComposeMixedJob({ ...manualDto }, undefined, keyA);
+      expect(createdJob().siteId).toBe('site-A');
+    });
+
+    it('키 + 세션 조회 실패(throw) → 채택(잡 생성 무중단, 기존 best-effort 계약)', async () => {
+      editSessionRepository.findOne.mockRejectedValue(new Error('DB down'));
+      await service.createComposeMixedJob({ ...manualDto }, undefined, keyA);
+      expect(createdJob().siteId).toBe('site-A');
+    });
+
+    // ── 위조 차단은 그대로 유지된다 ──────────────────────────────────────
+    it('🚫 키 + 불일치 body.siteId → NULL 스탬프(타 테넌트 주장 차단)', async () => {
+      await service.createComposeMixedJob(
+        { ...manualDto, siteId: 'site-VICTIM' },
+        undefined,
+        keyA,
+      );
+      expect(createdJob().siteId).toBeNull();
+    });
+
+    it('🚫 키 + 세션이 타 테넌트 소유 → NULL 스탬프(교차 테넌트 링크 차단)', async () => {
+      editSessionRepository.findOne.mockResolvedValue({
+        id: 'sess-1',
+        siteId: 'site-VICTIM',
+        metadata: {},
+      });
+      await service.createComposeMixedJob({ ...manualDto }, undefined, keyA);
+      expect(createdJob().siteId).toBeNull();
+    });
+
+    it('🚫 키 + shop-session JWT 가 다른 테넌트 → NULL 스탬프(권위 상충)', async () => {
+      await service.createComposeMixedJob({ ...manualDto }, { siteId: 'site-VICTIM' }, keyA);
+      expect(createdJob().siteId).toBeNull();
+    });
+
+    it('키 없음 → 종전과 완전히 동일(NULL 스탬프, 회귀 없음)', async () => {
+      await service.createComposeMixedJob({ ...manualDto, siteId: 'site-A' }, undefined, undefined);
+      expect(createdJob().siteId).toBeNull();
+    });
+
+    // ── 자동조립 경로 무변경 ────────────────────────────────────────────
+    it('자동조립 + 키 → 세션 권위가 이긴다(키로 덮어쓰지 않는다)', async () => {
+      editSessionRepository.findOne.mockResolvedValue(sessionA);
+      templateSetsService.findOne.mockResolvedValue(templateSetA4);
+      await service.createComposeMixedJob(
+        { assembleFromSession: true, editSessionId: 'sess-1', siteId: 'site-VICTIM' },
+        { siteId: 'site-A' },
+        { siteId: 'site-OTHER' },
+      );
+      expect(createdJob().siteId).toBe('site-A');
+    });
+
+    // ── 워커 입력 불변 ──────────────────────────────────────────────────
+    it('키 스탬프는 큐 페이로드에 siteId 를 넣지 않는다(워커 입력 불변)', async () => {
+      await service.createComposeMixedJob({ ...manualDto }, undefined, keyA);
+      expect(queuePayload()).not.toHaveProperty('siteId');
+    });
+  });
 });

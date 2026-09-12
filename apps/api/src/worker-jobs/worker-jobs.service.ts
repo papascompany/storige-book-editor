@@ -1544,19 +1544,74 @@ export class WorkerJobsService implements OnModuleInit {
     dto: ComposeMixedJobInput,
     caller: { siteId?: string } | undefined,
     assembled: boolean,
+    apiKeyCaller?: { siteId: string },
+    /**
+     * 수동 경로에서 **이미 읽어 둔** `editSessionId` 세션의 소유 테넌트.
+     * `undefined` = 미조회·세션 부재·조회 실패(판정 정보 없음) / `null` = 세션이 무소유.
+     * 둘 다 "상충하는 소유자 없음" 으로 취급한다(아래 ③-b).
+     */
+    sessionSiteId?: string | null,
   ): string | null {
     const requested = dto.siteId || null;
-    if (!requested) return null;
-    // 세션 권위(자동조립) — 인가 게이트를 이미 통과한 값.
-    if (assembled) return requested;
-    if (caller?.siteId && caller.siteId === requested) return requested;
 
-    const hint = `len=${requested.length} prefix=${requested.slice(0, 4).replace(/[^0-9a-fA-F-]/g, '')}`;
+    // ── ① 세션 권위(자동조립) — 인가 게이트를 이미 통과한 값. [무변경]
+    if (assembled) return requested;
+
+    // ── ② 검증된 shop-session JWT 와 일치. [무변경]
+    if (requested && caller?.siteId && caller.siteId === requested) return requested;
+
+    // ── ③ [D6-ⓐ 2026-09-12] 검증된 사이트 키 = 그 사이트 본인.
+    //    `body.siteId` 주장을 믿는 게 아니다 — 비밀 자격증명을 DB 에서 조회해 **서버가
+    //    도출한** 값이므로 위조에 키 탈취가 필요하다(종전보다 한 겹 두껍다).
+    //    이 블록이 없으면 파트너 정규 경로(키 + body.siteId 미전송)가 전건 NULL 스탬프로
+    //    남아 D6 NULL-파괴 게이트에서 404 가 된다(RESUME §8-1).
+    const keySiteId = apiKeyCaller?.siteId || null;
+    if (keySiteId) {
+      // ③-a 호출자가 body.siteId 를 실었다면 키 소유 사이트와 일치해야 한다.
+      //     불일치 = 타 테넌트 주장 → 채택 거부(위조 차단 원칙 유지).
+      if (requested && requested !== keySiteId) {
+        this.logger.warn(
+          `[compose-mixed] 사이트 키와 body.siteId 불일치 → NULL 스탬프. ` +
+            `key(${this.siteIdHint(keySiteId)}) body(${this.siteIdHint(requested)})`,
+        );
+        return null;
+      }
+      // ③-b editSessionId 가 **다른 테넌트 소유**로 확인되면 채택하지 않는다.
+      //     교차 테넌트 링크(잡 완료가 남의 세션 workerStatus 를 건드리는 경로, :2477)를
+      //     스탬프로 굳히지 않는다. ⚠️ `sessionSiteId` 가 없거나 NULL 이면 **상충 소유자가
+      //     없으므로** 채택한다 — 레거시 무소유 세션에서 거부하면 정상 파트너가 다시 깨진다.
+      if (sessionSiteId && sessionSiteId !== keySiteId) {
+        this.logger.warn(
+          `[compose-mixed] 세션 소유 테넌트와 사이트 키 불일치 → NULL 스탬프. ` +
+            `key(${this.siteIdHint(keySiteId)}) session(${this.siteIdHint(sessionSiteId)})`,
+        );
+        return null;
+      }
+      // ③-c 검증된 shop-session JWT 과도 상충하면 거부(두 권위가 다른 테넌트를 지목).
+      if (caller?.siteId && caller.siteId !== keySiteId) {
+        this.logger.warn(
+          `[compose-mixed] shop-session 과 사이트 키가 서로 다른 테넌트 → NULL 스탬프.`,
+        );
+        return null;
+      }
+      return keySiteId;
+    }
+
+    // ── ④ 채택 근거 없음 → NULL 스탬프(400 없음 = 무중단). [무변경]
+    if (!requested) return null;
     this.logger.warn(
       `[compose-mixed] body.siteId 무시(NULL 스탬프) — 검증된 shop-session 과 불일치. ` +
-        `caller=${caller?.siteId ? 'shop-session' : 'none'} body(${hint})`,
+        `caller=${caller?.siteId ? 'shop-session' : 'none'} body(${this.siteIdHint(requested)})`,
     );
     return null;
+  }
+
+  /**
+   * 테넌트 UUID 의 로그 안전 축약 — 길이 + 앞 4자만, UUID 문자셋 밖 문자는 제거(로그 인젝션 방지).
+   * 값 전체를 남기면 타 사이트 식별자가 로그에 누적된다.
+   */
+  private siteIdHint(siteId: string): string {
+    return `len=${siteId.length} prefix=${siteId.slice(0, 4).replace(/[^0-9a-fA-F-]/g, '')}`;
   }
 
   /**
@@ -1586,6 +1641,12 @@ export class WorkerJobsService implements OnModuleInit {
   async createComposeMixedJob(
     rawDto: ComposeMixedJobInput,
     caller?: { siteId?: string; allowedOrderSeqnos?: unknown },
+    /**
+     * [D6-ⓐ] 검증된 사이트 키 컨텍스트(OptionalApiKeySiteGuard). `caller` 와 **합치지 말 것** —
+     * 분리가 자동조립 인가 게이트의 권한 상승을 막는 장치다(가드 불변식 2).
+     * 여기서는 `resolveComposeMixedSiteId` 의 스탬프 근거로만 쓰인다.
+     */
+    apiKeyCaller?: { siteId: string },
   ): Promise<WorkerJob> {
     // ── 분기 게이트(최상단) — opt-in 이 아니면 rawDto 를 그대로 흘려보낸다.
     const assembledFromSession = rawDto.assembleFromSession === true;
@@ -1611,11 +1672,18 @@ export class WorkerJobsService implements OnModuleInit {
     let composeSpreadOutputWidthMm: number | undefined;
     let composeSpreadOutputHeightMm: number | undefined;
     let effectiveOutputMode = dto.outputMode;
+    // [D6-ⓐ] 세션 소유 테넌트 — 아래 조회를 **재사용**한다(추가 쿼리 없음).
+    //  undefined = 미조회·세션부재·조회실패 / null = 세션이 무소유.
+    //  🚨 이 변수는 resolveComposeMixedSiteId 호출(아래 repository.create)보다 **먼저**
+    //     채워져야 한다. 조회 블록을 create 뒤로 옮기거나 조기 return 을 앞에 끼우면
+    //     교차 테넌트 검사(③-b)가 조용히 무력화된다 — 순서가 곧 계약이다.
+    let manualSessionSiteId: string | null | undefined;
     try {
       if (dto.editSessionId) {
         const sess = await this.editSessionRepository.findOne({
           where: { id: dto.editSessionId },
         });
+        manualSessionSiteId = sess ? sess.siteId : undefined;
         const sp = (sess?.metadata as any)?.spread;
         if (sp?.totalWidthMm && sp?.totalHeightMm) {
           composeSpreadTotalWidthMm = sp.totalWidthMm;
@@ -1653,7 +1721,13 @@ export class WorkerJobsService implements OnModuleInit {
       inputFileUrl: dto.coverUrl || dto.contentPdfUrl || null,
       // [테넌트 스탬프 위조 차단 2026-08-13] `dto.siteId || null` 직접 대입 금지 —
       // 이 라우트는 @Public 이라 body.siteId 가 무검증 입력이다(resolveComposeMixedSiteId 주석).
-      siteId: this.resolveComposeMixedSiteId(dto, caller, assembledFromSession),
+      siteId: this.resolveComposeMixedSiteId(
+        dto,
+        caller,
+        assembledFromSession,
+        apiKeyCaller,
+        manualSessionSiteId,
+      ),
       // [S2-5] test env 컨텍스트면 isTest:true 스탬프 — 워커가 실합성(compose-mixed) 대신
       // TEST 워터마크 더미(handleTestSynthesis compose-mixed 분기) 산출 + outputs 24h retention.
       // live/미전달(external sites 키)=키 없음 → 기존 옵션 바이트 불변(compose-mixed.spec 계약).

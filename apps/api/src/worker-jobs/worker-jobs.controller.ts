@@ -44,6 +44,9 @@ import { TenantScope } from '../common/helpers/tenant-scope.helper';
 import { ApiKeyGuard } from '../auth/guards/api-key.guard';
 // 컷아웃 @Public 라우트의 테넌트 복원(서명 검증된 shop-session JWT 한정).
 import { OptionalShopJwtGuard } from '../auth/guards/optional-shop-jwt.guard';
+// D6-ⓐ(2026-09-12) — @Public compose-mixed 의 선택적 사이트 키 복원(throw 없음).
+import { OptionalApiKeySiteGuard, ApiKeySitePayload } from '../auth/guards/optional-api-key-site.guard';
+import { ApiKeySite } from '../auth/decorators/api-key-site.decorator';
 import { CurrentSite, CurrentSitePayload } from '../auth/decorators/current-site.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Public } from '../auth/decorators/public.decorator';
@@ -280,7 +283,10 @@ export class WorkerJobsController {
    */
   @Post('compose-mixed')
   @Public()
-  @UseGuards(OptionalShopJwtGuard)
+  // ⚠️ OptionalApiKeySiteGuard 는 **절대 throw 하지 않는다** — 무인증 게스트 호출이 그대로
+  //    통과해야 `auth:'public'` 동결(contract-freeze.spec.ts:136)이 유지된다. ApiKeyGuard 로
+  //    바꾸면 게스트가 401 로 파손되고 동결 계약도 깨진다.
+  @UseGuards(OptionalShopJwtGuard, OptionalApiKeySiteGuard)
   @ApiOperation({ summary: 'Compose-mixed 잡 생성 (Phase 5)' })
   @ApiResponse({ status: 201, description: '잡 생성 성공', type: WorkerJob })
   @ApiResponse({ status: 400, description: '빈 입력(EMPTY_COMPOSE_INPUT) / 자동조립 불완전(SESSION_ASSEMBLY_INCOMPLETE)' })
@@ -294,6 +300,10 @@ export class WorkerJobsController {
       source?: string;
       allowedOrderSeqnos?: unknown;
     },
+    // [D6-ⓐ] 검증된 사이트 키 컨텍스트. `caller` 와 **별도 인자**로 넘긴다 — 한 객체로 합치면
+    // 자동조립 경로의 인가 게이트가 API 키로 통과돼 권한 상승이 된다
+    // (optional-api-key-site.guard.ts 불변식 2).
+    @ApiKeySite() apiKeySite?: ApiKeySitePayload,
   ): Promise<WorkerJob> {
     // 검증된 shop-session 이 있을 때만 테넌트 컨텍스트로 넘긴다(cutout 라우트와 동일 규약).
     // 없으면 undefined → 자동조립 요청은 서비스에서 404(SESSION_NOT_FOUND) 로 fail-closed.
@@ -307,7 +317,7 @@ export class WorkerJobsController {
               : undefined,
           }
         : undefined;
-    return await this.workerJobsService.createComposeMixedJob(dto, caller);
+    return await this.workerJobsService.createComposeMixedJob(dto, caller, apiKeySite);
   }
 
   /**
