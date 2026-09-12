@@ -5,8 +5,10 @@
 
 ## 0. 현재 라이브 상태
 
-- **master = origin/master + ahead N (D6-ⓐ 분 미커밋/미푸시 — §1).** VPS `~/storige` 는 `94edb89` 유지
+- **master = origin/master = VPS `~/storige` — D6-ⓐ 커밋·푸시·API 배포 전부 완료(§1).** 3자 동일 커밋
   - ⚠️ **해시를 이 문서에 박지 않는다.** 자기참조 스테일이 4회 발생한 함정이다(09-11 정본 §0 주석). 정확한 HEAD 는 `git log --oneline -5`
+  - 🔧 **문서 정정**: 09-11 정본은 VPS 가 `94edb89` 라고 적었으나 **실제로는 `4463a5f`(2커밋 뒤)** 였다.
+    그 2커밋이 문서뿐이어서 배포 영향은 0이었지만, **"VPS 는 X 유지" 표기를 신뢰하지 말고 `git log --oneline -1` 로 실측해라**
   - 워킹트리: 타 세션 untracked 11건(`.tmp-verify-combos/`·`docs/SHOPIFY_*`·`docs/SITE_CATALOG_*`·`docs/PLATFORM_INTEGRATION_GUIDE.backup-*`) — **무접촉, `git add` 항상 명시 목록**
 - 배포: editor/admin=Vercel master push 자동 / **API·워커=VPS 수동**(`CLAUDE.local.md` §6)
   - 🔑 **이번 변경은 `apps/api` 다 → 푸시만으로는 프로덕션에 안 간다.** VPS 재배포가 별도 단계이고, 그게 곧 D6-ⓐ 발효 시점이다
@@ -50,7 +52,7 @@ PATH="/opt/homebrew/opt/node@24/bin:$PATH"   # node -v → v24.20.0. engine 경�
 
 ---
 
-## 1. ✅ D6-ⓐ 구현 완료 (2026-09-12) — 미커밋·미배포
+## 1. ✅ D6-ⓐ 구현·배포 완료 (2026-09-12)
 
 오너가 §8-1 선택지 중 **ⓐ안**을 확정해 구현했다. **D6 하드 블로커가 코드 레벨에서 해소됐다**(배포·실증은 잔여).
 
@@ -124,24 +126,55 @@ D6 NULL-파괴 게이트를 켜면 방금 고친 산출물 다운로드가 **404
 | `eslint .` (apps/api) | **0 err / 44 warn** — 기준선 동일 |
 | 프로덕션 접근 | **0건**(읽기조차 없음). 로컬 유닛 테스트만 |
 
-### 🔴 미검증 잔여 — 배포 전 반드시 읽을 것
+### 배포 실증 (2026-09-12, 프로덕션)
 
-1. **라이브 실증 0건.** compose-mixed 프로덕션 호출 이력이 0건이고 결속된 실 jobId 가 없어 e2e 대상이 없다.
-   **첫 실합성에서 `job.siteId` 가 NULL 이 아님을 확인**해야 ⓐ가 실제로 듣는지 증명된다
-2. **가드 DI 해석은 정적 단정까지만 검증했다.** route-scoped 가드는 요청 시점에 **컨테이너 전역 metatype 탐색**으로
-   찾히는데, 그 경로는 같은 컨트롤러의 형제 라우트에서 `ApiKeyGuard` 가 **동일 방식으로 프로덕션 가동 중**이라는
-   선례로 담보한다(AuthModule provider + SitesModule import 구조가 동일). 풀 부팅 e2e 는 DB·Redis 가 필요해 미실행
-3. **bookmoa 가 어느 키를 쓰는지는 당사에서 알 수 없다** — editor/worker 둘 다 수용하도록 만들어 이 불확실성을 제거했다
+절차: `git pull` → `docker compose up -d --build api` → **`docker compose restart nginx`**(api recreate 시 리터럴
+`proxy_pass` IP 고정 때문에 필수). `nginx.conf` 무변경이라 force-recreate 는 불요했다.
+
+| 검증 | 결과 |
+|---|---|
+| 외부 스모크 | api `/api/health` **200** · editor **200** · admin **200** |
+| 배포본 지문 | `worker-jobs.service.js` 에 신규 문자열 2종 **각 1건** + **[대조군] 기존 문자열 1건** → 변경분이 실제로 실림 |
+| 컴파일 산출물 | `dist/auth/guards/optional-api-key-site.guard.js` · `dist/auth/decorators/api-key-site.decorator.js` 존재 · 컨트롤러 배선 1건 |
+| 부팅 | `AppModule dependencies initialized` 정상 · 에러·예외 **0건** · `Mapped {/api/worker-jobs/compose-mixed, POST}` |
+| nginx 5xx | **0건** |
+| **🔑 라이브 프로브 A** (키 없음 + 빈 본문) | **400 EMPTY_COMPOSE_INPUT** — 500 이 아니므로 **route-scoped 가드가 요청 시점에 DI 해석됨** |
+| **🔑 라이브 프로브 B** (무효 키 + 빈 본문) | **400** — 401 이 아니므로 **불변식 1(절대 throw 안 함) 라이브 실증**. DB 조회 2회를 거쳐 throw 없이 통과(9ms) |
+| 프로브 부작용 | **잡 0건 생성**(빈 입력 400 게이트가 `repository.create` 보다 앞) — `worker_jobs` 15분 내 0건으로 확인 |
+
+> ✅ **종전 "미검증 잔여 #2(가드 DI 는 정적 단정까지만)" 는 프로브 A·B 로 닫혔다.** 선례 담보가 아니라 실측이다.
+
+### 🔴 남은 미검증 1건 — D6 게이트를 켜기 전 필수
+
+**실 파트너 호출로 스탬프가 붙는 것은 아직 실증되지 않았다.** compose-mixed 프로덕션 호출 이력이 0건이고
+(`worker_jobs` SYNTHESIZE 총 12건·최종 **2026-06-13** — 3개월 공백 그대로) 결속된 실 jobId 가 없어 e2e 대상이 없다.
+프로브는 **무효 키 경로**만 증명한다 — 유효 키가 실제로 `job.siteId` 를 채우는지는 첫 실합성에서 확인해야 한다.
+
+```sql
+-- 첫 실합성 후: 스탬프가 붙었는지 (NULL 이면 ⓐ가 듣지 않은 것)
+SELECT id, site_id, created_at FROM worker_jobs
+ WHERE job_type='SYNTHESIZE' AND created_at > '2026-09-12' ORDER BY created_at DESC LIMIT 5;
+```
+
+🚨 **이 확인 없이 D6 게이트를 켜면 ⓐ를 한 효과가 없고 09-11 정본 §8-1 의 404 가 그대로 재현된다.**
+
+> 참고: bookmoa 가 editor 키인지 worker 키인지는 당사에서 알 수 없어 **둘 다 수용**하도록 만들었다(불확실성 제거).
+
+### (범위 밖 관찰) 프로덕션 이미지에 `.spec.js` 가 실린다
+
+`dist/auth/` 에 spec 컴파일 산출물 9개가 있다(제 것 1 + **선재 8**). 런타임 동작에는 무해하지만 이미지 크기와
+공격 표면 관점에서 바람직하지 않다. **이번 변경이 만든 것이 아니라 기존 빌드 설정 특성**이다 — 별도 트랙.
 
 ---
 
 ## 2. 잔여 작업
 
 **P0 — 오너 액션**
-1. **D6-ⓐ 커밋·푸시·VPS 배포 승인** (§1) — 푸시는 editor/admin Vercel 빌드만 트리거하고 **API 는 수동 재배포**라
-   `docker compose up -d --build api` + **nginx 재시작**(api recreate 시 502 방지, `CLAUDE.local.md` §6.2)까지가 발효 조건
-2. **bookmoa 통지** — ⓐ 배포 후 "이제 키만으로 siteId 가 붙는다 / `body.siteId` 를 **새로 싣지 말 것**(불일치면 ③-ⓐ 로 NULL)" +
-   첫 실합성 때 `job.siteId` 확인 요청. 09-11 에 "계속 대기 · siteId 를 새로 싣지 말 것" 으로 통지해 둔 상태의 후속이다
+1. ~~D6-ⓐ 커밋·푸시·VPS 배포~~ **✅ 2026-09-12 완료**(§1 배포 실증)
+2. **bookmoa 통지 — 미발신, 최우선.** 내용: ① ⓐ 배포 완료, **이제 키만으로 siteId 가 붙는다**
+   ② `body.siteId` 를 **새로 싣지 말 것**(키와 불일치면 ③-ⓐ 로 NULL — 안 싣는 게 정답)
+   ③ 첫 실합성 때 `job.siteId` 가 NULL 이 아닌지 확인해 회신 요청(당사 유일 잔여 미검증)
+   ④ D6 게이트는 그 확인 전까지 켜지 않는다. 09-11 "계속 대기" 통지의 후속이다
 3. 파트너 회신문 **미발송 5건**: ⓐ 8/24 통지 4종 + ⓑ 프린티 템플릿셋 스코프
 4. 동화책 왕복 실기 1회로 묶음 해소: 재진입 유지 확인 + `window.__storigeLoadProfile.laps` 의 `grow:*` 캡처(읽기 전용) + bookmoa 장바구니 #1 테스트 항목 삭제
 
@@ -151,7 +184,7 @@ D6 NULL-파괴 게이트를 켜면 방금 고친 산출물 다운로드가 **404
 - (관찰) `render-pages` 게스트는 여전히 NULL 스탬프 — ⓐ와 같은 공백이 남아 있다. D6 대상이면 동형 처리 필요(§1-C-2 범위 밖)
 
 **D6 (cutover 관측 후 착수)**: NULL-파괴 게이트 + 이원 정책 allowlist 승격 + 백필.
-- ✅ **하드 블로커는 코드 해소됨**(§1). 단 **배포 + 첫 실합성 실증 전에는 게이트를 켜지 마라** — ⓐ가 듣지 않으면 §8-1 의 404 가 그대로 재현된다
+- ✅ **하드 블로커 해소 + 프로덕션 배포 완료**(§1). 단 **첫 실합성 실증 전에는 게이트를 켜지 마라** — ⓐ가 듣지 않으면 §8-1 의 404 가 그대로 재현된다
 - ⚠️ **ⓐ 배포 시각이 백필 경계다** — 그 이전 파트너 잡은 전건 NULL 이므로 게이트 대상
 - ⚠️ 백필 41건/NULL 225건은 **2026-08-28 실측치**, 이후 재실측 없음. 집행 전 4수치 재실행 필수
 - ⚠️ **합성 잡 3개월 공백**(SYNTHESIZE 최종 2026-06-13) 선반영 — 백필·파일보존 트랙이 "합성 트래픽이 있다"를 암묵 전제하면 안 된다
