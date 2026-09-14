@@ -210,7 +210,7 @@ SELECT id, site_id, created_at FROM worker_jobs
 **branch protection(master 무보호 확정)** · 폰트 시딩(0건) · D6 착수 시점 ·
 **파트너 파기 계약 신설**(합성 산출물·편집 세션 하드삭제 external, §5-2) · **고아 정리 실가동 전환**(`FILE_ORPHAN_DRY_RUN`, §5-3)
 
-**파트너 트랙(수신 대기)**: printy R-173 배포 완료 재통지(기록만, §5-5) · printy 첫 실합성 `job.siteId` 회신(§5-1) · bookmoa 통지는 **미발신**(P0-2)
+**파트너 트랙(수신 대기)**: ~~printy R-173 배포 완료 재통지~~ ✅ 09-14 수신(§5-5) · printy 첫 실합성 `job.siteId` 회신(§5-1) · bookmoa 통지는 **미발신**(P0-2)
 
 ---
 
@@ -297,9 +297,12 @@ printy 오너에게도 같은 보고가 올라갔다. **착수·일정은 약속
   - **100p·MD2Books 등 타 파트너는 미확인** — D6 거부 응답 코드 결정 시 반드시 반영하고 착수 전 조율
   - 앞으로 printy 키로 업로드되는 파일은 printy 로 스탬프되므로 리스크는 **기존 NULL 파일에 한정**
 
-### 5-5. R-173 통지 (printy 동기화 배포 — 재통지 대기)
+### 5-5. R-173 통지 (printy 프로덕션 배포 완료 — 09-14 재통지 수신)
 
 - 관리자·고객 '합성 결과' 클릭당 `GET external/{jobId}/output-url` **2회**(열거 1 + 선택 다운로드 1) — 로그에서 2배로 보이는 게 정상
 - 서명 URL 미저장·매번 재발급·`/storage-signed/outputs/` 프리픽스 검증 — 계약 정합. TTL 기본 300초
 - `400 JOB_OUTPUT_NOT_READY` 는 **의도적 비계측**(bookmoa 와 동일한 409 + 재시도 안내). 발급 `NOT_SIGNABLE`·503·401/403 과 서명 경로 410/403 은 printy 가 계측
-- 배포 완료 재통지를 받으면 기록만 한다(당사 조치 없음)
+- ✅ **09-14 재통지 수신(회신 불요)**: printy main `4b7f6f0` 프로덕션 Ready(www.printy.kr), 라이브 프로브(무부작용)로 신코드 응답 확인.
+  함께 반영: 파기 스크립트 404 분리 기록(`notFoundUnconfirmed`) · printy CLAUDE.md D6 절을 ⓐ 규칙 ③·조건 ①②·첫 실합성 전 게이트 보류 합의로 갱신.
+  (printy 내부 교정: SSRF 게이트의 신뢰 Supabase 호스트 상수가 bookmoa ref 로 남아 있던 것 — 당사 호출 동작 무영향.) **당사 조치 없음**
+- printy 잔여 약속은 **첫 실합성 시 jobId + `job.siteId` 회신** 1건뿐이다(§5-1)
