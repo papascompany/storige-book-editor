@@ -2,6 +2,7 @@
 
 > **이 문서가 최신 날짜 정본이다.** 9/11 상세 이력(§7 세션 로그 3종·§8 R-172·§8-1 D6 블로커 규명)은
 > `RESUME_PROMPT_2026-09-11.md`, 그 이전은 `RESUME_PROMPT_2026-08-28.md`·`_2026-08-25.md`(아카이브).
+> 2026-09-12 작성 · **2026-09-14 갱신**(§1 사후 실측 · §5 printy 파일 파기 계약 트랙 · §3 채널 확증법).
 
 ## 0. 현재 라이브 상태
 
@@ -49,6 +50,8 @@ PATH="/opt/homebrew/opt/node@24/bin:$PATH"   # node -v → v24.20.0. engine 경�
 - **`engines.node: "24.x"` 를 경고 때문에 넓히지 마라** — Vercel 은 범위를 newest-first intersect 해 **가용 최신 메이저를 자동 채택**한다. 개방하면 26.x 무단 승격. 근거 `NODE24_UPGRADE_AUDIT_2026-07-30.md:63`
 - **`node@N` 경로 이름은 버전을 보장하지 않는다**(미설치 버전의 opt 링크는 `node` 포뮬러의 낡은 별칭). 고정 전 `node -v` 실값 확인
 - **gitleaks 자가검증에 allowlist 어휘를 쓰지 마라**(`example`·`placeholder`·`dummy`·`sample`·`test-key`…) — 면제돼서 "차단 실패" 로 오판한다
+- **사용자에게 주는 실행 블록(` ```bash `)에 자리표시자(`<host>` 등)를 넣지 마라** — 앱의 Run 버튼으로 그대로 실행되고, zsh 가 `<host>` 를 **입력 리다이렉션**으로 읽어 `no such file or directory: host` 로 실패한다(2026-09-14 실사고, 서버 무실행).
+  프로덕션 조회는 에이전트가 직접 실행하고, 사용자용이면 실값 위치(`CLAUDE.local.md` §1.1)를 문장으로 안내한다
 - 기타: vite.config.js shadow / 빌드게이트 5함정 / fabric styles·loadJSON / SPREAD≠표지 / isInitializedRef 저장 입구 금지 / **debounce 는 배칭 도구 아님** / **supertest 포트 패밀리**(불가능한 응답=남의 서버 의심) / 크로스세션 권한모드
 
 ---
@@ -159,6 +162,12 @@ SELECT id, site_id, created_at FROM worker_jobs
 
 🚨 **이 확인 없이 D6 게이트를 켜면 ⓐ를 한 효과가 없고 09-11 정본 §8-1 의 404 가 그대로 재현된다.**
 
+> **2026-09-14 재조회 — 판정 대상 0건(미검증 유지).** 배포 이후 `worker_jobs` **전 타입 0건** · 편집 세션 0건 ·
+> 실 compose-mixed 호출 0건(로그 2건은 배포 직후 당사 프로브 400).
+> 대조군: 배포 이후 API request **190건**(로그 정상) · 필터 없는 타입별 최신 잡 = VALIDATE **2026-09-09**(누적 222, 09-11 실측과 동일)
+> → 필터·타임존 오류가 아니라 **실제 무트래픽**. 공백은 배포(09-12) 이전부터라 배포 영향 아님.
+> printy 도 같은 호출 조건으로 적용 확정(§5-1) — 첫 실합성은 bookmoa·printy 어느 쪽이든 위 쿼리로 판정한다.
+
 > 참고: bookmoa 가 editor 키인지 worker 키인지는 당사에서 알 수 없어 **둘 다 수용**하도록 만들었다(불확실성 제거).
 
 ### (범위 밖 관찰) 프로덕션 이미지에 `.spec.js` 가 실린다
@@ -190,13 +199,18 @@ SELECT id, site_id, created_at FROM worker_jobs
 - ⚠️ 백필 41건/NULL 225건은 **2026-08-28 실측치**, 이후 재실측 없음. 집행 전 4수치 재실행 필수
 - ⚠️ **합성 잡 3개월 공백**(SYNTHESIZE 최종 2026-06-13) 선반영 — 백필·파일보존 트랙이 "합성 트래픽이 있다"를 암묵 전제하면 안 된다
 - ✅ bookmoa 는 백필 대상 제외 확정(결속 jobId 0건)
+- 🚨 **게이트 거부 응답 코드를 설계에서 결정하라** — 404 로 내면 "404=성공" 계약(`DELETE /files/:id/external`)을 따르는 파트너 파기 스크립트가
+  **삭제 실패를 삭제 완료로 기록**한다(§5-4). printy 는 완화 반영(09-14), **타 파트너는 미확인** → 착수 전 조율 필수
 
-**P2 백로그**: bookmoa 구 프로젝트 폐기 시 allowlist 구 오리진 제거 / 업계표준 R6·R10·R3b / 파일 보존 P1·P2(D6 백필과 교차) /
+**P2 백로그**: bookmoa 구 프로젝트 폐기 시 allowlist 구 오리진 제거 / 업계표준 R6·R10·R3b / 파일 보존 P1·P2(D6 백필과 교차 — 09-14 보존 cron 실가동·고아 cron dry-run 실측, §5-3) /
 멀티테넌시 P3b(`.claude/worktrees/multitenancy-p3b`) / 포토북 S2 / ⓑstage1b·Bull attempts·BQ-03·히스토리 정화 force-push /
 §7-1 권고 3건(읽기전용 서브에이전트 `model: sonnet` · 설치본 Bash 제약 `_ai-governance` 역반영 · storige 전용 함정 `.claude/rules/` 분리)
 
 **오너 결정 대기**: 동화책 caseBind · cover VALIDATE 경고 처리 정책 · G-6 백필 ·
-**branch protection(master 무보호 확정)** · 폰트 시딩(0건) · D6 착수 시점
+**branch protection(master 무보호 확정)** · 폰트 시딩(0건) · D6 착수 시점 ·
+**파트너 파기 계약 신설**(합성 산출물·편집 세션 하드삭제 external, §5-2) · **고아 정리 실가동 전환**(`FILE_ORPHAN_DRY_RUN`, §5-3)
+
+**파트너 트랙(수신 대기)**: printy R-173 배포 완료 재통지(기록만, §5-5) · printy 첫 실합성 `job.siteId` 회신(§5-1) · bookmoa 통지는 **미발신**(P0-2)
 
 ---
 
@@ -209,6 +223,8 @@ SELECT id, site_id, created_at FROM worker_jobs
   python3 -c "import sys,json;[print(d.get('cwd')) for l in open(sys.argv[1]) for d in [json.loads(l)] if d.get('cwd')][:1]" <파일>
   ```
   mtime 상관만으로 끝내지 말고 **jsonl 의 `cwd` + 첫 사용자 메시지**까지 대조해야 이름↔cwd 가 1:1 로 묶인다
+- ✅ **수신 메시지는 더 확정적으로 확증된다(2026-09-14 실사용)**: `from` 속성이 `uds:/tmp/cc-socks/<PID>.sock` 이면
+  `lsof -a -p <PID> -d cwd -Fn` 으로 **발신 프로세스 자체의 cwd** 를 읽는다(추정이 아니라 발신자 그 자체). 회신은 그 `from` 값을 그대로 `to` 로 쓴다
 - ⚠️ **이름 오인**: `printcard-studio-*` 는 cwd `~/Developer/claude/PrintCard-Studio` 로 **printy 가 아니다**(오발신 주의)
 - ⚠️ **발신 성공(msg_id) ≠ 도달.** 수신 세션이 bypass 가 아니면 승인 보류로 지연된다 →
   **메시지에 ACK 한 줄을 명시 요청 + `notify_when_idle`**. 회신만이 도달 증거다(2026-09-11 양사 실증)
@@ -224,3 +240,66 @@ SELECT id, site_id, created_at FROM worker_jobs
 4. 함정 상기 = §0 "상시 함정" + §1 "이 트랙이 남기는 함정"
 5. 검증 기준선 = §0 표. 실기·프로덕션 키 작업은 권한무시 모드
 6. 세션 종료 시 `RESUME_PROMPT_<날짜>.md` 갱신 없이 종료 금지
+
+---
+
+## 5. printy 파일 파기 계약 트랙 (2026-09-14) — 질의 응답 종결, 오너 결정 잔여
+
+printy 세션이 **D6-ⓐ 적용 확인 1건 + 원고 파기(보존정책) 계약 질의 3건 + R-173 동기화 통지**를 보내왔다.
+발신자는 소켓 PID cwd 로 확증(§3). 배포본 코드·프로덕션 DB **읽기 전용** 실측으로 회신했고 **양측 ACK 완료**. 당사 코드 변경 0건.
+
+### 5-1. D6-ⓐ — printy 적용 확정
+
+- printy 사이트(`009c26d5-…`) `status=active`, editor 키 = worker 키(동일 코드) → 규칙 ③ 채택
+- 조건 ① compose-mixed 에 Bearer 미탑재(printy 코드 대조) → ③-ⓒ 해당 없음
+- 조건 ② output-url·external status 도 **같은 printy 키 단일 경로** → 스탬프 이후 `assertJobSiteAccess` 404 없음
+- printy site 세션 0건 · 파일 0건 · 실합성 0건. 첫 실합성 때 printy 가 jobId + `job.siteId` 회신 약속
+
+### 5-2. Q1 — 합성 산출물·편집 세션의 파트너 파기 수단: **공백 (오너 결정 대기)**
+
+| 대상 | 현재 |
+|---|---|
+| 합성 산출물 `outputs/{jobId}/` | files 미등록 · 외부 삭제 라우트 없음 · 정리 cron 은 test env(isTest 24h)·컷아웃 전용뿐 → **프로덕션 산출물 무기한 보존** |
+| 편집 세션 | `DELETE /edit-sessions/:id` 는 회원 JWT 전용(memberSeqno 일치 + 테넌트 대조), **soft-delete**(admin 복구 가능), 연결 파일 미삭제 → 파기 요건 불충족 |
+| Site `retentionDays` | 업로드 파일(files 행)에만 적용 — 산출물·세션 미포함 |
+
+→ printy 방침 §3("주문 완료 후 3개월 파기")은 **원고 입력 파일까지만** 이행 가능하다. 합성 산출물은 원고 내용의 사본이라
+개인정보 파기 관점의 실공백이다. 신규 계약(예: 잡 산출물 하드삭제 external · 세션 하드삭제 external)은 ADDITIVE 지만 **오너 결정** —
+printy 오너에게도 같은 보고가 올라갔다. **착수·일정은 약속하지 않았다.**
+
+### 5-3. Q2 — 보존 cron 실측 (문서에 없던 사실 다수)
+
+- **보존 cron 은 실가동이다**: `storage_settings` `retention_enabled=1` · `retention_dry_run=0`(행 갱신 2026-07-06).
+  정본은 env 가 아니라 **DB(admin 설정)** 다 — env 키 grep 0건은 정상이다
+  - sweep(매시 :17) `expires_at<now` → soft-delete / purge(매시 :47) 48h 후 하드삭제(R2 객체 + DB 행)
+- **site 필터가 없어 NULL-site 파일에도 적용된다.** 단 현재 files 283건(site 귀속 44 · NULL-site 239)이 **전부 `expires_at` NULL** → 실제 만료 대상 0건.
+  `retention_days` 가 설정된 사이트는 **0곳**
+- **적용 시점은 업로드 1회**(`upload/external`: `dto.retentionDays` 가 site 값보다 우선 / presigned: 요청 `retentionDays` 로 finalize — site 기본값 폴백은 **미확인**).
+  **사이트 값을 나중에 바꿔도 소급되지 않는다**
+- 🚨 **침묵 제외 조건**(`files.service.ts` `findExpired`): 같은 `order_seqno`·같은 site(**NULL끼리 포함**)에 미완료(`status≠complete`)·미삭제 세션이 있으면
+  만료 파일을 **로그 없이 건너뛴다**. 편집이 editing 에 머문 주문의 파일은 만료 예약으로 지워지지 않는다
+- `DELETE /files/:id/external` 은 즉시 하드삭제라 위 제외를 거치지 않는다 → 파트너 파기 수단으로는 만료 예약보다 확실하다
+- **고아 정리 cron(`file-orphan.service.ts`)은 dry-run 이다** — 보존 cron 과 **별도 스위치**다. `FILE_ORPHAN_DRY_RUN` 이 VPS `.env`·compose 에 없어
+  코드 기본값 `'1'`(dry-run)로 돈다. 로그에 `[orphan][dry-run] 강등대상` 이 매시 반복(48h 간 동일 후보 반복) → 무참조 파일은 자동 파기되지 않는다.
+  코드 주석상 "검증 후 명시적으로 `'0'`" 이 예정된 운영 단계였으나 미집행 → 오너 결정 대기 등재
+- 🚫 **printy 사이트에 `retention_days` 를 설정하지 마라.** printy 는 "업로드마다 `retentionDays: 90`" 권고를 **거절**했다 —
+  방침 기산점이 **주문 완료**라, 업로드 기산이면 제작이 길어진 주문의 원고가 **완료 전에 삭제**된다. 완료 기산 파기는 printy 스크립트가 맡는다.
+  사이트 값을 설정하면 printy 가 막으려는 사고를 당사가 일으킨다
+
+### 5-4. Q3 — NULL-site 파괴 라우트 · D6 설계 입력 1건
+
+- printy 관찰 정확: `hardDelete`·`setExpiry` 는 `assertSiteAccess` 만 거치고, 그 함수는 `file.siteId` 가 NULL 이면 통과한다(worker 역할은 전면 바이패스)
+  → fileId 를 아는 **어느 활성 파트너 키로도** NULL-site 파일 하드삭제·만료 변경이 가능하다. 알려진 결함(CONTRACT_FREEZE §4.3)
+- 해소 계획 = **D6 ① NULL-파괴 게이트(D안, `TENANCY_S3_S4_DESIGN_2026-08-28.md` §2-C)**. 단독 시행 시 NULL 파일을 자기 키로 정리 중인 기존 파트너가 깨지므로 최종 단계
+- 🚨 **D6 설계 입력(신규)**: printy 결속 fileId 는 **전부 NULL-site**(printy 귀속 파일 0건). D6 게이트가 allowlist 밖 키를 **404 로 거부**하면,
+  계약상 "404=성공"인 파트너 파기 스크립트가 **삭제 실패를 삭제 완료로 기록**한다
+  - printy 는 **완화 반영**(09-14 배포분): 404 를 삭제 건수에 합치지 않고 `notFoundUnconfirmed` 로 분리 기록
+  - **100p·MD2Books 등 타 파트너는 미확인** — D6 거부 응답 코드 결정 시 반드시 반영하고 착수 전 조율
+  - 앞으로 printy 키로 업로드되는 파일은 printy 로 스탬프되므로 리스크는 **기존 NULL 파일에 한정**
+
+### 5-5. R-173 통지 (printy 동기화 배포 — 재통지 대기)
+
+- 관리자·고객 '합성 결과' 클릭당 `GET external/{jobId}/output-url` **2회**(열거 1 + 선택 다운로드 1) — 로그에서 2배로 보이는 게 정상
+- 서명 URL 미저장·매번 재발급·`/storage-signed/outputs/` 프리픽스 검증 — 계약 정합. TTL 기본 300초
+- `400 JOB_OUTPUT_NOT_READY` 는 **의도적 비계측**(bookmoa 와 동일한 409 + 재시도 안내). 발급 `NOT_SIGNABLE`·503·401/403 과 서명 경로 410/403 은 printy 가 계측
+- 배포 완료 재통지를 받으면 기록만 한다(당사 조치 없음)
