@@ -2,7 +2,7 @@
 
 > **이 문서가 최신 날짜 정본이다.** 9/11 상세 이력(§7 세션 로그 3종·§8 R-172·§8-1 D6 블로커 규명)은
 > `RESUME_PROMPT_2026-09-11.md`, 그 이전은 `RESUME_PROMPT_2026-08-28.md`·`_2026-08-25.md`(아카이브).
-> 2026-09-12 작성 · **2026-09-14 갱신**(§1 사후 실측 · §5 printy 파일 파기 계약 트랙 · §3 채널 확증법).
+> 2026-09-12 작성 · **2026-09-14 갱신**(§1 사후 실측 · §5 printy 파일 파기 계약 트랙 · §6 bookmoa D6-ⓐ 통지 · §3 채널 확증법).
 
 ## 0. 현재 라이브 상태
 
@@ -52,6 +52,10 @@ PATH="/opt/homebrew/opt/node@24/bin:$PATH"   # node -v → v24.20.0. engine 경�
 - **gitleaks 자가검증에 allowlist 어휘를 쓰지 마라**(`example`·`placeholder`·`dummy`·`sample`·`test-key`…) — 면제돼서 "차단 실패" 로 오판한다
 - **사용자에게 주는 실행 블록(` ```bash `)에 자리표시자(`<host>` 등)를 넣지 마라** — 앱의 Run 버튼으로 그대로 실행되고, zsh 가 `<host>` 를 **입력 리다이렉션**으로 읽어 `no such file or directory: host` 로 실패한다(2026-09-14 실사고, 서버 무실행).
   프로덕션 조회는 에이전트가 직접 실행하고, 사용자용이면 실값 위치(`CLAUDE.local.md` §1.1)를 문장으로 안내한다
+- **프로덕션 DB 의 `created_at` 은 UTC 다**(`@@session.time_zone=SYSTEM`, 컨테이너 UTC). KST 시각을 필터에 넣으면 9시간 어긋난다
+  (2026-09-14 실수 — 필터 없는 대조군으로 결론은 유지). 배포 시각은 컨테이너 로그의 `+09:00` 을 UTC 로 환산해 쓴다. **D6-ⓐ 배포 = 2026-09-12 04:31 UTC**
+- **api 로그(pino JSON)를 정규식으로 자를 때는 대조군을 같이 세라** — `"url"…[^}]*…"statusCode"` 는 `req}` 에서 끊겨 **전부 빈 결과**가 된다.
+  이미 아는 요청(예: 프로브)이 결과에 없으면 "호출 0건"이 아니라 파싱 실패다(2026-09-14 실사례)
 - 기타: vite.config.js shadow / 빌드게이트 5함정 / fabric styles·loadJSON / SPREAD≠표지 / isInitializedRef 저장 입구 금지 / **debounce 는 배칭 도구 아님** / **supertest 포트 패밀리**(불가능한 응답=남의 서버 의심) / 크로스세션 권한모드
 
 ---
@@ -157,7 +161,7 @@ D6 NULL-파괴 게이트를 켜면 방금 고친 산출물 다운로드가 **404
 ```sql
 -- 첫 실합성 후: 스탬프가 붙었는지 (NULL 이면 ⓐ가 듣지 않은 것)
 SELECT id, site_id, created_at FROM worker_jobs
- WHERE job_type='SYNTHESIZE' AND created_at > '2026-09-12' ORDER BY created_at DESC LIMIT 5;
+ WHERE job_type='SYNTHESIZE' AND created_at > '2026-09-12 04:31:00' ORDER BY created_at DESC LIMIT 5;  -- UTC
 ```
 
 🚨 **이 확인 없이 D6 게이트를 켜면 ⓐ를 한 효과가 없고 09-11 정본 §8-1 의 404 가 그대로 재현된다.**
@@ -167,6 +171,9 @@ SELECT id, site_id, created_at FROM worker_jobs
 > 대조군: 배포 이후 API request **190건**(로그 정상) · 필터 없는 타입별 최신 잡 = VALIDATE **2026-09-09**(누적 222, 09-11 실측과 동일)
 > → 필터·타임존 오류가 아니라 **실제 무트래픽**. 공백은 배포(09-12) 이전부터라 배포 영향 아님.
 > printy 도 같은 호출 조건으로 적용 확정(§5-1) — 첫 실합성은 bookmoa·printy 어느 쪽이든 위 쿼리로 판정한다.
+>
+> **2026-09-14 14:19 UTC 2차 재조회 — 여전히 대상 0건.** 그사이 bookmoa-mobile 에서 편집 흐름이 1회 돌았지만 **내부 관리자 계정 테스트**였고
+> compose-mixed 호출은 없었다(로그 대조군 = 09-12 프로브 2건 정상 검출). 상세는 §6-3.
 
 > 참고: bookmoa 가 editor 키인지 worker 키인지는 당사에서 알 수 없어 **둘 다 수용**하도록 만들었다(불확실성 제거).
 
@@ -181,10 +188,7 @@ SELECT id, site_id, created_at FROM worker_jobs
 
 **P0 — 오너 액션**
 1. ~~D6-ⓐ 커밋·푸시·VPS 배포~~ **✅ 2026-09-12 완료**(§1 배포 실증)
-2. **bookmoa 통지 — 미발신, 최우선.** 내용: ① ⓐ 배포 완료, **이제 키만으로 siteId 가 붙는다**
-   ② `body.siteId` 를 **새로 싣지 말 것**(키와 불일치면 ③-ⓐ 로 NULL — 안 싣는 게 정답)
-   ③ 첫 실합성 때 `job.siteId` 가 NULL 이 아닌지 확인해 회신 요청(당사 유일 잔여 미검증)
-   ④ D6 게이트는 그 확인 전까지 켜지 않는다. 09-11 "계속 대기" 통지의 후속이다
+2. ~~bookmoa D6-ⓐ 통지~~ **✅ 2026-09-14 발신**(§6) — ACK · 확인 요청 2건 · 첫 실합성 jobId 회신 대기
 3. 파트너 회신문 **미발송 5건**: ⓐ 8/24 통지 4종 + ⓑ 프린티 템플릿셋 스코프
 4. 동화책 왕복 실기 1회로 묶음 해소: 재진입 유지 확인 + `window.__storigeLoadProfile.laps` 의 `grow:*` 캡처(읽기 전용) + bookmoa 장바구니 #1 테스트 항목 삭제
 
@@ -192,6 +196,7 @@ SELECT id, site_id, created_at FROM worker_jobs
 - **즉시 착수 가능한 P1 잔여 0건**(09-11 의 P1-4~8·P2-10 전부 종결, D6-ⓐ 금일 종결)
 - (관찰) 시드 표기 잔여 — 레거시 `/` 경로·게스트 세션 미적용, updatedAt 의미 폭
 - (관찰) `render-pages` 게스트는 여전히 NULL 스탬프 — ⓐ와 같은 공백이 남아 있다. D6 대상이면 동형 처리 필요(§1-C-2 범위 밖)
+- (관찰) **세션 완료가 만드는 VALIDATE 잡이 `site_id` NULL · `edit_session_id` NULL** 이다 — 세션에는 활성 사이트가 스탬프돼 있는데 잡에 안 붙는다. ⓐ와 같은 계열. 원인·D6 영향 미조사(§6-3)
 
 **D6 (cutover 관측 후 착수)**: NULL-파괴 게이트 + 이원 정책 allowlist 승격 + 백필.
 - ✅ **하드 블로커 해소 + 프로덕션 배포 완료**(§1). 단 **첫 실합성 실증 전에는 게이트를 켜지 마라** — ⓐ가 듣지 않으면 §8-1 의 404 가 그대로 재현된다
@@ -210,7 +215,7 @@ SELECT id, site_id, created_at FROM worker_jobs
 **branch protection(master 무보호 확정)** · 폰트 시딩(0건) · D6 착수 시점 ·
 **파트너 파기 계약 신설**(합성 산출물·편집 세션 하드삭제 external, §5-2) · **고아 정리 실가동 전환**(`FILE_ORPHAN_DRY_RUN`, §5-3)
 
-**파트너 트랙(수신 대기)**: ~~printy R-173 배포 완료 재통지~~ ✅ 09-14 수신(§5-5) · printy 첫 실합성 `job.siteId` 회신(§5-1) · bookmoa 통지는 **미발신**(P0-2)
+**파트너 트랙(수신 대기)**: ~~printy R-173 배포 완료 재통지~~ ✅ 09-14 수신(§5-5) · printy 첫 실합성 `job.siteId` 회신(§5-1) · **bookmoa D6-ⓐ 통지 ACK + 확인 요청 ①② 회신 · 첫 실합성 jobId 회신**(§6-2)
 
 ---
 
@@ -225,6 +230,8 @@ SELECT id, site_id, created_at FROM worker_jobs
   mtime 상관만으로 끝내지 말고 **jsonl 의 `cwd` + 첫 사용자 메시지**까지 대조해야 이름↔cwd 가 1:1 로 묶인다
 - ✅ **수신 메시지는 더 확정적으로 확증된다(2026-09-14 실사용)**: `from` 속성이 `uds:/tmp/cc-socks/<PID>.sock` 이면
   `lsof -a -p <PID> -d cwd -Fn` 으로 **발신 프로세스 자체의 cwd** 를 읽는다(추정이 아니라 발신자 그 자체). 회신은 그 `from` 값을 그대로 `to` 로 쓴다
+- ✅ **먼저 보낼 때도 같은 방법이 된다**: `for s in /tmp/cc-socks/*.sock; do lsof -a -p $(basename $s .sock) -d cwd -Fn; done` 로 소켓→cwd 를 만들고 그 `uds:` 주소로 보낸다(09-14 bookmoa 통지에 사용)
+  ⚠️ **같은 cwd 소켓이 2개 이상일 수 있다**(09-14 실측: printy 28903·50915) — 이때는 `from` 주소를 받은 적 있는 쪽이나 `ListAgents` 의 활성 세션과 교차 확인
 - ⚠️ **이름 오인**: `printcard-studio-*` 는 cwd `~/Developer/claude/PrintCard-Studio` 로 **printy 가 아니다**(오발신 주의)
 - ⚠️ **발신 성공(msg_id) ≠ 도달.** 수신 세션이 bypass 가 아니면 승인 보류로 지연된다 →
   **메시지에 ACK 한 줄을 명시 요청 + `notify_when_idle`**. 회신만이 도달 증거다(2026-09-11 양사 실증)
@@ -306,3 +313,46 @@ printy 오너에게도 같은 보고가 올라갔다. **착수·일정은 약속
   함께 반영: 파기 스크립트 404 분리 기록(`notFoundUnconfirmed`) · printy CLAUDE.md D6 절을 ⓐ 규칙 ③·조건 ①②·첫 실합성 전 게이트 보류 합의로 갱신.
   (printy 내부 교정: SSRF 게이트의 신뢰 Supabase 호스트 상수가 bookmoa ref 로 남아 있던 것 — 당사 호출 동작 무영향.) **당사 조치 없음**
 - printy 잔여 약속은 **첫 실합성 시 jobId + `job.siteId` 회신** 1건뿐이다(§5-1)
+
+---
+
+## 6. bookmoa D6-ⓐ 통지 (2026-09-14 발신) — ACK 대기
+
+09-11 "계속 대기 · siteId 를 새로 싣지 말 것" 통지의 후속이다. 수신자는 소켓 PID cwd(`~/Developer/claude/bookmoa-mobile`)로 확증하고
+`uds:` 주소로 발신, ACK 명시 요청 + `notify_when_idle`. 당사·bookmoa 코드 변경 0건.
+
+### 6-1. 발신 전 실측 (DB 읽기 전용, 키 값 미출력)
+
+| 사이트 | 상태 | editor=worker 코드 | 편집 세션 |
+|---|---|---|---|
+| bookmoa-mobile `26183a7c` | inactive(06-15 회전 전) | 다름 | **0건** |
+| bookmoa-mobile (rot 06-15) `b5aef7a9` | **active** | 다름(같은 행) | **63건**(06-02~09-14, complete 16) |
+| 북모아 메인 `1391c5b4` | inactive | 같음 | **32건**(04-28~06-15, complete 3 · 미완료·미삭제 **12**) |
+| 북모아 메인 (rot 06-15) `dc81d27f` | active | 같음 | 0건 |
+
+- **bookmoa-mobile 은 ③-ⓑ 위험이 없다** — 회전 전 기간(06-02~06-15) 세션까지 전부 신 사이트 `b5aef7a9` 로 스탬프돼 있다.
+  editor·worker 코드가 달라도 같은 사이트 행이라 어느 키로 호출해도 같은 site 로 해석된다
+- 🚨 **북모아 메인(PHP, 연동 보류)은 위험이 있다** — 구 사이트 소유 세션 32건(살아 있는 미완료 12)이 남았고 신 사이트 세션은 0건이다.
+  PHP 연동을 신 키(`dc81d27f`)로 재개해 **이 세션들로 합성하면 ③-ⓑ 로 NULL 스탬프**가 된다. 재개 시 세션 `site_id` 이관 여부를 먼저 결정할 것(통지에 참고로 포함)
+
+### 6-2. 통지 요지와 대기 항목
+
+1. ⓐ 배포 완료 — bookmoa 실제 호출 형태(X-API-Key + editSessionId + body.siteId 미전송 + assembleFromSession 미사용)는 규칙 ③ → `b5aef7a9` 로 스탬프. bookmoa 코드 변경 불요
+2. **확인 요청 ①** compose-mixed 에 `Authorization: Bearer`(shop JWT)도 싣는가 — 싣는다면 그 siteId 가 `b5aef7a9` 여야 한다(③-ⓒ)
+3. **확인 요청 ②** proxy-download 의 `external/{jobId}/output-url`·external 상태 조회가 **같은 사이트 키**인가 — 스탬프 후 다른 사이트 키면 404
+4. `body.siteId` 신규 탑재 금지
+5. 첫 실 compose-mixed 의 **jobId 회신** 요청 → 당사가 `job.siteId` 확인. 확인 전 D6 게이트 미가동
+6. D6 사전 공지 — 게이트가 404 로 거부할 수 있으니 "404=성공" 처리 지점이 있으면 대비(printy 와 동일, §5-4)
+
+**대기**: ACK · 확인 ①② 회신 · 첫 실합성 jobId. printy 와 달리 bookmoa 는 확인 ①② 가 **아직 미확정**이다.
+
+### 6-3. 관찰 — 2026-09-14 09:18 UTC 내부 테스트 흐름에서 드러난 VALIDATE 스탬프 공백
+
+api 로그(대조군 = 09-12 프로브 2건 검출로 파싱 유효 확인) 순서:
+`POST /edit-sessions`(201) → `POST /files/upload` ×2(201) → `PATCH /edit-sessions/{id}/complete`(200) → 워커 콜백 `PATCH /worker-jobs/external/{id}/status` ×4 → `DELETE /edit-sessions/{id}`(09:19:56, soft-delete)
+
+- 세션 `37136529…`: 사이트 `b5aef7a9`, cover 모드, **내부 관리자 계정**, 주문 있음 → 실고객 아님. 합성 호출 없음
+- 생성된 VALIDATE 2건(cover·content) COMPLETED — **`site_id` NULL · `edit_session_id` NULL · callback 없음**.
+  외부 `validate` 라우트 호출이 로그에 없어 **세션 완료 처리가 내부에서 만든 잡**으로 보인다(생성 지점 코드는 미확인)
+- 서버가 권위(`session.siteId`)를 갖고도 잡에 붙이지 않는 점에서 **ⓐ와 같은 계열의 공백**이다. 원인과 D6 영향(VALIDATE 산출물·파일 회수 경로가 NULL 게이트에 걸리는지)은 **미조사**
+- 같은 흐름에서 업로드된 파일 2건의 `site_id` 도 확인하지 않았다 — 조사 시 함께 볼 것
