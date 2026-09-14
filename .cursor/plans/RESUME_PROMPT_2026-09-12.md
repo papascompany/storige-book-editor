@@ -188,7 +188,7 @@ SELECT id, site_id, created_at FROM worker_jobs
 
 **P0 — 오너 액션**
 1. ~~D6-ⓐ 커밋·푸시·VPS 배포~~ **✅ 2026-09-12 완료**(§1 배포 실증)
-2. ~~bookmoa D6-ⓐ 통지~~ **✅ 2026-09-14 발신**(§6) — ACK · 확인 요청 2건 · 첫 실합성 jobId 회신 대기
+2. ~~bookmoa D6-ⓐ 통지~~ **✅ 2026-09-14 발신 · ACK · 확인 ①② 완료**(§6) — 첫 실합성 jobId 회신만 대기
 3. 파트너 회신문 **미발송 5건**: ⓐ 8/24 통지 4종 + ⓑ 프린티 템플릿셋 스코프
 4. 동화책 왕복 실기 1회로 묶음 해소: 재진입 유지 확인 + `window.__storigeLoadProfile.laps` 의 `grow:*` 캡처(읽기 전용) + bookmoa 장바구니 #1 테스트 항목 삭제
 
@@ -215,7 +215,7 @@ SELECT id, site_id, created_at FROM worker_jobs
 **branch protection(master 무보호 확정)** · 폰트 시딩(0건) · D6 착수 시점 ·
 **파트너 파기 계약 신설**(합성 산출물·편집 세션 하드삭제 external, §5-2) · **고아 정리 실가동 전환**(`FILE_ORPHAN_DRY_RUN`, §5-3)
 
-**파트너 트랙(수신 대기)**: ~~printy R-173 배포 완료 재통지~~ ✅ 09-14 수신(§5-5) · printy 첫 실합성 `job.siteId` 회신(§5-1) · **bookmoa D6-ⓐ 통지 ACK + 확인 요청 ①② 회신 · 첫 실합성 jobId 회신**(§6-2)
+**파트너 트랙(수신 대기)**: ~~printy R-173 배포 완료 재통지~~ ✅ 09-14 수신(§5-5) · printy 첫 실합성 `job.siteId` 회신(§5-1) · bookmoa 첫 실합성 jobId 회신(§6-2 — ACK·확인 ①② 완료)
 
 ---
 
@@ -316,7 +316,7 @@ printy 오너에게도 같은 보고가 올라갔다. **착수·일정은 약속
 
 ---
 
-## 6. bookmoa D6-ⓐ 통지 (2026-09-14 발신) — ACK 대기
+## 6. bookmoa D6-ⓐ 통지 (2026-09-14) — ACK·확인 ①② 완료, 첫 실합성 jobId 대기
 
 09-11 "계속 대기 · siteId 를 새로 싣지 말 것" 통지의 후속이다. 수신자는 소켓 PID cwd(`~/Developer/claude/bookmoa-mobile`)로 확증하고
 `uds:` 주소로 발신, ACK 명시 요청 + `notify_when_idle`. 당사·bookmoa 코드 변경 0건.
@@ -338,13 +338,30 @@ printy 오너에게도 같은 보고가 올라갔다. **착수·일정은 약속
 ### 6-2. 통지 요지와 대기 항목
 
 1. ⓐ 배포 완료 — bookmoa 실제 호출 형태(X-API-Key + editSessionId + body.siteId 미전송 + assembleFromSession 미사용)는 규칙 ③ → `b5aef7a9` 로 스탬프. bookmoa 코드 변경 불요
-2. **확인 요청 ①** compose-mixed 에 `Authorization: Bearer`(shop JWT)도 싣는가 — 싣는다면 그 siteId 가 `b5aef7a9` 여야 한다(③-ⓒ)
-3. **확인 요청 ②** proxy-download 의 `external/{jobId}/output-url`·external 상태 조회가 **같은 사이트 키**인가 — 스탬프 후 다른 사이트 키면 404
+2. **확인 ① ✅ 미동반**: compose-mixed·synthesize/external 은 `_client.js storigeFetch` 로 호출되고 `X-API-Key` 만 붙는다(bookmoa 코드 대조, authorization/bearer 0건) → ③-ⓒ 해당 없음
+3. **확인 ② ✅ 같은 키**: compose-mixed·external 상태 조회·output-url 세 호출이 **단일 env `STORIGE_API_KEY`** 를 쓴다(다른 키 변수 없음). 그 키의 사이트 판정은 bookmoa 가 당사에 위임 → 아래 6-2-1 로 `b5aef7a9` 확정
 4. `body.siteId` 신규 탑재 금지
 5. 첫 실 compose-mixed 의 **jobId 회신** 요청 → 당사가 `job.siteId` 확인. 확인 전 D6 게이트 미가동
 6. D6 사전 공지 — 게이트가 404 로 거부할 수 있으니 "404=성공" 처리 지점이 있으면 대비(printy 와 동일, §5-4)
 
-**대기**: ACK · 확인 ①② 회신 · 첫 실합성 jobId. printy 와 달리 bookmoa 는 확인 ①② 가 **아직 미확정**이다.
+**대기**: 첫 실합성 jobId 회신 **1건뿐**(ACK·확인 ①② 완료). bookmoa 결속 jobId 0건·file 54건(`order_asset_claims`),
+실합성은 실주문 흐름에서만 발생해 bookmoa 가 임의로 일으키지 않는다 — 첫 compose-mixed 시 회신(bookmoa 오너 운영 항목으로 인계문 기록).
+
+#### 6-2-1. 키 소유 판정 — 키 값을 꺼내지 않는 방법 (재사용 가능)
+
+bookmoa 는 키 값을 열람하지 않아 "그 키가 `b5aef7a9` 행인가"를 당사에 위임했다. 키 값 없이 코드·DB·로그로 닫았다:
+
+1. shop-session 발급(`auth.controller.ts:180`)은 `@UseGuards(ApiKeyGuard)` + `@CurrentSite()` → **JWT siteId = 호출한 키의 사이트**
+2. 회원 세션 생성(`edit-sessions.controller.ts` `create`)은 `create({ ...dto, memberSeqno, siteId: user?.siteId })` — **spread 뒤에 JWT 값이 덮어쓴다**
+   (본문 siteId 무력. `undefined` 여도 명시 키가 덮으므로 본문 값이 살아남지 않는다) → **세션 siteId = JWT siteId**
+3. bookmoa 는 shop-session 발급을 포함한 모든 Storige 호출에 단일 키를 쓴다(bookmoa 코드 대조)
+4. 실측: bookmoa-mobile 세션 63건 전부 `b5aef7a9` · 09-14 09:18 UTC 로그에서 `POST /auth/shop-session` 200 직후 `POST /edit-sessions` 201, 그 세션도 `b5aef7a9`
+
+⇒ **bookmoa 의 단일 키 = `b5aef7a9` 소유 확정.** compose-mixed 스탬프 사이트와 output-url·상태 조회 권한 사이트가 같아 스탬프 이후 404 는 구조적으로 없다.
+> ⚠️ 2단계의 **spread 순서가 이 판정의 전제**다. `siteId: user?.siteId` 를 `...dto` 앞으로 옮기면 본문 siteId 가 세션 스탬프를 위조할 수 있고, 이 판정법도 무효가 된다
+
+- **D6 404 대비 → 영향 없음 확정**: bookmoa 는 `DELETE /files/:id/external` 을 쓰지 않는다. Storige 대상 DELETE 는 `DELETE /edit-sessions/:id`(회원 Bearer + X-API-Key) 하나이고 `storigeFetch` 가 non-ok 에서 예외를 던져 404 를 성공으로 합산하지 않는다
+- 북모아 메인 PHP 참고(6-1)는 bookmoa 가 "bookmoa-mobile 무관 · 재개 시 조율"로 기록
 
 ### 6-3. 관찰 — 2026-09-14 09:18 UTC 내부 테스트 흐름에서 드러난 VALIDATE 스탬프 공백
 
