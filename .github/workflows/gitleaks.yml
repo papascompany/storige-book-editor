@@ -42,8 +42,18 @@ jobs:
         run: |
           set -euo pipefail
           VER=8.30.1
-          curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${VER}/gitleaks_${VER}_linux_x64.tar.gz" \
-            | tar -xz gitleaks
+          # 릴리스 gitleaks_${VER}_checksums.txt 의 linux_x64 값을 **고정**한다(VER 변경 시 함께 갱신).
+          # 같은 릴리스의 checksums.txt 를 런타임에 받아 대조하면 손상만 잡고 자산 교체는 못 잡는다.
+          SHA256=551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+          cd "$RUNNER_TEMP"
+          # 파일로 받은 뒤 검증·해제한다. 종전 `curl -sSL | tar` 는 HTTP 오류 본문이 tar 로 흘러
+          # 'gzip: stdin: not in gzip format' 으로만 보였다(2026-09-14 run 34856112186).
+          # -f: HTTP 오류를 상태코드와 함께 비0 종료 / --retry-all-errors: 러너 측 일시 오류 재시도.
+          curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors \
+            -o gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${VER}/gitleaks_${VER}_linux_x64.tar.gz"
+          echo "${SHA256}  gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf gitleaks.tar.gz gitleaks
           install -m 0755 gitleaks /usr/local/bin/gitleaks
           gitleaks version
 
