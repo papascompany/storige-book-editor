@@ -7,7 +7,8 @@
 ## 0. 현재 라이브 상태
 
 - **D6-ⓐ 커밋·푸시·API 배포 전부 완료(§1).** master = origin/master.
-  VPS `~/storige` 는 **D6-ⓐ 코드 커밋까지 반영** — 이후 문서 커밋·CI 워크플로 커밋(§7)은 런타임 무영향이라 미동기화(다음 API 배포 때 자연 동기화)
+  VPS `~/storige` 는 **2026-09-15 `git pull --ff-only` 로 §7 기록 커밋까지 동기화**(체크아웃만 — 컨테이너 무변경, api·nginx 가동 시간 불변 · health 200).
+  이후 문서 커밋은 런타임 무영향이라 미동기화(다음 API 배포 때 자연 동기화)
   - ⚠️ **해시를 이 문서에 박지 않는다.** 자기참조 스테일이 4회 발생한 함정이다(09-11 정본 §0 주석). 정확한 HEAD 는 `git log --oneline -5`
   - 🔧 **문서 정정**: 09-11 정본은 VPS 가 `94edb89` 라고 적었으나 **실제로는 `4463a5f`(2커밋 뒤)** 였다.
     그 2커밋이 문서뿐이어서 배포 영향은 0이었지만, **"VPS 는 X 유지" 표기를 신뢰하지 말고 `git log --oneline -1` 로 실측해라**
@@ -391,6 +392,6 @@ api 로그(대조군 = 09-12 프로브 2건 검출로 파싱 유효 확인) 순�
   PR #16 체크 5종 통과(러너 로그 `gitleaks.tar.gz: OK`) · **머지 후 master gitleaks run 전 스텝 success**(`OK` · 8.30.1 · 범위 스캔 no leaks) ·
   run 34856112186 재실행 attempt 3 success(재실행은 **구 워크플로**로 돈다 — 수정 검증이 아니라 커밋 상태 복구용)
 - **배포**: Vercel `storige-editor`·`storige-admin` = Production **Canceled 5s/3s**(ignoreCommand 스킵, 빌드 없음) · `papascompany-homepage` = 이 커밋 대상 배포 없음(최근 배포 45일 전 — 이 저장소 push 로 트리거되지 않는다) ·
-  VPS = 런타임 무영향이라 미동기화(§0)
+  VPS = 런타임 무영향이지만 오너 요청으로 **체크아웃만 동기화**(`git pull --ff-only` — 범위가 `docs/`·`.cursor/`·`.github/` 뿐임을 사전 실측, 컨테이너 재시작 없음, §0)
 - **미해소**: 09-14 러너가 받은 실제 HTTP 상태는 여전히 불명(이후 run 들은 재시도 없이 1회 성공). 재발하면 이제 로그에 `curl: (22) … error: <code>` 가 남는다
 - 병합은 기존 PR 관례대로 머지 커밋. 원격 브랜치 `ci/gitleaks-install-retry` 잔존(`delete_branch_on_merge=false`)
