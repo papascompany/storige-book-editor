@@ -2,13 +2,14 @@
 
 > **이 문서가 최신 날짜 정본이다.** 9/11 상세 이력(§7 세션 로그 3종·§8 R-172·§8-1 D6 블로커 규명)은
 > `RESUME_PROMPT_2026-09-11.md`, 그 이전은 `RESUME_PROMPT_2026-08-28.md`·`_2026-08-25.md`(아카이브).
-> 2026-09-12 작성 · **2026-09-14 갱신**(§1 사후 실측 · §5 printy 파일 파기 계약 트랙 · §6 bookmoa D6-ⓐ 통지 · §3 채널 확증법) · **2026-09-15 갱신**(§7 gitleaks CI 설치 단계 강화).
+> 2026-09-12 작성 · **2026-09-14 갱신**(§1 사후 실측 · §5 printy 파일 파기 계약 트랙 · §6 bookmoa D6-ⓐ 통지 · §3 채널 확증법) · **2026-09-15 갱신**(§7 gitleaks CI 설치 단계 강화 · §7-1 별도 세션 교차 검증·VPS 컨테이너 실측).
 
 ## 0. 현재 라이브 상태
 
 - **D6-ⓐ 커밋·푸시·API 배포 전부 완료(§1).** master = origin/master.
   VPS `~/storige` 는 **2026-09-15 `git pull --ff-only` 로 §7 기록 커밋까지 동기화**(체크아웃만 — 컨테이너 무변경, api·nginx 가동 시간 불변 · health 200).
   이후 문서 커밋은 런타임 무영향이라 미동기화(다음 API 배포 때 자연 동기화)
+  ✅ 2026-09-15 05:47 UTC **별도 세션이 교차 확인**: VPS 작업트리 클린 · 컨테이너 기동 시각 09-12 그대로 · 실행 이미지 = 최신 빌드 이미지 · D6-ⓐ 지문 유지(§7-1)
   - ⚠️ **해시를 이 문서에 박지 않는다.** 자기참조 스테일이 4회 발생한 함정이다(09-11 정본 §0 주석). 정확한 HEAD 는 `git log --oneline -5`
   - 🔧 **문서 정정**: 09-11 정본은 VPS 가 `94edb89` 라고 적었으나 **실제로는 `4463a5f`(2커밋 뒤)** 였다.
     그 2커밋이 문서뿐이어서 배포 영향은 0이었지만, **"VPS 는 X 유지" 표기를 신뢰하지 말고 `git log --oneline -1` 로 실측해라**
@@ -59,6 +60,10 @@ PATH="/opt/homebrew/opt/node@24/bin:$PATH"   # node -v → v24.20.0. engine 경�
   (2026-09-14 실수 — 필터 없는 대조군으로 결론은 유지). 배포 시각은 컨테이너 로그의 `+09:00` 을 UTC 로 환산해 쓴다. **D6-ⓐ 배포 = 2026-09-12 04:31 UTC**
 - **api 로그(pino JSON)를 정규식으로 자를 때는 대조군을 같이 세라** — `"url"…[^}]*…"statusCode"` 는 `req}` 에서 끊겨 **전부 빈 결과**가 된다.
   이미 아는 요청(예: 프로브)이 결과에 없으면 "호출 0건"이 아니라 파싱 실패다(2026-09-14 실사례)
+- **zsh 에서 `GID`·`UID`·`EUID`·`EGID` 를 변수명으로 쓰지 마라** — 특수 파라미터라 `GID=$(…)` 대입이 setgid 시도로 번져
+  `failed to change group ID: operation not permitted` 로 **명령 전체가 실행 전에 실패**한다. 샌드박스 문제로 오인하기 쉽다(2026-09-14 실사례 — 샌드박스를 꺼도 같은 오류). `RUN_ID` 등을 쓴다
+- **`gh run rerun` 직후의 `gh run watch` 결과를 바로 믿지 마라** — 재실행이 등록되기 전이면 **이전 시도의 완료 결과**를 읽고 즉시 반환한다.
+  결론 전에 `gh run view <id> --json attempt,updatedAt` 로 시도 번호·시각을 확인한다(2026-09-14 실사례)
 - 기타: vite.config.js shadow / 빌드게이트 5함정 / fabric styles·loadJSON / SPREAD≠표지 / isInitializedRef 저장 입구 금지 / **debounce 는 배칭 도구 아님** / **supertest 포트 패밀리**(불가능한 응답=남의 서버 의심) / 크로스세션 권한모드
 
 ---
@@ -395,3 +400,26 @@ api 로그(대조군 = 09-12 프로브 2건 검출로 파싱 유효 확인) 순�
   VPS = 런타임 무영향이지만 오너 요청으로 **체크아웃만 동기화**(`git pull --ff-only` — 범위가 `docs/`·`.cursor/`·`.github/` 뿐임을 사전 실측, 컨테이너 재시작 없음, §0)
 - **미해소**: 09-14 러너가 받은 실제 HTTP 상태는 여전히 불명(이후 run 들은 재시도 없이 1회 성공). 재발하면 이제 로그에 `curl: (22) … error: <code>` 가 남는다
 - 병합은 기존 PR 관례대로 머지 커밋. 원격 브랜치 `ci/gitleaks-install-retry` 잔존(`delete_branch_on_merge=false`)
+
+### 7-1. 별도 세션 교차 검증 (2026-09-15) — §7 기록과 실측 일치
+
+§7 을 작성한 세션과 **다른 세션**이 GitHub·VPS 를 읽기 전용으로 다시 대조했다. 어긋난 항목 0건.
+
+| §7 주장 | 교차 실측 |
+|---|---|
+| Install 스텝만 변경, 버전·바이너리 방식·스캔 범위·`--config`/`--redact` 무변경 | ✅ PR #16 diff = `gitleaks.yml` 1파일 +12/−2, Install 스텝 한정 |
+| 고정 SHA256 이 정본 | ✅ 공식 `gitleaks_8.30.1_checksums.txt` 의 linux_x64 값과 **바이트 일치** |
+| PR·머지 후 master 전 스텝 success | ✅ PR run 과 머지 후 최신 master run 모두 **Scan 스텝까지 실제 실행**(skip 아님) |
+| run 34856112186 attempt 3 success | ✅ Scan 실행·무검출 — 09-14 로컬 동일 명령 스캔 결과와 일치 |
+| VPS 체크아웃만 동기화, 컨테이너 무변경 | ✅ 아래 |
+
+VPS 실측(2026-09-15 05:47 UTC):
+- 작업트리: §7 기록 커밋에 체크아웃 · origin 대비 문서 커밋만 미동기화 · 클린(untracked 는 04-28 부터 있던 `docker-compose.yml.bak.*` 1건)
+- **런타임 경로 변경 0건**: 마지막 API 배포 커밋 이후 바뀐 파일은 이 RESUME 와 `gitleaks.yml` 뿐(`apps`·`packages`·`docker-compose.yml`·`nginx.conf` 무변경) → pull 이 컨테이너에 영향을 줄 경로 자체가 없다
+- 컨테이너 기동 시각: `storige-api` 09-12 04:31:23 · `storige-nginx` 09-12 04:31:33(= D6-ⓐ 배포·nginx 재시작 그대로) · `storige-worker` 08-12 · mariadb/redis/rembg healthy
+- **실행 이미지 = `:latest` 빌드 이미지**(api·worker 모두) → "재빌드만 하고 recreate 안 한" 상태 아님
+- 실행 중 api 의 D6-ⓐ 지문: 신규 문자열 2종 각 1 + 대조군 1
+- 외부: api health 200(uptime ≈3.05일, 09-12 기동 시각과 초 단위 정합) · editor 200 · admin 200
+- VPS 쓰기(pull·재시작) **0건**
+
+> 참고: 이 트랙을 만든 백그라운드 작업(task_7cf47877)의 **종료 알림은 요청 세션에 도착하지 않았다**(그 세션은 idle 로만 표시). 완료 판정은 알림이 아니라 PR 상태·run 스텝·VPS 실측으로 했다
