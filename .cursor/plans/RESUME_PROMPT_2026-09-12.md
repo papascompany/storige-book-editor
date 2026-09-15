@@ -2,12 +2,12 @@
 
 > **이 문서가 최신 날짜 정본이다.** 9/11 상세 이력(§7 세션 로그 3종·§8 R-172·§8-1 D6 블로커 규명)은
 > `RESUME_PROMPT_2026-09-11.md`, 그 이전은 `RESUME_PROMPT_2026-08-28.md`·`_2026-08-25.md`(아카이브).
-> 2026-09-12 작성 · **2026-09-14 갱신**(§1 사후 실측 · §5 printy 파일 파기 계약 트랙 · §6 bookmoa D6-ⓐ 통지 · §3 채널 확증법).
+> 2026-09-12 작성 · **2026-09-14 갱신**(§1 사후 실측 · §5 printy 파일 파기 계약 트랙 · §6 bookmoa D6-ⓐ 통지 · §3 채널 확증법) · **2026-09-15 갱신**(§7 gitleaks CI 설치 단계 강화).
 
 ## 0. 현재 라이브 상태
 
 - **D6-ⓐ 커밋·푸시·API 배포 전부 완료(§1).** master = origin/master.
-  VPS `~/storige` 는 **D6-ⓐ 코드 커밋까지 반영** — 이후 문서 커밋은 런타임 무영향이라 미동기화(다음 API 배포 때 자연 동기화)
+  VPS `~/storige` 는 **D6-ⓐ 코드 커밋까지 반영** — 이후 문서 커밋·CI 워크플로 커밋(§7)은 런타임 무영향이라 미동기화(다음 API 배포 때 자연 동기화)
   - ⚠️ **해시를 이 문서에 박지 않는다.** 자기참조 스테일이 4회 발생한 함정이다(09-11 정본 §0 주석). 정확한 HEAD 는 `git log --oneline -5`
   - 🔧 **문서 정정**: 09-11 정본은 VPS 가 `94edb89` 라고 적었으나 **실제로는 `4463a5f`(2커밋 뒤)** 였다.
     그 2커밋이 문서뿐이어서 배포 영향은 0이었지만, **"VPS 는 X 유지" 표기를 신뢰하지 말고 `git log --oneline -1` 로 실측해라**
@@ -50,6 +50,8 @@ PATH="/opt/homebrew/opt/node@24/bin:$PATH"   # node -v → v24.20.0. engine 경�
 - **`engines.node: "24.x"` 를 경고 때문에 넓히지 마라** — Vercel 은 범위를 newest-first intersect 해 **가용 최신 메이저를 자동 채택**한다. 개방하면 26.x 무단 승격. 근거 `NODE24_UPGRADE_AUDIT_2026-07-30.md:63`
 - **`node@N` 경로 이름은 버전을 보장하지 않는다**(미설치 버전의 opt 링크는 `node` 포뮬러의 낡은 별칭). 고정 전 `node -v` 실값 확인
 - **gitleaks 자가검증에 allowlist 어휘를 쓰지 마라**(`example`·`placeholder`·`dummy`·`sample`·`test-key`…) — 면제돼서 "차단 실패" 로 오판한다
+- **gitleaks `VER` 를 올리면 같은 스텝의 `SHA256` 도 갱신하라** — 설치 단계가 해시를 고정한다(§7). 값은 릴리스 `gitleaks_<VER>_checksums.txt` 의 `linux_x64` 행.
+  gitleaks 잡이 red 여도 **Scan 스텝이 skip 이면 시크릿 검출이 아니다**(설치 실패) — 스텝별 결론부터 확인
 - **사용자에게 주는 실행 블록(` ```bash `)에 자리표시자(`<host>` 등)를 넣지 마라** — 앱의 Run 버튼으로 그대로 실행되고, zsh 가 `<host>` 를 **입력 리다이렉션**으로 읽어 `no such file or directory: host` 로 실패한다(2026-09-14 실사고, 서버 무실행).
   프로덕션 조회는 에이전트가 직접 실행하고, 사용자용이면 실값 위치(`CLAUDE.local.md` §1.1)를 문장으로 안내한다
 - **프로덕션 DB 의 `created_at` 은 UTC 다**(`@@session.time_zone=SYSTEM`, 컨테이너 UTC). KST 시각을 필터에 넣으면 9시간 어긋난다
@@ -373,3 +375,22 @@ api 로그(대조군 = 09-12 프로브 2건 검출로 파싱 유효 확인) 순�
   외부 `validate` 라우트 호출이 로그에 없어 **세션 완료 처리가 내부에서 만든 잡**으로 보인다(생성 지점 코드는 미확인)
 - 서버가 권위(`session.siteId`)를 갖고도 잡에 붙이지 않는 점에서 **ⓐ와 같은 계열의 공백**이다. 원인과 D6 영향(VALIDATE 산출물·파일 회수 경로가 NULL 게이트에 걸리는지)은 **미조사**
 - 같은 흐름에서 업로드된 파일 2건의 `site_id` 도 확인하지 않았다 — 조사 시 함께 볼 것
+
+---
+
+## 7. gitleaks CI 설치 단계 강화 (2026-09-15) — ✅ PR #16 머지·배포 완료
+
+- **증상**: 09-14 run 34856112186(docs 전용 커밋)이 attempt 1·2 모두 Install 스텝에서 curl 시작 ~80ms 후 `gzip: stdin: not in gzip format` 로 실패.
+  **Scan 스텝 skip → 시크릿 검출 아님.** 같은 시각 로컬 동일 URL 302→200(8230402 bytes)·githubstatus 정상·직전 run 성공·로컬 동일 명령 스캔 무검출 → 러너 측 다운로드 문제로 판단.
+  종전 `curl -sSL | tar` 라 러너가 받은 HTTP 상태가 로그에 없었다
+- **변경**(`.github/workflows/gitleaks.yml` Install 스텝만): `curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors -o` → `sha256sum -c` → `tar -xzf`, 작업 위치 `$RUNNER_TEMP`.
+  `VER=8.30.1`·바이너리 직접 실행(gitleaks-action 라이선스 회피)·스캔 범위·`--config .gitleaks.toml --redact` **무변경**
+  - 해시를 **워크플로에 고정**한 이유: 같은 릴리스의 checksums.txt 를 런타임에 받아 대조하면 손상만 잡고 자산 교체는 못 잡는다.
+    값은 checksums.txt · GitHub API asset digest · 로컬 계산 **3자 일치**로 확정. `VER` 변경 시 함께 갱신(§0 상시 함정)
+- **검증**: actionlint v1.7.12(+shellcheck) 0 · YAML 에서 스텝을 추출해 로컬 실행(정상 해시 설치 / 틀린 해시 `sha256sum` exit 1 로 해제 전 중단) ·
+  PR #16 체크 5종 통과(러너 로그 `gitleaks.tar.gz: OK`) · **머지 후 master gitleaks run 전 스텝 success**(`OK` · 8.30.1 · 범위 스캔 no leaks) ·
+  run 34856112186 재실행 attempt 3 success(재실행은 **구 워크플로**로 돈다 — 수정 검증이 아니라 커밋 상태 복구용)
+- **배포**: Vercel `storige-editor`·`storige-admin` = Production **Canceled 5s/3s**(ignoreCommand 스킵, 빌드 없음) · `papascompany-homepage` = 이 커밋 대상 배포 없음(최근 배포 45일 전 — 이 저장소 push 로 트리거되지 않는다) ·
+  VPS = 런타임 무영향이라 미동기화(§0)
+- **미해소**: 09-14 러너가 받은 실제 HTTP 상태는 여전히 불명(이후 run 들은 재시도 없이 1회 성공). 재발하면 이제 로그에 `curl: (22) … error: <code>` 가 남는다
+- 병합은 기존 PR 관례대로 머지 커밋. 원격 브랜치 `ci/gitleaks-install-retry` 잔존(`delete_branch_on_merge=false`)
