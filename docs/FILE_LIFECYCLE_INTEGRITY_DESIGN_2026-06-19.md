@@ -2,6 +2,10 @@
 
 > **작성**: 2026-06-19 · **원칙**: ① 어떤 경우에도 실주문 데이터 무손실 ② 미주문/고아 파일 무한누적 방어.
 > 코드 감사(4영역) 근거. 확정분은 단정, 미검증은 "추정".
+>
+> 🔴 **2026-09-21 정정**: 이 문서는 **설계 시점(2026-06-19)의 위험 기술**이다. §4 의 **S1·S5 방지책은 이후 구현되어 해소**됐는데 표가 갱신되지 않아,
+> 파트너(printy)가 이 표를 근거로 "`findExpired` 에 order 가드가 없다"고 오판하는 실사고가 있었다. 해당 행에 현행 코드 기준을 병기한다.
+> **이 문서의 "현재 위험" 열을 현행 상태로 인용하지 마라** — 코드 실물(`files.service.ts`)과 `.cursor/plans/RESUME_PROMPT_2026-09-12.md` §8 이 최신이다.
 
 ---
 
@@ -80,11 +84,15 @@
 
 | # | 시나리오 | 현재 위험(코드) | 방지책 | 책임 |
 |---|---|---|---|---|
-| S1 | 정리 잡이 실주문 파일 오삭제 | `findExpired` status/order 필터 없음 + hardDelete 영구 | order 가드 + softDelete + dryRun | storige(P0) |
+| S1 | 정리 잡이 실주문 파일 오삭제 | ~~`findExpired` status/order 필터 없음 + hardDelete 영구~~ → **해소(2026-09-21 코드 확인)** ※1 | order 가드 + softDelete + dryRun | storige(P0) **완료** |
 | S2 | 주문↔fileId 링크 끊김 | 게스트 생성 시 orderSeqno=0, order.storigeSessionId 미기록 가능 | storige_session_id 필수 기록 + 게스트 대체 추적ID | **bookmoa**(P0) |
 | S3 | 게스트 24h 삭제가 주문 직전 파일 삭제 | purge가 세션만 DELETE(파일 CASCADE 없음) | 주문 진입 즉시 migrateGuestSessions | **bookmoa**+storige(P0) |
 | S4 | 워커 outputFileId 저장 실패로 결과 파일 단절 | best-effort catch(추정) | outputFileId 재시도 + job.metadata 이중기록 | storige(P1) |
-| S5 | 오삭제 후 복구 불가 | hardDelete 즉시 영구 | deleted_at 48h 복구창 + (옵션)R2 버전닝 | storige(P1) |
+| S5 | 오삭제 후 복구 불가 | ~~hardDelete 즉시 영구~~ → **해소**: sweep(soft) → `FILE_PURGE_GRACE_HOURS`(기본 48h) → purge(hard) 2단계 ※1 | deleted_at 48h 복구창 + (옵션)R2 버전닝 | storige(P1) **완료**(R2 버전닝은 미도입) |
+
+> ※1 **현행 코드(2026-09-21 확인)**: `files.service.ts:findExpired` 는 같은 `order_seqno`·같은 site(양측 NULL 포함)에 **미완료(`status <> 'complete'`)·미삭제 편집세션**이 있으면 만료를 건너뛴다.
+> 삭제는 `file-retention.service.ts` 의 sweep(`@Cron('17 * * * *')`, softDelete) → 복구창 → purge(`@Cron('47 * * * *')`, hardDelete) 2단계이고, admin `storage_settings` 의 `retention_enabled`/`retention_dry_run` 게이트를 거친다.
+> ⚠️ **다만 그 가드는 "편집세션이 있는 주문"만 보호한다** — 편집세션 없이 파일만 올리는 경로(파트너 직접 업로드)에는 걸리지 않는다. site 전역 `retentionDays` 를 그런 파트너에 적용하면 제작 중 원고가 만료될 수 있다.
 
 > **무손실의 핵심**: 파일은 **주문/세션에 연결되는 순간부터 정리 대상에서 영구 제외**된다. 따라서 (a) bookmoa가 **링크를 견고히 기록**하고 (b) storige cron이 **참조를 존중**하면 실주문 데이터는 절대 사라지지 않는다. 정리는 오직 "어디에도 연결 안 된 + grace 경과" 파일만 건드린다.
 
@@ -103,8 +111,9 @@
 ---
 
 ## 6. 근거 (file:line)
-- `apps/api/src/files/files.service.ts:findExpired` — status/order 필터 부재(S1 근본)
-- `apps/api/src/files/files.service.ts:hardDelete` — 영구삭제(soft 아님) / `softDelete`+`deleted_at` 인프라 존재하나 미활용
+- ~~`apps/api/src/files/files.service.ts:findExpired` — status/order 필터 부재(S1 근본)~~ → **2026-09-21 현재 order 가드 구현됨**(§4 ※1)
+- ~~`apps/api/src/files/files.service.ts:hardDelete` — 영구삭제(soft 아님) / `softDelete`+`deleted_at` 인프라 존재하나 미활용~~ → **2026-09-21 현재 2단계(soft→grace→hard)로 활용 중**
+- `apps/api/src/files/file-orphan.service.ts` — P1 고아 정리 cron(`@Cron('7 * * * *')`, 설계 이후 신설). **`worker_jobs` 참조 절에 status 필터가 없어 검증 job 이 한 번이라도 붙은 파일은 영구 제외**(2026-09-21 제기, 오너 결정 대기)
 - `apps/api/src/files/file-retention.service.ts` — cron, dryRun 게이트
 - `apps/api/src/files/presigned-upload.service.ts` — pending 생성 / abort는 failed 마킹만 / R2 abort 실패 warn only
 - `apps/api/src/editor/thumbnail-cleanup.service.ts` — 참조+grace 기반 정리(좋은 모델)
