@@ -748,3 +748,36 @@ bookmoa 는 §8-10-1 에서 "`needAuthRef` 분기 생존" 을 확인했지만 �
 
 **printy 측 현재 상태**: 게이트 무수정 확정 · 산출물 0 이면 표지 슬롯을 통과로 쓰지 않고 사유 표시하는 안전 수정 **배포 완료**(`01d847d`·`335ea5a`, 라이브 확인) ·
 로그인 유도 → `guest/migrate` → 회원 재완료 구현은 printy 오너 결정 대기 · 세션 `5ade50f7…` 는 **보존 불필요**(만료 회수 허용) · 시각 UTC 통일 확인
+
+#### 8-11-1. 양사 영향 확정 + `needAuthRef` 폴백은 구조적으로 죽어 있다 (2026-09-21)
+
+**bookmoa 도 동일 결함 확정**(그쪽 코드 실측 회신). `StorigeEditorHost.jsx`:
+- 수신 순서를 가리지 않고 **먼저 도착한 쪽을 처리**한다. `finishComplete` 첫 줄이 `completedRef` 를 세워 두 번째 완료(dual-emit)를 **버린다** → 레거시 ①이 먼저 오면 정식 ②는 폐기
+- 판정식: `needsAuth = !ref.migrated && (payload.needsAuth === true || !!needAuthRef.current?.guestToken)`.
+  ✅ **`status` 는 읽지 않는다**(정규화는 `files.coverFileId/contentFileId/thumbnailUrl` 만) → **권고 1(2키 동봉)만으로 bookmoa 는 코드 변경 없이 발화**한다. 권고 2 는 bookmoa 무관
+- needsAuth 가 아니면 `onComplete` → `closeEditor()` 로 **`needAuthRef`·`pendingCompleteRef`·`completedRef`·authPrompt 전부 리셋** → 뒤늦은 ③은 닫힌 오버레이라 고객이 못 본다
+- ⇒ **레거시 우선 도착 = 로그인 유도 0 · guestToken 미보존(레거시에 없음) · 승계 불가**
+
+**🔴 실피해 흔적(bookmoa DB)**: 회원 장바구니에 편집세션 항목 **2건**(2026-06-18 · 08-10)이 `status:'edited'` · `coverFileId`/`contentFileId` **null** · `guestToken` null · files 0 으로 남아 있다
+= 게스트 완료가 **로그인 유도 없이 완료로 처리돼 담긴 흔적**(R-190 배포 전). 가설이 아니라 실제로 발생했다.
+
+**당사 코드 확인 — bookmoa 가 "귀측만 안다"고 한 항목의 답**
+
+`editor.needAuth` 발신처 **전수**(`apps/editor/src`):
+1. `embed.tsx:1878` — 게스트 완료 분기 안, `onComplete`(레거시) **뒤**
+2. `embed.tsx:2042` — 다른 완료 경로, 동일하게 **뒤**
+3. `components/editor/GuestAuthPromptModal.tsx:40` — **사용처 0건(죽은 코드)**. 어디서도 렌더되지 않아 발신되지 않는다
+
+⇒ **완료보다 먼저 `editor.needAuth` 가 나가는 경로는 존재하지 않는다.**
+따라서 bookmoa 의 `needAuthRef` 폴백(STALE-CLOSURE-001 대응)은 **구조적으로 발화 불가**다. printy 도 같은 폴백을 뒀으니 동일하다.
+`needsAuth: true` 를 싣는 곳도 `embed.tsx:1869`·`2033` 두 곳뿐이고 **둘 다 정식 엔벨로프 전용**이다.
+
+- (관찰·범위 밖) `GuestAuthPromptModal.notifyParentNeedAuth` 는 `postMessage(..., '*')` **와일드카드 오리진**으로 `guestToken` 을 싣는다.
+  현재 죽은 코드라 실피해 0 이지만, **나중에 배선하면 토큰이 임의 오리진으로 샌다.** 배선 전 `parentOrigin` 고정 필수. 삭제 또는 가드 추가를 후속 항목으로 둔다
+
+**양사 합의 상태**
+- 권고 1(레거시 payload 에 `needsAuth`·`guestToken` 동봉) — **printy·bookmoa 양측 지지**. 발신 측 수정이 원인 해소라는 판단도 양측 동의
+- 권고 2(`status` 하드코딩) — bookmoa 무관, printy 는 "`status` 를 믿지 말고 `needsAuth` 우선" 으로 구현 예정 → **1번만으로도 양사 해소**
+- 실피해 차단은 양사 안전망이 담당: printy `01d847d`·`335ea5a`(배포 완료) · bookmoa R-190 `dd3e2de`(금일 배포). 단 **게스트 작업 승계(24h 창)는 권고 1 없이는 여전히 불가**
+- 권고 1 반영 시 bookmoa 가 라이브에서 **게스트 완료 → 로그인 유도 → 승계 1회 실측** 약속(통지 요청)
+- bookmoa 후속 후보 R-191: 권고 1 반영 전까지 "needsAuth 없음 + files 비어 있음" 을 완료로 닫지 않는 수신 측 보강 — **"회원 완료는 항상 files 가 있다"는 당사 사양이 전제**(§8-10 확인됨). 그쪽 오너 결정
