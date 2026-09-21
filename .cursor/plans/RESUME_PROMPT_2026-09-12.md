@@ -822,3 +822,42 @@ bookmoa 는 §8-10-1 에서 "`needAuthRef` 분기 생존" 을 확인했지만 �
 
 **printy 진행 상태**: 보류 로직 회수 조건 기록 완료 · **회원 완료 실측을 세션 시작 프롬프트 최우선 항목으로 등재**
 (회신 값 `jobId`·`job.siteId`·`coverFileId`/`contentFileId`·완료 시각 UTC 까지 고정). 실측 일정은 printy 오너 몫. printy 기록 커밋 `f75f091`
+
+### 8-12. ✅ 권고 1 반영·배포 완료 (2026-09-21, 커밋 `ee88078`) — 이 트랙 유일한 코드 변경
+
+오너 승인 후 적용했다. **§8-11 결함 해소.** 이 트랙 전체에서 **당사 코드 변경은 이 1건뿐**이다.
+
+**변경** — `apps/editor/src/views/EmbedView.tsx` 레거시 `storige:completed` payload
+```
+...(r.needsAuth ? { needsAuth: r.needsAuth } : {}),
+...(parentOrigin && r.guestToken ? { guestToken: r.guestToken } : {}),
+```
+- `needsAuth` 무조건 동봉(불리언 — 자격증명 아님)
+- 🔒 **`guestToken` 은 `parentOrigin` 지정 시에만 동봉 — 승인된 diff 에서 의도적으로 벗어난 부분이다.**
+  구현 중 발견: `emitLegacy` 는 `parentOrigin` 미지정 시 **`targetOrigin='*'`** 로 송신하고(같은 파일 38행),
+  `PLATFORM_INTEGRATION_GUIDE` §3.2 가 *"레거시 페이로드는 필드 화이트리스트라 `token`·`guestToken` 같은 자격증명은 실리지 않는다"* 를
+  **그 와일드카드의 완화 근거**로 명시한다. 무조건 동봉하면 그 보안 속성이 깨져 임베드 페이지의 다른 스크립트·프레임이 게스트 토큰을 읽는다
+  → 오리진 고정을 전제로 걸었다. **파트너가 게스트 승계를 쓰려면 `parentOrigin` 지정이 필수**가 된다(양사에 확인 요청 발송)
+- `status: 'completed'` 하드코딩은 **의도적 유지**(§8-11-2 권고 2 하향). 기존 필드·발신 순서 **무변경**
+
+**문서** — `docs/PLATFORM_INTEGRATION_GUIDE.md` §3.2 에 2블록 추가:
+ⓐ **`status` 신뢰 금지**(게스트 완료도 `'completed'` 로 오며 실사고가 있었다는 사실 + `needsAuth`·`files` 로 판정 + 앞으로도 교정하지 않을 수 있음)
+ⓑ **2키 동봉 계약**과 `guestToken` 의 `parentOrigin` 조건
+
+**검증**(Node **24.20.0** — 시스템 기본은 26.5.1 이라 `/opt/homebrew/opt/node@24/bin` 을 PATH 앞에 둬야 한다)
+- editor typecheck **0 오류** · vitest **66 files / 785 passed** · build OK(유출 방지 검사 금지 식별자 0건)
+- CI `ci`·`gitleaks` 둘 다 **attempt=1 success**
+
+**라이브 실증 — 예측하지 않고 실측했다**(§0 Vercel 함정)
+- Vercel `storige-editor` Production **Ready · 빌드 54초** = 실빌드(문서 커밋들은 4~5초 `Canceled` = ignoreCommand 스킵). 편집기는 **master push 자동 배포**다
+- **배포 번들 직접 확인**: `https://editor.papascompany.co.kr/assets/EmbedView-Cx6E3UCM.js` 에
+  `...a.needsAuth?{needsAuth:a.needsAuth}:{},...A&&a.guestToken?{guestToken:a.guestToken}:{}` 존재(`A`=parentOrigin). 로컬 dist 와 동형
+- 파트너가 실제로 쓰는 호스트가 여기다(`editor.papascompany.co.kr/embed`, 가이드 715·1139행). VPS `storige-editor` 컨테이너와 혼동하지 말 것
+
+**양사 통지 발송**(반영 통지가 작업의 일부 — 없으면 우회책이 영구 잔존)
+- printy: 1.5초 보류 제거 가능 · `parentOrigin` 지정 여부 확인 요청 · 안전망 존치 권고
+- bookmoa: **우회책 이식을 시작 전이면 중단** 요청 · 판정식이 `payload.needsAuth === true` 를 이미 우선 읽으므로 **코드 변경 없이 발화** ·
+  `parentOrigin` 미지정이면 `sessionStorage.storigePendingGuestToken` 경로 생존 여부 확인 · 약속한 라이브 1회 실측(4항목) 요청 · R-191 불필요 가능성
+
+**🔴 남은 미검증**: 게스트 완료 → 로그인 유도 → 승계 관통과 **회원 완료 실측**은 여전히 0건이다.
+회원 완료 1회가 나오면 `jobId`·`job.siteId` 로 **D6 게이트 대기 항목**(§5-1·§6-2)도 같이 닫힌다
