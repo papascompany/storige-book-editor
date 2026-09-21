@@ -159,6 +159,30 @@ export default function EmbedView() {
             completedAt: r.savedAt,
             // S2 (2026-07-04): 실측 페이지수/규격/가격메타 — 정식 envelope 와 동일하게
             // legacy 형식에도 additive 동봉 (bookmoa-mobile 은 storige:completed 를 주 수신).
+            //
+            // 🔴 2026-09-21: needsAuth·guestToken 도 동봉한다. **이 2키가 없으면 게스트 완료가
+            //    파트너에게 "완료"로 전달된다.** 게스트 완료 분기(embed.tsx)의 발신 순서가
+            //      ① onComplete(=이 legacy) → ② 'editor.complete'(needsAuth 보유) → ③ 'editor.needAuth'
+            //    이라, legacy 를 먼저 처리하고 중복방지 플래그를 세우는 호스트는 ②③을 버린다.
+            //    그 결과 파트너가 구현해 둔 needsAuth 분기와 needAuthRef 폴백이 **구조적으로
+            //    발화하지 못했다**(needAuth 는 완료보다 먼저 나가는 경로가 없다 — 발신처는
+            //    embed.tsx 의 완료 분기 2곳뿐이고 GuestAuthPromptModal 은 사용처 0건).
+            //    실피해 확인: bookmoa 장바구니 2건이 files 0·guestToken null 로 담겼다.
+            // ⚠️ 위의 `status: 'completed'` 는 **게스트 완료에도 하드코딩 리터럴**이다.
+            //    수신 측은 status 로 판정하면 안 되고 needsAuth·files 로 판정해야 한다.
+            //    (교정하면 리터럴을 읽는 미확인 파트너를 깨뜨릴 수 있어 의도적으로 유지 —
+            //     `docs/PLATFORM_INTEGRATION_GUIDE.md` 에 수신 측 경고를 명기한다.)
+            //
+            // 🔒 `needsAuth` 는 무조건 동봉(불리언 — 자격증명 아님).
+            //    `guestToken` 은 **`parentOrigin` 이 지정된 경우에만** 동봉한다.
+            //    emitLegacy 는 `parentOrigin` 이 없으면 `targetOrigin='*'` 로 송신하므로(위 38행),
+            //    무조건 동봉하면 임베드 페이지의 다른 스크립트·프레임에 게스트 토큰이 샌다.
+            //    PLATFORM_INTEGRATION_GUIDE §3.2 가 "레거시 페이로드는 필드 화이트리스트라
+            //    token·guestToken 같은 자격증명은 실리지 않는다" 를 완화 근거로 명시하고 있어,
+            //    그 보안 속성을 깨지 않으려면 오리진 고정이 전제여야 한다.
+            //    ⇒ 파트너가 게스트 승계를 쓰려면 `parentOrigin` 을 지정해야 한다(가이드에 명기).
+            ...(r.needsAuth ? { needsAuth: r.needsAuth } : {}),
+            ...(parentOrigin && r.guestToken ? { guestToken: r.guestToken } : {}),
             ...(r.pageCount != null ? { pageCount: r.pageCount } : {}),
             ...(r.size ? { size: r.size } : {}),
             ...(r.pricing ? { pricing: r.pricing } : {}),

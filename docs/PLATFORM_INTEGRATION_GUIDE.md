@@ -872,6 +872,22 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 > **미지원 `command` 는 조용히 무시(no-op)됩니다** — 오류 이벤트도 예외도 발신하지 않습니다. 따라서 호스트는 **응답 이벤트 타임아웃으로 미지원을 판정**하되 실패로 취급하지 마세요(구버전 편집기 ↔ 신버전 호스트 조합에서 정상 동작). 반대로 `requestId` 를 매번 새로 부여하지 않으면 응답 상관이 어긋나므로, 요청-응답 명령에는 반드시 고유 `requestId` 를 실으세요.
 
 **레거시 dual-emit (EmbedView 라우트 한정, 하위호환):** `storige:ready`, `storige:saved`, `storige:completed`, `storige:cancel`, `storige:error`.
+
+> 🔴 **레거시 `storige:completed` 의 `status` 를 신뢰하지 마세요 (2026-09-21).** 이 값은 **하드코딩 리터럴 `'completed'`** 이며,
+> **게스트(비회원) 완료에도 `'completed'` 로 옵니다.** 게스트 완료는 실제 완료가 아니라 로그인 유도 신호이고 서버 세션은 `draft` 로 남습니다.
+> 수신 측은 반드시 **`needsAuth` 와 `files` 로 판정**하세요 — `needsAuth === true` 이거나 `files.coverFileId`/`files.contentFileId` 가 **둘 다 없으면 완료로 확정하지 마세요**.
+> `status === 'completed'` 로 판정하면 **파일 없는 항목이 주문으로 들어갑니다**(인쇄 불가 주문). 실제로 그 사고가 발생했습니다.
+> `status` 리터럴은 기존 수신자 파손을 피하려고 **의도적으로 유지**합니다 — 앞으로도 교정하지 않을 수 있으니 판정 근거로 쓰지 마세요.
+
+> ✅ **`needsAuth`·`guestToken` 동봉 (2026-09-21 additive).** 종전에는 이 2키가 정식 엔벨로프(`editor.complete`)에만 실려,
+> 레거시를 먼저 처리하고 중복방지 플래그를 세우는 호스트에서는 **게스트 완료가 완료로 처리되고 로그인 유도가 전혀 뜨지 않았습니다**
+> (발신 순서가 `storige:completed` → `editor.complete` → `editor.needAuth` 라 뒤의 둘이 버려짐. `editor.needAuth` 가 완료보다 먼저 나가는 경로는 없으므로 "needAuth 를 미리 받아 두는" 폴백도 발화하지 않습니다).
+> 이제 레거시 payload 에도 실립니다.
+> - `needsAuth?: true` — 게스트 완료일 때만 포함. **무조건 동봉**됩니다
+> - `guestToken?: string` — 게스트 완료일 때만, **그리고 `parentOrigin` 을 지정한 경우에만** 포함됩니다
+> 🔒 **`guestToken` 을 받으려면 `parentOrigin` 을 반드시 지정하세요.** 미지정 시 레거시 emit 은 `targetOrigin='*'` 로 송신되므로
+> 게스트 토큰을 동봉하면 임베드 페이지의 다른 스크립트·프레임에 토큰이 샙니다. 그래서 **오리진을 고정하지 않은 파트너에게는 `guestToken` 을 보내지 않습니다.**
+> 게스트 작업 승계(`POST /edit-sessions/guest/migrate`)가 필요하면 `parentOrigin` 지정이 전제입니다.
 > ⚠️ **레거시 emit 은 `parentOrigin` 미지정 시 `targetOrigin='*'`(와일드카드)로 송신**됩니다(`EmbedView.tsx`: `parentOrigin || '*'`). 레거시 페이로드는 필드 화이트리스트라 `token`·`guestToken` 같은 자격증명은 실리지 않지만, **`sessionId`(= `editSessionId`)와 `coverFileId`/`contentFileId` 가 그대로 노출**됩니다. `editSessionId` 는 사실상 권한 토큰입니다 — `POST /api/worker-jobs/compose-mixed` 가 무인증(`@Public`)이라 이 값을 가진 쪽은 누구나 그 세션의 합성 잡을 트리거할 수 있습니다(3.4·4.2 참조). 임베드 페이지에 다른 스크립트가 하나라도 있으면 그 스크립트가 값을 읽습니다. 신규 파트너(특히 유형 3 Shopify)는 **반드시 `parentOrigin` 을 지정**하고 정식 `storige-editor` 엔벨로프를 사용하세요. 정식 엔벨로프는 `parentOrigin` 이 없으면 아예 발신하지 않으며 와일드카드를 절대 쓰지 않습니다.
 
 ### 3.3 세션 저장 / 재편집
