@@ -221,9 +221,11 @@ SELECT id, site_id, created_at FROM worker_jobs
 
 **오너 결정 대기**: 동화책 caseBind · cover VALIDATE 경고 처리 정책 · G-6 백필 ·
 **branch protection(master 무보호 확정)** · 폰트 시딩(0건) · D6 착수 시점 ·
-**파트너 파기 계약 신설**(합성 산출물·편집 세션 하드삭제 external, §5-2) · **고아 정리 실가동 전환**(`FILE_ORPHAN_DRY_RUN`, §5-3)
+**파트너 파기 계약 신설**(합성 산출물·편집 세션 하드삭제 external, §5-2) · **고아 정리 실가동 전환**(`FILE_ORPHAN_DRY_RUN`, §5-3) ·
+**고아 판정 완화 (a)안**(종료 VALIDATE 참조 해제 — 집행 순서 분리 권고, §8)
 
-**파트너 트랙(수신 대기)**: ~~printy R-173 배포 완료 재통지~~ ✅ 09-14 수신(§5-5) · printy 첫 실합성 `job.siteId` 회신(§5-1) · bookmoa 첫 실합성 jobId 회신(§6-2 — ACK·확인 ①② 완료)
+**파트너 트랙(수신 대기)**: ~~printy R-173 배포 완료 재통지~~ ✅ 09-14 수신(§5-5) · printy 첫 실합성 `job.siteId` 회신(§5-1) · bookmoa 첫 실합성 jobId 회신(§6-2 — ACK·확인 ①② 완료) ·
+~~printy 고아 판정 완화 질의(09-21)~~ ✅ 실측 회신 발신(§8) — 오너 결정 회신만 잔여
 
 ---
 
@@ -300,6 +302,7 @@ printy 오너에게도 같은 보고가 올라갔다. **착수·일정은 약속
 - 🚫 **printy 사이트에 `retention_days` 를 설정하지 마라.** printy 는 "업로드마다 `retentionDays: 90`" 권고를 **거절**했다 —
   방침 기산점이 **주문 완료**라, 업로드 기산이면 제작이 길어진 주문의 원고가 **완료 전에 삭제**된다. 완료 기산 파기는 printy 스크립트가 맡는다.
   사이트 값을 설정하면 printy 가 막으려는 사고를 당사가 일으킨다
+- ➡️ **2026-09-21 재실측·고아 판정 완화 제안·규모 집계는 §8**. 이 절의 수치(files 283건 등)는 09-14 기준이라 §8 이 최신이다
 
 ### 5-4. Q3 — NULL-site 파괴 라우트 · D6 설계 입력 1건
 
@@ -435,3 +438,78 @@ VPS 실측(2026-09-15 05:47 UTC):
   - **그 트랜스크립트를 export·복사·외부 공유하지 않는다.** 노출은 로컬 로그 한정이라 즉시 회전이 필수는 아니며, 회전 대상 선정은 오너 판단(별도 트랙)
   - 재발 방지: 프로덕션 조회 시 `.env`·`CLAUDE.local.md` 값을 화면에 띄우지 말고 **키 이름만** 출력한다(§5-3 에서 쓴 방식)
 - 미해소 1건은 그대로: 09-14 러너가 받은 실제 HTTP 상태 불명(§7). 재발 시 로그에 curl 오류 코드가 남는다
+
+## 8. 고아 판정 완화 트랙 (2026-09-21) — 실측 종결, 오너 결정 잔여
+
+bookmoa 가 R-188 조사에서 먼저 제기하고 printy 가 자사 소스로 동형 확인해 전달문을 보냈다.
+**"주문에 이르지 못한 이탈 업로드가 아무에게도 지워지지 않는다"** — 당사 코드 대조 + 프로덕션 **읽기 전용** 실측으로 종결.
+당사 코드 변경 0건 · VPS 쓰기 0건 · 키 값 미출력.
+
+### 8-1. printy 주장 검증 (배포본 코드 대조)
+
+| 주장 | 판정 | 근거 |
+|---|---|---|
+| 고아 cron dryRun 기본 ON, `envDryRun \|\| retention.dryRun` | ✅ 사실 | `file-orphan.service.ts:51`(기본 `'1'`) · `:73` |
+| **검증 job 1건이 붙으면 영구 고아 제외** | ✅ 사실 | `files.service.ts:695` — `worker_jobs` NOT EXISTS 절에 **status 필터가 없다**. 완료·실패·FIXABLE 무관하게 영구 제외 |
+| S1 = `findExpired` 에 order 가드 없음 · 즉시 hardDelete | ❌ **스테일** | 아래 |
+
+🚨 **정정(문서 스테일)**: `findExpired`(`files.service.ts:540`)에는 order 가드가 **있다** — 같은 `order_seqno`·같은 site 에 미완료
+편집세션이 있으면 만료를 건너뛴다(§5-3 의 침묵 제외와 같은 절). 삭제도 즉시 hard 가 아니라 sweep(soft) → 48h → purge(hard) 2단계다.
+**단 그 가드는 편집세션이 있는 주문만 보호한다** — printy 처럼 편집세션을 만들지 않는 플로우에서는 사실상 무력이므로,
+printy 의 결론(**site 전역 `retentionDays` 를 printy 에 적용 금지**, §5-3)은 그대로 유효하고 근거만 "가드 없음" → "가드가 편집세션에만 걸림"으로 바뀐다.
+→ `docs/FILE_LIFECYCLE_INTEGRITY_DESIGN_2026-06-19.md:83,106` 의 S1 행이 현재 코드와 어긋난다(미수정 — 오너 승인 대기).
+
+### 8-2. 운영값 실측 (printy 질의 3건의 회신 근거)
+
+**① 고아/보존 스위치** — api 컨테이너에 `FILE_ORPHAN_DRY_RUN`·`FILE_ORPHAN_ENABLED`·`FILE_RETENTION_DRY_RUN`·`FILE_RETENTION_ENABLED`·
+`FILE_ORPHAN_GRACE_READY_DAYS`·`FILE_RETENTION_BATCH` **전부 미설정**. `ConfigModule` 이 찾는 `.env.production`·`.env` 도 `/app` 에 **없다**
+(`app.module.ts:47`) → **코드 기본값이 유일한 정본**이다.
+- 고아 정리: enabled · **dryRun ON**(기본 `'1'`) · ready grace 30일
+- admin `storage_settings`: `retention_enabled=1` · **`retention_dry_run=0`** (행 갱신 2026-07-06 06:36:14, 이후 무변경)
+- ⇒ **고아 정리 = dry**(env OR admin 중 env 가 ON) / **보존 sweep·purge = 실가동**(`file-retention.service.ts` 는 admin `retention.dryRun` 만 참조, env OR 없음)
+- ⚠️ 단 `expires_at IS NOT NULL` 인 미삭제 파일이 **0건**이라 보존 sweep 은 실가동이어도 **대상이 없다**
+- 실측 로그(매시 :07): `[orphan] 완료 — 강등 15 / skip 0 / 실패 0` — 독립 재현 쿼리 결과 15와 **일치**(교차 검증 성립)
+
+**② 전 사이트 `retention_days` = NULL**(10개 행 전부). printy `009c26d5-…` 도 NULL ✅ — 원고가 완료 전 만료될 경로 없음.
+- printy site 행 `updated_at=2026-09-21 07:21:19` = 오늘 키 재발급과 정합 / bookmoa `b5aef7a9` 는 `2026-08-26 13:40:00` → **오늘 변경 없음**(bookmoa 키 미재발급 진술과 부합)
+
+**③ printy 운영 자산 = 0건.** `files` 0(soft-deleted 포함 0) · `worker_jobs` 0 · `file_edit_sessions` 0.
+- 스탬프 누락으로 NULL 에 섞였을 가능성은 **배제**: 외부 업로드는 `files.controller.ts:386` 에서 호출자 siteId 를 찍고, bookmoa 는 실제로 64건 스탬프돼 있다
+- ⇒ printy 의 §1 지적은 **메커니즘은 옳지만 현재 실노출은 0건**이다. 방침 미이행은 잔존 데이터 문제가 아니라 **장래 위험**이다
+
+### 8-3. 규모 (오너 결정 입력 — 2026-09-21 실측)
+
+| 구분 | 건수 | 용량 |
+|---|---|---|
+| 현행 고아 후보(실제 강등 대상) | 15 | — |
+| 편집세션 참조 없음 + **job 참조 때문에** 제외 | 141 | 888MB |
+| ↳ **(a)안으로 즉시 풀리는 분**(입력 참조 한정) | **102** | **859MB** |
+| (a)안 정상상태 — site NULL | 127 | 1.71GB |
+| (a)안 정상상태 — MD2Books | 1 | 0.11MB |
+| (a)안 정상상태 — **bookmoa `b5aef7a9`** | **61** | **2.42GB** |
+
+- (a)안 판정 기준은 보수적으로 잡았다: **입력으로만 쓰였고, 그 파일을 참조하는 _모든_ job 이 종료 상태 VALIDATE**(COMPLETED·FAILED·FIXABLE).
+  참조 형태를 출력(`output_file_id`/`output_file_url`)까지 넓히면 +2건인데, 그 2건은 **산출물**이라 푸는 대상이 아니다
+- 🚨 **bookmoa 61건/2.42GB 가 곧 후보로 들어온다** — 지금은 ready grace 30일 미경과로 0건이지만 최고령이 `2026-08-28 05:04:35` 라
+  **약 2026-09-27 부터 진입**한다. printy 는 0건이라 영향 없음
+- 전체 files(미삭제) 295건: NULL 230(1768MB) · `b5aef7a9` 64(2479MB) · MD2Books 1
+
+### 8-4. 권고 (오너 결정 대기)
+
+(a)안(종료 VALIDATE 참조는 참조로 보지 않음) **방향에 동의**한다 — 보존 방향 오류 위험이 가장 낮고 printy·bookmoa 양쪽에 동시에 듣는다. (b)안(site 전역 `retentionDays`)은 §5-3 금지 사유가 그대로 유효하다.
+단 **집행 순서를 분리**해야 한다:
+
+1. 판정 완화 + **site 별 분리 집계 로그** 추가 (현재 dry 로그는 site 별 수치가 없어 오너가 판단할 근거가 없다)
+2. 최소 한 사이클 **dry 유지**로 수치 확인 — bookmoa 2.42GB 진입 시점(≈09-27)을 지나서 보는 편이 낫다
+3. 오너 승인 후 `FILE_ORPHAN_DRY_RUN='0'` 실가동 전환
+
+🚫 **같은 변경에서 dry-run 을 끄지 마라.** bookmoa 가 주문을 늦게 연결하는 플로우면 2.42GB 가 실삭제 대상이 된다(48h 복구창은 있으나 사후 대응이다).
+
+### 8-5. 부수 발견
+
+- **printy 는 운영 Storige 에 실업로드 이력 자체가 없다**(파일·잡·세션 0). §5-1·§5-4 의 "printy 결속 fileId 는 전부 NULL-site" 전제는 유효하되,
+  D6 게이트가 기다리는 **printy 첫 실합성은 아직 먼 상태**다
+- site_id NULL 인 `worker_jobs` 중 2026-08-14 이후분은 **전부 `edit_session_id` NULL · `request_id` NULL 이고 쌍(표지+내지)으로 생성**된다 →
+  §6-3 의 세션완료 경로 결함과 같은 계열이다(신규 아님). 2026-09-14 09:18:27 쌍이 §6-3 이 말한 그 흐름이다
+- printy 가 회신에 덧붙인 운영 주의(당사 검증 안 함, printy 실측): 파트너 키 유효성은 `POST /auth/shop-session`(빈 본문 → **400 = 통과**)으로만 재라.
+  `GET /template-sets` 로 재면 **유효한 사이트 키에도 401** 이 나와 멀쩡한 키를 "거부됨"으로 오진한다
