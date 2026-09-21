@@ -712,3 +712,39 @@ if (guestToken) {
   "패널 통과·게이트만 차단" 무음 막다른 길이 생겼다 → `editorCoverOutcome`(passed/not-saved/keep)로 판정 분리 + 셀프편집 탭에 사유 문구 표시.
   needsAuth 분기가 놓치는 경우(로그인 모달을 닫고 담기로 간 경우)의 안전망이다. printy `01d847d`·`335ea5a` 동형 이식. 양사 **게이트·서버·DB 무변경**, 배포는 각 오너 승인 후
 - 회원 완료 경로 한정으로 스탬프 결함 범위 축소 + D6 선행 조건 유지에 **양측 합의**
+
+### 8-11. 🔴 당사 계약 결함 확정 — 레거시 `storige:completed` 가 게스트를 "완료"로 위장한다 (2026-09-21)
+
+printy 가 제기하고 **코드로 확정했다. 지적보다 심각하다.** 미수정(오너 결정) — 이 트랙에서 유일한 **당사 코드 결함**이다.
+
+**결함 1 — 플래그 누락**: `apps/editor/src/views/EmbedView.tsx:155~169` 의 레거시 발신 payload 는
+`sessionId · orderSeqno · status · completedAt · pageCount? · size? · pricing? · files{coverFileId, contentFileId}` 만 싣고
+**`needsAuth`·`guestToken` 이 없다**. 정식 엔벨로프(`editor.complete`)에는 실려 있다.
+
+**결함 2 — `status` 가 하드코딩이다(더 나쁨)**: 같은 payload 의 `status: 'completed'`(158행)는 **무조건 리터럴**이다.
+게스트 완료는 서버 세션이 `draft` 로 남는데도(§8-10 실측) 레거시 채널은 파트너에게 **"completed" 라고 단정**한다. 누락이 아니라 **적극적 오정보**다.
+
+**발신 순서가 결함을 확정한다**(`embed.tsx` 게스트 분기):
+```
+onComplete?.(guestResult)                                    // ① 레거시 storige:completed — needsAuth 없음 + status:'completed'
+postToParent(parentOrigin, 'editor.complete', guestResult)   // ② 정식 — needsAuth 있음
+postToParent(parentOrigin, 'editor.needAuth', {...})         // ③ 하위호환 이벤트
+return
+```
+**레거시가 가장 먼저 나간다.** 레거시를 먼저 처리하고 return 하는 호스트는 ①에서 완료로 확정하고 중복 방지 플래그를 세우므로 ②③을 무시한다.
+→ printy 에는 `needsAuth` 분기가 **이미 구현돼 있었는데 한 번도 작동할 수 없었다**(payload 우선 + `needAuthRef` 폴백, STALE-CLOSURE-001 대응).
+오늘 실측이 증거다 — 게스트 완료인데 printy 는 주문 스펙 확인 모달까지 갔다.
+
+🚨 **bookmoa 도 같은 잠재 결함일 수 있다.** 우리 코드 주석(EmbedView.tsx:161)이 **"bookmoa-mobile 은 `storige:completed` 를 주 수신"** 이라고 적고 있다.
+bookmoa 는 §8-10-1 에서 "`needAuthRef` 분기 생존" 을 확인했지만 그건 **코드 존재**이지 **발화**가 아니다.
+`editor.needAuth`(③)는 레거시(①) **뒤에** 오므로, ①에서 처리를 끝내면 그 시점의 `needAuthRef` 는 비어 있다. → bookmoa 에 별도 통지했다.
+
+**권고(오너 결정)**
+1. ✅ **저위험·additive**: 레거시 payload 에 `needsAuth`·`guestToken` 2키 동봉(정식 엔벨로프와 동일 값). 기존 수신자는 모르는 키를 무시하므로 하위호환 위험 없음.
+   printy 는 이것만 반영되면 **자기 코드 변경 없이** 로그인 유도 분기로 들어간다
+2. ⚠️ **별건·행동 변경**: `status: 'completed'` 하드코딩 교정은 기존 수신자가 리터럴을 기대할 수 있어 **1번과 같은 위험도가 아니다.** 분리 판단 필요
+   (게스트면 `'saved'`/`'needs_auth'` 등으로 바꾸는 안 vs 유지하고 `needsAuth` 로만 구분하게 하는 안)
+- 🚫 **발신 측에서 고치는 것이 맞다.** printy 가 "레거시 무시하고 엔벨로프만 신뢰" 로 바꾸는 대안은 dual-emit 전환 시점 의존이 생기고 **다른 파트너는 그대로 노출**된다(100p·MD2Books 미확인)
+
+**printy 측 현재 상태**: 게이트 무수정 확정 · 산출물 0 이면 표지 슬롯을 통과로 쓰지 않고 사유 표시하는 안전 수정 **배포 완료**(`01d847d`·`335ea5a`, 라이브 확인) ·
+로그인 유도 → `guest/migrate` → 회원 재완료 구현은 printy 오너 결정 대기 · 세션 `5ade50f7…` 는 **보존 불필요**(만료 회수 허용) · 시각 UTC 통일 확인
