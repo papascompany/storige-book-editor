@@ -781,3 +781,25 @@ bookmoa 는 §8-10-1 에서 "`needAuthRef` 분기 생존" 을 확인했지만 �
 - 실피해 차단은 양사 안전망이 담당: printy `01d847d`·`335ea5a`(배포 완료) · bookmoa R-190 `dd3e2de`(금일 배포). 단 **게스트 작업 승계(24h 창)는 권고 1 없이는 여전히 불가**
 - 권고 1 반영 시 bookmoa 가 라이브에서 **게스트 완료 → 로그인 유도 → 승계 1회 실측** 약속(통지 요청)
 - bookmoa 후속 후보 R-191: 권고 1 반영 전까지 "needsAuth 없음 + files 비어 있음" 을 완료로 닫지 않는 수신 측 보강 — **"회원 완료는 항상 files 가 있다"는 당사 사양이 전제**(§8-10 확인됨). 그쪽 오너 결정
+
+#### 8-11-2. 권고 2 는 수혜자가 없다 + printy 게스트 흐름 배포 완료 (2026-09-21)
+
+**🔻 권고 2(`status` 하드코딩 교정)의 권고 수준을 낮춘다 — 알려진 수혜자가 0 이다.**
+- bookmoa: `finishComplete`·`handleCompletePayload` 가 **`status` 를 읽지 않는다**(§8-11-1 실측)
+- printy: `handleCompletePayload` 는 `sessionId · files.coverFileId/contentFileId · pageCount · pages · pricing · savedAt` 만 읽고,
+  **완료 경로에서 `status` 를 참조하는 코드가 0곳**이다. 새 판정 `shouldFinishLegacyCompletion(payload)` = `산출물 유무 || needsAuth === true` 도 `status` 미사용.
+  함수 주석과 printy `CLAUDE.md` 함정에 *"레거시는 게스트 완료에도 `status:'completed'` 를 하드코딩한다 → 되살리지 마라"* 로 박아 뒀다
+- ⇒ **권고 1 만으로 양사 모두 해소된다.** 반면 `status` 리터럴을 바꾸는 것은 **미확인 파트너(100p·MD2Books)가 리터럴을 읽고 있으면 깨는** 행동 변경이다
+- 📌 **재권고**: 코드에서 `status` 를 **그대로 두고**, `docs/PLATFORM_INTEGRATION_GUIDE.md` 에 *"레거시 `storige:completed` 의 `status` 는 하드코딩 리터럴이므로 신뢰하지 말 것 — 게스트 완료도 `'completed'` 로 온다. `needsAuth` 와 `files` 로 판정하라"* 를 명기하는 **문서 조치로 대체**한다.
+  코드 교정은 미확인 파트너 수신 코드를 확인한 뒤에만 고려
+
+**printy 게스트 흐름 — 오너 결정 완료·배포 완료**(§8-10 에 "printy 오너 결정 대기" 로 적은 항목 갱신)
+- `fb462df` — **산출물 없는 레거시 완료는 즉시 확정하지 않고 정식 엔벨로프를 기다린다**(1.5초 폴백으로 반드시 확정 — 조용히 끝나는 쪽이 더 나쁜 무음이라는 판단).
+  `editor.needAuth` 수신 시 보류분을 `{needsAuth:true, guestToken}` 으로 확정해 로그인 유도·`migrate-guest` 경로로 진입
+- `b3cd599` — **전방 호환**: 레거시 payload 에 `needsAuth` 가 실려 오면(권고 1 반영 시) **대기 없이 즉시** 분기. 그때 보류 로직은 자연히 비활성 경로가 되고 안전망(산출물 0 → 통과로 쓰지 않음)은 유지
+- 라이브 검증: 비회원 셀프편집 → 편집완료 → "로그인이 필요합니다" 오버레이 + `storigePendingGuestToken` 보존 + 편집기 유지(작업 보존). vitest 201 files / 4474 passed · build OK
+- ⚠️ 즉 **printy 의 1.5초 대기는 당사 결함의 우회책**이다. 권고 1 을 반영하면 불필요해지므로, 반영 시 **printy 에 통지**해야 그쪽이 우회 경로를 정리할 수 있다
+- bookmoa 는 호스트 보류 로직 도입을 **권고 1 회신을 본 뒤 결정**하겠다고 회신 → 권고 1 을 보류하면 bookmoa 가 같은 우회책을 또 만들게 된다(중복 부채)
+
+**🔴 회원 완료 실측은 양사 통틀어 아직 0건이다.** printy 오너가 로그인 계정으로 편집완료 → 파일 생성 → 담기까지 1회 확인 예정이고,
+그때 나오는 `jobId`·`job.siteId` 가 **D6 게이트 회신**(§5-1·§6-2 대기 항목)으로 들어온다. 즉 **게스트 흐름 트랙과 D6 대기 항목이 같은 실측 1회로 동시 해소**된다
