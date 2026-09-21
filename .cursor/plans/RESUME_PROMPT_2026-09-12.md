@@ -64,6 +64,8 @@ PATH="/opt/homebrew/opt/node@24/bin:$PATH"   # node -v → v24.20.0. engine 경�
   `failed to change group ID: operation not permitted` 로 **명령 전체가 실행 전에 실패**한다. 샌드박스 문제로 오인하기 쉽다(2026-09-14 실사례 — 샌드박스를 꺼도 같은 오류). `RUN_ID` 등을 쓴다
 - **`gh run rerun` 직후의 `gh run watch` 결과를 바로 믿지 마라** — 재실행이 등록되기 전이면 **이전 시도의 완료 결과**를 읽고 즉시 반환한다.
   결론 전에 `gh run view <id> --json attempt,updatedAt` 로 시도 번호·시각을 확인한다(2026-09-14 실사례)
+- **"0건"·"없음" 결론에는 집계 시각(UTC)을 함께 남겨라** — 파트너가 같은 시간대에 같은 시스템을 조작 중이면 스냅샷이 몇 분 만에 뒤집힌다
+  (2026-09-21 실사례: printy 자원 0건 회신 → 8분 뒤 세션 2건, §8-6). 외부에 보내는 수치에는 **측정 시각을 명시**한다
 - 기타: vite.config.js shadow / 빌드게이트 5함정 / fabric styles·loadJSON / SPREAD≠표지 / isInitializedRef 저장 입구 금지 / **debounce 는 배칭 도구 아님** / **supertest 포트 패밀리**(불가능한 응답=남의 서버 의심) / 크로스세션 권한모드
 
 ---
@@ -455,7 +457,7 @@ bookmoa 가 R-188 조사에서 먼저 제기하고 printy 가 자사 소스로 �
 
 🚨 **정정(문서 스테일)**: `findExpired`(`files.service.ts:540`)에는 order 가드가 **있다** — 같은 `order_seqno`·같은 site 에 미완료
 편집세션이 있으면 만료를 건너뛴다(§5-3 의 침묵 제외와 같은 절). 삭제도 즉시 hard 가 아니라 sweep(soft) → 48h → purge(hard) 2단계다.
-**단 그 가드는 편집세션이 있는 주문만 보호한다** — printy 처럼 편집세션을 만들지 않는 플로우에서는 사실상 무력이므로,
+**단 그 가드는 편집세션이 있는 주문만 보호한다** — 편집세션 없이 파일만 올리는 경로에서는 사실상 무력이므로,
 printy 의 결론(**site 전역 `retentionDays` 를 printy 에 적용 금지**, §5-3)은 그대로 유효하고 근거만 "가드 없음" → "가드가 편집세션에만 걸림"으로 바뀐다.
 → `docs/FILE_LIFECYCLE_INTEGRITY_DESIGN_2026-06-19.md:83,106` 의 S1 행이 현재 코드와 어긋난다(미수정 — 오너 승인 대기).
 
@@ -473,7 +475,7 @@ printy 의 결론(**site 전역 `retentionDays` 를 printy 에 적용 금지**, 
 **② 전 사이트 `retention_days` = NULL**(10개 행 전부). printy `009c26d5-…` 도 NULL ✅ — 원고가 완료 전 만료될 경로 없음.
 - printy site 행 `updated_at=2026-09-21 07:21:19` = 오늘 키 재발급과 정합 / bookmoa `b5aef7a9` 는 `2026-08-26 13:40:00` → **오늘 변경 없음**(bookmoa 키 미재발급 진술과 부합)
 
-**③ printy 운영 자산 = 0건.** `files` 0(soft-deleted 포함 0) · `worker_jobs` 0 · `file_edit_sessions` 0.
+**③ printy 운영 자산 = 0건** (⏱️ **집계 08:01Z 이전 — `file_edit_sessions` 는 §8-6 에서 2건으로 뒤집혔다**). `files` 0(soft-deleted 포함 0) · `worker_jobs` 0 · `file_edit_sessions` 0.
 - 스탬프 누락으로 NULL 에 섞였을 가능성은 **배제**: 외부 업로드는 `files.controller.ts:386` 에서 호출자 siteId 를 찍고, bookmoa 는 실제로 64건 스탬프돼 있다
 - ⇒ printy 의 §1 지적은 **메커니즘은 옳지만 현재 실노출은 0건**이다. 방침 미이행은 잔존 데이터 문제가 아니라 **장래 위험**이다
 
@@ -507,9 +509,31 @@ printy 의 결론(**site 전역 `retentionDays` 를 printy 에 적용 금지**, 
 
 ### 8-5. 부수 발견
 
-- **printy 는 운영 Storige 에 실업로드 이력 자체가 없다**(파일·잡·세션 0). §5-1·§5-4 의 "printy 결속 fileId 는 전부 NULL-site" 전제는 유효하되,
+- **printy 는 운영 Storige 에 실업로드 이력이 없다**(`files`·`worker_jobs` 0 — 세션은 §8-6 에서 2건으로 정정). §5-1·§5-4 의 "printy 결속 fileId 는 전부 NULL-site" 전제는 유효하되,
   D6 게이트가 기다리는 **printy 첫 실합성은 아직 먼 상태**다
 - site_id NULL 인 `worker_jobs` 중 2026-08-14 이후분은 **전부 `edit_session_id` NULL · `request_id` NULL 이고 쌍(표지+내지)으로 생성**된다 →
   §6-3 의 세션완료 경로 결함과 같은 계열이다(신규 아님). 2026-09-14 09:18:27 쌍이 §6-3 이 말한 그 흐름이다
 - printy 가 회신에 덧붙인 운영 주의(당사 검증 안 함, printy 실측): 파트너 키 유효성은 `POST /auth/shop-session`(빈 본문 → **400 = 통과**)으로만 재라.
   `GET /template-sets` 로 재면 **유효한 사이트 키에도 401** 이 나와 멀쩡한 키를 "거부됨"으로 오진한다
+
+### 8-6. 🔴 재측정 정정 (2026-09-21 08:15Z) — printy ACK 가 지적한 집계 시점 오류
+
+printy 가 ACK 와 함께 **"오늘 키 복구 검증차 편집기를 실제 왕복했으니 0건 집계가 그 이전 시점일 수 있다"** 고 되짚었다. **지적이 맞다.**
+판별자로 준 주문번호 `9977811266565`(클라이언트 발번, printy 주문 DB 에는 미생성)로 즉시 재측정했다.
+
+- **printy `file_edit_sessions` = 2건**(직전 집계 0건). `files` 0 · `worker_jobs` 0 은 **변동 없음**. 오늘 생성된 행은 전 테이블 통틀어 이 세션 2건뿐
+  - `3c6e5e41…` draft/cover · `order_seqno=9977650078809` · 비게스트 · **2026-09-21 08:01:09Z**
+  - `5ade50f7…` draft/cover · `order_seqno=9977811266565` · **게스트**(`guest_expires_at=2026-09-22 08:04:01` = 24h, 편집기 안내 문구와 정합) · 생성 **08:04:01Z** · 갱신 08:10:48Z
+  - 둘 다 `template_set_id=207c458f…` · cover/content 파일 **미연결**(텍스트만 추가) → 파일·잡이 0인 것과 정합
+- ✅ **스탬프 누락이 아니다.** 게스트 세션도 printy siteId 로 **정확히 스탬프**됐다. printy 가 우려한 "게스트 세션이 site 스탬프 없이 저장되는가" 는 **아니오**다.
+  NULL-site 세션 2건(editing)은 이전부터 있던 것으로 오늘 변동 없음
+- ⏱️ **내 집계 시각이 08:01:09Z 직전이었다**(같은 세션의 고아 로그 07:07:01Z · 문서 푸시 08:10:30Z). 상대가 같은 창에서 조작 중이었고 나는 시각을 명시하지 않았다 → §0 상시 함정에 등재
+- 🚨 **printy 의 시각 표기는 틀렸다(순서 결론은 맞다)**: printy 는 "07:50~08:10 **KST**" 라고 했으나 DB 는 UTC 다(`NOW()`=`UTC_TIMESTAMP()`=08:15:26 로 확인).
+  실제 생성은 **08:01/08:04 UTC = 17:01/17:04 KST**. 다만 비교 대상인 키 재발급 `updated_at=07:21:19` 도 UTC 라 **"그보다 뒤" 라는 순서 주장 자체는 성립**한다. §0 UTC 함정의 재발이라 회신에서 짚었다
+- **§8-1·§8-5 서술 정정 — "printy 는 편집세션을 만들지 않는다" 는 장래에 성립하지 않는다.** printy 에 셀프편집 상품이 4종 있고 편집기 진입이 곧 세션 생성이다(오늘 실증).
+  따라서 `findExpired` 의 order 가드는 printy 의 **셀프편집 경로에서는 실효**하고(`draft` ≠ `complete` 라 보호됨), **파일 업로드 전용 경로에서만** 무력이다.
+  🚫 printy 사이트 `retention_days` 미설정 결론은 **그대로 유지**된다(업로드 기산 자체가 방침 기산점과 어긋나는 것이 본래 사유)
+- 🔎 **§6-3 결함의 위치가 좁혀진다**: 세션 **생성** 시점에는 site 스탬프가 정상인데, 세션 **완료가 만드는 VALIDATE 잡**에서 NULL 이 된다
+  → 결함은 세션 경로가 아니라 **잡 생성 경로**다. §2 의 관찰 항목을 이 방향으로 조사하면 된다
+- (참고, 당사 조치 불요) printy 자체 발견: `skipFileValidation=true` 일 때 동의 체크박스가 "파일 업로드됨" 조건에서만 렌더돼 셀프편집·디자인요청 경로의 `canOrder` 가 영구 false.
+  printy 실업로드 0건의 원인 중 하나일 수 있다는 그들 추정이다. printy 코드 문제이고 오너 결정 대기
