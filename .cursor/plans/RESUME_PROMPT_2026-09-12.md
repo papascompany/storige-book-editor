@@ -666,3 +666,38 @@ bookmoa 주문번호는 숫자 문자열이고 현행 15자리 · 레거시 다�
 
 **→ 오너 결정 패키지(§2 등재)**: ⓐ (a)안 채택 여부 + bookmoa site 제외 · ⓑ 결속 API 신설 · ⓒ **백필 25건**(NULL-site 하드삭제 노출 해소) ·
 ⓓ D6 선행 조건(편집기 완료 경로 스탬프 수정) · ⓔ 취소 후 보존 N일.
+
+### 8-10. 게스트 완료는 파일을 만들지 않는다 — 사양 확정 (2026-09-21 09:0xZ)
+
+printy 가 **오너 지시로 `upload-gate.js` 수정을 착수하려다 보류**하고 결정적 질의를 보냈다(앞선 "동의 체크박스 미렌더" 서술은 printy 가 스스로 정정 — 실제 차단 지점은 `coverProvided = noCover || designRequest || coverLibrary` 에 셀프편집이 없는 것).
+**답: 게스트 완료가 파일을 만들지 않는 것은 사양이다. 양사 `upload-gate.js` 는 고치지 않는 것이 맞다.**
+
+**코드 근거** — `apps/editor/src/embed.tsx` 완료 경로 **2곳 모두** 게스트 조기 반환이 있다(1861행대·2021행대):
+> `// 게스트 세션: PDF 생성/회원 complete 불가 → 저장만 하고 로그인 유도`
+```
+if (guestToken) {
+  await editSessionsApi.updateGuest(currentSessionId, guestToken, { canvasData })
+  const guestResult = { sessionId, needsAuth: true, guestToken, pages, files: {}, savedAt }
+  onComplete?.(guestResult); postToParent(parentOrigin, 'editor.complete', guestResult)
+  postToParent(parentOrigin, 'editor.needAuth', { guestToken, reason: 'complete_save', ts })
+  return   // ← PDF 업로드(2137·2167) · update(coverFileId)(2187) · complete() 전에 종료
+}
+```
+- **서버에서도 강제**: `PATCH /edit-sessions/:id/complete` 에 `@Public()` 이 **없다** → 전역 JWT 가드 → **회원 JWT 필수**.
+  게스트 변형은 `updateGuest`·`restoreGuestVersion`·`listGuestVersions` 뿐이고 **complete 의 게스트 변형은 존재하지 않는다**
+- 계약 표면: `EditorResult.needsAuth?: boolean`(embed.tsx 305~314행 주석에 *"bookmoa는 editor.complete.needsAuth로 분기"*) + 하위호환 `editor.needAuth`(`reason:'complete_save'`)
+- 승계 경로: **`POST /edit-sessions/guest/migrate { guestToken }`** — 회원 JWT 필수(`AUTH_REQUIRED`), `guestToken` 8자 이상(`GUEST_TOKEN_REQUIRED`), 응답 `{ migratedCount, sessionIds[] }`,
+  **교차 site 흡수는 서비스가 거부**(I-3 2026-07-30, caller siteId 없으면 허용+warn). 흡수 후 편집완료 재실행 → 회원 경로가 PDF 생성
+
+**실측 대조 — 코드 경로와 정확히 일치**
+
+| 세션 | status | cover/content file | 시각 | 판정 |
+|---|---|---|---|---|
+| `5ade50f7…`(order `9977811266565`, **게스트**) | `draft` | 둘 다 NULL | 생성 08:04:01Z · 갱신 **08:10:48Z(1회)** | 게스트 경로대로 **canvasData 저장 1회만** |
+| `3c6e5e41…`(order `9977650078809`, 비게스트) | `draft` | 둘 다 NULL | 생성 08:01:09Z · `updated_at`=`created_at` | **생성 직후 이탈**(완료 미실행) — 위와 혼동 금지 |
+
+**양사에 준 권고**
+- printy: 게이트를 풀지 말고 **`editor.complete` 수신 시 `needsAuth===true` 를 먼저 분기** → 로그인 유도 → `guest/migrate` → 편집완료 재실행 → `files` 의 fileId 로 기존 게이트 통과.
+  ⏱️ 마이그레이션은 `guest_expires_at`(생성+24h) 안에 끝나야 한다. 게이트에 셀프편집을 넣으면 **파일 없는 항목이 주문으로 들어간다**(인쇄팀이 만들 수 없는 주문)
+- bookmoa: 동일 근거 공유 + **기존 `needsAuth` 분기가 아직 살아 있는지만 확인 요청**(살아 있으면 조치 0건). 회신 불요로 발신
+- 🔎 **부수 소득**: 게스트는 파일 자체를 만들지 않으므로, §8-8 에서 인정한 "편집세션 파일 NULL 스탬프" 결함은 **회원 완료 경로에 한정**된다. D6 선행 조건은 유지하되 조사 범위가 좁아졌다
