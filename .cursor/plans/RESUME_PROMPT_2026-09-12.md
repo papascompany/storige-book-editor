@@ -701,3 +701,14 @@ if (guestToken) {
   ⏱️ 마이그레이션은 `guest_expires_at`(생성+24h) 안에 끝나야 한다. 게이트에 셀프편집을 넣으면 **파일 없는 항목이 주문으로 들어간다**(인쇄팀이 만들 수 없는 주문)
 - bookmoa: 동일 근거 공유 + **기존 `needsAuth` 분기가 아직 살아 있는지만 확인 요청**(살아 있으면 조치 0건). 회신 불요로 발신
 - 🔎 **부수 소득**: 게스트는 파일 자체를 만들지 않으므로, §8-8 에서 인정한 "편집세션 파일 NULL 스탬프" 결함은 **회원 완료 경로에 한정**된다. D6 선행 조건은 유지하되 조사 범위가 좁아졌다
+
+#### 8-10-1. 트랙 종결 (bookmoa 확인 회신, 2026-09-21 09:1xZ)
+
+- ✅ **bookmoa `needsAuth` 분기 생존 확인** — `src/components/StorigeEditorHost.jsx` 가 `needAuthRef` 로 게스트 완료(needsAuth·guestToken)를 잡아
+  로그인 유도 후 `POST /api/storige/migrate-guest`(bookmoa 프록시, 회원 Bearer 필수) → 당사 `POST /edit-sessions/guest/migrate` 로 승계(`api/storige/router.js`).
+  **bookmoa 조치 0건으로 종결.**
+- ✅ **`upload-gate.js` `coverProvided` 는 양쪽 다 무수정 확정.**
+- 파트너 보강 1건(당사 조치 불요): bookmoa R-190 — 표지 진입 편집완료에서 산출물 0 이면 종전에는 fileId 없이 `passed` 를 써
+  "패널 통과·게이트만 차단" 무음 막다른 길이 생겼다 → `editorCoverOutcome`(passed/not-saved/keep)로 판정 분리 + 셀프편집 탭에 사유 문구 표시.
+  needsAuth 분기가 놓치는 경우(로그인 모달을 닫고 담기로 간 경우)의 안전망이다. printy `01d847d`·`335ea5a` 동형 이식. 양사 **게이트·서버·DB 무변경**, 배포는 각 오너 승인 후
+- 회원 완료 경로 한정으로 스탬프 결함 범위 축소 + D6 선행 조건 유지에 **양측 합의**
