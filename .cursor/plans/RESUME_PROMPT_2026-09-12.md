@@ -224,7 +224,7 @@ SELECT id, site_id, created_at FROM worker_jobs
 **오너 결정 대기**: 동화책 caseBind · cover VALIDATE 경고 처리 정책 · G-6 백필 ·
 **branch protection(master 무보호 확정)** · 폰트 시딩(0건) · D6 착수 시점 ·
 **파트너 파기 계약 신설**(합성 산출물·편집 세션 하드삭제 external, §5-2) · **고아 정리 실가동 전환**(`FILE_ORPHAN_DRY_RUN`, §5-3) ·
-**고아 판정 완화 (a)안**(종료 VALIDATE 참조 해제 — 집행 순서 분리 권고, §8)
+🚨 **고아 판정 완화 (a)안**(종료 VALIDATE 참조 해제) — **현재 형태로는 기각 권고**: 켜면 bookmoa 실주문·장바구니 25건 즉시 삭제(§8-8). 외부 결속 기록 API 신설이 선행 조건
 
 **파트너 트랙(수신 대기)**: ~~printy R-173 배포 완료 재통지~~ ✅ 09-14 수신(§5-5) · printy 첫 실합성 `job.siteId` 회신(§5-1) · bookmoa 첫 실합성 jobId 회신(§6-2 — ACK·확인 ①② 완료) ·
 ~~printy 고아 판정 완화 질의(09-21)~~ ✅ 실측 회신 발신(§8) — 오너 결정 회신만 잔여
@@ -492,6 +492,8 @@ S1·S5 행에 현행 기준(`※1`)을 병기하고 §6 근거 2줄을 취소선
 | (a)안 정상상태 — MD2Books | 1 | 0.11MB |
 | (a)안 정상상태 — **bookmoa `b5aef7a9`** | **61** | **2.42GB** |
 
+🚨 **이 표를 단독 인용하지 마라** — 위 "즉시 풀리는 102건" 중 **25건이 bookmoa 실주문·장바구니 원고**다(§8-8 교차검증). 안전 가용량이 아니다.
+
 - (a)안 판정 기준은 보수적으로 잡았다: **입력으로만 쓰였고, 그 파일을 참조하는 _모든_ job 이 종료 상태 VALIDATE**(COMPLETED·FAILED·FIXABLE).
   참조 형태를 출력(`output_file_id`/`output_file_url`)까지 넓히면 +2건인데, 그 2건은 **산출물**이라 푸는 대상이 아니다
 - 🚨 **bookmoa 61건/2.42GB 가 곧 후보로 들어온다** — 지금은 ready grace 30일 미경과로 0건이지만 최고령이 `2026-08-28 05:04:35` 라
@@ -567,3 +569,49 @@ R-188 발원 세션(`20260921 북모아 개발 계속`, cwd `~/Developer/claude/
 3. 업로드 경로 ≠ 세션 연결 경로가 의도된 구조인지
 
 → ①②의 답이 "진행 중 원고가 섞여 있다" 면 grace 상향 또는 bookmoa 전용 제외를 (a)안 설계에 넣는다.
+
+### 8-8. 🚨 (a)안 기각 근거 — bookmoa 회신 교차검증 (2026-09-21 08:35Z)
+
+bookmoa 가 §8-7 확인 3건에 즉시 회신했고, **주장을 우리 DB 로 전수 대조했다. 진술보다 심각하다.**
+**결론: (a)안은 현재 형태로 채택할 수 없다.** 외부 결속을 Storige 가 알 수 있는 수단이 선행돼야 한다.
+
+**bookmoa 진술의 핵심** — `order_seqno IS NULL` 은 **"미주문" 을 뜻하지 않는다**.
+bookmoa 는 업로드(presigned complete)·검증(`/api/storige/validate`) **어느 호출에도 orderSeqno 를 보내지 않는다**(그쪽 코드 실측: `validate.js` 전송 0건).
+주문↔파일 결속의 권위는 **bookmoa DB `order_asset_claims`**(kind=file 58건)이고 **Storige 에는 그 사실이 전혀 없다**.
+회원 장바구니는 **만료가 없어** Storige 파일을 담은 카트 7건 중 3건이 30일 초과(최장 95일)다.
+
+**교차검증 결과**(bookmoa 가 준 file id 58 + 장바구니 3 = 61건 전수 조회)
+
+| 항목 | 실측 |
+|---|---|
+| 61개 id 가 우리 `files` 에 존재 | **61/61 전부 존재** · soft-deleted 0 |
+| 그중 `order_seqno` 가 채워진 것 | **0건** — bookmoa 진술과 정확히 일치 |
+| site 스탬프 | 주문 58건 중 **bookmoa 36 · NULL-site 22** / 장바구니 3건은 **전부 NULL-site** |
+| (a)안 판정에 걸리는 것 | **61/61 전부** · 1608.94MB |
+| ↳ **이미 30일 grace 경과 = 즉시 삭제 대상** | **25건 / 133.27MB** (전부 NULL-site · 최고령 **89일**, 2026-06-24 ~ 2026-08-21) |
+| 현행 후보 15건과의 교집합 | **0건** ✅ |
+
+- ⇒ **(a)안을 켜면 첫 tick 에 bookmoa 실주문·장바구니 원고 25건이 soft-delete 되고 48h 뒤 하드삭제된다.** 나머지 36건은 grace 경과 시 순차 진입(총 61건/1.57GB)
+- ⇒ §8-3 의 "(a)안으로 즉시 풀리는 102건/859MB" 는 **안전한 수치가 아니다** — 그중 **25건이 bookmoa 실주문·장바구니**다(약 24%). 이 표를 단독 인용하지 마라
+- ✅ **현행 상태는 안전하다**: 현재 후보 15건에 bookmoa 결속 파일은 **0건**이다. 지금 dry-run 을 끄더라도 bookmoa 피해는 없다
+- 🔎 **역설**: 지금 bookmoa 실주문 파일을 지켜주고 있는 것은 **바로 (a)안이 없애려는 그 과도한 `worker_jobs` 참조 제외**다. 우연한 보호이지 설계된 보호가 아니다 — 이 사실이 (a)안 검토의 핵심이다
+
+**🚨 파생 위험(신규·별건)**: bookmoa **실주문 결속 파일 22건 + 장바구니 3건이 NULL-site** 다.
+§5-4 의 알려진 결함(`assertSiteAccess` 가 `file.siteId` NULL 이면 통과 → **fileId 를 아는 어느 활성 파트너 키로도 하드삭제 가능**)의 사정권에 **bookmoa 실주문 원고가 들어 있다**는 뜻이다.
+D6 NULL-파괴 게이트의 우선순위를 올릴 근거다(고아 정리와 무관하게).
+
+**bookmoa 제안 3안(오너 결정 — 당사 착수 약속 안 함)**
+1. (i) **외부 결속 기록 API 신설**(예 `POST /files/:id/order/external {orderSeqno}`) — bookmoa 가 주문 생성 시 best-effort 호출 약속. ADDITIVE. 이게 있으면 (a)안이 안전해진다
+2. (ii) 그전까지 bookmoa site 는 grace 를 길게(180일 제안) 또는 **site 별 제외**
+3. (iii) bookmoa 측 회원 장바구니 항목 만료 정책 신설(현재 없음) — 그쪽 별도 트랙
+
+**확인 ③ 답 — 경로 분기는 의도된 구조다**
+- (ⓐ) 고객 파일 업로드: `presigned-upload-public` → complete(shop-session Bearer 로 site 스탬프, R-149 08-28부터) → bookmoa 서버가 `/api/storige/validate` → 주문.
+  **편집기를 거치지 않는 "내 파일로 인쇄" 경로라 편집세션과 연결될 일이 없다** — §8-7 의 "기묘함" 은 정상이었다
+- (ⓑ) 편집세션: bookmoa 가 `/embed`(templateSetId + shop-session 토큰)로 편집기를 띄우고, 세션의 cover/content 파일은 **편집기 완료 경로가 생성**한다(bookmoa 가 업로드하지 않는다)
+  → 그 파일의 site 스탬프 NULL 은 **당사 결함**이다(§6-3 과 동일 계열, 잡 생성 경로)
+- 🚨 ⇒ **D6 게이트를 켜면 bookmoa 편집세션 산출물이 대상이 된다. 당사 스탬프 결함 수정이 선행돼야 한다.** bookmoa 는 이 구조를 바꿀 계획이 없다
+
+**기타 회신 내용**: bookmoa 도 실 compose-mixed **0건**(정식 오픈 전, new.bookmoa.com 베타) — 첫 실합성 jobId 는 발생 즉시 회신 약속 유지 ·
+FILE_LIFECYCLE 정정 확인(그쪽 인용은 "2026-06-19 설계 기준" 으로 표기돼 있어 오판 없었음) · UTC 통일 동의 ·
+bookmoa Supabase 쪽(별개 모집단)은 관리자 전용 스윕을 dryRun·fail-closed·30일 임계로 배포, 첫 실행은 dry 대조 후 오너가 삭제 결정
