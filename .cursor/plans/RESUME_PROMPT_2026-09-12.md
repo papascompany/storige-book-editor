@@ -1042,3 +1042,34 @@ bookmoa R-192 구현·검증 완료(`507667d`, push·배포는 그쪽 오너 승
 - 🔎 **빈 캔버스 대비 사전 점검(당사)**: 소유자 판정은 일관된다 — 흡수가 `memberSeqno = parseInt(user.userId)`(`edit-sessions.controller.ts:319`)로 쓰고
   조회·수정이 `Number(session.memberSeqno) !== userId`(`edit-sessions.service.ts:509`)로 비교 → **같은 회원(토큰 갱신 포함)으로 재오픈하면 일치**.
   따라서 빈 캔버스가 나면 1순위 의심은 소유자가 아니라 **조회 실패 후 조용한 폴백**(위 1번) — bookmoa 가 완료 payload `sessionId` ≠ 재오픈 `sessionId` 로 감지 가능. 그때 세션 로드 쪽을 같이 본다
+
+### 8-16. 🔴 W1 교정 구현 완료 — 파트너 worker 키 테넌시 우회 차단 (2026-09-25) · **배포 대기**
+
+오너 지시("W1 수정 진행")로 구현. **코드 커밋·푸시까지 완료, VPS API 배포는 오너 승인 대기**(프로덕션 변경).
+
+**🚨 공개 노출 사실(내 실수)**: 저장소는 **PUBLIC**(`gh repo view` 확인)인데, §8-15 커밋 `d002f10`(2026-09-24)에서 W1 원인과 **노출 사이트 3곳**을 설계 문서 §1.5·이 문서에 적어 올렸다.
+"교정 전 파트너 공개 금지" 를 스스로 적어 놓고 공개 저장소에 올린 모순이다. 이력 삭제는 force-push(파괴적·캐시 잔존)라 실익이 적다 → **가장 확실한 완화는 빠른 배포**다.
+재발 방지: **보안 취약점 서술은 교정 배포 전에는 공개 저장소에 커밋하지 마라** — 로컬·비공개 채널에 두고 배포 후 기록한다.
+(이번 교정 커밋은 예외가 아니다: 원인·대상은 이미 `d002f10` 에 공개돼 **추가 노출 정보가 없고**, VPS 배포가 `git pull` 이라 푸시가 배포의 전제다)
+
+**변경**(4파일 + 신규 2)
+- 신규 `apps/api/src/auth/api-key-role.ts` — `resolveApiKeyRole(apiKey, internalWorkerKey)` 단일 원천: 내부 `WORKER_API_KEY` 만 `'worker'`, 그 밖은 `'editor'`
+- `auth/guards/api-key.guard.ts` — editor/worker 코드 둘 다 **그 사이트 키로 인정만** 하고 role 은 헬퍼가 결정
+- `auth/strategies/api-key.strategy.ts` — 같은 결함의 **두 번째 부여 지점**(에이전트 8곳 목록에 없던 것, 직접 grep 으로 발견). `AuthGuard('api-key')` 사용처 0곳이라 현재 도달 불가지만 연결 시 재발 방지로 동일 교정
+- 8곳의 바이패스 코드는 **무변경** — `role==='worker'` 의 의미가 "내부 워커 전용"으로 좁아진다
+- 신규 `auth/api-key-role.spec.ts`(14 tests): 헬퍼 3 · 가드 7 · 전략 3 · **소스 정적 잠금 1**(비-spec 소스에서 `role` 에 `'worker'` 를 직접 부여하면 실패)
+- `docs/CONTRACT_FREEZE.md` **v1.5**(§4.4 신설) · 설계 문서 §1.5 에 교정 완료 표기
+
+**검증**(Node 24.20.0)
+- **대조 실험**: 수정 전 가드·전략으로 되돌려 새 스펙 실행 → **W1 전용 5개 실패 / 무변경 기대 9개 통과** → 잠금이 헛돌지 않음 확인 후 복원
+- API 전체 jest **80 suites / 1112 tests 전부 통과**(기준선 79/1098 + 신규 1/14) · `tsc --noEmit` exit 0 · `nest build` 성공 · 계약 동결 스펙 포함 auth 5 suites/106 재통과
+- **다른 부여 경로 없음 확인**: `UserRole` enum 에 worker 값 없음(대문자 6종), shop-session 은 `'customer'`, JWT 는 서명돼 위조 불가, 운영 `users.role` = `ADMIN` 1건·`user_site_roles` 0건
+
+**배포 영향 사전 실측**(교정 후 막히는 것 = 파트너 worker 키의 **타 사이트·비-NULL** 자원 접근뿐)
+- bookmoa 구 사이트 `1391c5b4` 세션 32건 최종 갱신 **2026-06-15 07:11**, 잡 15건 **06-12** — 06-15 키 로테이션 이후 **쓰기 0**
+- 타 파트너 자원은 정상 흐름상 접근 이유 없음. NULL-site 자원은 두 역할 모두 통과(무변경)
+- 한계: `updated_at` 은 쓰기만 반영 — 읽기 전용 교차 접근이 없었다는 증명은 아님. **정상 흐름 파손 위험은 사실상 없음**으로 판단
+- 파트너 영향 요약: printy(editor 키만 사용) **0** · bookmoa·100p 는 어느 키를 쓰는지 당사 불명이나 자기 사이트·NULL 자원은 그대로 동작
+
+**배포 절차(승인 시)**: VPS `git pull` → `docker compose up -d --build api` → **nginx 재시작 필수**(리터럴 proxy_pass IP) → 헬스 200 →
+배포 산출물 지문 확인(`/app/apps/api/dist` 에서 `resolveApiKeyRole` 문자열 + 대조군) → 파트너 키 스모크는 **키 값 미출력**으로(editor 키 401 아님 확인만)

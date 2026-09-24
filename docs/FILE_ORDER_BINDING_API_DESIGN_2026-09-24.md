@@ -100,6 +100,7 @@
     나머지 활성 사이트(Default Site 2·ShareSnap·북모아 메인(rot)·MD2Books)는 두 코드가 같아 editor 조회에서 먼저 매칭되므로 `role='editor'` 다.
     즉 위 3개 파트너가 자기 **worker 키**로 호출하면 지금 이 순간에도 테넌시 검사 없이 타사 파일에 접근할 수 있다. 실제 악용 흔적은 조사하지 않았다(fileId 는 UUIDv4 라 추측 불가 — 유출 경로가 있어야 악용 가능).
     → W1 은 이 결속 설계의 선행 조건이기 이전에 **독립된 보안 교정 과제**다(§16 W1 권고 참조).
+  - ✅ **2026-09-25 교정 구현 완료**: `role='worker'` 를 내부 `WORKER_API_KEY` 에만 부여(`auth/api-key-role.ts` 단일 원천, 가드·전략 공용). 배포 상태는 RESUME §8-16 참조. CONTRACT_FREEZE v1.5 §4.4
 - **`restore()`는 `deleted_at`만 되돌리고 `expires_at`은 그대로 둔다**(files.service.ts:490-507†).
   - 고아 강등은 `expires_at`과 `deleted_at`을 모두 NOW()로 설정한다(:740†).
   - 그래서 복구된 파일은 다음 :17 sweep에 다시 soft-delete된다.

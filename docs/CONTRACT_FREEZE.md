@@ -1,9 +1,11 @@
-# CONTRACT_FREEZE.md — Storige 플랫폼 계약 표면 동결 (v1.4)
+# CONTRACT_FREEZE.md — Storige 플랫폼 계약 표면 동결 (v1.5)
 
 > 작성 2026-07-03 · 근거: Phase 0 정찰 5팀(서명·재검증·보안·계약열거·구현준비) + 적대검증 2렌즈(계약 완전성·diff 회귀) 실코드 대조.
 > **무중단 원칙 절대**: 파트너 4종(bookmoa-mobile / Sharesnap / 100p_books / MD2Books)이 오늘 프로덕션에서 의존하는 표면은 시맨틱 변경·제거를 금지한다. 위반 변경은 Review Gate에서 오너 승인 없이 착수 금지.
 > **v1.1 변경**: 적대검증(FAIL, P0×3)이 잡은 누락 보강 — 업로드 표면 6종+크기 경계, frame-ancestors(死코드 오판정 → FROZEN 격상), 업로드 응답 shape·NOT_S3·content-type 화이트리스트, 100p 재분류.
 > **v1.2 추가 (2026-07-28)**: **호스트→편집기 수신 명령 계약 v1** 등재(§1-D-1). 신규 계약 제정이 아니라 **既 GUIDE 노출분의 사후 추인**(정식 계약 승격) — 발신 표면(8종 FROZEN + `editor.pricingChange` ADDITIVE)은 불변이며 넓히지 않는다.
+> **v1.5 개정 (2026-09-25)**: 🔴 **보안 교정(MODIFY-TARGET, W1)** — `X-API-Key` 의 `role='worker'`(테넌트 스코프 바이패스 신뢰 주체)를 **내부 `WORKER_API_KEY` 에만** 부여하도록 좁혔다. 종전에는 editor 코드 조회에 실패해 worker 코드로 매칭되기만 하면 `'worker'` 가 되어, editor≠worker 코드를 가진 **파트너 사이트의 worker 키가 테넌시를 전부 우회**했다(타사 파일·잡·세션 접근). 파트너 worker 코드는 이제 **그 사이트의 일반 키(`role='editor'`)** 다 — 자기 사이트·NULL-site 자원 접근은 종전과 동일하고 **타 사이트 접근만** 사라진다. 판정 단일 원천 `apps/api/src/auth/api-key-role.ts`, 회귀 잠금 `api-key-role.spec.ts`(소스 정적 잠금 포함). 상세 §4.4.
+>
 > **v1.4 개정 (2026-09-12)**: 🚨 **FROZEN 항목 1행 개정** — §1-C-1 "스탬프 근거의 유일성"이 근거를 "서명 검증된 JWT 뿐" 으로 적고 있었으나, 그 문구 그대로는 **D6 NULL-파괴 게이트가 정상 파트너를 파손**한다(`compose-mixed` 를 `X-API-Key` 로 호출하는 파트너에게 자기 잡에 siteId 를 붙일 수단이 없어 전건 NULL 스탬프 — RESUME 2026-09-11 §8-1). 오너 결정(ⓐ안)에 따라 **DB 에서 검증된 활성 사이트 자격증명**을 근거에 추가했다. 금지 대상은 그대로다: **호출자가 주장한** siteId(본문·헤더·쿼리 값)는 여전히 채택 금지. 상세는 §1-C-2.
 >
 > **v1.3 추가 (2026-09-11)**: **S3-A안 옵션형 site 스탬프** 등재(§1-C-1). 2026-08-28 구현·배포된 `c050729` 가 계약 문서에 전무했다(파일 전체 `Bearer` 0건). 신규 계약 제정이 아니라 **이미 라이브인 표면의 사후 추인** — 특히 `firstFinalize` 게이트는 최적화가 아니라 **동결 대상 보안 계약**이다. 동시에 §4.3 의 "오너 결정 대기" 표기를 정정(D1·D3·D4 는 2026-08-28 승인·집행 완료).
@@ -216,6 +218,12 @@
   - ⚠️ **2026-09-11 정정**: 종전의 "오너 결정" 표기는 스테일이다. 이원 정책의 **신규 site 스탬프 쪽은 오너 승인(D1)을 받아 2026-08-28 집행 완료**(§1-C-1, `c050729`)이며 D3·D4 도 같은 날 승인됐다.
   - **잔여 미결은 D6 뿐**: ① NULL-파괴 게이트 ② 기존 의존분 allowlist 승격 ③ 레거시 NULL 백필. 착수 시점만 오너 결정 대기이며, 설계 §2-B' 단서대로 "해당 파트너의 기존 회수가 자기 키로 이뤄지는지" **관측이 백필보다 선행**한다.
   - ⚠️ 집행 전 수치 재실측 필수 — 백필 41건/NULL 225건은 **2026-08-28 실측치이고 이후 재실측이 없다**.
+
+- **4.4** ✅ **교정 완료(2026-09-25, W1)** — 파트너 worker 키 테넌시 우회. `ApiKeyGuard`·`ApiKeyStrategy` 가 worker 코드 매칭만으로 `role='worker'` 를 줬고, `role==='worker'` 는 8곳(files `assertSiteAccess` · worker-jobs 2 · edit-sessions 3 · presigned-upload 2)에서 테넌트 스코프를 통째로 건너뛴다.
+  - 노출(2026-09-24 운영 실측, 키 값 미출력): editor≠worker 코드인 **활성 사이트 3곳**. 조치 전 악용 흔적은 미조사(fileId 는 UUIDv4 — 유출 경로가 있어야 악용 가능)
+  - 교정: `role='worker'` ⇔ 내부 `WORKER_API_KEY`. 8곳의 바이패스 코드는 **무변경**(의미가 "내부 워커 전용"으로 좁아짐). JWT 는 `UserRole` 에 worker 값이 없고 서명돼 위조 불가 — 다른 부여 경로 없음
+  - 부수 효과(의도): 파트너 worker 키의 presigned finalize 가 이제 **자기 사이트로 스탬프**된다(§1-C 의 `firstFinalize` 게이트 행 — 코드 무변경, `role !== 'worker'` 의 대상이 내부 워커로 좁아짐). NULL-site 신규 생성이 줄어든다
+  - 🚫 이 판정을 우회해 `role='worker'` 를 부여하는 코드를 추가하지 마라 — `api-key-role.spec.ts` 의 소스 정적 잠금이 실패한다
 
 ## 5. thumbnail = MODIFY-TARGET
 `GET /files/:id/thumbnail`(files.controller.ts:662) = @Public 무인증 + Throttle 없음 + PDF 전용. raw가 404로 막은 민감 PDF를 UUID만으로 첫 페이지 유출. **소비처 0건 확정**(로컬 editor/admin/api + 파트너 4종 레포 전수 grep, GET /files/:id/thumbnail 호출 0). 수정안은 §Review Gate / code_changes 참조.
