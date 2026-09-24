@@ -224,7 +224,9 @@ SELECT id, site_id, created_at FROM worker_jobs
 멀티테넌시 P3b(`.claude/worktrees/multitenancy-p3b`) / 포토북 S2 / ⓑstage1b·Bull attempts·BQ-03·히스토리 정화 force-push /
 §7-1 권고 3건(읽기전용 서브에이전트 `model: sonnet` · 설치본 Bash 제약 `_ai-governance` 역반영 · storige 전용 함정 `.claude/rules/` 분리)
 
-**오너 결정 대기**: 동화책 caseBind · cover VALIDATE 경고 처리 정책 · G-6 백필 ·
+**🔴 오너 결정 대기 — 보안 최우선**: **W1 파트너 worker 키 테넌시 우회**(활성 3사 노출, §8-15). 교정 전 파트너 공개 금지
+
+**오너 결정 대기**: **결속 API 설계 18건**(`docs/FILE_ORDER_BINDING_API_DESIGN_2026-09-24.md` §16) · 동화책 caseBind · cover VALIDATE 경고 처리 정책 · G-6 백필 ·
 **branch protection(master 무보호 확정)** · 폰트 시딩(0건) · D6 착수 시점 ·
 **파트너 파기 계약 신설**(합성 산출물·편집 세션 하드삭제 external, §5-2) ·
 **파일↔주문 결속 기록 API 신설**(`orderRef`+`orderItemKey`, 설계 입력 확보 §8-9) · **bookmoa NULL-site 결속 25건 백필**(§8-8) ·
@@ -991,3 +993,33 @@ printy `e0a455f`("이제 편집완료를 다시 눌러 주문에 반영해주세
 
 **📣 printy 교신 누락 발견**: printy 가 동기화 점검 중 문의 — printy 기록은 (a)안 "Storige 동의·3단계 분리" 로 남아 있다.
 §8-8 이후 **(a)안 기각 권고 전환**과 §8-13-1 확정 근거를 **printy 에 직접 통지하지 않았다**(bookmoa 교신에만 있었다). 이번 회신에 포함
+
+### 8-15. 결속 API 설계안 완결 + 🔴 설계 범위 밖 보안 결함 W1 (2026-09-24)
+
+**산출물**: `docs/FILE_ORDER_BINDING_API_DESIGN_2026-09-24.md` (v1.1 완결본, 937줄, 18개 절 + 부록 A 검토 반영 기록).
+워크플로 `wf_98c23cca-e81` — 에이전트 9(정찰 3·설계 1·적대적 검토 4 관점·개정 1). **모델 전환(Opus 5 → 5.5) 후 토큰 절약**: 이 세션의 실측·합의 사실은 입력으로 고정, 에이전트는 코드만 읽고 운영 접근 금지.
+검토 지적 41건(blocker 1·major 19·minor 21) → **반영 37·부분 반영 4·기각 0**. blocker = (a)안 게이트 SQL 이 3값 논리로 NULL-site 를 못 막던 것 → **2-pass 쿼리로 NULL-site 명시 배제**로 해소.
+
+**설계 골자**
+- 표면 **Partner API v1**: `POST/GET /api/v1/files/{fileId}/order-binding` + `POST …/order-binding/expiry`(결속 범위 만료 = 권고 취소 경로). v1 은 **운영 중**(메인 세션 확인: `PartnerApiModule` 마운트, 무인증 `GET /api/v1/books` → 401)
+- 저장소 `file_order_bindings`(UNIQUE `file_id`, first-claim-wins, `order_ref VARCHAR(32) ascii_bin`, **FK 없음 + tombstone**). `files.order_seqno` **재사용 안 함**
+- 테넌시: **editor 키만** · `file.site_id = caller.siteId` · **NULL-site 결속 불가·스탬프 불변** · 교차근거 있을 때만 `422 SITE_UNSTAMPED`, 아니면 404(존재 은닉)
+- 멱등 동일성은 **orderRef 만**(orderItemKey 는 식별에 불포함 — 검토에서 ⓒ 위반 교정) · 같은 ref 200 no-op / 다른 ref `409 ERR_FILE_ALREADY_BOUND`
+- 결속이 막는 것은 **고아 정리뿐** — 후보 쿼리 결속 가드 + **강등 직전 행 잠금 재확인**(경합 창 제거). 명시적 만료는 막지 않는다
+- (a)안: 전역 불가, **사이트별 모드 `off/dry/live`(기본 off)** + 2-pass. bookmoa 는 결속 가동·백필·소급 결속·장바구니 조건 충족 전까지 `off`
+- 롤아웃 **S0~S10 순서 고정**: 결정 → 마이그레이션 → API 배포(OFF) → ON 스모크 → 편집기 스탬프 수정(+W1 권고) → bookmoa 호출·소급 결속 → 백필 → 소급 재처리 → D6 → 기본 고아 실가동 → 사이트별 (a)안.
+  **모든 env 전환은 재생성 + nginx 재시작 필수**(§0 함정). S5 이후 **이미지 롤백 금지**(플래그 OFF 로만)
+
+**🔴 W1 — 파트너 worker 키가 테넌시를 전부 우회한다 (운영 노출 실측, 설계와 독립된 보안 과제)**
+- 원인: `api-key.guard.ts` 가 editor 코드 조회 실패 시 worker 코드로 찾아 **`role='worker'`**, `files.service.ts:339` `assertSiteAccess` 는 `role === 'worker'` 면 **무조건 return**.
+  주석상 의도는 내부 `WORKER_API_KEY` 만 worker 였으나 **editor≠worker 코드인 파트너 worker 키 전부**가 worker 가 된다. 동일 바이패스 8곳(files·worker-jobs·edit-sessions·presigned-upload)
+- **운영 노출(키 값 미출력, 일치 여부만 비교)**: 키 조회는 `status='active'` 만 대상(sites.service.ts:83·90). editor≠worker 인 **활성 사이트 3곳 = bookmoa(`b5aef7a9`)·100p Books·printy**.
+  이 3곳이 **자기 worker 키**로 호출하면 지금도 타사 파일 다운로드·하드삭제·만료가 가능하다. 악용 흔적은 **미조사**(fileId 는 UUIDv4 — 유출 경로가 있어야 악용 가능)
+- 교정 방향(설계 §16 W1): worker **역할(기능)은 유지**하되 **테넌시 바이패스만 내부 `WORKER_API_KEY` 로 한정**(MODIFY-TARGET, 8곳 전수). 같은 사이트 정상 동작은 그대로다
+- 🚫 **파트너에 알리지 마라** — 교정 전 공개는 취약점 노출이다. 오너 결정·교정 후 필요 시 통지
+
+**부수로 확인된 인접 결함**(설계 §1.5, 전부 오너 결정 이관): `restore()` 가 `expires_at` 을 안 지워 복구 파일이 재강등(O18, 우선순위 높음) ·
+purge 가 `expires_at IS NOT NULL` 만 봐 수동 삭제 + 미래 만료 파일이 48h 후 조기 영구삭제(O17) · `softDeleteWithExpiry` 참조 재확인 부재(설계 §8.2 로 해소) ·
+Partner API v1 이 CONTRACT_FREEZE 에 **미등재**(O15) · `@PartnerLiveOnly` 사용처 0건(결속 라우트가 첫 사용) · `migrations/README.md` 스테일(synchronize 위치·목록)
+
+**오너 결정 18건**은 설계 §16 표가 정본(O1~O18 + W1). 핵심 순서: **W1(보안, 즉시 권고)** → O1(v1 표면) → O2(사이트 모드) → O3(백필 재실측) → O4(편집기 스탬프) → O5(N=90)
