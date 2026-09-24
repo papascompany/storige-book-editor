@@ -1043,9 +1043,9 @@ bookmoa R-192 구현·검증 완료(`507667d`, push·배포는 그쪽 오너 승
   조회·수정이 `Number(session.memberSeqno) !== userId`(`edit-sessions.service.ts:509`)로 비교 → **같은 회원(토큰 갱신 포함)으로 재오픈하면 일치**.
   따라서 빈 캔버스가 나면 1순위 의심은 소유자가 아니라 **조회 실패 후 조용한 폴백**(위 1번) — bookmoa 가 완료 payload `sessionId` ≠ 재오픈 `sessionId` 로 감지 가능. 그때 세션 로드 쪽을 같이 본다
 
-### 8-16. 🔴 W1 교정 구현 완료 — 파트너 worker 키 테넌시 우회 차단 (2026-09-25) · **배포 대기**
+### 8-16. ✅ W1 교정 배포 완료 — 파트너 worker 키 테넌시 우회 차단 (2026-09-25 · 운영 반영 2026-09-24 15:29Z)
 
-오너 지시("W1 수정 진행")로 구현. **코드 커밋·푸시까지 완료, VPS API 배포는 오너 승인 대기**(프로덕션 변경).
+오너 지시("W1 수정 진행")로 구현 → 커밋 `c534918`(CI 둘 다 success) → **오너 배포 승인 후 VPS API 배포 완료**(아래 8-16-1).
 
 **🚨 공개 노출 사실(내 실수)**: 저장소는 **PUBLIC**(`gh repo view` 확인)인데, §8-15 커밋 `d002f10`(2026-09-24)에서 W1 원인과 **노출 사이트 3곳**을 설계 문서 §1.5·이 문서에 적어 올렸다.
 "교정 전 파트너 공개 금지" 를 스스로 적어 놓고 공개 저장소에 올린 모순이다. 이력 삭제는 force-push(파괴적·캐시 잔존)라 실익이 적다 → **가장 확실한 완화는 빠른 배포**다.
@@ -1073,3 +1073,18 @@ bookmoa R-192 구현·검증 완료(`507667d`, push·배포는 그쪽 오너 승
 
 **배포 절차(승인 시)**: VPS `git pull` → `docker compose up -d --build api` → **nginx 재시작 필수**(리터럴 proxy_pass IP) → 헬스 200 →
 배포 산출물 지문 확인(`/app/apps/api/dist` 에서 `resolveApiKeyRole` 문자열 + 대조군) → 파트너 키 스모크는 **키 값 미출력**으로(editor 키 401 아님 확인만)
+
+#### 8-16-1. 배포 실증 (2026-09-24 15:29Z = 09-25 00:29 KST)
+
+- 배포 전 VPS: `a2aacf5`(09-15) · 롤백 기준 이미지 `e1172be1…`(09-12 D6-ⓐ 배포본) → **`storige-api:rollback-pre-w1` 태그로 보존**
+- 범위: `a2aacf5..c534918` 중 API 변경은 W1 4파일뿐. `nginx.conf`·`docker-compose.yml` **무변경** → nginx 는 inode 함정 없이 `restart` 로 충분
+- 절차: `git pull --ff-only` → `docker compose up -d --build api`(새 이미지 `0380fbbb…`, started 15:29:00Z) → `docker compose restart nginx`(15:29:01Z, api 뒤)
+- 검증(키 값 미출력)
+  - 외부 헬스: api `/api/health` 200 · editor 200 · admin 200 · 무키 `POST /api/auth/shop-session` → **401**
+  - 부팅: `Nest application successfully started` · 예외 0
+  - 배포본 지문(`/app/apps/api/dist`): `auth/api-key-role.js` 존재 · 가드·전략 모두 `resolveApiKeyRole` 사용 · 가드 내 옛 `role = 'worker'` 대입 **0** · 대조군(D6-ⓐ 가드) 존재
+  - **운영 env 로 컴파일본 실행**: 임의 키 → `editor`, 내부 `WORKER_API_KEY` → `worker` (`WORKER_API_KEY` 설정 확인)
+  - 배포 후 ~50초: 요청은 내 401 프로브 1건뿐(로그 파싱 대조군 성립) · 예외 0 · 워커 트래픽 0. **10분 후 재점검 예약**(결과는 아래 추가)
+- **롤백 절차**(필요 시): `docker tag storige-api:rollback-pre-w1 <compose 이미지명>` 후 api 재생성 + nginx 재시작, 또는 `git revert c534918` 후 재빌드
+- ⚠️ **파트너 교차 접근 차단의 실 호출 증명은 하지 않았다** — 파트너 자격증명으로 타사 파일을 호출하는 방식은 자격증명 오용·감사 오귀속이라 배제.
+  대신 단위 테스트(대조 실험 포함) + 배포본 지문 + 운영 env 판정 실행으로 증명. 종단 증명이 필요하면 설계 §14 S3 의 **editor/worker 분리 테스트 사이트**로 한다
