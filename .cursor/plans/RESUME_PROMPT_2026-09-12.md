@@ -1023,3 +1023,18 @@ purge 가 `expires_at IS NOT NULL` 만 봐 수동 삭제 + 미래 만료 파일�
 Partner API v1 이 CONTRACT_FREEZE 에 **미등재**(O15) · `@PartnerLiveOnly` 사용처 0건(결속 라우트가 첫 사용) · `migrations/README.md` 스테일(synchronize 위치·목록)
 
 **오너 결정 18건**은 설계 §16 표가 정본(O1~O18 + W1). 핵심 순서: **W1(보안, 즉시 권고)** → O1(v1 표면) → O2(사이트 모드) → O3(백필 재실측) → O4(편집기 스탬프) → O5(N=90)
+
+#### 8-15-1. bookmoa R-192 완료 + 재오픈 흐름의 당사 측 약점 2건 (2026-09-24 14:4xZ)
+
+bookmoa R-192 구현·검증 완료(`507667d`, push·배포는 그쪽 오너 승인 대기): **payload `sessionId` 1차 / `sessionIds[0]` 폴백 / 재오픈 전 `saveNow` 미호출 / 옛 iframe 즉시 언마운트**. 당사 변경 요청 없음.
+그쪽 적대 검증이 남긴 당사 관찰 2건을 **코드로 확인**했다:
+
+1. 🔴 **재오픈 세션 조회 실패 → 조용한 폴백** (`apps/editor/src/embed.tsx:858-861` → 865~):
+   `editSessionsApi.get(sessionId)` 실패는 `console.warn` 뿐이고, `orderSeqno && mode` 가 있으면 `findByOrder(orderSeqno)`(canvasData 있는 세션 우선) → 없으면 **새 세션 생성**으로 진행한다.
+   bookmoa 는 두 값을 항상 넘긴다 → 재오픈이 실패하면 **고객이 흡수된 작업이 아닌 다른/빈 세션을 편집하고, 호스트는 sessionId 가 바뀐 것을 모른다.**
+   §8-14 에서 재오픈을 **유일한 정상 경로**로 권장했으므로 이 약점이 그 경로에 그대로 걸린다.
+   - 가이드 조치(완료): §3.3 에 폴백 존재 + **완료 payload `sessionId` 와 재오픈 `sessionId` 비교로 감지** 명시
+   - **코드 교정은 후속·오너 결정**: 명시적 `sessionId` 로 연 경우의 조회 실패는 폴백 대신 `editor.error` 발신이 맞다(bookmoa 제안).
+     단 **행동 변경**이다 — 낡은 `sessionId` 를 넘겨도 주문번호로 복구되던 흐름에 기대는 파트너가 있으면 깨진다. 변경 전 폴백 발생 빈도와 파트너 의존 여부 확인 필요
+2. **흡수 후 자동저장 403 미통지** (`embed.tsx:655-658`): `onError` 가 의도적으로 `console.error` 만("Don't call onError for auto-save failures to avoid disrupting user flow").
+   → 가이드 §3.3 에 "호스트에 통지되지 않음 · 흡수 즉시 옛 iframe 언마운트" 명시(완료). 코드 변경 불요
