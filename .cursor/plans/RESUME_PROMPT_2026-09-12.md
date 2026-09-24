@@ -1038,3 +1038,7 @@ bookmoa R-192 구현·검증 완료(`507667d`, push·배포는 그쪽 오너 승
      단 **행동 변경**이다 — 낡은 `sessionId` 를 넘겨도 주문번호로 복구되던 흐름에 기대는 파트너가 있으면 깨진다. 변경 전 폴백 발생 빈도와 파트너 의존 여부 확인 필요
 2. **흡수 후 자동저장 403 미통지** (`embed.tsx:655-658`): `onError` 가 의도적으로 `console.error` 만("Don't call onError for auto-save failures to avoid disrupting user flow").
    → 가이드 §3.3 에 "호스트에 통지되지 않음 · 흡수 즉시 옛 iframe 언마운트" 명시(완료). 코드 변경 불요
+- ✅ **bookmoa R-192 프로덕션 배포**(2026-09-24 14:34Z, `507667d`, new.bookmoa.com). 라이브 프로브 통과. **흡수 세션 canvasData 복원·회원 경로 PDF 생성은 오너 라이브 실측 대기**(게스트 24h 창 안)
+- 🔎 **빈 캔버스 대비 사전 점검(당사)**: 소유자 판정은 일관된다 — 흡수가 `memberSeqno = parseInt(user.userId)`(`edit-sessions.controller.ts:319`)로 쓰고
+  조회·수정이 `Number(session.memberSeqno) !== userId`(`edit-sessions.service.ts:509`)로 비교 → **같은 회원(토큰 갱신 포함)으로 재오픈하면 일치**.
+  따라서 빈 캔버스가 나면 1순위 의심은 소유자가 아니라 **조회 실패 후 조용한 폴백**(위 1번) — bookmoa 가 완료 payload `sessionId` ≠ 재오픈 `sessionId` 로 감지 가능. 그때 세션 로드 쪽을 같이 본다
