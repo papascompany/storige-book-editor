@@ -64,6 +64,8 @@ PATH="/opt/homebrew/opt/node@24/bin:$PATH"   # node -v → v24.20.0. engine 경�
   `failed to change group ID: operation not permitted` 로 **명령 전체가 실행 전에 실패**한다. 샌드박스 문제로 오인하기 쉽다(2026-09-14 실사례 — 샌드박스를 꺼도 같은 오류). `RUN_ID` 등을 쓴다
 - **`gh run rerun` 직후의 `gh run watch` 결과를 바로 믿지 마라** — 재실행이 등록되기 전이면 **이전 시도의 완료 결과**를 읽고 즉시 반환한다.
   결론 전에 `gh run view <id> --json attempt,updatedAt` 로 시도 번호·시각을 확인한다(2026-09-14 실사례)
+- **api 로그(pino)는 요청 헤더를 기록하지 않는다** — 직렬화기가 `req` 를 `{method, url, id}` 로만 남긴다(`app.module.ts:79-84`, 민감 헤더 제거).
+  로그로 `x-api-key`·Bearer 유무를 판별하면 **전부 "없음"으로 나온다**(2026-09-24 실수 — 대조군: 키 필수 라우트 `shop-session` 200 이 "없음"으로 찍힘). 인증 종류는 라우트 가드·요청 순서로 추론하라
 - **"0건"·"없음" 결론에는 집계 시각(UTC)을 함께 남겨라** — 파트너가 같은 시간대에 같은 시스템을 조작 중이면 스냅샷이 몇 분 만에 뒤집힌다
   (2026-09-21 실사례: printy 자원 0건 회신 → 8분 뒤 세션 2건, §8-6). 외부에 보내는 수치에는 **측정 시각을 명시**한다
 - 기타: vite.config.js shadow / 빌드게이트 5함정 / fabric styles·loadJSON / SPREAD≠표지 / isInitializedRef 저장 입구 금지 / **debounce 는 배칭 도구 아님** / **supertest 포트 패밀리**(불가능한 응답=남의 서버 의심) / 크로스세션 권한모드
@@ -1084,7 +1086,19 @@ bookmoa R-192 구현·검증 완료(`507667d`, push·배포는 그쪽 오너 승
   - 부팅: `Nest application successfully started` · 예외 0
   - 배포본 지문(`/app/apps/api/dist`): `auth/api-key-role.js` 존재 · 가드·전략 모두 `resolveApiKeyRole` 사용 · 가드 내 옛 `role = 'worker'` 대입 **0** · 대조군(D6-ⓐ 가드) 존재
   - **운영 env 로 컴파일본 실행**: 임의 키 → `editor`, 내부 `WORKER_API_KEY` → `worker` (`WORKER_API_KEY` 설정 확인)
-  - 배포 후 ~50초: 요청은 내 401 프로브 1건뿐(로그 파싱 대조군 성립) · 예외 0 · 워커 트래픽 0. **10분 후 재점검 예약**(결과는 아래 추가)
+  - 배포 후 ~50초: 요청은 내 401 프로브 1건뿐(로그 파싱 대조군 성립) · 예외 0 · 워커 트래픽 0
+  - ✅ **배포 11분 재점검(15:40Z)**: 요청 14건 — 200×6 · 304×5 · 201×1 · 401×1(내 프로브) · 400×1 · **예외 0 · 재시작 0** · 워커 로그 0
+    - **`POST /api/auth/shop-session` 200** = 배포 후 파트너 API 키 인증이 정상 통과했다(ApiKeyGuard 경유)
+    - 400 은 `POST /api/edit-sessions` — 게스트 shop-session 토큰(회원번호 없음)이면 `edit-sessions.controller.ts:84` 가 **설계상 400** → 편집기가 게스트로 폴백(`embed.tsx:926`).
+      로그 순서 `shop-session 200 → POST /edit-sessions 400 → POST /edit-sessions/guest 201 → PATCH guest 200` 그대로. JWT 경로라 W1 역할 판정과 무관
+    - ⚠️ 처음엔 이 400 을 "인증 헤더 없는 요청"으로 오판했다 — 아래 상시 함정
 - **롤백 절차**(필요 시): `docker tag storige-api:rollback-pre-w1 <compose 이미지명>` 후 api 재생성 + nginx 재시작, 또는 `git revert c534918` 후 재빌드
 - ⚠️ **파트너 교차 접근 차단의 실 호출 증명은 하지 않았다** — 파트너 자격증명으로 타사 파일을 호출하는 방식은 자격증명 오용·감사 오귀속이라 배제.
   대신 단위 테스트(대조 실험 포함) + 배포본 지문 + 운영 env 판정 실행으로 증명. 종단 증명이 필요하면 설계 §14 S3 의 **editor/worker 분리 테스트 사이트**로 한다
+
+#### 8-16-2. printy 상태 통보 (2026-09-24 15:06Z~, 회신 불요)
+
+- printy 업스트림 동기화(bookmoa R-187/R-188 이식) 운영 배포 `cda800c` — **Storige 계약 영향 변경 없음**(`upload-gate.js` 불변 · `status` 미사용 유지). printy site 자산 여전히 files 0 · jobs 0
+- printy **R-192 재오픈 전환 이식 착수**(bookmoa `507667d` 기준, 가이드 §3.3 4단계 · 재오픈 전 `saveNow` 없음 · sessionId 는 payload 1차 / `sessionIds[0]` 폴백). 완료 후 통지 예정
+- printy 대기 목록(§8-14 발신분): ① 재오픈 전환 **진행 중** · ③ (a)안 기록 정정 **완료**(`7a2a6bf`) · ② 회원 완료 실측은 재오픈 전환 후 오너 일정
+- W1 영향: printy 는 editor 키만 사용 → **0**
