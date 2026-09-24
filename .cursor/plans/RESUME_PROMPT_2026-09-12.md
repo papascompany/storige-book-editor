@@ -962,3 +962,32 @@ bookmoa 가 §8-13 확인 요청에 답하며 **신규 결속 12건 id** 를 줬
 - **양측 결론 일치 확정**: (i) **결속 기록 API 가 유일한 지속 해법** · (ii) 그 전까지 **bookmoa site 전면 제외** · **(a)안 단독 채택 기각**.
   결속 API 가 확정되면 bookmoa 는 **주문 생성 직후 best-effort 호출 트랙을 즉시 개설**한다고 회신(설계 입력은 §8-9 ⓐ~ⓔ 확보 완료)
 - bookmoa 는 게스트 24h 창 안에 라이브 4항목 실측을 하도록 오너 안내에 반영. **그 세션은 종료**되고 **다음 bookmoa 세션이 결과를 통지**한다(채널 재확증 필요, §3)
+
+### 8-14. 🔴 정정 — 흡수 후 in-place 재완료는 성공 경로가 없다 (bookmoa R-192, 2026-09-24 11:2xZ)
+
+새 bookmoa 세션(`20260924 북모아 Printable 개발 계속`, `uds:/tmp/cc-socks/80350.sock`)이 HEAD `06a7253` 코드로 확정해 통지했고 **당사가 코드로 재확인했다.**
+
+**확인한 사실**
+- `edit-sessions.service.ts` `migrateGuestSessions`: `memberSeqno` 부여 + **`guestToken=null`·`guestExpiresAt=null`** → 반환 `{ migratedCount: live.length, sessionIds }`.
+  `sessionIds` 는 **이번 호출에서 흡수된 살아 있는 세션만** 담는다 — 토큰 미존재·전건 만료·**같은 토큰 재호출**(이미 null)이면 `{0, []}`. 교차 사이트는 예외(403)
+- `edit-sessions.controller.ts:249` `assertGuestOwnership`: `!session.guestToken` 이면 **`403 NOT_A_GUEST_SESSION`**
+- 편집기는 게스트 판정을 **클라 메모리 `currentSession?.guestToken`** 으로 한다(`embed.tsx` 완료 2경로, `useEmbedAutoSave.ts:387`) →
+  흡수 후 열린 편집기의 저장·완료는 `updateGuest` → 403 → `editor.error(SAVE_FAILED)`. 자동저장도 매 주기 403(`useEmbedAutoSave.ts:409` console.error + 423 onError)
+- 호스트→편집기 명령은 `getState`·`saveNow`·`setBackGuard` **3종뿐**(`embed.tsx:690·698·717`) → 흡수 사실·회원 토큰을 열린 편집기에 전달할 수단 없음
+- ⇒ **흡수 후 in-place 재완료는 성공 경로가 없다.** 가이드 §3.3 4단계(같은 `sessionId` 를 회원 accessToken 으로 `/embed` 재오픈)가 **유일한 정상 경로**다
+
+**🔴 내 오판 정정**: §8-12-2 에서 printy 에 *"현행 방식(편집기를 열어 둔 채 재완료)도 문제없으니 재오픈 전환은 선택 사항"* 이라고 했다 — **틀렸다.**
+printy `e0a455f`("이제 편집완료를 다시 눌러 주문에 반영해주세요" + 편집기 유지)와 bookmoa R-191 `resumeAfterMigration`(`79893e8`)의 흡수 후 안내는 **둘 다 성공 경로가 없었다.**
+§8-12-1·§8-12-2 의 "정당한 자체 보정" 평가를 이 절로 대체한다. 근본 원인은 당사 09-21 안내가 재오픈을 명시하지 않은 것 + 가이드가 in-place 불가를 적지 않은 것.
+(`ee88078` 레거시 2키 동봉은 **무관하게 유효** — 이건 흡수 **이후** 경로의 문제다)
+
+**조치**
+- ✅ `PLATFORM_INTEGRATION_GUIDE.md` §3.3 에 **"흡수 후 in-place 재완료 미지원"** 블록 추가: 원인(메모리 판정 vs 서버 guestToken 삭제)·자동저장 403·명령 3종 한계·
+  **재오픈 필수**·**재오픈 전 `saveNow` 금지**·재오픈 `sessionId` 는 완료 payload 1차 / 흡수 응답 `sessionIds` 는 첫 성공 호출에서만 채워지므로 폴백 전용
+- bookmoa 는 R-192 로 재오픈 전환 착수(당사 변경 요청 없음). printy 에 정정 통지(e0a455f 흐름 교체 필요)
+- (기록만, 계약 변경이라 미요청) 장기안: 호스트 명령 `sessionMigrated{token,refreshToken}` 으로 열린 편집기의 세션·토큰 갱신 → 재오픈 로딩(20~40초) 제거
+
+**bookmoa 확인 요청 2건 답**: ① `sessionIds` 는 **항상이 아니라 첫 성공 호출의 흡수분만** — 폴백 전용이 맞다 ② 레거시 게스트 payload 에 **`sessionId` 실린다**(`embed.tsx:1868·2032` `sessionId: currentSessionId` → `EmbedView.tsx` `sessionId: r.sessionId`)
+
+**📣 printy 교신 누락 발견**: printy 가 동기화 점검 중 문의 — printy 기록은 (a)안 "Storige 동의·3단계 분리" 로 남아 있다.
+§8-8 이후 **(a)안 기각 권고 전환**과 §8-13-1 확정 근거를 **printy 에 직접 통지하지 않았다**(bookmoa 교신에만 있었다). 이번 회신에 포함
