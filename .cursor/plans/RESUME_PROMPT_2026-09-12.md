@@ -1163,4 +1163,7 @@ printy(bookmoa 발견) 공유: 양사 호출부가 `bindingType: s.bindingType |
 - 당사 조치: `PLATFORM_INTEGRATION_GUIDE` 외부 잡 라우트 절에 **허용값 3종·400 거절·생략 시 perfect·한글 매핑표·truthy 무효값 폴백 함정** 명시(가이드에 허용값이 없던 것이 원인 중 하나).
   서버측 한글 별칭 정규화(ADDITIVE)는 **미채택 권고** — 제본 방식 오추정은 책등·판면 오류라 엄격 거절이 맞다. 필요하면 오너 결정
 - 📣 **양사 통지 발신**(09-26): printy(`local_35adcfea…`)·bookmoa(`20260924 북모아 Printable 개발 계속`, 수정 구현 주체)에 결함 확인·로그 판정(요청 0건)·**모르면 생략** 방향·매핑표·truthy 폴백 함정·서버 정규화 미채택 권고 전달(회신 불요)
+- 🧭 **오너 결정(09-26 ~06:50Z, printy 경유)**: `bindingType` 정규화를 compose-mixed 복원 여부·관리자 재합성 후 상태 갱신과 **분리해 먼저** 진행. 파트너 매핑으로 간다(서버 정규화 미채택 방침 유지).
+  bookmoa **구현 중**(로컬 `api/storige/synthesize.js`·`src/pages/Orders.jsx`·`src/admin/Admin.jsx`, 미커밋 · origin/main `522a8c4`) — 가이드 `ef16466` 기준 동봉, **호출부 4곳 모두** 덮기.
+  순서: bookmoa 배포 → printy 이식·배포 → 오너 e2e → printy 회신(= printy D6 선행 실증 1건). **당사 조치 불요**
 - 부수: **bookmoa 도 compose-mixed 미도달**(printy 확인: 라이브 storige 보유 47항목 중 capability 키 0) → **현재 compose-mixed 를 실제로 쓰는 파트너 없음**. §8-17 표의 compose-mixed 칸 대상 0. 복원은 bookmoa 오너 결정 대기. printy CLAUDE.md §D6 재정의 반영(`dbfb108`)
