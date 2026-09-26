@@ -1173,4 +1173,9 @@ printy(bookmoa 발견) 공유: 양사 호출부가 `bindingType: s.bindingType |
 - 🔎 **스프링→perfect 생략의 조건부 위험(당사 확인)**: 합성기는 saddle 외 전부 **[표지 첫 쪽 + 내지 전체 + 표지 마지막 쪽]** 으로 합친다(qpdf 경로 `cover 1 … cover z`, pdf-lib 경로 동일 ·
   `apps/worker/src/services/pdf-synthesizer.service.ts` perfect/hardcover 분기). 책등 계산은 합성 단계에 없다 → **표지 PDF 가 2쪽 이하(또는 펼침 1쪽)면 스프링도 결과 동일·안전**,
   **3쪽 이상(표지 안쪽 인쇄)이면 가운데 쪽이 조용히 빠진다** — 이건 perfect·hardcover 에도 같은 기존 동작이다. bookmoa 에 스프링 상품 표지 쪽수 확인 요청 발신
+- ✅ **스프링→perfect 건 완전 종결**(09-26 ~07:2xZ, bookmoa 회신 + 당사 운영 DB 확인):
+  ① 편집기는 표지 PDF 를 **캔버스 1개로만** 내보낸다(`embed.tsx:2121` `[allCanvas[0]]` · `useWorkSave.ts:657` `[spreadCanvas]` · `embed.tsx:2226` `[canvas]`) → 합성 입력 표지는 항상 1쪽(펼침)
+  ② bookmoa 비-compose 합성 호출부 4곳은 편집 세션 보유 항목에서만 돌고 관리자 「파일 교체」는 내지만 교체 → 다쪽 업로드 표지가 이 경로로 올 일 없음(그쪽 확인)
+  ③ 스프링 편집기 상품 2종의 템플릿셋 `a2cc2939…`(세로)·`e66588b2…`(가로): **표지 `spread` 1 + 내지 `page` 1** 뿐, `endpaper`(표지 안쪽) 템플릿 없음·`endpaper_config` NULL
+  (`editor_mode=book`, `pdf_output_mode=duplex-merged`). ⚠️ 이 세트들은 `template_set_items` 가 **0행**이고 구성은 `template_sets.templates` JSON(`[{templateId, required}]`)에 있다 — 조회 함정
 - 부수: **bookmoa 도 compose-mixed 미도달**(printy 확인: 라이브 storige 보유 47항목 중 capability 키 0) → **현재 compose-mixed 를 실제로 쓰는 파트너 없음**. §8-17 표의 compose-mixed 칸 대상 0. 복원은 bookmoa 오너 결정 대기. printy CLAUDE.md §D6 재정의 반영(`dbfb108`)
