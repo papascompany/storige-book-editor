@@ -1166,4 +1166,11 @@ printy(bookmoa 발견) 공유: 양사 호출부가 `bindingType: s.bindingType |
 - 🧭 **오너 결정(09-26 ~06:50Z, printy 경유)**: `bindingType` 정규화를 compose-mixed 복원 여부·관리자 재합성 후 상태 갱신과 **분리해 먼저** 진행. 파트너 매핑으로 간다(서버 정규화 미채택 방침 유지).
   bookmoa **구현 중**(로컬 `api/storige/synthesize.js`·`src/pages/Orders.jsx`·`src/admin/Admin.jsx`, 미커밋 · origin/main `522a8c4`) — 가이드 `ef16466` 기준 동봉, **호출부 4곳 모두** 덮기.
   순서: bookmoa 배포 → printy 이식·배포 → 오너 e2e → printy 회신(= printy D6 선행 실증 1건). **당사 조치 불요**
+- ✅ **bookmoa R-193 프로덕션 배포**(2026-09-26 06:55Z, `c021699`): 허용값 집합 판정 · 무선/무선제본→perfect · 중철/중철제본→saddle · 양장/하드커버→hardcover
+  (+ 그쪽 제본 규칙표: 무선날개·PUR→perfect, 계단식중철→saddle, 반양장→hardcover) · **매핑 불가(`'-'`·스프링 spiral·미상)는 필드 생략(= perfect)** ·
+  클라는 `cfg.binding` 대신 상품 옵션그룹의 실제 제본값을 보내고 서버 `synthesize.js` 가 최종 정규화(enum 또는 키 생략만 송출). bookmoa 편집기 상품 4종 중 중철 0.
+  bookmoa 도 D6 선행 실증을 **synthesize/external 실합성 1건 `job.siteId`** 로 따른다(첫 실합성 시 jobId·sessionId·fileId·UTC·PDF 다운로드 여부 회신 약속)
+- 🔎 **스프링→perfect 생략의 조건부 위험(당사 확인)**: 합성기는 saddle 외 전부 **[표지 첫 쪽 + 내지 전체 + 표지 마지막 쪽]** 으로 합친다(qpdf 경로 `cover 1 … cover z`, pdf-lib 경로 동일 ·
+  `apps/worker/src/services/pdf-synthesizer.service.ts` perfect/hardcover 분기). 책등 계산은 합성 단계에 없다 → **표지 PDF 가 2쪽 이하(또는 펼침 1쪽)면 스프링도 결과 동일·안전**,
+  **3쪽 이상(표지 안쪽 인쇄)이면 가운데 쪽이 조용히 빠진다** — 이건 perfect·hardcover 에도 같은 기존 동작이다. bookmoa 에 스프링 상품 표지 쪽수 확인 요청 발신
 - 부수: **bookmoa 도 compose-mixed 미도달**(printy 확인: 라이브 storige 보유 47항목 중 capability 키 0) → **현재 compose-mixed 를 실제로 쓰는 파트너 없음**. §8-17 표의 compose-mixed 칸 대상 0. 복원은 bookmoa 오너 결정 대기. printy CLAUDE.md §D6 재정의 반영(`dbfb108`)
