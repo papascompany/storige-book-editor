@@ -3,10 +3,15 @@
 > **이 문서가 최신 날짜 정본이다.** 9/11 상세 이력(§7 세션 로그 3종·§8 R-172·§8-1 D6 블로커 규명)은
 > `RESUME_PROMPT_2026-09-11.md`, 그 이전은 `RESUME_PROMPT_2026-08-28.md`·`_2026-08-25.md`(아카이브).
 > 2026-09-12 작성 · **2026-09-14 갱신**(§1 사후 실측 · §5 printy 파일 파기 계약 트랙 · §6 bookmoa D6-ⓐ 통지 · §3 채널 확증법) · **2026-09-15 갱신**(§7 gitleaks CI 설치 단계 강화 · §7-1 별도 세션 교차 검증·VPS 컨테이너 실측).
+> **2026-09-21~26 갱신(§8 전체)**: 고아 판정 (a)안 기각 · 게스트 완료/레거시 채널 결함 교정(`ee88078`, 편집기) · 흡수 후 재오픈 가이드 · 결속 API 설계안 · **W1 보안 교정 배포** · D6 선행 조건 경로별 재정의 · `bindingType` 잠복 결함.
+> 새 세션은 **§0 → §2 → §8 의 가장 뒤 절**부터 읽어라(§8 은 시간순 누적이라 앞 절이 뒤 절에서 정정된 곳이 있다).
 
 ## 0. 현재 라이브 상태
 
-- **D6-ⓐ 커밋·푸시·API 배포 전부 완료(§1).** master = origin/master.
+- 🆕 **마지막 API 배포 = W1 보안 교정**(2026-09-24 15:29Z · VPS 체크아웃 `c534918` · 새 이미지 `0380fbbb…`) — §8-16.
+  롤백 기준 이미지는 **`storige-api:rollback-pre-w1`** 태그로 보존(09-12 D6-ⓐ 배포본). 그 뒤 커밋은 문서뿐 → VPS 는 다음 API 배포 때 자연 동기화.
+  편집기는 Vercel 자동 배포 — 마지막 코드 변경 `ee88078`(09-21, 레거시 `storige:completed` 에 `needsAuth`·`guestToken` 동봉) 운영 반영·번들 실측 완료(§8-12)
+- (이력) **D6-ⓐ 커밋·푸시·API 배포 전부 완료(§1).** master = origin/master.
   VPS `~/storige` 는 **2026-09-15 `git pull --ff-only` 로 §7 기록 커밋까지 동기화**(체크아웃만 — 컨테이너 무변경, api·nginx 가동 시간 불변 · health 200).
   이후 문서 커밋은 런타임 무영향이라 미동기화(다음 API 배포 때 자연 동기화)
   ✅ 2026-09-15 05:47 UTC **별도 세션이 교차 확인**: VPS 작업트리 클린 · 컨테이너 기동 시각 09-12 그대로 · 실행 이미지 = 최신 빌드 이미지 · D6-ⓐ 지문 유지(§7-1)
@@ -208,13 +213,19 @@ SELECT id, site_id, created_at FROM worker_jobs
 - **즉시 착수 가능한 P1 잔여 0건**(09-11 의 P1-4~8·P2-10 전부 종결, D6-ⓐ 금일 종결)
 - (관찰) 시드 표기 잔여 — 레거시 `/` 경로·게스트 세션 미적용, updatedAt 의미 폭
 - (관찰) `render-pages` 게스트는 여전히 NULL 스탬프 — ⓐ와 같은 공백이 남아 있다. D6 대상이면 동형 처리 필요(§1-C-2 범위 밖)
-- (관찰) **세션 완료가 만드는 VALIDATE 잡이 `site_id` NULL · `edit_session_id` NULL** 이다 — 세션에는 활성 사이트가 스탬프돼 있는데 잡에 안 붙는다. ⓐ와 같은 계열. 원인·D6 영향 미조사(§6-3)
+- (관찰·**09-26 정정**) 세션완료 VALIDATE 잡은 **`site_id` NULL · `edit_session_id` 채워짐**이다(`edit-sessions.service.ts:1534·1553` 이 siteId 만 안 넘김). D6 선행 ②.
+  §6-3 에서 관찰한 **site·세션 둘 다 NULL 인 VALIDATE 쌍은 다른 경로** — 출처 미조사(후보 `POST /worker-jobs/validate` controller:118)(§8-17)
+- (관찰) **재오픈 세션 조회 실패 시 조용한 폴백**(`embed.tsx:858-861` → findByOrder/create) — 명시 sessionId 실패는 `editor.error` 가 맞으나 행동 변경이라 후속·오너 결정. 가이드에 감지법 명시(§8-15-1)
+- (관찰) `restore()` 가 `expires_at` 을 안 지워 복구 파일 재강등(O18) · `GuestAuthPromptModal` 죽은 코드가 `postMessage('*')` 로 guestToken 동봉(배선 전 오리진 고정 필수, §8-11-1)
 
 **D6 (cutover 관측 후 착수)**: NULL-파괴 게이트 + 이원 정책 allowlist 승격 + 백필.
-- ✅ **하드 블로커 해소 + 프로덕션 배포 완료**(§1). 단 **첫 실합성 실증 전에는 게이트를 켜지 마라** — ⓐ가 듣지 않으면 §8-1 의 404 가 그대로 재현된다
+- ✅ **하드 블로커 해소 + 프로덕션 배포 완료**(§1). 단 **파트너 합성 스탬프 실증 전에는 게이트를 켜지 마라**
+  - 🔴 **09-26 재정의(§8-17)**: 실증 조건은 **파트너가 실제로 쓰는 합성 경로의 실합성 1건 `job.siteId`** 다. printy·bookmoa 모두 **`synthesize/external`**(compose-mixed 실사용 파트너 0) →
+    종전 "첫 compose-mixed 실합성" 조건은 폐기. ⚠️ 그 실증은 **`bindingType` 400 잠복 결함(§8-17-1) 파트너 수정 뒤에만** 만들 수 있다
 - ⚠️ **ⓐ 배포 시각이 백필 경계다** — 그 이전 파트너 잡은 전건 NULL 이므로 게이트 대상
 - ⚠️ 백필 41건/NULL 225건은 **2026-08-28 실측치**, 이후 재실측 없음. 집행 전 4수치 재실행 필수
-- ⚠️ **합성 잡 3개월 공백**(SYNTHESIZE 최종 2026-06-13) 선반영 — 백필·파일보존 트랙이 "합성 트래픽이 있다"를 암묵 전제하면 안 된다
+- ⚠️ **합성 잡 3개월 공백**(SYNTHESIZE 최종 2026-06-13) 선반영 — 백필·파일보존 트랙이 "합성 트래픽이 있다"를 암묵 전제하면 안 된다.
+  09-26 Loki 실측: **09-14 이후 합성 요청 자체 0건**(api·nginx, 대조군 성립). 400 거절이 아니라 호출 부재(§8-17-1)
 - ⚠️ **백필 범위 정정(2026-09-21)**: "bookmoa 는 백필 대상 제외 확정" 은 **잡(jobId) 기준**이었다.
   **파일 기준으로는 bookmoa 결속 25건(실주문 22 + 장바구니 3)이 NULL-site 라 백필 대상**이다(§8-8). 파일·잡을 분리해 범위를 다시 잡아야 한다
 - 🚨 **D6 게이트 선행 조건 1건 추가**: bookmoa 편집세션 파일이 NULL 스탬프인 것은 **당사 결함**(편집기 완료 경로)이다.
@@ -226,16 +237,20 @@ SELECT id, site_id, created_at FROM worker_jobs
 멀티테넌시 P3b(`.claude/worktrees/multitenancy-p3b`) / 포토북 S2 / ⓑstage1b·Bull attempts·BQ-03·히스토리 정화 force-push /
 §7-1 권고 3건(읽기전용 서브에이전트 `model: sonnet` · 설치본 Bash 제약 `_ai-governance` 역반영 · storige 전용 함정 `.claude/rules/` 분리)
 
-**🔴 오너 결정 대기 — 보안 최우선**: **W1 파트너 worker 키 테넌시 우회**(활성 3사 노출, §8-15). 교정 전 파트너 공개 금지
+**✅ W1 파트너 worker 키 테넌시 우회 — 교정·배포 완료**(2026-09-24 15:29Z, `c534918`, §8-16). 배포 전 악용 여부는 미조사(필요 시 로그 조사).
+⚠️ 교정 전 공개 저장소에 원인이 커밋된 실수(`d002f10`) — **취약점 서술은 교정 배포 전 공개 저장소 커밋 금지**(§8-16)
 
-**오너 결정 대기**: **결속 API 설계 18건**(`docs/FILE_ORDER_BINDING_API_DESIGN_2026-09-24.md` §16) · 동화책 caseBind · cover VALIDATE 경고 처리 정책 · G-6 백필 ·
+**오너 결정 대기**: **결속 API 설계**(`docs/FILE_ORDER_BINDING_API_DESIGN_2026-09-24.md` §16 — W1 제외 18건, 핵심 O1 v1 표면·O2 사이트별 (a)안·O3 백필 재실측·O4 편집기 산출물 스탬프·O5 취소 후 90일) · 동화책 caseBind · cover VALIDATE 경고 처리 정책 · G-6 백필 ·
 **branch protection(master 무보호 확정)** · 폰트 시딩(0건) · D6 착수 시점 ·
 **파트너 파기 계약 신설**(합성 산출물·편집 세션 하드삭제 external, §5-2) ·
 **파일↔주문 결속 기록 API 신설**(`orderRef`+`orderItemKey`, 설계 입력 확보 §8-9) · **bookmoa NULL-site 결속 25건 백필**(§8-8) ·
 **취소 후 보존 N일**(§8-9 ⓓ) · **고아 정리 실가동 전환**(`FILE_ORPHAN_DRY_RUN`, §5-3) ·
 🚨 **고아 판정 완화 (a)안**(종료 VALIDATE 참조 해제) — **현재 형태로는 기각 권고**: 켜면 bookmoa 실주문·장바구니 25건 즉시 삭제(§8-8). 외부 결속 기록 API 신설이 선행 조건
 
-**파트너 트랙(수신 대기)**: ~~printy R-173 배포 완료 재통지~~ ✅ 09-14 수신(§5-5) · printy 첫 실합성 `job.siteId` 회신(§5-1) · bookmoa 첫 실합성 jobId 회신(§6-2 — ACK·확인 ①② 완료) ·
+**파트너 트랙(수신 대기, 09-26 기준)**:
+- **printy 오너 e2e**(회원 셀프편집 → 무통장 주문 → 재편집 완료 → 합성): `synthesisJobId`·그 잡 `siteId`(`009c26d5-…` 기대)·경로·`coverFileId`/`contentFileId`·**편집 `sessionId`**(→ 당사가 `edit_session_id` 로 VALIDATE 조회)·결과 PDF 다운로드 성공 여부·완료 시각 UTC(§8-17)
+- **bookmoa R-192 라이브 실측**(게스트 → 흡수 → 재오픈 → 회원 완료 → files) · **`bindingType` 매핑 수정**(bookmoa 구현 → printy 이식, §8-17-1)
+- (이력) ~~printy R-173 배포 완료 재통지~~ ✅ 09-14 수신(§5-5) · ~~printy·bookmoa 첫 compose-mixed 실합성 회신~~ → §8-17 로 조건 재정의 ·
 ~~printy 고아 판정 완화 질의(09-21)~~ ✅ 실측 회신 발신(§8) — 오너 결정 회신만 잔여
 
 ---
@@ -1147,4 +1162,5 @@ printy(bookmoa 발견) 공유: 양사 호출부가 `bindingType: s.bindingType |
 - 워커 기본값: `bindingType` 생략 시 `perfect`(`apps/worker/src/services/pdf-synthesizer.service.ts:207`) = 파트너 의도한 폴백과 동일 → **모르면 생략**이 정답
 - 당사 조치: `PLATFORM_INTEGRATION_GUIDE` 외부 잡 라우트 절에 **허용값 3종·400 거절·생략 시 perfect·한글 매핑표·truthy 무효값 폴백 함정** 명시(가이드에 허용값이 없던 것이 원인 중 하나).
   서버측 한글 별칭 정규화(ADDITIVE)는 **미채택 권고** — 제본 방식 오추정은 책등·판면 오류라 엄격 거절이 맞다. 필요하면 오너 결정
+- 📣 **양사 통지 발신**(09-26): printy(`local_35adcfea…`)·bookmoa(`20260924 북모아 Printable 개발 계속`, 수정 구현 주체)에 결함 확인·로그 판정(요청 0건)·**모르면 생략** 방향·매핑표·truthy 폴백 함정·서버 정규화 미채택 권고 전달(회신 불요)
 - 부수: **bookmoa 도 compose-mixed 미도달**(printy 확인: 라이브 storige 보유 47항목 중 capability 키 0) → **현재 compose-mixed 를 실제로 쓰는 파트너 없음**. §8-17 표의 compose-mixed 칸 대상 0. 복원은 bookmoa 오너 결정 대기. printy CLAUDE.md §D6 재정의 반영(`dbfb108`)
