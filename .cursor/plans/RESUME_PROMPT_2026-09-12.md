@@ -1105,3 +1105,30 @@ bookmoa R-192 구현·검증 완료(`507667d`, push·배포는 그쪽 오너 승
 - ✅ **printy 재오픈 전환 완료**(`60c36ec`, 2026-09-24 15:34Z, bookmoa `507667d` 동형): 흡수 → 오버레이 해제 → 옛 게스트 iframe 즉시 언마운트 → 같은 `sessionId` 를 회원 Bearer 로 `/embed` 재오픈 · 재오픈 전 `saveNow` 없음 · `sessionId` 부재 시 에러 카드(자동 닫기 없음).
   라이브는 비회원 편집완료 → 로그인 유도 → 고객 로그인 모달까지 확인. **흡수 → 재오픈 → 회원 편집완료 → PDF 는 printy 오너 e2e 대기**(24h 창, 결과에 `jobId`·`job.siteId`·fileId·UTC 동봉 약속)
 - 🔎 **§8-16-1 재점검의 400 출처 교차 확인**: 재점검 구간(15:29~15:40Z)의 게스트 흐름이 쓴 템플릿셋 `207c458f…` 는 printy 세션이 쓰던 것과 같고(§8-6), printy 라이브 테스트 시각(15:34Z 전후)과 겹친다 → 그 400 은 **printy 비회원 테스트의 설계상 게스트 폴백**이었다는 판단과 정합. 테스트 게스트 세션 1건은 24h 뒤 회수 예정(보존 불필요)
+
+### 8-17. 🔴 D6 선행 실증 조건 재정의 — 파트너 합성은 compose-mixed 가 아니다 (2026-09-26, printy 새 세션)
+
+새 printy 세션(`20260926 Printy 개발 계속`, `local_35adcfea…`)이 printy 코드로 확인: **printy 주문 합성은 compose-mixed 를 호출하지 않는다**
+(분기값 `item.storige.capability/mode === 'compose-mixed'` 를 저장하는 경로가 없어 셀프편집 주문 합성은 항상 **`POST /worker-jobs/synthesize/external`**). bookmoa 도 같은 코드로 추정(그쪽에 별도 통지됨).
+→ §5-1·§6-2·§2 의 "첫 실합성(compose-mixed) jobId·siteId 확인 후 D6" 조건은 **printy 흐름에서 영원히 충족되지 않는다.**
+
+**당사 확인(코드·배포본·운영 3층)**
+- 코드: `worker-jobs.controller.ts:213` `@Post('synthesize/external')` + `@Public()` + `@UseGuards(ApiKeyGuard)`, `:227` `siteId: site?.siteId, // Phase C`
+- 배포본: VPS `c534918`(09-24 W1 배포) = `b4c122d` 와 API 코드 차이 0. 컴파일본에 `siteId: site?.siteId` 스탬프 5곳 존재
+- 운영: SYNTHESIZE 잡 **전체 12건, 마지막 2026-06-13** — NULL 7(5-19~6-13) · bookmoa 구 사이트 `1391c5b4` 5(4~5월). **현 코드 synthesize/external 파트너 스탬프의 운영 실증은 0건** → printy e2e 가 첫 증거
+- SYNTHESIZE 생성 경로 4곳: controller `:206`(내부, dto 그대로) · `:225`(external, 스탬프) · `books/book-finalizations.service.ts:368`(v1 책 확정) · `editor/editor.service.ts:881`. 과거 NULL 7건은 external 이 아닌 경로로 추정(미확정)
+
+**재정의(printy 에 통지, D6 착수 시점 자체는 오너 결정)**
+| 경로 | 스탬프 근거 | D6 전 실증 조건 |
+|---|---|---|
+| synthesize/external | ApiKeyGuard → `site?.siteId`(Phase C) | 그 파트너 실합성 1건의 `job.siteId` = 파트너 site |
+| compose-mixed | D6-ⓐ 규칙 ③ | **그 경로를 실제로 쓰는 파트너만** 동일 실증 |
+- printy 의 D6 선행 실증 = **synthesize/external 실합성 1건**. compose-mixed 실증은 printy 에 요구하지 않음. bookmoa 는 실제 경로 확인 후 동일 적용
+- D6 나머지 선행 조건 불변: ① 편집기 완료 산출물 스탬프(O4) ② 세션완료 VALIDATE 스탬프 ③ 백필(O3) ④ 거부 코드 404 금지 ⑤ 100p·MD2Books 조율.
+  **printy 에 ①이 직접 걸린다** — ① 없이 D6 가 켜지면 printy 파기 스크립트가 자기 편집기 산출물(NULL-site)을 `DELETE /files/:id/external` 로 못 지운다
+
+**🔎 §6-3 출처 정정**: 세션완료 VALIDATE 는 `edit-sessions.service.ts:1534·1553` 에서 **`editSessionId` 는 넘기고 `siteId` 는 안 넘긴다**(저장 쪽 `worker-jobs.service.ts:385~` 는 둘 다 기록)
+→ 이 경로의 잡은 `site_id` NULL · **`edit_session_id` 채워짐**. 따라서 §6-3·§2 에 적은 **"site·세션 둘 다 NULL 인 VALIDATE 쌍"은 세션완료 경로가 아니다** — 출처 재조사 필요(후보: 내부 `POST /worker-jobs/validate` controller:118).
+§2 의 "세션 완료가 만드는 VALIDATE 잡이 `site_id` NULL · `edit_session_id` NULL" 서술은 **절반만 맞다**(site NULL 은 맞고 session NULL 은 다른 경로)
+
+**printy e2e 회신 요청값**(UTC): `synthesisJobId` · 그 잡 `siteId`(`009c26d5-…` 기대) · 경로 · `coverFileId`/`contentFileId` · 편집완료 시각 + (추가) 편집완료 VALIDATE 잡 id · `output-url` 조회 성공 여부. 합성 잡과 VALIDATE 잡을 구분해 받는다
