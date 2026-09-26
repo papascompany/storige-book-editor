@@ -1178,4 +1178,8 @@ printy(bookmoa 발견) 공유: 양사 호출부가 `bindingType: s.bindingType |
   ② bookmoa 비-compose 합성 호출부 4곳은 편집 세션 보유 항목에서만 돌고 관리자 「파일 교체」는 내지만 교체 → 다쪽 업로드 표지가 이 경로로 올 일 없음(그쪽 확인)
   ③ 스프링 편집기 상품 2종의 템플릿셋 `a2cc2939…`(세로)·`e66588b2…`(가로): **표지 `spread` 1 + 내지 `page` 1** 뿐, `endpaper`(표지 안쪽) 템플릿 없음·`endpaper_config` NULL
   (`editor_mode=book`, `pdf_output_mode=duplex-merged`). ⚠️ 이 세트들은 `template_set_items` 가 **0행**이고 구성은 `template_sets.templates` JSON(`[{templateId, required}]`)에 있다 — 조회 함정
+- ✅ **printy `bindingType` 정규화 이식·배포**(`b145348`, 운영 entry `index-DfY2ehEC`, ~07:20Z) — enum 또는 키 생략만 송출, 서버 `synthesize.js` 도 같은 모듈로 최종 정규화(구 번들 방어).
+  printy 편집기 상품 4종 제본 선택지에 saddle 없음. → **printy D6 선행 실증의 printy 쪽 차단 요인 해소**, 남은 것은 오너 e2e
+- ✅ **스프링→perfect 안전성 전역 확인**(운영 DB): `endpaper` 템플릿 **0개** · `endpaper_config` 보유 세트 **0개** → 표지 안쪽 인쇄 캔버스는 어느 파트너 상품에도 없다(printy 스프링 생략도 안전).
+  ("cover/spread 2개 이상" 세트 12개는 동화책·[검증] 세트로 **내지도 `spread` 타입**이라 잡힌 것 — 표지 다수 아님. 편집기는 펼침 모드에서도 표지를 `allCanvas[0]` 하나로만 내보낸다)
 - 부수: **bookmoa 도 compose-mixed 미도달**(printy 확인: 라이브 storige 보유 47항목 중 capability 키 0) → **현재 compose-mixed 를 실제로 쓰는 파트너 없음**. §8-17 표의 compose-mixed 칸 대상 0. 복원은 bookmoa 오너 결정 대기. printy CLAUDE.md §D6 재정의 반영(`dbfb108`)
