@@ -1132,3 +1132,6 @@ bookmoa R-192 구현·검증 완료(`507667d`, push·배포는 그쪽 오너 승
 §2 의 "세션 완료가 만드는 VALIDATE 잡이 `site_id` NULL · `edit_session_id` NULL" 서술은 **절반만 맞다**(site NULL 은 맞고 session NULL 은 다른 경로)
 
 **printy e2e 회신 요청값**(UTC): `synthesisJobId` · 그 잡 `siteId`(`009c26d5-…` 기대) · 경로 · `coverFileId`/`contentFileId` · 편집완료 시각 + (추가) 편집완료 VALIDATE 잡 id · `output-url` 조회 성공 여부. 합성 잡과 VALIDATE 잡을 구분해 받는다
+- ✅ printy 반영 확인(`14f59c3`, 인계 §6·시작 프롬프트): D6 선행 실증 = synthesize/external 실합성 1건 `job.siteId` · 선행 ① 필요성까지 기록. **회신 값 2건 대체 합의**:
+  편집완료 VALIDATE 잡 id → printy 는 저장하지 않으므로 **편집 `sessionId`** 로 받는다 → 당사가 `worker_jobs.edit_session_id` 로 조회(세션완료 VALIDATE 는 이 값을 채움) ·
+  `output-url` 성공 여부 → **결과 PDF 다운로드 성공 여부**(proxy-download 경유 = 재발급 성공, 실패 시 `[storige:proxy-download] 서명 URL 발급 실패` 줄의 status 동봉). 오너 e2e 는 미실행
