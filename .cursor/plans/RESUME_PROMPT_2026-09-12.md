@@ -1135,3 +1135,16 @@ bookmoa R-192 구현·검증 완료(`507667d`, push·배포는 그쪽 오너 승
 - ✅ printy 반영 확인(`14f59c3`, 인계 §6·시작 프롬프트): D6 선행 실증 = synthesize/external 실합성 1건 `job.siteId` · 선행 ① 필요성까지 기록. **회신 값 2건 대체 합의**:
   편집완료 VALIDATE 잡 id → printy 는 저장하지 않으므로 **편집 `sessionId`** 로 받는다 → 당사가 `worker_jobs.edit_session_id` 로 조회(세션완료 VALIDATE 는 이 값을 채움) ·
   `output-url` 성공 여부 → **결과 PDF 다운로드 성공 여부**(proxy-download 경유 = 재발급 성공, 실패 시 `[storige:proxy-download] 서명 URL 발급 실패` 줄의 status 동봉). 오너 e2e 는 미실행
+
+#### 8-17-1. synthesize/external `bindingType` 400 결함 — 실재하나 "현재 거절 중"은 아니다 (2026-09-26)
+
+printy(bookmoa 발견) 공유: 양사 호출부가 `bindingType: s.bindingType || item.cfg?.binding || 'perfect'` 를 보내는데 `cfg.binding` 이 `'-'`·`'무선제본'` 이라
+`CreateSynthesisJobDto.bindingType` `@IsOptional() @IsIn(['perfect','saddle','hardcover'])`(`worker-jobs/dto/worker-job.dto.ts:283-285`) + 전역 ValidationPipe(`whitelist`·`forbidNonWhitelisted`, `main.ts:173-175`)에서 **400**.
+- ✅ **코드상 결함은 실재**: 첫 실합성이 오면 잡 생성 전 400 → **printy D6 선행 실증(synthesize/external 1건)은 파트너 수정 전 생성 불가**(printy 지적 맞음). 수정은 공유 코드라 bookmoa 구현 → printy 이식
+- ❌ **"지금 전부 400 으로 거절 중 · SYNTHESIZE 06-13 이후 0건의 원인" 가설은 운영 로그로 부정**:
+  Loki(보존 **2026-09-14 09:18~**) 조회 — 대조군 `shop-session` api 34건·nginx 33건 성립 / **api·nginx 모두 synthesize 요청 0건**(api 의 "synthesize" 4줄은 09-24 부팅 라우트 등록 로그). 현 컨테이너(09-24~)도 0.
+  → 09-14 이후 합성 **요청 자체가 없다**. 06-13~09-13 구간은 로그 부재로 판정 불가
+- 워커 기본값: `bindingType` 생략 시 `perfect`(`apps/worker/src/services/pdf-synthesizer.service.ts:207`) = 파트너 의도한 폴백과 동일 → **모르면 생략**이 정답
+- 당사 조치: `PLATFORM_INTEGRATION_GUIDE` 외부 잡 라우트 절에 **허용값 3종·400 거절·생략 시 perfect·한글 매핑표·truthy 무효값 폴백 함정** 명시(가이드에 허용값이 없던 것이 원인 중 하나).
+  서버측 한글 별칭 정규화(ADDITIVE)는 **미채택 권고** — 제본 방식 오추정은 책등·판면 오류라 엄격 거절이 맞다. 필요하면 오너 결정
+- 부수: **bookmoa 도 compose-mixed 미도달**(printy 확인: 라이브 storige 보유 47항목 중 capability 키 0) → **현재 compose-mixed 를 실제로 쓰는 파트너 없음**. §8-17 표의 compose-mixed 칸 대상 0. 복원은 bookmoa 오너 결정 대기. printy CLAUDE.md §D6 재정의 반영(`dbfb108`)

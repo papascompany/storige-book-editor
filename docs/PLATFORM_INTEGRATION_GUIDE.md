@@ -533,6 +533,10 @@ curl -X POST "https://api.papascompany.co.kr/api/worker-jobs/validate/external" 
 형제 외부 잡 라우트 (동일 `X-API-Key + @CurrentSite` 패턴):
 `POST /api/worker-jobs/synthesize/external`, `/split-synthesize/external`, `/check-mergeable/external`.
 
+> 🔴 **`synthesize/external` 의 `bindingType` 은 영문 코드 3종만 허용합니다 (2026-09-26 명시).** 허용값은 **`perfect`(무선) · `saddle`(중철) · `hardcover`(양장)** 뿐이고, 그 밖의 값(한글 표기 `'무선제본'`, 미정 표기 `'-'` 등)은 전역 검증(`whitelist`·`forbidNonWhitelisted`)에서 **`400` 으로 잡 생성 전에 거절**됩니다 — 잡이 만들어지지 않으므로 폴링할 `jobId` 도 없습니다.
+> - 이 필드는 **선택**입니다. **제본 방식을 모르면 값을 넣지 말고 필드를 생략하세요** — 생략 시 합성기는 `perfect` 로 처리합니다. `'-'` 같은 자리표시 값을 보내면 400 입니다.
+> - 상품 옵션이 한글이면 호출 전에 매핑하세요: `무선`/`무선제본` → `perfect`, `중철`/`중철제본` → `saddle`, `양장`/`하드커버` → `hardcover`. 매핑되지 않는 값은 **생략**(= `perfect`)하거나 주문 확정 전에 멈춰 확인하세요 — 제본 방식이 틀리면 책등 계산과 판면이 달라집니다.
+> - `A || B || 'perfect'` 식 폴백은 앞 값이 `'-'`·`'무선제본'` 처럼 **참(truthy)인 무효값**이면 폴백이 작동하지 않습니다. 허용값 여부로 판정하세요.
 **단계 5a — 폴링**
 
 ```bash
