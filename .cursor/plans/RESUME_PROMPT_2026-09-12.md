@@ -1211,3 +1211,14 @@ bookmoa R-194 후보(고객이 고른 **제본·내지 종이가 Storige 검증�
    config 는 생성 즉시 active 라 ②와 발신 전환 동시 · v2 는 `config.url` 로 보냄 · SSRF 허용 목록 통과 필요(422) · test 키로는 test 합성 잡 불가 → `synthesis.completed` jobId 경로는 live 후 첫 검증
 
 **Storige 후속 후보(오너 결정, 착수 약속 없음)**: 편집기 `'-'` 방어 · spiral/saddle 불일치 문구(`"책등 규격"`) · 중철 규칙의 표지 적용 분리 · 가이드에 binding 별 표지 기대 폭 표 · `백색모조 N` 해석 데이터 정비 · 스프링 무책등 템플릿
+
+#### 8-18-1. bookmoa R-194 폴링 가정 3건 회신 (2026-09-26 ~09:15Z 문의)
+
+R-194 = 합성 완료 반영(클라가 `GET /worker-jobs/external/:id` 5초 간격 조회 · 고객 화면 재개 · 관리자 「상태 확인」 · 서버/웹훅 변경 없음). 스프링 템플릿 판단은 bookmoa 오너 결정으로 상신됨.
+1. **소요 시간**: 운영 p50/p95 **산출 불가** — SYNTHESIZE 12건·최종 06-13, 완료 10건 모두 1~18쪽이고 **생성과 같은 초에 완료**(초 단위 `completed_at` → 1초 미만).
+   설정 상한: 합성 프로세서 동시성 **1**(Bull 기본, 직렬 대기) · GS 동시 **2**(검증과 공용) · GS 1회 **120초** · Bull `lockDuration` **10분**(초과 시 stalled 재실행).
+   → 120초 자동 조회 후 「상태 확인」 이관이 맞고 **120초 초과를 실패로 보지 말 것**. 양사 첫 실합성 때 실측 공유 약속
+2. **종결 상태**: 합성 프로세서는 `PROCESSING` → `COMPLETED`|`FAILED` 만(`synthesis.processor.ts:201·329·351`), `FIXABLE` 은 검증 전용. 권고: **PENDING·PROCESSING 만 진행 중, 그 밖은 종결**로 판정
+3. **실패 사유**: 조회 응답은 **`WorkerJob` 엔티티 원형**(레거시 라우트 전역 봉투 없음) → 최상위 `errorMessage`(합성 실패 시 항상) · `errorCode`(일부 경로만, null 가능) · `errorDetail`. **`message` 필드 없음**.
+   `errorMessage` 는 내부 영문 예외 문구 → **고객에겐 일반 문구, 원문은 관리자에게만** 권고
+- 🔎 관찰(후속 후보): 합성 잡 `completed_at` 이 초 단위라 소형 합성의 소요 시간이 0으로 기록된다 — 성능 관측이 필요하면 ms 정밀도나 결과에 소요 시간 기록 검토
