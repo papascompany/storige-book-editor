@@ -250,6 +250,7 @@ SELECT id, site_id, created_at FROM worker_jobs
 **파트너 트랙(수신 대기, 09-26 기준)**:
 - **printy 오너 e2e**(회원 셀프편집 → 무통장 주문 → 재편집 완료 → 합성): `synthesisJobId`·그 잡 `siteId`(`009c26d5-…` 기대)·경로·`coverFileId`/`contentFileId`·**편집 `sessionId`**(→ 당사가 `edit_session_id` 로 VALIDATE 조회)·결과 PDF 다운로드 성공 여부·완료 시각 UTC(§8-17)
 - **bookmoa R-192 라이브 실측**(게스트 → 흡수 → 재오픈 → 회원 완료 → files) · **`bindingType` 매핑 수정**(bookmoa 구현 → printy 이식, §8-17-1)
+- **당사 → 양사**: 첫 실합성 **소요 시간 실측 공유**(bookmoa R-194 백오프 판단 근거, §8-18-1) · bookmoa R-194(`2c4acb4`) 배포 대기
 - (이력) ~~printy R-173 배포 완료 재통지~~ ✅ 09-14 수신(§5-5) · ~~printy·bookmoa 첫 compose-mixed 실합성 회신~~ → §8-17 로 조건 재정의 ·
 ~~printy 고아 판정 완화 질의(09-21)~~ ✅ 실측 회신 발신(§8) — 오너 결정 회신만 잔여
 
@@ -1221,4 +1222,6 @@ R-194 = 합성 완료 반영(클라가 `GET /worker-jobs/external/:id` 5초 간�
 2. **종결 상태**: 합성 프로세서는 `PROCESSING` → `COMPLETED`|`FAILED` 만(`synthesis.processor.ts:201·329·351`), `FIXABLE` 은 검증 전용. 권고: **PENDING·PROCESSING 만 진행 중, 그 밖은 종결**로 판정
 3. **실패 사유**: 조회 응답은 **`WorkerJob` 엔티티 원형**(레거시 라우트 전역 봉투 없음) → 최상위 `errorMessage`(합성 실패 시 항상) · `errorCode`(일부 경로만, null 가능) · `errorDetail`. **`message` 필드 없음**.
    `errorMessage` 는 내부 영문 예외 문구 → **고객에겐 일반 문구, 원문은 관리자에게만** 권고
+- ✅ **bookmoa 반영**(`2c4acb4` 로컬, push·배포는 그쪽 오너 승인 대기, ~09:45Z): ① 진행 중 = PENDING·PROCESSING 만, 그 외(FIXABLE·누락)는 폴링 중단 → 「상태 확인」 ② 고객 화면은 일반 문구, `errorMessage` 원문은 관리자만 ③ 120초 → 「상태 확인」 유지(백오프 연장은 실측 공유 후 판단)
+- 📌 **당사 약속**: 양사 첫 실합성의 **실제 소요 시간 측정·공유**(`created_at`→`completed_at` 초 단위 한계 감안, 필요 시 api·nginx 로그 타임스탬프 병용)
 - 🔎 관찰(후속 후보): 합성 잡 `completed_at` 이 초 단위라 소형 합성의 소요 시간이 0으로 기록된다 — 성능 관측이 필요하면 ms 정밀도나 결과에 소요 시간 기록 검토
