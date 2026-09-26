@@ -1186,3 +1186,28 @@ printy(bookmoa 발견) 공유: 양사 호출부가 `bindingType: s.bindingType |
   printy 편집기 템플릿셋 3종 **`f0335fda`·`a2cc2939`·`207c458f`** 모두 전역 endpaper 0 확인으로 덮임(조건부 — 면지 템플릿·다쪽 표지 내보내기 생기면 재확인).
   🔁 **통지 창구**: 방금까지 `local_35adcfea…`(`20260926 Printy 개발 계속`) — **다음 printy 세션이 새 session id 를 알려 온다.** 그 전 발신은 `ListAgents` 로 활성 printy 세션을 먼저 확인할 것(§3)
 - 부수: **bookmoa 도 compose-mixed 미도달**(printy 확인: 라이브 storige 보유 47항목 중 capability 키 0) → **현재 compose-mixed 를 실제로 쓰는 파트너 없음**. §8-17 표의 compose-mixed 칸 대상 0. 복원은 bookmoa 오너 결정 대기. printy CLAUDE.md §D6 재정의 반영(`dbfb108`)
+
+### 8-18. bookmoa 계약 질문 5건 회신 — 제본·용지·편집기 책등·웹훅 서명 (2026-09-26 ~08:30Z 문의)
+
+bookmoa R-194 후보(고객이 고른 **제본·내지 종이가 Storige 검증·편집기에 전달되지 않는 결함** — `skipFileValidation` ON 이라 미노출) 착수 전 계약 확인.
+워크플로 `wf_0ec57627-72d`(질문별 조사 4 → 반박 검증 4): Q1·Q2·Q3Q4 **confirmed**(보완), Q5 **partially**(정정 반영). 하중 주장은 메인 세션이 코드·운영으로 재확인.
+
+**운영 DB 사실(메인 조회)**
+- 템플릿 `spread_config.conversionMode`: **스프링 세트 `a2cc2939`·`e66588b2` 표지 = `flat-spine`**(bookmoa 는 flat-spread 로 가정했으나 틀림) · 동화책 `207c458f` 표지 = `flat-spread`(regionScope cover), 내지 spread 는 regionScope inner
+- `paper_types`: 띄어쓰기 신 이름(`백색모조 80` 등)은 정확 일치 행 없음 · **별칭 `모조80` 이 `백모조 80g`(쪽당 0.048)과 `백색모조80`(쪽당 NULL, 양장용) 두 행에 중복** · `백색모조70/80/100`·`미색모조70/80/100` 등 쪽당 두께 NULL 행 다수
+- 웹훅: `WEBHOOK_SECRET`·`WEBHOOK_CONFIG_ENC_KEY`(64)·`WEBHOOK_ALLOWED_HOSTS` 설정됨 · **`webhook_configs` 0행** → bookmoa 는 **v1 레거시 경로 확정**
+- ⚠️ 조회 함정: `template_sets.templates` JSON_TABLE 조인은 **콜레이션 불일치(unicode_ci vs general_ci)** 로 실패 → `COLLATE utf8mb4_unicode_ci` 명시
+
+**회신 요지**
+1. **업로드 표지**: 게이트 `표지 && (perfect/hardcover || 책등 기대값)`(`pdf-validator.service.ts:190-195`), 기대값은 `spineWidthMm >= 0`(0 포함, :1433) 또는 `paperThickness+pages`.
+   **스프링 펼침 1쪽 = `spiral` + `spineWidthMm: 0` + size + bleed 3, paperType 생략** → 폭 2W+2b·높이 H+2b ±2mm(서버는 perfect/hardcover 만 재계산하므로 0 보존, `worker-jobs.service.ts:478-479`).
+   분리 2쪽 표지는 `spineWidthMm` 보내지 말 것 · 중철은 `pageMultiple` 등 1개 이상 필수(없으면 표지에도 중철 규칙 → `SADDLE_STITCH_INVALID`) · **스프링을 perfect 로 보내지 말 것**(paperType 시 서버가 무선 책등으로 덮음)
+2. **paperType**: 해석 = code → alias → 정규화 code → 정규화 alias(공백 제거·끝 g 제거·소문자), `name` 미사용, 중복 시 제본별 두께 보유 행 우선(`spine.service.ts:156-197`).
+   `미색모조 80`·`아르떼 105`·`모조80` ✅ v2 / **`백색모조 N` 계열 ❌ v1 폴백**(쪽당 NULL 양장 행으로 해석). **권고: paper_types `code` 그대로 또는 기존 legacyPaperKey 유지**. 실패 시 비차단 유지(클라가 spineWidthMm·paperThickness 보내면 차단 검증 동작)
+3. **편집기**: `flat-spread` 는 책등 API 미호출·폭 고정(perfect 유지 안전) / **`flat-spine` 은 bindingType 이 표지 총폭을 바꾼다**(perfect·spiral·hardcover 모두 책등 >0).
+   🔴 **제품 결정 필요**: 스프링 상품이 책등 있는 책자 템플릿을 쓴다 → 무책등 스프링 전용 템플릿 필요 여부(1번 업로드 계약과 편집기 흐름을 맞추는 전제)
+4. **`'-'` 방어**: 현재 없음(`EmbedView.tsx` 무검사 → `embed.tsx:1108-1129` URL > 세션 > metadata). paperType `'-'` 도 두 번째 404. bookmoa 의 "생략" 수정이 충분·정답. **Storige 방어(목록 밖 값은 다음 우선순위로)는 권고하되 오너 결정** — 착수 약속 안 함
+5. **WH-005**: **사이트 전용 v2 시크릿(`whsec_`) 권고**(전역 `WEBHOOK_SECRET` 공유 반대). ① 수신부에 **시크릿 설정 시 HMAC 필수·base64 단독 거부**를 넣어야 ③이 성립(자동 아님 — 검증관 정정) ·
+   config 는 생성 즉시 active 라 ②와 발신 전환 동시 · v2 는 `config.url` 로 보냄 · SSRF 허용 목록 통과 필요(422) · test 키로는 test 합성 잡 불가 → `synthesis.completed` jobId 경로는 live 후 첫 검증
+
+**Storige 후속 후보(오너 결정, 착수 약속 없음)**: 편집기 `'-'` 방어 · spiral/saddle 불일치 문구(`"책등 규격"`) · 중철 규칙의 표지 적용 분리 · 가이드에 binding 별 표지 기대 폭 표 · `백색모조 N` 해석 데이터 정비 · 스프링 무책등 템플릿
