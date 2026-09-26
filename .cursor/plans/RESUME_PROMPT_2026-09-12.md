@@ -1182,4 +1182,7 @@ printy(bookmoa 발견) 공유: 양사 호출부가 `bindingType: s.bindingType |
   printy 편집기 상품 4종 제본 선택지에 saddle 없음. → **printy D6 선행 실증의 printy 쪽 차단 요인 해소**, 남은 것은 오너 e2e
 - ✅ **스프링→perfect 안전성 전역 확인**(운영 DB): `endpaper` 템플릿 **0개** · `endpaper_config` 보유 세트 **0개** → 표지 안쪽 인쇄 캔버스는 어느 파트너 상품에도 없다(printy 스프링 생략도 안전).
   ("cover/spread 2개 이상" 세트 12개는 동화책·[검증] 세트로 **내지도 `spread` 타입**이라 잡힌 것 — 표지 다수 아님. 편집기는 펼침 모드에서도 표지를 `allCanvas[0]` 하나로만 내보낸다)
+- 📋 **printy 세션 종료 인계(~07:40Z)**: 마지막 코드 `b145348` · origin/main `ca38b89`(docs). printy CLAUDE.md §D6 에 경로별 재정의·선행 ① 순서 반영.
+  printy 편집기 템플릿셋 3종 **`f0335fda`·`a2cc2939`·`207c458f`** 모두 전역 endpaper 0 확인으로 덮임(조건부 — 면지 템플릿·다쪽 표지 내보내기 생기면 재확인).
+  🔁 **통지 창구**: 방금까지 `local_35adcfea…`(`20260926 Printy 개발 계속`) — **다음 printy 세션이 새 session id 를 알려 온다.** 그 전 발신은 `ListAgents` 로 활성 printy 세션을 먼저 확인할 것(§3)
 - 부수: **bookmoa 도 compose-mixed 미도달**(printy 확인: 라이브 storige 보유 47항목 중 capability 키 0) → **현재 compose-mixed 를 실제로 쓰는 파트너 없음**. §8-17 표의 compose-mixed 칸 대상 0. 복원은 bookmoa 오너 결정 대기. printy CLAUDE.md §D6 재정의 반영(`dbfb108`)
