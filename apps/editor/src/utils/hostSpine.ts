@@ -218,11 +218,10 @@ export function buildAppliedSpineSnapshot(input: {
  * 책등 폭 0 적용 가능 여부 판정용: 책등 영역 소속 객체(regionRef==='spine', 시스템·flat 책등
  * 아트워크 제외)가 있는가.
  *
- * 배경: canvas-core SpreadPlugin.repositionObjects 는 regionRef==='spine' 객체를 새 레이아웃의
- * spine 영역으로 재배치하는데, 폭 0 이면 computeLayout 이 spine 영역을 만들지 않아
- * `newLayout.regions.find(spine)!` 가 undefined → SpineResizeStrategy.apply 에서 TypeError.
- * 예외는 workspace 크기 변경 **이후**에 나므로 캔버스가 반쯤 바뀐 채 남는다. 편집기는
- * canvas-core 를 고치지 않고 이 경우 0mm 적용을 차단한다(호출측 보고).
+ * 배경: 폭 0 이면 computeLayout 이 spine 영역을 만들지 않는다. canvas-core
+ * SpreadPlugin.repositionObjects 는 2026-09-28 교정 이후 이 경우 spine 객체를 자유 객체로
+ * 강등하고 scene 위치(접지선)를 보존한다 — 오류는 없지만 책등 텍스트 등이 접지선 위에 남아
+ * 인쇄된다. 그래서 편집기는 제품 정책으로 이 경우 0mm 적용을 차단한다(호출측 보고).
  */
 export function hasSpineRegionObjects(
   objects: ReadonlyArray<{ meta?: { system?: unknown; regionRef?: unknown; flatArtwork?: unknown } }>,

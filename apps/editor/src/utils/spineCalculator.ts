@@ -596,9 +596,9 @@ async function applyHostSpineWidthSpreadMode(
   const appStore = useAppStore.getState()
   const pageCount = countInnerPrintPages()
 
-  // 0mm 가드: canvas-core SpreadPlugin.repositionObjects 는 spine 영역이 사라진 새 레이아웃에서
-  // regionRef==='spine' 객체를 재배치하다 TypeError 를 던진다(workspace 크기 변경 이후라 캔버스가
-  // 반쯤 바뀐 채 남는다). 해당 객체가 있으면 적용을 차단하고 템플릿 폭을 유지한다(hostSpine.ts 참조).
+  // 0mm 가드(제품 정책): 책등 영역 소속 객체가 있으면 호스트 0mm 적용을 차단하고 템플릿 폭을 유지한다.
+  // canvas-core 는 2026-09-28 부터 spine 영역 소멸 시 해당 객체를 자유 객체로 강등해 오류 없이 처리하지만,
+  // 그러면 책등 텍스트 등이 접지선 위에 남은 채 인쇄되므로 편집기에서 막는다(hostSpine.ts 참조).
   if (hostSpineWidthMm <= 0) {
     const spreadCanvas = appStore.allCanvas[0] as unknown as
       | { getObjects?: () => Array<{ meta?: { system?: unknown; regionRef?: unknown; flatArtwork?: unknown } }> }
@@ -606,7 +606,7 @@ async function applyHostSpineWidthSpreadMode(
     const objects = typeof spreadCanvas?.getObjects === 'function' ? spreadCanvas.getObjects() : []
     if (hasSpineRegionObjects(objects)) {
       console.error(
-        '[SpineCalculator:Spread] 호스트 책등 0mm 적용 차단 — 책등 영역 소속 객체가 있어 canvas-core resizeSpine(0) 이 실패한다. 템플릿 책등 폭 유지.'
+        '[SpineCalculator:Spread] 호스트 책등 0mm 적용 차단 — 책등 영역 소속 객체가 접지선에 남게 된다. 템플릿 책등 폭 유지.'
       )
       return {
         success: false,
