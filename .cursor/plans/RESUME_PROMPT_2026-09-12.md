@@ -1354,3 +1354,9 @@ R-195 = bookmoa 오너 지시(09-28): 편집기가 호스트 책등 폭·제본�
 - printy 파기 워크플로 첫 자동 실행: 09-27 20:35Z success. 대상 0건이고 ApiKeyGuard 확인 스텝을 통과했다.
 - 오너 e2e(첫 synthesize/external)는 아직 실행 전이다. 끝나면 합의 값(UTC)을 일괄 회신받는다.
 - 🔁 **printy 세션 `local_35adcfea…` 는 곧 종료된다.** 새 세션이 자기 session id 를 통지한다. 그 전에 발신할 일이 있으면 ListAgents 로 활성 printy 세션(cwd `~/Developer/claude/printy`)을 먼저 확인한다.
+
+**🔁 printy 창구 인계(09-28 ~08:45Z)**: 새 printy 세션은 **`local_5ca0cbbf-bacf-4881-b394-7a4fab936804`**("20260928 Printy 개발 계속")이고, 옛 `local_35adcfea…` 는 종료됐다.
+08:20Z 이후 옛 세션으로 보낸 통지는 없으므로 재전송할 것이 없다.
+printy 현재 상태: 코드 `b9356fc`, 전 상품 spinePolicy legacy, 합성 경로 synthesize/external, 실 e2e 보류(오너 지시).
+**bookmoa 도 실 e2e·템플릿 실테스트를 보류했다(오너 지시)** → 대기 항목의 회신 시점이 미정이다.
+Storige 는 bookmoa 가 요청한 후속 S6~S9 착수를 결정했다(오너, 09-28) — 워크플로 진행 중이며, 배포 시 양사에 통지한다.
