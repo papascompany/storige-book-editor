@@ -38,6 +38,13 @@ import { useObjectOutOfTrimToast, useSafeZoneWarningToast, useImageLowDpiToast }
 import { createCanvas, safeDisposeCanvas, CanvasInitCancelledError } from './utils/createCanvas'
 import { buildSpreadSnapshots } from './utils/buildSpreadSnapshots'
 import {
+  asNonNegativeNumber,
+  buildAppliedSpineSnapshot,
+  getAppliedSpineWidthMm,
+  resolveEffectiveSpineOptions,
+} from './utils/hostSpine'
+import { computePdfPageOutputMm } from './utils/pdfPageSize'
+import {
   computeInnerContentSizeMm,
   splitSpreadOutputCanvases,
   computeCoverOutputSizeMm,
@@ -267,6 +274,13 @@ export interface EditorConfig {
     wingEnabled?: boolean
     /** 표지 날개 한 쪽 폭(mm) — 주문(상품) 옵션. 미전달 시 템플릿 spec 값 사용 */
     wingWidthMm?: number
+    /**
+     * R-195: 주문 책등 폭(mm, 유한수 ≥ 0). 스프레드 표지(full/flat-spine)에서 초기 책등으로 적용되고
+     * 초기 책등 API 계산을 생략한다. paperType·bindingType 이 모두 있고 > 0 이면 편집 중 페이지 증감 시
+     * 수식 재계산, 그 외(코드 누락 또는 0)는 값 고정. 미전달이면 기존 수식 경로 그대로.
+     * flat-spread·내지 전용 펼침면·낱장(비스프레드) 세트에서는 무시된다.
+     */
+    spineWidthMm?: number
     /** 종이 정보 */
     paper?: { type: string; weight: number }
     /**
@@ -334,6 +348,11 @@ export interface EditorResult {
    * 여전히 상품 옵션이며(embed 는 S1 로 편집기 내 규격 변경 차단), 이 값은 감사/검증용.
    */
   size?: { width: number; height: number; unit: 'mm' }
+  /**
+   * R-195 (additive): 완료 시점에 적용된 책등 폭(mm, 0.1 반올림). 스프레드 책(표지 포함)만 포함.
+   * 게스트 완료 경로에는 싣지 않는다.
+   */
+  spineWidthMm?: number
   files: {
     coverFileId?: string
     contentFileId?: string
@@ -364,6 +383,11 @@ export interface PricingChangePayload {
   pricing?: PhotobookPricing
   /** 커버 종류 코드 (templateSet.coverType 설정 시에만, string 코드 — 고정 enum 아님) */
   coverType?: string
+  /**
+   * R-195 (additive): 발신 시점에 적용돼 있는 책등 폭(mm, 스프레드 책만).
+   * 페이지 증감 직후의 책등 재계산(debounce + API)이 아직 끝나지 않았다면 직전 값일 수 있다.
+   */
+  spineWidthMm?: number
 }
 
 export interface EditorState {
@@ -893,6 +917,8 @@ function EmbeddedEditor({
               // 날개(2026-08-03): 재편집 진입에서 총폭을 복원하려면 주문 시점 값이 필요하다.
               wingEnabled: options?.wingEnabled,
               wingWidthMm: options?.wingWidthMm,
+              // R-195: 주문 책등 폭 — 재편집(/embed?sessionId 단독) 사다리의 2순위 소스. 0 허용.
+              spineWidthMm: asNonNegativeNumber(options?.spineWidthMm),
               productId,
               orderSeqno,
             }).filter(([, value]) => value !== undefined)
@@ -1105,8 +1131,6 @@ function EmbeddedEditor({
           const n = typeof v === 'string' ? Number(v) : (v as number)
           return typeof n === 'number' && Number.isFinite(n) && n > 0 ? n : undefined
         }
-        const asNonEmptyString = (v: unknown): string | undefined =>
-          typeof v === 'string' && v.length > 0 ? v : undefined
         // 저장된 canvasData 배열 = [표지, ...내지] — 실제 복원될 페이지 수의 가장 충실한
         // 실측값(메타데이터 없는 레거시 세션 포함). 편집 중 내지 추가/삭제로 orderOptions 의
         // 주문 시점 pageCount 와 드리프트할 수 있으므로, 명시적 props/URL 다음 순위로 둔다 —
@@ -1119,14 +1143,14 @@ function EmbeddedEditor({
           restoredInnerPageCount ??
           asPositiveNumber(sessionOrderOptions.pageCount) ??
           asPositiveNumber(sessionSpineSnapshot.pageCount)
-        const effectivePaperType =
-          asNonEmptyString(options?.paperType) ??
-          asNonEmptyString(sessionOrderOptions.paperType) ??
-          asNonEmptyString(sessionSpineSnapshot.paperType)
-        const effectiveBindingType =
-          asNonEmptyString(options?.bindingType) ??
-          asNonEmptyString(sessionOrderOptions.bindingType) ??
-          asNonEmptyString(sessionSpineSnapshot.bindingType)
+        // 용지/제본/호스트 책등 사다리는 순수 함수로 추출(utils/hostSpine.resolveEffectiveSpineOptions):
+        //  - paperType/bindingType: props/URL > orderOptions > metadata.spine — S5 정규화('-'·빈값 = 미지정)
+        //  - spineWidthMm(R-195): props/URL > orderOptions.spineWidthMm(≥0) >
+        //    metadata.appliedSpine.spineWidthMm (source==='host' 일 때만)
+        const effectiveSpineOptions = resolveEffectiveSpineOptions(options, sessionMeta)
+        const effectivePaperType = effectiveSpineOptions.paperType
+        const effectiveBindingType = effectiveSpineOptions.bindingType
+        const effectiveSpineWidthMm = effectiveSpineOptions.spineWidthMm
         // 날개(2026-08-03): 책등과 동일한 우선순위 사다리 — props/URL > 세션 orderOptions.
         // 재편집(/embed?sessionId 단독) 진입에서 주문 시점 날개 설정이 유실되면 총폭이 달라져
         // 저장된 아트워크가 어긋나므로 복원이 필수다.
@@ -1145,6 +1169,7 @@ function EmbeddedEditor({
           underlayPageCount,
           paperType: effectivePaperType,
           bindingType: effectiveBindingType,
+          spineWidthMm: effectiveSpineWidthMm,
           optionsSource:
             asPositiveNumber(options?.pageCount) != null
               ? 'props/url'
@@ -1165,6 +1190,7 @@ function EmbeddedEditor({
             bindingType: effectiveBindingType,
             wingEnabled: effectiveWingEnabled,
             wingWidthMm: effectiveWingWidthMm,
+            spineWidthMm: effectiveSpineWidthMm,
             // R2 (2026-08-18): 펼침면 세트 재진입 — canvasData 실측 캔버스 수를 시드에 그대로
             // 전달한다. 종전엔 이 값이 pageCount(물리 페이지 수 시맨틱)로만 흘러 펼침면 세트에서
             // spreadCountFromPageCount 반감 + pageCountRange 클램프를 거쳐 시드가 저장본보다
@@ -1194,6 +1220,7 @@ function EmbeddedEditor({
             bindingType: effectiveBindingType,
             wingEnabled: effectiveWingEnabled,
             wingWidthMm: effectiveWingWidthMm,
+            spineWidthMm: effectiveSpineWidthMm,
           })
         }
 
@@ -1772,6 +1799,11 @@ function EmbeddedEditor({
           ? { coverType: templateSetCoverMetaRef.current.coverType }
           : {}),
       }
+      // R-195: 발신 시점에 적용돼 있는 책등 폭(스프레드 책만). 페이지 증감이 유발한 책등 재계산
+      // (debounce 300ms + API 왕복)이 아직 진행 중이면 직전 값이다 — 최종값은 editor.complete 의
+      // spineWidthMm 을 기준으로 삼아야 한다.
+      const pricingSpineWidthMm = getAppliedSpineWidthMm(appState.isSpreadMode, spreadCfg)
+      if (pricingSpineWidthMm !== undefined) payload.spineWidthMm = pricingSpineWidthMm
       postToParent(parentOrigin, 'editor.pricingChange', payload)
       console.log('[EmbeddedEditor] editor.pricingChange emitted:', payload.pageCount)
     }
@@ -1912,6 +1944,11 @@ function EmbeddedEditor({
               : 0,
           )
           const pricingMeta = templateSetPricingRef.current
+          // R-195: 적용 책등 폭(스프레드 책만, additive)
+          const appliedSpineWidthMm = getAppliedSpineWidthMm(
+            appStateAtComplete.isSpreadMode,
+            spreadCfgAtComplete,
+          )
 
           // S2 (2026-07-04): 완료 시점 캔버스 규격(mm) — 파트너 정합 검증용(additive).
           const liveSize = useSettingsStore.getState().currentSettings.size
@@ -1932,6 +1969,7 @@ function EmbeddedEditor({
             ...(liveSize
               ? { size: { width: liveSize.width, height: liveSize.height, unit: 'mm' as const } }
               : {}),
+            ...(appliedSpineWidthMm !== undefined ? { spineWidthMm: appliedSpineWidthMm } : {}),
             files: {
               coverFileId: completedSession.coverFileId || undefined,
               contentFileId: completedSession.contentFileId || undefined,
@@ -2107,6 +2145,16 @@ function EmbeddedEditor({
 
             // 표지 cover PDF (스프레드 전체 크기) — 독립 try (실패해도 내지는 시도)
             let coverFileId: string | undefined
+            // R-195: 표지 PDF 에 넘긴 size 객체 — metadata.coverOutput 이 같은 입력으로 페이지 크기를 산출한다.
+            const coverPdfSizeOpt = {
+              width: spreadCfg!.totalWidthMm, height: spreadCfg!.totalHeightMm, cutSize: bleed,
+              // D-4: caseBind 有 → 페이지=출력(wrap) 사이즈 + 콘텐츠 중앙 오프셋(printSize 경로).
+              // wrap 자체가 재단 여유 역할이므로 crop mark 게이트(markOpt)는 함께 쓰지 않는다
+              // (게이트 ON 시 ServicePlugin 이 printSize 를 무시하는 기존 시맨틱과의 충돌 회피).
+              ...(coverOutputSize
+                ? { printSize: { width: coverOutputSize.widthMm, height: coverOutputSize.heightMm } }
+                : markOpt),
+            }
             // 내지 전용 세트는 표지 자체가 없으므로 생성/업로드를 건너뛴다.
             if (!isInnerOnlySpread) {
               try {
@@ -2119,15 +2167,7 @@ function EmbeddedEditor({
                 const coverBlob = await withWatchdog(
                   runWithAutosaveSuspended(() => coverPlugin.saveMultiPagePDFAsBlob(
                     [allCanvas[0]] as any, [allEditors[0]], `cover-${currentSessionId}`,
-                    {
-                      width: spreadCfg!.totalWidthMm, height: spreadCfg!.totalHeightMm, cutSize: bleed,
-                      // D-4: caseBind 有 → 페이지=출력(wrap) 사이즈 + 콘텐츠 중앙 오프셋(printSize 경로).
-                      // wrap 자체가 재단 여유 역할이므로 crop mark 게이트(markOpt)는 함께 쓰지 않는다
-                      // (게이트 ON 시 ServicePlugin 이 printSize 를 무시하는 기존 시맨틱과의 충돌 회피).
-                      ...(coverOutputSize
-                        ? { printSize: { width: coverOutputSize.widthMm, height: coverOutputSize.heightMm } }
-                        : markOpt),
-                    },
+                    coverPdfSizeOpt,
                     undefined, 300,
                   )),
                   120000, 'spread-cover-gen',
@@ -2178,11 +2218,24 @@ function EmbeddedEditor({
 
             if (coverFileId || contentFileId) {
               // B38 출력재현 단일소스: metadata.spread/spine 스냅샷 저장(additive). 실패해도 완료 무중단.
+              const spineCfgAtFinish = useSettingsStore.getState().spineConfig
               const snapshots = buildSpreadSnapshots(
                 spreadCfg,
-                useSettingsStore.getState().spineConfig,
+                spineCfgAtFinish,
                 innerCanvases.length,
               )
+              // R-195 (additive top-level 키 — 서버 metadata 는 shallow merge 라 orderOptions 등 기존
+              // 객체는 절대 부분 전송하지 않는다):
+              //  - appliedSpine: 표지에 쓰인 spec 책등 폭 + 출처(host/formula/template). 표지 스프레드만.
+              //  - coverOutput : 생성된 표지 PDF 의 실제 페이지 크기(mm)·사방 블리드 — 표지 PDF 생성 시에만.
+              const appliedSpine = isInnerOnlySpread
+                ? null
+                : buildAppliedSpineSnapshot({
+                    isSpreadMode,
+                    spreadConfig: spreadCfg,
+                    lastAppliedSource: spineCfgAtFinish.appliedSource ?? null,
+                  })
+              const coverOutput = coverFileId ? computePdfPageOutputMm(coverPdfSizeOpt) : null
               await editSessionsApi.update(currentSessionId, {
                 ...(coverFileId ? { coverFileId } : {}),
                 ...(contentFileId ? { contentFileId } : {}),
@@ -2192,6 +2245,8 @@ function EmbeddedEditor({
                   ...(contentFileId ? { editorOutputContentFileId: contentFileId } : {}),
                   ...(snapshots.spread ? { spread: snapshots.spread } : {}),
                   ...(snapshots.spine ? { spine: snapshots.spine } : {}),
+                  ...(appliedSpine ? { appliedSpine } : {}),
+                  ...(coverOutput ? { coverOutput } : {}),
                 },
               })
             }
@@ -2292,6 +2347,11 @@ function EmbeddedEditor({
       )
       const liveSize2 = useSettingsStore.getState().currentSettings.size
       const pricingMeta2 = templateSetPricingRef.current
+      // R-195: 적용 책등 폭(스프레드 책만, additive)
+      const appliedSpineWidthMm2 = getAppliedSpineWidthMm(
+        appStateAtFinish.isSpreadMode,
+        spreadCfgAtFinish,
+      )
       const result: EditorResult = {
         sessionId: completedSession.id,
         orderSeqno: Number(completedSession.orderSeqno),
@@ -2305,6 +2365,7 @@ function EmbeddedEditor({
         ...(liveSize2
           ? { size: { width: liveSize2.width, height: liveSize2.height, unit: 'mm' as const } }
           : {}),
+        ...(appliedSpineWidthMm2 !== undefined ? { spineWidthMm: appliedSpineWidthMm2 } : {}),
         files: {
           coverFileId: completedSession.coverFileId || undefined,
           contentFileId: completedSession.contentFileId || undefined,

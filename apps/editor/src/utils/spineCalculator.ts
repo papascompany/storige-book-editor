@@ -6,6 +6,14 @@ import { spineApi, isRequestCancelled } from '@/api/spine'
 import { useAppStore } from '@/stores/useAppStore'
 import { useEditorStore } from '@/stores/useEditorStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
+import { getParamCompat } from '@/utils/searchParams'
+import {
+  asNonNegativeNumber,
+  decideHostSpineAction,
+  hasSpineRegionObjects,
+  isHostSpineFixed,
+  normalizeSpineCode,
+} from '@/utils/hostSpine'
 import { mmToPxDisplay, SpreadPlugin } from '@storige/canvas-core'
 import type { fabric } from 'fabric'
 
@@ -26,6 +34,12 @@ export interface RecalculateSpineOptions {
   templateSetHeight?: number  // 템플릿셋 높이 (mm)
   /** 호출자(useAppStore.spineResizeAbortController)의 취소를 HTTP 까지 전달한다. 옵셔널. */
   signal?: AbortSignal
+  /**
+   * R-195: 초기 로드 호출(useEditorContents 스프레드 12단계)임을 표시한다.
+   * 호스트 책등(spineConfig.hostSpineWidthMm)이 있으면 API 대신 호스트 값을 적용한다.
+   * 호스트 값이 없으면 무시된다(기존 동작 그대로).
+   */
+  initial?: boolean
 }
 
 export interface RecalculateSpineResult {
@@ -390,10 +404,52 @@ async function recalculateSpineWidthSpreadMode(
     }
   }
 
+  // ── R-195 호스트 지정 책등 ────────────────────────────────────────────────
+  // flat-spread / 내지 펼침면 가드 **이후**에만 적용한다(두 경우는 기존 동작 유지).
+  // 호스트 값이 없으면(null/undefined) 이 블록 전체를 건너뛴다 → 기존 경로 byte-identical.
+  // 모든 트리거(초기 로드·내지 추가/삭제 debounce·즉시)가 이 함수를 거치므로 단일 판정 지점.
+  const hostSpineWidthMm = spineConfig.hostSpineWidthMm
+  if (typeof hostSpineWidthMm === 'number') {
+    const hostAction = decideHostSpineAction({
+      hostSpineWidthMm,
+      hostFixed: spineConfig.hostFixed,
+      initial: options?.initial === true,
+      baselinePageCount: spineConfig.hostBaselinePageCount,
+      currentPageCount: countInnerPrintPages(),
+    })
+    if (hostAction === 'apply-host') {
+      return await applyHostSpineWidthSpreadMode(hostSpineWidthMm, spineConfig.hostFixed === true, options?.signal)
+    }
+    if (hostAction === 'skip') {
+      const keptSpineWidth = settingsStore.spreadConfig?.spec?.spineWidthMm ?? null
+      console.log(
+        `[SpineCalculator:Spread] 호스트 지정 책등 고정(${keptSpineWidth}mm) — 편집 중 재계산 스킵`
+      )
+      return {
+        success: false,
+        spineWidth: keptSpineWidth,
+        pageCount: 0,
+        warnings: [],
+        skipped: true, // 정상 스킵 — 계산 실패와 구분
+        error: '호스트 지정 책등 폭(고정)입니다. 책등 폭은 변경되지 않습니다.',
+      }
+    }
+    // 'formula' → 아래 기존 API 재계산 경로 그대로
+  }
+
   // paperType과 bindingType 결정 (옵션 > spineConfig > URL 파라미터 > 기본값)
+  // S5 (R-195): 각 단계 trim + ''/'-' → 미지정 정규화, URL 은 camel/snake 양쪽 수용(getParamCompat).
   const urlParams = new URLSearchParams(window.location.search)
-  const paperType = options?.paperType || spineConfig.paperType || urlParams.get('paperType') || 'mojo_80g'
-  const bindingType = options?.bindingType || spineConfig.bindingType || urlParams.get('bindingType') || 'perfect'
+  const paperType =
+    normalizeSpineCode(options?.paperType) ||
+    normalizeSpineCode(spineConfig.paperType) ||
+    normalizeSpineCode(getParamCompat(urlParams, 'paperType')) ||
+    'mojo_80g'
+  const bindingType =
+    normalizeSpineCode(options?.bindingType) ||
+    normalizeSpineCode(spineConfig.bindingType) ||
+    normalizeSpineCode(getParamCompat(urlParams, 'bindingType')) ||
+    'perfect'
 
   if (!spineConfig.paperType || !spineConfig.bindingType) {
     // spineConfig에 저장되지 않은 경우 지금 저장 (이후 호출에서 재사용)
@@ -497,6 +553,7 @@ async function recalculateSpineWidthSpreadMode(
       paperType,
       bindingType,
       calculatedSpineWidth: spineResult.spineWidth,
+      appliedSource: 'formula', // R-195: 완료 metadata.appliedSpine.source 용
     })
 
     // SpreadConfig의 spineWidthMm도 업데이트
@@ -525,13 +582,104 @@ async function recalculateSpineWidthSpreadMode(
 }
 
 /**
- * 초기 로딩 시 spineConfig를 설정합니다.
+ * R-195: 호스트 지정 책등 폭을 API 없이 적용한다(스프레드 전용).
+ * API 결과와 **같은 경로**(SpreadPlugin.resizeSpine → setSpineConfig → updateSpreadSpineWidth)로
+ * 적용해 캔버스·스토어·spec 이 동기화된다. calculatedSpineWidth 도 같은 값으로 맞춰
+ * buildSpreadSnapshots 의 spineWidthSource 판정(spec vs calc)이 'formula' 로 일관되게 나온다.
  */
-export function initSpineConfig(paperType: string | null, bindingType: string | null): void {
+async function applyHostSpineWidthSpreadMode(
+  hostSpineWidthMm: number,
+  hostFixed: boolean,
+  external?: AbortSignal,
+): Promise<RecalculateSpineResult> {
   const settingsStore = useSettingsStore.getState()
+  const appStore = useAppStore.getState()
+  const pageCount = countInnerPrintPages()
+
+  // 0mm 가드: canvas-core SpreadPlugin.repositionObjects 는 spine 영역이 사라진 새 레이아웃에서
+  // regionRef==='spine' 객체를 재배치하다 TypeError 를 던진다(workspace 크기 변경 이후라 캔버스가
+  // 반쯤 바뀐 채 남는다). 해당 객체가 있으면 적용을 차단하고 템플릿 폭을 유지한다(hostSpine.ts 참조).
+  if (hostSpineWidthMm <= 0) {
+    const spreadCanvas = appStore.allCanvas[0] as unknown as
+      | { getObjects?: () => Array<{ meta?: { system?: unknown; regionRef?: unknown; flatArtwork?: unknown } }> }
+      | undefined
+    const objects = typeof spreadCanvas?.getObjects === 'function' ? spreadCanvas.getObjects() : []
+    if (hasSpineRegionObjects(objects)) {
+      console.error(
+        '[SpineCalculator:Spread] 호스트 책등 0mm 적용 차단 — 책등 영역 소속 객체가 있어 canvas-core resizeSpine(0) 이 실패한다. 템플릿 책등 폭 유지.'
+      )
+      return {
+        success: false,
+        spineWidth: null,
+        pageCount,
+        warnings: [],
+        error: '책등 영역에 객체가 있어 호스트 지정 책등 0mm 를 적용할 수 없습니다.',
+      }
+    }
+  }
+
+  // API 경로와 같은 세대 카운터를 공유한다 — 이전 in-flight 계산은 여기서 구세대가 된다.
+  const { gen: myGen } = beginSpineCalcGeneration(external)
+
+  try {
+    const spreadEditor = appStore.allEditors[0] // 스프레드 캔버스는 항상 인덱스 0
+    if (spreadEditor) {
+      const spreadPlugin = spreadEditor.getPlugin<SpreadPlugin>('SpreadPlugin')
+      if (spreadPlugin) {
+        await spreadPlugin.resizeSpine(hostSpineWidthMm)
+        console.log(`[SpineCalculator:Spread] 호스트 책등 적용: ${hostSpineWidthMm}mm (hostFixed=${hostFixed})`)
+      } else {
+        console.warn('[SpineCalculator:Spread] SpreadPlugin을 찾을 수 없습니다.')
+      }
+    }
+
+    // resizeSpine 의 await 사이 더 새로운 재계산이 시작됐다면 스토어는 그쪽에 맡긴다(API 경로 가드 ②와 동일).
+    if (isSuperseded(myGen)) {
+      return { success: false, spineWidth: hostSpineWidthMm, pageCount, warnings: [], superseded: true }
+    }
+
+    settingsStore.setSpineConfig({
+      calculatedSpineWidth: hostSpineWidthMm,
+      hostBaselinePageCount: pageCount,
+      appliedSource: hostFixed ? 'host' : 'formula',
+    })
+    settingsStore.updateSpreadSpineWidth(hostSpineWidthMm)
+
+    return { success: true, spineWidth: hostSpineWidthMm, pageCount, warnings: [] }
+  } catch (error) {
+    console.error('[SpineCalculator:Spread] 호스트 책등 적용 오류:', error)
+    return {
+      success: false,
+      spineWidth: null,
+      pageCount,
+      warnings: [],
+      error: error instanceof Error ? error.message : '호스트 책등 적용 중 오류가 발생했습니다.',
+    }
+  }
+}
+
+/**
+ * 초기 로딩 시 spineConfig를 설정합니다.
+ *
+ * R-195: `host.spineWidthMm`(유한수 ≥ 0)이 오면 호스트 책등 모드를 켠다. 미전달이면 호스트 필드를
+ * 초기화한다(이전 로드의 잔존값 제거) — 호스트 필드는 host 가 있을 때만 소비되므로 기존 동작 불변.
+ */
+export function initSpineConfig(
+  paperType: string | null,
+  bindingType: string | null,
+  host?: { spineWidthMm?: number },
+): void {
+  const settingsStore = useSettingsStore.getState()
+  const hostSpineWidthMm = asNonNegativeNumber(host?.spineWidthMm) ?? null
   settingsStore.setSpineConfig({
     paperType: paperType || null,
     bindingType: bindingType || null,
+    hostSpineWidthMm,
+    hostFixed:
+      hostSpineWidthMm !== null && isHostSpineFixed({ paperType, bindingType, hostSpineWidthMm }),
+    hostBaselinePageCount: null,
+    appliedSource: null,
   })
-  console.log(`[SpineCalculator] spineConfig 초기화: paperType=${paperType}, bindingType=${bindingType}`)
+  console.log(`[SpineCalculator] spineConfig 초기화: paperType=${paperType}, bindingType=${bindingType}` +
+    (hostSpineWidthMm !== null ? `, hostSpineWidthMm=${hostSpineWidthMm}` : ''))
 }

@@ -89,6 +89,12 @@ export interface TemplateSetBasedSetupConfig {
   wingEnabled?: boolean
   wingWidthMm?: number
   /**
+   * R-195: 호스트(주문) 지정 책등 폭(mm, 유한수 ≥ 0). 스프레드 표지(full/flat-spine)에서만 소비 —
+   * 초기 책등을 이 값으로 적용하고 초기 spineApi 계산을 생략한다(spineCalculator 참조).
+   * 미전달이면 기존 수식 경로 그대로. 낱장(비스프레드) 경로에서는 미사용.
+   */
+  spineWidthMm?: number
+  /**
    * 재진입 복원용 — 세션 canvasData 실측 내지 캔버스 수(= canvasData.length − 1) (R2, 2026-08-18).
    * 펼침면(innerUnit='spread') 세트 시드에서 이 값을 spreadCount 로 **그대로** 사용한다 —
    * 물리 페이지 수로 오인한 반감(spreadCountFromPageCount)·pageCountRange 클램프를 적용하지
@@ -1757,7 +1763,9 @@ export function useEditorContents(): UseEditorContentsReturn {
       useAppStore.getState().setSpreadMode(true)
 
       // 7-1. 책등 설정 초기화 (내지 추가 시 debouncedRecalcSpine이 호출되므로 미리 설정)
-      initSpineConfig(config.paperType || null, config.bindingType || null)
+      // R-195: 호스트 책등(config.spineWidthMm)도 여기서 주입 — 시드 루프의 debounce 트리거가
+      // 호스트 고정/기준선 판정을 보도록 시드 이전에 설정해야 한다.
+      initSpineConfig(config.paperType || null, config.bindingType || null, { spineWidthMm: config.spineWidthMm })
 
       // 8. 내지 시드 (낱장 또는 펼침면). 표지 풀의 2번째부터는 시드가 아니라 교체 후보.
       const pageTemplates = assembled.innerSeeds as typeof originalTemplateDetails
@@ -2023,6 +2031,8 @@ export function useEditorContents(): UseEditorContentsReturn {
         const spineResult = await recalculateSpineWidth({
           paperType: config.paperType || undefined,
           bindingType: config.bindingType || undefined,
+          // R-195: 초기 로드 표시 — 호스트 책등이 있으면 API 대신 호스트 값 적용(없으면 무시).
+          initial: true,
         })
 
         if (spineResult.success) {

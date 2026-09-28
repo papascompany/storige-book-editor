@@ -244,6 +244,20 @@ export interface SpineConfig {
   paperType: string | null
   bindingType: string | null
   calculatedSpineWidth: number | null  // 계산된 책등 너비 (mm)
+  /**
+   * R-195: 호스트(주문)가 전달한 책등 폭(mm, ≥0). null/미설정 = 미전달 → 기존 수식 경로 그대로.
+   * initSpineConfig 가 매 로드마다 설정/초기화한다.
+   */
+  hostSpineWidthMm?: number | null
+  /** R-195: 호스트 값 고정(편집 중 재계산 스킵) 여부 — utils/hostSpine.isHostSpineFixed */
+  hostFixed?: boolean
+  /** R-195: 호스트 값을 적용한 시점의 내지 인쇄 페이지 수(비고정 모드 기준선). 미적용 = null */
+  hostBaselinePageCount?: number | null
+  /**
+   * R-195: 현재 적용된 책등 폭의 출처(완료 metadata.appliedSpine.source 용).
+   * 'host' = 고정 호스트 값, 'formula' = 수식(API 계산 또는 비고정 호스트 값), null = 템플릿 값 그대로.
+   */
+  appliedSource?: 'host' | 'formula' | null
 }
 
 /**

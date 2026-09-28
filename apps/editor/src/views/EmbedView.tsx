@@ -19,6 +19,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { getParamCompat } from '@/utils/searchParams'
+import { normalizeSpineCode, parseSpineWidthMmParam } from '@/utils/hostSpine'
 import {
   EmbeddedEditor,
   type EditorConfig,
@@ -73,8 +74,12 @@ export default function EmbedView() {
       const contentFileId = get('contentFileId')
       const apiBaseUrl = get('apiBaseUrl')
       const pageCount = get('pageCount') ? Number(get('pageCount')) : undefined
-      const paperType = get('paperType')
-      const bindingType = get('bindingType')
+      // S5 (R-195): trim 후 '' 또는 '-'(호스트의 미지정 표기) → undefined.
+      const paperType = normalizeSpineCode(get('paperType'))
+      const bindingType = normalizeSpineCode(get('bindingType'))
+      // R-195: 호스트(주문) 지정 책등 폭(mm). 유한수 ≥ 0 만 수용('0' → 0),
+      // ''·NaN·음수 → undefined(비어있지 않은 무효값은 console.warn). snake `spine_width_mm` 허용.
+      const spineWidthMm = parseSpineWidthMmParam(getParamCompat(searchParams, 'spineWidthMm'))
       // 표지 날개(2026-08-03): 날개는 종전까지 템플릿 spec 전용 정적값이라, 같은 표지 템플릿으로
       // 상품별 날개 유무를 가를 수 없었다. 호스트(bookmoa 관리자)가 상품 세팅을 주문 옵션으로
       // 전달하면 편집기가 반영한다. 미전달이면 템플릿 값 그대로 = 기존 동작 불변.
@@ -145,7 +150,7 @@ export default function EmbedView() {
         parentOrigin,
         options: {
           pageCount, paperType, bindingType, size, quantity, title, productName,
-          wingEnabled, wingWidthMm, contentPdfAttach,
+          wingEnabled, wingWidthMm, contentPdfAttach, spineWidthMm,
         },
         // 레거시 dual-emit (정식 엔벨로프는 EmbeddedEditor 가 별도 발신)
         onReady: () => emitLegacy(parentOrigin, 'storige:ready', { templateSetId, sessionId }),
@@ -186,6 +191,8 @@ export default function EmbedView() {
             ...(r.pageCount != null ? { pageCount: r.pageCount } : {}),
             ...(r.size ? { size: r.size } : {}),
             ...(r.pricing ? { pricing: r.pricing } : {}),
+            // R-195: 적용 책등 폭(mm, 스프레드 책만) — 정의된 경우에만 additive.
+            ...(r.spineWidthMm != null ? { spineWidthMm: r.spineWidthMm } : {}),
             files: {
               coverFileId: r.files.coverFileId ?? null,
               contentFileId: r.files.contentFileId ?? null,
