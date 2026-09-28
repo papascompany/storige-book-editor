@@ -37,6 +37,28 @@ export class TemplatesService {
   }
 
   /**
+   * 템플릿 코드·편집 코드 발급 — 중복 검사 후 재생성(최대 5회 시도). create/copy 공용.
+   */
+  private async generateUniqueCodes(): Promise<{ templateCode: string; editCode: string }> {
+    let templateCode = this.generateCode('TMPL');
+    let editCode = this.generateCode('EDIT');
+
+    for (let i = 0; i < 5; i++) {
+      const templateCodeExists = await this.templateRepository.findOne({ where: { templateCode } });
+      if (!templateCodeExists) break;
+      templateCode = this.generateCode('TMPL');
+    }
+
+    for (let i = 0; i < 5; i++) {
+      const editCodeExists = await this.templateRepository.findOne({ where: { editCode } });
+      if (!editCodeExists) break;
+      editCode = this.generateCode('EDIT');
+    }
+
+    return { templateCode, editCode };
+  }
+
+  /**
    * editCode 중복 검사
    */
   async checkEditCodeExists(editCode: string, excludeId?: string): Promise<boolean> {
@@ -62,21 +84,7 @@ export class TemplatesService {
     }
 
     // 템플릿 코드와 편집 코드 자동 생성
-    let templateCode = this.generateCode('TMPL');
-    let editCode = this.generateCode('EDIT');
-
-    // 중복 검사 후 재생성 (최대 5회 시도)
-    for (let i = 0; i < 5; i++) {
-      const templateCodeExists = await this.templateRepository.findOne({ where: { templateCode } });
-      if (!templateCodeExists) break;
-      templateCode = this.generateCode('TMPL');
-    }
-
-    for (let i = 0; i < 5; i++) {
-      const editCodeExists = await this.templateRepository.findOne({ where: { editCode } });
-      if (!editCodeExists) break;
-      editCode = this.generateCode('EDIT');
-    }
+    const { templateCode, editCode } = await this.generateUniqueCodes();
 
     const template = this.templateRepository.create({
       ...createTemplateDto,
@@ -425,12 +433,36 @@ export class TemplatesService {
     const copySiteId =
       scope && !scope.isGlobal ? resolveScopedSiteId(scope) : original.siteId;
 
+    // 판형·유형·spread 기하 보존 — 종전엔 type/width/height/spreadConfig 가 빠져 spread 표지
+    // 사본이 기본값(page 210×297)으로 저장되고 책등·표지 기하를 잃었다.
+    // spreadConfig 는 원본과 공유되지 않도록 깊은 복사 후 create 와 같은 검증·정규화 경로를 거친다
+    // (width/height/totalWidthMm 재계산 · normalizeSpreadSpec 은 spineWidthMm 0 을 보존한다).
+    const geometry: UpdateTemplateDto = {
+      type: original.type,
+      width: original.width,
+      height: original.height,
+      ...(original.spreadConfig
+        ? { spreadConfig: structuredClone(original.spreadConfig) }
+        : {}),
+    };
+    if (geometry.type === 'spread') {
+      this.validateAndNormalizeSpreadConfig(geometry);
+    }
+
+    const { templateCode, editCode } = await this.generateUniqueCodes();
+
     const copy = this.templateRepository.create({
       name: `${original.name} (Copy)`,
       siteId: copySiteId,
       categoryId: original.categoryId,
       thumbnailUrl: original.thumbnailUrl,
       canvasData: original.canvasData,
+      type: geometry.type,
+      width: geometry.width,
+      height: geometry.height,
+      spreadConfig: geometry.spreadConfig ?? null,
+      templateCode,
+      editCode,
       isActive: false,
       createdBy: userId,
     });

@@ -392,4 +392,172 @@ describe('TemplatesService', () => {
       );
     });
   });
+
+  // 종전 copy 는 name/siteId/categoryId/thumbnailUrl/canvasData 만 복사해 spread 표지 사본이
+  // page 기본값으로 저장되고 책등·표지 기하를 잃었다 — type/width/height/spreadConfig 보존 계약.
+  describe('copy', () => {
+    const CODE_RE = { templateCode: /^TMPL-[A-Z0-9]{8}$/, editCode: /^EDIT-[A-Z0-9]{8}$/ };
+
+    const arrangeOriginal = (original: Partial<Template>) => {
+      // 1회차 = service.findOne(원본), 이후 = 코드 중복 검사(중복 없음)
+      templateRepository.findOne.mockReset();
+      templateRepository.findOne.mockResolvedValueOnce(original as Template).mockResolvedValue(null);
+      templateRepository.create.mockImplementation((entity) => entity as Template);
+      templateRepository.save.mockImplementation(async (entity) => entity as Template);
+    };
+
+    const createdEntity = (): Partial<Template> =>
+      templateRepository.create.mock.calls.at(-1)?.[0] as Partial<Template>;
+
+    const coverSpec = (over: Record<string, unknown> = {}) => ({
+      coverWidthMm: 210,
+      coverHeightMm: 297,
+      spineWidthMm: 10,
+      wingEnabled: false,
+      wingWidthMm: 0,
+      cutSizeMm: 3,
+      safeSizeMm: 3,
+      dpi: 150,
+      ...over,
+    });
+
+    it('page 템플릿 — 기존 필드·유형·판형 그대로, spreadConfig null, 새 코드 발급', async () => {
+      arrangeOriginal({
+        id: 'page-1',
+        name: 'A4 기본내지',
+        type: TemplateType.PAGE,
+        width: 210,
+        height: 297,
+        siteId: null,
+        categoryId: 'cat-1',
+        thumbnailUrl: 'https://thumb/p.png',
+        canvasData: { version: '5.3.0', objects: [] } as unknown as Template['canvasData'],
+        spreadConfig: null,
+        templateCode: 'TMPL-ORIGINAL',
+        editCode: 'EDIT-ORIGINAL',
+      });
+
+      await service.copy('page-1', 'user-1');
+
+      const entity = createdEntity();
+      expect(entity).toMatchObject({
+        name: 'A4 기본내지 (Copy)',
+        type: TemplateType.PAGE,
+        width: 210,
+        height: 297,
+        siteId: null,
+        categoryId: 'cat-1',
+        thumbnailUrl: 'https://thumb/p.png',
+        canvasData: { version: '5.3.0', objects: [] },
+        spreadConfig: null,
+        isActive: false,
+        createdBy: 'user-1',
+      });
+      expect(entity.templateCode).toMatch(CODE_RE.templateCode);
+      expect(entity.editCode).toMatch(CODE_RE.editCode);
+      expect(entity.templateCode).not.toBe('TMPL-ORIGINAL');
+      expect(entity.editCode).not.toBe('EDIT-ORIGINAL');
+      expect(templateRepository.save).toHaveBeenCalledWith(entity);
+    });
+
+    it('spread flat-spine — spec·conversionMode·regions·판형 보존, 원본과 객체 공유 없음', async () => {
+      const regions = [
+        { type: 'cover', position: 'back-cover', x: 0, width: 1240.16, height: 1753.94, widthMm: 210, heightMm: 297, label: '뒷표지' },
+        { type: 'spine', position: 'spine', x: 1240.16, width: 59.06, height: 1753.94, widthMm: 10, heightMm: 297, label: '책등' },
+        { type: 'cover', position: 'front-cover', x: 1299.21, width: 1240.16, height: 1753.94, widthMm: 210, heightMm: 297, label: '앞표지' },
+      ];
+      const originalSpreadConfig = {
+        version: 1,
+        spec: coverSpec(),
+        regions,
+        totalWidthMm: 430,
+        totalHeightMm: 297,
+        conversionMode: 'flat-spine',
+      };
+      arrangeOriginal({
+        id: 'spread-1',
+        name: 'A4 기본 책자 표지',
+        type: TemplateType.SPREAD,
+        width: 430,
+        height: 297,
+        siteId: null,
+        spreadConfig: originalSpreadConfig as unknown as Template['spreadConfig'],
+      });
+
+      await service.copy('spread-1', 'user-1');
+
+      const entity = createdEntity();
+      expect(entity.type).toBe(TemplateType.SPREAD);
+      expect(entity.width).toBe(430);
+      expect(entity.height).toBe(297);
+      expect(entity.spreadConfig).toMatchObject({
+        version: 1,
+        spec: coverSpec(),
+        regions,
+        totalWidthMm: 430,
+        totalHeightMm: 297,
+        conversionMode: 'flat-spine',
+      });
+      // 깊은 복사 — 사본 수정이 원본 엔티티의 spreadConfig 에 번지지 않는다
+      expect(entity.spreadConfig).not.toBe(originalSpreadConfig);
+      expect(entity.spreadConfig?.spec).not.toBe(originalSpreadConfig.spec);
+      expect(entity.spreadConfig?.regions).not.toBe(originalSpreadConfig.regions);
+      expect(entity.templateCode).toMatch(CODE_RE.templateCode);
+      expect(entity.editCode).toMatch(CODE_RE.editCode);
+    });
+
+    it('spread flat-spread 책등 0 — 0 이 7.5 기본값으로 바뀌지 않고, 폭은 서버 재계산(2W)', async () => {
+      arrangeOriginal({
+        id: 'spread-0',
+        name: 'A4 스프링 표지 (책등없음)',
+        type: TemplateType.SPREAD,
+        width: 999, // 원본 컬럼이 어긋나 있어도 사본은 spec 기준으로 재계산돼야 한다
+        height: 297,
+        spreadConfig: {
+          version: 1,
+          spec: coverSpec({ spineWidthMm: 0 }),
+          regions: [],
+          totalWidthMm: 420,
+          totalHeightMm: 297,
+          conversionMode: 'flat-spread',
+        } as unknown as Template['spreadConfig'],
+      });
+
+      await service.copy('spread-0');
+
+      const entity = createdEntity();
+      expect(entity.spreadConfig?.spec?.spineWidthMm).toBe(0);
+      expect(entity.spreadConfig?.conversionMode).toBe('flat-spread');
+      expect(entity.width).toBe(420);
+      expect(entity.spreadConfig?.totalWidthMm).toBe(420);
+    });
+
+    it('spread 내지 펼침면(regionScope=inner) — innerSpec·regionScope 보존, 폭 = 한 면×2', async () => {
+      arrangeOriginal({
+        id: 'inner-1',
+        name: '포토북 내지 펼침면',
+        type: TemplateType.SPREAD,
+        width: 400,
+        height: 200,
+        spreadConfig: {
+          version: 1,
+          regionScope: 'inner',
+          innerSpec: { pageWidthMm: 200, pageHeightMm: 200, gutterMm: 5 },
+          regions: [],
+          totalWidthMm: 400,
+          totalHeightMm: 200,
+        } as unknown as Template['spreadConfig'],
+      });
+
+      await service.copy('inner-1');
+
+      const entity = createdEntity();
+      expect(entity.spreadConfig).toMatchObject({
+        regionScope: 'inner',
+        innerSpec: { pageWidthMm: 200, pageHeightMm: 200, gutterMm: 5 },
+      });
+      expect(entity.width).toBe(400);
+      expect(entity.height).toBe(200);
+    });
+  });
 });
