@@ -65,7 +65,7 @@ Storige 편집기 개발을 이어서 진행합니다. bookmoa·printy 파트너
 
 | 파트너 | cwd | 현재 세션 | 비고 |
 |---|---|---|---|
-| bookmoa | `~/Developer/claude/bookmoa-mobile` | 이름 "20260924 북모아 Printable 개발 계속" · `local_73e578bc-90ee-4181-bf43-a09a7aef0c3c` · 소켓 `uds:/tmp/cc-socks/39083.sock` | bypass 모드. 09-28 ACK 수신. **곧 세션 교체 예정** — 새 세션이 첫 통지에서 id 를 알린다(그 `from` 으로 이 칸 갱신). 별도로 `local_154c5e2a…`("20260928 북모아 새 세션시작", 마지막 활동 08:45Z)가 살아 있으나 미확정 — 발신하지 않음 |
+| bookmoa | `~/Developer/claude/bookmoa-mobile` | **09-28 교체 확정**: "20260928 북모아 새 세션시작" · `local_154c5e2a-916f-45a2-8aaf-ed5a92cdf6c7` · 소켓 `uds:/tmp/cc-socks/37531.sock` (옛 `local_73e578bc…`/39083 대체) | bypass 모드. 운영 `217b52f`. 착수 트랙 R-196(bookmoa 내부·Storige 계약 변경 없음: 429 Retry-After 재시도·영구 오류 폴링 중단·경합 가드). S6~S9 배포 완료 요지를 새 세션에 재통지함(09-28) |
 | printy | `~/Developer/claude/printy` | 이름 "20260928 Printy 개발 계속"(표시명이 "…새세션 시작"으로 보일 수 있음) · `local_5ca0cbbf-bacf-4881-b394-7a4fab936804` | 09-28 교체 · 소켓 `uds:/tmp/cc-socks/67905.sock` · 09:24Z ACK 수신. 옛 `local_35adcfea…`("20260926 Printy 개발 계속")는 목록에 남아 있으나 쓰지 않음 |
 | **Storige(당사)** | 이 저장소 | 이름 "Storige 편집기 개발 계속" · printy 가 보고한 id `local_7e9f1fad…` | 09-28 새 세션. 양사에 창구 교체 통지·ACK 완료 |
 
