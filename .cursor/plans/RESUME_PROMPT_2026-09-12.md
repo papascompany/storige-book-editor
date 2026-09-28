@@ -252,7 +252,7 @@ SELECT id, site_id, created_at FROM worker_jobs
 **파트너 트랙(수신 대기, 09-26 기준)**:
 - **printy 오너 e2e**(회원 셀프편집 → 무통장 주문 → 재편집 완료 → 합성): `synthesisJobId`·그 잡 `siteId`(`009c26d5-…` 기대)·경로·`coverFileId`/`contentFileId`·**편집 `sessionId`**(→ 당사가 `edit_session_id` 로 VALIDATE 조회)·결과 PDF 다운로드 성공 여부·완료 시각 UTC(§8-17)
 - **bookmoa R-192 라이브 실측**(게스트 → 흡수 → 재오픈 → 회원 완료 → files) · **`bindingType` 매핑 수정**(bookmoa 구현 → printy 이식, §8-17-1)
-- ✅ **R-195(§8-19·8-19-1)**: S1+S5+검증 매핑 **운영 배포 완료(09-28 03:47Z)** · S4 무책등 스프링 6세트 등록·쪽수 [16,500] ✅ · **대기: bookmoa 첫 실편집 sessionId 2건(스프링 S4·flat-spine+spineWidthMm) → 표지 PDF 규격·검증 잡 대조**
+- ✅ **R-195(§8-19·8-19-1)**: S1+S5+검증 매핑 **운영 배포 완료(09-28 03:47Z)** · **bookmoa 측 배포 완료(04:52Z `a39007a`)** · S4 무책등 스프링 6세트 등록·쪽수 [16,500] ✅ · **대기: bookmoa 첫 실편집 sessionId 2건(스프링 S4·flat-spine+spineWidthMm) → 표지 PDF 규격·검증 잡 대조**
 - **당사 → 양사**: 첫 실합성 **소요 시간 실측 공유**(bookmoa R-194 백오프 판단 근거, §8-18-1) · bookmoa R-194(`2c4acb4`) 배포 대기
 - (이력) ~~printy R-173 배포 완료 재통지~~ ✅ 09-14 수신(§5-5) · ~~printy·bookmoa 첫 compose-mixed 실합성 회신~~ → §8-17 로 조건 재정의 ·
 ~~printy 고아 판정 완화 질의(09-21)~~ ✅ 실측 회신 발신(§8) — 오너 결정 회신만 잔여
@@ -1338,3 +1338,10 @@ R-195 = bookmoa 오너 지시(09-28): 편집기가 호스트 책등 폭·제본�
   2쪽 단위는 템플릿셋 필드가 없고 편집기가 1쪽씩 증감한다 → bookmoa 가 짝수를 강제한다(편집기 쪽수 단위 강제는 후속 후보).
 - bookmoa: 주문 기록값 = `editor.complete.spineWidthMm`. 제본별 템플릿 매핑(무선 = flat-spine 세트, 스프링 = S4)을 넣는다. `settings.storigeSpineParamLive` 토글로 파라미터를 전송한다.
 - 🔎 **다음**: bookmoa 첫 실편집 sessionId 2건을 받으면 `file_edit_sessions.metadata.{coverOutput,appliedSpine,spread.spec}` 과 표지 VALIDATE 잡 `options.orderOptions`·`result.metadata.pageSize`·errors 를 대조한다.
+
+**bookmoa R-195 프로덕션 배포 통지(09-28 04:52Z, `a39007a`, new.bookmoa.com)** — 편집기 전달 플래그는 기본 ON 이다.
+- 실제 전송은 **상품별 spinePolicy 를 legacy → auto/none/fixed 로 전환한 뒤부터** 시작된다. 싣는 값은 bindingType(canonical), paperType(구 키, perfect/hardcover auto 만), spineWidthMm(0 포함, separate 제외)다.
+  미전환 상품은 현행(perfect·책등 없음) 그대로다.
+- 주문 기록값은 `editor.complete.spineWidthMm`(레거시 포함)이고, 합성 `spineWidth` 는 실값이다.
+- 오너가 관리자에서 제본별 템플릿(무선 = a2cc2939/e66588b2, 스프링 = S4 6세트) 연결과 spinePolicy 전환을 진행한다 → 그 뒤 첫 실편집 2건의 sessionId·완료 UTC 를 통지받는다.
+- bookmoa 후속 후보: 분리 2쪽 표지(perfect/hardcover) 크기 검사 공백 → Storige coverLayout 신호. Storige 후속 후보 목록과 같은 항목이다.
