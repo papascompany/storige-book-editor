@@ -128,6 +128,8 @@ Storige 편집기 개발을 이어서 진행합니다. bookmoa·printy 파트너
 
 - bookmoa 새 창구(`local_154c5e2a`, 09-28 수신): R-196 운영 배포 09:38Z(new.bookmoa.com `54828a0`, DB 변경 없음) — validate 429 시 Retry-After 재시도(최대 3회)·job-status 400/401/403/404 폴링 즉시 중단·경합 가드 DB 조회 실패 시 거부. Storige 계약 변경 없음. S6~S9 반영(S6 coverLayout 등)은 다음 트랙 착수 시 통지. 오너 e2e 보류 유지.
 
+- bookmoa 세션 교대 예고(09-28, `local_154c5e2a` 발신): 다음 bookmoa 세션이 착수 직후 새 이름을 통지 → §2 갱신. 그 전까지 현 세션이 수신. bookmoa 운영 `19ce2a5`(R-198, 10:14Z). 반영 완료: S6 coverLayout(R-197, 비legacy 표지 잡만)·padToPageStep ACK. 후보: R-200(S8 pageStep 을 bookmoa 상품편집기에 표시·불일치 경고, 착수 시 통지). 84개 상품 전부 legacy·오너 e2e 보류 유지.
+
 ## 5. 오너 결정 대기 (착수 약속 없음)
 
 - **결속 API 설계** `FILE_ORDER_BINDING_API_DESIGN_2026-09-24.md` §16 — 핵심 O1~O5(v1 표면·사이트별 (a)안·백필 재실측·편집기 산출물 스탬프·취소 후 90일)
