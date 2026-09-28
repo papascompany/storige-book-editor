@@ -250,7 +250,7 @@ SELECT id, site_id, created_at FROM worker_jobs
 **파트너 트랙(수신 대기, 09-26 기준)**:
 - **printy 오너 e2e**(회원 셀프편집 → 무통장 주문 → 재편집 완료 → 합성): `synthesisJobId`·그 잡 `siteId`(`009c26d5-…` 기대)·경로·`coverFileId`/`contentFileId`·**편집 `sessionId`**(→ 당사가 `edit_session_id` 로 VALIDATE 조회)·결과 PDF 다운로드 성공 여부·완료 시각 UTC(§8-17)
 - **bookmoa R-192 라이브 실측**(게스트 → 흡수 → 재오픈 → 회원 완료 → files) · **`bindingType` 매핑 수정**(bookmoa 구현 → printy 이식, §8-17-1)
-- 🔨 **진행 중(09-28 오너 결정, §8-19)**: **bookmoa R-195 S1+S5+편집기 검증 매핑**(작업일 약 3일 · 10-01 전후 배포 후보 · 배포는 오너 승인) · **S4 스프링 무책등 템플릿 제작**(bookmoa 판형 목록 회신 대기)
+- 🔨 **R-195(§8-19·8-19-1)**: S1+S5+검증 매핑 **구현 완료·로컬 커밋 `eeb1967`·`ed5151d`·`e8953a4` — 배포 승인 대기**(worker → api → master push) · **S4 무책등 스프링 6세트 운영 등록 ✅**(실편집 E2E 미검증)
 - **당사 → 양사**: 첫 실합성 **소요 시간 실측 공유**(bookmoa R-194 백오프 판단 근거, §8-18-1) · bookmoa R-194(`2c4acb4`) 배포 대기
 - (이력) ~~printy R-173 배포 완료 재통지~~ ✅ 09-14 수신(§5-5) · ~~printy·bookmoa 첫 compose-mixed 실합성 회신~~ → §8-17 로 조건 재정의 ·
 ~~printy 고아 판정 완화 질의(09-21)~~ ✅ 실측 회신 발신(§8) — 오너 결정 회신만 잔여
@@ -1273,3 +1273,56 @@ R-195 = bookmoa 오너 지시(09-28): 편집기가 호스트 책등 폭·제본�
 - 공수 근거(S1 정찰): 편집기 14~18h. 주입 지점은 `EmbedView.tsx:74-86·146-149`, `useEditorContents.ts:1562-1573·2021-2033`, 가드 `spineCalculator.ts:376` 1곳(모든 재계산 트리거 수렴),
   완료 payload `embed.tsx:1911-1945·2289-2318`(게스트 `:1867·:2031`), 레거시 `EmbedView.tsx:155-192`.
   주의: `spineCalculator.ts:392-394` 는 URL 을 직접 읽는다(snake 미지원). `asPositiveNumber` 는 0 을 거부한다. `buildSpreadSnapshots.ts:73-78` 은 책등 0 이면 스냅샷을 생략한다.
+
+#### 8-19-1. R-195 구현 완료(로컬 커밋, 배포 승인 대기) + S4 운영 등록 (2026-09-28 ~03:35Z)
+
+**로컬 커밋 3건(push 안 함 — master push = 편집기 Vercel 자동배포)**
+- `eeb1967` worker: 사철 쪽수 규칙은 **내지에만**(두 검증 경로 `fileType !== 'cover'`). 1쪽 펼침 중철 표지 SADDLE_STITCH_INVALID 해소
+- `ed5151d` api: `editor-spread-validation-options.ts`(순수)로 편집기 스프레드 책 검증 잡 보정.
+  - 내지는 주문 bindingType(양장 제외)과 실제 내지 쪽수를 쓴다.
+  - 표지는 **`metadata.coverOutput` 이 워커 기대식(2W+책등+날개×2+도련×2, ±0.5)과 일치할 때만** spec 판형·책등·날개·도련을 연결한다.
+  - paperType 은 `appliedSpine.source==='formula'` 이고 spine 스냅샷이 유효할 때만 싣는다.
+  - 양장·coverOutput 없음·불일치는 **표지 현행 유지**다(내지 보정도 표지에 얹지 않음 — spiral 펼침 표지가 단일 판형 검사로 오차단되므로).
+  - 비상 차단은 `EDITOR_SPREAD_VALIDATION_MAPPING=off` 다.
+- `e8953a4` editor: S1+S5.
+  - 새 파일: `utils/hostSpine.ts`, `utils/pdfPageSize.ts`(ServicePlugin 페이지 크기 규칙 미러).
+  - 호스트 값은 `spineCalculator` 의 flat-spread·inner 가드 뒤 단일 지점에서 적용한다.
+  - 비고정 모드는 **주문 쪽수로 돌아오면 호스트 값**을 쓴다(`hostBaselinePageCount`). seed 루프의 300ms 재계산이 호스트 값을 API 값으로 덮던 문제를 막으려는 것이다.
+  - 완료 시 `metadata.appliedSpine{spineWidthMm,source}`·`metadata.coverOutput{widthMm,heightMm,bleedMm}` 를 기록한다. payload `spineWidthMm` 는 complete·legacy·pricingChange 에 싣는다.
+- 검증 결과
+  - API: 전체 81 스위트·1140 통과(신규 순수 13 + 서비스 4)
+  - worker: 23 스위트·572 통과(+2)
+  - editor: 69 파일·831 통과, tsc 0
+  - 모두 Node 24 에서 실행했다.
+- 설계 근거가 된 **운영 실측**: 편집기 표지 PDF 16건 중 **6건은 도련 미가산**(크롭마크 모드일 때만 bleed 가산, `ServicePlugin.ts:761-778`).
+  예: 214×301 → 429.3×301. 스펙 추정으로 연결했다면 이 6건이 전부 오차단됐다. 10건은 `2W+책등+6` 과 정확히 일치했다.
+- ⚠️ **알려진 한계 — 모두 가이드·회신에 명시**
+  - flat-spine 책등 영역에 객체가 있으면 책등 0 적용을 차단하고 템플릿 폭을 유지한다.
+    canvas-core `SpreadPlugin.repositionObjects` 가 spine 영역 소멸 시 `find(spine)!` TypeError 를 낸다. 교정은 canvas-core 후속이다.
+  - 양장 편집기 표지는 크기 검사를 생략한다(싸바리 기하 정합 미검증).
+  - pricingChange 의 spineWidthMm 는 직전 값일 수 있다.
+- 배포 순서(오너 승인 후): **worker → api(+nginx 재시작) → master push(편집기)**. saddle 표지 보정은 worker 가 먼저 나가야 API 매핑이 오차단하지 않는다
+
+**S4 운영 등록 ✅(03:32:52Z, DB 직접 등록 — 오너 결정)**
+- 등록 방식을 이렇게 정한 이유: Admin UI 는 책등 min=1 이라 0 을 넣을 수 없고, Admin API 는 비밀번호 로그인이 필요하다. `POST /templates/:id/copy` 는 spread 메타를 유실한다(후속 태스크 칩).
+- 트랜잭션 1회로 표지 6 + 내지 신규 4 + 세트 6 을 넣었다.
+  - 세트 설정은 전역(site NULL), book, duplex-merged, cmyk, 도련 3, 크롭마크, [10,100]쪽이다.
+  - 세트는 세로↔가로로 페어링했다(세로 기본). 캔버스는 빈 최소형이다.
+  - 표지는 `flat-spread`·`spineWidthMm:0`, 폭 2W, 분류 `커버` 다.
+- 공개 `with-templates` 6건 재조회로 mode·spine 0·판형·페어링을 확인했다.
+  **실렌더·완료 E2E 는 미검증**이다(책등 0 표지 운영 첫 사례). bookmoa 상품 연결 후 첫 실편집으로 확인한다.
+
+| 세트 | 판형 | set id | 표지 template | 내지 template |
+|---|---|---|---|---|
+| A4 스프링 책자 (책등없음) | 210×297 | `774349c0-f4dd-479d-99ff-8f08be425a94` | `edc4cfd1-7e49-42d6-a04c-7e0ee576e987` | `26874e62-4f24-49ae-ad56-49fff159ff83` (재사용) |
+| A4 스프링 책자 (책등없음·가로) | 297×210 | `282e6c71-c174-486d-aeab-f09f7a401d99` | `bff4ff39-bf48-4a43-adb7-9c90a4f7280f` | `ad4671b1-f565-4a76-8dc8-ebfb29b737b4` (재사용) |
+| B5 스프링 책자 (책등없음) | 182×257 | `c6710875-83af-41b3-ad55-2249a41ff3f1` | `7a2d78b9-4efc-46da-9c4c-7aea28772931` | `2881589a-291a-441e-9ca3-a4a87a84345d` (신규) |
+| B5 스프링 책자 (책등없음·가로) | 257×182 | `d90b9dfc-350b-4b69-b34c-0dd0058cebc4` | `653a421c-6f8c-4673-aa4b-170808e73daa` | `3a3dc694-e1d3-40e8-97ed-d2e295411dae` (신규) |
+| A5 스프링 책자 (책등없음) | 148×210 | `e97de43e-f966-4faa-9477-37f665c5cf6a` | `8977571c-7e96-4dec-8d38-f13cdb5229b3` | `492eedc4-6f15-4967-a9c6-f410593cd86a` (신규) |
+| A5 스프링 책자 (책등없음·가로) | 210×148 | `212051c1-56e4-45aa-bf05-b12c29828542` | `579fbf64-303e-4867-b033-b6149270cb38` | `f207d094-6ab6-4b31-8dcc-729aa39a5b3d` (신규) |
+
+- **되돌리기**: 위 세트 6·표지 6·**신규** 내지 4를 id 로 DELETE 한다(재사용 A4 내지 2개는 절대 삭제 금지). 참조 행이 없을 때만 한다 — 세션이 붙으면 soft delete(`is_deleted=1`).
+- 오너·bookmoa 확인 대기
+  - pageCountRange [10,100] 이 스프링 상품에 맞는지(초과 주문은 편집기가 클램프)
+  - 표지 기본 디자인 필요 여부
+  - 가로형 제본 변

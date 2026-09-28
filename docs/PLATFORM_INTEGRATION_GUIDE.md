@@ -780,6 +780,7 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 | `mode` | 선택 | 도출 | `cover` \| `content` \| `both` \| `template` |
 | `pageCount`, `paperType`, `bindingType`, `quantity` | 선택 | 도출 | 세션 metadata orderOptions 우선, spine 폴백 |
 | `wingEnabled`, `wingWidthMm` | 선택 | 도출 | **표지 날개**(2026-08-03 신설). `wingEnabled=1|true`, 폭은 한 쪽 mm. 미전달 시 **템플릿 spec 값** 사용 |
+| `spineWidthMm` | 선택 | 도출 | **주문 책등 폭 mm**(2026-09-28 신설, `spine_width_mm` 허용). 0 이상 유한수만 인정(음수·NaN·빈값 = 미전달). 규칙은 아래 **호스트 책등 규칙** |
 | `productId`, `productName`, `title`, `width`, `height` | 선택 | — | 메타 |
 | `coverFileId`, `contentFileId` | 선택 | — | 기존 파일 연결 |
 | `callbackUrl`, `apiBaseUrl` | 선택 | — | — |
@@ -787,6 +788,13 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 | `allowSampleFallback` | 선택 | — | `1` 또는 DEV에서만 sample 폴백 |
 
 > 프로덕션에서 템플릿셋 로드 실패 시 `editor.error TEMPLATE_SET_NOT_FOUND` 를 발신합니다.
+> **`paperType`·`bindingType` 의 `'-'`·공백은 미전달로 취급합니다(2026-09-28).**
+>
+> **호스트 책등 규칙(`spineWidthMm`, 2026-09-28):** 표지 모드(`templateDetails[].spreadConfig.conversionMode ?? 'full'`)가 `full`·`flat-spine` 인 스프레드 표지에만 적용되고, `flat-spread`(책등 고정)·내지 전용 펼침면·낱장 세트에서는 무시됩니다.
+> - 편집기를 열 때 이 값을 초기 책등으로 쓰고 책등 계산 API 를 호출하지 않습니다.
+> - `paperType`·`bindingType` 이 **둘 다** 있고 값이 0 보다 크면, 편집 중 내지 쪽수가 바뀔 때 책등을 다시 계산합니다(쪽수가 처음 값으로 돌아오면 호스트 값). 그 밖(코드 누락 또는 0)에는 **호스트 값으로 고정**합니다.
+> - 미전달이면 종전 동작(템플릿·책등 API) 그대로입니다. 재편집은 URL → 세션 주문 옵션 → 직전 완료의 호스트 고정값 순으로 복원합니다.
+> - ⚠️ `flat-spine` 템플릿의 책등 영역에 객체가 있으면 책등 0 은 적용되지 않고 템플릿 책등이 유지됩니다. 책등 없는 스프링은 전용 `flat-spread` 세트(책등 0)를 쓰세요. 실제 적용값은 `editor.complete` 의 `spineWidthMm` 로 확인하세요.
 > **표지 날개 권위 규칙(2026-08-03):** 판형·책등과 달리 날개는 **상품(주문) 옵션이 템플릿 spec 보다 우선**합니다.
 > 같은 표지 템플릿으로 날개 상품/비날개 상품을 함께 운영하기 위한 설계입니다. 규칙 3가지 —
 > ① 미전달이면 템플릿 값 그대로(기존 동작 불변) ② `wingEnabled=true` 는 **유효한 폭(>0)이 함께 와야** 적용됩니다
@@ -810,13 +818,13 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 |---|---|---|---|
 | 편집기→부모 | `editor.ready` | `{sessionId, templateSetId, version, (폴백시) fallback, effectiveTemplateSetId}` | 초기화 완료 |
 | 편집기→부모 | `editor.save` | `{sessionId, savedAt, thumbnail}` | 자동/수동 저장 |
-| 편집기→부모 | `editor.complete` | `{sessionId, orderSeqno, editCode, pages:{initial,final}, pageCount?, pricing?, size?:{width,height,unit:'mm'}, files:{coverFileId,contentFileId,thumbnailUrl}, savedAt}` | 편집완료 + 합성 |
+| 편집기→부모 | `editor.complete` | `{sessionId, orderSeqno, editCode, pages:{initial,final}, pageCount?, pricing?, size?:{width,height,unit:'mm'}, spineWidthMm?, files:{coverFileId,contentFileId,thumbnailUrl}, savedAt}` | 편집완료 + 합성. `spineWidthMm` = 완료 시 표지에 적용된 책등 mm(스프레드 책만, 2026-09-28 additive) |
 | 편집기→부모 | `editor.cancel` | `{sessionId}` | 취소 |
 | 편집기→부모 | `editor.error` | `{code, message, templateSetId}` | 오류 |
 | 편집기→부모 | `editor.needAuth` | `{guestToken, reason:'complete_save', ts}` | 게스트 폴백만 |
 | 편집기→부모 | `editor.state` | `{requestId, ready, dirty, sessionId}` | getState 응답 |
 | 편집기→부모 | `editor.saved` | `{requestId, ok, error}` | saveNow 응답 |
-| 편집기→부모 | `editor.pricingChange` | `{sessionId, pageCount, pricing?, coverType?}` | 가격 영향 변경(페이지 증감 등) 실시간 통지 (2026-07-06 additive) |
+| 편집기→부모 | `editor.pricingChange` | `{sessionId, pageCount, pricing?, coverType?, spineWidthMm?}` | 가격 영향 변경(페이지 증감 등) 실시간 통지 (2026-07-06 additive) |
 | 편집기→부모 | `editor.contentPdfAttached` | `{sessionId, contentPdfFileId, contentPdfPageCount, mode:'underlay'}` | 고객이 내지 PDF 를 첨부해 편집기에 앉힌 시점 (2026-08-13 additive) |
 | **부모→편집기** | `getState` | `{requestId}` | **요청-응답** — `editor.state` 로 응답(`requestId` echo) |
 | **부모→편집기** | `saveNow` | `{requestId}` | **요청-응답** — 저장 후 `editor.saved` 로 응답(`requestId` echo) |
@@ -851,7 +859,7 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 > 실무 요약: 임베드 파트너는 항상 `/embed`+`token` 으로 진입하므로 별도 조치가 필요 없습니다. `guest/migrate` 는 종전대로 `memberSeqno`·`guestToken` 만 바꾸고 **`siteId` 는 절대 건드리지 않습니다**(생성 시점 테넌트가 영구 보존). 재편집과 `compose-mixed` 합성은 `siteId` 유무와 무관하게 정상 동작하니, 유형 2 파트너는 3.3·3.4 경로를 그대로 쓰면 됩니다.
 > 방어적으로는 **`guestToken` 이 있는데 `needsAuth` 가 없는 형태도 게스트로 취급**하세요(fail-closed). 로그인 이후 처리는 3.3 의 "게스트 → 회원 전환" 을 따르세요.
 > **`editCode` 형식:** `EDIT-XXXXXXXX` = 접두 `EDIT-` + 세션ID 앞 8자 대문자(`EDIT-${id.substring(0,8).toUpperCase()}`). 순수 8자리 숫자가 아닙니다.
-> **`editor.pricingChange` (D-3, 2026-07-06 additive):** 편집 중 페이지 추가/삭제로 총 페이지 수가 바뀌면 ~300ms 디바운스로 발신됩니다. 가격 계산 주체는 **호스트**(storige 는 가격을 계산하지 않음) — `pageCount`(물리 페이지, 포토북 내지 펼침면 ×2)와 `pricing` 메타로 장바구니 표시가를 갱신하세요. **발신 조건(보수 기본):** 템플릿셋에 `pricing` 이 설정된 경우 + 회원 세션만(게스트 미발신) + 에디터 초기화/세션 복원 완료 후. `coverType` 은 템플릿셋에 커버 종류 코드(string, 확장 가능 — `hardcover_wrap`/`softcover_variable_spine`/`ready_made` 시드)가 설정된 경우에만 동봉. 미지 이벤트를 무시하는 기존 수신부는 영향 없음(additive).
+> **`editor.pricingChange` (D-3, 2026-07-06 additive):** 편집 중 페이지 추가/삭제로 총 페이지 수가 바뀌면 ~300ms 디바운스로 발신됩니다. 가격 계산 주체는 **호스트**(storige 는 가격을 계산하지 않음) — `pageCount`(물리 페이지, 포토북 내지 펼침면 ×2)와 `pricing` 메타로 장바구니 표시가를 갱신하세요. **발신 조건(보수 기본):** 템플릿셋에 `pricing` 이 설정된 경우 + 회원 세션만(게스트 미발신) + 에디터 초기화/세션 복원 완료 후. `spineWidthMm`(2026-09-28 additive)은 발신 시점의 적용 책등으로, 쪽수 변경 직후 책등 재계산(디바운스+API)이 끝나기 전이면 **직전 값**일 수 있습니다 — 주문에 기록할 최종값은 `editor.complete` 의 `spineWidthMm` 를 쓰세요. `coverType` 은 템플릿셋에 커버 종류 코드(string, 확장 가능 — `hardcover_wrap`/`softcover_variable_spine`/`ready_made` 시드)가 설정된 경우에만 동봉. 미지 이벤트를 무시하는 기존 수신부는 영향 없음(additive).
 
 > **내지 PDF 첨부 + `editor.contentPdfAttached` (2026-08-13 additive):** 고객이 직접 만든 내지 PDF 를
 > 편집기 안에서 첨부하면(우측 상단 "📎 내지 PDF 첨부"), 검증·도련 자동변환을 거쳐 **각 내지 페이지에
@@ -1466,6 +1474,35 @@ book.finalization.completed | book.finalization.failed
 | — | 판정 | 에러 ≥ 1 → `isValid=false` 차단 |
 
 > 결과는 잡 `result.errors` / `result.warnings` / `result.metadata` 에 담깁니다. `autoFixable` 이면 `FIXABLE`, 아니면 `FAILED`. (파일 크기 기준은 §1.4·FAQ 참조 — 코드 기본 100 MB, 현재 프로덕션 실값 2 GB.)
+
+#### 5.3.1 표지 크기·책등 판정 규칙 (2026-09-28 확정)
+
+검증 잡 `orderOptions` 키는 **`binding`·`pages`·`paperType`·`spineWidthMm`** 입니다(`bindingType`·`pageCount` 아님). `binding` 허용값: `perfect`·`saddle`·`spiral`·`spring`(레거시)·`hardcover`.
+
+**① 서버 책등 재계산** — 표지이고 `binding` 이 `perfect`·`hardcover` 이며 `paperType` 과 `pages`(≥1)가 **모두** 있을 때만 서버가 v2 공식으로 `spineWidthMm` 를 덮어씁니다. 지종 미해석·v1 폴백이면 보낸 값을 유지합니다. 그 밖(스프링·중철, paperType 미전달)은 **보낸 `spineWidthMm` 를 그대로** 씁니다.
+
+**② 워커 기대 책등** — `spineWidthMm`(0 이상 숫자) → 없으면 `paperThickness`+`pages` 폴백 → 둘 다 없으면 "기대치 없음".
+
+**③ 표지 크기 검사**
+
+| 조건 | 검사 |
+|---|---|
+| `binding` 이 `perfect`·`hardcover` **또는** 기대 책등 있음 | 단일 판형 검사 생략 → **펼침 검사**. 양장 = 싸바리 전개식, 그 외 = 폭 `2W + 책등 + 날개×2 + 도련×2`, 높이 `H + 도련×2` (±2 mm) |
+| `perfect`·`hardcover` 인데 기대 책등 없음 | 크기 검사 **생략** + `SPINE_PARAMS_UNRESOLVED` 경고(비차단) |
+| 그 밖 (스프링·중철 + 책등·두께 미전달) | **단일 판형** 검사 (`W + 도련×2`) |
+
+**상품 유형별 권장 전송**
+
+| 표지 형태 | 전송 |
+|---|---|
+| 무선·양장 펼침 (책등 가변) | `binding` + `paperType` + `pages` (+ 보낸 `spineWidthMm` 는 서버가 대조·교체) |
+| 운영자 고정 책등 | `binding` + `spineWidthMm` (**paperType 미전송** → 서버가 덮지 않음) |
+| 스프링·중철 펼침 1쪽 | `spiral`/`saddle` + `spineWidthMm: 0` → 폭 `2W + 도련×2` |
+| 앞·뒤 분리 2쪽 | `spineWidthMm`·`paperType`·`paperThickness` **모두 미전송**. ⚠️ `perfect`·`hardcover` 분리 표지는 크기 검사가 생략됩니다(단일 판형 검사 아님) |
+
+- **중철 표지 (2026-09-28 변경)**: 사철 쪽수 규칙(4배수·64쪽)은 **내지에만** 적용합니다. 종전엔 표지에도 적용돼 1쪽 펼침 중철 표지가 `SADDLE_STITCH_INVALID` 로 막혔습니다. 표지 쪽수는 1·2·4쪽 규칙이 소유합니다.
+- **합성 `spineWidth`** 는 결과에 기록만 되고 판형 계산에 쓰이지 않습니다(0 허용).
+- **편집기 산출 표지 (2026-09-28)**: 편집 세션 완료 검증 잡은 스프레드 책이면 주문 제본(`orderOptions.bindingType`)·실제 내지 쪽수를 쓰고, 표지는 편집기가 기록한 실제 출력 규격(`metadata.coverOutput`)이 위 펼침 기대식과 일치할 때만 적용 책등(`metadata.spread.spec`)으로 펼침 검사합니다. 호스트가 고정한 책등은 `paperType` 을 싣지 않아 서버가 덮지 않습니다. **양장 편집기 표지는 싸바리 기하 정합 확인 전까지 현행(크기 검사 생략)** 입니다.
 
 ### 5.4 유형별 온보딩 체크리스트
 
