@@ -137,7 +137,7 @@ Storige 편집기 개발을 이어서 진행합니다. bookmoa·printy 파트너
   - S7: 스프링 스냅샷의 paperType 선택값화
   - S6: 뒷면 크기 검사
   - 양장 편집기 표지의 싸바리 기하 연결
-  - canvas-core 책등 0 에서 spine 영역 객체 재배치 TypeError
+  - ~~canvas-core 책등 0 에서 spine 영역 객체 재배치 TypeError~~ → 09-28 교정(로컬 커밋, **push=편집기 배포 승인 대기**): spine 영역 소멸 시 spine 객체를 자유 객체로 강등·scene 위치 보존. 편집기 `spineCalculator.ts:599` 0mm 차단 가드는 유지(해제는 제품 결정 — 책등 텍스트가 접지선에 남음). canvas-core 기준 55/630
   - 재오픈 조회 실패 시 조용한 폴백
   - `restore()` 의 expires_at 미해제(O18)
   - `with-templates` 배치 조회(S11)

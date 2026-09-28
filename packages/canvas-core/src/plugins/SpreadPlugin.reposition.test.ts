@@ -400,3 +400,74 @@ describe('SpreadPlugin conversionMode — flat-spine/flat-spread 가드', () => 
     expect(plugin.getConversionMode()).toBe('full')
   })
 })
+
+describe('SpreadPlugin.repositionObjects — 책등 0mm (spine 영역 소멸/생성)', () => {
+  it('10mm → 0mm: spine 객체가 TypeError 없이 자유 객체로 강등되고 scene 위치 보존, 표지 객체는 정상 재배치', () => {
+    const oldLayout = computeLayout(baseSpec)
+    const newLayout = computeLayout({ ...baseSpec, spineWidthMm: 0 })
+    expect(newLayout.regions.find((r) => r.position === 'spine')).toBeUndefined()
+
+    const oldSpine = oldLayout.regions.find((r) => r.position === 'spine')!
+    const oldFront = oldLayout.regions.find((r) => r.position === 'front-cover')!
+    const newFront = newLayout.regions.find((r) => r.position === 'front-cover')!
+    const H = oldLayout.totalHeightPx
+
+    const spineScene = toScene(oldSpine.x + oldSpine.width / 2, 0.3 * H, oldLayout)
+    const spineText = makeObj({
+      centerX: spineScene.x,
+      centerY: spineScene.y,
+      width: 40,
+      height: 120,
+      meta: { regionRef: 'spine', anchor: { kind: 'region', xNorm: 0.5, yNorm: 0.3 } },
+    })
+    const frontScene = toScene(oldFront.x + 0.5 * oldFront.width, 0.5 * H, oldLayout)
+    const frontText = makeObj({
+      centerX: frontScene.x,
+      centerY: frontScene.y,
+      width: 100,
+      height: 40,
+      meta: { regionRef: 'front-cover', anchor: { kind: 'region', xNorm: 0.5, yNorm: 0.5 } },
+    })
+
+    const plugin = makePlugin([spineText, frontText], oldLayout, baseSpec)
+    expect(() => plugin.repositionObjects(oldLayout, newLayout)).not.toThrow()
+
+    // spine 객체: scene 무이동(대칭 레이아웃 → 접지선 위), 자유 객체로 강등
+    expect(spineText._centerX).toBeCloseTo(spineScene.x, 3)
+    expect(spineText._centerY).toBeCloseTo(spineScene.y, 3)
+    expect(spineText.meta.regionRef).toBeNull()
+    expect(spineText.meta.primaryRegionHint).toBeNull()
+    expect(spineText.meta.anchor.kind).toBe('canvas')
+    // anchor 는 new layout content 좌표 = scene - newOrigin
+    const newOrigin = contentOrigin(newLayout)
+    expect(spineText.meta.anchor.x).toBeCloseTo(spineScene.x - newOrigin.x, 3)
+    expect(spineText.meta.anchor.y).toBeCloseTo(spineScene.y - newOrigin.y, 3)
+
+    // 앞표지 객체: 새 front-cover 영역 xNorm 0.5 로 정상 재배치
+    expect(frontText._centerX).toBeCloseTo(newFront.x + 0.5 * newFront.width + newOrigin.x, 3)
+    expect(frontText.meta.regionRef).toBe('front-cover')
+  })
+
+  it('0mm → 10mm: spine 영역이 생겨도 표지 객체가 영역 기준으로 재배치된다', () => {
+    const zeroSpec = { ...baseSpec, spineWidthMm: 0 }
+    const oldLayout = computeLayout(zeroSpec)
+    const newLayout = computeLayout(baseSpec)
+    const oldFront = oldLayout.regions.find((r) => r.position === 'front-cover')!
+    const newFront = newLayout.regions.find((r) => r.position === 'front-cover')!
+    const H = oldLayout.totalHeightPx
+
+    const frontScene = toScene(oldFront.x + 0.25 * oldFront.width, 0.5 * H, oldLayout)
+    const frontText = makeObj({
+      centerX: frontScene.x,
+      centerY: frontScene.y,
+      width: 100,
+      height: 40,
+      meta: { regionRef: 'front-cover', anchor: { kind: 'region', xNorm: 0.25, yNorm: 0.5 } },
+    })
+
+    const plugin = makePlugin([frontText], oldLayout, zeroSpec)
+    expect(() => plugin.repositionObjects(oldLayout, newLayout)).not.toThrow()
+    const newOrigin = contentOrigin(newLayout)
+    expect(frontText._centerX).toBeCloseTo(newFront.x + 0.25 * newFront.width + newOrigin.x, 3)
+  })
+})

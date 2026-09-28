@@ -752,7 +752,30 @@ class SpreadPlugin extends PluginBase {
 
       if (regionRef === 'spine') {
         const oldSpine = oldLayout.regions.find((r) => r.position === 'spine')!
-        const newSpine = newLayout.regions.find((r) => r.position === 'spine')!
+        const newSpine = newLayout.regions.find((r) => r.position === 'spine')
+
+        // 책등 0mm(flat-spine 스프링 등): computeLayout 은 폭 0 영역을 만들지 않으므로 newLayout 에
+        // spine 이 없다. 갈 영역이 사라진 책등 객체는 자유 객체로 강등하고 scene 위치를 보존한다
+        // (좌우 대칭 레이아웃에서 책등 중심 scene x 는 책등 폭과 무관 → 접지선 위에 그대로 남는다).
+        // anchor 는 new layout 기준 content 좌표로 기록한다.
+        if (!newSpine) {
+          const cx = boundingRect.left + boundingRect.width / 2
+          const cy = boundingRect.top + boundingRect.height / 2
+          if (!obj.meta) {
+            obj.meta = {}
+          }
+          obj.meta.regionRef = null
+          obj.meta.primaryRegionHint = null
+          obj.meta.anchor = {
+            kind: 'canvas',
+            x: cx - oldLayout.totalWidthPx / 2 + newLayout.totalWidthPx / 2,
+            y: cy - oldLayout.totalHeightPx / 2 + newLayout.totalHeightPx / 2,
+          }
+          console.warn(
+            `[SpreadPlugin] repositionObjects: 책등 영역 소멸(0mm) — spine 객체를 자유 객체로 강등, 위치 보존 (객체 id=${(obj as any).id ?? '?'})`
+          )
+          continue
+        }
 
         // 방어 가드(기저장 데이터 보호): 스프레드 전폭 배경처럼 중심 x 만 책등 밴드에 들어와
         // 'spine' 으로 잘못 분류·저장된 객체는 newSpine/oldSpine 비율 스케일+중앙이동을 적용하면
