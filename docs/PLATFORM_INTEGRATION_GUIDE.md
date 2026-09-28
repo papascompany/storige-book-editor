@@ -794,6 +794,8 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 > - 편집기를 열 때 이 값을 초기 책등으로 쓰고 책등 계산 API 를 호출하지 않습니다.
 > - `paperType`·`bindingType` 이 **둘 다** 있고 값이 0 보다 크면, 편집 중 내지 쪽수가 바뀔 때 책등을 다시 계산합니다(쪽수가 처음 값으로 돌아오면 호스트 값). 그 밖(코드 누락 또는 0)에는 **호스트 값으로 고정**합니다.
 > - 미전달이면 종전 동작(템플릿·책등 API) 그대로입니다. 재편집은 URL → 세션 주문 옵션 → 직전 완료의 호스트 고정값 순으로 복원합니다.
+> **쪽수 단위(`pageStep`, 2026-09-28 신설):** 템플릿셋 필드 `pageStep`(정수 ≥ 1, `null` = 제약 없음)이 설정된 책(스프레드) 세션은 내지 물리 쪽수가 그 배수여야 합니다. 편집기의 `+`/삭제가 배수 단위로 움직이고, 호스트가 배수가 아닌 `pageCount` 로 열면 경고 배지를 띄우고 **완료를 막습니다**(UI 편집완료는 토스트만, 프로그래매틱 `complete()` 는 `editor.error {code:'INVALID_DATA'}` 후 reject — `editor.complete` 미발신). `pageCountRange`·제본 최소/최대와 동시에 만족해야 합니다. 서버 측 완료 검증은 하지 않습니다.
+>
 > - ⚠️ `flat-spine` 템플릿의 책등 영역에 객체가 있으면 책등 0 은 적용되지 않고 템플릿 책등이 유지됩니다. 책등 없는 스프링은 전용 `flat-spread` 세트(책등 0)를 쓰세요. 실제 적용값은 `editor.complete` 의 `spineWidthMm` 로 확인하세요.
 > **표지 날개 권위 규칙(2026-08-03):** 판형·책등과 달리 날개는 **상품(주문) 옵션이 템플릿 spec 보다 우선**합니다.
 > 같은 표지 템플릿으로 날개 상품/비날개 상품을 함께 운영하기 위한 설계입니다. 규칙 3가지 —
@@ -859,7 +861,7 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 > 실무 요약: 임베드 파트너는 항상 `/embed`+`token` 으로 진입하므로 별도 조치가 필요 없습니다. `guest/migrate` 는 종전대로 `memberSeqno`·`guestToken` 만 바꾸고 **`siteId` 는 절대 건드리지 않습니다**(생성 시점 테넌트가 영구 보존). 재편집과 `compose-mixed` 합성은 `siteId` 유무와 무관하게 정상 동작하니, 유형 2 파트너는 3.3·3.4 경로를 그대로 쓰면 됩니다.
 > 방어적으로는 **`guestToken` 이 있는데 `needsAuth` 가 없는 형태도 게스트로 취급**하세요(fail-closed). 로그인 이후 처리는 3.3 의 "게스트 → 회원 전환" 을 따르세요.
 > **`editCode` 형식:** `EDIT-XXXXXXXX` = 접두 `EDIT-` + 세션ID 앞 8자 대문자(`EDIT-${id.substring(0,8).toUpperCase()}`). 순수 8자리 숫자가 아닙니다.
-> **`editor.pricingChange` (D-3, 2026-07-06 additive):** 편집 중 페이지 추가/삭제로 총 페이지 수가 바뀌면 ~300ms 디바운스로 발신됩니다. 가격 계산 주체는 **호스트**(storige 는 가격을 계산하지 않음) — `pageCount`(물리 페이지, 포토북 내지 펼침면 ×2)와 `pricing` 메타로 장바구니 표시가를 갱신하세요. **발신 조건(보수 기본):** 템플릿셋에 `pricing` 이 설정된 경우 + 회원 세션만(게스트 미발신) + 에디터 초기화/세션 복원 완료 후. `spineWidthMm`(2026-09-28 additive)은 발신 시점의 적용 책등으로, 쪽수 변경 직후 책등 재계산(디바운스+API)이 끝나기 전이면 **직전 값**일 수 있습니다 — 주문에 기록할 최종값은 `editor.complete` 의 `spineWidthMm` 를 쓰세요. `coverType` 은 템플릿셋에 커버 종류 코드(string, 확장 가능 — `hardcover_wrap`/`softcover_variable_spine`/`ready_made` 시드)가 설정된 경우에만 동봉. 미지 이벤트를 무시하는 기존 수신부는 영향 없음(additive).
+> **`editor.pricingChange` (D-3, 2026-07-06 additive):** 편집 중 페이지 추가/삭제로 총 페이지 수가 바뀌면 ~300ms 디바운스로 발신됩니다. 가격 계산 주체는 **호스트**(storige 는 가격을 계산하지 않음) — `pageCount`(물리 페이지, 포토북 내지 펼침면 ×2)와 `pricing` 메타로 장바구니 표시가를 갱신하세요. **발신 조건(보수 기본):** 템플릿셋에 `pricing` 이 설정된 경우 + 회원 세션만(게스트 미발신) + 에디터 초기화/세션 복원 완료 후. `spineWidthMm`(2026-09-28 additive): 쪽수 변경 뒤 책등 재계산이 끝나 값이 바뀌면 **같은 형태의 `editor.pricingChange` 가 한 번 더**(약 300ms 뒤) 발신되어 확정값을 싣습니다 — 같은 `pageCount` 로 두 번 연속 올 수 있으니 **가장 최근 이벤트를 권위값**으로 쓰세요(페이지 변경당 추가 발신은 최대 1회, 값이 같으면 미발신). 주문에 기록할 최종값은 여전히 `editor.complete` 의 `spineWidthMm` 입니다. `coverType` 은 템플릿셋에 커버 종류 코드(string, 확장 가능 — `hardcover_wrap`/`softcover_variable_spine`/`ready_made` 시드)가 설정된 경우에만 동봉. 미지 이벤트를 무시하는 기존 수신부는 영향 없음(additive).
 
 > **내지 PDF 첨부 + `editor.contentPdfAttached` (2026-08-13 additive):** 고객이 직접 만든 내지 PDF 를
 > 편집기 안에서 첨부하면(우측 상단 "📎 내지 PDF 첨부"), 검증·도련 자동변환을 거쳐 **각 내지 페이지에
@@ -1483,7 +1485,7 @@ book.finalization.completed | book.finalization.failed
 
 **② 워커 기대 책등** — `spineWidthMm`(0 이상 숫자) → 없으면 `paperThickness`+`pages` 폴백 → 둘 다 없으면 "기대치 없음".
 
-**③ 표지 크기 검사**
+**③ 표지 크기 검사** — `orderOptions.coverLayout: 'separate'` 이면 아래 표보다 우선해 단일 판형 검사(허용값 `'spread'`·`'separate'`, 그 밖의 값·미전송 = `'spread'` 취급)
 
 | 조건 | 검사 |
 |---|---|
@@ -1498,7 +1500,7 @@ book.finalization.completed | book.finalization.failed
 | 무선·양장 펼침 (책등 가변) | `binding` + `paperType` + `pages` (+ 보낸 `spineWidthMm` 는 서버가 대조·교체) |
 | 운영자 고정 책등 | `binding` + `spineWidthMm` (**paperType 미전송** → 서버가 덮지 않음) |
 | 스프링·중철 펼침 1쪽 | `spiral`/`saddle` + `spineWidthMm: 0` → 폭 `2W + 도련×2` |
-| 앞·뒤 분리 2쪽 | `spineWidthMm`·`paperType`·`paperThickness` **모두 미전송**. ⚠️ `perfect`·`hardcover` 분리 표지는 크기 검사가 생략됩니다(단일 판형 검사 아님) |
+| 앞·뒤 분리 2쪽 | **`coverLayout: 'separate'`**(2026-09-28 신설) → 제본과 무관하게 **단일 판형**(`W×H`, 도련 포함 `(W+2·도련)×(H+2·도련)`) 검사. 책등 필드는 보내도 무시되고 서버도 책등을 주입하지 않습니다. ⚠️ 첫 페이지 크기만 검사합니다(기존 단일 판형 검사와 동일). `coverLayout` 미전송 시 종전 규칙(perfect·hardcover 는 크기 검사 생략) |
 
 - **중철 표지 (2026-09-28 변경)**: 사철 쪽수 규칙(4배수·64쪽)은 **내지에만** 적용합니다. 종전엔 표지에도 적용돼 1쪽 펼침 중철 표지가 `SADDLE_STITCH_INVALID` 로 막혔습니다. 표지 쪽수는 1·2·4쪽 규칙이 소유합니다.
 - **합성 `spineWidth`** 는 결과에 기록만 되고 판형 계산에 쓰이지 않습니다(0 허용).
