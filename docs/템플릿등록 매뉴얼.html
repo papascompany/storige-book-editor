@@ -432,6 +432,8 @@
         <tr><th>필드</th><th>값</th></tr>
         <tr><td>내지 추가 허용 <code>canAddPage</code></td><td>켜면 고객 PDF/페이지 수에 따라 내지 자동 확장</td></tr>
         <tr><td>최소/최대 페이지</td><td><code>canAddPage</code> 켤 때 노출. 페이지 수 범위(<code>pageCountRange</code>)</td></tr>
+        <tr><td>페이지 증감 단위 <code>pageStep</code></td><td><code>canAddPage</code> 켤 때 노출(2026-09-28). 내지 쪽수가 이 값의 배수여야 한다(예: 2 = 짝수만). 편집기가 이 단위로 추가/삭제하고 배수가 아니면 편집완료를 막는다. 비우면 제약 없음</td></tr>
+        <tr><td>첨부 PDF 빈 페이지 채움 <code>padToPageStep</code></td><td><code>canAddPage</code> 켤 때 노출(2026-09-28, 기본 꺼짐). 켜면 첨부 내지 PDF 쪽수가 증감 단위 배수가 아닐 때 첨부 시점에 끝에 빈 페이지를 붙여 배수로 맞춘다(예: 5p·단위 4 → 8p, 원본 보존). 증감 단위가 비어 있으면 무시</td></tr>
         <tr><td>면지 사용 <code>useEndpaper</code></td><td>표지 안쪽(앞면지)/뒤표지 안쪽(뒷면지) 빈 페이지 추가</td></tr>
         <tr><td>앞/뒷면지 개수</td><td>각 0~6장</td></tr>
         <tr><td>앞/뒷면지 편집 가능</td><td>면지를 고객이 편집할 수 있는지</td></tr>

@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>첨부 PDF 빈 페이지 채움</title>
+<style>
+:root {
+  --bg: #f7f7f5; --panel: #ffffff; --ink: #1d1f23; --muted: #5d6470; --line: #dcdfe4;
+  --accent: #2b5fd9; --accent-soft: #e8efff; --ok: #1f7a4d; --ok-soft: #e4f4ec;
+  --warn: #9a5b00; --warn-soft: #fff3dc; --bad: #b3261e; --bad-soft: #fde8e6;
+  --page: #ffffff; --page-ink: #2b5fd9; --blank: #f1f3f6; --blank-line: #aab2bf;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #15171b; --panel: #1e2126; --ink: #e8eaee; --muted: #a0a7b3; --line: #343942;
+    --accent: #7ea2ff; --accent-soft: #232e48; --ok: #6fd3a0; --ok-soft: #1b3228;
+    --warn: #f0b85a; --warn-soft: #3a2e17; --bad: #ff8a80; --bad-soft: #3d1f1d;
+    --page: #262a31; --page-ink: #7ea2ff; --blank: #1a1d22; --blank-line: #5b6370;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #15171b; --panel: #1e2126; --ink: #e8eaee; --muted: #a0a7b3; --line: #343942;
+  --accent: #7ea2ff; --accent-soft: #232e48; --ok: #6fd3a0; --ok-soft: #1b3228;
+  --warn: #f0b85a; --warn-soft: #3a2e17; --bad: #ff8a80; --bad-soft: #3d1f1d;
+  --page: #262a31; --page-ink: #7ea2ff; --blank: #1a1d22; --blank-line: #5b6370;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", "Segoe UI", sans-serif; }
+main { max-width: 1040px; margin: 0 auto; padding: 32px 16px 64px; }
+h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: -0.01em; }
+h2 { font-size: 18px; margin: 40px 0 12px; }
+p { margin: 8px 0; }
+.lead { color: var(--muted); margin: 0 0 20px; }
+code { font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--accent-soft); color: var(--ink); padding: 1px 5px; border-radius: 4px; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
+.stat { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
+.stat .k { font-size: 12px; color: var(--muted); }
+.stat .v { font-size: 18px; font-weight: 650; margin-top: 2px; }
+.stat .s { font-size: 12px; color: var(--muted); }
+.pages { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; }
+.pg { width: 46px; height: 62px; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; }
+.pg.src { background: var(--page); border: 1.5px solid var(--page-ink); color: var(--page-ink); }
+.pg.pad { background: var(--blank); border: 1.5px dashed var(--blank-line); color: var(--muted); }
+.arrow { font-size: 22px; color: var(--muted); padding: 0 6px; align-self: center; }
+.legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 13px; color: var(--muted); margin-top: 10px; }
+.legend span::before { content: ""; display: inline-block; width: 12px; height: 16px; border-radius: 2px; margin-right: 6px; vertical-align: -3px; }
+.legend .l-src::before { background: var(--page); border: 1.5px solid var(--page-ink); }
+.legend .l-pad::before { background: var(--blank); border: 1.5px dashed var(--blank-line); }
+.flow { overflow-x: auto; }
+.flow svg { display: block; min-width: 760px; width: 100%; height: auto; }
+.flow .box { fill: var(--panel); stroke: var(--line); stroke-width: 1.2; }
+.flow .box.hi { fill: var(--accent-soft); stroke: var(--accent); }
+.flow .box.ok { fill: var(--ok-soft); stroke: var(--ok); }
+.flow .box.bad { fill: var(--bad-soft); stroke: var(--bad); }
+.flow text { fill: var(--ink); font-size: 13px; }
+.flow .sub { fill: var(--muted); font-size: 11.5px; }
+.flow .edge { stroke: var(--muted); stroke-width: 1.4; fill: none; }
+.flow .lbl { fill: var(--muted); font-size: 11.5px; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-size: 12px; color: var(--muted); font-weight: 600; }
+.tbl { overflow-x: auto; }
+.tag { display: inline-block; font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 999px; }
+.t-ok { background: var(--ok-soft); color: var(--ok); }
+.t-no { background: var(--blank); color: var(--muted); }
+.t-warn { background: var(--warn-soft); color: var(--warn); }
+.t-bad { background: var(--bad-soft); color: var(--bad); }
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 720px) { .cols { grid-template-columns: 1fr; } }
+.choice h3 { margin: 0 0 6px; font-size: 15px; }
+.choice.win { border-color: var(--ok); }
+.choice ul, .steps { margin: 6px 0 0; padding-left: 20px; }
+.choice li, .steps li { margin: 4px 0; }
+.note { background: var(--warn-soft); border-left: 3px solid var(--warn); padding: 10px 14px; border-radius: 6px; font-size: 14px; }
+footer { margin-top: 40px; font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <h1>첨부 PDF 빈 페이지 채움 <code>padToPageStep</code></h1>
+  <p class="lead">고객이 첨부한 내지 PDF 쪽수가 상품의 증감 단위(<code>pageStep</code>) 배수가 아니면, 첨부 시점에 끝에 빈 페이지를 붙여 배수로 맞춥니다. 템플릿셋별로 켜는 설정이며 기본값은 꺼짐입니다.</p>
+
+  <div class="stats">
+    <div class="stat"><div class="k">운영 배포</div><div class="v">2026-09-28</div><div class="s">api 10:37Z · 편집기·admin Vercel</div></div>
+    <div class="stat"><div class="k">기본값</div><div class="v">꺼짐</div><div class="s">운영 49세트 전부 false</div></div>
+    <div class="stat"><div class="k">worker 변경</div><div class="v">없음</div><div class="s">기존 fix-pagecount 재사용</div></div>
+    <div class="stat"><div class="k">파트너 코드 변경</div><div class="v">불필요</div><div class="s">bookmoa·printy ACK</div></div>
+  </div>
+
+  <h2>무엇이 바뀌나 — 5쪽 PDF, 증감 단위 4</h2>
+  <div class="panel">
+    <div class="pages" aria-label="원본 5쪽에 빈 페이지 3쪽을 붙여 8쪽">
+      <div class="pg src">1</div><div class="pg src">2</div><div class="pg src">3</div><div class="pg src">4</div><div class="pg src">5</div>
+      <div class="arrow">→</div>
+      <div class="pg src">1</div><div class="pg src">2</div><div class="pg src">3</div><div class="pg src">4</div><div class="pg src">5</div>
+      <div class="pg pad">+</div><div class="pg pad">+</div><div class="pg pad">+</div>
+    </div>
+    <div class="legend"><span class="l-src">첨부 원본 페이지</span><span class="l-pad">자동으로 붙인 빈 페이지 (첫 페이지와 같은 크기)</span></div>
+    <p>목표 쪽수 = <code>ceil(원본 쪽수 ÷ pageStep) × pageStep</code>. 원본 파일은 그대로 두고 채움본을 새 파일로 만듭니다.</p>
+  </div>
+
+  <h2>처리 흐름</h2>
+  <div class="panel flow">
+    <svg viewBox="0 0 980 330" role="img" aria-label="첨부 흐름: 업로드, 검증, 도련 변환, 채움 판정, 서버 채움, 첨부, 파트너 합성">
+      <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="currentColor" style="color: var(--muted)"/></marker></defs>
+      <g>
+        <rect class="box" x="10" y="20" width="140" height="62" rx="8"/><text x="80" y="47" text-anchor="middle">① PDF 업로드</text><text class="sub" x="80" y="66" text-anchor="middle">첨부 모달</text>
+        <rect class="box" x="180" y="20" width="140" height="62" rx="8"/><text x="250" y="47" text-anchor="middle">② 검증</text><text class="sub" x="250" y="66" text-anchor="middle">쪽수·판형 확인</text>
+        <rect class="box" x="350" y="20" width="140" height="62" rx="8"/><text x="420" y="47" text-anchor="middle">③ 도련 변환</text><text class="sub" x="420" y="66" text-anchor="middle">필요할 때만 (기존)</text>
+        <rect class="box hi" x="520" y="20" width="170" height="62" rx="8"/><text x="605" y="47" text-anchor="middle">④ 채움 판정</text><text class="sub" x="605" y="66" text-anchor="middle">설정 켬 · 배수 아님?</text>
+        <rect class="box hi" x="520" y="140" width="170" height="70" rx="8"/><text x="605" y="167" text-anchor="middle">⑤ 서버 채움</text><text class="sub" x="605" y="185" text-anchor="middle">fix-pagecount/attach</text><text class="sub" x="605" y="201" text-anchor="middle">worker padToMultiple</text>
+        <rect class="box ok" x="780" y="20" width="190" height="62" rx="8"/><text x="875" y="47" text-anchor="middle">⑥ 세션에 첨부</text><text class="sub" x="875" y="66" text-anchor="middle">채움본 id · 채움 후 쪽수</text>
+        <rect class="box ok" x="780" y="140" width="190" height="70" rx="8"/><text x="875" y="167" text-anchor="middle">⑦ 첨부 이벤트</text><text class="sub" x="875" y="185" text-anchor="middle">editor.contentPdfAttached</text><text class="sub" x="875" y="201" text-anchor="middle">파트너가 id 보관</text>
+        <rect class="box ok" x="780" y="250" width="190" height="62" rx="8"/><text x="875" y="277" text-anchor="middle">⑧ 합성·인쇄</text><text class="sub" x="875" y="296" text-anchor="middle">채움본이 내지로</text>
+        <rect class="box bad" x="330" y="250" width="190" height="62" rx="8"/><text x="425" y="277" text-anchor="middle">첨부 중단</text><text class="sub" x="425" y="296" text-anchor="middle">원본으로 첨부하지 않음</text>
+      </g>
+      <g style="color: var(--muted)">
+        <path class="edge" d="M150,51 H178" marker-end="url(#ah)"/>
+        <path class="edge" d="M320,51 H348" marker-end="url(#ah)"/>
+        <path class="edge" d="M490,51 H518" marker-end="url(#ah)"/>
+        <path class="edge" d="M690,51 H778" marker-end="url(#ah)"/><text class="lbl" x="734" y="42" text-anchor="middle">해당 없음</text>
+        <path class="edge" d="M605,82 V138" marker-end="url(#ah)"/><text class="lbl" x="612" y="115">필요</text>
+        <path class="edge" d="M690,175 H735 V51 H778" marker-end="url(#ah)"/><text class="lbl" x="742" y="120">성공</text>
+        <path class="edge" d="M560,210 V281 H522" marker-end="url(#ah)"/><text class="lbl" x="566" y="250">실패·시간 초과</text>
+        <path class="edge" d="M875,82 V138" marker-end="url(#ah)"/>
+        <path class="edge" d="M875,210 V248" marker-end="url(#ah)"/>
+      </g>
+    </svg>
+  </div>
+
+  <h2>언제 채우나</h2>
+  <div class="panel tbl">
+    <table>
+      <tr><th>채움 설정</th><th>증감 단위</th><th>첨부 PDF</th><th>결과</th></tr>
+      <tr><td><span class="tag t-ok">켬</span></td><td>4</td><td>5쪽</td><td>빈 페이지 3쪽 → <b>8쪽</b>으로 첨부</td></tr>
+      <tr><td><span class="tag t-ok">켬</span></td><td>2</td><td>15쪽</td><td>빈 페이지 1쪽 → <b>16쪽</b>으로 첨부</td></tr>
+      <tr><td><span class="tag t-ok">켬</span></td><td>4</td><td>8쪽</td><td>이미 배수 — 그대로 첨부</td></tr>
+      <tr><td><span class="tag t-ok">켬</span></td><td>비어 있음</td><td>5쪽</td><td>무시 — 그대로 첨부</td></tr>
+      <tr><td><span class="tag t-no">끔</span> (기본)</td><td>4</td><td>5쪽</td><td>종전과 같음 — 그대로 첨부, 배수가 아니면 편집완료가 막힘</td></tr>
+    </table>
+  </div>
+
+  <h2>왜 첨부 시점인가</h2>
+  <div class="cols">
+    <div class="panel choice">
+      <h3>완료 시점에 파일 교체 <span class="tag t-bad">채택 안 함</span></h3>
+      <ul>
+        <li>파트너는 첨부 이벤트에서 받은 <code>contentPdfFileId</code>를 보관해 합성에 직접 넘깁니다. 완료 후 세션 파일을 바꿔도 파트너가 가진 id는 원본 그대로입니다.</li>
+        <li>완료 직후 합성 요청과 파일 교체 사이에 경합이 생깁니다.</li>
+      </ul>
+    </div>
+    <div class="panel choice win">
+      <h3>첨부 시점에 채움본 생성 <span class="tag t-ok">채택</span></h3>
+      <ul>
+        <li>세션, 첨부 이벤트, 편집 화면 내지 수, 합성이 처음부터 같은 파일과 쪽수를 봅니다.</li>
+        <li>worker의 기존 <code>fix-pagecount</code>를 재사용해 worker 수정·배포가 없습니다.</li>
+        <li>원본 파일은 보존되고, 세션 검증 결과에 <code>pagePadded</code> 마커가 남습니다.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>관리자 설정 방법</h2>
+  <div class="panel">
+    <ol class="steps">
+      <li>admin → 템플릿셋 편집 → <b>탭 2 · 페이지</b>에서 <b>내지 추가 허용</b>을 켭니다.</li>
+      <li><b>페이지 증감 단위</b>에 배수를 입력합니다 (예: 2 = 짝수만, 4 = 4쪽 단위).</li>
+      <li><b>첨부 PDF 빈 페이지 채움</b> 스위치를 <b>채움</b>으로 바꾸고 저장합니다.</li>
+    </ol>
+    <p class="note">증감 단위를 비워 두면 채움 스위치는 동작하지 않습니다. 설정을 켜기 전에 이미 첨부된 세션에는 적용되지 않습니다.</p>
+  </div>
+
+  <h2>변경된 구성 요소</h2>
+  <div class="panel tbl">
+    <table>
+      <tr><th>영역</th><th>변경</th></tr>
+      <tr><td>DB</td><td><code>template_sets.pad_to_page_step BOOLEAN NOT NULL DEFAULT FALSE</code> (additive, <code>migrations/20260928_add_template_set_pad_to_page_step.sql</code>)</td></tr>
+      <tr><td>API</td><td>엔티티·DTO·복사 유지 · <code>POST /worker-jobs/fix-pagecount/attach</code> (@Public, 배수는 템플릿셋에서 서버가 산출, 미설정 400 <code>PAGE_PAD_NOT_ENABLED</code>) · CONTRACT_FREEZE 등재</td></tr>
+      <tr><td>편집기</td><td>첨부 모달: 도련 변환 뒤 채움 → 채움본으로 첨부, 실패 시 중단 · 안내 배너</td></tr>
+      <tr><td>admin</td><td>탭 2에 "첨부 PDF 빈 페이지 채움" 스위치</td></tr>
+      <tr><td>worker</td><td><span class="tag t-no">변경 없음</span> 기존 <code>padToMultiple</code> 사용</td></tr>
+      <tr><td>파트너</td><td>설정이 켜진 상품만: 첨부 이벤트의 id = 채움본, 쪽수 = 채움 후 쪽수. 이벤트 형태 불변</td></tr>
+    </table>
+  </div>
+
+  <h2>검증과 롤백</h2>
+  <div class="cols">
+    <div class="panel">
+      <h3 style="margin:0 0 6px;font-size:15px">검증</h3>
+      <ul class="steps">
+        <li>api 83 스위트 · 1174 통과 (기준 1166 + 8)</li>
+        <li>편집기 74 파일 · 883 통과, tsc 0 (api·편집기·admin)</li>
+        <li>채움 게이트를 끄면 흐름 테스트 2건 실패 확인</li>
+        <li>운영: health ok · 새 라우트 응답 · 공개 조회에 <code>padToPageStep:false</code></li>
+      </ul>
+    </div>
+    <div class="panel">
+      <h3 style="margin:0 0 6px;font-size:15px">롤백</h3>
+      <ul class="steps">
+        <li>api 이미지 <code>storige-api:rollback-pre-padstep</code></li>
+        <li>DB 백업 <code>~/backup-template_sets-pre-padstep-20260928.sql</code> (컬럼은 남겨도 무해)</li>
+        <li>편집기·admin: Vercel 이전 배포 promote</li>
+        <li>가장 빠른 차단: 해당 템플릿셋의 채움 스위치를 끔</li>
+      </ul>
+    </div>
+  </div>
+
+  <footer>Storige · 커밋 aa93216 · 상세: docs/PLATFORM_INTEGRATION_GUIDE.md §3.3 · docs/CONTRACT_FREEZE.md · 템플릿등록 매뉴얼 탭 2</footer>
+</main>
+</body>
+</html>
