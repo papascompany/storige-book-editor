@@ -16,6 +16,7 @@ import { useEffect, useRef, useState } from 'react'
 import { apiClient, toUserMessage } from '../../api/client'
 import { editSessionsApi } from '../../api/edit-sessions'
 import { useGuestStore } from '../../stores/useGuestStore'
+import { useEditorStore } from '../../stores/useEditorStore'
 import { uploadViaPresigned, PresignedNotConfiguredError } from '../../api/presigned-upload'
 
 interface Issue {
@@ -41,6 +42,17 @@ export interface ValidationResult {
     sourceFileId: string
     fixedFileId: string
     targetSize: { width: number; height: number }
+  }
+  /**
+   * 2026-09-28(additive): 빈 페이지 배수 채움 마커 — 템플릿셋 padToPageStep 으로 첨부 PDF 끝에
+   * 빈 페이지를 붙인 경우. pageCount 는 채움 후 쪽수이고, 첨부 파일(contentPdfFileId)은 채움본이다.
+   */
+  pagePadded?: {
+    sourceFileId: string
+    paddedFileId: string
+    originalPages: number
+    paddedPages: number
+    pageStep: number
   }
 }
 
@@ -79,6 +91,21 @@ export function shouldRunBleedFix(result: ValidationResult): boolean {
     result.status === 'completed' &&
     (result.warnings ?? []).some((w) => w.code === 'BLEED_MISSING')
   )
+}
+
+/**
+ * 2026-09-28: 첨부 PDF 빈 페이지 배수 채움 목표 쪽수. 채움이 필요 없으면 null.
+ * 템플릿셋 padToPageStep 이 켜져 있고 pageStep(>=2) 배수가 아닐 때만 ceil(n/step)*step.
+ * (실 채움은 서버가 templateSet 으로 같은 규칙을 권위 적용 — 여기 값은 게이트·표기용)
+ */
+export function computePagePadTarget(
+  pages: number | undefined,
+  pageStep: number | null | undefined,
+  padToPageStep: boolean | undefined,
+): number | null {
+  if (!padToPageStep || !pageStep || pageStep < 2) return null
+  if (!pages || pages <= 0 || pages % pageStep === 0) return null
+  return Math.ceil(pages / pageStep) * pageStep
 }
 
 /** T3 P1-1/P1-2/P2-5(2026-07-13): fix-bleed 잡 폴링 결과 — runBleedFix 가 상태/문구로 매핑 */
@@ -224,6 +251,8 @@ export function ContentPdfAttachModal({
   const [guideRendering, setGuideRendering] = useState(false)
   const [uploadPct, setUploadPct] = useState(0)
   const [bleedFix, setBleedFix] = useState<BleedFixState | null>(null)
+  /** 2026-09-28: 빈 페이지 배수 채움 진행 상태(원본 쪽수 → 목표 쪽수) */
+  const [pagePad, setPagePad] = useState<{ from: number; to: number; status: 'running' | 'done' | 'failed' } | null>(null)
 
   /**
    * P1-1(2026-07-13 리뷰): 모달 조기 닫힘 → 유령 첨부 방지.
@@ -250,6 +279,7 @@ export function ContentPdfAttachModal({
     setGuideRendering(false)
     setUploadPct(0)
     setBleedFix(null)
+    setPagePad(null)
   }
 
   const handleClose = () => {
@@ -343,6 +373,44 @@ export function ContentPdfAttachModal({
       console.error('[ContentPdfAttachModal] fix-bleed', err)
       setBleedFix((prev) => (prev ? { ...prev, status: 'failed' } : prev))
       setError(toUserMessage(err, '도련 자동 변환에 실패했습니다.'))
+      return null
+    }
+  }
+
+  /**
+   * 2026-09-28: 첨부 PDF 빈 페이지 배수 채움 — fix-pagecount/attach 잡(배수는 서버가 templateSet 으로
+   * 권위 산출) 폴링 후 채움본 fileId 반환. 실패·타임아웃이면 null(원본으로 첨부하지 않고 중단 —
+   * 설정된 상품에서 배수가 아닌 인쇄 내지 유입 방지, fix-bleed 와 같은 정책).
+   */
+  const runPagePad = async (sourceFileId: string, tsId: string, from: number, to: number): Promise<string | null> => {
+    setPagePad({ from, to, status: 'running' })
+    try {
+      const res = await apiClient.post<{ id: string }>('/worker-jobs/fix-pagecount/attach', {
+        fileId: sourceFileId,
+        templateSetId: tsId,
+      })
+      const outcome = await pollBleedFixJob(
+        async () =>
+          (await apiClient.get<{ status: string; outputFileId?: string | null }>(`/worker-jobs/${res.data.id}`)).data,
+        { maxAttempts: computeBleedFixPollLimit(file?.size ?? 0), isCancelled: () => cancelledRef.current },
+      )
+      if (outcome.kind === 'cancelled') return null
+      if (outcome.kind === 'completed') {
+        setPagePad({ from, to, status: 'done' })
+        return outcome.outputFileId
+      }
+      setPagePad({ from, to, status: 'failed' })
+      setError(
+        outcome.kind === 'timeout'
+          ? '빈 페이지 채움 시간 초과. 잠시 후 다시 시도해주세요.'
+          : '빈 페이지 채움에 실패했습니다. 다시 시도해주세요.',
+      )
+      return null
+    } catch (err) {
+      if (cancelledRef.current) return null
+      console.error('[ContentPdfAttachModal] fix-pagecount/attach', err)
+      setPagePad({ from, to, status: 'failed' })
+      setError(toUserMessage(err, '빈 페이지 채움에 실패했습니다.'))
       return null
     }
   }
@@ -501,6 +569,28 @@ export function ContentPdfAttachModal({
         setUploadedFileId(fixedFileId)
       }
 
+      // 2026-09-28: 템플릿셋 padToPageStep — 첨부 PDF 쪽수가 pageStep 배수가 아니면 끝에 빈 페이지를
+      // 붙인 채움본으로 첨부한다. 첨부 시점에 해야 세션 contentPdfFileId·첨부 이벤트(호스트가 보관해
+      // 합성에 넘기는 id)·편집 화면 내지 수가 처음부터 같은 파일/쪽수를 본다.
+      {
+        const { pageStep, padToPageStep } = useEditorStore.getState()
+        const padTo = computePagePadTarget(result.pageCount, pageStep, padToPageStep)
+        if (padTo != null && templateSetId && pageStep) {
+          const from = result.pageCount as number
+          const paddedFileId = await runPagePad(effectiveFileId, templateSetId, from, padTo)
+          if (cancelledRef.current) return
+          if (!paddedFileId) return // 오류 표기는 runPagePad 가 수행
+          result = {
+            ...result,
+            pageCount: padTo,
+            pagePadded: { sourceFileId: effectiveFileId, paddedFileId, originalPages: from, paddedPages: padTo, pageStep },
+          }
+          effectiveFileId = paddedFileId
+          setValidationResult(result)
+          setUploadedFileId(paddedFileId)
+        }
+      }
+
       // 결정 3-2: PDF 페이지수 < 내지 수 → 자동확장 선택 모달
       const pdfPages = result.pageCount ?? 0
       if (pdfPages > currentContentPageCount && canAddPage) {
@@ -646,6 +736,25 @@ export function ContentPdfAttachModal({
             자동으로 도련을 넣어 <b>{bleedFix.target.width}×{bleedFix.target.height}mm</b>로 변환합니다.
             {bleedFix.status === 'converting' ? ' (변환 중…)' : ' (변환 완료)'}
           </div>
+        )}
+
+        {/* 2026-09-28: 빈 페이지 배수 채움 안내 — 채움부터 첨부 완료(모달 닫힘)까지 유지 */}
+        {pagePad && pagePad.status !== 'failed' && (
+          <div style={{ background: '#e8f5e9', padding: 12, borderRadius: 4, marginBottom: 12, color: '#2e7d32', fontSize: 14 }}>
+            PDF 가 <b>{pagePad.from}페이지</b>입니다. 이 상품은 페이지 수를 맞춰야 해서 끝에 빈 페이지를 붙여{' '}
+            <b>{pagePad.to}페이지</b>로 인쇄합니다.
+            {pagePad.status === 'running' ? ' (처리 중…)' : ' (완료)'}
+          </div>
+        )}
+
+        {pagePad?.status === 'failed' && (
+          <>
+            <div style={{ color: '#d32f2f', marginTop: 12, fontWeight: 600 }}>빈 페이지 채움 실패 — 첨부를 중단했습니다.</div>
+            {error && <div style={{ color: '#d32f2f', fontSize: 13 }}>{error}</div>}
+            <div style={{ marginTop: 16, textAlign: 'right' }}>
+              <button onClick={reset}>다시 시도</button>
+            </div>
+          </>
         )}
 
         {!validationResult && (

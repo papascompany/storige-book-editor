@@ -34,6 +34,7 @@ import { CheckMergeableDto, CheckMergeableResponseDto } from './dto/check-mergea
 import { CreateComposeMixedJobDto } from './dto/create-compose-mixed-job.dto';
 import { CreateRenderPagesJobDto } from './dto/create-render-pages-job.dto';
 import { CreateBleedFixJobDto } from './dto/create-bleed-fix-job.dto';
+import { CreateAttachPagePadJobDto } from './dto/create-attach-page-pad-job.dto';
 import { WorkerJob } from './entities/worker-job.entity';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -192,6 +193,23 @@ export class WorkerJobsController {
       ...dto,
       siteId: site?.siteId, // Phase C — 자동 사이트 식별
     });
+  }
+
+  /**
+   * 첨부 내지 PDF 빈 페이지 배수 채움 (2026-09-28) — 편집기 첨부 모달(게스트 포함) 호출.
+   * 배수는 서버가 templateSet(padToPageStep·pageStep)으로 권위 산출 — fix-bleed 와 같은 @Public 계약.
+   * 폴링: GET /worker-jobs/:id → COMPLETED 시 outputFileId(채움본 새 fileId). 원본 보존.
+   */
+  @Post('fix-pagecount/attach')
+  @Public()
+  @ApiOperation({ summary: '첨부 내지 PDF 를 pageStep 배수로 빈 페이지 채움 (템플릿셋 opt-in)' })
+  @ApiResponse({ status: 201, description: '잡 생성 성공', type: WorkerJob })
+  @ApiResponse({ status: 400, description: '템플릿셋 미존재 / 채움 미설정 / 비PDF' })
+  @ApiResponse({ status: 404, description: '파일 미존재' })
+  async createAttachPagePadJob(
+    @Body() dto: CreateAttachPagePadJobDto,
+  ): Promise<WorkerJob> {
+    return await this.workerJobsService.createAttachPagePadJob(dto);
   }
 
   @Post('synthesize')

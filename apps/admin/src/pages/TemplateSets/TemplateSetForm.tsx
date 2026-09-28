@@ -376,6 +376,8 @@ export const TemplateSetForm = () => {
         pageCountMax: templateSet.pageCountRange?.[templateSet.pageCountRange.length - 1],
         // S8 내지 증감 단위 (null/미설정 = 비움 = 제약 없음)
         pageStep: templateSet.pageStep ?? undefined,
+        // 첨부 내지 PDF 빈 페이지 배수 채움 (opt-in)
+        padToPageStep: templateSet.padToPageStep === true,
         customizeMenus,
         enabledMenus: menuList,
         // 인쇄 워크플로우 v1 Phase 3 (2026-05-19) — 면지/표지편집/레더커버
@@ -545,6 +547,8 @@ export const TemplateSetForm = () => {
           ? Math.max(1, Math.floor(Number(values.pageStep)))
           : null
         : undefined,
+      // 첨부 내지 PDF 빈 페이지 배수 채움 — 내지 추가 불가 셋은 미전송(기존 값 유지).
+      padToPageStep: values.canAddPage ? values.padToPageStep === true : undefined,
       templates: templates.map(({ templateId, required }) => ({
         templateId,
         required,
@@ -889,6 +893,15 @@ export const TemplateSetForm = () => {
                               tooltip="내지 페이지 수가 이 값의 배수여야 합니다(예: 2 = 짝수만). 에디터가 이 단위로 추가/삭제하고, 배수가 아니면 편집완료를 막습니다. 비우면 제약 없음."
                             >
                               <InputNumber min={1} max={500} precision={0} placeholder="제약 없음" />
+                            </Form.Item>
+
+                            <Form.Item
+                              name="padToPageStep"
+                              label="첨부 PDF 빈 페이지 채움"
+                              valuePropName="checked"
+                              tooltip="고객이 첨부한 내지 PDF(표시전용) 쪽수가 증감 단위의 배수가 아니면, 인쇄 내지 끝에 빈 페이지를 붙여 배수로 맞춥니다. 증감 단위가 비어 있으면 적용되지 않습니다."
+                            >
+                              <Switch checkedChildren="채움" unCheckedChildren="안 함" />
                             </Form.Item>
                           </Space>
                         )

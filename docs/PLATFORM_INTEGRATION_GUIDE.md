@@ -874,6 +874,11 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 > 첨부한 PDF 는 세션의 `contentPdfFileId` 에 저장됩니다. 합성 시에는 이 fileId 를 `compose-mixed` 의
 > `contentPdfUrl`(`api://<contentPdfFileId>`)로 **호스트가 직접 전달**해야 내지로 들어갑니다 — 세션에서
 > 자동으로 물려받지 않습니다(3.4).
+> **빈 페이지 배수 채움(2026-09-28, 템플릿셋 opt-in `padToPageStep`):** 템플릿셋에 증감 단위(`pageStep`)와
+> 이 설정이 켜져 있으면, 첨부 PDF 쪽수가 배수가 아닐 때 편집기가 **첨부 시점에** 끝에 빈 페이지를 붙인
+> 채움본을 만들어 첨부합니다(원본 파일은 보존). 이때 이 이벤트의 `contentPdfFileId` 는 **채움본**이고
+> `contentPdfPageCount` 는 **채움 후 쪽수**(예: 5p·단위 4 → 8p)입니다 — 받은 값을 그대로 보관·합성에 쓰면
+> 됩니다. 설정이 꺼진 상품은 종전과 같습니다.
 
 `editor.error` code 종류: `AUTH_EXPIRED`, `NETWORK_ERROR`, `SAVE_FAILED`, `INVALID_DATA`, `SESSION_NOT_FOUND`, `TEMPLATE_SET_NOT_FOUND`.
 

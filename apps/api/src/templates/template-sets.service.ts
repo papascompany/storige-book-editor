@@ -106,6 +106,7 @@ export class TemplateSetsService {
       canAddPage: dto.canAddPage ?? true,
       pageCountRange: dto.pageCountRange || [],
       pageStep: dto.pageStep ?? null, // S8 내지 증감 단위 (null=제약 없음)
+      padToPageStep: dto.padToPageStep ?? false, // 첨부 내지 PDF 빈 페이지 배수 채움 (opt-in)
       templates: dto.templates || [],
       editorMode,
       // null = 모든 메뉴 노출(기본). admin 에서 명시적으로 배열을 보내면 화이트리스트로 작동.
@@ -389,6 +390,7 @@ export class TemplateSetsService {
       canAddPage: original.canAddPage,
       pageCountRange: original.pageCountRange,
       pageStep: original.pageStep,
+      padToPageStep: original.padToPageStep,
       templates: original.templates,
       categoryId: original.categoryId,
       isDeleted: false,
@@ -919,6 +921,7 @@ export class TemplateSetsService {
         canAddPage: original.canAddPage,
         pageCountRange: original.pageCountRange,
         pageStep: original.pageStep,
+        padToPageStep: original.padToPageStep,
         templates: newRefs,
         editorMode: original.editorMode,
         enabledMenus: original.enabledMenus,

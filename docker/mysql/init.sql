@@ -165,6 +165,8 @@ CREATE TABLE IF NOT EXISTS template_sets (
   page_count_range JSON NOT NULL,
   -- 내지 페이지 증감 단위 (2026-09-28, S8) — migrations/20260928_add_template_set_page_step.sql 동기
   page_step        INT NULL,
+  -- 첨부 내지 PDF 빈 페이지 배수 채움 (2026-09-28) — migrations/20260928_add_template_set_pad_to_page_step.sql 동기
+  pad_to_page_step BOOLEAN NOT NULL DEFAULT FALSE,
   templates        JSON NOT NULL,
   editor_mode      VARCHAR(20) NOT NULL DEFAULT 'single',
   content_pdf_editable BOOLEAN NOT NULL DEFAULT TRUE,

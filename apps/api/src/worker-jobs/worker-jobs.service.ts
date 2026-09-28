@@ -44,6 +44,7 @@ import { ComposeMixedJobInput } from './dto/create-compose-mixed-job.dto';
 import { CreateSpreadSynthesisJobDto } from './dto/create-spread-synthesis-job.dto';
 import { CreateRenderPagesJobDto } from './dto/create-render-pages-job.dto';
 import { CreateBleedFixJobDto } from './dto/create-bleed-fix-job.dto';
+import { CreateAttachPagePadJobDto } from './dto/create-attach-page-pad-job.dto';
 import {
   CheckMergeableDto,
   CheckMergeableResponseDto,
@@ -631,6 +632,54 @@ export class WorkerJobsService implements OnModuleInit {
     });
 
     return savedJob;
+  }
+
+  /**
+   * 첨부 내지 PDF 빈 페이지 배수 채움 잡 (2026-09-28) — 편집기 첨부 모달 호출(@Public).
+   *
+   * underlay 첨부 PDF 는 최종 인쇄 내지 그 자체이고, 파트너는 첨부 이벤트의 contentPdfFileId 를
+   * 보관해 합성에 직접 넘긴다(PLATFORM_INTEGRATION_GUIDE §3.3 첨부 이벤트). 그래서 채움은 완료 시가
+   * 아니라 **첨부 시점**에 해서 세션·이벤트·합성이 처음부터 같은 파일을 보게 한다.
+   *
+   * 배수는 templateSet 에서 권위 산출: padToPageStep===true 이고 pageStep>=2 일 때만 허용.
+   * 실행은 fix-pagecount 잡(padToMultiple, 워커 무수정)을 재사용 — 결과는 새 fileId(원본 보존),
+   * 원본 파일 site 승계.
+   */
+  async createAttachPagePadJob(dto: CreateAttachPagePadJobDto): Promise<WorkerJob> {
+    let pageStep: number;
+    try {
+      const templateSet = await this.templateSetsService.findOne(dto.templateSetId);
+      if (templateSet.padToPageStep !== true || !Number.isInteger(templateSet.pageStep) || (templateSet.pageStep as number) < 2) {
+        throw new BadRequestException({
+          code: 'PAGE_PAD_NOT_ENABLED',
+          message: '이 템플릿셋은 첨부 PDF 빈 페이지 채움이 설정되어 있지 않습니다.',
+        });
+      }
+      pageStep = templateSet.pageStep as number;
+    } catch (err) {
+      if (err instanceof NotFoundException) {
+        throw new BadRequestException({
+          code: 'TEMPLATE_SET_NOT_FOUND',
+          message: `템플릿셋을 찾을 수 없습니다: ${dto.templateSetId}`,
+        });
+      }
+      throw err;
+    }
+
+    const file = await this.filesService.findById(dto.fileId);
+    if (!(file.mimeType ?? '').toLowerCase().includes('pdf')) {
+      throw new BadRequestException({
+        code: 'FILE_NOT_PDF',
+        message: 'PDF 파일만 빈 페이지 채움이 가능합니다.',
+        details: { fileId: dto.fileId, mimeType: file.mimeType },
+      });
+    }
+
+    return this.createPageCountFixJob({
+      fileId: dto.fileId,
+      targetMultiple: pageStep,
+      siteId: file.siteId ?? undefined, // 원본 파일 site 승계(게스트 업로드는 null)
+    });
   }
 
   /**

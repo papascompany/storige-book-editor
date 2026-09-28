@@ -135,7 +135,12 @@ Storige 편집기 개발을 이어서 진행합니다. bookmoa·printy 파트너
 - 파트너 파기 계약(합성 산출물·편집 세션 external), 고아 정리 실가동(`FILE_ORPHAN_DRY_RUN`), 고아 판정 (a)안(**현 형태 기각 권고**)
 - 후속 후보(코드)
   - ~~편집기 `SidePanel` pageStep 우회~~ → **해소 확인(09-28)**: S8 리뷰 수정 `2402462` 가 이미 단위 추가/삭제(인접 묶음·스프레드 0번 제외·min/max 가드)를 적용했다. 09-12 문서 §8-20 의 "SidePanel 1장 단위" 한계는 `43104b2` 시점 기록이라 스테일. 회귀 테스트 `SidePanel.pageStep.test.tsx`(7건, 1장 단위로 되돌리면 5건 실패) 추가. `PagePanel.tsx` 는 1장 단위지만 미사용 컴포넌트.
-  - **첨부 PDF(underlay) 쪽수 pageStep 배수 채움** — 오너 요청(09-28): 첨부 PDF 마지막이 배수로 안 맞으면 빈 페이지로 올려 채우고, 템플릿셋 설정으로 켜고 끈다. **설계 확인 대기**: underlay 는 최종 내지 = 첨부 원본 PDF(worker 가 원본 병합·API 임포지션 스킵)이고 완료 `pageCount` 는 캔버스 수 산식이다 → 편집기 캔버스만 채우면 `pageCount`(배수)와 인쇄 PDF(원본 쪽수)가 어긋난다. 실제 빈 페이지는 산출물(worker 합성 또는 완료 시 PDF 생성)에서 붙여야 한다. 진입점 `contentPdfGuide.ts` `ensureUnderlayPages`(로드·첨부·게스트 3경로 공통).
+  - **첨부 PDF(underlay) 쪽수 pageStep 배수 채움** — 오너 결정 A안(서버/worker 가 빈 페이지를 붙이고 원본 보존), **구현 완료·로컬 커밋, 배포 승인 대기**.
+    - 설계 변경 근거(조사): 파트너는 `editor.contentPdfAttached` 의 `contentPdfFileId` 를 보관해 compose-mixed 에 직접 넘긴다(가이드 §3.3) → 완료 시 relink 로는 놓친다. 그래서 **첨부 시점**에 채움본을 만들어 세션·이벤트·합성이 처음부터 같은 파일을 보게 했다. worker 는 기존 fix-pagecount(`padToMultiple`, 첫 페이지 크기 백지) 재사용 → **worker 무수정·무배포**.
+    - 구성: `template_sets.pad_to_page_step BOOLEAN DEFAULT FALSE`(migrations/20260928_add_template_set_pad_to_page_step.sql) · 엔티티/DTO/types/admin 스위치 · `POST /worker-jobs/fix-pagecount/attach`(@Public, 배수는 templateSet 권위 산출, 미설정 400 PAGE_PAD_NOT_ENABLED) · 편집기 첨부 모달이 도련 변환 뒤 채움 → 실패 시 원본 첨부 없이 중단 · 결과 마커 `contentPdfValidationResult.pagePadded`.
+    - 검증: api 83 스위트/1174, editor 74 파일/883, tsc(api·editor·admin) 0. 게이트 무력화 시 흐름 테스트 2건 실패 확인.
+    - 한계: 설정 전에 첨부된 기존 세션은 채우지 않는다. 채움 페이지 크기 = PDF 첫 페이지 크기.
+    - 배포 순서: 운영 DB ALTER → master push(편집기·admin) → 즉시 api 재생성+nginx 재시작. push~api 사이 수 분간 admin 템플릿셋 저장은 400 가능(forbidNonWhitelisted).
   - 펼침면 내지 세트 min/max 가 0 으로 집계되는 결함
   - S7: 스프링 스냅샷의 paperType 선택값화
   - S6: 뒷면 크기 검사

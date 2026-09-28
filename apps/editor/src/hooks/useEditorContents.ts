@@ -1500,6 +1500,7 @@ export function useEditorContents(): UseEditorContentsReturn {
       //     호스트 pageCount 시드로 홀수가 될 수 있다. 산정 기준 = 캔버스 수(완료 payload pageCount 와 동일).
       useEditorStore.setState({
         pageStep: normalizePageStep((templateSet as { pageStep?: unknown }).pageStep),
+        padToPageStep: (templateSet as { padToPageStep?: unknown }).padToPageStep === true,
         pageStepBasis: { isSpreadMode: false, regionScope: null },
       })
       try {
@@ -2012,6 +2013,8 @@ export function useEditorContents(): UseEditorContentsReturn {
         pagesPerCanvas: isSpreadInners ? 2 : 1,
         // S8: 내지 증감 단위(null=제약 없음). 추가/삭제 단위 + 편집완료 배수 가드에 사용.
         pageStep: normalizePageStep((templateSet as { pageStep?: unknown }).pageStep),
+        // 첨부 내지 PDF 빈 페이지 배수 채움(opt-in) — ContentPdfAttachModal 이 소비.
+        padToPageStep: (templateSet as { padToPageStep?: unknown }).padToPageStep === true,
         // S8: 단위 산정 기준 — 완료 가드(pageStepGuard)와 같은 소스(settings.spreadConfig.regionScope).
         pageStepBasis: {
           isSpreadMode: true,

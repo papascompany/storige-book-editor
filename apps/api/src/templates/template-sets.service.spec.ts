@@ -296,6 +296,31 @@ describe('TemplateSetsService', () => {
     });
   });
 
+  describe('padToPageStep (첨부 내지 PDF 빈 페이지 배수 채움)', () => {
+    it('create: 지정값을 매핑하고 미지정은 false(비파괴)', async () => {
+      await service.create({ name: 'Pad', type: TemplateSetType.BOOK, width: 210, height: 297, pageStep: 2, padToPageStep: true });
+      expect(templateSetRepository.create).toHaveBeenLastCalledWith(
+        expect.objectContaining({ pageStep: 2, padToPageStep: true }),
+      );
+      await service.create({ name: 'Legacy', type: TemplateSetType.BOOK, width: 210, height: 297 });
+      expect(templateSetRepository.create).toHaveBeenLastCalledWith(
+        expect.objectContaining({ padToPageStep: false }),
+      );
+    });
+
+    it('copy: padToPageStep 을 복제본에 유지', async () => {
+      (templateSetRepository.findOne as jest.Mock).mockResolvedValueOnce({
+        ...mockTemplateSet,
+        pageStep: 2,
+        padToPageStep: true,
+      });
+      await service.copy('template-set-id');
+      expect(templateSetRepository.create).toHaveBeenLastCalledWith(
+        expect.objectContaining({ pageStep: 2, padToPageStep: true }),
+      );
+    });
+  });
+
   describe('findAll', () => {
     it('should return paginated template sets', async () => {
       const result = await service.findAll({ page: 1, pageSize: 20 });

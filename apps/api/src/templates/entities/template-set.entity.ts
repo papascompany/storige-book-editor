@@ -119,6 +119,15 @@ export class TemplateSet {
   pageStep: number | null;
 
   /**
+   * 첨부 내지 PDF 빈 페이지 채움 (2026-09-28, additive default false=비파괴).
+   * underlay 첨부 PDF 쪽수가 pageStep 배수가 아니면 첨부 시점에 끝에 빈 페이지를 붙인 채움본을
+   * 만들어 첨부한다(POST /worker-jobs/fix-pagecount/attach, 원본 보존).
+   * pageStep 미설정이면 무의미. 마이그레이션: apps/api/migrations/20260928_add_template_set_pad_to_page_step.sql
+   */
+  @Column({ name: 'pad_to_page_step', type: 'boolean', default: false })
+  padToPageStep: boolean;
+
+  /**
    * 템플릿 구성 (순서 포함)
    * TemplateRef[] 형태로 저장
    */

@@ -219,6 +219,15 @@ export class CreateTemplateSetDto {
   pageStep?: number | null;
 
   @ApiPropertyOptional({
+    example: false,
+    description:
+      '첨부 내지 PDF(underlay) 쪽수가 pageStep 배수가 아니면 인쇄 내지 끝에 빈 페이지를 붙여 배수로 올린다(opt-in, 기본 false)',
+  })
+  @IsOptional()
+  @IsBoolean()
+  padToPageStep?: boolean;
+
+  @ApiPropertyOptional({
     type: [TemplateRefDto],
     description: '템플릿 구성 (순서 포함)',
   })
@@ -396,6 +405,15 @@ export class UpdateTemplateSetDto {
   @IsInt()
   @Min(1)
   pageStep?: number | null;
+
+  @ApiPropertyOptional({
+    example: false,
+    description:
+      '첨부 내지 PDF(underlay) 쪽수가 pageStep 배수가 아니면 인쇄 내지 끝에 빈 페이지를 붙여 배수로 올린다(opt-in, 기본 false)',
+  })
+  @IsOptional()
+  @IsBoolean()
+  padToPageStep?: boolean;
 
   @ApiPropertyOptional({
     type: [TemplateRefDto],

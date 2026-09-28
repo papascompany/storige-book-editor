@@ -59,6 +59,12 @@ interface EditorState {
    */
   pageStep: number | null
   /**
+   * 첨부 내지 PDF(underlay) 빈 페이지 배수 채움(templateSet.padToPageStep, 2026-09-28).
+   * true 면 첨부 모달이 PDF 쪽수가 pageStep 배수가 아닐 때 서버(fix-pagecount/attach)로 끝에 빈 페이지를
+   * 붙인 채움본을 만들어 첨부한다. pageStep=null 이면 무의미.
+   */
+  padToPageStep: boolean
+  /**
    * S8: pageStep 산정 기준(스프레드 여부·regionScope). 로더가 pageStep 과 함께 적재한다.
    * 추가/삭제 단위는 pages.length(= allCanvas 1:1)를 완료 가드와 **같은 산식**(pageStepMetric)으로
    * 환산해 계산한다 — 내지 TemplateType(PAGE/SPREAD)에 의존하지 않는다.
@@ -133,6 +139,7 @@ const initialState: EditorState = {
   bindingType: null,
   pagesPerCanvas: 1,
   pageStep: null,
+  padToPageStep: false,
   pageStepBasis: DEFAULT_PAGE_STEP_BASIS,
 }
 

@@ -333,6 +333,11 @@ export interface TemplateSet {
    * (파트너 상품 예: pageStep=2, pageCountRange=[16, 500])
    */
   pageStep?: number | null;
+  /**
+   * 첨부 내지 PDF(underlay) 쪽수가 pageStep 배수가 아니면 첨부 시점에 끝에 빈 페이지를 붙인
+   * 채움본으로 첨부한다(2026-09-28, opt-in, 기본 false). pageStep 미설정이면 무의미.
+   */
+  padToPageStep?: boolean;
   templates: TemplateRef[];   // 순서 포함, N:N 관계
   isDeleted: boolean;         // 소프트 삭제
   /**
@@ -430,6 +435,8 @@ export interface CreateTemplateSetInput {
   pageCountRange?: number[];
   /** 내지 페이지 증감 단위 (S8, null=제약 없음, >=1 정수) */
   pageStep?: number | null;
+  /** 첨부 내지 PDF 빈 페이지 배수 채움 (opt-in, 기본 false) */
+  padToPageStep?: boolean;
   templates?: TemplateRef[];
   categoryId?: string;
   /** 에디터 도구 메뉴 노출 화이트리스트 (null=모두 노출) */
@@ -463,6 +470,8 @@ export interface UpdateTemplateSetInput {
   pageCountRange?: number[];
   /** 내지 페이지 증감 단위 (S8, null=제약 없음, >=1 정수) */
   pageStep?: number | null;
+  /** 첨부 내지 PDF 빈 페이지 배수 채움 (opt-in, 기본 false) */
+  padToPageStep?: boolean;
   templates?: TemplateRef[];
   /** 에디터 도구 메뉴 노출 화이트리스트 (null=모두 노출) */
   enabledMenus?: EditorMenuKey[] | null;

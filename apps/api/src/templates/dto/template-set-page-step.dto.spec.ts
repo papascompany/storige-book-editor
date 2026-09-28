@@ -40,4 +40,10 @@ describe('TemplateSet DTO pageStep (S8)', () => {
     await expect(update({ pageStep: null })).resolves.toMatchObject({ pageStep: null });
     await expect(update({ pageStep: 0 })).rejects.toBeInstanceOf(BadRequestException);
   });
+
+  it('padToPageStep: boolean 통과, 비불리언 거부', async () => {
+    await expect(create({ pageStep: 2, padToPageStep: true })).resolves.toMatchObject({ padToPageStep: true });
+    await expect(update({ padToPageStep: false })).resolves.toMatchObject({ padToPageStep: false });
+    await expect(update({ padToPageStep: 'yes' })).rejects.toBeInstanceOf(BadRequestException);
+  });
 });
