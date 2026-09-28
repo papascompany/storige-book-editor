@@ -8,7 +8,8 @@
 
 ## 0. 현재 라이브 상태
 
-- 🆕 **마지막 배포 = R-195 전체**(2026-09-28 · VPS 체크아웃 `df170dd`): 편집기 Vercel ~03:41Z Ready → worker **03:44:37Z** → api **03:47:00Z**(+nginx 재시작) — §8-19-1.
+- 🆕 **마지막 API 배포 = 템플릿 복사 수정**(2026-09-28 04:03:34Z · VPS 체크아웃 `8882784`): `POST /templates/:id/copy` 가 type·판형·spreadConfig 보존 + 새 코드 발급. 롤백 이미지 **`storige-api:rollback-pre-copyfix`**(= R-195 배포본). 배포 후 health ok · level 50 0건 · with-templates 200.
+- **그 직전 배포 = R-195 전체**(2026-09-28 · VPS 체크아웃 `df170dd`): 편집기 Vercel ~03:41Z Ready → worker **03:44:37Z** → api **03:47:00Z**(+nginx 재시작) — §8-19-1.
   롤백 이미지 **`storige-api:rollback-pre-r195`**(= W1 배포본 `0380fbbb…`)·**`storige-worker:rollback-pre-r195`**(08월 배포본 `3bae2346…`). 편집기는 Vercel 이전 배포 promote.
   API 표지 매핑 비상 차단 = env `EDITOR_SPREAD_VALIDATION_MAPPING=off`(미설정 = ON). 이전 롤백 태그 `storige-api:rollback-pre-w1`(09-12 D6-ⓐ 배포본)도 보존.
   편집기는 Vercel 자동 배포 — 마지막 코드 변경 `ee88078`(09-21, 레거시 `storige:completed` 에 `needsAuth`·`guestToken` 동봉) 운영 반영·번들 실측 완료(§8-12)
