@@ -447,6 +447,91 @@ describe('EditSessionsService', () => {
     });
   });
 
+  // ── R-195(2026-09-28): 편집기 스프레드 책 — 표지·내지 잡에 주문 제본/쪽수/책등 기하 연결 ──
+  describe('createValidationJobs — 편집기 스프레드 책 검증 연결 (R-195)', () => {
+    const ORIGINAL_FLAG = process.env.EDITOR_SPREAD_VALIDATION_MAPPING;
+
+    beforeEach(() => {
+      mockWorkerJobsService.createValidationJob.mockReset();
+      mockWorkerJobsService.createValidationJob.mockResolvedValue({ id: 'job-r195' } as any);
+      delete process.env.EDITOR_SPREAD_VALIDATION_MAPPING;
+    });
+
+    afterAll(() => {
+      if (ORIGINAL_FLAG === undefined) delete process.env.EDITOR_SPREAD_VALIDATION_MAPPING;
+      else process.env.EDITOR_SPREAD_VALIDATION_MAPPING = ORIGINAL_FLAG;
+    });
+
+    const spreadMetadata = {
+      orderOptions: { bindingType: 'spiral' },
+      spreadContentPageCount: 40,
+      spread: {
+        spec: {
+          coverWidthMm: 210, coverHeightMm: 297, spineWidthMm: 0, wingEnabled: false,
+          wingWidthMm: 0, cutSizeMm: 3, safeSizeMm: 5, dpi: 150,
+        },
+        totalWidthMm: 420, totalHeightMm: 297, dpi: 150,
+      },
+      coverOutput: { widthMm: 426, heightMm: 303, bleedMm: 3 },
+      appliedSpine: { spineWidthMm: 0, source: 'host' },
+    };
+
+    const mkSession = (metadata: Record<string, unknown> | null): EditSessionEntity =>
+      ({
+        id: 'session-r195',
+        coverFileId: 'file-cover-r195',
+        contentFileId: 'file-content-r195',
+        templateSetId: null,
+        metadata,
+      }) as unknown as EditSessionEntity;
+
+    const callPrivate = (session: EditSessionEntity): Promise<void> =>
+      (service as unknown as { createValidationJobs(s: EditSessionEntity): Promise<void> })
+        .createValidationJobs(session);
+
+    const optionsFor = (fileType: 'cover' | 'content') =>
+      mockWorkerJobsService.createValidationJob.mock.calls.find(
+        (c: any[]) => c[0]?.fileType === fileType,
+      )?.[0]?.orderOptions;
+
+    it('표지 = 스펙 판형·책등·도련 + 주문 제본, 내지 = 주문 제본 + 실제 쪽수 (서로 다른 객체)', async () => {
+      await callPrivate(mkSession(spreadMetadata));
+      const cover = optionsFor('cover');
+      const content = optionsFor('content');
+      expect(cover).toMatchObject({
+        binding: 'spiral', pages: 40, size: { width: 210, height: 297 },
+        spineWidthMm: 0, bleed: 3, wingEnabled: false, expectedOrientation: 'landscape',
+      });
+      expect(cover).not.toHaveProperty('paperType');
+      expect(content).toMatchObject({ binding: 'spiral', pages: 40, size: { width: 210, height: 297 } });
+      expect(content).not.toHaveProperty('spineWidthMm');
+    });
+
+    it('EDITOR_SPREAD_VALIDATION_MAPPING=off → 현행(perfect·pages 1·책등 없음) 그대로', async () => {
+      process.env.EDITOR_SPREAD_VALIDATION_MAPPING = 'off';
+      await callPrivate(mkSession(spreadMetadata));
+      expect(optionsFor('cover')).toMatchObject({ binding: 'perfect', pages: 1 });
+      expect(optionsFor('cover')).not.toHaveProperty('spineWidthMm');
+      expect(optionsFor('content')).toMatchObject({ binding: 'perfect', pages: 1 });
+    });
+
+    it('스프레드 스냅샷 없는 세션 → 현행 그대로(표지·내지 동일 옵션)', async () => {
+      await callPrivate(mkSession({ orderOptions: { bindingType: 'saddle' } }));
+      expect(optionsFor('cover')).toMatchObject({ binding: 'perfect', pages: 1 });
+      expect(optionsFor('cover')).not.toHaveProperty('spineWidthMm');
+      expect(optionsFor('content')).toEqual(optionsFor('cover'));
+    });
+
+    it('coverOutput 없음(구 편집기 빌드) → 표지는 현행 그대로(제본 보정도 금지), 내지만 보정', async () => {
+      const { coverOutput: _omit, ...legacy } = spreadMetadata;
+      await callPrivate(mkSession(legacy));
+      // spiral 을 표지에 얹으면 책등 기대치 없는 펼침 표지가 단일 판형 검사로 오차단된다
+      expect(optionsFor('cover')).toMatchObject({ binding: 'perfect', pages: 1 });
+      expect(optionsFor('cover')).not.toHaveProperty('spineWidthMm');
+      expect(optionsFor('content')).toMatchObject({ binding: 'spiral', pages: 40 });
+    });
+  });
+
   // ── 방향 정합 (2026-07-14, 오너 규격표): size W↔H 스왑 정규화 + expectedOrientation ──
   // templateSet = 오리엔트된 판형 권위(가로 A4 세트=297×210), metadata.size 는 bookmoa
   // 미오리엔트 전달 이력(R-13). 워커 validatePageSize 는 무수정(축별 엄격 비교 유지) —

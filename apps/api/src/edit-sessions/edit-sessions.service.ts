@@ -38,6 +38,7 @@ import {
   type SpreadStartSide,
 } from '../worker-jobs/imposition.util';
 import { ImpositionPreviewResponseDto } from './dto/imposition-preview.dto';
+import { deriveEditorSpreadValidationOverrides } from './editor-spread-validation-options';
 
 /** 호출자 테넌트 컨텍스트 — JWT 의 siteId/role(shop JWT 는 siteId 존재, admin-app JWT 는 없음) */
 export interface TenantCaller {
@@ -1528,6 +1529,36 @@ export class EditSessionsService {
         };
       }
 
+      // ── R-195(2026-09-28): 편집기 스프레드 책 — 주문 제본·실제 내지 쪽수·표지 책등 기하 연결 ──
+      // 근거·안전 원칙은 editor-spread-validation-options.ts 머리말. 스프레드 스냅샷이 없는 세션은
+      // null → 아래 두 잡 모두 현행 orderOptions 그대로. 비상 차단: EDITOR_SPREAD_VALIDATION_MAPPING=off.
+      let coverOrderOptions = orderOptions;
+      let contentOrderOptions = orderOptions;
+      if (process.env.EDITOR_SPREAD_VALIDATION_MAPPING !== 'off') {
+        const overrides = deriveEditorSpreadValidationOverrides(session.metadata);
+        if (overrides) {
+          contentOrderOptions = { ...orderOptions, ...overrides.content };
+          if (overrides.cover) {
+            coverOrderOptions = { ...orderOptions, ...overrides.content, ...overrides.cover };
+            this.logger.log(
+              `[validation-jobs] session ${session.id} 표지 책등 기하 연결: ` +
+                `binding=${coverOrderOptions.binding} spine=${overrides.cover.spineWidthMm}mm ` +
+                `bleed=${overrides.cover.bleed}mm source=${overrides.cover.paperType ? 'formula' : 'fixed'}`,
+            );
+          } else {
+            // 표지는 현행 옵션 그대로(크기 검사 생략) — 내지 보정(제본)을 얹으면 안 된다:
+            // spiral/saddle 펼침 표지가 책등 기대치 없이 단일 판형 검사로 떨어져 오차단된다.
+            // 기하 불일치는 편집기 출력 이상 신호라 warn.
+            const note = `[validation-jobs] session ${session.id} 표지 책등 연결 생략(${overrides.coverSkipReason})`;
+            if (overrides.coverSkipReason === 'GEOMETRY_INCONSISTENT') {
+              this.logger.warn(`${note} ${JSON.stringify(overrides.coverGeometry)}`);
+            } else {
+              this.logger.log(note);
+            }
+          }
+        }
+      }
+
       // Create validation job for cover file
       if (session.coverFileId) {
         try {
@@ -1535,7 +1566,7 @@ export class EditSessionsService {
             editSessionId: session.id,
             fileId: session.coverFileId,
             fileType: 'cover',
-            orderOptions,
+            orderOptions: coverOrderOptions,
           });
           this.logger.log(
             `Created validation job ${job.id} for cover file ${session.coverFileId}`,
@@ -1554,7 +1585,7 @@ export class EditSessionsService {
             editSessionId: session.id,
             fileId: session.contentFileId,
             fileType: 'content',
-            orderOptions,
+            orderOptions: contentOrderOptions,
           });
           this.logger.log(
             `Created validation job ${job.id} for content file ${session.contentFileId}`,
