@@ -143,7 +143,7 @@ Storige 편집기 개발을 이어서 진행합니다. bookmoa·printy 파트너
     - 검증: api 83 스위트/1174, editor 74 파일/883, tsc(api·editor·admin) 0. 게이트 무력화 시 흐름 테스트 2건 실패 확인.
     - 한계: 설정 전에 첨부된 기존 세션은 채우지 않는다. 채움 페이지 크기 = PDF 첫 페이지 크기.
     - 배포 순서: 운영 DB ALTER → master push(편집기·admin) → 즉시 api 재생성+nginx 재시작. push~api 사이 수 분간 admin 템플릿셋 저장은 400 가능(forbidNonWhitelisted).
-  - ~~펼침면 내지 세트 min/max 가 0 으로 집계되는 결함~~ → **교정 완료·로컬 커밋, push(=편집기 배포)·양사 통지 승인 대기**(09-28).
+  - ~~펼침면 내지 세트 min/max 가 0 으로 집계되는 결함~~ → **교정·배포 완료(오너 승인)**: push `6534354` 11:01:31Z → 편집기 Vercel Ready 11:02:21Z. 양사 통지 발신(11:02Z 이후, ACK 대기 — printy `207c458f` 견적 영향 대조 요청 포함).
     - 원인: 펼침면 내지는 `TemplateType.SPREAD` 인데 스토어 최소/최대 판정이 `PAGE` 만 셌다 → 내지 0p → 최대 무제한 추가·최소 미만 삭제 가능. 기존 테스트는 PAGE 유형으로 만들어 놓쳤다.
     - 오너 결정: 펼침면 캔버스 1장 = 2쪽, **표지+펼침면 세트도 2쪽**. → 스토어 최소/최대·완료/가격 `pageCount`(`computeLivePageCount` innerPagesPerCanvas)·S8 가드/단위(`livePhysicalPageCount`·`pageStepMetric` pagesPerCanvas)를 책등 산식(`innerPrintPageCount`)과 같은 기준으로 통일. 내지 수는 스프레드 세션에서 위치(표지 0번 제외)로 센다.
     - 운영 실측(10:54Z, 읽기 전용): 펼침면 내지 세트 10개(공용·활성; [검증] 3 + 동화책 하드커버+내지펼침면 7, 모두 pageStep NULL), 누적 세션 17 · **완료 0**. 최근 30일 2건 모두 `207c458f`(printy 사용 세트, 호스트 order pageCount 16 = 표지+펼침면 8장 → 2쪽 기준과 일치). 세트-템플릿 연결은 `template_sets.templates` JSON(레거시 `template_set_items` 5행 아님, 조인 시 collation 명시 필요).
