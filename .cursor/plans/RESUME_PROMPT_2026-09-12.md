@@ -8,7 +8,8 @@
 
 ## 0. 현재 라이브 상태
 
-- 🆕 **마지막 API 배포 = 템플릿 복사 수정**(2026-09-28 04:03:34Z · VPS 체크아웃 `8882784`): `POST /templates/:id/copy` 가 type·판형·spreadConfig 보존 + 새 코드 발급. 롤백 이미지 **`storige-api:rollback-pre-copyfix`**(= R-195 배포본). 배포 후 health ok · level 50 0건 · with-templates 200.
+- 🆕 **마지막 배포 = S6~S9**(2026-09-28): DB `template_sets.page_step INT NULL` 09:05Z(덤프 `~/backup-template_sets-pre-s8-20260928.sql`) → push `26d97e3` → worker 09:10:56Z → api 09:12:53Z(+nginx) · Vercel 편집기·admin Ready. 롤백 태그 **`rollback-pre-s6s9`**(api·worker). 무책등 스프링 6세트 `page_step=2`.
+- **그 전 API 배포 = 템플릿 복사 수정**(2026-09-28 04:03:34Z · VPS 체크아웃 `8882784`): `POST /templates/:id/copy` 가 type·판형·spreadConfig 보존 + 새 코드 발급. 롤백 이미지 **`storige-api:rollback-pre-copyfix`**(= R-195 배포본). 배포 후 health ok · level 50 0건 · with-templates 200.
 - **그 직전 배포 = R-195 전체**(2026-09-28 · VPS 체크아웃 `df170dd`): 편집기 Vercel ~03:41Z Ready → worker **03:44:37Z** → api **03:47:00Z**(+nginx 재시작) — §8-19-1.
   롤백 이미지 **`storige-api:rollback-pre-r195`**(= W1 배포본 `0380fbbb…`)·**`storige-worker:rollback-pre-r195`**(08월 배포본 `3bae2346…`). 편집기는 Vercel 이전 배포 promote.
   API 표지 매핑 비상 차단 = env `EDITOR_SPREAD_VALIDATION_MAPPING=off`(미설정 = ON). 이전 롤백 태그 `storige-api:rollback-pre-w1`(09-12 D6-ⓐ 배포본)도 보존.
@@ -1360,3 +1361,20 @@ R-195 = bookmoa 오너 지시(09-28): 편집기가 호스트 책등 폭·제본�
 printy 현재 상태: 코드 `b9356fc`, 전 상품 spinePolicy legacy, 합성 경로 synthesize/external, 실 e2e 보류(오너 지시).
 **bookmoa 도 실 e2e·템플릿 실테스트를 보류했다(오너 지시)** → 대기 항목의 회신 시점이 미정이다.
 Storige 는 bookmoa 가 요청한 후속 S6~S9 착수를 결정했다(오너, 09-28) — 워크플로 진행 중이며, 배포 시 양사에 통지한다.
+
+### 8-20. bookmoa 후속 S6~S9 — 구현·배포 완료 (2026-09-28, 오너 결정: 네 건 모두 착수)
+- 경위: bookmoa 는 오너 지시로 실 e2e 를 보류했고 S6~S11 을 요청했다.
+  - S10(WH-005 v2 시크릿)은 bookmoa 가 착수 통지하면 함께 진행한다.
+  - S11 배치 조회 엔드포인트는 없다(60/min 안이라 불요, 후속 후보 `?ids=`).
+- 진행 방식: 워크플로 `wf_7e5d48fa-57d` 를 돌렸다. 과제마다 워크트리 구현 → 적대적 검토 → S8 만 major 2건을 수정했다. cherry-pick 은 충돌 0건이었다.
+  - 통합 검증: api 82 스위트·1166, worker 23·645, editor 72 파일·871, tsc 4개 앱 0.
+- **S6** `f73733e`: 검증 잡 `orderOptions.coverLayout:'separate'` 이면 표지를 단일 판형으로 검사한다(두 검증 경로 모두). `injectServerSpine` 은 F2 소거 뒤 조기 반환한다.
+  한계: 첫 페이지만 검사하고 날개는 미고려다. 편집기 경로는 미전송이다.
+- **S7** `2749d10`: 편집기 스냅샷, API·worker `validateSpreadSnapshot`, types 에서 책등 0(유한수 ≥0)을 유효값으로 본다.
+  한계: paperType·bindingType 이 없으면 spine 이 미기록되어 SPINE_MISSING(SOFT)이 남는다. paperType 을 선택값으로 할지는 정책 결정이 필요하다.
+- **S8** `43104b2`·`2402462`: `template_sets.page_step` 을 추가했다(migrations/20260928_add_template_set_page_step.sql, init.sql 동기화).
+  - DTO `@IsInt @Min(1)`, types, admin 폼, 편집기 단위 증감·경고 배지·완료 차단(UI 는 토스트, 프로그래매틱은 `editor.error INVALID_DATA`)을 넣었다.
+  - 쪽수 산식은 완료 payload 의 pageCount 와 같다(책·단일 공통).
+  - 한계: SidePanel 은 1장 단위로 증감한다(완료 가드가 방어). 펼침면 내지 세트는 min/max 가 0 으로 집계되는 기존 결함이 있다. 서버 측 검증은 없다.
+- **S9** `2bb70ca`: 책등 재계산으로 값이 바뀌면 `editor.pricingChange` 를 1회 재발신한다(`pricingChangeReemit.ts`). 한계: 브라우저 실측은 하지 않았다.
+- 가이드: `3b08d51`·`26d97e3`. 양사 통지를 완료했다(bookmoa·printy 새 세션 `local_5ca0cbbf…`).
