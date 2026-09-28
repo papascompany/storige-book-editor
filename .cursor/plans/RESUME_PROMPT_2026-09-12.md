@@ -8,8 +8,9 @@
 
 ## 0. 현재 라이브 상태
 
-- 🆕 **마지막 API 배포 = W1 보안 교정**(2026-09-24 15:29Z · VPS 체크아웃 `c534918` · 새 이미지 `0380fbbb…`) — §8-16.
-  롤백 기준 이미지는 **`storige-api:rollback-pre-w1`** 태그로 보존(09-12 D6-ⓐ 배포본). 그 뒤 커밋은 문서뿐 → VPS 는 다음 API 배포 때 자연 동기화.
+- 🆕 **마지막 배포 = R-195 전체**(2026-09-28 · VPS 체크아웃 `df170dd`): 편집기 Vercel ~03:41Z Ready → worker **03:44:37Z** → api **03:47:00Z**(+nginx 재시작) — §8-19-1.
+  롤백 이미지 **`storige-api:rollback-pre-r195`**(= W1 배포본 `0380fbbb…`)·**`storige-worker:rollback-pre-r195`**(08월 배포본 `3bae2346…`). 편집기는 Vercel 이전 배포 promote.
+  API 표지 매핑 비상 차단 = env `EDITOR_SPREAD_VALIDATION_MAPPING=off`(미설정 = ON). 이전 롤백 태그 `storige-api:rollback-pre-w1`(09-12 D6-ⓐ 배포본)도 보존.
   편집기는 Vercel 자동 배포 — 마지막 코드 변경 `ee88078`(09-21, 레거시 `storige:completed` 에 `needsAuth`·`guestToken` 동봉) 운영 반영·번들 실측 완료(§8-12)
 - (이력) **D6-ⓐ 커밋·푸시·API 배포 전부 완료(§1).** master = origin/master.
   VPS `~/storige` 는 **2026-09-15 `git pull --ff-only` 로 §7 기록 커밋까지 동기화**(체크아웃만 — 컨테이너 무변경, api·nginx 가동 시간 불변 · health 200).
@@ -250,7 +251,7 @@ SELECT id, site_id, created_at FROM worker_jobs
 **파트너 트랙(수신 대기, 09-26 기준)**:
 - **printy 오너 e2e**(회원 셀프편집 → 무통장 주문 → 재편집 완료 → 합성): `synthesisJobId`·그 잡 `siteId`(`009c26d5-…` 기대)·경로·`coverFileId`/`contentFileId`·**편집 `sessionId`**(→ 당사가 `edit_session_id` 로 VALIDATE 조회)·결과 PDF 다운로드 성공 여부·완료 시각 UTC(§8-17)
 - **bookmoa R-192 라이브 실측**(게스트 → 흡수 → 재오픈 → 회원 완료 → files) · **`bindingType` 매핑 수정**(bookmoa 구현 → printy 이식, §8-17-1)
-- 🔨 **R-195(§8-19·8-19-1)**: S1+S5+검증 매핑 **구현 완료·로컬 커밋 `eeb1967`·`ed5151d`·`e8953a4` — 배포 승인 대기**(worker → api → master push) · **S4 무책등 스프링 6세트 운영 등록 ✅**(실편집 E2E 미검증)
+- ✅ **R-195(§8-19·8-19-1)**: S1+S5+검증 매핑 **운영 배포 완료(09-28 03:47Z)** · S4 무책등 스프링 6세트 등록·쪽수 [16,500] ✅ · **대기: bookmoa 첫 실편집 sessionId 2건(스프링 S4·flat-spine+spineWidthMm) → 표지 PDF 규격·검증 잡 대조**
 - **당사 → 양사**: 첫 실합성 **소요 시간 실측 공유**(bookmoa R-194 백오프 판단 근거, §8-18-1) · bookmoa R-194(`2c4acb4`) 배포 대기
 - (이력) ~~printy R-173 배포 완료 재통지~~ ✅ 09-14 수신(§5-5) · ~~printy·bookmoa 첫 compose-mixed 실합성 회신~~ → §8-17 로 조건 재정의 ·
 ~~printy 고아 판정 완화 질의(09-21)~~ ✅ 실측 회신 발신(§8) — 오너 결정 회신만 잔여
@@ -1326,3 +1327,13 @@ R-195 = bookmoa 오너 지시(09-28): 편집기가 호스트 책등 폭·제본�
   - pageCountRange [10,100] 이 스프링 상품에 맞는지(초과 주문은 편집기가 클램프)
   - 표지 기본 디자인 필요 여부
   - 가로형 제본 변
+
+**배포 ✅(오너 승인 09-28, "지금 전체 배포")**
+- push `df170dd` 03:40:29Z → 편집기 Vercel Production Ready(41s). 운영 번들 `index-q1dRs9qM.js` 에 새 코드 지문을 확인했다.
+- worker 03:44:37Z 재생성. dist 에 `fileType !== 'cover'` 가드 2곳이 있다.
+- api 03:47:00Z 재생성, nginx 03:47:01Z 재시작. dist 에 `editor-spread-validation-options` 가 있고, `EDITOR_SPREAD_VALIDATION_MAPPING` 미설정(ON), health ok 다.
+- 배포 직후 5분: api·worker `level 50` **0건**.
+- **S4 쪽수 범위 조정**(bookmoa 요청, 라이브 상품 pageMin 16·pageMax 500): 6세트 `[10,100]→[16,500]` UPDATE 6행을 공개 API 로 확인했다.
+  2쪽 단위는 템플릿셋 필드가 없고 편집기가 1쪽씩 증감한다 → bookmoa 가 짝수를 강제한다(편집기 쪽수 단위 강제는 후속 후보).
+- bookmoa: 주문 기록값 = `editor.complete.spineWidthMm`. 제본별 템플릿 매핑(무선 = flat-spine 세트, 스프링 = S4)을 넣는다. `settings.storigeSpineParamLive` 토글로 파라미터를 전송한다.
+- 🔎 **다음**: bookmoa 첫 실편집 sessionId 2건을 받으면 `file_edit_sessions.metadata.{coverOutput,appliedSpine,spread.spec}` 과 표지 VALIDATE 잡 `options.orderOptions`·`result.metadata.pageSize`·errors 를 대조한다.
