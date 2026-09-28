@@ -250,6 +250,7 @@ SELECT id, site_id, created_at FROM worker_jobs
 **파트너 트랙(수신 대기, 09-26 기준)**:
 - **printy 오너 e2e**(회원 셀프편집 → 무통장 주문 → 재편집 완료 → 합성): `synthesisJobId`·그 잡 `siteId`(`009c26d5-…` 기대)·경로·`coverFileId`/`contentFileId`·**편집 `sessionId`**(→ 당사가 `edit_session_id` 로 VALIDATE 조회)·결과 PDF 다운로드 성공 여부·완료 시각 UTC(§8-17)
 - **bookmoa R-192 라이브 실측**(게스트 → 흡수 → 재오픈 → 회원 완료 → files) · **`bindingType` 매핑 수정**(bookmoa 구현 → printy 이식, §8-17-1)
+- 🔨 **진행 중(09-28 오너 결정, §8-19)**: **bookmoa R-195 S1+S5+편집기 검증 매핑**(작업일 약 3일 · 10-01 전후 배포 후보 · 배포는 오너 승인) · **S4 스프링 무책등 템플릿 제작**(bookmoa 판형 목록 회신 대기)
 - **당사 → 양사**: 첫 실합성 **소요 시간 실측 공유**(bookmoa R-194 백오프 판단 근거, §8-18-1) · bookmoa R-194(`2c4acb4`) 배포 대기
 - (이력) ~~printy R-173 배포 완료 재통지~~ ✅ 09-14 수신(§5-5) · ~~printy·bookmoa 첫 compose-mixed 실합성 회신~~ → §8-17 로 조건 재정의 ·
 ~~printy 고아 판정 완화 질의(09-21)~~ ✅ 실측 회신 발신(§8) — 오너 결정 회신만 잔여
@@ -1229,3 +1230,46 @@ R-194 = 합성 완료 반영(클라가 `GET /worker-jobs/external/:id` 5초 간�
 - ✅ **bookmoa 반영**(`2c4acb4` 로컬, push·배포는 그쪽 오너 승인 대기, ~09:45Z): ① 진행 중 = PENDING·PROCESSING 만, 그 외(FIXABLE·누락)는 폴링 중단 → 「상태 확인」 ② 고객 화면은 일반 문구, `errorMessage` 원문은 관리자만 ③ 120초 → 「상태 확인」 유지(백오프 연장은 실측 공유 후 판단)
 - 📌 **당사 약속**: 양사 첫 실합성의 **실제 소요 시간 측정·공유**(`created_at`→`completed_at` 초 단위 한계 감안, 필요 시 api·nginx 로그 타임스탬프 병용)
 - 🔎 관찰(후속 후보): 합성 잡 `completed_at` 이 초 단위라 소형 합성의 소요 시간이 0으로 기록된다 — 성능 관측이 필요하면 ms 정밀도나 결과에 소요 시간 기록 검토
+
+### 8-19. bookmoa R-195 — 책등·제본·용지 전달 트랙 · S1+S5+검증 매핑 · S4 착수 (2026-09-28 03:10Z 수신)
+
+R-195 = bookmoa 오너 지시(09-28): 편집기가 호스트 책등 폭·제본으로 동작하고(flat-spine 은 주문화면 책등 폭 사용, flat-spread 는 무시),
+워커는 책등 포함 판형으로 표지를 검증한다. 스프링은 상품↔템플릿 매칭 필수이고 **무책등 스프링 전용 템플릿 제작 = (가)안**. 요청 S1~S5.
+
+**회신 1/2(사실 확정, 발신 완료)**
+- **S3 ✅** 운영 공개 `GET /api/template-sets/{id}/with-templates` 를 실호출했다(a2cc2939·e66588b2).
+  `templateDetails[].spreadConfig.conversionMode` 가 내려오고 두 세트 표지는 모두 flat-spine 이다.
+  판독 규칙은 `type==='spread'` 의 `spreadConfig?.conversionMode ?? 'full'` 이다(모드 빈값 15개 = full, `templates.service.ts:254`). 내지 템플릿은 spreadConfig 가 null 이다.
+  운영 분포는 flat-spine 4, flat-spread 9 이다. coverMode 필드 추가는 불필요하고, bookmoa 가 요청을 철회했다.
+- **S2 규칙**: 검증 잡 키는 `binding`·`pages`·`paperType`·`spineWidthMm` 이다.
+  - 서버 주입 조건은 표지 && perfect·hardcover && paperType && pages≥1 이다(`worker-jobs.service.ts:476-481`).
+  - 워커 기대 책등은 spineWidthMm≥0 → paperThickness+pages 순이다.
+  - 펼침 검사 조건은 perfect·hardcover 이거나 기대 책등이 있을 때다. 이때 단일 판형 검사는 생략된다.
+  - ① ✅ paperType 이 없으면 클라이언트 값을 쓴다.
+  - ② ✅ spiral+0 → 가로 2W+2b 로 검사한다. saddle 표지는 pageMultiple 등이 필수다(`:234-239` 가 파일 종류를 가리지 않음).
+  - ③ ⚠️ **다름**: perfect·hardcover 의 separate 는 단일 판형 검사를 받지 않는다. 크기 검사가 생략되고 UNRESOLVED 경고만 나간다.
+    paperType+pages 가 같이 가면 서버 주입 때문에 SPINE_SIZE_MISMATCH 로 차단된다.
+    bookmoa 는 separate 에 세 필드(spineWidthMm·paperType·paperThickness)를 모두 싣지 않기로 했다. 공백은 비차단으로 수용했다.
+  - 합성 `spineWidth` 는 결과 기록용이다(`pdf-synthesizer.service.ts:246`).
+- 🔴 **편집기 경로 공백(신규 발견)**: 세션 완료 VALIDATE 는 metadata 의 size·pages·binding·bleed·paperThickness 만 읽는다(`edit-sessions.service.ts:1437-1458`).
+  /embed 는 이 레거시 키를 채우지 않는다(`EmbedView.tsx:146-149`). 운영 실측(08-01 이후 세션 36건)에서 binding·pages·paperThickness 는 **0건**, orderOptions.bindingType 은 28건이다.
+  → 편집기 산출 표지는 **항상 perfect·pages=1·책등 없음**으로 검증되어 크기 검사가 생략된다.
+- 서브에이전트가 "차단 요인"으로 보고한 펼침면 합성 하드 검증(`pdf-synthesizer.service.ts:1032-1052`, 책등 0 → INVALID)은 **운영 미사용 경로**다.
+  `createSpreadSynthesisJob` 호출처가 0이고, 운영 SYNTHESIZE 12건은 모두 mode 없음(merge)이다.
+  API 세션 스냅샷 검증은 `SPREAD_SNAPSHOT_HARD_FAIL` 이 미설정(컨테이너 확인)이라 SOFT 다. 펼침면 합성을 배선할 때 재검토한다.
+
+**오너 결정(09-28, AskUserQuestion)**: **S1+S5+검증 매핑 착수** · **S4 등록+제작 착수** → 회신 2/2 발신.
+- S1 계약(발신본)
+  - `spineWidthMm` 는 camel/snake 둘 다 받고, 0 이상의 유한수만 인정한다.
+  - flat-spine/full 은 초기 책등 폭으로 쓴다.
+  - 편집 중에는 paperType·bindingType 이 모두 있고 값>0 이면 API 로 재계산하고, 그 밖에는 호스트 값을 고정한다. 값이 없으면 현행대로다.
+  - `orderOptions.spineWidthMm` 에 저장한다.
+  - 재편집은 URL > orderOptions > "호스트 출처" 스냅샷 순이다.
+  - `editor.complete`·레거시 completed 에 적용값을 additive 로 싣는다. `pricingChange` 방식은 구현 시 확정한다.
+  - S5: `'-'`·공백은 미전달로 본다.
+  - API: 세션 완료 VALIDATE orderOptions 를 binding←bindingType, pages←pageCount, paperType, spineWidthMm 로 매핑한다. **호스트 고정 책등은 paperType 을 싣지 않아** 서버가 덮지 않는다.
+  - 일정: 작업일 약 3일, 10-01 전후가 배포 후보다. 배포는 오너 승인 후다(편집기 Vercel 은 master push 가 곧 배포).
+- S4: a2cc2939·e66588b2 는 책등 있는 스프링용으로 둔다. bookmoa 에 **필요 판형·방향·날개·도련 목록을 요청**했다(회신 대기).
+- 공수 근거(S1 정찰): 편집기 14~18h. 주입 지점은 `EmbedView.tsx:74-86·146-149`, `useEditorContents.ts:1562-1573·2021-2033`, 가드 `spineCalculator.ts:376` 1곳(모든 재계산 트리거 수렴),
+  완료 payload `embed.tsx:1911-1945·2289-2318`(게스트 `:1867·:2031`), 레거시 `EmbedView.tsx:155-192`.
+  주의: `spineCalculator.ts:392-394` 는 URL 을 직접 읽는다(snake 미지원). `asPositiveNumber` 는 0 을 거부한다. `buildSpreadSnapshots.ts:73-78` 은 책등 0 이면 스냅샷을 생략한다.
