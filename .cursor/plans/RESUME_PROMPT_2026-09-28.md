@@ -134,7 +134,8 @@ Storige 편집기 개발을 이어서 진행합니다. bookmoa·printy 파트너
 - **D6 게이트**: 선행 ①~⑤(편집기 산출물 스탬프, 세션완료 VALIDATE `siteId` 누락 `edit-sessions.service.ts` createValidationJobs, 백필 재실측, 거부 코드 404 금지, 100p·MD2Books 조율)
 - 파트너 파기 계약(합성 산출물·편집 세션 external), 고아 정리 실가동(`FILE_ORPHAN_DRY_RUN`), 고아 판정 (a)안(**현 형태 기각 권고**)
 - 후속 후보(코드)
-  - 편집기 `SidePanel` pageStep 우회
+  - ~~편집기 `SidePanel` pageStep 우회~~ → **해소 확인(09-28)**: S8 리뷰 수정 `2402462` 가 이미 단위 추가/삭제(인접 묶음·스프레드 0번 제외·min/max 가드)를 적용했다. 09-12 문서 §8-20 의 "SidePanel 1장 단위" 한계는 `43104b2` 시점 기록이라 스테일. 회귀 테스트 `SidePanel.pageStep.test.tsx`(7건, 1장 단위로 되돌리면 5건 실패) 추가. `PagePanel.tsx` 는 1장 단위지만 미사용 컴포넌트.
+  - **첨부 PDF(underlay) 쪽수 pageStep 배수 채움** — 오너 요청(09-28): 첨부 PDF 마지막이 배수로 안 맞으면 빈 페이지로 올려 채우고, 템플릿셋 설정으로 켜고 끈다. **설계 확인 대기**: underlay 는 최종 내지 = 첨부 원본 PDF(worker 가 원본 병합·API 임포지션 스킵)이고 완료 `pageCount` 는 캔버스 수 산식이다 → 편집기 캔버스만 채우면 `pageCount`(배수)와 인쇄 PDF(원본 쪽수)가 어긋난다. 실제 빈 페이지는 산출물(worker 합성 또는 완료 시 PDF 생성)에서 붙여야 한다. 진입점 `contentPdfGuide.ts` `ensureUnderlayPages`(로드·첨부·게스트 3경로 공통).
   - 펼침면 내지 세트 min/max 가 0 으로 집계되는 결함
   - S7: 스프링 스냅샷의 paperType 선택값화
   - S6: 뒷면 크기 검사
