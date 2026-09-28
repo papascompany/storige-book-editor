@@ -126,6 +126,8 @@ Storige 편집기 개발을 이어서 진행합니다. bookmoa·printy 파트너
 - bookmoa: 대기 3건(첫 실편집 sessionId·D6 실합성·S10 착수)은 오너 지시로 **기본 웹 기능 마무리 뒤로 보류**. 보류 해제 뒤 bookmoa 다음 세션이 발신. S6~S9 배포 계약은 bookmoa 인계문 R-196 1순위로 넘김.
 - printy(09:24Z): S6~S9 FYI 대조 완료 — 전 상품 legacy 라 `coverLayout` 미전송, `editor.pricingChange` 수신 처리 없음, 사용 세트 `f0335fda`·`a2cc2939`·`207c458f` 로 **영향 없음**. 첫 실합성 회신값은 실 e2e 보류로 미정. paper_types code 확인 요청은 책등 옵트인 준비 단계에서 발신 예정.
 
+- bookmoa 새 창구(`local_154c5e2a`, 09-28 수신): R-196 운영 배포 09:38Z(new.bookmoa.com `54828a0`, DB 변경 없음) — validate 429 시 Retry-After 재시도(최대 3회)·job-status 400/401/403/404 폴링 즉시 중단·경합 가드 DB 조회 실패 시 거부. Storige 계약 변경 없음. S6~S9 반영(S6 coverLayout 등)은 다음 트랙 착수 시 통지. 오너 e2e 보류 유지.
+
 ## 5. 오너 결정 대기 (착수 약속 없음)
 
 - **결속 API 설계** `FILE_ORDER_BINDING_API_DESIGN_2026-09-24.md` §16 — 핵심 O1~O5(v1 표면·사이트별 (a)안·백필 재실측·편집기 산출물 스탬프·취소 후 90일)
