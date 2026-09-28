@@ -20,7 +20,7 @@ vi.mock('../../api/client', () => ({
   },
   toUserMessage: (_e: unknown, fallback: string) => fallback,
 }))
-const sessionUpdate = vi.fn(async () => ({}))
+const sessionUpdate = vi.fn(async (..._a: unknown[]) => ({}))
 vi.mock('../../api/edit-sessions', () => ({
   editSessionsApi: { update: (...a: unknown[]) => sessionUpdate(...a), updateGuest: vi.fn() },
 }))

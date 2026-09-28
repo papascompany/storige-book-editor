@@ -20,9 +20,10 @@ export const PageStepWarning = memo(function PageStepWarning({
   const canvasCount = useAppStore((s) => s.allCanvas.length)
   const isSpreadMode = useAppStore((s) => s.isSpreadMode)
   const regionScope = useSettingsStore((s) => s.spreadConfig?.regionScope ?? null)
+  const pagesPerCanvas = useEditorStore((s) => s.pagesPerCanvas)
 
   const violation = getPageStepViolation(
-    livePhysicalPageCount({ canvasCount, isSpreadMode, regionScope }),
+    livePhysicalPageCount({ canvasCount, isSpreadMode, regionScope, pagesPerCanvas }),
     pageStep,
   )
   if (!violation) return null

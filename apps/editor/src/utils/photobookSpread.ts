@@ -241,15 +241,21 @@ export function resolveTemplateSetCoverMeta(templateSet: unknown): TemplateSetCo
  * (비-inner)에서 표지 캔버스 1장이 물리 페이지 수에 섞여 21로 집계되던 것을 20으로 정정.
  * 기본값 0 = 기존 호출 byte-parity(BOOK/LEAFLET/포토북 inner ×2 산식 불변).
  * 호출측 게이트: 표지 단독 세션(캔버스 1)은 0 을 전달해야 한다(physical=0 방지).
+ *
+ * 2026-09-28: innerPagesPerCanvas — 표지+내지펼침면 세트는 내지 캔버스 1장 = 2쪽(오너 결정,
+ * 책등 산식 innerPrintPageCount 와 같은 기준). 호출측은 스프레드 세션에서 useEditorStore.pagesPerCanvas
+ * 를 넘긴다. 기본 1 = 낱장 내지·단일 모드 byte-parity.
  */
 export function computeLivePageCount(
   canvasCount: number,
   isInnerSpread: boolean,
   fallbackPages: number,
   coverCanvasCount: number = 0,
+  innerPagesPerCanvas: number = 1,
 ): number {
   const count = Number.isFinite(canvasCount) && canvasCount > 0 ? Math.floor(canvasCount) : 0
-  const physical = isInnerSpread ? count * 2 : Math.max(0, count - coverCanvasCount)
+  const per = Number.isFinite(innerPagesPerCanvas) && innerPagesPerCanvas > 0 ? Math.floor(innerPagesPerCanvas) : 1
+  const physical = isInnerSpread ? count * 2 : Math.max(0, count - coverCanvasCount) * per
   if (physical > 0) return physical
   return Number.isFinite(fallbackPages) && fallbackPages > 0 ? Math.floor(fallbackPages) : 1
 }

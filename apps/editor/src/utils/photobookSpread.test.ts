@@ -347,6 +347,13 @@ describe('resolveTemplateSetCoverMeta (D-4 templateSet optional 읽기)', () => 
 })
 
 describe('computeLivePageCount (D-3 단일 진실원 + T5 coverCanvasCount)', () => {
+  it('2026-09-28: 표지+내지펼침면 — 표지 제외 후 내지 캔버스 ×innerPagesPerCanvas(2)', () => {
+    expect(computeLivePageCount(9, false, 1, 1, 2)).toBe(16) // 표지 1 + 펼침면 8장
+    expect(computeLivePageCount(9, false, 1, 1, 1)).toBe(8) // 낱장 내지(기본과 동일)
+    expect(computeLivePageCount(9, false, 1, 1)).toBe(8) // 파라미터 생략 = 종전 byte-parity
+    expect(computeLivePageCount(4, true, 1, 0, 2)).toBe(8) // inner 는 종전 ×2 그대로
+  })
+
   it('inner 펼침면: 캔버스 12 → 물리 24페이지 (×2) — coverCanvasCount=0 불변', () => {
     expect(computeLivePageCount(12, true, 1, 0)).toBe(24)
   })

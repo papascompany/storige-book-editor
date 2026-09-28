@@ -648,7 +648,7 @@ describe('useEditorStore', () => {
         expect(st2.getDeleteGroup('s-2')).toEqual(['s-2', 's-3']);
       });
 
-      it('pageStep=4 + 표지+펼침면 내지(SPREAD): 가드와 같은 산식(캔버스−표지)으로 배수 도달', () => {
+      it('pageStep=4 + 표지+펼침면 내지(SPREAD): 내지 캔버스 1장 = 2쪽(2026-09-28 오너 결정)', () => {
         useEditorStore.setState({
           pagesPerCanvas: 2,
           pageStepBasis: COVER_SPREAD,
@@ -657,12 +657,58 @@ describe('useEditorStore', () => {
           bindingType: null,
           pageStep: 4,
         });
-        // 표지 + 펼침면 내지 3장 → 가드 기준 3p
+        // 표지 + 펼침면 내지 3장 → (4−1)×2 = 6p
         useEditorStore.getState().setPages([cover(), ...mkSpreadInner(3, false)]);
         const st = useEditorStore.getState();
-        expect(st.getPageStepPerCanvas()).toBe(1);
-        expect(st.getPageAddUnit()).toBe(1); // 3 → 4
-        expect(st.getPageDeleteUnit()).toBe(3); // 3 → 0 (배수) — 인접 3장 필요
+        expect(st.getPageStepPerCanvas()).toBe(2);
+        expect(st.getPageAddUnit()).toBe(1); // 6 → 8
+        expect(st.getPageDeleteUnit()).toBe(1); // 6 → 4
+      });
+
+      // 2026-09-28: 펼침면 내지는 TemplateType.SPREAD — 유형으로 세면 0p 가 되어 최소/최대가 무력화됐다.
+      describe('펼침면 내지 최소/최대 쪽수 (SPREAD 유형 실경로)', () => {
+        const setup = (basis: typeof COVER_SPREAD | typeof INNER_SPREAD, range: number[]) =>
+          useEditorStore.setState({
+            pagesPerCanvas: 2,
+            pageStepBasis: basis,
+            canAddPage: true,
+            pageCountRange: range,
+            bindingType: null,
+            pageStep: null,
+          });
+
+        it('표지+펼침면: 최대 16p(표지+8장)에서 더 추가 불가, 7장이면 추가 가능', () => {
+          setup(COVER_SPREAD, [16, 48]);
+          useEditorStore.getState().setPages([cover(), ...mkSpreadInner(8, false)]);
+          useEditorStore.setState({ pageCountRange: [4, 16] });
+          expect(useEditorStore.getState().canAddMorePages()).toBe(false);
+          useEditorStore.getState().setPages([cover(), ...mkSpreadInner(7, false)]);
+          expect(useEditorStore.getState().canAddMorePages()).toBe(true);
+        });
+
+        it('표지+펼침면: 최소 16p(8장)면 추가분이라도 삭제 불가, 9장이면 삭제 가능', () => {
+          setup(COVER_SPREAD, [16, 48]);
+          useEditorStore.getState().setPages([cover(), ...mkSpreadInner(8, false)]);
+          expect(useEditorStore.getState().canDeletePage('s-7')).toBe(false);
+          useEditorStore.getState().setPages([cover(), ...mkSpreadInner(9, false)]);
+          expect(useEditorStore.getState().canDeletePage('s-8')).toBe(true);
+        });
+
+        it('표지 캔버스는 내지 수·삭제 대상에서 빠진다', () => {
+          setup(COVER_SPREAD, [2, 48]);
+          useEditorStore.getState().setPages([cover(), ...mkSpreadInner(2, false)]);
+          expect(useEditorStore.getState().canDeletePage('cover')).toBe(false);
+        });
+
+        it('내지 전용 펼침면: 전 캔버스가 내지 — 최대 8p(4장)에서 추가 불가', () => {
+          setup(INNER_SPREAD, [4, 8]);
+          useEditorStore.getState().setPages(mkSpreadInner(4, false));
+          expect(useEditorStore.getState().canAddMorePages()).toBe(false);
+          useEditorStore.getState().setPages(mkSpreadInner(2, false));
+          expect(useEditorStore.getState().canDeletePage('s-0')).toBe(false);
+          useEditorStore.getState().setPages(mkSpreadInner(3, false));
+          expect(useEditorStore.getState().canDeletePage('s-0')).toBe(true);
+        });
       });
 
       it('pageStep=2 + 단일 모드: 캔버스 수 기준(홀수 17 → 1장, 짝수 18 → 2장)', () => {

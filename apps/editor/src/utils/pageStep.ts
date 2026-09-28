@@ -87,18 +87,26 @@ export function pageStepViolationMessage(v: PageStepViolation): string {
  * 완료 payload 의 pageCount 와 같은 기준의 물리 내지 페이지 수 (embed computeLivePageCount 와 동일 산식,
  * 단 0 은 폴백하지 않고 0 = 측정 불가로 돌려준다 — 가드가 빈 세션을 막지 않도록).
  * - 내지 전용 펼침면(regionScope='inner'): 캔버스 × 2
- * - 표지+내지 스프레드: 캔버스 − 표지 1 (캔버스 1장 = 표지 단독이면 0)
- * - 그 외: 캔버스 수
+ * - 표지+내지 스프레드: (캔버스 − 표지 1) × pagesPerCanvas (캔버스 1장 = 표지 단독이면 0).
+ *   표지+내지펼침면 세트는 pagesPerCanvas=2(2026-09-28, 책등 산식과 같은 기준), 낱장 내지는 1.
+ * - 그 외(단일 모드): 캔버스 수
  */
 export function livePhysicalPageCount(input: {
   canvasCount: number
   isSpreadMode: boolean
   regionScope?: string | null
+  /** 스프레드 세션의 내지 캔버스 1장당 쪽수(useEditorStore.pagesPerCanvas). 기본 1 */
+  pagesPerCanvas?: number
 }): number {
   const count = Number.isFinite(input.canvasCount) && input.canvasCount > 0 ? Math.floor(input.canvasCount) : 0
   if (input.regionScope === 'inner') return count * 2
-  const cover = input.isSpreadMode && count > 1 ? 1 : 0
-  return input.isSpreadMode && count <= 1 ? 0 : count - cover
+  if (!input.isSpreadMode) return count
+  if (count <= 1) return 0
+  return (count - 1) * spreadInnerPerCanvas(input.pagesPerCanvas)
+}
+
+function spreadInnerPerCanvas(raw: number | undefined): number {
+  return typeof raw === 'number' && Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 1
 }
 
 /**
@@ -116,12 +124,17 @@ export const DEFAULT_PAGE_STEP_BASIS: PageStepBasis = { isSpreadMode: false, reg
 /**
  * 캔버스 수 → { 가드 기준 물리 페이지 수, 캔버스 1장 추가/삭제 시 증감 페이지 수 }.
  * - 내지 전용 펼침면(regionScope='inner'): 캔버스 1장 = 2p
- * - 그 외(표지+내지 스프레드·단일 모드): 캔버스 1장 = 1p (완료 payload pageCount 산식과 동일)
+ * - 표지+내지 스프레드: 캔버스 1장 = pagesPerCanvas(내지펼침면 2 · 낱장 1)
+ * - 단일 모드: 캔버스 1장 = 1p (완료 payload pageCount 산식과 동일)
  */
-export function pageStepMetric(canvasCount: number, basis: PageStepBasis): { physical: number; perCanvas: number } {
+export function pageStepMetric(
+  canvasCount: number,
+  basis: PageStepBasis,
+  pagesPerCanvas: number = 1,
+): { physical: number; perCanvas: number } {
   return {
-    physical: livePhysicalPageCount({ canvasCount, isSpreadMode: basis.isSpreadMode, regionScope: basis.regionScope }),
-    perCanvas: basis.regionScope === 'inner' ? 2 : 1,
+    physical: livePhysicalPageCount({ canvasCount, isSpreadMode: basis.isSpreadMode, regionScope: basis.regionScope, pagesPerCanvas }),
+    perCanvas: basis.regionScope === 'inner' ? 2 : basis.isSpreadMode ? spreadInnerPerCanvas(pagesPerCanvas) : 1,
   }
 }
 

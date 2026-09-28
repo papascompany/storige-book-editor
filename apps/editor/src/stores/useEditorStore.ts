@@ -143,6 +143,25 @@ const initialState: EditorState = {
   pageStepBasis: DEFAULT_PAGE_STEP_BASIS,
 }
 
+/**
+ * 내지 캔버스 수(2026-09-28). 스프레드 세션은 페이지 유형이 아니라 **위치**로 센다 — 펼침면 내지는
+ * TemplateType.SPREAD 라 유형으로 세면 0 이 되어 최소/최대 쪽수가 무력화됐다.
+ * 표지+내지 스프레드는 0번(표지)만 제외, 내지 전용 펼침면(regionScope='inner')은 전부 내지.
+ * 단일 모드는 종전대로 PAGE 유형만 센다.
+ */
+function innerCanvasCount(state: Pick<EditorState, 'pages' | 'pageStepBasis'>): number {
+  const { pages, pageStepBasis } = state
+  if (!pageStepBasis.isSpreadMode) return pages.filter((p) => p.templateType === TemplateType.PAGE).length
+  return Math.max(0, pages.length - (pageStepBasis.regionScope === 'inner' ? 0 : 1))
+}
+
+/** 최소 쪽수 검사 대상(내지)인가 — innerCanvasCount 와 같은 기준. */
+function isInnerPage(state: Pick<EditorState, 'pages' | 'pageStepBasis'>, page: EditPage): boolean {
+  const { pages, pageStepBasis } = state
+  if (!pageStepBasis.isSpreadMode) return page.templateType === TemplateType.PAGE
+  return pageStepBasis.regionScope === 'inner' || pages.indexOf(page) !== 0
+}
+
 export const useEditorStore = create<EditorState & EditorActions>()(
   persist(
     (set, get) => ({
@@ -338,9 +357,9 @@ export const useEditorStore = create<EditorState & EditorActions>()(
         const unit = pageStep ? get().getPageDeleteUnit() : 1
         if (unit > 1 && get().getDeleteGroup(pageId).length !== unit) return false
 
-        // 내지(page) 타입인 경우 최소 수량 체크
-        if (page.templateType === TemplateType.PAGE) {
-          const canvasCount = pages.filter((p) => p.templateType === TemplateType.PAGE).length
+        // 내지인 경우 최소 수량 체크
+        if (isInnerPage(get(), page)) {
+          const canvasCount = innerCanvasCount(get())
           // 펼침면 세션은 캔버스 1장 = 2p → 물리 페이지로 환산해 제약과 비교한다.
           const physicalCount = canvasCount * (pagesPerCanvas || 1)
           // A13: 제본 최소페이지(무선 32p 등) — bindingType 설정 시에만 적용(null=제약 없음).
@@ -355,11 +374,11 @@ export const useEditorStore = create<EditorState & EditorActions>()(
       },
 
       canAddMorePages: () => {
-        const { pages, canAddPage, pageCountRange, bindingType, pagesPerCanvas } = get()
+        const { canAddPage, pageCountRange, bindingType, pagesPerCanvas } = get()
 
         if (!canAddPage) return false
 
-        const canvasCount = pages.filter((p) => p.templateType === TemplateType.PAGE).length
+        const canvasCount = innerCanvasCount(get())
         const per = pagesPerCanvas || 1
         const physicalCount = canvasCount * per
         // A13: 제본 최대페이지(중철 64p 등) — bindingType 설정 시에만 적용(null=제약 없음).
@@ -375,18 +394,18 @@ export const useEditorStore = create<EditorState & EditorActions>()(
       getPageAddUnit: () => {
         const { pages, pageStep, pageStepBasis } = get()
         if (!pageStep) return 1
-        const { physical, perCanvas } = pageStepMetric(pages.length, pageStepBasis)
+        const { physical, perCanvas } = pageStepMetric(pages.length, pageStepBasis, get().pagesPerCanvas)
         return pageAddCanvasCount(physical, pageStep, perCanvas)
       },
 
       getPageDeleteUnit: () => {
         const { pages, pageStep, pageStepBasis } = get()
         if (!pageStep) return 1
-        const { physical, perCanvas } = pageStepMetric(pages.length, pageStepBasis)
+        const { physical, perCanvas } = pageStepMetric(pages.length, pageStepBasis, get().pagesPerCanvas)
         return pageDeleteCanvasCount(physical, pageStep, perCanvas)
       },
 
-      getPageStepPerCanvas: () => pageStepMetric(get().pages.length, get().pageStepBasis).perCanvas,
+      getPageStepPerCanvas: () => pageStepMetric(get().pages.length, get().pageStepBasis, get().pagesPerCanvas).perCanvas,
 
       getDeleteGroup: (pageId: string) => {
         const { pages } = get()

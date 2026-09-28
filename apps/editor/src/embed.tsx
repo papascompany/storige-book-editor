@@ -29,6 +29,7 @@ import { getPageStepBlockMessage } from './utils/pageStepGuard'
 import { runWithAutosaveSuspended } from './utils/autosaveSuspend'
 import { useAuthStore } from './stores/useAuthStore'
 import { useSettingsStore } from './stores/useSettingsStore'
+import { useEditorStore } from './stores/useEditorStore'
 import { useSaveStore } from './stores/useSaveStore'
 import { useEditorContents } from './hooks/useEditorContents'
 import { useEmbedAutoSave } from './hooks/useEmbedAutoSave'
@@ -1802,7 +1803,14 @@ function EmbeddedEditor({
         appState.isSpreadMode && spreadCfg?.regionScope !== 'inner' && canvasCount > 1 ? 1 : 0
       const payload: PricingChangePayload = {
         sessionId: currentSession?.id || sessionId || null,
-        pageCount: computeLivePageCount(canvasCount, isInnerSpread, options?.pages || 1, coverCanvasCount),
+        pageCount: computeLivePageCount(
+          canvasCount,
+          isInnerSpread,
+          options?.pages || 1,
+          coverCanvasCount,
+          // 표지+내지펼침면: 내지 캔버스 1장 = 2쪽(2026-09-28)
+          appState.isSpreadMode ? useEditorStore.getState().pagesPerCanvas : 1,
+        ),
         pricing: pricingMeta,
         ...(templateSetCoverMetaRef.current?.coverType
           ? { coverType: templateSetCoverMetaRef.current.coverType }
@@ -1988,6 +1996,8 @@ function EmbeddedEditor({
               appStateAtComplete.allCanvas.length > 1
               ? 1
               : 0,
+            // 표지+내지펼침면: 내지 캔버스 1장 = 2쪽(2026-09-28)
+            appStateAtComplete.isSpreadMode ? useEditorStore.getState().pagesPerCanvas : 1,
           )
           const pricingMeta = templateSetPricingRef.current
           // R-195: 적용 책등 폭(스프레드 책만, additive)
@@ -2390,6 +2400,8 @@ function EmbeddedEditor({
           appStateAtFinish.allCanvas.length > 1
           ? 1
           : 0,
+        // 표지+내지펼침면: 내지 캔버스 1장 = 2쪽(2026-09-28)
+        appStateAtFinish.isSpreadMode ? useEditorStore.getState().pagesPerCanvas : 1,
       )
       const liveSize2 = useSettingsStore.getState().currentSettings.size
       const pricingMeta2 = templateSetPricingRef.current

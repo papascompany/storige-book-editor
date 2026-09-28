@@ -76,6 +76,20 @@ describe('pageStep 순수 헬퍼 (S8)', () => {
     expect(livePhysicalPageCount({ canvasCount: 3, isSpreadMode: false })).toBe(3)
   })
 
+  it('livePhysicalPageCount: 표지+내지펼침면은 내지 캔버스 1장 = 2쪽(2026-09-28)', () => {
+    // 표지 1 + 펼침면 8장 = 16p (호스트 주문 pageCount 16 과 일치)
+    expect(livePhysicalPageCount({ canvasCount: 9, isSpreadMode: true, regionScope: 'cover', pagesPerCanvas: 2 })).toBe(16)
+    // 낱장 내지는 1 (기본값과 동일)
+    expect(livePhysicalPageCount({ canvasCount: 9, isSpreadMode: true, regionScope: 'cover', pagesPerCanvas: 1 })).toBe(8)
+    // 단일 모드는 pagesPerCanvas 무시(잔존값 방어)
+    expect(livePhysicalPageCount({ canvasCount: 3, isSpreadMode: false, pagesPerCanvas: 2 })).toBe(3)
+    // 내지 전용 펼침면은 종전 ×2 그대로
+    expect(livePhysicalPageCount({ canvasCount: 4, isSpreadMode: true, regionScope: 'inner', pagesPerCanvas: 2 })).toBe(8)
+    // 표지+펼침면 metric: perCanvas 2
+    expect(pageStepMetric(9, { isSpreadMode: true, regionScope: 'cover' }, 2)).toEqual({ physical: 16, perCanvas: 2 })
+    expect(pageStepMetric(3, { isSpreadMode: false, regionScope: null }, 2)).toEqual({ physical: 3, perCanvas: 1 })
+  })
+
   it('편집완료 판정: step=2, 호스트가 17p 로 시드하면 차단 / 18p 면 통과', () => {
     const at = (canvasCount: number) =>
       getPageStepViolation(livePhysicalPageCount({ canvasCount, isSpreadMode: true, regionScope: null }), 2)

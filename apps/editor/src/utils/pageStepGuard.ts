@@ -22,6 +22,7 @@ export function getLivePageStepViolation(): PageStepViolation | null {
     canvasCount: app.allCanvas.length,
     isSpreadMode: app.isSpreadMode,
     regionScope: useSettingsStore.getState().spreadConfig?.regionScope ?? null,
+    pagesPerCanvas: useEditorStore.getState().pagesPerCanvas,
   })
   return getPageStepViolation(physical, step)
 }
