@@ -724,6 +724,29 @@ describe('PdfValidatorService', () => {
         ).toBe(false);
       });
 
+      it('R-195: 사철 쪽수 규칙은 표지에 적용하지 않는다 — 1쪽 펼침 사철 표지(책등 0) 통과', async () => {
+        // 2W + 0 + bleed×2 = 426 × (H + bleed×2) = 303, pageMultiple 미전달(레거시 규칙 경로)
+        const pdfBytes = await createMockPdf(1, 426, 303);
+        mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
+        const result = await service.validate('./cover-saddle-spread.pdf', {
+          fileType: 'cover',
+          orderOptions: { size: { width: 210, height: 297 }, pages: 16, binding: 'saddle', bleed: 3, spineWidthMm: 0 },
+        } as ValidationOptions);
+        expect(result.errors.some((e: any) => e.code === ErrorCode.SADDLE_STITCH_INVALID)).toBe(false);
+        expect(spineErr(result)).toBeUndefined();
+        expect(sizeErr(result)).toBeUndefined();
+      });
+
+      it('R-195 불변: 사철 내지는 여전히 4배수 규칙(SADDLE_STITCH_INVALID) 적용', async () => {
+        const pdfBytes = await createMockPdf(6, 216, 303);
+        mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
+        const result = await service.validate('./content-saddle.pdf', {
+          fileType: 'content',
+          orderOptions: { size: { width: 210, height: 297 }, pages: 6, binding: 'saddle', bleed: 3 },
+        } as ValidationOptions);
+        expect(result.errors.some((e: any) => e.code === ErrorCode.SADDLE_STITCH_INVALID)).toBe(true);
+      });
+
       it('R-53 불변: 매핑 지종(spine 해석) 표지의 SPINE_SIZE_MISMATCH 차단은 유지', async () => {
         const pdfBytes = await createMockPdf(1, 490, 345);
         mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));

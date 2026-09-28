@@ -231,7 +231,9 @@ export class PdfValidatorService {
       );
 
       // 10. 사철 제본 검증 (WBS 2.2). 데이터 주도 페이지규칙 활성 시 페이지수 검사는 validatePageCount 소유.
-      if (options.orderOptions.binding === 'saddle') {
+      // R-195(2026-09-28): 사철 쪽수 규칙(4배수·64쪽)은 책(내지) 규칙 — 표지 쪽수는 validatePageCount 의
+      // 1·2·4쪽 규칙이 소유한다. 종전엔 표지에도 적용돼 1쪽 펼침 사철 표지가 SADDLE_STITCH_INVALID 로 막혔다.
+      if (options.orderOptions.binding === 'saddle' && options.fileType !== 'cover') {
         const dd =
           options.orderOptions.pageMultiple != null ||
           options.orderOptions.pageCountMax != null ||
@@ -811,7 +813,8 @@ export class PdfValidatorService {
         warnings,
         options.orderOptions.expectedOrientation,
       );
-      if (options.orderOptions.binding === 'saddle') {
+      // R-195: 사철 쪽수 규칙은 내지 전용(위 10단계와 동일)
+      if (options.orderOptions.binding === 'saddle' && options.fileType !== 'cover') {
         const dd =
           options.orderOptions.pageMultiple != null ||
           options.orderOptions.pageCountMax != null ||
