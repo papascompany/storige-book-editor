@@ -1345,3 +1345,12 @@ R-195 = bookmoa 오너 지시(09-28): 편집기가 호스트 책등 폭·제본�
 - 주문 기록값은 `editor.complete.spineWidthMm`(레거시 포함)이고, 합성 `spineWidth` 는 실값이다.
 - 오너가 관리자에서 제본별 템플릿(무선 = a2cc2939/e66588b2, 스프링 = S4 6세트) 연결과 spinePolicy 전환을 진행한다 → 그 뒤 첫 실편집 2건의 sessionId·완료 UTC 를 통지받는다.
 - bookmoa 후속 후보: 분리 2쪽 표지(perfect/hardcover) 크기 검사 공백 → Storige coverLayout 신호. Storige 후속 후보 목록과 같은 항목이다.
+
+**printy 동기화 통지(09-28 ~08:20Z, 회신 불요)**
+- printy 가 bookmoa R-194·R-195 와 후속을 이식·배포했다: `a81fd10` → `b9356fc`. 운영 entry 는 `index-BNpcuqdp`, bookmoa `5767524` 와 drift 0 이다.
+- **printy 83개 상품은 모두 spinePolicy 미설정(legacy)이다.** 그래서 Storige 로 가는 값은 종전과 같다(spineWidthMm·paperType 미전송).
+  재편집 `'-'` 파라미터는 제거됐고, 합성 `spineWidth` 는 cfg 스냅샷(기록용)이다.
+  상품 옵트인 전에 `그린라이트 80`·`아르떼(NW)*` 의 paper_types code 존재 확인 요청이 올 예정이다.
+- printy 파기 워크플로 첫 자동 실행: 09-27 20:35Z success. 대상 0건이고 ApiKeyGuard 확인 스텝을 통과했다.
+- 오너 e2e(첫 synthesize/external)는 아직 실행 전이다. 끝나면 합의 값(UTC)을 일괄 회신받는다.
+- 🔁 **printy 세션 `local_35adcfea…` 는 곧 종료된다.** 새 세션이 자기 session id 를 통지한다. 그 전에 발신할 일이 있으면 ListAgents 로 활성 printy 세션(cwd `~/Developer/claude/printy`)을 먼저 확인한다.
