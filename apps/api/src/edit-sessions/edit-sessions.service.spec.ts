@@ -448,6 +448,78 @@ describe('EditSessionsService', () => {
   });
 
   // ── R-195(2026-09-28): 편집기 스프레드 책 — 표지·내지 잡에 주문 제본/쪽수/책등 기하 연결 ──
+  describe('validateSpreadSnapshot — 책등 0mm 유효 (S7)', () => {
+    const ORIGINAL_HARD = process.env.SPREAD_SNAPSHOT_HARD_FAIL;
+
+    afterEach(() => {
+      if (ORIGINAL_HARD === undefined) delete process.env.SPREAD_SNAPSHOT_HARD_FAIL;
+      else process.env.SPREAD_SNAPSHOT_HARD_FAIL = ORIGINAL_HARD;
+    });
+
+    const spread = {
+      spec: {
+        coverWidthMm: 210, coverHeightMm: 297, spineWidthMm: 0, wingEnabled: false,
+        wingWidthMm: 0, cutSizeMm: 3, safeSizeMm: 5, dpi: 150,
+      },
+      totalWidthMm: 420, totalHeightMm: 297, dpi: 150,
+    };
+    const spine = {
+      pageCount: 40, paperType: 'mojo_80g', bindingType: 'spiral',
+      spineWidthMm: 0, formulaVersion: '1.0',
+    };
+
+    const validate = (metadata: Record<string, unknown>) =>
+      (
+        service as unknown as {
+          validateSpreadSnapshot(s: EditSessionEntity): { ok: boolean; mismatches: string[] };
+        }
+      ).validateSpreadSnapshot({
+        id: 'session-s7',
+        mode: SessionMode.SPREAD,
+        metadata,
+      } as unknown as EditSessionEntity);
+
+    it('spineWidthMm=0 → 통과(SPINE_INVALID 아님)', () => {
+      const r = validate({ spread, spine });
+      expect(r.ok).toBe(true);
+      expect(r.mismatches).toEqual([]);
+    });
+
+    it('HARD 모드에서도 spineWidthMm=0 은 차단하지 않는다', () => {
+      process.env.SPREAD_SNAPSHOT_HARD_FAIL = 'true';
+      expect(() => validate({ spread, spine })).not.toThrow();
+    });
+
+    it.each([
+      ['음수', -0.5],
+      ['NaN', NaN],
+      ['Infinity', Infinity],
+      ['문자열', '0'],
+      ['null', null],
+    ])('spineWidthMm %s → SPINE_INVALID', (_label, value) => {
+      const r = validate({ spread, spine: { ...spine, spineWidthMm: value } });
+      expect(r.ok).toBe(false);
+      expect(r.mismatches).toHaveLength(1);
+      expect(r.mismatches[0]).toMatch(/^SPINE_INVALID/);
+    });
+
+    it('spineWidthMm 키 누락 → SPINE_INVALID', () => {
+      const { spineWidthMm: _omit, ...rest } = spine;
+      const r = validate({ spread, spine: rest });
+      expect(r.mismatches[0]).toMatch(/^SPINE_INVALID/);
+    });
+
+    it('spineWidthMm=0 이어도 paperType 누락 → SPINE_INVALID(다른 필수필드 규칙 유지)', () => {
+      const r = validate({ spread, spine: { ...spine, paperType: '' } });
+      expect(r.mismatches[0]).toMatch(/^SPINE_INVALID/);
+    });
+
+    it('metadata.spine 부재 → SPINE_MISSING', () => {
+      const r = validate({ spread });
+      expect(r.mismatches).toEqual(['SPINE_MISSING: metadata.spine 누락']);
+    });
+  });
+
   describe('createValidationJobs — 편집기 스프레드 책 검증 연결 (R-195)', () => {
     const ORIGINAL_FLAG = process.env.EDITOR_SPREAD_VALIDATION_MAPPING;
 

@@ -1039,7 +1039,10 @@ export class PdfSynthesizerService {
 
     const { spine } = session.metadata;
     if (
-      !spine.spineWidthMm ||
+      // S7: spineWidthMm 은 유한수 ≥ 0 이면 유효(0 = 책등 없는 책) — truthy 검사로 0 을 거르지 않는다.
+      typeof spine.spineWidthMm !== 'number' ||
+      !Number.isFinite(spine.spineWidthMm) ||
+      spine.spineWidthMm < 0 ||
       !spine.pageCount ||
       !spine.paperType ||
       !spine.bindingType ||

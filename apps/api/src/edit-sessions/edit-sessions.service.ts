@@ -1347,7 +1347,8 @@ export class EditSessionsService {
    * 스프레드 책 스냅샷 무결성 검증.
    *
    * 검증 항목(하드 승격 시 차단 사유):
-   *  - metadata.spine: spineWidthMm/pageCount/paperType/bindingType/formulaVersion 5필드 truthy
+   *  - metadata.spine: spineWidthMm 유한수 ≥ 0(S7: 0 = 책등 없는 책, 유효) +
+   *    pageCount/paperType/bindingType/formulaVersion 4필드 truthy
    *  - metadata.spread: spec/totalWidthMm/totalHeightMm/dpi 4필드 truthy
    *
    * 모드:
@@ -1364,7 +1365,10 @@ export class EditSessionsService {
     if (!spine) {
       mismatches.push('SPINE_MISSING: metadata.spine 누락');
     } else if (
-      !spine.spineWidthMm ||
+      // S7: 0mm(스프링 표지펼침면 등 책등 없는 책)는 유효 — truthy 검사로 0 을 거르지 않는다.
+      typeof spine.spineWidthMm !== 'number' ||
+      !Number.isFinite(spine.spineWidthMm) ||
+      spine.spineWidthMm < 0 ||
       !spine.pageCount ||
       !spine.paperType ||
       !spine.bindingType ||

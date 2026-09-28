@@ -152,6 +152,46 @@ describe('PdfSynthesizerService', () => {
     });
   });
 
+  describe('validateSpreadSnapshot — 책등 0mm 유효 (S7)', () => {
+    const spread = {
+      spec: { coverWidthMm: 210, coverHeightMm: 297, spineWidthMm: 0 },
+      totalWidthMm: 420,
+      totalHeightMm: 297,
+      dpi: 150,
+    };
+    const spine = {
+      pageCount: 40,
+      paperType: 'mojo_80g',
+      bindingType: 'spiral',
+      spineWidthMm: 0,
+      formulaVersion: '1.0',
+    };
+    const validate = (metadata: Record<string, unknown>) =>
+      (service as unknown as { validateSpreadSnapshot(s: unknown): void }).validateSpreadSnapshot({
+        id: 'session-s7',
+        metadata,
+      });
+
+    it('spineWidthMm=0 → 통과', () => {
+      expect(() => validate({ spread, spine })).not.toThrow();
+    });
+
+    it.each([
+      ['음수', -1],
+      ['NaN', NaN],
+      ['문자열', '0'],
+      ['undefined', undefined],
+    ])('spineWidthMm %s → SPREAD_SNAPSHOT_INVALID', (_label, value) => {
+      expect(() => validate({ spread, spine: { ...spine, spineWidthMm: value } })).toThrow(
+        'metadata.spine의 필수 필드가 누락되었습니다',
+      );
+    });
+
+    it('spine 부재 → SPREAD_SNAPSHOT_MISSING', () => {
+      expect(() => validate({ spread })).toThrow('metadata.spine이 누락되었습니다');
+    });
+  });
+
   describe('calculateSpineWidth', () => {
     it('페이지 수와 종이 두께로 책등 폭 계산', () => {
       // 100페이지, 0.1mm 두께 = (100 / 2) * 0.1 = 5mm

@@ -2175,11 +2175,12 @@ export interface SpineSnapshot {
   pageCount: number;
   paperType: string;
   bindingType: string;
+  /** 책등 폭 mm. 유한수 ≥ 0 — 0 은 책등 없는 책(스프링 표지펼침면 등)으로 유효하다(S7). */
   spineWidthMm: number;
   formulaVersion: string;
   /**
    * spineWidthMm 출처. 'formula'=책등공식 계산값과 일치, 'manual'=사용자/수동 조정으로 공식값과 불일치.
-   * (옵셔널 — 검증자는 위 5필드만 truthy 확인하므로 하위호환 유지. hard 승격 시 정책 판단용)
+   * (옵셔널 — 검증자는 위 5필드만 확인하므로 하위호환 유지. hard 승격 시 정책 판단용)
    */
   spineWidthSource?: 'formula' | 'manual';
 }

@@ -15,6 +15,8 @@ interface SpreadConfigLike {
   // 포토북 내지(regionScope==='inner')는 spec 이 없음 — 본 함수는 표지 스냅샷 전용이라
   // 진입 가드(`if (!spreadConfig?.spec) return {}`)로 내지 config 는 빈 객체 반환.
   spec?: SpreadSpec
+  /** 표지 구조. 'flat-spread'(표지펼침면)는 책등 고정 템플릿 — spec.spineWidthMm 이 확정값이다. */
+  conversionMode?: string
   totalWidthMm?: number
   totalHeightMm?: number
 }
@@ -35,6 +37,12 @@ interface SpineConfigLike {
  * - metadata.spine(SpineSnapshot): 필수 5필드가 모두 유효할 때만 기록(부분기록 금지). spineWidthMm 은
  *   spec.spineWidthMm(updateSpreadSpineWidth 동기화값) 우선, 폴백 calculatedSpineWidth.
  *   책등공식 계산값과 일치하면 spineWidthSource='formula', 수동조정 등으로 다르면 'manual'.
+ *   S7: spineWidthMm 은 유한수 ≥ 0 이면 유효(0 = 책등 없는 책 — 스프링 표지펼침면·호스트 0mm).
+ *   단 spec 초기값 0(buildSpreadSpec "나중에 계산됨")과 확정 0 을 구분해야 하므로 0 은 다음일 때만 확정으로 본다:
+ *     ① calculatedSpineWidth 가 유한수 0(공식/호스트 적용 결과), 또는
+ *     ② conversionMode==='flat-spread'(책등 고정 템플릿 — spec 값이 곧 확정값)
+ *   그 외(공식 미실행·실패로 calc=null 이고 spec=0)는 미확정 → spine 미기록(종전과 동일).
+ *   paperType/bindingType/pageCount>0 요구는 0mm 에도 그대로 유지(부분기록 금지).
  *
  * 안전: spec 이 비정상(NaN 등)이면 roundMm01 가 throw → catch 하여 spread/spine 미기록하고 빈 객체 반환.
  * 호출측(완료 update)은 기존 동작(스냅샷 없이)으로 무중단 진행한다.
@@ -66,14 +74,22 @@ export function buildSpreadSnapshots(
     }
 
     const calc = spineConfig?.calculatedSpineWidth
-    const spineWidthMm =
-      normSpec.spineWidthMm || (typeof calc === 'number' && Number.isFinite(calc) ? roundMm01(calc) : 0)
+    const calcMm = typeof calc === 'number' && Number.isFinite(calc) && calc >= 0 ? roundMm01(calc) : undefined
+    // 확정 책등 폭(mm) 또는 undefined(미확정). 양수 spec → calc(0 포함) → flat-spread 고정 spec(0) 순.
+    const spineWidthMm: number | undefined =
+      normSpec.spineWidthMm > 0
+        ? normSpec.spineWidthMm
+        : calcMm !== undefined
+          ? calcMm
+          : spreadConfig.conversionMode === 'flat-spread' && normSpec.spineWidthMm === 0
+            ? 0
+            : undefined
 
     let spine: SpineSnapshot | undefined
     if (
       spineConfig?.paperType &&
       spineConfig?.bindingType &&
-      spineWidthMm > 0 &&
+      spineWidthMm !== undefined &&
       innerPageCount > 0
     ) {
       let spineWidthSource: 'formula' | 'manual' | undefined
