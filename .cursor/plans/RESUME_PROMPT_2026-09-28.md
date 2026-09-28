@@ -65,7 +65,7 @@ Storige 편집기 개발을 이어서 진행합니다. bookmoa·printy 파트너
 
 | 파트너 | cwd | 현재 세션 | 비고 |
 |---|---|---|---|
-| bookmoa | `~/Developer/claude/bookmoa-mobile` | **09-28 교체 확정**: "20260928 북모아 새 세션시작" · `local_154c5e2a-916f-45a2-8aaf-ed5a92cdf6c7` · 소켓 `uds:/tmp/cc-socks/37531.sock` (옛 `local_73e578bc…`/39083 대체) | bypass 모드. 운영 `217b52f`. 착수 트랙 R-196(bookmoa 내부·Storige 계약 변경 없음: 429 Retry-After 재시도·영구 오류 폴링 중단·경합 가드). S6~S9 배포 완료 요지를 새 세션에 재통지함(09-28) |
+| bookmoa | `~/Developer/claude/bookmoa-mobile` | **09-28 교체**: "20260928 북모아 개발 계속" · `local_75d4aefc-f026-45ed-b044-df4fdf377c23` · 소켓 `uds:/tmp/cc-socks/47702.sock`(lsof cwd 확증) — 옛 `local_154c5e2a…`/37531 대체 | bypass 모드. 운영 `19ce2a5`(R-198). 펼침면 pageCount 정정 통지 재전달(ACK 대기) |
 | printy | `~/Developer/claude/printy` | 이름 "20260928 Printy 개발 계속"(표시명이 "…새세션 시작"으로 보일 수 있음) · `local_5ca0cbbf-bacf-4881-b394-7a4fab936804` | 09-28 교체 · 소켓 `uds:/tmp/cc-socks/67905.sock` · 09:24Z ACK 수신. 옛 `local_35adcfea…`("20260926 Printy 개발 계속")는 목록에 남아 있으나 쓰지 않음 |
 | **Storige(당사)** | 이 저장소 | 이름 "Storige 편집기 개발 계속" · printy 가 보고한 id `local_7e9f1fad…` | 09-28 새 세션. 양사에 창구 교체 통지·ACK 완료 |
 
@@ -143,7 +143,7 @@ Storige 편집기 개발을 이어서 진행합니다. bookmoa·printy 파트너
     - 검증: api 83 스위트/1174, editor 74 파일/883, tsc(api·editor·admin) 0. 게이트 무력화 시 흐름 테스트 2건 실패 확인.
     - 한계: 설정 전에 첨부된 기존 세션은 채우지 않는다. 채움 페이지 크기 = PDF 첫 페이지 크기.
     - 배포 순서: 운영 DB ALTER → master push(편집기·admin) → 즉시 api 재생성+nginx 재시작. push~api 사이 수 분간 admin 템플릿셋 저장은 400 가능(forbidNonWhitelisted).
-  - ~~펼침면 내지 세트 min/max 가 0 으로 집계되는 결함~~ → **교정·배포 완료(오너 승인)**: push `6534354` 11:01:31Z → 편집기 Vercel Ready 11:02:21Z. 양사 통지 발신. **printy ACK**: 조치 불요 — pageCount 를 보정 없이 재견적·`totalPages` 에 쓰고, 재편집 완료 pageCount ≠ 주문 쪽수면 합성을 막는 게이트가 있어 종전 절반값(8)이면 16p 주문 합성이 막혔을 것 → 이번 정정이 207c458f(210x210, 16~48p)에 이롭다. bookmoa ACK 대기(다음 세션 수신 가능).
+  - ~~펼침면 내지 세트 min/max 가 0 으로 집계되는 결함~~ → **교정·배포 완료(오너 승인)**: push `6534354` 11:01:31Z → 편집기 Vercel Ready 11:02:21Z. 양사 통지 발신. **printy ACK**: 조치 불요 — pageCount 를 보정 없이 재견적·`totalPages` 에 쓰고, 재편집 완료 pageCount ≠ 주문 쪽수면 합성을 막는 게이트가 있어 종전 절반값(8)이면 16p 주문 합성이 막혔을 것 → 이번 정정이 207c458f(210x210, 16~48p)에 이롭다. bookmoa: 새 창구 `local_75d4aefc` 에 재통지, ACK 대기.
     - 원인: 펼침면 내지는 `TemplateType.SPREAD` 인데 스토어 최소/최대 판정이 `PAGE` 만 셌다 → 내지 0p → 최대 무제한 추가·최소 미만 삭제 가능. 기존 테스트는 PAGE 유형으로 만들어 놓쳤다.
     - 오너 결정: 펼침면 캔버스 1장 = 2쪽, **표지+펼침면 세트도 2쪽**. → 스토어 최소/최대·완료/가격 `pageCount`(`computeLivePageCount` innerPagesPerCanvas)·S8 가드/단위(`livePhysicalPageCount`·`pageStepMetric` pagesPerCanvas)를 책등 산식(`innerPrintPageCount`)과 같은 기준으로 통일. 내지 수는 스프레드 세션에서 위치(표지 0번 제외)로 센다.
     - 운영 실측(10:54Z, 읽기 전용): 펼침면 내지 세트 10개(공용·활성; [검증] 3 + 동화책 하드커버+내지펼침면 7, 모두 pageStep NULL), 누적 세션 17 · **완료 0**. 최근 30일 2건 모두 `207c458f`(printy 사용 세트, 호스트 order pageCount 16 = 표지+펼침면 8장 → 2쪽 기준과 일치). 세트-템플릿 연결은 `template_sets.templates` JSON(레거시 `template_set_items` 5행 아님, 조인 시 collation 명시 필요).
