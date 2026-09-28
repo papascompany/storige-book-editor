@@ -65,8 +65,9 @@ Storige 편집기 개발을 이어서 진행합니다. bookmoa·printy 파트너
 
 | 파트너 | cwd | 현재 세션 | 비고 |
 |---|---|---|---|
-| bookmoa | `~/Developer/claude/bookmoa-mobile` | 이름 "20260924 북모아 Printable 개발 계속" · `local_73e578bc-90ee-4181-bf43-a09a7aef0c3c` · 소켓 `uds:/tmp/cc-socks/39083.sock` | bypass 모드 |
-| printy | `~/Developer/claude/printy` | 이름 "20260928 Printy 개발 계속"(표시명이 "…새세션 시작"으로 보일 수 있음) · `local_5ca0cbbf-bacf-4881-b394-7a4fab936804` | 09-28 교체. 옛 `local_35adcfea…` 는 종료됨 |
+| bookmoa | `~/Developer/claude/bookmoa-mobile` | 이름 "20260924 북모아 Printable 개발 계속" · `local_73e578bc-90ee-4181-bf43-a09a7aef0c3c` · 소켓 `uds:/tmp/cc-socks/39083.sock` | bypass 모드. 09-28 ACK 수신. **곧 세션 교체 예정** — 새 세션이 첫 통지에서 id 를 알린다(그 `from` 으로 이 칸 갱신). 별도로 `local_154c5e2a…`("20260928 북모아 새 세션시작", 마지막 활동 08:45Z)가 살아 있으나 미확정 — 발신하지 않음 |
+| printy | `~/Developer/claude/printy` | 이름 "20260928 Printy 개발 계속"(표시명이 "…새세션 시작"으로 보일 수 있음) · `local_5ca0cbbf-bacf-4881-b394-7a4fab936804` | 09-28 교체 · 소켓 `uds:/tmp/cc-socks/67905.sock` · 09:24Z ACK 수신. 옛 `local_35adcfea…`("20260926 Printy 개발 계속")는 목록에 남아 있으나 쓰지 않음 |
+| **Storige(당사)** | 이 저장소 | 이름 "Storige 편집기 개발 계속" · printy 가 보고한 id `local_7e9f1fad…` | 09-28 새 세션. 양사에 창구 교체 통지·ACK 완료 |
 
 - 세션 이름·id 는 재시작하면 바뀐다. 받은 메시지에 회신할 때는 **`from` 값을 그대로 `to` 로** 쓴다.
   - `uds:/tmp/cc-socks/<PID>.sock` 이면 `lsof -a -p <PID> -d cwd -Fn` 으로 발신자 cwd 를 확증할 수 있다.
@@ -119,6 +120,11 @@ Storige 편집기 개발을 이어서 진행합니다. bookmoa·printy 파트너
 5. printy 예고: 상품 옵트인 전에 `그린라이트 80`·`아르떼(NW)*` 의 **paper_types code 존재 확인** 요청이 올 예정이다.
    - 해석 순서: code → alias → 정규화(공백 제거·끝 g 제거·소문자). `name` 은 쓰지 않는다.
 6. bookmoa S10(WH-005 v2 사이트 전용 `whsec_`): bookmoa 가 착수를 통지하면 Storige 선행(수신 호스트 SSRF 허용 목록·partner test 키)을 함께 진행한다.
+
+### 4-1. 09-28 새 세션 통지 결과 (ACK)
+
+- bookmoa: 대기 3건(첫 실편집 sessionId·D6 실합성·S10 착수)은 오너 지시로 **기본 웹 기능 마무리 뒤로 보류**. 보류 해제 뒤 bookmoa 다음 세션이 발신. S6~S9 배포 계약은 bookmoa 인계문 R-196 1순위로 넘김.
+- printy(09:24Z): S6~S9 FYI 대조 완료 — 전 상품 legacy 라 `coverLayout` 미전송, `editor.pricingChange` 수신 처리 없음, 사용 세트 `f0335fda`·`a2cc2939`·`207c458f` 로 **영향 없음**. 첫 실합성 회신값은 실 e2e 보류로 미정. paper_types code 확인 요청은 책등 옵트인 준비 단계에서 발신 예정.
 
 ## 5. 오너 결정 대기 (착수 약속 없음)
 
