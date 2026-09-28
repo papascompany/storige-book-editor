@@ -1108,6 +1108,10 @@ bookmoa R-192 구현·검증 완료(`507667d`, push·배포는 그쪽 오너 승
     - 400 은 `POST /api/edit-sessions` — 게스트 shop-session 토큰(회원번호 없음)이면 `edit-sessions.controller.ts:84` 가 **설계상 400** → 편집기가 게스트로 폴백(`embed.tsx:926`).
       로그 순서 `shop-session 200 → POST /edit-sessions 400 → POST /edit-sessions/guest 201 → PATCH guest 200` 그대로. JWT 경로라 W1 역할 판정과 무관
     - ⚠️ 처음엔 이 400 을 "인증 헤더 없는 요청"으로 오판했다 — 아래 상시 함정
+  - ✅ **내부 워커 경로 첫 실동작(09-27 06:40Z, 집계 09-28 02:51Z)**: W1 배포 후 첫 잡 = bookmoa-mobile VALIDATE `636bb6e2` →
+    29초 뒤 FAILED `표지 PDF는 1, 2 또는 4페이지여야 합니다. (현재: 123페이지)`(고객 입력 거부 — 정상 동작).
+    이 문구는 워커(`pdf-validator.service.ts`)가 만들고 워커는 파일 다운로드·상태 보고를 내부 `WORKER_API_KEY` 로 한다(`api-file-download.ts:16`·`job-status.service.ts:59`)
+    → **내부 worker 역할의 바이패스가 교정 후에도 살아 있음**을 실트래픽으로 확인. 같은 집계에서 09-24 15:29Z 이후 잡은 이 1건뿐 · SYNTHESIZE 는 09-12 이후 0건(양사 첫 실합성 미도래)
 - **롤백 절차**(필요 시): `docker tag storige-api:rollback-pre-w1 <compose 이미지명>` 후 api 재생성 + nginx 재시작, 또는 `git revert c534918` 후 재빌드
 - ⚠️ **파트너 교차 접근 차단의 실 호출 증명은 하지 않았다** — 파트너 자격증명으로 타사 파일을 호출하는 방식은 자격증명 오용·감사 오귀속이라 배제.
   대신 단위 테스트(대조 실험 포함) + 배포본 지문 + 운영 env 판정 실행으로 증명. 종단 증명이 필요하면 설계 §14 S3 의 **editor/worker 분리 테스트 사이트**로 한다
