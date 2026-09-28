@@ -374,6 +374,8 @@ export const TemplateSetForm = () => {
         canAddPage: templateSet.canAddPage,
         pageCountMin: templateSet.pageCountRange?.[0],
         pageCountMax: templateSet.pageCountRange?.[templateSet.pageCountRange.length - 1],
+        // S8 내지 증감 단위 (null/미설정 = 비움 = 제약 없음)
+        pageStep: templateSet.pageStep ?? undefined,
         customizeMenus,
         enabledMenus: menuList,
         // 인쇄 워크플로우 v1 Phase 3 (2026-05-19) — 면지/표지편집/레더커버
@@ -536,6 +538,12 @@ export const TemplateSetForm = () => {
       canAddPage: values.canAddPage,
       pageCountRange: values.canAddPage
         ? [values.pageCountMin, values.pageCountMax]
+        : undefined,
+      // S8 내지 증감 단위 — 비우면 null(제약 없음). 내지 추가 불가 셋은 미전송(기존 값 유지).
+      pageStep: values.canAddPage
+        ? values.pageStep != null && values.pageStep !== ''
+          ? Math.max(1, Math.floor(Number(values.pageStep)))
+          : null
         : undefined,
       templates: templates.map(({ templateId, required }) => ({
         templateId,
@@ -873,6 +881,14 @@ export const TemplateSetForm = () => {
                               rules={[{ required: true, message: '최대 페이지를 입력하세요' }]}
                             >
                               <InputNumber min={1} max={500} />
+                            </Form.Item>
+
+                            <Form.Item
+                              name="pageStep"
+                              label="페이지 증감 단위"
+                              tooltip="내지 페이지 수가 이 값의 배수여야 합니다(예: 2 = 짝수만). 에디터가 이 단위로 추가/삭제하고, 배수가 아니면 편집완료를 막습니다. 비우면 제약 없음."
+                            >
+                              <InputNumber min={1} max={500} precision={0} placeholder="제약 없음" />
                             </Form.Item>
                           </Space>
                         )

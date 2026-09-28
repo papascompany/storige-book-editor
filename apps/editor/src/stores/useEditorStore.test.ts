@@ -451,6 +451,161 @@ describe('useEditorStore', () => {
       });
     });
 
+    // S8 (2026-09-28): 내지 증감 단위(pageStep) — 물리 페이지 수를 step 배수로 유지
+    describe('pageStep (내지 증감 단위)', () => {
+      const cover = () =>
+        createMockPage({
+          id: 'cover',
+          deleteable: false,
+          required: true,
+          templateType: TemplateType.SPREAD,
+        });
+      const mkInner = (n: number) =>
+        Array.from({ length: n }, (_, i) =>
+          createMockPage({
+            id: `p-${i}`,
+            deleteable: true,
+            required: false,
+            templateType: TemplateType.PAGE,
+          })
+        );
+
+      it('pageStep=null 이면 기존과 동일 — 1장 단위 추가/삭제', () => {
+        useEditorStore.setState({
+          pagesPerCanvas: 1,
+          canAddPage: true,
+          pageCountRange: [16, 500],
+          bindingType: null,
+          pageStep: null,
+        });
+        useEditorStore.getState().setPages([cover(), ...mkInner(17)]);
+        const st = useEditorStore.getState();
+        expect(st.getPageAddUnit()).toBe(1);
+        expect(st.getPageDeleteUnit()).toBe(1);
+        expect(st.getDeleteGroup('p-3')).toEqual(['p-3']);
+        expect(st.canDeletePage('p-3')).toBe(true); // 17 → 16 ≥ 16
+        expect(st.canAddMorePages()).toBe(true);
+      });
+
+      it('pageStep=2 (낱장): 짝수 상태에서는 2장씩 추가/삭제, 하한 16 이면 16p 에서 삭제 불가', () => {
+        useEditorStore.setState({
+          pagesPerCanvas: 1,
+          canAddPage: true,
+          pageCountRange: [16, 500],
+          bindingType: null,
+          pageStep: 2,
+        });
+        useEditorStore.getState().setPages([cover(), ...mkInner(18)]);
+        let st = useEditorStore.getState();
+        expect(st.getPageAddUnit()).toBe(2);
+        expect(st.getPageDeleteUnit()).toBe(2);
+        // 뒤 인접 페이지와 묶음
+        expect(st.getDeleteGroup('p-3')).toEqual(['p-3', 'p-4']);
+        // 마지막 페이지는 앞 인접 페이지와 묶음
+        expect(st.getDeleteGroup('p-17')).toEqual(['p-17', 'p-16']);
+        expect(st.canDeletePage('p-3')).toBe(true); // 18 → 16
+
+        useEditorStore.getState().setPages([cover(), ...mkInner(16)]);
+        st = useEditorStore.getState();
+        expect(st.canDeletePage('p-3')).toBe(false); // 16 → 14 < 16
+        expect(st.canAddMorePages()).toBe(true); // 16 → 18
+      });
+
+      it('pageStep=2: 홀수(호스트 시드 17p)면 1장만 추가/삭제해 배수로 복귀', () => {
+        useEditorStore.setState({
+          pagesPerCanvas: 1,
+          canAddPage: true,
+          pageCountRange: [16, 500],
+          bindingType: null,
+          pageStep: 2,
+        });
+        useEditorStore.getState().setPages([cover(), ...mkInner(17)]);
+        const st = useEditorStore.getState();
+        expect(st.getPageAddUnit()).toBe(1); // 17 → 18
+        expect(st.getPageDeleteUnit()).toBe(1); // 17 → 16
+        expect(st.getDeleteGroup('p-0')).toEqual(['p-0']);
+        expect(st.canDeletePage('p-0')).toBe(true);
+      });
+
+      it('pageStep=2: 상한 직전(499p)은 1장 추가로 500 허용, 500p 는 추가 불가', () => {
+        useEditorStore.setState({
+          pagesPerCanvas: 1,
+          canAddPage: true,
+          pageCountRange: [16, 500],
+          bindingType: null,
+          pageStep: 2,
+        });
+        useEditorStore.getState().setPages([cover(), ...mkInner(499)]);
+        expect(useEditorStore.getState().canAddMorePages()).toBe(true);
+        useEditorStore.getState().setPages([cover(), ...mkInner(498)]);
+        expect(useEditorStore.getState().canAddMorePages()).toBe(true); // 498 → 500
+        useEditorStore.getState().setPages([cover(), ...mkInner(500)]);
+        expect(useEditorStore.getState().canAddMorePages()).toBe(false);
+      });
+
+      it('pageStep=2: 함께 지울 인접 삭제 가능 페이지가 없으면 삭제 불가', () => {
+        useEditorStore.setState({
+          pagesPerCanvas: 1,
+          canAddPage: true,
+          pageCountRange: [1, 500],
+          bindingType: null,
+          pageStep: 2,
+        });
+        const inner = mkInner(4);
+        // p-1 양옆이 필수 페이지 → 단독 삭제는 배수를 깨므로 불가
+        inner[0] = { ...inner[0], required: true, deleteable: false };
+        inner[2] = { ...inner[2], required: true, deleteable: false };
+        useEditorStore.getState().setPages([cover(), ...inner]);
+        const st = useEditorStore.getState();
+        expect(st.getDeleteGroup('p-1')).toEqual([]);
+        expect(st.canDeletePage('p-1')).toBe(false);
+        // p-3 도 앞(p-2)이 필수라 짝이 없음
+        expect(st.canDeletePage('p-3')).toBe(false);
+      });
+
+      it('pageStep=2 + 펼침면(pagesPerCanvas=2): 캔버스 1장 = 2p 라 1장 단위 그대로', () => {
+        useEditorStore.setState({
+          pagesPerCanvas: 2,
+          canAddPage: true,
+          pageCountRange: [4, 8],
+          bindingType: null,
+          pageStep: 2,
+        });
+        useEditorStore.getState().setPages(mkInner(3));
+        const st = useEditorStore.getState();
+        expect(st.getPageAddUnit()).toBe(1);
+        expect(st.getPageDeleteUnit()).toBe(1);
+        expect(st.canAddMorePages()).toBe(true); // 6 → 8
+      });
+
+      it('pageStep=4 + 펼침면(pagesPerCanvas=2): 2장(4p) 단위', () => {
+        useEditorStore.setState({
+          pagesPerCanvas: 2,
+          canAddPage: true,
+          pageCountRange: [4, 12],
+          bindingType: null,
+          pageStep: 4,
+        });
+        useEditorStore.getState().setPages(mkInner(4)); // 8p
+        let st = useEditorStore.getState();
+        expect(st.getPageAddUnit()).toBe(2); // 8 → 12
+        expect(st.canAddMorePages()).toBe(true);
+        expect(st.getPageDeleteUnit()).toBe(2); // 8 → 4
+        expect(st.canDeletePage('p-0')).toBe(true);
+
+        useEditorStore.getState().setPages(mkInner(5)); // 10p (정렬 깨짐)
+        st = useEditorStore.getState();
+        expect(st.getPageAddUnit()).toBe(1); // 10 → 12
+        expect(st.getPageDeleteUnit()).toBe(1); // 10 → 8
+      });
+
+      it('clearSession 은 pageStep 을 null 로 리셋한다', () => {
+        useEditorStore.setState({ pageStep: 2 });
+        useEditorStore.getState().clearSession();
+        expect(useEditorStore.getState().pageStep).toBeNull();
+      });
+    });
+
     it('canDeletePage should return false for required pages', () => {
       const page = createMockPage({
         id: 'page-1',

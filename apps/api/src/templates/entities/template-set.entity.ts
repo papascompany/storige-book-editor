@@ -110,6 +110,15 @@ export class TemplateSet {
   pageCountRange: number[];
 
   /**
+   * 내지 페이지 증감 단위 (S8, 2026-09-28, additive nullable=비파괴).
+   * 물리 내지 페이지 수가 이 값의 배수여야 한다. 에디터는 이 단위로 추가/삭제하고
+   * 배수가 아니면 편집 완료를 차단한다. NULL=제약 없음(기존 1장 단위 동작).
+   * 마이그레이션: apps/api/migrations/20260928_add_template_set_page_step.sql
+   */
+  @Column({ name: 'page_step', type: 'int', nullable: true })
+  pageStep: number | null;
+
+  /**
    * 템플릿 구성 (순서 포함)
    * TemplateRef[] 형태로 저장
    */

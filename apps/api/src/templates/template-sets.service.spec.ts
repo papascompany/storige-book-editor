@@ -240,6 +240,62 @@ describe('TemplateSetsService', () => {
     });
   });
 
+  describe('pageStep (S8 내지 증감 단위)', () => {
+    it('create: pageStep 을 영속 매핑한다', async () => {
+      await service.create({
+        name: 'Step Set',
+        type: TemplateSetType.BOOK,
+        width: 210,
+        height: 297,
+        pageCountRange: [16, 500],
+        pageStep: 2,
+      });
+      expect(templateSetRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({ pageStep: 2, pageCountRange: [16, 500] }),
+      );
+    });
+
+    it('create: 미지정(기존 페이로드)은 null — 제약 없음(비파괴)', async () => {
+      await service.create({ name: 'Legacy', type: TemplateSetType.BOOK, width: 210, height: 297 });
+      expect(templateSetRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({ pageStep: null }),
+      );
+    });
+
+    it('update: pageStep 설정 및 null 로 해제', async () => {
+      await service.update('template-set-id', { pageStep: 2 });
+      expect(templateSetRepository.save).toHaveBeenLastCalledWith(
+        expect.objectContaining({ pageStep: 2 }),
+      );
+      await service.update('template-set-id', { pageStep: null });
+      expect(templateSetRepository.save).toHaveBeenLastCalledWith(
+        expect.objectContaining({ pageStep: null }),
+      );
+    });
+
+    it('update: pageStep 미포함 페이로드는 기존 값 유지', async () => {
+      (templateSetRepository.findOne as jest.Mock).mockResolvedValueOnce({
+        ...mockTemplateSet,
+        pageStep: 2,
+      });
+      await service.update('template-set-id', { name: 'Renamed' });
+      expect(templateSetRepository.save).toHaveBeenLastCalledWith(
+        expect.objectContaining({ name: 'Renamed', pageStep: 2 }),
+      );
+    });
+
+    it('copy: pageStep 을 복제본에 유지', async () => {
+      (templateSetRepository.findOne as jest.Mock).mockResolvedValueOnce({
+        ...mockTemplateSet,
+        pageStep: 2,
+      });
+      await service.copy('template-set-id');
+      expect(templateSetRepository.create).toHaveBeenLastCalledWith(
+        expect.objectContaining({ pageStep: 2 }),
+      );
+    });
+  });
+
   describe('findAll', () => {
     it('should return paginated template sets', async () => {
       const result = await service.findAll({ page: 1, pageSize: 20 });

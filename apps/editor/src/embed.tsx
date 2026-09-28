@@ -25,6 +25,7 @@ import { useAppStore } from './stores/useAppStore'
 import { rebindFrameInteractivity } from './utils/frameInteractive'
 import { applyObjectPermissions, applyCoverMaterialLock } from './utils/objectPermissions'
 import { trackRequiredEdits, collectUneditedRequiredForCustomer } from './utils/requiredEditGate'
+import { getPageStepBlockMessage } from './utils/pageStepGuard'
 import { runWithAutosaveSuspended } from './utils/autosaveSuspend'
 import { useAuthStore } from './stores/useAuthStore'
 import { useSettingsStore } from './stores/useSettingsStore'
@@ -1874,6 +1875,18 @@ function EmbeddedEditor({
 
         if (!currentSessionId) {
           throw new Error('편집 세션이 없습니다.')
+        }
+
+        // S8: 내지 페이지 수가 증감 단위(pageStep) 배수가 아니면 완료 차단 — 저장·complete·
+        // editor.complete 모두 미수행, editor.error(INVALID_DATA) + reject. pageStep 미설정 셋 무영향.
+        {
+          const pageStepBlock = getPageStepBlockMessage()
+          if (pageStepBlock) {
+            const errPayload = { code: 'INVALID_DATA' as const, message: pageStepBlock }
+            onError?.(errPayload)
+            postToParent(parentOrigin, 'editor.error', errPayload)
+            throw new Error(pageStepBlock)
+          }
         }
 
         // L7: 프로그래매틱(파트너 IIFE API) 완료 경로는 모달 없이 경고 로그만 — 파트너의

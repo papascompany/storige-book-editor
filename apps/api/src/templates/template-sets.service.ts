@@ -105,6 +105,7 @@ export class TemplateSetsService {
       height: dto.height,
       canAddPage: dto.canAddPage ?? true,
       pageCountRange: dto.pageCountRange || [],
+      pageStep: dto.pageStep ?? null, // S8 내지 증감 단위 (null=제약 없음)
       templates: dto.templates || [],
       editorMode,
       // null = 모든 메뉴 노출(기본). admin 에서 명시적으로 배열을 보내면 화이트리스트로 작동.
@@ -387,6 +388,7 @@ export class TemplateSetsService {
       height: original.height,
       canAddPage: original.canAddPage,
       pageCountRange: original.pageCountRange,
+      pageStep: original.pageStep,
       templates: original.templates,
       categoryId: original.categoryId,
       isDeleted: false,
@@ -916,6 +918,7 @@ export class TemplateSetsService {
         height: newHeight,
         canAddPage: original.canAddPage,
         pageCountRange: original.pageCountRange,
+        pageStep: original.pageStep,
         templates: newRefs,
         editorMode: original.editorMode,
         enabledMenus: original.enabledMenus,

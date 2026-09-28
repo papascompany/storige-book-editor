@@ -5,6 +5,7 @@ import {
   IsBoolean,
   IsEnum,
   IsNumber,
+  IsInt,
   IsArray,
   IsIn,
   ValidateNested,
@@ -207,6 +208,17 @@ export class CreateTemplateSetDto {
   pageCountRange?: number[];
 
   @ApiPropertyOptional({
+    example: 2,
+    nullable: true,
+    description:
+      '내지 페이지 증감 단위(>=1 정수). 물리 내지 페이지 수가 이 값의 배수여야 함. null=제약 없음',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  pageStep?: number | null;
+
+  @ApiPropertyOptional({
     type: [TemplateRefDto],
     description: '템플릿 구성 (순서 포함)',
   })
@@ -373,6 +385,17 @@ export class UpdateTemplateSetDto {
   @IsArray()
   @IsNumber({}, { each: true })
   pageCountRange?: number[];
+
+  @ApiPropertyOptional({
+    example: 2,
+    nullable: true,
+    description:
+      '내지 페이지 증감 단위(>=1 정수). 물리 내지 페이지 수가 이 값의 배수여야 함. null=제약 없음',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  pageStep?: number | null;
 
   @ApiPropertyOptional({
     type: [TemplateRefDto],

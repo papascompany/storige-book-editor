@@ -50,6 +50,7 @@ import {
 import type { SpreadRegionPosition } from '@storige/types'
 import { runWithAutosaveSuspended } from '@/utils/autosaveSuspend'
 import { confirmRequiredEditsBeforeComplete } from '@/utils/requiredEditGate'
+import { getPageStepBlockMessage } from '@/utils/pageStepGuard'
 import RequiredEditConfirmModal from './RequiredEditConfirmModal'
 
 const SIZE_PRESETS: { label: string; width: number; height: number }[] = [
@@ -416,6 +417,14 @@ export default function EditorHeader({
   // 편집완료 (고객용)
   const handleFinish = useCallback(async () => {
     if (!ready || !canvas) return
+
+    // S8: 내지 페이지 수가 증감 단위(pageStep) 배수가 아니면 완료 차단 — editor.complete 미발신.
+    // (pageStep 미설정 셋은 null → 기존 흐름 그대로)
+    const pageStepBlock = getPageStepBlockMessage()
+    if (pageStepBlock) {
+      showToast(pageStepBlock, 'warning', 6000)
+      return
+    }
 
     // L7: 필수 편집 요소(requiredEdit) 미편집 경고 — 비차단 확인 모달.
     // setLoading '이전'(오버레이 충돌 방지) + editor.complete emit '이전'(파트너 계약 무변경).

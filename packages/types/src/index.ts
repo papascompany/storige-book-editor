@@ -326,6 +326,13 @@ export interface TemplateSet {
   height: number;             // 판형 (mm)
   canAddPage: boolean;        // 내지 추가 가능 여부
   pageCountRange: number[];   // 내지 수량 범위 (예: [10, 20, 30, 40])
+  /**
+   * 내지 페이지 증감 단위 (S8, 2026-09-28). 물리 내지 페이지 수가 이 값의 배수여야 한다.
+   * - null/undefined: 제약 없음(기존 동작 — 1장씩 추가/삭제).
+   * - N(>=1): 에디터가 N페이지 단위로 추가/삭제하고, 배수가 아니면 편집 완료를 차단.
+   * (파트너 상품 예: pageStep=2, pageCountRange=[16, 500])
+   */
+  pageStep?: number | null;
   templates: TemplateRef[];   // 순서 포함, N:N 관계
   isDeleted: boolean;         // 소프트 삭제
   /**
@@ -421,6 +428,8 @@ export interface CreateTemplateSetInput {
   height: number;
   canAddPage?: boolean;
   pageCountRange?: number[];
+  /** 내지 페이지 증감 단위 (S8, null=제약 없음, >=1 정수) */
+  pageStep?: number | null;
   templates?: TemplateRef[];
   categoryId?: string;
   /** 에디터 도구 메뉴 노출 화이트리스트 (null=모두 노출) */
@@ -452,6 +461,8 @@ export interface UpdateTemplateSetInput {
   height?: number;
   canAddPage?: boolean;
   pageCountRange?: number[];
+  /** 내지 페이지 증감 단위 (S8, null=제약 없음, >=1 정수) */
+  pageStep?: number | null;
   templates?: TemplateRef[];
   /** 에디터 도구 메뉴 노출 화이트리스트 (null=모두 노출) */
   enabledMenus?: EditorMenuKey[] | null;

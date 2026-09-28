@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { EditStatus, TemplateType, BindingType, BINDING_CONSTRAINTS } from '@storige/types'
 import type { EditSession, EditPage, CanvasData } from '@storige/types'
+import { pageAddCanvasCount, pageDeleteCanvasCount } from '@/utils/pageStep'
 
 /**
  * 에디터 세션 상태 관리
@@ -45,6 +46,12 @@ interface EditorState {
    * 비교하면 상한/하한이 정확히 절반으로 잘못 걸린다(2026-08-03).
    */
   pagesPerCanvas: number
+  /**
+   * S8 (2026-09-28): 내지 페이지 증감 단위(templateSet.pageStep, normalizePageStep 적용).
+   * null=제약 없음(기존 1장 단위). N 이면 물리 페이지 수가 N 의 배수가 되도록 한 번에 여러 장을
+   * 추가/삭제하고, 배수가 아니면 편집완료를 차단한다(utils/pageStep).
+   */
+  pageStep: number | null
 }
 
 interface EditorActions {
@@ -81,6 +88,15 @@ interface EditorActions {
   getPageCount: () => number
   canDeletePage: (pageId: string) => boolean
   canAddMorePages: () => boolean
+  /** S8: '추가' 1회에 생성할 캔버스 수 (pageStep=null → 1) */
+  getPageAddUnit: () => number
+  /** S8: '삭제' 1회에 제거할 캔버스 수 (pageStep=null → 1) */
+  getPageDeleteUnit: () => number
+  /**
+   * S8: pageId 삭제 시 함께 지울 페이지 ID 목록(대상 포함, 삭제 단위만큼).
+   * 같은 타입·삭제 가능·비필수인 인접 페이지(뒤 → 앞 순)로 채운다. 부족하면 빈 배열.
+   */
+  getDeleteGroup: (pageId: string) => string[]
 }
 
 const initialState: EditorState = {
@@ -102,6 +118,7 @@ const initialState: EditorState = {
   pageCountRange: [1, 100],
   bindingType: null,
   pagesPerCanvas: 1,
+  pageStep: null,
 }
 
 export const useEditorStore = create<EditorState & EditorActions>()(
@@ -288,12 +305,16 @@ export const useEditorStore = create<EditorState & EditorActions>()(
       },
 
       canDeletePage: (pageId: string) => {
-        const { pages, pageCountRange, bindingType, pagesPerCanvas } = get()
+        const { pages, pageCountRange, bindingType, pagesPerCanvas, pageStep } = get()
         const page = pages.find((p) => p.id === pageId)
 
         if (!page) return false
         if (!page.deleteable) return false
         if (page.required) return false
+
+        // S8: 증감 단위가 있으면 함께 지울 인접 페이지가 충분해야 한다(단위 미만 삭제 = 배수 깨짐).
+        const unit = pageStep ? get().getPageDeleteUnit() : 1
+        if (unit > 1 && get().getDeleteGroup(pageId).length !== unit) return false
 
         // 내지(page) 타입인 경우 최소 수량 체크
         if (page.templateType === TemplateType.PAGE) {
@@ -304,8 +325,8 @@ export const useEditorStore = create<EditorState & EditorActions>()(
           //   pageCountRange 최소와 제본 최소 중 큰 값 미만으로는 삭제 불가.
           const bindMin = bindingType ? (BINDING_CONSTRAINTS[bindingType]?.minPages ?? 0) : 0
           const minCount = Math.max(pageCountRange[0] || 1, bindMin)
-          // 한 장 지우면 pagesPerCanvas 만큼 줄어든다 — 지운 뒤에도 최소를 만족해야 허용
-          return physicalCount - (pagesPerCanvas || 1) >= minCount
+          // 한 장(S8: 단위 unit 장) 지우면 pagesPerCanvas×unit 만큼 줄어든다 — 지운 뒤에도 최소를 만족해야 허용
+          return physicalCount - (pagesPerCanvas || 1) * unit >= minCount
         }
 
         return true
@@ -323,8 +344,40 @@ export const useEditorStore = create<EditorState & EditorActions>()(
         const bindMax = bindingType ? (BINDING_CONSTRAINTS[bindingType]?.maxPages ?? Infinity) : Infinity
         const maxCount = Math.min(pageCountRange[pageCountRange.length - 1] || 100, bindMax)
 
-        // 한 장 추가하면 per 만큼 늘어난다 — 추가 후에도 최대를 넘지 않아야 허용
-        return physicalCount + per <= maxCount
+        // 한 장(S8: 단위 unit 장) 추가하면 per×unit 만큼 늘어난다 — 추가 후에도 최대를 넘지 않아야 허용
+        return physicalCount + per * get().getPageAddUnit() <= maxCount
+      },
+
+      getPageAddUnit: () => {
+        const { pages, pagesPerCanvas, pageStep } = get()
+        if (!pageStep) return 1
+        const per = pagesPerCanvas || 1
+        const physical = pages.filter((p) => p.templateType === TemplateType.PAGE).length * per
+        return pageAddCanvasCount(physical, pageStep, per)
+      },
+
+      getPageDeleteUnit: () => {
+        const { pages, pagesPerCanvas, pageStep } = get()
+        if (!pageStep) return 1
+        const per = pagesPerCanvas || 1
+        const physical = pages.filter((p) => p.templateType === TemplateType.PAGE).length * per
+        return pageDeleteCanvasCount(physical, pageStep, per)
+      },
+
+      getDeleteGroup: (pageId: string) => {
+        const { pages } = get()
+        const idx = pages.findIndex((p) => p.id === pageId)
+        if (idx === -1) return []
+        const target = pages[idx]
+        const unit = get().getPageDeleteUnit()
+        const removable = (p: EditPage | undefined) =>
+          !!p && p.templateType === target.templateType && !!p.deleteable && !p.required
+        if (!removable(target)) return []
+        const group = [target.id]
+        // 뒤쪽 인접 페이지 우선, 부족하면 앞쪽 — 연속 구간만(사이에 필수/타 타입이 끼면 중단)
+        for (let i = idx + 1; group.length < unit && removable(pages[i]); i++) group.push(pages[i].id)
+        for (let i = idx - 1; group.length < unit && removable(pages[i]); i--) group.push(pages[i].id)
+        return group.length === unit ? group : []
       },
     }),
     {

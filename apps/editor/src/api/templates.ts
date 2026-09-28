@@ -24,6 +24,8 @@ export interface TemplateSet {
   height: number;
   canAddPage: boolean;
   pageCountRange: number[];
+  /** S8: 내지 페이지 증감 단위 (null=제약 없음) */
+  pageStep?: number | null;
   templates: TemplateRef[];
   categoryId: string | null;
   isActive: boolean;

@@ -12,6 +12,7 @@ import { showToast } from '@/stores/useToastStore'
 import { BindingType } from '@storige/types'
 
 import { computeInnerReorder } from '@/utils/innerPageReorder'
+import { PageStepWarning } from './PageStepWarning'
 import { persistContentPdfPageOrderAfterReorder } from '@/utils/contentPdfGuide'
 
 function isTouchEnv(): boolean {
@@ -57,6 +58,7 @@ export const SpreadPagePanel = memo(function SpreadPagePanel({
   const canAddMore = useCanAddPage()
   const canDeletePage = useEditorStore((state) => state.canDeletePage)
   const bindingType = useEditorStore((state) => state.bindingType)
+  const pageStep = useEditorStore((state) => state.pageStep)
   const isInnerSpread = useSettingsStore((s) => s.spreadConfig?.regionScope === 'inner')
   const hasCoverSlot = useSettingsStore((s) => s.hasCoverSlot)
   const treatAllAsInners = isInnerSpread || !hasCoverSlot
@@ -95,34 +97,57 @@ export const SpreadPagePanel = memo(function SpreadPagePanel({
       return
     }
     try {
-      await addPage()
+      // S8: 증감 단위(pageStep)가 있으면 배수를 맞추는 캔버스 수만큼 연속 추가(null → 1장, 기존 동작).
+      const unit = useEditorStore.getState().getPageAddUnit()
+      for (let i = 0; i < unit; i++) {
+        await addPage()
+      }
+      if (unit > 1) {
+        const added = unit * (useEditorStore.getState().pagesPerCanvas || 1)
+        showToast(`내지 ${pageStep}페이지 단위 상품이라 ${added}페이지가 추가되었습니다.`, 'info', 2500)
+      }
     } catch (error) {
       console.error('페이지 추가 실패:', error)
     }
-  }, [canAddMore, addPage, bindingType])
+  }, [canAddMore, addPage, bindingType, pageStep])
 
   const handleDeletePage = useCallback((pageId: string) => {
     // A13: 제본 최소페이지(예: 무선 32p) 미만으로 삭제 차단
     if (!canDeletePage(pageId)) {
+      const store = useEditorStore.getState()
+      const unit = store.getPageDeleteUnit()
+      // S8: 단위 삭제에 필요한 인접 페이지가 부족한 경우(필수 페이지 사이 등) 별도 안내
+      const groupShort = pageStep && unit > 1 && store.getDeleteGroup(pageId).length !== unit
       showToast(
-        bindingType === BindingType.PERFECT
-          ? '무선제본은 최소 32페이지가 필요해 더 삭제할 수 없습니다.'
-          : '최소 페이지 수 제한으로 삭제할 수 없습니다.',
+        groupShort
+          ? `내지 ${pageStep}페이지 단위 상품이라 이 위치에서는 함께 삭제할 페이지가 부족합니다.`
+          : bindingType === BindingType.PERFECT
+            ? '무선제본은 최소 32페이지가 필요해 더 삭제할 수 없습니다.'
+            : '최소 페이지 수 제한으로 삭제할 수 없습니다.',
         'warning',
         2500,
       )
       return
     }
-    // pageId에 해당하는 캔버스 찾기
-    const pageIndex = pages.findIndex((p) => p.id === pageId)
-    if (pageIndex === -1) return
+    // S8: 증감 단위만큼 인접 페이지를 함께 삭제(pageStep=null → 대상 1장, 기존 동작).
+    const groupIds = pageStep ? useEditorStore.getState().getDeleteGroup(pageId) : [pageId]
+    // 삭제 전 pageId → canvasId 를 확정한다(순차 삭제 중 인덱스가 밀리므로 id 로 지운다).
+    const canvasIds: string[] = []
+    for (const id of groupIds) {
+      const pageIndex = pages.findIndex((p) => p.id === id)
+      if (pageIndex === -1) return
+      // allCanvas에서 해당 인덱스의 canvasId 가져오기
+      const canvas = allCanvas[pageIndex]
+      if (!canvas) return
+      canvasIds.push(canvas.id)
+    }
 
-    // allCanvas에서 해당 인덱스의 canvasId 가져오기
-    const canvas = allCanvas[pageIndex]
-    if (!canvas) return
-
-    deletePage(canvas.id)
-  }, [pages, allCanvas, deletePage, canDeletePage, bindingType])
+    for (const canvasId of canvasIds) deletePage(canvasId)
+    if (canvasIds.length > 1) {
+      const removed = canvasIds.length * (useEditorStore.getState().pagesPerCanvas || 1)
+      showToast(`내지 ${pageStep}페이지 단위 상품이라 인접 페이지까지 ${removed}페이지가 삭제되었습니다.`, 'info', 2500)
+    }
+  }, [pages, allCanvas, deletePage, canDeletePage, bindingType, pageStep])
 
   const [dragSourceIdx, setDragSourceIdx] = useState<number | null>(null)
   const [dragOver, setDragOver] = useState<{ idx: number; before: boolean } | null>(null)
@@ -222,7 +247,7 @@ export const SpreadPagePanel = memo(function SpreadPagePanel({
   return (
     <div
       className={cn(
-        'bg-white flex shrink-0',
+        'relative bg-white flex shrink-0',
         isVertical
           // 우측 세로 패널
           ? 'w-[150px] h-full border-l flex-col items-stretch'
@@ -231,6 +256,9 @@ export const SpreadPagePanel = memo(function SpreadPagePanel({
         className
       )}
     >
+      {/* S8: 내지 페이지 수가 증감 단위(pageStep) 배수가 아니면 경고 배지 (편집완료 차단 사유 안내) */}
+      <PageStepWarning />
+
       {/* 스크롤 가능 영역 */}
       <div
         className={cn(

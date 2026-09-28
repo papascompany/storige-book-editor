@@ -163,6 +163,8 @@ CREATE TABLE IF NOT EXISTS template_sets (
   height           FLOAT NOT NULL DEFAULT 297,
   can_add_page     BOOLEAN NOT NULL DEFAULT TRUE,
   page_count_range JSON NOT NULL,
+  -- 내지 페이지 증감 단위 (2026-09-28, S8) — migrations/20260928_add_template_set_page_step.sql 동기
+  page_step        INT NULL,
   templates        JSON NOT NULL,
   editor_mode      VARCHAR(20) NOT NULL DEFAULT 'single',
   content_pdf_editable BOOLEAN NOT NULL DEFAULT TRUE,
