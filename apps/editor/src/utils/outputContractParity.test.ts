@@ -47,6 +47,11 @@ describe('출력 계약 단일 진실원 파리티 (D-1/D-4/D-3)', () => {
     expect(embedSrc).toContain("'editor.pricingChange'")
   })
 
+  it('S9: 책등 재계산 확정값 재발신은 shouldReemitPricing 판단을 거친다', () => {
+    expect(embedSrc).toMatch(/useSettingsStore\.subscribe\(/)
+    expect(embedSrc).toMatch(/shouldReemitPricing\(lastEmitted,\s*current\)/)
+  })
+
   it('R-195: metadata.coverOutput 은 표지 PDF 에 넘긴 동일 size 객체로 산출한다', () => {
     // 표지 PDF 호출이 coverPdfSizeOpt 를 그대로 넘기고, coverOutput 도 같은 객체를 입력으로 쓴다.
     expect(embedSrc).toMatch(/`cover-\$\{currentSessionId\}`,\s*coverPdfSizeOpt,/)

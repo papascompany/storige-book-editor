@@ -52,6 +52,7 @@ import {
   computeLivePageCount,
   resolveTemplateSetCoverMeta,
 } from './utils/photobookSpread'
+import { shouldReemitPricing, type PricingEmitState } from './utils/pricingChangeReemit'
 import { templatesApi, editSessionsApi, filesApi, apiClient, type EditSessionResponse } from './api'
 import { core, ServicePlugin } from '@storige/canvas-core'
 import type { PhotobookPricing, TemplateSetCoverMeta } from '@storige/types'
@@ -385,8 +386,9 @@ export interface PricingChangePayload {
   /** 커버 종류 코드 (templateSet.coverType 설정 시에만, string 코드 — 고정 enum 아님) */
   coverType?: string
   /**
-   * R-195 (additive): 발신 시점에 적용돼 있는 책등 폭(mm, 스프레드 책만).
-   * 페이지 증감 직후의 책등 재계산(debounce + API)이 아직 끝나지 않았다면 직전 값일 수 있다.
+   * R-195 (additive): 발신 시점에 적용돼 있는 책등 폭(mm, 소수 1자리, 스프레드 책만).
+   * S9 (2026-09-28): 페이지 증감 직후의 책등 재계산(debounce + API)이 발신보다 늦게 끝나 적용
+   * 책등 폭이 바뀌면 같은 형태의 payload 를 1회 더 발신한다 — 가장 마지막 이벤트의 값이 최종값.
    */
   spineWidthMm?: number
 }
@@ -1776,10 +1778,16 @@ function EmbeddedEditor({
   // pageCount 는 editor.complete 와 동일 산식(computeLivePageCount 단일 진실원, 내지 펼침면 ×2).
   // P1-4 (2026-08-22): 발신 본체를 ref 로 노출 — 서버 버전 복원(재초기화)로 캔버스 수가 바뀐 경우
   // 초기화 게이트(isInitializedRef=false) 때문에 구독이 침묵하므로, 재초기화 완료 지점에서 1회 직접 발신한다.
+  // S9 (2026-09-28): 책등 확정값 재발신 — 페이지 증감이 유발한 책등 재계산(spineCalculator)이 발신보다
+  // 늦게 끝나 spreadConfig.spec.spineWidthMm 이 바뀌면, 같은 가드 아래 같은 payload 를 1회 더 발신한다.
+  // 중복 방지: 직전 발신 값과 같으면 생략, 페이지 발신 1건당 재발신 최대 1회(armed), 연속 갱신은 300ms 로 합침.
   const emitPricingChangeRef = useRef<() => void>(() => {})
   useEffect(() => {
     let debounceTimer: ReturnType<typeof setTimeout> | null = null
-    const emitNow = () => {
+    let spineDebounceTimer: ReturnType<typeof setTimeout> | null = null
+    /** 직전 발신 상태 — 이 effect 수명 동안만 유효(세션 교체 시 초기화) */
+    let lastEmitted: PricingEmitState | null = null
+    const emitNow = (reason: 'pages' | 'spine' = 'pages') => {
       // 발신 시점 재확인(디바운스 사이 상태 변화 대비 — 보수 기본 유지)
       const pricingMeta = templateSetPricingRef.current
       if (!pricingMeta || !isInitializedRef.current) return
@@ -1800,15 +1808,20 @@ function EmbeddedEditor({
           ? { coverType: templateSetCoverMetaRef.current.coverType }
           : {}),
       }
-      // R-195: 발신 시점에 적용돼 있는 책등 폭(스프레드 책만). 페이지 증감이 유발한 책등 재계산
-      // (debounce 300ms + API 왕복)이 아직 진행 중이면 직전 값이다 — 최종값은 editor.complete 의
-      // spineWidthMm 을 기준으로 삼아야 한다.
+      // R-195: 발신 시점에 적용돼 있는 책등 폭(스프레드 책만). S9: 책등 재계산(debounce 300ms + API
+      // 왕복)이 이 발신보다 늦게 끝나 값이 바뀌면 아래 useSettingsStore 구독이 확정값으로 1회 재발신한다.
       const pricingSpineWidthMm = getAppliedSpineWidthMm(appState.isSpreadMode, spreadCfg)
       if (pricingSpineWidthMm !== undefined) payload.spineWidthMm = pricingSpineWidthMm
       postToParent(parentOrigin, 'editor.pricingChange', payload)
-      console.log('[EmbeddedEditor] editor.pricingChange emitted:', payload.pageCount)
+      // 페이지 발신은 재발신 1회를 무장하고, 재발신은 무장을 해제한다(페이지 변경 1건당 추가 발신 ≤ 1).
+      lastEmitted = { armed: reason === 'pages', spineWidthMm: pricingSpineWidthMm }
+      console.log(
+        `[EmbeddedEditor] editor.pricingChange emitted (${reason}):`,
+        payload.pageCount,
+        payload.spineWidthMm,
+      )
     }
-    emitPricingChangeRef.current = emitNow
+    emitPricingChangeRef.current = () => emitNow('pages')
     const unsubscribe = useAppStore.subscribe((state, prevState) => {
       if (state.allCanvas.length === prevState.allCanvas.length) return
       if (!isInitializedRef.current) return
@@ -1817,12 +1830,32 @@ function EmbeddedEditor({
       if (debounceTimer) clearTimeout(debounceTimer)
       debounceTimer = setTimeout(() => {
         debounceTimer = null
-        emitNow()
+        emitNow('pages')
+      }, 300)
+    })
+    // S9: 적용 책등 폭(spreadConfig.spec.spineWidthMm) 변경 구독 — spineCalculator 는 건드리지 않는다.
+    const unsubscribeSpine = useSettingsStore.subscribe((state, prevState) => {
+      if (state.spreadConfig?.spec?.spineWidthMm === prevState.spreadConfig?.spec?.spineWidthMm) return
+      if (!lastEmitted?.armed) return
+      if (spineDebounceTimer) clearTimeout(spineDebounceTimer)
+      spineDebounceTimer = setTimeout(() => {
+        spineDebounceTimer = null
+        // 페이지 발신이 대기 중이면 그 발신이 최신 책등 폭을 싣는다 — 재발신 불필요.
+        if (debounceTimer) return
+        // 발신 가드는 emitNow 가 재확인(pricing 메타·초기화 완료·회원 세션).
+        const current = getAppliedSpineWidthMm(
+          useAppStore.getState().isSpreadMode,
+          useSettingsStore.getState().spreadConfig,
+        )
+        if (!shouldReemitPricing(lastEmitted, current)) return
+        emitNow('spine')
       }, 300)
     })
     return () => {
       unsubscribe()
+      unsubscribeSpine()
       if (debounceTimer) clearTimeout(debounceTimer)
+      if (spineDebounceTimer) clearTimeout(spineDebounceTimer)
     }
   }, [parentOrigin, currentSession, sessionId, options?.pages])
 
