@@ -2,7 +2,13 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { EditStatus, TemplateType, BindingType, BINDING_CONSTRAINTS } from '@storige/types'
 import type { EditSession, EditPage, CanvasData } from '@storige/types'
-import { pageAddCanvasCount, pageDeleteCanvasCount } from '@/utils/pageStep'
+import {
+  pageAddCanvasCount,
+  pageDeleteCanvasCount,
+  pageStepMetric,
+  DEFAULT_PAGE_STEP_BASIS,
+  type PageStepBasis,
+} from '@/utils/pageStep'
 
 /**
  * 에디터 세션 상태 관리
@@ -52,6 +58,12 @@ interface EditorState {
    * 추가/삭제하고, 배수가 아니면 편집완료를 차단한다(utils/pageStep).
    */
   pageStep: number | null
+  /**
+   * S8: pageStep 산정 기준(스프레드 여부·regionScope). 로더가 pageStep 과 함께 적재한다.
+   * 추가/삭제 단위는 pages.length(= allCanvas 1:1)를 완료 가드와 **같은 산식**(pageStepMetric)으로
+   * 환산해 계산한다 — 내지 TemplateType(PAGE/SPREAD)에 의존하지 않는다.
+   */
+  pageStepBasis: PageStepBasis
 }
 
 interface EditorActions {
@@ -92,6 +104,8 @@ interface EditorActions {
   getPageAddUnit: () => number
   /** S8: '삭제' 1회에 제거할 캔버스 수 (pageStep=null → 1) */
   getPageDeleteUnit: () => number
+  /** S8: 캔버스 1장 추가/삭제 시 가드 기준 증감 페이지 수 (내지 전용 펼침면=2, 그 외=1) */
+  getPageStepPerCanvas: () => number
   /**
    * S8: pageId 삭제 시 함께 지울 페이지 ID 목록(대상 포함, 삭제 단위만큼).
    * 같은 타입·삭제 가능·비필수인 인접 페이지(뒤 → 앞 순)로 채운다. 부족하면 빈 배열.
@@ -119,6 +133,7 @@ const initialState: EditorState = {
   bindingType: null,
   pagesPerCanvas: 1,
   pageStep: null,
+  pageStepBasis: DEFAULT_PAGE_STEP_BASIS,
 }
 
 export const useEditorStore = create<EditorState & EditorActions>()(
@@ -348,21 +363,23 @@ export const useEditorStore = create<EditorState & EditorActions>()(
         return physicalCount + per * get().getPageAddUnit() <= maxCount
       },
 
+      // S8: 단위 산정은 완료 가드(livePhysicalPageCount)와 동일 산식 — 펼침면 내지(TemplateType.SPREAD)도
+      // 캔버스로 세므로 "스토어는 0p, 가드는 6p" 같은 불일치로 배수에 도달 못 하는 일이 없다.
       getPageAddUnit: () => {
-        const { pages, pagesPerCanvas, pageStep } = get()
+        const { pages, pageStep, pageStepBasis } = get()
         if (!pageStep) return 1
-        const per = pagesPerCanvas || 1
-        const physical = pages.filter((p) => p.templateType === TemplateType.PAGE).length * per
-        return pageAddCanvasCount(physical, pageStep, per)
+        const { physical, perCanvas } = pageStepMetric(pages.length, pageStepBasis)
+        return pageAddCanvasCount(physical, pageStep, perCanvas)
       },
 
       getPageDeleteUnit: () => {
-        const { pages, pagesPerCanvas, pageStep } = get()
+        const { pages, pageStep, pageStepBasis } = get()
         if (!pageStep) return 1
-        const per = pagesPerCanvas || 1
-        const physical = pages.filter((p) => p.templateType === TemplateType.PAGE).length * per
-        return pageDeleteCanvasCount(physical, pageStep, per)
+        const { physical, perCanvas } = pageStepMetric(pages.length, pageStepBasis)
+        return pageDeleteCanvasCount(physical, pageStep, perCanvas)
       },
+
+      getPageStepPerCanvas: () => pageStepMetric(get().pages.length, get().pageStepBasis).perCanvas,
 
       getDeleteGroup: (pageId: string) => {
         const { pages } = get()

@@ -100,3 +100,44 @@ export function livePhysicalPageCount(input: {
   const cover = input.isSpreadMode && count > 1 ? 1 : 0
   return input.isSpreadMode && count <= 1 ? 0 : count - cover
 }
+
+/**
+ * pageStep 산정 기준(세션 형태). 완료 가드(livePhysicalPageCount)와 추가/삭제 단위 계산이
+ * **같은 산식**을 쓰도록 스토어에 적재한다 — 둘이 다르면 단위 이동으로 배수에 영영 도달하지 못해
+ * 완료가 영구 차단될 수 있다(S8 리뷰: 펼침면 내지 TemplateType.SPREAD 를 0장으로 셌던 결함).
+ */
+export interface PageStepBasis {
+  isSpreadMode: boolean
+  regionScope: string | null
+}
+
+export const DEFAULT_PAGE_STEP_BASIS: PageStepBasis = { isSpreadMode: false, regionScope: null }
+
+/**
+ * 캔버스 수 → { 가드 기준 물리 페이지 수, 캔버스 1장 추가/삭제 시 증감 페이지 수 }.
+ * - 내지 전용 펼침면(regionScope='inner'): 캔버스 1장 = 2p
+ * - 그 외(표지+내지 스프레드·단일 모드): 캔버스 1장 = 1p (완료 payload pageCount 산식과 동일)
+ */
+export function pageStepMetric(canvasCount: number, basis: PageStepBasis): { physical: number; perCanvas: number } {
+  return {
+    physical: livePhysicalPageCount({ canvasCount, isSpreadMode: basis.isSpreadMode, regionScope: basis.regionScope }),
+    perCanvas: basis.regionScope === 'inner' ? 2 : 1,
+  }
+}
+
+/**
+ * 단위 삭제 대상 인덱스(대상 + 인접 연속 구간, 뒤쪽 우선 → 부족하면 앞쪽).
+ * removable 이 false 인 칸을 만나면 그 방향은 중단. unit 을 채우지 못하면 [] (삭제 불가).
+ */
+export function adjacentDeleteIndices(
+  length: number,
+  targetIdx: number,
+  unit: number,
+  removable: (idx: number) => boolean = () => true,
+): number[] {
+  if (targetIdx < 0 || targetIdx >= length || !removable(targetIdx)) return []
+  const group = [targetIdx]
+  for (let i = targetIdx + 1; group.length < unit && i < length && removable(i); i++) group.push(i)
+  for (let i = targetIdx - 1; group.length < unit && i >= 0 && removable(i); i--) group.push(i)
+  return group.length === unit ? group : []
+}

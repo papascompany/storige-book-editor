@@ -103,7 +103,7 @@ export const SpreadPagePanel = memo(function SpreadPagePanel({
         await addPage()
       }
       if (unit > 1) {
-        const added = unit * (useEditorStore.getState().pagesPerCanvas || 1)
+        const added = unit * useEditorStore.getState().getPageStepPerCanvas()
         showToast(`내지 ${pageStep}페이지 단위 상품이라 ${added}페이지가 추가되었습니다.`, 'info', 2500)
       }
     } catch (error) {
@@ -144,7 +144,7 @@ export const SpreadPagePanel = memo(function SpreadPagePanel({
 
     for (const canvasId of canvasIds) deletePage(canvasId)
     if (canvasIds.length > 1) {
-      const removed = canvasIds.length * (useEditorStore.getState().pagesPerCanvas || 1)
+      const removed = canvasIds.length * useEditorStore.getState().getPageStepPerCanvas()
       showToast(`내지 ${pageStep}페이지 단위 상품이라 인접 페이지까지 ${removed}페이지가 삭제되었습니다.`, 'info', 2500)
     }
   }, [pages, allCanvas, deletePage, canDeletePage, bindingType, pageStep])

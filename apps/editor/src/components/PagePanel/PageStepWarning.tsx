@@ -10,7 +10,12 @@ import { getPageStepViolation, livePhysicalPageCount, pageStepViolationMessage }
  * 호스트가 홀수 pageCount 로 시드한 경우 등 — 이 상태에서는 편집완료가 차단된다(EditorHeader/embed).
  * pageStep=null 이거나 배수를 만족하면 렌더하지 않는다(기존 화면 무변화).
  */
-export const PageStepWarning = memo(function PageStepWarning() {
+export const PageStepWarning = memo(function PageStepWarning({
+  variant = 'overlay',
+}: {
+  /** overlay = SpreadPagePanel 상단 떠 있는 배지, inline = SidePanel(단일 모드) 페이지 섹션 흐름 배치 */
+  variant?: 'overlay' | 'inline'
+}) {
   const pageStep = useEditorStore((s) => s.pageStep)
   const canvasCount = useAppStore((s) => s.allCanvas.length)
   const isSpreadMode = useAppStore((s) => s.isSpreadMode)
@@ -25,7 +30,10 @@ export const PageStepWarning = memo(function PageStepWarning() {
   return (
     <div
       role="alert"
-      className="absolute left-2 right-2 top-1 z-10 flex items-start gap-1 rounded border border-amber-300 bg-amber-50 px-2 py-1 text-[11px] leading-snug text-amber-800 shadow-sm"
+      className={
+        (variant === 'inline' ? 'mx-4 mb-2 ' : 'absolute left-2 right-2 top-1 z-10 shadow-sm ') +
+        'flex items-start gap-1 rounded border border-amber-300 bg-amber-50 px-2 py-1 text-[11px] leading-snug text-amber-800'
+      }
     >
       <AlertTriangle className="mt-px h-3 w-3 shrink-0" />
       <span>{pageStepViolationMessage(violation)}</span>

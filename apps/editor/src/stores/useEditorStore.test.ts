@@ -453,6 +453,10 @@ describe('useEditorStore', () => {
 
     // S8 (2026-09-28): 내지 증감 단위(pageStep) — 물리 페이지 수를 step 배수로 유지
     describe('pageStep (내지 증감 단위)', () => {
+      // 로더(useEditorContents)가 적재하는 산정 기준 — 완료 가드와 같은 산식
+      const COVER_SPREAD = { isSpreadMode: true, regionScope: 'cover' };
+      const INNER_SPREAD = { isSpreadMode: true, regionScope: 'inner' };
+      const SINGLE = { isSpreadMode: false, regionScope: null };
       const cover = () =>
         createMockPage({
           id: 'cover',
@@ -473,6 +477,7 @@ describe('useEditorStore', () => {
       it('pageStep=null 이면 기존과 동일 — 1장 단위 추가/삭제', () => {
         useEditorStore.setState({
           pagesPerCanvas: 1,
+          pageStepBasis: COVER_SPREAD,
           canAddPage: true,
           pageCountRange: [16, 500],
           bindingType: null,
@@ -490,6 +495,7 @@ describe('useEditorStore', () => {
       it('pageStep=2 (낱장): 짝수 상태에서는 2장씩 추가/삭제, 하한 16 이면 16p 에서 삭제 불가', () => {
         useEditorStore.setState({
           pagesPerCanvas: 1,
+          pageStepBasis: COVER_SPREAD,
           canAddPage: true,
           pageCountRange: [16, 500],
           bindingType: null,
@@ -514,6 +520,7 @@ describe('useEditorStore', () => {
       it('pageStep=2: 홀수(호스트 시드 17p)면 1장만 추가/삭제해 배수로 복귀', () => {
         useEditorStore.setState({
           pagesPerCanvas: 1,
+          pageStepBasis: COVER_SPREAD,
           canAddPage: true,
           pageCountRange: [16, 500],
           bindingType: null,
@@ -530,6 +537,7 @@ describe('useEditorStore', () => {
       it('pageStep=2: 상한 직전(499p)은 1장 추가로 500 허용, 500p 는 추가 불가', () => {
         useEditorStore.setState({
           pagesPerCanvas: 1,
+          pageStepBasis: COVER_SPREAD,
           canAddPage: true,
           pageCountRange: [16, 500],
           bindingType: null,
@@ -546,6 +554,7 @@ describe('useEditorStore', () => {
       it('pageStep=2: 함께 지울 인접 삭제 가능 페이지가 없으면 삭제 불가', () => {
         useEditorStore.setState({
           pagesPerCanvas: 1,
+          pageStepBasis: COVER_SPREAD,
           canAddPage: true,
           pageCountRange: [1, 500],
           bindingType: null,
@@ -566,6 +575,7 @@ describe('useEditorStore', () => {
       it('pageStep=2 + 펼침면(pagesPerCanvas=2): 캔버스 1장 = 2p 라 1장 단위 그대로', () => {
         useEditorStore.setState({
           pagesPerCanvas: 2,
+          pageStepBasis: INNER_SPREAD,
           canAddPage: true,
           pageCountRange: [4, 8],
           bindingType: null,
@@ -581,6 +591,7 @@ describe('useEditorStore', () => {
       it('pageStep=4 + 펼침면(pagesPerCanvas=2): 2장(4p) 단위', () => {
         useEditorStore.setState({
           pagesPerCanvas: 2,
+          pageStepBasis: INNER_SPREAD,
           canAddPage: true,
           pageCountRange: [4, 12],
           bindingType: null,
@@ -599,10 +610,83 @@ describe('useEditorStore', () => {
         expect(st.getPageDeleteUnit()).toBe(1); // 10 → 8
       });
 
-      it('clearSession 은 pageStep 을 null 로 리셋한다', () => {
-        useEditorStore.setState({ pageStep: 2 });
+            // S8 리뷰 회귀: 실제 로더는 펼침면 내지를 TemplateType.SPREAD 로 만든다(PAGE 아님).
+      // 종전 산식은 PAGE 만 세어 물리 0p 로 보고 항상 2장씩 움직여, 홀수 시드면 배수에 영영 도달 못 했다.
+      const mkSpreadInner = (n: number, anchorRequired = true) =>
+        Array.from({ length: n }, (_, i) =>
+          createMockPage({
+            id: `s-${i}`,
+            // 내지 전용 펼침면: index 0 = 첫 펼침면(앵커, 삭제 불가), 나머지 삭제 가능
+            deleteable: !(anchorRequired && i === 0),
+            required: anchorRequired && i === 0,
+            templateType: TemplateType.SPREAD,
+          })
+        );
+
+      it('pageStep=4 + 내지 전용 펼침면(SPREAD 내지, 홀수 시드 3장=6p): 1장 추가로 8p, 1장 삭제로 4p', () => {
+        useEditorStore.setState({
+          pagesPerCanvas: 2,
+          pageStepBasis: INNER_SPREAD,
+          canAddPage: true,
+          pageCountRange: [2, 40],
+          bindingType: null,
+          pageStep: 4,
+        });
+        useEditorStore.getState().setPages(mkSpreadInner(3));
+        const st = useEditorStore.getState();
+        expect(st.getPageStepPerCanvas()).toBe(2);
+        expect(st.getPageAddUnit()).toBe(1); // 6 → 8
+        expect(st.getPageDeleteUnit()).toBe(1); // 6 → 4
+        expect(st.getDeleteGroup('s-2')).toEqual(['s-2']);
+        expect(st.canDeletePage('s-2')).toBe(true);
+
+        // 1장 추가 후(4장=8p) 다시 정렬 상태 → 2장(4p) 단위
+        useEditorStore.getState().setPages(mkSpreadInner(4));
+        const st2 = useEditorStore.getState();
+        expect(st2.getPageAddUnit()).toBe(2);
+        expect(st2.getPageDeleteUnit()).toBe(2);
+        expect(st2.getDeleteGroup('s-2')).toEqual(['s-2', 's-3']);
+      });
+
+      it('pageStep=4 + 표지+펼침면 내지(SPREAD): 가드와 같은 산식(캔버스−표지)으로 배수 도달', () => {
+        useEditorStore.setState({
+          pagesPerCanvas: 2,
+          pageStepBasis: COVER_SPREAD,
+          canAddPage: true,
+          pageCountRange: [1, 100],
+          bindingType: null,
+          pageStep: 4,
+        });
+        // 표지 + 펼침면 내지 3장 → 가드 기준 3p
+        useEditorStore.getState().setPages([cover(), ...mkSpreadInner(3, false)]);
+        const st = useEditorStore.getState();
+        expect(st.getPageStepPerCanvas()).toBe(1);
+        expect(st.getPageAddUnit()).toBe(1); // 3 → 4
+        expect(st.getPageDeleteUnit()).toBe(3); // 3 → 0 (배수) — 인접 3장 필요
+      });
+
+      it('pageStep=2 + 단일 모드: 캔버스 수 기준(홀수 17 → 1장, 짝수 18 → 2장)', () => {
+        useEditorStore.setState({
+          pagesPerCanvas: 1,
+          pageStepBasis: SINGLE,
+          canAddPage: true,
+          pageCountRange: [1, 500],
+          bindingType: null,
+          pageStep: 2,
+        });
+        useEditorStore.getState().setPages(mkInner(17));
+        expect(useEditorStore.getState().getPageAddUnit()).toBe(1);
+        expect(useEditorStore.getState().getPageDeleteUnit()).toBe(1);
+        useEditorStore.getState().setPages(mkInner(18));
+        expect(useEditorStore.getState().getPageAddUnit()).toBe(2);
+        expect(useEditorStore.getState().getPageDeleteUnit()).toBe(2);
+      });
+
+it('clearSession 은 pageStep 을 null 로 리셋한다', () => {
+        useEditorStore.setState({ pageStep: 2, pageStepBasis: { isSpreadMode: true, regionScope: 'inner' } });
         useEditorStore.getState().clearSession();
         expect(useEditorStore.getState().pageStep).toBeNull();
+        expect(useEditorStore.getState().pageStepBasis).toEqual({ isSpreadMode: false, regionScope: null });
       });
     });
 

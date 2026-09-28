@@ -6,6 +6,8 @@ import {
   getPageStepViolation,
   pageStepViolationMessage,
   livePhysicalPageCount,
+  pageStepMetric,
+  adjacentDeleteIndices,
 } from './pageStep'
 
 describe('pageStep 순수 헬퍼 (S8)', () => {
@@ -79,5 +81,32 @@ describe('pageStep 순수 헬퍼 (S8)', () => {
       getPageStepViolation(livePhysicalPageCount({ canvasCount, isSpreadMode: true, regionScope: null }), 2)
     expect(at(18)).not.toBeNull() // 표지 + 17p
     expect(at(19)).toBeNull() // 표지 + 18p
+  })
+
+  it('pageStepMetric: 가드 산식과 동일한 물리 페이지 + 캔버스당 증감', () => {
+    expect(pageStepMetric(3, { isSpreadMode: true, regionScope: 'inner' })).toEqual({ physical: 6, perCanvas: 2 })
+    expect(pageStepMetric(4, { isSpreadMode: true, regionScope: 'cover' })).toEqual({ physical: 3, perCanvas: 1 })
+    expect(pageStepMetric(1, { isSpreadMode: true, regionScope: null })).toEqual({ physical: 0, perCanvas: 1 })
+    expect(pageStepMetric(17, { isSpreadMode: false, regionScope: null })).toEqual({ physical: 17, perCanvas: 1 })
+  })
+
+  it('pageStepMetric 기반 단위 이동은 홀수 시드에서도 배수에 도달한다(내지 전용 펼침면, step 4)', () => {
+    const basis = { isSpreadMode: true, regionScope: 'inner' }
+    for (let canvases = 1; canvases <= 12; canvases++) {
+      const { physical, perCanvas } = pageStepMetric(canvases, basis)
+      const added = canvases + pageAddCanvasCount(physical, 4, perCanvas)
+      expect(pageStepMetric(added, basis).physical % 4).toBe(0)
+      const removed = canvases - pageDeleteCanvasCount(physical, 4, perCanvas)
+      if (removed > 0) expect(pageStepMetric(removed, basis).physical % 4).toBe(0)
+    }
+  })
+
+  it('adjacentDeleteIndices: 뒤쪽 우선, 부족하면 앞쪽, 채우지 못하면 []', () => {
+    expect(adjacentDeleteIndices(5, 1, 1)).toEqual([1])
+    expect(adjacentDeleteIndices(5, 1, 2)).toEqual([1, 2])
+    expect(adjacentDeleteIndices(5, 4, 2)).toEqual([4, 3])
+    expect(adjacentDeleteIndices(5, 2, 2, (i) => i !== 3 && i !== 1)).toEqual([])
+    expect(adjacentDeleteIndices(5, 0, 2, (i) => i !== 0)).toEqual([])
+    expect(adjacentDeleteIndices(2, 5, 1)).toEqual([])
   })
 })

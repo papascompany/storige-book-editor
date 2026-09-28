@@ -1496,9 +1496,12 @@ export function useEditorContents(): UseEditorContentsReturn {
 
       // useEditorStore.pages 동기화 — BookNavigation 등 페이지 정보 참조 컴포넌트용
       // 단일 모드에서도 책자 네비를 위해 pages 정보 채움
-      // S8: 단일 모드는 내지 추가/삭제 UI(SpreadPagePanel)가 없어 고객이 배수를 맞출 수 없다 →
-      //     pageStep 가드 미적용(null)으로 명시 리셋(이전 세트 값 잔존 방지).
-      useEditorStore.setState({ pageStep: null })
+      // S8: 단일 모드도 pageStep 적용 — SidePanel '페이지' 섹션이 비-spread 추가/삭제 진입점이고
+      //     호스트 pageCount 시드로 홀수가 될 수 있다. 산정 기준 = 캔버스 수(완료 payload pageCount 와 동일).
+      useEditorStore.setState({
+        pageStep: normalizePageStep((templateSet as { pageStep?: unknown }).pageStep),
+        pageStepBasis: { isSpreadMode: false, regionScope: null },
+      })
       try {
         if (templateDetails.length > 0) {
           useEditorStore.getState().setPages(
@@ -2009,6 +2012,11 @@ export function useEditorContents(): UseEditorContentsReturn {
         pagesPerCanvas: isSpreadInners ? 2 : 1,
         // S8: 내지 증감 단위(null=제약 없음). 추가/삭제 단위 + 편집완료 배수 가드에 사용.
         pageStep: normalizePageStep((templateSet as { pageStep?: unknown }).pageStep),
+        // S8: 단위 산정 기준 — 완료 가드(pageStepGuard)와 같은 소스(settings.spreadConfig.regionScope).
+        pageStepBasis: {
+          isSpreadMode: true,
+          regionScope: useSettingsStore.getState().spreadConfig?.regionScope ?? null,
+        },
       })
 
       console.log(`[EditorContents:Spread] EditorStore pages set: ${editorPages.length} pages`)
