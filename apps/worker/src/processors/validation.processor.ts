@@ -34,6 +34,8 @@ interface ValidationJobData {
     clientSpineWidthMm?: number;
     /** R-53: API 주입 실패 사유 스탬프(UNMAPPED_PAPER/V1_FALLBACK) */
     spineUnresolvedReason?: 'UNMAPPED_PAPER' | 'V1_FALLBACK';
+    /** S6: 표지 레이아웃 — 'separate'=앞/뒤 낱장(단일 판형 검증), 미전송/'spread'=현행 */
+    coverLayout?: 'spread' | 'separate';
     /** 날개 사용 여부 */
     wingEnabled?: boolean;
     /** 날개 한쪽 폭(mm) */

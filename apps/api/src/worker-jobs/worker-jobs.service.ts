@@ -475,6 +475,9 @@ export class WorkerJobsService implements OnModuleInit {
     delete orderOptions.clientSpineWidthMm;
     delete orderOptions.spineUnresolvedReason;
     if (fileType !== 'cover' || !this.spineService) return;
+    // S6: 앞/뒤 낱장 표지는 스프레드가 아니라 책등 폭이 검증에 쓰이지 않는다 — 주입·덮어쓰기
+    // 없이 종료(스탬프 소독은 위에서 이미 수행). 무효값은 미전송 취급(현행 주입 경로).
+    if (orderOptions.coverLayout === 'separate') return;
     const binding = orderOptions.binding as string;
     if (binding !== 'perfect' && binding !== 'hardcover') return;
     const { paperType, pages } = orderOptions;

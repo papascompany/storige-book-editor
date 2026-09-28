@@ -263,6 +263,11 @@ export interface ValidationOptions {
      * SPINE_PARAMS_UNRESOLVED 경고 details.reason 으로 노출.
      */
     spineUnresolvedReason?: 'UNMAPPED_PAPER' | 'V1_FALLBACK';
+    /**
+     * S6: 표지 레이아웃(additive). 'separate'=앞/뒤 낱장 2쪽 표지 → 단일 판형(W×H+도련)
+     * 검증, 책등·스프레드 기대치 생략. 미전송·'spread'·무효값=현행 스프레드 판정 경로.
+     */
+    coverLayout?: 'spread' | 'separate';
     /** 날개(wing/flap) 사용 여부 — 표지 총너비 = ... + (wingEnabled ? wingWidthMm×2 : 0) */
     wingEnabled?: boolean;
     /** 날개 한쪽 폭 (mm) */

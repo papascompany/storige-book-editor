@@ -243,4 +243,55 @@ describe('WorkerJobsService — R-44 spine 서버 재계산 주입(createValidat
     const [, payload] = validationQueue.add.mock.calls[0];
     expect(payload.orderOptions.spineUnresolvedReason).toBeUndefined();
   });
+
+  // ── S6 (2026-09-28): 앞/뒤 낱장(separate) 표지는 spine 주입 비대상 ──
+  it("S6 coverLayout='separate' → 재계산·덮어쓰기 없음, 클라 spineWidthMm·coverLayout 그대로 워커 전달", async () => {
+    await makeService().createValidationJob(
+      coverDto({ paperType: '미색모조80', spineWidthMm: 12.3, coverLayout: 'separate' }) as any,
+    );
+    expect(spineService.calculate).not.toHaveBeenCalled();
+    const [, payload] = validationQueue.add.mock.calls[0];
+    expect(payload.orderOptions.coverLayout).toBe('separate');
+    expect(payload.orderOptions.spineWidthMm).toBe(12.3);
+    expect(payload.orderOptions.spineSource).toBeUndefined();
+    expect(payload.orderOptions.clientSpineWidthMm).toBeUndefined();
+    expect(payload.orderOptions.spineUnresolvedReason).toBeUndefined();
+    const created = workerJobRepository.create.mock.calls[0][0];
+    expect(created.options.orderOptions.coverLayout).toBe('separate');
+  });
+
+  it('S6 separate 에서도 F2 위조 스탬프 선소독은 수행(조기 종료 전)', async () => {
+    await makeService().createValidationJob(
+      coverDto({
+        binding: 'hardcover',
+        paperType: '미색모조80',
+        coverLayout: 'separate',
+        spineSource: 'server',
+        clientSpineWidthMm: 99,
+        spineUnresolvedReason: 'UNMAPPED_PAPER',
+      }) as any,
+    );
+    expect(spineService.calculate).not.toHaveBeenCalled();
+    const [, payload] = validationQueue.add.mock.calls[0];
+    expect(payload.orderOptions.spineSource).toBeUndefined();
+    expect(payload.orderOptions.clientSpineWidthMm).toBeUndefined();
+    expect(payload.orderOptions.spineUnresolvedReason).toBeUndefined();
+    expect(payload.orderOptions.spineWidthMm).toBeUndefined();
+  });
+
+  it("S6 불변: coverLayout 'spread'·무효값은 현행 주입 경로(서버 덮어쓰기)", async () => {
+    for (const coverLayout of ['spread', 'SEPARATE', 'foo']) {
+      validationQueue.add.mockClear();
+      await makeService().createValidationJob(
+        coverDto({ paperType: '미색모조80', spineWidthMm: 12.3, coverLayout }) as any,
+      );
+      const [, payload] = validationQueue.add.mock.calls[0];
+      expect(payload.orderOptions).toMatchObject({
+        spineWidthMm: 9.6,
+        clientSpineWidthMm: 12.3,
+        spineSource: 'server',
+      });
+    }
+    expect(spineService.calculate).toHaveBeenCalledTimes(3);
+  });
 });

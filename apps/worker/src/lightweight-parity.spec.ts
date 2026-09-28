@@ -14,6 +14,7 @@
  *    호출하므로 colorMode 파리티가 유지된다(구조 입력 동일성은 streaming 스캐너 파리티로 보장).
  */
 import { execFileSync } from 'child_process';
+import { PDFDocument } from 'pdf-lib';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -73,6 +74,21 @@ function optsVariants(): { label: string; opts: ValidationOptions }[] {
         },
       } as unknown as ValidationOptions,
     },
+    {
+      // S6: 앞/뒤 낱장 표지 — 단일 판형 검증·책등 생략 분기(spineWidthMm 동봉에도 무시)
+      label: 'cover/perfect/separate',
+      opts: {
+        fileType: 'cover',
+        orderOptions: {
+          size: { width: 210, height: 297 },
+          pages: 120,
+          binding: 'perfect',
+          bleed: 3,
+          spineWidthMm: 8,
+          coverLayout: 'separate',
+        },
+      } as ValidationOptions,
+    },
   ];
 }
 
@@ -100,6 +116,55 @@ runOrSkip('lightweight validation parity (OFF == ON)', () => {
       });
     }
   }
+});
+
+/**
+ * S6: 경량(ON) 경로의 separate 표지 분기 직접 확인 — 파리티(ON==OFF)만으로는 두 경로가
+ * 함께 틀려도 통과하므로, 손수 만든 PDF 로 ON 경로 자체의 기대 결과를 못박는다.
+ */
+runOrSkip('S6 coverLayout=separate — 경량(ON) 경로', () => {
+  const service = new PdfValidatorService();
+  const tmpFiles: string[] = [];
+
+  const writePdf = async (wMm: number, hMm: number): Promise<string> => {
+    const doc = await PDFDocument.create();
+    for (let i = 0; i < 2; i++) doc.addPage([wMm * 2.83465, hMm * 2.83465]);
+    const p = path.join(os.tmpdir(), `s6_sep_${Date.now()}_${Math.random().toString(36).slice(2)}.pdf`);
+    fs.writeFileSync(p, await doc.save());
+    tmpFiles.push(p);
+    return p;
+  };
+  const sepOpts = (): ValidationOptions => ({
+    fileType: 'cover',
+    orderOptions: {
+      size: { width: 210, height: 297 },
+      pages: 120,
+      binding: 'hardcover',
+      bleed: 3,
+      spineWidthMm: 8,
+      coverLayout: 'separate',
+    },
+  });
+
+  afterAll(() => {
+    for (const p of tmpFiles) fs.rmSync(p, { force: true });
+  });
+
+  it('정규격(216×303) → SIZE/SPINE 오류·SPINE_PARAMS_UNRESOLVED 없음', async () => {
+    const r = await (service as any).validateLightweight(await writePdf(216, 303), sepOpts());
+    const codes = [...r.errors, ...r.warnings].map((x: { code: string }) => x.code);
+    expect(codes).not.toContain('SIZE_MISMATCH');
+    expect(codes).not.toContain('SPINE_SIZE_MISMATCH');
+    expect(codes).not.toContain('SPINE_PARAMS_UNRESOLVED');
+    expect(r.metadata.hasBleed).toBe(true);
+  });
+
+  it('펼침 규격(484×345) → SIZE_MISMATCH', async () => {
+    const r = await (service as any).validateLightweight(await writePdf(484, 345), sepOpts());
+    const codes = r.errors.map((x: { code: string }) => x.code);
+    expect(codes).toContain('SIZE_MISMATCH');
+    expect(codes).not.toContain('SPINE_SIZE_MISMATCH');
+  });
 });
 
 /**

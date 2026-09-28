@@ -775,6 +775,129 @@ describe('PdfValidatorService', () => {
       });
     });
 
+    // ── S6 (2026-09-28): 앞/뒤 낱장(separate) 표지 — 단일 판형 검증, 책등 검증 생략 ──
+    describe('S6 coverLayout=separate 표지', () => {
+      const sizeErr = (r: any) => r.errors.find((e: any) => e.code === ErrorCode.SIZE_MISMATCH);
+      const spineErr = (r: any) => r.errors.find((e: any) => e.code === ErrorCode.SPINE_SIZE_MISMATCH);
+      const hasUnresolved = (r: any) =>
+        r.warnings.some((w: any) => w.code === WarningCode.SPINE_PARAMS_UNRESOLVED);
+      const hasBleedMissing = (r: any) =>
+        r.warnings.some((w: any) => w.code === WarningCode.BLEED_MISSING);
+
+      const coverOpts = (over: Record<string, unknown> = {}) =>
+        ({
+          fileType: 'cover',
+          orderOptions: {
+            size: { width: 210, height: 297 }, pages: 120, binding: 'perfect', bleed: 3,
+            ...over,
+          },
+        }) as ValidationOptions;
+
+      it('무선 separate 표지 정규격(216×303, 2쪽) → 통과 + 도련 인정 + SPINE_PARAMS_UNRESOLVED 미발행', async () => {
+        const pdfBytes = await createMockPdf(2, 216, 303);
+        mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
+        const result = await service.validate('./sep-ok.pdf', coverOpts({ coverLayout: 'separate' }));
+        expect(sizeErr(result)).toBeUndefined();
+        expect(spineErr(result)).toBeUndefined();
+        expect(hasUnresolved(result)).toBe(false);
+        expect(hasBleedMissing(result)).toBe(false);
+        expect(result.metadata.hasBleed).toBe(true);
+        expect(result.isValid).toBe(true);
+      });
+
+      it('separate 표지 규격 불일치(펼침 430×303) → SIZE_MISMATCH(단일 판형 기대치)', async () => {
+        const pdfBytes = await createMockPdf(2, 430, 303);
+        mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
+        const result = await service.validate('./sep-bad.pdf', coverOpts({ coverLayout: 'separate' }));
+        const err = sizeErr(result);
+        expect(err).toBeDefined();
+        expect(err.details.expected).toMatchObject({
+          withoutBleed: { width: 210, height: 297 },
+          withBleed: { width: 216, height: 303 },
+        });
+        expect(hasUnresolved(result)).toBe(false);
+        expect(result.isValid).toBe(false);
+      });
+
+      it('separate 표지 도련 없는 재단 규격(210×297) → 통과 + BLEED_MISSING 경고(validateBleed 수행)', async () => {
+        const pdfBytes = await createMockPdf(2, 210, 297);
+        mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
+        const result = await service.validate('./sep-nobleed.pdf', coverOpts({ coverLayout: 'separate' }));
+        expect(sizeErr(result)).toBeUndefined();
+        expect(hasBleedMissing(result)).toBe(true);
+      });
+
+      it('separate + spineWidthMm/paperType 동봉(양장)이어도 스프레드 검증 없이 단일 판형만', async () => {
+        const pdfBytes = await createMockPdf(2, 216, 303);
+        mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
+        const result = await service.validate(
+          './sep-spine.pdf',
+          coverOpts({
+            coverLayout: 'separate', binding: 'hardcover', pages: 40,
+            spineWidthMm: 8, spineSource: 'server', paperType: '아르떼130',
+          }),
+        );
+        expect(spineErr(result)).toBeUndefined();
+        expect(sizeErr(result)).toBeUndefined();
+        expect(hasUnresolved(result)).toBe(false);
+        expect(result.metadata.spineSize).toBeUndefined();
+        expect(result.isValid).toBe(true);
+      });
+
+      it('separate + spineWidthMm 동봉 + 규격 불일치 → SIZE_MISMATCH 만(SPINE_SIZE_MISMATCH 미발행)', async () => {
+        const pdfBytes = await createMockPdf(1, 426, 303);
+        mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
+        const result = await service.validate(
+          './sep-spine-bad.pdf',
+          coverOpts({ coverLayout: 'separate', spineWidthMm: 10 }),
+        );
+        expect(sizeErr(result)).toBeDefined();
+        expect(spineErr(result)).toBeUndefined();
+      });
+
+      it("불변: coverLayout 미전송·'spread'·무효값은 현행 스프레드 판정과 결과 동일", async () => {
+        const cases: { w: number; h: number; over: Record<string, unknown> }[] = [
+          { w: 100, h: 100, over: {} }, // 미해석 → SPINE_PARAMS_UNRESOLVED
+          { w: 426, h: 303, over: { spineWidthMm: 0 } }, // 해석 → spine 검증
+          { w: 440, h: 303, over: { spineWidthMm: 10 } }, // 해석 → SPINE_SIZE_MISMATCH
+        ];
+        for (const c of cases) {
+          const pdfBytes = await createMockPdf(1, c.w, c.h);
+          mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
+          const base = await service.validate('./spread.pdf', coverOpts(c.over));
+          for (const layout of ['spread', 'SEPARATE', 'foo', null]) {
+            const r = await service.validate('./spread.pdf', coverOpts({ ...c.over, coverLayout: layout }));
+            expect(r).toEqual(base);
+          }
+        }
+      });
+
+      it('미해석 무선 표지 기본값(미전송)은 여전히 SPINE_PARAMS_UNRESOLVED + SIZE 스킵', async () => {
+        const pdfBytes = await createMockPdf(2, 216, 303);
+        mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
+        const result = await service.validate('./spread-default.pdf', coverOpts());
+        expect(sizeErr(result)).toBeUndefined();
+        expect(hasUnresolved(result)).toBe(true);
+      });
+
+      it('내지(content)에 coverLayout 이 실려와도 무영향', async () => {
+        const pdfBytes = await createMockPdf(4, 216, 303);
+        mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
+        const base = await service.validate('./content.pdf', {
+          fileType: 'content',
+          orderOptions: { size: { width: 210, height: 297 }, pages: 4, binding: 'perfect', bleed: 3 },
+        } as ValidationOptions);
+        const withLayout = await service.validate('./content.pdf', {
+          fileType: 'content',
+          orderOptions: {
+            size: { width: 210, height: 297 }, pages: 4, binding: 'perfect', bleed: 3,
+            coverLayout: 'separate',
+          },
+        } as ValidationOptions);
+        expect(withLayout).toEqual(base);
+      });
+    });
+
     it('should download file from URL', async () => {
       const pdfBytes = await createMockPdf(4, 210, 297);
       mockedAxios.get.mockResolvedValue({
