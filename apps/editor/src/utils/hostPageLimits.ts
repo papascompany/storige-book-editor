@@ -9,8 +9,9 @@
  * 이 모듈은 스토어·fabric·contentPdfGuide 에 의존하지 않는다(단위 테스트 대상).
  *
  * 규약 요약:
- *  - 값은 물리 내지 쪽수. pageCountMin/Max = 정수 1~500, pageStep = 정수 2~500(0부터 센 N의 배수).
- *  - 미전달·''·공백·pageStep 1 → 경고 없이 부재. 그 외 무효값 → console.warn('[hostPageLimits] …') 후 무시.
+ *  - 값은 물리 내지 쪽수. pageCountMin/Max = 정수 1~500, pageStep = 정수 1~500(0부터 센 N의 배수).
+ *  - pageStep 1 = **배수 제약 없음**(템플릿셋 pageStep 을 무시 — 2026-09-29 오너 채택, bookmoa R-205).
+ *  - 미전달·''·공백 → 경고 없이 부재. 그 외 무효값 → console.warn('[hostPageLimits] …') 후 무시.
  *  - 키별 사다리: options(props/URL) → metadata.orderOptions → 템플릿셋.
  *  - min > max: 같은 계층이면 둘 다 폐기, 계층이 다르면 orderOptions 쪽만 폐기.
  *  - pageStep 은 min 이 배수가 아니거나 범위 안에 배수가 없으면 폐기(템플릿 단위 적용).
@@ -32,7 +33,7 @@ export interface HostPageLimits {
   pageCountMin?: number
   /** 호스트 최대 내지 쪽수(물리 페이지) */
   pageCountMax?: number
-  /** 호스트 내지 쪽수 배수 단위(0부터 센 N의 배수, ≥ 2) */
+  /** 호스트 내지 쪽수 배수 단위(0부터 센 N의 배수, ≥ 2). 1 = 배수 제약 없음(템플릿셋 단위 무시) */
   pageStep?: number
 }
 
@@ -68,11 +69,14 @@ function coerceCountLimit(raw: unknown): Coerced {
   return c.value >= 1 && c.value <= HOST_PAGE_LIMIT_MAX ? c : INVALID
 }
 
-/** pageStep: 1 = 제약 없음(부재), 그 외 normalizePageStep(≥2 정수) && ≤ HOST_PAGE_LIMIT_MAX */
+/**
+ * pageStep: 1 = 배수 제약 없음(유효값 — 템플릿셋 단위를 무시하도록 전달), 그 외 normalizePageStep(≥2 정수)
+ * && ≤ HOST_PAGE_LIMIT_MAX. (종전 bb626de 는 1 을 부재로 버렸다 — 2026-09-29 오너 채택으로 의미 부여)
+ */
 function coercePageStep(raw: unknown): Coerced {
   const c = coerceInteger(raw)
   if (c.kind !== 'valid') return c
-  if (c.value === 1) return ABSENT
+  if (c.value === 1) return c
   return normalizePageStep(c.value) !== null && c.value <= HOST_PAGE_LIMIT_MAX ? c : INVALID
 }
 
@@ -93,13 +97,13 @@ export function parsePageCountLimitParam(
 }
 
 /**
- * `pageStep` URL 파라미터 파싱. 미전달·빈 문자열·공백·'1'(제약 없음)은 조용히 undefined,
+ * `pageStep` URL 파라미터 파싱. 미전달·빈 문자열·공백은 조용히 undefined, '1' 은 1(배수 제약 없음),
  * 비어있지 않은 무효값('0'·'2.5'·'1e1'·'0x4'·'x'·'501')은 경고 후 undefined.
  */
 export function parsePageStepParam(raw: string | null | undefined): number | undefined {
   const c = coercePageStep(raw)
   if (c.kind === 'invalid') {
-    console.warn(`${WARN_PREFIX} pageStep 파라미터 무시 — 정수 2~${HOST_PAGE_LIMIT_MAX} 가 아님: "${String(raw)}"`)
+    console.warn(`${WARN_PREFIX} pageStep 파라미터 무시 — 정수 1~${HOST_PAGE_LIMIT_MAX} 가 아님: "${String(raw)}"`)
     return undefined
   }
   return c.kind === 'valid' ? c.value : undefined
@@ -299,7 +303,9 @@ function clampToRange(
  * - 호스트 값 없음: { pageCountRange: templateRange ?? [], pageStep: normalizePageStep(template),
  *   padToPageStep: templatePadToPageStep === true } — 종전 식과 동일(참조 포함).
  * - pageStep = (ignoreHostStep ? 없음 : 호스트 단위) ?? 템플릿 단위.
- * - 유효 호스트 단위가 템플릿 단위와 다르면 padToPageStep=false (서버 채움은 템플릿 단위 기준).
+ * - 호스트 pageStep 1 = 배수 제약 없음 → pageStep null(템플릿 단위 무시). 제약이 없으므로 캔버스 산정
+ *   기준과 무관해 ignoreHostStep 이어도 적용한다.
+ * - 유효 호스트 단위(1 포함)가 템플릿 단위와 다르면 padToPageStep=false (서버 채움은 템플릿 단위 기준).
  */
 export function resolveStorePageLimits(input: {
   templateRange: number[] | null | undefined
@@ -311,11 +317,13 @@ export function resolveStorePageLimits(input: {
 }): { pageCountRange: number[]; pageStep: number | null; padToPageStep: boolean } {
   const templateStep = normalizePageStep(input.templatePageStep)
   const templatePad = input.templatePadToPageStep === true
-  const hostStep = input.ignoreHostStep ? null : normalizePageStep(input.limits?.pageStep)
+  const hostNoConstraint = input.limits?.pageStep === 1
+  const hostStep = input.ignoreHostStep || hostNoConstraint ? null : normalizePageStep(input.limits?.pageStep)
+  const overridesTemplate = hostNoConstraint ? templateStep !== null : hostStep !== null && hostStep !== templateStep
   return {
     pageCountRange: mergePageCountRange(input.templateRange, input.limits, input.capacityMax) ?? [],
-    pageStep: hostStep ?? templateStep,
-    padToPageStep: hostStep !== null && hostStep !== templateStep ? false : templatePad,
+    pageStep: hostNoConstraint ? null : hostStep ?? templateStep,
+    padToPageStep: overridesTemplate ? false : templatePad,
   }
 }
 

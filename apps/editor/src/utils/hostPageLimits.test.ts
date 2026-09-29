@@ -53,7 +53,7 @@ describe('파라미터 파싱', () => {
     expect(warn).not.toHaveBeenCalled()
   })
 
-  it("미전달·''·공백·pageStep '1' 은 경고 없이 undefined", () => {
+  it("미전달·''·공백은 경고 없이 undefined, pageStep '1' 은 1(배수 제약 없음)", () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     expect(parseMin('')).toBeUndefined()
     expect(parseMin('pageCountMin=')).toBeUndefined()
@@ -63,7 +63,7 @@ describe('파라미터 파싱', () => {
     expect(parseStep('')).toBeUndefined()
     expect(parseStep('pageStep=')).toBeUndefined()
     expect(parseStep('pageStep=%20')).toBeUndefined()
-    expect(parseStep('pageStep=1')).toBeUndefined()
+    expect(parseStep('pageStep=1')).toBe(1)
     expect(warn).not.toHaveBeenCalled()
   })
 
@@ -160,7 +160,7 @@ describe('resolveHostPageLimits', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     expect(resolveHostPageLimits(undefined, undefined)).toEqual({})
     expect(resolveHostPageLimits({}, undefined)).toEqual({})
-    expect(resolveHostPageLimits({ pageStep: 1 }, { orderOptions: { pageCount: 24 } })).toEqual({})
+    expect(resolveHostPageLimits({}, { orderOptions: { pageCount: 24 } })).toEqual({})
     expect(warn).not.toHaveBeenCalled()
   })
 
@@ -316,6 +316,38 @@ describe('resolveSeedPageCount', () => {
         restoredInnerCount: 20,
       }),
     ).toEqual({ count: 20, adjusted: null })
+  })
+})
+
+describe('pageStep=1 — 배수 제약 없음(2026-09-29 오너 채택)', () => {
+  it('resolveHostPageLimits: 1 을 그대로 전달하고 정렬·실현가능성 규칙에 걸리지 않음, 세션 기록에서도 복원', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(resolveHostPageLimits({ pageCountMin: 15, pageCountMax: 301, pageStep: 1 }, undefined)).toEqual({
+      pageCountMin: 15,
+      pageCountMax: 301,
+      pageStep: 1,
+    })
+    expect(resolveHostPageLimits({}, { orderOptions: { pageStep: 1 } })).toEqual({ pageStep: 1 })
+    expect(resolveHostPageLimits({ pageStep: '1' }, undefined)).toEqual({ pageStep: 1 })
+    expect(warn).not.toHaveBeenCalled()
+  })
+
+  it('resolveStorePageLimits: 템플릿 단위 2 를 무시하고 제약 없음, 자동 채움은 끔', () => {
+    expect(
+      resolveStorePageLimits({ templateRange: [16, 500], templatePageStep: 2, templatePadToPageStep: true, limits: { pageStep: 1 } }),
+    ).toMatchObject({ pageStep: null, padToPageStep: false })
+  })
+
+  it('resolveStorePageLimits: 템플릿 단위가 없으면 자동 채움 설정은 종전대로 유지', () => {
+    expect(
+      resolveStorePageLimits({ templateRange: [16, 500], templatePageStep: null, templatePadToPageStep: true, limits: { pageStep: 1 } }),
+    ).toMatchObject({ pageStep: null, padToPageStep: true })
+  })
+
+  it('resolveStorePageLimits: ignoreHostStep(비내지 캔버스 단일 모드)이어도 1 은 제약 없음으로 적용', () => {
+    expect(
+      resolveStorePageLimits({ templateRange: [1, 99], templatePageStep: 2, templatePadToPageStep: false, limits: { pageStep: 1 }, ignoreHostStep: true }),
+    ).toMatchObject({ pageStep: null })
   })
 })
 
