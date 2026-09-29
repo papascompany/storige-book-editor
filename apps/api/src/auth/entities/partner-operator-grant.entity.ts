@@ -26,6 +26,7 @@ export const bigintToNumber: ValueTransformer = {
  * - id 는 앱이 randomUUID() 로 부여한다.
  * - capabilities: 'edit' 또는 'edit,delete' (쉼표 구분).
  * - key_fp: 발급에 쓰인 사이트 키의 sha256 hex 앞 16자. 키 원문은 저장하지 않는다.
+ * - origin/issued_by_user_id (2026-09-29, migrations/20260930): Storige 관리자 발급 권한 구분.
  */
 @Entity('partner_operator_grants')
 @Index('idx_pog_site_created', ['siteId', 'createdAt'])
@@ -36,6 +37,17 @@ export class PartnerOperatorGrantEntity {
 
   @Column({ name: 'site_id', type: 'varchar', length: 36 })
   siteId: string;
+
+  /**
+   * 권한 출처(2026-09-29, migrations/20260930) — 'partner'(파트너 사이트 키 발급, 기본) | 'staff'(Storige 관리자 발급).
+   * assertActive 가 토큰의 org 클레임과 대조한다.
+   */
+  @Column({ type: 'varchar', length: 16, default: 'partner' })
+  origin: string;
+
+  /** 관리자 발급 권한의 발급자 users.id. 파트너 발급분은 NULL. 감사 actor 는 이 값에서만 얻는다. */
+  @Column({ name: 'issued_by_user_id', type: 'varchar', length: 36, nullable: true })
+  issuedByUserId: string | null;
 
   @Column({ name: 'operator_id', type: 'varchar', length: 128 })
   operatorId: string;
@@ -66,8 +78,9 @@ export class PartnerOperatorGrantEntity {
   })
   onBehalfOfMemberSeqno: number | null;
 
-  @Column({ name: 'key_fp', type: 'char', length: 16 })
-  keyFp: string;
+  /** 파트너 발급분만 값이 있다. 관리자 발급분(origin 'staff')은 NULL(키 없이 발급). */
+  @Column({ name: 'key_fp', type: 'char', length: 16, nullable: true })
+  keyFp: string | null;
 
   /** 권한 만료 시각(unix 초) */
   @Column({ name: 'expires_at_unix', type: 'bigint', transformer: bigintToNumber })

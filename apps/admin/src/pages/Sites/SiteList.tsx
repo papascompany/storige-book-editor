@@ -27,6 +27,7 @@ import {
 } from '@ant-design/icons';
 import { sitesApi, type Site, type CreateSiteDto } from '../../api/sites';
 import { formatOriginList, parseOriginList } from '../../utils/originList';
+import { withEditRetentionDays } from '../EditSessions/editDataHelpers';
 
 const { Title, Text } = Typography;
 
@@ -156,6 +157,7 @@ export default function SiteList() {
       uploadCallbackUrl: site.uploadCallbackUrl ?? undefined,
       status: site.status,
       retentionDays: site.retentionDays ?? undefined,
+      editRetentionDays: site.editRetentionDays ?? undefined,
       pdfConversionEnabled: site.pdfConversionEnabled,
       beforeAfterUrl: site.beforeAfterUrl ?? undefined,
       defaultUnit: site.defaultUnit,
@@ -179,8 +181,9 @@ export default function SiteList() {
 
   const handleSubmit = async () => {
     const values = await form.validateFields();
+    // editRetentionDays 는 사용자가 건드린 경우에만 보낸다(비우면 null = 미설정).
     const dto: CreateSiteDto = {
-      ...values,
+      ...withEditRetentionDays(values, form.isFieldTouched('editRetentionDays')),
       allowedOrigins: parseOriginList(values.allowedOrigins as unknown as string),
       frameAncestors: parseOriginList(values.frameAncestors as unknown as string),
     };
@@ -379,12 +382,24 @@ export default function SiteList() {
           </Form.Item>
 
           <Divider orientation="left" plain>
+            편집데이터 보관정책
+          </Divider>
+          <Form.Item
+            name="editRetentionDays"
+            label="편집데이터 보관기간 (일)"
+            tooltip="세션 생성일로부터 N일 동안 관리자가 이 사이트의 편집데이터(편집 세션·스냅샷·세션이 직접 참조하는 표지/내지 파일·합성 결과)를 언제든 편집·수정·삭제·합성·재합성할 수 있도록 보장합니다. 기간 안의 세션이 참조하는 파일은 업로드 파일 자동삭제에서 제외됩니다. 기간이 지나도 자동 삭제되지 않지만, 관리자 편집·합성은 막히고(삭제는 가능) 데이터 보존은 보장되지 않습니다."
+            extra="비우면 미설정(기한 제한 없음 · 보존 보장 없음). 1~3650일."
+          >
+            <InputNumber min={1} max={3650} precision={0} style={{ width: 200 }} placeholder="비움 = 미설정" addonAfter="일" />
+          </Form.Item>
+
+          <Divider orientation="left" plain>
             파일 보존정책
           </Divider>
           <Form.Item
             name="retentionDays"
-            label="파일 보존 기간 (일)"
-            tooltip="이 사이트가 업로드한 파일을 N일 후 자동 삭제합니다(저장 용량 관리). 인쇄 PDF는 편집 원본에서 재생성 가능. 비우거나 0이면 영구보관."
+            label="업로드 파일 자동삭제 기간 (일)"
+            tooltip="파트너 API 키로 업로드한 파일을 N일 후 자동 삭제합니다(저장 용량 관리). 편집데이터 보관기간과는 별개이며, 편집데이터 보관기간 안의 세션이 참조하는 파일은 삭제하지 않습니다."
             extra="비우면 영구보관. 예: 14 = 업로드 14일 후 자동 삭제 (전체 자동삭제 작업은 [저장소 설정]에서 on/off)."
           >
             <InputNumber min={0} max={3650} style={{ width: 200 }} placeholder="비움 = 영구보관" addonAfter="일" />

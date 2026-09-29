@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { authApi } from '@/api'
+import { getAuthToken, setAuthToken, removeAuthToken } from '@/utils/authTokenStorage'
 
 interface User {
   id: string
@@ -37,7 +38,7 @@ export const useAuthStore = create<AuthState & AuthActions>()((set, get) => ({
   // Actions
   setToken: (newToken: string, newRefreshToken?: string) => {
     set({ token: newToken })
-    localStorage.setItem('auth_token', newToken)
+    setAuthToken(newToken)
     if (newRefreshToken) {
       set({ refreshToken: newRefreshToken })
       localStorage.setItem('refresh_token', newRefreshToken)
@@ -48,12 +49,12 @@ export const useAuthStore = create<AuthState & AuthActions>()((set, get) => ({
 
   clearToken: () => {
     set({ token: '', refreshToken: '', me: null })
-    localStorage.removeItem('auth_token')
+    removeAuthToken()
     localStorage.removeItem('refresh_token')
   },
 
   initializeFromStorage: () => {
-    const storedToken = localStorage.getItem('auth_token')
+    const storedToken = getAuthToken()
     const storedRefreshToken = localStorage.getItem('refresh_token')
     console.log('initializeFromStorage', storedToken ? 'token exists' : 'no token')
     if (storedToken) {
@@ -98,7 +99,7 @@ export const useAuthStore = create<AuthState & AuthActions>()((set, get) => ({
       if (result.success && result.data) {
         const { accessToken, refreshToken } = result.data
         set({ token: accessToken, refreshToken })
-        localStorage.setItem('auth_token', accessToken)
+        setAuthToken(accessToken)
         localStorage.setItem('refresh_token', refreshToken)
 
         // 사용자 정보 가져오기

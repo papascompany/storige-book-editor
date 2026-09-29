@@ -17,6 +17,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { UserRole } from '@storige/types';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 /**
  * /api/sites — admin 전용. 외부 사이트(테넌트) CRUD + 인증코드 발급/재발급.
@@ -55,8 +56,14 @@ export class SitesController {
 
   @Put(':id')
   @ApiOperation({ summary: '사이트 정보 수정' })
-  async update(@Param('id') id: string, @Body() dto: UpdateSiteDto) {
-    const site = await this.sitesService.update(id, dto);
+  async update(
+    @Param('id') id: string,
+    @Body() dto: UpdateSiteDto,
+    @CurrentUser() user?: { id?: unknown },
+  ) {
+    // 편집데이터 보관기간 변경 감사의 actor — admin JWT 사용자 id(문자열일 때만)
+    const actorUserId = typeof user?.id === 'string' ? user.id : undefined;
+    const site = await this.sitesService.update(id, dto, actorUserId);
     return { success: true, data: site };
   }
 

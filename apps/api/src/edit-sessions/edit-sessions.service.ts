@@ -45,11 +45,35 @@ import { FileEntity } from '../files/entities/file.entity';
 import { PartnerOperatorAuditWriter } from '../auth/partner-operator/partner-operator-audit.writer';
 import type { PartnerOperatorGrant } from '../auth/partner-operator/partner-operator.types';
 import type { PartnerOperatorAuditDetail } from '../auth/entities/partner-operator-audit-log.entity';
+import { computeEditRetention, editRetentionExpired } from '../staff-edit-data/edit-retention';
+import { staffAuditUnavailable, staffDeleteNotAllowed } from '../staff-edit-data/staff-actor';
+
+/**
+ * Storige 관리자 호출 컨텍스트(2026-09-29, ADDITIVE) — StaffEditDataService 만 설정한다.
+ * 범위: global 이거나 세션 siteId 가 siteIds 안(NULL-site 는 global 만). 범위 안에서는 소유자 판정을 대신하고,
+ * 삭제는 canDelete(전역 또는 그 사이트 행 역할 SITE_ADMIN)일 때만.
+ */
+export interface StaffCallerContext {
+  userId: string;
+  global: boolean;
+  siteIds: string[];
+  canDelete: boolean;
+}
+
+/** 레거시 관리자 경로(admin JWT) 보관기간·감사 게이트 대상 */
+export type LegacyStaffMutation = 'version_restore' | 'restore' | 'guest_update' | 'guest_complete';
 
 /** 호출자 테넌트 컨텍스트 — JWT 의 siteId/role(shop JWT 는 siteId 존재, admin-app JWT 는 없음) */
 export interface TenantCaller {
   siteId?: string | null;
   role?: string | null;
+  /** 관리자 편집데이터 관리(2026-09-29) — StaffEditDataService 전용. 없으면 기존 규칙 그대로. */
+  staff?: StaffCallerContext | null;
+  /**
+   * admin-app JWT 사용자 id(컨트롤러 tenantCaller 가 admin JWT 일 때만 설정). 레거시 관리자 경로
+   * (게스트 세션 staff 수정·완료)의 보관기간·감사 게이트 판정과 감사 actor 에만 쓴다.
+   */
+  adminUserId?: string;
   /**
    * 운영자 대리 편집 권한(2026-09-29, ADDITIVE). 있으면 테넌트 판정은 권한의 사이트·세션 범위·만료만으로
    * 하고(isPartnerOperatorInScope), 범위 안에서는 소유자 판정을 대신한다. 없으면 기존 규칙 그대로.
@@ -60,6 +84,17 @@ export interface TenantCaller {
 /** 운영자 파일 참조 검사 대상 필드 */
 const OPERATOR_FILE_REF_FIELDS = ['coverFileId', 'contentFileId', 'contentPdfFileId'] as const;
 type OperatorFileRefField = (typeof OPERATOR_FILE_REF_FIELDS)[number];
+
+/**
+ * 파트너에게 보이는 합성 잡 조건(2026-09-29) — 관리자가 파트너 알림 없이(notifyPartner≠true) 만든
+ * 조용한 합성 잡은 파트너 조회(주문 조회 external·책 승격)에서 제외한다. 그래야 관리자 재합성이
+ * 진행 중·실패일 때 파트너가 받던 이전 합성 결과물이 원본 파일로 바뀌지 않는다.
+ * worker-jobs.service.ts isStaffSilentJob 과 같은 규칙. MariaDB JSON_EXTRACT 는 불리언 true 를
+ * 문자열 'true' 로 돌려준다(JSON_VALUE 는 '1') — 운영 DB 에서 확인(2026-09-29).
+ */
+export function partnerVisibleSynthJobSql(alias: string): string {
+  return `(JSON_EXTRACT(${alias}.options, '$.staffInitiated') IS NULL OR JSON_EXTRACT(${alias}.options, '$.staffInitiated.notifyPartner') = 'true')`
+}
 
 @Injectable()
 export class EditSessionsService {
@@ -268,6 +303,7 @@ export class EditSessionsService {
                     ) AS rn
                FROM worker_jobs job
               WHERE job.edit_session_id IN (?) AND job.job_type = 'SYNTHESIZE'
+                AND ${partnerVisibleSynthJobSql('job')}
            ) t
           WHERE t.rn = 1`,
         [sessionIds],
@@ -365,6 +401,22 @@ export class EditSessionsService {
     return session;
   }
 
+  /** soft delete 포함 단건 조회(관리자 복구·보관기간 게이트용). 미존재는 findById 와 같은 404. */
+  async findByIdWithDeleted(id: string): Promise<EditSessionEntity> {
+    const session = await this.sessionRepository.findOne({
+      where: { id },
+      withDeleted: true,
+    });
+    if (!session) {
+      throw new NotFoundException({
+        code: 'SESSION_NOT_FOUND',
+        message: '편집 세션을 찾을 수 없습니다.',
+        details: { sessionId: id },
+      });
+    }
+    return session;
+  }
+
   /**
    * [Stage 3 W4] EDITOR_SESSION 승격용 — 세션 + 최신 SYNTHESIZE 산출 파일(URL) 조회(조회 전용).
    *
@@ -385,6 +437,7 @@ export class EditSessionsService {
       `SELECT status, result, output_file_url AS outputFileUrl
          FROM worker_jobs
         WHERE edit_session_id = ? AND job_type = 'SYNTHESIZE'
+          AND ${partnerVisibleSynthJobSql('worker_jobs')}
         ORDER BY created_at DESC
         LIMIT 1`,
       [id],
@@ -499,6 +552,15 @@ export class EditSessionsService {
     session: { id?: string; siteId?: string | null },
     caller?: TenantCaller | null,
   ): boolean {
+    // 관리자 편집데이터 관리(2026-09-29): 전역이거나 세션 site 가 DB 사이트 역할 범위 안. NULL-site 는 전역만.
+    if (caller?.staff) {
+      if (caller.staff.global) return true;
+      return (
+        typeof session.siteId === 'string' &&
+        session.siteId.length > 0 &&
+        caller.staff.siteIds.includes(session.siteId)
+      );
+    }
     if (caller?.partnerOperator) return this.isPartnerOperatorInScope(session, caller.partnerOperator);
     if (!caller) return true;
     const role = String(caller.role ?? '').toLowerCase();
@@ -543,9 +605,12 @@ export class EditSessionsService {
         message: '감사 기록을 저장할 수 없어 작업을 중단했습니다.',
       });
     }
+    const staffOrigin = op.origin === 'staff';
     await this.partnerOperatorAudit.recordOrThrow({
       grantId: op.grantId,
       siteId: op.siteId,
+      // 관리자 발급 권한(2026-09-29): 출처·발급자(권한 행 issued_by_user_id — assertActive 가 채움)
+      ...(staffOrigin ? { origin: 'staff' as const, actorUserId: op.issuedByUserId ?? null } : {}),
       sessionId,
       operatorId: op.operatorId,
       operatorName: op.operatorName,
@@ -619,8 +684,10 @@ export class EditSessionsService {
     // 게스트 세션은 토큰 검증된 게스트 경로(guestVerified) 또는 staff 만 변경 (2026-09-29).
     // 운영자 대리 편집(2026-09-29): 위 assertTenantScope 가 권한 범위를 이미 확인했으므로 소유자 판정을 대신한다.
     const op = caller?.partnerOperator ?? null;
+    const staff = caller?.staff ?? null;
     const isGuest = !!session.guestToken;
-    const allowed = op
+    // 관리자 편집데이터 관리(2026-09-29): staff 컨텍스트는 범위(assertTenantScope) 안에서 소유자 판정을 대신한다.
+    const allowed = op || staff
       ? true
       : isGuest
         ? opts?.guestVerified === true || EditSessionsService.isStaffRole(caller?.role)
@@ -631,6 +698,11 @@ export class EditSessionsService {
         message: '이 세션을 수정할 권한이 없습니다.',
       });
     }
+    // 레거시 관리자 경로(admin JWT 의 게스트 세션 수정): 게스트 토큰 경로가 아니고 staff 역할로 통과한 경우만
+    // 보관기간 확인 + 감사(fail-closed).
+    const legacyStaffGuest =
+      !op && !staff && isGuest && opts?.guestVerified !== true &&
+      EditSessionsService.isStaffRole(caller?.role) && typeof caller?.adminUserId === 'string';
 
     // Phase 4 결정 3-3: PDF 첨부 ↔ 편집 배타(replace 모드).
     // P0-2 (2026-06-02): underlay 모드는 PDF를 배경으로 깔고 그 위 편집을 허용 → 배타 완화.
@@ -650,8 +722,14 @@ export class EditSessionsService {
       }
     }
 
+    if (legacyStaffGuest) {
+      await this.gateLegacyStaffMutation(session, caller?.adminUserId, 'guest_update');
+    }
+
     // 운영자: 파일 참조 검사 → 상태/파일 참조가 바뀌는 경우에만 감사 기록(저장 전, fail-closed).
     // 일반 캔버스 자동저장은 요청 단위 기록(인터셉터)으로 남는다.
+    // 관리자 발급 권한(origin 'staff')은 캔버스·메타데이터 저장도 감사 1행(fail-closed)으로 남긴다 —
+    // 재합성 전 '편집 후 미완료'(OUTPUT_STALE) 판정 근거. 파트너 발급 권한 경로는 종전 그대로.
     if (op) {
       await this.assertOperatorFileRefs(session, dto);
       const statusChanged = dto.status !== undefined && dto.status !== session.status;
@@ -668,7 +746,22 @@ export class EditSessionsService {
       ) {
         fileRefs.contentPdf = dto.contentPdfFileId ?? null;
       }
-      if (statusChanged || Object.keys(fileRefs).length > 0) {
+      const fileRefsChanged = Object.keys(fileRefs).length > 0;
+      if (op.origin === 'staff') {
+        const canvasChanged = dto.canvasData !== undefined;
+        const metadataChanged = dto.metadata !== undefined;
+        if (statusChanged || fileRefsChanged || canvasChanged || metadataChanged) {
+          await this.recordOperatorAction(op, session.id, 'session.update', {
+            statusFrom: session.status ?? null,
+            statusTo: dto.status ?? session.status ?? null,
+            fileRefs,
+            canvasChanged,
+            metadataChanged,
+            statusChanged,
+            fileRefsChanged,
+          });
+        }
+      } else if (statusChanged || fileRefsChanged) {
         await this.recordOperatorAction(op, session.id, 'session.update', {
           statusFrom: session.status ?? null,
           statusTo: dto.status ?? session.status ?? null,
@@ -753,6 +846,8 @@ export class EditSessionsService {
   static readonly VERSION_KEEP = 10;
   /** shrink(페이지 수 감소) 스냅샷은 트림에서 최근 N 건 보호 */
   static readonly SHRINK_KEEP = 5;
+  /** staff-baseline(관리자 편집 직전) 스냅샷은 가장 오래된 1건 + 최근 N 건 보호 */
+  static readonly STAFF_BASELINE_KEEP = 2;
 
   private lastVersionAt: Map<string, number> = new Map();
 
@@ -846,6 +941,12 @@ export class EditSessionsService {
         shrinkSeen++;
       }
     }
+    // 관리자 편집 직전 스냅샷(2026-09-29): 가장 오래된 1건 + 최근 STAFF_BASELINE_KEEP 건 보호(고객 이력 보존).
+    const baselines = all.filter((v) => v.reason === 'staff-baseline');
+    if (baselines.length > 0) {
+      protectedIds.add(baselines[baselines.length - 1].id);
+      for (const v of baselines.slice(0, EditSessionsService.STAFF_BASELINE_KEEP)) protectedIds.add(v.id);
+    }
     const toDelete: string[] = [];
     let kept = 0;
     for (const v of all) {
@@ -854,6 +955,90 @@ export class EditSessionsService {
       toDelete.push(v.id);
     }
     if (toDelete.length) await this.versionRepository.delete(toDelete);
+  }
+
+  /**
+   * 관리자 편집 직전 스냅샷(2026-09-29) — 편집기 권한 발급 전에 호출한다(StaffEditDataService).
+   * canvasData 가 없으면 아무것도 하지 않는다. 가장 최근 'staff-baseline' 과 내용이 같으면 중복 저장하지 않는다.
+   * 오류는 그대로 던진다(호출부가 503 STAFF_BASELINE_UNAVAILABLE 로 바꾸고 발급을 중단한다).
+   */
+  async pinStaffBaseline(sessionId: string): Promise<EditSessionVersionEntity | null> {
+    const session = await this.sessionRepository.findOne({
+      where: { id: sessionId },
+      select: ['id', 'canvasData', 'status'],
+    });
+    if (!session || session.canvasData == null) return null;
+    const currentJson = JSON.stringify(session.canvasData);
+    const latest = await this.versionRepository.findOne({
+      where: { session: { id: sessionId }, reason: 'staff-baseline' },
+      select: ['id', 'canvasData'],
+      order: { createdAt: 'DESC' },
+    });
+    if (latest && JSON.stringify(latest.canvasData) === currentJson) return null;
+    const pageCount = EditSessionsService.countCanvases(session.canvasData);
+    const version = this.versionRepository.create({
+      session: { id: sessionId } as EditSessionEntity,
+      canvasData: session.canvasData,
+      pageCount,
+      nextPageCount: pageCount,
+      reason: 'staff-baseline',
+      sessionStatus: session.status ?? null,
+      createdBy: null,
+    });
+    const saved = await this.versionRepository.save(version);
+    await this.trimVersions(sessionId);
+    this.logger.log(`[versions] staff-baseline 스냅샷 session=${sessionId} (version=${saved.id})`);
+    return saved;
+  }
+
+  /**
+   * 레거시 관리자 경로(admin-app JWT)의 편집데이터 보관기간·감사 게이트(2026-09-29).
+   * 대상: 버전 복원·삭제 세션 복구·게스트 세션 staff 수정/완료. 게스트 토큰·고객·운영자 경로는 호출하지 않는다.
+   *  1) 사이트 편집데이터 보관기간(sites PK 조회, NULL-site = 미설정) → 만료면 409 EDIT_RETENTION_EXPIRED
+   *  2) 감사 행(origin 'staff', 'staff.legacy.<action>') fail-closed → 실패 시 503 STAFF_AUDIT_UNAVAILABLE
+   */
+  async gateLegacyStaffMutation(
+    session: Pick<EditSessionEntity, 'id' | 'siteId' | 'createdAt' | 'guestToken' | 'guestExpiresAt'>,
+    adminUserId: string | undefined,
+    action: LegacyStaffMutation,
+  ): Promise<void> {
+    let days: number | null = null;
+    if (typeof session.siteId === 'string' && session.siteId.length > 0) {
+      try {
+        const rows: Array<{ days: unknown }> = await this.sessionRepository.manager.query(
+          'SELECT edit_retention_days AS days FROM sites WHERE id = ? LIMIT 1',
+          [session.siteId],
+        );
+        const raw = Array.isArray(rows) && rows[0] ? rows[0].days : null;
+        days = raw === null || raw === undefined ? null : Number(raw);
+      } catch (e) {
+        this.logger.error(
+          `[edit-retention] 보관기간 조회 실패(작업 중단) session=${session.id} site=${session.siteId}: ${(e as Error)?.message}`,
+        );
+        throw staffAuditUnavailable();
+      }
+    }
+    const retention = computeEditRetention(
+      { createdAt: session.createdAt, isGuest: !!session.guestToken, guestExpiresAt: session.guestExpiresAt },
+      days,
+    );
+    if (retention.state === 'expired') throw editRetentionExpired(retention.until);
+
+    if (!this.partnerOperatorAudit) throw staffAuditUnavailable();
+    try {
+      await this.partnerOperatorAudit.recordOrThrow({
+        grantId: null,
+        origin: 'staff',
+        actorUserId: adminUserId ?? null,
+        siteId: session.siteId ?? null,
+        sessionId: session.id,
+        operatorId: `staff.${adminUserId ?? 'unknown'}`,
+        action: `staff.legacy.${action}`,
+        detail: { retentionState: retention.state, retentionUntil: retention.until },
+      });
+    } catch {
+      throw staffAuditUnavailable();
+    }
   }
 
   /** 세션의 스냅샷 목록(canvasData 제외 — 경량) */
@@ -1222,18 +1407,24 @@ export class EditSessionsService {
     // 회원 토큰으로 완료한다. 회원 세션은 소유자만 완료한다.
     // 운영자 대리 편집(2026-09-29): 권한 범위 안(assertTenantScope 통과)이면 두 판정을 대신한다.
     const op = caller?.partnerOperator ?? null;
+    // 관리자 편집데이터 관리(2026-09-29): staff 컨텍스트는 범위 안에서 두 판정을 대신한다.
+    const staff = caller?.staff ?? null;
     const isGuest = !!session.guestToken;
-    if (!op && isGuest && !EditSessionsService.isStaffRole(caller?.role)) {
+    if (!op && !staff && isGuest && !EditSessionsService.isStaffRole(caller?.role)) {
       throw new ForbiddenException({
         code: 'GUEST_COMPLETE_NOT_ALLOWED',
         message: '비회원 편집 세션은 로그인 후(세션 흡수) 완료할 수 있습니다.',
       });
     }
-    if (!op && !isGuest && Number(session.memberSeqno) !== userId) {
+    if (!op && !staff && !isGuest && Number(session.memberSeqno) !== userId) {
       throw new ForbiddenException({
         code: 'PERMISSION_DENIED',
         message: '이 세션을 완료할 권한이 없습니다.',
       });
+    }
+    // 레거시 관리자 경로(admin JWT 의 게스트 세션 완료) — 보관기간 확인 + 감사(fail-closed).
+    if (!op && !staff && isGuest && typeof caller?.adminUserId === 'string') {
+      await this.gateLegacyStaffMutation(session, caller.adminUserId, 'guest_complete');
     }
 
     // 스프레드 책 스냅샷 검증.
@@ -1831,6 +2022,10 @@ export class EditSessionsService {
         statusFrom: session.status ?? null,
         orderSeqno: Number(session.orderSeqno ?? 0),
       });
+    } else if (caller?.staff) {
+      // 관리자 편집데이터 관리(2026-09-29): 범위 안 + 삭제 권한(전역 또는 사이트 행 SITE_ADMIN)만.
+      // 감사 기록은 호출부(StaffEditDataService)가 삭제 전에 남긴다.
+      if (!caller.staff.canDelete) throw staffDeleteNotAllowed();
     } else if (Number(session.memberSeqno) !== userId) {
       throw new ForbiddenException({
         code: 'PERMISSION_DENIED',

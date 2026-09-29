@@ -81,6 +81,39 @@ import { BookFinalizationsService } from '../books/book-finalizations.service';
 // R-44 — 표지 검증 잡 서버 spine 재계산(fail-closed 주입)
 import { SpineService } from '../products/spine.service';
 
+/** 관리자 합성 잡 마커(2026-09-29) — job.options.staffInitiated */
+export interface StaffInitiatedMarker {
+  actorUserId: string;
+  notifyPartner: boolean;
+}
+
+/** 관리자 합성(세션 기반) 출력 모드 */
+export type StaffComposeOutputMode = 'separate' | 'content-only' | 'single';
+
+/** GET /admin/edit-data/sessions/:id/jobs 용 잡 목록 행(명시 컬럼) */
+export type SessionJobRow = Pick<
+  WorkerJob,
+  'id' | 'jobType' | 'status' | 'options' | 'result' | 'outputFileUrl' | 'createdAt' | 'completedAt'
+>;
+
+/** 잡 범위 판정용 최소 참조 */
+export interface JobScopeRef {
+  id: string;
+  editSessionId: string | null;
+  siteId: string | null;
+}
+
+/**
+ * 알림을 켜지 않은 관리자 잡인가(파트너 부수효과 생략 대상). 마커가 없거나 notifyPartner===true 면 false.
+ */
+export function isStaffSilentJob(job: { options?: unknown } | null | undefined): boolean {
+  const opts = job?.options;
+  if (typeof opts !== 'object' || opts === null) return false;
+  const marker = (opts as { staffInitiated?: unknown }).staffInitiated;
+  if (typeof marker !== 'object' || marker === null) return false;
+  return (marker as { notifyPartner?: unknown }).notifyPartner !== true;
+}
+
 @Injectable()
 export class WorkerJobsService implements OnModuleInit {
   private readonly logger = new Logger(WorkerJobsService.name);
@@ -1711,6 +1744,11 @@ export class WorkerJobsService implements OnModuleInit {
      * 여기서는 `resolveComposeMixedSiteId` 의 스탬프 근거로만 쓰인다.
      */
     apiKeyCaller?: { siteId: string },
+    /**
+     * 관리자 합성(2026-09-29, createStaffComposeFromSession 전용). 있으면 job.options.staffInitiated 를 싣는다.
+     * 없으면 options 바이트는 종전과 같다(conditional spread).
+     */
+    staffOpts?: { staffInitiated: StaffInitiatedMarker },
   ): Promise<WorkerJob> {
     // ── 분기 게이트(최상단) — opt-in 이 아니면 rawDto 를 그대로 흘려보낸다.
     const assembledFromSession = rawDto.assembleFromSession === true;
@@ -1819,6 +1857,15 @@ export class WorkerJobsService implements OnModuleInit {
           spreadOutputHeightMm: composeSpreadOutputHeightMm,
           // [Stage 3 W3] finalization 역참조 마커(#4) — 부재=기존 옵션 바이트 불변(conditional spread)
           ...(dto.finalizationId ? { finalizationId: dto.finalizationId } : {}),
+          // 관리자 합성 마커(2026-09-29) — 부재=기존 옵션 바이트 불변(conditional spread)
+          ...(staffOpts?.staffInitiated
+            ? {
+                staffInitiated: {
+                  actorUserId: staffOpts.staffInitiated.actorUserId,
+                  notifyPartner: staffOpts.staffInitiated.notifyPartner === true,
+                },
+              }
+            : {}),
         },
         dto.partnerEnv,
       ),
@@ -1861,6 +1908,34 @@ export class WorkerJobsService implements OnModuleInit {
     );
 
     return savedJob;
+  }
+
+  /**
+   * 관리자 합성/재합성(2026-09-29, ADDITIVE) — StaffEditDataService 전용.
+   *
+   * 호출부가 관리자 범위·보관기간·감사를 이미 확인했다. siteId 는 서버가 읽은 session.siteId 다.
+   *  1) 세션 자산으로 입력을 조립(assembleComposeInputFromSession, caller=세션 사이트)
+   *  2) notifyPartner 가 아니면 callbackUrl 제거(세션 callbackUrl 폴백 포함)
+   *  3) createComposeMixedJob(수동 경로 + 세션 사이트) — options.staffInitiated 마커
+   * 매 호출이 **새 잡**을 만든다(이전 잡·결과물은 건드리지 않음). SESSION_ASSEMBLY_INCOMPLETE(400) 는 그대로 전달.
+   */
+  async createStaffComposeFromSession(
+    sessionId: string,
+    siteId: string,
+    opts: { outputMode?: StaffComposeOutputMode; notifyPartner: boolean; actorUserId: string },
+  ): Promise<WorkerJob> {
+    const input: ComposeMixedJobInput = {
+      editSessionId: sessionId,
+      assembleFromSession: true,
+      ...(opts.outputMode ? { outputMode: opts.outputMode } : {}),
+    } as ComposeMixedJobInput;
+    const assembled = await this.assembleComposeInputFromSession(input, { siteId });
+    if (!opts.notifyPartner) delete assembled.callbackUrl;
+    assembled.assembleFromSession = false;
+    assembled.siteId = siteId;
+    return this.createComposeMixedJob(assembled, { siteId }, undefined, {
+      staffInitiated: { actorUserId: opts.actorUserId, notifyPartner: opts.notifyPartner === true },
+    });
   }
 
   // ============================================================================
@@ -2577,6 +2652,57 @@ export class WorkerJobsService implements OnModuleInit {
     return job;
   }
 
+  /**
+   * 세션의 잡 목록(관리자 조회, 2026-09-29) — 명시 컬럼, 최신순.
+   * edit_session_id 컬럼 일치 + (siteId 가 있으면) 같은 사이트 잡 중 options.editSessionId 일치(compose-mixed 는
+   * 옵션 마커로만 세션을 가리킬 수 있다 — relinkImposedInnerPdf 의 폴백 선례).
+   */
+  async findJobsBySession(
+    editSessionId: string,
+    limit = 50,
+    siteId?: string | null,
+  ): Promise<SessionJobRow[]> {
+    const take = Math.min(Math.max(Math.trunc(Number(limit) || 50), 1), 200);
+    const qb = this.workerJobRepository
+      .createQueryBuilder('job')
+      .select([
+        'job.id',
+        'job.jobType',
+        'job.status',
+        'job.options',
+        'job.result',
+        'job.outputFileUrl',
+        'job.createdAt',
+        'job.completedAt',
+      ]);
+    if (typeof siteId === 'string' && siteId.length > 0) {
+      qb.where(
+        "(job.edit_session_id = :sid OR (job.site_id = :jobSiteId AND JSON_UNQUOTE(JSON_EXTRACT(job.options, '$.editSessionId')) = :sid))",
+        { sid: editSessionId, jobSiteId: siteId },
+      );
+    } else {
+      qb.where('job.edit_session_id = :sid', { sid: editSessionId });
+    }
+    return qb.orderBy('job.createdAt', 'DESC').take(take).getMany();
+  }
+
+  /** 잡 범위 참조(관리자 산출물 다운로드 범위 판정용) — 없으면 null */
+  async findJobScopeRef(jobId: string): Promise<JobScopeRef | null> {
+    const row = await this.workerJobRepository
+      .createQueryBuilder('job')
+      .select('job.id', 'id')
+      .addSelect('job.edit_session_id', 'editSessionId')
+      .addSelect('job.site_id', 'siteId')
+      .where('job.id = :id', { id: jobId })
+      .getRawOne<{ id: string; editSessionId: string | null; siteId: string | null }>();
+    if (!row) return null;
+    return {
+      id: row.id,
+      editSessionId: typeof row.editSessionId === 'string' && row.editSessionId.length > 0 ? row.editSessionId : null,
+      siteId: typeof row.siteId === 'string' && row.siteId.length > 0 ? row.siteId : null,
+    };
+  }
+
   async updateJobStatus(
     id: string,
     updateJobStatusDto: UpdateJobStatusDto,
@@ -2605,6 +2731,11 @@ export class WorkerJobsService implements OnModuleInit {
 
     const savedJob = await this.workerJobRepository.save(job);
 
+    // 관리자 합성(2026-09-29): 알림을 켜지 않은 관리자 잡은 파트너에게 보이는 부수효과가 없다 —
+    //   세션 workerStatus/workerError·session.* 웹훅·synthesis.*/validation.* 콜백(v1·v2) 모두 생략.
+    //   마커 부재=기존 잡(불변).
+    const staffSilent = isStaffSilentJob(job);
+
     // Update EditSession workerStatus and send webhook callback
     //   ⚠️ 임포지션 잡(CONVERT + purpose='inner-imposition')은 세션 검증상태 추적 대상이 아니다.
     //   editSessionId 는 결과 되연결 역참조 용도일 뿐이므로, workerStatus 오염/스푸리어스 webhook
@@ -2612,7 +2743,7 @@ export class WorkerJobsService implements OnModuleInit {
     const isInnerImpositionJob =
       job.jobType === WorkerJobType.CONVERT &&
       job.options?.purpose === 'inner-imposition';
-    if (job.editSessionId && !isInnerImpositionJob) {
+    if (job.editSessionId && !isInnerImpositionJob && !staffSilent) {
       await this.updateEditSessionWorkerStatus(job, updateJobStatusDto);
     }
 
@@ -2626,6 +2757,7 @@ export class WorkerJobsService implements OnModuleInit {
       // [Stage 3 W3] finalization 내부 잡은 book.finalization.* 만 발신 — 중간 synthesis.*
       //   억제(파트너에 내부 오케스트레이션 단계 누출 방지). 마커 부재=기존 파트너 잡(불변).
       !job.options?.finalizationId &&
+      !staffSilent &&
       (updateJobStatusDto.status === WorkerJobStatus.COMPLETED ||
         updateJobStatusDto.status === WorkerJobStatus.FAILED) &&
       (job.options?.callbackUrl ||
@@ -2644,6 +2776,7 @@ export class WorkerJobsService implements OnModuleInit {
       // [Stage 3 W3] finalization 내부 validate 잡은 book.finalization.* 만 발신 —
       //   중간 validation.* 억제. 마커 부재=기존 잡(불변).
       !job.options?.finalizationId &&
+      !staffSilent &&
       (updateJobStatusDto.status === WorkerJobStatus.COMPLETED ||
         updateJobStatusDto.status === WorkerJobStatus.FIXABLE ||
         updateJobStatusDto.status === WorkerJobStatus.FAILED) &&
@@ -3211,6 +3344,9 @@ export class WorkerJobsService implements OnModuleInit {
             j.options?.purpose === 'inner-imposition'
           ),
       )
+      // 알림을 켜지 않은 관리자 합성 잡(2026-09-29)은 세션 완료 판정 대상이 아니다
+      //   (대기 중인 관리자 잡이 파트너 세션을 PROCESSING 에 묶지 않도록).
+      .filter((j) => !isStaffSilentJob(j))
       .every(
         (j) =>
           j.status === WorkerJobStatus.COMPLETED ||

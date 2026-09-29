@@ -11,6 +11,11 @@ export interface Site {
   status: 'active' | 'suspended';
   /** 파일 보존 기간(일). null/0=영구보관. (2026-06-15 보존정책) */
   retentionDays: number | null;
+  /**
+   * 편집데이터 보관기간(일) (2026-09-29). null = 미설정(기한 제한 없음 · 보존 보장 없음).
+   * 세션 생성일 기준 N일 동안 관리자 편집·삭제·합성·재합성 보장. retentionDays(업로드 파일 자동삭제)와 별개.
+   */
+  editRetentionDays: number | null;
   // Phase B — 사이트별 워커 옵션 default
   pdfConversionEnabled: boolean;
   beforeAfterUrl: string | null;
@@ -38,6 +43,8 @@ export interface CreateSiteDto {
   workerAuthCode?: string;
   status?: 'active' | 'suspended';
   retentionDays?: number | null;
+  /** 편집데이터 보관기간(일, 1~3650). null = 미설정. 보낼 때만 변경된다(키 생략 = 변경 없음). */
+  editRetentionDays?: number | null;
   pdfConversionEnabled?: boolean;
   beforeAfterUrl?: string;
   defaultUnit?: 'mm' | 'inch';

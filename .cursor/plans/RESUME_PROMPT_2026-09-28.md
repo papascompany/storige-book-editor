@@ -165,6 +165,17 @@ Storige 편집기 개발을 이어서 진행합니다. bookmoa·printy 파트너
   - 검증: api 89/1441, tsc 0, contract-freeze.spec 86(3 라우트 등재). 실 MariaDB 에서 assertActive 조인 미실행(모의만) → 운영 마이그레이션 직후 읽기 전용 SQL 로 확인 예정. 편집기 변경 불필요(선택: 운영자 배너·만료 문구 — 후속).
   - 리뷰 minor 잔여: 가드 단계에서 거부된 운영자 요청은 감사 행이 없음(로그만) · 201 라우트 감사 status_code 부정확 · 운영 인터셉터 부하 미측정.
   - 파트너 할 일(배포 후 통지): 서버에서 관리자 확인 + 주문-세션 연결을 서버 기준 데이터로 확인 후 발급 → `/embed?sessionId&token&refreshToken` 로 오픈, 종료 시 revoke.
+- **Storige 관리자 편집데이터 관리(09-29, 오너 요구: 관리자가 파트너 무관하게 사이트별 편집데이터 보관기간을 설정하고, 기간 내 언제든 편집·수정·삭제·합성·재합성)** — 워크플로 `wf_7b234cda-3c1`(판독 4 → 설계·보안/운영 비판 → api·admin·editor 3레인 → 레인별 2렌즈 리뷰·수정) + 통합 보강.
+  - 보관기간: `sites.edit_retention_days`(1~3650, NULL=미설정 — 현재 전 사이트 미설정·동작 불변). 기준 = 세션 created_at. 기간 안(또는 미설정)이면 관리자 작업 가능, 만료 후엔 삭제만. **만료 자동삭제 없음**. 기간 내 세션이 참조하는 파일은 업로드 파일 자동삭제·영구삭제에서 보호. 기존 `retention_days` 는 '업로드 파일 자동삭제 기간'으로 라벨만 정리.
+  - 관리자 API `/api/admin/edit-data/*`(13 라우트, JWT + ADMIN/MANAGER/SITE_ADMIN/SITE_MANAGER, SITE_* 는 자기 사이트만·SITE_MANAGER 는 삭제·복구 불가): 목록·잡·결과물·파일 내려받기·편집기 권한 발급/회수·완료·삭제·복구·합성/재합성·보고·감사. 모든 관리자 변경은 감사(origin 'staff', 실패 시 503·미수행).
+  - 편집기 진입: 관리자 발급 운영자 권한(origin 'staff', 세션 1건·기본 1h·보관기간 종료 초과 불가) → 새 탭 `/embed?sessionId&adminEdit=session#token&refreshToken`(조각은 서버·Referer 미전송, 탭별 sessionStorage 로 옮긴 뒤 조각 제거). 편집 시작 시 `staff-baseline` 버전 스냅샷.
+  - 합성/재합성: 세션 자산으로 새 compose 잡, 이전 결과 보존. 기본 파트너 알림 없음(콜백·웹훅·workerStatus 불변). **통합 보강**: 알림 없는 관리자 합성 잡을 파트너 조회(external 주문 조회·책 승격)의 최신 합성에서 제외 — 재합성 진행 중·실패 시 파트너가 받던 결과물이 원본으로 바뀌던 결함(리뷰 major) 차단. MariaDB `JSON_EXTRACT` 불리언은 문자열 'true'(JSON_VALUE 는 '1') — 운영 읽기 전용 확인, 기존 합성 잡 12/12 파트너 가시 유지.
+  - admin 화면↔API 응답 대조(읽기 전용 서브에이전트): 13 라우트·편집기 URL 전부 일치, 경미 2건 수정(사이트 운영자 드롭다운 403 회피·오류 코드 3개).
+  - 마이그레이션: `20260930_add_edit_retention_and_staff_grant_origin.sql`(20260929 선행, ADDITIVE — sites 1컬럼, 권한·감사 origin/actor, 인덱스).
+  - 검증: api 99/1659, editor 79/973(+빌드), admin 7/120(+빌드), sdk 341, tsc 0(api·worker·editor·admin).
+  - 기본값(설계 D1~D8): 기준 created_at, SITE_MANAGER 삭제 불가, 관리자 작업 파트너 감사 비노출, 재합성 기본 무음, NULL-site 레거시는 편집기·합성 409, 만료 후 삭제만, 미설정=기한·보존보장 없음.
+  - 잔여: 실 브라우저 E2E(관리자 로그인 필요) 미실시 — 오너가 관리자 화면에서 1회 확인 필요. 편집기 조각 토큰의 Sentry breadcrumb 노출 가능성(minor), EmbedView 배선 테스트 없음.
+- **pageStep=1 = 배수 제약 없음(09-29 오너 채택, bookmoa R-205)** — 커밋 `85d6095` + 경고 문구 정정. 이번 배포에 포함.
 - **CTO 점검 메모(09-29)**
   - 운영 worker 실측: `WORKER_LIGHTWEIGHT_VALIDATION`·`WORKER_LIGHTWEIGHT_SYNTHESIS`·`WORKER_CROP_MARK_VALIDATION`·`CUTOUT_ENABLED` = true(.env), `PRINT_NORMALIZE` = false. compose 기본값은 전부 false → .env 누락 재배포 시 조용히 OFF 되는 위험.
   - S7 정정: worker `handleSpreadSynthesis` 의 스냅샷 하드 검증은 `createSpreadSynthesisJob`(컨트롤러 호출 0) 경로 전용 → 파트너 합성(compose-mixed·synthesize/external)은 막지 않는다. 실영향은 SOFT `SPINE_MISSING` 뿐.

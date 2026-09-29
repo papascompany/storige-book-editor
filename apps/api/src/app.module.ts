@@ -25,6 +25,7 @@ import { PartnerApiModule } from './partner-api/partner-api.module';
 import { BookSpecsModule } from './book-specs/book-specs.module';
 import { BooksModule } from './books/books.module';
 import { PortalModule } from './portal/portal.module';
+import { StaffEditDataModule } from './staff-edit-data/staff-edit-data.module';
 import { PayloadTooLargeFilter } from './common/filters/payload-too-large.filter';
 
 // Bookmoa 모듈 조건부 로드 (BOOKMOA_DB_PASSWORD가 설정된 경우에만)
@@ -174,6 +175,9 @@ if (process.env.BOOKMOA_DB_PASSWORD) {
 
     // 파트너 포털 v0 — SITE_ADMIN 셀프서브 (/api/portal/* — S2-4, D-7a 보수 스코프)
     PortalModule,
+
+    // Storige 관리자 편집데이터 관리 (/api/admin/edit-data/* — 2026-09-29, 관리자 전용)
+    StaffEditDataModule,
 
     // Bookmoa integration (conditionally loaded)
     ...conditionalModules,

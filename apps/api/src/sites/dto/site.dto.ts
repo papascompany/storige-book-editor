@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
-import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, IsUrl, Length, Max, Min } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, IsUrl, Length, Max, Min, ValidateIf } from 'class-validator';
 
 export class CreateSiteDto {
   @ApiProperty({ example: '북모아 메인', description: '사이트명' })
@@ -55,6 +55,21 @@ export class CreateSiteDto {
   @Min(0)
   @Max(3650)
   retentionDays?: number | null;
+
+  @ApiPropertyOptional({
+    description:
+      '편집데이터 보관기간(일). null=미설정(기한 제한 없음·보존 보장 없음). 기간 내 관리자 편집·삭제·합성·재합성 보장, 만료 후 자동삭제 없음.',
+    example: 365,
+    nullable: true,
+    minimum: 1,
+    maximum: 3650,
+  })
+  @IsOptional()
+  @ValidateIf((o: { editRetentionDays?: number | null }) => o.editRetentionDays !== null)
+  @IsInt()
+  @Min(1)
+  @Max(3650)
+  editRetentionDays?: number | null;
 
   // ── Phase B 워커 옵션 default ───────────────────────────────
 

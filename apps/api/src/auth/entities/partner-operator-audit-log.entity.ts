@@ -19,6 +19,7 @@ export type PartnerOperatorAuditDetail = { [key: string]: PartnerOperatorAuditVa
  *  - 'session.update' / 'session.complete' /
  *    'session.delete' / 'session.version_restore' : 상태 변경(변경 전에 기록, 기록 실패 시 변경 중단)
  *  - 'request'                                : 운영자 요청 1건(best-effort)
+ *  - 'staff.*' / 'site.edit_retention.update'  : Storige 관리자 작업(origin 'staff', 2026-09-29)
  */
 @Entity('partner_operator_audit_logs')
 @Index('idx_poal_site_created', ['siteId', 'createdAt'])
@@ -28,11 +29,17 @@ export class PartnerOperatorAuditLogEntity {
   @PrimaryColumn({ type: 'varchar', length: 36 })
   id: string;
 
-  @Column({ name: 'grant_id', type: 'varchar', length: 36 })
-  grantId: string;
+  /** 관리자 직접 작업·사이트 설정 변경 행은 NULL (migrations/20260930) */
+  @Column({ name: 'grant_id', type: 'varchar', length: 36, nullable: true })
+  grantId: string | null;
 
-  @Column({ name: 'site_id', type: 'varchar', length: 36 })
-  siteId: string;
+  /** 'partner'(기본) | 'staff' — 파트너 조회(GET /auth/partner-operator-session/audit)는 'partner' 만 */
+  @Column({ type: 'varchar', length: 16, default: 'partner' })
+  origin: string;
+
+  /** NULL-site 레거시 세션에 대한 관리자 작업은 NULL */
+  @Column({ name: 'site_id', type: 'varchar', length: 36, nullable: true })
+  siteId: string | null;
 
   @Column({ name: 'session_id', type: 'varchar', length: 36, nullable: true })
   sessionId: string | null;
@@ -42,6 +49,10 @@ export class PartnerOperatorAuditLogEntity {
 
   @Column({ name: 'operator_name', type: 'varchar', length: 100, nullable: true })
   operatorName: string | null;
+
+  /** 관리자 작업의 users.id(권한 행 issued_by_user_id 또는 admin JWT). 이메일은 저장하지 않는다. */
+  @Column({ name: 'actor_user_id', type: 'varchar', length: 36, nullable: true })
+  actorUserId: string | null;
 
   @Column({ type: 'varchar', length: 40 })
   action: string;

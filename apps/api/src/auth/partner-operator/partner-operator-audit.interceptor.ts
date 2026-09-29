@@ -10,7 +10,7 @@ import { Observable, throwError } from 'rxjs';
 import { catchError, tap } from 'rxjs/operators';
 import { PartnerOperatorAuditWriter } from './partner-operator-audit.writer';
 import type { PartnerOperatorAuditDetail } from '../entities/partner-operator-audit-log.entity';
-import { PARTNER_OPERATOR } from './partner-operator.types';
+import { PARTNER_OPERATOR, PartnerOperatorOrigin } from './partner-operator.types';
 
 interface AuditRequest {
   method?: string;
@@ -28,6 +28,13 @@ interface OperatorIdentity {
   siteId: string;
   operatorId: string;
   operatorName: string | null;
+  /**
+   * 'staff' 는 JwtStrategy 가 권한 행을 확인한 권한 객체에서만 인정한다.
+   * null = 평면 스탬프 사용자(OptionalShopJwtGuard) — 기록 시 권한 행에서 출처를 조회한다.
+   */
+  origin: PartnerOperatorOrigin | null;
+  /** 관리자 발급 권한의 발급자(권한 행 issued_by_user_id) — staff 일 때만 */
+  actorUserId: string | null;
 }
 
 /** 요청 단위 기록에서 sessionId 를 채우는 컨트롤러, resourceId 를 채우는 컨트롤러 */
@@ -55,11 +62,15 @@ function operatorIdentity(user: unknown): OperatorIdentity | null {
   if (typeof grantId !== 'string' || typeof operatorId !== 'string' || typeof siteId !== 'string') {
     return null;
   }
+  const staff = grant?.origin === 'staff';
+  const issuedBy = grant?.issuedByUserId;
   return {
     grantId,
     siteId,
     operatorId,
     operatorName: typeof operatorName === 'string' ? operatorName : null,
+    origin: grant ? (staff ? 'staff' : 'partner') : null,
+    actorUserId: staff && typeof issuedBy === 'string' ? issuedBy : null,
   };
 }
 
@@ -125,9 +136,25 @@ export class PartnerOperatorAuditInterceptor implements NestInterceptor {
       detail.resourceId = paramId;
     }
     const routePath = typeof req?.route?.path === 'string' ? req.route.path : null;
+    // 평면 스탬프 사용자(@Public 라우트)는 토큰에 출처가 없다 — 권한 행에서 조회해 관리자 요청이
+    // 파트너 감사 조회(origin 'partner')에 섞이지 않게 한다. 조회 실패·행 없음이면 기록하지 않는다.
+    let origin: PartnerOperatorOrigin = identity.origin ?? 'partner';
+    let actorUserId = identity.actorUserId;
+    if (identity.origin === null) {
+      try {
+        const resolved = await this.auditWriter.resolveGrantOrigin(identity.grantId);
+        if (!resolved) return;
+        origin = resolved.origin;
+        actorUserId = resolved.issuedByUserId;
+      } catch {
+        return;
+      }
+    }
     await this.auditWriter.recordBestEffort({
       grantId: identity.grantId,
       siteId: identity.siteId,
+      origin,
+      actorUserId,
       sessionId: controllerPath === SESSION_CONTROLLER_PATH ? paramId : null,
       operatorId: identity.operatorId,
       operatorName: identity.operatorName,

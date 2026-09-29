@@ -18,8 +18,10 @@ import { EditSessionEntity } from './edit-session.entity';
  * - shrink:   페이지 수(캔버스 배열 길이)가 **줄어드는** 덮어쓰기 직전 보존 — 절단 의심.
  *             debounce 무시·트림 보호(최근 SHRINK_KEEP 건 보존).
  * - restore:  버전 복원 직전의 현재 상태 보존(복원 되돌리기용)
+ * - staff-baseline: Storige 관리자가 편집기를 열기 직전의 현재 상태(2026-09-29). 트림에서 가장 오래된 1건과
+ *             최근 2건을 보호한다(고객 이력 보존). 14자 — varchar(16) 안.
  */
-export type EditSessionVersionReason = 'autosave' | 'shrink' | 'restore';
+export type EditSessionVersionReason = 'autosave' | 'shrink' | 'restore' | 'staff-baseline';
 
 /**
  * `file_edit_sessions`(프로덕션 /embed 경로) 의 canvasData 덮어쓰기 직전 스냅샷 (P1-4, 2026-08-22).

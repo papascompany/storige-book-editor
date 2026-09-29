@@ -1550,7 +1550,8 @@ export function useEditorContents(): UseEditorContentsReturn {
       // R-196 host page limits (2026-09-29): 호스트 pageStep 우선. 단, 단일 모드 단위 산정 기준은 전체
       //   캔버스 수라 비내지 캔버스(표지 등)가 있으면 호스트 단위를 무시하고 템플릿 단위를 쓴다.
       //   단일 모드는 pageCountRange 를 스토어에 넣지 않는다(종전 동작 유지 — 한도는 settings.page).
-      if (nonInnerCanvasCount > 0 && config.pageStep !== undefined) {
+      // pageStep 1(배수 제약 없음)은 캔버스 산정 기준과 무관해 그대로 적용되므로 경고하지 않는다.
+      if (nonInnerCanvasCount > 0 && config.pageStep !== undefined && config.pageStep !== 1) {
         console.warn(
           `[hostPageLimits] 단일 모드 템플릿에 내지가 아닌 캔버스 ${nonInnerCanvasCount}개 — 호스트 pageStep ${config.pageStep} 무시(템플릿셋 단위 적용)`,
         )

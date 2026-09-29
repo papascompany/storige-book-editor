@@ -25,13 +25,15 @@ import {
   assertPartnerOperatorSiteCaller,
   keyFingerprint,
 } from './partner-operator-grant.service';
-import { PartnerOperatorAuditWriter } from './partner-operator-audit.writer';
+import { PartnerOperatorAuditWriter, isStaffEditAfterCompletion } from './partner-operator-audit.writer';
 import {
   ACCESS_MAX,
   PartnerOperatorGrant,
   grantFromClaims,
   isPartnerOperatorClaims,
 } from './partner-operator.types';
+import { User } from '../entities/user.entity';
+import { UserSiteRole } from '../entities/user-site-role.entity';
 
 const SECRET = 'partner-operator-grant-spec';
 const SITE_A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -53,6 +55,7 @@ interface ActiveRow {
   keyFp: string;
   expiresAtUnix: string | number;
   revokedAt: Date | null;
+  origin: string;
   siteStatus: string;
   editorCode: string;
   workerCode: string;
@@ -270,6 +273,23 @@ describe('PartnerOperatorGrantService', () => {
       expect(res.operator).toEqual({ id: 'op-7f3c', name: '운영팀' });
     });
 
+    it('파트너 발급: 클레임에 org 없음(토큰 키 집합 불변) + 권한 행 origin partner·발급자 없음', async () => {
+      const res = await service.mint(mintDto(), siteA());
+      for (const t of [res.accessToken, res.refreshToken]) {
+        const c = jwt.verify(t) as Record<string, unknown>;
+        expect(c).not.toHaveProperty('org');
+        expect(Object.keys(c).sort()).toEqual(
+          ['caps', 'exp', 'gexp', 'gid', 'iat', 'name', 'obo', 'opId', 'opName', 'role', 'sids', 'siteId', 'siteName', 'source', 'sub', 'tu', 'typ'].sort(),
+        );
+      }
+      const inserted = grantRepo.insert.mock.calls[0][0] as PartnerOperatorGrantEntity;
+      expect(inserted.origin).toBe('partner');
+      expect(inserted.issuedByUserId).toBeNull();
+      const entry = audit.recordOrThrow.mock.calls[0][0] as Record<string, unknown>;
+      expect(entry).not.toHaveProperty('origin');
+      expect(grantFromClaims(jwt.verify(res.accessToken), 'access')?.origin).toBe('partner');
+    });
+
     it('짧은 권한(5분)이면 액세스 exp 도 권한 만료를 넘지 않는다', async () => {
       const now = nowSec();
       const res = await service.mint(mintDto({ ttlSeconds: 300 }), siteA(), now);
@@ -341,6 +361,7 @@ describe('PartnerOperatorGrantService', () => {
       keyFp: keyFingerprint(KEY_A),
       expiresAtUnix: String(grant.grantExpiresAt),
       revokedAt: null,
+      origin: 'partner',
       siteStatus: 'active',
       editorCode: KEY_A,
       workerCode: KEY_A_WORKER,
@@ -382,6 +403,7 @@ describe('PartnerOperatorGrantService', () => {
       ['행의 세션 범위가 토큰보다 좁음', (g) => activeRow(g, { sessionIds: JSON.stringify([S3]) })],
       ['행에 delete 권한 없음(토큰은 delete 주장)', (g) => activeRow(g, { capabilities: 'edit' })],
       ['DB 오류', () => new Error('db down')],
+      ['출처 불일치(관리자 행 — 파트너 토큰)', (g) => activeRow(g, { origin: 'staff' })],
     ])('%s → 401 (fail-closed)', async (_l, make) => {
       const { grant } = await mintAndDecode(mintDto({ allowDelete: true }));
       grantRepo.createQueryBuilder.mockReturnValue(qbReturning(make(grant)));
@@ -450,7 +472,9 @@ describe('PartnerOperatorGrantService', () => {
       const where = grantRepo.find.mock.calls[0][0].where as Record<string, unknown>;
       expect(where.siteId).toBe(SITE_A);
       expect(where.id).toBe(G1);
-      expect(grantRepo.update.mock.calls[0][0]).toMatchObject({ siteId: SITE_A });
+      // 파트너 취소는 파트너 발급 권한만 — 관리자 발급 권한 제외
+      expect(where.origin).toBe('partner');
+      expect(grantRepo.update.mock.calls[0][0]).toMatchObject({ siteId: SITE_A, origin: 'partner' });
       expect(audit.recordBestEffort).toHaveBeenCalledWith(
         expect.objectContaining({ action: 'grant.revoke', grantId: G1, siteId: SITE_A }),
       );
@@ -554,6 +578,119 @@ describe('PartnerOperatorAuditWriter', () => {
     expect(inserted.route).toHaveLength(200);
   });
 
+  it('toRow: origin 기본 partner·actorUserId null, staff 항목은 grant/site NULL 허용', async () => {
+    await writer.recordBestEffort(entry);
+    const a = repo.insert.mock.calls[0][0] as PartnerOperatorAuditLogEntity;
+    expect(a.origin).toBe('partner');
+    expect(a.actorUserId).toBeNull();
+    await writer.recordBestEffort({ ...entry, grantId: null, siteId: null, origin: 'staff', actorUserId: 'u-1' });
+    const b = repo.insert.mock.calls[1][0] as PartnerOperatorAuditLogEntity;
+    expect(b).toMatchObject({ origin: 'staff', actorUserId: 'u-1', grantId: null, siteId: null });
+  });
+
+  it('list(파트너 감사 조회): origin partner 행만', async () => {
+    await writer.list(SITE_A, {});
+    const arg = repo.find.mock.calls[0][0] as { where: Record<string, unknown> };
+    expect(arg.where).toMatchObject({ siteId: SITE_A, origin: 'partner' });
+  });
+
+  it('listStaff: origin staff + 사이트 범위(배열), 범위 밖 siteId → 조회 없이 빈 결과', async () => {
+    await writer.listStaff({ siteIds: [SITE_A], limit: 500 });
+    const arg = repo.find.mock.calls[0][0] as { where: Record<string, unknown>; take: number; select: string[] };
+    expect(arg.where.origin).toBe('staff');
+    expect(arg.where.siteId).toBeDefined();
+    expect(arg.take).toBe(200);
+    expect(arg.select).toContain('actorUserId');
+    expect(await writer.listStaff({ siteIds: [SITE_A], siteId: SITE_B, limit: 10 })).toEqual([]);
+    expect(await writer.listStaff({ siteIds: [], limit: 10 })).toEqual([]);
+    expect(repo.find).toHaveBeenCalledTimes(1);
+    await writer.listStaff({ siteIds: 'all', limit: 10 });
+    const all = repo.find.mock.calls[1][0] as { where: Record<string, unknown> };
+    expect(all.where).toEqual({ origin: 'staff' });
+  });
+
+  /** createQueryBuilder(...).getRawMany() 체인 목 — 호출 순서대로 rows 를 돌려준다. */
+  const rawRepo = (...results: Array<Array<{ sessionId: string; lastAt: Date | string }>>) => {
+    const calls: Array<Array<{ m: string; a: unknown[] }>> = [];
+    const createQueryBuilder = jest.fn(() => {
+      const rec: Array<{ m: string; a: unknown[] }> = [];
+      calls.push(rec);
+      const rows = results.shift() ?? [];
+      const qb: Record<string, jest.Mock> = {};
+      for (const m of ['select', 'addSelect', 'where', 'andWhere', 'groupBy']) {
+        qb[m] = jest.fn((...a: unknown[]) => {
+          rec.push({ m, a });
+          return qb;
+        });
+      }
+      qb.getRawMany = jest.fn(async () => rows);
+      return qb;
+    });
+    const w = new PartnerOperatorAuditWriter({ createQueryBuilder } as unknown as Repository<PartnerOperatorAuditLogEntity>);
+    return { w, calls, createQueryBuilder };
+  };
+
+  it('hasStaffUpdateAfter: 관리자 편집 기록 없음 → false(완료 조회 생략), 완료 없음(after null) → true', async () => {
+    const none = rawRepo([]);
+    expect(await none.w.hasStaffUpdateAfter(S1, new Date('2026-09-01T00:00:00Z'))).toBe(false);
+    expect(none.createQueryBuilder).toHaveBeenCalledTimes(1);
+    const q = JSON.stringify(none.calls[0]);
+    expect(q).toContain('"origin":"staff"');
+    expect(q).toContain('"action":"session.update"');
+
+    const neverCompleted = rawRepo([{ sessionId: S1, lastAt: new Date('2026-09-01T00:00:00.200Z') }]);
+    expect(await neverCompleted.w.hasStaffUpdateAfter(S1, null)).toBe(true);
+    expect(neverCompleted.createQueryBuilder).toHaveBeenCalledTimes(1);
+  });
+
+  it('hasStaffUpdateAfter: 편집기 update→complete 같은 초(update T.200, completed_at T.000 절삭) → stale 아님', async () => {
+    const T = Date.parse('2026-09-29T10:00:00.000Z');
+    const { w, calls } = rawRepo(
+      [{ sessionId: S1, lastAt: new Date(T + 200) }],
+      [{ sessionId: S1, lastAt: new Date(T + 350) }], // 'session.complete'(운영자 경로) 감사 — 완료 저장 직전
+    );
+    expect(await w.hasStaffUpdateAfter(S1, new Date(T))).toBe(false);
+    const completionQuery = JSON.stringify(calls[1]);
+    expect(completionQuery).toContain('session.complete');
+    expect(completionQuery).toContain('staff.session.complete');
+    expect(completionQuery).not.toContain('"origin"');
+  });
+
+  it('hasStaffUpdateAfter: 완료 감사 행 없음(고객·파트너 키 완료) + 같은 초 update → stale 아님, 1초 이상 뒤 → stale', async () => {
+    const T = Date.parse('2026-09-29T10:00:00.000Z');
+    const same = rawRepo([{ sessionId: S1, lastAt: new Date(T + 200) }], []);
+    expect(await same.w.hasStaffUpdateAfter(S1, new Date(T))).toBe(false);
+    const later = rawRepo([{ sessionId: S1, lastAt: new Date(T + 1500) }], []);
+    expect(await later.w.hasStaffUpdateAfter(S1, new Date(T))).toBe(true);
+  });
+
+  it('hasStaffUpdateAfter: 완료 뒤 추가 편집(완료 감사 T.300 < update T.500, 같은 초) → stale', async () => {
+    const T = Date.parse('2026-09-29T10:00:00.000Z');
+    const { w } = rawRepo(
+      [{ sessionId: S1, lastAt: new Date(T + 500) }],
+      [{ sessionId: S1, lastAt: new Date(T + 300) }],
+    );
+    expect(await w.hasStaffUpdateAfter(S1, new Date(T))).toBe(true);
+  });
+
+  it('isStaffEditAfterCompletion: 경계·반올림·오래된 완료 감사 행', () => {
+    const T = Date.parse('2026-09-29T10:00:00.000Z');
+    const d = (ms: number) => new Date(T + ms);
+    expect(isStaffEditAfterCompletion(null, d(0), null)).toBe(false);
+    expect(isStaffEditAfterCompletion(d(0), null, null)).toBe(true);
+    // 감사 행 없음: completedAt + 1초 경계
+    expect(isStaffEditAfterCompletion(d(999), d(0), null)).toBe(false);
+    expect(isStaffEditAfterCompletion(d(1000), d(0), null)).toBe(true);
+    // 반올림 저장(실제 완료 T.600 → completed_at T+1s): update T.400 은 stale 아님
+    expect(isStaffEditAfterCompletion(d(400), d(1000), d(550))).toBe(false);
+    expect(isStaffEditAfterCompletion(d(400), d(1000), null)).toBe(false);
+    // 완료 감사 행이 이전 완료(현재 completedAt ±1초 밖) → completedAt 기준 폴백
+    expect(isStaffEditAfterCompletion(d(-5000), d(0), d(-60000))).toBe(false);
+    expect(isStaffEditAfterCompletion(d(3000), d(0), d(-60000))).toBe(true);
+    // 실패한 완료 시도(감사 행만 남고 completed_at 미변경, +1초 밖) → 폴백
+    expect(isStaffEditAfterCompletion(d(3000), d(0), d(4000))).toBe(true);
+  });
+
   it('list: siteId 필터 + 명시 컬럼 + 최신순 + limit 상한 200', async () => {
     await writer.list(SITE_A, { limit: 999 });
     const arg = repo.find.mock.calls[0][0] as {
@@ -566,5 +703,296 @@ describe('PartnerOperatorAuditWriter', () => {
     expect(arg.select).toContain('operatorId');
     expect(arg.order).toEqual({ createdAt: 'DESC' });
     expect(arg.take).toBe(200);
+  });
+});
+
+// ─────────────────────────────── 관리자 발급 권한(origin 'staff') ───────────────────────────────
+describe('PartnerOperatorGrantService — 관리자 발급(staff)', () => {
+  const jwt = new JwtService({ secret: SECRET });
+  const ACTOR = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+  let grantRepo: {
+    insert: jest.Mock;
+    update: jest.Mock;
+    find: jest.Mock;
+    findOne: jest.Mock;
+    createQueryBuilder: jest.Mock;
+  };
+  let sessionRepo: { find: jest.Mock; findOne: jest.Mock };
+  let siteRepo: { findOne: jest.Mock };
+  let userRepo: { createQueryBuilder: jest.Mock };
+  let audit: { recordOrThrow: jest.Mock; recordBestEffort: jest.Mock; list: jest.Mock };
+  let service: PartnerOperatorGrantService;
+
+  interface Chain {
+    select: jest.Mock;
+    addSelect: jest.Mock;
+    where: jest.Mock;
+    leftJoin: jest.Mock;
+    innerJoin: jest.Mock;
+    getRawOne: jest.Mock;
+  }
+  const chain = (result: unknown): Chain => {
+    const c = {} as Chain;
+    for (const k of ['select', 'addSelect', 'where', 'leftJoin', 'innerJoin'] as const) c[k] = jest.fn(() => c);
+    c.getRawOne = result instanceof Error ? jest.fn().mockRejectedValue(result) : jest.fn().mockResolvedValue(result);
+    return c;
+  };
+
+  const baseInput = (extra: Record<string, unknown> = {}) => ({
+    sessionId: S1,
+    siteId: SITE_A,
+    siteName: 'Site A',
+    actorUserId: ACTOR,
+    allowDelete: false,
+    ...extra,
+  });
+
+  beforeEach(() => {
+    grantRepo = {
+      insert: jest.fn().mockResolvedValue({}),
+      update: jest.fn().mockResolvedValue({ affected: 1 }),
+      find: jest.fn().mockResolvedValue([]),
+      findOne: jest.fn(),
+      createQueryBuilder: jest.fn(),
+    };
+    sessionRepo = {
+      find: jest.fn(),
+      findOne: jest.fn().mockResolvedValue({
+        id: S1,
+        createdAt: new Date(Date.now() - 86_400_000),
+        guestToken: null,
+        guestExpiresAt: null,
+      }),
+    };
+    siteRepo = { findOne: jest.fn().mockResolvedValue({ id: SITE_A, editRetentionDays: null }) };
+    userRepo = { createQueryBuilder: jest.fn(() => chain({ userRole: 'ADMIN', siteRole: null })) };
+    audit = {
+      recordOrThrow: jest.fn().mockResolvedValue(undefined),
+      recordBestEffort: jest.fn().mockResolvedValue(undefined),
+      list: jest.fn().mockResolvedValue([]),
+    };
+    service = new PartnerOperatorGrantService(
+      jwt,
+      sessionRepo as unknown as Repository<EditSessionEntity>,
+      grantRepo as unknown as Repository<PartnerOperatorGrantEntity>,
+      siteRepo as unknown as Repository<Site>,
+      audit as unknown as PartnerOperatorAuditWriter,
+      userRepo as unknown as Repository<User>,
+      {} as unknown as Repository<UserSiteRole>,
+    );
+  });
+
+  describe('mintForStaff', () => {
+    it('권한 행: key_fp NULL · origin staff · issued_by_user_id · operatorId staff.<id> · 기본 ttl 3600', async () => {
+      const now = nowSec();
+      const res = await service.mintForStaff(baseInput(), now);
+      const row = grantRepo.insert.mock.calls[0][0] as PartnerOperatorGrantEntity;
+      expect(row.keyFp).toBeNull();
+      expect(row.origin).toBe('staff');
+      expect(row.issuedByUserId).toBe(ACTOR);
+      expect(row.operatorId).toBe(`staff.${ACTOR}`);
+      expect(row.operatorName).toBe('Storige 관리자');
+      expect(row.sessionIds).toEqual([S1]);
+      expect(row.capabilities).toBe('edit');
+      expect(row.expiresAtUnix).toBe(now + 3600);
+      expect(res.grantExpiresAt).toBe(new Date((now + 3600) * 1000).toISOString());
+      expect(res.capabilities).toEqual(['edit']);
+
+      const entry = audit.recordOrThrow.mock.calls[0][0] as Record<string, unknown>;
+      expect(entry).toMatchObject({ action: 'grant.mint', origin: 'staff', actorUserId: ACTOR, sessionId: S1 });
+
+      const access = jwt.verify(res.accessToken) as Record<string, unknown>;
+      const refresh = jwt.verify(res.refreshToken) as Record<string, unknown>;
+      expect(access.org).toBe('staff');
+      expect(refresh.org).toBe('staff');
+      const g = grantFromClaims(access, 'access');
+      expect(g?.origin).toBe('staff');
+      // 발급자는 클레임에서 얻지 않는다(행에서만)
+      expect(g?.issuedByUserId).toBeNull();
+    });
+
+    it('allowDelete → edit,delete / ttl 은 300..28800 으로 고정', async () => {
+      const now = nowSec();
+      await service.mintForStaff(baseInput({ allowDelete: true, ttlSeconds: 10 }), now);
+      const row = grantRepo.insert.mock.calls[0][0] as PartnerOperatorGrantEntity;
+      expect(row.capabilities).toBe('edit,delete');
+      expect(row.expiresAtUnix).toBe(now + 300);
+      await service.mintForStaff(baseInput({ ttlSeconds: 999999 }), now);
+      expect((grantRepo.insert.mock.calls[1][0] as PartnerOperatorGrantEntity).expiresAtUnix).toBe(now + 28800);
+    });
+
+    it('권한 만료는 보관기간 종료(notAfterUnix)를 넘지 않는다', async () => {
+      const now = nowSec();
+      const res = await service.mintForStaff(baseInput({ notAfterUnix: now + 600 }), now);
+      expect((grantRepo.insert.mock.calls[0][0] as PartnerOperatorGrantEntity).expiresAtUnix).toBe(now + 600);
+      expect((jwt.verify(res.refreshToken) as Record<string, unknown>).gexp).toBe(now + 600);
+    });
+
+    it('잔여 60초 미만 → 409 EDIT_RETENTION_EXPIRED, 권한 행·토큰 없음', async () => {
+      const now = nowSec();
+      const r = await codeOf(service.mintForStaff(baseInput({ notAfterUnix: now + 59 }), now));
+      expect(r.status).toBe(409);
+      expect(r.body.code).toBe('EDIT_RETENTION_EXPIRED');
+      expect(grantRepo.insert).not.toHaveBeenCalled();
+    });
+
+    it('감사 실패 → 503, 토큰 없음 + 행 무효화', async () => {
+      audit.recordOrThrow.mockRejectedValueOnce(new Error('db down'));
+      const r = await codeOf(service.mintForStaff(baseInput()));
+      expect(r.status).toBe(503);
+      expect(grantRepo.update).toHaveBeenCalledWith(
+        { id: grantRepo.insert.mock.calls[0][0].id },
+        expect.objectContaining({ revokedAt: expect.any(Date) }),
+      );
+    });
+  });
+
+  describe('assertActive — 관리자 분기', () => {
+    const staffRow = (g: PartnerOperatorGrant, extra: Record<string, unknown> = {}) => ({
+      id: g.grantId,
+      siteId: g.siteId,
+      operatorId: g.operatorId,
+      sessionIds: JSON.stringify(g.sessionIds),
+      capabilities: g.capabilities.join(','),
+      keyFp: null,
+      expiresAtUnix: String(g.grantExpiresAt),
+      revokedAt: null,
+      origin: 'staff',
+      issuedByUserId: ACTOR,
+      ...extra,
+    });
+
+    async function staffGrant(allowDelete = false): Promise<{ grant: PartnerOperatorGrant; refresh: Record<string, unknown> }> {
+      const res = await service.mintForStaff(baseInput({ allowDelete }));
+      const grant = grantFromClaims(jwt.verify(res.accessToken), 'access');
+      if (!grant) throw new Error('grant expected');
+      return { grant, refresh: jwt.verify(res.refreshToken) as Record<string, unknown> };
+    }
+
+    it('정상 → 통과, 사이트 조인·사이트 코드 조회 없음, 발급자는 행 값으로 채움', async () => {
+      const { grant } = await staffGrant();
+      const qb = chain(staffRow(grant));
+      grantRepo.createQueryBuilder.mockReturnValue(qb);
+      await expect(service.assertActive(grant)).resolves.toBeUndefined();
+      expect(qb.innerJoin).not.toHaveBeenCalled();
+      const selected = [...qb.select.mock.calls, ...qb.addSelect.mock.calls].map((c) => String(c[0]));
+      expect(selected.some((x) => x.includes('editorAuthCode') || x.includes('workerAuthCode'))).toBe(false);
+      expect(grant.issuedByUserId).toBe(ACTOR);
+    });
+
+    it('사이트 운영자(해당 사이트 행 존재) → 통과, 운영중지 사이트도 확인하지 않는다', async () => {
+      const { grant } = await staffGrant();
+      grantRepo.createQueryBuilder.mockReturnValue(chain(staffRow(grant)));
+      userRepo.createQueryBuilder.mockReturnValue(chain({ userRole: 'SITE_MANAGER', siteRole: 'SITE_MANAGER' }));
+      await expect(service.assertActive(grant)).resolves.toBeUndefined();
+    });
+
+    it.each<[string, (g: PartnerOperatorGrant) => void]>([
+      ['계정 삭제됨', () => userRepo.createQueryBuilder.mockReturnValue(chain(undefined))],
+      ['계정 강등(CUSTOMER, 사이트 행 없음)', () => userRepo.createQueryBuilder.mockReturnValue(chain({ userRole: 'CUSTOMER', siteRole: null }))],
+      ['사이트 배정 해제(user_site_roles 행 없음)', () => userRepo.createQueryBuilder.mockReturnValue(chain({ userRole: 'SITE_ADMIN', siteRole: null }))],
+      ['operatorId 불일치', (g) => grantRepo.createQueryBuilder.mockReturnValue(chain(staffRow(g, { operatorId: 'staff.someone-else' })))],
+      ['발급자와 operatorId 불일치', (g) => grantRepo.createQueryBuilder.mockReturnValue(chain(staffRow(g, { issuedByUserId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd' })))],
+      ['출처 불일치(파트너 행)', (g) => grantRepo.createQueryBuilder.mockReturnValue(chain(staffRow(g, { origin: 'partner' })))],
+      ['키 지문이 있는 행', (g) => grantRepo.createQueryBuilder.mockReturnValue(chain(staffRow(g, { keyFp: 'abcdabcdabcdabcd' })))],
+      ['취소됨', (g) => grantRepo.createQueryBuilder.mockReturnValue(chain(staffRow(g, { revokedAt: new Date() })))],
+      ['발급 후 보관기간 만료(설정 축소)', () => siteRepo.findOne.mockResolvedValue({ id: SITE_A, editRetentionDays: 1 }) && sessionRepo.findOne.mockResolvedValue({ id: S1, createdAt: new Date(Date.now() - 2 * 86_400_000), guestToken: null, guestExpiresAt: null })],
+      ['세션 행 없음(영구삭제)', () => sessionRepo.findOne.mockResolvedValue(null)],
+      ['사이트 행 없음', () => siteRepo.findOne.mockResolvedValue(null)],
+      ['역할 조회 DB 오류', () => userRepo.createQueryBuilder.mockReturnValue(chain(new Error('db down')))],
+      ['권한 행 조회 DB 오류', () => grantRepo.createQueryBuilder.mockReturnValue(chain(new Error('db down')))],
+    ])('%s → 401', async (_l, arrange) => {
+      const { grant } = await staffGrant();
+      grantRepo.createQueryBuilder.mockReturnValue(chain(staffRow(grant)));
+      arrange(grant);
+      await expect(service.assertActive(grant)).rejects.toBeInstanceOf(UnauthorizedException);
+    });
+
+    it('delete 권한 + SITE_MANAGER 사이트 행 → 401, SITE_ADMIN 행이면 통과', async () => {
+      const { grant } = await staffGrant(true);
+      grantRepo.createQueryBuilder.mockReturnValue(chain(staffRow(grant)));
+      userRepo.createQueryBuilder.mockReturnValue(chain({ userRole: 'SITE_ADMIN', siteRole: 'SITE_MANAGER' }));
+      await expect(service.assertActive(grant)).rejects.toBeInstanceOf(UnauthorizedException);
+      userRepo.createQueryBuilder.mockReturnValue(chain({ userRole: 'SITE_MANAGER', siteRole: 'SITE_ADMIN' }));
+      await expect(service.assertActive(grant)).resolves.toBeUndefined();
+    });
+
+    it('파트너 토큰(org 없음)을 관리자 행에 쓰면 401 — 파트너 분기의 출처 대조', async () => {
+      const { grant } = await staffGrant();
+      const partnerLike: PartnerOperatorGrant = { ...grant, origin: 'partner' };
+      grantRepo.createQueryBuilder.mockReturnValue(chain({ ...staffRow(grant), siteStatus: 'active', editorCode: KEY_A, workerCode: KEY_A_WORKER }));
+      await expect(service.assertActive(partnerLike)).rejects.toBeInstanceOf(UnauthorizedException);
+    });
+
+    it('refresh 는 org 를 유지한다', async () => {
+      const { grant, refresh } = await staffGrant();
+      grantRepo.createQueryBuilder.mockReturnValue(chain(staffRow(grant)));
+      const out = await service.refresh(refresh);
+      const renewed = jwt.verify(out.accessToken) as Record<string, unknown>;
+      expect(renewed.org).toBe('staff');
+      expect(renewed.tu).toBe('access');
+    });
+
+    it('userRepository 미주입 구성 → 관리자 권한 401(fail-closed)', async () => {
+      const { grant } = await staffGrant();
+      const bare = new PartnerOperatorGrantService(
+        jwt,
+        sessionRepo as unknown as Repository<EditSessionEntity>,
+        grantRepo as unknown as Repository<PartnerOperatorGrantEntity>,
+        siteRepo as unknown as Repository<Site>,
+        audit as unknown as PartnerOperatorAuditWriter,
+      );
+      await expect(bare.assertActive(grant)).rejects.toBeInstanceOf(UnauthorizedException);
+    });
+  });
+
+  describe('revokeStaff · listStaffGrantsForSession', () => {
+    const G = '99999999-9999-4999-8999-999999999999';
+
+    it('origin staff 로만 찾는다 — 파트너 발급 권한은 404 GRANT_NOT_FOUND', async () => {
+      grantRepo.findOne.mockResolvedValue(null);
+      const r = await codeOf(service.revokeStaff(G, { global: true, siteIds: [] }, ACTOR));
+      expect(r.status).toBe(404);
+      expect(r.body.code).toBe('GRANT_NOT_FOUND');
+      expect((grantRepo.findOne.mock.calls[0][0] as { where: Record<string, unknown> }).where).toEqual({ id: G, origin: 'staff' });
+      expect(audit.recordOrThrow).not.toHaveBeenCalled();
+    });
+
+    it('범위 밖 사이트 → 같은 404, 감사·갱신 없음', async () => {
+      grantRepo.findOne.mockResolvedValue({ id: G, siteId: SITE_B, sessionIds: [S1], revokedAt: null });
+      const r = await codeOf(service.revokeStaff(G, { global: false, siteIds: [SITE_A] }, ACTOR));
+      expect(r.status).toBe(404);
+      expect(audit.recordOrThrow).not.toHaveBeenCalled();
+      expect(grantRepo.update).not.toHaveBeenCalled();
+    });
+
+    it('감사(fail-closed) 후 revoked_at 설정, 이미 취소면 갱신 없이 성공(멱등)', async () => {
+      grantRepo.findOne.mockResolvedValue({ id: G, siteId: SITE_A, sessionIds: [S1], revokedAt: null });
+      const first = await service.revokeStaff(G, { global: false, siteIds: [SITE_A] }, ACTOR);
+      expect(first).toEqual({ success: true, grantId: G, revoked: true });
+      expect(audit.recordOrThrow).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'staff.grant.revoke', origin: 'staff', actorUserId: ACTOR, grantId: G }),
+      );
+      expect(grantRepo.update.mock.calls[0][0]).toMatchObject({ id: G, origin: 'staff' });
+
+      grantRepo.findOne.mockResolvedValue({ id: G, siteId: SITE_A, sessionIds: [S1], revokedAt: new Date() });
+      const second = await service.revokeStaff(G, { global: false, siteIds: [SITE_A] }, ACTOR);
+      expect(second.revoked).toBe(false);
+      expect(grantRepo.update).toHaveBeenCalledTimes(1);
+    });
+
+    it('감사 실패 → 503 STAFF_AUDIT_UNAVAILABLE, 취소하지 않음', async () => {
+      grantRepo.findOne.mockResolvedValue({ id: G, siteId: SITE_A, sessionIds: [S1], revokedAt: null });
+      audit.recordOrThrow.mockRejectedValueOnce(new ServiceUnavailableException());
+      const r = await codeOf(service.revokeStaff(G, { global: true, siteIds: [] }, ACTOR));
+      expect(r.status).toBe(503);
+      expect(r.body.code).toBe('STAFF_AUDIT_UNAVAILABLE');
+      expect(grantRepo.update).not.toHaveBeenCalled();
+    });
+
+    it('listStaffGrantsForSession: NULL-site → 조회 없이 빈 목록', async () => {
+      expect(await service.listStaffGrantsForSession(S1, null)).toEqual([]);
+      expect(grantRepo.createQueryBuilder).not.toHaveBeenCalled();
+    });
   });
 });

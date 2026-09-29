@@ -80,6 +80,14 @@ import { PartnerOperatorAuditInterceptor } from './partner-operator/partner-oper
       useClass: PartnerOperatorAuditInterceptor,
     },
   ],
-  exports: [AuthService, JwtCookieGuard, ApiKeyGuard, OptionalApiKeySiteGuard],
+  // 관리자 편집데이터 관리(2026-09-29): StaffEditDataModule 이 관리자 편집 권한 발급·취소·감사 조회에 사용.
+  exports: [
+    AuthService,
+    JwtCookieGuard,
+    ApiKeyGuard,
+    OptionalApiKeySiteGuard,
+    PartnerOperatorGrantService,
+    PartnerOperatorAuditWriter,
+  ],
 })
 export class AuthModule {}

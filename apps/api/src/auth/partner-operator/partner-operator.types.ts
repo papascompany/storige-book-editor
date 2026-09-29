@@ -27,6 +27,12 @@ export const OPERATOR_NAME_MAX = 100;
 
 export type PartnerOperatorCapability = 'edit' | 'delete';
 export type PartnerOperatorTokenUse = 'access' | 'refresh';
+/**
+ * 권한 출처(2026-09-29, ADDITIVE) — 'partner': 파트너 사이트 편집기 키로 발급(종전),
+ * 'staff': Storige 관리자(admin-app JWT)가 /admin/edit-data 에서 발급. 토큰에는 staff 일 때만 org:'staff' 가 실린다.
+ */
+export type PartnerOperatorOrigin = 'partner' | 'staff';
+export const STAFF_ORG = 'staff' as const;
 
 const CAPABILITIES: readonly PartnerOperatorCapability[] = ['edit', 'delete'];
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -48,6 +54,8 @@ export interface PartnerOperatorClaims {
   gid: string;
   gexp: number; // unix 초
   name: string; // 표시용 = opName ?? opId
+  /** 관리자 발급 권한만 'staff'. 파트너 발급 토큰에는 키 자체가 없다(토큰 바이트 불변). */
+  org?: typeof STAFF_ORG;
   iat?: number;
   exp?: number;
 }
@@ -64,6 +72,16 @@ export interface PartnerOperatorGrant {
   onBehalfOfMemberSeqno?: number;
   /** 권한 만료(unix 초) */
   grantExpiresAt: number;
+  /**
+   * 권한 출처 — 클레임 org 로 복원('staff' 가 아니면 'partner'). assertActive 가 행과 대조한다.
+   * grantFromClaims 는 항상 채운다. 부재(기존 호출부가 직접 만든 객체)는 'partner' 로 취급한다.
+   */
+  origin?: PartnerOperatorOrigin;
+  /**
+   * 관리자 발급 권한의 발급자(users.id). 클레임에는 없고 assertActive 가 권한 행에서만 채운다
+   * (operatorId 문자열을 파싱해 얻지 않는다). 파트너 권한은 null(또는 부재).
+   */
+  issuedByUserId?: string | null;
 }
 
 /** JwtStrategy 가 운영자 액세스 토큰에 대해 반환하는 req.user */
@@ -152,6 +170,13 @@ export function grantFromClaims(
   if (!isValidOperatorId(p.opId)) return null;
   if (p.sub !== `po:${p.opId}`) return null;
 
+  // 출처 — org 는 없거나 정확히 'staff' 여야 한다(그 외 값은 위조·혼합으로 보고 거부).
+  let origin: PartnerOperatorOrigin = 'partner';
+  if (p.org !== undefined) {
+    if (p.org !== STAFF_ORG) return null;
+    origin = 'staff';
+  }
+
   let operatorName: string | null = null;
   if (p.opName !== undefined && p.opName !== null) {
     if (typeof p.opName !== 'string' || p.opName.length > OPERATOR_NAME_MAX) return null;
@@ -172,6 +197,8 @@ export function grantFromClaims(
     sessionIds: [...sids],
     capabilities: [...(caps as PartnerOperatorCapability[])],
     grantExpiresAt: p.gexp,
+    origin,
+    issuedByUserId: null,
   };
   if (obo !== undefined) grant.onBehalfOfMemberSeqno = obo;
   return grant;
@@ -200,7 +227,14 @@ export function claimsFromGrant(
     name: grant.operatorName ?? grant.operatorId,
   };
   if (grant.onBehalfOfMemberSeqno !== undefined) claims.obo = grant.onBehalfOfMemberSeqno;
+  // 관리자 발급 권한만 org 를 싣는다 — 파트너 토큰의 클레임 키 집합은 종전과 같다.
+  if (grant.origin === 'staff') claims.org = STAFF_ORG;
   return claims;
+}
+
+/** 권한 출처 — 부재는 'partner' */
+export function grantOrigin(grant: Pick<PartnerOperatorGrant, 'origin'> | null | undefined): PartnerOperatorOrigin {
+  return grant?.origin === 'staff' ? 'staff' : 'partner';
 }
 
 /** req.user 가 JwtStrategy 가 만든 운영자 사용자인가 */

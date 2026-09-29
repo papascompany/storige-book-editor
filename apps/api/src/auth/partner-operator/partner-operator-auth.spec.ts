@@ -117,6 +117,23 @@ describe('partner-operator.types — 판정', () => {
     expect(grantFromClaims(claims('access', extra), 'access')).toBeNull();
   });
 
+  it('org: 파트너 클레임에는 없음(origin partner), staff 만 허용, 그 외 값은 거부', () => {
+    const partner = claims('access');
+    expect(partner).not.toHaveProperty('org');
+    expect(grantFromClaims(partner, 'access')).toMatchObject({ origin: 'partner', issuedByUserId: null });
+    expect(grantFromClaims(claims('access', { org: 'staff' }), 'access')?.origin).toBe('staff');
+    for (const bad of ['partner', 'STAFF', '', null, 1, { x: 1 }]) {
+      expect(grantFromClaims(claims('access', { org: bad }), 'access')).toBeNull();
+    }
+  });
+
+  it('claimsFromGrant: staff 권한만 org 를 싣는다(발급자 id 는 싣지 않음)', () => {
+    const c = claimsFromGrant(grant({ origin: 'staff', issuedByUserId: 'u-1' }), 'Site A', 'refresh');
+    expect(c.org).toBe('staff');
+    expect(JSON.stringify(c)).not.toContain('u-1');
+    expect(claimsFromGrant(grant({ origin: 'partner' }), 'Site A', 'access')).not.toHaveProperty('org');
+  });
+
   it('grantFromClaims: tu 불일치 → null, 일치 → 권한', () => {
     expect(grantFromClaims(claims('refresh'), 'access')).toBeNull();
     expect(grantFromClaims(claims('access'), 'access')).toMatchObject({ grantId: GID, siteId: SITE_A });
@@ -491,7 +508,10 @@ describe('OptionalShopJwtGuard — 운영자 분기(절대 throw 하지 않음)'
 
 // ───────────────────────────── 감사 인터셉터 ─────────────────────────────
 describe('PartnerOperatorAuditInterceptor', () => {
-  const writer = { recordBestEffort: jest.fn().mockResolvedValue(undefined) };
+  const writer = {
+    recordBestEffort: jest.fn().mockResolvedValue(undefined),
+    resolveGrantOrigin: jest.fn().mockResolvedValue({ origin: 'partner', issuedByUserId: null }),
+  };
   const interceptor = new PartnerOperatorAuditInterceptor(writer as unknown as PartnerOperatorAuditWriter);
 
   @SetMetadata('path', 'edit-sessions')
@@ -507,7 +527,12 @@ describe('PartnerOperatorAuditInterceptor', () => {
     }) as unknown as ExecutionContext;
   const handlerOk: CallHandler = { handle: () => of({ ok: true }) };
 
-  beforeEach(() => writer.recordBestEffort.mockClear());
+  beforeEach(() => {
+    writer.recordBestEffort.mockClear();
+    writer.resolveGrantOrigin.mockClear();
+  });
+  /** 평면 스탬프 사용자는 권한 행 출처 조회(비동기) 뒤에 기록된다 */
+  const flush = (): Promise<void> => new Promise((r) => setImmediate(r));
 
   it('운영자 요청 성공 → request 행(sessionId·메서드·라우트·상태코드), 본문 없음', async () => {
     const req = {
@@ -521,6 +546,8 @@ describe('PartnerOperatorAuditInterceptor', () => {
     expect(writer.recordBestEffort).toHaveBeenCalledWith({
       grantId: GID,
       siteId: SITE_A,
+      origin: 'partner',
+      actorUserId: null,
       sessionId: S1,
       operatorId: 'op-7f3c',
       operatorName: '운영팀',
@@ -541,9 +568,11 @@ describe('PartnerOperatorAuditInterceptor', () => {
       user: { userId: 'po:op', source: 'partner_operator', siteId: SITE_A, siteName: '', grantId: GID, operatorId: 'op' },
     };
     await lastValueFrom(interceptor.intercept(ctx(FilesLike, req, 200), handlerOk));
+    await flush();
     expect(writer.recordBestEffort).toHaveBeenCalledWith(
-      expect.objectContaining({ sessionId: null, detail: { resourceId: 'file-1' }, operatorId: 'op' }),
+      expect.objectContaining({ sessionId: null, detail: { resourceId: 'file-1' }, operatorId: 'op', origin: 'partner' }),
     );
+    expect(writer.resolveGrantOrigin).toHaveBeenCalledWith(GID);
   });
 
   it('오류 → 원래 오류 그대로 전달 + 상태코드·오류 코드 기록', async () => {
@@ -555,6 +584,33 @@ describe('PartnerOperatorAuditInterceptor', () => {
     expect(writer.recordBestEffort).toHaveBeenCalledWith(
       expect.objectContaining({ statusCode: 403, detail: { errorCode: 'PARTNER_OPERATOR_CAPABILITY_REQUIRED' } }),
     );
+  });
+
+  it('관리자 발급 권한(JwtStrategy 사용자, origin staff) → origin staff + actorUserId = 권한 행 발급자', async () => {
+    const staffGrant = grant({ origin: 'staff', issuedByUserId: 'u-admin-1', operatorId: 'staff.u-admin-1' });
+    const req = { method: 'PATCH', params: { id: S1 }, route: { path: '/api/edit-sessions/:id' }, user: operatorUser(staffGrant) };
+    await lastValueFrom(interceptor.intercept(ctx(EditSessionsLike, req), handlerOk));
+    expect(writer.recordBestEffort).toHaveBeenCalledWith(
+      expect.objectContaining({ origin: 'staff', actorUserId: 'u-admin-1', operatorId: 'staff.u-admin-1' }),
+    );
+    expect(writer.resolveGrantOrigin).not.toHaveBeenCalled();
+  });
+
+  it('평면 스탬프 사용자: 권한 행 출처로 기록(관리자 요청이 파트너 감사에 섞이지 않음), 조회 실패·행 없음 → 기록 안 함', async () => {
+    const flat = { userId: 'po:x', source: 'partner_operator', siteId: SITE_A, siteName: '', grantId: GID, operatorId: 'staff.u-9' };
+    writer.resolveGrantOrigin.mockResolvedValueOnce({ origin: 'staff', issuedByUserId: 'u-9' });
+    await lastValueFrom(interceptor.intercept(ctx(FilesLike, { method: 'POST', params: {}, user: flat }), handlerOk));
+    await flush();
+    expect(writer.recordBestEffort).toHaveBeenLastCalledWith(expect.objectContaining({ origin: 'staff', actorUserId: 'u-9' }));
+
+    writer.recordBestEffort.mockClear();
+    writer.resolveGrantOrigin.mockResolvedValueOnce(null);
+    await lastValueFrom(interceptor.intercept(ctx(FilesLike, { method: 'POST', params: {}, user: flat }), handlerOk));
+    await flush();
+    writer.resolveGrantOrigin.mockRejectedValueOnce(new Error('db down'));
+    await lastValueFrom(interceptor.intercept(ctx(FilesLike, { method: 'POST', params: {}, user: flat }), handlerOk));
+    await new Promise((r) => setImmediate(r));
+    expect(writer.recordBestEffort).not.toHaveBeenCalled();
   });
 
   it('운영자가 아닌 요청 → no-op', async () => {
@@ -592,6 +648,12 @@ describe('CreatePartnerOperatorSessionDto — whitelist/forbidNonWhitelisted', (
 // ───────────────────────────── 모듈 배선 ─────────────────────────────
 describe('AuthModule 배선', () => {
   const providers = (Reflect.getMetadata('providers', AuthModule) ?? []) as unknown[];
+
+  it('관리자 편집데이터 모듈용으로 권한 서비스·감사 기록기를 export 한다', () => {
+    const exported = (Reflect.getMetadata('exports', AuthModule) ?? []) as unknown[];
+    expect(exported).toContain(PartnerOperatorGrantService);
+    expect(exported).toContain(PartnerOperatorAuditWriter);
+  });
 
   it('권한 서비스·감사 기록기·전역 감사 인터셉터를 등록한다', () => {
     expect(providers).toContain(PartnerOperatorGrantService);

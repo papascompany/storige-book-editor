@@ -30,6 +30,8 @@ import {
   type EditorInstanceMethods,
 } from '@/embed'
 import { editSessionsApi } from '@/api'
+import { setAdminEditTab, setAuthToken, setEmbedRefreshToken } from '@/utils/authTokenStorage'
+import { readAuthFragment, stripAuthFragment, type AuthFragment } from '@/utils/adminEditUrl'
 
 /**
  * 부모(호스트) 윈도우로 레거시 `storige:*` 메시지 발신 (하위호환).
@@ -61,10 +63,16 @@ export default function EmbedView() {
     async function build() {
       const get = (key: string) => getParamCompat(searchParams, key) || undefined
 
+      // 관리자 편집 탭(2026-09-29): adminEdit=session 일 때만 토큰을 URL fragment 에서 받아
+      // 탭 단위 sessionStorage 에 둔다. 일반(파트너) 임베드는 플래그를 해제 → 종전 localStorage 경로.
+      const adminEdit = getParamCompat(searchParams, 'adminEdit') === 'session'
+      setAdminEditTab(adminEdit)
+      const frag: AuthFragment = adminEdit && typeof window !== 'undefined' ? readAuthFragment(window.location.hash) : {}
+
       const sessionId = get('sessionId')
       let templateSetId = get('templateSetId')
-      const token = get('token')
-      const refreshToken = get('refreshToken')
+      const token = frag.token ?? get('token')
+      const refreshToken = frag.refreshToken ?? get('refreshToken')
       const parentOrigin = get('parentOrigin')
       const orderSeqnoRaw = get('orderSeqno')
       const orderSeqno = orderSeqnoRaw ? Number(orderSeqnoRaw) : undefined
@@ -110,14 +118,21 @@ export default function EmbedView() {
       const heightRaw = get('height')
       const size = widthRaw && heightRaw ? { width: Number(widthRaw), height: Number(heightRaw) } : undefined
 
-      // 토큰을 먼저 localStorage 에 주입 (EmbeddedEditor 와 동일 메커니즘).
+      // 토큰을 먼저 저장소에 주입 (EmbeddedEditor 와 동일 메커니즘).
       // 아래 재편집 세션 조회가 인증을 필요로 할 수 있으므로 선주입한다.
+      // 저장소: 일반 임베드=localStorage(종전), 관리자 편집 탭=sessionStorage (authTokenStorage).
       if (token) {
-        try { localStorage.setItem('auth_token', token) } catch { /* SSR/프라이버시 모드 무시 */ }
+        setAuthToken(token)
       }
       // 사일런트 리프레시용: refreshToken(30d) 저장 → 401 시 자동 갱신(포토북 다일 편집).
       if (refreshToken) {
-        try { localStorage.setItem('auth_refresh_token', refreshToken) } catch { /* 무시 */ }
+        setEmbedRefreshToken(refreshToken)
+      }
+      // 관리자 편집 탭: 저장 후 주소창 fragment 에서 토큰을 지운다(새로고침은 탭 저장소로 이어감).
+      if (adminEdit) {
+        try {
+          window.history.replaceState(window.history.state, '', stripAuthFragment(window.location.href))
+        } catch { /* SSR/보안 제약 무시 */ }
       }
 
       // 재편집: sessionId 만 받고 templateSetId 가 없으면 세션에서 도출.

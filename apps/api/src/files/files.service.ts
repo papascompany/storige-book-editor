@@ -21,6 +21,10 @@ import sharp from 'sharp';
 import { FileEntity, FileType } from './entities/file.entity';
 import { FileResponseDto } from './dto/file-response.dto';
 import { ObjectStorageService } from '../storage/object-storage.service';
+import {
+  EditRetentionCutoff,
+  buildEditRetentionCutoffs,
+} from '../staff-edit-data/edit-retention';
 
 // SEC-010: 셸을 거치지 않는 execFile — 인자가 그대로 argv 로 전달돼 메타문자 해석/인젝션 불가.
 const execFileAsync = promisify(execFile);
@@ -544,7 +548,10 @@ export class FilesService {
    *    (모든 파일이 미완결 주문 연결이면 '아무것도 만료 안 됨' 침묵실패 가능).
    */
   async findExpired(limit = 200): Promise<FileEntity[]> {
-    return this.fileRepository
+    // 편집데이터 보관기간(2026-09-29): 보관기간 안 세션이 직접 참조하는 파일은 만료 sweep 에서 제외.
+    // 보호 사이트가 없으면 절을 추가하지 않는다(SQL 종전과 동일).
+    const cutoffs = await this.loadEditRetentionCutoffs(new Date());
+    const qb = this.fileRepository
       .createQueryBuilder('f')
       .where('f.expires_at IS NOT NULL')
       .andWhere('f.expires_at < :now', { now: new Date() })
@@ -559,10 +566,82 @@ export class FilesService {
                OR (s.site_id IS NULL AND f.site_id IS NULL)
              )
          )`,
-      )
-      .orderBy('f.expires_at', 'ASC')
-      .take(limit)
-      .getMany();
+      );
+    this.applyEditRetentionExclusion(qb, cutoffs);
+    return qb.orderBy('f.expires_at', 'ASC').take(limit).getMany();
+  }
+
+  /**
+   * 편집데이터 보관기간 보호 사이트(sites.edit_retention_days > 0) → 사이트별 cutoff(now − N일).
+   * 조회 오류는 그대로 던진다(호출 cron 이 이번 배치를 건너뛴다 = 삭제하지 않는 쪽으로 실패).
+   * 저장소에 manager 가 없는 구성(단위 테스트 mock)은 보호 없음으로 본다.
+   */
+  private async loadEditRetentionCutoffs(now: Date): Promise<EditRetentionCutoff[]> {
+    const manager = (this.fileRepository as { manager?: { query?: unknown } }).manager;
+    if (!manager || typeof manager.query !== 'function') return [];
+    const rows: Array<{ id: string; days: unknown }> = await this.fileRepository.manager.query(
+      'SELECT id AS id, edit_retention_days AS days FROM sites WHERE edit_retention_days > 0',
+    );
+    return buildEditRetentionCutoffs(Array.isArray(rows) ? rows : [], now);
+  }
+
+  /**
+   * 보관기간 안 세션(soft-deleted 포함)이 cover/content/contentPdf 로 직접 참조하는 파일 제외.
+   * sites 와 조인하지 않는다(사이트별 OR cutoff 파라미터 :ers{i}/:erc{i}). 목록이 비면 아무것도 추가하지 않는다.
+   */
+  private applyEditRetentionExclusion(
+    qb: { andWhere: (where: string, params?: Record<string, unknown>) => unknown },
+    cutoffs: EditRetentionCutoff[],
+  ): void {
+    if (cutoffs.length === 0) return;
+    const params: Record<string, unknown> = {};
+    const ors = cutoffs.map((c, i) => {
+      params[`ers${i}`] = c.siteId;
+      params[`erc${i}`] = c.cutoff;
+      return `(s2.site_id = :ers${i} AND s2.created_at > :erc${i})`;
+    });
+    qb.andWhere(
+      `NOT EXISTS (
+           SELECT 1 FROM file_edit_sessions s2
+           WHERE (s2.cover_file_id = f.id OR s2.content_file_id = f.id OR s2.content_pdf_file_id = f.id)
+             AND (${ors.join(' OR ')})
+         )`,
+      params,
+    );
+  }
+
+  /**
+   * 편집데이터 보관기간 복구(2026-09-29) — 관리자 편집기 열기·합성 전에 호출.
+   * fileIds 중 soft-deleted(아직 영구삭제 전) 파일만 deleted_at 해제 + expires_at = max(기존, until).
+   * 이미 영구삭제된 파일은 되살릴 수 없다. 복구된 id 목록을 반환한다.
+   */
+  async reviveForEditRetention(fileIds: string[], until: Date): Promise<string[]> {
+    const ids = Array.from(new Set(fileIds.filter((v) => typeof v === 'string' && v.length > 0)));
+    if (ids.length === 0) return [];
+    const deleted = await this.fileRepository
+      .createQueryBuilder('f')
+      .withDeleted()
+      .select('f.id', 'id')
+      .where('f.id IN (:...ids)', { ids })
+      .andWhere('f.deleted_at IS NOT NULL')
+      .getRawMany<{ id: string }>();
+    const revived = deleted.map((r) => r.id).filter((v) => typeof v === 'string');
+    if (revived.length === 0) return [];
+    await this.fileRepository
+      .createQueryBuilder()
+      .update(FileEntity)
+      .set({
+        deletedAt: () => 'NULL',
+        expiresAt: () => 'GREATEST(COALESCE(expires_at, :until), :until)',
+      })
+      .where('id IN (:...revived)', { revived })
+      .andWhere('deleted_at IS NOT NULL')
+      .setParameter('until', until)
+      .execute();
+    this.logger.log(
+      `[edit-retention] 파일 복구 ${revived.length}건 until=${until.toISOString()}`,
+    );
+    return revived;
   }
 
   /**
@@ -576,15 +655,16 @@ export class FilesService {
    * @param limit   배치 제한
    */
   async findSoftDeletedOlderThan(cutoff: Date, limit = 200): Promise<FileEntity[]> {
-    return this.fileRepository
+    // 편집데이터 보관기간(2026-09-29): 보관기간 안 세션이 참조하는 파일은 영구삭제 대상에서 제외(목록 비면 SQL 종전 동일).
+    const cutoffs = await this.loadEditRetentionCutoffs(new Date());
+    const qb = this.fileRepository
       .createQueryBuilder('f')
       .withDeleted() // soft-deleted 행 포함
       .where('f.deleted_at IS NOT NULL')
       .andWhere('f.deleted_at < :cutoff', { cutoff })
-      .andWhere('f.expires_at IS NOT NULL') // 보존 만료분만 — 수동삭제 보존
-      .orderBy('f.deleted_at', 'ASC')
-      .take(limit)
-      .getMany();
+      .andWhere('f.expires_at IS NOT NULL'); // 보존 만료분만 — 수동삭제 보존
+    this.applyEditRetentionExclusion(qb, cutoffs);
+    return qb.orderBy('f.deleted_at', 'ASC').take(limit).getMany();
   }
 
   /**

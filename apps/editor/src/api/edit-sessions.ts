@@ -90,7 +90,7 @@ export interface UpdateEditSessionRequest {
  *  - reason: autosave(60s debounce 보존) | shrink(페이지 수 감소 직전 즉시 보존) | restore(복원 직전 상태 보존)
  *  - pageCount: 스냅샷에 담긴(=덮어쓰이기 직전) 페이지 수, nextPageCount: 그때 덮어쓴 새 페이지 수
  */
-export type EditSessionVersionReason = 'autosave' | 'shrink' | 'restore'
+export type EditSessionVersionReason = 'autosave' | 'shrink' | 'restore' | 'staff-baseline'
 
 export interface EditSessionVersionSummary {
   id: string

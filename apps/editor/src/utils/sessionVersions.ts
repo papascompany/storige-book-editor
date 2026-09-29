@@ -19,6 +19,9 @@ export function describeVersionReason(reason: EditSessionVersionReason | string 
       return { label: '페이지 감소 직전', tone: 'warning' }
     case 'restore':
       return { label: '복원 직전', tone: 'info' }
+    case 'staff-baseline':
+      // Storige 관리자가 편집기를 열기 직전 고정 저장한 스냅샷(버전 정리에서 보호됨).
+      return { label: '관리자 편집 직전', tone: 'info' }
     case 'autosave':
       return { label: '자동 저장', tone: 'neutral' }
     default:

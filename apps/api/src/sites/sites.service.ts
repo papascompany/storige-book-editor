@@ -1,9 +1,18 @@
-import { Injectable, NotFoundException, OnModuleInit, Logger, ConflictException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  OnModuleInit,
+  Logger,
+  ConflictException,
+  Optional,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { randomBytes } from 'crypto';
 import { Site } from './entities/site.entity';
 import { CreateSiteDto, UpdateSiteDto } from './dto/site.dto';
+import { PartnerOperatorAuditWriter } from '../auth/partner-operator/partner-operator-audit.writer';
+import { staffAuditUnavailable } from '../staff-edit-data/staff-actor';
 
 /**
  * SitesService — 외부 사이트(테넌트) CRUD + 인증코드 lookup.
@@ -33,6 +42,9 @@ export class SitesService implements OnModuleInit {
   constructor(
     @InjectRepository(Site)
     private readonly siteRepository: Repository<Site>,
+    // 편집데이터 보관기간 변경 감사(2026-09-29). SitesModule 이 등록한다. 없으면 그 변경만 503(fail-closed).
+    @Optional()
+    private readonly auditWriter?: PartnerOperatorAuditWriter,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -114,8 +126,37 @@ export class SitesService implements OnModuleInit {
     return saved;
   }
 
-  async update(id: string, dto: UpdateSiteDto): Promise<Site> {
+  /**
+   * 사이트 수정. 편집데이터 보관기간(editRetentionDays)은 키가 있고 값이 바뀔 때만
+   * 저장 **전에** 감사 행(origin 'staff', 'site.edit_retention.update', {from,to})을 남긴다(fail-closed).
+   * 감사 저장 실패 → 503 STAFF_AUDIT_UNAVAILABLE, 아무것도 저장하지 않는다.
+   */
+  async update(id: string, dto: UpdateSiteDto, actorUserId?: string): Promise<Site> {
     const site = await this.findOne(id);
+    if (Object.prototype.hasOwnProperty.call(dto, 'editRetentionDays')) {
+      const from = site.editRetentionDays ?? null;
+      const to = dto.editRetentionDays ?? null;
+      if (from !== to) {
+        if (!this.auditWriter) throw staffAuditUnavailable();
+        try {
+          await this.auditWriter.recordOrThrow({
+            grantId: null,
+            origin: 'staff',
+            siteId: site.id,
+            sessionId: null,
+            operatorId: `staff.${actorUserId ?? 'unknown'}`,
+            actorUserId: actorUserId ?? null,
+            action: 'site.edit_retention.update',
+            detail: { from, to },
+          });
+        } catch {
+          throw staffAuditUnavailable();
+        }
+        this.logger.log(
+          `[edit-retention] site=${site.id} edit_retention_days ${from ?? 'NULL'} → ${to ?? 'NULL'} actor=${actorUserId ?? 'unknown'}`,
+        );
+      }
+    }
     Object.assign(site, dto);
     const saved = await this.siteRepository.save(site);
     this.invalidatePolicyCache();

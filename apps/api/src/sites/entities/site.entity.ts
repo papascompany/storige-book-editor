@@ -64,6 +64,19 @@ export class Site {
   @Column({ name: 'retention_days', type: 'int', nullable: true })
   retentionDays: number | null;
 
+  /**
+   * 편집데이터 보관기간(일) (2026-09-29, migrations/20260930). NULL = 미설정(기한 제한 없음 · 보존 보장 없음).
+   *
+   * retentionDays(위, 업로드 파일 자동삭제 기간)와 **별개**다. 이 값은 세션 created_at 부터 N일 동안
+   * Storige 관리자가 이 사이트의 편집데이터(편집 세션·버전·세션이 직접 참조하는 표지/내지/첨부 PDF 파일·
+   * 합성 결과)를 언제든 편집·수정·삭제·합성·재합성할 수 있도록 보장한다. 기간 안의 세션이 참조하는 파일은
+   * 업로드 파일 자동삭제·48h 영구삭제에서 제외된다. 기간이 지나도 자동삭제하지 않는다.
+   * 계산: src/staff-edit-data/edit-retention.ts computeEditRetention.
+   * (TS optional — 기존 코드·테스트가 만드는 Site 리터럴 호환. DB 로드 값은 항상 number | null.)
+   */
+  @Column({ name: 'edit_retention_days', type: 'int', nullable: true })
+  editRetentionDays?: number | null;
+
   // ─────────────────────────────────────────────────────
   // Phase B — 사이트별 워커 옵션 (default 정책)
   // 워커 잡 생성 시 호출자가 명시 안 하면 site default 머지.

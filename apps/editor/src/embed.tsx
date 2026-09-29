@@ -92,6 +92,7 @@ import {
   clearActiveLoadProfiler,
 } from './utils/loadProfiler'
 import { mergeRestoredSession, restoredCanvasCount } from './utils/sessionVersions'
+import { getAuthToken, setAuthToken, setEmbedRefreshToken } from './utils/authTokenStorage'
 import type { SessionVersionsSource } from './components/editor/HistoryPanel'
 import './index.css'
 
@@ -860,12 +861,12 @@ function EmbeddedEditor({
         // P1-4: 재초기화에서는 마운트 시점 prop 토큰으로 localStorage 를 되덮지 않는다
         // (사일런트 리프레시로 갱신된 토큰을 만료본으로 교체 → 불필요한 401/리프레시 왕복).
         const isReinit = !!reinitSessionRef.current
-        if (token && !(isReinit && localStorage.getItem('auth_token'))) {
+        if (token && !(isReinit && getAuthToken())) {
           effectiveToken = token
-          localStorage.setItem('auth_token', token)
+          setAuthToken(token)
           console.log('[EmbeddedEditor] Using token from parameter')
         } else {
-          effectiveToken = localStorage.getItem('auth_token')
+          effectiveToken = getAuthToken()
           if (effectiveToken) {
             console.log('[EmbeddedEditor] Using token from localStorage')
           }
@@ -874,7 +875,7 @@ function EmbeddedEditor({
         // 사일런트 리프레시용 refreshToken 저장(있으면). 401 시 client.ts 가 자동 사용
         // → 포토북처럼 며칠에 걸쳐 편집해도 액세스 토큰(1h) 만료 시 자동 갱신.
         if (refreshToken) {
-          try { localStorage.setItem('auth_refresh_token', refreshToken) } catch { /* SSR/프라이버시 모드 무시 */ }
+          setEmbedRefreshToken(refreshToken)
         }
 
         if (!effectiveToken) {

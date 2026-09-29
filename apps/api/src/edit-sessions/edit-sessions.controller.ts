@@ -50,6 +50,7 @@ import { PayloadTooLargeResponseDto } from '../common/dto/error-response.dto';
 import { SpreadStartSide } from '../worker-jobs/imposition.util';
 import { PartnerOperatorAllowed } from '../auth/decorators/partner-operator-allowed.decorator';
 import { EditSessionEntity } from './entities/edit-session.entity';
+import { isAdminAppUser } from '../staff-edit-data/staff-actor';
 
 @ApiTags('Edit Sessions')
 @ApiBearerAuth()
@@ -768,6 +769,18 @@ export class EditSessionsController {
     const userId = user?.userId ? parseInt(user.userId) : 0;
     // 운영자 대리 편집(2026-09-29): 운영자일 때만 권한을 4번째 인자로 넘긴다(고객 호출 형태 불변).
     const op = this.tenantCaller(user)?.partnerOperator ?? null;
+    // 레거시 관리자 경로(admin JWT, 2026-09-29): 소유자·운영자가 아닌 staff 복원은 보관기간 확인 + 감사(fail-closed).
+    if (!op && this.isStaffRole(user)) {
+      const target = await this.editSessionsService.findById(id);
+      const isOwner = userId > 0 && Number(target.memberSeqno) === userId;
+      if (!isOwner) {
+        await this.editSessionsService.gateLegacyStaffMutation(
+          target,
+          typeof user?.id === 'string' ? user.id : undefined,
+          'version_restore',
+        );
+      }
+    }
     const restored = op
       ? await this.editSessionsService.restoreVersion(id, vid, userId, op)
       : await this.editSessionsService.restoreVersion(id, vid, userId);
@@ -857,6 +870,13 @@ export class EditSessionsController {
     @CurrentUser() user: any,
   ): Promise<EditSessionResponseDto> {
     this.assertStaff(user);
+    // 레거시 관리자 경로(admin JWT, 2026-09-29): 보관기간 확인 + 감사(fail-closed). 미존재는 restoreSession 과 같은 404.
+    const target = await this.editSessionsService.findByIdWithDeleted(id);
+    await this.editSessionsService.gateLegacyStaffMutation(
+      target,
+      typeof user?.id === 'string' ? user.id : undefined,
+      'restore',
+    );
     const session = await this.editSessionsService.restoreSession(id);
     return this.editSessionsService.toResponseDto(session);
   }
@@ -931,6 +951,10 @@ export class EditSessionsController {
     // 운영자일 때만 키를 추가한다(그 외 호출자의 caller 형태는 종전과 동일).
     if (user.source === 'partner_operator' && user.partnerOperator) {
       caller.partnerOperator = user.partnerOperator;
+    }
+    // admin-app JWT(source 없음 + 문자열 id + 정확한 UserRole)일 때만 — 레거시 관리자 경로 감사 actor(2026-09-29).
+    if (isAdminAppUser(user)) {
+      caller.adminUserId = user.id;
     }
     return caller;
   }

@@ -1,4 +1,11 @@
 import axios, { AxiosInstance, AxiosError, AxiosRequestConfig } from 'axios';
+import {
+  getAuthToken,
+  setAuthToken,
+  removeAuthToken,
+  getEmbedRefreshToken,
+  removeEmbedRefreshToken,
+} from '@/utils/authTokenStorage';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000/api';
 
@@ -162,7 +169,7 @@ class ApiClient {
     if (this.refreshInFlight) return this.refreshInFlight;
     this.refreshInFlight = (async () => {
       try {
-        const refreshToken = localStorage.getItem('auth_refresh_token');
+        const refreshToken = getEmbedRefreshToken();
         if (!refreshToken) return null;
         const base = this.getBaseUrl();
         const res = await axios.post(
@@ -172,7 +179,7 @@ class ApiClient {
         );
         const newToken = res.data?.accessToken as string | undefined;
         if (newToken) {
-          localStorage.setItem('auth_token', newToken);
+          setAuthToken(newToken);
           console.log('[ApiClient] 사일런트 리프레시 성공 — 액세스 토큰 갱신');
           return newToken;
         }
@@ -217,7 +224,7 @@ class ApiClient {
     this.client.interceptors.request.use(
       (config) => {
         // Add auth token if available
-        const token = localStorage.getItem('auth_token');
+        const token = getAuthToken();
         if (token) {
           config.headers.Authorization = `Bearer ${token}`;
         }
@@ -250,8 +257,8 @@ class ApiClient {
               return this.client.request(reqCfg);
             }
           }
-          localStorage.removeItem('auth_token');
-          localStorage.removeItem('auth_refresh_token');
+          removeAuthToken();
+          removeEmbedRefreshToken();
           this.emitAuthExpired();
           return Promise.reject(error);
         }
