@@ -3,6 +3,7 @@ import { PdfSynthesizerService } from './pdf-synthesizer.service';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { SynthesisLocalResult } from '@storige/types';
+import { DomainError, ErrorCodes } from '../common/errors';
 
 describe('PdfSynthesizerService', () => {
   let service: PdfSynthesizerService;
@@ -189,6 +190,24 @@ describe('PdfSynthesizerService', () => {
 
     it('spine 부재 → SPREAD_SNAPSHOT_MISSING', () => {
       expect(() => validate({ spread })).toThrow('metadata.spine이 누락되었습니다');
+    });
+
+    it('spiral 0mm + paperType 누락 → throw 없음', () => {
+      const { paperType: _omit, ...noPaper } = spine;
+      expect(() => validate({ spread, spine: noPaper })).not.toThrow();
+    });
+
+    it('perfect 0mm + paperType 누락 → SPREAD_SNAPSHOT_INVALID', () => {
+      const { paperType: _omit, ...noPaper } = spine;
+      let caught: unknown;
+      try {
+        validate({ spread, spine: { ...noPaper, bindingType: 'perfect' } });
+      } catch (e) {
+        caught = e;
+      }
+      expect(caught).toBeInstanceOf(DomainError);
+      expect((caught as DomainError).code).toBe(ErrorCodes.SPREAD_SNAPSHOT_INVALID);
+      expect((caught as DomainError).message).toBe('metadata.spine의 필수 필드가 누락되었습니다');
     });
   });
 

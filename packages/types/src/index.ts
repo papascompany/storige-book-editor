@@ -2193,7 +2193,12 @@ export const SPINE_FORMULA_VERSION = '1.0' as const;
  */
 export interface SpineSnapshot {
   pageCount: number;
-  paperType: string;
+  /**
+   * 용지 종류. 책등 0mm 이고 제본이 perfect/hardcover 가 아닐 때만 생략 가능(S7) — 그 외 필수.
+   * (bindingType 비교는 대소문자 무시. 동일 predicate: editor buildSpreadSnapshots,
+   *  api EditSessionsService.validateSpreadSnapshot, worker PdfSynthesizerService.validateSpreadSnapshot)
+   */
+  paperType?: string;
   bindingType: string;
   /** 책등 폭 mm. 유한수 ≥ 0 — 0 은 책등 없는 책(스프링 표지펼침면 등)으로 유효하다(S7). */
   spineWidthMm: number;

@@ -821,8 +821,8 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 | 편집기→부모 | `editor.ready` | `{sessionId, templateSetId, version, (폴백시) fallback, effectiveTemplateSetId}` | 초기화 완료 |
 | 편집기→부모 | `editor.save` | `{sessionId, savedAt, thumbnail}` | 자동/수동 저장 |
 | 편집기→부모 | `editor.complete` | `{sessionId, orderSeqno, editCode, pages:{initial,final}, pageCount?, pricing?, size?:{width,height,unit:'mm'}, spineWidthMm?, files:{coverFileId,contentFileId,thumbnailUrl}, savedAt}` | 편집완료 + 합성. `spineWidthMm` = 완료 시 표지에 적용된 책등 mm(스프레드 책만, 2026-09-28 additive) |
-| 편집기→부모 | `editor.cancel` | `{sessionId}` | 취소 |
-| 편집기→부모 | `editor.error` | `{code, message, templateSetId}` | 오류 |
+| 편집기→부모 | `editor.cancel` | `{sessionId, reason?}` | 취소. `reason:'session_not_found'` = 세션을 열 수 없다는 중단 화면에서 고객이 '돌아가기'를 누름(2026-09-29 additive) |
+| 편집기→부모 | `editor.error` | `{code, message, fatal?, templateSetId?, sessionId?, reason?}` | 오류. `templateSetId` 는 `TEMPLATE_SET_NOT_FOUND` 일 때, `sessionId`·`reason`(`not_found`/`forbidden`/`invalid_id`)은 `SESSION_NOT_FOUND` 일 때만 실립니다. `fatal` 은 2026-09-29 additive(아래 표) |
 | 편집기→부모 | `editor.needAuth` | `{guestToken, reason:'complete_save', ts}` | 게스트 폴백만 |
 | 편집기→부모 | `editor.state` | `{requestId, ready, dirty, sessionId}` | getState 응답 |
 | 편집기→부모 | `editor.saved` | `{requestId, ok, error}` | saveNow 응답 |
@@ -882,6 +882,15 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 
 `editor.error` code 종류: `AUTH_EXPIRED`, `NETWORK_ERROR`, `SAVE_FAILED`, `INVALID_DATA`, `SESSION_NOT_FOUND`, `TEMPLATE_SET_NOT_FOUND`.
 
+> **`fatal` (2026-09-29 additive) — 편집기를 닫을지 판단하는 값입니다.**
+>
+> | `fatal` | 해당 오류 | 호스트 권장 처리 |
+> |---|---|---|
+> | `true` | `SESSION_NOT_FOUND`, `TEMPLATE_SET_NOT_FOUND`, `AUTH_EXPIRED`, 초기화 중 `NETWORK_ERROR`·`INVALID_DATA` | 이 iframe 으로는 더 진행할 수 없습니다. 안내 후 닫거나 새 토큰·세션으로 다시 여세요 |
+> | `false` | `SAVE_FAILED`(저장·완료 실패), 쪽수 단위 위반 `INVALID_DATA` | **편집기를 닫지 마세요.** 비차단 안내만 하면 고객이 이어서 편집·재시도할 수 있습니다 |
+> | 없음 | 구버전 편집기 | 기존 처리 유지 |
+
+
 **부모→편집기 엔벨로프:**
 ```json
 { "source": "storige-host", "version": "1", "command": "getState", "requestId": "abc", "payload": { } }
@@ -928,6 +937,9 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
      -H "Content-Type: application/json" \
      -d '{ "guestToken": "<GUEST_TOKEN>" }'
    # → { "migratedCount": 1, "sessionIds": ["<same-session-id>"] }
+   # 게스트 세션은 게스트 경로(PATCH /api/edit-sessions/guest/:id + guestToken)로만 저장되고,
+   # 완료는 이 흡수 뒤 회원 토큰으로 합니다. 회원 경로(PATCH /api/edit-sessions/:id, :id/complete)로
+   # 게스트 세션을 저장·완료하면 403(PERMISSION_DENIED / GUEST_COMPLETE_NOT_ALLOWED)입니다(2026-09-29 명확화).
    ```
    > 응답의 `sessionIds` 에는 그 `guestToken` 으로 만들어진 세션이 **전부** 들어옵니다(한 명이 여러 개를 편집했을 수 있음). 에러: 토큰 없음·만료·위조 `401`(전역 JWT 가드 — 이 라우트는 `@Public` 이 아닙니다), 토큰은 유효하나 회원 식별자가 없는 경우 `403 AUTH_REQUIRED`, `guestToken` 누락/8자 미만 `400 GUEST_TOKEN_REQUIRED`. **shop-session 으로 발급한 회원 accessToken 을 쓰세요** — 운영자(admin) 로그인 토큰은 회원 식별자가 없어 `403` 입니다.
    > 🔒 **교차 사이트 흡수 거부 (2026-07-30)**: 흡수 대상 세션 중 **하나라도** 호출한 토큰의 사이트와 다른 사이트에서 만들어진 것이 있으면 요청 **전체**가 `403 CROSS_SITE_MIGRATION_DENIED` 로 거부됩니다(부분 흡수 없음). 자기 사이트에서 발급한 회원 토큰으로 호출하면 정상입니다. 또 **만료된 게스트 세션은 흡수 대상에서 제외**되므로 `migratedCount` 가 기대보다 작을 수 있습니다 — 24시간 창 안에 전환을 마치세요.
@@ -943,8 +955,13 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 > - **재오픈 전에 `saveNow` 를 호출하지 마세요** — 같은 이유로 403 입니다. 흡수 직전까지의 작업은 게스트 저장으로 이미 서버에 있습니다.
 > - 재오픈할 `sessionId` 는 **완료 이벤트 payload 의 `sessionId` 를 1차로** 쓰세요(레거시 `storige:completed`·정식 `editor.complete` 모두 실립니다). 흡수 응답의 `sessionIds` 는 **첫 성공 호출에서만** 채워집니다 — 같은 토큰으로 재호출하거나 세션이 만료됐으면 빈 배열(`migratedCount: 0`)이므로 폴백으로만 쓰세요.
 > - **흡수 후 자동저장 실패는 호스트에 통지되지 않습니다.** 편집기는 자동저장 오류를 사용자 흐름을 방해하지 않도록 콘솔에만 남기고 `editor.error` 를 보내지 않습니다. 흡수 성공 즉시 **옛 iframe 을 언마운트**하세요(열어 두면 매 주기 조용히 403 이 납니다).
-> - ⚠️ **재오픈 시 세션 조회가 실패하면 편집기는 조용히 다른 세션으로 폴백합니다.** `sessionId` 로 세션을 불러오지 못하면(권한 불일치·일시 오류 등) 편집기는 오류를 내지 않고, `orderSeqno` 와 `mode` 가 함께 넘어온 경우 **그 주문번호로 기존 세션을 검색하고, 없으면 새 세션을 만듭니다.** 이때 고객은 흡수된 작업이 아닌 다른(또는 빈) 세션을 편집하게 됩니다.
->   → 호스트는 **완료 payload 의 `sessionId` 가 재오픈에 넘긴 `sessionId` 와 같은지 비교**해 폴백을 감지하세요. 다르면 흡수 작업이 이어지지 않은 것이므로 주문 확정 전에 멈추고 원인(회원 토큰의 소유자 일치 여부 등)을 확인해야 합니다.
+> - **재오픈 시 세션을 불러오지 못하면 편집기는 멈추고 알립니다(2026-09-29 변경).** `sessionId` 를 넘겨 열었는데 그 세션을 불러오지 못하면, 편집기는 주문번호로 다른 세션을 찾거나 새 세션을 만들지 **않습니다.** 종전에는 이때 다른(또는 빈) 세션이 조용히 열려 그대로 주문·합성될 수 있었습니다.
+>   - 없음·권한 없음·잘못된 id → `editor.error {code:'SESSION_NOT_FOUND', sessionId, reason:'not_found'|'forbidden'|'invalid_id', fatal:true}` 1회 + 편집기 안 안내 화면('돌아가기' → `editor.cancel {reason:'session_not_found'}`)
+>   - 네트워크·타임아웃·서버 오류 → `editor.error {code:'NETWORK_ERROR', fatal:true}`, 인증 만료 → 기존대로 `AUTH_EXPIRED` 1회
+>   - `sessionId` 없이 `orderSeqno`+`mode` 로 여는 첫 편집은 종전과 같습니다(주문번호로 찾고 없으면 생성).
+> - **호스트 회복 절차(권장).** ① `SESSION_NOT_FOUND` 에 고객용 문구를 매핑하세요. ② `reason:'not_found'` 이면 고객 확인 후 그 항목에 저장해 둔 `sessionId` 를 비우고 새 편집을 시작하는 선택지를 주세요 — **처리하지 않으면 낡은 `sessionId` 가 남은 항목은 '편집'을 누를 때마다 같은 오류로 다시 편집할 수 없습니다.** ③ 게스트 흡수 결과가 `migratedCount: 0` 인데 회원 재오픈이 `reason:'forbidden'` 으로 멈추면 '비회원 작업 보관 기간(24시간) 만료'로 안내하세요. ④ 재오픈 안내 배너 등 호스트 상태는 `editor.error` 수신 시 함께 초기화하세요. ⑤ 편집기를 여는 모든 화면에 오류 처리(`onError`)를 연결하세요.
+> - 결제 후 주문번호를 다시 매기는 호스트는 **Storige 세션을 만들 때 쓴 원래 `orderSeqno`(예: 장바구니 id)를 보존해 전달**해야 주문 기준 조회(`/edit-sessions/external?orderSeqno=`)가 맞습니다.
+> - 운영자(관리자) 토큰으로 고객 세션을 여는 재편집은 소유자가 달라 `reason:'forbidden'` 으로 멈춥니다. 운영자 전용 경로가 협의될 때까지 사용을 보류하세요.
 
 ### 3.4 완료 → 합성 → 다운로드
 
@@ -1507,7 +1524,7 @@ book.finalization.completed | book.finalization.failed
 |---|---|
 | 무선·양장 펼침 (책등 가변) | `binding` + `paperType` + `pages` (+ 보낸 `spineWidthMm` 는 서버가 대조·교체) |
 | 운영자 고정 책등 | `binding` + `spineWidthMm` (**paperType 미전송** → 서버가 덮지 않음) |
-| 스프링·중철 펼침 1쪽 | `spiral`/`saddle` + `spineWidthMm: 0` → 폭 `2W + 도련×2` |
+| 스프링·중철 펼침 1쪽 | `spiral`/`saddle` + `spineWidthMm: 0` → 폭 `2W + 도련×2`. `paperType` 은 보내지 않아도 됩니다 — 책등 0mm 이고 무선·양장이 아니면 편집 완료 스냅샷(`metadata.spine`)이 paperType 없이 기록되고 검증을 통과합니다(2026-09-29) |
 | 앞·뒤 분리 2쪽 | **`coverLayout: 'separate'`**(2026-09-28 신설) → 제본과 무관하게 **단일 판형**(`W×H`, 도련 포함 `(W+2·도련)×(H+2·도련)`) 검사. 책등 필드는 보내도 무시되고 서버도 책등을 주입하지 않습니다. 2쪽(뒤표지)이 있으면 **뒤표지도 같은 규칙·허용오차로 검사**합니다(2026-09-29) — 불일치는 앞표지와 같은 `SIZE_MISMATCH` 오류이고 `details.page`(1=앞, 2=뒤)로 구분합니다. 쪽수는 강제하지 않으며(1쪽 PDF 는 종전과 같음) 3쪽 이후는 검사하지 않습니다. `coverLayout` 미전송 시 종전 규칙(perfect·hardcover 는 크기 검사 생략) |
 
 - **중철 표지 (2026-09-28 변경)**: 사철 쪽수 규칙(4배수·64쪽)은 **내지에만** 적용합니다. 종전엔 표지에도 적용돼 1쪽 펼침 중철 표지가 `SADDLE_STITCH_INVALID` 로 막혔습니다. 표지 쪽수는 1·2·4쪽 규칙이 소유합니다.

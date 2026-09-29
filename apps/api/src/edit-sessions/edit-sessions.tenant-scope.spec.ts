@@ -117,13 +117,78 @@ describe('EditSessionsService — assertTenantScope + update/complete/delete', (
     expect(mockSessionRepository.save).not.toHaveBeenCalled();
   });
 
-  it('update: 같은 site 소유자 → 정상 저장 / caller 미지정(게스트 라우트·내부) → 기존 동작', async () => {
+  it('update: 같은 site 소유자 → 정상 저장 / 토큰 검증된 게스트 경로(guestVerified) → 저장', async () => {
     mockSessionRepository.findOne.mockResolvedValue(mkSession());
     await service.update(SESSION_ID, { canvasData: [{ b: 2 }] }, 777, { siteId: SITE_A, role: 'customer' });
     expect(mockSessionRepository.save).toHaveBeenCalledTimes(1);
     mockSessionRepository.findOne.mockResolvedValue(mkSession({ guestToken: 'g-1', memberSeqno: null as any }));
-    await service.update(SESSION_ID, { canvasData: [{ c: 3 }] }, 0);
+    await service.update(SESSION_ID, { canvasData: [{ c: 3 }] }, 0, null, { guestVerified: true });
     expect(mockSessionRepository.save).toHaveBeenCalledTimes(2);
+  });
+
+  describe('게스트 세션 규칙 — 변경은 guestVerified 또는 staff, 완료는 staff 만', () => {
+    const guestSession = () => mkSession({ guestToken: 'g-1', memberSeqno: 0 as any });
+
+    const expectForbiddenCode = async (p: Promise<unknown>, code: string) => {
+      let caught: unknown;
+      try {
+        await p;
+      } catch (e) {
+        caught = e;
+      }
+      expect(caught).toBeInstanceOf(ForbiddenException);
+      const body = (caught as ForbiddenException).getResponse() as Record<string, unknown>;
+      expect(body.code).toBe(code);
+    };
+
+    it('update: guestVerified 없는 customer 호출 → 403 PERMISSION_DENIED, save 미호출', async () => {
+      mockSessionRepository.findOne.mockResolvedValue(guestSession());
+      await expectForbiddenCode(
+        service.update(SESSION_ID, { canvasData: [{ x: 1 }] }, 777, { siteId: SITE_A, role: 'customer' }),
+        'PERMISSION_DENIED',
+      );
+      // caller·flag 모두 없는 호출도 동일하게 거부
+      await expectForbiddenCode(
+        service.update(SESSION_ID, { canvasData: [{ x: 1 }] }, 0),
+        'PERMISSION_DENIED',
+      );
+      expect(mockSessionRepository.save).not.toHaveBeenCalled();
+    });
+
+    it('update: staff(ADMIN) 호출 → 저장 허용', async () => {
+      mockSessionRepository.findOne.mockResolvedValue(guestSession());
+      await service.update(SESSION_ID, { canvasData: [{ x: 2 }] }, 1, { siteId: SITE_B, role: 'ADMIN' });
+      expect(mockSessionRepository.save).toHaveBeenCalledTimes(1);
+    });
+
+    it('update: 교차 site customer 는 403 이 아닌 404 가 먼저', async () => {
+      mockSessionRepository.findOne.mockResolvedValue(guestSession());
+      await expectSessionNotFound(
+        service.update(SESSION_ID, { canvasData: [] }, 777, { siteId: SITE_B, role: 'customer' }),
+      );
+      expect(mockSessionRepository.save).not.toHaveBeenCalled();
+    });
+
+    it('complete: customer 호출 → 403 GUEST_COMPLETE_NOT_ALLOWED, save 미호출', async () => {
+      mockSessionRepository.findOne.mockResolvedValue(guestSession());
+      await expectForbiddenCode(
+        service.complete(SESSION_ID, 777, { siteId: SITE_A, role: 'customer' }),
+        'GUEST_COMPLETE_NOT_ALLOWED',
+      );
+      await expectForbiddenCode(service.complete(SESSION_ID, 0), 'GUEST_COMPLETE_NOT_ALLOWED');
+      expect(mockSessionRepository.save).not.toHaveBeenCalled();
+    });
+
+    it('complete: staff 호출 → 진행', async () => {
+      mockSessionRepository.findOne.mockResolvedValue(guestSession());
+      const done = await service.complete(SESSION_ID, 1, { siteId: null, role: 'manager' });
+      expect(done.status).toBe(SessionStatus.COMPLETE);
+    });
+
+    it('complete: 교차 site customer 는 403 이 아닌 404 가 먼저', async () => {
+      mockSessionRepository.findOne.mockResolvedValue(guestSession());
+      await expectSessionNotFound(service.complete(SESSION_ID, 777, { siteId: SITE_B, role: 'customer' }));
+    });
   });
 
   it('update: 교차 site 비소유자도 403 이 아닌 404 (존재 비누설)', async () => {

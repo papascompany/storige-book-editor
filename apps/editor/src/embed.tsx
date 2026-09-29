@@ -20,6 +20,7 @@
  */
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
+import axios from 'axios'
 import { createRoot, Root } from 'react-dom/client'
 import { useAppStore } from './stores/useAppStore'
 import { rebindFrameInteractivity } from './utils/frameInteractive'
@@ -58,6 +59,8 @@ import { templatesApi, editSessionsApi, filesApi, apiClient, type EditSessionRes
 import { core, ServicePlugin } from '@storige/canvas-core'
 import type { PhotobookPricing, TemplateSetCoverMeta } from '@storige/types'
 import type { ApiError } from './api/client'
+// './api' 가 아닌 './api/client' 에서 직접 가져온다 — 테스트 하네스가 './api' 를 통째로 mock 한다.
+import { parseApiError } from './api/client'
 import ToolBar from './components/editor/ToolBar'
 import ObjectActionBar from './components/editor/ObjectActionBar'
 import FeatureSidebar from './components/editor/FeatureSidebar'
@@ -316,6 +319,15 @@ export interface EditorError {
     | 'SESSION_NOT_FOUND'
     | 'TEMPLATE_SET_NOT_FOUND'
   message: string
+  /** SESSION_NOT_FOUND: 조회에 실패한 명시 sessionId */
+  sessionId?: string
+  /** SESSION_NOT_FOUND 사유 — 404/410=not_found, 403=forbidden, 400/422=invalid_id */
+  reason?: 'not_found' | 'forbidden' | 'invalid_id'
+  /**
+   * true = 이 iframe 에서 더 진행 불가(호스트는 닫거나 새 토큰/세션으로 재오픈),
+   * false = 편집 계속 가능(호스트는 닫지 말고 비차단 안내)
+   */
+  fatal?: boolean
 }
 
 export interface EditorResult {
@@ -597,7 +609,7 @@ function EmbeddedEditor({
    *  - reinitNonce: 메인 초기화 effect 의 유일한 dep. 증가시키면 cleanup(캔버스 dispose+store reset)
    *    후 동일 초기화 경로가 재실행된다(재진입과 동일 = 시드·복원 루프·앉히기·가이드 전부 재사용).
    *  - reinitSessionRef: 재초기화가 사용할 세션(복원 응답). 세션 재조회/재생성 경로를 건너뛴다
-   *    (게스트 세션은 GET :id 가 403 이고, orderSeqno 폴백은 새 게스트 세션을 만들 수 있다).
+   *    (재초기화는 복원 응답 세션을 그대로 재사용하며, 세션을 다시 조회하거나 새로 만들지 않는다).
    *  - reinitSuppressReadyEmitRef: 재초기화에서는 호스트로 editor.ready 를 다시 쏘지 않는다
    *    (호스트가 ready 에 묶어둔 1회성 로직 재발화 방지). 내부 ready 상태는 정상 세팅.
    */
@@ -622,6 +634,14 @@ function EmbeddedEditor({
   const [isLoading, setIsLoading] = useState(true)
   const [loadingMessage, setLoadingMessage] = useState('에디터를 초기화하는 중...')
   const [error, setError] = useState<string | null>(null)
+  /** 오류 화면 분기용 코드 — SESSION_NOT_FOUND 는 전용 중단 화면(돌아가기)을 쓴다. null = 기존 화면 */
+  const [errorCode, setErrorCode] = useState<EditorError['code'] | null>(null)
+  /**
+   * 초기화 치명 실패 플래그 — true 면 instance.save/complete 가 PATCH 없이 거부한다
+   * (실패한 초기화 위에서 호스트 스크립트가 잘못된/빈 디자인을 저장·완료하는 것을 차단).
+   * 초기화 시작 시 false 로 리셋.
+   */
+  const fatalInitErrorRef = useRef(false)
   const [currentSession, setCurrentSession] = useState<EditSessionResponse | null>(null)
   /**
    * W1-G2(2026-08-13): 내지 PDF 첨부 진입점에 넘길 실효 templateSetId.
@@ -779,6 +799,7 @@ function EmbeddedEditor({
       const errorPayload = {
         code: 'AUTH_EXPIRED' as const,
         message: '인증이 만료되었습니다. 페이지를 새로고침해주세요.',
+        fatal: true,
       }
       onError?.(errorPayload)
       postToParent(parentOrigin, 'editor.error', errorPayload)
@@ -803,6 +824,8 @@ function EmbeddedEditor({
         setIsLoading(true)
         setLoadingMessage('에디터를 초기화하는 중...')
         setError(null)
+        setErrorCode(null)
+        fatalInitErrorRef.current = false
 
         // ========== 1. 인증 설정 (API 호출 전에 반드시 먼저 실행) ==========
         // API Base URL 설정
@@ -886,7 +909,64 @@ function EmbeddedEditor({
             editSession = await editSessionsApi.get(sessionId)
             console.log('[EmbeddedEditor] Existing session loaded:', editSession.id)
           } catch (err) {
-            console.warn('[EmbeddedEditor] Session not found:', sessionId, err)
+            // 2026-09-29: 명시 sessionId 조회 실패 시 orderSeqno 검색/신규 생성으로 폴백하지 않는다.
+            // (폴백은 원본이 아닌 빈 세션을 조용히 열어 그대로 주문·합성될 수 있었다.)
+            // editSessionsApi.get 은 raw axios 호출이라 AxiosError 로 reject → 여기서 ApiError 로 정규화.
+            const apiErr: ApiError = axios.isAxiosError(err) ? parseApiError(err) : (err as ApiError)
+            const status = apiErr?.status
+            console.warn('[EmbeddedEditor] Session load failed:', sessionId, status, apiErr?.code, err)
+
+            const notFoundReason: EditorError['reason'] | null =
+              status === 404 || status === 410
+                ? 'not_found'
+                : status === 403
+                  ? 'forbidden'
+                  : status === 400 || status === 422
+                    ? 'invalid_id'
+                    : null
+
+            if (notFoundReason) {
+              if (!isMounted) return
+              const message =
+                notFoundReason === 'not_found'
+                  ? '저장된 편집 작업을 찾을 수 없습니다. 삭제되었거나 보관 기간이 지난 작업일 수 있습니다.'
+                  : notFoundReason === 'forbidden'
+                    ? '이 계정으로 열 수 없는 편집 작업입니다. 다른 계정으로 만든 작업이거나, 비회원으로 만든 작업은 24시간이 지나 만료되었을 수 있습니다.'
+                    : '편집 작업 식별자가 올바르지 않습니다.'
+              setError(message)
+              setErrorCode('SESSION_NOT_FOUND')
+              setIsLoading(false)
+              fatalInitErrorRef.current = true
+              const errPayload: EditorError = {
+                code: 'SESSION_NOT_FOUND',
+                message,
+                sessionId,
+                reason: notFoundReason,
+                fatal: true,
+              }
+              onError?.(errPayload)
+              postToParent(parentOrigin, 'editor.error', errPayload)
+              return
+            }
+
+            if (status === 401 || apiErr?.code === 'AUTH_EXPIRED') {
+              // onAuthExpired 리스너가 AUTH_EXPIRED 를 이미 1회 발신했다 — 중복 발신 금지.
+              if (!isMounted) return
+              setError(apiErr?.message || '인증이 만료되었습니다. 페이지를 새로고침해주세요.')
+              setIsLoading(false)
+              fatalInitErrorRef.current = true
+              return
+            }
+
+            // 네트워크·타임아웃·408/429/5xx·기타 상태 → 바깥 catch 에서 NETWORK_ERROR 로 매핑.
+            const rethrown: ApiError = {
+              ...apiErr,
+              code:
+                apiErr?.code === 'TIMEOUT' || apiErr?.code === 'NETWORK_ERROR'
+                  ? apiErr.code
+                  : 'SERVER_ERROR',
+            }
+            throw rethrown
           }
         }
 
@@ -1003,10 +1083,12 @@ function EmbeddedEditor({
           console.error('[EmbeddedEditor]', message, err)
           setError(message)
           setIsLoading(false)
+          fatalInitErrorRef.current = true
           const errPayload = {
             code: 'TEMPLATE_SET_NOT_FOUND' as const,
             message,
             templateSetId: requestedTemplateSetId,
+            fatal: true,
           }
           onError?.(errPayload)
           postToParent(parentOrigin, 'editor.error', errPayload)
@@ -1508,6 +1590,7 @@ function EmbeddedEditor({
           console.log('[EmbeddedEditor] Init superseded — cancelled cleanly')
           return
         }
+        fatalInitErrorRef.current = true
         console.error('[EmbeddedEditor] Initialization error:', err)
         // P1-4: 복원 재초기화 실패 — 대기 중인 복원 Promise 를 실패로 귀결(패널이 토스트로 표시)
         if (reinitSettleRef.current) {
@@ -1544,7 +1627,7 @@ function EmbeddedEditor({
 
         setError(errorMessage)
         setIsLoading(false)
-        const errPayload = { code: errorCode, message: errorMessage }
+        const errPayload = { code: errorCode, message: errorMessage, fatal: true }
         onError?.(errPayload)
         postToParent(parentOrigin, 'editor.error', errPayload)
       } finally {
@@ -1871,6 +1954,7 @@ function EmbeddedEditor({
   useEffect(() => {
     instanceRef.current = {
       save: async () => {
+        if (fatalInitErrorRef.current) throw new Error('편집기를 초기화하지 못해 저장할 수 없습니다.')
         const currentSessionId = currentSession?.id || sessionId
 
         if (!currentSessionId) {
@@ -1904,6 +1988,7 @@ function EmbeddedEditor({
           const errPayload = {
             code: 'SAVE_FAILED' as const,
             message: err instanceof Error ? err.message : '저장에 실패했습니다.',
+            fatal: false,
           }
           onError?.(errPayload)
           postToParent(parentOrigin, 'editor.error', errPayload)
@@ -1912,6 +1997,7 @@ function EmbeddedEditor({
       },
 
       complete: async () => {
+        if (fatalInitErrorRef.current) throw new Error('편집기를 초기화하지 못해 저장할 수 없습니다.')
         const currentSessionId = currentSession?.id || sessionId
 
         if (!currentSessionId) {
@@ -1923,7 +2009,7 @@ function EmbeddedEditor({
         {
           const pageStepBlock = getPageStepBlockMessage()
           if (pageStepBlock) {
-            const errPayload = { code: 'INVALID_DATA' as const, message: pageStepBlock }
+            const errPayload = { code: 'INVALID_DATA' as const, message: pageStepBlock, fatal: false }
             onError?.(errPayload)
             postToParent(parentOrigin, 'editor.error', errPayload)
             throw new Error(pageStepBlock)
@@ -2042,6 +2128,7 @@ function EmbeddedEditor({
           const errPayload = {
             code: 'SAVE_FAILED' as const,
             message: err instanceof Error ? err.message : '편집 완료에 실패했습니다.',
+            fatal: false,
           }
           onError?.(errPayload)
           postToParent(parentOrigin, 'editor.error', errPayload)
@@ -2440,6 +2527,7 @@ function EmbeddedEditor({
       const errPayload = {
         code: 'SAVE_FAILED' as const,
         message: err instanceof Error ? err.message : '편집 완료에 실패했습니다.',
+        fatal: false,
       }
       onError?.(errPayload)
       postToParent(parentOrigin, 'editor.error', errPayload)
@@ -2480,6 +2568,7 @@ function EmbeddedEditor({
       const errPayload = {
         code: 'SAVE_FAILED' as const,
         message: err instanceof Error ? err.message : '저장에 실패했습니다.',
+        fatal: false,
       }
       onError?.(errPayload)
       postToParent(parentOrigin, 'editor.error', errPayload)
@@ -2516,6 +2605,7 @@ function EmbeddedEditor({
       const errPayload = {
         code: 'INVALID_DATA' as const,
         message: err instanceof Error ? err.message : '작업을 불러오는데 실패했습니다.',
+        fatal: false,
       }
       onError?.(errPayload)
       postToParent(parentOrigin, 'editor.error', errPayload)
@@ -2528,6 +2618,29 @@ function EmbeddedEditor({
   }
 
   // Error state
+  if (error && errorCode === 'SESSION_NOT_FOUND') {
+    // 명시 sessionId 조회 실패 — 새로고침으로는 복구되지 않으므로 '다시 시도' 대신 '돌아가기'(editor.cancel).
+    return (
+      <div className="flex items-center justify-center h-full bg-editor-bg">
+        <div className="bg-white rounded-lg p-6 max-w-md text-center">
+          <div className="text-red-500 text-4xl mb-4">!</div>
+          <h2 className="text-lg font-semibold mb-2">편집 작업을 불러올 수 없습니다</h2>
+          <p className="text-gray-600 mb-4">{error}</p>
+          <p className="text-gray-600 mb-4">이전 화면으로 돌아가 다시 열거나, 계속되면 고객센터에 문의해 주세요.</p>
+          <button
+            onClick={() => {
+              onCancel?.()
+              postToParent(parentOrigin, 'editor.cancel', { sessionId, reason: 'session_not_found' })
+            }}
+            className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+          >
+            돌아가기
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   if (error) {
     return (
       <div className="flex items-center justify-center h-full bg-editor-bg">
@@ -2593,7 +2706,7 @@ function EmbeddedEditor({
             {/* 우측 페이지 네비 (스프레드=세로 SpreadPagePanel / 일반=세로 BookNavigation) */}
             {navPosition === 'right' &&
               (isSpreadMode ? (
-                <SpreadPagePanel orientation="vertical" />
+                <SpreadPagePanel orientation="vertical" guestToken={currentSession?.guestToken ?? null} />
               ) : (
                 <BookNavigation orientation="vertical" />
               ))}
@@ -2604,7 +2717,7 @@ function EmbeddedEditor({
           {/* 하단 페이지 네비 (스프레드=가로 SpreadPagePanel / 일반=가로 BookNavigation) */}
           {navPosition === 'bottom' &&
             (isSpreadMode ? (
-              <SpreadPagePanel orientation="horizontal" />
+              <SpreadPagePanel orientation="horizontal" guestToken={currentSession?.guestToken ?? null} />
             ) : (
               <BookNavigation orientation="horizontal" />
             ))}

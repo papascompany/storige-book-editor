@@ -29,6 +29,22 @@ interface SpreadPagePanelProps {
   className?: string
   /** 'horizontal'(하단 스트립) | 'vertical'(우측 패널). 기본 horizontal */
   orientation?: 'horizontal' | 'vertical'
+  /**
+   * 바인딩된 편집 세션의 guestToken(/embed 는 currentSession.guestToken 을 넘긴다).
+   * 지정되면 useGuestStore 값보다 우선한다 — 게스트 세션의 내지 순서 저장이 게스트 경로
+   * (PATCH /edit-sessions/guest/:id)로 가도록. 미지정(undefined)이면 종전대로 스토어 값을 쓴다.
+   */
+  guestToken?: string | null
+}
+
+/**
+ * 순서 저장에 쓸 guestToken 결정 — prop(바인딩 세션) 우선, 없으면(null/undefined) 스토어 값.
+ */
+export function resolveReorderGuestToken(
+  prop: string | null | undefined,
+  store: string | null | undefined,
+): string | null {
+  return prop ?? store ?? null
 }
 
 /**
@@ -42,11 +58,13 @@ interface SpreadPagePanelProps {
 export const SpreadPagePanel = memo(function SpreadPagePanel({
   className,
   orientation = 'horizontal',
+  guestToken: guestTokenProp,
 }: SpreadPagePanelProps) {
   const isVertical = orientation === 'vertical'
   const [params] = useSearchParams()
   const sessionId = params.get('sessionId')
-  const guestToken = useGuestStore((s) => s.guestToken)
+  const storeGuestToken = useGuestStore((s) => s.guestToken)
+  const effectiveGuestToken = resolveReorderGuestToken(guestTokenProp, storeGuestToken)
   const pages = useEditorStore((state) => state.pages)
   const currentPageIndex = useEditorStore((state) => state.currentPageIndex)
   const setPage = useAppStore((state) => state.setPage)
@@ -216,7 +234,7 @@ export const SpreadPagePanel = memo(function SpreadPagePanel({
         newIndices,
         innerStart: treatAllAsInners ? 0 : 1,
         sessionId,
-        guestToken,
+        guestToken: effectiveGuestToken,
       })
       showToast(
         '화면 순서만 바뀝니다. 인쇄는 첨부한 내지 PDF 원본 순서입니다.',

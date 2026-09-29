@@ -140,6 +140,11 @@ export interface EditorSavePayload {
 
 export interface EditorCancelPayload {
   sessionId?: string;
+  /**
+   * 취소 사유(선택, 2026-09-29 additive). 'session_not_found' = 세션 조회 실패 중단 화면에서
+   * 고객이 '돌아가기'를 누름. 미포함이면 일반 취소.
+   */
+  reason?: string;
 }
 
 /** `editor.error` code 6종 (+ 미지 코드 관용) */
@@ -154,7 +159,21 @@ export type EditorErrorCode =
 export interface EditorErrorPayload {
   code: EditorErrorCode | (string & {});
   message: string;
+  /** TEMPLATE_SET_NOT_FOUND 에서만: 로드에 실패한 템플릿셋 ID */
   templateSetId?: string;
+  /**
+   * (2026-09-29 additive) true = 이 iframe 에서 더 진행 불가(호스트는 닫거나 새 토큰/세션으로 재오픈),
+   * false = 편집 계속 가능(호스트는 닫지 말고 비차단 안내). 미포함(구버전 편집기)이면 기존 처리 유지.
+   */
+  fatal?: boolean;
+  /** (2026-09-29 additive) SESSION_NOT_FOUND 에서만: 조회에 실패한 명시 sessionId */
+  sessionId?: string;
+  /**
+   * (2026-09-29 additive) SESSION_NOT_FOUND 에서만: 조회 실패 사유.
+   * 'not_found' = 404/410(삭제·보관 기간 경과), 'forbidden' = 403(다른 계정·만료된 비회원 작업),
+   * 'invalid_id' = 400/422(식별자 형식 오류). 미지 값은 관용한다.
+   */
+  reason?: 'not_found' | 'forbidden' | 'invalid_id' | (string & {});
 }
 
 export interface EditorPricingChangePayload {

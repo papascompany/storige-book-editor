@@ -509,8 +509,30 @@ describe('EditSessionsService', () => {
       expect(r.mismatches[0]).toMatch(/^SPINE_INVALID/);
     });
 
-    it('spineWidthMm=0 이어도 paperType 누락 → SPINE_INVALID(다른 필수필드 규칙 유지)', () => {
-      const r = validate({ spread, spine: { ...spine, paperType: '' } });
+    it('spineWidthMm=0 이어도 perfect 제본 paperType 누락 → SPINE_INVALID(공식제본은 paperType 필수)', () => {
+      const r = validate({ spread, spine: { ...spine, bindingType: 'perfect', paperType: '' } });
+      expect(r.ok).toBe(false);
+      expect(r.mismatches[0]).toMatch(/^SPINE_INVALID/);
+    });
+
+    it('spiral + 0mm + paperType 누락 → ok', () => {
+      const { paperType: _omit, ...noPaper } = spine;
+      const r = validate({ spread, spine: noPaper });
+      expect(r.ok).toBe(true);
+      expect(r.mismatches).toEqual([]);
+    });
+
+    it('saddle + >0mm + paperType 누락 → SPINE_INVALID', () => {
+      const { paperType: _omit, ...noPaper } = spine;
+      const r = validate({ spread, spine: { ...noPaper, bindingType: 'saddle', spineWidthMm: 3 } });
+      expect(r.ok).toBe(false);
+      expect(r.mismatches[0]).toMatch(/^SPINE_INVALID/);
+    });
+
+    it('0mm + bindingType 누락 → SPINE_INVALID', () => {
+      const { paperType: _p, bindingType: _b, ...rest } = spine;
+      const r = validate({ spread, spine: rest });
+      expect(r.ok).toBe(false);
       expect(r.mismatches[0]).toMatch(/^SPINE_INVALID/);
     });
 

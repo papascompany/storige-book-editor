@@ -1038,13 +1038,20 @@ export class PdfSynthesizerService {
     }
 
     const { spine } = session.metadata;
+    // S7: paperType 은 spineWidthMm===0 이고 bindingType 이 공식제본(perfect/hardcover, 대소문자 무시)이
+    // 아닐 때만(스프링·중철 등) 생략 가능. 동일 predicate: editor buildSpreadSnapshots,
+    // packages/types SpineSnapshot.paperType 주석, api EditSessionsService.validateSpreadSnapshot.
+    const paperTypeOptional: boolean =
+      spine.spineWidthMm === 0 &&
+      !!spine.bindingType &&
+      !['perfect', 'hardcover'].includes(String(spine.bindingType).toLowerCase());
     if (
       // S7: spineWidthMm 은 유한수 ≥ 0 이면 유효(0 = 책등 없는 책) — truthy 검사로 0 을 거르지 않는다.
       typeof spine.spineWidthMm !== 'number' ||
       !Number.isFinite(spine.spineWidthMm) ||
       spine.spineWidthMm < 0 ||
       !spine.pageCount ||
-      !spine.paperType ||
+      (!spine.paperType && !paperTypeOptional) ||
       !spine.bindingType ||
       !spine.formulaVersion
     ) {

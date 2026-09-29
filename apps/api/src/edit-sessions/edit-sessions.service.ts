@@ -448,7 +448,8 @@ export class EditSessionsService {
    * 세션 업데이트
    *
    * 인쇄 워크플로우 v1 Phase 4 (2026-05-19):
-   * - 게스트 세션(`guestToken` 보유)은 userId=0 으로 호출돼도 통과 (회원 권한 검사 우회).
+   * - 게스트 세션(`guestToken` 보유)은 토큰 검증된 게스트 경로(`opts.guestVerified`) 또는
+   *   staff 만 변경할 수 있다(2026-09-29). 회원 세션은 소유자만 변경한다.
    * - PDF 첨부 / 검증 결과 / 페이지수 필드(`contentPdf*`) 갱신 지원.
    * - 결정 3-3: PDF 첨부 시 `canvasData` 동시 수정은 클라가 막아야 함 (API 는 1차 가드만).
    */
@@ -501,13 +502,19 @@ export class EditSessionsService {
     dto: UpdateEditSessionDto,
     userId: number,
     caller?: TenantCaller | null,
+    opts?: { guestVerified?: boolean },
   ): Promise<EditSessionEntity> {
     const session = await this.findById(id);
+    // 테넌트 판정(404)이 권한 판정(403)보다 먼저 — 존재 비누설
     this.assertTenantScope(session, caller);
 
-    // 권한 확인: 회원 세션은 소유자만 / 게스트 세션은 토큰 보유자(클라이언트가 token 같이 보내는 흐름은 추후)
+    // 권한 확인: 회원 세션은 소유자만 변경.
+    // 게스트 세션은 토큰 검증된 게스트 경로(guestVerified) 또는 staff 만 변경 (2026-09-29).
     const isGuest = !!session.guestToken;
-    if (!isGuest && Number(session.memberSeqno) !== userId) {
+    const allowed = isGuest
+      ? opts?.guestVerified === true || EditSessionsService.isStaffRole(caller?.role)
+      : Number(session.memberSeqno) === userId;
+    if (!allowed) {
       throw new ForbiddenException({
         code: 'PERMISSION_DENIED',
         message: '이 세션을 수정할 권한이 없습니다.',
@@ -1054,7 +1061,15 @@ export class EditSessionsService {
     const session = await this.findById(id);
     this.assertTenantScope(session, caller);
 
+    // 게스트 세션 완료는 staff 만 (2026-09-29). 게스트 작업은 guest/migrate 로 회원 세션이 된 뒤
+    // 회원 토큰으로 완료한다. 회원 세션은 소유자만 완료한다.
     const isGuest = !!session.guestToken;
+    if (isGuest && !EditSessionsService.isStaffRole(caller?.role)) {
+      throw new ForbiddenException({
+        code: 'GUEST_COMPLETE_NOT_ALLOWED',
+        message: '비회원 편집 세션은 로그인 후(세션 흡수) 완료할 수 있습니다.',
+      });
+    }
     if (!isGuest && Number(session.memberSeqno) !== userId) {
       throw new ForbiddenException({
         code: 'PERMISSION_DENIED',
@@ -1349,6 +1364,7 @@ export class EditSessionsService {
    * 검증 항목(하드 승격 시 차단 사유):
    *  - metadata.spine: spineWidthMm 유한수 ≥ 0(S7: 0 = 책등 없는 책, 유효) +
    *    pageCount/paperType/bindingType/formulaVersion 4필드 truthy
+   *    (S7 예외: spineWidthMm===0 이고 bindingType 이 perfect/hardcover 가 아니면 paperType 생략 허용)
    *  - metadata.spread: spec/totalWidthMm/totalHeightMm/dpi 4필드 truthy
    *
    * 모드:
@@ -1362,6 +1378,14 @@ export class EditSessionsService {
     const mismatches: string[] = [];
 
     const spine = session.metadata?.spine;
+    // S7: paperType 은 spineWidthMm===0 이고 bindingType 이 공식제본(perfect/hardcover, 대소문자 무시)이
+    // 아닐 때만(스프링·중철 등) 생략 가능. 동일 predicate: editor buildSpreadSnapshots,
+    // packages/types SpineSnapshot.paperType 주석, worker PdfSynthesizerService.validateSpreadSnapshot.
+    const paperTypeOptional =
+      !!spine &&
+      spine.spineWidthMm === 0 &&
+      !!spine.bindingType &&
+      !['perfect', 'hardcover'].includes(String(spine.bindingType).toLowerCase());
     if (!spine) {
       mismatches.push('SPINE_MISSING: metadata.spine 누락');
     } else if (
@@ -1370,7 +1394,7 @@ export class EditSessionsService {
       !Number.isFinite(spine.spineWidthMm) ||
       spine.spineWidthMm < 0 ||
       !spine.pageCount ||
-      !spine.paperType ||
+      (!spine.paperType && !paperTypeOptional) ||
       !spine.bindingType ||
       !spine.formulaVersion
     ) {

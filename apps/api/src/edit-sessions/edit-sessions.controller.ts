@@ -200,7 +200,8 @@ export class EditSessionsController {
    * 게스트 세션 업데이트 (canvasData / contentPdf*) — 인쇄 워크플로우 v1 Phase 4.
    *
    * X-Guest-Token 헤더(또는 guestToken 쿼리)로 본인 세션임을 증명한 후 update 호출.
-   * userId=0 으로 service 호출 → service 가 isGuest 분기로 통과.
+   * 소유 증명 후 userId=0 + `guestVerified: true` 로 service 호출 — 게스트 세션 변경은
+   * 이 경로(토큰 검증) 또는 staff 만 허용된다(2026-09-29).
    *
    * 🔒 F-3 (2026-07-30): 종전 `if (guestTokenQuery && …)` 는 **토큰을 아예 안 보내면
    *   소유 검사를 통째로 건너뛰었다** — 세션 UUID 만 알면 누구나 남의 게스트 세션
@@ -225,8 +226,8 @@ export class EditSessionsController {
   ): Promise<EditSessionResponseDto> {
     // X-Guest-Token 헤더가 안 되는 환경(예: 일부 CORS)을 위해 쿼리도 허용.
     await this.assertGuestOwnership(id, guestTokenHeader || guestTokenQuery);
-    // userId=0 (게스트) — service 가 isGuest 로 권한 검사 우회
-    const updated = await this.editSessionsService.update(id, dto, 0);
+    // userId=0 (게스트) — 위 assertGuestOwnership 통과 후에만 guestVerified 를 전달한다
+    const updated = await this.editSessionsService.update(id, dto, 0, null, { guestVerified: true });
     return this.editSessionsService.toResponseDto(updated);
   }
 

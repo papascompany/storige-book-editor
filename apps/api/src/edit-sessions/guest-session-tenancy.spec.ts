@@ -13,13 +13,14 @@
  *   → 그 위에 실 BooksService 승격 게이트를 **같은 저장소**로 물려
  *     "createGuest 가 스탬프한 값이 승격 판정에 그대로 도달"함을 실증한다.
  *
- * 커버리지: T1~T6(생성 스탬프) · T14/T15(승격 e2e)
+ * 커버리지: T1~T6(생성 스탬프) · T14/T15(승격 e2e) · G1~G4(게스트 세션 회원 라우트 규칙)
  */
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { APP_GUARD } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { JwtModule, JwtService } from '@nestjs/jwt';
+import { PassportModule } from '@nestjs/passport';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import request from 'supertest';
 import { ErrV1 } from '@storige/types';
@@ -29,6 +30,8 @@ import { EditSessionEntity, SessionMode, SessionStatus } from './entities/edit-s
 import { EditSessionVersionEntity } from './entities/edit-session-version.entity';
 import { OptionalShopJwtGuard } from '../auth/guards/optional-shop-jwt.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { JwtStrategy } from '../auth/strategies/jwt.strategy';
+import { User } from '../auth/entities/user.entity';
 import { ApiKeyGuard } from '../auth/guards/api-key.guard';
 import { SitesService } from '../sites/sites.service';
 import { WorkerJobsService } from '../worker-jobs/worker-jobs.service';
@@ -89,12 +92,15 @@ describe('게스트 세션 테넌시 — siteId 스탬프 + 승격 게이트 e2e
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
-      imports: [JwtModule.register({ secret: JWT_SECRET })],
+      imports: [PassportModule, JwtModule.register({ secret: JWT_SECRET })],
       controllers: [EditSessionsController],
       providers: [
         EditSessionsService,
         OptionalShopJwtGuard,
         ApiKeyGuard,
+        // 회원 라우트(PATCH :id / :id/complete)의 실 passport 'jwt' 검증 — shop JWT 는 DB 조회 없음
+        JwtStrategy,
+        { provide: getRepositoryToken(User), useValue: { findOne: jest.fn().mockResolvedValue(null) } },
         // 프로덕션과 동일하게 전역 JwtAuthGuard 를 얹는다 —
         // @Public 단락(→ passport 미실행 → req.user 부재)이 재현되어야
         // "route-scoped 가드가 실제로 테넌트를 복원한다"가 증거가 된다.
@@ -328,6 +334,72 @@ describe('게스트 세션 테넌시 — siteId 스탬프 + 승격 게이트 e2e
         .expect(403);
 
       expect(res.body.code).toBe('GUEST_TOKEN_MISMATCH');
+    });
+  });
+
+  // ── 게스트 세션 회원 라우트 규칙 (2026-09-29) ─────────────────────────
+  // 규칙: 게스트 세션 저장은 게스트 경로(guestToken)로만, 완료는 guest/migrate 로 흡수된 뒤
+  // 회원 토큰으로만. 회원 라우트의 저장·완료는 403(PERMISSION_DENIED / GUEST_COMPLETE_NOT_ALLOWED).
+  describe('게스트 세션 — 회원 라우트 저장/완료 규칙', () => {
+    const MEMBER = 777;
+    const memberToken = () =>
+      signShop({ sub: String(MEMBER), role: 'customer', siteId: SITE_A, siteName: 'A' });
+
+    /** site A 스탬프 게스트 세션 */
+    const seedGuest = async () => {
+      const res = await createGuest({ Authorization: `Bearer ${signShop({ siteId: SITE_A })}` }).expect(201);
+      return { id: res.body.id as string, token: res.body.guestToken as string };
+    };
+
+    it('G1: 회원 JWT 로 PATCH /edit-sessions/:id (게스트 세션) → 403 PERMISSION_DENIED, 저장 없음', async () => {
+      const { id } = await seedGuest();
+
+      const res = await request(app.getHttpServer())
+        .patch(`/edit-sessions/${id}`)
+        .set('Authorization', `Bearer ${memberToken()}`)
+        .send({ canvasData: { v: 1 } })
+        .expect(403);
+
+      expect(res.body.code).toBe('PERMISSION_DENIED');
+      expect(stored(id).canvasData).toBeUndefined();
+    });
+
+    it('G2: 회원 JWT 로 PATCH /edit-sessions/:id/complete (게스트 세션) → 403 GUEST_COMPLETE_NOT_ALLOWED', async () => {
+      const { id } = await seedGuest();
+
+      const res = await request(app.getHttpServer())
+        .patch(`/edit-sessions/${id}/complete`)
+        .set('Authorization', `Bearer ${memberToken()}`)
+        .expect(403);
+
+      expect(res.body.code).toBe('GUEST_COMPLETE_NOT_ALLOWED');
+      expect(stored(id).status).not.toBe(SessionStatus.COMPLETE);
+    });
+
+    it('G3: 게스트 경로 + 유효 토큰 → 200 (게스트 저장 경로 유지)', async () => {
+      const { id, token } = await seedGuest();
+
+      await request(app.getHttpServer())
+        .patch(`/edit-sessions/guest/${id}`)
+        .set('X-Guest-Token', token)
+        .send({ canvasData: { v: 3 } })
+        .expect(200);
+
+      expect(stored(id).canvasData).toEqual({ v: 3 });
+    });
+
+    it('G4: guest/migrate 로 흡수된 뒤 회원 JWT 완료 → 200 + COMPLETE', async () => {
+      const { id, token } = await seedGuest();
+
+      const out = await sessionsService.migrateGuestSessions(token, MEMBER, SITE_A);
+      expect(out.migratedCount).toBe(1);
+
+      await request(app.getHttpServer())
+        .patch(`/edit-sessions/${id}/complete`)
+        .set('Authorization', `Bearer ${memberToken()}`)
+        .expect(200);
+
+      expect(stored(id).status).toBe(SessionStatus.COMPLETE);
     });
   });
 

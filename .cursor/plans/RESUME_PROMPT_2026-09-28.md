@@ -65,7 +65,7 @@ Storige 편집기 개발을 이어서 진행합니다. bookmoa·printy 파트너
 
 | 파트너 | cwd | 현재 세션 | 비고 |
 |---|---|---|---|
-| bookmoa | `~/Developer/claude/bookmoa-mobile` | **09-28 교체**: "20260928 북모아 개발 계속" · `local_75d4aefc-f026-45ed-b044-df4fdf377c23` · 소켓 `uds:/tmp/cc-socks/47702.sock`(lsof cwd 확증) — 옛 `local_154c5e2a…`/37531 대체 | bypass 모드. 운영 `19ce2a5`(R-198). 펼침면 pageCount 정정 ACK 완료 |
+| bookmoa | `~/Developer/claude/bookmoa-mobile` | **09-28 교체**: "20260928 북모아 개발 계속" · `local_75d4aefc-f026-45ed-b044-df4fdf377c23` · 소켓 `uds:/tmp/cc-socks/47702.sock`(lsof cwd 확증) → 09-29 `5179.sock`(같은 세션 id, 프로세스 재시작) — 옛 `local_154c5e2a…`/37531 대체 | bypass 모드. 운영 `19ce2a5`(R-198). 펼침면 pageCount 정정 ACK 완료 |
 | printy | `~/Developer/claude/printy` | 이름 "20260928 Printy 개발 계속"(표시명이 "…새세션 시작"으로 보일 수 있음) · `local_5ca0cbbf-bacf-4881-b394-7a4fab936804` | 09-28 교체 · 소켓 `uds:/tmp/cc-socks/67905.sock` · 09:24Z ACK 수신. 옛 `local_35adcfea…`("20260926 Printy 개발 계속")는 목록에 남아 있으나 쓰지 않음 |
 | **Storige(당사)** | 이 저장소 | 이름 "Storige 편집기 개발 계속" · printy 가 보고한 id `local_7e9f1fad…` | 09-28 새 세션. 양사에 창구 교체 통지·ACK 완료 |
 
@@ -145,6 +145,16 @@ Storige 편집기 개발을 이어서 진행합니다. bookmoa·printy 파트너
   - B. D6 선행 ② 세션완료 VALIDATE 잡에 `session.siteId` 스탬프 — `createValidationJob(dto, {skipSiteWorkerDefaults:true})` 내부 옵션으로 **site default 머지 생략**(운영 전 사이트가 checkCutting·checkSafezone·applyBleed=1 이라 머지하면 편집기 완료 검증이 바뀜). 부수효과: v2 웹훅 구독 사이트는 `validation.*` 추가 수신(운영 webhook_configs 0건, 09-29 04:14Z) · `external/:id` 조회가 세션 사이트 키로 한정.
   - C. S6 separate 표지 2쪽(뒤표지) 판형 검사 — 1쪽과 같은 규칙·`SIZE_MISMATCH`·`details.page`(1/2), 쪽수 강제 없음, 표준·경량 파리티.
   - 검증: api 84/1186, worker 23/659, tsc 0(api·worker). 배포: worker → api(+nginx). DB 무변경.
+- **Wave 2(09-29, 오너 위임 "알아서 적용") — 워크플로 `wf_bff382d3-1dd`(24 에이전트: 파트너 3사+Storige 판독 5 → 설계·비판 2·수정 → 구현 5과제 2레인 → 과제당 2렌즈 리뷰, 전부 pass·minor 만) → 통합·로컬 커밋, 배포는 양사 ACK 후(편집기 동작 변경)**
+  - T1 재오픈: 명시 sessionId 조회 실패 시 폴백(주문번호 검색·신규 생성) 폐지 → `SESSION_NOT_FOUND`{sessionId, reason not_found/forbidden/invalid_id, fatal:true} + 편집기 내 중단 화면('돌아가기' → `editor.cancel {reason:'session_not_found'}`). 네트워크·5xx → NETWORK_ERROR, 401 → 기존 AUTH_EXPIRED 1회. 초기화 치명 실패 후 instance.save/complete 거부.
+  - T4 `editor.error` 전 payload 에 `fatal`(additive) + SDK protocol 타입. T5 SpreadPagePanel 이 세션 guestToken 으로 게스트 경로 저장.
+  - T2 S7: paperType 은 spineWidthMm===0 이고 bindingType 이 perfect/hardcover 가 아닐 때만 생략 가능(편집기 스냅샷·types·API SOFT·worker 동일 predicate). `SPREAD_SNAPSHOT_HARD_FAIL` 은 계속 OFF(legacy 상품은 SPINE_MISSING 유지 — HARD 승격 전 호스트 고정 책등 규칙 별도 설계 필요).
+  - T3 게스트 세션 회원 경로 저장·완료 제한(보안 항목, 상세 비공개) — 게스트 경로(토큰 검증) 또는 staff 만, 완료는 흡수 후 회원. 신규 응답 코드 `GUEST_COMPLETE_NOT_ALLOWED`.
+  - 파트너 판독 결론: bookmoa·printy 는 editor.error 를 범용 카드로 표시(SESSION_NOT_FOUND 전용 처리 없음) → 필수 코드 변경 없음, 단 낡은 sessionId 항목은 호스트가 비워야 재편집 가능. 결제 후 orderSeqno 재스탬프(장바구니 13자리→주문 15자리)로 폴백 시 빈 세션이 합성될 수 있었음 → T1 이 차단. 100p 는 편집기 미사용(영향 없음).
+  - 운영 실측(05:24Z): 최근 60일 주문당 세션 1개(27주문, 폴백 신규생성 흔적 0) · guest_token 보유 세션 0(삭제 포함).
+  - 검증: api 84/1199, worker 23/661, editor 76/909, sdk 12/338, tsc 0(api·worker·editor·admin·sdk). 배포 순서: worker → editor → api(+nginx). 롤백: 단위별 이전 이미지/Vercel promote.
+  - 후속(설계 권고, 미적용): 게스트 읽기 경로 토큰 검증 → 회원 경로 읽기 강화(순서 중요) · 운영자 재편집 경로(오너 결정) · 파트너 결제 후 orderSeqno 보존 · 100p presigned complete 의 site 스탬프(오너 승인) · 바깥 init catch AxiosError 정규화 · 게스트 완료 토스트 문구.
+- **bookmoa 요청(09-29, 소켓 5179 — 세션 id 동일)**: `/embed` 에 상품별 pageCountMin/Max(/pageStep) 파라미터 요청(현 4세트 a2cc2939·e66588b2·f0335fda·83e6ec80 = [10,100], 상품은 16~300/500p). 사실 회신 완료(현재 미지원·기술적으로 가능·대안은 세트 범위 확대). **오너 결정 대기.**
 - **CTO 점검 메모(09-29)**
   - 운영 worker 실측: `WORKER_LIGHTWEIGHT_VALIDATION`·`WORKER_LIGHTWEIGHT_SYNTHESIS`·`WORKER_CROP_MARK_VALIDATION`·`CUTOUT_ENABLED` = true(.env), `PRINT_NORMALIZE` = false. compose 기본값은 전부 false → .env 누락 재배포 시 조용히 OFF 되는 위험.
   - S7 정정: worker `handleSpreadSynthesis` 의 스냅샷 하드 검증은 `createSpreadSynthesisJob`(컨트롤러 호출 0) 경로 전용 → 파트너 합성(compose-mixed·synthesize/external)은 막지 않는다. 실영향은 SOFT `SPINE_MISSING` 뿐.

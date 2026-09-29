@@ -34,7 +34,8 @@ interface SpineConfigLike {
  * - metadata.spread(SpreadSnapshot): normalizeSpreadSpec 으로 정규화한 spec + computeSpreadDimensions
  *   재계산 총폭(wing×2 포함 비즈니스 단일소스) + dpi. 스토어 캐시 totalWidthMm 대신 공식 재실행으로
  *   api/worker 검증과 항상 동일값 보장.
- * - metadata.spine(SpineSnapshot): 필수 5필드가 모두 유효할 때만 기록(부분기록 금지). spineWidthMm 은
+ * - metadata.spine(SpineSnapshot): 필수 필드가 모두 유효할 때만 기록(부분기록 금지 — 단 S7 예외로
+ *   책등 0mm·비공식제본이면 paperType 만 생략 가능). spineWidthMm 은
  *   spec.spineWidthMm(updateSpreadSpineWidth 동기화값) 우선, 폴백 calculatedSpineWidth.
  *   책등공식 계산값과 일치하면 spineWidthSource='formula', 수동조정 등으로 다르면 'manual'.
  *   S7: spineWidthMm 은 유한수 ≥ 0 이면 유효(0 = 책등 없는 책 — 스프링 표지펼침면·호스트 0mm).
@@ -42,7 +43,12 @@ interface SpineConfigLike {
  *     ① calculatedSpineWidth 가 유한수 0(공식/호스트 적용 결과), 또는
  *     ② conversionMode==='flat-spread'(책등 고정 템플릿 — spec 값이 곧 확정값)
  *   그 외(공식 미실행·실패로 calc=null 이고 spec=0)는 미확정 → spine 미기록(종전과 동일).
- *   paperType/bindingType/pageCount>0 요구는 0mm 에도 그대로 유지(부분기록 금지).
+ *   bindingType/pageCount>0 요구는 0mm 에도 그대로 유지(부분기록 금지).
+ *   paperType 은 예외적으로 "확정 0mm + bindingType 이 공식제본(perfect/hardcover, 대소문자 무시)이 아님"
+ *   (스프링·중철 등 종이두께 공식을 쓰지 않는 제본)일 때만 생략 가능 — 이때 paperType 키 자체를 생략한다.
+ *   perfect/hardcover 는 0mm 여도 paperType 필수(레거시 불일치 신호 유지). 동일 predicate 사용처:
+ *   packages/types SpineSnapshot.paperType, api EditSessionsService.validateSpreadSnapshot,
+ *   worker PdfSynthesizerService.validateSpreadSnapshot.
  *
  * 안전: spec 이 비정상(NaN 등)이면 roundMm01 가 throw → catch 하여 spread/spine 미기록하고 빈 객체 반환.
  * 호출측(완료 update)은 기존 동작(스냅샷 없이)으로 무중단 진행한다.
@@ -85,12 +91,21 @@ export function buildSpreadSnapshots(
             ? 0
             : undefined
 
+    // S7: paperType 생략 허용 predicate — 확정 0mm + 공식제본(perfect/hardcover) 아닌 bindingType.
+    // 동일 predicate: packages/types SpineSnapshot.paperType 주석, api EditSessionsService.validateSpreadSnapshot,
+    // worker PdfSynthesizerService.validateSpreadSnapshot. 변경 시 네 곳을 함께 맞춘다.
+    const bindingType = spineConfig?.bindingType
+    const paperTypeOptional =
+      spineWidthMm === 0 &&
+      !!bindingType &&
+      !['perfect', 'hardcover'].includes(String(bindingType).toLowerCase())
+
     let spine: SpineSnapshot | undefined
     if (
-      spineConfig?.paperType &&
       spineConfig?.bindingType &&
       spineWidthMm !== undefined &&
-      innerPageCount > 0
+      innerPageCount > 0 &&
+      (spineConfig?.paperType || paperTypeOptional)
     ) {
       let spineWidthSource: 'formula' | 'manual' | undefined
       if (typeof calc === 'number' && Number.isFinite(calc)) {
@@ -99,7 +114,7 @@ export function buildSpreadSnapshots(
       }
       spine = {
         pageCount: innerPageCount,
-        paperType: spineConfig.paperType,
+        ...(spineConfig?.paperType ? { paperType: spineConfig.paperType } : {}),
         bindingType: spineConfig.bindingType,
         spineWidthMm,
         formulaVersion: SPINE_FORMULA_VERSION,

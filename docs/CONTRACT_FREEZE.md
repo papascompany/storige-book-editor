@@ -129,6 +129,7 @@
 | `/embed` URL 파라미터 12종(camel/snake 겸용) | bookmoa/Sharesnap iframe | FROZEN | getParamCompat |
 | postMessage 엔벨로프 v1 `{source:'storige-editor', version:'1', event, payload, timestamp}` | 임베드 2종 | FROZEN | editor.ready/save/complete/cancel/error/needAuth/state/saved |
 | editor.complete payload (files 중첩 + needsAuth/guestToken 인라인) | bookmoa | FROZEN | STALE-CLOSURE-001 |
+| `editor.error` 선택 필드 `fatal`·`sessionId`·`reason` + `editor.cancel` 선택 필드 `reason` — **ADDITIVE 2026-09-29** | 임베드 호스트 전체 | ADDITIVE→FROZEN | 기존 필드·code 불변. 명시 `sessionId` 조회 실패 시 **폴백(주문번호 검색·신규 생성) 폐지 → `SESSION_NOT_FOUND`(fatal) 후 중단**은 동작 변경으로 양사 사전 통지·ACK 후 배포. 게스트 세션의 회원 경로 저장·완료 403(`PERMISSION_DENIED`/`GUEST_COMPLETE_NOT_ALLOWED`)은 문서화된 흡수 계약의 명확화 |
 | `editor.pricingChange` 신규 이벤트 `{sessionId, pageCount, pricing?, coverType?}` (2026-07-06, D-3) | 포토북 호스트(opt-in) | **ADDITIVE** | needAuth 선례의 신규 이벤트명 추가 — 수신부 event 스위치는 미지 이벤트 무시(파트너 4종 영향 0). 발신은 pricing 설정 셋+회원 세션만. 기존 8종 payload 불변 |
 | **호스트→편집기 수신 명령 엔벨로프 v1** `{source:'storige-host', version:'1', command, requestId?, payload?}` + 명령 3종(`getState`/`saveNow`/`setBackGuard`) | 임베드 2종(파트너 4종 現 미발신 — GUIDE 노출분이라 발신 가능)·SDK `/embed` 예정 | **ADDITIVE(등재) → FROZEN(v1 시맨틱)** | **既 GUIDE 노출분의 사후 추인** — 상세·응답 유형·확장 규약은 **§1-D-1** |
 | 레거시 `storige:*` dual-emit | bookmoa | FROZEN(하위호환) | parentOrigin 미지정 시 targetOrigin='*' — 신규 연동 혼입 금지 |
