@@ -959,12 +959,14 @@ function EmbeddedEditor({
             }
 
             // 네트워크·타임아웃·408/429/5xx·기타 상태 → 바깥 catch 에서 NETWORK_ERROR 로 매핑.
+            // message 는 고객에게 그대로 보이므로 서버 원문(영문 등) 대신 고정 한국어 문구를 쓴다.
+            const isConnectivity = apiErr?.code === 'TIMEOUT' || apiErr?.code === 'NETWORK_ERROR'
             const rethrown: ApiError = {
               ...apiErr,
-              code:
-                apiErr?.code === 'TIMEOUT' || apiErr?.code === 'NETWORK_ERROR'
-                  ? apiErr.code
-                  : 'SERVER_ERROR',
+              code: isConnectivity ? apiErr.code : 'SERVER_ERROR',
+              message: isConnectivity
+                ? '편집 작업을 불러오지 못했습니다. 네트워크 연결을 확인한 뒤 다시 시도해주세요.'
+                : '일시적인 서버 오류로 편집 작업을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.',
             }
             throw rethrown
           }

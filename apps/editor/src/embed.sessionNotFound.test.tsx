@@ -273,7 +273,10 @@ describe('EmbeddedEditor — 명시 sessionId 조회 실패 = SESSION_NOT_FOUND 
 
     const errors = posted('editor.error')
     expect(errors).toHaveLength(1)
-    expect(errors[0]).toMatchObject({ code: 'NETWORK_ERROR', message: '네트워크 연결을 확인해주세요.' })
+    expect(errors[0]).toMatchObject({
+      code: 'NETWORK_ERROR',
+      message: '편집 작업을 불러오지 못했습니다. 네트워크 연결을 확인한 뒤 다시 시도해주세요.',
+    })
     // T4: 초기화 실패는 치명(fatal:true) — 이 iframe 에서 더 진행 불가
     expect(errors[0]).toMatchObject({ fatal: true })
     expectNoFallback()
@@ -288,7 +291,12 @@ describe('EmbeddedEditor — 명시 sessionId 조회 실패 = SESSION_NOT_FOUND 
 
     const errors = posted('editor.error')
     expect(errors).toHaveLength(1)
-    expect(errors[0]).toMatchObject({ code: 'NETWORK_ERROR', fatal: true })
+    expect(errors[0]).toMatchObject({
+      code: 'NETWORK_ERROR',
+      fatal: true,
+      // 서버 원문 대신 고정 한국어 고객 문구(호스트가 message 를 그대로 노출)
+      message: '일시적인 서버 오류로 편집 작업을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.',
+    })
     expectNoFallback()
   })
 
