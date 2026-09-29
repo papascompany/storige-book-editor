@@ -135,6 +135,16 @@ Storige 편집기 개발을 이어서 진행합니다. bookmoa·printy 파트너
 - **결속 API 설계** `FILE_ORDER_BINDING_API_DESIGN_2026-09-24.md` §16 — 핵심 O1~O5(v1 표면·사이트별 (a)안·백필 재실측·편집기 산출물 스탬프·취소 후 90일)
 - **D6 게이트**: 선행 ①~⑤(편집기 산출물 스탬프, 세션완료 VALIDATE `siteId` 누락 `edit-sessions.service.ts` createValidationJobs, 백필 재실측, 거부 코드 404 금지, 100p·MD2Books 조율)
 - 파트너 파기 계약(합성 산출물·편집 세션 external), 고아 정리 실가동(`FILE_ORPHAN_DRY_RUN`), 고아 판정 (a)안(**현 형태 기각 권고**)
+- **09-28 누락분 복원(09-29 CTO 점검 — 09-11·09-12 에서 열린 채 닫은 근거 없음)**
+  - 동화책 caseBind(양장 싸바리 설정) · cover VALIDATE 경고 처리 정책(`SPINE_PARAMS_UNRESOLVED`) · G-6 백필
+  - **branch protection — master 무보호(09-29 `gh api` 재확인 404 "Branch not protected")** · 폰트 시딩(0건)
+  - 파트너 회신문: 8/24 통지 4종 미발송(printy 대상 아님, 09-12 §2-3ⓐ) · 동화책 왕복 실기 1회(재진입 유지 + `grow:*` 캡처 + bookmoa 장바구니 #1 삭제, 09-12 §2-4)
+  - 인쇄 정규화 ON(`PRINT_NORMALIZE`, 운영 false — 골든 육안 대조 후) · 재오픈 폴백을 `editor.error` 로 바꿀지 · `207c458f` pageStep=4(bookmoa 요청 시)
+- **CTO 점검 메모(09-29)**
+  - 운영 worker 실측: `WORKER_LIGHTWEIGHT_VALIDATION`·`WORKER_LIGHTWEIGHT_SYNTHESIS`·`WORKER_CROP_MARK_VALIDATION`·`CUTOUT_ENABLED` = true(.env), `PRINT_NORMALIZE` = false. compose 기본값은 전부 false → .env 누락 재배포 시 조용히 OFF 되는 위험.
+  - S7 정정: worker `handleSpreadSynthesis` 의 스냅샷 하드 검증은 `createSpreadSynthesisJob`(컨트롤러 호출 0) 경로 전용 → 파트너 합성(compose-mixed·synthesize/external)은 막지 않는다. 실영향은 SOFT `SPINE_MISSING` 뿐.
+  - 문서 스테일: `OWNER_DECISIONS_2026-07-07` 의 D-11(이미 `ee88078` 구현)·D-4(07-14 채택, 구현만 남음) 서술 · `_RESUME_EDITOR_TRACKS.md`(05-02) 는 정본 아님.
+  - 로드맵 미착수 주요: 임베드 D6 getState 페이지 필드·D-4a/b/c, R3b 지종별 TAC, I-4 Bull attempts, 게스트 complete 소유권(보안 항목), 에셋 A4/A5/A8·시드, R6 CutContour, R10, admin stage1b.
 - 후속 후보(코드)
   - ~~편집기 `SidePanel` pageStep 우회~~ → **해소 확인(09-28)**: S8 리뷰 수정 `2402462` 가 이미 단위 추가/삭제(인접 묶음·스프레드 0번 제외·min/max 가드)를 적용했다. 09-12 문서 §8-20 의 "SidePanel 1장 단위" 한계는 `43104b2` 시점 기록이라 스테일. 회귀 테스트 `SidePanel.pageStep.test.tsx`(7건, 1장 단위로 되돌리면 5건 실패) 추가. `PagePanel.tsx` 는 1장 단위지만 미사용 컴포넌트.
   - **첨부 PDF(underlay) 쪽수 pageStep 배수 채움** — 오너 결정 A안(서버/worker 가 빈 페이지를 붙이고 원본 보존). **배포 완료(오너 승인)**: DB ALTER 10:35:24Z(49행 전부 false, 백업 `~/backup-template_sets-pre-padstep-20260928.sql`) → push `aa93216` 10:35:32Z(편집기·admin Ready) → api 재생성+nginx 10:37:33Z(롤백 `storige-api:rollback-pre-padstep`). 검증: health ok · 새 라우트 400(검증) 응답 · dist 반영 · level50 0 · 공개 조회 `padToPageStep:false`. 양사 통지·ACK 완료(bookmoa·printy 모두 이벤트 직접 구독 없음, 세션 값 그대로 보관 → 코드 변경 불요, 켤 상품 없음). 문서: 가이드 §3.3·API 표·pageStep 단락, CONTRACT_FREEZE(+contract-freeze.spec 등재), 템플릿등록 매뉴얼(md·html, pageStep 행도 신규), PRODUCT_TEMPLATE_REGISTRATION_MANUAL, 시각화 `docs/ATTACH_PDF_PAGE_PAD_2026-09-28.html`.
