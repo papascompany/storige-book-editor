@@ -20,6 +20,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { getParamCompat } from '@/utils/searchParams'
 import { normalizeSpineCode, parseSpineWidthMmParam } from '@/utils/hostSpine'
+import { parsePageCountLimitParam, parsePageStepParam } from '@/utils/hostPageLimits'
 import {
   EmbeddedEditor,
   type EditorConfig,
@@ -80,6 +81,12 @@ export default function EmbedView() {
       // R-195: 호스트(주문) 지정 책등 폭(mm). 유한수 ≥ 0 만 수용('0' → 0),
       // ''·NaN·음수 → undefined(비어있지 않은 무효값은 console.warn). snake `spine_width_mm` 허용.
       const spineWidthMm = parseSpineWidthMmParam(getParamCompat(searchParams, 'spineWidthMm'))
+      // R-196 host page limits (2026-09-29): 상품별 내지 쪽수 범위·배수(물리 페이지). 템플릿셋
+      // pageCountRange/pageStep 보다 우선. 정수만 수용(min/max 1~500, pageStep 2~500, pageStep '1'=부재),
+      // 무효값은 console.warn 후 undefined → 기존 동작. snake `page_count_min`·`page_count_max`·`page_step` 허용.
+      const pageCountMin = parsePageCountLimitParam(getParamCompat(searchParams, 'pageCountMin'), 'pageCountMin')
+      const pageCountMax = parsePageCountLimitParam(getParamCompat(searchParams, 'pageCountMax'), 'pageCountMax')
+      const pageStep = parsePageStepParam(getParamCompat(searchParams, 'pageStep'))
       // 표지 날개(2026-08-03): 날개는 종전까지 템플릿 spec 전용 정적값이라, 같은 표지 템플릿으로
       // 상품별 날개 유무를 가를 수 없었다. 호스트(bookmoa 관리자)가 상품 세팅을 주문 옵션으로
       // 전달하면 편집기가 반영한다. 미전달이면 템플릿 값 그대로 = 기존 동작 불변.
@@ -151,6 +158,7 @@ export default function EmbedView() {
         options: {
           pageCount, paperType, bindingType, size, quantity, title, productName,
           wingEnabled, wingWidthMm, contentPdfAttach, spineWidthMm,
+          pageCountMin, pageCountMax, pageStep,
         },
         // 레거시 dual-emit (정식 엔벨로프는 EmbeddedEditor 가 별도 발신)
         onReady: () => emitLegacy(parentOrigin, 'storige:ready', { templateSetId, sessionId }),

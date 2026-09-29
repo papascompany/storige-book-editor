@@ -123,3 +123,15 @@ describe('SidePanel — pageStep 단위 추가/삭제 (S8)', () => {
     expect(deletePageMock.mock.calls.map((c) => c[0])).toEqual(['c1'])
   })
 })
+
+// R-196 host page limits (2026-09-29): 로더가 호스트 병합 범위로 settings.page 를 넓히면
+// (단일 [16,300] + 비내지 1장 → {17,301}) 종전 기본 상한(99)을 넘어 추가할 수 있어야 한다.
+describe('SidePanel — 호스트 쪽수 한도 settings.page (R-196 회귀 가드)', () => {
+  it('page {min:17, max:301} 이면 150장에서 추가 허용', async () => {
+    wire({ canvasCount: 150, pageStep: null, min: 17, max: 301 })
+    await act(async () => {
+      fireEvent.click(screen.getByLabelText('페이지 추가'))
+    })
+    expect(addPageMock).toHaveBeenCalledTimes(1)
+  })
+})

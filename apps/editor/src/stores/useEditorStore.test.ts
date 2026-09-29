@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useEditorStore } from './useEditorStore';
-import { EditStatus, TemplateType } from '@storige/types';
+import { EditStatus, TemplateType, BindingType } from '@storige/types';
 import type { EditSession, EditPage } from '@storige/types';
 
 // Mock localStorage
@@ -708,6 +708,57 @@ describe('useEditorStore', () => {
           expect(useEditorStore.getState().canDeletePage('s-0')).toBe(false);
           useEditorStore.getState().setPages(mkSpreadInner(3, false));
           expect(useEditorStore.getState().canDeletePage('s-0')).toBe(true);
+        });
+      });
+
+      // R-196 host page limits (2026-09-29): 로더가 호스트 병합 범위(예: [16,300])를 pageCountRange 에
+      // 넣었을 때 스토어 게이트가 그대로 따르고, 제본 min/max·pageStep 이 계속 위에 얹히는지 고정한다.
+      describe('호스트 쪽수 한도 병합 범위 (R-196 회귀 가드)', () => {
+        const setupHost = (overrides: Record<string, unknown> = {}) =>
+          useEditorStore.setState({
+            pagesPerCanvas: 2,
+            pageStepBasis: INNER_SPREAD,
+            canAddPage: true,
+            pageCountRange: [16, 300],
+            bindingType: null,
+            pageStep: null,
+            ...overrides,
+          });
+
+        it('[16,300] + 펼침면(2): 100p 를 넘어 추가 가능, 300p 에서 차단', () => {
+          setupHost();
+          useEditorStore.getState().setPages(mkSpreadInner(51, false)); // 102p
+          expect(useEditorStore.getState().canAddMorePages()).toBe(true); // → 104p
+          useEditorStore.getState().setPages(mkSpreadInner(149, false)); // 298p
+          expect(useEditorStore.getState().canAddMorePages()).toBe(true); // → 300p
+          useEditorStore.getState().setPages(mkSpreadInner(150, false)); // 300p
+          expect(useEditorStore.getState().canAddMorePages()).toBe(false);
+        });
+
+        it('SADDLE: [16,300] 이어도 제본 최대 64p 에서 추가 차단', () => {
+          setupHost({ bindingType: BindingType.SADDLE });
+          useEditorStore.getState().setPages(mkSpreadInner(31, false)); // 62p
+          expect(useEditorStore.getState().canAddMorePages()).toBe(true);
+          useEditorStore.getState().setPages(mkSpreadInner(32, false)); // 64p
+          expect(useEditorStore.getState().canAddMorePages()).toBe(false);
+        });
+
+        it('PERFECT: [16,300] 이어도 제본 최소 32p 미만으로 삭제 차단', () => {
+          setupHost({ bindingType: BindingType.PERFECT });
+          useEditorStore.getState().setPages(mkSpreadInner(16, false)); // 32p
+          expect(useEditorStore.getState().canDeletePage('s-5')).toBe(false); // → 30p
+          useEditorStore.getState().setPages(mkSpreadInner(17, false)); // 34p
+          expect(useEditorStore.getState().canDeletePage('s-5')).toBe(true); // → 32p
+        });
+
+        it('pageStep=4: 단위 추가가 최대 경계를 넘으면 차단', () => {
+          setupHost({ pageCountRange: [16, 298], pageStep: 4 });
+          useEditorStore.getState().setPages(mkSpreadInner(148, false)); // 296p, 단위 2장(4p) → 300p
+          expect(useEditorStore.getState().getPageAddUnit()).toBe(2);
+          expect(useEditorStore.getState().canAddMorePages()).toBe(false);
+          // 같은 상태에서 단위가 없으면 1장(2p) 추가로 298p — 허용(단위가 차단의 원인임을 대조)
+          useEditorStore.setState({ pageStep: null });
+          expect(useEditorStore.getState().canAddMorePages()).toBe(true);
         });
       });
 

@@ -79,6 +79,21 @@ export interface EmbedUrlParams {
   pageCount?: number;
   paperType?: string;
   bindingType?: string;
+  /**
+   * 상품별 내지 쪽수 한도 — `pageCountMin`·`pageCountMax`·`pageStep` (2026-09-29, ADDITIVE).
+   *
+   * - 모든 값은 **물리 내지 쪽수** 기준이며, 유효하면 템플릿셋 `pageCountRange`·`pageStep` 보다 우선한다.
+   * - 제본 방식별 최소·최대 쪽수(binding min/max)는 호스트 값보다 좁으면 계속 적용된다.
+   * - `pageCountMin`·`pageCountMax`: 정수 1~500 (펼침면 2-up 내지 세트는 400 이하).
+   * - `pageStep`: 정수 2 이상, 0부터 센 배수 조건(2 = 짝수, 4 = 4의 배수).
+   *   `pageCountMin % pageStep === 0` 일 때만 보낸다.
+   * - 무효값은 편집기가 `console.warn` 후 무시한다. **SDK 는 검증하지 않고 그대로 싣는다.**
+   * - 생략하면 템플릿셋 동작 그대로다(URL 도 기존과 바이트 동일).
+   * - 재편집(`sessionId`)에서는 선택 — 편집기가 세션 생성 시 기록된 값으로 폴백한다.
+   */
+  pageCountMin?: number;
+  pageCountMax?: number;
+  pageStep?: number;
   quantity?: number;
   productId?: string;
   productName?: string;
@@ -178,6 +193,9 @@ export function buildEmbedUrl(options: BuildEmbedUrlOptions): string {
     ['pageCount', params.pageCount],
     ['paperType', params.paperType],
     ['bindingType', params.bindingType],
+    ['pageCountMin', params.pageCountMin],
+    ['pageCountMax', params.pageCountMax],
+    ['pageStep', params.pageStep],
     ['quantity', params.quantity],
     ['productId', params.productId],
     ['productName', params.productName],

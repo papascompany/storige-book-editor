@@ -384,6 +384,64 @@ describe('buildEmbedUrl — parentOrigin 강제', () => {
     expect(url.searchParams.has('refreshToken')).toBe(false);
   });
 
+  // R-196 host page limits (2026-09-29) — 상품별 쪽수 한도는 선택·ADDITIVE.
+  it('pageCountMin·pageCountMax·pageStep 을 camelCase 로 싣는다', () => {
+    const url = new URL(
+      buildEmbedUrl({
+        ...base,
+        params: {
+          token: 'jwt',
+          templateSetId: 'TS_8x8',
+          pageCountMin: 16,
+          pageCountMax: 300,
+          pageStep: 2,
+        },
+      }),
+    );
+    expect(url.searchParams.get('pageCountMin')).toBe('16');
+    expect(url.searchParams.get('pageCountMax')).toBe('300');
+    expect(url.searchParams.get('pageStep')).toBe('2');
+  });
+
+  it('쪽수 한도를 생략하면 키가 없고 URL 이 기존과 바이트 동일하다', () => {
+    const built = buildEmbedUrl({
+      ...base,
+      params: {
+        token: 'jwt',
+        templateSetId: 'TS_8x8',
+        pageCount: 250,
+        bindingType: 'perfect',
+      },
+    });
+    const url = new URL(built);
+    for (const key of ['pageCountMin', 'pageCountMax', 'pageStep']) {
+      expect(url.searchParams.has(key)).toBe(false);
+    }
+    expect(url.toString()).toBe(
+      'https://editor.storige.test/embed?token=jwt&templateSetId=TS_8x8' +
+        '&pageCount=250&bindingType=perfect' +
+        '&parentOrigin=https%3A%2F%2Fshop.partner.test',
+    );
+  });
+
+  it('쪽수 한도 0 도 그대로 직렬화한다(SDK 는 검증하지 않음 — 편집기가 무시)', () => {
+    const url = new URL(
+      buildEmbedUrl({
+        ...base,
+        params: {
+          token: 'jwt',
+          templateSetId: 'TS_8x8',
+          pageCountMin: 0,
+          pageCountMax: 0,
+          pageStep: 0,
+        },
+      }),
+    );
+    expect(url.searchParams.get('pageCountMin')).toBe('0');
+    expect(url.searchParams.get('pageCountMax')).toBe('0');
+    expect(url.searchParams.get('pageStep')).toBe('0');
+  });
+
   it('normalizeOrigin 은 후행 슬래시를 정규화한다', () => {
     expect(normalizeOrigin('x', 'https://a.test/')).toBe('https://a.test');
     expect(normalizeOrigin('x', 'https://a.test:8443')).toBe(

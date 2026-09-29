@@ -781,6 +781,9 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 | `pageCount`, `paperType`, `bindingType`, `quantity` | 선택 | 도출 | 세션 metadata orderOptions 우선, spine 폴백 |
 | `wingEnabled`, `wingWidthMm` | 선택 | 도출 | **표지 날개**(2026-08-03 신설). `wingEnabled=1|true`, 폭은 한 쪽 mm. 미전달 시 **템플릿 spec 값** 사용 |
 | `spineWidthMm` | 선택 | 도출 | **주문 책등 폭 mm**(2026-09-28 신설, `spine_width_mm` 허용). 0 이상 유한수만 인정(음수·NaN·빈값 = 미전달). 규칙은 아래 **호스트 책등 규칙** |
+| `pageCountMin` | 선택 | 도출 | **상품별 내지 최소 쪽수**(2026-09-29 신설, `page_count_min` 허용). 정수 1~500. 템플릿셋 `pageCountRange` 최소보다 우선 — 아래 **상품별 쪽수 범위·배수** |
+| `pageCountMax` | 선택 | 도출 | **상품별 내지 최대 쪽수**(2026-09-29, `page_count_max`). 정수 1~500(펼침면 내지 세트는 400 이하). 템플릿셋 최대보다 우선. 상한 없는 상품은 `500` |
+| `pageStep` | 선택 | 도출 | **내지 쪽수 배수**(2026-09-29, `page_step`). 정수 2~500, 0부터 센 배수(2=짝수, 4=4의 배수). 템플릿셋 `pageStep`보다 우선. `pageCountMin` 이 이 값의 배수일 때만 보내세요 |
 | `productId`, `productName`, `title`, `width`, `height` | 선택 | — | 메타 |
 | `coverFileId`, `contentFileId` | 선택 | — | 기존 파일 연결 |
 | `callbackUrl`, `apiBaseUrl` | 선택 | — | — |
@@ -788,6 +791,16 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 | `allowSampleFallback` | 선택 | — | `1` 또는 DEV에서만 sample 폴백 |
 
 > 프로덕션에서 템플릿셋 로드 실패 시 `editor.error TEMPLATE_SET_NOT_FOUND` 를 발신합니다.
+> **상품별 쪽수 범위·배수 (2026-09-29, ADDITIVE)** — `pageCountMin`·`pageCountMax`·`pageStep` 은 모두 선택이며, 보내지 않으면 템플릿셋 `pageCountRange`·`pageStep` 을 그대로 씁니다(종전과 동일).
+> - 값은 **물리 내지 쪽수**입니다(펼침면 내지 세트는 캔버스 1장 = 2쪽). 유효한 값은 호스트 `pageCount` 초기 보정, 내지 추가·삭제 상·하한(두 패널 모두), 편집완료 배수 검사에 템플릿셋 값 대신 적용됩니다.
+> - 제본별 최소·최대 쪽수(무선 최소 32쪽·중철 최대 64쪽 등)가 더 좁으면 계속 우선합니다. 단일(비스프레드) 편집 모드는 종전처럼 제본 제약을 적용하지 않습니다.
+> - **min 과 max 를 함께 보내세요.** 한쪽만 보내면 다른 쪽은 템플릿셋 값(현재 대부분 최대 100)을 씁니다. 상한이 없는 상품은 `pageCountMax=500`.
+> - `pageStep` 은 0부터 센 배수 조건입니다. `pageCountMin` 이 그 배수가 아니거나 범위 안에 배수가 없으면 무시됩니다. 표지 등 내지가 아닌 캔버스가 있는 단일 편집 템플릿에서도 무시되고 템플릿셋 값을 씁니다. `pageStep=1` 은 제약 없음으로 보고 조용히 무시합니다.
+> - 무효값(정수 아님·1 미만·500 초과·`pageCountMin` > `pageCountMax`)은 편집기가 무시하고 브라우저 콘솔 경고만 남깁니다 — 진입은 막히지 않습니다. 펼침면 내지 세트의 최대는 400쪽입니다.
+> - 첨부 PDF 표시전용(underlay) 모드는 종전처럼 쪽수 범위를 적용하지 않습니다(첨부 PDF 쪽수가 기준). 호스트 `pageStep` 이 템플릿셋과 다르면 템플릿셋 `padToPageStep` 자동 채움은 꺼지고 편집완료 배수 안내가 대신 표시됩니다.
+> - 신규 세션을 만들 때 유효한 값이 `metadata.orderOptions` 에 기록되어, `/embed?sessionId=` 단독 재편집에서도 복원됩니다(URL 값이 있으면 키별로 URL 우선). 이 기능 이전에 만든 세션은 템플릿셋 값을 씁니다.
+> - 쪽수 범위가 적용된 세션은 재진입 시 **저장된 쪽수를 그대로 복원**합니다(URL `pageCount` 가 더 작아도 줄이지 않고, 너무 큰 값은 최대값으로 제한).
+
 > **`paperType`·`bindingType` 의 `'-'`·공백은 미전달로 취급합니다(2026-09-28).**
 >
 > **호스트 책등 규칙(`spineWidthMm`, 2026-09-28):** 표지 모드(`templateDetails[].spreadConfig.conversionMode ?? 'full'`)가 `full`·`flat-spine` 인 스프레드 표지에만 적용되고, `flat-spread`(책등 고정)·내지 전용 펼침면·낱장 세트에서는 무시됩니다.

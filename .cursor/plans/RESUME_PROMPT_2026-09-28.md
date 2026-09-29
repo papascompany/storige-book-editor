@@ -155,7 +155,9 @@ Storige 편집기 개발을 이어서 진행합니다. bookmoa·printy 파트너
   - 검증: api 84/1199, worker 23/661, editor 76/909, sdk 12/338, tsc 0(api·worker·editor·admin·sdk). 배포 순서: worker → editor → api(+nginx). 롤백: 단위별 이전 이미지/Vercel promote.
   - 후속(설계 권고, 미적용): 게스트 읽기 경로 토큰 검증 → 회원 경로 읽기 강화(순서 중요) · 운영자 재편집 경로(오너 결정) · 파트너 결제 후 orderSeqno 보존 · 100p presigned complete 의 site 스탬프(오너 승인) · 바깥 init catch AxiosError 정규화 · 게스트 완료 토스트 문구.
 - **오너 결정 대기(09-29 추가)**: 운영자(관리자) 재편집 경로(bookmoa·printy 모두 보유, 현재 forbidden 정지) · 100p presigned `/files/:id/complete` site 스탬프 · `SPREAD_SNAPSHOT_HARD_FAIL` 승격 전 호스트 고정 책등 규칙
-- **bookmoa 요청(09-29, 소켓 5179 — 세션 id 동일)**: `/embed` 에 상품별 pageCountMin/Max(/pageStep) 파라미터 요청(현 4세트 a2cc2939·e66588b2·f0335fda·83e6ec80 = [10,100], 상품은 16~300/500p). 사실 회신 완료(현재 미지원·기술적으로 가능·대안은 세트 범위 확대). **오너 결정 대기.**
+- **bookmoa 요청(09-29, 소켓 5179 — 세션 id 동일)**: `/embed` 에 상품별 pageCountMin/Max(/pageStep) 파라미터 요청(현 4세트 a2cc2939·e66588b2·f0335fda·83e6ec80 = [10,100], 상품은 16~300/500p). **오너 결정: (1) 호스트 파라미터 방식** → 워크플로 `wf_eabe3713-864`(11 에이전트: 접점 매핑 → 설계·비판 2·수정 → editor·sdk 2레인 → 2렌즈 리뷰, 전부 pass·minor) + 통합 시 재진입 요청값 상한 클램프 보강(저장 쪽수는 보존).
+  - 계약: `pageCountMin`·`pageCountMax`(1~500, 펼침면 내지 400)·`pageStep`(2~500, 0부터 배수, min 이 배수 아니면 무시) — 템플릿셋 값보다 우선, 제본 min/max 계속 적용, 무효값 console.warn 무시, 신규 세션 orderOptions 기록 → 재편집 폴백, 범위 적용 세션은 재진입 시 저장 쪽수 보존. 미전달 시 동작 불변. 순수 헬퍼 `apps/editor/src/utils/hostPageLimits.ts`. SDK `buildEmbedUrl` 직렬화.
+  - 검증: editor 77/953, sdk 12/341, tsc 0. 로더 통합(실브라우저) QA 는 미실시 — 파트너 적용 시 첫 실편집으로 확인.
 - **CTO 점검 메모(09-29)**
   - 운영 worker 실측: `WORKER_LIGHTWEIGHT_VALIDATION`·`WORKER_LIGHTWEIGHT_SYNTHESIS`·`WORKER_CROP_MARK_VALIDATION`·`CUTOUT_ENABLED` = true(.env), `PRINT_NORMALIZE` = false. compose 기본값은 전부 false → .env 누락 재배포 시 조용히 OFF 되는 위험.
   - S7 정정: worker `handleSpreadSynthesis` 의 스냅샷 하드 검증은 `createSpreadSynthesisJob`(컨트롤러 호출 0) 경로 전용 → 파트너 합성(compose-mixed·synthesize/external)은 막지 않는다. 실영향은 SOFT `SPINE_MISSING` 뿐.

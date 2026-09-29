@@ -27,7 +27,7 @@ import Editor, { ServicePlugin, SvgUtils, TemplatePlugin, mmToPxDisplay, compute
 import { contentsApi, storageApi, templateSetsApi, templatesApi } from '@/api'
 import { createCanvas } from '@/utils/createCanvas'
 import { recalculateSpineWidth, initSpineConfig } from '@/utils/spineCalculator'
-import { BindingType } from '@storige/types'
+import { BindingType, BINDING_CONSTRAINTS } from '@storige/types'
 
 /** A13: 제본 코드 문자열 → BindingType(가드 적용 대상). 미지의 값/미설정은 null(=제약 없음). */
 function toBindingType(v?: string | null): BindingType | null {
@@ -41,7 +41,14 @@ import {
 } from '@/utils/photobookSpread'
 import { resolveAssetUrl } from '@/utils/resolveAssetUrl'
 import { UNDERLAY_MAX_PAGES } from '@/utils/contentPdfGuide'
-import { normalizePageStep } from '@/utils/pageStep'
+import {
+  SPREAD_INNER_HOST_MAX,
+  hasHostPageCountLimit,
+  mergePageCountRange,
+  resolveSeedPageCount,
+  resolveStorePageLimits,
+  settingsPageBounds,
+} from '@/utils/hostPageLimits'
 import { Sentry } from '@/lib/sentry'
 import type {
   EditorContent,
@@ -103,6 +110,20 @@ export interface TemplateSetBasedSetupConfig {
    * 낱장(non-spread) 세트 경로에서는 미사용 — 기존 동작 불변.
    */
   restoredInnerCanvasCount?: number
+  /**
+   * R-196 host page limits (2026-09-29): 호스트(상품) 최소 내지 쪽수(물리 페이지, 1~500).
+   * embed 가 resolveHostPageLimits 로 검증·해석한 값만 전달한다. 템플릿셋 pageCountRange 최소보다 우선.
+   * pageCountMin/Max 중 하나라도 있으면 재진입 시드는 max(pageCount, 복원 내지 수) — 범위 클램프 없음.
+   * 미전달이면 기존 동작 불변. underlay 경로·펼침면 복원 분기에는 적용하지 않는다.
+   */
+  pageCountMin?: number
+  /** R-196: 호스트 최대 내지 쪽수(물리 페이지, 1~500 — 펼침면 내지 세트는 400 으로 제한). */
+  pageCountMax?: number
+  /**
+   * R-196: 호스트 내지 쪽수 배수(0부터 센 N의 배수, ≥ 2). 템플릿셋 pageStep 보다 우선하며, 다르면
+   * padToPageStep 을 끈다. 단일 모드에서 템플릿에 내지가 아닌 캔버스가 있으면 무시(템플릿 단위 적용).
+   */
+  pageStep?: number
 }
 
 // 사용 케이스별 설정 타입 매핑
@@ -1097,6 +1118,12 @@ export function useEditorContents(): UseEditorContentsReturn {
       // 3. 페이지수 조정 (pageCount 파라미터가 있는 경우)
       let templateDetails = [...originalTemplateDetails]
       const requestedPageCount = config.pageCount
+      // R-196 host page limits (2026-09-29): 호스트 쪽수 한도(min/max) 적용 여부와 비내지 캔버스 수.
+      const templateRange = (templateSet as { pageCountRange?: number[] }).pageCountRange
+      const hostLimitsActive = hasHostPageCountLimit(config)
+      const nonInnerCanvasCount =
+        originalTemplateDetails.length -
+        originalTemplateDetails.filter((t) => (t as { type?: string }).type === 'page').length
 
       if (requestedPageCount !== undefined) {
         // 내지(page) 템플릿만 필터링 (API는 type 필드 사용)
@@ -1107,20 +1134,30 @@ export function useEditorContents(): UseEditorContentsReturn {
 
         // 방어적 클램프: 호스트가 placeholder/범위 밖 pageCount(예: 1)를 보내도
         // throw 대신 유효 범위로 보정한다 (편집기 진입 보장). 주문 페이지수 불일치는 워커/주문 검증에서 처리.
-        let effectivePageCount = requestedPageCount
-        const pageCountRange = (templateSet as any).pageCountRange || []
-        if (pageCountRange.length > 0) {
-          const minPages = Math.min(...pageCountRange)
-          const maxPages = Math.max(...pageCountRange)
-          if (effectivePageCount < minPages) {
-            console.warn(`[EditorContents] pageCount ${effectivePageCount} < 최소 ${minPages} — 템플릿 최소로 보정`)
-            effectivePageCount = minPages
-          }
-          if (effectivePageCount > maxPages) {
-            console.warn(`[EditorContents] pageCount ${effectivePageCount} > 최대 ${maxPages} — 템플릿 최대로 보정`)
-            effectivePageCount = maxPages
-          }
+        // R-196 host page limits (2026-09-29): 호스트 min/max 가 있으면 병합 범위로 클램프하고,
+        // 재진입이면 저장 내지 수를 그대로 시드(클램프 없음). 없으면 종전 인라인 클램프와 동일.
+        // embed.tsx 의 restoredInnerCanvasCount = canvasData.length − 1 (첫 캔버스만 뺀 값)이라
+        // 단일 모드 복원 내지 수 = restoredInnerCanvasCount + 1 − 비내지 캔버스 수.
+        const restoredInner =
+          hostLimitsActive &&
+          typeof config.restoredInnerCanvasCount === 'number' &&
+          config.restoredInnerCanvasCount > 0
+            ? Math.max(0, config.restoredInnerCanvasCount + 1 - nonInnerCanvasCount)
+            : undefined
+        const seed = resolveSeedPageCount({
+          requested: requestedPageCount,
+          templateRange,
+          limits: config,
+          restoredInnerCount: restoredInner,
+        })
+        if (seed.adjusted === 'min') {
+          console.warn(`[EditorContents] pageCount ${requestedPageCount} < 최소 ${seed.bound} — 템플릿 최소로 보정`)
+        } else if (seed.adjusted === 'max') {
+          console.warn(`[EditorContents] pageCount ${requestedPageCount} > 최대 ${seed.bound} — 템플릿 최대로 보정`)
+        } else if (seed.adjusted === 'restore') {
+          console.warn(`[EditorContents] pageCount ${requestedPageCount} < 복원 내지수 ${seed.bound} — 저장 쪽수로 시드(R-196)`)
         }
+        let effectivePageCount = seed.count
         // 템플릿 실제 내지수보다 적으면 내지수로 보정 (내지 삭제 불가)
         if (effectivePageCount < currentPageCount) {
           console.warn(`[EditorContents] pageCount ${effectivePageCount} < 템플릿 내지수 ${currentPageCount} — 내지수로 보정`)
@@ -1151,6 +1188,18 @@ export function useEditorContents(): UseEditorContentsReturn {
         },
         unit: 'mm',
       })
+
+      // R-196 host page limits (2026-09-29): SidePanel '페이지' 섹션 한도(전체 캔버스 수 단위)를
+      // 병합 범위로 설정. updateSettings 는 page 를 통째로 교체하므로 기존 page 를 펼쳐 병합한다.
+      if (hostLimitsActive) {
+        const merged = mergePageCountRange(templateRange, config)
+        if (merged) {
+          const page = useSettingsStore.getState().currentSettings.page
+          await useSettingsStore.getState().updateSettings({
+            page: { ...page, ...settingsPageBounds({ range: merged, per: 1, anchorCanvases: nonInnerCanvasCount }) },
+          })
+        }
+      }
 
       // 3. 템플릿 메타데이터를 설정 스토어에 저장 (페이지 이름 표시용)
        
@@ -1498,9 +1547,24 @@ export function useEditorContents(): UseEditorContentsReturn {
       // 단일 모드에서도 책자 네비를 위해 pages 정보 채움
       // S8: 단일 모드도 pageStep 적용 — SidePanel '페이지' 섹션이 비-spread 추가/삭제 진입점이고
       //     호스트 pageCount 시드로 홀수가 될 수 있다. 산정 기준 = 캔버스 수(완료 payload pageCount 와 동일).
+      // R-196 host page limits (2026-09-29): 호스트 pageStep 우선. 단, 단일 모드 단위 산정 기준은 전체
+      //   캔버스 수라 비내지 캔버스(표지 등)가 있으면 호스트 단위를 무시하고 템플릿 단위를 쓴다.
+      //   단일 모드는 pageCountRange 를 스토어에 넣지 않는다(종전 동작 유지 — 한도는 settings.page).
+      if (nonInnerCanvasCount > 0 && config.pageStep !== undefined) {
+        console.warn(
+          `[hostPageLimits] 단일 모드 템플릿에 내지가 아닌 캔버스 ${nonInnerCanvasCount}개 — 호스트 pageStep ${config.pageStep} 무시(템플릿셋 단위 적용)`,
+        )
+      }
+      const singleStoreLimits = resolveStorePageLimits({
+        templateRange,
+        templatePageStep: (templateSet as { pageStep?: unknown }).pageStep,
+        templatePadToPageStep: (templateSet as { padToPageStep?: unknown }).padToPageStep,
+        limits: config,
+        ignoreHostStep: nonInnerCanvasCount > 0,
+      })
       useEditorStore.setState({
-        pageStep: normalizePageStep((templateSet as { pageStep?: unknown }).pageStep),
-        padToPageStep: (templateSet as { padToPageStep?: unknown }).padToPageStep === true,
+        pageStep: singleStoreLimits.pageStep,
+        padToPageStep: singleStoreLimits.padToPageStep,
         pageStepBasis: { isSpreadMode: false, regionScope: null },
       })
       try {
@@ -1782,6 +1846,8 @@ export function useEditorContents(): UseEditorContentsReturn {
       // 9. 페이지수 조정 (config.pageCount가 있는 경우)
       let adjustedPageTemplates = isInnerOnly ? pageTemplates.slice(1) : [...pageTemplates]
       const requestedPageCount = config.pageCount
+      // R-196 host page limits (2026-09-29): 호스트 쪽수 한도(min/max) 적용 여부.
+      const hostLimitsActive = hasHostPageCountLimit(config)
       // UNDERLAY_MAX_PAGES(=200, 워커 CONTENT_PDF_GUIDE_MAX_PAGES 정렬)는 contentPdfGuide 와 공유
       // — 즉시 앉히기(ensureUnderlayPages)와 로드 경로가 같은 상한을 쓰도록 단일 선언(2026-08-13).
 
@@ -1813,20 +1879,30 @@ export function useEditorContents(): UseEditorContentsReturn {
         // 방어적 클램프: 호스트가 placeholder/범위 밖 pageCount(예: 1)를 보내도
         // throw 대신 유효 범위로 보정한다 (편집기 진입 보장 — 게스트 폴백과 동일 철학).
         // 실제 주문 페이지수 불일치는 워커/주문 검증에서 별도로 잡힌다.
-        let effectivePageCount = requestedPageCount
-        const pageCountRange = (templateSet as any).pageCountRange || []
-        if (pageCountRange.length > 0) {
-          const minPages = Math.min(...pageCountRange)
-          const maxPages = Math.max(...pageCountRange)
-          if (effectivePageCount < minPages) {
-            console.warn(`[EditorContents:Spread] pageCount ${effectivePageCount} < 최소 ${minPages} — 템플릿 최소로 보정`)
-            effectivePageCount = minPages
-          }
-          if (effectivePageCount > maxPages) {
-            console.warn(`[EditorContents:Spread] pageCount ${effectivePageCount} > 최대 ${maxPages} — 템플릿 최대로 보정`)
-            effectivePageCount = maxPages
-          }
+        // R-196 host page limits (2026-09-29): 호스트 min/max 가 있으면 병합 범위로 클램프하고,
+        // 재진입이면 저장 내지 캔버스 수(canvasData.length − 1)를 그대로 시드(클램프 없음).
+        // 없으면 종전 인라인 클램프와 동일.
+        const restoredInner =
+          hostLimitsActive &&
+          typeof config.restoredInnerCanvasCount === 'number' &&
+          Number.isFinite(config.restoredInnerCanvasCount) &&
+          config.restoredInnerCanvasCount > 0
+            ? Math.floor(config.restoredInnerCanvasCount)
+            : undefined
+        const seed = resolveSeedPageCount({
+          requested: requestedPageCount,
+          templateRange: (templateSet as { pageCountRange?: number[] }).pageCountRange,
+          limits: config,
+          restoredInnerCount: restoredInner,
+        })
+        if (seed.adjusted === 'min') {
+          console.warn(`[EditorContents:Spread] pageCount ${requestedPageCount} < 최소 ${seed.bound} — 템플릿 최소로 보정`)
+        } else if (seed.adjusted === 'max') {
+          console.warn(`[EditorContents:Spread] pageCount ${requestedPageCount} > 최대 ${seed.bound} — 템플릿 최대로 보정`)
+        } else if (seed.adjusted === 'restore') {
+          console.warn(`[EditorContents:Spread] pageCount ${requestedPageCount} < 복원 내지수 ${seed.bound} — 저장 쪽수로 시드(R-196)`)
         }
+        let effectivePageCount = seed.count
         // 템플릿 실제 내지수보다 적으면 내지수로 보정 (내지 삭제 불가)
         if (effectivePageCount < currentPageCount) {
           console.warn(`[EditorContents:Spread] pageCount ${effectivePageCount} < 템플릿 내지수 ${currentPageCount} — 내지수로 보정`)
@@ -1874,7 +1950,14 @@ export function useEditorContents(): UseEditorContentsReturn {
           adjustedPageTemplates = isInnerOnly ? expanded.slice(1) : expanded
           console.log(`[EditorContents:Spread] 내지펼침면 ${spreadCount}장 (복원 캔버스 실측 ${restoredCanvasCount}, ${innerRepeat})`)
         } else {
-          const pcRange: number[] = (templateSet as { pageCountRange?: number[] }).pageCountRange || []
+          // R-196 host page limits (2026-09-29): 호스트 min/max 병합(펼침면 내지 용량 상한 400p).
+          // 호스트 값이 없으면 템플릿 범위 참조 그대로 — 종전과 동일.
+          const pcRange: number[] =
+            mergePageCountRange(
+              (templateSet as { pageCountRange?: number[] }).pageCountRange,
+              config,
+              SPREAD_INNER_HOST_MAX,
+            ) || []
           let physicalPages = config.pageCount ?? (pcRange.length ? Math.min(...pcRange) : assembled.innerSeeds.length * 2)
           if (pcRange.length) {
             physicalPages = Math.max(Math.min(...pcRange), Math.min(Math.max(...pcRange), physicalPages))
@@ -2002,25 +2085,51 @@ export function useEditorContents(): UseEditorContentsReturn {
       const editorStore = useEditorStore.getState()
       editorStore.setPages(editorPages)
 
+      // R-196 host page limits (2026-09-29): 호스트 min/max/pageStep 이 템플릿셋 값보다 우선
+      // (펼침면 내지는 용량 상한 400p). 호스트 값이 없으면 종전 식과 동일한 값을 돌려준다.
+      const spreadStoreLimits = resolveStorePageLimits({
+        templateRange: (templateSet as { pageCountRange?: number[] }).pageCountRange,
+        templatePageStep: (templateSet as { pageStep?: unknown }).pageStep,
+        templatePadToPageStep: (templateSet as { padToPageStep?: unknown }).padToPageStep,
+        limits: config,
+        capacityMax: isSpreadInners ? SPREAD_INNER_HOST_MAX : undefined,
+      })
       // canAddPage, pageCountRange도 설정 + A13 제본 가드용 bindingType 주입(미설정/미지=null=제약없음)
       useEditorStore.setState({
         canAddPage: templateSet.canAddPage ?? true,
-        pageCountRange: templateSet.pageCountRange ?? [],
+        pageCountRange: spreadStoreLimits.pageCountRange,
         templateSetId: templateSet.id,
         templateSetName: templateSet.name,
         bindingType: toBindingType(config.bindingType),
         // 펼침면(2-up) 내지는 캔버스 1장 = 물리 2페이지. 페이지 상/하한 비교의 단위를 맞춘다.
         pagesPerCanvas: isSpreadInners ? 2 : 1,
         // S8: 내지 증감 단위(null=제약 없음). 추가/삭제 단위 + 편집완료 배수 가드에 사용.
-        pageStep: normalizePageStep((templateSet as { pageStep?: unknown }).pageStep),
+        pageStep: spreadStoreLimits.pageStep,
         // 첨부 내지 PDF 빈 페이지 배수 채움(opt-in) — ContentPdfAttachModal 이 소비.
-        padToPageStep: (templateSet as { padToPageStep?: unknown }).padToPageStep === true,
+        padToPageStep: spreadStoreLimits.padToPageStep,
         // S8: 단위 산정 기준 — 완료 가드(pageStepGuard)와 같은 소스(settings.spreadConfig.regionScope).
         pageStepBasis: {
           isSpreadMode: true,
           regionScope: useSettingsStore.getState().spreadConfig?.regionScope ?? null,
         },
       })
+
+      // R-196 host page limits (2026-09-29): 호스트 한도 세션은 SidePanel '페이지' 섹션 한도도
+      // 스토어 게이트와 같은 식(범위 ∩ 제본 min/max)으로 캔버스 단위 환산해 맞춘다 — 두 패널 불일치 방지.
+      if (hostLimitsActive) {
+        const s = useEditorStore.getState()
+        const bt = toBindingType(config.bindingType)
+        const bc = bt ? BINDING_CONSTRAINTS[bt] : undefined
+        const bounds = settingsPageBounds({
+          range: s.pageCountRange,
+          per: s.pagesPerCanvas || 1,
+          anchorCanvases: s.pageStepBasis.regionScope === 'inner' ? 0 : 1,
+          bindMin: bc?.minPages,
+          bindMax: bc?.maxPages,
+        })
+        const page = useSettingsStore.getState().currentSettings.page
+        await useSettingsStore.getState().updateSettings({ page: { ...page, ...bounds } })
+      }
 
       console.log(`[EditorContents:Spread] EditorStore pages set: ${editorPages.length} pages`)
 

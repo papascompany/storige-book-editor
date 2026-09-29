@@ -243,6 +243,8 @@ const editor = mountEditor({
   parentOrigin: 'https://app.example.com',   // 필수 — 누락·'*' 는 StorigeUsageError
   container: 'editor-root',
   params: { token, refreshToken, templateSetId: 'TS_8x8', orderSeqno: 12345 },
+  // 선택(2026-09-29): 상품별 내지 쪽수 범위·배수 — 템플릿셋 값보다 우선. SDK 는 값을 검증하지 않는다.
+  // params: { ..., pageCountMin: 16, pageCountMax: 300, pageStep: 2 },
   on: {
     complete(payload) {
       if (payload.needsAuth) return;         // 게스트 — guestAuthRequired 가 따로 온다

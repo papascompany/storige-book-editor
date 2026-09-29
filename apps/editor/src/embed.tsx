@@ -46,6 +46,7 @@ import {
   getAppliedSpineWidthMm,
   resolveEffectiveSpineOptions,
 } from './utils/hostSpine'
+import { resolveHostPageLimits } from './utils/hostPageLimits'
 import { computePdfPageOutputMm } from './utils/pdfPageSize'
 import {
   computeInnerContentSizeMm,
@@ -287,6 +288,25 @@ export interface EditorConfig {
      * flat-spread·내지 전용 펼침면·낱장(비스프레드) 세트에서는 무시된다.
      */
     spineWidthMm?: number
+    /**
+     * R-196 host page limits (2026-09-29): 상품별 내지 쪽수 한도 — 물리 내지 페이지 기준
+     * (펼침면 2-up 내지 세트는 캔버스 1장 = 2쪽).
+     *
+     * - 유효값은 템플릿셋 `pageCountRange` / `pageStep` 보다 우선한다(시드 보정, 추가/삭제 상·하한,
+     *   편집완료 배수 검사, 재진입 시드). 제본 방식 최소/최대 쪽수(BINDING_CONSTRAINTS)는 계속 적용된다.
+     * - pageCountMin / pageCountMax: 정수 1~500 (펼침면 내지 세트는 400 초과 시 400으로 낮춤).
+     * - pageStep: 정수 2~500, 0부터 센 N의 배수(2 = 짝수). pageCountMin 이 N의 배수가 아니거나
+     *   범위 안에 배수가 없으면 무시. 단일(비스프레드) 모드에서 템플릿에 내지가 아닌 캔버스(표지 등)가
+     *   있으면 무시하고 템플릿셋 값을 쓴다. 1 은 "제약 없음"(경고 없이 무시).
+     * - 무효값(정수 아님·범위 밖·min > max)은 console.warn 후 무시 — 진입은 막지 않는다.
+     * - 미전달이면 기존 동작 그대로. 신규 세션은 유효값을 metadata.orderOptions 에 기록해
+     *   `/embed?sessionId=` 단독 재편집에서 복원한다.
+     */
+    pageCountMin?: number
+    /** R-196: 상품별 내지 최대 쪽수(물리 페이지, 정수 1~500). 규약은 pageCountMin 참조. */
+    pageCountMax?: number
+    /** R-196: 상품별 내지 쪽수 배수(0부터 센 N의 배수, 정수 2~500). 규약은 pageCountMin 참조. */
+    pageStep?: number
     /** 종이 정보 */
     paper?: { type: string; weight: number }
     /**
@@ -1005,6 +1025,9 @@ function EmbeddedEditor({
               wingWidthMm: options?.wingWidthMm,
               // R-195: 주문 책등 폭 — 재편집(/embed?sessionId 단독) 사다리의 2순위 소스. 0 허용.
               spineWidthMm: asNonNegativeNumber(options?.spineWidthMm),
+              // R-196 host page limits (2026-09-29): 검증을 통과한 호스트 쪽수 한도만 기록 —
+              // 재편집(/embed?sessionId 단독) 사다리의 2순위 소스. 미전달이면 {} → 메타데이터 불변.
+              ...resolveHostPageLimits(options, undefined),
               productId,
               orderSeqno,
             }).filter(([, value]) => value !== undefined)
@@ -1250,6 +1273,9 @@ function EmbeddedEditor({
               : undefined
         const effectiveWingWidthMm =
           asPositiveNumber(options?.wingWidthMm) ?? asPositiveNumber(sessionOrderOptions.wingWidthMm)
+        // R-196 host page limits (2026-09-29): 키별 props/URL > metadata.orderOptions > 템플릿셋.
+        // 한도가 있으면 로더가 재진입 시드를 저장 쪽수 그대로 두고(범위 클램프 없음) 추가/삭제 한도를 적용한다.
+        const effectivePageLimits = resolveHostPageLimits(options, sessionMeta)
 
         console.log('[EmbeddedEditor] Loading template set with options:', {
           templateSetId: effectiveTemplateSetId,
@@ -1258,6 +1284,7 @@ function EmbeddedEditor({
           paperType: effectivePaperType,
           bindingType: effectiveBindingType,
           spineWidthMm: effectiveSpineWidthMm,
+          pageLimits: effectivePageLimits,
           optionsSource:
             asPositiveNumber(options?.pageCount) != null
               ? 'props/url'
@@ -1279,6 +1306,7 @@ function EmbeddedEditor({
             wingEnabled: effectiveWingEnabled,
             wingWidthMm: effectiveWingWidthMm,
             spineWidthMm: effectiveSpineWidthMm,
+            ...effectivePageLimits,
             // R2 (2026-08-18): 펼침면 세트 재진입 — canvasData 실측 캔버스 수를 시드에 그대로
             // 전달한다. 종전엔 이 값이 pageCount(물리 페이지 수 시맨틱)로만 흘러 펼침면 세트에서
             // spreadCountFromPageCount 반감 + pageCountRange 클램프를 거쳐 시드가 저장본보다
@@ -1309,6 +1337,7 @@ function EmbeddedEditor({
             wingEnabled: effectiveWingEnabled,
             wingWidthMm: effectiveWingWidthMm,
             spineWidthMm: effectiveSpineWidthMm,
+            ...effectivePageLimits,
           })
         }
 
