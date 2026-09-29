@@ -481,9 +481,14 @@ export class FilesService {
   }
 
   /**
-   * 소프트삭제 복구 (48h 복구창 내) — deleted_at NULL 로 되돌림.
+   * 소프트삭제 복구 (48h 복구창 내) — deleted_at 과 expires_at 을 함께 NULL 로 되돌림 (O18).
+   * expires_at 을 남기면 과거 시각인 경우 다음 orphan/보존 sweep 이 즉시 재소프트삭제하므로
+   * 복구 = 영구보관 상태로 되돌림. 보존 만료가 다시 필요하면 setExpiry 로 재설정한다.
+   * 단일 UPDATE 로 두 컬럼을 원자적으로 갱신(UpdateQueryBuilder 는 soft-delete 필터를 걸지 않음).
    * withDeleted 로 조회(소프트삭제 행은 기본 findById 가 못 찾음).
-   * 이미 purge(hardDelete)된 경우 NotFoundException. 이미 활성이면 멱등 반환.
+   * 이미 purge(hardDelete)된 경우 NotFoundException(FILE_NOT_FOUND).
+   * 이미 활성이면 멱등 반환 — 활성 파일에 예약된 expires_at(만료 예약)은 건드리지 않는다
+   * (restore 는 삭제된 파일 전용; 예약 해제는 setExpiry(null) 사용).
    * admin 라우트 노출은 P1.
    * @returns 복구된 엔티티
    */
@@ -502,7 +507,8 @@ export class FilesService {
     if (!file.deletedAt) {
       return file; // 이미 활성 — 멱등
     }
-    await this.fileRepository.restore(id); // TypeORM: deleted_at = NULL
+    // deleted_at + expires_at 동시 해제 (O18) — expires_at 잔존 시 sweep 재삭제 방지
+    await this.fileRepository.update({ id }, { deletedAt: null, expiresAt: null });
     return this.findById(id);
   }
 

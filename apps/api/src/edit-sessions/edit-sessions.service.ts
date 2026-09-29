@@ -1563,15 +1563,24 @@ export class EditSessionsService {
         }
       }
 
+      // 잡 테넌트 스탬프 = 세션 site(NULL 세션은 종전대로 NULL). site default 머지는
+      // 건너뛴다 — orderOptions 는 스탬프 도입 전과 동일해야 검증 결과가 바뀌지 않는다.
+      const validationJobSiteId = session.siteId ?? undefined;
+      const validationJobInternal = { skipSiteWorkerDefaults: true };
+
       // Create validation job for cover file
       if (session.coverFileId) {
         try {
-          const job = await this.workerJobsService.createValidationJob({
-            editSessionId: session.id,
-            fileId: session.coverFileId,
-            fileType: 'cover',
-            orderOptions: coverOrderOptions,
-          });
+          const job = await this.workerJobsService.createValidationJob(
+            {
+              editSessionId: session.id,
+              fileId: session.coverFileId,
+              fileType: 'cover',
+              orderOptions: coverOrderOptions,
+              siteId: validationJobSiteId,
+            },
+            validationJobInternal,
+          );
           this.logger.log(
             `Created validation job ${job.id} for cover file ${session.coverFileId}`,
           );
@@ -1585,12 +1594,16 @@ export class EditSessionsService {
       // Create validation job for content file
       if (session.contentFileId) {
         try {
-          const job = await this.workerJobsService.createValidationJob({
-            editSessionId: session.id,
-            fileId: session.contentFileId,
-            fileType: 'content',
-            orderOptions: contentOrderOptions,
-          });
+          const job = await this.workerJobsService.createValidationJob(
+            {
+              editSessionId: session.id,
+              fileId: session.contentFileId,
+              fileType: 'content',
+              orderOptions: contentOrderOptions,
+              siteId: validationJobSiteId,
+            },
+            validationJobInternal,
+          );
           this.logger.log(
             `Created validation job ${job.id} for content file ${session.contentFileId}`,
           );

@@ -194,7 +194,10 @@ export class PdfValidatorService {
         !this.isCoverSeparateLayout(options) &&
         (this.isCoverSpreadBinding(options) || this.hasSpineExpectation(options.orderOptions));
       if (!coverSpineAuthoritative) {
+        const frontSizeErrStart = errors.length;
         this.validatePageSize(widthMm, heightMm, options, errors, metadata);
+        // S6 후속: separate 표지 2쪽(뒤표지)도 동일 규칙으로 판형 검증(2쪽 있을 때만)
+        this.validateSeparateBackCoverSize(pages, frontSizeErrStart, options, errors, metadata);
       }
 
       // 6-b. C-2a: crop mark(재단 기하) 검증 — 이중 게이트(orderOptions.cropMarkEnabled
@@ -794,7 +797,10 @@ export class PdfValidatorService {
         !this.isCoverSeparateLayout(options) &&
         (this.isCoverSpreadBinding(options) || this.hasSpineExpectation(options.orderOptions));
       if (!coverSpineAuthoritative) {
+        const frontSizeErrStart = errors.length;
         this.validatePageSize(widthMm, heightMm, options, errors, metadata);
+        // S6 후속: OFF 와 동일 — 2쪽 치수는 qpdf/pdfinfo 페이지별 치수(상수메모리)에서 얻는다
+        this.validateSeparateBackCoverSize(pages, frontSizeErrStart, options, errors, metadata);
       }
       // C-2a: crop mark(재단 기하) 검증(경량 경로) — OFF 와 동일 게이트/위치(validatePageSize 직후).
       // 1차: qpdf 추출 박스. 비신뢰(pdfinfo 폴백·간접참조 미해석)면 pdf-lib 실페이지
@@ -1474,6 +1480,52 @@ export class PdfValidatorService {
    */
   private isCoverSeparateLayout(options: ValidationOptions): boolean {
     return options.fileType === 'cover' && options.orderOptions.coverLayout === 'separate';
+  }
+
+  /**
+   * S6 후속(2026-09-29): separate 표지의 2쪽(뒤표지) 판형 검증.
+   *
+   * - separate 표지이고 PDF 에 2쪽 이상일 때만 동작. 그 외(1쪽·비 separate)는 no-op
+   *   → 현행 결과 byte-identical. 쪽수 강제(2쪽 요구)는 하지 않는다.
+   * - 2쪽 치수를 validatePageSize 에 그대로 넣어 1쪽과 **동일 규칙·허용오차·코드
+   *   (SIZE_MISMATCH)·autoFixable/fixMethod** 로 판정한다(validatePageSize 본문 무접촉).
+   * - 뒤표지 판정은 metadata(hasBleed/bleedSize — 앞표지가 정본)를 바꾸지 않도록
+   *   사본 metadata 로 호출한다.
+   * - 어느 쪽이 틀렸는지 details.page(1-based, 프로젝트 관례)로 부가(additive):
+   *   앞표지 오류(frontErrStart 이후 SIZE_MISMATCH)=1, 뒤표지 오류=2. 뒤표지 메시지엔
+   *   '뒤표지(2쪽)' 접두를 붙인다. 3쪽 이상은 검사하지 않는다(앞/뒤 2쪽 계약).
+   */
+  private validateSeparateBackCoverSize(
+    pages: PDFPage[],
+    frontErrStart: number,
+    options: ValidationOptions,
+    errors: ValidationError[],
+    metadata: PdfMetadata,
+  ): void {
+    if (!this.isCoverSeparateLayout(options) || pages.length < 2) return;
+
+    for (let i = frontErrStart; i < errors.length; i++) {
+      if (errors[i].code === ErrorCode.SIZE_MISMATCH) {
+        errors[i].details = { ...errors[i].details, page: 1 };
+      }
+    }
+
+    const { width, height } = pages[1].getSize();
+    const backErrors: ValidationError[] = [];
+    this.validatePageSize(
+      width * 0.352778,
+      height * 0.352778,
+      options,
+      backErrors,
+      { ...metadata },
+    );
+    for (const e of backErrors) {
+      errors.push({
+        ...e,
+        message: `뒤표지(2쪽) ${e.message}`,
+        details: { ...e.details, page: 2 },
+      });
+    }
   }
 
   private isCoverSpreadBinding(options: ValidationOptions): boolean {

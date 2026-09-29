@@ -383,7 +383,18 @@ export class WorkerJobsService implements OnModuleInit {
   // Validation Jobs
   // ============================================================================
 
-  async createValidationJob(createValidationJobDto: CreateValidationJobDto): Promise<WorkerJob> {
+  /**
+   * @param internal 서버 내부 호출 전용 옵션 — 컨트롤러/공개 DTO 에 노출하지 않는다(파트너 계약 불변).
+   *   - skipSiteWorkerDefaults: `dto.siteId` 는 **잡 테넌트 스탬프(job.siteId)로만** 쓰고
+   *     site default 머지(mergeSiteWorkerDefaults)는 건너뛴다. 편집 세션 완료 검증 잡
+   *     (edit-sessions createValidationJobs)이 site 스탬프를 얻되, 워커로 가는/잡에 저장되는
+   *     orderOptions 를 스탬프 도입 전과 동일하게 유지하기 위한 것(검증 동작 불변).
+   *     미전달=기존 동작(dto.siteId 로 머지+스탬프).
+   */
+  async createValidationJob(
+    createValidationJobDto: CreateValidationJobDto,
+    internal?: { skipSiteWorkerDefaults?: boolean },
+  ): Promise<WorkerJob> {
     // fileId 또는 fileUrl 중 하나는 필수
     if (!createValidationJobDto.fileId && !createValidationJobDto.fileUrl) {
       throw new BadRequestException({
@@ -402,8 +413,9 @@ export class WorkerJobsService implements OnModuleInit {
     }
 
     // Phase B-2 — site default 머지 (호출자 명시값 보존)
+    //   skipSiteWorkerDefaults 면 siteId 없이 호출 → 얕은 복사만(스탬프 도입 전과 동일 결과).
     const orderOptions = await this.mergeSiteWorkerDefaults(
-      createValidationJobDto.siteId,
+      internal?.skipSiteWorkerDefaults ? undefined : createValidationJobDto.siteId,
       createValidationJobDto.orderOptions,
     );
 

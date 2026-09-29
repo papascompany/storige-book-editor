@@ -126,14 +126,16 @@ runOrSkip('S6 coverLayout=separate — 경량(ON) 경로', () => {
   const service = new PdfValidatorService();
   const tmpFiles: string[] = [];
 
-  const writePdf = async (wMm: number, hMm: number): Promise<string> => {
+  const writePdfPages = async (sizes: [number, number][]): Promise<string> => {
     const doc = await PDFDocument.create();
-    for (let i = 0; i < 2; i++) doc.addPage([wMm * 2.83465, hMm * 2.83465]);
+    for (const [wMm, hMm] of sizes) doc.addPage([wMm * 2.83465, hMm * 2.83465]);
     const p = path.join(os.tmpdir(), `s6_sep_${Date.now()}_${Math.random().toString(36).slice(2)}.pdf`);
     fs.writeFileSync(p, await doc.save());
     tmpFiles.push(p);
     return p;
   };
+  const writePdf = (wMm: number, hMm: number): Promise<string> =>
+    writePdfPages([[wMm, hMm], [wMm, hMm]]);
   const sepOpts = (): ValidationOptions => ({
     fileType: 'cover',
     orderOptions: {
@@ -165,6 +167,41 @@ runOrSkip('S6 coverLayout=separate — 경량(ON) 경로', () => {
     expect(codes).toContain('SIZE_MISMATCH');
     expect(codes).not.toContain('SPINE_SIZE_MISMATCH');
   });
+
+  // S6 후속: 경량 경로도 2쪽(뒤표지) 치수를 qpdf 페이지별 치수로 받아 동일 규칙 판정
+  it('뒤표지만 규격 불일치(216×303 + 200×280) → SIZE_MISMATCH(details.page=2)', async () => {
+    const r = await (service as any).validateLightweight(
+      await writePdfPages([[216, 303], [200, 280]]),
+      sepOpts(),
+    );
+    const sizeErrs = r.errors.filter((x: { code: string }) => x.code === 'SIZE_MISMATCH');
+    expect(sizeErrs).toHaveLength(1);
+    expect(sizeErrs[0].details.page).toBe(2);
+    expect(r.metadata.hasBleed).toBe(true);
+    expect(r.isValid).toBe(false);
+  });
+
+  // 파리티(OFF == ON): 뒤표지 판형 신규 분기 + 비 separate 회귀 잠금
+  const saddleOpts = (): ValidationOptions => ({
+    fileType: 'cover',
+    orderOptions: { size: { width: 210, height: 297 }, pages: 8, binding: 'saddle', bleed: 3 },
+  });
+  const parityCases: { name: string; sizes: [number, number][]; opts: () => ValidationOptions }[] = [
+    { name: 'separate 앞·뒤 정규격', sizes: [[216, 303], [216, 303]], opts: sepOpts },
+    { name: 'separate 뒤표지만 불일치', sizes: [[216, 303], [200, 280]], opts: sepOpts },
+    { name: 'separate 앞표지만 불일치', sizes: [[200, 280], [216, 303]], opts: sepOpts },
+    { name: 'separate 앞·뒤 모두 불일치', sizes: [[430, 303], [430, 303]], opts: sepOpts },
+    { name: 'separate 1쪽 불일치', sizes: [[430, 303]], opts: sepOpts },
+    { name: '비 separate(사철 표지) 뒤쪽 불일치 — 2쪽 미검사', sizes: [[216, 303], [200, 280]], opts: saddleOpts },
+  ];
+  for (const c of parityCases) {
+    it(`파리티 OFF==ON: ${c.name}`, async () => {
+      const file = await writePdfPages(c.sizes);
+      const off = await service.validate(file, c.opts());
+      const on = await (service as any).validateLightweight(file, c.opts());
+      expect(on).toEqual(off);
+    });
+  }
 });
 
 /**

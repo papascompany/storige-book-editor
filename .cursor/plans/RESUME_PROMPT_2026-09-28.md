@@ -140,6 +140,11 @@ Storige 편집기 개발을 이어서 진행합니다. bookmoa·printy 파트너
   - **branch protection — master 무보호(09-29 `gh api` 재확인 404 "Branch not protected")** · 폰트 시딩(0건)
   - 파트너 회신문: 8/24 통지 4종 미발송(printy 대상 아님, 09-12 §2-3ⓐ) · 동화책 왕복 실기 1회(재진입 유지 + `grow:*` 캡처 + bookmoa 장바구니 #1 삭제, 09-12 §2-4)
   - 인쇄 정규화 ON(`PRINT_NORMALIZE`, 운영 false — 골든 육안 대조 후) · 재오픈 폴백을 `editor.error` 로 바꿀지 · `207c458f` pageStep=4(bookmoa 요청 시)
+- **Wave 1(09-29, 서브에이전트 3 병렬·파일 배타) — 구현·통합 완료, 로컬 커밋, 배포 승인 대기**
+  - A. O18 `FilesService.restore()` 가 `deleted_at`·`expires_at` 동시 NULL(설계 §8.7 런북). 활성 파일의 만료 예약은 유지.
+  - B. D6 선행 ② 세션완료 VALIDATE 잡에 `session.siteId` 스탬프 — `createValidationJob(dto, {skipSiteWorkerDefaults:true})` 내부 옵션으로 **site default 머지 생략**(운영 전 사이트가 checkCutting·checkSafezone·applyBleed=1 이라 머지하면 편집기 완료 검증이 바뀜). 부수효과: v2 웹훅 구독 사이트는 `validation.*` 추가 수신(운영 webhook_configs 0건, 09-29 04:14Z) · `external/:id` 조회가 세션 사이트 키로 한정.
+  - C. S6 separate 표지 2쪽(뒤표지) 판형 검사 — 1쪽과 같은 규칙·`SIZE_MISMATCH`·`details.page`(1/2), 쪽수 강제 없음, 표준·경량 파리티.
+  - 검증: api 84/1186, worker 23/659, tsc 0(api·worker). 배포: worker → api(+nginx). DB 무변경.
 - **CTO 점검 메모(09-29)**
   - 운영 worker 실측: `WORKER_LIGHTWEIGHT_VALIDATION`·`WORKER_LIGHTWEIGHT_SYNTHESIS`·`WORKER_CROP_MARK_VALIDATION`·`CUTOUT_ENABLED` = true(.env), `PRINT_NORMALIZE` = false. compose 기본값은 전부 false → .env 누락 재배포 시 조용히 OFF 되는 위험.
   - S7 정정: worker `handleSpreadSynthesis` 의 스냅샷 하드 검증은 `createSpreadSynthesisJob`(컨트롤러 호출 0) 경로 전용 → 파트너 합성(compose-mixed·synthesize/external)은 막지 않는다. 실영향은 SOFT `SPINE_MISSING` 뿐.

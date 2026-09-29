@@ -520,6 +520,53 @@ describe('EditSessionsService', () => {
     });
   });
 
+  // ── D6 선행조건 ②: 세션 완료 검증 잡 테넌트 스탬프 — session.siteId 전달 + site default 머지 금지 ──
+  describe('createValidationJobs — 검증 잡 site 스탬프 (D6 ②)', () => {
+    beforeEach(() => {
+      mockWorkerJobsService.createValidationJob.mockReset();
+      mockWorkerJobsService.createValidationJob.mockResolvedValue({ id: 'job-stamp' } as any);
+    });
+
+    const makeSession = (overrides: Partial<EditSessionEntity> = {}): EditSessionEntity =>
+      ({
+        id: 'session-stamp',
+        coverFileId: 'file-cover-1',
+        contentFileId: 'file-content-1',
+        templateSetId: null,
+        metadata: null,
+        siteId: 'site-A',
+        ...overrides,
+      }) as EditSessionEntity;
+
+    const callPrivate = (session: EditSessionEntity): Promise<void> =>
+      (service as unknown as { createValidationJobs(s: EditSessionEntity): Promise<void> })
+        .createValidationJobs(session);
+
+    it('session.siteId 있음 → cover·content 두 VALIDATE 잡 모두 siteId 스탬프 + 머지 skip 옵션', async () => {
+      await callPrivate(makeSession());
+
+      const calls = mockWorkerJobsService.createValidationJob.mock.calls;
+      expect(calls).toHaveLength(2);
+      expect(calls.map((c) => c[0].fileType)).toEqual(['cover', 'content']);
+      for (const [dto, internal] of calls) {
+        expect(dto.siteId).toBe('site-A');
+        expect(dto.editSessionId).toBe('session-stamp');
+        expect(internal).toEqual({ skipSiteWorkerDefaults: true });
+      }
+    });
+
+    it('session.siteId NULL(게스트/무사이트) → siteId 미전달(undefined, 종전 NULL 스탬프 유지)', async () => {
+      await callPrivate(makeSession({ siteId: null }));
+
+      const calls = mockWorkerJobsService.createValidationJob.mock.calls;
+      expect(calls).toHaveLength(2);
+      for (const [dto, internal] of calls) {
+        expect(dto.siteId).toBeUndefined();
+        expect(internal).toEqual({ skipSiteWorkerDefaults: true });
+      }
+    });
+  });
+
   describe('createValidationJobs — 편집기 스프레드 책 검증 연결 (R-195)', () => {
     const ORIGINAL_FLAG = process.env.EDITOR_SPREAD_VALIDATION_MAPPING;
 

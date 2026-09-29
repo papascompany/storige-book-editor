@@ -47,6 +47,8 @@ describe('FilesService (Phase 0 safety net)', () => {
           useValue: {
             findOne: jest.fn(),
             save: jest.fn(),
+            update: jest.fn(),
+            restore: jest.fn(),
             createQueryBuilder: jest.fn().mockReturnValue(mockQueryBuilder),
           },
         },
@@ -233,6 +235,67 @@ describe('FilesService (Phase 0 safety net)', () => {
       expect(clause).toContain('s.cover_file_id = f.id');
       expect(clause).toContain('s.content_file_id = f.id');
       expect(clause).toContain('s.content_pdf_file_id = f.id');
+    });
+  });
+
+  describe('restore — deleted_at + expires_at 동시 해제 (O18)', () => {
+    const FILE_ID = '22222222-2222-2222-2222-222222222222';
+    const pastExpiry = new Date('2026-01-01T00:00:00Z');
+
+    it('소프트삭제 + 과거 expires_at 파일은 두 컬럼을 단일 UPDATE 로 NULL 처리하고 활성 엔티티를 반환', async () => {
+      const deleted = {
+        id: FILE_ID,
+        deletedAt: new Date('2026-09-28T00:00:00Z'),
+        expiresAt: pastExpiry,
+      } as FileEntity;
+      const active = { id: FILE_ID, deletedAt: null, expiresAt: null } as FileEntity;
+      fileRepository.findOne
+        .mockResolvedValueOnce(deleted) // withDeleted 조회
+        .mockResolvedValueOnce(active); // findById 재조회
+      fileRepository.update.mockResolvedValue({ affected: 1, raw: [], generatedMaps: [] });
+
+      const result = await service.restore(FILE_ID);
+
+      expect(fileRepository.findOne).toHaveBeenNthCalledWith(1, {
+        where: { id: FILE_ID },
+        withDeleted: true,
+      });
+      expect(fileRepository.update).toHaveBeenCalledTimes(1);
+      expect(fileRepository.update).toHaveBeenCalledWith(
+        { id: FILE_ID },
+        { deletedAt: null, expiresAt: null },
+      );
+      // deleted_at 만 지우는 TypeORM restore() 경로로 회귀하지 않음
+      expect(fileRepository.restore).not.toHaveBeenCalled();
+      expect(result).toBe(active);
+      expect(result.deletedAt).toBeNull();
+      expect(result.expiresAt).toBeNull();
+    });
+
+    it('이미 활성 파일은 멱등 반환 — UPDATE 없음, 예약된 expires_at 유지', async () => {
+      const scheduled = { id: FILE_ID, deletedAt: null, expiresAt: pastExpiry } as FileEntity;
+      fileRepository.findOne.mockResolvedValueOnce(scheduled);
+
+      const result = await service.restore(FILE_ID);
+
+      expect(result).toBe(scheduled);
+      expect(result.expiresAt).toBe(pastExpiry);
+      expect(fileRepository.update).not.toHaveBeenCalled();
+      expect(fileRepository.restore).not.toHaveBeenCalled();
+      expect(fileRepository.findOne).toHaveBeenCalledTimes(1);
+    });
+
+    it('없는(purge 된) 파일은 FILE_NOT_FOUND 404', async () => {
+      fileRepository.findOne.mockResolvedValueOnce(null);
+
+      const err: unknown = await service.restore(FILE_ID).catch((e: unknown) => e);
+
+      expect(err).toBeInstanceOf(NotFoundException);
+      expect((err as NotFoundException).getResponse()).toMatchObject({
+        code: 'FILE_NOT_FOUND',
+        details: { fileId: FILE_ID },
+      });
+      expect(fileRepository.update).not.toHaveBeenCalled();
     });
   });
 });

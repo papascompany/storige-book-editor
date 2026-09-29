@@ -896,6 +896,101 @@ describe('PdfValidatorService', () => {
         } as ValidationOptions);
         expect(withLayout).toEqual(base);
       });
+
+      // ── S6 후속(2026-09-29): 2쪽(뒤표지)도 1쪽과 동일 규칙으로 판형 검증 ──
+      describe('뒤표지(2쪽) 판형 검증', () => {
+        const createPdfPages = async (sizes: [number, number][]) => {
+          const pdfDoc = await PDFDocument.create();
+          for (const [w, h] of sizes) pdfDoc.addPage([w * 2.83465, h * 2.83465]);
+          return pdfDoc.save();
+        };
+        const run = async (sizes: [number, number][], over: Record<string, unknown>) => {
+          mockedFs.readFile.mockResolvedValue(Buffer.from(await createPdfPages(sizes)));
+          return service.validate('./sep-back.pdf', coverOpts(over));
+        };
+        const sizeErrs = (r: any) => r.errors.filter((e: any) => e.code === ErrorCode.SIZE_MISMATCH);
+        const SEP = { coverLayout: 'separate' };
+
+        it('앞·뒤 모두 정규격(216×303) → 통과, SIZE_MISMATCH 없음', async () => {
+          const r = await run([[216, 303], [216, 303]], SEP);
+          expect(sizeErrs(r)).toHaveLength(0);
+          expect(r.metadata.hasBleed).toBe(true);
+          expect(r.isValid).toBe(true);
+        });
+
+        it('뒤표지만 규격 불일치 → 앞표지 불일치와 동일 종류 SIZE_MISMATCH + details.page=2', async () => {
+          const back = await run([[216, 303], [200, 280]], SEP);
+          const front = await run([[200, 280], [216, 303]], SEP);
+          const [be] = sizeErrs(back);
+          const [fe] = sizeErrs(front);
+          expect(sizeErrs(back)).toHaveLength(1);
+          expect(sizeErrs(front)).toHaveLength(1);
+          expect(be.details.page).toBe(2);
+          expect(fe.details.page).toBe(1);
+          // 코드·autoFixable·fixMethod·기대치·실측 구조 동일(쪽 정보·메시지 접두만 다름)
+          const { page: _bp, ...beRest } = be.details;
+          const { page: _fp, ...feRest } = fe.details;
+          expect(beRest).toEqual(feRest);
+          expect(be.autoFixable).toBe(fe.autoFixable);
+          expect(be.fixMethod).toBe(fe.fixMethod);
+          expect(be.message).toBe(`뒤표지(2쪽) ${fe.message}`);
+          expect(back.isValid).toBe(false);
+          // 뒤표지 판정은 metadata 불변 — 앞표지(정규격) 기준 hasBleed 유지
+          expect(back.metadata.hasBleed).toBe(true);
+          expect(back.metadata.pageSize).toEqual({ width: 216, height: 303 });
+        });
+
+        it('앞·뒤 모두 불일치 → SIZE_MISMATCH 2건(page 1, 2 순)', async () => {
+          const r = await run([[430, 303], [430, 303]], SEP);
+          expect(sizeErrs(r).map((e: any) => e.details.page)).toEqual([1, 2]);
+        });
+
+        it('뒤표지 허용오차(기본 1mm) 이내 → 통과(1쪽과 동일 허용오차)', async () => {
+          const r = await run([[216, 303], [216.8, 302.3]], SEP);
+          expect(sizeErrs(r)).toHaveLength(0);
+          expect(r.isValid).toBe(true);
+        });
+
+        it('3쪽 이상이어도 1·2쪽만 판형 검증(쪽수 강제 없음)', async () => {
+          const r = await run([[216, 303], [216, 303], [100, 100]], SEP);
+          expect(sizeErrs(r)).toHaveLength(0);
+        });
+
+        it('separate 1쪽 → 종전과 동일(details.page 미부가)', async () => {
+          const ok = await run([[216, 303]], SEP);
+          expect(sizeErrs(ok)).toHaveLength(0);
+          expect(ok.isValid).toBe(true);
+          const bad = await run([[430, 303]], SEP);
+          expect(sizeErrs(bad)).toHaveLength(1);
+          expect(sizeErrs(bad)[0].details).not.toHaveProperty('page');
+          expect(sizeErrs(bad)[0].message.startsWith('뒤표지')).toBe(false);
+        });
+
+        it('회귀 잠금: 비 separate 다중쪽(사철 표지·내지)은 2쪽을 판형 검증하지 않음', async () => {
+          // 사철 표지: 단일 판형 검증 경로이지만 separate 아님 → 2쪽 불일치 무시
+          const saddle = await run([[216, 303], [200, 280]], { binding: 'saddle', pages: 8 });
+          expect(sizeErrs(saddle)).toHaveLength(0);
+          for (const layout of ['spread', 'SEPARATE', 'foo', null]) {
+            const r = await run([[216, 303], [200, 280]], { binding: 'saddle', pages: 8, coverLayout: layout });
+            expect(r).toEqual(saddle);
+          }
+          const saddleFrontBad = await run([[200, 280], [216, 303]], { binding: 'saddle', pages: 8 });
+          expect(sizeErrs(saddleFrontBad)).toHaveLength(1);
+          expect(sizeErrs(saddleFrontBad)[0].details).not.toHaveProperty('page');
+
+          // 내지: coverLayout 이 실려와도 무영향
+          mockedFs.readFile.mockResolvedValue(Buffer.from(await createPdfPages([[216, 303], [200, 280]])));
+          const contentOpts = (extra: Record<string, unknown>) =>
+            ({
+              fileType: 'content',
+              orderOptions: { size: { width: 210, height: 297 }, pages: 2, binding: 'perfect', bleed: 3, ...extra },
+            }) as ValidationOptions;
+          const cBase = await service.validate('./content.pdf', contentOpts({}));
+          const cSep = await service.validate('./content.pdf', contentOpts({ coverLayout: 'separate' }));
+          expect(cSep).toEqual(cBase);
+          expect(sizeErrs(cBase)).toHaveLength(0);
+        });
+      });
     });
 
     it('should download file from URL', async () => {
