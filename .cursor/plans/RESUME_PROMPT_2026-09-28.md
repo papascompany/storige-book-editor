@@ -176,6 +176,14 @@ Storige 편집기 개발을 이어서 진행합니다. bookmoa·printy 파트너
   - 기본값(설계 D1~D8): 기준 created_at, SITE_MANAGER 삭제 불가, 관리자 작업 파트너 감사 비노출, 재합성 기본 무음, NULL-site 레거시는 편집기·합성 409, 만료 후 삭제만, 미설정=기한·보존보장 없음.
   - 잔여: 실 브라우저 E2E(관리자 로그인 필요) 미실시 — 오너가 관리자 화면에서 1회 확인 필요. 편집기 조각 토큰의 Sentry breadcrumb 노출 가능성(minor), EmbedView 배선 테스트 없음.
 - **pageStep=1 = 배수 제약 없음(09-29 오너 채택, bookmoa R-205)** — 커밋 `85d6095` + 경고 문구 정정. 이번 배포에 포함.
+- **배포 완료(09-29, 오너 승인 "CTO 제안 순서") — 운영자 권한(5a75222) + pageStep=1(85d6095) + 관리자 편집데이터 관리(47f9a61)**
+  - 0) 롤백: `storige-api:rollback-pre-staff-edit`(5a75222 이전 운영 이미지) · sites 백업 `~/backup-sites-pre-staff-edit-20260929.sql` · 직전 Vercel 운영 배포 편집기 `h55s9ttfj`·admin `6f8oogf0e`. 사전 점검: retention_days 설정 사이트 0.
+  - 1) DB 마이그레이션 09:57:04Z: 20260929 → 20260930 적용(새 테이블 2·sites.edit_retention_days·origin/actor 컬럼). 권한 확인 조인 쿼리 실 MariaDB 읽기 전용 실행 정상.
+  - 2) push `47f9a61` 09:57:21Z → 편집기 `3q55ujgns`·admin `purgkt41z` Ready(09:58Z), 운영 번들에 adminEdit·storige_admin_edit·edit-data·editRetentionDays 지문 확인.
+  - 3) api 재빌드+nginx 10:00:47Z. Nest 정상 기동(모듈 구성 오류 없음), level50 0, dist 지문 확인. worker 변경 없음(미배포).
+  - 4) 운영 확인: health ok · 운영자 발급/감사(키 없음) 401 · 관리자 편집데이터 목록(무인증) 401 · 기존 공개 템플릿셋 조회 200 · 편집기/admin 200.
+  - 5) 양사 통지 발신(ACK 대기): A pageStep=1 · B 운영자 대리 편집 사용법 · C 관리자 편집데이터 관리의 파트너 가시 효과 + 전제 충돌 확인 요청.
+  - 미실시: 관리자 화면 실사용 E2E(관리자 로그인 필요 — 오너 1회 확인 권장: 사이트 보관기간 설정 → 편집 세션 목록 → 편집기 열기·저장 → 합성).
 - **CTO 점검 메모(09-29)**
   - 운영 worker 실측: `WORKER_LIGHTWEIGHT_VALIDATION`·`WORKER_LIGHTWEIGHT_SYNTHESIS`·`WORKER_CROP_MARK_VALIDATION`·`CUTOUT_ENABLED` = true(.env), `PRINT_NORMALIZE` = false. compose 기본값은 전부 false → .env 누락 재배포 시 조용히 OFF 되는 위험.
   - S7 정정: worker `handleSpreadSynthesis` 의 스냅샷 하드 검증은 `createSpreadSynthesisJob`(컨트롤러 호출 0) 경로 전용 → 파트너 합성(compose-mixed·synthesize/external)은 막지 않는다. 실영향은 SOFT `SPINE_MISSING` 뿐.
