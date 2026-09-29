@@ -66,6 +66,11 @@ const GUARDED_ROUTES: GuardedRoute[] = [
 
   // 템플릿 조회 — bookmoa 실소비 표면 (2026-07-15 적대 리뷰 P1-1로 등재: FROZEN/GUARDED 양쪽 누락 상태였음)
   { contract: 'GET /product-template-sets/by-product (X-API-Key — bookmoa 소비)', controller: ProductTemplateSetsController, handler: 'findByProduct', method: RequestMethod.GET, path: 'by-product' },
+
+  // 운영자 대리 편집(Partner Operator Grant) — 서버 간 전용, 사이트 편집기 키 (ADDITIVE 2026-09-29)
+  { contract: 'POST /auth/partner-operator-session (X-API-Key + Throttle 20/min — partner operator grant, ADDITIVE 2026-09-29)', controller: AuthController, handler: 'createPartnerOperatorSession', method: RequestMethod.POST, path: 'partner-operator-session', throttle: { limit: 20, ttl: 60000 } },
+  { contract: 'POST /auth/partner-operator-session/revoke (X-API-Key + Throttle 20/min — partner operator grant revoke, ADDITIVE 2026-09-29)', controller: AuthController, handler: 'revokePartnerOperatorSession', method: RequestMethod.POST, path: 'partner-operator-session/revoke', throttle: { limit: 20, ttl: 60000 } },
+  { contract: 'GET /auth/partner-operator-session/audit (X-API-Key + Throttle 20/min — partner operator audit read, ADDITIVE 2026-09-29)', controller: AuthController, handler: 'listPartnerOperatorAudit', method: RequestMethod.GET, path: 'partner-operator-session/audit', throttle: { limit: 20, ttl: 60000 } },
 ];
 
 /** 컨트롤러 prefix — 경로 조립의 앞부분이 바뀌면 전 라우트가 이동한다 */

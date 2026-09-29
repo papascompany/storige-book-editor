@@ -5,6 +5,8 @@ import {
   BadRequestException,
   Logger,
   Inject,
+  Optional,
+  ServiceUnavailableException,
   forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -39,12 +41,25 @@ import {
 } from '../worker-jobs/imposition.util';
 import { ImpositionPreviewResponseDto } from './dto/imposition-preview.dto';
 import { deriveEditorSpreadValidationOverrides } from './editor-spread-validation-options';
+import { FileEntity } from '../files/entities/file.entity';
+import { PartnerOperatorAuditWriter } from '../auth/partner-operator/partner-operator-audit.writer';
+import type { PartnerOperatorGrant } from '../auth/partner-operator/partner-operator.types';
+import type { PartnerOperatorAuditDetail } from '../auth/entities/partner-operator-audit-log.entity';
 
 /** 호출자 테넌트 컨텍스트 — JWT 의 siteId/role(shop JWT 는 siteId 존재, admin-app JWT 는 없음) */
 export interface TenantCaller {
   siteId?: string | null;
   role?: string | null;
+  /**
+   * 운영자 대리 편집 권한(2026-09-29, ADDITIVE). 있으면 테넌트 판정은 권한의 사이트·세션 범위·만료만으로
+   * 하고(isPartnerOperatorInScope), 범위 안에서는 소유자 판정을 대신한다. 없으면 기존 규칙 그대로.
+   */
+  partnerOperator?: PartnerOperatorGrant | null;
 }
+
+/** 운영자 파일 참조 검사 대상 필드 */
+const OPERATOR_FILE_REF_FIELDS = ['coverFileId', 'contentFileId', 'contentPdfFileId'] as const;
+type OperatorFileRefField = (typeof OPERATOR_FILE_REF_FIELDS)[number];
 
 @Injectable()
 export class EditSessionsService {
@@ -58,6 +73,13 @@ export class EditSessionsService {
     @Inject(forwardRef(() => WorkerJobsService))
     private workerJobsService: WorkerJobsService,
     private templateSetsService: TemplateSetsService,
+    // 운영자 대리 편집(2026-09-29) — 파일 참조 검사·감사 기록. EditSessionsModule 이 등록한다.
+    // @Optional: 이 두 의존성이 없는 구성에서는 운영자 경로만 503 으로 막히고(fail-closed) 나머지는 그대로다.
+    @Optional()
+    @InjectRepository(FileEntity)
+    private fileRepository?: Repository<FileEntity>,
+    @Optional()
+    private partnerOperatorAudit?: PartnerOperatorAuditWriter,
   ) {}
 
   /**
@@ -474,14 +496,99 @@ export class EditSessionsService {
    * true = 노출 가능(caller 없음·staff·worker·caller siteId 없음·세션 siteId 없음(레거시)·같은 site).
    */
   isInTenantScope(
-    session: { siteId?: string | null },
+    session: { id?: string; siteId?: string | null },
     caller?: TenantCaller | null,
   ): boolean {
+    if (caller?.partnerOperator) return this.isPartnerOperatorInScope(session, caller.partnerOperator);
     if (!caller) return true;
     const role = String(caller.role ?? '').toLowerCase();
     if (role === 'worker' || EditSessionsService.isStaffRole(role)) return true;
     if (!caller.siteId || !session.siteId) return true;
     return caller.siteId === session.siteId;
+  }
+
+  /**
+   * 운영자 대리 편집 범위 판정(순수, 2026-09-29). 모두 만족할 때만 true:
+   *  - 권한 siteId 가 비어 있지 않고 세션 siteId(NULL 불가)와 같다
+   *  - 권한이 만료 전이다
+   *  - 세션 id 가 권한의 세션 목록에 있다(빈 목록은 false)
+   * NULL-site(레거시) 세션은 운영자 범위 밖이다 — 고객 규칙의 NULL 허용은 적용하지 않는다.
+   */
+  isPartnerOperatorInScope(
+    session: { id?: string; siteId?: string | null },
+    grant: PartnerOperatorGrant | null | undefined,
+  ): boolean {
+    if (!grant) return false;
+    if (typeof grant.siteId !== 'string' || grant.siteId.length === 0) return false;
+    if (session.siteId === null || session.siteId === undefined) return false;
+    if (session.siteId !== grant.siteId) return false;
+    if (!(Math.floor(Date.now() / 1000) < grant.grantExpiresAt)) return false;
+    if (typeof session.id !== 'string') return false;
+    return Array.isArray(grant.sessionIds) && grant.sessionIds.includes(session.id);
+  }
+
+  /**
+   * 운영자 상태 변경 감사 기록(fail-closed). 검사가 끝난 뒤·저장 전에 호출한다.
+   * 기록 저장에 실패하면 503 으로 중단되어 변경이 일어나지 않는다. 세션 metadata 에는 쓰지 않는다.
+   */
+  private async recordOperatorAction(
+    op: PartnerOperatorGrant,
+    sessionId: string,
+    action: 'session.update' | 'session.complete' | 'session.delete' | 'session.version_restore',
+    detail: PartnerOperatorAuditDetail,
+  ): Promise<void> {
+    if (!this.partnerOperatorAudit) {
+      throw new ServiceUnavailableException({
+        code: 'PARTNER_OPERATOR_AUDIT_UNAVAILABLE',
+        message: '감사 기록을 저장할 수 없어 작업을 중단했습니다.',
+      });
+    }
+    await this.partnerOperatorAudit.recordOrThrow({
+      grantId: op.grantId,
+      siteId: op.siteId,
+      sessionId,
+      operatorId: op.operatorId,
+      operatorName: op.operatorName,
+      action,
+      detail,
+    });
+    this.logger.log(
+      `[partner-operator] ${action} session=${sessionId} site=${op.siteId} op=${op.operatorId} grant=${op.grantId}`,
+    );
+  }
+
+  /**
+   * 운영자 파일 참조 검사(2026-09-29, 운영자 전용 — 고객 동작 불변).
+   * DTO 가 null 이 아닌 값으로 지정한 cover/content/contentPdf 파일은 존재(삭제 제외)하고
+   * siteId 가 NULL 이거나 세션 site 와 같아야 한다. 아니면 400 FILE_NOT_IN_SCOPE.
+   * (/files/upload 는 누구에게도 site 를 스탬프하지 않으므로 NULL-site 파일은 허용한다.)
+   */
+  private async assertOperatorFileRefs(
+    session: Pick<EditSessionEntity, 'siteId'>,
+    dto: Pick<UpdateEditSessionDto, OperatorFileRefField>,
+  ): Promise<void> {
+    const ids = OPERATOR_FILE_REF_FIELDS.map((f) => dto[f]).filter(
+      (v): v is string => typeof v === 'string' && v.length > 0,
+    );
+    if (ids.length === 0) return;
+    if (!this.fileRepository) {
+      throw new ServiceUnavailableException({
+        code: 'PARTNER_OPERATOR_UNAVAILABLE',
+        message: '운영자 권한 기능을 사용할 수 없습니다. 잠시 후 다시 시도해 주세요.',
+      });
+    }
+    for (const id of Array.from(new Set(ids))) {
+      const file = await this.fileRepository.findOne({
+        where: { id },
+        select: ['id', 'siteId'],
+      });
+      if (!file || (file.siteId !== null && file.siteId !== session.siteId)) {
+        throw new BadRequestException({
+          code: 'FILE_NOT_IN_SCOPE',
+          message: '참조한 파일을 이 세션에서 사용할 수 없습니다.',
+        });
+      }
+    }
   }
 
   assertTenantScope(
@@ -510,10 +617,14 @@ export class EditSessionsService {
 
     // 권한 확인: 회원 세션은 소유자만 변경.
     // 게스트 세션은 토큰 검증된 게스트 경로(guestVerified) 또는 staff 만 변경 (2026-09-29).
+    // 운영자 대리 편집(2026-09-29): 위 assertTenantScope 가 권한 범위를 이미 확인했으므로 소유자 판정을 대신한다.
+    const op = caller?.partnerOperator ?? null;
     const isGuest = !!session.guestToken;
-    const allowed = isGuest
-      ? opts?.guestVerified === true || EditSessionsService.isStaffRole(caller?.role)
-      : Number(session.memberSeqno) === userId;
+    const allowed = op
+      ? true
+      : isGuest
+        ? opts?.guestVerified === true || EditSessionsService.isStaffRole(caller?.role)
+        : Number(session.memberSeqno) === userId;
     if (!allowed) {
       throw new ForbiddenException({
         code: 'PERMISSION_DENIED',
@@ -521,10 +632,10 @@ export class EditSessionsService {
       });
     }
 
-    // 캔버스 데이터 업데이트
+    // Phase 4 결정 3-3: PDF 첨부 ↔ 편집 배타(replace 모드).
+    // P0-2 (2026-06-02): underlay 모드는 PDF를 배경으로 깔고 그 위 편집을 허용 → 배타 완화.
+    // (부수효과 없는 검사 — 운영자 감사 기록보다 먼저 판정한다.)
     if (dto.canvasData !== undefined) {
-      // Phase 4 결정 3-3: PDF 첨부 ↔ 편집 배타(replace 모드).
-      // P0-2 (2026-06-02): underlay 모드는 PDF를 배경으로 깔고 그 위 편집을 허용 → 배타 완화.
       const effectiveMode =
         (dto.contentPdfMode ?? session.contentPdfMode ?? 'replace');
       if (
@@ -537,9 +648,41 @@ export class EditSessionsService {
           message: '내지 PDF 첨부(replace) 상태에서는 편집 캔버스를 변경할 수 없습니다. PDF 를 먼저 제거하거나 underlay 모드로 첨부하세요.',
         });
       }
+    }
+
+    // 운영자: 파일 참조 검사 → 상태/파일 참조가 바뀌는 경우에만 감사 기록(저장 전, fail-closed).
+    // 일반 캔버스 자동저장은 요청 단위 기록(인터셉터)으로 남는다.
+    if (op) {
+      await this.assertOperatorFileRefs(session, dto);
+      const statusChanged = dto.status !== undefined && dto.status !== session.status;
+      const fileRefs: Record<string, string | null> = {};
+      if (dto.coverFileId !== undefined && (dto.coverFileId || null) !== (session.coverFileId ?? null)) {
+        fileRefs.cover = dto.coverFileId || null;
+      }
+      if (dto.contentFileId !== undefined && (dto.contentFileId || null) !== (session.contentFileId ?? null)) {
+        fileRefs.content = dto.contentFileId || null;
+      }
+      if (
+        dto.contentPdfFileId !== undefined &&
+        (dto.contentPdfFileId ?? null) !== (session.contentPdfFileId ?? null)
+      ) {
+        fileRefs.contentPdf = dto.contentPdfFileId ?? null;
+      }
+      if (statusChanged || Object.keys(fileRefs).length > 0) {
+        await this.recordOperatorAction(op, session.id, 'session.update', {
+          statusFrom: session.status ?? null,
+          statusTo: dto.status ?? session.status ?? null,
+          fileRefs,
+        });
+      }
+    }
+
+    // 캔버스 데이터 업데이트
+    if (dto.canvasData !== undefined) {
       // P1-4 (2026-08-22): 덮어쓰기 직전 스냅샷 — 실패해도 저장은 계속(로깅만)
+      // 운영자 쓰기는 created_by 를 남기지 않는다(NaN → null). 운영자는 감사 기록으로 식별한다.
       try {
-        await this.snapshotBeforeOverwrite(session, dto.canvasData, userId);
+        await this.snapshotBeforeOverwrite(session, dto.canvasData, op ? Number.NaN : userId);
       } catch (e) {
         this.logger.warn(`[versions] snapshot 실패 (무시) session=${id}: ${(e as Error)?.message}`);
       }
@@ -761,8 +904,11 @@ export class EditSessionsService {
     sessionId: string,
     versionId: string,
     userId: number,
+    partnerOperator?: PartnerOperatorGrant | null,
   ): Promise<EditSessionEntity> {
     const session = await this.findById(sessionId);
+    // 운영자 대리 편집: 컨트롤러 검사와 별도로 권한 범위를 다시 확인한다(같은 404).
+    if (partnerOperator) this.assertTenantScope(session, { partnerOperator });
     // PDF 첨부 ↔ 편집 배타(replace 모드) — update() 와 동일 가드. 복원도 canvasData 변경이므로
     // 스냅샷 생성·save 이전(부수효과 0)에 차단한다. underlay 모드는 허용.
     if (
@@ -775,8 +921,19 @@ export class EditSessionsService {
       });
     }
     const version = await this.getVersion(sessionId, versionId);
+    if (partnerOperator) {
+      await this.recordOperatorAction(partnerOperator, session.id, 'session.version_restore', {
+        versionId,
+        statusFrom: session.status ?? null,
+      });
+    }
     try {
-      await this.snapshotBeforeOverwrite(session, version.canvasData, userId, 'restore');
+      await this.snapshotBeforeOverwrite(
+        session,
+        version.canvasData,
+        partnerOperator ? Number.NaN : userId,
+        'restore',
+      );
     } catch (e) {
       this.logger.warn(`[versions] restore 전 스냅샷 실패 (무시) session=${sessionId}: ${(e as Error)?.message}`);
     }
@@ -1063,14 +1220,16 @@ export class EditSessionsService {
 
     // 게스트 세션 완료는 staff 만 (2026-09-29). 게스트 작업은 guest/migrate 로 회원 세션이 된 뒤
     // 회원 토큰으로 완료한다. 회원 세션은 소유자만 완료한다.
+    // 운영자 대리 편집(2026-09-29): 권한 범위 안(assertTenantScope 통과)이면 두 판정을 대신한다.
+    const op = caller?.partnerOperator ?? null;
     const isGuest = !!session.guestToken;
-    if (isGuest && !EditSessionsService.isStaffRole(caller?.role)) {
+    if (!op && isGuest && !EditSessionsService.isStaffRole(caller?.role)) {
       throw new ForbiddenException({
         code: 'GUEST_COMPLETE_NOT_ALLOWED',
         message: '비회원 편집 세션은 로그인 후(세션 흡수) 완료할 수 있습니다.',
       });
     }
-    if (!isGuest && Number(session.memberSeqno) !== userId) {
+    if (!op && !isGuest && Number(session.memberSeqno) !== userId) {
       throw new ForbiddenException({
         code: 'PERMISSION_DENIED',
         message: '이 세션을 완료할 권한이 없습니다.',
@@ -1105,6 +1264,12 @@ export class EditSessionsService {
         }
       }
       session.metadata = { ...(session.metadata ?? {}), spreadValidation: validation };
+    }
+
+    if (op) {
+      await this.recordOperatorAction(op, session.id, 'session.complete', {
+        statusFrom: session.status ?? null,
+      });
     }
 
     session.status = SessionStatus.COMPLETE;
@@ -1652,7 +1817,21 @@ export class EditSessionsService {
     const session = await this.findById(id);
     this.assertTenantScope(session, caller);
 
-    if (Number(session.memberSeqno) !== userId) {
+    // 운영자 대리 편집(2026-09-29): 삭제는 발급 시 allowDelete 로 받은 'delete' 권한이 있을 때만.
+    // 범위 판정(404)이 권한 판정(403)보다 먼저다.
+    const op = caller?.partnerOperator ?? null;
+    if (op) {
+      if (!op.capabilities.includes('delete')) {
+        throw new ForbiddenException({
+          code: 'PARTNER_OPERATOR_CAPABILITY_REQUIRED',
+          message: '이 운영자 권한에는 삭제가 포함되어 있지 않습니다.',
+        });
+      }
+      await this.recordOperatorAction(op, session.id, 'session.delete', {
+        statusFrom: session.status ?? null,
+        orderSeqno: Number(session.orderSeqno ?? 0),
+      });
+    } else if (Number(session.memberSeqno) !== userId) {
       throw new ForbiddenException({
         code: 'PERMISSION_DENIED',
         message: '이 세션을 삭제할 권한이 없습니다.',

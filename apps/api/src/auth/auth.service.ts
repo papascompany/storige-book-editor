@@ -7,6 +7,8 @@ import { User } from './entities/user.entity';
 import { LoginDto, RegisterDto } from './dto/login.dto';
 import { CreateShopSessionDto } from './dto/shop-session.dto';
 import { AuthTokens, UserRole, SiteRoleClaim } from '@storige/types';
+import { PartnerOperatorGrantService } from './partner-operator/partner-operator-grant.service';
+import { isPartnerOperatorClaims } from './partner-operator/partner-operator.types';
 
 @Injectable()
 export class AuthService {
@@ -14,6 +16,9 @@ export class AuthService {
     @InjectRepository(User)
     private userRepository: Repository<User>,
     private jwtService: JwtService,
+    // 운영자 대리 편집(2026-09-29) — refreshShopToken 의 운영자 분기 전용.
+    // 선택 인자: 기존 단위 테스트의 2-인자 생성을 깨지 않는다(DI 에서는 항상 주입된다).
+    private partnerOperatorGrants?: PartnerOperatorGrantService,
   ) {}
 
   async validateUser(email: string, password: string): Promise<User | null> {
@@ -113,6 +118,10 @@ export class AuthService {
   async refreshToken(token: string): Promise<AuthTokens> {
     try {
       const payload = this.jwtService.verify(token);
+      // 운영자 대리 편집 토큰은 admin 갱신 대상이 아니다 — DB 조회 전에 거부(2026-09-29).
+      if (isPartnerOperatorClaims(payload)) {
+        throw new UnauthorizedException('Invalid token');
+      }
       const user = await this.userRepository.findOne({
         where: { id: payload.sub },
         relations: ['siteRoleAssignments'],
@@ -214,6 +223,15 @@ export class AuthService {
   ): Promise<{ accessToken: string; expiresIn: number }> {
     try {
       const payload = this.jwtService.verify(refreshToken);
+
+      // 운영자 대리 편집 리프레시(2026-09-29, ADDITIVE) — 클레임 그대로·권한 만료 상한·권한 행 재확인.
+      // 실패는 아래 catch 에서 기존과 같은 401 REFRESH_TOKEN_EXPIRED 본문으로 바뀐다.
+      if (isPartnerOperatorClaims(payload)) {
+        if (!this.partnerOperatorGrants) {
+          throw new UnauthorizedException('Invalid token');
+        }
+        return await this.partnerOperatorGrants.refresh(payload);
+      }
 
       // 새로운 accessToken 발급 — shop 컨텍스트(주문 스코프/사이트) 전부 보존.
       // (allowedOrderSeqnos/siteId/siteName 누락 시 갱신 토큰이 주문 권한·사이트를 잃는 회귀 방지.)

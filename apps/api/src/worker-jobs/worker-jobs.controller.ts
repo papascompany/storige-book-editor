@@ -51,7 +51,16 @@ import { ApiKeySite } from '../auth/decorators/api-key-site.decorator';
 import { CurrentSite, CurrentSitePayload } from '../auth/decorators/current-site.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Public } from '../auth/decorators/public.decorator';
+import { PartnerOperatorAllowed } from '../auth/decorators/partner-operator-allowed.decorator';
 import { UserRole, WorkerJobStatus, WorkerJobType, CutoutJobResult } from '@storige/types';
+
+/**
+ * @Public 라우트의 테넌트 근거가 되는 검증된 토큰 출처 — shop-session 또는 운영자 대리 편집 액세스 토큰
+ * (OptionalShopJwtGuard 가 서명 검증 후 복원, 2026-09-29). 컷아웃 라우트 전용 — compose-mixed 는 shop-session 만 인정한다(아래).
+ */
+function isVerifiedTenantSource(source: unknown): boolean {
+  return source === 'shop' || source === 'partner_operator';
+}
 
 /**
  * 컷아웃 실패 사유의 사용자 표시 문구 (2026-08-05).
@@ -113,12 +122,24 @@ export class WorkerJobsController {
   // ============================================================================
 
   @Post('validate')
+  @PartnerOperatorAllowed()
   @ApiOperation({ summary: 'Create a PDF validation job' })
   @ApiResponse({ status: 201, description: 'Validation job created and queued', type: WorkerJob })
   @ApiResponse({ status: 400, description: 'Invalid input' })
   async createValidationJob(
     @Body() createValidationJobDto: CreateValidationJobDto,
+    @CurrentUser() user?: { source?: string; siteId?: string; partnerOperator?: { siteId: string; sessionIds: string[] } },
   ): Promise<WorkerJob> {
+    // 운영자 대리 편집 토큰(2026-09-29): 최소 권한 — 사이트는 권한의 사이트로 고정하고,
+    // 세션 연결(editSessionId)은 권한 범위 세션만 허용한다(범위 밖은 존재 비누설 404).
+    if (user?.source === 'partner_operator' && user.partnerOperator) {
+      const grant = user.partnerOperator;
+      const dto: CreateValidationJobDto = { ...createValidationJobDto, siteId: grant.siteId };
+      if (dto.editSessionId && !grant.sessionIds.includes(dto.editSessionId)) {
+        throw new NotFoundException({ code: 'SESSION_NOT_FOUND', message: '편집 세션을 찾을 수 없습니다.' });
+      }
+      return await this.workerJobsService.createValidationJob(dto);
+    }
     return await this.workerJobsService.createValidationJob(createValidationJobDto);
   }
 
@@ -326,6 +347,9 @@ export class WorkerJobsController {
     // 검증된 shop-session 이 있을 때만 테넌트 컨텍스트로 넘긴다(cutout 라우트와 동일 규약).
     // 없으면 undefined → 자동조립 요청은 서비스에서 404(SESSION_NOT_FOUND) 로 fail-closed.
     // allowedOrderSeqnos 는 배열일 때만 전달 — 없으면 호환 모드(주문 검사 생략, 형제 라우트 동일).
+    // 운영자 대리 편집 토큰은 인정하지 않는다(2026-09-29): 운영자 권한은 지정 세션에 한정되는데,
+    // 이 경로의 자동조립은 주문 스코프 없이 사이트 범위로 동작하므로 운영자에게 열면 범위가 넓어진다.
+    // 합성은 파트너 서버가 사이트 키로 트리거한다.
     const caller =
       user?.source === 'shop' && typeof user?.siteId === 'string'
         ? {
@@ -408,7 +432,7 @@ export class WorkerJobsController {
     // 검증된 shop-session 이 있을 때만 테넌트 컨텍스트로 넘긴다 — 서비스가 이 값으로
     // 입력 파일의 site 를 대조한다(없으면 site 스탬프된 파일은 404 = confused deputy 차단).
     const caller =
-      user?.source === 'shop' && typeof user?.siteId === 'string'
+      isVerifiedTenantSource(user?.source) && typeof user?.siteId === 'string'
         ? { siteId: user.siteId }
         : undefined;
     const job = await this.workerJobsService.createCutoutJob(dto, caller);
@@ -453,7 +477,7 @@ export class WorkerJobsController {
 
     // 검증된 shop-session 이 있을 때만 테넌트 격리 근거로 넘긴다(없으면 undefined = 기존 통과).
     const caller =
-      user?.source === 'shop' && typeof user?.siteId === 'string'
+      isVerifiedTenantSource(user?.source) && typeof user?.siteId === 'string'
         ? { siteId: user.siteId }
         : undefined;
     const job = await this.workerJobsService.findCutoutJob(id, caller);
@@ -753,6 +777,7 @@ export class WorkerJobsController {
   }
 
   @Get(':id')
+  @PartnerOperatorAllowed()
   @ApiOperation({ summary: 'Get a worker job by ID' })
   @ApiResponse({ status: 200, description: 'Worker job details', type: WorkerJob })
   @ApiResponse({ status: 404, description: 'Job not found' })

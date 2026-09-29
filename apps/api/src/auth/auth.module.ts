@@ -21,12 +21,28 @@ import { ApiKeyGuard } from './guards/api-key.guard';
 // 전역 metatype 탐색으로 찾히므로, WorkerJobsModule 에 SitesModule 을 끌어오지 않는다).
 import { OptionalApiKeySiteGuard } from './guards/optional-api-key-site.guard';
 import { JwtCookieGuard } from './guards/jwt-cookie.guard';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { SitesModule } from '../sites/sites.module';
+// 운영자 대리 편집(2026-09-29, ADDITIVE) — 권한 행·감사 기록. 엔티티만 가져오고 EditSessionsModule 은
+// import 하지 않는다(순환 의존 방지).
+import { Site } from '../sites/entities/site.entity';
+import { EditSessionEntity } from '../edit-sessions/entities/edit-session.entity';
+import { PartnerOperatorGrantEntity } from './entities/partner-operator-grant.entity';
+import { PartnerOperatorAuditLogEntity } from './entities/partner-operator-audit-log.entity';
+import { PartnerOperatorGrantService } from './partner-operator/partner-operator-grant.service';
+import { PartnerOperatorAuditWriter } from './partner-operator/partner-operator-audit.writer';
+import { PartnerOperatorAuditInterceptor } from './partner-operator/partner-operator-audit.interceptor';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User, UserSiteRole]),
+    TypeOrmModule.forFeature([
+      User,
+      UserSiteRole,
+      EditSessionEntity,
+      PartnerOperatorGrantEntity,
+      PartnerOperatorAuditLogEntity,
+      Site,
+    ]),
     PassportModule,
     SitesModule, // ApiKeyStrategy가 SitesService 사용 (Phase A)
     JwtModule.registerAsync({
@@ -56,6 +72,13 @@ import { SitesModule } from '../sites/sites.module';
     ApiKeyGuard,
     OptionalApiKeySiteGuard,
     JwtCookieGuard,
+    PartnerOperatorGrantService,
+    PartnerOperatorAuditWriter,
+    // 운영자 요청 감사(best-effort) — req.user.source 'partner_operator' 가 아니면 no-op.
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: PartnerOperatorAuditInterceptor,
+    },
   ],
   exports: [AuthService, JwtCookieGuard, ApiKeyGuard, OptionalApiKeySiteGuard],
 })

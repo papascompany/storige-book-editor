@@ -1,5 +1,11 @@
 import { CanActivate, ExecutionContext, Injectable, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import {
+  PARTNER_OPERATOR,
+  PartnerOperatorStampUser,
+  grantFromClaims,
+  isPartnerOperatorClaims,
+} from '../partner-operator/partner-operator.types';
 
 /**
  * OptionalShopJwtGuard — @Public 라우트에서 **서명 검증된** shop-session JWT 의
@@ -52,6 +58,25 @@ export class OptionalShopJwtGuard implements CanActivate {
     } catch {
       // 위조·만료·시크릿 불일치 — 401 이 아니라 "테넌트 판정 불가"로 처리(불변식 1).
       this.logger.debug('shop JWT 검증 실패 — siteId 스탬프 없이 통과');
+      return true;
+    }
+
+    // 운영자 대리 편집 액세스 토큰(2026-09-29, ADDITIVE). 서명·만료 검증 + 클레임 전체 일관성
+    // (tu 'access', gexp 미래)을 만족할 때만 사이트 컨텍스트를 복원한다. 이 값은 @Public 라우트의
+    // 사이트 스탬프·감사 기록·게스트 생성 거부에만 쓰이고 권한을 부여하지 않는다(DB 확인 없음).
+    // 일관성이 깨진 운영자 토큰은 익명과 같게 취급한다(종전 동작).
+    if (isPartnerOperatorClaims(payload)) {
+      const grant = grantFromClaims(payload, 'access');
+      if (!grant) return true;
+      const operatorUser: PartnerOperatorStampUser = {
+        userId: `po:${grant.operatorId}`,
+        source: PARTNER_OPERATOR,
+        siteId: grant.siteId,
+        siteName: typeof payload.siteName === 'string' ? payload.siteName : '',
+        grantId: grant.grantId,
+        operatorId: grant.operatorId,
+      };
+      req.user = operatorUser;
       return true;
     }
 

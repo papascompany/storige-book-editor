@@ -9,6 +9,8 @@ import {
   HttpStatus,
   Res,
   Req,
+  Query,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -32,6 +34,24 @@ import { CurrentSite, CurrentSitePayload } from './decorators/current-site.decor
 import { ApiKeyGuard } from './guards/api-key.guard';
 import { User } from './entities/user.entity';
 import type { AuthTokens, UserRole } from '@storige/types';
+import {
+  CreatePartnerOperatorSessionDto,
+  PartnerOperatorAuditQueryDto,
+  PartnerOperatorAuditResponseDto,
+  PartnerOperatorRevokeResponseDto,
+  PartnerOperatorSessionResponseDto,
+  RevokePartnerOperatorSessionDto,
+} from './dto/partner-operator-session.dto';
+import { PartnerOperatorAllowed } from './decorators/partner-operator-allowed.decorator';
+import {
+  PartnerOperatorGrantService,
+  assertPartnerOperatorSiteCaller,
+} from './partner-operator/partner-operator-grant.service';
+import {
+  PartnerOperatorCapability,
+  PartnerOperatorUser,
+  isPartnerOperatorUser,
+} from './partner-operator/partner-operator.types';
 
 interface UserResponse {
   id: string;
@@ -41,10 +61,42 @@ interface UserResponse {
   updatedAt: Date;
 }
 
+/** POST /auth/me — 운영자 대리 편집 토큰 응답(2026-09-29, ADDITIVE). role 은 편집기 표시용. */
+interface PartnerOperatorMeResponse {
+  userId: string;
+  email: string;
+  name: string;
+  role: 'customer';
+  source: 'partner_operator';
+  siteId: string;
+  siteName: string;
+  operator: {
+    id: string;
+    name: string | null;
+    grantId: string;
+    grantExpiresAt: string;
+    capabilities: PartnerOperatorCapability[];
+  };
+}
+
 @ApiTags('Authentication')
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    // 운영자 대리 편집(2026-09-29) — 선택 인자: 기존 단위 테스트의 1-인자 생성을 깨지 않는다.
+    private readonly partnerOperatorGrants?: PartnerOperatorGrantService,
+  ) {}
+
+  private grants(): PartnerOperatorGrantService {
+    if (!this.partnerOperatorGrants) {
+      throw new ServiceUnavailableException({
+        code: 'PARTNER_OPERATOR_UNAVAILABLE',
+        message: '운영자 권한 기능을 사용할 수 없습니다. 잠시 후 다시 시도해 주세요.',
+      });
+    }
+    return this.partnerOperatorGrants;
+  }
 
   @Public()
   @Post('login')
@@ -119,10 +171,34 @@ export class AuthController {
 
   @ApiBearerAuth()
   @Post('me')
+  @PartnerOperatorAllowed()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Get current user' })
   @ApiResponse({ status: 200, description: 'Current user retrieved' })
-  async getMe(@CurrentUser() user: User): Promise<UserResponse> {
+  async getMe(
+    @CurrentUser() user: User | PartnerOperatorUser,
+  ): Promise<UserResponse | PartnerOperatorMeResponse> {
+    // 운영자 대리 편집 토큰(2026-09-29): 편집기 표시용 role 'customer' + source 'partner_operator'.
+    // 서버 인가는 이 응답을 읽지 않는다.
+    if (isPartnerOperatorUser(user)) {
+      const grant = user.partnerOperator;
+      return {
+        userId: user.userId,
+        email: '',
+        name: user.name,
+        role: 'customer',
+        source: 'partner_operator',
+        siteId: user.siteId,
+        siteName: user.siteName,
+        operator: {
+          id: grant.operatorId,
+          name: grant.operatorName,
+          grantId: grant.grantId,
+          grantExpiresAt: new Date(grant.grantExpiresAt * 1000).toISOString(),
+          capabilities: [...grant.capabilities],
+        },
+      };
+    }
     // 하위호환 보존: editor(apps/editor/src/api/auth.ts)·e2e 가 POST /auth/me 를 사용.
     const { passwordHash, ...result } = user;
     return result as UserResponse;
@@ -297,5 +373,71 @@ export class AuthController {
     const { accessToken, expiresIn } =
       await this.authService.refreshShopToken(refreshToken);
     return { success: true, accessToken, expiresIn };
+  }
+
+  // ───────────────────────────────────────────────────────────────
+  // 운영자 대리 편집 (Partner Operator Grant, 2026-09-29, ADDITIVE — GUARDED)
+  // 서버 간 전용: 사이트 편집기 키(X-API-Key)만. 사이트는 검증된 키의 사이트 행에서만 도출한다.
+  // ───────────────────────────────────────────────────────────────
+
+  /**
+   * 운영자 대리 편집 토큰 발급 — 지정한 세션(1~20, 호출 사이트 소속)에 한정된 단기 토큰.
+   * 쿠키를 설정하지 않고 본문으로만 반환한다.
+   */
+  @Public()
+  @UseGuards(ApiKeyGuard)
+  @Post('partner-operator-session')
+  @Throttle({ default: { limit: 20, ttl: 60000 } })
+  @HttpCode(HttpStatus.OK)
+  @ApiSecurity('api-key')
+  @ApiOperation({ summary: 'Mint a partner operator grant (server-to-server, site editor key)' })
+  @ApiResponse({ status: 200, type: PartnerOperatorSessionResponseDto })
+  @ApiResponse({ status: 400, description: 'PARTNER_OPERATOR_SCOPE_REQUIRED' })
+  @ApiResponse({ status: 401, description: 'Invalid API Key' })
+  @ApiResponse({ status: 403, description: 'PARTNER_OPERATOR_SITE_REQUIRED' })
+  @ApiResponse({ status: 404, description: 'SESSION_NOT_FOUND' })
+  @ApiResponse({ status: 503, description: 'PARTNER_OPERATOR_UNAVAILABLE' })
+  async createPartnerOperatorSession(
+    @Body() dto: CreatePartnerOperatorSessionDto,
+    @CurrentSite() site?: CurrentSitePayload,
+  ): Promise<PartnerOperatorSessionResponseDto> {
+    assertPartnerOperatorSiteCaller(site);
+    return this.grants().mint(dto, site);
+  }
+
+  /** 운영자 권한 취소 — grantId 또는 all:true. 다른 사이트의 권한은 0건으로 처리된다. */
+  @Public()
+  @UseGuards(ApiKeyGuard)
+  @Post('partner-operator-session/revoke')
+  @Throttle({ default: { limit: 20, ttl: 60000 } })
+  @HttpCode(HttpStatus.OK)
+  @ApiSecurity('api-key')
+  @ApiOperation({ summary: 'Revoke partner operator grants (server-to-server, site editor key)' })
+  @ApiResponse({ status: 200, type: PartnerOperatorRevokeResponseDto })
+  @ApiResponse({ status: 400, description: 'PARTNER_OPERATOR_REVOKE_TARGET_REQUIRED' })
+  @ApiResponse({ status: 403, description: 'PARTNER_OPERATOR_SITE_REQUIRED' })
+  async revokePartnerOperatorSession(
+    @Body() dto: RevokePartnerOperatorSessionDto,
+    @CurrentSite() site?: CurrentSitePayload,
+  ): Promise<PartnerOperatorRevokeResponseDto> {
+    assertPartnerOperatorSiteCaller(site);
+    return this.grants().revoke(site, dto);
+  }
+
+  /** 운영자 감사 기록 조회 — 호출 사이트 기록만, 최신순 */
+  @Public()
+  @UseGuards(ApiKeyGuard)
+  @Get('partner-operator-session/audit')
+  @Throttle({ default: { limit: 20, ttl: 60000 } })
+  @ApiSecurity('api-key')
+  @ApiOperation({ summary: 'List partner operator audit records (server-to-server, site editor key)' })
+  @ApiResponse({ status: 200, type: PartnerOperatorAuditResponseDto })
+  @ApiResponse({ status: 403, description: 'PARTNER_OPERATOR_SITE_REQUIRED' })
+  async listPartnerOperatorAudit(
+    @Query() query: PartnerOperatorAuditQueryDto,
+    @CurrentSite() site?: CurrentSitePayload,
+  ): Promise<PartnerOperatorAuditResponseDto> {
+    assertPartnerOperatorSiteCaller(site);
+    return this.grants().audit(site, query);
   }
 }

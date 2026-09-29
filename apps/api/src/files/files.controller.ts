@@ -47,6 +47,33 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { OptionalShopJwtGuard } from '../auth/guards/optional-shop-jwt.guard';
 import { CurrentSite, CurrentSitePayload } from '../auth/decorators/current-site.decorator';
 import { ApiKeyGuard } from '../auth/guards/api-key.guard';
+import { PartnerOperatorAllowed } from '../auth/decorators/partner-operator-allowed.decorator';
+
+/**
+ * 운영자 대리 편집(2026-09-29) 업로드 소유 스탬프 — 운영자는 DTO 의 memberSeqno 를 무시하고
+ * 권한의 onBehalfOfMemberSeqno(범위 세션이 모두 같은 회원일 때만 존재)를 쓴다. 없으면 undefined.
+ */
+interface UploadCallerUser {
+  source?: unknown;
+  siteId?: unknown;
+  partnerOperator?: { onBehalfOfMemberSeqno?: unknown } | null;
+}
+
+function operatorUploadMemberSeqno(user: UploadCallerUser | null | undefined): number | undefined {
+  const obo = user?.partnerOperator?.onBehalfOfMemberSeqno;
+  return typeof obo === 'number' && Number.isSafeInteger(obo) && obo > 0 ? obo : undefined;
+}
+
+/** @Public 완료 라우트의 사이트 스탬프 근거 — 검증된 shop-session 또는 운영자 액세스 토큰 */
+function stampCaller(
+  user: UploadCallerUser | null | undefined,
+): { siteId: string; role: string } | undefined {
+  const siteId = user?.siteId;
+  return (user?.source === 'shop' || user?.source === 'partner_operator') &&
+    typeof siteId === 'string'
+    ? { siteId, role: 'shop' }
+    : undefined;
+}
 
 @ApiTags('Files')
 @Controller('files')
@@ -119,12 +146,16 @@ export class FilesController {
 
   // ── single-part: 인증 ─────────────────────────────────────────
   @Post('presigned-upload')
+  @PartnerOperatorAllowed()
   @ApiBearerAuth()
   @ApiOperation({ summary: 'presigned 직결 업로드 URL 발급(인증)' })
   @ApiResponse({ status: 201, description: '발급 성공' })
   @ApiResponse({ status: 503, description: 'STORAGE_NOT_S3 (local 드라이버)' })
   async presignUpload(@Body() dto: PresignUploadDto, @CurrentUser() user: any) {
-    const memberSeqno = dto.memberSeqno ?? (user?.userId ? parseInt(user.userId) : undefined);
+    const memberSeqno =
+      user?.source === 'partner_operator'
+        ? operatorUploadMemberSeqno(user)
+        : dto.memberSeqno ?? (user?.userId ? parseInt(user.userId) : undefined);
     return this.presignedUpload.presignPut({
       fileType: dto.type ?? FileType.CONTENT,
       expectedSize: dto.expectedSize,
@@ -197,10 +228,8 @@ export class FilesController {
     // 그 site 를 스탬프한다(테넌트 귀속). 토큰 없음/위조/비-shop → 종전대로 NULL(무중단).
     // 근거 원칙은 edit-sessions.createGuest 의 I-1 과 동일 — 스탬프 근거는 서명 검증된
     // JWT 뿐이며, body 로 site 를 주장할 자리는 애초에 없다.
-    const caller =
-      user?.source === 'shop' && typeof user?.siteId === 'string'
-        ? { siteId: user.siteId as string, role: 'shop' }
-        : undefined;
+    // 운영자 대리 편집(2026-09-29): 검증된 운영자 액세스 토큰도 같은 방식으로 site 를 스탬프한다.
+    const caller = stampCaller(user);
     const file = await this.presignedUpload.completeMultipart(
       dto.fileId, dto.parts, dto.uploadToken, caller,
     );
@@ -232,11 +261,8 @@ export class FilesController {
     @Body() dto: CompleteUploadDto,
     @CurrentUser() user: any,
   ): Promise<FileResponseDto> {
-    // S3-A안(2026-08-28, D1): multipart/complete 와 동일한 옵션형 site 스탬프.
-    const caller =
-      user?.source === 'shop' && typeof user?.siteId === 'string'
-        ? { siteId: user.siteId as string, role: 'shop' }
-        : undefined;
+    // S3-A안(2026-08-28, D1): multipart/complete 와 동일한 옵션형 site 스탬프(운영자 포함, 2026-09-29).
+    const caller = stampCaller(user);
     const file = await this.presignedUpload.completeSingle(id, dto.uploadToken, caller);
     return this.filesService.toResponseDto(file);
   }
@@ -245,6 +271,7 @@ export class FilesController {
    * 파일 업로드
    */
   @Post('upload')
+  @PartnerOperatorAllowed()
   @ApiBearerAuth()
   @ApiOperation({ summary: 'PDF 파일 업로드' })
   @ApiConsumes('multipart/form-data')
@@ -300,8 +327,11 @@ export class FilesController {
       });
     }
 
-    // JWT에서 memberSeqno 추출 (dto에 없으면)
-    const memberSeqno = dto.memberSeqno || (user?.userId ? parseInt(user.userId) : undefined);
+    // JWT에서 memberSeqno 추출 (dto에 없으면). 운영자는 권한의 대리 회원 번호만(2026-09-29).
+    const memberSeqno =
+      user?.source === 'partner_operator'
+        ? operatorUploadMemberSeqno(user)
+        : dto.memberSeqno || (user?.userId ? parseInt(user.userId) : undefined);
 
     const fileEntity = await this.filesService.uploadFile(
       file,

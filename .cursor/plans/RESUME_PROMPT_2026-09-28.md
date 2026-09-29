@@ -158,6 +158,13 @@ Storige 편집기 개발을 이어서 진행합니다. bookmoa·printy 파트너
 - **bookmoa 요청(09-29, 소켓 5179 — 세션 id 동일)**: `/embed` 에 상품별 pageCountMin/Max(/pageStep) 파라미터 요청(현 4세트 a2cc2939·e66588b2·f0335fda·83e6ec80 = [10,100], 상품은 16~300/500p). **오너 결정: (1) 호스트 파라미터 방식** → 워크플로 `wf_eabe3713-864`(11 에이전트: 접점 매핑 → 설계·비판 2·수정 → editor·sdk 2레인 → 2렌즈 리뷰, 전부 pass·minor) + 통합 시 재진입 요청값 상한 클램프 보강(저장 쪽수는 보존).
   - 계약: `pageCountMin`·`pageCountMax`(1~500, 펼침면 내지 400)·`pageStep`(2~500, 0부터 배수, min 이 배수 아니면 무시) — 템플릿셋 값보다 우선, 제본 min/max 계속 적용, 무효값 console.warn 무시, 신규 세션 orderOptions 기록 → 재편집 폴백, 범위 적용 세션은 재진입 시 저장 쪽수 보존. 미전달 시 동작 불변. 순수 헬퍼 `apps/editor/src/utils/hostPageLimits.ts`. SDK `buildEmbedUrl` 직렬화.
   - 검증: editor 77/953, sdk 12/341, tsc 0. 로더 통합(실브라우저) QA 는 미실시 — 파트너 적용 시 첫 실편집으로 확인.
+  - **배포 완료** push `bb626de` 07:36:49Z → 편집기 Vercel Ready(번들 지문 확인). 양사 통지. **bookmoa R-202 적용·배포**(`ec04cc9`, 08:3xZ): 페이지수 선택 상품 신규 편집 진입만 전송 — 교육 운영계획서·교재 16/500/2, A4하드커버 16/300/4, 동화책(207c458f) 16/48/4 → **207c458f pageStep=4 세트 설정 요청 철회**. 재편집 URL 불변. 첫 실편집 확인은 bookmoa 오너 e2e 보류 목록.
+- **운영자 대리 편집 경로(09-29, 오너 요구: 관리자가 고객 작업을 대신 편집·수정·저장·삭제)** — 워크플로 `wf_af66be6b-efe`(판독 3 → 설계·보안/파트너 비판 → API 구현 → 보안·정확성 리뷰, pass·minor) + 통합 보강 2건(compose-mixed 자동조립에서 운영자 토큰 불인정 — 사이트 범위 확대 차단 / validate 라우트 운영자 site 고정·범위 밖 editSessionId 404). **로컬 커밋, 운영 반영(DB 마이그레이션 + api) 오너 승인 대기.**
+  - 설계: `POST /auth/partner-operator-session`(사이트 편집기 키, 서버 간, 20/min) → 운영자 토큰(typ/source/role 'partner_operator') — 세션 1~20개 발급 시 고정·호출 사이트 소속만, 권한 기본 2h(최대 8h)·액세스 15분·리프레시는 권한 만료를 넘지 않음, 삭제는 `allowDelete` 시만. 매 요청 권한 행 재확인(취소·만료·사이트 suspended·키 지문 불일치 → 401). 전역 가드 기본 거부 + `@PartnerOperatorAllowed` 18 핸들러. 감사: `partner_operator_audit_logs`(append-only, 상태 변경은 감사 저장 실패 시 503·미수행) + 요청 인터셉터. `revoke`·`audit` 라우트.
+  - 마이그레이션: `apps/api/migrations/20260929_add_partner_operator_grants_and_audit.sql`(새 테이블 2개만, unicode_ci — 운영 sites 와 동일 collation 확인). 미적용 배포 시 발급만 503, 기존 흐름 불변.
+  - 검증: api 89/1441, tsc 0, contract-freeze.spec 86(3 라우트 등재). 실 MariaDB 에서 assertActive 조인 미실행(모의만) → 운영 마이그레이션 직후 읽기 전용 SQL 로 확인 예정. 편집기 변경 불필요(선택: 운영자 배너·만료 문구 — 후속).
+  - 리뷰 minor 잔여: 가드 단계에서 거부된 운영자 요청은 감사 행이 없음(로그만) · 201 라우트 감사 status_code 부정확 · 운영 인터셉터 부하 미측정.
+  - 파트너 할 일(배포 후 통지): 서버에서 관리자 확인 + 주문-세션 연결을 서버 기준 데이터로 확인 후 발급 → `/embed?sessionId&token&refreshToken` 로 오픈, 종료 시 revoke.
 - **CTO 점검 메모(09-29)**
   - 운영 worker 실측: `WORKER_LIGHTWEIGHT_VALIDATION`·`WORKER_LIGHTWEIGHT_SYNTHESIS`·`WORKER_CROP_MARK_VALIDATION`·`CUTOUT_ENABLED` = true(.env), `PRINT_NORMALIZE` = false. compose 기본값은 전부 false → .env 누락 재배포 시 조용히 OFF 되는 위험.
   - S7 정정: worker `handleSpreadSynthesis` 의 스냅샷 하드 검증은 `createSpreadSynthesisJob`(컨트롤러 호출 0) 경로 전용 → 파트너 합성(compose-mixed·synthesize/external)은 막지 않는다. 실영향은 SOFT `SPINE_MISSING` 뿐.

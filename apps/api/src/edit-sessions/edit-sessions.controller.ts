@@ -48,6 +48,8 @@ import {
 } from '../auth/decorators/current-site.decorator';
 import { PayloadTooLargeResponseDto } from '../common/dto/error-response.dto';
 import { SpreadStartSide } from '../worker-jobs/imposition.util';
+import { PartnerOperatorAllowed } from '../auth/decorators/partner-operator-allowed.decorator';
+import { EditSessionEntity } from './entities/edit-session.entity';
 
 @ApiTags('Edit Sessions')
 @ApiBearerAuth()
@@ -155,6 +157,15 @@ export class EditSessionsController {
     @Body() dto: CreateEditSessionDto,
     @CurrentUser() user: any,
   ): Promise<EditSessionResponseDto> {
+    // 운영자 대리 편집(2026-09-29): 운영자 토큰으로는 새 세션(게스트 포함)을 만들 수 없다.
+    // OptionalShopJwtGuard 가 검증된 운영자 액세스 토큰에서 source 를 복원한다.
+    if (user?.source === 'partner_operator') {
+      throw new ForbiddenException({
+        code: 'PARTNER_OPERATOR_ROUTE_NOT_ALLOWED',
+        message: '운영자 대리 편집 토큰으로는 사용할 수 없는 기능입니다.',
+      });
+    }
+
     // 검증된 shop-session JWT 에서만 테넌트를 도출한다(그 외 전부 undefined → NULL).
     const derivedSiteId =
       user?.source === 'shop' && typeof user?.siteId === 'string' ? user.siteId : undefined;
@@ -668,6 +679,7 @@ export class EditSessionsController {
    * 세션 상세 조회 (소유자 또는 admin/manager만)
    */
   @Get(':id')
+  @PartnerOperatorAllowed()
   @ApiOperation({ summary: '편집 세션 상세 조회 — 소유자 또는 관리자만 접근 가능' })
   @ApiResponse({
     status: 200,
@@ -682,27 +694,30 @@ export class EditSessionsController {
   ): Promise<EditSessionResponseDto> {
     const session = await this.editSessionsService.findById(id);
     // 테넌트 격리(2026-08-23): 비-staff 가 타 site 세션에 닿으면 404(존재 비누설) — 소유자 판정보다 먼저.
-    this.editSessionsService.assertTenantScope(session, this.tenantCaller(user));
+    // 운영자 대리 편집(2026-09-29): 운영자는 권한의 사이트·세션 범위·만료로 판정(범위 밖 = 같은 404).
+    const caller = this.tenantCaller(user);
+    this.editSessionsService.assertTenantScope(session, caller);
 
-    // 권한 확인: 세션 소유자 (memberSeqno 일치) 또는 admin/manager 역할
+    // 권한 확인: 세션 소유자 (memberSeqno 일치) 또는 admin/manager 역할 또는 범위 안 운영자
     const userId = user?.userId ? parseInt(user.userId) : 0;
     const isOwner = Number(session.memberSeqno) === userId;
     // UserRole enum 대문자 대응 — 대소문자 무관 판정 (2026-06-11)
     const isStaff = this.isStaffRole(user);
 
-    if (!isOwner && !isStaff) {
+    if (!isOwner && !isStaff && !caller?.partnerOperator) {
       throw new ForbiddenException({
         code: 'PERMISSION_DENIED',
         message: '이 세션에 접근할 권한이 없습니다.',
       });
     }
 
-    return this.editSessionsService.toResponseDto(session);
+    return this.respond(session, user);
   }
 
   // ─── P1-4 (2026-08-22) 회원 세션 스냅샷 목록/상세/복원 — 소유자 또는 admin/manager ───
 
   @Get(':id/versions')
+  @PartnerOperatorAllowed()
   @ApiOperation({ summary: '세션 canvasData 스냅샷 목록 (P1-4) — canvasData 제외 경량' })
   @ApiResponse({ status: 403, description: '권한 없음' })
   @ApiResponse({ status: 404, description: '세션을 찾을 수 없음' })
@@ -715,6 +730,7 @@ export class EditSessionsController {
   }
 
   @Get(':id/versions/:vid')
+  @PartnerOperatorAllowed()
   @ApiOperation({ summary: '세션 스냅샷 상세 (canvasData 포함) (P1-4)' })
   @ApiResponse({ status: 403, description: '권한 없음' })
   @ApiResponse({ status: 404, description: '세션/스냅샷 없음' })
@@ -738,6 +754,7 @@ export class EditSessionsController {
   }
 
   @Post(':id/versions/:vid/restore')
+  @PartnerOperatorAllowed()
   @ApiOperation({ summary: '세션 스냅샷 복원 (P1-4) — 복원 직전 상태는 restore 스냅샷으로 보존' })
   @ApiResponse({ status: 200, type: EditSessionResponseDto })
   @ApiResponse({ status: 403, description: '권한 없음' })
@@ -749,14 +766,19 @@ export class EditSessionsController {
   ): Promise<EditSessionResponseDto> {
     await this.assertOwnerOrStaff(id, user);
     const userId = user?.userId ? parseInt(user.userId) : 0;
-    const restored = await this.editSessionsService.restoreVersion(id, vid, userId);
-    return this.editSessionsService.toResponseDto(restored);
+    // 운영자 대리 편집(2026-09-29): 운영자일 때만 권한을 4번째 인자로 넘긴다(고객 호출 형태 불변).
+    const op = this.tenantCaller(user)?.partnerOperator ?? null;
+    const restored = op
+      ? await this.editSessionsService.restoreVersion(id, vid, userId, op)
+      : await this.editSessionsService.restoreVersion(id, vid, userId);
+    return this.respond(restored, user);
   }
 
   /**
    * 세션 업데이트
    */
   @Patch(':id')
+  @PartnerOperatorAllowed()
   @ApiOperation({ summary: '편집 세션 업데이트' })
   @ApiResponse({
     status: 200,
@@ -777,13 +799,14 @@ export class EditSessionsController {
   ): Promise<EditSessionResponseDto> {
     const userId = user?.userId ? parseInt(user.userId) : 0;
     const session = await this.editSessionsService.update(id, dto, userId, this.tenantCaller(user));
-    return this.editSessionsService.toResponseDto(session);
+    return this.respond(session, user);
   }
 
   /**
    * 세션 완료 처리
    */
   @Patch(':id/complete')
+  @PartnerOperatorAllowed()
   @ApiOperation({ summary: '편집 세션 완료 처리' })
   @ApiResponse({
     status: 200,
@@ -798,13 +821,14 @@ export class EditSessionsController {
   ): Promise<EditSessionResponseDto> {
     const userId = user?.userId ? parseInt(user.userId) : 0;
     const session = await this.editSessionsService.complete(id, userId, this.tenantCaller(user));
-    return this.editSessionsService.toResponseDto(session);
+    return this.respond(session, user);
   }
 
   /**
    * 세션 삭제
    */
   @Delete(':id')
+  @PartnerOperatorAllowed()
   @ApiOperation({ summary: '편집 세션 삭제' })
   @ApiResponse({ status: 200, description: '삭제 성공' })
   @ApiResponse({ status: 403, description: '권한 없음' })
@@ -861,10 +885,12 @@ export class EditSessionsController {
   private async assertOwnerOrStaff(id: string, user: any): Promise<void> {
     const session = await this.editSessionsService.findById(id);
     // 테넌트 격리 — findOne/PATCH/complete/DELETE 와 공용 판정(서비스 assertTenantScope), 소유자 판정보다 먼저.
-    this.editSessionsService.assertTenantScope(session, this.tenantCaller(user));
+    const caller = this.tenantCaller(user);
+    this.editSessionsService.assertTenantScope(session, caller);
     const userId = user?.userId ? parseInt(user.userId) : 0;
     const isOwner = userId > 0 && Number(session.memberSeqno) === userId;
-    if (!isOwner && !this.isStaffRole(user)) {
+    // 운영자 대리 편집(2026-09-29): 위 범위 판정을 통과한 운영자는 소유자와 같게 취급한다.
+    if (!isOwner && !this.isStaffRole(user) && !caller?.partnerOperator) {
       throw new ForbiddenException({
         code: 'PERMISSION_DENIED',
         message: '이 세션에 접근할 권한이 없습니다.',
@@ -892,13 +918,35 @@ export class EditSessionsController {
     return kept;
   }
 
-  /** JWT user → 테넌트 판정용 caller (siteId/role 만). user 부재면 null(내부 호출과 동일 = 통과) */
+  /**
+   * JWT user → 테넌트 판정용 caller (siteId/role). user 부재면 null(내부 호출과 동일 = 통과).
+   * 운영자 대리 편집(2026-09-29): JwtStrategy 가 만든 운영자 사용자면 권한(partnerOperator)을 함께 넘긴다.
+   */
   private tenantCaller(user: any): TenantCaller | null {
     if (!user) return null;
-    return {
+    const caller: TenantCaller = {
       siteId: typeof user.siteId === 'string' ? user.siteId : null,
       role: typeof user.role === 'string' ? user.role : null,
     };
+    // 운영자일 때만 키를 추가한다(그 외 호출자의 caller 형태는 종전과 동일).
+    if (user.source === 'partner_operator' && user.partnerOperator) {
+      caller.partnerOperator = user.partnerOperator;
+    }
+    return caller;
+  }
+
+  /**
+   * 세션 응답 — 운영자 호출자에게는 guestToken/guestExpiresAt 을 제거한다(2026-09-29).
+   * guestToken 은 권한 범위·만료·취소 밖에서 쓰일 수 있는 비회원 소유 증명이기 때문이다.
+   * 그 외 호출자는 toResponseDto 결과 그대로.
+   */
+  private respond(session: EditSessionEntity, user: any): EditSessionResponseDto {
+    const dto = this.editSessionsService.toResponseDto(session);
+    if (user?.source === 'partner_operator') {
+      delete dto.guestToken;
+      delete dto.guestExpiresAt;
+    }
+    return dto;
   }
 
   /** admin/manager 전용 가드 (삭제 리스트/복구) */

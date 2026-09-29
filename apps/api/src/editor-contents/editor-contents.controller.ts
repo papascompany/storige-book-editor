@@ -14,12 +14,14 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { UserRole, EditorContentType } from '@storige/types';
+import { PartnerOperatorAllowed } from '../auth/decorators/partner-operator-allowed.decorator';
 
 @Controller('editor-contents')
 export class EditorContentsController {
   constructor(private readonly editorContentsService: EditorContentsService) {}
 
   @Get('templates')
+  @PartnerOperatorAllowed() // 운영자 대리 편집 편집기 소재 패널(조회 전용, 2026-09-29)
   async getTemplates(@Query() query: QueryEditorContentDto) {
     const result = await this.editorContentsService.getTemplates(query);
     return {
@@ -29,6 +31,7 @@ export class EditorContentsController {
   }
 
   @Get('frames')
+  @PartnerOperatorAllowed() // 운영자 대리 편집 편집기 소재 패널(조회 전용, 2026-09-29)
   async getFrames(@Query() query: QueryEditorContentDto) {
     const result = await this.editorContentsService.getFrames(query);
     return {
@@ -38,6 +41,7 @@ export class EditorContentsController {
   }
 
   @Get('images')
+  @PartnerOperatorAllowed() // 운영자 대리 편집 편집기 소재 패널(조회 전용, 2026-09-29)
   async getImages(@Query() query: QueryEditorContentDto) {
     const result = await this.editorContentsService.getImages(query);
     return {
@@ -47,6 +51,7 @@ export class EditorContentsController {
   }
 
   @Get('backgrounds')
+  @PartnerOperatorAllowed() // 운영자 대리 편집 편집기 소재 패널(조회 전용, 2026-09-29)
   async getBackgrounds(@Query() query: QueryEditorContentDto) {
     const result = await this.editorContentsService.getBackgrounds(query);
     return {
@@ -56,6 +61,7 @@ export class EditorContentsController {
   }
 
   @Get('elements')
+  @PartnerOperatorAllowed() // 운영자 대리 편집 편집기 소재 패널(조회 전용, 2026-09-29)
   async getElements(@Query() query: QueryEditorContentDto) {
     const result = await this.editorContentsService.getElements(query);
     return {
@@ -65,6 +71,7 @@ export class EditorContentsController {
   }
 
   @Get(':id')
+  @PartnerOperatorAllowed() // 운영자 대리 편집 편집기 소재 패널(조회 전용, 2026-09-29)
   async findOne(@Param('id') id: string) {
     const content = await this.editorContentsService.findOne(id);
     return {

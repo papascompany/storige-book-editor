@@ -9,10 +9,19 @@ import { EditSessionVersionEntity } from './entities/edit-session-version.entity
 import { WorkerJobsModule } from '../worker-jobs/worker-jobs.module';
 import { TemplatesModule } from '../templates/templates.module';
 import { OptionalShopJwtGuard } from '../auth/guards/optional-shop-jwt.guard';
+import { FileEntity } from '../files/entities/file.entity';
+import { PartnerOperatorAuditLogEntity } from '../auth/entities/partner-operator-audit-log.entity';
+import { PartnerOperatorAuditWriter } from '../auth/partner-operator/partner-operator-audit.writer';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([EditSessionEntity, EditSessionVersionEntity]),
+    // 운영자 대리 편집(2026-09-29): FileEntity(운영자 파일 참조 검사)·감사 기록 엔티티.
+    TypeOrmModule.forFeature([
+      EditSessionEntity,
+      EditSessionVersionEntity,
+      FileEntity,
+      PartnerOperatorAuditLogEntity,
+    ]),
     forwardRef(() => WorkerJobsModule),
     // B49: 완료 시 metadata.spread 스펙을 템플릿 권위(spreadConfig.spec)와 대조하기 위해 TemplateSetsService 사용
     TemplatesModule,
@@ -29,7 +38,8 @@ import { OptionalShopJwtGuard } from '../auth/guards/optional-shop-jwt.guard';
     }),
   ],
   controllers: [EditSessionsController],
-  providers: [EditSessionsService, OptionalShopJwtGuard],
+  // PartnerOperatorAuditWriter: AuthModule 을 import 하지 않으므로(순환 방지) 자체 등록한다(무상태).
+  providers: [EditSessionsService, OptionalShopJwtGuard, PartnerOperatorAuditWriter],
   exports: [EditSessionsService],
 })
 export class EditSessionsModule {}

@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Optional, UnauthorizedException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
@@ -6,6 +6,13 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from '../entities/user.entity';
 import { SiteRoleClaim } from '@storige/types';
+import { PartnerOperatorGrantService } from '../partner-operator/partner-operator-grant.service';
+import {
+  PARTNER_OPERATOR,
+  PartnerOperatorUser,
+  grantFromClaims,
+  isPartnerOperatorClaims,
+} from '../partner-operator/partner-operator.types';
 
 export interface JwtPayload {
   sub: string;
@@ -22,6 +29,16 @@ export interface JwtPayload {
   /** P1 멀티테넌시 (2026-06-17): admin 로그인 토큰의 사이트별 역할(SITE_ADMIN/SITE_MANAGER).
    *  없으면(전역 관리자/고객) 미포함 → TenantGuard 가 전역 접근으로 간주(dual-mode). */
   siteRoles?: SiteRoleClaim[];
+  /** 운영자 대리 편집(2026-09-29, ADDITIVE) — partner-operator.types.ts PartnerOperatorClaims 참조 */
+  typ?: string;
+  tu?: string;
+  opId?: string;
+  opName?: string | null;
+  sids?: string[];
+  caps?: string[];
+  obo?: number;
+  gid?: string;
+  gexp?: number;
 }
 
 // Shop session 사용자 타입
@@ -45,6 +62,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     private configService: ConfigService,
     @InjectRepository(User)
     private userRepository: Repository<User>,
+    // 운영자 대리 편집(2026-09-29). AuthModule 이 등록한다. 없으면 운영자 토큰은 401(fail-closed).
+    @Optional()
+    private partnerOperatorGrants?: PartnerOperatorGrantService,
   ) {
     super({
       // AUTH-001 stage1(2026-06-23): Bearer 우선 + httpOnly 쿠키(storige_access) 폴백 다중 extractor.
@@ -61,7 +81,29 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     });
   }
 
-  async validate(payload: JwtPayload): Promise<User | ShopUser> {
+  async validate(payload: JwtPayload): Promise<User | ShopUser | PartnerOperatorUser> {
+    // 운영자 대리 편집 토큰(2026-09-29) — 운영자 클레임 흔적이 하나라도 있으면 이 분기에서만 처리한다.
+    // 액세스 토큰(tu 'access')의 전체 일관성 + 권한 행(취소·만료·사이트 상태·키 지문)을 매 요청 확인.
+    // 어느 하나라도 실패하면 401. User 조회는 하지 않는다.
+    if (isPartnerOperatorClaims(payload)) {
+      const grant = grantFromClaims(payload, 'access');
+      if (!grant || !this.partnerOperatorGrants) {
+        throw new UnauthorizedException('Invalid token');
+      }
+      await this.partnerOperatorGrants.assertActive(grant);
+      return {
+        userId: payload.sub,
+        email: '',
+        name: typeof payload.name === 'string' && payload.name ? payload.name : grant.operatorId,
+        role: PARTNER_OPERATOR,
+        source: PARTNER_OPERATOR,
+        permissions: [],
+        siteId: grant.siteId,
+        siteName: typeof payload.siteName === 'string' ? payload.siteName : '',
+        partnerOperator: grant,
+      };
+    }
+
     // Shop session 토큰인 경우 DB 조회 없이 페이로드 반환
     if (payload.source === 'shop') {
       return {

@@ -26,6 +26,7 @@ import { WorkerJobsController } from './worker-jobs/worker-jobs.controller';
 import { EditSessionsController } from './edit-sessions/edit-sessions.controller';
 import { TemplateSetsController } from './templates/template-sets.controller';
 import { ProductTemplateSetsController } from './templates/product-template-sets.controller';
+import { AuthController } from './auth/auth.controller';
 import { IS_PUBLIC_KEY } from './auth/decorators/public.decorator';
 import { ApiKeyGuard } from './auth/guards/api-key.guard';
 
@@ -96,6 +97,11 @@ const FROZEN_ROUTES: FrozenRoute[] = [
   // by-product 는 @Public + ApiKeyGuard 조합이다(무인증 아님). ApiKeyGuard 가 떨어지면
   // 조용히 완전 공개가 되는 비대칭 위험이 있어 함께 동결한다.
   { contract: 'GET /product-template-sets/by-product (X-API-Key — 파트너 상품페이지)', controller: ProductTemplateSetsController, handler: 'findByProduct', method: RequestMethod.GET, path: 'by-product', auth: 'api-key' },
+  // ADDITIVE 2026-09-29 — 운영자 대리 편집 권한(서버 간, 사이트 편집기 키). ApiKeyGuard 가 떨어지면
+  // 무인증 발급이 되므로 @Public + ApiKeyGuard 조합을 함께 동결한다.
+  { contract: 'POST /auth/partner-operator-session (X-API-Key — 운영자 권한 발급)', controller: AuthController, handler: 'createPartnerOperatorSession', method: RequestMethod.POST, path: 'partner-operator-session', auth: 'api-key' },
+  { contract: 'POST /auth/partner-operator-session/revoke (X-API-Key — 운영자 권한 취소)', controller: AuthController, handler: 'revokePartnerOperatorSession', method: RequestMethod.POST, path: 'partner-operator-session/revoke', auth: 'api-key' },
+  { contract: 'GET /auth/partner-operator-session/audit (X-API-Key — 운영자 감사 기록)', controller: AuthController, handler: 'listPartnerOperatorAudit', method: RequestMethod.GET, path: 'partner-operator-session/audit', auth: 'api-key' },
 ];
 
 /** 컨트롤러 prefix 동결 — 경로 조립의 앞부분이 바뀌면 전 라우트가 이동한다 */
@@ -105,6 +111,7 @@ const FROZEN_CONTROLLER_PREFIX: Array<[Ctor, string]> = [
   [EditSessionsController, 'edit-sessions'],
   [TemplateSetsController, 'template-sets'],
   [ProductTemplateSetsController, 'product-template-sets'],
+  [AuthController, 'auth'],
 ];
 
 function handlerOf(route: FrozenRoute): ((...args: unknown[]) => unknown) | undefined {
