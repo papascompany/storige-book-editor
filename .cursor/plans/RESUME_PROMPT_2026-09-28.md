@@ -182,7 +182,8 @@ Storige 편집기 개발을 이어서 진행합니다. bookmoa·printy 파트너
   - 2) push `47f9a61` 09:57:21Z → 편집기 `3q55ujgns`·admin `purgkt41z` Ready(09:58Z), 운영 번들에 adminEdit·storige_admin_edit·edit-data·editRetentionDays 지문 확인.
   - 3) api 재빌드+nginx 10:00:47Z. Nest 정상 기동(모듈 구성 오류 없음), level50 0, dist 지문 확인. worker 변경 없음(미배포).
   - 4) 운영 확인: health ok · 운영자 발급/감사(키 없음) 401 · 관리자 편집데이터 목록(무인증) 401 · 기존 공개 템플릿셋 조회 200 · 편집기/admin 200.
-  - 5) 양사 통지 발신(ACK 대기): A pageStep=1 · B 운영자 대리 편집 사용법 · C 관리자 편집데이터 관리의 파트너 가시 효과 + 전제 충돌 확인 요청.
+  - 5) 양사 통지·**ACK 수신**. A pageStep=1: bookmoa R-205 로 반영 예정(printy 미전송). B 운영자 권한: 양사 모두 당장 미사용 — bookmoa 가 별도 트랙(서버 관리자 확인 + order_asset_claims 결속 확인 후 발급·revoke)으로 구현, printy 는 그 구현을 이식. C 보관기간: **양사 사이트 미설정 유지 요청**(bookmoa: 장바구니 만료 정책 없어 30일 초과 주문 실재), 설정 시 사전 통지 약속.
+  - **3-B 충돌(양사 동일 구조, 오너 결정 대기)**: 파트너는 고객 editor.complete 시 주문 items[].storige 에 fileId(스프레드는 URL)를 박제하고 재합성·다운로드에 그 값을 쓴다. Storige 웹훅은 주문에 반영되지 않는다(WH-005 v2 전). → Storige 관리자가 **주문 연결 세션**을 편집·완료하면 새 산출물이 파트너 주문에 연결되지 않아 파트너 재합성이 관리자 수정분을 조용히 빠뜨리고, 새 fileId 는 파트너 결속(order_asset_claims)에도 없어 다운로드 거부 가능. printy 는 쪽수 게이트도 관리자 완료를 거치지 않음. 관리자 삭제 시 결제 주문 재편집은 오류 카드(크래시 없음). 양사 요청: 주문 연결 세션은 사전 통지 후 작업(또는 sessionId·새 fileId·UTC 사후 통지로 수동 반영), 근본 해결은 WH-005 v2 수신부.
   - 미실시: 관리자 화면 실사용 E2E(관리자 로그인 필요 — 오너 1회 확인 권장: 사이트 보관기간 설정 → 편집 세션 목록 → 편집기 열기·저장 → 합성).
 - **CTO 점검 메모(09-29)**
   - 운영 worker 실측: `WORKER_LIGHTWEIGHT_VALIDATION`·`WORKER_LIGHTWEIGHT_SYNTHESIS`·`WORKER_CROP_MARK_VALIDATION`·`CUTOUT_ENABLED` = true(.env), `PRINT_NORMALIZE` = false. compose 기본값은 전부 false → .env 누락 재배포 시 조용히 OFF 되는 위험.
