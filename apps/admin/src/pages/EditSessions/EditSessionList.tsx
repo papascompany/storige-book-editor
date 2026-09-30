@@ -278,7 +278,7 @@ export const EditSessionList = () => {
         <Space size={4} wrap>
           <Text strong>{v || '-'}</Text>
           {isOrderLinked(record) && (
-            <Tooltip title="파트너 주문에 연결된 세션입니다. 관리자 작업은 파트너 주문 파일에 자동 반영되지 않으니 사전·사후 통지가 필요합니다.">
+            <Tooltip title="파트너 주문번호(또는 장바구니 단계 번호)가 붙은 세션입니다. 실제 주문 여부는 세션 id로 파트너에 확인하세요. 관리자 작업은 파트너 주문 파일에 자동 반영되지 않으니 사전·사후 통지가 필요합니다.">
               <Tag color="gold">주문 연결</Tag>
             </Tooltip>
           )}

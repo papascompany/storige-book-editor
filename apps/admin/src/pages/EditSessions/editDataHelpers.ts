@@ -288,9 +288,10 @@ export function orderLinkedConfirmCopy(
 ): OrderLinkedConfirmCopy {
   const target = noticeTarget(item);
   const order = item.orderSeqno ?? '-';
+  // orderSeqno 는 파트너에 따라 실제 주문번호가 아니다(bookmoa: 장바구니 초안 id) — 파트너는 세션 id 로 주문을 찾는다.
   const notice = target
-    ? `${target} 주문 ${order}에 연결된 세션입니다. 작업 전에 ${target}에 알리고, 작업을 마치면 [통지 정보 복사]로 세션 id·새 파일 id·시각(UTC)을 전달하세요.`
-    : `주문 ${order}에 연결된 사이트 없는 이전 세션입니다. 통지할 파트너를 먼저 확인해 작업 전에 알리고, 작업을 마치면 [통지 정보 복사]로 세션 id·새 파일 id·시각(UTC)을 전달하세요.`;
+    ? `${target} 주문번호 ${order}가 붙은 세션입니다(파트너에 따라 장바구니 단계 번호일 수 있습니다). 작업 전에 세션 id를 넣어 ${target}에 알리면 파트너가 실제 주문 여부를 회신합니다. 작업을 마치면 [통지 정보 복사]로 세션 id·새 파일 id·시각(UTC)을 전달하세요.`
+    : `주문번호 ${order}가 붙은 사이트 없는 이전 세션입니다. 통지할 파트너를 먼저 확인해 작업 전에 세션 id를 넣어 알리고, 작업을 마치면 [통지 정보 복사]로 세션 id·새 파일 id·시각(UTC)을 전달하세요.`;
   return {
     ...ORDER_LINKED_ACTIONS[action],
     notice,
@@ -355,7 +356,7 @@ export function buildPartnerNoticeText(
   const lines = [
     '[Storige 관리자 작업 통지]',
     `사이트: ${item.siteName || '-'}${item.siteId ? ` (${item.siteId})` : ''}`,
-    `주문번호: ${item.orderSeqno ?? '-'}`,
+    `세션 주문번호(orderSeqno): ${item.orderSeqno ?? '-'}`,
     `세션 ID: ${item.id}`,
     `상태: ${deletedAt ? `삭제됨 (${deletedAt})` : statusLabel}`,
     `편집완료 시각(UTC): ${completedAt ?? '-'}`,

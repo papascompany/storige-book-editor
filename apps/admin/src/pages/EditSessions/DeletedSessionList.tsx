@@ -142,7 +142,7 @@ export const DeletedSessionList = () => {
         <Space size={4} wrap>
           <Text strong>{v || '-'}</Text>
           {isOrderLinked(r) && (
-            <Tooltip title="파트너 주문에 연결된 세션입니다. 삭제·복구 사실을 파트너에 알리세요.">
+            <Tooltip title="파트너 주문번호(또는 장바구니 단계 번호)가 붙은 세션입니다. 삭제·복구 사실을 세션 id와 함께 파트너에 알리세요.">
               <Tag color="gold">주문 연결</Tag>
             </Tooltip>
           )}

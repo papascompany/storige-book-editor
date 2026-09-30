@@ -48,9 +48,12 @@ export function OrderLinkedConfirmModal({ target, onConfirm, onCancel }: OrderLi
     >
       {view && copy && (
         <>
+          <Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>
+            {view.record.siteName ?? '—'} · 주문번호 {view.record.orderSeqno ?? '-'}
+          </Text>
+          {/* 사전 통지에 넣을 세션 id — 파트너는 orderSeqno 가 아니라 세션 id 로 주문을 찾는다 */}
           <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
-            {view.record.siteName ?? '—'} · 주문번호 {view.record.orderSeqno ?? '-'} · 세션{' '}
-            {view.record.id.slice(0, 8)}
+            세션 id <Text code copyable>{view.record.id}</Text>
           </Text>
           <Alert
             type="warning"

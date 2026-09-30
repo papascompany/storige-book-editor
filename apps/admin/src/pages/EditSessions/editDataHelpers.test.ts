@@ -323,7 +323,8 @@ describe('파트너 주문 연결 세션 안전장치 (3-B, 2026-09-30)', () => 
     for (const action of ['open', 'complete', 'delete', 'synthesize'] as const) {
       const copy = orderLinkedConfirmCopy(action, rec);
       expect(copy.title).toContain('파트너 주문');
-      expect(copy.notice).toContain('프린티 주문 555');
+      expect(copy.notice).toContain('프린티 주문번호 555');
+      expect(copy.notice).toContain('세션 id를 넣어');
       expect(copy.notice).toContain('통지 정보 복사');
       expect(copy.ackLabel).toBe('프린티에 사전 통지했습니다');
       expect(copy.effect.length).toBeGreaterThan(0);
@@ -353,7 +354,7 @@ describe('파트너 주문 연결 세션 안전장치 (3-B, 2026-09-30)', () => 
     const legacy = orderLinkedConfirmCopy('delete', item({ siteName: null, siteId: null, orderSeqno: 77 }));
     expect(legacy.ackLabel).toBe('해당 파트너에 사전 통지했습니다');
     expect(legacy.notice).toContain('사이트 없는 이전 세션');
-    expect(legacy.notice).toContain('주문 77');
+    expect(legacy.notice).toContain('주문번호 77');
   });
 
   it('사후 안내 — 삭제는 [삭제 리스트], 편집기 열기는 편집완료 뒤 복사', () => {
@@ -393,7 +394,7 @@ describe('파트너 주문 연결 세션 안전장치 (3-B, 2026-09-30)', () => 
     const lines = text.split('\n');
     expect(lines[0]).toBe('[Storige 관리자 작업 통지]');
     expect(text).toContain('사이트: 북모아 (site-1)');
-    expect(text).toContain('주문번호: 100');
+    expect(text).toContain('세션 주문번호(orderSeqno): 100');
     expect(text).toContain('세션 ID: 11111111-2222-3333-4444-555555555555');
     expect(text).toContain('상태: 편집완료');
     expect(text).toContain('편집완료 시각(UTC): 2026-09-30T01:02:03Z');
