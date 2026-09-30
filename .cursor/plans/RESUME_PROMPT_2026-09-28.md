@@ -185,6 +185,17 @@ Storige 편집기 개발을 이어서 진행합니다. bookmoa·printy 파트너
   - 5) 양사 통지·**ACK 수신**. A pageStep=1: bookmoa R-205 로 반영 예정(printy 미전송). B 운영자 권한: 양사 모두 당장 미사용 — bookmoa 가 별도 트랙(서버 관리자 확인 + order_asset_claims 결속 확인 후 발급·revoke)으로 구현, printy 는 그 구현을 이식. C 보관기간: **양사 사이트 미설정 유지 요청**(bookmoa: 장바구니 만료 정책 없어 30일 초과 주문 실재), 설정 시 사전 통지 약속.
   - **3-B 충돌(양사 동일 구조, 오너 결정 대기)**: 파트너는 고객 editor.complete 시 주문 items[].storige 에 fileId(스프레드는 URL)를 박제하고 재합성·다운로드에 그 값을 쓴다. Storige 웹훅은 주문에 반영되지 않는다(WH-005 v2 전). → Storige 관리자가 **주문 연결 세션**을 편집·완료하면 새 산출물이 파트너 주문에 연결되지 않아 파트너 재합성이 관리자 수정분을 조용히 빠뜨리고, 새 fileId 는 파트너 결속(order_asset_claims)에도 없어 다운로드 거부 가능. printy 는 쪽수 게이트도 관리자 완료를 거치지 않음. 관리자 삭제 시 결제 주문 재편집은 오류 카드(크래시 없음). 양사 요청: 주문 연결 세션은 사전 통지 후 작업(또는 sessionId·새 fileId·UTC 사후 통지로 수동 반영), 근본 해결은 WH-005 v2 수신부.
   - 미실시: 관리자 화면 실사용 E2E(관리자 로그인 필요 — 오너 1회 확인 권장: 사이트 보관기간 설정 → 편집 세션 목록 → 편집기 열기·저장 → 합성).
+  - **3-B 오너 결정(09-30)**: (1) 운영 원칙 채택 — 주문 연결 세션(orderSeqno 있음)의 관리자 수정·완료·삭제는 해당 파트너 창구에 **사전 통지**, 작업 뒤 sessionId·새 fileId(표지·내지·첨부 내지)·UTC **사후 통지**(파트너 수동 반영). 주문 전 세션은 제한 없음. (2) admin 안전장치 구현·배포(아래 '주문 연결 안전장치'). (3) 자동 동기화(관리자 완료 → 파트너 웹훅 v2 → 양사 WH-005 v2 수신부)는 후속 — 착수 약속 없음.
+  - bookmoa R-205 적용 배포 통지(09-30 수신, `4ae0d39` · new.bookmoa.com `jwvxjguyt`): /embed `pageStep=1` 전송 시작 — 상품 입력 단위 1p(낱장 단면 여러 페이지, 아직 미등록) 상품만, 단위 0/미설정은 미전송. 라이브 편집기 상품 4개(2p·4p)는 전송값 변화 없음. 회신 불요.
+- **주문 연결 안전장치(09-30, 오너 승인 3-B (1)(2)) — 배포 완료**
+  - 커밋 `4caa7cc` push 02:33:36Z → admin `hcgs4hn2c` Ready(02:34Z). 편집기 빌드는 변경 없음으로 취소(`3q55ujgns` 유지). api·worker 무변경·무배포. 롤백: admin `purgkt41z`.
+  - 운영 번들 지문 확인: '사전 통지했습니다'·'통지 정보 복사'·'주문 연결'·'Storige 관리자 작업 통지'.
+  - 구성(admin 전용): 편집 세션 목록·삭제 리스트에 `주문 연결` 태그(orderSeqno>0) · 편집기 열기·완료 처리·삭제·합성/재합성은 `OrderLinkedConfirmModal`(영향 설명 + '사전 통지했습니다' 체크 필수, 주문 전 세션은 기존 흐름) · `통지 정보 복사`(`usePartnerNoticeCopy` — 복사 직전 listSessions(siteId·orderSeqno·deleted include) 재조회, 클립보드 거부 시 copyable 창) · 작업 성공 뒤 사후 안내(mutation 단위, 호출 수 계산) · 삭제 통지는 삭제 리스트에서 복사.
+  - 리뷰(워크플로 2렌즈 + 반박 검증 18, 재검증 1): 확정 반영 — 삭제 뒤 통지 경로 없음(M), 관리자 '완료 처리'는 PDF 미생성이라 편집 전 fileId 통지 위험(M → 확인 창에서 편집기 편집완료로 유도), 문구 3건(저장≠fileId 변경, 임포지션 후속 잡이 첨부 내지 id 변경, 삭제 뒤 orderSeqno 진입은 새 빈 세션), 호출별 콜백 누락, Safari 클립보드, 레거시 무사이트 표기, 닫힘 애니메이션. 반박되어 제외 — 합성 문구 오류 주장, 복구 게이팅(범위 밖), 합성 후 안내.
+  - 검증: admin 7 파일/128 테스트(신규 8), tsc·eslint 0, vite build 0, gitleaks 0.
+  - 문서: 가이드 §3.3.3 '주문에 연결된 세션의 관리자 작업 — 운영 원칙' · 통지문 `docs/partner-notices/PARTNER_NOTICE_ORDER_LINKED_STAFF_ACTIONS_2026-09-30.md`.
+  - 한계·잔여: orderSeqno 없이 주문에 쓰인 세션(게스트 전환 등)은 표시 불가(양사에 사례 확인 요청) · 게이팅 컴포넌트 테스트 없음(admin 에 testing-library 없음) · 재조회는 같은 site+주문 최근 100건 안에서만 찾음(못 찾으면 경고 후 목록 값) · 실 브라우저 확인은 관리자 로그인 필요(오너 E2E 때 함께).
+  - 양사 통지 발신(02:35Z, 09-30): bookmoa(`uds:/tmp/cc-socks/5179.sock`)·printy("20260928 Printy 새세션 시작") — 운영 원칙·안전장치·알아 둘 동작(저장≠fileId, 관리 화면 완료 처리는 PDF 미생성, 삭제 404/orderSeqno 진입 새 세션)·한계(orderSeqno 없는 주문 연결 사례 확인 요청)·보관기간 미설정 유지. ACK 대기.
 - **CTO 점검 메모(09-29)**
   - 운영 worker 실측: `WORKER_LIGHTWEIGHT_VALIDATION`·`WORKER_LIGHTWEIGHT_SYNTHESIS`·`WORKER_CROP_MARK_VALIDATION`·`CUTOUT_ENABLED` = true(.env), `PRINT_NORMALIZE` = false. compose 기본값은 전부 false → .env 누락 재배포 시 조용히 OFF 되는 위험.
   - S7 정정: worker `handleSpreadSynthesis` 의 스냅샷 하드 검증은 `createSpreadSynthesisJob`(컨트롤러 호출 0) 경로 전용 → 파트너 합성(compose-mixed·synthesize/external)은 막지 않는다. 실영향은 SOFT `SPINE_MISSING` 뿐.
