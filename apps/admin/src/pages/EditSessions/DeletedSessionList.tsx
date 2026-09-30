@@ -14,7 +14,7 @@ import {
   Alert,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { SearchOutlined, UndoOutlined } from '@ant-design/icons';
+import { CopyOutlined, SearchOutlined, UndoOutlined } from '@ant-design/icons';
 import { sitesApi } from '../../api/sites';
 import { editDataApi, type StaffSessionItem } from '../../api/edit-data';
 import { useAuthStore } from '../../stores/authStore';
@@ -22,10 +22,12 @@ import { isGlobalAdmin } from '../../utils/permissions';
 import {
   canRestoreItem,
   describeApiError,
+  isOrderLinked,
   orderMetaSummary,
   retentionLabel,
   retentionTagColor,
 } from './editDataHelpers';
+import { usePartnerNoticeCopy } from './usePartnerNoticeCopy';
 
 const { Title, Text } = Typography;
 
@@ -54,6 +56,8 @@ export const DeletedSessionList = () => {
   const [selectedSiteId, setSelectedSiteId] = useState<string | undefined>(undefined);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
+  // 주문 연결 세션 삭제의 사후 통지(세션 id·삭제 시각 UTC)는 여기서 복사한다(3-B 운영 원칙).
+  const { copyingId, copyNotice } = usePartnerNoticeCopy();
   // 헤더 테넌트 스위처가 고정한 site 가 로컬 필터보다 우선(EditSessionList 와 동일)
   const currentSiteId = useAuthStore((s) => s.currentSiteId) ?? undefined;
   // GET /sites 는 전역 관리자 전용(사이트 운영자는 403) — 전역 관리자일 때만 드롭다운을 조회한다.
@@ -133,8 +137,17 @@ export const DeletedSessionList = () => {
       title: '주문번호',
       dataIndex: 'orderSeqno',
       key: 'orderSeqno',
-      width: 110,
-      render: (v: number | null) => <Text strong>{v || '-'}</Text>,
+      width: 150,
+      render: (v: number | null, r) => (
+        <Space size={4} wrap>
+          <Text strong>{v || '-'}</Text>
+          {isOrderLinked(r) && (
+            <Tooltip title="파트너 주문에 연결된 세션입니다. 삭제·복구 사실을 파트너에 알리세요.">
+              <Tag color="gold">주문 연결</Tag>
+            </Tooltip>
+          )}
+        </Space>
+      ),
     },
     {
       title: '템플릿셋',
@@ -201,36 +214,51 @@ export const DeletedSessionList = () => {
       ),
     },
     {
-      title: '복구',
+      title: '작업',
       key: 'actions',
-      width: 90,
+      width: 200,
       fixed: 'right',
-      render: (_, r) =>
-        canRestoreItem(r) ? (
-          <Popconfirm
-            title="이 세션을 복구할까요?"
-            description="복구 즉시 고객 보관함/불러오기 목록에 다시 표시됩니다."
-            onConfirm={() => restoreMutation.mutate(r.id)}
-            okText="복구"
-            cancelText="취소"
-          >
-            <Button
-              size="small"
-              icon={<UndoOutlined />}
-              loading={restoreMutation.isPending && restoreMutation.variables === r.id}
+      render: (_, r) => (
+        <Space size={4} wrap>
+          {canRestoreItem(r) ? (
+            <Popconfirm
+              title="이 세션을 복구할까요?"
+              description="복구 즉시 고객 보관함/불러오기 목록에 다시 표시됩니다."
+              onConfirm={() => restoreMutation.mutate(r.id)}
+              okText="복구"
+              cancelText="취소"
             >
-              복구
-            </Button>
-          </Popconfirm>
-        ) : (
-          <Tooltip
-            title={
-              r.canDelete ? '보관기간이 지나 복구할 수 없습니다' : '복구 권한이 없습니다'
-            }
-          >
-            <Text type="secondary">-</Text>
-          </Tooltip>
-        ),
+              <Button
+                size="small"
+                icon={<UndoOutlined />}
+                loading={restoreMutation.isPending && restoreMutation.variables === r.id}
+              >
+                복구
+              </Button>
+            </Popconfirm>
+          ) : (
+            <Tooltip
+              title={
+                r.canDelete ? '보관기간이 지나 복구할 수 없습니다' : '복구 권한이 없습니다'
+              }
+            >
+              <Text type="secondary">-</Text>
+            </Tooltip>
+          )}
+          {isOrderLinked(r) && (
+            <Tooltip title="파트너 사후 통지용 세션 id·삭제 시각(UTC)을 복사합니다">
+              <Button
+                size="small"
+                icon={<CopyOutlined />}
+                loading={copyingId === r.id}
+                onClick={() => copyNotice(r)}
+              >
+                통지 정보 복사
+              </Button>
+            </Tooltip>
+          )}
+        </Space>
+      ),
     },
   ];
 
@@ -290,7 +318,7 @@ export const DeletedSessionList = () => {
         columns={columns}
         dataSource={data?.items ?? []}
         loading={isLoading}
-        scroll={{ x: 1580 }}
+        scroll={{ x: 1730 }}
         pagination={{
           current: page,
           pageSize,

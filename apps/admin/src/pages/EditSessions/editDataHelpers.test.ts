@@ -14,11 +14,16 @@ import {
   describeApiError,
   errorMessage,
   formatYmd,
+  buildPartnerNoticeText,
   isEditAllowed,
+  isOrderLinked,
+  orderLinkedAfterActionMessage,
+  orderLinkedConfirmCopy,
   orderMetaSummary,
   parseApiError,
   retentionLabel,
   retentionTagColor,
+  toUtcIsoSeconds,
   withEditRetentionDays,
 } from './editDataHelpers';
 
@@ -301,5 +306,112 @@ describe('withEditRetentionDays (사이트 폼 payload)', () => {
       name: 'a',
       editRetentionDays: 365,
     });
+  });
+});
+
+describe('파트너 주문 연결 세션 안전장치 (3-B, 2026-09-30)', () => {
+  it('isOrderLinked — 양의 주문번호만 연결로 본다', () => {
+    expect(isOrderLinked({ orderSeqno: 100 })).toBe(true);
+    expect(isOrderLinked({ orderSeqno: null })).toBe(false);
+    expect(isOrderLinked({ orderSeqno: 0 })).toBe(false);
+    expect(isOrderLinked({ orderSeqno: -1 })).toBe(false);
+    expect(isOrderLinked({ orderSeqno: Number.NaN })).toBe(false);
+  });
+
+  it('확인 창 문구 — 사이트·주문번호·통지 절차를 담고, 삭제만 위험 버튼', () => {
+    const rec = item({ siteName: '프린티', orderSeqno: 555 });
+    for (const action of ['open', 'complete', 'delete', 'synthesize'] as const) {
+      const copy = orderLinkedConfirmCopy(action, rec);
+      expect(copy.title).toContain('파트너 주문');
+      expect(copy.notice).toContain('프린티 주문 555');
+      expect(copy.notice).toContain('통지 정보 복사');
+      expect(copy.ackLabel).toBe('프린티에 사전 통지했습니다');
+      expect(copy.effect.length).toBeGreaterThan(0);
+      expect(copy.danger).toBe(action === 'delete');
+    }
+  });
+
+  it('확인 창 효과 문구 — 서버 실제 동작과 맞춘다', () => {
+    const rec = item();
+    // 저장만으로는 파일 id 가 바뀌지 않고 편집완료 때 바뀐다
+    expect(orderLinkedConfirmCopy('open', rec).effect).toContain('편집완료를 눌러야 새 PDF와 새 파일 id');
+    // 관리자 완료 처리는 표지·내지 PDF 를 만들지 않는다 → 편집기 편집완료로 유도
+    expect(orderLinkedConfirmCopy('complete', rec).effect).toContain('여기서 완료하지 말고');
+    // 삭제: sessionId 재편집은 404, 주문번호 진입은 새 세션 가능, 통지는 삭제 리스트
+    const del = orderLinkedConfirmCopy('delete', rec).effect;
+    expect(del).toContain('404');
+    expect(del).toContain('빈 새 세션');
+    expect(del).toContain('[삭제 리스트]');
+    // 합성: 세션 파일 id 불변, 알림은 기본 꺼짐
+    expect(orderLinkedConfirmCopy('synthesize', rec).effect).toContain('기본 꺼짐');
+  });
+
+  it('사이트 없는 레거시 세션 — siteId 로, 둘 다 없으면 통지 대상 확인 안내', () => {
+    expect(orderLinkedConfirmCopy('open', item({ siteName: null, siteId: 's-9' })).ackLabel).toBe(
+      's-9에 사전 통지했습니다',
+    );
+    const legacy = orderLinkedConfirmCopy('delete', item({ siteName: null, siteId: null, orderSeqno: 77 }));
+    expect(legacy.ackLabel).toBe('해당 파트너에 사전 통지했습니다');
+    expect(legacy.notice).toContain('사이트 없는 이전 세션');
+    expect(legacy.notice).toContain('주문 77');
+  });
+
+  it('사후 안내 — 삭제는 [삭제 리스트], 편집기 열기는 편집완료 뒤 복사', () => {
+    const rec = { siteName: '북모아', siteId: 'site-1' };
+    expect(orderLinkedAfterActionMessage('delete', rec)).toContain('[삭제 리스트]의 [통지 정보 복사]');
+    expect(orderLinkedAfterActionMessage('open', rec)).toContain('편집완료한 뒤');
+    expect(orderLinkedAfterActionMessage('complete', rec)).toContain('북모아에');
+    expect(orderLinkedAfterActionMessage('complete', { siteName: null, siteId: null })).toContain(
+      '해당 파트너에',
+    );
+  });
+
+  it('toUtcIsoSeconds — 밀리초 제거, 잘못된 값은 null', () => {
+    expect(toUtcIsoSeconds('2026-09-30T01:02:03.456Z')).toBe('2026-09-30T01:02:03Z');
+    expect(toUtcIsoSeconds(new Date(Date.UTC(2026, 8, 30, 9, 0, 0)))).toBe('2026-09-30T09:00:00Z');
+    expect(toUtcIsoSeconds('not-a-date')).toBeNull();
+    expect(toUtcIsoSeconds(null)).toBeNull();
+  });
+
+  it('통지 텍스트 — 세션 id·파일 id·UTC 시각을 모두 싣는다', () => {
+    const text = buildPartnerNoticeText(
+      item({
+        siteId: 'site-1',
+        siteName: '북모아',
+        orderSeqno: 100,
+        status: 'complete',
+        completedAt: '2026-09-30T01:02:03.000Z',
+        updatedAt: '2026-09-30T01:05:00.000Z',
+        coverFileId: 'cover-abc',
+        contentFileId: 'content-def',
+        contentPdfFileId: null,
+        deletedAt: null,
+        staffEditedAfterComplete: false,
+      }),
+      new Date(Date.UTC(2026, 8, 30, 2, 0, 0)),
+    );
+    const lines = text.split('\n');
+    expect(lines[0]).toBe('[Storige 관리자 작업 통지]');
+    expect(text).toContain('사이트: 북모아 (site-1)');
+    expect(text).toContain('주문번호: 100');
+    expect(text).toContain('세션 ID: 11111111-2222-3333-4444-555555555555');
+    expect(text).toContain('상태: 편집완료');
+    expect(text).toContain('편집완료 시각(UTC): 2026-09-30T01:02:03Z');
+    expect(text).toContain('최종 수정 시각(UTC): 2026-09-30T01:05:00Z');
+    expect(text).toContain('표지 파일 ID: cover-abc');
+    expect(text).toContain('내지 파일 ID: content-def');
+    expect(text).toContain('첨부 내지 파일 ID: -');
+    expect(text).toContain('작성 시각(UTC): 2026-09-30T02:00:00Z');
+    expect(text).not.toContain('주의:');
+  });
+
+  it('통지 텍스트 — 편집 후 미완료면 주의 문구, 삭제됨이면 삭제 시각', () => {
+    const stale = buildPartnerNoticeText(item({ staffEditedAfterComplete: true }), NOW);
+    expect(stale).toContain('편집 전 PDF');
+    const deleted = buildPartnerNoticeText(
+      item({ deletedAt: '2026-09-30T03:00:00.999Z' }),
+      NOW,
+    );
+    expect(deleted).toContain('상태: 삭제됨 (2026-09-30T03:00:00Z)');
   });
 });

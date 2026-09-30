@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Table,
@@ -18,6 +18,7 @@ import {
   DeleteOutlined,
   SearchOutlined,
   CheckCircleOutlined,
+  CopyOutlined,
   DownloadOutlined,
   EditOutlined,
   MergeCellsOutlined,
@@ -42,10 +43,17 @@ import {
   canSynthesize,
   describeApiError,
   isEditAllowed,
+  isOrderLinked,
+  orderLinkedAfterActionMessage,
+  type OrderLinkedAction,
   retentionLabel,
   retentionTagColor,
 } from './editDataHelpers';
 import { SynthesizeModal } from './SynthesizeModal';
+import { OrderLinkedConfirmModal, type OrderLinkedTarget } from './OrderLinkedConfirmModal';
+import { usePartnerNoticeCopy } from './usePartnerNoticeCopy';
+
+type NoticeAction = Exclude<OrderLinkedAction, 'synthesize'>;
 import { SessionJobsDrawer } from './SessionJobsDrawer';
 
 const { Title, Text } = Typography;
@@ -106,6 +114,13 @@ export const EditSessionList = () => {
   const [synthesizeTarget, setSynthesizeTarget] = useState<StaffSessionItem | null>(null);
   const [jobsTarget, setJobsTarget] = useState<StaffSessionItem | null>(null);
   const [downloadingKey, setDownloadingKey] = useState<string | null>(null);
+  // 파트너 주문 연결 세션(주문번호 있음)의 편집기 열기·완료·삭제·합성은 확인 창을 거친다(3-B 운영 원칙).
+  const [orderConfirm, setOrderConfirm] = useState<OrderLinkedTarget | null>(null);
+  const { copyingId: copyingNoticeId, copyNotice } = usePartnerNoticeCopy();
+  // 확인 창을 거쳐 시작한 작업(작업·세션 id 별) — 성공하면 사후 통지를 안내한다.
+  // 호출별 mutate 콜백은 마지막 호출만 받으므로 mutation 수준 onSuccess 에서 이 표를 본다.
+  // 같은 작업·세션이 겹쳐 실행돼도 호출마다 안내하도록 진행 중 호출 수를 센다.
+  const pendingNotice = useRef(new Map<string, { record: StaffSessionItem; count: number }>());
   // P3b — 헤더 테넌트 스위처가 컨텍스트를 고정하면 페이지 로컬 site 필터보다 우선.
   const currentSiteId = useAuthStore((s) => s.currentSiteId) ?? undefined;
   // GET /sites 는 전역 관리자 전용(사이트 운영자는 403) — 전역 관리자일 때만 드롭다운을 조회한다.
@@ -154,10 +169,19 @@ export const EditSessionList = () => {
     queryClient.invalidateQueries({ queryKey: ['edit-data-sessions'] });
   };
 
+  const settleNotice = (action: NoticeAction, sessionId: string, succeeded: boolean): void => {
+    const key = `${action}:${sessionId}`;
+    const entry = pendingNotice.current.get(key);
+    if (!entry) return;
+    if (entry.count <= 1) pendingNotice.current.delete(key);
+    else entry.count -= 1;
+    if (succeeded) message.warning(orderLinkedAfterActionMessage(action, entry.record), 10);
+  };
+
   const openEditorMutation = useMutation({
     mutationFn: (sessionId: string) =>
       editDataApi.openEditorSession(sessionId, { allowDelete: false }),
-    onSuccess: (res) => {
+    onSuccess: (res, sessionId) => {
       const url = buildEditorUrl(EDITOR_BASE_URL, res.editorPath, res.accessToken, res.refreshToken);
       window.open(url, '_blank', 'noopener,noreferrer');
       const expiresAt = new Date(res.grantExpiresAt).toLocaleString('ko-KR');
@@ -166,30 +190,36 @@ export const EditSessionList = () => {
         8,
       );
       queryClient.invalidateQueries({ queryKey: ['edit-data-grants', res.sessionId] });
+      settleNotice('open', sessionId, true);
     },
-    onError: (err: unknown) => {
+    onError: (err: unknown, sessionId) => {
+      settleNotice('open', sessionId, false);
       message.error(describeApiError(err, '편집기 열기에 실패했습니다.'));
     },
   });
 
   const completeMutation = useMutation({
     mutationFn: (sessionId: string) => editDataApi.complete(sessionId),
-    onSuccess: () => {
+    onSuccess: (_res, sessionId) => {
       message.success('편집 세션을 완료 처리했습니다.');
       invalidateLists();
+      settleNotice('complete', sessionId, true);
     },
-    onError: (err: unknown) => {
+    onError: (err: unknown, sessionId) => {
+      settleNotice('complete', sessionId, false);
       message.error(describeApiError(err, '완료 처리에 실패했습니다.'));
     },
   });
 
   const deleteMutation = useMutation({
     mutationFn: (sessionId: string) => editDataApi.remove(sessionId),
-    onSuccess: () => {
+    onSuccess: (_res, sessionId) => {
       message.success('편집 세션을 삭제했습니다. [삭제 리스트]에서 확인할 수 있습니다.');
       invalidateLists();
+      settleNotice('delete', sessionId, true);
     },
-    onError: (err: unknown) => {
+    onError: (err: unknown, sessionId) => {
+      settleNotice('delete', sessionId, false);
       message.error(describeApiError(err, '삭제에 실패했습니다.'));
     },
   });
@@ -206,6 +236,20 @@ export const EditSessionList = () => {
     } finally {
       setDownloadingKey(null);
     }
+  };
+
+  // 확인 창에서 진행을 누른 주문 연결 세션 작업 실행
+  const runAction = ({ action, record }: OrderLinkedTarget): void => {
+    if (action === 'synthesize') {
+      setSynthesizeTarget(record);
+      return;
+    }
+    const key = `${action}:${record.id}`;
+    const entry = pendingNotice.current.get(key);
+    pendingNotice.current.set(key, { record, count: (entry?.count ?? 0) + 1 });
+    if (action === 'open') openEditorMutation.mutate(record.id);
+    else if (action === 'complete') completeMutation.mutate(record.id);
+    else deleteMutation.mutate(record.id);
   };
 
   const now = new Date();
@@ -229,8 +273,17 @@ export const EditSessionList = () => {
       title: '주문번호',
       dataIndex: 'orderSeqno',
       key: 'orderSeqno',
-      width: 110,
-      render: (v: number | null) => <Text strong>{v || '-'}</Text>,
+      width: 150,
+      render: (v: number | null, record) => (
+        <Space size={4} wrap>
+          <Text strong>{v || '-'}</Text>
+          {isOrderLinked(record) && (
+            <Tooltip title="파트너 주문에 연결된 세션입니다. 관리자 작업은 파트너 주문 파일에 자동 반영되지 않으니 사전·사후 통지가 필요합니다.">
+              <Tag color="gold">주문 연결</Tag>
+            </Tooltip>
+          )}
+        </Space>
+      ),
     },
     {
       title: '회원',
@@ -296,10 +349,11 @@ export const EditSessionList = () => {
     {
       title: '작업',
       key: 'actions',
-      width: 380,
+      width: 440,
       fixed: 'right',
       render: (_, record) => {
         const editAllowed = isEditAllowed(record);
+        const linked = isOrderLinked(record);
         const expiredTip = '보관기간이 지나 작업할 수 없습니다';
         const openTip = !record.siteId
           ? '사이트가 없는 이전 세션은 편집기·합성을 지원하지 않습니다'
@@ -320,20 +374,25 @@ export const EditSessionList = () => {
                 icon={<EditOutlined />}
                 disabled={!canOpenEditor(record)}
                 loading={openEditorMutation.isPending && openEditorMutation.variables === record.id}
-                onClick={() => openEditorMutation.mutate(record.id)}
+                onClick={() =>
+                  linked
+                    ? setOrderConfirm({ action: 'open', record })
+                    : openEditorMutation.mutate(record.id)
+                }
               >
                 편집기에서 열기
               </Button>
             </Tooltip>
             {record.status !== 'complete' && (
               <Tooltip title={editAllowed ? '완료 처리' : expiredTip}>
+                {/* 주문 연결 세션은 Popconfirm 대신 확인 창(OrderLinkedConfirmModal) */}
                 <Popconfirm
                   title="이 세션을 완료 처리할까요?"
                   description="고객 편집완료와 같은 후속 처리(검증 등)가 실행됩니다."
                   onConfirm={() => completeMutation.mutate(record.id)}
                   okText="완료 처리"
                   cancelText="취소"
-                  disabled={!canCompleteItem(record)}
+                  disabled={!canCompleteItem(record) || linked}
                 >
                   <Button
                     type="link"
@@ -341,6 +400,7 @@ export const EditSessionList = () => {
                     icon={<CheckCircleOutlined />}
                     disabled={!canCompleteItem(record)}
                     loading={completeMutation.isPending && completeMutation.variables === record.id}
+                    onClick={linked ? () => setOrderConfirm({ action: 'complete', record }) : undefined}
                   >
                     완료 처리
                   </Button>
@@ -353,7 +413,11 @@ export const EditSessionList = () => {
                 size="small"
                 icon={<MergeCellsOutlined />}
                 disabled={!canSynthesize(record)}
-                onClick={() => setSynthesizeTarget(record)}
+                onClick={() =>
+                  linked
+                    ? setOrderConfirm({ action: 'synthesize', record })
+                    : setSynthesizeTarget(record)
+                }
               >
                 합성/재합성
               </Button>
@@ -366,6 +430,19 @@ export const EditSessionList = () => {
             >
               작업·권한
             </Button>
+            {linked && (
+              <Tooltip title="파트너 사후 통지용 세션 id·파일 id·시각(UTC)을 복사합니다">
+                <Button
+                  type="link"
+                  size="small"
+                  icon={<CopyOutlined />}
+                  loading={copyingNoticeId === record.id}
+                  onClick={() => copyNotice(record)}
+                >
+                  통지 정보 복사
+                </Button>
+              </Tooltip>
+            )}
             {FILE_BUTTONS.map(({ kind, field, label }) =>
               record[field] ? (
                 <Tooltip key={kind} title={`${label} 파일 다운로드`}>
@@ -389,6 +466,7 @@ export const EditSessionList = () => {
                 okText="삭제"
                 okButtonProps={{ danger: true }}
                 cancelText="취소"
+                disabled={linked}
               >
                 <Button
                   type="link"
@@ -396,6 +474,7 @@ export const EditSessionList = () => {
                   danger
                   icon={<DeleteOutlined />}
                   loading={deleteMutation.isPending && deleteMutation.variables === record.id}
+                  onClick={linked ? () => setOrderConfirm({ action: 'delete', record }) : undefined}
                 >
                   삭제
                 </Button>
@@ -494,7 +573,7 @@ export const EditSessionList = () => {
         dataSource={data?.items ?? []}
         rowKey="id"
         loading={isLoading}
-        scroll={{ x: 1500 }}
+        scroll={{ x: 1600 }}
         pagination={{
           current: page,
           pageSize,
@@ -509,6 +588,14 @@ export const EditSessionList = () => {
         }}
       />
 
+      <OrderLinkedConfirmModal
+        target={orderConfirm}
+        onConfirm={(target) => {
+          setOrderConfirm(null);
+          runAction(target);
+        }}
+        onCancel={() => setOrderConfirm(null)}
+      />
       <SynthesizeModal
         session={synthesizeTarget}
         open={!!synthesizeTarget}
