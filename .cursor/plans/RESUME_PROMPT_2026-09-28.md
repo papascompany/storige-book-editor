@@ -66,7 +66,7 @@ Storige 편집기 개발을 이어서 진행합니다. bookmoa·printy 파트너
 | 파트너 | cwd | 현재 세션 | 비고 |
 |---|---|---|---|
 | bookmoa | `~/Developer/claude/bookmoa-mobile` | **09-30 교체**: 「북모아 Printable 개발 계속」 · `local_bf71565d-e946-487b-a8e4-27962fe7626a` · 소켓 `uds:/tmp/cc-socks/95699.sock`(lsof cwd = bookmoa-mobile 확증). 옛 창구 「20260928 북모아 개발 계속」(local_75d4aefc, 5179→71666)는 쓰지 않음. 같은 이름의 Remote Control 세션(오프라인)과 혼동 주의 | bypass 모드. 운영 new.bookmoa.com = R-206(`5f4a11a`+`a283280` · `65dg8dkm6`). 다음 후보 R-207(idem replay 결속 선점 보안 수정, bookmoa 내부·Storige 계약 변경 없음). 주문 연결 세션 사전·사후 통지도 이 창구 |
-| printy | `~/Developer/claude/printy` | **09-30 창구 공백**: 「20260928 Printy 새세션 시작」(local_5ca0cbbf, 43281) 종료 통지 수신 — 새 printy 세션이 새 id 를 알릴 때까지 **printy 주문 세션의 관리자 작업 사전·사후 통지는 보류**(또는 새 창구 통지 뒤 발신). printy 절차는 printy `docs/SESSION-START-PROMPT-2026-09-30-next.md` 에 기록됨 | bypass 모드. 코드 `584375a`. 편집기 상품 4개가 /embed 쪽수 파라미터 전송(16~300·4 / 16~500·2 ×2 / 16~48·4). 관리자 「편집 열기」= partner-operator-session(R-206) 배포 완료, 실 e2e 보류 |
+| printy | `~/Developer/claude/printy` | **09-30 교체**: 「20260930 Printy CTO 개발 계속」 · `local_6494a1a2-072f-498a-a070-e6133b50c706`(04:24:48Z 시작 프로세스 cwd = printy 확증). 옛 local_5ca0cbbf(43281) 닫힘. 주문 연결 세션 사전·사후 통지(sessionId 기준 → printy 가 order_asset_claims kind=session 으로 주문 여부 회신)와 배포 통지는 이 창구 | bypass 모드. 운영 코드 `584375a`(R-206 operator-session 이식, 04:26Z 실측 변경 없음). 편집기 상품 4개가 /embed 쪽수 파라미터 전송(16~300·4 / 16~500·2 ×2 / 16~48·4). 실 e2e 보류 |
 | **Storige(당사)** | 이 저장소 | 이름 "Storige 편집기 개발 계속" · printy 가 보고한 id `local_7e9f1fad…` | 09-28 새 세션. 양사에 창구 교체 통지·ACK 완료 |
 
 - 세션 이름·id 는 재시작하면 바뀐다. 받은 메시지에 회신할 때는 **`from` 값을 그대로 `to` 로** 쓴다.
@@ -202,6 +202,7 @@ Storige 편집기 개발을 이어서 진행합니다. bookmoa·printy 파트너
     - printy 질의 답변(코드 확인): 세션 orderSeqno 는 생성 뒤 불변(update DTO 에 필드 없음 + forbidNonWhitelisted, 편집기 sessionId 진입은 세션 값 사용).
     - 정정 배포: `947c9e6` push 02:37:20Z → admin `isxgg1mpv` Ready(02:38Z), 번들 지문 확인. 확인 창에 세션 id 전체 표시·복사, '주문번호 N이 붙은 세션(장바구니 단계 번호일 수 있음) — 세션 id를 넣어 사전 통지' 문구, 통지 텍스트 '세션 주문번호(orderSeqno)'. 가이드 §3.3.3·통지문 §7 반영. 양사 회신 발신(회신 불요). 롤백: admin `hcgs4hn2c`(→ `purgkt41z`).
   - **100p Books 참고 통지(09-30, 오너 요청)**: 새 세션 "20260930 100p_books 서브에이전트 진행"으로 발신. 운영 DB 읽기 전용 실측 04:03:21Z UTC — site `729ad8a7` 편집 세션 0건·edit_retention_days NULL → 대상 없음(유형 1: upload/validate/download external 만). 향후 편집 세션 사용 계획 확인 요청. **ACK 수신**(`uds:/tmp/cc-socks/75225.sock`, local_69303599): 100p main `c9f8226` 코드 대조 — edit-sessions·/embed 호출 0건(lib/storige/client.ts 는 external 경로만), 실측과 일치, 코드 변경 불요. 편집 세션 도입 계획 없음(도입 여부는 오너 결정, 결정 시 창구·orderSeqno 의미 협의). 기술 통지 창구 = 100p_books 저장소 세션.
+- **printy 새 창구(09-30)**: local_6494a1a2 「20260930 Printy CTO 개발 계속」 등록, §2 표 갱신. 요청에 따라 미회신 건 없음을 회신함(옛 창구로 보낸 것은 운영 원칙 통지(ACK 완료)와 orderSeqno 불변 답변(회신 불요) 두 건뿐).
 - **printy 창구 인계 통지(09-30 수신, 회신 불요)**: local_5ca0cbbf 종료 → 새 창구 통지 전까지 printy 대상 사전·사후 통지 보류. 대조(읽기 전용, 2026-09-30 04:24:05Z UTC): printy site `009c26d5` active, 최근 24h 신규 세션 0건(쪽수 파라미터 실전송 흔적은 아직 없음), 운영자 권한 발급 0건 → R-206·쪽수 파라미터는 배포만 되었고 실사용 전. §2 표 갱신.
 - **bookmoa 창구 교체(09-30 수신, 회신 불요)**: 새 창구 「북모아 Printable 개발 계속」(95699, cwd bookmoa-mobile 확증). 주문 연결 세션 사전·사후 통지도 여기로 보낸다. §2 표 갱신.
 - **bookmoa R-206 적용 배포 통지(09-30 수신, `5f4a11a`+보안 후속 · new.bookmoa.com `65dg8dkm6`, 회신 불요)** — 관리자 「편집 열기」에 운영자 대리 편집 권한 연동 시작.
