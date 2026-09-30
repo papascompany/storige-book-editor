@@ -196,6 +196,11 @@ Storige 편집기 개발을 이어서 진행합니다. bookmoa·printy 파트너
   - 문서: 가이드 §3.3.3 '주문에 연결된 세션의 관리자 작업 — 운영 원칙' · 통지문 `docs/partner-notices/PARTNER_NOTICE_ORDER_LINKED_STAFF_ACTIONS_2026-09-30.md`.
   - 한계·잔여: orderSeqno 없이 주문에 쓰인 세션(게스트 전환 등)은 표시 불가(양사에 사례 확인 요청) · 게이팅 컴포넌트 테스트 없음(admin 에 testing-library 없음) · 재조회는 같은 site+주문 최근 100건 안에서만 찾음(못 찾으면 경고 후 목록 값) · 실 브라우저 확인은 관리자 로그인 필요(오너 E2E 때 함께).
   - 양사 통지 발신(02:35Z, 09-30): bookmoa(`uds:/tmp/cc-socks/5179.sock`)·printy("20260928 Printy 새세션 시작") — 운영 원칙·안전장치·알아 둘 동작(저장≠fileId, 관리 화면 완료 처리는 PDF 미생성, 삭제 404/orderSeqno 진입 새 세션)·한계(orderSeqno 없는 주문 연결 사례 확인 요청)·보관기간 미설정 유지. ACK 대기.
+  - **양사 ACK 수신(09-30)**: bookmoa(5179)·printy(43281, local_5ca0cbbf) 모두 원칙 수용. 통지 창구는 각 사의 현재 세션이며 교대 시 각 사가 알림. 사후 통지는 각 사 오너 승인 뒤 주문을 수동 반영(printy: fileId·order_asset_claims·쪽수 확인). 보관기간 미설정 유지 확인.
+    - 핵심 사실: 양사 모두 orderSeqno = **장바구니 초안 id(13자리, cartDraftIdRef)**. 결제 주문번호(bookmoa 15자리, printy orders.id)와 다름. orderSeqno 0 인 주문 세션은 없음(게스트 전환도 초안 id 유지) → 누락 없음, 미주문 세션까지 '주문 연결' 과잉 표시(안전 쪽, 유지).
+    - 결정: **통지 식별자 = sessionId**(orderSeqno 는 참고). 파트너가 sessionId 로 실제 주문 여부를 회신하고, 미주문이면 제한 없음.
+    - printy 질의 답변(코드 확인): 세션 orderSeqno 는 생성 뒤 불변(update DTO 에 필드 없음 + forbidNonWhitelisted, 편집기 sessionId 진입은 세션 값 사용).
+    - 정정 배포: `947c9e6` push 02:37:20Z → admin `isxgg1mpv` Ready(02:38Z), 번들 지문 확인. 확인 창에 세션 id 전체 표시·복사, '주문번호 N이 붙은 세션(장바구니 단계 번호일 수 있음) — 세션 id를 넣어 사전 통지' 문구, 통지 텍스트 '세션 주문번호(orderSeqno)'. 가이드 §3.3.3·통지문 §7 반영. 양사 회신 발신(회신 불요). 롤백: admin `hcgs4hn2c`(→ `purgkt41z`).
 - **CTO 점검 메모(09-29)**
   - 운영 worker 실측: `WORKER_LIGHTWEIGHT_VALIDATION`·`WORKER_LIGHTWEIGHT_SYNTHESIS`·`WORKER_CROP_MARK_VALIDATION`·`CUTOUT_ENABLED` = true(.env), `PRINT_NORMALIZE` = false. compose 기본값은 전부 false → .env 누락 재배포 시 조용히 OFF 되는 위험.
   - S7 정정: worker `handleSpreadSynthesis` 의 스냅샷 하드 검증은 `createSpreadSynthesisJob`(컨트롤러 호출 0) 경로 전용 → 파트너 합성(compose-mixed·synthesize/external)은 막지 않는다. 실영향은 SOFT `SPINE_MISSING` 뿐.
