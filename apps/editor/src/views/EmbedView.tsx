@@ -203,11 +203,13 @@ export default function EmbedView() {
             //
             // 🔒 `needsAuth` 는 무조건 동봉(불리언 — 자격증명 아님).
             //    `guestToken` 은 **`parentOrigin` 이 지정된 경우에만** 동봉한다.
-            //    emitLegacy 는 `parentOrigin` 이 없으면 `targetOrigin='*'` 로 송신하므로(위 38행),
+            //    emitLegacy 는 `parentOrigin` 이 없으면 `targetOrigin='*'` 로 송신하므로(emitLegacy 본문 참조),
             //    무조건 동봉하면 임베드 페이지의 다른 스크립트·프레임에 게스트 토큰이 샌다.
             //    PLATFORM_INTEGRATION_GUIDE §3.2 가 "레거시 페이로드는 필드 화이트리스트라
-            //    token·guestToken 같은 자격증명은 실리지 않는다" 를 완화 근거로 명시하고 있어,
-            //    그 보안 속성을 깨지 않으려면 오리진 고정이 전제여야 한다.
+            //    token·guestToken 같은 자격증명은 실리지 않는다"(와일드카드 송신 한정) 를 완화 근거로
+            //    명시하고 있어, 그 보안 속성을 깨지 않으려면 오리진 고정이 전제여야 한다.
+            //    (sessionId 는 기존 레거시 계약대로 와일드카드 송신에도 포함 — 이 불변식의 범위 밖.
+            //     불변식은 views/EmbedView.test.tsx D24·D25 가 잠근다.)
             //    ⇒ 파트너가 게스트 승계를 쓰려면 `parentOrigin` 을 지정해야 한다(가이드에 명기).
             ...(r.needsAuth ? { needsAuth: r.needsAuth } : {}),
             ...(parentOrigin && r.guestToken ? { guestToken: r.guestToken } : {}),
