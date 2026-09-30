@@ -46,18 +46,18 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
 
 ---
 
-## 1. 현재 라이브 상태 (2026-09-30 04:27Z 실측)
+## 1. 현재 라이브 상태 (2026-09-30 07:57Z — Wave 1 배포 후)
 
 | 구성 | 현재 운영 | 롤백 |
 |---|---|---|
 | DB | 09-28: `template_sets.page_step`·`pad_to_page_step` / 09-29 09:57Z: `20260929`(운영자 권한·감사 테이블) → `20260930`(sites.edit_retention_days·origin/actor) — 전부 ADDITIVE | 백업 `~/backup-sites-pre-staff-edit-20260929.sql`·`~/backup-template_sets-pre-padstep-20260928.sql`. 컬럼·테이블은 남겨도 무해 |
-| api | `47f9a61`(09-29 10:00Z) + nginx 재시작 | `storige-api:rollback-pre-staff-edit` → `rollback-pre-wave2` → `rollback-pre-wave1` → `rollback-pre-padstep` → … |
-| worker | Wave 2 이미지(09-29 06:06Z) | `storige-worker:rollback-pre-wave2` → `rollback-pre-wave1` |
-| editor | Vercel `3q55ujgns`(`47f9a61`) | `h55s9ttfj` promote |
+| api | `1c52c80`(Wave 1, 09-30 07:54Z) + nginx 재시작 | `storige-api:rollback-pre-wave1b`(=`47f9a61`) → `rollback-pre-staff-edit` → `rollback-pre-wave2` → … |
+| worker | `1c52c80`(Wave 1 X1 TrimBox, 09-30 07:54Z) | `storige-worker:rollback-pre-wave1b` → `rollback-pre-wave2` → `rollback-pre-wave1`. X1 만 끄려면 `.env` `WORKER_TRIMBOX_SIZE_CHECK=false` 후 worker 재생성 |
+| editor | Vercel `jhn8wxb8b`(`4fcf0a9`, 09-30 07:56Z — 게스트 재오픈 전환) | `4pxzkh0le`(`1c52c80`) → `3q55ujgns` promote |
 | admin | Vercel `isxgg1mpv`(`947c9e6`, 09-30 02:38Z) | `hcgs4hn2c` → `purgkt41z` |
 
-- origin/master = 최신 docs 커밋이다. VPS 체크아웃은 `47f9a61` 이다.
-  - 그 뒤 커밋(`4caa7cc`·`947c9e6`)은 admin 전용이다. 나머지는 문서 커밋이라 api·worker 배포 대상이 아니다.
+- origin/master = `4fcf0a9`(+ 이후 문서 커밋). VPS 체크아웃은 `1c52c80`(그 뒤 `4fcf0a9` 는 편집기 전용).
+- DB 마이그레이션 없음. 로컬 백업 브랜치 `backup/wave1-pre-regroup-2026-09-30`(push 안 함, 커밋 재구성 전 상태 — 필요 없으면 삭제).
 - 배포 방식:
   - editor·admin: master push 가 곧 배포다(**push 전 승인**). 문서만 바꾼 push 는 Vercel 빌드가 Canceled 되고 기존 Ready 가 유지된다.
   - api·worker: VPS 에서 수동 배포한다(`CLAUDE.local.md` §6). **api 를 재생성하면 nginx 재시작이 필수**다.
@@ -69,9 +69,9 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
 
 | 대상 | 기준 |
 |---|---|
-| api jest | 99 스위트 / 1659 · tsc 0 |
-| worker jest | 23 스위트 / 661 · tsc 0 |
-| editor vitest | 79 파일 / 973 · tsc 0 · 빌드 |
+| api jest | 111 스위트 / 1952 · tsc 0 |
+| worker jest | 26 스위트 / 829 · tsc 0 (로컬 gs 설치 시; gs 부재 시 GS 블록 skip) |
+| editor vitest | 85 파일 / 1066 · tsc 0 · 빌드 · build:embed |
 | admin vitest | 7 파일 / 128 · tsc·eslint 0 · 빌드 |
 | sdk | 12 / 341 |
 | canvas-core | 55 / 630 |
@@ -117,6 +117,14 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
   - worker 통합: tsc 0 · jest 26/829(로컬 gs 10.08.0 로 GS 테스트 실제 실행). 운영 gs 10.07.1·qpdf 12.3.2 → 배포 게이트에서 컨테이너 안 실측.
   - X1 알려진 한계(후속): 합성 산출은 주문 도련 대신 선언 도련(≤3mm) 또는 원본 박스 — API 가 합성 잡에 주문 도련·기대 재단 전달 필요. 표지·썸네일·조판 미리보기·원본 정규화 사본 미적용.
   - 후속(오너 결정): Sentry 과거 이벤트 정리, admin 편집기 호출 방식·admin Sentry 전처리(상세 비공개), 플래그 파싱 비대칭·compose 매핑, 게스트 조회 경로 2단계(상세 비공개).
+- **09-30 Wave 1 배포 완료(오너 승인)**:
+  - 커밋 재구성: 배포 전 최종 리뷰(NO_GO 1건 = 테스트 제목의 약점 서술)로 push 전 보강 — 파일 JWT 라우트(양의 회원 번호 소유 판정·호출자 사이트 대조·staff 대소문자 통일), 세션 목록(주문번호·사이트 조회 판정), 테스트 제목 중립화 → 로컬 9 커밋 재구성(`5e76d36`..`4fcf0a9`). 누출 검사·약점 표현 검사 0건.
+  - 1차 push `1c52c80` 07:48:40Z → VPS 롤백 태그 `rollback-pre-wave1b` → build → **X1 게이트**(새 이미지 일회용 컨테이너, 운영 gs 10.07.1·qpdf 12.3.2): 파일 A 합성 210×297·변환 212×299, 파일 B 합성 216×303·변환 212×299, GS 재증류 뒤 TrimBox 중심 오차 0pt, 원본 불변 → api·worker 교체 07:54:05Z + nginx 재시작 → health 200, `[FLAGS]` api·worker 확인(`WORKER_TRIMBOX_SIZE_CHECK=true`).
+  - 스모크(키 없이): owners 401(무키·잘못된 키), guest 조회 403(토큰 없음·쿼리만)·404(임의 헤더), CORS preflight `X-Guest-Token` 허용, external·목록 무인증 401 불변. 편집기 Vercel `4pxzkh0le` Ready.
+  - 운영 이미지 읽기 전용 판정(07:5xZ): A 통과(+TRIMBOX_SIZE_BASIS+BLEED_MISSING, 도련 0), B 통과(도련 3), C SIZE_MISMATCH 유지.
+  - 2차 push `4fcf0a9` 07:54:42Z → Vercel `jhn8wxb8b` Ready, 운영 번들에 게스트 조회 헤더 코드 확인(07:56:50Z).
+  - 파트너 통지·ACK: printy(영향 0, owners 는 bookmoa diff 이식 예정, 4) 경로 미사용), 100p(파싱·게이트 영향 0), bookmoa(ACK, 4) 경로 미사용, 소유 검사 구현은 bookmoa 오너 결정 대기). bookmoa 질의 회신: TRIMBOX_SIZE_BASIS details 키·정보성 경고(동의 단계 제외 권고).
+  - **후속(우선순위 순)**: ① 게스트 조회 경로 2단계(상세 비공개 — 편집기 전환 관측 로그 `[guest-read] member-route` 추이 확인 후, 양사 사전 통지) ② owners 첫 호출 시 운영 로그 응답시간 실측·공유 ③ X1 합성 잡에 주문 도련·기대 재단 전달(API) ④ 100p presigned complete 사이트 귀속(P4) ⑤ 편집기 게스트 저장·버전 호출의 헤더 전환 ⑥ Sentry 과거 이벤트 정리(오너 결정) ⑦ files SUPER_ADMIN staff 포함 여부(결정).
 - **09-30 04:30Z 교대 예고 발신**: 양사(「20260930 북모아 관리자 수정 시작」·「20260930 Printy CTO 개발 계속」)에 "Storige 세션 종료 예정, 새 세션이 이름을 통지"를 보냈다. 새 세션은 시작 통지로 이를 닫는다. bookmoa 쪽에는 '이 세션이 bookmoa 창구가 아니면 알려 달라'고 확인도 요청했다.
 - 받은 메시지에 회신할 때는 **`from` 값을 그대로 `to`** 로 쓴다. 세션 이름·id·소켓은 재시작하면 바뀐다.
 - 발신 성공은 도달을 뜻하지 않는다. 중요한 통지는 ACK 를 요청하고, 레포(가이드·`docs/partner-notices/`)에도 남긴다.
