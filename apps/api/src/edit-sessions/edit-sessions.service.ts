@@ -626,7 +626,7 @@ export class EditSessionsService {
    * 운영자 파일 참조 검사(2026-09-29, 운영자 전용 — 고객 동작 불변).
    * DTO 가 null 이 아닌 값으로 지정한 cover/content/contentPdf 파일은 존재(삭제 제외)하고
    * siteId 가 NULL 이거나 세션 site 와 같아야 한다. 아니면 400 FILE_NOT_IN_SCOPE.
-   * (/files/upload 는 누구에게도 site 를 스탬프하지 않으므로 NULL-site 파일은 허용한다.)
+   * (site 없는 토큰의 /files/upload 산출물·레거시 파일은 NULL-site 이므로 NULL-site 파일은 허용한다.)
    */
   private async assertOperatorFileRefs(
     session: Pick<EditSessionEntity, 'siteId'>,

@@ -1,10 +1,9 @@
 /**
  * 게스트 세션 테넌시(siteId) — 실스택 HTTP + 승격 게이트 e2e (2026-07-30).
  *
- * 이 트랙의 실패 모드는 **교차테넌트 IDOR** 이다: siteId 를 잘못 주입하면 파트너 A 가
- * 파트너 B 의 세션을 자기 테넌트로 끌어와 승격하고, 승격은 그 세션의 산출 PDF 를 book
- * 자산으로 연결하므로 **타 파트너 고객의 인쇄물이 유출**된다. 따라서 이 spec 은
- * "주입이 된다"가 아니라 **"잘못된 주입이 막힌다"**를 1급 증거로 고정한다.
+ * 세션 siteId 는 검증된 JWT 에서만 정해지고, 승격(세션 산출 PDF 를 book 자산으로 연결)은
+ * 세션 siteId 와 호출 사이트가 같을 때만 성공한다. 이 spec 은 스탬프 성공 경로와 함께
+ * 근거가 없거나 다른 사이트를 가리키는 입력이 스탬프·승격되지 않는 동작을 고정한다.
  *
  * 구성 — 목이 아니라 실제 사슬을 관통한다:
  *   실 EditSessionsController + 실 EditSessionsService + 인메모리 repo
@@ -14,6 +13,7 @@
  *     "createGuest 가 스탬프한 값이 승격 판정에 그대로 도달"함을 실증한다.
  *
  * 커버리지: T1~T6(생성 스탬프) · T14/T15(승격 e2e) · G1~G4(게스트 세션 회원 라우트 규칙)
+ *          · GR1~GR11(게스트 세션 조회 라우트 GET guest/:id, 2026-09-30)
  */
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
@@ -78,7 +78,12 @@ describe('게스트 세션 테넌시 — siteId 스탬프 + 승격 게이트 e2e
       store.set(o.id, o);
       return o;
     },
-    findOne: async ({ where }: { where: { id: string } }) => store.get(where.id) ?? null,
+    // TypeORM 기본 동작 재현 — 소프트 삭제 행은 withDeleted 없이는 조회되지 않는다.
+    findOne: async ({ where, withDeleted }: { where: { id: string }; withDeleted?: boolean }) => {
+      const s = store.get(where.id);
+      if (!s || (s.deletedAt && !withDeleted)) return null;
+      return s;
+    },
     find: async ({ where }: { where: { guestToken: string } }) =>
       [...store.values()].filter((s) => s.guestToken === where.guestToken),
     manager: { query: jest.fn().mockResolvedValue([]) },
@@ -167,14 +172,14 @@ describe('게스트 세션 테넌시 — siteId 스탬프 + 승격 게이트 e2e
 
   // ── 생성 스탬프 (I-1) ─────────────────────────────────────────────────
   describe('POST /edit-sessions/guest — siteId 스탬프 근거는 검증된 JWT 뿐', () => {
-    it('T1 공격: 토큰 없이 body 로 피해자 siteId 주장 → 201 + 저장 siteId=null', async () => {
+    it('T1: 토큰 없이 body 에 siteId 지정 → 201 + 저장 siteId=null', async () => {
       const res = await createGuest({}, { siteId: SITE_B }).expect(201);
 
       expect(stored(res.body.id).siteId).toBeNull();
       expect(res.body.siteId).toBeNull();
     });
 
-    it('T2 공격: site A 토큰 + body 로 site B 주장 → JWT 가 이긴다(저장 siteId=A)', async () => {
+    it('T2: site A 토큰 + body 에 site B 지정 → JWT 값 사용(저장 siteId=A)', async () => {
       const token = signShop({ siteId: SITE_A, siteName: 'A' });
 
       const res = await createGuest({ Authorization: `Bearer ${token}` }, { siteId: SITE_B }).expect(
@@ -193,7 +198,7 @@ describe('게스트 세션 테넌시 — siteId 스탬프 + 승격 게이트 e2e
       expect(res.body.guestExpiresAt).toBeTruthy();
     });
 
-    it('T4 공격: 다른 시크릿으로 위조한 토큰(siteId=B) → 201 + siteId=null (decode 아닌 verify 증거)', async () => {
+    it('T4: 다른 시크릿으로 서명된 토큰(siteId=B) → 201 + siteId=null (서명 검증 기반 판정)', async () => {
       const forged = signShop({ siteId: SITE_B }, OTHER_SECRET);
       // 페이로드에는 실제로 siteId 가 들어 있다 — decode 였다면 그대로 스탬프됐을 값.
       expect((jwt.decode(forged) as Record<string, unknown>).siteId).toBe(SITE_B);
@@ -203,10 +208,8 @@ describe('게스트 세션 테넌시 — siteId 스탬프 + 승격 게이트 e2e
       expect(stored(res.body.id).siteId).toBeNull();
     });
 
-    // F-5 (적대 리뷰 ATK-14): siteId 스탬프가 붙으면서 "주문 스코프를 벗어난 게스트 세션"이
-    // 승격 가능해졌다. 회원 라우트(Patch D)에만 있던 allowedOrderSeqnos 가드를 게스트에도 적용.
-    // 교차테넌트는 아니지만, 파트너가 orderSeqno 로 세션을 찾아 승격하면 타 고객 주문에 남의 PDF 가 붙는다.
-    it('T5-a 공격(ATK-14): 허용되지 않은 orderSeqno 로 게스트 세션 생성 → 403 ORDER_NOT_ALLOWED', async () => {
+    // F-5: 게스트 세션 생성에도 회원 라우트(Patch D)와 같은 allowedOrderSeqnos 가드를 적용한다.
+    it('T5-a: 허용 목록에 없는 orderSeqno 로 게스트 세션 생성 → 403 ORDER_NOT_ALLOWED', async () => {
       const token = signShop({ siteId: SITE_A, allowedOrderSeqnos: [111] });
 
       await createGuest({ Authorization: `Bearer ${token}` }, { orderSeqno: 222 }).expect(403);
@@ -293,7 +296,7 @@ describe('게스트 세션 테넌시 — siteId 스탬프 + 승격 게이트 e2e
     const patch = (id: string) =>
       request(app.getHttpServer()).patch(`/edit-sessions/guest/${id}`);
 
-    it('T12 공격: guestToken 없이 PATCH → 403 GUEST_TOKEN_REQUIRED', async () => {
+    it('T12: guestToken 없이 PATCH → 403 GUEST_TOKEN_REQUIRED', async () => {
       const { id } = await seedGuest();
 
       const res = await patch(id).send({ canvasData: { hacked: true } }).expect(403);
@@ -334,6 +337,158 @@ describe('게스트 세션 테넌시 — siteId 스탬프 + 승격 게이트 e2e
         .expect(403);
 
       expect(res.body.code).toBe('GUEST_TOKEN_MISMATCH');
+    });
+  });
+
+  // ── 게스트 세션 조회 라우트 (2026-09-30, ADDITIVE) ────────────────────
+  // 검증은 PATCH guest/:id 와 동일: 토큰 선요구 → 조회 → 게스트 여부 → 만료 → 일치.
+  describe('GET /edit-sessions/guest/:id — 게스트 토큰으로 조회', () => {
+    const MISSING_ID = '00000000-0000-4000-8000-00000000abcd';
+
+    /** site A 스탬프 게스트 세션 + canvasData */
+    const seedGuest = async () => {
+      const res = await createGuest({ Authorization: `Bearer ${signShop({ siteId: SITE_A })}` }).expect(201);
+      const id = res.body.id as string;
+      stored(id).canvasData = { pages: [{ p: 1 }] };
+      return { id, token: res.body.guestToken as string };
+    };
+
+    const get = (id: string) => request(app.getHttpServer()).get(`/edit-sessions/guest/${id}`);
+
+    it('GR1: 토큰 없이 조회 → 403 GUEST_TOKEN_REQUIRED, 세션 조회 전에 거부(없는 id 도 403)', async () => {
+      const { id } = await seedGuest();
+      const findById = jest.spyOn(sessionsService, 'findById');
+
+      const res = await get(id).expect(403);
+      expect(res.body.code).toBe('GUEST_TOKEN_REQUIRED');
+      expect(res.body.canvasData).toBeUndefined();
+
+      const missing = await get(MISSING_ID).expect(403);
+      expect(missing.body.code).toBe('GUEST_TOKEN_REQUIRED');
+
+      expect(findById).not.toHaveBeenCalled();
+      findById.mockRestore();
+    });
+
+    it('GR2: ?guestToken= 쿼리만 보내면 → 403 GUEST_TOKEN_REQUIRED(헤더 전용)', async () => {
+      const { id, token } = await seedGuest();
+
+      const res = await get(id).query({ guestToken: token }).expect(403);
+
+      expect(res.body.code).toBe('GUEST_TOKEN_REQUIRED');
+      expect(res.body.canvasData).toBeUndefined();
+    });
+
+    it('GR3: X-Guest-Token 헤더로 조회 → 200, 응답이 저장 레코드와 일치', async () => {
+      const { id, token } = await seedGuest();
+
+      const res = await get(id).set('X-Guest-Token', token).expect(200);
+
+      expect(res.body.id).toBe(id);
+      expect(res.body.canvasData).toEqual({ pages: [{ p: 1 }] });
+      expect(res.body.guestToken).toBe(token);
+      expect(res.body.siteId).toBe(SITE_A);
+    });
+
+    it('GR3-b: 쿼리 토큰은 무시한다(헤더 정답 + 쿼리 오답 → 200, 헤더 오답 + 쿼리 정답 → 403)', async () => {
+      const { id, token } = await seedGuest();
+      const wrong = '00000000-0000-4000-8000-999999999999';
+
+      await get(id).set('X-Guest-Token', token).query({ guestToken: wrong }).expect(200);
+      const res = await get(id).set('X-Guest-Token', wrong).query({ guestToken: token }).expect(403);
+      expect(res.body.code).toBe('GUEST_TOKEN_MISMATCH');
+    });
+
+    it('GR4: 틀린 토큰 → 403 GUEST_TOKEN_MISMATCH, 본문에 canvasData 없음', async () => {
+      const { id } = await seedGuest();
+
+      const res = await get(id).set('X-Guest-Token', '00000000-0000-4000-8000-999999999999').expect(403);
+
+      expect(res.body.code).toBe('GUEST_TOKEN_MISMATCH');
+      expect(res.body.canvasData).toBeUndefined();
+    });
+
+    it('GR5: 만료된 게스트 세션 → 403 GUEST_SESSION_EXPIRED', async () => {
+      const { id, token } = await seedGuest();
+      stored(id).guestExpiresAt = new Date(Date.now() - 1000);
+
+      const res = await get(id).set('X-Guest-Token', token).expect(403);
+
+      expect(res.body.code).toBe('GUEST_SESSION_EXPIRED');
+    });
+
+    it('GR6: 회원 세션(guestToken 없음) → 403 NOT_A_GUEST_SESSION', async () => {
+      const memberId = '00000000-0000-4000-8000-00000000beef';
+      store.set(memberId, {
+        id: memberId,
+        memberSeqno: 777,
+        guestToken: null,
+        guestExpiresAt: null,
+        siteId: SITE_A,
+        canvasData: { secret: true },
+        createdAt: new Date('2026-01-01T00:00:00.000Z'),
+        updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+      });
+
+      const res = await get(memberId).set('X-Guest-Token', 'any-token-value').expect(403);
+
+      expect(res.body.code).toBe('NOT_A_GUEST_SESSION');
+      expect(res.body.canvasData).toBeUndefined();
+    });
+
+    it('GR7: 없는 세션 + 토큰 → 404 SESSION_NOT_FOUND', async () => {
+      const res = await get(MISSING_ID).set('X-Guest-Token', 'any-token-value').expect(404);
+
+      expect(res.body.code).toBe('SESSION_NOT_FOUND');
+    });
+
+    it('GR8: UUID 가 아닌 id → 400', async () => {
+      await get('not-a-uuid').set('X-Guest-Token', 'any-token-value').expect(400);
+    });
+
+    it('GR9: @Public — Authorization 없이 200, 검증 실패·만료 Bearer 를 실어도 200', async () => {
+      const { id, token } = await seedGuest();
+
+      await get(id).set('X-Guest-Token', token).expect(200);
+      await get(id)
+        .set('X-Guest-Token', token)
+        .set('Authorization', `Bearer ${signShop({ siteId: SITE_B }, OTHER_SECRET)}`)
+        .expect(200);
+      await get(id)
+        .set('X-Guest-Token', token)
+        .set('Authorization', `Bearer ${signShop({ siteId: SITE_A }, JWT_SECRET, '-1s')}`)
+        .expect(200);
+    });
+
+    it('GR10: 기존 게스트 라우트 불변 — GET guest/:id/versions 200, PATCH guest/:id 200', async () => {
+      const { id, token } = await seedGuest();
+
+      const versions = await request(app.getHttpServer())
+        .get(`/edit-sessions/guest/${id}/versions`)
+        .set('X-Guest-Token', token)
+        .expect(200);
+      expect(Array.isArray(versions.body)).toBe(true);
+
+      await request(app.getHttpServer())
+        .get(`/edit-sessions/guest/${id}/versions`)
+        .expect(403);
+
+      await request(app.getHttpServer())
+        .patch(`/edit-sessions/guest/${id}`)
+        .query({ guestToken: token })
+        .send({ canvasData: { v: 10 } })
+        .expect(200);
+      expect(stored(id).canvasData).toEqual({ v: 10 });
+    });
+
+    it('GR11: 소프트 삭제된 게스트 세션 + 올바른 토큰 → 404 SESSION_NOT_FOUND', async () => {
+      const { id, token } = await seedGuest();
+      stored(id).deletedAt = new Date('2026-09-30T00:00:00.000Z');
+
+      const res = await get(id).set('X-Guest-Token', token).expect(404);
+
+      expect(res.body.code).toBe('SESSION_NOT_FOUND');
+      expect(res.body.canvasData).toBeUndefined();
     });
   });
 
@@ -414,7 +569,7 @@ describe('게스트 세션 테넌시 — siteId 스탬프 + 승격 게이트 e2e
       return { id: res.body.id as string, token: res.body.guestToken as string };
     };
 
-    it('T7 공격: 세션 siteId=A 를 caller siteId=B 가 흡수 → 403 CROSS_SITE_MIGRATION_DENIED', async () => {
+    it('T7: 세션 siteId=A 를 caller siteId=B 로 이전 요청 → 403 CROSS_SITE_MIGRATION_DENIED', async () => {
       const { id, token } = await seed(SITE_A);
 
       await expect(
@@ -488,7 +643,7 @@ describe('게스트 세션 테넌시 — siteId 스탬프 + 승격 게이트 e2e
     });
   });
 
-  // ── 승격 e2e (트랙 목표의 유일한 성공 증거 + IDOR 차단 증거) ───────────
+  // ── 승격 e2e (같은 사이트 승격 성공 + 다른 사이트 승격 404) ───────────
   describe('승격 게이트 — createGuest 스탬프가 판정에 도달하는가', () => {
     /** 승격 가능 상태로 만든다(완료 + 산출 PDF) — 스탬프 자체는 건드리지 않는다 */
     const makePromotable = (id: string) => {
@@ -517,7 +672,7 @@ describe('게스트 세션 테넌시 — siteId 스탬프 + 승격 게이트 e2e
       );
     });
 
-    it('T14 IDOR: site A 스탬프 세션을 site B 키로 승격 → 404(존재 은닉)', async () => {
+    it('T14: site A 스탬프 세션을 site B 키로 승격 → 404 ERR_NOT_FOUND', async () => {
       const token = signShop({ siteId: SITE_A, siteName: 'A' });
       const res = await createGuest({ Authorization: `Bearer ${token}` }).expect(201);
       makePromotable(res.body.id);
@@ -531,8 +686,8 @@ describe('게스트 세션 테넌시 — siteId 스탬프 + 승격 게이트 e2e
       expect(bookCreate).not.toHaveBeenCalled();
     });
 
-    it('T14-b IDOR: body 로 site A 를 주장해 만든 세션은 site A 키로도 승격 불가(F-1 회귀 락)', async () => {
-      // 공격자가 토큰 없이 심은 세션 — dto.siteId 가 먹혔다면 site A 자산이 되었을 것.
+    it('T14-b: body 에 site A 를 지정해 만든 세션(siteId=null)은 site A 키로 승격 → PartnerApiException, book 미생성 (F-1)', async () => {
+      // 토큰 없이 생성한 세션 — body 의 siteId 는 스탬프 근거가 아니므로 siteId=null.
       const res = await createGuest({}, { siteId: SITE_A }).expect(201);
       makePromotable(res.body.id);
 

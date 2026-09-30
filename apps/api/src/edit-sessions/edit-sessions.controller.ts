@@ -204,7 +204,7 @@ export class EditSessionsController {
       // ⚠️ 위치 고정 — `...dto` **뒤**에 놓아야 클라이언트 값이 구조적으로 이길 수 없다.
       siteId: derivedSiteId,
     });
-    // guestToken 은 응답 DTO 에 그대로 노출됨 (클라이언트가 보관)
+    // 생성 응답 DTO 에 guestToken 을 포함한다 (클라이언트가 보관)
     return this.editSessionsService.toResponseDto(session);
   }
 
@@ -244,13 +244,17 @@ export class EditSessionsController {
   }
 
   /**
-   * 게스트 세션 소유 증명(F-3 fail-closed). updateGuest·guest versions 공용.
+   * 게스트 세션 소유 증명(F-3 fail-closed). updateGuest·findOneGuest·guest versions 공용.
+   * 검증을 통과한 세션을 반환한다(반환값을 쓰지 않는 호출자는 종전과 동일).
    *
    * ⚠️ 순서 고정 — 소유 증명을 **조회보다 먼저** 요구한다.
    *   findById 를 먼저 하면 무인증 호출자에게 "그 세션이 존재하는가"를 알려주는
    *   존재 오라클이 된다. 기존 클라이언트는 항상 토큰을 보내므로 동작 변화 없음.
    */
-  private async assertGuestOwnership(id: string, presentedToken: string | undefined): Promise<void> {
+  private async assertGuestOwnership(
+    id: string,
+    presentedToken: string | undefined,
+  ): Promise<EditSessionEntity> {
     if (!presentedToken) {
       throw new ForbiddenException({
         code: 'GUEST_TOKEN_REQUIRED',
@@ -268,6 +272,27 @@ export class EditSessionsController {
     if (presentedToken !== session.guestToken) {
       throw new ForbiddenException({ code: 'GUEST_TOKEN_MISMATCH', message: '게스트 토큰이 일치하지 않습니다.' });
     }
+    return session;
+  }
+
+  /**
+   * 게스트 세션 조회(게스트 토큰 필수) — ADDITIVE 2026-09-30. 편집기 게스트 재오픈이 사용한다.
+   * 검증·에러 코드는 PATCH guest/:id 와 동일. 토큰은 X-Guest-Token 헤더로만 받는다(쿼리 미수용 —
+   * 요청 URL 이 접근 로그에 남기 때문).
+   * 삭제된 세션은 findById 와 같은 404. 응답 shape 은 GET :id 와 동일.
+   */
+  @Get('guest/:id')
+  @Public()
+  @ApiOperation({ summary: '게스트 세션 조회 — 게스트 토큰 필수' })
+  @ApiResponse({ status: 200, description: '세션 상세', type: EditSessionResponseDto })
+  @ApiResponse({ status: 403, description: '게스트 토큰 미전송/불일치 또는 만료, 게스트 세션 아님' })
+  @ApiResponse({ status: 404, description: '세션을 찾을 수 없음' })
+  async findOneGuest(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Headers('x-guest-token') guestTokenHeader?: string,
+  ): Promise<EditSessionResponseDto> {
+    const session = await this.assertGuestOwnership(id, guestTokenHeader);
+    return this.editSessionsService.toResponseDto(session);
   }
 
   // ─── P1-4 (2026-08-22) 게스트 세션 스냅샷 목록/복원 — @Get(':id/…') 보다 먼저 선언 ───
@@ -572,20 +597,24 @@ export class EditSessionsController {
       sessions = await this.editSessionsService.findByOrderSeqno(
         parseInt(orderSeqno),
       );
-      // SEC-005 (2026-06-22): orderSeqno 분기 IDOR 차단. 과거엔 고객 JWT로 임의 주문번호의
-      // 모든 세션(canvasData 포함)을 열람할 수 있었다. staff 또는 JWT 에 명시된 주문권한
-      // (allowedOrderSeqnos)이 없으면 본인 소유(memberSeqno) 세션만 반환 → 타인 데이터 유출 차단.
-      // 외부 파트너는 /edit-sessions/external(ApiKeyGuard+site격리)을 사용하므로 무영향.
+      // orderSeqno 분기(2026-06-22): staff 또는 JWT 에 명시된 주문권한(allowedOrderSeqnos)이
+      // 있으면 그 주문의 세션을, 없으면 본인 소유(memberSeqno) 세션만 반환한다.
+      // 외부 파트너는 /edit-sessions/external(ApiKeyGuard+site격리)을 사용한다.
+      // 2026-09-30: 주문 번호 0(주문 미지정 번호공간)은 주문권한 판정에 쓰지 않고, 회원 번호가
+      // 0·비숫자인 호출자의 본인 소유 필터 결과는 빈 목록이다(memberSeqno·기본 분기와 같은 판정).
       const isStaff = this.isStaffRole(user);
       const reqOrder = parseInt(orderSeqno);
       const granted =
+        reqOrder !== 0 &&
         Array.isArray(user?.allowedOrderSeqnos) &&
         user.allowedOrderSeqnos.includes(reqOrder);
       if (!isStaff && !granted) {
         const selfSeqno = user?.userId ? parseInt(user.userId) : NaN;
+        const selfUsable = selfSeqno !== 0 && !Number.isNaN(selfSeqno);
         const before = sessions.length;
         sessions = sessions.filter(
-          (s: any) => s.memberSeqno !== null && Number(s.memberSeqno) === selfSeqno,
+          (s: any) =>
+            selfUsable && s.memberSeqno !== null && Number(s.memberSeqno) === selfSeqno,
         );
         // ⚠️ 데이터유실 조기탐지: 정상 재편집(임베드 findByOrder)인데 필터가 전부 제거하면,
         // 호스트가 shop-session 발급 시 orderSeqno(→allowedOrderSeqnos) 를 누락했고 주문 세션
@@ -615,20 +644,22 @@ export class EditSessionsController {
         }
       }
     } else if (memberSeqno) {
-      // IDOR 가드 (2026-06-11): admin/manager 가 아니면 memberSeqno 쿼리는
-      // 본인(JWT user.userId == memberSeqno)일 때만 허용 — 임의 회원의 세션
-      // (canvasData 포함)이 유출되는 표면 차단.
+      // memberSeqno 분기(2026-06-11): admin/manager 가 아니면 memberSeqno 쿼리는
+      // 본인(JWT user.userId == memberSeqno)일 때만 허용한다.
       //  - role 판정은 findOne(:id) 의 admin/manager 관례와 동일 (user.role).
       //  - 외부서버(nimda/PHP)는 X-API-Key 라우트(GET /edit-sessions/external,
-      //    ApiKeyGuard)를 사용하므로 본 가드와 무관 — 영향 없음.
-      //  - orderSeqno/siteId 분기는 현행 불변.
+      //    ApiKeyGuard)를 사용하므로 본 판정과 무관하다.
       const requestedSeqno = parseInt(memberSeqno);
-      // ⚠️ UserRole enum 은 대문자('ADMIN' 등) — 소문자 비교는 admin 검색을 403 으로 막는
-      // 회귀였음(2026-06-11 수정). 대소문자 무관 헬퍼 사용.
+      // UserRole enum 은 대문자('ADMIN' 등) — 대소문자 무관 헬퍼로 판정한다(2026-06-11).
       const isStaff = this.isStaffRole(user);
       // userId 부재(예: 일반 admin-app User 엔티티) 시 NaN → 비교 항상 불일치(안전측)
       const selfSeqno = user?.userId ? parseInt(user.userId) : NaN;
-      if (!isStaff && requestedSeqno !== selfSeqno) {
+      // 2026-09-30: 비-staff 의 회원 번호 0(비회원 번호공간)·비숫자 조회는 본인 일치와 무관하게 거부.
+      // 음수 회원 번호는 종전대로 본인 일치 판정만 한다.
+      if (
+        !isStaff &&
+        (requestedSeqno !== selfSeqno || requestedSeqno === 0 || Number.isNaN(requestedSeqno))
+      ) {
         throw new ForbiddenException({
           code: 'FORBIDDEN_MEMBER_QUERY',
           message: '다른 회원의 편집 세션은 조회할 수 없습니다.',
@@ -637,13 +668,13 @@ export class EditSessionsController {
       }
       sessions = await this.editSessionsService.findByMemberSeqno(requestedSeqno);
     } else if (siteId) {
-      // SEC-005: siteId 분기도 staff 또는 자기 site 만 허용(타 테넌트 세션 유출 차단).
-      // P3b: 사이트 운영자(SITE_ADMIN/SITE_MANAGER)는 JWT siteRoles 멤버십의 site 허용.
+      // siteId 분기: staff 또는 사이트 운영자(SITE_ADMIN/SITE_MANAGER, JWT siteRoles 멤버십의 site)만 허용.
+      // 2026-09-30: shop-session 토큰(source 'shop')은 자기 site 여도 403 FORBIDDEN_SITE_QUERY —
+      // 고객 목록은 memberSeqno·기본 분기(본인 세션)로 조회한다.
       const tenantScope = getTenantScope(user);
       const siteAllowed =
         this.isStaffRole(user) ||
-        user?.siteId === siteId ||
-        tenantScope.siteIds.includes(siteId);
+        (user?.source !== 'shop' && tenantScope.siteIds.includes(siteId));
       if (!siteAllowed) {
         throw new ForbiddenException({
           code: 'FORBIDDEN_SITE_QUERY',
@@ -652,10 +683,12 @@ export class EditSessionsController {
       }
       sessions = await this.editSessionsService.findBySiteId(siteId);
     } else if (user?.userId) {
-      // 본인 세션만 조회
-      sessions = await this.editSessionsService.findByMemberSeqno(
-        parseInt(user.userId),
-      );
+      // 본인 세션만 조회. 회원 번호가 0(비회원 번호공간)·비숫자로 해석되면 빈 목록(2026-09-30).
+      const self = parseInt(user.userId);
+      sessions =
+        self === 0 || Number.isNaN(self)
+          ? []
+          : await this.editSessionsService.findByMemberSeqno(self);
     } else {
       sessions = [];
     }
@@ -700,7 +733,7 @@ export class EditSessionsController {
     this.editSessionsService.assertTenantScope(session, caller);
 
     // 권한 확인: 세션 소유자 (memberSeqno 일치) 또는 admin/manager 역할 또는 범위 안 운영자
-    const userId = user?.userId ? parseInt(user.userId) : 0;
+    const userId = this.ownerSeqnoOf(user);
     const isOwner = Number(session.memberSeqno) === userId;
     // UserRole enum 대문자 대응 — 대소문자 무관 판정 (2026-06-11)
     const isStaff = this.isStaffRole(user);
@@ -710,6 +743,14 @@ export class EditSessionsController {
         code: 'PERMISSION_DENIED',
         message: '이 세션에 접근할 권한이 없습니다.',
       });
+    }
+
+    // 운영 관측(2026-09-30): 게스트 세션을 회원 경로로 읽은 건수 — 게스트 조회 라우트 전환 추적용.
+    // 세션 id·site·토큰 출처만 남긴다(게스트 토큰·JWT 원문은 기록하지 않는다).
+    if (session.guestToken && isOwner && !isStaff && !caller?.partnerOperator) {
+      this.logger.log(
+        `[guest-read] member-route session=${session.id} site=${session.siteId ?? '-'} source=${user?.source ?? '-'}`,
+      );
     }
 
     return this.respond(session, user);
@@ -850,7 +891,7 @@ export class EditSessionsController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: any,
   ): Promise<{ success: boolean }> {
-    const userId = user?.userId ? parseInt(user.userId) : 0;
+    const userId = this.ownerSeqnoOf(user);
     await this.editSessionsService.delete(id, userId, this.tenantCaller(user));
     return { success: true };
   }
@@ -890,6 +931,14 @@ export class EditSessionsController {
   private isStaffRole(user: any): boolean {
     const role = String(user?.role || '').toLowerCase();
     return role === 'admin' || role === 'manager' || role === 'super_admin';
+  }
+
+  /**
+   * 소유자 판정용 회원 번호(2026-09-30, findOne·delete). 토큰에 회원 식별자(userId)가 없으면 NaN —
+   * 어떤 세션의 memberSeqno 와도 일치하지 않는다. userId 가 있으면 종전 parseInt 그대로.
+   */
+  private ownerSeqnoOf(user: { userId?: string | number | null } | null | undefined): number {
+    return user?.userId ? parseInt(String(user.userId)) : Number.NaN;
   }
 
   /**
