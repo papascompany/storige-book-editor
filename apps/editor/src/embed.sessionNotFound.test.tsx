@@ -75,6 +75,7 @@ vi.mock('./utils/contentPdfGuide', async (importOriginal) => {
 
 const api = vi.hoisted(() => ({
   get: vi.fn(),
+  getGuest: vi.fn(),
   createGuest: vi.fn(),
   create: vi.fn(),
   findByOrder: vi.fn(),
@@ -89,6 +90,7 @@ const api = vi.hoisted(() => ({
 vi.mock('./api', () => ({
   editSessionsApi: {
     get: (...a: unknown[]) => api.get(...(a as [])),
+    getGuest: (...a: unknown[]) => api.getGuest(...(a as [])),
     createGuest: (...a: unknown[]) => api.createGuest(...(a as [])),
     create: (...a: unknown[]) => api.create(...(a as [])),
     findByOrder: (...a: unknown[]) => api.findByOrder(...(a as [])),
@@ -174,6 +176,7 @@ describe('EmbeddedEditor — 명시 sessionId 조회 실패 = SESSION_NOT_FOUND 
       configurable: true,
       writable: true,
     })
+    sessionStorage.clear()
     for (const fn of Object.values(api)) fn.mockReset()
     api.listVersions.mockResolvedValue([])
     api.listGuestVersions.mockResolvedValue([])

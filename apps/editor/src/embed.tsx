@@ -93,6 +93,11 @@ import {
 } from './utils/loadProfiler'
 import { mergeRestoredSession, restoredCanvasCount } from './utils/sessionVersions'
 import { getAuthToken, setAuthToken, setEmbedRefreshToken } from './utils/authTokenStorage'
+import {
+  recallEmbedGuestToken,
+  rememberEmbedGuestToken,
+  forgetEmbedGuestToken,
+} from './utils/embedGuestTokenStore'
 import type { SessionVersionsSource } from './components/editor/HistoryPanel'
 import './index.css'
 
@@ -582,6 +587,54 @@ function isSampleFallbackAllowed(): boolean {
   }
 }
 
+/**
+ * 오류 객체의 요청 설정에서 게스트 토큰 원문을 가린다 — 재던진 오류가 콘솔·모니터링으로
+ * 전달되더라도 헤더·URL 에 토큰 값이 남지 않게 한다.
+ */
+function redactGuestTokenInError(err: unknown, guestToken: string): void {
+  if (!axios.isAxiosError(err) || !guestToken) return
+  const REDACTED = '[redacted]'
+  for (const cfg of [err.config, err.response?.config]) {
+    if (!cfg) continue
+    try {
+      const headers = cfg.headers as unknown as Record<string, unknown> | undefined
+      if (headers) {
+        for (const name of Object.keys(headers)) {
+          if (name.toLowerCase() === 'x-guest-token') headers[name] = REDACTED
+        }
+      }
+      if (typeof cfg.url === 'string') {
+        cfg.url = cfg.url.split(encodeURIComponent(guestToken)).join(REDACTED).split(guestToken).join(REDACTED)
+      }
+    } catch {
+      /* 가림 실패는 무시 — 원래 오류 전달이 우선 */
+    }
+  }
+}
+
+/**
+ * 명시 sessionId 세션 조회(재오픈). 현재 탭에 기억된 게스트 토큰이 있으면 게스트 조회 경로를 먼저 쓰고,
+ * 게스트 경로가 400/403/404 로 거절하거나 응답 없이 연결 단계에서 실패하면 기존 조회 경로로 1회 폴백한다.
+ * 최종 판정(SESSION_NOT_FOUND 매핑 등)은 기존 경로 결과를 따른다. 그 밖의 오류는 토큰을 가린 뒤 그대로 던진다.
+ */
+async function fetchSessionForReopen(id: string, knownGuestToken: string | null): Promise<EditSessionResponse> {
+  if (knownGuestToken) {
+    try {
+      return await editSessionsApi.getGuest(id, knownGuestToken)
+    } catch (err) {
+      redactGuestTokenInError(err, knownGuestToken)
+      if (!axios.isAxiosError(err)) throw err
+      const status = err.response?.status
+      if (status === 400 || status === 403 || status === 404) {
+        forgetEmbedGuestToken(id)
+      } else if (!(err.response === undefined && err.code === 'ERR_NETWORK')) {
+        throw err
+      }
+    }
+  }
+  return editSessionsApi.get(id)
+}
+
 // Edit Session API integration
 interface EditSessionCreatePayload {
   orderSeqno: number
@@ -927,7 +980,7 @@ function EmbeddedEditor({
           setLoadingMessage('편집 세션을 불러오는 중...')
           // 기존 세션 불러오기
           try {
-            editSession = await editSessionsApi.get(sessionId)
+            editSession = await fetchSessionForReopen(sessionId, recallEmbedGuestToken(sessionId))
             console.log('[EmbeddedEditor] Existing session loaded:', editSession.id)
           } catch (err) {
             // 2026-09-29: 명시 sessionId 조회 실패 시 orderSeqno 검색/신규 생성으로 폴백하지 않는다.
@@ -1068,6 +1121,7 @@ function EmbeddedEditor({
 
         if (editSession) {
           setCurrentSession(editSession)
+          if (editSession.guestToken) rememberEmbedGuestToken(editSession.id, editSession.guestToken, editSession.guestExpiresAt ?? null)
           // 재진입 표기 시드 — useSaveStore.lastSavedAt 은 메모리 전용이라 재진입 직후 늘 null 이고,
           // 히스토리 패널이 '마지막 저장: 기록 없음' 을 표시했다. 서버가 진실을 갖고 있으므로 채운다.
           //

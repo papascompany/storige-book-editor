@@ -122,6 +122,17 @@ export const editSessionsApi = {
   },
 
   /**
+   * 게스트 세션 조회 — 게스트 토큰 필수(검증은 updateGuest 대상 PATCH guest/:id 와 동일).
+   * 토큰은 `x-guest-token` 헤더로만 보낸다(URL·쿼리에 싣지 않음).
+   */
+  getGuest: async (id: string, guestToken: string): Promise<EditSessionResponse> => {
+    const response = await apiClient.get<EditSessionResponse>(`/edit-sessions/guest/${id}`, {
+      headers: { 'x-guest-token': guestToken },
+    })
+    return response.data
+  },
+
+  /**
    * 주문별 세션 목록 조회
    */
   findByOrder: async (orderSeqno: number): Promise<{ sessions: EditSessionResponse[]; total: number }> => {
@@ -207,7 +218,7 @@ export const editSessionsApi = {
 
   /**
    * P1-4 — 게스트 세션 스냅샷 목록. 토큰은 updateGuest 와 동일하게 쿼리로 전송
-   * (API CORS allowedHeaders 에 x-guest-token 이 없어 커스텀 헤더는 preflight 에서 막힌다).
+   * (getGuest 와 같은 `x-guest-token` 헤더 전송으로의 전환은 후속 작업).
    */
   listGuestVersions: async (id: string, guestToken: string): Promise<EditSessionVersionSummary[]> => {
     const response = await apiClient.get<EditSessionVersionSummary[]>(

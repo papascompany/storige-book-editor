@@ -83,6 +83,7 @@ vi.mock('./hooks/useResolvedPageNavPosition', () => ({ useResolvedPageNavPositio
 
 const api = vi.hoisted(() => ({
   get: vi.fn(),
+  getGuest: vi.fn(),
   createGuest: vi.fn(),
   create: vi.fn(),
   findByOrder: vi.fn(),
@@ -100,6 +101,7 @@ vi.mock('./api', () => ({
       spies.order.push('api.get')
       return api.get(...(a as []))
     },
+    getGuest: (...a: unknown[]) => api.getGuest(...(a as [])),
     createGuest: (...a: unknown[]) => api.createGuest(...(a as [])),
     create: (...a: unknown[]) => api.create(...(a as [])),
     findByOrder: (...a: unknown[]) => api.findByOrder(...(a as [])),
@@ -144,7 +146,9 @@ describe('EmbeddedEditor — 서버 버전 복원 배선 (P1-4)', () => {
     spies.markClean.mockReset()
     spies.markServerSynced.mockReset()
     spies.cancel.mockReset()
+    sessionStorage.clear()
     api.get.mockReset()
+    api.getGuest.mockReset()
     api.createGuest.mockReset()
     api.restoreVersion.mockReset().mockResolvedValue(RESTORED)
     api.getTemplateSetWithTemplates.mockClear()
