@@ -65,7 +65,7 @@ Storige 편집기 개발을 이어서 진행합니다. bookmoa·printy 파트너
 
 | 파트너 | cwd | 현재 세션 | 비고 |
 |---|---|---|---|
-| bookmoa | `~/Developer/claude/bookmoa-mobile` | **09-28 교체**: "20260928 북모아 개발 계속" · `local_75d4aefc-f026-45ed-b044-df4fdf377c23` · 소켓 `uds:/tmp/cc-socks/47702.sock`(lsof cwd 확증) → 09-29 `5179.sock`(같은 세션 id, 프로세스 재시작) — 옛 `local_154c5e2a…`/37531 대체 | bypass 모드. 운영 `19ce2a5`(R-198). 펼침면 pageCount 정정 ACK 완료 |
+| bookmoa | `~/Developer/claude/bookmoa-mobile` | **09-30 교체**: 「북모아 Printable 개발 계속」 · `local_bf71565d-e946-487b-a8e4-27962fe7626a` · 소켓 `uds:/tmp/cc-socks/95699.sock`(lsof cwd = bookmoa-mobile 확증). 옛 창구 「20260928 북모아 개발 계속」(local_75d4aefc, 5179→71666)는 쓰지 않음. 같은 이름의 Remote Control 세션(오프라인)과 혼동 주의 | bypass 모드. 운영 new.bookmoa.com = R-206(`5f4a11a`+`a283280` · `65dg8dkm6`). 다음 후보 R-207(idem replay 결속 선점 보안 수정, bookmoa 내부·Storige 계약 변경 없음). 주문 연결 세션 사전·사후 통지도 이 창구 |
 | printy | `~/Developer/claude/printy` | 이름 "20260928 Printy 개발 계속"(표시명이 "…새세션 시작"으로 보일 수 있음) · `local_5ca0cbbf-bacf-4881-b394-7a4fab936804` | 09-28 교체 · 소켓 `uds:/tmp/cc-socks/67905.sock` · 09:24Z ACK 수신. 옛 `local_35adcfea…`("20260926 Printy 개발 계속")는 목록에 남아 있으나 쓰지 않음 |
 | **Storige(당사)** | 이 저장소 | 이름 "Storige 편집기 개발 계속" · printy 가 보고한 id `local_7e9f1fad…` | 09-28 새 세션. 양사에 창구 교체 통지·ACK 완료 |
 
@@ -202,6 +202,7 @@ Storige 편집기 개발을 이어서 진행합니다. bookmoa·printy 파트너
     - printy 질의 답변(코드 확인): 세션 orderSeqno 는 생성 뒤 불변(update DTO 에 필드 없음 + forbidNonWhitelisted, 편집기 sessionId 진입은 세션 값 사용).
     - 정정 배포: `947c9e6` push 02:37:20Z → admin `isxgg1mpv` Ready(02:38Z), 번들 지문 확인. 확인 창에 세션 id 전체 표시·복사, '주문번호 N이 붙은 세션(장바구니 단계 번호일 수 있음) — 세션 id를 넣어 사전 통지' 문구, 통지 텍스트 '세션 주문번호(orderSeqno)'. 가이드 §3.3.3·통지문 §7 반영. 양사 회신 발신(회신 불요). 롤백: admin `hcgs4hn2c`(→ `purgkt41z`).
   - **100p Books 참고 통지(09-30, 오너 요청)**: 새 세션 "20260930 100p_books 서브에이전트 진행"으로 발신. 운영 DB 읽기 전용 실측 04:03:21Z UTC — site `729ad8a7` 편집 세션 0건·edit_retention_days NULL → 대상 없음(유형 1: upload/validate/download external 만). 향후 편집 세션 사용 계획 확인 요청. **ACK 수신**(`uds:/tmp/cc-socks/75225.sock`, local_69303599): 100p main `c9f8226` 코드 대조 — edit-sessions·/embed 호출 0건(lib/storige/client.ts 는 external 경로만), 실측과 일치, 코드 변경 불요. 편집 세션 도입 계획 없음(도입 여부는 오너 결정, 결정 시 창구·orderSeqno 의미 협의). 기술 통지 창구 = 100p_books 저장소 세션.
+- **bookmoa 창구 교체(09-30 수신, 회신 불요)**: 새 창구 「북모아 Printable 개발 계속」(95699, cwd bookmoa-mobile 확증). 주문 연결 세션 사전·사후 통지도 여기로 보낸다. §2 표 갱신.
 - **bookmoa R-206 적용 배포 통지(09-30 수신, `5f4a11a`+보안 후속 · new.bookmoa.com `65dg8dkm6`, 회신 불요)** — 관리자 「편집 열기」에 운영자 대리 편집 권한 연동 시작.
   - 발급: bookmoa 서버 `POST /api/storige/operator-session`. 관리자와 order_asset_claims(kind=session)·주문 일치를 확인한 뒤(조회 실패 503 / 불일치 403 → 발급 0) `/auth/partner-operator-session`을 호출한다. 파라미터: operatorId=관리자 Supabase UUID, operatorName '북모아 관리자', sessionIds 1개, allowDelete false, ttlSeconds 7200, orderRef=bookmoa 주문번호, reason 'bookmoa admin re-edit'. 취소: 편집기 닫기·언마운트·pagehide 시 `/revoke {grantId}`(keepalive, best-effort).
   - bookmoa 관리자가 편집완료하면 bookmoa가 새 fileId를 즉시 주문에 결속·재합성한다. 따라서 Storige 관리자 편집과 달리 수동 반영이 필요 없다(3-B 원칙의 대상 아님). 감사 조회 UI는 아직 없고, 오너 실측 1회를 기다리는 중.
