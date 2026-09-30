@@ -49,6 +49,11 @@ export class FileOrphanService {
     this.envDryRun = this.config.get<string>('FILE_ORPHAN_DRY_RUN', '1') !== '0';
   }
 
+  /** 기동 스냅샷용 — env 계층 값(관리자 보존정책 합성 전). OPS-S4-N2 */
+  getEnvFlags(): { enabled: boolean; dryRun: boolean } {
+    return { enabled: this.envEnabled, dryRun: this.envDryRun };
+  }
+
   /** 매시 :07 — 고아 후보 강등(soft+expiry). 잔여는 다음 tick. */
   @Cron('7 * * * *')
   async sweepOrphans(): Promise<void> {

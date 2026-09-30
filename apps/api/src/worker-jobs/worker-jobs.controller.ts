@@ -33,6 +33,7 @@ import { CreateBleedFixJobDto } from './dto/create-bleed-fix-job.dto';
 import { CreateAttachPagePadJobDto } from './dto/create-attach-page-pad-job.dto';
 import { WorkerJob } from './entities/worker-job.entity';
 import { streamJobOutput } from './job-output-stream';
+import { isFlagOn } from '../config/feature-flags';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
 // P3b 멀티테넌시 — 사이트 운영자 조회 라우트(목록/상세/통계) 테넌트 스코핑.
@@ -103,10 +104,7 @@ export class WorkerJobsController {
    * 꺼져 있으면 컷아웃 라우트는 404 로 응답해 기능의 존재 자체를 숨긴다.
    */
   private assertCutoutEnabled(): void {
-    const raw = String(this.configService.get<string>('CUTOUT_ENABLED') ?? '')
-      .trim()
-      .toLowerCase();
-    if (raw !== 'true' && raw !== '1') {
+    if (!isFlagOn(this.configService.get<string>('CUTOUT_ENABLED'))) {
       throw new NotFoundException({
         code: 'NOT_FOUND',
         message: 'Cannot resolve route',

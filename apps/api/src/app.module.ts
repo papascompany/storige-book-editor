@@ -27,6 +27,7 @@ import { BooksModule } from './books/books.module';
 import { PortalModule } from './portal/portal.module';
 import { StaffEditDataModule } from './staff-edit-data/staff-edit-data.module';
 import { PayloadTooLargeFilter } from './common/filters/payload-too-large.filter';
+import { redactUrlTokens } from './common/helpers/url-redact.helper';
 
 // Bookmoa 모듈 조건부 로드 (BOOKMOA_DB_PASSWORD가 설정된 경우에만)
 const conditionalModules: DynamicModule[] = [];
@@ -81,7 +82,7 @@ if (process.env.BOOKMOA_DB_PASSWORD) {
           // req/res에서 민감 헤더 제거
           req: (req) => ({
             method: req.method,
-            url: req.url,
+            url: redactUrlTokens(req.url),
             id: req.id,
           }),
         },

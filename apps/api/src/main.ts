@@ -24,6 +24,14 @@ import { Logger as PinoLogger } from 'nestjs-pino';
 import { AppModule } from './app.module';
 import { PayloadTooLargeResponseDto } from './common/dto/error-response.dto';
 import { SentryExceptionFilter } from './sentry/sentry.filter';
+import {
+  buildApiFeatureFlagSnapshot,
+  formatEffectiveRetentionLine,
+  formatFeatureFlagSnapshot,
+} from './config/feature-flags';
+import { FileOrphanService } from './files/file-orphan.service';
+import { QueueMonitorService } from './health/queue-monitor.service';
+import { StorageConfigService } from './settings/storage-config.service';
 
 // Prevent unhandled rejections from crashing the process
 process.on('unhandledRejection', (reason: any) => {
@@ -76,6 +84,40 @@ async function bootstrap() {
         `[CFG] WEBHOOK_SECRET 미설정 — 아웃바운드 웹훅이 위조불가 HMAC 서명 없이 발송됩니다(레거시 base64만). 파트너 cutover 전 .env + docker-compose environment 매핑 확인 필요.`,
       );
     }
+  }
+
+  // OPS-S4-N2: 기능 플래그 유효값 스냅샷(boolean 만, env 원문 미출력). 부팅 미차단.
+  // FILE_ORPHAN_* / FILE_RETENTION_* 는 env 계층 값. FILE_ORPHAN_* 는 관리자 보존정책과
+  // 런타임에 합성되고, FILE_RETENTION_* 는 관리자 저장소 설정 행 값이 있으면 그 값이 우선한다.
+  // 보존정책 실효값은 아래 retention-effective 줄(관리자 저장소 설정 우선)로 따로 남긴다.
+  // 세 번째 인자는 pino context — 문자열이 msg 필드로 들어가도록 명시한다.
+  try {
+    const flags = buildApiFeatureFlagSnapshot({
+      cutoutRaw: configService.get<string>('CUTOUT_ENABLED'),
+      queueMonitorEnabled: app.get(QueueMonitorService).isEnabled(),
+      fileOrphan: app.get(FileOrphanService).getEnvFlags(),
+      fileRetentionEnabledRaw: configService.get<string>('FILE_RETENTION_ENABLED', 'true'),
+      fileRetentionDryRunRaw: configService.get<string>('FILE_RETENTION_DRY_RUN', '0'),
+      thumbnailCleanupDryRunRaw: configService.get<string>('THUMBNAIL_CLEANUP_DRY_RUN'),
+      spreadSnapshotHardFailRaw: process.env.SPREAD_SNAPSHOT_HARD_FAIL,
+    });
+    pinoLogger.log({ featureFlags: flags }, formatFeatureFlagSnapshot('api', flags), 'FeatureFlags');
+  } catch (e) {
+    pinoLogger.warn(`[FLAGS] api 스냅샷 실패: ${(e as Error).message}`);
+  }
+  try {
+    const { retention } = await app.get(StorageConfigService).getEffectiveConfig();
+    const effectiveRetention = {
+      enabled: retention.enabled === true,
+      dryRun: retention.dryRun === true,
+    };
+    pinoLogger.log(
+      { effectiveRetention },
+      formatEffectiveRetentionLine('api', effectiveRetention),
+      'FeatureFlags',
+    );
+  } catch (e) {
+    pinoLogger.warn(`[FLAGS] api 보존정책 실효값 조회 실패: ${(e as Error).message}`);
   }
 
   const maxBodySize = configService.get<string>('MAX_BODY_SIZE', '100mb');
@@ -164,7 +206,7 @@ async function bootstrap() {
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-API-Key'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-API-Key', 'X-Guest-Token'],
   });
 
   // Global validation pipe

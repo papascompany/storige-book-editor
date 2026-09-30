@@ -81,6 +81,11 @@ export class QueueMonitorService implements OnModuleInit, OnModuleDestroy {
     private readonly cutoutQueue?: Queue,
   ) {}
 
+  /** 기동 스냅샷용 — QUEUE_MONITOR_ENABLED 유효값. OPS-S4-N2 */
+  isEnabled(): boolean {
+    return this.enabled;
+  }
+
   onModuleInit(): void {
     if (!this.enabled) {
       this.logger.log('Queue monitor disabled (QUEUE_MONITOR_ENABLED=false)');

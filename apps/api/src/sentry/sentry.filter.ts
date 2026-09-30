@@ -17,6 +17,7 @@ import {
 } from '@nestjs/common';
 import { BaseExceptionFilter } from '@nestjs/core';
 import * as Sentry from '@sentry/node';
+import { redactUrlTokens } from '../common/helpers/url-redact.helper';
 
 @Catch()
 export class SentryExceptionFilter extends BaseExceptionFilter implements ExceptionFilter {
@@ -32,7 +33,7 @@ export class SentryExceptionFilter extends BaseExceptionFilter implements Except
         if (request) {
           scope.setContext('request', {
             method: request.method,
-            url: request.url,
+            url: redactUrlTokens(request.url),
             headers: this.filterHeaders(request.headers),
           });
           if (request.user) {
