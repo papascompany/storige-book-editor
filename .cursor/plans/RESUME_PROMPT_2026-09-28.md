@@ -201,6 +201,7 @@ Storige 편집기 개발을 이어서 진행합니다. bookmoa·printy 파트너
     - 결정: **통지 식별자 = sessionId**(orderSeqno 는 참고). 파트너가 sessionId 로 실제 주문 여부를 회신하고, 미주문이면 제한 없음.
     - printy 질의 답변(코드 확인): 세션 orderSeqno 는 생성 뒤 불변(update DTO 에 필드 없음 + forbidNonWhitelisted, 편집기 sessionId 진입은 세션 값 사용).
     - 정정 배포: `947c9e6` push 02:37:20Z → admin `isxgg1mpv` Ready(02:38Z), 번들 지문 확인. 확인 창에 세션 id 전체 표시·복사, '주문번호 N이 붙은 세션(장바구니 단계 번호일 수 있음) — 세션 id를 넣어 사전 통지' 문구, 통지 텍스트 '세션 주문번호(orderSeqno)'. 가이드 §3.3.3·통지문 §7 반영. 양사 회신 발신(회신 불요). 롤백: admin `hcgs4hn2c`(→ `purgkt41z`).
+  - **100p Books 참고 통지(09-30, 오너 요청)**: 새 세션 "20260930 100p_books 서브에이전트 진행"으로 발신. 운영 DB 읽기 전용 실측 04:03:21Z UTC — site `729ad8a7` 편집 세션 0건·edit_retention_days NULL → 대상 없음(유형 1: upload/validate/download external 만). 향후 편집 세션 사용 계획 확인 요청. ACK 대기.
 - **CTO 점검 메모(09-29)**
   - 운영 worker 실측: `WORKER_LIGHTWEIGHT_VALIDATION`·`WORKER_LIGHTWEIGHT_SYNTHESIS`·`WORKER_CROP_MARK_VALIDATION`·`CUTOUT_ENABLED` = true(.env), `PRINT_NORMALIZE` = false. compose 기본값은 전부 false → .env 누락 재배포 시 조용히 OFF 되는 위험.
   - S7 정정: worker `handleSpreadSynthesis` 의 스냅샷 하드 검증은 `createSpreadSynthesisJob`(컨트롤러 호출 0) 경로 전용 → 파트너 합성(compose-mixed·synthesize/external)은 막지 않는다. 실영향은 SOFT `SPINE_MISSING` 뿐.
