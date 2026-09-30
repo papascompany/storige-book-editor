@@ -16,6 +16,7 @@ import { VALIDATION_CONFIG } from '../config/validation.config';
 import { downloadToTempFile } from '../utils/stream-download';
 import { assertSafeDownloadUrl } from '../utils/url-safety';
 import { extractPdfMetadataQpdf } from '../utils/pdf-metadata-qpdf';
+import { normalizeTrimBoxFile } from '../utils/trimbox-normalize';
 import {
   assemblePdf as qpdfAssemble,
   mergePdfs as qpdfMergePdfs,
@@ -101,6 +102,8 @@ export class PdfSynthesizerService {
       // 트랙 B-(f): ON 이면 스트림 다운로드(상수메모리), OFF 면 기존 전체버퍼. 산출 파일 동일.
       await this.downloadToPath(coverPdfUrl, sourceCoverPath);
       await this.downloadToPath(contentPdfUrl, sourceContentPath);
+      // X1: 내지 입력(이미 임시 사본)의 재단선 영역 크롭 정규화 — 표지 제외.
+      await this.normalizeContentInPlaceCopy(sourceContentPath, 'merge');
 
       // 2. merged PDF 생성 (항상)
       let totalPages: number;
@@ -897,6 +900,8 @@ export class PdfSynthesizerService {
         contentFile.storageBackend === 's3' ? `api://${contentFile.id}` : contentFile.filePath;
       // 트랙 B-(f): ON 이면 스트림 다운로드(상수메모리), OFF 면 기존 전체버퍼. 산출 파일 동일.
       await this.downloadToPath(contentSourceUrl, contentPdfPath);
+      // X1: 내지 입력(jobTempDir 사본) 재단선 영역 크롭 정규화 — 스프레드 표지 제외.
+      await this.normalizeContentInPlaceCopy(contentPdfPath, 'spread');
       contentPdfPaths.push(contentPdfPath);
     }
 
@@ -987,6 +992,26 @@ export class PdfSynthesizerService {
       coverPageCount: 1,
       contentPageCount: totalContentPages,
     };
+  }
+
+  /**
+   * X1 (2026-09-30): 합성 내지 입력의 재단선 영역 크롭 정규화.
+   *
+   * copyPath 는 이 서비스가 다운로드해 만든 **임시 사본**이어야 한다(스토리지 원본 아님).
+   * 정규화는 별도 임시파일에 쓰고(normalizeTrimBoxFile 은 입력에 쓰지 않음), 적용된
+   * 경우에만 그 결과로 copyPath 를 교체한다. 합성 잡은 기대 재단·주문 bleed 를 받지 않으므로
+   * '모르는 경로' 규칙(TrimBox 둘레 여백 ≥ 5mm·사방 균등 + 명시 BleedBox 바깥 여백 ≥ 5mm 일 때만,
+   * 도련 = 명시 BleedBox 최소 여백 ≤ 3mm)으로만 크롭한다. BleedBox 부재·BleedBox≈MediaBox 파일은
+   * 크롭하지 않는다. 킬스위치 OFF·크롭 대상 없음이면 파일 무변경.
+   */
+  private async normalizeContentInPlaceCopy(copyPath: string, logTag: string): Promise<void> {
+    const tmp = path.join(path.dirname(copyPath), `trimnorm_${uuidv4()}.pdf`);
+    try {
+      const r = await normalizeTrimBoxFile(copyPath, tmp, {}, logTag);
+      if (r.applied) await fs.rename(tmp, copyPath);
+    } finally {
+      await this.safeDelete(tmp);
+    }
   }
 
   /**

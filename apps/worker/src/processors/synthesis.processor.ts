@@ -12,6 +12,8 @@ import { captureJobException } from '../sentry/sentry.init';
 import { VALIDATION_CONFIG } from '../config/validation.config';
 import { downloadToTempFile } from '../utils/stream-download';
 import { extractPdfMetadataQpdf } from '../utils/pdf-metadata-qpdf';
+// X1 (2026-09-30): compose-mixed 내지 입력 재단선 영역 크롭 정규화(원본 불변·임시 사본).
+import { normalizeTrimBoxFile, normalizeTrimBoxPdfDoc } from '../utils/trimbox-normalize';
 // R5 (2026-08-11): 최종 인쇄 산출 정규화 — 기본 OFF(no-op)·fail-open. 6개 산출 지점 공통.
 import { maybeNormalizeForPrint } from '../utils/print-normalize';
 import {
@@ -496,6 +498,8 @@ export class SynthesisProcessor {
         if (composeContentPdfUrl) {
           const bytes = await this.synthesizerService.downloadFile(composeContentPdfUrl);
           const doc = await PDFDocument.load(bytes);
+          // X1: 내지 재단선 영역 크롭 정규화(메모리 사본, copyPages 이전). 면지·표지 제외.
+          await normalizeTrimBoxPdfDoc(doc, {}, `compose:${jobId}`);
           const pages = await pdf.copyPages(doc, doc.getPageIndices());
           pages.forEach((p) => pdf.addPage(p));
         }
@@ -572,6 +576,8 @@ export class SynthesisProcessor {
         if (composeContentPdfUrl) {
           const bytes = await this.synthesizerService.downloadFile(composeContentPdfUrl);
           const doc = await PDFDocument.load(bytes);
+          // X1: 내지 재단선 영역 크롭 정규화(메모리 사본, copyPages 이전).
+          await normalizeTrimBoxPdfDoc(doc, {}, `compose:${jobId}`);
           const pages = await pagesPdf.copyPages(doc, doc.getPageIndices());
           pages.forEach((p) => pagesPdf.addPage(p));
         }
@@ -600,7 +606,10 @@ export class SynthesisProcessor {
           else { const b = await this.synthesizerService.downloadFile(url); const d = await PDFDocument.load(b); const p = await finalPdf.copyPages(d, d.getPageIndices()); p.forEach(pg => finalPdf.addPage(pg)); }
         }
         if (composeContentPdfUrl) {
-          const b = await this.synthesizerService.downloadFile(composeContentPdfUrl); const d = await PDFDocument.load(b); const p = await finalPdf.copyPages(d, d.getPageIndices()); p.forEach(pg => finalPdf.addPage(pg));
+          const b = await this.synthesizerService.downloadFile(composeContentPdfUrl); const d = await PDFDocument.load(b);
+          // X1: 내지 재단선 영역 크롭 정규화(메모리 사본, copyPages 이전).
+          await normalizeTrimBoxPdfDoc(d, {}, `compose:${jobId}`);
+          const p = await finalPdf.copyPages(d, d.getPageIndices()); p.forEach(pg => finalPdf.addPage(pg));
         }
         const backList = composeBackEndpaperUrls ?? [];
         for (const url of backList) {
@@ -693,6 +702,16 @@ export class SynthesisProcessor {
       return dl.path;
     };
 
+    // X1: 내지 part 재단선 영역 크롭 정규화. dl.path 는 로컬 원본일 수 있으므로 **절대 쓰지
+    // 않고** 새 임시파일(mkTmp)에만 쓴다. 적용 시 그 사본을 part 로 쓴다. out 은 호출 **전에**
+    // scratch 에 등록해, 정규화 도중 실패(부분 파일)여도 finally 에서 정리한다(없는 파일 삭제는 무해).
+    const normalizedContentPart = async (srcPath: string): Promise<string> => {
+      const out = mkTmp('trimnorm');
+      scratch.push(out);
+      const r = await normalizeTrimBoxFile(srcPath, out, {}, `compose:${jobId}`);
+      return r.applied ? out : srcPath;
+    };
+
     // content 조립(면지+내지+면지)을 위한 part 파일 목록 생성.
     const buildContentParts = async (): Promise<string[]> => {
       const parts: string[] = [];
@@ -702,7 +721,7 @@ export class SynthesisProcessor {
       if (composeContentPdfUrl) {
         const dl = await downloadToTempFile(composeContentPdfUrl);
         scratchCleanups.push(dl.cleanup);
-        parts.push(dl.path);
+        parts.push(await normalizedContentPart(dl.path));
       }
       for (const url of composeBackEndpaperUrls ?? []) {
         parts.push(await partFromEndpaper(url));
@@ -795,7 +814,7 @@ export class SynthesisProcessor {
         if (composeContentPdfUrl) {
           const dl = await downloadToTempFile(composeContentPdfUrl);
           scratchCleanups.push(dl.cleanup);
-          pagesParts = [dl.path];
+          pagesParts = [await normalizedContentPart(dl.path)];
         }
         const pagesCount = await assembleToFile(pagesParts, pagesPath);
         const pagesUrl = `/storage/${storageKeyBase}/pages.pdf`;

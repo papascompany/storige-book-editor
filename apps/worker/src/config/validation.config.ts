@@ -1,4 +1,34 @@
 /**
+ * X1 (2026-09-30): WORKER_TRIMBOX_SIZE_CHECK 의 OFF 값 집합(trim·소문자 비교).
+ * 이 집합 밖의 모든 값(미설정·빈 문자열 포함)은 ON — **코드 기본 ON** 킬스위치.
+ */
+const TRIMBOX_SIZE_CHECK_OFF_VALUES: ReadonlySet<string> = new Set([
+  'false',
+  '0',
+  'off',
+  'no',
+]);
+
+/**
+ * X1: TrimBox 기준 내지 판형 판정 + 재단선 영역 크롭 정규화 킬스위치 파서.
+ *
+ * - 코드 기본 ON. 'false'/'0'/'off'/'no'(앞뒤 공백 무시, 대소문자 무시)일 때만 OFF.
+ * - 하나의 플래그가 판정(pdf-validator)과 정규화(합성·변환 입력)를 **함께** 게이트한다 —
+ *   판정만/정규화만 켜진 반쪽 상태를 만들지 않기 위함(원자적 롤백).
+ * - OFF 이면 판정·정규화 모두 종전 동작(바이트 동일).
+ * - 기동 스냅샷(config/feature-flags.ts) 노출은 아직 미통합이다 — 메인/OPS 통합 때 이 함수로
+ *   실효값을 스냅샷 키에 추가한다(X1 레인은 feature-flags.ts 를 수정하지 않음).
+ * ⚠️ docker-compose worker 매핑은 `${WORKER_TRIMBOX_SIZE_CHECK:-true}` 여야 한다
+ *    (`:-false` 로 복사하면 조용히 OFF, 매핑을 빼면 .env 로 끌 수 없음).
+ */
+export function isTrimBoxSizeCheckEnabled(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  const raw = String(env.WORKER_TRIMBOX_SIZE_CHECK ?? '').trim().toLowerCase();
+  return !TRIMBOX_SIZE_CHECK_OFF_VALUES.has(raw);
+}
+
+/**
  * PDF 검증 관련 설정 상수
  * @see docs/PDF_VALIDATION_WBS.md - WBS 1.1
  */
@@ -61,6 +91,18 @@ export const VALIDATION_CONFIG = {
    */
   CROP_MARK_VALIDATION:
     String(process.env.WORKER_CROP_MARK_VALIDATION || '').toLowerCase() === 'true',
+
+  // X1 (2026-09-30): TrimBox 기준 내지 판형 판정 + 재단선 영역 크롭 정규화 킬스위치
+  /**
+   * **기본 ON** — isTrimBoxSizeCheckEnabled 참조('false'/'0'/'off'/'no' 만 OFF).
+   * ON: 내지(fileType==='content') MediaBox 판정이 SIZE_MISMATCH 일 때만 전 페이지 명시
+   * TrimBox 로 재판정(TRIMBOX_SIZE_BASIS 비차단 경고) + 합성·변환 입력의 재단선 영역을
+   * 임시 사본에서 크롭(원본 불변). OFF: 두 기능 모두 종전 동작.
+   * ⚠️ X1-R2 한계: 판정 통과 조건에 합성 산출 크기 일치는 없다. 합성 잡은 주문 bleed 를 몰라
+   *    통과 파일도 선언 도련(≤3mm) 크롭 또는 원본 박스로 산출될 수 있다
+   *    (후속: API 가 합성 잡에 주문 bleed·기대 재단 전달). 변환(editSize)은 작업 크기에 정확히 맞춤.
+   */
+  TRIMBOX_SIZE_CHECK: isTrimBoxSizeCheckEnabled(process.env),
 
   // R-44: 표지 spine(전개폭) 검증 허용오차 — 관찰 1단계는 현행 2mm 유지.
   /**

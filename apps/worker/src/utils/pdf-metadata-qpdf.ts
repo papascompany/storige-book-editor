@@ -49,6 +49,17 @@ export interface QpdfPageSize {
    *   (pdfinfo 는 부재 박스를 사양 기본값으로 합성해 명시 여부 판별 불가) → 검증 skip 대상.
    */
   boxesAuthoritative?: boolean;
+  // ── X1: TrimBox 기준 판정 가드용 (qpdf --json 경로에서만 채워짐 — pdfinfo 폴백은 undefined) ──
+  /** 상속 해석된 /Rotate(도, 0/90/180/270 정규화). null = 해석 불가(비정형·미해석 참조). */
+  rotate?: number | null;
+  /** 페이지 /UserUnit(비상속, 부재 시 1). null = 해석 불가. */
+  userUnit?: number | null;
+  /**
+   * X1: 명시 ArtBox 가 있으나 해석 불가(비정형·미해석 참조)일 때만 true(그 외 키 부재).
+   * TrimBox 기준 판정·크롭을 비신뢰로 강등해 pdf-lib 경로(ArtBox 읽기 예외 → 강등)와 맞춘다.
+   * C-2a 의 boxesAuthoritative 의미는 불변.
+   */
+  artBoxMalformed?: boolean;
 }
 
 export interface QpdfMetadataResult {
@@ -132,7 +143,7 @@ const INDIRECT_REF_RE = /^\d+ \d+ R$/;
 function resolveExplicitBox(
   objmap: Record<string, any>,
   pageDict: any,
-  key: '/TrimBox' | '/BleedBox',
+  key: '/TrimBox' | '/BleedBox' | '/ArtBox',
 ): number[] | null | undefined {
   const raw = pageDict?.[key];
   if (raw === undefined) return undefined; // 명시 부재
@@ -153,6 +164,52 @@ function resolveExplicitBox(
   });
   if (nums.some((v) => !Number.isFinite(v))) return null;
   return nums;
+}
+
+/** qpdf objmap 스칼라(숫자 또는 간접참조 "N 0 R")를 숫자로 해석. 실패 시 NaN. */
+function resolveNumberValue(objmap: Record<string, any>, raw: unknown): number {
+  if (typeof raw === 'number') return raw;
+  if (typeof raw === 'string' && INDIRECT_REF_RE.test(raw)) {
+    const v = unwrapObject(objmap, raw);
+    return typeof v === 'number' ? v : NaN;
+  }
+  return NaN;
+}
+
+/**
+ * X1: /Rotate 를 페이지트리 상속 규칙으로 해석(사양: 상속 가능 속성, 기본 0).
+ * 0/90/180/270 으로 정규화(음수·360 초과 포함). 비정형(90 배수 아님·미해석 참조)은 null.
+ */
+function resolveInheritedRotate(
+  objmap: Record<string, any>,
+  pageDict: any,
+  pageRef: string,
+): number | null {
+  const seen = new Set<string>();
+  let node: any = pageDict;
+  let nodeRef: string | null = pageRef;
+  while (node && typeof node === 'object') {
+    if (node['/Rotate'] !== undefined) {
+      const v = resolveNumberValue(objmap, node['/Rotate']);
+      if (!Number.isFinite(v) || v % 90 !== 0) return null;
+      return ((v % 360) + 360) % 360;
+    }
+    const parentRef: string | undefined = node['/Parent'];
+    if (!parentRef || typeof parentRef !== 'string') break;
+    if (nodeRef) seen.add(nodeRef);
+    if (seen.has(parentRef)) break;
+    node = unwrapObject(objmap, parentRef);
+    nodeRef = parentRef;
+  }
+  return 0;
+}
+
+/** X1: 페이지 /UserUnit(비상속, 부재=1). 해석 불가·비양수는 null. */
+function resolveUserUnit(objmap: Record<string, any>, pageDict: any): number | null {
+  const raw = pageDict?.['/UserUnit'];
+  if (raw === undefined) return 1;
+  const v = resolveNumberValue(objmap, raw);
+  return Number.isFinite(v) && v > 0 ? v : null;
 }
 
 /**
@@ -277,6 +334,12 @@ export async function extractPdfMetadataQpdf(
         trimBoxPt: trimBox ?? undefined,
         bleedBoxPt: bleedBox ?? undefined,
         boxesAuthoritative,
+        // X1: TrimBox 기준 판정 가드(회전·UserUnit·ArtBox 비정형) — additive, 치수 추출 불변.
+        rotate: resolveInheritedRotate(objmap, pageDict, ref),
+        userUnit: resolveUserUnit(objmap, pageDict),
+        ...(resolveExplicitBox(objmap, pageDict, '/ArtBox') === null
+          ? { artBoxMalformed: true }
+          : {}),
       });
     }
 
@@ -399,6 +462,111 @@ async function extractPageSizesPdfinfo(
     return out;
   } catch (err: any) {
     logger.warn(`pdfinfo 폴백 실패: ${err?.message ?? err}`);
+    return null;
+  }
+}
+
+// ============================================================
+// X1 (2026-09-30): TrimBox 크롭 정규화용 페이지 딕셔너리 추출
+// ============================================================
+
+/** X1: qpdf --json(v2) 페이지 1개의 원본 딕셔너리 + 해석된 박스 기하. */
+export interface QpdfPageDict {
+  /** 페이지 객체 참조(예: "4 0 R") — --update-from-json 패치 키 `obj:<ref>` 로 사용. */
+  ref: string;
+  /** qpdf JSON v2 표현 그대로의 페이지 딕셔너리(패치 시 수정 키만 바꿔 되돌려 씀). */
+  dict: Record<string, unknown>;
+  /** 상속 해석된 MediaBox [llx, lly, urx, ury] (pt). */
+  mediaBoxPt: number[];
+  /** 명시 TrimBox(비상속). undefined = 명시 부재. */
+  trimBoxPt?: number[];
+  /** 명시 BleedBox(비상속). undefined = 명시 부재. */
+  bleedBoxPt?: number[];
+  /** 명시 ArtBox(비상속). undefined = 명시 부재. */
+  artBoxPt?: number[];
+  /** 상속 해석된 /Rotate(0/90/180/270). null = 해석 불가. */
+  rotate: number | null;
+  /** /UserUnit(부재=1). null = 해석 불가. */
+  userUnit: number | null;
+  /** 명시 박스(Trim/Bleed/Art) 존재·부재 판정 신뢰 여부(미해석 간접참조가 있으면 false). */
+  boxesAuthoritative: boolean;
+}
+
+export interface QpdfPageDictsResult {
+  /** qpdf JSON v2 헤더(`qpdf[0]`) — 패치 JSON 에 원본 그대로 되돌려 넣는다. */
+  header: Record<string, unknown>;
+  pages: QpdfPageDict[];
+}
+
+/**
+ * X1: 크롭 정규화(normalizeTrimBoxFile)용 페이지 딕셔너리·박스 추출.
+ *
+ * extractPdfMetadataQpdf 와 같은 qpdf --json(v2) 호출·해석 규칙(unwrapObject/
+ * resolveInheritedMediaBox/resolveExplicitBox)을 쓰되, 패치를 만들 수 있도록 페이지 ref·
+ * 원본 딕셔너리·헤더를 함께 돌려준다. 기존 extractPdfMetadataQpdf 의 동작·반환형은 불변.
+ *
+ * 실패(비PDF·손상·qpdf 미설치·MediaBox 미해석) 시 throw 하지 않고 null — 콜러는 정규화를
+ * skip(입력 그대로 사용)한다. 박스 판정이 불가능한 파일은 크롭하지 않는다는 보수 규칙.
+ */
+export async function extractPageDictsQpdf(
+  filePath: string,
+): Promise<QpdfPageDictsResult | null> {
+  try {
+    let stdout: string;
+    try {
+      const res = await execFileAsync(
+        QPDF_PATH,
+        ['--json', '--json-key=pages', '--json-key=qpdf', '--', filePath],
+        { timeout: QPDF_TIMEOUT_MS, maxBuffer: QPDF_MAX_BUFFER },
+      );
+      stdout = res.stdout;
+    } catch (e: unknown) {
+      // extractPdfMetadataQpdf 와 동일: 경고(code=3)+stdout 은 유효 JSON 으로 회수.
+      const err = e as { code?: unknown; stdout?: unknown };
+      if (err?.code === 3 && typeof err.stdout === 'string' && err.stdout.length > 0) {
+        stdout = err.stdout;
+      } else {
+        throw e;
+      }
+    }
+    const doc = JSON.parse(stdout) as { pages?: unknown; qpdf?: unknown };
+    if (!Array.isArray(doc.qpdf) || doc.qpdf.length < 2) {
+      throw new Error('qpdf json: missing qpdf header/objmap');
+    }
+    const header = doc.qpdf[0] as Record<string, unknown>;
+    const objmap = (doc.qpdf[1] ?? {}) as Record<string, any>;
+    const pageList = Array.isArray(doc.pages) ? (doc.pages as Array<{ object?: unknown }>) : [];
+    if (pageList.length === 0) throw new Error('qpdf json: no pages');
+
+    const pages: QpdfPageDict[] = [];
+    for (const p of pageList) {
+      const ref = typeof p.object === 'string' ? p.object : '';
+      const dict = ref ? unwrapObject(objmap, ref) : null;
+      if (!dict || typeof dict !== 'object') {
+        throw new Error(`page object not found in objmap: ${ref}`);
+      }
+      const mb = resolveInheritedMediaBox(objmap, dict, ref);
+      if (!mb) throw new Error(`MediaBox unresolved for page object: ${ref}`);
+      const trim = resolveExplicitBox(objmap, dict, '/TrimBox');
+      const bleed = resolveExplicitBox(objmap, dict, '/BleedBox');
+      const art = resolveExplicitBox(objmap, dict, '/ArtBox');
+      pages.push({
+        ref,
+        dict: dict as Record<string, unknown>,
+        mediaBoxPt: mb,
+        trimBoxPt: trim ?? undefined,
+        bleedBoxPt: bleed ?? undefined,
+        artBoxPt: art ?? undefined,
+        rotate: resolveInheritedRotate(objmap, dict, ref),
+        userUnit: resolveUserUnit(objmap, dict),
+        boxesAuthoritative: trim !== null && bleed !== null && art !== null,
+      });
+    }
+    return { header, pages };
+  } catch (err: unknown) {
+    logger.warn(
+      `extractPageDictsQpdf 실패 — 박스 판별 불가(정규화 skip): ${(err as Error)?.message ?? err}`,
+    );
     return null;
   }
 }

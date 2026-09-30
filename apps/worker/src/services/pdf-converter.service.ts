@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { PDFDocument, rgb } from 'pdf-lib';
+import { PDFDocument, PDFPage, rgb } from 'pdf-lib';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import axios from 'axios';
@@ -16,7 +16,9 @@ import { isApiMarker, downloadViaApi } from './api-file-download';
 import {
   VALIDATION_CONFIG,
   DEFAULT_SIZE_TOLERANCE_MM,
+  LEGACY_SIZE_TOLERANCE_MM,
 } from '../config/validation.config';
+import { normalizeTrimBoxFile, TrimCropContext } from '../utils/trimbox-normalize';
 import { downloadToTempFile } from '../utils/stream-download';
 import { assertSafeDownloadUrl } from '../utils/url-safety';
 import {
@@ -96,6 +98,8 @@ export class PdfConverterService {
     // 정리한다. 정상 경로는 기존대로 단계별 safeDelete 로 정리되므로 succeeded 후 추가 삭제 없음.
     let tempInputPath: string | undefined;
     let currentPath: string | undefined;
+    // X1: 이번 잡에서 재단선 크롭 정규화가 적용됐는가(fix-pagecount 백지 박스 복제 게이트).
+    let trimNormalized = false;
     let succeeded = false;
 
     try {
@@ -131,6 +135,37 @@ export class PdfConverterService {
       }
 
       // ──────────────────────────────────────────────────────────────
+      // X1 (2026-09-30) — 재단선 영역 크롭 정규화(업로드 내지 경로 한정, resolveMode 이전).
+      // 게이트: editSize(fix-bleed/inner-imposition) 또는 padToMultiple(fix-pagecount).
+      // 편집기 레거시 경로(mode·editSize·padToMultiple 없음)는 게이트 밖 — 무영향.
+      // editSize 가 있으면 목표 = TrimBox + (editSize−Trim)/2(대칭) → resolveMode 가 innerfit
+      // (비율 축소) 대신 passthrough 를 고른다. tempInputPath 는 이미 임시 사본이라 원본 불변.
+      // 킬스위치 OFF·크롭 대상 없음이면 입력 그대로(추가 파일 없음).
+      // ──────────────────────────────────────────────────────────────
+      const hasEditSize =
+        !!rawOptions.editSize &&
+        rawOptions.editSize.width > 0 &&
+        rawOptions.editSize.height > 0;
+      if (hasEditSize || (rawOptions.padToMultiple ?? 0) > 0) {
+        const ctx: TrimCropContext = hasEditSize
+          ? {
+              editSizeMm: rawOptions.editSize,
+              // no-op 허용오차 = 검증 판형 허용오차(sizeToleranceMm ?? LEGACY 1mm) 이상.
+              // 오늘 검증을 통과하는(작업사이즈 ±tol) 파일은 크롭하지 않고 종전 resolveMode
+              // 경로(passthrough/innerfit/center)를 그대로 탄다(CTO 원칙 1).
+              noopTolMm: Math.max(LEGACY_SIZE_TOLERANCE_MM, rawOptions.sizeToleranceMm ?? 0),
+            }
+          : {};
+        const normalizedPath = path.join(this.storagePath, `trimnorm_${uuidv4()}.pdf`);
+        const norm = await normalizeTrimBoxFile(tempInputPath, normalizedPath, ctx, 'convert');
+        if (norm.applied) {
+          await this.safeDelete(tempInputPath);
+          tempInputPath = norm.path;
+          trimNormalized = true;
+        }
+      }
+
+      // ──────────────────────────────────────────────────────────────
       // P4 — mode 자체결정 (2026-06-10).
       // mode 가 명시되지 않았지만 editSize 가 주어진 업로드 경로에서는,
       // 실측(getPdfInfo) vs editSize±허용오차 비교로 mode 를 결정한다.
@@ -163,7 +198,7 @@ export class PdfConverterService {
             const _cur = pdfDoc.getPageCount();
             _targetPages = Math.max(_targetPages, Math.ceil(_cur / _padTo) * _padTo);
           }
-          pagesAdded = await this.addPages(pdfDoc, _targetPages);
+          pagesAdded = await this.addPages(pdfDoc, _targetPages, trimNormalized);
 
           if (pagesAdded > 0) {
             const tempPagesPath = path.join(this.storagePath, `pages_${uuidv4()}.pdf`);
@@ -494,6 +529,7 @@ export class PdfConverterService {
   private async addPages(
     pdfDoc: PDFDocument,
     targetPages: number,
+    trimNormalized = false,
   ): Promise<number> {
     const currentPages = pdfDoc.getPageCount();
 
@@ -504,6 +540,36 @@ export class PdfConverterService {
     const pagesToAdd = targetPages - currentPages;
     const firstPage = pdfDoc.getPage(0);
     const { width, height } = firstPage.getSize();
+
+    // X1: 이번 잡에서 재단선 정규화가 **적용된** 파일(trimNormalized)만, 백지도 첫 페이지와
+    // 같은 좌표계(MediaBox 원점 포함)로 만들고 Trim/Bleed/CropBox 를 같은 좌표로 복제한다 —
+    // 재검증 시 페이지별 박스 유무가 섞이지 않게(엄격 판정) + 원점≠0 박스가 MediaBox 밖으로
+    // 나가지 않게. 정규화되지 않은 파일(TrimBox 보유 편집기 P3 PDF 포함)·킬스위치 OFF 는 아래
+    // 종전 경로 그대로(산출물 불변 — CTO 원칙 1). 박스 읽기가 실패(비정형)해도 종전 경로로 진행.
+    const normalizedBoxes =
+      VALIDATION_CONFIG.TRIMBOX_SIZE_CHECK && trimNormalized
+        ? this.readBlankPageBoxes(firstPage)
+        : null;
+    if (normalizedBoxes) {
+      const { mb, trim, bleed: bleedRect, crop: cropRect } = normalizedBoxes;
+      for (let i = 0; i < pagesToAdd; i++) {
+        const blankPage = pdfDoc.addPage([mb.width, mb.height]);
+        blankPage.setMediaBox(mb.x, mb.y, mb.width, mb.height);
+        blankPage.drawRectangle({
+          x: mb.x,
+          y: mb.y,
+          width: mb.width,
+          height: mb.height,
+          color: rgb(1, 1, 1),
+        });
+        if (cropRect) blankPage.setCropBox(cropRect.x, cropRect.y, cropRect.width, cropRect.height);
+        blankPage.setTrimBox(trim.x, trim.y, trim.width, trim.height);
+        if (bleedRect) {
+          blankPage.setBleedBox(bleedRect.x, bleedRect.y, bleedRect.width, bleedRect.height);
+        }
+      }
+      return pagesToAdd;
+    }
 
     for (let i = 0; i < pagesToAdd; i++) {
       const blankPage = pdfDoc.addPage([width, height]);
@@ -519,6 +585,33 @@ export class PdfConverterService {
     }
 
     return pagesToAdd;
+  }
+
+  /**
+   * X1: fix-pagecount 백지 박스 복제용 — 첫 페이지 MediaBox·명시 TrimBox(필수)·CropBox·BleedBox.
+   * 명시 TrimBox 가 없거나 어느 박스든 비정형이면 null(종전 백지 경로로 fallthrough).
+   */
+  private readBlankPageBoxes(firstPage: PDFPage): {
+    mb: { x: number; y: number; width: number; height: number };
+    trim: { x: number; y: number; width: number; height: number };
+    crop?: { x: number; y: number; width: number; height: number };
+    bleed?: { x: number; y: number; width: number; height: number };
+  } | null {
+    try {
+      const trimArr = firstPage.node.TrimBox();
+      if (!trimArr) return null;
+      return {
+        mb: firstPage.getMediaBox(),
+        trim: trimArr.asRectangle(),
+        crop: firstPage.node.CropBox()?.asRectangle(),
+        bleed: firstPage.node.BleedBox()?.asRectangle(),
+      };
+    } catch (error) {
+      this.logger.warn(
+        `[TRIMBOX_NORMALIZE] fix-pagecount 백지 박스 복제 skip(비정형 박스): ${(error as Error).message}`,
+      );
+      return null;
+    }
   }
 
   /**

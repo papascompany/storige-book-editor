@@ -73,6 +73,14 @@ export enum WarningCode {
   /** TrimBox↔MediaBox/BleedBox 블리드 기하 부정합 (TrimBox 이탈 또는 BleedBox 크기 불일치) */
   TRIMBOX_BLEED_INCONSISTENT = 'TRIMBOX_BLEED_INCONSISTENT',
   /**
+   * X1 (2026-09-30): 내지 판형을 MediaBox 가 아니라 전 페이지 명시 TrimBox(재단 크기)
+   * 기준으로 확인함 — 정보성·비차단(autoFixable=false). MediaBox 판정이 SIZE_MISMATCH 이고
+   * 엄격 조건(전 페이지 명시 TrimBox ≈ 주문 재단, ⊂ MediaBox, 비회전, UserUnit 1)을
+   * 만족할 때만 발행되며 이때 SIZE_MISMATCH 는 제거된다. 킬스위치 WORKER_TRIMBOX_SIZE_CHECK.
+   * details: { sizeBasis: 'trimBox', trimBox: {width,height}, mediaBox: {width,height} } (mm)
+   */
+  TRIMBOX_SIZE_BASIS = 'TRIMBOX_SIZE_BASIS',
+  /**
    * R-53(2026-07-23, bookmoa §3-1 완화 확정): 표지(cover)+무선/양장인데 책등 두께를
    * 해석하지 못해 표지 규격(전개폭) 검증을 생략함 — 비차단 고지. 단일 판형 SIZE 검증도
    * 함께 스킵(표지 폭은 W×2+spine 이라 단일 판형과 원리적으로 절대 불일치 → 오차단 방지).
@@ -186,7 +194,10 @@ export interface PdfMetadata {
   hasUnembeddedFonts?: boolean;
   /** 임베딩되지 않은 폰트 이름 목록 */
   unembeddedFonts?: string[];
-  /** C-2a: 첫 페이지 TrimBox 크기(mm, 소수1자리) — TrimBox 명시 선언 시에만 기록 */
+  /**
+   * C-2a: 첫 페이지 TrimBox 크기(mm, 소수1자리) — TrimBox 명시 선언 시에만 기록.
+   * X1: crop mark 검증 수행 시 + TrimBox 기준 판형 통과(TRIMBOX_SIZE_BASIS) 시 기록.
+   */
   trimBox?: { width: number; height: number };
   /** C-2a: 재단 기하(TrimBox) 명시 선언 여부 — crop mark 검증 수행 시에만 기록 */
   hasCropMarkGeometry?: boolean;

@@ -148,6 +148,11 @@ services:
       # C+ G3: 미배선 fixMethod(resizeWithPadding 등) FIXABLE→실거부 게이팅. 기본 false.
       #   ⚠️ .env 에만 넣으면 silent no-op(WH-001 전례와 동일) — 이 매핑 필수(2026-07-21 실적발).
       - WORKER_WIRED_FIXABLE_GATING=${WORKER_WIRED_FIXABLE_GATING:-false}
+      # X1: TrimBox 기준 내지 판형 판정 + 재단선 영역 크롭 정규화 킬스위치. **코드 기본 ON**.
+      #   OFF = .env WORKER_TRIMBOX_SIZE_CHECK=false (또는 0/off/no) 후 worker 재생성 → 판정·정규화 모두 종전 동작.
+      #   ⚠️ 기본값은 반드시 `:-true` — 다른 플래그처럼 `:-false` 로 바꾸면 조용히 OFF 된다.
+      #   ⚠️ 이 매핑을 빼면 .env 로 끌 수 없어 롤백에 재빌드가 필요하다(silent no-op 함정).
+      - WORKER_TRIMBOX_SIZE_CHECK=${WORKER_TRIMBOX_SIZE_CHECK:-true}
       # R-44 표지 spine 검증 허용오차(mm) — 2단계 승격은 .env 로만(무선 1.0/양장 1.5).
       #   기본 2(관찰 1단계와 동일). MAX 는 orderOptions.spineToleranceMm 오버라이드 상한.
       #   ⚠️ 동일 함정: .env 만으론 no-op — 이 매핑이 있어야 컨테이너에 주입된다.

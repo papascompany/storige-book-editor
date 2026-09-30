@@ -54,6 +54,14 @@ import {
   QpdfMetadataResult,
 } from '../utils/pdf-metadata-qpdf';
 import { scanPdfStreaming } from '../utils/streaming-pdf-scan';
+// X1 (2026-09-30): TrimBox 기준 판형 판정 — 표준·경량 공용 순수 함수(파리티).
+import {
+  evaluateTrimSizeBasis,
+  firstPageSmallerTrimMm,
+  pageBoxesFromPdfLib,
+  pageBoxesFromQpdf,
+  PageBoxesPt,
+} from '../utils/trimbox-normalize';
 import { SpotColorResult, TransparencyResult, ImageResolutionResult, FontDetectionResult, InkTacResult, AnnotationDetectionResult, PageGeometryResult, WhiteOverprintResult } from '../dto/validation-result.dto';
 
 // 기본 설정 (VALIDATION_CONFIG에서 가져오거나 폴백)
@@ -198,6 +206,17 @@ export class PdfValidatorService {
         this.validatePageSize(widthMm, heightMm, options, errors, metadata);
         // S6 후속: separate 표지 2쪽(뒤표지)도 동일 규칙으로 판형 검증(2쪽 있을 때만)
         this.validateSeparateBackCoverSize(pages, frontSizeErrStart, options, errors, metadata);
+        // X1: 내지 MediaBox 판정이 SIZE_MISMATCH 일 때만 전 페이지 명시 TrimBox 로 재판정.
+        // 박스 추출은 lazy(실패 시에만) — MediaBox 통과 파일은 추가 작업 0(결과 불변).
+        this.applyTrimBoxSizeBasis(
+          () => pages.map((p) => pageBoxesFromPdfLib(p)),
+          pages.length,
+          frontSizeErrStart,
+          options,
+          errors,
+          warnings,
+          metadata,
+        );
       }
 
       // 6-b. C-2a: crop mark(재단 기하) 검증 — 이중 게이트(orderOptions.cropMarkEnabled
@@ -801,6 +820,25 @@ export class PdfValidatorService {
         this.validatePageSize(widthMm, heightMm, options, errors, metadata);
         // S6 후속: OFF 와 동일 — 2쪽 치수는 qpdf/pdfinfo 페이지별 치수(상수메모리)에서 얻는다
         this.validateSeparateBackCoverSize(pages, frontSizeErrStart, options, errors, metadata);
+        // X1: OFF 경로와 동일 규칙·위치. 박스 소스는 crop mark 경로와 같은 폴백 순서 —
+        // qpdf 명시 박스(authoritative, pages.length===pageCount) → pdf-lib 폴백 분기(node 존재)
+        // → 둘 다 없으면 null(판별 불가 → MediaBox 판정 유지).
+        this.applyTrimBoxSizeBasis(
+          (): PageBoxesPt[] | null => {
+            if (meta.ok && meta.pages.length > 0) {
+              if (meta.pages.length !== pageCount) return null;
+              return meta.pages.map((d) => pageBoxesFromQpdf(d));
+            }
+            if (firstPage.node) return pages.map((p) => pageBoxesFromPdfLib(p));
+            return null;
+          },
+          pageCount,
+          frontSizeErrStart,
+          options,
+          errors,
+          warnings,
+          metadata,
+        );
       }
       // C-2a: crop mark(재단 기하) 검증(경량 경로) — OFF 와 동일 게이트/위치(validatePageSize 직후).
       // 1차: qpdf 추출 박스. 비신뢰(pdfinfo 폴백·간접참조 미해석)면 pdf-lib 실페이지
@@ -1221,7 +1259,9 @@ export class PdfValidatorService {
         message: `${expectedBleed}mm 재단 여백이 권장되지만 포함되어 있지 않습니다. 재단 시 테두리가 잘릴 수 있습니다.`,
         details: {
           expected: expectedBleed,
-          actual: 0,
+          // 종전 경로는 hasBleed=false 일 때 bleedSize 를 쓰지 않으므로 0 그대로.
+          // TrimBox 기준 판정(X1)은 부족한 선언 도련을 bleedSize 에 기록하므로 같은 값을 싣는다.
+          actual: metadata.bleedSize ?? 0,
         },
         // C+ 게이팅(플래그 ON 시): extendBleed 실행기 미배선 → autoFixable=false (경고라 상태 무영향,
         // 모달의 '자동 보정 가능' 오표기만 제거). fixMethod 는 의도 보존.
@@ -1229,6 +1269,101 @@ export class PdfValidatorService {
         fixMethod: 'extendBleed',
       });
     }
+  }
+
+  // ============================================================
+  // X1 (2026-09-30): TrimBox 기준 내지 판형 판정
+  // ============================================================
+
+  /**
+   * MediaBox 판정(validatePageSize)이 SIZE_MISMATCH 를 낸 **내지**에 한해, 전 페이지의
+   * 명시 TrimBox 로 재판정한다(evaluateTrimSizeBasis — 표준·경량 공용 순수 함수).
+   *
+   * 게이트: VALIDATION_CONFIG.TRIMBOX_SIZE_CHECK && fileType==='content' && SIZE_MISMATCH 발생.
+   * 게이트가 닫히면(MediaBox 통과 포함) 아무것도 하지 않는다 — 기존 결과 바이트 동일.
+   *
+   * 통과 조건(CTO X1-R2): 엄격 기하 조건(전 페이지 명시 TrimBox ⊂ MediaBox ≈ 기대 재단 ±tol,
+   * 스왑·회전 90/270·UserUnit≠1·비정형·극소 TrimBox·경량 비신뢰 불허) + known 목표
+   * (TrimBox 를 사방 균등 B_order = max(bleed ?? DEFAULT, bleedMm ?? 0) 확장) ⊂ 전 페이지 MediaBox.
+   * '합성(모르는 경로) 산출 박스 = 허용 크기' 조건은 두지 않는다(파일 B 오탐 회귀 해소).
+   * ⚠️ 한계: 합성 잡은 주문 bleed 를 몰라 통과 파일도 선언 도련 ≤3mm 크롭 또는 원본 박스로
+   *   산출될 수 있다(후속: API 가 합성 잡에 주문 bleed·기대 재단 전달).
+   * 통과: SIZE_MISMATCH 제거 + TRIMBOX_SIZE_BASIS(비차단) + metadata.trimBox/hasBleed/bleedSize.
+   *   bleedSize = 전 페이지·전 변 (명시 BleedBox − TrimBox) 최소값(BleedBox 없는 페이지가 있으면 0),
+   *   hasBleed = bleedSize ≥ 주문 bleed − tol/2
+   *   (hasBleed=false 면 이후 validateBleed 가 기존 BLEED_MISSING 을 발행).
+   * 불통과: SIZE_MISMATCH 의 message·details.actual 은 그대로. 1쪽에 MediaBox 보다 작은
+   *   명시 TrimBox 가 있으면 details.trimBox(additive)만 추가.
+   */
+  private applyTrimBoxSizeBasis(
+    pageBoxesProvider: () => PageBoxesPt[] | null,
+    pageCount: number,
+    sizeErrStart: number,
+    options: ValidationOptions,
+    errors: ValidationError[],
+    warnings: ValidationWarning[],
+    metadata: PdfMetadata,
+  ): void {
+    if (!VALIDATION_CONFIG.TRIMBOX_SIZE_CHECK || options.fileType !== 'content') return;
+    const mismatchIdx = errors.findIndex(
+      (e, i) => i >= sizeErrStart && e.code === ErrorCode.SIZE_MISMATCH,
+    );
+    if (mismatchIdx < 0) return;
+
+    const oo = options.orderOptions;
+    const tolMm = oo.sizeToleranceMm ?? LEGACY_SIZE_TOLERANCE_MM;
+    const orderBleedMm = oo.bleed ?? DEFAULT_BLEED_MM;
+    const expectedTrimMm = oo.trimSize ?? oo.size;
+    const pages = pageBoxesProvider();
+    const verdict = evaluateTrimSizeBasis({
+      pages,
+      pageCount,
+      expectedTrimMm,
+      // known 목표 B_order — 변환(fix-bleed/inner-imposition) 목표(Trim+B)도 모든 페이지
+      // MediaBox 안이어야 한다. 변환이 쓰는 템플릿 bleedMm 까지 보수적으로 포함.
+      targetBleedMm: Math.max(orderBleedMm, oo.bleedMm ?? 0),
+      // hasBleed 기준 = validateBleed 의 expectedBleed 와 같은 값.
+      orderBleedMm,
+      tolMm,
+    });
+
+    if (!verdict.ok) {
+      const trimMm = firstPageSmallerTrimMm(pages, tolMm);
+      if (trimMm) {
+        const err = errors[mismatchIdx];
+        err.details = { ...err.details, trimBox: trimMm };
+      }
+      if (trimMm || verdict.reason !== 'noTrimBox') {
+        this.logger.log(
+          `[TRIMBOX_SIZE_BASIS] rejected reason=${verdict.reason}` +
+            (verdict.page ? ` page=${verdict.page}` : '') +
+            (trimMm ? ` trim=${trimMm.width}x${trimMm.height}` : ''),
+        );
+      }
+      return;
+    }
+
+    errors.splice(mismatchIdx, 1);
+    metadata.trimBox = { width: verdict.trimMm.width, height: verdict.trimMm.height };
+    metadata.hasBleed = verdict.hasBleed;
+    metadata.bleedSize = verdict.effectiveBleedMm;
+    warnings.push({
+      code: WarningCode.TRIMBOX_SIZE_BASIS,
+      message:
+        '재단 크기(TrimBox) 기준으로 판형을 확인했습니다. 원본 파일에는 재단선·여백 영역이 포함되어 있습니다.',
+      details: {
+        sizeBasis: 'trimBox',
+        trimBox: { width: verdict.trimMm.width, height: verdict.trimMm.height },
+        mediaBox: { width: verdict.mediaMm.width, height: verdict.mediaMm.height },
+      },
+      autoFixable: false,
+    });
+    this.logger.log(
+      `[TRIMBOX_SIZE_BASIS] media=${verdict.mediaMm.width}x${verdict.mediaMm.height} ` +
+        `trim=${verdict.trimMm.width}x${verdict.trimMm.height} ` +
+        `effBleed=${verdict.effectiveBleedMm} ` +
+        `hasBleed=${verdict.hasBleed} pages=${pageCount}/${pageCount}`,
+    );
   }
 
   // ============================================================
