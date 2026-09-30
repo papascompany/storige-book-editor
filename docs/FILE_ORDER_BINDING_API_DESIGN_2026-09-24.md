@@ -104,6 +104,7 @@
 - **`restore()`는 `deleted_at`만 되돌리고 `expires_at`은 그대로 둔다**(files.service.ts:490-507†).
   - 고아 강등은 `expires_at`과 `deleted_at`을 모두 NOW()로 설정한다(:740†).
   - 그래서 복구된 파일은 다음 :17 sweep에 다시 soft-delete된다.
+  - ✅ **상태 갱신(2026-09-30)**: 위 서술은 설계 시점(2026-09-24) 기준이다. `b5ee912`(2026-09-29, O18)로 `restore()` 가 `deleted_at`·`expires_at` 을 **함께 NULL** 로 해제하도록 교정됐다(`apps/api/src/files/files.service.ts:499-517`, 해제 지점 :514-515). 따라서 `restore()` 로 복구한 파일은 더 이상 다음 sweep에 재강등되지 않는다. 이미 활성인 파일은 멱등 반환(:511-513). 머리말 검증 기록(:16)과 §4 D11·§8.7의 같은 전제 서술도 이 시점 이전 기준이다.
 - **purge는 `expires_at IS NOT NULL`만 본다**(files.service.ts:572-582†).
   - 미래 만료가 예약된 파일이 수동으로 soft-delete되면, 예약일이 아니라 48h 뒤에 영구 삭제된다.
 - **`softDeleteWithExpiry`는 참조를 다시 확인하지 않는다**(files.service.ts:736-745†). 후보 SELECT와 UPDATE 사이에 경합 창이 있다.

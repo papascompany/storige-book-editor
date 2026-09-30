@@ -36,7 +36,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 >
 > Other handoff documents in `.cursor/plans/`:
 > - `_RESUME_PROMPT.md` — project-onboarding prompt (do not delete)
-> - `_RESUME_EDITOR_TRACKS.md` — editor track handoff
+> - `_RESUME_EDITOR_TRACKS.md` — archived editor track handoff (2026-05-02 snapshot, not canonical; use the latest `RESUME_PROMPT_<date>.md`)
 > - `HANDOFF_GUIDE.md` — general handoff guide
 
 ## Project Overview

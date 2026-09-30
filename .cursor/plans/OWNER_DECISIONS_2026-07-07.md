@@ -57,6 +57,13 @@
 
 > 공통 제약: 프로덕션 임베드 파트너 2곳(bookmoa-mobile·ShareSnap) **무중단** — postMessage 엔벨로프 v1 시맨틱 불변, 채택분은 additive로만. 회귀 e2e 필수.
 
+> 📌 **상태 갱신(2026-09-30)** — "채택"은 결정일 뿐 구현 완료가 아니다. 코드 대조 결과:
+> - **D-4a 미구현**: 지연 주입 핸드셰이크(`wait_*`/`waiting-*`/`send-*`) 흔적이 `apps/editor/src`·`packages/*/src` 에 0건(2026-09-30 grep).
+> - **D-4b 미구현(리스트 형태)**: 저장 결과에는 표지 단일 `thumbnail` 만 실린다(`apps/editor/src/embed.tsx:2011`). "썸네일 URL 리스트" 동봉은 없다.
+> - **D-4c 동기 대부분 해소**: 결정(07-14)보다 앞선 `e4f2912`(2026-06-03, 임베드 사일런트 리프레시)로 `POST /auth/shop-refresh-body` + 편집기 401 시 refreshToken 재발급이 이미 배선됨(`apps/editor/src/api/client.ts:161-177`). 호스트 측 "재발급 요청 루프" 프로토콜 자체는 별도 구현되지 않았다.
+> - **D-4d**: 기각 유지.
+> - ⚠️ **명칭 충돌 주의**: 이 문서의 **D-4 = 임베드 SDK 프로토콜 보강([S-P3B])** 이다. `PHOTOBOOK_O2_DECISIONS_2026-07-04.md` 의 **D-4 = 포토북 커버 체계(공통 3종 + 하드커버 싸바리)** 와 무관하며, RESUME 문서의 "D-4 계약(caseBind)" 표기는 후자를 가리킨다.
+
 ## D-5. 즉시 실행 승인 2건 (보안·인프라)
 
 | # | 질문 | 내용 | 권고 | 결정 |
@@ -187,6 +194,15 @@
 
 **게이트**: `CONTRACT_FREEZE` 레거시 dual-emit 계약에 닿아 **문서·구현 트랙에서 단독 결정 불가**. 오너 결정 필요.
 
+> ✅ **상태 갱신(2026-09-30): 구현 완료 — A안(레거시 payload additive 확장).**
+> - 커밋 `ee88078`(2026-09-21) "fix(editor): 레거시 storige:completed 에 needsAuth·guestToken 동봉". 실피해(bookmoa 장바구니 2건이 파일 없이 담김) 확인 후 발신 측에서 해소.
+> - 구현 근거: `apps/editor/src/views/EmbedView.tsx:191-213` — `needsAuth` 는 게스트 완료 시 무조건 동봉(:212), `guestToken` 은 `parentOrigin` 지정 시에만 동봉(:213). 기존 emit 필드·순서 무변경(additive).
+> - 파트너 안내: `docs/PLATFORM_INTEGRATION_GUIDE.md:923-931`(`needsAuth`·`guestToken` 동봉 2026-09-21 additive), 수신 측 `status` 리터럴 불신 경고 :917-921.
+> - 동결 문서 반영: `docs/CONTRACT_FREEZE.md` 레거시 `storige:*` dual-emit 행에 additive 표기(2026-09-30).
+> - 아래 정정 2(와일드카드 노출값에 `guestToken` 없음)는 `guestToken` 이 `parentOrigin` 존재 시에만 실리므로 그대로 유효하다.
+> - 참고: 이 문서에 A안 선택의 오너 결정 기입 행은 없다(구현 커밋으로 해소). 사후 추인 표기가 필요하면 오너 확인.
+> - ✅ **오너 사후 추인 (2026-09-30)**: D-11 = **A안(레거시 payload 확장)** 으로 확정. `ee88078` 구현을 정본으로 한다.
+
 ## 기획세션 문서에 반영 완료된 정정 3건 (구현세션 실코드 반증)
 1. **발신 8종 FROZEN + `pricingChange` 1종 ADDITIVE**(← "9종 FROZEN"은 동결 표면 1종 부풀리기)
 2. **레거시 와일드카드 노출값 = `sessionId`+`coverFileId`/`contentFileId`**(← `guestToken` 아님. 와일드카드 발동[parentOrigin 부재]과 guestToken 발신[parentOrigin 존재]이 **상호배타**)
@@ -207,7 +223,7 @@
 | # | 사안 | 상태 |
 |---|---|---|
 | **선결** | `migrateGuestSessions()` **siteId 미주입** → 게스트 퍼널 미작동 | 위 최상단 고정 참조. **게스트 퍼널 착수 전 서버 수정 필수** |
-| **D-11** | 레거시 `storige:completed` 에 `needsAuth` 부재 → 레거시 수신 호스트에 게스트 오완료 | 기획세션 권고 **B**(레거시 호스트를 v1 유도, 동결 불변) |
+| **D-11** | 레거시 `storige:completed` 에 `needsAuth` 부재 → 레거시 수신 호스트에 게스트 오완료 | 기획세션 권고 **B**(레거시 호스트를 v1 유도, 동결 불변) · ✅ **상태 갱신(2026-09-30): 구현 완료 — A안**(`ee88078`, 2026-09-21, `EmbedView.tsx:191-213`) — 위 D-11 절 참조 |
 | **D-10b** | `@storige/sdk` 배포 채널 | **보류 유지**(`private:true`). 배포 시 후속: private 해제·publishConfig·`@storige` org·릴리스 워크플로 |
 | **ⓐ** | `POST /api/worker-jobs/compose-mixed` **무인증(@Public)** — 근본 수정은 인증 추가 | `contract-freeze.spec.ts` 가 `auth:'public'` 으로 **동결** 중 → 계약 해제 결정 동반 |
 | **루트 vercel.json** | 내부 IPv4 rewrites 2건(PUBLIC 레포) | `check:exposure` 가 예외로 통과시키되 매 실행 경고(값은 마스킹). 해당 Vercel 프로젝트 정체 미확인이라 임의 수정 보류 |

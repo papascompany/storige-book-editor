@@ -1,3 +1,5 @@
+> 🗄️ **아카이브 · 정본 아님 (2026-05-02 스냅샷, 옛 경로 기준).** 현재 정본: 가장 최근 `.cursor/plans/RESUME_PROMPT_<날짜>.md` (`ls .cursor/plans/RESUME_PROMPT_*.md | sort | tail -1`). 아래 본문은 당시 기록으로 보존하며 갱신하지 않는다. (배너 추가 2026-09-30)
+
 # Storige Editor 프론트엔드 트랙 — 새 세션 RESUME 프롬프트
 
 > **사용법**: 새 Claude Code 세션을 열고 아래 "복사용 프롬프트" 블록 전체(line 13 이후)를 첫 메시지로 붙여넣으세요.
