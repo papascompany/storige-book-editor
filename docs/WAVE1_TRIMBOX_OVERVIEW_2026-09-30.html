@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Storige Wave 1 개요</title>
+<meta name="description" content="2026-09-30 Storige 세션 처리 내역, Wave 1 레인 현황, 재단선 포함 PDF 의 TrimBox 판정·합성 처리 방식">
+<style>
+:root{
+  --bg:#f7f7f5; --surface:#ffffff; --surface-2:#f0efec; --text:#1d1d1b; --muted:#5f5e5a; --line:#dcdad4;
+  --accent:#2f5bd3; --accent-soft:#e3eafc; --ok:#1f7a4d; --ok-soft:#dff3e8; --warn:#9a5b00; --warn-soft:#fbefd9;
+  --bad:#b3261e; --bad-soft:#fbe3e1; --info:#5b3fb5; --info-soft:#ece6fb;
+  --media:#9aa0a6; --bleed:#e07a1f; --trim:#2f5bd3; --art:#cfe0ff; --mark:#1d1d1b;
+  --radius:12px; --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#141413; --surface:#1d1d1b; --surface-2:#262624; --text:#ecebe6; --muted:#a8a69f; --line:#3a3936;
+    --accent:#8aa8ff; --accent-soft:#223056; --ok:#6fd3a0; --ok-soft:#173a29; --warn:#f0b35a; --warn-soft:#3d2c10;
+    --bad:#ff8a80; --bad-soft:#431c1a; --info:#b9a4ff; --info-soft:#2c2350;
+    --media:#8b9096; --bleed:#f0a05a; --trim:#8aa8ff; --art:#2a3d66; --mark:#ecebe6;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#141413; --surface:#1d1d1b; --surface-2:#262624; --text:#ecebe6; --muted:#a8a69f; --line:#3a3936;
+  --accent:#8aa8ff; --accent-soft:#223056; --ok:#6fd3a0; --ok-soft:#173a29; --warn:#f0b35a; --warn-soft:#3d2c10;
+  --bad:#ff8a80; --bad-soft:#431c1a; --info:#b9a4ff; --info-soft:#2c2350;
+  --media:#8b9096; --bleed:#f0a05a; --trim:#8aa8ff; --art:#2a3d66; --mark:#ecebe6;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text)}
+body{font:15px/1.6 -apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR","Segoe UI",sans-serif}
+.wrap{max-width:1120px;margin:0 auto;padding:28px 16px 64px}
+header h1{font-size:26px;margin:0 0 4px;letter-spacing:-.01em}
+header p{margin:0;color:var(--muted)}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;font-size:13px;background:var(--surface-2);border:1px solid var(--line)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--muted)}
+.ok .dot{background:var(--ok)} .warn .dot{background:var(--warn)} .info .dot{background:var(--info)} .bad .dot{background:var(--bad)} .acc .dot{background:var(--accent)}
+nav.toc{display:flex;flex-wrap:wrap;gap:6px 14px;margin:22px 0 8px;font-size:14px}
+nav.toc a{color:var(--accent);text-decoration:none}
+section{margin-top:34px}
+h2{font-size:20px;margin:0 0 4px}
+h2 small{font-weight:400;color:var(--muted);font-size:14px;margin-left:6px}
+h3{font-size:16px;margin:0 0 6px}
+.lead{color:var(--muted);margin:0 0 14px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px}
+.grid{display:grid;gap:12px}
+.g2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.g3{grid-template-columns:repeat(3,minmax(0,1fr))}
+@media (max-width:860px){.g3{grid-template-columns:1fr 1fr}}
+@media (max-width:620px){.g2,.g3{grid-template-columns:1fr}}
+.badge{display:inline-block;font-size:12px;padding:1px 8px;border-radius:6px;font-weight:600;white-space:nowrap}
+.b-ok{background:var(--ok-soft);color:var(--ok)} .b-warn{background:var(--warn-soft);color:var(--warn)}
+.b-bad{background:var(--bad-soft);color:var(--bad)} .b-info{background:var(--info-soft);color:var(--info)} .b-acc{background:var(--accent-soft);color:var(--accent)}
+code,.mono{font-family:var(--mono);font-size:.9em}
+code{background:var(--surface-2);padding:1px 5px;border-radius:5px}
+ul.clean{margin:6px 0 0;padding-left:18px} ul.clean li{margin:3px 0}
+.muted{color:var(--muted)}
+/* timeline */
+.tl{position:relative;margin:0;padding:0 0 0 22px;list-style:none}
+.tl:before{content:"";position:absolute;left:7px;top:4px;bottom:4px;width:2px;background:var(--line)}
+.tl li{position:relative;margin:0 0 12px}
+.tl li:before{content:"";position:absolute;left:-19px;top:7px;width:10px;height:10px;border-radius:50%;background:var(--surface);border:2px solid var(--accent)}
+.tl li.done:before{background:var(--ok);border-color:var(--ok)}
+.tl li.now:before{background:var(--warn);border-color:var(--warn)}
+.tl .t{font-family:var(--mono);font-size:13px;color:var(--muted);margin-right:8px}
+/* lanes */
+.lane h3{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}
+.lane .meta{font-size:13px;color:var(--muted);margin-top:8px}
+/* table */
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface)}
+table{border-collapse:collapse;width:100%;min-width:560px;font-size:14px}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+th{background:var(--surface-2);font-weight:600;font-size:13px}
+tr:last-child td{border-bottom:0}
+/* boxes figure */
+.fig{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:16px;align-items:start}
+@media (max-width:760px){.fig{grid-template-columns:1fr}}
+svg{max-width:100%;height:auto;display:block}
+.legend{display:flex;flex-wrap:wrap;gap:10px 16px;font-size:13px;margin-top:8px}
+.sw{display:inline-block;width:18px;height:0;border-top:3px solid;vertical-align:middle;margin-right:6px}
+/* flow */
+.flow{display:grid;gap:10px}
+.step{display:grid;grid-template-columns:34px minmax(0,1fr);gap:10px;align-items:start}
+.num{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;background:var(--accent-soft);color:var(--accent);font-weight:700;font-size:14px}
+.branch{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px}
+@media (max-width:620px){.branch{grid-template-columns:1fr}}
+.bx{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--surface-2);font-size:14px}
+.bx.yes{border-color:var(--ok)} .bx.no{border-color:var(--muted)} .bx.stop{border-color:var(--bad)}
+.note{border-left:3px solid var(--warn);background:var(--warn-soft);padding:10px 12px;border-radius:0 8px 8px 0;font-size:14px}
+.note.info{border-color:var(--info);background:var(--info-soft)}
+footer{margin-top:40px;color:var(--muted);font-size:13px}
+.themebtn{float:right;background:var(--surface);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:4px 10px;font-size:13px;cursor:pointer}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <button class="themebtn" id="themeBtn" type="button" aria-label="테마 전환">테마</button>
+  <h1>Storige Wave 1 개요</h1>
+  <p>2026-09-30 세션 처리 내역 · Wave 1 레인 현황 · 재단선 포함 PDF 의 TrimBox 판정과 합성 처리 방식</p>
+  <div class="chips">
+    <span class="chip acc"><span class="dot"></span>기준 시각 2026-09-30 UTC</span>
+    <span class="chip ok"><span class="dot"></span>파트너 창구 3곳 확정·ACK</span>
+    <span class="chip ok"><span class="dot"></span>Wave 1 구현·리뷰·통합 검증 완료 (6개 레인)</span>
+    <span class="chip warn"><span class="dot"></span>배포 승인 대기 · 운영 변경 없음</span>
+  </div>
+  <nav class="toc" aria-label="목차">
+    <a href="#timeline">세션 타임라인</a><a href="#lanes">Wave 1 레인</a><a href="#partners">파트너 협업</a>
+    <a href="#trimbox">TrimBox 처리</a><a href="#measure">실측 3건</a><a href="#deploy">배포 순서</a><a href="#pending">결정 대기·후속</a>
+  </nav>
+</header>
+
+<section id="timeline">
+  <h2>세션 타임라인 <small>UTC</small></h2>
+  <p class="lead">이 세션에서 한 일을 시간 순으로 정리했습니다. 운영 DB·로그 조회는 모두 읽기 전용이었습니다.</p>
+  <div class="card">
+  <ul class="tl">
+    <li class="done"><span class="t">04:30</span>새 Storige 세션 시작. 프로세스 작업 폴더로 bookmoa·printy 창구를 확증하고 시작 통지 → 양사 ACK.</li>
+    <li class="done"><span class="t">04:31</span>대기 항목 실측: 운영자 권한 발급·감사 0행, 최근 48시간 편집 세션 0건, 쪽수 범위 기록 0건 → 대기 항목 1~4 미발생.</li>
+    <li class="done"><span class="t">04:32</span>bookmoa 질의 회신: 세션 id 는 항상 소문자 UUID(운영 122행 전수 확인).</li>
+    <li class="done"><span class="t">04:3x</span>백로그 재점검 워크플로(에이전트 9개, 판독 + 반박 검증): 완료 1, 스테일 5, 즉시 착수 가능 6, 결정 대기 다수로 분류.</li>
+    <li class="done"><span class="t">04:4x</span>bookmoa 요청 「세션 주인 조회 API」 사실 회신. 오너가 우선순위 5개와 신설을 승인.</li>
+    <li class="done"><span class="t">04:4x</span>파트너 3곳에 착수 통지·사실 질의 → 전부 회신(파일 접근 키, 편집 세션 조회 경로, 웹훅 처리, 삭제 404 처리).</li>
+    <li class="done"><span class="t">04:46</span>재단선 PDF 실측: 실패 3건 중 2건은 TrimBox 가 정확히 A4 인 <b>오탐</b>, 1건은 판형 자체가 다른 정상 거부.</li>
+    <li class="done"><span class="t">04:5x</span>오너 결정: 재단선 PDF 를 TrimBox 기준으로 판정 → worker X1 레인 추가.</li>
+    <li class="done"><span class="t">04:59</span>테스트 기준선 확인(HEAD <code>a446111</code>): api 99/1659 · worker 23/661 · editor 79/973 전부 통과.</li>
+    <li class="done"><span class="t">05:0x</span>설계 워크플로 완료(계약 4건 + 비판 4건) → CTO 결정으로 비판 반영. 스테일 문서 정정 워크플로 시작.</li>
+    <li class="done"><span class="t">05:0x</span>구현 워크플로 시작: 5개 레인 병렬, 레인별 보안·정합성 리뷰 → 발견별 반박 검증 → 수정. D-11 A안 오너 사후 추인.</li>
+    <li class="done"><span class="t">05:2x</span>X1 설계 비판(인쇄 정확성·회귀) 반영 → CTO 결정: 엄격 판정·대칭 크롭·기본 켜짐 스위치. X1 구현 워크플로(인쇄·회귀·안전 3렌즈 리뷰, 확정 발견 13건 수정).</li>
+    <li class="done"><span class="t">05:3x</span>5개 레인 통합: api 110스위트/1923 · editor 85파일/1066 · 빌드·임베드 빌드 통과. 게스트 조회 헤더 전용화, 요청 로그·오류 수집 URL 토큰 값 가림 추가.</li>
+    <li class="done"><span class="t">06:0x</span>X1 보정 라운드: 수정 과정에서 파일 B 가 다시 거부되던 조건을 되돌려 A·B 모두 통과로 확정. worker 26스위트/829 통과(GS 실제 실행).</li>
+    <li class="now"><span class="t">07:0x</span>로컬 커밋 8개 완료(미push). 문서 반영 후 배포 승인 요청.</li>
+  </ul>
+  </div>
+</section>
+
+<section id="lanes">
+  <h2>Wave 1 레인</h2>
+  <p class="lead">레인마다 소유 파일이 겹치지 않게 나눴습니다. 공유 계약 문서와 계약 테스트 등재는 CTO 가 통합할 때 반영합니다.</p>
+  <div class="grid g3">
+    <div class="card lane"><h3>API-A · 게스트 세션 조회 경로 <span class="badge b-ok">완료</span></h3>
+      <ul class="clean"><li>게스트 전용 조회 라우트 신설</li><li>편집 세션 조회 경로 정리</li><li>보안 항목 · 상세 비공개</li></ul>
+      <div class="meta">1차 배포 · 2단계는 파트너 사전 통지 후 별도</div></div>
+    <div class="card lane"><h3>API-B · 세션 주인 조회 + 사이트 기록 <span class="badge b-ok">완료</span></h3>
+      <ul class="clean"><li><code>POST /api/partner/edit-sessions/owners</code> (1~50건, 사이트 키)</li><li>편집기 산출물 파일에 사이트 기록, 관리자 산출물은 세션 사이트</li><li>만료 보호 조건 확대(삭제가 줄어드는 방향)</li></ul>
+      <div class="meta">1차 배포 · 양사 계약 통지</div></div>
+    <div class="card lane"><h3>EDITOR-A · 오류 수집 토큰 정리 <span class="badge b-ok">완료</span></h3>
+      <ul class="clean"><li>Sentry breadcrumb·span·URL 의 토큰류 파라미터 마스킹</li><li>EmbedView 연결 회귀 테스트 신설</li></ul>
+      <div class="meta">1차 배포 · 통지 불필요</div></div>
+    <div class="card lane"><h3>EDITOR-B · 편집기 게스트 로드 전환 <span class="badge b-ok">완료</span></h3>
+      <ul class="clean"><li>게스트 재오픈이 새 조회 라우트를 먼저 사용, 거절 시 기존 경로 폴백</li><li>공개 SDK 입력 표면은 바꾸지 않음</li></ul>
+      <div class="meta">2차 배포(새 라우트 운영 확인 뒤)</div></div>
+    <div class="card lane"><h3>OPS · 기동 로그 플래그 스냅샷 <span class="badge b-ok">완료</span></h3>
+      <ul class="clean"><li>api·worker 기동 시 기능 플래그 유효값(불리언만) 1줄 로그</li><li><code>.env.example</code> 플래그 설명, CORS 허용 헤더 1개</li></ul>
+      <div class="meta">1차 배포 · 통지 불필요</div></div>
+    <div class="card lane"><h3>WORKER X1 · TrimBox 판정 <span class="badge b-ok">완료</span></h3>
+      <ul class="clean"><li>검증: 표준·경량 경로 모두 TrimBox 기준 판형</li><li>합성: 재단선 영역을 잘라 내는 크롭 정규화</li><li>긴급 차단 스위치(코드 기본값 켜짐)</li></ul>
+      <div class="meta">1차 배포 · 양사·100p 통지(추가 필드·UTC)</div></div>
+  </div>
+</section>
+
+<section id="partners">
+  <h2>파트너 협업</h2>
+  <p class="lead">파트너 작업은 CTO 세션이 조율합니다. 아래는 이번 세션에서 받은 회신과, 우리 배포 뒤 파트너가 할 일입니다.</p>
+  <div class="tablewrap"><table>
+    <thead><tr><th>파트너</th><th>이번 회신 요지</th><th>우리 약속</th><th>배포 뒤 파트너 할 일</th></tr></thead>
+    <tbody>
+      <tr><td><b>bookmoa</b><br><span class="muted">bookmoa-mobile</span></td>
+        <td>R-207 배포(<code>06eb8a5</code>). 파일 접근은 자기 키·자기 shop JWT. 편집 세션 상세 조회 미사용. <code>session.validated</code> 는 주문 무영향.</td>
+        <td>owners API 최종 계약·실측 지연, 대용량 직결 업로드 무중단 확인 결과, 사이트 기록·TrimBox 적용 UTC 통지</td>
+        <td>주문 결속 전 owners 조회로 소유 검사(3초 타임아웃, 실패 시 결속 생략) 구현 → 배포 통지</td></tr>
+      <tr><td><b>printy</b></td>
+        <td>R-207 이식(<code>822cee2</code>). 파일 접근은 printy 키·shop JWT. 편집 세션 상세 조회 미사용. 웹훅은 주문 무영향.</td>
+        <td>owners API 계약, 사이트 기록·TrimBox 적용 UTC 통지</td>
+        <td>bookmoa 의 소유 검사 diff 이식</td></tr>
+      <tr><td><b>100p Books</b></td>
+        <td>90MB 초과 PDF 는 presigned 업로드 후 사이트 키로 complete. 삭제 404 는 본문 <code>FILE_NOT_FOUND</code> 일 때만 성공으로 처리(<code>e32edc1</code>).</td>
+        <td>404 <code>FILE_NOT_FOUND</code> 본문 유지, 삭제 경로 변경 시 사전 통지, TrimBox 없는 PDF 판정 불변 회귀 테스트</td>
+        <td>TrimBox 적용 통지 받으면 파싱 영향 재확인(추가 필드는 읽지 않음)</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="trimbox">
+  <h2>재단선 포함 PDF · TrimBox 처리</h2>
+  <p class="lead">인쇄용 PDF 는 종이 전체 크기(MediaBox) 안에 실제로 잘릴 크기(TrimBox)와 여분 인쇄 영역(BleedBox)을 따로 적습니다. 지금 worker 는 MediaBox 만 보고 판형을 판정해서, 재단선이 포함된 정상 파일을 크기 불일치로 거부합니다.</p>
+
+  <div class="fig">
+    <div class="card">
+      <h3>실측 파일 B · 박스 구조 <span class="muted" style="font-weight:400">(실제 비율, 1mm = 1단위)</span></h3>
+      <svg viewBox="-6 -16 248 345" role="img" aria-label="MediaBox 236x323mm 안에 BleedBox 216x303mm, TrimBox 210x297mm 가 중앙에 있고 네 모서리에 재단선이 있는 도식">
+        <rect x="0" y="0" width="236" height="323" fill="var(--surface-2)" stroke="var(--media)" stroke-width="1.2"/>
+        <rect x="10" y="10" width="216" height="303" fill="var(--art)" stroke="var(--bleed)" stroke-width="1.2" stroke-dasharray="4 3"/>
+        <rect x="13" y="13" width="210" height="297" fill="none" stroke="var(--trim)" stroke-width="1.6"/>
+        <g stroke="var(--mark)" stroke-width=".8">
+          <line x1="13" y1="0" x2="13" y2="8"/><line x1="0" y1="13" x2="8" y2="13"/>
+          <line x1="223" y1="0" x2="223" y2="8"/><line x1="228" y1="13" x2="236" y2="13"/>
+          <line x1="13" y1="315" x2="13" y2="323"/><line x1="0" y1="310" x2="8" y2="310"/>
+          <line x1="223" y1="315" x2="223" y2="323"/><line x1="228" y1="310" x2="236" y2="310"/>
+        </g>
+        <text x="118" y="150" text-anchor="middle" font-size="11" fill="var(--text)">TrimBox 210 × 297</text>
+        <text x="118" y="166" text-anchor="middle" font-size="9" fill="var(--muted)">실제로 잘릴 크기 = 주문 판형</text>
+        <text x="118" y="24" text-anchor="middle" font-size="8" fill="var(--bleed)">BleedBox 216 × 303 (사방 +3mm)</text>
+        <text x="118" y="-5" text-anchor="middle" font-size="8" fill="var(--muted)">MediaBox 236 × 323 (사방 +13mm, 재단선 영역)</text>
+      </svg>
+      <div class="legend">
+        <span><span class="sw" style="border-color:var(--media)"></span>MediaBox · 종이 전체</span>
+        <span><span class="sw" style="border-color:var(--bleed);border-top-style:dashed"></span>BleedBox · 여분 인쇄</span>
+        <span><span class="sw" style="border-color:var(--trim)"></span>TrimBox · 재단 크기</span>
+        <span><span class="sw" style="border-color:var(--mark);border-top-width:1px"></span>재단선(crop marks)</span>
+      </div>
+    </div>
+    <div class="card">
+      <h3>현재 판정과 바뀌는 판정</h3>
+      <div class="bx stop" style="margin-bottom:10px"><b>현재</b> · MediaBox 236×323 을 기대 판형 210×297(또는 bleed 포함 212×299)과 비교 → <span class="badge b-bad">SIZE_MISMATCH</span> 로 거부. 파트너에는 <code>session.failed</code> 계열로 전달됩니다.</div>
+      <div class="bx yes"><b>변경 후</b> · TrimBox 가 파일에 <u>명시</u>돼 있고 MediaBox 보다 작으면 TrimBox 210×297 을 기대 판형과 비교 → <span class="badge b-ok">통과</span>. 합성할 때는 재단선 영역을 잘라 <code>TrimBox + 주문 bleed</code> 크기로 맞춥니다.</div>
+      <p class="note" style="margin-top:12px">원본 PDF 는 재단선 영역을 포함한 채 보존됩니다. 원본을 그대로 인쇄 입력으로 쓰는 흐름(첨부 원본 직접 사용)은 인쇄소 RIP 의 TrimBox 처리에 맡기며, 원본 정규화 사본 등록은 후속 과제입니다.</p>
+      <p class="note info" style="margin-top:12px">pdf-lib 의 <code>getTrimBox()</code> 는 TrimBox 가 없으면 MediaBox 를 대신 돌려줍니다. 그래서 판별은 페이지 사전에 <code>/TrimBox</code> 가 실제로 있는지로 합니다. MediaBox 만 있는 PDF(100p 등)는 새 경로에 들어가지 않습니다.</p>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:12px">
+    <h3>판정·처리 흐름</h3>
+    <div class="flow">
+      <div class="step"><div class="num">1</div><div><b>기존 판정 먼저</b> — 내지(<code>fileType=content</code>)만 대상입니다. 지금처럼 MediaBox 로 판정하고, <code>SIZE_MISMATCH</code> 일 때만 다음 단계로 갑니다. 그래서 <u>지금 통과하는 파일의 결과는 한 글자도 바뀌지 않습니다</u>. 표지·후가공 판은 이번 범위가 아닙니다.</div></div>
+      <div class="step"><div class="num">2</div><div><b>TrimBox 명시 여부</b> <span class="muted">(표준 pdf-lib · 경량 qpdf 가 같은 순수 함수로 판정)</span>
+        <div class="branch">
+          <div class="bx no"><b>없음 · MediaBox 와 같음</b><br>지금과 똑같이 MediaBox 로 판정. 결과(<code>isValid</code>·<code>errors</code>·<code>warnings</code>) 불변.</div>
+          <div class="bx yes"><b>모든 페이지에 있음 · MediaBox 안에 있음</b><br>TrimBox 크기로 3단계 진행. 페이지 회전 90°/270°, UserUnit≠1, 페이지 정보 불완전이면 적용하지 않습니다.</div>
+        </div></div></div>
+      <div class="step"><div class="num">3</div><div><b>판형 비교</b> — <u>모든 페이지</u>의 TrimBox 를 기대 재단 크기와 허용 오차 1mm 로 비교합니다. 가로·세로를 바꿔 맞추지는 않습니다.
+        <div class="branch">
+          <div class="bx yes"><b>일치</b> → 판형 통과. 비차단 경고 <code>TRIMBOX_SIZE_BASIS</code> 를 추가하고 <code>metadata.trimBox</code> 를 채웁니다(모두 추가 필드).</div>
+          <div class="bx stop"><b>불일치</b> → 기존 <code>SIZE_MISMATCH</code> 그대로(메시지·<code>details.actual</code> 불변). <code>details.trimBox</code> 만 추가.</div>
+        </div></div></div>
+      <div class="step"><div class="num">4</div><div><b>bleed 판정</b> — 모든 페이지·모든 변에서 <code>BleedBox − TrimBox</code> 의 최소값을 도련으로 봅니다. BleedBox 가 없으면 0 입니다. 재단선 영역(MediaBox 여백)은 그림이 없는 영역이라 도련으로 치지 않습니다. 주문 bleed 보다 작으면 기존 <code>BLEED_MISSING</code> 경고가 그대로 나갑니다(파일 A).</div></div>
+      <div class="step"><div class="num">5</div><div><b>합성·변환 크롭 정규화</b> — 임시 사본만 자르고 원본은 건드리지 않습니다.
+      <ul class="clean">
+        <li><b>변환</b>(도련 보정·내지 조판·쪽수 채움 — 작업 크기를 앎): 작업 크기에 <u>정확히</u> 맞춥니다. 파일 B·사방 4mm 파일 모두 212×299mm, 축소 인쇄(innerfit) 없음.</li>
+        <li><b>합성</b>(merge·spread·compose — 주문 도련을 모름): BleedBox 가 명시돼 있고 그 밖에 사방 5mm 이상 균등한 재단선 영역이 있을 때만 <code>TrimBox + min(선언 도련, 3mm)</code> 로 자릅니다. 파일 A → 210×297, 파일 B → 216×303.</li>
+        <li>BleedBox 가 없으면 합성에서는 자르지 않고 원본 박스를 유지합니다. 어느 경우든 TrimBox 는 페이지 중앙(±0.5pt)에 남아 인쇄소 재단 기준이 됩니다(Ghostscript 재증류 뒤에도 실측 확인).</li>
+        <li>쪽수 채움 백지는 정규화된 페이지와 같은 좌표계로 만듭니다.</li>
+      </ul>
+      <span class="muted">한계: 합성 산출물은 주문 도련 대신 선언 도련으로 나갈 수 있습니다. 후속으로 API 가 합성 잡에 주문 도련·재단 크기를 넘기면 해소됩니다.</span></div></div>
+      <div class="step"><div class="num">6</div><div><b>안전장치</b> — 긴급 차단 플래그 <code>WORKER_TRIMBOX_SIZE_CHECK</code>: 코드 기본값 켜짐, <code>false/0/off/no</code> 로만 꺼짐. compose 에 <code>${WORKER_TRIMBOX_SIZE_CHECK:-true}</code> 로 매핑해 <code>.env</code> 한 줄로 끌 수 있게 하고, 기동 로그 스냅샷에 실효값이 찍힙니다. 꺼지면 판정·정규화 모두 종전 동작입니다.</div></div>
+    </div>
+  </div>
+</section>
+
+<section id="measure">
+  <h2>실측 3건 <small>2026-09-30 04:46Z · bookmoa-mobile 업로드 내지 검증</small></h2>
+  <div class="tablewrap"><table>
+    <thead><tr><th>파일</th><th>기대 판형</th><th>MediaBox</th><th>TrimBox</th><th>BleedBox</th><th>현재</th><th>변경 후</th></tr></thead>
+    <tbody>
+      <tr><td>A · 신발장 내지 32p</td><td>210×297 · bleed 1</td><td class="mono">236×323</td><td class="mono">210×297 (사방 13)</td><td class="mono">= TrimBox</td><td><span class="badge b-bad">거부</span></td><td><span class="badge b-ok">판형 통과</span> <span class="muted">+ 도련 부족 경고(선언 도련 0) · 합성 210×297</span></td></tr>
+      <tr><td>B · 신발장 내지 최종본 32p</td><td>210×297 · bleed 1</td><td class="mono">236×323</td><td class="mono">210×297 (사방 13)</td><td class="mono">216×303 (+3)</td><td><span class="badge b-bad">거부</span></td><td><span class="badge b-ok">통과</span> <span class="muted">경고 없음 · 변환 212×299 · 합성 216×303</span></td></tr>
+      <tr><td>C · 동화책 24p</td><td>210×210</td><td class="mono">286×286</td><td class="mono">명시 없음</td><td class="mono">= MediaBox</td><td><span class="badge b-bad">거부</span></td><td><span class="badge b-bad">거부 유지</span> <span class="muted">판형 자체가 다름</span></td></tr>
+    </tbody>
+  </table></div>
+  <p class="muted" style="margin-top:8px">A·B 는 재단선이 포함된 정상 인쇄 파일이라 잘못 거부된 사례(오탐)이고, C 는 판형이 달라 계속 거부해야 하는 사례입니다.</p>
+</section>
+
+<section id="deploy">
+  <h2>검증·배포 순서</h2>
+  <div class="grid g2">
+    <div class="card"><h3>검증 기준선 <span class="badge b-ok">HEAD a446111 통과</span></h3>
+      <ul class="clean">
+        <li>api jest 99 스위트 / 1659 · tsc 0</li><li>worker jest 23 / 661 · tsc 0</li>
+        <li>editor vitest 79 / 973 · tsc 0 · 빌드(임베드 번들 포함)</li><li>admin 7 / 128 · sdk 12 / 341 · canvas-core 55 / 630</li>
+      </ul>
+      <p class="muted">이보다 낮으면 회귀로 봅니다. 신규 테스트만큼 늘어나는 것은 정상입니다.</p>
+      <h3 style="margin-top:12px">통합 결과 <span class="badge b-ok">통과</span></h3>
+      <ul class="clean"><li>api tsc 0 · jest 110 / 1923</li><li>worker tsc 0 · jest 26 / 829 (gs·qpdf 실제 실행)</li><li>editor tsc 0 · vitest 85 / 1066 · 빌드 · 임베드 빌드</li></ul></div>
+    <div class="card"><h3>배포 <span class="badge b-warn">배포 직전 오너 확인</span></h3>
+      <ul class="clean">
+        <li>DB 마이그레이션 없음</li>
+        <li><b>1차 push</b>: API-A·API-B·OPS·EDITOR-A·X1 → api 재생성 + nginx 재시작, worker 재빌드, 편집기 Vercel 자동 배포</li>
+        <li>배포 UTC 기록(사이트 기록 백필의 경계 시각)</li>
+        <li><b>2차 push</b>: EDITOR-B(새 라우트가 운영에 뜬 것 확인 뒤)</li>
+        <li>파트너 통지 → ACK → RESUME 기록</li>
+      </ul></div>
+  </div>
+</section>
+
+<section id="pending">
+  <h2>결정 대기·후속</h2>
+  <div class="grid g2">
+    <div class="card"><h3>오너 결정이 필요한 것</h3>
+      <ul class="clean">
+        <li>기존 Sentry 이벤트에 남아 있을 수 있는 토큰 정리(외부 작업)</li>
+        <li>게스트 조회 경로 2단계 착수 시점(파트너 사전 통지 포함)</li>
+        <li>3-B 자동 반영(웹훅 v2), 결속 API O1~O5, 고아 정리 실가동</li>
+        <li>호스트 고정 책등 규칙, branch protection, compose 기본값</li>
+      </ul></div>
+    <div class="card"><h3>후속 항목</h3>
+      <ul class="clean">
+        <li>100p presigned complete 파일 사이트 기록(100p 가 실제 호출함)</li>
+        <li>운영자 권한 감사 minor 3건, 편집기 초기화 오류 정규화·게스트 완료 문구</li>
+        <li>admin 컴포넌트 테스트 환경(의존성 추가 필요)</li>
+        <li>스테일 문서 정정(D-11·D-4, 옛 트랙 인계, 결속 설계 §1.5) — 진행 중</li>
+      </ul></div>
+  </div>
+</section>
+
+<footer>
+  정본 상태 문서: <code>.cursor/plans/RESUME_PROMPT_2026-09-30.md</code> · 파트너 계약: <code>docs/PLATFORM_INTEGRATION_GUIDE.md</code>, <code>docs/CONTRACT_FREEZE.md</code> · 검증 규칙: <code>docs/PDF_VALIDATION_GUIDE.md</code><br>
+  보안 항목의 세부는 교정 배포 전까지 공개 문서에 적지 않습니다.
+</footer>
+</div>
+<script>
+(function(){
+  var root=document.documentElement, btn=document.getElementById('themeBtn'), KEY='wave1-theme';
+  function apply(v){ if(v==='light'||v==='dark'){root.setAttribute('data-theme',v)} else {root.removeAttribute('data-theme')} }
+  try{ apply(localStorage.getItem(KEY)) }catch(e){}
+  btn.addEventListener('click',function(){
+    var cur=root.getAttribute('data-theme');
+    var dark=cur? cur==='dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
+    var next=dark?'light':'dark'; apply(next);
+    try{ localStorage.setItem(KEY,next) }catch(e){}
+  });
+})();
+</script>
+</body>
+</html>

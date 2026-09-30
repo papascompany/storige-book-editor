@@ -37,7 +37,7 @@
 | 3 | 페이지수 초과 | 🔴에러 | `PAGE_COUNT_EXCEEDED` | > **1000p**(`DEFAULT_MAX_PAGES`) | 전체 | ✕ |
 | 4 | 제본 규격(페이지수) | 🔴에러 | `PAGE_COUNT_INVALID` | 무선(perfect)·내지 4배수 아님 | 내지 | addBlankPages |
 | 5 | 주문 페이지수 일치 | 🟡경고 | `PAGE_COUNT_MISMATCH` | 실제 ≠ 주문 `pages` | 전체 | addBlankPages |
-| 6 | 판형(사이즈) | 🔴에러 | `SIZE_MISMATCH` | 주문 `size`와 ±**1mm** 초과(재단 포함/불포함 모두 비교) — 기준값 규격은 하단 **§내지 판형 규격표(2026-07-14)** 참조 | 전체 | fixMethod=resizeWithPadding — **실행기 미제공**. `WORKER_WIRED_FIXABLE_GATING=true` 시 autoFixable=false(기본 OFF=레거시 true) |
+| 6 | 판형(사이즈) | 🔴에러 | `SIZE_MISMATCH` | 주문 `size`와 ±**1mm** 초과(재단 포함/불포함 모두 비교) — 기준값 규격은 하단 **§내지 판형 규격표(2026-07-14)** 참조. 내지는 MediaBox 불일치 시 명시 TrimBox 로 재판정(**§재단선 포함 PDF — TrimBox 기준 판형 판정(2026-09-30)**) | 전체 | fixMethod=resizeWithPadding — **실행기 미제공**. `WORKER_WIRED_FIXABLE_GATING=true` 시 autoFixable=false(기본 OFF=레거시 true) |
 | 7 | 재단 여백(bleed) | 🟡경고 | `BLEED_MISSING` | 재단 여백 없음 | 전체 | fixMethod=extendBleed — **실행기 배선(2026-07-13)**: `POST /worker-jobs/fix-bleed`(하단 §도련 자동 삽입). 게이팅 ON/OFF 무관 autoFixable=true |
 | 8 | 책등(spine) | 🔴에러 | `SPINE_SIZE_MISMATCH` | 표지 총너비 ≠ `size.w×2 + spine + bleed×2` ±**2mm** (spine=`paperThickness×pages/2` **재계산**) | **표지** + `paperThickness` 있을 때만 | fixMethod=adjustSpine — **실행기 미제공**. 게이팅 ON 시 autoFixable=false(기본 OFF=레거시 true) |
 | 9 | 가로형 페이지 | 🟡경고 | `LANDSCAPE_PAGE` | 가로 방향 페이지 감지 | 전체 | ✕ |
@@ -106,6 +106,78 @@
 - **검증 기준값 = bookmoa 전달값**(`orderOptions.size`). 서버가 주문에서 자동 도출하지 않음(기존 계약 유지). 세션 검증 경로에서 미전달 시 templateSet 판형 폴백(C+ G2).
 - **스왑 정규화 서버 가드(2026-07-14)**: 세션 검증 잡 생성 시(`edit-sessions` `createValidationJobs`) 전달 `size`가 templateSet(오리엔트된 판형 권위)과 **정확히 W↔H 스왑 관계**(각 축 오차 <0.01mm·양쪽 비정사각)이면 templateSet 방향으로 정규화한다(미오리엔트 전달 이력 R-13 대응). 스왑이 아닌 불일치·정사각·templateSet 부재는 전달값 원본 보존. 워커 `validatePageSize` 는 축별 엄격 비교 무수정(스왑 허용 없음 — 방향 오업로드 마스킹·fix-bleed 축소 사고 방지). 아울러 비정사각 templateSet 세션에는 `expectedOrientation` 을 주입해 방향 불일치가 `ORIENTATION_MISMATCH` 경고(비차단)로 안내된다.
 - **오차 허용**: 기존 체계 그대로(기본 ±1mm, crop-mark opt-in 셋은 `sizeToleranceMm`) — 본 규격표는 기준값 정의이며 허용오차 체계를 바꾸지 않는다.
+
+---
+
+## 재단선 포함 PDF — TrimBox 기준 판형 판정 (2026-09-30)
+
+> 코드: 커밋 `539987a`(X1). 판정 `apps/worker/src/services/pdf-validator.service.ts` `applyTrimBoxSizeBasis()` → 공용 순수 함수 `apps/worker/src/utils/trimbox-normalize.ts` `evaluateTrimSizeBasis()`(표준 pdf-lib·경량 qpdf 경로가 같은 함수로 판정). 크롭 정규화 `normalizeTrimBoxFile()`/`normalizeTrimBoxPdfDoc()`. 킬스위치 `config/validation.config.ts` `isTrimBoxSizeCheckEnabled()`.
+>
+> 재단선·slug 영역까지 페이지(MediaBox)로 내보낸 내지 PDF(예: MediaBox 236×323 안에 TrimBox 210×297)는 종전에 MediaBox 크기로만 판정돼 `SIZE_MISMATCH` 로 거부됐다. 이 절의 규칙은 그런 파일을 PDF 에 **명시된 TrimBox(재단 크기)** 기준으로 다시 판정한다. 지금 통과하는 파일의 결과·산출물은 바뀌지 않는다.
+
+### 적용 범위와 평가 순서
+
+- **내지(`fileType === 'content'`)만** 대상이다. 표지(`cover`)·후가공(`post_process`)은 적용하지 않는다(결과 종전과 동일).
+- 기존 MediaBox 판정(`validatePageSize`)이 **`SIZE_MISMATCH` 를 냈을 때만** 재판정한다. MediaBox 판정을 통과한 파일은 박스 추출도 하지 않는다(결과 불변). MediaBox 만 있는 PDF 는 판정이 바뀌지 않는다.
+
+### 통과 조건 (전부 충족해야 통과 — 페이지 혼합 불허)
+
+모든 페이지가 다음을 만족해야 한다. 하나라도 어긋나면 적용하지 않고 `SIZE_MISMATCH` 를 유지한다.
+
+1. **명시 TrimBox** 가 있다(TrimBox 없는 페이지가 한 장이라도 있으면 불통과. 폴백으로 CropBox/MediaBox 를 TrimBox 로 간주하지 않는다).
+2. TrimBox 가로·세로가 각각 **10mm 이상**이다(미만은 비정상 박스로 보고 미적용).
+3. `/UserUnit` 이 1 이다(≠1 미적용).
+4. `/Rotate` 가 90·270 이 아니다(0·180 만 적용 — 기존 MediaBox 판정과 같은 비회전 좌표계).
+5. TrimBox ⊂ MediaBox(±허용오차).
+6. TrimBox ≈ 기대 재단(`orderOptions.trimSize ?? size`) ±허용오차(`sizeToleranceMm ?? 1mm`). **가로·세로 스왑은 허용하지 않는다**(가로 TrimBox 297×210 + 세로 주문 = 불통과).
+7. TrimBox 를 사방 대칭으로 주문 도련 `B = max(orderOptions.bleed ?? 3, orderOptions.bleedMm ?? 0)` 만큼 확장한 박스가 MediaBox 안에 들어간다(변환 목표 크기를 원본 안에서 확보할 수 있어야 함).
+8. 박스를 신뢰할 수 있다 — 비정형 박스(ArtBox 포함) 또는 경량 경로의 박스 비신뢰(pdfinfo 폴백·간접참조 미해석), 박스 목록 페이지 수 ≠ 문서 페이지 수이면 미적용.
+
+### 결과
+
+**통과 시**
+- `SIZE_MISMATCH` 가 제거되고 **경고 `TRIMBOX_SIZE_BASIS`**(비차단, `autoFixable=false`)가 추가된다. 메시지: "재단 크기(TrimBox) 기준으로 판형을 확인했습니다. 원본 파일에는 재단선·여백 영역이 포함되어 있습니다."
+  - `details = { sizeBasis: 'trimBox', trimBox: { width, height }, mediaBox: { width, height } }` — mm(소수 1자리), 1쪽 기준.
+- `metadata.trimBox = { width, height }`(1쪽 TrimBox, mm) 가 기록된다(기존 optional 필드).
+- **도련 판정**: `metadata.bleedSize` = 전 페이지·전 변의 (명시 BleedBox(MediaBox 로 clip) − TrimBox) **최소값**(mm, 소수 1자리). BleedBox 명시가 없는 페이지가 하나라도 있으면 **0**. `metadata.hasBleed` = 원값 도련 ≥ 주문 도련(`bleed ?? 3`) − 허용오차/2.
+  - `hasBleed=false` 이면 기존 `validateBleed` 가 종전과 같은 **`BLEED_MISSING`** 경고를 내며, 이때 `details.actual = metadata.bleedSize` 다(종전 경로는 bleedSize 를 쓰지 않으므로 0 그대로).
+- 워커 로그: `[TRIMBOX_SIZE_BASIS] media=WxH trim=WxH effBleed=… hasBleed=… pages=N/N`.
+
+**불통과 시**
+- `SIZE_MISMATCH` 의 `message`·`details.actual` 은 원문 그대로 유지된다.
+- 1쪽에 명시 TrimBox 가 있고 MediaBox 보다 (어느 축이든 허용오차 초과) 작으면 `details.trimBox = { width, height }`(mm) 만 **추가**된다(additive). TrimBox 부재·MediaBox 와 같은 TrimBox 는 결과 무변경.
+- 워커 로그: `[TRIMBOX_SIZE_BASIS] rejected reason=… page=…`(사유 예: `noTrimBox`·`trimSizeMismatch`·`rotated`·`userUnit`·`targetOutsideMedia`·`pageCountMismatch`).
+
+### 합성·변환 입력의 재단선 영역 크롭 정규화
+
+- **원본 불변**: 스토리지 원본 파일에는 쓰지 않는다. 합성·변환이 내려받은 **임시 사본**(또는 메모리 사본)에서만 페이지 MediaBox·CropBox 를 "TrimBox 를 사방 대칭 확장한 박스"로 재설정한다. TrimBox 는 유지하고, BleedBox·ArtBox 가 목표 밖이면 목표로 잘라 맞춘다(원점 이동 없음). 적용 후 박스를 재검사하며, qpdf 적용 실패 시 소형 파일은 pdf-lib 로 재시도하고 대형 파일(`LARGE_FILE_THRESHOLD` 초과)은 재단선이 남은 산출물을 내지 않도록 잡을 실패 처리한다.
+- **변환(작업 크기를 아는 경로)** — `pdf-conversion` 에 `editSize` 가 있는 잡(fix-bleed 등): 목표 = TrimBox + 축별 `(editSize − TrimBox)/2`(대칭 ±허용오차, 0~5mm)로 **작업 크기에 정확히 맞춘다**. 그 결과 `resolveMode` 가 비율 축소(`innerfit`) 대신 `passthrough` 를 고른다. 이미 작업 크기(±max(1mm, `sizeToleranceMm`))인 파일은 크롭하지 않고 종전 경로를 탄다.
+- **합성(기대 크기를 모르는 경로)** — compose-mixed·merge·spread 합성의 **내지** 입력(표지·면지 제외)과 `editSize` 없는 fix-pagecount: 아래를 **모두** 만족할 때만 크롭한다.
+  - MediaBox − TrimBox 여백이 사방 **5mm 이상**이고 균등(±허용오차)
+  - 명시 BleedBox 가 있고 TrimBox 를 감싸며, MediaBox − BleedBox 여백도 사방 **5mm 이상**(선언 도련 **바깥**의 slug 만 인정 — 도련 5mm 이상 정상 파일, MediaBox=BleedBox=작업사이즈인 편집기 산출물은 크롭하지 않음)
+  - 도련 = `min(명시 BleedBox 최소 여백, 3mm)` 로 TrimBox 를 대칭 확장한 박스로 크롭
+  - **BleedBox 가 없으면 크롭하지 않는다**(도련과 slug 를 구분할 수 없음 — 원본 박스·TrimBox 그대로 보존).
+- **fix-pagecount 백지**: 이번 잡에서 정규화가 적용된 파일만, 추가되는 백지를 첫 페이지와 같은 좌표계(MediaBox 원점 포함)로 만들고 TrimBox·BleedBox·CropBox 를 같은 좌표로 복제한다(재검증 시 페이지별 박스 유무가 섞이지 않게). 정규화되지 않은 파일은 종전 백지 경로 그대로.
+- 워커 로그: `[TRIMBOX_NORMALIZE] <convert|compose:jobId|merge|spread> pages=… cropped=… source=… bleed=… target=WxHmm`.
+
+### 알려진 한계
+
+- **판정 통과 조건에 합성 산출 크기 일치는 없다.** 합성 잡은 주문 도련·기대 재단을 받지 않으므로, 판정을 통과한 파일도 합성 산출은 **선언 도련(≤3mm) 크롭** 또는 (BleedBox 부재·slug 증거 부족 시) **원본 박스 그대로** 나갈 수 있어 주문 작업사이즈와 다를 수 있다(예: 사방 4mm·BleedBox 없음 → 원본 218×305 그대로). 어느 경우든 TrimBox 선언은 보존되며, 크롭 시 TrimBox 가 페이지 중앙에 오도록 대칭 확장한다. 후속 과제: API 가 합성 잡에 주문 도련·기대 재단을 전달.
+- **원본 파일은 재단선 영역을 포함한 그대로** 보존된다(다운로드 시 원본 그대로).
+- 표지·썸네일·조판 미리보기에는 적용하지 않는다.
+
+### 킬스위치 `WORKER_TRIMBOX_SIZE_CHECK`
+
+- **코드 기본 ON.** 값이 `false`·`0`·`off`·`no`(앞뒤 공백·대소문자 무시)일 때만 OFF 다. 미설정·빈 문자열·그 밖의 값은 ON.
+- 한 플래그가 **판정과 크롭 정규화를 함께** 게이트한다(반쪽 상태 없음). OFF 이면 둘 다 종전 동작.
+- `docker-compose.yml` worker 매핑은 `WORKER_TRIMBOX_SIZE_CHECK=${WORKER_TRIMBOX_SIZE_CHECK:-true}` 다. 다른 플래그처럼 `:-false` 로 바꾸면 조용히 OFF 되고, 매핑을 빼면 `.env` 로 끌 수 없다.
+- 끄기: `.env` 에 `WORKER_TRIMBOX_SIZE_CHECK=false` 후 worker 컨테이너 재생성.
+- 확인: worker 기동 로그 `[FLAGS] worker … WORKER_TRIMBOX_SIZE_CHECK=true|false`.
+
+### 운영 실측 사례 (2026-09-30)
+
+- MediaBox 236×323 · TrimBox 210×297(사방 13mm 재단선 여백) 내지 파일 **2건**: 종전 `SIZE_MISMATCH` 거부 → `TRIMBOX_SIZE_BASIS` 경고와 함께 **통과로 전환**(선언 도련이 주문 도련보다 부족하면 `BLEED_MISSING` 경고가 함께 붙는다).
+- 286×286 파일(명시 TrimBox 가 재단 크기를 가리키지 않음): **거부 유지**(`SIZE_MISMATCH`, 결과가 킬스위치 OFF 와 동일).
 
 ---
 
@@ -299,6 +371,7 @@ editSize = { templateSet.width + bleedMm*2, templateSet.height + bleedMm*2 }
 | `MIXED_PDF` | 혼합 PDF | 표지+내지 다른 규격 | 분리 업로드 권장 |
 | `TRANSPARENCY_DETECTED` | 투명도 감지 | 투명 효과 사용 | 평면화(Flatten) 권장 |
 | `OVERPRINT_DETECTED` | 오버프린트 감지 | 오버프린트 설정 | 인쇄 결과 확인 |
+| `TRIMBOX_SIZE_BASIS` | 재단 크기(TrimBox) 기준 판형 확인 (2026-09-30 신규) | 재단선 포함 내지 PDF 가 MediaBox 대신 명시 TrimBox 로 판형 통과 | 조치 불요 (비차단 정보성, `details={ sizeBasis:'trimBox', trimBox, mediaBox }` mm — §재단선 포함 PDF) |
 
 ---
 

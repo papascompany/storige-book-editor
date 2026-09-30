@@ -262,6 +262,19 @@ curl http://localhost:4000/api/health
 curl http://localhost:4001/health
 ```
 
+#### 배포 후 점검 — 기능 플래그 기동 스냅샷 (2026-09-30)
+
+api·worker 는 기동 직후 기능 플래그 유효값을 `[FLAGS]` 한 줄 로그로 남깁니다(값은 `true`/`false` 만, env 원문은 출력하지 않음). 재기동 직후 아래로 확인합니다.
+
+```bash
+docker logs storige-api 2>&1 | grep "\[FLAGS\]"
+docker logs storige-worker 2>&1 | grep "\[FLAGS\]"
+```
+
+- 확인 대상은 각 플래그의 유효값(`true`/`false`)뿐입니다.
+- api 스냅샷 줄의 `FILE_RETENTION_*`·`FILE_ORPHAN_*` 값은 **env 계층 값**입니다. 관리자 저장소 설정(보존정책)이 함께 적용되므로 이 값만으로 실제 동작 모드를 판단하지 마십시오.
+- 보존정책의 실제 모드(삭제 여부·dry-run)는 `[FLAGS] api retention-effective` 줄 또는 관리자 저장소 설정 화면으로 확인합니다. 이 줄은 기동 시점 값이며, 관리자 화면에서 저장하면 런타임에 바뀝니다.
+
 ### 5. 서비스 중지
 
 ```bash

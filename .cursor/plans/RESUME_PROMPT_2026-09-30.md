@@ -89,6 +89,34 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
 | 100p Books | `100p_books` 저장소 | 「20260930 100p_books 서브에이전트 진행」(local_69303599) — 기술 통지 창구 | 유형 1(upload·validate·download external만). 편집 세션 0건, 도입 계획 없음 |
 | ShareSnap·북모아 메인(PHP)·MD2Books | — | 연락 채널 없음(오너 확인 필요) | — |
 
+- **09-30 04:30Z 새 Storige 세션 시작 — 창구 확정(ACK)**: Storige = 「20260930 Storige 편집기·워커 개발」.
+  - bookmoa = PID 95699(04:19:24Z 시작, cwd bookmoa-mobile 확증) · `local_bf71565d-e946-487b-a8e4-27962fe7626a` · 목록 표시명 「20260930 북모아 관리자 수정 시작」(세션 자체는 「북모아 Printable 개발 계속」이라 부름). 옛 「20260928 북모아 개발 계속」 사용 안 함.
+  - printy = PID 2974(04:24:48Z, cwd printy 확증) · `local_6494a1a2-…` 「20260930 Printy CTO 개발 계속」 ACK.
+  - bookmoa R-207 배포(`06eb8a5`, new.bookmoa.com): 결속·operator-session 에 소문자 UUID 만 허용, idem replay 는 재결속 안 함. Storige 계약 변경 없음. printy 가 R-207 이식 예정.
+  - 사실 확인 회신(04:32Z): 세션 id = `@PrimaryGeneratedColumn('uuid')` 소문자 v4, 운영 122행 대문자·비UUID 0행(04:32:19Z UTC).
+  - bookmoa [회신 필요] 수신(R-207 후속, 상세 비공개): 주문 결속 전 **세션 소유자 서버 간 조회** 요청. 04:4xZ 사실 회신 발신 —
+    ① X-API-Key 로 sessionId→소유자 조회하는 기존 라우트 없음(`/edit-sessions/external` 은 orderSeqno 기준·memberSeqno 미포함, `GET :id` 는 JWT)
+    ③ `guest/migrate` 는 memberSeqno 를 흡수 회원으로 교체·guestToken 제거
+    ④ 전역 Throttler 300회/60s, 지연은 미실측 추정(수십 ms)
+    ⑤ orderSeqno 는 생성 시에만 설정·불변.
+    ② 신설 `POST /partner/edit-sessions/owners`(1~50 배치, 타 사이트·삭제·없음 = found:false)는 **오너 결정 대기**(계약 변경 → CONTRACT_FREEZE·contract-freeze.spec 동시 등재 필요).
+- **09-30 Wave 1 오너 승인(04:4xZ)**: 우선순위 5개 병렬 착수 — ① 게스트 세션 읽기 경로 교정(보안, 상세 비공개, 2단계) ② 세션 주인 조회 API 신설 `POST /api/partner/edit-sessions/owners`(B1) ③ 편집기 산출물 site 스탬프(P3-1) + 관리자 산출물은 **세션 siteId 로 스탬프**(N1, 오너 결정) ④ 편집기 오류 수집 토큰 정리(S3) + EmbedView 배선 테스트(T1) ⑤ X1 실측 + 기동 로그 플래그 스냅샷(S4·N2). 배포는 직전 확인 1회. 파트너 조율·후속 추적은 CTO 주도.
+  - 착수 통지·사실 질의 발신(04:4xZ): bookmoa·printy(B1 초안·Q1~Q4), 100p(Q1 presigned complete·Q2 DELETE 404).
+  - **회신 요지**(모두 코드 기준):
+    - 100p(`7101c38`): 90MB 초과 PDF 는 presigned-upload-public(무인증) → R2 PUT → `/files/:id/complete`(X-API-Key 편집기 키). **→ P4(complete site 스탬프)는 유효 — stale 아님.** `DELETE /files/:id/external` 404 = 성공 처리(라우트 부재 404 도 성공) → 경로를 없애거나 404 로 바꾸면 fileId 참조를 지워 고아 발생. 폐기 시 405/501 권고.
+    - printy(`822cee2`, R-207 이식 04:35Z): 파일 접근은 전부 printy 키 또는 printy 발급 shop JWT. `GET /edit-sessions/:id` 호출 없음(DELETE 1곳, 회원 JWT). `session.validated` 는 vestigial KV 만 갱신 → 주문 무영향.
+    - bookmoa(`126ff08`): 파일 접근은 bookmoa 키 또는 shop JWT. 브라우저 직결 대용량 업로드(presigned·multipart 무인증, complete 는 회원/게스트 shop JWT 또는 Bearer 없음) — **새 규칙에서도 bookmoa 사이트 귀속·업로드 무중단 확인 요청**. `GET /edit-sessions/:id` 호출 없음. `session.validated` 는 레거시 KV 만(무시와 동일). owners 응답 게스트 정규화 동의.
+  - 100p 통지(`e32edc1`): DELETE `/files/:id/external` 404 는 **본문 `code:"FILE_NOT_FOUND"` 일 때만 성공**, 그 밖의 404 는 실패(참조 유지). **Storige 운영 원칙 등록**: ① 이 404 `FILE_NOT_FOUND` 본문 유지(변경 시 사전 통지) ② 경로 제거·이동 시 사전 통지 ③ D6·사이트 스탬프 게이트 거부는 `FILE_NOT_FOUND` 404 재사용 금지. ACK 발신. 이어서 X1 로 100p `validate/external` 결과가 실패→통과로 바뀔 수 있다고 정정 통지(배포 시 필드·UTC 재통지).
+  - X1 실측(04:46Z UTC, 읽기 전용): 신발장 내지 2건 = MediaBox 236×323mm 이나 **TrimBox 210×297mm 정확**(사방 13mm 재단선, 1건은 BleedBox 3mm) → **오탐**. 흰발이 동화책 1건 = 모든 박스 286×286mm·TrimBox 없음 → 정상 거부. **오너 결정(09-30): TrimBox 기준 판정 진행** → Wave 1 에 worker X1 레인 추가. 설계+2렌즈 비판 뒤 CTO 결정(05:20Z): 내지만·기존 판정 먼저·전 페이지 명시 TrimBox 엄격 일치(회전·UserUnit·불완전 시 미적용) → 경고 `TRIMBOX_SIZE_BASIS`+`metadata.trimBox`(additive), 도련 = 명시 BleedBox−TrimBox 최소값, 합성·변환 입력 임시 사본을 TrimBox 대칭 확장 박스로 크롭(작업 크기→주문 bleed→min(선언,3mm)), 킬스위치 `WORKER_TRIMBOX_SIZE_CHECK` 코드 기본 ON + compose `:-true`. 원본은 재단선 포함 보존(원본 정규화 사본 등록·표지·썸네일은 후속). 로컬 gs 10.08.0 설치(운영 10.07.1, qpdf 12.3.2 동일).
+  - 운영 `.env` 플래그(04:47Z, 불리언만): CUTOUT·LIGHTWEIGHT_VALIDATION·LIGHTWEIGHT_SYNTHESIS·CROP_MARK_VALIDATION·WIRED_FIXABLE_GATING = true / PRINT_NORMALIZE·FLATTEN·FILE_ORPHAN_* 미설정(코드 기본값). VPS HEAD `47f9a61`.
+- **09-30 Wave 1 진행(05:5xZ)**: 설계 워크플로(계약 4 + X1 1, 각 비판) → CTO 결정 → 구현 워크플로(5 레인, 42 에이전트: 구현·보안/정합성 리뷰·발견별 반박·수정) → 메인 통합.
+  - 통합 검증(HEAD+작업트리, 05:2xZ): api tsc 0·jest 110/1923, editor tsc 0·vitest 85/1066·build·build:embed 통과(lint 경고 5건은 HEAD 기존).
+  - 메인 통합 반영: 게스트 조회 라우트 헤더 전용, 요청 로그·Sentry 필터 URL 토큰류 쿼리 값 가림(`url-redact.helper`), contract-freeze 등재, 만료 sweep 보호절 기준 SQL 갱신.
+  - 로컬 커밋(미push): `2736dec` 스테일 문서·D-11 추인 / `86b415b` 게스트 조회 경로 / `e244ba9` owners API·산출물 사이트 귀속 / `2de2d46` api 플래그 스냅샷·URL 가림·CORS / `fd4bac6` 편집기 오류 수집 정리·EmbedView 테스트 / `539987a` worker X1 TrimBox / `d493ed0` worker 플래그 스냅샷·CI ghostscript. 이어서 문서 커밋, 마지막에 편집기 게스트 로드 전환(2차 push 전용).
+  - X1 경과: 설계+2렌즈 비판 → 구현(3렌즈 리뷰, 확정 13건 수정) → 수정 과정에서 파일 B 가 다시 거부되는 조건이 생겨 CTO 보정(X1-R2): 판정 = 엄격 기하 + TrimBox 대칭 주문 도련 박스 ⊂ MediaBox, 도련 = 명시 BleedBox 기준. 합성(기대 크기 미지)은 명시 BleedBox 밖 ≥5mm 균등 slug 일 때만 크롭, 변환(작업 크기 기지)은 정확히 맞춤. F1(fix-bleed 축소)은 반박 기각(검증 bleed = 템플릿 bleed), F2(경계 반올림) 수정, F3(BLEED_MISSING actual = bleedSize) 메인 반영.
+  - worker 통합: tsc 0 · jest 26/829(로컬 gs 10.08.0 로 GS 테스트 실제 실행). 운영 gs 10.07.1·qpdf 12.3.2 → 배포 게이트에서 컨테이너 안 실측.
+  - X1 알려진 한계(후속): 합성 산출은 주문 도련 대신 선언 도련(≤3mm) 또는 원본 박스 — API 가 합성 잡에 주문 도련·기대 재단 전달 필요. 표지·썸네일·조판 미리보기·원본 정규화 사본 미적용.
+  - 후속(오너 결정): Sentry 과거 이벤트 정리, admin 편집기 호출 방식·admin Sentry 전처리(상세 비공개), 플래그 파싱 비대칭·compose 매핑, 게스트 조회 경로 2단계(상세 비공개).
 - **09-30 04:30Z 교대 예고 발신**: 양사(「20260930 북모아 관리자 수정 시작」·「20260930 Printy CTO 개발 계속」)에 "Storige 세션 종료 예정, 새 세션이 이름을 통지"를 보냈다. 새 세션은 시작 통지로 이를 닫는다. bookmoa 쪽에는 '이 세션이 bookmoa 창구가 아니면 알려 달라'고 확인도 요청했다.
 - 받은 메시지에 회신할 때는 **`from` 값을 그대로 `to`** 로 쓴다. 세션 이름·id·소켓은 재시작하면 바뀐다.
 - 발신 성공은 도달을 뜻하지 않는다. 중요한 통지는 ACK 를 요청하고, 레포(가이드·`docs/partner-notices/`)에도 남긴다.
@@ -126,6 +154,9 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
 
 ## 4. 대기 항목 (회신·실측이 오면 처리)
 
+> **실측 2026-09-30 04:31:14Z UTC**: `partner_operator_grants` 0행·`partner_operator_audit_logs` 0행, 최근 48h 편집 세션 0건, `orderOptions` 쪽수 범위 기록 세션 0건, site 스탬프 외부 합성 최신 05-03 → 항목 1~4 미발생. 양사도 실 e2e 오너 보류 중(ACK).
+> 관찰: bookmoa-mobile 업로드 VALIDATE FAILED 3건(09-29 06:53·06:54, 09-30 02:28Z) — `현재 236x323mm`(A4+사방 13mm)·`286x286mm`(210 정사각+사방 38mm). 재단선·여백 포함 PDF 오탐 여부 조사 중(백로그 X1).
+
 1. **R-206 첫 실사용**(bookmoa·printy 오너 실측)
    - 대조: `partner_operator_grants`(origin partner·session_ids 1·order_ref·reason·revoked_at)와 `partner_operator_audit_logs`(발급·요청·revoke 행), api 로그.
    - 확인할 점: 편집기 닫기 시 revoke 가 실제로 남는지(best-effort) 본다.
@@ -144,6 +175,34 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
 ---
 
 ## 5. CTO 후보 목록 (오너 결정·착수 약속 없음 — 새 세션이 재점검 후 우선순위 제안)
+
+### 5.0 재점검 결과 (2026-09-30 ~04:40Z, 읽기 전용 워크플로 9 에이전트 + 반박 검증, 메인 코드 대조)
+
+> 아래 원 목록(5.1)은 이력 보존용이다. **현재 상태는 이 표가 우선**한다. 보안 항목은 상세 비공개.
+
+| 구분 | 항목 | 상태 | 근거 |
+|---|---|---|---|
+| Wave 1 착수 | 게스트 세션 읽기 경로 보강(보안, 2단계) | 진행 중 | 상세 비공개. 양사 `GET /edit-sessions/:id` 미사용 확인(09-30 회신) |
+| Wave 1 착수 | 세션 주인 조회 API `POST /api/partner/edit-sessions/owners`(B1) | 진행 중 | bookmoa 요청·오너 승인 09-30 |
+| Wave 1 착수 | D6 선행 ① 편집기 산출물 site 스탬프 + 관리자 산출물 세션 siteId 스탬프 | 진행 중 | `files.controller.ts:336` 이 `uploadFile` 에 siteId 미전달(서비스는 6번째 인자 수용) |
+| Wave 1 착수 | 편집기 오류 수집 토큰 정리 + EmbedView 배선 테스트 | 진행 중 | `apps/editor/src/lib/sentry.ts` beforeBreadcrumb 없음, EmbedView 테스트 0건 |
+| Wave 1 착수 | 재단선 포함 PDF TrimBox 기준 판정(X1) | 진행 중 | 판형이 MediaBox 로만 판정됨(`pdf-validator.service.ts:169`). 오너 결정 09-30 |
+| Wave 1 착수 | 기동 로그 플래그 스냅샷(S4·N2) | 진행 중 | compose `:-false` 기본값, FILE_ORPHAN_* compose 미매핑 |
+| 완료 | D6 선행 ② 세션완료 VALIDATE site 스탬프 | done | `b5ee912`, 운영 `47f9a61` 포함(운영 job.site_id 는 첫 실편집 때 대조) |
+| 스테일 | G-6 백필 | 종결 | 08-01 A안 확정(`G6_COMPARISON_2026-07-24.md:34-36`) — 이후 RESUME 에 복사 전파됐던 것 |
+| 결정 | D-11 A안(레거시 `storige:completed` 에 needsAuth·guestToken additive) | **오너 사후 추인 09-30** | `ee88078` 정본. OWNER_DECISIONS 에 기입 |
+| 스테일(정정 완료·미커밋) | OWNER_DECISIONS D-11·D-4, `_RESUME_EDITOR_TRACKS.md`, 결속 설계 §1.5, CONTRACT_FREEZE 레거시 행 | 문서 워크플로 정정 중 | D-11 = `ee88078` A안 구현, §1.5 = `b5ee912` 로 restore 가 expires_at 도 해제 |
+| 유효(후속) | 100p presigned `/files/:id/complete` site 스탬프(P4) | open | 100p 가 90MB 초과 PDF 에 사이트 키로 호출함(09-30 회신) |
+| 유효(후속) | 운영자 권한 리뷰 minor 3건 | open | 가드 단계 거부 감사 행 없음(`jwt-auth.guard.ts:48`), status_code 기록(`interceptor.ts:110`) |
+| 유효(후속) | 바깥 init catch AxiosError 정규화 / 게스트 완료 토스트 | open | `embed.tsx:1634`, `EditorHeader.tsx:449-451` — 게스트 편집기 전환과 같은 파일이라 Wave 1 뒤 |
+| 유효(후속) | admin 게이팅 컴포넌트 테스트 | open(의존성) | admin 에 testing-library·jsdom 없음, `vitest.config.ts:7` 이 `.test.ts` 만 수집 → lockfile 변경 |
+| 유효(후속) | 임베드 getState 페이지 필드 | partial | `embed.tsx:2186-2191` currentPage/totalPages 하드코딩 |
+| 유효(후속) | I-4 Bull 합성 재시도 | open(설계 합의) | `app.module.ts:117-123` attempts 없음. 주석 일부 스테일(멱등 가드는 `synthesis.processor.ts:124-140` 에 이미 있음) |
+| 결정 대기 | 3-B(3) 자동 반영, 결속 API O1~O5(+고아 정리 실가동·파기 계약), D6 게이트 거부 코드(`FILE_NOT_FOUND` 404 재사용 금지), 호스트 고정 책등 규칙, branch protection, compose 기본값, 8/24 통지 4종, 합성 재시도 웹훅 의미론, caseBind 값, SPINE_PARAMS_UNRESOLVED, 폰트 라이선스, PRINT_NORMALIZE ON, 지종별 TAC 값, 에셋 소싱, R6·R10 | needs_decision | 재점검 워크플로 결과 |
+| 참고 | 명칭 충돌 | — | "D6" = R-193 게이트(NULL-파괴) vs 임베드 getState D6 / "D-4" = 임베드 SDK D-4a~c vs 포토북 커버 D-4 / 결속 설계 O1~O5 vs 운영 레인 번호 |
+
+### 5.1 원 목록(09-30 04:30Z 스냅샷)
+
 
 - **파트너 연동 근본**
   - 3-B (3) 자동 반영: 관리자 완료 시 파트너 웹훅 v2 로 새 fileId 를 전달하고, 양사가 WH-005 v2 수신부를 만든다.

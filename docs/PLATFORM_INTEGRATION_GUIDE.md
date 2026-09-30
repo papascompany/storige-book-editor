@@ -573,6 +573,8 @@ curl "https://api.papascompany.co.kr/api/files/<fileId>/download/external" \
 
 PDF 검증 규칙 요약은 5장 표 참조 (15단계).
 
+> **경고 `TRIMBOX_SIZE_BASIS` 추가 (2026-09-30, 비차단·additive)**: 재단선·여백 영역까지 페이지로 내보낸 **내지** PDF 가 MediaBox 크기로는 `SIZE_MISMATCH` 이지만, 전 페이지에 명시된 TrimBox(재단 크기)가 주문 재단과 맞으면 통과시키고 이 경고를 붙입니다(`details={ sizeBasis:'trimBox', trimBox:{width,height}, mediaBox:{width,height} }` mm, `result.metadata.trimBox` 도 기록). 불통과면 종전 `SIZE_MISMATCH` 그대로이며 `details.trimBox` 가 추가될 수 있습니다. **이미 통과하던 파일의 결과는 바뀌지 않고, MediaBox 만 있는 PDF 는 판정이 그대로**입니다 — 파트너는 새 경고 코드·추가 필드를 무시해도 됩니다. 상세 규칙: `docs/PDF_VALIDATION_GUIDE.md` §재단선 포함 PDF.
+
 ### 2.4 페이지수 검증 (데이터 주도)
 
 > **LIVE** — worker 커밋 `6d0cb76` 배포완료. 페이지수·제본 규격 검증을 binding 문자열 하드코딩이 아니라 **파트너가 전송한 데이터로 구동**합니다.
@@ -1090,9 +1092,63 @@ Storige는 토큰의 사이트·세션 범위·유효 시간·취소 여부를 �
   - 파트너 API, 웹훅, 응답 형식은 바뀌지 않습니다. 자동 반영(관리자 완료 시 파트너 웹훅으로 새 fileId 전달, 파트너 수신부 WH-005 v2)은 후속 과제입니다.
 - **감사 기록**: 관리자 작업은 Storige 내부 감사 기록(관리자 식별자 포함)에 남습니다. `GET /auth/partner-operator-session/audit`는 파트너가 발급한 운영자 권한 기록만 반환합니다.
 
+### 3.3.4 편집 세션 소유자 조회 (서버 간) — ADDITIVE 2026-09-30
+
+파트너 서버가 편집 세션을 주문에 결속하기 전에, 세션이 호출 사이트 소속인지와 소유자(회원 번호·비회원 여부), 세션의 주문 번호, 상태를 여러 건 한 번에 확인합니다. 기존 라우트와 응답 형식은 바뀌지 않습니다.
+
+`POST /partner/edit-sessions/owners`
+- 헤더: `X-API-Key: <사이트 편집기 키>`
+- 브라우저에서 호출하지 마십시오. 키는 서버에만 둡니다.
+- 사이트 키당 분당 120회로 제한됩니다(IP 단위 전역 제한은 별도로 계속 적용).
+
+```bash
+curl -X POST "https://api.papascompany.co.kr/api/partner/edit-sessions/owners" \
+  -H "X-API-Key: <사이트 편집기 키>" \
+  -H "Content-Type: application/json" \
+  -d '{ "sessionIds": ["0b8f2c1e-3d4a-4f5b-9c6d-7e8f9a0b1c2d", "5c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f"] }'
+```
+
+요청 본문:
+- `sessionIds` (필수, 1–50개): 소문자 UUID만 허용합니다. 대문자 UUID는 변환하지 않고 `400`입니다. 본문에 다른 필드를 넣어도 `400`입니다.
+
+응답(`200`)은 **최상위 배열**입니다. 입력 순서와 길이가 그대로 유지되며, 같은 id를 여러 번 넣으면 같은 결과가 그 위치마다 반복됩니다.
+
+```json
+[
+  { "sessionId": "0b8f2c1e-3d4a-4f5b-9c6d-7e8f9a0b1c2d", "found": true, "memberSeqno": 12345, "guest": false, "orderSeqno": 2026093000001, "status": "complete" },
+  { "sessionId": "5c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f", "found": false, "memberSeqno": null, "guest": false, "orderSeqno": null, "status": null }
+]
+```
+
+| 필드 | 의미 |
+|---|---|
+| `sessionId` | 요청한 id(입력값 그대로) |
+| `found` | 호출 사이트 소속이고 삭제되지 않은 세션이면 `true` |
+| `memberSeqno` | 회원 세션의 회원 번호. 비회원(게스트) 세션과 `found:false`는 `null` |
+| `guest` | 비회원(게스트) 세션이면 `true`. `found:false`는 `false` |
+| `orderSeqno` | 세션을 만들 때 호스트가 보낸 주문 번호. 회원 세션은 저장된 값 그대로, 비회원 세션은 주문 번호가 없으면(0) `null`. `found:false`는 `null` |
+| `status` | 세션 상태 `draft`·`editing`·`complete` 중 하나. `found:false`는 `null` |
+
+`found:false` 규칙: 다음 경우는 모두 **같은 형태**(`found:false`, 나머지 `null`, `guest:false`)로 반환되며 서로 구분되지 않습니다.
+- 다른 사이트의 세션
+- 사이트 미지정(레거시) 세션
+- 삭제된 세션
+- 존재하지 않는 세션
+
+오류:
+- `400`: 형식 오류(0개 또는 51개 이상, 소문자 UUID가 아닌 값, 추가 필드)
+- `401`: 키 없음·무효·비활성 사이트
+- `403 PARTNER_SITE_KEY_REQUIRED`: 사이트 편집기 키가 아닌 키로 호출
+- `429`: 한도 초과. `Retry-After`(초) 헤더만큼 기다린 뒤 재시도하고, 반복되면 백오프 간격을 늘리십시오.
+
+권장 사용:
+- 주문 결속 **직전**에 호출하고, `found:true`인지와 `memberSeqno`·`guest`가 주문 고객과 일치하는지 파트너 서버에서 대조하십시오.
+- 타임아웃, `5xx`, 재시도 소진 시에는 결속을 **보류**하십시오(fail-closed). 확인되지 않은 세션을 결속하지 마십시오.
+
 ### 3.4 완료 → 합성 → 다운로드
 
 1. 사용자 편집완료(`handleFinish`) → 전체 페이지 canvasData 저장 → `ServicePlugin` PDF 생성 → `filesApi.upload` → `editSessionsApi.complete` → `editor.complete` 발신.
+   > 편집완료 산출 PDF 는 편집기 토큰의 사이트로 귀속되며 같은 사이트 키로 조회·다운로드합니다(다른 사이트 키는 404). 2026-09-30 이후 업로드분에 적용됩니다.
 2. 파트너 백엔드: 주문확정 시 `POST /api/worker-jobs/compose-mixed` 로 **호출자가 파일 참조를 공급하는** 합성 트리거 (호스트가 명시적 호출, 자동발행 아님).
    > 🚩 **기본값에서 `editSessionId` 는 합성 입력이 아닙니다.** 서버는 이 세션에서 `metadata.spread`(펼침면 기대치) 하나만 읽어 스프레드 판정·표지 치수 검증에 쓰고, 잡에 `editSessionId` 를 기록(추적)합니다. **세션을 열어 편집 결과 PDF 를 자동으로 찾아 붙이는 일은 하지 않습니다** — 합성에 들어갈 파일은 호출자가 `coverUrl`·`frontEndpaperUrls`·`contentPdfUrl`·`backEndpaperUrls` 로 **직접** 지정해야 합니다.
    > ✅ **예외 — `assembleFromSession: true` (2026-08-13 추가).** 이 플래그를 **명시적으로 켠 요청에 한해** 서버가 세션에서 표지·내지·면지·판형을 도출해 **비어 있는 필드만** 채웁니다. 인증(shop-session JWT)이 필요하며, 미전달 시 위 기본 동작이 그대로 유지됩니다. 상세는 **3.4.1** 참조.
@@ -1455,7 +1511,7 @@ curl -X POST "https://api.papascompany.co.kr/api/worker-jobs/compose-mixed" \
 | POST | `/api/files/multipart/complete` | @Public + uploadToken | 멀티파트 완료 |
 | POST | `/api/files/multipart/abort` | @Public + uploadToken | 멀티파트 취소 |
 | POST | `/api/files/:id/complete` | @Public + uploadToken | single-part 완료 확정 |
-| POST | `/api/files/upload` | JWT (Bearer) | PDF 직접 업로드 (내부 사용자) |
+| POST | `/api/files/upload` | JWT (Bearer) (shop·운영자 토큰이면 해당 사이트로 귀속 — 2026-09-30) | PDF 직접 업로드 (내부 사용자) |
 | POST | `/api/files/upload/external` | X-API-Key | 서버간 PDF 업로드 (≤100MB) |
 | GET | `/api/files/:id/download` | JWT + 소유자/staff | 내부 다운로드 |
 | GET | `/api/files/:id/download/external` | X-API-Key + site 대조 | 외부 결과 PDF 다운로드 |
@@ -1482,6 +1538,8 @@ curl -X POST "https://api.papascompany.co.kr/api/worker-jobs/compose-mixed" \
 | PATCH | `/api/worker-jobs/:id/status` | JWT (전역 가드) | 내부 워커 상태 업데이트 변형 |
 | GET | `/api/edit-sessions/external` | @Public + X-API-Key | 주문별 편집세션 조회 (`?orderSeqno=`) |
 | GET | `/api/edit-sessions/:id/imposition-preview` | @Public + X-API-Key | 임포지션 프리뷰 |
+| POST | `/api/partner/edit-sessions/owners` | X-API-Key (사이트 편집기 키, 사이트 키당 120/min) | **(ADDITIVE 2026-09-30)** 편집 세션 소유자 배치 조회 — Body `{sessionIds}`(1~50, 소문자 UUID) → 입력 순서·길이의 최상위 배열 `{sessionId, found, memberSeqno, guest, orderSeqno, status}`. 주문 결속 직전 확인용. 3.3.4 |
+| GET | `/api/edit-sessions/guest/:id` | @Public + **`X-Guest-Token` 헤더 필수** | **(ADDITIVE 2026-09-30)** 게스트 세션 조회 — 편집기 내부 사용, 파트너 직접 호출 불필요. 에러 코드는 `PATCH guest/:id` 와 동일 |
 | POST | `/api/edit-sessions` | (회원/게스트) | 편집세션 생성 — `memberSeqno` falsy 시 `400 MEMBER_REQUIRED` |
 | POST | `/api/edit-sessions/guest` | @Public (**Bearer 있으면 site 스탬프**) | 게스트 세션 생성. 토큰이 있으면 그 shop-session JWT 의 `siteId` 를 세션에 스탬프하고, 없거나 위조·만료면 `siteId=NULL` 로 생성(**401 이 되지 않음** — 무인증 생성은 계속 허용). Body 의 `siteId` 는 **무시**됩니다. 3.2 |
 | PATCH | `/api/edit-sessions/guest/:id` | @Public + **게스트 토큰 필수** | 게스트 세션 저장. `X-Guest-Token` 헤더 **또는** `?guestToken=` 쿼리 중 하나로 소유를 증명해야 합니다. 에러 `403 GUEST_TOKEN_REQUIRED`(미전송) · `403 GUEST_TOKEN_MISMATCH` · `403 GUEST_SESSION_EXPIRED`(24h) · `403 NOT_A_GUEST_SESSION` |
