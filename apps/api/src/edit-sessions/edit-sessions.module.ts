@@ -4,6 +4,8 @@ import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { EditSessionsController } from './edit-sessions.controller';
 import { EditSessionsService } from './edit-sessions.service';
+import { PartnerEditSessionsController } from './partner-edit-sessions.controller';
+import { PartnerEditSessionOwnersService } from './partner-edit-session-owners.service';
 import { EditSessionEntity } from './entities/edit-session.entity';
 import { EditSessionVersionEntity } from './entities/edit-session-version.entity';
 import { WorkerJobsModule } from '../worker-jobs/worker-jobs.module';
@@ -37,9 +39,15 @@ import { PartnerOperatorAuditWriter } from '../auth/partner-operator/partner-ope
       }),
     }),
   ],
-  controllers: [EditSessionsController],
+  // 파트너 서버 간 세션 소유자 배치 조회(ADDITIVE 2026-09-30) — /partner/edit-sessions/owners
+  controllers: [EditSessionsController, PartnerEditSessionsController],
   // PartnerOperatorAuditWriter: AuthModule 을 import 하지 않으므로(순환 방지) 자체 등록한다(무상태).
-  providers: [EditSessionsService, OptionalShopJwtGuard, PartnerOperatorAuditWriter],
+  providers: [
+    EditSessionsService,
+    OptionalShopJwtGuard,
+    PartnerOperatorAuditWriter,
+    PartnerEditSessionOwnersService,
+  ],
   exports: [EditSessionsService],
 })
 export class EditSessionsModule {}

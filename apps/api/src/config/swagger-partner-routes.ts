@@ -51,6 +51,8 @@ export const SWAGGER_PARTNER_ROUTES: ReadonlySet<string> = new Set<string>([
   // 편집 세션 — 주문별 조회/임포지션 프리뷰
   'GET /api/edit-sessions/external',
   'GET /api/edit-sessions/{id}/imposition-preview',
+  // 편집 세션 소유자 배치 조회(서버 간, 사이트 키 — ADDITIVE 2026-09-30)
+  'POST /api/partner/edit-sessions/owners',
   // 책등 사전 계산(@Public)
   'GET /api/products/spine/paper-types',
   'GET /api/products/spine/binding-types',

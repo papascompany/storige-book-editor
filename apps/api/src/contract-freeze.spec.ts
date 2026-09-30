@@ -27,6 +27,7 @@ import { EditSessionsController } from './edit-sessions/edit-sessions.controller
 import { TemplateSetsController } from './templates/template-sets.controller';
 import { ProductTemplateSetsController } from './templates/product-template-sets.controller';
 import { AuthController } from './auth/auth.controller';
+import { PartnerEditSessionsController } from './edit-sessions/partner-edit-sessions.controller';
 import { IS_PUBLIC_KEY } from './auth/decorators/public.decorator';
 import { ApiKeyGuard } from './auth/guards/api-key.guard';
 
@@ -82,6 +83,8 @@ const FROZEN_ROUTES: FrozenRoute[] = [
 
   // ── 조회 표면 (§3) ──
   { contract: 'GET /edit-sessions/external?orderSeqno= (X-API-Key)', controller: EditSessionsController, handler: 'findByOrderExternal', method: RequestMethod.GET, path: 'external', auth: 'api-key' },
+  // ADDITIVE 2026-09-30 — 게스트 세션 조회(X-Guest-Token 헤더 필수, 검증은 PATCH guest/:id 와 동일). 편집기 게스트 재오픈 소비.
+  { contract: 'GET /edit-sessions/guest/:id (@Public + X-Guest-Token — ADDITIVE 2026-09-30)', controller: EditSessionsController, handler: 'findOneGuest', method: RequestMethod.GET, path: 'guest/:id', auth: 'public' },
 
   // ── 템플릿 조회 표면 (§3 조회) — 편집기 부트스트랩 · 파트너 상품페이지 ──
   // 2026-08-26 등재. 종전 이 두 라우트는 CONTRACT_FREEZE.md 와 파트너 OpenAPI allowlist
@@ -102,6 +105,8 @@ const FROZEN_ROUTES: FrozenRoute[] = [
   { contract: 'POST /auth/partner-operator-session (X-API-Key — 운영자 권한 발급)', controller: AuthController, handler: 'createPartnerOperatorSession', method: RequestMethod.POST, path: 'partner-operator-session', auth: 'api-key' },
   { contract: 'POST /auth/partner-operator-session/revoke (X-API-Key — 운영자 권한 취소)', controller: AuthController, handler: 'revokePartnerOperatorSession', method: RequestMethod.POST, path: 'partner-operator-session/revoke', auth: 'api-key' },
   { contract: 'GET /auth/partner-operator-session/audit (X-API-Key — 운영자 감사 기록)', controller: AuthController, handler: 'listPartnerOperatorAudit', method: RequestMethod.GET, path: 'partner-operator-session/audit', auth: 'api-key' },
+  // ADDITIVE 2026-09-30 — 파트너 서버 간 세션 소유자 배치 조회(사이트 편집기 키). 한도값은 guarded-routes.spec 이 고정.
+  { contract: 'POST /partner/edit-sessions/owners (X-API-Key — 세션 소유자 배치 조회, ADDITIVE 2026-09-30)', controller: PartnerEditSessionsController, handler: 'lookupOwners', method: RequestMethod.POST, path: 'owners', auth: 'api-key', throttled: true },
 ];
 
 /** 컨트롤러 prefix 동결 — 경로 조립의 앞부분이 바뀌면 전 라우트가 이동한다 */
@@ -112,6 +117,7 @@ const FROZEN_CONTROLLER_PREFIX: Array<[Ctor, string]> = [
   [TemplateSetsController, 'template-sets'],
   [ProductTemplateSetsController, 'product-template-sets'],
   [AuthController, 'auth'],
+  [PartnerEditSessionsController, 'partner/edit-sessions'],
 ];
 
 function handlerOf(route: FrozenRoute): ((...args: unknown[]) => unknown) | undefined {

@@ -26,6 +26,11 @@ import { WorkerJobsController } from './worker-jobs/worker-jobs.controller';
 import { EditSessionsController } from './edit-sessions/edit-sessions.controller';
 import { AuthController } from './auth/auth.controller';
 import { ProductTemplateSetsController } from './templates/product-template-sets.controller';
+import {
+  PartnerEditSessionsController,
+  PartnerSiteKeyThrottleGuard,
+  PARTNER_SITE_KEY_THROTTLER,
+} from './edit-sessions/partner-edit-sessions.controller';
 import { IS_PUBLIC_KEY } from './auth/decorators/public.decorator';
 import { ApiKeyGuard } from './auth/guards/api-key.guard';
 
@@ -40,6 +45,11 @@ interface GuardedRoute {
   path: string;
   /** @Throttle 존재 필수 + 한도값 고정 (shop-session 한정) */
   throttle?: { limit: number; ttl: number };
+  /**
+   * 사이트 키 단위 한도(2026-09-30~): ApiKeyGuard 뒤에 PartnerSiteKeyThrottleGuard 가 있고,
+   * 한도 메타데이터가 'partner-site-key' 이름으로 저장된다(전역 per-IP 'default' 한도와 별개).
+   */
+  siteKeyThrottle?: boolean;
 }
 
 /**
@@ -71,6 +81,9 @@ const GUARDED_ROUTES: GuardedRoute[] = [
   { contract: 'POST /auth/partner-operator-session (X-API-Key + Throttle 20/min — partner operator grant, ADDITIVE 2026-09-29)', controller: AuthController, handler: 'createPartnerOperatorSession', method: RequestMethod.POST, path: 'partner-operator-session', throttle: { limit: 20, ttl: 60000 } },
   { contract: 'POST /auth/partner-operator-session/revoke (X-API-Key + Throttle 20/min — partner operator grant revoke, ADDITIVE 2026-09-29)', controller: AuthController, handler: 'revokePartnerOperatorSession', method: RequestMethod.POST, path: 'partner-operator-session/revoke', throttle: { limit: 20, ttl: 60000 } },
   { contract: 'GET /auth/partner-operator-session/audit (X-API-Key + Throttle 20/min — partner operator audit read, ADDITIVE 2026-09-29)', controller: AuthController, handler: 'listPartnerOperatorAudit', method: RequestMethod.GET, path: 'partner-operator-session/audit', throttle: { limit: 20, ttl: 60000 } },
+
+  // 세션 소유자 배치 조회 — 서버 간 전용, 사이트 편집기 키. 한도는 사이트 키당 120/min (ADDITIVE 2026-09-30)
+  { contract: 'POST /partner/edit-sessions/owners (X-API-Key + 사이트 키당 120/min — session owner lookup, ADDITIVE 2026-09-30)', controller: PartnerEditSessionsController, handler: 'lookupOwners', method: RequestMethod.POST, path: 'owners', throttle: { limit: 120, ttl: 60000 }, siteKeyThrottle: true },
 ];
 
 /** 컨트롤러 prefix — 경로 조립의 앞부분이 바뀌면 전 라우트가 이동한다 */
@@ -78,6 +91,7 @@ const GUARDED_CONTROLLER_PREFIX: Array<[Ctor, string]> = [
   [WorkerJobsController, 'worker-jobs'],
   [EditSessionsController, 'edit-sessions'],
   [AuthController, 'auth'],
+  [PartnerEditSessionsController, 'partner/edit-sessions'],
 ];
 
 function handlerOf(route: GuardedRoute): ((...args: unknown[]) => unknown) | undefined {
@@ -129,6 +143,21 @@ describe('GUARDED — 동결 목록 밖 외부 라우트 인증 시맨틱 (경�
         expect(values).toEqual(
           expect.arrayContaining([route.throttle!.limit, route.throttle!.ttl]),
         );
+      });
+    }
+
+    if (route.siteKeyThrottle) {
+      it('사이트 키 단위 한도 — ApiKeyGuard 뒤 PartnerSiteKeyThrottleGuard + partner-site-key 메타', () => {
+        const h = handlerOf(route)!;
+        const guards: unknown[] = Reflect.getMetadata(GUARDS_METADATA, h) ?? [];
+        const apiKeyAt = guards.indexOf(ApiKeyGuard);
+        const siteKeyAt = guards.indexOf(PartnerSiteKeyThrottleGuard);
+        expect(apiKeyAt).toBeGreaterThanOrEqual(0);
+        expect(siteKeyAt).toBeGreaterThan(apiKeyAt); // req.user(사이트) 가 먼저 있어야 한다
+        expect(Reflect.getMetadata(`THROTTLER:LIMIT${PARTNER_SITE_KEY_THROTTLER}`, h)).toBe(route.throttle!.limit);
+        expect(Reflect.getMetadata(`THROTTLER:TTL${PARTNER_SITE_KEY_THROTTLER}`, h)).toBe(route.throttle!.ttl);
+        // 전역 per-IP 'default' 한도는 덮어쓰지 않는다(전역 300/min 병존)
+        expect(Reflect.getMetadata('THROTTLER:LIMITdefault', h)).toBeUndefined();
       });
     }
   });

@@ -53,7 +53,7 @@ describe('FilesService — 편집데이터 보관기간', () => {
   /** TypeORM 이 별칭을 인용부호로 감싼다(`f`.`id`) — 비교용으로 제거 */
   const plain = (sql: string): string => sql.replace(/`/g, '');
 
-  /** HEAD(변경 전) findExpired 쿼리 그대로 */
+  /** 보호 사이트 없음 기준 findExpired 쿼리(2026-09-30: NULL-site 세션은 NULL 파일 + 직접 참조 파일 보호) */
   const legacyFindExpiredSql = (limit: number): string =>
     repo
       .createQueryBuilder('f')
@@ -67,7 +67,15 @@ describe('FilesService — 편집데이터 보관기간', () => {
              AND s.deleted_at IS NULL
              AND (
                s.site_id = f.site_id
-               OR (s.site_id IS NULL AND f.site_id IS NULL)
+               OR (
+                 s.site_id IS NULL
+                 AND (
+                   f.site_id IS NULL
+                   OR s.cover_file_id = f.id
+                   OR s.content_file_id = f.id
+                   OR s.content_pdf_file_id = f.id
+                 )
+               )
              )
          )`,
       )

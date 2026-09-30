@@ -64,7 +64,11 @@ function operatorUploadMemberSeqno(user: UploadCallerUser | null | undefined): n
   return typeof obo === 'number' && Number.isSafeInteger(obo) && obo > 0 ? obo : undefined;
 }
 
-/** @Public 완료 라우트의 사이트 스탬프 근거 — 검증된 shop-session 또는 운영자 액세스 토큰 */
+/**
+ * 사이트 스탬프 근거 — @Public 완료 라우트(multipart/complete·:id/complete)와 `/files/upload`(2026-09-30).
+ * 검증된 shop-session 또는 운영자 액세스 토큰(파트너·관리자 발급 권한, siteId=권한 사이트)만 인정한다.
+ * admin JWT·siteId 없는 토큰은 undefined(스탬프 없음). 요청 본문 값은 근거로 쓰지 않는다.
+ */
 function stampCaller(
   user: UploadCallerUser | null | undefined,
 ): { siteId: string; role: string } | undefined {
@@ -73,6 +77,62 @@ function stampCaller(
     typeof siteId === 'string'
     ? { siteId, role: 'shop' }
     : undefined;
+}
+
+/**
+ * JWT 라우트 소유 판정용 호출자 회원 번호(2026-09-30).
+ * userId 가 없으면 null. userId 가 있으면 정수로 해석한 값(소유 판정은 양의 정수일 때만 성립).
+ */
+function callerMemberSeqno(
+  user: { userId?: string | number | null } | null | undefined,
+): number | null {
+  const raw = user?.userId;
+  if (raw === undefined || raw === null || raw === '') return null;
+  return typeof raw === 'number' ? raw : parseInt(raw, 10);
+}
+
+/** 회원 번호 유효성 — 양의 정수만 인정 */
+function isPositiveMemberSeqno(value: number | null): value is number {
+  return value !== null && Number.isSafeInteger(value) && value > 0;
+}
+
+/** 파일 소유자 판정 — 호출자 회원 번호가 양의 정수이고 파일 memberSeqno 와 같을 때만 */
+function isFileOwner(
+  file: { memberSeqno?: number | string | null },
+  memberSeqno: number | null,
+): boolean {
+  return (
+    isPositiveMemberSeqno(memberSeqno) &&
+    file.memberSeqno !== null &&
+    file.memberSeqno !== undefined &&
+    Number(file.memberSeqno) === memberSeqno
+  );
+}
+
+/**
+ * JWT 파일 라우트 staff 판정 — 역할 문자열을 대소문자 무관으로 비교(admin·manager).
+ * UserRole enum 값은 대문자('ADMIN'·'MANAGER'), 테스트·레거시 토큰은 소문자일 수 있다.
+ */
+function isFileStaffRole(user: { role?: unknown } | null | undefined): boolean {
+  const role = String(user?.role ?? '').toLowerCase();
+  return role === 'admin' || role === 'manager';
+}
+
+/** 호출자 토큰의 siteId — 비어 있지 않은 문자열일 때만 */
+function callerSiteId(user: { siteId?: unknown } | null | undefined): string | null {
+  const siteId = user?.siteId;
+  return typeof siteId === 'string' && siteId.length > 0 ? siteId : null;
+}
+
+/**
+ * JWT 파일 라우트 사이트 범위(2026-09-30) — 호출자 siteId 가 없거나 파일 siteId 가 NULL 이면 범위 안.
+ * 둘 다 있으면 같을 때만 범위 안. staff 판정은 호출측에서 먼저 한다.
+ */
+function isFileInCallerSite(
+  file: { siteId?: string | null },
+  siteId: string | null,
+): boolean {
+  return siteId === null || !file.siteId || file.siteId === siteId;
 }
 
 @ApiTags('Files')
@@ -124,7 +184,7 @@ export class FilesController {
       if (!res.headersSent) {
         // 스트리밍용으로 걸어둔 헤더를 정리한다 — Express res.json() 은 기설정 Content-Type 을
         // 덮지 않아, 정리 없이는 에러 JSON 이 application/pdf + attachment(+옛 Content-Length)로
-        // 나가 다운로더가 에러 본문을 .pdf 로 저장한다(적대 리뷰 실증, 3라우트 공통 일괄 수정).
+        // 나가 다운로더가 에러 본문을 .pdf 로 저장한다(3라우트 공통 처리).
         res.removeHeader('Content-Type');
         res.removeHeader('Content-Disposition');
         res.removeHeader('Content-Length');
@@ -137,6 +197,23 @@ export class FilesController {
     });
 
     stream.pipe(res);
+  }
+
+  /**
+   * 비-staff 호출자의 사이트 범위 밖 파일은 서비스단 assertSiteAccess 와 같은 404 FILE_NOT_FOUND.
+   * 소유 판정(403)보다 먼저 수행한다.
+   */
+  private assertFileInCallerSite(
+    file: { id: string; siteId?: string | null },
+    user: { siteId?: unknown } | null | undefined,
+  ): void {
+    if (!isFileInCallerSite(file, callerSiteId(user))) {
+      throw new NotFoundException({
+        code: 'FILE_NOT_FOUND',
+        message: '파일을 찾을 수 없습니다.',
+        details: { fileId: file.id },
+      });
+    }
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -179,7 +256,7 @@ export class FilesController {
       expectedSize: dto.expectedSize,
       originalName: dto.originalName,
       orderSeqno: dto.orderSeqno,
-      // 공개(게스트) 경로는 클라가 보낸 memberSeqno 를 신뢰하지 않는다(소유권 위조 차단).
+      // 공개(게스트) 경로는 요청 본문의 memberSeqno 를 쓰지 않고 null 로 저장한다.
       // 실제 소유 연결은 edit-session(contentPdfFileId) 등 서버측 컨텍스트에서 이뤄진다.
       memberSeqno: null,
       contentType: dto.contentType,
@@ -198,7 +275,7 @@ export class FilesController {
       expectedSize: dto.expectedSize,
       originalName: dto.originalName,
       orderSeqno: dto.orderSeqno,
-      // 공개(게스트) 경로 — 클라 memberSeqno 미신뢰(소유권 위조 차단).
+      // 공개(게스트) 경로 — 요청 본문의 memberSeqno 를 쓰지 않고 null 로 저장.
       memberSeqno: null,
       contentType: dto.contentType,
     });
@@ -225,7 +302,7 @@ export class FilesController {
     @CurrentUser() user: any,
   ): Promise<FileResponseDto> {
     // S3-A안(2026-08-28, D1): 검증된 shop-session 이 실려 오면 완료 확정 시 파일에
-    // 그 site 를 스탬프한다(테넌트 귀속). 토큰 없음/위조/비-shop → 종전대로 NULL(무중단).
+    // 그 site 를 스탬프한다(테넌트 귀속). 토큰 없음·서명 검증 실패·비-shop → NULL.
     // 근거 원칙은 edit-sessions.createGuest 의 I-1 과 동일 — 스탬프 근거는 서명 검증된
     // JWT 뿐이며, body 로 site 를 주장할 자리는 애초에 없다.
     // 운영자 대리 편집(2026-09-29): 검증된 운영자 액세스 토큰도 같은 방식으로 site 를 스탬프한다.
@@ -333,12 +410,16 @@ export class FilesController {
         ? operatorUploadMemberSeqno(user)
         : dto.memberSeqno || (user?.userId ? parseInt(user.userId) : undefined);
 
+    // 편집기 산출물 site 귀속(2026-09-30): 근거는 검증된 shop-session·운영자 토큰의 siteId 뿐.
+    // admin JWT·siteId 없는 토큰은 NULL(종전). dto.metadata(editSessionId 포함)는 근거로 쓰지 않는다.
+    const stamp = stampCaller(user);
     const fileEntity = await this.filesService.uploadFile(
       file,
       dto.type,
       dto.orderSeqno,
       memberSeqno,
       dto.metadata,
+      stamp?.siteId ?? null,
     );
 
     return this.filesService.toResponseDto(fileEntity);
@@ -448,11 +529,11 @@ export class FilesController {
 
     // 권한 확인: 파일 소유자 (memberSeqno 일치) 또는 admin/manager 역할
     // 단, file.memberSeqno가 null인 경우 (외부 업로드)는 staff만 허용
-    const userId = user?.userId ? parseInt(user.userId) : 0;
-    const userRole = user?.role || '';
-    const isOwner = file.memberSeqno !== null && Number(file.memberSeqno) === userId;
-    const isStaff = userRole === 'admin' || userRole === 'manager';
+    const userId = callerMemberSeqno(user);
+    const isOwner = isFileOwner(file, userId);
+    const isStaff = isFileStaffRole(user);
 
+    if (!isStaff) this.assertFileInCallerSite(file, user);
     if (!isOwner && !isStaff) {
       throw new ForbiddenException({
         code: 'PERMISSION_DENIED',
@@ -466,13 +547,13 @@ export class FilesController {
   /**
    * 파일 목록 조회 — 소유자 본인 또는 관리자만
    *
-   * SECURITY: 이전엔 임의 orderSeqno/memberSeqno로 타인 파일 조회 가능하던 결함.
-   * 2026-05-03 패치 — admin/manager가 아니면 JWT.memberSeqno 강제.
-   *
    * 동작:
-   *  - admin/manager: 임의 orderSeqno / memberSeqno 조회 가능
-   *  - 일반 사용자: JWT의 memberSeqno로 강제 필터, 다른 회원 조회 차단
-   *  - 일반 사용자가 orderSeqno로 조회 시 — 그 주문이 본인 것인지 추가 검증
+   *  - admin/manager: 임의 orderSeqno / memberSeqno 조회 가능(사이트 필터 없음)
+   *  - 일반 사용자: 토큰 회원 번호가 양의 정수일 때만 본인 파일을 돌려준다
+   *    · orderSeqno: 결과 중 본인 소유 파일만(회원 번호가 양수가 아니면 빈 목록)
+   *    · memberSeqno: 본인 번호만 허용, 양수가 아닌 요청 번호는 403
+   *    · 파라미터 없음: 본인 파일(회원 번호가 양수가 아니면 빈 목록)
+   *  - 일반 사용자 토큰에 siteId 가 있으면 다른 site 파일은 목록에서 제외(NULL-site 는 포함)
    */
   @Get()
   @ApiBearerAuth()
@@ -488,22 +569,26 @@ export class FilesController {
     @Query('orderSeqno') orderSeqno?: string,
     @Query('memberSeqno') memberSeqno?: string,
   ): Promise<FileListResponseDto> {
-    const userId = user?.userId ? parseInt(user.userId) : 0;
-    const userRole = user?.role || '';
-    const isStaff = userRole === 'admin' || userRole === 'manager';
+    const userId = callerMemberSeqno(user);
+    const isStaff = isFileStaffRole(user);
 
     let files;
 
     if (orderSeqno) {
       files = await this.filesService.findByOrderSeqno(parseInt(orderSeqno));
-      // 일반 사용자: 결과 중 본인 소유 파일만 노출 (다른 회원의 같은 주문 추적 방지)
+      // 일반 사용자: 결과 중 본인 소유 파일만(회원 번호가 양의 정수일 때)
       if (!isStaff) {
-        files = files.filter((f) => Number(f.memberSeqno) === userId);
+        files = files.filter(
+          (f) => isPositiveMemberSeqno(userId) && Number(f.memberSeqno) === userId,
+        );
       }
     } else if (memberSeqno) {
       const requestedMember = parseInt(memberSeqno);
-      // 일반 사용자: 본인 memberSeqno만 조회 가능
-      if (!isStaff && requestedMember !== userId) {
+      // 일반 사용자: 본인 memberSeqno(양의 정수)만 조회 가능
+      if (
+        !isStaff &&
+        (!isPositiveMemberSeqno(requestedMember) || requestedMember !== userId)
+      ) {
         throw new ForbiddenException({
           code: 'PERMISSION_DENIED',
           message: '다른 회원의 파일 목록은 조회할 수 없습니다.',
@@ -512,11 +597,16 @@ export class FilesController {
       files = await this.filesService.findByMemberSeqno(requestedMember);
     } else {
       // 파라미터 없으면: 일반 사용자는 본인 파일 자동 조회, admin은 빈 결과 (전체 조회 막기)
-      if (!isStaff && userId > 0) {
+      if (!isStaff && isPositiveMemberSeqno(userId)) {
         files = await this.filesService.findByMemberSeqno(userId);
       } else {
         files = [];
       }
+    }
+
+    if (!isStaff) {
+      const siteId = callerSiteId(user);
+      files = files.filter((f) => isFileInCallerSite(f, siteId));
     }
 
     return {
@@ -528,8 +618,7 @@ export class FilesController {
   /**
    * 파일 다운로드 (소유자 또는 관리자만)
    *
-   * SECURITY: 이전 @Public() 노출은 UUID 유출 시 누구나 다운로드 가능하던 결함이었음.
-   * 2026-05-03 패치 — JWT 인증 + 소유자 검증 강제.
+   * JWT 인증 + 소유자 검증. 비-staff 호출자 토큰의 siteId 와 파일 siteId 가 모두 있고 다르면 404.
    */
   @Get(':id/download')
   @ApiBearerAuth()
@@ -545,11 +634,11 @@ export class FilesController {
     const file = await this.filesService.findById(id);
 
     // 권한 확인: 파일 소유자 또는 admin/manager
-    const userId = user?.userId ? parseInt(user.userId) : 0;
-    const userRole = user?.role || '';
-    const isOwner = file.memberSeqno !== null && Number(file.memberSeqno) === userId;
-    const isStaff = userRole === 'admin' || userRole === 'manager';
+    const userId = callerMemberSeqno(user);
+    const isOwner = isFileOwner(file, userId);
+    const isStaff = isFileStaffRole(user);
 
+    if (!isStaff) this.assertFileInCallerSite(file, user);
     if (!isOwner && !isStaff) {
       throw new ForbiddenException({
         code: 'PERMISSION_DENIED',
@@ -603,21 +692,20 @@ export class FilesController {
    * 편집기가 >50MB 내부 '이미지'를 R2 에 presigned 업로드한 뒤, 이 엔드포인트로 표시(display)한다.
    * (nginx `/storage/*` 는 로컬만 서빙 → R2 키는 404 였음. 이 라우트가 그 갭을 메운다.)
    *
-   * 보안 설계(적대검증 high 반영 — 2026-06-20):
+   * 서빙 규칙(2026-06-20):
    *  - **표시용 래스터 이미지로만 한정**: RAW_SERVE_TYPES(jpeg/png/webp/gif) 만 서빙, 그 외는 404.
    *    ⚠️ application/pdf 는 절대 서빙하지 않는다 — 합성결과/주문 content PDF(민감)도 동일 files
    *    테이블에 status='ready' 로 공존하고, 편집기가 content PDF 를 표시이미지와 동일한 공개
    *    presigned 경로(`uploadViaPresigned isPublic, type:'content'`)로 올리므로 fileType/마커로는
    *    구분이 불가능하다. content-type 만이 안전한 판별자다. PDF 취득은 `:id/download`(JWT)·
-   *    `:id/download/external`(ApiKey+site)만 담당 → raw 가 그 권한경계를 우회하지 못하게 한다
-   *    (2026-05-03 패치가 막은 'UUID 유출 시 무인증 다운로드' 회귀를 차단).
-   *    image/svg+xml 도 제외(서빙단 인라인 XSS 이중방어).
+   *    `:id/download/external`(ApiKey+site)만 담당 → raw 는 PDF 를 돌려주지 않는다.
+   *    image/svg+xml 도 제외(인라인 표시 대상은 래스터 이미지뿐).
    *  - **@Public** + fileId(UUID=비추측). 서빙 대상이 '공유 표시 이미지'(public presigned=siteId NULL)로
-   *    좁혀져 테넌트 격리 비대칭도 함께 해소(민감 siteId 스탬프 PDF 가 raw 로 새지 않음).
+   *    좁혀진다(siteId 스탬프 PDF 는 raw 로 서빙하지 않음).
    *  - **X-Content-Type-Options: nosniff** 항상 + **inline**(서빙 대상이 안전 래스터뿐) + CORP cross-origin
    *    (crossOriginIsolated 편집기/임베드 fabric 로드 통과). ACAO 는 전역 CORS(허용오리진 반영)가 처리.
    *  - status!=='ready' 는 미완 업로드 → 404. soft-deleted 는 findById 가 자동 제외 → 404.
-   *  - @Throttle: 무인증 대용량 egress 남용 완화(전역 300/min 보다 보수적).
+   *  - @Throttle: 공개 라우트 전송량 상한(전역 300/min 보다 보수적).
    */
   @Get(':id/raw')
   @Public()
@@ -717,12 +805,9 @@ export class FilesController {
   /**
    * PDF 썸네일 조회 (외부 API Key 인증 + 테넌트 격리)
    *
-   * P0-3 (2026-07-03): 과거 @Public 무인증이라 fileId(UUID)만 알면 임의 파일의 첫 페이지를
-   * PNG 로 무인증 유출했다 — 바로 위 :id/raw 가 'content PDF(민감) 무인증 유출' 회귀를 막으려
-   * PDF/svg 를 404 배제하는데, thumbnail 은 그 권한경계에 뚫린 구멍이었다(주문 원고·합성물·
-   * 회원 디자인 첫 페이지 노출). download/external·:id/expiry/external 와 동일하게
-   * ApiKeyGuard + @CurrentSite + assertSiteAccess(서비스단) 로 강등하고, PDF→PNG 래스터화
-   * 무인증 DoS 를 @Throttle 로 완화. NULL-siteId(레거시/공유)는 assertSiteAccess 가 기존 정책대로 통과.
+   * (2026-07-03) download/external·:id/expiry/external 와 같은 인증 규칙:
+   * ApiKeyGuard + @CurrentSite + assertSiteAccess(서비스단). PDF→PNG 래스터화 요청 수는
+   * @Throttle 로 제한. NULL-siteId(레거시/공유)는 assertSiteAccess 가 기존 정책대로 통과.
    */
   @Get(':id/thumbnail')
   @Public()
@@ -758,11 +843,11 @@ export class FilesController {
       });
     }
 
-    // P0-3: 호출자 site 대조 — 타 테넌트 파일 썸네일 유출 차단(assertSiteAccess 서비스단).
+    // 호출자 site 대조 — 다른 site 파일은 404(assertSiteAccess 서비스단).
     const buffer = await this.filesService.getThumbnailBuffer(id, pageNum, widthNum, site);
 
-    // 캐싱 헤더 (1시간). P0-3: 이제 테넌트 격리 인증 라우트이므로 `private` — 공유 프록시/CDN 이
-    // fileId(URL) 로 캐시해 API·assertSiteAccess 를 우회하고 타 테넌트에 서빙하는 벡터 차단.
+    // 캐싱 헤더 (1시간). 테넌트 격리 인증 라우트이므로 `private` — 공유 프록시/CDN 캐시 대상에서 제외해
+    // 응답이 항상 API·assertSiteAccess 판정을 거치게 한다.
     // (raw 라우트는 siteId=NULL 공유 이미지 전용이라 public/immutable 이지만, thumbnail 은
     //  siteId 스탬프 PDF 를 렌더하므로 private 가 맞다.)
     res.setHeader('Content-Type', 'image/png');
@@ -784,13 +869,12 @@ export class FilesController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: any,
   ): Promise<{ success: boolean }> {
-    // SEC-003: getFile 과 동일 소유권 검증 — UUID만으로 임의 파일 삭제(IDOR) 차단.
-    // 역할 비교는 case-insensitive(UserRole enum 은 대문자 'ADMIN' — edit-sessions isStaffRole 정합).
+    // getFile 과 같은 소유 판정: 소유자 또는 staff(admin·manager, 대소문자 무관)만 삭제한다.
     const file = await this.filesService.findById(id);
-    const userId = user?.userId ? parseInt(user.userId) : 0;
-    const userRole = String(user?.role || '').toLowerCase();
-    const isOwner = file.memberSeqno !== null && Number(file.memberSeqno) === userId;
-    const isStaff = userRole === 'admin' || userRole === 'manager';
+    const userId = callerMemberSeqno(user);
+    const isOwner = isFileOwner(file, userId);
+    const isStaff = isFileStaffRole(user);
+    if (!isStaff) this.assertFileInCallerSite(file, user);
     if (!isOwner && !isStaff) {
       throw new ForbiddenException({
         code: 'PERMISSION_DENIED',
@@ -816,8 +900,8 @@ export class FilesController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: any,
   ): Promise<FileResponseDto> {
-    // SEC-003: 복구는 보존 sweep/운영 작업 성격 → 관리자 전용(소프트삭제 파일의 소유권
-    // 역참조 복잡성 회피 + 운영 안전). 현재 콜러 0건이라 비파괴.
+    // 복구는 보존 sweep/운영 작업 성격 → 관리자 전용(소프트삭제 파일의 소유권
+    // 역참조 없이 운영자만 수행). 현재 콜러 0건.
     // 역할 비교 case-insensitive(UserRole enum 대문자).
     const userRole = String(user?.role || '').toLowerCase();
     if (userRole !== 'admin' && userRole !== 'manager') {

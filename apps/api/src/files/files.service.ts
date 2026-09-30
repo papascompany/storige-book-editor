@@ -132,7 +132,8 @@ export class FilesService {
       orderSeqno,
       memberSeqno,
       metadata,
-      // P2c S-2: 외부 업로드 파일에 호출자 site 스탬프(테넌트 소유). 내부 업로드(siteId 미지정)=NULL=공유.
+      // 호출자 site 스탬프(테넌트 소유): upload/external 은 API Key 사이트(P2c S-2), /files/upload 는
+      // shop-session·운영자 토큰의 사이트(2026-09-30). 그 밖(admin JWT·내부 호출, siteId 미지정)=NULL=공유.
       siteId: siteId ?? null,
     });
 
@@ -541,7 +542,10 @@ export class FilesService {
    * 따라서 **주문 상태(편집세션 status)를 조인**해, 진행 중(status <> 'complete')인 세션이 존재하는
    * 주문의 파일만 보호하고, 완결됐거나 편집세션이 아예 없는(순수 워커 오프로드) 파일은 예약된
    * expires_at 대로 만료시킨다. site 스코프를 함께 대조해 파트너 간 order_seqno 충돌로 인한
-   * 오보호를 줄인다(양측 site_id NULL 은 동일 스코프로 간주). 데이터손실 < 디스크 잔존 원칙상
+   * 오보호를 줄인다. 세션 site_id 가 NULL(레거시 무소속)이면 파일 site 가 NULL 인 파일과, 그 세션이
+   * cover/content/contentPdf 로 직접 참조하는 파일을 보호한다(2026-09-30 — 편집기 산출물이 토큰
+   * 사이트로 스탬프되면서 무소속 세션의 산출물이 보호에서 빠지지 않도록 보강. 종전 '양측 NULL'
+   * 조건을 포함하고, 그 밖의 사이트 파일은 무소속 세션의 영향을 받지 않는다). 데이터손실 < 디스크 잔존 원칙상
    * 경계 사례에서는 보호(만료 제외) 쪽으로 기운다.
    *
    * ⚠️ 배포 전 retention.dryRun=ON 으로 sweep 후보 건수 before/after 표본 검증 필수
@@ -563,7 +567,15 @@ export class FilesService {
              AND s.deleted_at IS NULL
              AND (
                s.site_id = f.site_id
-               OR (s.site_id IS NULL AND f.site_id IS NULL)
+               OR (
+                 s.site_id IS NULL
+                 AND (
+                   f.site_id IS NULL
+                   OR s.cover_file_id = f.id
+                   OR s.content_file_id = f.id
+                   OR s.content_pdf_file_id = f.id
+                 )
+               )
              )
          )`,
       );
