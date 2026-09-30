@@ -20,6 +20,7 @@ import { isApiMarker, downloadViaApi } from '../services/api-file-download';
 import { assertSafeDownloadUrl } from '../utils/url-safety';
 import { captureJobException } from '../sentry/sentry.init';
 import { DomainError, ErrorCodes } from '../common/errors';
+import { isFlagOn } from '../config/feature-flags';
 
 /**
  * 배경제거(컷아웃) 서버 오프로드 프로세서 (2026-08-05, D-6a=B·D-6b②·D-12a=C).
@@ -52,15 +53,6 @@ const ALLOWED_INPUT_FORMATS = new Set(['png', 'jpeg', 'jpg', 'webp']);
 
 /** 잡 산출 경로에 그대로 들어가므로 형식을 강제한다(경로 조작 차단) */
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/**
- * 플래그 진리값 해석 — API(assertCutoutEnabled)와 **같은 술어**를 써야 한다.
- * 한쪽만 '1' 을 받아들이면 "라우트는 열렸는데 워커는 전건 FAILED" 라는 추적 어려운 상태가 된다.
- */
-function isFlagOn(raw: string | undefined): boolean {
-  const v = (raw ?? '').trim().toLowerCase();
-  return v === 'true' || v === '1';
-}
 
 function toError(e: unknown): Error {
   return e instanceof Error ? e : new Error(String(e));

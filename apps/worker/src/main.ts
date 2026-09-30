@@ -14,6 +14,7 @@ initSentry('storige-worker');
 import { NestFactory } from '@nestjs/core';
 import { Logger as PinoLogger } from 'nestjs-pino';
 import { AppModule } from './app.module';
+import { buildWorkerFeatureFlagSnapshot, formatFeatureFlagSnapshot } from './config/feature-flags';
 
 // Unhandled rejection 캐치 + Sentry 전송
 process.on('unhandledRejection', (reason: any) => {
@@ -42,6 +43,15 @@ async function bootstrap() {
         );
       }
     }
+  }
+
+  // OPS-S4-N2: 기능 플래그 유효값 스냅샷(boolean 만, env 원문 미출력). 부팅 미차단.
+  try {
+    const flags = buildWorkerFeatureFlagSnapshot();
+    // 세 번째 인자는 pino context — 문자열이 msg 필드로 들어가도록 명시한다.
+    pinoLogger.log({ featureFlags: flags }, formatFeatureFlagSnapshot('worker', flags), 'FeatureFlags');
+  } catch (e) {
+    pinoLogger.warn(`[FLAGS] worker 스냅샷 실패: ${(e as Error).message}`);
   }
 
   const port = process.env.PORT || 4001;

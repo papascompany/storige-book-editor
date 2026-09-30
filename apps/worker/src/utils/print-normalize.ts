@@ -53,7 +53,7 @@ export function printIccProfilePath(): string {
   return process.env.PRINT_ICC_PROFILE_PATH || '';
 }
 
-function printNormalizeFlatten(): boolean {
+export function printNormalizeFlatten(): boolean {
   return String(process.env.PRINT_NORMALIZE_FLATTEN || '').toLowerCase() === 'true';
 }
 

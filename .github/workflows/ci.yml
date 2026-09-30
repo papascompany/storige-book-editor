@@ -62,14 +62,14 @@ jobs:
         # 포털 산출물(apps/docs/site)은 아래 포털 빌드의 postbuild 가 한 번 더 스캔한다.
         run: node scripts/check-source-exposure.mjs
 
-      - name: 시스템 의존성 (qpdf=골든 self-test · cairo/pango=node-canvas 소스 빌드)
+      - name: 시스템 의존성 (qpdf=골든 self-test · ghostscript=TrimBox 재증류 박스 검증 · cairo/pango=node-canvas 소스 빌드)
         # node-canvas(canvas@2.11.2)는 fabric 5.x node 엔트리의 하드 요구인데 Node 22 용
         # 프리빌트가 없어 소스 빌드가 필요하다. canvas 는 jsdom 의 optionalDependency 라
         # 빌드 실패가 "조용히 용인"되고(설치는 성공처럼 보임) vitest 로드 시점에
         # 'Cannot find module ../build/Release/canvas.node' 로 터진다(2026-07-03 CI 1차 실적발).
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y -q qpdf build-essential libcairo2-dev libpango1.0-dev \
+          sudo apt-get install -y -q qpdf ghostscript build-essential libcairo2-dev libpango1.0-dev \
             libjpeg-dev libgif-dev librsvg2-dev libpixman-1-dev
 
       - name: 의존성 설치
@@ -114,7 +114,9 @@ jobs:
         # CI 미연결이었다(spec 전부가 로컬 수동 실행에만 의존 — 위 ⚠️ 의 실현 사례).
         # 실 GS/qpdf 바이너리는 호출하지 않는다 — ghostscript-wk.spec 은
         # GHOSTSCRIPT_PATH=/bin/sh 대역으로 spawn·타임아웃·SIGTERM 에스컬레이션 경로만
-        # 검증한다(실측: gs 부재 macOS 에서 17 suites/490 tests 통과). 시스템 의존성 추가 불필요.
+        # 검증한다(실측: gs 부재 macOS 에서 17 suites/490 tests 통과).
+        # 2026-09-30: X1 TrimBox 정규화 spec 의 GS 재증류 박스 검증(HAS_GS 조건부)을 CI 에서도
+        # 실행하려고 위 시스템 의존성에 ghostscript 를 추가했다(gs 부재 시에는 해당 블록만 skip).
         # ⚠️ WK-3 스펙은 5s jest timeout 의 실시간 스폰 테스트라 러너 과부하 시 플레이크
         #    여지가 있다(2026-07-30 로컬 전체 병렬 실행에서 1회 실측). 단독 스텝(순차)이라
         #    위험은 낮지만, 재발 시 이 스펙만 --maxWorkers 조정 대상이다.
