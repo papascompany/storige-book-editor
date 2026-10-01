@@ -268,6 +268,29 @@ describe('EditSessionsService', () => {
 
       expect(result[0].files.merged).toBe('/storage/outputs/job-1/merged.pdf');
     });
+
+    it('사이트 키 호출자: 자기 사이트 세션과 게스트 토큰이 없는 사이트 미지정 세션만 조회 조건에 포함', async () => {
+      mockGetMany.mockResolvedValue([]);
+
+      await service.findByOrderExternal(12345, { siteId: 'site-A', role: 'editor' });
+
+      expect(mockSessionQueryBuilder.andWhere).toHaveBeenCalledWith(
+        '(session.siteId = :callerSiteId OR (session.siteId IS NULL AND session.guestToken IS NULL))',
+        { callerSiteId: 'site-A' },
+      );
+    });
+
+    it('worker 역할·호출자 미지정은 사이트 조건을 추가하지 않는다', async () => {
+      mockGetMany.mockResolvedValue([]);
+
+      await service.findByOrderExternal(12345, { siteId: 'site-A', role: 'worker' });
+      await service.findByOrderExternal(12345);
+
+      const siteClauses = mockSessionQueryBuilder.andWhere.mock.calls.filter((c: unknown[]) =>
+        String(c[0]).includes('callerSiteId'),
+      );
+      expect(siteClauses).toEqual([]);
+    });
   });
 
   // ── 편집보관함 경량(summary) 모드 (2026-06-11) ──

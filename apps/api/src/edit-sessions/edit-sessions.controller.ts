@@ -25,7 +25,7 @@ import {
   getSchemaPath,
 } from '@nestjs/swagger';
 import * as Sentry from '@sentry/node';
-import { EditSessionsService, type TenantCaller } from './edit-sessions.service';
+import { EditSessionsService, memberSeqnoOf, type TenantCaller } from './edit-sessions.service';
 import { CreateEditSessionDto } from './dto/create-edit-session.dto';
 import { UpdateEditSessionDto } from './dto/update-edit-session.dto';
 import {
@@ -238,6 +238,7 @@ export class EditSessionsController {
   ): Promise<EditSessionResponseDto> {
     // X-Guest-Token 헤더가 안 되는 환경(예: 일부 CORS)을 위해 쿼리도 허용.
     await this.assertGuestOwnership(id, guestTokenHeader || guestTokenQuery);
+    this.logQueryGuestToken('update', id, guestTokenHeader, guestTokenQuery);
     // userId=0 (게스트) — 위 assertGuestOwnership 통과 후에만 guestVerified 를 전달한다
     const updated = await this.editSessionsService.update(id, dto, 0, null, { guestVerified: true });
     return this.editSessionsService.toResponseDto(updated);
@@ -307,6 +308,7 @@ export class EditSessionsController {
     @Headers('x-guest-token') guestTokenHeader?: string,
   ) {
     await this.assertGuestOwnership(id, guestTokenHeader || guestTokenQuery);
+    this.logQueryGuestToken('versions', id, guestTokenHeader, guestTokenQuery);
     return this.editSessionsService.listVersions(id);
   }
 
@@ -323,6 +325,7 @@ export class EditSessionsController {
     @Headers('x-guest-token') guestTokenHeader?: string,
   ): Promise<EditSessionResponseDto> {
     await this.assertGuestOwnership(id, guestTokenHeader || guestTokenQuery);
+    this.logQueryGuestToken('restore', id, guestTokenHeader, guestTokenQuery);
     const restored = await this.editSessionsService.restoreVersion(id, vid, 0);
     return this.editSessionsService.toResponseDto(restored);
   }
@@ -342,7 +345,12 @@ export class EditSessionsController {
     @Body() body: { guestToken?: string },
     @CurrentUser() user: any,
   ): Promise<{ migratedCount: number; sessionIds: string[] }> {
-    if (!user?.userId) {
+    // 흡수 대상은 회원 번호가 양의 정수인 토큰만(guestToken 형식 검사보다 먼저).
+    const memberSeqno = this.ownerSeqnoOf(user);
+    if (Number.isNaN(memberSeqno)) {
+      this.logger.log(
+        `[guest-migrate] denied-non-member source=${user?.source ?? '-'} site=${user?.siteId ?? '-'}`,
+      );
       throw new ForbiddenException({
         code: 'AUTH_REQUIRED',
         message: '회원 마이그레이션은 로그인 사용자만 가능합니다.',
@@ -354,7 +362,6 @@ export class EditSessionsController {
         message: 'guestToken 이 필요합니다.',
       });
     }
-    const memberSeqno = parseInt(user.userId);
     // I-3 (2026-07-30): 호출자 테넌트를 넘겨 교차 site 흡수를 서비스에서 거부한다.
     // caller siteId 가 없으면(레거시 리프레시 토큰 등) null → 서비스가 허용 + warn.
     return this.editSessionsService.migrateGuestSessions(
@@ -395,6 +402,10 @@ export class EditSessionsController {
       });
     }
     const memberSeqno = parseInt(user.userId);
+    // 회원 번호가 0·비숫자로 해석되면 빈 목록(목록 기본 분기와 같은 판정, 응답 shape 동일).
+    if (memberSeqno === 0 || Number.isNaN(memberSeqno)) {
+      return { sessions: [], total: 0 };
+    }
 
     // 경량(summary) 모드 — canvasData 미포함 목록 (편집보관함)
     if (summary === '1' || summary === 'true') {
@@ -442,13 +453,15 @@ export class EditSessionsController {
     @Query('limit') limit?: string,
   ): Promise<EditSessionListResponseDto> {
     this.assertStaff(user);
-    return this.editSessionsService.findDeleted({
+    const result = await this.editSessionsService.findDeleted({
       memberSeqno: memberSeqno ? parseInt(memberSeqno) : undefined,
       orderSeqno: orderSeqno ? parseInt(orderSeqno) : undefined,
       siteId: siteId || undefined,
       page: page ? parseInt(page) : undefined,
       limit: limit ? parseInt(limit) : undefined,
     });
+    result.sessions.forEach((dto) => this.omitGuestToken(dto));
+    return result;
   }
 
   /**
@@ -592,6 +605,9 @@ export class EditSessionsController {
     @CurrentUser() user?: any,
   ): Promise<EditSessionListResponseDto> {
     let sessions;
+    // 주문권한(allowedOrderSeqnos)으로 orderSeqno 목록을 받는 호출자 — 이 분기만 게스트 세션의 guestToken 을
+    // 포함한다(세션 사이트 = 호출자 사이트일 때만).
+    let orderGranted = false;
 
     if (orderSeqno) {
       sessions = await this.editSessionsService.findByOrderSeqno(
@@ -608,6 +624,7 @@ export class EditSessionsController {
         reqOrder !== 0 &&
         Array.isArray(user?.allowedOrderSeqnos) &&
         user.allowedOrderSeqnos.includes(reqOrder);
+      orderGranted = granted;
       if (!isStaff && !granted) {
         const selfSeqno = user?.userId ? parseInt(user.userId) : NaN;
         const selfUsable = selfSeqno !== 0 && !Number.isNaN(selfSeqno);
@@ -703,8 +720,32 @@ export class EditSessionsController {
     // (:id 계열 assertTenantScope·/external P2c 와 동일 규칙).
     sessions = this.filterTenantScope(sessions, user, 'list');
 
+    // 주문권한 목록의 게스트 세션: 사이트가 지정된 세션만 포함하고, guestToken 은 세션 사이트가 호출자
+    // 사이트와 같을 때만 포함한다(사이트 미지정 게스트 세션은 목록에서 제외).
+    const grantSiteId =
+      typeof user?.siteId === 'string' && user.siteId.length > 0 ? user.siteId : null;
+    if (orderGranted) {
+      sessions = sessions.filter(
+        (s: EditSessionEntity) =>
+          !s.guestToken || (typeof s.siteId === 'string' && s.siteId.length > 0),
+      );
+    }
+
+    const guestCount = sessions.filter((s: EditSessionEntity) => !!s.guestToken).length;
+    if (orderGranted && guestCount > 0) {
+      // 운영 관측: 주문권한 목록이 게스트 세션을 포함해 반환한 건수(토큰 원문 없음).
+      this.logger.log(
+        `[guest-read] order-grant order=${parseInt(orderSeqno as string)} guest-sessions=${guestCount} ` +
+          `site=${user?.siteId ?? '-'} source=${user?.source ?? '-'}`,
+      );
+    }
+
     return {
-      sessions: sessions.map((s) => this.editSessionsService.toResponseDto(s)),
+      sessions: sessions.map((s: EditSessionEntity) => {
+        const dto = this.editSessionsService.toResponseDto(s);
+        const keepGuestToken = orderGranted && grantSiteId !== null && s.siteId === grantSiteId;
+        return keepGuestToken ? dto : this.omitGuestToken(dto);
+      }),
       total: sessions.length,
     };
   }
@@ -720,7 +761,11 @@ export class EditSessionsController {
     description: '세션 상세 정보',
     type: EditSessionResponseDto,
   })
-  @ApiResponse({ status: 403, description: '권한 없음 (다른 사용자의 세션)' })
+  @ApiResponse({
+    status: 403,
+    description:
+      '권한 없음 (PERMISSION_DENIED). 회원 번호가 양의 정수가 아닌 shop 토큰으로 게스트 세션을 조회하면 GUEST_TOKEN_REQUIRED — 게스트 세션은 GET guest/:id + X-Guest-Token 으로 조회',
+  })
   @ApiResponse({ status: 404, description: '세션을 찾을 수 없음' })
   async findOne(
     @Param('id', ParseUUIDPipe) id: string,
@@ -739,18 +784,21 @@ export class EditSessionsController {
     const isStaff = this.isStaffRole(user);
 
     if (!isOwner && !isStaff && !caller?.partnerOperator) {
+      // 게스트 세션을 회원 번호 없는 shop 토큰으로 조회 → 게스트 조회 경로(GET guest/:id) 안내 코드.
+      // 운영 관측 로그는 세션 id·site·토큰 출처만 남긴다(게스트 토큰·JWT 원문은 기록하지 않는다).
+      if (session.guestToken && user?.source === 'shop' && Number.isNaN(userId)) {
+        this.logger.log(
+          `[guest-read] denied-member-route session=${session.id} site=${session.siteId ?? '-'} source=${user?.source ?? '-'}`,
+        );
+        throw new ForbiddenException({
+          code: 'GUEST_TOKEN_REQUIRED',
+          message: '게스트 토큰이 필요합니다.',
+        });
+      }
       throw new ForbiddenException({
         code: 'PERMISSION_DENIED',
         message: '이 세션에 접근할 권한이 없습니다.',
       });
-    }
-
-    // 운영 관측(2026-09-30): 게스트 세션을 회원 경로로 읽은 건수 — 게스트 조회 라우트 전환 추적용.
-    // 세션 id·site·토큰 출처만 남긴다(게스트 토큰·JWT 원문은 기록하지 않는다).
-    if (session.guestToken && isOwner && !isStaff && !caller?.partnerOperator) {
-      this.logger.log(
-        `[guest-read] member-route session=${session.id} site=${session.siteId ?? '-'} source=${user?.source ?? '-'}`,
-      );
     }
 
     return this.respond(session, user);
@@ -851,7 +899,8 @@ export class EditSessionsController {
     @Body() dto: UpdateEditSessionDto,
     @CurrentUser() user: any,
   ): Promise<EditSessionResponseDto> {
-    const userId = user?.userId ? parseInt(user.userId) : 0;
+    const member = this.ownerSeqnoOf(user);
+    const userId = Number.isNaN(member) ? 0 : member;
     const session = await this.editSessionsService.update(id, dto, userId, this.tenantCaller(user));
     return this.respond(session, user);
   }
@@ -873,7 +922,8 @@ export class EditSessionsController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: any,
   ): Promise<EditSessionResponseDto> {
-    const userId = user?.userId ? parseInt(user.userId) : 0;
+    const member = this.ownerSeqnoOf(user);
+    const userId = Number.isNaN(member) ? 0 : member;
     const session = await this.editSessionsService.complete(id, userId, this.tenantCaller(user));
     return this.respond(session, user);
   }
@@ -919,7 +969,7 @@ export class EditSessionsController {
       'restore',
     );
     const session = await this.editSessionsService.restoreSession(id);
-    return this.editSessionsService.toResponseDto(session);
+    return this.respond(session, user);
   }
 
   /**
@@ -934,11 +984,32 @@ export class EditSessionsController {
   }
 
   /**
-   * 소유자 판정용 회원 번호(2026-09-30, findOne·delete). 토큰에 회원 식별자(userId)가 없으면 NaN —
-   * 어떤 세션의 memberSeqno 와도 일치하지 않는다. userId 가 있으면 종전 parseInt 그대로.
+   * 소유자 판정용 회원 번호(findOne·update·complete·delete·guest/migrate). userId 가 양의 정수일 때만
+   * 그 수이고, 그 밖(없음·0·음수·소수·비숫자)은 NaN — 어떤 세션의 memberSeqno 와도 일치하지 않는다.
    */
   private ownerSeqnoOf(user: { userId?: string | number | null } | null | undefined): number {
-    return user?.userId ? parseInt(String(user.userId)) : Number.NaN;
+    return memberSeqnoOf(user?.userId);
+  }
+
+  /**
+   * 게스트 3개 라우트(update·versions·restore)에서 헤더 없이 쿼리 토큰만 받은 요청의 운영 관측 로그.
+   * 라우트·세션 id 만 남긴다(토큰 원문 없음).
+   */
+  private logQueryGuestToken(
+    route: 'update' | 'versions' | 'restore',
+    id: string,
+    headerToken: string | undefined,
+    queryToken: string | undefined,
+  ): void {
+    if (!headerToken && queryToken) {
+      this.logger.log(`[guest-token] query route=${route} session=${id}`);
+    }
+  }
+
+  /** 게스트 세션 응답 항목에서 guestToken 키를 뺀다(회원 세션의 guestToken: null 은 유지). */
+  private omitGuestToken(dto: EditSessionResponseDto): EditSessionResponseDto {
+    if (dto.guestToken) delete dto.guestToken;
+    return dto;
   }
 
   /**
@@ -1009,15 +1080,17 @@ export class EditSessionsController {
   }
 
   /**
-   * 세션 응답 — 운영자 호출자에게는 guestToken/guestExpiresAt 을 제거한다(2026-09-29).
-   * guestToken 은 권한 범위·만료·취소 밖에서 쓰일 수 있는 비회원 소유 증명이기 때문이다.
-   * 그 외 호출자는 toResponseDto 결과 그대로.
+   * 회원 경로 세션 응답 — 게스트 세션의 guestToken 은 포함하지 않는다(게스트 토큰은 게스트 경로·생성 응답에서만).
+   * 운영자 호출자에게서는 guestToken/guestExpiresAt 을 모두 제거한다(권한 범위·만료·취소 밖에서 쓰일 수 있는
+   * 비회원 소유 증명). 회원 세션은 toResponseDto 결과 그대로(guestToken: null 포함).
    */
   private respond(session: EditSessionEntity, user: any): EditSessionResponseDto {
     const dto = this.editSessionsService.toResponseDto(session);
     if (user?.source === 'partner_operator') {
       delete dto.guestToken;
       delete dto.guestExpiresAt;
+    } else if (session.guestToken) {
+      delete dto.guestToken;
     }
     return dto;
   }

@@ -9,6 +9,7 @@ import {
   Query,
   UseGuards,
   Res,
+  Headers,
   NotFoundException,
   Logger,
 } from '@nestjs/common';
@@ -16,7 +17,8 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery, ApiSecurit
 import { ConfigService } from '@nestjs/config';
 import { Throttle } from '@nestjs/throttler';
 import { Response } from 'express';
-import { WorkerJobsService } from './worker-jobs.service';
+import { WorkerJobsService, type ComposeAssembleCaller } from './worker-jobs.service';
+import { memberSeqnoOf } from '../edit-sessions/edit-sessions.service';
 import {
   CreateValidationJobDto,
   CreateConversionJobDto,
@@ -310,6 +312,9 @@ export class WorkerJobsController {
    *    같은 근거 필드 `allowedOrderSeqnos` 를 서비스로 넘겨 세션 orderSeqno 를 가드한다.
    *    가드가 이미 서명 검증된 JWT 에서 복원해 준다(optional-shop-jwt.guard.ts:70-75).
    *
+   * 🔒 세션 소유: shop 호출자의 자동조립은 게스트 세션이면 X-Guest-Token 헤더 일치, 회원 세션이면
+   *    양의 회원 번호 일치 또는 주문권한 일치를 요구한다(실패는 같은 404 SESSION_NOT_FOUND).
+   *
    * 🔒 테넌트 스탬프(2026-08-13): 이 라우트가 `@Public` 인 이상 **body.siteId 는 인가 주체가
    *    아니다**. 여기서 복원한 caller 가 잡 스탬프의 유일한 검증 근거이며, 서비스가
    *    `resolveComposeMixedSiteId` 로 대조해 불일치·부재면 NULL 스탬프한다(400 없음).
@@ -329,6 +334,7 @@ export class WorkerJobsController {
     @Body() dto: CreateComposeMixedJobDto,
     @CurrentUser()
     user?: {
+      userId?: string | number;
       siteId?: string;
       role?: string;
       source?: string;
@@ -338,6 +344,8 @@ export class WorkerJobsController {
     // 자동조립 경로의 인가 게이트가 API 키로 통과돼 권한 상승이 된다
     // (optional-api-key-site.guard.ts 불변식 2).
     @ApiKeySite() apiKeySite?: ApiKeySitePayload,
+    // 자동조립 소유 판정 — 게스트 세션은 이 헤더의 게스트 토큰이 세션 토큰과 일치해야 한다.
+    @Headers('x-guest-token') guestTokenHeader?: string,
   ): Promise<WorkerJob> {
     // 검증된 shop-session 이 있을 때만 테넌트 컨텍스트로 넘긴다(cutout 라우트와 동일 규약).
     // 없으면 undefined → 자동조립 요청은 서비스에서 404(SESSION_NOT_FOUND) 로 fail-closed.
@@ -345,13 +353,21 @@ export class WorkerJobsController {
     // 운영자 대리 편집 토큰은 인정하지 않는다(2026-09-29): 운영자 권한은 지정 세션에 한정되는데,
     // 이 경로의 자동조립은 주문 스코프 없이 사이트 범위로 동작하므로 운영자에게 열면 범위가 넓어진다.
     // 합성은 파트너 서버가 사이트 키로 트리거한다.
-    const caller =
+    // owner: shop 호출자의 세션 소유 판정 근거(회원 번호 — 양의 정수만, 그 밖 NaN · 게스트 토큰 헤더).
+    const caller: ComposeAssembleCaller | undefined =
       user?.source === 'shop' && typeof user?.siteId === 'string'
         ? {
             siteId: user.siteId,
             allowedOrderSeqnos: Array.isArray(user.allowedOrderSeqnos)
               ? user.allowedOrderSeqnos
               : undefined,
+            owner: {
+              memberSeqno: memberSeqnoOf(user.userId),
+              guestToken:
+                typeof guestTokenHeader === 'string' && guestTokenHeader.length > 0
+                  ? guestTokenHeader
+                  : undefined,
+            },
           }
         : undefined;
     return await this.workerJobsService.createComposeMixedJob(dto, caller, apiKeySite);

@@ -1,9 +1,10 @@
-import { IsString, IsNumber, IsOptional, IsArray } from 'class-validator';
+import { IsString, IsNumber, IsInt, Min, IsOptional, IsArray } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateShopSessionDto {
-  @ApiProperty({ description: 'bookmoa 회원 번호', example: 123 })
-  @IsNumber()
+  @ApiProperty({ description: '회원 번호(0 이상 정수, 0 = 비회원 방문자)', example: 123, minimum: 0 })
+  @IsInt()
+  @Min(0)
   memberSeqno: number;
 
   @ApiProperty({ description: '회원 ID (이메일)', example: 'user@example.com' })

@@ -9,14 +9,15 @@
  *  3. per-field 우선순위: dto 명시값이 언제나 세션 도출값을 이긴다(자동조립은 빈 자리만).
  *  4. 인가(자동조립 경로 한정): 호출자 siteId 없음 / session.siteId 없음 / 불일치 →
  *     전부 404 SESSION_NOT_FOUND (미존재와 동일한 응답 = 존재 은닉, books 패턴).
+ *     shop 호출자(owner)의 세션 소유 판정 실패도 같은 404.
  *  5. 빈 입력 400 EMPTY_COMPOSE_INPUT — 워커 백지 1p COMPLETED 산출 차단.
  *  6. 자동조립 도출 실패 400 SESSION_ASSEMBLY_INCOMPLETE + missing 배열.
  *  7. 워커 무변경 보장: 도출값이 **기존 큐 키 이름** 그대로 실린다(신규 키 0건).
  *
  * 인스턴스 생성 패턴은 worker-jobs.service.compose-mixed.spec.ts 선례를 따른다.
  */
-import { BadRequestException, NotFoundException } from '@nestjs/common';
-import { WorkerJobsService } from './worker-jobs.service';
+import { BadRequestException, Logger, NotFoundException } from '@nestjs/common';
+import { WorkerJobsService, type ComposeAssembleCaller } from './worker-jobs.service';
 
 /**
  * 기존(자동조립 이전) compose-mixed 큐 페이로드의 키 집합 — 워커 계약 동결.
@@ -466,6 +467,108 @@ describe('WorkerJobsService.createComposeMixedJob — 자동조립 opt-in', () =
       );
 
       expect(job.id).toBe('job-asm');
+    });
+  });
+
+  // ────────────────────────────────────────────────────────────────────────
+  // 4-b. 세션 소유(shop 호출자 owner) — 실패는 같은 404 SESSION_NOT_FOUND
+  // ────────────────────────────────────────────────────────────────────────
+  describe('세션 소유(shop 호출자) — 게스트 토큰 일치 / 양의 회원 번호 일치 / 주문권한 일치', () => {
+    const assembleDto = { editSessionId: 'sess-1', assembleFromSession: true };
+    const GUEST_TOKEN = 'guest-token-value-7c1e';
+    const guestSession = { ...sessionA, memberSeqno: 0, guestToken: GUEST_TOKEN };
+    const memberSession = { ...sessionA, memberSeqno: 123, guestToken: null };
+    let logSpy: jest.SpyInstance;
+
+    beforeEach(() => {
+      templateSetsService.findOne.mockResolvedValue(templateSetA4);
+      const logger = (service as unknown as { logger: Logger }).logger;
+      logSpy = jest.spyOn(logger, 'log').mockImplementation(() => undefined);
+      jest.spyOn(logger, 'warn').mockImplementation(() => undefined);
+    });
+
+    const shopCaller = (
+      owner: { memberSeqno: number; guestToken?: string },
+      allowedOrderSeqnos?: unknown,
+    ): ComposeAssembleCaller => ({ siteId: 'site-A', allowedOrderSeqnos, owner });
+
+    const expectAllowed = async (session: unknown, caller: ComposeAssembleCaller): Promise<void> => {
+      editSessionRepository.findOne.mockResolvedValue(session);
+      const job = await service.createComposeMixedJob({ ...assembleDto }, caller);
+      expect(job.id).toBe('job-asm');
+      expect(synthesisQueue.add).toHaveBeenCalledTimes(1);
+    };
+    const expectDenied = async (session: unknown, caller: ComposeAssembleCaller): Promise<void> => {
+      editSessionRepository.findOne.mockResolvedValue(session);
+      const err = await catchError(() => service.createComposeMixedJob({ ...assembleDto }, caller));
+      expect(err).toBeInstanceOf(NotFoundException);
+      expect(err.getResponse()).toMatchObject({ code: 'SESSION_NOT_FOUND', details: { sessionId: 'sess-1' } });
+      expect(workerJobRepository.save).not.toHaveBeenCalled();
+      expect(synthesisQueue.add).not.toHaveBeenCalled();
+      const logs = logSpy.mock.calls.map((c: unknown[]) => String(c[0]));
+      expect(logs.filter((m) => m.startsWith('[compose-assemble]'))).toEqual([
+        '[compose-assemble] denied-owner session=sess-1 site=site-A source=shop',
+      ]);
+      for (const call of logSpy.mock.calls as unknown[][]) {
+        expect(JSON.stringify(call)).not.toContain(GUEST_TOKEN);
+      }
+    };
+
+    it('OW1: 게스트 세션 + 일치하는 X-Guest-Token → 통과(201)', async () => {
+      await expectAllowed(guestSession, shopCaller({ memberSeqno: Number.NaN, guestToken: GUEST_TOKEN }));
+    });
+
+    it('OW2: 게스트 세션 + 게스트 토큰 없음 → 404 + 관측 로그 1회(토큰 원문 없음)', async () => {
+      await expectDenied(guestSession, shopCaller({ memberSeqno: Number.NaN }));
+    });
+
+    it('OW3: 게스트 세션 + 다른 게스트 토큰 → 404', async () => {
+      await expectDenied(guestSession, shopCaller({ memberSeqno: Number.NaN, guestToken: 'other-token-0000' }));
+    });
+
+    it('OW4: 게스트 세션은 주문권한·회원 번호가 있어도 게스트 토큰 일치가 필요 → 404', async () => {
+      await expectDenied(guestSession, shopCaller({ memberSeqno: 123 }, [111]));
+    });
+
+    it('OW5: 회원 세션 + 같은 양의 회원 번호 → 통과(201)', async () => {
+      await expectAllowed(memberSession, shopCaller({ memberSeqno: 123 }));
+    });
+
+    it('OW6: 회원 세션 + 다른 회원 번호·주문권한 없음 → 404', async () => {
+      await expectDenied(memberSession, shopCaller({ memberSeqno: 456 }));
+    });
+
+    it('OW7: 회원 세션 + 회원 번호 없음 + 주문권한에 세션 주문 번호 있음 → 통과(201)', async () => {
+      await expectAllowed(memberSession, shopCaller({ memberSeqno: Number.NaN }, ['111']));
+    });
+
+    it('OW8: 무주 세션(memberSeqno 0·게스트 토큰 없음) + 회원 번호 없음·주문권한 없음 → 404', async () => {
+      await expectDenied({ ...memberSession, memberSeqno: 0 }, shopCaller({ memberSeqno: Number.NaN }));
+    });
+
+    it('OW9: 주문 번호 0 세션은 주문권한 [0] 으로 통과하지 않는다 → 404', async () => {
+      await expectDenied(
+        { ...memberSession, memberSeqno: 0, orderSeqno: 0 },
+        shopCaller({ memberSeqno: Number.NaN }, [0]),
+      );
+    });
+
+    it('OW10: owner 없는 내부 호출(관리자 합성 경로의 caller 형태)은 소유 판정을 하지 않는다', async () => {
+      await expectAllowed(guestSession, { siteId: 'site-A' });
+    });
+
+    it('OW11: 만료된 게스트 세션 + 일치하는 X-Guest-Token → 404', async () => {
+      await expectDenied(
+        { ...guestSession, guestExpiresAt: new Date(Date.now() - 60_000) },
+        shopCaller({ memberSeqno: Number.NaN, guestToken: GUEST_TOKEN }),
+      );
+    });
+
+    it('OW12: 만료 전 게스트 세션 + 일치하는 X-Guest-Token → 통과(201)', async () => {
+      await expectAllowed(
+        { ...guestSession, guestExpiresAt: new Date(Date.now() + 3600_000) },
+        shopCaller({ memberSeqno: Number.NaN, guestToken: GUEST_TOKEN }),
+      );
     });
   });
 

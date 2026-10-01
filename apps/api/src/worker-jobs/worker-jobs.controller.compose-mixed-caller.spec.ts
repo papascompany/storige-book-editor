@@ -7,6 +7,7 @@
  *  2. `OptionalShopJwtGuard` 가 붙어 있다 — 토큰이 없거나 위조여도 401 이 아니라 통과.
  *  3. **caller 는 검증된 shop-session 에서만 복원**된다. 다른 출처(admin JWT 등)의 siteId 나
  *     body 로 들어온 siteId 는 자동조립 인가 주체가 될 수 없다(테넌트 위조 차단).
+ *  4. shop caller 에는 세션 소유 판정 근거(owner: 회원 번호 — 양의 정수만, 그 밖 NaN · X-Guest-Token)가 실린다.
  */
 import { IS_PUBLIC_KEY } from '../auth/decorators/public.decorator';
 import { OptionalShopJwtGuard } from '../auth/guards/optional-shop-jwt.guard';
@@ -30,6 +31,8 @@ describe('WorkerJobsController.createComposeMixed — 자동조립 caller 배선
   });
 
   const callerArg = () => workerJobsService.createComposeMixedJob.mock.calls[0][1];
+  /** userId·게스트 토큰이 없는 shop 호출자의 owner */
+  const anonymousOwner = { memberSeqno: Number.NaN, guestToken: undefined };
 
   // ── 라우트 계약(동결) ──────────────────────────────────────────────────
   it('@Public() 유지 — additive 가드를 붙여도 동결 계약(auth:public)이 유지된다', () => {
@@ -45,7 +48,38 @@ describe('WorkerJobsController.createComposeMixed — 자동조립 caller 배선
   // ── caller 복원 규약 ───────────────────────────────────────────────────
   it("검증된 shop-session(source='shop' + siteId) 만 caller 로 전달", async () => {
     await controller.createComposeMixed(dto, { source: 'shop', siteId: 'site-A' });
-    expect(callerArg()).toEqual({ siteId: 'site-A', allowedOrderSeqnos: undefined });
+    expect(callerArg()).toEqual({ siteId: 'site-A', allowedOrderSeqnos: undefined, owner: anonymousOwner });
+  });
+
+  // ── 세션 소유 판정 근거(owner) ─────────────────────────────────────────
+  it.each<[string | number | undefined, number]>([
+    ['123', 123],
+    [123, 123],
+    ['0', Number.NaN],
+    ['-5', Number.NaN],
+    ['1.5', Number.NaN],
+    [undefined, Number.NaN],
+  ])('owner.memberSeqno — userId %p → %p', async (userId, expected) => {
+    await controller.createComposeMixed(dto, { source: 'shop', siteId: 'site-A', userId });
+    expect(callerArg().owner.memberSeqno).toEqual(expected);
+  });
+
+  it('owner.guestToken — X-Guest-Token 헤더 값을 싣고, 빈 문자열·미전송은 undefined', async () => {
+    const user = { source: 'shop', siteId: 'site-A' };
+    await controller.createComposeMixed(dto, user, undefined, 'guest-token-value-7c1e');
+    await controller.createComposeMixed(dto, user, undefined, '');
+    await controller.createComposeMixed(dto, user, undefined, undefined);
+    const owners = workerJobsService.createComposeMixedJob.mock.calls.map((c: unknown[]) => (c[1] as { owner: unknown }).owner);
+    expect(owners).toEqual([
+      { memberSeqno: Number.NaN, guestToken: 'guest-token-value-7c1e' },
+      anonymousOwner,
+      anonymousOwner,
+    ]);
+  });
+
+  it('shop 이 아닌 출처는 X-Guest-Token 을 보내도 caller 가 되지 않는다', async () => {
+    await controller.createComposeMixed(dto, undefined, undefined, 'guest-token-value-7c1e');
+    expect(callerArg()).toBeUndefined();
   });
 
   // ── 주문 스코프(적대검증 MAJOR) ────────────────────────────────────────
@@ -58,7 +92,7 @@ describe('WorkerJobsController.createComposeMixed — 자동조립 caller 배선
       siteId: 'site-A',
       allowedOrderSeqnos: [111, 112],
     });
-    expect(callerArg()).toEqual({ siteId: 'site-A', allowedOrderSeqnos: [111, 112] });
+    expect(callerArg()).toEqual({ siteId: 'site-A', allowedOrderSeqnos: [111, 112], owner: anonymousOwner });
   });
 
   it('allowedOrderSeqnos 가 배열이 아니면 undefined 로 정규화(호환 모드)', async () => {
@@ -67,7 +101,7 @@ describe('WorkerJobsController.createComposeMixed — 자동조립 caller 배선
       siteId: 'site-A',
       allowedOrderSeqnos: 'all',
     });
-    expect(callerArg()).toEqual({ siteId: 'site-A', allowedOrderSeqnos: undefined });
+    expect(callerArg()).toEqual({ siteId: 'site-A', allowedOrderSeqnos: undefined, owner: anonymousOwner });
   });
 
   it('토큰 없음(게스트) → caller undefined (자동조립은 서비스에서 404 fail-closed)', async () => {
@@ -122,7 +156,7 @@ describe('WorkerJobsController.createComposeMixed — 자동조립 caller 배선
         { source: 'shop', siteId: 'site-JWT', allowedOrderSeqnos: [111] },
         apiKeySite,
       );
-      expect(callerArg()).toEqual({ siteId: 'site-JWT', allowedOrderSeqnos: [111] });
+      expect(callerArg()).toEqual({ siteId: 'site-JWT', allowedOrderSeqnos: [111], owner: anonymousOwner });
       expect(workerJobsService.createComposeMixedJob.mock.calls[0][2]).toEqual(apiKeySite);
     });
   });

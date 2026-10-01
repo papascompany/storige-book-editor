@@ -114,6 +114,23 @@ export function isStaffSilentJob(job: { options?: unknown } | null | undefined):
   return (marker as { notifyPartner?: unknown }).notifyPartner !== true;
 }
 
+/**
+ * compose-mixed 자동조립 호출자 컨텍스트.
+ *  - siteId·allowedOrderSeqnos: 검증된 shop-session JWT 에서 복원(사이트 일치·주문 스코프 판정).
+ *  - owner: shop 호출자의 세션 소유 판정 근거. 컨트롤러가 shop 호출자에게 항상 채운다.
+ *    내부 호출(관리자 합성 createStaffComposeFromSession)은 넘기지 않으며 소유 판정을 하지 않는다.
+ */
+export interface ComposeAssembleCaller {
+  siteId?: string;
+  allowedOrderSeqnos?: unknown;
+  owner?: {
+    /** 회원 번호 — 양의 정수만, 그 밖 NaN */
+    memberSeqno: number;
+    /** X-Guest-Token 헤더 값(없으면 undefined) */
+    guestToken?: string;
+  };
+}
+
 @Injectable()
 export class WorkerJobsService implements OnModuleInit {
   private readonly logger = new Logger(WorkerJobsService.name);
@@ -1323,7 +1340,7 @@ export class WorkerJobsService implements OnModuleInit {
    */
   private async assembleComposeInputFromSession(
     dto: ComposeMixedJobInput,
-    caller?: { siteId?: string; allowedOrderSeqnos?: unknown },
+    caller?: ComposeAssembleCaller,
   ): Promise<ComposeMixedJobInput> {
     const missing: string[] = [];
 
@@ -1377,6 +1394,30 @@ export class WorkerJobsService implements OnModuleInit {
           `sessionOrder=${session.orderSeqno ?? 'NULL'} allowed=${allowedOrderSeqnos.length}건`,
       );
       throw notFound();
+    }
+
+    // 🔒 세션 소유 판정(shop 호출자, owner 가 있을 때) — 실패는 위와 같은 404.
+    //    게스트 세션: 만료 전이고 X-Guest-Token 헤더가 세션 게스트 토큰과 일치해야 한다
+    //      (만료 판정은 게스트 경로 assertGuestOwnership 과 같다).
+    //    회원 세션: 양의 회원 번호 일치, 또는 토큰 주문권한(allowedOrderSeqnos)에 세션 주문 번호(0 제외)가 있음.
+    const owner = caller?.owner;
+    if (owner) {
+      const sessionOrder = Number(session.orderSeqno);
+      const permitted = session.guestToken
+        ? (!session.guestExpiresAt || session.guestExpiresAt >= new Date()) &&
+          typeof owner.guestToken === 'string' &&
+          owner.guestToken === session.guestToken
+        : (owner.memberSeqno > 0 && Number(session.memberSeqno) === owner.memberSeqno) ||
+          (sessionOrder !== 0 &&
+            Array.isArray(allowedOrderSeqnos) &&
+            allowedOrderSeqnos.map(Number).includes(sessionOrder));
+      if (!permitted) {
+        // 세션 id·site·출처만 남긴다(게스트 토큰·JWT 원문은 기록하지 않는다).
+        this.logger.log(
+          `[compose-assemble] denied-owner session=${session.id} site=${session.siteId ?? '-'} source=shop`,
+        );
+        throw notFound();
+      }
     }
 
     // 템플릿셋(판형·면지·표지 편집여부) + 템플릿 상세(spreadConfig) — 미존재/미지정은
@@ -1737,7 +1778,7 @@ export class WorkerJobsService implements OnModuleInit {
    */
   async createComposeMixedJob(
     rawDto: ComposeMixedJobInput,
-    caller?: { siteId?: string; allowedOrderSeqnos?: unknown },
+    caller?: ComposeAssembleCaller,
     /**
      * [D6-ⓐ] 검증된 사이트 키 컨텍스트(OptionalApiKeySiteGuard). `caller` 와 **합치지 말 것** —
      * 분리가 자동조립 인가 게이트의 권한 상승을 막는 장치다(가드 불변식 2).

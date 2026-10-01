@@ -7,13 +7,16 @@
  *    주문권한(allowedOrderSeqnos)이 있는 호출자는 그 주문의 세션 목록(종전과 동일).
  *  - siteId 분기: shop 토큰은 자기 site 여도 403 FORBIDDEN_SITE_QUERY.
  *  - staff·음수 회원 번호와 admin-app 사용자 목록은 불변.
+ *  - 게스트 세션의 guestToken 은 주문권한 orderSeqno 목록에만, 세션 사이트가 호출자 사이트와 같을 때만 포함
+ *    (관측 로그 1줄, 토큰 원문 없음). 사이트 미지정 게스트 세션은 주문권한 목록에서 제외.
+ *    그 밖의 분기(staff·사이트 운영자 조회)는 게스트 세션 항목에서 guestToken 키를 뺀다.
  *
  * 실제 EditSessionsService + EditSessionsController(직접 생성), 저장소는 mock.
  */
 import 'reflect-metadata';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { HttpException } from '@nestjs/common';
+import { HttpException, Logger } from '@nestjs/common';
 import { EditSessionsController } from './edit-sessions.controller';
 import { EditSessionsService } from './edit-sessions.service';
 import { EditSessionEntity, SessionStatus } from './entities/edit-session.entity';
@@ -96,6 +99,7 @@ describe('EditSessionsController — 목록 회원 번호 판정 (2026-09-30)', 
   let controller: EditSessionsController;
   let table: Record<string, EditSessionEntity>;
   let findByMemberSeqnoSpy: jest.SpyInstance;
+  let logSpy: jest.SpyInstance;
 
   const sessionRepo = {
     findOne: jest.fn(),
@@ -146,7 +150,17 @@ describe('EditSessionsController — 목록 회원 번호 판정 (2026-09-30)', 
     service = module.get(EditSessionsService);
     controller = new EditSessionsController(service);
     findByMemberSeqnoSpy = jest.spyOn(service, 'findByMemberSeqno');
+    const controllerLogger = (controller as unknown as { logger: Logger }).logger;
+    logSpy = jest.spyOn(controllerLogger, 'log').mockImplementation(() => undefined);
+    jest.spyOn(controllerLogger, 'warn').mockImplementation(() => undefined);
   });
+
+  const guestReadLogs = (): string[] =>
+    logSpy.mock.calls
+      .map((c: unknown[]) => String(c[0]))
+      .filter((m: string) => m.startsWith('[guest-read]'));
+  const byId = (r: { sessions: Array<{ id: string }> }, id: string): Record<string, unknown> =>
+    r.sessions.find((s) => s.id === id) as unknown as Record<string, unknown>;
 
   it.each(['0', '0.5'])(
     "L1: shop sub '%s' 의 memberSeqno=0 조회 → 403 FORBIDDEN_MEMBER_QUERY, 조회 미실행",
@@ -217,6 +231,67 @@ describe('EditSessionsController — 목록 회원 번호 판정 (2026-09-30)', 
     expect(ids(out).sort()).toEqual([GUEST_SESSION, MEMBER_SESSION, OTHER_MEMBER_SESSION].sort());
     const guest = out.sessions.find((s) => s.id === GUEST_SESSION) as unknown as Record<string, unknown>;
     expect(guest.guestToken).toBe(GUEST_TOKEN);
+    // 관측 로그 1회 — 주문 번호·게스트 세션 수·site·출처만(토큰 원문 없음)
+    expect(guestReadLogs()).toEqual([
+      `[guest-read] order-grant order=100 guest-sessions=1 site=${SITE_A} source=shop`,
+    ]);
+    for (const call of logSpy.mock.calls as unknown[][]) {
+      expect(JSON.stringify(call)).not.toContain(GUEST_TOKEN);
+    }
+  });
+
+  it('L7-e: 주문권한 목록은 사이트 미지정(NULL) 게스트 세션을 포함하지 않는다(같은 주문 번호)', async () => {
+    const NULL_SITE_GUEST = '55555555-5555-4555-8555-555555555555';
+    const NULL_SITE_TOKEN = 'guest-token-null-site-9d2a';
+    table[NULL_SITE_GUEST] = baseSession(NULL_SITE_GUEST, {
+      memberSeqno: 0,
+      siteId: null,
+      guestToken: NULL_SITE_TOKEN,
+      guestExpiresAt: new Date(Date.now() + 3600_000),
+    });
+    const out = await controller.findSessions('100', undefined, undefined, {
+      ...shopUser('0'),
+      allowedOrderSeqnos: [100],
+    });
+    expect(ids(out).sort()).toEqual([GUEST_SESSION, MEMBER_SESSION, OTHER_MEMBER_SESSION].sort());
+    expect(JSON.stringify(out)).not.toContain(NULL_SITE_TOKEN);
+    expect(byId(out, GUEST_SESSION).guestToken).toBe(GUEST_TOKEN);
+  });
+
+  it('L7-f: 사이트가 없는 토큰의 주문권한 목록 → 게스트 세션 항목에 guestToken 키 없음, 회원 세션은 guestToken: null', async () => {
+    const out = await controller.findSessions('100', undefined, undefined, {
+      userId: '0',
+      role: 'customer',
+      source: 'shop',
+      allowedOrderSeqnos: [100],
+    });
+    expect(ids(out).sort()).toEqual([GUEST_SESSION, MEMBER_SESSION, OTHER_MEMBER_SESSION].sort());
+    expect('guestToken' in byId(out, GUEST_SESSION)).toBe(false);
+    expect(byId(out, MEMBER_SESSION)).toHaveProperty('guestToken', null);
+    expect(JSON.stringify(out)).not.toContain(GUEST_TOKEN);
+  });
+
+  it('L11: staff 의 orderSeqno·memberSeqno=0·siteId 조회와 사이트 운영자의 siteId 조회 → 게스트 세션 항목에 guestToken 키 없음, 회원 세션은 guestToken: null', async () => {
+    jest.spyOn(service, 'findBySiteId').mockResolvedValue([table[GUEST_SESSION], table[MEMBER_SESSION]]);
+    const staff = adminAppUser('ADMIN');
+    const siteOperator = { ...adminAppUser('SITE_ADMIN'), siteRoles: [{ siteId: SITE_A, role: 'SITE_ADMIN' }] };
+    const results = [
+      await controller.findSessions('100', undefined, undefined, staff),
+      await controller.findSessions(undefined, '0', undefined, staff),
+      await controller.findSessions(undefined, undefined, SITE_A, staff),
+      await controller.findSessions(undefined, undefined, SITE_A, siteOperator),
+    ];
+    for (const out of results) {
+      const guest = byId(out, GUEST_SESSION);
+      expect(guest).toBeDefined();
+      expect('guestToken' in guest).toBe(false);
+      expect(guest.guestExpiresAt).toBeInstanceOf(Date);
+      expect(JSON.stringify(out)).not.toContain(GUEST_TOKEN);
+    }
+    for (const out of [results[0], results[2], results[3]]) {
+      expect(byId(out, MEMBER_SESSION)).toHaveProperty('guestToken', null);
+    }
+    expect(guestReadLogs()).toEqual([]);
   });
 
   it('L7-c: allowedOrderSeqnos 에 0 이 있어도 orderSeqno=0 조회는 본인 소유 필터 적용', async () => {

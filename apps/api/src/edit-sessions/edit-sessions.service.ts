@@ -96,6 +96,17 @@ export function partnerVisibleSynthJobSql(alias: string): string {
   return `(JSON_EXTRACT(${alias}.options, '$.staffInitiated') IS NULL OR JSON_EXTRACT(${alias}.options, '$.staffInitiated.notifyPartner') = 'true')`
 }
 
+/**
+ * 회원 경로의 회원 번호 — 토큰 userId 가 양의 정수 문자열(/^[1-9][0-9]*$/)일 때만 그 수, 그 밖(없음·0·음수·소수·
+ * 지수표기·비숫자)은 NaN. 회원 소유 판정(GET·PATCH·DELETE :id, :id/complete, guest/migrate)과
+ * compose-mixed 자동조립 소유 판정이 같은 규칙을 쓴다.
+ */
+export function memberSeqnoOf(userId: unknown): number {
+  if (typeof userId !== 'string' && typeof userId !== 'number') return Number.NaN;
+  const raw = String(userId);
+  return /^[1-9][0-9]*$/.test(raw) ? Number(raw) : Number.NaN;
+}
+
 @Injectable()
 export class EditSessionsService {
   private readonly logger = new Logger(EditSessionsService.name);
@@ -270,9 +281,10 @@ export class EditSessionsService {
     // P2c 테넌트 격리: 호출자 site 세션 + 레거시 NULL(시스템공유)만 노출. 타 테넌트 세션·PDF URL 차단.
     // (order_seqno 는 사이트별 네임스페이스가 없어, 미대조 시 교차 열람 가능했음.)
     // worker 역할(내부 워커)·caller 미지정(내부 호출)은 바이패스.
+    // 사이트 미지정(NULL) 세션 중 게스트 세션(guest_token 보유)은 포함하지 않는다.
     if (caller && caller.role !== 'worker' && caller.siteId) {
       qb.andWhere(
-        '(session.siteId = :callerSiteId OR session.siteId IS NULL)',
+        '(session.siteId = :callerSiteId OR (session.siteId IS NULL AND session.guestToken IS NULL))',
         { callerSiteId: caller.siteId },
       );
     }
@@ -691,7 +703,7 @@ export class EditSessionsService {
       ? true
       : isGuest
         ? opts?.guestVerified === true || EditSessionsService.isStaffRole(caller?.role)
-        : Number(session.memberSeqno) === userId;
+        : userId > 0 && Number(session.memberSeqno) === userId;
     if (!allowed) {
       throw new ForbiddenException({
         code: 'PERMISSION_DENIED',
@@ -1163,6 +1175,13 @@ export class EditSessionsService {
     memberSeqno: number,
     callerSiteId?: string | null,
   ): Promise<{ migratedCount: number; sessionIds: string[] }> {
+    // 흡수 대상 회원 번호는 양의 정수만(조회·저장 전에 판정).
+    if (!(memberSeqno > 0)) {
+      throw new ForbiddenException({
+        code: 'AUTH_REQUIRED',
+        message: '회원 마이그레이션은 로그인 사용자만 가능합니다.',
+      });
+    }
     const sessions = await this.sessionRepository.find({
       where: { guestToken },
     });
@@ -1416,7 +1435,7 @@ export class EditSessionsService {
         message: '비회원 편집 세션은 로그인 후(세션 흡수) 완료할 수 있습니다.',
       });
     }
-    if (!op && !staff && !isGuest && Number(session.memberSeqno) !== userId) {
+    if (!op && !staff && !isGuest && (!(userId > 0) || Number(session.memberSeqno) !== userId)) {
       throw new ForbiddenException({
         code: 'PERMISSION_DENIED',
         message: '이 세션을 완료할 권한이 없습니다.',
@@ -2026,7 +2045,13 @@ export class EditSessionsService {
       // 관리자 편집데이터 관리(2026-09-29): 범위 안 + 삭제 권한(전역 또는 사이트 행 SITE_ADMIN)만.
       // 감사 기록은 호출부(StaffEditDataService)가 삭제 전에 남긴다.
       if (!caller.staff.canDelete) throw staffDeleteNotAllowed();
-    } else if (Number(session.memberSeqno) !== userId) {
+    } else if (!(userId > 0) || Number(session.memberSeqno) !== userId) {
+      // 운영 관측: 회원 경로의 게스트 세션 삭제 거부(세션 id·site 만 기록, 토큰 원문 없음).
+      if (session.guestToken) {
+        this.logger.log(
+          `[guest-delete] denied-member-route session=${session.id} site=${session.siteId ?? '-'}`,
+        );
+      }
       throw new ForbiddenException({
         code: 'PERMISSION_DENIED',
         message: '이 세션을 삭제할 권한이 없습니다.',
