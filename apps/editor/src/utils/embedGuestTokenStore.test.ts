@@ -3,7 +3,10 @@ import {
   rememberEmbedGuestToken,
   recallEmbedGuestToken,
   forgetEmbedGuestToken,
+  recallEmbedGuestDraft,
+  forgetEmbedGuestDraft,
   hasExpiredEmbedGuestToken,
+  sameEmbedGuestDraftKey,
   readGuestTokenFragment,
   stripGuestTokenFragment,
 } from './embedGuestTokenStore'
@@ -136,6 +139,148 @@ describe('embedGuestTokenStore — 탭 단위 게스트 토큰 기억', () => {
     vi.stubGlobal('sessionStorage', undefined)
     expect(() => rememberEmbedGuestToken('s1', 'tok-1', FUTURE)).not.toThrow()
     expect(recallEmbedGuestToken('s1', NOW)).toBeNull()
+  })
+})
+
+describe('embedGuestTokenStore — 주문 초안 매핑(주문번호·mode·templateSetId → sessionId)', () => {
+  const DRAFT = { orderSeqno: 1234567890123, mode: 'both', templateSetId: 'ts-1' }
+
+  beforeEach(() => {
+    sessionStorage.clear()
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    sessionStorage.clear()
+  })
+
+  function draftEntries(): Array<[string, string]> {
+    const out: Array<[string, string]> = []
+    for (let i = 0; i < sessionStorage.length; i++) {
+      const k = sessionStorage.key(i) as string
+      if (k.startsWith('storige_embed_guest_draft_v1:')) out.push([k, sessionStorage.getItem(k) as string])
+    }
+    return out
+  }
+
+  it('토큰 기억과 함께 매핑을 기억하고 recall 은 sessionId 와 토큰을 돌려준다(매핑 값에 토큰 없음)', () => {
+    rememberEmbedGuestToken('s1', 'tok-1', FUTURE, DRAFT)
+    expect(recallEmbedGuestDraft(DRAFT, NOW)).toEqual({ sessionId: 's1', guestToken: 'tok-1' })
+    const entries = draftEntries()
+    expect(entries).toHaveLength(1)
+    expect(entries[0][1]).toBe('s1')
+    expect(entries[0].join('')).not.toContain('tok-1')
+    expect(localStorage.length).toBe(0)
+  })
+
+  it('주문번호는 문자열·숫자를 같은 키로 보고, templateSetId 없음·빈 값·null 은 같은 키다', () => {
+    rememberEmbedGuestToken('s1', 'tok-1', FUTURE, { orderSeqno: '1234567890123', mode: 'both', templateSetId: 'ts-1' })
+    expect(recallEmbedGuestDraft(DRAFT, NOW)?.sessionId).toBe('s1')
+
+    rememberEmbedGuestToken('s2', 'tok-2', FUTURE, { orderSeqno: 77, mode: 'cover', templateSetId: null })
+    expect(recallEmbedGuestDraft({ orderSeqno: 77, mode: 'cover', templateSetId: '' }, NOW)?.sessionId).toBe('s2')
+    expect(recallEmbedGuestDraft({ orderSeqno: 77, mode: 'cover' }, NOW)?.sessionId).toBe('s2')
+  })
+
+  it('주문번호·mode·templateSetId 가 하나라도 다르면 매핑 없음', () => {
+    rememberEmbedGuestToken('s1', 'tok-1', FUTURE, DRAFT)
+    expect(recallEmbedGuestDraft({ ...DRAFT, orderSeqno: 1234567890124 }, NOW)).toBeNull()
+    expect(recallEmbedGuestDraft({ ...DRAFT, mode: 'cover' }, NOW)).toBeNull()
+    expect(recallEmbedGuestDraft({ ...DRAFT, templateSetId: 'ts-2' }, NOW)).toBeNull()
+    expect(recallEmbedGuestDraft({ ...DRAFT, templateSetId: null }, NOW)).toBeNull()
+  })
+
+  it('호스트 범위(부모 출처·사이트 id)가 다르면 매핑 없음, 같으면 매핑을 돌려준다', () => {
+    const scoped = { ...DRAFT, hostOrigin: 'https://shop-a.example', siteId: 'site-a' }
+    rememberEmbedGuestToken('s1', 'tok-1', FUTURE, scoped)
+    expect(recallEmbedGuestDraft(scoped, NOW)?.sessionId).toBe('s1')
+    expect(recallEmbedGuestDraft({ ...scoped, hostOrigin: 'https://shop-b.example' }, NOW)).toBeNull()
+    expect(recallEmbedGuestDraft({ ...scoped, siteId: 'site-b' }, NOW)).toBeNull()
+    expect(recallEmbedGuestDraft({ ...scoped, hostOrigin: null }, NOW)).toBeNull()
+    expect(recallEmbedGuestDraft({ ...scoped, siteId: null }, NOW)).toBeNull()
+    expect(recallEmbedGuestDraft(DRAFT, NOW)).toBeNull()
+    // 다른 범위의 조회는 기록을 지우지 않는다
+    expect(recallEmbedGuestDraft(scoped, NOW)?.sessionId).toBe('s1')
+  })
+
+  it('sameEmbedGuestDraftKey 는 매핑 키 기준으로 비교하고 매핑 불가 키는 false', () => {
+    expect(sameEmbedGuestDraftKey({ ...DRAFT, orderSeqno: '1234567890123', siteId: '' }, { ...DRAFT, siteId: null })).toBe(
+      true,
+    )
+    expect(sameEmbedGuestDraftKey(DRAFT, { ...DRAFT, mode: 'cover' })).toBe(false)
+    expect(sameEmbedGuestDraftKey(DRAFT, { ...DRAFT, hostOrigin: 'https://shop-a.example' })).toBe(false)
+    expect(sameEmbedGuestDraftKey({ ...DRAFT, orderSeqno: 0 }, { ...DRAFT, orderSeqno: 0 })).toBe(false)
+  })
+
+  it('주문번호 0·빈 값·mode 없음·draftKey 미전달이면 매핑하지 않는다(토큰 기록은 한다)', () => {
+    rememberEmbedGuestToken('s0', 'tok-0', FUTURE, { orderSeqno: 0, mode: 'both', templateSetId: 'ts-1' })
+    rememberEmbedGuestToken('s0b', 'tok-0b', FUTURE, { orderSeqno: '0', mode: 'both', templateSetId: 'ts-1' })
+    rememberEmbedGuestToken('sn', 'tok-n', FUTURE, { orderSeqno: null, mode: 'both', templateSetId: 'ts-1' })
+    rememberEmbedGuestToken('sm', 'tok-m', FUTURE, { orderSeqno: 5, mode: '', templateSetId: 'ts-1' })
+    rememberEmbedGuestToken('sx', 'tok-x', FUTURE)
+    expect(draftEntries()).toHaveLength(0)
+    expect(recallEmbedGuestToken('s0', NOW)).toBe('tok-0')
+    expect(recallEmbedGuestDraft({ orderSeqno: 0, mode: 'both', templateSetId: 'ts-1' }, NOW)).toBeNull()
+  })
+
+  it('같은 키로 다시 기억하면 마지막 세션으로 바뀐다', () => {
+    rememberEmbedGuestToken('s1', 'tok-1', FUTURE, DRAFT)
+    rememberEmbedGuestToken('s2', 'tok-2', FUTURE, DRAFT)
+    expect(recallEmbedGuestDraft(DRAFT, NOW)).toEqual({ sessionId: 's2', guestToken: 'tok-2' })
+  })
+
+  it('토큰 기록이 만료됐으면 매핑과 토큰 기록을 지우고 null', () => {
+    rememberEmbedGuestToken('s1', 'tok-1', PAST, DRAFT)
+    expect(recallEmbedGuestDraft(DRAFT, NOW)).toBeNull()
+    expect(draftEntries()).toHaveLength(0)
+    expect(sessionStorage.getItem(KEY('s1'))).toBeNull()
+    expect(hasExpiredEmbedGuestToken('s1')).toBe(true)
+  })
+
+  it('토큰 기록이 지워졌으면 매핑도 지우고 null', () => {
+    rememberEmbedGuestToken('s1', 'tok-1', FUTURE, DRAFT)
+    forgetEmbedGuestToken('s1')
+    expect(recallEmbedGuestDraft(DRAFT, NOW)).toBeNull()
+    expect(draftEntries()).toHaveLength(0)
+  })
+
+  it('forgetEmbedGuestDraft 는 매핑만 지우고 토큰 기록은 유지한다', () => {
+    rememberEmbedGuestToken('s1', 'tok-1', FUTURE, DRAFT)
+    forgetEmbedGuestDraft(DRAFT)
+    expect(recallEmbedGuestDraft(DRAFT, NOW)).toBeNull()
+    expect(recallEmbedGuestToken('s1', NOW)).toBe('tok-1')
+  })
+
+  it('관리자 편집 탭에서는 매핑을 기록·조회하지 않는다', () => {
+    rememberEmbedGuestToken('s1', 'tok-1', FUTURE, DRAFT)
+    sessionStorage.setItem(ADMIN_EDIT_FLAG, '1')
+    expect(recallEmbedGuestDraft(DRAFT, NOW)).toBeNull()
+
+    sessionStorage.clear()
+    sessionStorage.setItem(ADMIN_EDIT_FLAG, '1')
+    rememberEmbedGuestToken('s2', 'tok-2', FUTURE, DRAFT)
+    expect(draftEntries()).toHaveLength(0)
+  })
+
+  it('sessionStorage 접근 예외·부재는 삼킨다(throw 없음, recall null)', () => {
+    vi.stubGlobal('sessionStorage', {
+      getItem: () => {
+        throw new Error('SecurityError')
+      },
+      setItem: () => {
+        throw new Error('QuotaExceededError')
+      },
+      removeItem: () => {
+        throw new Error('SecurityError')
+      },
+    })
+    expect(() => rememberEmbedGuestToken('s1', 'tok-1', FUTURE, DRAFT)).not.toThrow()
+    expect(() => forgetEmbedGuestDraft(DRAFT)).not.toThrow()
+    expect(recallEmbedGuestDraft(DRAFT, NOW)).toBeNull()
+
+    vi.stubGlobal('sessionStorage', undefined)
+    expect(() => rememberEmbedGuestToken('s1', 'tok-1', FUTURE, DRAFT)).not.toThrow()
+    expect(recallEmbedGuestDraft(DRAFT, NOW)).toBeNull()
   })
 })
 

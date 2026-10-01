@@ -93,11 +93,18 @@ import {
 } from './utils/loadProfiler'
 import { mergeRestoredSession, restoredCanvasCount } from './utils/sessionVersions'
 import { getAuthToken, setAuthToken, setEmbedRefreshToken } from './utils/authTokenStorage'
-import { recallEmbedGuestToken, rememberEmbedGuestToken } from './utils/embedGuestTokenStore'
+import {
+  recallEmbedGuestDraft,
+  recallEmbedGuestToken,
+  rememberEmbedGuestToken,
+  type EmbedGuestDraftKey,
+} from './utils/embedGuestTokenStore'
 import {
   fetchSessionForReopen,
   isTokenlessGuestItem,
   openGuestItemFromOrderList,
+  embedAccessTokenScopeOf,
+  openRememberedGuestDraft,
   sessionNotFoundMessage,
   sessionNotFoundReasonOf,
   type OrderListGuestOpenResult,
@@ -934,6 +941,14 @@ function EmbeddedEditor({
         //   mode/orderSeqno/templateSetId 는 세션에서 도출한다.
         //   (orderSeqno+mode 제공 시 기존 경로 — 주문 검색/생성 폴백 — 동작 불변)
         let editSession: EditSessionResponse | null = null
+        // 같은 탭에서 기억한 비회원 초안을 이어 연 경우 그 세션 id 와 사용한 게스트 토큰(기억 갱신용)
+        let resumedDraft: { sessionId: string; guestToken: string } | null = null
+        // 주문 초안 매핑의 호스트 범위(부모 출처·인증 토큰의 사이트)와 회원 토큰 여부
+        const accessTokenScope = embedAccessTokenScopeOf(effectiveToken)
+        const draftHostScope: Pick<EmbedGuestDraftKey, 'hostOrigin' | 'siteId'> = {
+          hostOrigin: parentOrigin ?? null,
+          siteId: accessTokenScope.siteId,
+        }
 
         // 세션 조회 실패 → SESSION_NOT_FOUND 전용 중단 화면 + editor.error(fatal) 1회.
         const failSessionNotFound = (failedSessionId: string, reason: SessionNotFoundReason): void => {
@@ -1021,10 +1036,12 @@ function EmbeddedEditor({
 
           // sessionId 없거나 조회 실패 → orderSeqno로 기존 세션 검색
           let orderItem: EditSessionResponse | null = null
+          let orderListEmpty = false
           try {
             const { sessions } = await editSessionsApi.findByOrder(orderSeqno)
             // 가장 최근 세션 사용 (canvasData가 있는 것 우선)
             orderItem = sessions.find(s => s.canvasData) || sessions[0] || null
+            orderListEmpty = orderItem === null
             if (orderItem) {
               console.log('[EmbeddedEditor] Found existing session for order:', orderItem.id)
             }
@@ -1051,6 +1068,38 @@ function EmbeddedEditor({
               return
             }
             editSession = opened.session
+          } else if (orderListEmpty && !accessTokenScope.member) {
+            // 비회원 토큰으로 연 주문별 세션 목록이 비었으면(주문 권한이 없는 비회원 토큰 등) 현재 탭에서 같은
+            // 주문·mode·templateSetId·호스트 범위로 기억한 비회원 세션을 그 세션의 기억 토큰으로 게스트 조회
+            // 경로 1회 열어 이어 쓴다. 회원 토큰은 이 매핑을 쓰지 않고 아래 세션 생성으로 진행한다.
+            // 거절(만료·불일치·없음·형식 오류)이나 응답 세션이 매핑 키와 맞지 않으면 기록을 지우고 아래 새 세션
+            // 생성으로 진행한다. 그 밖의 실패(5xx·타임아웃·연결 실패)는 새 세션으로 갈라지지 않도록 세션 조회
+            // 실패로 끝낸다.
+            if (!isMounted) return
+            const draftKey: EmbedGuestDraftKey = {
+              orderSeqno,
+              mode,
+              templateSetId: templateSetId || null,
+              ...draftHostScope,
+            }
+            const draft = recallEmbedGuestDraft(draftKey)
+            if (draft) {
+              try {
+                const resumed = await openRememberedGuestDraft(draftKey, draft)
+                if (resumed) {
+                  editSession = resumed
+                  resumedDraft = draft
+                  console.log('[EmbeddedEditor] Resumed remembered guest draft for order')
+                } else {
+                  console.warn('[EmbeddedEditor] Remembered guest draft rejected — creating a new session')
+                }
+              } catch (err) {
+                const apiErr: ApiError = axios.isAxiosError(err) ? parseApiError(err) : (err as ApiError)
+                console.warn('[EmbeddedEditor] Remembered guest draft load failed:', apiErr?.status, apiErr?.code)
+                handleSessionLoadFailure(apiErr, draft.sessionId, null)
+                return
+              }
+            }
           } else {
             editSession = orderItem
           }
@@ -1115,7 +1164,18 @@ function EmbeddedEditor({
 
         if (editSession) {
           setCurrentSession(editSession)
-          if (editSession.guestToken) rememberEmbedGuestToken(editSession.id, editSession.guestToken, editSession.guestExpiresAt ?? null)
+          // 게스트 토큰 기억 + 세션의 주문·mode·templateSetId 와 호스트 범위로 주문 초안 매핑(주문번호 0 이면 매핑 없음).
+          // 기억한 초안을 이어 연 응답에 토큰이 없으면 조회에 쓴 토큰으로 기억을 갱신한다.
+          const guestTokenToRemember =
+            editSession.guestToken || (resumedDraft?.sessionId === editSession.id ? resumedDraft.guestToken : null)
+          if (guestTokenToRemember) {
+            rememberEmbedGuestToken(editSession.id, guestTokenToRemember, editSession.guestExpiresAt ?? null, {
+              orderSeqno: editSession.orderSeqno,
+              mode: editSession.mode,
+              templateSetId: editSession.templateSetId ?? null,
+              ...draftHostScope,
+            })
+          }
           // 재진입 표기 시드 — useSaveStore.lastSavedAt 은 메모리 전용이라 재진입 직후 늘 null 이고,
           // 히스토리 패널이 '마지막 저장: 기록 없음' 을 표시했다. 서버가 진실을 갖고 있으므로 채운다.
           //

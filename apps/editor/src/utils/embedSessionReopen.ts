@@ -1,7 +1,8 @@
 /**
  * 명시 sessionId 세션 재오픈 공용 유틸 — embed.tsx(EmbeddedEditor), EmbedView(templateSetId 도출),
  * EditorWorkflowControls(첨부 배지)가 같은 조회 순서와 실패 사유 매핑을 쓴다.
- * 주문별 세션 목록에서 고른 비회원 세션 항목의 열기({@link openGuestItemFromOrderList})도 여기 둔다.
+ * 주문별 세션 목록에서 고른 비회원 세션 항목의 열기({@link openGuestItemFromOrderList})와
+ * 주문별 세션 목록이 비었을 때 같은 탭에서 기억한 비회원 초안 열기({@link openRememberedGuestDraft})도 여기 둔다.
  *
  * 조회 순서:
  *   1. 호스트가 이번 진입에 넘긴 게스트 토큰(fragment·EditorConfig.guestToken)으로 게스트 조회 경로
@@ -15,7 +16,15 @@
  */
 import axios from 'axios'
 import { editSessionsApi, type EditSessionResponse } from '../api'
-import { forgetEmbedGuestToken, hasExpiredEmbedGuestToken, recallEmbedGuestToken } from './embedGuestTokenStore'
+import {
+  forgetEmbedGuestDraft,
+  forgetEmbedGuestToken,
+  hasExpiredEmbedGuestToken,
+  recallEmbedGuestToken,
+  sameEmbedGuestDraftKey,
+  type EmbedGuestDraftKey,
+  type RememberedGuestDraft,
+} from './embedGuestTokenStore'
 import { redactGuestTokenInError } from './redactGuestToken'
 
 /** SESSION_NOT_FOUND 사유 */
@@ -185,6 +194,91 @@ export async function openGuestItemFromOrderList(
     if (reason === null) throw err
     forgetEmbedGuestToken(item.id)
     return { kind: 'not_opened', reason }
+  }
+}
+
+/**
+ * 같은 탭에서 기억한 비회원 초안({@link recallEmbedGuestDraft} 결과)을 게스트 조회 경로로 1회 연다.
+ * 기존 조회 경로·세션 생성은 쓰지 않는다.
+ *
+ * - 성공: 응답 세션의 id·주문번호·mode·templateSetId 가 매핑 키와 맞으면 세션을 돌려준다. 맞지 않으면
+ *   주문 초안 매핑만 지우고 null(토큰 기록은 그 세션의 명시 sessionId 재오픈용으로 남긴다).
+ * - 게스트 조회 경로 거절(400/403/404/410/422): 그 세션의 토큰 기록과 주문 초안 매핑을 지우고 null
+ *   (호출자는 이 매핑 없이 진행한다).
+ * - 그 밖의 오류(5xx·타임아웃·연결 실패 등)는 토큰을 가린 뒤 그대로 던진다(기록 유지).
+ */
+export async function openRememberedGuestDraft(
+  key: EmbedGuestDraftKey,
+  draft: RememberedGuestDraft,
+): Promise<EditSessionResponse | null> {
+  let session: EditSessionResponse
+  try {
+    session = await editSessionsApi.getGuest(draft.sessionId, draft.guestToken)
+  } catch (err) {
+    redactGuestTokenInError(err, draft.guestToken)
+    if (!axios.isAxiosError(err)) throw err
+    if (guestRejectionReasonOf(err.response?.status, apiErrorCodeOf(err)) === null) throw err
+    forgetEmbedGuestToken(draft.sessionId)
+    forgetEmbedGuestDraft(key)
+    return null
+  }
+  const sessionKey: EmbedGuestDraftKey = {
+    orderSeqno: session?.orderSeqno,
+    mode: session?.mode,
+    templateSetId: session?.templateSetId ?? null,
+    hostOrigin: key.hostOrigin,
+    siteId: key.siteId,
+  }
+  if (session?.id !== draft.sessionId || !sameEmbedGuestDraftKey(sessionKey, key)) {
+    forgetEmbedGuestDraft(key)
+    return null
+  }
+  return session
+}
+
+/** 인증 토큰(JWT) 페이로드에서 읽은 회원 여부·사이트 id. 서명은 검증하지 않는다(화면 경로 선택용). */
+export interface EmbedAccessTokenScope {
+  /** 토큰의 회원 번호(sub)가 양의 정수인지 — API 의 회원 판정과 같은 규칙 */
+  member: boolean
+  /** 토큰의 사이트 id(없으면 null) */
+  siteId: string | null
+}
+
+function decodeBase64Url(segment: string): string | null {
+  try {
+    const b64 = segment.replace(/-/g, '+').replace(/_/g, '/')
+    const padded = b64 + '='.repeat((4 - (b64.length % 4)) % 4)
+    const binary = atob(padded)
+    const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0))
+    return new TextDecoder().decode(bytes)
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 인증 토큰의 회원 여부·사이트 id. JWT 형식이 아니거나 해석할 수 없으면 비회원·사이트 없음으로 본다.
+ * 토큰 값은 출력하지 않는다.
+ */
+export function embedAccessTokenScopeOf(token: string | null | undefined): EmbedAccessTokenScope {
+  const none: EmbedAccessTokenScope = { member: false, siteId: null }
+  if (!token) return none
+  const parts = token.split('.')
+  if (parts.length !== 3) return none
+  const json = decodeBase64Url(parts[1])
+  if (json === null) return none
+  let payload: unknown
+  try {
+    payload = JSON.parse(json)
+  } catch {
+    return none
+  }
+  if (payload === null || typeof payload !== 'object') return none
+  const { sub, siteId } = payload as { sub?: unknown; siteId?: unknown }
+  const subText = typeof sub === 'string' || typeof sub === 'number' ? String(sub) : ''
+  return {
+    member: /^[1-9][0-9]*$/.test(subText),
+    siteId: typeof siteId === 'string' && siteId !== '' ? siteId : null,
   }
 }
 
