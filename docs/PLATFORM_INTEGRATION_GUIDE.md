@@ -159,16 +159,18 @@ image/gif
   - `GET /api/edit-sessions`(orderSeqno/memberSeqno 조회) · `GET /api/edit-sessions/my`(편집보관함) — 타 사이트 세션은 **조용히 목록에서 제외**됩니다(에러 없음, `total` 도 제외 후 값).
 - 통과 조건: JWT 에 `siteId` 가 없거나(레거시 토큰) 세션에 `siteId` 가 없으면(구 데이터) 기존 동작 그대로 통과합니다. Storige 운영자(admin/manager)와 내부 워커는 전 테넌트 예외입니다.
 - **실무 영향**: 한 회원의 세션은 **그 세션을 만든 사이트의 shop-session JWT 로만** 보이고 수정됩니다. 한 파트너가 여러 Site 를 발급받아 운영하는 경우, 서로 다른 Site 의 JWT 로는 상대 Site 에서 만든 세션의 재편집·보관함 노출·합성 준비가 되지 않습니다 — 같은 회원 풀을 공유하려면 Site 를 하나로 쓰세요. 재편집이 갑자기 `404` 가 나거나 보관함이 비면, 진입 JWT 를 발급한 API 키의 Site 와 세션 생성 시점의 Site 가 같은지부터 확인하세요(서버 로그에 `[tenant-scope]` 경고가 남습니다).
-- 참고: 게스트 세션 저장(`guest/:id` + `guestToken`)·`compose-mixed`(3.4)·`/external`(X-API-Key) 경로는 각자의 기존 격리 규칙 그대로이며 이번 확장의 영향이 없습니다.
+- 참고: 게스트 세션 저장(`guest/:id` + `X-Guest-Token` 헤더)·`compose-mixed`(3.4)·`/external`(X-API-Key) 경로는 각자의 기존 격리 규칙 그대로이며 이번 확장의 영향이 없습니다.
 
 **회원 경로의 회원 식별 (2026-10-01)**
-- `GET`·`PATCH`·`DELETE /api/edit-sessions/:id`, `PATCH :id/complete`, `POST guest/migrate` 는 shop-session 토큰의 회원 번호가 **1 이상 정수**일 때만 회원으로 취급합니다. shop-session 발급의 `memberSeqno` 는 0 이상 정수이고, 0 은 비회원 방문자입니다(3.1).
+- `GET`·`PATCH`·`DELETE /api/edit-sessions/:id`, `PATCH :id/complete`, `POST guest/migrate`, `GET /api/edit-sessions/my`, 목록 `GET /api/edit-sessions`(`memberSeqno`·`orderSeqno` 조회 포함), 세션 버전 조회·복원(`GET :id/versions`·`GET :id/versions/:vid`·`POST :id/versions/:vid/restore`)은 shop-session 토큰의 회원 번호가 **1 이상 정수**일 때만 회원으로 취급합니다. shop-session 발급의 `memberSeqno` 는 0 이상 정수이고, 0 은 비회원 방문자입니다(3.1).
 - 회원 번호 0 토큰의 결과:
   - 비회원(게스트) 세션 조회 `GET :id` → `403 GUEST_TOKEN_REQUIRED`. 비회원 세션은 `GET /api/edit-sessions/guest/:id` + `X-Guest-Token` 헤더로 조회합니다(편집기는 이 경로를 씁니다 — 3.3 비회원 세션 재오픈).
   - 삭제 `DELETE :id` → `403 PERMISSION_DENIED`. `PATCH :id`·`:id/complete` 에서도 회원 세션 소유자로 인정되지 않습니다(`403 PERMISSION_DENIED`).
   - `guest/migrate` → `403 AUTH_REQUIRED`.
-  - `GET /api/edit-sessions/my` 는 회원 번호가 0 이거나 숫자로 해석되지 않으면 빈 목록 `{sessions:[], total:0}` 입니다.
-- 회원 경로의 세션 응답(`GET`·`PATCH :id`, `:id/complete`, `:id/versions/:vid/restore`)에는 비회원 세션의 `guestToken` 이 들어가지 않습니다. 비회원 작업 승계용 `guestToken` 은 지금처럼 `editor.complete`(`needsAuth:true`)로 전달됩니다(3.2·3.3).
+  - `GET /api/edit-sessions/my` 는 회원 번호가 1 이상 정수가 아니면 빈 목록 `{sessions:[], total:0}` 입니다. 목록 `GET /api/edit-sessions` 의 본인 세션 조회(기본·`?orderSeqno=` 본인 필터)도 빈 목록이고, `?memberSeqno=` 조회는 `403 FORBIDDEN_MEMBER_QUERY` 입니다.
+  - 세션 버전 조회·복원(`:id/versions` 계열)에서 회원 세션 소유자로 인정되지 않습니다(`403 PERMISSION_DENIED`).
+- 편집 세션 생성 `POST /api/edit-sessions` 는 shop-session 토큰의 회원 번호로 세션을 만듭니다(본문 `memberSeqno` 는 쓰지 않습니다). 회원 번호가 1 이상 정수가 아니면 `400 MEMBER_REQUIRED` 입니다(3.1).
+- 회원 경로의 세션 응답(`GET`·`PATCH :id`, `:id/complete`, `:id/versions/:vid/restore`)에는 비회원 세션의 `guestToken` 이 들어가지 않습니다. 목록 `GET /api/edit-sessions`(`?orderSeqno=` 포함)의 비회원 세션 항목에도 `guestToken` 이 없고 `guestExpiresAt` 은 들어 있습니다. 비회원 작업 승계용 `guestToken` 은 지금처럼 `editor.complete`(`needsAuth:true`)로 전달됩니다(3.2·3.3).
 
 **CORS / allowedOrigins (브라우저 한정, 테넌트 경계와 별개)**
 - 결정 순서: (a) Origin 없음(curl/서버간) → **무조건 허용**; (b) 정적 env `CORS_ORIGIN`/localhost → 허용; (c) `*.vercel.app` / `*.papascompany.co.kr` 정규식 → 허용; (d) DB의 활성 사이트 `allowed_origins` 합집합(60초 캐시) → 허용; 그 외 차단+로깅.
@@ -774,7 +776,7 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 ```
 > 반드시 서버에서 호출 (API 키 브라우저 노출 금지). **`memberSeqno` 는 0 이상 정수 필수 필드입니다(`@IsInt() @Min(0)`, 0 = 비회원 방문자)** — 누락·음수·소수·비숫자는 일반 class-validator `400`(코드명은 `MEMBER_REQUIRED` 가 **아님**). `memberSeqno=0` 은 검증을 통과해 `sub='0'` 게스트성 세션을 정상 발급합니다(거부 안 함). **0/음수 같은 비회원 값을 넘기지 마세요** — 실제 차단은 그 토큰으로 편집세션을 만들 때(아래 참고) 비로소 발생합니다. 회원 번호 0 토큰은 회원 경로(`:id` 조회·수정·완료·삭제, `guest/migrate`, `/my`)에서 회원으로 취급되지 않습니다(1.5 회원 경로의 회원 식별).
 >
-> 참고: `MEMBER_REQUIRED` 코드는 `POST /api/edit-sessions`(세션 생성) 단계에서 `memberSeqno` 가 falsy(0 또는 누락)일 때만 발생합니다(소스: `edit-sessions.controller.ts`). shop-session 응답만 보고 '0도 막히겠지'라고 가정하면, 게스트 폴백 경로(PDF 미생성)로 빠질 수 있으니 주의하세요.
+> 참고: `MEMBER_REQUIRED` 코드는 `POST /api/edit-sessions`(세션 생성) 단계에서만 발생합니다 — shop-session 토큰이면 토큰의 회원 번호로 세션을 만들고(본문 `memberSeqno` 는 쓰지 않음), 그 회원 번호가 1 이상 정수가 아니면(0 포함) `400 MEMBER_REQUIRED` 입니다(소스: `edit-sessions.controller.ts`). shop-session 응답만 보고 '0도 막히겠지'라고 가정하면, 게스트 폴백 경로(PDF 미생성)로 빠질 수 있으니 주의하세요.
 >
 > cross-origin iframe에서는 HttpOnly 쿠키가 무용하므로 body의 `refreshToken` 을 사용합니다.
 
@@ -940,7 +942,7 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 > 🔒 **`guestToken` 을 받으려면 `parentOrigin` 을 반드시 지정하세요.** 미지정 시 레거시 emit 은 `targetOrigin='*'` 로 송신되므로
 > 게스트 토큰을 동봉하면 임베드 페이지의 다른 스크립트·프레임에 토큰이 샙니다. 그래서 **오리진을 고정하지 않은 파트너에게는 `guestToken` 을 보내지 않습니다.**
 > 게스트 작업 승계(`POST /edit-sessions/guest/migrate`)가 필요하면 `parentOrigin` 지정이 전제입니다.
-> ⚠️ **레거시 emit 은 `parentOrigin` 미지정 시 `targetOrigin='*'`(와일드카드)로 송신**됩니다(`EmbedView.tsx`: `parentOrigin || '*'`). 레거시 페이로드는 필드 화이트리스트라 `token`·`guestToken` 같은 자격증명은 실리지 않지만, **`sessionId`(= `editSessionId`)와 `coverFileId`/`contentFileId` 가 그대로 노출**됩니다. `editSessionId` 는 사실상 권한 토큰입니다 — `POST /api/worker-jobs/compose-mixed` 가 무인증(`@Public`)이라 이 값을 가진 쪽은 누구나 그 세션의 합성 잡을 트리거할 수 있습니다(3.4·4.2 참조). 임베드 페이지에 다른 스크립트가 하나라도 있으면 그 스크립트가 값을 읽습니다. 신규 파트너(특히 유형 3 Shopify)는 **반드시 `parentOrigin` 을 지정**하고 정식 `storige-editor` 엔벨로프를 사용하세요. 정식 엔벨로프는 `parentOrigin` 이 없으면 아예 발신하지 않으며 와일드카드를 절대 쓰지 않습니다.
+> ⚠️ **레거시 emit 은 `parentOrigin` 미지정 시 `targetOrigin='*'`(와일드카드)로 송신**됩니다(`EmbedView.tsx`: `parentOrigin || '*'`). 레거시 페이로드는 필드 화이트리스트라 `token`·`guestToken` 같은 자격증명은 실리지 않지만, **`sessionId`(= `editSessionId`)와 `coverFileId`/`contentFileId` 가 그대로 노출**됩니다. `editSessionId` 는 합성 잡 요청에 쓰이는 세션 식별자이므로 노출을 최소화하세요 — 잡 생성 시 서버는 호출자(사이트 키·shop-session)와 그 세션의 연결을 확인합니다(3.4 세션 연결 확인). 임베드 페이지에 다른 스크립트가 하나라도 있으면 그 스크립트가 값을 읽습니다. 신규 파트너(특히 유형 3 Shopify)는 **반드시 `parentOrigin` 을 지정**하고 정식 `storige-editor` 엔벨로프를 사용하세요. 정식 엔벨로프는 `parentOrigin` 이 없으면 아예 발신하지 않으며 와일드카드를 절대 쓰지 않습니다.
 
 ### 3.3 세션 저장 / 재편집
 
@@ -961,6 +963,9 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
   - `reason:'guest_token_required'` — 게스트 토큰 없이 비회원 세션을 열 때. 보관한 게스트 토큰으로 다시 열거나 고객에게 안내하세요.
   - `reason:'not_found'` — 넘긴 토큰(또는 같은 탭에서 편집기가 기억한 토큰)이 만료된 경우. 새 편집 작업으로 안내하세요.
   - `reason:'forbidden'` — 넘긴 토큰이 그 세션의 토큰과 일치하지 않는 경우.
+- **`orderSeqno` 로 진입한 경우(`sessionId` 없음)**: 주문별 세션 목록(`GET /api/edit-sessions?orderSeqno=`)의 비회원 세션 항목에는 게스트 토큰이 없으므로, 편집기가 고른 세션이 비회원 세션이면 **같은 탭에서 그 세션을 만들었거나 열었던 경우에만**(탭에 기억된 토큰) 다시 열립니다. 이 경로에서는 호스트가 넘긴 `#guestToken=` 을 쓰지 않습니다.
+  - 열 수 없으면 새 세션을 만들지 않고 `editor.error {code:'SESSION_NOT_FOUND', fatal:true, sessionId:<목록에서 고른 세션 id>, reason}` 를 1회 보냅니다. `reason`: 기억된 토큰 없음 `guest_token_required` · 만료 `not_found` · 토큰 불일치 `forbidden` · 잘못된 id `invalid_id`.
+  - 이때 호스트는 받은 `sessionId` 와 보관한 게스트 토큰으로 위 fragment 재오픈(`#guestToken=` 또는 SDK `guestToken` 옵션)을 하거나, 회원 흡수(`guest/migrate`) 뒤 회원 토큰으로 다시 여세요. 회원 세션의 `orderSeqno` 진입은 그대로입니다.
 - 비회원 작업의 회원 승계(`editor.complete` `needsAuth:true` → `guest/migrate` → 회원 토큰으로 재오픈)는 아래 절차 그대로입니다.
 
 **게스트 → 회원 전환 후 같은 세션 재오픈 (무로그인 퍼널)**
@@ -976,7 +981,7 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
      -H "Content-Type: application/json" \
      -d '{ "guestToken": "<GUEST_TOKEN>" }'
    # → { "migratedCount": 1, "sessionIds": ["<same-session-id>"] }
-   # 게스트 세션은 게스트 경로(PATCH /api/edit-sessions/guest/:id + guestToken)로만 저장되고,
+   # 게스트 세션은 게스트 경로(PATCH /api/edit-sessions/guest/:id + X-Guest-Token 헤더)로만 저장되고,
    # 완료는 이 흡수 뒤 회원 토큰으로 합니다. 회원 경로(PATCH /api/edit-sessions/:id, :id/complete)로
    # 게스트 세션을 저장·완료하면 403(PERMISSION_DENIED / GUEST_COMPLETE_NOT_ALLOWED)입니다(2026-09-29 명확화).
    ```
@@ -998,7 +1003,7 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 >   - 없음·권한 없음·잘못된 id → `editor.error {code:'SESSION_NOT_FOUND', sessionId, reason:'not_found'|'forbidden'|'invalid_id', fatal:true}` 1회 + 편집기 안 안내 화면('돌아가기' → `editor.cancel {reason:'session_not_found'}`)
 >   - 비회원 세션을 게스트 토큰 없이 열면 `reason:'guest_token_required'`(2026-10-01 additive — 위 비회원 세션 재오픈). `templateSetId` 없이 `sessionId` 만으로 연 경우에도 세션을 열 수 없으면 같은 `SESSION_NOT_FOUND` 를 1회 보냅니다(`parentOrigin` 지정 시)
 >   - 네트워크·타임아웃·서버 오류 → `editor.error {code:'NETWORK_ERROR', fatal:true}`, 인증 만료 → 기존대로 `AUTH_EXPIRED` 1회
->   - `sessionId` 없이 `orderSeqno`+`mode` 로 여는 첫 편집은 종전과 같습니다(주문번호로 찾고 없으면 생성).
+>   - `sessionId` 없이 `orderSeqno`+`mode` 로 여는 첫 편집은 종전과 같습니다(주문번호로 찾고 없으면 생성). 주문번호로 찾은 세션이 비회원 세션이면 위 비회원 세션 재오픈의 `orderSeqno` 진입 규칙을 따릅니다(열 수 없으면 `SESSION_NOT_FOUND`, 새 세션 생성 없음).
 > - **호스트 회복 절차(권장).** ① `SESSION_NOT_FOUND` 에 고객용 문구를 매핑하세요. ② `reason:'not_found'` 이면 고객 확인 후 그 항목에 저장해 둔 `sessionId` 를 비우고 새 편집을 시작하는 선택지를 주세요 — **처리하지 않으면 낡은 `sessionId` 가 남은 항목은 '편집'을 누를 때마다 같은 오류로 다시 편집할 수 없습니다.** ③ 게스트 흡수 결과가 `migratedCount: 0` 인데 회원 재오픈이 `reason:'forbidden'` 으로 멈추면 '비회원 작업 보관 기간(24시간) 만료'로 안내하세요. ④ 재오픈 안내 배너 등 호스트 상태는 `editor.error` 수신 시 함께 초기화하세요. ⑤ 편집기를 여는 모든 화면에 오류 처리(`onError`)를 연결하세요.
 > - 결제 후 주문번호를 다시 매기는 호스트는 **Storige 세션을 만들 때 쓴 원래 `orderSeqno`(예: 장바구니 id)를 보존해 전달**해야 주문 기준 조회(`/edit-sessions/external?orderSeqno=`)가 맞습니다.
 > - 운영자(관리자)가 자기 회원 토큰(shop-session)으로 고객 세션을 열면 소유자가 달라 `reason:'forbidden'` 으로 멈춥니다. 관리자 재편집은 **3.3.2 운영자 대리 편집** 토큰으로 여세요.
@@ -1177,10 +1182,15 @@ curl -X POST "https://api.papascompany.co.kr/api/partner/edit-sessions/owners" \
 2. 파트너 백엔드: 주문확정 시 `POST /api/worker-jobs/compose-mixed` 로 **호출자가 파일 참조를 공급하는** 합성 트리거 (호스트가 명시적 호출, 자동발행 아님).
    > 🚩 **기본값에서 `editSessionId` 는 합성 입력이 아닙니다.** 서버는 이 세션에서 `metadata.spread`(펼침면 기대치) 하나만 읽어 스프레드 판정·표지 치수 검증에 쓰고, 잡에 `editSessionId` 를 기록(추적)합니다. **세션을 열어 편집 결과 PDF 를 자동으로 찾아 붙이는 일은 하지 않습니다** — 합성에 들어갈 파일은 호출자가 `coverUrl`·`frontEndpaperUrls`·`contentPdfUrl`·`backEndpaperUrls` 로 **직접** 지정해야 합니다.
    > ✅ **예외 — `assembleFromSession: true` (2026-08-13 추가).** 이 플래그를 **명시적으로 켠 요청에 한해** 서버가 세션에서 표지·내지·면지·판형을 도출해 **비어 있는 필드만** 채웁니다. 인증(shop-session JWT)이 필요하며, 미전달 시 위 기본 동작이 그대로 유지됩니다. 상세는 **3.4.1** 참조.
-   > 다만 '기록만' 되는 것은 아닙니다 — `editSessionId` 를 넣으면 잡 종료 시 그 **세션의 `workerStatus` 가 갱신**되고(모든 세션 잡이 종료됐으면 `VALIDATED`, 아니면 `PROCESSING`), 그 전이에 맞물려 **세션 웹훅(`session.validated`/`session.failed`)이 트리거될 수 있습니다**(아래 3번). 세션 상태를 다른 용도로 쓰고 있다면 이 부작용을 감안하세요.
+   > `editSessionId` 를 넣으면 잡 옵션(`options.editSessionId`)에 기록되어 세션별 잡 조회(Storige 관리자 화면, 같은 사이트 잡)에 쓰이고, 위 스프레드 판정(`outputMode='separate'` 강제·산출 크기)에 쓰입니다. compose-mixed 잡이 끝나도 **세션의 `workerStatus` 는 바뀌지 않고 세션 웹훅(`session.validated`/`session.failed`)도 발신되지 않습니다** — 종료 알림은 아래 3번의 `synthesis.*` 경로입니다.
+   > 🔒 **세션 연결 확인 (2026-10-01).** 요청에 `editSessionId` 를 넣으면 서버가 잡을 만들기 전에 호출자와 그 세션의 연결을 확인합니다(`assembleFromSession` 을 켜지 않은 기본 경로). 확인되지 않으면 **`404 SESSION_NOT_FOUND`** 이고 잡은 만들어지지 않습니다(세션이 없을 때와 같은 응답).
+   > - 사이트 키(`X-API-Key`): **같은 사이트에서 만든 세션**(회원·비회원 모두 — 비회원 세션도 `X-Guest-Token` 불필요) 또는 사이트가 지정되지 않은 회원 세션.
+   > - shop-session 토큰(`Authorization: Bearer`): 세션 사이트가 토큰 사이트와 같거나 지정되지 않았고, 회원 세션이면 **같은 회원**(회원 번호 1 이상 정수 일치)이거나 토큰의 `allowedOrderSeqnos` 에 그 세션의 주문 번호가 들어 있어야 합니다. 비회원 세션은 만료 전이고 **`X-Guest-Token` 헤더**가 그 세션의 게스트 토큰과 일치해야 합니다.
+   > - `editSessionId` 를 보내지 않는 요청과 `assembleFromSession:true` 요청(3.4.1)은 이 확인과 무관합니다. 같은 확인이 `validate/external`·`synthesize/external`·`split-synthesize/external`(`sessionId`) 에도 적용됩니다(5.1).
    ```bash
-   # ⚠️ 무인증(@Public) — X-API-Key 없음, 테넌트 스코프 없음 (타 /external 라우트와 대비)
+   # @Public 라우트 — 파트너 백엔드에서 사이트 키(X-API-Key)와 함께 호출합니다(editSessionId 연결 확인 기준 — 위 🔒)
    curl -X POST "https://api.papascompany.co.kr/api/worker-jobs/compose-mixed" \
+     -H "X-API-Key: <SITE_API_KEY>" \
      -H "Content-Type: application/json" \
      -d '{
        "editSessionId": "<edit-session-uuid>",
@@ -1220,7 +1230,7 @@ curl -X POST "https://api.papascompany.co.kr/api/partner/edit-sessions/owners" \
    > - 면지 참조만 보냄 → 표지는 빈 페이지, 내지는 없음 상태로 `COMPLETED`.
    > - `editSessionId` 가 **스프레드(펼침면) 책 세션**이면 서버가 `outputMode='separate'` 를 강제하므로(아래 outputMode 표) 부분 백지의 형태도 `merged.pdf` 1p 가 아니라 **`cover.pdf`(빈 1페이지) + `content.pdf`** 입니다 — `merged.pdf` 만 점검하는 방어는 이 흐름을 놓칩니다.
    >
-   > ⚠️ **`editSessionId` 는 여전히 검증되지 않습니다**(`assembleFromSession` 을 켜지 않은 기본 경로 한정) — 없거나 존재하지 않는 세션이어도 `404` 가 아니라 통과합니다(스프레드 스냅샷 조회는 best-effort try/catch — 잡 생성은 계속됨). 세션 존재를 서버가 확인해 주길 원하면 **3.4.1** 의 `assembleFromSession` 경로를 쓰세요(그 경로에서는 미존재·타 테넌트가 `404 SESSION_NOT_FOUND`).
+   > ℹ️ 기본 경로의 `editSessionId` 는 위 🔒 세션 연결 확인을 거칩니다(확인되지 않으면 `404 SESSION_NOT_FOUND`, 잡 미생성). 세션에서 합성 입력까지 서버가 도출하길 원하면 **3.4.1** 의 `assembleFromSession` 경로를 쓰세요.
    >
    > ✅ **방어 2줄(여전히 필요):** `400` 은 "전부 비었을 때"만 막아 주므로, 부분 누락은 호출자가 계속 방어해야 합니다. (a) 요청 직전에 `coverUrl`·`contentPdfUrl` 이 실제로 채워졌는지 호출자 코드에서 검증하고, (b) 완료 후 **폴링(`GET /api/worker-jobs/external/:id`, X-API-Key)** 응답의 `result.totalPages` 를 기대 페이지 수와 대조하세요(`separate` 는 `result.outputFiles[].pageCount` 로도 대조 가능하지만, 기본 `merged` 는 `outputFiles` 가 **빈 배열**이라 반드시 `totalPages` 를 봐야 합니다). ⚠️ **이 두 값은 웹훅 페이로드에 실리지 않습니다** — 웹훅만 받는 파트너는 이 대조를 위해 폴링을 한 번 더 해야 합니다. "웹훅이 `completed` 로 왔다" 는 것만으로는 내용이 들어갔다는 증거가 되지 않습니다.
 
@@ -1228,7 +1238,7 @@ curl -X POST "https://api.papascompany.co.kr/api/partner/edit-sessions/owners" \
 
    | 필드 | 타입 | 기본/필수 | 비고 |
    |---|---|---|---|
-   | `editSessionId` | UUID | optional (`assembleFromSession:true` 면 **필수**) | 스프레드 기대치 조회 + 잡 추적용. 기본 경로에서는 **합성 입력 아님** (3.4.1) |
+   | `editSessionId` | UUID | optional (`assembleFromSession:true` 면 **필수**) | 스프레드 기대치 조회 + 잡 추적용. 기본 경로에서는 **합성 입력 아님** (3.4.1). 보내면 세션 연결 확인(위 🔒, 실패 시 `404 SESSION_NOT_FOUND`) |
    | `assembleFromSession` | boolean | optional (default `false`) | **opt-in 세션 자동조립**(3.4.1). `true` 면 서버가 빈 필드를 세션에서 채움 — shop-session JWT 필요 |
    | `coverUrl` | 파일참조 | conditional (`coverEditable=true` 면 사실상 필수) | 없으면 빈 표지 페이지가 생성됨 |
    | `coverEditable` | boolean | optional (default `true`) | `false` → `coverUrl` 무시하고 빈 표지 페이지 생성 (레더 커버). ⚠️ 이때 `coverUrl` 은 **자산으로 세지 않음**(위 `EMPTY_COMPOSE_INPUT` 표) |
@@ -1242,8 +1252,8 @@ curl -X POST "https://api.papascompany.co.kr/api/partner/edit-sessions/owners" \
 
    > ⚠️ **파일참조(`coverUrl`·`contentPdfUrl`·면지 배열) 는 `http://`·`https://` 를 거부합니다** (`IsSafeFileRef`, SSRF/미인증 큐적재 방어 → `400`). 허용되는 형태는 `api://<fileId>`(권장 — `editor.complete` 의 `files.coverFileId`/`files.contentFileId`, 첨부 내지의 `contentPdfFileId` 를 그대로 사용), 스토리지 경로(`/storage/...`), 그리고 배열 원소의 `null`(=빈 면지) 뿐입니다.
    > ⚠️ 필드명은 **`orderId`(문자열)** 입니다. `orderSeqno` 처럼 DTO 에 없는 키를 보내면 전역 `forbidNonWhitelisted` 검증에 걸려 **`400`** 이 납니다(선택 필드라 생략해도 됩니다). 같은 이유로 `partnerEnv` 같은 내부 인터페이스 전용 키도 보내면 `400` 입니다.
-   > ⚠️ **보안 주의:** `compose-mixed` 는 `@Public`(ApiKeyGuard·테넌트 스코핑 없음, ThrottlerGuard 만)입니다. `editSessionId`(UUID) 만 알면 누구나 합성 잡을 트리거할 수 있습니다. `editSessionId` 를 비밀로 취급하고 가능한 한 **파트너 백엔드에서만** 호출하며, 브라우저 노출을 최소화하세요.
-   > 🔒 예외적으로 `assembleFromSession:true` 경로에는 인가가 걸립니다(검증된 shop-session + 사이트 일치 + 주문 스코프, 실패 시 `404`) — 3.4.1. 기본 경로(파일 참조 직접 공급)의 무인증 특성은 그대로입니다.
+   > ⚠️ **보안 주의:** `compose-mixed` 는 `@Public`(`X-API-Key` 가 필수는 아님, ThrottlerGuard 적용)입니다. **파트너 백엔드에서 사이트 키(`X-API-Key`)와 함께** 호출하고, `editSessionId` 를 비밀로 취급해 브라우저 노출을 최소화하세요. `editSessionId` 를 보내면 위 🔒 세션 연결 확인을 거칩니다.
+   > 🔒 `assembleFromSession:true` 경로에는 별도 인가가 걸립니다(검증된 shop-session + 사이트 일치 + 주문 스코프·세션 소유, 실패 시 `404`) — 3.4.1.
    > 🔒 **`siteId` 는 파트너 제어 필드가 아닙니다 (2026-08-13 변경).** 이 라우트는 `@Public` 이라 body 의 `siteId` 가 무검증 입력이므로, 서버는 **검증된 shop-session(`Authorization: Bearer …`)의 사이트와 일치할 때만** 그 값을 채택하고 그 외에는 **무시하고 `NULL` 로 저장**합니다(자동조립 경로는 세션의 `siteId` 를 씁니다 — 3.4.1). 종전에는 body 값이 그대로 기록돼 임의 테넌트로 귀속시킬 수 있었습니다. `400` 은 나지 않고 조용히 `NULL` 이 되므로, **웹훅이 필요하면 `callbackUrl` 을 직접 넣으세요**(아래 3번).
 
    **`outputMode` 4종** (미전달 시 워커가 `merged` 로 폴백)
@@ -1258,10 +1268,10 @@ curl -X POST "https://api.papascompany.co.kr/api/partner/edit-sessions/owners" \
    > DTO 의 `outputMode` enum 선언에는 `merged` 가 없지만 런타임 검증은 `@IsString` 뿐이라 `"merged"` 도 그대로 통과합니다(= 미전달과 동일).
    > 스프레드(펼침면) 책은 서버가 `outputMode='separate'` 강제(단 `coverEditable !== false` 일 때) → cover.pdf + content.pdf 2파일. `single` 보내도 무시. **단일파일 가정 금지.**
 3. 완료 수신: 웹훅 또는 폴링 `GET /api/worker-jobs/external/:id` (X-API-Key).
-   > ⚠️ **웹훅은 자동으로 오지 않습니다.** compose-mixed 잡의 종료 웹훅은 (a) 요청에 **`callbackUrl` 을 넣었거나**, (b) 잡에 `siteId` 가 있고 그 사이트에 v2 웹훅 설정이 있을 때만 발신됩니다. 이 라우트는 `@Public`(API 키를 받지 않음)이라 `siteId` 가 자동 주입되지 않으므로, 실질적으로 **요청에 `callbackUrl` 을 직접 넣는 것이 유일하게 확실한 경로**입니다. 둘 다 없으면 **`synthesis.completed`/`synthesis.failed` 는 발신되지 않습니다** — 그 경우 폴링으로만 확인됩니다.
+   > ⚠️ **웹훅은 자동으로 오지 않습니다.** compose-mixed 잡의 종료 웹훅은 (a) 요청에 **`callbackUrl` 을 넣었거나**, (b) 잡에 `siteId` 가 있고 그 사이트에 v2 웹훅 설정이 있을 때만 발신됩니다. 사이트 키(`X-API-Key`)를 실어 호출하면 잡에 그 사이트가 기록되어 (b) 경로가 열립니다(v1.4, 2026-09-12). 사이트 키 없이 호출하면 `siteId` 가 기록되지 않으므로 **요청에 `callbackUrl` 을 직접 넣어야** 합니다. 둘 다 없으면 **`synthesis.completed`/`synthesis.failed` 는 발신되지 않습니다** — 그 경우 폴링으로만 확인됩니다.
    > ℹ️ 예외: `assembleFromSession:true` 로 호출하면 잡에 **세션의 `siteId` 가 스탬프**되고 `callbackUrl` 도 세션 값으로 폴백되므로, (b) 경로(사이트 v2 웹훅 설정)만으로도 `synthesis.*` 가 발신될 수 있습니다 (3.4.1).
-   > ⚠️ **기본(수동) 경로 잡은 v2 배달 대상이 아닙니다 (2026-08-13 변경).** body 의 `siteId` 는 검증된 shop-session 과 일치할 때만 채택되고 그 외에는 `NULL` 이므로(위 🔒), (b) 경로가 닫힙니다. 이때 `callbackUrl` 로 가는 웹훅은 **v1 레거시 헤더/서명**(전역 시크릿 기반)으로 배달되며, 사이트별 HMAC·`X-Storige-Delivery`·재시도 스토어가 붙는 **v2 배달은 일어나지 않습니다**. 수신기가 v2 서명만 검증한다면 자동조립 경로(3.4.1)를 쓰거나 shop-session Bearer 를 함께 보내세요.
-   > ℹ️ 단, 요청에 `editSessionId` 를 넣었고 **그 세션이 자체 `callbackUrl`**(세션 생성 시 호스트가 넣는 필드)을 가지고 있으면, 잡 종료 시 세션의 그 URL 로 **`session.validated`(또는 `session.failed`)가 별도로 발신**됩니다 — 요청의 `callbackUrl`·`siteId` 와 무관한 경로입니다. 이 세션 이벤트는 `synthesis.*` 와 페이로드 형식이 다르며(5.2), 합성 결과는 `payload.result`(잡의 `result` 를 그대로 실음) 안에 들어갑니다. 두 경로를 모두 켜 두면 **한 잡에 두 종류의 웹훅**이 도착하니 수신측에서 `event` 로 분기하세요.
+   > ⚠️ **사이트 키 없이 호출한 기본(수동) 경로 잡은 v2 배달 대상이 아닙니다 (2026-08-13 변경, 사이트 키 호출은 2026-09-12 부터 예외).** body 의 `siteId` 는 검증된 shop-session 과 일치할 때만 채택되고 그 외에는 `NULL` 이므로(위 🔒), (b) 경로가 닫힙니다. 이때 `callbackUrl` 로 가는 웹훅은 **v1 레거시 헤더/서명**(전역 시크릿 기반)으로 배달되며, 사이트별 HMAC·`X-Storige-Delivery`·재시도 스토어가 붙는 **v2 배달은 일어나지 않습니다**. 수신기가 v2 서명만 검증한다면 자동조립 경로(3.4.1)를 쓰거나 shop-session Bearer 를 함께 보내세요.
+   > ℹ️ 요청에 `editSessionId` 를 넣고 그 세션에 자체 `callbackUrl`(세션 생성 시 호스트가 넣는 필드)이 있어도, compose-mixed 잡 종료 시 세션 이벤트(`session.validated`/`session.failed`)는 발신되지 않습니다. 이 잡의 종료 웹훅은 위 (a)·(b) 경로의 `synthesis.*` 입니다.
    > ⚠️ `callbackUrl` 은 사이트별 `uploadCallbackUrl` 을 자동으로 물려받지 않습니다(compose-mixed 는 site default 병합 경로가 아님). 다만 **호스트**는 `sites` DB(`uploadCallbackUrl`/`domain`) 또는 `WEBHOOK_ALLOWED_HOSTS` 에 등록돼 있어야 실제로 전송됩니다 — 미등록이면 무음 차단(5.2).
 4. 결과 회수 — **권장(2026-08-28 신설): 서명 URL 재발급 API** 로 인증 회수합니다.
    ```bash
@@ -1458,7 +1468,7 @@ curl -X POST "https://api.papascompany.co.kr/api/worker-jobs/compose-mixed" \
 - [ ] 재편집·보관함은 **세션을 만든 Site 의 JWT** 로만 접근됨 — 다중 Site 운영 시 세션 공유 불가, 예기치 않은 `404`/빈 목록이면 키↔Site 대조 (1.5 세션 API 테넌트 격리)
 - [ ] `editor.complete` 의 `sessionId` 저장 (재편집 키), `files`/`pages` 중첩 구조로 파싱
 - [ ] `editor.complete` 수신 시 **`needsAuth` 를 먼저 확인** — `true`(또는 `guestToken` 존재)면 주문/승격 금지, 로그인 유도로 분기 (`editor.needAuth` 를 기다리지 않는다)
-- [ ] 합성은 `compose-mixed` 명시적 트리거(무인증 — editSessionId 비밀유지), 스프레드=2파일 처리
+- [ ] 합성은 `compose-mixed` 명시적 트리거(파트너 백엔드에서 사이트 키 `X-API-Key` 와 함께 — `editSessionId` 는 같은 사이트 세션(또는 사이트 미지정 회원 세션)이어야 하며 아니면 `404 SESSION_NOT_FOUND`, editSessionId 비밀유지), 스프레드=2파일 처리 (3.4)
 - [ ] `compose-mixed` 요청에 **파일 참조를 직접 채움**(`coverUrl`/`contentPdfUrl` = `api://<fileId>`). **전부 비면** `400 EMPTY_COMPOSE_INPUT` 이지만, **한쪽만 빠지면 `400` 없이 부분 백지/내지 누락이 `COMPLETED` 로** 나갑니다 (3.4)
 - [ ] (선택) 파일 참조를 보관하지 않는 연동이면 `assembleFromSession:true` + `editSessionId` + shop-session `Authorization` 헤더로 서버 자동조립 사용 — 편집 가능 면지는 자동조립 대상이 아님 (3.4.1)
 - [ ] 웹훅을 받을 거면 `compose-mixed` 요청에 **`callbackUrl` 을 직접 포함** (이 라우트는 사이트 `uploadCallbackUrl` 을 자동 사용하지 않음), 결과 바이트는 `download/external` 이 아니라 **`GET /api/worker-jobs/external/:id/output-url` 로 서명 URL 을 재발급받아** 회수(`separate` 는 `files[]` 에 cover·content 2건 모두 포함 — 권장). 종전 `outputFileUrl` 직접 GET 은 2026-09-11 cutover 로 **`410 Gone`** 입니다 (3.4)
@@ -1510,7 +1520,7 @@ curl -X POST "https://api.papascompany.co.kr/api/worker-jobs/compose-mixed" \
 | 항목 | 현재 상태 | 필요 작업 |
 |---|---|---|
 | **웹훅 서명** | 사이트별 웹훅 설정(v2)을 발급하면 **HMAC 전용 발신**(`X-Storige-Signature-HMAC` + `X-Storige-Delivery`)이고, 설정이 없으면 레거시 발신(base64 `X-Storige-Signature` — **위조 가능**, 전역 시크릿 설정 시 HMAC 헤더 동반)으로 폴백합니다. | 신규 연동은 `PUT /api/v1/webhooks/config` 로 v2 설정을 발급받아 HMAC 검증 (5.2 참조). 레거시 폴백 구간에서는 웹훅을 트리거로만 취급하고 결과는 `GET /api/worker-jobs/external/:id` 의 `outputFileUrl`/`result.outputFiles` 로 재확인(`download/external` 재확인은 `fileId` 가 있는 잡에 한함 — compose-mixed 는 3.4 의 회수 경로). |
-| **compose-mixed 무인증** | 기본 경로(파일 참조 직접 공급)는 여전히 `@Public`·테넌트 스코프 없음 → editSessionId 보유자면 누구나 트리거 가능. 단 `assembleFromSession:true` 경로는 shop-session JWT + 사이트 일치 + 주문 스코프로 인가되고 실패 시 `404` (3.4.1) | 기본 경로의 프로덕션화 시 `ApiKeyGuard`+테넌트 스코핑 추가 검토 (오너 결정) |
+| **compose-mixed 무인증** | 기본 경로(파일 참조 직접 공급)는 `@Public`(`X-API-Key` 선택)이며, `editSessionId` 를 보내면 사이트 키·shop-session 호출자와 세션의 연결을 확인하고 확인되지 않으면 `404 SESSION_NOT_FOUND`(3.4). `assembleFromSession:true` 경로는 shop-session JWT + 사이트 일치 + 주문 스코프로 인가되고 실패 시 `404` (3.4.1) | 기본 경로의 프로덕션화 시 `ApiKeyGuard`+테넌트 스코핑 추가 검토 (오너 결정) |
 | **Shopify 전용 Site 등록** | 미존재 (모든 Site는 운영자 생성) | 운영자가 `POST /api/sites` 로 Shopify 테넌트 생성 + 키 발급 |
 | **frame-ancestors (Shopify 도메인 iframe)** | 운영자 등록 → 동적 CSP 합성 배선 완료(1.5) | 운영자가 `PUT /api/sites/:id` 로 Shopify 임베드 도메인을 `frameAncestors` 에 등록 (편집기 재배포 불필요) |
 | **외부 결과 전달 표준 흐름** | 유형 1/2 빌딩블록은 존재하나 Shopify 주문 연결 어댑터는 미구현 | 파트너측 어댑터 + `uploadCallbackUrl` 등록 |
@@ -1549,14 +1559,14 @@ curl -X POST "https://api.papascompany.co.kr/api/worker-jobs/compose-mixed" \
 | GET | `/api/files` | JWT (Bearer) | 파일 목록 (본인/admin) |
 | DELETE | `/api/files/:id` | JWT (Bearer) | 소프트 삭제 (48h 복구창) |
 | POST | `/api/files/:id/restore` | JWT (Bearer) | 소프트삭제 복구 |
-| POST | `/api/worker-jobs/validate/external` | X-API-Key | 인쇄 PDF 검증 잡 |
-| POST | `/api/worker-jobs/synthesize/external` | X-API-Key | 표지+내지 합성 잡 |
-| POST | `/api/worker-jobs/split-synthesize/external` | X-API-Key | 분할 합성 잡 |
+| POST | `/api/worker-jobs/validate/external` | X-API-Key | 인쇄 PDF 검증 잡. `editSessionId` 를 보내면 같은 사이트 세션(또는 사이트 미지정 회원 세션)이어야 함 — 아니면 `404 SESSION_NOT_FOUND`, 잡 미생성(3.4 세션 연결 확인) |
+| POST | `/api/worker-jobs/synthesize/external` | X-API-Key | 표지+내지 합성 잡. `editSessionId` 세션 연결 확인은 `validate/external` 과 같음 |
+| POST | `/api/worker-jobs/split-synthesize/external` | X-API-Key | 분할 합성 잡. `sessionId` 세션 연결 확인은 `validate/external` 과 같음 |
 | POST | `/api/worker-jobs/check-mergeable/external` | X-API-Key | 합성 가능 dry-run |
 | POST | `/api/worker-jobs/fix-pagecount/external` | X-API-Key (`@Public`+ApiKeyGuard+`@CurrentSite`) | **(LIVE)** 페이지수 보정 — 빈 페이지 추가로 배수 정합. Body `{fileId, targetMultiple}` → jobId, 폴링 시 `outputFileId`(새 fileId, 원본 보존). 2.6 |
 | POST | `/api/worker-jobs/fix-pagecount` | 내부 RolesGuard | **(LIVE)** 페이지수 보정 — 내부 전용 변형 |
 | POST | `/api/worker-jobs/fix-pagecount/attach` | `@Public` (게스트 편집기) | **(LIVE 2026-09-28)** 첨부 내지 PDF 빈 페이지 배수 채움 — 편집기 첨부 모달 전용. Body `{fileId, templateSetId}`, 배수는 서버가 템플릿셋 `pageStep`(`padToPageStep`=true 일 때만)으로 산출, 미설정 400 `PAGE_PAD_NOT_ENABLED`. 폴링 `GET /api/worker-jobs/:id` → `outputFileId`(원본 보존). 파트너 직접 호출 불요 — 3.3 첨부 이벤트 |
-| POST | `/api/worker-jobs/compose-mixed` | **@Public (무인증·테넌트 스코프 없음)** — 단 `assembleFromSession:true` 경로는 shop-session Bearer 필요(실패 시 `404`) | 합성 트리거 — 기본은 **파일 참조를 호출자가 공급**(`coverUrl`/`contentPdfUrl`/면지 배열)하고 `editSessionId` 는 스프레드 기대치 조회·잡 추적용. **`assembleFromSession:true` 를 명시하면 서버가 세션에서 표지·내지·면지·판형을 도출**(빈 필드만, dto 우선 — 3.4.1). 표지·내지·면지 자산이 **0건이면 `400 EMPTY_COMPOSE_INPUT`**, 한쪽만 빠지면 종전대로 부분 백지가 `COMPLETED`(3.4). 산출물은 `files` 미등록 → `outputFileId` 없음 → 결과 바이트는 `outputFileUrl`/`result.outputFiles[].url`(스토리지 경로)을 그대로 GET. ⚠️ 기본 경로는 editSessionId(UUID)만으로 트리거 가능 → 세션ID 비밀유지·브라우저 노출 최소화 |
+| POST | `/api/worker-jobs/compose-mixed` | **@Public** (`X-API-Key` 선택 — 파트너 백엔드는 사이트 키와 함께 호출) — `assembleFromSession:true` 경로는 shop-session Bearer 필요(실패 시 `404`) | 합성 트리거 — 기본은 **파일 참조를 호출자가 공급**(`coverUrl`/`contentPdfUrl`/면지 배열)하고 `editSessionId` 는 스프레드 기대치 조회·잡 추적용. **`assembleFromSession:true` 를 명시하면 서버가 세션에서 표지·내지·면지·판형을 도출**(빈 필드만, dto 우선 — 3.4.1). 표지·내지·면지 자산이 **0건이면 `400 EMPTY_COMPOSE_INPUT`**, 한쪽만 빠지면 종전대로 부분 백지가 `COMPLETED`(3.4). 산출물은 `files` 미등록 → `outputFileId` 없음 → 결과 바이트는 `outputFileUrl`/`result.outputFiles[].url`(스토리지 경로)을 그대로 GET. 기본 경로의 `editSessionId` 는 세션 연결 확인(사이트 키 = 같은 사이트 세션 또는 사이트 미지정 회원 세션, shop-session = 같은 회원·주문권한 세션·비회원 세션은 `X-Guest-Token`) — 아니면 `404 SESSION_NOT_FOUND`, 잡 미생성(3.4). 세션ID 비밀유지·브라우저 노출 최소화 |
 | GET | `/api/worker-jobs/external/:id` | X-API-Key | 잡 상태 폴링 |
 | GET | `/api/worker-jobs/external/:id/output-url` | **X-API-Key** (자기 사이트 잡만 — 타 테넌트 잡은 `404`) | **산출물 서명 URL 재발급(2026-08-28 신설, 권장 회수 경로)** — 잡의 모든 산출물(`separate` 는 cover·content 2건)에 대해 단명(기본 300초) 서명 URL 을 반환. `files[].url` 을 그대로 GET(만료 `410` → 재호출). **URL 박제 대신 `jobId` 저장**이 정식 패턴. 무인증 `/storage/outputs/` 직접 GET 은 2026-09-11 cutover 로 폐쇄됐고, 이 라우트가 **유일한 회수 경로**다(3.4) |
 | GET | `/api/worker-jobs/:id/output` | **JWT (전역 가드, @Public 아님 — `@Roles` 없음)** | 잡 결과 PDF 스트리밍(`result.outputFileUrl` 1개). **admin 미리보기 전용 — 파트너 사용 불가.** `ApiKeyGuard` 미적용이라 유효한 사이트 API 키로도 `401`(2026-08-13 실측). 파트너는 `outputFileUrl` 을 직접 GET 하세요(3.4). `@CurrentSite` 격리 적용(타 테넌트 잡은 404) |
@@ -1566,9 +1576,9 @@ curl -X POST "https://api.papascompany.co.kr/api/worker-jobs/compose-mixed" \
 | GET | `/api/edit-sessions/:id/imposition-preview` | @Public + X-API-Key | 임포지션 프리뷰 |
 | POST | `/api/partner/edit-sessions/owners` | X-API-Key (사이트 편집기 키, 사이트 키당 120/min) | **(ADDITIVE 2026-09-30)** 편집 세션 소유자 배치 조회 — Body `{sessionIds}`(1~50, 소문자 UUID) → 입력 순서·길이의 최상위 배열 `{sessionId, found, memberSeqno, guest, orderSeqno, status}`. 주문 결속 직전 확인용. 3.3.4 |
 | GET | `/api/edit-sessions/guest/:id` | @Public + **`X-Guest-Token` 헤더 필수** | **(ADDITIVE 2026-09-30)** 편집기 내부 사용 · 비회원 세션 조회(`X-Guest-Token`). 에러 코드는 `PATCH guest/:id` 와 동일 |
-| POST | `/api/edit-sessions` | (회원/게스트) | 편집세션 생성 — `memberSeqno` falsy 시 `400 MEMBER_REQUIRED` |
+| POST | `/api/edit-sessions` | JWT (shop-session 회원 토큰) | 편집세션 생성 — shop-session 토큰의 회원 번호로 생성(본문 `memberSeqno` 미사용). 회원 번호가 1 이상 정수가 아니면 `400 MEMBER_REQUIRED`(비회원은 `POST /api/edit-sessions/guest`). 1.5 |
 | POST | `/api/edit-sessions/guest` | @Public (**Bearer 있으면 site 스탬프**) | 게스트 세션 생성. 토큰이 있으면 그 shop-session JWT 의 `siteId` 를 세션에 스탬프하고, 없거나 위조·만료면 `siteId=NULL` 로 생성(**401 이 되지 않음** — 무인증 생성은 계속 허용). Body 의 `siteId` 는 **무시**됩니다. 3.2 |
-| PATCH | `/api/edit-sessions/guest/:id` | @Public + **게스트 토큰 필수** | 게스트 세션 저장. `X-Guest-Token` 헤더 **또는** `?guestToken=` 쿼리 중 하나로 소유를 증명해야 합니다. 에러 `403 GUEST_TOKEN_REQUIRED`(미전송) · `403 GUEST_TOKEN_MISMATCH` · `403 GUEST_SESSION_EXPIRED`(24h) · `403 NOT_A_GUEST_SESSION` |
+| PATCH | `/api/edit-sessions/guest/:id` | @Public + **게스트 토큰 필수** | 게스트 세션 저장. **`X-Guest-Token` 헤더**로 소유를 증명해야 합니다(쿼리 `?guestToken=` 은 받지 않음). 편집기 내부 사용 `GET guest/:id/versions`·`POST guest/:id/versions/:vid/restore` 도 같은 헤더 규칙입니다. 에러 `403 GUEST_TOKEN_REQUIRED`(미전송) · `403 GUEST_TOKEN_MISMATCH` · `403 GUEST_SESSION_EXPIRED`(24h) · `403 NOT_A_GUEST_SESSION` |
 | POST | `/api/edit-sessions/guest/migrate` | **JWT (Bearer, shop-session 회원 토큰)** | 게스트 세션 → 회원 흡수. Body `{guestToken}` → `{migratedCount, sessionIds[]}`. 에러 `401`(토큰 없음/만료) · `403 AUTH_REQUIRED`(회원 식별자 없는 토큰, 회원 번호가 1 이상 정수가 아닌 토큰 포함) · `403 CROSS_SITE_MIGRATION_DENIED`(타 사이트 세션 포함 — 요청 전체 거부) · `400 GUEST_TOKEN_REQUIRED`(누락/8자 미만). `siteId` 는 바뀌지 않음(생성 시점 테넌트 영구 보존) → 승격 가능 여부는 **생성 시점**에 결정됨. 3.3 |
 | GET/POST/PUT/DELETE | `/api/sites`, `/api/sites/:id` | JWT + ADMIN/MANAGER | 테넌트 생애주기 (운영자 전용, 파트너 비대상). **수정은 `PUT /api/sites/:id`** (`:id` 에 PATCH 라우트 없음) |
 | PATCH | `/api/sites/:id/regenerate` | JWT + ADMIN/MANAGER | 키 회전 (`{target:'editor'\|'worker'\|'both'}`) |
@@ -1791,7 +1801,7 @@ CORS는 (a) Origin 없음→무조건 허용 (b) env 정적 (c) `*.vercel.app`/`
 책등 계산과 합성기는 canonical code 4종(`perfect`/`saddle`/`spiral`/`hardcover`)만 인지합니다. 자체 제본 라벨(무선날개·계단식중철 등)을 이 4종으로 매핑해 전송하세요. 페이지 규칙(배수/상한/하한)은 binding 문자열이 아니라 `pageMultiple` 등 값으로 구분하므로, 라벨 세분화는 파트너 주문기록에 유지하면 됩니다. bookmoa 매핑 예시는 2.5 참조.
 
 **Q. shop-session에서 회원번호 관련 에러가 납니다.**
-`memberSeqno` 는 0 이상 정수 필수 필드(`@IsInt() @Min(0)`)라 **누락·음수·소수·비숫자는 일반 검증 `400`**(코드명 `MEMBER_REQUIRED` 아님)이 납니다. `memberSeqno=0`(비회원 방문자)은 검증을 통과해 `sub='0'` 세션을 발급합니다(거부 안 함). `MEMBER_REQUIRED` 는 shop-session 이 아니라 `POST /api/edit-sessions`(세션 생성) 단계에서 `memberSeqno` 가 falsy(0/누락)일 때 발생합니다. 파트너 자체 정수 회원번호(0/음수 아님)를 채우세요.
+`memberSeqno` 는 0 이상 정수 필수 필드(`@IsInt() @Min(0)`)라 **누락·음수·소수·비숫자는 일반 검증 `400`**(코드명 `MEMBER_REQUIRED` 아님)이 납니다. `memberSeqno=0`(비회원 방문자)은 검증을 통과해 `sub='0'` 세션을 발급합니다(거부 안 함). `MEMBER_REQUIRED` 는 shop-session 이 아니라 `POST /api/edit-sessions`(세션 생성) 단계에서 토큰의 회원 번호가 1 이상 정수가 아닐 때(0 포함) 발생합니다(세션은 토큰의 회원 번호로 만들어지고 본문 `memberSeqno` 는 쓰지 않습니다). 파트너 자체 정수 회원번호(0/음수 아님)를 채우세요.
 
 **Q. 게스트가 편집완료했는데 PDF가 없습니다.**
 회원 식별 없는 토큰(예: `memberSeqno=0`)은 게스트 세션으로 폴백되어, 편집완료 시 PDF 없이 `editor.complete{needsAuth:true}` → `editor.needAuth` 순으로 발신합니다(순서 주의 — 3.2). 호스트가 로그인 유도 후 게스트→회원 세션 마이그레이션을 처리해야 합니다 (절차는 3.3).
