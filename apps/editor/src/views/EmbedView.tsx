@@ -9,6 +9,8 @@
  * 진입 형태 2종:
  *   - 신규 편집: `/embed?templateSetId=<id>&token=<jwt>&orderSeqno=<n>&pageCount=&paperType=&bindingType=&parentOrigin=`
  *   - 재편집  : `/embed?sessionId=<id>&token=<jwt>&parentOrigin=`  (templateSetId 는 세션에서 자동 도출, 명시해도 됨)
+ *   - 게스트 세션 재편집: 위 재편집 URL 에 `#guestToken=<게스트 토큰>` fragment 를 붙인다.
+ *     편집기는 fragment 에서만 읽고(쿼리 `guestToken` 은 읽지 않음) 주소창에서 곧바로 지운다.
  *
  * postMessage (dual-emit):
  *   - 정식 엔벨로프 `{ source:'storige-editor', event:'editor.*' }` → EmbeddedEditor 가 parentOrigin 으로 발신
@@ -23,15 +25,29 @@ import { normalizeSpineCode, parseSpineWidthMmParam } from '@/utils/hostSpine'
 import { parsePageCountLimitParam, parsePageStepParam } from '@/utils/hostPageLimits'
 import {
   EmbeddedEditor,
+  EMBED_MESSAGE_SOURCE,
+  EMBED_MESSAGE_VERSION,
   type EditorConfig,
   type EditorResult,
   type SaveResult,
   type EditorError,
   type EditorInstanceMethods,
+  type EmbedMessageEnvelope,
 } from '@/embed'
-import { editSessionsApi } from '@/api'
 import { setAdminEditTab, setAuthToken, setEmbedRefreshToken } from '@/utils/authTokenStorage'
 import { readAuthFragment, stripAuthFragment, type AuthFragment } from '@/utils/adminEditUrl'
+import {
+  readGuestTokenFragment,
+  recallEmbedGuestToken,
+  stripGuestTokenFragment,
+} from '@/utils/embedGuestTokenStore'
+import {
+  fetchSessionForReopen,
+  httpStatusOf,
+  redactGuestTokenInError,
+  sessionNotFoundMessage,
+  sessionNotFoundReasonOf,
+} from '@/utils/embedSessionReopen'
 
 /**
  * 부모(호스트) 윈도우로 레거시 `storige:*` 메시지 발신 (하위호환).
@@ -49,6 +65,34 @@ function emitLegacy(parentOrigin: string | undefined, type: string, payload: unk
   }
 }
 
+/**
+ * 부모(호스트) 윈도우로 정식 `editor.error` 엔벨로프 발신 — EmbeddedEditor 가 마운트되기 전에
+ * 실패한 경우에 쓴다. 규칙은 EmbeddedEditor 의 발신과 같다(parentOrigin 필수, top-level 이면 스킵).
+ */
+function emitFormalError(parentOrigin: string | undefined, payload: EditorError): void {
+  if (!parentOrigin) return
+  if (typeof window === 'undefined') return
+  if (window.parent === window) return
+  const envelope: EmbedMessageEnvelope<EditorError> = {
+    source: EMBED_MESSAGE_SOURCE,
+    version: EMBED_MESSAGE_VERSION,
+    event: 'editor.error',
+    payload,
+    timestamp: new Date().toISOString(),
+  }
+  try {
+    window.parent.postMessage(envelope, parentOrigin)
+  } catch (err) {
+    console.warn('[EmbedView] postMessage failed:', err)
+  }
+}
+
+/** fragment 로 받은 게스트 토큰 — 받은 시점의 sessionId 에 묶는다 */
+interface FragmentGuestToken {
+  sessionId: string | null
+  token: string
+}
+
 export default function EmbedView() {
   const [searchParams] = useSearchParams()
   const [config, setConfig] = useState<EditorConfig | null>(null)
@@ -56,6 +100,9 @@ export default function EmbedView() {
   // EmbeddedEditor 가 명령형 메서드(save/complete/cancel…)를 노출하는 ref.
   // 라우트 마운트에서는 직접 호출하지 않지만(헤더 버튼이 구동), prop 으로 필수.
   const instanceRef = useRef<EditorInstanceMethods | null>(null)
+  // fragment 게스트 토큰 보관 — 주소창에서 지운 뒤 effect 가 다시 실행돼도(StrictMode 등) 같은
+  // sessionId 이면 이 값을 쓴다. 검증 전 값이므로 탭 저장소에는 쓰지 않는다.
+  const fragmentGuestTokenRef = useRef<FragmentGuestToken | null>(null)
 
   useEffect(() => {
     let mounted = true
@@ -128,21 +175,47 @@ export default function EmbedView() {
       if (refreshToken) {
         setEmbedRefreshToken(refreshToken)
       }
-      // 관리자 편집 탭: 저장 후 주소창 fragment 에서 토큰을 지운다(새로고침은 탭 저장소로 이어감).
-      if (adminEdit) {
+      // 게스트 세션 재오픈 토큰: fragment(`#guestToken=`)에서만 받는다. 관리자 편집 탭은 쓰지 않는다.
+      // 받은 값은 sessionId 에 묶어 ref 에 두고, 검증 전이므로 탭 저장소에는 쓰지 않는다.
+      const fragGuestToken = typeof window !== 'undefined' ? readGuestTokenFragment(window.location.hash) : null
+      if (fragGuestToken && !adminEdit) {
+        fragmentGuestTokenRef.current = { sessionId: sessionId ?? null, token: fragGuestToken }
+      }
+      const heldGuestToken = fragmentGuestTokenRef.current
+      const guestToken =
+        !adminEdit && sessionId && heldGuestToken?.sessionId === sessionId ? heldGuestToken.token : undefined
+
+      // 주소창 fragment 에서 토큰을 지운다 — 관리자 편집 탭의 인증 토큰(새로고침은 탭 저장소로 이어감)과
+      // 게스트 토큰 키. 쿼리와 다른 fragment 키는 유지한다.
+      if (typeof window !== 'undefined') {
         try {
-          window.history.replaceState(window.history.state, '', stripAuthFragment(window.location.href))
+          const href = window.location.href
+          const stripped = stripGuestTokenFragment(adminEdit ? stripAuthFragment(href) : href)
+          if (stripped !== href) window.history.replaceState(window.history.state, '', stripped)
         } catch { /* SSR/보안 제약 무시 */ }
       }
 
       // 재편집: sessionId 만 받고 templateSetId 가 없으면 세션에서 도출.
       // (bookmoa 가 templateSetId 를 함께 보내면 이 조회는 생략됨)
+      // 게스트 토큰이 있으면 게스트 조회 경로 → 기억된 토큰 → 기존 조회 경로 순(EmbeddedEditor 와 같은 순서).
       if (sessionId && !templateSetId) {
         try {
-          const session = await editSessionsApi.get(sessionId)
+          const session = await fetchSessionForReopen(sessionId, {
+            presented: guestToken ?? null,
+            remembered: recallEmbedGuestToken(sessionId),
+          })
           templateSetId = session.templateSetId || undefined
         } catch (err) {
-          console.warn('[EmbedView] 세션 조회 실패 — templateSetId 도출 불가:', err)
+          redactGuestTokenInError(err, guestToken)
+          const status = httpStatusOf(err)
+          console.warn('[EmbedView] 세션 조회 실패 — templateSetId 도출 불가:', status)
+          const reason = sessionNotFoundReasonOf(err, status)
+          if (reason && mounted) {
+            const message = sessionNotFoundMessage(reason)
+            const payload: EditorError = { code: 'SESSION_NOT_FOUND', message, sessionId, reason, fatal: true }
+            emitFormalError(parentOrigin, payload)
+            emitLegacy(parentOrigin, 'storige:error', { message })
+          }
         }
       }
 
@@ -165,6 +238,8 @@ export default function EmbedView() {
         token,
         refreshToken,
         sessionId,
+        // 게스트 세션 재오픈 토큰 — sessionId 가 있을 때만 전달
+        ...(guestToken ? { guestToken } : {}),
         coverFileId,
         contentFileId,
         apiBaseUrl,

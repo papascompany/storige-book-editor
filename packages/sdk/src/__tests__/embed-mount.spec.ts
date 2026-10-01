@@ -198,6 +198,44 @@ describe('mountEditor — 마운트와 iframe 배선', () => {
     expect(h.handle.url).toBe(h.iframe.attrs.src);
   });
 
+  it('guestToken 은 iframe src 의 fragment 로만 실리고 handle.url 에는 없다', () => {
+    const token = 'g+t/k=n';
+    const h = setup({ params: { token: 'jwt', sessionId: 'sess-1' }, guestToken: token });
+    const src = new URL(h.iframe.attrs.src ?? '');
+    expect(new URLSearchParams(src.hash.slice(1)).get('guestToken')).toBe(token);
+    expect(src.searchParams.has('guestToken')).toBe(false);
+    expect(h.handle.url).not.toContain('#');
+    expect(h.handle.url).not.toContain('guestToken');
+    expect(h.handle.url).toBe((h.iframe.attrs.src ?? '').split('#')[0]);
+    expect(src.searchParams.get('parentOrigin')).toBe(PARENT_ORIGIN);
+  });
+
+  it('guestToken 이 있어도 수신 게이트는 편집기 오리진 그대로다', () => {
+    const ready = vi.fn();
+    const h = setup(
+      { params: { token: 'jwt', sessionId: 'sess-1' }, guestToken: 'g' },
+      { ready },
+    );
+    h.raw({
+      origin: 'https://evil.test',
+      source: h.iframe.contentWindow,
+      data: {
+        source: EDITOR_MESSAGE_SOURCE,
+        version: EMBED_MESSAGE_VERSION,
+        event: 'editor.ready',
+        payload: {},
+        timestamp: '2026-07-28T00:00:00.000Z',
+      },
+    });
+    expect(ready).not.toHaveBeenCalled();
+    h.fromEditor('editor.ready', { sessionId: 'sess-1' });
+    expect(ready).toHaveBeenCalledTimes(1);
+  });
+
+  it('sessionId 없이 guestToken 만 넘기면 마운트를 거부한다', () => {
+    expect(() => setup({ guestToken: 'g' })).toThrow(StorigeUsageError);
+  });
+
   it('parentOrigin 누락/와일드카드는 마운트 자체를 거부한다', () => {
     expect(() => setup({ parentOrigin: '' })).toThrow(StorigeUsageError);
     expect(() => setup({ parentOrigin: '*' })).toThrow(/와일드카드/);

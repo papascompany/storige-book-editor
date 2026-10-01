@@ -1,4 +1,15 @@
 import { apiClient } from './client'
+import { redactGuestTokenInError } from '../utils/redactGuestToken'
+
+/** 게스트 토큰을 싣는 호출 — 실패 오류의 요청 설정에서 토큰 원문을 가린 뒤 같은 오류를 던진다. */
+async function withGuestTokenRedacted<T>(guestToken: string, call: () => Promise<T>): Promise<T> {
+  try {
+    return await call()
+  } catch (err) {
+    redactGuestTokenInError(err, guestToken)
+    throw err
+  }
+}
 
 /**
  * Edit Session 상태 (bookmoa 연동용)
@@ -123,14 +134,15 @@ export const editSessionsApi = {
 
   /**
    * 게스트 세션 조회 — 게스트 토큰 필수(검증은 updateGuest 대상 PATCH guest/:id 와 동일).
-   * 토큰은 `x-guest-token` 헤더로만 보낸다(URL·쿼리에 싣지 않음).
+   * 토큰은 `x-guest-token` 헤더로만 보낸다(URL·쿼리에 싣지 않음). 실패 오류의 토큰 원문은 가린다.
    */
-  getGuest: async (id: string, guestToken: string): Promise<EditSessionResponse> => {
-    const response = await apiClient.get<EditSessionResponse>(`/edit-sessions/guest/${id}`, {
-      headers: { 'x-guest-token': guestToken },
-    })
-    return response.data
-  },
+  getGuest: async (id: string, guestToken: string): Promise<EditSessionResponse> =>
+    withGuestTokenRedacted(guestToken, async () => {
+      const response = await apiClient.get<EditSessionResponse>(`/edit-sessions/guest/${id}`, {
+        headers: { 'x-guest-token': guestToken },
+      })
+      return response.data
+    }),
 
   /**
    * 주문별 세션 목록 조회
@@ -217,44 +229,49 @@ export const editSessionsApi = {
   },
 
   /**
-   * P1-4 — 게스트 세션 스냅샷 목록. 토큰은 updateGuest 와 동일하게 쿼리로 전송
-   * (getGuest 와 같은 `x-guest-token` 헤더 전송으로의 전환은 후속 작업).
+   * P1-4 — 게스트 세션 스냅샷 목록. 토큰은 `x-guest-token` 헤더로만 보낸다(URL·쿼리에 싣지 않음).
+   * 실패 오류의 토큰 원문은 가린다.
    */
-  listGuestVersions: async (id: string, guestToken: string): Promise<EditSessionVersionSummary[]> => {
-    const response = await apiClient.get<EditSessionVersionSummary[]>(
-      `/edit-sessions/guest/${id}/versions?guestToken=${encodeURIComponent(guestToken)}`,
-    )
-    return Array.isArray(response.data) ? response.data : []
-  },
+  listGuestVersions: async (id: string, guestToken: string): Promise<EditSessionVersionSummary[]> =>
+    withGuestTokenRedacted(guestToken, async () => {
+      const response = await apiClient.get<EditSessionVersionSummary[]>(
+        `/edit-sessions/guest/${id}/versions`,
+        { headers: { 'x-guest-token': guestToken } },
+      )
+      return Array.isArray(response.data) ? response.data : []
+    }),
 
   /**
    * P1-4 — 게스트 세션 스냅샷 복원. 응답 세션에는 guestToken 이 없을 수 있으므로 호출측이 보존한다.
+   * 토큰은 `x-guest-token` 헤더로만 보낸다(URL·쿼리에 싣지 않음). 실패 오류의 토큰 원문은 가린다.
    */
   restoreGuestVersion: async (
     id: string,
     guestToken: string,
     versionId: string,
-  ): Promise<EditSessionResponse> => {
-    const response = await apiClient.post<EditSessionResponse>(
-      `/edit-sessions/guest/${id}/versions/${versionId}/restore?guestToken=${encodeURIComponent(guestToken)}`,
-      {},
-      { __noRetry: true },
-    )
-    return response.data
-  },
+  ): Promise<EditSessionResponse> =>
+    withGuestTokenRedacted(guestToken, async () => {
+      const response = await apiClient.post<EditSessionResponse>(
+        `/edit-sessions/guest/${id}/versions/${versionId}/restore`,
+        {},
+        { __noRetry: true, headers: { 'x-guest-token': guestToken } },
+      )
+      return response.data
+    }),
 
   /**
-   * 게스트 세션 업데이트 — 토큰 동봉 (쿼리 파라미터로 안전 전송).
+   * 게스트 세션 업데이트 — 토큰은 `x-guest-token` 헤더로만 보낸다(URL·쿼리에 싣지 않음).
+   * 실패 오류의 토큰 원문은 가린다.
    */
   updateGuest: async (
     id: string,
     guestToken: string,
     payload: UpdateEditSessionRequest,
-  ): Promise<EditSessionResponse> => {
-    const response = await apiClient.patch<EditSessionResponse>(
-      `/edit-sessions/guest/${id}?guestToken=${encodeURIComponent(guestToken)}`,
-      payload,
-    )
-    return response.data
-  },
+  ): Promise<EditSessionResponse> =>
+    withGuestTokenRedacted(guestToken, async () => {
+      const response = await apiClient.patch<EditSessionResponse>(`/edit-sessions/guest/${id}`, payload, {
+        headers: { 'x-guest-token': guestToken },
+      })
+      return response.data
+    }),
 }

@@ -10,6 +10,10 @@
  *   E6b getGuest 응답 없는 연결 실패(ERR_NETWORK) → get 폴백(최종 판정은 기존 경로)
  *   E7 세션 로드·createGuest 생성 후 기록(expiresAt 포함). 회원 세션·guestToken 없는 응답은 미기록
  *   E8 만료 기록 → getGuest 미호출, get 경로
+ *   E9 config guestToken: 게스트 조회 경로 우선, 기억된 토큰보다 먼저, 거절되면 기억된 토큰 1회
+ *   E10 SESSION_NOT_FOUND 사유: 토큰 없이 GUEST_TOKEN_REQUIRED → guest_token_required,
+ *       제시 토큰 GUEST_SESSION_EXPIRED → not_found, GUEST_TOKEN_MISMATCH → forbidden,
+ *       기억된 토큰이 만료로 지워진 뒤 GUEST_TOKEN_REQUIRED → not_found
  *
  * 하네스는 embed.sessionNotFound.test.tsx 를 준용한다.
  */
@@ -120,11 +124,15 @@ interface Envelope {
 
 const parentPost = vi.fn<(msg: Envelope, origin: string) => void>()
 
-function axiosHttpError(status: number, config?: InternalAxiosRequestConfig): AxiosError {
+function axiosHttpError(
+  status: number,
+  config?: InternalAxiosRequestConfig,
+  data: Record<string, unknown> = {},
+): AxiosError {
   const cfg = config ?? ({ headers: new AxiosHeaders() } as InternalAxiosRequestConfig)
   return new AxiosError(`Request failed with status code ${status}`, 'ERR_BAD_REQUEST', cfg, undefined, {
     status,
-    data: {},
+    data,
     statusText: '',
     headers: {},
     config: cfg,
@@ -170,7 +178,12 @@ function posted(event: string): Record<string, unknown>[] {
 }
 
 function renderEmbed(
-  props: Partial<{ sessionId: string; orderSeqno: number; mode: 'cover' | 'content' | 'both' | 'template' }> = {},
+  props: Partial<{
+    sessionId: string
+    guestToken: string
+    orderSeqno: number
+    mode: 'cover' | 'content' | 'both' | 'template'
+  }> = {},
   callbacks: { onError?: (e: unknown) => void; onReady?: () => void } = {},
 ) {
   const instanceRef = { current: null as EditorInstanceMethods | null }
@@ -438,5 +451,130 @@ describe('EmbeddedEditor — 게스트 세션 재오픈 시 게스트 조회 경
     expect(api.getGuest).not.toHaveBeenCalled()
     expect(api.get).toHaveBeenCalledWith(SESSION_ID)
     expect(sessionStorage.getItem(RECORD_KEY)).toBeNull()
+  })
+  it('E9 config guestToken 만 있으면 getGuest(sessionId, prop) 1회 → editor.ready, 성공 응답으로 기억', async () => {
+    api.getGuest.mockResolvedValue(guestSession({ guestToken: 'prop-token', guestExpiresAt: FUTURE }))
+    renderEmbed({ sessionId: SESSION_ID, guestToken: 'prop-token' })
+
+    await waitFor(() => expect(posted('editor.ready')).toHaveLength(1))
+    expect(api.getGuest).toHaveBeenCalledTimes(1)
+    expect(api.getGuest).toHaveBeenCalledWith(SESSION_ID, 'prop-token')
+    expect(api.get).not.toHaveBeenCalled()
+    expect(JSON.parse(sessionStorage.getItem(RECORD_KEY) as string)).toEqual({
+      guestToken: 'prop-token',
+      expiresAt: FUTURE,
+    })
+  })
+
+  it('E9 config guestToken 이 기억된 토큰보다 먼저 쓰인다', async () => {
+    seedRecord(REC_TOKEN, FUTURE)
+    api.getGuest.mockResolvedValue(guestSession({ guestToken: 'prop-token' }))
+    renderEmbed({ sessionId: SESSION_ID, guestToken: 'prop-token' })
+
+    await waitFor(() => expect(posted('editor.ready')).toHaveLength(1))
+    expect(api.getGuest.mock.calls).toEqual([[SESSION_ID, 'prop-token']])
+    expect(api.get).not.toHaveBeenCalled()
+  })
+
+  it('E9 config guestToken 이 거절되면 기억된 토큰 1회 → 성공, 기억된 기록 유지', async () => {
+    seedRecord(REC_TOKEN, FUTURE)
+    api.getGuest.mockImplementation(async (_id: string, token: string) => {
+      if (token === REC_TOKEN) return guestSession()
+      throw axiosHttpError(403, guestRequestConfig(token), { code: 'GUEST_TOKEN_MISMATCH' })
+    })
+    renderEmbed({ sessionId: SESSION_ID, guestToken: 'wrong-token' })
+
+    await waitFor(() => expect(posted('editor.ready')).toHaveLength(1))
+    expect(api.getGuest.mock.calls).toEqual([
+      [SESSION_ID, 'wrong-token'],
+      [SESSION_ID, REC_TOKEN],
+    ])
+    expect(api.get).not.toHaveBeenCalled()
+    expect(JSON.parse(sessionStorage.getItem(RECORD_KEY) as string).guestToken).toBe(REC_TOKEN)
+  })
+
+  it('E9 config guestToken 은 sessionId 가 없으면 쓰지 않는다', async () => {
+    api.findByOrder.mockResolvedValue({ sessions: [guestSession({ guestToken: null, memberSeqno: 123 })] })
+    renderEmbed({ guestToken: 'prop-token', orderSeqno: 1234567890123, mode: 'both' })
+
+    await waitFor(() => expect(posted('editor.ready')).toHaveLength(1))
+    expect(api.getGuest).not.toHaveBeenCalled()
+  })
+
+  it("E10 토큰 없이 get 403 GUEST_TOKEN_REQUIRED → SESSION_NOT_FOUND(reason 'guest_token_required') fatal 1회, 새 세션 생성·주문 검색 없음", async () => {
+    api.get.mockRejectedValue(axiosHttpError(403, undefined, { code: 'GUEST_TOKEN_REQUIRED' }))
+    const onError = vi.fn()
+    renderEmbed({ sessionId: SESSION_ID, orderSeqno: 1234567890123, mode: 'both' }, { onError })
+
+    expect(await screen.findByText('편집 작업을 불러올 수 없습니다')).toBeInTheDocument()
+    await flushInit()
+    const errors = posted('editor.error')
+    expect(errors).toHaveLength(1)
+    expect(errors[0]).toMatchObject({
+      code: 'SESSION_NOT_FOUND',
+      sessionId: SESSION_ID,
+      reason: 'guest_token_required',
+      fatal: true,
+    })
+    expect(onError).toHaveBeenCalledTimes(1)
+    expect(api.getGuest).not.toHaveBeenCalled()
+    expect(api.create).not.toHaveBeenCalled()
+    expect(api.createGuest).not.toHaveBeenCalled()
+    expect(api.findByOrder).not.toHaveBeenCalled()
+    expect(posted('editor.ready')).toHaveLength(0)
+  })
+
+  it("E10 제시 토큰이 GUEST_SESSION_EXPIRED → get 403 GUEST_TOKEN_REQUIRED → reason 'not_found'", async () => {
+    api.getGuest.mockRejectedValue(
+      axiosHttpError(403, guestRequestConfig('prop-token'), { code: 'GUEST_SESSION_EXPIRED' }),
+    )
+    api.get.mockRejectedValue(axiosHttpError(403, undefined, { code: 'GUEST_TOKEN_REQUIRED' }))
+    renderEmbed({ sessionId: SESSION_ID, guestToken: 'prop-token' })
+
+    expect(await screen.findByText('편집 작업을 불러올 수 없습니다')).toBeInTheDocument()
+    await flushInit()
+    const errors = posted('editor.error')
+    expect(errors).toHaveLength(1)
+    expect(errors[0]).toMatchObject({ code: 'SESSION_NOT_FOUND', reason: 'not_found', fatal: true })
+    expect(api.get).toHaveBeenCalledTimes(1)
+  })
+
+  it("E10 제시 토큰이 GUEST_TOKEN_MISMATCH → get 403 GUEST_TOKEN_REQUIRED → reason 'forbidden'", async () => {
+    api.getGuest.mockRejectedValue(
+      axiosHttpError(403, guestRequestConfig('prop-token'), { code: 'GUEST_TOKEN_MISMATCH' }),
+    )
+    api.get.mockRejectedValue(axiosHttpError(403, undefined, { code: 'GUEST_TOKEN_REQUIRED' }))
+    renderEmbed({ sessionId: SESSION_ID, guestToken: 'prop-token' })
+
+    expect(await screen.findByText('편집 작업을 불러올 수 없습니다')).toBeInTheDocument()
+    await flushInit()
+    const errors = posted('editor.error')
+    expect(errors).toHaveLength(1)
+    expect(errors[0]).toMatchObject({ code: 'SESSION_NOT_FOUND', reason: 'forbidden', fatal: true })
+  })
+
+  it("E10 기억된 토큰이 만료로 지워지고 get 403 GUEST_TOKEN_REQUIRED → reason 'not_found'", async () => {
+    seedRecord(REC_TOKEN, PAST)
+    api.get.mockRejectedValue(axiosHttpError(403, undefined, { code: 'GUEST_TOKEN_REQUIRED' }))
+    renderEmbed({ sessionId: SESSION_ID })
+
+    expect(await screen.findByText('편집 작업을 불러올 수 없습니다')).toBeInTheDocument()
+    await flushInit()
+    const errors = posted('editor.error')
+    expect(errors).toHaveLength(1)
+    expect(errors[0]).toMatchObject({ code: 'SESSION_NOT_FOUND', reason: 'not_found', fatal: true })
+    expect(api.getGuest).not.toHaveBeenCalled()
+    expect(api.get).toHaveBeenCalledTimes(1)
+    expect(api.create).not.toHaveBeenCalled()
+    expect(api.createGuest).not.toHaveBeenCalled()
+  })
+
+  it("E10 다른 code 의 403 은 'forbidden'", async () => {
+    api.get.mockRejectedValue(axiosHttpError(403, undefined, { code: 'PERMISSION_DENIED' }))
+    renderEmbed({ sessionId: SESSION_ID })
+
+    expect(await screen.findByText('편집 작업을 불러올 수 없습니다')).toBeInTheDocument()
+    await flushInit()
+    expect(posted('editor.error')).toEqual([expect.objectContaining({ reason: 'forbidden' })])
   })
 })

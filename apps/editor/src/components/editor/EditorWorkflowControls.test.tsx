@@ -16,6 +16,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { AxiosError, AxiosHeaders, type InternalAxiosRequestConfig } from 'axios'
 
 /** 공개 엔드포인트(with-templates)만 쓴다 — JWT 필수 라우트는 게스트에서 401(2026-08-13 적발) */
 const getTemplateSetWithTemplates = vi.fn()
@@ -29,9 +30,27 @@ vi.mock('../../api/template-sets', () => ({
 }))
 
 const sessionGet = vi.fn()
+const sessionGetGuest = vi.fn()
 vi.mock('../../api/edit-sessions', () => ({
-  editSessionsApi: { get: (...a: unknown[]) => sessionGet(...a) },
+  editSessionsApi: {
+    get: (...a: unknown[]) => sessionGet(...a),
+    getGuest: (...a: unknown[]) => sessionGetGuest(...a),
+  },
 }))
+
+/** 게스트 조회 경로 실패 응답(요청 헤더에 토큰 원문이 실린 모양) */
+function guestHttpError(status: number, token: string, data: Record<string, unknown> = {}): AxiosError {
+  const headers = new AxiosHeaders()
+  headers.set('x-guest-token', token)
+  const cfg = { url: '/edit-sessions/guest/sess-1', method: 'get', headers } as InternalAxiosRequestConfig
+  return new AxiosError(`Request failed with status code ${status}`, 'ERR_BAD_REQUEST', cfg, undefined, {
+    status,
+    data,
+    statusText: '',
+    headers: {},
+    config: cfg,
+  })
+}
 
 const seatContentPdf = vi.fn(async (..._args: unknown[]) => ({
   addedPages: 2,
@@ -69,7 +88,7 @@ vi.mock('../../stores/useAuthStore', () => ({
 }))
 
 const ensureGuestSession = vi.fn(async () => null)
-const guestState = { sessionId: null as string | null, ensureGuestSession }
+const guestState = { sessionId: null as string | null, guestToken: null as string | null, ensureGuestSession }
 vi.mock('../../stores/useGuestStore', () => ({
   useGuestStore: (sel: (s: typeof guestState) => unknown) => sel(guestState),
 }))
@@ -118,10 +137,12 @@ beforeEach(() => {
   appState.allCanvas = [{}, {}, {}]
   authState.token = null
   guestState.sessionId = null
+  guestState.guestToken = null
   getTemplateSetWithTemplates.mockResolvedValue({ templateSet: bookTemplateSet, templateDetails: [] })
   seatContentPdf.mockResolvedValue({ addedPages: 2, guidesPlaced: true })
   ensureSeatExistingContentPdf.mockResolvedValue({ addedPages: 0, guidesPlaced: false })
   sessionGet.mockResolvedValue({ id: 'sess-1' })
+  sessionGetGuest.mockResolvedValue({ id: 'sess-1' })
 })
 
 describe('EditorWorkflowControls — 임베드(명시 세션) 마운트', () => {
@@ -130,10 +151,49 @@ describe('EditorWorkflowControls — 임베드(명시 세션) 마운트', () => 
 
     expect(await screen.findByRole('button', { name: /내지 PDF 첨부/ })).toBeTruthy()
     expect(ensureGuestSession).not.toHaveBeenCalled()
-    // 배지 동기화는 조회하지만 앉히기는 embed.tsx 가 한다
-    await waitFor(() => expect(sessionGet).toHaveBeenCalledWith('sess-1'))
+    // 배지 동기화는 게스트 조회 경로로 읽지만 앉히기는 embed.tsx 가 한다
+    await waitFor(() => expect(sessionGetGuest).toHaveBeenCalledWith('sess-1', 'gt-1'))
+    expect(sessionGet).not.toHaveBeenCalled()
     expect(ensureSeatExistingContentPdf).not.toHaveBeenCalled()
     expect(seatContentPdf).not.toHaveBeenCalled()
+  })
+
+  it('guestToken prop 이 없는 명시 세션은 기존 조회 경로로 배지를 맞춘다', async () => {
+    sessionGet.mockResolvedValue({ id: 'sess-1', contentPdfMode: 'underlay', contentPdfFileId: 'f', contentPdfPageCount: 4 })
+    render(<EditorWorkflowControls templateSetId="ts-book" sessionId="sess-1" />)
+
+    expect(await screen.findByRole('button', { name: /첨부됨 \(4p\)/ })).toBeTruthy()
+    expect(sessionGet).toHaveBeenCalledWith('sess-1')
+    expect(sessionGetGuest).not.toHaveBeenCalled()
+  })
+
+  it('게스트 조회 경로가 거절(만료 403)하면 기존 조회 경로로 1회 폴백해 배지를 맞춘다', async () => {
+    sessionGetGuest.mockRejectedValue(guestHttpError(403, 'gt-1', { code: 'GUEST_SESSION_EXPIRED' }))
+    sessionGet.mockResolvedValue({ id: 'sess-1', contentPdfMode: 'underlay', contentPdfFileId: 'f', contentPdfPageCount: 6 })
+    render(<EditorWorkflowControls templateSetId="ts-book" sessionId="sess-1" guestToken="gt-1" />)
+
+    expect(await screen.findByRole('button', { name: /첨부됨 \(6p\)/ })).toBeTruthy()
+    expect(sessionGetGuest).toHaveBeenCalledTimes(1)
+    expect(sessionGet).toHaveBeenCalledTimes(1)
+    expect(sessionGet).toHaveBeenCalledWith('sess-1')
+  })
+
+  it('조회 실패 경고 로그에는 게스트 토큰 원문이 없다', async () => {
+    const TOKEN = 'gt-secret+/='
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    sessionGetGuest.mockRejectedValue(guestHttpError(503, TOKEN))
+    render(<EditorWorkflowControls templateSetId="ts-book" sessionId="sess-1" guestToken={TOKEN} />)
+
+    await waitFor(() =>
+      expect(warn).toHaveBeenCalledWith('[EditorWorkflowControls] 로드 시 내지 PDF 앉히기 스킵:', expect.anything()),
+    )
+    expect(sessionGet).not.toHaveBeenCalled()
+    const logged = warn.mock.calls.find((c) => c[0] === '[EditorWorkflowControls] 로드 시 내지 PDF 앉히기 스킵:')
+    const err = logged?.[1] as AxiosError
+    expect(err.config?.headers['x-guest-token']).toBe('[redacted]')
+    expect(JSON.stringify(err.toJSON())).not.toContain(TOKEN)
+    expect(JSON.stringify(err.toJSON())).not.toContain(encodeURIComponent(TOKEN))
+    warn.mockRestore()
   })
 
   it('레더·면지 안내 배너는 임베드에 노출하지 않는다 (W1 변경면적 제한)', async () => {
@@ -333,6 +393,25 @@ describe('EditorWorkflowControls — 레거시 `/`(소유 세션)', () => {
 
     expect(await screen.findByRole('button', { name: '✓ PDF 첨부됨' })).toBeTruthy()
     expect(screen.queryByRole('button', { name: /0p/ })).toBeNull()
+  })
+
+  it('게스트 스토어 토큰이 있으면 게스트 조회 경로로 읽고 underlay 면 앉힌다', async () => {
+    guestState.sessionId = 'guest-sess'
+    guestState.guestToken = 'store-token'
+    sessionGetGuest.mockResolvedValue({
+      id: 'guest-sess',
+      contentPdfMode: 'underlay',
+      contentPdfFileId: 'file-5',
+      contentPdfPageCount: 10,
+    })
+
+    render(<EditorWorkflowControls templateSetId="ts-book" />)
+
+    await waitFor(() => expect(ensureSeatExistingContentPdf).toHaveBeenCalledTimes(1))
+    expect(sessionGetGuest).toHaveBeenCalledWith('guest-sess', 'store-token')
+    expect(sessionGet).not.toHaveBeenCalled()
+    expect(ensureSeatExistingContentPdf.mock.calls[0]?.[1]).toBe('ts-book')
+    expect(await screen.findByRole('button', { name: /첨부됨 \(10p\)/ })).toBeTruthy()
   })
 
   it('캔버스가 준비되기 전에는 조회·배치하지 않는다', async () => {

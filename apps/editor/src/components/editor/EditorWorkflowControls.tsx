@@ -21,7 +21,8 @@ import type { TemplateSet } from '@storige/types'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useGuestStore } from '../../stores/useGuestStore'
 import { useAppStore } from '../../stores/useAppStore'
-import { editSessionsApi, type EditSessionResponse } from '../../api/edit-sessions'
+import type { EditSessionResponse } from '../../api/edit-sessions'
+import { fetchSessionForReopen, redactGuestTokenInError } from '../../utils/embedSessionReopen'
 import { ensureSeatExistingContentPdf, isEditorOutputContentFile, seatContentPdf } from '../../utils/contentPdfGuide'
 import { showToast } from '../../stores/useToastStore'
 import { ContentPdfAttachModal } from './ContentPdfAttachModal'
@@ -60,6 +61,7 @@ export function EditorWorkflowControls({
 
   const token = useAuthStore((s) => s.token)
   const guestSessionId = useGuestStore((s) => s.sessionId)
+  const storeGuestToken = useGuestStore((s) => s.guestToken)
   const ensureGuestSession = useGuestStore((s) => s.ensureGuestSession)
   const ready = useAppStore((s) => s.ready)
 
@@ -67,6 +69,11 @@ export function EditorWorkflowControls({
   const attachSessionId = sessionId ?? guestSessionId
   /** 세션 소유자 여부: 명시 주입이 없으면 이 컴포넌트가 세션을 만들고 로드 앉히기까지 책임진다 */
   const ownsSession = !sessionId
+  /** 첨부 대상 세션을 읽을 게스트 토큰 — 명시 주입이면 prop, 소유 세션이면 게스트 스토어 토큰 */
+  const readGuestToken = sessionId ? (guestToken ?? null) : storeGuestToken
+  /** 조회 effect 가 최신 토큰을 읽는 ref — 토큰 변화만으로 진행 중인 조회를 취소하지 않도록 deps 에서 뺀다 */
+  const readGuestTokenRef = useRef<string | null>(readGuestToken)
+  readGuestTokenRef.current = readGuestToken
   /** 로드 시 자동 앉히기 1회 가드 (세션 id 기준) */
   const seatedSessionRef = useRef<string | null>(null)
 
@@ -113,6 +120,7 @@ export function EditorWorkflowControls({
    * - 소유 세션(레거시 `/`): 여기서 앉힌다.
    * - 임베드: 앉히기는 embed.tsx 가 하고, 여기서는 주문에서 이미 올린 파일 배지만 맞춘다
    *   (없으면 "내지 PDF 첨부" 가 또 떠 고객이 두 번째 파일을 올리게 된다).
+   * - 게스트 토큰이 있으면 게스트 조회 경로로 읽고, 열리지 않으면 기존 조회 경로로 1회 폴백한다.
    */
   useEffect(() => {
     if (!ready || !attachSessionId || !templateSet) return
@@ -120,9 +128,10 @@ export function EditorWorkflowControls({
     seatedSessionRef.current = attachSessionId
 
     let cancelled = false
+    const readToken = readGuestTokenRef.current
     ;(async () => {
       try {
-        const session: EditSessionResponse = await editSessionsApi.get(attachSessionId)
+        const session: EditSessionResponse = await fetchSessionForReopen(attachSessionId, { presented: readToken })
         if (cancelled) return
         // R5(2026-08-18): 편집완료 산출물 content.pdf(contentFileId 로 저장됨)를 고객 첨부로
         // 오인하지 않는다. 진짜 고객 첨부 = contentPdfFileId 존재 또는 contentPdfMode==='underlay'.
@@ -146,6 +155,7 @@ export function EditorWorkflowControls({
           await ensureSeatExistingContentPdf(session, templateSet.id)
         }
       } catch (err) {
+        redactGuestTokenInError(err, readToken)
         console.warn('[EditorWorkflowControls] 로드 시 내지 PDF 앉히기 스킵:', err)
         seatedSessionRef.current = null
       }

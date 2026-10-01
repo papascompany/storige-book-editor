@@ -157,6 +157,11 @@ export interface MountEditorOptions {
   /** 기본 `/embed` */
   path?: string;
   extraParams?: Readonly<Record<string, string | number | boolean>>;
+  /**
+   * (additive) 기존 게스트 세션 재오픈용 게스트 토큰 — `params.sessionId` 필수.
+   * iframe src 의 fragment(`#guestToken=`)로만 전달되고 {@link EditorHandle.url} 에는 포함되지 않는다.
+   */
+  guestToken?: string;
   on?: EditorEventHandlers;
   /** 요청-응답 명령 타임아웃. 기본 {@link DEFAULT_COMMAND_TIMEOUT_MS} */
   commandTimeoutMs?: number;
@@ -170,7 +175,7 @@ export interface MountEditorOptions {
 export interface EditorHandle {
   /** 생성된 iframe. 재부착·스타일 조정용(직접 postMessage 하지 말 것) */
   readonly iframe: HTMLIFrameElement;
-  /** 실제 로드된 `/embed` URL */
+  /** 실제 로드된 `/embed` URL(fragment 제외 — 게스트 토큰은 담기지 않는다) */
   readonly url: string;
 
   /** `editor.ready` 를 기다린다. 미도달 시 {@link EditorNotReadyError} */
@@ -295,7 +300,14 @@ export function mountEditor(options: MountEditorOptions): EditorHandle {
     ...(options.extraParams !== undefined
       ? { extraParams: options.extraParams }
       : {}),
+    ...(options.guestToken !== undefined
+      ? { guestToken: options.guestToken }
+      : {}),
   });
+  // 핸들에 노출하는 URL 에는 fragment(게스트 토큰)를 싣지 않는다 — 토큰 값의 노출 경로를
+  // consumeGuestToken 한 곳으로 묶는다.
+  const hashIdx = url.indexOf('#');
+  const exposedUrl = hashIdx < 0 ? url : url.slice(0, hashIdx);
   // buildEmbedUrl 이 이미 검증·정규화했으므로 여기서는 정규화된 값만 다시 뽑는다.
   const editorOrigin = new URL(url).origin;
 
@@ -548,7 +560,7 @@ export function mountEditor(options: MountEditorOptions): EditorHandle {
 
   const handle: EditorHandle = {
     iframe: iframe as unknown as HTMLIFrameElement,
-    url,
+    url: exposedUrl,
 
     whenReady(timeoutMs?: number) {
       return waitReady(null, timeoutMs ?? readyTimeoutMs);

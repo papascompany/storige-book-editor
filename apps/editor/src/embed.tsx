@@ -93,11 +93,13 @@ import {
 } from './utils/loadProfiler'
 import { mergeRestoredSession, restoredCanvasCount } from './utils/sessionVersions'
 import { getAuthToken, setAuthToken, setEmbedRefreshToken } from './utils/authTokenStorage'
+import { recallEmbedGuestToken, rememberEmbedGuestToken } from './utils/embedGuestTokenStore'
 import {
-  recallEmbedGuestToken,
-  rememberEmbedGuestToken,
-  forgetEmbedGuestToken,
-} from './utils/embedGuestTokenStore'
+  fetchSessionForReopen,
+  sessionNotFoundMessage,
+  sessionNotFoundReasonOf,
+  type SessionNotFoundReason,
+} from './utils/embedSessionReopen'
 import type { SessionVersionsSource } from './components/editor/HistoryPanel'
 import './index.css'
 
@@ -238,6 +240,11 @@ export interface EditorConfig {
   refreshToken?: string
   /** 기존 편집 세션 ID (재편집시) */
   sessionId?: string
+  /**
+   * 기존 게스트 세션 재오픈용 게스트 토큰 — sessionId 와 함께일 때만 사용한다.
+   * 게스트 조회 경로를 먼저 쓰고, 열리지 않으면 현재 탭에 기억된 토큰, 그다음 기존 조회 경로 순으로 연다.
+   */
+  guestToken?: string
   /** 표지 파일 ID (bookmoa 연동용) */
   coverFileId?: string
   /** 내지 파일 ID (bookmoa 연동용) */
@@ -347,8 +354,11 @@ export interface EditorError {
   message: string
   /** SESSION_NOT_FOUND: 조회에 실패한 명시 sessionId */
   sessionId?: string
-  /** SESSION_NOT_FOUND 사유 — 404/410=not_found, 403=forbidden, 400/422=invalid_id */
-  reason?: 'not_found' | 'forbidden' | 'invalid_id'
+  /**
+   * SESSION_NOT_FOUND 사유 — 404/410=not_found, 403=forbidden, 400/422=invalid_id,
+   * guest_token_required=게스트 세션을 게스트 토큰 없이 열려 한 경우(호스트가 게스트 토큰으로 재오픈).
+   */
+  reason?: SessionNotFoundReason
   /**
    * true = 이 iframe 에서 더 진행 불가(호스트는 닫거나 새 토큰/세션으로 재오픈),
    * false = 편집 계속 가능(호스트는 닫지 말고 비차단 안내)
@@ -587,54 +597,6 @@ function isSampleFallbackAllowed(): boolean {
   }
 }
 
-/**
- * 오류 객체의 요청 설정에서 게스트 토큰 원문을 가린다 — 재던진 오류가 콘솔·모니터링으로
- * 전달되더라도 헤더·URL 에 토큰 값이 남지 않게 한다.
- */
-function redactGuestTokenInError(err: unknown, guestToken: string): void {
-  if (!axios.isAxiosError(err) || !guestToken) return
-  const REDACTED = '[redacted]'
-  for (const cfg of [err.config, err.response?.config]) {
-    if (!cfg) continue
-    try {
-      const headers = cfg.headers as unknown as Record<string, unknown> | undefined
-      if (headers) {
-        for (const name of Object.keys(headers)) {
-          if (name.toLowerCase() === 'x-guest-token') headers[name] = REDACTED
-        }
-      }
-      if (typeof cfg.url === 'string') {
-        cfg.url = cfg.url.split(encodeURIComponent(guestToken)).join(REDACTED).split(guestToken).join(REDACTED)
-      }
-    } catch {
-      /* 가림 실패는 무시 — 원래 오류 전달이 우선 */
-    }
-  }
-}
-
-/**
- * 명시 sessionId 세션 조회(재오픈). 현재 탭에 기억된 게스트 토큰이 있으면 게스트 조회 경로를 먼저 쓰고,
- * 게스트 경로가 400/403/404 로 거절하거나 응답 없이 연결 단계에서 실패하면 기존 조회 경로로 1회 폴백한다.
- * 최종 판정(SESSION_NOT_FOUND 매핑 등)은 기존 경로 결과를 따른다. 그 밖의 오류는 토큰을 가린 뒤 그대로 던진다.
- */
-async function fetchSessionForReopen(id: string, knownGuestToken: string | null): Promise<EditSessionResponse> {
-  if (knownGuestToken) {
-    try {
-      return await editSessionsApi.getGuest(id, knownGuestToken)
-    } catch (err) {
-      redactGuestTokenInError(err, knownGuestToken)
-      if (!axios.isAxiosError(err)) throw err
-      const status = err.response?.status
-      if (status === 400 || status === 403 || status === 404) {
-        forgetEmbedGuestToken(id)
-      } else if (!(err.response === undefined && err.code === 'ERR_NETWORK')) {
-        throw err
-      }
-    }
-  }
-  return editSessionsApi.get(id)
-}
-
 // Edit Session API integration
 interface EditSessionCreatePayload {
   orderSeqno: number
@@ -663,6 +625,7 @@ function EmbeddedEditor({
   token,
   refreshToken,
   sessionId,
+  guestToken: hostGuestToken,
   coverFileId,
   contentFileId,
   apiBaseUrl,
@@ -980,7 +943,10 @@ function EmbeddedEditor({
           setLoadingMessage('편집 세션을 불러오는 중...')
           // 기존 세션 불러오기
           try {
-            editSession = await fetchSessionForReopen(sessionId, recallEmbedGuestToken(sessionId))
+            editSession = await fetchSessionForReopen(sessionId, {
+              presented: hostGuestToken || null,
+              remembered: recallEmbedGuestToken(sessionId),
+            })
             console.log('[EmbeddedEditor] Existing session loaded:', editSession.id)
           } catch (err) {
             // 2026-09-29: 명시 sessionId 조회 실패 시 orderSeqno 검색/신규 생성으로 폴백하지 않는다.
@@ -990,23 +956,11 @@ function EmbeddedEditor({
             const status = apiErr?.status
             console.warn('[EmbeddedEditor] Session load failed:', sessionId, status, apiErr?.code, err)
 
-            const notFoundReason: EditorError['reason'] | null =
-              status === 404 || status === 410
-                ? 'not_found'
-                : status === 403
-                  ? 'forbidden'
-                  : status === 400 || status === 422
-                    ? 'invalid_id'
-                    : null
+            const notFoundReason = sessionNotFoundReasonOf(err, status)
 
             if (notFoundReason) {
               if (!isMounted) return
-              const message =
-                notFoundReason === 'not_found'
-                  ? '저장된 편집 작업을 찾을 수 없습니다. 삭제되었거나 보관 기간이 지난 작업일 수 있습니다.'
-                  : notFoundReason === 'forbidden'
-                    ? '이 계정으로 열 수 없는 편집 작업입니다. 다른 계정으로 만든 작업이거나, 비회원으로 만든 작업은 24시간이 지나 만료되었을 수 있습니다.'
-                    : '편집 작업 식별자가 올바르지 않습니다.'
+              const message = sessionNotFoundMessage(notFoundReason)
               setError(message)
               setErrorCode('SESSION_NOT_FOUND')
               setIsLoading(false)

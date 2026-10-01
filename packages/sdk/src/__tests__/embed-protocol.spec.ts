@@ -99,6 +99,22 @@ describe('계약 카탈로그 — 동결 표면을 부풀리지 않는다', () =
 // ── 수신 게이트 ─────────────────────────────────────────────────────────
 
 describe('parseEditorMessage — 4단 게이트', () => {
+  it("editor.error reason 'guest_token_required' 를 그대로 통과시킨다", () => {
+    const payload = {
+      code: 'SESSION_NOT_FOUND',
+      message: 'm',
+      sessionId: 's1',
+      reason: 'guest_token_required',
+      fatal: true,
+    };
+    const result = parseEditorMessage(message({ data: envelope('editor.error', payload) }), GATE);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.envelope.event).toBe('editor.error');
+      expect(result.envelope.payload).toEqual(payload);
+    }
+  });
+
   it('정상 메시지는 통과한다', () => {
     const result = parseEditorMessage(message(), GATE);
     expect(result.ok).toBe(true);
@@ -401,6 +417,66 @@ describe('buildEmbedUrl — parentOrigin 강제', () => {
     expect(url.searchParams.get('pageCountMin')).toBe('16');
     expect(url.searchParams.get('pageCountMax')).toBe('300');
     expect(url.searchParams.get('pageStep')).toBe('2');
+  });
+
+  it('guestToken 은 fragment(#guestToken=)로만 싣고 쿼리에는 없다 — parentOrigin 은 마지막 쿼리', () => {
+    const token = 'g+t/k=n&x y';
+    const built = buildEmbedUrl({
+      ...base,
+      params: { token: 'jwt', sessionId: 'sess-1' },
+      guestToken: token,
+    });
+    const url = new URL(built);
+    expect(url.hash).toBe(`#${new URLSearchParams({ guestToken: token }).toString()}`);
+    expect(new URLSearchParams(url.hash.slice(1)).get('guestToken')).toBe(token);
+    expect(url.searchParams.has('guestToken')).toBe(false);
+    expect(url.searchParams.has('guest_token')).toBe(false);
+    expect(url.search).not.toContain('g%2Bt');
+    const keys = [...url.searchParams.keys()];
+    expect(keys[keys.length - 1]).toBe('parentOrigin');
+    expect(built.split('#')[0]).toBe(
+      buildEmbedUrl({ ...base, params: { token: 'jwt', sessionId: 'sess-1' } }),
+    );
+  });
+
+  it('guestToken 을 생략하거나 빈 문자열이면 URL 이 기존과 바이트 동일하다', () => {
+    const plain = buildEmbedUrl({ ...base, params: { token: 'jwt', sessionId: 'sess-1' } });
+    expect(plain).toBe(
+      'https://editor.storige.test/embed?token=jwt&sessionId=sess-1' +
+        '&parentOrigin=https%3A%2F%2Fshop.partner.test',
+    );
+    expect(
+      buildEmbedUrl({ ...base, params: { token: 'jwt', sessionId: 'sess-1' }, guestToken: '' }),
+    ).toBe(plain);
+    expect(
+      buildEmbedUrl({ ...base, params: { token: 'jwt', sessionId: 'sess-1' }, guestToken: undefined }),
+    ).toBe(plain);
+  });
+
+  it('guestToken 은 sessionId 와 함께여야 하고 문자열이어야 한다', () => {
+    expect(() => buildEmbedUrl({ ...base, guestToken: 'g' })).toThrow(StorigeUsageError);
+    expect(() => buildEmbedUrl({ ...base, guestToken: 'g' })).toThrow(/sessionId/);
+    expect(() =>
+      buildEmbedUrl({
+        ...base,
+        params: { token: 'jwt', sessionId: 'sess-1' },
+        guestToken: 123 as unknown as string,
+      }),
+    ).toThrow(StorigeUsageError);
+    // 빈 문자열은 생략이므로 sessionId 없이도 던지지 않는다
+    expect(() => buildEmbedUrl({ ...base, guestToken: '' })).not.toThrow();
+  });
+
+  it('extraParams 로 guestToken·guest_token 을 쿼리에 실을 수 없다', () => {
+    for (const key of ['guestToken', 'guest_token']) {
+      expect(() =>
+        buildEmbedUrl({
+          ...base,
+          params: { token: 'jwt', sessionId: 'sess-1' },
+          extraParams: { [key]: 'g' },
+        }),
+      ).toThrow(StorigeUsageError);
+    }
   });
 
   it('쪽수 한도를 생략하면 키가 없고 URL 이 기존과 바이트 동일하다', () => {

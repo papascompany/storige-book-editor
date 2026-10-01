@@ -6,21 +6,30 @@
  *   B. 재편집: sessionId 만 있으면 세션에서 templateSetId 도출(토큰 선주입 후), 실패/부재 문구
  *   C. adminEdit=session: fragment 토큰 → 탭 저장소, 주소창 fragment 제거, 쿼리 폴백, 플래그 해제
  *   D. 레거시 발신 payload·targetOrigin (와일드카드 송신에는 guestToken 을 싣지 않음)
+ *   E. 게스트 세션 재오픈: fragment 게스트 토큰 수신·주소창 제거, 게스트 조회 경로 도출,
+ *      도출 실패 시 정식 editor.error(SESSION_NOT_FOUND) 1회
  *
  * EmbeddedEditor 와 editSessionsApi 만 모킹한다. searchParams·hostPageLimits·hostSpine·
  * authTokenStorage·adminEditUrl 은 실제 모듈을 쓴다(통합 배선 잠금).
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { StrictMode } from 'react'
+import { render, screen, waitFor, act } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
+import { AxiosError, AxiosHeaders, type InternalAxiosRequestConfig } from 'axios'
 import type { EditorConfig, EditorResult } from '@/embed'
+
+type SessionStub = { templateSetId?: string | null; guestToken?: string | null }
 
 const h = vi.hoisted(() => ({
   editorProps: [] as EditorConfig[],
-  get: vi.fn<(sessionId: string) => Promise<{ templateSetId?: string | null }>>(),
+  get: vi.fn<(sessionId: string) => Promise<SessionStub>>(),
+  getGuest: vi.fn<(sessionId: string, guestToken: string) => Promise<SessionStub>>(),
 }))
 
 vi.mock('@/embed', () => ({
+  EMBED_MESSAGE_SOURCE: 'storige-editor',
+  EMBED_MESSAGE_VERSION: '1',
   EmbeddedEditor: (props: EditorConfig) => {
     h.editorProps.push(props)
     return null
@@ -28,7 +37,10 @@ vi.mock('@/embed', () => ({
 }))
 
 vi.mock('@/api', () => ({
-  editSessionsApi: { get: (sessionId: string) => h.get(sessionId) },
+  editSessionsApi: {
+    get: (sessionId: string) => h.get(sessionId),
+    getGuest: (sessionId: string, guestToken: string) => h.getGuest(sessionId, guestToken),
+  },
 }))
 
 import EmbedView from './EmbedView'
@@ -71,6 +83,7 @@ let warnSpy: ReturnType<typeof vi.spyOn>
 beforeEach(() => {
   h.editorProps.length = 0
   h.get.mockReset()
+  h.getGuest.mockReset()
   localStorage.clear()
   sessionStorage.clear()
   window.history.replaceState(null, '', '/')
@@ -428,5 +441,215 @@ describe('EmbedView — D. 레거시 dual-emit', () => {
     const p = await propsAt(WITH_ORIGIN)
     expect(() => p.onReady?.()).not.toThrow()
     expect(warnSpy).toHaveBeenCalledWith('[EmbedView] legacy postMessage failed:', expect.any(Error))
+  })
+})
+
+describe('EmbedView — E. 게스트 세션 재오픈(fragment 게스트 토큰)', () => {
+  const realParent = Object.getOwnPropertyDescriptor(window, 'parent')
+  const parentPost = vi.fn<(message: unknown, targetOrigin: string) => void>()
+  const RECORD_KEY = 'storige_embed_guest_v1:s1'
+  const G = 'g-tok+/='
+
+  function axiosHttpError(status: number, data: Record<string, unknown> = {}, token?: string): AxiosError {
+    const headers = new AxiosHeaders()
+    if (token) headers.set('x-guest-token', token)
+    const cfg = { url: '/edit-sessions/guest/s1', method: 'get', headers } as InternalAxiosRequestConfig
+    return new AxiosError(`Request failed with status code ${status}`, 'ERR_BAD_REQUEST', cfg, undefined, {
+      status,
+      data,
+      statusText: '',
+      headers: {},
+      config: cfg,
+    })
+  }
+
+  function formalErrors(): Array<Record<string, unknown>> {
+    return parentPost.mock.calls
+      .map(([m]) => m as { source?: string; event?: string; payload?: Record<string, unknown> })
+      .filter((m) => m.source === 'storige-editor' && m.event === 'editor.error')
+      .map((m) => m.payload ?? {})
+  }
+
+  beforeEach(() => {
+    parentPost.mockReset()
+    Object.defineProperty(window, 'parent', {
+      value: { postMessage: parentPost },
+      configurable: true,
+      writable: true,
+    })
+  })
+
+  afterEach(() => {
+    if (realParent) Object.defineProperty(window, 'parent', realParent)
+  })
+
+  it('E1 sessionId + #guestToken → cfg.guestToken, 탭 저장소 미기록, 주소창 fragment 제거·쿼리 보존', async () => {
+    const p = await propsAtWithHash('/embed?sessionId=s1&templateSetId=ts1', `#guestToken=${encodeURIComponent(G)}`)
+    expect(p.guestToken).toBe(G)
+    expect(sessionStorage.getItem(RECORD_KEY)).toBeNull()
+    expect(window.location.hash).toBe('')
+    expect(window.location.search).toBe('?sessionId=s1&templateSetId=ts1')
+    expect(h.getGuest).not.toHaveBeenCalled()
+  })
+
+  it('E1 #guest_token(snake) 도 인식한다', async () => {
+    const p = await propsAtWithHash('/embed?sessionId=s1&templateSetId=ts1', '#guest_token=G2')
+    expect(p.guestToken).toBe('G2')
+    expect(window.location.hash).toBe('')
+  })
+
+  it('E2 쿼리 ?guestToken= 은 읽지도 지우지도 않는다(cfg 없음, 기록 없음)', async () => {
+    const p = await propsAtWithHash('/embed?sessionId=s1&templateSetId=ts1&guestToken=Q', '')
+    expect('guestToken' in p).toBe(false)
+    expect(sessionStorage.getItem(RECORD_KEY)).toBeNull()
+    expect(window.location.search).toContain('guestToken=Q')
+  })
+
+  it('E3 adminEdit=session 에서는 게스트 토큰을 쓰지 않고 두 키 모두 주소창에서 지운다', async () => {
+    const p = await propsAtWithHash(
+      '/embed?sessionId=s1&templateSetId=ts1&adminEdit=session',
+      `#token=A&guestToken=${G}`,
+    )
+    expect(p.token).toBe('A')
+    expect('guestToken' in p).toBe(false)
+    expect(sessionStorage.getItem(RECORD_KEY)).toBeNull()
+    expect(window.location.hash).toBe('')
+  })
+
+  it('E4 sessionId 만 + fragment → templateSetId 도출은 getGuest(s1, G), 기존 조회 경로 미호출', async () => {
+    h.getGuest.mockResolvedValue({ templateSetId: 'ts9', guestToken: G })
+    const p = await propsAtWithHash('/embed?sessionId=s1&token=T', `#guestToken=${encodeURIComponent(G)}`)
+    expect(h.getGuest).toHaveBeenCalledWith('s1', G)
+    expect(h.get).not.toHaveBeenCalled()
+    expect(p.templateSetId).toBe('ts9')
+    expect(p.guestToken).toBe(G)
+  })
+
+  it('E4 fragment 토큰이 거절되면 기억된 토큰 1회 → 성공, 기존 조회 경로 미호출', async () => {
+    sessionStorage.setItem(RECORD_KEY, JSON.stringify({ guestToken: 'remembered', expiresAt: null }))
+    h.getGuest.mockImplementation(async (_id, token) => {
+      if (token === 'remembered') return { templateSetId: 'ts9' }
+      throw axiosHttpError(403, { code: 'GUEST_TOKEN_MISMATCH' }, token)
+    })
+    const p = await propsAtWithHash('/embed?sessionId=s1', '#guestToken=wrong')
+    expect(h.getGuest.mock.calls).toEqual([
+      ['s1', 'wrong'],
+      ['s1', 'remembered'],
+    ])
+    expect(h.get).not.toHaveBeenCalled()
+    expect(p.templateSetId).toBe('ts9')
+    // 기억된 토큰은 유지된다(fragment 토큰으로 덮어쓰지 않음)
+    expect(JSON.parse(sessionStorage.getItem(RECORD_KEY) as string).guestToken).toBe('remembered')
+  })
+
+  it('E5 sessionId 없이 fragment 만 → cfg 없음, 기록 없음, 주소창에서 제거', async () => {
+    const p = await propsAtWithHash('/embed?templateSetId=ts1', `#guestToken=${encodeURIComponent(G)}`)
+    expect('guestToken' in p).toBe(false)
+    expect(sessionStorage.length).toBe(0)
+    expect(window.location.hash).toBe('')
+  })
+
+  it('E6 StrictMode 이중 effect 에서도 fragment 토큰이 유지된다', async () => {
+    h.getGuest.mockResolvedValue({ templateSetId: 'ts9' })
+    const path = '/embed?sessionId=s1'
+    window.history.replaceState(null, '', `${path}#guestToken=${encodeURIComponent(G)}`)
+    render(
+      <StrictMode>
+        <MemoryRouter initialEntries={[path]}>
+          <EmbedView />
+        </MemoryRouter>
+      </StrictMode>,
+    )
+    await waitFor(() => expect(h.editorProps.length).toBeGreaterThan(0))
+    const p = h.editorProps[h.editorProps.length - 1]
+    expect(p.guestToken).toBe(G)
+    expect(p.templateSetId).toBe('ts9')
+    expect(h.getGuest.mock.calls.length).toBeGreaterThanOrEqual(2)
+    for (const call of h.getGuest.mock.calls) expect(call).toEqual(['s1', G])
+    expect(h.get).not.toHaveBeenCalled()
+    expect(window.location.hash).toBe('')
+  })
+
+  it('E7 운영자 토큰으로 sessionId 만 → 기존 조회 경로로 도출(getGuest 미호출)', async () => {
+    h.get.mockResolvedValue({ templateSetId: 'ts9' })
+    const p = await propsAt(`/embed?sessionId=s1&token=OP&parentOrigin=${encodeURIComponent(PARENT)}`)
+    expect(h.get).toHaveBeenCalledWith('s1')
+    expect(h.getGuest).not.toHaveBeenCalled()
+    expect(p.templateSetId).toBe('ts9')
+    expect('guestToken' in p).toBe(false)
+    expect(formalErrors()).toHaveLength(0)
+  })
+
+  it("E8 토큰 없이 기존 조회 경로 403 GUEST_TOKEN_REQUIRED → editor.error(reason 'guest_token_required') 1회, 오류 화면 유지", async () => {
+    h.get.mockRejectedValue(axiosHttpError(403, { code: 'GUEST_TOKEN_REQUIRED' }))
+    renderAt(`/embed?sessionId=s1&parentOrigin=${encodeURIComponent(PARENT)}`)
+    expect(await screen.findByText(/세션에서 템플릿셋을 확인할 수 없습니다/)).toBeInTheDocument()
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0))
+    })
+    const errors = formalErrors()
+    expect(errors).toHaveLength(1)
+    expect(errors[0]).toMatchObject({
+      code: 'SESSION_NOT_FOUND',
+      fatal: true,
+      sessionId: 's1',
+      reason: 'guest_token_required',
+    })
+    const formalCall = parentPost.mock.calls.find(([m]) => (m as { event?: string }).event === 'editor.error')
+    expect(formalCall?.[1]).toBe(PARENT)
+    expect(parentPost).toHaveBeenCalledWith(
+      { type: 'storige:error', payload: { message: errors[0].message } },
+      PARENT,
+    )
+    expect(h.editorProps).toHaveLength(0)
+  })
+
+  it.each([
+    [404, {}, 'not_found'],
+    [403, {}, 'forbidden'],
+    [400, {}, 'invalid_id'],
+  ] as const)('E9 도출 실패 %s → editor.error reason %s 1회', async (status, data, reason) => {
+    h.get.mockRejectedValue(axiosHttpError(status, data))
+    renderAt(`/embed?sessionId=s1&parentOrigin=${encodeURIComponent(PARENT)}`)
+    expect(await screen.findByText(/세션에서 템플릿셋을 확인할 수 없습니다/)).toBeInTheDocument()
+    const errors = formalErrors()
+    expect(errors).toHaveLength(1)
+    expect(errors[0]).toMatchObject({ code: 'SESSION_NOT_FOUND', fatal: true, sessionId: 's1', reason })
+  })
+
+  it("E10 제시 토큰이 GUEST_SESSION_EXPIRED → reason 'not_found', GUEST_TOKEN_MISMATCH → 'forbidden'", async () => {
+    h.get.mockRejectedValue(axiosHttpError(403, { code: 'GUEST_TOKEN_REQUIRED' }))
+    h.getGuest.mockRejectedValue(axiosHttpError(403, { code: 'GUEST_SESSION_EXPIRED' }, G))
+    window.history.replaceState(null, '', `/embed?sessionId=s1#guestToken=${encodeURIComponent(G)}`)
+    const expired = renderAt(`/embed?sessionId=s1&parentOrigin=${encodeURIComponent(PARENT)}`)
+    expect(await expired.findByText(/세션에서 템플릿셋을 확인할 수 없습니다/)).toBeInTheDocument()
+    expect(formalErrors()).toEqual([expect.objectContaining({ reason: 'not_found' })])
+    expired.unmount()
+
+    parentPost.mockReset()
+    h.getGuest.mockRejectedValue(axiosHttpError(403, { code: 'GUEST_TOKEN_MISMATCH' }, G))
+    window.history.replaceState(null, '', `/embed?sessionId=s1#guestToken=${encodeURIComponent(G)}`)
+    const mismatch = renderAt(`/embed?sessionId=s1&parentOrigin=${encodeURIComponent(PARENT)}`)
+    expect(await mismatch.findByText(/세션에서 템플릿셋을 확인할 수 없습니다/)).toBeInTheDocument()
+    expect(formalErrors()).toEqual([expect.objectContaining({ reason: 'forbidden' })])
+  })
+
+  it('E11 5xx·비 HTTP 실패는 editor.error 없이 오류 화면만, 경고 로그에 토큰 원문 없음', async () => {
+    h.getGuest.mockRejectedValue(axiosHttpError(503, {}, G))
+    window.history.replaceState(null, '', `/embed?sessionId=s1#guestToken=${encodeURIComponent(G)}`)
+    renderAt(`/embed?sessionId=s1&parentOrigin=${encodeURIComponent(PARENT)}`)
+    expect(await screen.findByText(/세션에서 템플릿셋을 확인할 수 없습니다/)).toBeInTheDocument()
+    expect(formalErrors()).toHaveLength(0)
+    expect(h.get).not.toHaveBeenCalled()
+    const logged = JSON.stringify(warnSpy.mock.calls)
+    expect(logged).not.toContain(G)
+    expect(logged).not.toContain(encodeURIComponent(G))
+  })
+
+  it('E12 parentOrigin 이 없으면 정식 editor.error 를 보내지 않는다', async () => {
+    h.get.mockRejectedValue(axiosHttpError(404))
+    renderAt('/embed?sessionId=s1')
+    expect(await screen.findByText(/세션에서 템플릿셋을 확인할 수 없습니다/)).toBeInTheDocument()
+    expect(formalErrors()).toHaveLength(0)
   })
 })

@@ -8,6 +8,7 @@
  * - 저장소는 `sessionStorage` 만 쓴다(탭을 닫으면 소멸). localStorage 에는 두지 않는다.
  * - 관리자 편집 탭(adminEdit=session)에서는 기록·조회하지 않는다.
  * - 만료 시각(expiresAt)이 지났거나 레코드 형식이 맞지 않으면 조회 시 지우고 null.
+ *   만료로 지운 세션은 토큰 값 없이 만료 표시만 남기고 {@link hasExpiredEmbedGuestToken} 으로 알린다.
  * - 모든 Storage 접근은 try/catch — 비공개 모드·저장소 파티셔닝 예외는 삼킨다.
  * - 토큰 값은 콘솔·모니터링으로 출력하지 않는다.
  */
@@ -20,6 +21,9 @@ interface StoredGuestRecord {
   expiresAt: string | null
 }
 
+/** 만료로 지운 기록의 표시(값은 '1' — 토큰 값은 두지 않는다) */
+const EXPIRED_KEY_PREFIX = 'storige_embed_guest_expired_v1:'
+
 function sessionStore(): Storage | null {
   try {
     return typeof sessionStorage === 'undefined' ? null : sessionStorage
@@ -30,6 +34,10 @@ function sessionStore(): Storage | null {
 
 function keyOf(sessionId: string): string {
   return `${KEY_PREFIX}${sessionId}`
+}
+
+function expiredKeyOf(sessionId: string): string {
+  return `${EXPIRED_KEY_PREFIX}${sessionId}`
 }
 
 function parseRecord(raw: string): StoredGuestRecord | null {
@@ -52,7 +60,9 @@ export function rememberEmbedGuestToken(sessionId: string, guestToken: string, e
   if (isAdminEditTab()) return
   try {
     const record: StoredGuestRecord = { guestToken, expiresAt: expiresAt ?? null }
-    sessionStore()?.setItem(keyOf(sessionId), JSON.stringify(record))
+    const store = sessionStore()
+    store?.removeItem(expiredKeyOf(sessionId))
+    store?.setItem(keyOf(sessionId), JSON.stringify(record))
   } catch {
     /* 저장소 접근 불가 — 무시(기억하지 못하면 기존 조회 경로를 쓴다) */
   }
@@ -90,10 +100,69 @@ export function recallEmbedGuestToken(sessionId: string, now: Date = new Date())
   }
   if (record.expiresAt !== null) {
     const expiresAtMs = Date.parse(record.expiresAt)
-    if (Number.isNaN(expiresAtMs) || expiresAtMs <= now.getTime()) {
+    if (Number.isNaN(expiresAtMs)) {
       forgetEmbedGuestToken(sessionId)
+      return null
+    }
+    if (expiresAtMs <= now.getTime()) {
+      forgetEmbedGuestToken(sessionId)
+      try {
+        sessionStore()?.setItem(expiredKeyOf(sessionId), '1')
+      } catch {
+        /* 저장소 접근 불가 — 무시(만료 표시 없이 진행) */
+      }
       return null
     }
   }
   return record.guestToken
+}
+
+/**
+ * 현재 탭에서 이 세션의 기억된 게스트 토큰이 만료 시각이 지나 지워졌는지.
+ * 같은 세션의 토큰을 다시 기억하면 false 로 돌아간다. 관리자 편집 탭이면 false.
+ */
+export function hasExpiredEmbedGuestToken(sessionId: string): boolean {
+  if (!sessionId) return false
+  if (isAdminEditTab()) return false
+  try {
+    return sessionStore()?.getItem(expiredKeyOf(sessionId)) === '1'
+  } catch {
+    return false
+  }
+}
+
+/** 호스트가 게스트 세션 재오픈에 쓰는 URL fragment 키(`#guestToken=` 또는 `#guest_token=`) */
+const GUEST_TOKEN_FRAGMENT_KEYS: readonly string[] = ['guestToken', 'guest_token']
+
+function parseFragment(hash: string): URLSearchParams {
+  return new URLSearchParams(hash.startsWith('#') ? hash.slice(1) : hash)
+}
+
+/**
+ * URL fragment 에서 게스트 토큰을 읽는다(`#guestToken=..` 우선, `#guest_token=..` 허용).
+ * 값이 없거나 비어 있으면 null. 쿼리(`?guestToken=`)는 읽지 않는다.
+ */
+export function readGuestTokenFragment(hash: string | null | undefined): string | null {
+  if (!hash) return null
+  const params = parseFragment(hash)
+  for (const key of GUEST_TOKEN_FRAGMENT_KEYS) {
+    const value = params.get(key)
+    if (value) return value
+  }
+  return null
+}
+
+/**
+ * href 의 fragment 에서 게스트 토큰 키만 지운다. 쿼리와 다른 fragment 키는 유지하고,
+ * 남는 것이 없으면 '#' 도 지운다. 해당 키가 없으면 입력을 그대로 돌려준다.
+ */
+export function stripGuestTokenFragment(href: string): string {
+  const hashIdx = href.indexOf('#')
+  if (hashIdx < 0) return href
+  const base = href.slice(0, hashIdx)
+  const params = parseFragment(href.slice(hashIdx))
+  if (!GUEST_TOKEN_FRAGMENT_KEYS.some((k) => params.has(k))) return href
+  for (const k of GUEST_TOKEN_FRAGMENT_KEYS) params.delete(k)
+  const rest = params.toString()
+  return rest ? `${base}#${rest}` : base
 }

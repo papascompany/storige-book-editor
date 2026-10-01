@@ -117,11 +117,20 @@ export interface BuildEmbedUrlOptions {
   params: EmbedUrlParams;
   /** 기본 `/embed`. 루트 `/` 는 레거시라 거부한다 */
   path?: string;
-  /** 계약 확장 대비 통과용. `parentOrigin` 을 여기 넣는 것은 금지(던진다) */
+  /** 계약 확장 대비 통과용. `parentOrigin`·`guestToken` 을 여기 넣는 것은 금지(던진다) */
   extraParams?: Readonly<Record<string, string | number | boolean>>;
+  /**
+   * (additive) 기존 게스트(비회원) 세션 재오픈용 게스트 토큰 — `params.sessionId` 가 필수다.
+   *
+   * URL fragment(`#guestToken=`)로만 직렬화한다. fragment 는 HTTP 요청·Referer 로 전송되지 않으며,
+   * 편집기는 fragment 에서만 읽고 주소창에서 곧바로 지운다(쿼리 `guestToken` 은 읽지 않는다).
+   * 빈 문자열이면 생략한다. 생략하면 URL 은 이 옵션이 없을 때와 같다.
+   */
+  guestToken?: string;
 }
 
 const PARENT_ORIGIN_KEYS = new Set(['parentOrigin', 'parent_origin']);
+const GUEST_TOKEN_KEYS = new Set(['guestToken', 'guest_token']);
 
 function serialize(value: string | number | boolean): string {
   if (typeof value === 'boolean') return value ? '1' : '0';
@@ -152,6 +161,16 @@ export function buildEmbedUrl(options: BuildEmbedUrlOptions): string {
   if (!hasTemplateSet && !hasSession) {
     throw new StorigeUsageError(
       'params.templateSetId(신규 편집) 또는 params.sessionId(재편집) 중 하나는 필수입니다.',
+    );
+  }
+
+  const guestToken: unknown = options.guestToken;
+  if (guestToken !== undefined && typeof guestToken !== 'string') {
+    throw new StorigeUsageError('guestToken 은 문자열이어야 합니다.');
+  }
+  if (typeof guestToken === 'string' && guestToken !== '' && !hasSession) {
+    throw new StorigeUsageError(
+      'guestToken 은 기존 게스트 세션 재오픈용입니다 — params.sessionId 와 함께 넘기십시오.',
     );
   }
 
@@ -221,6 +240,11 @@ export function buildEmbedUrl(options: BuildEmbedUrlOptions): string {
           'extraParams 로 parentOrigin 을 덮어쓸 수 없습니다 — 최상위 parentOrigin 옵션을 쓰십시오.',
         );
       }
+      if (GUEST_TOKEN_KEYS.has(key)) {
+        throw new StorigeUsageError(
+          'extraParams 로 게스트 토큰을 쿼리에 실을 수 없습니다 — 최상위 guestToken 옵션을 쓰십시오(fragment 로만 전달).',
+        );
+      }
       if (value === undefined || value === null || value === '') continue;
       url.searchParams.set(key, serialize(value));
     }
@@ -228,6 +252,11 @@ export function buildEmbedUrl(options: BuildEmbedUrlOptions): string {
 
   // 마지막에 넣어 extraParams 가 어떤 경로로도 이 값을 흔들지 못하게 한다.
   url.searchParams.set('parentOrigin', parentOrigin);
+
+  // 게스트 토큰은 fragment 로만 싣는다(쿼리에는 넣지 않는다).
+  if (typeof guestToken === 'string' && guestToken !== '') {
+    url.hash = new URLSearchParams({ guestToken }).toString();
+  }
 
   return url.toString();
 }

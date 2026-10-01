@@ -15,6 +15,7 @@
  */
 import { create } from 'zustand'
 import { editSessionsApi, EditSessionResponse } from '../api/edit-sessions'
+import { redactGuestTokenInError } from '../utils/embedSessionReopen'
 
 const STORAGE_KEY = 'storige_guest_session_v1'
 
@@ -98,16 +99,17 @@ export const useGuestStore = create<GuestStoreState>((set, get) => ({
   },
 
   ensureGuestSession: async (params) => {
-    // 이미 세션이 있고 templateSetId 가 일치하면 그대로
+    // 이미 세션이 있고 templateSetId 가 일치하면 그대로 — 게스트 세션은 게스트 조회 경로로 읽는다
     const current = get()
     if (current.sessionId && current.guestToken && current.expiresAt && current.expiresAt > new Date()) {
       try {
-        const existing = await editSessionsApi.get(current.sessionId)
+        const existing = await editSessionsApi.getGuest(current.sessionId, current.guestToken)
         if (existing && (!params.templateSetId || existing.templateSetId === params.templateSetId)) {
           return existing
         }
-      } catch {
-        // 세션이 만료되었거나 삭제됨 — 새로 생성
+      } catch (err) {
+        // 세션이 만료되었거나 삭제됨 — 새로 생성(오류 객체의 토큰 원문은 가린다)
+        redactGuestTokenInError(err, current.guestToken)
         get().clearGuest()
       }
     }

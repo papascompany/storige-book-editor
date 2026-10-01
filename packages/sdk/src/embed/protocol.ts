@@ -171,9 +171,16 @@ export interface EditorErrorPayload {
   /**
    * (2026-09-29 additive) SESSION_NOT_FOUND 에서만: 조회 실패 사유.
    * 'not_found' = 404/410(삭제·보관 기간 경과), 'forbidden' = 403(다른 계정·만료된 비회원 작업),
-   * 'invalid_id' = 400/422(식별자 형식 오류). 미지 값은 관용한다.
+   * 'invalid_id' = 400/422(식별자 형식 오류),
+   * 'guest_token_required' = (additive) 게스트(비회원) 세션을 게스트 토큰 없이 열려 한 경우 —
+   * 호스트가 보관한 게스트 토큰을 `guestToken` 옵션(fragment)으로 넘겨 다시 연다. 미지 값은 관용한다.
    */
-  reason?: 'not_found' | 'forbidden' | 'invalid_id' | (string & {});
+  reason?:
+    | 'not_found'
+    | 'forbidden'
+    | 'invalid_id'
+    | 'guest_token_required'
+    | (string & {});
 }
 
 export interface EditorPricingChangePayload {

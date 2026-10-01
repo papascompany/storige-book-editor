@@ -262,6 +262,33 @@ await editor.saveNow();                      // 요청-응답
 editor.setBackGuard(false);                  // fire-and-forget — void 다
 ```
 
+### 게스트(비회원) 세션 재오픈 — `guestToken` 옵션 (additive)
+
+호스트가 게스트 세션의 게스트 토큰을 보관하고 있다면 최상위 `guestToken` 옵션으로 같은 세션을
+다시 연다. `params.sessionId` 가 필수다.
+
+```ts
+const editor = mountEditor({
+  editorOrigin: 'https://editor.papascompany.co.kr',
+  parentOrigin: 'https://app.example.com',
+  container: 'editor-root',
+  params: { token, sessionId },
+  guestToken,                                  // fragment(#guestToken=)로만 전달된다
+});
+```
+
+- 토큰은 iframe src 의 URL fragment(`#guestToken=`)로만 실린다. 편집기는 fragment 에서만 읽고
+  주소창에서 곧바로 지운다. 쿼리(`?guestToken=`)로 넘긴 값은 읽지 않으므로, `extraParams` 의
+  `guestToken`·`guest_token` 키는 `StorigeUsageError` 로 거부한다.
+- `editor.url` 에는 fragment 가 포함되지 않는다(토큰 값의 노출 경로는 `consumeGuestToken()` 하나).
+- iframe 요소의 `src` 속성에는 fragment 가 그대로 남는다. 세션 리플레이·DOM 수집 도구를 쓴다면
+  편집기 iframe 의 `src` 속성을 마스킹 대상에 넣는다.
+- 게스트 토큰 없이 게스트 세션을 열 수 없으면 편집기는 새 세션을 만들지 않고
+  `editor.error { code: 'SESSION_NOT_FOUND', fatal: true, sessionId, reason: 'guest_token_required' }` 를 보낸다.
+  보관한 게스트 토큰으로 다시 열거나 고객에게 안내한다. 넘긴 토큰 또는 같은 탭에서 편집기가 기억한
+  토큰이 만료됐으면 `reason: 'not_found'`, 넘긴 토큰이 일치하지 않으면 `reason: 'forbidden'` 이다.
+- 직접 iframe 을 관리한다면 `buildEmbedUrl({ ..., params: { token, sessionId }, guestToken })` 이 같은 규칙으로 URL 을 만든다.
+
 ### 이 서브패스가 막는 실수
 
 임베드 연동의 실패는 계약을 몰라서가 아니라 **한 줄을 빠뜨려서** 난다. 표의 왼쪽은 전부
