@@ -4,8 +4,10 @@
  *  - guest/migrate: 회원 번호가 양의 정수가 아니면 403 AUTH_REQUIRED(guestToken 형식 검사보다 먼저),
  *    서비스 migrateGuestSessions 도 조회·저장 전에 같은 403.
  *  - 서비스 update·complete·delete: 회원 세션 판정은 userId > 0 일 때만 통과(staff 컨텍스트는 불변).
- *  - GET /my: 회원 번호 0·비숫자는 빈 목록(조회 미실행).
- *  - 게스트 3개 라우트: 헤더 없이 쿼리 토큰만 오면 관측 로그 1줄(토큰 원문 없음).
+ *  - GET /my: 회원 번호가 양의 정수가 아니면(0·음수·소수·비숫자) 빈 목록(조회 미실행).
+ *  - versions 3종(GET :id/versions·GET :id/versions/:vid·POST :id/versions/:vid/restore): 소유자 판정은 양의 정수 회원 번호만,
+ *    restoreVersion 은 회원 번호가 양의 정수가 아니면 userId 0 으로 서비스 호출.
+ *  - 게스트 3개 라우트(PATCH guest/:id·GET guest/:id/versions·POST guest/:id/versions/:vid/restore): 토큰은 X-Guest-Token 헤더로만 받는다.
  *  - 실제 서명된 shop JWT(sub '0')로 GET :id 게스트 세션 → 403 GUEST_TOKEN_REQUIRED, DELETE → 403.
  */
 import 'reflect-metadata';
@@ -310,6 +312,9 @@ describe('EditSessions — 회원 경로 회원 식별 (컨트롤러·서비스)
       ["sub '0' summary=1", shopUser('0'), '1'],
       ['비숫자 userId', shopUser('abc'), undefined],
       ['비숫자 userId summary=true', shopUser('abc'), 'true'],
+      ["sub '-5'", shopUser('-5'), undefined],
+      ["sub '1.5'", shopUser('1.5'), undefined],
+      ["sub '12abc' summary=1", shopUser('12abc'), '1'],
     ])('MY1: %s → 빈 목록, 조회 미실행', async (_l, user, summary) => {
       const recent = jest.spyOn(service, 'findMyRecent');
       const recentSummary = jest.spyOn(service, 'findMyRecentSummary');
@@ -335,33 +340,80 @@ describe('EditSessions — 회원 경로 회원 식별 (컨트롤러·서비스)
     });
   });
 
-  // ───────────────── 게스트 3개 라우트 쿼리 토큰 관측 ─────────────────
-  describe('게스트 라우트 쿼리 토큰 관측', () => {
-    type Route = 'update' | 'versions' | 'restore';
-    const call = (route: Route, query?: string, header?: string): Promise<unknown> => {
-      if (route === 'update') {
-        return controller.updateGuest(GUEST_SESSION, { canvasData: [{ p: 4 }] } as UpdateEditSessionDto, query, header);
-      }
-      if (route === 'versions') return controller.listGuestVersions(GUEST_SESSION, query, header);
-      return controller.restoreGuestVersion(GUEST_SESSION, VERSION_ID, query, header);
-    };
+  // ───────────────── versions 3종 회원 판정 ─────────────────
+  describe('versions 3종', () => {
+    const MEMBER1_SESSION = '77777777-7777-4777-8777-777777777777'; // 회원 1 세션(site A)
 
-    it.each<Route>(['update', 'versions', 'restore'])(
-      'QT1: %s — 쿼리 토큰만 → 정상 처리 + 관측 로그 1회(토큰 원문 없음)',
-      async (route) => {
-        await expect(call(route, GUEST_TOKEN, undefined)).resolves.toBeDefined();
-        expect(logsWith('[guest-token]')).toEqual([
-          `[guest-token] query route=${route} session=${GUEST_SESSION}`,
-        ]);
-        expectNoTokenInLogs();
+    it.each(['1.5', '1e0', '01'])(
+      "VR1: sub '%s' 로 회원 1 세션 versions·version·restore → 403 PERMISSION_DENIED, 서비스 미호출",
+      async (sub) => {
+        table[MEMBER1_SESSION] = baseSession(MEMBER1_SESSION, { memberSeqno: 1 });
+        const list = jest.spyOn(service, 'listVersions');
+        const get = jest.spyOn(service, 'getVersion');
+        const restore = jest.spyOn(service, 'restoreVersion');
+        for (const p of [
+          controller.listVersions(MEMBER1_SESSION, shopUser(sub)),
+          controller.getVersion(MEMBER1_SESSION, VERSION_ID, shopUser(sub)),
+          controller.restoreVersion(MEMBER1_SESSION, VERSION_ID, shopUser(sub)),
+        ]) {
+          const r = await httpError(p);
+          expect(r.status).toBe(403);
+          expect(r.body.code).toBe('PERMISSION_DENIED');
+        }
+        expect(list).not.toHaveBeenCalled();
+        expect(get).not.toHaveBeenCalled();
+        expect(restore).not.toHaveBeenCalled();
       },
     );
 
-    it.each<Route>(['update', 'versions', 'restore'])('QT1-b: %s — 헤더 토큰 → 정상 처리, 관측 로그 없음', async (route) => {
-      await expect(call(route, undefined, GUEST_TOKEN)).resolves.toBeDefined();
-      await expect(call(route, GUEST_TOKEN, GUEST_TOKEN)).resolves.toBeDefined();
-      expect(logsWith('[guest-token]')).toEqual([]);
+    it("VR2: sub '123' 로 자기 세션 versions·restore → 통과, restoreVersion(id, vid, 123)", async () => {
+      const list = jest.spyOn(service, 'listVersions').mockResolvedValue([]);
+      const restore = jest.spyOn(service, 'restoreVersion').mockResolvedValue(table[MEMBER_SESSION]);
+      await expect(controller.listVersions(MEMBER_SESSION, shopUser('123'))).resolves.toEqual([]);
+      await controller.restoreVersion(MEMBER_SESSION, VERSION_ID, shopUser('123'));
+      expect(list).toHaveBeenCalledWith(MEMBER_SESSION);
+      expect(restore).toHaveBeenCalledWith(MEMBER_SESSION, VERSION_ID, 123);
     });
+
+    it("VR3: 회원 번호가 양의 정수가 아닌 staff(userId '1.5')의 restore → restoreVersion(id, vid, 0)", async () => {
+      jest.spyOn(service, 'gateLegacyStaffMutation').mockResolvedValue(undefined);
+      const restore = jest.spyOn(service, 'restoreVersion').mockResolvedValue(table[MEMBER_SESSION]);
+      await controller.restoreVersion(MEMBER_SESSION, VERSION_ID, { id: 'admin-1', role: 'ADMIN', userId: '1.5' });
+      expect(restore).toHaveBeenCalledWith(MEMBER_SESSION, VERSION_ID, 0);
+    });
+  });
+
+  // ───────────────── 게스트 3개 라우트 — 헤더 토큰 ─────────────────
+  describe('게스트 라우트 토큰 전달', () => {
+    type Route = 'update' | 'versions' | 'restore';
+    const call = (route: Route, header?: string): Promise<unknown> => {
+      if (route === 'update') {
+        return controller.updateGuest(GUEST_SESSION, { canvasData: [{ p: 4 }] } as UpdateEditSessionDto, header);
+      }
+      if (route === 'versions') return controller.listGuestVersions(GUEST_SESSION, header);
+      return controller.restoreGuestVersion(GUEST_SESSION, VERSION_ID, header);
+    };
+
+    it.each<Route>(['update', 'versions', 'restore'])('QT1: %s — X-Guest-Token 헤더 → 정상 처리', async (route) => {
+      await expect(call(route, GUEST_TOKEN)).resolves.toBeDefined();
+      expectNoTokenInLogs();
+    });
+
+    it.each<Route>(['update', 'versions', 'restore'])(
+      'QT2: %s — 헤더 없음 → 403 GUEST_TOKEN_REQUIRED, 서비스 미호출',
+      async (route) => {
+        const update = jest.spyOn(service, 'update');
+        const list = jest.spyOn(service, 'listVersions');
+        const restore = jest.spyOn(service, 'restoreVersion');
+        const r = await httpError(call(route, undefined));
+        expect(r.status).toBe(403);
+        expect(r.body.code).toBe('GUEST_TOKEN_REQUIRED');
+        expect(update).not.toHaveBeenCalled();
+        expect(list).not.toHaveBeenCalled();
+        expect(restore).not.toHaveBeenCalled();
+        expect(logsWith('[guest-token]')).toEqual([]);
+      },
+    );
   });
 });
 
@@ -491,5 +543,23 @@ describe('EditSessions — 실제 서명 shop JWT(sub 0) HTTP', () => {
       .expect(403);
     expect(res.body.code).toBe('AUTH_REQUIRED');
     expect(sessionRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('H6: 게스트 3개 라우트 — ?guestToken= 쿼리만 → 403 GUEST_TOKEN_REQUIRED, 저장 없음', async () => {
+    const q = `guestToken=${GUEST_TOKEN}`;
+    const p = await http().patch(`/edit-sessions/guest/${GUEST_SESSION}?${q}`).send({ canvasData: [{ v: 1 }] }).expect(403);
+    expect(p.body.code).toBe('GUEST_TOKEN_REQUIRED');
+    const v = await http().get(`/edit-sessions/guest/${GUEST_SESSION}/versions?${q}`).expect(403);
+    expect(v.body.code).toBe('GUEST_TOKEN_REQUIRED');
+    const r = await http().post(`/edit-sessions/guest/${GUEST_SESSION}/versions/${VERSION_ID}/restore?${q}`).expect(403);
+    expect(r.body.code).toBe('GUEST_TOKEN_REQUIRED');
+    expect(sessionRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('H7: GET guest/:id/versions — X-Guest-Token 헤더 → 200', async () => {
+    await http()
+      .get(`/edit-sessions/guest/${GUEST_SESSION}/versions`)
+      .set('X-Guest-Token', GUEST_TOKEN)
+      .expect(200);
   });
 });

@@ -275,11 +275,11 @@ describe('EditSessionsController — 상세 조회·삭제 소유 판정 (2026-0
       expect(guestReadLogs()).toEqual([]);
     });
 
-    it('M7: M4 거부 시 관측 로그 1회 — 세션 id·site·출처만, 토큰 원문 없음', async () => {
+    it('M7: M4 거부 시 관측 로그 1회 — site·출처만, 세션 id·토큰 원문 없음', async () => {
       await httpError(controller.findOne(GUEST_SESSION, shopUser('0')));
       const logs = guestReadLogs();
       expect(logs).toHaveLength(1);
-      expect(logs[0]).toBe(`[guest-read] denied-member-route session=${GUEST_SESSION} site=${SITE_A} source=shop`);
+      expect(logs[0]).toBe(`[guest-read] denied-member-route site=${SITE_A} source=shop`);
       expectNoTokenInLogs();
     });
 

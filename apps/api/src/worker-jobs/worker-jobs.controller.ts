@@ -17,7 +17,12 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery, ApiSecurit
 import { ConfigService } from '@nestjs/config';
 import { Throttle } from '@nestjs/throttler';
 import { Response } from 'express';
-import { WorkerJobsService, type ComposeAssembleCaller } from './worker-jobs.service';
+import {
+  WorkerJobsService,
+  type ComposeAssembleCaller,
+  type JobInputFileCaller,
+  type SessionLinkCaller,
+} from './worker-jobs.service';
 import { memberSeqnoOf } from '../edit-sessions/edit-sessions.service';
 import {
   CreateValidationJobDto,
@@ -60,6 +65,38 @@ import { UserRole, WorkerJobStatus, WorkerJobType, CutoutJobResult } from '@stor
  */
 function isVerifiedTenantSource(source: unknown): boolean {
   return source === 'shop' || source === 'partner_operator';
+}
+
+/** admin-app staff 역할(admin/manager/super_admin, 대소문자 무관) — edit-sessions 컨트롤러와 같은 판정. */
+function isStaffRole(role: unknown): boolean {
+  const r = String(role ?? '').toLowerCase();
+  return r === 'admin' || r === 'manager' || r === 'super_admin';
+}
+
+/** X-Guest-Token 헤더 정규화 — 빈 문자열·미전송은 undefined. */
+function guestTokenOf(header: unknown): string | undefined {
+  return typeof header === 'string' && header.length > 0 ? header : undefined;
+}
+
+/** 사이트 키 라우트(ApiKeyGuard)의 세션 연결 호출자 — 내부 워커 키는 internalWorkerKey. */
+function siteKeyLinkCaller(site: CurrentSitePayload | undefined): SessionLinkCaller {
+  if (!site) return { kind: 'none' };
+  return site.role === 'worker' ? { kind: 'internalWorkerKey' } : { kind: 'siteKey', siteId: site.siteId };
+}
+
+/** 사이트 키 라우트의 입력 파일 사이트 관측 호출자 — 내부 워커 키·사이트 없음은 관측하지 않는다. */
+function siteKeyFileCaller(site: CurrentSitePayload | undefined): JobInputFileCaller | undefined {
+  return site && site.role !== 'worker' ? { kind: 'siteKey', siteId: site.siteId } : undefined;
+}
+
+/** POST validate(JWT) 호출자 형태 */
+interface ValidateRouteUser {
+  userId?: string | number;
+  role?: string;
+  source?: string;
+  siteId?: string;
+  allowedOrderSeqnos?: unknown;
+  partnerOperator?: { siteId: string; sessionIds: string[] };
 }
 
 /**
@@ -125,7 +162,9 @@ export class WorkerJobsController {
   @ApiResponse({ status: 400, description: 'Invalid input' })
   async createValidationJob(
     @Body() createValidationJobDto: CreateValidationJobDto,
-    @CurrentUser() user?: { source?: string; siteId?: string; partnerOperator?: { siteId: string; sessionIds: string[] } },
+    @CurrentUser() user?: ValidateRouteUser,
+    // 세션 연결 확인 — 비회원 세션은 이 헤더의 게스트 토큰으로 연결을 증명한다.
+    @Headers('x-guest-token') guestTokenHeader?: string,
   ): Promise<WorkerJob> {
     // 운영자 대리 편집 토큰(2026-09-29): 최소 권한 — 사이트는 권한의 사이트로 고정하고,
     // 세션 연결(editSessionId)은 권한 범위 세션만 허용한다(범위 밖은 존재 비누설 404).
@@ -135,7 +174,49 @@ export class WorkerJobsController {
       if (dto.editSessionId && !grant.sessionIds.includes(dto.editSessionId)) {
         throw new NotFoundException({ code: 'SESSION_NOT_FOUND', message: '편집 세션을 찾을 수 없습니다.' });
       }
+      if (dto.editSessionId) {
+        await this.workerJobsService.assertEditSessionLink(
+          dto.editSessionId,
+          [{ kind: 'operator', sessionIds: grant.sessionIds }],
+          guestTokenOf(guestTokenHeader),
+          'validate',
+        );
+      }
+      await this.workerJobsService.observeJobInputFileSites(
+        'validate',
+        { kind: 'operator', siteId: grant.siteId },
+        [dto.fileId],
+      );
       return await this.workerJobsService.createValidationJob(dto);
+    }
+
+    // 세션 연결 확인 호출자: shop-session → shop, admin-app staff → staff, 그 밖 → none.
+    const isShop = user?.source === 'shop';
+    const shopSiteId = isShop && typeof user?.siteId === 'string' ? user.siteId : null;
+    if (createValidationJobDto.editSessionId) {
+      const caller: SessionLinkCaller = isShop
+        ? {
+            kind: 'shop',
+            siteId: shopSiteId,
+            memberSeqno: memberSeqnoOf(user?.userId),
+            allowedOrderSeqnos: user?.allowedOrderSeqnos,
+          }
+        : isStaffRole(user?.role)
+          ? { kind: 'staff' }
+          : { kind: 'none' };
+      await this.workerJobsService.assertEditSessionLink(
+        createValidationJobDto.editSessionId,
+        [caller],
+        guestTokenOf(guestTokenHeader),
+        'validate',
+      );
+    }
+    if (shopSiteId !== null) {
+      await this.workerJobsService.observeJobInputFileSites(
+        'validate',
+        { kind: 'shop', siteId: shopSiteId },
+        [createValidationJobDto.fileId],
+      );
     }
     return await this.workerJobsService.createValidationJob(createValidationJobDto);
   }
@@ -156,6 +237,20 @@ export class WorkerJobsController {
     @Body() createValidationJobDto: CreateValidationJobDto,
     @CurrentSite() site?: CurrentSitePayload,
   ): Promise<WorkerJob> {
+    if (createValidationJobDto.editSessionId) {
+      await this.workerJobsService.assertEditSessionLink(
+        createValidationJobDto.editSessionId,
+        [siteKeyLinkCaller(site)],
+        undefined,
+        'validate/external',
+      );
+    }
+    const fileCaller = siteKeyFileCaller(site);
+    if (fileCaller) {
+      await this.workerJobsService.observeJobInputFileSites('validate/external', fileCaller, [
+        createValidationJobDto.fileId,
+      ]);
+    }
     return await this.workerJobsService.createValidationJob({
       ...createValidationJobDto,
       siteId: site?.siteId, // Phase C — 자동 사이트 식별
@@ -258,6 +353,21 @@ export class WorkerJobsController {
     @Body() createSynthesisJobDto: CreateSynthesisJobDto,
     @CurrentSite() site?: CurrentSitePayload,
   ): Promise<WorkerJob> {
+    if (createSynthesisJobDto.editSessionId) {
+      await this.workerJobsService.assertEditSessionLink(
+        createSynthesisJobDto.editSessionId,
+        [siteKeyLinkCaller(site)],
+        undefined,
+        'synthesize/external',
+      );
+    }
+    const fileCaller = siteKeyFileCaller(site);
+    if (fileCaller) {
+      await this.workerJobsService.observeJobInputFileSites('synthesize/external', fileCaller, [
+        createSynthesisJobDto.coverFileId,
+        createSynthesisJobDto.contentFileId,
+      ]);
+    }
     return await this.workerJobsService.createSynthesisJob({
       ...createSynthesisJobDto,
       siteId: site?.siteId, // Phase C — 자동 사이트 식별
@@ -303,7 +413,8 @@ export class WorkerJobsController {
    * contract-freeze.spec.ts:65 auth:'public'), 컷아웃 라우트 선례와 동일하게
    * additive `OptionalShopJwtGuard` 로 검증된 shop-session 의 테넌트만 복원한다.
    * 토큰이 없거나 위조면 가드는 그대로 통과시키고(401 없음) 자동조립만 404 로 막힌다.
-   * ⚠️ 기존 경로(URL 직접 공급)에는 어떤 인가 검사도 추가하지 않는다 — 무중단 최우선.
+   * 수동 경로(URL 직접 공급)는 본문에 editSessionId 가 있을 때만 세션 연결 확인
+   * (WorkerJobsService.assertEditSessionLink)을 거친다. editSessionId 가 없는 호출은 확인 없이 처리한다.
    *
    * 🔒 주문 스코프(2026-08-13 적대검증 MAJOR): siteId 일치만으로는 **동일 테넌트 내
    *    타 고객 세션**을 조립해 그 표지/내지를 합본으로 뽑아낼 수 있다(세션 UUID 는
@@ -370,6 +481,29 @@ export class WorkerJobsController {
             },
           }
         : undefined;
+
+    // 수동 경로(assembleFromSession 미사용)의 세션 연결 확인 — shop-session(위 caller 와 같은 조건)과
+    // 사이트 키를 각자 독립 호출자로 판정한다(합치지 않는다). 둘 다 없으면 none.
+    if (dto.editSessionId && dto.assembleFromSession !== true) {
+      const linkCallers: SessionLinkCaller[] = [];
+      if (caller?.siteId && caller.owner) {
+        linkCallers.push({
+          kind: 'shop',
+          siteId: caller.siteId,
+          memberSeqno: caller.owner.memberSeqno,
+          allowedOrderSeqnos: caller.allowedOrderSeqnos,
+        });
+      }
+      if (apiKeySite?.siteId) {
+        linkCallers.push({ kind: 'siteKey', siteId: apiKeySite.siteId });
+      }
+      await this.workerJobsService.assertEditSessionLink(
+        dto.editSessionId,
+        linkCallers.length > 0 ? linkCallers : [{ kind: 'none' }],
+        guestTokenOf(guestTokenHeader),
+        'compose-mixed',
+      );
+    }
     return await this.workerJobsService.createComposeMixedJob(dto, caller, apiKeySite);
   }
 
@@ -385,7 +519,18 @@ export class WorkerJobsController {
   @ApiResponse({ status: 201, description: '잡 생성 성공', type: WorkerJob })
   async createRenderPages(
     @Body() dto: CreateRenderPagesJobDto,
+    // 세션 연결 확인 — 비회원 세션은 이 헤더의 게스트 토큰으로 연결을 증명한다.
+    @Headers('x-guest-token') guestTokenHeader?: string,
   ): Promise<WorkerJob> {
+    // 인증 컨텍스트가 없는 라우트 — 호출자는 none(관측 로그만, 잡 생성은 그대로).
+    if (dto.editSessionId) {
+      await this.workerJobsService.assertEditSessionLink(
+        dto.editSessionId,
+        [{ kind: 'none' }],
+        guestTokenOf(guestTokenHeader),
+        'render-pages',
+      );
+    }
     return await this.workerJobsService.createRenderPagesJob(dto);
   }
 
@@ -524,6 +669,20 @@ export class WorkerJobsController {
     @Body() dto: CreateSplitSynthesisJobDto,
     @CurrentSite() site?: CurrentSitePayload,
   ): Promise<WorkerJob> {
+    if (dto.sessionId) {
+      await this.workerJobsService.assertEditSessionLink(
+        dto.sessionId,
+        [siteKeyLinkCaller(site)],
+        undefined,
+        'split-synthesize/external',
+      );
+    }
+    const fileCaller = siteKeyFileCaller(site);
+    if (fileCaller) {
+      await this.workerJobsService.observeJobInputFileSites('split-synthesize/external', fileCaller, [
+        dto.pdfFileId,
+      ]);
+    }
     return await this.workerJobsService.createSplitSynthesisJob({
       ...dto,
       siteId: site?.siteId, // Phase C — 자동 사이트 식별 (Stage 0 비대칭 봉합, validate/external 준용)

@@ -131,6 +131,103 @@ export interface ComposeAssembleCaller {
   };
 }
 
+/**
+ * 잡 생성 라우트의 세션 연결 확인(assertEditSessionLink) 호출자 유형. 컨트롤러가 인증 컨텍스트에서 도출한다.
+ *  - staff: admin-app 의 admin/manager/super_admin(대소문자 무관)
+ *  - internalWorkerKey: 내부 워커 키(ApiKeyGuard site.role === 'worker')
+ *  - operator: 운영자 대리 편집 토큰 — 권한의 세션 목록
+ *  - siteKey: 서버가 검증한 사이트 키의 사이트
+ *  - shop: 검증된 shop-session 토큰(사이트·회원 번호·주문권한)
+ *  - none: 무인증 또는 위에 해당하지 않는 호출자
+ */
+export type SessionLinkCaller =
+  | { kind: 'staff' }
+  | { kind: 'internalWorkerKey' }
+  | { kind: 'operator'; sessionIds: readonly string[] }
+  | { kind: 'siteKey'; siteId: string }
+  | { kind: 'shop'; siteId: string | null; memberSeqno: number; allowedOrderSeqnos?: unknown }
+  | { kind: 'none' };
+
+/** 세션 연결 확인에 쓰는 세션 컬럼 */
+type SessionLinkRow = Pick<
+  EditSessionEntity,
+  'id' | 'siteId' | 'memberSeqno' | 'orderSeqno' | 'guestToken' | 'guestExpiresAt'
+>;
+
+/**
+ * 게스트 세션 소유 증명 — 만료 전이고 제시한 토큰이 세션 게스트 토큰과 같다.
+ * 게스트 라우트 assertGuestOwnership 과 같은 판정(만료 시각 없음 = 만료 없음).
+ */
+function guestTokenProves(
+  session: Pick<EditSessionEntity, 'guestToken' | 'guestExpiresAt'>,
+  presented: string | undefined,
+  now: Date = new Date(),
+): boolean {
+  return (
+    !!session.guestToken &&
+    (!session.guestExpiresAt || session.guestExpiresAt >= now) &&
+    typeof presented === 'string' &&
+    presented.length > 0 &&
+    presented === session.guestToken
+  );
+}
+
+/**
+ * 회원 세션 소유 판정 — 양의 회원 번호 일치, 또는 토큰 주문권한(allowedOrderSeqnos)에 세션 주문 번호(0 제외)가 있음.
+ * 자동조립 소유 판정과 세션 연결 확인이 공유한다.
+ */
+function memberOwnsSession(
+  session: Pick<EditSessionEntity, 'memberSeqno' | 'orderSeqno'>,
+  memberSeqno: number,
+  allowedOrderSeqnos: unknown,
+): boolean {
+  const sessionOrder = Number(session.orderSeqno);
+  return (
+    (memberSeqno > 0 && Number(session.memberSeqno) === memberSeqno) ||
+    (sessionOrder !== 0 &&
+      Array.isArray(allowedOrderSeqnos) &&
+      allowedOrderSeqnos.map(Number).includes(sessionOrder))
+  );
+}
+
+/**
+ * 호출자 한 유형이 세션 연결을 증명하는가. staff·internalWorkerKey 는 호출 전에 걸러진다.
+ *  - operator: 권한의 세션 목록에 있는 세션
+ *  - siteKey: 같은 사이트 세션(비회원 세션 포함), 또는 사이트 미지정 회원 세션
+ *  - shop: 세션 사이트가 토큰 사이트와 같거나 미지정이고, 비회원 세션이면 X-Guest-Token 증명,
+ *          회원 세션이면 회원 번호 일치 또는 주문권한
+ *  - none: X-Guest-Token 증명
+ */
+function callerProvesLink(
+  caller: SessionLinkCaller,
+  session: SessionLinkRow,
+  guestToken: string | undefined,
+): boolean {
+  switch (caller.kind) {
+    case 'operator':
+      return caller.sessionIds.includes(session.id);
+    case 'siteKey':
+      return session.siteId != null ? session.siteId === caller.siteId : !session.guestToken;
+    case 'shop': {
+      const tenantOk = session.siteId == null || session.siteId === caller.siteId;
+      if (!tenantOk) return false;
+      return session.guestToken
+        ? guestTokenProves(session, guestToken)
+        : memberOwnsSession(session, caller.memberSeqno, caller.allowedOrderSeqnos);
+    }
+    case 'none':
+      return guestTokenProves(session, guestToken);
+    default:
+      return false;
+  }
+}
+
+/** 잡 입력 파일 사이트 관측 대상 호출자 — 사이트가 검증된 유형만 */
+export interface JobInputFileCaller {
+  kind: 'siteKey' | 'shop' | 'operator';
+  siteId: string;
+}
+
 @Injectable()
 export class WorkerJobsService implements OnModuleInit {
   private readonly logger = new Logger(WorkerJobsService.name);
@@ -302,7 +399,7 @@ export class WorkerJobsService implements OnModuleInit {
     if (site?.siteId) {
       // 감사 로깅(Stage 0) — 후속 스코핑 도입 시 근거 데이터
       this.logger.log(
-        `checkMergeable called by site=${site.siteId} (editSessionId=${dto.editSessionId})`,
+        `checkMergeable called by site=${site.siteId} (editSessionId=${dto.editSessionId ? 'present' : '-'})`,
       );
     }
     const issues: MergeIssueDto[] = [];
@@ -427,6 +524,91 @@ export class WorkerJobsService implements OnModuleInit {
   /** 사설/링크로컬/루프백 IP 판정 — 공용 유틸 위임(단일 출처). */
   private isPrivateIp(ip: string): boolean {
     return isPrivateIp(ip);
+  }
+
+  // ============================================================================
+  // 잡 생성 라우트 공용 확인
+  // ============================================================================
+
+  /**
+   * 요청 본문의 편집 세션 id 를 잡에 연결하기 전 호출자의 세션 연결 근거를 확인한다.
+   * 외부 잡 생성 라우트(validate·validate/external·synthesize/external·split-synthesize/external·
+   * compose-mixed 수동 경로·render-pages)의 컨트롤러가 본문에 세션 id 가 있을 때만 잡 생성 전에 호출한다.
+   *
+   *  1. staff·내부 워커 키는 조회 없이 통과한다.
+   *  2. callers 중 하나라도 연결을 증명하면 통과한다(유형별 판정은 callerProvesLink). 삭제된 세션은 없는 세션으로 본다.
+   *  3. 증명하지 못했을 때
+   *     - 운영자·사이트 키·shop 호출자가 있으면 404 SESSION_NOT_FOUND(잡 미생성). 세션 부재와 같은 응답이다.
+   *     - 그 밖의 호출자(무인증 등)는 요청을 그대로 진행하고 관측 로그만 남긴다.
+   *  로그는 라우트·호출자 유형·세션 사이트만 남긴다(세션 id·토큰·회원 번호는 기록하지 않는다).
+   */
+  async assertEditSessionLink(
+    editSessionId: string,
+    callers: readonly SessionLinkCaller[],
+    guestToken: string | undefined,
+    route: string,
+  ): Promise<void> {
+    if (callers.some((c) => c.kind === 'staff' || c.kind === 'internalWorkerKey')) return;
+
+    const enforced = callers.some(
+      (c) => c.kind === 'operator' || c.kind === 'siteKey' || c.kind === 'shop',
+    );
+    const kinds = callers.length > 0 ? callers.map((c) => c.kind).join(',') : 'none';
+
+    let session: SessionLinkRow | null;
+    try {
+      session = await this.editSessionRepository.findOne({
+        where: { id: editSessionId },
+        select: ['id', 'siteId', 'memberSeqno', 'orderSeqno', 'guestToken', 'guestExpiresAt'],
+      });
+    } catch (err) {
+      if (enforced) throw err;
+      this.logger.warn(`[job-link] check-error route=${route} caller=${kinds}`);
+      return;
+    }
+
+    if (session && callers.some((c) => callerProvesLink(c, session as SessionLinkRow, guestToken))) {
+      return;
+    }
+
+    const site = session?.siteId ?? '-';
+    if (!enforced) {
+      this.logger.log(`[job-link] would-deny route=${route} caller=${kinds} site=${site}`);
+      return;
+    }
+    this.logger.log(`[job-link] denied route=${route} caller=${kinds} site=${site}`);
+    throw new NotFoundException({
+      code: 'SESSION_NOT_FOUND',
+      message: '편집 세션을 찾을 수 없습니다.',
+      details: { sessionId: editSessionId },
+    });
+  }
+
+  /**
+   * 잡 입력 파일(fileId 계열)의 사이트를 호출자 사이트와 대조해 관측 로그만 남긴다(동작 변화 없음).
+   * 파일 사이트가 지정돼 있고 호출자 사이트와 다를 때 `[job-file] cross-site` 1줄(파일 id 미기록).
+   * 조회 실패·파일 부재는 무시한다 — 잡 생성 경로의 기존 판정(FILE_NOT_FOUND 등)이 그대로 처리한다.
+   */
+  async observeJobInputFileSites(
+    route: string,
+    caller: JobInputFileCaller,
+    fileIds: ReadonlyArray<string | null | undefined>,
+  ): Promise<void> {
+    const ids = Array.from(
+      new Set(fileIds.filter((id): id is string => typeof id === 'string' && id.length > 0)),
+    );
+    for (const id of ids) {
+      try {
+        const file = await this.filesService.findById(id);
+        if (file.siteId && file.siteId !== caller.siteId) {
+          this.logger.log(
+            `[job-file] cross-site route=${route} caller=${caller.kind} site=${caller.siteId} fileSite=${file.siteId}`,
+          );
+        }
+      } catch {
+        // 관측 전용 — 실패는 무시한다.
+      }
+    }
   }
 
   // ============================================================================
@@ -1402,19 +1584,13 @@ export class WorkerJobsService implements OnModuleInit {
     //    회원 세션: 양의 회원 번호 일치, 또는 토큰 주문권한(allowedOrderSeqnos)에 세션 주문 번호(0 제외)가 있음.
     const owner = caller?.owner;
     if (owner) {
-      const sessionOrder = Number(session.orderSeqno);
       const permitted = session.guestToken
-        ? (!session.guestExpiresAt || session.guestExpiresAt >= new Date()) &&
-          typeof owner.guestToken === 'string' &&
-          owner.guestToken === session.guestToken
-        : (owner.memberSeqno > 0 && Number(session.memberSeqno) === owner.memberSeqno) ||
-          (sessionOrder !== 0 &&
-            Array.isArray(allowedOrderSeqnos) &&
-            allowedOrderSeqnos.map(Number).includes(sessionOrder));
+        ? guestTokenProves(session, owner.guestToken)
+        : memberOwnsSession(session, owner.memberSeqno, allowedOrderSeqnos);
       if (!permitted) {
-        // 세션 id·site·출처만 남긴다(게스트 토큰·JWT 원문은 기록하지 않는다).
+        // site·출처만 남긴다(세션 id·게스트 토큰·JWT 원문은 기록하지 않는다).
         this.logger.log(
-          `[compose-assemble] denied-owner session=${session.id} site=${session.siteId ?? '-'} source=shop`,
+          `[compose-assemble] denied-owner site=${session.siteId ?? '-'} source=shop`,
         );
         throw notFound();
       }

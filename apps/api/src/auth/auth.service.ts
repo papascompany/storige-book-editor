@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException, ConflictException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, ConflictException, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -10,8 +10,22 @@ import { AuthTokens, UserRole, SiteRoleClaim } from '@storige/types';
 import { PartnerOperatorGrantService } from './partner-operator/partner-operator-grant.service';
 import { isPartnerOperatorClaims } from './partner-operator/partner-operator.types';
 
+/** shop-session 주문 범위 값 분류 — 0 이상의 안전한 정수가 아니면 그 유형, 맞으면 null(0 은 'zero'). */
+export function classifyOrderScopeValue(
+  value: unknown,
+): 'zero' | 'negative' | 'fraction' | 'unsafe' | 'non-number' | null {
+  if (typeof value !== 'number' || Number.isNaN(value)) return 'non-number';
+  if (!Number.isFinite(value) || Math.abs(value) > Number.MAX_SAFE_INTEGER) return 'unsafe';
+  if (!Number.isInteger(value)) return 'fraction';
+  if (value < 0) return 'negative';
+  if (value === 0) return 'zero';
+  return null;
+}
+
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     @InjectRepository(User)
     private userRepository: Repository<User>,
@@ -159,6 +173,8 @@ export class AuthService {
     dto: CreateShopSessionDto,
     siteContext?: { siteId: string; siteName: string }, // Phase C-2 — 호출 컨트롤러에서 주입
   ): Promise<{ accessToken: string; refreshToken: string }> {
+    this.observeOrderScope(dto, siteContext?.siteId);
+
     // Patch D (2026-05-03): orderSeqno 또는 allowedOrderSeqnos를 JWT에 포함하면
     // 후속 EditSession 생성 시 JWT.allowedOrderSeqnos 검증으로 강한 격리 가능.
     // 둘 다 없으면 기존 동작 유지 (DTO 값 신뢰, PHP 측 호환성 보장).
@@ -260,6 +276,30 @@ export class AuthService {
         error: 'REFRESH_TOKEN_EXPIRED',
         redirectUrl: '/login',
       });
+    }
+  }
+
+  /**
+   * shop-session 주문 범위(orderSeqno·allowedOrderSeqnos) 운영 관측 — 발급 동작은 바꾸지 않는다.
+   * 양의 정수가 아닌 값이 있으면 필드·유형별 1줄(`[shop-session] order-scope-invalid`)을 남긴다(값은 기록하지 않는다).
+   */
+  private observeOrderScope(dto: CreateShopSessionDto, siteId: string | undefined): void {
+    const kinds = new Set<string>();
+    if (dto.orderSeqno !== undefined && dto.orderSeqno !== null) {
+      const kind = classifyOrderScopeValue(dto.orderSeqno);
+      if (kind) kinds.add(`orderSeqno:${kind}`);
+    }
+    if (Array.isArray(dto.allowedOrderSeqnos)) {
+      for (const value of dto.allowedOrderSeqnos) {
+        const kind = classifyOrderScopeValue(value);
+        if (kind) kinds.add(`allowedOrderSeqnos:${kind}`);
+      }
+    }
+    for (const entry of kinds) {
+      const [field, kind] = entry.split(':');
+      this.logger.log(
+        `[shop-session] order-scope-invalid field=${field} kind=${kind} site=${siteId ?? '-'}`,
+      );
     }
   }
 }

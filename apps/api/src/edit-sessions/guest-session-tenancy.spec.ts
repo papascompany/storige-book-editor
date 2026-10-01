@@ -306,15 +306,17 @@ describe('게스트 세션 테넌시 — siteId 스탬프 + 승격 게이트 e2e
       expect(stored(id).canvasData).toBeUndefined();
     });
 
-    it('T13-a 무중단: query 로만 토큰 전송(현행 편집기) → 200', async () => {
+    it('T13-a: query 로만 토큰 전송 → 403 GUEST_TOKEN_REQUIRED, 저장 없음(토큰은 헤더로만 받는다)', async () => {
       const { id, token } = await seedGuest();
+      const before = stored(id).canvasData;
 
-      await patch(id)
+      const res = await patch(id)
         .query({ guestToken: token })
         .send({ canvasData: { ok: 1 } })
-        .expect(200);
+        .expect(403);
 
-      expect(stored(id).canvasData).toEqual({ ok: 1 });
+      expect(res.body.code).toBe('GUEST_TOKEN_REQUIRED');
+      expect(stored(id).canvasData).toEqual(before);
     });
 
     it('T13-b 무중단: X-Guest-Token 헤더로만 전송(연동 가이드) → 200', async () => {
@@ -460,7 +462,7 @@ describe('게스트 세션 테넌시 — siteId 스탬프 + 승격 게이트 e2e
         .expect(200);
     });
 
-    it('GR10: 기존 게스트 라우트 불변 — GET guest/:id/versions 200, PATCH guest/:id 200', async () => {
+    it('GR10: 게스트 라우트 — GET guest/:id/versions 200, PATCH guest/:id 200(X-Guest-Token 헤더)', async () => {
       const { id, token } = await seedGuest();
 
       const versions = await request(app.getHttpServer())
@@ -475,7 +477,7 @@ describe('게스트 세션 테넌시 — siteId 스탬프 + 승격 게이트 e2e
 
       await request(app.getHttpServer())
         .patch(`/edit-sessions/guest/${id}`)
-        .query({ guestToken: token })
+        .set('X-Guest-Token', token)
         .send({ canvasData: { v: 10 } })
         .expect(200);
       expect(stored(id).canvasData).toEqual({ v: 10 });

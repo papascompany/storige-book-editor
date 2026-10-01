@@ -141,7 +141,14 @@ describe('FilesController — 운영자 업로드·완료 스탬프', () => {
 });
 
 describe('WorkerJobsController — 컷아웃·합본 caller 파생(운영자 포함)', () => {
-  let workerJobs: { createCutoutJob: jest.Mock; findCutoutJob: jest.Mock; createComposeMixedJob: jest.Mock; createValidationJob: jest.Mock };
+  let workerJobs: {
+    createCutoutJob: jest.Mock;
+    findCutoutJob: jest.Mock;
+    createComposeMixedJob: jest.Mock;
+    createValidationJob: jest.Mock;
+    assertEditSessionLink: jest.Mock;
+    observeJobInputFileSites: jest.Mock;
+  };
   let controller: WorkerJobsController;
   const config = { get: jest.fn(() => 'true') };
 
@@ -158,6 +165,8 @@ describe('WorkerJobsController — 컷아웃·합본 caller 파생(운영자 포
       }),
       createComposeMixedJob: jest.fn().mockResolvedValue({ id: 'job-2' }),
       createValidationJob: jest.fn().mockResolvedValue({ id: 'job-3' }),
+      assertEditSessionLink: jest.fn().mockResolvedValue(undefined),
+      observeJobInputFileSites: jest.fn().mockResolvedValue(undefined),
     };
     controller = new WorkerJobsController(
       workerJobs as unknown as WorkerJobsService,

@@ -507,7 +507,7 @@ describe('WorkerJobsService.createComposeMixedJob — 자동조립 opt-in', () =
       expect(synthesisQueue.add).not.toHaveBeenCalled();
       const logs = logSpy.mock.calls.map((c: unknown[]) => String(c[0]));
       expect(logs.filter((m) => m.startsWith('[compose-assemble]'))).toEqual([
-        '[compose-assemble] denied-owner session=sess-1 site=site-A source=shop',
+        '[compose-assemble] denied-owner site=site-A source=shop',
       ]);
       for (const call of logSpy.mock.calls as unknown[][]) {
         expect(JSON.stringify(call)).not.toContain(GUEST_TOKEN);

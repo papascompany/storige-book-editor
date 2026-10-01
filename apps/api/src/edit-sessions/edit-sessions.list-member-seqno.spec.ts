@@ -1,15 +1,15 @@
 /**
- * 세션 목록(GET /edit-sessions)의 회원 번호 판정 정리 (2026-09-30).
+ * 세션 목록(GET /edit-sessions)의 회원 번호 판정.
  *
- *  - 비-staff 의 회원 번호 0 조회는 403, 회원 번호 0 호출자의 기본 목록은 빈 목록.
- *  - 비숫자 회원 번호 조회 403 은 종전 동작 그대로.
- *  - orderSeqno 분기: 주문권한이 없는 회원 번호 0 호출자는 빈 목록, 주문 번호 0 은 주문권한 판정에 쓰지 않음.
- *    주문권한(allowedOrderSeqnos)이 있는 호출자는 그 주문의 세션 목록(종전과 동일).
+ *  - 비-staff 의 토큰 회원 번호는 양의 정수만 회원으로 본다(0·음수·소수·비숫자는 비회원).
+ *  - 비-staff 의 memberSeqno 조회는 토큰 회원 번호와 조회 번호가 모두 양의 정수이고 같을 때만 허용, 그 밖 403.
+ *    비회원 호출자의 기본 목록은 빈 목록.
+ *  - orderSeqno 분기: 주문권한이 없는 비회원 호출자는 빈 목록, 주문 번호 0 은 주문권한 판정에 쓰지 않음.
+ *    주문권한(allowedOrderSeqnos)이 있는 호출자는 그 주문의 세션 목록.
  *  - siteId 분기: shop 토큰은 자기 site 여도 403 FORBIDDEN_SITE_QUERY.
- *  - staff·음수 회원 번호와 admin-app 사용자 목록은 불변.
- *  - 게스트 세션의 guestToken 은 주문권한 orderSeqno 목록에만, 세션 사이트가 호출자 사이트와 같을 때만 포함
- *    (관측 로그 1줄, 토큰 원문 없음). 사이트 미지정 게스트 세션은 주문권한 목록에서 제외.
- *    그 밖의 분기(staff·사이트 운영자 조회)는 게스트 세션 항목에서 guestToken 키를 뺀다.
+ *  - staff 의 조회 필터 값과 admin-app 사용자 목록은 불변.
+ *  - 목록 응답의 게스트 세션 항목에는 어느 분기든 guestToken 키가 없고 guestExpiresAt 은 있다.
+ *    주문권한 목록은 사이트 미지정 게스트 세션을 제외하고, 게스트 세션을 포함하면 관측 로그 1줄(토큰 원문 없음).
  *
  * 실제 EditSessionsService + EditSessionsController(직접 생성), 저장소는 mock.
  */
@@ -207,33 +207,60 @@ describe('EditSessionsController — 목록 회원 번호 판정 (2026-09-30)', 
     expect(findByMemberSeqnoSpy).toHaveBeenCalledWith(0);
   });
 
-  it("L6: 음수 회원 번호 sub '-5' 의 memberSeqno=-5 / 기본 목록 → 허용 (불변)", async () => {
+  it("L6: 음수 회원 번호 sub '-5' 의 memberSeqno=-5 조회 → 403 FORBIDDEN_MEMBER_QUERY, 기본 목록 → 빈 목록(조회 미실행)", async () => {
     table[NEGATIVE_MEMBER_SESSION] = baseSession(NEGATIVE_MEMBER_SESSION, { memberSeqno: -5 });
-    expect(ids(await controller.findSessions(undefined, '-5', undefined, shopUser('-5')))).toEqual([
-      NEGATIVE_MEMBER_SESSION,
-    ]);
-    expect(ids(await controller.findSessions(undefined, undefined, undefined, shopUser('-5')))).toEqual([
-      NEGATIVE_MEMBER_SESSION,
-    ]);
-    expect(findByMemberSeqnoSpy).toHaveBeenCalledWith(-5);
+    const r = await httpError(controller.findSessions(undefined, '-5', undefined, shopUser('-5')));
+    expect(r.status).toBe(403);
+    expect(r.body.code).toBe('FORBIDDEN_MEMBER_QUERY');
+    expect(await controller.findSessions(undefined, undefined, undefined, shopUser('-5'))).toEqual({
+      sessions: [],
+      total: 0,
+    });
+    expect(findByMemberSeqnoSpy).not.toHaveBeenCalled();
   });
+
+  it.each(['1.5', '12abc'])(
+    "L6-b: sub '%s' 의 memberSeqno 조회 → 403, 기본 목록·주문권한 없는 orderSeqno 목록 → 빈 목록",
+    async (sub) => {
+      table['77777777-7777-4777-8777-777777777777'] = baseSession('77777777-7777-4777-8777-777777777777', {
+        memberSeqno: sub === '1.5' ? 1 : 12,
+      });
+      const requested = sub === '1.5' ? '1' : '12';
+      const r = await httpError(controller.findSessions(undefined, requested, undefined, shopUser(sub)));
+      expect(r.body.code).toBe('FORBIDDEN_MEMBER_QUERY');
+      expect(await controller.findSessions(undefined, undefined, undefined, shopUser(sub))).toEqual({
+        sessions: [],
+        total: 0,
+      });
+      expect(await controller.findSessions('100', undefined, undefined, shopUser(sub))).toEqual({
+        sessions: [],
+        total: 0,
+      });
+      expect(findByMemberSeqnoSpy).not.toHaveBeenCalled();
+    },
+  );
 
   it('L7: 주문권한 없는 shop 토큰(회원 번호 0)의 orderSeqno 분기 → 빈 목록', async () => {
     const out = await controller.findSessions('100', undefined, undefined, shopUser('0'));
     expect(out).toEqual({ sessions: [], total: 0 });
   });
 
-  it('L7-b: 주문권한(allowedOrderSeqnos) 있는 shop 토큰(회원 번호 0)의 orderSeqno 분기 → 그 주문의 세션 목록(종전과 동일)', async () => {
+  it('L7-b: 주문권한(allowedOrderSeqnos) 있는 shop 토큰(회원 번호 0)의 orderSeqno 분기 → 그 주문의 세션 목록, 게스트 세션 항목에 guestToken 키 없음·guestExpiresAt 있음', async () => {
     const out = await controller.findSessions('100', undefined, undefined, {
       ...shopUser('0'),
       allowedOrderSeqnos: [100],
     });
     expect(ids(out).sort()).toEqual([GUEST_SESSION, MEMBER_SESSION, OTHER_MEMBER_SESSION].sort());
-    const guest = out.sessions.find((s) => s.id === GUEST_SESSION) as unknown as Record<string, unknown>;
-    expect(guest.guestToken).toBe(GUEST_TOKEN);
-    // 관측 로그 1회 — 주문 번호·게스트 세션 수·site·출처만(토큰 원문 없음)
+    const guest = byId(out, GUEST_SESSION);
+    expect('guestToken' in guest).toBe(false);
+    expect(guest.guestExpiresAt).toBeInstanceOf(Date);
+    expect(guest.memberSeqno).toBe(0);
+    expect(byId(out, MEMBER_SESSION)).toHaveProperty('guestToken', null);
+    expect(byId(out, MEMBER_SESSION)).toHaveProperty('guestExpiresAt', null);
+    expect(JSON.stringify(out)).not.toContain(GUEST_TOKEN);
+    // 관측 로그 1회 — 게스트 세션 수·site·출처만(주문 번호·토큰 원문 없음)
     expect(guestReadLogs()).toEqual([
-      `[guest-read] order-grant order=100 guest-sessions=1 site=${SITE_A} source=shop`,
+      `[guest-read] order-grant guest-sessions=1 site=${SITE_A} source=shop`,
     ]);
     for (const call of logSpy.mock.calls as unknown[][]) {
       expect(JSON.stringify(call)).not.toContain(GUEST_TOKEN);
@@ -255,7 +282,8 @@ describe('EditSessionsController — 목록 회원 번호 판정 (2026-09-30)', 
     });
     expect(ids(out).sort()).toEqual([GUEST_SESSION, MEMBER_SESSION, OTHER_MEMBER_SESSION].sort());
     expect(JSON.stringify(out)).not.toContain(NULL_SITE_TOKEN);
-    expect(byId(out, GUEST_SESSION).guestToken).toBe(GUEST_TOKEN);
+    expect(JSON.stringify(out)).not.toContain(GUEST_TOKEN);
+    expect('guestToken' in byId(out, GUEST_SESSION)).toBe(false);
   });
 
   it('L7-f: 사이트가 없는 토큰의 주문권한 목록 → 게스트 세션 항목에 guestToken 키 없음, 회원 세션은 guestToken: null', async () => {
