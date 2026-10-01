@@ -96,8 +96,11 @@ import { getAuthToken, setAuthToken, setEmbedRefreshToken } from './utils/authTo
 import { recallEmbedGuestToken, rememberEmbedGuestToken } from './utils/embedGuestTokenStore'
 import {
   fetchSessionForReopen,
+  isTokenlessGuestItem,
+  openGuestItemFromOrderList,
   sessionNotFoundMessage,
   sessionNotFoundReasonOf,
+  type OrderListGuestOpenResult,
   type SessionNotFoundReason,
 } from './utils/embedSessionReopen'
 import type { SessionVersionsSource } from './components/editor/HistoryPanel'
@@ -932,6 +935,58 @@ function EmbeddedEditor({
         //   (orderSeqno+mode 제공 시 기존 경로 — 주문 검색/생성 폴백 — 동작 불변)
         let editSession: EditSessionResponse | null = null
 
+        // 세션 조회 실패 → SESSION_NOT_FOUND 전용 중단 화면 + editor.error(fatal) 1회.
+        const failSessionNotFound = (failedSessionId: string, reason: SessionNotFoundReason): void => {
+          if (!isMounted) return
+          const message = sessionNotFoundMessage(reason)
+          setError(message)
+          setErrorCode('SESSION_NOT_FOUND')
+          setIsLoading(false)
+          fatalInitErrorRef.current = true
+          const errPayload: EditorError = {
+            code: 'SESSION_NOT_FOUND',
+            message,
+            sessionId: failedSessionId,
+            reason,
+            fatal: true,
+          }
+          onError?.(errPayload)
+          postToParent(parentOrigin, 'editor.error', errPayload)
+        }
+
+        // 세션 조회 실패 공통 처리 — SESSION_NOT_FOUND·401 은 화면 처리 후 반환하고,
+        // 그 밖(네트워크·타임아웃·408/429/5xx·기타 상태)은 바깥 catch 의 NETWORK_ERROR 매핑으로 던진다.
+        const handleSessionLoadFailure = (
+          apiErr: ApiError,
+          failedSessionId: string,
+          notFoundReason: SessionNotFoundReason | null,
+        ): void => {
+          if (notFoundReason) {
+            failSessionNotFound(failedSessionId, notFoundReason)
+            return
+          }
+
+          if (apiErr?.status === 401 || apiErr?.code === 'AUTH_EXPIRED') {
+            // onAuthExpired 리스너가 AUTH_EXPIRED 를 이미 1회 발신했다 — 중복 발신 금지.
+            if (!isMounted) return
+            setError(apiErr?.message || '인증이 만료되었습니다. 페이지를 새로고침해주세요.')
+            setIsLoading(false)
+            fatalInitErrorRef.current = true
+            return
+          }
+
+          // message 는 고객에게 그대로 보이므로 서버 원문(영문 등) 대신 고정 한국어 문구를 쓴다.
+          const isConnectivity = apiErr?.code === 'TIMEOUT' || apiErr?.code === 'NETWORK_ERROR'
+          const rethrown: ApiError = {
+            ...apiErr,
+            code: isConnectivity ? apiErr.code : 'SERVER_ERROR',
+            message: isConnectivity
+              ? '편집 작업을 불러오지 못했습니다. 네트워크 연결을 확인한 뒤 다시 시도해주세요.'
+              : '일시적인 서버 오류로 편집 작업을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.',
+          }
+          throw rethrown
+        }
+
         // P1-4: 서버 버전 복원 직후 재초기화 — 복원 응답 세션을 그대로 사용(재조회/재생성 금지).
         const reinitSession = reinitSessionRef.current
         if (reinitSession) {
@@ -956,47 +1011,8 @@ function EmbeddedEditor({
             const status = apiErr?.status
             console.warn('[EmbeddedEditor] Session load failed:', sessionId, status, apiErr?.code, err)
 
-            const notFoundReason = sessionNotFoundReasonOf(err, status)
-
-            if (notFoundReason) {
-              if (!isMounted) return
-              const message = sessionNotFoundMessage(notFoundReason)
-              setError(message)
-              setErrorCode('SESSION_NOT_FOUND')
-              setIsLoading(false)
-              fatalInitErrorRef.current = true
-              const errPayload: EditorError = {
-                code: 'SESSION_NOT_FOUND',
-                message,
-                sessionId,
-                reason: notFoundReason,
-                fatal: true,
-              }
-              onError?.(errPayload)
-              postToParent(parentOrigin, 'editor.error', errPayload)
-              return
-            }
-
-            if (status === 401 || apiErr?.code === 'AUTH_EXPIRED') {
-              // onAuthExpired 리스너가 AUTH_EXPIRED 를 이미 1회 발신했다 — 중복 발신 금지.
-              if (!isMounted) return
-              setError(apiErr?.message || '인증이 만료되었습니다. 페이지를 새로고침해주세요.')
-              setIsLoading(false)
-              fatalInitErrorRef.current = true
-              return
-            }
-
-            // 네트워크·타임아웃·408/429/5xx·기타 상태 → 바깥 catch 에서 NETWORK_ERROR 로 매핑.
-            // message 는 고객에게 그대로 보이므로 서버 원문(영문 등) 대신 고정 한국어 문구를 쓴다.
-            const isConnectivity = apiErr?.code === 'TIMEOUT' || apiErr?.code === 'NETWORK_ERROR'
-            const rethrown: ApiError = {
-              ...apiErr,
-              code: isConnectivity ? apiErr.code : 'SERVER_ERROR',
-              message: isConnectivity
-                ? '편집 작업을 불러오지 못했습니다. 네트워크 연결을 확인한 뒤 다시 시도해주세요.'
-                : '일시적인 서버 오류로 편집 작업을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.',
-            }
-            throw rethrown
+            handleSessionLoadFailure(apiErr, sessionId, sessionNotFoundReasonOf(err, status))
+            return
           }
         }
 
@@ -1004,15 +1020,39 @@ function EmbeddedEditor({
           setLoadingMessage('편집 세션을 불러오는 중...')
 
           // sessionId 없거나 조회 실패 → orderSeqno로 기존 세션 검색
+          let orderItem: EditSessionResponse | null = null
           try {
             const { sessions } = await editSessionsApi.findByOrder(orderSeqno)
             // 가장 최근 세션 사용 (canvasData가 있는 것 우선)
-            editSession = sessions.find(s => s.canvasData) || sessions[0] || null
-            if (editSession) {
-              console.log('[EmbeddedEditor] Found existing session for order:', editSession.id)
+            orderItem = sessions.find(s => s.canvasData) || sessions[0] || null
+            if (orderItem) {
+              console.log('[EmbeddedEditor] Found existing session for order:', orderItem.id)
             }
           } catch (err) {
             console.warn('[EmbeddedEditor] Failed to find sessions by order:', err)
+          }
+
+          // 고른 항목이 게스트 토큰 없이 실린 비회원 세션이면 현재 탭에 기억된 게스트 토큰으로만 연다.
+          // 열 수 없으면 SESSION_NOT_FOUND 로 끝낸다(기존 조회 경로·새 세션 생성으로 넘어가지 않는다).
+          // 호스트가 넘긴 게스트 토큰은 명시 sessionId 진입에서만 쓴다.
+          if (orderItem && isTokenlessGuestItem(orderItem)) {
+            let opened: OrderListGuestOpenResult
+            try {
+              opened = await openGuestItemFromOrderList(orderItem)
+            } catch (err) {
+              const apiErr: ApiError = axios.isAxiosError(err) ? parseApiError(err) : (err as ApiError)
+              console.warn('[EmbeddedEditor] Order guest session load failed:', apiErr?.status, apiErr?.code)
+              handleSessionLoadFailure(apiErr, orderItem.id, null)
+              return
+            }
+            if (opened.kind === 'not_opened') {
+              console.warn('[EmbeddedEditor] Order guest session not opened:', opened.reason)
+              failSessionNotFound(orderItem.id, opened.reason)
+              return
+            }
+            editSession = opened.session
+          } else {
+            editSession = orderItem
           }
 
           // 기존 세션이 없으면 새로 생성

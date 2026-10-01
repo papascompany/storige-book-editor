@@ -1,6 +1,7 @@
 /**
  * 명시 sessionId 세션 재오픈 공용 유틸 — embed.tsx(EmbeddedEditor), EmbedView(templateSetId 도출),
  * EditorWorkflowControls(첨부 배지)가 같은 조회 순서와 실패 사유 매핑을 쓴다.
+ * 주문별 세션 목록에서 고른 비회원 세션 항목의 열기({@link openGuestItemFromOrderList})도 여기 둔다.
  *
  * 조회 순서:
  *   1. 호스트가 이번 진입에 넘긴 게스트 토큰(fragment·EditorConfig.guestToken)으로 게스트 조회 경로
@@ -14,7 +15,7 @@
  */
 import axios from 'axios'
 import { editSessionsApi, type EditSessionResponse } from '../api'
-import { forgetEmbedGuestToken, hasExpiredEmbedGuestToken } from './embedGuestTokenStore'
+import { forgetEmbedGuestToken, hasExpiredEmbedGuestToken, recallEmbedGuestToken } from './embedGuestTokenStore'
 import { redactGuestTokenInError } from './redactGuestToken'
 
 /** SESSION_NOT_FOUND 사유 */
@@ -130,6 +131,61 @@ export function sessionNotFoundReasonOf(err: unknown, status: number | undefined
     return ctx?.rememberedExpired ? 'not_found' : 'guest_token_required'
   }
   return 'forbidden'
+}
+
+/**
+ * 주문별 세션 목록 항목이 게스트 토큰 없이 실린 비회원 세션인지.
+ * 비회원 세션은 guestExpiresAt 이 있고, 회원 세션은 guestExpiresAt 이 null 이다.
+ */
+export function isTokenlessGuestItem(s: Pick<EditSessionResponse, 'guestToken' | 'guestExpiresAt'>): boolean {
+  return !s.guestToken && s.guestExpiresAt != null
+}
+
+/** {@link openGuestItemFromOrderList} 결과 — 열었으면 세션, 열 수 없으면 SESSION_NOT_FOUND 사유 */
+export type OrderListGuestOpenResult =
+  | { kind: 'opened'; session: EditSessionResponse }
+  | { kind: 'not_opened'; reason: SessionNotFoundReason }
+
+/** 게스트 조회 경로 거절(응답 있음) → SESSION_NOT_FOUND 사유. 해당하지 않으면 null. */
+function guestRejectionReasonOf(status: number | undefined, code: string | null): SessionNotFoundReason | null {
+  if (status === 404 || status === 410) return 'not_found'
+  if (status === 400 || status === 422) return 'invalid_id'
+  if (status === 403) return code === 'GUEST_SESSION_EXPIRED' ? 'not_found' : 'forbidden'
+  return null
+}
+
+/**
+ * 주문별 세션 목록에서 고른, 게스트 토큰 없이 실린 비회원 세션 항목을 연다.
+ * 현재 탭에 기억된 게스트 토큰으로 게스트 조회 경로만 1회 쓰고, 기존 조회 경로·세션 생성은 쓰지 않는다.
+ *
+ * - 기억된 토큰 없음: 기억 기록이 만료로 지워졌거나 항목 guestExpiresAt 이 지났으면 'not_found',
+ *   그 밖에는 'guest_token_required'.
+ * - 게스트 조회 경로 거절: 404/410 → 'not_found', 403 GUEST_SESSION_EXPIRED → 'not_found',
+ *   그 밖의 403 → 'forbidden', 400/422 → 'invalid_id'. 거절된 기억 기록은 지운다.
+ * - 그 밖의 오류(5xx·타임아웃·연결 실패 등)는 토큰을 가린 뒤 그대로 던진다.
+ */
+export async function openGuestItemFromOrderList(
+  item: Pick<EditSessionResponse, 'id' | 'guestExpiresAt'>,
+  now: Date = new Date(),
+): Promise<OrderListGuestOpenResult> {
+  const token = recallEmbedGuestToken(item.id, now)
+  if (!token) {
+    const itemExpiresAtMs = item.guestExpiresAt ? Date.parse(item.guestExpiresAt) : Number.NaN
+    const itemExpired = !Number.isNaN(itemExpiresAtMs) && itemExpiresAtMs <= now.getTime()
+    const expired = hasExpiredEmbedGuestToken(item.id) || itemExpired
+    return { kind: 'not_opened', reason: expired ? 'not_found' : 'guest_token_required' }
+  }
+
+  try {
+    return { kind: 'opened', session: await editSessionsApi.getGuest(item.id, token) }
+  } catch (err) {
+    redactGuestTokenInError(err, token)
+    if (!axios.isAxiosError(err)) throw err
+    const reason = guestRejectionReasonOf(err.response?.status, apiErrorCodeOf(err))
+    if (reason === null) throw err
+    forgetEmbedGuestToken(item.id)
+    return { kind: 'not_opened', reason }
+  }
 }
 
 /** SESSION_NOT_FOUND 사유별 고객 안내 문구 */

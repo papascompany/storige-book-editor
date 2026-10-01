@@ -15,6 +15,17 @@
  *       제시 토큰 GUEST_SESSION_EXPIRED → not_found, GUEST_TOKEN_MISMATCH → forbidden,
  *       기억된 토큰이 만료로 지워진 뒤 GUEST_TOKEN_REQUIRED → not_found
  *
+ * 2026-10-01 — orderSeqno 진입(주문별 세션 목록)에서 고른 항목이 게스트 토큰 없이 실린 비회원 세션
+ * (guestToken 없음 + guestExpiresAt 있음)이면 현재 탭에 기억된 게스트 토큰으로만 연다:
+ *   O1 기억 기록 → getGuest 1회 → editor.ready (get·create·createGuest 0회)
+ *   O2 기억 기록 없음·저장소 접근 불가 → SESSION_NOT_FOUND(guest_token_required) fatal 1회
+ *   O3 기억 기록 만료 / O4 항목 guestExpiresAt 경과 → not_found
+ *   O5 getGuest 거절 사유 매핑(not_found·forbidden·invalid_id) + 기록 삭제
+ *   O6 getGuest 5xx·타임아웃·연결 실패(ERR_NETWORK) → NETWORK_ERROR(회원 조회·생성 없음), 오류 요청 설정에 토큰 원문 없음
+ *   O7 항목에 guestToken 이 실려 있으면 그대로 사용 / O8 회원 항목은 그대로 사용
+ *   O9 고르기 규칙으로 선택된 비회원 항목만 판정(같은 주문의 회원 항목으로 대체하지 않음)
+ *   O10 관리자 편집 탭은 기억 토큰을 쓰지 않음 → guest_token_required
+ *
  * 하네스는 embed.sessionNotFound.test.tsx 를 준용한다.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
@@ -113,6 +124,8 @@ vi.mock('./api', () => ({
 import { EmbeddedEditor, type EditorInstanceMethods } from './embed'
 import { useAppStore } from './stores/useAppStore'
 import { useSaveStore } from './stores/useSaveStore'
+import { setAdminEditTab } from './utils/authTokenStorage'
+import { sessionNotFoundMessage } from './utils/embedSessionReopen'
 
 const PARENT_ORIGIN = 'https://host.example'
 const SESSION_ID = 'sess-guest-1'
@@ -494,7 +507,9 @@ describe('EmbeddedEditor — 게스트 세션 재오픈 시 게스트 조회 경
   })
 
   it('E9 config guestToken 은 sessionId 가 없으면 쓰지 않는다', async () => {
-    api.findByOrder.mockResolvedValue({ sessions: [guestSession({ guestToken: null, memberSeqno: 123 })] })
+    api.findByOrder.mockResolvedValue({
+      sessions: [guestSession({ guestToken: null, guestExpiresAt: null, memberSeqno: 123 })],
+    })
     renderEmbed({ guestToken: 'prop-token', orderSeqno: 1234567890123, mode: 'both' })
 
     await waitFor(() => expect(posted('editor.ready')).toHaveLength(1))
@@ -576,5 +591,252 @@ describe('EmbeddedEditor — 게스트 세션 재오픈 시 게스트 조회 경
     expect(await screen.findByText('편집 작업을 불러올 수 없습니다')).toBeInTheDocument()
     await flushInit()
     expect(posted('editor.error')).toEqual([expect.objectContaining({ reason: 'forbidden' })])
+  })
+
+  describe('orderSeqno 진입 — 주문별 세션 목록의 게스트 토큰 없는 비회원 항목', () => {
+    const ORDER_SEQNO = 1234567890123
+
+    /** 주문별 세션 목록의 비회원 항목: guestToken 키 없음, guestExpiresAt 있음, memberSeqno 0 */
+    function tokenlessGuestItem(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+      const item: Record<string, unknown> = guestSession({ memberSeqno: 0, ...overrides })
+      delete item.guestToken
+      return item
+    }
+
+    function expectNoSessionCreationOrMemberRead() {
+      expect(api.get).not.toHaveBeenCalled()
+      expect(api.create).not.toHaveBeenCalled()
+      expect(api.createGuest).not.toHaveBeenCalled()
+    }
+
+    async function expectSessionNotFound(reason: string) {
+      expect(await screen.findByText('편집 작업을 불러올 수 없습니다')).toBeInTheDocument()
+      await flushInit()
+      const errors = posted('editor.error')
+      expect(errors).toHaveLength(1)
+      expect(errors[0]).toMatchObject({ code: 'SESSION_NOT_FOUND', sessionId: SESSION_ID, reason, fatal: true })
+      expect(posted('editor.ready')).toHaveLength(0)
+    }
+
+    it('O1 기억 기록이 있으면 getGuest(항목 id, 기억 토큰) 1회 → editor.ready, 기록 유지', async () => {
+      seedRecord(REC_TOKEN, FUTURE)
+      api.findByOrder.mockResolvedValue({ sessions: [tokenlessGuestItem()] })
+      api.getGuest.mockResolvedValue(guestSession())
+      const onReady = vi.fn()
+      renderEmbed({ orderSeqno: ORDER_SEQNO, mode: 'both' }, { onReady })
+
+      await waitFor(() => expect(posted('editor.ready')).toHaveLength(1))
+      expect(api.getGuest.mock.calls).toEqual([[SESSION_ID, REC_TOKEN]])
+      expectNoSessionCreationOrMemberRead()
+      expect(onReady).toHaveBeenCalledTimes(1)
+      expect(posted('editor.ready')[0]).toMatchObject({ sessionId: SESSION_ID })
+      expect(sessionNotFoundErrors()).toHaveLength(0)
+      expect(JSON.parse(sessionStorage.getItem(RECORD_KEY) as string).guestToken).toBe(REC_TOKEN)
+    })
+
+    it("O2 기억 기록이 없으면 SESSION_NOT_FOUND(reason 'guest_token_required') fatal 1회, 조회·생성 0회", async () => {
+      api.findByOrder.mockResolvedValue({ sessions: [tokenlessGuestItem()] })
+      const onError = vi.fn()
+      renderEmbed({ orderSeqno: ORDER_SEQNO, mode: 'both' }, { onError })
+
+      await expectSessionNotFound('guest_token_required')
+      expect(onError).toHaveBeenCalledTimes(1)
+      expect(onError).toHaveBeenCalledWith(
+        expect.objectContaining({ code: 'SESSION_NOT_FOUND', reason: 'guest_token_required', sessionId: SESSION_ID }),
+      )
+      expect(screen.getByText(sessionNotFoundMessage('guest_token_required'))).toBeInTheDocument()
+      expect(api.getGuest).not.toHaveBeenCalled()
+      expectNoSessionCreationOrMemberRead()
+    })
+
+    it("O2 저장소 접근이 막혀 기억 기록을 읽을 수 없으면 'guest_token_required', 생성 0회", async () => {
+      seedRecord(REC_TOKEN, FUTURE)
+      const realGetItem = sessionStorage.getItem.bind(sessionStorage)
+      vi.spyOn(sessionStorage, 'getItem').mockImplementation((key: string) => {
+        if (key.startsWith('storige_embed_guest')) throw new DOMException('denied', 'SecurityError')
+        return realGetItem(key)
+      })
+      api.findByOrder.mockResolvedValue({ sessions: [tokenlessGuestItem()] })
+      renderEmbed({ orderSeqno: ORDER_SEQNO, mode: 'both' })
+
+      await expectSessionNotFound('guest_token_required')
+      expect(api.getGuest).not.toHaveBeenCalled()
+      expectNoSessionCreationOrMemberRead()
+    })
+
+    it("O3 기억 기록이 만료됐으면 reason 'not_found', getGuest 0회", async () => {
+      seedRecord(REC_TOKEN, PAST)
+      api.findByOrder.mockResolvedValue({ sessions: [tokenlessGuestItem()] })
+      renderEmbed({ orderSeqno: ORDER_SEQNO, mode: 'both' })
+
+      await expectSessionNotFound('not_found')
+      expect(api.getGuest).not.toHaveBeenCalled()
+      expectNoSessionCreationOrMemberRead()
+      expect(sessionStorage.getItem(RECORD_KEY)).toBeNull()
+    })
+
+    it("O4 기억 기록이 없고 항목 guestExpiresAt 이 지났으면 reason 'not_found'", async () => {
+      api.findByOrder.mockResolvedValue({ sessions: [tokenlessGuestItem({ guestExpiresAt: PAST })] })
+      renderEmbed({ orderSeqno: ORDER_SEQNO, mode: 'both' })
+
+      await expectSessionNotFound('not_found')
+      expect(api.getGuest).not.toHaveBeenCalled()
+      expectNoSessionCreationOrMemberRead()
+    })
+
+    it.each([
+      [403, 'GUEST_SESSION_EXPIRED', 'not_found'],
+      [403, 'GUEST_TOKEN_MISMATCH', 'forbidden'],
+      [403, 'NOT_A_GUEST_SESSION', 'forbidden'],
+      [404, undefined, 'not_found'],
+      [400, undefined, 'invalid_id'],
+    ])('O5 getGuest %i %s → reason %s, 기억 기록 삭제, 조회·생성 0회', async (status, code, reason) => {
+      seedRecord(REC_TOKEN, FUTURE)
+      api.findByOrder.mockResolvedValue({ sessions: [tokenlessGuestItem()] })
+      api.getGuest.mockRejectedValue(axiosHttpError(status, guestRequestConfig(REC_TOKEN), code ? { code } : {}))
+      renderEmbed({ orderSeqno: ORDER_SEQNO, mode: 'both' })
+
+      await expectSessionNotFound(reason)
+      expect(api.getGuest).toHaveBeenCalledTimes(1)
+      expectNoSessionCreationOrMemberRead()
+      expect(sessionStorage.getItem(RECORD_KEY)).toBeNull()
+    })
+
+    it('O6 getGuest 503 → NETWORK_ERROR 1회, 조회·생성 0회, 기록 유지, 오류 요청 설정에 토큰 원문 없음', async () => {
+      seedRecord(REC_TOKEN, FUTURE)
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const thrown = axiosHttpError(503, guestRequestConfig(REC_TOKEN, true))
+      api.findByOrder.mockResolvedValue({ sessions: [tokenlessGuestItem()] })
+      api.getGuest.mockRejectedValue(thrown)
+      renderEmbed({ orderSeqno: ORDER_SEQNO, mode: 'both' })
+
+      expect(await screen.findByText('에디터 초기화 실패')).toBeInTheDocument()
+      await flushInit()
+      const errors = posted('editor.error')
+      expect(errors).toHaveLength(1)
+      expect(errors[0]).toMatchObject({
+        code: 'NETWORK_ERROR',
+        fatal: true,
+        message: '일시적인 서버 오류로 편집 작업을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.',
+      })
+      expect(sessionNotFoundErrors()).toHaveLength(0)
+      expect(api.getGuest).toHaveBeenCalledTimes(1)
+      expectNoSessionCreationOrMemberRead()
+      expect(sessionStorage.getItem(RECORD_KEY)).not.toBeNull()
+
+      expect(thrown.config?.headers['x-guest-token']).toBe('[redacted]')
+      expect(thrown.config?.url).not.toContain(REC_TOKEN)
+      expect(thrown.config?.url).not.toContain(encodeURIComponent(REC_TOKEN))
+      expect(JSON.stringify(thrown.toJSON())).not.toContain(REC_TOKEN)
+      expect(JSON.stringify(errors[0])).not.toContain(REC_TOKEN)
+      for (const args of warn.mock.calls) {
+        for (const arg of args) {
+          if (typeof arg === 'string') expect(arg).not.toContain(REC_TOKEN)
+        }
+      }
+    })
+
+    it('O6 getGuest 타임아웃 → NETWORK_ERROR(네트워크 문구), 조회·생성 0회', async () => {
+      seedRecord(REC_TOKEN, FUTURE)
+      api.findByOrder.mockResolvedValue({ sessions: [tokenlessGuestItem()] })
+      api.getGuest.mockRejectedValue(
+        new AxiosError('timeout of 30000ms exceeded', 'ECONNABORTED', guestRequestConfig(REC_TOKEN)),
+      )
+      renderEmbed({ orderSeqno: ORDER_SEQNO, mode: 'both' })
+
+      expect(await screen.findByText('에디터 초기화 실패')).toBeInTheDocument()
+      await flushInit()
+      const errors = posted('editor.error')
+      expect(errors).toHaveLength(1)
+      expect(errors[0]).toMatchObject({
+        code: 'NETWORK_ERROR',
+        message: '편집 작업을 불러오지 못했습니다. 네트워크 연결을 확인한 뒤 다시 시도해주세요.',
+      })
+      expectNoSessionCreationOrMemberRead()
+    })
+
+    it('O6 getGuest 응답 없는 연결 실패(ERR_NETWORK) → NETWORK_ERROR 1회, 조회·생성 0회, 기록 유지, 오류 요청 설정에 토큰 원문 없음', async () => {
+      seedRecord(REC_TOKEN, FUTURE)
+      const thrown = new AxiosError('Network Error', 'ERR_NETWORK', guestRequestConfig(REC_TOKEN))
+      api.findByOrder.mockResolvedValue({ sessions: [tokenlessGuestItem()] })
+      api.getGuest.mockRejectedValue(thrown)
+      renderEmbed({ orderSeqno: ORDER_SEQNO, mode: 'both' })
+
+      expect(await screen.findByText('에디터 초기화 실패')).toBeInTheDocument()
+      await flushInit()
+      const errors = posted('editor.error')
+      expect(errors).toHaveLength(1)
+      expect(errors[0]).toMatchObject({ code: 'NETWORK_ERROR', fatal: true })
+      expect(sessionNotFoundErrors()).toHaveLength(0)
+      expect(api.getGuest).toHaveBeenCalledTimes(1)
+      expectNoSessionCreationOrMemberRead()
+      expect(sessionStorage.getItem(RECORD_KEY)).not.toBeNull()
+
+      expect(thrown.response).toBeUndefined()
+      expect(thrown.config?.headers['x-guest-token']).toBe('[redacted]')
+      expect(JSON.stringify(thrown.toJSON())).not.toContain(REC_TOKEN)
+      expect(JSON.stringify(errors[0])).not.toContain(REC_TOKEN)
+    })
+
+    it('O7 항목에 guestToken 이 실려 있으면 그대로 사용(getGuest 0회) → editor.ready, 기록', async () => {
+      api.findByOrder.mockResolvedValue({
+        sessions: [guestSession({ guestToken: 'list-token', guestExpiresAt: FUTURE, memberSeqno: 0 })],
+      })
+      renderEmbed({ orderSeqno: ORDER_SEQNO, mode: 'both' })
+
+      await waitFor(() => expect(posted('editor.ready')).toHaveLength(1))
+      expect(api.getGuest).not.toHaveBeenCalled()
+      expectNoSessionCreationOrMemberRead()
+      expect(JSON.parse(sessionStorage.getItem(RECORD_KEY) as string)).toEqual({
+        guestToken: 'list-token',
+        expiresAt: FUTURE,
+      })
+    })
+
+    it('O8 회원 항목(guestToken null, guestExpiresAt null)은 그대로 사용(getGuest 0회) → editor.ready', async () => {
+      seedRecord(REC_TOKEN, FUTURE)
+      api.findByOrder.mockResolvedValue({
+        sessions: [guestSession({ guestToken: null, guestExpiresAt: null, memberSeqno: 123 })],
+      })
+      renderEmbed({ orderSeqno: ORDER_SEQNO, mode: 'both' })
+
+      await waitFor(() => expect(posted('editor.ready')).toHaveLength(1))
+      expect(api.getGuest).not.toHaveBeenCalled()
+      expectNoSessionCreationOrMemberRead()
+      expect(sessionNotFoundErrors()).toHaveLength(0)
+    })
+
+    it('O9 [비회원(canvasData), 회원(canvasData)] 목록 → 고른 비회원 항목만 판정, 기억 기록 없으면 fatal', async () => {
+      api.findByOrder.mockResolvedValue({
+        sessions: [
+          tokenlessGuestItem({ canvasData: { pages: [] } }),
+          guestSession({
+            id: 'sess-member-1',
+            guestToken: null,
+            guestExpiresAt: null,
+            memberSeqno: 123,
+            canvasData: { pages: [] },
+          }),
+        ],
+      })
+      renderEmbed({ orderSeqno: ORDER_SEQNO, mode: 'both' })
+
+      await expectSessionNotFound('guest_token_required')
+      expect(api.getGuest).not.toHaveBeenCalled()
+      expectNoSessionCreationOrMemberRead()
+    })
+
+    it("O10 관리자 편집 탭은 기억 토큰을 쓰지 않는다 → 'guest_token_required', getGuest 0회", async () => {
+      seedRecord(REC_TOKEN, FUTURE)
+      setAdminEditTab(true)
+      // 관리자 편집 탭은 인증 토큰을 탭 단위 sessionStorage 에서 읽는다.
+      sessionStorage.setItem('auth_token', 'test-token')
+      api.findByOrder.mockResolvedValue({ sessions: [tokenlessGuestItem()] })
+      renderEmbed({ orderSeqno: ORDER_SEQNO, mode: 'both' })
+
+      await expectSessionNotFound('guest_token_required')
+      expect(api.getGuest).not.toHaveBeenCalled()
+      expectNoSessionCreationOrMemberRead()
+    })
   })
 })
