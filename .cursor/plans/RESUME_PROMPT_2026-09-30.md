@@ -120,7 +120,7 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
 - **10-01 게스트 조회 경로 2단계 배포 완료(오너 승인)**:
   - 구현 워크플로(2레인 26 에이전트, 리뷰·반박·수정) → 통합: api 113/2048·editor 86/1119·sdk 12/349·tsc 0·build·build:embed.
   - ① 편집기·SDK `c89f6cb` push 06:30:03Z → Vercel `3359fipmg` Ready, 운영 청크에 새 사유 코드 확인. ② 운영 smoke 06:30:35Z: 공개 라우트로 테스트 비회원 세션 1건(`0a4a8001-9cdf-4784-b4ad-1c8a775eec4e`, 사이트 없음, 24h EVENT 자동 삭제) → 헤더 조회·저장·버전 200, 틀린 헤더 403. ③ 양사 사전 통지 → ACK(printy f7a574d·bookmoa f6674f4, 영향 0). ④ `d612ca6`+`361a9a4` push 06:31:34Z → 롤백 태그 `rollback-pre-guest2` → api 교체 06:34:06Z + nginx 재시작 → health 200, 스모크(회원 경로 무인증 401, 게스트 경로 토큰 없음 403 GUEST_TOKEN_REQUIRED, 키 없음 401), error 로그 0. 배포 완료 통지 발신.
-  - **3단계 후속(오너 결정 필요)**: (a) 수동 compose-mixed·validate 의 editSessionId 연결 소유 확인 — FROZEN 무인증 경로라 계약 개정·파트너(ShareSnap 포함) 실측 선행 (b) 주문 권한 목록의 같은 사이트 비회원 세션 guestToken 범위 축소 (c) /my·목록·versions 의 parseInt 회원 판정 통일 (d) POST /edit-sessions 본문 memberSeqno 와 JWT 일치 강제 (e) shop-session orderSeqno·allowedOrderSeqnos 하한 (f) 게스트 3개 라우트 쿼리 토큰 수용 폐지(관측 `[guest-token] query` 0건 확인 후).
+  - **3단계 후속**: 세션 판정 정리 후속 항목 — 상세는 비공개 메모(저장소 밖)에 기록.
 - **10-01 게스트 조회 경로 2단계 착수(오너 지시, 상세 비공개)**:
   - 운영 관측(03:19Z): 배포 후 회원 경로 비회원 조회 0건, 신규 세션 0건. DB(03:38Z): 음수 회원 번호 0, 무주 세션 0, guest_token 보유 세션 전 사이트 0. 사이트별 세션: bookmoa 65·북모아 메인 32(06-15)·ShareSnap 19(08-23)·printy 1·MD2Books 0.
   - 양사 착수 통지·질의(03:2xZ) → 회신: bookmoa = 비회원 재오픈 없음(흡수 뒤 회원 토큰), migrate 회원 JWT, 비회원 주문 결속 없음(bookmoa 오너 10-01), `#guestToken=` 동의. printy = 같은 탭 재진입 1곳(편집기 기억 토큰 의존), 새 탭 없음, migrate 회원 JWT, 비회원 주문 0.
