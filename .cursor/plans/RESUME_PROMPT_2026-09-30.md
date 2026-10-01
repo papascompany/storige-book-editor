@@ -46,14 +46,14 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
 
 ---
 
-## 1. 현재 라이브 상태 (2026-09-30 07:57Z — Wave 1 배포 후)
+## 1. 현재 라이브 상태 (2026-10-01 06:35Z — 게스트 조회 2단계 배포 후)
 
 | 구성 | 현재 운영 | 롤백 |
 |---|---|---|
 | DB | 09-28: `template_sets.page_step`·`pad_to_page_step` / 09-29 09:57Z: `20260929`(운영자 권한·감사 테이블) → `20260930`(sites.edit_retention_days·origin/actor) — 전부 ADDITIVE | 백업 `~/backup-sites-pre-staff-edit-20260929.sql`·`~/backup-template_sets-pre-padstep-20260928.sql`. 컬럼·테이블은 남겨도 무해 |
-| api | `1c52c80`(Wave 1, 09-30 07:54Z) + nginx 재시작 | `storige-api:rollback-pre-wave1b`(=`47f9a61`) → `rollback-pre-staff-edit` → `rollback-pre-wave2` → … |
+| api | `361a9a4`(게스트 조회 2단계, 10-01 06:34Z) + nginx 재시작 | `storige-api:rollback-pre-guest2`(=`1c52c80`) → `rollback-pre-wave1b`(=`47f9a61`) → `rollback-pre-staff-edit` → … |
 | worker | `1c52c80`(Wave 1 X1 TrimBox, 09-30 07:54Z) | `storige-worker:rollback-pre-wave1b` → `rollback-pre-wave2` → `rollback-pre-wave1`. X1 만 끄려면 `.env` `WORKER_TRIMBOX_SIZE_CHECK=false` 후 worker 재생성 |
-| editor | Vercel `jhn8wxb8b`(`4fcf0a9`, 09-30 07:56Z — 게스트 재오픈 전환) | `4pxzkh0le`(`1c52c80`) → `3q55ujgns` promote |
+| editor | Vercel `3359fipmg`(`c89f6cb`, 10-01 06:30Z — #guestToken= 재오픈·헤더 전송) | `jhn8wxb8b`(`4fcf0a9`) → `4pxzkh0le` promote |
 | admin | Vercel `isxgg1mpv`(`947c9e6`, 09-30 02:38Z) | `hcgs4hn2c` → `purgkt41z` |
 
 - origin/master = `4fcf0a9`(+ 이후 문서 커밋). VPS 체크아웃은 `1c52c80`(그 뒤 `4fcf0a9` 는 편집기 전용).
@@ -69,11 +69,11 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
 
 | 대상 | 기준 |
 |---|---|
-| api jest | 111 스위트 / 1952 · tsc 0 |
+| api jest | 113 스위트 / 2048 · tsc 0 |
 | worker jest | 26 스위트 / 829 · tsc 0 (로컬 gs 설치 시; gs 부재 시 GS 블록 skip) |
-| editor vitest | 85 파일 / 1066 · tsc 0 · 빌드 · build:embed |
+| editor vitest | 86 파일 / 1119 · tsc 0 · 빌드 · build:embed |
 | admin vitest | 7 파일 / 128 · tsc·eslint 0 · 빌드 |
-| sdk | 12 / 341 |
+| sdk | 12 / 349 |
 | canvas-core | 55 / 630 |
 
 - worker `crop-mark-validation.spec` 파리티 1건은 API 스위트와 동시에 돌릴 때만 간헐 실패한다(부하성). 단독 실행하면 통과한다.
@@ -117,6 +117,10 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
   - worker 통합: tsc 0 · jest 26/829(로컬 gs 10.08.0 로 GS 테스트 실제 실행). 운영 gs 10.07.1·qpdf 12.3.2 → 배포 게이트에서 컨테이너 안 실측.
   - X1 알려진 한계(후속): 합성 산출은 주문 도련 대신 선언 도련(≤3mm) 또는 원본 박스 — API 가 합성 잡에 주문 도련·기대 재단 전달 필요. 표지·썸네일·조판 미리보기·원본 정규화 사본 미적용.
   - 후속(오너 결정): Sentry 과거 이벤트 정리, admin 편집기 호출 방식·admin Sentry 전처리(상세 비공개), 플래그 파싱 비대칭·compose 매핑, 게스트 조회 경로 2단계(상세 비공개).
+- **10-01 게스트 조회 경로 2단계 배포 완료(오너 승인)**:
+  - 구현 워크플로(2레인 26 에이전트, 리뷰·반박·수정) → 통합: api 113/2048·editor 86/1119·sdk 12/349·tsc 0·build·build:embed.
+  - ① 편집기·SDK `c89f6cb` push 06:30:03Z → Vercel `3359fipmg` Ready, 운영 청크에 새 사유 코드 확인. ② 운영 smoke 06:30:35Z: 공개 라우트로 테스트 비회원 세션 1건(`0a4a8001-9cdf-4784-b4ad-1c8a775eec4e`, 사이트 없음, 24h EVENT 자동 삭제) → 헤더 조회·저장·버전 200, 틀린 헤더 403. ③ 양사 사전 통지 → ACK(printy f7a574d·bookmoa f6674f4, 영향 0). ④ `d612ca6`+`361a9a4` push 06:31:34Z → 롤백 태그 `rollback-pre-guest2` → api 교체 06:34:06Z + nginx 재시작 → health 200, 스모크(회원 경로 무인증 401, 게스트 경로 토큰 없음 403 GUEST_TOKEN_REQUIRED, 키 없음 401), error 로그 0. 배포 완료 통지 발신.
+  - **3단계 후속(오너 결정 필요)**: (a) 수동 compose-mixed·validate 의 editSessionId 연결 소유 확인 — FROZEN 무인증 경로라 계약 개정·파트너(ShareSnap 포함) 실측 선행 (b) 주문 권한 목록의 같은 사이트 비회원 세션 guestToken 범위 축소 (c) /my·목록·versions 의 parseInt 회원 판정 통일 (d) POST /edit-sessions 본문 memberSeqno 와 JWT 일치 강제 (e) shop-session orderSeqno·allowedOrderSeqnos 하한 (f) 게스트 3개 라우트 쿼리 토큰 수용 폐지(관측 `[guest-token] query` 0건 확인 후).
 - **10-01 게스트 조회 경로 2단계 착수(오너 지시, 상세 비공개)**:
   - 운영 관측(03:19Z): 배포 후 회원 경로 비회원 조회 0건, 신규 세션 0건. DB(03:38Z): 음수 회원 번호 0, 무주 세션 0, guest_token 보유 세션 전 사이트 0. 사이트별 세션: bookmoa 65·북모아 메인 32(06-15)·ShareSnap 19(08-23)·printy 1·MD2Books 0.
   - 양사 착수 통지·질의(03:2xZ) → 회신: bookmoa = 비회원 재오픈 없음(흡수 뒤 회원 토큰), migrate 회원 JWT, 비회원 주문 결속 없음(bookmoa 오너 10-01), `#guestToken=` 동의. printy = 같은 탭 재진입 1곳(편집기 기억 토큰 의존), 새 탭 없음, migrate 회원 JWT, 비회원 주문 0.
