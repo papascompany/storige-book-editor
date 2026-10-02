@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Storige Wave 1 개요</title>
-<meta name="description" content="2026-09-30 Storige 세션 처리 내역, Wave 1 레인 현황, 재단선 포함 PDF 의 TrimBox 판정·합성 처리 방식">
+<meta name="description" content="2026-09-30~10-01 Storige 세션 처리 내역, Wave 1 레인, 비회원 세션 정리 1~3단계, 재단선 포함 PDF 의 TrimBox 판정·합성 처리 방식">
 <style>
 :root{
   --bg:#f7f7f5; --surface:#ffffff; --surface-2:#f0efec; --text:#1d1d1b; --muted:#5f5e5a; --line:#dcdad4;
@@ -99,21 +99,38 @@ footer{margin-top:40px;color:var(--muted);font-size:13px}
 <header>
   <button class="themebtn" id="themeBtn" type="button" aria-label="테마 전환">테마</button>
   <h1>Storige Wave 1 개요</h1>
-  <p>2026-09-30 세션 처리 내역 · Wave 1 레인 현황 · 재단선 포함 PDF 의 TrimBox 판정과 합성 처리 방식</p>
+  <p>2026-09-30 ~ 10-01 세션 처리 내역 · Wave 1 레인 · 비회원 세션 정리 1~3단계 · 재단선 포함 PDF 의 TrimBox 판정과 합성 처리 방식</p>
   <div class="chips">
-    <span class="chip acc"><span class="dot"></span>기준 시각 2026-09-30 UTC</span>
-    <span class="chip ok"><span class="dot"></span>파트너 창구 3곳 확정·ACK</span>
-    <span class="chip ok"><span class="dot"></span>Wave 1 구현·리뷰·통합 검증 완료 (6개 레인)</span>
-    <span class="chip ok"><span class="dot"></span>운영 배포 완료 07:54Z · 편집기 07:56Z</span>
+    <span class="chip acc"><span class="dot"></span>기준 시각 2026-10-01 10:13Z UTC</span>
+    <span class="chip ok"><span class="dot"></span>Wave 1 배포 09-30 07:54Z</span>
+    <span class="chip ok"><span class="dot"></span>비회원 세션 정리 2단계 10-01 06:34Z</span>
+    <span class="chip ok"><span class="dot"></span>3단계 Wave A 10-01 09:51Z</span>
+    <span class="chip ok"><span class="dot"></span>비회원 초안 이어 열기 복구 10-01 10:12Z</span>
+    <span class="chip warn"><span class="dot"></span>추적 중 4건</span>
   </div>
   <nav class="toc" aria-label="목차">
-    <a href="#timeline">세션 타임라인</a><a href="#lanes">Wave 1 레인</a><a href="#partners">파트너 협업</a>
-    <a href="#trimbox">TrimBox 처리</a><a href="#measure">실측 3건</a><a href="#deploy">배포 순서</a><a href="#pending">결정 대기·후속</a>
+    <a href="#live">현재 라이브 상태</a><a href="#timeline">세션 타임라인</a><a href="#lanes">Wave 1 레인</a><a href="#guest">비회원 세션 정리</a><a href="#partners">파트너 협업</a>
+    <a href="#trimbox">TrimBox 처리</a><a href="#measure">실측 3건</a><a href="#deploy">검증·배포</a><a href="#pending">추적·결정 대기</a>
   </nav>
 </header>
 
+<section id="live">
+  <h2>현재 라이브 상태 <small>2026-10-01 10:13Z UTC</small></h2>
+  <p class="lead">DB 마이그레이션은 없었습니다. 되돌릴 때는 아래 롤백 대상으로 이미지 교체 또는 Vercel promote 를 합니다.</p>
+  <div class="tablewrap"><table>
+    <thead><tr><th>구성</th><th>운영 중</th><th>반영 시각</th><th>롤백 대상</th></tr></thead>
+    <tbody>
+      <tr><td><b>api</b></td><td class="mono">4f28e52</td><td>10-01 09:51Z</td><td class="mono">rollback-pre-stage3 → rollback-pre-guest2 → rollback-pre-wave1b</td></tr>
+      <tr><td><b>worker</b></td><td class="mono">1c52c80</td><td>09-30 07:54Z</td><td class="mono">rollback-pre-wave1b</td></tr>
+      <tr><td><b>editor</b></td><td class="mono">dnmu12g57 (bbb9381)</td><td>10-01 10:12Z</td><td class="mono">6hv60qkny → 3359fipmg</td></tr>
+      <tr><td><b>계약 문서</b></td><td>CONTRACT_FREEZE v1.8</td><td>10-01</td><td class="muted">문서</td></tr>
+      <tr><td><b>재단선 판정 스위치</b></td><td class="mono">WORKER_TRIMBOX_SIZE_CHECK=true</td><td>09-30 07:54Z</td><td class="muted">.env 로 false 후 worker 재생성</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
 <section id="timeline">
-  <h2>세션 타임라인 <small>UTC</small></h2>
+  <h2>세션 타임라인 <small>UTC · 09-30</small></h2>
   <p class="lead">이 세션에서 한 일을 시간 순으로 정리했습니다. 운영 DB·로그 조회는 모두 읽기 전용이었습니다.</p>
   <div class="card">
   <ul class="tl">
@@ -135,6 +152,22 @@ footer{margin-top:40px;color:var(--muted);font-size:13px}
     <li class="done"><span class="t">07:48</span>1차 push → VPS 새 이미지로 <b>X1 게이트</b>(운영 gs·qpdf 로 파일 A·B 정규화, TrimBox 중심 오차 0pt) 통과.</li>
     <li class="done"><span class="t">07:54</span>api·worker 교체 + nginx 재시작, health 200, 기동 플래그 확인, 스모크 통과. 운영 이미지 판정: A·B 통과, C 거부 유지.</li>
     <li class="done"><span class="t">07:56</span>2차 push(편집기 게스트 재오픈) 운영 반영. 파트너 3곳 통지·ACK 완료.</li>
+  </ul>
+  </div>
+
+  <h3 style="margin:18px 0 8px">10-01</h3>
+  <div class="card">
+  <ul class="tl">
+    <li class="done"><span class="t">03:19</span>배포 후 관측: 회원 경로의 비회원 세션 조회 0건, 신규 세션 0건 → 비회원 세션 정리 2단계 착수.</li>
+    <li class="done"><span class="t">03:2x</span>양사 착수 통지·사실 질의. bookmoa·printy 는 주문 결속 전 owners 확인(R-208)을 각자 운영 배포.</li>
+    <li class="done"><span class="t">03:38</span>운영 DB 실측: 음수·소수 회원 번호 0건, 비회원 세션 0건, 사이트별 세션 분포 확인.</li>
+    <li class="done"><span class="t">06:30</span>2단계 편집기 배포(비회원 세션 재오픈 토큰 전달·헤더 전송) → 운영 smoke: 비회원 세션 헤더 조회·저장·버전 200.</li>
+    <li class="done"><span class="t">06:34</span>2단계 API 배포(회원 경로 회원 식별 기준 정리·비회원 세션 조회 경로 분리) + 계약 문서 v1.7. 양사 ACK.</li>
+    <li class="done"><span class="t">08:31</span>3단계 착수. 실측과 양사 회신으로 "사이트 키 + 자사 세션" 합성 경로를 반드시 지킬 조건으로 고정.</li>
+    <li class="done"><span class="t">09:48</span>3단계 편집기 배포 → 양사 사전 통지·ACK.</li>
+    <li class="done"><span class="t">09:51</span>3단계 API 배포 + 계약 문서 v1.8. 일부 항목은 관측 후 결정.</li>
+    <li class="done"><span class="t">10:0x</span>파트너 질의로 회귀 발견: 같은 화면에서 비회원 초안이 이어 열리지 않음(09-30 이후, 실제 영향 0건). 양사에 사실대로 통지.</li>
+    <li class="now"><span class="t">10:12</span>같은 탭 비회원 초안 이어 열기 복구 배포. 양사 통지(bookmoa R-213 ACK).</li>
   </ul>
   </div>
 </section>
@@ -164,24 +197,52 @@ footer{margin-top:40px;color:var(--muted);font-size:13px}
   </div>
 </section>
 
+<section id="guest">
+  <h2>비회원 세션 정리 1~3단계</h2>
+  <p class="lead">비회원(게스트) 편집 세션을 그 세션의 게스트 토큰으로만 열고 저장하도록 단계적으로 정리했습니다. 각 단계는 배포 전에 양사 사전 통지와 ACK 를 받았습니다. 보안 세부는 공개 문서에 적지 않습니다.</p>
+  <div class="tablewrap"><table>
+    <thead><tr><th>단계</th><th>반영</th><th>바뀐 동작(변경 후)</th></tr></thead>
+    <tbody>
+      <tr><td><b>1단계</b></td><td>09-30 07:54Z</td><td>비회원 세션 전용 조회 경로 <code>GET /edit-sessions/guest/:id</code>(<code>X-Guest-Token</code>), 편집기가 같은 탭에서 기억한 토큰으로 재오픈, 목록·파일 조회 판정 정리</td></tr>
+      <tr><td><b>2단계</b></td><td>10-01 06:30Z / 06:34Z</td><td>회원 경로는 회원 번호 1 이상 정수 토큰만 회원으로 처리, 비회원 세션은 게스트 경로로만, 응답에서 비회원 세션 토큰 제외, shop-session 회원 번호 0 이상 정수, 호스트가 <code>#guestToken=</code> 으로 재오픈 가능, 열 수 없으면 <code>SESSION_NOT_FOUND</code>(사유 구분)</td></tr>
+      <tr><td><b>3단계 Wave A</b></td><td>10-01 09:48Z / 09:51Z</td><td>작업(합성·검증) 요청의 세션 연결 확인 — 사이트 키는 같은 사이트 세션이면 통과, 목록·버전 경로 회원 판정 통일, 세션 생성은 토큰 회원 번호, 게스트 저장·버전 호출은 헤더 전용</td></tr>
+      <tr><td><b>회귀 복구</b></td><td>10-01 10:12Z</td><td>같은 탭에서 편집완료 없이 닫은 비회원 초안을, 다시 열 때 기억한 토큰으로 이어서 엶(호스트·사이트·주문·mode·템플릿 단위)</td></tr>
+    </tbody>
+  </table></div>
+  <div class="grid g2" style="margin-top:12px">
+    <div class="card"><h3>파트너 경로 영향</h3>
+      <ul class="clean">
+        <li>bookmoa: 비회원 재오픈 없음(흡수 뒤 회원 토큰), 합성은 사이트 키 + 자사 세션 → 영향 0</li>
+        <li>printy: 같은 탭 재진입은 편집기 기억 토큰으로 동작, 합성은 사이트 키 + 자사 세션 → 영향 0</li>
+        <li>100p: 편집 세션 미사용 → 영향 0</li>
+      </ul></div>
+    <div class="card"><h3>운영 확인</h3>
+      <ul class="clean">
+        <li>2단계 smoke: 비회원 세션 헤더 조회·저장·버전 200, 틀린 토큰 403</li>
+        <li>3단계 스모크: 게스트 경로 쿼리 토큰 403, 무인증 401, error 로그 0</li>
+        <li>배포 이후 비회원 세션 생성 0건(테스트 1건 제외)</li>
+      </ul></div>
+  </div>
+</section>
+
 <section id="partners">
   <h2>파트너 협업</h2>
-  <p class="lead">파트너 작업은 CTO 세션이 조율합니다. 아래는 이번 세션에서 받은 회신과, 우리 배포 뒤 파트너가 할 일입니다.</p>
+  <p class="lead">파트너 작업은 CTO 세션이 조율합니다. 아래는 09-30 ~ 10-01 에 받은 회신·배포와, 남은 대조 약속입니다.</p>
   <div class="tablewrap"><table>
     <thead><tr><th>파트너</th><th>이번 회신 요지</th><th>우리 약속</th><th>배포 뒤 파트너 할 일</th></tr></thead>
     <tbody>
       <tr><td><b>bookmoa</b><br><span class="muted">bookmoa-mobile</span></td>
-        <td>R-207 배포(<code>06eb8a5</code>). 파일 접근은 자기 키·자기 shop JWT. 편집 세션 상세 조회 미사용. <code>session.validated</code> 는 주문 무영향.</td>
-        <td>owners API 최종 계약·실측 지연, 대용량 직결 업로드 무중단 확인 결과, 사이트 기록·TrimBox 적용 UTC 통지</td>
-        <td>주문 결속 전 owners 조회로 소유 검사(3초 타임아웃, 실패 시 결속 생략) 구현 → 배포 통지</td></tr>
+        <td>R-207·R-208(주문 결속 전 owners 확인, <code>6915e47</code>)·R-210(TrimBox 경고 정보성 표시)·R-211 배포. 2·3단계·초안 복구 ACK. 비회원 재오픈은 흡수 뒤 회원 토큰.</td>
+        <td><span class="badge b-ok">통지 완료</span> owners API·사이트 기록·TrimBox·2·3단계·초안 복구 적용 UTC</td>
+        <td><span class="badge b-warn">대기</span> owners 첫 실호출·첫 실합성 운영 로그 대조, 실 e2e 재개 시 같은 탭 재오픈 1회 확인</td></tr>
       <tr><td><b>printy</b></td>
-        <td>R-207 이식(<code>822cee2</code>). 파일 접근은 printy 키·shop JWT. 편집 세션 상세 조회 미사용. 웹훅은 주문 무영향.</td>
-        <td>owners API 계약, 사이트 기록·TrimBox 적용 UTC 통지</td>
-        <td>bookmoa 의 소유 검사 diff 이식</td></tr>
+        <td>R-207 이식, R-208·R-210·R-211 배포(<code>b0e0924</code>). 2·3단계 ACK. 같은 탭 재진입만 사용, 합성은 printy 키 + printy 세션.</td>
+        <td><span class="badge b-ok">통지 완료</span> owners 키 수용 확인, 2·3단계·초안 복구 적용 UTC</td>
+        <td><span class="badge b-warn">대기</span> owners 첫 실호출·첫 실합성 운영 로그 대조</td></tr>
       <tr><td><b>100p Books</b></td>
         <td>90MB 초과 PDF 는 presigned 업로드 후 사이트 키로 complete. 삭제 404 는 본문 <code>FILE_NOT_FOUND</code> 일 때만 성공으로 처리(<code>e32edc1</code>).</td>
         <td>404 <code>FILE_NOT_FOUND</code> 본문 유지, 삭제 경로 변경 시 사전 통지, TrimBox 없는 PDF 판정 불변 회귀 테스트</td>
-        <td>TrimBox 적용 통지 받으면 파싱 영향 재확인(추가 필드는 읽지 않음)</td></tr>
+        <td><span class="badge b-ok">ACK</span> TrimBox 적용 후 파싱·게이트 영향 0 확인</td></tr>
     </tbody>
   </table></div>
 </section>
@@ -266,7 +327,7 @@ footer{margin-top:40px;color:var(--muted);font-size:13px}
 </section>
 
 <section id="deploy">
-  <h2>검증·배포 순서</h2>
+  <h2>검증·배포</h2>
   <div class="grid g2">
     <div class="card"><h3>검증 기준선 <span class="badge b-ok">HEAD a446111 통과</span></h3>
       <ul class="clean">
@@ -274,8 +335,8 @@ footer{margin-top:40px;color:var(--muted);font-size:13px}
         <li>editor vitest 79 / 973 · tsc 0 · 빌드(임베드 번들 포함)</li><li>admin 7 / 128 · sdk 12 / 341 · canvas-core 55 / 630</li>
       </ul>
       <p class="muted">이보다 낮으면 회귀로 봅니다. 신규 테스트만큼 늘어나는 것은 정상입니다.</p>
-      <h3 style="margin-top:12px">통합 결과 <span class="badge b-ok">통과</span></h3>
-      <ul class="clean"><li>api tsc 0 · jest 110 / 1923</li><li>worker tsc 0 · jest 26 / 829 (gs·qpdf 실제 실행)</li><li>editor tsc 0 · vitest 85 / 1066 · 빌드 · 임베드 빌드</li></ul></div>
+      <h3 style="margin-top:12px">현재 통합 결과 <span class="badge b-ok">통과 · 10-01</span></h3>
+      <ul class="clean"><li>api tsc 0 · jest 117 / 2165</li><li>worker tsc 0 · jest 26 / 829 (gs·qpdf 실제 실행)</li><li>editor tsc 0 · vitest 87 / 1177 · 빌드 · 임베드 빌드</li><li>sdk 12 / 349</li></ul></div>
     <div class="card"><h3>배포 <span class="badge b-ok">완료</span></h3>
       <ul class="clean">
         <li>DB 마이그레이션 없음</li>
@@ -283,32 +344,41 @@ footer{margin-top:40px;color:var(--muted);font-size:13px}
         <li>배포 UTC 기록(사이트 기록 백필의 경계 시각)</li>
         <li><b>2차 push</b>: EDITOR-B(새 라우트가 운영에 뜬 것 확인 뒤)</li>
         <li>파트너 통지 → ACK → RESUME 기록</li>
+        <li><b>10-01</b>: 단계마다 편집기 먼저 → 양사 사전 통지·ACK → API(롤백 태그·nginx 재시작·스모크) 순서</li>
       </ul></div>
   </div>
 </section>
 
 <section id="pending">
-  <h2>결정 대기·후속</h2>
+  <h2>추적 중·결정 대기</h2>
   <div class="grid g2">
+    <div class="card"><h3>추적 중 <span class="badge b-warn">4건</span></h3>
+      <ul class="clean">
+        <li>owners API 첫 실호출(bookmoa·printy) 응답코드·지연 대조·공유</li>
+        <li>양사 첫 실합성(사이트 키 + 세션) 운영 로그 대조</li>
+        <li>3단계 관측 결과 집계 → 다음 단계 판단(상세 비공개)</li>
+        <li>테스트 비회원 세션 1건 10-02 06:30Z 자동 삭제</li>
+      </ul></div>
     <div class="card"><h3>오너 결정이 필요한 것</h3>
       <ul class="clean">
+        <li>3단계 관측 이후 다음 단계 진행 여부</li>
         <li>기존 Sentry 이벤트에 남아 있을 수 있는 토큰 정리(외부 작업)</li>
-        <li>게스트 조회 경로 2단계 착수 시점(파트너 사전 통지 포함)</li>
         <li>3-B 자동 반영(웹훅 v2), 결속 API O1~O5, 고아 정리 실가동</li>
         <li>호스트 고정 책등 규칙, branch protection, compose 기본값</li>
       </ul></div>
     <div class="card"><h3>후속 항목</h3>
       <ul class="clean">
+        <li>재단선 PDF 합성 산출물에 주문 도련 반영(합성 요청에 도련·재단 크기 전달)</li>
         <li>100p presigned complete 파일 사이트 기록(100p 가 실제 호출함)</li>
         <li>운영자 권한 감사 minor 3건, 편집기 초기화 오류 정규화·게스트 완료 문구</li>
         <li>admin 컴포넌트 테스트 환경(의존성 추가 필요)</li>
-        <li>스테일 문서 정정(D-11·D-4, 옛 트랙 인계, 결속 설계 §1.5) — 진행 중</li>
+        <li>스테일 문서 정정 <span class="badge b-ok">완료 09-30</span></li>
       </ul></div>
   </div>
 </section>
 
 <footer>
-  정본 상태 문서: <code>.cursor/plans/RESUME_PROMPT_2026-09-30.md</code> · 파트너 계약: <code>docs/PLATFORM_INTEGRATION_GUIDE.md</code>, <code>docs/CONTRACT_FREEZE.md</code> · 검증 규칙: <code>docs/PDF_VALIDATION_GUIDE.md</code><br>
+  정본 상태 문서: <code>.cursor/plans/RESUME_PROMPT_2026-09-30.md</code>(10-01 기록 포함) · 파트너 계약: <code>docs/PLATFORM_INTEGRATION_GUIDE.md</code>, <code>docs/CONTRACT_FREEZE.md</code> · 검증 규칙: <code>docs/PDF_VALIDATION_GUIDE.md</code><br>
   보안 항목의 세부는 교정 배포 전까지 공개 문서에 적지 않습니다.
 </footer>
 </div>
