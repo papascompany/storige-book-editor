@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Storige Wave 1 개요</title>
-<meta name="description" content="2026-09-30~10-01 Storige 세션 처리 내역, Wave 1 레인, 비회원 세션 정리 1~3단계, 재단선 포함 PDF 의 TrimBox 판정·합성 처리 방식">
+<title>Storige Wave 1·2 개요</title>
+<meta name="description" content="2026-09-30~10-03 Storige 세션 처리 내역, Wave 1·2 레인, 비회원 세션 정리 1~3단계, 재단선 포함 PDF 의 TrimBox 판정·합성 처리 방식">
 <style>
 :root{
   --bg:#f7f7f5; --surface:#ffffff; --surface-2:#f0efec; --text:#1d1d1b; --muted:#5f5e5a; --line:#dcdad4;
@@ -91,6 +91,12 @@ svg{max-width:100%;height:auto;display:block}
 .note{border-left:3px solid var(--warn);background:var(--warn-soft);padding:10px 12px;border-radius:0 8px 8px 0;font-size:14px}
 .note.info{border-color:var(--info);background:var(--info-soft)}
 footer{margin-top:40px;color:var(--muted);font-size:13px}
+/* pipeline */
+.pipe{display:flex;flex-wrap:wrap;gap:8px;align-items:stretch;margin:0;padding:0;list-style:none}
+.pipe li{flex:1 1 150px;border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--surface-2);font-size:14px;position:relative}
+.pipe li b{display:block;font-size:14px}
+.pipe li .n{font-family:var(--mono);font-size:12.5px;color:var(--muted)}
+.pipe li.ok{border-color:var(--ok)}
 .themebtn{float:right;background:var(--surface);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:4px 10px;font-size:13px;cursor:pointer}
 </style>
 </head>
@@ -98,40 +104,43 @@ footer{margin-top:40px;color:var(--muted);font-size:13px}
 <div class="wrap">
 <header>
   <button class="themebtn" id="themeBtn" type="button" aria-label="테마 전환">테마</button>
-  <h1>Storige Wave 1 개요</h1>
-  <p>2026-09-30 ~ 10-01 세션 처리 내역 · Wave 1 레인 · 비회원 세션 정리 1~3단계 · 재단선 포함 PDF 의 TrimBox 판정과 합성 처리 방식</p>
+  <h1>Storige Wave 1·2 개요</h1>
+  <p>2026-09-30 ~ 10-03 세션 처리 내역 · Wave 1·2 레인 · 비회원 세션 정리 1~3단계 · 재단선 포함 PDF 의 TrimBox 판정과 합성 처리 방식</p>
   <div class="chips">
-    <span class="chip acc"><span class="dot"></span>기준 시각 2026-10-01 10:13Z UTC</span>
+    <span class="chip acc"><span class="dot"></span>기준 시각 2026-10-03 05:01Z UTC</span>
     <span class="chip ok"><span class="dot"></span>Wave 1 배포 09-30 07:54Z</span>
-    <span class="chip ok"><span class="dot"></span>비회원 세션 정리 2단계 10-01 06:34Z</span>
-    <span class="chip ok"><span class="dot"></span>3단계 Wave A 10-01 09:51Z</span>
+    <span class="chip ok"><span class="dot"></span>비회원 세션 정리 2·3단계 10-01</span>
     <span class="chip ok"><span class="dot"></span>비회원 초안 이어 열기 복구 10-01 10:12Z</span>
+    <span class="chip ok"><span class="dot"></span>Wave 2 배포 10-03 04:52~04:58Z</span>
     <span class="chip warn"><span class="dot"></span>추적 중 4건</span>
+    <span class="chip info"><span class="dot"></span>오너 결정 대기 · 10-08 이후</span>
   </div>
   <nav class="toc" aria-label="목차">
-    <a href="#live">현재 라이브 상태</a><a href="#timeline">세션 타임라인</a><a href="#lanes">Wave 1 레인</a><a href="#guest">비회원 세션 정리</a><a href="#partners">파트너 협업</a>
+    <a href="#live">현재 라이브 상태</a><a href="#timeline">세션 타임라인</a><a href="#lanes">Wave 1 레인</a><a href="#wave2">Wave 2</a><a href="#guest">비회원 세션 정리</a><a href="#partners">파트너 협업</a>
     <a href="#trimbox">TrimBox 처리</a><a href="#measure">실측 3건</a><a href="#deploy">검증·배포</a><a href="#pending">추적·결정 대기</a>
   </nav>
 </header>
 
 <section id="live">
-  <h2>현재 라이브 상태 <small>2026-10-01 10:13Z UTC</small></h2>
+  <h2>현재 라이브 상태 <small>2026-10-03 05:01Z UTC</small></h2>
   <p class="lead">DB 마이그레이션은 없었습니다. 되돌릴 때는 아래 롤백 대상으로 이미지 교체 또는 Vercel promote 를 합니다.</p>
   <div class="tablewrap"><table>
     <thead><tr><th>구성</th><th>운영 중</th><th>반영 시각</th><th>롤백 대상</th></tr></thead>
     <tbody>
-      <tr><td><b>api</b></td><td class="mono">4f28e52</td><td>10-01 09:51Z</td><td class="mono">rollback-pre-stage3 → rollback-pre-guest2 → rollback-pre-wave1b</td></tr>
-      <tr><td><b>worker</b></td><td class="mono">1c52c80</td><td>09-30 07:54Z</td><td class="mono">rollback-pre-wave1b</td></tr>
-      <tr><td><b>editor</b></td><td class="mono">dnmu12g57 (bbb9381)</td><td>10-01 10:12Z</td><td class="mono">6hv60qkny → 3359fipmg</td></tr>
-      <tr><td><b>계약 문서</b></td><td>CONTRACT_FREEZE v1.8</td><td>10-01</td><td class="muted">문서</td></tr>
-      <tr><td><b>재단선 판정 스위치</b></td><td class="mono">WORKER_TRIMBOX_SIZE_CHECK=true</td><td>09-30 07:54Z</td><td class="muted">.env 로 false 후 worker 재생성</td></tr>
+      <tr><td><b>api</b></td><td class="mono">9e2a817</td><td>10-03 04:58Z</td><td class="mono">rollback-pre-1003 → rollback-pre-stage3 → rollback-pre-guest2</td></tr>
+      <tr><td><b>worker</b></td><td class="mono">9e2a817</td><td>10-03 04:55Z</td><td class="mono">rollback-pre-1003 → rollback-pre-wave1b</td></tr>
+      <tr><td><b>editor</b></td><td class="mono">65j5xwzgg (9e2a817)</td><td>10-03 04:52Z</td><td class="mono">dnmu12g57 → 6hv60qkny</td></tr>
+      <tr><td><b>계약 문서</b></td><td>CONTRACT_FREEZE v1.9</td><td>10-03</td><td class="muted">문서</td></tr>
+      <tr><td><b>재단선 판정 스위치</b></td><td class="mono">WORKER_TRIMBOX_SIZE_CHECK=true</td><td>09-30 07:54Z</td><td class="muted">.env 로 false 후 worker 재생성(10-03 부터 합성 내지 주문 도련 적용도 함께 꺼짐)</td></tr>
+      <tr><td><b>잡 생성 확인 플래그</b></td><td class="mono">JOB_LINK_STRICT=false<br>JOB_FILE_SITE_STRICT=false</td><td>10-03 04:58Z</td><td class="muted">기본값. 전환은 오너 결정 뒤 별도 절차(docs/DEPLOYMENT.md)</td></tr>
     </tbody>
   </table></div>
 </section>
 
 <section id="timeline">
-  <h2>세션 타임라인 <small>UTC · 09-30</small></h2>
+  <h2>세션 타임라인 <small>UTC · 09-30 ~ 10-03</small></h2>
   <p class="lead">이 세션에서 한 일을 시간 순으로 정리했습니다. 운영 DB·로그 조회는 모두 읽기 전용이었습니다.</p>
+  <h3 style="margin:0 0 8px">09-30</h3>
   <div class="card">
   <ul class="tl">
     <li class="done"><span class="t">04:30</span>새 Storige 세션 시작. 프로세스 작업 폴더로 bookmoa·printy 창구를 확증하고 시작 통지 → 양사 ACK.</li>
@@ -167,7 +176,25 @@ footer{margin-top:40px;color:var(--muted);font-size:13px}
     <li class="done"><span class="t">09:48</span>3단계 편집기 배포 → 양사 사전 통지·ACK.</li>
     <li class="done"><span class="t">09:51</span>3단계 API 배포 + 계약 문서 v1.8. 일부 항목은 관측 후 결정.</li>
     <li class="done"><span class="t">10:0x</span>파트너 질의로 회귀 발견: 같은 화면에서 비회원 초안이 이어 열리지 않음(09-30 이후, 실제 영향 0건). 양사에 사실대로 통지.</li>
-    <li class="now"><span class="t">10:12</span>같은 탭 비회원 초안 이어 열기 복구 배포. 양사 통지(bookmoa R-213 ACK).</li>
+    <li class="done"><span class="t">10:12</span>같은 탭 비회원 초안 이어 열기 복구 배포. 양사 통지(bookmoa R-213 ACK).</li>
+  </ul>
+  </div>
+
+  <h3 style="margin:18px 0 8px">10-03</h3>
+  <div class="card">
+  <ul class="tl">
+    <li class="done"><span class="t">02:28</span>데스크톱 앱 재시작 뒤 세션 재개. 파트너 세션 3곳은 실행 중이 아니어서 세션 목록으로 창구를 찾아 전달.</li>
+    <li class="done"><span class="t">02:29</span>운영 실측: 10-01 10:13Z 이후 신규 세션·작업·owners 호출·오류 모두 0건. 테스트 비회원 세션 자동 삭제 확인.</li>
+    <li class="done"><span class="t">02:31</span>양사 재개 통지 → ACK(실 e2e 재개 미정). 후보 재점검 워크플로 시작(에이전트 7개, 후보 36건).</li>
+    <li class="done"><span class="t">02:50</span>오너 승인: Wave 2 레인 전부, 합성 도련 기준 <code>templateSet.bleedMm</code>, P4 는 100p 회신 뒤 포함, 세션 연결 저장은 다음 Wave. 3사 착수 통지·사실 질의.</li>
+    <li class="done"><span class="t">02:54</span>레인 설계·비판 워크플로 시작(10). 3사 회신: 합성은 항상 editSessionId, 템플릿셋 도련 전부 3mm(운영 DB), 100p 검증은 워커 키 → 같은 사이트로 판정됨을 코드로 확인.</li>
+    <li class="done"><span class="t">03:36</span>2차 CTO 결정(비판 54건 처리) 뒤 구현 워크플로 시작: 레인 5개, 구현 → 2렌즈 리뷰 → 발견별 반박 → 수정(에이전트 53개).</li>
+    <li class="done"><span class="t">04:07</span>구현 완료(리뷰 34건 중 확정 1건). 통합 검증 api 124/2416 · worker 27/932 · editor 97/1370 · 빌드 2종 · sdk 12/349 통과.</li>
+    <li class="done"><span class="t">04:09</span>문서 워크플로(12): CONTRACT_FREEZE v1.9 · 연동 가이드 · PDF 검증 가이드 · 배포 문서 · 파트너 공지 → 코드 대조 검증.</li>
+    <li class="done"><span class="t">04:38</span>최종 리뷰 3렌즈(계약 정합·배포 안전·공개 노출, 10) → 차단 0. 커밋 6개, gitleaks 0.</li>
+    <li class="done"><span class="t">04:50</span>오너 배포 승인 → 3사 사전 통지 → ACK 3건(코드 변경 불필요).</li>
+    <li class="done"><span class="t">04:51</span>push → 편집기 Vercel Ready 04:52 → 롤백 태그 → worker 04:55 → api 04:58 + nginx 재시작.</li>
+    <li class="now"><span class="t">04:59</span>스모크 통과(health 200, 무인증 401, 비회원 경로 토큰 없음 403, 오류·5xx 0). 3사 완료 통지, RESUME 기록.</li>
   </ul>
   </div>
 </section>
@@ -194,6 +221,39 @@ footer{margin-top:40px;color:var(--muted);font-size:13px}
     <div class="card lane"><h3>WORKER X1 · TrimBox 판정 <span class="badge b-ok">완료</span></h3>
       <ul class="clean"><li>검증: 표준·경량 경로 모두 TrimBox 기준 판형</li><li>합성: 재단선 영역을 잘라 내는 크롭 정규화</li><li>긴급 차단 스위치(코드 기본값 켜짐)</li></ul>
       <div class="meta">1차 배포 · 양사·100p 통지(추가 필드·UTC)</div></div>
+  </div>
+</section>
+
+<section id="wave2">
+  <h2>Wave 2 <small>10-03 배포 · 오너 승인 02:50Z</small></h2>
+  <p class="lead">재점검으로 고른 후보를 레인 5개로 나눠 구현했습니다. 레인마다 소유 파일이 겹치지 않고, 설계 비판과 리뷰 발견은 반박 검증을 통과한 것만 반영했습니다.</p>
+  <ol class="pipe" aria-label="Wave 2 진행 단계">
+    <li class="ok"><b>재점검</b><span class="n">에이전트 7 · 후보 36건</span></li>
+    <li class="ok"><b>설계 + 비판</b><span class="n">10 · 비판 54건 처리</span></li>
+    <li class="ok"><b>구현 · 리뷰 · 반박</b><span class="n">53 · 확정 1건</span></li>
+    <li class="ok"><b>문서</b><span class="n">12 · 4종 + 공지</span></li>
+    <li class="ok"><b>최종 리뷰</b><span class="n">10 · 차단 0</span></li>
+    <li class="ok"><b>배포</b><span class="n">04:52 ~ 04:58Z</span></li>
+  </ol>
+  <div class="grid g3" style="margin-top:12px">
+    <div class="card lane"><h3>편집기 · 오류·안내 정리 <span class="badge b-ok">배포</span></h3>
+      <ul class="clean"><li>초기화 중 연결·서버 오류는 <code>NETWORK_ERROR</code>, 인증 만료는 <code>AUTH_EXPIRED</code> 1회</li><li>주문번호 진입의 일시 오류는 새 세션 없이 멈춤</li><li>초기화 실패·<code>SAVE_FAILED</code> 문구 고정 한국어, 비회원 완료 안내, 오류 로그 요약</li></ul>
+      <div class="meta">편집기 · 양사 사전 통지·ACK · 이벤트·code 종류 불변</div></div>
+    <div class="card lane"><h3>API · 잡 사이트 결정·확인 플래그 <span class="badge b-ok">배포</span></h3>
+      <ul class="clean"><li>validate(JWT)·render-pages 잡 사이트를 서버가 정함(본문 siteId 미사용)</li><li>잡 생성 확인 플래그 2개, 기본 false · 기동 로그 스냅샷</li><li>관측 범위 확장(상세 비공개)</li></ul>
+      <div class="meta">api · 알려진 파트너 영향 0</div></div>
+    <div class="card lane"><h3>X1 · 합성 내지 주문 도련 <span class="badge b-ok">배포</span></h3>
+      <ul class="clean"><li>세션 템플릿셋 재단·도련을 잡에 <code>contentTrim</code> 으로 전달(B = <code>templateSet.bleedMm</code>)</li><li>merge·compose 자동조립·쪽수 채움 내지를 재단 + 도련×2 로</li><li>조회 실패·값 이상은 키 없이 종전 동작</li></ul>
+      <div class="meta">worker → api 순 · 예시 A4 → 216×303</div></div>
+    <div class="card lane"><h3>운영자 감사 · 작업 실패 <span class="badge b-ok">배포</span></h3>
+      <ul class="clean"><li>가드 단계에서 거부된 운영자 요청(401·403)도 감사 행</li><li>반복 중단 작업은 <code>JOB_STALLED</code> 로 FAILED(종결 상태는 그대로, 합성 결과가 있으면 완료 재보고)</li></ul>
+      <div class="meta">api·worker · ADDITIVE</div></div>
+    <div class="card lane"><h3>Files · P4 · 관리자 판정 <span class="badge b-ok">배포</span></h3>
+      <ul class="clean"><li>presigned complete 의 <code>X-API-Key</code> 로 신규 파일 사이트 귀속(토큰 우선, 상충 시 미귀속, 최초 1회)</li><li>files 관리자 판정에 SUPER_ADMIN 포함</li></ul>
+      <div class="meta">api · 100p ACK(편집기·워커 키 모두 같은 사이트)</div></div>
+    <div class="card lane"><h3>문서·계약 <span class="badge b-ok">반영</span></h3>
+      <ul class="clean"><li>CONTRACT_FREEZE v1.9 · 연동 가이드 · PDF 검증 가이드 · 배포 문서</li><li>파트너 공지 <code>PARTNER_NOTICE_WAVE2_2026-10-03.md</code></li></ul>
+      <div class="meta">커밋 <span class="mono">814d36e … 9e2a817</span>, 기록 <span class="mono">af0db04</span></div></div>
   </div>
 </section>
 
@@ -227,29 +287,29 @@ footer{margin-top:40px;color:var(--muted);font-size:13px}
 
 <section id="partners">
   <h2>파트너 협업</h2>
-  <p class="lead">파트너 작업은 CTO 세션이 조율합니다. 아래는 09-30 ~ 10-01 에 받은 회신·배포와, 남은 대조 약속입니다.</p>
+  <p class="lead">파트너 작업은 CTO 세션이 조율합니다. 아래는 09-30 ~ 10-03 에 받은 회신·배포와, 남은 대조 약속입니다.</p>
   <div class="tablewrap"><table>
     <thead><tr><th>파트너</th><th>이번 회신 요지</th><th>우리 약속</th><th>배포 뒤 파트너 할 일</th></tr></thead>
     <tbody>
       <tr><td><b>bookmoa</b><br><span class="muted">bookmoa-mobile</span></td>
-        <td>R-207·R-208(주문 결속 전 owners 확인, <code>6915e47</code>)·R-210(TrimBox 경고 정보성 표시)·R-211 배포. 2·3단계·초안 복구 ACK. 비회원 재오픈은 흡수 뒤 회원 토큰.</td>
-        <td><span class="badge b-ok">통지 완료</span> owners API·사이트 기록·TrimBox·2·3단계·초안 복구 적용 UTC</td>
-        <td><span class="badge b-warn">대기</span> owners 첫 실호출·첫 실합성 운영 로그 대조, 실 e2e 재개 시 같은 탭 재오픈 1회 확인</td></tr>
+        <td>R-207~R-212 배포(10-01). 10-03 Wave 2 회신·ACK(<code>a6810f7</code>): 합성은 항상 editSessionId, 산출 크기 후속 검사 없음, 오류 카드에 message 그대로, 웹훅 무저장·폴링이 권위, session 웹훅 미소비.</td>
+        <td><span class="badge b-ok">통지 완료</span> Wave 2 완료 통지 10-03 04:59Z · AUTH_EXPIRED 뒤 토큰 갱신을 기다리지 않음 회신</td>
+        <td><span class="badge b-warn">대기</span> 산출 크기 변화(216×303 등) 인쇄팀 전달, 실 e2e 재개(미정) 시 owners·첫 실합성·같은 탭 재오픈 대조</td></tr>
       <tr><td><b>printy</b></td>
-        <td>R-207 이식, R-208·R-210·R-211 배포(<code>b0e0924</code>). 2·3단계 ACK. 같은 탭 재진입만 사용, 합성은 printy 키 + printy 세션.</td>
-        <td><span class="badge b-ok">통지 완료</span> owners 키 수용 확인, 2·3단계·초안 복구 적용 UTC</td>
-        <td><span class="badge b-warn">대기</span> owners 첫 실호출·첫 실합성 운영 로그 대조</td></tr>
+        <td>R-207~R-212 이식(<code>f7a574d</code>). 10-03 회신·ACK: 합성은 항상 editSessionId, 템플릿셋 3종 도련 3mm, compose-mixed 실호출 0, 오류 카드에 message 그대로.</td>
+        <td><span class="badge b-ok">통지 완료</span> Wave 2 완료 통지 10-03 04:59Z · JOB_STALLED 고정 문구 안내</td>
+        <td><span class="badge b-warn">대기</span> 실 e2e 재개(미정) 시 owners 첫 실호출·첫 실합성 대조</td></tr>
       <tr><td><b>100p Books</b></td>
-        <td>90MB 초과 PDF 는 presigned 업로드 후 사이트 키로 complete. 삭제 404 는 본문 <code>FILE_NOT_FOUND</code> 일 때만 성공으로 처리(<code>e32edc1</code>).</td>
-        <td>404 <code>FILE_NOT_FOUND</code> 본문 유지, 삭제 경로 변경 시 사전 통지, TrimBox 없는 PDF 판정 불변 회귀 테스트</td>
-        <td><span class="badge b-ok">ACK</span> TrimBox 적용 후 파싱·게이트 영향 0 확인</td></tr>
+        <td>업로드·complete·다운로드·삭제는 편집기 키, 검증·잡 조회는 워커 키 → 두 키 모두 같은 100p 사이트로 판정(코드 확인). 삭제 404 는 본문 <code>FILE_NOT_FOUND</code> 일 때만 성공. Wave 2(P4·JOB_STALLED) ACK(<code>b0f5d3a</code>).</td>
+        <td>404 <code>FILE_NOT_FOUND</code> 원칙 유지 · P4 완료 통지 10-03 04:59Z</td>
+        <td><span class="badge b-ok">ACK</span> 코드 변경 없음, 배포 UTC 기록</td></tr>
     </tbody>
   </table></div>
 </section>
 
 <section id="trimbox">
   <h2>재단선 포함 PDF · TrimBox 처리</h2>
-  <p class="lead">인쇄용 PDF 는 종이 전체 크기(MediaBox) 안에 실제로 잘릴 크기(TrimBox)와 여분 인쇄 영역(BleedBox)을 따로 적습니다. 지금 worker 는 MediaBox 만 보고 판형을 판정해서, 재단선이 포함된 정상 파일을 크기 불일치로 거부합니다.</p>
+  <p class="lead">인쇄용 PDF 는 종이 전체 크기(MediaBox) 안에 실제로 잘릴 크기(TrimBox)와 여분 인쇄 영역(BleedBox)을 따로 적습니다. 09-30 전까지 worker 는 MediaBox 만 보고 판형을 판정해서, 재단선이 포함된 정상 파일을 크기 불일치로 거부했습니다. 09-30 부터 TrimBox 기준으로 판정하고, 10-03 부터는 합성 내지를 주문 재단 + 도련 크기로 정리합니다.</p>
 
   <div class="fig">
     <div class="card">
@@ -277,9 +337,9 @@ footer{margin-top:40px;color:var(--muted);font-size:13px}
       </div>
     </div>
     <div class="card">
-      <h3>현재 판정과 바뀌는 판정</h3>
-      <div class="bx stop" style="margin-bottom:10px"><b>현재</b> · MediaBox 236×323 을 기대 판형 210×297(또는 bleed 포함 212×299)과 비교 → <span class="badge b-bad">SIZE_MISMATCH</span> 로 거부. 파트너에는 <code>session.failed</code> 계열로 전달됩니다.</div>
-      <div class="bx yes"><b>변경 후</b> · TrimBox 가 파일에 <u>명시</u>돼 있고 MediaBox 보다 작으면 TrimBox 210×297 을 기대 판형과 비교 → <span class="badge b-ok">통과</span>. 합성할 때는 재단선 영역을 잘라 <code>TrimBox + 주문 bleed</code> 크기로 맞춥니다.</div>
+      <h3>09-30 전후 판정</h3>
+      <div class="bx stop" style="margin-bottom:10px"><b>09-30 이전</b> · MediaBox 236×323 을 기대 판형 210×297(또는 bleed 포함 212×299)과 비교 → <span class="badge b-bad">SIZE_MISMATCH</span> 로 거부. 파트너에는 <code>session.failed</code> 계열로 전달됩니다.</div>
+      <div class="bx yes"><b>09-30 이후</b> · TrimBox 가 파일에 <u>명시</u>돼 있고 MediaBox 보다 작으면 TrimBox 210×297 을 기대 판형과 비교 → <span class="badge b-ok">통과</span>. 합성할 때는 재단선 영역을 잘라 <code>TrimBox + 주문 bleed</code> 크기로 맞춥니다.</div>
       <p class="note" style="margin-top:12px">원본 PDF 는 재단선 영역을 포함한 채 보존됩니다. 원본을 그대로 인쇄 입력으로 쓰는 흐름(첨부 원본 직접 사용)은 인쇄소 RIP 의 TrimBox 처리에 맡기며, 원본 정규화 사본 등록은 후속 과제입니다.</p>
       <p class="note info" style="margin-top:12px">pdf-lib 의 <code>getTrimBox()</code> 는 TrimBox 가 없으면 MediaBox 를 대신 돌려줍니다. 그래서 판별은 페이지 사전에 <code>/TrimBox</code> 가 실제로 있는지로 합니다. MediaBox 만 있는 PDF(100p 등)는 새 경로에 들어가지 않습니다.</p>
     </div>
@@ -288,7 +348,7 @@ footer{margin-top:40px;color:var(--muted);font-size:13px}
   <div class="card" style="margin-top:12px">
     <h3>판정·처리 흐름</h3>
     <div class="flow">
-      <div class="step"><div class="num">1</div><div><b>기존 판정 먼저</b> — 내지(<code>fileType=content</code>)만 대상입니다. 지금처럼 MediaBox 로 판정하고, <code>SIZE_MISMATCH</code> 일 때만 다음 단계로 갑니다. 그래서 <u>지금 통과하는 파일의 결과는 한 글자도 바뀌지 않습니다</u>. 표지·후가공 판은 이번 범위가 아닙니다.</div></div>
+      <div class="step"><div class="num">1</div><div><b>기존 판정 먼저</b> — 내지(<code>fileType=content</code>)만 대상입니다. 지금처럼 MediaBox 로 판정하고, <code>SIZE_MISMATCH</code> 일 때만 다음 단계로 갑니다. 그래서 <u>MediaBox 판정으로 통과하는 파일의 판정 결과는 바뀌지 않습니다</u>(합성 산출 크기는 5단계). 표지·후가공 판은 이번 범위가 아닙니다.</div></div>
       <div class="step"><div class="num">2</div><div><b>TrimBox 명시 여부</b> <span class="muted">(표준 pdf-lib · 경량 qpdf 가 같은 순수 함수로 판정)</span>
         <div class="branch">
           <div class="bx no"><b>없음 · MediaBox 와 같음</b><br>지금과 똑같이 MediaBox 로 판정. 결과(<code>isValid</code>·<code>errors</code>·<code>warnings</code>) 불변.</div>
@@ -303,40 +363,55 @@ footer{margin-top:40px;color:var(--muted);font-size:13px}
       <div class="step"><div class="num">5</div><div><b>합성·변환 크롭 정규화</b> — 임시 사본만 자르고 원본은 건드리지 않습니다.
       <ul class="clean">
         <li><b>변환</b>(도련 보정·내지 조판·쪽수 채움 — 작업 크기를 앎): 작업 크기에 <u>정확히</u> 맞춥니다. 파일 B·사방 4mm 파일 모두 212×299mm, 축소 인쇄(innerfit) 없음.</li>
-        <li><b>합성</b>(merge·spread·compose — 주문 도련을 모름): BleedBox 가 명시돼 있고 그 밖에 사방 5mm 이상 균등한 재단선 영역이 있을 때만 <code>TrimBox + min(선언 도련, 3mm)</code> 로 자릅니다. 파일 A → 210×297, 파일 B → 216×303.</li>
-        <li>BleedBox 가 없으면 합성에서는 자르지 않고 원본 박스를 유지합니다. 어느 경우든 TrimBox 는 페이지 중앙(±0.5pt)에 남아 인쇄소 재단 기준이 됩니다(Ghostscript 재증류 뒤에도 실측 확인).</li>
+        <li><b>합성·채움 — 주문 재단·도련을 아는 경로</b>(10-03): <code>editSessionId</code> 가 있는 <code>synthesize/external</code>·편집기 내보내기, 도서 확정(도서 규격), compose 자동조립·관리자 합성, 첨부 쪽수 채움. API 가 <code>contentTrim</code>(재단·도련·허용오차)을 실어 보내고, TrimBox 가 주문 재단과 맞으면(±1mm) <code>TrimBox + 사방 도련</code> 으로 자릅니다. 도련은 템플릿셋 <code>bleedMm</code>(도서는 규격 <code>bleedMm</code>). 파일 A·B → 216×303(도련 3mm).</li>
+        <li><b>합성 — 모르는 경로</b>(<code>editSessionId</code> 없는 합성·compose 수동 경로·spread·내지 펼침면): 종전대로 BleedBox 가 명시돼 있고 그 밖에 사방 5mm 이상 균등한 재단선 영역이 있을 때만 <code>TrimBox + min(선언 도련, 3mm)</code> 로 자릅니다. 파일 A → 210×297, 파일 B → 216×303.</li>
+        <li>이미 목표 크기면 자르지 않고, 목표가 MediaBox 밖이면 원본 박스를 유지합니다. 어느 경우든 TrimBox 는 페이지 중앙(±0.5pt)에 남아 인쇄소 재단 기준이 됩니다(Ghostscript 재증류 뒤에도 실측 확인).</li>
         <li>쪽수 채움 백지는 정규화된 페이지와 같은 좌표계로 만듭니다.</li>
       </ul>
-      <span class="muted">한계: 합성 산출물은 주문 도련 대신 선언 도련으로 나갈 수 있습니다. 후속으로 API 가 합성 잡에 주문 도련·재단 크기를 넘기면 해소됩니다.</span></div></div>
-      <div class="step"><div class="num">6</div><div><b>안전장치</b> — 긴급 차단 플래그 <code>WORKER_TRIMBOX_SIZE_CHECK</code>: 코드 기본값 켜짐, <code>false/0/off/no</code> 로만 꺼짐. compose 에 <code>${WORKER_TRIMBOX_SIZE_CHECK:-true}</code> 로 매핑해 <code>.env</code> 한 줄로 끌 수 있게 하고, 기동 로그 스냅샷에 실효값이 찍힙니다. 꺼지면 판정·정규화 모두 종전 동작입니다.</div></div>
+      <span class="muted">남은 한계: TrimBox 가 주문 재단과 1mm 넘게 다른 파일과 <code>editSessionId</code> 없는 합성은 위 모르는 경로를 따릅니다. 표지 TrimBox 판정·첨부 정리본 등록은 후속입니다.</span></div></div>
+      <div class="step"><div class="num">6</div><div><b>안전장치</b> — 긴급 차단 플래그 <code>WORKER_TRIMBOX_SIZE_CHECK</code>: 코드 기본값 켜짐, <code>false/0/off/no</code> 로만 꺼짐. compose 에 <code>${WORKER_TRIMBOX_SIZE_CHECK:-true}</code> 로 매핑해 <code>.env</code> 한 줄로 끌 수 있게 하고, 기동 로그 스냅샷에 실효값이 찍힙니다. 꺼지면 판정·정규화 모두 종전 동작이고, 10-03 부터는 합성 잡의 주문 재단·도련 적용도 함께 꺼집니다.</div></div>
     </div>
+  </div>
+</section>
+
+<section id="contenttrim-flow" aria-label="합성 내지 주문 도련 전달 경로" style="margin-top:12px">
+  <div class="card">
+    <h3>합성 내지 주문 도련 전달 경로 <span class="badge b-ok">10-03</span></h3>
+    <ol class="pipe">
+      <li><b>세션 → 템플릿셋</b><span class="n">width × height · bleedMm</span></li>
+      <li><b>API 잡 생성</b><span class="n">options · 큐 페이로드 contentTrim</span></li>
+      <li><b>worker 파싱</b><span class="n">숫자·범위 검증, 이상이면 무시</span></li>
+      <li><b>아는 경로 크롭</b><span class="n">TrimBox + 사방 도련</span></li>
+      <li class="ok"><b>산출</b><span class="n">예 210×297 → 216×303</span></li>
+    </ol>
+    <p class="muted" style="margin:10px 0 0">조회 실패·내지 펼침면 세트·값 이상은 키를 싣지 않거나 무시해 종전 동작으로 갑니다. 원본 파일은 보존됩니다.</p>
   </div>
 </section>
 
 <section id="measure">
   <h2>실측 3건 <small>2026-09-30 04:46Z · bookmoa-mobile 업로드 내지 검증</small></h2>
   <div class="tablewrap"><table>
-    <thead><tr><th>파일</th><th>기대 판형</th><th>MediaBox</th><th>TrimBox</th><th>BleedBox</th><th>현재</th><th>변경 후</th></tr></thead>
+    <thead><tr><th>파일</th><th>기대 판형</th><th>MediaBox</th><th>TrimBox</th><th>BleedBox</th><th>09-30 이전</th><th>09-30 이후</th><th>합성 10-03</th></tr></thead>
     <tbody>
-      <tr><td>A · 신발장 내지 32p</td><td>210×297 · bleed 1</td><td class="mono">236×323</td><td class="mono">210×297 (사방 13)</td><td class="mono">= TrimBox</td><td><span class="badge b-bad">거부</span></td><td><span class="badge b-ok">판형 통과</span> <span class="muted">+ 도련 부족 경고(선언 도련 0) · 합성 210×297</span></td></tr>
-      <tr><td>B · 신발장 내지 최종본 32p</td><td>210×297 · bleed 1</td><td class="mono">236×323</td><td class="mono">210×297 (사방 13)</td><td class="mono">216×303 (+3)</td><td><span class="badge b-bad">거부</span></td><td><span class="badge b-ok">통과</span> <span class="muted">경고 없음 · 변환 212×299 · 합성 216×303</span></td></tr>
-      <tr><td>C · 동화책 24p</td><td>210×210</td><td class="mono">286×286</td><td class="mono">명시 없음</td><td class="mono">= MediaBox</td><td><span class="badge b-bad">거부</span></td><td><span class="badge b-bad">거부 유지</span> <span class="muted">판형 자체가 다름</span></td></tr>
+      <tr><td>A · 신발장 내지 32p</td><td>210×297 · bleed 1</td><td class="mono">236×323</td><td class="mono">210×297 (사방 13)</td><td class="mono">= TrimBox</td><td><span class="badge b-bad">거부</span></td><td><span class="badge b-ok">판형 통과</span> <span class="muted">+ 도련 부족 경고(선언 도련 0) · 합성 210×297</span></td><td class="mono">216×303</td></tr>
+      <tr><td>B · 신발장 내지 최종본 32p</td><td>210×297 · bleed 1</td><td class="mono">236×323</td><td class="mono">210×297 (사방 13)</td><td class="mono">216×303 (+3)</td><td><span class="badge b-bad">거부</span></td><td><span class="badge b-ok">통과</span> <span class="muted">경고 없음 · 변환 212×299 · 합성 216×303</span></td><td class="mono">216×303</td></tr>
+      <tr><td>C · 동화책 24p</td><td>210×210</td><td class="mono">286×286</td><td class="mono">명시 없음</td><td class="mono">= MediaBox</td><td><span class="badge b-bad">거부</span></td><td><span class="badge b-bad">거부 유지</span> <span class="muted">판형 자체가 다름</span></td><td class="muted">—</td></tr>
     </tbody>
   </table></div>
-  <p class="muted" style="margin-top:8px">A·B 는 재단선이 포함된 정상 인쇄 파일이라 잘못 거부된 사례(오탐)이고, C 는 판형이 달라 계속 거부해야 하는 사례입니다.</p>
+  <p class="muted" style="margin-top:8px">A·B 는 재단선이 포함된 정상 인쇄 파일이라 잘못 거부된 사례(오탐)이고, C 는 판형이 달라 계속 거부해야 하는 사례입니다. "합성 10-03" 열은 <code>editSessionId</code> 가 있는 합성에서 연결 템플릿셋 도련 3mm 를 적용한 산출 크기입니다. 세션이 없는 합성은 "09-30 이후" 열과 같습니다.</p>
 </section>
 
 <section id="deploy">
   <h2>검증·배포</h2>
   <div class="grid g2">
-    <div class="card"><h3>검증 기준선 <span class="badge b-ok">HEAD a446111 통과</span></h3>
+    <div class="card"><h3>검증 기준선 <span class="badge b-ok">Wave 2 직전 · HEAD 6d5b51d</span></h3>
       <ul class="clean">
-        <li>api jest 99 스위트 / 1659 · tsc 0</li><li>worker jest 23 / 661 · tsc 0</li>
-        <li>editor vitest 79 / 973 · tsc 0 · 빌드(임베드 번들 포함)</li><li>admin 7 / 128 · sdk 12 / 341 · canvas-core 55 / 630</li>
+        <li>api jest 117 스위트 / 2165 · tsc 0</li><li>worker jest 26 / 829 · tsc 0</li>
+        <li>editor vitest 87 / 1177 · tsc 0 · 빌드(임베드 번들 포함)</li><li>admin 7 / 128 · sdk 12 / 349 · canvas-core 55 / 630</li>
       </ul>
-      <p class="muted">이보다 낮으면 회귀로 봅니다. 신규 테스트만큼 늘어나는 것은 정상입니다.</p>
-      <h3 style="margin-top:12px">현재 통합 결과 <span class="badge b-ok">통과 · 10-01</span></h3>
-      <ul class="clean"><li>api tsc 0 · jest 117 / 2165</li><li>worker tsc 0 · jest 26 / 829 (gs·qpdf 실제 실행)</li><li>editor tsc 0 · vitest 87 / 1177 · 빌드 · 임베드 빌드</li><li>sdk 12 / 349</li></ul></div>
+      <p class="muted">이보다 낮으면 회귀로 봅니다. 신규 테스트만큼 늘어나는 것은 정상입니다. 09-30 시작 시점(HEAD a446111)은 api 99/1659 · worker 23/661 · editor 79/973 이었습니다.</p>
+      <h3 style="margin-top:12px">현재 통합 결과 <span class="badge b-ok">통과 · 10-03</span></h3>
+      <ul class="clean"><li>api tsc 0 · jest 124 / 2416</li><li>worker tsc 0 · jest 27 / 932 (gs·qpdf 실제 실행)</li><li>editor tsc 0 · vitest 97 / 1370 · 빌드 · 임베드 빌드</li><li>sdk 12 / 349 · gitleaks 0</li></ul></div>
     <div class="card"><h3>배포 <span class="badge b-ok">완료</span></h3>
       <ul class="clean">
         <li>DB 마이그레이션 없음</li>
@@ -345,6 +420,7 @@ footer{margin-top:40px;color:var(--muted);font-size:13px}
         <li><b>2차 push</b>: EDITOR-B(새 라우트가 운영에 뜬 것 확인 뒤)</li>
         <li>파트너 통지 → ACK → RESUME 기록</li>
         <li><b>10-01</b>: 단계마다 편집기 먼저 → 양사 사전 통지·ACK → API(롤백 태그·nginx 재시작·스모크) 순서</li>
+        <li><b>10-03 Wave 2</b>: 3사 사전 통지·ACK → push 04:51Z → 편집기 Vercel 04:52Z → 롤백 태그 <span class="mono">rollback-pre-1003</span> → worker 04:55Z → api 04:58Z + nginx → 스모크 04:59Z(health 200, 무인증 401, 비회원 경로 403, 오류·5xx 0) → 완료 통지</li>
       </ul></div>
   </div>
 </section>
@@ -355,30 +431,32 @@ footer{margin-top:40px;color:var(--muted);font-size:13px}
     <div class="card"><h3>추적 중 <span class="badge b-warn">4건</span></h3>
       <ul class="clean">
         <li>owners API 첫 실호출(bookmoa·printy) 응답코드·지연 대조·공유</li>
-        <li>양사 첫 실합성(사이트 키 + 세션) 운영 로그 대조</li>
-        <li>3단계 관측 결과 집계 → 다음 단계 판단(상세 비공개)</li>
-        <li>테스트 비회원 세션 1건 10-02 06:30Z 자동 삭제</li>
+        <li>양사 첫 실합성(사이트 키 + 세션) 운영 로그 대조 · 산출 내지 크기(예 216×303) 확인</li>
+        <li>3단계 관측 결과 집계 → 10-08 09:51Z 이후 차단 전환 판단(상세 비공개)</li>
+        <li>bookmoa 실 e2e 재개 시 같은 탭 재오픈 1회 확인(R-213)</li>
+        <li class="muted">테스트 비회원 세션 자동 삭제 <span class="badge b-ok">확인 10-03</span></li>
       </ul></div>
     <div class="card"><h3>오너 결정이 필요한 것</h3>
       <ul class="clean">
-        <li>3단계 관측 이후 다음 단계 진행 여부</li>
+        <li>차단 전환(10-08 이후, 플래그는 이미 배포 — 설정만 변경). 실제 트래픽이 0건이면 관측 0건만으로는 근거가 약함</li>
+        <li>작업의 세션 연결 저장(양사 세션 웹훅 미소비 확인 — 파트너 웹훅 v2 와 함께)</li>
         <li>기존 Sentry 이벤트에 남아 있을 수 있는 토큰 정리(외부 작업)</li>
         <li>3-B 자동 반영(웹훅 v2), 결속 API O1~O5, 고아 정리 실가동</li>
         <li>호스트 고정 책등 규칙, branch protection, compose 기본값</li>
       </ul></div>
     <div class="card"><h3>후속 항목</h3>
       <ul class="clean">
-        <li>재단선 PDF 합성 산출물에 주문 도련 반영(합성 요청에 도련·재단 크기 전달)</li>
-        <li>100p presigned complete 파일 사이트 기록(100p 가 실제 호출함)</li>
-        <li>운영자 권한 감사 minor 3건, 편집기 초기화 오류 정규화·게스트 완료 문구</li>
+        <li>합성 재시도와 작업 종결 상태 전이 가드</li>
+        <li>표지 TrimBox 판정, 첨부 내지 정리본 등록, admin 경고 표시</li>
+        <li>임베드 getState 페이지 필드, 세션 생성 요청 재시도 정책, 재오픈 화면 문구</li>
         <li>admin 컴포넌트 테스트 환경(의존성 추가 필요)</li>
-        <li>스테일 문서 정정 <span class="badge b-ok">완료 09-30</span></li>
+        <li class="muted">합성 주문 도련 반영 · 100p complete 사이트 기록 · 운영자 감사 · 편집기 초기화 오류·게스트 완료 문구 <span class="badge b-ok">완료 10-03</span></li>
       </ul></div>
   </div>
 </section>
 
 <footer>
-  정본 상태 문서: <code>.cursor/plans/RESUME_PROMPT_2026-09-30.md</code>(10-01 기록 포함) · 파트너 계약: <code>docs/PLATFORM_INTEGRATION_GUIDE.md</code>, <code>docs/CONTRACT_FREEZE.md</code> · 검증 규칙: <code>docs/PDF_VALIDATION_GUIDE.md</code><br>
+  정본 상태 문서: <code>.cursor/plans/RESUME_PROMPT_2026-09-30.md</code>(10-03 기록 포함) · 파트너 계약: <code>docs/PLATFORM_INTEGRATION_GUIDE.md</code>, <code>docs/CONTRACT_FREEZE.md</code>(v1.9) · 검증 규칙: <code>docs/PDF_VALIDATION_GUIDE.md</code> · Wave 2 공지: <code>docs/partner-notices/PARTNER_NOTICE_WAVE2_2026-10-03.md</code><br>
   보안 항목의 세부는 교정 배포 전까지 공개 문서에 적지 않습니다.
 </footer>
 </div>
