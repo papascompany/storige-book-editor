@@ -1,7 +1,7 @@
 # Storige 플랫폼 연동 가이드 (외부 파트너용)
 
 > **작성일:** 2026-06-20
-> **최종 갱신:** 2026-10-03 — presigned `complete` 의 사이트 키(`X-API-Key`) 귀속(2.2·1.7) · 합성 산출 크기(2.3) · 작업 실패 코드 `JOB_STALLED`·`JOB_TIMEOUT_SWEPT`(2.2 단계 5a)·반복 중단 시 v1 최종화 실패(1.7) · 편집기 초기화 실패 code·고정 한국어 `message`(3.1·3.2) · `orderSeqno` 진입 실패 처리(3.3) · 첨부 채움본 크기(3.2) · 운영자 요청 감사 기록 범위(3.3.2) · 그 사이 변경은 각 절의 날짜 표기 참조 · [이전 2026-08-24] `editor.saved` 가 `ok:false, error:'EDITOR_BUSY'` 를 응답할 수 있음(3.2 표 하단) · 세션 API 테넌트 격리 확장: 회원 세션 상세/수정/완료/삭제/버전/목록/보관함 전부 JWT `siteId` ↔ 세션 `siteId` 대조(1.5) · [이전 2026-08-13] `compose-mixed` 빈 입력 `400 EMPTY_COMPOSE_INPUT` 승격(3.4) · 세션 자동조립 `assembleFromSession` 신설(3.4.1) · `compose-mixed` body `siteId` 하드닝(3.4)
+> **최종 갱신:** 2026-10-03 — 합성 작업 자동 재시도·작업 상태 고정·종결 웹훅 중복 생략·작업 응답 `editSessionId`(2.2 단계 5a·5b·1.7·5.2) · `session.*` 현재 미발신(5.2·3.3.3) · `editor.state` `pageCount`·`currentPage`·IIFE `getState()` 쪽수(3.2) · `sessionId` 단독 재오픈 실패 화면·편집기 '불러오기' 실패 `message` 고정 문구(3.1·3.2) · presigned `complete` 의 사이트 키(`X-API-Key`) 귀속(2.2·1.7) · 합성 산출 크기(2.3) · 작업 실패 코드 `JOB_STALLED`·`JOB_TIMEOUT_SWEPT`(2.2 단계 5a)·반복 중단 시 v1 최종화 실패(1.7) · 편집기 초기화 실패 code·고정 한국어 `message`(3.1·3.2) · `orderSeqno` 진입 실패 처리(3.3) · 첨부 채움본 크기(3.2) · 운영자 요청 감사 기록 범위(3.3.2) · 그 사이 변경은 각 절의 날짜 표기 참조 · [이전 2026-08-24] `editor.saved` 가 `ok:false, error:'EDITOR_BUSY'` 를 응답할 수 있음(3.2 표 하단) · 세션 API 테넌트 격리 확장: 회원 세션 상세/수정/완료/삭제/버전/목록/보관함 전부 JWT `siteId` ↔ 세션 `siteId` 대조(1.5) · [이전 2026-08-13] `compose-mixed` 빈 입력 `400 EMPTY_COMPOSE_INPUT` 승격(3.4) · 세션 자동조립 `assembleFromSession` 신설(3.4.1) · `compose-mixed` body `siteId` 하드닝(3.4)
 > **대상:** 외부 파트너 개발자
 > **상태:** 배포용 정본
 
@@ -307,6 +307,7 @@ image/gif
 - **`409 ERR_FINALIZATION_IN_PROGRESS` 는 실패가 아닙니다.** 이미 진행 중이라는 뜻이므로 `GET .../finalization` 으로 기존 attempt 에 합류하세요. 이걸 에러로 처리하면 실제로는 성공한 주문을 "실패"로 보여 주게 됩니다.
 - 최종화 **실패는 예외가 아니라 값**으로 옵니다 — 폴링 응답의 `status: 'FAILED'` + `errorCode` 로 분기하세요.
 - 최종화의 검증·합성 작업이 워커 처리 중 반복 중단으로 실패하면 최종화도 `status: 'FAILED'` + `errorCode: 'ERR_PDF_VALIDATION_FAILED'` 로 끝납니다. `POST .../finalization` 을 다시 호출하면(`Idempotency-Key` 를 쓴다면 새 키로) 새 attempt 로 다시 최종화합니다(2026-10-03).
+- 최종화의 합성 작업은 처리 중 일시 오류로 실패하면 다시 시도하므로(2.2 단계 5a 합성 작업 재시도) `COMPOSING` 이 몇 분 더 이어질 수 있고, 다시 시도해 성공하면 `COMPLETED` 로 끝납니다. 최종화 상태는 `COMPLETED`·`FAILED` 가 될 때까지 확인하세요(2026-10-03).
 - 🖨️ **`bookSpecUid`(판형)를 연결하지 않으면 워커 구조 검증이 통째로 생략됩니다.** 대조할 판형이 없으면 서버는 검증을 건너뛰고 최종화하며, 결과에 `validationSkipped: true` 가 실립니다. 그 도서는 재단·페이지수·여백이 한 번도 대조되지 않은 **미검증 상태**이므로 자동 발주로 흘리지 말고 자체 검수 게이트를 태우세요. 페이지수까지 대조하려면 `pageCount` 도 함께 넘겨야 합니다.
 
 **클라이언트 라이브러리**
@@ -570,8 +571,20 @@ status: `PENDING | PROCESSING | COMPLETED | FIXABLE | FAILED`. 판정 결과(`er
 
 > **작업 실패 코드 (2026-10-03):** 처리 중 워커가 반복해서 중단되어 작업이 실패로 기록되면 `status:'FAILED'`, `errorCode:'JOB_STALLED'` 입니다(검증·합성·변환·페이지수 보정 작업 공통). 생성 후 2시간이 지나도 끝나지 않은 작업은 10분 주기 정리 때 `status:'FAILED'`, `errorCode:'JOB_TIMEOUT_SWEPT'` 로 기록됩니다. 두 경우 모두 같은 요청으로 새 작업을 만들면 됩니다. `synthesis.failed`·`validation.failed` 웹훅 본문에는 `errorCode` 가 없고 `errorMessage` 만 있으므로, 코드가 필요하면 이 폴링 라우트로 잡을 조회하세요.
 
+> **합성 작업 재시도 (2026-10-03):** 합성 작업(`synthesize/external`·`split-synthesize/external`·`compose-mixed` 등 합성 큐에서 처리하는 작업)은 처리 중 일시 오류로 실패하면 최대 3회까지 처리합니다(재시도 최대 2회). 다시 시도하기 전 대기는 30초, 그다음 90초이며, 합성 작업은 차례로 처리되므로 앞선 작업이 있으면 그 처리 시간만큼 더 기다립니다. 재시도를 기다리는 동안 `status` 는 `PROCESSING` 이고 웹훅은 발신되지 않습니다. 마지막 시도까지 실패하면 `status:'FAILED'` 로 기록되고 `synthesis.failed` 가 1회 발신됩니다.
+> - 분리 합성(`split-synthesize/external`)의 쪽수 불일치·쪽 구분 값 오류·출력 옵션 오류처럼 입력이 맞지 않아 실패한 작업은 다시 시도하지 않고 바로 `FAILED` 입니다. `compose-mixed`·`synthesize/external` 에서 입력 PDF 를 열지 못한 경우(손상·암호화 등)처럼 그 밖의 처리 오류는 위와 같이 다시 시도하고, 마지막 시도까지 실패하면 `FAILED` 입니다. 처리 중 워커가 반복해서 중단된 작업은 남은 시도와 관계없이 그 시점에 `errorCode:'JOB_STALLED'` 로 `FAILED` 입니다. 검증·변환·페이지수 보정 작업에는 이 재시도가 적용되지 않습니다.
+> - `errorCode`·`errorMessage` 값, 응답 필드, 웹훅 본문 형태와 이벤트 종류는 같습니다.
+> - 일시 오류가 이어진 작업은 `FAILED` 가 보이기까지 재시도 대기 약 2분(30초 + 90초)에 재처리 시간과 위 차례 대기가 더해집니다. 폴링은 `PENDING`·`PROCESSING` 이 아닌 상태가 될 때까지가 기준입니다. 합성 폴링에 시간 상한(예: 120초)을 둔다면, 상한을 넘긴 작업은 실패로 확정하지 말고 이후 조회(예: 고객·운영자의 상태 확인 동작)로 최종 상태를 받으세요.
+>
+> **작업 상태 고정 (2026-10-03):** 작업의 `status` 가 `COMPLETED`·`FIXABLE`·`FAILED` 가 되면 그 뒤로 바뀌지 않습니다. 같은 종결 상태가 다시 보고돼도 처음 기록된 `errorCode`·`errorMessage` 가 유지됩니다.
+> - 예외는 `errorCode` 가 `JOB_STALLED`·`JOB_TIMEOUT_SWEPT` 인 `FAILED` 작업뿐입니다. 이 작업의 처리가 나중에 완료되면 `status` 가 `COMPLETED` 가 되고 `errorCode`·`errorMessage`·`errorDetail` 은 `null` 이 됩니다. 웹훅 대상 작업이면 같은 `jobId` 로 `synthesis.completed`·`validation.completed` 가 발신됩니다(앞서 `*.failed` 가 발신된 작업).
+> - `FAILED` 에서 폴링을 멈추는 연동은 바꿀 필요가 없습니다. 두 코드의 `FAILED` 작업만 계속 조회해 이후 완료를 반영할지는 선택입니다. 같은 요청으로 새 작업을 만드는 처리도 그대로 쓸 수 있습니다.
+>
+> **작업 응답 `editSessionId` (2026-10-03):** 작업 조회 응답(`GET /api/worker-jobs/external/:id`)의 `editSessionId` 는 작업을 만들 때 연결이 확인된 편집 세션 id 입니다(파트너 요청은 `editSessionId`, `split-synthesize/external` 은 `sessionId`). 넣지 않았거나 그 세션이 없으면 `null` 이고, 이 변경이 배포되기 전에 만든 작업도 `null` 입니다. 값은 생성 뒤 바뀌지 않습니다. 같은 값이 `synthesis.*`·`validation.*` 웹훅 본문의 `sessionId` 에 실립니다(세션이 연결된 작업만).
+
 **단계 5b — 웹훅 (callbackUrl 수신)**
 - 워커 종료 시 API(`WebhookService`)가 `callbackUrl` 로 `POST`. 헤더 `X-Storige-Event`, `X-Storige-Signature`. 타임아웃 10초, 1회 재시도.
+- 같은 작업의 같은 종결 이벤트(`synthesis.*`·`validation.*`)는 앞선 발신이 성공했거나(사이트 웹훅 설정(v2)은 재시도 접수 포함) 진행 중이면 다시 보내지 않습니다. 앞선 발신이 실패했으면 같은 종결 상태가 다시 보고될 때 다시 보냅니다(2026-10-03). 수신 측 멱등 처리(5.2 중복 배달)는 그대로 유지하세요.
 - SSRF 방어: `callbackUrl` 호스트가 `sites` DB(`uploadCallbackUrl`/`domain`) 또는 env `WEBHOOK_ALLOWED_HOSTS` 에 등록돼야 통과. **미등록 시 콜백은 무음으로 전송되지 않습니다**(서버 로그에 `Blocked callback URL not in allowlist` 기록, 파트너는 아무 요청도 받지 못함 — 403 같은 HTTP 응답이 가는 게 아님).
 - ⚠️ 서명 검증은 5장 참조 (현재 HMAC 아님 — 보안 주의).
 
@@ -848,7 +861,7 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 > 주문 시점 값은 세션 `metadata.orderOptions` 에 기록되어 재편집 진입에서 복원됩니다.
 >
 > **`width`/`height` 는 메타 스냅샷일 뿐 캔버스 규격을 바꾸지 않습니다.** 실제 작업 규격(판형)의 권위는 템플릿셋·주문 옵션이며 임베드 편집기 안에서는 **read-only** 입니다(Canva 식 자유 커스텀 치수 불가). 완료 시점의 실제 규격은 `editor.complete` 의 `size` 로 되돌아오니, 파트너는 그 값으로 정합만 검증하세요 — 3.2 참조.
-> **재편집(`sessionId`)에 `templateSetId` 를 함께 보내면** 편집기가 세션 조회 1콜을 생략합니다. `sessionId` 만 보냈는데 세션 조회가 실패하면 편집기는 편집 화면 대신 "템플릿셋을 확인할 수 없습니다" 오류로 멈추므로, 파트너가 `templateSetId` 를 보관하고 있다면 함께 넘기는 편이 안전합니다.
+> **재편집(`sessionId`)에 `templateSetId` 를 함께 보내면** 편집기가 세션 조회 1콜을 생략합니다. `sessionId` 만 보냈는데 세션 조회가 실패하면 편집기는 편집 화면 대신 오류 화면으로 멈추고, 화면에는 호스트에 보내는 `editor.error` 의 `message` 와 같은 고정 문구가 표시됩니다(code·`reason` 은 3.3 재오픈 항목). 조회는 됐지만 세션에 템플릿셋 정보가 없으면 고정 안내 문구('이 상품의 편집 정보를 찾을 수 없습니다. …')만 표시하고 이벤트는 보내지 않습니다(2026-10-03). 파트너가 `templateSetId` 를 보관하고 있다면 함께 넘기는 편이 안전합니다.
 
 ### 3.2 postMessage 프로토콜
 
@@ -867,7 +880,7 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 | 편집기→부모 | `editor.cancel` | `{sessionId, reason?}` | 취소. `reason:'session_not_found'` = 세션을 열 수 없다는 중단 화면에서 고객이 '돌아가기'를 누름(2026-09-29 additive) |
 | 편집기→부모 | `editor.error` | `{code, message, fatal?, templateSetId?, sessionId?, reason?}` | 오류. `templateSetId` 는 `TEMPLATE_SET_NOT_FOUND` 일 때, `sessionId`·`reason`(`not_found`/`forbidden`/`invalid_id`/`guest_token_required`)은 `SESSION_NOT_FOUND` 일 때만 실립니다. `guest_token_required` 는 2026-10-01 additive(3.3 비회원 세션 재오픈). `fatal` 은 2026-09-29 additive(아래 표) |
 | 편집기→부모 | `editor.needAuth` | `{guestToken, reason:'complete_save', ts}` | 게스트 폴백만 |
-| 편집기→부모 | `editor.state` | `{requestId, ready, dirty, sessionId}` | getState 응답 |
+| 편집기→부모 | `editor.state` | `{requestId, ready, dirty, sessionId, pageCount?, currentPage?}` | getState 응답. `pageCount`·`currentPage` 는 2026-10-03 additive(아래 표 하단) |
 | 편집기→부모 | `editor.saved` | `{requestId, ok, error}` | saveNow 응답 |
 | 편집기→부모 | `editor.pricingChange` | `{sessionId, pageCount, pricing?, coverType?, spineWidthMm?}` | 가격 영향 변경(페이지 증감 등) 실시간 통지 (2026-07-06 additive) |
 | 편집기→부모 | `editor.contentPdfAttached` | `{sessionId, contentPdfFileId, contentPdfPageCount, mode:'underlay'}` | 고객이 내지 PDF 를 첨부해 편집기에 앉힌 시점 (2026-08-13 additive) |
@@ -878,6 +891,11 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 > **발신 8종(`ready`/`save`/`complete`/`cancel`/`error`/`needAuth`/`state`/`saved`)이 동결 계약**이고, **`editor.pricingChange`·`editor.contentPdfAttached` 2종은 ADDITIVE**입니다 — 조건부 발신(아래 발신 조건 참조)이라 동결 표면에 포함되지 않습니다. 수신 명령은 위 3종이 전부이며, 확장은 additive(추가만)로만 이뤄집니다.
 > **응답 유형을 구분하세요.** `setBackGuard` 는 응답이 없으므로 세 명령을 일괄 Promise 로 감싸면 이 명령만 영원히 pending 상태가 됩니다.
 > ⚠️ **`editor.saved` 는 `ok:false` 일 수 있습니다 (2026-08-23).** 편집기가 초기화/재초기화 중(진입 로딩, 고객이 "변경 이력 → 여기로 복원"을 실행한 직후의 캔버스 재구성 구간)에 `saveNow` 를 받으면 저장을 **거부**하고 `{requestId, ok:false, error:'EDITOR_BUSY'}` 로 응답합니다 — 이 창에 저장하면 미완성 캔버스가 서버 작업물을 덮어쓰기 때문입니다. 호스트는 `ok` 를 반드시 분기하고, `EDITOR_BUSY` 면 잠시 후(1~3초) 재시도하거나 이탈 플로우를 그대로 진행하세요(직전 자동저장본은 서버에 안전). 종전에는 이 창에서도 `ok:true` 가 왔으므로, `ok` 를 무시하던 수신기는 동작이 달라지지 않지만 저장 확인 후 이탈하는 수신기는 재시도 처리가 필요합니다.
+> **`editor.state` 의 `pageCount`·`currentPage` (2026-10-03 additive).** 편집기 초기화가 끝난 뒤의 응답에만 실리는 선택 필드입니다. `editor.ready` 를 받은 뒤 요청하면 실리고, 고객이 변경 이력에서 복원하는 동안에는 다시 빠집니다.
+> - `pageCount` = 회원 세션의 `editor.complete`·`editor.pricingChange` 와 같은 산식의 물리 쪽수(포토북 내지 펼침면 1장 = 2쪽, 아래 페이지/규격 정합).
+> - `currentPage` = 1부터 센 현재 편집 화면(캔버스) 순번. 펼침면 세트는 펼침면 단위이고, 표지+내지 세트는 1 = 표지입니다. 편집 대상 화면을 알 수 없으면 초기화 뒤에도 이 키만 없습니다.
+> - 두 값은 단위가 다르므로 `currentPage / pageCount` 로 진행률을 계산하지 마세요. 키가 없을 수 있는 선택 필드로 처리하세요. 가격·주문 기준값은 `editor.pricingChange`·`editor.complete` 입니다.
+> - 기존 4개 필드, 명령명, 요청-응답 유형은 같습니다. IIFE 번들(3.1) 인스턴스의 `getState()` 는 `{ready, modified, currentPage, totalPages}` 를 돌려주며, 이 변경이 들어간 번들에서는 `totalPages` 가 위 `pageCount` 와 같은 값, `currentPage` 가 위와 같은 순번입니다. 초기화가 끝나기 전(변경 이력 복원 중 포함)에는 둘 다 0 이고, 편집 대상 화면을 알 수 없으면 `currentPage` 만 0 입니다.
 
 > **`editor.complete` 페이로드 구조 주의:** `coverFileId`·`contentFileId`·`thumbnailUrl` 은 최상위가 아니라 **`files` 객체 안에 중첩**되고, `pages` 는 **`{initial, final}` 객체**입니다. 이 shape 은 **동결 계약**이라 평탄화되지 않습니다 — `payload.coverFileId` 를 읽는 파서는 항상 `undefined` 를 얻고, `pages` 를 숫자로 가정하면 그대로 깨집니다.
 > **페이지/규격 정합 (2026-07-04 additive):** `pages.final`·`pageCount` = 편집 완료 시점 실측 페이지 수(포토북 내지 펼침면은 ×2 물리페이지). **2026-09-28 정정:** 표지+내지펼침면 세트도 표지를 뺀 내지 펼침면 1장 = 2쪽으로 셉니다(예: 표지 + 펼침면 8장 = 16). 종전에는 이 세트에서 1장 = 1쪽으로 절반이 집계됐고, 해당 세트의 완료 세션은 0건이었습니다(운영 실측 10:54Z). `editor.pricingChange` 와 쪽수 단위(`pageStep`) 판정도 같은 기준입니다. `size` = 완료 시점 캔버스 규격(mm, 감사/정합 검증용 — 규격의 권위는 상품 옵션이며 embed 편집기에서는 규격 변경 UI 가 잠겨 있음). **파트너 장바구니는 `pageCount` 가 주문 옵션 페이지수와 다르면 가격을 재계산하고 고객에게 고지해야 합니다** — 결제 시점 서버 재계산에서도 동일 정합 검증 권장.
@@ -933,7 +951,7 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 > | `fatal` | 해당 오류 | 호스트 권장 처리 |
 > |---|---|---|
 > | `true` | `SESSION_NOT_FOUND`, `TEMPLATE_SET_NOT_FOUND`, `AUTH_EXPIRED`, 초기화 중 `NETWORK_ERROR`·`INVALID_DATA` | 이 iframe 으로는 더 진행할 수 없습니다. 안내 후 닫거나 새 토큰·세션으로 다시 여세요 |
-> | `false` | `SAVE_FAILED`(저장·완료 실패), 쪽수 단위 위반 `INVALID_DATA` | **편집기를 닫지 마세요.** 비차단 안내만 하면 고객이 이어서 편집·재시도할 수 있습니다 |
+> | `false` | `SAVE_FAILED`(저장·완료 실패), 쪽수 단위 위반 `INVALID_DATA`, 편집기 안 '불러오기'(저장된 작업 다시 열기) 실패 `INVALID_DATA` | **편집기를 닫지 마세요.** 비차단 안내만 하면 고객이 이어서 편집·재시도할 수 있습니다 |
 > | 없음 | 구버전 편집기 | 기존 처리 유지 |
 >
 > **초기화 실패의 code (2026-10-03).** 편집기 초기화 단계(세션 조회·생성, 템플릿셋 조회·로드)의 실패는 아래 code 로 1회 보내며 모두 `fatal:true` 입니다.
@@ -945,6 +963,8 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 > 저장·완료 중 인증이 만료되면(401) `AUTH_EXPIRED` 와 `SAVE_FAILED` 가 함께 올 수 있습니다.
 >
 > **초기화 실패와 `SAVE_FAILED` 의 `message` 는 고객에게 그대로 보여 줄 수 있는 고정 한국어 문구입니다**(서버 원문·식별자를 담지 않습니다. 레거시 `storige:error` 의 `message` 도 같은 문구). 문구는 바뀔 수 있으니 처리 분기는 `code` 로 하세요.
+> - 편집기 안 '불러오기'로 저장된 작업을 다시 열다 실패할 때 보내는 `INVALID_DATA`(`fatal:false`)의 `message` 도 고정 문구('작업을 불러오는데 실패했습니다.')입니다. 레거시 `storige:error` 도 같은 문구입니다(2026-10-03).
+> - `templateSetId` 없이 `sessionId` 만으로 연 재오픈이 실패해 편집기가 멈추면, 화면에도 보낸 `message` 와 같은 고정 문구가 표시됩니다(3.1·3.3). 세션 조회가 인증 만료(401)로 멈춘 화면의 문구는 `AUTH_EXPIRED` 의 `message` 와 같습니다(2026-10-03).
 
 
 **부모→편집기 엔벨로프:**
@@ -1141,8 +1161,8 @@ Storige는 토큰의 사이트·세션 범위·유효 시간·취소 여부를 �
   - 관리자가 편집을 시작하면 버전 목록에 `staff-baseline`(관리자 편집 직전) 스냅샷이 추가됩니다. 이 스냅샷은 버전 정리 대상에서 보호됩니다.
   - 관리자가 편집기 안에서 편집완료를 누르거나 관리자 화면에서 **완료 처리**를 하면, 고객 완료와 같은 후속 처리(검증 잡 등)가 실행됩니다. 등록된 콜백·웹훅이 있으면 종전 규칙대로 호출될 수 있습니다.
   - 관리자 **삭제**는 소프트 삭제입니다. 삭제된 동안 해당 sessionId로 `/embed` 재편집이나 compose-mixed를 호출하면 404 `SESSION_NOT_FOUND`가 반환됩니다. 보관기간 안이면 관리자가 복구할 수 있습니다.
-  - 관리자 **합성/재합성**은 세션 자산으로 새 합성 잡(compose-mixed)을 만들고, 이전 결과물은 지우지 않습니다. 관리자가 알림을 켠 경우를 제외하면 **파트너 콜백·웹훅(synthesis.\*, validation.\*, session.\*)을 보내지 않고 세션의 workerStatus도 바꾸지 않습니다**.
-  - 알림을 켜지 않은 관리자 합성 잡은 파트너 조회(`GET /edit-sessions/external?orderSeqno=`·책 승격)의 '최신 합성 결과'에서도 제외됩니다. 관리자 재합성이 진행 중이거나 실패해도 파트너가 받던 이전 합성 결과물은 그대로입니다. 알림을 켠 관리자 합성은 완료되면 종전 규칙대로 최신 결과로 보입니다.
+  - 관리자 **합성/재합성**은 세션 자산으로 새 합성 잡(compose-mixed)을 만들고, 이전 결과물은 지우지 않습니다. 관리자가 알림을 켠 경우를 제외하면 **파트너 콜백·웹훅(synthesis.\*, validation.\*)을 보내지 않습니다**. 세션의 workerStatus 는 알림 설정과 관계없이 바꾸지 않고 `session.*` 도 보내지 않습니다(5.2, 2026-10-03).
+  - 알림을 켜지 않은 관리자 합성 잡은 파트너 조회(`GET /edit-sessions/external?orderSeqno=`·책 승격) 결과에 반영되지 않습니다. 관리자 재합성이 진행 중이거나 실패해도 파트너가 받던 결과는 그대로입니다(2026-10-03).
 - **주문에 연결된 세션의 관리자 작업 — 운영 원칙 (2026-09-30)**
   - 대상: 파트너 주문에 연결된 세션(`orderSeqno` 있음). 주문 전 세션은 제한이 없습니다.
   - 이유: 파트너는 고객이 편집완료할 때 받은 fileId를 주문에 저장하고, 재합성·다운로드에 그 값을 씁니다. Storige 관리자 작업은 이 값을 바꾸지 않습니다.
@@ -1219,7 +1239,7 @@ curl -X POST "https://api.papascompany.co.kr/api/partner/edit-sessions/owners" \
 2. 파트너 백엔드: 주문확정 시 `POST /api/worker-jobs/compose-mixed` 로 **호출자가 파일 참조를 공급하는** 합성 트리거 (호스트가 명시적 호출, 자동발행 아님).
    > 🚩 **기본값에서 `editSessionId` 는 합성 입력이 아닙니다.** 서버는 이 세션에서 `metadata.spread`(펼침면 기대치) 하나만 읽어 스프레드 판정·표지 치수 검증에 쓰고, 잡에 `editSessionId` 를 기록(추적)합니다. **세션을 열어 편집 결과 PDF 를 자동으로 찾아 붙이는 일은 하지 않습니다** — 합성에 들어갈 파일은 호출자가 `coverUrl`·`frontEndpaperUrls`·`contentPdfUrl`·`backEndpaperUrls` 로 **직접** 지정해야 합니다.
    > ✅ **예외 — `assembleFromSession: true` (2026-08-13 추가).** 이 플래그를 **명시적으로 켠 요청에 한해** 서버가 세션에서 표지·내지·면지·판형을 도출해 **비어 있는 필드만** 채웁니다. 인증(shop-session JWT)이 필요하며, 미전달 시 위 기본 동작이 그대로 유지됩니다. 상세는 **3.4.1** 참조.
-   > `editSessionId` 를 넣으면 잡 옵션(`options.editSessionId`)에 기록되어 세션별 잡 조회(Storige 관리자 화면, 같은 사이트 잡)에 쓰이고, 위 스프레드 판정(`outputMode='separate'` 강제·산출 크기)에 쓰입니다. compose-mixed 잡이 끝나도 **세션의 `workerStatus` 는 바뀌지 않고 세션 웹훅(`session.validated`/`session.failed`)도 발신되지 않습니다** — 종료 알림은 아래 3번의 `synthesis.*` 경로입니다.
+   > `editSessionId` 를 넣으면 잡 옵션(`options.editSessionId`)에 기록되고, 연결이 확인되면 잡(`editSessionId`, 2.2 단계 5a)에도 기록되어 세션별 잡 조회(Storige 관리자 화면, 같은 사이트 잡)에 쓰이고, 위 스프레드 판정(`outputMode='separate'` 강제·산출 크기)에 쓰입니다. compose-mixed 잡이 끝나도 **세션의 `workerStatus` 는 바뀌지 않고 세션 웹훅(`session.validated`/`session.failed`)도 발신되지 않습니다** — 종료 알림은 아래 3번의 `synthesis.*` 경로입니다.
    > 🔒 **세션 연결 확인 (2026-10-01).** 요청에 `editSessionId` 를 넣으면 서버가 잡을 만들기 전에 호출자와 그 세션의 연결을 확인합니다(`assembleFromSession` 을 켜지 않은 기본 경로). 확인되지 않으면 **`404 SESSION_NOT_FOUND`** 이고 잡은 만들어지지 않습니다(세션이 없을 때와 같은 응답).
    > - 사이트 키(`X-API-Key`): **같은 사이트에서 만든 세션**(회원·비회원 모두 — 비회원 세션도 `X-Guest-Token` 불필요) 또는 사이트가 지정되지 않은 회원 세션.
    > - shop-session 토큰(`Authorization: Bearer`): 세션 사이트가 토큰 사이트와 같거나 지정되지 않았고, 회원 세션이면 **같은 회원**(회원 번호 1 이상 정수 일치)이거나 토큰의 `allowedOrderSeqnos` 에 그 세션의 주문 번호가 들어 있어야 합니다. 비회원 세션은 만료 전이고 **`X-Guest-Token` 헤더**가 그 세션의 게스트 토큰과 일치해야 합니다.
@@ -1664,7 +1684,7 @@ curl -X POST "https://api.papascompany.co.kr/api/worker-jobs/compose-mixed" \
 - ⚠️ **보안 주의:** base64는 인코딩일 뿐 서명이 아니므로 `X-Storige-Signature` **하나만으로는 위조 가능**합니다. 다만 전역 `WEBHOOK_SECRET` 이 설정된 배포에서는 같은 요청에 위조 불가 HMAC 헤더(`X-Storige-Signature-HMAC`)가 **동반 발신**됩니다 — 검증은 그쪽으로 하세요(아래 동반 발신 항목).
 - **권장 대응:** HMAC 헤더(동반 발신 또는 (B) v2)가 있으면 그것을 1차 검증으로 쓰고, 없으면 웹훅 수신을 트리거로만 취급한 뒤 실제 결과를 `GET /api/worker-jobs/external/:id`(X-API-Key) 또는 `GET /api/files/:id/download/external`(X-API-Key — **fileId 가 있는 잡에 한함**, compose-mixed 는 해당 없음 3.4) 로 재확인하세요.
 - 전송 주체: **API 의 `WebhookService`** (워커가 아님). 워커→API 상태 보고 후 API 가 `callbackUrl` 로 POST.
-- 전송 특성: 타임아웃 10초, 1회 재시도. `callbackUrl` 호스트는 `sites` DB 또는 `WEBHOOK_ALLOWED_HOSTS` 에 등록돼야 전송됩니다 (SSRF 방어). 미등록 시 **무음으로 전송 안 됨**(서버 로그 `Blocked callback URL not in allowlist` 기록, 파트너는 아무 요청도 받지 못함 — HTTP 403 이 가는 게 아님).
+- 전송 특성: 타임아웃 10초, 1회 재시도. `callbackUrl` 호스트는 `sites` DB 또는 `WEBHOOK_ALLOWED_HOSTS` 에 등록돼야 전송됩니다 (SSRF 방어). 미등록 시 **무음으로 전송 안 됨**(서버 로그 `Blocked callback URL not in allowlist` 기록, 파트너는 아무 요청도 받지 못함 — HTTP 403 이 가는 게 아님). 같은 작업의 같은 종결 이벤트(`synthesis.*`·`validation.*`)는 앞선 발신이 성공했거나 진행 중이면 다시 보내지 않습니다(2.2 단계 5b, 2026-10-03).
 
 **웹훅 POST 바디 예시** (`WebhookPayload` — 발췌, 검증 잡 콜백):
 ```json
@@ -1676,7 +1696,7 @@ curl -X POST "https://api.papascompany.co.kr/api/worker-jobs/compose-mixed" \
   "result": { "errors": [], "warnings": [], "metadata": {} }
 }
 ```
-> 세션 기반 콜백(`SessionWebhookPayload`)은 `jobId` 대신 `sessionId` 를 포함하며, 그 경우 서명 `identifier` 도 `sessionId` 가 됩니다.
+> 세션 기반 콜백(`SessionWebhookPayload`)은 `jobId` 대신 `sessionId` 를 포함하며, 그 경우 서명 `identifier` 도 `sessionId` 가 됩니다. `session.*` 는 현재 발신하지 않습니다(아래 (B) 이벤트 카탈로그 노트, 2026-10-03).
 
 > 전역 `WEBHOOK_SECRET` 이 설정된 배포에서는 위 base64 헤더와 **함께** HMAC 헤더(`X-Storige-Signature-HMAC`)가 동반 발신됩니다(`WEBHOOK_SECRET` 미설정이면 이 헤더만 빠지고 나머지는 동일). 포맷은 `t=<unixsec>,v1=<hex>` 이고 서명 대상 문자열은 `{t}.{identifier}:{event}:{timestamp}`(`identifier` 는 위 base64 와 동일 규칙) 를 `WEBHOOK_SECRET` 으로 HMAC-SHA256 한 값입니다. 다만 이 경로는 `X-Storige-Delivery` 를 **보내지 않으므로** 배달 단위 중복 판별이 불가능합니다 — 아래 (B) 의 중복 배달 항목 참조.
 
@@ -1700,7 +1720,9 @@ book.finalization.completed | book.finalization.failed
 
 > 위 9종 중 앞의 **7종은 레거시 동결 계약**이고, `book.finalization.*` 2종은 Partner API v1 의 도서 최종화와 함께 **추가된 이벤트**입니다. 카탈로그는 **additive 로만** 자랍니다 — **모르는 이벤트에서 던지지 마세요.** 던지면 5xx 로 응답되어 서버가 재시도를 반복하고 결국 소진 상태로 남습니다. 조용히 무시하는 것이 계약입니다.
 
-> **편집 세션 완료 검증 잡의 사이트 기록(2026-09-29):** 편집 완료 시 서버가 만드는 표지·내지 검증 잡에 세션의 사이트가 기록됩니다(검증 옵션·결과는 종전과 같음). 그래서 v2 웹훅을 구독한 사이트는 이 잡들의 `validation.*` 도 받습니다(세션당 최대 2건, 기존 `session.validated`/`session.failed` 와 별개). 잡 조회(`GET /api/worker-jobs/external/:id`)는 세션을 만든 사이트의 키로만 됩니다 — 종전에는 사이트 미기록 잡이라 어느 키로든 조회됐습니다.
+> **`session.validated`·`session.failed` 는 카탈로그에 남아 있지만 현재 발신하지 않습니다(2026-10-03 기준).** 편집 세션에 연결된 작업의 결과는 작업 단위 `validation.*`·`synthesis.*`(세션이 연결된 작업은 본문에 `sessionId`) 또는 작업 조회(2.2 단계 5a)로 받으세요.
+
+> **편집 세션 완료 검증 잡의 사이트 기록(2026-09-29):** 편집 완료 시 서버가 만드는 표지·내지 검증 잡에 세션의 사이트가 기록됩니다(검증 옵션·결과는 종전과 같음). 그래서 v2 웹훅을 구독한 사이트는 이 잡들의 `validation.*` 도 받습니다(세션당 최대 2건, 편집 세션 이벤트 `session.validated`/`session.failed` 는 보내지 않음). 잡 조회(`GET /api/worker-jobs/external/:id`)는 세션을 만든 사이트의 키로만 됩니다 — 종전에는 사이트 미기록 잡이라 어느 키로든 조회됐습니다.
 
 **발신 헤더**
 

@@ -274,7 +274,7 @@ docker logs storige-worker 2>&1 | grep "\[FLAGS\]"
 - 확인 대상은 각 플래그의 유효값(`true`/`false`)뿐입니다.
 - api 스냅샷 줄의 `FILE_RETENTION_*`·`FILE_ORPHAN_*` 값은 **env 계층 값**입니다. 관리자 저장소 설정(보존정책)이 함께 적용되므로 이 값만으로 실제 동작 모드를 판단하지 마십시오.
 - 보존정책의 실제 모드(삭제 여부·dry-run)는 `[FLAGS] api retention-effective` 줄 또는 관리자 저장소 설정 화면으로 확인합니다. 이 줄은 기동 시점 값이며, 관리자 화면에서 저장하면 런타임에 바뀝니다.
-- api 줄에 `JOB_LINK_STRICT=false JOB_FILE_SITE_STRICT=false` 가 보이면 기본 상태입니다(2026-10-03 추가, 아래 환경 변수 설정의 「잡 생성 확인 플래그」).
+- api 줄 끝에 `JOB_LINK_STRICT=false JOB_FILE_SITE_STRICT=false SESSION_JOB_OUTPUT_LOOKUP=false` 가 보이면 기본 상태입니다(2026-10-03 추가, 아래 환경 변수 설정의 「잡 생성 확인 · 잡 산출물 세션 조회 플래그」).
 
 ### 5. 서비스 중지
 
@@ -351,15 +351,16 @@ MAX_RETRY_ATTEMPTS=3
 GHOSTSCRIPT_PATH=/usr/bin/gs
 ```
 
-### 잡 생성 확인 플래그 (api, 2026-10-03)
+### 잡 생성 확인 · 잡 산출물 세션 조회 플래그 (api, 2026-10-03)
 
 | 변수 | 대상 컨테이너 | 기본값 | 설명 |
 |---|---|---|---|
 | `JOB_LINK_STRICT` | api | `false` | 잡 생성 확인 플래그. 전환은 오너 결정 뒤 별도 절차로 한다 |
 | `JOB_FILE_SITE_STRICT` | api | `false` | 잡 생성 확인 플래그. 전환은 오너 결정 뒤 별도 절차로 한다 |
+| `SESSION_JOB_OUTPUT_LOOKUP` | api | `false` | 잡 산출물 세션 조회 플래그. 전환은 오너 결정 뒤 별도 절차로 한다 |
 
 - api 전용이다. worker 에는 넣지 않는다.
-- `docker-compose.yml` api `environment` 의 매핑(`JOB_LINK_STRICT=${JOB_LINK_STRICT:-false}`, `JOB_FILE_SITE_STRICT=${JOB_FILE_SITE_STRICT:-false}`)이 있어야 적용된다. `.env` 에만 넣고 매핑이 없으면 적용되지 않는다.
+- `docker-compose.yml` api `environment` 의 매핑(`JOB_LINK_STRICT=${JOB_LINK_STRICT:-false}`, `JOB_FILE_SITE_STRICT=${JOB_FILE_SITE_STRICT:-false}`, `SESSION_JOB_OUTPUT_LOOKUP=${SESSION_JOB_OUTPUT_LOOKUP:-false}`)이 있어야 적용된다. `.env` 에만 넣고 매핑이 없으면 적용되지 않는다.
 - 현재 값은 api 기동 로그 `[FLAGS] api` 줄로 확인한다(위 「배포 후 점검」).
 
 ---
@@ -840,7 +841,7 @@ vercel logs storige-admin              # admin 런타임 로그
 
 ### 합성 내지 기대 재단 · 반복 중단 실패 기록 배포 (2026-10-03)
 
-> api·worker·editor 를 함께 바꾸는 배포다. DB 마이그레이션은 없다. 새 환경 변수는 api 잡 생성 확인 플래그 2개뿐이고 기본 `false` 다(위 「잡 생성 확인 플래그」). editor 는 master push 로 Vercel 이 배포한다(위 「Vercel 배포 파이프라인」 절로 state 확인). master push(= editor 자동 배포)와 api 배포는 파트너 사전 통지(`docs/partner-notices/PARTNER_NOTICE_WAVE2_2026-10-03.md`) 발송 뒤에 한다. 이번 api 에는 presigned complete 사이트 키 귀속(공지 §5)이 들어 있으므로, api 배포는 100p Books ACK 와 오너 배포 승인을 받은 뒤에 한다.
+> api·worker·editor 를 함께 바꾸는 배포다. DB 마이그레이션은 없다. 새 환경 변수는 api 잡 생성 확인 플래그 2개뿐이고 기본 `false` 다(위 「잡 생성 확인 · 잡 산출물 세션 조회 플래그」). editor 는 master push 로 Vercel 이 배포한다(위 「Vercel 배포 파이프라인」 절로 state 확인). master push(= editor 자동 배포)와 api 배포는 파트너 사전 통지(`docs/partner-notices/PARTNER_NOTICE_WAVE2_2026-10-03.md`) 발송 뒤에 한다. 이번 api 에는 presigned complete 사이트 키 귀속(공지 §5)이 들어 있으므로, api 배포는 100p Books ACK 와 오너 배포 승인을 받은 뒤에 한다.
 
 **순서: 사전 통지 발송 → master push(editor 자동 배포) → worker → api.** worker 는 잡에 `contentTrim`(주문 재단·도련)이 없으면 종전 경로로 처리하므로 먼저 올려도 동작이 같다. api 는 배포 뒤부터 `editSessionId` 가 있는 합성 등에 `contentTrim` 을 싣는다.
 
@@ -853,7 +854,7 @@ docker logs storige-worker 2>&1 | grep "\[FLAGS\]"   # … WORKER_TRIMBOX_SIZE_C
 
 # 2) 그다음 api — recreate 뒤 nginx 재시작 필수
 docker compose up -d --build api && docker compose restart nginx
-docker logs storige-api 2>&1 | grep "\[FLAGS\]"      # … JOB_LINK_STRICT=false JOB_FILE_SITE_STRICT=false
+docker logs storige-api 2>&1 | grep "\[FLAGS\]"      # … JOB_LINK_STRICT=false JOB_FILE_SITE_STRICT=false SESSION_JOB_OUTPUT_LOOKUP=false
 ```
 
 **확인 로그 — api 배포 뒤 첫 합성**
@@ -883,7 +884,7 @@ docker logs storige-worker 2>&1 | grep "\[JOB_STALLED\]"
 #   [JOB_STALLED] queue=<큐> name=<잡 이름> jobId=<id> queueJobId=<id> outcome=<결과> previousStatus=<상태>
 ```
 
-- 평소에는 줄이 없다. 리스너는 Bull 이 stalled 한도 초과로 실패시킨 잡만 처리하고, 프로세서가 던진 실패는 다루지 않는다(프로세서가 이미 `FAILED` 를 기록한다).
+- 평소에는 줄이 없다. 리스너는 Bull 이 stalled 한도 초과로 실패시킨 잡만 처리하고, 프로세서가 던진 실패는 다루지 않는다(프로세서가 `FAILED` 를 기록하거나, 합성 큐 잡은 재시도할 수 있는 오류이고 남은 시도가 있으면 재시도로 넘긴다 — 아래 「작업 상태 고정 · 합성 재시도 · 세션 연결 기록 배포」).
 - 대상 큐: `pdf-validation`·`pdf-conversion`(변환·render-pages)·`pdf-synthesis`·`image-cutout`.
 - `outcome` 값
 
@@ -898,6 +899,127 @@ docker logs storige-worker 2>&1 | grep "\[JOB_STALLED\]"
 | `error` | 처리 중 예외가 났다 — 같은 줄의 메시지를 확인한다(기록하지 못했으면 스위퍼 정리로 이어진다) |
 
 - 별도 플래그는 없다. 되돌리기는 해당 커밋 revert 뒤 worker 재배포다.
+
+### 작업 상태 고정 · 합성 재시도 · 세션 연결 기록 배포 (2026-10-03, Wave 3)
+
+> api·worker·editor·admin 을 함께 바꾸는 배포다. DB 마이그레이션은 없다(기존 `worker_jobs.edit_session_id` 컬럼을 쓴다). 새 환경 변수는 api `SESSION_JOB_OUTPUT_LOOKUP` 1개이고 기본 `false` 다(위 「잡 생성 확인 · 잡 산출물 세션 조회 플래그」). editor·admin 은 master push 로 Vercel 이 배포한다(위 「Vercel 배포 파이프라인」 절로 state 확인). master push(= editor·admin 자동 배포)와 api 배포는 파트너 사전 통지(`docs/partner-notices/PARTNER_NOTICE_WAVE3_2026-10-03.md`) 발송과 오너 배포 승인 뒤에 한다.
+
+**순서: 사전 통지 발송 → master push(editor·admin 자동 배포) → worker → api(+ nginx 재시작).**
+
+- worker 를 먼저 올린다. 이 순서는 필수다 — api 를 worker 보다 먼저 올리지 않는다(api 가 합성 잡에 싣는 재시도는 새 worker 의 재시도 처리와 함께 동작한다). 새 worker 는 큐 잡의 시도 정보(`attempts`)로 재시도 여부를 정한다. api 를 올리기 전에는 합성 잡에 `attempts` 가 없으므로(최대 1회) 실패를 그 자리에서 `FAILED` 로 기록하고 `[SYNTH_RETRY]` 줄을 남기지 않는다.
+- api 는 배포 뒤부터
+  - 합성 큐(`pdf-synthesis`) 잡을 `attempts: 3`, `backoff: { type: 'exponential', delay: 30000 }` 으로 넣는다(`SYNTHESIS_QUEUE_RETRY_OPTS`, 대기 30초 → 90초). 합성 잡을 넣는 5곳(`createSynthesisJob`·`createComposeMixedJob`·`createSplitSynthesisJob`·`createDuplexSplitJob`·`createSpreadSynthesisJob`)에만 붙는다.
+  - 작업 상태 보고에 상태 가드를 적용한다(종결 뒤 불변, `JOB_STALLED`·`JOB_TIMEOUT_SWEPT` 의 `FAILED` 만 `COMPLETED` 로 승격, 같은 종결 웹훅은 발신 장부 기준 1회).
+  - 편집 세션 id 를 실은 새 잡에 세션 연결을 저장한다. 이미 만든 잡의 세션 연결은 바꾸지 않는다.
+- 큐 전역 기본값(`apps/api/src/app.module.ts` 의 `defaultJobOptions`, attempts·backoff 없음)은 그대로다. 재시도 옵션은 합성 큐 잡에만 잡 단위로 싣고, 다른 큐(검증·변환·컷아웃)는 1회 처리 그대로다. 횟수·대기는 api 코드 상수이며 환경 변수로 바꾸지 않는다(worker 환경 변수 `MAX_RETRY_ATTEMPTS` 는 이 값에 쓰이지 않는다).
+- editor 의 IIFE 번들(`/embed/`, `apps/editor/dist-embed`)은 master push 로 바뀌지 않는다. IIFE `getState()` 의 쪽수 값 반영은 VPS 에서 `pnpm --filter @storige/editor build:embed:prod` 로 번들을 다시 만드는 별도 단계이며, 오너 결정 뒤에 한다.
+- admin 에는 컴포넌트 테스트(`src/**/*.test.tsx`, 첫 줄 `// @vitest-environment happy-dom`, 공용 도우미 `src/test/renderWithAntd.tsx`)가 더해진다. 테스트 파일도 Vercel 빌드(`tsc && vite build`)의 타입검사 대상이므로, master push 전 `pnpm --filter @storige/types build && pnpm --filter @storige/admin exec tsc --noEmit` 으로 확인한다.
+
+```bash
+# 0) 직전 이미지 보존(이미지 롤백용)
+docker tag storige-api:latest storige-api:rollback-pre-wave3
+docker tag storige-worker:latest storige-worker:rollback-pre-wave3
+
+cd ~/storige && git pull origin master
+
+# 1) worker 먼저 — 합성 재시도 의미론
+docker compose build worker && docker compose up -d worker
+docker logs storige-worker 2>&1 | grep "\[FLAGS\]"   # worker 플래그는 바뀌지 않는다
+
+# 2) 그다음 api — 합성 큐 attempts·상태 가드·세션 연결 저장. recreate 뒤 nginx 재시작 필수
+docker compose up -d --build api && docker compose restart nginx
+docker logs storige-api 2>&1 | grep "\[FLAGS\]"      # … JOB_LINK_STRICT=false JOB_FILE_SITE_STRICT=false SESSION_JOB_OUTPUT_LOOKUP=false
+```
+
+**확인 로그 — 합성 재시도 (worker)**
+
+```bash
+docker logs storige-worker 2>&1 | grep "\[SYNTH_RETRY\]"
+#   [SYNTH_RETRY] jobId=<id> queueJobId=<id> mode=<경로> attempt=<n>/<최대> action=<retry|fail|completed> reason=<retryable|non-retryable|exhausted|completed-marker> code=<코드|-> http=<상태|-> discard=<yes|no>
+docker exec storige-redis redis-cli ZCARD bull:pdf-synthesis:delayed   # 재시도 대기 중인 합성 잡 수
+```
+
+- 평소에는 줄이 없다. 최대 시도가 1회인 잡(api 배포 전에 큐에 들어간 잡)은 줄을 남기지 않는다.
+- `mode` 는 `merge`·`compose-mixed`·`split`·`duplex-split`·`spread`·`test-env` 다. 로그에 오류 메시지·URL·경로는 남기지 않는다.
+- `action` 값
+
+| 값 | 뜻 |
+|---|---|
+| `retry` | 재시도할 수 있는 오류이고 남은 시도가 있다. API 잡은 `PROCESSING` 그대로이고 웹훅은 없다. Bull 이 30초(두 번째는 90초) 뒤 다시 처리한다 |
+| `fail` | API 잡을 `FAILED` 로 기록했다(웹훅 대상이면 `synthesis.failed` 1회). `reason=non-retryable` 은 입력 오류, `exhausted` 는 마지막 시도의 실패다. `discard=yes` 면 남은 시도를 쓰지 않고 끝냈다 |
+| `completed` | 완료 마커가 있어 `FAILED` 대신 저장된 `COMPLETED` 를 다시 보고했다(같은 때 `[idempotent]` 줄도 남는다) |
+
+- 재시도 판정(`apps/worker/src/processors/synthesis-retry.ts`)
+
+| 오류 | 재시도 |
+|---|---|
+| 워커 오류 코드 `FILE_DOWNLOAD_FAILED`·`SPLIT_VERIFICATION_FAILED`·`EMPTY_OUTPUT_FILE`·`SERVICE_UNAVAILABLE`·`INTERNAL_ERROR` | 한다 |
+| 그 밖의 워커 오류 코드(쪽수 불일치·쪽 구분 값·세션/파일 없음·펼침면 스냅샷 등 입력 오류) | 하지 않는다(즉시 `FAILED`) |
+| HTTP 응답 5xx·408·425·429 | 한다 |
+| HTTP 응답 그 밖의 4xx | 하지 않는다(즉시 `FAILED`) |
+| 응답 없는 네트워크 오류, 파일·qpdf·gs 처리 오류, 그 밖의 오류 | 한다 |
+
+- 워커 오류 코드가 붙은 오류는 코드로 판정하고, 코드가 없는 오류만 HTTP 응답 상태로 판정한다.
+- 펼침면 합성의 세션·파일 조회는 404 등 4xx(408·425·429 제외)면 `SESSION_NOT_FOUND`·`FILE_NOT_FOUND`(재시도 없음), 408·425·429·5xx·무응답이면 `SERVICE_UNAVAILABLE`(재시도)로 기록한다(`apps/worker/src/services/pdf-synthesizer.service.ts` `lookupFailureOrNull`).
+- 그 밖의 줄: `[SYNTH_RETRY] … discard=unavailable` 은 남은 시도를 버리는 호출을 쓸 수 없는 잡, `[SYNTH_RETRY] … settle-fallback=yes` 는 판정 중 예외가 나서 `FAILED` 로 기록했다는 뜻이다.
+- 처리 중 반복 중단(stalled 한도 초과)은 남은 시도와 관계없이 그 시점에 `FAILED`(`errorCode: 'JOB_STALLED'`)다. `[JOB_STALLED]` 줄은 위 절의 표와 같다. 중간 시도의 실패는 이 리스너가 다루지 않는다.
+- 합성 큐는 한 번에 1건씩 처리한다(`@Process('synthesize-pdf')`, 동시성 기본 1). 재처리 시간만큼 뒤 합성 잡의 시작이 늦어질 수 있다. 재시도 대기(delayed) 중인 잡은 처리 슬롯을 쓰지 않는다.
+
+**확인 로그 — 작업 상태 · 세션 연결 · 웹훅 발신 장부 (api)**
+
+```bash
+docker logs storige-api 2>&1 | grep -E "\[job-status\]|\[job-link\] unlinked|\[job-callback\]"
+#   [job-status] blocked job=<id> from=<상태> to=<상태>
+#   [job-status] repeat job=<id> status=<상태> callback=<결과>
+#   [job-status] promoted job=<id> from=FAILED(<JOB_STALLED|JOB_TIMEOUT_SWEPT>) to=COMPLETED
+#   [job-link] unlinked route=<route> reason=session-missing
+#   [job-callback] ledger unavailable op=<연산> reason=<사유>
+```
+
+| 줄 | 뜻 |
+|---|---|
+| `[job-status] blocked` | 종결(`COMPLETED`·`FIXABLE`·`FAILED`)된 잡에 다른 상태 보고가 왔다. 쓰지 않고 현재 잡을 200 으로 돌려준다(워커 PATCH 재시도 없음). `from`·`to` 는 알려진 상태값만 남기고, 그 밖은 `other`, 상태 없는 보고는 `-` 다 |
+| `[job-status] repeat` | 같은 종결 상태를 다시 받았다. DB 는 쓰지 않고(처음 종결 값 유지) 종결 웹훅만 발신 장부 기준으로 처리했다. `callback` 은 `none`(웹훅 대상 아님)·`sent`·`failed`·`skipped-sent`(앞선 발신 성공 기록 있음)·`skipped-in-flight`(발신 진행 중) |
+| `[job-status] promoted` | `JOB_STALLED`·`JOB_TIMEOUT_SWEPT` 로 기록된 잡이 뒤늦게 처리를 마쳐 `COMPLETED` 로 바꿨다(오류 필드 비움, 완료 후속 처리·웹훅 진행). 워커 키 또는 api 내부 호출의 보고만 해당한다 |
+| `[job-link] unlinked` | 요청한 편집 세션 행이 없어 세션 연결 없이 잡을 저장했다(잡 생성은 계속). `route` 는 `validate`·`convert`·`render-pages`·`synthesize`·`compose-mixed`·`split-synthesize`·`duplex-split`·`spread-synthesize` 다. 세션 id 는 남기지 않는다 |
+| `[job-callback] ledger unavailable` | 발신 장부(Redis)를 쓰지 못했다(클라이언트 없음·오류·연산당 제한 시간 400ms 초과). `op` 는 `client`·`claim`·`markSent`·`release`, `reason` 은 `no-client`·`error`·`timeout` 이다. 발신 전 선점(`claim`, 그 단계의 `client`)이면 웹훅은 장부 없이 발신한다. `markSent`·`release` 는 발신을 마친 뒤의 기록이라 발신 결과는 같고, 그 결과가 장부에 남지 않을 수 있다(발신 중 표시는 60초 뒤 만료되고, 그 뒤 같은 종결 보고가 오면 다시 판정한다) |
+
+- 발신 장부 키는 `storige:job-callback:<jobId>:<상태>` 다. 발신 중 표시는 60초, 발신 완료 기록은 7일 뒤 만료된다. 장부 내용은 API 응답에 실리지 않는다.
+- `blocked`·`repeat` 는 워커 재배달·스위퍼 정리와 겹칠 때 나올 수 있다. `promoted`·`unlinked`·`ledger unavailable` 은 평소 거의 없다.
+- 세션 연결 저장 확인(읽기 전용): api 배포 뒤 생성된 잡 중 편집 세션 id 를 실은 잡에 값이 남는다. 이전 행은 바뀌지 않는다.
+
+```bash
+source ~/storige/.env && docker exec storige-mariadb mariadb -ustorige -p"$DATABASE_PASSWORD" storige \
+  -e "SELECT job_type, COUNT(*) FROM worker_jobs WHERE edit_session_id IS NOT NULL AND created_at >= '<api 배포 시각(UTC)>' GROUP BY job_type;"
+```
+
+**롤백**
+
+1. api 를 먼저 되돌린다(합성 큐 `attempts` 를 넣는 변경 제거 → 새 합성 잡은 1회 처리).
+   - api 를 Wave 3 이전 코드로 되돌릴 때는(revert 빌드·이미지 모두) 오너 승인 뒤 운영 정리 절차를 먼저 수행한다.
+   - Wave 3 커밋을 revert 한 checkout(`~/storige`)에서 api 만 다시 빌드한다. recreate 뒤 nginx 재시작은 같다. 이미지로 되돌리는 경우는 배포 0단계에서 보존한 `storige-api:rollback-pre-wave3` 을 `latest` 로 다시 지정하고 `docker compose up -d --no-build api` 뒤 nginx 를 재시작한다.
+   - revert 커밋을 master 에 push 하면 그 커밋에 든 editor·admin 변경도 Vercel 이 다시 배포한다(4단계).
+
+```bash
+cd ~/storige && git revert <Wave 3 커밋> --no-edit
+docker compose up -d --build api && docker compose restart nginx
+```
+
+2. 합성 큐에 `attempts` 가 1보다 큰 잡이 남아 있으면 소진을 확인한 뒤 worker 를 되돌린다. 남은 잡은 그동안 Wave 3 worker 가 처리한다.
+
+```bash
+docker exec storige-redis redis-cli ZCARD bull:pdf-synthesis:delayed   # 재시도 대기
+docker exec storige-redis redis-cli LLEN bull:pdf-synthesis:active     # 처리 중
+docker exec storige-redis redis-cli LLEN bull:pdf-synthesis:wait       # 대기(api 를 되돌리기 전에 들어간 잡 포함)
+# 0 이 아니면 큐 잡 id 를 보고 opts 의 attempts 를 확인한다
+docker exec storige-redis redis-cli ZRANGE bull:pdf-synthesis:delayed 0 -1
+docker exec storige-redis redis-cli LRANGE bull:pdf-synthesis:active 0 -1
+docker exec storige-redis redis-cli HGET bull:pdf-synthesis:<queueJobId> opts   # … "attempts":3 …
+```
+
+3. worker 되돌리기: 1단계에서 되돌린 같은 checkout 에서 `docker compose build worker && docker compose up -d worker`. 1단계를 이미지로 되돌렸다면 worker 도 `storige-worker:rollback-pre-wave3` 을 `latest` 로 다시 지정하고 `docker compose up -d --no-build worker` 로 올린다.
+4. editor·admin: Vercel 에서 직전 배포를 다시 승격하거나, 커밋 revert 뒤 master push. IIFE 번들을 다시 만들었다면 VPS 에서 직전 커밋으로 `build:embed:prod` 를 다시 실행한다.
+- DB 마이그레이션이 없으므로 스키마 되돌리기는 없다. `SESSION_JOB_OUTPUT_LOOKUP` 은 기본 `false` 그대로 둔다.
 
 ---
 
@@ -956,10 +1078,12 @@ curl -X POST http://localhost:4000/api/worker-jobs/validate \
 
 **잡이 `PROCESSING` 에 오래 머물 때 (2026-10-03)**
 
-- 처리 중 워커가 중단된 잡(워커 재기동·잠금 만료 등)은 Bull 이 한 번 다시 처리한다(`maxStalledCount: 1`, `apps/worker/src/app.module.ts`). 두 번째로 중단되면 Bull 이 큐 잡을 실패시키고, 워커가 API 잡을 `FAILED`(`errorCode: 'JOB_STALLED'`)로 기록한다. `docker logs storige-worker 2>&1 | grep "\[JOB_STALLED\]"` 의 `outcome=` 로 결과를 본다(값 표는 위 「합성 내지 기대 재단 · 반복 중단 실패 기록 배포」).
+- 처리 중 워커가 중단된 잡(워커 재기동·잠금 만료 등)은 Bull 이 한 번 다시 처리한다(`maxStalledCount: 1`, `apps/worker/src/app.module.ts`). 두 번째로 중단되면 Bull 이 큐 잡을 실패시키고(합성 큐 잡은 남은 시도와 관계없이), 워커가 API 잡을 `FAILED`(`errorCode: 'JOB_STALLED'`)로 기록한다. `docker logs storige-worker 2>&1 | grep "\[JOB_STALLED\]"` 의 `outcome=` 로 결과를 본다(값 표는 위 「합성 내지 기대 재단 · 반복 중단 실패 기록 배포」).
 - 워커는 기록 전에 잡 상태를 조회해 `PENDING`·`PROCESSING` 일 때만 바꾼다. 합성 완료 마커가 남은 잡은 `FAILED` 대신 `COMPLETED` 를 다시 보고한다.
 - 기록하지 못했으면(`outcome=statusUnavailable`·`patchFailed` 등, API 조회·기록 실패) api 스위퍼(10분 주기)가 생성 2시간 뒤 `FAILED`(`errorCode: 'JOB_TIMEOUT_SWEPT'`)로 정리한다(`apps/api/src/worker-jobs/worker-jobs-sweeper.service.ts`).
 - 두 코드 모두 같은 요청으로 새 작업을 만들면 된다.
+- 합성 잡은 재시도 대기 중에도 `PROCESSING` 이다(대기 30초·90초 + 재처리 시간, 앞선 합성 잡이 있으면 큐 대기 포함). `[SYNTH_RETRY] action=retry` 줄과 `docker exec storige-redis redis-cli ZCARD bull:pdf-synthesis:delayed` 로 확인한다(위 「작업 상태 고정 · 합성 재시도 · 세션 연결 기록 배포」).
+- `JOB_STALLED`·`JOB_TIMEOUT_SWEPT` 로 기록된 잡에 워커가 뒤늦게 `COMPLETED` 를 보고하면 api 가 `COMPLETED` 로 바꾼다(`[job-status] promoted`). 그 밖의 늦은 보고는 반영하지 않는다(다른 상태는 `[job-status] blocked`, 같은 상태는 `[job-status] repeat`).
 
 ### 5. 디스크 공간 부족
 
