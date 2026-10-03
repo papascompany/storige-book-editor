@@ -199,7 +199,7 @@ describe('WorkerJobsService.createStaffComposeFromSession — 내지 기대 재�
 });
 
 describe('WorkerJobsService.updateJobStatus — 알림 없는 관리자 잡', () => {
-  let workerJobRepository: { findOne: jest.Mock; save: jest.Mock; find: jest.Mock };
+  let workerJobRepository: { findOne: jest.Mock; save: jest.Mock; find: jest.Mock; update: jest.Mock };
   let editSessionRepository: { findOne: jest.Mock; update: jest.Mock };
   let webhookService: { sendCallback: jest.Mock; hasV2Config: jest.Mock };
 
@@ -224,6 +224,7 @@ describe('WorkerJobsService.updateJobStatus — 알림 없는 관리자 잡', ()
       findOne: jest.fn(async () => ({ ...job })),
       save: jest.fn(async (e: unknown) => e),
       find: jest.fn(async () => siblings),
+      update: jest.fn(async () => ({ affected: 1 })), // 상태 쓰기는 조건부 UPDATE
     };
     editSessionRepository = {
       findOne: jest.fn(async () => ({ ...sessionA, workerStatus: WorkerStatus.VALIDATED })),
@@ -255,7 +256,7 @@ describe('WorkerJobsService.updateJobStatus — 알림 없는 관리자 잡', ()
       expect(webhookService.hasV2Config).not.toHaveBeenCalled();
       expect(editSessionRepository.findOne).not.toHaveBeenCalled();
       expect(editSessionRepository.update).not.toHaveBeenCalled();
-      expect(workerJobRepository.save).toHaveBeenCalledTimes(1); // 잡 자체 상태는 갱신
+      expect(workerJobRepository.update).toHaveBeenCalledTimes(1); // 잡 자체 상태는 갱신
     },
   );
 
@@ -265,10 +266,10 @@ describe('WorkerJobsService.updateJobStatus — 알림 없는 관리자 잡', ()
     expect(webhookService.sendCallback).not.toHaveBeenCalled();
   });
 
-  it('notifyPartner=true → 종전 동작(세션 workerStatus 갱신 + 콜백 발신)', async () => {
+  it('notifyPartner=true → 콜백 발신, 세션 workerStatus 는 그대로(합성 잡은 세션 상태 동기화 대상 아님)', async () => {
     const service = make(staffJob(true), [staffJob(true, { status: WorkerJobStatus.COMPLETED })]);
     await service.updateJobStatus('job-staff', { status: WorkerJobStatus.COMPLETED });
-    expect(editSessionRepository.update).toHaveBeenCalledWith('sess-1', { workerStatus: WorkerStatus.VALIDATED });
+    expect(editSessionRepository.update).not.toHaveBeenCalled();
     expect(webhookService.sendCallback).toHaveBeenCalled();
     const events = webhookService.sendCallback.mock.calls.map((c) => (c[1] as { event: string }).event);
     expect(events).toContain('synthesis.completed');
@@ -280,7 +281,8 @@ describe('WorkerJobsService.updateJobStatus — 알림 없는 관리자 잡', ()
       jobType: WorkerJobType.VALIDATE,
       editSessionId: 'sess-1',
       siteId: SITE,
-      options: { fileType: 'content' },
+      // 세션 상태 동기화 표지가 있는 검증 잡(isSessionStatusSyncJob) — 동기화 경로의 형제 잡 판정을 고정한다.
+      options: { fileType: 'content', sessionStatusSync: true },
       status: WorkerJobStatus.PROCESSING,
     };
     const silentPending = staffJob(false, { status: WorkerJobStatus.PENDING });

@@ -30,6 +30,7 @@ describe('WorkerJobsService — S2-5 test env 잡 인프라 (isTest 스탬프·�
     save: jest.Mock;
     findOne: jest.Mock;
     find: jest.Mock;
+    update: jest.Mock;
   };
   let editSessionRepository: { findOne: jest.Mock; update: jest.Mock };
   let validationQueue: { add: jest.Mock };
@@ -60,6 +61,7 @@ describe('WorkerJobsService — S2-5 test env 잡 인프라 (isTest 스탬프·�
       save: jest.fn(async (x) => ({ id: 'job-1', ...x })),
       findOne: jest.fn(async () => null),
       find: jest.fn(async () => []),
+      update: jest.fn(async () => ({ affected: 1 })), // 상태 쓰기는 조건부 UPDATE
     };
     editSessionRepository = {
       findOne: jest.fn(async () => ({ ...session })),

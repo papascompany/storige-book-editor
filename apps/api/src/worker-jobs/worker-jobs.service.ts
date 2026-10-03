@@ -13,8 +13,8 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { InjectQueue } from '@nestjs/bull';
-import { Repository, MoreThan, In } from 'typeorm';
-import { Queue } from 'bull';
+import { Repository, MoreThan, In, FindOptionsWhere } from 'typeorm';
+import { Queue, JobOptions } from 'bull';
 import {
   signOutputUrl,
   SignedOutputUrl,
@@ -59,7 +59,15 @@ import {
   isRemoteUrlPublic,
 } from '../common/helpers/ssrf.helper';
 import { FilesService } from '../files/files.service';
-import { WebhookService } from '../webhook/webhook.service';
+import { WebhookService, WebhookSendReceipt } from '../webhook/webhook.service';
+import {
+  IN_FLIGHT_JOB_STATUSES,
+  SYSTEM_FAILURE_ERROR_CODES,
+  buildJobStatusPatch,
+  describeJobStatusForLog,
+  planJobStatusTransition,
+} from './job-status-transition';
+import { CallbackLedgerRedis, JobCallbackLedger } from './job-callback-ledger';
 // P3b 멀티테넌시 — 사이트 운영자 조회 스코핑(목록/통계 applySiteScope, 상세 assertSiteInScope).
 import {
   applySiteScope,
@@ -125,6 +133,49 @@ export function isStaffSilentJob(job: { options?: unknown } | null | undefined):
   if (typeof marker !== 'object' || marker === null) return false;
   return (marker as { notifyPartner?: unknown }).notifyPartner !== true;
 }
+
+/**
+ * 잡 상태 보고가 편집 세션 workerStatus 갱신·session.* 웹훅으로 이어지는 잡인가.
+ * 검증(VALIDATE) 잡이면서 options.sessionStatusSync === true 일 때만 true. 이 표지를 다는 생성 경로는
+ * 지금 없으므로, 세션에 연결된 잡의 상태 보고는 잡 자체만 갱신한다.
+ */
+export function isSessionStatusSyncJob(
+  job: { jobType?: unknown; options?: unknown } | null | undefined,
+): boolean {
+  if (!job || job.jobType !== WorkerJobType.VALIDATE) return false;
+  const opts = job.options;
+  if (typeof opts !== 'object' || opts === null) return false;
+  return (opts as { sessionStatusSync?: unknown }).sessionStatusSync === true;
+}
+
+/**
+ * 편집 세션 FK 위반(참조하는 세션 행 없음)인가. QueryFailedError 는 드라이버 오류의 code·errno 를 복사한다.
+ * MySQL·MariaDB: ER_NO_REFERENCED_ROW_2(1452)·ER_NO_REFERENCED_ROW(1216), PostgreSQL: 23503,
+ * SQLite: SQLITE_CONSTRAINT_FOREIGNKEY.
+ */
+export function isForeignKeyViolation(err: unknown): boolean {
+  if (typeof err !== 'object' || err === null) return false;
+  const e = err as { code?: unknown; errno?: unknown; message?: unknown };
+  return (
+    e.code === 'ER_NO_REFERENCED_ROW_2' ||
+    e.code === 'ER_NO_REFERENCED_ROW' ||
+    e.code === '23503' ||
+    e.code === 'SQLITE_CONSTRAINT_FOREIGNKEY' ||
+    e.errno === 1452 ||
+    e.errno === 1216 ||
+    (typeof e.message === 'string' && e.message.includes('FOREIGN KEY constraint failed'))
+  );
+}
+
+/**
+ * 합성 큐(pdf-synthesis) 잡의 Bull 재시도 옵션. 합성 잡을 넣는 5곳(createSynthesisJob·createComposeMixedJob·
+ * createSplitSynthesisJob·createDuplexSplitJob·createSpreadSynthesisJob)에만 붙인다. 다른 큐는 Bull 기본값(1회).
+ * 최대 3회 처리, 대기 간격 (2^n−1)×30000ms(n=실패 횟수) → 실제 30초, 90초. 재시도 여부·최종 FAILED 판정은 워커 몫.
+ */
+export const SYNTHESIS_QUEUE_RETRY_OPTS: Pick<JobOptions, 'attempts' | 'backoff'> = {
+  attempts: 3,
+  backoff: { type: 'exponential', delay: 30_000 },
+};
 
 /**
  * compose-mixed 자동조립 호출자 컨텍스트.
@@ -252,6 +303,18 @@ export interface EditSessionLinkOptions {
   strictUnverified?: boolean;
 }
 
+/**
+ * 잡 생성 선택 인자 — 세션 연결 컬럼(worker_jobs.edit_session_id) 저장.
+ * 컨트롤러가 assertEditSessionLink 결과로 정한다.
+ */
+export interface JobSessionLinkOptions {
+  /**
+   * false 면 edit_session_id 를 저장하지 않는다(호출자가 세션 연결을 증명하지 못한 경우). 잡 options 의 세션 표지
+   * (compose-mixed options.editSessionId 등)는 그대로 싣는다. 기본 true.
+   */
+  storeSessionLink?: boolean;
+}
+
 /** observeJobInputFileSites 선택 인자 */
 export interface JobInputFileCheckOptions {
   /** true 면 사이트가 다른 파일에 403 FILE_SITE_MISMATCH(JOB_FILE_SITE_STRICT). 기본 false = 관측만. */
@@ -261,7 +324,7 @@ export interface JobInputFileCheckOptions {
 }
 
 /** createValidationJob internal 인자(공개 DTO 아님) */
-export interface ValidationJobInternalOptions {
+export interface ValidationJobInternalOptions extends JobSessionLinkOptions {
   /**
    * `dto.siteId` 는 **잡 테넌트 스탬프(job.siteId)로만** 쓰고 site default 머지(mergeSiteWorkerDefaults)는
    * 건너뛴다. 잡에 저장되고 워커로 가는 orderOptions 는 요청 그대로다. 미전달=기존 동작(dto.siteId 로 머지+스탬프).
@@ -290,9 +353,24 @@ export function isSiteWebhookOff(job: { options?: unknown } | null | undefined):
   return (opts as { siteWebhook?: unknown }).siteWebhook === false;
 }
 
+/** 종결 웹훅 발신 결과(로그용) */
+type JobCallbackOutcome = 'none' | 'sent' | 'failed' | 'skipped-sent' | 'skipped-in-flight';
+
+/** updateJobStatus 의 상태 쓰기 결과 */
+type JobStatusWriteOutcome = 'applied' | 'promoted' | 'repeat' | 'blocked' | 'noop';
+
 @Injectable()
 export class WorkerJobsService implements OnModuleInit {
   private readonly logger = new Logger(WorkerJobsService.name);
+
+  /**
+   * 종결 웹훅 발신 장부(Redis) — 합성 큐의 Bull client 를 재사용한다(생성자 인자 불변).
+   * client 가 없거나 응답이 늦으면 장부 없이 발신한다(fail-open).
+   */
+  private readonly callbackLedger = new JobCallbackLedger(
+    () => (this.synthesisQueue as unknown as { client?: CallbackLedgerRedis } | undefined)?.client,
+    this.logger,
+  );
 
   constructor(
     @InjectRepository(WorkerJob)
@@ -612,6 +690,9 @@ export class WorkerJobsService implements OnModuleInit {
    *     - 그 밖의 호출자(무인증 등)는 요청을 그대로 진행하고 관측 로그만 남긴다.
    *       opts.strictUnverified(JOB_LINK_STRICT)면 그 밖의 호출자도 같은 404 이고, 세션 조회 오류는 전파한다.
    *  로그는 라우트·호출자 유형·세션 사이트만 남긴다(세션 id·토큰·회원 번호는 기록하지 않는다).
+   *
+   * 반환: true = 연결 확인(staff·내부 워커 키 포함), false = 확인 없이 진행(3의 관측 통과·조회 오류 관측).
+   *  컨트롤러는 false 면 잡에 세션 연결 컬럼을 저장하지 않는다(JobSessionLinkOptions.storeSessionLink).
    */
   async assertEditSessionLink(
     editSessionId: string,
@@ -619,8 +700,8 @@ export class WorkerJobsService implements OnModuleInit {
     guestToken: string | undefined,
     route: string,
     opts: EditSessionLinkOptions = {},
-  ): Promise<void> {
-    if (callers.some((c) => c.kind === 'staff' || c.kind === 'internalWorkerKey')) return;
+  ): Promise<boolean> {
+    if (callers.some((c) => c.kind === 'staff' || c.kind === 'internalWorkerKey')) return true;
 
     const enforced =
       opts.strictUnverified === true ||
@@ -636,17 +717,17 @@ export class WorkerJobsService implements OnModuleInit {
     } catch (err) {
       if (enforced) throw err;
       this.logger.warn(`[job-link] check-error route=${route} caller=${kinds}`);
-      return;
+      return false;
     }
 
     if (session && callers.some((c) => callerProvesLink(c, session as SessionLinkRow, guestToken))) {
-      return;
+      return true;
     }
 
     const site = session?.siteId ?? '-';
     if (!enforced) {
       this.logger.log(`[job-link] would-deny route=${route} caller=${kinds} site=${site}`);
-      return;
+      return false;
     }
     this.logger.log(`[job-link] denied route=${route} caller=${kinds} site=${site}`);
     throw new NotFoundException({
@@ -757,7 +838,8 @@ export class WorkerJobsService implements OnModuleInit {
     const job = this.workerJobRepository.create({
       jobType: WorkerJobType.VALIDATE,
       status: WorkerJobStatus.PENDING,
-      editSessionId: createValidationJobDto.editSessionId || null,
+      editSessionId:
+        internal?.storeSessionLink === false ? null : createValidationJobDto.editSessionId || null,
       fileId,
       inputFileUrl: fileUrl,
       siteId: createValidationJobDto.siteId || null, // Phase C
@@ -780,7 +862,7 @@ export class WorkerJobsService implements OnModuleInit {
       ),
     });
 
-    const savedJob = await this.workerJobRepository.save(job);
+    const savedJob = await this.saveNewJob(job, 'validate');
 
     // Add to Bull queue
     // R-44(2026-07-21): raw DTO 가 아니라 **머지본**을 싣는다 — 종전엔 site default
@@ -900,18 +982,15 @@ export class WorkerJobsService implements OnModuleInit {
     const job = this.workerJobRepository.create({
       jobType: WorkerJobType.CONVERT,
       status: WorkerJobStatus.PENDING,
-      // P4 — 임포지션 결과 콜백이 세션을 역참조하도록 edit_session_id 세팅(relation 경유).
-      //   editSessionId 컬럼은 insert:false 라 relation 객체로만 설정 가능. 미지정이면 null(기존 convert 동작 보존).
-      editSession: createConversionJobDto.editSessionId
-        ? ({ id: createConversionJobDto.editSessionId } as EditSessionEntity)
-        : null,
+      // P4 — 임포지션 결과 콜백이 세션을 역참조하도록 edit_session_id 세팅. 미지정이면 null.
+      editSessionId: createConversionJobDto.editSessionId || null,
       fileId,
       inputFileUrl: fileUrl,
       siteId: createConversionJobDto.siteId || null, // Phase C
       options: convertOptions,
     });
 
-    const savedJob = await this.workerJobRepository.save(job);
+    const savedJob = await this.saveNewJob(job, 'convert');
 
     await this.conversionQueue.add('convert-pdf', {
       jobId: savedJob.id,
@@ -1151,7 +1230,10 @@ export class WorkerJobsService implements OnModuleInit {
    * ⚠️ 표시 전용 — 최종 인쇄엔 미반영(워커 content.pdf 는 첨부 원본 그대로).
    * pdf-conversion 큐 공유(render-pdf-pages 잡명).
    */
-  async createRenderPagesJob(dto: CreateRenderPagesJobDto): Promise<WorkerJob> {
+  async createRenderPagesJob(
+    dto: CreateRenderPagesJobDto,
+    linkOpts?: JobSessionLinkOptions,
+  ): Promise<WorkerJob> {
     if (!dto.fileId && !dto.fileUrl) {
       throw new BadRequestException({
         code: 'FILE_REQUIRED',
@@ -1176,14 +1258,14 @@ export class WorkerJobsService implements OnModuleInit {
     const job = this.workerJobRepository.create({
       jobType: WorkerJobType.RENDER_PAGES,
       status: WorkerJobStatus.PENDING,
-      editSessionId: dto.editSessionId || null,
+      editSessionId: linkOpts?.storeSessionLink === false ? null : dto.editSessionId || null,
       fileId: fileId || null,
       inputFileUrl: fileUrl,
       siteId,
       options: { fileId, fileUrl, pageCount: dto.pageCount },
     });
 
-    const savedJob = await this.workerJobRepository.save(job);
+    const savedJob = await this.saveNewJob(job, 'render-pages');
 
     await this.conversionQueue.add('render-pdf-pages', {
       jobId: savedJob.id,
@@ -1594,7 +1676,7 @@ export class WorkerJobsService implements OnModuleInit {
       ),
     });
 
-    const savedJob = await this.workerJobRepository.save(job);
+    const savedJob = await this.saveNewJob(job, 'synthesize');
 
     // 우선순위 설정
     const jobOptions: { priority?: number } = {};
@@ -1627,7 +1709,7 @@ export class WorkerJobsService implements OnModuleInit {
           ? { isTest: true as const }
           : {}),
       },
-      jobOptions,
+      { ...jobOptions, ...SYNTHESIS_QUEUE_RETRY_OPTS },
     );
 
     this.logger.log(
@@ -2173,6 +2255,8 @@ export class WorkerJobsService implements OnModuleInit {
      * (observeJobInputFileSites). 자동조립·무인증 호출은 대상이 아니다. 없으면 확인하지 않는다.
      */
     inputFileCheck?: { strict: boolean },
+    /** 세션 연결 컬럼 저장(컨트롤러 전용). 없으면 dto.editSessionId 를 저장한다. */
+    linkOpts?: JobSessionLinkOptions,
   ): Promise<WorkerJob> {
     // ── 분기 게이트(최상단) — opt-in 이 아니면 rawDto 를 그대로 흘려보낸다.
     const assembledFromSession = rawDto.assembleFromSession === true;
@@ -2284,7 +2368,8 @@ export class WorkerJobsService implements OnModuleInit {
     const job = this.workerJobRepository.create({
       jobType: WorkerJobType.SYNTHESIZE,
       status: WorkerJobStatus.PENDING,
-      editSessionId: dto.editSessionId || null,
+      // 세션 연결 컬럼 — 연결을 확인하지 못한 수동 경로(linkOpts.storeSessionLink=false)는 비워 두고 options 표지만 싣는다.
+      editSessionId: linkOpts?.storeSessionLink === false ? null : dto.editSessionId || null,
       inputFileUrl: dto.coverUrl || dto.contentPdfUrl || null,
       // [테넌트 스탬프 위조 차단 2026-08-13] `dto.siteId || null` 직접 대입 금지 —
       // 이 라우트는 @Public 이라 body.siteId 가 무검증 입력이다(resolveComposeMixedSiteId 주석).
@@ -2331,7 +2416,7 @@ export class WorkerJobsService implements OnModuleInit {
         dto.partnerEnv,
       ),
     });
-    const savedJob = await this.workerJobRepository.save(job);
+    const savedJob = await this.saveNewJob(job, 'compose-mixed');
 
     await this.synthesisQueue.add(
       'synthesize-pdf',
@@ -2363,7 +2448,7 @@ export class WorkerJobsService implements OnModuleInit {
         // handleSynthesis 가 job.data.isTest===true → handleTestSynthesis(compose-mixed 분기).
         ...(dto.partnerEnv === PARTNER_ENV_TEST ? { isTest: true as const } : {}),
       },
-      { priority: 5 },
+      { priority: 5, ...SYNTHESIS_QUEUE_RETRY_OPTS },
     );
 
     this.logger.log(
@@ -2566,7 +2651,7 @@ export class WorkerJobsService implements OnModuleInit {
     // ★ Race condition 방어: unique violation 시 기존 job 반환
     let savedJob: WorkerJob;
     try {
-      savedJob = await this.workerJobRepository.save(job);
+      savedJob = await this.saveNewJob(job, 'split-synthesize');
     } catch (error: any) {
       if (this.isUniqueViolation(error)) {
         const existing = await this.workerJobRepository.findOne({
@@ -2612,7 +2697,7 @@ export class WorkerJobsService implements OnModuleInit {
         // (external-site-stamp spec "큐 페이로드 불변" 계약 준용).
         ...(dto.partnerEnv === PARTNER_ENV_TEST ? { isTest: true as const } : {}),
       },
-      jobOptions,
+      { ...jobOptions, ...SYNTHESIS_QUEUE_RETRY_OPTS },
     );
 
     this.logger.log(
@@ -2728,7 +2813,7 @@ export class WorkerJobsService implements OnModuleInit {
     // Race condition 방어 (split/spread 와 동일)
     let savedJob: WorkerJob;
     try {
-      savedJob = await this.workerJobRepository.save(job);
+      savedJob = await this.saveNewJob(job, 'duplex-split');
     } catch (error: any) {
       if (this.isUniqueViolation(error)) {
         const existing = await this.workerJobRepository.findOne({
@@ -2768,7 +2853,7 @@ export class WorkerJobsService implements OnModuleInit {
         totalExpectedPages,
         callbackUrl: dto.callbackUrl,
       },
-      jobOptions,
+      { ...jobOptions, ...SYNTHESIS_QUEUE_RETRY_OPTS },
     );
 
     this.logger.log(
@@ -2897,7 +2982,7 @@ export class WorkerJobsService implements OnModuleInit {
     // Race condition 방어
     let savedJob: WorkerJob;
     try {
-      savedJob = await this.workerJobRepository.save(job);
+      savedJob = await this.saveNewJob(job, 'spread-synthesize');
     } catch (error: any) {
       if (this.isUniqueViolation(error)) {
         const existing = await this.workerJobRepository.findOne({
@@ -2940,7 +3025,7 @@ export class WorkerJobsService implements OnModuleInit {
         alsoGenerateMerged: dto.alsoGenerateMerged ?? false,
         callbackUrl: dto.callbackUrl,
       },
-      jobOptions,
+      { ...jobOptions, ...SYNTHESIS_QUEUE_RETRY_OPTS },
     );
 
     this.logger.log(
@@ -2966,6 +3051,22 @@ export class WorkerJobsService implements OnModuleInit {
       code === 1062 ||
       error.message?.includes('UNIQUE constraint failed')
     );
+  }
+
+  /**
+   * 새 잡을 저장한다. 편집 세션 FK 위반(세션 행 없음)이면 세션 연결 없이 1회 다시 저장한다.
+   * 로그는 라우트만 남긴다(세션 id 미기록). 그 밖의 오류와 두 번째 저장 오류는 그대로 던진다.
+   */
+  private async saveNewJob(job: WorkerJob, route: string): Promise<WorkerJob> {
+    try {
+      return await this.workerJobRepository.save(job);
+    } catch (err: unknown) {
+      if ((!job.editSessionId && !job.editSession) || !isForeignKeyViolation(err)) throw err;
+      this.logger.warn(`[job-link] unlinked route=${route} reason=session-missing`);
+      job.editSessionId = null;
+      job.editSession = null;
+      return await this.workerJobRepository.save(job);
+    }
   }
 
   // ============================================================================
@@ -3173,33 +3274,44 @@ export class WorkerJobsService implements OnModuleInit {
     };
   }
 
+  /**
+   * 잡 상태 보고(워커 콜백·스위퍼). 상태 쓰기는 조건부 UPDATE 다(applyJobStatusTransition).
+   *  - 진행 중(PENDING·PROCESSING) 잡: 요청대로 갱신하고 아래 후속 처리를 한다.
+   *  - 같은 종결 상태 재수신: 잡 행·세션 workerStatus 쓰기 없음(처음 종결 값 유지). 종결 웹훅은 발신 장부 기준으로
+   *    처리하고, 결과 파일 등록·도서 최종화 전진·내지 임포지션 되연결(runJobSettledFollowUps)은 이미 처리된 결과를
+   *    건너뛰며 다시 실행한다.
+   *  - 시스템 실패(FAILED + JOB_STALLED·JOB_TIMEOUT_SWEPT) 잡의 COMPLETED: caller 가 없거나 worker 역할이면
+   *    COMPLETED 로 승격(오류 필드 비움)하고 COMPLETED 후속 처리를 한다.
+   *  - 그 밖의 종결 잡 전이: 쓰지 않고 현재 잡을 200 으로 돌려준다(로그 1줄). 워커 PATCH 재시도 루프를 만들지 않는다.
+   */
   async updateJobStatus(
     id: string,
     updateJobStatusDto: UpdateJobStatusDto,
     caller?: { siteId?: string; role?: string },
   ): Promise<WorkerJob> {
-    const job = await this.workerJobRepository.findOne({
-      where: { id },
-      relations: ['editSession'],
-    });
+    // 세션 관계는 읽지 않는다(응답에 세션 엔티티를 싣지 않음). 세션 참조는 editSessionId 컬럼으로 한다.
+    const found = await this.workerJobRepository.findOne({ where: { id } });
 
-    if (!job) {
+    if (!found) {
       throw new NotFoundException(`Worker job with ID ${id} not found`);
     }
 
-    this.assertJobSiteAccess(job, caller);
+    this.assertJobSiteAccess(found, caller);
 
-    Object.assign(job, updateJobStatusDto);
-
-    if (
-      updateJobStatusDto.status === WorkerJobStatus.COMPLETED ||
-      updateJobStatusDto.status === WorkerJobStatus.FIXABLE ||
-      updateJobStatusDto.status === WorkerJobStatus.FAILED
-    ) {
-      job.completedAt = new Date();
+    const { job, outcome } = await this.applyJobStatusTransition(found, updateJobStatusDto, caller);
+    if (outcome === 'blocked' || outcome === 'noop') {
+      return job;
+    }
+    if (outcome === 'repeat') {
+      const callback = await this.dispatchTerminalCallbacks(job);
+      this.logger.log(
+        `[job-status] repeat job=${job.id} status=${describeJobStatusForLog(job.status)} callback=${callback}`,
+      );
+      await this.runJobSettledFollowUps(job, updateJobStatusDto.status, { relinkMode: 'repeat' });
+      return job;
     }
 
-    const savedJob = await this.workerJobRepository.save(job);
+    const savedJob = job;
 
     // 관리자 합성(2026-09-29): 알림을 켜지 않은 관리자 잡은 파트너에게 보이는 부수효과가 없다 —
     //   세션 workerStatus/workerError·session.* 웹훅·synthesis.*/validation.* 콜백(v1·v2) 모두 생략.
@@ -3210,62 +3322,47 @@ export class WorkerJobsService implements OnModuleInit {
     //   ⚠️ 임포지션 잡(CONVERT + purpose='inner-imposition')은 세션 검증상태 추적 대상이 아니다.
     //   editSessionId 는 결과 되연결 역참조 용도일 뿐이므로, workerStatus 오염/스푸리어스 webhook
     //   (session.validated)을 피하려 이 경로에서 제외한다. 일반 validation/synthesis 흐름은 무영향.
+    //   세션 workerStatus 갱신·session.* 발신은 isSessionStatusSyncJob 표지가 있는 검증 잡만 한다.
+    //   그 밖의 세션 연결 잡(합성·변환·표지 없는 검증)은 잡 자체만 갱신한다.
     const isInnerImpositionJob =
       job.jobType === WorkerJobType.CONVERT &&
       job.options?.purpose === 'inner-imposition';
-    if (job.editSessionId && !isInnerImpositionJob && !staffSilent) {
+    if (job.editSessionId && isSessionStatusSyncJob(job) && !isInnerImpositionJob && !staffSilent) {
       await this.updateEditSessionWorkerStatus(job, updateJobStatusDto);
     }
 
-    // Synthesis 작업 완료/실패 시 콜백 전송
-    // [Stage 2 P1-1] 게이트 = "callbackUrl 존재 OR v2 config(opt-in) 존재".
-    // hasV2Config 는 callbackUrl 부재 시에만 평가(|| 단락)되고, v2 비활성
-    // (WEBHOOK_CONFIG_ENC_KEY 미설정)이면 DB 조회 없이 false — callbackUrl 없는
-    // 잡은 기존과 완전 동일하게 스킵되며 추가 DB 조회도 없다(불변 조건).
-    if (
-      job.jobType === WorkerJobType.SYNTHESIZE &&
-      // [Stage 3 W3] finalization 내부 잡은 book.finalization.* 만 발신 — 중간 synthesis.*
-      //   억제(파트너에 내부 오케스트레이션 단계 누출 방지). 마커 부재=기존 파트너 잡(불변).
-      !job.options?.finalizationId &&
-      !staffSilent &&
-      (updateJobStatusDto.status === WorkerJobStatus.COMPLETED ||
-        updateJobStatusDto.status === WorkerJobStatus.FAILED) &&
-      (job.options?.callbackUrl ||
-        // [S2-5] isTest 잡만 test env config 로 게이트 판정(기존 잡은 기존 호출 그대로)
-        (await this.hasV2ConfigForJob(job, this.webhookSiteIdOf(job))))
-    ) {
-      await this.sendSynthesisCallback(savedJob);
-    }
+    // 종결 웹훅(synthesis.*·validation.*) — 게이트는 synthesisCallbackDue·validationCallbackDue,
+    //   같은 잡·같은 종결 상태의 중복 발신은 발신 장부로 생략한다(dispatchJobCallback).
+    await this.dispatchTerminalCallbacks(savedJob);
 
-    // Validation 작업 완료/수정필요/실패 시 직접 콜백 전송 (editSessionId 없이 callbackUrl만 있는 경우)
-    // [Stage 2 P1-1] 위 synthesis 게이트와 동일 정합화 — v2 opt-in 사이트는
-    // callbackUrl 없이도 발신 도달 가능해야 한다(종전엔 callbackUrl 선차단으로
-    // sendValidationCallback 내부 v2 분기가 죽은 코드였음).
-    if (
-      job.jobType === WorkerJobType.VALIDATE &&
-      // [Stage 3 W3] finalization 내부 validate 잡은 book.finalization.* 만 발신 —
-      //   중간 validation.* 억제. 마커 부재=기존 잡(불변).
-      !job.options?.finalizationId &&
-      !staffSilent &&
-      (updateJobStatusDto.status === WorkerJobStatus.COMPLETED ||
-        updateJobStatusDto.status === WorkerJobStatus.FIXABLE ||
-        updateJobStatusDto.status === WorkerJobStatus.FAILED) &&
-      (job.options?.callbackUrl ||
-        // [S2-5] isTest 잡만 test env config 로 게이트 판정(기존 잡은 기존 호출 그대로)
-        (await this.hasV2ConfigForJob(job, this.webhookSiteIdOf(job))))
-    ) {
-      await this.sendValidationCallback(savedJob);
-    }
+    await this.runJobSettledFollowUps(savedJob, updateJobStatusDto.status, { relinkMode: 'applied' });
 
+    return savedJob;
+  }
+
+  /**
+   * 종결 후속 처리 — 상태 쓰기가 반영된 보고(applied·promoted)와 같은 종결 상태 재수신(repeat)이 공유한다.
+   *  - 결과 파일 등록(pagecount-fix·bleed-fix): job.outputFileId 가 기록돼 있으면 건너뛴다.
+   *  - 도서 최종화 전진(onWorkerJobSettled): 종결된 최종화·단계가 다른 잡이면 함수 안에서 건너뛴다.
+   *  - 내지 임포지션 세션 되연결: 상태 쓰기가 반영된 보고(applied)는 그대로 되연결한다. 재수신(repeat)은 세션이
+   *    아직 이 잡의 원본 파일(options.sourceFileId)을 가리킬 때만 되연결한다 — 되연결이 끝난 세션·다른 파일로
+   *    바뀐 세션은 건드리지 않는다.
+   * 잡 상태·세션 workerStatus·session.* 는 다루지 않는다.
+   */
+  private async runJobSettledFollowUps(
+    job: WorkerJob,
+    status: string | undefined,
+    opts: { relinkMode: 'applied' | 'repeat' },
+  ): Promise<void> {
     // P4 (2026-06-10) — 내지 임포지션 결과를 세션에 되연결 (best-effort, 마커 게이트).
     //   조건: CONVERT 잡 && options.purpose==='inner-imposition' && COMPLETED && outputFileUrl 존재.
     //   마커가 없는 일반 convert(admin 자동수정 등)는 절대 개입하지 않음 → 기존 동작 무영향.
     if (
       job.jobType === WorkerJobType.CONVERT &&
       job.options?.purpose === 'inner-imposition' &&
-      updateJobStatusDto.status === WorkerJobStatus.COMPLETED
+      status === WorkerJobStatus.COMPLETED
     ) {
-      await this.relinkImposedInnerPdf(savedJob);
+      await this.relinkImposedInnerPdf(job, opts.relinkMode);
     }
 
     // fix-pagecount(2026-06-25) — 배수 보정 결과(converted PDF)를 새 fileId 로 등록(세션 무관).
@@ -3274,9 +3371,9 @@ export class WorkerJobsService implements OnModuleInit {
     if (
       job.jobType === WorkerJobType.CONVERT &&
       job.options?.kind === 'pagecount-fix' &&
-      updateJobStatusDto.status === WorkerJobStatus.COMPLETED
+      status === WorkerJobStatus.COMPLETED
     ) {
-      await this.registerPageCountFixOutput(savedJob);
+      await this.registerPageCountFixOutput(job);
     }
 
     // fix-bleed(2026-07-13) — 도련 삽입 결과(converted PDF)를 새 fileId 로 등록(세션 무관).
@@ -3285,9 +3382,9 @@ export class WorkerJobsService implements OnModuleInit {
     if (
       job.jobType === WorkerJobType.CONVERT &&
       job.options?.kind === 'bleed-fix' &&
-      updateJobStatusDto.status === WorkerJobStatus.COMPLETED
+      status === WorkerJobStatus.COMPLETED
     ) {
-      await this.registerBleedFixOutput(savedJob);
+      await this.registerBleedFixOutput(job);
     }
 
     // [Stage 3 W3, #4] books finalization 역참조 — options.finalizationId 마커 잡 종결 시
@@ -3297,25 +3394,147 @@ export class WorkerJobsService implements OnModuleInit {
     if (
       this.bookFinalizationsService &&
       job.options?.finalizationId &&
-      (updateJobStatusDto.status === WorkerJobStatus.COMPLETED ||
-        updateJobStatusDto.status === WorkerJobStatus.FIXABLE ||
-        updateJobStatusDto.status === WorkerJobStatus.FAILED)
+      (status === WorkerJobStatus.COMPLETED ||
+        status === WorkerJobStatus.FIXABLE ||
+        status === WorkerJobStatus.FAILED)
     ) {
       // [렌즈2 P2-4] 콜백 예외 격리 — onWorkerJobSettled 가 throw 해도 워커 PATCH 는 성공
       //   반환한다(기존 edit_session 갱신·발신 경로 불변). 미격리 시 워커가 500 → 잡 재시도
       //   폭주 + compose 중복. finalization 자체 FAILED 전이는 onWorkerJobSettled 내부에서
       //   시도되므로(이중 방어) 여기선 로깅만 하고 삼킨다.
       try {
-        await this.bookFinalizationsService.onWorkerJobSettled(savedJob);
+        await this.bookFinalizationsService.onWorkerJobSettled(job);
       } catch (err) {
         this.logger.error(
-          `[finalization] onWorkerJobSettled 예외 격리(job=${savedJob.id}): ${(err as Error).message}`,
+          `[finalization] onWorkerJobSettled 예외 격리(job=${job.id}): ${(err as Error).message}`,
           (err as Error).stack,
         );
       }
     }
+  }
 
-    return savedJob;
+  /**
+   * 상태 쓰기 — planJobStatusTransition 판정 + 조건부 UPDATE(affected 로 성공 판정).
+   *  - apply:   WHERE id AND status IN (PENDING, PROCESSING)
+   *  - promote: WHERE id AND status = FAILED AND error_code IN (JOB_STALLED, JOB_TIMEOUT_SWEPT)
+   *  - affected 0(그 사이 다른 보고가 먼저 씀)이면 1회 다시 읽고 다시 판정한다. 그래도 0이면 blocked.
+   * 성공하면 읽은 엔티티에 요청·패치를 반영해 돌려준다(응답 모양은 종전 save 반환과 같음).
+   * blocked 로그에는 잡 id 와 알려진 상태값만 남긴다(요청 원문·오류 메시지·세션 id 미기록).
+   */
+  private async applyJobStatusTransition(
+    found: WorkerJob,
+    dto: UpdateJobStatusDto,
+    caller?: { siteId?: string; role?: string },
+  ): Promise<{ job: WorkerJob; outcome: JobStatusWriteOutcome }> {
+    const allowPromote = !caller || caller.role === 'worker';
+    let current = found;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const plan = planJobStatusTransition(
+        { status: current.status, errorCode: current.errorCode ?? null },
+        dto.status,
+        { allowPromote },
+      );
+      if (plan.kind === 'repeat') return { job: current, outcome: 'repeat' };
+      if (plan.kind === 'blocked') break;
+
+      const patch = buildJobStatusPatch(dto, new Date(), { clearError: plan.kind === 'promote' });
+      if (Object.keys(patch).length === 0) return { job: current, outcome: 'noop' };
+
+      const where: FindOptionsWhere<WorkerJob> =
+        plan.kind === 'promote'
+          ? {
+              id: current.id,
+              status: WorkerJobStatus.FAILED,
+              errorCode: In([...SYSTEM_FAILURE_ERROR_CODES]),
+            }
+          : { id: current.id, status: In([...IN_FLIGHT_JOB_STATUSES]) };
+      const res = await this.workerJobRepository.update(where, patch);
+      if ((res?.affected ?? 0) > 0) {
+        Object.assign(current, dto, patch);
+        if (plan.kind === 'promote') {
+          this.logger.log(
+            `[job-status] promoted job=${current.id} from=FAILED(${plan.fromErrorCode}) to=COMPLETED`,
+          );
+          return { job: current, outcome: 'promoted' };
+        }
+        return { job: current, outcome: 'applied' };
+      }
+
+      const fresh = await this.workerJobRepository.findOne({ where: { id: current.id } });
+      if (!fresh) {
+        throw new NotFoundException(`Worker job with ID ${current.id} not found`);
+      }
+      current = fresh;
+    }
+    this.logger.log(
+      `[job-status] blocked job=${current.id} from=${describeJobStatusForLog(current.status)} to=${describeJobStatusForLog(dto.status)}`,
+    );
+    return { job: current, outcome: 'blocked' };
+  }
+
+  /** 종결 웹훅 발신(synthesis.* 또는 validation.* — jobType 으로 배타). 대상이 아니면 'none'. */
+  private async dispatchTerminalCallbacks(job: WorkerJob): Promise<JobCallbackOutcome> {
+    if (await this.synthesisCallbackDue(job)) {
+      return this.dispatchJobCallback(job, () => this.sendSynthesisCallback(job));
+    }
+    if (await this.validationCallbackDue(job)) {
+      return this.dispatchJobCallback(job, () => this.sendValidationCallback(job));
+    }
+    return 'none';
+  }
+
+  /**
+   * 발신 장부 기준 1회 발신. 장부에 성공 기록('sent')이나 진행 중('sending')이 있으면 생략한다.
+   * 선점한 경우에만 결과를 장부에 남긴다(성공 → sent, 실패 → 삭제해 다음 보고가 다시 발신).
+   * 장부를 쓸 수 없으면(unavailable) 장부 없이 발신한다.
+   */
+  private async dispatchJobCallback(
+    job: WorkerJob,
+    send: () => Promise<boolean>,
+  ): Promise<JobCallbackOutcome> {
+    const claim = await this.callbackLedger.claim(job.id, job.status);
+    if (claim === 'sent') return 'skipped-sent';
+    if (claim === 'inFlight') return 'skipped-in-flight';
+    const ok = await send();
+    if (claim === 'claimed') {
+      if (ok) await this.callbackLedger.markSent(job.id, job.status);
+      else await this.callbackLedger.release(job.id, job.status);
+    }
+    return ok ? 'sent' : 'failed';
+  }
+
+  /**
+   * synthesis.* 발신 대상인가 — SYNTHESIZE 잡의 COMPLETED·FAILED.
+   *  - [Stage 2 P1-1] 게이트 = "callbackUrl 존재 OR v2 config(opt-in) 존재". hasV2Config 는 callbackUrl 이
+   *    없을 때만 평가한다(|| 단락). v2 비활성(WEBHOOK_CONFIG_ENC_KEY 미설정)이면 DB 조회 없이 false.
+   *  - [Stage 3 W3] finalization 내부 잡(options.finalizationId)은 book.finalization.* 만 발신한다.
+   *  - 알림 없는 관리자 잡(isStaffSilentJob)은 발신하지 않는다.
+   *  - [S2-5] isTest 잡만 test env config 로 게이트 판정(기존 잡은 기존 호출 그대로).
+   */
+  private async synthesisCallbackDue(job: WorkerJob): Promise<boolean> {
+    return (
+      job.jobType === WorkerJobType.SYNTHESIZE &&
+      !job.options?.finalizationId &&
+      !isStaffSilentJob(job) &&
+      (job.status === WorkerJobStatus.COMPLETED || job.status === WorkerJobStatus.FAILED) &&
+      Boolean(job.options?.callbackUrl || (await this.hasV2ConfigForJob(job, this.webhookSiteIdOf(job))))
+    );
+  }
+
+  /**
+   * validation.* 발신 대상인가 — VALIDATE 잡의 COMPLETED·FIXABLE·FAILED.
+   * 게이트·제외 조건은 synthesisCallbackDue 와 같다(callbackUrl 없이도 v2 opt-in 사이트는 발신).
+   */
+  private async validationCallbackDue(job: WorkerJob): Promise<boolean> {
+    return (
+      job.jobType === WorkerJobType.VALIDATE &&
+      !job.options?.finalizationId &&
+      !isStaffSilentJob(job) &&
+      (job.status === WorkerJobStatus.COMPLETED ||
+        job.status === WorkerJobStatus.FIXABLE ||
+        job.status === WorkerJobStatus.FAILED) &&
+      Boolean(job.options?.callbackUrl || (await this.hasV2ConfigForJob(job, this.webhookSiteIdOf(job))))
+    );
   }
 
   /**
@@ -3455,8 +3674,12 @@ export class WorkerJobsService implements OnModuleInit {
    *
    * ⚠️ best-effort: 어떤 실패도 status 업데이트(이미 저장됨)를 되돌리지 않는다(throw 금지, 로그만).
    *    재포인팅 실패 시 downstream 은 원본 contentPdfFileId 를 계속 사용(현행 동작과 동일 — 안전한 degrade).
+   *
+   * mode='repeat'(같은 종결 재수신): 세션 contentPdfFileId 가 이 잡의 options.sourceFileId 와 같을 때만 진행한다.
+   *    결과 파일 등록 전과 세션 갱신 직전(fresh reload)에 각각 확인한다. 되연결이 끝난 세션은
+   *    contentPdfFileId 가 결과 파일이므로 건너뛰고, 원본 기록(originalContentPdfFileId)은 처음 값으로 남는다.
    */
-  private async relinkImposedInnerPdf(job: WorkerJob): Promise<void> {
+  private async relinkImposedInnerPdf(job: WorkerJob, mode: 'applied' | 'repeat'): Promise<void> {
     try {
       const outputFileUrl: string | undefined =
         job.outputFileUrl ||
@@ -3485,6 +3708,16 @@ export class WorkerJobsService implements OnModuleInit {
       if (!session) {
         this.logger.warn(
           `[inner-imposition] job ${job.id}: 세션 ${sessionId} 미발견 → 되연결 스킵`,
+        );
+        return;
+      }
+
+      const repeatSourceFileId: string | undefined = job.options?.sourceFileId;
+      const pendingOnSource = (contentPdfFileId: string | null | undefined): boolean =>
+        !!repeatSourceFileId && contentPdfFileId === repeatSourceFileId;
+      if (mode === 'repeat' && !pendingOnSource(session.contentPdfFileId)) {
+        this.logger.log(
+          `[inner-imposition] job ${job.id} 재수신: 세션 ${sessionId} 이 원본 파일을 가리키지 않음 → 되연결 스킵`,
         );
         return;
       }
@@ -3545,6 +3778,12 @@ export class WorkerJobsService implements OnModuleInit {
         where: { id: sessionId },
       });
       const base = fresh ?? session;
+      if (mode === 'repeat' && !pendingOnSource(base.contentPdfFileId)) {
+        this.logger.log(
+          `[inner-imposition] job ${job.id} 재수신: 세션 ${sessionId} 이 원본 파일을 가리키지 않음 → 되연결 스킵`,
+        );
+        return;
+      }
       const prevFileId = base.contentPdfFileId;
       const mergedMetadata = {
         ...(base.metadata ?? {}),
@@ -3576,8 +3815,9 @@ export class WorkerJobsService implements OnModuleInit {
   /**
    * Synthesis 작업 완료/실패 시 콜백 전송
    * 설계서 기준: 하위호환 유지 (outputFileUrl은 항상 merged URL)
+   * 반환: 발신 성공(또는 v2 재시도 체인 접수) 여부 — 발신 장부(dispatchJobCallback)가 쓴다.
    */
-  private async sendSynthesisCallback(job: WorkerJob): Promise<void> {
+  private async sendSynthesisCallback(job: WorkerJob): Promise<boolean> {
     const callbackUrl = job.options?.callbackUrl;
     // [Stage 2 P1-1] 발신 여부 게이트("callbackUrl 존재 OR v2 config 존재")는
     // 호출측(updateJobStatus)이 판정한다 — 여기서 hasV2Config 를 재조회하지
@@ -3612,6 +3852,7 @@ export class WorkerJobsService implements OnModuleInit {
         timestamp: new Date().toISOString(),
       };
 
+      const receipt: WebhookSendReceipt = { accepted: false };
       const success = await this.webhookService.sendCallback(
         callbackUrl ?? '',
         payload,
@@ -3620,25 +3861,31 @@ export class WorkerJobsService implements OnModuleInit {
         // isTest 잡만 'test'(v2 발신 페이로드 isTest:true), 그 외 undefined→live 폴백
         // (기존 발신 바이트 불변 — webhook-v1-invariance.spec 게이트).
         { siteId: this.webhookSiteIdOf(job), env: this.jobWebhookEnv(job) },
+        receipt,
       );
 
       if (success) {
         this.logger.log(
           `Synthesis callback sent successfully for job ${job.id}, format=${outputFormat}, hasOutputFiles=${!!payload.outputFiles}`,
         );
+      } else if (receipt.accepted) {
+        this.logger.log(`Synthesis callback queued for retry for job ${job.id}`);
       } else {
         this.logger.warn(`Synthesis callback failed for job ${job.id}`);
       }
+      return success || receipt.accepted;
     } catch (error) {
       this.logger.error(`Failed to send synthesis callback: ${error.message}`);
+      return false;
     }
   }
 
   /**
    * Validation 작업 완료/수정필요/실패 시 직접 콜백 전송
    * editSessionId 없이 callbackUrl만 있는 경우 사용 (bookmoa 서버 간 통신)
+   * 반환: 발신 성공(또는 v2 재시도 체인 접수) 여부 — 발신 장부(dispatchJobCallback)가 쓴다.
    */
-  private async sendValidationCallback(job: WorkerJob): Promise<void> {
+  private async sendValidationCallback(job: WorkerJob): Promise<boolean> {
     const callbackUrl = job.options?.callbackUrl;
     // [Stage 2 P1-1] 발신 여부 게이트는 호출측(updateJobStatus)이 판정 —
     // sendSynthesisCallback 의 동일 주석 참조(이중 조회 방지).
@@ -3670,23 +3917,29 @@ export class WorkerJobsService implements OnModuleInit {
         timestamp: new Date().toISOString(),
       };
 
+      const receipt: WebhookSendReceipt = { accepted: false };
       const success = await this.webhookService.sendCallback(
         callbackUrl ?? '',
         payload,
         // [Stage 2] v2 opt-in 판정용 — config 없으면 기존 경로 그대로.
         // [S2-5] env = options.isTest 해석(jobWebhookEnv) — sendSynthesisCallback 주석 참조.
         { siteId: this.webhookSiteIdOf(job), env: this.jobWebhookEnv(job) },
+        receipt,
       );
 
       if (success) {
         this.logger.log(
           `Validation callback sent successfully for job ${job.id}, status=${status}`,
         );
+      } else if (receipt.accepted) {
+        this.logger.log(`Validation callback queued for retry for job ${job.id}, status=${status}`);
       } else {
         this.logger.warn(`Validation callback failed for job ${job.id}`);
       }
+      return success || receipt.accepted;
     } catch (error) {
       this.logger.error(`Failed to send validation callback: ${error.message}`);
+      return false;
     }
   }
 

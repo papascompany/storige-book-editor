@@ -20,7 +20,7 @@ import { WebhookDeliveryService } from '../webhook/v2/webhook-delivery.service';
 import { WebhookConfigService } from '../webhook/v2/webhook-config.service';
 
 describe('WorkerJobsService.updateJobStatus — P1-1 발신 게이트(caller 경유)', () => {
-  let workerJobRepository: { findOne: jest.Mock; save: jest.Mock };
+  let workerJobRepository: { findOne: jest.Mock; save: jest.Mock; update: jest.Mock };
   let editSessionRepository: { findOne: jest.Mock; update: jest.Mock };
   let webhookService: { sendCallback: jest.Mock; hasV2Config: jest.Mock };
 
@@ -39,6 +39,7 @@ describe('WorkerJobsService.updateJobStatus — P1-1 발신 게이트(caller 경
     workerJobRepository = {
       findOne: jest.fn(async () => job),
       save: jest.fn(async (entity: unknown) => entity),
+      update: jest.fn(async () => ({ affected: 1 })), // 상태 쓰기는 조건부 UPDATE
     };
     editSessionRepository = { findOne: jest.fn(), update: jest.fn() };
     return new WorkerJobsService(
@@ -186,7 +187,11 @@ describe('WorkerJobsService.updateJobStatus — finalization 콜백(#4) 분기',
     job: Record<string, unknown>,
     finService?: { onWorkerJobSettled: jest.Mock },
   ) => {
-    const repo = { findOne: jest.fn(async () => job), save: jest.fn(async (e: unknown) => e) };
+    const repo = {
+      findOne: jest.fn(async () => job),
+      save: jest.fn(async (e: unknown) => e),
+      update: jest.fn(async () => ({ affected: 1 })), // 상태 쓰기는 조건부 UPDATE
+    };
     const webhook = { sendCallback: jest.fn(async () => true), hasV2Config: jest.fn(async () => true) };
     const svc = new WorkerJobsService(
       repo as never,

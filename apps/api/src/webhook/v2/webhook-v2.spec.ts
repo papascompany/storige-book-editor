@@ -29,6 +29,7 @@ import {
   WEBHOOK_RETRY_DELAYS_MS,
 } from './webhook-v2.constants';
 import { PartnerApiException } from '../../partner-api/http/partner-api.exceptions';
+import { WebhookService, WebhookSendReceipt } from '../webhook.service';
 
 jest.mock('axios');
 const mockedAxios = axios as jest.Mocked<typeof axios>;
@@ -761,5 +762,115 @@ describe('tryDispatchForSite — opt-in 경계', () => {
     expect(deliveryRepo.rows).toHaveLength(1);
     expect(deliveryRepo.rows[0].isTest).toBe(true);
     expect(deliveryRepo.rows[0].env).toBe('test');
+  });
+
+  it('인라인 첫 시도 실패 → 재시도 체인 접수: { delivered: false, accepted: true }', async () => {
+    const { deliveryService, configRepo, deliveryRepo, queue } = makeServices();
+    await seedConfig(configRepo, { events: [] });
+    mockedAxios.post.mockRejectedValue(new Error('conn refused'));
+
+    const result = await deliveryService.tryDispatchForSite('site-a', 'live', {
+      event: 'synthesis.completed',
+      jobId: 'j1',
+      status: 'completed',
+      outputFileUrl: '',
+      timestamp: 'ts',
+    } as never);
+
+    expect(result).toEqual({ delivered: false, accepted: true });
+    expect(deliveryRepo.rows[0].status).toBe('RETRYING');
+    expect(queue.add).toHaveBeenCalledTimes(1);
+  });
+
+  it('인라인 첫 시도 실패 + 재시도 인큐 실패: RETRYING 행만 기록되고 { delivered: false } (accepted 없음)', async () => {
+    const { deliveryService, configRepo, deliveryRepo, queue } = makeServices();
+    await seedConfig(configRepo, { events: [] });
+    mockedAxios.post.mockRejectedValue(new Error('conn refused'));
+    queue.add.mockRejectedValue(new Error('redis down'));
+
+    const result = await deliveryService.tryDispatchForSite('site-a', 'live', {
+      event: 'synthesis.completed',
+      jobId: 'j1',
+      status: 'completed',
+      outputFileUrl: '',
+      timestamp: 'ts',
+    } as never);
+
+    expect(result).toEqual({ delivered: false });
+    expect(deliveryRepo.rows[0].status).toBe('RETRYING');
+  });
+
+  it('인라인 첫 시도 실패 + 재시도 큐 미주입: { delivered: false } (accepted 없음)', async () => {
+    const v2Config = { enabled: true, encKey: ENC_KEY };
+    const configRepo: ConfigRepo = makeRepo<WebhookConfig>();
+    const deliveryRepo: DeliveryRepo = makeRepo<WebhookDelivery>();
+    const configService = new WebhookConfigService(configRepo as never, v2Config, undefined);
+    const deliveryService = new WebhookDeliveryService(
+      deliveryRepo as never,
+      configRepo as never,
+      configService,
+      v2Config,
+      undefined,
+    );
+    await seedConfig(configRepo, { events: [] });
+    mockedAxios.post.mockRejectedValue(new Error('conn refused'));
+
+    const result = await deliveryService.tryDispatchForSite('site-a', 'live', {
+      event: 'synthesis.completed',
+      jobId: 'j1',
+      status: 'completed',
+      outputFileUrl: '',
+      timestamp: 'ts',
+    } as never);
+
+    expect(result).toEqual({ delivered: false });
+    expect(deliveryRepo.rows[0].status).toBe('RETRYING');
+  });
+
+  it('WebhookService.sendCallback: 재시도 체인 접수면 반환 false + receipt.accepted=true', async () => {
+    const { deliveryService, configRepo } = makeServices();
+    await seedConfig(configRepo, { events: [] });
+    mockedAxios.post.mockRejectedValue(new Error('conn refused'));
+    const service = new WebhookService(undefined, deliveryService);
+    const payload = {
+      event: 'synthesis.completed',
+      jobId: 'j1',
+      status: 'completed',
+      outputFileUrl: '',
+      timestamp: 'ts',
+    } as never;
+
+    const receipt: WebhookSendReceipt = { accepted: false };
+    await expect(service.sendCallback('', payload, { siteId: 'site-a' }, receipt)).resolves.toBe(false);
+    expect(receipt.accepted).toBe(true);
+  });
+
+  it('WebhookService.sendCallback: 인라인 성공·미구독은 receipt.accepted=false 그대로', async () => {
+    const { deliveryService, configRepo } = makeServices();
+    await seedConfig(configRepo, { events: ['synthesis.completed'] });
+    const service = new WebhookService(undefined, deliveryService);
+    mockedAxios.post.mockResolvedValue({ status: 200, data: 'ok' });
+
+    const delivered: WebhookSendReceipt = { accepted: false };
+    await expect(
+      service.sendCallback(
+        '',
+        { event: 'synthesis.completed', jobId: 'j1', status: 'completed', outputFileUrl: '', timestamp: 'ts' } as never,
+        { siteId: 'site-a' },
+        delivered,
+      ),
+    ).resolves.toBe(true);
+    expect(delivered.accepted).toBe(false);
+
+    const unsubscribed: WebhookSendReceipt = { accepted: false };
+    await expect(
+      service.sendCallback(
+        '',
+        { event: 'validation.failed', jobId: 'j1', fileType: 'cover', status: 'failed', timestamp: 'ts' } as never,
+        { siteId: 'site-a' },
+        unsubscribed,
+      ),
+    ).resolves.toBe(false);
+    expect(unsubscribed.accepted).toBe(false);
   });
 });

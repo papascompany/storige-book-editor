@@ -91,6 +91,9 @@ services:
       #   전환: .env 값 변경 → docker compose up -d api(빌드 없음) → nginx 재시작 → [FLAGS] api 줄 확인.
       - JOB_LINK_STRICT=${JOB_LINK_STRICT:-false}
       - JOB_FILE_SITE_STRICT=${JOB_FILE_SITE_STRICT:-false}
+      # 잡 산출물 세션 조회 플래그(api 전용). 규칙 (A), 기본 false. 전환은 오너 결정 뒤 별도 절차.
+      #   ⚠️ .env 에만 넣고 이 매핑을 빼면 silent no-op — 매핑 필수.
+      - SESSION_JOB_OUTPUT_LOOKUP=${SESSION_JOB_OUTPUT_LOOKUP:-false}
     volumes:
       - ./storage:/app/storage
     depends_on:

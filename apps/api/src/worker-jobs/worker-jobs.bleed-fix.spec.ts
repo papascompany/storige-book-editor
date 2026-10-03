@@ -19,7 +19,7 @@ import { WorkerJobStatus, WorkerJobType } from '@storige/types';
 
 describe('WorkerJobsService — fix-bleed(도련 자동 삽입)', () => {
   let service: WorkerJobsService;
-  let workerJobRepository: { create: jest.Mock; save: jest.Mock; findOne: jest.Mock };
+  let workerJobRepository: { create: jest.Mock; save: jest.Mock; findOne: jest.Mock; update: jest.Mock };
   let editSessionRepository: { findOne: jest.Mock; update: jest.Mock };
   let conversionQueue: { add: jest.Mock };
   let filesService: { findById: jest.Mock; registerExternalFile: jest.Mock };
@@ -47,6 +47,7 @@ describe('WorkerJobsService — fix-bleed(도련 자동 삽입)', () => {
       create: jest.fn((x) => x),
       save: jest.fn(async (x) => ({ id: 'job-bf', ...x })),
       findOne: jest.fn(),
+      update: jest.fn(async () => ({ affected: 1 })), // 상태 쓰기는 조건부 UPDATE
     };
     editSessionRepository = { findOne: jest.fn(), update: jest.fn() };
     conversionQueue = { add: jest.fn(async () => ({})) };

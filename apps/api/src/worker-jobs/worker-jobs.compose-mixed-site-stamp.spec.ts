@@ -29,7 +29,7 @@ import { WorkerJobsService } from './worker-jobs.service';
 
 describe('compose-mixed — job.siteId 스탬프 규칙(위조 차단)', () => {
   let service: WorkerJobsService;
-  let workerJobRepository: { create: jest.Mock; save: jest.Mock; findOne: jest.Mock };
+  let workerJobRepository: { create: jest.Mock; save: jest.Mock; findOne: jest.Mock; update: jest.Mock };
   let editSessionRepository: { findOne: jest.Mock; update: jest.Mock };
   let synthesisQueue: { add: jest.Mock };
   let filesService: { findById: jest.Mock };
@@ -74,6 +74,7 @@ describe('compose-mixed — job.siteId 스탬프 규칙(위조 차단)', () => {
       create: jest.fn((x) => x),
       save: jest.fn(async (x) => ({ ...x, id: 'job-stamp' })),
       findOne: jest.fn(),
+      update: jest.fn(async () => ({ affected: 1 })), // 상태 쓰기는 조건부 UPDATE
     };
     editSessionRepository = { findOne: jest.fn(), update: jest.fn() };
     synthesisQueue = { add: jest.fn(async () => ({})) };

@@ -121,12 +121,15 @@ export class WebhookDeliveryService {
   /**
    * active config 가 있는 사이트만 v2 발신. 없으면 null — 호출측이 기존
    * v1 경로로 폴스루(기존 파트너 무영향 불변식).
+   * 인라인 첫 시도가 실패하고 재시도 체인이 큐에 실제로 들어갔을 때만 `accepted: true` 를
+   * 함께 돌려준다 — 이후 배달은 delivery 이력과 재시도 큐가 맡는다. 큐 미주입·인큐 실패로
+   * RETRYING 행만 기록된 경우는 `{ delivered: false }` 로 돌려 호출측이 다음 보고에서 다시 발신한다.
    */
   async tryDispatchForSite(
     siteId: string,
     env: 'test' | 'live',
     payload: WebhookPayload,
-  ): Promise<{ delivered: boolean } | null> {
+  ): Promise<{ delivered: boolean; accepted?: true } | null> {
     const config = await this.configService.findActiveConfigCached(siteId, env);
     if (!config) return null;
 
@@ -147,12 +150,15 @@ export class WebhookDeliveryService {
     const dispatchPayload: unknown = isTest
       ? { ...payload, isTest: true as const }
       : payload;
-    const delivery = await this.dispatch(
+    const { delivery, retryEnqueued } = await this.dispatchWithResult(
       config,
       payload.event,
       dispatchPayload,
       isTest,
     );
+    if (delivery.status === 'RETRYING' && retryEnqueued) {
+      return { delivered: false, accepted: true };
+    }
     return { delivered: delivery.status === 'DELIVERED' };
   }
 
@@ -173,6 +179,16 @@ export class WebhookDeliveryService {
     payload: unknown,
     isTest: boolean,
   ): Promise<WebhookDelivery> {
+    return (await this.dispatchWithResult(config, event, payload, isTest)).delivery;
+  }
+
+  /** dispatch 본체 — 재시도 체인 인큐 성공 여부(retryEnqueued)를 함께 돌려준다 */
+  private async dispatchWithResult(
+    config: WebhookConfig,
+    event: string,
+    payload: unknown,
+    isTest: boolean,
+  ): Promise<{ delivery: WebhookDelivery; retryEnqueued: boolean }> {
     const uid = `${WEBHOOK_DELIVERY_UID_PREFIX}${randomUUID().replace(/-/g, '')}`;
     const delivery = this.deliveryRepository.create({
       id: randomUUID(),
@@ -195,19 +211,23 @@ export class WebhookDeliveryService {
     const success = await this.attemptHttp(delivery, config);
     delivery.attempts += 1;
 
+    let retryEnqueued = false;
     if (success) {
       delivery.status = 'DELIVERED';
       delivery.deliveredAt = new Date();
       delivery.nextRetryAt = null;
     } else {
-      await this.armRetryChain(delivery);
+      retryEnqueued = await this.armRetryChain(delivery);
     }
     await this.deliveryRepository.save(delivery);
-    return delivery;
+    return { delivery, retryEnqueued };
   }
 
-  /** 실패한 delivery 를 RETRYING 으로 전이하고 전용 큐에 재시도 체인 인큐 */
-  private async armRetryChain(delivery: WebhookDelivery): Promise<void> {
+  /**
+   * 실패한 delivery 를 RETRYING 으로 전이하고 전용 큐에 재시도 체인 인큐.
+   * 반환값: 큐에 실제로 들어갔으면 true, 큐 미주입·인큐 실패면 false.
+   */
+  private async armRetryChain(delivery: WebhookDelivery): Promise<boolean> {
     delivery.status = 'RETRYING';
     delivery.nextRetryAt = new Date(Date.now() + WEBHOOK_RETRY_DELAYS_MS[0]);
     if (!this.deliveryQueue) {
@@ -215,7 +235,7 @@ export class WebhookDeliveryService {
       this.logger.warn(
         `[v2] delivery ${delivery.uid} 재시도 큐 미주입 — RETRYING 상태만 기록`,
       );
-      return;
+      return false;
     }
     // [P1-2] 인큐 실패(Redis 순단 등)가 dispatch 전체를 터뜨리면 호출측의
     // 마지막 save 가 스킵돼 delivery 행이 미완 상태로 남는다 — 여기서 삼켜
@@ -231,12 +251,14 @@ export class WebhookDeliveryService {
           removeOnFail: 100,
         },
       );
+      return true;
     } catch (error) {
       this.logger.error(
         `[v2] delivery ${delivery.uid} 재시도 인큐 실패 — RETRYING 행만 기록(수동 retry 로 복구 가능): ${
           (error as Error).message
         }`,
       );
+      return false;
     }
   }
 

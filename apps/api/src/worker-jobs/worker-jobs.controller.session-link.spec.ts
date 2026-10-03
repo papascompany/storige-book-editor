@@ -7,6 +7,7 @@
  *  - 사이트 키 + 자기 사이트 세션(파트너 서버 경로)은 compose-mixed·synthesize/external 모두 통과하고 잡 생성 인자는 그대로다.
  *  - 운영자·사이트 키·shop 호출자가 연결을 증명하지 못하면 404 SESSION_NOT_FOUND, 잡 미생성.
  *  - 무인증 호출(compose-mixed·render-pages)은 잡을 그대로 만들고 운영 로그만 남긴다(JOB_LINK_STRICT 미설정 시).
+ *    연결을 확인하지 못한 호출은 잡 생성 인자에 storeSessionLink:false 를 넘긴다(세션 연결 컬럼 미저장).
  *  - staff 전용 라우트(convert·synthesize·split-synthesize)는 확인하지 않는다.
  *  - 입력 파일(fileId 계열·`api://<uuid>` URL)의 사이트가 호출자 사이트와 다르면 운영 로그(`[job-file] cross-site`).
  */
@@ -234,18 +235,21 @@ describe('WorkerJobsController — 세션 연결 확인 배선', () => {
       expect(create.createComposeMixedJob).toHaveBeenCalledTimes(1);
     });
 
-    it('W3: 무인증 + editSessionId(회원 세션) → 잡 생성, 운영 로그(라우트·유형·사이트만)', async () => {
+    it('W3: 무인증 + editSessionId(회원 세션) → 잡 생성(세션 연결 컬럼 미저장), 운영 로그(라우트·유형·사이트만)', async () => {
       const dto = { editSessionId: BOOKMOA_MEMBER } as never;
       await controller.createComposeMixed(dto, undefined);
-      expect(create.createComposeMixedJob).toHaveBeenCalledWith(dto, undefined, undefined);
+      expect(create.createComposeMixedJob).toHaveBeenCalledWith(dto, undefined, undefined, undefined, undefined, {
+        storeSessionLink: false,
+      });
       expect(logs('[job-link]')).toEqual([
         `[job-link] would-deny route=compose-mixed caller=none site=${SITE_BOOKMOA}`,
       ]);
     });
 
-    it('W3-b: 무인증 + 비회원 세션 + 유효한 X-Guest-Token → 잡 생성, 로그 없음', async () => {
-      await controller.createComposeMixed({ editSessionId: BOOKMOA_GUEST } as never, undefined, undefined, GUEST_TOKEN);
-      expect(create.createComposeMixedJob).toHaveBeenCalledTimes(1);
+    it('W3-b: 무인증 + 비회원 세션 + 유효한 X-Guest-Token → 잡 생성(세션 연결 저장), 로그 없음', async () => {
+      const dto = { editSessionId: BOOKMOA_GUEST } as never;
+      await controller.createComposeMixed(dto, undefined, undefined, GUEST_TOKEN);
+      expect(create.createComposeMixedJob).toHaveBeenCalledWith(dto, undefined, undefined);
       expect(logs('[job-link]')).toEqual([]);
     });
 
@@ -324,9 +328,10 @@ describe('WorkerJobsController — 세션 연결 확인 배선', () => {
       expect(create.createValidationJob).toHaveBeenCalledTimes(1);
     });
 
-    it('W5-f: 그 밖의 JWT(admin-app CUSTOMER) → 잡 생성 + 운영 로그', async () => {
+    it('W5-f: 그 밖의 JWT(admin-app CUSTOMER) → 잡 생성(세션 연결 컬럼 미저장) + 운영 로그', async () => {
       await controller.createValidationJob(vdto({ editSessionId: OTHER_MEMBER }), { role: 'customer' });
       expect(create.createValidationJob).toHaveBeenCalledTimes(1);
+      expect(create.createValidationJob.mock.calls[0][1]).toEqual({ storeSessionLink: false });
       expect(logs('[job-link]')).toEqual([`[job-link] would-deny route=validate caller=none site=${SITE_OTHER}`]);
     });
 
@@ -379,7 +384,7 @@ describe('WorkerJobsController — 세션 연결 확인 배선', () => {
       expect(create.createRenderPagesJob).toHaveBeenCalledTimes(1);
     });
 
-    it('W7-b: editSessionId + 헤더 없음 → 잡 생성 + 운영 로그 / 유효한 X-Guest-Token → 로그 없음', async () => {
+    it('W7-b: editSessionId + 헤더 없음 → 잡 생성(세션 연결 컬럼 미저장) + 운영 로그 / 유효한 X-Guest-Token → 저장, 로그 없음', async () => {
       await controller.createRenderPages({ fileId: FILE_BOOKMOA, editSessionId: BOOKMOA_GUEST } as never);
       expect(logs('[job-link]')).toEqual([
         `[job-link] would-deny route=render-pages caller=none site=${SITE_BOOKMOA}`,
@@ -387,6 +392,9 @@ describe('WorkerJobsController — 세션 연결 확인 배선', () => {
       await controller.createRenderPages({ fileId: FILE_BOOKMOA, editSessionId: BOOKMOA_GUEST } as never, GUEST_TOKEN);
       expect(logs('[job-link]')).toHaveLength(1);
       expect(create.createRenderPagesJob).toHaveBeenCalledTimes(2);
+      expect(create.createRenderPagesJob.mock.calls[0]).toHaveLength(2);
+      expect(create.createRenderPagesJob.mock.calls[0][1]).toEqual({ storeSessionLink: false });
+      expect(create.createRenderPagesJob.mock.calls[1]).toHaveLength(1);
     });
   });
 

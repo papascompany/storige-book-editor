@@ -35,7 +35,8 @@ export class WorkerJob {
   @JoinColumn({ name: 'edit_session_id' })
   editSession: EditSessionEntity | null;
 
-  @Column({ name: 'edit_session_id', type: 'varchar', nullable: true, insert: false, update: false })
+  // 생성 시 1회 기록(insert), 이후 불변(update:false). 관계와 같은 컬럼을 쓴다.
+  @Column({ name: 'edit_session_id', type: 'varchar', nullable: true, update: false })
   editSessionId: string | null;
 
   @Column({ name: 'file_id', type: 'varchar', length: 36, nullable: true })

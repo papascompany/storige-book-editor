@@ -193,6 +193,11 @@ describe('WorkerJobsService.updateJobStatus (WK-1: errorCode/errorDetail 영속�
         savedEntity = j;
         return j;
       }),
+      // 상태 쓰기는 조건부 UPDATE — 기록되는 패치를 캡처한다.
+      update: jest.fn().mockImplementation(async (_where: unknown, patch: any) => {
+        savedEntity = patch;
+        return { affected: 1 };
+      }),
     };
     const module: TestingModule = await Test.createTestingModule({
       providers: [

@@ -26,7 +26,7 @@ const FILE_NULL = 'f0000000-0000-4000-8000-0000000000ff';
 describe('잡 사이트 기록 · 사이트 웹훅 마커', () => {
   let service: WorkerJobsService;
   let saved: Record<string, Record<string, unknown>>;
-  let workerJobRepository: { create: jest.Mock; save: jest.Mock; findOne: jest.Mock };
+  let workerJobRepository: { create: jest.Mock; save: jest.Mock; findOne: jest.Mock; update: jest.Mock };
   let validationQueue: { add: jest.Mock };
   let conversionQueue: { add: jest.Mock };
   let filesService: { findById: jest.Mock };
@@ -48,6 +48,13 @@ describe('잡 사이트 기록 · 사이트 웹훅 마커', () => {
         return row;
       }),
       findOne: jest.fn(async (opts: { where: { id: string } }) => saved[opts.where.id] ?? null),
+      // 상태 쓰기는 조건부 UPDATE — 저장 맵에 패치를 반영한다.
+      update: jest.fn(async (where: { id: string }, patch: Record<string, unknown>) => {
+        const row = saved[where.id];
+        if (!row) return { affected: 0 };
+        saved[where.id] = { ...row, ...patch };
+        return { affected: 1 };
+      }),
     };
     validationQueue = { add: jest.fn(async () => ({})) };
     conversionQueue = { add: jest.fn(async () => ({})) };

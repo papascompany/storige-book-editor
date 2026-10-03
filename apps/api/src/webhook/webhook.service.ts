@@ -24,6 +24,14 @@ export interface SessionWebhookPayload {
   timestamp: string;
 }
 
+/**
+ * sendCallback 의 선택 4번째 인자 — 반환값(boolean) 외의 발신 결과를 호출측이 받는다.
+ *  - accepted: v2 delivery 가 인라인 첫 시도에 실패해 재시도 체인이 큐에 들어갔다(반환값은 false).
+ */
+export interface WebhookSendReceipt {
+  accepted: boolean;
+}
+
 // WebhookPayload: 모든 웹훅 페이로드 유형의 합집합
 // (Stage 3 W3 — BookFinalizationWebhookPayload additive: 기존 발신 3종 shape 무접촉)
 export type WebhookPayload =
@@ -144,6 +152,7 @@ export class WebhookService {
     callbackUrl: string,
     payload: WebhookPayload,
     context?: { siteId?: string | null; env?: 'test' | 'live' },
+    receipt?: WebhookSendReceipt,
   ): Promise<boolean> {
     if (context?.siteId && this.webhookDeliveryService) {
       // env 규약(S2-1 정합화): context.env 는 v1 라우트 경유 발신에서
@@ -156,7 +165,10 @@ export class WebhookService {
         context.env ?? PARTNER_ENV_LIVE,
         payload,
       );
-      if (v2) return v2.delivered; // v2 opt-in 사이트 — 레거시 경로 미진입
+      if (v2) {
+        if (receipt && v2.accepted === true) receipt.accepted = true;
+        return v2.delivered; // v2 opt-in 사이트 — 레거시 경로 미진입
+      }
     }
 
     if (!callbackUrl) {

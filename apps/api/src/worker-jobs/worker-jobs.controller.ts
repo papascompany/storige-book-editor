@@ -204,6 +204,8 @@ export class WorkerJobsController {
     const isShop = user?.source === 'shop';
     const shopSiteId = isShop && typeof user?.siteId === 'string' ? user.siteId : null;
     const isStaff = !isShop && isStaffRole(user?.role);
+    // 세션 연결을 확인하지 못하고 진행하는 호출(none)은 잡에 세션 연결 컬럼을 저장하지 않는다.
+    let sessionLinkVerified = true;
     if (createValidationJobDto.editSessionId) {
       const caller: SessionLinkCaller = isShop
         ? {
@@ -215,13 +217,14 @@ export class WorkerJobsController {
         : isStaff
           ? { kind: 'staff' }
           : { kind: 'none' };
-      await this.workerJobsService.assertEditSessionLink(
-        createValidationJobDto.editSessionId,
-        [caller],
-        guestTokenOf(guestTokenHeader),
-        'validate',
-        { strictUnverified: this.strictFlag('JOB_LINK_STRICT') },
-      );
+      sessionLinkVerified =
+        (await this.workerJobsService.assertEditSessionLink(
+          createValidationJobDto.editSessionId,
+          [caller],
+          guestTokenOf(guestTokenHeader),
+          'validate',
+          { strictUnverified: this.strictFlag('JOB_LINK_STRICT') },
+        )) !== false;
     }
     if (shopSiteId !== null) {
       await this.workerJobsService.observeJobInputFileSites(
@@ -241,9 +244,17 @@ export class WorkerJobsController {
       this.logger.warn(`[job-site] body-site-ignored route=validate caller=${callerKind}`);
     }
     const dto: CreateValidationJobDto = { ...createValidationJobDto, siteId: shopSiteId ?? undefined };
-    return shopSiteId !== null
-      ? await this.workerJobsService.createValidationJob(dto, { skipSiteWorkerDefaults: true, siteWebhookOff: true })
-      : await this.workerJobsService.createValidationJob(dto);
+    const linkOpts = sessionLinkVerified ? {} : { storeSessionLink: false };
+    if (shopSiteId !== null) {
+      return await this.workerJobsService.createValidationJob(dto, {
+        skipSiteWorkerDefaults: true,
+        siteWebhookOff: true,
+        ...linkOpts,
+      });
+    }
+    return sessionLinkVerified
+      ? await this.workerJobsService.createValidationJob(dto)
+      : await this.workerJobsService.createValidationJob(dto, linkOpts);
   }
 
   /**
@@ -530,6 +541,8 @@ export class WorkerJobsController {
 
     // 수동 경로(assembleFromSession 미사용)의 세션 연결 확인 — shop-session(위 caller 와 같은 조건)과
     // 사이트 키를 각자 독립 호출자로 판정한다(합치지 않는다). 둘 다 없으면 none.
+    // 연결을 확인하지 못하고 진행하는 호출(none)은 잡에 세션 연결 컬럼을 저장하지 않는다(options 표지는 그대로).
+    let sessionLinkVerified = true;
     if (dto.editSessionId && dto.assembleFromSession !== true) {
       const linkCallers: SessionLinkCaller[] = [];
       if (caller?.siteId && caller.owner) {
@@ -543,13 +556,19 @@ export class WorkerJobsController {
       if (apiKeySite?.siteId) {
         linkCallers.push({ kind: 'siteKey', siteId: apiKeySite.siteId });
       }
-      await this.workerJobsService.assertEditSessionLink(
-        dto.editSessionId,
-        linkCallers.length > 0 ? linkCallers : [{ kind: 'none' }],
-        guestTokenOf(guestTokenHeader),
-        'compose-mixed',
-        { strictUnverified: this.strictFlag('JOB_LINK_STRICT') },
-      );
+      sessionLinkVerified =
+        (await this.workerJobsService.assertEditSessionLink(
+          dto.editSessionId,
+          linkCallers.length > 0 ? linkCallers : [{ kind: 'none' }],
+          guestTokenOf(guestTokenHeader),
+          'compose-mixed',
+          { strictUnverified: this.strictFlag('JOB_LINK_STRICT') },
+        )) !== false;
+    }
+    if (!sessionLinkVerified) {
+      return await this.workerJobsService.createComposeMixedJob(dto, caller, apiKeySite, undefined, undefined, {
+        storeSessionLink: false,
+      });
     }
     // 수동 경로 + 검증된 호출자 사이트(shop-session·사이트 키)가 있을 때만 입력 URL(api://)의 파일 사이트를 확인한다.
     if (dto.assembleFromSession !== true && (caller?.siteId || apiKeySite?.siteId)) {
@@ -576,14 +595,18 @@ export class WorkerJobsController {
     @Headers('x-guest-token') guestTokenHeader?: string,
   ): Promise<WorkerJob> {
     // 인증 컨텍스트가 없는 라우트 — 호출자는 none(JOB_LINK_STRICT 미설정 시 관측 로그만, 잡 생성은 그대로).
+    // 연결을 확인하지 못하고 진행하면(X-Guest-Token 미증명) 잡에 세션 연결 컬럼을 저장하지 않는다.
     if (dto.editSessionId) {
-      await this.workerJobsService.assertEditSessionLink(
+      const verified = await this.workerJobsService.assertEditSessionLink(
         dto.editSessionId,
         [{ kind: 'none' }],
         guestTokenOf(guestTokenHeader),
         'render-pages',
         { strictUnverified: this.strictFlag('JOB_LINK_STRICT') },
       );
+      if (verified === false) {
+        return await this.workerJobsService.createRenderPagesJob(dto, { storeSessionLink: false });
+      }
     }
     return await this.workerJobsService.createRenderPagesJob(dto);
   }

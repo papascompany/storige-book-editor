@@ -17,6 +17,8 @@
  *  - SPREAD_SNAPSHOT_HARD_FAIL: edit-sessions.service 의 호출 시점 식과 같은 식.
  *  - JOB_LINK_STRICT / JOB_FILE_SITE_STRICT: worker-jobs.controller 와 같은 isFlagOn 술어.
  *    CUTOUT_ENABLED 처럼 컨트롤러가 요청 시점마다 평가하므로 기동 스냅샷은 그 시점의 표본이다.
+ *  - SESSION_JOB_OUTPUT_LOOKUP: edit-sessions.service 가 호출 시점에 쓰는 isSessionJobOutputLookupOn 과
+ *    같은 소스(process.env)·같은 술어(isFlagOn).
  *
  * 파싱 규칙은 플래그마다 다르다(통일하지 않음 — 동작 변경이므로 테스트로 현행을 고정).
  *
@@ -44,6 +46,7 @@ export const API_FEATURE_FLAG_KEYS = [
   'SPREAD_SNAPSHOT_HARD_FAIL',
   'JOB_LINK_STRICT',
   'JOB_FILE_SITE_STRICT',
+  'SESSION_JOB_OUTPUT_LOOKUP',
 ] as const;
 
 export type ApiFeatureFlagKey = (typeof API_FEATURE_FLAG_KEYS)[number];
@@ -68,6 +71,8 @@ export interface ApiFeatureFlagInputs {
   jobLinkStrictRaw: unknown;
   /** configService.get('JOB_FILE_SITE_STRICT') 원값 — worker-jobs.controller 와 같은 소스·같은 술어 */
   jobFileSiteStrictRaw: unknown;
+  /** process.env.SESSION_JOB_OUTPUT_LOOKUP — edit-sessions.service 와 같은 소스·같은 술어 */
+  sessionJobOutputLookupRaw: unknown;
 }
 
 export function buildApiFeatureFlagSnapshot(i: ApiFeatureFlagInputs): ApiFeatureFlagSnapshot {
@@ -87,7 +92,17 @@ export function buildApiFeatureFlagSnapshot(i: ApiFeatureFlagInputs): ApiFeature
     // worker-jobs.controller strictFlag: isFlagOn(configService.get(key))
     JOB_LINK_STRICT: isFlagOn(i.jobLinkStrictRaw),
     JOB_FILE_SITE_STRICT: isFlagOn(i.jobFileSiteStrictRaw),
+    // edit-sessions.service: isSessionJobOutputLookupOn() = isFlagOn(process.env.SESSION_JOB_OUTPUT_LOOKUP)
+    SESSION_JOB_OUTPUT_LOOKUP: isFlagOn(i.sessionJobOutputLookupRaw),
   };
+}
+
+/**
+ * 외부 세션 조회(GET /edit-sessions/external)·EDITOR_SESSION 승격이 세션에 연결된 최신 합성 잡 산출물을
+ * 쓰는가. 기본 false(편집기 원본 파일). 호출 시점마다 env 를 읽는다. 규칙 (A).
+ */
+export function isSessionJobOutputLookupOn(env: NodeJS.ProcessEnv = process.env): boolean {
+  return isFlagOn(env.SESSION_JOB_OUTPUT_LOOKUP);
 }
 
 /** 한 줄, `KEY=true|false` 토큰만. 값은 boolean 으로 강제(env 원문 출력 불가). */

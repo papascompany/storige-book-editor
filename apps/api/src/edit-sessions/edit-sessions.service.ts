@@ -47,6 +47,7 @@ import type { PartnerOperatorGrant } from '../auth/partner-operator/partner-oper
 import type { PartnerOperatorAuditDetail } from '../auth/entities/partner-operator-audit-log.entity';
 import { computeEditRetention, editRetentionExpired } from '../staff-edit-data/edit-retention';
 import { staffAuditUnavailable, staffDeleteNotAllowed } from '../staff-edit-data/staff-actor';
+import { isSessionJobOutputLookupOn } from '../config/feature-flags';
 
 /**
  * Storige 관리자 호출 컨텍스트(2026-09-29, ADDITIVE) — StaffEditDataService 만 설정한다.
@@ -294,12 +295,14 @@ export class EditSessionsService {
     // DB-001(2026-06-22): 세션 루프 내 최신 SYNTHESIZE 잡 조회(N+1)를 윈도우함수 1회 배치로 치환.
     // 세션별 created_at DESC 최신 1건(group-wise max)을 ROW_NUMBER()=1 로 정확히 보존
     // (MariaDB 11.2 윈도우함수 지원). 미존재 세션은 Map 미수록 → 기존 getRawOne undefined 와 동일.
+    // SESSION_JOB_OUTPUT_LOOKUP 이 꺼져 있으면(기본) 조회하지 않고 편집기 원본 파일을 돌려준다.
+    // 켜져 있으면 잡 사이트가 세션 사이트와 같은(NULL 끼리 포함) 잡만 쓴다.
     const latestJobBySession = new Map<
       string,
       { status: string; result: any; outputFileUrl: string | null }
     >();
     const sessionIds = sessions.map((s) => s.id);
-    if (sessionIds.length > 0) {
+    if (sessionIds.length > 0 && isSessionJobOutputLookupOn()) {
       const rows: Array<{
         sessionId: string;
         status: string;
@@ -314,7 +317,9 @@ export class EditSessionsService {
                       PARTITION BY job.edit_session_id ORDER BY job.created_at DESC
                     ) AS rn
                FROM worker_jobs job
+               JOIN file_edit_sessions sess ON sess.id = job.edit_session_id
               WHERE job.edit_session_id IN (?) AND job.job_type = 'SYNTHESIZE'
+                AND job.site_id <=> sess.site_id
                 AND ${partnerVisibleSynthJobSql('job')}
            ) t
           WHERE t.rn = 1`,
@@ -441,19 +446,25 @@ export class EditSessionsService {
   ): Promise<{ session: EditSessionEntity; files: ExternalSessionFilesDto }> {
     const session = await this.findById(id); // coverFile/contentFile 로드 + 미존재 404
     // 세션 최신 SYNTHESIZE 잡 1건(created_at DESC) — 조회 전용 raw(findByOrderExternal 준용).
+    // SESSION_JOB_OUTPUT_LOOKUP 이 꺼져 있으면(기본) 조회하지 않고 편집기 원본 파일을 돌려준다.
+    // 켜져 있으면 잡 사이트가 세션 사이트와 같은(NULL 끼리 포함) 잡만 쓴다.
     const rows: Array<{
       status: string;
       result: unknown;
       outputFileUrl: string | null;
-    }> = await this.sessionRepository.manager.query(
-      `SELECT status, result, output_file_url AS outputFileUrl
-         FROM worker_jobs
-        WHERE edit_session_id = ? AND job_type = 'SYNTHESIZE'
-          AND ${partnerVisibleSynthJobSql('worker_jobs')}
-        ORDER BY created_at DESC
-        LIMIT 1`,
-      [id],
-    );
+    }> = isSessionJobOutputLookupOn()
+      ? await this.sessionRepository.manager.query(
+          `SELECT job.status AS status, job.result AS result, job.output_file_url AS outputFileUrl
+             FROM worker_jobs job
+             JOIN file_edit_sessions sess ON sess.id = job.edit_session_id
+            WHERE job.edit_session_id = ? AND job.job_type = 'SYNTHESIZE'
+              AND job.site_id <=> sess.site_id
+              AND ${partnerVisibleSynthJobSql('job')}
+            ORDER BY job.created_at DESC
+            LIMIT 1`,
+          [id],
+        )
+      : [];
     const files = this.resolveFiles(session, rows[0] ?? null);
     return { session, files };
   }

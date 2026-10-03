@@ -10,6 +10,7 @@ import { EditSessionVersionEntity } from './entities/edit-session-version.entity
 import { WorkerJobsService } from '../worker-jobs/worker-jobs.service';
 import { TemplateSetsService } from '../templates/template-sets.service';
 import { WorkerJobStatus } from '@storige/types';
+import { DataSource } from 'typeorm';
 
 describe('EditSessionsService', () => {
   let service: EditSessionsService;
@@ -101,6 +102,17 @@ describe('EditSessionsService', () => {
   });
 
   describe('findByOrderExternal', () => {
+    // 아래 기존 케이스는 SESSION_JOB_OUTPUT_LOOKUP=true(연결 잡 산출물 조회) 경로를 고정한다.
+    // 기본값(false) 동작은 'SESSION_JOB_OUTPUT_LOOKUP 기본값' 블록에서 따로 고정한다.
+    const lookupEnvBackup = process.env.SESSION_JOB_OUTPUT_LOOKUP;
+    beforeEach(() => {
+      process.env.SESSION_JOB_OUTPUT_LOOKUP = 'true';
+    });
+    afterEach(() => {
+      if (lookupEnvBackup === undefined) delete process.env.SESSION_JOB_OUTPUT_LOOKUP;
+      else process.env.SESSION_JOB_OUTPUT_LOOKUP = lookupEnvBackup;
+    });
+
     const makeSession = (overrides: Partial<EditSessionEntity> = {}): EditSessionEntity => ({
       id: 'session-uuid-1',
       orderSeqno: 12345,
@@ -290,6 +302,173 @@ describe('EditSessionsService', () => {
         String(c[0]).includes('callerSiteId'),
       );
       expect(siteClauses).toEqual([]);
+    });
+
+    it('ON: 잡 조회 SQL 은 세션 테이블과 조인해 잡 사이트가 세션 사이트와 같은(NULL 끼리 포함) 잡만 고른다', async () => {
+      mockGetMany.mockResolvedValue([makeSession()]);
+      mockQuery.mockResolvedValue([]);
+
+      await service.findByOrderExternal(12345);
+
+      expect(mockQuery).toHaveBeenCalledTimes(1);
+      const [sql, params] = mockQuery.mock.calls[0] as [string, unknown[]];
+      const flat = sql.replace(/\s+/g, ' ');
+      expect(flat).toContain('JOIN file_edit_sessions sess ON sess.id = job.edit_session_id');
+      expect(flat).toContain('job.site_id <=> sess.site_id');
+      expect(flat).toContain("job.job_type = 'SYNTHESIZE'");
+      expect(params).toEqual([['session-uuid-1']]);
+    });
+
+    /**
+     * ON 분기 SQL 을 sqlite 인메모리 DB 에서 실행해 귀속 조건을 확인한다(mysql 방언 SQL —
+     * 백틱·? 파라미터는 sqlite 도 받는다. `<=>` 는 sqlite 의 같은 의미 연산자 `IS` 로, `IN (?)` 배열은 펼쳐서 실행).
+     */
+    type JobSeed = { id: string; siteId: string | null; createdAt: string };
+    const attributionCases: Array<[string, string | null, JobSeed[], string | null]> = [
+      ['세션 A · 잡 A → 그 잡', 'site-A', [{ id: 'job-a', siteId: 'site-A', createdAt: '2026-10-01' }], 'job-a'],
+      ['세션 A · 잡 B(다른 사이트) → 제외', 'site-A', [{ id: 'job-b', siteId: 'site-B', createdAt: '2026-10-01' }], null],
+      [
+        '세션 A · 잡 A(이전)·잡 B(최신) → 다른 사이트 최신 잡은 제외하고 잡 A',
+        'site-A',
+        [
+          { id: 'job-a', siteId: 'site-A', createdAt: '2026-10-01' },
+          { id: 'job-b', siteId: 'site-B', createdAt: '2026-10-02' },
+        ],
+        'job-a',
+      ],
+      ['세션 A · 잡 NULL → 제외', 'site-A', [{ id: 'job-n', siteId: null, createdAt: '2026-10-01' }], null],
+      ['세션 NULL · 잡 NULL → 그 잡', null, [{ id: 'job-n', siteId: null, createdAt: '2026-10-01' }], 'job-n'],
+      ['세션 NULL · 잡 A → 제외', null, [{ id: 'job-a', siteId: 'site-A', createdAt: '2026-10-01' }], null],
+    ];
+
+    it.each(attributionCases)('ON 실행: %s', async (_label, sessionSite, jobs, expectedJobId) => {
+      mockGetMany.mockResolvedValue([makeSession({ siteId: sessionSite } as Partial<EditSessionEntity>)]);
+      mockQuery.mockResolvedValue([]);
+      await service.findByOrderExternal(12345);
+      const [sql, params] = mockQuery.mock.calls[0] as [string, unknown[]];
+      const ids = params[0] as string[];
+      const liteSql = sql
+        .replace(/<=>/g, 'IS')
+        .replace('IN (?)', `IN (${ids.map(() => '?').join(', ')})`)
+        .replace('t.output_file_url AS outputFileUrl', 't.output_file_url AS outputFileUrl, t.id AS jobId')
+        .replace('SELECT job.edit_session_id,', 'SELECT job.id, job.edit_session_id,');
+
+      const lite = new DataSource({ type: 'sqlite', database: ':memory:' });
+      await lite.initialize();
+      try {
+        await lite.query('CREATE TABLE file_edit_sessions (id TEXT, site_id TEXT)');
+        await lite.query(
+          'CREATE TABLE worker_jobs (id TEXT, edit_session_id TEXT, job_type TEXT, status TEXT, result TEXT, ' +
+            'output_file_url TEXT, options TEXT, site_id TEXT, created_at TEXT)',
+        );
+        await lite.query('INSERT INTO file_edit_sessions (id, site_id) VALUES (?, ?)', ['session-uuid-1', sessionSite]);
+        for (const j of jobs) {
+          await lite.query(
+            'INSERT INTO worker_jobs (id, edit_session_id, job_type, status, result, output_file_url, options, site_id, created_at) ' +
+              "VALUES (?, 'session-uuid-1', 'SYNTHESIZE', 'COMPLETED', NULL, ?, NULL, ?, ?)",
+            [j.id, `/storage/outputs/${j.id}/merged.pdf`, j.siteId, j.createdAt],
+          );
+        }
+        const rows = (await lite.query(liteSql, ids)) as Array<{ jobId: string }>;
+        expect(rows.map((r) => r.jobId)).toEqual(expectedJobId ? [expectedJobId] : []);
+      } finally {
+        await lite.destroy();
+      }
+    });
+
+    describe('SESSION_JOB_OUTPUT_LOOKUP 기본값(미설정·false)', () => {
+      it.each([[undefined], ['false'], ['0'], ['']])(
+        'SESSION_JOB_OUTPUT_LOOKUP=%j → 잡 조회 없이 편집기 원본 파일, merged null',
+        async (raw) => {
+          if (raw === undefined) delete process.env.SESSION_JOB_OUTPUT_LOOKUP;
+          else process.env.SESSION_JOB_OUTPUT_LOOKUP = raw;
+          const session = makeSession({
+            coverFile: { id: 'file-1', fileUrl: '/storage/designs/cover.pdf' } as EditSessionEntity['coverFile'],
+            contentFile: { id: 'file-2', fileUrl: '/storage/designs/content.pdf' } as EditSessionEntity['contentFile'],
+          });
+          mockGetMany.mockResolvedValue([session]);
+          mockQuery.mockResolvedValue([
+            {
+              sessionId: 'session-uuid-1',
+              status: WorkerJobStatus.COMPLETED,
+              result: { outputFileUrl: '/storage/outputs/job-1/merged.pdf' },
+              outputFileUrl: '/storage/outputs/job-1/merged.pdf',
+            },
+          ]);
+
+          const result = await service.findByOrderExternal(12345);
+
+          expect(mockQuery).not.toHaveBeenCalled();
+          expect(result).toHaveLength(1);
+          expect(result[0].files).toEqual({
+            cover: '/storage/designs/cover.pdf',
+            content: '/storage/designs/content.pdf',
+            merged: null,
+          });
+        },
+      );
+    });
+  });
+
+  describe('getPromotionArtifact', () => {
+    const lookupEnvBackup = process.env.SESSION_JOB_OUTPUT_LOOKUP;
+    afterEach(() => {
+      if (lookupEnvBackup === undefined) delete process.env.SESSION_JOB_OUTPUT_LOOKUP;
+      else process.env.SESSION_JOB_OUTPUT_LOOKUP = lookupEnvBackup;
+    });
+
+    const session = {
+      id: 'session-uuid-1',
+      siteId: 'site-A',
+      coverFile: { id: 'file-1', fileUrl: '/storage/designs/cover.pdf' },
+      contentFile: { id: 'file-2', fileUrl: '/storage/designs/content.pdf' },
+    } as unknown as EditSessionEntity;
+    const completedJobRow = {
+      status: WorkerJobStatus.COMPLETED,
+      result: {
+        outputFileUrl: '/storage/outputs/job-1/merged.pdf',
+        outputFiles: [
+          { type: 'cover', url: '/storage/outputs/job-1/cover.pdf' },
+          { type: 'content', url: '/storage/outputs/job-1/content.pdf' },
+        ],
+      },
+      outputFileUrl: '/storage/outputs/job-1/merged.pdf',
+    };
+
+    it('기본값(미설정) → 잡 조회 없이 편집기 원본 파일, merged null', async () => {
+      delete process.env.SESSION_JOB_OUTPUT_LOOKUP;
+      mockSessionRepository.findOne.mockResolvedValue(session);
+      mockQuery.mockResolvedValue([completedJobRow]);
+
+      const { files } = await service.getPromotionArtifact('session-uuid-1');
+
+      expect(mockQuery).not.toHaveBeenCalled();
+      expect(files).toEqual({
+        cover: '/storage/designs/cover.pdf',
+        content: '/storage/designs/content.pdf',
+        merged: null,
+      });
+    });
+
+    it('ON → 세션 사이트와 같은 잡의 최신 합성 산출물 1건을 조회해 쓴다', async () => {
+      process.env.SESSION_JOB_OUTPUT_LOOKUP = 'true';
+      mockSessionRepository.findOne.mockResolvedValue(session);
+      mockQuery.mockResolvedValue([completedJobRow]);
+
+      const { files } = await service.getPromotionArtifact('session-uuid-1');
+
+      expect(mockQuery).toHaveBeenCalledTimes(1);
+      const [sql, params] = mockQuery.mock.calls[0] as [string, unknown[]];
+      const flat = sql.replace(/\s+/g, ' ');
+      expect(flat).toContain('JOIN file_edit_sessions sess ON sess.id = job.edit_session_id');
+      expect(flat).toContain('job.site_id <=> sess.site_id');
+      expect(flat).toContain('ORDER BY job.created_at DESC LIMIT 1');
+      expect(params).toEqual(['session-uuid-1']);
+      expect(files).toEqual({
+        cover: '/storage/outputs/job-1/cover.pdf',
+        content: '/storage/outputs/job-1/content.pdf',
+        merged: '/storage/outputs/job-1/merged.pdf',
+      });
     });
   });
 

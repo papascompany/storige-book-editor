@@ -90,10 +90,10 @@ describe('WorkerJobsService.assertEditSessionLink', () => {
       .map((c: unknown[]) => String(c[0]))
       .filter((m: string) => m.startsWith('[job-link]'));
 
-  const check = (id: string, callers: SessionLinkCaller[], token?: string): Promise<void> =>
+  const check = (id: string, callers: SessionLinkCaller[], token?: string): Promise<boolean> =>
     service.assertEditSessionLink(id, callers, token, 'test-route');
 
-  async function expect404(p: Promise<void>, id: string): Promise<void> {
+  async function expect404(p: Promise<boolean>, id: string): Promise<void> {
     let caught: unknown;
     try {
       await p;
@@ -153,28 +153,28 @@ describe('WorkerJobsService.assertEditSessionLink', () => {
     });
   });
 
-  it('K2: staff·내부 워커 키 → 조회 없이 통과(다른 호출자와 함께 와도 동일)', async () => {
-    await expect(check(MEMBER_B, [{ kind: 'staff' }])).resolves.toBeUndefined();
-    await expect(check(MISSING, [{ kind: 'internalWorkerKey' }])).resolves.toBeUndefined();
-    await expect(check(MEMBER_B, [none, { kind: 'staff' }])).resolves.toBeUndefined();
+  it('K2: staff·내부 워커 키 → 조회 없이 통과·반환 true(다른 호출자와 함께 와도 동일)', async () => {
+    await expect(check(MEMBER_B, [{ kind: 'staff' }])).resolves.toBe(true);
+    await expect(check(MISSING, [{ kind: 'internalWorkerKey' }])).resolves.toBe(true);
+    await expect(check(MEMBER_B, [none, { kind: 'staff' }])).resolves.toBe(true);
     expect(editSessionRepository.findOne).not.toHaveBeenCalled();
     expect(linkLogs()).toEqual([]);
   });
 
   it('K3: 운영자 — 권한 세션 목록 포함·존재 → 통과 / 미포함 → 404', async () => {
-    await expect(check(MEMBER_A, [{ kind: 'operator', sessionIds: [MEMBER_A] }])).resolves.toBeUndefined();
+    await expect(check(MEMBER_A, [{ kind: 'operator', sessionIds: [MEMBER_A] }])).resolves.toBe(true);
     await expect404(check(MEMBER_A, [{ kind: 'operator', sessionIds: [GUEST_A] }]), MEMBER_A);
   });
 
   describe('K4: 사이트 키', () => {
     it('같은 사이트 회원 세션 → 통과', async () => {
-      await expect(check(MEMBER_A, [siteKey()])).resolves.toBeUndefined();
+      await expect(check(MEMBER_A, [siteKey()])).resolves.toBe(true);
     });
     it('같은 사이트 비회원 세션 → X-Guest-Token 없이 통과', async () => {
-      await expect(check(GUEST_A, [siteKey()])).resolves.toBeUndefined();
+      await expect(check(GUEST_A, [siteKey()])).resolves.toBe(true);
     });
     it('사이트 미지정 회원 세션 → 통과', async () => {
-      await expect(check(MEMBER_NULL, [siteKey()])).resolves.toBeUndefined();
+      await expect(check(MEMBER_NULL, [siteKey()])).resolves.toBe(true);
     });
     it('다른 사이트 세션 → 404', async () => {
       await expect404(check(MEMBER_B, [siteKey()]), MEMBER_B);
@@ -189,13 +189,13 @@ describe('WorkerJobsService.assertEditSessionLink', () => {
 
   describe('K5: shop', () => {
     it('같은 사이트 + 같은 회원 → 통과', async () => {
-      await expect(check(MEMBER_A, [shop(123)])).resolves.toBeUndefined();
+      await expect(check(MEMBER_A, [shop(123)])).resolves.toBe(true);
     });
     it('다른 회원 → 404', async () => {
       await expect404(check(MEMBER_A, [shop(456)]), MEMBER_A);
     });
     it('주문권한에 세션 주문 번호 → 통과', async () => {
-      await expect(check(MEMBER_A, [shop(Number.NaN, { allowedOrderSeqnos: [100] })])).resolves.toBeUndefined();
+      await expect(check(MEMBER_A, [shop(Number.NaN, { allowedOrderSeqnos: [100] })])).resolves.toBe(true);
     });
     it('세션 주문 번호 0 은 주문권한으로 인정하지 않음 → 404', async () => {
       await expect404(check(NO_ORDER_A, [shop(Number.NaN, { allowedOrderSeqnos: [0] })]), NO_ORDER_A);
@@ -207,18 +207,18 @@ describe('WorkerJobsService.assertEditSessionLink', () => {
       await expect404(check(MEMBER_B, [shop(123, { allowedOrderSeqnos: [100] })]), MEMBER_B);
     });
     it('사이트 미지정 회원 세션 + 같은 회원 → 통과', async () => {
-      await expect(check(MEMBER_NULL, [shop(123)])).resolves.toBeUndefined();
+      await expect(check(MEMBER_NULL, [shop(123)])).resolves.toBe(true);
     });
     it('사이트 없는 토큰 → 사이트 미지정 세션만 통과', async () => {
-      await expect(check(MEMBER_NULL, [shop(123, { siteId: null })])).resolves.toBeUndefined();
+      await expect(check(MEMBER_NULL, [shop(123, { siteId: null })])).resolves.toBe(true);
       await expect404(check(MEMBER_A, [shop(123, { siteId: null })]), MEMBER_A);
     });
   });
 
   describe('K6: 비회원 세션 — X-Guest-Token', () => {
     it('유효한 토큰 → none·shop 통과', async () => {
-      await expect(check(GUEST_A, [none], GUEST_TOKEN)).resolves.toBeUndefined();
-      await expect(check(GUEST_A, [shop(Number.NaN)], GUEST_TOKEN)).resolves.toBeUndefined();
+      await expect(check(GUEST_A, [none], GUEST_TOKEN)).resolves.toBe(true);
+      await expect(check(GUEST_A, [shop(Number.NaN)], GUEST_TOKEN)).resolves.toBe(true);
       expect(linkLogs()).toEqual([]);
     });
     it('shop — 토큰 불일치·만료·헤더 없음 → 404', async () => {
@@ -235,23 +235,23 @@ describe('WorkerJobsService.assertEditSessionLink', () => {
     });
   });
 
-  describe('K7: none(무인증 등) — 요청 진행, 운영 로그', () => {
+  describe('K7: none(무인증 등) — 요청 진행(반환 false = 연결 미확인), 운영 로그', () => {
     it('회원 세션 → 통과(예외 없음) + would-deny 로그 1줄', async () => {
-      await expect(check(MEMBER_A, [none])).resolves.toBeUndefined();
+      await expect(check(MEMBER_A, [none])).resolves.toBe(false);
       expect(linkLogs()).toEqual([`[job-link] would-deny route=test-route caller=none site=${SITE_A}`]);
     });
     it('세션 미존재 → 통과 + would-deny 로그(site=-)', async () => {
-      await expect(check(MISSING, [none])).resolves.toBeUndefined();
+      await expect(check(MISSING, [none])).resolves.toBe(false);
       expect(linkLogs()).toEqual(['[job-link] would-deny route=test-route caller=none site=-']);
     });
     it('비회원 세션 + 토큰 불일치·만료 → 통과 + would-deny 로그', async () => {
-      await check(GUEST_A, [none], 'wrong-token');
-      await check(EXPIRED_GUEST_A, [none], GUEST_TOKEN);
+      await expect(check(GUEST_A, [none], 'wrong-token')).resolves.toBe(false);
+      await expect(check(EXPIRED_GUEST_A, [none], GUEST_TOKEN)).resolves.toBe(false);
       expect(linkLogs()).toHaveLength(2);
     });
     it('조회 오류 → 통과 + check-error 로그', async () => {
       editSessionRepository.findOne.mockRejectedValueOnce(new Error('db down'));
-      await expect(check(MEMBER_A, [none])).resolves.toBeUndefined();
+      await expect(check(MEMBER_A, [none])).resolves.toBe(false);
       expect(linkLogs()).toEqual(['[job-link] check-error route=test-route caller=none']);
     });
   });
@@ -275,7 +275,7 @@ describe('WorkerJobsService.assertEditSessionLink', () => {
   });
 
   describe('strictUnverified(JOB_LINK_STRICT)', () => {
-    const strictCheck = (id: string, callers: SessionLinkCaller[], token?: string): Promise<void> =>
+    const strictCheck = (id: string, callers: SessionLinkCaller[], token?: string): Promise<boolean> =>
       service.assertEditSessionLink(id, callers, token, 'test-route', { strictUnverified: true });
 
     it('K7-S1: none + 회원 세션 → 404, denied 로그 1줄', async () => {
@@ -289,7 +289,7 @@ describe('WorkerJobsService.assertEditSessionLink', () => {
     });
 
     it('K7-S3: 비회원 세션 + 유효 토큰 통과 / 불일치·만료 404', async () => {
-      await expect(strictCheck(GUEST_A, [none], GUEST_TOKEN)).resolves.toBeUndefined();
+      await expect(strictCheck(GUEST_A, [none], GUEST_TOKEN)).resolves.toBe(true);
       expect(linkLogs()).toEqual([]);
       await expect404(strictCheck(GUEST_A, [none], 'other-token'), GUEST_A);
       await expect404(strictCheck(EXPIRED_GUEST_A, [none], GUEST_TOKEN), EXPIRED_GUEST_A);
@@ -302,11 +302,11 @@ describe('WorkerJobsService.assertEditSessionLink', () => {
     });
 
     it('K7-S5: staff·내부 워커 키는 조회 없이 통과, 사이트 키·shop 판정은 기본값과 같다', async () => {
-      await expect(strictCheck(MEMBER_B, [{ kind: 'staff' }])).resolves.toBeUndefined();
-      await expect(strictCheck(MEMBER_B, [{ kind: 'internalWorkerKey' }])).resolves.toBeUndefined();
+      await expect(strictCheck(MEMBER_B, [{ kind: 'staff' }])).resolves.toBe(true);
+      await expect(strictCheck(MEMBER_B, [{ kind: 'internalWorkerKey' }])).resolves.toBe(true);
       expect(editSessionRepository.findOne).not.toHaveBeenCalled();
-      await expect(strictCheck(MEMBER_A, [siteKey()])).resolves.toBeUndefined();
-      await expect(strictCheck(MEMBER_A, [shop(123)])).resolves.toBeUndefined();
+      await expect(strictCheck(MEMBER_A, [siteKey()])).resolves.toBe(true);
+      await expect(strictCheck(MEMBER_A, [shop(123)])).resolves.toBe(true);
       await expect404(strictCheck(MEMBER_B, [siteKey()]), MEMBER_B);
     });
 
@@ -323,8 +323,8 @@ describe('WorkerJobsService.assertEditSessionLink', () => {
     it('opts 미전달·strictUnverified:false → none 은 관측 로그만', async () => {
       await expect(
         service.assertEditSessionLink(MEMBER_A, [none], undefined, 'test-route', { strictUnverified: false }),
-      ).resolves.toBeUndefined();
-      await expect(check(MEMBER_A, [none])).resolves.toBeUndefined();
+      ).resolves.toBe(false);
+      await expect(check(MEMBER_A, [none])).resolves.toBe(false);
       expect(linkLogs()).toEqual([
         `[job-link] would-deny route=test-route caller=none site=${SITE_A}`,
         `[job-link] would-deny route=test-route caller=none site=${SITE_A}`,
@@ -333,7 +333,7 @@ describe('WorkerJobsService.assertEditSessionLink', () => {
   });
 
   it('K10: 여러 호출자는 각자 판정 — 하나라도 증명하면 통과(shop 불일치 + 같은 사이트 키)', async () => {
-    await expect(check(MEMBER_A, [shop(456), siteKey()])).resolves.toBeUndefined();
+    await expect(check(MEMBER_A, [shop(456), siteKey()])).resolves.toBe(true);
     expect(linkLogs()).toEqual([]);
   });
 

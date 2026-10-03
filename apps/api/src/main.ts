@@ -102,6 +102,7 @@ async function bootstrap() {
       spreadSnapshotHardFailRaw: process.env.SPREAD_SNAPSHOT_HARD_FAIL,
       jobLinkStrictRaw: configService.get<string>('JOB_LINK_STRICT'),
       jobFileSiteStrictRaw: configService.get<string>('JOB_FILE_SITE_STRICT'),
+      sessionJobOutputLookupRaw: process.env.SESSION_JOB_OUTPUT_LOOKUP,
     });
     pinoLogger.log({ featureFlags: flags }, formatFeatureFlagSnapshot('api', flags), 'FeatureFlags');
   } catch (e) {

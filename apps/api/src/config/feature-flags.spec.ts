@@ -15,6 +15,7 @@ import {
   formatEffectiveRetentionLine,
   formatFeatureFlagSnapshot,
   isFlagOn,
+  isSessionJobOutputLookupOn,
 } from './feature-flags';
 import { StorageConfigService } from '../settings/storage-config.service';
 import { StorageSettingEntity } from '../settings/entities/storage-setting.entity';
@@ -33,6 +34,7 @@ const BASE_INPUTS: ApiFeatureFlagInputs = {
   spreadSnapshotHardFailRaw: undefined,
   jobLinkStrictRaw: undefined,
   jobFileSiteStrictRaw: undefined,
+  sessionJobOutputLookupRaw: undefined,
 };
 
 describe('api feature-flags', () => {
@@ -76,6 +78,7 @@ describe('api feature-flags', () => {
         SPREAD_SNAPSHOT_HARD_FAIL: false,
         JOB_LINK_STRICT: false,
         JOB_FILE_SITE_STRICT: false,
+        SESSION_JOB_OUTPUT_LOOKUP: false,
       });
     });
 
@@ -167,6 +170,30 @@ describe('api feature-flags', () => {
       expect(snap.JOB_LINK_STRICT).toBe(false);
     });
 
+    it.each(STRICT_TABLE)(
+      'sessionJobOutputLookupRaw=%j → SESSION_JOB_OUTPUT_LOOKUP=%s (isFlagOn, 소비 함수와 같은 값)',
+      (raw, expected) => {
+        const snap = buildApiFeatureFlagSnapshot({ ...BASE_INPUTS, sessionJobOutputLookupRaw: raw });
+        expect(snap.SESSION_JOB_OUTPUT_LOOKUP).toBe(expected);
+        const env = (raw === undefined ? {} : { SESSION_JOB_OUTPUT_LOOKUP: String(raw) }) as NodeJS.ProcessEnv;
+        expect(isSessionJobOutputLookupOn(env)).toBe(expected);
+        expect(snap.JOB_LINK_STRICT).toBe(false);
+      },
+    );
+
+    it('isSessionJobOutputLookupOn: 인자가 없으면 호출 시점의 process.env 를 읽는다', () => {
+      const backup = process.env.SESSION_JOB_OUTPUT_LOOKUP;
+      try {
+        delete process.env.SESSION_JOB_OUTPUT_LOOKUP;
+        expect(isSessionJobOutputLookupOn()).toBe(false);
+        process.env.SESSION_JOB_OUTPUT_LOOKUP = 'true';
+        expect(isSessionJobOutputLookupOn()).toBe(true);
+      } finally {
+        if (backup === undefined) delete process.env.SESSION_JOB_OUTPUT_LOOKUP;
+        else process.env.SESSION_JOB_OUTPUT_LOOKUP = backup;
+      }
+    });
+
     it('키 집합이 API_FEATURE_FLAG_KEYS 와 같고 값은 전부 boolean', () => {
       const snap = buildApiFeatureFlagSnapshot(BASE_INPUTS);
       expect(Object.keys(snap).sort()).toEqual([...API_FEATURE_FLAG_KEYS].sort());
@@ -203,12 +230,14 @@ describe('api feature-flags', () => {
           spreadSnapshotHardFailRaw: 'sk-sentinel',
           jobLinkStrictRaw: 'sk-sentinel',
           jobFileSiteStrictRaw: 'sk-sentinel',
+          sessionJobOutputLookupRaw: 'sk-sentinel',
         }),
       );
       expect(line).not.toContain('sentinel');
       expect(line).toContain('CUTOUT_ENABLED=false');
       expect(line).toContain('JOB_LINK_STRICT=false');
       expect(line).toContain('JOB_FILE_SITE_STRICT=false');
+      expect(line).toContain('SESSION_JOB_OUTPUT_LOOKUP=false');
       expect(line).toMatch(LINE_PATTERN);
     });
   });
