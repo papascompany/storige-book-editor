@@ -100,6 +100,8 @@ async function bootstrap() {
       fileRetentionDryRunRaw: configService.get<string>('FILE_RETENTION_DRY_RUN', '0'),
       thumbnailCleanupDryRunRaw: configService.get<string>('THUMBNAIL_CLEANUP_DRY_RUN'),
       spreadSnapshotHardFailRaw: process.env.SPREAD_SNAPSHOT_HARD_FAIL,
+      jobLinkStrictRaw: configService.get<string>('JOB_LINK_STRICT'),
+      jobFileSiteStrictRaw: configService.get<string>('JOB_FILE_SITE_STRICT'),
     });
     pinoLogger.log({ featureFlags: flags }, formatFeatureFlagSnapshot('api', flags), 'FeatureFlags');
   } catch (e) {

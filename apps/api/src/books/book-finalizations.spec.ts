@@ -14,6 +14,7 @@
  *  ⑩ 멱등: 이미 COMPLETED 인 finalization 콜백 재유입 → no-op
  *  ⑪ FAILED 후 재착수 → attempt+1
  *  ⑫ W5 test env: book.env='test' → 잡 partnerEnv='test' 전달 + 웹훅 context.env='test'
+ *  ⑬ X1: bookSpec 연결 → 합성 인자 contentTrim(재단·도련·허용오차, source 'bookSpec'), 조회 실패·무효는 키 없음
  */
 import { ErrV1, WorkerJobStatus } from '@storige/types';
 import { BookFinalizationsService } from './book-finalizations.service';
@@ -360,5 +361,67 @@ describe('BookFinalizationsService — 상태머신(W3) + 콜백 역참조(#4) +
     expect(finSaved.status).toBe('FAILED');
     expect(finSaved.errorCode).toBe(ErrV1.ERR_INTERNAL);
     expect(webhookService.sendCallback.mock.calls.at(-1)[1].event).toBe('book.finalization.failed');
+  });
+
+  // ── X1 — 확정 합성의 내지 기대 재단(bookSpec 출처) ─────────────────────
+
+  describe('X1 contentTrim — bookSpec 재단·도련·허용오차', () => {
+    /** 계약 fixture — apps/worker spec 과 같은 리터럴 */
+    const FIXTURE_BOOK_SPEC = JSON.parse(
+      '{"trimWidthMm":148,"trimHeightMm":210,"bleedMm":3,"tolMm":0.5,"source":"bookSpec"}',
+    ) as unknown;
+    const spec148 = {
+      id: 'spec-1', innerTrimWidthMm: 148, innerTrimHeightMm: 210, bleedMm: 3,
+      sizeToleranceMm: 0.5, pageIncrement: 2, bindingType: 'perfect', pageMin: 24, pageMax: 200,
+    };
+
+    it('bookSpec 연결(pageCount 미확정 → 검증 생략) → 합성 인자 contentTrim = 계약 fixture', async () => {
+      booksService.findBookForSite.mockResolvedValue(makeBook({ bookSpecId: 'spec-1', pageCount: null }));
+      specRepo.findOne.mockResolvedValue(spec148);
+      const view = await svc.startFinalization(SITE, 'bk_0001');
+      expect(view.status).toBe('COMPOSING');
+      const arg = workerJobsService.createSynthesisJob.mock.calls[0][0];
+      expect(arg.contentTrim).toEqual(FIXTURE_BOOK_SPEC);
+      expect(arg.finalizationId).toBe('fin-1');
+    });
+
+    it('validate COMPLETED 콜백 → compose 인자 contentTrim = 계약 fixture', async () => {
+      finRepo.findOne.mockResolvedValue({ id: 'fin-1', uid: 'fin_1', bookId: 'book-1', attempt: 1, status: 'VALIDATING', validateJobId: 'vjob-1' });
+      bookRepo.findOne.mockResolvedValue(makeBook({ bookSpecId: 'spec-1', pageCount: 40 }));
+      specRepo.findOne.mockResolvedValue(spec148);
+      const job = { id: 'vjob-1', status: WorkerJobStatus.COMPLETED, options: { finalizationId: 'fin-1' }, result: { totalPages: 40 } };
+      await svc.onWorkerJobSettled(job as never);
+      const arg = workerJobsService.createSynthesisJob.mock.calls[0][0];
+      expect(arg.contentTrim).toEqual(FIXTURE_BOOK_SPEC);
+      expect(finRepo.save.mock.calls.at(-1)[0].status).toBe('COMPOSING');
+    });
+
+    it('bookSpec 미연결 → 합성 인자에 contentTrim 키 없음, bookSpec 조회 없음', async () => {
+      await svc.startFinalization(SITE, 'bk_0001');
+      const arg = workerJobsService.createSynthesisJob.mock.calls[0][0];
+      expect(arg).not.toHaveProperty('contentTrim');
+      expect(specRepo.findOne).not.toHaveBeenCalled();
+    });
+
+    it('bookSpec 조회 실패 → contentTrim 없이 COMPOSING', async () => {
+      booksService.findBookForSite.mockResolvedValue(makeBook({ bookSpecId: 'spec-1', pageCount: null }));
+      specRepo.findOne.mockRejectedValue(new Error('db down'));
+      const view = await svc.startFinalization(SITE, 'bk_0001');
+      expect(view.status).toBe('COMPOSING');
+      expect(workerJobsService.createSynthesisJob.mock.calls[0][0]).not.toHaveProperty('contentTrim');
+    });
+
+    it('bookSpec 없음(소실)·도련 범위 밖 → contentTrim 없이 COMPOSING', async () => {
+      booksService.findBookForSite.mockResolvedValue(makeBook({ bookSpecId: 'spec-1', pageCount: null }));
+      specRepo.findOne.mockResolvedValue(null);
+      await svc.startFinalization(SITE, 'bk_0001');
+      expect(workerJobsService.createSynthesisJob.mock.calls[0][0]).not.toHaveProperty('contentTrim');
+
+      workerJobsService.createSynthesisJob.mockClear();
+      finRepo.findOne.mockResolvedValue(null);
+      specRepo.findOne.mockResolvedValue({ ...spec148, bleedMm: 8 });
+      await svc.startFinalization(SITE, 'bk_0001');
+      expect(workerJobsService.createSynthesisJob.mock.calls[0][0]).not.toHaveProperty('contentTrim');
+    });
   });
 });

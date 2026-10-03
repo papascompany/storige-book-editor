@@ -21,6 +21,11 @@ import { WebhookService } from '../webhook/webhook.service';
 import { WorkerJobsService } from '../worker-jobs/worker-jobs.service';
 import { WorkerJob } from '../worker-jobs/entities/worker-job.entity';
 import { CreateValidationJobDto } from '../worker-jobs/dto/worker-job.dto';
+import {
+  ContentTrim,
+  buildContentTrimFromBookSpec,
+  deriveContentTrimFailOpen,
+} from '../worker-jobs/content-trim';
 import { BookSpecsService } from '../book-specs/book-specs.service';
 import { BookSpec } from '../book-specs/entities/book-spec.entity';
 import { BooksService } from './books.service';
@@ -365,6 +370,7 @@ export class BookFinalizationsService {
     pageCountHint?: number | null,
   ): Promise<BookFinalization> {
     if (plan.mode === 'synthesize' && plan.coverFileId) {
+      const contentTrim = await this.resolveComposeContentTrim(book);
       const composeJob = await this.workerJobsService.createSynthesisJob({
         coverFileId: plan.coverFileId,
         contentFileId: plan.contentFileId,
@@ -374,6 +380,8 @@ export class BookFinalizationsService {
         siteId: book.siteId,
         partnerEnv: book.env,
         finalizationId: fin.id,
+        // [X1] 내지 기대 재단(bookSpec 출처) — 부재=종전 인자
+        ...(contentTrim ? { contentTrim } : {}),
       });
       fin.status = 'COMPOSING';
       fin.composeJobId = composeJob.id;
@@ -622,6 +630,20 @@ export class BookFinalizationsService {
   private async resolveValidatableSpec(book: Book): Promise<BookSpec | null> {
     if (!book.bookSpecId || book.pageCount == null) return null;
     return this.bookSpecRepo.findOne({ where: { id: book.bookSpecId } });
+  }
+
+  /**
+   * [X1] 합성 내지 기대 재단 — book_spec 의 내지 재단·도련·허용오차(source 'bookSpec').
+   * compose 착수 시점에 조회한다. book_spec 미연결이면 조회·로그 없이 undefined.
+   * 조회 실패·무효 값은 키 없이 합성을 진행한다(deriveContentTrimFailOpen, warn 1줄).
+   */
+  private async resolveComposeContentTrim(book: Book): Promise<ContentTrim | undefined> {
+    if (!book.bookSpecId) return undefined;
+    const bookSpecId = book.bookSpecId;
+    return deriveContentTrimFailOpen('finalization', this.logger, async () => {
+      const spec: BookSpec | null = await this.bookSpecRepo.findOne({ where: { id: bookSpecId } });
+      return spec ? buildContentTrimFromBookSpec(spec) : { skip: 'no-book-spec' };
+    });
   }
 
   /** book_spec + pageCount → 워커 validate orderOptions(판형 대조 계약). */

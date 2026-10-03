@@ -6,9 +6,9 @@
  *    본문 세션 id 가 있을 때만 연결 확인을 거친다. 세션 id 가 없거나 compose-mixed 자동조립(assembleFromSession:true)이면 확인하지 않는다.
  *  - 사이트 키 + 자기 사이트 세션(파트너 서버 경로)은 compose-mixed·synthesize/external 모두 통과하고 잡 생성 인자는 그대로다.
  *  - 운영자·사이트 키·shop 호출자가 연결을 증명하지 못하면 404 SESSION_NOT_FOUND, 잡 미생성.
- *  - 무인증 호출(compose-mixed·render-pages)은 잡을 그대로 만들고 운영 로그만 남긴다.
+ *  - 무인증 호출(compose-mixed·render-pages)은 잡을 그대로 만들고 운영 로그만 남긴다(JOB_LINK_STRICT 미설정 시).
  *  - staff 전용 라우트(convert·synthesize·split-synthesize)는 확인하지 않는다.
- *  - 입력 파일(fileId 계열)의 사이트가 호출자 사이트와 다르면 운영 로그(`[job-file] cross-site`).
+ *  - 입력 파일(fileId 계열·`api://<uuid>` URL)의 사이트가 호출자 사이트와 다르면 운영 로그(`[job-file] cross-site`).
  */
 import { HttpException, Logger } from '@nestjs/common';
 import { WorkerJobsController } from './worker-jobs.controller';
@@ -105,7 +105,8 @@ describe('WorkerJobsController — 세션 연결 확인 배선', () => {
     | 'createSynthesisJob'
     | 'createSplitSynthesisJob'
     | 'createRenderPagesJob'
-    | 'createConversionJob',
+    | 'createConversionJob'
+    | 'createPageCountFixJob',
     jest.SpyInstance
   >;
 
@@ -148,6 +149,7 @@ describe('WorkerJobsController — 세션 연결 확인 배선', () => {
       createSplitSynthesisJob: jest.spyOn(service, 'createSplitSynthesisJob').mockResolvedValue(job),
       createRenderPagesJob: jest.spyOn(service, 'createRenderPagesJob').mockResolvedValue(job),
       createConversionJob: jest.spyOn(service, 'createConversionJob').mockResolvedValue(job),
+      createPageCountFixJob: jest.spyOn(service, 'createPageCountFixJob').mockResolvedValue(job),
     };
     controller = new WorkerJobsController(service, { get: jest.fn() } as never);
   });
@@ -159,11 +161,11 @@ describe('WorkerJobsController — 세션 연결 확인 배선', () => {
       ['bookmoa 비회원 세션', SITE_BOOKMOA, BOOKMOA_GUEST],
       ['printy 회원 세션', SITE_PRINTY, PRINTY_MEMBER],
       ['printy 비회원 세션', SITE_PRINTY, PRINTY_GUEST],
-    ])('P1: compose-mixed 수동 경로 — %s → 201 경로, createComposeMixedJob(dto, undefined, apiKeySite) 인자 그대로', async (_l, siteId, sessionId) => {
+    ])('P1: compose-mixed 수동 경로 — %s → 201 경로, createComposeMixedJob(dto, undefined, apiKeySite) + 입력 파일 확인 인자', async (_l, siteId, sessionId) => {
       const dto = { editSessionId: sessionId, coverUrl: 'api://cover', contentPdfUrl: 'api://content' } as never;
       const key = apiKeySite(siteId);
       await expect(controller.createComposeMixed(dto, undefined, key)).resolves.toEqual({ id: 'job-1' });
-      expect(create.createComposeMixedJob).toHaveBeenCalledWith(dto, undefined, key);
+      expect(create.createComposeMixedJob).toHaveBeenCalledWith(dto, undefined, key, undefined, { strict: false });
       expect(logs('[job-link]')).toEqual([]);
     });
 
@@ -273,15 +275,17 @@ describe('WorkerJobsController — 세션 연결 확인 배선', () => {
     const vdto = (extra: Record<string, unknown> = {}): never =>
       ({ fileId: FILE_BOOKMOA, fileType: 'content', ...extra }) as never;
 
-    it('W5-a: shop 회원 123 + 자기 세션 → 통과, 본문 그대로 전달', async () => {
+    it('W5-a: shop 회원 123 + 자기 세션 → 통과, 잡 사이트는 토큰 사이트', async () => {
       const dto = vdto({ editSessionId: BOOKMOA_MEMBER });
       await controller.createValidationJob(dto, shopUser('123'));
-      expect(create.createValidationJob.mock.calls[0][0]).toBe(dto);
+      expect(create.createValidationJob.mock.calls[0][0]).toEqual({ ...(dto as object), siteId: SITE_BOOKMOA });
+      expect(create.createValidationJob.mock.calls[0][1]).toEqual({ skipSiteWorkerDefaults: true, siteWebhookOff: true });
       expect(linkSpy).toHaveBeenCalledWith(
         BOOKMOA_MEMBER,
         [{ kind: 'shop', siteId: SITE_BOOKMOA, memberSeqno: 123, allowedOrderSeqnos: undefined }],
         undefined,
         'validate',
+        { strictUnverified: false },
       );
     });
 
@@ -435,6 +439,55 @@ describe('WorkerJobsController — 세션 연결 확인 배선', () => {
     it('J3: 같은 사이트 파일 → 로그 없음', async () => {
       await controller.createValidationJobExternal({ fileId: FILE_BOOKMOA } as never, site(SITE_BOOKMOA));
       expect(logs('[job-file]')).toEqual([]);
+    });
+
+    it('J4: validate/external·synthesize/external 의 api://<다른 사이트 파일 id> URL 입력 → cross-site … ref=url, 잡 생성 그대로', async () => {
+      await controller.createValidationJobExternal({ fileUrl: `api://${FILE_OTHER}` } as never, site(SITE_BOOKMOA));
+      await controller.createSynthesisJobExternal(
+        { coverUrl: `api://${FILE_BOOKMOA}`, contentUrl: `api://${FILE_OTHER}` } as never,
+        site(SITE_BOOKMOA),
+      );
+      expect(logs('[job-file]')).toEqual([
+        `[job-file] cross-site route=validate/external caller=siteKey site=${SITE_BOOKMOA} fileSite=${SITE_OTHER} ref=url`,
+        `[job-file] cross-site route=synthesize/external caller=siteKey site=${SITE_BOOKMOA} fileSite=${SITE_OTHER} ref=url`,
+      ]);
+      expect(create.createValidationJob).toHaveBeenCalledTimes(1);
+      expect(create.createSynthesisJob).toHaveBeenCalledTimes(1);
+    });
+
+    it('J4-b: fileId 가 있으면 함께 온 fileUrl·같은 쪽 URL 은 확인 대상이 아니다', async () => {
+      await controller.createValidationJobExternal(
+        { fileId: FILE_BOOKMOA, fileUrl: `api://${FILE_OTHER}` } as never,
+        site(SITE_BOOKMOA),
+      );
+      await controller.createSynthesisJobExternal(
+        { contentFileId: FILE_BOOKMOA, contentUrl: `api://${FILE_OTHER}`, coverUrl: '/storage/c.pdf' } as never,
+        site(SITE_BOOKMOA),
+      );
+      expect(logs('[job-file]')).toEqual([]);
+      expect(filesService.findById.mock.calls.map((c: unknown[]) => c[0])).toEqual([FILE_BOOKMOA, FILE_BOOKMOA]);
+    });
+
+    it('J5: fix-pagecount/external 의 다른 사이트 파일 → cross-site 로그, 잡 생성 그대로 / 내부 워커 키는 관측하지 않음', async () => {
+      await controller.createPageCountFixJobExternal({ fileId: FILE_OTHER } as never, site(SITE_BOOKMOA));
+      expect(logs('[job-file]')).toEqual([
+        `[job-file] cross-site route=fix-pagecount/external caller=siteKey site=${SITE_BOOKMOA} fileSite=${SITE_OTHER}`,
+      ]);
+      expect(create.createPageCountFixJob).toHaveBeenCalledWith({ fileId: FILE_OTHER, siteId: SITE_BOOKMOA });
+      filesService.findById.mockClear();
+      await controller.createPageCountFixJobExternal({ fileId: FILE_OTHER } as never, site(SITE_BOOKMOA, 'worker'));
+      expect(filesService.findById).not.toHaveBeenCalled();
+      expect(create.createPageCountFixJob).toHaveBeenCalledTimes(2);
+    });
+
+    it('J6: validate(shop) 의 fileUrl api://<다른 사이트 파일> → cross-site … ref=url / staff 는 관측하지 않음', async () => {
+      await controller.createValidationJob({ fileUrl: `api://${FILE_OTHER}`, fileType: 'content' } as never, shopUser('123'));
+      expect(logs('[job-file]')).toEqual([
+        `[job-file] cross-site route=validate caller=shop site=${SITE_BOOKMOA} fileSite=${SITE_OTHER} ref=url`,
+      ]);
+      filesService.findById.mockClear();
+      await controller.createValidationJob({ fileUrl: `api://${FILE_OTHER}`, fileType: 'content' } as never, { role: 'ADMIN' });
+      expect(filesService.findById).not.toHaveBeenCalled();
     });
   });
 });

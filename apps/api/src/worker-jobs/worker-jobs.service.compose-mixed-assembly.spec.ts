@@ -12,7 +12,8 @@
  *     shop 호출자(owner)의 세션 소유 판정 실패도 같은 404.
  *  5. 빈 입력 400 EMPTY_COMPOSE_INPUT — 워커 백지 1p COMPLETED 산출 차단.
  *  6. 자동조립 도출 실패 400 SESSION_ASSEMBLY_INCOMPLETE + missing 배열.
- *  7. 워커 무변경 보장: 도출값이 **기존 큐 키 이름** 그대로 실린다(신규 키 0건).
+ *  7. 워커 계약: 도출값은 **기존 큐 키 이름** 그대로 실리고, 추가 키는 `contentTrim`
+ *     (템플릿셋 재단·도련이 유효할 때 1키, X1) 하나뿐이다.
  *
  * 인스턴스 생성 패턴은 worker-jobs.service.compose-mixed.spec.ts 선례를 따른다.
  */
@@ -846,7 +847,7 @@ describe('WorkerJobsService.createComposeMixedJob — 자동조립 opt-in', () =
   // 7. 워커 계약 — 도출값은 기존 큐 키로만 흐른다(apps/worker 무변경 보장)
   // ────────────────────────────────────────────────────────────────────────
   describe('워커 계약 — 도출값이 기존 큐 키 이름 그대로', () => {
-    it('자동조립 페이로드의 키 집합이 기존 경로와 완전히 동일(신규 키 0건)', async () => {
+    it('templateSet bleedMm 이 없으면 자동조립 페이로드의 키 집합 = LEGACY', async () => {
       editSessionRepository.findOne.mockResolvedValue(sessionA);
       templateSetsService.findOne.mockResolvedValue({
         ...templateSetA4,
@@ -871,7 +872,7 @@ describe('WorkerJobsService.createComposeMixedJob — 자동조립 opt-in', () =
       expect(queuePayload().composeCoverHeightMm).toBe(297);
     });
 
-    it('DB job.options 도 기존 키 집합 유지 — 자동조립 전용 키 신설 0건', async () => {
+    it('templateSet bleedMm 이 없으면 DB job.options 키 집합 = 수동 경로와 같다', async () => {
       editSessionRepository.findOne.mockResolvedValue(sessionA);
       templateSetsService.findOne.mockResolvedValue(templateSetA4);
 
@@ -890,6 +891,125 @@ describe('WorkerJobsService.createComposeMixedJob — 자동조립 opt-in', () =
       const legacyKeys = Object.keys(createdJob().options).sort();
 
       expect(assembledKeys).toEqual(legacyKeys);
+    });
+  });
+  // ────────────────────────────────────────────────────────────────────────
+  // 8. X1 — 내지 기대 재단(contentTrim): 자동조립만, 수동 경로는 도출하지 않는다
+  // ────────────────────────────────────────────────────────────────────────
+  describe('X1 contentTrim — 자동조립은 템플릿셋 재단·도련, 수동 경로는 키 없음', () => {
+    /** 계약 fixture — apps/worker spec 과 같은 리터럴 */
+    const FIXTURE_TEMPLATE_SET = JSON.parse(
+      '{"trimWidthMm":210,"trimHeightMm":297,"bleedMm":3,"source":"templateSet"}',
+    ) as unknown;
+    const innerSpreadDetail = {
+      id: 'tpl-inner',
+      spreadConfig: {
+        version: 2,
+        regions: [],
+        totalWidthMm: 420,
+        totalHeightMm: 297,
+        regionScope: 'inner',
+        innerSpec: { pageWidthMm: 210, pageHeightMm: 297, gutterMm: 10, cutSizeMm: 3 },
+      },
+    };
+
+    it('자동조립 + templateSet(bleedMm 3) → options·큐에 contentTrim 1키만 추가, 나머지는 LEGACY', async () => {
+      editSessionRepository.findOne.mockResolvedValue(sessionA);
+      templateSetsService.findOne.mockResolvedValue({ ...templateSetA4, bleedMm: 3 });
+
+      const job = await service.createComposeMixedJob(
+        { editSessionId: 'sess-1', assembleFromSession: true },
+        { siteId: 'site-A' },
+      );
+
+      expect(job.id).toBe('job-asm');
+      expect(queuePayload().contentTrim).toEqual(FIXTURE_TEMPLATE_SET);
+      expect(createdJob().options.contentTrim).toEqual(FIXTURE_TEMPLATE_SET);
+      expect(Object.keys(queuePayload()).sort()).toEqual([...LEGACY_QUEUE_KEYS, 'contentTrim'].sort());
+      // 이미 읽은 템플릿셋을 재사용한다(추가 조회 없음)
+      expect(templateSetsService.findOneWithTemplates).toHaveBeenCalledTimes(1);
+    });
+
+    it('자동조립 + cropMarkEnabled → contentTrim 은 재단·도련만(작업사이즈 키 없음)', async () => {
+      editSessionRepository.findOne.mockResolvedValue(sessionA);
+      templateSetsService.findOne.mockResolvedValue({ ...templateSetA4, bleedMm: 3, cropMarkEnabled: true });
+
+      await service.createComposeMixedJob(
+        { editSessionId: 'sess-1', assembleFromSession: true },
+        { siteId: 'site-A' },
+      );
+
+      expect(queuePayload().contentTrim).toEqual(FIXTURE_TEMPLATE_SET);
+    });
+
+    it('자동조립 + 내지 펼침면 세트 → contentTrim 없음', async () => {
+      editSessionRepository.findOne.mockResolvedValue({ ...sessionA, coverFile: null });
+      templateSetsService.findOne.mockResolvedValue({ ...templateSetA4, bleedMm: 3 });
+      templateDetails = [innerSpreadDetail];
+
+      await service.createComposeMixedJob(
+        { editSessionId: 'sess-1', assembleFromSession: true },
+        { siteId: 'site-A' },
+      );
+
+      expect('contentTrim' in queuePayload()).toBe(false);
+      expect('contentTrim' in createdJob().options).toBe(false);
+    });
+
+    it('자동조립 + templateSet 미존재 → contentTrim 없음(201)', async () => {
+      editSessionRepository.findOne.mockResolvedValue(sessionA);
+      templateSetsService.findOne.mockRejectedValue(new NotFoundException('nope'));
+
+      const job = await service.createComposeMixedJob(
+        { editSessionId: 'sess-1', assembleFromSession: true, coverWidthMm: 216, coverHeightMm: 303 },
+        { siteId: 'site-A' },
+      );
+
+      expect(job.id).toBe('job-asm');
+      expect('contentTrim' in queuePayload()).toBe(false);
+    });
+
+    it('도출 중 예외(비정상 템플릿 상세)여도 잡은 생성되고(201) contentTrim 은 없다', async () => {
+      editSessionRepository.findOne.mockResolvedValue(sessionA);
+      templateSetsService.findOne.mockResolvedValue({ ...templateSetA4, bleedMm: 3 });
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      let hostileReads = 0;
+      const hostile = {
+        id: 'tpl-x',
+        get spreadConfig(): unknown {
+          // 조립 단계(map)에서는 null, 도출 단계(두 번째 접근)에서는 예외
+          hostileReads += 1;
+          if (hostileReads > 1) throw new TypeError('bad');
+          return null;
+        },
+      };
+      templateDetails = [hostile];
+
+      const job = await service.createComposeMixedJob(
+        { editSessionId: 'sess-1', assembleFromSession: true },
+        { siteId: 'site-A' },
+      );
+
+      expect(job.id).toBe('job-asm');
+      expect('contentTrim' in queuePayload()).toBe(false);
+      expect(
+        warn.mock.calls.some((c) =>
+          String(c[0]).startsWith('[content-trim] skip route=compose-mixed reason=lookup-error'),
+        ),
+      ).toBe(true);
+      warn.mockRestore();
+    });
+
+    it('수동 경로 → 세션에 templateSet 이 있어도 contentTrim 없음, templateSetsService 0회', async () => {
+      editSessionRepository.findOne.mockResolvedValue({ ...sessionA, metadata: {} });
+      templateSetsService.findOne.mockResolvedValue({ ...templateSetA4, bleedMm: 3 });
+
+      await service.createComposeMixedJob({ ...legacyDto });
+
+      expect(templateSetsService.findOne).not.toHaveBeenCalled();
+      expect(templateSetsService.findOneWithTemplates).not.toHaveBeenCalled();
+      expect(Object.keys(queuePayload()).sort()).toEqual(LEGACY_QUEUE_KEYS);
+      expect('contentTrim' in createdJob().options).toBe(false);
     });
   });
 });

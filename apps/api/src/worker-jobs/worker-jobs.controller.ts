@@ -151,6 +151,15 @@ export class WorkerJobsController {
     }
   }
 
+  /**
+   * 잡 생성 확인 플래그(**기본 false**, 미설정=꺼짐) — 요청 시점에 평가한다.
+   *  - JOB_LINK_STRICT: 그 밖의 호출자(none)도 세션 연결을 증명하지 못하면 404(assertEditSessionLink).
+   *  - JOB_FILE_SITE_STRICT: 입력 파일 사이트가 호출 사이트와 다르면 403 FILE_SITE_MISMATCH(observeJobInputFileSites).
+   */
+  private strictFlag(key: 'JOB_LINK_STRICT' | 'JOB_FILE_SITE_STRICT'): boolean {
+    return isFlagOn(this.configService.get<string>(key));
+  }
+
   // ============================================================================
   // Create Jobs (Queue Operations)
   // ============================================================================
@@ -186,6 +195,7 @@ export class WorkerJobsController {
         'validate',
         { kind: 'operator', siteId: grant.siteId },
         [dto.fileId],
+        { strict: this.strictFlag('JOB_FILE_SITE_STRICT'), urls: dto.fileId ? [] : [dto.fileUrl] },
       );
       return await this.workerJobsService.createValidationJob(dto);
     }
@@ -193,6 +203,7 @@ export class WorkerJobsController {
     // 세션 연결 확인 호출자: shop-session → shop, admin-app staff → staff, 그 밖 → none.
     const isShop = user?.source === 'shop';
     const shopSiteId = isShop && typeof user?.siteId === 'string' ? user.siteId : null;
+    const isStaff = !isShop && isStaffRole(user?.role);
     if (createValidationJobDto.editSessionId) {
       const caller: SessionLinkCaller = isShop
         ? {
@@ -201,7 +212,7 @@ export class WorkerJobsController {
             memberSeqno: memberSeqnoOf(user?.userId),
             allowedOrderSeqnos: user?.allowedOrderSeqnos,
           }
-        : isStaffRole(user?.role)
+        : isStaff
           ? { kind: 'staff' }
           : { kind: 'none' };
       await this.workerJobsService.assertEditSessionLink(
@@ -209,6 +220,7 @@ export class WorkerJobsController {
         [caller],
         guestTokenOf(guestTokenHeader),
         'validate',
+        { strictUnverified: this.strictFlag('JOB_LINK_STRICT') },
       );
     }
     if (shopSiteId !== null) {
@@ -216,9 +228,22 @@ export class WorkerJobsController {
         'validate',
         { kind: 'shop', siteId: shopSiteId },
         [createValidationJobDto.fileId],
+        {
+          strict: this.strictFlag('JOB_FILE_SITE_STRICT'),
+          urls: createValidationJobDto.fileId ? [] : [createValidationJobDto.fileUrl],
+        },
       );
     }
-    return await this.workerJobsService.createValidationJob(createValidationJobDto);
+    // 잡 사이트는 서버가 정한다 — shop-session 토큰 사이트, 그 밖의 호출자는 NULL. 본문 siteId 는 쓰지 않는다(값 미기록 경고만).
+    // shop 잡은 검증 옵션을 요청 그대로 두고(사이트 기본값 미병합), 완료 발신에 사이트 웹훅 설정(v2)을 쓰지 않는다.
+    if (createValidationJobDto.siteId && createValidationJobDto.siteId !== shopSiteId) {
+      const callerKind = isShop ? 'shop' : isStaff ? 'staff' : 'none';
+      this.logger.warn(`[job-site] body-site-ignored route=validate caller=${callerKind}`);
+    }
+    const dto: CreateValidationJobDto = { ...createValidationJobDto, siteId: shopSiteId ?? undefined };
+    return shopSiteId !== null
+      ? await this.workerJobsService.createValidationJob(dto, { skipSiteWorkerDefaults: true, siteWebhookOff: true })
+      : await this.workerJobsService.createValidationJob(dto);
   }
 
   /**
@@ -247,9 +272,15 @@ export class WorkerJobsController {
     }
     const fileCaller = siteKeyFileCaller(site);
     if (fileCaller) {
-      await this.workerJobsService.observeJobInputFileSites('validate/external', fileCaller, [
-        createValidationJobDto.fileId,
-      ]);
+      await this.workerJobsService.observeJobInputFileSites(
+        'validate/external',
+        fileCaller,
+        [createValidationJobDto.fileId],
+        {
+          strict: this.strictFlag('JOB_FILE_SITE_STRICT'),
+          urls: createValidationJobDto.fileId ? [] : [createValidationJobDto.fileUrl],
+        },
+      );
     }
     return await this.workerJobsService.createValidationJob({
       ...createValidationJobDto,
@@ -302,6 +333,12 @@ export class WorkerJobsController {
     @Body() dto: CreatePageCountFixJobDto,
     @CurrentSite() site?: CurrentSitePayload,
   ): Promise<WorkerJob> {
+    const fileCaller = siteKeyFileCaller(site);
+    if (fileCaller) {
+      await this.workerJobsService.observeJobInputFileSites('fix-pagecount/external', fileCaller, [dto.fileId], {
+        strict: this.strictFlag('JOB_FILE_SITE_STRICT'),
+      });
+    }
     return await this.workerJobsService.createPageCountFixJob({
       ...dto,
       siteId: site?.siteId, // Phase C — 자동 사이트 식별
@@ -363,10 +400,19 @@ export class WorkerJobsController {
     }
     const fileCaller = siteKeyFileCaller(site);
     if (fileCaller) {
-      await this.workerJobsService.observeJobInputFileSites('synthesize/external', fileCaller, [
-        createSynthesisJobDto.coverFileId,
-        createSynthesisJobDto.contentFileId,
-      ]);
+      await this.workerJobsService.observeJobInputFileSites(
+        'synthesize/external',
+        fileCaller,
+        [createSynthesisJobDto.coverFileId, createSynthesisJobDto.contentFileId],
+        {
+          strict: this.strictFlag('JOB_FILE_SITE_STRICT'),
+          // fileId 가 있는 쪽은 URL 을 쓰지 않는다(서비스가 fileId 로 덮어씀).
+          urls: [
+            createSynthesisJobDto.coverFileId ? undefined : createSynthesisJobDto.coverUrl,
+            createSynthesisJobDto.contentFileId ? undefined : createSynthesisJobDto.contentUrl,
+          ],
+        },
+      );
     }
     return await this.workerJobsService.createSynthesisJob({
       ...createSynthesisJobDto,
@@ -502,7 +548,14 @@ export class WorkerJobsController {
         linkCallers.length > 0 ? linkCallers : [{ kind: 'none' }],
         guestTokenOf(guestTokenHeader),
         'compose-mixed',
+        { strictUnverified: this.strictFlag('JOB_LINK_STRICT') },
       );
+    }
+    // 수동 경로 + 검증된 호출자 사이트(shop-session·사이트 키)가 있을 때만 입력 URL(api://)의 파일 사이트를 확인한다.
+    if (dto.assembleFromSession !== true && (caller?.siteId || apiKeySite?.siteId)) {
+      return await this.workerJobsService.createComposeMixedJob(dto, caller, apiKeySite, undefined, {
+        strict: this.strictFlag('JOB_FILE_SITE_STRICT'),
+      });
     }
     return await this.workerJobsService.createComposeMixedJob(dto, caller, apiKeySite);
   }
@@ -522,13 +575,14 @@ export class WorkerJobsController {
     // 세션 연결 확인 — 비회원 세션은 이 헤더의 게스트 토큰으로 연결을 증명한다.
     @Headers('x-guest-token') guestTokenHeader?: string,
   ): Promise<WorkerJob> {
-    // 인증 컨텍스트가 없는 라우트 — 호출자는 none(관측 로그만, 잡 생성은 그대로).
+    // 인증 컨텍스트가 없는 라우트 — 호출자는 none(JOB_LINK_STRICT 미설정 시 관측 로그만, 잡 생성은 그대로).
     if (dto.editSessionId) {
       await this.workerJobsService.assertEditSessionLink(
         dto.editSessionId,
         [{ kind: 'none' }],
         guestTokenOf(guestTokenHeader),
         'render-pages',
+        { strictUnverified: this.strictFlag('JOB_LINK_STRICT') },
       );
     }
     return await this.workerJobsService.createRenderPagesJob(dto);
@@ -679,9 +733,9 @@ export class WorkerJobsController {
     }
     const fileCaller = siteKeyFileCaller(site);
     if (fileCaller) {
-      await this.workerJobsService.observeJobInputFileSites('split-synthesize/external', fileCaller, [
-        dto.pdfFileId,
-      ]);
+      await this.workerJobsService.observeJobInputFileSites('split-synthesize/external', fileCaller, [dto.pdfFileId], {
+        strict: this.strictFlag('JOB_FILE_SITE_STRICT'),
+      });
     }
     return await this.workerJobsService.createSplitSynthesisJob({
       ...dto,

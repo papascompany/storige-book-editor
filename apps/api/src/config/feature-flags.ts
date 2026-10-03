@@ -15,6 +15,8 @@
  *    `[FLAGS] api retention-effective ...`)로 남긴다 — 삭제 모드 확인은 그 줄로 한다.
  *  - THUMBNAIL_CLEANUP_DRY_RUN: thumbnail-cleanup.service 생성자와 같은 식.
  *  - SPREAD_SNAPSHOT_HARD_FAIL: edit-sessions.service 의 호출 시점 식과 같은 식.
+ *  - JOB_LINK_STRICT / JOB_FILE_SITE_STRICT: worker-jobs.controller 와 같은 isFlagOn 술어.
+ *    CUTOUT_ENABLED 처럼 컨트롤러가 요청 시점마다 평가하므로 기동 스냅샷은 그 시점의 표본이다.
  *
  * 파싱 규칙은 플래그마다 다르다(통일하지 않음 — 동작 변경이므로 테스트로 현행을 고정).
  *
@@ -40,6 +42,8 @@ export const API_FEATURE_FLAG_KEYS = [
   'FILE_RETENTION_DRY_RUN',
   'THUMBNAIL_CLEANUP_DRY_RUN',
   'SPREAD_SNAPSHOT_HARD_FAIL',
+  'JOB_LINK_STRICT',
+  'JOB_FILE_SITE_STRICT',
 ] as const;
 
 export type ApiFeatureFlagKey = (typeof API_FEATURE_FLAG_KEYS)[number];
@@ -60,6 +64,10 @@ export interface ApiFeatureFlagInputs {
   thumbnailCleanupDryRunRaw: unknown;
   /** process.env.SPREAD_SNAPSHOT_HARD_FAIL — edit-sessions.service 와 동일 소스 */
   spreadSnapshotHardFailRaw: unknown;
+  /** configService.get('JOB_LINK_STRICT') 원값 — worker-jobs.controller 와 같은 소스·같은 술어 */
+  jobLinkStrictRaw: unknown;
+  /** configService.get('JOB_FILE_SITE_STRICT') 원값 — worker-jobs.controller 와 같은 소스·같은 술어 */
+  jobFileSiteStrictRaw: unknown;
 }
 
 export function buildApiFeatureFlagSnapshot(i: ApiFeatureFlagInputs): ApiFeatureFlagSnapshot {
@@ -76,6 +84,9 @@ export function buildApiFeatureFlagSnapshot(i: ApiFeatureFlagInputs): ApiFeature
     THUMBNAIL_CLEANUP_DRY_RUN: i.thumbnailCleanupDryRunRaw === '1',
     // edit-sessions.service: `process.env.SPREAD_SNAPSHOT_HARD_FAIL === 'true'`
     SPREAD_SNAPSHOT_HARD_FAIL: i.spreadSnapshotHardFailRaw === 'true',
+    // worker-jobs.controller strictFlag: isFlagOn(configService.get(key))
+    JOB_LINK_STRICT: isFlagOn(i.jobLinkStrictRaw),
+    JOB_FILE_SITE_STRICT: isFlagOn(i.jobFileSiteStrictRaw),
   };
 }
 

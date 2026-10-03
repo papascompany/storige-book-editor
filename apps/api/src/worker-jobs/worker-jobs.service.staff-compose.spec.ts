@@ -130,6 +130,74 @@ describe('WorkerJobsService.createStaffComposeFromSession', () => {
   });
 });
 
+describe('WorkerJobsService.createStaffComposeFromSession — 내지 기대 재단(contentTrim)', () => {
+  /** 계약 fixture — apps/worker spec 과 같은 리터럴 */
+  const FIXTURE_TEMPLATE_SET = JSON.parse(
+    '{"trimWidthMm":210,"trimHeightMm":297,"bleedMm":3,"source":"templateSet"}',
+  ) as unknown;
+
+  let service: WorkerJobsService;
+  let workerJobRepository: { create: jest.Mock; save: jest.Mock };
+  let synthesisQueue: { add: jest.Mock };
+  let templateSet: Record<string, unknown>;
+  let templateDetails: unknown[];
+
+  beforeEach(() => {
+    workerJobRepository = {
+      create: jest.fn((x) => x),
+      save: jest.fn(async (x) => ({ ...x, id: 'job-1' })),
+    };
+    synthesisQueue = { add: jest.fn(async () => ({})) };
+    templateSet = { ...templateSetA4, bleedMm: 3 };
+    templateDetails = [];
+    service = new WorkerJobsService(
+      workerJobRepository as never,
+      { findOne: jest.fn(async () => ({ ...sessionA })) } as never,
+      { add: jest.fn() } as never,
+      { add: jest.fn() } as never,
+      synthesisQueue as never,
+      { findById: jest.fn() } as never,
+      {} as never,
+      {} as never,
+      {
+        findOne: jest.fn(async () => templateSet),
+        findOneWithTemplates: jest.fn(async () => ({ templateSet, templateDetails })),
+      } as never,
+    );
+  });
+
+  const created = (): Record<string, unknown> => workerJobRepository.create.mock.calls[0][0];
+  const payload = (): Record<string, unknown> => synthesisQueue.add.mock.calls[0][1];
+
+  it('관리자 합성 + templateSet bleedMm 3 → options·큐에 같은 contentTrim(계약 fixture)', async () => {
+    await service.createStaffComposeFromSession('sess-1', SITE, { notifyPartner: false, actorUserId: ACTOR });
+    expect((created().options as Record<string, unknown>).contentTrim).toEqual(FIXTURE_TEMPLATE_SET);
+    expect(payload().contentTrim).toEqual(FIXTURE_TEMPLATE_SET);
+  });
+
+  it('templateSet bleedMm 없음 → contentTrim 키 없음', async () => {
+    delete templateSet.bleedMm;
+    await service.createStaffComposeFromSession('sess-1', SITE, { notifyPartner: false, actorUserId: ACTOR });
+    expect(created().options).not.toHaveProperty('contentTrim');
+    expect(payload()).not.toHaveProperty('contentTrim');
+  });
+
+  it('내지 펼침면 세트 → contentTrim 키 없음, 잡은 생성', async () => {
+    templateDetails = [
+      {
+        id: 'tpl-inner',
+        spreadConfig: { regionScope: 'inner', innerSpec: { pageWidthMm: 210, pageHeightMm: 297 } },
+      },
+    ];
+    const saved = await service.createStaffComposeFromSession('sess-1', SITE, {
+      notifyPartner: false,
+      actorUserId: ACTOR,
+    });
+    expect(saved.id).toBe('job-1');
+    expect(payload()).not.toHaveProperty('contentTrim');
+  });
+});
+
 describe('WorkerJobsService.updateJobStatus — 알림 없는 관리자 잡', () => {
   let workerJobRepository: { findOne: jest.Mock; save: jest.Mock; find: jest.Mock };
   let editSessionRepository: { findOne: jest.Mock; update: jest.Mock };

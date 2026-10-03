@@ -31,6 +31,8 @@ const BASE_INPUTS: ApiFeatureFlagInputs = {
   fileRetentionDryRunRaw: '0',
   thumbnailCleanupDryRunRaw: undefined,
   spreadSnapshotHardFailRaw: undefined,
+  jobLinkStrictRaw: undefined,
+  jobFileSiteStrictRaw: undefined,
 };
 
 describe('api feature-flags', () => {
@@ -72,6 +74,8 @@ describe('api feature-flags', () => {
         FILE_RETENTION_DRY_RUN: false,
         THUMBNAIL_CLEANUP_DRY_RUN: false,
         SPREAD_SNAPSHOT_HARD_FAIL: false,
+        JOB_LINK_STRICT: false,
+        JOB_FILE_SITE_STRICT: false,
       });
     });
 
@@ -141,6 +145,28 @@ describe('api feature-flags', () => {
       expect(snap.SPREAD_SNAPSHOT_HARD_FAIL).toBe(expected);
     });
 
+    const STRICT_TABLE: Array<[unknown, boolean]> = [
+      [undefined, false],
+      ['true', true],
+      [' TRUE ', true],
+      ['1', true],
+      ['false', false],
+      ['0', false],
+      ['yes', false],
+    ];
+
+    it.each(STRICT_TABLE)('jobLinkStrictRaw=%j → JOB_LINK_STRICT=%s (isFlagOn)', (raw, expected) => {
+      const snap = buildApiFeatureFlagSnapshot({ ...BASE_INPUTS, jobLinkStrictRaw: raw });
+      expect(snap.JOB_LINK_STRICT).toBe(expected);
+      expect(snap.JOB_FILE_SITE_STRICT).toBe(false);
+    });
+
+    it.each(STRICT_TABLE)('jobFileSiteStrictRaw=%j → JOB_FILE_SITE_STRICT=%s (isFlagOn)', (raw, expected) => {
+      const snap = buildApiFeatureFlagSnapshot({ ...BASE_INPUTS, jobFileSiteStrictRaw: raw });
+      expect(snap.JOB_FILE_SITE_STRICT).toBe(expected);
+      expect(snap.JOB_LINK_STRICT).toBe(false);
+    });
+
     it('키 집합이 API_FEATURE_FLAG_KEYS 와 같고 값은 전부 boolean', () => {
       const snap = buildApiFeatureFlagSnapshot(BASE_INPUTS);
       expect(Object.keys(snap).sort()).toEqual([...API_FEATURE_FLAG_KEYS].sort());
@@ -175,10 +201,14 @@ describe('api feature-flags', () => {
           fileRetentionDryRunRaw: 'sk-sentinel',
           thumbnailCleanupDryRunRaw: 'sk-sentinel',
           spreadSnapshotHardFailRaw: 'sk-sentinel',
+          jobLinkStrictRaw: 'sk-sentinel',
+          jobFileSiteStrictRaw: 'sk-sentinel',
         }),
       );
       expect(line).not.toContain('sentinel');
       expect(line).toContain('CUTOUT_ENABLED=false');
+      expect(line).toContain('JOB_LINK_STRICT=false');
+      expect(line).toContain('JOB_FILE_SITE_STRICT=false');
       expect(line).toMatch(LINE_PATTERN);
     });
   });

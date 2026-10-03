@@ -86,6 +86,11 @@ services:
       # 컷아웃 산출물 보존기간(일). 정리 cron 은 API 에 있다(CutoutOutputsRetentionService).
       #   ⚠️ 문서에만 적고 이 매핑을 빼면 운영자가 값을 바꿔도 코드 기본값 7 로 도는 silent no-op 이 된다.
       - CUTOUT_RETENTION_DAYS=${CUTOUT_RETENTION_DAYS:-7}
+      # 잡 생성 확인 플래그(api 전용, 기본 false, 규칙 (A): true|1). 컨트롤러가 요청마다 읽는다.
+      #   ⚠️ .env 에만 넣고 이 매핑을 빼면 silent no-op — 매핑 필수.
+      #   전환: .env 값 변경 → docker compose up -d api(빌드 없음) → nginx 재시작 → [FLAGS] api 줄 확인.
+      - JOB_LINK_STRICT=${JOB_LINK_STRICT:-false}
+      - JOB_FILE_SITE_STRICT=${JOB_FILE_SITE_STRICT:-false}
     volumes:
       - ./storage:/app/storage
     depends_on:

@@ -150,7 +150,8 @@ describe('WorkerJobsController — 컷아웃·합본 caller 파생(운영자 포
     observeJobInputFileSites: jest.Mock;
   };
   let controller: WorkerJobsController;
-  const config = { get: jest.fn(() => 'true') };
+  // CUTOUT_ENABLED 만 켠다 — 잡 생성 확인 플래그(JOB_LINK_STRICT·JOB_FILE_SITE_STRICT)는 미설정.
+  const config = { get: jest.fn((key: string) => (key === 'CUTOUT_ENABLED' ? 'true' : undefined)) };
 
   beforeEach(() => {
     workerJobs = {
@@ -206,10 +207,18 @@ describe('WorkerJobsController — 컷아웃·합본 caller 파생(운영자 포
     expect(workerJobs.createValidationJob).toHaveBeenCalledTimes(1);
   });
 
-  it('validate: 비운영자(shop)는 종전대로 DTO 그대로 전달', async () => {
+  it('validate: shop → 잡 사이트는 토큰 사이트, 본문 siteId 미사용', async () => {
     const dto = { fileId: FILE_ID, fileType: 'content', siteId: 'x' };
     await controller.createValidationJob(dto as never, { source: 'shop', siteId: SITE_A });
-    expect(workerJobs.createValidationJob.mock.calls[0][0]).toBe(dto);
+    expect(workerJobs.createValidationJob).toHaveBeenCalledWith(
+      { ...dto, siteId: SITE_A },
+      { skipSiteWorkerDefaults: true, siteWebhookOff: true },
+    );
+  });
+
+  it('잡 생성 확인 플래그는 미설정(OFF)으로 전달된다', async () => {
+    await controller.createValidationJob({ fileId: FILE_ID, fileType: 'content' } as never, { source: 'shop', siteId: SITE_A });
+    expect(workerJobs.observeJobInputFileSites.mock.calls[0][3]).toEqual({ strict: false, urls: [] });
   });
 
   it('회귀: shop → 종전, 익명·비-shop → undefined', async () => {

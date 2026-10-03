@@ -12,7 +12,8 @@ import { ValidationPipe, BadRequestException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { getQueueToken } from '@nestjs/bull';
-import { UpdateJobStatusDto, CreateValidationJobDto } from './worker-job.dto';
+import { UpdateJobStatusDto, CreateValidationJobDto, CreateSynthesisJobDto } from './worker-job.dto';
+import { CreateRenderPagesJobDto } from './create-render-pages-job.dto';
 import { WorkerJobsService } from '../worker-jobs.service';
 import { WorkerJob } from '../entities/worker-job.entity';
 import { EditSessionEntity } from '../../edit-sessions/entities/edit-session.entity';
@@ -117,6 +118,58 @@ describe('CreateValidationJobDto.callbackUrl (SEC-009 @IsUrl)', () => {
   it('callbackUrl 미지정은 통과(옵셔널)', async () => {
     const out = await pipe.transform({ ...base }, meta);
     expect(out.callbackUrl).toBeUndefined();
+  });
+});
+
+// 본문 siteId 는 잡 사이트로 쓰지 않지만 기존 호출자 호환을 위해 받는다(400 없음).
+describe('본문 siteId 호환 수용 — CreateValidationJobDto·CreateRenderPagesJobDto', () => {
+  const pipe = new ValidationPipe({ whitelist: true, transform: true, forbidNonWhitelisted: true });
+  const SITE = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+
+  it('CreateValidationJobDto 본문 siteId(UUID) 통과', async () => {
+    const out = await pipe.transform(
+      {
+        fileId: '3f2c1a4e-0b6d-4c2a-9e1f-1234567890ab',
+        fileType: 'content',
+        orderOptions: { size: { width: 210, height: 297 }, pages: 4, binding: 'perfect', bleed: 3 },
+        siteId: SITE,
+      },
+      { type: 'body' as const, metatype: CreateValidationJobDto },
+    );
+    expect(out.siteId).toBe(SITE);
+  });
+
+  it('CreateRenderPagesJobDto 본문 siteId(UUID) 통과', async () => {
+    const out = await pipe.transform(
+      { fileId: '3f2c1a4e-0b6d-4c2a-9e1f-1234567890ab', siteId: SITE },
+      { type: 'body' as const, metatype: CreateRenderPagesJobDto },
+    );
+    expect(out.siteId).toBe(SITE);
+  });
+});
+
+// contentTrim 은 내부 호출(books 확정)만 싣는 비화이트리스트 필드다.
+describe('CreateSynthesisJobDto.contentTrim — 요청 본문에서는 받지 않는다', () => {
+  const pipe = new ValidationPipe({ whitelist: true, transform: true, forbidNonWhitelisted: true });
+  const base = {
+    coverFileId: '3f2c1a4e-0b6d-4c2a-9e1f-1234567890ab',
+    contentFileId: '4f2c1a4e-0b6d-4c2a-9e1f-1234567890ab',
+    spineWidth: 0,
+  };
+
+  it('본문에 contentTrim 이 있으면 400(forbidNonWhitelisted)', async () => {
+    await expect(
+      pipe.transform(
+        { ...base, contentTrim: { trimWidthMm: 210, trimHeightMm: 297, bleedMm: 3, source: 'templateSet' } },
+        { type: 'body' as const, metatype: CreateSynthesisJobDto },
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('contentTrim 없는 본문은 통과하고 인스턴스에 contentTrim 키가 없다', async () => {
+    const out = await pipe.transform(base, { type: 'body' as const, metatype: CreateSynthesisJobDto });
+    expect(out).toBeInstanceOf(CreateSynthesisJobDto);
+    expect(Object.prototype.hasOwnProperty.call(out, 'contentTrim')).toBe(false);
   });
 });
 

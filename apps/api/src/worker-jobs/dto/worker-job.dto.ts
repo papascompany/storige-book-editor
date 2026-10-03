@@ -2,6 +2,7 @@ import { IsString, IsNotEmpty, IsObject, IsEnum, IsOptional, IsUUID, ValidateIf,
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { WorkerJobType, OutputFile } from '@storige/types';
 import { PartnerEnv } from '../../partner-api/partner-api.constants';
+import type { ContentTrim } from '../content-trim';
 
 export class CreateValidationJobDto {
   @ApiPropertyOptional({ example: 'uuid', description: '편집 세션 ID' })
@@ -104,7 +105,11 @@ export class CreateValidationJobDto {
   @IsUrl({ protocols: ['http', 'https'], require_tld: false, require_protocol: true })
   callbackUrl?: string;
 
-  /** Phase C — 호출 컨트롤러에서 자동 주입 */
+  /**
+   * 잡 사이트 — 서버가 정한 값으로 채운다(validate/external: 사이트 키, validate: shop-session 토큰 사이트,
+   * 편집 세션 완료 검증: 세션 사이트).
+   * 요청 본문 값은 사용하지 않는다. 기존 호출자 호환을 위해 필드는 받는다(400 없음).
+   */
   @IsOptional()
   @IsUUID()
   siteId?: string;
@@ -300,6 +305,12 @@ export class CreateSynthesisJobDto {
 
   /** [Stage 3 W3] books finalization 역참조 마커(#4) — CreateValidationJobDto.finalizationId 주석 참조 */
   declare finalizationId?: string;
+
+  /**
+   * 내지 기대 재단(X1, content-trim.ts) — 내부 호출(BookFinalizationsService, bookSpec 출처)만 전달한다.
+   * finalizationId 와 같이 비화이트리스트 `declare` 라 요청 본문에 실리면 400 이다.
+   */
+  declare contentTrim?: ContentTrim;
 }
 
 export class UpdateJobStatusDto {

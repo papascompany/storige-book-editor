@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
   UnprocessableEntityException,
   ServiceUnavailableException,
   Logger,
@@ -12,7 +13,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { InjectQueue } from '@nestjs/bull';
-import { Repository, MoreThan } from 'typeorm';
+import { Repository, MoreThan, In } from 'typeorm';
 import { Queue } from 'bull';
 import {
   signOutputUrl,
@@ -72,6 +73,17 @@ import { TemplateSetsService } from '../templates/template-sets.service';
 import type { TemplateSet } from '../templates/entities/template-set.entity';
 // [자동조립 opt-in] spreadConfig(regionScope/innerSpec)는 templates 행에 있다(타입 전용 참조).
 import type { Template } from '../templates/entities/template.entity';
+// [X1 contentTrim] 템플릿셋 경량 조회(필요 컬럼만) — 엔티티 값 참조.
+import { TemplateSet as TemplateSetEntity } from '../templates/entities/template-set.entity';
+import { Template as TemplateEntity } from '../templates/entities/template.entity';
+import {
+  ContentTrim,
+  ContentTrimResult,
+  ContentTrimTemplateDetail,
+  buildContentTrimFromTemplateSet,
+  deriveContentTrimFailOpen,
+  normalizeContentTrim,
+} from './content-trim';
 import {
   PARTNER_ENV_TEST,
   PartnerEnv,
@@ -129,6 +141,12 @@ export interface ComposeAssembleCaller {
     /** X-Guest-Token 헤더 값(없으면 undefined) */
     guestToken?: string;
   };
+}
+
+/** 자동조립이 이미 읽은 템플릿셋·템플릿 상세 — contentTrim 도출에 재사용(추가 조회 없음) */
+interface ComposeTrimSource {
+  templateSet?: TemplateSet;
+  templateDetails: Template[];
 }
 
 /**
@@ -226,6 +244,50 @@ function callerProvesLink(
 export interface JobInputFileCaller {
   kind: 'siteKey' | 'shop' | 'operator';
   siteId: string;
+}
+
+/** assertEditSessionLink 선택 인자 */
+export interface EditSessionLinkOptions {
+  /** true 면 그 밖의 호출자(none)도 연결을 증명하지 못하면 404(JOB_LINK_STRICT). 기본 false. */
+  strictUnverified?: boolean;
+}
+
+/** observeJobInputFileSites 선택 인자 */
+export interface JobInputFileCheckOptions {
+  /** true 면 사이트가 다른 파일에 403 FILE_SITE_MISMATCH(JOB_FILE_SITE_STRICT). 기본 false = 관측만. */
+  strict?: boolean;
+  /** 워커 입력이 될 URL 값 — `api://<uuid>` 만 파일 id 로 해석해 같은 확인 대상에 넣는다. */
+  urls?: ReadonlyArray<unknown>;
+}
+
+/** createValidationJob internal 인자(공개 DTO 아님) */
+export interface ValidationJobInternalOptions {
+  /**
+   * `dto.siteId` 는 **잡 테넌트 스탬프(job.siteId)로만** 쓰고 site default 머지(mergeSiteWorkerDefaults)는
+   * 건너뛴다. 잡에 저장되고 워커로 가는 orderOptions 는 요청 그대로다. 미전달=기존 동작(dto.siteId 로 머지+스탬프).
+   */
+  skipSiteWorkerDefaults?: boolean;
+  /** true 면 job.options.siteWebhook=false — 완료 발신에 사이트 웹훅 설정(v2)을 쓰지 않는다. callbackUrl(v1)은 그대로. */
+  siteWebhookOff?: boolean;
+}
+
+const API_FILE_REF = /^api:\/\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
+
+/**
+ * `api://<uuid>` 워커 입력 URL → 소문자 uuid. 그 밖의 형식은 null
+ * (워커 다운로드 라우트도 UUID 만 받는다 — files.controller ParseUUIDPipe).
+ */
+export function apiFileRefIdOf(url: unknown): string | null {
+  if (typeof url !== 'string') return null;
+  const m = API_FILE_REF.exec(url);
+  return m ? m[1].toLowerCase() : null;
+}
+
+/** job.options.siteWebhook === false 인가(isStaffSilentJob 과 같은 마커 판독 패턴). */
+export function isSiteWebhookOff(job: { options?: unknown } | null | undefined): boolean {
+  const opts = job?.options;
+  if (typeof opts !== 'object' || opts === null) return false;
+  return (opts as { siteWebhook?: unknown }).siteWebhook === false;
 }
 
 @Injectable()
@@ -333,6 +395,14 @@ export class WorkerJobsService implements OnModuleInit {
     return env
       ? this.webhookService.hasV2Config(siteId, env)
       : this.webhookService.hasV2Config(siteId);
+  }
+
+  /**
+   * 완료 발신(게이트·발신 컨텍스트)에 쓰는 사이트. options.siteWebhook=false 잡은 null —
+   * 사이트 웹훅 설정(v2)을 쓰지 않고, callbackUrl 이 있으면 그 URL 로 v1 발신한다. 그 밖의 잡은 job.siteId.
+   */
+  private webhookSiteIdOf(job: WorkerJob): string | null {
+    return isSiteWebhookOff(job) ? null : job.siteId;
   }
 
   /**
@@ -540,6 +610,7 @@ export class WorkerJobsService implements OnModuleInit {
    *  3. 증명하지 못했을 때
    *     - 운영자·사이트 키·shop 호출자가 있으면 404 SESSION_NOT_FOUND(잡 미생성). 세션 부재와 같은 응답이다.
    *     - 그 밖의 호출자(무인증 등)는 요청을 그대로 진행하고 관측 로그만 남긴다.
+   *       opts.strictUnverified(JOB_LINK_STRICT)면 그 밖의 호출자도 같은 404 이고, 세션 조회 오류는 전파한다.
    *  로그는 라우트·호출자 유형·세션 사이트만 남긴다(세션 id·토큰·회원 번호는 기록하지 않는다).
    */
   async assertEditSessionLink(
@@ -547,12 +618,13 @@ export class WorkerJobsService implements OnModuleInit {
     callers: readonly SessionLinkCaller[],
     guestToken: string | undefined,
     route: string,
+    opts: EditSessionLinkOptions = {},
   ): Promise<void> {
     if (callers.some((c) => c.kind === 'staff' || c.kind === 'internalWorkerKey')) return;
 
-    const enforced = callers.some(
-      (c) => c.kind === 'operator' || c.kind === 'siteKey' || c.kind === 'shop',
-    );
+    const enforced =
+      opts.strictUnverified === true ||
+      callers.some((c) => c.kind === 'operator' || c.kind === 'siteKey' || c.kind === 'shop');
     const kinds = callers.length > 0 ? callers.map((c) => c.kind).join(',') : 'none';
 
     let session: SessionLinkRow | null;
@@ -585,29 +657,55 @@ export class WorkerJobsService implements OnModuleInit {
   }
 
   /**
-   * 잡 입력 파일(fileId 계열)의 사이트를 호출자 사이트와 대조해 관측 로그만 남긴다(동작 변화 없음).
-   * 파일 사이트가 지정돼 있고 호출자 사이트와 다를 때 `[job-file] cross-site` 1줄(파일 id 미기록).
-   * 조회 실패·파일 부재는 무시한다 — 잡 생성 경로의 기존 판정(FILE_NOT_FOUND 등)이 그대로 처리한다.
+   * 잡 입력 파일의 사이트를 호출자 사이트와 대조한다.
+   * 대상은 fileId 계열과 opts.urls 중 `api://<uuid>` 참조다. id 는 소문자로 맞춘 뒤 중복을 제거해 id 마다 1회 조회한다.
+   * 파일 사이트가 지정돼 있고 호출자 사이트와 다를 때
+   *  - 기본(관측): `[job-file] cross-site` 1줄(파일 id 미기록, URL 참조는 끝에 ` ref=url`). 잡 생성은 그대로.
+   *  - opts.strict(JOB_FILE_SITE_STRICT): `[job-file] denied` 1줄 후 403 FILE_SITE_MISMATCH(잡 미생성).
+   * 사이트 미지정 파일·같은 사이트 파일은 통과한다. 파일 부재는 잡 생성 경로의 기존 판정(FILE_NOT_FOUND 등)이 처리한다.
+   * 조회 오류는 관측이면 무시하고, strict 면 NotFound 를 뺀 오류를 전파한다.
    */
   async observeJobInputFileSites(
     route: string,
     caller: JobInputFileCaller,
     fileIds: ReadonlyArray<string | null | undefined>,
+    opts: JobInputFileCheckOptions = {},
   ): Promise<void> {
-    const ids = Array.from(
-      new Set(fileIds.filter((id): id is string => typeof id === 'string' && id.length > 0)),
-    );
-    for (const id of ids) {
+    const strict = opts.strict === true;
+    const refs = new Map<string, { presented: string; fromUrl: boolean }>();
+    for (const raw of fileIds) {
+      if (typeof raw !== 'string' || raw.length === 0) continue;
+      const id = raw.toLowerCase();
+      if (!refs.has(id)) refs.set(id, { presented: raw, fromUrl: false });
+    }
+    for (const url of opts.urls ?? []) {
+      const id = apiFileRefIdOf(url);
+      if (id && !refs.has(id)) refs.set(id, { presented: id, fromUrl: true });
+    }
+    for (const [id, ref] of refs) {
+      let fileSiteId: string | null | undefined;
       try {
         const file = await this.filesService.findById(id);
-        if (file.siteId && file.siteId !== caller.siteId) {
-          this.logger.log(
-            `[job-file] cross-site route=${route} caller=${caller.kind} site=${caller.siteId} fileSite=${file.siteId}`,
-          );
-        }
-      } catch {
-        // 관측 전용 — 실패는 무시한다.
+        fileSiteId = file?.siteId;
+      } catch (err) {
+        if (!strict || err instanceof NotFoundException) continue;
+        throw err;
       }
+      if (!fileSiteId || fileSiteId === caller.siteId) continue;
+      const suffix = ref.fromUrl ? ' ref=url' : '';
+      if (strict) {
+        this.logger.log(
+          `[job-file] denied route=${route} caller=${caller.kind} site=${caller.siteId} fileSite=${fileSiteId}${suffix}`,
+        );
+        throw new ForbiddenException({
+          code: 'FILE_SITE_MISMATCH',
+          message: '이 사이트에서 사용할 수 없는 파일입니다.',
+          details: { fileId: ref.presented },
+        });
+      }
+      this.logger.log(
+        `[job-file] cross-site route=${route} caller=${caller.kind} site=${caller.siteId} fileSite=${fileSiteId}${suffix}`,
+      );
     }
   }
 
@@ -616,16 +714,17 @@ export class WorkerJobsService implements OnModuleInit {
   // ============================================================================
 
   /**
-   * @param internal 서버 내부 호출 전용 옵션 — 컨트롤러/공개 DTO 에 노출하지 않는다(파트너 계약 불변).
+   * @param internal 서버 내부 호출 전용 옵션 — 공개 DTO 에 노출하지 않는다(파트너 계약 불변).
    *   - skipSiteWorkerDefaults: `dto.siteId` 는 **잡 테넌트 스탬프(job.siteId)로만** 쓰고
    *     site default 머지(mergeSiteWorkerDefaults)는 건너뛴다. 편집 세션 완료 검증 잡
-   *     (edit-sessions createValidationJobs)이 site 스탬프를 얻되, 워커로 가는/잡에 저장되는
-   *     orderOptions 를 스탬프 도입 전과 동일하게 유지하기 위한 것(검증 동작 불변).
+   *     (edit-sessions createValidationJobs)과 POST validate(shop-session)이 site 스탬프를 얻되,
+   *     워커로 가는/잡에 저장되는 orderOptions 를 요청 그대로 유지하기 위한 것(검증 동작 불변).
    *     미전달=기존 동작(dto.siteId 로 머지+스탬프).
+   *   - siteWebhookOff: job.options.siteWebhook=false(webhookSiteIdOf 참조). 큐 페이로드는 같다.
    */
   async createValidationJob(
     createValidationJobDto: CreateValidationJobDto,
-    internal?: { skipSiteWorkerDefaults?: boolean },
+    internal?: ValidationJobInternalOptions,
   ): Promise<WorkerJob> {
     // fileId 또는 fileUrl 중 하나는 필수
     if (!createValidationJobDto.fileId && !createValidationJobDto.fileUrl) {
@@ -674,6 +773,8 @@ export class WorkerJobsService implements OnModuleInit {
           ...(createValidationJobDto.finalizationId
             ? { finalizationId: createValidationJobDto.finalizationId }
             : {}),
+          // 사이트 웹훅(v2) 미사용 마커 — 부재=기존 옵션 바이트 불변(conditional spread)
+          ...(internal?.siteWebhookOff ? { siteWebhook: false as const } : {}),
         },
         createValidationJobDto.partnerEnv,
       ),
@@ -830,8 +931,14 @@ export class WorkerJobsService implements OnModuleInit {
    * pdf-conversion(addPages) 재사용: convertOptions.padToMultiple 로 현재 페이지수를 배수까지 백지 보정.
    * 비동기 — 반환 WorkerJob(jobId) 폴링 → COMPLETED 시 updateJobStatus 가 결과를 새 fileId 로 등록
    * (options.kind='pagecount-fix' 게이트, 원본 site/order 승계). 원본 fileId 는 보존(되돌리기 가능).
+   *
+   * @param internal 서버 내부 호출 전용(공개 DTO 아님) — contentTrim: 첨부 채움(createAttachPagePadJob)이
+   *   템플릿셋에서 도출한 내지 기대 재단. 있으면 큐 convertOptions.contentTrim 과 job.options.contentTrim 에 싣는다.
    */
-  async createPageCountFixJob(dto: CreatePageCountFixJobDto): Promise<WorkerJob> {
+  async createPageCountFixJob(
+    dto: CreatePageCountFixJobDto,
+    internal?: { contentTrim?: ContentTrim },
+  ): Promise<WorkerJob> {
     if (!dto.fileId) {
       throw new BadRequestException({ code: 'FILE_REQUIRED', message: 'fileId 가 필요합니다.' });
     }
@@ -858,6 +965,8 @@ export class WorkerJobsService implements OnModuleInit {
         sourceFileId: dto.fileId,
         targetMultiple,
         callbackUrl: dto.callbackUrl || undefined,
+        // [X1] 내지 기대 재단(추적용) — 부재=기존 옵션 불변(conditional spread)
+        ...(internal?.contentTrim ? { contentTrim: internal.contentTrim } : {}),
       },
     });
     const savedJob = await this.workerJobRepository.save(job);
@@ -872,6 +981,8 @@ export class WorkerJobsService implements OnModuleInit {
         targetPages: 0,
         bleed: 0,
         padToMultiple: targetMultiple, // 현재 페이지수 → 다음 배수까지 백지 보정(addPages 재사용)
+        // [X1] 내지 기대 재단 — 첨부 채움만, 값이 있을 때만(키 부재 = 종전 convertOptions)
+        ...(internal?.contentTrim ? { contentTrim: internal.contentTrim } : {}),
       },
     });
 
@@ -891,8 +1002,9 @@ export class WorkerJobsService implements OnModuleInit {
    */
   async createAttachPagePadJob(dto: CreateAttachPagePadJobDto): Promise<WorkerJob> {
     let pageStep: number;
+    let templateSet: TemplateSet;
     try {
-      const templateSet = await this.templateSetsService.findOne(dto.templateSetId);
+      templateSet = await this.templateSetsService.findOne(dto.templateSetId);
       if (templateSet.padToPageStep !== true || !Number.isInteger(templateSet.pageStep) || (templateSet.pageStep as number) < 2) {
         throw new BadRequestException({
           code: 'PAGE_PAD_NOT_ENABLED',
@@ -919,11 +1031,22 @@ export class WorkerJobsService implements OnModuleInit {
       });
     }
 
-    return this.createPageCountFixJob({
-      fileId: dto.fileId,
-      targetMultiple: pageStep,
-      siteId: file.siteId ?? undefined, // 원본 파일 site 승계(게스트 업로드는 null)
-    });
+    // [X1] 내지 기대 재단 — 위에서 읽은 템플릿셋 재사용, 템플릿 spreadConfig 만 추가 조회(fail-open)
+    const contentTrim = await deriveContentTrimFailOpen('attach-page-pad', this.logger, async () =>
+      buildContentTrimFromTemplateSet(
+        templateSet,
+        await this.loadTemplateSpreadConfigs(templateSet.templates),
+      ),
+    );
+
+    return this.createPageCountFixJob(
+      {
+        fileId: dto.fileId,
+        targetMultiple: pageStep,
+        siteId: file.siteId ?? undefined, // 원본 파일 site 승계(게스트 업로드는 null)
+      },
+      contentTrim ? { contentTrim } : undefined,
+    );
   }
 
   /**
@@ -1038,9 +1161,16 @@ export class WorkerJobsService implements OnModuleInit {
 
     let fileUrl = dto.fileUrl;
     const fileId = dto.fileId;
+    // 잡 사이트 = fileId 원본 파일 사이트(fix-bleed·attach-page-pad 와 같은 규칙), fileUrl 입력은 NULL.
+    // 본문 siteId 는 쓰지 않는다(값 미기록 경고만).
+    let siteId: string | null = null;
     if (fileId) {
       const file = await this.filesService.findById(fileId);
       fileUrl = this.toWorkerInputUrl(file); // s3 백엔드면 api://<id> 마커, local 은 filePath
+      siteId = file.siteId ?? null;
+    }
+    if (dto.siteId && dto.siteId !== siteId) {
+      this.logger.warn('[job-site] body-site-ignored route=render-pages caller=none');
     }
 
     const job = this.workerJobRepository.create({
@@ -1049,7 +1179,7 @@ export class WorkerJobsService implements OnModuleInit {
       editSessionId: dto.editSessionId || null,
       fileId: fileId || null,
       inputFileUrl: fileUrl,
-      siteId: dto.siteId || null,
+      siteId,
       options: { fileId, fileUrl, pageCount: dto.pageCount },
     });
 
@@ -1341,6 +1471,50 @@ export class WorkerJobsService implements OnModuleInit {
   }
 
   // ============================================================================
+  // X1 contentTrim 도출(content-trim.ts) — 호출부는 deriveContentTrimFailOpen 으로 감싼다.
+  // ============================================================================
+
+  /** 템플릿 행의 spreadConfig 만 조회(canvas_data 미조회). 템플릿 참조가 없으면 조회하지 않는다. */
+  private async loadTemplateSpreadConfigs(refs: unknown): Promise<ContentTrimTemplateDetail[]> {
+    const ids = Array.isArray(refs)
+      ? refs
+          .map((r: unknown) =>
+            typeof r === 'object' && r !== null ? (r as { templateId?: unknown }).templateId : undefined,
+          )
+          .filter((id): id is string => typeof id === 'string' && id.length > 0)
+      : [];
+    if (ids.length === 0) return [];
+    return this.editSessionRepository.manager.getRepository(TemplateEntity).find({
+      where: { id: In(ids) },
+      select: { id: true, spreadConfig: true },
+    });
+  }
+
+  /** 템플릿셋 출처 contentTrim — 재단·도련·템플릿 참조 컬럼과 템플릿 spreadConfig 만 읽는다. */
+  private async resolveContentTrimForTemplateSet(templateSetId: string): Promise<ContentTrimResult> {
+    const templateSet = await this.editSessionRepository.manager
+      .getRepository(TemplateSetEntity)
+      .findOne({
+        where: { id: templateSetId, isDeleted: false },
+        select: { id: true, width: true, height: true, bleedMm: true, templates: true },
+      });
+    if (!templateSet) return { skip: 'no-template-set' };
+    const templateDetails = await this.loadTemplateSpreadConfigs(templateSet.templates);
+    return buildContentTrimFromTemplateSet(templateSet, templateDetails);
+  }
+
+  /** editSessionId → 세션 templateSetId → 템플릿셋 출처 contentTrim */
+  private async resolveContentTrimFromSession(editSessionId: string): Promise<ContentTrimResult> {
+    const session = await this.editSessionRepository.findOne({
+      where: { id: editSessionId },
+      select: { id: true, templateSetId: true },
+    });
+    if (!session) return { skip: 'no-session' };
+    if (!session.templateSetId) return { skip: 'no-template-set' };
+    return this.resolveContentTrimForTemplateSet(session.templateSetId);
+  }
+
+  // ============================================================================
   // Synthesis Jobs
   // ============================================================================
 
@@ -1379,6 +1553,17 @@ export class WorkerJobsService implements OnModuleInit {
 
     const outputFormat = createSynthesisJobDto.outputFormat || 'merged';
 
+    // [X1] 내지 기대 재단 — 내부 호출(books 확정, bookSpec 출처)은 dto.contentTrim, editSessionId 가 있으면
+    // 세션 템플릿셋에서 도출한다(fail-open). 둘 다 없으면 조회하지 않고 키도 붙이지 않는다.
+    const contentTrim: ContentTrim | undefined =
+      createSynthesisJobDto.contentTrim !== undefined
+        ? normalizeContentTrim(createSynthesisJobDto.contentTrim)
+        : createSynthesisJobDto.editSessionId
+          ? await deriveContentTrimFailOpen('synthesize', this.logger, () =>
+              this.resolveContentTrimFromSession(createSynthesisJobDto.editSessionId as string),
+            )
+          : undefined;
+
     const job = this.workerJobRepository.create({
       jobType: WorkerJobType.SYNTHESIZE,
       status: WorkerJobStatus.PENDING,
@@ -1402,6 +1587,8 @@ export class WorkerJobsService implements OnModuleInit {
           ...(createSynthesisJobDto.finalizationId
             ? { finalizationId: createSynthesisJobDto.finalizationId }
             : {}),
+          // [X1] 내지 기대 재단(추적용, 큐 페이로드와 같은 값) — 부재=기존 옵션 바이트 불변(conditional spread)
+          ...(contentTrim ? { contentTrim } : {}),
         },
         createSynthesisJobDto.partnerEnv,
       ),
@@ -1432,6 +1619,8 @@ export class WorkerJobsService implements OnModuleInit {
         callbackUrl: createSynthesisJobDto.callbackUrl,
         outputFormat, // 출력 형식 전달
         bindingType: createSynthesisJobDto.bindingType, // 제본 방식 (saddle 등) — synthesizer가 분기 처리
+        // [X1] 내지 기대 재단 — 값이 있을 때만(키 부재 = 종전 페이로드)
+        ...(contentTrim ? { contentTrim } : {}),
         // [S2-5] 큐 페이로드는 명시 구성이라 isTest 직렬화 등재 필요 — isTest 잡에만
         // conditional spread(live 잡 페이로드 키 집합 불변, external-site-stamp spec 계약 준용).
         ...(createSynthesisJobDto.partnerEnv === PARTNER_ENV_TEST
@@ -1523,7 +1712,7 @@ export class WorkerJobsService implements OnModuleInit {
   private async assembleComposeInputFromSession(
     dto: ComposeMixedJobInput,
     caller?: ComposeAssembleCaller,
-  ): Promise<ComposeMixedJobInput> {
+  ): Promise<{ input: ComposeMixedJobInput; trimSource: ComposeTrimSource }> {
     const missing: string[] = [];
 
     if (!dto.editSessionId) {
@@ -1803,7 +1992,15 @@ export class WorkerJobsService implements OnModuleInit {
         `callbackUrl=${callbackUrlSource}`,
     );
 
-    return assembled;
+    // [X1] 이미 읽은 템플릿셋·템플릿 상세를 contentTrim 도출에 재사용한다(추가 조회 없음).
+    return { input: assembled, trimSource: { templateSet, templateDetails } };
+  }
+
+  /** 자동조립이 읽은 템플릿셋 출처 contentTrim(호출부는 deriveContentTrimFailOpen 으로 감싼다) */
+  private contentTrimFromAssembled(src: ComposeTrimSource): ContentTrimResult {
+    return src.templateSet
+      ? buildContentTrimFromTemplateSet(src.templateSet, src.templateDetails)
+      : { skip: 'no-template-set' };
   }
 
   /**
@@ -1965,13 +2162,24 @@ export class WorkerJobsService implements OnModuleInit {
      * 관리자 합성(2026-09-29, createStaffComposeFromSession 전용). 있으면 job.options.staffInitiated 를 싣는다.
      * 없으면 options 바이트는 종전과 같다(conditional spread).
      */
-    staffOpts?: { staffInitiated: StaffInitiatedMarker },
+    staffOpts?: {
+      staffInitiated: StaffInitiatedMarker;
+      /** [X1] 관리자 합성이 세션 템플릿셋에서 도출한 내지 기대 재단. 없으면 키를 붙이지 않는다. */
+      contentTrim?: ContentTrim;
+    },
+    /**
+     * 수동 경로 입력 URL 의 파일 사이트 확인(컨트롤러 전용). 있으면 shop(사이트 있음)·사이트 키 호출자의
+     * coverUrl·contentPdfUrl·front/backEndpaperUrls 중 `api://<uuid>` 를 잡 사이트와 대조한다
+     * (observeJobInputFileSites). 자동조립·무인증 호출은 대상이 아니다. 없으면 확인하지 않는다.
+     */
+    inputFileCheck?: { strict: boolean },
   ): Promise<WorkerJob> {
     // ── 분기 게이트(최상단) — opt-in 이 아니면 rawDto 를 그대로 흘려보낸다.
     const assembledFromSession = rawDto.assembleFromSession === true;
-    const dto: ComposeMixedJobInput = assembledFromSession
+    const assembled = assembledFromSession
       ? await this.assembleComposeInputFromSession(rawDto, caller)
-      : rawDto;
+      : undefined;
+    const dto: ComposeMixedJobInput = assembled ? assembled.input : rawDto;
 
     // 빈 입력 차단(전 경로 공통) — 백지 COMPLETED 산출 방지.
     this.assertComposeMixedInputNotEmpty(dto);
@@ -2033,6 +2241,46 @@ export class WorkerJobsService implements OnModuleInit {
       );
     }
 
+    // 잡 사이트 결정 — 아래 입력 파일 확인과 잡 기록에 같은 값을 쓴다.
+    const jobSiteId = this.resolveComposeMixedSiteId(
+      dto,
+      caller,
+      assembledFromSession,
+      apiKeyCaller,
+      manualSessionSiteId,
+    );
+
+    // 수동 경로 입력 URL(api://<uuid>)의 파일 사이트 확인 — 대조 사이트는 잡 사이트,
+    // 잡 사이트가 NULL 로 결정되면 검증된 호출자 사이트(사이트 키 우선)와 대조한다.
+    if (inputFileCheck && !assembledFromSession && (caller?.siteId || apiKeyCaller?.siteId)) {
+      const keySiteId = apiKeyCaller?.siteId || null;
+      const checkSiteId = jobSiteId ?? keySiteId ?? caller?.siteId ?? null;
+      if (checkSiteId) {
+        await this.observeJobInputFileSites(
+          'compose-mixed',
+          { kind: checkSiteId === keySiteId ? 'siteKey' : 'shop', siteId: checkSiteId },
+          [],
+          {
+            strict: inputFileCheck.strict,
+            urls: [
+              dto.coverUrl,
+              dto.contentPdfUrl,
+              ...(dto.frontEndpaperUrls ?? []),
+              ...(dto.backEndpaperUrls ?? []),
+            ],
+          },
+        );
+      }
+    }
+
+    // [X1] 내지 기대 재단 — 자동조립은 이미 읽은 템플릿셋에서 도출(fail-open), 관리자 합성은
+    // staffOpts.contentTrim. 수동 경로는 도출하지 않는다(템플릿셋 미조회).
+    const contentTrim: ContentTrim | undefined = assembled
+      ? await deriveContentTrimFailOpen('compose-mixed', this.logger, () =>
+          this.contentTrimFromAssembled(assembled.trimSource),
+        )
+      : staffOpts?.contentTrim;
+
     const job = this.workerJobRepository.create({
       jobType: WorkerJobType.SYNTHESIZE,
       status: WorkerJobStatus.PENDING,
@@ -2040,13 +2288,7 @@ export class WorkerJobsService implements OnModuleInit {
       inputFileUrl: dto.coverUrl || dto.contentPdfUrl || null,
       // [테넌트 스탬프 위조 차단 2026-08-13] `dto.siteId || null` 직접 대입 금지 —
       // 이 라우트는 @Public 이라 body.siteId 가 무검증 입력이다(resolveComposeMixedSiteId 주석).
-      siteId: this.resolveComposeMixedSiteId(
-        dto,
-        caller,
-        assembledFromSession,
-        apiKeyCaller,
-        manualSessionSiteId,
-      ),
+      siteId: jobSiteId,
       // [S2-5] test env 컨텍스트면 isTest:true 스탬프 — 워커가 실합성(compose-mixed) 대신
       // TEST 워터마크 더미(handleTestSynthesis compose-mixed 분기) 산출 + outputs 24h retention.
       // live/미전달(external sites 키)=키 없음 → 기존 옵션 바이트 불변(compose-mixed.spec 계약).
@@ -2083,6 +2325,8 @@ export class WorkerJobsService implements OnModuleInit {
                 },
               }
             : {}),
+          // [X1] 내지 기대 재단(추적용, 큐 페이로드와 같은 값) — 부재=기존 옵션 바이트 불변(conditional spread)
+          ...(contentTrim ? { contentTrim } : {}),
         },
         dto.partnerEnv,
       ),
@@ -2112,6 +2356,8 @@ export class WorkerJobsService implements OnModuleInit {
         composeSpreadOutputWidthMm,
         composeSpreadOutputHeightMm,
         callbackUrl: dto.callbackUrl,
+        // [X1] 내지 기대 재단 — 값이 있을 때만(키 부재 = 종전 페이로드)
+        ...(contentTrim ? { contentTrim } : {}),
         // [S2-5] isTest 잡에만 conditional spread — live 잡 페이로드 키 집합 불변
         // (createSynthesisJob/createSplitSynthesisJob 큐 페이로드 계약 준용). 워커
         // handleSynthesis 가 job.data.isTest===true → handleTestSynthesis(compose-mixed 분기).
@@ -2146,12 +2392,19 @@ export class WorkerJobsService implements OnModuleInit {
       assembleFromSession: true,
       ...(opts.outputMode ? { outputMode: opts.outputMode } : {}),
     } as ComposeMixedJobInput;
-    const assembled = await this.assembleComposeInputFromSession(input, { siteId });
+    const { input: assembled, trimSource } = await this.assembleComposeInputFromSession(input, {
+      siteId,
+    });
     if (!opts.notifyPartner) delete assembled.callbackUrl;
     assembled.assembleFromSession = false;
     assembled.siteId = siteId;
+    // [X1] 내지 기대 재단 — 조립에서 읽은 템플릿셋으로 도출(fail-open)
+    const contentTrim = await deriveContentTrimFailOpen('compose-mixed', this.logger, () =>
+      this.contentTrimFromAssembled(trimSource),
+    );
     return this.createComposeMixedJob(assembled, { siteId }, undefined, {
       staffInitiated: { actorUserId: opts.actorUserId, notifyPartner: opts.notifyPartner === true },
+      ...(contentTrim ? { contentTrim } : {}),
     });
   }
 
@@ -2979,7 +3232,7 @@ export class WorkerJobsService implements OnModuleInit {
         updateJobStatusDto.status === WorkerJobStatus.FAILED) &&
       (job.options?.callbackUrl ||
         // [S2-5] isTest 잡만 test env config 로 게이트 판정(기존 잡은 기존 호출 그대로)
-        (await this.hasV2ConfigForJob(job, job.siteId)))
+        (await this.hasV2ConfigForJob(job, this.webhookSiteIdOf(job))))
     ) {
       await this.sendSynthesisCallback(savedJob);
     }
@@ -2999,7 +3252,7 @@ export class WorkerJobsService implements OnModuleInit {
         updateJobStatusDto.status === WorkerJobStatus.FAILED) &&
       (job.options?.callbackUrl ||
         // [S2-5] isTest 잡만 test env config 로 게이트 판정(기존 잡은 기존 호출 그대로)
-        (await this.hasV2ConfigForJob(job, job.siteId)))
+        (await this.hasV2ConfigForJob(job, this.webhookSiteIdOf(job))))
     ) {
       await this.sendValidationCallback(savedJob);
     }
@@ -3366,7 +3619,7 @@ export class WorkerJobsService implements OnModuleInit {
         // [S2-5] env = 잡 생성 시 스탬프된 options.isTest 로 해석(jobWebhookEnv):
         // isTest 잡만 'test'(v2 발신 페이로드 isTest:true), 그 외 undefined→live 폴백
         // (기존 발신 바이트 불변 — webhook-v1-invariance.spec 게이트).
-        { siteId: job.siteId, env: this.jobWebhookEnv(job) },
+        { siteId: this.webhookSiteIdOf(job), env: this.jobWebhookEnv(job) },
       );
 
       if (success) {
@@ -3422,7 +3675,7 @@ export class WorkerJobsService implements OnModuleInit {
         payload,
         // [Stage 2] v2 opt-in 판정용 — config 없으면 기존 경로 그대로.
         // [S2-5] env = options.isTest 해석(jobWebhookEnv) — sendSynthesisCallback 주석 참조.
-        { siteId: job.siteId, env: this.jobWebhookEnv(job) },
+        { siteId: this.webhookSiteIdOf(job), env: this.jobWebhookEnv(job) },
       );
 
       if (success) {
@@ -3582,7 +3835,7 @@ export class WorkerJobsService implements OnModuleInit {
   ): Promise<void> {
     // [Stage 2] callbackUrl 이 없어도 v2 config(opt-in) 사이트면 발송 진행
     // [S2-5] isTest 잡은 test env config 로 판정(기본 live — 기존 호출 SQL 동일)
-    const webhookSiteId = session.siteId ?? job.siteId;
+    const webhookSiteId = session.siteId ?? this.webhookSiteIdOf(job);
     if (
       !session.callbackUrl &&
       !(await this.hasV2ConfigForJob(job, webhookSiteId))

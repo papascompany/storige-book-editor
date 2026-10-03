@@ -10,10 +10,13 @@
  *  - 그 밖의 호출자(none)는 유효한 X-Guest-Token 이면 통과, 아니면 요청을 진행하고 `[job-link] would-deny` 로그.
  *  - 로그는 라우트·호출자 유형·세션 사이트만(세션 id·토큰·회원 번호 미기록).
  *
+ *  - strictUnverified(JOB_LINK_STRICT): 그 밖의 호출자도 증명하지 못하면 같은 404, 조회 오류는 전파.
+ *
  * observeJobInputFileSites — 입력 파일 사이트가 호출자 사이트와 다르면 `[job-file] cross-site` 로그(파일 id 미기록).
+ * strict(JOB_FILE_SITE_STRICT)면 403 FILE_SITE_MISMATCH. `api://<uuid>` URL 입력도 같은 대상이다.
  */
-import { HttpException, Logger, NotFoundException } from '@nestjs/common';
-import { WorkerJobsService, type SessionLinkCaller } from './worker-jobs.service';
+import { ForbiddenException, HttpException, Logger, NotFoundException } from '@nestjs/common';
+import { WorkerJobsService, apiFileRefIdOf, type SessionLinkCaller } from './worker-jobs.service';
 
 const SITE_A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const SITE_B = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
@@ -271,6 +274,64 @@ describe('WorkerJobsService.assertEditSessionLink', () => {
     await expect(check(MEMBER_A, [siteKey()])).rejects.toThrow('db down');
   });
 
+  describe('strictUnverified(JOB_LINK_STRICT)', () => {
+    const strictCheck = (id: string, callers: SessionLinkCaller[], token?: string): Promise<void> =>
+      service.assertEditSessionLink(id, callers, token, 'test-route', { strictUnverified: true });
+
+    it('K7-S1: none + 회원 세션 → 404, denied 로그 1줄', async () => {
+      await expect404(strictCheck(MEMBER_A, [none]), MEMBER_A);
+      expect(linkLogs()).toEqual([`[job-link] denied route=test-route caller=none site=${SITE_A}`]);
+    });
+
+    it('K7-S2: 세션 없음 → 404(site=-)', async () => {
+      await expect404(strictCheck(MISSING, [none]), MISSING);
+      expect(linkLogs()).toEqual(['[job-link] denied route=test-route caller=none site=-']);
+    });
+
+    it('K7-S3: 비회원 세션 + 유효 토큰 통과 / 불일치·만료 404', async () => {
+      await expect(strictCheck(GUEST_A, [none], GUEST_TOKEN)).resolves.toBeUndefined();
+      expect(linkLogs()).toEqual([]);
+      await expect404(strictCheck(GUEST_A, [none], 'other-token'), GUEST_A);
+      await expect404(strictCheck(EXPIRED_GUEST_A, [none], GUEST_TOKEN), EXPIRED_GUEST_A);
+    });
+
+    it('K7-S4: 세션 조회 오류는 전파', async () => {
+      editSessionRepository.findOne.mockRejectedValueOnce(new Error('db down'));
+      await expect(strictCheck(MEMBER_A, [none])).rejects.toThrow('db down');
+      expect(linkLogs()).toEqual([]);
+    });
+
+    it('K7-S5: staff·내부 워커 키는 조회 없이 통과, 사이트 키·shop 판정은 기본값과 같다', async () => {
+      await expect(strictCheck(MEMBER_B, [{ kind: 'staff' }])).resolves.toBeUndefined();
+      await expect(strictCheck(MEMBER_B, [{ kind: 'internalWorkerKey' }])).resolves.toBeUndefined();
+      expect(editSessionRepository.findOne).not.toHaveBeenCalled();
+      await expect(strictCheck(MEMBER_A, [siteKey()])).resolves.toBeUndefined();
+      await expect(strictCheck(MEMBER_A, [shop(123)])).resolves.toBeUndefined();
+      await expect404(strictCheck(MEMBER_B, [siteKey()]), MEMBER_B);
+    });
+
+    it('K8-S: 거부 로그에도 세션 id·토큰·회원 번호 미기록', async () => {
+      await expect404(strictCheck(MEMBER_A, [none], GUEST_TOKEN), MEMBER_A);
+      for (const call of [...logSpy.mock.calls, ...warnSpy.mock.calls] as unknown[][]) {
+        const text = JSON.stringify(call);
+        expect(text).not.toContain(MEMBER_A);
+        expect(text).not.toContain(GUEST_TOKEN);
+        expect(text).not.toContain('123');
+      }
+    });
+
+    it('opts 미전달·strictUnverified:false → none 은 관측 로그만', async () => {
+      await expect(
+        service.assertEditSessionLink(MEMBER_A, [none], undefined, 'test-route', { strictUnverified: false }),
+      ).resolves.toBeUndefined();
+      await expect(check(MEMBER_A, [none])).resolves.toBeUndefined();
+      expect(linkLogs()).toEqual([
+        `[job-link] would-deny route=test-route caller=none site=${SITE_A}`,
+        `[job-link] would-deny route=test-route caller=none site=${SITE_A}`,
+      ]);
+    });
+  });
+
   it('K10: 여러 호출자는 각자 판정 — 하나라도 증명하면 통과(shop 불일치 + 같은 사이트 키)', async () => {
     await expect(check(MEMBER_A, [shop(456), siteKey()])).resolves.toBeUndefined();
     expect(linkLogs()).toEqual([]);
@@ -319,6 +380,117 @@ describe('WorkerJobsService.assertEditSessionLink', () => {
       await service.observeJobInputFileSites('validate', { kind: 'operator', siteId: SITE_A }, [FILE_B, FILE_B]);
       expect(filesService.findById).toHaveBeenCalledTimes(1);
       expect(fileLogs()).toHaveLength(1);
+    });
+
+    const forbidden = async (p: Promise<void>): Promise<{ status: number; body: unknown }> => {
+      try {
+        await p;
+      } catch (e) {
+        expect(e).toBeInstanceOf(ForbiddenException);
+        return { status: (e as HttpException).getStatus(), body: (e as HttpException).getResponse() };
+      }
+      throw new Error('expected rejection');
+    };
+
+    it('F4: strict → 다른 사이트 파일 403 FILE_SITE_MISMATCH(details.fileId), denied 로그에 파일 id 없음', async () => {
+      const r = await forbidden(
+        service.observeJobInputFileSites('validate/external', { kind: 'siteKey', siteId: SITE_A }, [FILE_A, FILE_B], {
+          strict: true,
+        }),
+      );
+      expect(r).toEqual({
+        status: 403,
+        body: {
+          code: 'FILE_SITE_MISMATCH',
+          message: '이 사이트에서 사용할 수 없는 파일입니다.',
+          details: { fileId: FILE_B },
+        },
+      });
+      expect(fileLogs()).toEqual([
+        `[job-file] denied route=validate/external caller=siteKey site=${SITE_A} fileSite=${SITE_B}`,
+      ]);
+      expect(JSON.stringify(logSpy.mock.calls)).not.toContain(FILE_B);
+    });
+
+    it('F5: strict → 같은 사이트·사이트 미지정·없는 파일·빈 값 통과', async () => {
+      await expect(
+        service.observeJobInputFileSites(
+          'validate',
+          { kind: 'shop', siteId: SITE_A },
+          [FILE_A, FILE_NULL, MISSING, undefined, null, ''],
+          { strict: true, urls: [`api://${FILE_NULL}`, `api://${MISSING}`] },
+        ),
+      ).resolves.toBeUndefined();
+      expect(fileLogs()).toEqual([]);
+    });
+
+    it('F6: strict → NotFound 외 조회 오류 전파 / strict 꺼짐 → 무시', async () => {
+      filesService.findById.mockRejectedValueOnce(new Error('db down'));
+      await expect(
+        service.observeJobInputFileSites('validate', { kind: 'shop', siteId: SITE_A }, [FILE_A], { strict: true }),
+      ).rejects.toThrow('db down');
+      filesService.findById.mockRejectedValueOnce(new Error('db down'));
+      await expect(
+        service.observeJobInputFileSites('validate', { kind: 'shop', siteId: SITE_A }, [FILE_A]),
+      ).resolves.toBeUndefined();
+    });
+
+    it('F7: urls 의 api://<uuid>(대소문자 무관)는 파일로 확인, 그 밖의 형식은 대상 아님, fileIds 와 같은 id 는 1회 조회, URL 유래 로그는 ref=url', async () => {
+      await service.observeJobInputFileSites('synthesize/external', { kind: 'siteKey', siteId: SITE_A }, [], {
+        urls: [`api://${FILE_B.toUpperCase()}`, '/storage/a.pdf', 'https://example.com/a.pdf', 'api://x', undefined],
+      });
+      expect(filesService.findById).toHaveBeenCalledTimes(1);
+      expect(filesService.findById).toHaveBeenCalledWith(FILE_B);
+      expect(fileLogs()).toEqual([
+        `[job-file] cross-site route=synthesize/external caller=siteKey site=${SITE_A} fileSite=${SITE_B} ref=url`,
+      ]);
+
+      filesService.findById.mockClear();
+      logSpy.mockClear();
+      await service.observeJobInputFileSites('synthesize/external', { kind: 'siteKey', siteId: SITE_A }, [FILE_B], {
+        urls: [`api://${FILE_B.toUpperCase()}`],
+      });
+      expect(filesService.findById).toHaveBeenCalledTimes(1);
+      expect(fileLogs()).toEqual([
+        `[job-file] cross-site route=synthesize/external caller=siteKey site=${SITE_A} fileSite=${SITE_B}`,
+      ]);
+    });
+
+    it('F8: fileIds 대문자 + URL 소문자 같은 id → 소문자로 1회 조회', async () => {
+      await service.observeJobInputFileSites('validate', { kind: 'shop', siteId: SITE_A }, [FILE_B.toUpperCase()], {
+        urls: [`api://${FILE_B}`],
+      });
+      expect(filesService.findById).toHaveBeenCalledTimes(1);
+      expect(filesService.findById).toHaveBeenCalledWith(FILE_B);
+    });
+
+    it('F9: strict + api://<다른 사이트 파일> URL → 403(details.fileId = 소문자 id), denied 로그 ref=url', async () => {
+      const r = await forbidden(
+        service.observeJobInputFileSites('compose-mixed', { kind: 'siteKey', siteId: SITE_A }, [], {
+          strict: true,
+          urls: [`api://${FILE_B.toUpperCase()}`],
+        }),
+      );
+      expect(r.body).toMatchObject({ code: 'FILE_SITE_MISMATCH', details: { fileId: FILE_B } });
+      expect(fileLogs()).toEqual([
+        `[job-file] denied route=compose-mixed caller=siteKey site=${SITE_A} fileSite=${SITE_B} ref=url`,
+      ]);
+    });
+  });
+
+  describe('apiFileRefIdOf', () => {
+    it.each<[unknown, string | null]>([
+      [`api://${FILE_A}`, FILE_A],
+      [`api://${FILE_A.toUpperCase()}`, FILE_A],
+      ['api://x', null],
+      [` api://${FILE_A}`, null],
+      [`api://${FILE_A}/x`, null],
+      ['/storage/a.pdf', null],
+      ['https://example.com/a.pdf', null],
+      [undefined, null],
+      [123, null],
+    ])('%j → %j', (raw, expected) => {
+      expect(apiFileRefIdOf(raw)).toBe(expected);
     });
   });
 });

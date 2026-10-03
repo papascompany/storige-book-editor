@@ -31,7 +31,10 @@ export class CreateRenderPagesJobDto {
   @Min(1)
   pageCount?: number;
 
-  /** Phase C — 호출 컨트롤러에서 자동 주입 */
+  /**
+   * 사용하지 않는다 — 잡 사이트는 fileId 원본 파일 사이트(fileUrl 입력은 NULL)로 서버가 정한다.
+   * 기존 호출자 호환을 위해 필드는 받는다(400 없음).
+   */
   @IsOptional()
   @IsUUID()
   siteId?: string;
