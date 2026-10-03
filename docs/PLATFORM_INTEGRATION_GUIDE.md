@@ -1,7 +1,7 @@
 # Storige 플랫폼 연동 가이드 (외부 파트너용)
 
 > **작성일:** 2026-06-20
-> **최종 갱신:** 2026-08-24 — `editor.saved` 가 `ok:false, error:'EDITOR_BUSY'` 를 응답할 수 있음(3.2 표 하단) · 세션 API 테넌트 격리 확장: 회원 세션 상세/수정/완료/삭제/버전/목록/보관함 전부 JWT `siteId` ↔ 세션 `siteId` 대조(1.5) · [이전 2026-08-13] `compose-mixed` 빈 입력 `400 EMPTY_COMPOSE_INPUT` 승격(3.4) · 세션 자동조립 `assembleFromSession` 신설(3.4.1) · `compose-mixed` body `siteId` 하드닝(3.4)
+> **최종 갱신:** 2026-10-03 — presigned `complete` 의 사이트 키(`X-API-Key`) 귀속(2.2·1.7) · 합성 산출 크기(2.3) · 작업 실패 코드 `JOB_STALLED`·`JOB_TIMEOUT_SWEPT`(2.2 단계 5a)·반복 중단 시 v1 최종화 실패(1.7) · 편집기 초기화 실패 code·고정 한국어 `message`(3.1·3.2) · `orderSeqno` 진입 실패 처리(3.3) · 첨부 채움본 크기(3.2) · 운영자 요청 감사 기록 범위(3.3.2) · 그 사이 변경은 각 절의 날짜 표기 참조 · [이전 2026-08-24] `editor.saved` 가 `ok:false, error:'EDITOR_BUSY'` 를 응답할 수 있음(3.2 표 하단) · 세션 API 테넌트 격리 확장: 회원 세션 상세/수정/완료/삭제/버전/목록/보관함 전부 JWT `siteId` ↔ 세션 `siteId` 대조(1.5) · [이전 2026-08-13] `compose-mixed` 빈 입력 `400 EMPTY_COMPOSE_INPUT` 승격(3.4) · 세션 자동조립 `assembleFromSession` 신설(3.4.1) · `compose-mixed` body `siteId` 하드닝(3.4)
 > **대상:** 외부 파트너 개발자
 > **상태:** 배포용 정본
 
@@ -272,7 +272,8 @@ image/gif
 | presigned 업로드 표면 → `fileId` 참조 | **2 GB** | 1.4 의 화이트리스트 |
 
 - **presigned 업로드 표면은 v1 표면이 아닙니다**(§2.2 의 `/api/files/*` 경로 — 인증·에러 shape·리밋이 v1 과 다릅니다). 큰 파일이나 이미지는 그 표면으로 올려 `files.id` 를 받은 뒤, v1 자산 라우트에 `{"fileId": "..."}` 로 **참조**하세요.
-- presigned `complete` 확정 전의 `fileId` 를 참조하면 `409 ERR_FILE_NOT_READY`.
+- v1 자산 라우트는 **호출 사이트로 귀속된 파일**만 참조합니다. presigned `complete` 를 같은 사이트의 사이트 키(1.2(A), `X-API-Key`) 또는 같은 사이트 shop-session Bearer 로 확정한 파일은 그 사이트로 귀속되어 `fileId` 로 참조할 수 있습니다(2026-10-03 — §2.2 단계 3). presigned 파일의 사이트는 `complete` 로 확정할 때 정해지므로, 확정 전 `fileId` 나 귀속되지 않은 파일·다른 사이트 파일을 참조하면 `404 ERR_NOT_FOUND` 입니다. v1 전용 발급 키(1.2(C))는 presigned `complete` 의 귀속 근거로 쓰이지 않으니, 이 단계에는 사이트 키를 실으세요.
+- 호출 사이트로 귀속된 파일이 확정(`ready`) 상태가 아니면 `409 ERR_FILE_NOT_READY` 입니다.
 - ⚠️ **업로드 상한과 검증 상한은 다릅니다.** 워커 PDF 검증 상한은 현재 **2 GB** 이므로(1.4), 그보다 큰 PDF 는 업로드가 되더라도 최종화 단계에서 거부됩니다.
 
 **생성 유형 (`creationType`) — 4종 중 2종만 최종화까지 동작**
@@ -305,6 +306,7 @@ image/gif
 - `POST /api/v1/books/{uid}/finalization` 으로 착수하고, 상태는 `PENDING → VALIDATING → COMPOSING → COMPLETED | FAILED` 로 전이합니다.
 - **`409 ERR_FINALIZATION_IN_PROGRESS` 는 실패가 아닙니다.** 이미 진행 중이라는 뜻이므로 `GET .../finalization` 으로 기존 attempt 에 합류하세요. 이걸 에러로 처리하면 실제로는 성공한 주문을 "실패"로 보여 주게 됩니다.
 - 최종화 **실패는 예외가 아니라 값**으로 옵니다 — 폴링 응답의 `status: 'FAILED'` + `errorCode` 로 분기하세요.
+- 최종화의 검증·합성 작업이 워커 처리 중 반복 중단으로 실패하면 최종화도 `status: 'FAILED'` + `errorCode: 'ERR_PDF_VALIDATION_FAILED'` 로 끝납니다. `POST .../finalization` 을 다시 호출하면(`Idempotency-Key` 를 쓴다면 새 키로) 새 attempt 로 다시 최종화합니다(2026-10-03).
 - 🖨️ **`bookSpecUid`(판형)를 연결하지 않으면 워커 구조 검증이 통째로 생략됩니다.** 대조할 판형이 없으면 서버는 검증을 건너뛰고 최종화하며, 결과에 `validationSkipped: true` 가 실립니다. 그 도서는 재단·페이지수·여백이 한 번도 대조되지 않은 **미검증 상태**이므로 자동 발주로 흘리지 말고 자체 검수 게이트를 태우세요. 페이지수까지 대조하려면 `pageCount` 도 함께 넘겨야 합니다.
 
 **클라이언트 라이브러리**
@@ -409,6 +411,7 @@ curl -X POST "https://api.papascompany.co.kr/api/v1/books/<bookUid>/pdf-contents
      │ 2) PUT uploadUrl (파일 바이트) ─────────────────────────────►│              │
      │                                    │                          │              │
      │ 3) POST /files/:id/complete ──────►│ HeadObject 검증 → ready  │              │
+     │    (X-API-Key 권장 → 사이트 귀속)  │                          │              │
      │◄──── FileResponseDto                                          │              │
      │   (cover/content 각각 반복)        │                          │              │
      │                                    │                          │              │
@@ -473,12 +476,15 @@ curl -X POST ".../api/files/multipart/sign" -H "Content-Type: application/json" 
 # → {url, partNumber, expiresIn:900}  → 이 url로 PUT, 응답 헤더 ETag 보관
 
 # 완료 (각 파트 etag 결합)
-#   ✅ 권장(2026-08-28): complete 호출에 shop-session Bearer 를 함께 실으세요 —
-#   업로드 파일이 귀사 사이트로 귀속(site 스탬프)되어 테넌트 격리(다른 사이트 키의
-#   조회·삭제 차단)가 적용됩니다. Bearer 없이도 종전과 동일하게 동작하지만(무중단),
-#   그 경우 파일은 무귀속(NULL)으로 남아 격리 대상이 아닙니다.
-#   Bearer 발급: POST /api/auth/shop-session (X-API-Key) — §1.2 참조.
-#   예: -H "Authorization: Bearer <SHOP_SESSION_JWT>" (single-part :id/complete 도 동일)
+#   ✅ 권장: complete 호출에 귀사 사이트 자격증명을 실으세요. 업로드 파일이 귀사 사이트로
+#   귀속되고, 다른 사이트 키로는 조회·삭제되지 않습니다(404 FILE_NOT_FOUND).
+#     · 서버 간 호출: -H "X-API-Key: <YOUR_SITE_API_KEY>"  (2026-10-03, 편집기 키·워커 키 모두 같은 사이트로 처리)
+#     · 브라우저(임베드) 호출: -H "Authorization: Bearer <SHOP_SESSION_JWT>"  (2026-08-28, 발급은 §1.2 shop-session)
+#   둘을 함께 보냈는데 서로 다른 사이트면 귀속하지 않습니다. 둘 다 없으면 종전처럼 동작하고 파일은 무귀속(NULL)입니다.
+#   키가 무효여도 업로드는 실패하지 않습니다. 사이트 키는 X-API-Key 헤더로만 읽습니다.
+#   귀속은 처음 확정할 때 1회 정해지며, 이미 확정된 파일의 귀속은 바뀌지 않습니다.
+#   귀속된 파일은 download/external·DELETE·validate/external 에도 같은 사이트 키를 쓰세요.
+#   (single-part :id/complete 도 동일 — 단계 3)
 curl -X POST ".../api/files/multipart/complete" -H "Content-Type: application/json" \
   -d '{"fileId":"<id>","parts":[{"partNumber":1,"etag":"\"abc\""}],"uploadToken":"<token>"}'
 ```
@@ -488,10 +494,12 @@ curl -X POST ".../api/files/multipart/complete" -H "Content-Type: application/js
 
 ```bash
 curl -X POST "https://api.papascompany.co.kr/api/files/8b1f...uuid/complete" \
+  -H "X-API-Key: <YOUR_SITE_API_KEY>" \
   -H "Content-Type: application/json" \
   -d '{"uploadToken":"<UPLOAD_TOKEN_64HEX>"}'
 ```
-응답: `200 FileResponseDto` (status=ready). 실패: `400 UPLOAD_NOT_FOUND_ON_R2 | EMPTY_UPLOAD`.
+응답: `201 FileResponseDto` (status=ready). 실패: `400 UPLOAD_NOT_FOUND_ON_R2 | EMPTY_UPLOAD`.
+> **사이트 귀속 (2026-10-03):** `X-API-Key` 는 선택이며, 활성 사이트 키(편집기 키·워커 키)면 이 파일이 그 사이트로 귀속됩니다. 귀속 규칙은 위 멀티파트 완료와 같습니다 — shop-session Bearer 와 함께 보냈는데 서로 다른 사이트면 귀속하지 않고, 검증된 토큰도 활성 사이트 키도 없으면 종전처럼 무귀속(NULL)으로 확정됩니다. 키가 무효여도 업로드는 실패하지 않습니다.
 > `finalize()` 가 `HeadObject` 로 객체 존재·크기를 검증. `expectedSize ≠ actual` 이면 `SIZE_MISMATCH`(R2 객체 삭제 + failed). 멱등(이미 ready면 그대로 반환).
 
 **단계 3-대안 — 서버간 직접 업로드 (≤ 100 MB)**
@@ -560,6 +568,8 @@ curl "https://api.papascompany.co.kr/api/worker-jobs/external/<jobId>" \
 ```
 status: `PENDING | PROCESSING | COMPLETED | FIXABLE | FAILED`. 판정 결과(`errors`/`warnings`/`metadata`)는 `result` 객체 안에 담깁니다.
 
+> **작업 실패 코드 (2026-10-03):** 처리 중 워커가 반복해서 중단되어 작업이 실패로 기록되면 `status:'FAILED'`, `errorCode:'JOB_STALLED'` 입니다(검증·합성·변환·페이지수 보정 작업 공통). 생성 후 2시간이 지나도 끝나지 않은 작업은 10분 주기 정리 때 `status:'FAILED'`, `errorCode:'JOB_TIMEOUT_SWEPT'` 로 기록됩니다. 두 경우 모두 같은 요청으로 새 작업을 만들면 됩니다. `synthesis.failed`·`validation.failed` 웹훅 본문에는 `errorCode` 가 없고 `errorMessage` 만 있으므로, 코드가 필요하면 이 폴링 라우트로 잡을 조회하세요.
+
 **단계 5b — 웹훅 (callbackUrl 수신)**
 - 워커 종료 시 API(`WebhookService`)가 `callbackUrl` 로 `POST`. 헤더 `X-Storige-Event`, `X-Storige-Signature`. 타임아웃 10초, 1회 재시도.
 - SSRF 방어: `callbackUrl` 호스트가 `sites` DB(`uploadCallbackUrl`/`domain`) 또는 env `WEBHOOK_ALLOWED_HOSTS` 에 등록돼야 통과. **미등록 시 콜백은 무음으로 전송되지 않습니다**(서버 로그에 `Blocked callback URL not in allowlist` 기록, 파트너는 아무 요청도 받지 못함 — 403 같은 HTTP 응답이 가는 게 아님).
@@ -585,6 +595,13 @@ curl "https://api.papascompany.co.kr/api/files/<fileId>/download/external" \
 PDF 검증 규칙 요약은 5장 표 참조 (15단계).
 
 > **경고 `TRIMBOX_SIZE_BASIS` 추가 (2026-09-30, 비차단·additive)**: 재단선·여백 영역까지 페이지로 내보낸 **내지** PDF 가 MediaBox 크기로는 `SIZE_MISMATCH` 이지만, 전 페이지에 명시된 TrimBox(재단 크기)가 주문 재단과 맞으면 통과시키고 이 경고를 붙입니다(`details={ sizeBasis:'trimBox', trimBox:{width,height}, mediaBox:{width,height} }` mm, `result.metadata.trimBox` 도 기록). 불통과면 종전 `SIZE_MISMATCH` 그대로이며 `details.trimBox` 가 추가될 수 있습니다. **이미 통과하던 파일의 결과는 바뀌지 않고, MediaBox 만 있는 PDF 는 판정이 그대로**입니다 — 파트너는 새 경고 코드·추가 필드를 무시해도 됩니다. 상세 규칙: `docs/PDF_VALIDATION_GUIDE.md` §재단선 포함 PDF.
+
+> **합성 산출 크기 (2026-10-03):** 서버가 주문 재단·도련을 아는 합성은 내지 페이지를 **주문 재단 + 사방 도련** 크기로 맞춰 산출합니다(예: 재단 210×297·도련 3mm → 216×303).
+> - 대상: `editSessionId` 를 실은 `synthesize/external`(그 세션 템플릿셋의 재단 `width×height`·도련 `bleedMm`), `compose-mixed` 세션 자동조립(`assembleFromSession:true`, 3.4.1), v1 도서 최종화 합성(판형이 연결된 도서 — 판형의 내지 재단·도련·허용오차).
+> - 맞추는 페이지: 명시 TrimBox 가 주문 재단과 맞는 내지 페이지(`TRIMBOX_SIZE_BASIS` 경고로 통과한 재단선 포함 내지 등). 주문 도련 바깥의 재단선·여백 영역이 산출에서 빠집니다.
+> - 원래 크기 그대로인 경우: MediaBox 가 이미 그 크기(허용오차 이내)인 페이지, TrimBox 가 없거나 주문 재단과 다른 페이지, 주문 도련만큼의 여백이 없는 페이지. Storige 편집기가 만든 내지는 이미 작업사이즈이거나 재단 크기라 산출 크기가 바뀌지 않습니다.
+> - `editSessionId` 가 없는 `synthesize/external`, `compose-mixed` 기본(수동) 경로, 내지 펼침면 템플릿셋 세션은 종전과 같습니다.
+> - 요청·응답·웹훅 형식은 바뀌지 않습니다. 잡 조회 응답의 `options` 에 `contentTrim` 키가 보일 수 있으며(추가 필드), 무시해도 됩니다.
 
 ### 2.4 페이지수 검증 (데이터 주도)
 
@@ -803,7 +820,7 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 | `contentPdfAttach` | 선택 | 선택 | **내지 PDF 첨부 진입점**(2026-08-13 신설). 미전달=**노출**(book 모드 템플릿셋 한정). 끄려면 `contentPdfAttach=0` \| `false` |
 | `allowSampleFallback` | 선택 | — | `1` 또는 DEV에서만 sample 폴백 |
 
-> 프로덕션에서 템플릿셋 로드 실패 시 `editor.error TEMPLATE_SET_NOT_FOUND` 를 발신합니다.
+> 프로덕션에서 템플릿셋을 찾을 수 없거나(401·408·429 를 뺀 4xx 거절 포함) 편집기에 불러올 수 없으면 `editor.error {code:'TEMPLATE_SET_NOT_FOUND', templateSetId, fatal:true}` 를, 템플릿셋 조회·로드가 네트워크·타임아웃·서버 오류(5xx·408·429)로 실패하면 `editor.error {code:'NETWORK_ERROR', fatal:true}`(`templateSetId` 없음)를 보냅니다(2026-10-03). 인증 만료는 `AUTH_EXPIRED` 1회입니다(3.2 초기화 실패의 code).
 > **상품별 쪽수 범위·배수 (2026-09-29, ADDITIVE)** — `pageCountMin`·`pageCountMax`·`pageStep` 은 모두 선택이며, 보내지 않으면 템플릿셋 `pageCountRange`·`pageStep` 을 그대로 씁니다(종전과 동일).
 > - 값은 **물리 내지 쪽수**입니다(펼침면 내지 세트는 캔버스 1장 = 2쪽). 유효한 값은 호스트 `pageCount` 초기 보정, 내지 추가·삭제 상·하한(두 패널 모두), 편집완료 배수 검사에 템플릿셋 값 대신 적용됩니다.
 > - 제본별 최소·최대 쪽수(무선 최소 32쪽·중철 최대 64쪽 등)가 더 좁으면 계속 우선합니다. 단일(비스프레드) 편집 모드는 종전처럼 제본 제약을 적용하지 않습니다.
@@ -905,6 +922,9 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 > 채움본을 만들어 첨부합니다(원본 파일은 보존). 이때 이 이벤트의 `contentPdfFileId` 는 **채움본**이고
 > `contentPdfPageCount` 는 **채움 후 쪽수**(예: 5p·단위 4 → 8p)입니다 — 받은 값을 그대로 보관·합성에 쓰면
 > 됩니다. 설정이 꺼진 상품은 종전과 같습니다.
+> **채움본 페이지 크기(2026-10-03):** 명시 TrimBox 가 템플릿셋 재단과 맞는 첨부 PDF(재단선·여백 영역까지
+> 페이지로 내보낸 파일)는 채움본의 페이지 크기를 주문 작업사이즈(템플릿셋 재단 + 사방 템플릿셋 도련)로
+> 맞춥니다(2.3 합성 산출 크기와 같은 규칙). 원본 파일은 그대로 보존됩니다.
 
 `editor.error` code 종류: `AUTH_EXPIRED`, `NETWORK_ERROR`, `SAVE_FAILED`, `INVALID_DATA`, `SESSION_NOT_FOUND`, `TEMPLATE_SET_NOT_FOUND`.
 
@@ -915,6 +935,16 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 > | `true` | `SESSION_NOT_FOUND`, `TEMPLATE_SET_NOT_FOUND`, `AUTH_EXPIRED`, 초기화 중 `NETWORK_ERROR`·`INVALID_DATA` | 이 iframe 으로는 더 진행할 수 없습니다. 안내 후 닫거나 새 토큰·세션으로 다시 여세요 |
 > | `false` | `SAVE_FAILED`(저장·완료 실패), 쪽수 단위 위반 `INVALID_DATA` | **편집기를 닫지 마세요.** 비차단 안내만 하면 고객이 이어서 편집·재시도할 수 있습니다 |
 > | 없음 | 구버전 편집기 | 기존 처리 유지 |
+>
+> **초기화 실패의 code (2026-10-03).** 편집기 초기화 단계(세션 조회·생성, 템플릿셋 조회·로드)의 실패는 아래 code 로 1회 보내며 모두 `fatal:true` 입니다.
+> - 네트워크 끊김·타임아웃·서버 오류(5xx·408·429) → `NETWORK_ERROR`(단계와 관계없음)
+> - 인증 만료(401) → `AUTH_EXPIRED` 1회. 같은 실패로 다른 code 를 더 보내지 않습니다.
+> - 템플릿셋을 찾을 수 없음 → `TEMPLATE_SET_NOT_FOUND`, 세션을 열 수 없음 → `SESSION_NOT_FOUND`(3.3)
+> - 세션 생성 요청 거절(그 밖의 4xx)·그 밖의 초기화 오류 → `INVALID_DATA`
+>
+> 저장·완료 중 인증이 만료되면(401) `AUTH_EXPIRED` 와 `SAVE_FAILED` 가 함께 올 수 있습니다.
+>
+> **초기화 실패와 `SAVE_FAILED` 의 `message` 는 고객에게 그대로 보여 줄 수 있는 고정 한국어 문구입니다**(서버 원문·식별자를 담지 않습니다. 레거시 `storige:error` 의 `message` 도 같은 문구). 문구는 바뀔 수 있으니 처리 분기는 `code` 로 하세요.
 
 
 **부모→편집기 엔벨로프:**
@@ -1003,7 +1033,10 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 >   - 없음·권한 없음·잘못된 id → `editor.error {code:'SESSION_NOT_FOUND', sessionId, reason:'not_found'|'forbidden'|'invalid_id', fatal:true}` 1회 + 편집기 안 안내 화면('돌아가기' → `editor.cancel {reason:'session_not_found'}`)
 >   - 비회원 세션을 게스트 토큰 없이 열면 `reason:'guest_token_required'`(2026-10-01 additive — 위 비회원 세션 재오픈). `templateSetId` 없이 `sessionId` 만으로 연 경우에도 세션을 열 수 없으면 같은 `SESSION_NOT_FOUND` 를 1회 보냅니다(`parentOrigin` 지정 시)
 >   - 네트워크·타임아웃·서버 오류 → `editor.error {code:'NETWORK_ERROR', fatal:true}`, 인증 만료 → 기존대로 `AUTH_EXPIRED` 1회
->   - `sessionId` 없이 `orderSeqno`+`mode` 로 여는 첫 편집은 종전과 같습니다(주문번호로 찾고 없으면 생성). 주문번호로 찾은 세션이 비회원 세션이면 위 비회원 세션 재오픈의 `orderSeqno` 진입 규칙을 따릅니다(열 수 없으면 `SESSION_NOT_FOUND`, 새 세션 생성 없음).
+>   - `templateSetId` 없이 `sessionId` 만으로 연 경우도 세션 조회가 네트워크·타임아웃·서버 오류(5xx·408·429)면 `NETWORK_ERROR`, 인증 만료면 `AUTH_EXPIRED` 1회, 위 `SESSION_NOT_FOUND` 사유에 해당하지 않는 그 밖의 실패는 `INVALID_DATA` 를 보냅니다(모두 `fatal:true`, 레거시 `storige:error` 도 같은 문구로 1회 — 2026-10-03).
+>   - `sessionId` 없이 `orderSeqno`+`mode` 로 열면 주문번호로 세션을 찾고, 없으면 새로 만듭니다. **주문번호 조회가 네트워크·타임아웃·서버 오류(5xx·408·429)로 실패하면 새 세션을 만들지 않고 `NETWORK_ERROR`(fatal)로 멈춥니다. 인증 만료(401)면 `AUTH_EXPIRED` 1회로 멈춥니다**(2026-10-03). 그 밖의 조회 실패(그 밖의 4xx 등)는 주문 세션이 없는 것으로 보고 새로 만듭니다.
+>   - 새 회원 세션 생성이 회원 식별 없음(`400 MEMBER_REQUIRED` 또는 code 없는 `400`)이나 회원 세션을 만들 수 없는 토큰(`403 PERMISSION_DENIED`)으로 거절되면 비회원 세션으로 만듭니다. 그 밖의 생성 실패는 새 세션 없이 멈춥니다 — 네트워크·타임아웃·서버 오류는 `NETWORK_ERROR`, 인증 만료는 `AUTH_EXPIRED` 1회, 그 밖의 거절(4xx)은 `INVALID_DATA`(모두 fatal). 비회원 세션 생성 실패도 같은 code 로 멈춥니다(2026-10-03).
+>   - 주문번호로 찾은 세션이 비회원 세션이면 위 비회원 세션 재오픈의 `orderSeqno` 진입 규칙을 따릅니다(열 수 없으면 `SESSION_NOT_FOUND`, 새 세션 생성 없음).
 > - **호스트 회복 절차(권장).** ① `SESSION_NOT_FOUND` 에 고객용 문구를 매핑하세요. ② `reason:'not_found'` 이면 고객 확인 후 그 항목에 저장해 둔 `sessionId` 를 비우고 새 편집을 시작하는 선택지를 주세요 — **처리하지 않으면 낡은 `sessionId` 가 남은 항목은 '편집'을 누를 때마다 같은 오류로 다시 편집할 수 없습니다.** ③ 게스트 흡수 결과가 `migratedCount: 0` 인데 회원 재오픈이 `reason:'forbidden'` 으로 멈추면 '비회원 작업 보관 기간(24시간) 만료'로 안내하세요. ④ 재오픈 안내 배너 등 호스트 상태는 `editor.error` 수신 시 함께 초기화하세요. ⑤ 편집기를 여는 모든 화면에 오류 처리(`onError`)를 연결하세요.
 > - 결제 후 주문번호를 다시 매기는 호스트는 **Storige 세션을 만들 때 쓴 원래 `orderSeqno`(예: 장바구니 id)를 보존해 전달**해야 주문 기준 조회(`/edit-sessions/external?orderSeqno=`)가 맞습니다.
 > - 운영자(관리자)가 자기 회원 토큰(shop-session)으로 고객 세션을 열면 소유자가 달라 `reason:'forbidden'` 으로 멈춥니다. 관리자 재편집은 **3.3.2 운영자 대리 편집** 토큰으로 여세요.
@@ -1077,7 +1110,11 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 - 운영자가 저장만 하고 완료하지 않으면 세션 상태가 '편집중'으로 남을 수 있습니다. 작업을 마칠 때 완료하거나, 버전 복원으로 되돌려 주십시오.
 
 #### 감사 기록
-Storige가 운영자 권한의 발급·취소를 기록하고, 운영자의 모든 요청과 상태 변경(저장 시 상태·파일 변경, 완료, 버전 복원, 삭제)을 별도의 감사 기록에 남깁니다.
+Storige가 운영자 권한의 발급·취소를 기록하고, 운영자 토큰으로 들어온 요청과 상태 변경(저장 시 상태·파일 변경, 완료, 버전 복원, 삭제)을 별도의 감사 기록에 남깁니다.
+- 요청 기록(`action: 'request'`)에는 메서드·라우트·응답 상태 코드(`statusCode`)가 담기고, 오류 응답이면 그 오류 코드가 `detail.errorCode` 에 담깁니다. 오류 응답의 상태 코드·오류 코드는 API 의 표준 오류 응답(`{code, message}` 본문) 기준입니다.
+- 허용되지 않은 기능 호출(`403 PARTNER_OPERATOR_ROUTE_NOT_ALLOWED`)과, 취소·사이트 키 교체·사이트 운영중지 등으로 무효가 된 권한의 요청(`401 PARTNER_OPERATOR_GRANT_INVALID`)도 같은 형식으로 남습니다(2026-10-03 추가, 응답 형식은 같습니다).
+- 다음은 기록 대상이 아닙니다: 액세스 토큰이 만료됐거나 형식이 맞지 않아 운영자 권한을 확인할 수 없는 요청, 요청 한도 초과(`429`)로 거절된 요청, 토큰 갱신 실패.
+- 요청 기록은 응답을 기다리게 하지 않는 방식으로 저장되며, 저장 결과가 요청 결과에 영향을 주지 않습니다.
 - 상태 변경은 감사 기록 저장에 실패하면 수행되지 않습니다(`503 PARTNER_OPERATOR_AUDIT_UNAVAILABLE`).
 - 감사 기록은 세션이 삭제된 뒤에도 유지되며, 고객에게는 노출되지 않습니다.
 - 조회: `GET /auth/partner-operator-session/audit?sessionId=&grantId=&limit=` (사이트 편집기 키, 자기 사이트 기록만)
@@ -1544,9 +1581,9 @@ curl -X POST "https://api.papascompany.co.kr/api/worker-jobs/compose-mixed" \
 | POST | `/api/files/presigned-upload-public` | @Public | R2 single-part presigned (게스트/외부 임베드) |
 | POST | `/api/files/multipart/init` | @Public | 멀티파트 시작 |
 | POST | `/api/files/multipart/sign` | @Public + uploadToken | 파트 PUT URL 서명 |
-| POST | `/api/files/multipart/complete` | @Public + uploadToken | 멀티파트 완료 |
+| POST | `/api/files/multipart/complete` | @Public + uploadToken (선택: `X-API-Key` 사이트 키 또는 shop-session Bearer → 사이트 귀속, 사이트 키는 2026-10-03) | 멀티파트 완료 (`201`) |
 | POST | `/api/files/multipart/abort` | @Public + uploadToken | 멀티파트 취소 |
-| POST | `/api/files/:id/complete` | @Public + uploadToken | single-part 완료 확정 |
+| POST | `/api/files/:id/complete` | @Public + uploadToken (선택: `X-API-Key` 사이트 키 또는 shop-session Bearer → 사이트 귀속, 사이트 키는 2026-10-03) | single-part 완료 확정 (`201`) |
 | POST | `/api/files/upload` | JWT (Bearer) (shop·운영자 토큰이면 해당 사이트로 귀속 — 2026-09-30) | PDF 직접 업로드 (내부 사용자) |
 | POST | `/api/files/upload/external` | X-API-Key | 서버간 PDF 업로드 (≤100MB) |
 | GET | `/api/files/:id/download` | JWT + 소유자/staff | 내부 다운로드 |
@@ -1560,7 +1597,7 @@ curl -X POST "https://api.papascompany.co.kr/api/worker-jobs/compose-mixed" \
 | DELETE | `/api/files/:id` | JWT (Bearer) | 소프트 삭제 (48h 복구창) |
 | POST | `/api/files/:id/restore` | JWT (Bearer) | 소프트삭제 복구 |
 | POST | `/api/worker-jobs/validate/external` | X-API-Key | 인쇄 PDF 검증 잡. `editSessionId` 를 보내면 같은 사이트 세션(또는 사이트 미지정 회원 세션)이어야 함 — 아니면 `404 SESSION_NOT_FOUND`, 잡 미생성(3.4 세션 연결 확인) |
-| POST | `/api/worker-jobs/synthesize/external` | X-API-Key | 표지+내지 합성 잡. `editSessionId` 세션 연결 확인은 `validate/external` 과 같음 |
+| POST | `/api/worker-jobs/synthesize/external` | X-API-Key | 표지+내지 합성 잡. `editSessionId` 세션 연결 확인은 `validate/external` 과 같음. `editSessionId` 를 보내면 그 세션 템플릿셋의 재단·도련으로 재단선 포함 내지의 산출 크기를 맞춤(재단 + 도련×2, 2026-10-03 — 2.3 합성 산출 크기). 잡 `options` 에 `contentTrim` 이 추가될 수 있음 |
 | POST | `/api/worker-jobs/split-synthesize/external` | X-API-Key | 분할 합성 잡. `sessionId` 세션 연결 확인은 `validate/external` 과 같음 |
 | POST | `/api/worker-jobs/check-mergeable/external` | X-API-Key | 합성 가능 dry-run |
 | POST | `/api/worker-jobs/fix-pagecount/external` | X-API-Key (`@Public`+ApiKeyGuard+`@CurrentSite`) | **(LIVE)** 페이지수 보정 — 빈 페이지 추가로 배수 정합. Body `{fileId, targetMultiple}` → jobId, 폴링 시 `outputFileId`(새 fileId, 원본 보존). 2.6 |
@@ -1804,7 +1841,7 @@ CORS는 (a) Origin 없음→무조건 허용 (b) env 정적 (c) `*.vercel.app`/`
 `memberSeqno` 는 0 이상 정수 필수 필드(`@IsInt() @Min(0)`)라 **누락·음수·소수·비숫자는 일반 검증 `400`**(코드명 `MEMBER_REQUIRED` 아님)이 납니다. `memberSeqno=0`(비회원 방문자)은 검증을 통과해 `sub='0'` 세션을 발급합니다(거부 안 함). `MEMBER_REQUIRED` 는 shop-session 이 아니라 `POST /api/edit-sessions`(세션 생성) 단계에서 토큰의 회원 번호가 1 이상 정수가 아닐 때(0 포함) 발생합니다(세션은 토큰의 회원 번호로 만들어지고 본문 `memberSeqno` 는 쓰지 않습니다). 파트너 자체 정수 회원번호(0/음수 아님)를 채우세요.
 
 **Q. 게스트가 편집완료했는데 PDF가 없습니다.**
-회원 식별 없는 토큰(예: `memberSeqno=0`)은 게스트 세션으로 폴백되어, 편집완료 시 PDF 없이 `editor.complete{needsAuth:true}` → `editor.needAuth` 순으로 발신합니다(순서 주의 — 3.2). 호스트가 로그인 유도 후 게스트→회원 세션 마이그레이션을 처리해야 합니다 (절차는 3.3).
+회원 식별 없는 토큰(예: `memberSeqno=0`)은 게스트 세션으로 폴백되어, 편집완료 시 PDF 없이 `editor.complete{needsAuth:true}` → `editor.needAuth` 순으로 발신합니다(순서 주의 — 3.2). 호스트가 로그인 유도 후 게스트→회원 세션 마이그레이션을 처리해야 합니다 (절차는 3.3). 편집기의 「편집완료」 버튼으로 완료한 경우 편집기 안에는 '작업이 저장되었습니다. 로그인하면 이어서 주문할 수 있어요.' 안내가 표시됩니다(2026-10-03, 호스트로 가는 이벤트는 같습니다).
 
 ---
 

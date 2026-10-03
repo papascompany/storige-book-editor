@@ -274,6 +274,7 @@ docker logs storige-worker 2>&1 | grep "\[FLAGS\]"
 - 확인 대상은 각 플래그의 유효값(`true`/`false`)뿐입니다.
 - api 스냅샷 줄의 `FILE_RETENTION_*`·`FILE_ORPHAN_*` 값은 **env 계층 값**입니다. 관리자 저장소 설정(보존정책)이 함께 적용되므로 이 값만으로 실제 동작 모드를 판단하지 마십시오.
 - 보존정책의 실제 모드(삭제 여부·dry-run)는 `[FLAGS] api retention-effective` 줄 또는 관리자 저장소 설정 화면으로 확인합니다. 이 줄은 기동 시점 값이며, 관리자 화면에서 저장하면 런타임에 바뀝니다.
+- api 줄에 `JOB_LINK_STRICT=false JOB_FILE_SITE_STRICT=false` 가 보이면 기본 상태입니다(2026-10-03 추가, 아래 환경 변수 설정의 「잡 생성 확인 플래그」).
 
 ### 5. 서비스 중지
 
@@ -349,6 +350,17 @@ MAX_FILE_SIZE=52428800
 MAX_RETRY_ATTEMPTS=3
 GHOSTSCRIPT_PATH=/usr/bin/gs
 ```
+
+### 잡 생성 확인 플래그 (api, 2026-10-03)
+
+| 변수 | 대상 컨테이너 | 기본값 | 설명 |
+|---|---|---|---|
+| `JOB_LINK_STRICT` | api | `false` | 잡 생성 확인 플래그. 전환은 오너 결정 뒤 별도 절차로 한다 |
+| `JOB_FILE_SITE_STRICT` | api | `false` | 잡 생성 확인 플래그. 전환은 오너 결정 뒤 별도 절차로 한다 |
+
+- api 전용이다. worker 에는 넣지 않는다.
+- `docker-compose.yml` api `environment` 의 매핑(`JOB_LINK_STRICT=${JOB_LINK_STRICT:-false}`, `JOB_FILE_SITE_STRICT=${JOB_FILE_SITE_STRICT:-false}`)이 있어야 적용된다. `.env` 에만 넣고 매핑이 없으면 적용되지 않는다.
+- 현재 값은 api 기동 로그 `[FLAGS] api` 줄로 확인한다(위 「배포 후 점검」).
 
 ---
 
@@ -826,6 +838,67 @@ vercel logs storige-admin              # admin 런타임 로그
 # 또는 대시보드 → 프로젝트 → Deployments 에서 최신 상태 확인
 ```
 
+### 합성 내지 기대 재단 · 반복 중단 실패 기록 배포 (2026-10-03)
+
+> api·worker·editor 를 함께 바꾸는 배포다. DB 마이그레이션은 없다. 새 환경 변수는 api 잡 생성 확인 플래그 2개뿐이고 기본 `false` 다(위 「잡 생성 확인 플래그」). editor 는 master push 로 Vercel 이 배포한다(위 「Vercel 배포 파이프라인」 절로 state 확인). master push(= editor 자동 배포)와 api 배포는 파트너 사전 통지(`docs/partner-notices/PARTNER_NOTICE_WAVE2_2026-10-03.md`) 발송 뒤에 한다. 이번 api 에는 presigned complete 사이트 키 귀속(공지 §5)이 들어 있으므로, api 배포는 100p Books ACK 와 오너 배포 승인을 받은 뒤에 한다.
+
+**순서: 사전 통지 발송 → master push(editor 자동 배포) → worker → api.** worker 는 잡에 `contentTrim`(주문 재단·도련)이 없으면 종전 경로로 처리하므로 먼저 올려도 동작이 같다. api 는 배포 뒤부터 `editSessionId` 가 있는 합성 등에 `contentTrim` 을 싣는다.
+
+```bash
+cd ~/storige && git pull origin master
+
+# 1) worker 먼저
+docker compose build worker && docker compose up -d worker
+docker logs storige-worker 2>&1 | grep "\[FLAGS\]"   # … WORKER_TRIMBOX_SIZE_CHECK=true
+
+# 2) 그다음 api — recreate 뒤 nginx 재시작 필수
+docker compose up -d --build api && docker compose restart nginx
+docker logs storige-api 2>&1 | grep "\[FLAGS\]"      # … JOB_LINK_STRICT=false JOB_FILE_SITE_STRICT=false
+```
+
+**확인 로그 — api 배포 뒤 첫 합성**
+
+```bash
+# api: 잡에 contentTrim 을 실었는지
+docker logs storige-api 2>&1 | grep "\[content-trim\]"
+#   [content-trim] attach route=synthesize source=templateSet trim=210x297 bleed=3
+#   [content-trim] skip route=<route> reason=<사유>      ← 키 없이 잡 생성(잡 생성은 계속, 종전 경로)
+
+# worker: 값을 받았는지, 내지를 맞췄는지
+docker logs storige-worker 2>&1 | grep -E "\[TRIMBOX_CTX\]|\[TRIMBOX_NORMALIZE\] merge:"
+#   [TRIMBOX_CTX] merge:<jobId> source=templateSet trim=210x297 bleed=3 tol=1
+#   [TRIMBOX_NORMALIZE] merge:<jobId> pages=<N> cropped=<M> source=orderBleed bleed=3x3 target=216x303mm (…)
+```
+
+- `[content-trim]` 의 `route` 는 `synthesize`·`compose-mixed`·`attach-page-pad`·`finalization`, `skip` 사유는 `no-session`·`no-template-set`·`no-book-spec`·`inner-spread`·`invalid`·`lookup-error` 다. 로그에 세션·템플릿셋 id 는 남기지 않는다.
+- worker 태그는 `merge:<jobId>`(merge 합성)·`compose:<jobId>`(compose-mixed)·`convert:<jobId>`(첨부 내지 빈 페이지 채움)다. `[TRIMBOX_CTX] <태그> ignored reason=<사유>` 는 값 형식이 맞지 않아 종전 경로로 진행했다는 뜻이다.
+- 값을 도출하지 않는 경로(`editSessionId` 없는 합성, compose-mixed 수동 경로)는 `[content-trim]` 줄이 없고, `contentTrim` 이 없는 잡은 `[TRIMBOX_CTX]` 줄이 없다. 정상이다.
+- 편집기 산출 내지(재단선 영역 없는 재단 크기, 또는 이미 작업사이즈)는 크롭하지 않으므로 `[TRIMBOX_NORMALIZE]` 적용 줄이 없는 것이 정상이다.
+- worker `WORKER_TRIMBOX_SIZE_CHECK=false` 이면 TrimBox 판정·크롭과 함께 잡의 `contentTrim` 도 읽지 않는다(`docs/PDF_VALIDATION_GUIDE.md` §킬스위치).
+
+**확인 로그 — 반복 중단 실패 기록 (worker)**
+
+```bash
+docker logs storige-worker 2>&1 | grep "\[JOB_STALLED\]"
+#   [JOB_STALLED] queue=<큐> name=<잡 이름> jobId=<id> queueJobId=<id> outcome=<결과> previousStatus=<상태>
+```
+
+- 평소에는 줄이 없다. 리스너는 Bull 이 stalled 한도 초과로 실패시킨 잡만 처리하고, 프로세서가 던진 실패는 다루지 않는다(프로세서가 이미 `FAILED` 를 기록한다).
+- 대상 큐: `pdf-validation`·`pdf-conversion`(변환·render-pages)·`pdf-synthesis`·`image-cutout`.
+- `outcome` 값
+
+| 값 | 뜻 |
+|---|---|
+| `patched` | API 잡을 `FAILED`(`errorCode: 'JOB_STALLED'`)로 기록했다 |
+| `completedReported` | 합성 완료 마커가 있어 `FAILED` 대신 `COMPLETED` 를 다시 보고했다 |
+| `alreadyTerminal` | 이미 종결된 잡이라 바꾸지 않았다 |
+| `notFound` | API 에 해당 잡이 없다 |
+| `statusUnavailable` · `patchFailed` · `completedReportFailed` | API 상태 조회 또는 기록이 실패했다(연결 실패·오류 응답, 재시도 소진). 아래 「문제 해결 4」의 스위퍼 정리로 이어진다 |
+| `invalidJob` | 큐 잡 정보(잡 페이로드·`jobId`)를 읽지 못했다 |
+| `error` | 처리 중 예외가 났다 — 같은 줄의 메시지를 확인한다(기록하지 못했으면 스위퍼 정리로 이어진다) |
+
+- 별도 플래그는 없다. 되돌리기는 해당 커밋 revert 뒤 worker 재배포다.
+
 ---
 
 ## 문제 해결
@@ -880,6 +953,13 @@ curl -X POST http://localhost:4000/api/worker-jobs/validate \
   -H "Content-Type: application/json" \
   -d '{"fileUrl":"...","fileType":"cover",...}'
 ```
+
+**잡이 `PROCESSING` 에 오래 머물 때 (2026-10-03)**
+
+- 처리 중 워커가 중단된 잡(워커 재기동·잠금 만료 등)은 Bull 이 한 번 다시 처리한다(`maxStalledCount: 1`, `apps/worker/src/app.module.ts`). 두 번째로 중단되면 Bull 이 큐 잡을 실패시키고, 워커가 API 잡을 `FAILED`(`errorCode: 'JOB_STALLED'`)로 기록한다. `docker logs storige-worker 2>&1 | grep "\[JOB_STALLED\]"` 의 `outcome=` 로 결과를 본다(값 표는 위 「합성 내지 기대 재단 · 반복 중단 실패 기록 배포」).
+- 워커는 기록 전에 잡 상태를 조회해 `PENDING`·`PROCESSING` 일 때만 바꾼다. 합성 완료 마커가 남은 잡은 `FAILED` 대신 `COMPLETED` 를 다시 보고한다.
+- 기록하지 못했으면(`outcome=statusUnavailable`·`patchFailed` 등, API 조회·기록 실패) api 스위퍼(10분 주기)가 생성 2시간 뒤 `FAILED`(`errorCode: 'JOB_TIMEOUT_SWEPT'`)로 정리한다(`apps/api/src/worker-jobs/worker-jobs-sweeper.service.ts`).
+- 두 코드 모두 같은 요청으로 새 작업을 만들면 된다.
 
 ### 5. 디스크 공간 부족
 
