@@ -189,6 +189,28 @@ describe('reportStalledLimitFailure', () => {
     );
   });
 
+  it.each([0, 1, 2])(
+    '남은 시도가 있는 합성 잡(attemptsMade %i, attempts 3)도 FAILED·JOB_STALLED 로 patched',
+    async (attemptsMade) => {
+      const h = makeHarness(
+        { ok: true, status: 'PROCESSING' },
+        { queueName: 'pdf-synthesis', routes: { 'synthesize-pdf': { jobType: 'synthesize' } } },
+      );
+      const job = Object.assign(makeJob({ name: 'synthesize-pdf' }), {
+        attemptsMade,
+        opts: { attempts: 3 },
+      });
+
+      await expect(reportStalledLimitFailure(job, stalledErr(), h.deps)).resolves.toBe('patched');
+      expect(h.update).toHaveBeenCalledTimes(1);
+      expect(h.update).toHaveBeenCalledWith(
+        'job-1',
+        expect.objectContaining({ status: 'FAILED', errorCode: JOB_STALLED_ERROR_CODE }),
+        { jobType: 'synthesize', queueName: 'pdf-synthesis' },
+      );
+    },
+  );
+
   it.each(['COMPLETED', 'FIXABLE', 'FAILED'])('이미 종결된 잡(%s)은 PATCH 하지 않는다', async (status) => {
     const h = makeHarness({ ok: true, status });
     await expect(reportStalledLimitFailure(makeJob(), stalledErr(), h.deps)).resolves.toBe(
@@ -292,6 +314,19 @@ describe('reportStalledLimitFailure', () => {
   it('설치된 bull 의 stalled 한도 초과 사유 문자열과 상수가 같다', () => {
     const src = fs.readFileSync(require.resolve('bull/lib/queue.js'), 'utf8');
     expect(src).toContain(`new Error('${STALLED_LIMIT_FAILED_REASON}')`);
+  });
+
+  it('설치된 bull 의 stalled 스크립트는 한도 초과 잡을 attempts 확인 없이 failed 로 옮긴다', () => {
+    // 실행되는 스크립트는 lib/scripts/*.js(lib/queue.js 가 require('./scripts/') 로 등록)다.
+    const index = fs.readFileSync(require.resolve('bull/lib/scripts/index.js'), 'utf8');
+    expect(index).toContain(`require('./moveStalledJobsToWait-7')`);
+    const src = fs.readFileSync(
+      require.resolve('bull/lib/scripts/moveStalledJobsToWait-7.js'),
+      'utf8',
+    );
+    expect(src).toContain(`"failedReason", "${STALLED_LIMIT_FAILED_REASON}"`);
+    expect(src).toContain('if(stalledCount > MAX_STALLED_JOB_COUNT) then');
+    expect(src).not.toMatch(/attempt/i);
   });
 });
 
@@ -492,6 +527,49 @@ describe('큐별 failed 리스너 배선', () => {
         expect.objectContaining({ status: 'FAILED', errorCode: 'JOB_STALLED' }),
       );
     });
+
+    it('SynthesisProcessor 리스너는 남은 시도가 있는 잡도 stalled 한도 초과면 FAILED·JOB_STALLED 로 기록한다', async () => {
+      const processor = new SynthesisProcessor({} as never);
+      silenceLogger(processor);
+      Object.defineProperty(processor, 'outputsPath', { value: outputsDir });
+      const status = attachStatusMock(processor, { ok: true, status: 'PROCESSING' });
+      const job = Object.assign(
+        makeJob({ name: 'synthesize-pdf', data: { jobId: 's-4' } }),
+        { attemptsMade: 0, opts: { attempts: 3 } },
+      );
+
+      await processor.onQueueFailed(job as Job<unknown>, stalledErr());
+
+      expect(status.updateJobStatusWithRetry).toHaveBeenCalledTimes(1);
+      expect(status.updateJobStatusWithRetry).toHaveBeenCalledWith(
+        's-4',
+        expect.objectContaining({ status: 'FAILED', errorCode: 'JOB_STALLED' }),
+        { jobType: 'synthesize', queueName: 'pdf-synthesis' },
+      );
+    });
+
+    it.each([
+      ['일반 오류', new Error('socket hang up')],
+      ['재시도 DomainError', new DomainError(ErrorCodes.FILE_DOWNLOAD_FAILED, 'download failed')],
+    ])(
+      'SynthesisProcessor 리스너는 재시도로 넘어가는 중간 시도 실패(%s)를 조회·PATCH 없이 넘긴다',
+      async (_label, err) => {
+        const processor = new SynthesisProcessor({} as never);
+        silenceLogger(processor);
+        Object.defineProperty(processor, 'outputsPath', { value: outputsDir });
+        const status = attachStatusMock(processor, { ok: true, status: 'PROCESSING' });
+        const job = Object.assign(
+          makeJob({ name: 'synthesize-pdf', data: { jobId: 's-5' }, failedReason: err.message }),
+          { attemptsMade: 1, opts: { attempts: 3 } },
+        );
+
+        await processor.onQueueFailed(job as Job<unknown>, err);
+
+        expect(status.fetchJobStatusWithRetry).not.toHaveBeenCalled();
+        expect(status.updateJobStatusWithRetry).not.toHaveBeenCalled();
+        expect(mockedCapture).not.toHaveBeenCalled();
+      },
+    );
   });
 
   it('Validation·Cutout 리스너는 PROCESSING 잡을 FAILED·JOB_STALLED 로 기록한다', async () => {

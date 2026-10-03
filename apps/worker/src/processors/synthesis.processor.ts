@@ -3,13 +3,24 @@ import { Logger } from '@nestjs/common';
 import { Job } from 'bull';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { PdfSynthesizerService } from '../services/pdf-synthesizer.service';
-import { JobStatusService } from '../services/job-status.service';
+import {
+  JobStatusService,
+  JobStatusPayload,
+} from '../services/job-status.service';
 import { DomainError, ErrorCodes } from '../common/errors';
 import axios from 'axios';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import { captureJobException } from '../sentry/sentry.init';
 import { reportStalledLimitFailure } from './stalled-job-failure';
+// JD-2 (2026-10): 합성 실패 시도 판정 — 재시도(PATCH 없이 throw) / 최종 FAILED(+discard).
+import {
+  decideSynthesisFailure,
+  formatSynthRetryLog,
+  shouldDiscardOnFail,
+  shouldLogSynthRetry,
+  SynthRetryOutcome,
+} from './synthesis-retry';
 import { VALIDATION_CONFIG } from '../config/validation.config';
 import { downloadToTempFile } from '../utils/stream-download';
 import { extractPdfMetadataQpdf } from '../utils/pdf-metadata-qpdf';
@@ -137,7 +148,7 @@ export class SynthesisProcessor {
     // ⓔ(2026-06-23) 멱등 가드 — 합성 비멱등 재실행 방지(유료 인쇄 주문 중복합성 차단).
     // 완료 마커(.synthesis-complete.json, updateJobStatus COMPLETED 시 기록)가 있으면 이전 시도가
     // 이미 성공한 것 → 재합성/재다운로드/재머지 없이 단락. Bull stalled 재배달(maxStalledCount,
-    // attempts=1 에서도 lock 만료 시 발생) 및 향후 attempts>1 양쪽을 커버한다.
+    // lock 만료 시 발생)과 합성 큐 재시도(attempts>1, settleFailedAttempt 의 retry) 양쪽을 커버한다.
     // fail-safe: 마커 부재/파손이면 null → 정상 합성으로 폴백(가드가 합성을 막는 일은 없음).
     const cached = await this.loadCompletionMarker(jobId);
     if (cached) {
@@ -355,15 +366,13 @@ export class SynthesisProcessor {
         `[test-env] synthesis job ${jobId} 더미 산출 실패: ${error.message}`,
         error.stack,
       );
-      captureJobException(error, {
+      await this.settleFailedAttempt(
+        job,
         jobId,
-        jobType: 'synthesize',
-        queueName: 'pdf-synthesis',
-      });
-      await this.updateJobStatus(jobId, {
-        status: 'FAILED',
-        errorMessage: error.message,
-      });
+        error,
+        { status: 'FAILED', errorMessage: error.message },
+        { mode: 'test-env', capture: true },
+      );
       throw error;
     }
   }
@@ -648,8 +657,13 @@ export class SynthesisProcessor {
       return result;
     } catch (error: any) {
       this.logger.error(`Compose-mixed job ${jobId} error: ${error.message}`, error.stack);
-      captureJobException(error, { jobId, jobType: 'synthesize', queueName: 'pdf-synthesis' });
-      await this.updateJobStatus(jobId, { status: 'FAILED', errorMessage: error.message });
+      await this.settleFailedAttempt(
+        job,
+        jobId,
+        error,
+        { status: 'FAILED', errorMessage: error.message },
+        { mode: 'compose-mixed', capture: true },
+      );
       throw error;
     }
   }
@@ -1142,23 +1156,20 @@ export class SynthesisProcessor {
         error.stack,
       );
 
-      // Sentry에 잡 컨텍스트와 함께 전송
-      captureJobException(error, {
-        jobId,
-        jobType: 'synthesize',
-        queueName: 'pdf-synthesis',
-      });
-
       // 임시 파일 정리 시도
       if (localResult) {
         await this.cleanupTempFiles(localResult);
       }
 
-      // failed 상태 업데이트 → worker-jobs.service에서 failed webhook 발송
-      await this.updateJobStatus(jobId, {
-        status: 'FAILED',
-        errorMessage: error.message,
-      });
+      // 최종 실패면 Sentry 전송 + FAILED 상태 업데이트(→ worker-jobs.service 에서 failed webhook 발송),
+      // 재시도할 시도면 상태 PATCH 없이 throw(Bull 재시도).
+      await this.settleFailedAttempt(
+        job,
+        jobId,
+        error,
+        { status: 'FAILED', errorMessage: error.message },
+        { mode: 'merge', capture: true },
+      );
 
       throw error;
     }
@@ -1488,13 +1499,19 @@ export class SynthesisProcessor {
         error.stack,
       );
 
-      // ★ FAILED도 재시도 정책 적용
-      await this.updateJobStatusWithRetry(jobId, {
-        status: 'FAILED',
-        errorCode: domainError.code,
-        errorMessage: domainError.message,
-        errorDetail: domainError.detail,
-      });
+      // ★ FAILED도 재시도 정책 적용(최종 실패일 때만 PATCH — 판정은 감싸기 전 원본 오류로)
+      await this.settleFailedAttempt(
+        job,
+        jobId,
+        error,
+        {
+          status: 'FAILED',
+          errorCode: domainError.code,
+          errorMessage: domainError.message,
+          errorDetail: domainError.detail,
+        },
+        { mode: 'split', capture: false },
+      );
 
       throw error;
     } finally {
@@ -1708,12 +1725,18 @@ export class SynthesisProcessor {
         error.stack,
       );
 
-      await this.updateJobStatusWithRetry(jobId, {
-        status: 'FAILED',
-        errorCode: domainError.code,
-        errorMessage: domainError.message,
-        errorDetail: domainError.detail,
-      });
+      await this.settleFailedAttempt(
+        job,
+        jobId,
+        error,
+        {
+          status: 'FAILED',
+          errorCode: domainError.code,
+          errorMessage: domainError.message,
+          errorDetail: domainError.detail,
+        },
+        { mode: 'duplex-split', capture: false },
+      );
 
       throw error;
     } finally {
@@ -2019,23 +2042,23 @@ export class SynthesisProcessor {
         error.stack,
       );
 
-      // EH-001: 스프레드 합성 실패도 다른 합성 핸들러와 동일하게 Sentry 로 보고(과거 누락).
-      captureJobException(error, {
+      // EH-001: 스프레드 합성 실패도 다른 합성 핸들러와 동일하게 Sentry 로 보고(최종 실패일 때).
+      await this.settleFailedAttempt(
+        job,
         jobId,
-        jobType: 'synthesize',
-        queueName: 'pdf-synthesis',
-      });
-
-      await this.updateJobStatusWithRetry(jobId, {
-        status: 'FAILED',
-        errorCode: error.code || 'SYNTHESIS_FAILED',
-        errorMessage: error.message,
-        errorDetail: {
-          stack: error.stack,
-          jobData: job.data,
+        error,
+        {
+          status: 'FAILED',
+          errorCode: error.code || 'SYNTHESIS_FAILED',
+          errorMessage: error.message,
+          errorDetail: {
+            stack: error.stack,
+            jobData: job.data,
+          },
+          queueJobId,
         },
-        queueJobId,
-      });
+        { mode: 'spread', capture: true },
+      );
 
       // 임시 디렉토리 정리
       await fs.rm(jobTempDir, { recursive: true, force: true }).catch(() => {});
@@ -2054,6 +2077,97 @@ export class SynthesisProcessor {
     // temp 디렉토리 전체 삭제
     await fs.rm(jobTempDir, { recursive: true, force: true }).catch(() => {});
     this.logger.debug(`Cleaned up spread temp dir: ${jobTempDir}`);
+  }
+
+  /**
+   * JD-2 (2026-10): 합성 실패 시도 정리. 각 catch 가 cleanup·throw 전에 부른다. throw 하지 않는다.
+   *
+   * 1. 완료 마커가 있으면 저장된 COMPLETED 를 1회 재보고하고 'completed'(FAILED PATCH 없음).
+   * 2. 재시도할 수 있는 오류 + 남은 시도 → 상태 PATCH 없이 'retry'(DB 는 PROCESSING 유지, Bull 이 다시 시도).
+   * 3. 입력 오류 또는 마지막 시도 → job.discard()(남은 시도 버림) → Sentry(capture) → FAILED PATCH → 'fail'.
+   *    불변식: FAILED 를 PATCH 하면 discard 한다(최대 시도 1인 잡은 Bull 이 다시 시도하지 않으므로 생략).
+   * 판정 중 예외가 나면 discard + FAILED PATCH 로 정리한다.
+   * [SYNTH_RETRY] 로그는 최대 시도가 1인 잡(attempts 미지정)에서는 남기지 않는다.
+   */
+  private async settleFailedAttempt(
+    job: Pick<Job<unknown>, 'id' | 'attemptsMade' | 'opts'> & {
+      discard?: () => unknown;
+    },
+    jobId: string,
+    error: unknown,
+    failedPayload: JobStatusPayload & { status: 'FAILED' },
+    options: { mode: string; capture: boolean },
+  ): Promise<SynthRetryOutcome> {
+    let discarded = false;
+    let reported = false;
+    const discardJob = (): void => {
+      if (discarded) return;
+      discarded = true;
+      if (typeof job.discard === 'function') {
+        job.discard();
+      } else {
+        this.logger.warn(
+          `[SYNTH_RETRY] jobId=${jobId} queueJobId=${job.id ?? '-'} mode=${options.mode} discard=unavailable`,
+        );
+      }
+    };
+
+    try {
+      const decision = decideSynthesisFailure(job, error);
+      const logLine = (outcome: SynthRetryOutcome): string =>
+        formatSynthRetryLog({
+          jobId,
+          queueJobId: job.id,
+          mode: options.mode,
+          decision,
+          outcome,
+        });
+
+      const completed = await this.loadCompletionMarker(jobId);
+      if (completed) {
+        this.logger.warn(
+          `[idempotent] synthesis job ${jobId} 완료 마커 있음(mode=${options.mode}, queue=${job.id}) — FAILED 대신 COMPLETED 재보고`,
+        );
+        if (shouldLogSynthRetry(decision)) this.logger.warn(logLine('completed'));
+        reported = true;
+        await this.updateJobStatus(jobId, completed);
+        return 'completed';
+      }
+
+      if (decision.action === 'retry') {
+        this.logger.warn(logLine('retry'));
+        return 'retry';
+      }
+
+      if (shouldDiscardOnFail(decision)) discardJob();
+      if (options.capture) {
+        captureJobException(error, {
+          jobId,
+          jobType: 'synthesize',
+          queueName: 'pdf-synthesis',
+        });
+      }
+      reported = true;
+      await this.updateJobStatus(jobId, failedPayload);
+      if (shouldLogSynthRetry(decision)) this.logger.warn(logLine('fail'));
+      return 'fail';
+    } catch {
+      if (reported) return 'fail';
+      try {
+        discardJob();
+      } catch {
+        // discard 는 메모리 플래그 설정뿐 — 예외가 나도 FAILED 보고는 계속한다.
+      }
+      try {
+        await this.updateJobStatus(jobId, failedPayload);
+        this.logger.warn(
+          `[SYNTH_RETRY] jobId=${jobId} queueJobId=${job.id ?? '-'} mode=${options.mode} settle-fallback=yes`,
+        );
+      } catch {
+        // updateJobStatus 는 최종 실패에도 throw 하지 않는다(JobStatusService 가 false 반환).
+      }
+      return 'fail';
+    }
   }
 
   /**

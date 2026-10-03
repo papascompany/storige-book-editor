@@ -11,6 +11,7 @@ import {
 } from '../utils/ghostscript';
 import { SynthesisLocalResult, SplitResult, SpreadSynthesisLocalResult } from '@storige/types';
 import { DomainError, ErrorCodes } from '../common/errors';
+import { RETRYABLE_4XX } from '../processors/synthesis-retry';
 import { isApiMarker, downloadViaApi } from './api-file-download';
 import { VALIDATION_CONFIG } from '../config/validation.config';
 import { downloadToTempFile } from '../utils/stream-download';
@@ -1034,6 +1035,7 @@ export class PdfSynthesizerService {
 
   /**
    * EditSession 조회 (API 호출)
+   * 조회 실패는 lookupFailureOrNull 규칙을 따른다(404 → null, 일시 오류 → SERVICE_UNAVAILABLE).
    */
   private async getEditSession(sessionId: string): Promise<any> {
     const apiBaseUrl = process.env.API_BASE_URL || 'http://localhost:4000/api';
@@ -1042,6 +1044,7 @@ export class PdfSynthesizerService {
         `${apiBaseUrl}/edit-sessions/${sessionId}`,
         {
           headers: { 'X-API-Key': process.env.WORKER_API_KEY },
+          timeout: 30000, // processor getFileById(EH-005)와 같은 값
         },
       );
       return response.data;
@@ -1049,24 +1052,51 @@ export class PdfSynthesizerService {
       this.logger.error(
         `Failed to get EditSession ${sessionId}: ${error.message}`,
       );
-      return null;
+      return this.lookupFailureOrNull(error, 'session-lookup', 'EditSession 조회 실패');
     }
   }
 
   /**
    * File 조회 (API 호출)
+   * 조회 실패는 lookupFailureOrNull 규칙을 따른다(404 → null, 일시 오류 → SERVICE_UNAVAILABLE).
    */
   private async getFileById(fileId: string): Promise<any> {
     const apiBaseUrl = process.env.API_BASE_URL || 'http://localhost:4000/api';
     try {
       const response = await axios.get(`${apiBaseUrl}/files/${fileId}`, {
         headers: { 'X-API-Key': process.env.WORKER_API_KEY },
+        timeout: 30000, // processor getFileById(EH-005)와 같은 값
       });
       return response.data;
     } catch (error: any) {
       this.logger.error(`Failed to get File ${fileId}: ${error.message}`);
+      return this.lookupFailureOrNull(error, 'file-lookup', '파일 조회 실패');
+    }
+  }
+
+  /**
+   * JD-2 (2026-10): spread 조회 실패 매핑 — 합성 큐 재시도 분류(processors/synthesis-retry)와 짝.
+   * - 404 → null (호출부가 SESSION_NOT_FOUND / FILE_NOT_FOUND 로 즉시 실패)
+   * - 408·425·429·5xx·응답 없음(네트워크·시간 초과) → DomainError(SERVICE_UNAVAILABLE) — 재시도 대상
+   * - 그 밖의 4xx → null (재시도하지 않는 NOT_FOUND 실패, 기존 errorCode 유지)
+   */
+  private lookupFailureOrNull(
+    error: unknown,
+    phase: 'session-lookup' | 'file-lookup',
+    message: string,
+  ): null {
+    const response =
+      typeof error === 'object' && error !== null
+        ? (error as { response?: { status?: unknown } }).response
+        : undefined;
+    const status = typeof response?.status === 'number' ? response.status : null;
+    if (status !== null && status >= 400 && status < 500 && !RETRYABLE_4XX.has(status)) {
       return null;
     }
+    throw new DomainError(ErrorCodes.SERVICE_UNAVAILABLE, message, {
+      phase,
+      httpStatus: status,
+    });
   }
 
   /**

@@ -11,7 +11,9 @@ import { captureJobException } from '../sentry/sentry.init';
  *
  * Bull 이 stalled 한도(maxStalledCount)를 넘긴 잡을 실패시키면, 큐 failed 리스너가
  * 이 헬퍼로 DB 잡을 FAILED(errorCode JOB_STALLED)로 기록한다.
- * - 프로세서가 던진 일반 오류(프로세서 catch 가 이미 FAILED 를 PATCH 함)는 처리하지 않는다.
+ * - 프로세서가 던진 일반 오류(프로세서 catch 가 FAILED 를 PATCH 하거나 합성 재시도로 넘김)는 처리하지 않는다.
+ * - stalled 한도 초과는 Bull 이 attempts 와 무관하게 종결시키므로(재시도 없음) 남은 시도와 관계없이 기록한다.
+ *   Bull 이 이미 failed 로 옮긴 잡이라 job.discard() 는 필요 없다.
  * - 먼저 상태를 조회해 PENDING/PROCESSING 일 때만 기록한다(종결된 잡은 그대로 둔다).
  * - 합성 완료 마커가 있으면 FAILED 대신 캐시된 COMPLETED 를 1회 재보고한다.
  * - 리스너는 이름 필터 없이 큐마다 1개다(pdf-conversion 공유 큐는 ConversionProcessor 한 곳).
