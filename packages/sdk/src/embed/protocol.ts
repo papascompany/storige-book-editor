@@ -283,6 +283,16 @@ export interface EditorState {
   /** 미저장 변경 유무 */
   dirty: boolean;
   sessionId: string | null;
+  /**
+   * 물리 쪽수 — 회원 세션의 `editor.complete`·`editor.pricingChange` 와 같은 산식.
+   * 편집기 초기화가 끝난 뒤에만 있다(구버전 편집기·초기화·변경 이력 복원 중에는 없음).
+   */
+  pageCount?: number;
+  /**
+   * 1부터 센 현재 편집 화면 순번(펼침면 세트는 펼침면 단위, 표지+내지 세트는 1 = 표지).
+   * `pageCount` 와 단위가 다르다. 편집기 초기화 뒤에만 있고, 편집 대상 화면을 알 수 없으면 없다.
+   */
+  currentPage?: number;
 }
 
 /** 게스트 로그인 유도 통지 — complete/needAuth 중복을 SDK 가 1회로 합친 결과 */

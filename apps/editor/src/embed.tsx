@@ -56,6 +56,7 @@ import {
   resolveTemplateSetCoverMeta,
 } from './utils/photobookSpread'
 import { shouldReemitPricing, type PricingEmitState } from './utils/pricingChangeReemit'
+import { computeEmbedPageState, type EmbedPageState } from './utils/embedPageState'
 import { templatesApi, editSessionsApi, filesApi, apiClient, type EditSessionResponse } from './api'
 import { core, ServicePlugin } from '@storige/canvas-core'
 import type { PhotobookPricing, TemplateSetCoverMeta } from '@storige/types'
@@ -465,11 +466,28 @@ export interface PricingChangePayload {
   spineWidthMm?: number
 }
 
+/** IIFE 인스턴스 getState() 반환값 */
 export interface EditorState {
   ready: boolean
   modified: boolean
+  /** 1부터 센 현재 편집 화면 순번(펼침면 세트는 펼침면 단위). 초기화 완료 전·위치를 모르면 0 */
   currentPage: number
+  /** 물리 쪽수(회원 세션의 editor.complete pageCount 와 같은 산식). 초기화 완료 전 0 */
   totalPages: number
+}
+
+/**
+ * getState 명령 응답(editor.state) payload.
+ * pageCount·currentPage 는 편집기 초기화가 끝난 뒤에만 싣는다(초기화·변경 이력 복원 중에는 키 없음).
+ * currentPage 는 편집 대상 캔버스 위치를 모르면 키를 뺀다. 두 값은 단위가 다르다.
+ */
+export interface EmbedStatePayload {
+  requestId?: string
+  ready: boolean
+  dirty: boolean
+  sessionId: string | null
+  pageCount?: number
+  currentPage?: number
 }
 
 // ============================================================
@@ -786,9 +804,36 @@ function EmbeddedEditor({
     saveNow,
   })
 
+  // getState(editor.state)·IIFE getState 의 쪽수·현재 화면 순번.
+  // 초기화 완료(isInitializedRef) 뒤에만 계산한다 — 초기화 중(캔버스 일부만 생성)·변경 이력 복원 중·언마운트 뒤는 null.
+  // 계산 중 예외도 null(응답은 기본 키로 계속 나간다).
+  const readLivePageState = useCallback((): EmbedPageState | null => {
+    if (!isInitializedRef.current) return null
+    try {
+      const app = useAppStore.getState()
+      const cur = app.canvas
+      const idx = cur
+        ? app.allCanvas.findIndex((c) => c === cur || (c?.id != null && c.id === cur.id))
+        : -1
+      return computeEmbedPageState({
+        canvasCount: app.allCanvas.length,
+        currentCanvasIndex: idx,
+        isSpreadMode: app.isSpreadMode,
+        regionScope: useSettingsStore.getState().spreadConfig?.regionScope,
+        pagesPerCanvas: useEditorStore.getState().pagesPerCanvas,
+        fallbackPages: options?.pages || 1,
+      })
+    } catch (err) {
+      console.warn('[EmbeddedEditor] getState page fields skipped:', describeError(err))
+      return null
+    }
+  }, [options?.pages])
+
   // 호스트(bookmoa 등) → 편집기 인바운드 명령 핸들러.
   // 호스트가 자체 뒤로가기/이탈 처리를 하려면 이 핸드셰이크로 미저장 여부 확인 + 강제 저장이 가능하다.
-  //   · getState     → editor.state { ready, dirty, sessionId } 응답
+  //   · getState     → editor.state { requestId, ready, dirty, sessionId, pageCount?, currentPage? } 응답
+  //                    pageCount·currentPage 는 초기화 완료 뒤에만(초기화·변경 이력 복원 중에는 키 없음),
+  //                    currentPage 는 편집 대상 캔버스 위치를 모르면 키 없음. 두 값은 단위가 다르다.
   //   · saveNow      → 강제 저장 후 editor.saved { ok, error? } 응답
   //   · setBackGuard → { enabled } 로 편집기 내부 뒤로가기 가드 on/off (호스트가 제어 가져갈 때 off)
   // 보안: parentOrigin 일치 + 발신 윈도우가 부모(window.parent) + 봉투 source==='storige-host' 만 처리.
@@ -800,14 +845,20 @@ function EmbeddedEditor({
       const data = e.data as EmbedHostCommandEnvelope
       const requestId = data.requestId
       switch (data.command) {
-        case 'getState':
-          postToParent(parentOrigin, 'editor.state', {
+        case 'getState': {
+          // 기존 4키 순서 유지, 선택 키는 뒤에.
+          const pageState = readLivePageState()
+          const statePayload: EmbedStatePayload = {
             requestId,
             ready: useAppStore.getState().ready,
             dirty: useSaveStore.getState().isDirty,
             sessionId: currentSession?.id || sessionId || null,
-          })
+            ...(pageState ? { pageCount: pageState.pageCount } : {}),
+            ...(pageState && pageState.currentPage != null ? { currentPage: pageState.currentPage } : {}),
+          }
+          postToParent(parentOrigin, 'editor.state', statePayload)
           break
+        }
         case 'saveNow':
           Promise.resolve()
             .then(() => saveNow())
@@ -836,7 +887,7 @@ function EmbeddedEditor({
     }
     window.addEventListener('message', onMessage)
     return () => window.removeEventListener('message', onMessage)
-  }, [parentOrigin, saveNow, currentSession?.id, sessionId])
+  }, [parentOrigin, saveNow, currentSession?.id, sessionId, readLivePageState])
 
   // Screen resize handler
   const handleResize = useCallback(() => {
@@ -1007,8 +1058,9 @@ function EmbeddedEditor({
 
           if (apiErr?.status === 401 || apiErr?.code === 'AUTH_EXPIRED') {
             // onAuthExpired 리스너가 AUTH_EXPIRED 를 이미 1회 발신했다 — 중복 발신 금지.
+            // 화면 문구는 고정 한국어(서버 본문 message 는 쓰지 않는다).
             if (!isMounted) return
-            setError(apiErr?.message || '인증이 만료되었습니다. 페이지를 새로고침해주세요.')
+            setError(EMBED_FAILURE_MESSAGES.authExpired)
             setIsLoading(false)
             fatalInitErrorRef.current = true
             return
@@ -2320,14 +2372,18 @@ function EmbeddedEditor({
         editor?.redo()
       },
 
-      getState: () => ({
-        ready,
-        modified: useSaveStore.getState().isDirty,
-        currentPage: 1,
-        totalPages: 1,
-      }),
+      // totalPages = 물리 쪽수, currentPage = 현재 편집 화면 순번(펼침면 단위). 초기화 완료 전·위치 모름은 0.
+      getState: () => {
+        const pageState = readLivePageState()
+        return {
+          ready,
+          modified: useSaveStore.getState().isDirty,
+          currentPage: pageState?.currentPage ?? 0,
+          totalPages: pageState?.pageCount ?? 0,
+        }
+      },
     }
-  }, [ready, canvas, sessionId, currentSession, options, onComplete, onCancel, onSave, onError, instanceRef, parentOrigin])
+  }, [ready, canvas, sessionId, currentSession, options, onComplete, onCancel, onSave, onError, instanceRef, parentOrigin, readLivePageState])
 
   // Loading state handler
   const handleLoadingChange = useCallback((loading: boolean, message?: string) => {
@@ -2772,9 +2828,10 @@ function EmbeddedEditor({
       window.location.href = url.toString()
     } catch (err) {
       console.error('[EmbeddedEditor] Failed to load session:', describeError(err))
+      // message 는 고정 한국어(레거시 storige:error 도 onError 를 거쳐 같은 문구).
       const errPayload = {
         code: 'INVALID_DATA' as const,
-        message: err instanceof Error ? err.message : '작업을 불러오는데 실패했습니다.',
+        message: EMBED_FAILURE_MESSAGES.workspaceLoadFailed,
         fatal: false,
       }
       onError?.(errPayload)

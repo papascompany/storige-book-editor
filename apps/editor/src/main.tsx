@@ -4,8 +4,8 @@ import { BrowserRouter } from 'react-router-dom'
 import App from './App'
 import { EditorErrorBoundary, reloadOnceForStaleChunk } from './components/EditorErrorBoundary'
 import './index.css'
-import { initSentry, Sentry } from './lib/sentry'
-import { describeError } from './utils/safeErrorLog'
+import { initSentry } from './lib/sentry'
+import { handleUnhandledRejection } from './utils/unhandledRejection'
 
 // Sentry 초기화 (다른 코드보다 먼저)
 initSentry()
@@ -14,13 +14,9 @@ initSentry()
 // React 트리 freeze를 유발하는 것을 방지 (사용자 보고: SVG 업로드 후 어떤 메뉴도
 // 클릭/터치 안 됨). 콘솔 로그만 남기고 event.preventDefault로 브라우저의 기본
 // "Uncaught (in promise)" 처리를 막아 UI thread 회복.
+// 모니터링 전송은 rejection 1건당 1건(utils/unhandledRejection 참고).
 if (typeof window !== 'undefined') {
-  window.addEventListener('unhandledrejection', (event) => {
-    console.error('[unhandledrejection] caught:', describeError(event.reason))
-    // Sentry로 전송 (DSN 설정된 경우만)
-    Sentry.captureException(event.reason)
-    event.preventDefault()
-  })
+  window.addEventListener('unhandledrejection', handleUnhandledRejection)
 }
 
 // 배포 후 청크 재해시(stale chunk) 자동 리로드 —

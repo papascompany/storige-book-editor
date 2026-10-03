@@ -40,6 +40,7 @@ import {
   spreadCountFromPageCount,
 } from '@/utils/photobookSpread'
 import { resolveAssetUrl } from '@/utils/resolveAssetUrl'
+import { describeError } from '@/utils/safeErrorLog'
 import { UNDERLAY_MAX_PAGES } from '@/utils/contentPdfGuide'
 import {
   SPREAD_INNER_HOST_MAX,
@@ -286,7 +287,7 @@ export function useEditorContents(): UseEditorContentsReturn {
       }
       return await response.text()
     } catch (error) {
-      console.error('SVG 로드 오류:', error)
+      console.error('SVG 로드 오류:', describeError(error))
       throw new Error('SVG 로드 중 오류가 발생했습니다.')
     }
   }, [])
@@ -345,7 +346,7 @@ export function useEditorContents(): UseEditorContentsReturn {
         return img
       }
     } catch (error) {
-      console.error('에셋 처리 오류:', error)
+      console.error('에셋 처리 오류:', describeError(error))
       throw error
     }
   }, [canvas])
@@ -521,7 +522,7 @@ export function useEditorContents(): UseEditorContentsReturn {
       console.log('작업물을 불러왔습니다.')
       return true
     } catch (error) {
-      console.error('캔버스 데이터 로드 오류:', error)
+      console.error('캔버스 데이터 로드 오류:', describeError(error))
       throw error
     } finally {
       latestEditor?.emit('longTask:end')
@@ -543,7 +544,7 @@ export function useEditorContents(): UseEditorContentsReturn {
       // storageApi의 getDesignUrl 사용
       return storageApi.getDesignUrl(path)
     } catch (error) {
-      console.error('파일 다운로드 URL 생성 중 오류:', error)
+      console.error('파일 다운로드 URL 생성 중 오류:', describeError(error))
       throw error
     }
   }, [])
@@ -584,7 +585,7 @@ export function useEditorContents(): UseEditorContentsReturn {
         }
       }
     } catch (e) {
-      console.error('작업물 로드 오류:', e)
+      console.error('작업물 로드 오류:', describeError(e))
     }
 
     canvas?.clearHistory()
@@ -654,7 +655,7 @@ export function useEditorContents(): UseEditorContentsReturn {
        
       await setupEditContent(content as any, contentType)
     } catch (e) {
-      console.error('콘텐츠 로드 중 오류 발생:', e)
+      console.error('콘텐츠 로드 중 오류 발생:', describeError(e))
     }
   }, [])
 
@@ -691,7 +692,7 @@ export function useEditorContents(): UseEditorContentsReturn {
 
       updateObjects()
     } catch (error) {
-      console.error('에셋 설정 오류:', error)
+      console.error('에셋 설정 오류:', describeError(error))
     }
   }, [canvas, updateObjects])
 
@@ -724,7 +725,7 @@ export function useEditorContents(): UseEditorContentsReturn {
           // 기존 작업물 로드 로직 - GraphQL 쿼리 필요시 추가 구현
           console.log('작업물 로드:', workId)
         } catch (e) {
-          console.error('작업물 로드 중 오류 발생:', e)
+          console.error('작업물 로드 중 오류 발생:', describeError(e))
         }
       }
 
@@ -740,7 +741,7 @@ export function useEditorContents(): UseEditorContentsReturn {
 
       console.log('콘텐츠가 성공적으로 로드되었습니다.')
     } catch (error) {
-      console.error('콘텐츠 로드 중 오류 발생:', error)
+      console.error('콘텐츠 로드 중 오류 발생:', describeError(error))
     } finally {
       editor?.emit('longTask:end')
     }
@@ -806,7 +807,7 @@ export function useEditorContents(): UseEditorContentsReturn {
                 resolve()
               })
             } catch (err) {
-              console.error(`페이지 ${i + 1} 템플릿 적용 오류:`, err)
+              console.error(`페이지 ${i + 1} 템플릿 적용 오류:`, describeError(err))
               cvs.onHistory()
               resolve()
             }
@@ -830,7 +831,7 @@ export function useEditorContents(): UseEditorContentsReturn {
       console.log('템플릿이 성공적으로 적용되었습니다.')
       return true
     } catch (e) {
-      console.error('템플릿 적용 중 오류 발생:', e)
+      console.error('템플릿 적용 중 오류 발생:', describeError(e))
       return false
     } finally {
       editor?.emit('longTask:end')
@@ -872,7 +873,7 @@ export function useEditorContents(): UseEditorContentsReturn {
         workspacePlugin.init()
       }
     } catch (e) {
-      console.error('워크스페이스 초기화 오류:', e)
+      console.error('워크스페이스 초기화 오류:', describeError(e))
     }
   }, [])
 
@@ -942,7 +943,7 @@ export function useEditorContents(): UseEditorContentsReturn {
             await setupTemplateFromSvgString(svgString, null)
             templateLoaded = true
           } catch (e) {
-            console.error('[EditorContents] Template loading error:', e)
+            console.error('[EditorContents] Template loading error:', describeError(e))
           }
         }
       }
@@ -959,7 +960,7 @@ export function useEditorContents(): UseEditorContentsReturn {
 
       console.log('[EditorContents] Product-based editor loaded successfully')
     } catch (error) {
-      console.error('[EditorContents] Product-based editor load error:', error)
+      console.error('[EditorContents] Product-based editor load error:', describeError(error))
       throw error
     } finally {
       editor?.emit('longTask:end')
@@ -986,7 +987,7 @@ export function useEditorContents(): UseEditorContentsReturn {
 
       console.log('[EditorContents] Empty editor loaded successfully')
     } catch (error) {
-      console.error('[EditorContents] Empty editor load error:', error)
+      console.error('[EditorContents] Empty editor load error:', describeError(error))
       throw error
     } finally {
       editor?.emit('longTask:end')
@@ -1008,7 +1009,7 @@ export function useEditorContents(): UseEditorContentsReturn {
 
       console.log('[EditorContents] General editor loaded successfully')
     } catch (error) {
-      console.error('[EditorContents] General editor load error:', error)
+      console.error('[EditorContents] General editor load error:', describeError(error))
       throw error
     } finally {
       editor?.emit('longTask:end')
@@ -1584,12 +1585,12 @@ export function useEditorContents(): UseEditorContentsReturn {
           console.log(`[EditorContents] useEditorStore.setPages with ${templateDetails.length} pages`)
         }
       } catch (err) {
-        console.warn('[EditorContents] setPages sync failed:', err)
+        console.warn('[EditorContents] setPages sync failed:', describeError(err))
       }
 
       console.log('[EditorContents] Template set editor loaded successfully')
     } catch (error) {
-      console.error('[EditorContents] Template set editor load error:', error)
+      console.error('[EditorContents] Template set editor load error:', describeError(error))
       throw error
     } finally {
       editor?.emit('longTask:end')
@@ -2188,7 +2189,7 @@ export function useEditorContents(): UseEditorContentsReturn {
               editorsToAlign[i]?.getPlugin<WorkspacePlugin>('WorkspacePlugin')?.setZoomAuto()
               cvs.requestRenderAll()
             } catch (e) {
-              console.warn(`[EditorContents:Spread] realign skip (canvas ${i}):`, e)
+              console.warn(`[EditorContents:Spread] realign skip (canvas ${i}):`, describeError(e))
             }
           })
           resolve()
@@ -2221,7 +2222,7 @@ export function useEditorContents(): UseEditorContentsReturn {
       const cutLineSvgString = cutLineSvgUrl ? await fetchSvgContent(cutLineSvgUrl) : null
       await setupTemplateFromSvgString(svgString, cutLineSvgString)
     } catch (e) {
-      console.error('템플릿 콘텐츠 설정 오류:', e)
+      console.error('템플릿 콘텐츠 설정 오류:', describeError(e))
     }
   }, [fetchSvgContent, setupTemplateFromSvgString])
 
@@ -2266,7 +2267,7 @@ export function useEditorContents(): UseEditorContentsReturn {
         targetCanvas?.requestRenderAll()
       }
     } catch (e) {
-      console.error('프레임 콘텐츠 설정 오류:', e)
+      console.error('프레임 콘텐츠 설정 오류:', describeError(e))
     }
   }, [addAssetToCanvas, getPlugin])
 

@@ -257,10 +257,16 @@ const editor = mountEditor({
 });
 
 await editor.whenReady();
-const { dirty } = await editor.getState();   // 요청-응답
+const { dirty, pageCount, currentPage } = await editor.getState();   // 요청-응답
 await editor.saveNow();                      // 요청-응답
 editor.setBackGuard(false);                  // fire-and-forget — void 다
 ```
+
+`getState()` 의 `pageCount`·`currentPage` 는 편집기 초기화가 끝난 뒤에만 값이 있다(구버전 편집기·초기화 중·
+변경 이력 복원 중에는 `undefined`). 초기화가 끝난 뒤에도 편집 대상 화면을 알 수 없으면 `currentPage` 만
+`undefined` 다. `pageCount` 는 회원 세션의 `editor.complete`·`editor.pricingChange` 와
+같은 산식의 물리 쪽수이고, `currentPage` 는 1부터 센 현재 편집 화면 순번이다(펼침면 세트는 펼침면 단위,
+표지+내지 세트는 1 = 표지). 두 값은 단위가 다르다. 가격 기준은 `editor.pricingChange`·`editor.complete` 이다.
 
 ### 게스트(비회원) 세션 재오픈 — `guestToken` 옵션 (additive)
 

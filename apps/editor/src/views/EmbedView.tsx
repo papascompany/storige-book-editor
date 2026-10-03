@@ -48,7 +48,7 @@ import {
   sessionNotFoundMessage,
   sessionNotFoundReasonOf,
 } from '@/utils/embedSessionReopen'
-import { resolveInitFailure } from '@/utils/embedFailurePolicy'
+import { EMBED_FAILURE_MESSAGES, resolveInitFailure } from '@/utils/embedFailurePolicy'
 
 /**
  * 부모(호스트) 윈도우로 레거시 `storige:*` 메시지 발신 (하위호환).
@@ -199,6 +199,8 @@ export default function EmbedView() {
       // 재편집: sessionId 만 받고 templateSetId 가 없으면 세션에서 도출.
       // (bookmoa 가 templateSetId 를 함께 보내면 이 조회는 생략됨)
       // 게스트 토큰이 있으면 게스트 조회 경로 → 기억된 토큰 → 기존 조회 경로 순(EmbeddedEditor 와 같은 순서).
+      // 조회 실패 시 화면 문구는 호스트에 보낸 message 와 같은 고정 문구다.
+      let reopenFailureMessage: string | null = null
       if (sessionId && !templateSetId) {
         try {
           const session = await fetchSessionForReopen(sessionId, {
@@ -213,6 +215,7 @@ export default function EmbedView() {
           const reason = sessionNotFoundReasonOf(err, status)
           if (reason && mounted) {
             const message = sessionNotFoundMessage(reason)
+            reopenFailureMessage = message
             const payload: EditorError = { code: 'SESSION_NOT_FOUND', message, sessionId, reason, fatal: true }
             emitFormalError(parentOrigin, payload)
             emitLegacy(parentOrigin, 'storige:error', { message })
@@ -224,6 +227,7 @@ export default function EmbedView() {
             const payload: EditorError = resolution.action === 'notifyHost'
               ? { code: resolution.code, message: resolution.message, fatal: true }
               : { code: 'AUTH_EXPIRED', message: resolution.screenMessage, fatal: true }
+            reopenFailureMessage = payload.message
             emitFormalError(parentOrigin, payload)
             emitLegacy(parentOrigin, 'storige:error', { message: payload.message })
           }
@@ -232,11 +236,15 @@ export default function EmbedView() {
 
       if (!templateSetId) {
         if (mounted) {
-          setError(
-            sessionId
-              ? '세션에서 템플릿셋을 확인할 수 없습니다. (templateSetId 를 함께 전달하세요)'
-              : 'templateSetId 또는 유효한 sessionId 가 필요합니다.',
-          )
+          if (!sessionId) {
+            setError('templateSetId 또는 유효한 sessionId 가 필요합니다.')
+          } else if (reopenFailureMessage) {
+            setError(reopenFailureMessage)
+          } else {
+            // 조회는 됐지만 세션에 템플릿셋이 없다 — 고객에게는 고정 안내 문구만 보이고 이벤트는 보내지 않는다.
+            console.warn('[EmbedView] 세션에 templateSetId 가 없어 편집기를 열 수 없음 — templateSetId 를 함께 전달하면 이 조회를 생략한다')
+            setError(EMBED_FAILURE_MESSAGES.templateSetNotFound)
+          }
         }
         return
       }

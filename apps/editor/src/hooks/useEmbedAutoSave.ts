@@ -10,6 +10,7 @@ import { trackRequiredEdits } from '@/utils/requiredEditGate'
 import { isAutosaveSuspended, deferUntilAutosaveResumed } from '@/utils/autosaveSuspend'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { Sentry } from '@/lib/sentry'
+import { describeError } from '@/utils/safeErrorLog'
 import {
   shouldOfferRestore,
   type EmbedLocalBackup,
@@ -167,7 +168,7 @@ export function useEmbedAutoSave(config: AutoSaveConfig) {
       setLocalBackup(true, new Date())
       console.log('[EmbedAutoSave] 로컬 백업 저장됨')
     } catch (error) {
-      console.error('[EmbedAutoSave] 로컬 백업 실패:', error)
+      console.error('[EmbedAutoSave] 로컬 백업 실패:', describeError(error))
     }
   }, [sessionId, collectCanvasData, setLocalBackup])
 
@@ -193,7 +194,7 @@ export function useEmbedAutoSave(config: AutoSaveConfig) {
 
       return backup
     } catch (error) {
-      console.error('[EmbedAutoSave] 로컬 백업 불러오기 실패:', error)
+      console.error('[EmbedAutoSave] 로컬 백업 불러오기 실패:', describeError(error))
       return null
     }
   }, [sessionId])
@@ -315,7 +316,7 @@ export function useEmbedAutoSave(config: AutoSaveConfig) {
       // 캔버스가 하나도 없어 복원 불가 — 백업 보존.
       return { ok: false, requested: 1, restored: 0, partial: false }
     } catch (error) {
-      console.error('[EmbedAutoSave] 백업 복원 실패:', error)
+      console.error('[EmbedAutoSave] 백업 복원 실패:', describeError(error))
       // 실패 시 백업 보존 — 데이터 유실 방지.
       return { ok: false, requested: 0, restored: 0, partial: false }
     } finally {
@@ -406,7 +407,7 @@ export function useEmbedAutoSave(config: AutoSaveConfig) {
       console.log('[EmbedAutoSave] 서버 저장 성공')
       return true
     } catch (error) {
-      console.error('[EmbedAutoSave] 서버 저장 실패:', error)
+      console.error('[EmbedAutoSave] 서버 저장 실패:', describeError(error))
 
       // 실패 시 로컬 백업
       saveToLocal()
@@ -609,7 +610,7 @@ export function useEmbedAutoSave(config: AutoSaveConfig) {
           }
           localStorage.setItem(LOCAL_BACKUP_KEY, JSON.stringify(backup))
         } catch (error) {
-          console.error('[EmbedAutoSave] 언마운트 시 백업 실패:', error)
+          console.error('[EmbedAutoSave] 언마운트 시 백업 실패:', describeError(error))
         }
       }
     }

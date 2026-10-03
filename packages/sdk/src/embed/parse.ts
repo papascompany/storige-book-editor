@@ -32,6 +32,7 @@ import {
   type CompleteAction,
   type EditorCompletePayload,
   type EditorEnvelope,
+  type EditorState,
 } from './protocol';
 
 /**
@@ -260,17 +261,25 @@ export function extractGuestToken(payload: unknown): string | null {
   return typeof token === 'string' && token !== '' ? token : null;
 }
 
-/** `editor.state` 응답 payload → 상태 스냅샷(requestId 제거) */
-export function readStatePayload(payload: unknown): {
-  ready: boolean;
-  dirty: boolean;
-  sessionId: string | null;
-} {
+/** 1 이상의 안전한 정수만 통과(그 밖은 undefined) */
+function readPositiveInt(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 1 ? value : undefined;
+}
+
+/**
+ * `editor.state` 응답 payload → 상태 스냅샷(requestId 제거).
+ * `pageCount`·`currentPage` 는 형식이 맞을 때만 싣는다 — 두 키는 서로 독립이고 형식이 틀린 키만 버린다.
+ */
+export function readStatePayload(payload: unknown): EditorState {
   const p = asRecord(payload) ?? {};
+  const pageCount = readPositiveInt(p.pageCount);
+  const currentPage = readPositiveInt(p.currentPage);
   return {
     ready: p.ready === true,
     dirty: p.dirty === true,
     sessionId: readString(p.sessionId) ?? null,
+    ...(pageCount !== undefined ? { pageCount } : {}),
+    ...(currentPage !== undefined ? { currentPage } : {}),
   };
 }
 

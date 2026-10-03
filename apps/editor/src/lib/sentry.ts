@@ -287,6 +287,24 @@ export function scrubEvent<T extends Event>(event: T): T {
   return event;
 }
 
+/**
+ * 전송하지 않는 오류 문구(부분 일치). 원시값 reason 의 미처리 rejection 은 전역 처리기 이벤트가 여기에 걸리고,
+ * 전송은 utils/unhandledRejection 의 명시 전송 1건이 맡는다.
+ */
+export const SENTRY_IGNORE_ERRORS: Array<string | RegExp> = [
+  // 브라우저 확장이 일으키는 흔한 노이즈
+  'Non-Error promise rejection captured',
+  'ResizeObserver loop limit exceeded',
+  'ResizeObserver loop completed with undelivered notifications',
+  // Fabric/카메라/마이크 권한 거부
+  'AbortError',
+  'NotAllowedError',
+  // 네트워크 일시 단절
+  'Failed to fetch',
+  'NetworkError',
+  'Load failed',
+];
+
 let initialized = false;
 
 export function initSentry(): boolean {
@@ -330,19 +348,7 @@ export function initSentry(): boolean {
         return scrubEvent(event);
       },
 
-      ignoreErrors: [
-        // 브라우저 확장이 일으키는 흔한 노이즈
-        'Non-Error promise rejection captured',
-        'ResizeObserver loop limit exceeded',
-        'ResizeObserver loop completed with undelivered notifications',
-        // Fabric/카메라/마이크 권한 거부
-        'AbortError',
-        'NotAllowedError',
-        // 네트워크 일시 단절
-        'Failed to fetch',
-        'NetworkError',
-        'Load failed',
-      ],
+      ignoreErrors: SENTRY_IGNORE_ERRORS,
     });
 
     initialized = true;

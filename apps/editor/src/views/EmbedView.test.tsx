@@ -3,7 +3,8 @@
  *
  * 잠그는 것:
  *   A. 쿼리 파라미터 매핑(camel/snake, 쪽수·책등·날개·내지 PDF 첨부·규격·메타)
- *   B. 재편집: sessionId 만 있으면 세션에서 templateSetId 도출(토큰 선주입 후), 실패/부재 문구
+ *   B. 재편집: sessionId 만 있으면 세션에서 templateSetId 도출(토큰 선주입 후). 도출 실패 화면 문구는 호스트에
+ *      보낸 message 와 같은 고정 문구, 세션에 templateSetId 가 없으면 고정 안내 문구(이벤트 없음)
  *   C. adminEdit=session: fragment 토큰 → 탭 저장소, 주소창 fragment 제거, 쿼리 폴백, 플래그 해제
  *   D. 레거시 발신 payload·targetOrigin (와일드카드 송신에는 guestToken 을 싣지 않음)
  *   E. 게스트 세션 재오픈: fragment 게스트 토큰 수신·주소창 제거, 게스트 조회 경로 도출,
@@ -47,6 +48,24 @@ vi.mock('@/api', () => ({
 import EmbedView from './EmbedView'
 
 const PARENT = 'https://h.example'
+
+/** sessionId 단독 재오픈 실패 화면 문구(발신 message 와 같다) */
+const SCREEN = {
+  notFound: '저장된 편집 작업을 찾을 수 없습니다. 삭제되었거나 보관 기간이 지난 작업일 수 있습니다.',
+  forbidden:
+    '이 계정으로 열 수 없는 편집 작업입니다. 다른 계정으로 만든 작업이거나, 비회원으로 만든 작업은 24시간이 지나 만료되었을 수 있습니다.',
+  guestTokenRequired: '비회원으로 만든 편집 작업입니다. 처음 편집하던 화면이나 주문하신 쇼핑몰에서 다시 열어 주세요.',
+  invalidId: '편집 작업 식별자가 올바르지 않습니다.',
+  sessionServer: '일시적인 서버 오류로 편집 작업을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.',
+  initGeneric: '초기화 중 오류가 발생했습니다.',
+  templateSetNotFound:
+    '이 상품의 편집 정보를 찾을 수 없습니다. 이전 화면으로 돌아가 다시 열거나, 계속되면 고객센터에 문의해 주세요.',
+} as const
+
+/** 재오픈 실패 화면에는 templateSetId 안내가 없다 */
+function expectNoTemplateSetIdHint(): void {
+  expect(screen.queryByText(/templateSetId/)).toBeNull()
+}
 
 function renderAt(path: string) {
   return render(
@@ -239,11 +258,39 @@ describe('EmbedView — B. 세션·재편집', () => {
     expect(p.templateSetId).toBe('ts1')
   })
 
-  it('B13 세션 조회 실패 → 세션 템플릿셋 문구, 편집기 미렌더', async () => {
+  it('B13 세션 조회가 HTTP 가 아닌 오류로 실패 → 초기화 고정 문구, 편집기 미렌더', async () => {
     h.get.mockRejectedValue(new Error('stub'))
     renderAt('/embed?sessionId=s1')
-    expect(await screen.findByText(/세션에서 템플릿셋을 확인할 수 없습니다/)).toBeInTheDocument()
+    expect(await screen.findByText(SCREEN.initGeneric)).toBeInTheDocument()
+    expectNoTemplateSetIdHint()
+    expect(screen.queryByText(/stub/)).toBeNull()
     expect(h.editorProps).toHaveLength(0)
+  })
+
+  it('B15 세션 조회는 됐지만 templateSetId 가 없으면 고정 안내 문구, editor.error·레거시 storige:error 0회', async () => {
+    const realParent = Object.getOwnPropertyDescriptor(window, 'parent')
+    const parentPost = vi.fn<(message: unknown, targetOrigin: string) => void>()
+    Object.defineProperty(window, 'parent', {
+      value: { postMessage: parentPost },
+      configurable: true,
+      writable: true,
+    })
+    try {
+      h.get.mockResolvedValue({ templateSetId: null })
+      renderAt(`/embed?sessionId=s1&parentOrigin=${encodeURIComponent(PARENT)}`)
+      expect(await screen.findByText(SCREEN.templateSetNotFound)).toBeInTheDocument()
+      expectNoTemplateSetIdHint()
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 0))
+      })
+      const messages = parentPost.mock.calls.map(([m]) => m as { event?: string; type?: string })
+      expect(messages.filter((m) => m.event === 'editor.error')).toHaveLength(0)
+      expect(messages.filter((m) => m.type === 'storige:error')).toHaveLength(0)
+      expect(h.editorProps).toHaveLength(0)
+      expect(warnSpy).toHaveBeenCalledTimes(1)
+    } finally {
+      if (realParent) Object.defineProperty(window, 'parent', realParent)
+    }
   })
 
   it('B14 파라미터 없음 → 필수 파라미터 문구', async () => {
@@ -584,7 +631,8 @@ describe('EmbedView — E. 게스트 세션 재오픈(fragment 게스트 토큰)
   it("E8 토큰 없이 기존 조회 경로 403 GUEST_TOKEN_REQUIRED → editor.error(reason 'guest_token_required') 1회, 오류 화면 유지", async () => {
     h.get.mockRejectedValue(axiosHttpError(403, { code: 'GUEST_TOKEN_REQUIRED' }))
     renderAt(`/embed?sessionId=s1&parentOrigin=${encodeURIComponent(PARENT)}`)
-    expect(await screen.findByText(/세션에서 템플릿셋을 확인할 수 없습니다/)).toBeInTheDocument()
+    expect(await screen.findByText(SCREEN.guestTokenRequired)).toBeInTheDocument()
+    expectNoTemplateSetIdHint()
     await act(async () => {
       await new Promise((r) => setTimeout(r, 0))
     })
@@ -595,6 +643,7 @@ describe('EmbedView — E. 게스트 세션 재오픈(fragment 게스트 토큰)
       fatal: true,
       sessionId: 's1',
       reason: 'guest_token_required',
+      message: SCREEN.guestTokenRequired,
     })
     const formalCall = parentPost.mock.calls.find(([m]) => (m as { event?: string }).event === 'editor.error')
     expect(formalCall?.[1]).toBe(PARENT)
@@ -606,16 +655,17 @@ describe('EmbedView — E. 게스트 세션 재오픈(fragment 게스트 토큰)
   })
 
   it.each([
-    [404, {}, 'not_found'],
-    [403, {}, 'forbidden'],
-    [400, {}, 'invalid_id'],
-  ] as const)('E9 도출 실패 %s → editor.error reason %s 1회', async (status, data, reason) => {
+    [404, {}, 'not_found', SCREEN.notFound],
+    [403, {}, 'forbidden', SCREEN.forbidden],
+    [400, {}, 'invalid_id', SCREEN.invalidId],
+  ] as const)('E9 도출 실패 %s → editor.error reason %s 1회, 화면은 같은 사유 문구', async (status, data, reason, message) => {
     h.get.mockRejectedValue(axiosHttpError(status, data))
     renderAt(`/embed?sessionId=s1&parentOrigin=${encodeURIComponent(PARENT)}`)
-    expect(await screen.findByText(/세션에서 템플릿셋을 확인할 수 없습니다/)).toBeInTheDocument()
+    expect(await screen.findByText(message)).toBeInTheDocument()
+    expectNoTemplateSetIdHint()
     const errors = formalErrors()
     expect(errors).toHaveLength(1)
-    expect(errors[0]).toMatchObject({ code: 'SESSION_NOT_FOUND', fatal: true, sessionId: 's1', reason })
+    expect(errors[0]).toMatchObject({ code: 'SESSION_NOT_FOUND', fatal: true, sessionId: 's1', reason, message })
   })
 
   it("E10 제시 토큰이 GUEST_SESSION_EXPIRED → reason 'not_found', GUEST_TOKEN_MISMATCH → 'forbidden'", async () => {
@@ -623,7 +673,8 @@ describe('EmbedView — E. 게스트 세션 재오픈(fragment 게스트 토큰)
     h.getGuest.mockRejectedValue(axiosHttpError(403, { code: 'GUEST_SESSION_EXPIRED' }, G))
     window.history.replaceState(null, '', `/embed?sessionId=s1#guestToken=${encodeURIComponent(G)}`)
     const expired = renderAt(`/embed?sessionId=s1&parentOrigin=${encodeURIComponent(PARENT)}`)
-    expect(await expired.findByText(/세션에서 템플릿셋을 확인할 수 없습니다/)).toBeInTheDocument()
+    expect(await expired.findByText(SCREEN.notFound)).toBeInTheDocument()
+    expectNoTemplateSetIdHint()
     expect(formalErrors()).toEqual([expect.objectContaining({ reason: 'not_found' })])
     expired.unmount()
 
@@ -631,7 +682,8 @@ describe('EmbedView — E. 게스트 세션 재오픈(fragment 게스트 토큰)
     h.getGuest.mockRejectedValue(axiosHttpError(403, { code: 'GUEST_TOKEN_MISMATCH' }, G))
     window.history.replaceState(null, '', `/embed?sessionId=s1#guestToken=${encodeURIComponent(G)}`)
     const mismatch = renderAt(`/embed?sessionId=s1&parentOrigin=${encodeURIComponent(PARENT)}`)
-    expect(await mismatch.findByText(/세션에서 템플릿셋을 확인할 수 없습니다/)).toBeInTheDocument()
+    expect(await mismatch.findByText(SCREEN.forbidden)).toBeInTheDocument()
+    expectNoTemplateSetIdHint()
     expect(formalErrors()).toEqual([expect.objectContaining({ reason: 'forbidden' })])
   })
 
@@ -639,7 +691,8 @@ describe('EmbedView — E. 게스트 세션 재오픈(fragment 게스트 토큰)
     h.getGuest.mockRejectedValue(axiosHttpError(503, {}, G))
     window.history.replaceState(null, '', `/embed?sessionId=s1#guestToken=${encodeURIComponent(G)}`)
     renderAt(`/embed?sessionId=s1&parentOrigin=${encodeURIComponent(PARENT)}`)
-    expect(await screen.findByText(/세션에서 템플릿셋을 확인할 수 없습니다/)).toBeInTheDocument()
+    expect(await screen.findByText(SCREEN.sessionServer)).toBeInTheDocument()
+    expectNoTemplateSetIdHint()
     expect(formalErrors()).toEqual([
       {
         code: 'NETWORK_ERROR',
@@ -675,11 +728,12 @@ describe('EmbedView — E. 게스트 세션 재오픈(fragment 게스트 토큰)
     ['409', () => axiosHttpError(409), 'INVALID_DATA', '편집 작업을 시작할 수 없습니다. 이전 화면으로 돌아가 다시 열어 주세요.'],
     ['비 HTTP 오류', () => new TypeError('x is undefined'), 'INVALID_DATA', '초기화 중 오류가 발생했습니다.'],
   ] as const)(
-    'E13 sessionId 단독 재오픈 조회 %s → editor.error %s(고정 문구) 1회와 레거시 storige:error',
+    'E13 sessionId 단독 재오픈 조회 %s → editor.error %s(고정 문구) 1회와 레거시 storige:error, 화면도 같은 문구',
     async (_label, makeErr, code, message) => {
       h.get.mockRejectedValue(makeErr())
       renderAt(`/embed?sessionId=s1&parentOrigin=${encodeURIComponent(PARENT)}`)
-      expect(await screen.findByText(/세션에서 템플릿셋을 확인할 수 없습니다/)).toBeInTheDocument()
+      expect(await screen.findByText(message)).toBeInTheDocument()
+      expectNoTemplateSetIdHint()
       expect(formalErrors()).toEqual([{ code, message, fatal: true }])
       expect(parentPost).toHaveBeenCalledWith({ type: 'storige:error', payload: { message } }, PARENT)
       const legacyErrors = parentPost.mock.calls.filter(
@@ -690,10 +744,11 @@ describe('EmbedView — E. 게스트 세션 재오픈(fragment 게스트 토큰)
     },
   )
 
-  it('E12 parentOrigin 이 없으면 정식 editor.error 를 보내지 않는다', async () => {
+  it('E12 parentOrigin 이 없으면 정식 editor.error 를 보내지 않고, 화면은 같은 사유 문구', async () => {
     h.get.mockRejectedValue(axiosHttpError(404))
     renderAt('/embed?sessionId=s1')
-    expect(await screen.findByText(/세션에서 템플릿셋을 확인할 수 없습니다/)).toBeInTheDocument()
+    expect(await screen.findByText(SCREEN.notFound)).toBeInTheDocument()
+    expectNoTemplateSetIdHint()
     expect(formalErrors()).toHaveLength(0)
   })
 })

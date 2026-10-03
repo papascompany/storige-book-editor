@@ -287,6 +287,48 @@ describe('명령 3종 — 응답 유형별 분리', () => {
     });
   });
 
+  it('getState 응답의 pageCount·currentPage 는 그대로 실린다', async () => {
+    const h = setup();
+    h.fromEditor('editor.ready', { sessionId: 'sess-1' });
+    const promise = h.handle.getState();
+    await Promise.resolve();
+    respondTo(h, 'editor.state', { ready: true, dirty: false, sessionId: 'sess-1', pageCount: 20, currentPage: 3 });
+    await expect(promise).resolves.toEqual({
+      ready: true,
+      dirty: false,
+      sessionId: 'sess-1',
+      pageCount: 20,
+      currentPage: 3,
+    });
+  });
+
+  it.each([0, -1, 2.5, '3', Number.NaN, Number.POSITIVE_INFINITY, null, 2 ** 53])(
+    'getState 응답의 pageCount·currentPage 가 %s 이면 두 키를 싣지 않는다',
+    async (bad) => {
+      const h = setup();
+      h.fromEditor('editor.ready', { sessionId: 'sess-1' });
+      const promise = h.handle.getState();
+      await Promise.resolve();
+      respondTo(h, 'editor.state', { ready: true, dirty: true, sessionId: 'sess-1', pageCount: bad, currentPage: bad });
+      const state = await promise;
+      expect(Object.keys(state).sort()).toEqual(['dirty', 'ready', 'sessionId']);
+    },
+  );
+
+  it('getState 응답에서 형식이 맞는 쪽 키만 남는다', async () => {
+    const h = setup();
+    h.fromEditor('editor.ready', { sessionId: 'sess-1' });
+    const first = h.handle.getState();
+    await Promise.resolve();
+    respondTo(h, 'editor.state', { ready: true, dirty: false, sessionId: 'sess-1', pageCount: 20, currentPage: 0 });
+    await expect(first).resolves.toEqual({ ready: true, dirty: false, sessionId: 'sess-1', pageCount: 20 });
+
+    const second = h.handle.getState();
+    await Promise.resolve();
+    respondTo(h, 'editor.state', { ready: true, dirty: false, sessionId: 'sess-1', currentPage: 4 });
+    await expect(second).resolves.toEqual({ ready: true, dirty: false, sessionId: 'sess-1', currentPage: 4 });
+  });
+
   it('saveNow 는 요청-응답: ok=true 로 resolve', async () => {
     const h = setup();
     h.fromEditor('editor.ready');

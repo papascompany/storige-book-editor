@@ -5,11 +5,13 @@
  * 전송 직렬화 결과(envelope 본문) 기준 판정. 초기화 배선(initSentry)은 sentry.init.test.ts.
  * 픽스처 값은 모두 더미이며 JWT 형태 문자열은 런타임에 조립한다.
  */
-import { describe, it, expect, afterEach } from 'vitest'
+import { describe, it, expect, afterEach, vi } from 'vitest'
 import * as Sentry from '@sentry/react'
 import type { Breadcrumb, Event } from '@sentry/react'
+import { AxiosError, AxiosHeaders, type InternalAxiosRequestConfig } from 'axios'
 import {
   FILTERED,
+  SENTRY_IGNORE_ERRORS,
   isSensitiveObjectKey,
   isSensitiveParamKey,
   scrubBreadcrumb,
@@ -17,6 +19,7 @@ import {
   scrubEvent,
   scrubUrl,
 } from './sentry'
+import { handleUnhandledRejection } from '../utils/unhandledRejection'
 
 const JWT = ['eyJ' + 'a'.repeat(12), 'b'.repeat(12), 'c'.repeat(8)].join('.')
 const GUEST = '2222aaaa-bbbb-4ccc-8ddd-eeeeffff0000'
@@ -416,6 +419,8 @@ function makeHarness(opts: {
   /** true: 세 훅 모두, 'beforeBreadcrumb': beforeBreadcrumb 만, false: 미배선 */
   hooks: boolean | 'beforeBreadcrumb'
   integrations?: ReturnType<typeof Sentry.httpContextIntegration>[]
+  /** initSentry 와 같은 목록을 쓰려면 SENTRY_IGNORE_ERRORS */
+  ignoreErrors?: Array<string | RegExp>
 }): Harness {
   const bodies: string[] = []
   const client = new Sentry.BrowserClient({
@@ -424,6 +429,7 @@ function makeHarness(opts: {
     integrations: opts.integrations ?? [],
     tracesSampleRate: 1,
     sendClientReports: false,
+    ...(opts.ignoreErrors ? { ignoreErrors: opts.ignoreErrors } : {}),
     transport: (transportOptions) =>
       Sentry.createTransport(transportOptions, (request) => {
         bodies.push(typeof request.body === 'string' ? request.body : new TextDecoder().decode(request.body))
@@ -591,5 +597,151 @@ describe('sentry 전처리 — 실제 SDK 직렬화 기준', () => {
     expect(body).toContain('"category":"navigation"')
     expect(body).not.toContain('FRAGTOKEN2')
     expect(body).not.toContain('FRAGREFRESH2')
+  })
+})
+
+// ─── R·P. 미처리 rejection 전송 건수와 오류 객체 전송 본문 ─────────────────────────
+
+/** 전송 본문에서 error 이벤트 항목 수 */
+function errorEventCount(bodies: string[]): number {
+  return bodies
+    .flatMap((b) => b.split('\n'))
+    .filter((line) => {
+      try {
+        const o = JSON.parse(line) as { type?: unknown }
+        return o !== null && typeof o === 'object' && o.type === 'event'
+      } catch {
+        return false
+      }
+    }).length
+}
+
+/** 브라우저가 미처리 rejection 1건을 알릴 때처럼 전역 처리기(onunhandledrejection)와 등록 리스너를 차례로 부른다 */
+function fireUnhandledRejection(reason: unknown): void {
+  const event = { reason, preventDefault: (): void => {} }
+  const g = globalThis as unknown as { onunhandledrejection?: ((e: unknown) => unknown) | null }
+  expect(typeof g.onunhandledrejection).toBe('function')
+  g.onunhandledrejection?.(event)
+  handleUnhandledRejection(event)
+}
+
+/** 요청 헤더(Authorization·x-guest-token)와 본문(refreshToken·canvasData)을 가진 AxiosError */
+function requestError(refreshValue: string): AxiosError {
+  const headers = new AxiosHeaders()
+  headers.set('Authorization', `Bearer ${JWT}`)
+  headers.set('x-guest-token', GUEST)
+  const config = {
+    url: `/edit-sessions/${SESSION_UUID}`,
+    method: 'patch',
+    headers,
+    data: JSON.stringify({ refreshToken: refreshValue, canvasData: [{ objects: [] }] }),
+  } as InternalAxiosRequestConfig
+  return new AxiosError('Request failed with status code 503', 'ERR_BAD_RESPONSE', config, undefined, {
+    status: 503,
+    data: { message: 'Service Unavailable' },
+    statusText: '',
+    headers: {},
+    config,
+  })
+}
+
+describe('sentry — 미처리 rejection 1건당 전송 1건(실제 SDK: inboundFilters·globalHandlers·dedupe)', () => {
+  let current: Harness | null = null
+
+  afterEach(async () => {
+    if (current) await current.client.close(0)
+    current = null
+    Sentry.getCurrentScope().clear()
+    vi.restoreAllMocks()
+  })
+
+  function makeRejectionHarness(): Harness {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    return makeHarness({
+      hooks: true,
+      ignoreErrors: SENTRY_IGNORE_ERRORS,
+      integrations: [
+        Sentry.inboundFiltersIntegration(),
+        Sentry.globalHandlersIntegration({ onerror: false, onunhandledrejection: true }),
+        Sentry.dedupeIntegration(),
+      ],
+    })
+  }
+
+  it.each([
+    ['Error', () => new Error('rejection-error-probe')],
+    ['평범한 객체', () => ({ code: 'SERVER_ERROR', message: 'rejection-object-probe' })],
+    ['원시값(문자열)', () => 'rejection-primitive-probe'],
+  ] as const)('R3 %s reason → error 이벤트 1건', async (_label, makeReason) => {
+    current = makeRejectionHarness()
+    fireUnhandledRejection(makeReason())
+    await current.client.flush(2000)
+    expect(errorEventCount(current.bodies)).toBe(1)
+  })
+
+  it('R3b 원시값 reason 전송 본문에는 값이 실리고 자격증명 모양 값은 정리된다', async () => {
+    current = makeRejectionHarness()
+    fireUnhandledRejection(`rejection-primitive-probe Bearer ${JWT}`)
+    await current.client.flush(2000)
+    expect(errorEventCount(current.bodies)).toBe(1)
+    const body = current.bodies.join('\n')
+    expect(body).toContain('rejection-primitive-probe')
+    expect(body).not.toContain(JWT)
+  })
+})
+
+describe('sentry — 오류 객체 전송 본문(실제 SDK 직렬화 + 전처리 훅)', () => {
+  let current: Harness | null = null
+
+  afterEach(async () => {
+    if (current) await current.client.close(0)
+    current = null
+    Sentry.getCurrentScope().clear()
+  })
+
+  it('P1 AxiosError(요청 헤더·본문 포함) → 전송 본문에 Bearer·JWT·refreshToken 값·canvasData 가 없다', async () => {
+    current = makeHarness({ hooks: true })
+    Sentry.captureException(requestError('REFRESHDUMMY1'))
+    await current.client.flush(2000)
+    const body = current.bodies.join('\n')
+    expect(errorEventCount(current.bodies)).toBe(1)
+    expect(body).not.toContain('Bearer')
+    expect(body).not.toContain(JWT)
+    expect(body).not.toContain('REFRESHDUMMY1')
+    expect(body).not.toContain('canvasData')
+    expect(body).not.toContain(GUEST)
+  })
+
+  it('P2 정규화 오류 객체({code, message, originalError: AxiosError}) → Bearer·JWT·refreshToken 값·x-guest-token 값이 없다', async () => {
+    current = makeHarness({ hooks: true })
+    Sentry.captureException({ code: 'SERVER_ERROR', message: 'm', originalError: requestError('REFRESHDUMMY2') })
+    await current.client.flush(2000)
+    const body = current.bodies.join('\n')
+    expect(errorEventCount(current.bodies)).toBe(1)
+    expect(body).not.toContain('Bearer')
+    expect(body).not.toContain(JWT)
+    expect(body).not.toContain('REFRESHDUMMY2')
+    expect(body).not.toContain(GUEST)
+  })
+
+  it('P2b 얕은 객체(headers.Authorization·x-guest-token, data 의 refreshToken) → 전처리로 값이 정리되고 진단값은 남는다', async () => {
+    current = makeHarness({ hooks: true })
+    Sentry.captureException({
+      code: 'SERVER_ERROR',
+      message: 'shallow-object-probe',
+      headers: { Authorization: `Bearer ${JWT}`, 'x-guest-token': GUEST },
+      data: JSON.stringify({ refreshToken: 'REFRESHDUMMY3', status: 'editing' }),
+    })
+    await current.client.flush(2000)
+    const body = current.bodies.join('\n')
+    expect(errorEventCount(current.bodies)).toBe(1)
+    expect(body).not.toContain('Bearer')
+    expect(body).not.toContain(JWT)
+    expect(body).not.toContain(GUEST)
+    expect(body).not.toContain('REFRESHDUMMY3')
+    // 깊이 절단이 아니라 전처리 경로를 거쳤는지: 정리 표지와 진단값이 함께 있다
+    expect(body).toContain(FILTERED)
+    expect(body).toContain('shallow-object-probe')
+    expect(body).toContain('SERVER_ERROR')
   })
 })

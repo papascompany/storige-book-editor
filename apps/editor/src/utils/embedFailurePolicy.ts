@@ -46,6 +46,8 @@ export const EMBED_FAILURE_MESSAGES = {
     '이 상품의 편집 정보를 찾을 수 없습니다. 이전 화면으로 돌아가 다시 열거나, 계속되면 고객센터에 문의해 주세요.',
   authExpired: '인증이 만료되었습니다. 페이지를 새로고침해주세요.',
   initGeneric: '초기화 중 오류가 발생했습니다.',
+  /** 편집기 안 '저장된 작업 불러오기' 실패(INVALID_DATA, fatal:false) */
+  workspaceLoadFailed: '작업을 불러오는데 실패했습니다.',
 } as const
 
 const NORMALIZED_KIND: Record<ApiError['code'], RequestFailureKind> = {

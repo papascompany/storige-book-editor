@@ -121,11 +121,11 @@ interface Envelope {
 
 const parentPost = vi.fn<(msg: Envelope, origin: string) => void>()
 
-function axiosHttpError(status: number): AxiosError {
+function axiosHttpError(status: number, data: Record<string, unknown> = {}): AxiosError {
   const config = { headers: new AxiosHeaders() } as InternalAxiosRequestConfig
   return new AxiosError(`Request failed with status code ${status}`, 'ERR_BAD_REQUEST', config, undefined, {
     status,
-    data: {},
+    data,
     statusText: '',
     headers: {},
     config,
@@ -303,16 +303,29 @@ describe('EmbeddedEditor — 명시 sessionId 조회 실패 = SESSION_NOT_FOUND 
     expectNoFallback()
   })
 
-  it('(f) 401 → 이 경로의 editor.error 0회(AUTH_EXPIRED 는 리스너 담당), 폴백 없음, 오류 화면', async () => {
+  it('(f) 401 → 이 경로의 editor.error 0회(AUTH_EXPIRED 는 리스너 담당), 폴백 없음, 고정 문구 오류 화면', async () => {
     api.get.mockRejectedValue(axiosHttpError(401))
     const onError = vi.fn()
     renderEmbed({ sessionId: SESSION_ID, orderSeqno: 1234567890123, mode: 'both' }, { onError })
-    expect(await screen.findByText('인증이 만료되었습니다. 다시 로그인해주세요.')).toBeInTheDocument()
+    expect(await screen.findByText('인증이 만료되었습니다. 페이지를 새로고침해주세요.')).toBeInTheDocument()
     await flushInit()
 
     expect(posted('editor.error')).toHaveLength(0)
     expect(onError).not.toHaveBeenCalled()
     expectNoFallback()
+    expect(posted('editor.ready')).toHaveLength(0)
+  })
+
+  it('(f2) 401 응답 본문 message 가 있어도 화면은 고정 문구만 표시하고 editor.error 0회', async () => {
+    api.get.mockRejectedValue(axiosHttpError(401, { message: 'Unauthorized' }))
+    const onError = vi.fn()
+    renderEmbed({ sessionId: SESSION_ID, orderSeqno: 1234567890123, mode: 'both' }, { onError })
+    expect(await screen.findByText('인증이 만료되었습니다. 페이지를 새로고침해주세요.')).toBeInTheDocument()
+    await flushInit()
+
+    expect(screen.queryByText(/Unauthorized/)).toBeNull()
+    expect(posted('editor.error')).toHaveLength(0)
+    expect(onError).not.toHaveBeenCalled()
     expect(posted('editor.ready')).toHaveLength(0)
   })
 

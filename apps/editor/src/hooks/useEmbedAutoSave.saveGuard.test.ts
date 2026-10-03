@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
+import { AxiosError, AxiosHeaders, type InternalAxiosRequestConfig } from 'axios'
 
 // canvas-core 스텁 — 실제 모듈은 paper.js 2D 컨텍스트를 요구해 happy-dom 에서 로드 불가.
 // (useEmbedAutoSave.restore.test.ts 와 동일 패턴)
@@ -230,5 +231,66 @@ describe('useEmbedAutoSave — R2 canvasData 축소 저장 가드 (경고 표면
     })
     expect(saved).toBe(true)
     expect(updateMock).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('useEmbedAutoSave — 서버 저장 실패 로그', () => {
+  // 픽스처 값은 더미이며 JWT 형태 문자열은 런타임에 조립한다.
+  const JWT = ['eyJ' + 'a'.repeat(12), 'b'.repeat(12), 'c'.repeat(8)].join('.')
+
+  function saveRequestError(): AxiosError {
+    const headers = new AxiosHeaders()
+    headers.set('Authorization', `Bearer ${JWT}`)
+    const config = {
+      url: `/edit-sessions/${SESSION_ID}`,
+      method: 'patch',
+      headers,
+      data: JSON.stringify({ canvasData: [{ objects: [] }], status: 'editing' }),
+    } as InternalAxiosRequestConfig
+    return new AxiosError('Request failed with status code 503', 'ERR_BAD_RESPONSE', config, undefined, {
+      status: 503,
+      data: { message: 'Service Unavailable' },
+      statusText: '',
+      headers: {},
+      config,
+    })
+  }
+
+  let errorSpy: ReturnType<typeof vi.spyOn>
+
+  beforeEach(() => {
+    localStorage.clear()
+    updateMock.mockReset()
+    updateGuestMock.mockReset()
+    captureMessage.mockClear()
+    useSaveStore.getState().reset()
+    setCanvases([fakeCanvas('c0')])
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('저장 요청이 AxiosError(503)로 실패하면 로그 인자는 문자열 요약뿐이고 요청 본문·Authorization 값이 없다', async () => {
+    updateMock.mockRejectedValue(saveRequestError())
+    const { result } = renderGuardHook(null)
+
+    let ok: boolean | undefined
+    await act(async () => {
+      ok = await result.current.saveNow()
+    })
+    expect(ok).toBe(false)
+
+    const saveFailCalls = errorSpy.mock.calls.filter((c) => String(c[0]).includes('서버 저장 실패'))
+    expect(saveFailCalls).toHaveLength(1)
+    const args = saveFailCalls[0]
+    for (const arg of args) expect(typeof arg).toBe('string')
+    expect(String(args[1]).startsWith('AxiosError status=503')).toBe(true)
+    const logged = JSON.stringify(errorSpy.mock.calls)
+    expect(logged).not.toContain('canvasData')
+    expect(logged).not.toContain('Bearer')
+    expect(logged).not.toContain(JWT)
   })
 })
