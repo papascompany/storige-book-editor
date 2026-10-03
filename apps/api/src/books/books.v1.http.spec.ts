@@ -15,6 +15,7 @@
  *  ⑦ 호환 매트릭스 위반(PDF_UPLOAD+photos) → 422 ERR_ASSET_INCOMPATIBLE
  *  ⑧ FINALIZED 게이트 → 409 ERR_BOOK_NOT_DRAFT
  *  ⑨ fileId 참조 검증 — 교차 테넌트 404 / 미확정 409 ERR_FILE_NOT_READY / ready 201
+ *     + NULL-site 파일 404 유지 / presigned complete 사이트 키 귀속 파일(v1.9) 201
  */
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
@@ -424,6 +425,41 @@ describe('Books v1 실스택 HTTP 스모크 (Stage 3 W1+W2)', () => {
     expect(res.body.data.fileId).toBe('file-1');
     expect(res.body.data.status).toBe('active');
     // 기존 파일 상태 변경 없음(AD-1) — uploadFile 미호출(참조 경로)
+    expect(filesUploadFile).not.toHaveBeenCalled();
+  });
+
+  it('⑨ -d fileId 가 NULL-site ready 파일 — 404 ERR_NOT_FOUND 유지', async () => {
+    bookFindOne.mockResolvedValue(makeBook());
+    assetFindOne.mockResolvedValue(null);
+    filesFindById.mockResolvedValue({ id: 'file-null', siteId: null, status: 'ready' });
+    const res = await request(app.getHttpServer())
+      .post('/api/v1/books/bk_test/pdf-cover')
+      .set('X-API-Key', KEY_A)
+      .send({ fileId: 'file-null' })
+      .expect(404);
+    expect(res.body.errorCode).toBe(ErrV1.ERR_NOT_FOUND);
+    expect(assetSave).not.toHaveBeenCalled();
+  });
+
+  it('⑨ -e presigned complete 에서 같은 사이트 키로 귀속된 파일(v1.9) — 201 자산 생성', async () => {
+    bookFindOne.mockResolvedValue(makeBook());
+    assetFindOne.mockResolvedValue(null);
+    // presigned complete(X-API-Key = KEY_A) 확정 결과: storage s3, ready, site A, 보관기간 영구
+    filesFindById.mockResolvedValue({
+      id: 'file-presigned',
+      siteId: SITE_A,
+      status: 'ready',
+      storageBackend: 's3',
+      expiresAt: null,
+    });
+    const res = await request(app.getHttpServer())
+      .post('/api/v1/books/bk_test/pdf-cover')
+      .set('X-API-Key', KEY_A)
+      .send({ fileId: 'file-presigned' })
+      .expect(201);
+    expect(res.body.data.assetType).toBe('pdf_cover');
+    expect(res.body.data.fileId).toBe('file-presigned');
+    expect(res.body.data.status).toBe('active');
     expect(filesUploadFile).not.toHaveBeenCalled();
   });
 

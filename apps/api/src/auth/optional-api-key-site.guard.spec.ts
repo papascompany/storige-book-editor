@@ -12,7 +12,12 @@ import { OptionalApiKeySiteGuard } from './guards/optional-api-key-site.guard';
 import { AuthModule } from './auth.module';
 import { SitesService } from '../sites/sites.service';
 import { WorkerJobsController } from '../worker-jobs/worker-jobs.controller';
-import { GUARDS_METADATA } from '@nestjs/common/constants';
+import { FilesController } from '../files/files.controller';
+import { FilesModule } from '../files/files.module';
+import { SitesModule } from '../sites/sites.module';
+import { OptionalShopJwtGuard } from './guards/optional-shop-jwt.guard';
+import { ApiKeyGuard } from './guards/api-key.guard';
+import { GLOBAL_MODULE_METADATA, GUARDS_METADATA } from '@nestjs/common/constants';
 
 type Req = { headers: Record<string, unknown>; user?: unknown; apiKeySite?: unknown };
 
@@ -146,6 +151,24 @@ describe('OptionalApiKeySiteGuard', () => {
         Reflect.getMetadata(GUARDS_METADATA, WorkerJobsController.prototype.createComposeMixed) ??
         [];
       expect(guards).toContain(OptionalApiKeySiteGuard);
+    });
+
+    it.each(['completeUpload', 'multipartComplete'] as const)(
+      'files %s 핸들러에 OptionalShopJwtGuard·OptionalApiKeySiteGuard 가 붙어 있고 ApiKeyGuard 는 없다',
+      (handler) => {
+        const guards: unknown[] =
+          Reflect.getMetadata(GUARDS_METADATA, FilesController.prototype[handler]) ?? [];
+        expect(guards).toEqual([OptionalShopJwtGuard, OptionalApiKeySiteGuard]);
+        expect(guards).not.toContain(ApiKeyGuard);
+      },
+    );
+
+    it('FilesModule providers 에 등록돼 있고, SitesModule 은 @Global 로 SitesService 를 export 한다', () => {
+      const providers: unknown[] = Reflect.getMetadata('providers', FilesModule) ?? [];
+      expect(providers).toContain(OptionalApiKeySiteGuard);
+      expect(Reflect.getMetadata(GLOBAL_MODULE_METADATA, SitesModule)).toBe(true);
+      const sitesExports: unknown[] = Reflect.getMetadata('exports', SitesModule) ?? [];
+      expect(sitesExports).toContain(SitesService);
     });
   });
 });

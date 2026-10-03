@@ -59,6 +59,21 @@ export interface MultipartSignResult {
   expiresIn: number;
 }
 
+/**
+ * presigned complete 사이트 귀속 근거 표지(v1.9).
+ * 'shop' = 검증된 shop-session·운영자 토큰, 'site-key' = 검증된 활성 사이트 키(X-API-Key).
+ */
+export type PresignedCompleteRole = 'shop' | 'site-key';
+export interface PresignedCompleteCaller {
+  siteId: string;
+  role: PresignedCompleteRole;
+}
+
+/** 로그용 사이트 id 축약 — 길이 + 앞 4자(UUID 문자셋만). worker-jobs.service siteIdHint 와 같은 형식 */
+export function siteIdLogHint(siteId: string): string {
+  return `len=${siteId.length} prefix=${siteId.slice(0, 4).replace(/[^0-9a-fA-F-]/g, '')}`;
+}
+
 @Injectable()
 export class PresignedUploadService {
   private readonly logger = new Logger(PresignedUploadService.name);
@@ -418,11 +433,14 @@ export class PresignedUploadService {
     //    타 테넌트가 Bearer 를 실어 남의 NULL 파일을 자기 site 로 **소급 하이재킹**
     //    할 수 있다(진짜 소유자가 이후 site 대조 404 를 맞는 신규 파손 벡터 —
     //    스펙 T6 이 실제로 적발). 첫 complete 가 무토큰이면 NULL 로 확정·불소급.
+    // v1.9: 컨트롤러가 검증된 사이트 키 근거(role 'site-key')를 넘긴 경우도 같은 조건으로 귀속한다.
     const firstFinalize = file.status !== 'ready';
     file.fileSize = actualSize;
     file.status = 'ready';
+    let stamped = false;
     if (firstFinalize && !file.siteId && caller?.siteId && caller.role !== 'worker') {
       file.siteId = caller.siteId;
+      stamped = true;
     }
     file.multipartUploadId = null;
     file.uploadToken = null; // ready 확정 시 소유 토큰 소거(이후 재사용 불가)
@@ -432,6 +450,14 @@ export class PresignedUploadService {
       retentionDays && retentionDays > 0
         ? new Date(Date.now() + retentionDays * 24 * 60 * 60 * 1000)
         : null;
-    return this.fileRepository.save(file);
+    const saved = await this.fileRepository.save(file);
+    // v1.9: 사이트 키 근거로 귀속한 파일만 1줄 남긴다(토큰 근거 귀속의 로그는 종전과 같다).
+    // file id 는 귀속 목록 추출용, 사이트 id 는 축약해서 남긴다.
+    if (stamped && caller?.role === 'site-key' && saved.siteId) {
+      this.logger.log(
+        `[presigned-stamp] file=${saved.id} basis=site-key site(${siteIdLogHint(saved.siteId)})`,
+      );
+    }
+    return saved;
   }
 }

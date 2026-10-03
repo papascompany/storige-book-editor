@@ -3,7 +3,8 @@
  *
  * 호출자 회원 번호가 양의 정수이고 파일 memberSeqno 와 같을 때만 소유자로 본다(userId 없음·0 은 소유자 아님).
  * 목록(getFiles)의 memberSeqno 분기는 양의 정수 회원 번호만 허용한다.
- * staff(admin·manager)는 역할 문자열 대소문자와 무관하게 네 라우트 모두 같은 판정이다.
+ * staff(admin·manager·super_admin)는 역할 문자열 대소문자와 무관하게 네 라우트 모두 같은 판정이다.
+ * 복구(restoreFile)도 같은 staff 판정만 허용한다.
  */
 import { HttpException } from '@nestjs/common';
 import { FilesController } from './files.controller';
@@ -26,6 +27,8 @@ const member777 = { userId: '777', source: 'shop', role: 'customer' };
 const staffAdmin = { id: 'admin-1', role: 'admin' };
 const staffUpper = { id: 'admin-2', role: 'ADMIN' };
 const managerUpper = { id: 'admin-3', role: 'MANAGER' };
+const superUpper = { id: 'admin-4', role: 'SUPER_ADMIN' };
+const superLower = { id: 'admin-5', role: 'super_admin' };
 
 async function statusOf(p: Promise<unknown>): Promise<number | 'ok'> {
   try {
@@ -45,6 +48,7 @@ describe('FilesController — 소유 판정(회원 번호가 양의 정수일 �
     toResponseDto: jest.Mock;
     softDelete: jest.Mock;
     getFileStream: jest.Mock;
+    restore: jest.Mock;
   };
   let controller: FilesController;
   let current: FileRow;
@@ -63,6 +67,7 @@ describe('FilesController — 소유 판정(회원 번호가 양의 정수일 �
       softDelete: jest.fn().mockResolvedValue(undefined),
       // 권한 통과 후에만 호출된다 — 여기서 멈춰 스트리밍 경로를 타지 않게 한다
       getFileStream: jest.fn().mockRejectedValue(new Error('stream-called')),
+      restore: jest.fn(async (id: string): Promise<FileRow> => ({ id, memberSeqno: null })),
     };
     controller = new FilesController(
       filesService as unknown as FilesService,
@@ -124,6 +129,16 @@ describe('FilesController — 소유 판정(회원 번호가 양의 정수일 �
         await expect(controller.downloadFile(FILE_ID, res, staff)).rejects.toThrow('stream-called');
       }
     });
+
+    it.each([
+      ['SUPER_ADMIN', superUpper],
+      ['super_admin', superLower],
+    ])('staff(%s) → getFile 통과·downloadFile 스트림 조회 진행·deleteFile 소프트 삭제', async (_l, staff) => {
+      expect(await statusOf(controller.getFile(FILE_ID, staff))).toBe('ok');
+      await expect(controller.downloadFile(FILE_ID, res, staff)).rejects.toThrow('stream-called');
+      expect(await statusOf(controller.deleteFile(FILE_ID, staff))).toBe('ok');
+      expect(filesService.softDelete).toHaveBeenCalledWith(FILE_ID);
+    });
   });
 
   describe('getFiles', () => {
@@ -160,6 +175,45 @@ describe('FilesController — 소유 판정(회원 번호가 양의 정수일 �
       expect(filesService.findByMemberSeqno).toHaveBeenCalledWith(456);
       const out = await controller.getFiles(staffUpper, '5');
       expect(out.files).toEqual([{ id: 'f-null' }, { id: 'f-zero' }, { id: 'f-777' }]);
+    });
+
+    it.each([
+      ['SUPER_ADMIN', superUpper],
+      ['super_admin', superLower],
+    ])('staff(%s) → 임의 memberSeqno 조회 통과, orderSeqno 결과 전량', async (_l, staff) => {
+      expect(await statusOf(controller.getFiles(staff, undefined, '456'))).toBe('ok');
+      expect(filesService.findByMemberSeqno).toHaveBeenCalledWith(456);
+      const out = await controller.getFiles(staff, '5');
+      expect(out.files).toEqual([{ id: 'f-null' }, { id: 'f-zero' }, { id: 'f-777' }]);
+    });
+  });
+
+  describe('restoreFile', () => {
+    it.each(['ADMIN', 'MANAGER', 'SUPER_ADMIN', 'admin', 'super_admin'])(
+      '관리자 역할 %s → 복구 수행',
+      async (role) => {
+        const out = await controller.restoreFile(FILE_ID, { id: 'admin-x', role });
+        expect(filesService.restore).toHaveBeenCalledWith(FILE_ID);
+        expect(out).toEqual({ id: FILE_ID });
+      },
+    );
+
+    it.each([
+      ['shop 고객', member777],
+      ['운영자', { source: 'partner_operator', role: 'partner_operator', siteId: 's' }],
+      ['SITE_ADMIN', { id: 'u', role: 'SITE_ADMIN' }],
+      ['SITE_MANAGER', { id: 'u', role: 'SITE_MANAGER' }],
+      ['역할 없음', undefined],
+    ])('%s → 403 PERMISSION_DENIED, 복구 호출 없음', async (_l, user) => {
+      try {
+        await controller.restoreFile(FILE_ID, user);
+        throw new Error('expected 403');
+      } catch (e) {
+        expect(e).toBeInstanceOf(HttpException);
+        expect((e as HttpException).getStatus()).toBe(403);
+        expect(((e as HttpException).getResponse() as { code?: string }).code).toBe('PERMISSION_DENIED');
+      }
+      expect(filesService.restore).not.toHaveBeenCalled();
     });
   });
 });

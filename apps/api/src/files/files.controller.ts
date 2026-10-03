@@ -26,11 +26,16 @@ import {
   ApiBody,
   ApiBearerAuth,
   ApiSecurity,
+  ApiHeader,
 } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { Response } from 'express';
 import { FilesService } from './files.service';
-import { PresignedUploadService } from './presigned-upload.service';
+import {
+  PresignedUploadService,
+  type PresignedCompleteCaller,
+  siteIdLogHint,
+} from './presigned-upload.service';
 import { UploadFileDto } from './dto/upload-file.dto';
 import { FileResponseDto, FileListResponseDto } from './dto/file-response.dto';
 import {
@@ -45,6 +50,11 @@ import { FileType } from './entities/file.entity';
 import { Public } from '../auth/decorators/public.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { OptionalShopJwtGuard } from '../auth/guards/optional-shop-jwt.guard';
+import {
+  OptionalApiKeySiteGuard,
+  type ApiKeySitePayload,
+} from '../auth/guards/optional-api-key-site.guard';
+import { ApiKeySite } from '../auth/decorators/api-key-site.decorator';
 import { CurrentSite, CurrentSitePayload } from '../auth/decorators/current-site.decorator';
 import { ApiKeyGuard } from '../auth/guards/api-key.guard';
 import { PartnerOperatorAllowed } from '../auth/decorators/partner-operator-allowed.decorator';
@@ -71,13 +81,47 @@ function operatorUploadMemberSeqno(user: UploadCallerUser | null | undefined): n
  */
 function stampCaller(
   user: UploadCallerUser | null | undefined,
-): { siteId: string; role: string } | undefined {
+): PresignedCompleteCaller | undefined {
   const siteId = user?.siteId;
   return (user?.source === 'shop' || user?.source === 'partner_operator') &&
     typeof siteId === 'string'
     ? { siteId, role: 'shop' }
     : undefined;
 }
+
+type PresignedCompleteBasis = 'token' | 'site-key' | 'conflict' | 'none';
+
+interface PresignedCompleteResolution {
+  caller: PresignedCompleteCaller | undefined;
+  basis: PresignedCompleteBasis;
+  /** basis 'conflict' 일 때만 — 로그 축약용 */
+  tokenSiteId?: string;
+  keySiteId?: string;
+}
+
+/**
+ * presigned complete 사이트 귀속 근거(v1.9).
+ * 우선순위: 검증된 shop-session·운영자 토큰 사이트 → 검증된 활성 사이트 키(X-API-Key) 사이트.
+ * 두 근거가 서로 다른 사이트면 귀속하지 않는다(compose-mixed 와 같은 규칙).
+ * 결과는 presigned 서비스 caller 인자로만 쓴다(req.user 는 바꾸지 않는다).
+ */
+function resolvePresignedCompleteCaller(
+  user: UploadCallerUser | null | undefined,
+  apiKeySite: ApiKeySitePayload | undefined,
+): PresignedCompleteResolution {
+  const token = stampCaller(user);
+  const keySiteId = apiKeySite?.siteId || undefined;
+  if (token && keySiteId && token.siteId !== keySiteId) {
+    return { caller: undefined, basis: 'conflict', tokenSiteId: token.siteId, keySiteId };
+  }
+  if (token) return { caller: token, basis: 'token' };
+  if (keySiteId) return { caller: { siteId: keySiteId, role: 'site-key' }, basis: 'site-key' };
+  return { caller: undefined, basis: 'none' };
+}
+
+/** presigned complete 2 라우트의 선택 헤더 설명(Swagger) */
+const PRESIGNED_COMPLETE_KEY_HEADER_DESC =
+  '선택 — 사이트 키. 검증된 활성 사이트 키면 신규 파일을 그 사이트로 귀속(토큰 사이트가 우선, 둘이 다르면 귀속 없음)';
 
 /**
  * JWT 라우트 소유 판정용 호출자 회원 번호(2026-09-30).
@@ -110,12 +154,12 @@ function isFileOwner(
 }
 
 /**
- * JWT 파일 라우트 staff 판정 — 역할 문자열을 대소문자 무관으로 비교(admin·manager).
- * UserRole enum 값은 대문자('ADMIN'·'MANAGER'), 테스트·레거시 토큰은 소문자일 수 있다.
+ * JWT 파일 라우트 staff 판정 — 역할 문자열을 대소문자 무관으로 비교(admin·manager·super_admin).
+ * UserRole enum 값은 대문자('ADMIN'·'MANAGER'·'SUPER_ADMIN'), 테스트·레거시 토큰은 소문자일 수 있다.
  */
 function isFileStaffRole(user: { role?: unknown } | null | undefined): boolean {
   const role = String(user?.role ?? '').toLowerCase();
-  return role === 'admin' || role === 'manager';
+  return role === 'admin' || role === 'manager' || role === 'super_admin';
 }
 
 /** 호출자 토큰의 siteId — 비어 있지 않은 문자열일 때만 */
@@ -144,6 +188,25 @@ export class FilesController {
     private readonly filesService: FilesService,
     private readonly presignedUpload: PresignedUploadService,
   ) {}
+
+  /**
+   * presigned complete 의 서비스 caller — 근거 해석 결과를 돌려주고, 토큰·사이트 키가
+   * 서로 다른 사이트를 가리키면 경고 로그(사이트 id 는 축약)를 남긴다.
+   */
+  private presignedCompleteCaller(
+    route: 'single' | 'multipart',
+    user: UploadCallerUser | null | undefined,
+    apiKeySite: ApiKeySitePayload | undefined,
+  ): PresignedCompleteCaller | undefined {
+    const r = resolvePresignedCompleteCaller(user, apiKeySite);
+    if (r.basis === 'conflict' && r.tokenSiteId && r.keySiteId) {
+      this.logger.warn(
+        `[presigned-stamp] 토큰 사이트와 사이트 키 사이트가 다름 → 귀속 없음 route=${route} ` +
+          `token(${siteIdLogHint(r.tokenSiteId)}) key(${siteIdLogHint(r.keySiteId)})`,
+      );
+    }
+    return r.caller;
+  }
 
   /**
    * 공통 스트리밍 파이프 — 헤더 설정 + 에러/중단 처리(트랙 B-(c)).
@@ -293,20 +356,24 @@ export class FilesController {
   // ── multipart: complete ──────────────────────────────────────
   @Post('multipart/complete')
   @Public()
-  @UseGuards(OptionalShopJwtGuard)
+  @UseGuards(OptionalShopJwtGuard, OptionalApiKeySiteGuard)
   @Throttle({ default: { limit: 30, ttl: 60000 } })
   @ApiOperation({ summary: '멀티파트 완료(파트 etag 결합 + HeadObject 검증)' })
-  @ApiResponse({ status: 200, type: FileResponseDto })
+  @ApiHeader({ name: 'X-API-Key', required: false, description: PRESIGNED_COMPLETE_KEY_HEADER_DESC })
+  @ApiResponse({ status: 201, type: FileResponseDto })
   async multipartComplete(
     @Body() dto: MultipartCompleteDto,
     @CurrentUser() user: any,
+    @ApiKeySite() apiKeySite?: ApiKeySitePayload,
   ): Promise<FileResponseDto> {
     // S3-A안(2026-08-28, D1): 검증된 shop-session 이 실려 오면 완료 확정 시 파일에
     // 그 site 를 스탬프한다(테넌트 귀속). 토큰 없음·서명 검증 실패·비-shop → NULL.
     // 근거 원칙은 edit-sessions.createGuest 의 I-1 과 동일 — 스탬프 근거는 서명 검증된
     // JWT 뿐이며, body 로 site 를 주장할 자리는 애초에 없다.
     // 운영자 대리 편집(2026-09-29): 검증된 운영자 액세스 토큰도 같은 방식으로 site 를 스탬프한다.
-    const caller = stampCaller(user);
+    // v1.9: 토큰 근거가 없으면 검증된 활성 사이트 키(X-API-Key)의 사이트로 귀속한다.
+    // 두 근거가 다른 사이트면 귀속하지 않는다(resolvePresignedCompleteCaller).
+    const caller = this.presignedCompleteCaller('multipart', user, apiKeySite);
     const file = await this.presignedUpload.completeMultipart(
       dto.fileId, dto.parts, dto.uploadToken, caller,
     );
@@ -328,18 +395,21 @@ export class FilesController {
   //    'multipart/complete'(:id='multipart')를 가로채면 단품 DTO로 검증돼 400 난다(라우트 충돌).
   @Post(':id/complete')
   @Public()
-  @UseGuards(OptionalShopJwtGuard)
+  @UseGuards(OptionalShopJwtGuard, OptionalApiKeySiteGuard)
   @Throttle({ default: { limit: 30, ttl: 60000 } })
   @ApiOperation({ summary: '직결 업로드 완료 확정(HeadObject 검증)' })
-  @ApiResponse({ status: 200, description: 'ready 확정', type: FileResponseDto })
+  @ApiHeader({ name: 'X-API-Key', required: false, description: PRESIGNED_COMPLETE_KEY_HEADER_DESC })
+  @ApiResponse({ status: 201, description: 'ready 확정', type: FileResponseDto })
   @ApiResponse({ status: 400, description: 'UPLOAD_NOT_FOUND_ON_R2 / EMPTY_UPLOAD' })
   async completeUpload(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: CompleteUploadDto,
     @CurrentUser() user: any,
+    @ApiKeySite() apiKeySite?: ApiKeySitePayload,
   ): Promise<FileResponseDto> {
     // S3-A안(2026-08-28, D1): multipart/complete 와 동일한 옵션형 site 스탬프(운영자 포함, 2026-09-29).
-    const caller = stampCaller(user);
+    // v1.9: 사이트 키 근거도 multipart/complete 와 같은 우선순위로 쓴다.
+    const caller = this.presignedCompleteCaller('single', user, apiKeySite);
     const file = await this.presignedUpload.completeSingle(id, dto.uploadToken, caller);
     return this.filesService.toResponseDto(file);
   }
@@ -527,7 +597,7 @@ export class FilesController {
   ): Promise<FileResponseDto> {
     const file = await this.filesService.findById(id);
 
-    // 권한 확인: 파일 소유자 (memberSeqno 일치) 또는 admin/manager 역할
+    // 권한 확인: 파일 소유자 (memberSeqno 일치) 또는 admin·manager·super_admin 역할
     // 단, file.memberSeqno가 null인 경우 (외부 업로드)는 staff만 허용
     const userId = callerMemberSeqno(user);
     const isOwner = isFileOwner(file, userId);
@@ -548,7 +618,7 @@ export class FilesController {
    * 파일 목록 조회 — 소유자 본인 또는 관리자만
    *
    * 동작:
-   *  - admin/manager: 임의 orderSeqno / memberSeqno 조회 가능(사이트 필터 없음)
+   *  - admin·manager·super_admin: 임의 orderSeqno / memberSeqno 조회 가능(사이트 필터 없음)
    *  - 일반 사용자: 토큰 회원 번호가 양의 정수일 때만 본인 파일을 돌려준다
    *    · orderSeqno: 결과 중 본인 소유 파일만(회원 번호가 양수가 아니면 빈 목록)
    *    · memberSeqno: 본인 번호만 허용, 양수가 아닌 요청 번호는 403
@@ -633,7 +703,7 @@ export class FilesController {
   ): Promise<void> {
     const file = await this.filesService.findById(id);
 
-    // 권한 확인: 파일 소유자 또는 admin/manager
+    // 권한 확인: 파일 소유자 또는 admin·manager·super_admin
     const userId = callerMemberSeqno(user);
     const isOwner = isFileOwner(file, userId);
     const isStaff = isFileStaffRole(user);
@@ -869,7 +939,7 @@ export class FilesController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: any,
   ): Promise<{ success: boolean }> {
-    // getFile 과 같은 소유 판정: 소유자 또는 staff(admin·manager, 대소문자 무관)만 삭제한다.
+    // getFile 과 같은 소유 판정: 소유자 또는 staff(admin·manager·super_admin, 대소문자 무관)만 삭제한다.
     const file = await this.filesService.findById(id);
     const userId = callerMemberSeqno(user);
     const isOwner = isFileOwner(file, userId);
@@ -902,9 +972,8 @@ export class FilesController {
   ): Promise<FileResponseDto> {
     // 복구는 보존 sweep/운영 작업 성격 → 관리자 전용(소프트삭제 파일의 소유권
     // 역참조 없이 운영자만 수행). 현재 콜러 0건.
-    // 역할 비교 case-insensitive(UserRole enum 대문자).
-    const userRole = String(user?.role || '').toLowerCase();
-    if (userRole !== 'admin' && userRole !== 'manager') {
+    // 역할 판정은 isFileStaffRole(admin·manager·super_admin, 대소문자 무관)과 같다.
+    if (!isFileStaffRole(user)) {
       throw new ForbiddenException({
         code: 'PERMISSION_DENIED',
         message: '파일 복구는 관리자만 가능합니다.',

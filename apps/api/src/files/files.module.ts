@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { OptionalShopJwtGuard } from '../auth/guards/optional-shop-jwt.guard';
+import { OptionalApiKeySiteGuard } from '../auth/guards/optional-api-key-site.guard';
 import { FilesController } from './files.controller';
 import { FilesService } from './files.service';
 import { FileEntity } from './entities/file.entity';
@@ -37,6 +38,9 @@ import { SettingsModule } from '../settings/settings.module';
     FileOrphanService,
     PresignedUploadService,
     OptionalShopJwtGuard,
+    // v1.9: presigned complete 2 라우트의 선택 사이트 키 귀속. 의존성 SitesService 는
+    // @Global SitesModule 이 제공한다.
+    OptionalApiKeySiteGuard,
   ],
   exports: [FilesService, ObjectStorageService, PresignedUploadService],
 })

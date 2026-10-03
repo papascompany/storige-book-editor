@@ -6,7 +6,7 @@
  *  - getFiles: 비-staff 호출자 토큰에 siteId 가 있으면 다른 site 파일은 목록에서 제외(NULL-site 포함).
  *  - getFile·downloadFile·deleteFile: 비-staff 호출자 토큰 siteId 와 파일 siteId 가 모두 있고 다르면
  *    404 FILE_NOT_FOUND(소유 판정보다 먼저). NULL-site 파일·siteId 없는 토큰은 종전 판정.
- *  - staff(admin·manager)는 사이트 조건 없이 종전 규칙.
+ *  - staff(admin·manager·super_admin)는 사이트 조건 없이 종전 규칙. SITE_ADMIN·SITE_MANAGER 는 staff 가 아니다.
  */
 import { HttpException } from '@nestjs/common';
 import { FilesController } from './files.controller';
@@ -40,6 +40,7 @@ const shop = (userId: string, siteId?: string): Caller => ({
 });
 const staffAdmin: Caller = { id: 'admin-1', role: 'admin', siteId: SITE_A };
 const staffManagerUpper: Caller = { id: 'admin-2', role: 'MANAGER', siteId: SITE_A };
+const staffSuperUpper: Caller = { id: 'admin-3', role: 'SUPER_ADMIN', siteId: SITE_A };
 
 async function errorOf(p: Promise<unknown>): Promise<{ status: number | 'ok'; code?: string }> {
   try {
@@ -160,6 +161,21 @@ describe('FilesController — 목록 회원 번호 판정 · 사이트 범위', 
         'o-777-null',
       ]);
     });
+
+    it('staff(SUPER_ADMIN) 목록 → memberSeqno·orderSeqno 사이트 조건 없이 전량', async () => {
+      expect(ids(await controller.getFiles(staffSuperUpper, undefined, '123'))).toEqual([
+        'f-123-a',
+        'f-123-b',
+        'f-123-null',
+      ]);
+      expect(ids(await controller.getFiles(staffSuperUpper, '5'))).toEqual([
+        'o-zero',
+        'o-neg',
+        'o-777-a',
+        'o-777-b',
+        'o-777-null',
+      ]);
+    });
   });
 
   describe('getFile · downloadFile · deleteFile — 사이트 범위', () => {
@@ -203,6 +219,28 @@ describe('FilesController — 목록 회원 번호 판정 · 사이트 범위', 
       expect((await errorOf(controller.getFile(FILE_ID, staffAdmin))).status).toBe('ok');
       await expect(controller.downloadFile(FILE_ID, res, staffAdmin)).rejects.toThrow('stream-called');
       expect((await errorOf(controller.deleteFile(FILE_ID, staffManagerUpper))).status).toBe('ok');
+    });
+
+    it('staff(SUPER_ADMIN, siteId=A) + site B 파일 → getFile·downloadFile·deleteFile 사이트 조건 없이 통과', async () => {
+      current = { id: FILE_ID, memberSeqno: 777, siteId: SITE_B };
+      expect((await errorOf(controller.getFile(FILE_ID, staffSuperUpper))).status).toBe('ok');
+      await expect(controller.downloadFile(FILE_ID, res, staffSuperUpper)).rejects.toThrow('stream-called');
+      expect((await errorOf(controller.deleteFile(FILE_ID, staffSuperUpper))).status).toBe('ok');
+      expect(filesService.softDelete).toHaveBeenCalledWith(FILE_ID);
+    });
+
+    it('SITE_ADMIN 역할은 staff 판정 대상이 아니다 — 같은 사이트 파일이어도 소유자가 아니면 403 PERMISSION_DENIED', async () => {
+      current = { id: FILE_ID, memberSeqno: 777, siteId: SITE_A };
+      const siteAdmin: Caller = { id: 'site-admin-1', role: 'SITE_ADMIN', siteId: SITE_A };
+      expect(await errorOf(controller.getFile(FILE_ID, siteAdmin))).toEqual({
+        status: 403,
+        code: 'PERMISSION_DENIED',
+      });
+      expect(await errorOf(controller.deleteFile(FILE_ID, siteAdmin))).toEqual({
+        status: 403,
+        code: 'PERMISSION_DENIED',
+      });
+      expect(filesService.softDelete).not.toHaveBeenCalled();
     });
   });
 });
