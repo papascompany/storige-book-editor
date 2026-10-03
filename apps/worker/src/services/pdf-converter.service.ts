@@ -18,7 +18,11 @@ import {
   DEFAULT_SIZE_TOLERANCE_MM,
   LEGACY_SIZE_TOLERANCE_MM,
 } from '../config/validation.config';
-import { normalizeTrimBoxFile, TrimCropContext } from '../utils/trimbox-normalize';
+import {
+  normalizeTrimBoxFile,
+  trimCropContextFromJob,
+  TrimCropContext,
+} from '../utils/trimbox-normalize';
 import { downloadToTempFile } from '../utils/stream-download';
 import { assertSafeDownloadUrl } from '../utils/url-safety';
 import {
@@ -52,6 +56,11 @@ export interface ConversionOptions {
    * addPages(절대 targetPages) 위에 얹는 편의 모드. 이미 배수면 no-op. 데이터 주도 d1 빈페이지 보정.
    */
   padToMultiple?: number;
+  /**
+   * X1F-1c: attach-page-pad 잡에서만 API 가 싣는 주문 재단·도련(공유 계약 키). editSize 가 없을 때,
+   * 정규화 게이트 안에서만 trimCropContextFromJob 으로 읽는다.
+   */
+  contentTrim?: unknown;
 }
 
 export interface ConversionResult {
@@ -86,11 +95,14 @@ export class PdfConverterService {
 
   /**
    * Convert PDF (add pages, apply bleed)
+   *
+   * @param jobId 도메인 잡 ID(선택) — 내지 정규화 로그 태그 `convert:${jobId}` 에만 쓴다.
    */
   async convert(
     fileUrl: string,
     rawOptions: ConversionOptions,
     outputPath: string,
+    jobId?: string,
   ): Promise<ConversionResult> {
     this.logger.log(`Converting PDF: ${fileUrl}`);
 
@@ -140,6 +152,8 @@ export class PdfConverterService {
       // 편집기 레거시 경로(mode·editSize·padToMultiple 없음)는 게이트 밖 — 무영향.
       // editSize 가 있으면 목표 = TrimBox + (editSize−Trim)/2(대칭) → resolveMode 가 innerfit
       // (비율 축소) 대신 passthrough 를 고른다. tempInputPath 는 이미 임시 사본이라 원본 불변.
+      // editSize 가 없고 잡에 contentTrim(attach-page-pad)이 있으면 주문 재단·도련 '아는 경로'로
+      // 채움본 내지를 주문 작업사이즈에 맞춘다(X1F-1c). 키가 없으면 {}(종전 모르는 경로).
       // 킬스위치 OFF·크롭 대상 없음이면 입력 그대로(추가 파일 없음).
       // ──────────────────────────────────────────────────────────────
       const hasEditSize =
@@ -147,6 +161,7 @@ export class PdfConverterService {
         rawOptions.editSize.width > 0 &&
         rawOptions.editSize.height > 0;
       if (hasEditSize || (rawOptions.padToMultiple ?? 0) > 0) {
+        const trimLogTag = jobId ? `convert:${jobId}` : 'convert';
         const ctx: TrimCropContext = hasEditSize
           ? {
               editSizeMm: rawOptions.editSize,
@@ -155,9 +170,9 @@ export class PdfConverterService {
               // 경로(passthrough/innerfit/center)를 그대로 탄다(CTO 원칙 1).
               noopTolMm: Math.max(LEGACY_SIZE_TOLERANCE_MM, rawOptions.sizeToleranceMm ?? 0),
             }
-          : {};
+          : trimCropContextFromJob(rawOptions.contentTrim, trimLogTag);
         const normalizedPath = path.join(this.storagePath, `trimnorm_${uuidv4()}.pdf`);
-        const norm = await normalizeTrimBoxFile(tempInputPath, normalizedPath, ctx, 'convert');
+        const norm = await normalizeTrimBoxFile(tempInputPath, normalizedPath, ctx, trimLogTag);
         if (norm.applied) {
           await this.safeDelete(tempInputPath);
           tempInputPath = norm.path;

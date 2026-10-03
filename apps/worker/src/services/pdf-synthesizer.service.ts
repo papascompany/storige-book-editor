@@ -16,7 +16,7 @@ import { VALIDATION_CONFIG } from '../config/validation.config';
 import { downloadToTempFile } from '../utils/stream-download';
 import { assertSafeDownloadUrl } from '../utils/url-safety';
 import { extractPdfMetadataQpdf } from '../utils/pdf-metadata-qpdf';
-import { normalizeTrimBoxFile } from '../utils/trimbox-normalize';
+import { normalizeTrimBoxFile, TrimCropContext } from '../utils/trimbox-normalize';
 import {
   assemblePdf as qpdfAssemble,
   mergePdfs as qpdfMergePdfs,
@@ -35,6 +35,13 @@ export interface SynthesisOptions {
   generatePreview?: boolean;
   /** 출력 형식: merged(기본) 또는 separate */
   outputFormat?: 'merged' | 'separate';
+  /**
+   * X1F-1: 잡 contentTrim 을 trimCropContextFromJob 으로 해석한 내지 정규화 컨텍스트.
+   * 없으면 {}(모르는 경로).
+   */
+  contentTrimCtx?: TrimCropContext;
+  /** 내지 정규화 로그 태그(예: `merge:${jobId}`). 없으면 'merge'. */
+  logTag?: string;
 }
 
 /** @deprecated 하위호환용 - SynthesisLocalResult 사용 권장 */
@@ -103,7 +110,11 @@ export class PdfSynthesizerService {
       await this.downloadToPath(coverPdfUrl, sourceCoverPath);
       await this.downloadToPath(contentPdfUrl, sourceContentPath);
       // X1: 내지 입력(이미 임시 사본)의 재단선 영역 크롭 정규화 — 표지 제외.
-      await this.normalizeContentInPlaceCopy(sourceContentPath, 'merge');
+      await this.normalizeContentInPlaceCopy(
+        sourceContentPath,
+        options.logTag ?? 'merge',
+        options.contentTrimCtx ?? {},
+      );
 
       // 2. merged PDF 생성 (항상)
       let totalPages: number;
@@ -999,15 +1010,22 @@ export class PdfSynthesizerService {
    *
    * copyPath 는 이 서비스가 다운로드해 만든 **임시 사본**이어야 한다(스토리지 원본 아님).
    * 정규화는 별도 임시파일에 쓰고(normalizeTrimBoxFile 은 입력에 쓰지 않음), 적용된
-   * 경우에만 그 결과로 copyPath 를 교체한다. 합성 잡은 기대 재단·주문 bleed 를 받지 않으므로
-   * '모르는 경로' 규칙(TrimBox 둘레 여백 ≥ 5mm·사방 균등 + 명시 BleedBox 바깥 여백 ≥ 5mm 일 때만,
-   * 도련 = 명시 BleedBox 최소 여백 ≤ 3mm)으로만 크롭한다. BleedBox 부재·BleedBox≈MediaBox 파일은
-   * 크롭하지 않는다. 킬스위치 OFF·크롭 대상 없음이면 파일 무변경.
+   * 경우에만 그 결과로 copyPath 를 교체한다.
+   * - ctx 에 주문 재단·도련(contentTrim, X1F-1)이 있으면 '아는 경로': TrimBox ≈ 주문 재단(±tol)인
+   *   내지를 TrimBox + 사방 주문 도련(주문 작업사이즈)으로 크롭한다. 이미 그 크기(±tol)면 무변경.
+   * - ctx 가 {} 이면 '모르는 경로' 규칙(TrimBox 둘레 여백 ≥ 5mm·사방 균등 + 명시 BleedBox 바깥
+   *   여백 ≥ 5mm 일 때만, 도련 = 명시 BleedBox 최소 여백 ≤ 3mm)으로만 크롭한다. BleedBox 부재·
+   *   BleedBox≈MediaBox 파일은 크롭하지 않는다.
+   * 킬스위치 OFF·크롭 대상 없음이면 파일 무변경.
    */
-  private async normalizeContentInPlaceCopy(copyPath: string, logTag: string): Promise<void> {
+  private async normalizeContentInPlaceCopy(
+    copyPath: string,
+    logTag: string,
+    ctx: TrimCropContext = {},
+  ): Promise<void> {
     const tmp = path.join(path.dirname(copyPath), `trimnorm_${uuidv4()}.pdf`);
     try {
-      const r = await normalizeTrimBoxFile(copyPath, tmp, {}, logTag);
+      const r = await normalizeTrimBoxFile(copyPath, tmp, ctx, logTag);
       if (r.applied) await fs.rename(tmp, copyPath);
     } finally {
       await this.safeDelete(tmp);

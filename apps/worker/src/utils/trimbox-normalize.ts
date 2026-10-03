@@ -12,11 +12,12 @@
  * - 크롭(planTrimBoxCrop): 합성·변환 입력의 임시 사본에서 페이지별 MediaBox·CropBox 를
  *   'TrimBox 를 사방 균등 B 만큼 확장한 박스'로 재설정. TrimBox·BleedBox 는 유지(BleedBox 가
  *   목표 밖이면 목표로 clamp). 원본 파일에는 절대 쓰지 않는다.
- * - ⚠️ 산출물 크기 한계(X1-R2): 합성 잡은 주문 bleed·기대 재단을 모르는 '모르는 경로'라
- *   통과 파일도 선언 도련 B = min(BleedBox 대칭 도련, 3mm) 크롭 또는(BleedBox 부재·slug 증거
- *   부족) 원본 박스 그대로 산출된다 — 주문 작업사이즈와 다를 수 있다(예: 파일 B + 주문 bleed 1
- *   → 216x303). 변환(editSize '아는 경로')은 작업 크기에 정확히 맞춘다.
- *   후속: API 가 합성 잡에 주문 bleed·기대 재단을 전달(TrimCropContext.expectedTrimMm+bleedMm).
+ * - 산출물 크기(X1F-1, 2026-10): 잡에 `contentTrim`(주문 재단·도련)이 실린 합성·첨부 채움
+ *   (merge·compose-mixed 자동조립/관리자·attach-page-pad)은 trimCropContextFromJob 으로 읽어
+ *   '아는 경로'(TrimCropContext.expectedTrimMm+bleedMm)로 주문 작업사이즈(재단+2·도련)에 맞춘다.
+ *   키가 없거나 값이 유효하지 않은 잡은 '모르는 경로' — 선언 도련 B = min(BleedBox 대칭 도련,
+ *   3mm) 크롭 또는(BleedBox 부재·slug 증거 부족) 원본 박스 그대로 산출한다.
+ *   변환(editSize '아는 경로')은 작업 크기에 정확히 맞춘다.
  * - 킬스위치: VALIDATION_CONFIG.TRIMBOX_SIZE_CHECK(WORKER_TRIMBOX_SIZE_CHECK, 기본 ON).
  *   OFF 면 정규화 함수는 입력을 그대로 돌려준다(추가 파일·qpdf 호출 없음).
  */
@@ -434,6 +435,126 @@ export interface TrimCropContext {
   noopTolMm?: number;
 }
 
+/** 아는 경로(editSize 없음 + 기대 재단 + 주문 도련 ≥ 0) 여부 — planTrimBoxCrop 의 분기와 같은 조건. */
+function isKnownOrderPath(ctx: TrimCropContext): boolean {
+  return (
+    !ctx.editSizeMm &&
+    !!ctx.expectedTrimMm &&
+    typeof ctx.bleedMm === 'number' &&
+    ctx.bleedMm >= 0
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// 잡 페이로드 contentTrim → TrimCropContext (X1F-1, API ↔ worker 공유 계약)
+// ─────────────────────────────────────────────────────────────
+
+/** contentTrim 허용오차 상한(mm). 초과는 비정상 입력으로 보고 무시한다. */
+export const TRIMBOX_MAX_TOL_MM = 5;
+
+export type ContentTrimSource = 'templateSet' | 'bookSpec';
+
+/** API ↔ worker 공유 계약. 큐 페이로드 키 이름은 `contentTrim`. */
+export interface ContentTrimPayload {
+  trimWidthMm: number;
+  trimHeightMm: number;
+  bleedMm: number;
+  /** 없으면 워커 기본 LEGACY_SIZE_TOLERANCE_MM(1). */
+  tolMm?: number;
+  source: ContentTrimSource;
+}
+
+export type ContentTrimRejectReason =
+  | 'notObject'
+  | 'trimInvalid'
+  | 'bleedInvalid'
+  | 'tolInvalid'
+  | 'sourceInvalid';
+
+export type ContentTrimParse =
+  | { ok: true; payload: ContentTrimPayload }
+  | { ok: false; reason: ContentTrimRejectReason };
+
+const isFiniteNumber = (v: unknown): v is number =>
+  typeof v === 'number' && Number.isFinite(v);
+
+/**
+ * 순수 검증(로그 없음). raw 가 undefined/null 이면 null(=키 부재). throw 하지 않는다.
+ * - 숫자는 number 만(문자열 숫자 거부), 선택 필드(tolMm)의 null 은 없음으로 본다.
+ * - source 는 'templateSet' | 'bookSpec' 정확 일치. 알 수 없는 키는 무시한다(전방 호환).
+ */
+export function parseContentTrim(raw: unknown): ContentTrimParse | null {
+  if (raw === undefined || raw === null) return null;
+  if (typeof raw !== 'object' || Array.isArray(raw)) return { ok: false, reason: 'notObject' };
+  const o = raw as Record<string, unknown>;
+  const { trimWidthMm, trimHeightMm, bleedMm, source } = o;
+  const tolRaw = o.tolMm === null ? undefined : o.tolMm;
+  if (
+    !isFiniteNumber(trimWidthMm) ||
+    !isFiniteNumber(trimHeightMm) ||
+    trimWidthMm < TRIMBOX_MIN_TRIM_MM ||
+    trimHeightMm < TRIMBOX_MIN_TRIM_MM
+  ) {
+    return { ok: false, reason: 'trimInvalid' };
+  }
+  if (!isFiniteNumber(bleedMm) || bleedMm < 0 || bleedMm > TRIMBOX_MAX_BLEED_MM) {
+    return { ok: false, reason: 'bleedInvalid' };
+  }
+  if (
+    tolRaw !== undefined &&
+    (!isFiniteNumber(tolRaw) || tolRaw < 0 || tolRaw > TRIMBOX_MAX_TOL_MM)
+  ) {
+    return { ok: false, reason: 'tolInvalid' };
+  }
+  if (source !== 'templateSet' && source !== 'bookSpec') {
+    return { ok: false, reason: 'sourceInvalid' };
+  }
+  return {
+    ok: true,
+    payload: {
+      trimWidthMm,
+      trimHeightMm,
+      bleedMm,
+      ...(tolRaw !== undefined ? { tolMm: tolRaw } : {}),
+      source,
+    },
+  };
+}
+
+/**
+ * 잡 페이로드의 contentTrim → TrimCropContext(아는 경로). throw 하지 않는다.
+ * - 킬스위치 OFF → {} (값을 읽지 않음, 로그 없음)
+ * - 키 부재 → {} (로그 없음)
+ * - 무효 → {} + warn(`[TRIMBOX_CTX] ${logTag} ignored reason=…`) — 모르는 경로로 진행
+ * - 유효 → { expectedTrimMm, bleedMm, tolMm(기본 1) } + log. no-op 허용오차는 tolMm 과 같다
+ *   (planTrimBoxCrop 기본값).
+ */
+export function trimCropContextFromJob(raw: unknown, logTag = 'job'): TrimCropContext {
+  if (!VALIDATION_CONFIG.TRIMBOX_SIZE_CHECK) return {};
+  let parsed: ContentTrimParse | null;
+  try {
+    parsed = parseContentTrim(raw);
+  } catch {
+    logger.warn(`[TRIMBOX_CTX] ${logTag} ignored reason=parseError`);
+    return {};
+  }
+  if (parsed === null) return {};
+  if (!parsed.ok) {
+    logger.warn(`[TRIMBOX_CTX] ${logTag} ignored reason=${parsed.reason}`);
+    return {};
+  }
+  const p = parsed.payload;
+  const tolMm = p.tolMm ?? LEGACY_SIZE_TOLERANCE_MM;
+  logger.log(
+    `[TRIMBOX_CTX] ${logTag} source=${p.source} trim=${p.trimWidthMm}x${p.trimHeightMm} bleed=${p.bleedMm} tol=${tolMm}`,
+  );
+  return {
+    expectedTrimMm: { width: p.trimWidthMm, height: p.trimHeightMm },
+    bleedMm: p.bleedMm,
+    tolMm,
+  };
+}
+
 export type TrimCropSource = 'editSize' | 'orderBleed' | 'declaredBleedBox';
 
 export type TrimCropNoneReason =
@@ -500,7 +621,7 @@ function checkSlugEvidence(
  *   - 공통 기하(checkTrimGeometry): 명시 TrimBox ⊂ MediaBox, 비회전, UserUnit 1, 크기 하한
  *   - editSize 경로: (editSize − Trim)/2 가 두 축 ±tol 대칭이고 0 ≤ B ≤ TRIMBOX_MAX_BLEED_MM
  *   - 아는 경로(expectedTrimMm + bleedMm): TrimBox ≈ 기대 재단(±tol)
- *   - 모르는 경로(그 밖 — 합성 ctx 없음): checkSlugEvidence 충족(expectedTrimMm 만 있으면
+ *   - 모르는 경로(그 밖 — contentTrim 없는 합성): checkSlugEvidence 충족(expectedTrimMm 만 있으면
  *     TrimBox ≈ 기대 재단도 함께 요구)
  *   - |MediaBox − 목표| > noopTol (이미 목표 크기면 no-op)
  *   - 목표 ⊂ MediaBox (아니면 skip)
@@ -599,6 +720,29 @@ function describeCrop(plans: TrimCropPlan[]): string {
   return `source=${first.source} bleed=${first.bleedMm.x}x${first.bleedMm.y} target=${s.width}x${s.height}mm`;
 }
 
+/**
+ * skip 경고 대상 여부 — 목표가 MediaBox 밖(targetOutsideMedia)인 페이지가 있으면 true.
+ * 단 아는 경로에서 MediaBox ≈ TrimBox(±tol, 재단 크기 입력)인 페이지는 제외한다(debug 로 기록 —
+ * 도련 부족은 검증 단계 BLEED·SIZE 경고가 담당).
+ */
+function hasSkipWarning(
+  pageBoxes: PageBoxesPt[],
+  plans: TrimCropPlan[],
+  ctx: TrimCropContext,
+): boolean {
+  const known = isKnownOrderPath(ctx);
+  const tolMm = ctx.tolMm ?? LEGACY_SIZE_TOLERANCE_MM;
+  return plans.some((pl, i) => {
+    if (pl.action !== 'none' || pl.reason !== 'targetOutsideMedia') return false;
+    const p = pageBoxes[i];
+    if (!known || !p?.trimBox) return true;
+    const mediaEqualsTrim =
+      Math.abs(p.mediaBox.width - p.trimBox.width) * PT_TO_MM <= tolMm &&
+      Math.abs(p.mediaBox.height - p.trimBox.height) * PT_TO_MM <= tolMm;
+    return !mediaEqualsTrim;
+  });
+}
+
 /** 목표 밖으로 나간 박스를 목표로 clamp(교집합). 이미 안이면 null(무변경). */
 function clampToTarget(box: BoxRectPt | undefined, target: BoxRectPt): BoxRectPt | null {
   if (!box) return null;
@@ -652,7 +796,8 @@ async function verifyCropped(
  * - 플래그 OFF / 감지 실패(비PDF·손상·qpdf 부재) / 크롭 대상 없음 → { applied:false, path:inputPath }
  *   (새 파일 없음, throw 없음).
  * - 적용 단계 실패 → 파일이 LARGE_FILE_THRESHOLD 이하면 pdf-lib 폴백, 초과면 throw
- *   (재단선이 남은 산출물을 조용히 내보내지 않기 위함).
+ *   (재단선이 남은 산출물을 조용히 내보내지 않기 위함). 단 아는 경로(contentTrim)에서 모르는
+ *   경로({})였다면 모든 페이지가 none 이었을 입력은 throw 대신 입력 그대로(종전 결과) + warn.
  */
 export async function normalizeTrimBoxFile(
   inputPath: string,
@@ -672,12 +817,13 @@ export async function normalizeTrimBoxFile(
     logger.warn(`[TRIMBOX_NORMALIZE] ${logTag} skip reason=undetectable`);
     return passthrough;
   }
-  const plans = info.pages.map((pg) => planTrimBoxCrop(pageBoxesFromQpdfDict(pg), ctx));
+  const pageBoxes = info.pages.map((pg) => pageBoxesFromQpdfDict(pg));
+  const plans = pageBoxes.map((pb) => planTrimBoxCrop(pb, ctx));
   const cropIdx = plans
     .map((pl, i) => (pl.action === 'crop' ? i : -1))
     .filter((i) => i >= 0);
   if (cropIdx.length === 0) {
-    if (plans.some((pl) => pl.action === 'none' && pl.reason === 'targetOutsideMedia')) {
+    if (hasSkipWarning(pageBoxes, plans, ctx)) {
       logger.warn(`[TRIMBOX_NORMALIZE] ${logTag} skip pages=${plans.length} ${summarize(plans)}`);
     } else {
       logger.debug(`[TRIMBOX_NORMALIZE] ${logTag} none pages=${plans.length} ${summarize(plans)}`);
@@ -718,11 +864,23 @@ export async function normalizeTrimBoxFile(
       .stat(inputPath)
       .then((s) => s.size)
       .catch(() => Number.POSITIVE_INFINITY);
+    const large = size > VALIDATION_CONFIG.LARGE_FILE_THRESHOLD;
+    // 아는 경로 대형 파일: 모르는 경로({} — contentTrim 없는 잡)였다면 모든 페이지가 none 이었을
+    // 입력(slug 증거 없음 등)은 종전 결과(입력 그대로)로 진행한다. 그 밖은 실패 처리.
+    const keepInput =
+      large &&
+      isKnownOrderPath(ctx) &&
+      pageBoxes.every((pb) => planTrimBoxCrop(pb, {}).action === 'none');
     logger.warn(
       `[TRIMBOX_NORMALIZE] ${logTag} qpdf 적용 실패(${(err as Error)?.message ?? err}) — ` +
-        (size <= VALIDATION_CONFIG.LARGE_FILE_THRESHOLD ? 'pdf-lib 폴백' : '대형 파일 → 실패 처리'),
+        (!large
+          ? 'pdf-lib 폴백'
+          : keepInput
+            ? `대형 파일 → 주문 재단 크롭 없이 입력 그대로 진행(pages=${cropIdx.length})`
+            : '대형 파일 → 실패 처리'),
     );
-    if (size > VALIDATION_CONFIG.LARGE_FILE_THRESHOLD) {
+    if (keepInput) return passthrough;
+    if (large) {
       throw new Error(
         `TRIMBOX_NORMALIZE_FAILED: 재단선 영역 크롭 적용 실패(대형 파일, pages=${cropIdx.length})`,
       );
@@ -760,6 +918,7 @@ export async function normalizeTrimBoxPdfDoc(
   if (!VALIDATION_CONFIG.TRIMBOX_SIZE_CHECK) return { applied: false, pagesCropped: 0 };
   const pages = doc.getPages();
   const plans: TrimCropPlan[] = [];
+  const pageBoxes: PageBoxesPt[] = [];
   let cropped = 0;
   for (const page of pages) {
     // 박스 읽기(Trim/Bleed/ArtBox 포함)는 pageBoxesFromPdfLib 의 try 안에서만 한다 — 비정형
@@ -767,6 +926,7 @@ export async function normalizeTrimBoxPdfDoc(
     const boxes = pageBoxesFromPdfLib(page);
     const plan = planTrimBoxCrop(boxes, ctx);
     plans.push(plan);
+    pageBoxes.push(boxes);
     if (plan.action !== 'crop') continue;
     const [x1, y1, x2, y2] = boxToArray(plan.target);
     const bleed = clampToTarget(boxes.bleedBox, plan.target);
@@ -787,8 +947,10 @@ export async function normalizeTrimBoxPdfDoc(
     logger.log(
       `[TRIMBOX_NORMALIZE] ${logTag} pages=${pages.length} cropped=${cropped} ${describeCrop(plans)} (${summarize(plans)})`,
     );
-  } else if (plans.some((pl) => pl.action === 'none' && pl.reason === 'targetOutsideMedia')) {
+  } else if (hasSkipWarning(pageBoxes, plans, ctx)) {
     logger.warn(`[TRIMBOX_NORMALIZE] ${logTag} skip pages=${pages.length} ${summarize(plans)}`);
+  } else if (plans.some((pl) => pl.action === 'none' && pl.reason === 'targetOutsideMedia')) {
+    logger.debug(`[TRIMBOX_NORMALIZE] ${logTag} none pages=${pages.length} ${summarize(plans)}`);
   }
   return { applied: cropped > 0, pagesCropped: cropped };
 }

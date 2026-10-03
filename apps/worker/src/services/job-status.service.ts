@@ -34,6 +34,22 @@ export interface JobStatusContext {
   queueName?: string;
 }
 
+/** JD-4: 잡 상태 조회 결과(GET /worker-jobs/external/:id). 조회는 throw 하지 않는다. */
+export type JobStatusLookup =
+  | { ok: true; status: string }
+  | { ok: false; reason: 'notFound' | 'unavailable' };
+
+/** HTTP 응답 상태 코드(axios 오류 형태). axios.isAxiosError 는 spec 자동목에서 쓸 수 없어 직접 읽는다. */
+function httpStatusOf(error: unknown): number | undefined {
+  if (typeof error !== 'object' || error === null) return undefined;
+  const response = (error as { response?: { status?: unknown } }).response;
+  return typeof response?.status === 'number' ? response.status : undefined;
+}
+
+function errorMessageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 @Injectable()
 export class JobStatusService {
   private readonly logger = new Logger(JobStatusService.name);
@@ -106,6 +122,59 @@ export class JobStatusService {
       queueName: context.queueName,
     });
     return false;
+  }
+
+  /**
+   * JD-4: 단일 시도 상태 조회 — GET /worker-jobs/external/:id (X-API-Key, 10s).
+   * 응답 본문의 status 가 문자열이 아니거나 요청이 실패하면 throw (재시도는 래퍼 책임).
+   */
+  async fetchJobStatus(jobId: string): Promise<string> {
+    const res = await axios.get(
+      `${this.apiBaseUrl}/worker-jobs/external/${encodeURIComponent(jobId)}`,
+      {
+        timeout: 10_000,
+        headers: { 'X-API-Key': this.apiKey },
+      },
+    );
+    const status = (res?.data as { status?: unknown } | undefined)?.status;
+    if (typeof status !== 'string') {
+      throw new Error(`job status missing in response for jobId=${jobId}`);
+    }
+    return status;
+  }
+
+  /**
+   * JD-4: 상태 조회 재시도 래퍼 — PATCH 와 같은 백오프(RETRY_DELAYS_MS).
+   * 404 → 재시도 없이 notFound. 네트워크·5xx·status 비문자열 → 재시도 후 unavailable.
+   * throw 하지 않고 Sentry 에도 기록하지 않는다(호출부가 결과로 판단).
+   */
+  async fetchJobStatusWithRetry(jobId: string): Promise<JobStatusLookup> {
+    const delays = this.retryDelaysMs;
+    let lastError: unknown = null;
+
+    for (let attempt = 0; attempt <= delays.length; attempt++) {
+      try {
+        const status = await this.fetchJobStatus(jobId);
+        return { ok: true, status };
+      } catch (error: unknown) {
+        if (httpStatusOf(error) === 404) {
+          return { ok: false, reason: 'notFound' };
+        }
+        lastError = error;
+        if (attempt < delays.length) {
+          this.logger.warn(
+            `fetchJobStatus attempt ${attempt + 1} failed for jobId=${jobId}, ` +
+              `retrying in ${delays[attempt]}ms: ${errorMessageOf(error)}`,
+          );
+          await this.delay(delays[attempt]);
+        }
+      }
+    }
+
+    this.logger.warn(
+      `fetchJobStatus gave up for jobId=${jobId}: ${errorMessageOf(lastError)}`,
+    );
+    return { ok: false, reason: 'unavailable' };
   }
 
   private delay(ms: number): Promise<void> {

@@ -1,4 +1,4 @@
-import { Processor, Process } from '@nestjs/bull';
+import { Processor, Process, OnQueueFailed } from '@nestjs/bull';
 import { Logger } from '@nestjs/common';
 import { Job } from 'bull';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
@@ -9,11 +9,17 @@ import axios from 'axios';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import { captureJobException } from '../sentry/sentry.init';
+import { reportStalledLimitFailure } from './stalled-job-failure';
 import { VALIDATION_CONFIG } from '../config/validation.config';
 import { downloadToTempFile } from '../utils/stream-download';
 import { extractPdfMetadataQpdf } from '../utils/pdf-metadata-qpdf';
 // X1 (2026-09-30): compose-mixed 내지 입력 재단선 영역 크롭 정규화(원본 불변·임시 사본).
-import { normalizeTrimBoxFile, normalizeTrimBoxPdfDoc } from '../utils/trimbox-normalize';
+import {
+  normalizeTrimBoxFile,
+  normalizeTrimBoxPdfDoc,
+  trimCropContextFromJob,
+  TrimCropContext,
+} from '../utils/trimbox-normalize';
 // R5 (2026-08-11): 최종 인쇄 산출 정규화 — 기본 OFF(no-op)·fail-open. 6개 산출 지점 공통.
 import { maybeNormalizeForPrint } from '../utils/print-normalize';
 import {
@@ -92,6 +98,11 @@ interface SynthesisJobData {
    * 실발화는 Stage 3(v1 books 잡 생성 표면).
    */
   isTest?: boolean;
+  /**
+   * X1F-1: API 가 조건부로 싣는 공유 계약 키(주문 재단·도련 — merge 합성, compose-mixed
+   * 자동조립·관리자 경로). 반드시 trimCropContextFromJob 으로만 읽는다.
+   */
+  contentTrim?: unknown;
 }
 
 // FilesService 인터페이스 (Worker에서 DB 조회용)
@@ -434,6 +445,8 @@ export class SynthesisProcessor {
     const outputMode = composeOutputMode || 'merged';
     // D-4: cover 검증 기대치 — output(wrap 포함) 우선, total 폴백. 부재=비스프레드 → 검증 skip(기존 동일).
     const spreadCoverExpectation = this.resolveSpreadCoverExpectation(job.data);
+    // X1F-1: 내지 정규화 컨텍스트 — pdf-lib(3곳)·qpdf(lightweight) 경로가 같은 값을 받는다.
+    const contentTrimCtx = trimCropContextFromJob(job.data.contentTrim, `compose:${jobId}`);
 
     this.logger.log(
       `Processing compose-mixed synthesis job ${jobId} (queue: ${queueJobId}, outputMode: ${outputMode})`,
@@ -477,6 +490,7 @@ export class SynthesisProcessor {
           composeBackEndpaperUrls,
           composeContentPdfUrl,
           spreadCoverExpectation,
+          contentTrimCtx,
         });
         return r;
       }
@@ -499,7 +513,7 @@ export class SynthesisProcessor {
           const bytes = await this.synthesizerService.downloadFile(composeContentPdfUrl);
           const doc = await PDFDocument.load(bytes);
           // X1: 내지 재단선 영역 크롭 정규화(메모리 사본, copyPages 이전). 면지·표지 제외.
-          await normalizeTrimBoxPdfDoc(doc, {}, `compose:${jobId}`);
+          await normalizeTrimBoxPdfDoc(doc, contentTrimCtx, `compose:${jobId}`);
           const pages = await pdf.copyPages(doc, doc.getPageIndices());
           pages.forEach((p) => pdf.addPage(p));
         }
@@ -577,7 +591,7 @@ export class SynthesisProcessor {
           const bytes = await this.synthesizerService.downloadFile(composeContentPdfUrl);
           const doc = await PDFDocument.load(bytes);
           // X1: 내지 재단선 영역 크롭 정규화(메모리 사본, copyPages 이전).
-          await normalizeTrimBoxPdfDoc(doc, {}, `compose:${jobId}`);
+          await normalizeTrimBoxPdfDoc(doc, contentTrimCtx, `compose:${jobId}`);
           const pages = await pagesPdf.copyPages(doc, doc.getPageIndices());
           pages.forEach((p) => pagesPdf.addPage(p));
         }
@@ -608,7 +622,7 @@ export class SynthesisProcessor {
         if (composeContentPdfUrl) {
           const b = await this.synthesizerService.downloadFile(composeContentPdfUrl); const d = await PDFDocument.load(b);
           // X1: 내지 재단선 영역 크롭 정규화(메모리 사본, copyPages 이전).
-          await normalizeTrimBoxPdfDoc(d, {}, `compose:${jobId}`);
+          await normalizeTrimBoxPdfDoc(d, contentTrimCtx, `compose:${jobId}`);
           const p = await finalPdf.copyPages(d, d.getPageIndices()); p.forEach(pg => finalPdf.addPage(pg));
         }
         const backList = composeBackEndpaperUrls ?? [];
@@ -664,6 +678,8 @@ export class SynthesisProcessor {
     composeContentPdfUrl?: string;
     /** D-4: cover 검증 기대치(output 우선·total 폴백 해석 완료값). 부재=비스프레드 → 검증 skip */
     spreadCoverExpectation?: { widthMm: number; heightMm: number; dpi?: number };
+    /** X1F-1: 내지 정규화 컨텍스트(OFF 경로와 같은 값 — 필수). */
+    contentTrimCtx: TrimCropContext;
   }): Promise<SynthesisResult> {
     const {
       jobId,
@@ -679,6 +695,7 @@ export class SynthesisProcessor {
       composeBackEndpaperUrls,
       composeContentPdfUrl,
       spreadCoverExpectation,
+      contentTrimCtx,
     } = args;
 
     // 생성/다운로드한 임시 파일들 — finally 에서 정리(출력물은 outputDir 라 별개).
@@ -708,7 +725,7 @@ export class SynthesisProcessor {
     const normalizedContentPart = async (srcPath: string): Promise<string> => {
       const out = mkTmp('trimnorm');
       scratch.push(out);
-      const r = await normalizeTrimBoxFile(srcPath, out, {}, `compose:${jobId}`);
+      const r = await normalizeTrimBoxFile(srcPath, out, contentTrimCtx, `compose:${jobId}`);
       return r.applied ? out : srcPath;
     };
 
@@ -1016,6 +1033,8 @@ export class SynthesisProcessor {
     );
 
     let localResult: SynthesisLocalResult | null = null;
+    // X1F-1: 잡 contentTrim(주문 재단·도련) → 내지 정규화 컨텍스트. 키 없음·무효·킬스위치 OFF 면 {}.
+    const contentTrimCtx = trimCropContextFromJob(job.data.contentTrim, `merge:${jobId}`);
 
     try {
       // Update job status to PROCESSING
@@ -1031,6 +1050,8 @@ export class SynthesisProcessor {
           spineWidth,
           bindingType,
           outputFormat,
+          contentTrimCtx,
+          logTag: `merge:${jobId}`,
         },
       );
 
@@ -2033,6 +2054,21 @@ export class SynthesisProcessor {
     // temp 디렉토리 전체 삭제
     await fs.rm(jobTempDir, { recursive: true, force: true }).catch(() => {});
     this.logger.debug(`Cleaned up spread temp dir: ${jobTempDir}`);
+  }
+
+  /**
+   * JD-4: pdf-synthesis 큐의 failed 리스너. stalled 한도 초과 실패만 FAILED(JOB_STALLED)로 기록한다.
+   * 완료 마커가 있고 잡이 아직 PENDING/PROCESSING 이면 멱등 가드와 같이 캐시된 COMPLETED 를 1회 재보고한다.
+   */
+  @OnQueueFailed()
+  async onQueueFailed(job: Job<unknown> | null, err: Error): Promise<void> {
+    await reportStalledLimitFailure(job, err, {
+      queueName: 'pdf-synthesis',
+      routes: { 'synthesize-pdf': { jobType: 'synthesize' } },
+      jobStatusService: this.jobStatusService,
+      logger: this.logger,
+      loadCompletedPayload: (domainJobId) => this.loadCompletionMarker(domainJobId),
+    });
   }
 
   /**

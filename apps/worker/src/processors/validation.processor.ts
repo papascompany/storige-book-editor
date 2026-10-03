@@ -1,10 +1,11 @@
-import { Processor, Process } from '@nestjs/bull';
+import { Processor, Process, OnQueueFailed } from '@nestjs/bull';
 import { Logger } from '@nestjs/common';
 import { Job } from 'bull';
 import { PdfValidatorService } from '../services/pdf-validator.service';
 import { ValidationOptions, ValidationResultDto } from '../dto/validation-result.dto';
 import { JobStatusService } from '../services/job-status.service';
 import { captureJobException } from '../sentry/sentry.init';
+import { reportStalledLimitFailure } from './stalled-job-failure';
 
 interface ValidationJobData {
   jobId: string;
@@ -175,6 +176,19 @@ export class ValidationProcessor {
 
     const errorMessages = result.errors.map(e => e.message);
     return errorMessages.join('; ');
+  }
+
+  /**
+   * JD-4: pdf-validation 큐의 failed 리스너. stalled 한도 초과 실패만 FAILED(JOB_STALLED)로 기록한다.
+   */
+  @OnQueueFailed()
+  async onQueueFailed(job: Job<unknown> | null, err: Error): Promise<void> {
+    await reportStalledLimitFailure(job, err, {
+      queueName: 'pdf-validation',
+      routes: { 'validate-pdf': { jobType: 'validate' } },
+      jobStatusService: this.jobStatusService,
+      logger: this.logger,
+    });
   }
 
   /**

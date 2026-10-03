@@ -10,6 +10,8 @@ import {
 } from '@storige/types';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { PDFDocument as PdfLibDocument } from 'pdf-lib';
+import * as trimboxModule from '../utils/trimbox-normalize';
 
 // Mock axios - jest.mock은 호이스팅되므로 인라인으로 정의
 jest.mock('axios', () => ({
@@ -679,6 +681,126 @@ describe('SynthesisProcessor', () => {
       expect(size.width).toBeCloseTo(mmToPt(216), 0);
       expect(size.height).toBeCloseTo(mmToPt(303), 0);
     });
+  });
+
+  // ── X1F-1: 잡 contentTrim(주문 재단·도련) → 내지 정규화 컨텍스트 배선 ──
+  describe('X1F-1 contentTrim 배선', () => {
+    type SynthesisJobArg = Parameters<SynthesisProcessor['handleSynthesis']>[0];
+    const asJob = (data: Record<string, unknown>): SynthesisJobArg =>
+      createMockJob(data) as unknown as SynthesisJobArg;
+    const loadMarker = (jobId: string): Promise<{ status?: string } | null> =>
+      (
+        processor as unknown as {
+          loadCompletionMarker(id: string): Promise<{ status?: string } | null>;
+        }
+      ).loadCompletionMarker(jobId);
+    const mmToPt = (mm: number) => (mm * 72) / 25.4;
+    /** 계약 fixture(L-A1 spec 과 같은 리터럴) */
+    const CONTRACT_FIXTURE_TEMPLATE_SET =
+      '{"trimWidthMm":210,"trimHeightMm":297,"bleedMm":3,"source":"templateSet"}';
+    const EXPECTED_CTX = { expectedTrimMm: { width: 210, height: 297 }, bleedMm: 3, tolMm: 1 };
+
+    const runMerge = async (jobId: string, extra: Record<string, unknown>) => {
+      const mockLocalResult: SynthesisLocalResult = {
+        success: true,
+        sourceCoverPath: `${testStoragePath}/${jobId}_cover.pdf`,
+        sourceContentPath: `${testStoragePath}/${jobId}_content.pdf`,
+        mergedPath: `${testStoragePath}/${jobId}_merged.pdf`,
+        totalPages: 3,
+      };
+      await createMockPdfFile(mockLocalResult.sourceCoverPath);
+      await createMockPdfFile(mockLocalResult.sourceContentPath);
+      await createMockPdfFile(mockLocalResult.mergedPath);
+      synthesizerService.synthesizeToLocal.mockResolvedValue(mockLocalResult);
+      try {
+        return await processor.handleSynthesis(
+          asJob({
+            jobId,
+            coverUrl: 'https://example.com/cover.pdf',
+            contentUrl: 'https://example.com/content.pdf',
+            spineWidth: 5,
+            ...extra,
+          }),
+        );
+      } finally {
+        await cleanupMockFiles([
+          mockLocalResult.sourceCoverPath,
+          mockLocalResult.sourceContentPath,
+          mockLocalResult.mergedPath,
+        ]);
+      }
+    };
+
+    it('merge 잡의 contentTrim 을 검증해 synthesizeToLocal 에 contentTrimCtx·잡 로그 태그로 넘긴다', async () => {
+      await runMerge('x1f-merge-ctx', { contentTrim: JSON.parse(CONTRACT_FIXTURE_TEMPLATE_SET) });
+      expect(synthesizerService.synthesizeToLocal).toHaveBeenCalledWith(
+        'https://example.com/cover.pdf',
+        'https://example.com/content.pdf',
+        expect.objectContaining({ contentTrimCtx: EXPECTED_CTX, logTag: 'merge:x1f-merge-ctx' }),
+      );
+    });
+
+    it('contentTrim 이 없으면 contentTrimCtx 는 빈 객체다', async () => {
+      await runMerge('x1f-merge-none', {});
+      expect(synthesizerService.synthesizeToLocal).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.any(String),
+        expect.objectContaining({ contentTrimCtx: {} }),
+      );
+    });
+
+    it('형식이 맞지 않는 contentTrim 이면 빈 컨텍스트로 합성을 마친다', async () => {
+      const result = await runMerge('x1f-merge-invalid', {
+        contentTrim: { trimWidthMm: 210, trimHeightMm: 297, bleedMm: 9, source: 'templateSet' },
+      });
+      expect(result.success).toBe(true);
+      expect(synthesizerService.synthesizeToLocal).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.any(String),
+        expect.objectContaining({ contentTrimCtx: {} }),
+      );
+      const marker = await loadMarker('x1f-merge-invalid');
+      expect(marker?.status).toBe('COMPLETED');
+    });
+
+    it.each(['separate', 'content-only', 'single', 'merged'])(
+      'compose-mixed pdf-lib 경로의 내지 정규화가 %s 출력 모드에서 같은 컨텍스트를 받는다',
+      async (mode) => {
+        const spy = jest.spyOn(trimboxModule, 'normalizeTrimBoxPdfDoc');
+        // 파일 A 패턴(MediaBox 236x323, TrimBox=BleedBox 210x297) 2쪽
+        const doc = await PdfLibDocument.create();
+        for (let i = 0; i < 2; i++) {
+          const page = doc.addPage([mmToPt(236), mmToPt(323)]);
+          page.setTrimBox(mmToPt(13), mmToPt(13), mmToPt(210), mmToPt(297));
+          page.setBleedBox(mmToPt(13), mmToPt(13), mmToPt(210), mmToPt(297));
+        }
+        const contentBytes = Buffer.from(await doc.save());
+        synthesizerService.downloadFile.mockResolvedValue(contentBytes);
+        const jobId = `x1f-compose-${mode}`;
+        try {
+          const result = await processor.handleSynthesis(
+            asJob({
+              jobId,
+              mode: 'compose-mixed',
+              composeCoverEditable: false,
+              composeCoverWidthMm: 216,
+              composeCoverHeightMm: 303,
+              composeContentPdfUrl: 'https://example.com/content.pdf',
+              composeContentWidthMm: 216,
+              composeContentHeightMm: 303,
+              composeOutputMode: mode === 'merged' ? undefined : mode,
+              contentTrim: JSON.parse(CONTRACT_FIXTURE_TEMPLATE_SET),
+            }),
+          );
+          expect(result.success).toBe(true);
+          expect(spy).toHaveBeenCalledTimes(1);
+          expect(spy.mock.calls[0][1]).toEqual(EXPECTED_CTX);
+          expect(spy.mock.calls[0][2]).toBe(`compose:${jobId}`);
+        } finally {
+          spy.mockRestore();
+        }
+      },
+    );
   });
 });
 

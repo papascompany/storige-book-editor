@@ -128,4 +128,81 @@ describe('JobStatusService (WK-4)', () => {
       );
     });
   });
+
+  describe('fetchJobStatusWithRetry (JD-4 상태 조회)', () => {
+    const fastDelays = [1, 1, 1, 1, 1];
+
+    beforeEach(() => {
+      mockedAxios.get.mockReset();
+    });
+
+    it('fetchJobStatusWithRetry 는 GET /worker-jobs/external/:id 를 X-API-Key·10s 타임아웃으로 호출하고 status 를 돌려준다', async () => {
+      mockedAxios.get.mockResolvedValueOnce({ status: 200, data: { id: 'job 1', status: 'PROCESSING' } });
+      const service = new JobStatusService(fastDelays);
+
+      const r = await service.fetchJobStatusWithRetry('job 1');
+
+      expect(r).toEqual({ ok: true, status: 'PROCESSING' });
+      expect(mockedAxios.get).toHaveBeenCalledTimes(1);
+      expect(mockedAxios.get).toHaveBeenCalledWith(
+        expect.stringMatching(/\/worker-jobs\/external\/job%201$/),
+        expect.objectContaining({
+          timeout: 10_000,
+          headers: { 'X-API-Key': expect.any(String) },
+        }),
+      );
+    });
+
+    it('404 면 재시도 없이 notFound', async () => {
+      mockedAxios.get.mockRejectedValueOnce(
+        Object.assign(new Error('Request failed with status code 404'), { response: { status: 404 } }),
+      );
+      const service = new JobStatusService(fastDelays);
+
+      await expect(service.fetchJobStatusWithRetry('job-404')).resolves.toEqual({
+        ok: false,
+        reason: 'notFound',
+      });
+      expect(mockedAxios.get).toHaveBeenCalledTimes(1);
+    });
+
+    it('전부 실패하면 6회 시도 후 unavailable 을 돌려주고 throw·Sentry 기록이 없다', async () => {
+      mockedAxios.get.mockRejectedValue(
+        Object.assign(new Error('Request failed with status code 502'), { response: { status: 502 } }),
+      );
+      const service = new JobStatusService(fastDelays);
+
+      await expect(service.fetchJobStatusWithRetry('job-x')).resolves.toEqual({
+        ok: false,
+        reason: 'unavailable',
+      });
+      expect(mockedAxios.get).toHaveBeenCalledTimes(6);
+      expect(mockedCapture).not.toHaveBeenCalled();
+    });
+
+    it('2회 실패 후 성공하면 status 를 돌려준다', async () => {
+      mockedAxios.get
+        .mockRejectedValueOnce(new Error('ECONNREFUSED'))
+        .mockRejectedValueOnce(new Error('timeout of 10000ms exceeded'))
+        .mockResolvedValueOnce({ status: 200, data: { status: 'COMPLETED' } });
+      const service = new JobStatusService(fastDelays);
+
+      await expect(service.fetchJobStatusWithRetry('job-1')).resolves.toEqual({
+        ok: true,
+        status: 'COMPLETED',
+      });
+      expect(mockedAxios.get).toHaveBeenCalledTimes(3);
+    });
+
+    it('응답 status 가 문자열이 아니면 unavailable', async () => {
+      mockedAxios.get.mockResolvedValue({ status: 200, data: { status: 3 } });
+      const service = new JobStatusService(fastDelays);
+
+      await expect(service.fetchJobStatusWithRetry('job-1')).resolves.toEqual({
+        ok: false,
+        reason: 'unavailable',
+      });
+      expect(mockedAxios.get).toHaveBeenCalledTimes(6);
+    });
+  });
 });

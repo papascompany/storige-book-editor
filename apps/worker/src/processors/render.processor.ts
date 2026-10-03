@@ -20,6 +20,7 @@ interface RenderPagesJobData {
  *
  * `pdf-conversion` 큐를 공유하되 'render-pdf-pages' 잡만 처리.
  * 표시전용 가이드라 우선순위가 낮고 N페이지 직렬 GS 호출이라 동시성 1 로 검증/변환을 방해하지 않음.
+ * 이 큐의 failed 리스너(JD-4 stalled 한도 초과 기록)는 ConversionProcessor 한 곳에만 둔다.
  */
 @Processor('pdf-conversion')
 export class RenderProcessor {

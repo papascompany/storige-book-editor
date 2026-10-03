@@ -1,4 +1,4 @@
-import { Processor, Process } from '@nestjs/bull';
+import { Processor, Process, OnQueueFailed } from '@nestjs/bull';
 import { Logger } from '@nestjs/common';
 import { Job } from 'bull';
 import * as fs from 'fs/promises';
@@ -19,6 +19,7 @@ import { JobStatusService, JobStatusPayload } from '../services/job-status.servi
 import { isApiMarker, downloadViaApi } from '../services/api-file-download';
 import { assertSafeDownloadUrl } from '../utils/url-safety';
 import { captureJobException } from '../sentry/sentry.init';
+import { reportStalledLimitFailure } from './stalled-job-failure';
 import { DomainError, ErrorCodes } from '../common/errors';
 import { isFlagOn } from '../config/feature-flags';
 
@@ -366,6 +367,19 @@ export class CutoutProcessor {
       );
     }
     return fs.readFile(filePath);
+  }
+
+  /**
+   * JD-4: cutout 큐의 failed 리스너. stalled 한도 초과 실패만 FAILED(JOB_STALLED)로 기록한다.
+   */
+  @OnQueueFailed()
+  async onQueueFailed(job: Job<unknown> | null, err: Error): Promise<void> {
+    await reportStalledLimitFailure(job, err, {
+      queueName: CUTOUT_QUEUE_NAME,
+      routes: { [CUTOUT_JOB_NAME]: { jobType: 'cutout' } },
+      jobStatusService: this.jobStatusService,
+      logger: this.logger,
+    });
   }
 
   /**

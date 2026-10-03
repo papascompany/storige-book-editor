@@ -1,4 +1,4 @@
-import { Processor, Process } from '@nestjs/bull';
+import { Processor, Process, OnQueueFailed } from '@nestjs/bull';
 import { Logger } from '@nestjs/common';
 import { Job } from 'bull';
 import { PdfConverterService } from '../services/pdf-converter.service';
@@ -7,6 +7,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { captureJobException } from '../sentry/sentry.init';
+import { reportStalledLimitFailure } from './stalled-job-failure';
 
 interface ConversionJobData {
   jobId: string;
@@ -34,6 +35,8 @@ interface ConversionJobData {
     mode?: 'passthrough' | 'innerfit' | 'center';
     /** 페이지수 배수 보정(2026-06-25, fix-pagecount) — 현재 페이지수를 다음 배수까지 백지로 채움. */
     padToMultiple?: number;
+    /** X1F-1c: attach-page-pad 잡의 주문 재단·도련(공유 계약 키). 변환 서비스가 검증해 읽는다. */
+    contentTrim?: unknown;
   };
 }
 
@@ -67,6 +70,7 @@ export class ConversionProcessor {
         job.data.fileUrl,
         job.data.convertOptions,
         outputPath,
+        job.data.jobId,
       );
 
       // Update job status to COMPLETED — top-level outputFileUrl과 result 내부 URL 모두 일관성 유지
@@ -102,6 +106,23 @@ export class ConversionProcessor {
 
       throw error;
     }
+  }
+
+  /**
+   * JD-4: pdf-conversion 큐의 failed 리스너(이 큐에서 유일 — RenderProcessor 는 두지 않는다).
+   * stalled 한도 초과 실패만 FAILED(JOB_STALLED)로 기록하고, job.name 으로 convert·render-pages 를 나눈다.
+   */
+  @OnQueueFailed()
+  async onQueueFailed(job: Job<unknown> | null, err: Error): Promise<void> {
+    await reportStalledLimitFailure(job, err, {
+      queueName: 'pdf-conversion',
+      routes: {
+        'convert-pdf': { jobType: 'convert' },
+        'render-pdf-pages': { jobType: 'render-pages' },
+      },
+      jobStatusService: this.jobStatusService,
+      logger: this.logger,
+    });
   }
 
   /**
