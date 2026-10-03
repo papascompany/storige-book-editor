@@ -8,6 +8,7 @@
  *   ③ 플러시 실패 시 서버 restore 를 호출하지 않는다(미저장 편집 유실 금지).
  *   ④ 서버 restore 실패 시 throw(패널이 토스트) + 부수효과 없음.
  *   ⑤ 재초기화는 복원 응답 세션을 주입해 세션 재조회(GET :id)/재생성 경로를 타지 않는다.
+ *   ⑥ 샘플 폴백이 없는 설정(프로덕션)에서 재초기화의 템플릿셋 조회가 실패하면 복원 요청은 원래 오류로 실패한다.
  *
  * EmbeddedEditor 의 무거운 초기화는 store.ready=true 선세팅으로 스킵된다(hostCommand 테스트 준용).
  * 재초기화(⑤)는 templatesApi 를 실패시켜 세션 단계만 통과시킨 뒤 오류 화면으로 종료시킨다.
@@ -210,6 +211,32 @@ describe('EmbeddedEditor — 서버 버전 복원 배선 (P1-4)', () => {
     expect(api.get).not.toHaveBeenCalled()
     expect(api.createGuest).not.toHaveBeenCalled()
     expect(api.getTemplateSetWithTemplates).toHaveBeenCalled()
+  })
+
+  it('⑥ 샘플 폴백이 없는 설정에서 재초기화의 템플릿셋 조회 실패는 복원 요청을 원래 오류로 실패시킨다', async () => {
+    vi.stubEnv('DEV', false)
+    try {
+      renderEmbed()
+      await waitFor(() => expect(captured.sessionVersions).not.toBeNull())
+      const source = captured.sessionVersions!
+      act(() => {
+        useAppStore.setState({ ready: false } as never)
+      })
+
+      let restoreErr: Error | null = null
+      const pending = source.restore('v-1').catch((e: Error) => {
+        restoreErr = e
+      })
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 0))
+      })
+      await pending
+      expect(String(restoreErr?.message)).toContain('TEMPLATE_FETCH_STUB')
+      expect(await screen.findByText('에디터 초기화 실패')).toBeInTheDocument()
+      expect(api.getTemplateSetWithTemplates).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.unstubAllEnvs()
+    }
   })
 
   it('② dirty 상태 복원: saveNow 플러시가 restore 보다 먼저', async () => {

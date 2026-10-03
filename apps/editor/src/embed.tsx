@@ -110,6 +110,17 @@ import {
   type OrderListGuestOpenResult,
   type SessionNotFoundReason,
 } from './utils/embedSessionReopen'
+import {
+  EMBED_FAILURE_MESSAGES,
+  EmbedInitError,
+  canCreateSessionAfterOrderLookupFailure,
+  resolveInitFailure,
+  resolveTemplateSetLoadFailure,
+  saveFailureMessage,
+  shouldCreateGuestAfterMemberCreateFailure,
+} from './utils/embedFailurePolicy'
+import { describeError } from './utils/safeErrorLog'
+import type { FinishOutcome } from './utils/finishOutcome'
 import type { SessionVersionsSource } from './components/editor/HistoryPanel'
 import './index.css'
 
@@ -369,6 +380,8 @@ export interface EditorError {
    * guest_token_required=게스트 세션을 게스트 토큰 없이 열려 한 경우(호스트가 게스트 토큰으로 재오픈).
    */
   reason?: SessionNotFoundReason
+  /** TEMPLATE_SET_NOT_FOUND 에서만: 로드에 실패한 템플릿셋 ID */
+  templateSetId?: string
   /**
    * true = 이 iframe 에서 더 진행 불가(호스트는 닫거나 새 토큰/세션으로 재오픈),
    * false = 편집 계속 가능(호스트는 닫지 말고 비차단 안내)
@@ -585,7 +598,7 @@ function postToParent<T>(
     // parentOrigin 만 신뢰. '*' 절대 금지.
     window.parent.postMessage(envelope, parentOrigin)
   } catch (err) {
-    console.warn('[Editor] postMessage failed:', err)
+    console.warn('[Editor] postMessage failed:', describeError(err))
   }
 }
 
@@ -689,6 +702,11 @@ function EmbeddedEditor({
    * 초기화 시작 시 false 로 리셋.
    */
   const fatalInitErrorRef = useRef(false)
+  /**
+   * 인증 만료(AUTH_EXPIRED) 알림 여부 — 같은 토큰 세대 안에서는 1회만 알린다(초기화 중 getMe·주문 조회가
+   * 함께 401 이어도 1건). 초기화(재초기화 포함)가 시작될 때 토큰을 다시 정하므로 그때 false 로 되돌린다.
+   */
+  const authExpiredNotifiedRef = useRef(false)
   const [currentSession, setCurrentSession] = useState<EditSessionResponse | null>(null)
   /**
    * W1-G2(2026-08-13): 내지 PDF 첨부 진입점에 넘길 실효 templateSetId.
@@ -748,7 +766,7 @@ function EmbeddedEditor({
         setCurrentSession(updatedSession)
       },
       onError: (error) => {
-        console.error('[EmbeddedEditor] Auto-save error:', error)
+        console.error('[EmbeddedEditor] Auto-save error:', describeError(error))
         // Don't call onError for auto-save failures to avoid disrupting user flow
       },
       // 복원 완료 전 dirty 마킹 차단 — 무편집 자동저장의 지오메트리 오염 방지 (2026-06-12)
@@ -842,10 +860,15 @@ function EmbeddedEditor({
   // 인증 만료 이벤트 핸들링
   useEffect(() => {
     const unsubscribe = apiClient.onAuthExpired(() => {
+      if (authExpiredNotifiedRef.current) {
+        console.warn('[EmbeddedEditor] Auth token expired — already notified')
+        return
+      }
+      authExpiredNotifiedRef.current = true
       console.warn('[EmbeddedEditor] Auth token expired')
       const errorPayload = {
         code: 'AUTH_EXPIRED' as const,
-        message: '인증이 만료되었습니다. 페이지를 새로고침해주세요.',
+        message: EMBED_FAILURE_MESSAGES.authExpired,
         fatal: true,
       }
       onError?.(errorPayload)
@@ -873,6 +896,7 @@ function EmbeddedEditor({
         setError(null)
         setErrorCode(null)
         fatalInitErrorRef.current = false
+        authExpiredNotifiedRef.current = false
 
         // ========== 1. 인증 설정 (API 호출 전에 반드시 먼저 실행) ==========
         // API Base URL 설정
@@ -905,7 +929,7 @@ function EmbeddedEditor({
         }
 
         if (!effectiveToken) {
-          throw new Error('접근 권한이 없습니다. 로그인 후 다시 시도해주세요.')
+          throw new EmbedInitError('접근 권한이 없습니다. 로그인 후 다시 시도해주세요.')
         }
 
         // useAuthStore 에 토큰 주입 → checkAuth(getMe) 로 me 채움(role 비동기 세팅).
@@ -919,7 +943,7 @@ function EmbeddedEditor({
         try {
           useAuthStore.getState().setToken(effectiveToken)
         } catch (authErr) {
-          console.warn('[EmbeddedEditor] useAuthStore.setToken 실패(비차단):', authErr)
+          console.warn('[EmbeddedEditor] useAuthStore.setToken 실패(비차단):', describeError(authErr))
         }
         // ========== 인증 설정 완료 ==========
 
@@ -996,8 +1020,8 @@ function EmbeddedEditor({
             ...apiErr,
             code: isConnectivity ? apiErr.code : 'SERVER_ERROR',
             message: isConnectivity
-              ? '편집 작업을 불러오지 못했습니다. 네트워크 연결을 확인한 뒤 다시 시도해주세요.'
-              : '일시적인 서버 오류로 편집 작업을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.',
+              ? EMBED_FAILURE_MESSAGES.sessionConnectivity
+              : EMBED_FAILURE_MESSAGES.sessionServer,
           }
           throw rethrown
         }
@@ -1024,7 +1048,7 @@ function EmbeddedEditor({
             // editSessionsApi.get 은 raw axios 호출이라 AxiosError 로 reject → 여기서 ApiError 로 정규화.
             const apiErr: ApiError = axios.isAxiosError(err) ? parseApiError(err) : (err as ApiError)
             const status = apiErr?.status
-            console.warn('[EmbeddedEditor] Session load failed:', sessionId, status, apiErr?.code, err)
+            console.warn('[EmbeddedEditor] Session load failed:', sessionId, status, apiErr?.code, describeError(err))
 
             handleSessionLoadFailure(apiErr, sessionId, sessionNotFoundReasonOf(err, status))
             return
@@ -1046,7 +1070,10 @@ function EmbeddedEditor({
               console.log('[EmbeddedEditor] Found existing session for order:', orderItem.id)
             }
           } catch (err) {
-            console.warn('[EmbeddedEditor] Failed to find sessions by order:', err)
+            console.warn('[EmbeddedEditor] Failed to find sessions by order:', describeError(err))
+            // 연결 실패·타임아웃·5xx·408·429·401 이면 새 세션을 만들지 않고 바깥 처리(NETWORK_ERROR·인증 만료)로 넘긴다.
+            // 그 밖의 4xx·HTTP 가 아닌 실패는 주문 세션이 없는 것으로 보고 아래 생성으로 진행한다.
+            if (!canCreateSessionAfterOrderLookupFailure(err)) throw err
           }
 
           // 고른 항목이 게스트 토큰 없이 실린 비회원 세션이면 현재 탭에 기억된 게스트 토큰으로만 연다.
@@ -1153,9 +1180,14 @@ function EmbeddedEditor({
               editSession = await editSessionsApi.create(createPayload)
               console.log('[EmbeddedEditor] New session created:', editSession.id)
             } catch (createErr) {
-              // 토큰에 회원 식별이 없으면(MEMBER_REQUIRED 등) 회원 세션 생성이 400.
-              // → 게스트 세션으로 폴백: 편집/자동저장은 가능하고, 편집완료 시 로그인 유도(editor.needAuth).
-              console.warn('[EmbeddedEditor] Member session create failed — falling back to guest:', createErr)
+              // 회원 세션을 만들 수 없는 토큰(400 MEMBER_REQUIRED·code 없는 400·403 PERMISSION_DENIED)만
+              // 게스트 세션으로 폴백: 편집/자동저장은 가능하고, 편집완료 시 로그인 유도(editor.needAuth).
+              // 그 밖의 실패(연결·서버 오류·401·다른 거절)는 새 세션 없이 바깥 처리로 넘긴다.
+              if (!shouldCreateGuestAfterMemberCreateFailure(createErr)) {
+                console.warn('[EmbeddedEditor] Member session create failed:', describeError(createErr))
+                throw createErr
+              }
+              console.warn('[EmbeddedEditor] Member session create failed — falling back to guest:', describeError(createErr))
               editSession = await editSessionsApi.createGuest(createPayload)
               console.log('[EmbeddedEditor] Guest session created (fallback):', editSession.id)
             }
@@ -1204,26 +1236,43 @@ function EmbeddedEditor({
         let orientationMismatch: OrientationMismatch | null = null
 
         if (!effectiveTemplateSetId) {
-          throw new Error('템플릿셋 ID가 필요합니다. (templateSetId)')
+          throw new EmbedInitError('템플릿셋 ID가 필요합니다. (templateSetId)')
         }
         /** 폴백 전 원래 요청된 템플릿셋 ID — 폴백 발생 판정/세션 복원 스킵에 사용 */
         const requestedTemplateSetId = effectiveTemplateSetId
         const allowSampleFallback = isSampleFallbackAllowed()
 
         // 템플릿셋 로드 실패 처리(프로덕션 기본): 폴백 없이 오류 화면 표시 + editor.error 발신.
-        const failTemplateSetLoad = (err: unknown, phase: string) => {
-          const reason = err instanceof Error ? err.message : String(err)
-          const message = `템플릿셋을 불러올 수 없습니다. (templateSetId: ${requestedTemplateSetId}, ${phase}) ${reason}`
-          console.error('[EmbeddedEditor]', message, err)
-          setError(message)
+        // 일시 오류(연결·타임아웃·5xx·408·429)는 NETWORK_ERROR, 거절·형식 오류는 TEMPLATE_SET_NOT_FOUND
+        // (payload 에 templateSetId). 고객 문구는 고정 한국어(식별자·서버 원문 없음). 401 은 리스너가 알린다.
+        // 초기화 취소는 바깥 catch 의 취소 처리로 넘기고, 복원 재초기화 대기는 원래 오류로 실패 처리한다.
+        const failTemplateSetLoad = (err: unknown, phase: 'fetch' | 'load'): void => {
+          if (err instanceof CanvasInitCancelledError) throw err
+          console.error(
+            `[EmbeddedEditor] Template set load failed (${phase}, templateSetId=${requestedTemplateSetId}):`,
+            describeError(err),
+          )
           setIsLoading(false)
           fatalInitErrorRef.current = true
-          const errPayload = {
-            code: 'TEMPLATE_SET_NOT_FOUND' as const,
-            message,
-            templateSetId: requestedTemplateSetId,
-            fatal: true,
+          if (reinitSettleRef.current) {
+            reinitSettleRef.current.reject(err instanceof Error ? err : new Error(String(err)))
+            reinitSettleRef.current = null
           }
+          const resolution = resolveTemplateSetLoadFailure(err)
+          if (resolution.action === 'screenOnly') {
+            setError(resolution.screenMessage)
+            return
+          }
+          setError(resolution.message)
+          const errPayload: EditorError =
+            resolution.code === 'TEMPLATE_SET_NOT_FOUND'
+              ? {
+                  code: 'TEMPLATE_SET_NOT_FOUND',
+                  message: resolution.message,
+                  templateSetId: requestedTemplateSetId,
+                  fatal: true,
+                }
+              : { code: 'NETWORK_ERROR', message: resolution.message, fatal: true }
           onError?.(errPayload)
           postToParent(parentOrigin, 'editor.error', errPayload)
         }
@@ -1243,17 +1292,17 @@ function EmbeddedEditor({
         } catch (err) {
           // 프로덕션 기본: 무음 샘플 폴백 금지 — 명확히 실패 표시 후 중단 (2026-06-11)
           if (!allowSampleFallback) {
-            failTemplateSetLoad(err, '조회 실패')
+            failTemplateSetLoad(err, 'fetch')
             return
           }
-          console.warn('[EmbeddedEditor] Failed to load requested template set. Falling back to sample. (DEV/allowSampleFallback)', err)
+          console.warn('[EmbeddedEditor] Failed to load requested template set. Falling back to sample. (DEV/allowSampleFallback)', describeError(err))
           showMappingAlert = true
           fallbackReason = `템플릿셋 조회 실패: ${err instanceof Error ? err.message : String(err)}`
           effectiveTemplateSetId = 'sample-8x8-book-24p'
           const fallback = await templatesApi.getTemplateSetWithTemplates(effectiveTemplateSetId)
           templateSet = fallback?.templateSet || fallback
           if (!templateSet || !templateSet.id) {
-            throw new Error('샘플 템플릿셋마저 불러올 수 없습니다.')
+            throw new EmbedInitError('샘플 템플릿셋마저 불러올 수 없습니다.')
           }
         }
         console.log('[EmbeddedEditor] TemplateSet loaded:', templateSet.name)
@@ -1428,10 +1477,10 @@ function EmbeddedEditor({
         } catch (loadErr) {
           // 프로덕션 기본: 무음 샘플 폴백 금지 — 명확히 실패 표시 후 중단 (2026-06-11)
           if (!allowSampleFallback) {
-            failTemplateSetLoad(loadErr, '에디터 로드 실패')
+            failTemplateSetLoad(loadErr, 'load')
             return
           }
-          console.warn('[EmbeddedEditor] Failed to load template set editor. Falling back to sample. (DEV/allowSampleFallback)', loadErr)
+          console.warn('[EmbeddedEditor] Failed to load template set editor. Falling back to sample. (DEV/allowSampleFallback)', describeError(loadErr))
           showMappingAlert = true
           if (!fallbackReason) {
             fallbackReason = `에디터 로드 실패: ${loadErr instanceof Error ? loadErr.message : String(loadErr)}`
@@ -1731,43 +1780,23 @@ function EmbeddedEditor({
           return
         }
         fatalInitErrorRef.current = true
-        console.error('[EmbeddedEditor] Initialization error:', err)
+        console.error('[EmbeddedEditor] Initialization error:', describeError(err))
         // P1-4: 복원 재초기화 실패 — 대기 중인 복원 Promise 를 실패로 귀결(패널이 토스트로 표시)
         if (reinitSettleRef.current) {
           reinitSettleRef.current.reject(err instanceof Error ? err : new Error(String(err)))
           reinitSettleRef.current = null
         }
 
-        // API 에러 타입 확인
-        const apiError = err as ApiError
-        let errorCode: EditorError['code'] = 'INVALID_DATA'
-        let errorMessage = '초기화 중 오류가 발생했습니다.'
-
-        if (apiError.code) {
-          switch (apiError.code) {
-            case 'AUTH_EXPIRED':
-              errorCode = 'AUTH_EXPIRED'
-              errorMessage = apiError.message || '인증이 만료되었습니다.'
-              break
-            case 'NETWORK_ERROR':
-            case 'TIMEOUT':
-              errorCode = 'NETWORK_ERROR'
-              errorMessage = apiError.message || '네트워크 연결을 확인해주세요.'
-              break
-            case 'SERVER_ERROR':
-              errorCode = 'NETWORK_ERROR'
-              errorMessage = apiError.message || '서버 오류가 발생했습니다.'
-              break
-            default:
-              errorMessage = apiError.message || errorMessage
-          }
-        } else if (err instanceof Error) {
-          errorMessage = err.message
-        }
-
-        setError(errorMessage)
+        // 실패 분류 → 고정 한국어 문구. 연결·타임아웃·5xx·408·429 는 NETWORK_ERROR, 그 밖의 4xx·런타임 오류는
+        // INVALID_DATA(편집기가 직접 던진 안내 오류만 그 문구). 401 은 리스너가 AUTH_EXPIRED 를 알리므로 화면만 처리한다.
+        const resolution = resolveInitFailure(err)
         setIsLoading(false)
-        const errPayload = { code: errorCode, message: errorMessage, fatal: true }
+        if (resolution.action === 'screenOnly') {
+          setError(resolution.screenMessage)
+          return
+        }
+        setError(resolution.message)
+        const errPayload: EditorError = { code: resolution.code, message: resolution.message, fatal: true }
         onError?.(errPayload)
         postToParent(parentOrigin, 'editor.error', errPayload)
       } finally {
@@ -1974,7 +2003,7 @@ function EmbeddedEditor({
       try {
         await saveNow()
       } catch (err) {
-        console.warn('[EmbeddedEditor] 복원 직후 서버 저장 실패(비차단):', err)
+        console.warn('[EmbeddedEditor] 복원 직후 서버 저장 실패(비차단):', describeError(err))
       }
     } else {
       // 부분/0건 복원 — 배너는 열어두되(재시도 가능) 무반응으로 보이지 않게 사용자에게 알린다.
@@ -2124,10 +2153,10 @@ function EmbeddedEditor({
           postToParent(parentOrigin, 'editor.save', result)
           return result
         } catch (err) {
-          console.error('[EmbeddedEditor] Save failed:', err)
+          console.error('[EmbeddedEditor] Save failed:', describeError(err))
           const errPayload = {
             code: 'SAVE_FAILED' as const,
-            message: err instanceof Error ? err.message : '저장에 실패했습니다.',
+            message: saveFailureMessage(err, 'save'),
             fatal: false,
           }
           onError?.(errPayload)
@@ -2264,10 +2293,10 @@ function EmbeddedEditor({
           onComplete?.(result)
           postToParent(parentOrigin, 'editor.complete', result)
         } catch (err) {
-          console.error('[EmbeddedEditor] Complete failed:', err)
+          console.error('[EmbeddedEditor] Complete failed:', describeError(err))
           const errPayload = {
             code: 'SAVE_FAILED' as const,
-            message: err instanceof Error ? err.message : '편집 완료에 실패했습니다.',
+            message: saveFailureMessage(err, 'complete'),
             fatal: false,
           }
           onError?.(errPayload)
@@ -2306,13 +2335,13 @@ function EmbeddedEditor({
     setLoadingMessage(message || '')
   }, [])
 
-  // 편집완료 핸들러 - EditorHeader에서 호출됨
-  const handleFinish = useCallback(async () => {
+  // 편집완료 핸들러 - EditorHeader에서 호출됨. 결과(completed·needsAuth·skipped)로 헤더가 안내 토스트를 고른다.
+  const handleFinish = useCallback(async (): Promise<FinishOutcome> => {
     const currentSessionId = currentSession?.id || sessionId
 
     if (!currentSessionId) {
       console.log('[EmbeddedEditor] No session, skipping complete')
-      return
+      return 'skipped'
     }
 
     // 재편집 게이트 완화 (2026-06-11): /embed?sessionId 단독 진입 시 mode/orderSeqno 가
@@ -2366,7 +2395,7 @@ function EmbeddedEditor({
           ts: new Date().toISOString(),
         })
         console.log('[EmbeddedEditor] Guest finish → editor.complete(needsAuth) + needAuth emitted')
-        return
+        return 'needsAuth'
       }
 
       // Update edit session with canvas data (멀티페이지면 배열 전체)
@@ -2597,7 +2626,7 @@ function EmbeddedEditor({
           }
         }
       } catch (pdfErr) {
-        console.error('[EmbeddedEditor] PDF generation/upload failed:', pdfErr)
+        console.error('[EmbeddedEditor] PDF generation/upload failed:', describeError(pdfErr))
         try { Sentry.captureException(pdfErr, { tags: { finishPhase: 'pdf-outer' } } as any) } catch { /* ignore */ }
         // Continue without PDF - we still want to complete the session
       }
@@ -2662,11 +2691,12 @@ function EmbeddedEditor({
       console.log('[EmbeddedEditor] Complete success:', result.sessionId)
       onComplete?.(result)
       postToParent(parentOrigin, 'editor.complete', result)
+      return 'completed'
     } catch (err) {
-      console.error('[EmbeddedEditor] Complete failed:', err)
+      console.error('[EmbeddedEditor] Complete failed:', describeError(err))
       const errPayload = {
         code: 'SAVE_FAILED' as const,
-        message: err instanceof Error ? err.message : '편집 완료에 실패했습니다.',
+        message: saveFailureMessage(err, 'complete'),
         fatal: false,
       }
       onError?.(errPayload)
@@ -2704,10 +2734,10 @@ function EmbeddedEditor({
         throw new Error('저장에 실패했습니다.')
       }
     } catch (err) {
-      console.error('[EmbeddedEditor] Save failed:', err)
+      console.error('[EmbeddedEditor] Save failed:', describeError(err))
       const errPayload = {
         code: 'SAVE_FAILED' as const,
-        message: err instanceof Error ? err.message : '저장에 실패했습니다.',
+        message: saveFailureMessage(err, 'save'),
         fatal: false,
       }
       onError?.(errPayload)
@@ -2741,7 +2771,7 @@ function EmbeddedEditor({
       // iframe(/embed) 컨텍스트면 iframe 만 재진입(부모 페이지 영향 없음).
       window.location.href = url.toString()
     } catch (err) {
-      console.error('[EmbeddedEditor] Failed to load session:', err)
+      console.error('[EmbeddedEditor] Failed to load session:', describeError(err))
       const errPayload = {
         code: 'INVALID_DATA' as const,
         message: err instanceof Error ? err.message : '작업을 불러오는데 실패했습니다.',

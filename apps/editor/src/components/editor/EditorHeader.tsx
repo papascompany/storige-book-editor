@@ -52,6 +52,9 @@ import { runWithAutosaveSuspended } from '@/utils/autosaveSuspend'
 import { confirmRequiredEditsBeforeComplete } from '@/utils/requiredEditGate'
 import { getPageStepBlockMessage } from '@/utils/pageStepGuard'
 import RequiredEditConfirmModal from './RequiredEditConfirmModal'
+import { describeError } from '@/utils/safeErrorLog'
+import { saveFailureMessage } from '@/utils/embedFailurePolicy'
+import { finishToastFor, type FinishOutcome } from '@/utils/finishOutcome'
 
 const SIZE_PRESETS: { label: string; width: number; height: number }[] = [
   { label: '정사각', width: 100, height: 100 },
@@ -70,8 +73,8 @@ interface EditorHeaderProps {
   screenMode?: 'mobile' | 'tablet' | 'desktop'
   onToggleSidePanel?: () => void
   onLoadingChange?: (loading: boolean, message?: string) => void
-  /** 편집완료 콜백 (bookmoa 연동용) */
-  onFinish?: () => Promise<void>
+  /** 편집완료 콜백 (bookmoa 연동용). 결과(FinishOutcome)에 따라 안내 토스트를 고른다 — 결과값이 없으면 완료 안내 */
+  onFinish?: () => Promise<FinishOutcome | void>
   /** 내 작업에 저장 콜백 */
   onSaveWork?: () => Promise<void>
   /** 불러오기 콜백 */
@@ -402,7 +405,7 @@ export default function EditorHeader({
         showToast('독립 실행 모드 — 외부 저장 콜백 없음', 'info')
       }
     } catch (error) {
-      console.error('저장 중 오류:', error)
+      console.error('저장 중 오류:', describeError(error))
       showToast(
         `저장 중 오류: ${error instanceof Error ? error.message : String(error)}`,
         'error',
@@ -447,18 +450,15 @@ export default function EditorHeader({
 
       // onFinish 콜백이 있으면 (bookmoa 연동 모드) 해당 콜백 호출
       if (onFinish) {
-        await onFinish()
-        showToast('편집이 완료되었습니다.', 'success')
+        const toast = finishToastFor(await onFinish())
+        showToast(toast.message, toast.type)
       } else {
         showToast('독립 실행 모드 — 편집완료 콜백 없음', 'info')
       }
     } catch (error) {
-      console.error('디자인 저장 실패:', error)
-      showToast(
-        `저장 실패: ${error instanceof Error ? error.message : String(error)}`,
-        'error',
-        6000
-      )
+      console.error('디자인 저장 실패:', describeError(error))
+      // 고객 화면 문구는 분류별 고정 한국어(서버 원문·axios 영문 미포함) — 호스트 SAVE_FAILED 문구와 같다.
+      showToast(saveFailureMessage(error, 'complete'), 'error', 6000)
     } finally {
       setFinishing(false)
       setLoading(false)
@@ -538,7 +538,7 @@ export default function EditorHeader({
           }
         }
       } catch (error) {
-        console.error('디자인 저장 실패:', error)
+        console.error('디자인 저장 실패:', describeError(error))
         const errorMessage = error instanceof Error ? error.message : '알 수 없는 오류'
 
         showToast(`저장 실패: ${errorMessage}`, 'error', 6000)

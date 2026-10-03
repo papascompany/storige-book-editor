@@ -16,6 +16,7 @@
 import { create } from 'zustand'
 import { editSessionsApi, EditSessionResponse } from '../api/edit-sessions'
 import { redactGuestTokenInError } from '../utils/embedSessionReopen'
+import { describeError } from '../utils/safeErrorLog'
 
 const STORAGE_KEY = 'storige_guest_session_v1'
 
@@ -132,7 +133,7 @@ export const useGuestStore = create<GuestStoreState>((set, get) => ({
       }
       return created
     } catch (err) {
-      console.error('[useGuestStore] createGuest failed:', err)
+      console.error('[useGuestStore] createGuest failed:', describeError(err))
       return null
     }
   },

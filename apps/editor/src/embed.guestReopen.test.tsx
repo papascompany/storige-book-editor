@@ -352,11 +352,17 @@ describe('EmbeddedEditor — 게스트 세션 재오픈 시 게스트 조회 경
     expect(api.get).not.toHaveBeenCalled()
     expect(sessionNotFoundErrors()).toHaveLength(0)
 
-    // 로드 실패 경고로 전달된 오류 객체 = getGuest 가 던진 오류 — 헤더·URL 모두 가려져 있다.
+    // 로드 실패 경고 = sessionId 와 요약 문자열(오류 객체 아님) — 토큰 원문 없음.
     const loadWarn = warn.mock.calls.find((c) => c[0] === '[EmbeddedEditor] Session load failed:')
     expect(loadWarn).toBeDefined()
-    const logged = loadWarn![4] as AxiosError
-    expect(logged).toBe(thrown)
+    expect(loadWarn![1]).toBe(SESSION_ID)
+    const summary = loadWarn![4]
+    expect(typeof summary).toBe('string')
+    expect(summary).toContain('status=503')
+    expect(summary).not.toContain(REC_TOKEN)
+    expect(summary).not.toContain(encodeURIComponent(REC_TOKEN))
+    // getGuest 가 던진 오류 객체 자체도 헤더·URL 모두 가려져 있다.
+    const logged = thrown as AxiosError
     expect(logged.config?.headers['x-guest-token']).toBe('[redacted]')
     expect(logged.config?.url).not.toContain(REC_TOKEN)
     expect(logged.config?.url).not.toContain(encodeURIComponent(REC_TOKEN))

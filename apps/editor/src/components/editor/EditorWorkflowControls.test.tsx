@@ -178,10 +178,11 @@ describe('EditorWorkflowControls — 임베드(명시 세션) 마운트', () => 
     expect(sessionGet).toHaveBeenCalledWith('sess-1')
   })
 
-  it('조회 실패 경고 로그에는 게스트 토큰 원문이 없다', async () => {
+  it('조회 실패 경고 로그는 요약 문자열이고 게스트 토큰 원문이 없다', async () => {
     const TOKEN = 'gt-secret+/='
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    sessionGetGuest.mockRejectedValue(guestHttpError(503, TOKEN))
+    const thrown = guestHttpError(503, TOKEN)
+    sessionGetGuest.mockRejectedValue(thrown)
     render(<EditorWorkflowControls templateSetId="ts-book" sessionId="sess-1" guestToken={TOKEN} />)
 
     await waitFor(() =>
@@ -189,7 +190,11 @@ describe('EditorWorkflowControls — 임베드(명시 세션) 마운트', () => 
     )
     expect(sessionGet).not.toHaveBeenCalled()
     const logged = warn.mock.calls.find((c) => c[0] === '[EditorWorkflowControls] 로드 시 내지 PDF 앉히기 스킵:')
-    const err = logged?.[1] as AxiosError
+    expect(typeof logged?.[1]).toBe('string')
+    expect(logged?.[1]).toContain('status=503')
+    expect(logged?.[1]).not.toContain(TOKEN)
+    expect(logged?.[1]).not.toContain(encodeURIComponent(TOKEN))
+    const err = thrown as AxiosError
     expect(err.config?.headers['x-guest-token']).toBe('[redacted]')
     expect(JSON.stringify(err.toJSON())).not.toContain(TOKEN)
     expect(JSON.stringify(err.toJSON())).not.toContain(encodeURIComponent(TOKEN))

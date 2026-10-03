@@ -13,7 +13,8 @@
  *   R6 관리자 편집 탭은 매핑을 쓰지 않고 기록하지도 않는다
  *   R7 콘솔 출력에 게스트 토큰·매핑 키·이어 연 세션 id 원문이 없다
  *   R8 StrictMode 이중 effect 에서도 getGuest 1회
- *   R9 주문별 세션 목록에 항목이 있거나 목록 조회가 실패하면 매핑을 쓰지 않는다(기존 경로)
+ *   R9 주문별 세션 목록에 항목이 있거나 목록 조회가 4xx로 거절되면 매핑을 쓰지 않는다(기존 경로).
+ *      목록 조회가 서버 오류·연결 실패면 매핑·새 세션 없이 멈춘다
  *   R10 회원 토큰은 목록이 비어도 매핑을 쓰지 않고 회원 세션을 만든다
  *   R11 비회원 shop 토큰의 사이트·부모 출처가 다르면 매핑 미사용, 같으면 이어 연다
  *   R12 이어 연 응답 세션이 매핑 키와 맞지 않으면 매핑을 지우고 새 세션 생성
@@ -548,15 +549,38 @@ describe('EmbeddedEditor — 같은 탭 비회원 초안 이어 열기(주문별
     expect(draftEntries().map(([, v]) => v)).toEqual([DRAFT_SESSION_ID])
   })
 
-  it('R9 주문별 세션 목록 조회가 실패하면 매핑을 쓰지 않고 종전처럼 새 세션을 만든다', async () => {
+  it('R9 주문별 세션 목록 조회가 4xx로 거절되면 매핑을 쓰지 않고 새 세션을 만든다', async () => {
     seedDraft()
-    api.findByOrder.mockRejectedValue(axiosHttpError(500))
+    api.findByOrder.mockRejectedValue(axiosHttpError(403))
     guestCreateFlow()
     renderEmbed()
 
     await waitFor(() => expect(posted('editor.ready')).toHaveLength(1))
     expect(api.getGuest).not.toHaveBeenCalled()
     expectNewSessionCreated()
+  })
+
+  it('R9 주문별 세션 목록 조회가 서버 오류면 매핑·새 세션 없이 NETWORK_ERROR fatal 1회, 기록 유지', async () => {
+    seedDraft()
+    api.findByOrder.mockRejectedValue(axiosHttpError(500))
+    guestCreateFlow()
+    renderEmbed()
+
+    expect(await screen.findByText('에디터 초기화 실패')).toBeInTheDocument()
+    await flushInit()
+    expect(posted('editor.error')).toEqual([
+      {
+        code: 'NETWORK_ERROR',
+        message: '일시적인 서버 오류로 편집 작업을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.',
+        fatal: true,
+      },
+    ])
+    expect(posted('editor.ready')).toHaveLength(0)
+    expect(api.getGuest).not.toHaveBeenCalled()
+    expect(api.create).not.toHaveBeenCalled()
+    expect(api.createGuest).not.toHaveBeenCalled()
+    expect(draftEntries().map(([, v]) => v)).toEqual([DRAFT_SESSION_ID])
+    expect(sessionStorage.getItem(tokenRecordKey(DRAFT_SESSION_ID))).not.toBeNull()
   })
 
   it('R10 회원 토큰은 목록이 비고 같은 탭 매핑이 있어도 getGuest 0회, 회원 세션 생성 1회', async () => {

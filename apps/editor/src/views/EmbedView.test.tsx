@@ -7,7 +7,8 @@
  *   C. adminEdit=session: fragment 토큰 → 탭 저장소, 주소창 fragment 제거, 쿼리 폴백, 플래그 해제
  *   D. 레거시 발신 payload·targetOrigin (와일드카드 송신에는 guestToken 을 싣지 않음)
  *   E. 게스트 세션 재오픈: fragment 게스트 토큰 수신·주소창 제거, 게스트 조회 경로 도출,
- *      도출 실패 시 정식 editor.error(SESSION_NOT_FOUND) 1회
+ *      도출 실패 시 정식 editor.error(SESSION_NOT_FOUND) 1회. 그 밖의 실패는 초기화와 같은 분류·고정 문구
+ *      (연결·5xx → NETWORK_ERROR, 401 → AUTH_EXPIRED, 그 밖 → INVALID_DATA) 1회
  *
  * EmbeddedEditor 와 editSessionsApi 만 모킹한다. searchParams·hostPageLimits·hostSpine·
  * authTokenStorage·adminEditUrl 은 실제 모듈을 쓴다(통합 배선 잠금).
@@ -634,17 +635,60 @@ describe('EmbedView — E. 게스트 세션 재오픈(fragment 게스트 토큰)
     expect(formalErrors()).toEqual([expect.objectContaining({ reason: 'forbidden' })])
   })
 
-  it('E11 5xx·비 HTTP 실패는 editor.error 없이 오류 화면만, 경고 로그에 토큰 원문 없음', async () => {
+  it('E11 게스트 조회 5xx 는 NETWORK_ERROR(서버 문구) 1회와 레거시 storige:error, 경고 로그·payload 에 토큰 원문 없음', async () => {
     h.getGuest.mockRejectedValue(axiosHttpError(503, {}, G))
     window.history.replaceState(null, '', `/embed?sessionId=s1#guestToken=${encodeURIComponent(G)}`)
     renderAt(`/embed?sessionId=s1&parentOrigin=${encodeURIComponent(PARENT)}`)
     expect(await screen.findByText(/세션에서 템플릿셋을 확인할 수 없습니다/)).toBeInTheDocument()
-    expect(formalErrors()).toHaveLength(0)
+    expect(formalErrors()).toEqual([
+      {
+        code: 'NETWORK_ERROR',
+        message: '일시적인 서버 오류로 편집 작업을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.',
+        fatal: true,
+      },
+    ])
+    expect(parentPost).toHaveBeenCalledWith(
+      { type: 'storige:error', payload: { message: formalErrors()[0].message } },
+      PARENT,
+    )
     expect(h.get).not.toHaveBeenCalled()
     const logged = JSON.stringify(warnSpy.mock.calls)
     expect(logged).not.toContain(G)
     expect(logged).not.toContain(encodeURIComponent(G))
+    expect(JSON.stringify(parentPost.mock.calls)).not.toContain(G)
   })
+
+  it.each([
+    [
+      '503',
+      () => axiosHttpError(503),
+      'NETWORK_ERROR',
+      '일시적인 서버 오류로 편집 작업을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.',
+    ],
+    [
+      'ERR_NETWORK',
+      () => new AxiosError('Network Error', 'ERR_NETWORK'),
+      'NETWORK_ERROR',
+      '편집 작업을 불러오지 못했습니다. 네트워크 연결을 확인한 뒤 다시 시도해주세요.',
+    ],
+    ['401', () => axiosHttpError(401), 'AUTH_EXPIRED', '인증이 만료되었습니다. 페이지를 새로고침해주세요.'],
+    ['409', () => axiosHttpError(409), 'INVALID_DATA', '편집 작업을 시작할 수 없습니다. 이전 화면으로 돌아가 다시 열어 주세요.'],
+    ['비 HTTP 오류', () => new TypeError('x is undefined'), 'INVALID_DATA', '초기화 중 오류가 발생했습니다.'],
+  ] as const)(
+    'E13 sessionId 단독 재오픈 조회 %s → editor.error %s(고정 문구) 1회와 레거시 storige:error',
+    async (_label, makeErr, code, message) => {
+      h.get.mockRejectedValue(makeErr())
+      renderAt(`/embed?sessionId=s1&parentOrigin=${encodeURIComponent(PARENT)}`)
+      expect(await screen.findByText(/세션에서 템플릿셋을 확인할 수 없습니다/)).toBeInTheDocument()
+      expect(formalErrors()).toEqual([{ code, message, fatal: true }])
+      expect(parentPost).toHaveBeenCalledWith({ type: 'storige:error', payload: { message } }, PARENT)
+      const legacyErrors = parentPost.mock.calls.filter(
+        ([m]) => (m as { type?: string }).type === 'storige:error',
+      )
+      expect(legacyErrors).toHaveLength(1)
+      expect(h.editorProps).toHaveLength(0)
+    },
+  )
 
   it('E12 parentOrigin 이 없으면 정식 editor.error 를 보내지 않는다', async () => {
     h.get.mockRejectedValue(axiosHttpError(404))

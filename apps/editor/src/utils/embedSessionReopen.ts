@@ -26,6 +26,7 @@ import {
   type RememberedGuestDraft,
 } from './embedGuestTokenStore'
 import { redactGuestTokenInError } from './redactGuestToken'
+import { apiErrorCodeOf, httpStatusOf } from './httpErrorFields'
 
 /** SESSION_NOT_FOUND 사유 */
 export type SessionNotFoundReason = 'not_found' | 'forbidden' | 'invalid_id' | 'guest_token_required'
@@ -49,28 +50,7 @@ interface ReopenFailureContext {
 /** 기존 조회 경로에서 던진 오류 → 그 직전 게스트 조회 경로의 결과 */
 const reopenFailureContext = new WeakMap<object, ReopenFailureContext>()
 
-export { redactGuestTokenInError }
-
-/** 응답 본문의 `code` 문자열(없으면 null) */
-export function apiErrorCodeOf(err: unknown): string | null {
-  if (!axios.isAxiosError(err)) return null
-  const data: unknown = err.response?.data
-  if (data !== null && typeof data === 'object') {
-    const code = (data as { code?: unknown }).code
-    if (typeof code === 'string' && code !== '') return code
-  }
-  return null
-}
-
-/** HTTP 상태(응답이 없으면 undefined). 정규화된 오류 객체({ status })도 받는다. */
-export function httpStatusOf(err: unknown): number | undefined {
-  if (axios.isAxiosError(err)) return err.response?.status
-  if (err !== null && typeof err === 'object') {
-    const status = (err as { status?: unknown }).status
-    if (typeof status === 'number') return status
-  }
-  return undefined
-}
+export { redactGuestTokenInError, apiErrorCodeOf, httpStatusOf }
 
 /**
  * 명시 sessionId 세션 조회(재오픈). 게스트 토큰이 있으면 게스트 조회 경로를 먼저 쓰고,

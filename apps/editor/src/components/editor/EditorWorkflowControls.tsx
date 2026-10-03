@@ -25,6 +25,7 @@ import type { EditSessionResponse } from '../../api/edit-sessions'
 import { fetchSessionForReopen, redactGuestTokenInError } from '../../utils/embedSessionReopen'
 import { ensureSeatExistingContentPdf, isEditorOutputContentFile, seatContentPdf } from '../../utils/contentPdfGuide'
 import { showToast } from '../../stores/useToastStore'
+import { describeError } from '../../utils/safeErrorLog'
 import { ContentPdfAttachModal } from './ContentPdfAttachModal'
 
 interface Props {
@@ -93,7 +94,7 @@ export function EditorWorkflowControls({
         if (!cancelled) setTemplateSet((res?.templateSet ?? null) as TemplateSet | null)
       })
       .catch((err) => {
-        console.warn('[EditorWorkflowControls] getTemplateSetWithTemplates failed:', err)
+        console.warn('[EditorWorkflowControls] getTemplateSetWithTemplates failed:', describeError(err))
       })
     return () => {
       cancelled = true
@@ -111,7 +112,7 @@ export function EditorWorkflowControls({
       templateSetId: templateSet.id,
       mode: 'both',
     }).catch((err) => {
-      console.warn('[EditorWorkflowControls] ensureGuestSession failed:', err)
+      console.warn('[EditorWorkflowControls] ensureGuestSession failed:', describeError(err))
     })
   }, [ownsSession, token, templateSet, guestSessionId, ensureGuestSession])
 
@@ -156,7 +157,7 @@ export function EditorWorkflowControls({
         }
       } catch (err) {
         redactGuestTokenInError(err, readToken)
-        console.warn('[EditorWorkflowControls] 로드 시 내지 PDF 앉히기 스킵:', err)
+        console.warn('[EditorWorkflowControls] 로드 시 내지 PDF 앉히기 스킵:', describeError(err))
         seatedSessionRef.current = null
       }
     })()
@@ -327,7 +328,7 @@ export function EditorWorkflowControls({
                 }
               })
               .catch((err) => {
-                console.warn('[EditorWorkflowControls] 첨부 직후 앉히기 실패:', err)
+                console.warn('[EditorWorkflowControls] 첨부 직후 앉히기 실패:', describeError(err))
                 showToast(
                   '내지 PDF 는 첨부됐지만 화면 배치에 실패했습니다. 새로고침해주세요.',
                   'warning',

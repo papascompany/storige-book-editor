@@ -6,6 +6,7 @@ import {
   getEmbedRefreshToken,
   removeEmbedRefreshToken,
 } from '@/utils/authTokenStorage';
+import { describeError } from '@/utils/safeErrorLog';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000/api';
 
@@ -107,6 +108,27 @@ export function toUserMessage(err: unknown, fallback = '요청에 실패했습�
   return fallback;
 }
 
+/**
+ * 호출부로 넘기는 오류의 요청 설정에서 Authorization 헤더 값을 '[redacted]' 로 바꾼다 —
+ * 오류가 콘솔·모니터링으로 전달되더라도 액세스 토큰 원문이 남지 않게 한다.
+ * 재시도·재요청에 쓰는 설정에는 적용하지 않고, 최종 reject 직전에만 부른다. 같은 오류에 여러 번 불러도 결과는 같다.
+ */
+export function redactAuthorizationInError(err: unknown): void {
+  if (!axios.isAxiosError(err)) return;
+  for (const cfg of [err.config, err.response?.config]) {
+    if (!cfg) continue;
+    try {
+      const headers = cfg.headers as unknown as Record<string, unknown> | undefined;
+      if (!headers) continue;
+      for (const name of Object.keys(headers)) {
+        if (name.toLowerCase() === 'authorization') headers[name] = '[redacted]';
+      }
+    } catch {
+      /* 가림 실패는 무시 — 원래 오류 전달이 우선 */
+    }
+  }
+}
+
 // 이벤트 리스너 타입
 type AuthExpiredListener = () => void;
 
@@ -185,7 +207,7 @@ class ApiClient {
         }
         return null;
       } catch (e) {
-        console.warn('[ApiClient] 사일런트 리프레시 실패:', e);
+        console.warn('[ApiClient] 사일런트 리프레시 실패:', describeError(e));
         return null;
       } finally {
         this.refreshInFlight = null;
@@ -260,6 +282,7 @@ class ApiClient {
           removeAuthToken();
           removeEmbedRefreshToken();
           this.emitAuthExpired();
+          redactAuthorizationInError(error);
           return Promise.reject(error);
         }
 
@@ -285,6 +308,7 @@ class ApiClient {
           return this.client.request(config);
         }
 
+        redactAuthorizationInError(error);
         return Promise.reject(error);
       }
     );

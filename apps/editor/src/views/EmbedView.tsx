@@ -48,6 +48,7 @@ import {
   sessionNotFoundMessage,
   sessionNotFoundReasonOf,
 } from '@/utils/embedSessionReopen'
+import { resolveInitFailure } from '@/utils/embedFailurePolicy'
 
 /**
  * 부모(호스트) 윈도우로 레거시 `storige:*` 메시지 발신 (하위호환).
@@ -215,6 +216,16 @@ export default function EmbedView() {
             const payload: EditorError = { code: 'SESSION_NOT_FOUND', message, sessionId, reason, fatal: true }
             emitFormalError(parentOrigin, payload)
             emitLegacy(parentOrigin, 'storige:error', { message })
+          } else if (mounted) {
+            // 그 밖의 실패는 편집기 초기화와 같은 분류·고정 문구로 알린다(연결·타임아웃·5xx·408·429 →
+            // NETWORK_ERROR, 그 밖 → INVALID_DATA). 이 단계에는 인증 만료 리스너가 없으므로 401 은
+            // 여기서 AUTH_EXPIRED 를 1회 알린다.
+            const resolution = resolveInitFailure(err)
+            const payload: EditorError = resolution.action === 'notifyHost'
+              ? { code: resolution.code, message: resolution.message, fatal: true }
+              : { code: 'AUTH_EXPIRED', message: resolution.screenMessage, fatal: true }
+            emitFormalError(parentOrigin, payload)
+            emitLegacy(parentOrigin, 'storige:error', { message: payload.message })
           }
         }
       }

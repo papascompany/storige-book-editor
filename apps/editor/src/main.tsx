@@ -5,6 +5,7 @@ import App from './App'
 import { EditorErrorBoundary, reloadOnceForStaleChunk } from './components/EditorErrorBoundary'
 import './index.css'
 import { initSentry, Sentry } from './lib/sentry'
+import { describeError } from './utils/safeErrorLog'
 
 // Sentry 초기화 (다른 코드보다 먼저)
 initSentry()
@@ -15,7 +16,7 @@ initSentry()
 // "Uncaught (in promise)" 처리를 막아 UI thread 회복.
 if (typeof window !== 'undefined') {
   window.addEventListener('unhandledrejection', (event) => {
-    console.error('[unhandledrejection] caught:', event.reason)
+    console.error('[unhandledrejection] caught:', describeError(event.reason))
     // Sentry로 전송 (DSN 설정된 경우만)
     Sentry.captureException(event.reason)
     event.preventDefault()
