@@ -26,6 +26,7 @@ import {
   keyFingerprint,
 } from './partner-operator-grant.service';
 import { PartnerOperatorAuditWriter, isStaffEditAfterCompletion } from './partner-operator-audit.writer';
+import { rejectedOperatorGrantOf } from './partner-operator-request-audit';
 import {
   ACCESS_MAX,
   PartnerOperatorGrant,
@@ -408,6 +409,41 @@ describe('PartnerOperatorGrantService', () => {
       const { grant } = await mintAndDecode(mintDto({ allowDelete: true }));
       grantRepo.createQueryBuilder.mockReturnValue(qbReturning(make(grant)));
       await expect(service.assertActive(grant)).rejects.toBeInstanceOf(UnauthorizedException);
+    });
+
+    it('권한 거부 예외는 응답 본문 그대로이고 검증된 권한이 연결된다', async () => {
+      const { grant } = await mintAndDecode();
+      grantRepo.createQueryBuilder.mockReturnValue(qbReturning(activeRow(grant, { revokedAt: new Date() })));
+      let caught: unknown;
+      try {
+        await service.assertActive(grant);
+      } catch (e) {
+        caught = e;
+      }
+      expect(caught).toBeInstanceOf(UnauthorizedException);
+      expect((caught as UnauthorizedException).getResponse()).toEqual({
+        code: 'PARTNER_OPERATOR_GRANT_INVALID',
+        message: '운영자 권한이 만료되었거나 취소되었습니다.',
+      });
+      expect(rejectedOperatorGrantOf(caught)).toBe(grant);
+    });
+
+    it('refresh 실패 응답(REFRESH_TOKEN_EXPIRED)에는 권한이 연결되지 않는다', async () => {
+      const { refresh, grant } = await mintAndDecode();
+      grantRepo.createQueryBuilder.mockReturnValue(qbReturning(activeRow(grant, { revokedAt: new Date() })));
+      let caught: unknown;
+      try {
+        await service.refresh(refresh);
+      } catch (e) {
+        caught = e;
+      }
+      expect(caught).toBeInstanceOf(UnauthorizedException);
+      expect((caught as UnauthorizedException).getResponse()).toEqual({
+        success: false,
+        error: 'REFRESH_TOKEN_EXPIRED',
+        redirectUrl: '/login',
+      });
+      expect(rejectedOperatorGrantOf(caught)).toBeNull();
     });
 
     it('refresh: sids·caps·obo·gid·gexp 를 그대로 유지한 액세스 토큰(범위 확장 불가)', async () => {
@@ -906,6 +942,20 @@ describe('PartnerOperatorGrantService — 관리자 발급(staff)', () => {
       grantRepo.createQueryBuilder.mockReturnValue(chain(staffRow(grant)));
       arrange(grant);
       await expect(service.assertActive(grant)).rejects.toBeInstanceOf(UnauthorizedException);
+    });
+
+    it("관리자 권한 거부 예외에도 권한(origin 'staff')이 연결된다", async () => {
+      const { grant } = await staffGrant();
+      grantRepo.createQueryBuilder.mockReturnValue(chain(staffRow(grant, { revokedAt: new Date() })));
+      let caught: unknown;
+      try {
+        await service.assertActive(grant);
+      } catch (e) {
+        caught = e;
+      }
+      expect(caught).toBeInstanceOf(UnauthorizedException);
+      expect(rejectedOperatorGrantOf(caught)).toBe(grant);
+      expect(rejectedOperatorGrantOf(caught)?.origin).toBe('staff');
     });
 
     it('delete 권한 + SITE_MANAGER 사이트 행 → 401, SITE_ADMIN 행이면 통과', async () => {

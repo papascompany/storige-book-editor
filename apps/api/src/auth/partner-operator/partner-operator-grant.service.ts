@@ -47,6 +47,7 @@ import {
   isValidOperatorId,
   nowUnixSeconds,
 } from './partner-operator.types';
+import { markRejectedOperatorGrant } from './partner-operator-request-audit';
 
 /** 관리자 발급 권한(2026-09-29) — 기본 1h, 5분~8h */
 export const STAFF_TTL_DEFAULT = 3600;
@@ -602,6 +603,19 @@ export class PartnerOperatorGrantService {
   // ────────────────────────── assertActive ────────────────────────
 
   /**
+   * 권한 행 확인(checkGrantActive). 거부 예외는 같은 객체 그대로 전달하고, 요청 감사(JwtAuthGuard)가
+   * 서명 검증된 권한 신원을 쓰도록 예외에 권한을 연결만 한다(응답 본문·키 불변).
+   */
+  async assertActive(grant: PartnerOperatorGrant, nowSec: number = nowUnixSeconds()): Promise<void> {
+    try {
+      await this.checkGrantActive(grant, nowSec);
+    } catch (e) {
+      markRejectedOperatorGrant(e, grant);
+      throw e;
+    }
+  }
+
+  /**
    * 권한 행 1회 조회(사이트 조인)로 다음을 모두 확인한다. 하나라도 어긋나거나 DB 오류면 401.
    *  - 행 존재 · 같은 사이트 · 같은 운영자 · 미취소 · 미만료(행 기준, 토큰 gexp 도 행을 넘지 않음)
    *  - 토큰의 세션 범위·권한이 행의 범위 안
@@ -609,7 +623,7 @@ export class PartnerOperatorGrantService {
    *  - 발급 키 지문이 현재 사이트 편집기/워커 코드 지문과 일치(키 교체 시 무효)
    * 사이트 코드는 이 메서드의 메모리 비교에만 쓰고 기록하지 않는다.
    */
-  async assertActive(grant: PartnerOperatorGrant, nowSec: number = nowUnixSeconds()): Promise<void> {
+  private async checkGrantActive(grant: PartnerOperatorGrant, nowSec: number): Promise<void> {
     // 관리자 발급 권한(토큰 org 'staff')은 별도 분기 — 키 지문·사이트 상태 대신 관리자 역할·보관기간을 확인한다.
     if (grantOrigin(grant) === 'staff') {
       await this.assertStaffActive(grant, nowSec);

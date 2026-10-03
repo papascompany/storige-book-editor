@@ -12,14 +12,19 @@ import 'reflect-metadata';
 import {
   BadRequestException,
   CallHandler,
+  Controller,
   ExecutionContext,
   ForbiddenException,
   HttpException,
+  Post,
   SetMetadata,
   UnauthorizedException,
+  UseGuards,
   ValidationPipe,
 } from '@nestjs/common';
+import { OPTIONAL_DEPS_METADATA } from '@nestjs/common/constants';
 import { APP_INTERCEPTOR, Reflector } from '@nestjs/core';
+import { Test } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { Repository } from 'typeorm';
@@ -42,6 +47,13 @@ import type { SitesService } from '../../sites/sites.service';
 import { PartnerOperatorGrantService } from './partner-operator-grant.service';
 import { PartnerOperatorAuditWriter } from './partner-operator-audit.writer';
 import { PartnerOperatorAuditInterceptor } from './partner-operator-audit.interceptor';
+import {
+  controllerPathOf,
+  markRejectedOperatorGrant,
+  operatorIdentityFromGrant,
+  recordOperatorRequest,
+  rejectedOperatorGrantOf,
+} from './partner-operator-request-audit';
 import {
   PartnerOperatorClaims,
   PartnerOperatorGrant,
@@ -310,6 +322,328 @@ describe('JwtAuthGuard.handleRequest — 운영자 라우트 게이트(기본 �
     expect(() =>
       guard.handleRequest(null, false, undefined, ctxFor(ProbeController, ProbeController.prototype.allowed)),
     ).toThrow(UnauthorizedException);
+  });
+});
+
+// ───────────────────────────── JwtAuthGuard 거부 요청 감사 ─────────────────────────────
+describe('JwtAuthGuard — 가드 단계 거부 요청 감사', () => {
+  const writer = {
+    recordBestEffort: jest.fn().mockResolvedValue(undefined),
+    resolveGrantOrigin: jest.fn(),
+  };
+  const guard = new JwtAuthGuard(new Reflector(), writer as unknown as PartnerOperatorAuditWriter);
+
+  @SetMetadata('path', 'edit-sessions')
+  class EditSessionsProbe {
+    @PartnerOperatorAllowed()
+    allowed(): void {}
+
+    plain(): void {}
+  }
+  @SetMetadata('path', 'files')
+  class FilesProbe {
+    plain(): void {}
+  }
+
+  const httpCtx = (
+    cls: object,
+    handler: (...args: never[]) => unknown,
+    req: Record<string, unknown>,
+    type = 'http',
+  ): ExecutionContext =>
+    ({
+      getType: () => type,
+      getHandler: () => handler,
+      getClass: () => cls,
+      switchToHttp: () => ({ getRequest: () => req }),
+    }) as unknown as ExecutionContext;
+  const sessionReq = (user?: unknown): Record<string, unknown> => ({
+    method: 'PATCH',
+    params: { id: S1 },
+    route: { path: '/api/edit-sessions/:id' },
+    user,
+  });
+  const flush = (): Promise<void> => new Promise((r) => setImmediate(r));
+  const caught = (fn: () => unknown): unknown => {
+    try {
+      fn();
+    } catch (e) {
+      return e;
+    }
+    return undefined;
+  };
+  const grantInvalidError = (): UnauthorizedException =>
+    new UnauthorizedException({
+      code: 'PARTNER_OPERATOR_GRANT_INVALID',
+      message: '운영자 권한이 만료되었거나 취소되었습니다.',
+    });
+
+  beforeEach(() => {
+    writer.recordBestEffort.mockReset().mockResolvedValue(undefined);
+    writer.resolveGrantOrigin.mockReset();
+  });
+
+  it('운영자 토큰 + 허용 표시 없는 핸들러 → 403 그대로, 요청 감사 행 1건', () => {
+    const u = operatorUser();
+    const e = caught(() =>
+      guard.handleRequest(null, u, undefined, httpCtx(EditSessionsProbe, EditSessionsProbe.prototype.plain, sessionReq(u))),
+    );
+    expect(e).toBeInstanceOf(ForbiddenException);
+    expect((e as ForbiddenException).getResponse()).toEqual({
+      code: 'PARTNER_OPERATOR_ROUTE_NOT_ALLOWED',
+      message: '운영자 대리 편집 토큰으로는 사용할 수 없는 기능입니다.',
+    });
+    expect(writer.recordBestEffort).toHaveBeenCalledTimes(1);
+    expect(writer.recordBestEffort).toHaveBeenCalledWith({
+      grantId: GID,
+      siteId: SITE_A,
+      origin: 'partner',
+      actorUserId: null,
+      sessionId: S1,
+      operatorId: 'op-7f3c',
+      operatorName: '운영팀',
+      action: 'request',
+      method: 'PATCH',
+      route: '/api/edit-sessions/:id',
+      statusCode: 403,
+      detail: { errorCode: 'PARTNER_OPERATOR_ROUTE_NOT_ALLOWED' },
+    });
+    expect(writer.resolveGrantOrigin).not.toHaveBeenCalled();
+  });
+
+  it('files 컨트롤러 경로 거부 → resourceId 기록, sessionId null', () => {
+    const u = operatorUser();
+    const req = { method: 'DELETE', params: { id: 'file-1' }, route: { path: '/api/files/:id' }, user: u };
+    expect(() => guard.handleRequest(null, u, undefined, httpCtx(FilesProbe, FilesProbe.prototype.plain, req))).toThrow(
+      ForbiddenException,
+    );
+    expect(writer.recordBestEffort).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: null,
+        statusCode: 403,
+        detail: { errorCode: 'PARTNER_OPERATOR_ROUTE_NOT_ALLOWED', resourceId: 'file-1' },
+      }),
+    );
+  });
+
+  it("관리자 발급 권한 거부 → origin 'staff', actorUserId = 권한 발급자", () => {
+    const u = operatorUser(grant({ origin: 'staff', issuedByUserId: 'u-admin-1', operatorId: 'staff.u-admin-1' }));
+    expect(() =>
+      guard.handleRequest(null, u, undefined, httpCtx(EditSessionsProbe, EditSessionsProbe.prototype.plain, sessionReq(u))),
+    ).toThrow(ForbiddenException);
+    expect(writer.recordBestEffort).toHaveBeenCalledWith(
+      expect.objectContaining({ origin: 'staff', actorUserId: 'u-admin-1', operatorId: 'staff.u-admin-1', statusCode: 403 }),
+    );
+  });
+
+  it('허용 핸들러를 통과한 운영자 요청은 가드에서 기록하지 않는다', () => {
+    const u = operatorUser();
+    expect(
+      guard.handleRequest(null, u, undefined, httpCtx(EditSessionsProbe, EditSessionsProbe.prototype.allowed, sessionReq(u))),
+    ).toBe(u);
+    expect(writer.recordBestEffort).not.toHaveBeenCalled();
+  });
+
+  it('shop·admin 사용자는 통과와 사용자 없음 401 모두 기록하지 않는다', () => {
+    const shop = { userId: '777', source: 'shop', role: 'customer', siteId: SITE_A };
+    const admin = { id: 'u1', role: 'ADMIN' };
+    const ctx = httpCtx(EditSessionsProbe, EditSessionsProbe.prototype.plain, sessionReq(shop));
+    expect(guard.handleRequest(null, shop, undefined, ctx)).toBe(shop);
+    expect(guard.handleRequest(null, admin, undefined, ctx)).toBe(admin);
+    expect(() => guard.handleRequest(null, false, undefined, ctx)).toThrow(UnauthorizedException);
+    expect(writer.recordBestEffort).not.toHaveBeenCalled();
+  });
+
+  it('권한이 연결된 401 → 같은 예외 객체 그대로, 감사 행 1건(statusCode 401)', () => {
+    const err = grantInvalidError();
+    markRejectedOperatorGrant(err, grant());
+    const e = caught(() =>
+      guard.handleRequest(err, false, undefined, httpCtx(EditSessionsProbe, EditSessionsProbe.prototype.allowed, sessionReq())),
+    );
+    expect(e).toBe(err);
+    expect(writer.recordBestEffort).toHaveBeenCalledTimes(1);
+    expect(writer.recordBestEffort).toHaveBeenCalledWith({
+      grantId: GID,
+      siteId: SITE_A,
+      origin: 'partner',
+      actorUserId: null,
+      sessionId: S1,
+      operatorId: 'op-7f3c',
+      operatorName: '운영팀',
+      action: 'request',
+      method: 'PATCH',
+      route: '/api/edit-sessions/:id',
+      statusCode: 401,
+      detail: { errorCode: 'PARTNER_OPERATOR_GRANT_INVALID' },
+    });
+  });
+
+  it("관리자 발급 권한이 연결된 401 → origin 'staff', actorUserId null", () => {
+    const err = grantInvalidError();
+    markRejectedOperatorGrant(err, grant({ origin: 'staff', issuedByUserId: null, operatorId: 'staff.u-admin-1' }));
+    expect(
+      caught(() =>
+        guard.handleRequest(err, false, undefined, httpCtx(EditSessionsProbe, EditSessionsProbe.prototype.allowed, sessionReq())),
+      ),
+    ).toBe(err);
+    expect(writer.recordBestEffort).toHaveBeenCalledWith(
+      expect.objectContaining({ origin: 'staff', actorUserId: null, operatorId: 'staff.u-admin-1', statusCode: 401 }),
+    );
+  });
+
+  it('권한이 연결되지 않은 401(토큰 만료·클레임 불일치)은 기록하지 않는다', () => {
+    const ctx = httpCtx(EditSessionsProbe, EditSessionsProbe.prototype.allowed, sessionReq());
+    const invalid = new UnauthorizedException('Invalid token');
+    expect(caught(() => guard.handleRequest(invalid, false, undefined, ctx))).toBe(invalid);
+    expect(() => guard.handleRequest(null, false, { name: 'TokenExpiredError' }, ctx)).toThrow(UnauthorizedException);
+    expect(writer.recordBestEffort).not.toHaveBeenCalled();
+  });
+
+  it('감사 기록기 없이 만든 가드도 403·401 응답이 같다', () => {
+    const bare = new JwtAuthGuard(new Reflector());
+    const ctx = ctxFor(EditSessionsProbe, EditSessionsProbe.prototype.plain);
+    const e = caught(() => bare.handleRequest(null, operatorUser(), undefined, ctx));
+    expect(e).toBeInstanceOf(ForbiddenException);
+    expect((e as ForbiddenException).getResponse()).toEqual({
+      code: 'PARTNER_OPERATOR_ROUTE_NOT_ALLOWED',
+      message: '운영자 대리 편집 토큰으로는 사용할 수 없는 기능입니다.',
+    });
+    const err = grantInvalidError();
+    markRejectedOperatorGrant(err, grant());
+    expect(caught(() => bare.handleRequest(err, false, undefined, ctx))).toBe(err);
+  });
+
+  it('감사 기록이 실패해도 403 그대로, 처리되지 않은 거부가 생기지 않는다', async () => {
+    const unhandled = jest.fn();
+    process.on('unhandledRejection', unhandled);
+    try {
+      writer.recordBestEffort.mockRejectedValueOnce(new Error('db down'));
+      const u = operatorUser();
+      expect(() =>
+        guard.handleRequest(null, u, undefined, httpCtx(EditSessionsProbe, EditSessionsProbe.prototype.plain, sessionReq(u))),
+      ).toThrow(ForbiddenException);
+      await flush();
+      await flush();
+      expect(writer.recordBestEffort).toHaveBeenCalledTimes(1);
+      expect(unhandled).not.toHaveBeenCalled();
+    } finally {
+      process.off('unhandledRejection', unhandled);
+    }
+  });
+
+  it('HTTP가 아닌 컨텍스트나 요청 접근 오류가 있어도 403 그대로이고 기록하지 않는다', () => {
+    const u = operatorUser();
+    expect(() =>
+      guard.handleRequest(null, u, undefined, httpCtx(EditSessionsProbe, EditSessionsProbe.prototype.plain, sessionReq(u), 'rpc')),
+    ).toThrow(ForbiddenException);
+    const throwing = {
+      getType: () => 'http',
+      getHandler: () => EditSessionsProbe.prototype.plain,
+      getClass: () => EditSessionsProbe,
+      switchToHttp: () => {
+        throw new Error('no http');
+      },
+    } as unknown as ExecutionContext;
+    expect(() => guard.handleRequest(null, u, undefined, throwing)).toThrow(ForbiddenException);
+    expect(writer.recordBestEffort).not.toHaveBeenCalled();
+  });
+});
+
+// ───────────────────────────── 요청 감사 helper ─────────────────────────────
+describe('partner-operator-request-audit', () => {
+  it('operatorIdentityFromGrant: 파트너 권한은 origin partner, 관리자 권한은 origin staff·발급자', () => {
+    expect(operatorIdentityFromGrant(grant())).toEqual({
+      grantId: GID,
+      siteId: SITE_A,
+      operatorId: 'op-7f3c',
+      operatorName: '운영팀',
+      origin: 'partner',
+      actorUserId: null,
+    });
+    expect(operatorIdentityFromGrant(grant({ origin: 'staff', issuedByUserId: 'u-1' }))).toMatchObject({
+      origin: 'staff',
+      actorUserId: 'u-1',
+    });
+    expect(operatorIdentityFromGrant(grant({ issuedByUserId: 'u-1' }))).toMatchObject({
+      origin: 'partner',
+      actorUserId: null,
+    });
+  });
+
+  it('권한 연결은 예외의 응답 본문·키·직렬화를 바꾸지 않는다', () => {
+    const err = new UnauthorizedException({
+      code: 'PARTNER_OPERATOR_GRANT_INVALID',
+      message: '운영자 권한이 만료되었거나 취소되었습니다.',
+    });
+    const keys = Object.keys(err);
+    const body = JSON.stringify(err.getResponse());
+    const serialized = JSON.stringify(err);
+    const g = grant();
+    markRejectedOperatorGrant(err, g);
+    expect(Object.keys(err)).toEqual(keys);
+    expect(JSON.stringify(err.getResponse())).toBe(body);
+    expect(JSON.stringify(err)).toBe(serialized);
+    expect(rejectedOperatorGrantOf(err)).toBe(g);
+  });
+
+  it('연결 없는 예외·null·원시값은 권한 없음, 원시값·null 연결 요청은 throw 하지 않는다', () => {
+    expect(rejectedOperatorGrantOf(new UnauthorizedException())).toBeNull();
+    expect(rejectedOperatorGrantOf(null)).toBeNull();
+    expect(rejectedOperatorGrantOf(undefined)).toBeNull();
+    expect(rejectedOperatorGrantOf('x')).toBeNull();
+    for (const v of ['x', null, undefined, 1, true]) {
+      expect(() => markRejectedOperatorGrant(v, grant())).not.toThrow();
+      expect(rejectedOperatorGrantOf(v)).toBeNull();
+    }
+  });
+
+  it('recordOperatorRequest 는 기록기가 throw·reject 해도 resolve 한다', async () => {
+    const identity = { ...operatorIdentityFromGrant(grant()), origin: null };
+    const syncThrow = {
+      recordBestEffort: jest.fn(),
+      resolveGrantOrigin: jest.fn(() => {
+        throw new Error('sync');
+      }),
+    };
+    await expect(
+      recordOperatorRequest(syncThrow as unknown as PartnerOperatorAuditWriter, {
+        identity,
+        req: { method: 'GET' },
+        controllerPath: null,
+        statusCode: 200,
+      }),
+    ).resolves.toBeUndefined();
+    expect(syncThrow.recordBestEffort).not.toHaveBeenCalled();
+
+    const rejecting = {
+      recordBestEffort: jest.fn().mockRejectedValue(new Error('db down')),
+      resolveGrantOrigin: jest.fn(),
+    };
+    await expect(
+      recordOperatorRequest(rejecting as unknown as PartnerOperatorAuditWriter, {
+        identity: operatorIdentityFromGrant(grant()),
+        req: null,
+        controllerPath: 'edit-sessions',
+        statusCode: 403,
+        errorCode: 'X',
+      }),
+    ).resolves.toBeUndefined();
+    expect(rejecting.recordBestEffort).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: null, method: null, route: null, statusCode: 403, detail: { errorCode: 'X' } }),
+    );
+  });
+
+  it('controllerPathOf: 문자열 path 만 읽고 앞뒤 슬래시를 제거한다', () => {
+    @SetMetadata('path', '/files/')
+    class Slashed {}
+    @SetMetadata('path', ['a', 'b'])
+    class Multi {}
+    class NoMeta {}
+    expect(controllerPathOf(Slashed)).toBe('files');
+    expect(controllerPathOf(Multi)).toBeNull();
+    expect(controllerPathOf(NoMeta)).toBeNull();
+    expect(controllerPathOf(undefined)).toBeNull();
+    expect(controllerPathOf('files')).toBeNull();
   });
 });
 
@@ -659,6 +993,22 @@ describe('AuthModule 배선', () => {
     expect(providers).toContain(PartnerOperatorGrantService);
     expect(providers).toContain(PartnerOperatorAuditWriter);
     expect(providers).toContainEqual({ provide: APP_INTERCEPTOR, useClass: PartnerOperatorAuditInterceptor });
+  });
+
+  it('JwtAuthGuard 의 감사 기록기는 선택 의존성이다', () => {
+    const optional = (Reflect.getMetadata(OPTIONAL_DEPS_METADATA, JwtAuthGuard) ?? []) as unknown[];
+    expect(optional).toContain(1);
+  });
+
+  it('감사 기록기가 없는 모듈의 @UseGuards(JwtAuthGuard) 컨트롤러도 구성된다', async () => {
+    @Controller('no-writer-probe')
+    @UseGuards(JwtAuthGuard)
+    class NoWriterProbe {
+      @Post()
+      run(): void {}
+    }
+    const moduleRef = await Test.createTestingModule({ controllers: [NoWriterProbe] }).compile();
+    await moduleRef.close();
   });
 
   it('PartnerOperatorClaims 타입은 claimsFromGrant 출력과 일치(컴파일 확인)', () => {
