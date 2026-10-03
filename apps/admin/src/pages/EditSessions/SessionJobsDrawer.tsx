@@ -9,6 +9,7 @@ import {
   Typography,
   Popconfirm,
   Alert,
+  Spin,
   message,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
@@ -20,6 +21,12 @@ import {
   type StaffJobItem,
   type StaffSessionItem,
 } from '../../api/edit-data';
+import { workerJobsApi } from '../../api/worker-jobs';
+import { ValidationResultView } from '../../components/ValidationResultView';
+import {
+  canExpandValidationResult,
+  validationForJob,
+} from '../../components/validationResultHelpers';
 import { describeApiError } from './editDataHelpers';
 
 const { Title, Text } = Typography;
@@ -36,6 +43,22 @@ const DOWNLOADABLE_STATUSES = new Set(['COMPLETED', 'FIXABLE']);
 
 function formatDateTime(value: string | null | undefined): string {
   return value ? new Date(value).toLocaleString('ko-KR') : '-';
+}
+
+/**
+ * VALIDATE 행의 검증 결과 — 펼칠 때 마운트되어 그때만 잡을 조회한다.
+ * 조회 실패·형식을 알 수 없는 결과는 아무것도 표시하지 않는다.
+ */
+function JobValidationResult({ jobId }: { jobId: string }) {
+  const jobQuery = useQuery({
+    queryKey: ['worker-job', jobId],
+    queryFn: () => workerJobsApi.getById(jobId),
+    retry: false,
+  });
+
+  if (jobQuery.isLoading) return <Spin size="small" />;
+  const view = jobQuery.data ? validationForJob(jobQuery.data) : null;
+  return view ? <ValidationResultView result={view} /> : null;
 }
 
 interface SessionJobsDrawerProps {
@@ -252,6 +275,17 @@ export function SessionJobsDrawer({ session, open, onClose }: SessionJobsDrawerP
         loading={jobsQuery.isLoading && enabled}
         pagination={false}
         locale={{ emptyText: '작업이 없습니다' }}
+        expandable={{
+          rowExpandable: canExpandValidationResult,
+          expandedRowRender: (job) => <JobValidationResult jobId={job.id} />,
+          expandIcon: ({ expanded, expandable, onExpand, record }) =>
+            expandable ? (
+              <Button size="small" type="link" onClick={(e) => onExpand(record, e)}>
+                {expanded ? '검증 결과 접기' : '검증 결과'}
+              </Button>
+            ) : null,
+          columnWidth: 120,
+        }}
       />
 
       <Title level={5} style={{ marginTop: 24 }}>

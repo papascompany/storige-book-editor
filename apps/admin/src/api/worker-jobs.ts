@@ -70,6 +70,8 @@ export interface ValidationResult {
     spineSize?: number;
     resolution?: number;
     colorMode?: string;
+    /** TrimBox 기준 판형 통과·재단 기하 검증 때 워커가 기록하는 재단 크기(mm) */
+    trimBox?: { width: number; height: number };
   };
 }
 

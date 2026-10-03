@@ -15,7 +15,6 @@ import {
   Spin,
   Tag,
   Descriptions,
-  Table,
   message,
   Row,
   Col,
@@ -27,13 +26,13 @@ import {
   ReloadOutlined,
   CheckCircleOutlined,
   CloseCircleOutlined,
-  ExclamationCircleOutlined,
   LoadingOutlined,
 } from '@ant-design/icons';
 import type { UploadFile } from 'antd/es/upload/interface';
-import type { ColumnsType } from 'antd/es/table';
-import { workerJobsApi, CreateValidationJobDto, ValidationError, ValidationWarning } from '../../api/worker-jobs';
+import { workerJobsApi, CreateValidationJobDto } from '../../api/worker-jobs';
 import { PdfBeforeAfterPreview } from '../../components/PdfBeforeAfterPreview';
+import { ValidationResultView } from '../../components/ValidationResultView';
+import { extractValidationResult } from '../../components/validationResultHelpers';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -54,32 +53,6 @@ const statusColors: Record<string, string> = {
   COMPLETED: 'success',
   FAILED: 'error',
   FIXABLE: 'warning',
-};
-
-// Error code translations
-const errorCodeLabels: Record<string, string> = {
-  UNSUPPORTED_FORMAT: '지원하지 않는 파일 형식',
-  FILE_CORRUPTED: '손상된 파일',
-  FILE_TOO_LARGE: '파일 크기 초과',
-  PAGE_COUNT_INVALID: '페이지 수 오류',
-  PAGE_COUNT_EXCEEDED: '페이지 수 초과',
-  SIZE_MISMATCH: '사이즈 불일치',
-  SADDLE_STITCH_INVALID: '사철 제본 규격 오류',
-  POST_PROCESS_CMYK: '후가공 파일 CMYK 사용',
-  SPREAD_SIZE_MISMATCH: '스프레드 사이즈 불일치',
-};
-
-// Warning code translations
-const warningCodeLabels: Record<string, string> = {
-  PAGE_COUNT_MISMATCH: '페이지 수 불일치',
-  BLEED_MISSING: '재단 여백 없음',
-  RESOLUTION_LOW: '해상도 낮음',
-  LANDSCAPE_PAGE: '가로형 페이지',
-  CENTER_OBJECT_CHECK: '중앙부 객체 확인',
-  CMYK_STRUCTURE_DETECTED: 'CMYK 구조 감지',
-  MIXED_PDF: '혼합 PDF',
-  TRANSPARENCY_DETECTED: '투명도 감지',
-  OVERPRINT_DETECTED: '오버프린트 감지',
 };
 
 export const WorkerTestPage = () => {
@@ -179,140 +152,22 @@ export const WorkerTestPage = () => {
   const renderValidationResult = () => {
     if (!currentJob) return null;
 
-    const rawResult = currentJob.result as any;
-    if (!rawResult) return null;
-
     // Worker stores result as { result: { isValid, errors, warnings, metadata } }
-    const result = rawResult.result || rawResult;
-
-    const errors: ValidationError[] = result.errors || [];
-    const warnings: ValidationWarning[] = result.warnings || [];
-    // Check isValid from result, or infer from job status + errors
-    const isValid = result.isValid ?? (currentJob.status === 'COMPLETED' && errors.length === 0);
-    const metadata = result.metadata || {};
-
-    const errorColumns: ColumnsType<ValidationError> = [
-      {
-        title: '코드',
-        dataIndex: 'code',
-        key: 'code',
-        render: (code: string) => (
-          <Tag color="error">{errorCodeLabels[code] || code}</Tag>
-        ),
-      },
-      {
-        title: '메시지',
-        dataIndex: 'message',
-        key: 'message',
-      },
-      {
-        title: '자동 수정',
-        dataIndex: 'autoFixable',
-        key: 'autoFixable',
-        render: (autoFixable: boolean, record) => (
-          autoFixable ? (
-            <Tag color="blue">{record.fixMethod || 'Yes'}</Tag>
-          ) : (
-            <Tag>No</Tag>
-          )
-        ),
-      },
-    ];
-
-    const warningColumns: ColumnsType<ValidationWarning> = [
-      {
-        title: '코드',
-        dataIndex: 'code',
-        key: 'code',
-        render: (code: string) => (
-          <Tag color="warning">{warningCodeLabels[code] || code}</Tag>
-        ),
-      },
-      {
-        title: '메시지',
-        dataIndex: 'message',
-        key: 'message',
-      },
-      {
-        title: '자동 수정',
-        dataIndex: 'autoFixable',
-        key: 'autoFixable',
-        render: (autoFixable: boolean, record) => (
-          autoFixable ? (
-            <Tag color="blue">{record.fixMethod || 'Yes'}</Tag>
-          ) : (
-            <Tag>No</Tag>
-          )
-        ),
-      },
-    ];
+    const view = extractValidationResult(currentJob.result, String(currentJob.status));
+    if (!view) return null;
 
     return (
       <div style={{ marginTop: 16 }}>
         <Divider>검증 결과</Divider>
 
-        {/* Result Summary */}
-        <Alert
-          type={isValid ? 'success' : 'error'}
-          message={isValid ? '검증 통과' : '검증 실패'}
-          description={`에러: ${errors.length}개, 경고: ${warnings.length}개`}
-          showIcon
-          style={{ marginBottom: 16 }}
-        />
-
-        {/* Metadata */}
-        <Card title="PDF 메타데이터" size="small" style={{ marginBottom: 16 }}>
-          <Descriptions column={2} size="small">
-            <Descriptions.Item label="페이지 수">{metadata.pageCount || '-'}</Descriptions.Item>
-            <Descriptions.Item label="페이지 크기">
-              {metadata.pageSize ? `${metadata.pageSize.width?.toFixed(1)} x ${metadata.pageSize.height?.toFixed(1)} mm` : '-'}
-            </Descriptions.Item>
-            <Descriptions.Item label="재단 여백">
-              {metadata.hasBleed ? `있음 (${metadata.bleedSize || 0}mm)` : '없음'}
-            </Descriptions.Item>
-            <Descriptions.Item label="색상 모드">{metadata.colorMode || '-'}</Descriptions.Item>
-          </Descriptions>
-        </Card>
-
-        {/* Errors */}
-        {errors.length > 0 && (
-          <Card
-            title={<><CloseCircleOutlined style={{ color: '#ff4d4f' }} /> 에러 ({errors.length})</>}
-            size="small"
-            style={{ marginBottom: 16 }}
-          >
-            <Table
-              dataSource={errors}
-              columns={errorColumns}
-              rowKey={(_, idx) => `error-${idx}`}
-              pagination={false}
-              size="small"
-            />
-          </Card>
-        )}
-
-        {/* Warnings */}
-        {warnings.length > 0 && (
-          <Card
-            title={<><ExclamationCircleOutlined style={{ color: '#faad14' }} /> 경고 ({warnings.length})</>}
-            size="small"
-          >
-            <Table
-              dataSource={warnings}
-              columns={warningColumns}
-              rowKey={(_, idx) => `warning-${idx}`}
-              pagination={false}
-              size="small"
-            />
-          </Card>
-        )}
+        <ValidationResultView result={view} />
 
         {/* Before/After 자동 수정 미리보기 — FIXABLE 상태에서만 표시 */}
         {(currentJob.status as string) === 'FIXABLE' && currentJob.inputFileUrl && (
           <PdfBeforeAfterPreview
             originalFileUrl={currentJob.inputFileUrl}
-            metadata={metadata}
-            errors={errors}
+            metadata={view.metadata}
+            errors={view.errors}
             orderOptions={{
               pages: form.getFieldValue('pages') || 4,
               bleed: form.getFieldValue('bleed') || 3,

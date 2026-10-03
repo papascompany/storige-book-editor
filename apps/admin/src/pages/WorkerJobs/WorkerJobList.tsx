@@ -20,6 +20,8 @@ import { OutputFile, WorkerJob, WorkerJobStatus, WorkerJobType } from '@storige/
 import { workerJobsApi } from '../../api/worker-jobs';
 import { sitesApi } from '../../api/sites';
 import { resolveStorageUrl } from '../../lib/axios';
+import { ValidationResultView } from '../../components/ValidationResultView';
+import { validationForJob } from '../../components/validationResultHelpers';
 import { useAuthStore } from '../../stores/authStore';
 
 const { Title } = Typography;
@@ -206,6 +208,9 @@ export const WorkerJobList = () => {
     },
   ];
 
+  // VALIDATE 잡이고 결과 형식을 알 수 있을 때만 구조화 카드(원본 JSON 카드는 그대로 둔다)
+  const selectedValidation = selectedJob ? validationForJob(selectedJob) : null;
+
   // Calculate statistics from stats data
   const getStatValue = (status?: WorkerJobStatus, jobType?: WorkerJobType) => {
     if (!stats || !Array.isArray(stats)) return 0;
@@ -375,6 +380,11 @@ export const WorkerJobList = () => {
                 {selectedJob.completedAt ? new Date(selectedJob.completedAt).toLocaleString('ko-KR') : '-'}
               </Descriptions.Item>
             </Descriptions>
+            {selectedValidation && (
+              <Card title="검증 결과" size="small" style={{ marginTop: 16 }}>
+                <ValidationResultView result={selectedValidation} />
+              </Card>
+            )}
             {selectedJob.result && (
               <Card title="처리 결과" size="small" style={{ marginTop: 16 }}>
                 <pre style={{ maxHeight: 300, overflow: 'auto', fontSize: 12, background: '#f5f5f5', padding: 8, borderRadius: 4 }}>
