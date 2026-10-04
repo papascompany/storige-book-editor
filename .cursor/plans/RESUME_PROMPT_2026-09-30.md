@@ -46,17 +46,17 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
 
 ---
 
-## 1. 현재 라이브 상태 (2026-10-03 04:59Z — Wave 2 배포 후)
+## 1. 현재 라이브 상태 (2026-10-04 00:43Z — Wave 3 배포 후)
 
 | 구성 | 현재 운영 | 롤백 |
 |---|---|---|
 | DB | 09-28: `template_sets.page_step`·`pad_to_page_step` / 09-29 09:57Z: `20260929`(운영자 권한·감사 테이블) → `20260930`(sites.edit_retention_days·origin/actor) — 전부 ADDITIVE | 백업 `~/backup-sites-pre-staff-edit-20260929.sql`·`~/backup-template_sets-pre-padstep-20260928.sql`. 컬럼·테이블은 남겨도 무해 |
-| api | `9e2a817`(Wave 2, 10-03 04:58Z) + nginx 재시작. 차단 플래그 `JOB_LINK_STRICT`·`JOB_FILE_SITE_STRICT` = false(기본) | `storige-api:rollback-pre-1003`(=`4f28e52`) → `rollback-pre-stage3`(=`361a9a4`) → `rollback-pre-guest2` → … (태그 → `latest` 재지정 후 `up -d --no-build api` + nginx 재시작) |
-| worker | `9e2a817`(Wave 2 — 합성 내지 contentTrim·JOB_STALLED, 10-03 04:55Z) | `storige-worker:rollback-pre-1003`(=`1c52c80`) → `rollback-pre-wave1b` → …. X1(+contentTrim)만 끄려면 `.env` `WORKER_TRIMBOX_SIZE_CHECK=false` 후 worker 재생성 |
-| editor | Vercel `65j5xwzgg`(`9e2a817`, 10-03 04:52Z — 초기화·저장 오류 정리) | `dnmu12g57`(`bbb9381`) → `6hv60qkny` promote |
-| admin | Vercel `isxgg1mpv`(`947c9e6`, 09-30 02:38Z) | `hcgs4hn2c` → `purgkt41z` |
+| api | `f63c8ae`(Wave 3, 10-04 00:41Z) + nginx 재시작. 플래그 `JOB_LINK_STRICT`·`JOB_FILE_SITE_STRICT`·`SESSION_JOB_OUTPUT_LOOKUP` = false(기본) | `storige-api:rollback-pre-wave3`(=`9e2a817`) → `rollback-pre-1003`(=`4f28e52`) → `rollback-pre-stage3` → … (태그 → `latest` 재지정 후 `up -d --no-build api` + nginx 재시작). **Wave 3 이전 코드로 되돌릴 때는 오너 승인 뒤 데이터 정리 절차 먼저**(비공개 메모 `../_private_notes/wave3/`) · 롤백 순서 api → (합성 큐 delayed·active 소진 확인) → worker |
+| worker | `f63c8ae`(Wave 3 — 합성 재시도 의미론, 10-04 00:38Z) | `storige-worker:rollback-pre-wave3`(=`9e2a817`) → `rollback-pre-1003`(=`1c52c80`) → …. X1(+contentTrim)만 끄려면 `.env` `WORKER_TRIMBOX_SIZE_CHECK=false` 후 worker 재생성 |
+| editor | Vercel `qftv0kx8t`(`f63c8ae`, 10-04 00:35Z — getState 페이지 필드·남은 문구) | `65j5xwzgg`(`9e2a817`) → `dnmu12g57` promote. IIFE 번들(VPS `build:embed:prod`)은 미재빌드(파트너 미사용, 오너 결정 뒤) |
+| admin | Vercel `oylw176wy`(`f63c8ae`, 10-04 00:35Z — 검증 결과 TrimBox 표시·컴포넌트 테스트) | `l6f2dhp0f`(`9e2a817`) → `isxgg1mpv` promote |
 
-- origin/master = `9e2a817`(+ 이후 문서 커밋). VPS 체크아웃 = `9e2a817`. 계약 정본 CONTRACT_FREEZE **v1.9**.
+- origin/master = `f63c8ae`(+ 이후 문서 커밋). VPS 체크아웃 = `f63c8ae`. 계약 정본 CONTRACT_FREEZE **v1.10**.
 - DB 마이그레이션 없음. 로컬 백업 브랜치 `backup/wave1-pre-regroup-2026-09-30`(push 안 함, 커밋 재구성 전 상태 — 필요 없으면 삭제).
 - 배포 방식:
   - editor·admin: master push 가 곧 배포다(**push 전 승인**). 문서만 바꾼 push 는 Vercel 빌드가 Canceled 되고 기존 Ready 가 유지된다.
@@ -69,11 +69,11 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
 
 | 대상 | 기준 |
 |---|---|
-| api jest | 124 스위트 / 2416 · tsc 0 |
-| worker jest | 27 스위트 / 932 · tsc 0 (로컬 gs 설치 시; gs 부재 시 GS 블록 skip) |
-| editor vitest | 97 파일 / 1370 · tsc 0 · 빌드 · build:embed |
-| admin vitest | 7 파일 / 128 · tsc·eslint 0 · 빌드 |
-| sdk | 12 / 349 |
+| api jest | 130 스위트 / 2579 · tsc 0 |
+| worker jest | 30 스위트 / 1071 · tsc 0 (로컬 gs 설치 시; gs 부재 시 GS 블록 skip) |
+| editor vitest | 102 파일 / 1424 · tsc 0 · 빌드 · build:embed |
+| admin vitest | 16 파일 / 209 · tsc·eslint 0 · 빌드(컴포넌트 테스트는 `.test.tsx` + happy-dom docblock) |
+| sdk | 12 / 359 · tsc 0 |
 | canvas-core | 55 / 630 |
 
 - worker `crop-mark-validation.spec` 파리티 1건은 API 스위트와 동시에 돌릴 때만 간헐 실패한다(부하성). 단독 실행하면 통과한다.
@@ -136,6 +136,16 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
   - 반영 동작(공개): 편집기 초기화·저장 오류 code·고정 한국어 문구, 주문번호 진입 일시 오류 시 새 세션 없음, sessionId 단독 재오픈 실패 알림, 비회원 완료 안내, 오류 로그 요약·Authorization 가림 / 합성·채움 내지 contentTrim(B = templateSet.bleedMm, 예 216×303) / 운영자 감사 가드 단계 거부 행 / JOB_STALLED / presigned complete 사이트 키 귀속(P4) / files staff 에 SUPER_ADMIN / 잡 사이트 결정 규칙.
   - 남은 위험(비공개 메모): JD-4 판정·갱신 비원자(JD-3 전이 가드에서 해소), 데이터 스탬프는 api 롤백으로 되돌아가지 않음(옛 api 무해), TrimBox 가 재단과 1mm 넘게 다른 파일은 원본 박스 산출.
   - **다음 Wave 후보**: JD-1 세션 연결 저장(양사 session.* 미소비 확인 — WH-005 v2 와 함께) · JD-2/JD-3 재시도·전이 가드 · Wave B 차단 전환 판단(**10-08 09:51Z 이후**, 플래그는 이미 배포·env 만 전환, 기준은 비공개 메모) · X1F-2a 표지 TrimBox · X1F-2c 첨부 정리본 · X1F-3b admin 경고 표시 · editor-robust-3 getState 페이지 · create/createGuest POST 재시도 · EmbedView 재오픈 화면 문구·handleLoadSession INVALID_DATA 원문 · OA-4 admin 테스트 의존성.
+- **10-03~04 Wave 3 배포 완료(오너 승인)** — 결정·계약은 비공개 메모 `../_private_notes/wave3/`.
+  - 범위: ① 작업 상태 전이 가드(완료 뒤 FAILED 금지·같은 종결 재수신 시 웹훅 중복 생략·**시스템 실패(JOB_STALLED·JOB_TIMEOUT_SWEPT)만 늦은 COMPLETED 로 승격** — 오너 결정) + 합성 재시도(attempts 3, 30s→90s, 입력 오류 즉시 실패) ② 작업의 세션 연결 저장 복구(**저장만, session.* 미발신 유지** — 오너 결정, 세션 산출물 조회 전환은 플래그 기본 OFF) ③ 편집기 잔여 문구·로그·Sentry 정리 + getState·editor.state 페이지 필드(ADDITIVE)·SDK ④ admin TrimBox 경고·검증 결과 표시 + 컴포넌트 테스트 환경.
+  - admin devDependencies 3개(@testing-library/react·dom, happy-dom) 추가: 첫 `pnpm add` 가 공용 의존성(@babel/runtime 등)까지 dedupe 해 되돌리고, lockfile 은 admin importer 9줄만 넣어 `--frozen-lockfile` 로 검증(다른 패키지 버전 불변).
+  - 파트너 회신(05:3x~05:4xZ): 양사 합성 폴링은 FAILED 에서 항목 고정(120s 상한, 경합 가드) → 시스템 실패의 늦은 COMPLETED 는 파트너 주문에 반영되지 않음(재합성으로 복구, 현 운영도 동일) · getState 는 dirty 만 · 작업 응답 editSessionId 미사용. 운영 실측: JOB_STALLED·JOB_TIMEOUT_SWEPT 역대 0건, 06-01 이후 합성 6건 전부 COMPLETED. 회신 발신(파트너 변경 불필요, 구분은 errorCode 두 값).
+  - 운영 실측(06:38Z): worker_jobs → file_edit_sessions FK ON DELETE SET NULL, edit_session_id 인덱스 있음, 연결 행 0/345 → JD-1 진행 조건 충족.
+  - 흐름: 설계+비판(8, 47건 처리) → 2차 CTO 결정 → 구현(4 레인·56 에이전트, 확정 7건 수정) → 통합 검증 → 문서(9) → 최종 리뷰 3렌즈(14) → 확정 4건 반영(반복 종결 재수신의 후속 처리 멱등 재실행·**연결이 확인된 세션만 컬럼 저장**·롤백 문서·직전 이미지 보존) → api 재검증 130/2579.
+  - 커밋: `c94cdbc` worker · `6fdbd32` api · `06a44f3` editor·sdk · `a24cd38` admin(+lockfile admin 9줄) · `f63c8ae` docs(FREEZE v1.10·GUIDE·DEPLOYMENT·`PARTNER_NOTICE_WAVE3_2026-10-03.md`). gitleaks 0.
+  - 사전 통지·ACK: printy(`f7a574d`, 서명 identifier jobId 우선 확인 요청 → 코드 불변 확인), bookmoa(`1272b42`). 100p 영향 없음.
+  - 배포(10-04 UTC): 직전 이미지 태그 `rollback-pre-wave3` 00:33Z → push 00:34:35Z → admin `oylw176wy` 00:35:20Z·editor `qftv0kx8t` 00:35:37Z Ready(번들 새 문구 확인) → **worker 먼저** 00:38Z → api 00:41Z + nginx([FLAGS] … SESSION_JOB_OUTPUT_LOOKUP=false). 스모크 00:43Z: health 200, external·작업 조회·상태 보고·owners·외부 세션 조회 무인증 401, guest 토큰 없음 403, 오류·5xx 0, 대기열 0. 완료 통지 양사 발신. DB 마이그레이션 없음.
+  - 남은 위험·후속(비공개 메모): 첫 종결 보고와 재수신 동시 실행 경합(운영 코드와 같은 수준), spread 실패 errorDetail 의 stack·jobData 파트너 노출 축소, F-4 입력 오류 타입화(손상 PDF 등 재시도 대상), 관리자 세션 범위 판정(staff-edit-data) 정합, SESSION_JOB_OUTPUT_LOOKUP 켜기 전 운영 EXPLAIN·JOB_LINK_STRICT 전제, IIFE 번들 재빌드(오너 결정).
 - **추적 중(다음 세션 인계)**: ① owners API 첫 실호출(bookmoa R-208·printy R-208) 응답코드·지연 대조·공유 ② bookmoa·printy 첫 실합성(사이트 키 + editSessionId) 운영 로그 대조 ③ 3단계 관측 로그 집계 후 Wave B(차단 전환) 오너 결정 — 비공개 메모 참조 ④ 테스트 비회원 세션 `0a4a8001…` 은 10-02 06:30Z 자동 삭제.
 - **10-01 세션 판정 정리 3단계 Wave A 배포(오너 승인, 상세 비공개 메모)**: 양사 사전 통지·ACK(bookmoa 5e7a2ed·printy f7a574d, 영향 0 — 사이트 키 + 자사 세션 합성 경로 통과 테스트 고정). 편집기 `7e252ba` push 09:47:22Z → Vercel `6hv60qkny`. API·문서(CONTRACT_FREEZE v1.8) `558c293`·`4f28e52` push 09:48:54Z → 롤백 태그 `rollback-pre-stage3` → api 교체 09:51Z + nginx 재시작 → health 200, 스모크(게스트 라우트 쿼리 토큰 403, 무인증 401), error 로그 0. 일부 항목은 관측 로그만(관측 뒤 오너 결정).
   - 파트너 질의 회신: printy 신규 진입(templateSetId+orderSeqno)은 allowedOrderSeqnos 미송신이라 새 fatal 경로 비대상. **같은 화면 비회원 초안 이어 열기는 09-30 07:54Z 이후 새 세션으로 시작하는 회귀**(운영 비회원 세션 생성 0건이라 실제 영향 0) → 편집기 같은 탭 기억 기반 복구 진행 중, 양사 통지.
