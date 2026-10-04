@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Storige Wave 1·2 개요</title>
-<meta name="description" content="2026-09-30~10-03 Storige 세션 처리 내역, Wave 1·2 레인, 비회원 세션 정리 1~3단계, 재단선 포함 PDF 의 TrimBox 판정·합성 처리 방식">
+<title>Storige Wave 1~3 개요</title>
+<meta name="description" content="2026-09-30~10-04 Storige 세션 처리 내역, Wave 1~3 레인, 비회원 세션 정리 1~3단계, 재단선 포함 PDF 의 TrimBox 판정·합성 처리 방식">
 <style>
 :root{
   --bg:#f7f7f5; --surface:#ffffff; --surface-2:#f0efec; --text:#1d1d1b; --muted:#5f5e5a; --line:#dcdad4;
@@ -104,41 +104,43 @@ footer{margin-top:40px;color:var(--muted);font-size:13px}
 <div class="wrap">
 <header>
   <button class="themebtn" id="themeBtn" type="button" aria-label="테마 전환">테마</button>
-  <h1>Storige Wave 1·2 개요</h1>
-  <p>2026-09-30 ~ 10-03 세션 처리 내역 · Wave 1·2 레인 · 비회원 세션 정리 1~3단계 · 재단선 포함 PDF 의 TrimBox 판정과 합성 처리 방식</p>
+  <h1>Storige Wave 1~3 개요</h1>
+  <p>2026-09-30 ~ 10-04 세션 처리 내역 · Wave 1~3 레인 · 비회원 세션 정리 1~3단계 · 재단선 포함 PDF 의 TrimBox 판정과 합성 처리 방식</p>
   <div class="chips">
-    <span class="chip acc"><span class="dot"></span>기준 시각 2026-10-03 05:01Z UTC</span>
+    <span class="chip acc"><span class="dot"></span>기준 시각 2026-10-04 00:43Z UTC</span>
     <span class="chip ok"><span class="dot"></span>Wave 1 배포 09-30 07:54Z</span>
     <span class="chip ok"><span class="dot"></span>비회원 세션 정리 2·3단계 10-01</span>
     <span class="chip ok"><span class="dot"></span>비회원 초안 이어 열기 복구 10-01 10:12Z</span>
     <span class="chip ok"><span class="dot"></span>Wave 2 배포 10-03 04:52~04:58Z</span>
-    <span class="chip warn"><span class="dot"></span>추적 중 4건</span>
-    <span class="chip info"><span class="dot"></span>오너 결정 대기 · 10-08 이후</span>
+    <span class="chip ok"><span class="dot"></span>Wave 3 배포 10-04 00:35~00:41Z</span>
+    <span class="chip warn"><span class="dot"></span>추적 중 5건 · 실 e2e 재개 대기</span>
+    <span class="chip info"><span class="dot"></span>오너 결정 대기 · Wave B 플래그 전환 10-08 09:51Z 이후</span>
   </div>
   <nav class="toc" aria-label="목차">
-    <a href="#live">현재 라이브 상태</a><a href="#timeline">세션 타임라인</a><a href="#lanes">Wave 1 레인</a><a href="#wave2">Wave 2</a><a href="#guest">비회원 세션 정리</a><a href="#partners">파트너 협업</a>
+    <a href="#live">현재 라이브 상태</a><a href="#timeline">세션 타임라인</a><a href="#lanes">Wave 1 레인</a><a href="#wave2">Wave 2</a><a href="#wave3">Wave 3</a><a href="#guest">비회원 세션 정리</a><a href="#partners">파트너 협업</a>
     <a href="#trimbox">TrimBox 처리</a><a href="#measure">실측 3건</a><a href="#deploy">검증·배포</a><a href="#pending">추적·결정 대기</a>
   </nav>
 </header>
 
 <section id="live">
-  <h2>현재 라이브 상태 <small>2026-10-03 05:01Z UTC</small></h2>
-  <p class="lead">DB 마이그레이션은 없었습니다. 되돌릴 때는 아래 롤백 대상으로 이미지 교체 또는 Vercel promote 를 합니다.</p>
+  <h2>현재 라이브 상태 <small>2026-10-04 00:43Z UTC</small></h2>
+  <p class="lead">DB 마이그레이션은 없었습니다. 되돌릴 때는 아래 롤백 대상으로 이미지 교체 또는 Vercel promote 를 합니다. Wave 3 를 되돌릴 때는 api 를 먼저, worker 를 나중에 되돌리며 절차는 <code>docs/DEPLOYMENT.md</code> 를 따릅니다.</p>
   <div class="tablewrap"><table>
     <thead><tr><th>구성</th><th>운영 중</th><th>반영 시각</th><th>롤백 대상</th></tr></thead>
     <tbody>
-      <tr><td><b>api</b></td><td class="mono">9e2a817</td><td>10-03 04:58Z</td><td class="mono">rollback-pre-1003 → rollback-pre-stage3 → rollback-pre-guest2</td></tr>
-      <tr><td><b>worker</b></td><td class="mono">9e2a817</td><td>10-03 04:55Z</td><td class="mono">rollback-pre-1003 → rollback-pre-wave1b</td></tr>
-      <tr><td><b>editor</b></td><td class="mono">65j5xwzgg (9e2a817)</td><td>10-03 04:52Z</td><td class="mono">dnmu12g57 → 6hv60qkny</td></tr>
-      <tr><td><b>계약 문서</b></td><td>CONTRACT_FREEZE v1.9</td><td>10-03</td><td class="muted">문서</td></tr>
+      <tr><td><b>api</b></td><td class="mono">f63c8ae</td><td>10-04 00:41Z</td><td class="mono">rollback-pre-wave3 → rollback-pre-1003 → rollback-pre-stage3</td></tr>
+      <tr><td><b>worker</b></td><td class="mono">f63c8ae</td><td>10-04 00:38Z</td><td class="mono">rollback-pre-wave3 → rollback-pre-1003</td></tr>
+      <tr><td><b>editor</b></td><td class="mono">qftv0kx8t (f63c8ae)</td><td>10-04 00:35Z</td><td class="mono">65j5xwzgg → dnmu12g57</td></tr>
+      <tr><td><b>admin</b></td><td class="mono">oylw176wy (f63c8ae)</td><td>10-04 00:35Z</td><td class="mono">l6f2dhp0f → isxgg1mpv</td></tr>
+      <tr><td><b>계약 문서</b></td><td>CONTRACT_FREEZE v1.10</td><td>10-04</td><td class="muted">문서</td></tr>
       <tr><td><b>재단선 판정 스위치</b></td><td class="mono">WORKER_TRIMBOX_SIZE_CHECK=true</td><td>09-30 07:54Z</td><td class="muted">.env 로 false 후 worker 재생성(10-03 부터 합성 내지 주문 도련 적용도 함께 꺼짐)</td></tr>
-      <tr><td><b>잡 생성 확인 플래그</b></td><td class="mono">JOB_LINK_STRICT=false<br>JOB_FILE_SITE_STRICT=false</td><td>10-03 04:58Z</td><td class="muted">기본값. 전환은 오너 결정 뒤 별도 절차(docs/DEPLOYMENT.md)</td></tr>
+      <tr><td><b>기능 플래그</b></td><td class="mono">JOB_LINK_STRICT=false<br>JOB_FILE_SITE_STRICT=false<br>SESSION_JOB_OUTPUT_LOOKUP=false</td><td>10-03 04:58Z<br>10-03 04:58Z<br>10-04 00:41Z</td><td class="muted">기본값. 전환은 오너 결정 대기, 결정 뒤 별도 절차(docs/DEPLOYMENT.md)</td></tr>
     </tbody>
   </table></div>
 </section>
 
 <section id="timeline">
-  <h2>세션 타임라인 <small>UTC · 09-30 ~ 10-03</small></h2>
+  <h2>세션 타임라인 <small>UTC · 09-30 ~ 10-04</small></h2>
   <p class="lead">이 세션에서 한 일을 시간 순으로 정리했습니다. 운영 DB·로그 조회는 모두 읽기 전용이었습니다.</p>
   <h3 style="margin:0 0 8px">09-30</h3>
   <div class="card">
@@ -194,7 +196,26 @@ footer{margin-top:40px;color:var(--muted);font-size:13px}
     <li class="done"><span class="t">04:38</span>최종 리뷰 3렌즈(계약 정합·배포 안전·공개 노출, 10) → 차단 0. 커밋 6개, gitleaks 0.</li>
     <li class="done"><span class="t">04:50</span>오너 배포 승인 → 3사 사전 통지 → ACK 3건(코드 변경 불필요).</li>
     <li class="done"><span class="t">04:51</span>push → 편집기 Vercel Ready 04:52 → 롤백 태그 → worker 04:55 → api 04:58 + nginx 재시작.</li>
-    <li class="now"><span class="t">04:59</span>스모크 통과(health 200, 무인증 401, 비회원 경로 토큰 없음 403, 오류·5xx 0). 3사 완료 통지, RESUME 기록.</li>
+    <li class="done"><span class="t">04:59</span>스모크 통과(health 200, 무인증 401, 비회원 경로 토큰 없음 403, 오류·5xx 0). 3사 완료 통지, RESUME 기록.</li>
+    <li class="done"><span class="t">05:1x</span>Wave 3 오너 승인: 작업 상태 전이 가드·합성 재시도, 작업의 세션 연결 저장(저장만, <code>session.*</code> 미발신 유지), 편집기 남은 문구·getState 페이지 필드, admin TrimBox 표시·컴포넌트 테스트. 양사 착수 통지·사실 질의.</li>
+    <li class="done"><span class="t">05:3x</span>양사 회신(05:3x~05:4x): 합성 폴링은 <code>FAILED</code> 에서 항목 고정(120초 상한) → 시스템 실패의 늦은 완료는 주문에 반영되지 않고 재합성으로 복구(지금과 같음), getState 는 <code>dirty</code> 만, 작업 응답 <code>editSessionId</code> 미사용. 운영 실측: <code>JOB_STALLED</code>·<code>JOB_TIMEOUT_SWEPT</code> 역대 0건, 06-01 이후 합성 6건 전부 완료.</li>
+    <li class="done"><span class="t">06:38</span>운영 실측: 작업 → 편집 세션 FK(ON DELETE SET NULL)·<code>edit_session_id</code> 인덱스 있음, 세션 연결 행 0/345 → 세션 연결 저장 진행 조건 충족.</li>
+    <li class="done"><span class="t">이후</span>설계 + 비판 워크플로(에이전트 8, 47건 처리) → 2차 CTO 결정. 오너 결정: 시스템 실패 두 코드만 늦은 완료 반영, 세션 이벤트 미발신 유지.</li>
+    <li class="done"><span class="t">이후</span>구현 워크플로: 레인 4개·에이전트 56, 구현 → 리뷰 → 발견별 반박 → 수정(확정 7건). admin 테스트 의존성 3개는 lockfile admin 항목만 더해 <code>--frozen-lockfile</code> 로 확인.</li>
+    <li class="done"><span class="t">이후</span>통합 검증(tsc 0 · 테스트 · 빌드 · admin eslint) → 문서 워크플로(9): CONTRACT_FREEZE v1.10 · 연동 가이드 · 배포 문서 · Wave 3 파트너 공지.</li>
+    <li class="done"><span class="t">이후</span>최종 리뷰 3렌즈(14) → 확정 4건 반영(반복 종결 재수신의 후속 처리 멱등 재실행, 연결이 확인된 세션만 저장, 롤백 문서, 직전 이미지 보존) → api 재검증 130/2579. 커밋 5개, gitleaks 0.</li>
+    <li class="done"><span class="t">이후</span>양사 사전 통지 → ACK: printy(<code>f7a574d</code>, 서명 identifier 는 jobId 우선임을 코드로 확인), bookmoa(<code>1272b42</code>). 100p 영향 없음. 오너 배포 승인.</li>
+  </ul>
+  </div>
+
+  <h3 style="margin:18px 0 8px">10-04</h3>
+  <div class="card">
+  <ul class="tl">
+    <li class="done"><span class="t">00:33</span>직전 이미지 보존: 롤백 태그 <span class="mono">rollback-pre-wave3</span>(api·worker = <span class="mono">9e2a817</span>).</li>
+    <li class="done"><span class="t">00:34</span>push 00:34:35Z → admin <span class="mono">oylw176wy</span> 00:35:20Z · editor <span class="mono">qftv0kx8t</span> 00:35:37Z Ready(운영 번들 새 문구 확인).</li>
+    <li class="done"><span class="t">00:38</span>worker 먼저 교체(합성 재시도 처리).</li>
+    <li class="done"><span class="t">00:41</span>api 교체 + nginx 재시작. 기동 로그 <code>[FLAGS]</code> 에 <code>SESSION_JOB_OUTPUT_LOOKUP=false</code> 포함 기본값 확인.</li>
+    <li class="now"><span class="t">00:43</span>스모크 통과(health 200, 외부·작업 조회·상태 보고·owners·외부 세션 조회 무인증 401, 비회원 경로 토큰 없음 403, 오류·5xx 0, 대기열 0). 양사 완료 통지, RESUME 기록.</li>
   </ul>
   </div>
 </section>
@@ -257,6 +278,39 @@ footer{margin-top:40px;color:var(--muted);font-size:13px}
   </div>
 </section>
 
+<section id="wave3">
+  <h2>Wave 3 <small>10-04 배포 · 오너 승인 10-03 05:1xZ</small></h2>
+  <p class="lead">Wave 2 다음 후보 중 작업 상태·합성 재시도·세션 연결과 편집기·admin 정리를 레인 4개로 나눠 구현했습니다. 양사 회신과 운영 실측으로 진행 조건을 먼저 확인했고, 리뷰 발견은 반박 검증을 통과한 것만 반영했습니다.</p>
+  <ol class="pipe" aria-label="Wave 3 진행 단계">
+    <li class="ok"><b>설계 + 비판</b><span class="n">에이전트 8 · 47건 처리</span></li>
+    <li class="ok"><b>구현 · 리뷰 · 반박</b><span class="n">56 · 확정 7건</span></li>
+    <li class="ok"><b>문서</b><span class="n">9 · v1.10 + 공지</span></li>
+    <li class="ok"><b>최종 리뷰</b><span class="n">14 · 확정 4건 반영</span></li>
+    <li class="ok"><b>배포</b><span class="n">10-04 00:35 ~ 00:41Z</span></li>
+  </ol>
+  <div class="grid g3" style="margin-top:12px">
+    <div class="card lane"><h3>작업 상태 고정 · 웹훅 중복 생략 <span class="badge b-ok">배포</span></h3>
+      <ul class="clean"><li>작업이 <code>COMPLETED</code>·<code>FIXABLE</code>·<code>FAILED</code> 로 끝나면 상태 불변, 같은 종결 재보고는 처음 값 유지</li><li>시스템 실패 <code>JOB_STALLED</code>·<code>JOB_TIMEOUT_SWEPT</code> 만 늦은 완료를 <code>COMPLETED</code> 로 반영(오너 결정)</li><li>같은 작업의 같은 종결 웹훅은 앞선 발신이 성공·진행 중이면 다시 보내지 않음</li></ul>
+      <div class="meta">api·worker · 양사 영향 0(FAILED 에서 항목 고정)</div></div>
+    <div class="card lane"><h3>합성 자동 재시도 <span class="badge b-ok">배포</span></h3>
+      <ul class="clean"><li>합성 대기열 작업은 최대 3회 처리, 대기 30초 → 90초</li><li>입력 오류(입력을 바꾸지 않으면 같은 실패)와 <code>JOB_STALLED</code> 는 바로 <code>FAILED</code></li><li>재시도 중에는 <code>PROCESSING</code> 유지, 웹훅은 최종 결과 1회</li></ul>
+      <div class="meta">worker → api 순 · 다른 대기열은 1회 처리 그대로</div></div>
+    <div class="card lane"><h3>세션 연결 저장 <span class="badge b-ok">배포</span></h3>
+      <ul class="clean"><li>새 작업에 생성 요청의 편집 세션 id 를 기록 — 연결이 확인된 세션만</li><li>작업 응답 <code>editSessionId</code>, 웹훅 본문 <code>sessionId</code>(ADDITIVE)</li><li><code>session.*</code> 이벤트는 지금처럼 보내지 않음</li><li><code>SESSION_JOB_OUTPUT_LOOKUP</code> 기본 false · 오너 결정 대기</li></ul>
+      <div class="meta">api · DB 마이그레이션 없음(기존 컬럼)</div></div>
+    <div class="card lane"><h3>편집기 · getState 페이지 필드 · 문구 <span class="badge b-ok">배포</span></h3>
+      <ul class="clean"><li><code>editor.state</code> 에 선택 필드 <code>pageCount</code>·<code>currentPage</code>(<code>editor.ready</code> 이후), SDK 타입 반영</li><li>남은 고정 문구: 템플릿셋 없음, 초기화 중 인증 만료, 저장된 작업 불러오기 실패(<code>INVALID_DATA</code>)</li><li>오류 로그·Sentry 정리</li></ul>
+      <div class="meta">editor·sdk · IIFE 번들 재빌드는 오너 결정 대기</div></div>
+    <div class="card lane"><h3>admin · 검증 결과 TrimBox 표시 <span class="badge b-ok">배포</span></h3>
+      <ul class="clean"><li>검증 결과 화면에 TrimBox 기준 판정 경고와 결과 표시</li><li>컴포넌트 테스트 환경(<code>.test.tsx</code> + happy-dom), devDependencies 3개 · lockfile 은 admin 항목만</li></ul>
+      <div class="meta">admin · 통지 불필요</div></div>
+    <div class="card lane"><h3>문서·계약 <span class="badge b-ok">반영</span></h3>
+      <ul class="clean"><li>CONTRACT_FREEZE v1.10 · 연동 가이드 · 배포 문서</li><li>파트너 공지 <code>PARTNER_NOTICE_WAVE3_2026-10-03.md</code></li></ul>
+      <div class="meta">커밋 <span class="mono">c94cdbc … f63c8ae</span>, 기록 <span class="mono">4120bab</span></div></div>
+  </div>
+  <p class="note" style="margin-top:12px">배포 순서: worker 를 먼저, api 를 나중에 교체합니다(api 먼저 금지 — 합성 재시도는 새 worker 와 함께 동작). 되돌릴 때는 반대로 api → worker 순입니다.</p>
+</section>
+
 <section id="guest">
   <h2>비회원 세션 정리 1~3단계</h2>
   <p class="lead">비회원(게스트) 편집 세션을 그 세션의 게스트 토큰으로만 열고 저장하도록 단계적으로 정리했습니다. 각 단계는 배포 전에 양사 사전 통지와 ACK 를 받았습니다. 보안 세부는 공개 문서에 적지 않습니다.</p>
@@ -287,20 +341,20 @@ footer{margin-top:40px;color:var(--muted);font-size:13px}
 
 <section id="partners">
   <h2>파트너 협업</h2>
-  <p class="lead">파트너 작업은 CTO 세션이 조율합니다. 아래는 09-30 ~ 10-03 에 받은 회신·배포와, 남은 대조 약속입니다.</p>
+  <p class="lead">파트너 작업은 CTO 세션이 조율합니다. 아래는 09-30 ~ 10-04 에 받은 회신·배포와, 남은 대조 약속입니다.</p>
   <div class="tablewrap"><table>
     <thead><tr><th>파트너</th><th>이번 회신 요지</th><th>우리 약속</th><th>배포 뒤 파트너 할 일</th></tr></thead>
     <tbody>
       <tr><td><b>bookmoa</b><br><span class="muted">bookmoa-mobile</span></td>
-        <td>R-207~R-212 배포(10-01). 10-03 Wave 2 회신·ACK(<code>a6810f7</code>): 합성은 항상 editSessionId, 산출 크기 후속 검사 없음, 오류 카드에 message 그대로, 웹훅 무저장·폴링이 권위, session 웹훅 미소비.</td>
-        <td><span class="badge b-ok">통지 완료</span> Wave 2 완료 통지 10-03 04:59Z · AUTH_EXPIRED 뒤 토큰 갱신을 기다리지 않음 회신</td>
+        <td>R-207~R-212 배포(10-01). 10-03 Wave 2 회신·ACK(<code>a6810f7</code>): 합성은 항상 editSessionId, 산출 크기 후속 검사 없음, 오류 카드에 message 그대로, 웹훅 무저장·폴링이 권위, session 웹훅 미소비. Wave 3 회신·ACK(<code>1272b42</code>): 합성 폴링은 FAILED 에서 항목 고정, getState 는 dirty 만, 작업 응답 editSessionId 미사용 → 코드 변경 불필요.</td>
+        <td><span class="badge b-ok">통지 완료</span> Wave 2 완료 통지 10-03 04:59Z · Wave 3 완료 통지 10-04 00:43Z · AUTH_EXPIRED 뒤 토큰 갱신을 기다리지 않음 회신</td>
         <td><span class="badge b-warn">대기</span> 산출 크기 변화(216×303 등) 인쇄팀 전달, 실 e2e 재개(미정) 시 owners·첫 실합성·같은 탭 재오픈 대조</td></tr>
       <tr><td><b>printy</b></td>
-        <td>R-207~R-212 이식(<code>f7a574d</code>). 10-03 회신·ACK: 합성은 항상 editSessionId, 템플릿셋 3종 도련 3mm, compose-mixed 실호출 0, 오류 카드에 message 그대로.</td>
-        <td><span class="badge b-ok">통지 완료</span> Wave 2 완료 통지 10-03 04:59Z · JOB_STALLED 고정 문구 안내</td>
+        <td>R-207~R-212 이식(<code>f7a574d</code>). 10-03 회신·ACK: 합성은 항상 editSessionId, 템플릿셋 3종 도련 3mm, compose-mixed 실호출 0, 오류 카드에 message 그대로. Wave 3 ACK(<code>f7a574d</code>): 서명 identifier 가 jobId 우선인지 확인 요청 → 코드 불변 확인 회신, 코드 변경 불필요.</td>
+        <td><span class="badge b-ok">통지 완료</span> Wave 2 완료 통지 10-03 04:59Z · Wave 3 완료 통지 10-04 00:43Z · JOB_STALLED 고정 문구 안내</td>
         <td><span class="badge b-warn">대기</span> 실 e2e 재개(미정) 시 owners 첫 실호출·첫 실합성 대조</td></tr>
       <tr><td><b>100p Books</b></td>
-        <td>업로드·complete·다운로드·삭제는 편집기 키, 검증·잡 조회는 워커 키 → 두 키 모두 같은 100p 사이트로 판정(코드 확인). 삭제 404 는 본문 <code>FILE_NOT_FOUND</code> 일 때만 성공. Wave 2(P4·JOB_STALLED) ACK(<code>b0f5d3a</code>).</td>
+        <td>업로드·complete·다운로드·삭제는 편집기 키, 검증·잡 조회는 워커 키 → 두 키 모두 같은 100p 사이트로 판정(코드 확인). 삭제 404 는 본문 <code>FILE_NOT_FOUND</code> 일 때만 성공. Wave 2(P4·JOB_STALLED) ACK(<code>b0f5d3a</code>). Wave 3 영향 없음.</td>
         <td>404 <code>FILE_NOT_FOUND</code> 원칙 유지 · P4 완료 통지 10-03 04:59Z</td>
         <td><span class="badge b-ok">ACK</span> 코드 변경 없음, 배포 UTC 기록</td></tr>
     </tbody>
@@ -404,14 +458,15 @@ footer{margin-top:40px;color:var(--muted);font-size:13px}
 <section id="deploy">
   <h2>검증·배포</h2>
   <div class="grid g2">
-    <div class="card"><h3>검증 기준선 <span class="badge b-ok">Wave 2 직전 · HEAD 6d5b51d</span></h3>
+    <div class="card"><h3>이전 기준선 <span class="badge b-info">Wave 2 직전 · HEAD 6d5b51d</span></h3>
       <ul class="clean">
         <li>api jest 117 스위트 / 2165 · tsc 0</li><li>worker jest 26 / 829 · tsc 0</li>
         <li>editor vitest 87 / 1177 · tsc 0 · 빌드(임베드 번들 포함)</li><li>admin 7 / 128 · sdk 12 / 349 · canvas-core 55 / 630</li>
       </ul>
-      <p class="muted">이보다 낮으면 회귀로 봅니다. 신규 테스트만큼 늘어나는 것은 정상입니다. 09-30 시작 시점(HEAD a446111)은 api 99/1659 · worker 23/661 · editor 79/973 이었습니다.</p>
-      <h3 style="margin-top:12px">현재 통합 결과 <span class="badge b-ok">통과 · 10-03</span></h3>
-      <ul class="clean"><li>api tsc 0 · jest 124 / 2416</li><li>worker tsc 0 · jest 27 / 932 (gs·qpdf 실제 실행)</li><li>editor tsc 0 · vitest 97 / 1370 · 빌드 · 임베드 빌드</li><li>sdk 12 / 349 · gitleaks 0</li></ul></div>
+      <p class="muted">09-30 시작 시점(HEAD a446111)은 api 99/1659 · worker 23/661 · editor 79/973, Wave 2 통합(10-03)은 api 124/2416 · worker 27/932 · editor 97/1370 · sdk 12/349 였습니다. 10-04 부터 회귀 기준은 아래 현재 통합 결과입니다.</p>
+      <h3 style="margin-top:12px">현재 통합 결과 <span class="badge b-ok">통과 · 10-04 · 회귀 기준</span></h3>
+      <ul class="clean"><li>api tsc 0 · jest 130 / 2579</li><li>worker tsc 0 · jest 30 / 1071 (gs·qpdf 실제 실행)</li><li>editor tsc 0 · vitest 102 / 1424 · 빌드 · 임베드 빌드</li><li>admin tsc·eslint 0 · vitest 16 / 209 · 빌드</li><li>sdk 12 / 359 · canvas-core 55 / 630 · gitleaks 0</li></ul>
+      <p class="muted">이보다 낮으면 회귀로 봅니다. 신규 테스트만큼 늘어나는 것은 정상입니다.</p></div>
     <div class="card"><h3>배포 <span class="badge b-ok">완료</span></h3>
       <ul class="clean">
         <li>DB 마이그레이션 없음</li>
@@ -421,6 +476,7 @@ footer{margin-top:40px;color:var(--muted);font-size:13px}
         <li>파트너 통지 → ACK → RESUME 기록</li>
         <li><b>10-01</b>: 단계마다 편집기 먼저 → 양사 사전 통지·ACK → API(롤백 태그·nginx 재시작·스모크) 순서</li>
         <li><b>10-03 Wave 2</b>: 3사 사전 통지·ACK → push 04:51Z → 편집기 Vercel 04:52Z → 롤백 태그 <span class="mono">rollback-pre-1003</span> → worker 04:55Z → api 04:58Z + nginx → 스모크 04:59Z(health 200, 무인증 401, 비회원 경로 403, 오류·5xx 0) → 완료 통지</li>
+        <li><b>10-04 Wave 3</b>: 양사 사전 통지·ACK → 롤백 태그 <span class="mono">rollback-pre-wave3</span> 00:33Z → push 00:34Z → admin·editor Vercel 00:35Z → <b>worker 먼저</b> 00:38Z → api 00:41Z + nginx → 스모크 00:43Z(health 200, 무인증 401, 비회원 경로 403, 오류·5xx 0, 대기열 0) → 완료 통지. DB 마이그레이션 없음</li>
       </ul></div>
   </div>
 </section>
@@ -428,35 +484,39 @@ footer{margin-top:40px;color:var(--muted);font-size:13px}
 <section id="pending">
   <h2>추적 중·결정 대기</h2>
   <div class="grid g2">
-    <div class="card"><h3>추적 중 <span class="badge b-warn">4건</span></h3>
+    <div class="card"><h3>추적 중 <span class="badge b-warn">5건</span></h3>
       <ul class="clean">
-        <li>owners API 첫 실호출(bookmoa·printy) 응답코드·지연 대조·공유</li>
-        <li>양사 첫 실합성(사이트 키 + 세션) 운영 로그 대조 · 산출 내지 크기(예 216×303) 확인</li>
-        <li>3단계 관측 결과 집계 → 10-08 09:51Z 이후 차단 전환 판단(상세 비공개)</li>
+        <li>owners API 첫 실호출(bookmoa·printy R-208) 응답코드·지연 대조·공유</li>
+        <li>양사 첫 실합성(사이트 키 + 세션) 운영 로그 대조 · 작업 세션 연결 저장 확인 · 산출 내지 크기(예 216×303) 확인 · 소요 시간 초 단위 공유</li>
         <li>bookmoa 실 e2e 재개 시 같은 탭 재오픈 1회 확인(R-213)</li>
+        <li>실 e2e 재개 시점: 양사 미정(10-03 ACK). 재개 통지가 오면 나머지 항목을 함께 대조</li>
+        <li>그 밖 첫 실사용: 운영자 대리 편집(R-206) · 쪽수 파라미터 첫 실편집 · bookmoa 첫 실편집 2건(스프링·flat-spine) · 오너 관리자 화면 E2E 1회 · printy 용지 코드 질의 · bookmoa S10 착수 시 Storige 선행</li>
         <li class="muted">테스트 비회원 세션 자동 삭제 <span class="badge b-ok">확인 10-03</span></li>
       </ul></div>
     <div class="card"><h3>오너 결정이 필요한 것</h3>
       <ul class="clean">
-        <li>차단 전환(10-08 이후, 플래그는 이미 배포 — 설정만 변경). 실제 트래픽이 0건이면 관측 0건만으로는 근거가 약함</li>
-        <li>작업의 세션 연결 저장(양사 세션 웹훅 미소비 확인 — 파트너 웹훅 v2 와 함께)</li>
+        <li>Wave B 플래그 전환(10-08 09:51Z 이후, 플래그는 이미 배포 — 설정만 변경). 3단계 관측 결과 집계로 판단(상세 비공개). 실제 트래픽이 0건이면 관측 0건만으로는 근거가 약함</li>
+        <li>IIFE 번들 재빌드(getState 쪽수 값 반영 — master push 로는 바뀌지 않음, 파트너 미사용)</li>
+        <li><code>SESSION_JOB_OUTPUT_LOOKUP</code> 전환(기본 false, 결정 뒤 별도 절차)</li>
         <li>기존 Sentry 이벤트에 남아 있을 수 있는 토큰 정리(외부 작업)</li>
         <li>3-B 자동 반영(웹훅 v2), 결속 API O1~O5, 고아 정리 실가동</li>
         <li>호스트 고정 책등 규칙, branch protection, compose 기본값</li>
       </ul></div>
     <div class="card"><h3>후속 항목</h3>
       <ul class="clean">
-        <li>합성 재시도와 작업 종결 상태 전이 가드</li>
-        <li>표지 TrimBox 판정, 첨부 내지 정리본 등록, admin 경고 표시</li>
-        <li>임베드 getState 페이지 필드, 세션 생성 요청 재시도 정책, 재오픈 화면 문구</li>
-        <li>admin 컴포넌트 테스트 환경(의존성 추가 필요)</li>
+        <li>첫 종결 보고와 재보고가 동시에 처리될 때의 정합</li>
+        <li>실패 상세(<code>errorDetail</code>) 응답 범위 축소</li>
+        <li>입력 오류 타입화(손상 PDF 등 지금은 재시도 대상인 경우 정리)</li>
+        <li>관리자 세션 범위 판정 정합</li>
+        <li>표지 TrimBox 판정, 첨부 내지 정리본 등록, 세션 생성 요청 재시도 정책</li>
         <li class="muted">합성 주문 도련 반영 · 100p complete 사이트 기록 · 운영자 감사 · 편집기 초기화 오류·게스트 완료 문구 <span class="badge b-ok">완료 10-03</span></li>
+        <li class="muted">작업 상태 전이 가드 · 합성 재시도 · 작업 세션 연결 저장 · getState 페이지 필드 · 재오픈 화면 문구 · admin 경고 표시 · admin 컴포넌트 테스트 환경 <span class="badge b-ok">완료 10-04</span></li>
       </ul></div>
   </div>
 </section>
 
 <footer>
-  정본 상태 문서: <code>.cursor/plans/RESUME_PROMPT_2026-09-30.md</code>(10-03 기록 포함) · 파트너 계약: <code>docs/PLATFORM_INTEGRATION_GUIDE.md</code>, <code>docs/CONTRACT_FREEZE.md</code>(v1.9) · 검증 규칙: <code>docs/PDF_VALIDATION_GUIDE.md</code> · Wave 2 공지: <code>docs/partner-notices/PARTNER_NOTICE_WAVE2_2026-10-03.md</code><br>
+  정본 상태 문서: <code>.cursor/plans/RESUME_PROMPT_2026-10-04.md</code>(09-30~10-04 상세 이력은 <code>RESUME_PROMPT_2026-09-30.md</code>) · 파트너 계약: <code>docs/PLATFORM_INTEGRATION_GUIDE.md</code>, <code>docs/CONTRACT_FREEZE.md</code>(v1.10) · 검증 규칙: <code>docs/PDF_VALIDATION_GUIDE.md</code> · 배포 절차: <code>docs/DEPLOYMENT.md</code> · 공지: <code>docs/partner-notices/PARTNER_NOTICE_WAVE2_2026-10-03.md</code>, <code>docs/partner-notices/PARTNER_NOTICE_WAVE3_2026-10-03.md</code><br>
   보안 항목의 세부는 교정 배포 전까지 공개 문서에 적지 않습니다.
 </footer>
 </div>
