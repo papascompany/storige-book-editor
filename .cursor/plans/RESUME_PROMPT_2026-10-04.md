@@ -69,17 +69,17 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
 
 ---
 
-## 2. 현재 라이브 상태 (2026-10-05 07:03Z — Wave 5 배포 후)
+## 2. 현재 라이브 상태 (2026-10-05 12:03Z — Wave 6 배포 후)
 
 | 구성 | 현재 운영 | 롤백 |
 |---|---|---|
 | DB | 09-30 Wave 1 ~ 10-04 Wave 3 **마이그레이션 없음**. 마지막 스키마 변경은 09-29 `20260929`·`20260930`(ADDITIVE) | 백업 `~/backup-sites-pre-staff-edit-20260929.sql`·`~/backup-template_sets-pre-padstep-20260928.sql`. 추가 컬럼·테이블은 남겨도 무해 |
-| api | `d3e3587`(10-05 05:47:10Z) + nginx 재시작 | `storige-api:rollback-pre-wave4`(=`f63c8ae`, c732d216145f) → `rollback-pre-wave3`(=`9e2a817`) → `rollback-pre-1003`(=`4f28e52`) → `rollback-pre-stage3` → …(태그 → `latest` 재지정 후 `up -d --no-build api` + nginx 재시작). **Wave 3 이전 코드로 되돌릴 때는 오너 승인 뒤 비공개 메모(`../_private_notes/wave3/`)의 데이터 정리 절차 먼저.** 롤백 순서 api → (합성 큐 delayed·active 소진 확인) → worker |
+| api | `9381ea4`(10-05 12:02:48Z) + nginx 재시작 | `storige-api:rollback-pre-wave6`(=`d3e3587`, 294b1d98554e) → `rollback-pre-wave4`(=`f63c8ae`, c732d216145f) → `rollback-pre-wave3`(=`9e2a817`) → `rollback-pre-1003`(=`4f28e52`) → `rollback-pre-stage3` → …(태그 → `latest` 재지정 후 `up -d --no-build api` + nginx 재시작). **Wave 3 이전 코드로 되돌릴 때는 오너 승인 뒤 비공개 메모(`../_private_notes/wave3/`)의 데이터 정리 절차 먼저.** 롤백 순서 api → (합성 큐 delayed·active 소진 확인) → worker |
 | worker | `d3e3587`(10-05 05:44:29Z) | `storige-worker:rollback-pre-wave4`(=`f63c8ae`, eacd43c79dfb) → `rollback-pre-wave3`(=`9e2a817`) → `rollback-pre-1003`(=`1c52c80`) → … |
-| editor | Vercel `g0haka2nu`(`599f602`, 10-05 07:01:41Z 생성 · Ready 07:02:48Z) | `pwvgvgvhb`(`d3e3587`) → `qftv0kx8t`(`f63c8ae`) → `65j5xwzgg`(`9e2a817`) promote. IIFE 번들(VPS `build:embed:prod`)은 미재빌드(파트너 미사용, 오너 결정 대기) |
-| admin | Vercel `oylw176wy`(`f63c8ae`, 10-04 00:35:20Z — Wave 4 admin 변경 없음, 10-05 빌드 Canceled 정상) | `l6f2dhp0f`(`9e2a817`) → `isxgg1mpv` promote |
+| editor | Vercel `16moj714s`(`9381ea4`, Ready 10-05 12:00:26Z) | `g0haka2nu`(`599f602`) → `pwvgvgvhb`(`d3e3587`) → `qftv0kx8t`(`f63c8ae`) → `65j5xwzgg`(`9e2a817`) promote. IIFE 번들(VPS `build:embed:prod`)은 미재빌드(파트너 미사용, 오너 결정 대기) |
+| admin | Vercel `cyho5uda8`(`9381ea4`, Ready 10-05 12:00:30Z — Wave 6 템플릿셋 목록 쪽 단위 표시) | `oylw176wy`(`f63c8ae`) promote | `l6f2dhp0f`(`9e2a817`) → `isxgg1mpv` promote |
 
-- origin/master = `599f602` 이후(Wave 5 편집기·문서), VPS 체크아웃 = `d3e3587`(api·worker 는 Wave 4 그대로 — Wave 5 는 편집기만). 계약 정본 **CONTRACT_FREEZE v1.12**(`docs/CONTRACT_FREEZE.md` + `apps/api/src/contract-freeze.spec.ts`).
+- origin/master = VPS 체크아웃 = `9381ea4` 이후(Wave 6). api = Wave 6, worker = Wave 4(`d3e3587` 이미지 — Wave 5·6 worker 변경 없음). 계약 정본 **CONTRACT_FREEZE v1.12**(`docs/CONTRACT_FREEZE.md` + `apps/api/src/contract-freeze.spec.ts`).
 - 플래그(운영 기동 로그 `[FLAGS]` 확인값):
 
 | 플래그 | 운영 값 | 비고 |
@@ -180,7 +180,7 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
 
 ### 5.2 오너 결정 대기
 
-- **Wave 6(10-05)**: ① 양장 표지 기준 = 업로드 검증 싸바리 전개 — 편집기 싸바리 출력 모드·api 검증 연결 구현(**템플릿 데이터 조건부, 현재 운영 활성 0세트 → 코드 배포만으로 출력 불변**), 내지 PDF 판형 우선은 싸바리 모드 한정(오너 O-3). **코드 커밋 완료·배포 승인 대기**(api·editor·admin, 파트너 출력 변화 없음 → 완료 통지만). 동화책 실제 반영 = 새 템플릿셋 복제(오너 O-1) — 새 표지 템플릿(면 판형+8)·bookmoa 고정 책등·기준 쪽수 합의·사전 통지 ACK 후 별도 승인. 후속: 기존 면≠판형 세트(동화책 낱장 7·A4 하드커버 2) 내지 크기는 저장 세션 실측 뒤 별건. ② 쪽 단위 = 일치 원칙: 207c458f 16~48·4 정리 완료(10-05 07:31:58Z, 백업 `~/backup-template_sets-207c458f-pre-pagestep4-20261005T073157Z.sql`), 불일치 콘솔 경고·admin 단위 표시 구현. ③ 책등 방식 = bookmoa 결정·Storige 그대로 등록(문서 반영). ④ 템플릿 제작 가이드 갱신(`6d15194`·`b987a81`, bookmoa 초안 v2 반영).
+- **Wave 6(10-05)**: ① 양장 표지 기준 = 업로드 검증 싸바리 전개 — 편집기 싸바리 출력 모드·api 검증 연결 구현(**템플릿 데이터 조건부, 현재 운영 활성 0세트 → 코드 배포만으로 출력 불변**), 내지 PDF 판형 우선은 싸바리 모드 한정(오너 O-3). **배포 완료 10-05**: push 11:59:16Z → editor `16moj714s`·admin `cyho5uda8` Ready 12:00Z → api 12:02:48Z + nginx([FLAGS] 동일) → 스모크 정상 → 완료 통지 3사(파트너 출력 변화 없음). 롤백: Vercel promote(editor `g0haka2nu`·admin `oylw176wy`) → api `rollback-pre-wave6`. 동화책 실제 반영 = 새 템플릿셋 복제(오너 O-1) — 새 표지 템플릿(면 판형+8)·bookmoa 고정 책등·기준 쪽수 합의·사전 통지 ACK 후 별도 승인. 후속: 기존 면≠판형 세트(동화책 낱장 7·A4 하드커버 2) 내지 크기는 저장 세션 실측 뒤 별건. ② 쪽 단위 = 일치 원칙: 207c458f 16~48·4 정리 완료(10-05 07:31:58Z, 백업 `~/backup-template_sets-207c458f-pre-pagestep4-20261005T073157Z.sql`), 불일치 콘솔 경고·admin 단위 표시 구현. ③ 책등 방식 = bookmoa 결정·Storige 그대로 등록(문서 반영). ④ 템플릿 제작 가이드 갱신(`6d15194`·`b987a81`, bookmoa 초안 v2 반영).
 - 템플릿 제작 가이드: Storige 소유. 10-05 오너 결정 기준으로 갱신 완료, bookmoa 초안이 오면 코드 대조 후 추가 반영.
 
 - **제본 최소 쪽수 vs 호스트 쪽수 범위**(10-05 발견, 양사 공통): 양사는 신규 편집에 항상 `bindingType=perfect` 를 보내고(spinePolicy 미설정), 편집기는 무선제본 최소 32쪽을 삭제 하한·설정 패널 한도에 적용한다 → 범위 최소 16 인 상품(bookmoa·printy 편집기 상품 4종 모두)에서 쪽을 늘리면 범위 최소로 되돌릴 수 없다(완료는 막지 않음). 오너 결정(10-05): bookmoa 에 사실 공유·검토 요청 → **bookmoa 오너 결정 '둘 다'**: ① Storige 에 '호스트 pageCountMin·Max 가 있으면 제본 최소·최대 대신 범위 적용' 요청(**Storige 오너 결정 10-05: Wave 5 로 착수 — 설계안 오너 보고 후 구현, 배포 별도 승인**, printy 도 이 안이면 코드 변경 0) ② bookmoa 는 양장 선택·하드커버 상품에 hardcover 전송 검토 — Storige 사실 회신 발신(207c458f 표지 flat-spread 라 책등 무변, f0335fda 는 책등 자동 계산형이라 hardcover 면 책등 약 +1.5mm(운영 margin perfect 0.5·hardcover 2.0), hardcover 는 서버 표지 크기 검증 미적용).
