@@ -3,8 +3,15 @@
  *
  * assertSafeDownloadUrl 가 사설/링크로컬/루프백 IP 와 비-http(s) 스킴을 거부하고,
  * 공인 IP·허용 호스트는 통과시키는지 검증한다. isBlockedIp 는 순수 함수라 DNS 불필요.
+ * 거부 오류는 UnsafeDownloadUrlError(reason)이고, name·message 는 평범한 Error 와 같다.
+ * 이름 확인이 필요한 사례는 dns/promises lookup 목으로 대신한다(IP 리터럴·허용 호스트 사례는 lookup 을 쓰지 않음).
  */
-import { isBlockedIp, assertSafeDownloadUrl } from './url-safety';
+import { lookup } from 'dns/promises';
+import { DomainError } from '../common/errors';
+import { isBlockedIp, assertSafeDownloadUrl, UnsafeDownloadUrlError } from './url-safety';
+
+jest.mock('dns/promises', () => ({ lookup: jest.fn() }));
+const mockedLookup = lookup as unknown as jest.Mock;
 
 describe('isBlockedIp (사설/링크로컬/루프백 차단)', () => {
   it.each([
@@ -93,5 +100,64 @@ describe('assertSafeDownloadUrl', () => {
       if (prev === undefined) delete process.env.WORKER_DOWNLOAD_ALLOWED_HOSTS;
       else process.env.WORKER_DOWNLOAD_ALLOWED_HOSTS = prev;
     }
+  });
+});
+
+describe('assertSafeDownloadUrl 오류 형태', () => {
+  async function rejection(raw: string): Promise<unknown> {
+    return assertSafeDownloadUrl(raw).then(
+      () => undefined,
+      (err: unknown) => err,
+    );
+  }
+
+  beforeEach(() => {
+    mockedLookup.mockReset();
+  });
+
+  it.each([
+    ['::::', 'invalid-url', 'Invalid download URL: ::::'],
+    ['ftp://files.example.com/a.pdf', 'blocked-scheme', 'Blocked URL scheme: ftp:'],
+    ['http://169.254.169.254/latest', 'blocked-address', 'Blocked private/link-local address: 169.254.169.254'],
+  ])('%s → UnsafeDownloadUrlError(%s), name Error·메시지 고정', async (raw, reason, message) => {
+    const err = await rejection(raw);
+    expect(err).toBeInstanceOf(UnsafeDownloadUrlError);
+    expect(err).toBeInstanceOf(Error);
+    expect(err).not.toBeInstanceOf(DomainError);
+    expect((err as UnsafeDownloadUrlError).reason).toBe(reason);
+    expect((err as Error).message).toBe(message);
+    expect((err as Error).name).toBe('Error');
+    expect(String(err)).toBe(`Error: ${message}`);
+  });
+
+  it('이름 확인 결과가 사설 주소면 UnsafeDownloadUrlError(blocked-address)', async () => {
+    mockedLookup.mockResolvedValue([{ address: '93.184.216.34' }, { address: '10.1.2.3' }]);
+    const err = await rejection('https://files.example.com/a.pdf');
+    expect(err).toBeInstanceOf(UnsafeDownloadUrlError);
+    expect((err as UnsafeDownloadUrlError).reason).toBe('blocked-address');
+    expect((err as Error).message).toBe(
+      'Blocked private/link-local address for host files.example.com: 10.1.2.3',
+    );
+    expect((err as Error).name).toBe('Error');
+  });
+
+  it('이름 확인 실패는 평범한 Error', async () => {
+    mockedLookup.mockRejectedValue(new Error('getaddrinfo ENOTFOUND'));
+    const err = await rejection('https://files.example.com/a.pdf');
+    expect(err).toBeInstanceOf(Error);
+    expect(err).not.toBeInstanceOf(UnsafeDownloadUrlError);
+    expect((err as Error).message).toBe('DNS resolve failed for host: files.example.com');
+  });
+
+  it('이름 확인 레코드가 없으면 평범한 Error', async () => {
+    mockedLookup.mockResolvedValue([]);
+    const err = await rejection('https://files.example.com/a.pdf');
+    expect(err).not.toBeInstanceOf(UnsafeDownloadUrlError);
+    expect((err as Error).message).toBe('No DNS records for host: files.example.com');
+  });
+
+  it('이름 확인 결과가 공인 주소면 통과', async () => {
+    mockedLookup.mockResolvedValue([{ address: '93.184.216.34' }]);
+    await expect(assertSafeDownloadUrl('https://files.example.com/a.pdf')).resolves.toBeUndefined();
   });
 });

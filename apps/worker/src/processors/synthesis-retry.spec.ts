@@ -6,10 +6,12 @@
  *  2. 분류: 재시도 DomainError 코드 5종, 나머지 ErrorCodes 는 재시도 없음. 408·425·429·5xx·응답 없음은 재시도.
  *  3. 판정: retry / fail, FAILED PATCH 때 discard 호출 여부, [SYNTH_RETRY] 로그 형식(오류 메시지·URL 없음).
  *  4. 설치된 bull 의 backoff·discard 동작.
+ *  5. 합성 FAILED payload(buildSynthesisFailedFields): 워커 오류 코드 또는 SYNTHESIS_FAILED, 허용 키 원시값 상세.
  */
 import * as fs from 'fs';
 import { DomainError, ErrorCodes } from '../common/errors';
 import {
+  buildSynthesisFailedFields,
   classifySynthesisError,
   decideSynthesisFailure,
   formatSynthRetryLog,
@@ -17,6 +19,8 @@ import {
   isRetryableHttpStatus,
   shouldDiscardOnFail,
   shouldLogSynthRetry,
+  SYNTHESIS_FAILED_CODE,
+  SYNTHESIS_FAILED_MESSAGE,
   SYNTHESIS_NON_RETRYABLE_DOMAIN_CODES,
   SYNTHESIS_RETRYABLE_DOMAIN_CODES,
 } from './synthesis-retry';
@@ -141,6 +145,26 @@ describe('classifySynthesisError', () => {
     expect(c.kind).toBe('other');
   });
 
+  it('응답 중단(ERR_BAD_RESPONSE, 상태 200)은 재시도', () => {
+    const aborted = Object.assign(new Error('stream has been aborted'), {
+      code: 'ERR_BAD_RESPONSE',
+      response: { status: 200 },
+    });
+    expect(classifySynthesisError(aborted)).toEqual({
+      retryable: true,
+      kind: 'http',
+      code: 'ERR_BAD_RESPONSE',
+      httpStatus: 200,
+    });
+  });
+
+  it.each([ErrorCodes.PDF_LOAD_FAILED, ErrorCodes.FILE_NOT_FOUND, ErrorCodes.INPUT_URL_REJECTED])(
+    '합성 입력 오류 %s → 재시도 없음',
+    (code) => {
+      expect(classifySynthesisError(new DomainError(code, 'm', { input: 'cover' })).retryable).toBe(false);
+    },
+  );
+
   it('로그용 code 는 대문자·숫자·밑줄 형식만 남긴다', () => {
     expect(classifySynthesisError(Object.assign(new Error('x'), { code: 'bad code/with path' })).code).toBeNull();
   });
@@ -235,5 +259,111 @@ describe('설치된 bull 동작', () => {
     const src = fs.readFileSync(require.resolve('bull/lib/job.js'), 'utf8');
     expect(src).toContain('this.attemptsMade < this.opts.attempts && !this._discarded');
     expect(src).toContain('this._discarded = true;');
+  });
+});
+
+describe('buildSynthesisFailedFields', () => {
+  const GENERIC = { errorCode: SYNTHESIS_FAILED_CODE, errorMessage: SYNTHESIS_FAILED_MESSAGE };
+
+  it('DomainError → 그 코드·메시지·상세', () => {
+    const err = new DomainError(ErrorCodes.PDF_LOAD_FAILED, 'PDF 로드 실패 (암호화/손상/지원불가)', { input: 'cover' });
+    expect(buildSynthesisFailedFields(err)).toEqual({
+      errorCode: ErrorCodes.PDF_LOAD_FAILED,
+      errorMessage: 'PDF 로드 실패 (암호화/손상/지원불가)',
+      errorDetail: { input: 'cover' },
+    });
+  });
+
+  it('DomainError 상세가 없으면 errorDetail 키가 없다', () => {
+    const fields = buildSynthesisFailedFields(new DomainError(ErrorCodes.SESSION_NOT_FOUND, '세션 없음'));
+    expect(fields).toEqual({ errorCode: ErrorCodes.SESSION_NOT_FOUND, errorMessage: '세션 없음' });
+    expect(Object.prototype.hasOwnProperty.call(fields, 'errorDetail')).toBe(false);
+  });
+
+  it('상세는 허용 키의 원시값만 싣는다', () => {
+    const err = new DomainError(ErrorCodes.FILE_DOWNLOAD_FAILED, '다운로드 실패', {
+      url: 'https://files.example.com/a.pdf',
+      cause: 'connect ECONNREFUSED 10.0.0.1:443',
+      path: '/app/storage/uploads/a.pdf',
+      stack: 'Error: x\n    at y',
+      input: 'content',
+      phase: 'download',
+      httpStatus: 503,
+      expected: 4,
+      got: 3,
+      index: 0,
+      target: 'cover',
+    });
+    expect(buildSynthesisFailedFields(err).errorDetail).toEqual({
+      input: 'content',
+      phase: 'download',
+      httpStatus: 503,
+      expected: 4,
+      got: 3,
+      index: 0,
+      target: 'cover',
+    });
+  });
+
+  it('허용 키라도 객체·배열·유한수가 아닌 값은 싣지 않고, 남는 키가 없으면 errorDetail 이 없다', () => {
+    const err = new DomainError(ErrorCodes.PAGE_COUNT_MISMATCH, '페이지 수 불일치', {
+      expected: { cover: 1 },
+      got: [1, 2],
+      index: Number.NaN,
+      cause: 'x',
+    });
+    expect(buildSynthesisFailedFields(err)).toEqual({
+      errorCode: ErrorCodes.PAGE_COUNT_MISMATCH,
+      errorMessage: '페이지 수 불일치',
+    });
+  });
+
+  it.each([
+    ['배열', ['input']],
+    ['문자열', 'input=cover'],
+  ])('%s 상세는 싣지 않는다', (_t, detail) => {
+    const like = { name: 'DomainError', code: ErrorCodes.PDF_LOAD_FAILED, message: 'm', detail };
+    expect(buildSynthesisFailedFields(like)).toEqual({ errorCode: ErrorCodes.PDF_LOAD_FAILED, errorMessage: 'm' });
+  });
+
+  it('코드 형식이 맞지 않는 DomainError 형태 → SYNTHESIS_FAILED·기본 문구', () => {
+    const like = { name: 'DomainError', code: 'bad code/with path', message: 'raw /app/storage/x' };
+    expect(buildSynthesisFailedFields(like)).toEqual(GENERIC);
+  });
+
+  it('DomainError 메시지가 비어 있으면 기본 문구', () => {
+    expect(buildSynthesisFailedFields(new DomainError(ErrorCodes.INTERNAL_ERROR, ''))).toEqual({
+      errorCode: ErrorCodes.INTERNAL_ERROR,
+      errorMessage: SYNTHESIS_FAILED_MESSAGE,
+    });
+  });
+
+  it.each([
+    ['Error', new Error("qpdf assemble(2 parts → /app/storage/outputs/j/merged.pdf) 실패(code=2): Command failed")],
+    ['ENOENT', Object.assign(new Error("ENOENT: no such file or directory, open '/app/storage/a.pdf'"), { code: 'ENOENT' })],
+    ['응답 없는 axios 오류', Object.assign(new Error('connect ECONNREFUSED 10.0.0.1:443'), { code: 'ECONNREFUSED' })],
+    ['문자열', 'raw failure /app/storage'],
+    ['undefined', undefined],
+  ])('%s → SYNTHESIS_FAILED·기본 문구만', (_t, err) => {
+    const fields = buildSynthesisFailedFields(err);
+    expect(fields).toEqual(GENERIC);
+    expect(JSON.stringify(fields)).not.toMatch(/app\/storage|ECONNREFUSED|qpdf/);
+  });
+
+  it('HTTP 응답 오류 → SYNTHESIS_FAILED·기본 문구·errorDetail { httpStatus }', () => {
+    const err = Object.assign(new Error('Request failed with status code 404'), {
+      code: 'ERR_BAD_REQUEST',
+      response: { status: 404, data: 'not found' },
+    });
+    expect(buildSynthesisFailedFields(err)).toEqual({ ...GENERIC, errorDetail: { httpStatus: 404 } });
+  });
+
+  it('속성 읽기에서 예외가 나도 throw 하지 않는다', () => {
+    const hostile = {
+      get name(): string {
+        throw new Error('getter');
+      },
+    };
+    expect(buildSynthesisFailedFields(hostile)).toEqual(GENERIC);
   });
 });

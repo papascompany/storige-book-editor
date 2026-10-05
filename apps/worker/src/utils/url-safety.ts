@@ -59,6 +59,21 @@ export function isBlockedIp(ip: string): boolean {
   return BLOCKED_V4.some(([base, mask]) => ((v & mask) >>> 0) === (base >>> 0));
 }
 
+export type UnsafeDownloadUrlReason = 'invalid-url' | 'blocked-scheme' | 'blocked-address';
+
+/**
+ * 형식·스킴·대상 주소 거부를 나타내는 오류. 같은 입력이면 다시 시도해도 결과가 같다.
+ * name·message 는 평범한 Error 와 같다(name 을 덮어쓰지 않음) — 판별은 instanceof 와 reason 으로 한다.
+ */
+export class UnsafeDownloadUrlError extends Error {
+  readonly reason: UnsafeDownloadUrlReason;
+
+  constructor(reason: UnsafeDownloadUrlReason, message: string) {
+    super(message);
+    this.reason = reason;
+  }
+}
+
 /** WORKER_DOWNLOAD_ALLOWED_HOSTS 를 소문자 집합으로 파싱(콤마구분, 공백 무시). */
 function allowedHosts(): Set<string> {
   return new Set(
@@ -71,17 +86,18 @@ function allowedHosts(): Set<string> {
 
 /**
  * raw-URL 다운로드 직전 안전성 검증. 부적합하면 throw.
- * @throws Error 스킴 불허·DNS 실패·사설/링크로컬 IP
+ * @throws UnsafeDownloadUrlError 형식·스킴 불허·사설/링크로컬 IP
+ * @throws Error DNS 실패·레코드 없음
  */
 export async function assertSafeDownloadUrl(raw: string): Promise<void> {
   let u: URL;
   try {
     u = new URL(raw);
   } catch {
-    throw new Error(`Invalid download URL: ${raw}`);
+    throw new UnsafeDownloadUrlError('invalid-url', `Invalid download URL: ${raw}`);
   }
   if (u.protocol !== 'http:' && u.protocol !== 'https:') {
-    throw new Error(`Blocked URL scheme: ${u.protocol}`);
+    throw new UnsafeDownloadUrlError('blocked-scheme', `Blocked URL scheme: ${u.protocol}`);
   }
   const host = u.hostname.toLowerCase();
 
@@ -93,7 +109,10 @@ export async function assertSafeDownloadUrl(raw: string): Promise<void> {
   const bareHost = host.startsWith('[') && host.endsWith(']') ? host.slice(1, -1) : host;
   if (net.isIP(bareHost)) {
     if (isBlockedIp(bareHost)) {
-      throw new Error(`Blocked private/link-local address: ${bareHost}`);
+      throw new UnsafeDownloadUrlError(
+        'blocked-address',
+        `Blocked private/link-local address: ${bareHost}`,
+      );
     }
     return;
   }
@@ -110,7 +129,10 @@ export async function assertSafeDownloadUrl(raw: string): Promise<void> {
   }
   for (const a of addrs) {
     if (isBlockedIp(a.address)) {
-      throw new Error(`Blocked private/link-local address for host ${host}: ${a.address}`);
+      throw new UnsafeDownloadUrlError(
+        'blocked-address',
+        `Blocked private/link-local address for host ${host}: ${a.address}`,
+      );
     }
   }
 }

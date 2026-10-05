@@ -228,3 +228,79 @@ export function formatSynthRetryLog(args: {
     `code=${decision.code ?? '-'} http=${decision.httpStatus ?? '-'} discard=${discard}`
   );
 }
+
+/** 합성 FAILED 기본 코드·문구 — DomainError 가 아닌 실패에 쓴다. */
+export const SYNTHESIS_FAILED_CODE = 'SYNTHESIS_FAILED';
+export const SYNTHESIS_FAILED_MESSAGE = '합성 처리 중 오류가 발생했습니다';
+
+/** FAILED errorDetail 에 싣는 키. 값은 원시값(문자열·유한수·불리언·null)만 싣는다. */
+export const SYNTHESIS_FAILED_DETAIL_KEYS: ReadonlyArray<string> = [
+  'input',
+  'phase',
+  'httpStatus',
+  'target',
+  'expected',
+  'got',
+  'index',
+];
+
+export type SynthesisFailedDetailValue = string | number | boolean | null;
+
+export interface SynthesisFailedFields {
+  errorCode: string;
+  errorMessage: string;
+  errorDetail?: Record<string, SynthesisFailedDetailValue>;
+}
+
+function isDetailValue(value: unknown): value is SynthesisFailedDetailValue {
+  return (
+    value === null ||
+    typeof value === 'string' ||
+    typeof value === 'boolean' ||
+    (typeof value === 'number' && Number.isFinite(value))
+  );
+}
+
+function pickFailedDetail(detail: unknown): Record<string, SynthesisFailedDetailValue> | undefined {
+  if (typeof detail !== 'object' || detail === null || Array.isArray(detail)) return undefined;
+  const picked: Record<string, SynthesisFailedDetailValue> = {};
+  for (const key of SYNTHESIS_FAILED_DETAIL_KEYS) {
+    if (!Object.prototype.hasOwnProperty.call(detail, key)) continue;
+    const value = (detail as Record<string, unknown>)[key];
+    if (isDetailValue(value)) picked[key] = value;
+  }
+  return Object.keys(picked).length > 0 ? picked : undefined;
+}
+
+/**
+ * 합성 FAILED payload 의 errorCode·errorMessage·errorDetail(test-env·compose-mixed·merge·spread 공통). throw 하지 않는다.
+ * - DomainError(코드 형식이 맞음): 그 코드·메시지, detail 은 허용 키의 원시값만(남는 키가 없으면 errorDetail 없음).
+ * - HTTP 응답 오류: SYNTHESIS_FAILED·기본 문구·errorDetail { httpStatus }.
+ * - 그 밖: SYNTHESIS_FAILED·기본 문구, errorDetail 없음.
+ */
+export function buildSynthesisFailedFields(err: unknown): SynthesisFailedFields {
+  try {
+    if (isDomainErrorLike(err)) {
+      const code = safeCode(err.code);
+      if (code !== null) {
+        const message = readProp(err, 'message');
+        const fields: SynthesisFailedFields = {
+          errorCode: code,
+          errorMessage: typeof message === 'string' && message.length > 0 ? message : SYNTHESIS_FAILED_MESSAGE,
+        };
+        const detail = pickFailedDetail(err.detail);
+        if (detail) fields.errorDetail = detail;
+        return fields;
+      }
+    }
+    const fields: SynthesisFailedFields = {
+      errorCode: SYNTHESIS_FAILED_CODE,
+      errorMessage: SYNTHESIS_FAILED_MESSAGE,
+    };
+    const httpStatus = httpStatusOf(err);
+    if (httpStatus !== null && Number.isFinite(httpStatus)) fields.errorDetail = { httpStatus };
+    return fields;
+  } catch {
+    return { errorCode: SYNTHESIS_FAILED_CODE, errorMessage: SYNTHESIS_FAILED_MESSAGE };
+  }
+}

@@ -35,6 +35,8 @@ export const ErrorCodes = {
   FILE_DOWNLOAD_FAILED: 'FILE_DOWNLOAD_FAILED',
   PDF_LOAD_FAILED: 'PDF_LOAD_FAILED',
   PDF_NOT_FROM_EDITOR: 'PDF_NOT_FROM_EDITOR',
+  /** 합성 입력 주소를 쓸 수 없음(형식·스킴·대상 주소). 같은 입력이면 다시 시도해도 결과가 같다. */
+  INPUT_URL_REJECTED: 'INPUT_URL_REJECTED',
 
   // 세션/검증 관련
   SESSION_NOT_FOUND: 'SESSION_NOT_FOUND',

@@ -15,6 +15,7 @@ import { captureJobException } from '../sentry/sentry.init';
 import { reportStalledLimitFailure } from './stalled-job-failure';
 // JD-2 (2026-10): 합성 실패 시도 판정 — 재시도(PATCH 없이 throw) / 최종 FAILED(+discard).
 import {
+  buildSynthesisFailedFields,
   decideSynthesisFailure,
   formatSynthRetryLog,
   shouldDiscardOnFail,
@@ -38,6 +39,14 @@ import {
   extractPages as qpdfExtractPages,
   createBlankPdf,
 } from '../utils/pdf-merge-qpdf';
+// A3 (2026-10): 합성 입력 오류(열 수 없는 PDF·저장소의 없는 파일·쓸 수 없는 입력 주소) 타입화.
+import {
+  fetchInput,
+  lightweightStorageRoot,
+  loadInputPdf,
+  SynthesisInputRole,
+  toQpdfInputError,
+} from '../utils/synthesis-input';
 import {
   SynthesisLocalResult,
   SynthesisResult,
@@ -370,7 +379,7 @@ export class SynthesisProcessor {
         job,
         jobId,
         error,
-        { status: 'FAILED', errorMessage: error.message },
+        { status: 'FAILED', ...buildSynthesisFailedFields(error) },
         { mode: 'test-env', capture: true },
       );
       throw error;
@@ -512,15 +521,13 @@ export class SynthesisProcessor {
           const url = frontList[i];
           if (!url) { pdf.addPage([contentPt.width, contentPt.height]); }
           else {
-            const bytes = await this.synthesizerService.downloadFile(url);
-            const doc = await PDFDocument.load(bytes);
+            const doc = await this.loadComposeInputPdf(url, 'endpaper');
             const pages = await pdf.copyPages(doc, doc.getPageIndices());
             pages.forEach((p) => pdf.addPage(p));
           }
         }
         if (composeContentPdfUrl) {
-          const bytes = await this.synthesizerService.downloadFile(composeContentPdfUrl);
-          const doc = await PDFDocument.load(bytes);
+          const doc = await this.loadComposeInputPdf(composeContentPdfUrl, 'content');
           // X1: 내지 재단선 영역 크롭 정규화(메모리 사본, copyPages 이전). 면지·표지 제외.
           await normalizeTrimBoxPdfDoc(doc, contentTrimCtx, `compose:${jobId}`);
           const pages = await pdf.copyPages(doc, doc.getPageIndices());
@@ -531,8 +538,7 @@ export class SynthesisProcessor {
           const url = backList[i];
           if (!url) { pdf.addPage([contentPt.width, contentPt.height]); }
           else {
-            const bytes = await this.synthesizerService.downloadFile(url);
-            const doc = await PDFDocument.load(bytes);
+            const doc = await this.loadComposeInputPdf(url, 'endpaper');
             const pages = await pdf.copyPages(doc, doc.getPageIndices());
             pages.forEach((p) => pdf.addPage(p));
           }
@@ -549,8 +555,7 @@ export class SynthesisProcessor {
         // 일반 책자: cover.pdf + content.pdf
         const coverPdf = await PDFDocument.create();
         if (composeCoverEditable !== false && composeCoverUrl) {
-          const coverBytes = await this.synthesizerService.downloadFile(composeCoverUrl);
-          const coverDoc = await PDFDocument.load(coverBytes);
+          const coverDoc = await this.loadComposeInputPdf(composeCoverUrl, 'cover');
           // P0-3: 스프레드 책이면(API가 metadata.spread 기대치를 push) 펼침면 cover MediaBox 무결성 검증.
           // D-4: 기대치 = output(wrap 포함) 우선 · total 폴백 (resolveSpreadCoverExpectation).
           if (spreadCoverExpectation) {
@@ -597,8 +602,7 @@ export class SynthesisProcessor {
         // 낱장: 편집 페이지만 하나의 PDF
         const pagesPdf = await PDFDocument.create();
         if (composeContentPdfUrl) {
-          const bytes = await this.synthesizerService.downloadFile(composeContentPdfUrl);
-          const doc = await PDFDocument.load(bytes);
+          const doc = await this.loadComposeInputPdf(composeContentPdfUrl, 'content');
           // X1: 내지 재단선 영역 크롭 정규화(메모리 사본, copyPages 이전).
           await normalizeTrimBoxPdfDoc(doc, contentTrimCtx, `compose:${jobId}`);
           const pages = await pagesPdf.copyPages(doc, doc.getPageIndices());
@@ -618,18 +622,17 @@ export class SynthesisProcessor {
         if (composeCoverEditable === false || !composeCoverUrl) {
           finalPdf.addPage([coverPt.width, coverPt.height]);
         } else {
-          const coverBytes = await this.synthesizerService.downloadFile(composeCoverUrl);
-          const coverDoc = await PDFDocument.load(coverBytes);
+          const coverDoc = await this.loadComposeInputPdf(composeCoverUrl, 'cover');
           const pages = await finalPdf.copyPages(coverDoc, coverDoc.getPageIndices());
           pages.forEach((p) => finalPdf.addPage(p));
         }
         const frontList = composeFrontEndpaperUrls ?? [];
         for (const url of frontList) {
           if (!url) { finalPdf.addPage([contentPt.width, contentPt.height]); }
-          else { const b = await this.synthesizerService.downloadFile(url); const d = await PDFDocument.load(b); const p = await finalPdf.copyPages(d, d.getPageIndices()); p.forEach(pg => finalPdf.addPage(pg)); }
+          else { const d = await this.loadComposeInputPdf(url, 'endpaper'); const p = await finalPdf.copyPages(d, d.getPageIndices()); p.forEach(pg => finalPdf.addPage(pg)); }
         }
         if (composeContentPdfUrl) {
-          const b = await this.synthesizerService.downloadFile(composeContentPdfUrl); const d = await PDFDocument.load(b);
+          const d = await this.loadComposeInputPdf(composeContentPdfUrl, 'content');
           // X1: 내지 재단선 영역 크롭 정규화(메모리 사본, copyPages 이전).
           await normalizeTrimBoxPdfDoc(d, contentTrimCtx, `compose:${jobId}`);
           const p = await finalPdf.copyPages(d, d.getPageIndices()); p.forEach(pg => finalPdf.addPage(pg));
@@ -637,7 +640,7 @@ export class SynthesisProcessor {
         const backList = composeBackEndpaperUrls ?? [];
         for (const url of backList) {
           if (!url) { finalPdf.addPage([contentPt.width, contentPt.height]); }
-          else { const b = await this.synthesizerService.downloadFile(url); const d = await PDFDocument.load(b); const p = await finalPdf.copyPages(d, d.getPageIndices()); p.forEach(pg => finalPdf.addPage(pg)); }
+          else { const d = await this.loadComposeInputPdf(url, 'endpaper'); const p = await finalPdf.copyPages(d, d.getPageIndices()); p.forEach(pg => finalPdf.addPage(pg)); }
         }
         const mergedPath = path.join(outputDir, 'merged.pdf');
         await fs.writeFile(mergedPath, await finalPdf.save());
@@ -661,7 +664,7 @@ export class SynthesisProcessor {
         job,
         jobId,
         error,
-        { status: 'FAILED', errorMessage: error.message },
+        { status: 'FAILED', ...buildSynthesisFailedFields(error) },
         { mode: 'compose-mixed', capture: true },
       );
       throw error;
@@ -717,6 +720,28 @@ export class SynthesisProcessor {
     const scratchCleanups: Array<() => Promise<void>> = [];
     const mkTmp = (suffix: string) =>
       path.join(outputDir, `__lw_${suffix}_${Math.random().toString(36).slice(2)}.pdf`);
+    // A3: 입력에서 온 part 경로 → 입력 역할. qpdf 병합 실패 시 이 part 들만 판독한다(빈 페이지 등 직접 만든 part 제외).
+    const inputRoles = new Map<string, SynthesisInputRole>();
+    const registerInput = (file: string, input: SynthesisInputRole): void => {
+      if (!inputRoles.has(file)) inputRoles.set(file, input);
+    };
+    const storageRoot = lightweightStorageRoot();
+    const fetchPart = (url: string, input: SynthesisInputRole) =>
+      fetchInput(url, input, storageRoot, () => downloadToTempFile(url));
+    const assembleInputs = async (
+      parts: Array<{ file: string; range?: string }>,
+      outPath: string,
+    ): Promise<void> => {
+      try {
+        await qpdfAssemble(parts, outPath);
+      } catch (err: unknown) {
+        const inputs = parts
+          .map((p) => p.file)
+          .filter((file) => inputRoles.has(file))
+          .map((file) => ({ path: file, input: inputRoles.get(file) as SynthesisInputRole }));
+        throw await toQpdfInputError(err, inputs);
+      }
+    };
 
     // url 을 임시파일로 확보(스트림). null 이면 contentPt 빈 페이지 생성.
     const partFromEndpaper = async (url: string | null): Promise<string> => {
@@ -726,10 +751,11 @@ export class SynthesisProcessor {
         scratch.push(blank);
         return blank;
       }
-      const dl = await downloadToTempFile(url);
+      const dl = await fetchPart(url, 'endpaper');
       // downloadToTempFile 는 로컬 원본이면 그 경로를 반환(cleanup no-op)하므로 그대로 part 로 사용.
       // cleanup 은 finally 에서 일괄(임시면 삭제, 로컬원본이면 no-op).
       scratchCleanups.push(dl.cleanup);
+      registerInput(dl.path, 'endpaper');
       return dl.path;
     };
 
@@ -740,6 +766,7 @@ export class SynthesisProcessor {
       const out = mkTmp('trimnorm');
       scratch.push(out);
       const r = await normalizeTrimBoxFile(srcPath, out, contentTrimCtx, `compose:${jobId}`);
+      if (r.applied) registerInput(out, 'content');
       return r.applied ? out : srcPath;
     };
 
@@ -750,8 +777,9 @@ export class SynthesisProcessor {
         parts.push(await partFromEndpaper(url));
       }
       if (composeContentPdfUrl) {
-        const dl = await downloadToTempFile(composeContentPdfUrl);
+        const dl = await fetchPart(composeContentPdfUrl, 'content');
         scratchCleanups.push(dl.cleanup);
+        registerInput(dl.path, 'content');
         parts.push(await normalizedContentPart(dl.path));
       }
       for (const url of composeBackEndpaperUrls ?? []) {
@@ -767,7 +795,7 @@ export class SynthesisProcessor {
         await fs.writeFile(outPath, await doc.save());
         return 0;
       }
-      await qpdfAssemble(parts.map((file) => ({ file })), outPath);
+      await assembleInputs(parts.map((file) => ({ file })), outPath);
       return (await extractPdfMetadataQpdf(outPath)).pageCount;
     };
 
@@ -781,8 +809,9 @@ export class SynthesisProcessor {
         const coverPath = path.join(outputDir, 'cover.pdf');
         let coverPageCount: number;
         if (composeCoverEditable !== false && composeCoverUrl) {
-          const dl = await downloadToTempFile(composeCoverUrl);
+          const dl = await fetchPart(composeCoverUrl, 'cover');
           scratchCleanups.push(dl.cleanup);
+          registerInput(dl.path, 'cover');
           const meta = await extractPdfMetadataQpdf(dl.path);
           // P0-3: 스프레드 책이면 펼침면 cover MediaBox 무결성 검증(측정-주입판).
           // D-4: 기대치 = output(wrap 포함) 우선 · total 폴백.
@@ -813,7 +842,7 @@ export class SynthesisProcessor {
             );
           }
           // 표지 전체 페이지 그대로 보존(qpdf, 범위 생략=전체).
-          await qpdfAssemble([{ file: dl.path }], coverPath);
+          await assembleInputs([{ file: dl.path }], coverPath);
           coverPageCount = (await extractPdfMetadataQpdf(coverPath)).pageCount;
         } else {
           await createBlankPdf(coverPt.width, coverPt.height, coverPath);
@@ -843,8 +872,9 @@ export class SynthesisProcessor {
         const pagesPath = path.join(outputDir, 'pages.pdf');
         let pagesParts: string[] = [];
         if (composeContentPdfUrl) {
-          const dl = await downloadToTempFile(composeContentPdfUrl);
+          const dl = await fetchPart(composeContentPdfUrl, 'content');
           scratchCleanups.push(dl.cleanup);
+          registerInput(dl.path, 'content');
           pagesParts = [await normalizedContentPart(dl.path)];
         }
         const pagesCount = await assembleToFile(pagesParts, pagesPath);
@@ -862,8 +892,9 @@ export class SynthesisProcessor {
           scratch.push(blankCover);
           mergedParts.push(blankCover);
         } else {
-          const dl = await downloadToTempFile(composeCoverUrl);
+          const dl = await fetchPart(composeCoverUrl, 'cover');
           scratchCleanups.push(dl.cleanup);
+          registerInput(dl.path, 'cover');
           mergedParts.push(dl.path);
         }
         mergedParts.push(...(await buildContentParts()));
@@ -892,6 +923,17 @@ export class SynthesisProcessor {
         await this.safeDelete(f);
       }
     }
+  }
+
+  /**
+   * compose-mixed OFF 입력 1건 확보 + pdf-lib 적재. 입력 주소 거부·저장소의 없는 파일·열 수 없는 PDF 는
+   * 입력 오류(INPUT_URL_REJECTED·FILE_NOT_FOUND·PDF_LOAD_FAILED)로 throw 한다(synthesis-input).
+   */
+  private async loadComposeInputPdf(url: string, input: SynthesisInputRole): Promise<PDFDocument> {
+    const bytes = await fetchInput(url, input, this.storagePath, () =>
+      this.synthesizerService.downloadFile(url),
+    );
+    return loadInputPdf(bytes, input);
   }
 
   /**
@@ -1167,7 +1209,7 @@ export class SynthesisProcessor {
         job,
         jobId,
         error,
-        { status: 'FAILED', errorMessage: error.message },
+        { status: 'FAILED', ...buildSynthesisFailedFields(error) },
         { mode: 'merge', capture: true },
       );
 
@@ -2047,16 +2089,7 @@ export class SynthesisProcessor {
         job,
         jobId,
         error,
-        {
-          status: 'FAILED',
-          errorCode: error.code || 'SYNTHESIS_FAILED',
-          errorMessage: error.message,
-          errorDetail: {
-            stack: error.stack,
-            jobData: job.data,
-          },
-          queueJobId,
-        },
+        { status: 'FAILED', ...buildSynthesisFailedFields(error), queueJobId },
         { mode: 'spread', capture: true },
       );
 

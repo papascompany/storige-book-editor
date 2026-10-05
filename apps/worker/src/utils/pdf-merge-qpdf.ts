@@ -58,6 +58,23 @@ export async function extractPages(
   await assemblePdf([{ file: input, range }], output);
 }
 
+/** runQpdf 실패 정보 — qpdf 종료 코드(숫자가 아니면 null)와 시간 초과·시그널 종료 여부. */
+export interface QpdfFailure {
+  exitCode: number | null;
+  killed: boolean;
+}
+
+/** runQpdf 가 던진 오류면 그 실패 정보를, 아니면 null. */
+export function qpdfFailureOf(err: unknown): QpdfFailure | null {
+  if (typeof err !== 'object' || err === null) return null;
+  const { qpdfExitCode, qpdfKilled } = err as { qpdfExitCode?: unknown; qpdfKilled?: unknown };
+  if (qpdfExitCode === undefined || typeof qpdfKilled !== 'boolean') return null;
+  return {
+    exitCode: typeof qpdfExitCode === 'number' ? qpdfExitCode : null,
+    killed: qpdfKilled,
+  };
+}
+
 async function runQpdf(args: string[], ctx: string): Promise<void> {
   try {
     await execFileAsync(QPDF_PATH, args, {
@@ -71,7 +88,13 @@ async function runQpdf(args: string[], ctx: string): Promise<void> {
       logger.debug(`qpdf ${ctx} 경고(비치명, code=3)`);
       return;
     }
-    throw new Error(`qpdf ${ctx} 실패(code=${code}): ${err?.message ?? err}`);
+    // 종료 코드와 시간 초과·시그널 종료 여부를 오류 속성으로 남긴다(qpdfFailureOf).
+    const failure = new Error(`qpdf ${ctx} 실패(code=${code}): ${err?.message ?? err}`);
+    Object.assign(failure, {
+      qpdfExitCode: code ?? null,
+      qpdfKilled: err?.killed === true || (err?.signal !== undefined && err?.signal !== null),
+    });
+    throw failure;
   }
 }
 

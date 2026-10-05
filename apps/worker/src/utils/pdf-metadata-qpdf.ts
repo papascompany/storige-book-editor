@@ -570,3 +570,53 @@ export async function extractPageDictsQpdf(
     return null;
   }
 }
+
+/** 입력 PDF 열기 판독 결과. */
+export type QpdfOpenProbe =
+  | { result: 'readable'; pageCount: number }
+  /** qpdf 가 종료 코드 2 로 끝남(시간 초과·시그널 종료 아님) — 열 수 없는 PDF. */
+  | { result: 'unreadable' }
+  /** 실행 실패(바이너리 없음 등)·시간 초과·시그널 종료·그 밖의 종료 코드·쪽수 해석 불가. */
+  | { result: 'unknown' };
+
+function parsePageCountOutput(stdout: unknown): number | null {
+  if (typeof stdout !== 'string') return null;
+  const trimmed = stdout.trim();
+  return /^\d+$/.test(trimmed) ? Number(trimmed) : null;
+}
+
+/**
+ * 입력 PDF 를 qpdf 가 열 수 있는지 `qpdf --show-npages` 1회로 판독한다. throw 하지 않는다.
+ * - 종료 0, 또는 경고 종료(3)이고 stdout 이 0 이상 정수 → readable
+ * - 종료 코드 2 이고 시간 초과·시그널 종료가 아님 → unreadable(손상·열기 암호·PDF 아님)
+ * - 그 밖 → unknown
+ * @param timeoutMs 판독 1회 시간 상한(기본 QPDF_TIMEOUT_MS)
+ */
+export async function probePdfOpenQpdf(
+  filePath: string,
+  timeoutMs: number = QPDF_TIMEOUT_MS,
+): Promise<QpdfOpenProbe> {
+  try {
+    const { stdout } = await execFileAsync(QPDF_PATH, ['--show-npages', '--', filePath], {
+      timeout: timeoutMs,
+      maxBuffer: QPDF_MAX_BUFFER,
+    });
+    const pageCount = parsePageCountOutput(stdout);
+    return pageCount === null ? { result: 'unknown' } : { result: 'readable', pageCount };
+  } catch (err: unknown) {
+    const e = (typeof err === 'object' && err !== null ? err : {}) as {
+      code?: unknown;
+      killed?: unknown;
+      signal?: unknown;
+      stdout?: unknown;
+    };
+    if (e.code === 3) {
+      const pageCount = parsePageCountOutput(e.stdout);
+      return pageCount === null ? { result: 'unknown' } : { result: 'readable', pageCount };
+    }
+    if (e.code === 2 && e.killed !== true && (e.signal === undefined || e.signal === null)) {
+      return { result: 'unreadable' };
+    }
+    return { result: 'unknown' };
+  }
+}
