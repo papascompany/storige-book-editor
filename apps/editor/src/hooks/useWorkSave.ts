@@ -6,7 +6,8 @@ import { useEditorStore } from '@/stores/useEditorStore'
 import { ServicePlugin, core } from '@storige/canvas-core'
 import { designsApi, editSessionsApi, filesApi, storageApi } from '@/api'
 import { buildSpreadSnapshots } from '@/utils/buildSpreadSnapshots'
-import { computeInnerContentSizeMm, computeCoverOutputSizeMm } from '@/utils/photobookSpread'
+import { resolveSpreadInnerPdfSizeMm, computeCoverOutputSizeMm } from '@/utils/photobookSpread'
+import { buildCoverPdfSizeOpt } from '@/utils/hardcoverWrap'
 import { runWithAutosaveSuspended } from '@/utils/autosaveSuspend'
 import type { SpreadSynthesisJobData } from '@storige/types'
 
@@ -599,12 +600,21 @@ export function useWorkSave(): UseWorkSaveReturn {
       const orderSeqnoFromSession = (session as any)?.orderSeqno as number | undefined
       // Track 1 (2026-07-06): 출력 크기 산출은 embed.tsx handleFinish 와 photobookSpread 헬퍼를
       // **단일 진실원**으로 공유한다(경로별 출력 크기 불일치 회귀 방지).
-      const spreadCfg = useSettingsStore.getState().spreadConfig
-      // D-1 1단계: 포토북 내지(regionScope='inner')는 content.pdf 페이지 크기 = innerSpec 2-up
-      // (pageWidthMm×2 × pageHeightMm). 비-포토북은 헬퍼가 null → 기존 폴백(주문 판형) byte-parity.
-      const innerContentSize = computeInnerContentSizeMm(spreadCfg)
-      const innerWidthMm = innerContentSize?.widthMm ?? (artwork as any)?.sizeInfo?.width ?? 210
-      const innerHeightMm = innerContentSize?.heightMm ?? (artwork as any)?.sizeInfo?.height ?? 297
+      const settingsAtFinish = useSettingsStore.getState()
+      const spreadCfg = settingsAtFinish.spreadConfig
+      // 양장 싸바리 모드(caseBind 없음): 표지 PDF 페이지 = 총폭/총높이 + 사방 wrapMm.
+      const hardcoverWrap = settingsAtFinish.hardcoverWrap
+      // content.pdf 페이지 크기: innerSpec 2-up → (싸바리 모드일 때만) 템플릿셋 판형(pageTrimMm)
+      // → 기존 폴백(주문 판형 → 210×297).
+      const { widthMm: innerWidthMm, heightMm: innerHeightMm } = resolveSpreadInnerPdfSizeMm({
+        spreadConfig: spreadCfg,
+        pageTrimMm: settingsAtFinish.pageTrimMm,
+        hardcoverWrapActive: hardcoverWrap != null,
+        fallback: {
+          widthMm: (artwork as any)?.sizeInfo?.width ?? 210,
+          heightMm: (artwork as any)?.sizeInfo?.height ?? 297,
+        },
+      })
       const cutSize = 3
 
       // P3 (2026-06-10): 작업사이즈(재단+블리드)+코너마커+TrimBox 출력 게이팅.
@@ -647,22 +657,24 @@ export function useWorkSave(): UseWorkSaveReturn {
       )?.getLayout?.()
       const coverWidthMm = spreadLayout?.totalWidthMm ?? spreadCfg?.totalWidthMm ?? innerWidthMm
       const coverHeightMm = spreadLayout?.totalHeightMm ?? spreadCfg?.totalHeightMm ?? innerHeightMm
-      // D-4 (2026-07-06): 하드커버(caseBind) 표지는 출력 페이지 크기 = wrap 포함 사이즈.
-      // ServicePlugin 의 기존 printSize 메커니즘(페이지=printSize, 콘텐츠 trim 렌더 중앙 배치) 재사용
-      // — canvas-core 무변경. caseBind 미설정이면 null → 기존 호출 byte-parity.
-      // (wrap 자체가 재단 여유 역할 — crop mark 게이트(markOpt)는 printSize 와 함께 쓰지 않는다.)
+      // 표지 PDF size 옵션(buildCoverPdfSizeOpt, embed 와 같은 헬퍼):
+      //  - 싸바리 모드 → wrapMm (printSize·markOpt 없음)
+      //  - D-4 하드커버(caseBind) → printSize = wrap 포함 출력 사이즈(콘텐츠 trim 렌더 중앙 배치, markOpt 없음)
+      //  - 그 밖 → markOpt
       const coverOutputSize = computeCoverOutputSizeMm(spreadCfg)
       // L4-②: PDF 생성 창(excludeFromExport 임시 플래깅) 동안 autosave suspend — 누락 방지.
       const coverPdfBlob = await runWithAutosaveSuspended(() => spreadPlugin.saveMultiPagePDFAsBlob(
         [spreadCanvas] as any,
         [spreadEditor],
         `spread_cover_${Date.now()}`,
-        {
-          width: coverWidthMm, height: coverHeightMm, cutSize,
-          ...(coverOutputSize
-            ? { printSize: { width: coverOutputSize.widthMm, height: coverOutputSize.heightMm } }
-            : markOpt),
-        },
+        buildCoverPdfSizeOpt({
+          contentWidthMm: coverWidthMm,
+          contentHeightMm: coverHeightMm,
+          cutSize,
+          hardcoverWrap,
+          caseBindOutput: coverOutputSize,
+          markOpt,
+        }),
         undefined,
         300,
       ))
@@ -743,6 +755,7 @@ export function useWorkSave(): UseWorkSaveReturn {
         useSettingsStore.getState().spreadConfig,
         useSettingsStore.getState().spineConfig,
         innerCanvases.length,
+        { hardcoverWrapMm: hardcoverWrap?.wrapPerSideMm },
       )
       await editSessionsApi.update(sessionId, {
         coverFileId: coverPdfFileId,

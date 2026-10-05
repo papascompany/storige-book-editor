@@ -9,6 +9,7 @@ import {
 } from '@storige/canvas-core'
 import type { EditorTemplate } from '@/generated/graphql'
 import type { SpreadConfig, EditorMenuKey, CoverFinishingKind } from '@storige/types'
+import type { HardcoverWrapMode } from '@/utils/hardcoverWrap'
 
 export interface LinkedPrintTemplate {
   id: string
@@ -315,6 +316,11 @@ interface SettingsState {
    * A4 책 표지 430×297 이어도 내지는 210×297.
    */
   pageTrimMm: { width: number; height: number } | null
+  /**
+   * 양장 싸바리 편집 모드. null = 꺼짐.
+   * loadSpreadModeEditor 가 판정해 채우고, 로더 진입 시 null 로 되돌린다.
+   */
+  hardcoverWrap: HardcoverWrapMode | null
   artwork: {
     name: string
     product: WowPressLinkedProduct | null
@@ -395,6 +401,7 @@ interface SettingsActions {
   setLinkedPrintTemplates: (templates: LinkedPrintTemplate[]) => void
   setHasCoverSlot: (hasCover: boolean) => void
   setPageTrimMm: (size: { width: number; height: number } | null) => void
+  setHardcoverWrap: (mode: HardcoverWrapMode | null) => void
 
   // P3: 작업사이즈/재단마커 출력 설정 관리 (templateSet 에서 운반)
   setPrintMarkConfig: (config: PrintMarkConfig | null) => void
@@ -432,6 +439,7 @@ const initialState: SettingsState = {
   linkedPrintTemplates: [],
   hasCoverSlot: true,
   pageTrimMm: null,
+  hardcoverWrap: null,
   printMarkConfig: null,
   artwork: {
     name: '나의 새로운 작업',
@@ -883,6 +891,10 @@ export const useSettingsStore = create<SettingsState & SettingsActions>()((set, 
       return
     }
     set({ pageTrimMm: { width: size.width, height: size.height } })
+  },
+
+  setHardcoverWrap: (mode) => {
+    set({ hardcoverWrap: mode ?? null })
   },
 
   // P3: 작업사이즈/재단마커 출력 설정. null = 미설정(게이트 OFF). loadTemplateSetEditor 가 호출.

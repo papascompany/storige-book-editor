@@ -5,7 +5,8 @@
  * 용도: 스프레드 완료 시 metadata.coverOutput 에 "생성된 표지 PDF 의 실제 페이지 크기와
  * 사방 블리드"를 기록한다. 반드시 saveMultiPagePDFAsBlob 에 넘긴 **같은 size 객체**를 입력한다.
  *
- * ServicePlugin 규칙(mm 단위, 봉투 아님):
+ * ServicePlugin 규칙(mm 단위, 봉투 아님 — canvas-core pdfPageGeometry):
+ *  - wrapMm 가 유한 양수면 페이지 = 콘텐츠 + wrapMm*2, 블리드 0 (printSize·재단 마커 옵션 무시)
  *  - useEditSize = !!cropMarkEnabled && bleedMm > 0
  *    → 페이지 = 콘텐츠 + bleedMm*2 (printSize 무시), 사방 블리드 = bleedMm
  *  - 아니면 printSize(width·height 모두 truthy)가 있으면 페이지 = printSize, 블리드 0
@@ -22,6 +23,8 @@ export interface PdfSizeInput {
   bleedMm?: number
   cropMarkEnabled?: boolean
   printSize?: { width: number; height: number }
+  /** 사방(per-edge) 싸바리 여분 mm. 유한 양수일 때 다른 옵션보다 우선한다. */
+  wrapMm?: number
 }
 
 export interface PdfPageOutputMm {
@@ -32,6 +35,14 @@ export interface PdfPageOutputMm {
 }
 
 export function computePdfPageOutputMm(size: PdfSizeInput): PdfPageOutputMm {
+  const wrap = size.wrapMm
+  if (typeof wrap === 'number' && Number.isFinite(wrap) && wrap > 0) {
+    return {
+      widthMm: roundMm01(size.width + wrap * 2),
+      heightMm: roundMm01(size.height + wrap * 2),
+      bleedMm: 0,
+    }
+  }
   const bleed = size.bleedMm ?? 0
   const useEditSize = !!size.cropMarkEnabled && bleed > 0
   let pageWidth = size.width

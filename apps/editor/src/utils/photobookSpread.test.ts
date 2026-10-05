@@ -13,6 +13,7 @@ import {
   computeCoverOutputSizeMm,
   computeLivePageCount,
   resolveTemplateSetCoverMeta,
+  resolveSpreadInnerPdfSizeMm,
   splitSpreadOutputCanvases,
 } from './photobookSpread'
 
@@ -246,6 +247,139 @@ describe('computeInnerContentSizeMm (D-1 1단계)', () => {
         innerSpec: { ...innerSpec190, pageHeightMm: 0 },
       }),
     ).toBeNull()
+  })
+})
+
+describe('resolveSpreadInnerPdfSizeMm — 스프레드 책 내지 content.pdf 크기', () => {
+  const faceSpec: SpreadSpec = { ...coverSpec, coverWidthMm: 214, coverHeightMm: 301 }
+  const fallback = { widthMm: 214, heightMm: 301 }
+
+  describe('양장 싸바리 모드(hardcoverWrapActive) — 판형 우선', () => {
+    it('비포토북 + 판형 210×297 + 표지 면 214×301 → 판형 210×297', () => {
+      expect(
+        resolveSpreadInnerPdfSizeMm({
+          spreadConfig: { spec: faceSpec },
+          pageTrimMm: { width: 210, height: 297 },
+          hardcoverWrapActive: true,
+          fallback,
+        }),
+      ).toEqual({ widthMm: 210, heightMm: 297 })
+    })
+
+    it('싸바리 면(판형 + 8) 218×305 + 판형 210×297 → 판형 210×297', () => {
+      const wrapSpec: SpreadSpec = { ...coverSpec, coverWidthMm: 218, coverHeightMm: 305 }
+      expect(
+        resolveSpreadInnerPdfSizeMm({
+          spreadConfig: { spec: wrapSpec },
+          pageTrimMm: { width: 210, height: 297 },
+          hardcoverWrapActive: true,
+          fallback: { widthMm: 218, heightMm: 305 },
+        }),
+      ).toEqual({ widthMm: 210, heightMm: 297 })
+    })
+
+    it('innerSpec 이 있으면 판형보다 2-up 이 우선', () => {
+      expect(
+        resolveSpreadInnerPdfSizeMm({
+          spreadConfig: { spec: faceSpec, innerSpec: innerSpec190 },
+          pageTrimMm: { width: 210, height: 297 },
+          hardcoverWrapActive: true,
+          fallback,
+        }),
+      ).toEqual({ widthMm: 380, heightMm: 190 })
+    })
+
+    it('판형이 없거나 비정상이면 fallback', () => {
+      for (const pageTrimMm of [null, undefined, { width: 0, height: 297 }, { width: 210, height: Number.NaN }]) {
+        expect(
+          resolveSpreadInnerPdfSizeMm({ spreadConfig: { spec: faceSpec }, pageTrimMm, hardcoverWrapActive: true, fallback }),
+        ).toEqual(fallback)
+      }
+    })
+  })
+
+  describe('싸바리 모드 아님 — 변경 전(HEAD b987a81) 산식과 같은 크기', () => {
+    // HEAD 두 완료 경로의 내지 크기 산식을 그대로 옮긴 기준값.
+    //  embed.tsx:     innerSpec 2-up → spec.coverWidthMm/HeightMm → options.size → 210×297
+    //  useWorkSave:   innerSpec 2-up → artwork.sizeInfo → 210×297
+    const headEmbed = (
+      cfg: { spec?: SpreadSpec | null; innerSpec?: SpreadInnerSpec | null },
+      size: { width: number; height: number } | undefined,
+    ) => {
+      const inner = computeInnerContentSizeMm(cfg)
+      return {
+        widthMm: inner?.widthMm ?? cfg.spec?.coverWidthMm ?? size?.width ?? 210,
+        heightMm: inner?.heightMm ?? cfg.spec?.coverHeightMm ?? size?.height ?? 297,
+      }
+    }
+    const headWorkSave = (
+      cfg: { spec?: SpreadSpec | null; innerSpec?: SpreadInnerSpec | null },
+      sizeInfo: { width: number; height: number } | undefined,
+    ) => {
+      const inner = computeInnerContentSizeMm(cfg)
+      return {
+        widthMm: inner?.widthMm ?? sizeInfo?.width ?? 210,
+        heightMm: inner?.heightMm ?? sizeInfo?.height ?? 297,
+      }
+    }
+
+    // H1 영향표 세트 유형별(판형 ≠ 표지 면, 면 = 판형, innerSpec 있음)
+    const sets: Array<{
+      name: string
+      face: { w: number; h: number }
+      trim: { width: number; height: number }
+      innerSpec?: SpreadInnerSpec
+      headSize: { widthMm: number; heightMm: number }
+    }> = [
+      { name: 'f0335fda 면 214×301 · 판형 210×297', face: { w: 214, h: 301 }, trim: { width: 210, height: 297 }, headSize: { widthMm: 214, heightMm: 301 } },
+      { name: '83e6ec80 면 301×214 · 판형 297×210', face: { w: 301, h: 214 }, trim: { width: 297, height: 210 }, headSize: { widthMm: 301, heightMm: 214 } },
+      { name: '동화책 국배판 낱장 면 247.4×363 · 판형 210×297', face: { w: 247.4, h: 363 }, trim: { width: 210, height: 297 }, headSize: { widthMm: 247.4, heightMm: 363 } },
+      { name: '동화책 정사각 낱장 면 247.4×276 · 판형 210×210', face: { w: 247.4, h: 276 }, trim: { width: 210, height: 210 }, headSize: { widthMm: 247.4, heightMm: 276 } },
+      { name: '면 = 판형 210×297', face: { w: 210, h: 297 }, trim: { width: 210, height: 297 }, headSize: { widthMm: 210, heightMm: 297 } },
+      { name: 'innerSpec 있음(펼침 세트)', face: { w: 247.4, h: 276 }, trim: { width: 210, height: 210 }, innerSpec: innerSpec190, headSize: { widthMm: 380, heightMm: 190 } },
+    ]
+
+    for (const set of sets) {
+      it(`${set.name} → ${set.headSize.widthMm}×${set.headSize.heightMm} (embed·useWorkSave 모두 HEAD 와 같다)`, () => {
+        const spec: SpreadSpec = { ...coverSpec, coverWidthMm: set.face.w, coverHeightMm: set.face.h }
+        const cfg = { spec, ...(set.innerSpec ? { innerSpec: set.innerSpec } : {}) }
+        // embed 경로: fallback = 표지 spec 한 면 → options.size → 210×297
+        const orderSize = { width: 210, height: 297 }
+        const embedNow = resolveSpreadInnerPdfSizeMm({
+          spreadConfig: cfg,
+          pageTrimMm: set.trim,
+          hardcoverWrapActive: false,
+          fallback: {
+            widthMm: cfg.spec?.coverWidthMm ?? orderSize.width ?? 210,
+            heightMm: cfg.spec?.coverHeightMm ?? orderSize.height ?? 297,
+          },
+        })
+        expect(embedNow).toEqual(headEmbed(cfg, orderSize))
+        expect(embedNow).toEqual(set.headSize)
+
+        // useWorkSave 경로: fallback = artwork.sizeInfo → 210×297
+        const sizeInfo = { width: set.face.w, height: set.face.h }
+        const workSaveNow = resolveSpreadInnerPdfSizeMm({
+          spreadConfig: cfg,
+          pageTrimMm: set.trim,
+          hardcoverWrapActive: false,
+          fallback: { widthMm: sizeInfo.width ?? 210, heightMm: sizeInfo.height ?? 297 },
+        })
+        expect(workSaveNow).toEqual(headWorkSave(cfg, sizeInfo))
+        expect(workSaveNow).toEqual(set.headSize)
+      })
+    }
+
+    it('판형이 있어도 모드가 꺼져 있으면 판형을 쓰지 않는다', () => {
+      expect(
+        resolveSpreadInnerPdfSizeMm({
+          spreadConfig: { spec: faceSpec },
+          pageTrimMm: { width: 210, height: 297 },
+          hardcoverWrapActive: false,
+          fallback,
+        }),
+      ).toEqual(fallback)
+    })
   })
 })
 

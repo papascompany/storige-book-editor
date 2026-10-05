@@ -54,11 +54,15 @@ interface SpineConfigLike {
  * 호출측(완료 update)은 기존 동작(스냅샷 없이)으로 무중단 진행한다.
  *
  * 두 완료 경로(embed.tsx handleFinish, useWorkSave.completeSpreadWork)가 공용으로 사용.
+ *
+ * opts.hardcoverWrapMm: 양장 싸바리 모드(caseBind 없음)의 사방 여분 mm. 유한 양수면
+ * metadata.spread.outputWidthMm/HeightMm = 총폭/총높이 + wrap×2 를 기록한다. 없으면 기록하지 않는다.
  */
 export function buildSpreadSnapshots(
   spreadConfig: SpreadConfigLike | null | undefined,
   spineConfig: SpineConfigLike | null | undefined,
   innerPageCount: number,
+  opts?: { hardcoverWrapMm?: number },
 ): { spread?: SpreadSnapshot; spine?: SpineSnapshot } {
   if (!spreadConfig?.spec) return {}
   try {
@@ -66,9 +70,16 @@ export function buildSpreadSnapshots(
     const dims = computeSpreadDimensions(normSpec)
     // D-4 (2026-07-06): 싸바리(caseBind) 세션만 출력(wrap 포함) 사이즈를 additive 기록.
     // 미설정 세션은 필드 자체를 생략해 기존 스냅샷과 byte-identical(기존 필드 불변).
+    // 양장 싸바리 모드(caseBind 없음): 출력 = 총폭/총높이 + 사방 wrap.
+    const wrapMm = opts?.hardcoverWrapMm
     const outputDims = isValidCaseBind(normSpec.caseBind)
       ? computeSpreadOutputDimensions(normSpec)
-      : null
+      : typeof wrapMm === 'number' && Number.isFinite(wrapMm) && wrapMm > 0
+        ? {
+            totalWidthMm: roundMm01(dims.totalWidthMm + wrapMm * 2),
+            totalHeightMm: roundMm01(dims.totalHeightMm + wrapMm * 2),
+          }
+        : null
     const spread: SpreadSnapshot = {
       spec: normSpec,
       totalWidthMm: dims.totalWidthMm,

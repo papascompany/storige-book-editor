@@ -10,6 +10,7 @@ import {
   resolveCoverFinishing,
   assemblePrintTemplates,
   expandPrintSeeds,
+  isValidCaseBind,
   type PrintTemplateLike,
   type InnerRepeatMode,
 } from '@storige/types'
@@ -38,7 +39,9 @@ import {
   buildInnerSpreadConfig,
   innerSpecToPlaceholderSpec,
   spreadCountFromPageCount,
+  resolveTemplateSetCoverMeta,
 } from '@/utils/photobookSpread'
+import { canvasDataHasPageOutline, resolveHardcoverWrapMode } from '@/utils/hardcoverWrap'
 import { resolveAssetUrl } from '@/utils/resolveAssetUrl'
 import { describeError } from '@/utils/safeErrorLog'
 import { UNDERLAY_MAX_PAGES } from '@/utils/contentPdfGuide'
@@ -51,6 +54,7 @@ import {
   resolveSeedPageCount,
   resolveStorePageLimits,
   settingsPageBounds,
+  warnPageStepMismatch,
 } from '@/utils/hostPageLimits'
 import { Sentry } from '@/lib/sentry'
 import type {
@@ -913,6 +917,7 @@ export function useEditorContents(): UseEditorContentsReturn {
       // stale linkedPrintTemplates/spreadConfig 가 모양컷(CLIPPING) 게이트를 오작동시킨다.
       setLinkedPrintTemplates([])
       useSettingsStore.getState().setSpreadConfig(null)
+      useSettingsStore.getState().setHardcoverWrap(null)
 
       // 1. settings 스토어 설정 - 이 단계에서 size, dpi 등 설정이 적용됨
       console.log('[EditorContents] Calling setupProductBased...')
@@ -1005,6 +1010,7 @@ export function useEditorContents(): UseEditorContentsReturn {
       // 로더 간 신호 누수 차단 — loadProductBasedEditor 와 동일(모양컷 게이트 오작동 방지).
       setLinkedPrintTemplates([])
       useSettingsStore.getState().setSpreadConfig(null)
+      useSettingsStore.getState().setHardcoverWrap(null)
 
       await setupGeneralStore(config)
       await initWorkspace()
@@ -1100,6 +1106,8 @@ export function useEditorContents(): UseEditorContentsReturn {
       }
       console.log('[EditorContents] EditorMode:', editorMode)
       setPageTrimMm({ width: templateSet.width, height: templateSet.height })
+      // 양장 싸바리 모드는 loadSpreadModeEditor 가 다시 판정한다. 그 밖의 분기에서는 꺼진 상태.
+      useSettingsStore.getState().setHardcoverWrap(null)
 
       if (editorMode === 'book') {
         const assembled = assemblePrintTemplates(originalTemplateDetails as PrintTemplateLike[])
@@ -1559,6 +1567,7 @@ export function useEditorContents(): UseEditorContentsReturn {
           `[hostPageLimits] 단일 모드 템플릿에 내지가 아닌 캔버스 ${nonInnerCanvasCount}개 — 호스트 pageStep ${config.pageStep} 무시(템플릿셋 단위 적용)`,
         )
       }
+      warnPageStepMismatch((templateSet as { pageStep?: unknown }).pageStep, config, { ignoreHostStep: nonInnerCanvasCount > 0 })
       const singleStoreLimits = resolveStorePageLimits({
         templateRange,
         templatePageStep: (templateSet as { pageStep?: unknown }).pageStep,
@@ -1667,6 +1676,37 @@ export function useEditorContents(): UseEditorContentsReturn {
         spreadSpec.cutSizeMm = spreadBleedMm * 2
       }
 
+      // 양장 싸바리 모드 판정(P3 덮어쓰기 이후). 켜지면 표지 화면 cutSizeMm 만 싸바리 여분
+      // (HARDCOVER_WRAP_MARGIN_MM, 사방 절반)으로 바꾸고, 낱장 내지 workspace 는 덮어쓰기 전 값
+      // (mode.innerCutSizeMm)을 쓴다. 꺼지면 spec·출력 모두 기존 그대로.
+      const templateSetCoverMeta = resolveTemplateSetCoverMeta(templateSet)
+      const templateSpecCaseBind = (spreadTemplate.spreadConfig as SpreadConfig | undefined)?.spec?.caseBind
+      const hardcoverWrapResult = resolveHardcoverWrapMode({
+        coverType: templateSetCoverMeta?.coverType,
+        hasCaseBind: !!templateSetCoverMeta?.coverConfig?.caseBind || isValidCaseBind(templateSpecCaseBind),
+        isInnerOnly,
+        templateSetSize: { width: Number(templateSet?.width), height: Number(templateSet?.height) },
+        spec: spreadSpec,
+        hasPageOutline: canvasDataHasPageOutline(spreadTemplate.canvasData),
+      })
+      const hardcoverWrap = hardcoverWrapResult.mode
+      if (hardcoverWrap) {
+        spreadSpec.cutSizeMm = hardcoverWrap.screenCutSizeMm
+      } else if (
+        templateSetCoverMeta?.coverType === 'hardcover_wrap' &&
+        (hardcoverWrapResult.reason === 'FACE_MISMATCH' ||
+          hardcoverWrapResult.reason === 'WING' ||
+          hardcoverWrapResult.reason === 'NO_TRIM' ||
+          hardcoverWrapResult.reason === 'PAGE_OUTLINE')
+      ) {
+        console.warn('[EditorContents:Spread] 양장 싸바리 모드 꺼짐:', {
+          templateSetId: templateSet?.id,
+          reason: hardcoverWrapResult.reason,
+        })
+      }
+      useSettingsStore.getState().setHardcoverWrap(hardcoverWrap)
+      const relocationBounds: 'content' | 'workspace' = hardcoverWrap ? 'workspace' : 'content'
+
       console.log('[EditorContents:Spread] SpreadSpec built:', spreadSpec)
 
       // 3. computeLayout으로 완전한 SpreadConfig 계산
@@ -1727,6 +1767,37 @@ export function useEditorContents(): UseEditorContentsReturn {
         console.log('[EditorContents:Spread] Loading spread canvas data with objects')
         const canvases = Array.isArray(spreadCanvasData) ? spreadCanvasData : [spreadCanvasData]
         await loadCanvasData(canvases)
+
+        // 양장 싸바리 모드: 표지 workspace 폭 = 총폭 + 싸바리 여분(screenCutSizeMm) 확인.
+        // 객체가 로드된 뒤라 init()(비-workspace 객체 제거)은 쓰지 않고 rect 크기만 맞춘다
+        // (loadCanvasData 의 workspace 크기 맞춤과 같은 처리).
+        if (hardcoverWrap) {
+          const wrapCanvas = useAppStore.getState().canvas
+          if (wrapCanvas && wrapCanvas.getContext()) {
+            const expectedWidthPx = mmToPxDisplay(spreadConfig.totalWidthMm + spreadSpec.cutSizeMm)
+            const expectedHeightPx = mmToPxDisplay(spreadConfig.totalHeightMm + spreadSpec.cutSizeMm)
+            const wsRect = (wrapCanvas.getObjects() as fabric.Object[]).find(
+              (obj) => (obj as ExtendedFabricObject).id === 'workspace',
+            )
+            if (wsRect) {
+              const actualWidthPx = (wsRect.width ?? 0) * (wsRect.scaleX ?? 1)
+              const actualHeightPx = (wsRect.height ?? 0) * (wsRect.scaleY ?? 1)
+              if (Math.abs(actualWidthPx - expectedWidthPx) > 1 || Math.abs(actualHeightPx - expectedHeightPx) > 1) {
+                console.warn('[EditorContents:Spread] 싸바리 workspace 크기 재적용:', {
+                  actualWidthPx,
+                  expectedWidthPx,
+                  actualHeightPx,
+                  expectedHeightPx,
+                })
+                wsRect.set({ width: expectedWidthPx, height: expectedHeightPx, scaleX: 1, scaleY: 1 })
+                wsRect.setCoords()
+                wrapCanvas.requestRenderAll()
+              }
+            } else {
+              console.warn('[EditorContents:Spread] 싸바리 모드 표지에 workspace rect 없음')
+            }
+          }
+        }
       } else {
         console.log('[EditorContents:Spread] No spread objects, initializing workspace only')
         await initWorkspace()
@@ -1818,7 +1889,7 @@ export function useEditorContents(): UseEditorContentsReturn {
           coverWorkspaces.slice(1).forEach((extra) => latestCanvas.remove(extra))
           if (existingSpread) {
             if (typeof existingSpread.adoptCoverSpec === 'function') {
-              existingSpread.adoptCoverSpec(spreadSpec, templateConversionMode)
+              existingSpread.adoptCoverSpec(spreadSpec, templateConversionMode, { relocationBounds })
             } else {
               existingSpread.setConversionMode(templateConversionMode)
             }
@@ -1828,6 +1899,7 @@ export function useEditorContents(): UseEditorContentsReturn {
               spec: spreadSpec,
               conversionMode: templateConversionMode,
               regionScope: 'cover',
+              relocationBounds,
             })
             latestEditor.use(spreadPlugin)
             spreadPlugin.init()
@@ -2093,6 +2165,7 @@ export function useEditorContents(): UseEditorContentsReturn {
 
       // R-196 host page limits (2026-09-29): 호스트 min/max/pageStep 이 템플릿셋 값보다 우선
       // (펼침면 내지는 용량 상한 400p). 호스트 값이 없으면 종전 식과 동일한 값을 돌려준다.
+      warnPageStepMismatch((templateSet as { pageStep?: unknown }).pageStep, config)
       const spreadStoreLimits = resolveStorePageLimits({
         templateRange: (templateSet as { pageCountRange?: number[] }).pageCountRange,
         templatePageStep: (templateSet as { pageStep?: unknown }).pageStep,

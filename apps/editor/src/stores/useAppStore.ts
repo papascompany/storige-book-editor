@@ -23,6 +23,7 @@ import { useEditorStore } from '@/stores/useEditorStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { TemplateType } from '@storige/types'
 import type { UneditedRequiredItem } from '@/utils/requiredEditCheck'
+import { resolveInnerPageCutSizeMm } from '@/utils/hardcoverWrap'
 
 // Fabric.js 타입 (실제 fabric 타입은 런타임에 로드됨)
  
@@ -678,18 +679,19 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
         }
       } else if (pageTrim && get().allCanvas.length > 0) {
         // 표지 스프레드 다음 내지: 판형(한 면)이지 표지 총폭(430)이 아니다.
+        // 양장 싸바리 모드면 cutSize 는 표지 화면값(싸바리 여분)이 아니라 내지 값(innerCutSizeMm).
         pageSize = {
           width: pageTrim.width,
           height: pageTrim.height,
-          cutSize: currentSettings.size.cutSize,
+          cutSize: resolveInnerPageCutSizeMm(currentSettings.size.cutSize, settingsStore.hardcoverWrap),
           safeSize: currentSettings.size.safeSize ?? 5,
         }
       } else if (spreadConfig?.spec) {
-        // 스프레드 모드: 내지는 표지 크기 사용
+        // 스프레드 모드: 내지는 표지 크기 사용 (양장 싸바리 모드면 cutSize = innerCutSizeMm)
         pageSize = {
           width: spreadConfig.spec.coverWidthMm,
           height: spreadConfig.spec.coverHeightMm,
-          cutSize: spreadConfig.spec.cutSizeMm,
+          cutSize: resolveInnerPageCutSizeMm(spreadConfig.spec.cutSizeMm, settingsStore.hardcoverWrap),
           safeSize: spreadConfig.spec.safeSizeMm,
         }
       } else {

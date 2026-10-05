@@ -138,7 +138,7 @@ export default function EmbedView() {
       // ''·NaN·음수 → undefined(비어있지 않은 무효값은 console.warn). snake `spine_width_mm` 허용.
       const spineWidthMm = parseSpineWidthMmParam(getParamCompat(searchParams, 'spineWidthMm'))
       // R-196 host page limits (2026-09-29): 상품별 내지 쪽수 범위·배수(물리 페이지). 템플릿셋
-      // pageCountRange/pageStep 보다 우선. 정수만 수용(min/max 1~500, pageStep 2~500, pageStep '1'=부재),
+      // pageCountRange/pageStep 보다 우선. 정수만 수용(min/max 1~500, pageStep 1~500 — 1 = 배수 제약 없음, 템플릿셋 단위도 쓰지 않음),
       // 무효값은 console.warn 후 undefined → 기존 동작. snake `page_count_min`·`page_count_max`·`page_step` 허용.
       const pageCountMin = parsePageCountLimitParam(getParamCompat(searchParams, 'pageCountMin'), 'pageCountMin')
       const pageCountMax = parsePageCountLimitParam(getParamCompat(searchParams, 'pageCountMax'), 'pageCountMax')

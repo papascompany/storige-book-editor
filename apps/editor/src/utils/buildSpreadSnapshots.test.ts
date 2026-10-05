@@ -242,3 +242,27 @@ describe('buildSpreadSnapshots', () => {
     expect(spine).toBeUndefined()
   })
 })
+
+describe('buildSpreadSnapshots — 양장 싸바리 출력 크기(opts.hardcoverWrapMm)', () => {
+  const wrapSpec = { ...baseSpec, coverWidthMm: 218, coverHeightMm: 305, spineWidthMm: 8, cutSizeMm: 40 }
+  const spineCfg = { paperType: 'mojo_80g', bindingType: 'hardcover', calculatedSpineWidth: 8 }
+
+  it('wrap 20 · caseBind 없음 → outputWidthMm/HeightMm = 484×345', () => {
+    const { spread } = buildSpreadSnapshots({ spec: { ...wrapSpec } }, spineCfg, 24, { hardcoverWrapMm: 20 })
+    expect(spread!.totalWidthMm).toBe(444)
+    expect(spread!.totalHeightMm).toBe(305)
+    expect(spread!.outputWidthMm).toBe(484)
+    expect(spread!.outputHeightMm).toBe(345)
+  })
+
+  it('opts 가 없거나 wrap 이 0·비정상이면 output 키가 없고 결과가 opts 없는 호출과 같다', () => {
+    const legacy = buildSpreadSnapshots({ spec: { ...wrapSpec } }, spineCfg, 24)
+    expect(legacy.spread).toBeDefined()
+    expect('outputWidthMm' in legacy.spread!).toBe(false)
+    expect('outputHeightMm' in legacy.spread!).toBe(false)
+    for (const opts of [undefined, {}, { hardcoverWrapMm: undefined }, { hardcoverWrapMm: 0 }, { hardcoverWrapMm: Number.NaN }]) {
+      expect(buildSpreadSnapshots({ spec: { ...wrapSpec } }, spineCfg, 24, opts)).toEqual(legacy)
+    }
+  })
+})
+

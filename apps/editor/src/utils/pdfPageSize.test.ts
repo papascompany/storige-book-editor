@@ -64,3 +64,35 @@ describe('computePdfPageOutputMm (R-195 coverOutput)', () => {
     })
   })
 })
+
+describe('computePdfPageOutputMm — 싸바리 wrapMm (canvas-core computePdfPageGeometry 미러)', () => {
+  it('wrap 20: 콘텐츠 444×305 → 484×345, bleedMm 0', () => {
+    expect(computePdfPageOutputMm({ width: 444, height: 305, cutSize: 3, wrapMm: 20 })).toEqual({
+      widthMm: 484,
+      heightMm: 345,
+      bleedMm: 0,
+    })
+  })
+
+  it('wrapMm 는 재단 마커·printSize 보다 우선한다', () => {
+    expect(
+      computePdfPageOutputMm({
+        width: 444,
+        height: 305,
+        cutSize: 3,
+        bleedMm: 3,
+        cropMarkEnabled: true,
+        printSize: { width: 500, height: 400 },
+        wrapMm: 20,
+      }),
+    ).toEqual({ widthMm: 484, heightMm: 345, bleedMm: 0 })
+  })
+
+  it('wrapMm 0·음수·NaN·Infinity 는 기존 규칙과 같다', () => {
+    const base = { width: 432.5, height: 297, cutSize: 3, bleedMm: 3, cropMarkEnabled: true }
+    const legacy = computePdfPageOutputMm(base)
+    for (const wrapMm of [0, -20, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(computePdfPageOutputMm({ ...base, wrapMm })).toEqual(legacy)
+    }
+  })
+})

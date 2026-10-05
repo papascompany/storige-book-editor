@@ -6,6 +6,7 @@ import {
   HOST_PAGE_LIMIT_MAX,
   SPREAD_INNER_HOST_MAX,
   bindingPageBounds,
+  comparePageStep,
   hasHostPageCountLimit,
   hostPageLimitSides,
   mergePageCountRange,
@@ -15,6 +16,7 @@ import {
   resolveSeedPageCount,
   resolveStorePageLimits,
   settingsPageBounds,
+  warnPageStepMismatch,
 } from './hostPageLimits'
 
 /**
@@ -532,6 +534,102 @@ describe('settingsPageBounds × bindingPageBounds 조합', () => {
     expect(
       settingsPageBounds({ range: [4, 48], per: 2, anchorCanvases: 1, bindMin: bb.minPages, bindMax: bb.maxPages }).min,
     ).toBe(17)
+  })
+})
+
+describe('comparePageStep — 호스트·템플릿셋 쪽 추가 단위 비교', () => {
+  // [호스트 limits.pageStep(undefined = 미전달), 템플릿셋 pageStep, 기대 status, 기대 host, 기대 template]
+  const table: Array<[number | undefined, unknown, string, number | null, number | null]> = [
+    [4, null, 'host-only', 4, null],
+    [4, 4, 'match', 4, 4],
+    [1, null, 'none', 1, null],
+    [1, 4, 'mismatch', 1, 4],
+    [undefined, 4, 'template-only', null, 4],
+    [2, 4, 'mismatch', 2, 4],
+    [undefined, null, 'none', null, null],
+    [undefined, 1, 'none', null, null],
+    [1, 1, 'none', 1, null],
+    [4, '4', 'match', 4, 4],
+    [4, 1, 'host-only', 4, null],
+  ]
+  it.each(table)('host %s / template %s → %s', (hostStep, templateStep, status, host, template) => {
+    const limits = hostStep === undefined ? {} : { pageStep: hostStep }
+    expect(comparePageStep(templateStep, limits)).toEqual({ status, host, template })
+  })
+
+  it('limits 미전달 → 호스트 미전달과 같음', () => {
+    expect(comparePageStep(4, undefined)).toEqual({ status: 'template-only', host: null, template: 4 })
+    expect(comparePageStep(null)).toEqual({ status: 'none', host: null, template: null })
+  })
+
+  it('판정은 실효 단위와 일치: none·match·template-only 는 호스트가 템플릿 단위를 바꾸지 않음', () => {
+    for (const [hostStep, templateStep, status] of table) {
+      const limits = hostStep === undefined ? {} : { pageStep: hostStep }
+      const effective = resolveStorePageLimits({
+        templateRange: [16, 48],
+        templatePageStep: templateStep,
+        templatePadToPageStep: false,
+        limits,
+      }).pageStep
+      const differs = effective !== normalizePageStep(templateStep)
+      expect(differs).toBe(status === 'host-only' || status === 'mismatch')
+    }
+  })
+
+  it('콘솔 출력 없음', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    for (const [hostStep, templateStep] of table) {
+      comparePageStep(templateStep, hostStep === undefined ? {} : { pageStep: hostStep })
+    }
+    expect(warn).not.toHaveBeenCalled()
+  })
+})
+
+describe('warnPageStepMismatch — 호스트 단위 적용 시 불일치 경고', () => {
+  it('host-only: 경고 1줄', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(warnPageStepMismatch(null, { pageStep: 4 }).status).toBe('host-only')
+    expect(warn).toHaveBeenCalledTimes(1)
+    expect(warn).toHaveBeenCalledWith(
+      '[hostPageLimits] 호스트 pageStep 4 ≠ 템플릿셋 pageStep 미설정 — 호스트 값 적용(상품 관리자와 템플릿셋 단위를 같게 설정하세요)',
+    )
+  })
+
+  it('mismatch 2/4: 경고 1줄', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    warnPageStepMismatch(4, { pageStep: 2 })
+    expect(warn).toHaveBeenCalledTimes(1)
+    expect(warn.mock.calls[0][0]).toContain('[hostPageLimits] 호스트 pageStep 2 ≠ 템플릿셋 pageStep 4')
+  })
+
+  it('mismatch 1/4: 배수 제약 없음 표기로 경고 1줄', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    warnPageStepMismatch(4, { pageStep: 1 })
+    expect(warn).toHaveBeenCalledTimes(1)
+    expect(warn.mock.calls[0][0]).toContain('[hostPageLimits] 호스트 pageStep 1(배수 제약 없음) ≠ 템플릿셋 pageStep 4')
+  })
+
+  it('match·none·template-only: 경고 없음', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    warnPageStepMismatch(4, { pageStep: 4 })
+    warnPageStepMismatch(null, { pageStep: 1 })
+    warnPageStepMismatch(null, {})
+    warnPageStepMismatch(4, {})
+    warnPageStepMismatch(4, undefined)
+    expect(warn).not.toHaveBeenCalled()
+  })
+
+  it('ignoreHostStep: 호스트 ≥ 2 는 적용되지 않으므로 경고 없음', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(warnPageStepMismatch(2, { pageStep: 4 }, { ignoreHostStep: true }).status).toBe('mismatch')
+    warnPageStepMismatch(null, { pageStep: 4 }, { ignoreHostStep: true })
+    expect(warn).not.toHaveBeenCalled()
+  })
+
+  it('ignoreHostStep: 호스트 1 은 적용되므로 템플릿 단위가 있으면 경고', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    warnPageStepMismatch(4, { pageStep: 1 }, { ignoreHostStep: true })
+    expect(warn).toHaveBeenCalledTimes(1)
   })
 })
 

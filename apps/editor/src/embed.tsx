@@ -47,9 +47,9 @@ import {
   resolveEffectiveSpineOptions,
 } from './utils/hostSpine'
 import { resolveHostPageLimits } from './utils/hostPageLimits'
-import { computePdfPageOutputMm } from './utils/pdfPageSize'
+import { buildCoverPdfSizeOpt, buildCoverOutputMeta } from './utils/hardcoverWrap'
 import {
-  computeInnerContentSizeMm,
+  resolveSpreadInnerPdfSizeMm,
   splitSpreadOutputCanvases,
   computeCoverOutputSizeMm,
   computeLivePageCount,
@@ -342,7 +342,7 @@ export interface EditorConfig {
     pageCountMin?: number
     /** R-196: 상품별 내지 최대 쪽수(물리 페이지, 정수 1~500). 규약은 pageCountMin 참조. */
     pageCountMax?: number
-    /** R-196: 상품별 내지 쪽수 배수(0부터 센 N의 배수, 정수 2~500). 규약은 pageCountMin 참조. */
+    /** R-196: 상품별 내지 쪽수 배수(0부터 센 N의 배수, 정수 1~500 — 1 = 배수 제약 없음). 규약은 pageCountMin 참조. */
     pageStep?: number
     /** 종이 정보 */
     paper?: { type: string; weight: number }
@@ -2499,14 +2499,21 @@ function EmbeddedEditor({
           //   ServicePlugin 이 없다. saveMultiPagePDFAsBlob 은 this._editor(=표지) 의 FontPlugin 을
           //   쓰고 전달된 canvases 를 순회하므로, 표지 ServicePlugin 으로 내지 PDF 도 생성한다.
           if (coverPlugin && innerCanvases.length > 0) {
-            // D-1 1단계 (2026-07-06): 포토북 내지(regionScope='inner')는 content.pdf 페이지 크기를
-            // innerSpec 기반 2-up(pageWidthMm×2 × pageHeightMm)으로 — 'content.pdf 1페이지=1펼침면' 계약.
-            // 비-포토북(BOOK 등)은 헬퍼가 null → 기존 폴백 체인 그대로(byte-parity).
-            const innerContentSize = computeInnerContentSizeMm(spreadCfg)
-            const innerW = innerContentSize?.widthMm
-              ?? (spreadCfg!.spec as any)?.coverWidthMm ?? options?.size?.width ?? 210
-            const innerH = innerContentSize?.heightMm
-              ?? (spreadCfg!.spec as any)?.coverHeightMm ?? options?.size?.height ?? 297
+            // 양장 싸바리 모드(caseBind 없음): 표지 PDF 페이지 = 총폭/총높이 + 사방 wrapMm.
+            const settingsAtFinish = useSettingsStore.getState()
+            const hardcoverWrap = settingsAtFinish.hardcoverWrap
+            // content.pdf 페이지 크기: innerSpec 2-up(포토북·내지 펼침면, 'content.pdf 1페이지=1펼침면')
+            // → (싸바리 모드일 때만) 템플릿셋 판형(pageTrimMm, 낱장 내지 workspace 와 같은 크기)
+            // → 기존 폴백(표지 spec 한 면 → 주문 옵션 → 210×297).
+            const { widthMm: innerW, heightMm: innerH } = resolveSpreadInnerPdfSizeMm({
+              spreadConfig: spreadCfg,
+              pageTrimMm: settingsAtFinish.pageTrimMm,
+              hardcoverWrapActive: hardcoverWrap != null,
+              fallback: {
+                widthMm: spreadCfg?.spec?.coverWidthMm ?? options?.size?.width ?? 210,
+                heightMm: spreadCfg?.spec?.coverHeightMm ?? options?.size?.height ?? 297,
+              },
+            })
             // D-4 (2026-07-06): 하드커버(caseBind) 표지는 출력 페이지 크기 = wrap 포함 사이즈.
             // ServicePlugin 의 기존 printSize 메커니즘(페이지=printSize, 콘텐츠 trim 렌더 중앙 배치)
             // 재사용 — canvas-core 무변경. caseBind 미설정이면 null → 기존 호출 byte-parity.
@@ -2516,15 +2523,16 @@ function EmbeddedEditor({
             // 표지 cover PDF (스프레드 전체 크기) — 독립 try (실패해도 내지는 시도)
             let coverFileId: string | undefined
             // R-195: 표지 PDF 에 넘긴 size 객체 — metadata.coverOutput 이 같은 입력으로 페이지 크기를 산출한다.
-            const coverPdfSizeOpt = {
-              width: spreadCfg!.totalWidthMm, height: spreadCfg!.totalHeightMm, cutSize: bleed,
-              // D-4: caseBind 有 → 페이지=출력(wrap) 사이즈 + 콘텐츠 중앙 오프셋(printSize 경로).
-              // wrap 자체가 재단 여유 역할이므로 crop mark 게이트(markOpt)는 함께 쓰지 않는다
-              // (게이트 ON 시 ServicePlugin 이 printSize 를 무시하는 기존 시맨틱과의 충돌 회피).
-              ...(coverOutputSize
-                ? { printSize: { width: coverOutputSize.widthMm, height: coverOutputSize.heightMm } }
-                : markOpt),
-            }
+            // 싸바리 모드 → wrapMm(printSize·markOpt 없음). D-4: caseBind 有 → 페이지=출력(wrap) 사이즈 +
+            // 콘텐츠 중앙 오프셋(printSize 경로, markOpt 없음). 그 밖 → markOpt.
+            const coverPdfSizeOpt = buildCoverPdfSizeOpt({
+              contentWidthMm: spreadCfg!.totalWidthMm,
+              contentHeightMm: spreadCfg!.totalHeightMm,
+              cutSize: bleed,
+              hardcoverWrap,
+              caseBindOutput: coverOutputSize,
+              markOpt,
+            })
             // 내지 전용 세트는 표지 자체가 없으므로 생성/업로드를 건너뛴다.
             if (!isInnerOnlySpread) {
               try {
@@ -2593,6 +2601,7 @@ function EmbeddedEditor({
                 spreadCfg,
                 spineCfgAtFinish,
                 innerCanvases.length,
+                { hardcoverWrapMm: hardcoverWrap?.wrapPerSideMm },
               )
               // R-195 (additive top-level 키 — 서버 metadata 는 shallow merge 라 orderOptions 등 기존
               // 객체는 절대 부분 전송하지 않는다):
@@ -2605,7 +2614,7 @@ function EmbeddedEditor({
                     spreadConfig: spreadCfg,
                     lastAppliedSource: spineCfgAtFinish.appliedSource ?? null,
                   })
-              const coverOutput = coverFileId ? computePdfPageOutputMm(coverPdfSizeOpt) : null
+              const coverOutput = coverFileId ? buildCoverOutputMeta(coverPdfSizeOpt, hardcoverWrap) : null
               await editSessionsApi.update(currentSessionId, {
                 ...(coverFileId ? { coverFileId } : {}),
                 ...(contentFileId ? { contentFileId } : {}),

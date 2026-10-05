@@ -190,6 +190,30 @@ export function computeInnerContentSizeMm(
 }
 
 /**
+ * 스프레드 책 내지 content.pdf 페이지 크기(mm).
+ * 우선순위: innerSpec 2-up(computeInnerContentSizeMm) → (양장 싸바리 모드일 때만) pageTrimMm
+ * (템플릿셋 판형, 두 값 모두 유한 양수일 때) → fallback(호출측 기존 폴백).
+ * 싸바리 모드에서는 표지 면 = 판형 + 8 이므로 기존 폴백(표지 한 면)이 아니라 낱장 내지
+ * workspace 와 같은 판형 크기로 맞춘다. 모드가 꺼져 있으면 판형을 보지 않고 기존 순서
+ * (innerSpec 2-up → fallback) 그대로다.
+ */
+export function resolveSpreadInnerPdfSizeMm(i: {
+  spreadConfig: SpreadOutputConfigLike | null | undefined
+  pageTrimMm: { width: number; height: number } | null | undefined
+  /** 양장 싸바리 모드(resolveHardcoverWrapMode 결과 mode != null) 여부 */
+  hardcoverWrapActive: boolean
+  fallback: OutputPageSizeMm
+}): OutputPageSizeMm {
+  const inner = computeInnerContentSizeMm(i.spreadConfig)
+  if (inner) return inner
+  const trim = i.hardcoverWrapActive ? i.pageTrimMm : null
+  if (trim && isPositiveFinite(trim.width) && isPositiveFinite(trim.height)) {
+    return { widthMm: trim.width, heightMm: trim.height }
+  }
+  return { widthMm: i.fallback.widthMm, heightMm: i.fallback.heightMm }
+}
+
+/**
  * D-4: 하드커버(caseBind) 표지 cover.pdf 의 **출력(wrap 포함) 페이지 크기**를 계산한다.
  * 화면은 trim 뷰 그대로(computeSpreadDimensions 불변) — PDF 페이지 크기에만 적용.
  *

@@ -365,6 +365,61 @@ export function resolveStorePageLimits(input: {
   }
 }
 
+/** 호스트 pageStep 과 템플릿셋 pageStep 의 비교 결과. */
+export type PageStepComparisonStatus = 'none' | 'template-only' | 'host-only' | 'match' | 'mismatch'
+
+export interface PageStepComparison {
+  status: PageStepComparisonStatus
+  /** 호스트 단위: null = 미전달, 1 = 배수 제약 없음(명시), ≥ 2 = 단위 */
+  host: number | null
+  /** 템플릿셋 단위(normalizePageStep): null = 제약 없음, ≥ 2 = 단위 */
+  template: number | null
+}
+
+/**
+ * 호스트 pageStep 과 템플릿셋 pageStep 비교 — 순수 함수(콘솔 출력 없음).
+ *
+ * 판정은 실효 단위(resolveStorePageLimits) 기준이다.
+ *  - 호스트 미전달: 템플릿 단위만 있으면 'template-only', 둘 다 없으면 'none'.
+ *  - 호스트 1(배수 제약 없음): 템플릿 단위가 있으면 'mismatch'(템플릿 단위가 해제됨), 없으면 'none'.
+ *  - 호스트 ≥ 2: 템플릿 단위가 없으면 'host-only', 같으면 'match', 다르면 'mismatch'.
+ */
+export function comparePageStep(templatePageStep: unknown, limits?: HostPageLimits): PageStepComparison {
+  const template = normalizePageStep(templatePageStep)
+  const rawHost = limits?.pageStep
+  const host = rawHost === 1 ? 1 : normalizePageStep(rawHost)
+  let status: PageStepComparisonStatus
+  if (host === null) status = template === null ? 'none' : 'template-only'
+  else if (host === 1) status = template === null ? 'none' : 'mismatch'
+  else if (template === null) status = 'host-only'
+  else status = host === template ? 'match' : 'mismatch'
+  return { status, host, template }
+}
+
+/**
+ * 호스트 단위가 실제로 적용될 때 템플릿셋 단위와 다르면 console.warn 1줄('[hostPageLimits] …').
+ * 실효 단위·스토어 값은 바꾸지 않는다(로더 호출당 최대 1회).
+ *
+ * - 'host-only'·'mismatch' 만 경고한다('none'·'template-only'·'match' 는 경고 없음).
+ * - ignoreHostStep(단일 모드 비내지 캔버스)이면 호스트 ≥ 2 는 적용되지 않으므로 경고하지 않는다.
+ *   호스트 1 은 ignoreHostStep 이어도 적용되므로 경고한다(resolveStorePageLimits 와 같은 기준).
+ */
+export function warnPageStepMismatch(
+  templatePageStep: unknown,
+  limits?: HostPageLimits,
+  options?: { ignoreHostStep?: boolean },
+): PageStepComparison {
+  const result = comparePageStep(templatePageStep, limits)
+  const hostApplied = result.host === 1 || options?.ignoreHostStep !== true
+  if (hostApplied && (result.status === 'host-only' || result.status === 'mismatch')) {
+    const hostLabel = result.host === 1 ? '1(배수 제약 없음)' : String(result.host)
+    console.warn(
+      `${WARN_PREFIX} 호스트 pageStep ${hostLabel} ≠ 템플릿셋 pageStep ${result.template ?? '미설정'} — 호스트 값 적용(상품 관리자와 템플릿셋 단위를 같게 설정하세요)`,
+    )
+  }
+  return result
+}
+
 /**
  * SidePanel '페이지' 섹션 한도(settings.page.min/max — 전체 캔버스 수 단위).
  *
