@@ -1,10 +1,13 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
+import { BindingType } from '@storige/types'
 import { getParamCompat } from './searchParams'
 import { normalizePageStep } from './pageStep'
 import {
   HOST_PAGE_LIMIT_MAX,
   SPREAD_INNER_HOST_MAX,
+  bindingPageBounds,
   hasHostPageCountLimit,
+  hostPageLimitSides,
   mergePageCountRange,
   parsePageCountLimitParam,
   parsePageStepParam,
@@ -456,6 +459,79 @@ describe('settingsPageBounds', () => {
     const b = settingsPageBounds({ range: [100, 300], per: 1, anchorCanvases: 1, bindMax: 64 })
     expect(b.max).toBe(b.min)
     expect(b.min).toBe(101)
+  })
+})
+
+describe('hostPageLimitSides — 호스트가 보낸 쪽(키별)', () => {
+  it('min·max 모두 있음 → 둘 다 true', () => {
+    expect(hostPageLimitSides({ pageCountMin: 16, pageCountMax: 48 })).toEqual({ min: true, max: true })
+  })
+  it('min 만 있음 → min 만 true', () => {
+    expect(hostPageLimitSides({ pageCountMin: 16 })).toEqual({ min: true, max: false })
+  })
+  it('max 만 있음 → max 만 true', () => {
+    expect(hostPageLimitSides({ pageCountMax: 48 })).toEqual({ min: false, max: true })
+  })
+  it('{} (pageStep 단독 포함) → 둘 다 false', () => {
+    expect(hostPageLimitSides({})).toEqual({ min: false, max: false })
+    expect(hostPageLimitSides({ pageStep: 4 })).toEqual({ min: false, max: false })
+  })
+  it('undefined → 둘 다 false', () => {
+    expect(hostPageLimitSides(undefined)).toEqual({ min: false, max: false })
+  })
+})
+
+describe('bindingPageBounds — 제본 최소/최대 키별 대체', () => {
+  const none = { min: false, max: false }
+  const minOnly = { min: true, max: false }
+  const maxOnly = { min: false, max: true }
+  const both = { min: true, max: true }
+
+  it('PERFECT, 범위 없음 → 무선 최소 32', () => {
+    expect(bindingPageBounds(BindingType.PERFECT, none)).toEqual({ minPages: 32 })
+  })
+  it('PERFECT, min 보냄 → 제본 최소 미적용', () => {
+    expect(bindingPageBounds(BindingType.PERFECT, minOnly)).toEqual({})
+  })
+  it('PERFECT, max 만 보냄 → 무선 최소 32 유지', () => {
+    expect(bindingPageBounds(BindingType.PERFECT, maxOnly)).toEqual({ minPages: 32 })
+  })
+  it('PERFECT, 둘 다 보냄 → {}', () => {
+    expect(bindingPageBounds(BindingType.PERFECT, both)).toEqual({})
+  })
+  it('SADDLE, 범위 없음 → 중철 최대 64', () => {
+    expect(bindingPageBounds(BindingType.SADDLE, none)).toEqual({ maxPages: 64 })
+  })
+  it('SADDLE, max 보냄 → 제본 최대 미적용', () => {
+    expect(bindingPageBounds(BindingType.SADDLE, maxOnly)).toEqual({})
+  })
+  it('SADDLE, min 만 보냄 → 중철 최대 64 유지', () => {
+    expect(bindingPageBounds(BindingType.SADDLE, minOnly)).toEqual({ maxPages: 64 })
+  })
+  it('bindingType null → {}', () => {
+    expect(bindingPageBounds(null, none)).toEqual({})
+  })
+  it('SPIRAL·HARDCOVER, 범위 없음 → {}', () => {
+    expect(bindingPageBounds(BindingType.SPIRAL, none)).toEqual({})
+    expect(bindingPageBounds(BindingType.HARDCOVER, none)).toEqual({})
+  })
+  it('PERFECT, sides 미전달 → 무선 최소 32', () => {
+    expect(bindingPageBounds(BindingType.PERFECT, undefined)).toEqual({ minPages: 32 })
+  })
+})
+
+describe('settingsPageBounds × bindingPageBounds 조합', () => {
+  it('[16,48] 스프레드 per=2 anchor 1, 둘 다 보냄 → {9,25}', () => {
+    const bb = bindingPageBounds(BindingType.PERFECT, hostPageLimitSides({ pageCountMin: 16, pageCountMax: 48 }))
+    expect(
+      settingsPageBounds({ range: [16, 48], per: 2, anchorCanvases: 1, bindMin: bb.minPages, bindMax: bb.maxPages }),
+    ).toEqual({ min: 9, max: 25 })
+  })
+  it('[4,48] + max 만 + PERFECT → 무선 최소 32 유지, min = 1 + 16 = 17', () => {
+    const bb = bindingPageBounds(BindingType.PERFECT, hostPageLimitSides({ pageCountMax: 48 }))
+    expect(
+      settingsPageBounds({ range: [4, 48], per: 2, anchorCanvases: 1, bindMin: bb.minPages, bindMax: bb.maxPages }).min,
+    ).toBe(17)
   })
 })
 

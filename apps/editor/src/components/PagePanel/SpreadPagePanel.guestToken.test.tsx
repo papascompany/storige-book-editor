@@ -36,6 +36,7 @@ const editorState = {
   currentPageIndex: 0,
   canDeletePage: () => true,
   bindingType: null,
+  hostPageLimitSides: { min: false, max: false },
   pageStep: null,
   getPageAddUnit: () => 1,
   getPageStepPerCanvas: () => 1,

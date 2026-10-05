@@ -15,7 +15,10 @@
  *  - 키별 사다리: options(props/URL) → metadata.orderOptions → 템플릿셋.
  *  - min > max: 같은 계층이면 둘 다 폐기, 계층이 다르면 orderOptions 쪽만 폐기.
  *  - pageStep 은 min 이 배수가 아니거나 범위 안에 배수가 없으면 폐기(템플릿 단위 적용).
+ *  - 제본 최소/최대 쪽수는 키별로 대체: 호스트 pageCountMin 이 있으면 제본 최소, pageCountMax 가 있으면
+ *    제본 최대를 적용하지 않는다(W5 — hostPageLimitSides·bindingPageBounds). 보내지 않은 쪽은 제본 값 유지.
  */
+import { BINDING_CONSTRAINTS, type BindingType } from '@storige/types'
 import { normalizePageStep } from './pageStep'
 
 /** 호스트 쪽수 상한(물리 페이지). bookmoa 최대 상품(500p) 기준. */
@@ -200,6 +203,41 @@ export function hasHostPageCountLimit(l: HostPageLimits | undefined): boolean {
   return typeof l?.pageCountMin === 'number' || typeof l?.pageCountMax === 'number'
 }
 
+/** 호스트 쪽수 범위를 보낸 쪽(키별). pageStep 단독은 어느 쪽도 아니다. */
+export interface HostPageLimitSides {
+  min: boolean
+  max: boolean
+}
+
+/** 해석된 호스트 한도에서 보낸 쪽을 키별로 판정한다(검증된 키만 남으므로 typeof 로 충분). */
+export function hostPageLimitSides(l?: HostPageLimits): HostPageLimitSides {
+  return {
+    min: typeof l?.pageCountMin === 'number',
+    max: typeof l?.pageCountMax === 'number',
+  }
+}
+
+/**
+ * 적용할 제본 최소/최대 쪽수(물리 페이지). 제본 한도 판정의 단일 진입점.
+ *
+ * - bindingType 없음(null/undefined) → {} (제약 없음).
+ * - sides.min = true(호스트 pageCountMin 보냄) → 제본 최소(무선 32) 미적용.
+ * - sides.max = true(호스트 pageCountMax 보냄) → 제본 최대(중철 64) 미적용.
+ * - sides 미전달 = 둘 다 false(제본 값 그대로).
+ */
+export function bindingPageBounds(
+  bindingType: BindingType | null | undefined,
+  sides?: HostPageLimitSides,
+): { minPages?: number; maxPages?: number } {
+  if (!bindingType) return {}
+  const c = BINDING_CONSTRAINTS[bindingType]
+  if (!c) return {}
+  const out: { minPages?: number; maxPages?: number } = {}
+  if (typeof c.minPages === 'number' && !sides?.min) out.minPages = c.minPages
+  if (typeof c.maxPages === 'number' && !sides?.max) out.maxPages = c.maxPages
+  return out
+}
+
 /**
  * 유효 쪽수 범위 = 템플릿셋 범위 위에 호스트 min/max 를 덮어쓴 값.
  *
@@ -331,6 +369,7 @@ export function resolveStorePageLimits(input: {
  * SidePanel '페이지' 섹션 한도(settings.page.min/max — 전체 캔버스 수 단위).
  *
  * effMin = max(range[0] || 1, bindMin), effMax = min(range[last] || 100, bindMax) — 스토어 게이트와 같은 식.
+ * bindMin/bindMax 는 bindingPageBounds 결과 — 호스트 범위를 보낸 쪽은 제본 값이 빠져 undefined 다.
  * 물리 페이지 → 캔버스: anchor + ceil(effMin/per) .. anchor + floor(effMax/per) (max ≥ min 보장).
  * anchor = 내지가 아닌 캔버스 수(단일: 표지 등 비내지 템플릿 수, 스프레드: 표지 1 / 내지 전용 0).
  */

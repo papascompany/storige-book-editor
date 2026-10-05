@@ -83,9 +83,10 @@ export interface EmbedUrlParams {
    * 상품별 내지 쪽수 한도 — `pageCountMin`·`pageCountMax`·`pageStep` (2026-09-29, ADDITIVE).
    *
    * - 모든 값은 **물리 내지 쪽수** 기준이며, 유효하면 템플릿셋 `pageCountRange`·`pageStep` 보다 우선한다.
-   * - 제본 방식별 최소·최대 쪽수(binding min/max)는 호스트 값보다 좁으면 계속 적용된다.
+   * - 제본 방식별 최소·최대 쪽수는 `pageCountMin`(최소)·`pageCountMax`(최대)를 보낸 쪽만 이 값이 대신한다.
+   *   보내지 않은 쪽은 binding min/max 가 더 좁으면 적용된다.
    * - `pageCountMin`·`pageCountMax`: 정수 1~500 (펼침면 2-up 내지 세트는 400 이하).
-   * - `pageStep`: 정수 2 이상, 0부터 센 배수 조건(2 = 짝수, 4 = 4의 배수).
+   * - `pageStep`: 정수 1~500, 0부터 센 배수 조건(2 = 짝수, 4 = 4의 배수). 1 = 배수 제약 없음(템플릿셋 단위도 쓰지 않음).
    *   `pageCountMin % pageStep === 0` 일 때만 보낸다.
    * - 무효값은 편집기가 `console.warn` 후 무시한다. **SDK 는 검증하지 않고 그대로 싣는다.**
    * - 생략하면 템플릿셋 동작 그대로다(URL 도 기존과 바이트 동일).

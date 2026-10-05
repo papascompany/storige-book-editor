@@ -712,7 +712,8 @@ describe('useEditorStore', () => {
       });
 
       // R-196 host page limits (2026-09-29): 로더가 호스트 병합 범위(예: [16,300])를 pageCountRange 에
-      // 넣었을 때 스토어 게이트가 그대로 따르고, 제본 min/max·pageStep 이 계속 위에 얹히는지 고정한다.
+      // 넣었을 때 스토어 게이트가 그대로 따르는지 고정한다. 호스트 범위 표시(hostPageLimitSides)가 없으면
+      // 제본 min/max·pageStep 이 계속 위에 얹히고, 표시된 쪽은 제본 값 대신 범위만 적용된다(W5 키별 대체).
       describe('호스트 쪽수 한도 병합 범위 (R-196 회귀 가드)', () => {
         const setupHost = (overrides: Record<string, unknown> = {}) =>
           useEditorStore.setState({
@@ -735,7 +736,7 @@ describe('useEditorStore', () => {
           expect(useEditorStore.getState().canAddMorePages()).toBe(false);
         });
 
-        it('SADDLE: [16,300] 이어도 제본 최대 64p 에서 추가 차단', () => {
+        it('SADDLE + 호스트 범위 표시 없음: [16,300] 이어도 제본 최대 64p 에서 추가 차단', () => {
           setupHost({ bindingType: BindingType.SADDLE });
           useEditorStore.getState().setPages(mkSpreadInner(31, false)); // 62p
           expect(useEditorStore.getState().canAddMorePages()).toBe(true);
@@ -743,12 +744,42 @@ describe('useEditorStore', () => {
           expect(useEditorStore.getState().canAddMorePages()).toBe(false);
         });
 
-        it('PERFECT: [16,300] 이어도 제본 최소 32p 미만으로 삭제 차단', () => {
+        it('PERFECT + 호스트 범위 표시 없음: [16,300] 이어도 제본 최소 32p 미만으로 삭제 차단', () => {
           setupHost({ bindingType: BindingType.PERFECT });
           useEditorStore.getState().setPages(mkSpreadInner(16, false)); // 32p
           expect(useEditorStore.getState().canDeletePage('s-5')).toBe(false); // → 30p
           useEditorStore.getState().setPages(mkSpreadInner(17, false)); // 34p
           expect(useEditorStore.getState().canDeletePage('s-5')).toBe(true); // → 32p
+        });
+
+        it('SADDLE + 호스트 max 표시: 제본 최대 64p 대신 범위 최대 300p 적용', () => {
+          setupHost({ bindingType: BindingType.SADDLE, hostPageLimitSides: { min: false, max: true } });
+          useEditorStore.getState().setPages(mkSpreadInner(32, false)); // 64p
+          expect(useEditorStore.getState().canAddMorePages()).toBe(true); // → 66p
+          useEditorStore.getState().setPages(mkSpreadInner(150, false)); // 300p
+          expect(useEditorStore.getState().canAddMorePages()).toBe(false);
+        });
+
+        it('PERFECT + 호스트 min 표시: 제본 최소 32p 대신 범위 최소 16p 적용', () => {
+          setupHost({ bindingType: BindingType.PERFECT, hostPageLimitSides: { min: true, max: false } });
+          useEditorStore.getState().setPages(mkSpreadInner(9, false)); // 18p
+          expect(useEditorStore.getState().canDeletePage('s-5')).toBe(true); // → 16p
+          useEditorStore.getState().setPages(mkSpreadInner(8, false)); // 16p
+          expect(useEditorStore.getState().canDeletePage('s-5')).toBe(false); // → 14p
+        });
+
+        it('PERFECT + 호스트 max 만 표시: 제본 최소 32p 유지', () => {
+          setupHost({ bindingType: BindingType.PERFECT, hostPageLimitSides: { min: false, max: true } });
+          useEditorStore.getState().setPages(mkSpreadInner(17, false)); // 34p
+          expect(useEditorStore.getState().canDeletePage('s-5')).toBe(true); // → 32p
+          useEditorStore.getState().setPages(mkSpreadInner(16, false)); // 32p
+          expect(useEditorStore.getState().canDeletePage('s-5')).toBe(false); // → 30p
+        });
+
+        it('SADDLE + 호스트 min 만 표시: 제본 최대 64p 유지', () => {
+          setupHost({ bindingType: BindingType.SADDLE, hostPageLimitSides: { min: true, max: false } });
+          useEditorStore.getState().setPages(mkSpreadInner(32, false)); // 64p
+          expect(useEditorStore.getState().canAddMorePages()).toBe(false);
         });
 
         it('pageStep=4: 단위 추가가 최대 경계를 넘으면 차단', () => {

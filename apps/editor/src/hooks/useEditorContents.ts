@@ -27,7 +27,7 @@ import Editor, { ServicePlugin, SvgUtils, TemplatePlugin, mmToPxDisplay, compute
 import { contentsApi, storageApi, templateSetsApi, templatesApi } from '@/api'
 import { createCanvas } from '@/utils/createCanvas'
 import { recalculateSpineWidth, initSpineConfig } from '@/utils/spineCalculator'
-import { BindingType, BINDING_CONSTRAINTS } from '@storige/types'
+import { BindingType } from '@storige/types'
 
 /** A13: 제본 코드 문자열 → BindingType(가드 적용 대상). 미지의 값/미설정은 null(=제약 없음). */
 function toBindingType(v?: string | null): BindingType | null {
@@ -44,7 +44,9 @@ import { describeError } from '@/utils/safeErrorLog'
 import { UNDERLAY_MAX_PAGES } from '@/utils/contentPdfGuide'
 import {
   SPREAD_INNER_HOST_MAX,
+  bindingPageBounds,
   hasHostPageCountLimit,
+  hostPageLimitSides,
   mergePageCountRange,
   resolveSeedPageCount,
   resolveStorePageLimits,
@@ -1850,6 +1852,8 @@ export function useEditorContents(): UseEditorContentsReturn {
       const requestedPageCount = config.pageCount
       // R-196 host page limits (2026-09-29): 호스트 쪽수 한도(min/max) 적용 여부.
       const hostLimitsActive = hasHostPageCountLimit(config)
+      // W5: 호스트가 보낸 쪽(min/max)은 제본 최소/최대를 대신한다(키별) — 스토어 게이트·SidePanel 공용.
+      const hostSides = hostPageLimitSides(config)
       // UNDERLAY_MAX_PAGES(=200, 워커 CONTENT_PDF_GUIDE_MAX_PAGES 정렬)는 contentPdfGuide 와 공유
       // — 즉시 앉히기(ensureUnderlayPages)와 로드 경로가 같은 상한을 쓰도록 단일 선언(2026-08-13).
 
@@ -2103,6 +2107,8 @@ export function useEditorContents(): UseEditorContentsReturn {
         templateSetId: templateSet.id,
         templateSetName: templateSet.name,
         bindingType: toBindingType(config.bindingType),
+        // W5: 호스트 범위를 보낸 쪽은 제본 한도 미적용(키별). 범위 없음 = {min:false,max:false} → 제본 최소·최대 그대로 적용.
+        hostPageLimitSides: hostSides,
         // 펼침면(2-up) 내지는 캔버스 1장 = 물리 2페이지. 페이지 상/하한 비교의 단위를 맞춘다.
         pagesPerCanvas: isSpreadInners ? 2 : 1,
         // S8: 내지 증감 단위(null=제약 없음). 추가/삭제 단위 + 편집완료 배수 가드에 사용.
@@ -2117,17 +2123,17 @@ export function useEditorContents(): UseEditorContentsReturn {
       })
 
       // R-196 host page limits (2026-09-29): 호스트 한도 세션은 SidePanel '페이지' 섹션 한도도
-      // 스토어 게이트와 같은 식(범위 ∩ 제본 min/max)으로 캔버스 단위 환산해 맞춘다 — 두 패널 불일치 방지.
+      // 스토어 게이트와 같은 식(범위 ∩ bindingPageBounds — 호스트가 보낸 쪽은 제본 값 제외)으로
+      // 캔버스 단위 환산해 맞춘다 — 두 패널 불일치 방지.
       if (hostLimitsActive) {
         const s = useEditorStore.getState()
-        const bt = toBindingType(config.bindingType)
-        const bc = bt ? BINDING_CONSTRAINTS[bt] : undefined
+        const bb = bindingPageBounds(toBindingType(config.bindingType), hostSides)
         const bounds = settingsPageBounds({
           range: s.pageCountRange,
           per: s.pagesPerCanvas || 1,
           anchorCanvases: s.pageStepBasis.regionScope === 'inner' ? 0 : 1,
-          bindMin: bc?.minPages,
-          bindMax: bc?.maxPages,
+          bindMin: bb.minPages,
+          bindMax: bb.maxPages,
         })
         const page = useSettingsStore.getState().currentSettings.page
         await useSettingsStore.getState().updateSettings({ page: { ...page, ...bounds } })

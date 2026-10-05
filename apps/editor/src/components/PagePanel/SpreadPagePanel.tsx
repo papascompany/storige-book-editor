@@ -10,6 +10,7 @@ import { useGuestStore } from '@/stores/useGuestStore'
 import { cn } from '@/lib/utils'
 import { showToast } from '@/stores/useToastStore'
 import { BindingType } from '@storige/types'
+import { bindingPageBounds } from '@/utils/hostPageLimits'
 
 import { computeInnerReorder } from '@/utils/innerPageReorder'
 import { PageStepWarning } from './PageStepWarning'
@@ -76,6 +77,7 @@ export const SpreadPagePanel = memo(function SpreadPagePanel({
   const canAddMore = useCanAddPage()
   const canDeletePage = useEditorStore((state) => state.canDeletePage)
   const bindingType = useEditorStore((state) => state.bindingType)
+  const hostPageLimitSides = useEditorStore((state) => state.hostPageLimitSides)
   const pageStep = useEditorStore((state) => state.pageStep)
   const isInnerSpread = useSettingsStore((s) => s.spreadConfig?.regionScope === 'inner')
   const hasCoverSlot = useSettingsStore((s) => s.hasCoverSlot)
@@ -130,7 +132,8 @@ export const SpreadPagePanel = memo(function SpreadPagePanel({
   }, [canAddMore, addPage, bindingType, pageStep])
 
   const handleDeletePage = useCallback((pageId: string) => {
-    // A13: 제본 최소페이지(예: 무선 32p) 미만으로 삭제 차단
+    // A13: 제본 최소페이지(예: 무선 32p) 미만으로 삭제 차단.
+    //   W5: 호스트 pageCountMin 을 보낸 세션은 제본 최소가 적용되지 않으므로 일반 문구로 안내한다.
     if (!canDeletePage(pageId)) {
       const store = useEditorStore.getState()
       const unit = store.getPageDeleteUnit()
@@ -139,7 +142,8 @@ export const SpreadPagePanel = memo(function SpreadPagePanel({
       showToast(
         groupShort
           ? `내지 ${pageStep}페이지 단위 상품이라 이 위치에서는 함께 삭제할 페이지가 부족합니다.`
-          : bindingType === BindingType.PERFECT
+          : bindingType === BindingType.PERFECT &&
+              bindingPageBounds(bindingType, hostPageLimitSides).minPages !== undefined
             ? '무선제본은 최소 32페이지가 필요해 더 삭제할 수 없습니다.'
             : '최소 페이지 수 제한으로 삭제할 수 없습니다.',
         'warning',
@@ -165,7 +169,7 @@ export const SpreadPagePanel = memo(function SpreadPagePanel({
       const removed = canvasIds.length * useEditorStore.getState().getPageStepPerCanvas()
       showToast(`내지 ${pageStep}페이지 단위 상품이라 인접 페이지까지 ${removed}페이지가 삭제되었습니다.`, 'info', 2500)
     }
-  }, [pages, allCanvas, deletePage, canDeletePage, bindingType, pageStep])
+  }, [pages, allCanvas, deletePage, canDeletePage, bindingType, hostPageLimitSides, pageStep])
 
   const [dragSourceIdx, setDragSourceIdx] = useState<number | null>(null)
   const [dragOver, setDragOver] = useState<{ idx: number; before: boolean } | null>(null)
