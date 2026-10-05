@@ -98,9 +98,9 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
 
 | 대상 | 기준 |
 |---|---|
-| api jest | 130 스위트 / 2579 · tsc 0 |
-| worker jest | 30 스위트 / 1071 · tsc 0 (로컬 gs 10.08.0 설치 시; gs 부재 시 GS 블록 skip) |
-| editor vitest | 102 파일 / 1424 · tsc 0 · build · build:embed |
+| api jest | 130 스위트 / 2605 · tsc 0 (Wave 4 통합 트리 10-05. lint 기존 오류 2건 — `shop-session-order-scope.spec.ts` no-loss-of-precision, 미변경 파일) |
+| worker jest | 33 스위트 / 1239 · tsc 0 (Wave 4. 로컬 gs 10.08.0·qpdf 12.3.2 설치 시; gs 부재 시 GS 블록 skip) |
+| editor vitest | 104 파일 / 1468 · tsc 0 · build · build:embed / Playwright `tests/embed-mode` 33건(`PW_CHROMIUM_CHANNEL=chrome`, 로컬 전용·CI 미편입) |
 | sdk | 12 / 359 · tsc 0 |
 | admin vitest | 16 파일 / 209 · tsc·eslint 0 · build (컴포넌트 테스트는 `.test.tsx` + happy-dom docblock) |
 | canvas-core | 55 / 630 |
@@ -119,12 +119,12 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
 
 | 파트너 | 창구(시작 시 재확인) | cwd | 운영 상태(마지막 ACK) |
 |---|---|---|---|
-| bookmoa | `local_bf71565d-e946-487b-a8e4-27962fe7626a` 「20260930 북모아 관리자 수정 시작」 | `~/Developer/claude/bookmoa-mobile` | new.bookmoa.com R-212(Vercel `i1m2kzmz9`) 이후 변경 없음(10-03). 실 e2e 재개 **미정**(오너 보류) |
-| printy | `local_6494a1a2-072f-498a-a070-e6133b50c706` 「20260930 Printy CTO 개발 계속」 | `~/Developer/claude/printy` | 운영 printy `f7a574d`(printy 저장소) 이후 변경 없음(10-03). 실 e2e 재개 **미정**(오너 보류) |
+| bookmoa | `local_bc4b2915-897d-4a16-918f-87dfdedb279b` **[652b4b]**(표시명 10-05 「북모아 Printable 개발 계속」→「20261004 북모아 관리자 개발 시작」, 이름은 바뀔 수 있으니 ListAgents 의 ref 로 확인)(10-05 교대, cwd lsof 확증). 같은 이름의 오프라인 Remote Control 세션 [d6e18b] 과 혼동 금지 → 보낼 때 ref `[652b4b]` 를 붙인다. 옛 `local_bf71565d`「20260930 북모아 관리자 수정 시작」은 창구 아님 | `~/Developer/claude/bookmoa-mobile` | new.bookmoa.com R-212(Vercel `i1m2kzmz9`) 이후 10-05 R-214(마이페이지·관리자 주문 화면) 운영 배포 — Storige 연동 경로(/embed·합성·웹훅·owners) 변경 없음. 실 e2e 재개 **미정**(오너 보류) |
+| printy | `local_86991aae-9845-4db5-a33f-4095c2183327` **[88e40b]**(표시명 「20261004 Printy CTO 개발 계속」→「20261004 Printy 오픈준비」)(10-05 03:2xZ 교대, cwd lsof 확증). 옛 `local_6494a1a2` 는 닫힘·무응답(인계 정본 printy `docs/SESSION-START-PROMPT-2026-10-05-next.md`) | `~/Developer/claude/printy` | 운영 printy `f7a574d`(printy 저장소) 이후 변경 없음(10-03). 실 e2e 재개 **미정**(오너 보류) |
 | 100p Books | `local_69303599-8e93-4355-9e02-20fbe03d6d8d` 「20260930 100p_books 서브에이전트 진행」 | `~/Developer/claude/100p_books` | 유형 1(upload·validate·download external). 편집 세션·합성 계획 없음 |
 | ShareSnap·북모아 메인(PHP)·MD2Books | 연락 채널 없음(오너 확인 필요) | — | — |
 
-- 직전 Storige 세션: `local_20f149cd-…` 「20260930 Storige 편집기·워커 개발」(10-04 종료). 10-03 데스크톱 앱 재시작 뒤에도 id 는 그대로였다.
+- 현재 Storige 세션: [0e5333] 「Storige 편집기·워커 개발」→ 표시명 「20261004 Storige 템플릿 변환관리 시작」(10-05 시작, 양사 ACK 03:1xZ). 직전 Storige 세션: `local_20f149cd-…` 「20260930 Storige 편집기·워커 개발」(10-04 종료, 목록에 idle 로 남아 있음 — 파트너가 옛 창구로 보내지 않도록 새 이름 통지 완료).
 - 최근 ACK(괄호 안은 **파트너 저장소** 커밋):
   - Wave 2(10-03): 사전 통지 ACK bookmoa(`a6810f7`)·printy(`f7a574d`)·100p(`b0f5d3a`) — 모두 코드 변경 불필요. bookmoa 원장 기록(`4ee4261`). 완료 통지 3사 발신.
   - Wave 3(10-03~04): 사전 통지 ACK printy(`f7a574d`)·bookmoa(`1272b42`), 100p 영향 없음. 완료 통지 양사 발신(10-04 00:43Z 이후).
@@ -136,6 +136,7 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
   - **키**: 양사 서버 키 1개. 100p 는 검증·잡 조회 = 워커 키, 업로드·complete·다운로드·DELETE = 편집기 키이며 둘 다 100p 사이트로 판정된다. presigned complete 사이트 귀속(P4)은 Wave 2 에 배포됐다.
   - **100p DELETE**: `/files/:id/external` 는 2xx 또는 본문 `code:"FILE_NOT_FOUND"` 인 404 만 성공 처리한다. Storige 운영 원칙: ① 이 404 본문 유지(변경 시 사전 통지) ② 경로 제거·이동 시 사전 통지 ③ 다른 거부 사유에 `FILE_NOT_FOUND` 404 재사용 금지.
   - **식별자**: 양사 `orderSeqno` = 장바구니 초안 id(13자리, 생성 뒤 불변, 결제 주문번호 아님) → 통지·조회 식별자는 **sessionId**.
+  - **/embed 쪽수 파라미터(bookmoa 10-05 회신)**: 신규 편집은 pageCount 와 pageCountMin·Max·pageStep 을 함께 보냄(범위만 보내는 경로 없음). 재편집(sessionId 동반)은 범위를 보내지 않고 세션 `metadata.orderOptions` 를 권위로 씀. bindingType 은 신규 편집 'perfect'(운영 84상품 spinePolicy 미설정). 운영 조합: 동화책 하드커버 207c458f 16/48/4 · A4 하드커버 f0335fda 16/300/4 · 교육·교재 a2cc2939 16/500/2(초기 16·100).
   - **도련**: 양사 편집기 상품 템플릿셋 `bleed_mm` 전부 3 → 합성 내지 contentTrim 예: A4 216×303 · 정사각 216×216 · 가로 303×216.
 - 3-B 운영 원칙(09-30 오너 결정, 양사·100p ACK): 통지문 `docs/partner-notices/PARTNER_NOTICE_ORDER_LINKED_STAFF_ACTIONS_2026-09-30.md`. 파트너 자체 운영자 편집(R-206)은 파트너가 즉시 결속하므로 3-B 대상이 아니다.
 - 계약·공지 정본: `docs/PLATFORM_INTEGRATION_GUIDE.md` · `docs/CONTRACT_FREEZE.md`(새 @Public·ApiKey 라우트는 `contract-freeze.spec.ts` 동시 등재) · `docs/FILE_ORDER_BINDING_API_DESIGN_2026-09-24.md` · `docs/DEPLOYMENT.md` · `docs/PDF_VALIDATION_GUIDE.md` · `docs/partner-notices/PARTNER_NOTICE_WAVE2_2026-10-03.md` · `docs/partner-notices/PARTNER_NOTICE_WAVE3_2026-10-03.md`.
@@ -153,6 +154,7 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
 | 10-01 | **3단계 Wave A** — 작업 세션 연결 확인·목록·버전 회원 판정 통일·게스트 라우트 헤더 전용 | `7e252ba`·`558c293`·`4f28e52`(v1.8) | editor 09:47:22Z `6hv60qkny` → api 09:51Z + nginx |
 | 10-01 | **같은 탭 비회원 초안 이어 열기 복구** | `e97c3f5` | push 10:12:08Z → editor `dnmu12g57` |
 | 10-03 | **Wave 2** — 편집기 오류 code·문구·비회원 완료 안내, 합성·채움 내지 contentTrim, 운영자 감사 가드 단계 기록, `JOB_STALLED`, presigned complete 사이트 귀속(P4), files 관리자 판정 SUPER_ADMIN, 작업 사이트 결정 규칙 | `814d36e`·`73274ce`·`b0a04a9`·`a245b0f`·`03eca74`·`9e2a817`(v1.9) | push 04:51:41Z → editor `65j5xwzgg` → worker 04:55:41Z → api 04:58Z + nginx |
+| 10-05 | **Wave 4** — 합성 입력 오류 즉시 실패·합성 실패 응답 errorCode·안내 문구(FREEZE v1.11) · 종결 후속 처리 결과 기록 조건부 갱신·도서 확정 조건부 전진 · 편집기 회원 세션 생성 실패 시 주문 세션 재조회 · compose api·worker env 매핑 보강 · /embed 쪽수 범위 Playwright 스펙 | (아래 기록 커밋 참조) | **커밋 완료·배포 대기**(오너 배포 승인 → bookmoa·printy 사전 통지 ACK → push → worker → api + nginx). 절차는 `docs/DEPLOYMENT.md` Wave 4 절 |
 | 10-04 | **Wave 3** — 작업 상태 전이 가드·합성 큐 재시도(attempts 3)·확인된 세션 연결 저장(`session.*` 미발신)·getState 페이지 필드·편집기 잔여 문구·admin TrimBox 경고 표시·컴포넌트 테스트 환경 | `c94cdbc`·`6fdbd32`·`06a44f3`·`a24cd38`·`f63c8ae`(v1.10) | push 00:34:35Z → admin `oylw176wy`·editor `qftv0kx8t` → worker 00:38Z → api 00:41Z + nginx |
 
 - 기록 커밋: `305ff21`·`d09d1ff`·`e384d60`·`bbb9381`·`3ab801a`·`6d5b51d`·`af0db04`·`19333cb`·`4120bab`.
@@ -165,6 +167,7 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
 ### 5.1 대기·추적 (실 e2e 재개 시 발생 — 양사 재개 시 사전 통지 약속)
 
 > 마지막 실측: 10-01 10:13Z ~ 10-03 02:29Z UTC 신규 편집 세션 0·worker 작업 0·owners 호출 0·api 오류 0 / 10-03 06:38Z 작업↔세션 연결 행 0/345. 운영자 권한 발급·감사 0행.
+> **10-05 03:12Z 재실측(읽기 전용)**: 10-03 02:29Z ~ 10-05 03:12Z UTC `edit_sessions`·`file_edit_sessions`·`files`·`worker_jobs`·`webhook_deliveries`·`public_api_audit_logs` 신규 0(마지막 worker 작업 09-30 02:28:51Z) · `partner_operator_grants`·`audit_logs` 0행 · 큐 pdf-validation·pdf-synthesis wait/active/delayed/failed 0 · api(기동 10-04 00:41:06Z)·worker(00:38:20Z) 오류 로그 0 · owners 로그 2건 = 라우트 매핑 + 배포 스모크 401(00:42Z) → 실호출 0. 같은 날 양사 ACK: 창구 유지, 실 e2e 보류 유지, 회신 미결 없음(bookmoa 최신 문서 커밋 `cb91431`, printy `f7a574d`).
 
 | # | 항목 | 확인할 것 |
 |---|---|---|
@@ -175,6 +178,9 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
 | 5 | 그 밖 첫 실사용(09-30 §4 계승) | R-206 운영자 대리 편집(grants·audit 행, 닫기 시 revoke) · 쪽수 파라미터 첫 실편집(`metadata.orderOptions`·재편집 보존·pageStep) · bookmoa 첫 실편집 2건(S4 스프링·flat-spine) · Storige 오너 관리자 화면 E2E 1회 · printy `paper_types` code 질의 예고 · bookmoa S10(WH-005 v2) 착수 통지 시 Storige 선행 |
 
 ### 5.2 오너 결정 대기
+
+- **Wave 4 배포 승인**(커밋 완료, 10-05). 배포 전 게이트: 운영 `.env` 신규 매핑 키 이름 확인·셸 export 확인·렌더링 값 확인(DEPLOYMENT Wave 4 절), 양사 ACK.
+- **bookmoa 동화책 하드커버 bindingType**(10-05 발견): bookmoa 는 신규 편집에 항상 `bindingType=perfect` 를 보내고, 편집기는 무선제본 최소 32쪽을 삭제 하한에 적용한다 → 16/48/4 상품에서 쪽을 추가하면 16쪽으로 되돌릴 수 없다(완료는 막지 않음). 선택: bookmoa 가 상품에 맞는 값 전송 / Storige 가 호스트 범위가 있으면 제본 최소를 범위로 대체 / 현행 유지.
 
 - **Wave B 플래그 전환**(`JOB_LINK_STRICT`·`JOB_FILE_SITE_STRICT`, 기본 false): **10-08 09:51Z 이후** 판단. 플래그는 이미 배포돼 env 만 바꾸면 된다. 기준·절차는 비공개 메모(`../_private_notes/wave2/`).
 - `SESSION_JOB_OUTPUT_LOOKUP`(기본 false) 전환: 전제·확인 절차는 비공개 메모(`../_private_notes/wave3/`).
@@ -187,16 +193,16 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
 
 | 후보 | 출처·메모 |
 |---|---|
-| 첫 종결 보고와 재수신 동시 실행 경합 정리 | Wave 3 최종 리뷰 후속(현재 운영 코드와 같은 동작 수준, 상세 비공개) |
-| 합성 실패 응답 `errorDetail` 범위 축소 | Wave 3 후속(상세 비공개) |
-| F-4 입력 오류 타입화 — 손상 PDF 등 입력 오류를 재시도 없이 즉시 실패로 분류 | Wave 3 후속(현재는 재시도 대상) |
+| ~~첫 종결 보고와 재수신 동시 실행 경합 정리~~ | Wave 4 에서 결과 기록 조건부 갱신·도서 확정 조건부 전진으로 반영(배포 대기) |
+| ~~합성 실패 응답 `errorDetail` 범위 축소~~ | Wave 4 반영(배포 대기) |
+| ~~F-4 입력 오류 타입화~~ | Wave 4 반영(배포 대기) |
 | 관리자 세션 범위 판정(staff-edit-data) 정합 | Wave 3 후속(상세 비공개) |
-| 편집기·SDK create/createGuest POST 재시도 | Wave 2 후보 계승 |
+| ~~편집기 create POST 재시도~~ | Wave 4 반영(회원 create 재조회 후 1회 재전송, 배포 대기). 서버 측 세션 생성 멱등은 후속 |
 | 웹훅 v2 WH-005 와 `session.*` 발신 재개 | 양사 수신부·bookmoa S10 과 함께. 3-B(3) 자동 반영의 선행 |
 | X1F-2a 표지 TrimBox · X1F-2c 첨부 원본 정리본 · 썸네일·조판 미리보기 | X1 알려진 한계 |
-| 플래그 파싱 비대칭·compose 매핑(`FILE_ORPHAN_*` compose 미매핑) | Wave 1 후속 |
+| ~~compose 매핑(`FILE_ORPHAN_*` 등)~~ | Wave 4 반영(배포 대기, 기본값 무변). 코드 하한·compose·코드 정합 spec 은 후속 |
 | 운영자 권한 리뷰 잔여(201 라우트 감사 status_code·인터셉터 부하) | 가드 단계 거부 감사 행은 `a245b0f` 에서 반영 — 잔여 2건은 코드로 재점검 |
-| `/embed` 쪽수 로더 실브라우저 QA | 테스트 공백 |
+| `/embed` 쪽수 로더 실브라우저 QA | Wave 4 로컬 Playwright 스펙(모킹, 운영 코드 HEAD 기준 27건 통과). CI 편입·실 API 왕복은 미검증 |
 | 로드맵: 임베드 D-4a/b/c · R3b 지종별 TAC · 에셋 A4/A5/A8·시드 · R6 CutContour · R10 · admin stage1b · `with-templates` 배치(S11) · 동화책 왕복 실기 · 폰트 시딩 | 09-30 §5.1 |
 
 ---
