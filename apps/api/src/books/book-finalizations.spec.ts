@@ -15,6 +15,7 @@
  *  ⑪ FAILED 후 재착수 → attempt+1
  *  ⑫ W5 test env: book.env='test' → 잡 partnerEnv='test' 전달 + 웹훅 context.env='test'
  *  ⑬ X1: bookSpec 연결 → 합성 인자 contentTrim(재단·도련·허용오차, source 'bookSpec'), 조회 실패·무효는 키 없음
+ *  ⑭ 겹치는 보고: 상태 전이는 읽은 상태일 때만 쓰고, 전이·도서 확정·웹훅은 최종화당 한 번
  */
 import { ErrV1, WorkerJobStatus } from '@storige/types';
 import { BookFinalizationsService } from './book-finalizations.service';
@@ -40,6 +41,25 @@ const makeBook = (o: AnyRec = {}): AnyRec => ({
   ...o,
 });
 
+type Deferred<T> = { promise: Promise<T>; resolve: (v: T) => void; reject: (e: Error) => void };
+
+function deferred<T>(): Deferred<T> {
+  let resolve!: (v: T) => void;
+  let reject!: (e: Error) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+/** 조건이 참이 될 때까지 이벤트 루프를 몇 차례 넘긴다(겹치는 보고 인터리빙용). */
+async function waitUntil(cond: () => boolean): Promise<void> {
+  for (let i = 0; i < 50 && !cond(); i++) {
+    await new Promise((r) => setImmediate(r));
+  }
+}
+
 describe('BookFinalizationsService — 상태머신(W3) + 콜백 역참조(#4) + env(W5)', () => {
   let svc: BookFinalizationsService;
   let bookRepo: AnyRec;
@@ -56,12 +76,17 @@ describe('BookFinalizationsService — 상태머신(W3) + 콜백 역참조(#4) +
     types.map((t, i) => ({ id: `a${i}`, assetType: t, fileId: `f_${t}`, status: 'active' }));
 
   beforeEach(() => {
-    bookRepo = { findOne: jest.fn(), save: jest.fn(async (b: AnyRec) => b) };
+    bookRepo = {
+      findOne: jest.fn(),
+      save: jest.fn(async (b: AnyRec) => b),
+      update: jest.fn(async () => ({ affected: 1 })),
+    };
     assetRepo = { find: jest.fn(async () => activeAssets(['pdf_cover', 'pdf_contents'])) };
     finRepo = {
       findOne: jest.fn(async () => null),
       create: jest.fn((x: AnyRec) => ({ ...x })),
       save: jest.fn(async (x: AnyRec) => ({ id: x.id ?? 'fin-1', createdAt: new Date('2026-01-01T00:00:00Z'), ...x })),
+      update: jest.fn(async () => ({ affected: 1 })),
     };
     specRepo = { findOne: jest.fn(async () => null) };
     booksService = { findBookForSite: jest.fn(async () => makeBook()) };
@@ -73,6 +98,7 @@ describe('BookFinalizationsService — 상태머신(W3) + 콜백 역참조(#4) +
     filesService = {
       registerExternalFile: jest.fn(async () => ({ id: 'out-file-1' })),
       findById: jest.fn(async () => ({ id: 'out-file-1' })),
+      softDelete: jest.fn(async () => undefined),
     };
     webhookService = { sendCallback: jest.fn(async () => true) };
 
@@ -187,9 +213,10 @@ describe('BookFinalizationsService — 상태머신(W3) + 콜백 역참조(#4) +
     const job = { id: 'vjob-1', status: WorkerJobStatus.COMPLETED, options: { finalizationId: 'fin-1' }, result: { totalPages: 40 } };
     await svc.onWorkerJobSettled(job as never);
     expect(workerJobsService.createSynthesisJob).toHaveBeenCalledTimes(1);
-    const saved = finRepo.save.mock.calls.at(-1)[0];
-    expect(saved.status).toBe('COMPOSING');
-    expect(saved.composeJobId).toBe('sjob-1');
+    const [where, patch] = finRepo.update.mock.calls.at(-1);
+    expect(where).toEqual({ id: 'fin-1', status: 'VALIDATING' });
+    expect(patch).toEqual({ status: 'COMPOSING', composeJobId: 'sjob-1' });
+    expect(finRepo.save).not.toHaveBeenCalled();
   });
 
   it('⑧ 콜백: compose COMPLETED → registerExternalFile→COMPLETED+book FINALIZED+웹훅 completed', async () => {
@@ -199,13 +226,16 @@ describe('BookFinalizationsService — 상태머신(W3) + 콜백 역참조(#4) +
     const job = { id: 'sjob-1', status: WorkerJobStatus.COMPLETED, options: { finalizationId: 'fin-1' }, outputFileUrl: '/storage/outputs/sjob-1/merged.pdf', result: { totalPages: 42 } };
     await svc.onWorkerJobSettled(job as never);
     expect(filesService.registerExternalFile).toHaveBeenCalledTimes(1);
-    const finSaved = finRepo.save.mock.calls.at(-1)[0];
-    expect(finSaved.status).toBe('COMPLETED');
-    expect(finSaved.outputFileId).toBe('out-file-1');
-    expect(finSaved.pageCount).toBe(42);
-    const bookSaved = bookRepo.save.mock.calls.at(-1)[0];
-    expect(bookSaved.status).toBe('FINALIZED');
-    expect(bookSaved.pageCount).toBe(42);
+    const [finWhere, finPatch] = finRepo.update.mock.calls.at(-1);
+    expect(finWhere).toEqual({ id: 'fin-1', status: 'COMPOSING' });
+    expect(finPatch).toEqual({ status: 'COMPLETED', outputFileId: 'out-file-1', pageCount: 42, completedAt: expect.any(Date) });
+    expect(bookRepo.update).toHaveBeenCalledTimes(1);
+    expect(bookRepo.update).toHaveBeenCalledWith(
+      { id: 'book-1' },
+      { status: 'FINALIZED', finalizedAt: expect.any(Date), pageCount: 42 },
+    );
+    expect(bookRepo.save).not.toHaveBeenCalled();
+    expect(finRepo.save).not.toHaveBeenCalled();
     const [url, payload, ctx] = webhookService.sendCallback.mock.calls.at(-1);
     expect(url).toBe('');
     expect(payload.event).toBe('book.finalization.completed');
@@ -220,10 +250,11 @@ describe('BookFinalizationsService — 상태머신(W3) + 콜백 역참조(#4) +
     bookRepo.findOne.mockResolvedValue(book);
     const job = { id: 'vjob-1', status: WorkerJobStatus.FAILED, options: { finalizationId: 'fin-1' }, result: { errors: ['bad'] } };
     await svc.onWorkerJobSettled(job as never);
-    const finSaved = finRepo.save.mock.calls.at(-1)[0];
-    expect(finSaved.status).toBe('FAILED');
-    expect(finSaved.errorCode).toBe(ErrV1.ERR_PDF_VALIDATION_FAILED);
-    expect(bookRepo.save).not.toHaveBeenCalled(); // book DRAFT 유지
+    const [finWhere, finPatch] = finRepo.update.mock.calls.at(-1);
+    expect(finWhere).toEqual({ id: 'fin-1', status: 'VALIDATING' });
+    expect(finPatch.status).toBe('FAILED');
+    expect(finPatch.errorCode).toBe(ErrV1.ERR_PDF_VALIDATION_FAILED);
+    expect(bookRepo.update).not.toHaveBeenCalled(); // book DRAFT 유지
     expect(webhookService.sendCallback.mock.calls.at(-1)[1].event).toBe('book.finalization.failed');
   });
 
@@ -231,7 +262,8 @@ describe('BookFinalizationsService — 상태머신(W3) + 콜백 역참조(#4) +
     finRepo.findOne.mockResolvedValue({ id: 'fin-1', status: 'COMPLETED', bookId: 'book-1' });
     const job = { id: 'sjob-1', status: WorkerJobStatus.COMPLETED, options: { finalizationId: 'fin-1' } };
     await svc.onWorkerJobSettled(job as never);
-    expect(bookRepo.save).not.toHaveBeenCalled();
+    expect(finRepo.update).not.toHaveBeenCalled();
+    expect(bookRepo.update).not.toHaveBeenCalled();
     expect(webhookService.sendCallback).not.toHaveBeenCalled();
     expect(filesService.registerExternalFile).not.toHaveBeenCalled();
   });
@@ -357,9 +389,10 @@ describe('BookFinalizationsService — 상태머신(W3) + 콜백 역참조(#4) +
     const job = { id: 'vjob-1', status: WorkerJobStatus.COMPLETED, options: { finalizationId: 'fin-1' }, result: { totalPages: 40 } };
     // 예외를 삼켜 교착을 막는다(재던짐 금지).
     await expect(svc.onWorkerJobSettled(job as never)).resolves.toBeUndefined();
-    const finSaved = finRepo.save.mock.calls.at(-1)[0];
-    expect(finSaved.status).toBe('FAILED');
-    expect(finSaved.errorCode).toBe(ErrV1.ERR_INTERNAL);
+    const [finWhere, finPatch] = finRepo.update.mock.calls.at(-1);
+    expect(finWhere).toEqual({ id: 'fin-1', status: 'VALIDATING' });
+    expect(finPatch.status).toBe('FAILED');
+    expect(finPatch.errorCode).toBe(ErrV1.ERR_INTERNAL);
     expect(webhookService.sendCallback.mock.calls.at(-1)[1].event).toBe('book.finalization.failed');
   });
 
@@ -393,7 +426,7 @@ describe('BookFinalizationsService — 상태머신(W3) + 콜백 역참조(#4) +
       await svc.onWorkerJobSettled(job as never);
       const arg = workerJobsService.createSynthesisJob.mock.calls[0][0];
       expect(arg.contentTrim).toEqual(FIXTURE_BOOK_SPEC);
-      expect(finRepo.save.mock.calls.at(-1)[0].status).toBe('COMPOSING');
+      expect(finRepo.update.mock.calls.at(-1)[1].status).toBe('COMPOSING');
     });
 
     it('bookSpec 미연결 → 합성 인자에 contentTrim 키 없음, bookSpec 조회 없음', async () => {
@@ -422,6 +455,201 @@ describe('BookFinalizationsService — 상태머신(W3) + 콜백 역참조(#4) +
       specRepo.findOne.mockResolvedValue({ ...spec148, bleedMm: 8 });
       await svc.startFinalization(SITE, 'bk_0001');
       expect(workerJobsService.createSynthesisJob.mock.calls[0][0]).not.toHaveProperty('contentTrim');
+    });
+  });
+
+  // ── 겹치는 보고 — 조건부 상태 전이 ─────────────────────────────────────
+
+  describe('겹치는 보고 — 상태 전이는 읽은 상태일 때만', () => {
+    type Rec = Record<string, unknown>;
+    type SettledJob = { id: string; status: string; options: Rec; outputFileUrl?: string; result?: Rec };
+    const SNAPSHOT = { mode: 'synthesize', validateFileId: 'f_pdf_contents', coverFileId: 'f_pdf_cover', contentFileId: 'f_pdf_contents' };
+    const OPTS = { finalizationId: 'fin-1' };
+    const vjob = (status: string): SettledJob => ({ id: 'vjob-1', status, options: OPTS, result: { totalPages: 40 } });
+    const sjob = (id = 'sjob-1'): SettledJob => ({
+      id,
+      status: WorkerJobStatus.COMPLETED,
+      options: OPTS,
+      outputFileUrl: `/storage/outputs/${id}/merged.pdf`,
+      result: { totalPages: 42 },
+    });
+    let finRow: Rec;
+    let bookRow: Rec;
+
+    const events = (): string[] =>
+      (webhookService.sendCallback.mock.calls as unknown[][]).map((c) => (c[1] as { event: string }).event);
+    const matchesWhere = (where: Rec, target: Rec): boolean =>
+      Object.entries(where).every(([k, v]) => target[k] === v);
+
+    beforeEach(() => {
+      bookRow = makeBook();
+      // 호출마다 복사본을 돌려준다 — 겹친 처리가 서로의 메모리 엔티티를 공유하지 않게 한다.
+      finRepo.findOne.mockImplementation(async () => ({ ...finRow }));
+      finRepo.update.mockImplementation(async (where: Rec, patch: Rec) => {
+        if (!matchesWhere(where, finRow)) return { affected: 0 };
+        finRow = { ...finRow, ...patch };
+        return { affected: 1 };
+      });
+      bookRepo.findOne.mockImplementation(async () => ({ ...bookRow }));
+      bookRepo.update.mockImplementation(async (where: Rec, patch: Rec) => {
+        if (!matchesWhere(where, bookRow)) return { affected: 0 };
+        bookRow = { ...bookRow, ...patch };
+        return { affected: 1 };
+      });
+    });
+
+    it('검증 완료 보고가 겹치면 합성 단계 전이는 한 번만 일어난다', async () => {
+      finRow = { id: 'fin-1', uid: 'fin_1', bookId: 'book-1', attempt: 1, status: 'VALIDATING', validateJobId: 'vjob-1', composeJobId: null, planSnapshot: SNAPSHOT };
+      const synthA = deferred<{ id: string }>();
+      workerJobsService.createSynthesisJob
+        .mockImplementationOnce(() => synthA.promise)
+        .mockImplementationOnce(async () => ({ id: 'sjob-B' }));
+
+      const a = svc.onWorkerJobSettled(vjob(WorkerJobStatus.COMPLETED) as never);
+      await waitUntil(() => workerJobsService.createSynthesisJob.mock.calls.length > 0);
+      await svc.onWorkerJobSettled(vjob(WorkerJobStatus.COMPLETED) as never);
+      expect(finRow.status).toBe('COMPOSING');
+      expect(finRow.composeJobId).toBe('sjob-B');
+
+      synthA.resolve({ id: 'sjob-A' });
+      await a;
+      expect(finRow.status).toBe('COMPOSING');
+      expect(finRow.composeJobId).toBe('sjob-B');
+      expect(workerJobsService.createSynthesisJob).toHaveBeenCalledTimes(2);
+      expect(finRepo.save).not.toHaveBeenCalled();
+      expect(webhookService.sendCallback).not.toHaveBeenCalled();
+
+      // 연결되지 않은 합성 잡의 완료 보고는 아무것도 바꾸지 않는다
+      await svc.onWorkerJobSettled(sjob('sjob-A') as never);
+      expect(filesService.registerExternalFile).not.toHaveBeenCalled();
+      expect(finRow.status).toBe('COMPOSING');
+      expect(webhookService.sendCallback).not.toHaveBeenCalled();
+    });
+
+    it('검증 완료 보고 처리 중 최종화 상태가 이미 바뀌었으면 합성 잡을 만들지 않는다', async () => {
+      finRow = { id: 'fin-1', uid: 'fin_1', bookId: 'book-1', attempt: 1, status: 'COMPOSING', validateJobId: 'vjob-1', composeJobId: 'sjob-B', planSnapshot: SNAPSHOT };
+      finRepo.findOne.mockImplementationOnce(async () => ({ ...finRow, status: 'VALIDATING', composeJobId: null }));
+
+      await svc.onWorkerJobSettled(vjob(WorkerJobStatus.COMPLETED) as never);
+
+      expect(finRepo.findOne).toHaveBeenCalledTimes(2);
+      expect(workerJobsService.createSynthesisJob).not.toHaveBeenCalled();
+      expect(finRepo.update).not.toHaveBeenCalled();
+      expect(finRow.composeJobId).toBe('sjob-B');
+      expect(webhookService.sendCallback).not.toHaveBeenCalled();
+    });
+
+    it('검증 잡의 실패 처리와 늦은 완료 처리가 겹치면 먼저 쓴 전이 하나만 반영된다', async () => {
+      finRow = { id: 'fin-1', uid: 'fin_1', bookId: 'book-1', attempt: 1, status: 'VALIDATING', validateJobId: 'vjob-1', composeJobId: null, planSnapshot: SNAPSHOT };
+      const synthLate = deferred<{ id: string }>();
+      workerJobsService.createSynthesisJob.mockImplementationOnce(() => synthLate.promise);
+
+      const late = svc.onWorkerJobSettled(vjob(WorkerJobStatus.COMPLETED) as never);
+      await waitUntil(() => workerJobsService.createSynthesisJob.mock.calls.length > 0);
+      await svc.onWorkerJobSettled(vjob(WorkerJobStatus.FAILED) as never);
+      expect(finRow.status).toBe('FAILED');
+
+      synthLate.resolve({ id: 'sjob-late' });
+      await late;
+      expect(finRow.status).toBe('FAILED');
+      expect(finRow.composeJobId).toBeNull();
+      expect(events()).toEqual(['book.finalization.failed']);
+      expect(bookRepo.update).not.toHaveBeenCalled();
+    });
+
+    it('합성 완료 보고가 겹치면 완료 전이·도서 확정·완료 웹훅은 한 번이다', async () => {
+      finRow = { id: 'fin-1', uid: 'fin_1', bookId: 'book-1', attempt: 1, status: 'COMPOSING', composeJobId: 'sjob-1', outputFileId: null };
+      const regA = deferred<{ id: string }>();
+      filesService.registerExternalFile
+        .mockImplementationOnce(() => regA.promise)
+        .mockImplementationOnce(async () => ({ id: 'out-B' }));
+
+      const a = svc.onWorkerJobSettled(sjob() as never);
+      await waitUntil(() => filesService.registerExternalFile.mock.calls.length > 0);
+      await svc.onWorkerJobSettled(sjob() as never);
+      expect(finRow.status).toBe('COMPLETED');
+      expect(finRow.outputFileId).toBe('out-B');
+
+      regA.resolve({ id: 'out-A' });
+      await a;
+      expect(finRow.outputFileId).toBe('out-B');
+      expect(bookRepo.update).toHaveBeenCalledTimes(1);
+      expect(bookRow.status).toBe('FINALIZED');
+      expect(events()).toEqual(['book.finalization.completed']);
+      expect((webhookService.sendCallback.mock.calls[0][1] as { outputFileId: string }).outputFileId).toBe('out-B');
+      expect(filesService.softDelete).toHaveBeenCalledTimes(1);
+      expect(filesService.softDelete).toHaveBeenCalledWith('out-A');
+      expect(finRepo.save).not.toHaveBeenCalled();
+      expect(bookRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('사용하지 않는 산출 파일의 삭제 표시가 실패해도 완료 결과와 웹훅은 그대로다', async () => {
+      finRow = { id: 'fin-1', uid: 'fin_1', bookId: 'book-1', attempt: 1, status: 'COMPOSING', composeJobId: 'sjob-1', outputFileId: null };
+      const regA = deferred<{ id: string }>();
+      filesService.registerExternalFile
+        .mockImplementationOnce(() => regA.promise)
+        .mockImplementationOnce(async () => ({ id: 'out-B' }));
+      filesService.softDelete.mockRejectedValueOnce(new Error('not found'));
+
+      const a = svc.onWorkerJobSettled(sjob() as never);
+      await waitUntil(() => filesService.registerExternalFile.mock.calls.length > 0);
+      await svc.onWorkerJobSettled(sjob() as never);
+      regA.resolve({ id: 'out-A' });
+      await expect(a).resolves.toBeUndefined();
+
+      expect(filesService.softDelete).toHaveBeenCalledWith('out-A');
+      expect(finRow.status).toBe('COMPLETED');
+      expect(finRow.outputFileId).toBe('out-B');
+      expect(bookRepo.update).toHaveBeenCalledTimes(1);
+      expect(events()).toEqual(['book.finalization.completed']);
+    });
+
+    it('완료된 최종화는 늦게 끝난 같은 보고의 처리 오류로 실패로 바뀌지 않는다', async () => {
+      finRow = { id: 'fin-1', uid: 'fin_1', bookId: 'book-1', attempt: 1, status: 'COMPOSING', composeJobId: 'sjob-1', outputFileId: null };
+      const regA = deferred<{ id: string }>();
+      filesService.registerExternalFile
+        .mockImplementationOnce(() => regA.promise)
+        .mockImplementationOnce(async () => ({ id: 'out-B' }));
+
+      const a = svc.onWorkerJobSettled(sjob() as never);
+      await waitUntil(() => filesService.registerExternalFile.mock.calls.length > 0);
+      await svc.onWorkerJobSettled(sjob() as never);
+      regA.reject(new Error('io'));
+      await a;
+
+      expect(finRow.status).toBe('COMPLETED');
+      expect(finRow.outputFileId).toBe('out-B');
+      expect(events()).toEqual(['book.finalization.completed']);
+    });
+
+    it('완료 전이 뒤 도서 확정 쓰기가 실패하면 최종화는 실패로 끝난다', async () => {
+      finRow = { id: 'fin-1', uid: 'fin_1', bookId: 'book-1', attempt: 1, status: 'COMPOSING', composeJobId: 'sjob-1', outputFileId: null };
+      bookRepo.update.mockRejectedValueOnce(new Error('db down'));
+
+      await svc.onWorkerJobSettled(sjob() as never);
+
+      expect(finRow.status).toBe('FAILED');
+      expect(finRow.errorCode).toBe(ErrV1.ERR_INTERNAL);
+      expect(bookRow.status).toBe('DRAFT');
+      expect(events()).toEqual(['book.finalization.failed']);
+    });
+
+    it('병합본 그대로 완료(passthrough)에서 전이가 생략되면 자산 파일은 그대로 둔다', async () => {
+      finRow = { id: 'fin-1', uid: 'fin_1', bookId: 'book-1', attempt: 1, status: 'COMPLETED', validateJobId: 'vjob-1', outputFileId: 'f_session_merged' };
+      finRepo.findOne.mockImplementationOnce(async () => ({
+        ...finRow,
+        status: 'VALIDATING',
+        outputFileId: null,
+        planSnapshot: { mode: 'passthrough', validateFileId: 'f_session_merged', contentFileId: 'f_session_merged' },
+      }));
+
+      await svc.onWorkerJobSettled(vjob(WorkerJobStatus.COMPLETED) as never);
+
+      expect(finRepo.update).toHaveBeenCalledTimes(1);
+      expect(finRow.status).toBe('COMPLETED');
+      expect(webhookService.sendCallback).not.toHaveBeenCalled();
+      expect(bookRepo.update).not.toHaveBeenCalled();
+      expect(filesService.softDelete).not.toHaveBeenCalled();
     });
   });
 });

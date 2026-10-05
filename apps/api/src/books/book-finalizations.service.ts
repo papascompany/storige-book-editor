@@ -8,6 +8,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'crypto';
 import { Repository } from 'typeorm';
+import type { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity';
 import {
   ErrV1,
   WorkerJobStatus,
@@ -38,6 +39,18 @@ import {
   type FinalizationPlan,
 } from './books.constants';
 import { BookFinalizationView } from './dto/book-finalization.dto';
+
+/** 최종화 상태 전이 쓰기 — 상태와 함께 바꾸는 컬럼만 담는다. */
+type FinalizationTransitionPatch = Pick<BookFinalization, 'status'> &
+  Partial<
+    Pick<
+      BookFinalization,
+      'composeJobId' | 'outputFileId' | 'pageCount' | 'errorCode' | 'errorDetail' | 'completedAt'
+    >
+  >;
+
+/** 도서 확정 쓰기 — 상태·확정 시각과 (확정됐을 때) 페이지 수만 담는다. */
+type BookFinalizePatch = Pick<Book, 'status' | 'finalizedAt'> & Partial<Pick<Book, 'pageCount'>>;
 
 /**
  * MariaDB unique 위반 판별 (ER_DUP_ENTRY / errno 1062) — partner-idempotency 선례와 동형.
@@ -272,6 +285,8 @@ export class BookFinalizationsService {
    * options.finalizationId 마커 잡의 종결(COMPLETED/FIXABLE/FAILED) 시 상태머신 전진.
    * worker-jobs.updateJobStatus 가 호출(additive 분기, 기존 경로 불변). 멱등:
    * 이미 종결(COMPLETED/FAILED)한 finalization·단계 불일치 잡은 no-op.
+   * 상태 전이는 이 처리가 읽은 상태일 때만 쓴다(transitionFinalization). 같은 보고가 겹치면 먼저 쓴
+   * 처리만 전이하고, 도서 확정과 완료·실패 웹훅은 전이를 쓴 처리만 한다.
    */
   async onWorkerJobSettled(job: WorkerJob): Promise<void> {
     const finId = (job.options as { finalizationId?: string } | null)
@@ -288,7 +303,7 @@ export class BookFinalizationsService {
     const succeeded = job.status === WorkerJobStatus.COMPLETED;
 
     // [렌즈2 P2-4] 전이 예외 격리 — advanceAfterValidation/completeFromCompose 가 throw 하면
-    //   (createSynthesisJob·registerExternalFile·bookRepo.save 실패 등) 미격리 시 워커 PATCH 가
+    //   (createSynthesisJob·registerExternalFile·도서 확정 쓰기 실패 등) 미격리 시 워커 PATCH 가
     //   500 이 되고 finalization 은 진행 중 상태로 잔류 → 재시도 시 compose 중복. 여기서 FAILED
     //   전이로 상태머신을 종결시켜 교착을 차단한다(호출측 worker-jobs 도 try/catch 로 이중 방어).
     try {
@@ -362,6 +377,8 @@ export class BookFinalizationsService {
    * validate 이후(또는 검증 skip 시) 공용 분기 — synthesize 착수(COMPOSING) 또는
    * passthrough 즉시 완료. passthrough(EDITOR_SESSION 병합본)는 편집기 합성완료본을
    * 그대로 최종 산출로 고정(재합성 불필요).
+   * VALIDATING 에서 합성을 착수할 때는 합성 잡을 만들기 직전에 상태를 다시 읽어, 그 사이 다른 처리가
+   * 전이했으면 합성 잡을 만들지 않는다. →COMPOSING 은 이 처리가 읽은 상태일 때만 쓴다.
    */
   private async dispatchComposeOrComplete(
     book: Book,
@@ -370,6 +387,18 @@ export class BookFinalizationsService {
     pageCountHint?: number | null,
   ): Promise<BookFinalization> {
     if (plan.mode === 'synthesize' && plan.coverFileId) {
+      if (fin.status === 'VALIDATING') {
+        const current = await this.finalizationRepo.findOne({
+          where: { id: fin.id },
+          select: { id: true, status: true },
+        });
+        if (current?.status !== fin.status) {
+          this.logger.log(
+            `[finalization] ${fin.uid} 합성 착수 생략(상태가 이미 바뀜) from=${fin.status} now=${current?.status ?? '(none)'}`,
+          );
+          return fin;
+        }
+      }
       const contentTrim = await this.resolveComposeContentTrim(book);
       const composeJob = await this.workerJobsService.createSynthesisJob({
         coverFileId: plan.coverFileId,
@@ -383,15 +412,22 @@ export class BookFinalizationsService {
         // [X1] 내지 기대 재단(bookSpec 출처) — 부재=종전 인자
         ...(contentTrim ? { contentTrim } : {}),
       });
-      fin.status = 'COMPOSING';
-      fin.composeJobId = composeJob.id;
-      const saved = await this.finalizationRepo.save(fin);
-      this.logger.log(
-        `[finalization] ${fin.uid} → COMPOSING — synthesizeJob=${composeJob.id}`,
-      );
-      return saved;
+      const advanced = await this.transitionFinalization(fin, {
+        status: 'COMPOSING',
+        composeJobId: composeJob.id,
+      });
+      if (advanced) {
+        this.logger.log(
+          `[finalization] ${fin.uid} → COMPOSING — synthesizeJob=${composeJob.id}`,
+        );
+      } else {
+        this.logger.log(
+          `[finalization] ${fin.uid} 다른 처리가 먼저 전이 — 합성 잡 ${composeJob.id} 는 이 최종화에 연결되지 않음`,
+        );
+      }
+      return fin;
     }
-    // passthrough — 편집기 병합본이 곧 최종 산출
+    // passthrough — 편집기 병합본이 곧 최종 산출. 전이를 쓰지 못해도 기존 자산 파일이므로 그대로 둔다.
     await this.completeFinalization(
       book,
       fin,
@@ -433,50 +469,104 @@ export class BookFinalizationsService {
       return;
     }
     const pageCount = this.extractPageCount(composeJob) ?? book.pageCount;
-    await this.completeFinalization(book, fin, registered.id, pageCount);
+    const won = await this.completeFinalization(book, fin, registered.id, pageCount);
+    if (!won) await this.discardLoserOutput(registered.id, fin.uid);
   }
 
-  /** COMPLETED 전이 — fin 고정 + book FINALIZED + pageCount 확정 + 웹훅. */
+  /**
+   * COMPLETED 전이 — fin 고정 + book FINALIZED + pageCount 확정 + 웹훅.
+   * 전이는 이 처리가 읽은 상태일 때만 쓴다. 쓰지 못하면 도서 확정·웹훅 없이 false.
+   * 도서 확정은 상태·확정 시각·페이지 수 컬럼만 쓴다.
+   */
   private async completeFinalization(
     book: Book,
     fin: BookFinalization,
     outputFileId: string,
     pageCount: number | null,
-  ): Promise<void> {
-    fin.status = 'COMPLETED';
-    fin.outputFileId = outputFileId;
-    fin.pageCount = pageCount ?? null;
-    fin.completedAt = new Date();
-    await this.finalizationRepo.save(fin);
+  ): Promise<boolean> {
+    const won = await this.transitionFinalization(fin, {
+      status: 'COMPLETED',
+      outputFileId,
+      pageCount: pageCount ?? null,
+      completedAt: new Date(),
+    });
+    if (!won) return false;
 
-    book.status = 'FINALIZED';
-    book.finalizedAt = new Date();
-    if (pageCount != null) book.pageCount = pageCount;
-    await this.bookRepo.save(book);
+    const bookPatch: BookFinalizePatch = {
+      status: 'FINALIZED',
+      finalizedAt: new Date(),
+      ...(pageCount != null ? { pageCount } : {}),
+    };
+    await this.bookRepo.update({ id: book.id }, bookPatch);
+    Object.assign(book, bookPatch);
 
     this.logger.log(
       `[finalization] ${fin.uid} COMPLETED — book=${book.uid} FINALIZED outputFileId=${outputFileId} pageCount=${pageCount ?? '(unchanged)'}`,
     );
     await this.sendFinalizationWebhook(book, fin, 'completed');
+    return true;
   }
 
-  /** FAILED 전이 — book 은 DRAFT 유지(재최종화 가능) + 실패 웹훅. */
+  /** FAILED 전이 — book 은 DRAFT 유지(재최종화 가능) + 실패 웹훅. 전이를 쓰지 못하면 웹훅 없이 반환. */
   private async failFinalization(
     book: Book,
     fin: BookFinalization,
     errorCode: ErrV1,
     detail: Record<string, unknown> | null,
   ): Promise<void> {
-    fin.status = 'FAILED';
-    fin.errorCode = errorCode;
-    fin.errorDetail = detail;
-    fin.completedAt = new Date();
-    await this.finalizationRepo.save(fin);
+    const won = await this.transitionFinalization(fin, {
+      status: 'FAILED',
+      errorCode,
+      errorDetail: detail,
+      completedAt: new Date(),
+    });
+    if (!won) return;
     // book.status 는 DRAFT 그대로(§6.2 — finalization 실패 시 DRAFT 유지)
     this.logger.warn(
       `[finalization] ${fin.uid} FAILED — book=${book.uid} errorCode=${errorCode}`,
     );
     await this.sendFinalizationWebhook(book, fin, 'failed');
+  }
+
+  /**
+   * 최종화 상태 전이 — 이 처리가 읽은 상태(fin.status)일 때만 쓴다. 쓰면 fin 에 반영하고 true.
+   * fin 은 쓰기에 성공한 뒤에만 바뀌므로, 출발 상태는 언제나 이 처리가 읽었거나 스스로 쓴 상태다.
+   */
+  private async transitionFinalization(
+    fin: BookFinalization,
+    patch: FinalizationTransitionPatch,
+  ): Promise<boolean> {
+    const from = fin.status;
+    // errorDetail(JSON 컬럼)은 update 인자 타입에 맞춰 명시 캐스트한다.
+    const res = await this.finalizationRepo.update(
+      { id: fin.id, status: from },
+      patch as QueryDeepPartialEntity<BookFinalization>,
+    );
+    if ((res?.affected ?? 0) === 0) {
+      this.logger.log(
+        `[finalization] ${fin.uid} 전이 생략(상태가 이미 바뀜) from=${from} to=${patch.status}`,
+      );
+      return false;
+    }
+    Object.assign(fin, patch);
+    return true;
+  }
+
+  /**
+   * 완료 전이를 쓰지 못한 처리가 등록한 산출 파일 행을 삭제 표시한다(softDelete — 만료 시각을 두지 않으므로
+   * 같은 경로의 물리 파일은 그대로 남는다). 실패는 warn 만 남긴다.
+   */
+  private async discardLoserOutput(fileId: string, finUid: string): Promise<void> {
+    try {
+      await this.filesService.softDelete(fileId);
+      this.logger.log(
+        `[finalization] ${finUid} 사용하지 않는 산출 파일 삭제 표시 fileId=${fileId}`,
+      );
+    } catch (e) {
+      this.logger.warn(
+        `[finalization] ${finUid} 사용하지 않는 산출 파일 삭제 표시 실패(무중단) fileId=${fileId}: ${(e as Error).message}`,
+      );
+    }
   }
 
   /**

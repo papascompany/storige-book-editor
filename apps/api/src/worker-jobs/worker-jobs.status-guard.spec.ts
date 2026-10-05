@@ -1,12 +1,12 @@
 /**
  * updateJobStatus — 상태 전이 가드(조건부 UPDATE)와 종결 웹훅 발신 장부.
  *
- * 저장소 mock 은 행 1개를 들고 조건부 UPDATE 의 WHERE(id·status·errorCode, In 포함)를 실제로 대조한다.
+ * 저장소 mock 은 행 1개를 들고 조건부 UPDATE 의 WHERE(id·status·errorCode·outputFileId, In·IsNull 포함)를 실제로 대조한다.
  * 장부는 합성 큐 client 자리에 넣은 Map 기반 가짜 Redis 다.
  * 인스턴스 생성 패턴은 worker-jobs.callback-gate.spec.ts 선례.
  */
 import { Logger } from '@nestjs/common';
-import { FindOperator, In } from 'typeorm';
+import { FindOperator, In, IsNull } from 'typeorm';
 import { WorkerJobStatus, WorkerJobType } from '@storige/types';
 import { WorkerJobsService } from './worker-jobs.service';
 import type { UpdateJobStatusDto } from './dto/worker-job.dto';
@@ -31,10 +31,30 @@ class FakeRedis {
 
 function matches(cond: unknown, actual: unknown): boolean {
   if (cond instanceof FindOperator) {
+    if (cond.type === 'isNull') return actual === null || actual === undefined;
     if (cond.type !== 'in') throw new Error(`unsupported operator ${cond.type}`);
     return (cond.value as unknown[]).includes(actual);
   }
   return cond === actual;
+}
+
+type Deferred<T> = { promise: Promise<T>; resolve: (v: T) => void; reject: (e: Error) => void };
+
+function deferred<T>(): Deferred<T> {
+  let resolve!: (v: T) => void;
+  let reject!: (e: Error) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+/** 조건이 참이 될 때까지 이벤트 루프를 몇 차례 넘긴다(동시 보고 인터리빙용). */
+async function waitUntil(cond: () => boolean): Promise<void> {
+  for (let i = 0; i < 50 && !cond(); i++) {
+    await new Promise((r) => setImmediate(r));
+  }
 }
 
 describe('WorkerJobsService.updateJobStatus — 상태 전이 가드·발신 장부', () => {
@@ -42,7 +62,7 @@ describe('WorkerJobsService.updateJobStatus — 상태 전이 가드·발신 장
   let repo: { findOne: jest.Mock; update: jest.Mock; save: jest.Mock; find: jest.Mock };
   let redis: FakeRedis;
   let webhookService: { sendCallback: jest.Mock; hasV2Config: jest.Mock };
-  let filesService: { registerExternalFile: jest.Mock; findById: jest.Mock };
+  let filesService: { registerExternalFile: jest.Mock; findById: jest.Mock; softDelete: jest.Mock };
   let finService: { onWorkerJobSettled: jest.Mock };
   let logSpy: jest.SpyInstance;
 
@@ -80,6 +100,7 @@ describe('WorkerJobsService.updateJobStatus — 상태 전이 가드·발신 장
     filesService = {
       registerExternalFile: jest.fn(async () => ({ id: 'file-new' })),
       findById: jest.fn(async () => ({ id: 'file-src', siteId: 'site-a' })),
+      softDelete: jest.fn(async () => undefined),
     };
     finService = { onWorkerJobSettled: jest.fn(async () => undefined) };
     const service = new WorkerJobsService(
@@ -370,10 +391,6 @@ describe('WorkerJobsService.updateJobStatus — 상태 전이 가드·발신 장
 
     it('결과 파일이 아직 없으면 1회 등록하고, 이어지는 재수신은 다시 등록하지 않는다', async () => {
       const service = build(convertRow());
-      repo.save.mockImplementation(async (e: Row) => {
-        row = { ...row, outputFileId: e.outputFileId };
-        return e;
-      });
 
       await service.updateJobStatus('job-1', { status: COMPLETED, outputFileUrl: '/storage/converted/x.pdf' }, worker);
       await service.updateJobStatus('job-1', { status: COMPLETED, outputFileUrl: '/storage/converted/x.pdf' }, worker);
@@ -382,7 +399,9 @@ describe('WorkerJobsService.updateJobStatus — 상태 전이 가드·발신 장
       expect(filesService.registerExternalFile.mock.calls[0][0]).toBe('/storage/converted/x.pdf');
       expect(row.outputFileId).toBe('file-new');
       expect(row.status).toBe(COMPLETED);
-      expect(repo.update).not.toHaveBeenCalled();
+      expect(repo.update).toHaveBeenCalledTimes(1);
+      expect(repo.update).toHaveBeenCalledWith({ id: 'job-1', outputFileId: IsNull() }, { outputFileId: 'file-new' });
+      expect(repo.save).not.toHaveBeenCalled();
     });
   });
 
@@ -458,10 +477,6 @@ describe('WorkerJobsService.updateJobStatus — 상태 전이 가드·발신 장
         options: { purpose: 'inner-imposition', editSessionId: 'sess-1', sourceFileId: 'file-src' },
       }),
     );
-    repo.save.mockImplementation(async (e: Row) => {
-      row = { ...row, outputFileId: e.outputFileId };
-      return e;
-    });
     const sessions = (service as unknown as { editSessionRepository: { findOne: jest.Mock; update: jest.Mock } })
       .editSessionRepository;
     let session: Record<string, unknown> = { id: 'sess-1', contentPdfFileId: 'file-src', metadata: {} };
@@ -495,10 +510,6 @@ describe('WorkerJobsService.updateJobStatus — 상태 전이 가드·발신 장
         options: { purpose: 'inner-imposition', editSessionId: 'sess-1', sourceFileId: 'file-src' },
       }),
     );
-    repo.save.mockImplementation(async (e: Row) => {
-      row = { ...row, outputFileId: e.outputFileId };
-      return e;
-    });
     const sessions = (service as unknown as { editSessionRepository: { findOne: jest.Mock; update: jest.Mock } })
       .editSessionRepository;
     sessions.findOne.mockResolvedValue({ id: 'sess-1', contentPdfFileId: 'file-src', metadata: { innerPdfImposition: { jobId: 'job-1' } } });
@@ -560,5 +571,276 @@ describe('WorkerJobsService.updateJobStatus — 상태 전이 가드·발신 장
     await first;
     expect(webhookService.sendCallback).toHaveBeenCalledTimes(1);
     expect(redis.store.get(LEDGER_KEY(COMPLETED))).toBe('sent');
+  });
+
+  describe.each(['pagecount-fix', 'bleed-fix'])('%s CONVERT 결과 파일 기록 — 겹치는 보고', (kind) => {
+    const OUT = '/storage/converted/x.pdf';
+    const pendingRow = (): Row =>
+      makeRow({ jobType: WorkerJobType.CONVERT, options: { kind, sourceFileId: 'file-src' } });
+    const recordCalls = (): Array<[Record<string, unknown>, Record<string, unknown>]> =>
+      (repo.update.mock.calls as Array<[Record<string, unknown>, Record<string, unknown>]>).filter(
+        ([where]) => 'outputFileId' in where,
+      );
+
+    it('첫 보고의 결과 등록 중 같은 종결 재수신이 오면 먼저 기록된 결과 파일 하나만 남는다', async () => {
+      const service = build(pendingRow());
+      const regA = deferred<{ id: string }>();
+      filesService.registerExternalFile
+        .mockImplementationOnce(() => regA.promise)
+        .mockImplementation(async () => ({ id: 'file-B' }));
+
+      const a = service.updateJobStatus('job-1', { status: COMPLETED, outputFileUrl: OUT }, worker);
+      await waitUntil(() => filesService.registerExternalFile.mock.calls.length > 0);
+      const resB = await service.updateJobStatus('job-1', { status: COMPLETED, outputFileUrl: OUT }, worker);
+      expect(row.outputFileId).toBe('file-B');
+
+      regA.resolve({ id: 'file-A' });
+      const resA = await a;
+      expect(row.outputFileId).toBe('file-B');
+      expect(resA.outputFileId).toBe('file-B');
+      expect(resB.outputFileId).toBe('file-B');
+      expect(filesService.softDelete).toHaveBeenCalledTimes(1);
+      expect(filesService.softDelete).toHaveBeenCalledWith('file-A');
+      const recs = recordCalls();
+      expect(recs).toHaveLength(2);
+      for (const [where, patch] of recs) {
+        expect(where).toEqual({ id: 'job-1', outputFileId: IsNull() });
+        expect(Object.keys(patch)).toEqual(['outputFileId']);
+      }
+      expect(repo.save).not.toHaveBeenCalled();
+      expect(row.status).toBe(COMPLETED);
+      expect(row.errorCode).toBeNull();
+    });
+
+    it.each<['A' | 'B', 'A' | 'B']>([
+      ['A', 'B'],
+      ['B', 'A'],
+    ])('두 요청이 모두 등록 단계에 있을 때 먼저 끝난 쪽의 결과 파일을 쓴다(%s 먼저)', async (first, second) => {
+      const service = build(pendingRow());
+      const regs = { A: deferred<{ id: string }>(), B: deferred<{ id: string }>() };
+      filesService.registerExternalFile
+        .mockImplementationOnce(() => regs.A.promise)
+        .mockImplementationOnce(() => regs.B.promise);
+
+      const a = service.updateJobStatus('job-1', { status: COMPLETED, outputFileUrl: OUT }, worker);
+      await waitUntil(() => filesService.registerExternalFile.mock.calls.length === 1);
+      const b = service.updateJobStatus('job-1', { status: COMPLETED, outputFileUrl: OUT }, worker);
+      await waitUntil(() => filesService.registerExternalFile.mock.calls.length === 2);
+      expect(filesService.registerExternalFile).toHaveBeenCalledTimes(2);
+      const reqs = { A: a, B: b };
+
+      regs[first].resolve({ id: `file-${first}` });
+      await reqs[first];
+      regs[second].resolve({ id: `file-${second}` });
+      const [resA, resB] = await Promise.all([reqs.A, reqs.B]);
+
+      expect(row.outputFileId).toBe(`file-${first}`);
+      expect(resA.outputFileId).toBe(`file-${first}`);
+      expect(resB.outputFileId).toBe(`file-${first}`);
+      expect(filesService.softDelete).toHaveBeenCalledTimes(1);
+      expect(filesService.softDelete).toHaveBeenCalledWith(`file-${second}`);
+    });
+
+    it('결과 파일 기록 쓰기가 실패하면 다음 재수신이 결과 파일을 다시 등록해 기록한다', async () => {
+      const service = build(pendingRow());
+      const baseUpdate = repo.update.getMockImplementation() as (
+        w: Record<string, unknown>,
+        p: Record<string, unknown>,
+      ) => Promise<{ affected: number }>;
+      let failed = false;
+      repo.update.mockImplementation(async (where: Record<string, unknown>, patch: Record<string, unknown>) => {
+        if ('outputFileId' in where && !failed) {
+          failed = true;
+          throw new Error('db down');
+        }
+        return baseUpdate(where, patch);
+      });
+      filesService.registerExternalFile
+        .mockResolvedValueOnce({ id: 'file-1st' })
+        .mockResolvedValueOnce({ id: 'file-2nd' });
+
+      await service.updateJobStatus('job-1', { status: COMPLETED, outputFileUrl: OUT }, worker);
+      expect(row.status).toBe(COMPLETED);
+      expect(row.outputFileId).toBeNull();
+
+      await service.updateJobStatus('job-1', { status: COMPLETED, outputFileUrl: OUT }, worker);
+      expect(filesService.registerExternalFile).toHaveBeenCalledTimes(2);
+      expect(row.outputFileId).toBe('file-2nd');
+      expect(filesService.softDelete).not.toHaveBeenCalled();
+    });
+
+    it('사용하지 않는 결과 파일의 삭제 표시가 실패해도 먼저 기록된 결과 파일을 쓴다', async () => {
+      const service = build(pendingRow());
+      const regA = deferred<{ id: string }>();
+      filesService.registerExternalFile
+        .mockImplementationOnce(() => regA.promise)
+        .mockImplementation(async () => ({ id: 'file-B' }));
+      filesService.softDelete.mockRejectedValueOnce(new Error('not found'));
+
+      const a = service.updateJobStatus('job-1', { status: COMPLETED, outputFileUrl: OUT }, worker);
+      await waitUntil(() => filesService.registerExternalFile.mock.calls.length > 0);
+      await service.updateJobStatus('job-1', { status: COMPLETED, outputFileUrl: OUT }, worker);
+      regA.resolve({ id: 'file-A' });
+      const resA = await a;
+
+      expect(resA.outputFileId).toBe('file-B');
+      expect(resA.status).toBe(COMPLETED);
+      expect(row.outputFileId).toBe('file-B');
+      expect(filesService.softDelete).toHaveBeenCalledWith('file-A');
+    });
+  });
+
+  describe('내지 임포지션 CONVERT 결과 파일 기록', () => {
+    const OUT = '/storage/converted/imposed.pdf';
+    const impositionRow = (): Row =>
+      makeRow({
+        jobType: WorkerJobType.CONVERT,
+        editSessionId: 'sess-1',
+        options: { purpose: 'inner-imposition', editSessionId: 'sess-1', sourceFileId: 'file-src' },
+      });
+    const sessionsOf = (service: WorkerJobsService): { findOne: jest.Mock; update: jest.Mock } =>
+      (service as unknown as { editSessionRepository: { findOne: jest.Mock; update: jest.Mock } })
+        .editSessionRepository;
+
+    it('첫 보고의 결과 등록 중 재수신이 되연결하면 세션 갱신은 1회이고 원본 기록이 유지된다', async () => {
+      const service = build(impositionRow());
+      const sessions = sessionsOf(service);
+      let session: Record<string, unknown> = { id: 'sess-1', contentPdfFileId: 'file-src', metadata: {} };
+      sessions.findOne.mockImplementation(async () => ({ ...session }));
+      sessions.update.mockImplementation(async (_id: string, patch: Record<string, unknown>) => {
+        session = { ...session, ...patch };
+        return { affected: 1 };
+      });
+      const regA = deferred<{ id: string }>();
+      filesService.registerExternalFile
+        .mockImplementationOnce(() => regA.promise)
+        .mockImplementation(async () => ({ id: 'file-B' }));
+
+      const a = service.updateJobStatus('job-1', { status: COMPLETED, outputFileUrl: OUT }, worker);
+      await waitUntil(() => filesService.registerExternalFile.mock.calls.length > 0);
+      await service.updateJobStatus('job-1', { status: COMPLETED, outputFileUrl: OUT }, worker);
+      regA.resolve({ id: 'file-A' });
+      await a;
+
+      expect(sessions.update).toHaveBeenCalledTimes(1);
+      expect(session).toMatchObject({
+        contentPdfFileId: 'file-B',
+        metadata: { innerPdfImposition: { originalContentPdfFileId: 'file-src', resultFileId: 'file-B' } },
+      });
+      expect(row.outputFileId).toBe('file-B');
+      expect(filesService.softDelete).toHaveBeenCalledTimes(1);
+      expect(filesService.softDelete).toHaveBeenCalledWith('file-A');
+    });
+
+    it('세션이 이미 이 결과 파일을 가리키면 다시 쓰지 않는다', async () => {
+      const service = build(impositionRow());
+      const sessions = sessionsOf(service);
+      sessions.findOne
+        .mockResolvedValueOnce({ id: 'sess-1', contentPdfFileId: 'file-src', metadata: {} })
+        .mockResolvedValueOnce({ id: 'sess-1', contentPdfFileId: 'file-new', metadata: {} });
+
+      await service.updateJobStatus('job-1', { status: COMPLETED, outputFileUrl: OUT }, worker);
+
+      expect(sessions.findOne).toHaveBeenCalledTimes(2);
+      expect(sessions.update).not.toHaveBeenCalled();
+      expect(row.outputFileId).toBe('file-new');
+    });
+
+    /**
+     * 결과 파일 id 기록 update 는 affected 0 을 돌려주고, 기록 여부 확인 읽기(select)는 readRecorded 결과를 쓴다.
+     * 세션은 처음 읽기에서 원본(file-src), 갱신 직전 다시 읽기에서 freshContent 를 가리킨다.
+     */
+    const stubRecordNotApplied = (
+      service: WorkerJobsService,
+      readRecorded: () => Promise<{ id: string; outputFileId: string | null }>,
+      freshContent: string,
+    ): { findOne: jest.Mock; update: jest.Mock } => {
+      const baseUpdate = repo.update.getMockImplementation() as (
+        w: Record<string, unknown>,
+        p: Record<string, unknown>,
+      ) => Promise<{ affected: number }>;
+      repo.update.mockImplementation(async (where: Record<string, unknown>, patch: Record<string, unknown>) =>
+        'outputFileId' in where ? { affected: 0 } : baseUpdate(where, patch),
+      );
+      const baseFind = repo.findOne.getMockImplementation() as (o: unknown) => Promise<Row>;
+      repo.findOne.mockImplementation(async (opts: { select?: unknown }) =>
+        opts?.select ? readRecorded() : baseFind(opts),
+      );
+      const sessions = sessionsOf(service);
+      sessions.findOne
+        .mockResolvedValueOnce({ id: 'sess-1', contentPdfFileId: 'file-src', metadata: {} })
+        .mockResolvedValueOnce({ id: 'sess-1', contentPdfFileId: freshContent, metadata: {} });
+      sessions.update.mockResolvedValue({ affected: 1 });
+      return sessions;
+    };
+
+    it.each<['읽기 실패' | '기록 값 없음', string, number]>([
+      ['읽기 실패', 'file-src', 1],
+      ['읽기 실패', 'file-other', 0],
+      ['기록 값 없음', 'file-src', 1],
+      ['기록 값 없음', 'file-other', 0],
+    ])(
+      '결과 파일 기록 여부를 확인하지 못하면(%s) 세션이 원본을 가리킬 때만 되연결한다(세션=%s → 갱신 %d회)',
+      async (read, current, updates) => {
+        const service = build(impositionRow());
+        const sessions = stubRecordNotApplied(
+          service,
+          async () => {
+            if (read === '읽기 실패') throw new Error('read failed');
+            return { id: 'job-1', outputFileId: null };
+          },
+          current,
+        );
+
+        const res = await service.updateJobStatus('job-1', { status: COMPLETED, outputFileUrl: OUT }, worker);
+
+        expect(res.status).toBe(COMPLETED);
+        expect(res.outputFileId).toBe('file-new');
+        expect(sessions.update).toHaveBeenCalledTimes(updates);
+        if (updates > 0) {
+          expect(sessions.update.mock.calls[0][1]).toMatchObject({
+            contentPdfFileId: 'file-new',
+            metadata: { innerPdfImposition: { originalContentPdfFileId: 'file-src', resultFileId: 'file-new' } },
+          });
+        }
+        expect(filesService.softDelete).not.toHaveBeenCalled();
+      },
+    );
+
+    it('기록 update 가 반영 행 0 이어도 다시 읽은 값이 이번 결과 파일이면 첫 보고로 되연결한다', async () => {
+      const service = build(impositionRow());
+      const sessions = stubRecordNotApplied(
+        service,
+        async () => ({ id: 'job-1', outputFileId: 'file-new' }),
+        'file-other',
+      );
+
+      const res = await service.updateJobStatus('job-1', { status: COMPLETED, outputFileUrl: OUT }, worker);
+
+      expect(res.outputFileId).toBe('file-new');
+      expect(sessions.update).toHaveBeenCalledTimes(1);
+      expect(sessions.update.mock.calls[0][1]).toMatchObject({
+        contentPdfFileId: 'file-new',
+        metadata: { innerPdfImposition: { originalContentPdfFileId: 'file-other', resultFileId: 'file-new' } },
+      });
+      expect(filesService.softDelete).not.toHaveBeenCalled();
+    });
+
+    it('먼저 기록된 결과 파일을 쓰게 되고 세션이 원본도 그 파일도 아닌 파일을 가리키면 되연결하지 않는다', async () => {
+      const service = build(impositionRow());
+      const sessions = stubRecordNotApplied(
+        service,
+        async () => ({ id: 'job-1', outputFileId: 'file-B' }),
+        'file-X',
+      );
+
+      const res = await service.updateJobStatus('job-1', { status: COMPLETED, outputFileUrl: OUT }, worker);
+
+      expect(res.status).toBe(COMPLETED);
+      expect(res.outputFileId).toBe('file-B');
+      expect(sessions.update).not.toHaveBeenCalled();
+      expect(filesService.softDelete).toHaveBeenCalledTimes(1);
+      expect(filesService.softDelete).toHaveBeenCalledWith('file-new');
+    });
   });
 });

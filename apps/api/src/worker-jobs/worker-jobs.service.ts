@@ -13,7 +13,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { InjectQueue } from '@nestjs/bull';
-import { Repository, MoreThan, In, FindOptionsWhere } from 'typeorm';
+import { Repository, MoreThan, In, IsNull, FindOptionsWhere } from 'typeorm';
 import { Queue, JobOptions } from 'bull';
 import {
   signOutputUrl,
@@ -358,6 +358,17 @@ type JobCallbackOutcome = 'none' | 'sent' | 'failed' | 'skipped-sent' | 'skipped
 
 /** updateJobStatus 의 상태 쓰기 결과 */
 type JobStatusWriteOutcome = 'applied' | 'promoted' | 'repeat' | 'blocked' | 'noop';
+
+/**
+ * 종결 후속 처리의 결과 파일 id 기록 결과.
+ *  - recorded:     이번 파일 id 를 잡에 기록했다.
+ *  - kept-earlier: 다른 처리가 먼저 기록한 id 를 유지했다(fileId = 먼저 기록된 id).
+ *  - unknown:      기록 여부를 확인하지 못했다(fileId = 이번 파일 id).
+ */
+type JobOutputFileRecord = {
+  fileId: string;
+  outcome: 'recorded' | 'kept-earlier' | 'unknown';
+};
 
 @Injectable()
 export class WorkerJobsService implements OnModuleInit {
@@ -3343,10 +3354,12 @@ export class WorkerJobsService implements OnModuleInit {
   /**
    * 종결 후속 처리 — 상태 쓰기가 반영된 보고(applied·promoted)와 같은 종결 상태 재수신(repeat)이 공유한다.
    *  - 결과 파일 등록(pagecount-fix·bleed-fix): job.outputFileId 가 기록돼 있으면 건너뛴다.
+   *  - 결과 파일 id 는 잡에 비어 있을 때만 기록하고, 먼저 기록된 값을 유지한다(recordJobOutputFileId).
    *  - 도서 최종화 전진(onWorkerJobSettled): 종결된 최종화·단계가 다른 잡이면 함수 안에서 건너뛴다.
-   *  - 내지 임포지션 세션 되연결: 상태 쓰기가 반영된 보고(applied)는 그대로 되연결한다. 재수신(repeat)은 세션이
+   *  - 내지 임포지션 세션 되연결: 상태 쓰기가 반영된 보고(applied)는 되연결한다. 재수신(repeat)은 세션이
    *    아직 이 잡의 원본 파일(options.sourceFileId)을 가리킬 때만 되연결한다 — 되연결이 끝난 세션·다른 파일로
-   *    바뀐 세션은 건드리지 않는다.
+   *    바뀐 세션은 건드리지 않는다. applied 라도 먼저 기록된 결과 파일을 쓰게 되거나 기록 여부를 확인하지
+   *    못하면 재수신과 같은 원본 확인을 거치고, 세션이 이미 그 결과 파일을 가리키면 다시 쓰지 않는다.
    * 잡 상태·세션 workerStatus·session.* 는 다루지 않는다.
    */
   private async runJobSettledFollowUps(
@@ -3538,6 +3551,67 @@ export class WorkerJobsService implements OnModuleInit {
   }
 
   /**
+   * 결과 파일 id 를 잡에 기록한다 — output_file_id 가 비어 있을 때만 쓴다(먼저 기록된 값 유지).
+   *  - 기록하면 outcome 'recorded'.
+   *  - 다른 처리가 먼저 기록했으면 그 id 를 돌려주고(outcome 'kept-earlier') 이번 파일 행은 삭제 표시한다
+   *    (softDelete — 만료 시각을 두지 않으므로 같은 경로의 물리 파일은 그대로 남는다). 삭제 표시 실패는 warn.
+   *  - 기록 쓰기가 실패했거나 기록 여부를 다시 읽지 못하면 이번 파일 id 를 돌려준다(outcome 'unknown', 무중단).
+   * job.outputFileId 는 돌려주는 id 로 맞춘다.
+   */
+  private async recordJobOutputFileId(
+    job: WorkerJob,
+    fileId: string,
+    logTag: string,
+  ): Promise<JobOutputFileRecord> {
+    try {
+      const res = await this.workerJobRepository.update(
+        { id: job.id, outputFileId: IsNull() },
+        { outputFileId: fileId },
+      );
+      if ((res?.affected ?? 0) > 0) {
+        job.outputFileId = fileId;
+        return { fileId, outcome: 'recorded' };
+      }
+
+      const current = await this.workerJobRepository.findOne({
+        where: { id: job.id },
+        select: { id: true, outputFileId: true },
+      });
+      const recorded = current?.outputFileId ?? null;
+      if (recorded === fileId) {
+        job.outputFileId = fileId;
+        return { fileId, outcome: 'recorded' };
+      }
+      if (!recorded) {
+        this.logger.warn(
+          `[${logTag}] job ${job.id} outputFileId 기록 결과 확인 불가(무중단) — 이번 결과 파일 사용 outputFileId=${fileId}`,
+        );
+        job.outputFileId = fileId;
+        return { fileId, outcome: 'unknown' };
+      }
+
+      job.outputFileId = recorded;
+      this.logger.log(
+        `[${logTag}] job ${job.id} 먼저 기록된 결과 파일 사용 outputFileId=${recorded}`,
+      );
+      try {
+        await this.filesService.softDelete(fileId);
+      } catch (e) {
+        this.logger.warn(
+          `[${logTag}] job ${job.id} 사용하지 않는 결과 파일 삭제 표시 실패(무중단) fileId=${fileId}: ${(e as Error).message}`,
+        );
+      }
+      return { fileId: recorded, outcome: 'kept-earlier' };
+    } catch (e) {
+      this.logger.warn(
+        `[${logTag}] job ${job.id} outputFileId 기록 실패(무중단): ${(e as Error).message}`,
+      );
+      job.outputFileId = fileId;
+      return { fileId, outcome: 'unknown' };
+    }
+  }
+
+  /**
    * 페이지수 보정(fix-pagecount) 완료 결과를 새 File 로 등록하고 job.outputFileId 에 기록 (2026-06-25).
    * inner-imposition 의 relinkImposedInnerPdf 와 동일 패턴이되 **세션 되연결 없이** 등록만 — 직접 업로드
    * 파일은 세션이 없기 때문. 원본 fileId(sourceFileId) 의 order/member/site 를 승계. best-effort(throw 금지).
@@ -3580,17 +3654,10 @@ export class WorkerJobsService implements OnModuleInit {
         },
       });
 
-      try {
-        job.outputFileId = registered.id;
-        await this.workerJobRepository.save(job);
-      } catch (e) {
-        this.logger.warn(
-          `[fix-pagecount] job ${job.id} outputFileId 기록 실패(무중단): ${(e as Error).message}`,
-        );
-      }
+      const recorded = await this.recordJobOutputFileId(job, registered.id, 'fix-pagecount');
 
       this.logger.log(
-        `[fix-pagecount] job ${job.id} 완료 → outputFileId=${registered.id} (배수 ${job.options?.targetMultiple})`,
+        `[fix-pagecount] job ${job.id} 완료 → outputFileId=${recorded.fileId} (배수 ${job.options?.targetMultiple})`,
       );
     } catch (e) {
       this.logger.error(
@@ -3644,17 +3711,10 @@ export class WorkerJobsService implements OnModuleInit {
         },
       });
 
-      try {
-        job.outputFileId = registered.id;
-        await this.workerJobRepository.save(job);
-      } catch (e) {
-        this.logger.warn(
-          `[fix-bleed] job ${job.id} outputFileId 기록 실패(무중단): ${(e as Error).message}`,
-        );
-      }
+      const recorded = await this.recordJobOutputFileId(job, registered.id, 'fix-bleed');
 
       this.logger.log(
-        `[fix-bleed] job ${job.id} 완료 → outputFileId=${registered.id} (editSize ${job.options?.editSize?.width}x${job.options?.editSize?.height}mm)`,
+        `[fix-bleed] job ${job.id} 완료 → outputFileId=${recorded.fileId} (editSize ${job.options?.editSize?.width}x${job.options?.editSize?.height}mm)`,
       );
     } catch (e) {
       this.logger.error(
@@ -3678,6 +3738,9 @@ export class WorkerJobsService implements OnModuleInit {
    * mode='repeat'(같은 종결 재수신): 세션 contentPdfFileId 가 이 잡의 options.sourceFileId 와 같을 때만 진행한다.
    *    결과 파일 등록 전과 세션 갱신 직전(fresh reload)에 각각 확인한다. 되연결이 끝난 세션은
    *    contentPdfFileId 가 결과 파일이므로 건너뛰고, 원본 기록(originalContentPdfFileId)은 처음 값으로 남는다.
+   * mode='applied' 라도 결과 파일 id 기록에서 먼저 기록된 결과 파일을 쓰게 되거나 기록 여부를 확인하지 못하면
+   *    세션 갱신 직전에 repeat 와 같은 원본 확인을 거친다.
+   * 세션 갱신 직전(fresh reload) 세션이 이미 이 결과 파일을 가리키면 mode 와 관계없이 다시 쓰지 않는다.
    */
   private async relinkImposedInnerPdf(job: WorkerJob, mode: 'applied' | 'repeat'): Promise<void> {
     try {
@@ -3723,6 +3786,7 @@ export class WorkerJobsService implements OnModuleInit {
       }
 
       // 1) 결과 File 등록 (이미 outputFileId 세팅 시 재사용 — 멱등성/중복등록 방지)
+      let effectiveMode: 'applied' | 'repeat' = mode;
       let resultFileId = job.outputFileId;
       if (!resultFileId) {
         const sourceFileId: string | undefined = job.options?.sourceFileId;
@@ -3749,17 +3813,10 @@ export class WorkerJobsService implements OnModuleInit {
             workerJobId: job.id,
           },
         });
-        resultFileId = registered.id;
-
-        // 잡에도 outputFileId 기록(추적/멱등). best-effort.
-        try {
-          job.outputFileId = resultFileId;
-          await this.workerJobRepository.save(job);
-        } catch (e) {
-          this.logger.warn(
-            `[inner-imposition] job ${job.id} outputFileId 기록 실패(무중단): ${(e as Error).message}`,
-          );
-        }
+        // 잡에도 outputFileId 기록(추적/멱등). 먼저 기록된 결과 파일이 있으면 그 파일로 되연결한다.
+        const recorded = await this.recordJobOutputFileId(job, registered.id, 'inner-imposition');
+        resultFileId = recorded.fileId;
+        if (recorded.outcome !== 'recorded') effectiveMode = 'repeat';
       }
 
       // 2) 세션 contentPdfFileId 재포인팅 + metadata 결과 스냅샷
@@ -3778,7 +3835,13 @@ export class WorkerJobsService implements OnModuleInit {
         where: { id: sessionId },
       });
       const base = fresh ?? session;
-      if (mode === 'repeat' && !pendingOnSource(base.contentPdfFileId)) {
+      if (base.contentPdfFileId === resultFileId) {
+        this.logger.log(
+          `[inner-imposition] job ${job.id}: 세션 ${sessionId} 이 이미 결과 파일을 가리킴 → 되연결 스킵`,
+        );
+        return;
+      }
+      if (effectiveMode === 'repeat' && !pendingOnSource(base.contentPdfFileId)) {
         this.logger.log(
           `[inner-imposition] job ${job.id} 재수신: 세션 ${sessionId} 이 원본 파일을 가리키지 않음 → 되연결 스킵`,
         );
