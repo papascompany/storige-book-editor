@@ -229,6 +229,7 @@
 |------|------|
 | [`EDITOR.md`](./EDITOR.md) | **에디터 명세** (§1~§6 데이터/룰/권한, §7~§12 UX 사이클, §13 인쇄워크플로우(면지/PDF첨부/게스트), §14 임베드/텍스트/원형, §15 에셋공급/인쇄품질/객체보호, §16 편집완료 PDF 프리즈 진단·하드닝) |
 | [`PRODUCT_TEMPLATE_REGISTRATION_MANUAL.html`](./PRODUCT_TEMPLATE_REGISTRATION_MANUAL.html) | **상품·템플릿 등록 매뉴얼**(시각화) — 관리자 5단계 등록 절차 |
+| [`TEMPLATE_AUTHORING_GUIDE_COVER_INNER.html`](./TEMPLATE_AUTHORING_GUIDE_COVER_INNER.html) | **표지·내지 템플릿 제작 가이드** — 작성 규약 정본 포인터(2026-10-05): 표지 책등 방식(표지펼침면/표지3분할)은 호스트 상품 정의대로 Storige 가 등록, 쪽 추가 단위는 호스트 상품등록 값과 템플릿셋 `pageStep` 일치([`PLATFORM_INTEGRATION_GUIDE.md`](./PLATFORM_INTEGRATION_GUIDE.md) 3.1) · 양장 표지 크기 = 업로드 검증 규격 싸바리 전개([`PDF_VALIDATION_GUIDE.md`](./PDF_VALIDATION_GUIDE.md) §표지 책등·전개 크기 검증) |
 | [`EDITOR_SCREENS.md`](./EDITOR_SCREENS.md) | **에디터 화면** + 저장 흐름 매트릭스 + Admin 라벨 + 모드별 헤더 UI |
 | [`EDITOR_OBJECT_EDITING_SPEC.md`](./EDITOR_OBJECT_EDITING_SPEC.md) | 객체 편집 명세 |
 | [`MOBILE_TOUCH_UI.md`](./MOBILE_TOUCH_UI.md) | 모바일 UX |

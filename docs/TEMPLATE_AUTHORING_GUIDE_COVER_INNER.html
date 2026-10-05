@@ -81,7 +81,7 @@
 
   <h1>표지·내지 템플릿 제작 가이드</h1>
   <p class="sub">표지펼침면(책등 고정) · 표지3분할(책등 가변) · 내지낱장 · 내지펼침면<br>
-  <span class="src">용어 정본: docs/PRINT_TEMPLATE_GLOSSARY.md · 2026-08-13 용어 정정 · 제작 규칙은 08-03 E2E 기준</span></p>
+  <span class="src">용어 정본: docs/PRINT_TEMPLATE_GLOSSARY.md · 2026-08-13 용어 정정 · 제작 규칙은 08-03 E2E 기준 · <b>최종 갱신 2026-10-05</b>(호스트 연동·표지 모드 결정 규약·양장 표지 규격·쪽 추가 단위)</span></p>
 
   <div class="toc">
     <a href="#s0">0. 결정 3개</a>
@@ -89,12 +89,16 @@
     <a href="#s2">2. 표지의 뼈대</a>
     <a href="#s3">3. 표지3분할</a>
     <a href="#s4">4. 표지펼침면</a>
+    <a href="#s4-1">4-1. 양장 표지 규격</a>
     <a href="#s5">5. 책등 폭 공식</a>
     <a href="#s5-1">5-1. 날개 규약</a>
     <a href="#s6">6. 가변이 동작하는 원리</a>
     <a href="#s7">7. 내지 — 단면 vs 펼침면</a>
+    <a href="#s7-3">7-3. 쪽수·쪽 추가 단위</a>
     <a href="#s8">8. 등록 절차·판형 규약</a>
-    <a href="#s9">9. 함정 체크리스트</a>
+    <a href="#s9">9. 호스트 파트너 연동</a>
+    <a href="#s9-2">9-2. 표지 모드 결정 규약</a>
+    <a href="#s10">10. 함정 체크리스트</a>
   </div>
 
   <!-- ═══════════════════ 0 ═══════════════════ -->
@@ -113,7 +117,8 @@
         <div class="t">표지는 <b>표지펼침면</b>인가, <b>표지3분할</b>인가?</div>
         <div class="d">
           <b>표지펼침면</b>(책등 고정, <code>flat-spread</code>) — 통짜 1장. 내지 수가 늘어도 책등 파일을 키우지 않음.<br>
-          <b>표지3분할</b>(책등 가변, <code>full</code> / IDML <code>flat-spine</code>) — 뒷/등/앞. 등 구역만 내지 수를 따름.
+          <b>표지3분할</b>(책등 가변, <code>full</code> / IDML <code>flat-spine</code>) — 뒷/등/앞. 등 구역만 내지 수를 따름.<br>
+          <b>결정 주체: 호스트 파트너</b>(상품별). Storige 는 그 규약대로 템플릿을 만들어 등록한다 — §9-2.
         </div>
       </div>
     </div>
@@ -205,7 +210,9 @@
     <tr><td><code>cutSizeMm</code></td><td>mm</td><td><b>양변 합</b>(사방 3mm → 6). §1 참조.</td></tr>
     <tr><td><code>safeSizeMm</code></td><td>mm</td><td>안전선. 소비처마다 규약이 조금씩 달라 책등 가이드는 2배 보수적으로 표시된다.</td></tr>
     <tr><td><code>dpi</code></td><td>—</td><td><b>150 고정.</b> 300으로 올려 "고해상도 템플릿"을 만들지 말 것 — 해상도는 이미지 원본으로 확보한다.</td></tr>
-    <tr><td><code>caseBind</code></td><td>객체</td><td>싸바리 보드 wrap 기하. <b>화면 레이아웃에 관여하지 않고 PDF 출력 사이즈에만</b> 반영된다.</td></tr>
+    <tr><td><code>caseBind</code></td><td>객체</td><td>싸바리 보드 wrap 기하. <b>화면 레이아웃에 관여하지 않고 PDF 출력 사이즈에만</b> 반영된다.
+      값 출처는 템플릿셋 <code>coverConfig.caseBind</code>(편집기가 표지 <code>spec</code> 에 병합). 단 <b>표지 템플릿 <code>spec.caseBind</code> 가 이미 있으면 그 값이 우선</b>하고 템플릿셋 값은 병합되지 않는다.
+      양장 표지 작성 기준은 §4-1.</td></tr>
   </table>
   </div>
 
@@ -226,11 +233,12 @@
 
   <h3>런타임 루프 (내지 추가/삭제 때마다 실행)</h3>
   <div class="tree">
-    <div class="node"><div class="q">1</div><div class="body"><div class="t">내지 캔버스 수를 센다</div>
-      <div class="d"><code>pages.filter(p =&gt; p.templateType === 'page').length</code> — 캔버스 1개 = 인쇄 1p(단면)</div></div></div>
+    <div class="node"><div class="q">1</div><div class="body"><div class="t">내지 인쇄 페이지 수를 센다</div>
+      <div class="d">표지 칸을 뺀 내지 캔버스 수 × 캔버스당 쪽수(내지낱장 1, <b>내지펼침면 2</b>) — 물리 페이지 기준</div></div></div>
     <div class="node"><div class="q">2</div><div class="body"><div class="t">서버에 책등 계산 요청 <span class="pill p-ac">계산 주체는 서버 1곳</span></div>
       <div class="d"><code>POST /api/products/spine/calculate</code> ← <code>{ pageCount, paperType, bindingType }</code><br>
-      편집기는 공식을 로컬 재현하지 않는다. 워커도 자체 계산 없이 API가 주입한 값을 소비한다.</div></div></div>
+      편집기는 공식을 로컬 재현하지 않는다. 워커도 자체 계산 없이 API가 주입한 값을 소비한다.<br>
+      호스트 파트너가 책등 폭(<code>spineWidthMm</code>)을 보낸 세션은 처음 열 때 그 값을 쓰고 계산 요청을 생략한다 — §9-1.</div></div></div>
     <div class="node"><div class="q">3</div><div class="body"><div class="t">캔버스를 새 총폭으로 리사이즈</div></div></div>
     <div class="node"><div class="q">4</div><div class="body"><div class="t">객체를 <code>regionRef</code>+<code>anchor</code> 로 재배치</div><div class="d">§6</div></div></div>
     <div class="node"><div class="q">5</div><div class="body"><div class="t">이탈 객체 자동 클립 + 토스트</div>
@@ -277,11 +285,64 @@
   앞뒤 표지 PNG 만 면을 따라 이동하므로 <b>가변을 유지하면서 래스터</b>를 쓸 수 있다.<br>
   ⚠️ 3분할 크롭 PNG 는 <b>흰 배경 합성 불투명</b>으로 만들어야 한다(투명 배경 금지).</div>
 
-  <h3>양장 / 싸바리 — 기하가 두 벌이라 주의</h3>
-  <div class="danger"><b>하드커버 표지 기하가 코드에 두 벌 있고 서로 정합이 보장돼 있지 않다.</b>
-  편집기 출력은 <code>caseBind</code> 모델을, 워커 표지 검증은 별도 상수 모델(각 면 +8mm / 전개 +40mm)을 쓴다.<br>
-  <b>권장:</b> 하드커버 템플릿셋의 <code>caseBind</code> 3필드(합지·접힘·wrap) 합을 <b>28mm 기준(±1mm)</b> 으로 잡아라.
-  예: 합지 2.5 + 접힘 17.5 + wrap 8 = 28. 다르게 잡아야 한다면 검증 허용오차를 함께 조정해야 한다.</div>
+  <h3 id="s4-1">4-1. 양장(싸바리) 표지 규격 — 고객 업로드 검증 규격이 기준</h3>
+  <div class="good"><b>작성 기준은 하나다: 고객이 웹에서 올리는 양장 표지 PDF 를 검증하는 규격(싸바리 전개).</b>
+  표지 모드(표지펼침면/표지3분할)와 무관하게, 양장 상품의 표지 완성 원고는 이 치수가 되도록 만든다.
+  기존 양장 표지 템플릿 중 이 규격과 다른 것은 <b>잘못 만들어진 것</b>으로 보고 이 기준으로 맞춘다.</div>
+
+  <div class="spread">
+    <div class="sp-wing"><span class="lbl">싸바리 여분</span><span class="mm">20</span></div>
+    <div class="sp-cover"><span class="lbl">뒤표지</span><span class="mm">(W+8) × (H+8)</span></div>
+    <div class="sp-spine var"><span class="lbl">책등</span><span class="mm">양장 공식 §5</span></div>
+    <div class="sp-cover"><span class="lbl">앞표지</span><span class="mm">(W+8) × (H+8)</span></div>
+    <div class="sp-wing"><span class="lbl">싸바리 여분</span><span class="mm">20</span></div>
+  </div>
+  <div class="axis">위·아래에도 각 20mm 여분 — 가로·세로 <b style="color:var(--tx)">합계 +40mm</b>. 양장에는 날개가 없다</div>
+
+  <pre><code>W × H        = 내지 재단 사이즈(템플릿셋 판형)
+표지 한 면    = (W + 8) × (H + 8)
+전개 가로(mm) = (W + 8) × 2 + 책등 + 40
+전개 세로(mm) = (H + 8) + 40
+도련           = 별도 가산 없음(40mm 여분이 대신한다) · 날개 없음</code></pre>
+  <p class="src">packages/types/src/spine-calc.ts — HARDCOVER_COVER_EXTRA_MM(8) · HARDCOVER_WRAP_MARGIN_MM(40) · hardcoverCoverSpreadFromSpine()
+  · apps/worker/src/services/pdf-validator.service.ts(양장 = 싸바리 전개 기대치, 기본 허용오차 ±2mm)</p>
+
+  <div class="tblwrap">
+  <table>
+    <tr><th>예시 (A4 세로 양장)</th><th>값</th></tr>
+    <tr><td>내지 재단 W×H</td><td>210 × 297</td></tr>
+    <tr><td>책등(40p · 아르떼130 · 양장 공식)</td><td>8 = max(4 + ceil(20 × 0.191), 8)</td></tr>
+    <tr><td>표지 한 면</td><td><b>218 × 305</b></td></tr>
+    <tr><td>전개 전체</td><td><b>484 × 345</b> = 218×2 + 8 + 40 · 305 + 40</td></tr>
+  </table>
+  </div>
+  <p class="src">골든 값: spine-calc.ts calcHardcoverCoverSpread 주석 · apps/api/src/products/spine-formula.spec.ts</p>
+
+  <h4>제작 규칙</h4>
+  <ul class="plain">
+    <li><b>배경·아트워크는 전개 전체(사방 20mm 여분 포함)까지 채운다.</b> 여분은 판지 뒤로 접혀 들어가는 부분이다.</li>
+    <li><b>제목·글자·얼굴 등 중요 요소는 앞/뒤표지 면 <code>(W+8)×(H+8)</code> 안쪽</b>에 두고, 여분 20mm 영역에는 두지 않는다.</li>
+    <li>책등 폭은 양장 공식(§5, 정수 mm · 최소 8mm)을 따른다. 무선 공식 값을 넣지 않는다.</li>
+    <li><b>책등 고정(표지펼침면 <code>flat-spread</code>) 양장</b>은 호스트 파트너와 합의한 <b>기준 쪽수의 양장 공식값</b>으로 책등을 고정하고,
+      쪽수 범위 양 끝의 공식값 차이가 업로드 검증 허용오차(기본 ±2mm) 안인지 확인한다. 기준 쪽수가 합의되지 않았으면 운영자·호스트 파트너와 협의해 정한다.
+      (예: 아르떼130 · 16~48p → 16p 8mm, 48p 9mm)</li>
+  </ul>
+
+  <div class="danger"><b>편집기 산출 표지는 아직 이 규격과 자동으로 맞지 않는다 — 정합 작업 진행 중.</b>
+  현재 편집기 표지 PDF 는 <code>caseBind</code> 가 없으면 §2 의 펼침면 치수(표지 한 면 폭 × 2 + 책등)로 나오고 싸바리 여분이 붙지 않는다.
+  템플릿셋의 재단선 표기(<code>cropMarkEnabled</code>)가 켜져 있고 도련(<code>bleedMm</code>)이 0보다 크면 여기에 <b>도련×2</b> 가 더해지며, 이때는 <code>caseBind</code> 여분도 반영되지 않는다.
+  편집기 산출 표지와 기존 양장 템플릿을 위 규격에 맞추는 작업이 진행 중이며, <b>템플릿 <code>spec</code> 필드에 무엇을 넣어 이 규격을 만들지는 그 작업에서 확정</b>된다.
+  확정 전에는 다음을 지킨다.
+  <ul class="plain" style="margin-top:6px">
+    <li>새 양장 표지 템플릿 등록·기존 양장 템플릿 수정은 운영자와 협의해 진행하고, 원고 치수는 위 규격으로 준비한다.</li>
+    <li>템플릿셋 싸바리 값(<code>caseBind</code>: 합지·접힘·wrap)을 임의로 넣지 않는다. <b>표지 템플릿 <code>spec.caseBind</code> 도 넣지 않는다</b> — 있으면 템플릿셋 값보다 우선해 출력 크기를 바꾼다.
+      이전 판의 <b>"3필드 합 28mm" 권장은 철회</b>한다 — 편집기 출력식(가로 + 합지×2 + (접힘+wrap)×2, 세로 + (접힘+wrap)×2)에 넣어 보면
+      예시 2.5 + 17.5 + 8 은 가로만 규격과 같고 세로가 규격보다 3mm 크다.</li>
+    <li>양장 상품은 호스트 파트너가 <code>bindingType=hardcover</code> 를 보내도록 합의한다.
+      편집기 표지의 검증 결과는 제본 전송 여부와 관계없이 <b>싸바리 전개 규격 일치 판정으로 쓰지 않는다.</b>
+      편집 세션 표지 검증 동작은 <code>docs/PDF_VALIDATION_GUIDE.md</code> '표지 책등·전개 크기 검증' 절을 따른다.</li>
+  </ul>
+  <span class="src">packages/types/src/index.ts computeSpreadOutputDimensions() · apps/editor/src/utils/pdfPageSize.ts computePdfPageOutputMm() · apps/editor/src/embed.tsx(caseBind 병합)</span></div>
 
   <!-- ═══════════════════ 5 ═══════════════════ -->
   <h2 id="s5"><span class="n">5</span> 책등 폭 공식</h2>
@@ -437,10 +498,11 @@
       <div class="d">판형에는 <b>내지 한 면</b> 치수를 넣는다(펼침면 총폭이 아니라). 예: A4 펼침면이면 210×297.</div>
     </div></div>
     <div class="node"><div class="q">4</div><div class="body">
-      <div class="t">템플릿 연결 — 내지 펼침면 1개 + <b>내지(PAGE) 더미 1개</b></div>
-      <div class="d">목록에서 <span class="pill p-vi">내지 펼침면</span> / <span class="pill p-ok">표지 펼침면</span> 태그로 구분된다.
-      더미 PAGE 는 <b>서버 규칙(책모드 PAGE≥1)을 만족시키기 위한 형식</b>이며 캔버스는 편집기에서 쓰이지 않는다 —
-      세트 판형과 <b>정확히 같은 치수</b>로 만들어야 후보에 뜬다.</div>
+      <div class="t">템플릿 연결 — 내지펼침면 1개 이상 (+ 표지가 있는 상품이면 <b>표지 템플릿도 같은 세트에</b>)</div>
+      <div class="d">목록에서 <span class="pill p-vi">내지펼침면</span> / <span class="pill p-ok">표지펼침면</span> / <span class="pill p-ac">표지3분할</span> 태그로 구분된다.
+      이전 판의 <b>내지(PAGE) 더미는 더 이상 필요 없다</b> — 2026-08-14 부터 책모드 서버 규칙은
+      "표지 구조 1종(0~n개) + 내지낱장 또는 내지펼침면, 표지·내지 중 최소 1개"이며 PAGE 를 강제하지 않는다.
+      표지 모드는 호스트 파트너가 정한 모드로 고른다(§9-2).</div>
     </div></div>
   </div>
 
@@ -474,25 +536,46 @@
   <div class="tblwrap">
   <table>
     <tr><th>TemplateSetType</th><th>표지</th><th>내지</th><th>비고</th></tr>
-    <tr><td><code>book</code></td><td>SPREAD <b>정확히 1개</b></td><td>PAGE <b>최소 1개 필수</b></td><td>책등 가변 표준. WING/COVER/SPINE 타입은 금지.</td></tr>
+    <tr><td><code>book</code></td><td>SPREAD 표지 <b>한 구조</b>(0~n개, 2번째부터는 교체 후보)</td><td>내지낱장 <b>또는</b> 내지펼침면</td><td>책등 가변 표준. 표지·내지 중 최소 1개. WING/COVER/SPINE 타입은 금지.</td></tr>
     <tr><td><code>leaflet</code></td><td>앞/뒤표지</td><td>단면 N장</td><td>책등 개념 사실상 없음</td></tr>
-    <tr><td><code>photobook</code></td><td>펼침면(하드커버·싸바리)</td><td>펼침면 2-up</td><td>사진틀 중심. <b>표지 세트와 내지 세트는 따로 만든다</b>(한 세트에 spread 는 1개만 쓰인다).</td></tr>
+    <tr><td><code>photobook</code></td><td>펼침면(하드커버·싸바리)</td><td>펼침면 2-up</td><td>사진틀 중심. 표지와 내지펼침면을 <b>한 세트에 함께</b> 넣을 수 있다(내지 전용 세트도 가능).</td></tr>
   </table>
   </div>
-  <div class="note"><b>책모드 세트를 "표지 1개만" 넣고 저장하면 400 이다.</b>
-  Admin 폼 검증은 통과해도 서버가 막는다(단, 이 검증은 요청에 <code>templates</code> 목록이 실릴 때만 실행된다).
-  내지 템플릿을 최소 1개 넣거나, 아예 <code>templates</code> 를 비워 초안으로 저장하라.</div>
+  <div class="note"><b>책모드 세트 구성은 서버가 400 으로 막는 조합만 피하면 된다.</b>
+  ① 표지펼침면과 표지3분할을 한 세트에 섞기 ② 내지낱장과 내지펼침면을 한 세트에 섞기 ③ 표지도 내지도 없음
+  ④ WING/COVER/SPINE 단품 타입. (이 검증은 요청에 <code>templates</code> 목록이 실릴 때 실행된다.)
+  <span class="src">packages/types/src/print-template.ts validatePrintTemplateAssembly() · apps/api/src/templates/template-sets.service.ts</span></div>
 
-  <h3>페이지 수량 규칙</h3>
+  <h3 id="s7-3">7-3. 쪽수 범위·쪽 추가 단위</h3>
+  <p>Admin 템플릿셋 <b>페이지</b> 그룹의 <b>최소/최대 페이지</b>(<code>pageCountRange</code>)와 <b>페이지 증감 단위</b>(<code>pageStep</code>)가 편집기의 쪽 추가·삭제를 정한다.
+  호스트 파트너가 <code>/embed</code> 로 같은 종류의 값을 보내면 그 값이 우선한다(§9-1).
+  아래 제본 한도·호스트 단위 우선은 <b>스프레드 세션(표지펼침면·표지3분할 표지가 있는 세트, 내지펼침면 세트)</b> 기준이며, 단일 모드 예외는 아래 '현재 동작'에 적는다.</p>
   <ul class="plain">
     <li><code>canAddPage</code> — 고객이 내지를 추가할 수 있는지. <b>이게 true 여야 책등 가변이 의미를 갖는다.</b></li>
-    <li><b><code>pageCountRange</code> 는 [최소, 최대] 2원소 클램프다.</b> <code>[8,24,48]</code> 처럼 이산 목록을 넣어도
-      <b>중간값은 어디서도 강제되지 않는다.</b> "8/24/48 중 택1" 같은 제약이 필요하면 파트너 주문 화면에서 막아야 한다.</li>
-    <li>제본 배수·최소 페이지는 <b>경고일 뿐 차단이 아니다</b>(§5). 상품 정책으로 막으려면 <code>pageCountRange</code> 와 파트너 주문 옵션으로 이중 관리하라.</li>
-    <li>포토북 최소 제작 페이지를 실제로 막으려면 가격 설정의 <code>minPages</code> 만으로는 부족하다 — <code>pageCountRange</code> 최소값에도 같은 수치를 넣어라.</li>
-    <li><b><code>pageCountRange</code> 는 언제나 <u>물리 페이지</u> 기준이다.</b> 펼침면 세트는 캔버스 1장 = 2페이지라
+    <li><b>모든 값은 <u>물리 페이지</u> 기준이다.</b> 내지펼침면은 캔버스 1장 = 2페이지라
       <code>[8,40]</code> 이면 펼침면 <b>4~20장</b>이 된다. 캔버스 수로 착각해 넣으면 상·하한이 절반으로 걸린다.</li>
+    <li><b><code>pageCountRange</code> 는 [최소, 최대] 2원소 클램프다.</b> <code>[16,24,32,40,48]</code> 처럼 이산 목록을 넣어도
+      <b>16~48 로만 읽히고 중간값은 강제되지 않는다.</b> "8쪽 단위"가 필요하면 <b>페이지 증감 단위</b>를 쓴다.</li>
+    <li><b>페이지 증감 단위 <code>pageStep</code> = N</b> — 내지 물리 쪽수가 N 의 배수여야 한다. 편집기가 그 단위로 추가·삭제하고,
+      배수가 아니면 <b>편집완료를 막는다</b>. 비우면 제약 없음(1장씩). 배수는 0부터 세므로 <b>최소 페이지도 단위의 배수</b>로 넣는다(단위 8 → 최소 16, 24 …).</li>
+    <li><b>펼침면 단위 환산:</b> 캔버스 1장 = 2쪽이므로 단위 8 = 펼침면 4장씩, 단위 4 = 2장씩, 단위 2 = 1장씩(사실상 제약 없음).
+      내지펼침면 세트의 단위는 <b>짝수</b>로 넣는다 — 홀수 단위 N 은 펼침면에서 실제로 2N 쪽 간격(예: 3 → 6쪽)으로 동작한다.</li>
+    <li><b>제본별 최소·최대</b>(호스트가 <code>bindingType</code> 을 보낸 스프레드 세션만): 무선 최소 32p, 중철 최대 64p, 양장·스프링은 제약 없음.
+      실제 한도 = 범위와 제본 한도 중 좁은 쪽. 단 <b>호스트가 <code>pageCountMin</code> 을 보내면 제본 최소 대신, <code>pageCountMax</code> 를 보내면 제본 최대 대신</b>
+      그 값을 쓴다(키별 — CONTRACT_FREEZE v1.12). 책등 계산 API 의 제본 경고(§5)는 이와 별개로 비차단이다.</li>
+    <li>포토북 최소 제작 페이지를 실제로 막으려면 가격 설정의 <code>minPages</code> 만으로는 부족하다 — <code>pageCountRange</code> 최소값에도 같은 수치를 넣어라.</li>
+    <li>가격 그룹의 <b>증감 단위</b>는 가격 계산용 별도 필드다. 편집기 쪽 추가 단위는 <b>페이지 그룹의 '페이지 증감 단위'</b>다.</li>
   </ul>
+
+  <div class="danger"><b>일치 원칙 — 템플릿셋 쪽수 설정은 호스트 상품등록 값과 같게.</b>
+  호스트 파트너 관리자의 상품등록 값(최소·최대 쪽수, 쪽 추가 단위)과 템플릿셋의 <b>최소/최대 페이지·페이지 증감 단위</b>를 <b>같은 값</b>으로 설정한다.
+  두 값이 같을 때 상품 화면과 편집기의 쪽 추가 동작이 일치한다.
+  <br>현재 동작: 값이 다르면 호스트가 보낸 값이 적용되고 템플릿셋 값은 호스트가 보내지 않은 키에만 쓰인다.
+  호스트 단위가 템플릿셋 단위와 다르면 '첨부 PDF 빈 페이지 채움'이 꺼진다. 호스트 최소 쪽수가 호스트 단위의 배수가 아니면 호스트 단위는 무시되고 템플릿셋 단위가 적용된다.
+  <b>단일 모드 세트</b>(스프레드 표지·내지펼침면이 없는 세트 — 예: 내지낱장 전용 책모드 세트, 비책모드 세트)는 제본별 최소·최대가 적용되지 않고,
+  표지 등 <b>내지가 아닌 캔버스가 있으면 호스트 단위(<code>1</code> 제외)는 무시되고 템플릿셋 단위가 적용</b>된다.
+  불일치 시 처리 방식은 별도 결정 사항이므로 <b>불일치 상태로 운영하지 않는다.</b>
+  <span class="src">apps/editor/src/utils/hostPageLimits.ts resolveStorePageLimits() · resolveHostPageLimits() · utils/pageStep.ts · hooks/useEditorContents.ts(단일 모드 ignoreHostStep · 스프레드 로더 bindingType)</span></div>
 
   <!-- ═══════════════════ 8 ═══════════════════ -->
   <h2 id="s8"><span class="n">8</span> 등록 절차와 판형 규약</h2>
@@ -511,12 +594,12 @@
   <table>
     <tr><th>그룹</th><th>필드</th></tr>
     <tr><td>기본</td><td>템플릿셋명 · 타입 · 에디터 모드 · 판형 프리셋 또는 너비/높이(mm) <b>= 내지 재단</b></td></tr>
-    <tr><td>페이지</td><td>내지 추가 허용 · 최소/최대 페이지</td></tr>
+    <tr><td>페이지</td><td>내지 추가 허용 · 최소/최대 페이지 · 페이지 증감 단위 · 첨부 PDF 빈 페이지 채움 — <b>호스트 상품등록 값과 같게</b>(§7-3)</td></tr>
     <tr><td>표지</td><td>표지 편집 가능 · (레더커버면) 표지 미리보기 이미지 · 커버 종류 코드</td></tr>
-    <tr><td>싸바리</td><td>합지 두께 · 접힘(turn-in) · wrap 여분 <b>(합 28mm 기준)</b></td></tr>
+    <tr><td>싸바리</td><td>합지 두께 · 접힘(turn-in) · wrap 여분 — <b>양장 정합 작업 확정 전 임의 입력 금지</b>(§4-1)</td></tr>
     <tr><td>면지</td><td>면지 사용 · 앞/뒷면지 개수 · 각 편집 가능 여부</td></tr>
     <tr><td>출력</td><td>PDF 생성 방식 · 색 처리 · <b>블리드(사방 mm) + 재단선 마커 세트로</b> · 업로드 허용오차</td></tr>
-    <tr><td>가격</td><td>페이지당 가격 연동 · 기본 포함 페이지 · 최소 제작 페이지 · 증감 단위 · 초과 단가</td></tr>
+    <tr><td>가격</td><td>페이지당 가격 연동 · 기본 포함 페이지 · 최소 제작 페이지 · 증감 단위(가격 계산용 — 편집기 쪽 추가 단위 아님) · 초과 단가</td></tr>
   </table>
   </div>
 
@@ -546,7 +629,68 @@
   </ul>
 
   <!-- ═══════════════════ 9 ═══════════════════ -->
-  <h2 id="s9"><span class="n">9</span> 함정 체크리스트</h2>
+  <h2 id="s9"><span class="n">9</span> 호스트 파트너 연동 — 템플릿이 받는 값</h2>
+  <p>호스트 파트너는 편집기를 열 때 <code>/embed</code> 파라미터(또는 임베드 옵션)로 주문 값을 보낸다.
+  같은 값이라도 <b>표지 모드에 따라 쓰이는 곳이 다르다.</b> 템플릿 작성자는 상품의 표지 모드에 맞는 값이 오는지 호스트 파트너와 확인한다.</p>
+
+  <h3 id="s9-1">9-1. 표지 모드별 적용</h3>
+  <div class="tblwrap">
+  <table>
+    <tr><th>호스트 값</th><th>표지펼침면 <code>flat-spread</code><br><span style="font-weight:400">책등 고정</span></th><th>표지3분할 <code>full</code> / <code>flat-spine</code><br><span style="font-weight:400">책등 가변</span></th><th>내지 전용 펼침면 세트</th></tr>
+    <tr><td><code>spineWidthMm</code></td><td class="mut"><b>무시</b> — 템플릿 기준 책등 그대로</td>
+      <td>처음 열 때 <b>이 값을 적용</b>하고 계산 요청 생략.<br>
+      <code>paperType</code>·<code>bindingType</code> 이 모두 있고 값 &gt; 0 이면 쪽 증감 시 <b>같은 지종·제본으로 서버 재계산</b>(처음 쪽수로 돌아오면 호스트 값 복귀).<br>
+      지종 또는 제본이 없거나 책등 값이 0 이면 편집 중 <b>호스트 값 고정</b>.</td>
+      <td class="mut">무시(책등 없음)</td></tr>
+    <tr><td><code>paperType</code></td><td class="mut"><b>무시</b>(책등 계산 안 함)</td>
+      <td>서버 책등 계산의 지종. <code>spineWidthMm</code> 이 없으면 처음부터 이 지종으로 계산.<br>
+      <b>없으면 기본 용지(<code>mojo_80g</code>)로 계산</b>된다.</td>
+      <td class="mut">무시</td></tr>
+    <tr><td><code>bindingType</code></td><td>책등 계산에는 무시. <b>제본별 쪽수 한도</b>에는 적용(§7-3)</td>
+      <td>책등 공식 선택(§5) + 제본별 쪽수 한도.<br><b>없으면 책등은 무선(<code>perfect</code>) 공식으로 계산</b>되고 쪽수 한도는 없다.</td>
+      <td>제본별 쪽수 한도</td></tr>
+    <tr><td><code>pageCount</code></td><td colspan="3">처음 만들 내지 물리 쪽수(쪽수 범위로 보정). 내지펼침면은 ÷2 장(올림).</td></tr>
+    <tr><td><code>pageCountMin</code> / <code>pageCountMax</code></td><td colspan="3">템플릿셋 최소/최대 페이지보다 <b>우선</b>. 보낸 쪽은 제본 최소/최대도 대신한다(키별). 정수 1~500, 내지펼침면 세트는 최대 400.</td></tr>
+    <tr><td><code>pageStep</code></td><td colspan="3">템플릿셋 페이지 증감 단위보다 <b>우선</b>. <code>1</code> = 배수 제약 없음(템플릿셋 단위도 쓰지 않음). 최소 쪽수가 배수가 아니거나 범위 안에 배수가 없으면 무시. (이 표는 스프레드 세션 기준 — 단일 모드 세트의 예외는 §7-3 '현재 동작')</td></tr>
+    <tr><td><code>wingEnabled</code> / <code>wingWidthMm</code></td><td colspan="3">§5-1 — 날개만 주문 옵션이 템플릿보다 우선.</td></tr>
+  </table>
+  </div>
+  <p class="src">apps/editor/src/utils/spineCalculator.ts recalculateSpineWidthSpreadMode()(flat-spread·내지 가드 → 호스트 책등 → 서버 계산 순) ·
+  utils/hostSpine.ts isHostSpineFixed()·decideHostSpineAction() · utils/hostPageLimits.ts · hooks/useEditorContents.ts</p>
+
+  <div class="note"><b>재편집 때 호스트가 값을 다시 보내지 않으면</b> 첫 편집 때 세션에 기록된 주문 값(지종·제본·책등·쪽수 범위)을 이어 쓴다.
+  책등 폭은 호스트가 지정했던 값일 때만 이어 쓰고, 서버 계산값·템플릿값은 다시 계산한다.
+  <span class="src">utils/hostSpine.ts resolveEffectiveSpineOptions()</span></div>
+
+  <h3 id="s9-2">9-2. 표지 책등 방식 결정 규약</h3>
+  <div class="danger"><b>상품별 표지 모드(표지펼침면 = 책등 고정 / 표지3분할 = 책등 가변)는 호스트 파트너가 정한다.
+  Storige 는 그 규약대로 템플릿을 제작·등록하고, 임의로 바꾸지 않는다.</b></div>
+  <div class="tree">
+    <div class="node a"><div class="q">1</div><div class="body">
+      <div class="t">호스트 파트너가 상품의 표지 모드를 정해 알린다</div>
+      <div class="d">판형·제본·쪽수 범위·쪽 추가 단위와 함께 받는다. 책등 가변이면 <code>spineWidthMm</code> 또는 <code>paperType</code>+<code>bindingType</code> 을 보낼지도 함께 정한다.</div>
+    </div></div>
+    <div class="node a"><div class="q">2</div><div class="body">
+      <div class="t">Storige 는 그 모드로 표지 템플릿을 만든다</div>
+      <div class="d"><b>표지펼침면</b> → <code>conversionMode: 'flat-spread'</code>(§4).
+      <b>표지3분할</b> → <code>full</code> 또는 <code>flat-spine</code>(래스터 3분할 PNG)(§3·§4).
+      양장이면 표지 치수는 §4-1 규격.</div>
+    </div></div>
+    <div class="node"><div class="q">3</div><div class="body">
+      <div class="t">세트에는 그 모드의 표지만 넣는다</div>
+      <div class="d">한 세트에 표지펼침면과 표지3분할을 섞으면 서버가 400 으로 막는다. 쪽수 설정은 §7-3 일치 원칙대로.</div>
+    </div></div>
+    <div class="node b"><div class="q">4</div><div class="body">
+      <div class="t">모드 변경은 호스트 결정으로만</div>
+      <div class="d">모드가 바뀌면 호스트가 보내야 할 값(책등·지종)과 책등 처리가 달라진다. 모드 변경은 호스트 파트너가 결정한 경우에만 하고, Storige 는 템플릿 교체 시점을 호스트에 미리 알린 뒤 교체한다.</div>
+    </div></div>
+  </div>
+  <div class="note"><b>모드는 표지 템플릿의 <code>conversionMode</code> 로만 판정된다</b>(미지정 = <code>full</code> = 표지3분할).
+  Admin 템플릿 목록의 <span class="pill p-ok">표지펼침면</span> / <span class="pill p-ac">표지3분할</span> / <span class="pill p-vi">내지펼침면</span> 태그로 등록 결과를 확인하라.
+  <span class="src">packages/types/src/print-template.ts classifyPrintTemplate()</span></div>
+
+  <!-- ═══════════════════ 10 ═══════════════════ -->
+  <h2 id="s10"><span class="n">10</span> 함정 체크리스트</h2>
 
   <h3>치수·단위</h3>
   <ul class="chk">
@@ -562,7 +706,7 @@
   <ul class="chk">
     <li>기준 책등 폭을 <b>명시 입력</b>했는가(비우면 7.5mm).</li>
     <li>저작 후 <b>모든 객체를 한 번씩 이동</b>시켜 <code>meta.regionRef/anchor</code> 를 확정했는가.</li>
-    <li>페이지 가변 상품에 <code>flat-spread</code> 템플릿을 연결하지 않았는가(조용히 고정된다).</li>
+    <li>페이지 가변 상품에 <code>flat-spread</code> 템플릿을 연결했다면 그것이 <b>호스트가 정한 '책등 고정' 모드</b>인가(쪽수와 무관하게 책등이 조용히 고정된다 — §9-2).</li>
     <li>펼침면 전폭 배경을 <code>full</code> 템플릿에 통째로 넣지 않았는가.</li>
     <li>책등 텍스트가 <b>최소 페이지 기준 폭</b>에서도 들어가는가. 3mm 미만이면 책등 글자 제외.</li>
     <li>앞·뒤표지 요소가 책등 경계에서 <code>safeSizeMm</code> 이상 떨어져 있는가.</li>
@@ -572,7 +716,7 @@
 
   <h3>구조·등록</h3>
   <ul class="chk">
-    <li>책모드 세트에 <b>SPREAD 1개 + PAGE 최소 1개</b> 가 들어 있는가.</li>
+    <li>책모드 세트에 표지 구조 <b>1종</b>(표지펼침면·표지3분할 혼합 금지)과 내지 구조 <b>1종</b>(낱장·펼침면 혼합 금지)만 들어 있는가. 표지·내지 중 최소 1개.</li>
     <li>펼침면 내지라면 <code>regionScope==='inner'</code> 와 <code>innerSpec</code> 6필드를 저장 후 확인했는가(서버가 안 잡아준다).</li>
     <li><code>gutterMm</code> 을 명시 입력했는가(기본값이 경로마다 다르다).</li>
     <li><code>pageCountRange</code> 를 <b>[최소, 최대] 물리 페이지</b>로 넣었는가(이산 목록은 강제되지 않고, 펼침면은 ÷2 로 환산된다).</li>
@@ -582,10 +726,23 @@
   <h3>펼침면 내지 세트</h3>
   <ul class="chk">
     <li>세트 판형에 <b>펼침면 총폭이 아니라 한 면</b> 치수를 넣었는가(A4 펼침면 → 210×297).</li>
-    <li>연결한 <b>더미 PAGE 템플릿이 세트 판형과 정확히 같은</b> 치수인가(다르면 후보에 안 뜬다).</li>
     <li>편집기에서 <b>거터 밴드와 좌/우 면 경계</b>가 보이는가(안 보이면 <code>regionScope</code> 가 안 실린 것).</li>
-    <li>첫 캔버스 라벨이 <b>'펼침면 1'</b> 인가(‘표지 스프레드’로 뜨면 표지 세트로 열린 것).</li>
-    <li>표지 세트와 내지 세트를 <b>따로</b> 만들었는가(한 세트에 spread 는 1개만 쓰인다).</li>
+    <li>내지 전용 세트라면 첫 캔버스 라벨이 <b>'펼침면 1'</b> 인가(‘표지 스프레드’로 뜨면 표지 세트로 열린 것).</li>
+    <li><b>내지펼침면 템플릿을 표지 모드로 오판하지 않았는가.</b> 표지 모드는 <b>표지 템플릿</b>의 <code>conversionMode</code> 로만 정해진다.
+      내지펼침면은 <code>regionScope:'inner'</code> 로만 판정되며, 이 값이 빠진 펼침면 템플릿은 <b>표지로 분류</b>된다 —
+      <code>conversionMode</code> 가 <code>flat-spread</code> 이면 <b>표지펼침면</b>, 그 밖이면 <b>표지3분할</b>(print-template.ts classifyPrintTemplate). 목록 태그가 <span class="pill p-vi">내지펼침면</span> 인지 확인.</li>
+    <li>쪽 추가 단위를 <b>펼침면 장 수가 아니라 물리 쪽수</b>로 넣었는가(8쪽 단위 상품 = 8, 4 를 넣으면 4쪽 단위로 열린다).</li>
+  </ul>
+
+  <h3>호스트 연동·양장</h3>
+  <ul class="chk">
+    <li>표지 템플릿의 모드가 <b>호스트 파트너가 정한 상품 모드</b>와 같은가(§9-2). 바꿔야 하면 호스트 결정에 따라, 교체 시점을 호스트에 알린 뒤 교체.</li>
+    <li>템플릿셋 최소/최대 페이지·페이지 증감 단위가 <b>호스트 상품등록 값과 같은가</b>(§7-3). 특히 내지펼침면 세트의 단위가 호스트 <code>pageStep</code> 과 같은 물리 쪽수인가.</li>
+    <li>책등 가변 템플릿 상품이면 호스트가 <b>지종(<code>paperType</code>)과 제본(<code>bindingType</code>)을 보내는가.</b>
+      안 보내면 기본 용지(<code>mojo_80g</code>)·무선 공식으로 계산되고, <code>spineWidthMm</code> 만 보내면 쪽을 늘려도 책등이 고정된다.</li>
+    <li>표지펼침면 상품에 호스트 책등·지종 값이 와도 <b>반영되지 않는다</b>는 점을 호스트 파트너와 공유했는가.</li>
+    <li>양장 표지 원고 치수가 <b>싸바리 전개 규격</b>((W+8)×2+책등+40 × (H+8)+40)인가(§4-1). 싸바리 값(<code>caseBind</code>)을 템플릿셋에도 표지 템플릿 <code>spec</code> 에도 임의로 넣지 않았는가.</li>
+    <li>책등 고정(표지펼침면) 양장이면 책등을 <b>호스트와 합의한 기준 쪽수의 양장 공식값</b>으로 넣고, 쪽수 범위 양 끝 차이가 허용오차 안인지 확인했는가(§4-1).</li>
   </ul>
 
   <h3>canvasData 직접 편집 시</h3>
@@ -604,12 +761,20 @@
   </ul>
 
   <div class="foot">
+    <b>2026-10-05 갱신 요약</b> — 이 판에서 바뀐 것:
+    ① §9 <b>호스트 파트너 연동</b> 신설 — <code>/embed</code> 값(책등·지종·제본·쪽수·단위)이 표지 모드별로 적용되는 방식
+    ② §9-2 <b>표지 책등 방식 결정 규약</b> — 상품별 모드는 호스트 파트너가 정하고 Storige 는 그대로 제작·등록, 변경은 호스트 결정에 따르고 교체 시점을 미리 알림
+    ③ §4-1 <b>양장 표지 규격</b> — 고객 업로드 검증 규격(싸바리 전개)을 작성 기준으로 확정, 이전 판의 "caseBind 합 28mm" 권장 철회, 편집기 출력 정합은 진행 중
+    ④ §7-3 <b>쪽수·쪽 추가 단위</b> — 제본별 한도와 호스트 범위 우선, 템플릿셋 값은 호스트 상품등록 값과 같게(일치 원칙), 펼침면 단위 환산
+    ⑤ §7 책모드 세트 구성 정정(표지+내지펼침면 한 세트 가능, 더미 PAGE 불필요 — 2026-08-14 서버 규칙)
+    ⑥ 함정 체크리스트를 §10 으로 옮기고 '호스트 연동·양장' 항목 추가.
+    <br><br>
     <b>2026-08-03 갱신 요약</b> — 이 판에서 바뀐 것:
     ① §7 <b>펼침면 내지 등록이 열렸다</b>(이전 판의 "등록 경로 없음"은 부정확 — Admin 은 완비, API 검증 한 곳만 막고 있었음)
     + 실제 등록 절차·출력 계약 추가
     ② §5-1 <b>표지 날개 주문 옵션 규약 신설</b>(날개만 주문 옵션이 템플릿보다 우선)
     ③ 페이지 범위는 <b>물리 페이지</b> 기준 — 펼침면은 ÷2
-    ④ §9 <b>펼침면 내지 세트 체크리스트</b> 신설.
+    ④ §9(현 §10) <b>펼침면 내지 세트 체크리스트</b> 신설.
     <br><br>
     <b>E2E 로 실증한 것</b>(프로덕션에 실제 세트 생성 → 편집 → 완료 → 검증 → 삭제):
     거터·좌우면 렌더 · 페이지 추가 · <code>content.pdf</code> 4페이지 420×297mm · <code>cover.pdf</code> 없음 · 워커 검증 COMPLETED.
@@ -622,7 +787,8 @@
       packages/types/src/index.ts · packages/types/src/spine-calc.ts (책등 산술 정본)<br>
       packages/canvas-core/src/plugins/SpreadPlugin.ts · spread/SpineResizeStrategy.ts · spread/SpreadLayoutEngine.ts<br>
       apps/api/src/products/spine.service.ts · spine-formula.spec.ts (골든 계약) · apps/api/src/templates/templates.service.ts · template-sets.service.ts<br>
-      apps/editor/src/utils/spineCalculator.ts · hooks/useEditorContents.ts<br>
+      apps/editor/src/utils/spineCalculator.ts · utils/hostSpine.ts · utils/hostPageLimits.ts · utils/pageStep.ts · hooks/useEditorContents.ts · stores/useEditorStore.ts<br>
+      packages/types/src/print-template.ts (표지·내지 분류와 세트 조립) · apps/worker/src/services/pdf-validator.service.ts (양장 싸바리 전개 검증) · apps/api/src/edit-sessions/editor-spread-validation-options.ts<br>
       apps/admin/src/pages/TemplateSets/TemplateSetForm.tsx · pages/Templates/TemplateEditor.tsx · TemplateImport.tsx<br>
       docs/COORDINATE_SYSTEM.md (좌표 규약 동결 문서) · packages/indesign-import (변환기)
     </div>

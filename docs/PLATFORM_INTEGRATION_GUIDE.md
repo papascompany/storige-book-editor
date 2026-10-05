@@ -1,7 +1,7 @@
 # Storige 플랫폼 연동 가이드 (외부 파트너용)
 
 > **작성일:** 2026-06-20
-> **최종 갱신:** 2026-10-05 — 보낸 쪽수 범위(`pageCountMin`·`pageCountMax`)가 제본별 최소·최대 쪽수를 대신(3.1 상품별 쪽수 범위, 편집기 배포 완료 통지 시각부터) · 합성 입력 오류(`PDF_LOAD_FAILED`·`FILE_NOT_FOUND`·`INPUT_URL_REJECTED`) 즉시 `FAILED`·합성 실패 응답 `errorCode`·안내 문구 `errorMessage`·`errorDetail`(2.2 단계 5a) · 회원 세션 생성 서버 오류 시 같은 주문 세션으로 열기(3.3) · [이전 2026-10-03] 합성 작업 자동 재시도·작업 상태 고정·종결 웹훅 중복 생략·작업 응답 `editSessionId`(2.2 단계 5a·5b·1.7·5.2) · `session.*` 현재 미발신(5.2·3.3.3) · `editor.state` `pageCount`·`currentPage`·IIFE `getState()` 쪽수(3.2) · `sessionId` 단독 재오픈 실패 화면·편집기 '불러오기' 실패 `message` 고정 문구(3.1·3.2) · presigned `complete` 의 사이트 키(`X-API-Key`) 귀속(2.2·1.7) · 합성 산출 크기(2.3) · 작업 실패 코드 `JOB_STALLED`·`JOB_TIMEOUT_SWEPT`(2.2 단계 5a)·반복 중단 시 v1 최종화 실패(1.7) · 편집기 초기화 실패 code·고정 한국어 `message`(3.1·3.2) · `orderSeqno` 진입 실패 처리(3.3) · 첨부 채움본 크기(3.2) · 운영자 요청 감사 기록 범위(3.3.2) · 그 사이 변경은 각 절의 날짜 표기 참조 · [이전 2026-08-24] `editor.saved` 가 `ok:false, error:'EDITOR_BUSY'` 를 응답할 수 있음(3.2 표 하단) · 세션 API 테넌트 격리 확장: 회원 세션 상세/수정/완료/삭제/버전/목록/보관함 전부 JWT `siteId` ↔ 세션 `siteId` 대조(1.5) · [이전 2026-08-13] `compose-mixed` 빈 입력 `400 EMPTY_COMPOSE_INPUT` 승격(3.4) · 세션 자동조립 `assembleFromSession` 신설(3.4.1) · `compose-mixed` body `siteId` 하드닝(3.4)
+> **최종 갱신:** 2026-10-05 — 템플릿 작성 규약: 상품별 표지 책등 방식(표지펼침면/표지3분할)은 호스트가 정하고 Storige 는 그 방식대로 등록, 양장 표지 템플릿 크기 기준 = 업로드 검증 규격(싸바리 전개), 쪽 추가 단위는 호스트 상품등록 값과 템플릿셋 `pageStep` 일치(3.1·5.3.1) · 보낸 쪽수 범위(`pageCountMin`·`pageCountMax`)가 제본별 최소·최대 쪽수를 대신(3.1 상품별 쪽수 범위, 편집기 배포 완료 통지 시각부터) · 합성 입력 오류(`PDF_LOAD_FAILED`·`FILE_NOT_FOUND`·`INPUT_URL_REJECTED`) 즉시 `FAILED`·합성 실패 응답 `errorCode`·안내 문구 `errorMessage`·`errorDetail`(2.2 단계 5a) · 회원 세션 생성 서버 오류 시 같은 주문 세션으로 열기(3.3) · [이전 2026-10-03] 합성 작업 자동 재시도·작업 상태 고정·종결 웹훅 중복 생략·작업 응답 `editSessionId`(2.2 단계 5a·5b·1.7·5.2) · `session.*` 현재 미발신(5.2·3.3.3) · `editor.state` `pageCount`·`currentPage`·IIFE `getState()` 쪽수(3.2) · `sessionId` 단독 재오픈 실패 화면·편집기 '불러오기' 실패 `message` 고정 문구(3.1·3.2) · presigned `complete` 의 사이트 키(`X-API-Key`) 귀속(2.2·1.7) · 합성 산출 크기(2.3) · 작업 실패 코드 `JOB_STALLED`·`JOB_TIMEOUT_SWEPT`(2.2 단계 5a)·반복 중단 시 v1 최종화 실패(1.7) · 편집기 초기화 실패 code·고정 한국어 `message`(3.1·3.2) · `orderSeqno` 진입 실패 처리(3.3) · 첨부 채움본 크기(3.2) · 운영자 요청 감사 기록 범위(3.3.2) · 그 사이 변경은 각 절의 날짜 표기 참조 · [이전 2026-08-24] `editor.saved` 가 `ok:false, error:'EDITOR_BUSY'` 를 응답할 수 있음(3.2 표 하단) · 세션 API 테넌트 격리 확장: 회원 세션 상세/수정/완료/삭제/버전/목록/보관함 전부 JWT `siteId` ↔ 세션 `siteId` 대조(1.5) · [이전 2026-08-13] `compose-mixed` 빈 입력 `400 EMPTY_COMPOSE_INPUT` 승격(3.4) · 세션 자동조립 `assembleFromSession` 신설(3.4.1) · `compose-mixed` body `siteId` 하드닝(3.4)
 > **대상:** 외부 파트너 개발자
 > **상태:** 배포용 정본
 
@@ -856,6 +856,12 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 > **쪽수 단위(`pageStep`, 2026-09-28 신설):** 템플릿셋 필드 `pageStep`(정수 ≥ 1, `null` = 제약 없음)이 설정된 세션은 **완료 payload 의 `pageCount` 와 같은 산식의 쪽수**가 그 배수여야 합니다(책·단일 모드 공통). 편집기의 `+`/삭제가 배수 단위로 움직이고, 호스트가 배수가 아닌 `pageCount` 로 열면 경고 배지를 띄우고 **완료를 막습니다**(UI 편집완료는 토스트만, 프로그래매틱 `complete()` 는 `editor.error {code:'INVALID_DATA'}` 후 reject — `editor.complete` 미발신). 유효 쪽수 범위(호스트 범위를 보낸 쪽은 그 값, 아니면 `pageCountRange`·제본 최소/최대)와 동시에 만족해야 합니다. 서버 측 완료 검증은 하지 않습니다. 첨부 내지 PDF 쪽수를 이 배수로 자동으로 맞추려면 템플릿셋 `padToPageStep` 을 켭니다(3.3 첨부 이벤트 단락).
 >
 > - ⚠️ `flat-spine` 템플릿의 책등 영역에 객체가 있으면 책등 0 은 적용되지 않고 템플릿 책등이 유지됩니다. 책등 없는 스프링은 전용 `flat-spread` 세트(책등 0)를 쓰세요. 실제 적용값은 `editor.complete` 의 `spineWidthMm` 로 확인하세요.
+>
+> **표지 책등 방식·양장 표지 규격·쪽 추가 단위 — 템플릿 작성 규약(2026-10-05)**
+> - **상품별 표지 책등 방식은 호스트가 정합니다.** 표지펼침면(`conversionMode: 'flat-spread'`, 책등 고정)과 표지3분할(`'full'`·`'flat-spine'`, 내지 쪽수에 따라 책등 가변) 중 어느 방식으로 팔지는 호스트 상품 정의가 결정하고, Storige 는 그 방식대로 표지 템플릿을 만들어 템플릿셋에 등록합니다. 편집기는 등록된 템플릿의 방식을 따릅니다(위 호스트 책등 규칙 — `flat-spread` 에서는 `spineWidthMm` 를 쓰지 않음). 방식 변경은 호스트가 결정한 경우에만 하며, Storige 는 템플릿 교체 시점을 호스트에 미리 알립니다.
+> - **양장 표지 템플릿의 제작 기준은 업로드 검증 규격입니다.** 고객이 직접 올리는 양장 표지 PDF 의 검증 규격 — 싸바리 전개 폭 `(W+8)×2 + 책등 + 40`, 높이 `(H+8) + 40`(mm, `W×H` = 재단 사이즈, 도련 별도 가산 없음, 5.3.1) — 을 양장 표지 템플릿 크기 기준으로 삼습니다.
+> - **쪽 추가 단위는 호스트 상품등록 값과 Storige 템플릿셋 `pageStep` 값을 같게 설정하세요**(URL `pageStep` 을 보내는 경우 그 값도 같게).
+>
 > **표지 날개 권위 규칙(2026-08-03):** 판형·책등과 달리 날개는 **상품(주문) 옵션이 템플릿 spec 보다 우선**합니다.
 > 같은 표지 템플릿으로 날개 상품/비날개 상품을 함께 운영하기 위한 설계입니다. 규칙 3가지 —
 > ① 미전달이면 템플릿 값 그대로(기존 동작 불변) ② `wingEnabled=true` 는 **유효한 폭(>0)이 함께 와야** 적용됩니다
@@ -1798,7 +1804,7 @@ book.finalization.completed | book.finalization.failed
 
 | 조건 | 검사 |
 |---|---|
-| `binding` 이 `perfect`·`hardcover` **또는** 기대 책등 있음 | 단일 판형 검사 생략 → **펼침 검사**. 양장 = 싸바리 전개식, 그 외 = 폭 `2W + 책등 + 날개×2 + 도련×2`, 높이 `H + 도련×2` (±2 mm) |
+| `binding` 이 `perfect`·`hardcover` **또는** 기대 책등 있음 | 단일 판형 검사 생략 → **펼침 검사**. 양장 = 싸바리 전개식(폭 `(W+8)×2 + 책등 + 40`, 높이 `(H+8) + 40`, 도련·날개 가산 없음), 그 외 = 폭 `2W + 책등 + 날개×2 + 도련×2`, 높이 `H + 도련×2` (±2 mm) |
 | `perfect`·`hardcover` 인데 기대 책등 없음 | 크기 검사 **생략** + `SPINE_PARAMS_UNRESOLVED` 경고(비차단) |
 | 그 밖 (스프링·중철 + 책등·두께 미전달) | **단일 판형** 검사 (`W + 도련×2`) |
 

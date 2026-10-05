@@ -39,7 +39,8 @@
 | 5 | 주문 페이지수 일치 | 🟡경고 | `PAGE_COUNT_MISMATCH` | 실제 ≠ 주문 `pages` | 전체 | addBlankPages |
 | 6 | 판형(사이즈) | 🔴에러 | `SIZE_MISMATCH` | 주문 `size`와 ±**1mm** 초과(재단 포함/불포함 모두 비교) — 기준값 규격은 하단 **§내지 판형 규격표(2026-07-14)** 참조. 내지는 MediaBox 불일치 시 명시 TrimBox 로 재판정(**§재단선 포함 PDF — TrimBox 기준 판형 판정(2026-09-30)**) | 전체 | fixMethod=resizeWithPadding — **실행기 미제공**. `WORKER_WIRED_FIXABLE_GATING=true` 시 autoFixable=false(기본 OFF=레거시 true) |
 | 7 | 재단 여백(bleed) | 🟡경고 | `BLEED_MISSING` | 재단 여백 없음 | 전체 | fixMethod=extendBleed — **실행기 배선(2026-07-13)**: `POST /worker-jobs/fix-bleed`(하단 §도련 자동 삽입). 게이팅 ON/OFF 무관 autoFixable=true |
-| 8 | 책등(spine) | 🔴에러 | `SPINE_SIZE_MISMATCH` | 표지 총너비 ≠ `size.w×2 + spine + bleed×2` ±**2mm** (spine=`paperThickness×pages/2` **재계산**) | **표지** + `paperThickness` 있을 때만 | fixMethod=adjustSpine — **실행기 미제공**. 게이팅 ON 시 autoFixable=false(기본 OFF=레거시 true) |
+| 8 | 책등(spine) | 🔴에러 | `SPINE_SIZE_MISMATCH` | 표지 폭 **또는** 높이가 기대치와 허용오차(기본 ±**2mm**) 초과. 무선 등: 폭 `W×2 + spine + 날개×2 + bleed×2`, 높이 `H + bleed×2`. **양장(`hardcover`) = 싸바리 전개**: 폭 `(W+8)×2 + spine + 40`, 높이 `(H+8) + 40`(도련 별도 가산 없음). spine 은 `spineWidthMm`(서버 재계산값 포함) → `paperThickness`+`pages` 폴백 — 하단 **§표지 책등·전개 크기 검증(양장 싸바리 포함)** | **표지**(`coverLayout≠'separate'`) + spine 기대치 있을 때 | fixMethod=adjustSpine — **실행기 미제공**. 게이팅 ON 시 autoFixable=false(기본 OFF=레거시 true) |
+| 8b | 책등 정보 미해석 | 🟡경고 | `SPINE_PARAMS_UNRESOLVED` | 무선·양장 표지인데 spine 기대치 없음 → 표지 크기 검사 **생략** 고지(비차단). `details.reason` = `UNMAPPED_PAPER`·`V1_FALLBACK`·`HARDCOVER_PAGE_RULE`·`NO_SPINE_PARAMS` | **표지**(`perfect`·`hardcover`, `coverLayout≠'separate'`) | ✕ |
 | 9 | 가로형 페이지 | 🟡경고 | `LANDSCAPE_PAGE` | 가로 방향 페이지 감지 | 전체 | ✕ |
 | 10 | 사철 제본 규격 | 🔴에러 | `SADDLE_STITCH_INVALID` | 사철(saddle)·4배수 아님 | 내지(saddle) | addBlankPages |
 | 10b | 사철 중앙부 객체 | 🟡경고 | `CENTER_OBJECT_CHECK` | 중앙 걸침 객체 확인 필요 | 내지(saddle) | ✕ |
@@ -54,7 +55,7 @@
 | 16b | TrimBox 크기 | 🟡경고 | `TRIMBOX_SIZE_MISMATCH` | TrimBox ≠ 주문 재단 사이즈 ±tolerance | crop-mark opt-in 셋 | ✕ |
 | 16c | TrimBox/Bleed 정합 | 🟡경고 | `TRIMBOX_BLEED_INCONSISTENT` | TrimBox⊄MediaBox 또는 BleedBox ≠ trim+bleed×2 | crop-mark opt-in 셋 | ✕ |
 
-**조건부 실행**: ⑧책등=`fileType==='cover'` + `paperThickness` 존재 시만, ⑩사철=`binding==='saddle'`일 때만, ⑫후가공CMYK=`fileType==='post_process'`일 때만, ⑯재단선 기하=**templateSet `cropMarkEnabled` opt-in + 워커 env `WORKER_CROP_MARK_VALIDATION`(2026-07-06 프로덕션 ON) 이중 게이트**일 때만.
+**조건부 실행**: ⑧책등=`fileType==='cover'` + `coverLayout≠'separate'` 일 때 — spine 기대치가 있으면 펼침 크기 검사(이때 ⑥판형·⑦재단 여백 검사는 생략), `perfect`·`hardcover` 인데 기대치가 없으면 ⑧b 경고만, 그 밖(중철·스프링 + `spineWidthMm`·`paperThickness` 모두 미전달)은 ⑥판형·⑦재단 여백 검사, ⑩사철=`binding==='saddle'`일 때만, ⑫후가공CMYK=`fileType==='post_process'`일 때만, ⑯재단선 기하=**templateSet `cropMarkEnabled` opt-in + 워커 env `WORKER_CROP_MARK_VALIDATION`(2026-07-06 프로덕션 ON) 이중 게이트**일 때만.
 
 > ⑯ 파트너 표시 안내: 항상 🟡경고(주문 차단 없음). 편집기 산출 PDF 는 TrimBox 를 넣지 않으므로 opt-in 셋에서 `TRIMBOX_MISSING` 이 관찰될 수 있으며, 이는 "고객 업로드 원고의 재단 정보 확인" 용도다. 고객 노출 문구는 "재단선 정보가 없어 인쇄소 확인이 필요할 수 있습니다" 수준을 권장.
 
@@ -71,10 +72,11 @@
   "orderOptions": {
     "size": { "width": 210, "height": 297 },   // ✅ 판형 mm — 검증됨
     "pages": 96,                                 // ✅ 페이지수 — 검증됨
-    "binding": "perfect | saddle | spring",
+    "binding": "perfect | saddle | spiral | spring | hardcover",  // spring = 레거시 표기
     "bleed": 3,
     "paperThickness": 0.1,                       // 책등 fallback 계산용(spineWidthMm 없을 때)
     "spineWidthMm": 1.0,                          // ✅ (선택·권장) /products/spine/calculate 권위 책등폭. 있으면 워커가 직접 사용(bindingMargin 포함)
+    "paperType": "미색모조80",                    // ✅ (선택) 내지 지종. 표지+perfect/hardcover 이고 지종이 v2 로 해석되면 서버 재계산값으로 spineWidthMm 을 덮어씀(조건은 §표지 책등·전개 크기 검증)
     "wingEnabled": false,                         // ✅ (선택) 날개 사용 여부
     "wingWidthMm": 0                              // ✅ (선택) 날개 한쪽 폭(mm) — 표지 총너비에 ×2 가산
   },
@@ -203,7 +205,7 @@
 | **책등(spine)** | `paperThickness×(pages/2)` 로만 재계산 → 권위 공식의 `bindingMargin` 누락 | `spineWidthMm` 전달 시 **그 값을 직접 사용**(margin 포함). 미전달 시 기존 fallback |
 | **날개(wing)** | 검증식에 wing 없음 → 정상 날개 표지 거부 위험 | `wingEnabled`+`wingWidthMm` 전달 시 표지 기대너비 = `size.w×2 + spine + **wingWidthMm×2** + bleed×2` |
 
-표지 총너비 검증식(현재):
+표지 총너비 검증식(무선 등, 2026-06-04 기준 — 양장 싸바리 전개·높이 축·서버 재계산은 아래 **§표지 책등·전개 크기 검증**):
 ```
 expectedTotalWidth = size.width×2 + (spineWidthMm ?? paperThickness×pages/2)
                      + (wingEnabled ? wingWidthMm×2 : 0) + bleed×2   (허용 ±2mm)
@@ -216,6 +218,48 @@ expectedTotalWidth = size.width×2 + (spineWidthMm ?? paperThickness×pages/2)
 - 미전달 시 = 기존 동작(책등 fallback 재계산, 날개 미고려) → 회귀는 없으나 날개 상품 오검출은 그대로 남음.
 
 미사용 코드(참고): `UNSUPPORTED_FORMAT`, `SPREAD_SIZE_MISMATCH`는 enum 정의만 있고 push 안 됨(스프레드는 `MIXED_PDF` 경고로 처리).
+
+---
+
+## 표지 책등·전개 크기 검증 (양장 싸바리 포함)
+
+> 코드: 서버 재계산 `apps/api/src/worker-jobs/worker-jobs.service.ts` `injectServerSpine()` · 책등 산식 `apps/api/src/products/spine.service.ts` · 워커 판정 `apps/worker/src/services/pdf-validator.service.ts` `resolveExpectedSpine()`·`validateSpine()` · 공용 산식 `packages/types/src/spine-calc.ts`(`calcHardcoverSpine`·`hardcoverCoverSpreadFromSpine`) · 허용오차 `apps/worker/src/config/validation.config.ts`.
+>
+> 양장 표지 PDF 의 규격은 **고객 업로드 검증 규격(아래 싸바리 전개)** 이 기준이다. 양장 표지 템플릿도 이 규격으로 만든다.
+
+### 1) 책등 폭 결정 (우선순위)
+
+1. **서버 재계산** — 검증 잡 생성 시 API 가 수행한다. 조건: `fileType='cover'`, `coverLayout≠'separate'`, `binding` 이 `perfect`·`hardcover`, `paperType` 과 `pages`(≥1) 모두 있음. 지종이 v2 두께로 해석되면 그 값으로 `spineWidthMm` 을 **덮어쓴다**(보낸 값은 `clientSpineWidthMm` 로 보존, `spineSource='server'`). v1 폴백·지종 미해석이면 보낸 `spineWidthMm` 을 유지하고, 보낸 값도 없으면 미해석 사유(`V1_FALLBACK`·`UNMAPPED_PAPER`)를 기록한다. 업로드 검증(`validate`·`validate/external`)·편집 세션 검증·books 확정 검증 잡이 모두 같은 경로를 탄다.
+   - 양장 v2 산식: `책등 = max(4 + ceil(pages/2 × 장당두께), 8)` mm(합지 4mm·최소 8mm, 정수 mm). 서버 재계산은 12쪽 미만·4의 배수 아님이어도 값을 낸다(비차단).
+   - 무선 v2 산식은 페이지당 두께표 기준(`calcPerfectSpine`).
+2. **워커 기대 책등** — `spineWidthMm`(0 이상 숫자, 소수 2자리 반올림)을 그대로 쓴다. 없으면 `paperThickness`+`pages`(≥1) 폴백:
+   - 양장: `calcHardcoverSpine` — 위 양장 산식(`paperThickness` = 장당 두께). **12쪽 이상·4의 배수일 때만** 값이 나오고, 아니면 기대치 없음(`HARDCOVER_PAGE_RULE`).
+   - 그 외: `paperThickness × pages/2`(소수 1자리, 제본 여유분 없음).
+3. 둘 다 없으면 기대치 없음.
+
+### 2) 기대 크기
+
+| 제본 | 기대 폭 | 기대 높이 | 비고 |
+|---|---|---|---|
+| `hardcover`(양장) | `(W+8)×2 + spine + 40` | `(H+8) + 40` | 싸바리 전개(앞·뒤표지 각 W+8 · H+8, 감싸기 여분 40). **도련(`bleed`)·날개는 가산하지 않음** |
+| 그 외(무선 등) | `W×2 + spine + 날개×2 + bleed×2` | `H + bleed×2` | 날개는 `wingEnabled` + `wingWidthMm>0` 일 때만. `bleed` 미전달 시 기본 3mm |
+
+- `W×H` = `orderOptions.size`(재단 사이즈).
+- 예: 양장 210×297, 책등 8mm → **484×345mm**(앞·뒤표지 218×305).
+- 폭·높이 **각각** 허용오차와 비교한다. 하나라도 넘으면 `SPINE_SIZE_MISMATCH`(🔴차단).
+
+### 3) 허용오차
+
+`orderOptions.spineToleranceMm`(0 초과) → 워커 env `SPINE_TOLERANCE_MM_HARDCOVER`(양장)·`SPINE_TOLERANCE_MM_PERFECT`(그 외) → 기본 **2mm**. 결과값은 `SPINE_TOLERANCE_MM_MAX`(기본 5mm)로 상한 제한한다.
+
+### 4) 결과
+
+- **불일치** `SPINE_SIZE_MISMATCH`: 메시지 `표지 크기가 {싸바리 전개|책등|책등·날개} 규격과 맞지 않습니다. (예상: W×Hmm, 현재: W×Hmm)`. `details` = `expectedMm`·`actualMm`·`axis`(`width`|`height`, 폭 우선)·`toleranceMm` + `expected{ totalWidth, totalHeight, spine, spineSource('server'|'provided'|'recalculated'), wingTotal, layout('hardcover-wrap'|'perfect-spread') }`·`actual{ totalWidth, totalHeight }`. `fixMethod='adjustSpine'`(실행기 없음).
+- **기대치 없음** `SPINE_PARAMS_UNRESOLVED`(🟡비차단, `perfect`·`hardcover` 표지만): 메시지 `책등 두께 정보가 없어 표지 규격 검증을 생략했습니다.`(지종이 있으면 `(지종: …)` 추가). `details = { paperType, binding, reason }`, `reason` = 서버 기록 사유(`UNMAPPED_PAPER`·`V1_FALLBACK`) → 양장 + `paperThickness` 있음 + 쪽수 규칙(12쪽 이상·4의 배수) 위반 `HARDCOVER_PAGE_RULE` → 지종만 있음 `UNMAPPED_PAPER` → 그 밖 `NO_SPINE_PARAMS` 순.
+- 기대치가 있으면 `metadata.spineSize` 에 적용 책등(mm)이 기록된다.
+- `perfect`·`hardcover` 표지(또는 기대 책등이 있는 표지)는 단일 판형(`SIZE_MISMATCH`)·재단 여백(`BLEED_MISSING`) 검사를 하지 않는다 — 전개 크기 검사가 대신한다.
+- `coverLayout='separate'`(앞·뒤 낱장) 표지는 이 절을 적용하지 않고 단일 판형 검사를 한다.
+- 편집 세션 완료 검증에서 **양장 편집기 표지**(스프레드 스냅샷이 있는 세션)는 서버가 책등 기하(`metadata.spread`·`coverOutput`)를 연결하지 않는다(`HARDCOVER_GEOMETRY_UNVERIFIED`). 표지는 세션 기본 옵션(`metadata.binding`·`metadata.paperThickness`)으로 검사하며, 세션 metadata 에 두께가 없으면 크기 검사가 생략되고 `SPINE_PARAMS_UNRESOLVED` 경고만 남는다. 고객 업로드 양장 표지는 위 규칙으로 검사한다.
 
 ---
 
