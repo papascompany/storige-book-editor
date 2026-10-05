@@ -873,6 +873,104 @@ describe('EditSessionsService', () => {
       expect(optionsFor('cover')).not.toHaveProperty('spineWidthMm');
       expect(optionsFor('content')).toMatchObject({ binding: 'spiral', pages: 40 });
     });
+
+    // ── Wave 6 D1: 싸바리 전개 표지 — 템플릿셋 판형 결선 ──
+    // A4 · 책등 8: 면 218×305, 전개 (218×2+8+40)×(305+40) = 484×345
+    const wrapMetadata = {
+      orderOptions: { bindingType: 'hardcover' },
+      spreadContentPageCount: 32,
+      spread: {
+        spec: {
+          coverWidthMm: 218, coverHeightMm: 305, spineWidthMm: 8, wingEnabled: false,
+          wingWidthMm: 0, cutSizeMm: 40, safeSizeMm: 5, dpi: 150,
+        },
+        totalWidthMm: 444, totalHeightMm: 305, dpi: 150,
+      },
+      coverOutput: {
+        widthMm: 484, heightMm: 345, bleedMm: 0,
+        layout: 'hardcover-wrap', trimWidthMm: 210, trimHeightMm: 297, wrapMm: 20,
+      },
+      appliedSpine: { spineWidthMm: 8, source: 'host' },
+    };
+
+    const withTemplateSet = (width: number, height: number) => {
+      mockTemplateSetsService.findOne = jest
+        .fn()
+        .mockResolvedValue({ width, height, cropMarkEnabled: false });
+      mockTemplateSetsService.findOneWithTemplates = jest
+        .fn()
+        .mockResolvedValue({ templateDetails: [] });
+    };
+
+    const mkSessionWithSet = (metadata: Record<string, unknown> | null): EditSessionEntity =>
+      ({ ...mkSession(metadata), templateSetId: 'ts-r195' }) as unknown as EditSessionEntity;
+
+    it('싸바리 전개 + 템플릿셋 판형 일치 → 표지 hardcover 연결(판형=템플릿셋, 도련 0), 템플릿셋 추가 조회 없음', async () => {
+      withTemplateSet(210, 297);
+      await callPrivate(mkSessionWithSet(wrapMetadata));
+      expect(mockTemplateSetsService.findOne).toHaveBeenCalledTimes(1);
+      expect(optionsFor('cover')).toMatchObject({
+        binding: 'hardcover', pages: 32, size: { width: 210, height: 297 },
+        spineWidthMm: 8, bleed: 0, wingEnabled: false, wingWidthMm: 0,
+        expectedOrientation: 'landscape',
+      });
+      expect(optionsFor('cover')).not.toHaveProperty('paperType');
+      // 양장 내지는 현행(perfect 계열) 유지 — 쪽수만 보정
+      expect(optionsFor('content')).toMatchObject({ binding: 'perfect', pages: 32 });
+      expect(optionsFor('content')).not.toHaveProperty('spineWidthMm');
+    });
+
+    it('싸바리 전개 + 템플릿셋 미연결 → 표지 현행 그대로, warn 에 undefined 미출력', async () => {
+      const warnSpy = jest.spyOn(
+        (service as unknown as { logger: { warn(message: string): void } }).logger,
+        'warn',
+      );
+      await callPrivate(mkSession(wrapMetadata));
+      expect(optionsFor('cover')).toMatchObject({ binding: 'perfect', pages: 1 });
+      expect(optionsFor('cover')).not.toHaveProperty('spineWidthMm');
+      // 양장 내지는 현행(perfect 계열) 유지 — 쪽수만 보정
+      expect(optionsFor('content')).toMatchObject({ binding: 'perfect', pages: 32 });
+      const skipLogs = warnSpy.mock.calls
+        .map((c) => String(c[0]))
+        .filter((m) => m.includes('표지 책등 연결 생략(GEOMETRY_INCONSISTENT)'));
+      expect(skipLogs).toHaveLength(1);
+      expect(skipLogs[0]).not.toContain('undefined');
+      warnSpy.mockRestore();
+    });
+
+    it('싸바리 전개 + 템플릿셋 판형 불일치(기록 210×297 ≠ 세트 297×210) → 표지 현행 그대로', async () => {
+      withTemplateSet(297, 210);
+      await callPrivate(mkSessionWithSet(wrapMetadata));
+      expect(optionsFor('cover')).not.toHaveProperty('spineWidthMm');
+      expect(optionsFor('cover')?.binding).not.toBe('hardcover');
+    });
+
+    it('layout 없는 세션 → 템플릿셋 판형이 주어져도 표지 책등 연결 결과 불변', async () => {
+      withTemplateSet(210, 297);
+      await callPrivate(mkSessionWithSet(spreadMetadata));
+      // 첫 테스트(템플릿셋 미연결)와 같은 표지 보정값 — 판형 인자는 layout 없는 표지 판정에 쓰이지 않는다
+      expect(optionsFor('cover')).toMatchObject({
+        binding: 'spiral', pages: 40, size: { width: 210, height: 297 },
+        spineWidthMm: 0, bleed: 3, wingEnabled: false, expectedOrientation: 'landscape',
+      });
+      expect(optionsFor('cover')).not.toHaveProperty('paperType');
+      // 내지 방향(portrait)은 기존 비정사각 템플릿셋 방향 주입 — 이번 결선과 무관한 현행
+      expect(optionsFor('content')).toMatchObject({
+        binding: 'spiral', pages: 40, size: { width: 210, height: 297 }, expectedOrientation: 'portrait',
+      });
+      expect(optionsFor('content')).not.toHaveProperty('spineWidthMm');
+    });
+
+    it('layout 없는 양장 주문 → 템플릿셋 판형이 있어도 표지 연결 생략(현행)', async () => {
+      withTemplateSet(210, 297);
+      const { layout: _l, trimWidthMm: _w, trimHeightMm: _h, wrapMm: _m, ...plainOutput } =
+        wrapMetadata.coverOutput;
+      await callPrivate(mkSessionWithSet({ ...wrapMetadata, coverOutput: plainOutput }));
+      expect(optionsFor('cover')).not.toHaveProperty('spineWidthMm');
+      expect(optionsFor('cover')?.binding).not.toBe('hardcover');
+      // 양장 내지는 현행(perfect 계열) 유지 — 쪽수만 보정
+      expect(optionsFor('content')).toMatchObject({ binding: 'perfect', pages: 32 });
+    });
   });
 
   // ── 방향 정합 (2026-07-14, 오너 규격표): size W↔H 스왑 정규화 + expectedOrientation ──

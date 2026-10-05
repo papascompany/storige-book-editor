@@ -15,10 +15,14 @@
  * 안전 원칙 — 오탐 SPINE_SIZE_MISMATCH 는 세션을 failed 로 뒤집고 파트너에게 session.failed
  * 웹훅을 보낸다. 그래서 표지 보정은 "편집기가 기록한 출력 크기 = 워커 기대식" 이 성립할 때만
  * 적용하고, 성립하지 않거나 근거가 없으면 null 을 돌려 현행 동작을 유지한다.
- *  - 양장(hardcover): 워커는 싸바리 전개식으로 검증하는데 편집기 표지 기하와의 정합이 미검증 → 제외
+ *  - 양장 싸바리 전개 출력(coverOutput.layout='hardcover-wrap'): 기록 판형 = 템플릿셋 판형,
+ *    표지 면 = 판형+8, 출력 크기 = 싸바리 전개식(hardcoverCoverSpreadFromSpine)이 모두 성립할 때만
+ *    binding=hardcover 로 연결. 템플릿셋 판형이 주어지지 않으면 제외
+ *  - 그 밖의 양장(layout 없음): 편집기 표지 기하와 싸바리 전개식의 정합 근거가 없으므로 제외
  *  - coverOutput 없음(구 편집기 빌드·PDF 미생성 경로) → 제외
  *  - 기대식 불일치(caseBind printSize 출력 등) → 제외
  */
+import { HARDCOVER_COVER_EXTRA_MM, hardcoverCoverSpreadFromSpine } from '@storige/types';
 
 export type EditorValidationBinding = 'perfect' | 'saddle' | 'spring' | 'spiral' | 'hardcover';
 
@@ -44,7 +48,18 @@ export type EditorSpreadCoverSkipReason =
   | 'HARDCOVER_GEOMETRY_UNVERIFIED'
   | 'NO_COVER_OUTPUT'
   | 'INVALID_SPEC'
-  | 'GEOMETRY_INCONSISTENT';
+  | 'GEOMETRY_INCONSISTENT'
+  /** 싸바리 전개 출력인데 주문 제본이 양장이 아님(로그 전용) */
+  | 'BINDING_LAYOUT_CONFLICT';
+
+/** 서버 템플릿셋 판형(templateSet.width/height, mm) */
+export interface EditorSpreadTemplateTrim {
+  widthMm: number;
+  heightMm: number;
+}
+
+/** 편집기가 싸바리 전개 표지를 출력했을 때 coverOutput.layout 에 기록하는 값 */
+export const HARDCOVER_WRAP_COVER_LAYOUT = 'hardcover-wrap';
 
 export interface EditorSpreadValidationOverrides {
   content: EditorSpreadContentOverrides;
@@ -92,6 +107,127 @@ function round2(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
+function positiveNumber(value: unknown): number | undefined {
+  const n = finiteNumber(value);
+  return n !== undefined && n > 0 ? n : undefined;
+}
+
+/**
+ * 공식 출처일 때만 공식 입력을 싣는다 → 서버가 같은 v2 공식으로 재계산해 대조.
+ * 호스트 고정(appliedSpine.source='host')·템플릿 고정은 paperType 을 싣지 않아 서버가 덮지 않는다.
+ */
+function formulaSpineInputs(
+  metadata: UnknownRecord,
+  spineSnapshot: UnknownRecord | undefined,
+): { paperType: string; pages: number } | Record<string, never> {
+  const appliedSource = asRecord(metadata.appliedSpine)?.source;
+  const formulaPaperType = nonEmptyString(spineSnapshot?.paperType);
+  const formulaPages = positiveInt(spineSnapshot?.pageCount);
+  return appliedSource === 'formula' && formulaPaperType && formulaPages !== undefined
+    ? { paperType: formulaPaperType, pages: formulaPages }
+    : {};
+}
+
+/**
+ * 싸바리 전개 표지(coverOutput.layout='hardcover-wrap') 판정. 워커 양장 기대식
+ * (hardcoverCoverSpreadFromSpine(판형, 책등))과 편집기 기록 출력이 맞을 때만 표지를 연결한다.
+ * 판형은 서버 템플릿셋 값을 쓰며, 워커에 넘기는 size 와 여기서 대조한 판형이 같다.
+ */
+function deriveHardcoverWrapCover(
+  metadata: UnknownRecord,
+  spec: UnknownRecord,
+  coverOutput: UnknownRecord,
+  content: EditorSpreadContentOverrides,
+  orderBinding: EditorValidationBinding | undefined,
+  spineSnapshot: UnknownRecord | undefined,
+  templateTrimMm: EditorSpreadTemplateTrim | null | undefined,
+): EditorSpreadValidationOverrides {
+  if (orderBinding !== undefined && orderBinding !== 'hardcover') {
+    return { content, cover: null, coverSkipReason: 'BINDING_LAYOUT_CONFLICT' };
+  }
+
+  const coverWidthMm = positiveNumber(spec.coverWidthMm);
+  const coverHeightMm = positiveNumber(spec.coverHeightMm);
+  const spineWidthMm = finiteNumber(spec.spineWidthMm);
+  const rawWingWidthMm = finiteNumber(spec.wingWidthMm) ?? 0;
+  if (
+    coverWidthMm === undefined ||
+    coverHeightMm === undefined ||
+    spineWidthMm === undefined ||
+    spineWidthMm < 0 ||
+    rawWingWidthMm < 0 ||
+    (spec.wingEnabled === true && rawWingWidthMm > 0)
+  ) {
+    return { content, cover: null, coverSkipReason: 'INVALID_SPEC' };
+  }
+
+  const outputWidthMm = positiveNumber(coverOutput.widthMm);
+  const outputHeightMm = positiveNumber(coverOutput.heightMm);
+  const recordedTrimWidthMm = positiveNumber(coverOutput.trimWidthMm);
+  const recordedTrimHeightMm = positiveNumber(coverOutput.trimHeightMm);
+  const wrapMm = positiveNumber(coverOutput.wrapMm);
+  const trimWidthMm = positiveNumber(templateTrimMm?.widthMm);
+  const trimHeightMm = positiveNumber(templateTrimMm?.heightMm);
+  if (
+    outputWidthMm === undefined ||
+    outputHeightMm === undefined ||
+    recordedTrimWidthMm === undefined ||
+    recordedTrimHeightMm === undefined ||
+    wrapMm === undefined ||
+    trimWidthMm === undefined ||
+    trimHeightMm === undefined ||
+    Math.abs(recordedTrimWidthMm - trimWidthMm) > COVER_GEOMETRY_EPSILON_MM ||
+    Math.abs(recordedTrimHeightMm - trimHeightMm) > COVER_GEOMETRY_EPSILON_MM
+  ) {
+    return { content, cover: null, coverSkipReason: 'GEOMETRY_INCONSISTENT' };
+  }
+
+  if (
+    Math.abs(coverWidthMm - (trimWidthMm + HARDCOVER_COVER_EXTRA_MM)) > COVER_GEOMETRY_EPSILON_MM ||
+    Math.abs(coverHeightMm - (trimHeightMm + HARDCOVER_COVER_EXTRA_MM)) > COVER_GEOMETRY_EPSILON_MM
+  ) {
+    return { content, cover: null, coverSkipReason: 'GEOMETRY_INCONSISTENT' };
+  }
+
+  // 워커 validateSpine(양장) 기대식과 동일: (W+8)×2 + 책등 + 40 / (H+8) + 40
+  const expected = hardcoverCoverSpreadFromSpine({
+    widthMm: trimWidthMm,
+    heightMm: trimHeightMm,
+    spineMm: spineWidthMm,
+  });
+  const expectedWidthMm = round2(expected.totalWMm);
+  const expectedHeightMm = round2(expected.totalHMm);
+  if (
+    Math.abs(expectedWidthMm - outputWidthMm) > COVER_GEOMETRY_EPSILON_MM ||
+    Math.abs(expectedHeightMm - outputHeightMm) > COVER_GEOMETRY_EPSILON_MM
+  ) {
+    return {
+      content,
+      cover: null,
+      coverSkipReason: 'GEOMETRY_INCONSISTENT',
+      coverGeometry: { expectedWidthMm, expectedHeightMm, outputWidthMm, outputHeightMm },
+    };
+  }
+
+  // 공식 입력은 주문 제본이 양장일 때만 — 미전달이면 서버 재계산이 양장 공식으로 이뤄진다는 근거가 없다.
+  const formulaInputs =
+    orderBinding === 'hardcover' ? formulaSpineInputs(metadata, spineSnapshot) : {};
+
+  return {
+    content,
+    cover: {
+      binding: 'hardcover',
+      size: { width: trimWidthMm, height: trimHeightMm },
+      spineWidthMm,
+      wingEnabled: false,
+      wingWidthMm: 0,
+      bleed: 0,
+      expectedOrientation: outputWidthMm > outputHeightMm ? 'landscape' : 'portrait',
+      ...formulaInputs,
+    },
+  };
+}
+
 /**
  * 주문 제본값 정규화 — 워커 허용 5종만 인정(대소문자·공백 무시). 그 밖('-'·한글·미전달)은
  * undefined → 호출측이 기존 값(metadata.binding ?? 'perfect')을 유지한다.
@@ -104,9 +240,13 @@ export function normalizeOrderBinding(raw: unknown): EditorValidationBinding | u
 /**
  * 편집기 스프레드 책 완료 세션의 검증 잡 보정값. 스프레드 스냅샷(metadata.spread.spec)이
  * 없으면 null(비스프레드·구 세션 = 현행 그대로).
+ *
+ * @param templateTrimMm 세션 템플릿셋 판형. 싸바리 전개 표지 판정에만 쓰며, 없으면 그 표지는
+ *   GEOMETRY_INCONSISTENT 로 연결을 생략한다. 싸바리 전개가 아닌 세션의 결과에는 영향이 없다.
  */
 export function deriveEditorSpreadValidationOverrides(
   metadataInput: unknown,
+  templateTrimMm?: EditorSpreadTemplateTrim | null,
 ): EditorSpreadValidationOverrides | null {
   const metadata = asRecord(metadataInput);
   const spread = asRecord(metadata?.spread);
@@ -124,11 +264,23 @@ export function deriveEditorSpreadValidationOverrides(
     ...(innerPages !== undefined ? { pages: innerPages } : {}),
   };
 
+  const coverOutput = asRecord(metadata.coverOutput);
+  if (coverOutput?.layout === HARDCOVER_WRAP_COVER_LAYOUT) {
+    return deriveHardcoverWrapCover(
+      metadata,
+      spec,
+      coverOutput,
+      content,
+      orderBinding,
+      spineSnapshot,
+      templateTrimMm,
+    );
+  }
+
   if (orderBinding === 'hardcover') {
     return { content, cover: null, coverSkipReason: 'HARDCOVER_GEOMETRY_UNVERIFIED' };
   }
 
-  const coverOutput = asRecord(metadata.coverOutput);
   const outputWidthMm = finiteNumber(coverOutput?.widthMm);
   const outputHeightMm = finiteNumber(coverOutput?.heightMm);
   const bleedMm = finiteNumber(coverOutput?.bleedMm);
@@ -177,15 +329,7 @@ export function deriveEditorSpreadValidationOverrides(
     };
   }
 
-  // 공식 출처일 때만 공식 입력을 싣는다 → 서버가 같은 v2 공식으로 재계산해 대조.
-  // 호스트 고정(appliedSpine.source='host')·템플릿 고정은 paperType 을 싣지 않아 서버가 덮지 않는다.
-  const appliedSource = asRecord(metadata.appliedSpine)?.source;
-  const formulaPaperType = nonEmptyString(spineSnapshot?.paperType);
-  const formulaPages = positiveInt(spineSnapshot?.pageCount);
-  const formulaInputs =
-    appliedSource === 'formula' && formulaPaperType && formulaPages !== undefined
-      ? { paperType: formulaPaperType, pages: formulaPages }
-      : {};
+  const formulaInputs = formulaSpineInputs(metadata, spineSnapshot);
 
   return {
     content,

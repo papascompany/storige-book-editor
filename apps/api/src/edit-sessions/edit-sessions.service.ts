@@ -1949,7 +1949,13 @@ export class EditSessionsService {
       let coverOrderOptions = orderOptions;
       let contentOrderOptions = orderOptions;
       if (process.env.EDITOR_SPREAD_VALIDATION_MAPPING !== 'off') {
-        const overrides = deriveEditorSpreadValidationOverrides(session.metadata);
+        // 템플릿셋 판형은 싸바리 전개 표지(coverOutput.layout='hardcover-wrap') 판정에만 쓰인다.
+        // 위에서 이미 조회한 templateSet 재사용(추가 조회 없음). 조회 실패·미연결이면 null →
+        // 싸바리 전개 표지는 연결 생략, 그 밖의 세션 결과는 판형 인자와 무관.
+        const templateTrimMm = templateSet
+          ? { widthMm: templateSet.width, heightMm: templateSet.height }
+          : null;
+        const overrides = deriveEditorSpreadValidationOverrides(session.metadata, templateTrimMm);
         if (overrides) {
           contentOrderOptions = { ...orderOptions, ...overrides.content };
           if (overrides.cover) {
@@ -1965,7 +1971,9 @@ export class EditSessionsService {
             // 기하 불일치는 편집기 출력 이상 신호라 warn.
             const note = `[validation-jobs] session ${session.id} 표지 책등 연결 생략(${overrides.coverSkipReason})`;
             if (overrides.coverSkipReason === 'GEOMETRY_INCONSISTENT') {
-              this.logger.warn(`${note} ${JSON.stringify(overrides.coverGeometry)}`);
+              this.logger.warn(
+                overrides.coverGeometry ? `${note} ${JSON.stringify(overrides.coverGeometry)}` : note,
+              );
             } else {
               this.logger.log(note);
             }
