@@ -6,6 +6,7 @@ import type { jsPDF } from 'jspdf'
 import FontPlugin from './FontPlugin'
 import { convertFabricObjectToSVGString, core, mmToPx, pxToMm } from '../utils'
 import { dlog } from '../utils/debugLog'
+import { computePdfPageGeometry } from './pdfPageGeometry'
 
 class ServicePlugin extends PluginBase {
   name = 'ServicePlugin'
@@ -267,6 +268,8 @@ class ServicePlugin extends PluginBase {
       bleedMm?: number
       /** 재단선(crop mark) 마커 표기 ON/OFF. (P3, 2026-06-10) */
       cropMarkEnabled?: boolean
+      /** 사방(per-edge) 싸바리 여분 mm. 양수일 때 페이지 = 콘텐츠 + wrapMm*2 (computePdfPageGeometry). */
+      wrapMm?: number
     },
     cutLine?: fabric.Object,
     dpi: number = 72,
@@ -632,6 +635,8 @@ class ServicePlugin extends PluginBase {
       bleedMm?: number
       /** 재단선(crop mark) 마커 표기 ON/OFF. (P3, 2026-06-10) */
       cropMarkEnabled?: boolean
+      /** 사방(per-edge) 싸바리 여분 mm. 양수일 때 페이지 = 콘텐츠 + wrapMm*2 (computePdfPageGeometry). */
+      wrapMm?: number
     },
     cutLine?: fabric.Object,
     returnBlob: boolean = false,
@@ -754,35 +759,17 @@ class ServicePlugin extends PluginBase {
             contentHeight = envelopeOption.size.height
           }
 
-          // ── P3 작업사이즈(재단+블리드) 게이팅 (2026-06-10) ──────────────────────
-          // 게이트: cropMarkEnabled === true && bleedMm > 0 일 때만 활성.
-          // OFF(기본) → 아래 모든 분기를 타지 않고 현행 trim 출력 100% 그대로 유지.
-          const bleedMm = size.bleedMm ?? 0
-          const useEditSize = !!size.cropMarkEnabled && bleedMm > 0 && !isEnvelope
-          // 렌더(SVG viewBox + svg2pdf) 기준 크기. 기본 = trim(콘텐츠). 게이트 ON 시 작업사이즈.
-          let renderWidth = contentWidth
-          let renderHeight = contentHeight
-          if (useEditSize) {
-            // 작업사이즈 = 재단(trim) + 사방 블리드*2. 콘텐츠 중심 불변(중앙원점 유지),
-            // 블리드 영역까지 viewBox 에 포함(클립 안 함).
-            renderWidth = contentWidth + bleedMm * 2
-            renderHeight = contentHeight + bleedMm * 2
-          }
-
-          // 2) 페이지 크기(mm) - 게이트 ON 시 작업사이즈, 아니면 printSize/콘텐츠 (현행)
-          let pageWidth = useEditSize ? renderWidth : contentWidth
-          let pageHeight = useEditSize ? renderHeight : contentHeight
-          if (!useEditSize && size.printSize && size.printSize.width && size.printSize.height) {
-            /// print size는 무조건 mm 단위
-            pageWidth = size.printSize.width
-            pageHeight = size.printSize.height
-          }
+          // 렌더/페이지 크기·오프셋(mm) — computePdfPageGeometry(순수 헬퍼).
+          // · wrapMm > 0(봉투 아님): 렌더 = 페이지 = 콘텐츠 + 사방 wrapMm, 오프셋 0, 마커·TrimBox 없음.
+          // · cropMarkEnabled && bleedMm > 0(봉투 아님): 렌더 = 페이지 = 작업사이즈(재단 + 블리드*2).
+          // · 그 밖: 렌더 = 콘텐츠, 페이지 = printSize 또는 콘텐츠, 중앙 배치.
+          const pageGeometry = computePdfPageGeometry(contentWidth, contentHeight, size, isEnvelope)
+          const { renderWidth, renderHeight, pageWidth, pageHeight, useEditSize, bleedMm } = pageGeometry
 
           const orientation = pageWidth >= pageHeight ? 'l' : 'p'
 
-          // 중앙 배치를 위한 오프셋(mm). 게이트 ON 시 페이지=렌더사이즈라 오프셋 0(가장자리부터 렌더).
-          let offsetX = Math.max(0, (pageWidth - renderWidth) / 2)
-          let offsetY = Math.max(0, (pageHeight - renderHeight) / 2)
+          let offsetX = pageGeometry.offsetX
+          let offsetY = pageGeometry.offsetY
 
           // 봉투 타입인 경우 direction에 따라 오프셋 조정
           if (isEnvelope) {
@@ -993,8 +980,8 @@ class ServicePlugin extends PluginBase {
                     canvas.remove(...outlinesForPage)
                   }
 
-                  // P3: 게이트 OFF 시 renderWidth===contentWidth 이므로 현행과 동일.
-                  // 게이트 ON 시 작업사이즈(=trim+bleed*2) viewBox → 중앙원점 유지, 블리드 포함.
+                  // viewBox = renderSize(중앙원점). 기본 = 콘텐츠, 게이트 ON 시 작업사이즈(trim+bleed*2),
+                  // 싸바리 출력 시 콘텐츠 + wrapMm*2 — 확장 영역까지 포함.
                   const svgWidth = unit === 'px' ? renderWidth : mmToPx(renderWidth)
                   const svgHeight = unit === 'px' ? renderHeight : mmToPx(renderHeight)
                   const background = canvas.getObjects().find((obj) => obj.id === 'template-background')
@@ -1013,20 +1000,20 @@ class ServicePlugin extends PluginBase {
                   }
                   // ── #2 export 방어 (2026-06-10, CTO 감사 §4-(라)-2) ──────────────────
                   // canvas.clipPath 가 workspace 사각형이면 toSVG 출력이 workspace 경계
-                  // (trim+cutSize px)로 클립된다. 게이트 ON(useEditSize) 시 viewBox 는
-                  // 작업사이즈(trim+bleedMm×2)로 확장되므로, 화면 cutSize 가 그보다 작은
-                  // 세션(레거시 저장본 등)은 블리드 링이 백지가 된다 → toSVG 동안만
+                  // (trim+cutSize px)로 클립된다. 게이트 ON(useEditSize) 또는 싸바리 출력(wrapMm) 시
+                  // viewBox 는 renderSize 로 확장되므로, 화면 cutSize 가 그보다 작은
+                  // 세션(레거시 저장본 등)은 확장 링이 백지가 된다 → toSVG 동안만
                   // workspace 클립을 renderSize(px)로 임시 확장 후 finally 에서 원복.
                   // - 대상: id==='workspace' 인 'rect' 클립만. page-outline/cutline 등
                   //   모양(shape) 클립과 extensionType==='clipping'(모양틀 워크스페이스)은
                   //   트림 모양 유지가 의도이므로 절대 건드리지 않음.
                   // - workspace 는 이미 renderSize 면 동일값 set = 사실상 no-op.
-                  // - useEditSize=false(게이트 OFF) → 일절 미개입 = 현행 byte-identical.
+                  // - expandClip=false(게이트 OFF·싸바리 출력 아님) → 일절 미개입.
                   const clipForExport = canvas.clipPath as
                     | (fabric.Object & { id?: string; extensionType?: string })
                     | undefined
                   const shouldExpandClip =
-                    useEditSize &&
+                    pageGeometry.expandClip &&
                     !!clipForExport &&
                     clipForExport.id === 'workspace' &&
                     clipForExport.type === 'rect' &&
@@ -1100,8 +1087,8 @@ class ServicePlugin extends PluginBase {
                   console.log(`페이지 ${i + 1} SVG->PDF 변환:`, { contentWidth, contentHeight, unit, dpi })
 
                   // DPI 정보를 포함한 SVG2PDF 옵션
-                  // P3: 게이트 OFF 시 renderWidth/offset === 현행 contentWidth/offset (무변경).
-                  // 게이트 ON 시 작업사이즈 SVG 를 작업사이즈 페이지에 매핑(offset 0).
+                  // 기본: 콘텐츠 크기 SVG 를 페이지 중앙(offset)에 매핑.
+                  // 게이트 ON·싸바리 출력: renderSize SVG 를 같은 크기 페이지에 매핑(offset 0).
                   const svg2pdfOptions = {
                     x: offsetX,
                     y: offsetY,
@@ -1128,7 +1115,7 @@ class ServicePlugin extends PluginBase {
                     }
                   }
 
-                  // ── P3: 코너 재단 마커 + TrimBox/BleedBox 등록 (게이트 ON 일 때만) ──
+                  // ── P3: 코너 재단 마커 + TrimBox/BleedBox 등록 (게이트 ON 일 때만, 싸바리 출력 제외) ──
                   // svg2pdf 변환 직후, 현재 페이지에 마커를 그리고 박스를 등록한다.
                   // 실패해도 throw 금지(현행 출력 보호) — try/catch 로 감싼다.
                   if (useEditSize) {

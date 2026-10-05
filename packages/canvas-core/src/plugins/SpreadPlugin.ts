@@ -40,6 +40,13 @@ import {
 // Plugin Options
 // ============================================================================
 
+/**
+ * 객체 자동 재배치(checkObjectsOutOfBounds) 경계.
+ * - 'content'  : 콘텐츠(재단) 영역
+ * - 'workspace': 표지(cover) 범위에서 콘텐츠 ± cutSizeMm/2 (워크스페이스 외곽). 내지(inner)는 콘텐츠 영역.
+ */
+export type SpreadRelocationBounds = 'content' | 'workspace'
+
 interface SpreadPluginOptions extends PluginOption {
   spec: SpreadSpec
   /**
@@ -58,6 +65,8 @@ interface SpreadPluginOptions extends PluginOption {
    * 호출측은 inner 모드에서도 placeholder 표지 spec 을 넘기므로 spec 은 required 유지(currentSpec 비-null 불변).
    */
   innerSpec?: SpreadInnerSpec
+  /** 객체 자동 재배치 경계. 미지정 시 'content'. */
+  relocationBounds?: SpreadRelocationBounds
 }
 
 // ============================================================================
@@ -73,6 +82,7 @@ class SpreadPlugin extends PluginBase {
   private currentLayout: SpreadLayout | null = null
   private isLayoutTransaction = false
   private conversionMode: SpreadConversionMode = 'full'
+  private relocationBounds: SpreadRelocationBounds = 'content'
 
   // 포토북 내지(inner) 펼침면 — regionScope==='inner' 일 때만 사용.
   // cover 모드에서는 모두 기본값(아래)이라 기존 cover 경로는 byte-identical 유지.
@@ -106,6 +116,7 @@ class SpreadPlugin extends PluginBase {
     this.conversionMode = options.conversionMode ?? 'full'
     this.regionScope = options.regionScope ?? 'cover'
     this.innerSpec = options.innerSpec ?? null
+    this.relocationBounds = options.relocationBounds ?? 'content'
   }
 
   /** 변환 모드 갱신 (spreadConfig 가 플러그인 생성 이후에 확정되는 로드 경로용) */
@@ -118,18 +129,37 @@ class SpreadPlugin extends PluginBase {
     return this.conversionMode
   }
 
-  /** 표지 없는 내지펼침면: 첫 캔버스가 표지 플러그인/가이드로 남는 것을 막는다. */
+  /** 객체 자동 재배치 경계 갱신. null/undefined 는 'content'. */
+  setRelocationBounds(bounds: SpreadRelocationBounds | null | undefined): void {
+    this.relocationBounds = bounds ?? 'content'
+  }
+
+  /** 현재 객체 자동 재배치 경계 */
+  getRelocationBounds(): SpreadRelocationBounds {
+    return this.relocationBounds
+  }
+
+  /** 표지 없는 내지펼침면: 첫 캔버스가 표지 플러그인/가이드로 남는 것을 막는다. 재배치 경계는 'content'. */
   adoptInnerSpec(spec: NonNullable<SpreadPluginOptions['innerSpec']>): void {
     this.regionScope = 'inner'
     this.innerSpec = spec
+    this.relocationBounds = 'content'
     this.initInner()
   }
 
-  /** 표지3분할/표지펼침면으로 되돌린다. 같은 탭에서 내지펼침면 다음에 열리면 regionScope 가 inner 로 남을 수 있다. */
-  adoptCoverSpec(spec: SpreadSpec, mode?: SpreadConversionMode | null): void {
+  /**
+   * 표지3분할/표지펼침면으로 되돌린다. 같은 탭에서 내지펼침면 다음에 열리면 regionScope 가 inner 로 남을 수 있다.
+   * 재배치 경계는 opts.relocationBounds, 없으면 'content'.
+   */
+  adoptCoverSpec(
+    spec: SpreadSpec,
+    mode?: SpreadConversionMode | null,
+    opts?: { relocationBounds?: SpreadRelocationBounds }
+  ): void {
     this.regionScope = 'cover'
     this.innerSpec = null
     this.conversionMode = mode ?? 'full'
+    this.relocationBounds = opts?.relocationBounds ?? 'content'
     this.init(spec)
   }
 
@@ -873,14 +903,17 @@ class SpreadPlugin extends PluginBase {
    *  2. `spreadObjectsOutOfBounds` 이벤트를 발행해 toast 표시
    *
    * 옵션: autoRelocate=false 로 비활성화 가능 (resizeSpine 호출 시 전달)
+   * 경계: relocationBounds==='workspace' 이고 표지(cover) 범위면 콘텐츠 ± cutSizeMm/2(워크스페이스 외곽),
+   *       그 밖에는 콘텐츠 영역.
    */
   private checkObjectsOutOfBounds(layout: SpreadLayout, autoRelocate: boolean = true): void {
     const origin = this.getContentOrigin()
     const objects = this._canvas.getObjects()
-    const minX = origin.x
-    const minY = origin.y
-    const maxX = origin.x + layout.totalWidthPx
-    const maxY = origin.y + layout.totalHeightPx
+    const margin = this.getRelocationMarginPx()
+    const minX = origin.x - margin
+    const minY = origin.y - margin
+    const maxX = origin.x + layout.totalWidthPx + margin
+    const maxY = origin.y + layout.totalHeightPx + margin
 
     const outOfBounds: any[] = []
     for (const obj of objects) {
@@ -939,6 +972,19 @@ class SpreadPlugin extends PluginBase {
         autoRelocated: autoRelocate,
       })
     }
+  }
+
+  /**
+   * 재배치 경계를 콘텐츠 바깥으로 넓히는 폭(px).
+   * 'workspace' + 표지(cover) 범위일 때 cutSizeMm/2 를 renderBleedBorder 와 같은 식((mm/25.4)*dpi)으로 환산.
+   * cutSizeMm·dpi 가 0 이하이거나 'content' 이면 0.
+   */
+  private getRelocationMarginPx(): number {
+    if (this.relocationBounds !== 'workspace' || this.regionScope !== 'cover') return 0
+    const cutSizeMm = this.currentSpec.cutSizeMm
+    const dpi = this.currentSpec.dpi
+    if (!cutSizeMm || cutSizeMm <= 0 || !dpi || dpi <= 0) return 0
+    return ((cutSizeMm / 2) / 25.4) * dpi
   }
 
   /**

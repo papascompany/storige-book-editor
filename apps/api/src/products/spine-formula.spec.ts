@@ -12,6 +12,9 @@ import {
   calcHardcoverCoverSpread,
   calcPerfectSpine,
   hardcoverCoverSpreadFromSpine,
+  hardcoverWrapFaceFromTrim,
+  HARDCOVER_WRAP_PER_SIDE_MM,
+  HARDCOVER_WRAP_MARGIN_MM,
   resolveSpinePaper,
 } from '@storige/types';
 
@@ -90,6 +93,39 @@ describe('양장 표지 전개(calcHardcoverCoverSpread) — mybookmake 골든 �
     const fromSpine = hardcoverCoverSpreadFromSpine({ widthMm: 210, heightMm: 297, spineMm: 8 });
     expect(full.ok && [full.totalWMm, full.totalHMm]).toEqual([fromSpine.totalWMm, fromSpine.totalHMm]);
   });
+});
+
+describe('양장 표지 면(hardcoverWrapFaceFromTrim) — 싸바리 전개와의 정합', () => {
+  it('한 변 싸바리 여분 = 총 여분의 절반(20mm)', () => {
+    expect(HARDCOVER_WRAP_PER_SIDE_MM).toBe(20);
+    expect(HARDCOVER_WRAP_PER_SIDE_MM * 2).toBe(HARDCOVER_WRAP_MARGIN_MM);
+  });
+
+  it('면 = 판형 + 8 (가로·세로 각각)', () => {
+    expect(hardcoverWrapFaceFromTrim({ widthMm: 210, heightMm: 297 })).toEqual({
+      faceWidthMm: 218,
+      faceHeightMm: 305,
+    });
+  });
+
+  const cases: Array<{ w: number; h: number; s: number; totalW: number; totalH: number }> = [
+    { w: 210, h: 297, s: 8, totalW: 484, totalH: 345 },
+    { w: 210, h: 210, s: 8, totalW: 484, totalH: 258 },
+    { w: 210, h: 297, s: 12, totalW: 488, totalH: 345 },
+    { w: 148, h: 210, s: 9, totalW: 361, totalH: 258 },
+  ];
+
+  it.each(cases)(
+    '$w×$h 책등 $s: 2·면 + 책등 + 2·20 = 전개 $totalW×$totalH',
+    ({ w, h, s, totalW, totalH }) => {
+      const face = hardcoverWrapFaceFromTrim({ widthMm: w, heightMm: h });
+      const spread = hardcoverCoverSpreadFromSpine({ widthMm: w, heightMm: h, spineMm: s });
+      expect(2 * face.faceWidthMm + s + 2 * HARDCOVER_WRAP_PER_SIDE_MM).toBe(spread.totalWMm);
+      expect(face.faceHeightMm + 2 * HARDCOVER_WRAP_PER_SIDE_MM).toBe(spread.totalHMm);
+      expect([spread.totalWMm, spread.totalHMm]).toEqual([totalW, totalH]);
+      expect([face.faceWidthMm, face.faceHeightMm]).toEqual([spread.coverWMm, spread.coverHMm]);
+    },
+  );
 });
 
 describe('무선 책등(calcPerfectSpine) — youshindang 골든 파리티', () => {

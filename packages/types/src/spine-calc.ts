@@ -301,6 +301,24 @@ export function hardcoverCoverSpreadFromSpine(params: {
   };
 }
 
+/** 싸바리(감싸기) 여분의 한 변 폭(mm) — 전개 가로/세로 각 변에 20mm(총합 HARDCOVER_WRAP_MARGIN_MM). */
+export const HARDCOVER_WRAP_PER_SIDE_MM = HARDCOVER_WRAP_MARGIN_MM / 2;
+
+/**
+ * 판형(trim)으로부터 양장 표지 한 면(앞/뒤표지 각각)의 크기 — 판형 + HARDCOVER_COVER_EXTRA_MM.
+ * 불변식: 2·faceWidthMm + spine + 2·HARDCOVER_WRAP_PER_SIDE_MM = hardcoverCoverSpreadFromSpine().totalWMm,
+ *         faceHeightMm + 2·HARDCOVER_WRAP_PER_SIDE_MM = totalHMm.
+ */
+export function hardcoverWrapFaceFromTrim(params: {
+  widthMm: number;
+  heightMm: number;
+}): { faceWidthMm: number; faceHeightMm: number } {
+  return {
+    faceWidthMm: params.widthMm + HARDCOVER_COVER_EXTRA_MM,
+    faceHeightMm: params.heightMm + HARDCOVER_COVER_EXTRA_MM,
+  };
+}
+
 /**
  * 두께표에서 지종 해석 — 정확 라벨 → aliases → 정규화 비교 순.
  * 미해석 시 undefined (호출측이 SPINE_PARAMS_UNRESOLVED 류로 처리).
