@@ -175,13 +175,13 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
 | 1 | owners API 첫 실호출(bookmoa·printy R-208) | 응답코드·지연을 운영 로그로 대조해 양사에 공유(양사 약속) |
 | 2 | 첫 실합성(사이트 키 + editSessionId) | `job.siteId` 스탬프·작업 세션 연결 저장·contentTrim 산출 크기(예 216×303) 대조, **소요 시간 초 단위 공유(당사 약속)** |
 | 3 | R-213 같은 탭 재오픈(bookmoa) | 실 e2e 재개 때 같은 탭 비회원 초안 이어 열기 1회 확인 |
-| 4 | 실 e2e 재개 시점 | 양사 미정(10-03 ACK). 재개 통지가 오면 1~3·5 를 함께 대조 |
+| 4 | 실 e2e 재개 시점 | **bookmoa 10-05 재개 결정**(오픈 전 최소 묶음: 동화책 207c458f 셀프편집 1건·owners·결속, PDF 업로드 주문 등 — 실행 시각 추후 통지, Storige 는 그 시간대 로그 동시 관찰·UTC 회신). printy 미정 |
 | 5 | 그 밖 첫 실사용(09-30 §4 계승) | R-206 운영자 대리 편집(grants·audit 행, 닫기 시 revoke) · 쪽수 파라미터 첫 실편집(`metadata.orderOptions`·재편집 보존·pageStep) · bookmoa 첫 실편집 2건(S4 스프링·flat-spine) · Storige 오너 관리자 화면 E2E 1회 · printy `paper_types` code 질의 예고 · bookmoa S10(WH-005 v2) 착수 통지 시 Storige 선행 |
 
 ### 5.2 오너 결정 대기
 
 - **Wave 6(10-05)**: ① 양장 표지 기준 = 업로드 검증 싸바리 전개 — 편집기 싸바리 출력 모드·api 검증 연결 구현(**템플릿 데이터 조건부, 현재 운영 활성 0세트 → 코드 배포만으로 출력 불변**), 내지 PDF 판형 우선은 싸바리 모드 한정(오너 O-3). **배포 완료 10-05**: push 11:59:16Z → editor `16moj714s`·admin `cyho5uda8` Ready 12:00Z → api 12:02:48Z + nginx([FLAGS] 동일) → 스모크 정상 → 완료 통지 3사(파트너 출력 변화 없음). 롤백: Vercel promote(editor `g0haka2nu`·admin `oylw176wy`) → api `rollback-pre-wave6`. 동화책 실제 반영 = 새 템플릿셋 복제(오너 O-1) — 새 표지 템플릿(면 판형+8)·bookmoa 고정 책등·기준 쪽수 합의·사전 통지 ACK 후 별도 승인. 후속: 기존 면≠판형 세트(동화책 낱장 7·A4 하드커버 2) 내지 크기는 저장 세션 실측 뒤 별건. ② 쪽 단위 = 일치 원칙: 207c458f 16~48·4 정리 완료(10-05 07:31:58Z, 백업 `~/backup-template_sets-207c458f-pre-pagestep4-20261005T073157Z.sql`), 불일치 콘솔 경고·admin 단위 표시 구현. ③ 책등 방식 = bookmoa 결정·Storige 그대로 등록(문서 반영). ④ 템플릿 제작 가이드 갱신(`6d15194`·`b987a81`, bookmoa 초안 v2 반영).
-- **쪽 단위 일치 후속(오너 결정 대기)**: bookmoa·printy 공통 상품 값 — A4 하드커버 16~300·4(f0335fda·83e6ec80), 교육·교재 16~500·2(a2cc2939·e66588b2). 이 4세트 템플릿셋은 아직 [10,100]·단위 없음 → 정렬하려면 운영 DB 쓰기 승인 + 호스트 값 없이 재진입하는 기존 세션 영향 사전 집계.
+- **쪽 단위 일치 — 공유 템플릿셋 4개 정렬 완료(오너 결정, 10-05 14:14:32Z)**: f0335fda·83e6ec80 [16,300]·4, a2cc2939·e66588b2 [16,500]·2 (백업 `~/backup-template_sets-shared4-pre-pagestep-20261005T141432Z.sql`). 범위 없이 재진입하는 기존 세션은 16쪽 미만이면 16쪽 증설·쪽수 기록 없는 초안은 단위 배수까지 완료 차단(1회 추가로 해소)·재편집 pageCount 를 보내면 최대 100 제한 해제. bookmoa 에 영향 세션 11건 사후 통지·실주문 여부 확인 요청(회신 대기), printy 영향 없음.
 - 템플릿 제작 가이드: Storige 소유. 10-05 오너 결정 기준으로 갱신 완료, bookmoa 초안이 오면 코드 대조 후 추가 반영.
 
 - **제본 최소 쪽수 vs 호스트 쪽수 범위**(10-05 발견, 양사 공통): 양사는 신규 편집에 항상 `bindingType=perfect` 를 보내고(spinePolicy 미설정), 편집기는 무선제본 최소 32쪽을 삭제 하한·설정 패널 한도에 적용한다 → 범위 최소 16 인 상품(bookmoa·printy 편집기 상품 4종 모두)에서 쪽을 늘리면 범위 최소로 되돌릴 수 없다(완료는 막지 않음). 오너 결정(10-05): bookmoa 에 사실 공유·검토 요청 → **bookmoa 오너 결정 '둘 다'**: ① Storige 에 '호스트 pageCountMin·Max 가 있으면 제본 최소·최대 대신 범위 적용' 요청(**Storige 오너 결정 10-05: Wave 5 로 착수 — 설계안 오너 보고 후 구현, 배포 별도 승인**, printy 도 이 안이면 코드 변경 0) ② bookmoa 는 양장 선택·하드커버 상품에 hardcover 전송 검토 — Storige 사실 회신 발신(207c458f 표지 flat-spread 라 책등 무변, f0335fda 는 책등 자동 계산형이라 hardcover 면 책등 약 +1.5mm(운영 margin perfect 0.5·hardcover 2.0), hardcover 는 서버 표지 크기 검증 미적용).
