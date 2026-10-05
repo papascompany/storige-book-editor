@@ -1,5 +1,31 @@
-import { apiClient } from './client'
+import axios from 'axios'
+import { apiClient, type RetryableRequestConfig } from './client'
 import { redactGuestTokenInError } from '../utils/redactGuestToken'
+import { describeError } from '../utils/safeErrorLog'
+import { classifyRequestFailure } from '../utils/embedFailurePolicy'
+
+/** 회원 세션 생성 요청 — 429 일 때만 자동 재시도한다. */
+const MEMBER_CREATE_CONFIG: RetryableRequestConfig = { __retryStatuses: [429] }
+
+/** 회원 세션 생성이 408·5xx 로 실패한 뒤 주문 목록 조회로도 세션을 찾지 못했을 때 다시 보내기 전 대기(ms) */
+export const MEMBER_CREATE_RESEND_DELAY_MS = 1000
+
+/** 주문 목록 조회로 복구를 시도할 회원 세션 생성 실패 — 408·5xx 응답 */
+function isRecoverableCreateFailure(err: unknown): boolean {
+  if (!axios.isAxiosError(err)) return false
+  const status = err.response?.status
+  return typeof status === 'number' && (status === 408 || status >= 500)
+}
+
+/** 주문 목록 항목이 이번 생성 요청과 같은 주문·mode·templateSetId 의 회원 세션인지 */
+function matchesMemberCreate(s: EditSessionResponse, payload: CreateEditSessionRequest, orderSeqno: number): boolean {
+  if (s.guestToken || s.guestExpiresAt != null) return false
+  return (
+    Number(s.orderSeqno) === orderSeqno &&
+    s.mode === payload.mode &&
+    (s.templateSetId || null) === (payload.templateSetId || null)
+  )
+}
 
 /** 게스트 토큰을 싣는 호출 — 실패 오류의 요청 설정에서 토큰 원문을 가린 뒤 같은 오류를 던진다. */
 async function withGuestTokenRedacted<T>(guestToken: string, call: () => Promise<T>): Promise<T> {
@@ -118,10 +144,41 @@ export interface EditSessionVersionSummary {
 export const editSessionsApi = {
   /**
    * 편집 세션 생성
+   *
+   * 429 일 때만 자동 재시도한다. orderSeqno 가 있는 요청이 408·5xx 로 실패하면 주문별 세션 목록을 한 번
+   * 조회해 같은 mode·templateSetId 의 회원 세션이 있으면 그 세션을 돌려주고, 없으면 1초 뒤 한 번만 다시
+   * 보낸다. 목록 조회가 401 로 실패하면 그 조회 오류를, 그 밖의 이유로 실패하면 원래 생성 오류를 던진다.
+   * 응답이 없는 실패와 그 밖의 응답은 바로 호출측으로 넘긴다.
    */
   create: async (payload: CreateEditSessionRequest): Promise<EditSessionResponse> => {
-    const response = await apiClient.post<EditSessionResponse>('/edit-sessions', payload)
-    return response.data
+    try {
+      const response = await apiClient.post<EditSessionResponse>('/edit-sessions', payload, MEMBER_CREATE_CONFIG)
+      return response.data
+    } catch (createErr) {
+      const orderSeqno = payload.orderSeqno
+      if (typeof orderSeqno !== 'number' || !(orderSeqno > 0) || !isRecoverableCreateFailure(createErr)) {
+        throw createErr
+      }
+
+      let sessions: EditSessionResponse[]
+      try {
+        sessions = (await editSessionsApi.findByOrder(orderSeqno)).sessions ?? []
+      } catch (lookupErr) {
+        console.warn('[editSessionsApi] Order lookup after create failure failed:', describeError(lookupErr))
+        // 401 은 인증 만료 처리(리스너 알림·화면 처리)를 따르도록 조회 오류를 그대로 던진다.
+        if (classifyRequestFailure(lookupErr).kind === 'auth') throw lookupErr
+        throw createErr
+      }
+      const existing = sessions.find((s) => matchesMemberCreate(s, payload, orderSeqno))
+      if (existing) {
+        console.log('[editSessionsApi] Using order session found after create failure:', existing.id)
+        return existing
+      }
+
+      await new Promise<void>((resolve) => setTimeout(resolve, MEMBER_CREATE_RESEND_DELAY_MS))
+      const response = await apiClient.post<EditSessionResponse>('/edit-sessions', payload, MEMBER_CREATE_CONFIG)
+      return response.data
+    }
   },
 
   /**
@@ -197,6 +254,7 @@ export const editSessionsApi = {
   /**
    * 게스트 편집 세션 생성 — 인쇄 워크플로우 v1 Phase 4 (2026-05-19).
    * 응답의 guestToken 을 sessionStorage 에 저장하고 이후 updateGuest 호출 시 토큰 동봉.
+   * 클라이언트 기본 재시도(408·429·5xx)를 쓴다 — 응답으로 받은 토큰의 세션을 이어 연다.
    */
   createGuest: async (payload: CreateEditSessionRequest): Promise<EditSessionResponse> => {
     const response = await apiClient.post<EditSessionResponse>('/edit-sessions/guest', {

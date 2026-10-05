@@ -20,6 +20,15 @@ const RETRY_CONFIG = {
   backoffMultiplier: 2, // 지수 백오프
 };
 
+/** 요청별 재시도 옵션 — 요청 설정(config)에 실어 보낸다. */
+export type RetryableRequestConfig = AxiosRequestConfig & {
+  __retryCount?: number;
+  /** 참이면 자동 재시도하지 않는다(__retryStatuses 보다 우선). */
+  __noRetry?: boolean;
+  /** 지정하면 이 목록과 기본 재시도 상태 코드에 모두 있는 상태 코드만 자동 재시도한다. */
+  __retryStatuses?: readonly number[];
+};
+
 // 에러 타입 정의
 export interface ApiError {
   code: 'NETWORK_ERROR' | 'TIMEOUT' | 'AUTH_EXPIRED' | 'SERVER_ERROR' | 'VALIDATION_ERROR' | 'UNKNOWN';
@@ -263,7 +272,7 @@ class ApiClient {
     this.client.interceptors.response.use(
       (response) => response,
       async (error: AxiosError) => {
-        const config = error.config as AxiosRequestConfig & { __retryCount?: number };
+        const config = error.config as RetryableRequestConfig | undefined;
 
         // 인증 만료 처리 — 사일런트 리프레시 1회 시도 후 재요청.
         // (포토북 다일 편집 중 액세스 토큰 1h 만료 → refreshToken 으로 자동 갱신.)
@@ -290,15 +299,16 @@ class ApiClient {
         const retryCount = config?.__retryCount || 0;
         // P1-4 (2026-08-22): 비멱등 POST(예: 버전 복원 — 매 호출마다 restore 스냅샷이 쌓임)는
         // 호출측이 __noRetry 로 자동 재시도를 끈다. 기본 동작(재시도)은 불변.
-        const noRetry = !!(config as AxiosRequestConfig & { __noRetry?: boolean } | undefined)?.__noRetry;
-        const shouldRetry =
-          config &&
-          !noRetry &&
-          retryCount < RETRY_CONFIG.maxRetries &&
-          error.response?.status &&
-          RETRYABLE_STATUS_CODES.includes(error.response.status);
+        const noRetry = !!config?.__noRetry;
+        // 요청별 __retryStatuses 가 있으면 그 상태 코드만 자동 재시도한다(예: 세션 생성은 429 만).
+        const status = error.response?.status;
+        const statusAllowed =
+          typeof status === 'number' &&
+          RETRYABLE_STATUS_CODES.includes(status) &&
+          (!config?.__retryStatuses || config.__retryStatuses.includes(status));
+        const shouldRetry = !!config && !noRetry && retryCount < RETRY_CONFIG.maxRetries && statusAllowed;
 
-        if (shouldRetry) {
+        if (config && shouldRetry) {
           config.__retryCount = retryCount + 1;
           const delay = RETRY_CONFIG.retryDelay * Math.pow(RETRY_CONFIG.backoffMultiplier, retryCount);
 

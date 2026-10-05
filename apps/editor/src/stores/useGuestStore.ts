@@ -16,6 +16,7 @@
 import { create } from 'zustand'
 import { editSessionsApi, EditSessionResponse } from '../api/edit-sessions'
 import { redactGuestTokenInError } from '../utils/embedSessionReopen'
+import { classifyRequestFailure } from '../utils/embedFailurePolicy'
 import { describeError } from '../utils/safeErrorLog'
 
 const STORAGE_KEY = 'storige_guest_session_v1'
@@ -40,7 +41,8 @@ interface GuestStoreState {
 
   /**
    * 게스트 세션을 보장. 없으면 새로 생성. 있으면 그대로.
-   * @returns 생성/복원된 EditSessionResponse 또는 null (실패)
+   * 같은 templateSetId·mode 로 진행 중인 호출이 있으면 그 결과를 함께 쓴다.
+   * @returns 생성/복원된 EditSessionResponse 또는 null (실패·저장된 세션 조회의 연결·서버 오류)
    */
   ensureGuestSession: (params: {
     templateSetId?: string
@@ -83,6 +85,71 @@ function saveToStorage(record: GuestRecord): void {
   }
 }
 
+type EnsureGuestSessionParams = Parameters<GuestStoreState['ensureGuestSession']>[0]
+
+interface GuestEnsureInFlight {
+  key: string
+  promise: Promise<EditSessionResponse | null>
+}
+
+/** 진행 중인 게스트 세션 보장 호출(모듈 범위 — store state 가 아니므로 리렌더를 일으키지 않는다) */
+let inFlight: GuestEnsureInFlight | null = null
+
+/** 진행 중인 게스트 세션 보장 호출의 공유를 끊는다 — 다음 호출은 새로 실행한다(테스트 초기화용). */
+export function resetGuestSessionInFlight(): void {
+  inFlight = null
+}
+
+async function runEnsureGuestSession(
+  params: EnsureGuestSessionParams,
+  get: () => GuestStoreState,
+): Promise<EditSessionResponse | null> {
+  // 이미 세션이 있고 templateSetId 가 일치하면 그대로 — 게스트 세션은 게스트 조회 경로로 읽는다
+  const current = get()
+  if (current.sessionId && current.guestToken && current.expiresAt && current.expiresAt > new Date()) {
+    try {
+      const existing = await editSessionsApi.getGuest(current.sessionId, current.guestToken)
+      if (existing && (!params.templateSetId || existing.templateSetId === params.templateSetId)) {
+        return existing
+      }
+    } catch (err) {
+      // 저장된 세션 조회가 4xx 로 거절되면 기록을 지우고 새로 만들고, 연결·서버 오류면 기록을 유지한 채
+      // null 을 돌려준다(오류 객체의 토큰 원문은 가린다).
+      redactGuestTokenInError(err, current.guestToken)
+      if (classifyRequestFailure(err).kind !== 'client') {
+        console.warn('[useGuestStore] getGuest failed — keeping stored guest session:', describeError(err))
+        return null
+      }
+      get().clearGuest()
+    }
+  }
+
+  // 신규 게스트 세션 생성
+  try {
+    const created = await editSessionsApi.createGuest({
+      mode: params.mode ?? 'both',
+      templateSetId: params.templateSetId,
+      canvasData: params.canvasData,
+      metadata: params.metadata,
+    })
+    // 응답에 게스트 토큰이 없으면 저장하지 않고 null 을 돌려준다.
+    if (!created.guestToken || !created.guestExpiresAt) {
+      console.warn('[useGuestStore] createGuest response missing guest credentials')
+      return null
+    }
+    get().setGuest({
+      sessionId: created.id,
+      guestToken: created.guestToken,
+      expiresAt: created.guestExpiresAt,
+      templateSetId: created.templateSetId,
+    })
+    return created
+  } catch (err) {
+    console.error('[useGuestStore] createGuest failed:', describeError(err))
+    return null
+  }
+}
+
 export const useGuestStore = create<GuestStoreState>((set, get) => ({
   sessionId: null,
   guestToken: null,
@@ -99,43 +166,18 @@ export const useGuestStore = create<GuestStoreState>((set, get) => ({
     }
   },
 
-  ensureGuestSession: async (params) => {
-    // 이미 세션이 있고 templateSetId 가 일치하면 그대로 — 게스트 세션은 게스트 조회 경로로 읽는다
-    const current = get()
-    if (current.sessionId && current.guestToken && current.expiresAt && current.expiresAt > new Date()) {
-      try {
-        const existing = await editSessionsApi.getGuest(current.sessionId, current.guestToken)
-        if (existing && (!params.templateSetId || existing.templateSetId === params.templateSetId)) {
-          return existing
-        }
-      } catch (err) {
-        // 세션이 만료되었거나 삭제됨 — 새로 생성(오류 객체의 토큰 원문은 가린다)
-        redactGuestTokenInError(err, current.guestToken)
-        get().clearGuest()
-      }
+  ensureGuestSession: (params) => {
+    // 같은 templateSetId·mode 로 진행 중인 생성이 있으면 그 결과를 함께 쓴다.
+    const key = `${params.templateSetId ?? ''}|${params.mode ?? 'both'}`
+    if (inFlight?.key === key) return inFlight.promise
+    const entry: GuestEnsureInFlight = {
+      key,
+      promise: runEnsureGuestSession(params, get).finally(() => {
+        if (inFlight === entry) inFlight = null
+      }),
     }
-
-    // 신규 게스트 세션 생성
-    try {
-      const created = await editSessionsApi.createGuest({
-        mode: params.mode ?? 'both',
-        templateSetId: params.templateSetId,
-        canvasData: params.canvasData,
-        metadata: params.metadata,
-      })
-      if (created.guestToken && created.guestExpiresAt) {
-        get().setGuest({
-          sessionId: created.id,
-          guestToken: created.guestToken,
-          expiresAt: created.guestExpiresAt,
-          templateSetId: created.templateSetId,
-        })
-      }
-      return created
-    } catch (err) {
-      console.error('[useGuestStore] createGuest failed:', describeError(err))
-      return null
-    }
+    inFlight = entry
+    return entry.promise
   },
 
   setGuest: (record) => {
