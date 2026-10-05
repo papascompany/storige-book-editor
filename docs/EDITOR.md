@@ -783,7 +783,7 @@ per-character `styles`(이탤릭·부분색)는 직렬화 리스트(`packages/ca
 `useEditorStore` `bindingType` 상태(기본 **null=제약없음** — perfect 기본값 금지로 비제본 32p 오적용 회귀 방지) + `canAddMorePages`/`canDeletePage`에 `BINDING_CONSTRAINTS` 적용(무선 min32 삭제차단, 중철 max64 추가차단). 책 로드 시 `config.bindingType`→`toBindingType` 주입, `SpreadPagePanel` 삭제가 `canDeletePage` 가드 경유 + 제본 안내 토스트. ※중철 4배수는 soft(후속).
 
 ### 19.7 운영 플래그
-`SPREAD_SNAPSHOT_HARD_FAIL`(api+worker 공용, 기본 미설정=SOFT). HARD 승격 시 ①편집완료 스냅샷/권위 누락·불일치 차단(api) ②compose-mixed cover MediaBox 불일치 차단(worker). ⚠️ 승격 전 worker 컨테이너 ENV 주입 확인(`docker exec storige-worker printenv SPREAD_SNAPSHOT_HARD_FAIL`). 상세 `docs/DEPLOYMENT.md`.
+`SPREAD_SNAPSHOT_HARD_FAIL`(api+worker 공용, 기본 `false`=SOFT, 정확히 `true` 일 때만 HARD). HARD 승격 시 ①편집완료 스냅샷/권위 누락·불일치 차단(api) ②compose-mixed cover MediaBox 불일치 차단(worker). `docker-compose.yml` 이 api·worker 양쪽에 `${SPREAD_SNAPSHOT_HARD_FAIL:-false}` 로 넘긴다(2026-10-05). HARD 전환은 오너 결정 뒤 별도 절차로 하며, api·worker 를 모두 재생성하고 `[FLAGS]` api·worker 두 줄이 같은 값인지 확인한다. 상세 `docs/DEPLOYMENT.md`.
 
 ### 19.8 영역 클릭 포커싱 편집 (PDF 핵심, `af69ac5`)
 통합 펼침면에서 영역(뒷표지/책등/앞표지/날개) 클릭 → 해당 영역 하이라이트 포커싱. **SpreadPlugin 단독 구현**(canvas-core)이라 편집기/embed UI 배선 불필요 → `/embed` 자동 작동:
@@ -807,7 +807,7 @@ per-character `styles`(이탤릭·부분색)는 직렬화 리스트(`packages/ca
 | 제본 페이지 가드 | `apps/editor/src/stores/useEditorStore.ts`, `hooks/useEditorContents.ts`, `components/PagePanel/SpreadPagePanel.tsx` |
 | 공용 타입/공식 | `packages/types/src/index.ts` (`computeSpreadDimensions`, `validateSpreadAgainstAuthority`, `SPINE_FORMULA_VERSION`, `BINDING_CONSTRAINTS`, `SpreadSnapshot`/`SpineSnapshot`/`SpreadValidationResult`) |
 | woff2ToTtf | `apps/api/src/library/` (`POST /library/woff2ToTtf`), `packages/canvas-core/src/plugins/FontPlugin.ts` |
-| 운영 플래그 | `SPREAD_SNAPSHOT_HARD_FAIL` (api/worker `.env`) |
+| 운영 플래그 | `SPREAD_SNAPSHOT_HARD_FAIL` (`.env` → `docker-compose.yml` api·worker 매핑) |
 
 ## §20 외부 사진 주입(공유방 갤러리 탭) + 캔버스 핀치줌 — ShareSnap 연동 신규 기능 (2026-06-12 구현·검증 완료)
 

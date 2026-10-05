@@ -136,9 +136,12 @@ VALIDATION_CONCURRENCY=3
 # 스프레드 책 스냅샷/크기 무결성 검증 모드 (api + worker 공용 토글). 미설정=SOFT(경고/기록만, 무중단).
 #  - api: 편집완료 시 metadata.spread/spine 누락·불일치 검증(완료 게이트).
 #  - worker: compose-mixed 합성 시 cover.pdf MediaBox vs 펼침면 총폭(metadata.spread) 대조.
-# 'true' 승격 시 양쪽 모두 HARD 차단(잘못된 펼침면 크기 인쇄사고 방지). 기본 미설정(SOFT).
-# ⚠️ HARD 승격 전 worker 컨테이너에도 ENV 주입 확인: docker exec storige-worker printenv SPREAD_SNAPSHOT_HARD_FAIL
-#    (미주입이면 docker-compose.yml 의 worker 서비스 environment 에 추가). SOFT 기간 worker_jobs.result.coverSizeValidation 모니터링 후 승격 권장.
+# 정확히 'true'(대소문자 구분)일 때만 HARD(잘못된 펼침면 크기 인쇄사고 방지). 그 밖의 값·미설정은 SOFT.
+# docker-compose.yml 이 api·worker 양쪽 environment 에 ${SPREAD_SNAPSHOT_HARD_FAIL:-false} 로 넘긴다(2026-10-05).
+# HARD 는 편집 완료 거부·합성 FAILED 로 파트너에게 보이는 전환이다 — 오너 결정 뒤 별도 절차로 하고,
+#   파트너 통지 필요 여부를 먼저 판단한다(아래 「파일 정리 · 스프레드 검증 키 compose 매핑」).
+# 전환 시 api·worker 를 모두 재생성하고(api 는 nginx 재시작) [FLAGS] api·worker 두 줄이 같은 값인지 확인한다.
+#   한쪽만 재생성하면 한쪽만 HARD 가 된다. SOFT 기간 worker_jobs.result.coverSizeValidation 모니터링 후 승격 권장.
 SPREAD_SNAPSHOT_HARD_FAIL=false
 ```
 
@@ -275,6 +278,7 @@ docker logs storige-worker 2>&1 | grep "\[FLAGS\]"
 - api 스냅샷 줄의 `FILE_RETENTION_*`·`FILE_ORPHAN_*` 값은 **env 계층 값**입니다. 관리자 저장소 설정(보존정책)이 함께 적용되므로 이 값만으로 실제 동작 모드를 판단하지 마십시오.
 - 보존정책의 실제 모드(삭제 여부·dry-run)는 `[FLAGS] api retention-effective` 줄 또는 관리자 저장소 설정 화면으로 확인합니다. 이 줄은 기동 시점 값이며, 관리자 화면에서 저장하면 런타임에 바뀝니다.
 - api 줄 끝에 `JOB_LINK_STRICT=false JOB_FILE_SITE_STRICT=false SESSION_JOB_OUTPUT_LOOKUP=false` 가 보이면 기본 상태입니다(2026-10-03 추가, 아래 환경 변수 설정의 「잡 생성 확인 · 잡 산출물 세션 조회 플래그」).
+- `FILE_ORPHAN_*`·`FILE_RETENTION_*`·`THUMBNAIL_CLEANUP_DRY_RUN`·`SPREAD_SNAPSHOT_HARD_FAIL` 은 `docker-compose.yml` 매핑으로 컨테이너에 전달되며, 기본값은 코드 기본값과 같습니다(2026-10-05, 아래 「파일 정리 · 스프레드 검증 키 compose 매핑」). `SPREAD_SNAPSHOT_HARD_FAIL` 은 api·worker 두 줄에 모두 있으며 두 값이 같아야 합니다.
 
 ### 5. 서비스 중지
 
@@ -293,6 +297,8 @@ docker-compose down -v
 ### API Server (.env 또는 docker-compose.yml)
 
 ```env
+# 컨테이너에는 docker-compose.yml 의 api environment 에 매핑된 키만 전달된다.
+# compose 에 매핑되지 않은 키는 .env 에 넣어도 컨테이너에 전달되지 않는다(매핑 여부는 docker-compose.yml 로 확인).
 NODE_ENV=production
 PORT=4000
 CORS_ORIGIN=https://yourdomain.com
@@ -362,6 +368,63 @@ GHOSTSCRIPT_PATH=/usr/bin/gs
 - api 전용이다. worker 에는 넣지 않는다.
 - `docker-compose.yml` api `environment` 의 매핑(`JOB_LINK_STRICT=${JOB_LINK_STRICT:-false}`, `JOB_FILE_SITE_STRICT=${JOB_FILE_SITE_STRICT:-false}`, `SESSION_JOB_OUTPUT_LOOKUP=${SESSION_JOB_OUTPUT_LOOKUP:-false}`)이 있어야 적용된다. `.env` 에만 넣고 매핑이 없으면 적용되지 않는다.
 - 현재 값은 api 기동 로그 `[FLAGS] api` 줄로 확인한다(위 「배포 후 점검」).
+
+### 파일 정리 · 스프레드 검증 키 compose 매핑 (api·worker, 2026-10-05)
+
+아래 키는 `docker-compose.yml` 이 `${VAR:-<기본값>}` 형태로 컨테이너에 넘긴다. `.env` 에 키가 없거나 값이 비어 있으면 기본값으로 동작하고, 기본값은 코드 기본값과 같다. 그래서 `.env` 에 키를 넣지 않았다면 매핑을 추가한 뒤에도 동작은 그대로다.
+
+| 변수 | 대상 컨테이너 | compose 매핑(기본값) | 값 해석 |
+|---|---|---|---|
+| `FILE_ORPHAN_ENABLED` | api | `${FILE_ORPHAN_ENABLED:-true}` | 정확히 `false` 일 때만 OFF, 그 밖의 값은 ON. 보존정책이 OFF 이면 고아 정리도 OFF |
+| `FILE_ORPHAN_DRY_RUN` | api | `${FILE_ORPHAN_DRY_RUN:-1}` | 정확히 `0` 일 때만 실제 정리, 그 밖의 값(`false` 포함)은 dry-run. 관리자 보존정책의 dry-run 과 OR 로 합쳐진다 |
+| `FILE_ORPHAN_GRACE_PENDING_HOURS` | api | `${FILE_ORPHAN_GRACE_PENDING_HOURS:-24}` | pending/failed 고아 후보 유예(시간). 1 이상의 숫자. 1 미만이거나 숫자가 아니면 24 |
+| `FILE_ORPHAN_GRACE_READY_DAYS` | api | `${FILE_ORPHAN_GRACE_READY_DAYS:-30}` | ready 고아 후보 유예(일). 1 이상의 숫자. 1 미만이거나 숫자가 아니면 30 |
+| `FILE_RETENTION_ENABLED` | api | `${FILE_RETENTION_ENABLED:-true}` | 정확히 `false` 일 때만 OFF. 관리자 저장소 설정 행에 값이 있으면 그 값이 우선 |
+| `FILE_RETENTION_DRY_RUN` | api | `${FILE_RETENTION_DRY_RUN:-0}` | 정확히 `1` 일 때만 dry-run(`true` 등 다른 값은 실제 정리). 관리자 저장소 설정 행에 값이 있으면 그 값이 우선 |
+| `FILE_RETENTION_BATCH` | api | `${FILE_RETENTION_BATCH:-200}` | 1회 처리 건수(보존정책·고아 정리 공유). 양의 정수로 넣는다. `0`·숫자가 아닌 값만 200 으로 바뀌고, 그 밖의 값(음수·소수 포함)은 그대로 쓰인다 |
+| `FILE_PURGE_GRACE_HOURS` | api | `${FILE_PURGE_GRACE_HOURS:-48}` | soft-delete 뒤 영구 삭제까지 시간. 0 보다 큰 숫자(1 이상 권장). 0 이하이거나 숫자가 아니면 48, 1 미만 값도 그대로 적용된다 |
+| `THUMBNAIL_CLEANUP_DRY_RUN` | api | `${THUMBNAIL_CLEANUP_DRY_RUN:-0}` | 정확히 `1` 일 때만 dry-run, 그 밖의 값은 실제 정리 |
+| `SPREAD_SNAPSHOT_HARD_FAIL` | api·worker | `${SPREAD_SNAPSHOT_HARD_FAIL:-false}` | 정확히 `true`(대소문자 구분)일 때만 HARD, 그 밖의 값은 SOFT(경고만). HARD 이면 api 는 스냅샷 누락·불일치 시 편집 완료를 거부하고, worker 는 compose-mixed 표지 크기 불일치 시 합성 잡을 `FAILED` 로 끝낸다 |
+| `EDITOR_SPREAD_VALIDATION_MAPPING` | api | `${EDITOR_SPREAD_VALIDATION_MAPPING:-on}` | 정확히 `off` 일 때만 해제(검증 잡은 주문 옵션 `orderOptions` 만 사용). 코드는 `off` 가 아닌 값을 모두 연결로 본다 — `on` 은 printenv 로 읽기 쉽게 하려는 표기다 |
+
+- 확인 위치: `FILE_ORPHAN_ENABLED`·`FILE_ORPHAN_DRY_RUN`·`FILE_RETENTION_ENABLED`·`FILE_RETENTION_DRY_RUN`·`THUMBNAIL_CLEANUP_DRY_RUN`·`SPREAD_SNAPSHOT_HARD_FAIL` 은 `[FLAGS]` 줄(위 「배포 후 점검」)로, 유예·건수·영구 삭제 시간과 `EDITOR_SPREAD_VALIDATION_MAPPING` 은 `[FLAGS]` 줄에 없으므로 `docker exec storige-api printenv <키>` 로 확인한다.
+- `LOG_LEVEL` 은 compose 에 매핑하지 않는다(아래 「모니터링 스택 환경변수」).
+- docker compose 는 셸에 export 된 변수를 `.env` 보다 먼저 쓴다. 값을 바꾸기 전에 배포 셸에 같은 이름이 export 돼 있지 않은지 이름만 확인한다(아래 명령의 출력이 없어야 한다).
+
+```bash
+env | cut -d= -f1 | grep -E '^(FILE_ORPHAN_|FILE_RETENTION_|FILE_PURGE_GRACE_HOURS$|THUMBNAIL_CLEANUP_DRY_RUN$|SPREAD_SNAPSHOT_HARD_FAIL$|EDITOR_SPREAD_VALIDATION_MAPPING$)'
+```
+
+**값 전환 절차**
+
+- `SPREAD_SNAPSHOT_HARD_FAIL=true`·`FILE_ORPHAN_DRY_RUN=0` 처럼 파트너에게 보이는 결과를 바꾸거나 파일을 실제로 지우는 전환(유예·영구 삭제 시간을 줄이는 것 포함)은 오너 결정 뒤 별도 절차로 한다. 파트너 통지가 필요한지 먼저 판단한다.
+- 절차: `.env` 값 변경 → 렌더링 값 확인(아래, `jq` 가 없으면 이 단계는 건너뛰고 재생성 뒤 printenv 로 같은 키를 확인) → 해당 서비스 재생성(빌드 없음) → api 면 nginx 재시작 → `[FLAGS]` 줄 또는 printenv 확인.
+- `SPREAD_SNAPSHOT_HARD_FAIL` 은 worker·api 를 모두 재생성하고 `[FLAGS]` api·worker 두 줄이 같은 값인지 확인한다. 한쪽만 재생성하면 한쪽만 HARD 가 된다.
+
+```bash
+cd ~/storige
+# 렌더링 값 확인 — 위 키만 추출한다(docker compose config 전체를 화면에 출력하지 않는다)
+docker compose config --format json 2>/dev/null | jq -c '{api: (.services.api.environment | with_entries(select(.key | test("^(FILE_ORPHAN_|FILE_RETENTION_|FILE_PURGE_GRACE_HOURS$|THUMBNAIL_CLEANUP_DRY_RUN$|SPREAD_SNAPSHOT_HARD_FAIL$|EDITOR_SPREAD_VALIDATION_MAPPING$)")))), worker: (.services.worker.environment | with_entries(select(.key == "SPREAD_SNAPSHOT_HARD_FAIL")))}'
+
+# 예: SPREAD_SNAPSHOT_HARD_FAIL 전환(오너 결정 뒤) — worker·api 모두 재생성
+docker compose up -d --no-build worker
+docker compose up -d --no-build api && docker compose restart nginx
+docker logs storige-worker 2>&1 | grep "\[FLAGS\]" | tail -1
+docker logs storige-api 2>&1 | grep "\[FLAGS\]" | tail -2
+```
+
+**`EDITOR_SPREAD_VALIDATION_MAPPING` 비상 차단**
+
+편집기 스프레드 책 세션의 검증 잡에 주문 제본·내지 쪽수·표지 책등 기하를 연결하는 동작을 끈다. 끄면 검증 잡은 주문 옵션(`orderOptions`)만 쓴다. 이 키는 `[FLAGS]` 줄에 나오지 않으므로 printenv 로 확인한다.
+
+```bash
+cd ~/storige
+# 1) .env 에 EDITOR_SPREAD_VALIDATION_MAPPING=off 를 넣는다(되돌릴 때는 줄을 지우거나 on)
+# 2) api 재생성 + nginx 재시작
+docker compose up -d --no-build api && docker compose restart nginx
+# 3) 값 확인 — off 가 나와야 한다
+docker exec storige-api printenv EDITOR_SPREAD_VALIDATION_MAPPING
+```
 
 ---
 
@@ -717,7 +780,8 @@ QUEUE_MONITOR_ENABLED=true
 QUEUE_MONITOR_BACKLOG_THRESHOLD=10
 QUEUE_MONITOR_INTERVAL_MS=60000
 QUEUE_MONITOR_COOLDOWN_MS=300000
-LOG_LEVEL=info  # debug 시 상세 로그 (Loki로 push됨)
+# LOG_LEVEL 은 docker-compose.yml 에 매핑돼 있지 않아 .env 에 넣어도 api·worker 에 전달되지 않는다.
+#   컨테이너는 NODE_ENV=production 이라 info 레벨로 기록한다(로컬 개발 기본은 debug).
 ```
 
 ---
@@ -949,21 +1013,35 @@ docker exec storige-redis redis-cli ZCARD bull:pdf-synthesis:delayed   # 재시�
 | `fail` | API 잡을 `FAILED` 로 기록했다(웹훅 대상이면 `synthesis.failed` 1회). `reason=non-retryable` 은 입력 오류, `exhausted` 는 마지막 시도의 실패다. `discard=yes` 면 남은 시도를 쓰지 않고 끝냈다 |
 | `completed` | 완료 마커가 있어 `FAILED` 대신 저장된 `COMPLETED` 를 다시 보고했다(같은 때 `[idempotent]` 줄도 남는다) |
 
-- 재시도 판정(`apps/worker/src/processors/synthesis-retry.ts`)
+- 재시도 판정(`apps/worker/src/processors/synthesis-retry.ts`, 2026-10-05 Wave 4 반영)
 
 | 오류 | 재시도 |
 |---|---|
 | 워커 오류 코드 `FILE_DOWNLOAD_FAILED`·`SPLIT_VERIFICATION_FAILED`·`EMPTY_OUTPUT_FILE`·`SERVICE_UNAVAILABLE`·`INTERNAL_ERROR` | 한다 |
-| 그 밖의 워커 오류 코드(쪽수 불일치·쪽 구분 값·세션/파일 없음·펼침면 스냅샷 등 입력 오류) | 하지 않는다(즉시 `FAILED`) |
+| 합성 입력 오류 코드 `PDF_LOAD_FAILED`(입력 PDF 를 열 수 없음)·`FILE_NOT_FOUND`(입력 파일 없음)·`INPUT_URL_REJECTED`(입력 주소를 쓸 수 없음) | 하지 않는다(즉시 `FAILED`) |
+| 그 밖의 워커 오류 코드(쪽수 불일치·쪽 구분 값·세션 없음·펼침면 스냅샷 등 입력 오류) | 하지 않는다(즉시 `FAILED`) |
 | HTTP 응답 5xx·408·425·429 | 한다 |
 | HTTP 응답 그 밖의 4xx | 하지 않는다(즉시 `FAILED`) |
-| 응답 없는 네트워크 오류, 파일·qpdf·gs 처리 오류, 그 밖의 오류 | 한다 |
+| 응답 없는 네트워크 오류·호스트 이름 확인 실패, 받는 도중 끊긴 입력, 입력 오류 코드로 바뀌지 않은 파일·qpdf·gs 처리 오류, 그 밖의 오류 | 한다 |
 
 - 워커 오류 코드가 붙은 오류는 코드로 판정하고, 코드가 없는 오류만 HTTP 응답 상태로 판정한다.
+- merge(`synthesize`·`external`)·compose-mixed·펼침면 합성은 입력 PDF(표지·내지·면지·펼침면)를 받거나 여는 단계의 입력 오류를 위 합성 입력 오류 코드로 바꿔 기록한다(`apps/worker/src/utils/synthesis-input.ts`). `WORKER_LIGHTWEIGHT_SYNTHESIS` ON·OFF 경로 모두에 적용한다. 입력 오류로 확정되지 않은 실패는 원래 오류 그대로 두어 재시도 대상이 된다. split·duplex-split 은 이 변경이 없다.
 - 펼침면 합성의 세션·파일 조회는 404 등 4xx(408·425·429 제외)면 `SESSION_NOT_FOUND`·`FILE_NOT_FOUND`(재시도 없음), 408·425·429·5xx·무응답이면 `SERVICE_UNAVAILABLE`(재시도)로 기록한다(`apps/worker/src/services/pdf-synthesizer.service.ts` `lookupFailureOrNull`).
 - 그 밖의 줄: `[SYNTH_RETRY] … discard=unavailable` 은 남은 시도를 버리는 호출을 쓸 수 없는 잡, `[SYNTH_RETRY] … settle-fallback=yes` 는 판정 중 예외가 나서 `FAILED` 로 기록했다는 뜻이다.
 - 처리 중 반복 중단(stalled 한도 초과)은 남은 시도와 관계없이 그 시점에 `FAILED`(`errorCode: 'JOB_STALLED'`)다. `[JOB_STALLED]` 줄은 위 절의 표와 같다. 중간 시도의 실패는 이 리스너가 다루지 않는다.
 - 합성 큐는 한 번에 1건씩 처리한다(`@Process('synthesize-pdf')`, 동시성 기본 1). 재처리 시간만큼 뒤 합성 잡의 시작이 늦어질 수 있다. 재시도 대기(delayed) 중인 잡은 처리 슬롯을 쓰지 않는다.
+
+**확인 로그 — 합성 입력 오류 (worker, 2026-10-05)**
+
+```bash
+docker logs storige-worker 2>&1 | grep -E "\[SYNTH_INPUT\]|합성 입력 오류 원문"
+#   [SYNTH_INPUT] input=<cover|content|endpaper|spread> code=<PDF_LOAD_FAILED|FILE_NOT_FOUND|INPUT_URL_REJECTED> cause=<원래 오류 이름|->
+#   합성 입력 오류 원문 input=<입력 역할> code=<코드>: <원래 오류 메시지>
+```
+
+- 평소에는 줄이 없다. 입력 오류 코드로 바꿀 때마다 두 줄을 남긴다. 그 잡은 재시도하지 않고 `FAILED` 로 끝난다(최대 시도가 2회 이상인 잡은 `[SYNTH_RETRY] … action=fail reason=non-retryable code=<코드>` 줄이 이어진다).
+- `[SYNTH_INPUT]` 줄은 `[SYNTH_RETRY]` 줄과 같이 오류 메시지·URL·경로를 남기지 않는다. `cause` 는 원래 오류의 이름이고, 형식이 맞지 않으면 `-` 다.
+- 원문 줄은 원래 오류 메시지(공백을 한 칸으로 줄이고 최대 500자)를 서버 로그에 남긴다. 원래 오류는 오류 추적 이벤트에도 남을 수 있다. 입력 경로·주소가 들어 있을 수 있으므로 로그를 밖으로 공유할 때는 이 줄을 빼거나 가린다. 원래 오류 메시지는 API 잡 응답과 웹훅에 실리지 않는다 — `FAILED` 의 `errorMessage` 는 코드에 대응하는 안내 문구, `errorDetail` 은 `{ input: <입력 역할> }` 이다(아래 「합성 입력 오류 · 실패 응답 정리 · 운영 키 매핑 배포」).
 
 **확인 로그 — 작업 상태 · 세션 연결 · 웹훅 발신 장부 (api)**
 
@@ -1020,6 +1098,87 @@ docker exec storige-redis redis-cli HGET bull:pdf-synthesis:<queueJobId> opts   
 3. worker 되돌리기: 1단계에서 되돌린 같은 checkout 에서 `docker compose build worker && docker compose up -d worker`. 1단계를 이미지로 되돌렸다면 worker 도 `storige-worker:rollback-pre-wave3` 을 `latest` 로 다시 지정하고 `docker compose up -d --no-build worker` 로 올린다.
 4. editor·admin: Vercel 에서 직전 배포를 다시 승격하거나, 커밋 revert 뒤 master push. IIFE 번들을 다시 만들었다면 VPS 에서 직전 커밋으로 `build:embed:prod` 를 다시 실행한다.
 - DB 마이그레이션이 없으므로 스키마 되돌리기는 없다. `SESSION_JOB_OUTPUT_LOOKUP` 은 기본 `false` 그대로 둔다.
+
+### 합성 입력 오류 · 실패 응답 정리 · 운영 키 매핑 배포 (2026-10-05, Wave 4)
+
+> api·worker·editor 와 `docker-compose.yml` 을 함께 바꾸는 배포다. DB 마이그레이션은 없다. compose 에 매핑을 더한 키(위 「파일 정리 · 스프레드 검증 키 compose 매핑」)는 기본값이 코드 기본값과 같아, `.env` 에 키를 넣지 않았다면 동작이 그대로다. editor 는 master push 로 Vercel 이 배포한다(위 「Vercel 배포 파이프라인」 절로 state 확인). 합성 실패 응답이 바뀌므로 파트너 사전 통지(`docs/partner-notices/PARTNER_NOTICE_WAVE4_2026-10-05.md`)의 ACK 를 master push 전에 받고, 오너 배포 승인 뒤에 배포한다. 계약 문서는 같은 push 로 공개되며, 바뀐 합성 동작의 적용 시점은 worker 배포 완료 통지 시각이다.
+
+**변경 내용**
+
+- worker — 합성 입력 오류: merge·compose-mixed·펼침면 합성의 입력 오류를 `PDF_LOAD_FAILED`·`FILE_NOT_FOUND`·`INPUT_URL_REJECTED` 로 기록하고 재시도하지 않는다(위 「작업 상태 고정 · 합성 재시도 · 세션 연결 기록 배포」의 재시도 판정표와 `[SYNTH_INPUT]` 로그).
+- worker — 합성 `FAILED` 오류 필드: merge(`synthesize`·`external`)·compose-mixed·펼침면 합성과 테스트 환경 합성(모든 mode)에 적용한다.
+  - `errorCode` 가 실린다. 워커 오류 코드이고, 코드가 없는 오류는 `SYNTHESIS_FAILED` 다.
+  - `errorMessage` 는 `errorCode` 에 대응하는 안내 문구다. 코드가 없는 오류는 `합성 처리 중 오류가 발생했습니다` 이고, 일부 코드의 문구에는 쪽수·치수 같은 입력 값이 들어간다.
+  - `errorDetail` 은 허용 키(`input`·`phase`·`httpStatus`·`target`·`expected`·`got`·`index`)의 원시값만 싣고, 남는 키가 없으면 싣지 않는다(잡의 `errorDetail` 은 `null`). 코드가 없는 HTTP 응답 오류는 `{ httpStatus }` 다.
+  - split·duplex-split(테스트 환경 제외)의 `FAILED` 는 그대로다. 파트너 계약 서술은 `docs/CONTRACT_FREEZE.md`·`docs/PLATFORM_INTEGRATION_GUIDE.md` 를 따른다.
+  - 별도 플래그는 없다. 되돌리기는 아래 롤백이다.
+- api — 잡 종결 후속 처리는 결과 파일 id 를 잡에 비어 있을 때만 기록한다(먼저 기록된 값 유지). 도서 확정(v1 books)의 상태 전이는 처리가 읽은 상태일 때만 쓰며, 같은 보고가 겹치면 먼저 쓴 처리만 도서 확정·웹훅을 한다. 쓰지 않게 된 산출 파일 행은 삭제 표시한다. 새 환경 변수는 없다.
+- editor — 회원 세션 생성(`POST /edit-sessions`)은 429 일 때만 자동 재시도한다. 주문 번호(`orderSeqno`)가 있는 요청이 408·5xx 로 실패하면 그 주문의 세션 목록을 조회해 같은 mode·templateSetId 의 회원 세션이 있으면 그 세션을 열고, 없으면 1초 뒤 한 번만 다시 보낸다. 비회원 세션 생성은 그대로다. IIFE 번들(`/embed/`)은 다시 만들지 않는다.
+- compose — api·worker 매핑 추가(위 표). `LOG_LEVEL` 은 매핑하지 않는다.
+
+**순서: 이미지 태그 보존 → 파트너 사전 통지 ACK → master push(editor 자동 배포, 문서 공개) → worker → api(+ nginx 재시작) → `[FLAGS]`·렌더링 값 확인 → 스모크 → 완료 통지.**
+
+```bash
+# 0) 직전 이미지 보존(이미지 롤백용)
+docker tag storige-api:latest storige-api:rollback-pre-wave4
+docker tag storige-worker:latest storige-worker:rollback-pre-wave4
+
+# 배포 전 [FLAGS] 줄 보관 — 배포 뒤 줄과 비교한다
+docker logs storige-api 2>&1 | grep "\[FLAGS\]" | tail -2
+docker logs storige-worker 2>&1 | grep "\[FLAGS\]" | tail -1
+
+cd ~/storige && git pull origin master
+
+# 셸 export 확인(출력이 없어야 한다)과 렌더링 값 확인(위 「파일 정리 · 스프레드 검증 키 compose 매핑」 절의 두 명령).
+#   렌더링 값은 표의 기본값과 같아야 한다. 다르면 .env 에 그 키가 있다는 뜻이므로 배포를 멈추고 값을 확인한다.
+#   docker compose config 전체를 화면에 출력하지 않는다(키를 추출하는 명령만 쓴다).
+
+# 1) worker 먼저 — 완료 시각(UTC)을 기록한다(완료 통지의 적용 시점)
+docker compose build worker && docker compose up -d worker
+docker logs storige-worker 2>&1 | grep "\[FLAGS\]" | tail -1   # … SPREAD_SNAPSHOT_HARD_FAIL=false WORKER_TRIMBOX_SIZE_CHECK=true
+
+# 2) 그다음 api — recreate 뒤 nginx 재시작 필수
+docker compose up -d --build api && docker compose restart nginx
+docker logs storige-api 2>&1 | grep "\[FLAGS\]" | tail -2      # 배포 전에 보관한 줄과 같아야 한다
+docker exec storige-api printenv EDITOR_SPREAD_VALIDATION_MAPPING   # on
+
+# 3) 스모크
+curl http://localhost:4000/api/health
+curl http://localhost:4001/health
+```
+
+- 배포 전후 `[FLAGS]` api·worker 줄은 같아야 한다. `SPREAD_SNAPSHOT_HARD_FAIL` 은 두 줄 모두 `false` 다.
+- 배포 뒤 합성 `FAILED` 에서 `[SYNTH_INPUT]` 줄이 보이면 입력 오류로 즉시 끝난 잡이다(위 「확인 로그 — 합성 입력 오류」).
+- api 확인 로그: `docker logs storige-api 2>&1 | grep -E "먼저 기록된 결과 파일 사용|상태가 이미 바뀜|다른 처리가 먼저 전이"` — 같은 잡·같은 도서 확정의 처리가 겹쳤을 때만 나온다. 평소에는 줄이 없다.
+
+**롤백 (Wave 4 전체)**
+
+1. api 를 먼저 되돌린다: 0단계에서 보존한 이미지를 `latest` 로 다시 지정하고 빌드 없이 올린 뒤 nginx 를 재시작한다.
+
+```bash
+docker tag storige-api:rollback-pre-wave4 storige-api:latest
+docker compose up -d --no-build api && docker compose restart nginx
+```
+
+2. 합성 큐의 재시도 대기(delayed)·처리 중(active)이 0 이 될 때까지 기다린 뒤 worker 를 되돌린다. 남은 잡은 그동안 Wave 4 worker 가 처리한다.
+
+```bash
+docker exec storige-redis redis-cli ZCARD bull:pdf-synthesis:delayed   # 재시도 대기
+docker exec storige-redis redis-cli LLEN bull:pdf-synthesis:active     # 처리 중
+```
+
+3. worker 되돌리기:
+
+```bash
+docker tag storige-worker:rollback-pre-wave4 storige-worker:latest
+docker compose up -d --no-build worker
+```
+
+4. compose 되돌리기: Wave 4 의 `docker-compose.yml` 변경을 되돌리는 revert 커밋을 저장소에 올리고, VPS 에서는 `git pull origin master` 로 받는다. VPS checkout(`~/storige`)에서 직접 `git revert` 하거나 파일을 고쳐 로컬 커밋·dirty 상태를 남기지 않는다. 받은 뒤 `docker compose up -d --no-build worker`, `docker compose up -d --no-build api && docker compose restart nginx` 로 다시 올린다. 매핑 키의 기본값이 코드 기본값과 같으므로 1~3단계의 이미지 롤백은 compose 되돌리기 전에 해도 된다.
+5. editor: Vercel 에서 배포 직전 운영 배포를 다시 승격한다(master push 전에 그 배포를 기록해 둔다).
+6. 롤백하면 파트너에게 통지하고, 계약 문서(`docs/CONTRACT_FREEZE.md`·`docs/PLATFORM_INTEGRATION_GUIDE.md`)를 되돌리는 커밋을 올린다. 롤백 전에 기록된 `FAILED` 잡의 `errorCode`·`errorMessage` 는 그대로 남는다.
+
+- DB 마이그레이션이 없으므로 스키마 되돌리기는 없다.
 
 ---
 
