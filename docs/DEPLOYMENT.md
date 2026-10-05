@@ -1180,6 +1180,37 @@ docker compose up -d --no-build worker
 
 - DB 마이그레이션이 없으므로 스키마 되돌리기는 없다.
 
+### 양장 표지 싸바리 출력 · 쪽 단위 확인 배포 (2026-10-05, Wave 6)
+
+> api·editor·admin 과 공용 패키지(`packages/types`·`packages/canvas-core`, editor 번들에 포함)를 바꾸는 배포다. worker·DB 스키마·compose 는 바뀌지 않는다. 양장 표지 싸바리 출력은 **템플릿 데이터가 조건을 만족할 때만** 켜지므로, 코드 배포만으로는 운영 편집기 출력·검증 결과가 바뀌지 않는다.
+
+**변경 내용**
+
+- editor — 양장 싸바리 출력 모드: 템플릿셋 `cover_type` 이 `hardcover_wrap` 이고, 표지 템플릿 면이 판형+8mm(±0.2)이며, caseBind·날개·표지 외곽선이 없고 내지 전용 세트가 아닐 때만 켜진다. 켜지면 표지 화면에 사방 20mm 싸바리 여분이 보이고, 표지 PDF 는 업로드 검증과 같은 싸바리 전개 크기((판형 폭+8)×2+책등+40 × (판형 높이+8)+40)로 출력되며, 비포토북 내지 PDF 는 템플릿셋 판형 크기다. 켜지지 않으면 표지·내지 출력은 이전과 같다(브라우저 콘솔에 꺼진 사유 1줄).
+- editor — 쪽 추가 단위: 호스트 `pageStep` 과 템플릿셋 쪽 단위가 다르면 호스트 값을 쓰고 브라우저 콘솔에 경고 1줄을 남긴다(동작 불변).
+- api — 편집 완료 표지 검증: 편집기가 싸바리 출력 메타(`metadata.coverOutput.layout='hardcover-wrap'`)를 기록하고 템플릿셋 판형·면·전개 크기가 맞을 때만 표지를 싸바리 전개 기준으로 검증한다. 그 밖의 세션은 이전과 같다.
+- admin — 템플릿셋 목록에 쪽 단위(`page_step`) 표시.
+
+**순서: master push(editor·admin 자동 배포) → api(+ nginx 재시작) → 스모크.** worker 는 재배포하지 않는다. api 는 구 editor 와도 동작이 같아(싸바리 메타가 없으면 이전 경로) 순서가 바뀌어도 안전하다.
+
+```bash
+# 0) 직전 이미지 보존
+docker tag storige-api:latest storige-api:rollback-pre-wave6
+
+cd ~/storige && git pull origin master
+docker compose up -d --build api && docker compose restart nginx
+docker logs storige-api 2>&1 | grep "\[FLAGS\]" | tail -2      # 배포 전과 같아야 한다
+curl http://localhost:4000/api/health
+```
+
+- 싸바리 출력 모드를 실제로 켜는 템플릿 데이터 반영(새 템플릿셋·표지 템플릿 등록)은 이 배포와 별도로, 오너 승인과 파트너 사전 통지 뒤 진행한다.
+
+**롤백 (Wave 6)**
+
+1. 템플릿 데이터를 반영했다면 먼저 되돌린다(템플릿셋 연결을 원래대로).
+2. editor·admin: Vercel 에서 배포 직전 운영 배포를 다시 승격한다.
+3. api: `rollback-pre-wave6` 이미지를 `latest` 로 다시 지정하고 빌드 없이 올린 뒤 nginx 를 재시작한다.
+
 ---
 
 ## 문제 해결
