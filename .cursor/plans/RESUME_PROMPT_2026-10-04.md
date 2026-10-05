@@ -69,17 +69,17 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
 
 ---
 
-## 2. 현재 라이브 상태 (2026-10-04 00:43Z — Wave 3 배포 후)
+## 2. 현재 라이브 상태 (2026-10-05 05:47Z — Wave 4 배포 후)
 
 | 구성 | 현재 운영 | 롤백 |
 |---|---|---|
 | DB | 09-30 Wave 1 ~ 10-04 Wave 3 **마이그레이션 없음**. 마지막 스키마 변경은 09-29 `20260929`·`20260930`(ADDITIVE) | 백업 `~/backup-sites-pre-staff-edit-20260929.sql`·`~/backup-template_sets-pre-padstep-20260928.sql`. 추가 컬럼·테이블은 남겨도 무해 |
-| api | `f63c8ae`(10-04 00:41Z) + nginx 재시작 | `storige-api:rollback-pre-wave3`(=`9e2a817`) → `rollback-pre-1003`(=`4f28e52`) → `rollback-pre-stage3` → …(태그 → `latest` 재지정 후 `up -d --no-build api` + nginx 재시작). **Wave 3 이전 코드로 되돌릴 때는 오너 승인 뒤 비공개 메모(`../_private_notes/wave3/`)의 데이터 정리 절차 먼저.** 롤백 순서 api → (합성 큐 delayed·active 소진 확인) → worker |
-| worker | `f63c8ae`(10-04 00:38Z) | `storige-worker:rollback-pre-wave3`(=`9e2a817`) → `rollback-pre-1003`(=`1c52c80`) → … |
-| editor | Vercel `qftv0kx8t`(`f63c8ae`, 00:35:37Z) | `65j5xwzgg`(`9e2a817`) → `dnmu12g57` promote. IIFE 번들(VPS `build:embed:prod`)은 미재빌드(파트너 미사용, 오너 결정 대기) |
-| admin | Vercel `oylw176wy`(`f63c8ae`, 00:35:20Z) | `l6f2dhp0f`(`9e2a817`) → `isxgg1mpv` promote |
+| api | `d3e3587`(10-05 05:47:10Z) + nginx 재시작 | `storige-api:rollback-pre-wave4`(=`f63c8ae`, c732d216145f) → `rollback-pre-wave3`(=`9e2a817`) → `rollback-pre-1003`(=`4f28e52`) → `rollback-pre-stage3` → …(태그 → `latest` 재지정 후 `up -d --no-build api` + nginx 재시작). **Wave 3 이전 코드로 되돌릴 때는 오너 승인 뒤 비공개 메모(`../_private_notes/wave3/`)의 데이터 정리 절차 먼저.** 롤백 순서 api → (합성 큐 delayed·active 소진 확인) → worker |
+| worker | `d3e3587`(10-05 05:44:29Z) | `storige-worker:rollback-pre-wave4`(=`f63c8ae`, eacd43c79dfb) → `rollback-pre-wave3`(=`9e2a817`) → `rollback-pre-1003`(=`1c52c80`) → … |
+| editor | Vercel `pwvgvgvhb`(`d3e3587`, 10-05 05:39:17Z 생성) | `qftv0kx8t`(`f63c8ae`) → `65j5xwzgg`(`9e2a817`) promote. IIFE 번들(VPS `build:embed:prod`)은 미재빌드(파트너 미사용, 오너 결정 대기) |
+| admin | Vercel `oylw176wy`(`f63c8ae`, 10-04 00:35:20Z — Wave 4 admin 변경 없음, 10-05 빌드 Canceled 정상) | `l6f2dhp0f`(`9e2a817`) → `isxgg1mpv` promote |
 
-- origin/master = `4120bab`(문서 커밋), VPS 체크아웃 = `f63c8ae`(운영 코드). 계약 정본 **CONTRACT_FREEZE v1.10**(`docs/CONTRACT_FREEZE.md` + `apps/api/src/contract-freeze.spec.ts`).
+- origin/master = VPS 체크아웃 = `d3e3587`(Wave 4, 이후 기록 커밋만 추가될 수 있음). 계약 정본 **CONTRACT_FREEZE v1.11**(`docs/CONTRACT_FREEZE.md` + `apps/api/src/contract-freeze.spec.ts`).
 - 플래그(운영 기동 로그 `[FLAGS]` 확인값):
 
 | 플래그 | 운영 값 | 비고 |
@@ -154,7 +154,7 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
 | 10-01 | **3단계 Wave A** — 작업 세션 연결 확인·목록·버전 회원 판정 통일·게스트 라우트 헤더 전용 | `7e252ba`·`558c293`·`4f28e52`(v1.8) | editor 09:47:22Z `6hv60qkny` → api 09:51Z + nginx |
 | 10-01 | **같은 탭 비회원 초안 이어 열기 복구** | `e97c3f5` | push 10:12:08Z → editor `dnmu12g57` |
 | 10-03 | **Wave 2** — 편집기 오류 code·문구·비회원 완료 안내, 합성·채움 내지 contentTrim, 운영자 감사 가드 단계 기록, `JOB_STALLED`, presigned complete 사이트 귀속(P4), files 관리자 판정 SUPER_ADMIN, 작업 사이트 결정 규칙 | `814d36e`·`73274ce`·`b0a04a9`·`a245b0f`·`03eca74`·`9e2a817`(v1.9) | push 04:51:41Z → editor `65j5xwzgg` → worker 04:55:41Z → api 04:58Z + nginx |
-| 10-05 | **Wave 4** — 합성 입력 오류 즉시 실패·합성 실패 응답 errorCode·안내 문구(FREEZE v1.11) · 종결 후속 처리 결과 기록 조건부 갱신·도서 확정 조건부 전진 · 편집기 회원 세션 생성 실패 시 주문 세션 재조회 · compose api·worker env 매핑 보강 · /embed 쪽수 범위 Playwright 스펙 | (아래 기록 커밋 참조) | **커밋 완료·배포 대기**(오너 배포 승인 → bookmoa·printy 사전 통지 ACK → push → worker → api + nginx). 절차는 `docs/DEPLOYMENT.md` Wave 4 절 |
+| 10-05 | **Wave 4** — 합성 입력 오류 즉시 실패·합성 실패 응답 errorCode·안내 문구(FREEZE v1.11) · 종결 후속 처리 결과 기록 조건부 갱신·도서 확정 조건부 전진 · 편집기 회원 세션 생성 실패 시 주문 세션 재조회 · compose api·worker env 매핑 보강 · /embed 쪽수 범위 Playwright 스펙 | `810214a`·`609290e`·`2dbad44`·`ffdf7f6`·`f20da08`·`38924fa`(v1.11)·`d3e3587` | 양사 사전 통지 ACK(bookmoa·printy 코드 변경 불필요 — 고객 화면 합성 errorMessage 미표시, errorCode 미사용) → 태그 `rollback-pre-wave4` → push 05:39:14Z → editor `pwvgvgvhb` Ready(admin Canceled 정상) → worker 05:44:29Z(**적용 시점**) → api 05:47:10Z + nginx([FLAGS] 배포 전과 동일, 신규 매핑 키 렌더링 = 코드 기본값) → 스모크 05:47Z(health 200, 무인증 401, 게스트 403, 오류·5xx 0, 큐 0) → 완료 통지 3사(100p 영향 없음). DB 마이그레이션 없음 |
 | 10-04 | **Wave 3** — 작업 상태 전이 가드·합성 큐 재시도(attempts 3)·확인된 세션 연결 저장(`session.*` 미발신)·getState 페이지 필드·편집기 잔여 문구·admin TrimBox 경고 표시·컴포넌트 테스트 환경 | `c94cdbc`·`6fdbd32`·`06a44f3`·`a24cd38`·`f63c8ae`(v1.10) | push 00:34:35Z → admin `oylw176wy`·editor `qftv0kx8t` → worker 00:38Z → api 00:41Z + nginx |
 
 - 기록 커밋: `305ff21`·`d09d1ff`·`e384d60`·`bbb9381`·`3ab801a`·`6d5b51d`·`af0db04`·`19333cb`·`4120bab`.
@@ -179,8 +179,7 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
 
 ### 5.2 오너 결정 대기
 
-- **Wave 4 배포 승인**(커밋 완료, 10-05). 배포 전 게이트: 운영 `.env` 신규 매핑 키 이름 확인·셸 export 확인·렌더링 값 확인(DEPLOYMENT Wave 4 절), 양사 ACK.
-- **bookmoa 동화책 하드커버 bindingType**(10-05 발견): bookmoa 는 신규 편집에 항상 `bindingType=perfect` 를 보내고, 편집기는 무선제본 최소 32쪽을 삭제 하한에 적용한다 → 16/48/4 상품에서 쪽을 추가하면 16쪽으로 되돌릴 수 없다(완료는 막지 않음). 선택: bookmoa 가 상품에 맞는 값 전송 / Storige 가 호스트 범위가 있으면 제본 최소를 범위로 대체 / 현행 유지.
+- **제본 최소 쪽수 vs 호스트 쪽수 범위**(10-05 발견, 양사 공통): 양사는 신규 편집에 항상 `bindingType=perfect` 를 보내고(spinePolicy 미설정), 편집기는 무선제본 최소 32쪽을 삭제 하한·설정 패널 한도에 적용한다 → 범위 최소 16 인 상품(bookmoa·printy 편집기 상품 4종 모두)에서 쪽을 늘리면 범위 최소로 되돌릴 수 없다(완료는 막지 않음). 오너 결정(10-05): bookmoa 에 사실 공유·검토 요청 → **bookmoa 오너 결정 '둘 다'**: ① Storige 에 '호스트 pageCountMin·Max 가 있으면 제본 최소·최대 대신 범위 적용' 요청(**Storige 오너 결정 대기**, printy 도 이 안이면 코드 변경 0) ② bookmoa 는 양장 선택·하드커버 상품에 hardcover 전송 검토 — Storige 사실 회신 발신(207c458f 표지 flat-spread 라 책등 무변, f0335fda 는 책등 자동 계산형이라 hardcover 면 책등 약 +1.5mm(운영 margin perfect 0.5·hardcover 2.0), hardcover 는 서버 표지 크기 검증 미적용).
 
 - **Wave B 플래그 전환**(`JOB_LINK_STRICT`·`JOB_FILE_SITE_STRICT`, 기본 false): **10-08 09:51Z 이후** 판단. 플래그는 이미 배포돼 env 만 바꾸면 된다. 기준·절차는 비공개 메모(`../_private_notes/wave2/`).
 - `SESSION_JOB_OUTPUT_LOOKUP`(기본 false) 전환: 전제·확인 절차는 비공개 메모(`../_private_notes/wave3/`).
