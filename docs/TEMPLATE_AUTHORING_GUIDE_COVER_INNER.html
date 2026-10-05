@@ -81,7 +81,7 @@
 
   <h1>표지·내지 템플릿 제작 가이드</h1>
   <p class="sub">표지펼침면(책등 고정) · 표지3분할(책등 가변) · 내지낱장 · 내지펼침면<br>
-  <span class="src">용어 정본: docs/PRINT_TEMPLATE_GLOSSARY.md · 2026-08-13 용어 정정 · 제작 규칙은 08-03 E2E 기준 · <b>최종 갱신 2026-10-05</b>(호스트 연동·표지 모드 결정 규약·양장 표지 규격·쪽 추가 단위)</span></p>
+  <span class="src">용어 정본: docs/PRINT_TEMPLATE_GLOSSARY.md · 2026-08-13 용어 정정 · 제작 규칙은 08-03 E2E 기준 · <b>최종 갱신 2026-10-05</b>(호스트 연동·표지 모드 결정 규약·양장 표지 규격·쪽 추가 단위·운영 예시)</span></p>
 
   <div class="toc">
     <a href="#s0">0. 결정 3개</a>
@@ -98,6 +98,7 @@
     <a href="#s8">8. 등록 절차·판형 규약</a>
     <a href="#s9">9. 호스트 파트너 연동</a>
     <a href="#s9-2">9-2. 표지 모드 결정 규약</a>
+    <a href="#s9-3">9-3. 운영 예시</a>
     <a href="#s10">10. 함정 체크리스트</a>
   </div>
 
@@ -662,13 +663,25 @@
   책등 폭은 호스트가 지정했던 값일 때만 이어 쓰고, 서버 계산값·템플릿값은 다시 계산한다.
   <span class="src">utils/hostSpine.ts resolveEffectiveSpineOptions()</span></div>
 
+  <div class="note"><b>이 표는 편집기 경로에만 해당한다.</b>
+  고객 업로드 PDF 검증은 템플릿 표지 모드를 보지 않고, 호스트가 보낸 검증 옵션(<code>orderOptions</code>)으로 검사한다(<code>docs/PDF_VALIDATION_GUIDE.md</code>).
+  편집기 표지에 실제 적용된 책등은 <code>editor.complete</code> 의 <code>spineWidthMm</code> 로 확인한다.
+  <ul class="plain" style="margin-top:6px">
+    <li><code>paperType</code>·<code>bindingType</code> 의 <code>'-'</code>·공백은 <b>미전달</b>로 처리한다 — 위 표의 '없으면' 동작을 따르고, 재편집이면 세션에 기록된 값을 이어 쓴다.</li>
+    <li><code>bindingType</code> 은 영문 코드 <code>perfect</code>·<code>saddle</code>·<code>spiral</code>·<code>hardcover</code> 4종으로 보낸다. 그 밖의 값(한글 표기 등)은 제본별 쪽수 한도가 적용되지 않고,
+      책등 가변 표지에서는 책등 계산 API 가 등록된 제본 코드만 받아 계산이 실패하므로 템플릿 책등(호스트가 <code>spineWidthMm</code> 를 보냈으면 그 값)이 쪽수와 무관하게 유지된다.</li>
+    <li>책등 가변 표지에서 호스트 <code>spineWidthMm=0</code> 은 <b>책등 영역에 객체가 있으면 적용되지 않고</b> 템플릿 책등이 유지된다.</li>
+  </ul>
+  <span class="src">utils/hostSpine.ts normalizeSpineCode() · hasSpineRegionObjects() · utils/spineCalculator.ts applyHostSpineWidthSpreadMode()(0mm 가드) · hooks/useEditorContents.ts toBindingType() · apps/api/src/products/spine.service.ts · docs/PLATFORM_INTEGRATION_GUIDE.md editor.complete</span></div>
+
   <h3 id="s9-2">9-2. 표지 책등 방식 결정 규약</h3>
   <div class="danger"><b>상품별 표지 모드(표지펼침면 = 책등 고정 / 표지3분할 = 책등 가변)는 호스트 파트너가 정한다.
   Storige 는 그 규약대로 템플릿을 제작·등록하고, 임의로 바꾸지 않는다.</b></div>
   <div class="tree">
     <div class="node a"><div class="q">1</div><div class="body">
       <div class="t">호스트 파트너가 상품의 표지 모드를 정해 알린다</div>
-      <div class="d">판형·제본·쪽수 범위·쪽 추가 단위와 함께 받는다. 책등 가변이면 <code>spineWidthMm</code> 또는 <code>paperType</code>+<code>bindingType</code> 을 보낼지도 함께 정한다.</div>
+      <div class="d">판형·제본·쪽수 범위·쪽 추가 단위와 함께 받는다. 책등 가변이면 <code>spineWidthMm</code> 또는 <code>paperType</code>+<code>bindingType</code> 을 보낼지도 함께 정한다.
+      <b>책등 고정 양장</b>이면 책등을 정할 <b>기준 쪽수</b>도 함께 정한다(§4-1).</div>
     </div></div>
     <div class="node a"><div class="q">2</div><div class="body">
       <div class="t">Storige 는 그 모드로 표지 템플릿을 만든다</div>
@@ -682,12 +695,45 @@
     </div></div>
     <div class="node b"><div class="q">4</div><div class="body">
       <div class="t">모드 변경은 호스트 결정으로만</div>
-      <div class="d">모드가 바뀌면 호스트가 보내야 할 값(책등·지종)과 책등 처리가 달라진다. 모드 변경은 호스트 파트너가 결정한 경우에만 하고, Storige 는 템플릿 교체 시점을 호스트에 미리 알린 뒤 교체한다.</div>
+      <div class="d">모드가 바뀌면 호스트가 보내야 할 값(책등·지종)과 책등 처리가 달라진다 —
+      <b>고정→가변</b>: 책등·지종을 보내지 않는 상품은 기본 용지(<code>mojo_80g</code>)와 호스트 제본 코드(없으면 <code>perfect</code>)로 서버가 계산한 책등이 들어간다(<code>mojo_80g</code> 는 기본 등록값에 v2 두께가 없어 v1 레거시 식으로 계산된다 — §5).
+      <b>가변→고정</b>: 호스트가 보낸 책등·지종은 무시되고 템플릿에 등록된 책등이 쓰인다.
+      스크립트로 <code>spreadConfig</code> 를 덮어써 <code>conversionMode</code> 를 잃는 것(미지정 = 표지3분할)도 모드 변경이다(§10 구조·등록).<br>
+      모드 변경은 호스트 파트너가 결정한 경우에만 하고, Storige 는 템플릿 교체 시점을 호스트에 미리 알린 뒤 교체한다.</div>
     </div></div>
   </div>
   <div class="note"><b>모드는 표지 템플릿의 <code>conversionMode</code> 로만 판정된다</b>(미지정 = <code>full</code> = 표지3분할).
   Admin 템플릿 목록의 <span class="pill p-ok">표지펼침면</span> / <span class="pill p-ac">표지3분할</span> / <span class="pill p-vi">내지펼침면</span> 태그로 등록 결과를 확인하라.
   <span class="src">packages/types/src/print-template.ts classifyPrintTemplate()</span></div>
+
+  <h3 id="s9-3">9-3. 운영 예시</h3>
+  <p>①은 한 호스트 파트너(북모아)가 실제 적용한 상품이다. ②·③은 같은 규칙으로 값을 보낼 때의 <b>일반 예시</b>이며, 특정 파트너 상품의 현재 설정을 뜻하지 않는다.</p>
+  <div class="tblwrap">
+  <table>
+    <tr><th>예시</th><th>연결 템플릿셋<br><span style="font-weight:400">표지 모드는 파트너 결정(§9-2)</span></th><th>파트너 전송</th><th>편집기 결과</th></tr>
+    <tr><td>① 하드커버 동화책<br><span class="pill p-ok">북모아 적용 · 2026-10</span></td>
+      <td><b>표지펼침면</b>(책등 고정) + 내지펼침면 한 세트<br>최소/최대 16~48쪽 · 페이지 증감 단위 4 — 파트너 상품등록 값과 같게(§7-3)</td>
+      <td><code>bindingType=hardcover</code> · <code>pageCountMin=16</code> · <code>pageCountMax=48</code> · <code>pageStep=4</code><br><b>책등·지종 미전달</b></td>
+      <td>책등 = 템플릿 등록값 · 펼침면 2장(4쪽)씩 추가·삭제 · 양장이라 제본별 최소·최대 없음</td></tr>
+    <tr><td>② 양장 · 책등 가변<br><span class="pill p-vi">일반 예시</span></td>
+      <td><b>표지3분할</b> 양장 전용 세트</td>
+      <td><code>bindingType=hardcover</code> · <code>paperType</code> · 파트너 계산 <code>spineWidthMm</code>(0 초과) · 쪽수 범위</td>
+      <td>시작 책등 = 파트너 값 · 쪽 증감 시 같은 지종으로 양장 공식 재계산(처음 쪽수로 돌아오면 파트너 값)</td></tr>
+    <tr><td>③ ②와 같은 상품의 무선 선택<br><span class="pill p-vi">일반 예시</span></td>
+      <td><b>표지3분할</b> 무선 전용 세트(제본별로 연결)</td>
+      <td><code>bindingType=perfect</code> · <code>paperType</code> · <code>spineWidthMm</code>(0 초과) · 쪽수 범위</td>
+      <td>무선 책등 · 쪽수 한도 = 보낸 범위 — <code>pageCountMin</code> 을 보내면 무선 최소 32쪽 대신 그 값</td></tr>
+  </table>
+  </div>
+  <ul class="plain">
+    <li><b>제본별로 세트를 나누는 이유</b> — 한 세트에 표지 모드는 하나뿐이고, 양장 표지는 치수(§4-1)가 무선과 다르다.
+      책등 공식(§5)은 세트가 아니라 호스트가 보낸 <code>bindingType</code> 으로 정해진다. 파트너는 제본 선택값에 맞는 템플릿셋으로 편집기를 연다.</li>
+    <li><b>①·②는 양장이라 §4-1 대상</b> — 표지 원고는 싸바리 전개 규격으로 만든다. 현 템플릿·편집기 산출 표지가 이 규격과 다르면 정합 작업 대상이다(진행 중).
+      ①처럼 책등 고정이면 책등은 파트너와 정한 <b>기준 쪽수의 양장 공식값</b>으로 둔다. 편집기 표지의 완료 검증 결과는 싸바리 규격 판정으로 쓰지 않는다.</li>
+    <li><b>①의 전제</b> — 표지 템플릿이 표지펼침면이어야 한다. 표지3분할로 바뀌면 지종을 보내지 않으므로 <b>기본 용지(<code>mojo_80g</code>)와 양장 제본 코드로 서버가 계산한 책등</b>(v1 레거시 식, §5)이 들어간다. 모드 변경은 §9-2 4단계 절차로.</li>
+    <li><b>쪽수 설정이 다르면</b> 현재는 파트너가 보낸 값이 적용된다(§7-3 '현재 동작'). 불일치 시 처리 방식은 별도 결정 사항이므로 ①처럼 같은 값으로 맞춰 운영한다.</li>
+  </ul>
+  <p class="src">utils/hostSpine.ts decideHostSpineAction() · isHostSpineFixed() · utils/spineCalculator.ts recalculateSpineWidthSpreadMode() · utils/hostPageLimits.ts bindingPageBounds() · packages/types/src/index.ts BINDING_CONSTRAINTS</p>
 
   <!-- ═══════════════════ 10 ═══════════════════ -->
   <h2 id="s10"><span class="n">10</span> 함정 체크리스트</h2>
@@ -767,7 +813,8 @@
     ③ §4-1 <b>양장 표지 규격</b> — 고객 업로드 검증 규격(싸바리 전개)을 작성 기준으로 확정, 이전 판의 "caseBind 합 28mm" 권장 철회, 편집기 출력 정합은 진행 중
     ④ §7-3 <b>쪽수·쪽 추가 단위</b> — 제본별 한도와 호스트 범위 우선, 템플릿셋 값은 호스트 상품등록 값과 같게(일치 원칙), 펼침면 단위 환산
     ⑤ §7 책모드 세트 구성 정정(표지+내지펼침면 한 세트 가능, 더미 PAGE 불필요 — 2026-08-14 서버 규칙)
-    ⑥ 함정 체크리스트를 §10 으로 옮기고 '호스트 연동·양장' 항목 추가.
+    ⑥ 함정 체크리스트를 §10 으로 옮기고 '호스트 연동·양장' 항목 추가
+    ⑦ §9-3 <b>운영 예시</b>(호스트 파트너 적용 1건 + 일반 예시 2건) · §9-1 '편집기 경로 한정'·제본 코드 note · §9-2 기준 쪽수·모드 변경 영향 보강.
     <br><br>
     <b>2026-08-03 갱신 요약</b> — 이 판에서 바뀐 것:
     ① §7 <b>펼침면 내지 등록이 열렸다</b>(이전 판의 "등록 경로 없음"은 부정확 — Admin 은 완비, API 검증 한 곳만 막고 있었음)
