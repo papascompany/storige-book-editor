@@ -28,6 +28,7 @@ import { TemplateSetType } from '@storige/types';
 import { templateSetsApi, TemplateSetWithOrientation } from '../../api/template-sets';
 import { templatesApi } from '../../api/templates';
 import { ThumbnailImage } from '../../components/ThumbnailImage';
+import { pageStepLabel } from './pageStepLabel';
 
 const { Title, Text } = Typography;
 
@@ -306,6 +307,9 @@ export const TemplateSetList = () => {
               {record.pageCountRange[0]}~{record.pageCountRange[record.pageCountRange.length - 1]}p
             </Text>
           )}
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            쪽 단위 {pageStepLabel(record.pageStep)}
+          </Text>
         </Space>
       ),
     },
