@@ -1,7 +1,7 @@
 # Storige 플랫폼 연동 가이드 (외부 파트너용)
 
 > **작성일:** 2026-06-20
-> **최종 갱신:** 2026-10-05 — 합성 입력 오류(`PDF_LOAD_FAILED`·`FILE_NOT_FOUND`·`INPUT_URL_REJECTED`) 즉시 `FAILED`·합성 실패 응답 `errorCode`·안내 문구 `errorMessage`·`errorDetail`(2.2 단계 5a) · 회원 세션 생성 서버 오류 시 같은 주문 세션으로 열기(3.3) · [이전 2026-10-03] 합성 작업 자동 재시도·작업 상태 고정·종결 웹훅 중복 생략·작업 응답 `editSessionId`(2.2 단계 5a·5b·1.7·5.2) · `session.*` 현재 미발신(5.2·3.3.3) · `editor.state` `pageCount`·`currentPage`·IIFE `getState()` 쪽수(3.2) · `sessionId` 단독 재오픈 실패 화면·편집기 '불러오기' 실패 `message` 고정 문구(3.1·3.2) · presigned `complete` 의 사이트 키(`X-API-Key`) 귀속(2.2·1.7) · 합성 산출 크기(2.3) · 작업 실패 코드 `JOB_STALLED`·`JOB_TIMEOUT_SWEPT`(2.2 단계 5a)·반복 중단 시 v1 최종화 실패(1.7) · 편집기 초기화 실패 code·고정 한국어 `message`(3.1·3.2) · `orderSeqno` 진입 실패 처리(3.3) · 첨부 채움본 크기(3.2) · 운영자 요청 감사 기록 범위(3.3.2) · 그 사이 변경은 각 절의 날짜 표기 참조 · [이전 2026-08-24] `editor.saved` 가 `ok:false, error:'EDITOR_BUSY'` 를 응답할 수 있음(3.2 표 하단) · 세션 API 테넌트 격리 확장: 회원 세션 상세/수정/완료/삭제/버전/목록/보관함 전부 JWT `siteId` ↔ 세션 `siteId` 대조(1.5) · [이전 2026-08-13] `compose-mixed` 빈 입력 `400 EMPTY_COMPOSE_INPUT` 승격(3.4) · 세션 자동조립 `assembleFromSession` 신설(3.4.1) · `compose-mixed` body `siteId` 하드닝(3.4)
+> **최종 갱신:** 2026-10-05 — 보낸 쪽수 범위(`pageCountMin`·`pageCountMax`)가 제본별 최소·최대 쪽수를 대신(3.1 상품별 쪽수 범위, 편집기 배포 완료 통지 시각부터) · 합성 입력 오류(`PDF_LOAD_FAILED`·`FILE_NOT_FOUND`·`INPUT_URL_REJECTED`) 즉시 `FAILED`·합성 실패 응답 `errorCode`·안내 문구 `errorMessage`·`errorDetail`(2.2 단계 5a) · 회원 세션 생성 서버 오류 시 같은 주문 세션으로 열기(3.3) · [이전 2026-10-03] 합성 작업 자동 재시도·작업 상태 고정·종결 웹훅 중복 생략·작업 응답 `editSessionId`(2.2 단계 5a·5b·1.7·5.2) · `session.*` 현재 미발신(5.2·3.3.3) · `editor.state` `pageCount`·`currentPage`·IIFE `getState()` 쪽수(3.2) · `sessionId` 단독 재오픈 실패 화면·편집기 '불러오기' 실패 `message` 고정 문구(3.1·3.2) · presigned `complete` 의 사이트 키(`X-API-Key`) 귀속(2.2·1.7) · 합성 산출 크기(2.3) · 작업 실패 코드 `JOB_STALLED`·`JOB_TIMEOUT_SWEPT`(2.2 단계 5a)·반복 중단 시 v1 최종화 실패(1.7) · 편집기 초기화 실패 code·고정 한국어 `message`(3.1·3.2) · `orderSeqno` 진입 실패 처리(3.3) · 첨부 채움본 크기(3.2) · 운영자 요청 감사 기록 범위(3.3.2) · 그 사이 변경은 각 절의 날짜 표기 참조 · [이전 2026-08-24] `editor.saved` 가 `ok:false, error:'EDITOR_BUSY'` 를 응답할 수 있음(3.2 표 하단) · 세션 API 테넌트 격리 확장: 회원 세션 상세/수정/완료/삭제/버전/목록/보관함 전부 JWT `siteId` ↔ 세션 `siteId` 대조(1.5) · [이전 2026-08-13] `compose-mixed` 빈 입력 `400 EMPTY_COMPOSE_INPUT` 승격(3.4) · 세션 자동조립 `assembleFromSession` 신설(3.4.1) · `compose-mixed` body `siteId` 하드닝(3.4)
 > **대상:** 외부 파트너 개발자
 > **상태:** 배포용 정본
 
@@ -839,12 +839,12 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 > 프로덕션에서 템플릿셋을 찾을 수 없거나(401·408·429 를 뺀 4xx 거절 포함) 편집기에 불러올 수 없으면 `editor.error {code:'TEMPLATE_SET_NOT_FOUND', templateSetId, fatal:true}` 를, 템플릿셋 조회·로드가 네트워크·타임아웃·서버 오류(5xx·408·429)로 실패하면 `editor.error {code:'NETWORK_ERROR', fatal:true}`(`templateSetId` 없음)를 보냅니다(2026-10-03). 인증 만료는 `AUTH_EXPIRED` 1회입니다(3.2 초기화 실패의 code).
 > **상품별 쪽수 범위·배수 (2026-09-29, ADDITIVE)** — `pageCountMin`·`pageCountMax`·`pageStep` 은 모두 선택이며, 보내지 않으면 템플릿셋 `pageCountRange`·`pageStep` 을 그대로 씁니다(종전과 동일).
 > - 값은 **물리 내지 쪽수**입니다(펼침면 내지 세트는 캔버스 1장 = 2쪽). 유효한 값은 호스트 `pageCount` 초기 보정, 내지 추가·삭제 상·하한(두 패널 모두), 편집완료 배수 검사에 템플릿셋 값 대신 적용됩니다.
-> - 제본별 최소·최대 쪽수(무선 최소 32쪽·중철 최대 64쪽 등)가 더 좁으면 계속 우선합니다. 단일(비스프레드) 편집 모드는 종전처럼 제본 제약을 적용하지 않습니다.
-> - **min 과 max 를 함께 보내세요.** 한쪽만 보내면 다른 쪽은 템플릿셋 값(현재 대부분 최대 100)을 씁니다. 상한이 없는 상품은 `pageCountMax=500`.
+> - 보낸 `pageCountMin` 은 제본별 최소 쪽수(무선 최소 32쪽)를, 보낸 `pageCountMax` 는 제본별 최대 쪽수(중철 최대 64쪽)를 대신합니다(2026-10-05). 보내지 않은 쪽은 템플릿셋 값과 제본별 값 중 좁은 쪽을 씁니다. 범위를 보낸 상품에서 그 쪽수로 실제 제작할 수 있는지는 호스트 상품 정의가 책임집니다 — 편집기는 이 경우 그 쪽의 제본 한도를 강제하지 않습니다. 업로드·첨부 PDF 검증(2.4)의 제본 규칙은 그대로입니다. 단일(비스프레드) 편집 모드는 제본 제약을 적용하지 않습니다.
+> - **min 과 max 를 함께 보내세요.** 한쪽만 보내면 보내지 않은 쪽은 위와 같이 템플릿셋 값(현재 대부분 최대 100)과 제본별 값 중 좁은 쪽을 씁니다. 상한이 없는 상품은 `pageCountMax=500`.
 > - `pageStep` 은 0부터 센 배수 조건입니다. `pageCountMin` 이 그 배수가 아니거나 범위 안에 배수가 없으면 무시됩니다. 표지 등 내지가 아닌 캔버스가 있는 단일 편집 템플릿에서도 무시되고 템플릿셋 값을 씁니다(단 `1` 은 제약 없음이라 그대로 적용). **`pageStep=1` 은 배수 제약 없음**입니다 — 템플릿셋에 단위가 있어도 무시하고, 편집완료 배수 검사를 하지 않으며, 템플릿셋 빈 페이지 자동 채움도 꺼집니다. 펼침면(2쪽/캔버스) 세트는 캔버스 단위라 여전히 2쪽씩 증감합니다(2026-09-29 추가).
 > - 무효값(정수 아님·1 미만·500 초과·`pageStep` 0·`pageCountMin` > `pageCountMax`)은 편집기가 무시하고 브라우저 콘솔 경고만 남깁니다 — 진입은 막히지 않습니다. 펼침면 내지 세트의 최대는 400쪽입니다.
 > - 첨부 PDF 표시전용(underlay) 모드는 종전처럼 쪽수 범위를 적용하지 않습니다(첨부 PDF 쪽수가 기준). 호스트 `pageStep` 이 템플릿셋과 다르면 템플릿셋 `padToPageStep` 자동 채움은 꺼지고 편집완료 배수 안내가 대신 표시됩니다.
-> - 신규 세션을 만들 때 유효한 값이 `metadata.orderOptions` 에 기록되어, `/embed?sessionId=` 단독 재편집에서도 복원됩니다(URL 값이 있으면 키별로 URL 우선). 이 기능 이전에 만든 세션은 템플릿셋 값을 씁니다.
+> - 신규 세션을 만들 때 유효한 값이 `metadata.orderOptions` 에 기록되어, `/embed?sessionId=` 단독 재편집에서도 복원됩니다(URL 값이 있으면 키별로 URL 우선). 이 기능 이전에 만든 세션은 템플릿셋 값을 씁니다. 범위가 기록되지 않은 세션(이 기능 이전 세션 포함)을 범위 없이 다시 열면 제본별 최소·최대가 계속 적용됩니다. 재편집 URL 에 범위를 함께 보내면 그 값이 우선합니다.
 > - 쪽수 범위가 적용된 세션은 재진입 시 **저장된 쪽수를 그대로 복원**합니다(URL `pageCount` 가 더 작아도 줄이지 않고, 너무 큰 값은 최대값으로 제한).
 
 > **`paperType`·`bindingType` 의 `'-'`·공백은 미전달로 취급합니다(2026-09-28).**
@@ -853,7 +853,7 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 > - 편집기를 열 때 이 값을 초기 책등으로 쓰고 책등 계산 API 를 호출하지 않습니다.
 > - `paperType`·`bindingType` 이 **둘 다** 있고 값이 0 보다 크면, 편집 중 내지 쪽수가 바뀔 때 책등을 다시 계산합니다(쪽수가 처음 값으로 돌아오면 호스트 값). 그 밖(코드 누락 또는 0)에는 **호스트 값으로 고정**합니다.
 > - 미전달이면 종전 동작(템플릿·책등 API) 그대로입니다. 재편집은 URL → 세션 주문 옵션 → 직전 완료의 호스트 고정값 순으로 복원합니다.
-> **쪽수 단위(`pageStep`, 2026-09-28 신설):** 템플릿셋 필드 `pageStep`(정수 ≥ 1, `null` = 제약 없음)이 설정된 세션은 **완료 payload 의 `pageCount` 와 같은 산식의 쪽수**가 그 배수여야 합니다(책·단일 모드 공통). 편집기의 `+`/삭제가 배수 단위로 움직이고, 호스트가 배수가 아닌 `pageCount` 로 열면 경고 배지를 띄우고 **완료를 막습니다**(UI 편집완료는 토스트만, 프로그래매틱 `complete()` 는 `editor.error {code:'INVALID_DATA'}` 후 reject — `editor.complete` 미발신). `pageCountRange`·제본 최소/최대와 동시에 만족해야 합니다. 서버 측 완료 검증은 하지 않습니다. 첨부 내지 PDF 쪽수를 이 배수로 자동으로 맞추려면 템플릿셋 `padToPageStep` 을 켭니다(3.3 첨부 이벤트 단락).
+> **쪽수 단위(`pageStep`, 2026-09-28 신설):** 템플릿셋 필드 `pageStep`(정수 ≥ 1, `null` = 제약 없음)이 설정된 세션은 **완료 payload 의 `pageCount` 와 같은 산식의 쪽수**가 그 배수여야 합니다(책·단일 모드 공통). 편집기의 `+`/삭제가 배수 단위로 움직이고, 호스트가 배수가 아닌 `pageCount` 로 열면 경고 배지를 띄우고 **완료를 막습니다**(UI 편집완료는 토스트만, 프로그래매틱 `complete()` 는 `editor.error {code:'INVALID_DATA'}` 후 reject — `editor.complete` 미발신). 유효 쪽수 범위(호스트 범위를 보낸 쪽은 그 값, 아니면 `pageCountRange`·제본 최소/최대)와 동시에 만족해야 합니다. 서버 측 완료 검증은 하지 않습니다. 첨부 내지 PDF 쪽수를 이 배수로 자동으로 맞추려면 템플릿셋 `padToPageStep` 을 켭니다(3.3 첨부 이벤트 단락).
 >
 > - ⚠️ `flat-spine` 템플릿의 책등 영역에 객체가 있으면 책등 0 은 적용되지 않고 템플릿 책등이 유지됩니다. 책등 없는 스프링은 전용 `flat-spread` 세트(책등 0)를 쓰세요. 실제 적용값은 `editor.complete` 의 `spineWidthMm` 로 확인하세요.
 > **표지 날개 권위 규칙(2026-08-03):** 판형·책등과 달리 날개는 **상품(주문) 옵션이 템플릿 spec 보다 우선**합니다.

@@ -780,7 +780,7 @@ per-character `styles`(이탤릭·부분색)는 직렬화 리스트(`packages/ca
 - **무결성 체인 완성**: 템플릿 권위 ⟵(B49) `metadata.spread` ⟵(P0-3) 실제 `cover.pdf` MediaBox.
 
 ### 19.6 A13 — 제본별 페이지 가드 (`7453bb1`)
-`useEditorStore` `bindingType` 상태(기본 **null=제약없음** — perfect 기본값 금지로 비제본 32p 오적용 회귀 방지) + `canAddMorePages`/`canDeletePage`에 `BINDING_CONSTRAINTS` 적용(무선 min32 삭제차단, 중철 max64 추가차단). 책 로드 시 `config.bindingType`→`toBindingType` 주입, `SpreadPagePanel` 삭제가 `canDeletePage` 가드 경유 + 제본 안내 토스트. ※중철 4배수는 soft(후속).
+`useEditorStore` `bindingType` 상태(기본 **null=제약없음** — perfect 기본값 금지로 비제본 32p 오적용 회귀 방지) + `canAddMorePages`/`canDeletePage`에 `BINDING_CONSTRAINTS` 적용(무선 min32 삭제차단, 중철 max64 추가차단). 책 로드 시 `config.bindingType`→`toBindingType` 주입, `SpreadPagePanel` 삭제가 `canDeletePage` 가드 경유 + 제본 안내 토스트. ※중철 4배수는 soft(후속). 호스트 쪽수 범위 세션은 보낸 쪽(min/max)의 제본 한도 미적용(W5, `bindingPageBounds`·`hostPageLimitSides`).
 
 ### 19.7 운영 플래그
 `SPREAD_SNAPSHOT_HARD_FAIL`(api+worker 공용, 기본 `false`=SOFT, 정확히 `true` 일 때만 HARD). HARD 승격 시 ①편집완료 스냅샷/권위 누락·불일치 차단(api) ②compose-mixed cover MediaBox 불일치 차단(worker). `docker-compose.yml` 이 api·worker 양쪽에 `${SPREAD_SNAPSHOT_HARD_FAIL:-false}` 로 넘긴다(2026-10-05). HARD 전환은 오너 결정 뒤 별도 절차로 하며, api·worker 를 모두 재생성하고 `[FLAGS]` api·worker 두 줄이 같은 값인지 확인한다. 상세 `docs/DEPLOYMENT.md`.
