@@ -94,6 +94,42 @@ services:
       # 잡 산출물 세션 조회 플래그(api 전용). 규칙 (A), 기본 false. 전환은 오너 결정 뒤 별도 절차.
       #   ⚠️ .env 에만 넣고 이 매핑을 빼면 silent no-op — 매핑 필수.
       - SESSION_JOB_OUTPUT_LOOKUP=${SESSION_JOB_OUTPUT_LOOKUP:-false}
+      # 파일 정리·보존 cron(api 전용). 기본값 리터럴은 코드 기본값과 같다 — .env 에 키가 없거나 빈 값이면 아래 리터럴로 동작한다.
+      #   코드 기본값을 바꾸면 이 줄도 같이 바꾼다. 빈 값 매핑(`:-`)으로 바꾸지 말 것.
+      #   ⚠️ .env 에만 넣고 이 매핑을 빼면 silent no-op — 매핑 필수.
+      #   FILE_ORPHAN_ENABLED: 정확히 `false` 일 때만 OFF, 그 밖의 값은 ON. 보존정책이 OFF 이면 고아 정리도 OFF.
+      #   FILE_ORPHAN_DRY_RUN: 정확히 `0` 일 때만 실제 정리, 그 밖의 값(`false` 포함)은 dry-run.
+      #     관리자 보존정책 dry-run 과 OR 로 합쳐진다.
+      #   FILE_ORPHAN_GRACE_PENDING_HOURS / FILE_ORPHAN_GRACE_READY_DAYS: 1 이상의 숫자(시간 / 일).
+      #     1 미만이거나 숫자가 아니면 각각 24 / 30.
+      #   FILE_RETENTION_ENABLED: 정확히 `false` 일 때만 OFF. FILE_RETENTION_DRY_RUN: 정확히 `1` 일 때만 dry-run
+      #     (`true` 등 다른 값은 실제 정리). 둘 다 관리자 저장소 설정 행 값이 있으면 그 값이 우선.
+      #   FILE_RETENTION_BATCH: 양의 정수로 넣는다(1회 처리 건수, 고아 정리와 공유). 0·숫자가 아닌 값만 200 으로
+      #     바뀌고, 그 밖의 값(음수·소수 포함)은 그대로 쓰인다.
+      #   FILE_PURGE_GRACE_HOURS: 0 보다 큰 숫자(soft-delete 뒤 영구 삭제까지 시간, 1 이상 권장).
+      #     0 이하이거나 숫자가 아니면 48. 1 미만 값도 그대로 적용된다.
+      #   FILE_ORPHAN_DRY_RUN=0 처럼 실제 정리로 바꾸는 전환은 오너 결정 뒤 별도 절차(docs/DEPLOYMENT.md).
+      #     절차: .env 값 변경 → docker compose up -d api(빌드 없음) → nginx 재시작 → [FLAGS] api 줄 확인.
+      - FILE_ORPHAN_ENABLED=${FILE_ORPHAN_ENABLED:-true}
+      - FILE_ORPHAN_DRY_RUN=${FILE_ORPHAN_DRY_RUN:-1}
+      - FILE_ORPHAN_GRACE_PENDING_HOURS=${FILE_ORPHAN_GRACE_PENDING_HOURS:-24}
+      - FILE_ORPHAN_GRACE_READY_DAYS=${FILE_ORPHAN_GRACE_READY_DAYS:-30}
+      - FILE_RETENTION_ENABLED=${FILE_RETENTION_ENABLED:-true}
+      - FILE_RETENTION_DRY_RUN=${FILE_RETENTION_DRY_RUN:-0}
+      - FILE_RETENTION_BATCH=${FILE_RETENTION_BATCH:-200}
+      - FILE_PURGE_GRACE_HOURS=${FILE_PURGE_GRACE_HOURS:-48}
+      # 버전 썸네일 정리 dry-run(api 전용). 정확히 `1` 일 때만 dry-run, 그 밖의 값은 실제 정리(기본).
+      - THUMBNAIL_CLEANUP_DRY_RUN=${THUMBNAIL_CLEANUP_DRY_RUN:-0}
+      # 스프레드 스냅샷 HARD 차단. 정확히 `true`(대소문자 구분)일 때만 HARD, 그 밖의 값은 SOFT(경고만, 기본).
+      #   HARD 이면 스냅샷 누락·불일치 시 api 는 편집 완료를 거부하고, worker 는 compose-mixed 표지 크기
+      #   불일치 시 합성 잡을 FAILED 로 끝낸다.
+      #   `true` 전환은 오너 결정 뒤 별도 절차(docs/DEPLOYMENT.md).
+      #   ★ worker 에도 같은 키가 있다 — 전환 시 worker·api 모두 재생성하고 [FLAGS] 두 줄을 확인한다.
+      - SPREAD_SNAPSHOT_HARD_FAIL=${SPREAD_SNAPSHOT_HARD_FAIL:-false}
+      # 편집기 스프레드 책 검증 옵션 연결(api 전용). 정확히 `off` 일 때만 해제(검증 잡은 주문 옵션 orderOptions 만 사용).
+      #   코드는 `off` 가 아닌 값을 모두 연결로 본다 — `on` 은 printenv 로 읽기 쉽게 하려는 표기다.
+      #   [FLAGS] 줄에는 없으므로 docker exec storige-api printenv 로 확인한다.
+      - EDITOR_SPREAD_VALIDATION_MAPPING=${EDITOR_SPREAD_VALIDATION_MAPPING:-on}
     volumes:
       - ./storage:/app/storage
     depends_on:
@@ -209,6 +245,12 @@ services:
       # 디코드 픽셀 예산(기본 40MP ≈ 8000×5000). 바이트 상한만으로는 단색 대형 이미지가
       #   수백 KB 로 통과해 디코드 시점에 메모리를 폭증시킨다(sharp 기본 상한은 268MP).
       - CUTOUT_MAX_INPUT_PIXELS=${CUTOUT_MAX_INPUT_PIXELS:-40000000}
+      # 스프레드 스냅샷 HARD 차단(compose-mixed 합성 표지 크기 대조). 정확히 `true`(대소문자 구분)일 때만 HARD,
+      #   그 밖의 값은 SOFT(경고만, 기본). 기본값 리터럴은 코드 기본값과 같다 — 빈 값 매핑(`:-`)으로 바꾸지 말 것.
+      #   ⚠️ .env 에만 넣고 이 매핑을 빼면 silent no-op — 매핑 필수.
+      #   `true` 전환은 오너 결정 뒤 별도 절차(docs/DEPLOYMENT.md).
+      #   ★ api 에도 같은 키가 있다 — 한쪽만 재생성하면 반쪽 HARD 가 된다. [FLAGS] api·worker 두 줄 확인.
+      - SPREAD_SNAPSHOT_HARD_FAIL=${SPREAD_SNAPSHOT_HARD_FAIL:-false}
       # Sentry (DSN 미설정 시 silent 동작)
       - SENTRY_DSN=${SENTRY_DSN_WORKER:-}
       - SENTRY_ENVIRONMENT=${SENTRY_ENVIRONMENT:-production}
