@@ -25,6 +25,7 @@ import {
   orderOptionsOf,
   pageStepAlert,
   readEditorStoreLimits,
+  readSettingsPageBounds,
   saveNow,
   toast,
   TS_A_ID,
@@ -279,7 +280,7 @@ test.describe(
   '현재 동작 기록',
   {
     tag: '@characterization',
-    annotation: { type: 'characterization', description: '현재 시작 쪽수·삭제 한도 기록' },
+    annotation: { type: 'characterization', description: '현재 시작 쪽수 기록' },
   },
   () => {
     test('pageCount 없이 범위만 주면 템플릿 내지 수로 시작한다', async ({ context, page }, testInfo) => {
@@ -294,43 +295,57 @@ test.describe(
       await expectNoEditorError(page)
       expectHarnessClean(mock, [diag], testInfo)
     })
-
-    test('무선제본 16쪽(표지3분할 + 내지낱장)의 현재 시작 쪽수와 삭제 한도', async ({ context, page }, testInfo) => {
-      const { mock, diag, frame } = await openNew(context, page, {
-        templateSetId: TS_A_ID, orderSeqno: 910013, pageCount: 16, pageCountMin: 16, pageCountMax: 300, pageStep: 4,
-        bindingType: 'perfect',
-      })
-      // 현재 시작 쪽수 기록
-      await expectPageCount(page, 16)
-      testInfo.annotations.push({ type: 'characterization', description: 'TS-A 16/300/4 · bindingType=perfect · pageCount=16 → 시작 16쪽' })
-      await clickDeleteLastPage(frame)
-      await expect(toast(frame, '무선제본은 최소 32페이지가 필요해 더 삭제할 수 없습니다.')).toBeVisible()
-      await expectPageCount(page, 16)
-      testInfo.annotations.push({ type: 'characterization', description: '16쪽에서 삭제 → 무선제본 최소 32페이지 토스트, 16쪽 유지' })
-      await addPages(page, frame, [20])
-      await expectNoEditorError(page)
-      expectHarnessClean(mock, [diag], testInfo)
-    })
-
-    test('무선제본 16쪽(표지펼침면 + 내지펼침면)의 현재 시작 쪽수와 추가 후 삭제 한도', async ({ context, page }, testInfo) => {
-      const { mock, diag, frame } = await openNew(context, page, {
-        templateSetId: TS_D_ID, orderSeqno: 910044, pageCount: 16, pageCountMin: 16, pageCountMax: 48, pageStep: 4,
-        bindingType: 'perfect',
-      })
-      // 현재 시작 쪽수 기록
-      await expectPageCount(page, 16)
-      expectAllOrderOptions(mock, { pageCount: 16, pageCountMin: 16, pageCountMax: 48, pageStep: 4 })
-      testInfo.annotations.push({ type: 'characterization', description: 'TS-D 16/48/4 · bindingType=perfect · pageCount=16 → 시작 16쪽' })
-      await addPages(page, frame, [20])
-      await clickDeleteLastPage(frame)
-      await expect(toast(frame, '무선제본은 최소 32페이지가 필요해 더 삭제할 수 없습니다.')).toBeVisible()
-      await expectPageCount(page, 20)
-      testInfo.annotations.push({ type: 'characterization', description: '16 → 20 추가 후 삭제 → 무선제본 최소 32페이지 토스트, 20쪽 유지' })
-      await expectNoEditorError(page)
-      expectHarnessClean(mock, [diag], testInfo)
-    })
   },
 )
+
+test.describe('호스트 범위와 제본 한도', () => {
+  test('무선제본 + 호스트 최소 16쪽(표지3분할 + 내지낱장)은 16쪽까지 삭제하고 일반 하한 안내를 표시한다', async ({ context, page }, testInfo) => {
+    const { mock, diag, frame } = await openNew(context, page, {
+      templateSetId: TS_A_ID, orderSeqno: 910013, pageCount: 16, pageCountMin: 16, pageCountMax: 300, pageStep: 4,
+      bindingType: 'perfect',
+    })
+    await expectPageCount(page, 16)
+    await clickDeleteLastPage(frame)
+    await expect(toast(frame, '최소 페이지 수 제한으로 삭제할 수 없습니다.')).toBeVisible()
+    await expect(toast(frame, '무선제본은 최소 32페이지가 필요해 더 삭제할 수 없습니다.')).toHaveCount(0)
+    await expectPageCount(page, 16)
+    await addPages(page, frame, [20])
+    await deletePages(page, frame, [16])
+    await expectNoEditorError(page)
+    expectHarnessClean(mock, [diag], testInfo)
+  })
+
+  test('무선제본 + 호스트 범위 16~48쪽(표지펼침면 + 내지펼침면)은 16쪽까지 삭제하고 설정 패널 한도도 범위를 따른다', async ({ context, page }, testInfo) => {
+    const { mock, diag, frame } = await openNew(context, page, {
+      templateSetId: TS_D_ID, orderSeqno: 910044, pageCount: 16, pageCountMin: 16, pageCountMax: 48, pageStep: 4,
+      bindingType: 'perfect',
+    })
+    await expectPageCount(page, 16)
+    expectAllOrderOptions(mock, { pageCount: 16, pageCountMin: 16, pageCountMax: 48, pageStep: 4 })
+    // 표지 1 + 펼침면 8~24장
+    expect(await readSettingsPageBounds(page)).toEqual({ min: 9, max: 25 })
+    await addPages(page, frame, [20])
+    await deletePages(page, frame, [16])
+    await clickDeleteLastPage(frame)
+    await expect(toast(frame, '최소 페이지 수 제한으로 삭제할 수 없습니다.')).toBeVisible()
+    await expectPageCount(page, 16)
+    await expectNoEditorError(page)
+    expectHarnessClean(mock, [diag], testInfo)
+  })
+
+  test('호스트 범위 없이 무선제본으로 열면 32쪽 아래로 삭제하지 않는다', async ({ context, page }, testInfo) => {
+    const { mock, diag, frame } = await openNew(context, page, {
+      templateSetId: TS_A_ID, orderSeqno: 910014, pageCount: 32, bindingType: 'perfect',
+    })
+    await expectPageCount(page, 32)
+    expectOrderOptionsWithout(mock, ['pageCountMin', 'pageCountMax', 'pageStep'])
+    await clickDeleteLastPage(frame)
+    await expect(toast(frame, '무선제본은 최소 32페이지가 필요해 더 삭제할 수 없습니다.')).toBeVisible()
+    await expectPageCount(page, 32)
+    await expectNoEditorError(page)
+    expectHarnessClean(mock, [diag], testInfo)
+  })
+})
 
 test.describe('템플릿 내지 단위 2 세트', () => {
   test('pageStep=1 이면 템플릿 단위를 쓰지 않고 1쪽씩 추가한다', async ({ context, page }, testInfo) => {
@@ -513,6 +528,42 @@ test.describe('sessionId 재진입', () => {
     await expectPageCount(r.page, 24)
     await addPages(r.page, r.frame, [26])
     await expect(toast(r.frame, '내지 2페이지 단위 상품이라 2페이지가 추가되었습니다.')).toBeVisible()
+    await expectNoEditorError(r.page)
+    expectHarnessClean(opened.mock, [opened.diag, r.diag], testInfo)
+  })
+
+  test('무선제본 세션을 범위 파라미터 없이 다시 열면 세션에 기록된 최소 쪽수까지 삭제한다', async ({ context, page }, testInfo) => {
+    const { opened, sid } = await savedAt24(context, page, 910057, { ...PHASE1, bindingType: 'perfect' })
+    const { mock } = opened
+    expectAllOrderOptions(mock, { bindingType: 'perfect', pageCountMin: 16 })
+    const r = await reopen(context, mock, { sessionId: sid })
+    expect(countCalls(mock, 'POST', (p) => p === '/edit-sessions', r.mark)).toBe(0)
+    expect((await getState(r.page)).sessionId).toBe(sid)
+    await expectPageCount(r.page, 24)
+    await deletePages(r.page, r.frame, [20, 16])
+    await clickDeleteLastPage(r.frame)
+    await expect(toast(r.frame, '최소 페이지 수 제한으로 삭제할 수 없습니다.')).toBeVisible()
+    await expectPageCount(r.page, 16)
+    await expectNoEditorError(r.page)
+    expectHarnessClean(mock, [opened.diag, r.diag], testInfo)
+  })
+
+  test('범위 없이 만든 무선제본 세션을 다시 열면 32쪽 아래로 삭제하지 않는다', async ({ context, page }, testInfo) => {
+    const opened = await openNew(context, page, {
+      templateSetId: TS_A_ID, orderSeqno: 910058, pageCount: 34, bindingType: 'perfect',
+    })
+    await expectPageCount(page, 34)
+    expectAllOrderOptions(opened.mock, { bindingType: 'perfect' })
+    expectOrderOptionsWithout(opened.mock, ['pageCountMin', 'pageCountMax', 'pageStep'])
+    // 표지 1 + 내지 34
+    const sid = await saveAndClose(page, opened.mock, 35)
+    const r = await reopen(context, opened.mock, { sessionId: sid, pageCount: 34 })
+    expect(countCalls(opened.mock, 'POST', (p) => p === '/edit-sessions', r.mark)).toBe(0)
+    await expectPageCount(r.page, 34)
+    await deletePages(r.page, r.frame, [33, 32])
+    await clickDeleteLastPage(r.frame)
+    await expect(toast(r.frame, '무선제본은 최소 32페이지가 필요해 더 삭제할 수 없습니다.')).toBeVisible()
+    await expectPageCount(r.page, 32)
     await expectNoEditorError(r.page)
     expectHarnessClean(opened.mock, [opened.diag, r.diag], testInfo)
   })

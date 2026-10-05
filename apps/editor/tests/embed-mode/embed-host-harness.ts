@@ -711,6 +711,23 @@ export async function readEditorStoreLimits(page: Page): Promise<StoreLimits> {
   }
 }
 
+/**
+ * 개발 서버에서만 실행: 편집기 iframe 에서 vite 모듈 `/src/stores/useSettingsStore.ts` 를 불러
+ * SidePanel '페이지' 섹션 한도(currentSettings.page.min/max — 전체 캔버스 수 단위)를 읽는다.
+ */
+export async function readSettingsPageBounds(page: Page): Promise<{ min: number | null; max: number | null }> {
+  const frame = page.frame({ url: /\/embed/ })
+  if (!frame) throw new Error('편집기 frame 없음')
+  const raw: unknown = await frame.evaluate(
+    "import('/src/stores/useSettingsStore.ts').then(m => { const p = m.useSettingsStore.getState().currentSettings.page; return { min: p.min, max: p.max } })",
+  )
+  if (!isRecord(raw)) throw new Error('설정 값을 읽지 못함')
+  return {
+    min: typeof raw.min === 'number' ? raw.min : null,
+    max: typeof raw.max === 'number' ? raw.max : null,
+  }
+}
+
 // ============================================================
 // 공통 단언
 // ============================================================
