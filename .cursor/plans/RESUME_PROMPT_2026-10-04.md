@@ -79,7 +79,7 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
 | editor | Vercel `16moj714s`(`9381ea4`, Ready 10-05 12:00:26Z) | `g0haka2nu`(`599f602`) → `pwvgvgvhb`(`d3e3587`) → `qftv0kx8t`(`f63c8ae`) → `65j5xwzgg`(`9e2a817`) promote. IIFE 번들(VPS `build:embed:prod`)은 미재빌드(파트너 미사용, 오너 결정 대기) |
 | admin | Vercel `cyho5uda8`(`9381ea4`, Ready 10-05 12:00:30Z — Wave 6 템플릿셋 목록 쪽 단위 표시) | `oylw176wy`(`f63c8ae`) promote | `l6f2dhp0f`(`9e2a817`) → `isxgg1mpv` promote |
 
-- origin/master = VPS 체크아웃 = `9381ea4` 이후(Wave 6). api = Wave 6, worker = Wave 4(`d3e3587` 이미지 — Wave 5·6 worker 변경 없음). 계약 정본 **CONTRACT_FREEZE v1.12**(`docs/CONTRACT_FREEZE.md` + `apps/api/src/contract-freeze.spec.ts`).
+- origin/master = VPS 체크아웃 = `9381ea4` 이후(Wave 6). api = Wave 6, worker = Wave 4(`d3e3587` 이미지 — Wave 5·6 worker 변경 없음). 계약 정본 **CONTRACT_FREEZE v1.13**(`docs/CONTRACT_FREEZE.md` + `apps/api/src/contract-freeze.spec.ts` — v1.13 은 문서만, 동화책 싸바리 세트 매핑 전환 시각부터 유효).
 - 플래그(운영 기동 로그 `[FLAGS]` 확인값):
 
 | 플래그 | 운영 값 | 비고 |
@@ -180,7 +180,7 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
 
 ### 5.2 오너 결정 대기
 
-- **Wave 6(10-05)**: ① 양장 표지 기준 = 업로드 검증 싸바리 전개 — 편집기 싸바리 출력 모드·api 검증 연결 구현(**템플릿 데이터 조건부, 현재 운영 활성 0세트 → 코드 배포만으로 출력 불변**), 내지 PDF 판형 우선은 싸바리 모드 한정(오너 O-3). **배포 완료 10-05**: push 11:59:16Z → editor `16moj714s`·admin `cyho5uda8` Ready 12:00Z → api 12:02:48Z + nginx([FLAGS] 동일) → 스모크 정상 → 완료 통지 3사(파트너 출력 변화 없음). 롤백: Vercel promote(editor `g0haka2nu`·admin `oylw176wy`) → api `rollback-pre-wave6`. 동화책 새 템플릿셋 복제 **완료(10-05 14:58Z, 오너 승인)**: 세트 `9e768d01-f2f7-4a1e-a1f6-f1ff45cb2fcb`(비활성, 210×210·16~48·4·hardcover_wrap) + 표지 `55756514-1ab3-4623-a212-e99b560d01af`(면 218×218·책등 8mm 고정 — bookmoa 오너 확정) → 싸바리 모드 조건 충족, 표지 PDF 484×258(로컬 실브라우저 실측). 백업 `~/backup-storybook-wrap-pre-clone-20261005T145750Z.sql`. **bookmoa 매핑 전환은 bookmoa 오너 결정 대기**(전환 전 FREEZE v1.13·사전 통지·ACK, 현재 운영·e2e 는 207c458f). 후속: 기존 면≠판형 세트(동화책 낱장 7·A4 하드커버 2) 내지 크기는 저장 세션 실측 뒤 별건. ② 쪽 단위 = 일치 원칙: 207c458f 16~48·4 정리 완료(10-05 07:31:58Z, 백업 `~/backup-template_sets-207c458f-pre-pagestep4-20261005T073157Z.sql`), 불일치 콘솔 경고·admin 단위 표시 구현. ③ 책등 방식 = bookmoa 결정·Storige 그대로 등록(문서 반영). ④ 템플릿 제작 가이드 갱신(`6d15194`·`b987a81`, bookmoa 초안 v2 반영).
+- **Wave 6(10-05)**: ① 양장 표지 기준 = 업로드 검증 싸바리 전개 — 편집기 싸바리 출력 모드·api 검증 연결 구현(**템플릿 데이터 조건부, 현재 운영 활성 0세트 → 코드 배포만으로 출력 불변**), 내지 PDF 판형 우선은 싸바리 모드 한정(오너 O-3). **배포 완료 10-05**: push 11:59:16Z → editor `16moj714s`·admin `cyho5uda8` Ready 12:00Z → api 12:02:48Z + nginx([FLAGS] 동일) → 스모크 정상 → 완료 통지 3사(파트너 출력 변화 없음). 롤백: Vercel promote(editor `g0haka2nu`·admin `oylw176wy`) → api `rollback-pre-wave6`. 동화책 새 템플릿셋 복제 **완료(10-05 14:58Z, 오너 승인)**: 세트 `9e768d01-f2f7-4a1e-a1f6-f1ff45cb2fcb`(비활성, 210×210·16~48·4·hardcover_wrap) + 표지 `55756514-1ab3-4623-a212-e99b560d01af`(면 218×218·책등 8mm 고정 — bookmoa 오너 확정) → 싸바리 모드 조건 충족, 표지 PDF 484×258(로컬 실브라우저 실측). 백업 `~/backup-storybook-wrap-pre-clone-20261005T145750Z.sql`. **bookmoa 매핑 전환 대기**(10-06): 오너 결정 FREEZE v1.13 = MODIFY-TARGET(표지 PDF 496×276 → 484×258·완료 검증 싸바리 전개 검사, coverOutput 키 ADDITIVE) · 문서·공지 `PARTNER_NOTICE_STORYBOOK_WRAP_2026-10-06.md` 커밋·양사 발송. bookmoa 오너 결정: e2e ①~④(207c458f) 뒤, **인쇄팀이 484×258 싸바리 전개·책등 8 고정 산출물을 제작할 수 있는지 확인될 때까지 전환 보류**, 전환 시각은 bookmoa 통지. 인쇄팀 확인용 샘플(운영 세트 공개 조회 응답 그대로 로컬 편집완료 경로, 표지 484×258·내지 420×210 8쪽, 영역 표시·SAMPLE) 전달 `/tmp/storige-to-bookmoa/storybook-wrap-sample-2026-10-06/`. **전환 시각 DB 작업은 Storige 오너 사전 승인(10-06)** — bookmoa ACK·인쇄 확인·시각 통지 뒤에만: 백업 → `product_template_sets` '하드커버210x210' → 9e768d01 행 추가(is_default 1·display_order 0) → 9e768d01 `is_active` 1 → 207c458f 매핑 행(id 5136927e) `is_active` 0(bookmoa 선택) → 사후 검증·UTC 통지. 세트 207c458f 는 삭제·비활성 금지(장바구니 1·주문 1). printy 는 printy 결정 시 같은 절차. 전환 뒤 첫 새 세트 세션 관찰 회신(책등 8 고정 로그·coverOutput hardcover-wrap 484×258·표지 검증 잡 status/errors — 이 잡은 세션 workerStatus 를 바꾸지 않음). 후속: 기존 면≠판형 세트(동화책 낱장 7·A4 하드커버 2) 내지 크기는 저장 세션 실측 뒤 별건. ② 쪽 단위 = 일치 원칙: 207c458f 16~48·4 정리 완료(10-05 07:31:58Z, 백업 `~/backup-template_sets-207c458f-pre-pagestep4-20261005T073157Z.sql`), 불일치 콘솔 경고·admin 단위 표시 구현. ③ 책등 방식 = bookmoa 결정·Storige 그대로 등록(문서 반영). ④ 템플릿 제작 가이드 갱신(`6d15194`·`b987a81`, bookmoa 초안 v2 반영).
 - **쪽 단위 일치 — 공유 템플릿셋 4개 정렬 완료(오너 결정, 10-05 14:14:32Z)**: f0335fda·83e6ec80 [16,300]·4, a2cc2939·e66588b2 [16,500]·2 (백업 `~/backup-template_sets-shared4-pre-pagestep-20261005T141432Z.sql`). 범위 없이 재진입하는 기존 세션은 16쪽 미만이면 16쪽 증설·쪽수 기록 없는 초안은 단위 배수까지 완료 차단(1회 추가로 해소)·재편집 pageCount 를 보내면 최대 100 제한 해제. bookmoa 에 영향 세션 11건 사후 통지 → **회신: 모두 실주문 아님, 원복 불필요**(10-05). printy 영향 없음.
 - 템플릿 제작 가이드: Storige 소유. 10-05 오너 결정 기준으로 갱신 완료, bookmoa 초안이 오면 코드 대조 후 추가 반영.
 
@@ -207,6 +207,9 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
 | ~~compose 매핑(`FILE_ORPHAN_*` 등)~~ | Wave 4 반영(배포 대기, 기본값 무변). 코드 하한·compose·코드 정합 spec 은 후속 |
 | 운영자 권한 리뷰 잔여(201 라우트 감사 status_code·인터셉터 부하) | 가드 단계 거부 감사 행은 `a245b0f` 에서 반영 — 잔여 2건은 코드로 재점검 |
 | `/embed` 쪽수 로더 실브라우저 QA | Wave 4 로컬 Playwright 스펙(모킹, 운영 코드 HEAD 기준 27건 통과). CI 편입·실 API 왕복은 미검증 |
+| 재편집 템플릿셋 복원 가드 | 재편집 URL `templateSetId` ≠ 세션 `templateSetId` 일 때(embed 는 URL 우선, 서버 완료 검증은 세션 값) — 동화책 매핑 전환 뒤 옛 장바구니 재편집 위험. bookmoa 는 자체 완화를 전환 뒤 후속 트랙으로 진행. 설계·오너 승인 필요 |
+| `editor-spread-validation-options.ts` 머리말 주석 정정 | 15행대 '세션을 failed 로 뒤집고 session.failed' 는 v1.10 이전 설명(현재는 표지 검증 잡만 FAILED, 세션 불변) — 주석만 |
+| 면≠판형 기존 양장 세트 내지 크기(H1 후속) | 저장 세션 실측 뒤 별건(동화책 낱장 7·A4 하드커버 2) |
 | 로드맵: 임베드 D-4a/b/c · R3b 지종별 TAC · 에셋 A4/A5/A8·시드 · R6 CutContour · R10 · admin stage1b · `with-templates` 배치(S11) · 동화책 왕복 실기 · 폰트 시딩 | 09-30 §5.1 |
 
 ---

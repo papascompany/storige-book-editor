@@ -259,7 +259,8 @@ expectedTotalWidth = size.width×2 + (spineWidthMm ?? paperThickness×pages/2)
 - 기대치가 있으면 `metadata.spineSize` 에 적용 책등(mm)이 기록된다.
 - `perfect`·`hardcover` 표지(또는 기대 책등이 있는 표지)는 단일 판형(`SIZE_MISMATCH`)·재단 여백(`BLEED_MISSING`) 검사를 하지 않는다 — 전개 크기 검사가 대신한다.
 - `coverLayout='separate'`(앞·뒤 낱장) 표지는 이 절을 적용하지 않고 단일 판형 검사를 한다.
-- 편집 세션 완료 검증에서 **양장 편집기 표지**(스프레드 스냅샷이 있는 세션)는 서버가 책등 기하(`metadata.spread`·`coverOutput`)를 연결하지 않는다(`HARDCOVER_GEOMETRY_UNVERIFIED`). 표지는 세션 기본 옵션(`metadata.binding`·`metadata.paperThickness`)으로 검사하며, 세션 metadata 에 두께가 없으면 크기 검사가 생략되고 `SPINE_PARAMS_UNRESOLVED` 경고만 남는다. 고객 업로드 양장 표지는 위 규칙으로 검사한다.
+- 편집 세션 완료 검증에서 **양장 싸바리 템플릿셋으로 편집한 표지**(2026-10-06 — 연동 가이드 3.1 「양장 싸바리 템플릿셋 표지」): 편집기가 싸바리 전개 표지(`metadata.coverOutput.layout:'hardcover-wrap'`)를 기록했고 ① 기록 판형(`trimWidthMm`·`trimHeightMm`) = 세션 템플릿셋 판형 ② 표지 한 면(`metadata.spread.spec`) = 판형 + 8mm ③ 기록 출력 크기 = 위 싸바리 전개식이 모두 맞으면(각 ±0.5mm), 서버가 제본 `hardcover`·판형 `W×H`·적용 책등·도련 0 으로 위 싸바리 전개 검사(허용 ±2mm)를 연결한다. 벗어나면 표지 검증 잡이 `SPINE_SIZE_MISMATCH`(`details.expected.layout:'hardcover-wrap'`)로 `FAILED` 가 되고, 세션 상태와 `session.*` 는 바뀌지 않는다. 주문 제본(`metadata.orderOptions.bindingType`)이 `hardcover` 이거나 없을 때 적용하며(인식 5종 `perfect`·`saddle`·`spring`·`spiral`·`hardcover` 밖의 값은 없음으로 처리), `perfect`·`saddle`·`spring`·`spiral` 이면 표지 크기 검사를 생략한다. ①~③ 중 하나라도 맞지 않으면 아래 그 밖의 양장 편집기 표지와 같다.
+- 그 밖의 **양장 편집기 표지**(스프레드 스냅샷이 있는 세션)는 서버가 책등 기하(`metadata.spread`·`coverOutput`)를 연결하지 않는다(`HARDCOVER_GEOMETRY_UNVERIFIED`). 표지는 세션 기본 옵션(`metadata.binding`·`metadata.paperThickness`)으로 검사하며, 세션 metadata 에 두께가 없으면 크기 검사가 생략되고 `SPINE_PARAMS_UNRESOLVED` 경고만 남는다. 고객 업로드 양장 표지는 위 규칙으로 검사한다.
 
 ---
 

@@ -81,7 +81,7 @@
 
   <h1>표지·내지 템플릿 제작 가이드</h1>
   <p class="sub">표지펼침면(책등 고정) · 표지3분할(책등 가변) · 내지낱장 · 내지펼침면<br>
-  <span class="src">용어 정본: docs/PRINT_TEMPLATE_GLOSSARY.md · 2026-08-13 용어 정정 · 제작 규칙은 08-03 E2E 기준 · <b>최종 갱신 2026-10-05</b>(호스트 연동·표지 모드 결정 규약·양장 표지 규격·쪽 추가 단위·운영 예시)</span></p>
+  <span class="src">용어 정본: docs/PRINT_TEMPLATE_GLOSSARY.md · 2026-08-13 용어 정정 · 제작 규칙은 08-03 E2E 기준 · <b>최종 갱신 2026-10-06</b>(양장 싸바리 모드 규약·운영 예시 ① 전환 — 이전: 2026-10-05 호스트 연동·표지 모드 결정 규약·양장 표지 규격·쪽 추가 단위·운영 예시)</span></p>
 
   <div class="toc">
     <a href="#s0">0. 결정 3개</a>
@@ -289,7 +289,8 @@
   <h3 id="s4-1">4-1. 양장(싸바리) 표지 규격 — 고객 업로드 검증 규격이 기준</h3>
   <div class="good"><b>작성 기준은 하나다: 고객이 웹에서 올리는 양장 표지 PDF 를 검증하는 규격(싸바리 전개).</b>
   표지 모드(표지펼침면/표지3분할)와 무관하게, 양장 상품의 표지 완성 원고는 이 치수가 되도록 만든다.
-  기존 양장 표지 템플릿 중 이 규격과 다른 것은 <b>잘못 만들어진 것</b>으로 보고 이 기준으로 맞춘다.</div>
+  기존 양장 표지 템플릿 중 이 규격과 다른 것은 <b>잘못 만들어진 것</b>으로 보고 이 기준으로 맞춘다.
+  아래 <b>싸바리 모드 규약</b>대로 등록한 세트는 편집기 표지 출력도 이 규격과 같다.</div>
 
   <div class="spread">
     <div class="sp-wing"><span class="lbl">싸바리 여분</span><span class="mm">20</span></div>
@@ -324,26 +325,62 @@
     <li><b>배경·아트워크는 전개 전체(사방 20mm 여분 포함)까지 채운다.</b> 여분은 판지 뒤로 접혀 들어가는 부분이다.</li>
     <li><b>제목·글자·얼굴 등 중요 요소는 앞/뒤표지 면 <code>(W+8)×(H+8)</code> 안쪽</b>에 두고, 여분 20mm 영역에는 두지 않는다.</li>
     <li>책등 폭은 양장 공식(§5, 정수 mm · 최소 8mm)을 따른다. 무선 공식 값을 넣지 않는다.</li>
-    <li><b>책등 고정(표지펼침면 <code>flat-spread</code>) 양장</b>은 호스트 파트너와 합의한 <b>기준 쪽수의 양장 공식값</b>으로 책등을 고정하고,
-      쪽수 범위 양 끝의 공식값 차이가 업로드 검증 허용오차(기본 ±2mm) 안인지 확인한다. 기준 쪽수가 합의되지 않았으면 운영자·호스트 파트너와 협의해 정한다.
+    <li><b>책등 고정(표지펼침면 <code>flat-spread</code>) 양장</b>은 <b>호스트 파트너와 정한 값</b>(보통 합의한 기준 쪽수의 양장 공식값)으로 책등을 고정하고,
+      쪽수 범위 양 끝의 공식값 차이가 업로드 검증 허용오차(기본 ±2mm) 안인지 확인한다. 값이 정해지지 않았으면 운영자·호스트 파트너와 협의해 정한다.
       (예: 아르떼130 · 16~48p → 16p 8mm, 48p 9mm)</li>
   </ul>
 
-  <div class="danger"><b>편집기 산출 표지는 아직 이 규격과 자동으로 맞지 않는다 — 정합 작업 진행 중.</b>
-  현재 편집기 표지 PDF 는 <code>caseBind</code> 가 없으면 §2 의 펼침면 치수(표지 한 면 폭 × 2 + 책등)로 나오고 싸바리 여분이 붙지 않는다.
-  템플릿셋의 재단선 표기(<code>cropMarkEnabled</code>)가 켜져 있고 도련(<code>bleedMm</code>)이 0보다 크면 여기에 <b>도련×2</b> 가 더해지며, 이때는 <code>caseBind</code> 여분도 반영되지 않는다.
-  편집기 산출 표지와 기존 양장 템플릿을 위 규격에 맞추는 작업이 진행 중이며, <b>템플릿 <code>spec</code> 필드에 무엇을 넣어 이 규격을 만들지는 그 작업에서 확정</b>된다.
-  확정 전에는 다음을 지킨다.
+  <h4>편집기 싸바리 모드 — 편집기 표지 출력이 위 규격과 같아지는 조건</h4>
+  <div class="good"><b>아래 조건을 모두 만족하는 세트로 편집하면 편집기 표지 PDF 가 위 싸바리 전개 규격과 같은 크기로 나온다.</b>
+  양장 표지 템플릿은 이 규약으로 작성·등록한다. 조건이 하나라도 빠지면 모드가 꺼지고 아래 '모드가 꺼진 세트'처럼 출력된다.
   <ul class="plain" style="margin-top:6px">
-    <li>새 양장 표지 템플릿 등록·기존 양장 템플릿 수정은 운영자와 협의해 진행하고, 원고 치수는 위 규격으로 준비한다.</li>
-    <li>템플릿셋 싸바리 값(<code>caseBind</code>: 합지·접힘·wrap)을 임의로 넣지 않는다. <b>표지 템플릿 <code>spec.caseBind</code> 도 넣지 않는다</b> — 있으면 템플릿셋 값보다 우선해 출력 크기를 바꾼다.
-      이전 판의 <b>"3필드 합 28mm" 권장은 철회</b>한다 — 편집기 출력식(가로 + 합지×2 + (접힘+wrap)×2, 세로 + (접힘+wrap)×2)에 넣어 보면
-      예시 2.5 + 17.5 + 8 은 가로만 규격과 같고 세로가 규격보다 3mm 크다.</li>
+    <li>템플릿셋 <b>커버 종류 코드 <code>hardcover_wrap</code></b>(Admin 템플릿셋 '커버 종류' = 하드커버(싸바리)).</li>
+    <li>템플릿셋 판형 = <b>내지 재단 W×H</b>(§8).</li>
+    <li>표지 템플릿 <code>spec</code> <b>한 면 = 판형 + 8</b>: <code>coverWidthMm</code> = W+8, <code>coverHeightMm</code> = H+8(각 ±0.2mm 이내).</li>
+    <li><b>책등</b>: 책등 고정(<code>flat-spread</code>)이면 <code>spineWidthMm</code> = 호스트 파트너와 정한 값(위 제작 규칙).</li>
+    <li><b>날개 없음</b>(<code>wingEnabled</code> 끔).</li>
+    <li><b><code>caseBind</code> 없음</b> — 템플릿셋 싸바리 값(합지·접힘·wrap)과 표지 템플릿 <code>spec.caseBind</code> 를 <b>모두 비운다.</b>
+      어느 쪽이든 있으면 모드가 꺼진다. 이전 판의 <b>"3필드 합 28mm" 권장은 철회</b>한 그대로다.</li>
+    <li><b>표지 캔버스에 외곽선 객체 없음</b>(id <code>outline</code>·<code>page-outline</code>). 외곽선이 있으면 출력이 외곽선 안으로 잘려 싸바리 여분이 백지가 되므로 모드가 꺼진다.</li>
+    <li><b>표지가 있는 세트</b>(내지 전용 세트가 아님). 표지 + 내지펼침면 한 세트는 가능하다(§7).</li>
+    <li><code>cutSizeMm</code> <b>저장값은 기존대로 두고 바꾸지 않는다.</b> 모드가 켜지면 편집기가 표지 화면에서만 싸바리 여분(양변 합 40 = 사방 20)으로 바꿔 쓰고,
+      낱장 내지 화면 여백은 싸바리 모드가 아닐 때와 같다. 싸바리 여분을 만들려고 저장값을 40 으로 바꾸지 않는다.</li>
+  </ul></div>
+
+  <div class="tblwrap">
+  <table>
+    <tr><th>싸바리 모드로 편집하면</th><th>결과</th></tr>
+    <tr><td>표지 화면</td><td>사방 <b>20mm 싸바리 여분 가이드</b>가 표시된다. 배경은 이 여분까지 채운다.</td></tr>
+    <tr><td>표지 PDF</td><td><b>(W+8)×2 + 책등 + 40 × (H+8) + 40</b> — 위 규격과 같다. 싸바리 여분 외에 도련·재단선 마커를 더하지 않는다(템플릿셋 재단선 표기 설정과 무관).<br>
+      예: 판형 210×210 · 책등 8 → <b>484 × 258mm</b></td></tr>
+    <tr><td>내지 PDF</td><td>변화 없음(예: 내지펼침면 210×210 → 펼침 2-up 420×210).</td></tr>
+    <tr><td>세션 <code>metadata.coverOutput</code></td><td>기존 <code>widthMm</code>·<code>heightMm</code>(표지 PDF 크기)·<code>bleedMm</code>(0)에
+      <code>layout: 'hardcover-wrap'</code> · <code>trimWidthMm</code> · <code>trimHeightMm</code>(판형) · <code>wrapMm</code>(20) 가 <b>추가</b>된다.</td></tr>
+    <tr><td>편집 완료 표지 검증</td><td><b>싸바리 전개 규격 기준</b>으로 검사한다(허용오차 기본 ±2mm). 맞지 않으면 편집 완료 때 서버가 만드는 표지 검증 작업이 <code>SPINE_SIZE_MISMATCH</code> 로 실패(<code>FAILED</code>)한다.
+      결과는 작업 조회와 <code>validation.*</code>(v2 웹훅 구독 시)로 확인하며, 세션 상태와 <code>session.*</code> 는 바뀌지 않는다.
+      주문 제본이 <code>hardcover</code> 일 때 적용되며(제본 미전달도 같음), 다른 제본 코드가 오면 표지 크기 검사를 생략한다.
+      편집기가 기록한 판형·한 면·출력 크기가 서버 템플릿셋 판형과 전개식에 맞지 않을 때도 생략한다.</td></tr>
+    <tr><td><code>editor.complete</code>·가격 이벤트 <code>spineWidthMm</code></td><td>표지에 적용된 <b>책등 폭</b>(예: 8). 전개 총폭이 아니다.</td></tr>
+  </table>
+  </div>
+
+  <div class="note"><b>현재 상태(2026-10-06)</b> — 이 규약을 만족하는 첫 세트(§9-3 ①의 새 세트)가 등록돼 있고, <b>호스트 파트너의 상품 매핑 전환을 기다리는 중</b>이다.
+  전환 전에는 운영 상품에서 싸바리 모드로 열리는 세트가 없다. 기존 양장 세트는 조건(한 면 = 판형+8 등)을 만족하지 않아 아래처럼 출력되며, 그대로 유지된다.</div>
+
+  <div class="danger"><b>모드가 꺼진 세트(조건 불충족)의 편집기 표지는 이 규격과 맞지 않는다.</b>
+  표지 PDF 는 <code>caseBind</code> 가 없으면 §2 의 펼침면 치수(표지 한 면 폭 × 2 + 책등)로 나오고 싸바리 여분이 붙지 않는다.
+  템플릿셋의 재단선 표기(<code>cropMarkEnabled</code>)가 켜져 있고 도련(<code>bleedMm</code>)이 0보다 크면 여기에 <b>도련×2</b> 가 더해지며, 이때는 <code>caseBind</code> 여분도 반영되지 않는다.
+  <code>caseBind</code> 가 있으면 그 출력식(가로 + 합지×2 + (접힘+wrap)×2, 세로 + (접힘+wrap)×2)으로 나온다 — 예시 2.5 + 17.5 + 8 은 가로만 규격과 같고 세로가 규격보다 3mm 크다.
+  <ul class="plain" style="margin-top:6px">
+    <li>이런 세트의 표지는 주문 제본이 <code>hardcover</code> 여도 편집 완료 검증에서 <b>표지 크기 검사를 생략</b>한다 — 검증 결과를 싸바리 전개 규격 일치 판정으로 쓰지 않는다.</li>
+    <li>기존 양장 세트를 싸바리 모드로 바꿀 때는 기존 세트를 고치지 않고 <b>새 세트로 만든 뒤 호스트 파트너가 매핑을 바꾸는 방식</b>으로 한다(§9-3 ①). 기존 세트로 저장된 편집·주문이 있기 때문이다.</li>
     <li>양장 상품은 호스트 파트너가 <code>bindingType=hardcover</code> 를 보내도록 합의한다.
-      편집기 표지의 검증 결과는 제본 전송 여부와 관계없이 <b>싸바리 전개 규격 일치 판정으로 쓰지 않는다.</b>
-      편집 세션 표지 검증 동작은 <code>docs/PDF_VALIDATION_GUIDE.md</code> '표지 책등·전개 크기 검증' 절을 따른다.</li>
-  </ul>
-  <span class="src">packages/types/src/index.ts computeSpreadOutputDimensions() · apps/editor/src/utils/pdfPageSize.ts computePdfPageOutputMm() · apps/editor/src/embed.tsx(caseBind 병합)</span></div>
+      편집 세션 표지 검증 동작은 <code>docs/PLATFORM_INTEGRATION_GUIDE.md</code> 5.3.1 '편집기 산출 표지' 항목(싸바리 모드는 3.1 '양장 싸바리 템플릿셋 표지')을 따른다.</li>
+  </ul></div>
+  <p class="src">apps/editor/src/utils/hardcoverWrap.ts resolveHardcoverWrapMode()(조건·±0.2mm) · buildCoverPdfSizeOpt() · buildCoverOutputMeta()
+  · hooks/useEditorContents.ts(표지 화면 cutSizeMm = 40) · utils/pdfPageSize.ts computePdfPageOutputMm()(wrapMm 우선) · apps/editor/src/embed.tsx(완료 시 표지 PDF·coverOutput·caseBind 병합)
+  · apps/api/src/edit-sessions/editor-spread-validation-options.ts(싸바리 전개 표지 검증 연결) · apps/worker/src/services/pdf-validator.service.ts(양장 허용오차 기본 2mm)
+  · packages/types/src/spine-calc.ts hardcoverWrapFaceFromTrim() · HARDCOVER_WRAP_PER_SIDE_MM(20)</p>
 
   <!-- ═══════════════════ 5 ═══════════════════ -->
   <h2 id="s5"><span class="n">5</span> 책등 폭 공식</h2>
@@ -597,7 +634,7 @@
     <tr><td>기본</td><td>템플릿셋명 · 타입 · 에디터 모드 · 판형 프리셋 또는 너비/높이(mm) <b>= 내지 재단</b></td></tr>
     <tr><td>페이지</td><td>내지 추가 허용 · 최소/최대 페이지 · 페이지 증감 단위 · 첨부 PDF 빈 페이지 채움 — <b>호스트 상품등록 값과 같게</b>(§7-3)</td></tr>
     <tr><td>표지</td><td>표지 편집 가능 · (레더커버면) 표지 미리보기 이미지 · 커버 종류 코드</td></tr>
-    <tr><td>싸바리</td><td>합지 두께 · 접힘(turn-in) · wrap 여분 — <b>양장 정합 작업 확정 전 임의 입력 금지</b>(§4-1)</td></tr>
+    <tr><td>싸바리</td><td>합지 두께 · 접힘(turn-in) · wrap 여분 — <b>양장 싸바리 모드 세트는 비워 둔다</b>(값이 있으면 모드가 꺼진다 · §4-1). 그 밖에도 임의 입력 금지</td></tr>
     <tr><td>면지</td><td>면지 사용 · 앞/뒷면지 개수 · 각 편집 가능 여부</td></tr>
     <tr><td>출력</td><td>PDF 생성 방식 · 색 처리 · <b>블리드(사방 mm) + 재단선 마커 세트로</b> · 업로드 허용오차</td></tr>
     <tr><td>가격</td><td>페이지당 가격 연동 · 기본 포함 페이지 · 최소 제작 페이지 · 증감 단위(가격 계산용 — 편집기 쪽 추가 단위 아님) · 초과 단가</td></tr>
@@ -712,9 +749,13 @@
   <table>
     <tr><th>예시</th><th>연결 템플릿셋<br><span style="font-weight:400">표지 모드는 파트너 결정(§9-2)</span></th><th>파트너 전송</th><th>편집기 결과</th></tr>
     <tr><td>① 하드커버 동화책<br><span class="pill p-ok">북모아 적용 · 2026-10</span></td>
-      <td><b>표지펼침면</b>(책등 고정) + 내지펼침면 한 세트<br>최소/최대 16~48쪽 · 페이지 증감 단위 4 — 파트너 상품등록 값과 같게(§7-3)</td>
-      <td><code>bindingType=hardcover</code> · <code>pageCountMin=16</code> · <code>pageCountMax=48</code> · <code>pageStep=4</code><br><b>책등·지종 미전달</b></td>
-      <td>책등 = 템플릿 등록값 · 펼침면 2장(4쪽)씩 추가·삭제 · 양장이라 제본별 최소·최대 없음</td></tr>
+      <td><b>표지펼침면</b>(책등 고정) + 내지펼침면 한 세트 · 판형 210×210<br>최소/최대 16~48쪽 · 페이지 증감 단위 4 — 파트너 상품등록 값과 같게(§7-3)<br>
+      <b>전환 전(현재 매핑)</b>: 기존 세트(<code>207c458f…</code>) — 표지 한 면 247.4×276 · 책등 1.2, 싸바리 모드 아님<br>
+      <b>전환 후</b>: 새 세트 '동화책 정사각형 하드커버+내지펼침면 (싸바리)'(<code>9e768d01…</code>) — <code>hardcover_wrap</code> · 한 면 218×218 · 책등 고정 8mm(파트너 확정값) · 내지펼침면은 기존 세트와 같음(§4-1 싸바리 모드)</td>
+      <td><code>bindingType=hardcover</code> · <code>pageCountMin=16</code> · <code>pageCountMax=48</code> · <code>pageStep=4</code><br><b>책등·지종 미전달</b>(전환 전후 같음)</td>
+      <td>책등 = 템플릿 등록값 · 펼침면 2장(4쪽)씩 추가·삭제 · 양장이라 제본별 최소·최대 없음<br>
+      <b>전환 전</b>: 표지 PDF 496×276 · 완료 검증에서 표지 크기 검사 생략<br>
+      <b>전환 후</b>: 표지 화면 사방 20mm 여분 가이드 · 표지 PDF <b>484×258</b> · 내지 PDF 420×210(변화 없음) · <code>coverOutput.layout='hardcover-wrap'</code> · 완료 검증 싸바리 전개 기준 · <code>spineWidthMm</code> 8</td></tr>
     <tr><td>② 양장 · 책등 가변<br><span class="pill p-vi">일반 예시</span></td>
       <td><b>표지3분할</b> 양장 전용 세트</td>
       <td><code>bindingType=hardcover</code> · <code>paperType</code> · 파트너 계산 <code>spineWidthMm</code>(0 초과) · 쪽수 범위</td>
@@ -728,8 +769,13 @@
   <ul class="plain">
     <li><b>제본별로 세트를 나누는 이유</b> — 한 세트에 표지 모드는 하나뿐이고, 양장 표지는 치수(§4-1)가 무선과 다르다.
       책등 공식(§5)은 세트가 아니라 호스트가 보낸 <code>bindingType</code> 으로 정해진다. 파트너는 제본 선택값에 맞는 템플릿셋으로 편집기를 연다.</li>
-    <li><b>①·②는 양장이라 §4-1 대상</b> — 표지 원고는 싸바리 전개 규격으로 만든다. 현 템플릿·편집기 산출 표지가 이 규격과 다르면 정합 작업 대상이다(진행 중).
-      ①처럼 책등 고정이면 책등은 파트너와 정한 <b>기준 쪽수의 양장 공식값</b>으로 둔다. 편집기 표지의 완료 검증 결과는 싸바리 규격 판정으로 쓰지 않는다.</li>
+    <li><b>①·②는 양장이라 §4-1 대상</b> — 표지 원고는 싸바리 전개 규격으로 만들고, 표지 템플릿은 §4-1 싸바리 모드 규약으로 등록한다.
+      ①처럼 책등 고정이면 책등은 <b>파트너와 정한 값</b>으로 둔다. 싸바리 모드가 아닌 세트의 편집기 표지 완료 검증 결과는 싸바리 규격 판정으로 쓰지 않는다.</li>
+    <li><b>①의 전환</b> — 새 세트는 등록돼 있고(현재 비활성 표시·상품 매핑 없음) <b>파트너가 상품 매핑을 새 세트로 바꾸는 시각부터</b> 적용된다.
+      파트너에 사전 통지하고 확인을 받은 뒤 전환하며, Storige 는 그 시각에 상품-템플릿셋 연결(관리자 템플릿셋 조회 기준)을 새 세트 기본으로 바꾸고 기존 연결은 비활성으로 돌린다.
+      전환 뒤 새로 시작한 편집만 새 세트로 열리고, 이미 시작한 편집은 원래 세트를 쓴다
+      (재편집 URL 에 <code>templateSetId</code> 를 보낼 때는 그 편집을 만든 세트 id 를 보내거나 생략한다 — URL 값이 세션 값보다 우선한다). 기존 세트는 그대로 유지한다(삭제하지 않음).
+      되돌릴 때는 파트너가 매핑을 기존 세트로 되돌리고 Storige 연결도 원래대로 돌린다. 같은 세트를 쓰는 다른 파트너 상품은 그 파트너가 매핑을 바꾸기 전까지 영향이 없다.</li>
     <li><b>①의 전제</b> — 표지 템플릿이 표지펼침면이어야 한다. 표지3분할로 바뀌면 지종을 보내지 않으므로 <b>기본 용지(<code>mojo_80g</code>)와 양장 제본 코드로 서버가 계산한 책등</b>(v1 레거시 식, §5)이 들어간다. 모드 변경은 §9-2 4단계 절차로.</li>
     <li><b>쪽수 설정이 다르면</b> 현재는 파트너가 보낸 값이 적용된다(§7-3 '현재 동작'). 불일치 시 처리 방식은 별도 결정 사항이므로 ①처럼 같은 값으로 맞춰 운영한다.</li>
   </ul>
@@ -788,7 +834,8 @@
       안 보내면 기본 용지(<code>mojo_80g</code>)·무선 공식으로 계산되고, <code>spineWidthMm</code> 만 보내면 쪽을 늘려도 책등이 고정된다.</li>
     <li>표지펼침면 상품에 호스트 책등·지종 값이 와도 <b>반영되지 않는다</b>는 점을 호스트 파트너와 공유했는가.</li>
     <li>양장 표지 원고 치수가 <b>싸바리 전개 규격</b>((W+8)×2+책등+40 × (H+8)+40)인가(§4-1). 싸바리 값(<code>caseBind</code>)을 템플릿셋에도 표지 템플릿 <code>spec</code> 에도 임의로 넣지 않았는가.</li>
-    <li>책등 고정(표지펼침면) 양장이면 책등을 <b>호스트와 합의한 기준 쪽수의 양장 공식값</b>으로 넣고, 쪽수 범위 양 끝 차이가 허용오차 안인지 확인했는가(§4-1).</li>
+    <li>양장 표지 세트가 <b>싸바리 모드 규약</b>(커버 종류 <code>hardcover_wrap</code> · 한 면 = 판형+8 · 날개·<code>caseBind</code>·외곽선 없음 · <code>cutSizeMm</code> 저장값 유지)을 지켰는가(§4-1). 편집기에서 사방 20mm 여분 가이드가 보이는지 확인.</li>
+    <li>책등 고정(표지펼침면) 양장이면 책등을 <b>호스트와 정한 값</b>으로 넣고, 쪽수 범위 양 끝 차이가 허용오차 안인지 확인했는가(§4-1).</li>
   </ul>
 
   <h3>canvasData 직접 편집 시</h3>
@@ -807,6 +854,11 @@
   </ul>
 
   <div class="foot">
+    <b>2026-10-06 갱신 요약</b> — 이 판에서 바뀐 것:
+    ① §4-1 <b>편집기 싸바리 모드 규약</b> — 커버 종류 <code>hardcover_wrap</code> · 한 면 = 판형+8 · 책등 고정값은 호스트와 정한 값 · 날개·<code>caseBind</code>·외곽선 없음 · <code>cutSizeMm</code> 저장값 유지.
+    이 규약을 지킨 세트는 편집기 표지 PDF 가 싸바리 전개 규격과 같고(이전 판의 '정합 작업 진행 중' 대체), 첫 세트가 등록돼 파트너 매핑 전환을 기다린다.
+    ② §9-3 ① 하드커버 동화책 — 새 세트(전환 전/후 결과·전환 방식) 반영 · §8 싸바리 입력란 · §10 체크리스트 보강.
+    <br><br>
     <b>2026-10-05 갱신 요약</b> — 이 판에서 바뀐 것:
     ① §9 <b>호스트 파트너 연동</b> 신설 — <code>/embed</code> 값(책등·지종·제본·쪽수·단위)이 표지 모드별로 적용되는 방식
     ② §9-2 <b>표지 책등 방식 결정 규약</b> — 상품별 모드는 호스트 파트너가 정하고 Storige 는 그대로 제작·등록, 변경은 호스트 결정에 따르고 교체 시점을 미리 알림
