@@ -1054,6 +1054,211 @@ describe('EditSessionsService', () => {
       expect(lastOpts().size).toEqual({ width: 210, height: 297 });
       expect(mockWorkerJobsService.createValidationJob).toHaveBeenCalled();
     });
+
+    // ── N-API-3(W8): [표지 spread → 내지 spread] 결합 세트 — 펼침면 크기·방향은 content 잡에만 ──
+    describe('결합 세트(표지 spread + 내지 spread) — content 잡에만 펼침면 적용', () => {
+      // 아래 describe 들이 mockTemplateSetsService 상태를 공유하므로 진입 전 mock 을 복원한다.
+      let savedFindOne: typeof mockTemplateSetsService.findOne;
+      let savedFindOneWithTemplates: typeof mockTemplateSetsService.findOneWithTemplates;
+      beforeAll(() => {
+        savedFindOne = mockTemplateSetsService.findOne;
+        savedFindOneWithTemplates = mockTemplateSetsService.findOneWithTemplates;
+      });
+      afterAll(() => {
+        mockTemplateSetsService.findOne = savedFindOne;
+        mockTemplateSetsService.findOneWithTemplates = savedFindOneWithTemplates;
+      });
+
+      const COVER_SPREAD = {
+        type: 'spread',
+        spreadConfig: {
+          regionScope: 'cover',
+          spec: { coverWidthMm: 218, coverHeightMm: 218, spineWidthMm: 8 },
+        },
+      };
+      const UNSCOPED_SPREAD = {
+        type: 'spread',
+        spreadConfig: { spec: { coverWidthMm: 210, coverHeightMm: 297 } },
+      };
+      const PAGE = { type: 'page', spreadConfig: null };
+      const innerSpread = (pageWidthMm: number, pageHeightMm: number) => ({
+        type: 'spread',
+        spreadConfig: { regionScope: 'inner', innerSpec: { pageWidthMm, pageHeightMm } },
+      });
+      const withDetails = (templateDetails: unknown[]): void => {
+        mockTemplateSetsService.findOneWithTemplates = jest
+          .fn()
+          .mockResolvedValue({ templateDetails });
+      };
+      const withTrim = (width: number, height: number): void => {
+        mockTemplateSetsService.findOne = jest
+          .fn()
+          .mockResolvedValue({ width, height, cropMarkEnabled: false });
+      };
+      const optsFor = (fileType: 'cover' | 'content') =>
+        mockWorkerJobsService.createValidationJob.mock.calls.find(
+          (c: any[]) => c[0]?.fileType === fileType,
+        )?.[0]?.orderOptions;
+      const withCover = (metadata: Record<string, unknown> | null = null): EditSessionEntity =>
+        mkSession({ coverFileId: 'file-cover-inner', metadata: metadata as any });
+      const resolve = (session: EditSessionEntity): Promise<{ width: number; height: number } | null> =>
+        (
+          service as unknown as {
+            resolveInnerSpreadContentSizeMm(
+              s: EditSessionEntity,
+            ): Promise<{ width: number; height: number } | null>;
+          }
+        ).resolveInnerSpreadContentSizeMm(session);
+
+      it('[표지 spread, 내지 spread] → content 420×210·landscape, 표지 잡은 판형 210×210(방향 미주입)', async () => {
+        withTrim(210, 210);
+        withDetails([COVER_SPREAD, innerSpread(210, 210)]);
+        await call(withCover());
+        expect(optsFor('content').size).toEqual({ width: 420, height: 210 });
+        expect(optsFor('content').expectedOrientation).toBe('landscape');
+        expect(optsFor('cover').size).toEqual({ width: 210, height: 210 });
+        expect(optsFor('cover')).not.toHaveProperty('expectedOrientation');
+      });
+
+      it('순서가 [내지, 표지] 여도 content 는 420×210', async () => {
+        withTrim(210, 210);
+        withDetails([innerSpread(210, 210), COVER_SPREAD]);
+        await call(withCover());
+        expect(optsFor('content').size).toEqual({ width: 420, height: 210 });
+      });
+
+      it('regionScope 미기재 spread 가 앞에 있어도 내지 spread 를 찾는다(A4 → 420×297)', async () => {
+        withTrim(210, 297);
+        withDetails([UNSCOPED_SPREAD, innerSpread(210, 297), PAGE]);
+        await call(withCover());
+        expect(optsFor('content').size).toEqual({ width: 420, height: 297 });
+        expect(optsFor('content').expectedOrientation).toBe('landscape');
+      });
+
+      it('결합 세트에서도 metadata.size(호스트 판형)보다 펼침면 크기가 우선', async () => {
+        withTrim(210, 210);
+        withDetails([COVER_SPREAD, innerSpread(210, 210)]);
+        await call(withCover({ size: { width: 210, height: 210 } }));
+        expect(optsFor('content').size).toEqual({ width: 420, height: 210 });
+        expect(optsFor('cover').size).toEqual({ width: 210, height: 210 });
+      });
+
+      it('결합 세트의 내지 innerSpec 이 비유효하면 기존 폴백(판형) — 잡 생성 계속', async () => {
+        withTrim(210, 210);
+        withDetails([COVER_SPREAD, innerSpread(0, 210)]);
+        await call(withCover());
+        expect(optsFor('content').size).toEqual({ width: 210, height: 210 });
+        expect(optsFor('cover').size).toEqual({ width: 210, height: 210 });
+      });
+
+      it('resolveInnerSpreadContentSizeMm: 내지 spread 가 없는 세트는 null, 결합 세트는 펼침면', async () => {
+        withDetails([PAGE]);
+        await expect(resolve(withCover())).resolves.toBeNull();
+        withDetails([COVER_SPREAD, PAGE]);
+        await expect(resolve(withCover())).resolves.toBeNull();
+        withDetails([UNSCOPED_SPREAD]);
+        await expect(resolve(withCover())).resolves.toBeNull();
+        withDetails([COVER_SPREAD, innerSpread(210, 210)]);
+        await expect(resolve(withCover())).resolves.toEqual({ width: 420, height: 210 });
+      });
+
+      it('비스프레드 세트(page 만)는 무회귀 — 표지·내지 동일 판형 옵션', async () => {
+        withTrim(210, 297);
+        withDetails([PAGE]);
+        await call(withCover());
+        expect(optsFor('content').size).toEqual({ width: 210, height: 297 });
+        expect(optsFor('content').expectedOrientation).toBe('portrait');
+        expect(optsFor('content')).toEqual(optsFor('cover'));
+      });
+
+      it('표지 spread 만 있는 세트는 무회귀(판형 폴백)', async () => {
+        withTrim(210, 210);
+        withDetails([COVER_SPREAD, PAGE]);
+        await call(withCover());
+        expect(optsFor('content').size).toEqual({ width: 210, height: 210 });
+        expect(optsFor('content')).toEqual(optsFor('cover'));
+      });
+
+      it('[필수] 결합 세트 + 표지 연결 생략 세션(S4형: 양장·coverOutput 496×276) → 표지 잡 옵션 현행 그대로', async () => {
+        withTrim(210, 210);
+        withDetails([COVER_SPREAD, innerSpread(210, 210)]);
+        await call(
+          withCover({
+            orderOptions: { bindingType: 'hardcover' },
+            spreadContentPageCount: 8,
+            spread: {
+              spec: {
+                coverWidthMm: 247.4, coverHeightMm: 276, spineWidthMm: 1.2,
+                wingEnabled: false, wingWidthMm: 0, cutSizeMm: 3,
+              },
+            },
+            appliedSpine: { spineWidthMm: 1.2, source: 'template' },
+            coverOutput: { widthMm: 496, heightMm: 276, bleedMm: 0 },
+          }),
+        );
+        // 표지 = 공유 기본 옵션(판형 210×210, 정사각이라 방향 미주입, 책등 연결 없음) — fixB 이전과 동일
+        expect(optsFor('cover')).toEqual({
+          size: { width: 210, height: 210 },
+          pages: 1,
+          binding: 'perfect',
+          bleed: 3,
+        });
+        expect(optsFor('content')).toMatchObject({
+          size: { width: 420, height: 210 },
+          expectedOrientation: 'landscape',
+          binding: 'perfect', // 양장 내지 = 무선 기준(R-195 content 보정 현행)
+          pages: 8,
+        });
+      });
+
+      it('[필수] 내지 선행 세트([내지, 표지])의 표지 잡은 펼침면 크기·방향을 받지 않는다', async () => {
+        withTrim(210, 297);
+        withDetails([innerSpread(210, 297), COVER_SPREAD]);
+        await call(withCover());
+        expect(optsFor('cover').size).toEqual({ width: 210, height: 297 });
+        expect(optsFor('cover').expectedOrientation).toBe('portrait');
+        expect(optsFor('content').size).toEqual({ width: 420, height: 297 });
+        expect(optsFor('content').expectedOrientation).toBe('landscape');
+      });
+
+      it('싸바리 표지 연결 세션: 표지 잡 size 는 판형(override) 유지, 내지만 펼침면', async () => {
+        withTrim(210, 210);
+        withDetails([COVER_SPREAD, innerSpread(210, 210)]);
+        await call(
+          withCover({
+            orderOptions: { bindingType: 'hardcover' },
+            spreadContentPageCount: 8,
+            spread: {
+              spec: { coverWidthMm: 218, coverHeightMm: 218, spineWidthMm: 8, wingEnabled: false, wingWidthMm: 0 },
+            },
+            appliedSpine: { spineWidthMm: 8, source: 'template' },
+            coverOutput: {
+              widthMm: 484, heightMm: 258, bleedMm: 0, layout: 'hardcover-wrap',
+              trimWidthMm: 210, trimHeightMm: 210, wrapMm: 20,
+            },
+          }),
+        );
+        expect(optsFor('cover')).toMatchObject({
+          binding: 'hardcover', size: { width: 210, height: 210 }, spineWidthMm: 8,
+        });
+        expect(optsFor('content')).toMatchObject({ size: { width: 420, height: 210 }, pages: 8 });
+      });
+
+      it('EDITOR_SPREAD_VALIDATION_MAPPING=off 여도 content 펼침면 크기는 적용(플래그 밖)', async () => {
+        const original = process.env.EDITOR_SPREAD_VALIDATION_MAPPING;
+        process.env.EDITOR_SPREAD_VALIDATION_MAPPING = 'off';
+        try {
+          withTrim(210, 210);
+          withDetails([COVER_SPREAD, innerSpread(210, 210)]);
+          await call(withCover());
+          expect(optsFor('content').size).toEqual({ width: 420, height: 210 });
+          expect(optsFor('cover').size).toEqual({ width: 210, height: 210 });
+        } finally {
+          if (original === undefined) delete process.env.EDITOR_SPREAD_VALIDATION_MAPPING;
+          else process.env.EDITOR_SPREAD_VALIDATION_MAPPING = original;
+        }
+      });
+    });
   });
 
   describe('createValidationJobs 방향 정합 — size 스왑 정규화 + expectedOrientation (2026-07-14)', () => {

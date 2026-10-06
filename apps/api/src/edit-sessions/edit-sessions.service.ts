@@ -33,7 +33,12 @@ import {
 } from './dto/external-session-response.dto';
 import { WorkerJobsService } from '../worker-jobs/worker-jobs.service';
 import { CreateValidationJobDto } from '../worker-jobs/dto/worker-job.dto';
-import { WorkerJobStatus, type SpreadValidationResult, validateSpreadAgainstAuthority } from '@storige/types';
+import {
+  TemplateType,
+  WorkerJobStatus,
+  type SpreadValidationResult,
+  validateSpreadAgainstAuthority,
+} from '@storige/types';
 import { TemplateSetsService } from '../templates/template-sets.service';
 import {
   computeReaderSpreadLayout,
@@ -161,7 +166,11 @@ export class EditSessionsService {
    * (= 내지 한 면)이라 정상 PDF 가 항상 SIZE_MISMATCH 로 오검증됐다.
    *   `페이지 크기가 맞지 않습니다. (기대: 210x297mm, 현재: 420x297mm)`
    *
-   * 표지 spread(cover)·비스프레드 세트는 null 을 반환해 기존 폴백 체인을 그대로 탄다(무회귀).
+   * [표지 spread → 내지 spread] 결합 세트(W8 N-API-3)도 지원한다 — 첫 spread 가 아니라
+   * regionScope='inner' 인 spread 템플릿을 찾는다. 해석 결과는 호출부에서 **content 잡에만** 적용한다
+   * (표지 잡 옵션 무접촉).
+   *
+   * 내지 spread 가 없는 세트(표지 spread 만·비스프레드)는 null 을 반환해 기존 폴백 체인을 그대로 탄다(무회귀).
    */
   private async resolveInnerSpreadContentSizeMm(
     session: EditSessionEntity,
@@ -171,7 +180,10 @@ export class EditSessionsService {
       const { templateDetails } = await this.templateSetsService.findOneWithTemplates(
         session.templateSetId,
       );
-      const spreadTpl = templateDetails.find((t) => t.type === ('spread' as any));
+      // 결합 세트는 표지 spread 가 앞에 올 수 있다 → 첫 spread 고정이 아니라 내지 spread 를 찾는다.
+      const spreadTpl = templateDetails.find(
+        (t) => t.type === TemplateType.SPREAD && t.spreadConfig?.regionScope === 'inner',
+      );
       const cfg = spreadTpl?.spreadConfig as
         | { regionScope?: string; innerSpec?: { pageWidthMm?: number; pageHeightMm?: number } }
         | undefined;
@@ -1841,7 +1853,8 @@ export class EditSessionsService {
         }
       }
 
-      // 내지 펼침면 세트 여부/크기 해석 (표지 spread·비스프레드는 null → 기존 폴백)
+      // 내지 펼침면 세트 여부/크기 해석 (내지 spread 가 없는 세트는 null → 기존 폴백).
+      // 결과는 아래 R-195 블록 뒤에서 content 잡 옵션에만 적용한다.
       const innerSpreadContentSize = await this.resolveInnerSpreadContentSizeMm(session);
 
       // Get order options from metadata or use defaults
@@ -1856,10 +1869,8 @@ export class EditSessionsService {
         // A4 고정 디폴트는 비-A4 상품 세션의 생성 PDF 를 SIZE_MISMATCH 로 오검증했고
         // (FIXABLE→VALIDATED 매핑이 마스킹), 게이팅 ON 시 session.failed 로 flip 하는 원인.
         // templateSet 까지 없을 때만 최후 A4 폴백(레거시 동일).
-        // 내지 펼침면 세트는 content.pdf 1페이지가 '펼침면'이라 세트 판형(한 면)이 아니라
-        // 펼침면 크기가 기대값이다. 해석되면 metadata.size 보다도 우선(서버 권위).
+        // 내지 펼침면 크기는 여기(표지·내지 공유)가 아니라 아래에서 content 잡에만 적용한다.
         size:
-          innerSpreadContentSize ||
           session.metadata?.size ||
           (templateSet
             ? { width: templateSet.width, height: templateSet.height }
@@ -1912,14 +1923,6 @@ export class EditSessionsService {
           orderOptions.expectedOrientation =
             tsWidth > tsHeight ? 'landscape' : 'portrait';
         }
-      }
-
-      // 내지 펼침면: 방향 기준도 세트 판형(한 면)이 아니라 **실제 content 페이지(펼침면)** 여야 한다.
-      // 세로 판형(210×297)의 펼침면은 420×297 = 가로라, 위 블록이 주입한 'portrait' 를 그대로 두면
-      // 정상 PDF 가 ORIENTATION_MISMATCH 경고로 집계된다(비차단이지만 오탐 노이즈).
-      if (innerSpreadContentSize) {
-        const { width: iw, height: ih } = innerSpreadContentSize;
-        orderOptions.expectedOrientation = iw > ih ? 'landscape' : 'portrait';
       }
 
       // ── 블리드 / 재단선 / 사이즈 허용오차 + 재단/작업 사이즈 주입 (2026-06-10) ──
@@ -1979,6 +1982,22 @@ export class EditSessionsService {
             }
           }
         }
+      }
+
+      // ── 내지 펼침면 세트(W8 N-API-3): content 기대 크기·방향 = 펼침면 — **content 잡에만** 적용 ──
+      // content.pdf 1페이지가 '펼침면'이라 세트 판형(한 면)이 아니라 펼침면 크기가 기대값이다.
+      // 해석되면 metadata.size 보다도 우선(서버 권위). 방향도 실제 content 페이지(펼침면) 기준 —
+      // 세로 판형(210×297)의 펼침면은 420×297 = 가로라 판형 기준 'portrait' 를 두면 정상 PDF 가
+      // ORIENTATION_MISMATCH 경고로 집계된다. 표지 잡(coverOrderOptions)은 건드리지 않는다 —
+      // [표지 spread → 내지 spread] 결합 세트의 표지 기대 크기·방향은 판형 기준 그대로.
+      // R-195 플래그(EDITOR_SPREAD_VALIDATION_MAPPING)와 무관하게 적용(overrides.content 에 size 키 없음).
+      if (innerSpreadContentSize) {
+        const { width: iw, height: ih } = innerSpreadContentSize;
+        contentOrderOptions = {
+          ...contentOrderOptions,
+          size: { width: iw, height: ih },
+          expectedOrientation: iw > ih ? 'landscape' : 'portrait',
+        };
       }
 
       // 잡 테넌트 스탬프 = 세션 site(NULL 세션은 종전대로 NULL). site default 머지는
