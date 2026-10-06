@@ -1,19 +1,20 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { NotFoundException, BadRequestException } from '@nestjs/common';
+import { NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { TemplateSetsService } from './template-sets.service';
 import { TemplateSet, TemplateSetItem, TemplateSetTypeEnum } from './entities/template-set.entity';
 import { TemplateSetLibraryCategory } from './entities/template-set-library-category.entity';
 import { Template } from './entities/template.entity';
 import { Product } from '../products/entities/product.entity';
-import { TemplateSetType, TemplateType, CanvasData } from '@storige/types';
+import { TemplateSetType, TemplateType, CanvasData, EditorMode } from '@storige/types';
 
 describe('TemplateSetsService', () => {
   let service: TemplateSetsService;
   let templateSetRepository: jest.Mocked<Repository<TemplateSet>>;
   let templateRepository: jest.Mocked<Repository<Template>>;
   let productRepository: jest.Mocked<Repository<Product>>;
+  let tslcRepository: jest.Mocked<Repository<TemplateSetLibraryCategory>>;
 
   const mockCanvasData: CanvasData = {
     version: '5.3.0',
@@ -129,6 +130,7 @@ describe('TemplateSetsService', () => {
     templateSetRepository = module.get(getRepositoryToken(TemplateSet));
     templateRepository = module.get(getRepositoryToken(Template));
     productRepository = module.get(getRepositoryToken(Product));
+    tslcRepository = module.get(getRepositoryToken(TemplateSetLibraryCategory));
   });
 
   it('should be defined', () => {
@@ -383,6 +385,53 @@ describe('TemplateSetsService', () => {
       expect(result).toHaveProperty('templateSet');
       expect(result).toHaveProperty('templateDetails');
     });
+
+    describe('N-NEW-2 참조 템플릿 누락 경고', () => {
+      let warnSpy: jest.SpyInstance;
+
+      beforeEach(() => {
+        warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      });
+
+      afterEach(() => {
+        warnSpy.mockRestore();
+      });
+
+      it('누락 템플릿은 응답에서 제외(순서 유지)하고 warn 을 1회 남긴다', async () => {
+        (templateSetRepository.findOne as jest.Mock).mockResolvedValueOnce({
+          ...mockTemplateSet,
+          id: 'set-missing',
+          templates: [
+            { templateId: 'tpl-a', required: true },
+            { templateId: 'tpl-gone', required: false },
+            { templateId: 'tpl-b', required: false },
+          ],
+        });
+        (templateRepository.findByIds as jest.Mock).mockResolvedValueOnce([
+          { ...mockTemplate, id: 'tpl-b' },
+          { ...mockTemplate, id: 'tpl-a' },
+        ]);
+
+        const result = await service.findOneWithTemplates('set-missing');
+
+        expect(Object.keys(result)).toEqual(['templateSet', 'templateDetails']);
+        expect(result.templateDetails.map((t) => t.id)).toEqual(['tpl-a', 'tpl-b']);
+        expect(warnSpy).toHaveBeenCalledTimes(1);
+        const message = String(warnSpy.mock.calls[0][0]);
+        expect(message).toContain('[template-sets] 참조 템플릿 누락');
+        expect(message).toContain('set-missing');
+        expect(message).toContain('tpl-gone');
+        expect(message).toContain('1/3');
+        expect(message).not.toContain('tpl-a');
+      });
+
+      it('누락이 없으면 warn 을 남기지 않는다', async () => {
+        const result = await service.findOneWithTemplates('template-set-id');
+
+        expect(result.templateDetails.map((t) => t.id)).toEqual(['template-id-1']);
+        expect(warnSpy).not.toHaveBeenCalled();
+      });
+    });
   });
 
   describe('update', () => {
@@ -422,6 +471,143 @@ describe('TemplateSetsService', () => {
 
       expect(templateSetRepository.create).toHaveBeenCalled();
       expect(templateSetRepository.save).toHaveBeenCalled();
+    });
+
+    // 싸바리 book 세트(9e768d01 형태) — 모든 설정 컬럼을 보존해야 사본이 같은 상품으로 동작한다.
+    const hardcoverWrapOriginal: Partial<TemplateSet> = {
+      ...mockTemplateSet,
+      id: 'orig-hardcover',
+      name: '싸바리 동화책',
+      siteId: 'site-1',
+      thumbnailUrl: 'https://example.com/thumb.png',
+      width: 210,
+      height: 210,
+      canAddPage: true,
+      pageCountRange: [8, 16, 24],
+      pageStep: 2,
+      padToPageStep: true,
+      templates: [
+        { templateId: 'tpl-cover', required: true },
+        { templateId: 'tpl-inner', required: false },
+      ],
+      editorMode: EditorMode.BOOK,
+      enabledMenus: ['UPLOAD', 'TEXT'],
+      endpaperConfig: { frontCount: 1, backCount: 1, frontEditable: false, backEditable: false },
+      coverEditable: false,
+      coverPreviewImage: 'https://example.com/cover-preview.png',
+      contentPdfEditable: false,
+      pdfOutputMode: 'duplex-split',
+      colorMode: 'cmyk',
+      bleedMm: 5,
+      cropMarkEnabled: true,
+      sizeToleranceMm: 0.5,
+      pricing: { includedPages: 16, minPages: 8, pageStep: 2, perPageUnit: 1000 },
+      coverType: 'hardcover_wrap',
+      coverConfig: { caseBind: { boardThicknessMm: 2, turnInMm: 15, wrapMarginMm: 3 } },
+      description: '싸바리 하드커버',
+      categoryId: 'cat-1',
+      productSpecs: null,
+      pairedTemplateSetId: 'orig-pair',
+      isOrientationDefault: false,
+      isActive: false,
+    };
+
+    it('N-TD-1: 설정 컬럼 전부를 보존하고 isActive 는 원본을 승계한다', async () => {
+      (templateSetRepository.findOne as jest.Mock).mockResolvedValueOnce({ ...hardcoverWrapOriginal });
+
+      await service.copy('orig-hardcover');
+
+      expect(templateSetRepository.create).toHaveBeenLastCalledWith({
+        name: '싸바리 동화책 (복사본)',
+        siteId: 'site-1',
+        thumbnailUrl: 'https://example.com/thumb.png',
+        type: hardcoverWrapOriginal.type,
+        width: 210,
+        height: 210,
+        canAddPage: true,
+        pageCountRange: [8, 16, 24],
+        pageStep: 2,
+        padToPageStep: true,
+        templates: hardcoverWrapOriginal.templates,
+        editorMode: EditorMode.BOOK,
+        enabledMenus: ['UPLOAD', 'TEXT'],
+        endpaperConfig: { frontCount: 1, backCount: 1, frontEditable: false, backEditable: false },
+        coverEditable: false,
+        coverPreviewImage: 'https://example.com/cover-preview.png',
+        contentPdfEditable: false,
+        pdfOutputMode: 'duplex-split',
+        colorMode: 'cmyk',
+        bleedMm: 5,
+        cropMarkEnabled: true,
+        sizeToleranceMm: 0.5,
+        pricing: { includedPages: 16, minPages: 8, pageStep: 2, perPageUnit: 1000 },
+        coverType: 'hardcover_wrap',
+        coverConfig: { caseBind: { boardThicknessMm: 2, turnInMm: 15, wrapMarginMm: 3 } },
+        description: '싸바리 하드커버',
+        categoryId: 'cat-1',
+        productSpecs: null,
+        pairedTemplateSetId: null,
+        isOrientationDefault: true,
+        isDeleted: false,
+        isActive: false,
+      });
+    });
+
+    it('N-TD-1: 활성 원본의 사본은 활성이다', async () => {
+      (templateSetRepository.findOne as jest.Mock).mockResolvedValueOnce({
+        ...hardcoverWrapOriginal,
+        isActive: true,
+      });
+
+      await service.copy('orig-hardcover');
+
+      expect(templateSetRepository.create).toHaveBeenLastCalledWith(
+        expect.objectContaining({ isActive: true }),
+      );
+    });
+
+    it('N-TD-1: 라이브러리 카테고리 연결을 사본에 복사하고 다시 로드한다', async () => {
+      (templateSetRepository.findOne as jest.Mock).mockResolvedValueOnce({ ...hardcoverWrapOriginal });
+      (templateSetRepository.create as jest.Mock).mockImplementationOnce(
+        (row: Partial<TemplateSet>) => ({ ...row }),
+      );
+      (templateSetRepository.save as jest.Mock).mockImplementationOnce(
+        (row: Partial<TemplateSet>) => Promise.resolve({ ...row, id: 'copy-id' }),
+      );
+      // findOne(원본) populate → 원본 연결, 사본 save 후 재로드 → 사본 연결
+      (tslcRepository.find as jest.Mock)
+        .mockResolvedValueOnce([
+          { templateSetId: 'orig-hardcover', libraryCategoryId: 'lib-1', sortOrder: 0 },
+          { templateSetId: 'orig-hardcover', libraryCategoryId: 'lib-2', sortOrder: 1 },
+        ])
+        .mockResolvedValueOnce([
+          { templateSetId: 'copy-id', libraryCategoryId: 'lib-1', sortOrder: 0 },
+          { templateSetId: 'copy-id', libraryCategoryId: 'lib-2', sortOrder: 1 },
+        ]);
+
+      const result = await service.copy('orig-hardcover');
+
+      expect(tslcRepository.delete).toHaveBeenCalledWith({ templateSetId: 'copy-id' });
+      expect(tslcRepository.save).toHaveBeenCalledWith([
+        { templateSetId: 'copy-id', libraryCategoryId: 'lib-1', sortOrder: 0 },
+        { templateSetId: 'copy-id', libraryCategoryId: 'lib-2', sortOrder: 1 },
+      ]);
+      expect(tslcRepository.find).toHaveBeenLastCalledWith({
+        where: { templateSetId: 'copy-id' },
+        order: { sortOrder: 'ASC' },
+      });
+      expect(result.id).toBe('copy-id');
+      expect(result.libraryCategoryIds).toEqual(['lib-1', 'lib-2']);
+    });
+
+    it('N-TD-1: 원본에 라이브러리 카테고리 연결이 없으면 연결을 쓰지 않는다(전역 유지)', async () => {
+      (templateSetRepository.findOne as jest.Mock).mockResolvedValueOnce({ ...hardcoverWrapOriginal });
+
+      const result = await service.copy('orig-hardcover');
+
+      expect(tslcRepository.delete).not.toHaveBeenCalled();
+      expect(tslcRepository.save).not.toHaveBeenCalled();
+      expect(result.libraryCategoryIds).toEqual([]);
     });
   });
 

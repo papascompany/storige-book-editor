@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
   BadRequestException,
   ConflictException,
@@ -41,6 +42,8 @@ import {
 
 @Injectable()
 export class TemplateSetsService {
+  private readonly logger = new Logger(TemplateSetsService.name);
+
   constructor(
     @InjectRepository(TemplateSet)
     private templateSetRepository: Repository<TemplateSet>,
@@ -257,6 +260,16 @@ export class TemplateSetsService {
       templateDetails.find((t) => t.id === id),
     ).filter(Boolean) as Template[];
 
+    // 누락 참조는 응답에서 제외(기존 동작 유지)하고 운영 추적용 경고만 남긴다.
+    if (orderedTemplates.length < templateIds.length) {
+      const foundIds = new Set<string>(templateDetails.map((t) => t.id));
+      const missingIds = templateIds.filter((templateId) => !foundIds.has(templateId));
+      this.logger.warn(
+        `[template-sets] 참조 템플릿 누락 setId=${templateSet.id} ` +
+          `missing=${missingIds.join(',')} (${missingIds.length}/${templateIds.length})`,
+      );
+    }
+
     return {
       templateSet,
       templateDetails: orderedTemplates,
@@ -391,13 +404,41 @@ export class TemplateSetsService {
       pageCountRange: original.pageCountRange,
       pageStep: original.pageStep,
       padToPageStep: original.padToPageStep,
+      // templates 는 원본과 같은 템플릿을 공유 참조한다(템플릿 행은 복제하지 않음).
       templates: original.templates,
+      editorMode: original.editorMode,
+      enabledMenus: original.enabledMenus,
+      endpaperConfig: original.endpaperConfig,
+      coverEditable: original.coverEditable,
+      coverPreviewImage: original.coverPreviewImage,
+      contentPdfEditable: original.contentPdfEditable,
+      pdfOutputMode: original.pdfOutputMode,
+      colorMode: original.colorMode,
+      bleedMm: original.bleedMm,
+      cropMarkEnabled: original.cropMarkEnabled,
+      sizeToleranceMm: original.sizeToleranceMm,
+      pricing: original.pricing,
+      coverType: original.coverType,
+      coverConfig: original.coverConfig,
+      description: original.description,
       categoryId: original.categoryId,
+      productSpecs: original.productSpecs,
+      // 사본은 방향 페어에 속하지 않는다 — 비페어 세트는 자기 자신이 기본.
+      pairedTemplateSetId: null,
+      isOrientationDefault: true,
       isDeleted: false,
-      isActive: true,
+      // 활성 상태는 원본을 승계한다(비활성 원본의 사본이 검수 전에 노출되지 않도록).
+      isActive: original.isActive,
     });
 
-    return this.templateSetRepository.save(copy);
+    const saved = await this.templateSetRepository.save(copy);
+    // ④ 라이브러리 카테고리 연결도 원본과 같게 복사한다(빈 배열 = 전역 노출 유지).
+    const libraryCategoryIds = original.libraryCategoryIds ?? [];
+    if (libraryCategoryIds.length > 0) {
+      await this.setLibraryCategories(saved.id, libraryCategoryIds);
+    }
+    saved.libraryCategoryIds = await this.loadLibraryCategoryIds(saved.id);
+    return saved;
   }
 
   /**
