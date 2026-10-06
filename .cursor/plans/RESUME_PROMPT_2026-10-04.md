@@ -98,7 +98,7 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
 
 | 대상 | 기준 |
 |---|---|
-| api jest | 130 스위트 / 2605 · tsc 0 (Wave 4 통합 트리 10-05. lint 기존 오류 2건 — `shop-session-order-scope.spec.ts` no-loss-of-precision, 미변경 파일) |
+| api jest | 130 스위트 / 2605 · tsc 0 (Wave 4 통합 트리 10-05. lint 오류 2건 — `shop-session-order-scope.spec.ts:24,71` no-loss-of-precision. **정정(10-06): 기존 오류가 아니라 `558c293`(10-01 Wave A)이 들여온 회귀이며, 이 때문에 master CI 가 10-01 08:53Z(`e384d60`) 이후 계속 실패 — api lint 뒤 단계(worker·canvas-core·editor·admin·golden 등)는 전부 skipped**) |
 | worker jest | 33 스위트 / 1239 · tsc 0 (Wave 4. 로컬 gs 10.08.0·qpdf 12.3.2 설치 시; gs 부재 시 GS 블록 skip) |
 | editor vitest | 104 파일 / 1468 · tsc 0 · build · build:embed / Playwright `tests/embed-mode` 33건(`PW_CHROMIUM_CHANNEL=chrome`, 로컬 전용·CI 미편입) |
 | sdk | 12 / 359 · tsc 0 |
@@ -192,6 +192,13 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
 - Sentry 과거 이벤트 정리 · admin 편집기 호출 방식·admin Sentry 전처리(상세 비공개).
 - files·D6: 백필 재실측(D6 선행 ③) · 게이트 거부 코드(`FILE_NOT_FOUND` 404 재사용 금지 원칙 유지) · 100p·MD2Books 조율.
 - 09-30 §5.0 계승: 3-B(3) 자동 반영 · 결속 API O1~O5(+고아 정리 실가동·파기 계약) · 호스트 고정 책등 규칙 · branch protection · compose 기본값 · 8/24 통지 4종 · caseBind · `SPINE_PARAMS_UNRESOLVED` · 폰트 라이선스 · `PRINT_NORMALIZE` ON · 지종별 TAC · 에셋 소싱 · R6·R10 · 스프링 표지 펼침 1장·가로형 제본 변 · 표지 기본 디자인 · ShareSnap·북모아 메인·MD2Books 연락 채널.
+
+### 5.2.1 다음 개발 이슈 정리 (2026-10-06, 오너 보고 — Wave 8 구성 결정 대기)
+
+- 오너 지시(10-06): 인쇄팀 확인·양사 e2e 는 추후 일정. CTO 가 다음 개발 이슈를 정리·보고. 전수 목록(100건, 검증·근거·승인 포함) 정본은 비공개 메모 `../_private_notes/wave8/NEXT_ISSUES_2026-10-06.md`.
+- **P0**: ① master CI 복구(`558c293` lint 회귀 2건 → skipped 단계 첫 실측) ② 의존성 보안 권고 패치(`pnpm audit --prod` 119건: critical 2·high 49 — 메이저 승격 제외) ③ Wave B 플래그 판단(10-08 09:51Z 이후, 오너 결정).
+- **추천 Wave 8 = 게이트 복구 + 동화책 전환 사전 정비**(2단계): 1단계 CI·보안 패치·/embed CI 편입·문서/주석 스테일 정정 → 2단계 결합 세트 내지 기대 크기(`resolveInnerSpreadContentSizeMm` 첫 spread 만 봄 → 표지 먼저인 동화책 세트는 판형 한 면 폴백)·템플릿셋 `copy()` 필드 유실·admin caseBind 잔류 가드·누락 템플릿 탐지·싸바리 회귀 E2E·운영 템플릿셋 정합 인벤토리·관찰 런북·재편집 templateSetId 가드(오너 설계 결정).
+- 오너 결정 대기: Wave 8 안 선택, 플래그 전환, 재편집 가드 방식(ADDITIVE vs MODIFY-TARGET), 운영 DB 읽기(인벤토리·실측), branch ruleset, compose 기본값, fabric 7 승격 시점, Dependabot, 신규 파트너 연락 채널, 관리자 화면 E2E 시간.
 
 ### 5.3 다음 후보 (착수 약속 없음 — 새 세션이 재점검 후 우선순위 제안)
 
