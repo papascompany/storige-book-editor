@@ -1101,12 +1101,14 @@ describe('EditSessionsService', () => {
         )?.[0]?.orderOptions;
       const withCover = (metadata: Record<string, unknown> | null = null): EditSessionEntity =>
         mkSession({ coverFileId: 'file-cover-inner', metadata: metadata as any });
-      const resolve = (session: EditSessionEntity): Promise<{ width: number; height: number } | null> =>
+      type InnerLayout =
+        | { kind: 'inner-spread'; size: { width: number; height: number } }
+        | { kind: 'none' }
+        | { kind: 'unknown' };
+      const resolve = (session: EditSessionEntity): Promise<InnerLayout> =>
         (
           service as unknown as {
-            resolveInnerSpreadContentSizeMm(
-              s: EditSessionEntity,
-            ): Promise<{ width: number; height: number } | null>;
+            resolveInnerSpreadContentSizeMm(s: EditSessionEntity): Promise<InnerLayout>;
           }
         ).resolveInnerSpreadContentSizeMm(session);
 
@@ -1151,15 +1153,26 @@ describe('EditSessionsService', () => {
         expect(optsFor('cover').size).toEqual({ width: 210, height: 210 });
       });
 
-      it('resolveInnerSpreadContentSizeMm: 내지 spread 가 없는 세트는 null, 결합 세트는 펼침면', async () => {
+      it("resolveInnerSpreadContentSizeMm: 내지 spread 가 없는 세트는 'none', 결합 세트는 펼침면", async () => {
         withDetails([PAGE]);
-        await expect(resolve(withCover())).resolves.toBeNull();
+        await expect(resolve(withCover())).resolves.toEqual({ kind: 'none' });
         withDetails([COVER_SPREAD, PAGE]);
-        await expect(resolve(withCover())).resolves.toBeNull();
+        await expect(resolve(withCover())).resolves.toEqual({ kind: 'none' });
         withDetails([UNSCOPED_SPREAD]);
-        await expect(resolve(withCover())).resolves.toBeNull();
+        await expect(resolve(withCover())).resolves.toEqual({ kind: 'none' });
         withDetails([COVER_SPREAD, innerSpread(210, 210)]);
-        await expect(resolve(withCover())).resolves.toEqual({ width: 420, height: 210 });
+        await expect(resolve(withCover())).resolves.toEqual({
+          kind: 'inner-spread',
+          size: { width: 420, height: 210 },
+        });
+      });
+
+      it("resolveInnerSpreadContentSizeMm(N-API-3b 3분기): 템플릿셋 미연결 'none', 치수 무효·조회 예외 'unknown'", async () => {
+        await expect(resolve(mkSession({ templateSetId: null }))).resolves.toEqual({ kind: 'none' });
+        withDetails([COVER_SPREAD, innerSpread(0, 210)]);
+        await expect(resolve(withCover())).resolves.toEqual({ kind: 'unknown' });
+        mockTemplateSetsService.findOneWithTemplates = jest.fn().mockRejectedValue(new Error('boom'));
+        await expect(resolve(withCover())).resolves.toEqual({ kind: 'unknown' });
       });
 
       it('비스프레드 세트(page 만)는 무회귀 — 표지·내지 동일 판형 옵션', async () => {
@@ -1258,6 +1271,236 @@ describe('EditSessionsService', () => {
           else process.env.EDITOR_SPREAD_VALIDATION_MAPPING = original;
         }
       });
+    });
+  });
+
+  // ── N-API-3b(2026-10-06): 편집기 실효 쪽 단위 → content PDF 쪽 단위 pageMultiple(중철 pageCountMax) ──
+  // 오너 결정 D1(a): page_step NULL + 낱장은 미주입(레거시 그대로). 'deep-equal' 기준선은 같은 세션을
+  // EDITOR_CONTENT_PAGE_RULES=off 로 다시 만든 잡 옵션(= 이번 변경 이전 동작)이다.
+  describe('createValidationJobs — N-API-3b 쪽 단위', () => {
+    const ORIGINAL_RULES = process.env.EDITOR_CONTENT_PAGE_RULES;
+    const ORIGINAL_MAPPING = process.env.EDITOR_SPREAD_VALIDATION_MAPPING;
+    let savedFindOne: typeof mockTemplateSetsService.findOne;
+    let savedFindOneWithTemplates: typeof mockTemplateSetsService.findOneWithTemplates;
+
+    beforeAll(() => {
+      savedFindOne = mockTemplateSetsService.findOne;
+      savedFindOneWithTemplates = mockTemplateSetsService.findOneWithTemplates;
+    });
+
+    beforeEach(() => {
+      mockWorkerJobsService.createValidationJob.mockReset();
+      mockWorkerJobsService.createValidationJob.mockResolvedValue({ id: 'job-3b' } as any);
+      delete process.env.EDITOR_CONTENT_PAGE_RULES;
+      delete process.env.EDITOR_SPREAD_VALIDATION_MAPPING;
+    });
+
+    afterEach(() => {
+      if (ORIGINAL_RULES === undefined) delete process.env.EDITOR_CONTENT_PAGE_RULES;
+      else process.env.EDITOR_CONTENT_PAGE_RULES = ORIGINAL_RULES;
+      if (ORIGINAL_MAPPING === undefined) delete process.env.EDITOR_SPREAD_VALIDATION_MAPPING;
+      else process.env.EDITOR_SPREAD_VALIDATION_MAPPING = ORIGINAL_MAPPING;
+    });
+
+    afterAll(() => {
+      mockTemplateSetsService.findOne = savedFindOne;
+      mockTemplateSetsService.findOneWithTemplates = savedFindOneWithTemplates;
+    });
+
+    const CONTENT_ID = 'file-content-3b';
+    const PAGE = { type: 'page', spreadConfig: null };
+    const COVER_SPREAD = {
+      type: 'spread',
+      spreadConfig: { regionScope: 'cover', spec: { coverWidthMm: 210, coverHeightMm: 297, spineWidthMm: 2 } },
+    };
+    const INNER_SPREAD = {
+      type: 'spread',
+      spreadConfig: { regionScope: 'inner', innerSpec: { pageWidthMm: 210, pageHeightMm: 297 } },
+    };
+
+    /** 템플릿셋(A4·크롭마크 off) + pageStep, 템플릿 구성(낱장 'none' / 결합 펼침면 'inner') */
+    const withSet = (pageStep: number | null, layout: 'none' | 'inner'): void => {
+      mockTemplateSetsService.findOne = jest
+        .fn()
+        .mockResolvedValue({ width: 210, height: 297, cropMarkEnabled: false, pageStep });
+      mockTemplateSetsService.findOneWithTemplates = jest.fn().mockResolvedValue({
+        templateDetails: layout === 'inner' ? [COVER_SPREAD, INNER_SPREAD] : [PAGE],
+      });
+    };
+
+    const meta = (
+      orderOptions: Record<string, unknown> = { bindingType: 'perfect' },
+      over: Record<string, unknown> = {},
+    ): Record<string, unknown> => ({
+      orderOptions,
+      spreadContentPageCount: 20,
+      spread: {
+        spec: { coverWidthMm: 210, coverHeightMm: 297, spineWidthMm: 2, wingEnabled: false, wingWidthMm: 0 },
+      },
+      editorOutputContentFileId: CONTENT_ID,
+      ...over,
+    });
+
+    const mkSession = (metadata: Record<string, unknown> | null): EditSessionEntity =>
+      ({
+        id: 'session-3b',
+        coverFileId: 'file-cover-3b',
+        contentFileId: CONTENT_ID,
+        templateSetId: 'ts-3b',
+        metadata,
+      }) as unknown as EditSessionEntity;
+
+    type JobOptions = Record<string, unknown>;
+    const optsFor = (fileType: 'cover' | 'content'): JobOptions =>
+      mockWorkerJobsService.createValidationJob.mock.calls.find(
+        (c: any[]) => c[0]?.fileType === fileType,
+      )?.[0]?.orderOptions;
+
+    const call = async (session: EditSessionEntity): Promise<{ cover: JobOptions; content: JobOptions }> => {
+      mockWorkerJobsService.createValidationJob.mockClear();
+      await (service as unknown as { createValidationJobs(s: EditSessionEntity): Promise<void> })
+        .createValidationJobs(session);
+      return { cover: optsFor('cover'), content: optsFor('content') };
+    };
+
+    /** 같은 세션을 킬스위치 off(= 변경 이전)와 기본(on)으로 각각 만든다 */
+    const callOffThenOn = async (
+      session: EditSessionEntity,
+    ): Promise<{ off: { cover: JobOptions; content: JobOptions }; on: { cover: JobOptions; content: JobOptions } }> => {
+      process.env.EDITOR_CONTENT_PAGE_RULES = 'off';
+      const off = await call(session);
+      delete process.env.EDITOR_CONTENT_PAGE_RULES;
+      const on = await call(session);
+      return { off, on };
+    };
+
+    it('① 결합 세트(내지 펼침면) step4 → content pageMultiple 2, 그 밖의 키·cover 잡은 이전과 deep-equal', async () => {
+      withSet(4, 'inner');
+      const logSpy = jest.spyOn(
+        (service as unknown as { logger: { log(message: string): void } }).logger,
+        'log',
+      );
+      const { off, on } = await callOffThenOn(mkSession(meta()));
+      expect(on.content).toEqual({ ...off.content, pageMultiple: 2 });
+      expect(on.content).toMatchObject({ size: { width: 420, height: 297 }, binding: 'perfect', pages: 20 });
+      expect(on.content).not.toHaveProperty('pageCountMax');
+      expect(on.cover).toEqual(off.cover);
+      expect(on.cover).not.toHaveProperty('pageMultiple');
+      const ruleLogs = logSpy.mock.calls.map((c) => String(c[0])).filter((m) => m.includes('내지 쪽 규칙'));
+      expect(ruleLogs).toEqual([
+        '[validation-jobs] session session-3b 내지 쪽 규칙: S=4 k=2 pageMultiple=2 max=- source=template',
+      ]);
+      logSpy.mockRestore();
+    });
+
+    it('② 낱장 step2 → content pageMultiple 2', async () => {
+      withSet(2, 'none');
+      const { off, on } = await callOffThenOn(mkSession(meta()));
+      expect(on.content).toEqual({ ...off.content, pageMultiple: 2 });
+      expect(on.cover).toEqual(off.cover);
+    });
+
+    it.each<[string, Record<string, unknown>]>([
+      ['bindingType 미전송', {}],
+      ['명시적 무선(D1(a) — 2배수 기본값 없음)', { bindingType: 'perfect' }],
+    ])('③ page_step NULL 낱장 + %s → content·cover 이전과 deep-equal', async (_name, orderOptions) => {
+      withSet(null, 'none');
+      const { off, on } = await callOffThenOn(mkSession(meta(orderOptions)));
+      expect(on.content).toEqual(off.content);
+      expect(on.content).not.toHaveProperty('pageMultiple');
+      expect(on.content).not.toHaveProperty('pageCountMax');
+      expect(on.cover).toEqual(off.cover);
+    });
+
+    it('④ EDITOR_CONTENT_PAGE_RULES=off → 쪽 규칙 키 없음(이전과 동일), 대소문자·공백 무시', async () => {
+      withSet(4, 'inner');
+      process.env.EDITOR_CONTENT_PAGE_RULES = ' OFF ';
+      const off = await call(mkSession(meta()));
+      expect(off.content).not.toHaveProperty('pageMultiple');
+      expect(off.content).not.toHaveProperty('pageCountMax');
+      expect(off.content).toMatchObject({ size: { width: 420, height: 297 }, binding: 'perfect', pages: 20 });
+      delete process.env.EDITOR_CONTENT_PAGE_RULES;
+      const on = await call(mkSession(meta()));
+      const { pageMultiple: _pm, ...onWithoutRules } = on.content;
+      expect(onWithoutRules).toEqual(off.content);
+    });
+
+    it.each<[string, Record<string, unknown>]>([
+      ['마커 불일치(첨부 교체 세션)', meta({ bindingType: 'perfect' }, { editorOutputContentFileId: 'file-other' })],
+      ['단일 모드 metadata(spread 스냅샷 없음)', { orderOptions: { bindingType: 'perfect' }, editorOutputContentFileId: CONTENT_ID }],
+    ])('⑤ %s → content 쪽 규칙 키 없음', async (_name, metadata) => {
+      withSet(2, 'none');
+      const { off, on } = await callOffThenOn(mkSession(metadata));
+      expect(on.content).toEqual(off.content);
+      expect(on.content).not.toHaveProperty('pageMultiple');
+    });
+
+    it('⑥ 중철 주문 step2 낱장 → pageMultiple 4 · pageCountMax 64', async () => {
+      withSet(2, 'none');
+      const { off, on } = await callOffThenOn(mkSession(meta({ bindingType: 'saddle' })));
+      expect(on.content).toEqual({ ...off.content, pageMultiple: 4, pageCountMax: 64 });
+      expect(on.content.binding).toBe('saddle');
+      expect(on.cover).toEqual(off.cover);
+    });
+
+    it('⑦ findOneWithTemplates 예외(판정 unknown) → 쪽 규칙 키 없음, size 는 기존 폴백', async () => {
+      withSet(4, 'inner');
+      mockTemplateSetsService.findOneWithTemplates = jest.fn().mockRejectedValue(new Error('boom'));
+      const { content } = await call(mkSession(meta()));
+      expect(content).not.toHaveProperty('pageMultiple');
+      expect(content.size).toEqual({ width: 210, height: 297 });
+      expect(mockWorkerJobsService.createValidationJob).toHaveBeenCalledTimes(2);
+    });
+
+    it('⑧ templateSet findOne 실패 + 호스트 pageStep 2 → pageMultiple 2 (A4 최후 폴백 유지)', async () => {
+      mockTemplateSetsService.findOne = jest.fn().mockRejectedValue(new Error('db down'));
+      mockTemplateSetsService.findOneWithTemplates = jest.fn().mockResolvedValue({ templateDetails: [PAGE] });
+      const { content } = await call(mkSession(meta({ bindingType: 'perfect', pageStep: 2 })));
+      expect(content).toMatchObject({ pageMultiple: 2, size: { width: 210, height: 297 } });
+      expect(content).not.toHaveProperty('pageCountMax');
+    });
+
+    it('⑨ 양장 주문: step4 낱장 → 4(binding 은 perfect 유지), page_step NULL 낱장 → 이전과 deep-equal', async () => {
+      withSet(4, 'none');
+      const step4 = await callOffThenOn(mkSession(meta({ bindingType: 'hardcover' })));
+      expect(step4.on.content).toEqual({ ...step4.off.content, pageMultiple: 4 });
+      expect(step4.on.content.binding).toBe('perfect');
+      expect(step4.on.cover).toEqual(step4.off.cover);
+
+      withSet(null, 'none');
+      const nullStep = await callOffThenOn(mkSession(meta({ bindingType: 'hardcover' })));
+      expect(nullStep.on.content).toEqual(nullStep.off.content);
+      expect(nullStep.on.content).not.toHaveProperty('pageMultiple');
+    });
+
+    it('⑩ spring 주문 step2 낱장 → pageMultiple 2', async () => {
+      withSet(2, 'none');
+      const { off, on } = await callOffThenOn(mkSession(meta({ bindingType: 'spring' })));
+      expect(on.content).toEqual({ ...off.content, pageMultiple: 2 });
+      expect(on.content.binding).toBe('spring');
+    });
+
+    it('⑪ 중철 + 호스트 pageCountMax 80 → 낱장 80, 펼침면 40', async () => {
+      withSet(2, 'none');
+      const single = await call(mkSession(meta({ bindingType: 'saddle', pageCountMax: 80 })));
+      expect(single.content).toMatchObject({ pageMultiple: 4, pageCountMax: 80 });
+
+      withSet(2, 'inner');
+      const spread = await call(mkSession(meta({ bindingType: 'saddle', pageCountMax: 80 })));
+      expect(spread.content).toMatchObject({
+        pageMultiple: 2,
+        pageCountMax: 40,
+        size: { width: 420, height: 297 },
+      });
+    });
+
+    it("⑫ EDITOR_SPREAD_VALIDATION_MAPPING=off + 중철 주문 step2 낱장 → binding 'perfect' 그대로 + 4 · 64", async () => {
+      withSet(2, 'none');
+      process.env.EDITOR_SPREAD_VALIDATION_MAPPING = 'off';
+      const { off, on } = await callOffThenOn(mkSession(meta({ bindingType: 'saddle' })));
+      expect(on.content).toEqual({ ...off.content, pageMultiple: 4, pageCountMax: 64 });
+      expect(on.content).toMatchObject({ binding: 'perfect', pages: 1 });
+      expect(on.cover).toEqual(off.cover);
     });
   });
 

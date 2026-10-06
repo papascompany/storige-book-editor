@@ -19,6 +19,8 @@
  *    CUTOUT_ENABLED 처럼 컨트롤러가 요청 시점마다 평가하므로 기동 스냅샷은 그 시점의 표본이다.
  *  - SESSION_JOB_OUTPUT_LOOKUP: edit-sessions.service 가 호출 시점에 쓰는 isSessionJobOutputLookupOn 과
  *    같은 소스(process.env)·같은 술어(isFlagOn).
+ *  - EDITOR_CONTENT_PAGE_RULES: edit-sessions.service 가 호출 시점에 쓰는 isEditorContentPageRulesOn 과
+ *    같은 소스(process.env)·같은 술어(isEditorContentPageRulesOnRaw — 미설정 ON, 'off' 만 OFF).
  *
  * 파싱 규칙은 플래그마다 다르다(통일하지 않음 — 동작 변경이므로 테스트로 현행을 고정).
  *
@@ -47,6 +49,7 @@ export const API_FEATURE_FLAG_KEYS = [
   'JOB_LINK_STRICT',
   'JOB_FILE_SITE_STRICT',
   'SESSION_JOB_OUTPUT_LOOKUP',
+  'EDITOR_CONTENT_PAGE_RULES',
 ] as const;
 
 export type ApiFeatureFlagKey = (typeof API_FEATURE_FLAG_KEYS)[number];
@@ -73,6 +76,8 @@ export interface ApiFeatureFlagInputs {
   jobFileSiteStrictRaw: unknown;
   /** process.env.SESSION_JOB_OUTPUT_LOOKUP — edit-sessions.service 와 같은 소스·같은 술어 */
   sessionJobOutputLookupRaw: unknown;
+  /** process.env.EDITOR_CONTENT_PAGE_RULES — edit-sessions.service 와 같은 소스·같은 술어 */
+  editorContentPageRulesRaw: unknown;
 }
 
 export function buildApiFeatureFlagSnapshot(i: ApiFeatureFlagInputs): ApiFeatureFlagSnapshot {
@@ -94,6 +99,8 @@ export function buildApiFeatureFlagSnapshot(i: ApiFeatureFlagInputs): ApiFeature
     JOB_FILE_SITE_STRICT: isFlagOn(i.jobFileSiteStrictRaw),
     // edit-sessions.service: isSessionJobOutputLookupOn() = isFlagOn(process.env.SESSION_JOB_OUTPUT_LOOKUP)
     SESSION_JOB_OUTPUT_LOOKUP: isFlagOn(i.sessionJobOutputLookupRaw),
+    // edit-sessions.service: isEditorContentPageRulesOn() = isEditorContentPageRulesOnRaw(process.env.EDITOR_CONTENT_PAGE_RULES)
+    EDITOR_CONTENT_PAGE_RULES: isEditorContentPageRulesOnRaw(i.editorContentPageRulesRaw),
   };
 }
 
@@ -103,6 +110,22 @@ export function buildApiFeatureFlagSnapshot(i: ApiFeatureFlagInputs): ApiFeature
  */
 export function isSessionJobOutputLookupOn(env: NodeJS.ProcessEnv = process.env): boolean {
   return isFlagOn(env.SESSION_JOB_OUTPUT_LOOKUP);
+}
+
+/**
+ * EDITOR_CONTENT_PAGE_RULES 진리값 술어(N-API-3b 킬스위치) — 기본 ON. 앞뒤 공백 제거 + 대소문자 무시,
+ * 'off' 일 때만 OFF(미설정·빈 문자열·그 밖의 값은 ON).
+ */
+export function isEditorContentPageRulesOnRaw(raw: unknown): boolean {
+  return String(raw ?? '').trim().toLowerCase() !== 'off';
+}
+
+/**
+ * 편집 완료 content 검증 잡에 편집기 실효 쪽 단위(pageMultiple·중철 pageCountMax)를 싣는가(N-API-3b).
+ * 기본 true. 호출 시점마다 env 를 읽는다(롤백 = env 'off' + 재시작).
+ */
+export function isEditorContentPageRulesOn(env: NodeJS.ProcessEnv = process.env): boolean {
+  return isEditorContentPageRulesOnRaw(env.EDITOR_CONTENT_PAGE_RULES);
 }
 
 /** 한 줄, `KEY=true|false` 토큰만. 값은 boolean 으로 강제(env 원문 출력 불가). */

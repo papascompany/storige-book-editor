@@ -14,6 +14,8 @@ import {
   buildApiFeatureFlagSnapshot,
   formatEffectiveRetentionLine,
   formatFeatureFlagSnapshot,
+  isEditorContentPageRulesOn,
+  isEditorContentPageRulesOnRaw,
   isFlagOn,
   isSessionJobOutputLookupOn,
 } from './feature-flags';
@@ -35,6 +37,7 @@ const BASE_INPUTS: ApiFeatureFlagInputs = {
   jobLinkStrictRaw: undefined,
   jobFileSiteStrictRaw: undefined,
   sessionJobOutputLookupRaw: undefined,
+  editorContentPageRulesRaw: undefined,
 };
 
 describe('api feature-flags', () => {
@@ -79,6 +82,7 @@ describe('api feature-flags', () => {
         JOB_LINK_STRICT: false,
         JOB_FILE_SITE_STRICT: false,
         SESSION_JOB_OUTPUT_LOOKUP: false,
+        EDITOR_CONTENT_PAGE_RULES: true,
       });
     });
 
@@ -194,6 +198,42 @@ describe('api feature-flags', () => {
       }
     });
 
+    it.each<[unknown, boolean]>([
+      [undefined, true],
+      ['', true],
+      ['on', true],
+      ['true', true],
+      ['0', true],
+      ['off', false],
+      [' OFF ', false],
+      ['Off', false],
+    ])(
+      'editorContentPageRulesRaw=%j → EDITOR_CONTENT_PAGE_RULES=%s (기본 ON, off 만 OFF — 소비 함수와 같은 값)',
+      (raw, expected) => {
+        const snap = buildApiFeatureFlagSnapshot({ ...BASE_INPUTS, editorContentPageRulesRaw: raw });
+        expect(snap.EDITOR_CONTENT_PAGE_RULES).toBe(expected);
+        expect(isEditorContentPageRulesOnRaw(raw)).toBe(expected);
+        const env = (raw === undefined ? {} : { EDITOR_CONTENT_PAGE_RULES: String(raw) }) as NodeJS.ProcessEnv;
+        expect(isEditorContentPageRulesOn(env)).toBe(expected);
+        expect(snap.SESSION_JOB_OUTPUT_LOOKUP).toBe(false);
+      },
+    );
+
+    it('isEditorContentPageRulesOn: 인자가 없으면 호출 시점의 process.env 를 읽는다', () => {
+      const backup = process.env.EDITOR_CONTENT_PAGE_RULES;
+      try {
+        delete process.env.EDITOR_CONTENT_PAGE_RULES;
+        expect(isEditorContentPageRulesOn()).toBe(true);
+        process.env.EDITOR_CONTENT_PAGE_RULES = 'off';
+        expect(isEditorContentPageRulesOn()).toBe(false);
+        process.env.EDITOR_CONTENT_PAGE_RULES = 'on';
+        expect(isEditorContentPageRulesOn()).toBe(true);
+      } finally {
+        if (backup === undefined) delete process.env.EDITOR_CONTENT_PAGE_RULES;
+        else process.env.EDITOR_CONTENT_PAGE_RULES = backup;
+      }
+    });
+
     it('키 집합이 API_FEATURE_FLAG_KEYS 와 같고 값은 전부 boolean', () => {
       const snap = buildApiFeatureFlagSnapshot(BASE_INPUTS);
       expect(Object.keys(snap).sort()).toEqual([...API_FEATURE_FLAG_KEYS].sort());
@@ -231,6 +271,7 @@ describe('api feature-flags', () => {
           jobLinkStrictRaw: 'sk-sentinel',
           jobFileSiteStrictRaw: 'sk-sentinel',
           sessionJobOutputLookupRaw: 'sk-sentinel',
+          editorContentPageRulesRaw: 'sk-sentinel',
         }),
       );
       expect(line).not.toContain('sentinel');
@@ -238,6 +279,7 @@ describe('api feature-flags', () => {
       expect(line).toContain('JOB_LINK_STRICT=false');
       expect(line).toContain('JOB_FILE_SITE_STRICT=false');
       expect(line).toContain('SESSION_JOB_OUTPUT_LOOKUP=false');
+      expect(line).toContain('EDITOR_CONTENT_PAGE_RULES=true');
       expect(line).toMatch(LINE_PATTERN);
     });
   });

@@ -45,14 +45,17 @@ import {
   type SpreadStartSide,
 } from '../worker-jobs/imposition.util';
 import { ImpositionPreviewResponseDto } from './dto/imposition-preview.dto';
-import { deriveEditorSpreadValidationOverrides } from './editor-spread-validation-options';
+import {
+  deriveEditorContentPageRules,
+  deriveEditorSpreadValidationOverrides,
+} from './editor-spread-validation-options';
 import { FileEntity } from '../files/entities/file.entity';
 import { PartnerOperatorAuditWriter } from '../auth/partner-operator/partner-operator-audit.writer';
 import type { PartnerOperatorGrant } from '../auth/partner-operator/partner-operator.types';
 import type { PartnerOperatorAuditDetail } from '../auth/entities/partner-operator-audit-log.entity';
 import { computeEditRetention, editRetentionExpired } from '../staff-edit-data/edit-retention';
 import { staffAuditUnavailable, staffDeleteNotAllowed } from '../staff-edit-data/staff-actor';
-import { isSessionJobOutputLookupOn } from '../config/feature-flags';
+import { isEditorContentPageRulesOn, isSessionJobOutputLookupOn } from '../config/feature-flags';
 
 /**
  * Storige 관리자 호출 컨텍스트(2026-09-29, ADDITIVE) — StaffEditDataService 만 설정한다.
@@ -170,13 +173,20 @@ export class EditSessionsService {
    * regionScope='inner' 인 spread 템플릿을 찾는다. 해석 결과는 호출부에서 **content 잡에만** 적용한다
    * (표지 잡 옵션 무접촉).
    *
-   * 내지 spread 가 없는 세트(표지 spread 만·비스프레드)는 null 을 반환해 기존 폴백 체인을 그대로 탄다(무회귀).
+   * 반환(N-API-3b 에서 3분기로 확장 — 쪽 단위 판정이 '판정 실패'와 '내지 spread 없음'을 구분):
+   *  - { kind: 'inner-spread', size } : 내지 펼침면 세트(content.pdf 1쪽 = 펼침면)
+   *  - { kind: 'none' }   : 템플릿셋 미연결·내지 spread 없는 세트(표지 spread 만·비스프레드) → 기존 폴백(무회귀)
+   *  - { kind: 'unknown' }: 내지 spread 인데 치수 무효이거나 조회 예외 → 크기는 기존 폴백, 쪽 규칙 미주입
    */
   private async resolveInnerSpreadContentSizeMm(
     session: EditSessionEntity,
-  ): Promise<{ width: number; height: number } | null> {
+  ): Promise<
+    | { kind: 'inner-spread'; size: { width: number; height: number } }
+    | { kind: 'none' }
+    | { kind: 'unknown' }
+  > {
     try {
-      if (!session.templateSetId) return null;
+      if (!session.templateSetId) return { kind: 'none' };
       const { templateDetails } = await this.templateSetsService.findOneWithTemplates(
         session.templateSetId,
       );
@@ -187,19 +197,19 @@ export class EditSessionsService {
       const cfg = spreadTpl?.spreadConfig as
         | { regionScope?: string; innerSpec?: { pageWidthMm?: number; pageHeightMm?: number } }
         | undefined;
-      if (cfg?.regionScope !== 'inner') return null;
+      if (cfg?.regionScope !== 'inner') return { kind: 'none' };
       const w = cfg.innerSpec?.pageWidthMm;
       const h = cfg.innerSpec?.pageHeightMm;
       if (!Number.isFinite(w) || !Number.isFinite(h) || (w as number) <= 0 || (h as number) <= 0) {
-        return null;
+        return { kind: 'unknown' };
       }
       // content.pdf 1페이지 = 좌면+우면 (거터는 면 내부라 총폭에 미가산 — 편집기 규약과 동일)
-      return { width: (w as number) * 2, height: h as number };
+      return { kind: 'inner-spread', size: { width: (w as number) * 2, height: h as number } };
     } catch (e) {
       this.logger.warn(
         `[validation-jobs] 내지 펼침면 크기 해석 skip(기존 폴백 사용): ${(e as Error).message}`,
       );
-      return null;
+      return { kind: 'unknown' };
     }
   }
 
@@ -1853,9 +1863,9 @@ export class EditSessionsService {
         }
       }
 
-      // 내지 펼침면 세트 여부/크기 해석 (내지 spread 가 없는 세트는 null → 기존 폴백).
+      // 내지 펼침면 세트 여부/크기 해석 (내지 spread 가 없는 세트는 kind 'none' → 기존 폴백).
       // 결과는 아래 R-195 블록 뒤에서 content 잡 옵션에만 적용한다.
-      const innerSpreadContentSize = await this.resolveInnerSpreadContentSizeMm(session);
+      const innerLayout = await this.resolveInnerSpreadContentSizeMm(session);
 
       // Get order options from metadata or use defaults
       // expectedOrientation(워커 R3 방향검증)은 워커 측 DTO(validation-result.dto.ts /
@@ -1991,13 +2001,44 @@ export class EditSessionsService {
       // ORIENTATION_MISMATCH 경고로 집계된다. 표지 잡(coverOrderOptions)은 건드리지 않는다 —
       // [표지 spread → 내지 spread] 결합 세트의 표지 기대 크기·방향은 판형 기준 그대로.
       // R-195 플래그(EDITOR_SPREAD_VALIDATION_MAPPING)와 무관하게 적용(overrides.content 에 size 키 없음).
-      if (innerSpreadContentSize) {
-        const { width: iw, height: ih } = innerSpreadContentSize;
+      if (innerLayout.kind === 'inner-spread') {
+        const { width: iw, height: ih } = innerLayout.size;
         contentOrderOptions = {
           ...contentOrderOptions,
           size: { width: iw, height: ih },
           expectedOrientation: iw > ih ? 'landscape' : 'portrait',
         };
+      }
+
+      // ── N-API-3b(2026-10-06): 편집기 실효 쪽 단위 → content PDF 쪽 단위 pageMultiple(중철은 pageCountMax) ──
+      // 근거는 editor-spread-validation-options.ts deriveEditorContentPageRules. content 잡에만 적용하고
+      // binding·pages·size 는 바꾸지 않는다. 비상 차단: EDITOR_CONTENT_PAGE_RULES=off (R-195 플래그와 독립).
+      if (isEditorContentPageRulesOn()) {
+        try {
+          const rules = deriveEditorContentPageRules({
+            metadata: session.metadata,
+            contentFileId: session.contentFileId,
+            templatePageStep: templateSet?.pageStep,
+            layout: innerLayout.kind,
+            legacyBinding: contentOrderOptions.binding,
+          });
+          if (rules) {
+            contentOrderOptions = {
+              ...contentOrderOptions,
+              pageMultiple: rules.pageMultiple,
+              ...(rules.pageCountMax ? { pageCountMax: rules.pageCountMax } : {}),
+            };
+            this.logger.log(
+              `[validation-jobs] session ${session.id} 내지 쪽 규칙: S=${rules.physicalStep ?? '-'} ` +
+                `k=${rules.pagesPerPdfPage} pageMultiple=${rules.pageMultiple} ` +
+                `max=${rules.pageCountMax ?? '-'} source=${rules.source}`,
+            );
+          }
+        } catch (e) {
+          this.logger.warn(
+            `[validation-jobs] session ${session.id} 내지 쪽 규칙 생략(기존 옵션 유지): ${(e as Error).message}`,
+          );
+        }
       }
 
       // 잡 테넌트 스탬프 = 세션 site(NULL 세션은 종전대로 NULL). site default 머지는

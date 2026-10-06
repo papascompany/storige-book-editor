@@ -347,3 +347,143 @@ export function deriveEditorSpreadValidationOverrides(
     },
   };
 }
+
+/* ──────────────────────────────────────────────────────────────────────────────────────────────
+ * N-API-3b(2026-10-06) — 편집 완료 content 검증 잡의 쪽 단위(pageMultiple·중철 pageCountMax) 주입.
+ *  - 편집기 실효 물리 쪽 단위 S 는 hostPageLimits.ts resolveStorePageLimits 미러: 호스트
+ *    orderOptions.pageStep(1 = 무제약) → 템플릿셋 pageStep. 생성 시점 기록값만 읽는다.
+ *  - content.pdf 1쪽 = 물리 k쪽(펼침면 2, 낱장 1) → PDF 단위 pageMultiple = Mphys / gcd(Mphys, k).
+ *  - 중철은 lcm(S,4) 바닥값 + 상한(호스트 pageCountMax ?? 64)/k. 제본 판정은 주문값
+ *    (normalizeOrderBinding) OR 최종 binding — R-195(EDITOR_SPREAD_VALIDATION_MAPPING)와 독립.
+ *  - 데이터 주도 키는 bookmoa 확정 매핑(docs/PDF_VALIDATION_GUIDE.md:291)과 같은 worker 경로를 탄다.
+ *  - 오너 결정 D1(a): page_step NULL + 낱장은 null(레거시 그대로). D3: pageCountMin·비중철 Max 미주입.
+ * ────────────────────────────────────────────────────────────────────────────────────────────── */
+
+/** 내지 펼침면 판정 결과(resolveInnerSpreadContentSizeMm 의 kind) */
+export type EditorContentLayoutKind = 'inner-spread' | 'none' | 'unknown';
+
+export type EditorContentPageRulesSource =
+  | 'host'
+  | 'host-none'
+  | 'template'
+  | 'legacy-2up'
+  | 'saddle-floor';
+
+export interface EditorContentPageRulesInput {
+  metadata: unknown;
+  contentFileId: string | null | undefined;
+  templatePageStep: unknown;
+  layout: EditorContentLayoutKind;
+  /** 최종 contentOrderOptions.binding — worker 레거시 경로가 실제로 판정했을 값 */
+  legacyBinding: string | undefined;
+}
+
+export interface EditorContentPageRules {
+  /** content PDF 쪽 단위 배수(1 이어도 싣는다 — 레거시 폴백 해제 목적) */
+  pageMultiple: number;
+  /** 중철일 때만 — PDF 쪽 단위 상한 */
+  pageCountMax?: number;
+  /** 편집기 실효 물리 쪽 단위 S(null = 단위 없음) */
+  physicalStep: number | null;
+  /** content PDF 1쪽에 담긴 물리 쪽 수 k */
+  pagesPerPdfPage: 1 | 2;
+  source: EditorContentPageRulesSource;
+}
+
+/** SADDLE 레거시 상한(물리 쪽) — 호스트 pageCountMax 가 없을 때 */
+const SADDLE_DEFAULT_MAX_PAGES = 64;
+/** 편집기 호스트 쪽수 한도 상한과 같다(apps/editor/src/utils/hostPageLimits.ts HOST_PAGE_LIMIT_MAX) — 그보다 큰 쪽 단위는 무효. */
+const PAGE_STEP_MAX = 500;
+const SADDLE_PAGE_MULTIPLE = 4;
+
+/** 숫자 문자열을 숫자로(편집기 normalizePageStep 과 같은 입력 해석) */
+function numericLike(raw: unknown): unknown {
+  return typeof raw === 'string' && raw.trim() !== '' ? Number(raw) : raw;
+}
+
+/** 편집기 normalizePageStep 미러 — 2 이상 정수만 단위, 그 밖은 null */
+function normStep(raw: unknown): number | null {
+  const n = numericLike(raw);
+  return typeof n === 'number' && Number.isInteger(n) && n >= 2 && n <= PAGE_STEP_MAX ? n : null;
+}
+
+function gcd(a: number, b: number): number {
+  return b === 0 ? a : gcd(b, a % b);
+}
+
+function lcm(a: number, b: number): number {
+  return (a / gcd(a, b)) * b;
+}
+
+/**
+ * 편집 완료 content 검증 잡에 실을 쪽 규칙. 근거가 없거나 게이트에 걸리면 null(키 미주입 = 현행 그대로).
+ * env 킬스위치(EDITOR_CONTENT_PAGE_RULES)는 호출부에서 판정한다.
+ */
+export function deriveEditorContentPageRules(
+  input: EditorContentPageRulesInput,
+): EditorContentPageRules | null {
+  // 0) 게이트 — 편집기 스프레드 경로 산출물만
+  const metadata = asRecord(input.metadata);
+  const spec = asRecord(asRecord(metadata?.spread)?.spec);
+  if (!metadata || !spec) return null;
+  if (positiveInt(metadata.spreadContentPageCount) === undefined) return null;
+  const contentFileId = nonEmptyString(input.contentFileId);
+  if (contentFileId === undefined || metadata.editorOutputContentFileId !== contentFileId) {
+    return null;
+  }
+  let k: 1 | 2;
+  if (input.layout === 'inner-spread') k = 2;
+  else if (input.layout === 'none') k = 1;
+  else return null;
+
+  // 1) 제본 판정(R-195 독립)
+  const orderOptions = asRecord(metadata.orderOptions);
+  const orderBinding = normalizeOrderBinding(orderOptions?.bindingType);
+  const isSaddle = orderBinding === 'saddle' || input.legacyBinding === 'saddle';
+
+  // 2) 실효 물리 단위 S
+  const hostRaw = orderOptions?.pageStep;
+  let physicalStep: number | null;
+  let stepSource: 'host' | 'host-none' | 'template' | null;
+  if (numericLike(hostRaw) === 1) {
+    physicalStep = 1;
+    stepSource = 'host-none';
+  } else {
+    const hostStep = normStep(hostRaw);
+    const templateStep = normStep(input.templatePageStep);
+    physicalStep = hostStep ?? templateStep;
+    stepSource = hostStep !== null ? 'host' : templateStep !== null ? 'template' : null;
+  }
+
+  // 3) 물리 배수 Mphys · 상한 MaxPhys
+  let mPhys: number;
+  let maxPhys: number | undefined;
+  let source: EditorContentPageRulesSource;
+  if (isSaddle) {
+    mPhys = lcm(physicalStep ?? 1, SADDLE_PAGE_MULTIPLE);
+    maxPhys = positiveInt(orderOptions?.pageCountMax) ?? SADDLE_DEFAULT_MAX_PAGES;
+    source = 'saddle-floor';
+  } else if (physicalStep !== null && stepSource !== null) {
+    mPhys = physicalStep;
+    source = stepSource;
+  } else if (k === 2) {
+    // D2(a): 레거시(perfect 4배수 · 그 밖 무검사)를 물리 단위로 해석
+    mPhys = input.legacyBinding === 'perfect' ? 4 : 1;
+    source = 'legacy-2up';
+  } else {
+    // D1(a): 단위 근거 없는 낱장 = 레거시 그대로
+    return null;
+  }
+
+  // 4) PDF 쪽 단위 환산(물리 쪽수 = PDF 쪽수 × k)
+  const pageMultiple = mPhys / gcd(mPhys, k);
+  // 상한이 PDF 쪽 단위보다 작아도(예: 펼침면 k=2 에 max 1) 상한 검사를 남긴다 — 0 이면 worker 가 상한을 보지 않는다.
+  const pageCountMax = maxPhys !== undefined ? Math.max(1, Math.floor(maxPhys / k)) : undefined;
+  return {
+    pageMultiple,
+    ...(pageCountMax !== undefined && pageCountMax >= 1 ? { pageCountMax } : {}),
+    physicalStep,
+    pagesPerPdfPage: k,
+    source,
+  };
+}
