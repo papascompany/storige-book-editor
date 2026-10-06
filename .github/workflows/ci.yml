@@ -16,6 +16,10 @@ name: ci
 #   7) apps/docs 파트너 문서 포털 빌드 — **맨 뒤**(같은 이유. 6 과 7 은 우선순위 동급).
 #      공개 모드 → 색인 차단 모드 순으로 두 번 돈다. 두 분기 모두 게이트에 걸되
 #      **아티팩트는 배포와 같은 색인 차단본 하나**만 남긴다(스텝 주석 참조).
+#   (5 뒤·6 앞) apps/editor build·build:embed + apps/admin build — 배포 빌드와 postbuild
+#      게이트(유출 검사·소스맵 제거)를 실제 산출물에 태운다
+#   8) [별도 job embed-e2e] apps/editor 임베드 모드 Playwright E2E(chromium,
+#      tests/embed-mode) — test job 과 병렬(needs 없음). 리포트는 아티팩트로 남긴다
 #
 # ⚠️ 루트 `turbo run test` 는 CI 가 호출하지 않는다 — per-package 명시 필터만 쓴다.
 #    새 패키지를 추가하면 **여기에 스텝을 추가해야** 게이트에 연결된다. 안 그러면
@@ -175,9 +179,23 @@ jobs:
         run: node --test scripts/pdf-golden/compare.test.mjs
 
       - name: 소스맵 제거 게이트 self-test (editor/admin postbuild 판정 로직)
-        # CI 는 editor/admin 을 빌드하지 않으므로(무거움) 이 self-test 가 판정 로직의 유일한
-        # 회귀 가드다. 오탐 1건이 '맵 보존 → 원본 소스 공개 배포'로 직결된다.
+        # 판정 로직(decide/expectHiddenFromEnv)의 분기별 회귀 가드다. 바로 아래 빌드 스텝이
+        # 실제 산출물에 postbuild 게이트를 태우지만, CI 의 실제 빌드는 keep-public(editor·admin,
+        # Sentry 업로드 미배선)과 delete(embed --force-strip) 분기만 거치므로 error-config·
+        # delete-unsymbolicated·none 등 나머지 분기는 이 self-test 가 지킨다.
+        # 오탐 1건이 '맵 보존 → 원본 소스 공개 배포'로 직결된다.
         run: node scripts/strip-sourcemaps.mjs --self-test
+
+      - name: editor·embed·admin 배포 빌드 (postbuild 유출 검사·소스맵 제거 게이트 실행)
+        # Vercel(editor·admin)과 /embed/ IIFE(dist-embed)가 배포하는 빌드를 CI 에서 실제로 돈다.
+        # 종전에는 typecheck·test 만 돌아 vite 번들 에러와 postbuild 게이트
+        # (check-source-exposure · strip-sourcemaps) 실패가 배포 시점에야 드러났다.
+        # canvas-core·ai dist 는 위 editor 스텝이, types dist 는 선행 빌드 스텝이 만든다.
+        # build:embed 의 postbuild:embed 는 --force-strip 이라 env 와 무관하게 맵을 제거한다.
+        run: |
+          pnpm --filter @storige/editor build
+          pnpm --filter @storige/editor build:embed
+          pnpm --filter @storige/admin build
 
       - name: 파트너 quickstart 예제 (examples/* — 타입체크 + 오프라인/E2E 검증)
         # sdk 빌드 뒤여야 한다 — 예제는 workspace:* 로 dist 를 실제 import 한다.
@@ -273,3 +291,50 @@ jobs:
           name: docs-portal-site
           path: apps/docs/site
           if-no-files-found: error
+
+  embed-e2e:
+    # 임베드 모드(/embed — 파트너 호스트 iframe 경로) 실브라우저 E2E. 종전에는 로컬 수동
+    # 실행에만 의존했다. test job 과 독립(needs 없음)이라 병렬로 돈다.
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        # 버전은 package.json packageManager 에서 자동 해석
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: 의존성 설치
+        run: pnpm install --frozen-lockfile
+
+      - name: workspace 의존 선행 빌드 (types → ai → canvas-core — exports 가 dist/*)
+        run: |
+          pnpm --filter @storige/types build
+          pnpm --filter @storige/ai build
+          pnpm --filter @storige/canvas-core build
+
+      - name: Playwright chromium 설치 (OS 의존성 포함)
+        run: pnpm --filter @storige/editor exec playwright install --with-deps chromium
+
+      - name: embed-mode E2E (chromium)
+        # webServer(pnpm dev, :3000)는 playwright.config.ts 가 띄운다. CI 에서는
+        # reuseExistingServer=false · retries=2 · forbidOnly 가 config 기본값으로 적용된다.
+        # --workers=2 는 config 의 CI 기본값(1)을 덮어쓴다. PW_CHROMIUM_CHANNEL 은 설정하지
+        # 않는다 — 위에서 설치한 번들 chromium 을 쓴다.
+        run: pnpm --filter @storige/editor exec playwright test tests/embed-mode --project=chromium --reporter=list,html --workers=2
+
+      - name: Playwright 리포트 업로드
+        # 실패 시 진단이 목적이라 성공·실패와 무관하게 남긴다(취소 시만 제외).
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: embed-e2e-playwright-report
+          path: |
+            apps/editor/playwright-report
+            apps/editor/test-results
+          retention-days: 7
+          if-no-files-found: warn
