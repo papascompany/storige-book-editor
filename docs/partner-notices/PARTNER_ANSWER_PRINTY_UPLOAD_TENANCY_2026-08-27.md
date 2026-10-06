@@ -1,5 +1,9 @@
 # Storige 회신 (2026-08-27) — printy: presigned 업로드 테넌시 · 산출물 회수 경로
 
+> **후속 고지 (2026-10-06 기준 현재 동작)** — 아래 본문은 2026-08-27 시점의 사실입니다. 이후 바뀐 점:
+> - **S4·S2(compose-mixed 회수)**: 산출물은 `GET /api/worker-jobs/external/:id/output-url` 이 발급하는 서명 URL 로만 회수합니다. 무인증 `/storage/outputs/...` 직접 GET 은 2026-09-11 부터 `410 Gone` 입니다(`PARTNER_NOTICE_OUTPUT_CUTOVER_DONE_2026-09-11.md`).
+> - **S3**: presigned complete 의 신규 파일 사이트 귀속이 적용됐습니다 — shop-session 토큰 경로 2026-08-28(`CONTRACT_FREEZE.md` §1-C-1), 사이트 키(`X-API-Key`) 경로 2026-10-03(v1.9). 기존 site 미지정 파일의 처리는 `CONTRACT_FREEZE.md` §4.3 의 미결 항목으로 남아 있습니다.
+
 - 발신: Storige 운영 (papascompany)
 - 회신 근거: **코드 실물 추적 + 프로덕션 DB 실조회 + 라이브 프로브**(추측 시 명시)
 - 총평: **printy 의 진단은 거의 전부 정확합니다.** 특히 S2·S4 는 원문·주석과 일치하고, S3 의 삭제 위험은 **저희가 확인한 결과 오히려 printy 서술보다 더 무겁습니다**(soft 가 아니라 즉시 hard delete). 다만 대부분은 **의도된 설계이거나 이미 인지된 미결 트랙**이며, "지금 당장 코드로 닫는다"가 정답이 아닌 것도 사실입니다. 아래에서 항목별로 무엇이 사실이고 무엇이 저희 몫인지 가릅니다.

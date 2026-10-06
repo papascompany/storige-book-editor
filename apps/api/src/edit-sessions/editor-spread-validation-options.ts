@@ -12,9 +12,11 @@
  *  - metadata.coverOutput             : 실제 생성한 표지 PDF 페이지 크기·도련(편집기 기록)
  *  - metadata.appliedSpine / spine    : 책등 출처(호스트 고정 vs 공식) · 공식 입력값
  *
- * 안전 원칙 — 오탐 SPINE_SIZE_MISMATCH 는 세션을 failed 로 뒤집고 파트너에게 session.failed
- * 웹훅을 보낸다. 그래서 표지 보정은 "편집기가 기록한 출력 크기 = 워커 기대식" 이 성립할 때만
- * 적용하고, 성립하지 않거나 근거가 없으면 null 을 돌려 현행 동작을 유지한다.
+ * 안전 원칙 — 오탐 SPINE_SIZE_MISMATCH 는 세션 표지 검증 잡을 FAILED 로 만들고, 잡의 사이트가
+ * 웹훅 v2 를 설정했으면 validation.failed 웹훅이 나간다(이 잡은 callbackUrl 없이 생성 —
+ * WorkerJobsService.validationCallbackDue). 세션 상태는 바뀌지 않고 session.* 도 발신하지 않는다
+ * (v1.10, isSessionStatusSyncJob 표지 없음). 그래서 표지 보정은 "편집기가 기록한 출력 크기 =
+ * 워커 기대식" 이 성립할 때만 적용하고, 성립하지 않거나 근거가 없으면 null 을 돌려 현행 동작을 유지한다.
  *  - 양장 싸바리 전개 출력(coverOutput.layout='hardcover-wrap'): 기록 판형 = 템플릿셋 판형,
  *    표지 면 = 판형+8, 출력 크기 = 싸바리 전개식(hardcoverCoverSpreadFromSpine)이 모두 성립할 때만
  *    binding=hardcover 로 연결. 템플릿셋 판형이 주어지지 않으면 제외

@@ -98,9 +98,9 @@ export const VALIDATION_CONFIG = {
    * ON: 내지(fileType==='content') MediaBox 판정이 SIZE_MISMATCH 일 때만 전 페이지 명시
    * TrimBox 로 재판정(TRIMBOX_SIZE_BASIS 비차단 경고) + 합성·변환 입력의 재단선 영역을
    * 임시 사본에서 크롭(원본 불변). OFF: 두 기능 모두 종전 동작.
-   * ⚠️ X1-R2 한계: 판정 통과 조건에 합성 산출 크기 일치는 없다. 합성 잡은 주문 bleed 를 몰라
-   *    통과 파일도 선언 도련(≤3mm) 크롭 또는 원본 박스로 산출될 수 있다
-   *    (후속: API 가 합성 잡에 주문 bleed·기대 재단 전달). 변환(editSize)은 작업 크기에 정확히 맞춤.
+   * 합성·compose·채움 내지 잡은 API 가 전달한 contentTrim(주문 재단·도련)으로 정규화한다
+   *    (contentTrim 이 없거나 무효이면 종전 동작: 선언 도련(≤3mm) 크롭 또는 원본 박스).
+   *    표지 TrimBox·첨부 원본 정리본·썸네일·조판 미리보기는 미적용. 변환(editSize)은 작업 크기에 정확히 맞춤.
    */
   TRIMBOX_SIZE_CHECK: isTrimBoxSizeCheckEnabled(process.env),
 

@@ -20,14 +20,19 @@ interface ConversionJobData {
     /** 출력 크기 (mm) */
     targetSize?: { width: number; height: number };
     /**
-     * 고객 업로드 PDF 사이즈 검증 허용오차(mm).
-     * P1: 수신만(optional), 로직 미구현(P4).
+     * 고객 업로드 PDF 사이즈 비교 허용오차(mm, 선택).
+     * PdfConverterService(P4)가 사용 — resolveMode 의 실측 vs editSize 비교(미지정 시 0.2mm),
+     * X1 재단선 크롭의 no-op 허용오차 하한.
      */
     sizeToleranceMm?: number;
-    /** 편집(원본) 사이즈(mm). P1: 수신만(optional), 로직 미구현(P4). */
+    /**
+     * 편집(원본) 사이즈(mm, 선택). PdfConverterService(P4)가 사용 — mode 미지정이면 실측과 비교해
+     * mode 를 정하고(resolveMode), X1 재단선 크롭의 게이트·목표 크기로 쓴다.
+     */
     editSize?: { width: number; height: number };
     /**
-     * 변환 모드. P1: 인터페이스만, 로직 미구현(P4).
+     * 변환 모드(선택). PdfConverterService(P4)가 처리한다. 미지정이고 editSize 가 있으면
+     * resolveMode 가 정하고, editSize 도 없으면 레거시 경로.
      * - passthrough: 원본 그대로
      * - innerfit: 내지 맞춤
      * - center: 중앙 배치

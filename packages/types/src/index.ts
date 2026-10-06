@@ -211,7 +211,9 @@ export interface PhotobookPricing {
 /**
  * 커버 SKU 시드 코드 3종 (D-4). ⚠️ **템플릿 기하가 아니다** — 표지펼침면/표지3분할은 conversionMode.
  * 저장/전송은 자유 문자열. 이 상수는 시드일 뿐이다.
- * - 'hardcover_wrap'            : 싸바리 출력 여분(caseBind). 화면 레이아웃과 무관
+ * - 'hardcover_wrap'            : 양장 싸바리 SKU. 편집기 싸바리 출력 모드(표지 PDF = 콘텐츠 + 사방
+ *                                 싸바리 여분)의 첫 조건 — caseBind 없음·표지 면 = 판형+8 등 나머지 조건은
+ *                                 apps/editor/src/utils/hardcoverWrap.ts(resolveHardcoverWrapMode)
  * - 'softcover_variable_spine'  : 무선 등 페이지 가변 SKU 라벨(표지3분할과 자주 짝)
  * - 'ready_made'                : 기성·페브릭 SKU. 보통 표지펼침면 + coverEditable=false
  * 한글 정본: docs/PRINT_TEMPLATE_GLOSSARY.md

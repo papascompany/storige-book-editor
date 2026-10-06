@@ -107,7 +107,7 @@ footer{margin-top:40px;color:var(--muted);font-size:13px}
   <h1>Storige Wave 1~5 개요</h1>
   <p>2026-09-30 ~ 10-05 세션 처리 내역 · Wave 1~5 레인 · 비회원 세션 정리 1~3단계 · 재단선 포함 PDF 의 TrimBox 판정과 합성 처리 방식</p>
   <div class="chips">
-    <span class="chip acc"><span class="dot"></span>기준 시각 2026-10-05 07:03Z UTC</span>
+    <span class="chip acc"><span class="dot"></span>라이브 기준 2026-10-05 12:03Z UTC(Wave 6 배포 후)</span>
     <span class="chip ok"><span class="dot"></span>Wave 1 배포 09-30 07:54Z</span>
     <span class="chip ok"><span class="dot"></span>비회원 세션 정리 2·3단계 10-01</span>
     <span class="chip ok"><span class="dot"></span>비회원 초안 이어 열기 복구 10-01 10:12Z</span>
@@ -115,8 +115,9 @@ footer{margin-top:40px;color:var(--muted);font-size:13px}
     <span class="chip ok"><span class="dot"></span>Wave 3 배포 10-04 00:35~00:41Z</span>
     <span class="chip ok"><span class="dot"></span>Wave 4 배포 10-05 05:39~05:47Z</span>
     <span class="chip ok"><span class="dot"></span>Wave 5 배포 10-05 07:01~07:02Z</span>
+    <span class="chip ok"><span class="dot"></span>Wave 6 배포 10-05 11:59~12:03Z</span>
     <span class="chip warn"><span class="dot"></span>추적 중 5건 · 실 e2e 재개 대기</span>
-    <span class="chip info"><span class="dot"></span>오너 결정 대기 · Wave B 플래그 전환 10-08 09:51Z 이후 · 양장 표지 인쇄 규격 · 동화책 쪽 단위</span>
+    <span class="chip info"><span class="dot"></span>결정·전환 대기 · Wave B 플래그 전환(오너, 10-08 09:51Z 이후) · 동화책 싸바리 세트 매핑 전환(bookmoa, 양사 ACK 10-06)</span>
   </div>
   <nav class="toc" aria-label="목차">
     <a href="#live">현재 라이브 상태</a><a href="#timeline">세션 타임라인</a><a href="#lanes">Wave 1 레인</a><a href="#wave2">Wave 2</a><a href="#wave3">Wave 3</a><a href="#wave4">Wave 4</a><a href="#wave5">Wave 5</a><a href="#guest">비회원 세션 정리</a><a href="#partners">파트너 협업</a>
@@ -125,16 +126,16 @@ footer{margin-top:40px;color:var(--muted);font-size:13px}
 </header>
 
 <section id="live">
-  <h2>현재 라이브 상태 <small>2026-10-05 07:03Z UTC</small></h2>
-  <p class="lead">DB 마이그레이션은 없었습니다. 되돌릴 때는 아래 롤백 대상으로 이미지 교체 또는 Vercel promote 를 합니다. Wave 3 를 되돌릴 때는 api 를 먼저, worker 를 나중에 되돌리며 절차는 <code>docs/DEPLOYMENT.md</code> 를 따릅니다. Wave 4 의 worker 를 되돌리면 파트너에 통지하고 계약 개정(v1.11)도 함께 되돌립니다. Wave 5 는 편집기만 배포했으므로 editor 만 롤백 대상으로 promote 하면 되고, api·worker 는 Wave 4 그대로입니다.</p>
+  <h2>현재 라이브 상태 <small>2026-10-05 12:03Z UTC</small></h2>
+  <p class="lead">DB 마이그레이션은 없었습니다. 되돌릴 때는 아래 롤백 대상으로 이미지 교체 또는 Vercel promote 를 합니다. Wave 3 를 되돌릴 때는 api 를 먼저, worker 를 나중에 되돌리며 절차는 <code>docs/DEPLOYMENT.md</code> 를 따릅니다. Wave 4 의 worker 를 되돌리면 파트너에 통지하고 계약 개정(v1.11)도 함께 되돌립니다. Wave 5 는 편집기만 배포했습니다. Wave 6 은 editor·admin·api 를 배포했고 worker 는 Wave 4 그대로입니다. Wave 6 을 되돌릴 때는 Vercel promote(editor·admin) 뒤 api 를 <span class="mono">rollback-pre-wave6</span> 으로 되돌립니다.</p>
   <div class="tablewrap"><table>
     <thead><tr><th>구성</th><th>운영 중</th><th>반영 시각</th><th>롤백 대상</th></tr></thead>
     <tbody>
-      <tr><td><b>api</b></td><td><span class="mono">d3e3587</span><br><span class="muted">Wave 5 변경 없음</span></td><td>10-05 05:47Z</td><td class="mono">rollback-pre-wave4 → rollback-pre-wave3 → rollback-pre-1003</td></tr>
-      <tr><td><b>worker</b></td><td><span class="mono">d3e3587</span><br><span class="muted">Wave 5 변경 없음</span></td><td>10-05 05:44Z</td><td class="mono">rollback-pre-wave4 → rollback-pre-wave3</td></tr>
-      <tr><td><b>editor</b></td><td class="mono">g0haka2nu (599f602)</td><td>10-05 07:02:48Z Ready</td><td class="mono">pwvgvgvhb → qftv0kx8t</td></tr>
-      <tr><td><b>admin</b></td><td><span class="mono">oylw176wy (f63c8ae)</span><br><span class="muted">Wave 4·5 변경 없음</span></td><td>10-04 00:35Z</td><td class="mono">l6f2dhp0f → isxgg1mpv</td></tr>
-      <tr><td><b>계약 문서</b></td><td>CONTRACT_FREEZE v1.12</td><td>10-05</td><td class="muted">문서</td></tr>
+      <tr><td><b>api</b></td><td><span class="mono">9381ea4</span><br><span class="muted">Wave 6</span></td><td>10-05 12:02:48Z</td><td class="mono">rollback-pre-wave6 → rollback-pre-wave4 → rollback-pre-wave3</td></tr>
+      <tr><td><b>worker</b></td><td><span class="mono">d3e3587</span><br><span class="muted">Wave 5·6 변경 없음</span></td><td>10-05 05:44Z</td><td class="mono">rollback-pre-wave4 → rollback-pre-wave3</td></tr>
+      <tr><td><b>editor</b></td><td class="mono">16moj714s (9381ea4)</td><td>10-05 12:00:26Z Ready</td><td class="mono">g0haka2nu → pwvgvgvhb</td></tr>
+      <tr><td><b>admin</b></td><td class="mono">cyho5uda8 (9381ea4)</td><td>10-05 12:00:30Z Ready</td><td class="mono">oylw176wy → l6f2dhp0f</td></tr>
+      <tr><td><b>계약 문서</b></td><td>CONTRACT_FREEZE v1.14<br><span class="muted">v1.13 동화책 싸바리(세트 매핑 전환 시각부터) · v1.14 서술 정정</span></td><td>10-06</td><td class="muted">문서</td></tr>
       <tr><td><b>재단선 판정 스위치</b></td><td class="mono">WORKER_TRIMBOX_SIZE_CHECK=true</td><td>09-30 07:54Z</td><td class="muted">.env 로 false 후 worker 재생성(10-03 부터 합성 내지 주문 도련 적용도 함께 꺼짐)</td></tr>
       <tr><td><b>기능 플래그</b></td><td class="mono">JOB_LINK_STRICT=false<br>JOB_FILE_SITE_STRICT=false<br>SESSION_JOB_OUTPUT_LOOKUP=false</td><td>10-03 04:58Z<br>10-03 04:58Z<br>10-04 00:41Z</td><td class="muted">기본값. 전환은 오너 결정 대기, 결정 뒤 별도 절차(docs/DEPLOYMENT.md)</td></tr>
     </tbody>
@@ -586,8 +587,8 @@ footer{margin-top:40px;color:var(--muted);font-size:13px}
         <li>기존 Sentry 이벤트에 남아 있을 수 있는 토큰 정리(외부 작업)</li>
         <li>3-B 자동 반영(웹훅 v2), 결속 API O1~O5, 고아 정리 실가동</li>
         <li>호스트 고정 책등 규칙, branch protection, compose 기본값</li>
-        <li>양장 표지 인쇄 규격 — 업로드 검증 규격과 편집기가 만드는 표지 규격의 정합</li>
-        <li>동화책 템플릿의 쪽 단위(4쪽 vs 8쪽)</li>
+        <li class="muted">양장 표지 인쇄 규격 — 업로드 검증 규격(싸바리 전개)으로 결정, 편집기 싸바리 출력 배포(데이터 조건부 — 첫 세트 전환 대기) <span class="badge b-ok">해소 · Wave 6 10-05</span></li>
+        <li class="muted">동화책 템플릿의 쪽 단위 — 상품 등록 값(4쪽)과 일치 <span class="badge b-ok">해소 · 10-05</span></li>
         <li>연결된 템플릿의 표지 책등 방식을 바꿀 때 파트너 사전 통지 원칙</li>
         <li class="muted">무선제본 최소 32쪽이 호스트 쪽수 범위보다 먼저 적용되던 동작 — 호스트 범위가 제본 한도를 키별로 대신하도록 결정·배포 <span class="badge b-ok">해소 · Wave 5 10-05</span></li>
       </ul></div>
@@ -603,7 +604,7 @@ footer{margin-top:40px;color:var(--muted);font-size:13px}
 </section>
 
 <footer>
-  정본 상태 문서: <code>.cursor/plans/RESUME_PROMPT_2026-10-04.md</code>(10-05 Wave 4·5 기록 포함, 09-30~10-04 상세 이력은 <code>RESUME_PROMPT_2026-09-30.md</code>) · 파트너 계약: <code>docs/PLATFORM_INTEGRATION_GUIDE.md</code>, <code>docs/CONTRACT_FREEZE.md</code>(v1.12) · 편집기: <code>docs/EDITOR.md</code> · 검증 규칙: <code>docs/PDF_VALIDATION_GUIDE.md</code> · 배포 절차: <code>docs/DEPLOYMENT.md</code> · 공지: <code>docs/partner-notices/PARTNER_NOTICE_WAVE2_2026-10-03.md</code>, <code>docs/partner-notices/PARTNER_NOTICE_WAVE3_2026-10-03.md</code>, <code>docs/partner-notices/PARTNER_NOTICE_WAVE4_2026-10-05.md</code>, <code>docs/partner-notices/PARTNER_NOTICE_WAVE5_2026-10-05.md</code><br>
+  정본 상태 문서: <code>.cursor/plans/RESUME_PROMPT_2026-10-04.md</code>(10-05 Wave 4·5 기록 포함, 09-30~10-04 상세 이력은 <code>RESUME_PROMPT_2026-09-30.md</code>) · 파트너 계약: <code>docs/PLATFORM_INTEGRATION_GUIDE.md</code>, <code>docs/CONTRACT_FREEZE.md</code>(v1.14) · 편집기: <code>docs/EDITOR.md</code> · 검증 규칙: <code>docs/PDF_VALIDATION_GUIDE.md</code> · 배포 절차: <code>docs/DEPLOYMENT.md</code> · 공지: <code>docs/partner-notices/PARTNER_NOTICE_WAVE2_2026-10-03.md</code>, <code>docs/partner-notices/PARTNER_NOTICE_WAVE3_2026-10-03.md</code>, <code>docs/partner-notices/PARTNER_NOTICE_WAVE4_2026-10-05.md</code>, <code>docs/partner-notices/PARTNER_NOTICE_WAVE5_2026-10-05.md</code><br>
   보안 항목의 세부는 교정 배포 전까지 공개 문서에 적지 않습니다.
 </footer>
 </div>

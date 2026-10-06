@@ -62,7 +62,7 @@ const FROZEN_ROUTES: FrozenRoute[] = [
   { contract: 'GET /files/:id/raw (@Public 이미지 전용 + Throttle)', controller: FilesController, handler: 'getRawFile', method: RequestMethod.GET, path: ':id/raw', auth: 'public', throttled: true },
   { contract: 'DELETE /files/:id/external (X-API-Key, 404=성공)', controller: FilesController, handler: 'deleteFileExternal', method: RequestMethod.DELETE, path: ':id/external', auth: 'api-key' },
   { contract: 'POST /files/:id/expiry/external (X-API-Key)', controller: FilesController, handler: 'setFileExpiryExternal', method: RequestMethod.POST, path: ':id/expiry/external', auth: 'api-key' },
-  // P0-3 (2026-07-03) 인증 전환 — CONTRACT_FREEZE §5 유일 MODIFY-TARGET 집행 결과
+  // P0-3 (2026-07-03) 인증 전환 — CONTRACT_FREEZE §5 MODIFY-TARGET 집행 결과(2026-07-03 반영 완료)
   { contract: 'GET /files/:id/thumbnail (X-API-Key + Throttle — 2026-07-03 @Public 에서 전환)', controller: FilesController, handler: 'getThumbnail', method: RequestMethod.GET, path: ':id/thumbnail', auth: 'api-key', throttled: true },
 
   // ── 워커 잡 표면 (§2) — 게스트 UX 의존 @Public 동결 ──

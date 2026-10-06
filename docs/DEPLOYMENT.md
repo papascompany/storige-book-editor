@@ -544,10 +544,10 @@ curl -s -X POST "$API/worker-jobs/cutout" -H 'Content-Type: application/json' \
 ```
 
 > ⚠️ **잡 종단(큐→워커→산출물)은 이 절차만으로는 확인되지 않는다.** 컷아웃 잡은 `files` 레코드의
-> `fileId` 를 요구하는데, 프로덕션은 `STORAGE_DRIVER=local` 이라 presigned 업로드가 503 이고
-> `/files/upload`·`/files/upload/external` 은 둘 다 **PDF 전용 필터**라, 게스트 이미지를 `files` 에
-> 등록하는 경로가 아직 없다(2026-08-06 실측). 편집기 연결(샤드 3)에서 이 경로를 함께 배선한 뒤
-> 실사용 흐름으로 종단 검증한다.
+> `fileId` 를 요구한다. 편집기는 추론 입력 이미지를 `POST /storage/upload-public` 으로 올려 `files`
+> 레코드 id 를 받고(이 라우트가 업로드를 `files` 에 등록한다), 그 id 로 `POST /worker-jobs/cutout` 을
+> 호출한다(`apps/editor/src/api/cutout.ts`). 종단 확인은 플래그를 켠 뒤 편집기 배경제거를 피사체
+> 종류(인물·일반)별로 1회씩 실제 실행해 결과 이미지가 캔버스에 반영되는지로 한다.
 
 ### ④ 롤백 (즉시 원상복구)
 

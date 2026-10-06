@@ -79,7 +79,7 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
 | editor | Vercel `16moj714s`(`9381ea4`, Ready 10-05 12:00:26Z) | `g0haka2nu`(`599f602`) → `pwvgvgvhb`(`d3e3587`) → `qftv0kx8t`(`f63c8ae`) → `65j5xwzgg`(`9e2a817`) promote. IIFE 번들(VPS `build:embed:prod`)은 미재빌드(파트너 미사용, 오너 결정 대기) |
 | admin | Vercel `cyho5uda8`(`9381ea4`, Ready 10-05 12:00:30Z — Wave 6 템플릿셋 목록 쪽 단위 표시) | `oylw176wy`(`f63c8ae`) promote | `l6f2dhp0f`(`9e2a817`) → `isxgg1mpv` promote |
 
-- origin/master = VPS 체크아웃 = `9381ea4` 이후(Wave 6). api = Wave 6, worker = Wave 4(`d3e3587` 이미지 — Wave 5·6 worker 변경 없음). 계약 정본 **CONTRACT_FREEZE v1.13**(`docs/CONTRACT_FREEZE.md` + `apps/api/src/contract-freeze.spec.ts` — v1.13 은 문서만, 동화책 싸바리 세트 매핑 전환 시각부터 유효).
+- origin/master = VPS 체크아웃 = `9381ea4` 이후(Wave 6). api = Wave 6, worker = Wave 4(`d3e3587` 이미지 — Wave 5·6 worker 변경 없음). 계약 정본 **CONTRACT_FREEZE v1.14**(`docs/CONTRACT_FREEZE.md` + `apps/api/src/contract-freeze.spec.ts` — v1.14 는 서술 정정(동작 불변), v1.13 은 동화책 싸바리 세트 매핑 전환 시각부터 유효).
 - 플래그(운영 기동 로그 `[FLAGS]` 확인값):
 
 | 플래그 | 운영 값 | 비고 |
@@ -136,7 +136,7 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
   - **키**: 양사 서버 키 1개. 100p 는 검증·잡 조회 = 워커 키, 업로드·complete·다운로드·DELETE = 편집기 키이며 둘 다 100p 사이트로 판정된다. presigned complete 사이트 귀속(P4)은 Wave 2 에 배포됐다.
   - **100p DELETE**: `/files/:id/external` 는 2xx 또는 본문 `code:"FILE_NOT_FOUND"` 인 404 만 성공 처리한다. Storige 운영 원칙: ① 이 404 본문 유지(변경 시 사전 통지) ② 경로 제거·이동 시 사전 통지 ③ 다른 거부 사유에 `FILE_NOT_FOUND` 404 재사용 금지.
   - **식별자**: 양사 `orderSeqno` = 장바구니 초안 id(13자리, 생성 뒤 불변, 결제 주문번호 아님) → 통지·조회 식별자는 **sessionId**.
-  - **/embed 쪽수 파라미터(bookmoa 10-05 회신)**: 신규 편집은 pageCount 와 pageCountMin·Max·pageStep 을 함께 보냄(범위만 보내는 경로 없음). 재편집(sessionId 동반)은 범위를 보내지 않고 세션 `metadata.orderOptions` 를 권위로 씀. bindingType 은 신규 편집 'perfect'(운영 84상품 spinePolicy 미설정). 운영 조합: 동화책 하드커버 207c458f 16/48/4 · A4 하드커버 f0335fda 16/300/4 · 교육·교재 a2cc2939 16/500/2(초기 16·100).
+  - **/embed 쪽수 파라미터(bookmoa 10-05 회신)**: 신규 편집은 pageCount 와 pageCountMin·Max·pageStep 을 함께 보냄(범위만 보내는 경로 없음). 재편집(sessionId 동반)은 범위를 보내지 않고 세션 `metadata.orderOptions` 를 권위로 씀. bindingType 은 신규 편집 기본 'perfect'(운영 84상품 spinePolicy 미설정) — 단 동화책은 bookmoa R-217(10-05 운영 배포) 이후 'hardcover' 전송(W5 ACK·10-06 v1.13 ACK). printy 동화책은 'perfect' 유지(10-06 ACK). 운영 조합: 동화책 하드커버 207c458f 16/48/4 · A4 하드커버 f0335fda 16/300/4 · 교육·교재 a2cc2939 16/500/2(초기 16·100).
   - **도련**: 양사 편집기 상품 템플릿셋 `bleed_mm` 전부 3 → 합성 내지 contentTrim 예: A4 216×303 · 정사각 216×216 · 가로 303×216.
 - 3-B 운영 원칙(09-30 오너 결정, 양사·100p ACK): 통지문 `docs/partner-notices/PARTNER_NOTICE_ORDER_LINKED_STAFF_ACTIONS_2026-09-30.md`. 파트너 자체 운영자 편집(R-206)은 파트너가 즉시 결속하므로 3-B 대상이 아니다.
 - 계약·공지 정본: `docs/PLATFORM_INTEGRATION_GUIDE.md` · `docs/CONTRACT_FREEZE.md`(새 @Public·ApiKey 라우트는 `contract-freeze.spec.ts` 동시 등재) · `docs/FILE_ORDER_BINDING_API_DESIGN_2026-09-24.md` · `docs/DEPLOYMENT.md` · `docs/PDF_VALIDATION_GUIDE.md` · `docs/partner-notices/PARTNER_NOTICE_WAVE2_2026-10-03.md` · `docs/partner-notices/PARTNER_NOTICE_WAVE3_2026-10-03.md`.
@@ -184,7 +184,7 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
 - **쪽 단위 일치 — 공유 템플릿셋 4개 정렬 완료(오너 결정, 10-05 14:14:32Z)**: f0335fda·83e6ec80 [16,300]·4, a2cc2939·e66588b2 [16,500]·2 (백업 `~/backup-template_sets-shared4-pre-pagestep-20261005T141432Z.sql`). 범위 없이 재진입하는 기존 세션은 16쪽 미만이면 16쪽 증설·쪽수 기록 없는 초안은 단위 배수까지 완료 차단(1회 추가로 해소)·재편집 pageCount 를 보내면 최대 100 제한 해제. bookmoa 에 영향 세션 11건 사후 통지 → **회신: 모두 실주문 아님, 원복 불필요**(10-05). printy 영향 없음.
 - 템플릿 제작 가이드: Storige 소유. 10-05 오너 결정 기준으로 갱신 완료, bookmoa 초안이 오면 코드 대조 후 추가 반영.
 
-- **제본 최소 쪽수 vs 호스트 쪽수 범위**(10-05 발견, 양사 공통): 양사는 신규 편집에 항상 `bindingType=perfect` 를 보내고(spinePolicy 미설정), 편집기는 무선제본 최소 32쪽을 삭제 하한·설정 패널 한도에 적용한다 → 범위 최소 16 인 상품(bookmoa·printy 편집기 상품 4종 모두)에서 쪽을 늘리면 범위 최소로 되돌릴 수 없다(완료는 막지 않음). 오너 결정(10-05): bookmoa 에 사실 공유·검토 요청 → **bookmoa 오너 결정 '둘 다'**: ① Storige 에 '호스트 pageCountMin·Max 가 있으면 제본 최소·최대 대신 범위 적용' 요청(**Storige 오너 결정 10-05: Wave 5 로 착수 — 설계안 오너 보고 후 구현, 배포 별도 승인**, printy 도 이 안이면 코드 변경 0) ② bookmoa 는 양장 선택·하드커버 상품에 hardcover 전송 검토 — Storige 사실 회신 발신(207c458f 표지 flat-spread 라 책등 무변, f0335fda 는 책등 자동 계산형이라 hardcover 면 책등 약 +1.5mm(운영 margin perfect 0.5·hardcover 2.0), hardcover 는 서버 표지 크기 검증 미적용).
+- **제본 최소 쪽수 vs 호스트 쪽수 범위**(10-05 발견, 양사 공통): 양사는 신규 편집에 항상 `bindingType=perfect` 를 보내고(spinePolicy 미설정 — 10-05 발견 시점. 이후 bookmoa 동화책은 R-217 로 hardcover 전송, §3), 편집기는 무선제본 최소 32쪽을 삭제 하한·설정 패널 한도에 적용한다 → 범위 최소 16 인 상품(bookmoa·printy 편집기 상품 4종 모두)에서 쪽을 늘리면 범위 최소로 되돌릴 수 없다(완료는 막지 않음). 오너 결정(10-05): bookmoa 에 사실 공유·검토 요청 → **bookmoa 오너 결정 '둘 다'**: ① Storige 에 '호스트 pageCountMin·Max 가 있으면 제본 최소·최대 대신 범위 적용' 요청(**Storige 오너 결정 10-05: Wave 5 로 착수 — 설계안 오너 보고 후 구현, 배포 별도 승인**, printy 도 이 안이면 코드 변경 0) ② bookmoa 는 양장 선택·하드커버 상품에 hardcover 전송 검토 — Storige 사실 회신 발신(207c458f 표지 flat-spread 라 책등 무변, f0335fda 는 책등 자동 계산형이라 hardcover 면 책등 약 +1.5mm(운영 margin perfect 0.5·hardcover 2.0), hardcover 는 서버 표지 크기 검증 미적용).
 
 - **Wave B 플래그 전환**(`JOB_LINK_STRICT`·`JOB_FILE_SITE_STRICT`, 기본 false): **10-08 09:51Z 이후** 판단. 플래그는 이미 배포돼 env 만 바꾸면 된다. 기준·절차는 비공개 메모(`../_private_notes/wave2/`).
 - `SESSION_JOB_OUTPUT_LOOKUP`(기본 false) 전환: 전제·확인 절차는 비공개 메모(`../_private_notes/wave3/`).
@@ -204,19 +204,19 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
 
 | 후보 | 출처·메모 |
 |---|---|
-| ~~첫 종결 보고와 재수신 동시 실행 경합 정리~~ | Wave 4 에서 결과 기록 조건부 갱신·도서 확정 조건부 전진으로 반영(배포 대기) |
-| ~~합성 실패 응답 `errorDetail` 범위 축소~~ | Wave 4 반영(배포 대기) |
-| ~~F-4 입력 오류 타입화~~ | Wave 4 반영(배포 대기) |
+| ~~첫 종결 보고와 재수신 동시 실행 경합 정리~~ | Wave 4 에서 결과 기록 조건부 갱신·도서 확정 조건부 전진으로 반영(10-05 배포) |
+| ~~합성 실패 응답 `errorDetail` 범위 축소~~ | Wave 4 반영(10-05 배포) |
+| ~~F-4 입력 오류 타입화~~ | Wave 4 반영(10-05 배포) |
 | 관리자 세션 범위 판정(staff-edit-data) 정합 | Wave 3 후속(상세 비공개) |
-| ~~편집기 create POST 재시도~~ | Wave 4 반영(회원 create 재조회 후 1회 재전송, 배포 대기). 서버 측 세션 생성 멱등은 후속 |
+| ~~편집기 create POST 재시도~~ | Wave 4 반영(회원 create 재조회 후 1회 재전송, 10-05 배포). 서버 측 세션 생성 멱등은 후속 |
 | 웹훅 v2 WH-005 와 `session.*` 발신 재개 | 양사 수신부·bookmoa S10 과 함께. 3-B(3) 자동 반영의 선행 |
 | X1F-2a 표지 TrimBox · X1F-2c 첨부 원본 정리본 · 썸네일·조판 미리보기 | X1 알려진 한계 |
-| ~~compose 매핑(`FILE_ORPHAN_*` 등)~~ | Wave 4 반영(배포 대기, 기본값 무변). 코드 하한·compose·코드 정합 spec 은 후속 |
+| ~~compose 매핑(`FILE_ORPHAN_*` 등)~~ | Wave 4 반영(10-05 배포, 기본값 무변). 코드 하한·compose·코드 정합 spec 은 후속 |
 | 운영자 권한 리뷰 잔여(201 라우트 감사 status_code·인터셉터 부하) | 가드 단계 거부 감사 행은 `a245b0f` 에서 반영 — 잔여 2건은 코드로 재점검 |
 | `/embed` 쪽수 로더 실브라우저 QA | Wave 4 로컬 Playwright 스펙(모킹, 운영 코드 HEAD 기준 27건 통과). CI 편입·실 API 왕복은 미검증 |
 | 상품-템플릿셋 연결 사이트별 조회 | `findByProduct` 가 sortcode 만 봄(공유 행) — 파트너별로 다른 세트를 기본으로 둘 수 없음. API 키 사이트 필터 + 사이트 지정 행. 코드·계약 변경, 설계·오너 승인 필요 |
 | 재편집 템플릿셋 복원 가드 | 재편집 URL `templateSetId` ≠ 세션 `templateSetId` 일 때(embed 는 URL 우선, 서버 완료 검증은 세션 값) — 동화책 매핑 전환 뒤 옛 장바구니 재편집 위험. bookmoa 는 자체 완화를 전환 뒤 후속 트랙으로 진행. 설계·오너 승인 필요 |
-| `editor-spread-validation-options.ts` 머리말 주석 정정 | 15행대 '세션을 failed 로 뒤집고 session.failed' 는 v1.10 이전 설명(현재는 표지 검증 잡만 FAILED, 세션 불변) — 주석만 |
+| ~~`editor-spread-validation-options.ts` 머리말 주석 정정~~ | Wave 8 1단계(N-QA-3)에서 정정(현재는 표지 검증 잡만 FAILED, 세션 불변 — 주석만, 다음 api 배포 동승) |
 | 면≠판형 기존 양장 세트 내지 크기(H1 후속) | 저장 세션 실측 뒤 별건(동화책 낱장 7·A4 하드커버 2) |
 | 로드맵: 임베드 D-4a/b/c · R3b 지종별 TAC · 에셋 A4/A5/A8·시드 · R6 CutContour · R10 · admin stage1b · `with-templates` 배치(S11) · 동화책 왕복 실기 · 폰트 시딩 | 09-30 §5.1 |
 
