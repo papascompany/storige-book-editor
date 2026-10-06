@@ -69,15 +69,15 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
 
 ---
 
-## 2. 현재 라이브 상태 (2026-10-05 12:03Z — Wave 6 배포 후)
+## 2. 현재 라이브 상태 (2026-10-06 08:12Z — Wave 8 1단계 배포 후)
 
 | 구성 | 현재 운영 | 롤백 |
 |---|---|---|
 | DB | 09-30 Wave 1 ~ 10-04 Wave 3 **마이그레이션 없음**. 마지막 스키마 변경은 09-29 `20260929`·`20260930`(ADDITIVE) | 백업 `~/backup-sites-pre-staff-edit-20260929.sql`·`~/backup-template_sets-pre-padstep-20260928.sql`. 추가 컬럼·테이블은 남겨도 무해 |
-| api | `9381ea4`(10-05 12:02:48Z) + nginx 재시작 | `storige-api:rollback-pre-wave6`(=`d3e3587`, 294b1d98554e) → `rollback-pre-wave4`(=`f63c8ae`, c732d216145f) → `rollback-pre-wave3`(=`9e2a817`) → `rollback-pre-1003`(=`4f28e52`) → `rollback-pre-stage3` → …(태그 → `latest` 재지정 후 `up -d --no-build api` + nginx 재시작). **Wave 3 이전 코드로 되돌릴 때는 오너 승인 뒤 비공개 메모(`../_private_notes/wave3/`)의 데이터 정리 절차 먼저.** 롤백 순서 api → (합성 큐 delayed·active 소진 확인) → worker |
-| worker | `d3e3587`(10-05 05:44:29Z) | `storige-worker:rollback-pre-wave4`(=`f63c8ae`, eacd43c79dfb) → `rollback-pre-wave3`(=`9e2a817`) → `rollback-pre-1003`(=`1c52c80`) → … |
-| editor | Vercel `16moj714s`(`9381ea4`, Ready 10-05 12:00:26Z) | `g0haka2nu`(`599f602`) → `pwvgvgvhb`(`d3e3587`) → `qftv0kx8t`(`f63c8ae`) → `65j5xwzgg`(`9e2a817`) promote. IIFE 번들(VPS `build:embed:prod`)은 미재빌드(파트너 미사용, 오너 결정 대기) |
-| admin | Vercel `cyho5uda8`(`9381ea4`, Ready 10-05 12:00:30Z — Wave 6 템플릿셋 목록 쪽 단위 표시) | `oylw176wy`(`f63c8ae`) promote | `l6f2dhp0f`(`9e2a817`) → `isxgg1mpv` promote |
+| api | `776ac0e`(10-06 08:12:05Z, Wave 8 1단계 — 의존성 보안 패치·주석) + nginx 재시작(08:12:41Z) | `storige-api:rollback-pre-wave8`(=`9381ea4`, fe75e1063d85) → `rollback-pre-wave6`(=`d3e3587`, 294b1d98554e) → `rollback-pre-wave4`(=`f63c8ae`, c732d216145f) → `rollback-pre-wave3`(=`9e2a817`) → `rollback-pre-1003`(=`4f28e52`) → `rollback-pre-stage3` → …(태그 → `latest` 재지정 후 `up -d --no-build api` + nginx 재시작). **Wave 3 이전 코드로 되돌릴 때는 오너 승인 뒤 비공개 메모(`../_private_notes/wave3/`)의 데이터 정리 절차 먼저.** 롤백 순서 api → (합성 큐 delayed·active 소진 확인) → worker |
+| worker | `776ac0e`(10-06 08:09:11Z, Wave 8 1단계 — sharp 0.35.5·mysql2 3.24.5) | `storige-worker:rollback-pre-wave8`(=`d3e3587`, 3be1bd99732e) → `rollback-pre-wave4`(=`f63c8ae`, eacd43c79dfb) → `rollback-pre-wave3`(=`9e2a817`) → `rollback-pre-1003`(=`1c52c80`) → … |
+| editor | Vercel `n8zp637da`(`776ac0e`, Ready 10-06 07:58:05Z — 런타임 번들 바이트 동일, lockfile 재빌드) | `16moj714s`(`9381ea4`) → `g0haka2nu`(`599f602`) → `pwvgvgvhb`(`d3e3587`) → `qftv0kx8t`(`f63c8ae`) → `65j5xwzgg`(`9e2a817`) promote. IIFE 번들(VPS `build:embed:prod`)은 미재빌드(파트너 미사용, 오너 결정 대기) |
+| admin | Vercel `luw3mayxr`(`776ac0e`, Ready 10-06 07:57:53Z — axios·react-router-dom 패치) | `cyho5uda8`(`9381ea4`) → `oylw176wy`(`f63c8ae`) promote | `l6f2dhp0f`(`9e2a817`) → `isxgg1mpv` promote |
 
 - origin/master = VPS 체크아웃 = `9381ea4` 이후(Wave 6). api = Wave 6, worker = Wave 4(`d3e3587` 이미지 — Wave 5·6 worker 변경 없음). 계약 정본 **CONTRACT_FREEZE v1.14**(`docs/CONTRACT_FREEZE.md` + `apps/api/src/contract-freeze.spec.ts` — v1.14 는 서술 정정(동작 불변), v1.13 은 동화책 싸바리 세트 매핑 전환 시각부터 유효).
 - 플래그(운영 기동 로그 `[FLAGS]` 확인값):
@@ -197,6 +197,7 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
 
 - 오너 지시(10-06): 인쇄팀 확인·양사 e2e 는 추후 일정. CTO 가 다음 개발 이슈를 정리·보고. 전수 목록(100건, 검증·근거·승인 포함) 정본은 비공개 메모 `../_private_notes/wave8/NEXT_ISSUES_2026-10-06.md`.
 - **P0**: ① master CI 복구(`558c293` lint 회귀 2건 → skipped 단계 첫 실측) ② 의존성 보안 권고 패치(`pnpm audit --prod` 119건: critical 2·high 49 — 메이저 승격 제외) ③ Wave B 플래그 판단(10-08 09:51Z 이후, 오너 결정).
+- **Wave 8 진행(10-06, 오너 승인: 안 2 · 1단계+2a 구현 · master 직접 push · 보안 패치 editor·canvas-core 분리 · 1단계+2a 연속 배포)**: 설계·결정 정본 비공개 `../_private_notes/wave8/DESIGN_W8.md`·`CTO_DECISIONS_W8.md`. **1단계 배포 완료**: push `776ac0e` 07:57:16Z → **master CI 10-01 이후 첫 green**(test 6m11s·embed-e2e 4m52s) · Vercel editor `n8zp637da`·admin `luw3mayxr` Ready → VPS 롤백 태그 `rollback-pre-wave8`(api fe75e1063d85·worker 3be1bd99732e) → worker 08:09:11Z(sharp 0.35.5/vips 8.18.7, mysql2 3.24.5) → api 08:12:05Z + nginx 08:12:41Z → 스모크 정상(health ok, 무인증 401 ×3, with-templates shape 불변, [FLAGS] 동일, 오류 로그 0, 큐 0). DB 변경 없음. 보안 권고 119 → 89(C1·H30 — editor·canvas-core 분리·multer ~2.3.0 고정·tar/http-cache-semantics/fabric 메이저 잔여). 2a(내지 오검증 fixB·copy 보존·누락 경고·caseBind 경고·싸바리 회귀 스펙): 커밋 `661c978`·`d233e3f`·`fc8b923`·`539ec96`.
 - **추천 Wave 8 = 게이트 복구 + 동화책 전환 사전 정비**(2단계): 1단계 CI·보안 패치·/embed CI 편입·문서/주석 스테일 정정 → 2단계 결합 세트 내지 기대 크기(`resolveInnerSpreadContentSizeMm` 첫 spread 만 봄 → 표지 먼저인 동화책 세트는 판형 한 면 폴백)·템플릿셋 `copy()` 필드 유실·admin caseBind 잔류 가드·누락 템플릿 탐지·싸바리 회귀 E2E·운영 템플릿셋 정합 인벤토리·관찰 런북·재편집 templateSetId 가드(오너 설계 결정).
 - 오너 결정 대기: Wave 8 안 선택, 플래그 전환, 재편집 가드 방식(ADDITIVE vs MODIFY-TARGET), 운영 DB 읽기(인벤토리·실측), branch ruleset, compose 기본값, fabric 7 승격 시점, Dependabot, 신규 파트너 연락 채널, 관리자 화면 E2E 시간.
 
