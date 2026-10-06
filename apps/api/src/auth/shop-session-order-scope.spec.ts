@@ -21,7 +21,7 @@ describe('classifyOrderScopeValue', () => {
     [0, 'zero'],
     [-1, 'negative'],
     [1.5, 'fraction'],
-    [9007199254740993, 'unsafe'],
+    [Number.MAX_SAFE_INTEGER + 1, 'unsafe'],
     [Number.POSITIVE_INFINITY, 'unsafe'],
     [Number.NaN, 'non-number'],
     ['12', 'non-number'],
@@ -68,7 +68,7 @@ describe('AuthService.createShopSession — 주문 범위 관측', () => {
     [0, 'zero'],
     [-1, 'negative'],
     [1.5, 'fraction'],
-    [9007199254740993, 'unsafe'],
+    [Number.MAX_SAFE_INTEGER + 1, 'unsafe'],
   ])('S3: orderSeqno %p → kind=%s 로그 1줄, 토큰 발급은 그대로', async (orderSeqno, kind) => {
     const { accessToken } = await service.createShopSession(
       { ...base, orderSeqno } as CreateShopSessionDto,
