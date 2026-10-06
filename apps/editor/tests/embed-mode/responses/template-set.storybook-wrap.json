@@ -1,0 +1,182 @@
+{
+  "templateSet": {
+    "id": "ts-e2e-storybook-wrap",
+    "name": "동화책 정사각형 하드커버+내지펼침면 (싸바리)",
+    "thumbnailUrl": null,
+    "type": "photobook",
+    "width": 210,
+    "height": 210,
+    "canAddPage": true,
+    "pageCountRange": [
+      16,
+      48
+    ],
+    "pageStep": 4,
+    "padToPageStep": false,
+    "templates": [
+      {
+        "templateId": "tpl-e2e-storybook-wrap-cover",
+        "required": true
+      },
+      {
+        "templateId": "tpl-e2e-storybook-inner",
+        "required": false
+      }
+    ],
+    "editorMode": "book",
+    "enabledMenus": null,
+    "endpaperConfig": null,
+    "coverEditable": true,
+    "coverPreviewImage": null,
+    "contentPdfEditable": true,
+    "pdfOutputMode": "duplex-merged",
+    "colorMode": "rgb",
+    "bleedMm": 3,
+    "cropMarkEnabled": false,
+    "sizeToleranceMm": 0.2,
+    "pricing": null,
+    "coverType": "hardcover_wrap",
+    "coverConfig": {
+      "innerRepeat": "cycle"
+    },
+    "pairedTemplateSetId": null,
+    "isOrientationDefault": true,
+    "libraryCategoryIds": [],
+    "isDeleted": false,
+    "description": null,
+    "categoryId": "cat-e2e-storybook",
+    "productSpecs": null,
+    "isActive": false,
+    "siteId": null,
+    "createdAt": "2026-10-05T14:58:22.000Z",
+    "updatedAt": "2026-10-05T14:58:22.000Z",
+    "category": {
+      "id": "cat-e2e-storybook",
+      "name": "동화책",
+      "code": "DONGHWA",
+      "parentId": null,
+      "level": 1,
+      "sortOrder": 2,
+      "siteId": null,
+      "createdAt": "2026-08-14T11:50:59.000Z"
+    }
+  },
+  "templateDetails": [
+    {
+      "id": "tpl-e2e-storybook-wrap-cover",
+      "name": "동화책 정사각형 하드커버 표지펼침면 (싸바리)",
+      "thumbnailUrl": null,
+      "type": "spread",
+      "width": 444,
+      "height": 218,
+      "editable": true,
+      "deleteable": true,
+      "canvasData": {
+        "version": "5.5.2",
+        "width": 444,
+        "height": 218,
+        "objects": [],
+        "background": "#ffffff"
+      },
+      "spreadConfig": {
+        "version": 2,
+        "regionScope": "cover",
+        "conversionMode": "flat-spread",
+        "spec": {
+          "coverWidthMm": 218,
+          "coverHeightMm": 218,
+          "spineWidthMm": 8,
+          "wingEnabled": false,
+          "wingWidthMm": 0,
+          "cutSizeMm": 3,
+          "safeSizeMm": 5,
+          "dpi": 150
+        },
+        "regions": [
+          {
+            "type": "cover",
+            "position": "back-cover",
+            "x": 0,
+            "width": 1287.4015748031497,
+            "height": 1287.4015748031497,
+            "widthMm": 218,
+            "heightMm": 218,
+            "label": "뒷표지"
+          },
+          {
+            "type": "spine",
+            "position": "spine",
+            "x": 1287.4015748031497,
+            "width": 47.24409448818898,
+            "height": 1287.4015748031497,
+            "widthMm": 8,
+            "heightMm": 218,
+            "label": "책등"
+          },
+          {
+            "type": "cover",
+            "position": "front-cover",
+            "x": 1334.6456692913387,
+            "width": 1287.4015748031497,
+            "height": 1287.4015748031497,
+            "widthMm": 218,
+            "heightMm": 218,
+            "label": "앞표지"
+          }
+        ],
+        "totalWidthMm": 444,
+        "totalHeightMm": 218
+      },
+      "isDeleted": false,
+      "categoryId": "cat-e2e-storybook",
+      "editCode": null,
+      "templateCode": null,
+      "isActive": true,
+      "createdBy": "e2e-admin",
+      "siteId": null,
+      "createdAt": "2026-10-05T14:58:22.000Z",
+      "updatedAt": "2026-10-05T14:58:22.000Z"
+    },
+    {
+      "id": "tpl-e2e-storybook-inner",
+      "name": "동화책 정사각형 내지펼침면",
+      "thumbnailUrl": null,
+      "type": "spread",
+      "width": 420,
+      "height": 210,
+      "editable": true,
+      "deleteable": true,
+      "canvasData": {
+        "version": "5.5.2",
+        "width": 420,
+        "height": 210,
+        "objects": [],
+        "background": "#ffffff"
+      },
+      "spreadConfig": {
+        "version": 2,
+        "regionScope": "inner",
+        "innerSpec": {
+          "pageWidthMm": 210,
+          "pageHeightMm": 210,
+          "gutterMm": 0,
+          "cutSizeMm": 3,
+          "safeSizeMm": 5,
+          "dpi": 150
+        },
+        "regions": [],
+        "totalWidthMm": 420,
+        "totalHeightMm": 210
+      },
+      "isDeleted": false,
+      "categoryId": "cat-e2e-storybook",
+      "editCode": "EDIT-E2E-INNER",
+      "templateCode": "TMPL-E2E-INNER",
+      "isActive": true,
+      "createdBy": "e2e-admin",
+      "siteId": null,
+      "createdAt": "2026-08-14T11:51:44.000Z",
+      "updatedAt": "2026-08-14T11:51:44.000Z"
+    }
+  ]
+}
