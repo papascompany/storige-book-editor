@@ -99,6 +99,7 @@ const COVER_TYPE_SEED_OPTIONS = [
 const COVER_TYPES_WITHOUT_CASEBIND = ['softcover_variable_spine', 'ready_made'];
 
 import { matchesSpreadCandidate } from './spreadCandidate';
+import { detectCaseBindOnHardcoverWrap } from './caseBindGuard';
 
 const templateTypeLabels: Record<TemplateType, string> = {
   [TemplateType.WING]: '날개',
@@ -572,11 +573,57 @@ export const TemplateSetForm = () => {
       pricing,
     };
 
-    if (id) {
-      updateMutation.mutate({ id, data });
-    } else {
-      createMutation.mutate(data);
+    const commit = () => {
+      if (id) {
+        updateMutation.mutate({ id, data });
+      } else {
+        createMutation.mutate(data);
+      }
+    };
+
+    // N-TD-2a (2026-10-06): hardcover_wrap 세트에 caseBind 가 남으면 편집기가 싸바리 편집 모드를 끈다.
+    // 오너 결정 — 하드 차단 없이 저장 전 확인만(기본 취소). 저장 데이터 구성은 위와 같다.
+    const caseBindGuard = detectCaseBindOnHardcoverWrap({
+      coverType: values.coverType,
+      caseBindInputs: [values.caseBindBoardThicknessMm, values.caseBindTurnInMm, values.caseBindWrapMm],
+      templates: templates.map((t) => t.template).filter((t): t is Template => !!t),
+    });
+    if (!caseBindGuard.blocked) {
+      commit();
+      return;
     }
+    Modal.confirm({
+      title: '싸바리 편집 모드가 꺼집니다',
+      width: 560,
+      content: (
+        <>
+          <p style={{ margin: '8px 0' }}>
+            커버 종류가 hardcover_wrap 인데 싸바리 수치(caseBind)가 있습니다. 이대로 저장하면 편집기가
+            싸바리 편집 모드(표지 화면·표지 PDF에 사방 고정 여분 포함)로 열리지 않고, 표지 출력 크기를
+            싸바리 수치로 계산합니다.
+          </p>
+          <ul style={{ paddingLeft: 20, margin: '8px 0' }}>
+            {caseBindGuard.sources.includes('templateSet') && (
+              <li>
+                이 세트의 싸바리 수치 입력에 값이 있습니다(0 도 값으로 저장됩니다). 싸바리 모드를 쓰려면 세
+                칸을 모두 비우세요.
+              </li>
+            )}
+            {caseBindGuard.sources.includes('coverTemplate') && (
+              <li>
+                첫 번째 표지 템플릿에 싸바리 수치가 저장되어 있습니다. 싸바리 모드를 쓰려면 그 템플릿의
+                싸바리 수치를 지워야 합니다.
+              </li>
+            )}
+          </ul>
+        </>
+      ),
+      okText: '그대로 저장',
+      okButtonProps: { danger: true },
+      cancelText: '취소',
+      autoFocusButton: 'cancel',
+      onOk: commit,
+    });
   };
 
   const handleAddTemplate = (template: Template) => {
@@ -1147,7 +1194,7 @@ export const TemplateSetForm = () => {
                     <Form.Item
                       name="coverType"
                       label="커버 종류 코드"
-                      extra="시드 3종 외 자유 코드 입력 가능(고정 목록 아님). 비워두면 미사용(기존 동작 그대로). 기성커버(ready_made)는 위 '표지 편집 가능'을 끄고 미리보기 이미지를 등록하는 기존 경로에 매핑됩니다. 하드커버(hardcover_wrap)는 아래 싸바리 수치로 출력(wrap 포함) 사이즈를 계산합니다."
+                      extra="시드 3종 외 자유 코드 입력 가능(고정 목록 아님). 비워두면 미사용(기존 동작 그대로). 기성커버(ready_made)는 위 '표지 편집 가능'을 끄고 미리보기 이미지를 등록하는 기존 경로에 매핑됩니다. 하드커버(hardcover_wrap)는 아래 싸바리 수치를 모두 비워 두면 편집기가 싸바리 편집 모드(표지 화면·표지 PDF에 사방 고정 여분 포함)로 열립니다(표지 크기 등 조건이 맞을 때). 싸바리 수치를 하나라도 입력하면(0 포함) 싸바리 편집 모드가 꺼지고 표지 출력 크기를 그 수치로 계산합니다."
                     >
                       <AutoComplete
                         allowClear
@@ -1171,30 +1218,42 @@ export const TemplateSetForm = () => {
                           !!currentCoverType &&
                           !COVER_TYPES_WITHOUT_CASEBIND.includes(currentCoverType);
                         if (!showCaseBind) return null;
+                        const isHardcoverWrap = currentCoverType.trim() === 'hardcover_wrap';
                         return (
-                          <Space size="large" wrap align="start">
-                            <Form.Item
-                              name="caseBindBoardThicknessMm"
-                              label="합지(보드) 두께 (mm)"
-                              extra="싸바리 geometry — 하드커버 보드 두께"
-                            >
-                              <InputNumber min={0} step={0.1} />
-                            </Form.Item>
-                            <Form.Item
-                              name="caseBindTurnInMm"
-                              label="접힘(turn-in) 여분 (mm)"
-                              extra="안쪽으로 접어 넘기는 여분"
-                            >
-                              <InputNumber min={0} step={0.5} />
-                            </Form.Item>
-                            <Form.Item
-                              name="caseBindWrapMm"
-                              label="wrap 여분 (mm)"
-                              extra="화면=trim 기준 / 출력=wrap 포함 사이즈"
-                            >
-                              <InputNumber min={0} step={0.5} />
-                            </Form.Item>
-                          </Space>
+                          <>
+                            {isHardcoverWrap && (
+                              <Alert
+                                type="warning"
+                                showIcon
+                                style={{ marginBottom: 16, maxWidth: 720 }}
+                                message="싸바리 편집 모드를 쓰려면 아래 세 칸을 모두 비워 두세요."
+                                description="값을 하나라도 넣으면(0 포함) 저장 시 싸바리 수치가 함께 저장되고, 편집기의 싸바리 편집 모드가 꺼집니다. 저장할 때 한 번 더 확인합니다."
+                              />
+                            )}
+                            <Space size="large" wrap align="start">
+                              <Form.Item
+                                name="caseBindBoardThicknessMm"
+                                label="합지(보드) 두께 (mm)"
+                                extra="싸바리 geometry — 하드커버 보드 두께"
+                              >
+                                <InputNumber min={0} step={0.1} />
+                              </Form.Item>
+                              <Form.Item
+                                name="caseBindTurnInMm"
+                                label="접힘(turn-in) 여분 (mm)"
+                                extra="안쪽으로 접어 넘기는 여분"
+                              >
+                                <InputNumber min={0} step={0.5} />
+                              </Form.Item>
+                              <Form.Item
+                                name="caseBindWrapMm"
+                                label="wrap 여분 (mm)"
+                                extra="화면=trim 기준 / 출력=wrap 포함 사이즈"
+                              >
+                                <InputNumber min={0} step={0.5} />
+                              </Form.Item>
+                            </Space>
+                          </>
                         );
                       }}
                     </Form.Item>
