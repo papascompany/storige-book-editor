@@ -8,7 +8,8 @@
  *
  * 진입 형태 2종:
  *   - 신규 편집: `/embed?templateSetId=<id>&token=<jwt>&orderSeqno=<n>&pageCount=&paperType=&bindingType=&parentOrigin=`
- *   - 재편집  : `/embed?sessionId=<id>&token=<jwt>&parentOrigin=`  (templateSetId 는 세션에서 자동 도출, 명시해도 됨)
+ *   - 재편집  : `/embed?sessionId=<id>&token=<jwt>&parentOrigin=`  (templateSetId 는 생략 권장 — 세션에서 자동 도출.
+ *     W8-2b: 명시해도 세션 세트가 우선하고, 다르면 editor.ready·storige:ready 에 templateSetMismatch 가 실린다)
  *   - 게스트 세션 재편집: 위 재편집 URL 에 `#guestToken=<게스트 토큰>` fragment 를 붙인다.
  *     편집기는 fragment 에서만 읽고(쿼리 `guestToken` 은 읽지 않음) 주소창에서 곧바로 지운다.
  *
@@ -28,6 +29,7 @@ import {
   EMBED_MESSAGE_SOURCE,
   EMBED_MESSAGE_VERSION,
   type EditorConfig,
+  type EditorReadyInfo,
   type EditorResult,
   type SaveResult,
   type EditorError,
@@ -197,7 +199,8 @@ export default function EmbedView() {
       }
 
       // 재편집: sessionId 만 받고 templateSetId 가 없으면 세션에서 도출.
-      // (bookmoa 가 templateSetId 를 함께 보내면 이 조회는 생략됨)
+      // (templateSetId 를 함께 보내면 이 조회는 생략되지만, 편집기는 W8-2b 규칙대로 세션 세트를 우선한다 —
+      //  세션 세트 조회가 404 일 때만 함께 보낸 세트로 연다)
       // 게스트 토큰이 있으면 게스트 조회 경로 → 기억된 토큰 → 기존 조회 경로 순(EmbeddedEditor 와 같은 순서).
       // 조회 실패 시 화면 문구는 호스트에 보낸 message 와 같은 고정 문구다.
       let reopenFailureMessage: string | null = null
@@ -270,7 +273,14 @@ export default function EmbedView() {
           pageCountMin, pageCountMax, pageStep,
         },
         // 레거시 dual-emit (정식 엔벨로프는 EmbeddedEditor 가 별도 발신)
-        onReady: () => emitLegacy(parentOrigin, 'storige:ready', { templateSetId, sessionId }),
+        // W8-2b: templateSetId 는 편집기가 실제로 연 세트(info 미전달이면 종전 URL/도출 값),
+        // 재편집 불일치가 있으면 templateSetMismatch 를 additive 동봉(editor.ready 와 같은 값).
+        onReady: (info?: EditorReadyInfo) =>
+          emitLegacy(parentOrigin, 'storige:ready', {
+            templateSetId: info?.templateSetId ?? templateSetId,
+            sessionId,
+            ...(info?.templateSetMismatch ? { templateSetMismatch: info.templateSetMismatch } : {}),
+          }),
         onSave: (r: SaveResult) =>
           emitLegacy(parentOrigin, 'storige:saved', { sessionId: r.sessionId, savedAt: r.savedAt }),
         onComplete: (r: EditorResult) =>
@@ -312,6 +322,11 @@ export default function EmbedView() {
             ...(r.pricing ? { pricing: r.pricing } : {}),
             // R-195: 적용 책등 폭(mm, 스프레드 책만) — 정의된 경우에만 additive.
             ...(r.spineWidthMm != null ? { spineWidthMm: r.spineWidthMm } : {}),
+            // W8-2b (additive): 이번 편집을 앉힌 템플릿셋·재편집 불일치 — editor.complete 와 같은 값.
+            //   bookmoa·printy 는 legacy 를 먼저 받아 완료를 확정하므로 legacy 에도 싣는다.
+            //   자격증명이 아니므로 와일드카드 송신에도 싣는다(D24·D25 불변식 범위 밖).
+            ...(r.templateSetId ? { templateSetId: r.templateSetId } : {}),
+            ...(r.templateSetMismatch ? { templateSetMismatch: r.templateSetMismatch } : {}),
             files: {
               coverFileId: r.files.coverFileId ?? null,
               contentFileId: r.files.contentFileId ?? null,

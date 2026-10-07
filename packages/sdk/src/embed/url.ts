@@ -70,7 +70,11 @@ export interface EmbedUrlParams {
   token: string;
   /** 401 자동갱신용. cross-origin iframe 이라 HttpOnly 쿠키가 무용하므로 권장 */
   refreshToken?: string;
-  /** 신규 편집 필수. 재편집에서는 세션 metadata 에서 도출되나 함께 보내면 조회 1콜 절약 */
+  /**
+   * 신규 편집 필수. 재편집(`sessionId`)에서는 **생략 권장** — 편집기가 세션에 기록된 세트로 연다.
+   * 보내도 세션 세트가 우선하며, 값이 다르면 `editor.ready` 의 `templateSetMismatch` 로 통지된다.
+   * (세션 세트 조회가 HTTP 404 일 때만 이 값으로 1회 폴백.) 세트를 바꾸려면 새 편집으로 연다.
+   */
   templateSetId?: string;
   /** 재편집 키 */
   sessionId?: string;

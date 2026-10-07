@@ -120,8 +120,31 @@ export interface EditorEnvelope<T = unknown> {
  */
 export type EditorPricingMeta = Readonly<Record<string, unknown>>;
 
+/**
+ * 재편집 시 URL `templateSetId`(requested)와 세션에 기록된 세트(session)가 다를 때의
+ * 통지 (2026-10 ADDITIVE). 두 값이 같거나 한쪽이 없으면 키 자체가 실리지 않는다.
+ *
+ * - `resolution: 'session'`   세션 세트로 열었다(기본 — 서버 출력 기준과 일치).
+ * - `resolution: 'requested'` 세션 세트 조회가 HTTP 404 라 URL 세트로 1회 폴백해 열었다.
+ *   이때 `reason: 'SESSION_SET_UNAVAILABLE'` 이 함께 온다.
+ */
+export interface TemplateSetMismatch {
+  /** URL(또는 호스트 옵션)로 요청한 템플릿셋 ID */
+  requested: string;
+  /** 편집 세션에 기록된 템플릿셋 ID */
+  session: string;
+  /** 실제로 연 쪽 */
+  resolution: 'session' | 'requested';
+  /** `resolution: 'requested'` 일 때만: 세션 세트를 열 수 없었던 사유 */
+  reason?: 'SESSION_SET_UNAVAILABLE';
+}
+
 export interface EditorReadyPayload {
   sessionId?: string;
+  /**
+   * 실제로 연 템플릿셋 ID. 재편집에서는 세션 세트가 우선하므로 URL 로 보낸 값과
+   * 다를 수 있다 — 그 경우 `templateSetMismatch` 가 함께 온다.
+   */
   templateSetId?: string;
   /** 편집기 번들 버전(엔벨로프 `version` 과 다른 값) */
   version?: string;
@@ -130,6 +153,8 @@ export interface EditorReadyPayload {
   effectiveTemplateSetId?: string;
   /** 주문 옵션과 템플릿셋의 방향(가로/세로) 불일치 통지 (2026-07-09 additive) */
   orientationMismatch?: unknown;
+  /** 재편집 시 요청 세트와 세션 세트가 달랐을 때만 (2026-10 additive) */
+  templateSetMismatch?: TemplateSetMismatch;
 }
 
 export interface EditorSavePayload {
@@ -252,6 +277,15 @@ export interface EditorCompletePayload {
   /** 🚨 중첩 구조 — 게스트 완료 시엔 **빈 객체**다 */
   files: EditorCompleteFiles;
   savedAt?: string;
+  /**
+   * 편집기가 실제로 편집한 템플릿셋 ID (2026-10 additive). 샘플 폴백으로 구동된
+   * 경우에는 생략된다. 재편집에서는 URL 로 보낸 값이 아니라 세션 세트일 수 있다.
+   */
+  templateSetId?: string;
+  /** 완료 시점 책등 폭(mm, 0 이상). 0 도 유효값이다 (additive) */
+  spineWidthMm?: number;
+  /** 재편집 시 요청 세트와 세션 세트가 달랐을 때만 (2026-10 additive) */
+  templateSetMismatch?: TemplateSetMismatch;
 }
 
 /**

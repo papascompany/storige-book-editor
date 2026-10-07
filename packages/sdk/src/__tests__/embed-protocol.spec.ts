@@ -278,6 +278,148 @@ describe('readCompletePayload — 게스트 분기와 토큰 비노출', () => {
   });
 });
 
+describe('readCompletePayload — templateSetId·spineWidthMm·templateSetMismatch (additive)', () => {
+  const base = {
+    sessionId: 'sess-10',
+    files: { coverFileId: 'f-cover' },
+  };
+
+  it('새 키가 없으면 결과에 키 자체가 없다(기존 형태 불변)', () => {
+    const done = readCompletePayload(base);
+    expect(done).not.toBeNull();
+    expect(done).not.toHaveProperty('templateSetId');
+    expect(done).not.toHaveProperty('spineWidthMm');
+    expect(done).not.toHaveProperty('templateSetMismatch');
+    expect(done).toEqual({
+      needsAuth: false,
+      action: 'promote',
+      hasGuestToken: false,
+      sessionId: 'sess-10',
+      files: { coverFileId: 'f-cover' },
+    });
+  });
+
+  it('templateSetId — 비어 있지 않은 문자열만 통과', () => {
+    expect(readCompletePayload({ ...base, templateSetId: 'ts-207c' })?.templateSetId).toBe(
+      'ts-207c',
+    );
+    expect(readCompletePayload({ ...base, templateSetId: '' })).not.toHaveProperty(
+      'templateSetId',
+    );
+    expect(readCompletePayload({ ...base, templateSetId: 42 })).not.toHaveProperty(
+      'templateSetId',
+    );
+  });
+
+  it('spineWidthMm — 0 과 양수는 보존', () => {
+    expect(readCompletePayload({ ...base, spineWidthMm: 0 })?.spineWidthMm).toBe(0);
+    expect(readCompletePayload({ ...base, spineWidthMm: 8 })?.spineWidthMm).toBe(8);
+    expect(readCompletePayload({ ...base, spineWidthMm: 8.5 })?.spineWidthMm).toBe(8.5);
+  });
+
+  it('spineWidthMm — 음수·비숫자·비유한수는 생략', () => {
+    for (const bad of [-1, '8', null, Number.NaN, Number.POSITIVE_INFINITY, {}]) {
+      expect(readCompletePayload({ ...base, spineWidthMm: bad })).not.toHaveProperty(
+        'spineWidthMm',
+      );
+    }
+  });
+
+  it('templateSetMismatch — 정상 형태는 통과(resolution=session)', () => {
+    const done = readCompletePayload({
+      ...base,
+      templateSetId: 'ts-session',
+      templateSetMismatch: {
+        requested: 'ts-url',
+        session: 'ts-session',
+        resolution: 'session',
+      },
+    });
+    expect(done?.templateSetId).toBe('ts-session');
+    expect(done?.templateSetMismatch).toEqual({
+      requested: 'ts-url',
+      session: 'ts-session',
+      resolution: 'session',
+    });
+  });
+
+  it('templateSetMismatch — resolution=requested 는 알려진 reason 을 보존하고 미지 키는 버린다', () => {
+    expect(
+      readCompletePayload({
+        ...base,
+        templateSetMismatch: {
+          requested: 'ts-url',
+          session: 'ts-session',
+          resolution: 'requested',
+          reason: 'SESSION_SET_UNAVAILABLE',
+          extra: 'drop-me',
+        },
+      })?.templateSetMismatch,
+    ).toEqual({
+      requested: 'ts-url',
+      session: 'ts-session',
+      resolution: 'requested',
+      reason: 'SESSION_SET_UNAVAILABLE',
+    });
+    expect(
+      readCompletePayload({
+        ...base,
+        templateSetMismatch: {
+          requested: 'ts-url',
+          session: 'ts-session',
+          resolution: 'requested',
+          reason: 'SOMETHING_ELSE',
+        },
+      })?.templateSetMismatch,
+    ).toEqual({ requested: 'ts-url', session: 'ts-session', resolution: 'requested' });
+  });
+
+  it("templateSetMismatch — resolution=session 이면 reason 을 싣지 않는다(reason 은 'requested' 전용)", () => {
+    expect(
+      readCompletePayload({
+        ...base,
+        templateSetMismatch: {
+          requested: 'ts-url',
+          session: 'ts-session',
+          resolution: 'session',
+          reason: 'SESSION_SET_UNAVAILABLE',
+        },
+      })?.templateSetMismatch,
+    ).toEqual({ requested: 'ts-url', session: 'ts-session', resolution: 'session' });
+  });
+
+  it('templateSetMismatch — 형태 불량이면 생략', () => {
+    for (const bad of [
+      null,
+      'ts-url',
+      {},
+      { requested: 'ts-url', session: 'ts-session' },
+      { requested: 'ts-url', session: 'ts-session', resolution: 'url' },
+      { requested: 1, session: 'ts-session', resolution: 'session' },
+      { requested: 'ts-url', session: '', resolution: 'session' },
+    ]) {
+      expect(readCompletePayload({ ...base, templateSetMismatch: bad })).not.toHaveProperty(
+        'templateSetMismatch',
+      );
+    }
+  });
+
+  it('게스트 완료에 새 키가 실려도 guestToken 값은 여전히 노출되지 않는다', () => {
+    const done = readCompletePayload({
+      sessionId: 'sess-11',
+      needsAuth: true,
+      guestToken: 'super-secret-guest-token',
+      files: {},
+      templateSetId: 'ts-1',
+      spineWidthMm: 0,
+    });
+    expect(done?.action).toBe('require-login');
+    expect(done?.templateSetId).toBe('ts-1');
+    expect(done?.spineWidthMm).toBe(0);
+    expect(JSON.stringify(done)).not.toContain('super-secret-guest-token');
+  });
+});
+
 // ── URL 조립 ────────────────────────────────────────────────────────────
 
 describe('buildEmbedUrl — parentOrigin 강제', () => {

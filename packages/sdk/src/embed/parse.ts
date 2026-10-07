@@ -33,6 +33,7 @@ import {
   type EditorCompletePayload,
   type EditorEnvelope,
   type EditorState,
+  type TemplateSetMismatch,
 } from './protocol';
 
 /**
@@ -168,6 +169,43 @@ function readNumber(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
 
+function readNonNegativeNumber(value: unknown): number | undefined {
+  const n = readNumber(value);
+  return n !== undefined && n >= 0 ? n : undefined;
+}
+
+const TEMPLATE_SET_MISMATCH_RESOLUTIONS: ReadonlyArray<
+  TemplateSetMismatch['resolution']
+> = ['session', 'requested'];
+
+/**
+ * `templateSetMismatch` 판독 — `requested`·`session` 이 문자열이고 `resolution` 이
+ * 알려진 값일 때만 통과시킨다. 형태가 불량하면 `undefined`(키 생략).
+ * `reason` 은 알려진 값일 때만 보존한다.
+ */
+function readTemplateSetMismatch(
+  value: unknown,
+): TemplateSetMismatch | undefined {
+  const r = asRecord(value);
+  if (r === null) return undefined;
+  const requested = readString(r.requested);
+  const session = readString(r.session);
+  const resolution = TEMPLATE_SET_MISMATCH_RESOLUTIONS.find(
+    (v) => v === r.resolution,
+  );
+  if (requested === undefined || session === undefined || resolution === undefined) {
+    return undefined;
+  }
+  return {
+    requested,
+    session,
+    resolution,
+    ...(resolution === 'requested' && r.reason === 'SESSION_SET_UNAVAILABLE'
+      ? { reason: 'SESSION_SET_UNAVAILABLE' as const }
+      : {}),
+  };
+}
+
 /**
  * `editor.complete` payload 판독 — **`guestToken` 값은 결과에 담지 않는다**.
  *
@@ -214,6 +252,9 @@ export function readCompletePayload(
   const pageCount = readNumber(p.pageCount);
   const savedAt = readString(p.savedAt);
   const pricing = asRecord(p.pricing);
+  const templateSetId = readString(p.templateSetId);
+  const spineWidthMm = readNonNegativeNumber(p.spineWidthMm);
+  const templateSetMismatch = readTemplateSetMismatch(p.templateSetMismatch);
 
   return {
     needsAuth,
@@ -232,6 +273,9 @@ export function readCompletePayload(
       ? { size: { width: sizeWidth, height: sizeHeight, unit: 'mm' as const } }
       : {}),
     ...(savedAt !== undefined ? { savedAt } : {}),
+    ...(templateSetId !== undefined ? { templateSetId } : {}),
+    ...(spineWidthMm !== undefined ? { spineWidthMm } : {}),
+    ...(templateSetMismatch !== undefined ? { templateSetMismatch } : {}),
   };
 }
 

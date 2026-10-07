@@ -8,6 +8,8 @@ import {
 } from '@/stores/useUiPrefStore'
 import { ChevronsLeft, ChevronsRight, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { getParamCompat } from '@/utils/searchParams'
+import { showToast } from '@/stores/useToastStore'
 
 // Feature flag for image processing (OpenCV) features
 const ENABLE_IMAGE_PROCESSING = import.meta.env.VITE_ENABLE_IMAGE_PROCESSING !== 'false'
@@ -41,6 +43,47 @@ const LazyLoading = () => (
 // Width when collapsed (just enough room for an "expand" button)
 const COLLAPSED_WIDTH = 28
 
+/**
+ * W8-2b D4: 편집 중인 디자인은 AI 패널에서 다른 템플릿셋으로 바꾸지 않는다.
+ * 재편집은 세션 템플릿셋으로 열리므로(세션 세트 우선) URL 의 templateSetId 만 바꾸면 전환이 조용히
+ * 무효가 된다. 편집 중인 디자인 = URL 에 sessionId 가 있거나, 같은 주소로 다시 열면 기존 세션을 다시
+ * 찾는 경우(주문번호 진입의 회원 세션 재사용·생성 — embed 가 sessionPinned 로 알려 준다).
+ * 템플릿셋 교체는 새 편집으로만 한다.
+ */
+export const AI_TEMPLATE_SET_SWITCH_BLOCKED_MESSAGE =
+  '편집 중인 디자인은 다른 템플릿셋으로 바꿀 수 없습니다. 새로 편집해 주세요.'
+
+export type AiTemplateSetSwitch =
+  | { kind: 'blocked'; message: string }
+  | { kind: 'navigate'; href: string }
+
+/**
+ * AI 패널의 템플릿셋 선택·생성 결과를 적용하는 방법 — URL 에 sessionId 가 있거나 sessionPinned(같은 주소로
+ * 다시 열면 기존 세션으로 열림)면 차단, 아니면 templateSetId 교체 이동
+ */
+export function resolveAiTemplateSetSwitch(
+  currentHref: string,
+  templateSetId: string,
+  sessionPinned: boolean = false,
+): AiTemplateSetSwitch {
+  const url = new URL(currentHref)
+  if (sessionPinned || getParamCompat(url.searchParams, 'sessionId')) {
+    return { kind: 'blocked', message: AI_TEMPLATE_SET_SWITCH_BLOCKED_MESSAGE }
+  }
+  url.searchParams.set('templateSetId', templateSetId)
+  return { kind: 'navigate', href: url.toString() }
+}
+
+function applyAiTemplateSetSwitch(templateSetId: string, sessionPinned: boolean): void {
+  const next = resolveAiTemplateSetSwitch(window.location.href, templateSetId, sessionPinned)
+  if (next.kind === 'blocked') {
+    showToast(next.message, 'warning', 5000)
+    return
+  }
+  // 신규 편집: 페이지 새로고침으로 templateSetId 적용(현행)
+  window.location.href = next.href
+}
+
 interface FeatureSidebarProps {
   className?: string
   /**
@@ -48,9 +91,18 @@ interface FeatureSidebarProps {
    * 백드롭은 EditorView가 별도로 그린다.
    */
   mobileOverlay?: boolean
+  /**
+   * W8-2b D4: 같은 진입 주소로 다시 열면 기존 세션(세션 세트)으로 열리는가 — `true` 면 AI 패널의 템플릿셋
+   * 전환을 막고 '새로 편집' 안내를 띄운다(URL 에 sessionId 가 없는 주문번호 진입 포함). embed 가 넘긴다.
+   */
+  aiTemplateSetSwitchBlocked?: boolean
 }
 
-export default function FeatureSidebar({ className, mobileOverlay = false }: FeatureSidebarProps) {
+export default function FeatureSidebar({
+  className,
+  mobileOverlay = false,
+  aiTemplateSetSwitchBlocked = false,
+}: FeatureSidebarProps) {
   const linkedCount = useSettingsStore((s) => s.linkedPrintTemplates.length)
   const currentMenu = useAppStore((state) => state.currentMenu)
   const tapMenu = useAppStore((state) => state.tapMenu)
@@ -228,16 +280,13 @@ export default function FeatureSidebar({ className, mobileOverlay = false }: Fea
             templateType={undefined}
             dimensions={undefined}
             onSelectTemplate={(templateSetId: string) => {
-              // 추천 받은 템플릿셋 선택 시: 페이지 새로고침으로 templateSetId 적용
-              const url = new URL(window.location.href)
-              url.searchParams.set('templateSetId', templateSetId)
-              window.location.href = url.toString()
+              // 추천 받은 템플릿셋 선택 시: 신규 편집이면 페이지 새로고침으로 templateSetId 적용,
+              // 편집 중인 디자인(sessionId·주문 세션 재사용)이면 전환하지 않고 '새로 편집' 안내(W8-2b D4)
+              applyAiTemplateSetSwitch(templateSetId, aiTemplateSetSwitchBlocked)
             }}
             onGenerated={(templateSetId: string) => {
-              // AI 생성 결과를 새 templateSet으로 적용
-              const url = new URL(window.location.href)
-              url.searchParams.set('templateSetId', templateSetId)
-              window.location.href = url.toString()
+              // AI 생성 결과를 새 templateSet으로 적용 — 규칙은 위와 같다(W8-2b D4)
+              applyAiTemplateSetSwitch(templateSetId, aiTemplateSetSwitchBlocked)
             }}
           />
         )

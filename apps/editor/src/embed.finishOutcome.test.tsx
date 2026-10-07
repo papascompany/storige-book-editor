@@ -4,6 +4,8 @@
  *   - 비회원 세션: 'needsAuth' + editor.complete(needsAuth) → editor.needAuth 순서 유지
  *   - 세션 없음: 'skipped', 저장·완료 호출·이벤트 없음
  *   - 실패: SAVE_FAILED(고정 문구, fatal:false) + 원래 오류로 거부
+ *   - W8-2b: complete 4경로(회원·게스트 × onFinish·instance.complete)에 templateSetId(편집기 실효 세트),
+ *     샘플 폴백이면 생략(불일치가 있어도 templateSetMismatch 까지 생략), 재편집 불일치면 templateSetMismatch 동봉
  *
  * 하네스는 embed.guestReopen.test.tsx 를 준용한다(비회원 세션은 전체 초기화, 나머지는 store.ready=true 로 초기화 생략).
  */
@@ -133,8 +135,11 @@ function axiosHttpError(status: number, data: Record<string, unknown> = {}): Axi
   })
 }
 
-function renderEmbed(props: Partial<{ sessionId: string }> = {}, onError?: (e: unknown) => void) {
+let lastInstanceRef: { current: EditorInstanceMethods | null } = { current: null }
+
+function renderEmbed(props: Partial<{ sessionId: string; templateSetId: string }> = {}, onError?: (e: unknown) => void) {
   const instanceRef = { current: null as EditorInstanceMethods | null }
+  lastInstanceRef = instanceRef
   return render(
     <EmbeddedEditor
       templateSetId="ts-test"
@@ -237,6 +242,9 @@ describe('EmbeddedEditor — 편집완료 결과(FinishOutcome)', () => {
     expect(api.complete).not.toHaveBeenCalled()
     expect(postedEvents()).toEqual(['editor.complete', 'editor.needAuth'])
     expect(posted('editor.complete')[0]).toMatchObject({ needsAuth: true, guestToken: 'gt-1', files: {} })
+    // W8-2b: 게스트 onFinish 경로에도 편집기 실효 세트
+    expect(posted('editor.complete')[0].templateSetId).toBe('ts-test')
+    expect('templateSetMismatch' in posted('editor.complete')[0]).toBe(false)
   })
 
   it('E3 세션 없이 연 편집기의 편집완료는 skipped 이고 저장·완료 호출과 이벤트가 없다', async () => {
@@ -307,5 +315,141 @@ describe('EmbeddedEditor — 편집완료 결과(FinishOutcome)', () => {
         expect(String(arg)).not.toContain('member-jwt-secret')
       }
     }
+  })
+
+  describe('W8-2b complete.templateSetId', () => {
+    const MEMBER_SESSION = {
+      id: 'sess-1',
+      status: 'editing',
+      templateSetId: 'ts-test',
+      canvasData: null,
+      metadata: {},
+      guestToken: null,
+      guestExpiresAt: null,
+    }
+    const GUEST_SESSION = {
+      id: 'sess-guest-1',
+      status: 'editing',
+      templateSetId: 'ts-test',
+      canvasData: null,
+      metadata: {},
+      guestToken: 'gt-1',
+      guestExpiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    }
+
+    type CompletePath = 'onFinish' | 'instance.complete'
+
+    async function runComplete(path: CompletePath): Promise<void> {
+      await act(async () => {
+        if (path === 'onFinish') await captured.onFinish!()
+        else await lastInstanceRef.current!.complete()
+      })
+    }
+
+    async function openFully(props: Partial<{ sessionId: string; templateSetId: string }>): Promise<void> {
+      setReady(false)
+      renderEmbed(props)
+      await waitFor(() => expect(posted('editor.ready')).toHaveLength(1))
+      parentPost.mockClear()
+    }
+
+    it.each(['onFinish', 'instance.complete'] as const)(
+      'E6 회원 세션 %s → editor.complete.templateSetId = 편집기 실효 세트, 불일치 키 없음',
+      async (path) => {
+        api.get.mockResolvedValue(MEMBER_SESSION)
+        api.update.mockResolvedValue({ id: 'sess-1' })
+        api.complete.mockResolvedValue(COMPLETED_SESSION)
+        await openFully({ sessionId: 'sess-1' })
+
+        await runComplete(path)
+        expect(posted('editor.complete')).toHaveLength(1)
+        expect(posted('editor.complete')[0]).toMatchObject({ sessionId: 'sess-1', templateSetId: 'ts-test' })
+        expect('templateSetMismatch' in posted('editor.complete')[0]).toBe(false)
+      },
+    )
+
+    it.each(['onFinish', 'instance.complete'] as const)(
+      'E6 게스트 세션 %s → editor.complete(needsAuth).templateSetId = 편집기 실효 세트',
+      async (path) => {
+        api.get.mockResolvedValue(GUEST_SESSION)
+        api.updateGuest.mockResolvedValue({ id: 'sess-guest-1' })
+        await openFully({ sessionId: 'sess-guest-1' })
+
+        await runComplete(path)
+        expect(posted('editor.complete')).toHaveLength(1)
+        expect(posted('editor.complete')[0]).toMatchObject({ needsAuth: true, templateSetId: 'ts-test' })
+      },
+    )
+
+    it('E7 샘플 폴백(DEV)으로 연 편집의 editor.complete 에는 templateSetId 가 없다', async () => {
+      vi.stubEnv('DEV', true)
+      try {
+        vi.spyOn(window, 'alert').mockImplementation(() => {})
+        api.get.mockResolvedValue(MEMBER_SESSION)
+        api.getTemplateSetWithTemplates.mockImplementation(async (id: string) => {
+          if (id === 'sample-8x8-book-24p') return { id, name: 'Sample', width: 200, height: 200 }
+          throw axiosHttpError(503)
+        })
+        api.update.mockResolvedValue({ id: 'sess-1' })
+        api.complete.mockResolvedValue(COMPLETED_SESSION)
+        setReady(false)
+        renderEmbed({ sessionId: 'sess-1' })
+        await waitFor(() => expect(posted('editor.ready')).toHaveLength(1))
+        expect(posted('editor.ready')[0]).toMatchObject({ fallback: true })
+        parentPost.mockClear()
+
+        await runComplete('onFinish')
+        expect(posted('editor.complete')).toHaveLength(1)
+        expect('templateSetId' in posted('editor.complete')[0]).toBe(false)
+        expect('templateSetMismatch' in posted('editor.complete')[0]).toBe(false)
+      } finally {
+        vi.unstubAllEnvs()
+      }
+    })
+
+    it('E7b URL 세트 ≠ 세션 세트인데 세션 세트 조회 503 으로 샘플 폴백(DEV)하면 complete 에 두 키 모두 없다', async () => {
+      vi.stubEnv('DEV', true)
+      try {
+        vi.spyOn(window, 'alert').mockImplementation(() => {})
+        api.get.mockResolvedValue({ ...MEMBER_SESSION, templateSetId: 'ts-session' })
+        api.getTemplateSetWithTemplates.mockImplementation(async (id: string) => {
+          if (id === 'sample-8x8-book-24p') return { id, name: 'Sample', width: 200, height: 200 }
+          throw axiosHttpError(503)
+        })
+        api.update.mockResolvedValue({ id: 'sess-1' })
+        api.complete.mockResolvedValue(COMPLETED_SESSION)
+        setReady(false)
+        renderEmbed({ sessionId: 'sess-1', templateSetId: 'ts-url' })
+        await waitFor(() => expect(posted('editor.ready')).toHaveLength(1))
+        expect(posted('editor.ready')[0]).toMatchObject({ fallback: true, templateSetId: 'ts-session' })
+        expect(api.getTemplateSetWithTemplates.mock.calls.map((c) => String(c[0]))).toEqual([
+          'ts-session',
+          'sample-8x8-book-24p',
+        ])
+        parentPost.mockClear()
+
+        await runComplete('onFinish')
+        expect(posted('editor.complete')).toHaveLength(1)
+        expect('templateSetId' in posted('editor.complete')[0]).toBe(false)
+        expect('templateSetMismatch' in posted('editor.complete')[0]).toBe(false)
+      } finally {
+        vi.unstubAllEnvs()
+      }
+    })
+
+    it('E8 URL 세트 ≠ 세션 세트로 재오픈한 편집의 editor.complete 에는 세션 세트와 templateSetMismatch 가 실린다', async () => {
+      api.get.mockResolvedValue({ ...MEMBER_SESSION, templateSetId: 'ts-session' })
+      api.getTemplateSetWithTemplates.mockImplementation(async (id: string) => ({ id, name: id, width: 210, height: 297 }))
+      api.update.mockResolvedValue({ id: 'sess-1' })
+      api.complete.mockResolvedValue(COMPLETED_SESSION)
+      await openFully({ sessionId: 'sess-1', templateSetId: 'ts-url' })
+
+      await runComplete('onFinish')
+      expect(posted('editor.complete')).toHaveLength(1)
+      expect(posted('editor.complete')[0]).toMatchObject({
+        templateSetId: 'ts-session',
+        templateSetMismatch: { requested: 'ts-url', session: 'ts-session', resolution: 'session' },
+      })
+    })
   })
 })

@@ -7,6 +7,7 @@
  *      보낸 message 와 같은 고정 문구, 세션에 templateSetId 가 없으면 고정 안내 문구(이벤트 없음)
  *   C. adminEdit=session: fragment 토큰 → 탭 저장소, 주소창 fragment 제거, 쿼리 폴백, 플래그 해제
  *   D. 레거시 발신 payload·targetOrigin (와일드카드 송신에는 guestToken 을 싣지 않음)
+ *      W8-2b: storige:ready·storige:completed 의 templateSetId·templateSetMismatch(additive)
  *   E. 게스트 세션 재오픈: fragment 게스트 토큰 수신·주소창 제거, 게스트 조회 경로 도출,
  *      도출 실패 시 정식 editor.error(SESSION_NOT_FOUND) 1회. 그 밖의 실패는 초기화와 같은 분류·고정 문구
  *      (연결·5xx → NETWORK_ERROR, 401 → AUTH_EXPIRED, 그 밖 → INVALID_DATA) 1회
@@ -383,6 +384,25 @@ describe('EmbedView — D. 레거시 dual-emit', () => {
     )
   })
 
+  it('D20b onReady(info) → storige:ready 의 templateSetId 는 실제로 연 세트, 불일치는 templateSetMismatch 로 동봉', async () => {
+    const p = await propsAt(WITH_ORIGIN)
+    // 불일치 없음: info 의 templateSetId(= URL 값)만, templateSetMismatch 키 없음
+    p.onReady?.({ templateSetId: 'ts1' })
+    // 불일치(세션 세트로 열림)
+    const mismatch = { requested: 'ts1', session: 'ts-s', resolution: 'session' as const }
+    p.onReady?.({ templateSetId: 'ts-s', templateSetMismatch: mismatch })
+    expect(parentPost.mock.calls).toEqual([
+      [{ type: 'storige:ready', payload: { templateSetId: 'ts1', sessionId: 's1' } }, PARENT],
+      [
+        {
+          type: 'storige:ready',
+          payload: { templateSetId: 'ts-s', sessionId: 's1', templateSetMismatch: mismatch },
+        },
+        PARENT,
+      ],
+    ])
+  })
+
   it('D21 onSave → storige:saved {sessionId, savedAt}', async () => {
     const p = await propsAt(WITH_ORIGIN)
     p.onSave?.({ sessionId: 's', savedAt: 't', thumbnail: 'ignored' })
@@ -406,7 +426,16 @@ describe('EmbedView — D. 레거시 dual-emit', () => {
       },
     })
     const payload = (msg as { payload: Record<string, unknown> }).payload
-    for (const k of ['needsAuth', 'guestToken', 'pageCount', 'size', 'pricing', 'spineWidthMm']) {
+    for (const k of [
+      'needsAuth',
+      'guestToken',
+      'pageCount',
+      'size',
+      'pricing',
+      'spineWidthMm',
+      'templateSetId',
+      'templateSetMismatch',
+    ]) {
       expect(k in payload, k).toBe(false)
     }
   })
@@ -421,6 +450,27 @@ describe('EmbedView — D. 레거시 dual-emit', () => {
     expect(payload.spineWidthMm).toBe(0)
     expect(payload.size).toEqual(size)
     expect(payload.pricing).toEqual(pricing)
+  })
+
+  it.each([
+    ['WITH_ORIGIN', WITH_ORIGIN, PARENT],
+    ['NO_ORIGIN', NO_ORIGIN, '*'],
+  ] as const)('D29 %s 완료 → templateSetId·templateSetMismatch 동봉(자격증명 아님 — 와일드카드 송신에도)', async (_l, path, origin) => {
+    const p = await propsAt(path)
+    const mismatch = {
+      requested: 'ts1',
+      session: 'ts-s',
+      resolution: 'requested' as const,
+      reason: 'SESSION_SET_UNAVAILABLE' as const,
+    }
+    p.onComplete?.(result({ templateSetId: 'ts1', templateSetMismatch: mismatch }))
+    const [msg, o] = parentPost.mock.calls[0]
+    const payload = (msg as { payload: Record<string, unknown> }).payload
+    expect(o).toBe(origin)
+    expect(payload.templateSetId).toBe('ts1')
+    expect(payload.templateSetMismatch).toEqual(mismatch)
+    expect('guestToken' in payload).toBe(false)
+    expect('token' in payload).toBe(false)
   })
 
   it('D24 게스트 완료 + parentOrigin → needsAuth·guestToken 포함, targetOrigin=parentOrigin', async () => {

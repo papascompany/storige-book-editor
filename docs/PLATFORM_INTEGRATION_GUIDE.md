@@ -1,7 +1,7 @@
 # Storige 플랫폼 연동 가이드 (외부 파트너용)
 
 > **작성일:** 2026-06-20
-> **최종 갱신:** 2026-10-06 — 편집 완료 내지 검증의 쪽수 판정이 편집기 쪽 단위(호스트 `pageStep` → 템플릿셋 쪽 단위)를 따름: 내지 펼침면 세트·2쪽 단위 상품의 쪽수 오탐 해소, 펼침면 세트의 `details.pageMultiple` 은 펼침 단위(5.3.1·2.6) · [이전 2026-10-06] 양장 싸바리 템플릿셋 표지: 표지 PDF 싸바리 전개 크기·`metadata.coverOutput` 키 추가·편집 완료 표지 검증 싸바리 전개 검사, 첫 세트 동화책 210×210 `9e768d01-f2f7-4a1e-a1f6-f1ff45cb2fcb`(3.1·5.3.1, 호스트가 상품 매핑을 그 세트로 바꾼 시각부터) · [이전 2026-10-05] 호스트 책등 규칙의 표지 모드 판정 기준을 표지 템플릿(내지펼침면 `regionScope:'inner'` 제외)으로 표기 정정(3.1, 동작 변경 없음) · 템플릿 작성 규약: 상품별 표지 책등 방식(표지펼침면/표지3분할)은 호스트가 정하고 Storige 는 그 방식대로 등록, 양장 표지 템플릿 크기 기준 = 업로드 검증 규격(싸바리 전개), 쪽 추가 단위는 호스트 상품등록 값과 템플릿셋 `pageStep` 일치(3.1·5.3.1) · 보낸 쪽수 범위(`pageCountMin`·`pageCountMax`)가 제본별 최소·최대 쪽수를 대신(3.1 상품별 쪽수 범위, 편집기 배포 완료 통지 시각부터) · 합성 입력 오류(`PDF_LOAD_FAILED`·`FILE_NOT_FOUND`·`INPUT_URL_REJECTED`) 즉시 `FAILED`·합성 실패 응답 `errorCode`·안내 문구 `errorMessage`·`errorDetail`(2.2 단계 5a) · 회원 세션 생성 서버 오류 시 같은 주문 세션으로 열기(3.3) · [이전 2026-10-03] 합성 작업 자동 재시도·작업 상태 고정·종결 웹훅 중복 생략·작업 응답 `editSessionId`(2.2 단계 5a·5b·1.7·5.2) · `session.*` 현재 미발신(5.2·3.3.3) · `editor.state` `pageCount`·`currentPage`·IIFE `getState()` 쪽수(3.2) · `sessionId` 단독 재오픈 실패 화면·편집기 '불러오기' 실패 `message` 고정 문구(3.1·3.2) · presigned `complete` 의 사이트 키(`X-API-Key`) 귀속(2.2·1.7) · 합성 산출 크기(2.3) · 작업 실패 코드 `JOB_STALLED`·`JOB_TIMEOUT_SWEPT`(2.2 단계 5a)·반복 중단 시 v1 최종화 실패(1.7) · 편집기 초기화 실패 code·고정 한국어 `message`(3.1·3.2) · `orderSeqno` 진입 실패 처리(3.3) · 첨부 채움본 크기(3.2) · 운영자 요청 감사 기록 범위(3.3.2) · 그 사이 변경은 각 절의 날짜 표기 참조 · [이전 2026-08-24] `editor.saved` 가 `ok:false, error:'EDITOR_BUSY'` 를 응답할 수 있음(3.2 표 하단) · 세션 API 테넌트 격리 확장: 회원 세션 상세/수정/완료/삭제/버전/목록/보관함 전부 JWT `siteId` ↔ 세션 `siteId` 대조(1.5) · [이전 2026-08-13] `compose-mixed` 빈 입력 `400 EMPTY_COMPOSE_INPUT` 승격(3.4) · 세션 자동조립 `assembleFromSession` 신설(3.4.1) · `compose-mixed` body `siteId` 하드닝(3.4)
+> **최종 갱신:** 2026-10-06 — 재편집(`sessionId`)은 세션에 기록된 템플릿셋으로 열림(URL `templateSetId` 는 생략 권장, 세션 세트 조회가 404 일 때만 보낸 세트로 1회 시도)·`editor.ready`/`storige:ready` `templateSetId` = 실제로 연 세트 + `templateSetMismatch` 추가·`editor.complete`/`storige:completed` `templateSetId`·`templateSetMismatch` 추가·편집 중인 디자인의 AI 패널 템플릿셋 전환 차단(3.1 재편집과 템플릿셋·3.2, 편집기 배포 완료 통지 시각부터) · [이전 2026-10-06] 편집 완료 내지 검증의 쪽수 판정이 편집기 쪽 단위(호스트 `pageStep` → 템플릿셋 쪽 단위)를 따름: 내지 펼침면 세트·2쪽 단위 상품의 쪽수 오탐 해소, 펼침면 세트의 `details.pageMultiple` 은 펼침 단위(5.3.1·2.6) · [이전 2026-10-06] 양장 싸바리 템플릿셋 표지: 표지 PDF 싸바리 전개 크기·`metadata.coverOutput` 키 추가·편집 완료 표지 검증 싸바리 전개 검사, 첫 세트 동화책 210×210 `9e768d01-f2f7-4a1e-a1f6-f1ff45cb2fcb`(3.1·5.3.1, 호스트가 상품 매핑을 그 세트로 바꾼 시각부터) · [이전 2026-10-05] 호스트 책등 규칙의 표지 모드 판정 기준을 표지 템플릿(내지펼침면 `regionScope:'inner'` 제외)으로 표기 정정(3.1, 동작 변경 없음) · 템플릿 작성 규약: 상품별 표지 책등 방식(표지펼침면/표지3분할)은 호스트가 정하고 Storige 는 그 방식대로 등록, 양장 표지 템플릿 크기 기준 = 업로드 검증 규격(싸바리 전개), 쪽 추가 단위는 호스트 상품등록 값과 템플릿셋 `pageStep` 일치(3.1·5.3.1) · 보낸 쪽수 범위(`pageCountMin`·`pageCountMax`)가 제본별 최소·최대 쪽수를 대신(3.1 상품별 쪽수 범위, 편집기 배포 완료 통지 시각부터) · 합성 입력 오류(`PDF_LOAD_FAILED`·`FILE_NOT_FOUND`·`INPUT_URL_REJECTED`) 즉시 `FAILED`·합성 실패 응답 `errorCode`·안내 문구 `errorMessage`·`errorDetail`(2.2 단계 5a) · 회원 세션 생성 서버 오류 시 같은 주문 세션으로 열기(3.3) · [이전 2026-10-03] 합성 작업 자동 재시도·작업 상태 고정·종결 웹훅 중복 생략·작업 응답 `editSessionId`(2.2 단계 5a·5b·1.7·5.2) · `session.*` 현재 미발신(5.2·3.3.3) · `editor.state` `pageCount`·`currentPage`·IIFE `getState()` 쪽수(3.2) · `sessionId` 단독 재오픈 실패 화면·편집기 '불러오기' 실패 `message` 고정 문구(3.1·3.2) · presigned `complete` 의 사이트 키(`X-API-Key`) 귀속(2.2·1.7) · 합성 산출 크기(2.3) · 작업 실패 코드 `JOB_STALLED`·`JOB_TIMEOUT_SWEPT`(2.2 단계 5a)·반복 중단 시 v1 최종화 실패(1.7) · 편집기 초기화 실패 code·고정 한국어 `message`(3.1·3.2) · `orderSeqno` 진입 실패 처리(3.3) · 첨부 채움본 크기(3.2) · 운영자 요청 감사 기록 범위(3.3.2) · 그 사이 변경은 각 절의 날짜 표기 참조 · [이전 2026-08-24] `editor.saved` 가 `ok:false, error:'EDITOR_BUSY'` 를 응답할 수 있음(3.2 표 하단) · 세션 API 테넌트 격리 확장: 회원 세션 상세/수정/완료/삭제/버전/목록/보관함 전부 JWT `siteId` ↔ 세션 `siteId` 대조(1.5) · [이전 2026-08-13] `compose-mixed` 빈 입력 `400 EMPTY_COMPOSE_INPUT` 승격(3.4) · 세션 자동조립 `assembleFromSession` 신설(3.4.1) · `compose-mixed` body `siteId` 하드닝(3.4)
 > **대상:** 외부 파트너 개발자
 > **상태:** 배포용 정본
 
@@ -821,7 +821,7 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 | `token` | 필수 | 필수 | shop-session `accessToken` (localStorage `auth_token` 선주입) |
 | `refreshToken` | 권장 | 권장 | 401 자동갱신용 (`auth_refresh_token`) |
 | `parentOrigin` | **발신 필수** | **발신 필수** | 없으면 정식 postMessage 전면 비활성 (레거시만 와일드카드 폴백) |
-| `templateSetId` | 필수 | 생략가능 | 재편집 시 세션 metadata에서 도출 |
+| `templateSetId` | 필수 | **생략 권장** | 재편집은 세션에 기록된 템플릿셋으로 엽니다. 보내도 세션 세트가 우선합니다(아래 **재편집과 템플릿셋**, 2026-10-06) |
 | `sessionId` | — | 필수 | 재편집 키 (bookmoa 표준 경로) |
 | `orderSeqno` | 선택 | 도출 | 주문 식별 |
 | `mode` | 선택 | 도출 | `cover` \| `content` \| `both` \| `template` |
@@ -837,7 +837,7 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 | `contentPdfAttach` | 선택 | 선택 | **내지 PDF 첨부 진입점**(2026-08-13 신설). 미전달=**노출**(book 모드 템플릿셋 한정). 끄려면 `contentPdfAttach=0` \| `false` |
 | `allowSampleFallback` | 선택 | — | `1` 또는 DEV에서만 sample 폴백 |
 
-> 프로덕션에서 템플릿셋을 찾을 수 없거나(401·408·429 를 뺀 4xx 거절 포함) 편집기에 불러올 수 없으면 `editor.error {code:'TEMPLATE_SET_NOT_FOUND', templateSetId, fatal:true}` 를, 템플릿셋 조회·로드가 네트워크·타임아웃·서버 오류(5xx·408·429)로 실패하면 `editor.error {code:'NETWORK_ERROR', fatal:true}`(`templateSetId` 없음)를 보냅니다(2026-10-03). 인증 만료는 `AUTH_EXPIRED` 1회입니다(3.2 초기화 실패의 code).
+> 프로덕션에서 템플릿셋을 찾을 수 없거나(401·408·429 를 뺀 4xx 거절 포함) 편집기에 불러올 수 없으면 `editor.error {code:'TEMPLATE_SET_NOT_FOUND', templateSetId, fatal:true}` 를, 템플릿셋 조회·로드가 네트워크·타임아웃·서버 오류(5xx·408·429)로 실패하면 `editor.error {code:'NETWORK_ERROR', fatal:true}`(`templateSetId` 없음)를 보냅니다(2026-10-03). 인증 만료는 `AUTH_EXPIRED` 1회입니다(3.2 초기화 실패의 code). 재편집에서 `TEMPLATE_SET_NOT_FOUND` 의 `templateSetId` 는 편집기가 마지막으로 열려고 한 세트입니다(아래 **재편집과 템플릿셋**).
 > **상품별 쪽수 범위·배수 (2026-09-29, ADDITIVE)** — `pageCountMin`·`pageCountMax`·`pageStep` 은 모두 선택이며, 보내지 않으면 템플릿셋 `pageCountRange`·`pageStep` 을 그대로 씁니다(종전과 동일).
 > - 값은 **물리 내지 쪽수**입니다(펼침면 내지 세트는 캔버스 1장 = 2쪽). 유효한 값은 호스트 `pageCount` 초기 보정, 내지 추가·삭제 상·하한(두 패널 모두), 편집완료 배수 검사에 템플릿셋 값 대신 적용됩니다.
 > - 보낸 `pageCountMin` 은 제본별 최소 쪽수(무선 최소 32쪽)를, 보낸 `pageCountMax` 는 제본별 최대 쪽수(중철 최대 64쪽)를 대신합니다(2026-10-05). 보내지 않은 쪽은 템플릿셋 값과 제본별 값 중 좁은 쪽을 씁니다. 범위를 보낸 상품에서 그 쪽수로 실제 제작할 수 있는지는 호스트 상품 정의가 책임집니다 — 편집기는 이 경우 그 쪽의 제본 한도를 강제하지 않습니다. 업로드·첨부 PDF 검증(2.4)의 제본 규칙은 그대로입니다. 단일(비스프레드) 편집 모드는 제본 제약을 적용하지 않습니다.
@@ -871,7 +871,7 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 > - **`metadata.coverOutput`**: 편집 완료 세션에 기존 `widthMm`·`heightMm`·`bleedMm`(첫 세트 484·258·0)과 함께 `layout:'hardcover-wrap'`·`trimWidthMm`·`trimHeightMm`·`wrapMm`(20)이 기록됩니다(추가 키, 무시해도 됩니다).
 > - **편집 완료 표지 검증**: 편집 완료 때 서버가 만드는 표지 검증 작업이 위 싸바리 전개 규격으로 크기를 검사합니다(허용 ±2mm). 벗어나면 `SPINE_SIZE_MISMATCH` 로 작업이 `FAILED` 가 됩니다. 주문 제본(`bindingType`)이 `hardcover` 이거나 보내지 않은 경우에 적용됩니다. Storige 가 인식하는 제본값은 `perfect`·`saddle`·`spring`·`spiral`·`hardcover`(대소문자 무시)이며, 그 밖의 값(`'-'`·한글 값 등)은 보내지 않은 것으로 처리되어 이 검사가 적용됩니다. `perfect`·`saddle`·`spring`·`spiral` 을 보내면 싸바리 전개 표지와 제본이 맞지 않으므로 표지 크기 검사를 생략합니다 — 기존 세트(`207c458f` 등)에서 이 제본값들은 펼침 기준 검사를 받았으므로, 매핑 전환 후 바뀌는 동작입니다. 결과는 작업 조회와 `validation.*`(v2 웹훅 구독 시)로 확인합니다 — 세션 상태와 `session.*` 는 바뀌지 않습니다(5.2).
 > - 이 세트로 열 때 `wingEnabled` 로 날개를 켜면 싸바리 표지가 적용되지 않고 종전 출력이 됩니다. 이 세트에는 날개를 보내지 마세요.
-> - **적용 시점**: 호스트가 상품의 템플릿셋 매핑을 이 세트로 바꾼 시각부터 새로 여는 편집에 적용됩니다. 매핑 전환은 Storige 사전 통지와 호스트 확인(ACK) 뒤에 하며, Storige 는 같은 시각에 Storige 측 상품 매핑(`GET /product-template-sets/by-product`)도 새 세트로 맞춥니다. 이미 만든 세션은 원래 세트로 열립니다 — 재편집에 `templateSetId` 를 함께 보낼 때는 **그 세션을 만든 세트 id** 를 보내세요(URL 값이 세션 값보다 우선합니다).
+> - **적용 시점**: 호스트가 상품의 템플릿셋 매핑을 이 세트로 바꾼 시각부터 새로 여는 편집에 적용됩니다. 매핑 전환은 Storige 사전 통지와 호스트 확인(ACK) 뒤에 하며, Storige 는 같은 시각에 Storige 측 상품 매핑(`GET /product-template-sets/by-product`)도 새 세트로 맞춥니다. 이미 만든 세션은 원래 세트로 열립니다 — 재편집 URL 에 새 세트 id 를 함께 보내도 세션을 만든 세트로 열립니다(아래 **재편집과 템플릿셋**, 2026-10-06).
 > - 기존 세트 `207c458f…`(표지 496×276mm)는 삭제하지 않고 그대로 유지되며, 그 세트로 편집한 세션의 출력·검증은 바뀌지 않습니다. 되돌릴 때는 호스트가 매핑을 기존 세트로 되돌리고 Storige 가 상품 매핑을 원복합니다.
 >
 > **표지 날개 권위 규칙(2026-08-03):** 판형·책등과 달리 날개는 **상품(주문) 옵션이 템플릿 spec 보다 우선**합니다.
@@ -882,7 +882,16 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 > 주문 시점 값은 세션 `metadata.orderOptions` 에 기록되어 재편집 진입에서 복원됩니다.
 >
 > **`width`/`height` 는 메타 스냅샷일 뿐 캔버스 규격을 바꾸지 않습니다.** 실제 작업 규격(판형)의 권위는 템플릿셋·주문 옵션이며 임베드 편집기 안에서는 **read-only** 입니다(Canva 식 자유 커스텀 치수 불가). 완료 시점의 실제 규격은 `editor.complete` 의 `size` 로 되돌아오니, 파트너는 그 값으로 정합만 검증하세요 — 3.2 참조.
-> **재편집(`sessionId`)에 `templateSetId` 를 함께 보내면** 편집기가 세션 조회 1콜을 생략합니다. `sessionId` 만 보냈는데 세션 조회가 실패하면 편집기는 편집 화면 대신 오류 화면으로 멈추고, 화면에는 호스트에 보내는 `editor.error` 의 `message` 와 같은 고정 문구가 표시됩니다(code·`reason` 은 3.3 재오픈 항목). 조회는 됐지만 세션에 템플릿셋 정보가 없으면 고정 안내 문구('이 상품의 편집 정보를 찾을 수 없습니다. …')만 표시하고 이벤트는 보내지 않습니다(2026-10-03). 파트너가 `templateSetId` 를 보관하고 있다면 함께 넘기는 편이 안전합니다.
+> **재편집(`sessionId`) URL 에는 `templateSetId` 를 생략하세요**(아래 **재편집과 템플릿셋**). 세션 세트와 같은 값을 함께 보내면 편집기가 시작 전 세션 조회 1회를 생략하지만, 다른 값을 보내도 세션 세트로 열립니다. `sessionId` 만 보냈는데 세션 조회가 실패하면 편집기는 편집 화면 대신 오류 화면으로 멈추고, 화면에는 호스트에 보내는 `editor.error` 의 `message` 와 같은 고정 문구가 표시됩니다(code·`reason` 은 3.3 재오픈 항목). 조회는 됐지만 세션에 템플릿셋 정보가 없으면 고정 안내 문구('이 상품의 편집 정보를 찾을 수 없습니다. …')만 표시하고 이벤트는 보내지 않습니다(2026-10-03).
+>
+> **재편집과 템플릿셋 (2026-10-06)** — 재편집(`sessionId`)은 그 세션에 기록된 템플릿셋(세션 세트)으로 엽니다. 편집 결과의 검증·합성도 세션 세트를 기준으로 합니다.
+> - 재편집 URL 의 `templateSetId` 는 생략을 권장합니다. 보낸 값이 세션 세트와 다르면 세션 세트로 열고, `editor.ready`·`storige:ready` 의 `templateSetId` 는 세션 세트이며 `templateSetMismatch: {requested: <보낸 값>, session: <세션 세트>, resolution: 'session'}` 이 함께 실립니다.
+> - 세션 세트가 삭제되어 조회가 HTTP 404 이고 세션 세트와 다른 `templateSetId` 를 보냈다면, 보낸 세트로 한 번 더 시도해 엽니다. 이때 `templateSetMismatch` 는 `resolution: 'requested'`, `reason: 'SESSION_SET_UNAVAILABLE'` 이고 `templateSetId` 는 보낸 세트입니다. 보낸 세트도 열 수 없으면 초기화 실패 code(3.2)로 1회 보내며, `TEMPLATE_SET_NOT_FOUND` 의 `templateSetId` 는 보낸 세트입니다.
+> - 세션 세트 조회가 그 밖의 이유(네트워크·타임아웃·서버 오류, 404 가 아닌 4xx, 응답 형식 오류)로 실패하면 다른 세트로 시도하지 않고 초기화 실패 code 로 1회 보냅니다. `TEMPLATE_SET_NOT_FOUND` 의 `templateSetId` 는 세션 세트입니다. `templateSetId` 를 생략했거나 세션 세트와 같은 값을 보냈다면, 세션 세트를 열 수 없을 때 오류로 끝납니다.
+> - 세션에 템플릿셋이 기록되어 있지 않으면 보낸 `templateSetId` 로 엽니다. `orderSeqno`·`mode` 진입에서 주문의 기존 세션을 열 때도 같은 규칙입니다(세션 세트 우선).
+> - **템플릿셋을 바꾸려면 `sessionId` 없이 새로 편집**하세요. 재편집 세션의 템플릿셋을 바꾸는 파라미터는 없습니다.
+> - **AI 패널**: 편집기에 AI 패널이 표시되는 경우, 편집 중인 디자인(`sessionId` 로 연 재편집, `orderSeqno` 진입으로 주문의 회원 세션을 열거나 새로 만든 편집)에서는 AI 패널에서 다른 템플릿셋을 고르거나 생성해도 세트를 바꾸지 않고 '편집 중인 디자인은 다른 템플릿셋으로 바꿀 수 없습니다. 새로 편집해 주세요.' 안내를 표시합니다. `sessionId` 없이 `templateSetId` 로 연 편집 등 그 밖의 신규 편집은 지금처럼 고른 세트로 다시 엽니다.
+> - IIFE 번들(`window.StorigeEditor`)은 이 변경이 들어간 번들로 다시 빌드·배포되는 시점부터 같은 규칙을 따릅니다(배포 시 별도 안내). 그때부터 `onReady` 콜백에 선택 인자 `{templateSetId, templateSetMismatch?}` 가, `onComplete` 결과에 `templateSetId`·`templateSetMismatch` 가 실립니다.
 
 ### 3.2 postMessage 프로토콜
 
@@ -895,9 +904,9 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 
 | 방향 | 이벤트명 | 페이로드 | 설명 |
 |---|---|---|---|
-| 편집기→부모 | `editor.ready` | `{sessionId, templateSetId, version, (폴백시) fallback, effectiveTemplateSetId}` | 초기화 완료 |
+| 편집기→부모 | `editor.ready` | `{sessionId, templateSetId, version, (폴백시) fallback, effectiveTemplateSetId, templateSetMismatch?}` | 초기화 완료. `templateSetId` = 편집기가 실제로 연 템플릿셋(재편집은 세션 세트). `templateSetMismatch {requested, session, resolution:'session'\|'requested', reason?:'SESSION_SET_UNAVAILABLE'}` = 보낸 `templateSetId` 와 세션 세트가 다를 때만(2026-10-06 additive, 3.1 재편집과 템플릿셋) |
 | 편집기→부모 | `editor.save` | `{sessionId, savedAt, thumbnail}` | 자동/수동 저장 |
-| 편집기→부모 | `editor.complete` | `{sessionId, orderSeqno, editCode, pages:{initial,final}, pageCount?, pricing?, size?:{width,height,unit:'mm'}, spineWidthMm?, files:{coverFileId,contentFileId,thumbnailUrl}, savedAt}` | 편집완료 + 합성. `spineWidthMm` = 완료 시 표지에 적용된 책등 mm(스프레드 책만, 2026-09-28 additive) |
+| 편집기→부모 | `editor.complete` | `{sessionId, orderSeqno, editCode, pages:{initial,final}, pageCount?, pricing?, size?:{width,height,unit:'mm'}, spineWidthMm?, templateSetId?, templateSetMismatch?, files:{coverFileId,contentFileId,thumbnailUrl}, savedAt}` | 편집완료 + 합성. `spineWidthMm` = 완료 시 표지에 적용된 책등 mm(스프레드 책만, 2026-09-28 additive). `templateSetId` = 이번 편집을 앉힌 템플릿셋(재편집은 세션 세트), `templateSetMismatch` = `editor.ready` 와 같은 값(2026-10-06 additive — 게스트 완료에도 실림, DEV 샘플 폴백으로 연 편집은 둘 다 없음) |
 | 편집기→부모 | `editor.cancel` | `{sessionId, reason?}` | 취소. `reason:'session_not_found'` = 세션을 열 수 없다는 중단 화면에서 고객이 '돌아가기'를 누름(2026-09-29 additive) |
 | 편집기→부모 | `editor.error` | `{code, message, fatal?, templateSetId?, sessionId?, reason?}` | 오류. `templateSetId` 는 `TEMPLATE_SET_NOT_FOUND` 일 때, `sessionId`·`reason`(`not_found`/`forbidden`/`invalid_id`/`guest_token_required`)은 `SESSION_NOT_FOUND` 일 때만 실립니다. `guest_token_required` 는 2026-10-01 additive(3.3 비회원 세션 재오픈). `fatal` 은 2026-09-29 additive(아래 표) |
 | 편집기→부모 | `editor.needAuth` | `{guestToken, reason:'complete_save', ts}` | 게스트 폴백만 |
@@ -920,7 +929,7 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 
 > **`editor.complete` 페이로드 구조 주의:** `coverFileId`·`contentFileId`·`thumbnailUrl` 은 최상위가 아니라 **`files` 객체 안에 중첩**되고, `pages` 는 **`{initial, final}` 객체**입니다. 이 shape 은 **동결 계약**이라 평탄화되지 않습니다 — `payload.coverFileId` 를 읽는 파서는 항상 `undefined` 를 얻고, `pages` 를 숫자로 가정하면 그대로 깨집니다.
 > **페이지/규격 정합 (2026-07-04 additive):** `pages.final`·`pageCount` = 편집 완료 시점 실측 페이지 수(포토북 내지 펼침면은 ×2 물리페이지). **2026-09-28 정정:** 표지+내지펼침면 세트도 표지를 뺀 내지 펼침면 1장 = 2쪽으로 셉니다(예: 표지 + 펼침면 8장 = 16). 종전에는 이 세트에서 1장 = 1쪽으로 절반이 집계됐고, 해당 세트의 완료 세션은 0건이었습니다(운영 실측 10:54Z). `editor.pricingChange` 와 쪽수 단위(`pageStep`) 판정도 같은 기준입니다. `size` = 완료 시점 캔버스 규격(mm, 감사/정합 검증용 — 규격의 권위는 상품 옵션이며 embed 편집기에서는 규격 변경 UI 가 잠겨 있음). **파트너 장바구니는 `pageCount` 가 주문 옵션 페이지수와 다르면 가격을 재계산하고 고객에게 고지해야 합니다** — 결제 시점 서버 재계산에서도 동일 정합 검증 권장.
-> `pageCount`/`size`/`pricing` 은 legacy `storige:completed` 형식에도 동일하게 동봉됩니다. 단 **게스트(needsAuth=true) 완료 이벤트에는 미포함**(실제 완료가 아닌 로그인 유도 신호) — optional 처리 필수.
+> `pageCount`/`size`/`pricing` 은 legacy `storige:completed` 형식에도 동일하게 동봉됩니다. 단 **게스트(needsAuth=true) 완료 이벤트에는 미포함**(실제 완료가 아닌 로그인 유도 신호) — optional 처리 필수. `templateSetId`·`templateSetMismatch`(2026-10-06)는 게스트 완료에도 실립니다.
 >
 > 🚨 **게스트 완료 이벤트 순서 — `editor.complete` 가 `editor.needAuth` 보다 먼저 옵니다.**
 > 게스트(비회원) 세션에서 편집완료를 누르면 편집기는 아래 **순서로** 두 이벤트를 보냅니다.
@@ -998,6 +1007,8 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 
 **레거시 dual-emit (EmbedView 라우트 한정, 하위호환):** `storige:ready`, `storige:saved`, `storige:completed`, `storige:cancel`, `storige:error`.
 
+> **`templateSetId`·`templateSetMismatch` (2026-10-06).** `storige:ready` 는 `{templateSetId, sessionId, templateSetMismatch?}` 이며 `templateSetId` 는 `editor.ready` 와 같은 값(편집기가 실제로 연 템플릿셋)입니다. `storige:completed` 에는 `editor.complete` 와 같은 값의 `templateSetId`·`templateSetMismatch` 가 실립니다(값이 있을 때만, 게스트 완료 포함). 레거시가 정식 이벤트보다 먼저 오므로 완료 저장에 템플릿셋을 쓰면 이 값을 읽으세요.
+
 > 🔴 **레거시 `storige:completed` 의 `status` 를 신뢰하지 마세요 (2026-09-21).** 이 값은 **하드코딩 리터럴 `'completed'`** 이며,
 > **게스트(비회원) 완료에도 `'completed'` 로 옵니다.** 게스트 완료는 실제 완료가 아니라 로그인 유도 신호이고 서버 세션은 `draft` 로 남습니다.
 > 수신 측은 반드시 **`needsAuth` 와 `files` 로 판정**하세요 — `needsAuth === true` 이거나 `files.coverFileId`/`files.contentFileId` 가 **둘 다 없으면 완료로 확정하지 마세요**.
@@ -1018,7 +1029,7 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 ### 3.3 세션 저장 / 재편집
 
 - 완료 시 `sessionId` 를 파트너가 저장 → 재편집 키로 `/embed?sessionId=<id>&token=&refreshToken=&parentOrigin=` 재진입.
-- 재편집은 `sessionId` 만으로 `templateSetId`·`mode`·`orderSeqno`·spine 옵션을 세션 metadata에서 도출하여 멀티페이지 canvasData를 복원합니다.
+- 재편집은 `sessionId` 만으로 `templateSetId`·`mode`·`orderSeqno`·spine 옵션을 세션 metadata에서 도출하여 멀티페이지 canvasData를 복원합니다. 템플릿셋은 세션에 기록된 세트로 엽니다 — URL `templateSetId` 보다 우선합니다(예외·`templateSetMismatch` 는 3.1 재편집과 템플릿셋, 2026-10-06).
 - 30초 주기 자동저장 (`PATCH /api/edit-sessions/:id`, 게스트면 `updateGuest`).
 
 **비회원(게스트) 세션 재오픈 (2026-10-01 additive)**

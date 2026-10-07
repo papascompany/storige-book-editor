@@ -57,7 +57,7 @@ import {
 } from './utils/photobookSpread'
 import { shouldReemitPricing, type PricingEmitState } from './utils/pricingChangeReemit'
 import { computeEmbedPageState, type EmbedPageState } from './utils/embedPageState'
-import { templatesApi, editSessionsApi, filesApi, apiClient, type EditSessionResponse } from './api'
+import { templatesApi, editSessionsApi, filesApi, apiClient, type EditSessionResponse, type TemplateSet } from './api'
 import { core, ServicePlugin } from '@storige/canvas-core'
 import type { PhotobookPricing, TemplateSetCoverMeta } from '@storige/types'
 import type { ApiError } from './api/client'
@@ -115,6 +115,7 @@ import {
   EMBED_FAILURE_MESSAGES,
   EmbedInitError,
   canCreateSessionAfterOrderLookupFailure,
+  classifyRequestFailure,
   resolveInitFailure,
   resolveTemplateSetLoadFailure,
   saveFailureMessage,
@@ -363,8 +364,31 @@ export interface EditorConfig {
   onError?: (error: Error | EditorError) => void
   /** 저장 완료 콜백 */
   onSave?: (result: SaveResult) => void
-  /** 준비 완료 콜백 */
-  onReady?: () => void
+  /**
+   * 준비 완료 콜백. W8-2b(FREEZE v1.16, additive): 실제로 연 템플릿셋 정보를 선택 인자로 넘긴다.
+   * IIFE 번들(window.StorigeEditor)은 번들 재빌드(build:embed:prod) 시점부터 인자가 실린다.
+   */
+  onReady?: (info?: EditorReadyInfo) => void
+}
+
+/**
+ * W8-2b 재편집 템플릿셋 불일치(FREEZE v1.16, additive).
+ * 재편집(세션 있음)에서 호스트가 넘긴 templateSetId(requested)와 세션 템플릿셋(session)이 다를 때만 싣는다.
+ *   - resolution 'session'  : 세션 세트로 열었다(기본 — 서버 판정 기준과 같다)
+ *   - resolution 'requested': 세션 세트 조회가 HTTP 404 라 호스트 세트로 열었다(reason 'SESSION_SET_UNAVAILABLE')
+ */
+export interface TemplateSetMismatch {
+  requested: string
+  session: string
+  resolution: 'session' | 'requested'
+  reason?: 'SESSION_SET_UNAVAILABLE'
+}
+
+/** onReady 선택 인자 — editor.ready payload 의 templateSetId·templateSetMismatch 와 같은 값 */
+export interface EditorReadyInfo {
+  /** 실제로 연 템플릿셋(샘플 폴백이 아닌 요청 세트) */
+  templateSetId: string
+  templateSetMismatch?: TemplateSetMismatch
 }
 
 export interface EditorError {
@@ -430,6 +454,13 @@ export interface EditorResult {
    * 게스트 완료 경로에는 싣지 않는다.
    */
   spineWidthMm?: number
+  /**
+   * W8-2b (additive): 이번 편집을 앉힌 템플릿셋. 재편집이면 세션 세트와 같고, 세션 세트 조회가
+   * 404 라 호스트 세트로 연 경우에만 그 세트다. 샘플 폴백으로 연 편집은 생략한다.
+   */
+  templateSetId?: string
+  /** W8-2b (additive): 재편집 템플릿셋 불일치 — editor.ready 와 같은 값. 불일치가 없으면 생략 */
+  templateSetMismatch?: TemplateSetMismatch
   files: {
     coverFileId?: string
     contentFileId?: string
@@ -660,6 +691,26 @@ export interface EditorInstanceMethods {
   getState: () => EditorState
 }
 
+/**
+ * W8-2b: 세션 세트 조회 실패 뒤 호스트 세트로 1회 다시 시도할지 — HTTP 404 만.
+ * 그 밖의 4xx·HTTP 가 아닌 실패(빈 응답 등)·연결·5xx·408·429·401 은 지오메트리 기준을 바꾸지 않는다.
+ */
+function isTemplateSetNotFoundResponse(err: unknown): boolean {
+  const f = classifyRequestFailure(err)
+  return f.kind === 'client' && f.status === 404
+}
+
+/** W8-2b: editor.complete 에 싣는 템플릿셋 키(값이 있을 때만) */
+function templateSetResultFields(
+  loadedTemplateSetId: string | null,
+  mismatch: TemplateSetMismatch | null,
+): Pick<EditorResult, 'templateSetId' | 'templateSetMismatch'> {
+  return {
+    ...(loadedTemplateSetId ? { templateSetId: loadedTemplateSetId } : {}),
+    ...(mismatch ? { templateSetMismatch: mismatch } : {}),
+  }
+}
+
 function EmbeddedEditor({
   mode,
   orderSeqno,
@@ -729,11 +780,25 @@ function EmbeddedEditor({
   const authExpiredNotifiedRef = useRef(false)
   const [currentSession, setCurrentSession] = useState<EditSessionResponse | null>(null)
   /**
+   * W8-2b D4: AI 패널의 템플릿셋 전환 차단 — 같은 진입 주소로 다시 열면 기존 세션(세션 세트)으로 열리는 경우.
+   * URL 에 sessionId 가 없는 주문번호 진입(회원 세션 재사용·생성)도 포함한다. 초기화의 세션 확정 단계에서 정한다.
+   */
+  const [aiTemplateSetSwitchBlocked, setAiTemplateSetSwitchBlocked] = useState<boolean>(false)
+  /**
    * W1-G2(2026-08-13): 내지 PDF 첨부 진입점에 넘길 실효 templateSetId.
    * 초기화 루프가 확정한 `effectiveTemplateSetId` 중 **폴백이 아닌 경우에만** 채운다
    * (샘플 폴백 위에서 첨부하면 판형이 다른 templateSet 기준으로 검증/변환된다).
    */
   const [attachTemplateSetId, setAttachTemplateSetId] = useState<string | null>(null)
+  /**
+   * W8-2b: editor.complete 에 싣는 템플릿셋 — 초기화가 확정한 실효 세트(샘플 폴백이면 null).
+   * 위 attachTemplateSetId 와 같은 규칙(effective === requested)이다.
+   */
+  const loadedTemplateSetIdRef = useRef<string | null>(null)
+  /** W8-2b: 재편집 템플릿셋 불일치 — editor.complete 에 함께 싣는다(없으면 null) */
+  const templateSetMismatchRef = useRef<TemplateSetMismatch | null>(null)
+  /** W8-2b: 템플릿셋 불일치 경고(console·Sentry)를 이미 남긴 세션 id — 세션당 1회 */
+  const mismatchReportedSessionRef = useRef<Set<string>>(new Set())
   const [showWorkspaceModal, setShowWorkspaceModal] = useState(false)
   // 내부 뒤로가기 가드 on/off. 호스트가 storige.setBackGuard{enabled:false} 로 직접 제어를 가져가면 끈다.
   const [internalBackGuard, setInternalBackGuard] = useState(true)
@@ -950,6 +1015,8 @@ function EmbeddedEditor({
         setErrorCode(null)
         fatalInitErrorRef.current = false
         authExpiredNotifiedRef.current = false
+        loadedTemplateSetIdRef.current = null
+        templateSetMismatchRef.current = null
 
         // ========== 1. 인증 설정 (API 호출 전에 반드시 먼저 실행) ==========
         // API Base URL 설정
@@ -1020,6 +1087,11 @@ function EmbeddedEditor({
         let editSession: EditSessionResponse | null = null
         // 같은 탭에서 기억한 비회원 초안을 이어 연 경우 그 세션 id 와 사용한 게스트 토큰(기억 갱신용)
         let resumedDraft: { sessionId: string; guestToken: string } | null = null
+        // W8-2b D4: 같은 진입 주소로 다시 열면 이 세션을 다시 찾아 세션 세트로 열리는가(AI 패널 세트 전환 차단 판정).
+        //   sessionId 조회·주문 세션 목록에서 고른 세션·회원 세션 생성 → true(다음 주문 조회가 이 세션을 돌려준다).
+        //   비회원 주문 초안 재개·비회원 세션 생성 → false(초안 매핑 키에 templateSetId 가 있어 새 세트면 새 세션).
+        //   복원 재초기화 → null(진입 주소가 그대로이므로 앞선 판정을 유지).
+        let sessionPinsTemplateSet: boolean | null = false
         // 주문 초안 매핑의 호스트 범위(부모 출처·인증 토큰의 사이트)와 회원 토큰 여부
         const accessTokenScope = embedAccessTokenScopeOf(effectiveToken)
         const draftHostScope: Pick<EmbedGuestDraftKey, 'hostOrigin' | 'siteId'> = {
@@ -1085,6 +1157,7 @@ function EmbeddedEditor({
         if (reinitSession) {
           reinitSessionRef.current = null
           editSession = reinitSession
+          sessionPinsTemplateSet = null
           setLoadingMessage('선택한 시점으로 되돌리는 중...')
           console.log('[EmbeddedEditor] Re-init with restored session:', editSession.id)
         } else if (sessionId) {
@@ -1096,6 +1169,7 @@ function EmbeddedEditor({
               remembered: recallEmbedGuestToken(sessionId),
             })
             console.log('[EmbeddedEditor] Existing session loaded:', editSession.id)
+            sessionPinsTemplateSet = true
           } catch (err) {
             // 2026-09-29: 명시 sessionId 조회 실패 시 orderSeqno 검색/신규 생성으로 폴백하지 않는다.
             // (폴백은 원본이 아닌 빈 세션을 조용히 열어 그대로 주문·합성될 수 있었다.)
@@ -1184,6 +1258,8 @@ function EmbeddedEditor({
           } else {
             editSession = orderItem
           }
+          // 주문 세션 목록에서 고른 세션은 같은 주소로 다시 열어도 같은 목록에서 다시 고른다(W8-2b D4)
+          if (orderItem) sessionPinsTemplateSet = true
 
           // 기존 세션이 없으면 새로 생성
           if (!editSession) {
@@ -1233,6 +1309,8 @@ function EmbeddedEditor({
             try {
               editSession = await editSessionsApi.create(createPayload)
               console.log('[EmbeddedEditor] New session created:', editSession.id)
+              // 회원 세션은 주문에 묶여 다음 주문 조회가 이 세션을 돌려준다(W8-2b D4)
+              sessionPinsTemplateSet = true
             } catch (createErr) {
               // 회원 세션을 만들 수 없는 토큰(400 MEMBER_REQUIRED·code 없는 400·403 PERMISSION_DENIED)만
               // 게스트 세션으로 폴백: 편집/자동저장은 가능하고, 편집완료 시 로그인 유도(editor.needAuth).
@@ -1248,6 +1326,7 @@ function EmbeddedEditor({
           }
         }
 
+        if (sessionPinsTemplateSet !== null) setAiTemplateSetSwitchBlocked(sessionPinsTemplateSet)
         if (editSession) {
           setCurrentSession(editSession)
           // 게스트 토큰 기억 + 세션의 주문·mode·templateSetId 와 호스트 범위로 주문 초안 매핑(주문번호 0 이면 매핑 없음).
@@ -1281,8 +1360,17 @@ function EmbeddedEditor({
         if (!isMounted) return
 
         // 3. Fetch template set info
-        // 재편집 게이트 완화 (2026-06-11): templateSetId 미전달 시 세션에서 도출.
-        let effectiveTemplateSetId = templateSetId || editSession?.templateSetId || ''
+        // W8-2b (FREEZE v1.16): 재편집은 세션 세트(S) 우선, 없으면 호스트 세트(U, URL/props).
+        // 서버는 세션 세트 기준으로 검증·임포지션하므로 편집기 지오메트리도 같은 세트로 연다.
+        // 세션의 출처(sessionId 조회·주문 검색·게스트 초안·복원 재초기화)는 구분하지 않는다.
+        const hostTemplateSetId = templateSetId || ''
+        const sessionTemplateSetId = editSession?.templateSetId || ''
+        let effectiveTemplateSetId = sessionTemplateSetId || hostTemplateSetId
+        /** S·U 가 모두 있고 다를 때만 — editor.ready·editor.complete 에 additive 동봉 */
+        let templateSetMismatch: TemplateSetMismatch | null =
+          sessionTemplateSetId && hostTemplateSetId && sessionTemplateSetId !== hostTemplateSetId
+            ? { requested: hostTemplateSetId, session: sessionTemplateSetId, resolution: 'session' }
+            : null
         let showMappingAlert = false
         let fallbackReason = ''
         // 방향 불일치 가드레일 (2026-07-09): 호스트 주문 규격(width/height)과 로드된 templateSet
@@ -1292,8 +1380,11 @@ function EmbeddedEditor({
         if (!effectiveTemplateSetId) {
           throw new EmbedInitError('템플릿셋 ID가 필요합니다. (templateSetId)')
         }
-        /** 폴백 전 원래 요청된 템플릿셋 ID — 폴백 발생 판정/세션 복원 스킵에 사용 */
-        const requestedTemplateSetId = effectiveTemplateSetId
+        /**
+         * 샘플 폴백 전 마지막으로 시도한 템플릿셋 ID — 폴백 발생 판정/세션 복원 스킵/실패 payload 에 사용.
+         * W8-2b: 세션 세트 404 뒤 호스트 세트로 다시 시도하면 그 세트로 바뀐다(let).
+         */
+        let requestedTemplateSetId = effectiveTemplateSetId
         const allowSampleFallback = isSampleFallbackAllowed()
 
         // 템플릿셋 로드 실패 처리(프로덕션 기본): 폴백 없이 오류 화면 표시 + editor.error 발신.
@@ -1336,27 +1427,87 @@ function EmbeddedEditor({
           hasSession: !!editSession,
           savedPages: Array.isArray(editSession?.canvasData) ? editSession.canvasData.length : editSession?.canvasData ? 1 : 0,
         })
-        try {
-          setLoadingMessage('템플릿셋 정보를 불러오는 중...')
-          const result = await templatesApi.getTemplateSetWithTemplates(effectiveTemplateSetId)
-          templateSet = result?.templateSet || result
-          if (!templateSet || !templateSet.id) {
+        const fetchTemplateSet = async (id: string): Promise<TemplateSet> => {
+          const result = await templatesApi.getTemplateSetWithTemplates(id)
+          // 응답은 { templateSet, templateDetails } 또는 평평한 템플릿셋 — 종전과 같이 둘 다 받는다.
+          const loaded: TemplateSet | undefined =
+            result?.templateSet || (result as unknown as TemplateSet | undefined)
+          if (!loaded || !loaded.id) {
             throw new Error('템플릿셋을 찾을 수 없습니다.')
           }
+          return loaded
+        }
+        try {
+          setLoadingMessage('템플릿셋 정보를 불러오는 중...')
+          templateSet = await fetchTemplateSet(effectiveTemplateSetId)
         } catch (err) {
-          // 프로덕션 기본: 무음 샘플 폴백 금지 — 명확히 실패 표시 후 중단 (2026-06-11)
-          if (!allowSampleFallback) {
-            failTemplateSetLoad(err, 'fetch')
-            return
+          // 초기화 취소는 다시 시도하지 않고 바깥 취소 처리로 넘긴다.
+          if (err instanceof CanvasInitCancelledError) throw err
+          let loadErr: unknown = err
+          let recovered = false
+          // W8-2b: 세션 세트가 HTTP 404(삭제·없음)이고 다른 호스트 세트가 있으면 그 세트로 1회 다시 시도한다
+          // (현행 보존). 그 밖의 실패는 다시 시도하지 않고 아래 현행 처리(fatal)로 간다.
+          if (templateSetMismatch && isTemplateSetNotFoundResponse(err)) {
+            if (!isMounted) return
+            console.warn(
+              '[EmbeddedEditor] Session template set not found — retrying with host template set:',
+              { session: templateSetMismatch.session, requested: templateSetMismatch.requested },
+            )
+            requestedTemplateSetId = templateSetMismatch.requested
+            effectiveTemplateSetId = templateSetMismatch.requested
+            templateSetMismatch = {
+              ...templateSetMismatch,
+              resolution: 'requested',
+              reason: 'SESSION_SET_UNAVAILABLE',
+            }
+            try {
+              templateSet = await fetchTemplateSet(effectiveTemplateSetId)
+              recovered = true
+            } catch (retryErr) {
+              if (retryErr instanceof CanvasInitCancelledError) throw retryErr
+              loadErr = retryErr
+            }
           }
-          console.warn('[EmbeddedEditor] Failed to load requested template set. Falling back to sample. (DEV/allowSampleFallback)', describeError(err))
-          showMappingAlert = true
-          fallbackReason = `템플릿셋 조회 실패: ${err instanceof Error ? err.message : String(err)}`
-          effectiveTemplateSetId = 'sample-8x8-book-24p'
-          const fallback = await templatesApi.getTemplateSetWithTemplates(effectiveTemplateSetId)
-          templateSet = fallback?.templateSet || fallback
-          if (!templateSet || !templateSet.id) {
-            throw new EmbedInitError('샘플 템플릿셋마저 불러올 수 없습니다.')
+          if (!recovered) {
+            // 프로덕션 기본: 무음 샘플 폴백 금지 — 명확히 실패 표시 후 중단 (2026-06-11)
+            if (!allowSampleFallback) {
+              failTemplateSetLoad(loadErr, 'fetch')
+              return
+            }
+            console.warn('[EmbeddedEditor] Failed to load requested template set. Falling back to sample. (DEV/allowSampleFallback)', describeError(loadErr))
+            showMappingAlert = true
+            fallbackReason = `템플릿셋 조회 실패: ${loadErr instanceof Error ? loadErr.message : String(loadErr)}`
+            effectiveTemplateSetId = 'sample-8x8-book-24p'
+            const fallback = await templatesApi.getTemplateSetWithTemplates(effectiveTemplateSetId)
+            templateSet = fallback?.templateSet || fallback
+            if (!templateSet || !templateSet.id) {
+              throw new EmbedInitError('샘플 템플릿셋마저 불러올 수 없습니다.')
+            }
+          }
+        }
+
+        // W8-2b: 템플릿셋 불일치 관측 — 세션당 1회, 복원 재초기화 제외(orientation-mismatch 와 같은 패턴).
+        // 기록 실패는 초기화를 막지 않는다.
+        if (
+          templateSetMismatch &&
+          editSession?.id &&
+          !reinitSuppressReadyEmitRef.current &&
+          !mismatchReportedSessionRef.current.has(editSession.id)
+        ) {
+          mismatchReportedSessionRef.current.add(editSession.id)
+          const mismatchExtra = {
+            requested: templateSetMismatch.requested,
+            session: templateSetMismatch.session,
+            resolution: templateSetMismatch.resolution,
+            reason: templateSetMismatch.reason ?? null,
+            sessionId: editSession.id,
+            orderSeqno: orderSeqno ?? null,
+          }
+          try {
+            console.warn('[EmbeddedEditor] 재편집 템플릿셋 불일치 — 세션 세트 우선 규칙 적용:', mismatchExtra)
+            Sentry.captureMessage('[template-set-mismatch]', { level: 'warning', extra: mismatchExtra })
+          } catch {
+            /* Sentry 미설정/네트워크 — 무시 */
           }
         }
         console.log('[EmbeddedEditor] TemplateSet loaded:', templateSet.name)
@@ -1716,6 +1867,11 @@ function EmbeddedEditor({
         setAttachTemplateSetId(
           effectiveTemplateSetId === requestedTemplateSetId ? effectiveTemplateSetId : null,
         )
+        // W8-2b: editor.complete 의 templateSetId·templateSetMismatch 도 같은 규칙으로 확정(샘플 폴백이면 둘 다 생략 —
+        // 샘플로 앉힌 편집에 세션·호스트 세트 판정을 싣지 않는다. editor.ready 는 fallback 표시와 함께 요청 세트 기준을 유지).
+        loadedTemplateSetIdRef.current =
+          effectiveTemplateSetId === requestedTemplateSetId ? effectiveTemplateSetId : null
+        templateSetMismatchRef.current = loadedTemplateSetIdRef.current ? templateSetMismatch : null
 
         // 3-A'. D1 외부 사진 주입 (EDITOR.md §20.1) — 호스트가 세션 metadata 로
         // 주입한 공유방 사진 목록을 스토어에 적재. 목록이 있으면 이미지 패널에
@@ -1816,15 +1972,22 @@ function EmbeddedEditor({
           reinitSettleRef.current = null
           return
         }
-        onReady?.()
+        // W8-2b (FREEZE v1.16): templateSetId 는 실제로 연 세트(샘플 폴백 전 요청 세트). 불일치가 없으면
+        // 종전 props 값과 같다. 불일치가 있으면 templateSetMismatch 를 additive 동봉.
+        const readyInfo: EditorReadyInfo = {
+          templateSetId: requestedTemplateSetId,
+          ...(templateSetMismatch ? { templateSetMismatch } : {}),
+        }
+        onReady?.(readyInfo)
         postToParent(parentOrigin, 'editor.ready', {
           sessionId: editSession?.id,
-          templateSetId,
+          templateSetId: readyInfo.templateSetId,
           version: '1.0.0',
           // 샘플 폴백 구동 시(DEV/allowSampleFallback) 호스트가 인지할 수 있도록 명시 (2026-06-11)
           ...(showMappingAlert ? { fallback: true, effectiveTemplateSetId } : {}),
           // 방향 불일치 시 호스트(bookmoa 등)가 인지할 수 있도록 additive 동봉 (2026-07-09)
           ...(orientationMismatch ? { orientationMismatch } : {}),
+          ...(templateSetMismatch ? { templateSetMismatch } : {}),
         })
       } catch (err) {
         if (err instanceof CanvasInitCancelledError) {
@@ -2264,6 +2427,8 @@ function EmbeddedEditor({
               needsAuth: true,
               guestToken,
               pages: { initial: options?.pages || 1, final: options?.pages || 1 },
+              // W8-2b (additive): 이번 편집을 앉힌 템플릿셋·재편집 불일치(샘플 폴백이면 생략)
+              ...templateSetResultFields(loadedTemplateSetIdRef.current, templateSetMismatchRef.current),
               files: {},
               savedAt: new Date().toISOString(),
             }
@@ -2335,6 +2500,8 @@ function EmbeddedEditor({
               ? { size: { width: liveSize.width, height: liveSize.height, unit: 'mm' as const } }
               : {}),
             ...(appliedSpineWidthMm !== undefined ? { spineWidthMm: appliedSpineWidthMm } : {}),
+            // W8-2b (additive): 이번 편집을 앉힌 템플릿셋·재편집 불일치(샘플 폴백이면 생략)
+            ...templateSetResultFields(loadedTemplateSetIdRef.current, templateSetMismatchRef.current),
             files: {
               coverFileId: completedSession.coverFileId || undefined,
               contentFileId: completedSession.contentFileId || undefined,
@@ -2441,6 +2608,8 @@ function EmbeddedEditor({
           needsAuth: true,
           guestToken,
           pages: { initial: options?.pages || 1, final: options?.pages || 1 },
+          // W8-2b (additive): 이번 편집을 앉힌 템플릿셋·재편집 불일치(샘플 폴백이면 생략)
+          ...templateSetResultFields(loadedTemplateSetIdRef.current, templateSetMismatchRef.current),
           files: {},
           savedAt: new Date().toISOString(),
         }
@@ -2747,6 +2916,8 @@ function EmbeddedEditor({
           ? { size: { width: liveSize2.width, height: liveSize2.height, unit: 'mm' as const } }
           : {}),
         ...(appliedSpineWidthMm2 !== undefined ? { spineWidthMm: appliedSpineWidthMm2 } : {}),
+        // W8-2b (additive): 이번 편집을 앉힌 템플릿셋·재편집 불일치(샘플 폴백이면 생략)
+        ...templateSetResultFields(loadedTemplateSetIdRef.current, templateSetMismatchRef.current),
         files: {
           coverFileId: completedSession.coverFileId || undefined,
           contentFileId: completedSession.contentFileId || undefined,
@@ -2922,7 +3093,7 @@ function EmbeddedEditor({
         <div className="flex-1 flex flex-col relative overflow-hidden min-w-0">
           {/* Content area - always flex-row for sidebar + canvas */}
           <div className="flex-1 flex flex-row relative overflow-hidden">
-            <FeatureSidebar />
+            <FeatureSidebar aiTemplateSetSwitchBlocked={aiTemplateSetSwitchBlocked} />
             {ready && <ControlBar />}
 
             <main className="flex-1 relative overflow-hidden bg-editor-workspace">
