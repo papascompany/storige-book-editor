@@ -69,24 +69,25 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
 
 ---
 
-## 2. 현재 라이브 상태 (2026-10-07 14:54Z — Wave 8 1단계·2a·2b + N-API-3b 배포 후)
+## 2. 현재 라이브 상태 (2026-10-08 14:38Z — Wave 8 전부 + 10-08 운영 정비(Wave B JOB_LINK_STRICT·킬스위치 compose 매핑·AI 탭 숨김) 배포 후)
 
 | 구성 | 현재 운영 | 롤백 |
 |---|---|---|
 | DB | 09-30 Wave 1 ~ 10-04 Wave 3 **마이그레이션 없음**. 마지막 스키마 변경은 09-29 `20260929`·`20260930`(ADDITIVE) | 백업 `~/backup-sites-pre-staff-edit-20260929.sql`·`~/backup-template_sets-pre-padstep-20260928.sql`. 추가 컬럼·테이블은 남겨도 무해 |
-| api | `1c9b120`(10-06 15:39:23Z, N-API-3b — 편집 완료 내지 검증 쪽 단위, 킬스위치 `EDITOR_CONTENT_PAGE_RULES`=true) + nginx 재시작(15:39:49Z) | `storige-api:rollback-pre-n-api-3b`(=`c6c38ef`, e19adc5f69de) 또는 env `EDITOR_CONTENT_PAGE_RULES=off` + api 재생성 → `rollback-pre-wave8-2`(=`776ac0e`, 4c6b0af81ac2) → `rollback-pre-wave8`(=`9381ea4`, fe75e1063d85) → `rollback-pre-wave6`(=`d3e3587`, 294b1d98554e) → `rollback-pre-wave4`(=`f63c8ae`, c732d216145f) → `rollback-pre-wave3`(=`9e2a817`) → `rollback-pre-1003`(=`4f28e52`) → `rollback-pre-stage3` → …(태그 → `latest` 재지정 후 `up -d --no-build api` + nginx 재시작). **Wave 3 이전 코드로 되돌릴 때는 오너 승인 뒤 비공개 메모(`../_private_notes/wave3/`)의 데이터 정리 절차 먼저.** 롤백 순서 api → (합성 큐 delayed·active 소진 확인) → worker |
+| api | 이미지 `1c9b120`(e8f5bd686b27, N-API-3b) · 컨테이너 10-08 14:37:16Z 재생성(VPS 체크아웃 `5ef27c0` — compose `EDITOR_CONTENT_PAGE_RULES` 매핑 추가 · .env `JOB_LINK_STRICT=true`) + nginx 14:37:25Z | Wave B 원복 = .env `JOB_LINK_STRICT` 줄 제거(백업 `~/storige/.env.bak-pre-waveb-20261008T143656Z`) + api 재생성 + nginx 재시작 · 킬스위치 = .env `EDITOR_CONTENT_PAGE_RULES=off` + api 재생성(10-08 부터 유효 — 이전에는 compose 미매핑으로 무효) · 태그 `storige-api:rollback-pre-wave-b`(=e8f5bd686b27 동일 이미지) → `storige-api:rollback-pre-n-api-3b`(=`c6c38ef`, e19adc5f69de) → `rollback-pre-wave8-2`(=`776ac0e`, 4c6b0af81ac2) → `rollback-pre-wave8`(=`9381ea4`, fe75e1063d85) → `rollback-pre-wave6`(=`d3e3587`, 294b1d98554e) → `rollback-pre-wave4`(=`f63c8ae`, c732d216145f) → `rollback-pre-wave3`(=`9e2a817`) → `rollback-pre-1003`(=`4f28e52`) → `rollback-pre-stage3` → …(태그 → `latest` 재지정 후 `up -d --no-build api` + nginx 재시작). **Wave 3 이전 코드로 되돌릴 때는 오너 승인 뒤 비공개 메모(`../_private_notes/wave3/`)의 데이터 정리 절차 먼저.** 롤백 순서 api → (합성 큐 delayed·active 소진 확인) → worker |
 | worker | `776ac0e`(10-06 08:09:11Z, Wave 8 1단계 — sharp 0.35.5·mysql2 3.24.5) | `storige-worker:rollback-pre-wave8`(=`d3e3587`, 3be1bd99732e) → `rollback-pre-wave4`(=`f63c8ae`, eacd43c79dfb) → `rollback-pre-wave3`(=`9e2a817`) → `rollback-pre-1003`(=`1c52c80`) → … |
-| editor | Vercel `diqgayglo`(`c8d7df5`, Ready 10-07 14:53:59Z — Wave 8 2b 재편집 세션 세트 우선·complete templateSetId·AI 세트 전환 차단) | `gmboy5bm1`(`c6c38ef`) → `n8zp637da`(`776ac0e`) → `16moj714s`(`9381ea4`) → `g0haka2nu`(`599f602`) → `pwvgvgvhb`(`d3e3587`) → `qftv0kx8t`(`f63c8ae`) → `65j5xwzgg`(`9e2a817`) promote. IIFE 번들(VPS `build:embed:prod`)은 미재빌드(파트너 미사용, 오너 결정 대기) |
+| editor | Vercel `8taztq201`(`5ef27c0`, 생성 10-08 14:17:44Z·운영 번들 반영 확인 14:29Z — 도구 메뉴 AI 탭 숨김 `VITE_ENABLE_AI_PANEL=false`) | `diqgayglo`(`c8d7df5`, Wave 8 2b) → `gmboy5bm1`(`c6c38ef`) → `n8zp637da`(`776ac0e`) → `16moj714s`(`9381ea4`) → `g0haka2nu`(`599f602`) → `pwvgvgvhb`(`d3e3587`) → `qftv0kx8t`(`f63c8ae`) → `65j5xwzgg`(`9e2a817`) promote. IIFE 번들(VPS `build:embed:prod`)은 미재빌드(파트너 미사용, 오너 결정 대기) |
 | admin | Vercel `kolxzkmiv`(`c6c38ef`, 10-06 — 싸바리 세트 caseBind 저장 경고) | `luw3mayxr`(`776ac0e`) → `cyho5uda8`(`9381ea4`) → `oylw176wy`(`f63c8ae`) promote | `l6f2dhp0f`(`9e2a817`) → `isxgg1mpv` promote |
 
-- origin/master = VPS 체크아웃 = `9381ea4` 이후(Wave 6). api = Wave 6, worker = Wave 4(`d3e3587` 이미지 — Wave 5·6 worker 변경 없음). 계약 정본 **CONTRACT_FREEZE v1.16**(`docs/CONTRACT_FREEZE.md` + `apps/api/src/contract-freeze.spec.ts` — v1.16 재편집 템플릿셋 세션 세트 우선·ready/complete templateSetId(MODIFY-TARGET+ADDITIVE, editor 10-07 14:53:59Z), v1.15 편집 완료 내지 검증 쪽 단위 판정(MODIFY-TARGET, 10-06 15:39Z), v1.14 서술 정정, v1.13 동화책 싸바리 세트는 매핑 전환 시각부터 유효).
+- VPS 체크아웃 = `5ef27c0`(10-08). api 이미지 = `1c9b120`(N-API-3b), worker 이미지 = `776ac0e`(Wave 8 1단계) — 그 뒤 서버 코드 변경 없음(compose 매핑만). 계약 정본 **CONTRACT_FREEZE v1.16**(`docs/CONTRACT_FREEZE.md` + `apps/api/src/contract-freeze.spec.ts` — v1.16 재편집 템플릿셋 세션 세트 우선·ready/complete templateSetId(MODIFY-TARGET+ADDITIVE, editor 10-07 14:53:59Z), v1.15 편집 완료 내지 검증 쪽 단위 판정(MODIFY-TARGET, 10-06 15:39Z), v1.14 서술 정정, v1.13 동화책 싸바리 세트는 매핑 전환 시각부터 유효).
 - 플래그(운영 기동 로그 `[FLAGS]` 확인값):
 
 | 플래그 | 운영 값 | 비고 |
 |---|---|---|
-| `JOB_LINK_STRICT` | false(기본) | 오너 결정 대기(§5) |
-| `JOB_FILE_SITE_STRICT` | false(기본) | 오너 결정 대기(§5) |
-| `SESSION_JOB_OUTPUT_LOOKUP` | false(기본) | 오너 결정 대기(§5) |
+| `JOB_LINK_STRICT` | **true(10-08 14:37:16Z, 오너 결정)** | Wave B — 관측 7일(Loki) 실 호출 0 확인 후 전환. 3사(bookmoa·printy·100p) 사전 안내·완료 통지. 집계는 Loki `[job-link] denied … caller=none` |
+| `JOB_FILE_SITE_STRICT` | false(기본) | **관측 연장(10-08 오너 결정)** — 켜려면 FREEZE 등재(403 FILE_SITE_MISMATCH, MODIFY-TARGET)·사전 통지·ACK·소급 확인 선행 |
+| `SESSION_JOB_OUTPUT_LOOKUP` | false(기본) | 오너 결정 대기(§5) — 연결 행·운영 EXPLAIN 선행 |
+| `EDITOR_CONTENT_PAGE_RULES` | true(compose `:-on`, 10-08 매핑 추가) | N-API-3b 킬스위치. 끌 때는 `.env` 에 off 후 api 재생성 + nginx 재시작 |
 | `WORKER_TRIMBOX_SIZE_CHECK` | true(compose `:-true`) | X1 TrimBox 판형 판정·합성 contentTrim. 끌 때는 `.env` 에 false 후 worker 재생성 |
 
 - 그 밖의 worker `.env`(09-30 04:47Z, 불리언만): CUTOUT·LIGHTWEIGHT_VALIDATION·LIGHTWEIGHT_SYNTHESIS·CROP_MARK_VALIDATION·WIRED_FIXABLE_GATING = true / PRINT_NORMALIZE·FLATTEN·FILE_ORPHAN_* 미설정(코드 기본값).
@@ -186,7 +187,7 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
 
 - **제본 최소 쪽수 vs 호스트 쪽수 범위**(10-05 발견, 양사 공통): 양사는 신규 편집에 항상 `bindingType=perfect` 를 보내고(spinePolicy 미설정 — 10-05 발견 시점. 이후 bookmoa 동화책은 R-217 로 hardcover 전송, §3), 편집기는 무선제본 최소 32쪽을 삭제 하한·설정 패널 한도에 적용한다 → 범위 최소 16 인 상품(bookmoa·printy 편집기 상품 4종 모두)에서 쪽을 늘리면 범위 최소로 되돌릴 수 없다(완료는 막지 않음). 오너 결정(10-05): bookmoa 에 사실 공유·검토 요청 → **bookmoa 오너 결정 '둘 다'**: ① Storige 에 '호스트 pageCountMin·Max 가 있으면 제본 최소·최대 대신 범위 적용' 요청(**Storige 오너 결정 10-05: Wave 5 로 착수 — 설계안 오너 보고 후 구현, 배포 별도 승인**, printy 도 이 안이면 코드 변경 0) ② bookmoa 는 양장 선택·하드커버 상품에 hardcover 전송 검토 — Storige 사실 회신 발신(207c458f 표지 flat-spread 라 책등 무변, f0335fda 는 책등 자동 계산형이라 hardcover 면 책등 약 +1.5mm(운영 margin perfect 0.5·hardcover 2.0), hardcover 는 서버 표지 크기 검증 미적용).
 
-- **Wave B 플래그 전환**(`JOB_LINK_STRICT`·`JOB_FILE_SITE_STRICT`, 기본 false): **10-08 09:51Z 이후** 판단. 플래그는 이미 배포돼 env 만 바꾸면 된다. 기준·절차는 비공개 메모(`../_private_notes/wave2/`).
+- **Wave B 플래그 전환 — 결정·적용 완료(10-08)**: `JOB_LINK_STRICT=true`(14:37:16Z), `JOB_FILE_SITE_STRICT` 는 관측 연장. 근거·절차는 비공개 메모(`../_private_notes/wave2/`, `../_private_notes/wave8/NEXT_ISSUES_2026-10-08.md` §1).
 - `SESSION_JOB_OUTPUT_LOOKUP`(기본 false) 전환: 전제·확인 절차는 비공개 메모(`../_private_notes/wave3/`).
 - IIFE 번들 재빌드(VPS `build:embed:prod`, 파트너 미사용).
 - Sentry 과거 이벤트 정리 · admin 편집기 호출 방식·admin Sentry 전처리(상세 비공개).
@@ -209,6 +210,7 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
 - 10-06 대비: done 15 · partial 10 · obsolete 1(N-TD-4 동화책 13세트 — 연결 계획 없음).
 - **P0**: ① Wave B 플래그 판단(10-08 09:51Z 이후, 오너) — Loki 7일 실측 결과 관측 로그 0·worker-jobs/edit-sessions 요청 27건 전부 배포 스모크(실 호출 0). 권고 JOB_LINK_STRICT 켜기·JOB_FILE_SITE_STRICT 관측 연장 ② `EDITOR_CONTENT_PAGE_RULES` 가 docker-compose api environment 에 매핑돼 있지 않음 → env 킬스위치 롤백 불가(현재 롤백 = 이미지 태그 `rollback-pre-n-api-3b`) — compose 1줄 + api 재생성 ③ 운영 편집기 AI 탭이 빈 패널(`VITE_ENABLE_AI_PANEL` 미설정 → 탭 노출, `VITE_AI_ENABLED=false` → 패널 미포함, 운영 번들 확인) ④ CI `ubuntu-latest` 가 2026-10-19 부터 Ubuntu 26 → `ubuntu-24.04` 고정.
 - 권고 Wave 9 = 안 1(운영 안전·CI 게이트·서버 보안 마이너: N-OPS-5·N-OPS-4·CI nest build/lint·N-NEW-1 서버 런타임 마이너·N-API-14a·N-OPS-10a·런북 갱신·동화책 전환 SQL 팩·FILE_SITE 계약 초안·DEPLOYMENT/RESUME 스테일). 안 2(편집기·임베드 후속 + editor 보안 마이너)는 bookmoa e2e 뒤.
+- **오너 결정(10-08)**: Wave B = JOB_LINK 만 켜기 · P0 3건 진행 · **Wave 9 보류**. **배포 완료(10-08)**: 커밋 `5ef27c0`(compose 킬스위치 매핑·editor `VITE_ENABLE_AI_PANEL=false`·CI/gitleaks `runs-on: ubuntu-24.04`) push 14:17:41Z → CI 37791275517 green(test 1회 간헐 실패 `apps/worker/src/utils/synthesis-input.spec.ts:330` qpdf 1ms 시간 초과 경합 → 재실행 통과, 러너 이미지 ubuntu-24.04 동일) · Vercel editor `8taztq201` → VPS .env 백업·`rollback-pre-wave-b` 태그·pull `5ef27c0` → .env `JOB_LINK_STRICT=true` → api 재생성 14:37:16Z(재빌드 없음) + nginx 14:37:25Z → 스모크 정상([FLAGS] JOB_LINK_STRICT=true·JOB_FILE_SITE_STRICT=false·EDITOR_CONTENT_PAGE_RULES=true, health 200, 무인증 401, with-templates 3세트 200 구조 불변, 경고·오류 0, nginx 5xx 0). 3사 사전 안내·완료 통지(bookmoa 영향 없음 회신). 후속: qpdf 시간 초과 테스트 간헐 실패 안정화, Node 20 대상 액션 메이저 bump, ubuntu 26.04 사전 검증.
 
 ### 5.3 다음 후보 (착수 약속 없음 — 새 세션이 재점검 후 우선순위 제안)
 
