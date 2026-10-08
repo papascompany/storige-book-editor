@@ -130,6 +130,9 @@ services:
       #   코드는 `off` 가 아닌 값을 모두 연결로 본다 — `on` 은 printenv 로 읽기 쉽게 하려는 표기다.
       #   [FLAGS] 줄에는 없으므로 docker exec storige-api printenv 로 확인한다.
       - EDITOR_SPREAD_VALIDATION_MAPPING=${EDITOR_SPREAD_VALIDATION_MAPPING:-on}
+      # 편집 완료 content 검증 잡에 편집기 쪽 단위 싣기(N-API-3b, api 전용). 정확히 `off` 일 때만 해제한다.
+      #   롤백 = .env 에 EDITOR_CONTENT_PAGE_RULES=off → api 재생성 → nginx 재시작. [FLAGS] 줄로 확인한다.
+      - EDITOR_CONTENT_PAGE_RULES=${EDITOR_CONTENT_PAGE_RULES:-on}
     volumes:
       - ./storage:/app/storage
     depends_on:

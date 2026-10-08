@@ -42,7 +42,9 @@ concurrency:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # 러너 이미지 고정: ubuntu-latest 는 2026-10-19 부터 Ubuntu 26 으로 바뀐다(canvas 소스 빌드·gs·Playwright 의존).
+    #   26.04 이전은 별도 검증 뒤에 한다.
+    runs-on: ubuntu-24.04
     # 25분: worker 테스트(490건) 추가분 여유. 종전 20분은 worker 없이 산정된 값.
     timeout-minutes: 25
     steps:
@@ -295,7 +297,7 @@ jobs:
   embed-e2e:
     # 임베드 모드(/embed — 파트너 호스트 iframe 경로) 실브라우저 E2E. 종전에는 로컬 수동
     # 실행에만 의존했다. test job 과 독립(needs 없음)이라 병렬로 돈다.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
