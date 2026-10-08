@@ -203,6 +203,13 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
 - **추천 Wave 8 = 게이트 복구 + 동화책 전환 사전 정비**(2단계): 1단계 CI·보안 패치·/embed CI 편입·문서/주석 스테일 정정 → 2단계 결합 세트 내지 기대 크기(`resolveInnerSpreadContentSizeMm` 첫 spread 만 봄 → 표지 먼저인 동화책 세트는 판형 한 면 폴백)·템플릿셋 `copy()` 필드 유실·admin caseBind 잔류 가드·누락 템플릿 탐지·싸바리 회귀 E2E·운영 템플릿셋 정합 인벤토리·관찰 런북·재편집 templateSetId 가드(오너 설계 결정).
 - 오너 결정 대기: Wave 8 안 선택, 플래그 전환, 재편집 가드 방식(ADDITIVE vs MODIFY-TARGET), 운영 DB 읽기(인벤토리·실측), branch ruleset, compose 기본값, fabric 7 승격 시점, Dependabot, 신규 파트너 연락 채널, 관리자 화면 E2E 시간.
 
+### 5.2.2 다음 개발 이슈 정리 (2026-10-08, 오너 보고 — Wave B 판단·Wave 9 구성 결정 대기)
+
+- 정본 비공개 `../_private_notes/wave8/NEXT_ISSUES_2026-10-08.md`(10-06 목록 110건 상태 대조 + 신규 27건, 4관점 수집·반박 검증, 코디네이터 실측 반영).
+- 10-06 대비: done 15 · partial 10 · obsolete 1(N-TD-4 동화책 13세트 — 연결 계획 없음).
+- **P0**: ① Wave B 플래그 판단(10-08 09:51Z 이후, 오너) — Loki 7일 실측 결과 관측 로그 0·worker-jobs/edit-sessions 요청 27건 전부 배포 스모크(실 호출 0). 권고 JOB_LINK_STRICT 켜기·JOB_FILE_SITE_STRICT 관측 연장 ② `EDITOR_CONTENT_PAGE_RULES` 가 docker-compose api environment 에 매핑돼 있지 않음 → env 킬스위치 롤백 불가(현재 롤백 = 이미지 태그 `rollback-pre-n-api-3b`) — compose 1줄 + api 재생성 ③ 운영 편집기 AI 탭이 빈 패널(`VITE_ENABLE_AI_PANEL` 미설정 → 탭 노출, `VITE_AI_ENABLED=false` → 패널 미포함, 운영 번들 확인) ④ CI `ubuntu-latest` 가 2026-10-19 부터 Ubuntu 26 → `ubuntu-24.04` 고정.
+- 권고 Wave 9 = 안 1(운영 안전·CI 게이트·서버 보안 마이너: N-OPS-5·N-OPS-4·CI nest build/lint·N-NEW-1 서버 런타임 마이너·N-API-14a·N-OPS-10a·런북 갱신·동화책 전환 SQL 팩·FILE_SITE 계약 초안·DEPLOYMENT/RESUME 스테일). 안 2(편집기·임베드 후속 + editor 보안 마이너)는 bookmoa e2e 뒤.
+
 ### 5.3 다음 후보 (착수 약속 없음 — 새 세션이 재점검 후 우선순위 제안)
 
 | 후보 | 출처·메모 |
