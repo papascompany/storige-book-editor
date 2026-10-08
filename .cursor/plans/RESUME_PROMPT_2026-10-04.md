@@ -119,7 +119,7 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
 
 | 파트너 | 창구(시작 시 재확인) | cwd | 운영 상태(마지막 ACK) |
 |---|---|---|---|
-| bookmoa | `local_bc4b2915-897d-4a16-918f-87dfdedb279b` **[652b4b]**(표시명 10-05 「북모아 Printable 개발 계속」→「20261004 북모아 관리자 개발 시작」, 이름은 바뀔 수 있으니 ListAgents 의 ref 로 확인)(10-05 교대, cwd lsof 확증). 같은 이름의 오프라인 Remote Control 세션 [d6e18b] 과 혼동 금지 → 보낼 때 ref `[652b4b]` 를 붙인다. 옛 `local_bf71565d`「20260930 북모아 관리자 수정 시작」은 창구 아님 | `~/Developer/claude/bookmoa-mobile` | new.bookmoa.com R-212(Vercel `i1m2kzmz9`) 이후 10-05 R-214(마이페이지·관리자 주문 화면) 운영 배포 — Storige 연동 경로(/embed·합성·웹훅·owners) 변경 없음. 실 e2e 재개 **미정**(오너 보류) |
+| bookmoa | **창구 공백(10-07 UTC)**: 직전 창구 `local_c092a5a6-86e3-446f-96d8-c550feb8fd2e` 「20261005 북모아 관리자 개발 계속」 종료 통지(회신 불요). 새 bookmoa 세션이 시작하면 첫 행동으로 세션 이름을 한 줄 통지 → 받으면 이 칸 갱신. 그 전 통지는 새 세션이 원장·bookmoa `docs/SESSION-START-PROMPT-2026-10-08-next.md` 로 보충. 옛 `local_bc4b2915`[652b4b]·`local_bf71565d` 는 창구 아님 | `~/Developer/claude/bookmoa-mobile` | 운영 R-221 `ps123epx8`(설정 저장 CAS · Storige 연동 코드 무변경) · origin/main `860d3e6`(10-07). Wave 8 1단계·2a·N-API-3b(v1.15)·2b(v1.16) 원장 기록·ACK 완료. 동화책 207c458f 유지(전환 = e2e + 인쇄팀 확인 뒤), 미연결 13세트 연결 계획 없음. 실 e2e 일정 추후 |
 | printy | `local_86991aae-9845-4db5-a33f-4095c2183327` **[88e40b]**(표시명 「20261004 Printy CTO 개발 계속」→「20261004 Printy 오픈준비」)(10-05 03:2xZ 교대, cwd lsof 확증). 옛 `local_6494a1a2` 는 닫힘·무응답(인계 정본 printy `docs/SESSION-START-PROMPT-2026-10-05-next.md`) | `~/Developer/claude/printy` | 운영 printy `f7a574d`(printy 저장소) 이후 변경 없음(10-03). 실 e2e 재개 **미정**(오너 보류) |
 | 100p Books | `local_69303599-8e93-4355-9e02-20fbe03d6d8d` 「20260930 100p_books 서브에이전트 진행」 | `~/Developer/claude/100p_books` | 유형 1(upload·validate·download external). 편집 세션·합성 계획 없음 |
 | ShareSnap·북모아 메인(PHP)·MD2Books | 연락 채널 없음(오너 확인 필요) | — | — |
