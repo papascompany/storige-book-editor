@@ -85,7 +85,7 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
 | 플래그 | 운영 값 | 비고 |
 |---|---|---|
 | `JOB_LINK_STRICT` | **true(10-08 14:37:16Z, 오너 결정)** | Wave B — 관측 7일(Loki) 실 호출 0 확인 후 전환. 3사(bookmoa·printy·100p) 사전 안내·완료 통지. 집계는 Loki `[job-link] denied … caller=none` |
-| `JOB_FILE_SITE_STRICT` | false(기본) | **관측 연장(10-08 오너 결정)** — 켜려면 FREEZE 등재(403 FILE_SITE_MISMATCH, MODIFY-TARGET)·사전 통지·ACK·소급 확인 선행 |
+| `JOB_FILE_SITE_STRICT` | false(기본) | **관측 연장(10-08 오너 결정)** — 켜려면 FREEZE 등재(403 FILE_SITE_MISMATCH, MODIFY-TARGET)·사전 통지·ACK·소급 확인 선행. 100p 요청(10-09): 켜기 전 사전 안내 — 90MB 이하 multipart 파일·P4 이전 파일의 사이트 귀속을 100p 가 확인 |
 | `SESSION_JOB_OUTPUT_LOOKUP` | false(기본) | 오너 결정 대기(§5) — 연결 행·운영 EXPLAIN 선행 |
 | `EDITOR_CONTENT_PAGE_RULES` | true(compose `:-on`, 10-08 매핑 추가) | N-API-3b 킬스위치. 끌 때는 `.env` 에 off 후 api 재생성 + nginx 재시작 |
 | `WORKER_TRIMBOX_SIZE_CHECK` | true(compose `:-true`) | X1 TrimBox 판형 판정·합성 contentTrim. 끌 때는 `.env` 에 false 후 worker 재생성 |
@@ -122,7 +122,7 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
 |---|---|---|---|
 | bookmoa | `local_37592b91-e6d2-4adc-9cf3-2d0e9aba4034` **[060c4d]**(10-08 05:14Z 교대 통지, 회신 불요). 통지 본문의 이름은 「북모아 Printable 개발 계속」이지만 현재 표시명은 「20261007 북모아 개발 계속」 → 이름이 같은 오프라인 Remote Control [d6e18b] 과 혼동하지 않도록 보낼 때 ref `[060c4d]` 를 붙인다. 직전 `local_c092a5a6`[9b559d] 「20261005 북모아 관리자 개발 계속」(10-07 종료 통지)·`local_bc4b2915`[652b4b]·`local_bf71565d` 는 창구 아님 | `~/Developer/claude/bookmoa-mobile` | 운영 R-221 `ps123epx8`(설정 저장 CAS · Storige 연동 코드 무변경) · origin/main `860d3e6`(10-07) · 운영 DB 변경 없음(10-08 통지). Wave 8 1단계·2a·N-API-3b(v1.15)·2b(v1.16) 원장 기록·ACK 완료. 동화책 207c458f 유지(전환 = e2e + 인쇄팀 확인 뒤), 미연결 13세트 연결 계획 없음. e2e 최소 묶음 실행 시각 = bookmoa 오너 결정 대기(정해지면 통지) |
 | printy | `local_f788c035-1825-4aeb-8498-994f2029342b` **[f6f296]** 「20261005 Printy 오픈준비 개발 계속」(10-08 표시명 통지 — 같은 세션, 회신 불요. Wave 8 2b 배포 시각 10-07 14:53:59Z 기록 확인). 옛 `local_86991aae`[88e40b]·`local_6494a1a2` 는 창구 아님 | `~/Developer/claude/printy` | 운영 printy `f7a574d`(printy 저장소) 이후 변경 없음(10-03). 실 e2e 재개 **미정**(오너 보류) |
-| 100p Books | `local_69303599-8e93-4355-9e02-20fbe03d6d8d` 「20260930 100p_books 서브에이전트 진행」 | `~/Developer/claude/100p_books` | 유형 1(upload·validate·download external). 편집 세션·합성 계획 없음 |
+| 100p Books | **창구 교대 중(10-09 통지, 회신 불요)**: 옛 `local_69303599-8e93-4355-9e02-20fbe03d6d8d` 「20260930 100p_books 서브에이전트 진행」 종료 예정 → 새 세션이 이름을 직접 통지. 그 전 통지는 처리되지 않을 수 있어 급한 건은 새 세션 확인 뒤 재발송. 100p 는 받은 통지(Wave 2·4·5·6·8 1단계, JOB_LINK_STRICT 사전·완료)를 자기 STATUS §0-17 에 기록, 영향 모두 없음 | `~/Developer/claude/100p_books` | 유형 1(upload·validate·download external). 편집 세션·합성 계획 없음 |
 | ShareSnap·북모아 메인(PHP)·MD2Books | 연락 채널 없음(오너 확인 필요) | — | — |
 
 - 현재 Storige 세션: [0e5333] 「Storige 편집기·워커 개발」→ 표시명 「20261004 Storige 템플릿 변환관리 시작」(10-05 시작, 양사 ACK 03:1xZ). 직전 Storige 세션: `local_20f149cd-…` 「20260930 Storige 편집기·워커 개발」(10-04 종료, 목록에 idle 로 남아 있음 — 파트너가 옛 창구로 보내지 않도록 새 이름 통지 완료).
