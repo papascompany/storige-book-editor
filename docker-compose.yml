@@ -107,8 +107,8 @@ services:
       #   FILE_RETENTION_BATCH: 1~1000 의 정수(1회 처리 건수, 고아 정리와 공유). 1 미만이거나 숫자가 아니면 200,
       #     소수는 내림, 1000 을 넘으면 1000.
       #   FILE_PURGE_GRACE_HOURS: 1 이상의 숫자(soft-delete 뒤 영구 삭제까지 시간). 1 미만이거나 숫자가 아니면 48.
-      #   FILE_ORPHAN_GRACE_* · FILE_RETENTION_BATCH · FILE_PURGE_GRACE_HOURS 는 값을 바꿔 적용하면
-      #     api 기동 로그에 `[env]` warn 을 남긴다(키·허용 범위·적용값).
+      #   FILE_ORPHAN_GRACE_* · FILE_RETENTION_BATCH · FILE_PURGE_GRACE_HOURS 는 값이 허용 범위 밖이면
+      #     기본값·경계값으로 바꿔 쓰고 api 기동 로그에 `[env]` warn 을 남긴다(키·허용 범위·적용값).
       #   FILE_ORPHAN_DRY_RUN=0 처럼 실제 정리로 바꾸는 전환은 오너 결정 뒤 별도 절차(docs/DEPLOYMENT.md).
       #     절차: .env 값 변경 → docker compose up -d api(빌드 없음) → nginx 재시작 → [FLAGS] api 줄 확인.
       - FILE_ORPHAN_ENABLED=${FILE_ORPHAN_ENABLED:-true}
