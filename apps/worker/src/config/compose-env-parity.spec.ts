@@ -21,20 +21,21 @@ const ENTRY = /^ {6}- ([A-Z][A-Z0-9_]*)=(.*)$/;
 const DEFAULTED = /^\$\{([A-Z][A-Z0-9_]*):-(.*)\}$/;
 const BOOLEAN_LIKE = /^(true|false|on|off|0|1)$/i;
 
-function composeEnv(svc: 'api' | 'worker'): Map<string, string> {
-  const lines = COMPOSE.split('\n');
+function composeEnv(svc: 'api' | 'worker', text: string = COMPOSE): Map<string, string> {
+  const lines = text.split('\n');
   const start = lines.indexOf(`  ${svc}:`);
   if (start < 0) throw new Error(`compose service ${svc} 없음`);
   const out = new Map<string, string>();
   let inEnv = false;
   for (let i = start + 1; i < lines.length; i++) {
     const l = lines[i];
+    if (/^\s*(#|$)/.test(l)) continue; // 주석·빈 줄은 들여쓰기와 관계없이 건너뛴다
     if (/^\S/.test(l) || /^ {2}\S/.test(l)) break; // 다음 최상위 키·다음 서비스
     if (/^ {4}\S/.test(l)) {
       inEnv = l.trim() === 'environment:';
       continue;
     }
-    if (!inEnv || /^\s*(#|$)/.test(l)) continue;
+    if (!inEnv) continue;
     const m = ENTRY.exec(l);
     if (!m) throw new Error(`environment 형식 미지원 ${svc}:${i + 1} — 파서 갱신 필요`);
     if (out.has(m[1])) throw new Error(`environment 키 중복 ${svc}:${i + 1} ${m[1]}`);
@@ -52,6 +53,37 @@ function literalOf(value: string): string | undefined {
 
 /** 리터럴이 불리언형인데 플래그가 아닌 키(사유 필수). 현재 없음. */
 const NON_FLAG_ALLOWLIST: ReadonlyArray<{ key: string; reason: string }> = [];
+
+/** 리터럴이 불리언형인데 플래그 KEYS 에도 허용 목록에도 없는 키. */
+function unlistedBooleanKeys(env: ReadonlyMap<string, string>): string[] {
+  const keys = new Set<string>(WORKER_FEATURE_FLAG_KEYS);
+  const allow = new Set(NON_FLAG_ALLOWLIST.map((a) => a.key));
+  const unknown: string[] = [];
+  for (const [key, value] of env) {
+    const literal = literalOf(value);
+    if (literal === undefined || !BOOLEAN_LIKE.test(literal)) continue;
+    if (!keys.has(key) && !allow.has(key)) unknown.push(key);
+  }
+  return unknown;
+}
+
+/** 파서 픽스처 — environment 목록 사이에 들여쓰기가 다른 주석이 있어도 YAML 에서는 같은 목록이다. */
+const PARSER_FIXTURE = [
+  'services:',
+  '  worker:',
+  '    image: example',
+  '    environment:',
+  '      - NODE_ENV=production',
+  '    # 4칸 주석',
+  '      - NEW_TOGGLE=${NEW_TOGGLE:-false}',
+  '  # 2칸 주석',
+  '# 최상위 주석',
+  '      - OTHER_TOGGLE=${OTHER_TOGGLE:-on}',
+  '    volumes:',
+  '      - ./data:/data',
+  '  api:',
+  '    image: example',
+].join('\n');
 
 const API_ENV = composeEnv('api');
 const WORKER_ENV = composeEnv('worker');
@@ -118,18 +150,16 @@ describe('docker-compose worker environment ↔ worker 플래그 모듈 정합',
   );
 
   it('④ 리터럴이 불리언형인 compose 키는 플래그 KEYS 이거나 사유가 붙은 허용 목록에 있다', () => {
-    const keys = new Set<string>(WORKER_FEATURE_FLAG_KEYS);
-    const allow = new Set(NON_FLAG_ALLOWLIST.map((a) => a.key));
-    const unknown: string[] = [];
-    for (const [key, value] of WORKER_ENV) {
-      const literal = literalOf(value);
-      if (literal === undefined || !BOOLEAN_LIKE.test(literal)) continue;
-      if (!keys.has(key) && !allow.has(key)) unknown.push(key);
-    }
-    expect(unknown).toEqual([]);
+    expect(unlistedBooleanKeys(WORKER_ENV)).toEqual([]);
     for (const a of NON_FLAG_ALLOWLIST) {
       expect(a.reason.length).toBeGreaterThan(0);
       expect(BOOLEAN_LIKE.test(literalOf(WORKER_ENV.get(a.key) ?? '') ?? '')).toBe(true);
     }
+  });
+
+  it('⑤ 파서는 들여쓰기와 관계없이 주석 줄을 건너뛰고 그 뒤 environment 항목도 읽는다', () => {
+    const env = composeEnv('worker', PARSER_FIXTURE);
+    expect([...env.keys()]).toEqual(['NODE_ENV', 'NEW_TOGGLE', 'OTHER_TOGGLE']);
+    expect(unlistedBooleanKeys(env)).toEqual(['NEW_TOGGLE', 'OTHER_TOGGLE']);
   });
 });
