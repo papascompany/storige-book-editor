@@ -280,7 +280,7 @@ docker logs storige-worker 2>&1 | grep "\[FLAGS\]"
 - 확인 대상은 각 플래그의 유효값(`true`/`false`)뿐입니다.
 - api 스냅샷 줄의 `FILE_RETENTION_*`·`FILE_ORPHAN_*` 값은 **env 계층 값**입니다. 관리자 저장소 설정(보존정책)이 함께 적용되므로 이 값만으로 실제 동작 모드를 판단하지 마십시오.
 - 보존정책의 실제 모드(삭제 여부·dry-run)는 `[FLAGS] api retention-effective` 줄 또는 관리자 저장소 설정 화면으로 확인합니다. 이 줄은 기동 시점 값이며, 관리자 화면에서 저장하면 런타임에 바뀝니다.
-- api 줄의 `JOB_LINK_STRICT`·`JOB_FILE_SITE_STRICT`·`SESSION_JOB_OUTPUT_LOOKUP`·`EDITOR_CONTENT_PAGE_RULES` 는 줄 안의 위치가 아니라 키 이름으로 찾아 값을 확인합니다. 키 순서는 `apps/api/src/config/feature-flags.ts` 의 `API_FEATURE_FLAG_KEYS` 배열 순서이고, 키가 추가되면 줄 끝에 붙습니다. 코드 기본값은 앞의 세 키가 `false`, `EDITOR_CONTENT_PAGE_RULES` 가 `true` 입니다. 운영 값은 `.cursor/plans/` 의 최신 RESUME 「현재 라이브 상태」 절을 기준으로 합니다(아래 환경 변수 설정의 「잡 생성 확인 · 잡 산출물 세션 조회 플래그」·「파일 정리 · 스프레드 검증 키 compose 매핑」).
+- api 줄의 `JOB_LINK_STRICT`·`JOB_FILE_SITE_STRICT`·`SESSION_JOB_OUTPUT_LOOKUP`·`EDITOR_CONTENT_PAGE_RULES` 는 줄 안의 위치가 아니라 키 이름으로 찾아 값을 확인합니다. 키 순서는 `apps/api/src/config/feature-flags.ts` 의 `API_FEATURE_FLAG_KEYS` 배열 순서이고, 키가 추가되면 줄 끝에 붙습니다. 코드 기본값은 앞의 세 키가 `false`, `EDITOR_CONTENT_PAGE_RULES` 가 `true` 입니다. 운영 값은 이 문서에 적지 않고 운영 기록을 기준으로 합니다(키 설명은 아래 환경 변수 설정의 「잡 생성 확인 · 잡 산출물 세션 조회 플래그」·「파일 정리 · 스프레드 검증 키 compose 매핑」).
 - `FILE_ORPHAN_*`·`FILE_RETENTION_*`·`THUMBNAIL_CLEANUP_DRY_RUN`·`SPREAD_SNAPSHOT_HARD_FAIL` 은 `docker-compose.yml` 매핑으로 컨테이너에 전달되며, 기본값은 코드 기본값과 같습니다(2026-10-05, 아래 「파일 정리 · 스프레드 검증 키 compose 매핑」). `SPREAD_SNAPSHOT_HARD_FAIL` 은 api·worker 두 줄에 모두 있으며 두 값이 같아야 합니다.
 
 ### 5. 서비스 중지
@@ -399,6 +399,18 @@ GHOSTSCRIPT_PATH=/usr/bin/gs
 env | cut -d= -f1 | grep -E '^(FILE_ORPHAN_|FILE_RETENTION_|FILE_PURGE_GRACE_HOURS$|THUMBNAIL_CLEANUP_DRY_RUN$|SPREAD_SNAPSHOT_HARD_FAIL$|EDITOR_SPREAD_VALIDATION_MAPPING$)'
 ```
 
+**빌드 없이 다시 만들기 전 이미지 확인**
+
+`docker compose up -d --no-build`·`--no-deps` 는 그 서비스의 `latest` 이미지로 컨테이너를 다시 만든다. `docker compose build` 만 하고 올리지 않은 이미지가 있으면 `latest` 가 그 이미지를 가리키므로, 값 전환·비상 차단을 하면 그 이미지가 함께 올라간다. 아래 값 전환·비상 차단·플래그 전환 절차는 재생성 전에 이 확인을 한다. `DIFFERENT` 가 나오면 재생성하지 않고 멈춘 뒤, `latest` 를 실행 중 이미지로 되돌리고 다시 확인한다.
+
+```bash
+for s in api worker; do
+  [ "$(docker image inspect -f '{{.Id}}' storige-$s:latest)" = "$(docker inspect -f '{{.Image}}' storige-$s)" ] && echo "$s same" || echo "$s DIFFERENT"
+done
+# DIFFERENT 인 서비스만: latest 를 실행 중 컨테이너의 이미지로 되돌린다
+# docker tag "$(docker inspect -f '{{.Image}}' storige-<서비스>)" storige-<서비스>:latest
+```
+
 **값 전환 절차**
 
 - `SPREAD_SNAPSHOT_HARD_FAIL=true`·`FILE_ORPHAN_DRY_RUN=0` 처럼 파트너에게 보이는 결과를 바꾸거나 파일을 실제로 지우는 전환(유예·영구 삭제 시간을 줄이는 것 포함)은 오너 결정 뒤 별도 절차로 한다. 파트너 통지가 필요한지 먼저 판단한다.
@@ -411,6 +423,7 @@ cd ~/storige
 docker compose config --format json 2>/dev/null | jq -c '{api: (.services.api.environment | with_entries(select(.key | test("^(FILE_ORPHAN_|FILE_RETENTION_|FILE_PURGE_GRACE_HOURS$|THUMBNAIL_CLEANUP_DRY_RUN$|SPREAD_SNAPSHOT_HARD_FAIL$|EDITOR_SPREAD_VALIDATION_MAPPING$)")))), worker: (.services.worker.environment | with_entries(select(.key == "SPREAD_SNAPSHOT_HARD_FAIL")))}'
 
 # 예: SPREAD_SNAPSHOT_HARD_FAIL 전환(오너 결정 뒤) — worker·api 모두 재생성
+#   재생성 전에 위 「빌드 없이 다시 만들기 전 이미지 확인」 — api·worker 모두 same 이어야 한다
 docker compose up -d --no-build worker
 docker compose up -d --no-build api && docker compose restart nginx
 docker logs storige-worker 2>&1 | grep "\[FLAGS\]" | tail -1
@@ -424,6 +437,7 @@ docker logs storige-api 2>&1 | grep "\[FLAGS\]" | tail -2
 ```bash
 cd ~/storige
 # 1) .env 에 EDITOR_SPREAD_VALIDATION_MAPPING=off 를 넣는다(되돌릴 때는 줄을 지우거나 on)
+#    재생성 전에 위 「빌드 없이 다시 만들기 전 이미지 확인」 — api same 이어야 한다
 # 2) api 재생성 + nginx 재시작
 docker compose up -d --no-build api && docker compose restart nginx
 # 3) 값 확인 — off 가 나와야 한다
@@ -437,6 +451,7 @@ docker exec storige-api printenv EDITOR_SPREAD_VALIDATION_MAPPING
 ```bash
 cd ~/storige
 # 1) .env 에 EDITOR_CONTENT_PAGE_RULES=off 를 넣는다(되돌릴 때는 줄을 지운다)
+#    재생성 전에 위 「빌드 없이 다시 만들기 전 이미지 확인」 — api same 이어야 한다
 # 2) api 재생성(빌드 없음) + nginx 재시작
 docker compose up -d --no-build api && docker compose restart nginx
 # 3) 값 확인 — api 줄에 EDITOR_CONTENT_PAGE_RULES=false 가 나와야 한다
@@ -1346,14 +1361,14 @@ docker logs storige-api 2>&1 | grep "내지 쪽 규칙"
 
 ### 2026-10-08 운영 정비 (킬스위치 매핑 · 플래그 전환 절차 · 편집기 AI 패널 · CI 러너 고정)
 
-> `docker-compose.yml`·editor 빌드 변수·CI 설정을 바꾼 커밋 하나를 배포하고, 같은 창에서 api `.env` 값을 전환했다. api·worker 이미지는 다시 빌드하지 않았다. DB 변경은 없다. 어느 플래그를 어떤 값으로 바꿨는지와 현재 운영 값은 이 문서에 적지 않는다 — `.cursor/plans/` 의 최신 RESUME 「현재 라이브 상태」 절을 따른다.
+> `docker-compose.yml`·editor 빌드 변수·CI 설정을 바꾼 커밋 하나를 배포했다. api·worker 이미지는 다시 빌드하지 않았다. DB 변경은 없다. 플래그 운영 값은 이 문서에 적지 않는다(운영 기록을 따른다).
 
 **변경 내용**
 
 - compose — api `environment` 에 `EDITOR_CONTENT_PAGE_RULES=${EDITOR_CONTENT_PAGE_RULES:-on}` 매핑을 더했다. 이때부터 `.env` 로 끌 수 있다(위 「`EDITOR_CONTENT_PAGE_RULES` 비상 차단」). 기본값이 코드 기본값과 같아 `.env` 에 키가 없으면 동작은 그대로다.
 - editor — `apps/editor/.env.production` 에 `VITE_ENABLE_AI_PANEL=false` 를 두어 편집기 도구 막대에 AI 탭을 표시하지 않는다. 빌드 시점 변수라 값을 바꾸면 master push(Vercel 재빌드) 뒤에 반영된다.
 - CI — `.github/workflows/ci.yml`·`gitleaks.yml` 의 러너를 `ubuntu-latest` 대신 `ubuntu-24.04` 로 고정했다. `ubuntu-latest` 는 2026-10-19 부터 차례로 Ubuntu 26.04 로 바뀐다.
-- api 잡 생성 확인 플래그(위 「잡 생성 확인 · 잡 산출물 세션 조회 플래그」)의 값 전환을 아래 절차로 했다.
+- api 잡 생성 확인 플래그(위 「잡 생성 확인 · 잡 산출물 세션 조회 플래그」) 값을 바꿀 때의 절차를 아래에 정리했다.
 
 **api 플래그 전환 절차 (재빌드 없음)**
 
@@ -1361,9 +1376,10 @@ docker logs storige-api 2>&1 | grep "내지 쪽 규칙"
 
 ```bash
 cd ~/storige
-# 0) 되돌릴 기준점 — .env 백업과 직전 api 이미지 태그
+# 0) 되돌릴 기준점 — .env 백업과 지금 실행 중인 api 컨테이너의 이미지 태그(latest 가 아님)
 cp .env ".env.bak-pre-<이름>-$(date -u +%Y%m%dT%H%M%SZ)"
-docker tag storige-api:latest storige-api:rollback-pre-<이름>
+docker tag "$(docker inspect -f '{{.Image}}' storige-api)" storige-api:rollback-pre-<이름>
+#    재생성 전에 위 「빌드 없이 다시 만들기 전 이미지 확인」 — api same 이어야 한다
 # 1) .env 에서 해당 키의 줄을 바꾼다(값은 오너 결정)
 # 2) api 재생성(재빌드 없음) + nginx 재시작
 docker compose up -d --no-deps api && docker compose restart nginx
@@ -1371,8 +1387,8 @@ docker compose up -d --no-deps api && docker compose restart nginx
 docker logs storige-api 2>&1 | grep "\[FLAGS\]" | tail -2
 ```
 
-- 2026-10-08 에는 0) 뒤에 compose 매핑 커밋을 받으려고 `git pull origin master` 를 했고, 백업 파일은 `.env.bak-pre-waveb-<UTC 시각>`, 태그는 `storige-api:rollback-pre-wave-b` 였다.
-- 되돌리기: `.env` 에서 그 줄을 지우거나 백업 파일의 값으로 되돌린 뒤 2)·3) 을 다시 한다. compose 기본값이 `false` 라 줄을 지우면 기본 상태가 된다.
+- compose 매핑 같은 저장소 변경을 함께 받을 때는 0) 뒤에 `git pull origin master` 를 한다.
+- 되돌리기: `.env` 를 백업 파일의 값으로 되돌리고, 이미지 확인 뒤 2)·3) 을 다시 한다.
 - api 를 다시 만들면 `docker logs` 가 비워진다. 재생성 전 로그는 Loki 로 본다(위 「VPS 셸에서 Loki API 로 건수 세기」).
 
 ---
