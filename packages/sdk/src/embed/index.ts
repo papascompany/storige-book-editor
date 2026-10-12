@@ -58,6 +58,7 @@ export type {
   HostCommand,
   HostCommandEnvelope,
   HostCommandResponseKind,
+  TemplateSetMismatch,
 } from './protocol';
 
 // ── 저수준 수신 게이트(직접 iframe 을 관리하는 호스트용) ─────────────────

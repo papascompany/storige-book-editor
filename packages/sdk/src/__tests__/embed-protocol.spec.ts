@@ -5,7 +5,7 @@
  * 검증 가능한 순수 계층만 다룬다.
  */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, expectTypeOf, it } from 'vitest';
 import {
   buildEmbedUrl,
   decideCompleteAction,
@@ -22,8 +22,11 @@ import {
   parseEditorMessage,
   readCompletePayload,
   SKIP_SOURCE_CHECK,
+  type EditorCompletePayload,
   type EditorMessageLike,
+  type EditorReadyPayload,
   type ParseEditorMessageOptions,
+  type TemplateSetMismatch,
 } from '../embed';
 import { StorigeUsageError } from '../errors';
 
@@ -417,6 +420,25 @@ describe('readCompletePayload — templateSetId·spineWidthMm·templateSetMismat
     expect(done?.templateSetId).toBe('ts-1');
     expect(done?.spineWidthMm).toBe(0);
     expect(JSON.stringify(done)).not.toContain('super-secret-guest-token');
+  });
+
+  it('TemplateSetMismatch 는 ./embed 에서 이름으로 가져오며 ready·complete payload 의 타입과 같다', () => {
+    expectTypeOf<TemplateSetMismatch>().toEqualTypeOf<
+      NonNullable<EditorReadyPayload['templateSetMismatch']>
+    >();
+    expectTypeOf<TemplateSetMismatch>().toEqualTypeOf<
+      NonNullable<EditorCompletePayload['templateSetMismatch']>
+    >();
+
+    const mismatch: TemplateSetMismatch = {
+      requested: 'ts-url',
+      session: 'ts-session',
+      resolution: 'requested',
+      reason: 'SESSION_SET_UNAVAILABLE',
+    };
+    const done = readCompletePayload({ ...base, templateSetMismatch: mismatch });
+    expectTypeOf(done?.templateSetMismatch).toEqualTypeOf<TemplateSetMismatch | undefined>();
+    expect(done?.templateSetMismatch).toEqual(mismatch);
   });
 });
 
