@@ -104,10 +104,11 @@ services:
       #     1 미만이거나 숫자가 아니면 각각 24 / 30.
       #   FILE_RETENTION_ENABLED: 정확히 `false` 일 때만 OFF. FILE_RETENTION_DRY_RUN: 정확히 `1` 일 때만 dry-run
       #     (`true` 등 다른 값은 실제 정리). 둘 다 관리자 저장소 설정 행 값이 있으면 그 값이 우선.
-      #   FILE_RETENTION_BATCH: 양의 정수로 넣는다(1회 처리 건수, 고아 정리와 공유). 0·숫자가 아닌 값만 200 으로
-      #     바뀌고, 그 밖의 값(음수·소수 포함)은 그대로 쓰인다.
-      #   FILE_PURGE_GRACE_HOURS: 0 보다 큰 숫자(soft-delete 뒤 영구 삭제까지 시간, 1 이상 권장).
-      #     0 이하이거나 숫자가 아니면 48. 1 미만 값도 그대로 적용된다.
+      #   FILE_RETENTION_BATCH: 1~1000 의 정수(1회 처리 건수, 고아 정리와 공유). 1 미만이거나 숫자가 아니면 200,
+      #     소수는 내림, 1000 을 넘으면 1000.
+      #   FILE_PURGE_GRACE_HOURS: 1 이상의 숫자(soft-delete 뒤 영구 삭제까지 시간). 1 미만이거나 숫자가 아니면 48.
+      #   FILE_ORPHAN_GRACE_* · FILE_RETENTION_BATCH · FILE_PURGE_GRACE_HOURS 는 값을 바꿔 적용하면
+      #     api 기동 로그에 `[env]` warn 을 남긴다(키·허용 범위·적용값).
       #   FILE_ORPHAN_DRY_RUN=0 처럼 실제 정리로 바꾸는 전환은 오너 결정 뒤 별도 절차(docs/DEPLOYMENT.md).
       #     절차: .env 값 변경 → docker compose up -d api(빌드 없음) → nginx 재시작 → [FLAGS] api 줄 확인.
       - FILE_ORPHAN_ENABLED=${FILE_ORPHAN_ENABLED:-true}

@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { FilesService } from './files.service';
 import { StorageConfigService } from '../settings/storage-config.service';
 import { FileEntity } from './entities/file.entity';
+import { resolveFileEnvNumber } from './file-cron-env';
 
 /**
  * FileOrphanService — P1 고아 파일 누적방어 cron (2026-06-19).
@@ -35,15 +36,17 @@ export class FileOrphanService {
     private readonly config: ConfigService,
     private readonly storageConfig: StorageConfigService,
   ) {
-    this.batchLimit =
-      Number(this.config.get<string>('FILE_RETENTION_BATCH', '200')) || 200;
-    // grace 하한 강제(즉시강등 사고 방지): pending/failed 최소 24h, ready 최소 1d.
-    const ph = Number(this.config.get<string>('FILE_ORPHAN_GRACE_PENDING_HOURS', '24'));
-    this.pendingGraceHours = Number.isFinite(ph) && ph >= 1 ? ph : 24;
+    // 배치는 FILE_RETENTION_BATCH 공유(1~1000 정수, 범위 밖이면 200 또는 1000 — file-cron-env.ts).
+    this.batchLimit = resolveFileEnvNumber(this.config, 'FILE_RETENTION_BATCH', this.logger);
+    // grace 하한 강제(즉시강등 사고 방지): pending/failed 1h 미만이면 기본 24h, ready 1d 미만이면 기본 30d.
+    this.pendingGraceHours = resolveFileEnvNumber(
+      this.config,
+      'FILE_ORPHAN_GRACE_PENDING_HOURS',
+      this.logger,
+    );
     // ready 고아 grace 기본 30일(보수적) — 외부 통합의 '업로드→주문' 지연이 길 수 있어
     // 정상 파일이 주문 연결 전 강등되지 않게 넉넉히. env 로 하향 가능. 하한 1일.
-    const rd = Number(this.config.get<string>('FILE_ORPHAN_GRACE_READY_DAYS', '30'));
-    this.readyGraceDays = Number.isFinite(rd) && rd >= 1 ? rd : 30;
+    this.readyGraceDays = resolveFileEnvNumber(this.config, 'FILE_ORPHAN_GRACE_READY_DAYS', this.logger);
     this.envEnabled = this.config.get<string>('FILE_ORPHAN_ENABLED', 'true') !== 'false';
     // ⚠️ 첫 배포 안전: env 미설정이면 dryRun ON 으로 기본. 검증 후 명시적으로 '0' 설정.
     this.envDryRun = this.config.get<string>('FILE_ORPHAN_DRY_RUN', '1') !== '0';

@@ -384,14 +384,15 @@ GHOSTSCRIPT_PATH=/usr/bin/gs
 | `FILE_ORPHAN_GRACE_READY_DAYS` | api | `${FILE_ORPHAN_GRACE_READY_DAYS:-30}` | ready 고아 후보 유예(일). 1 이상의 숫자. 1 미만이거나 숫자가 아니면 30 |
 | `FILE_RETENTION_ENABLED` | api | `${FILE_RETENTION_ENABLED:-true}` | 정확히 `false` 일 때만 OFF. 관리자 저장소 설정 행에 값이 있으면 그 값이 우선 |
 | `FILE_RETENTION_DRY_RUN` | api | `${FILE_RETENTION_DRY_RUN:-0}` | 정확히 `1` 일 때만 dry-run(`true` 등 다른 값은 실제 정리). 관리자 저장소 설정 행에 값이 있으면 그 값이 우선 |
-| `FILE_RETENTION_BATCH` | api | `${FILE_RETENTION_BATCH:-200}` | 1회 처리 건수(보존정책·고아 정리 공유). 양의 정수로 넣는다. `0`·숫자가 아닌 값만 200 으로 바뀌고, 그 밖의 값(음수·소수 포함)은 그대로 쓰인다 |
-| `FILE_PURGE_GRACE_HOURS` | api | `${FILE_PURGE_GRACE_HOURS:-48}` | soft-delete 뒤 영구 삭제까지 시간. 0 보다 큰 숫자(1 이상 권장). 0 이하이거나 숫자가 아니면 48, 1 미만 값도 그대로 적용된다 |
+| `FILE_RETENTION_BATCH` | api | `${FILE_RETENTION_BATCH:-200}` | 1회 처리 건수(보존정책·고아 정리 공유). 1~1000 의 정수. 1 미만이거나 숫자가 아니면 200, 소수는 내림, 1000 을 넘으면 1000 |
+| `FILE_PURGE_GRACE_HOURS` | api | `${FILE_PURGE_GRACE_HOURS:-48}` | soft-delete 뒤 영구 삭제까지 시간. 1 이상의 숫자. 1 미만이거나 숫자가 아니면 48 |
 | `THUMBNAIL_CLEANUP_DRY_RUN` | api | `${THUMBNAIL_CLEANUP_DRY_RUN:-0}` | 정확히 `1` 일 때만 dry-run, 그 밖의 값은 실제 정리 |
 | `SPREAD_SNAPSHOT_HARD_FAIL` | api·worker | `${SPREAD_SNAPSHOT_HARD_FAIL:-false}` | 정확히 `true`(대소문자 구분)일 때만 HARD, 그 밖의 값은 SOFT(경고만). HARD 이면 api 는 스냅샷 누락·불일치 시 편집 완료를 거부하고, worker 는 compose-mixed 표지 크기 불일치 시 합성 잡을 `FAILED` 로 끝낸다 |
 | `EDITOR_SPREAD_VALIDATION_MAPPING` | api | `${EDITOR_SPREAD_VALIDATION_MAPPING:-on}` | 정확히 `off` 일 때만 해제(검증 잡은 주문 옵션 `orderOptions` 만 사용). 코드는 `off` 가 아닌 값을 모두 연결로 본다 — `on` 은 printenv 로 읽기 쉽게 하려는 표기다 |
 | `EDITOR_CONTENT_PAGE_RULES` | api | `${EDITOR_CONTENT_PAGE_RULES:-on}` | 앞뒤 공백·대소문자를 무시하고 `off` 일 때만 해제(편집 완료 내지 검증 잡에 편집기 쪽 단위 `pageMultiple`·중철 쪽수 상한을 싣지 않고 주문 옵션의 종전 쪽수 규칙으로 검증). 그 밖의 값·미설정은 싣는다. 매핑은 2026-10-08 부터(아래 「`EDITOR_CONTENT_PAGE_RULES` 비상 차단」) |
 
 - 확인 위치: `FILE_ORPHAN_ENABLED`·`FILE_ORPHAN_DRY_RUN`·`FILE_RETENTION_ENABLED`·`FILE_RETENTION_DRY_RUN`·`THUMBNAIL_CLEANUP_DRY_RUN`·`SPREAD_SNAPSHOT_HARD_FAIL`·`EDITOR_CONTENT_PAGE_RULES` 는 `[FLAGS]` 줄(위 「배포 후 점검」)로, 유예·건수·영구 삭제 시간과 `EDITOR_SPREAD_VALIDATION_MAPPING` 은 `[FLAGS]` 줄에 없으므로 `docker exec storige-api printenv <키>` 로 확인한다.
+- 유예·건수·영구 삭제 시간 4개는 값이 허용 범위 밖이면 기본값이나 경계값으로 바꿔 쓰고, api 기동 로그에 `[env]` warn 을 남긴다(키·허용 범위·적용값만). `FILE_RETENTION_BATCH` 는 보존정책과 고아 정리가 각각 읽으므로 2줄이 남는다. 평소에는 `docker logs storige-api 2>&1 | grep "\[env\]"` 결과가 없어야 한다.
 - `LOG_LEVEL` 은 compose 에 매핑하지 않는다(아래 「모니터링 스택 환경변수」).
 - docker compose 는 셸에 export 된 변수를 `.env` 보다 먼저 쓴다. 값을 바꾸기 전에 배포 셸에 같은 이름이 export 돼 있지 않은지 이름만 확인한다(아래 명령의 출력이 없어야 한다).
 

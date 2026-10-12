@@ -3,6 +3,7 @@ import { Cron } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
 import { FilesService } from './files.service';
 import { StorageConfigService } from '../settings/storage-config.service';
+import { resolveFileEnvNumber } from './file-cron-env';
 
 /**
  * FileRetentionService — 보존정책 2단계 cron (2026-06-19, 데이터손실 안전 재설계).
@@ -30,10 +31,9 @@ export class FileRetentionService {
     private readonly config: ConfigService,
     private readonly storageConfig: StorageConfigService,
   ) {
-    this.batchLimit = Number(this.config.get<string>('FILE_RETENTION_BATCH', '200')) || 200;
-    // 복구창(시간). 기본 48h. 0 이하면 48 로 강제(즉시 purge 사고 방지).
-    const g = Number(this.config.get<string>('FILE_PURGE_GRACE_HOURS', '48'));
-    this.graceHours = Number.isFinite(g) && g > 0 ? g : 48;
+    // 배치 1~1000 정수, 복구창(시간) 1 이상 — 범위 밖이면 기본값(200 / 48) 또는 경계값(file-cron-env.ts).
+    this.batchLimit = resolveFileEnvNumber(this.config, 'FILE_RETENTION_BATCH', this.logger);
+    this.graceHours = resolveFileEnvNumber(this.config, 'FILE_PURGE_GRACE_HOURS', this.logger);
   }
 
   /**
