@@ -16,8 +16,8 @@ const TRIMBOX_SIZE_CHECK_OFF_VALUES: ReadonlySet<string> = new Set([
  * - 하나의 플래그가 판정(pdf-validator)과 정규화(합성·변환 입력)를 **함께** 게이트한다 —
  *   판정만/정규화만 켜진 반쪽 상태를 만들지 않기 위함(원자적 롤백).
  * - OFF 이면 판정·정규화 모두 종전 동작(바이트 동일).
- * - 기동 스냅샷(config/feature-flags.ts) 노출은 아직 미통합이다 — 메인/OPS 통합 때 이 함수로
- *   실효값을 스냅샷 키에 추가한다(X1 레인은 feature-flags.ts 를 수정하지 않음).
+ * - 기동 스냅샷(config/feature-flags.ts)의 WORKER_FEATURE_FLAG_KEYS 에 포함돼 있다 — [FLAGS] worker 줄의
+ *   WORKER_TRIMBOX_SIZE_CHECK 는 VALIDATION_CONFIG.TRIMBOX_SIZE_CHECK(= 이 함수의 결과)다.
  * ⚠️ docker-compose worker 매핑은 `${WORKER_TRIMBOX_SIZE_CHECK:-true}` 여야 한다
  *    (`:-false` 로 복사하면 조용히 OFF, 매핑을 빼면 .env 로 끌 수 없음).
  */
@@ -70,14 +70,15 @@ export const VALIDATION_CONFIG = {
   // C+ 게이팅: autoFixable 정직화 킬스위치
   /**
    * true 면 autoFixable 을 실행기가 배선된 fixMethod(WIRED_FIX_METHODS)에만 부여한다.
-   * **기본 OFF** — 기본 상태에서 프로덕션 행동 변화 0 (레거시 autoFixable 그대로).
+   * 코드 기본 OFF(레거시 autoFixable 그대로). 운영 .env 는 2026-07-21 부터 ON.
    * ⚠️ ON 전환 선결 게이트(소비처가 FIXABLE→FAILED flip 에 안전해야 함):
    *   ① [해소 2026-07-11] editor ContentPdfAttachModal — A4 하드코드 → templateSet 판형
    *      주입(trimSize prop) + 폴링 result 이중중첩 파싱 수정
    *   ② [해소 2026-07-11] API 세션 검증 경로 — G2a size 폴백(templateSet 판형) +
    *      G2b 세션 한정 FIXABLE 동등 처리(isFixableEquivalentFailure, VALIDATE 잡 게이트)
    *      → 세션 상태 전이·웹훅 이벤트는 게이팅 ON/OFF 무관 보존
-   *   ③ [잔여] bookmoa 사전 고지 회신 (.cursor/plans/NOTICE_bookmoa_autofixable_gating_2026-07-11.md)
+   *   ③ [해소 2026-07-14] bookmoa R-19 종결 → 2026-07-21 운영 ON
+   *      (.cursor/plans/RESUME_PROMPT_2026-07-21.md:13-15, 고지: .cursor/plans/NOTICE_bookmoa_autofixable_gating_2026-07-11.md)
    */
   WIRED_FIXABLE_GATING:
     String(process.env.WORKER_WIRED_FIXABLE_GATING || '').toLowerCase() === 'true',

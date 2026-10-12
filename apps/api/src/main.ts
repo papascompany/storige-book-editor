@@ -25,10 +25,13 @@ import { AppModule } from './app.module';
 import { PayloadTooLargeResponseDto } from './common/dto/error-response.dto';
 import { SentryExceptionFilter } from './sentry/sentry.filter';
 import {
+  ApiFeatureFlagSnapshot,
   buildApiFeatureFlagSnapshot,
+  checkFlagExpectation,
   collectApiFeatureFlagInputs,
   formatEffectiveRetentionLine,
   formatFeatureFlagSnapshot,
+  formatFlagExpectationLine,
 } from './config/feature-flags';
 import { FileOrphanService } from './files/file-orphan.service';
 import { QueueMonitorService } from './health/queue-monitor.service';
@@ -92,8 +95,9 @@ async function bootstrap() {
   // 런타임에 합성되고, FILE_RETENTION_* 는 관리자 저장소 설정 행 값이 있으면 그 값이 우선한다.
   // 보존정책 실효값은 아래 retention-effective 줄(관리자 저장소 설정 우선)로 따로 남긴다.
   // 세 번째 인자는 pino context — 문자열이 msg 필드로 들어가도록 명시한다.
+  let flags: ApiFeatureFlagSnapshot | undefined;
   try {
-    const flags = buildApiFeatureFlagSnapshot(
+    flags = buildApiFeatureFlagSnapshot(
       collectApiFeatureFlagInputs(
         (key, defaultValue) =>
           defaultValue === undefined
@@ -108,6 +112,23 @@ async function bootstrap() {
     pinoLogger.log({ featureFlags: flags }, formatFeatureFlagSnapshot('api', flags), 'FeatureFlags');
   } catch (e) {
     pinoLogger.warn(`[FLAGS] api 스냅샷 실패: ${(e as Error).message}`);
+  }
+  // 기대값 프로필(FLAGS_EXPECTED) 대조 — production 에서만, [FLAGS-CHECK] 한 줄. 부팅 미차단.
+  if (flags) {
+    try {
+      const check = checkFlagExpectation(
+        flags,
+        configService.get<string>('FLAGS_EXPECTED'),
+        configService.get('NODE_ENV') === 'production',
+      );
+      const line = formatFlagExpectationLine('api', check);
+      if (line !== null) {
+        if (check.status === 'ok') pinoLogger.log(line, 'FeatureFlags');
+        else pinoLogger.warn(line, 'FeatureFlags');
+      }
+    } catch {
+      pinoLogger.warn('[FLAGS-CHECK] api 검사 실패', 'FeatureFlags');
+    }
   }
   try {
     const { retention } = await app.get(StorageConfigService).getEffectiveConfig();

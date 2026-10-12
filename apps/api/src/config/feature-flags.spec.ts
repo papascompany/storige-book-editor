@@ -12,10 +12,13 @@ import {
   API_FEATURE_FLAG_KEYS,
   ApiConfigGetter,
   ApiFeatureFlagInputs,
+  ApiFeatureFlagSnapshot,
   buildApiFeatureFlagSnapshot,
+  checkFlagExpectation,
   collectApiFeatureFlagInputs,
   formatEffectiveRetentionLine,
   formatFeatureFlagSnapshot,
+  formatFlagExpectationLine,
   isEditorContentPageRulesOn,
   isEditorContentPageRulesOnRaw,
   isEditorSpreadValidationMappingOn,
@@ -586,5 +589,94 @@ describe('api feature-flags', () => {
         FILE_ORPHAN_DRY_RUN: true,
       });
     });
+  });
+});
+
+describe('api 기대값 프로필 대조 — [FLAGS-CHECK]', () => {
+  const SNAP: ApiFeatureFlagSnapshot = buildApiFeatureFlagSnapshot({ ...BASE_INPUTS, cutoutRaw: 'true' });
+  /** [FLAGS] api 줄의 토큰 부분 그대로 */
+  const PROFILE = formatFeatureFlagSnapshot('api', SNAP).replace(/^\[FLAGS\] api /, '');
+  const lineOf = (profile: unknown, production = true): string | null =>
+    formatFlagExpectationLine('api', checkFlagExpectation(SNAP, profile, production));
+
+  it('production 이 아니면 검사하지 않는다(줄 없음)', () => {
+    expect(checkFlagExpectation(SNAP, undefined, false)).toEqual({ status: 'skipped' });
+    expect(lineOf('CUTOUT_ENABLED=false', false)).toBeNull();
+  });
+
+  it.each<[unknown]>([[undefined], [''], ['   '], [42]])('production 에서 프로필 %j → missing', (profile) => {
+    expect(lineOf(profile)).toBe('[FLAGS-CHECK] api missing');
+  });
+
+  it('[FLAGS] 줄 토큰과 같은 프로필 → ok n=키 수', () => {
+    expect(lineOf(PROFILE)).toBe(`[FLAGS-CHECK] api ok n=${API_FEATURE_FLAG_KEYS.length}`);
+    expect(API_FEATURE_FLAG_KEYS.length).toBe(13);
+  });
+
+  it('쉼표·여러 공백·줄바꿈 구분도 같다', () => {
+    const tokens = PROFILE.split(' ');
+    expect(lineOf(tokens.join(','))).toMatch(/ ok n=13$/);
+    expect(lineOf(`  ${tokens.join(' ,\n  ')}  `)).toMatch(/ ok n=13$/);
+  });
+
+  it('값이 다른 키는 mismatch 에 유효값·기대값으로 나온다(KEYS 순서)', () => {
+    const profile = PROFILE.replace('CUTOUT_ENABLED=true', 'CUTOUT_ENABLED=false').replace(
+      'JOB_LINK_STRICT=false',
+      'JOB_LINK_STRICT=true',
+    );
+    const r = checkFlagExpectation(SNAP, profile, true);
+    expect(r).toEqual({
+      status: 'problem',
+      invalidCount: 0,
+      invalidNames: [],
+      mismatches: [
+        { key: 'CUTOUT_ENABLED', actual: true, expected: false },
+        { key: 'JOB_LINK_STRICT', actual: false, expected: true },
+      ],
+    });
+    expect(formatFlagExpectationLine('api', r)).toBe(
+      '[FLAGS-CHECK] api mismatch CUTOUT_ENABLED=true(expected=false) JOB_LINK_STRICT=false(expected=true)',
+    );
+  });
+
+  it('프로필에 없는 키는 unlisted 로 나온다', () => {
+    const profile = PROFILE.split(' ')
+      .filter((t) => !t.startsWith('EDITOR_SPREAD_VALIDATION_MAPPING='))
+      .join(' ');
+    expect(lineOf(profile)).toBe('[FLAGS-CHECK] api mismatch EDITOR_SPREAD_VALIDATION_MAPPING=true(unlisted)');
+  });
+
+  it('KEYS 밖 키·형식 오류·중복은 invalid — 개수와 키 형식 이름만, 토큰 원문은 남기지 않는다', () => {
+    const profile = [
+      PROFILE,
+      'UNKNOWN_FLAG=true',
+      'CUTOUT_ENABLED=true',
+      'sk-sentinel-value',
+      'lower_case=true',
+      '=true',
+      'QUEUE_MONITOR_ENABLED=sentinel',
+    ].join(' ');
+    const r = checkFlagExpectation(SNAP, profile, true);
+    expect(r).toMatchObject({ status: 'problem', invalidCount: 6, mismatches: [] });
+    const line = formatFlagExpectationLine('api', r);
+    expect(line).toBe('[FLAGS-CHECK] api invalid n=6 names=UNKNOWN_FLAG,CUTOUT_ENABLED,QUEUE_MONITOR_ENABLED');
+    expect(line).not.toContain('sentinel');
+    expect(line).not.toContain('lower_case');
+  });
+
+  it('invalid 와 mismatch 가 함께 있으면 한 줄에 둘 다 나온다', () => {
+    const profile = PROFILE.replace('CUTOUT_ENABLED=true', 'CUTOUT_ENABLED=TRUE');
+    expect(lineOf(profile)).toBe(
+      '[FLAGS-CHECK] api invalid n=1 names=CUTOUT_ENABLED mismatch CUTOUT_ENABLED=true(unlisted)',
+    );
+  });
+
+  it('[FLAGS-CHECK] 줄은 [FLAGS] 정규식에 걸리지 않는다(기존 [FLAGS] 줄 확인 방식 불변)', () => {
+    const lines = [lineOf(PROFILE), lineOf(''), lineOf('X=1'), lineOf(PROFILE.replace('=true', '=false'))];
+    for (const line of lines) {
+      expect(line).toMatch(/^\[FLAGS-CHECK\] api (ok|missing|invalid|mismatch)( |$)/);
+      expect(/\[FLAGS\]/.test(line ?? '')).toBe(false);
+      expect(line).not.toContain('\n');
+    }
   });
 });

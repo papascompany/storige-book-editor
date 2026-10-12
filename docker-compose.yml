@@ -135,6 +135,11 @@ services:
       #   `off` 일 때만 해제한다(그 밖의 값·미설정은 싣는다).
       #   롤백 = .env 에 EDITOR_CONTENT_PAGE_RULES=off → api 재생성 → nginx 재시작. [FLAGS] 줄로 확인한다.
       - EDITOR_CONTENT_PAGE_RULES=${EDITOR_CONTENT_PAGE_RULES:-on}
+      # 기동 시 플래그 기대값 대조(api·worker 공통 형식, production 에서만). [FLAGS] api 줄과 같은
+      #   `KEY=true|false` 토큰을 공백·쉼표로 나열한 프로필이다. .env 에서는 FLAGS_EXPECTED_API='…' 처럼
+      #   작은따옴표로 감싼다. 결과는 기동 로그 `[FLAGS-CHECK] api ok|mismatch|missing|invalid` 한 줄(부팅은 막지 않음).
+      #   플래그 값을 바꿀 때 이 프로필도 같이 바꾼다. 비우면(기본) `missing` 이 남는다.
+      - FLAGS_EXPECTED=${FLAGS_EXPECTED_API:-}
     volumes:
       - ./storage:/app/storage
     depends_on:
@@ -256,6 +261,10 @@ services:
       #   `true` 전환은 오너 결정 뒤 별도 절차(docs/DEPLOYMENT.md).
       #   ★ api 에도 같은 키가 있다 — 한쪽만 재생성하면 반쪽 HARD 가 된다. [FLAGS] api·worker 두 줄 확인.
       - SPREAD_SNAPSHOT_HARD_FAIL=${SPREAD_SNAPSHOT_HARD_FAIL:-false}
+      # 기동 시 플래그 기대값 대조(api 와 같은 형식, production 에서만). [FLAGS] worker 줄의 토큰을 나열한
+      #   프로필 — .env 에서는 FLAGS_EXPECTED_WORKER='…' 처럼 작은따옴표로 감싼다.
+      #   결과는 `[FLAGS-CHECK] worker …` 한 줄. 플래그 값을 바꿀 때 이 프로필도 같이 바꾼다.
+      - FLAGS_EXPECTED=${FLAGS_EXPECTED_WORKER:-}
       # Sentry (DSN 미설정 시 silent 동작)
       - SENTRY_DSN=${SENTRY_DSN_WORKER:-}
       - SENTRY_ENVIRONMENT=${SENTRY_ENVIRONMENT:-production}

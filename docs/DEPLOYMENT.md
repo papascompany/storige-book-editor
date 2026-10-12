@@ -283,6 +283,28 @@ docker logs storige-worker 2>&1 | grep "\[FLAGS\]"
 - api 줄의 `JOB_LINK_STRICT`·`JOB_FILE_SITE_STRICT`·`SESSION_JOB_OUTPUT_LOOKUP`·`EDITOR_CONTENT_PAGE_RULES`·`EDITOR_SPREAD_VALIDATION_MAPPING` 은 줄 안의 위치가 아니라 키 이름으로 찾아 값을 확인합니다. 키 순서는 `apps/api/src/config/feature-flags.ts` 의 `API_FEATURE_FLAG_KEYS` 배열 순서이고, 키가 추가되면 줄 끝에 붙습니다. 코드 기본값은 앞의 세 키가 `false`, 뒤의 두 키가 `true` 입니다. 운영 값은 이 문서에 적지 않고 운영 기록을 기준으로 합니다(키 설명은 아래 환경 변수 설정의 「잡 생성 확인 · 잡 산출물 세션 조회 플래그」·「파일 정리 · 스프레드 검증 키 compose 매핑」).
 - `FILE_ORPHAN_*`·`FILE_RETENTION_*`·`THUMBNAIL_CLEANUP_DRY_RUN`·`SPREAD_SNAPSHOT_HARD_FAIL` 은 `docker-compose.yml` 매핑으로 컨테이너에 전달되며, 기본값은 코드 기본값과 같습니다(2026-10-05, 아래 「파일 정리 · 스프레드 검증 키 compose 매핑」). `SPREAD_SNAPSHOT_HARD_FAIL` 은 api·worker 두 줄에 모두 있으며 두 값이 같아야 합니다.
 
+**기대값 프로필 대조 — `[FLAGS-CHECK]`**
+
+production 에서 api·worker 는 `[FLAGS]` 줄을 남긴 뒤, 유효값을 기대값 프로필과 대조한 결과를 `[FLAGS-CHECK]` 한 줄로 남깁니다. 프로필은 `.env` 의 `FLAGS_EXPECTED_API`·`FLAGS_EXPECTED_WORKER` 이고, `docker-compose.yml` 이 각 컨테이너의 `FLAGS_EXPECTED` 로 넘깁니다. 값은 `[FLAGS]` 줄의 토큰(`KEY=true|false`)을 공백이나 쉼표로 나열한 것이며, `.env` 에서는 작은따옴표로 감쌉니다. 운영 프로필 값은 이 문서에 적지 않습니다.
+
+```bash
+docker logs storige-api 2>&1 | grep "\[FLAGS-CHECK\]" | tail -1      # [FLAGS-CHECK] api ok n=<키 수>
+docker logs storige-worker 2>&1 | grep "\[FLAGS-CHECK\]" | tail -1   # [FLAGS-CHECK] worker ok n=<키 수>
+```
+
+| 줄 | 뜻 | 할 일 |
+|---|---|---|
+| `ok n=<키 수>` | 모든 플래그 유효값이 프로필과 같다 | 없음 |
+| `mismatch KEY=<유효값>(expected=<기대값>)` | 그 키의 유효값이 프로필과 다르다 | `.env` 의 플래그 줄이 빠지거나 바뀌었는지 백업과 대조한다. 의도한 전환이면 프로필을 고친다 |
+| `mismatch KEY=<유효값>(unlisted)` | 프로필에 그 키가 없다(새 플래그 키 등) | 프로필에 키를 더한다 |
+| `missing` | 프로필이 비어 있다 | `.env` 에 프로필 줄을 넣는다 |
+| `invalid n=<개수>` (` names=<키>` 가 붙을 수 있음) | 플래그 키가 아닌 이름·형식 오류·중복 토큰이 있다. 토큰 원문은 남기지 않고, 키 형식에 맞는 이름만 남긴다 | 프로필 형식을 고친다 |
+
+- 한 줄에 `invalid …` 와 `mismatch …` 가 함께 나올 수 있다.
+- 대조는 로그만 남기고 부팅·처리 동작을 바꾸지 않는다. 프로필만 고칠 때는 해당 서비스를 빌드 없이 다시 만든다(api 는 nginx 재시작). production 이 아니면(`NODE_ENV` 가 `production` 이 아님) 줄이 없다.
+- `[FLAGS-CHECK]` 는 `\[FLAGS\]` 에 걸리지 않으므로 위 `grep "\[FLAGS\]"` 결과는 그대로다.
+- 재생성 전 구간까지 셀 때는 Loki 를 쓴다(아래 「VPS 셸에서 Loki API 로 건수 세기」의 `lc`): `lc 'sum(count_over_time({service=~"api|worker"} |= "[FLAGS-CHECK]" |~ "mismatch|missing|invalid" [1h]))'` — `0` 이어야 한다.
+
 ### 5. 서비스 중지
 
 ```bash
@@ -397,7 +419,7 @@ GHOSTSCRIPT_PATH=/usr/bin/gs
 - docker compose 는 셸에 export 된 변수를 `.env` 보다 먼저 쓴다. 값을 바꾸기 전에 배포 셸에 같은 이름이 export 돼 있지 않은지 이름만 확인한다(아래 명령의 출력이 없어야 한다).
 
 ```bash
-env | cut -d= -f1 | grep -E '^(FILE_ORPHAN_|FILE_RETENTION_|FILE_PURGE_GRACE_HOURS$|THUMBNAIL_CLEANUP_DRY_RUN$|SPREAD_SNAPSHOT_HARD_FAIL$|EDITOR_SPREAD_VALIDATION_MAPPING$|EDITOR_CONTENT_PAGE_RULES$)'
+env | cut -d= -f1 | grep -E '^(FILE_ORPHAN_|FILE_RETENTION_|FILE_PURGE_GRACE_HOURS$|THUMBNAIL_CLEANUP_DRY_RUN$|SPREAD_SNAPSHOT_HARD_FAIL$|EDITOR_SPREAD_VALIDATION_MAPPING$|EDITOR_CONTENT_PAGE_RULES$|FLAGS_EXPECTED_)'
 ```
 
 **빌드 없이 다시 만들기 전 이미지 확인**
@@ -417,6 +439,7 @@ done
 - `SPREAD_SNAPSHOT_HARD_FAIL=true`·`FILE_ORPHAN_DRY_RUN=0` 처럼 파트너에게 보이는 결과를 바꾸거나 파일을 실제로 지우는 전환(유예·영구 삭제 시간을 줄이는 것 포함)은 오너 결정 뒤 별도 절차로 한다. 파트너 통지가 필요한지 먼저 판단한다.
 - 절차: `.env` 값 변경 → 렌더링 값 확인(아래, `jq` 가 없으면 이 단계는 건너뛰고 재생성 뒤 printenv 로 같은 키를 확인) → 해당 서비스 재생성(빌드 없음) → api 면 nginx 재시작 → 플래그는 `[FLAGS]` 줄, 유예·건수·영구 삭제 시간은 printenv 로 확인.
 - `SPREAD_SNAPSHOT_HARD_FAIL` 은 worker·api 를 모두 재생성하고 `[FLAGS]` api·worker 두 줄이 같은 값인지 확인한다. 한쪽만 재생성하면 한쪽만 HARD 가 된다.
+- 플래그 값을 바꿀 때는 `.env` 의 기대값 프로필(`FLAGS_EXPECTED_API`·`FLAGS_EXPECTED_WORKER`)에서 같은 키의 값도 함께 바꾼다. 빠뜨리면 재생성 뒤 `[FLAGS-CHECK] … mismatch` 가 남는다(위 「배포 후 점검」). 두 서비스에 있는 키는 두 프로필을 모두 바꾼다.
 
 ```bash
 cd ~/storige
@@ -1383,13 +1406,15 @@ cd ~/storige
 cp .env ".env.bak-pre-<이름>-$(date -u +%Y%m%dT%H%M%SZ)"
 docker tag "$(docker inspect -f '{{.Image}}' storige-api)" storige-api:rollback-pre-<이름>
 #    재생성 전에 위 「빌드 없이 다시 만들기 전 이미지 확인」 — api same 이어야 한다
-# 1) .env 에서 해당 키의 줄을 바꾼다(값은 오너 결정)
+# 1) .env 에서 해당 키의 줄을 바꾼다(값은 오너 결정). 기대값 프로필 FLAGS_EXPECTED_API 의 같은 키도 함께 바꾼다
 # 2) api 재생성(재빌드 없음) + nginx 재시작
 docker compose up -d --no-deps api && docker compose restart nginx
-# 3) [FLAGS] api 줄에서 바꾼 키의 값을 확인한다
+# 3) [FLAGS] api 줄에서 바꾼 키의 값을 확인한다. [FLAGS-CHECK] api 줄은 ok 여야 한다
 docker logs storige-api 2>&1 | grep "\[FLAGS\]" | tail -2
+docker logs storige-api 2>&1 | grep "\[FLAGS-CHECK\]" | tail -1
 ```
 
+- 기대값 프로필(위 「배포 후 점검」의 `[FLAGS-CHECK]`)은 2026-10-08 뒤에 도입됐다. 2026-10-08 실행에는 프로필 단계가 없었다.
 - compose 매핑 같은 저장소 변경을 함께 받을 때는 0) 뒤에 `git pull origin master` 를 한다.
 - 되돌리기: `.env` 를 백업 파일의 값으로 되돌리고, 이미지 확인 뒤 2)·3) 을 다시 한다.
 - api 를 다시 만들면 `docker logs` 가 비워진다. 재생성 전 로그는 Loki 로 본다(위 「VPS 셸에서 Loki API 로 건수 세기」).

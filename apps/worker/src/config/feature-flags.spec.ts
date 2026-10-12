@@ -207,3 +207,63 @@ describe('worker feature-flags', () => {
     expect(line).toMatch(LINE_PATTERN);
   });
 });
+
+describe('worker 기대값 프로필 대조 — [FLAGS-CHECK]', () => {
+  const { checkFlagExpectation, formatFlagExpectationLine, formatFeatureFlagSnapshot, WORKER_FEATURE_FLAG_KEYS } =
+    loadIsolated().flags;
+  type Snapshot = ReturnType<FeatureFlagsModule['buildWorkerFeatureFlagSnapshot']>;
+  const SNAP: Snapshot = {
+    CUTOUT_ENABLED: true,
+    WORKER_LIGHTWEIGHT_VALIDATION: true,
+    WORKER_LIGHTWEIGHT_SYNTHESIS: false,
+    WORKER_CROP_MARK_VALIDATION: false,
+    WORKER_WIRED_FIXABLE_GATING: true,
+    PRINT_NORMALIZE: false,
+    PRINT_NORMALIZE_FLATTEN: false,
+    SPREAD_SNAPSHOT_HARD_FAIL: false,
+    WORKER_TRIMBOX_SIZE_CHECK: true,
+  };
+  /** [FLAGS] worker 줄의 토큰 부분 그대로 */
+  const PROFILE = formatFeatureFlagSnapshot('worker', SNAP).replace(/^\[FLAGS\] worker /, '');
+  const lineOf = (profile: unknown, production = true): string | null =>
+    formatFlagExpectationLine('worker', checkFlagExpectation(SNAP, profile, production));
+
+  it('production 이 아니면 검사하지 않는다(줄 없음)', () => {
+    expect(checkFlagExpectation(SNAP, undefined, false)).toEqual({ status: 'skipped' });
+    expect(lineOf('CUTOUT_ENABLED=false', false)).toBeNull();
+  });
+
+  it.each<[unknown]>([[undefined], [''], ['  ']])('production 에서 프로필 %j → missing', (profile) => {
+    expect(lineOf(profile)).toBe('[FLAGS-CHECK] worker missing');
+  });
+
+  it('[FLAGS] 줄 토큰과 같은 프로필 → ok n=키 수(쉼표 구분 포함)', () => {
+    expect(WORKER_FEATURE_FLAG_KEYS.length).toBe(9);
+    expect(lineOf(PROFILE)).toBe('[FLAGS-CHECK] worker ok n=9');
+    expect(lineOf(PROFILE.split(' ').join(', '))).toBe('[FLAGS-CHECK] worker ok n=9');
+  });
+
+  it('값이 다르면 mismatch(유효값·기대값), 프로필에 없으면 unlisted', () => {
+    const profile = PROFILE.replace('WORKER_WIRED_FIXABLE_GATING=true', 'WORKER_WIRED_FIXABLE_GATING=false')
+      .split(' ')
+      .filter((t) => !t.startsWith('WORKER_TRIMBOX_SIZE_CHECK='))
+      .join(' ');
+    expect(lineOf(profile)).toBe(
+      '[FLAGS-CHECK] worker mismatch WORKER_WIRED_FIXABLE_GATING=true(expected=false) WORKER_TRIMBOX_SIZE_CHECK=true(unlisted)',
+    );
+  });
+
+  it('KEYS 밖 키·형식 오류·중복은 invalid — 토큰 원문은 남기지 않는다', () => {
+    const profile = `${PROFILE} JOB_LINK_STRICT=true sentinel-xyz CUTOUT_ENABLED=1`;
+    const line = lineOf(profile);
+    expect(line).toBe('[FLAGS-CHECK] worker invalid n=3 names=JOB_LINK_STRICT,CUTOUT_ENABLED');
+    expect(line).not.toContain('sentinel');
+  });
+
+  it('[FLAGS-CHECK] 줄은 [FLAGS] 정규식에 걸리지 않는다', () => {
+    for (const line of [lineOf(PROFILE), lineOf(''), lineOf('X=1')]) {
+      expect(line).toMatch(/^\[FLAGS-CHECK\] worker (ok|missing|invalid|mismatch)( |$)/);
+      expect(/\[FLAGS\]/.test(line ?? '')).toBe(false);
+    }
+  });
+});

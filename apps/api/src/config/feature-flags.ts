@@ -30,7 +30,8 @@
  * 플래그 추가 방법: API_FEATURE_FLAG_KEYS 에 키 1개, 입력 필드 1개, collect 에 1줄, build 에 1줄,
  * docker-compose.yml api environment 에 `KEY=${KEY:-<코드 기본값과 같은 리터럴>}` 매핑 1줄
  * (compose-env-parity.spec 이 매핑·기본값 일치를 강제). 스냅샷 타입이 키 배열에서 파생되므로
- * 한쪽만 추가하면 컴파일 오류가 난다.
+ * 한쪽만 추가하면 컴파일 오류가 난다. 배포할 때 운영 `.env` 의 기대값 프로필(FLAGS_EXPECTED_API)에도
+ * 키를 더한다 — 빠지면 기동 시 `[FLAGS-CHECK] api mismatch … (unlisted)` 가 남는다.
  */
 
 /**
@@ -224,4 +225,115 @@ export function formatEffectiveRetentionLine(service: 'api', r: EffectiveRetenti
     `[FLAGS] ${service} retention-effective ` +
     `FILE_RETENTION_ENABLED=${r.enabled === true} FILE_RETENTION_DRY_RUN=${r.dryRun === true}`
   );
+}
+
+/**
+ * 기대값 프로필 대조(FLAGS_EXPECTED, compose 매핑 `FLAGS_EXPECTED=${FLAGS_EXPECTED_API:-}`).
+ *
+ * 프로필은 [FLAGS] 줄과 같은 `KEY=true|false` 토큰을 공백 또는 쉼표로 나열한 문자열이다.
+ * production 에서만 대조하고, 결과는 `[FLAGS-CHECK]` 한 줄로 남긴다(부팅은 막지 않는다).
+ *  - 프로필이 비어 있으면 missing
+ *  - KEYS 의 유효값이 프로필과 다르거나 프로필에 없으면 mismatch(키·유효값·기대값 또는 unlisted)
+ *  - KEYS 밖 키·형식 오류 토큰·중복 키는 invalid(개수와 키 형식에 맞는 이름만 — 토큰 원문은 남기지 않는다)
+ * 접두어가 `[FLAGS-CHECK]` 라 `\[FLAGS\]` 정규식에 걸리지 않는다(기존 [FLAGS] 줄 확인 방식 불변).
+ */
+export interface ApiFlagExpectationMismatch {
+  readonly key: ApiFeatureFlagKey;
+  readonly actual: boolean;
+  /** 프로필 값. 프로필에 키가 없으면 undefined(unlisted). */
+  readonly expected: boolean | undefined;
+}
+
+export type ApiFlagExpectationResult =
+  | { readonly status: 'skipped' }
+  | { readonly status: 'missing' }
+  | { readonly status: 'ok'; readonly n: number }
+  | {
+      readonly status: 'problem';
+      readonly invalidCount: number;
+      readonly invalidNames: readonly string[];
+      readonly mismatches: readonly ApiFlagExpectationMismatch[];
+    };
+
+const FLAG_PROFILE_NAME = /^[A-Z][A-Z0-9_]{0,63}$/;
+const FLAG_PROFILE_MAX_NAMES = 20;
+
+function isApiFeatureFlagKey(name: string): name is ApiFeatureFlagKey {
+  return (API_FEATURE_FLAG_KEYS as readonly string[]).includes(name);
+}
+
+export function checkFlagExpectation(
+  snap: ApiFeatureFlagSnapshot,
+  profileRaw: unknown,
+  production: boolean,
+): ApiFlagExpectationResult {
+  if (!production) return { status: 'skipped' };
+  const raw = typeof profileRaw === 'string' ? profileRaw.trim() : '';
+  if (raw === '') return { status: 'missing' };
+
+  const expected = new Map<ApiFeatureFlagKey, boolean>();
+  const invalidNames: string[] = [];
+  let invalidCount = 0;
+  for (const token of raw.split(/[\s,]+/)) {
+    if (token === '') continue;
+    const eq = token.indexOf('=');
+    const name = eq > 0 ? token.slice(0, eq) : '';
+    const value = eq > 0 ? token.slice(eq + 1) : '';
+    const validName = FLAG_PROFILE_NAME.test(name);
+    if (
+      !validName ||
+      !isApiFeatureFlagKey(name) ||
+      (value !== 'true' && value !== 'false') ||
+      expected.has(name)
+    ) {
+      invalidCount++;
+      if (validName && !invalidNames.includes(name) && invalidNames.length < FLAG_PROFILE_MAX_NAMES) {
+        invalidNames.push(name);
+      }
+      continue;
+    }
+    expected.set(name, value === 'true');
+  }
+
+  const mismatches: ApiFlagExpectationMismatch[] = [];
+  for (const key of API_FEATURE_FLAG_KEYS) {
+    const actual = snap[key] === true;
+    const want = expected.get(key);
+    if (want !== actual) mismatches.push({ key, actual, expected: want });
+  }
+
+  if (invalidCount === 0 && mismatches.length === 0) {
+    return { status: 'ok', n: API_FEATURE_FLAG_KEYS.length };
+  }
+  return { status: 'problem', invalidCount, invalidNames, mismatches };
+}
+
+/** `[FLAGS-CHECK]` 한 줄. production 이 아니어서 건너뛰었으면 null. */
+export function formatFlagExpectationLine(
+  service: 'api',
+  r: ApiFlagExpectationResult,
+): string | null {
+  switch (r.status) {
+    case 'skipped':
+      return null;
+    case 'missing':
+      return `[FLAGS-CHECK] ${service} missing`;
+    case 'ok':
+      return `[FLAGS-CHECK] ${service} ok n=${r.n}`;
+    case 'problem': {
+      const parts: string[] = [];
+      if (r.invalidCount > 0) {
+        const names = r.invalidNames.length > 0 ? ` names=${r.invalidNames.join(',')}` : '';
+        parts.push(`invalid n=${r.invalidCount}${names}`);
+      }
+      if (r.mismatches.length > 0) {
+        const items = r.mismatches.map(
+          (m) =>
+            `${m.key}=${m.actual}(${m.expected === undefined ? 'unlisted' : `expected=${m.expected}`})`,
+        );
+        parts.push(`mismatch ${items.join(' ')}`);
+      }
+      return `[FLAGS-CHECK] ${service} ${parts.join(' ')}`;
+    }
+  }
 }
