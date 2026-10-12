@@ -50,7 +50,11 @@
       "@nestjs/swagger>js-yaml": "^4.3.2",
       "glob@10>minimatch": "^9.0.9",
       "minimatch@^9.0.9>brace-expansion": "^2.1.7",
-      "socks>ip-address": "^10.3.1"
+      "socks>ip-address": "^10.3.1",
+      "@nestjs/platform-express>express": "~4.22.3",
+      "@nestjs/platform-express>body-parser": "~1.20.8",
+      "@tokenizer/inflate>fflate": "^0.8.3",
+      "ts-node>diff": "^4.0.4"
     }
   }
 }
