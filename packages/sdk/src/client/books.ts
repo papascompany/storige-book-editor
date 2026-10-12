@@ -237,8 +237,8 @@ export class BooksResource {
    *      동시에 폴링하면 리밋에 닿는다. 서버는 X-RateLimit-* 잔량 헤더를 주지
    *      않아 선제 회피가 불가능하다(429 후 Retry-After 반응만 가능).
    *
-   * FAILED 는 **예외가 아니라 값으로** 반환한다 — errorCode/errorDetail 로
-   * 분기하는 것이 계약이다.
+   * FAILED 는 **예외가 아니라 값으로** 반환한다 — errorCode 로 분기하는 것이
+   * 계약이다(errorDetail 은 진단용).
    */
   async waitForFinalization(
     uid: string,

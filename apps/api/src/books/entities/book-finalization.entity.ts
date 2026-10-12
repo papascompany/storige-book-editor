@@ -89,7 +89,10 @@ export class BookFinalization {
   @Column({ name: 'error_code', type: 'varchar', length: 60, nullable: true })
   errorCode: string | null;
 
-  /** 검증 errors/warnings 스냅샷 */
+  /**
+   * 실패 진단 — 형식은 finalization-error-detail.ts. 응답은 읽는 시점에 toPublicErrorDetail 로
+   * 투영한다(예전 형식 행 포함).
+   */
   @Column({ name: 'error_detail', type: 'json', nullable: true })
   errorDetail: Record<string, unknown> | null;
 

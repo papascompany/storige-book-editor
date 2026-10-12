@@ -39,6 +39,12 @@ import {
   type FinalizationPlan,
 } from './books.constants';
 import { BookFinalizationView } from './dto/book-finalization.dto';
+import {
+  type FinalizationErrorDetail,
+  internalFailureDetail,
+  jobFailureDetail,
+  toPublicErrorDetail,
+} from './finalization-error-detail';
 
 /** 최종화 상태 전이 쓰기 — 상태와 함께 바꾸는 컬럼만 담는다. */
 type FinalizationTransitionPatch = Pick<BookFinalization, 'status'> &
@@ -317,7 +323,7 @@ export class BookFinalizationsService {
             book,
             fin,
             ErrV1.ERR_PDF_VALIDATION_FAILED,
-            this.jobResultDetail(job),
+            jobFailureDetail('validate', job),
           );
         }
         return;
@@ -332,7 +338,7 @@ export class BookFinalizationsService {
             book,
             fin,
             ErrV1.ERR_PDF_VALIDATION_FAILED,
-            this.jobResultDetail(job),
+            jobFailureDetail('compose', job),
           );
         }
         return;
@@ -344,9 +350,12 @@ export class BookFinalizationsService {
         (err as Error).stack,
       );
       try {
-        await this.failFinalization(book, fin, ErrV1.ERR_INTERNAL, {
-          reason: `전이 예외: ${(err as Error).message}`,
-        });
+        await this.failFinalization(
+          book,
+          fin,
+          ErrV1.ERR_INTERNAL,
+          internalFailureDetail('TRANSITION_FAILED'),
+        );
       } catch (failErr) {
         // FAILED 전이마저 실패(DB 장애 등) — 재던짐 금지(워커 PATCH 는 성공 반환). 진행 중
         //   상태로 잔류하나 관측 가능하게 로깅(폴링/운영 후속 복구).
@@ -445,9 +454,15 @@ export class BookFinalizationsService {
   ): Promise<void> {
     const outputUrl = this.jobOutputUrl(composeJob);
     if (!outputUrl) {
-      await this.failFinalization(book, fin, ErrV1.ERR_INTERNAL, {
-        reason: 'synthesis output url 부재',
-      });
+      this.logger.warn(
+        `[finalization] ${fin.uid} 합성 산출 URL 없음 — composeJob=${composeJob.id}`,
+      );
+      await this.failFinalization(
+        book,
+        fin,
+        ErrV1.ERR_INTERNAL,
+        internalFailureDetail('OUTPUT_URL_MISSING'),
+      );
       return;
     }
     let registered: FileEntity;
@@ -463,9 +478,15 @@ export class BookFinalizationsService {
         },
       });
     } catch (e) {
-      await this.failFinalization(book, fin, ErrV1.ERR_INTERNAL, {
-        reason: `산출물 등록 실패: ${(e as Error).message}`,
-      });
+      this.logger.error(
+        `[finalization] ${fin.uid} 산출물 등록 실패 — composeJob=${composeJob.id}: ${(e as Error).message}`,
+      );
+      await this.failFinalization(
+        book,
+        fin,
+        ErrV1.ERR_INTERNAL,
+        internalFailureDetail('OUTPUT_REGISTER_FAILED'),
+      );
       return;
     }
     const pageCount = this.extractPageCount(composeJob) ?? book.pageCount;
@@ -512,7 +533,7 @@ export class BookFinalizationsService {
     book: Book,
     fin: BookFinalization,
     errorCode: ErrV1,
-    detail: Record<string, unknown> | null,
+    detail: FinalizationErrorDetail,
   ): Promise<void> {
     const won = await this.transitionFinalization(fin, {
       status: 'FAILED',
@@ -522,8 +543,9 @@ export class BookFinalizationsService {
     });
     if (!won) return;
     // book.status 는 DRAFT 그대로(§6.2 — finalization 실패 시 DRAFT 유지)
+    const reason = 'code' in detail ? detail.code : `${detail.stage}:${detail.jobStatus ?? '-'}`;
     this.logger.warn(
-      `[finalization] ${fin.uid} FAILED — book=${book.uid} errorCode=${errorCode}`,
+      `[finalization] ${fin.uid} FAILED — book=${book.uid} errorCode=${errorCode} reason=${reason}`,
     );
     await this.sendFinalizationWebhook(book, fin, 'failed');
   }
@@ -824,15 +846,6 @@ export class BookFinalizationsService {
     return null;
   }
 
-  /** 실패 진단 스냅샷(errors/warnings) — 파트너 errorDetail 노출용. */
-  private jobResultDetail(job: WorkerJob): Record<string, unknown> {
-    const r = (job.result ?? null) as Record<string, unknown> | null;
-    return {
-      jobStatus: job.status,
-      result: r,
-    };
-  }
-
   private toView(book: Book, fin: BookFinalization): BookFinalizationView {
     return {
       uid: fin.uid,
@@ -843,7 +856,10 @@ export class BookFinalizationsService {
       validationSkipped: fin.validationSkipped ?? false,
       outputFileId: fin.outputFileId,
       errorCode: fin.errorCode,
-      errorDetail: fin.errorDetail,
+      errorDetail: toPublicErrorDetail(
+        fin.errorDetail,
+        fin.composeJobId ? 'compose' : 'validate',
+      ),
       createdAt: fin.createdAt.toISOString(),
       startedAt: fin.startedAt ? fin.startedAt.toISOString() : null,
       completedAt: fin.completedAt ? fin.completedAt.toISOString() : null,

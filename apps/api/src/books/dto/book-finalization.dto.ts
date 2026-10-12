@@ -30,7 +30,13 @@ export interface BookFinalizationView {
   outputFileId: string | null;
   /** 실패 시 ERR_* (§3 카탈로그) */
   errorCode: string | null;
-  /** 검증 errors/warnings 스냅샷(FAILED 진단) */
+  /**
+   * FAILED 진단 — 분기는 errorCode 로 하고 이 값은 진단용이다(형식: finalization-error-detail.ts).
+   *  - 검증·합성 잡 실패: { stage: 'validate'|'compose', jobStatus, result }. result 는 검증 잡이면
+   *    { errors, warnings }(각 항목 code·message·autoFixable·fixMethod), 그 밖에는 null.
+   *  - 내부 처리 실패: { code, reason } — code 는 TRANSITION_FAILED·OUTPUT_URL_MISSING·
+   *    OUTPUT_REGISTER_FAILED, reason 은 코드별 고정 문구.
+   */
   errorDetail: Record<string, unknown> | null;
   createdAt: string;
   startedAt: string | null;

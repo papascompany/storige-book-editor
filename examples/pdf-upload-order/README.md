@@ -113,7 +113,7 @@ SDK 는 이 구멍을 알기에 멀티파트에 키를 **자동 부여하지 않
 | `ERR_RATE_LIMITED` | 429 | 버킷 초과(heavy 100/min · general 300/min) | SDK 가 `Retry-After` 를 준수해 자동 재시도 |
 
 최종화 **실패**는 예외가 아니라 **값**으로 온다: `waitForFinalization` 이
-`status: 'FAILED'` 인 view 를 반환하며, `errorCode`/`errorDetail` 로 분기한다.
+`status: 'FAILED'` 인 view 를 반환하며, `errorCode` 로 분기한다. `errorDetail` 은 진단용이다.
 
 ## 완료 대기 — 폴링보다 웹훅
 

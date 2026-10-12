@@ -17,9 +17,11 @@
  *  ⑬ X1: bookSpec 연결 → 합성 인자 contentTrim(재단·도련·허용오차, source 'bookSpec'), 조회 실패·무효는 키 없음
  *  ⑭ 겹치는 보고: 상태 전이는 읽은 상태일 때만 쓰고, 전이·도서 확정·웹훅은 최종화당 한 번
  */
+import { Logger } from '@nestjs/common';
 import { ErrV1, WorkerJobStatus } from '@storige/types';
 import { BookFinalizationsService } from './book-finalizations.service';
 import { PartnerApiException } from '../partner-api/http/partner-api.exceptions';
+import { FILE_CORRUPTED_MESSAGE, internalFailureDetail } from './finalization-error-detail';
 
 type AnyRec = Record<string, any>;
 
@@ -254,8 +256,132 @@ describe('BookFinalizationsService — 상태머신(W3) + 콜백 역참조(#4) +
     expect(finWhere).toEqual({ id: 'fin-1', status: 'VALIDATING' });
     expect(finPatch.status).toBe('FAILED');
     expect(finPatch.errorCode).toBe(ErrV1.ERR_PDF_VALIDATION_FAILED);
+    expect(finPatch.errorDetail).toEqual({
+      stage: 'validate',
+      jobStatus: 'FAILED',
+      result: { errors: [], warnings: [] },
+    });
     expect(bookRepo.update).not.toHaveBeenCalled(); // book DRAFT 유지
     expect(webhookService.sendCallback.mock.calls.at(-1)[1].event).toBe('book.finalization.failed');
+  });
+
+  it('검증 잡 실패 진단은 오류·경고 항목의 code·message·autoFixable·fixMethod만 저장한다', async () => {
+    finRepo.findOne.mockResolvedValue({ id: 'fin-1', uid: 'fin_1', bookId: 'book-1', attempt: 1, status: 'VALIDATING', validateJobId: 'vjob-1' });
+    bookRepo.findOne.mockResolvedValue(makeBook());
+    const job = {
+      id: 'vjob-1',
+      status: WorkerJobStatus.FIXABLE,
+      options: { finalizationId: 'fin-1' },
+      result: {
+        result: {
+          isValid: false,
+          errors: [
+            { code: 'BLEED_MISSING', message: '재단 여백이 없습니다', details: { required: 3 }, autoFixable: true, fixMethod: 'extendBleed' },
+            { code: 'FILE_CORRUPTED', message: '파일 처리 중 오류가 발생했습니다: bad xref /app/storage/uploads/x.pdf', details: { actual: 'bad xref' }, autoFixable: false },
+          ],
+          warnings: [{ code: 'LOW_RESOLUTION', message: '해상도가 낮습니다', details: { minDpi: 72 }, autoFixable: false }],
+          metadata: { pageCount: 40 },
+        },
+      },
+    };
+    await svc.onWorkerJobSettled(job as never);
+    const [, finPatch] = finRepo.update.mock.calls.at(-1);
+    expect(finPatch.errorDetail).toEqual({
+      stage: 'validate',
+      jobStatus: 'FIXABLE',
+      result: {
+        errors: [
+          { code: 'BLEED_MISSING', message: '재단 여백이 없습니다', autoFixable: true, fixMethod: 'extendBleed' },
+          { code: 'FILE_CORRUPTED', message: FILE_CORRUPTED_MESSAGE, autoFixable: false },
+        ],
+        warnings: [{ code: 'LOW_RESOLUTION', message: '해상도가 낮습니다', autoFixable: false }],
+      },
+    });
+    expect(JSON.stringify(finPatch.errorDetail)).not.toContain('/app/storage/uploads/x.pdf');
+  });
+
+  it('합성 잡 실패 진단은 stage compose·result null로 저장한다', async () => {
+    finRepo.findOne.mockResolvedValue({ id: 'fin-1', uid: 'fin_1', bookId: 'book-1', attempt: 1, status: 'COMPOSING', composeJobId: 'sjob-1' });
+    bookRepo.findOne.mockResolvedValue(makeBook());
+    const job = { id: 'sjob-1', status: WorkerJobStatus.FAILED, options: { finalizationId: 'fin-1' }, result: null };
+    await svc.onWorkerJobSettled(job as never);
+    const [finWhere, finPatch] = finRepo.update.mock.calls.at(-1);
+    expect(finWhere).toEqual({ id: 'fin-1', status: 'COMPOSING' });
+    expect(finPatch.errorCode).toBe(ErrV1.ERR_PDF_VALIDATION_FAILED);
+    expect(finPatch.errorDetail).toEqual({ stage: 'compose', jobStatus: 'FAILED', result: null });
+  });
+
+  it('합성 완료 보고에 산출 URL이 없으면 OUTPUT_URL_MISSING으로 실패하고 warn 로그를 남긴다', async () => {
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    try {
+      finRepo.findOne.mockResolvedValue({ id: 'fin-1', uid: 'fin_1', bookId: 'book-1', attempt: 1, status: 'COMPOSING', composeJobId: 'sjob-1' });
+      bookRepo.findOne.mockResolvedValue(makeBook());
+      const job = { id: 'sjob-1', status: WorkerJobStatus.COMPLETED, options: { finalizationId: 'fin-1' }, result: { totalPages: 10 } };
+      await svc.onWorkerJobSettled(job as never);
+      const [, finPatch] = finRepo.update.mock.calls.at(-1);
+      expect(finPatch.status).toBe('FAILED');
+      expect(finPatch.errorCode).toBe(ErrV1.ERR_INTERNAL);
+      expect(finPatch.errorDetail).toEqual(internalFailureDetail('OUTPUT_URL_MISSING'));
+      expect(filesService.registerExternalFile).not.toHaveBeenCalled();
+      const warned = warn.mock.calls.map((c) => String(c[0]));
+      expect(warned.some((m) => m.includes('sjob-1'))).toBe(true);
+      expect(warned.some((m) => m.includes('reason=OUTPUT_URL_MISSING'))).toBe(true);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('산출물 등록이 실패하면 OUTPUT_REGISTER_FAILED로 실패하고 오류 문구는 error 로그에만 남는다', async () => {
+    const error = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    try {
+      finRepo.findOne.mockResolvedValue({ id: 'fin-1', uid: 'fin_1', bookId: 'book-1', attempt: 1, status: 'COMPOSING', composeJobId: 'sjob-1' });
+      bookRepo.findOne.mockResolvedValue(makeBook());
+      filesService.registerExternalFile.mockRejectedValue(new Error('EACCES /app/storage/outputs/sjob-1'));
+      const job = { id: 'sjob-1', status: WorkerJobStatus.COMPLETED, options: { finalizationId: 'fin-1' }, outputFileUrl: '/storage/outputs/sjob-1/merged.pdf', result: { totalPages: 10 } };
+      await svc.onWorkerJobSettled(job as never);
+      const [, finPatch] = finRepo.update.mock.calls.at(-1);
+      expect(finPatch.status).toBe('FAILED');
+      expect(finPatch.errorCode).toBe(ErrV1.ERR_INTERNAL);
+      expect(finPatch.errorDetail).toEqual(internalFailureDetail('OUTPUT_REGISTER_FAILED'));
+      expect(JSON.stringify(finPatch.errorDetail)).not.toContain('EACCES');
+      expect(error.mock.calls.some((c) => String(c[0]).includes('EACCES /app/storage/outputs/sjob-1'))).toBe(true);
+      expect(webhookService.sendCallback.mock.calls.at(-1)[1].event).toBe('book.finalization.failed');
+    } finally {
+      error.mockRestore();
+    }
+  });
+
+  it('조회 응답은 예전 형식으로 저장된 실패 진단을 현재 형식으로 돌려준다', async () => {
+    const failedRow = (o: AnyRec): AnyRec => ({
+      id: 'fin-1', uid: 'fin_1', bookId: 'book-1', attempt: 1, status: 'FAILED',
+      pageCount: null, outputFileId: null, errorCode: ErrV1.ERR_INTERNAL, validateJobId: null, composeJobId: null,
+      createdAt: new Date('2026-01-01T00:00:00Z'), startedAt: null, completedAt: new Date('2026-01-01T01:00:00Z'),
+      ...o,
+    });
+
+    finRepo.findOne.mockResolvedValue(failedRow({ errorDetail: { reason: '산출물 등록 실패: EACCES /app/storage/outputs' } }));
+    expect((await svc.getFinalization(SITE, 'bk_0001')).errorDetail).toEqual(internalFailureDetail('OUTPUT_REGISTER_FAILED'));
+
+    finRepo.findOne.mockResolvedValue(failedRow({ errorDetail: { reason: '전이 예외: db down' } }));
+    expect((await svc.getFinalization(SITE, 'bk_0001')).errorDetail).toEqual(internalFailureDetail('TRANSITION_FAILED'));
+
+    finRepo.findOne.mockResolvedValue(
+      failedRow({
+        errorCode: ErrV1.ERR_PDF_VALIDATION_FAILED,
+        validateJobId: 'vjob-1',
+        errorDetail: { jobStatus: 'FAILED', result: { result: { errors: [{ code: 'FILE_CORRUPTED', message: 'raw', details: { actual: 'raw' }, autoFixable: false }], warnings: [] } } },
+      }),
+    );
+    expect((await svc.getFinalization(SITE, 'bk_0001')).errorDetail).toEqual({
+      stage: 'validate',
+      jobStatus: 'FAILED',
+      result: { errors: [{ code: 'FILE_CORRUPTED', message: FILE_CORRUPTED_MESSAGE, autoFixable: false }], warnings: [] },
+    });
+
+    finRepo.findOne.mockResolvedValue(
+      failedRow({ errorCode: ErrV1.ERR_PDF_VALIDATION_FAILED, composeJobId: 'sjob-1', errorDetail: { jobStatus: 'FAILED', result: null } }),
+    );
+    expect((await svc.getFinalization(SITE, 'bk_0001')).errorDetail).toEqual({ stage: 'compose', jobStatus: 'FAILED', result: null });
   });
 
   it('⑩ 멱등: 이미 COMPLETED 인 finalization 콜백 재유입 → no-op', async () => {
@@ -386,14 +512,22 @@ describe('BookFinalizationsService — 상태머신(W3) + 콜백 역참조(#4) +
     });
     bookRepo.findOne.mockResolvedValue(makeBook());
     workerJobsService.createSynthesisJob.mockRejectedValue(new Error('queue down'));
-    const job = { id: 'vjob-1', status: WorkerJobStatus.COMPLETED, options: { finalizationId: 'fin-1' }, result: { totalPages: 40 } };
-    // 예외를 삼켜 교착을 막는다(재던짐 금지).
-    await expect(svc.onWorkerJobSettled(job as never)).resolves.toBeUndefined();
-    const [finWhere, finPatch] = finRepo.update.mock.calls.at(-1);
-    expect(finWhere).toEqual({ id: 'fin-1', status: 'VALIDATING' });
-    expect(finPatch.status).toBe('FAILED');
-    expect(finPatch.errorCode).toBe(ErrV1.ERR_INTERNAL);
-    expect(webhookService.sendCallback.mock.calls.at(-1)[1].event).toBe('book.finalization.failed');
+    const error = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    try {
+      const job = { id: 'vjob-1', status: WorkerJobStatus.COMPLETED, options: { finalizationId: 'fin-1' }, result: { totalPages: 40 } };
+      // 예외를 삼켜 교착을 막는다(재던짐 금지).
+      await expect(svc.onWorkerJobSettled(job as never)).resolves.toBeUndefined();
+      const [finWhere, finPatch] = finRepo.update.mock.calls.at(-1);
+      expect(finWhere).toEqual({ id: 'fin-1', status: 'VALIDATING' });
+      expect(finPatch.status).toBe('FAILED');
+      expect(finPatch.errorCode).toBe(ErrV1.ERR_INTERNAL);
+      expect(finPatch.errorDetail).toEqual(internalFailureDetail('TRANSITION_FAILED'));
+      expect(JSON.stringify(finPatch.errorDetail)).not.toContain('queue down');
+      expect(error.mock.calls.some((c) => String(c[0]).includes('queue down'))).toBe(true);
+      expect(webhookService.sendCallback.mock.calls.at(-1)[1].event).toBe('book.finalization.failed');
+    } finally {
+      error.mockRestore();
+    }
   });
 
   // ── X1 — 확정 합성의 내지 기대 재단(bookSpec 출처) ─────────────────────
