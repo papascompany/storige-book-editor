@@ -19,6 +19,14 @@
  *   G13 D4 AI 패널 세트 전환 차단 판정(FeatureSidebar aiTemplateSetSwitchBlocked) — 같은 주소로 다시 열면
  *       기존 세션으로 열리는 진입(sessionId·주문 세션 재사용·회원 세션 생성)은 true, 비회원 주문 초안
  *       재개·게스트 폴백 생성·세션 없는 진입은 false, 복원 재초기화는 앞선 값 유지(G9)
+ *   G9b 첫 로드는 불일치 없음(U=S), 복원본 세트가 달라짐(ts-Z) → 재초기화 가드만으로 Sentry warning 0, ready 재발신 0
+ *   G14 S 404 응답 전에 언마운트 → U 재조회 0, editor.error·ready 0
+ *   G15 불일치 기록(Sentry.captureMessage)이 던져도 → ready 1회(templateSetMismatch 동봉), editor.error 0
+ *   G16 주문 규격(options.size) 방향 ≠ 템플릿셋 방향 → editor.ready 에 orientationMismatch 동봉,
+ *       onReady 인자(레거시 storige:ready 소스)에는 없음
+ *
+ * 세션별 1회 기록 Set(mismatchReportedSessionRef)은 방어용이다. 메인 초기화 effect 는 reinitNonce 로만
+ * 다시 돌고 그때는 재초기화 가드가 먼저 막으므로, Set 만으로 기록이 막히는 경로는 현재 없다(G9·G9b).
  *
  * 하네스는 embed.templateSetLoadFailure.test.tsx·embed.sessionVersionRestore.test.tsx 를 따른다.
  */
@@ -217,6 +225,7 @@ type EmbedProps = Partial<{
   sessionId: string
   orderSeqno: number
   mode: 'cover' | 'content' | 'both' | 'template'
+  options: { size: { width: number; height: number } }
 }>
 
 function renderEmbed(
@@ -230,6 +239,7 @@ function renderEmbed(
       sessionId={props.sessionId}
       orderSeqno={props.orderSeqno}
       mode={props.mode}
+      options={props.options}
       parentOrigin={PARENT_ORIGIN}
       instanceRef={instanceRef}
       {...callbacks}
@@ -537,6 +547,99 @@ describe('EmbeddedEditor — W8-2b 재편집 템플릿셋 결정(세션 세트 �
     expect(posted('editor.error')).toHaveLength(0)
     // 재초기화는 진입 주소가 그대로이므로 AI 패널 세트 전환 차단도 그대로(G13)
     expect(lastSidebarBlocked()).toBe(true)
+  })
+
+  it('G9b 첫 로드 불일치 없음(U=S), 복원본 세트가 다름 → 재초기화에서 Sentry warning 0, ready 재발신 0', async () => {
+    api.get.mockResolvedValue(memberSession({ canvasData: null }))
+    renderEmbed({ templateSetId: S, sessionId: SESSION_ID })
+    await waitFor(() => expect(posted('editor.ready')).toHaveLength(1))
+    await waitFor(() => expect(captured.sessionVersions).not.toBeNull())
+    expect(templateSetFetches()).toEqual([S])
+    expect(mismatchWarnings()).toHaveLength(0)
+
+    // 복원본의 세트(ts-Z)가 진입 세트(S)와 다르다 — 재초기화에서는 불일치가 계산돼도 기록하지 않는다.
+    api.restoreVersion.mockResolvedValue(memberSession({ templateSetId: 'ts-Z', canvasData: null }))
+    const source = captured.sessionVersions!
+    let restoreErr: unknown = null
+    const pending = source.restore('v-1').catch((e: unknown) => {
+      restoreErr = e
+    })
+    await flushInit()
+    await pending
+    await flushInit()
+
+    expect(restoreErr).toBeNull()
+    expect(api.restoreVersion).toHaveBeenCalledWith(SESSION_ID, 'v-1')
+    expect(templateSetFetches()).toEqual([S, 'ts-Z'])
+    expect(posted('editor.ready')).toHaveLength(1)
+    expect(mismatchWarnings()).toHaveLength(0)
+    expect(posted('editor.error')).toHaveLength(0)
+  })
+
+  it('G14 S 404 응답 전에 언마운트 → U 재조회 0, editor.error·ready 0', async () => {
+    let rejectSessionSet: (err: unknown) => void = () => {}
+    const sessionSetPending = new Promise<never>((_resolve, reject) => {
+      rejectSessionSet = reject
+    })
+    templateSetsBy({ [S]: () => sessionSetPending })
+    const onError = vi.fn()
+    const view = renderEmbed({ templateSetId: U, sessionId: SESSION_ID }, { onError })
+    await waitFor(() => expect(templateSetFetches()).toEqual([S]))
+
+    view.unmount()
+    rejectSessionSet(axiosHttpError(404))
+    await flushInit()
+
+    expect(templateSetFetches()).toEqual([S])
+    expect(contents.loadTemplateSetEditor).not.toHaveBeenCalled()
+    expect(posted('editor.error')).toHaveLength(0)
+    expect(posted('editor.ready')).toHaveLength(0)
+    expect(onError).not.toHaveBeenCalled()
+  })
+
+  it('G15 불일치 기록(Sentry.captureMessage)이 던져도 → ready 1회(templateSetMismatch 동봉), editor.error 0', async () => {
+    sentry.captureMessage.mockImplementation((message: unknown) => {
+      if (message === '[template-set-mismatch]') throw new Error('capture failed')
+    })
+    const onError = vi.fn()
+    renderEmbed({ templateSetId: U, sessionId: SESSION_ID }, { onError })
+    await waitFor(() => expect(posted('editor.ready')).toHaveLength(1))
+    await flushInit()
+
+    expect(mismatchWarnings()).toHaveLength(1)
+    expect(posted('editor.ready')[0]).toEqual({
+      sessionId: SESSION_ID,
+      templateSetId: S,
+      version: '1.0.0',
+      templateSetMismatch: { requested: U, session: S, resolution: 'session' },
+    })
+    expect(posted('editor.error')).toHaveLength(0)
+    expect(onError).not.toHaveBeenCalled()
+    expect(screen.queryByText('에디터 초기화 실패')).toBeNull()
+  })
+
+  it('G16 주문 규격 방향 ≠ 템플릿셋 방향 → editor.ready 에 orientationMismatch 동봉, onReady 인자에는 없음', async () => {
+    const onReady = vi.fn()
+    // 주문 규격 297×210(가로) 대 템플릿셋 기본 210×297(세로)
+    renderEmbed({ templateSetId: S, sessionId: SESSION_ID, options: { size: { width: 297, height: 210 } } }, { onReady })
+    await waitFor(() => expect(posted('editor.ready')).toHaveLength(1))
+
+    expect(posted('editor.ready')[0]).toEqual({
+      sessionId: SESSION_ID,
+      templateSetId: S,
+      version: '1.0.0',
+      orientationMismatch: {
+        requested: 'landscape',
+        template: 'portrait',
+        requestedSize: { width: 297, height: 210 },
+        templateSize: { width: 210, height: 297 },
+      },
+    })
+    // onReady 인자 = EmbedView 레거시 storige:ready·IIFE onReady 의 소스 — 방향 불일치는 싣지 않는다
+    expect(onReady).toHaveBeenCalledTimes(1)
+    expect(onReady).toHaveBeenCalledWith({ templateSetId: S })
+    expect(mismatchWarnings()).toHaveLength(0)
+    expect(posted('editor.error')).toHaveLength(0)
   })
 
   describe('G13 D4 AI 패널 세트 전환 차단 판정 — 같은 주소로 다시 열면 기존 세션으로 열리는가', () => {
