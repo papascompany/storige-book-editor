@@ -26,6 +26,7 @@ import { PayloadTooLargeResponseDto } from './common/dto/error-response.dto';
 import { SentryExceptionFilter } from './sentry/sentry.filter';
 import {
   buildApiFeatureFlagSnapshot,
+  collectApiFeatureFlagInputs,
   formatEffectiveRetentionLine,
   formatFeatureFlagSnapshot,
 } from './config/feature-flags';
@@ -92,19 +93,18 @@ async function bootstrap() {
   // 보존정책 실효값은 아래 retention-effective 줄(관리자 저장소 설정 우선)로 따로 남긴다.
   // 세 번째 인자는 pino context — 문자열이 msg 필드로 들어가도록 명시한다.
   try {
-    const flags = buildApiFeatureFlagSnapshot({
-      cutoutRaw: configService.get<string>('CUTOUT_ENABLED'),
-      queueMonitorEnabled: app.get(QueueMonitorService).isEnabled(),
-      fileOrphan: app.get(FileOrphanService).getEnvFlags(),
-      fileRetentionEnabledRaw: configService.get<string>('FILE_RETENTION_ENABLED', 'true'),
-      fileRetentionDryRunRaw: configService.get<string>('FILE_RETENTION_DRY_RUN', '0'),
-      thumbnailCleanupDryRunRaw: configService.get<string>('THUMBNAIL_CLEANUP_DRY_RUN'),
-      spreadSnapshotHardFailRaw: process.env.SPREAD_SNAPSHOT_HARD_FAIL,
-      jobLinkStrictRaw: configService.get<string>('JOB_LINK_STRICT'),
-      jobFileSiteStrictRaw: configService.get<string>('JOB_FILE_SITE_STRICT'),
-      sessionJobOutputLookupRaw: process.env.SESSION_JOB_OUTPUT_LOOKUP,
-      editorContentPageRulesRaw: process.env.EDITOR_CONTENT_PAGE_RULES,
-    });
+    const flags = buildApiFeatureFlagSnapshot(
+      collectApiFeatureFlagInputs(
+        (key, defaultValue) =>
+          defaultValue === undefined
+            ? configService.get<string>(key)
+            : configService.get<string>(key, defaultValue),
+        {
+          queueMonitor: app.get(QueueMonitorService),
+          fileOrphan: app.get(FileOrphanService),
+        },
+      ),
+    );
     pinoLogger.log({ featureFlags: flags }, formatFeatureFlagSnapshot('api', flags), 'FeatureFlags');
   } catch (e) {
     pinoLogger.warn(`[FLAGS] api 스냅샷 실패: ${(e as Error).message}`);

@@ -280,7 +280,7 @@ docker logs storige-worker 2>&1 | grep "\[FLAGS\]"
 - 확인 대상은 각 플래그의 유효값(`true`/`false`)뿐입니다.
 - api 스냅샷 줄의 `FILE_RETENTION_*`·`FILE_ORPHAN_*` 값은 **env 계층 값**입니다. 관리자 저장소 설정(보존정책)이 함께 적용되므로 이 값만으로 실제 동작 모드를 판단하지 마십시오.
 - 보존정책의 실제 모드(삭제 여부·dry-run)는 `[FLAGS] api retention-effective` 줄 또는 관리자 저장소 설정 화면으로 확인합니다. 이 줄은 기동 시점 값이며, 관리자 화면에서 저장하면 런타임에 바뀝니다.
-- api 줄의 `JOB_LINK_STRICT`·`JOB_FILE_SITE_STRICT`·`SESSION_JOB_OUTPUT_LOOKUP`·`EDITOR_CONTENT_PAGE_RULES` 는 줄 안의 위치가 아니라 키 이름으로 찾아 값을 확인합니다. 키 순서는 `apps/api/src/config/feature-flags.ts` 의 `API_FEATURE_FLAG_KEYS` 배열 순서이고, 키가 추가되면 줄 끝에 붙습니다. 코드 기본값은 앞의 세 키가 `false`, `EDITOR_CONTENT_PAGE_RULES` 가 `true` 입니다. 운영 값은 이 문서에 적지 않고 운영 기록을 기준으로 합니다(키 설명은 아래 환경 변수 설정의 「잡 생성 확인 · 잡 산출물 세션 조회 플래그」·「파일 정리 · 스프레드 검증 키 compose 매핑」).
+- api 줄의 `JOB_LINK_STRICT`·`JOB_FILE_SITE_STRICT`·`SESSION_JOB_OUTPUT_LOOKUP`·`EDITOR_CONTENT_PAGE_RULES`·`EDITOR_SPREAD_VALIDATION_MAPPING` 은 줄 안의 위치가 아니라 키 이름으로 찾아 값을 확인합니다. 키 순서는 `apps/api/src/config/feature-flags.ts` 의 `API_FEATURE_FLAG_KEYS` 배열 순서이고, 키가 추가되면 줄 끝에 붙습니다. 코드 기본값은 앞의 세 키가 `false`, 뒤의 두 키가 `true` 입니다. 운영 값은 이 문서에 적지 않고 운영 기록을 기준으로 합니다(키 설명은 아래 환경 변수 설정의 「잡 생성 확인 · 잡 산출물 세션 조회 플래그」·「파일 정리 · 스프레드 검증 키 compose 매핑」).
 - `FILE_ORPHAN_*`·`FILE_RETENTION_*`·`THUMBNAIL_CLEANUP_DRY_RUN`·`SPREAD_SNAPSHOT_HARD_FAIL` 은 `docker-compose.yml` 매핑으로 컨테이너에 전달되며, 기본값은 코드 기본값과 같습니다(2026-10-05, 아래 「파일 정리 · 스프레드 검증 키 compose 매핑」). `SPREAD_SNAPSHOT_HARD_FAIL` 은 api·worker 두 줄에 모두 있으며 두 값이 같아야 합니다.
 
 ### 5. 서비스 중지
@@ -388,16 +388,16 @@ GHOSTSCRIPT_PATH=/usr/bin/gs
 | `FILE_PURGE_GRACE_HOURS` | api | `${FILE_PURGE_GRACE_HOURS:-48}` | soft-delete 뒤 영구 삭제까지 시간. 1 이상의 숫자. 1 미만이거나 숫자가 아니면 48 |
 | `THUMBNAIL_CLEANUP_DRY_RUN` | api | `${THUMBNAIL_CLEANUP_DRY_RUN:-0}` | 정확히 `1` 일 때만 dry-run, 그 밖의 값은 실제 정리 |
 | `SPREAD_SNAPSHOT_HARD_FAIL` | api·worker | `${SPREAD_SNAPSHOT_HARD_FAIL:-false}` | 정확히 `true`(대소문자 구분)일 때만 HARD, 그 밖의 값은 SOFT(경고만). HARD 이면 api 는 스냅샷 누락·불일치 시 편집 완료를 거부하고, worker 는 compose-mixed 표지 크기 불일치 시 합성 잡을 `FAILED` 로 끝낸다 |
-| `EDITOR_SPREAD_VALIDATION_MAPPING` | api | `${EDITOR_SPREAD_VALIDATION_MAPPING:-on}` | 정확히 `off` 일 때만 해제(검증 잡은 주문 옵션 `orderOptions` 만 사용). 코드는 `off` 가 아닌 값을 모두 연결로 본다 — `on` 은 printenv 로 읽기 쉽게 하려는 표기다 |
+| `EDITOR_SPREAD_VALIDATION_MAPPING` | api | `${EDITOR_SPREAD_VALIDATION_MAPPING:-on}` | 정확히 `off`(대소문자 구분, 앞뒤 공백 없음)일 때만 해제(검증 잡은 주문 옵션 `orderOptions` 만 사용). 코드는 `off` 가 아닌 값을 모두 연결로 본다 — `on` 은 읽기 쉽게 하려는 표기다 |
 | `EDITOR_CONTENT_PAGE_RULES` | api | `${EDITOR_CONTENT_PAGE_RULES:-on}` | 앞뒤 공백·대소문자를 무시하고 `off` 일 때만 해제(편집 완료 내지 검증 잡에 편집기 쪽 단위 `pageMultiple`·중철 쪽수 상한을 싣지 않고 주문 옵션의 종전 쪽수 규칙으로 검증). 그 밖의 값·미설정은 싣는다. 매핑은 2026-10-08 부터(아래 「`EDITOR_CONTENT_PAGE_RULES` 비상 차단」) |
 
-- 확인 위치: `FILE_ORPHAN_ENABLED`·`FILE_ORPHAN_DRY_RUN`·`FILE_RETENTION_ENABLED`·`FILE_RETENTION_DRY_RUN`·`THUMBNAIL_CLEANUP_DRY_RUN`·`SPREAD_SNAPSHOT_HARD_FAIL`·`EDITOR_CONTENT_PAGE_RULES` 는 `[FLAGS]` 줄(위 「배포 후 점검」)로, 유예·건수·영구 삭제 시간과 `EDITOR_SPREAD_VALIDATION_MAPPING` 은 `[FLAGS]` 줄에 없으므로 `docker exec storige-api printenv <키>` 로 확인한다.
+- 확인 위치: `FILE_ORPHAN_ENABLED`·`FILE_ORPHAN_DRY_RUN`·`FILE_RETENTION_ENABLED`·`FILE_RETENTION_DRY_RUN`·`THUMBNAIL_CLEANUP_DRY_RUN`·`SPREAD_SNAPSHOT_HARD_FAIL`·`EDITOR_CONTENT_PAGE_RULES`·`EDITOR_SPREAD_VALIDATION_MAPPING` 은 `[FLAGS]` 줄(위 「배포 후 점검」)로 확인한다. `[FLAGS]` 줄은 해석이 끝난 유효값(`true`/`false`)이라 `EDITOR_SPREAD_VALIDATION_MAPPING` 은 연결이면 `true`, 해제(`off`)면 `false` 로 나온다. 유예·건수·영구 삭제 시간은 `[FLAGS]` 줄에 없으므로 `docker exec storige-api printenv <키>` 로 확인한다.
 - 유예·건수·영구 삭제 시간 4개는 값이 허용 범위 밖이면 기본값이나 경계값으로 바꿔 쓰고, api 기동 로그에 `[env]` warn 을 남긴다(키·허용 범위·적용값만). `FILE_RETENTION_BATCH` 는 보존정책과 고아 정리가 각각 읽으므로 2줄이 남는다. 평소에는 `docker logs storige-api 2>&1 | grep "\[env\]"` 결과가 없어야 한다.
 - `LOG_LEVEL` 은 compose 에 매핑하지 않는다(아래 「모니터링 스택 환경변수」).
 - docker compose 는 셸에 export 된 변수를 `.env` 보다 먼저 쓴다. 값을 바꾸기 전에 배포 셸에 같은 이름이 export 돼 있지 않은지 이름만 확인한다(아래 명령의 출력이 없어야 한다).
 
 ```bash
-env | cut -d= -f1 | grep -E '^(FILE_ORPHAN_|FILE_RETENTION_|FILE_PURGE_GRACE_HOURS$|THUMBNAIL_CLEANUP_DRY_RUN$|SPREAD_SNAPSHOT_HARD_FAIL$|EDITOR_SPREAD_VALIDATION_MAPPING$)'
+env | cut -d= -f1 | grep -E '^(FILE_ORPHAN_|FILE_RETENTION_|FILE_PURGE_GRACE_HOURS$|THUMBNAIL_CLEANUP_DRY_RUN$|SPREAD_SNAPSHOT_HARD_FAIL$|EDITOR_SPREAD_VALIDATION_MAPPING$|EDITOR_CONTENT_PAGE_RULES$)'
 ```
 
 **빌드 없이 다시 만들기 전 이미지 확인**
@@ -415,13 +415,13 @@ done
 **값 전환 절차**
 
 - `SPREAD_SNAPSHOT_HARD_FAIL=true`·`FILE_ORPHAN_DRY_RUN=0` 처럼 파트너에게 보이는 결과를 바꾸거나 파일을 실제로 지우는 전환(유예·영구 삭제 시간을 줄이는 것 포함)은 오너 결정 뒤 별도 절차로 한다. 파트너 통지가 필요한지 먼저 판단한다.
-- 절차: `.env` 값 변경 → 렌더링 값 확인(아래, `jq` 가 없으면 이 단계는 건너뛰고 재생성 뒤 printenv 로 같은 키를 확인) → 해당 서비스 재생성(빌드 없음) → api 면 nginx 재시작 → `[FLAGS]` 줄 또는 printenv 확인.
+- 절차: `.env` 값 변경 → 렌더링 값 확인(아래, `jq` 가 없으면 이 단계는 건너뛰고 재생성 뒤 printenv 로 같은 키를 확인) → 해당 서비스 재생성(빌드 없음) → api 면 nginx 재시작 → 플래그는 `[FLAGS]` 줄, 유예·건수·영구 삭제 시간은 printenv 로 확인.
 - `SPREAD_SNAPSHOT_HARD_FAIL` 은 worker·api 를 모두 재생성하고 `[FLAGS]` api·worker 두 줄이 같은 값인지 확인한다. 한쪽만 재생성하면 한쪽만 HARD 가 된다.
 
 ```bash
 cd ~/storige
 # 렌더링 값 확인 — 위 키만 추출한다(docker compose config 전체를 화면에 출력하지 않는다)
-docker compose config --format json 2>/dev/null | jq -c '{api: (.services.api.environment | with_entries(select(.key | test("^(FILE_ORPHAN_|FILE_RETENTION_|FILE_PURGE_GRACE_HOURS$|THUMBNAIL_CLEANUP_DRY_RUN$|SPREAD_SNAPSHOT_HARD_FAIL$|EDITOR_SPREAD_VALIDATION_MAPPING$)")))), worker: (.services.worker.environment | with_entries(select(.key == "SPREAD_SNAPSHOT_HARD_FAIL")))}'
+docker compose config --format json 2>/dev/null | jq -c '{api: (.services.api.environment | with_entries(select(.key | test("^(FILE_ORPHAN_|FILE_RETENTION_|FILE_PURGE_GRACE_HOURS$|THUMBNAIL_CLEANUP_DRY_RUN$|SPREAD_SNAPSHOT_HARD_FAIL$|EDITOR_SPREAD_VALIDATION_MAPPING$|EDITOR_CONTENT_PAGE_RULES$)")))), worker: (.services.worker.environment | with_entries(select(.key == "SPREAD_SNAPSHOT_HARD_FAIL")))}'
 
 # 예: SPREAD_SNAPSHOT_HARD_FAIL 전환(오너 결정 뒤) — worker·api 모두 재생성
 #   재생성 전에 위 「빌드 없이 다시 만들기 전 이미지 확인」 — api·worker 모두 same 이어야 한다
@@ -433,7 +433,7 @@ docker logs storige-api 2>&1 | grep "\[FLAGS\]" | tail -2
 
 **`EDITOR_SPREAD_VALIDATION_MAPPING` 비상 차단**
 
-편집기 스프레드 책 세션의 검증 잡에 주문 제본·내지 쪽수·표지 책등 기하를 연결하는 동작을 끈다. 끄면 검증 잡은 주문 옵션(`orderOptions`)만 쓴다. 이 키는 `[FLAGS]` 줄에 나오지 않으므로 printenv 로 확인한다.
+편집기 스프레드 책 세션의 검증 잡에 주문 제본·내지 쪽수·표지 책등 기하를 연결하는 동작을 끈다. 끄면 검증 잡은 주문 옵션(`orderOptions`)만 쓴다. 값은 정확히 `off`(대소문자 구분, 앞뒤 공백 없음)일 때만 꺼진다. 현재 값은 `[FLAGS] api` 줄의 `EDITOR_SPREAD_VALIDATION_MAPPING` 으로 확인한다.
 
 ```bash
 cd ~/storige
@@ -441,7 +441,9 @@ cd ~/storige
 #    재생성 전에 위 「빌드 없이 다시 만들기 전 이미지 확인」 — api same 이어야 한다
 # 2) api 재생성 + nginx 재시작
 docker compose up -d --no-build api && docker compose restart nginx
-# 3) 값 확인 — off 가 나와야 한다
+# 3) 값 확인 — api 줄에 EDITOR_SPREAD_VALIDATION_MAPPING=false 가 나와야 한다
+docker logs storige-api 2>&1 | grep "\[FLAGS\]" | tail -2
+# (보조) 컨테이너에 전달된 원래 값 — off 가 나와야 한다
 docker exec storige-api printenv EDITOR_SPREAD_VALIDATION_MAPPING
 ```
 

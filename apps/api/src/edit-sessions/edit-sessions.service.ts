@@ -55,7 +55,12 @@ import type { PartnerOperatorGrant } from '../auth/partner-operator/partner-oper
 import type { PartnerOperatorAuditDetail } from '../auth/entities/partner-operator-audit-log.entity';
 import { computeEditRetention, editRetentionExpired } from '../staff-edit-data/edit-retention';
 import { staffAuditUnavailable, staffDeleteNotAllowed } from '../staff-edit-data/staff-actor';
-import { isEditorContentPageRulesOn, isSessionJobOutputLookupOn } from '../config/feature-flags';
+import {
+  isEditorContentPageRulesOn,
+  isEditorSpreadValidationMappingOn,
+  isSessionJobOutputLookupOn,
+  isSpreadSnapshotHardFail,
+} from '../config/feature-flags';
 
 /**
  * Storige 관리자 호출 컨텍스트(2026-09-29, ADDITIVE) — StaffEditDataService 만 설정한다.
@@ -1494,7 +1499,7 @@ export class EditSessionsService {
       if (authorityMismatches.length > 0) {
         validation.ok = false;
         validation.mismatches = [...validation.mismatches, ...authorityMismatches];
-        const hardFail = process.env.SPREAD_SNAPSHOT_HARD_FAIL === 'true';
+        const hardFail = isSpreadSnapshotHardFail();
         this.logger.warn(
           `[spread-spec] session ${session.id} 템플릿 권위 불일치 ${hardFail ? 'HARD' : 'SOFT'}: ${authorityMismatches.join(' | ')}`,
         );
@@ -1818,7 +1823,7 @@ export class EditSessionsService {
       mismatches.push('SPREAD_INVALID: spread 필수필드 누락(spec/totalWidthMm/totalHeightMm/dpi)');
     }
 
-    const hardFail = process.env.SPREAD_SNAPSHOT_HARD_FAIL === 'true';
+    const hardFail = isSpreadSnapshotHardFail();
     const result: SpreadValidationResult = {
       ok: mismatches.length === 0,
       checkedAt: new Date().toISOString(),
@@ -1961,7 +1966,7 @@ export class EditSessionsService {
       // null → 아래 두 잡 모두 현행 orderOptions 그대로. 비상 차단: EDITOR_SPREAD_VALIDATION_MAPPING=off.
       let coverOrderOptions = orderOptions;
       let contentOrderOptions = orderOptions;
-      if (process.env.EDITOR_SPREAD_VALIDATION_MAPPING !== 'off') {
+      if (isEditorSpreadValidationMappingOn()) {
         // 템플릿셋 판형은 싸바리 전개 표지(coverOutput.layout='hardcover-wrap') 판정에만 쓰인다.
         // 위에서 이미 조회한 templateSet 재사용(추가 조회 없음). 조회 실패·미연결이면 null →
         // 싸바리 전개 표지는 연결 생략, 그 밖의 세션 결과는 판형 인자와 무관.

@@ -10,14 +10,20 @@ import { Logger as NestPinoLogger, PinoLogger } from 'nestjs-pino';
 import { Repository } from 'typeorm';
 import {
   API_FEATURE_FLAG_KEYS,
+  ApiConfigGetter,
   ApiFeatureFlagInputs,
   buildApiFeatureFlagSnapshot,
+  collectApiFeatureFlagInputs,
   formatEffectiveRetentionLine,
   formatFeatureFlagSnapshot,
   isEditorContentPageRulesOn,
   isEditorContentPageRulesOnRaw,
+  isEditorSpreadValidationMappingOn,
+  isEditorSpreadValidationMappingOnRaw,
   isFlagOn,
   isSessionJobOutputLookupOn,
+  isSpreadSnapshotHardFail,
+  isSpreadSnapshotHardFailRaw,
 } from './feature-flags';
 import { StorageConfigService } from '../settings/storage-config.service';
 import { StorageSettingEntity } from '../settings/entities/storage-setting.entity';
@@ -38,6 +44,7 @@ const BASE_INPUTS: ApiFeatureFlagInputs = {
   jobFileSiteStrictRaw: undefined,
   sessionJobOutputLookupRaw: undefined,
   editorContentPageRulesRaw: undefined,
+  editorSpreadValidationMappingRaw: undefined,
 };
 
 describe('api feature-flags', () => {
@@ -83,6 +90,7 @@ describe('api feature-flags', () => {
         JOB_FILE_SITE_STRICT: false,
         SESSION_JOB_OUTPUT_LOOKUP: false,
         EDITOR_CONTENT_PAGE_RULES: true,
+        EDITOR_SPREAD_VALIDATION_MAPPING: true,
       });
     });
 
@@ -150,6 +158,37 @@ describe('api feature-flags', () => {
     ])('spreadSnapshotHardFailRaw=%j → %s (대소문자 구분 정확 일치)', (raw, expected) => {
       const snap = buildApiFeatureFlagSnapshot({ ...BASE_INPUTS, spreadSnapshotHardFailRaw: raw });
       expect(snap.SPREAD_SNAPSHOT_HARD_FAIL).toBe(expected);
+    });
+
+    it.each<[unknown, boolean]>([
+      ['true', true],
+      ['TRUE', false],
+      [' true', false],
+      ['1', false],
+      ['', false],
+      [undefined, false],
+    ])(
+      'SPREAD_SNAPSHOT_HARD_FAIL=%j → %s (규칙 C — 스냅샷·소비 함수가 같은 값)',
+      (raw, expected) => {
+        expect(isSpreadSnapshotHardFailRaw(raw)).toBe(expected);
+        const env = (raw === undefined ? {} : { SPREAD_SNAPSHOT_HARD_FAIL: String(raw) }) as NodeJS.ProcessEnv;
+        expect(isSpreadSnapshotHardFail(env)).toBe(expected);
+        const snap = buildApiFeatureFlagSnapshot({ ...BASE_INPUTS, spreadSnapshotHardFailRaw: raw });
+        expect(snap.SPREAD_SNAPSHOT_HARD_FAIL).toBe(expected);
+      },
+    );
+
+    it('isSpreadSnapshotHardFail: 인자가 없으면 호출 시점의 process.env 를 읽는다', () => {
+      const backup = process.env.SPREAD_SNAPSHOT_HARD_FAIL;
+      try {
+        delete process.env.SPREAD_SNAPSHOT_HARD_FAIL;
+        expect(isSpreadSnapshotHardFail()).toBe(false);
+        process.env.SPREAD_SNAPSHOT_HARD_FAIL = 'true';
+        expect(isSpreadSnapshotHardFail()).toBe(true);
+      } finally {
+        if (backup === undefined) delete process.env.SPREAD_SNAPSHOT_HARD_FAIL;
+        else process.env.SPREAD_SNAPSHOT_HARD_FAIL = backup;
+      }
     });
 
     const STRICT_TABLE: Array<[unknown, boolean]> = [
@@ -234,6 +273,44 @@ describe('api feature-flags', () => {
       }
     });
 
+    it.each<[unknown, boolean]>([
+      [undefined, true],
+      ['on', true],
+      ['off', false],
+      ['OFF', true],
+      [' off', true],
+      ['off ', true],
+      ['', true],
+      ['false', true],
+    ])(
+      'editorSpreadValidationMappingRaw=%j → EDITOR_SPREAD_VALIDATION_MAPPING=%s (규칙 C — 정확히 off 만 해제, 소비 함수와 같은 값)',
+      (raw, expected) => {
+        const snap = buildApiFeatureFlagSnapshot({ ...BASE_INPUTS, editorSpreadValidationMappingRaw: raw });
+        expect(snap.EDITOR_SPREAD_VALIDATION_MAPPING).toBe(expected);
+        expect(isEditorSpreadValidationMappingOnRaw(raw)).toBe(expected);
+        const env = (
+          raw === undefined ? {} : { EDITOR_SPREAD_VALIDATION_MAPPING: String(raw) }
+        ) as NodeJS.ProcessEnv;
+        expect(isEditorSpreadValidationMappingOn(env)).toBe(expected);
+        expect(snap.EDITOR_CONTENT_PAGE_RULES).toBe(true);
+      },
+    );
+
+    it('isEditorSpreadValidationMappingOn: 인자가 없으면 호출 시점의 process.env 를 읽는다', () => {
+      const backup = process.env.EDITOR_SPREAD_VALIDATION_MAPPING;
+      try {
+        delete process.env.EDITOR_SPREAD_VALIDATION_MAPPING;
+        expect(isEditorSpreadValidationMappingOn()).toBe(true);
+        process.env.EDITOR_SPREAD_VALIDATION_MAPPING = 'off';
+        expect(isEditorSpreadValidationMappingOn()).toBe(false);
+        process.env.EDITOR_SPREAD_VALIDATION_MAPPING = 'on';
+        expect(isEditorSpreadValidationMappingOn()).toBe(true);
+      } finally {
+        if (backup === undefined) delete process.env.EDITOR_SPREAD_VALIDATION_MAPPING;
+        else process.env.EDITOR_SPREAD_VALIDATION_MAPPING = backup;
+      }
+    });
+
     it('키 집합이 API_FEATURE_FLAG_KEYS 와 같고 값은 전부 boolean', () => {
       const snap = buildApiFeatureFlagSnapshot(BASE_INPUTS);
       expect(Object.keys(snap).sort()).toEqual([...API_FEATURE_FLAG_KEYS].sort());
@@ -272,9 +349,11 @@ describe('api feature-flags', () => {
           jobFileSiteStrictRaw: 'sk-sentinel',
           sessionJobOutputLookupRaw: 'sk-sentinel',
           editorContentPageRulesRaw: 'sk-sentinel',
+          editorSpreadValidationMappingRaw: 'sk-sentinel',
         }),
       );
       expect(line).not.toContain('sentinel');
+      expect(line).toContain('EDITOR_SPREAD_VALIDATION_MAPPING=true');
       expect(line).toContain('CUTOUT_ENABLED=false');
       expect(line).toContain('JOB_LINK_STRICT=false');
       expect(line).toContain('JOB_FILE_SITE_STRICT=false');
@@ -413,5 +492,99 @@ describe('api feature-flags', () => {
         expect(snapshotFrom(config).THUMBNAIL_CLEANUP_DRY_RUN).toBe(field);
       },
     );
+  });
+
+  describe('collectApiFeatureFlagInputs — 종전 main.ts 입력 매핑과 같다', () => {
+    const COLLECT_ENV_KEYS = [
+      'CUTOUT_ENABLED',
+      'FILE_RETENTION_ENABLED',
+      'FILE_RETENTION_DRY_RUN',
+      'THUMBNAIL_CLEANUP_DRY_RUN',
+      'SPREAD_SNAPSHOT_HARD_FAIL',
+      'JOB_LINK_STRICT',
+      'JOB_FILE_SITE_STRICT',
+      'SESSION_JOB_OUTPUT_LOOKUP',
+      'EDITOR_CONTENT_PAGE_RULES',
+      'EDITOR_SPREAD_VALIDATION_MAPPING',
+    ] as const;
+    const backup: Record<string, string | undefined> = {};
+    const sources = {
+      queueMonitor: { isEnabled: (): boolean => false },
+      fileOrphan: { getEnvFlags: () => ({ enabled: false, dryRun: true }) },
+    };
+
+    beforeEach(() => {
+      for (const k of COLLECT_ENV_KEYS) {
+        backup[k] = process.env[k];
+        delete process.env[k];
+      }
+    });
+
+    afterEach(() => {
+      for (const k of COLLECT_ENV_KEYS) {
+        const v = backup[k];
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+    });
+
+    /** 종전 main.ts 스냅샷 블록의 입력 매핑을 그대로 옮긴 기준식 */
+    const legacyInputs = (config: ConfigService): ApiFeatureFlagInputs => ({
+      cutoutRaw: config.get<string>('CUTOUT_ENABLED'),
+      queueMonitorEnabled: sources.queueMonitor.isEnabled(),
+      fileOrphan: sources.fileOrphan.getEnvFlags(),
+      fileRetentionEnabledRaw: config.get<string>('FILE_RETENTION_ENABLED', 'true'),
+      fileRetentionDryRunRaw: config.get<string>('FILE_RETENTION_DRY_RUN', '0'),
+      thumbnailCleanupDryRunRaw: config.get<string>('THUMBNAIL_CLEANUP_DRY_RUN'),
+      spreadSnapshotHardFailRaw: process.env.SPREAD_SNAPSHOT_HARD_FAIL,
+      jobLinkStrictRaw: config.get<string>('JOB_LINK_STRICT'),
+      jobFileSiteStrictRaw: config.get<string>('JOB_FILE_SITE_STRICT'),
+      sessionJobOutputLookupRaw: process.env.SESSION_JOB_OUTPUT_LOOKUP,
+      editorContentPageRulesRaw: process.env.EDITOR_CONTENT_PAGE_RULES,
+      editorSpreadValidationMappingRaw: process.env.EDITOR_SPREAD_VALIDATION_MAPPING,
+    });
+
+    const getterOf = (config: ConfigService): ApiConfigGetter => (key, defaultValue) =>
+      defaultValue === undefined ? config.get<string>(key) : config.get<string>(key, defaultValue);
+
+    it.each<[string, string | undefined]>([
+      ['미설정', undefined],
+      ['빈 값', ''],
+      ['true', 'true'],
+      ['off', 'off'],
+      ['1', '1'],
+    ])('모든 키 = %s', (_label, value) => {
+      for (const k of COLLECT_ENV_KEYS) {
+        if (value !== undefined) process.env[k] = value;
+      }
+      const config = new ConfigService();
+      const collected = collectApiFeatureFlagInputs(getterOf(config), sources);
+      expect(collected).toEqual(legacyInputs(config));
+      expect(buildApiFeatureFlagSnapshot(collected)).toEqual(
+        buildApiFeatureFlagSnapshot(legacyInputs(config)),
+      );
+    });
+
+    it('env 인자를 주면 process.env 대신 그 값을 읽는다(ConfigService 경유 키는 getter 를 따른다)', () => {
+      const get: ApiConfigGetter = (_key, defaultValue) => defaultValue;
+      const env = {
+        SPREAD_SNAPSHOT_HARD_FAIL: 'true',
+        SESSION_JOB_OUTPUT_LOOKUP: '1',
+        EDITOR_CONTENT_PAGE_RULES: 'off',
+        EDITOR_SPREAD_VALIDATION_MAPPING: 'off',
+      } as NodeJS.ProcessEnv;
+      const snap = buildApiFeatureFlagSnapshot(collectApiFeatureFlagInputs(get, sources, env));
+      expect(snap).toMatchObject({
+        SPREAD_SNAPSHOT_HARD_FAIL: true,
+        SESSION_JOB_OUTPUT_LOOKUP: true,
+        EDITOR_CONTENT_PAGE_RULES: false,
+        EDITOR_SPREAD_VALIDATION_MAPPING: false,
+        FILE_RETENTION_ENABLED: true,
+        FILE_RETENTION_DRY_RUN: false,
+        QUEUE_MONITOR_ENABLED: false,
+        FILE_ORPHAN_ENABLED: false,
+        FILE_ORPHAN_DRY_RUN: true,
+      });
+    });
   });
 });

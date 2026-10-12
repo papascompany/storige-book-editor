@@ -15,7 +15,9 @@
  *    (validation.config isTrimBoxSizeCheckEnabled — VALIDATION_CONFIG.TRIMBOX_SIZE_CHECK 재사용).
  *
  * 플래그 추가 방법: WORKER_FEATURE_FLAG_KEYS 에 키 1개, buildWorkerFeatureFlagSnapshot 에
- * 1줄. 스냅샷 타입이 키 배열에서 파생되므로 한쪽만 추가하면 컴파일 오류가 난다.
+ * 1줄, docker-compose.yml worker environment 에 `KEY=${KEY:-<코드 기본값과 같은 리터럴>}` 매핑 1줄
+ * (compose-env-parity.spec 이 매핑·기본값 일치를 강제). 스냅샷 타입이 키 배열에서 파생되므로
+ * 한쪽만 추가하면 컴파일 오류가 난다.
  */
 import { VALIDATION_CONFIG } from './validation.config';
 import { isPrintNormalizeEnabled, printNormalizeFlatten } from '../utils/print-normalize';

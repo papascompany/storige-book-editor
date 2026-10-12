@@ -21,11 +21,16 @@
  *    같은 소스(process.env)·같은 술어(isFlagOn).
  *  - EDITOR_CONTENT_PAGE_RULES: edit-sessions.service 가 호출 시점에 쓰는 isEditorContentPageRulesOn 과
  *    같은 소스(process.env)·같은 술어(isEditorContentPageRulesOnRaw — 미설정 ON, 'off' 만 OFF).
+ *  - EDITOR_SPREAD_VALIDATION_MAPPING: edit-sessions.service 가 호출 시점에 쓰는
+ *    isEditorSpreadValidationMappingOn 과 같은 소스(process.env)·같은 술어(정확히 'off' 만 OFF).
  *
  * 파싱 규칙은 플래그마다 다르다(통일하지 않음 — 동작 변경이므로 테스트로 현행을 고정).
+ * 스냅샷 입력은 collectApiFeatureFlagInputs 한 곳에서 모은다(main.ts·compose 정합 spec 공용).
  *
- * 플래그 추가 방법: API_FEATURE_FLAG_KEYS 에 키 1개, 입력 필드 1개, build 에 1줄.
- * 스냅샷 타입이 키 배열에서 파생되므로 한쪽만 추가하면 컴파일 오류가 난다.
+ * 플래그 추가 방법: API_FEATURE_FLAG_KEYS 에 키 1개, 입력 필드 1개, collect 에 1줄, build 에 1줄,
+ * docker-compose.yml api environment 에 `KEY=${KEY:-<코드 기본값과 같은 리터럴>}` 매핑 1줄
+ * (compose-env-parity.spec 이 매핑·기본값 일치를 강제). 스냅샷 타입이 키 배열에서 파생되므로
+ * 한쪽만 추가하면 컴파일 오류가 난다.
  */
 
 /**
@@ -50,6 +55,7 @@ export const API_FEATURE_FLAG_KEYS = [
   'JOB_FILE_SITE_STRICT',
   'SESSION_JOB_OUTPUT_LOOKUP',
   'EDITOR_CONTENT_PAGE_RULES',
+  'EDITOR_SPREAD_VALIDATION_MAPPING',
 ] as const;
 
 export type ApiFeatureFlagKey = (typeof API_FEATURE_FLAG_KEYS)[number];
@@ -78,6 +84,8 @@ export interface ApiFeatureFlagInputs {
   sessionJobOutputLookupRaw: unknown;
   /** process.env.EDITOR_CONTENT_PAGE_RULES — edit-sessions.service 와 같은 소스·같은 술어 */
   editorContentPageRulesRaw: unknown;
+  /** process.env.EDITOR_SPREAD_VALIDATION_MAPPING — edit-sessions.service 와 같은 소스·같은 술어 */
+  editorSpreadValidationMappingRaw: unknown;
 }
 
 export function buildApiFeatureFlagSnapshot(i: ApiFeatureFlagInputs): ApiFeatureFlagSnapshot {
@@ -92,8 +100,8 @@ export function buildApiFeatureFlagSnapshot(i: ApiFeatureFlagInputs): ApiFeature
     FILE_RETENTION_DRY_RUN: i.fileRetentionDryRunRaw === '1',
     // thumbnail-cleanup.service: `configService.get('THUMBNAIL_CLEANUP_DRY_RUN') === '1'`
     THUMBNAIL_CLEANUP_DRY_RUN: i.thumbnailCleanupDryRunRaw === '1',
-    // edit-sessions.service: `process.env.SPREAD_SNAPSHOT_HARD_FAIL === 'true'`
-    SPREAD_SNAPSHOT_HARD_FAIL: i.spreadSnapshotHardFailRaw === 'true',
+    // edit-sessions.service: isSpreadSnapshotHardFail() = isSpreadSnapshotHardFailRaw(process.env.SPREAD_SNAPSHOT_HARD_FAIL)
+    SPREAD_SNAPSHOT_HARD_FAIL: isSpreadSnapshotHardFailRaw(i.spreadSnapshotHardFailRaw),
     // worker-jobs.controller strictFlag: isFlagOn(configService.get(key))
     JOB_LINK_STRICT: isFlagOn(i.jobLinkStrictRaw),
     JOB_FILE_SITE_STRICT: isFlagOn(i.jobFileSiteStrictRaw),
@@ -101,6 +109,44 @@ export function buildApiFeatureFlagSnapshot(i: ApiFeatureFlagInputs): ApiFeature
     SESSION_JOB_OUTPUT_LOOKUP: isFlagOn(i.sessionJobOutputLookupRaw),
     // edit-sessions.service: isEditorContentPageRulesOn() = isEditorContentPageRulesOnRaw(process.env.EDITOR_CONTENT_PAGE_RULES)
     EDITOR_CONTENT_PAGE_RULES: isEditorContentPageRulesOnRaw(i.editorContentPageRulesRaw),
+    // edit-sessions.service: isEditorSpreadValidationMappingOn() = isEditorSpreadValidationMappingOnRaw(process.env.EDITOR_SPREAD_VALIDATION_MAPPING)
+    EDITOR_SPREAD_VALIDATION_MAPPING: isEditorSpreadValidationMappingOnRaw(
+      i.editorSpreadValidationMappingRaw,
+    ),
+  };
+}
+
+/** ConfigService.get 과 같은 모양(기본값 인자 선택). */
+export type ApiConfigGetter = (key: string, defaultValue?: string) => string | undefined;
+
+/** 스냅샷 입력 중 서비스 인스턴스에서 읽는 값의 출처. */
+export interface ApiFeatureFlagSources {
+  queueMonitor: { isEnabled(): boolean };
+  fileOrphan: { getEnvFlags(): { enabled: boolean; dryRun: boolean } };
+}
+
+/**
+ * 스냅샷 입력 수집 — main.ts 와 compose 정합 spec 이 같은 경로를 쓴다.
+ * 소비 코드와 같은 소스(ConfigService 또는 process.env)·같은 기본값 인자로 읽는다.
+ */
+export function collectApiFeatureFlagInputs(
+  get: ApiConfigGetter,
+  src: ApiFeatureFlagSources,
+  env: NodeJS.ProcessEnv = process.env,
+): ApiFeatureFlagInputs {
+  return {
+    cutoutRaw: get('CUTOUT_ENABLED'),
+    queueMonitorEnabled: src.queueMonitor.isEnabled(),
+    fileOrphan: src.fileOrphan.getEnvFlags(),
+    fileRetentionEnabledRaw: get('FILE_RETENTION_ENABLED', 'true'),
+    fileRetentionDryRunRaw: get('FILE_RETENTION_DRY_RUN', '0'),
+    thumbnailCleanupDryRunRaw: get('THUMBNAIL_CLEANUP_DRY_RUN'),
+    spreadSnapshotHardFailRaw: env.SPREAD_SNAPSHOT_HARD_FAIL,
+    jobLinkStrictRaw: get('JOB_LINK_STRICT'),
+    jobFileSiteStrictRaw: get('JOB_FILE_SITE_STRICT'),
+    sessionJobOutputLookupRaw: env.SESSION_JOB_OUTPUT_LOOKUP,
+    editorContentPageRulesRaw: env.EDITOR_CONTENT_PAGE_RULES,
+    editorSpreadValidationMappingRaw: env.EDITOR_SPREAD_VALIDATION_MAPPING,
   };
 }
 
@@ -110,6 +156,32 @@ export function buildApiFeatureFlagSnapshot(i: ApiFeatureFlagInputs): ApiFeature
  */
 export function isSessionJobOutputLookupOn(env: NodeJS.ProcessEnv = process.env): boolean {
   return isFlagOn(env.SESSION_JOB_OUTPUT_LOOKUP);
+}
+
+/** SPREAD_SNAPSHOT_HARD_FAIL 진리값 술어 — 규칙 (C): 정확히 'true'(대소문자 구분)일 때만 HARD. */
+export function isSpreadSnapshotHardFailRaw(raw: unknown): boolean {
+  return raw === 'true';
+}
+
+/** 스프레드 스냅샷 HARD 차단 여부. 호출 시점마다 env 를 읽는다. */
+export function isSpreadSnapshotHardFail(env: NodeJS.ProcessEnv = process.env): boolean {
+  return isSpreadSnapshotHardFailRaw(env.SPREAD_SNAPSHOT_HARD_FAIL);
+}
+
+/**
+ * EDITOR_SPREAD_VALIDATION_MAPPING 진리값 술어 — 규칙 (C): 정확히 'off' 일 때만 해제.
+ * 앞뒤 공백 제거·소문자 변환을 하지 않는다(EDITOR_CONTENT_PAGE_RULES 와 다름 — 통일하지 않음).
+ */
+export function isEditorSpreadValidationMappingOnRaw(raw: unknown): boolean {
+  return raw !== 'off';
+}
+
+/**
+ * 편집기 스프레드 책 세션의 검증 잡에 주문 제본·내지 쪽수·표지 책등 기하를 연결하는가.
+ * 기본 true. 호출 시점마다 env 를 읽는다.
+ */
+export function isEditorSpreadValidationMappingOn(env: NodeJS.ProcessEnv = process.env): boolean {
+  return isEditorSpreadValidationMappingOnRaw(env.EDITOR_SPREAD_VALIDATION_MAPPING);
 }
 
 /**
