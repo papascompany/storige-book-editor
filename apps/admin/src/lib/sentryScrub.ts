@@ -2,7 +2,7 @@
  * Sentry 전송 전처리 — 순수 함수(scrubUrl / scrubDeep / scrubBreadcrumb / scrubEvent).
  *
  * apps/editor/src/lib/sentry.ts(@06a44f3)의 전처리 함수를 옮겨 왔다. admin 에서는 여기에 더해
- * 사이트 키 형식(`sk-storige-` + hex 16자 이상) 문자열은 접두어만 남기고, 이메일 형식 문자열은
+ * 사이트 키 형식(`sk-storige-` + 영문·숫자 16자 이상) 문자열은 접두어만 남기고, 이메일 형식 문자열은
  * 통째로 '[Filtered]' 로 바꾼다(두 규칙 모두 결과에 다시 적용해도 같다).
  * editor 쪽 함수를 고치면 이 파일도 함께 맞춘다.
  */
@@ -31,10 +31,13 @@ const JSON_PAIR = /("([A-Za-z0-9_.-]+)"\s*:\s*)"(?:[^"\\]|\\.)*"/g;
 const PLAIN_PARAM_SERIALIZED = /(^|[?&#;\s])([A-Za-z0-9_.-]+)=([^&#\s"'<>\\]*)/g;
 const ENCODED_PARAM_SERIALIZED =
   /(%3F|%26|%23)([A-Za-z0-9_.-]+)%3D((?:[^%&#\s"'<>\\]|%(?!26|23|3F)[0-9A-F]{2})*)/gi;
-/** admin: 사이트 키 형식 — 접두어만 남긴다. */
-const SITE_KEY = /\bsk-storige-[0-9a-f]{16,}\b/gi;
-/** admin: 이메일 형식. */
-const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g;
+/** admin: 사이트 키 형식(접두어 + 영문·숫자 16자 이상) — 접두어만 남긴다. 키 뒤에 붙은 문자는 그대로 둔다. */
+const SITE_KEY = /\bsk-storige-[A-Za-z0-9]{16,}/gi;
+/**
+ * admin: 이메일 형식. 로컬 파트는 64자까지 본다 — 시작 위치마다 확인 길이가 묶여 긴 문자열도
+ * 길이에 비례한 시간에 끝난다(로컬 파트가 64자를 넘으면 앞부분은 남고 끝 64자부터 바꾼다).
+ */
+const EMAIL = /[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g;
 
 const MAX_DEPTH = 5;
 

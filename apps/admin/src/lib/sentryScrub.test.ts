@@ -467,4 +467,25 @@ describe('sentry 전처리 — admin 규칙(사이트 키·이메일)', () => {
     expect(JSON.stringify(ev)).not.toContain(SITE_KEY)
     expect(JSON.stringify(ev)).not.toContain(EMAIL)
   })
+
+  it('AD5 사이트 키는 대소문자 섞인 영문·숫자 16자 이상이면 접두어만 남기고 키 뒤에 붙은 문자는 그대로 둔다', () => {
+    const mixed = 'sk-storige-' + 'Ab9x'.repeat(8)
+    expect(scrubUrl(`key ${mixed} end`)).toBe(`key ${SITE_KEY_MASKED} end`)
+    expect(scrubUrl(`${SITE_KEY}_copy`)).toBe(`${SITE_KEY_MASKED}_copy`)
+    expect(scrubDeep({ note: `site ${mixed}` })).toEqual({ note: `site ${SITE_KEY_MASKED}` })
+    const once = scrubUrl(`a ${mixed}_x b`)
+    expect(scrubUrl(once)).toBe(once)
+  })
+
+  it('AD6 긴 문자열도 짧은 시간 안에 처리하고 로컬 파트가 긴 이메일의 도메인도 바꾼다', () => {
+    const inputs = ['a'.repeat(200_000), 'a@' + 'b'.repeat(200_000), 'x.'.repeat(100_000)]
+    for (const s of inputs) {
+      const t0 = Date.now()
+      expect(scrubUrl(s)).toBe(s)
+      expect(Date.now() - t0).toBeLessThan(1000)
+    }
+    const longLocal = scrubUrl('x'.repeat(100) + '@example.com') as string
+    expect(longLocal).not.toContain('@example.com')
+    expect(longLocal.endsWith(FILTERED)).toBe(true)
+  })
 })
