@@ -48,7 +48,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  # workflow_call 로 불리면 github.workflow 는 호출한 워크플로 이름이다. 러너 라벨을 그룹에 넣어
+  #   ci-runner-probe 의 러너별 실행이 서로를 취소하지 않게 한다(push·PR 은 'default' 로 종전과 같은 단위).
+  group: ci-${{ github.workflow }}-${{ github.ref }}-${{ inputs.runner || 'default' }}
   cancel-in-progress: true
 
 jobs:
