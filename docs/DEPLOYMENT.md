@@ -285,7 +285,13 @@ docker logs storige-worker 2>&1 | grep "\[FLAGS\]"
 
 **기대값 프로필 대조 — `[FLAGS-CHECK]`**
 
-production 에서 api·worker 는 `[FLAGS]` 줄을 남긴 뒤, 유효값을 기대값 프로필과 대조한 결과를 `[FLAGS-CHECK]` 한 줄로 남깁니다. 프로필은 `.env` 의 `FLAGS_EXPECTED_API`·`FLAGS_EXPECTED_WORKER` 이고, `docker-compose.yml` 이 각 컨테이너의 `FLAGS_EXPECTED` 로 넘깁니다. 값은 `[FLAGS]` 줄의 토큰(`KEY=true|false`)을 공백이나 쉼표로 나열한 것이며, `.env` 에서는 작은따옴표로 감쌉니다. 운영 프로필 값은 이 문서에 적지 않습니다.
+production 에서 api·worker 는 `[FLAGS]` 줄을 남긴 뒤, 유효값을 기대값 프로필과 대조한 결과를 `[FLAGS-CHECK]` 한 줄로 남깁니다. 프로필은 `.env` 의 `FLAGS_EXPECTED_API`·`FLAGS_EXPECTED_WORKER` 이고, `docker-compose.yml` 이 각 컨테이너의 `FLAGS_EXPECTED` 로 넘깁니다. 값은 스냅샷 줄(`[FLAGS] api …`·`[FLAGS] worker …`)의 토큰(`KEY=true|false`)을 공백이나 쉼표로 나열한 것이며, `.env` 에서는 작은따옴표로 감쌉니다. api 의 `[FLAGS] api retention-effective` 줄 토큰은 넣지 않습니다(같은 키가 두 번 들어가 `invalid` 가 됩니다). 운영 프로필 값은 이 문서에 적지 않습니다.
+
+```bash
+# 프로필 값 만들기 — 스냅샷 줄의 토큰만 꺼낸다(retention-effective 줄 제외). 출력이 KEY=true|false 토큰뿐인지 확인한다
+docker logs storige-api 2>&1 | grep -v retention-effective | sed -n 's/.*"msg":"\[FLAGS\] api \([^"]*\)".*/\1/p' | tail -1
+docker logs storige-worker 2>&1 | sed -n 's/.*"msg":"\[FLAGS\] worker \([^"]*\)".*/\1/p' | tail -1
+```
 
 ```bash
 docker logs storige-api 2>&1 | grep "\[FLAGS-CHECK\]" | tail -1      # [FLAGS-CHECK] api ok n=<키 수>
@@ -303,7 +309,14 @@ docker logs storige-worker 2>&1 | grep "\[FLAGS-CHECK\]" | tail -1   # [FLAGS-CH
 - 한 줄에 `invalid …` 와 `mismatch …` 가 함께 나올 수 있다.
 - 대조는 로그만 남기고 부팅·처리 동작을 바꾸지 않는다. 프로필만 고칠 때는 해당 서비스를 빌드 없이 다시 만든다(api 는 nginx 재시작). production 이 아니면(`NODE_ENV` 가 `production` 이 아님) 줄이 없다.
 - `[FLAGS-CHECK]` 는 `\[FLAGS\]` 에 걸리지 않으므로 위 `grep "\[FLAGS\]"` 결과는 그대로다.
-- 재생성 전 구간까지 셀 때는 Loki 를 쓴다(아래 「VPS 셸에서 Loki API 로 건수 세기」의 `lc`): `lc 'sum(count_over_time({service=~"api|worker"} |= "[FLAGS-CHECK]" |~ "mismatch|missing|invalid" [1h]))'` — `0` 이어야 한다.
+- 재생성 전 구간까지 셀 때는 Loki 를 쓴다(아래 「VPS 셸에서 Loki API 로 건수 세기」의 `lc`). `[FLAGS]` 스냅샷을 만들지 못하면 `[FLAGS-CHECK]` 줄이 남지 않으므로, 비정상 건수가 `0` 인 것과 함께 서비스별 `ok` 건수가 `1` 이상인지 본다.
+
+```bash
+lc 'sum(count_over_time({service=~"api|worker"} |= "[FLAGS-CHECK]" |~ "mismatch|missing|invalid|실패" [1h]))'   # 0
+lc 'sum(count_over_time({service=~"api|worker"} |= "[FLAGS]" |= "실패" [1h]))'                                   # 0 (스냅샷·보존정책 실효값 조회 실패)
+lc 'sum(count_over_time({service="api"} |= "[FLAGS-CHECK] api ok n=" [1h]))'                                     # 1 이상(재생성 횟수만큼)
+lc 'sum(count_over_time({service="worker"} |= "[FLAGS-CHECK] worker ok n=" [1h]))'                               # 1 이상(재생성 횟수만큼)
+```
 
 ### 5. 서비스 중지
 
@@ -470,6 +483,8 @@ docker logs storige-api 2>&1 | grep "\[FLAGS\]" | tail -2
 docker exec storige-api printenv EDITOR_SPREAD_VALIDATION_MAPPING
 ```
 
+- 기대값 프로필(`FLAGS_EXPECTED_API`)의 같은 키가 `true` 인 채로 끄면 재생성 뒤 `[FLAGS-CHECK] api mismatch EDITOR_SPREAD_VALIDATION_MAPPING=false(expected=true)` 가 남는다. 차단 직후에는 예상한 결과다. 차단을 유지하면 프로필의 같은 키를 `false` 로 바꾸고 api 를 빌드 없이 다시 만든다. 차단할 때 1) 에서 두 줄을 함께 바꿔도 된다. 되돌릴 때는 두 값을 함께 되돌린다.
+
 **`EDITOR_CONTENT_PAGE_RULES` 비상 차단**
 
 편집 완료 때 만드는 내지 검증 잡에 편집기 쪽 단위(`pageMultiple`)와 중철 쪽수 상한을 싣는 동작을 끈다. 끄면 내지 검증 잡은 주문 옵션(`orderOptions`)의 종전 쪽수 규칙으로 판정한다. 값은 앞뒤 공백·대소문자를 무시하고 `off` 일 때만 꺼진다. 현재 값은 `[FLAGS] api` 줄의 `EDITOR_CONTENT_PAGE_RULES` 로 확인한다.
@@ -486,6 +501,7 @@ docker logs storige-api 2>&1 | grep "\[FLAGS\]" | tail -2
 
 - 이 키의 api `environment` 매핑은 2026-10-08 에 들어갔다(아래 「2026-10-08 운영 정비」). 그 전 `docker-compose.yml` 로 만든 컨테이너에는 `.env` 값이 전달되지 않으므로, 끄려면 위 2) 처럼 현재 compose 로 api 를 다시 만들어야 한다.
 - 끄면 편집 완료 때 확인 로그 `내지 쪽 규칙` 줄이 더 이상 나오지 않는다(아래 「편집 완료 내지 쪽 단위 배포」).
+- 기대값 프로필(`FLAGS_EXPECTED_API`)의 같은 키가 `true` 인 채로 끄면 재생성 뒤 `[FLAGS-CHECK] api mismatch EDITOR_CONTENT_PAGE_RULES=false(expected=true)` 가 남는다. 차단 직후에는 예상한 결과다. 차단을 유지하면 프로필의 같은 키를 `false` 로 바꾸고 api 를 빌드 없이 다시 만든다. 차단할 때 1) 에서 두 줄을 함께 바꿔도 된다. 되돌릴 때는 두 값을 함께 되돌린다.
 
 ---
 
@@ -1414,7 +1430,7 @@ docker logs storige-api 2>&1 | grep "\[FLAGS\]" | tail -2
 docker logs storige-api 2>&1 | grep "\[FLAGS-CHECK\]" | tail -1
 ```
 
-- 기대값 프로필(위 「배포 후 점검」의 `[FLAGS-CHECK]`)은 2026-10-08 뒤에 도입됐다. 2026-10-08 실행에는 프로필 단계가 없었다.
+- 1) 의 기대값 프로필 단계(위 「배포 후 점검」의 `[FLAGS-CHECK]`)는 2026-10-08 정비 뒤에 더해졌다.
 - compose 매핑 같은 저장소 변경을 함께 받을 때는 0) 뒤에 `git pull origin master` 를 한다.
 - 되돌리기: `.env` 를 백업 파일의 값으로 되돌리고, 이미지 확인 뒤 2)·3) 을 다시 한다.
 - api 를 다시 만들면 `docker logs` 가 비워진다. 재생성 전 로그는 Loki 로 본다(위 「VPS 셸에서 Loki API 로 건수 세기」).
