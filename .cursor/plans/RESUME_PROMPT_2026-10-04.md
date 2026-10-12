@@ -69,17 +69,17 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
 
 ---
 
-## 2. 현재 라이브 상태 (2026-10-08 14:38Z — Wave 8 전부 + 10-08 운영 정비(Wave B JOB_LINK_STRICT·킬스위치 compose 매핑·AI 탭 숨김) 배포 후)
+## 2. 현재 라이브 상태 (2026-10-12 15:43Z — Wave 9 안 1 배포 후)
 
 | 구성 | 현재 운영 | 롤백 |
 |---|---|---|
 | DB | 09-30 Wave 1 ~ 10-04 Wave 3 **마이그레이션 없음**. 마지막 스키마 변경은 09-29 `20260929`·`20260930`(ADDITIVE) | 백업 `~/backup-sites-pre-staff-edit-20260929.sql`·`~/backup-template_sets-pre-padstep-20260928.sql`. 추가 컬럼·테이블은 남겨도 무해 |
-| api | 이미지 `1c9b120`(e8f5bd686b27, N-API-3b) · 컨테이너 10-08 14:37:16Z 재생성(VPS 체크아웃 `5ef27c0` — compose `EDITOR_CONTENT_PAGE_RULES` 매핑 추가 · .env `JOB_LINK_STRICT=true`) + nginx 14:37:25Z | Wave B 원복 = .env `JOB_LINK_STRICT` 줄 제거(백업 `~/storige/.env.bak-pre-waveb-20261008T143656Z`) + api 재생성 + nginx 재시작 · 킬스위치 = .env `EDITOR_CONTENT_PAGE_RULES=off` + api 재생성(10-08 부터 유효 — 이전에는 compose 미매핑으로 무효) · 태그 `storige-api:rollback-pre-wave-b`(=e8f5bd686b27 동일 이미지) → `storige-api:rollback-pre-n-api-3b`(=`c6c38ef`, e19adc5f69de) → `rollback-pre-wave8-2`(=`776ac0e`, 4c6b0af81ac2) → `rollback-pre-wave8`(=`9381ea4`, fe75e1063d85) → `rollback-pre-wave6`(=`d3e3587`, 294b1d98554e) → `rollback-pre-wave4`(=`f63c8ae`, c732d216145f) → `rollback-pre-wave3`(=`9e2a817`) → `rollback-pre-1003`(=`4f28e52`) → `rollback-pre-stage3` → …(태그 → `latest` 재지정 후 `up -d --no-build api` + nginx 재시작). **Wave 3 이전 코드로 되돌릴 때는 오너 승인 뒤 비공개 메모(`../_private_notes/wave3/`)의 데이터 정리 절차 먼저.** 롤백 순서 api → (합성 큐 delayed·active 소진 확인) → worker |
-| worker | `776ac0e`(10-06 08:09:11Z, Wave 8 1단계 — sharp 0.35.5·mysql2 3.24.5) | `storige-worker:rollback-pre-wave8`(=`d3e3587`, 3be1bd99732e) → `rollback-pre-wave4`(=`f63c8ae`, eacd43c79dfb) → `rollback-pre-wave3`(=`9e2a817`) → `rollback-pre-1003`(=`1c52c80`) → … |
-| editor | Vercel `55d6gq227`(release `5b48aee`, 10-12 — docs 전용 커밋이 Vercel 얕은 clone(depth 10) 폴백으로 재빌드됨, 앱 코드는 `5ef27c0` 과 동일: AI 탭 숨김) | `8taztq201`(`5ef27c0`, 내용 동일) → `diqgayglo`(`c8d7df5`, Wave 8 2b) → `gmboy5bm1`(`c6c38ef`) → `n8zp637da`(`776ac0e`) → `16moj714s`(`9381ea4`) → `g0haka2nu`(`599f602`) → `pwvgvgvhb`(`d3e3587`) → `qftv0kx8t`(`f63c8ae`) → `65j5xwzgg`(`9e2a817`) promote. IIFE 번들(VPS `build:embed:prod`)은 미재빌드(파트너 미사용, 오너 결정 대기) |
-| admin | Vercel `naur32cp4`(release `c009ceb`, 10-12 — docs 전용 커밋의 얕은 clone 폴백 재빌드, 앱 코드는 `c6c38ef` 과 동일) | `kolxzkmiv`(`c6c38ef`, 내용 동일) → `luw3mayxr`(`776ac0e`) → `cyho5uda8`(`9381ea4`) → `oylw176wy`(`f63c8ae`) promote | `l6f2dhp0f`(`9e2a817`) → `isxgg1mpv` promote |
+| api | `b76e927`(이미지 de68a7201718, 10-12 15:39:57Z — Wave 9: 파일 정리 env 범위·플래그 모듈·[FLAGS-CHECK] 기대값 프로필 대조·books errorDetail 고정 형식(FREEZE v1.17)·typeorm 0.3.31·express 4.22.3·body-parser 1.20.8) + nginx 15:40:06Z | 태그 `storige-api:rollback-pre-wave9`(= e8f5bd686b27, 10-08 Wave B 컨테이너 이미지 `1c9b120`) → `rollback-pre-wave-b`(같은 이미지) → `rollback-pre-n-api-3b`(=`c6c38ef`, e19adc5f69de) → `rollback-pre-wave8-2` → `rollback-pre-wave8`. 롤백: `docker tag <태그> storige-api:latest && docker compose up -d --no-deps --no-build api && docker compose restart nginx` · 킬스위치 = .env `EDITOR_CONTENT_PAGE_RULES=off`(기대값 프로필도 같이 갱신) |
+| worker | `b76e927`(이미지 376052e8f43d, 10-12 15:37:33Z — Wave 9: [FLAGS-CHECK]·의존성 마이너, sharp 0.35.5 x64 점검 통과) | `storige-worker:rollback-pre-wave9`(= c73b2827a13e, `776ac0e` Wave 8 1단계) → `rollback-pre-wave8`(=`d3e3587`, 3be1bd99732e) → … (큐 4종 0 확인 후 태그 원복 + `up -d --no-deps --no-build worker`) |
+| editor | Vercel `50n1lwavx`(release `b76e927`, Ready 10-12 15:41Z — 앱 코드 변경 없음: 고정 release 빌드 55 파일 동일, AI 탭 0) | `55d6gq227`(release `5b48aee`, 내용 동일) → `8taztq201`(`5ef27c0`) → `diqgayglo`(`c8d7df5`, Wave 8 2b) → `gmboy5bm1` … promote |
+| admin | Vercel `4yuolx9r0`(release `b76e927`, Ready 10-12 15:41Z — Sentry 전송 전처리) | `naur32cp4`(release `c009ceb`, = `c6c38ef` 코드) → `kolxzkmiv` → `luw3mayxr` → … promote |
 
-- VPS 체크아웃 = `5ef27c0`(10-08). api 이미지 = `1c9b120`(N-API-3b), worker 이미지 = `776ac0e`(Wave 8 1단계) — 그 뒤 서버 코드 변경 없음(compose 매핑만). 계약 정본 **CONTRACT_FREEZE v1.16**(`docs/CONTRACT_FREEZE.md` + `apps/api/src/contract-freeze.spec.ts` — v1.16 재편집 템플릿셋 세션 세트 우선·ready/complete templateSetId(MODIFY-TARGET+ADDITIVE, editor 10-07 14:53:59Z), v1.15 편집 완료 내지 검증 쪽 단위 판정(MODIFY-TARGET, 10-06 15:39Z), v1.14 서술 정정, v1.13 동화책 싸바리 세트는 매핑 전환 시각부터 유효).
+- VPS 체크아웃 = `b76e927`(10-12). api·worker 이미지 = `b76e927`. SQL·마이그레이션 없음(Wave 1 이후). 계약 정본 **CONTRACT_FREEZE v1.17**(v1 도서 확정 실패 errorDetail 고정 형식 MODIFY-TARGET — 적용 10-12 15:43Z 완료 통지 시각, editor.ready orientationMismatch 사후 등재·SDK TemplateSetMismatch 이름 export ADDITIVE).
 - 플래그(운영 기동 로그 `[FLAGS]` 확인값):
 
 | 플래그 | 운영 값 | 비고 |
@@ -88,6 +88,8 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
 | `JOB_FILE_SITE_STRICT` | false(기본) | **관측 연장(10-08 오너 결정)** — 켜려면 FREEZE 등재(403 FILE_SITE_MISMATCH, MODIFY-TARGET)·사전 통지·ACK·소급 확인 선행. 100p 요청(10-09): 켜기 전 사전 안내 — 90MB 이하 multipart 파일·P4 이전 파일의 사이트 귀속을 100p 가 확인 |
 | `SESSION_JOB_OUTPUT_LOOKUP` | false(기본) | 오너 결정 대기(§5) — 연결 행·운영 EXPLAIN 선행 |
 | `EDITOR_CONTENT_PAGE_RULES` | true(compose `:-on`, 10-08 매핑 추가) | N-API-3b 킬스위치. 끌 때는 `.env` 에 off 후 api 재생성 + nginx 재시작 |
+| `EDITOR_SPREAD_VALIDATION_MAPPING` | true(compose `:-on`, 10-12 [FLAGS] 편입) | 편집기 스프레드 검증 옵션 연결. 정확히 `off` 일 때만 해제 |
+| `FLAGS_EXPECTED_API`·`FLAGS_EXPECTED_WORKER` | 운영 .env 에 설정(10-12, 값은 비공개 메모 `../_private_notes/wave9/CTO_DECISIONS_W9.md`) | 기동 시 `[FLAGS-CHECK] <svc> ok n=13/9` 이 정상. 플래그를 바꿀 때 같은 편집에서 프로필도 갱신(안 하면 mismatch 경고 — 동작에는 영향 없음) |
 | `WORKER_TRIMBOX_SIZE_CHECK` | true(compose `:-true`) | X1 TrimBox 판형 판정·합성 contentTrim. 끌 때는 `.env` 에 false 후 worker 재생성 |
 
 - 그 밖의 worker `.env`(09-30 04:47Z, 불리언만): CUTOUT·LIGHTWEIGHT_VALIDATION·LIGHTWEIGHT_SYNTHESIS·CROP_MARK_VALIDATION·WIRED_FIXABLE_GATING = true / PRINT_NORMALIZE·FLATTEN·FILE_ORPHAN_* 미설정(코드 기본값).
@@ -212,10 +214,16 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
 - 권고 Wave 9 = 안 1(운영 안전·CI 게이트·서버 보안 마이너: N-OPS-5·N-OPS-4·CI nest build/lint·N-NEW-1 서버 런타임 마이너·N-API-14a·N-OPS-10a·런북 갱신·동화책 전환 SQL 팩·FILE_SITE 계약 초안·DEPLOYMENT/RESUME 스테일). 안 2(편집기·임베드 후속 + editor 보안 마이너)는 bookmoa e2e 뒤.
 - **오너 결정(10-08)**: Wave B = JOB_LINK 만 켜기 · P0 3건 진행 · **Wave 9 보류**. **배포 완료(10-08)**: 커밋 `5ef27c0`(compose 킬스위치 매핑·editor `VITE_ENABLE_AI_PANEL=false`·CI/gitleaks `runs-on: ubuntu-24.04`) push 14:17:41Z → CI 37791275517 green(test 1회 간헐 실패 `apps/worker/src/utils/synthesis-input.spec.ts:330` qpdf 1ms 시간 초과 경합 → 재실행 통과, 러너 이미지 ubuntu-24.04 동일) · Vercel editor `8taztq201` → VPS .env 백업·`rollback-pre-wave-b` 태그·pull `5ef27c0` → .env `JOB_LINK_STRICT=true` → api 재생성 14:37:16Z(재빌드 없음) + nginx 14:37:25Z → 스모크 정상([FLAGS] JOB_LINK_STRICT=true·JOB_FILE_SITE_STRICT=false·EDITOR_CONTENT_PAGE_RULES=true, health 200, 무인증 401, with-templates 3세트 200 구조 불변, 경고·오류 0, nginx 5xx 0). 3사 사전 안내·완료 통지(bookmoa 영향 없음 회신). 후속: qpdf 시간 초과 테스트 간헐 실패 안정화, Node 20 대상 액션 메이저 bump, ubuntu 26.04 사전 검증.
 
-### 5.2.3 Wave 9 안 1 설계 (2026-10-12, 오너 보고 — 결정 대기)
+### 5.2.3 Wave 9 안 1 (2026-10-12 설계·결정·구현·배포 완료)
 
 - 정본 비공개 `../_private_notes/wave9/DESIGN_W9.md`(작업 단위 T9.1~T9.18 + 선택 T9.19~T9.22, 오너 결정 D1~D11), 결정 기록 `../_private_notes/wave9/CTO_DECISIONS_W9.md`.
 - **문서 push 주의(10-12 확인)**: Vercel ignoreCommand 는 직전 운영 배포 SHA 가 depth 10 clone 밖이면 무조건 빌드한다 → 문서 전용 커밋도 거리 10 이상이면 editor·admin 운영 재배포. push 전 `git rev-list --count <운영 release sha>..HEAD` 확인(운영 release 는 공개 번들의 `storige-editor@…`·`storige-admin@…` 문자열).
+
+- **오너 결정(10-12)**: 범위 18건 + 선택 4건, D2 = B2 기대값 경고, D3 = 권고안 A(typeorm 0.3.31·express/body-parser 범위 override), D4~D7·D9~D11 권고안, push 마다 개별 승인.
+- **배포 완료(10-12)**: P1 `6f4a32e..cfcab50`(CI 게이트·액션 v7/v5·qpdf spec·러너 probe·DEPLOYMENT Wave 8 절·예제) push 15:08:22Z → CI 38268035509 green, Vercel 빌드 skip. P2 `cfcab50..b76e927`(14커밋) push 15:25:37Z → CI 38270147876 green → VPS 태그 `rollback-pre-wave9`(실행 중 이미지 기준)·.env 백업·`FLAGS_EXPECTED_*` 2줄 → worker 빌드·sharp x64 OK·재생성 15:37:33Z(`[FLAGS-CHECK] worker ok n=9`) → api 빌드·sharp OK·재생성 15:39:57Z(`[FLAGS]` 토큰 1개 추가, `[FLAGS-CHECK] api ok n=13`) + nginx 15:40:06Z → Vercel editor `50n1lwavx`·admin `4yuolx9r0` Ready 15:41Z(push 후 약 15분 지연) → 스모크 정상(health 200, 무인증 401, with-templates 3세트 200, 잘못된 JSON 400 동일, Loki 오류·5xx·[env]·JOB_STALLED 0). 3사 사전 고지·완료 통지 15:43Z(= FREEZE v1.17 적용 시점), 100p 에는 FILE_SITE 중간 회신 동봉. **bookmoa 는 bridge 주소로 보냈으나 전달 미확인** — 새 bookmoa 창구 이름을 받으면 완료 통지 재발송.
+- 검증 기준선(Wave 9 후): api 134 suites/2912 · worker 34/1268 · editor 107/1601(Node 24·26) · admin 21 files/261 · canvas-core 57/658 · sdk 369 · contract-freeze 94 · embed-e2e 39 · api e2e 기존 실패 5 suites/95(기준선과 동일 — 후속).
+- 비공개 준비물: `../_private_notes/wave9/OBSERVATION_RUNBOOK_W9.md`(Loki 기준), `SB_TRANSITION_PACK.md`(+sb_00~05), `FILE_SITE_CONTRACT_DRAFT.md`(+fs_retro_r0_r3.sql).
+- 후속: CI 액션 SHA 고정·persist-credentials·dependabot(오너 결정), RESUME 의 운영 플래그 값·창구 id 를 비공개로 옮길지(오너 확인), hostPageLimits.test 부하 시간 초과, 로컬 embed-e2e 종료 지연, ShareSnap compose-mixed 수동 본문 400, api e2e 기존 실패 원인, editor·canvas-core 보안 권고(안 2), 설치 시점 체인 권고(Wave 10).
 
 ### 5.3 다음 후보 (착수 약속 없음 — 새 세션이 재점검 후 우선순위 제안)
 
