@@ -30,6 +30,7 @@
 | B | **승격 시퀀스** — `POST /books` → `POST /books/{uid}/finalization` 2콜뿐이고(자산 투입 라우트가 없다), 본문이 `{creationType:'EDITOR_SESSION', sessionId}` 이며 `Idempotency-Key` 가 자동 부여됨 |
 | B' | **판형 전달** — `bookSpecUid`/`pageCount` 가 실제로 본문에 실려 미검증 FINALIZED(D-9)를 피하는지 |
 | C | **거부 분기** — 404 존재 은닉 / 409 `SESSION_NOT_COMPLETE` / 409 진행 중 합류 |
+| D | **iframe URL 조립** — 신규 편집은 `templateSetId` 로, 재편집은 `sessionId` 만으로 여는지(`templateSetId` 생략). 둘 다 없으면 서버가 시작 단계에서 실패하는지 |
 
 > ⚠️ **라이브 스모크는 아직 돌리지 않았다.** 위는 전부 오프라인 단언(주입식 fetch +
 > 브라우저 없는 모듈 호출)이다. 실제 iframe 로드·CSP `frame-ancestors`·실 편집기의
@@ -259,4 +260,4 @@ promoteSession(client, {
 | `src/host-session.ts` | 🔑 세션 게이트 — **파트너가 자기 로그인으로 교체할 유일한 파일** |
 | `src/promote.ts` | 서버측 승격 — 404/409 분기 + 판형 게이트(D-9) |
 | `src/server.ts` | express — 정적 서빙 + `/api/session` + 🔒`/api/config` + 🔒`/api/promote` |
-| `src/verify.ts` | 오프라인 드라이런 — 위 A~C 단언 |
+| `src/verify.ts` | 오프라인 드라이런 — 위 A~D 단언 |

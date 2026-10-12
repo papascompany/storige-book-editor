@@ -9,6 +9,8 @@
  *   B.  승격 호출 시퀀스 — 주입식 fetch 로 실제 SDK 를 통과시켜 경로·메서드·헤더·
  *       봉투 언랩과 404/409 분기를 확인
  *   B'. `bookSpecUid`/`pageCount` 전달 — 미검증 FINALIZED(D-9) 회피 배선
+ *   C.  거부 분기 — 404 / 409 세부 코드 / 진행 중 합류
+ *   D.  iframe URL 조립 — 신규 편집은 `templateSetId`, 재편집은 `sessionId` 만 싣는지
  */
 
 import assert from 'node:assert/strict';
@@ -21,6 +23,7 @@ import {
   readCompletePayload,
   SKIP_SOURCE_CHECK,
 } from '../public/editor-events.js';
+import { loadEnv } from './env.ts';
 import { PromoteRejected, promoteSession } from './promote.ts';
 
 const EDITOR_ORIGIN = 'https://editor.example.test';
@@ -430,13 +433,94 @@ async function verifyPromoteRejections(): Promise<void> {
   console.log('✓ C. 거부 분기 — 404 존재 은닉 / 409 SESSION_NOT_COMPLETE / 409 진행 중 합류');
 }
 
+// ── D. iframe URL 조립 ──────────────────────────────────────────────────
+
+const ENV_KEYS = [
+  'STORIGE_API_KEY',
+  'STORIGE_BASE_URL',
+  'STORIGE_EDITOR_URL',
+  'STORIGE_TEMPLATE_SET_ID',
+  'STORIGE_SESSION_ID',
+  'STORIGE_ORDER_SEQNO',
+  'STORIGE_PAGE_COUNT',
+  'STORIGE_EDITOR_TOKEN',
+  'STORIGE_BOOK_SPEC_UID',
+  'PORT',
+  'HOST_ORIGIN',
+] as const;
+
+type EnvKey = (typeof ENV_KEYS)[number];
+
+/** 지정한 값만 둔 환경에서 실행하고, 끝나면 원래 값을 되돌린다 */
+function withEnv<T>(values: Partial<Record<EnvKey, string>>, run: () => T): T {
+  const saved = new Map<EnvKey, string | undefined>();
+  for (const key of ENV_KEYS) {
+    saved.set(key, process.env[key]);
+    const next = values[key];
+    if (next === undefined) delete process.env[key];
+    else process.env[key] = next;
+  }
+  try {
+    return run();
+  } finally {
+    for (const [key, value] of saved) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+}
+
+const BASE_ENV: Partial<Record<EnvKey, string>> = {
+  STORIGE_API_KEY: 'sk_test_example_not_a_real_key',
+  STORIGE_BASE_URL: 'https://api.example.test',
+  STORIGE_EDITOR_URL: EDITOR_ORIGIN,
+  HOST_ORIGIN: 'https://host.example.test',
+};
+
+function embedParams(values: Partial<Record<EnvKey, string>>, token?: string): URLSearchParams {
+  const url = withEnv({ ...BASE_ENV, ...values }, () => loadEnv().buildEmbedUrl(token));
+  return new URL(url).searchParams;
+}
+
+function verifyEmbedUrl(): void {
+  // 신규 편집 — templateSetId 로 연다
+  const fresh = embedParams({ STORIGE_TEMPLATE_SET_ID: 'ts_new' }, 'jwt_demo');
+  assert.equal(fresh.get('templateSetId'), 'ts_new');
+  assert.equal(fresh.has('sessionId'), false);
+  assert.equal(fresh.get('parentOrigin'), 'https://host.example.test');
+  assert.equal(fresh.get('token'), 'jwt_demo');
+
+  // 재편집 — sessionId 만 싣는다. 템플릿셋 값이 env 에 남아 있어도 URL 에는 넣지 않는다
+  for (const values of [
+    { STORIGE_SESSION_ID: 'sess_abc' },
+    { STORIGE_SESSION_ID: 'sess_abc', STORIGE_TEMPLATE_SET_ID: 'ts_new' },
+  ]) {
+    const reopen = embedParams(values, 'jwt_demo');
+    assert.equal(reopen.get('sessionId'), 'sess_abc');
+    assert.equal(reopen.has('templateSetId'), false, '재편집 URL 에는 templateSetId 를 싣지 않는다');
+    assert.equal(reopen.get('parentOrigin'), 'https://host.example.test');
+  }
+
+  // 둘 다 없으면 열 대상이 없다 — 서버 시작 단계에서 실패한다
+  assert.throws(
+    () => withEnv(BASE_ENV, () => loadEnv()),
+    (error: unknown) =>
+      error instanceof Error &&
+      error.message.includes('STORIGE_TEMPLATE_SET_ID') &&
+      error.message.includes('STORIGE_SESSION_ID'),
+  );
+
+  console.log('✓ D. iframe URL — 신규 편집은 templateSetId, 재편집은 sessionId 만(templateSetId 생략), 둘 다 없으면 시작 실패');
+}
+
 async function main(): Promise<void> {
   verifyMessageGate();
   verifyGuestBranch();
   await verifyPromoteSequence();
   await verifyBookSpecPassthrough();
   await verifyPromoteRejections();
-  console.log('\n✓ editor-session-order 오프라인 검증 5/5 통과');
+  verifyEmbedUrl();
+  console.log('\n✓ editor-session-order 오프라인 검증 6/6 통과');
 }
 
 main().catch((error: unknown) => {

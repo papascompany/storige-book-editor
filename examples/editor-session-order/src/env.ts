@@ -86,7 +86,16 @@ export function loadEnv(): ExampleEnv {
   const apiKey = required('STORIGE_API_KEY');
   const baseUrl = required('STORIGE_BASE_URL');
   const editorUrl = required('STORIGE_EDITOR_URL');
-  const templateSetId = required('STORIGE_TEMPLATE_SET_ID');
+  // 재편집(sessionId)은 편집기가 세션에 기록된 템플릿셋으로 연다. 그래서 sessionId 를 먼저 보고,
+  // templateSetId 는 신규 편집(sessionId 없음)에만 쓴다. 둘 다 없으면 열 대상이 없다.
+  const sessionId = optional('STORIGE_SESSION_ID');
+  const templateSetId = optional('STORIGE_TEMPLATE_SET_ID');
+  if (sessionId === undefined && templateSetId === undefined) {
+    throw new Error(
+      '환경변수 STORIGE_TEMPLATE_SET_ID(신규 편집) 또는 STORIGE_SESSION_ID(재편집) 중 하나는 ' +
+        '설정해야 합니다. .env.example 를 참조하십시오.',
+    );
+  }
   const port = integer('PORT', 4001);
   const hostOrigin = optional('HOST_ORIGIN') ?? `http://localhost:${port}`;
 
@@ -95,13 +104,15 @@ export function loadEnv(): ExampleEnv {
 
   const orderSeqno = optional('STORIGE_ORDER_SEQNO');
   const pageCount = optional('STORIGE_PAGE_COUNT');
-  const sessionId = optional('STORIGE_SESSION_ID');
 
   const buildEmbedUrl = (token: string | undefined): string => {
     // 편집기가 정식 엔벨로프를 발신하려면 parentOrigin 이 **반드시** 있어야 한다.
     // 없으면 편집기는 postMessage 를 아예 보내지 않는다(콜백 마운트 모드로 간주).
     const embed = new URL('/embed', editorUrl);
-    embed.searchParams.set('templateSetId', templateSetId);
+    // 신규 편집만 templateSetId 를 싣는다. 재편집 URL 은 아래 sessionId 로 연다.
+    if (sessionId === undefined && templateSetId !== undefined) {
+      embed.searchParams.set('templateSetId', templateSetId);
+    }
     embed.searchParams.set('parentOrigin', parentOrigin);
 
     // 회원 세션 토큰. 없으면 게스트 세션이 되고, 게스트 세션은 site 소유가 없어
@@ -110,7 +121,8 @@ export function loadEnv(): ExampleEnv {
 
     if (orderSeqno !== undefined) embed.searchParams.set('orderSeqno', orderSeqno);
     if (pageCount !== undefined) embed.searchParams.set('pageCount', pageCount);
-    // 재편집: 기존 세션을 다시 연다(templateSetId 는 세션에서 도출된다)
+    // 재편집: 기존 세션을 다시 연다. 편집기가 세션에 기록된 템플릿셋으로 열기 때문에
+    // templateSetId 를 함께 싣지 않는다(실어도 세션 세트가 우선한다).
     if (sessionId !== undefined) embed.searchParams.set('sessionId', sessionId);
 
     return embed.toString();
