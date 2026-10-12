@@ -1,0 +1,27 @@
+name: ci-runner-probe
+
+# 러너 이미지 사전 검증 — 수동 실행 전용. 결과는 배포와 무관하다.
+# ci.yml 을 workflow_call 로 그대로 불러 같은 스텝을 지정 러너(기본 ubuntu-26.04)에서 돈다.
+#   - 실행: Actions 탭 → ci-runner-probe → Run workflow, 또는
+#     `gh workflow run ci-runner-probe --ref master -f runner=ubuntu-26.04`
+#   - 알려진 예상 실패: embed-e2e 의 Playwright 설치(1.57.0 은 ubuntu26.04 미지원, 1.61.0 부터 지원).
+
+on:
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: 검증할 runs-on 라벨
+        type: choice
+        options:
+          - ubuntu-26.04
+          - ubuntu-24.04
+        default: ubuntu-26.04
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    uses: ./.github/workflows/ci.yml
+    with:
+      runner: ${{ inputs.runner }}

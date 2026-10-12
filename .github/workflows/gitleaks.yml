@@ -32,7 +32,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           # 범위 스캔의 양끝 커밋이 reachable 해야 하므로 전체 히스토리를 받는다.
           # (622 커밋 규모라 비용 무시 가능. 실제 스캔은 아래 --log-opts 범위로 제한.)

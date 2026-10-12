@@ -326,8 +326,17 @@ describe('synthesis-input', () => {
       expect(await qpdfMeta.probePdfOpenQpdf(encryptedPath)).toEqual({ result: 'unreadable' });
     });
 
+    // 시간 초과 경로를 결정적으로 태운다. 종전 `probePdfOpenQpdf(goodPath, 1)` 은 1ms 타이머와
+    // qpdf 종료가 경합했다 — 러너 CPU 경합으로 poll 단계가 타이머보다 먼저 stdout 을 읽으면
+    // execFile 이 code 0 성공으로 끝나 'readable' 이 나왔다(CI run 37791275517 attempt 1, 로컬 실측 500회 중 5~6회).
+    // 쓰는 쪽이 없는 FIFO 는 qpdf 의 open() 을 영구히 막으므로 qpdf 가 먼저 끝날 수 없다.
     it('probePdfOpenQpdf: 시간 초과는 unknown', async () => {
-      expect(await qpdfMeta.probePdfOpenQpdf(goodPath, 1)).toEqual({ result: 'unknown' });
+      const blockedPath = path.join(tmpDir, 'blocked-fifo.pdf');
+      execFileSync('mkfifo', [blockedPath]);
+      const startedAt = Date.now();
+      expect(await qpdfMeta.probePdfOpenQpdf(blockedPath, 200)).toEqual({ result: 'unknown' });
+      // 즉시 실패(바이너리 부재 등)가 아니라 시간 제한으로 끝났는지 확인한다.
+      expect(Date.now() - startedAt).toBeGreaterThanOrEqual(150);
     });
 
     it.each([
