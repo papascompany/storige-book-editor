@@ -5,6 +5,8 @@
 > 🔄 **갱신**: 2026-06-15 — 저장계층 R2 추상화 + 보존정책(admin 관리형). **신규 DB 마이그레이션 2건**(아래 "스키마 마이그레이션") + R2 활성화 절차는 [`STORAGE_R2_RUNBOOK.md`](./STORAGE_R2_RUNBOOK.md) 참조.
 >
 > 🔄 **갱신**: 2026-06-17 — 멀티테넌시 P1+P2a. **신규 DB 마이그레이션 2건 프로덕션 적용완료**(`20260617_add_user_site_roles.sql`·`20260617_b_add_site_id_data_scoping.sql`, 아래 "스키마 마이그레이션") + Vercel `ignoreCommand` 견고화(아래 "Vercel 배포 파이프라인" — admin 배포 ERROR 고착 트랩 해소).
+>
+> 🔄 **갱신**: 2026-10-12 — 「업데이트 및 배포」에 Wave 8(2026-10-06·07)과 2026-10-08 운영 정비 절 추가, `EDITOR_CONTENT_PAGE_RULES` compose 매핑·비상 차단 절차, 「로그 검색」에 Loki API 로 건수 세기.
 
 > ### ⚠️ 스키마 마이그레이션 (synchronize=false → 수동, API 재배포 **전** 실행)
 > 프로덕션은 TypeORM `synchronize=false` 이므로 엔티티 변경 시 `apps/api/migrations/*.sql` 을 수동 실행 후 API 재배포한다(순서 중요 — 신규 코드가 컬럼/테이블 존재를 전제).
@@ -42,7 +44,8 @@
 5. [환경 변수 설정](#환경-변수-설정)
 6. [배경제거(CUTOUT) 사이드카 — rembg](#배경제거cutout-사이드카--rembg)
 7. [모니터링 및 로깅](#모니터링-및-로깅)
-8. [문제 해결](#문제-해결)
+8. [업데이트 및 배포](#업데이트-및-배포)
+9. [문제 해결](#문제-해결)
 
 ---
 
@@ -277,7 +280,7 @@ docker logs storige-worker 2>&1 | grep "\[FLAGS\]"
 - 확인 대상은 각 플래그의 유효값(`true`/`false`)뿐입니다.
 - api 스냅샷 줄의 `FILE_RETENTION_*`·`FILE_ORPHAN_*` 값은 **env 계층 값**입니다. 관리자 저장소 설정(보존정책)이 함께 적용되므로 이 값만으로 실제 동작 모드를 판단하지 마십시오.
 - 보존정책의 실제 모드(삭제 여부·dry-run)는 `[FLAGS] api retention-effective` 줄 또는 관리자 저장소 설정 화면으로 확인합니다. 이 줄은 기동 시점 값이며, 관리자 화면에서 저장하면 런타임에 바뀝니다.
-- api 줄 끝에 `JOB_LINK_STRICT=false JOB_FILE_SITE_STRICT=false SESSION_JOB_OUTPUT_LOOKUP=false` 가 보이면 기본 상태입니다(2026-10-03 추가, 아래 환경 변수 설정의 「잡 생성 확인 · 잡 산출물 세션 조회 플래그」).
+- api 줄의 `JOB_LINK_STRICT`·`JOB_FILE_SITE_STRICT`·`SESSION_JOB_OUTPUT_LOOKUP`·`EDITOR_CONTENT_PAGE_RULES` 는 줄 안의 위치가 아니라 키 이름으로 찾아 값을 확인합니다. 키 순서는 `apps/api/src/config/feature-flags.ts` 의 `API_FEATURE_FLAG_KEYS` 배열 순서이고, 키가 추가되면 줄 끝에 붙습니다. 코드 기본값은 앞의 세 키가 `false`, `EDITOR_CONTENT_PAGE_RULES` 가 `true` 입니다. 운영 값은 `.cursor/plans/` 의 최신 RESUME 「현재 라이브 상태」 절을 기준으로 합니다(아래 환경 변수 설정의 「잡 생성 확인 · 잡 산출물 세션 조회 플래그」·「파일 정리 · 스프레드 검증 키 compose 매핑」).
 - `FILE_ORPHAN_*`·`FILE_RETENTION_*`·`THUMBNAIL_CLEANUP_DRY_RUN`·`SPREAD_SNAPSHOT_HARD_FAIL` 은 `docker-compose.yml` 매핑으로 컨테이너에 전달되며, 기본값은 코드 기본값과 같습니다(2026-10-05, 아래 「파일 정리 · 스프레드 검증 키 compose 매핑」). `SPREAD_SNAPSHOT_HARD_FAIL` 은 api·worker 두 줄에 모두 있으며 두 값이 같아야 합니다.
 
 ### 5. 서비스 중지
@@ -386,8 +389,9 @@ GHOSTSCRIPT_PATH=/usr/bin/gs
 | `THUMBNAIL_CLEANUP_DRY_RUN` | api | `${THUMBNAIL_CLEANUP_DRY_RUN:-0}` | 정확히 `1` 일 때만 dry-run, 그 밖의 값은 실제 정리 |
 | `SPREAD_SNAPSHOT_HARD_FAIL` | api·worker | `${SPREAD_SNAPSHOT_HARD_FAIL:-false}` | 정확히 `true`(대소문자 구분)일 때만 HARD, 그 밖의 값은 SOFT(경고만). HARD 이면 api 는 스냅샷 누락·불일치 시 편집 완료를 거부하고, worker 는 compose-mixed 표지 크기 불일치 시 합성 잡을 `FAILED` 로 끝낸다 |
 | `EDITOR_SPREAD_VALIDATION_MAPPING` | api | `${EDITOR_SPREAD_VALIDATION_MAPPING:-on}` | 정확히 `off` 일 때만 해제(검증 잡은 주문 옵션 `orderOptions` 만 사용). 코드는 `off` 가 아닌 값을 모두 연결로 본다 — `on` 은 printenv 로 읽기 쉽게 하려는 표기다 |
+| `EDITOR_CONTENT_PAGE_RULES` | api | `${EDITOR_CONTENT_PAGE_RULES:-on}` | 앞뒤 공백·대소문자를 무시하고 `off` 일 때만 해제(편집 완료 내지 검증 잡에 편집기 쪽 단위 `pageMultiple`·중철 쪽수 상한을 싣지 않고 주문 옵션의 종전 쪽수 규칙으로 검증). 그 밖의 값·미설정은 싣는다. 매핑은 2026-10-08 부터(아래 「`EDITOR_CONTENT_PAGE_RULES` 비상 차단」) |
 
-- 확인 위치: `FILE_ORPHAN_ENABLED`·`FILE_ORPHAN_DRY_RUN`·`FILE_RETENTION_ENABLED`·`FILE_RETENTION_DRY_RUN`·`THUMBNAIL_CLEANUP_DRY_RUN`·`SPREAD_SNAPSHOT_HARD_FAIL` 은 `[FLAGS]` 줄(위 「배포 후 점검」)로, 유예·건수·영구 삭제 시간과 `EDITOR_SPREAD_VALIDATION_MAPPING` 은 `[FLAGS]` 줄에 없으므로 `docker exec storige-api printenv <키>` 로 확인한다.
+- 확인 위치: `FILE_ORPHAN_ENABLED`·`FILE_ORPHAN_DRY_RUN`·`FILE_RETENTION_ENABLED`·`FILE_RETENTION_DRY_RUN`·`THUMBNAIL_CLEANUP_DRY_RUN`·`SPREAD_SNAPSHOT_HARD_FAIL`·`EDITOR_CONTENT_PAGE_RULES` 는 `[FLAGS]` 줄(위 「배포 후 점검」)로, 유예·건수·영구 삭제 시간과 `EDITOR_SPREAD_VALIDATION_MAPPING` 은 `[FLAGS]` 줄에 없으므로 `docker exec storige-api printenv <키>` 로 확인한다.
 - `LOG_LEVEL` 은 compose 에 매핑하지 않는다(아래 「모니터링 스택 환경변수」).
 - docker compose 는 셸에 export 된 변수를 `.env` 보다 먼저 쓴다. 값을 바꾸기 전에 배포 셸에 같은 이름이 export 돼 있지 않은지 이름만 확인한다(아래 명령의 출력이 없어야 한다).
 
@@ -425,6 +429,22 @@ docker compose up -d --no-build api && docker compose restart nginx
 # 3) 값 확인 — off 가 나와야 한다
 docker exec storige-api printenv EDITOR_SPREAD_VALIDATION_MAPPING
 ```
+
+**`EDITOR_CONTENT_PAGE_RULES` 비상 차단**
+
+편집 완료 때 만드는 내지 검증 잡에 편집기 쪽 단위(`pageMultiple`)와 중철 쪽수 상한을 싣는 동작을 끈다. 끄면 내지 검증 잡은 주문 옵션(`orderOptions`)의 종전 쪽수 규칙으로 판정한다. 값은 앞뒤 공백·대소문자를 무시하고 `off` 일 때만 꺼진다. 현재 값은 `[FLAGS] api` 줄의 `EDITOR_CONTENT_PAGE_RULES` 로 확인한다.
+
+```bash
+cd ~/storige
+# 1) .env 에 EDITOR_CONTENT_PAGE_RULES=off 를 넣는다(되돌릴 때는 줄을 지운다)
+# 2) api 재생성(빌드 없음) + nginx 재시작
+docker compose up -d --no-build api && docker compose restart nginx
+# 3) 값 확인 — api 줄에 EDITOR_CONTENT_PAGE_RULES=false 가 나와야 한다
+docker logs storige-api 2>&1 | grep "\[FLAGS\]" | tail -2
+```
+
+- 이 키의 api `environment` 매핑은 2026-10-08 에 들어갔다(아래 「2026-10-08 운영 정비」). 그 전 `docker-compose.yml` 로 만든 컨테이너에는 `.env` 값이 전달되지 않으므로, 끄려면 위 2) 처럼 현재 compose 로 api 를 다시 만들어야 한다.
+- 끄면 편집 완료 때 확인 로그 `내지 쪽 규칙` 줄이 더 이상 나오지 않는다(아래 「편집 완료 내지 쪽 단위 배포」).
 
 ---
 
@@ -737,6 +757,24 @@ server {
 {service="worker"} | json |~ "synthesis"
 {service="api"} | json | url=~"/worker-jobs/.*"
 ```
+
+**VPS 셸에서 Loki API 로 건수 세기**
+
+Grafana 를 열지 않고 VPS 셸에서 줄 수만 셀 때는 Loki HTTP API(`/loki/api/v1/query`)에 집계 쿼리를 보낸다. Loki 컨테이너는 호스트 포트를 열지 않으므로 컨테이너 네트워크 주소로 붙는다. `docker logs` 는 컨테이너를 다시 만들면 비지만, Loki 는 보존 기간(`docker/loki/loki-config.yml` 의 `retention_period`) 동안 재생성 전 로그까지 센다.
+
+```bash
+LOKI=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' storige-loki)
+lc(){ curl -sG "http://$LOKI:3100/loki/api/v1/query" --data-urlencode "query=$1" | jq -r '.data.result[0].value[1] // "0"'; }
+
+lc 'sum(count_over_time({service="api"} |= "[FLAGS]" [24h]))'                     # 최근 24시간 api [FLAGS] 줄 수
+lc 'sum(count_over_time({service=~"api|worker", level="error"} [1h]))'           # 최근 1시간 api·worker 오류 줄 수
+lc 'sum(count_over_time({service="nginx"} |~ "\" 5[0-9][0-9] " [1h]))'          # 최근 1시간 nginx 5xx 응답 줄 수
+```
+
+- `count_over_time({선택자} |= "문자열" [기간])` 은 기간 안에 그 문자열을 포함한 줄 수, `|~ "정규식"` 은 정규식에 맞는 줄 수다. `sum(...)` 으로 스트림을 합친다.
+- `service` 라벨은 컨테이너 이름에서 `storige-` 를 뺀 값(`api`·`worker`·`nginx`·`mariadb`·`redis`)이고, api·worker 에는 pino 레벨을 문자열로 바꾼 `level` 라벨(`info`·`warn`·`error`·`fatal`)이 붙는다(`docker/promtail/promtail-config.yml`).
+- 결과가 없으면 `0` 을 출력한다. 쿼리가 틀렸을 때도 `0` 이 나오므로, 새 쿼리는 줄이 확실히 있는 구간(예: 배포 시각 앞뒤의 nginx `/api/health` 줄)으로 먼저 양성 대조한다.
+- 출력은 숫자뿐이다. 줄 내용을 보려면 Grafana Explore 를 쓴다(로그 원문을 셸 화면이나 파일로 옮기지 않는다).
 
 ### 🐳 Docker 로그 직접 확인 (디버깅용)
 
@@ -1210,6 +1248,132 @@ curl http://localhost:4000/api/health
 1. 템플릿 데이터를 반영했다면 먼저 되돌린다(템플릿셋 연결을 원래대로).
 2. editor·admin: Vercel 에서 배포 직전 운영 배포를 다시 승격한다.
 3. api: `rollback-pre-wave6` 이미지를 `latest` 로 다시 지정하고 빌드 없이 올린 뒤 nginx 를 재시작한다.
+
+### 의존성 갱신 · 결합 세트 내지 검증 크기 배포 (2026-10-06, Wave 8 1단계·2a)
+
+> 같은 날 두 단계로 나눠 연달아 배포했다. 1단계는 api·worker·admin 의존성 갱신과 CI 정비이고, 2a 는 api 의 편집 완료 내지 검증 크기·템플릿셋 복사와 admin 저장 전 확인이다. DB 마이그레이션과 compose 변경은 없다. editor·admin 은 master push 로 Vercel 이 배포한다(위 「Vercel 배포 파이프라인」 절로 state 확인). lockfile 이 바뀌므로 editor 도 다시 빌드되지만 editor 의존성은 바꾸지 않아 운영 번들 JS·CSS 는 같다.
+
+**변경 내용**
+
+- 1단계 — 의존성: api·worker `sharp` 0.35.5(네이티브 바이너리가 바뀌므로 이미지를 다시 빌드한다), `mysql2` 3.24.5, 루트 `pnpm.overrides` 의 `multer` `~2.3.0`. multer 2.4 계열은 Nest 10.4 와 함께 쓸 때 잘못된 업로드 필드 요청의 응답이 400 에서 500 으로 바뀌므로 2.3 계열에 고정한다. 코드 변경은 없다. 배포 뒤 api·worker 기동 로그에서 TypeORM 초기화가 오류 없이 끝났는지 확인한다.
+- 1단계 — CI: `.github/workflows/ci.yml` 에 editor·embed·admin 빌드 스텝과 `embed-e2e` 잡(Playwright `tests/embed-mode`, chromium)을 더했다.
+- 2a — api: 표지 펼침면 템플릿과 내지 펼침면 템플릿을 함께 가진 템플릿셋(결합 세트)으로 편집한 세션은 편집 완료 내지 검증 잡의 기대 크기가 내지 펼침면 크기다(판형 210×210 이면 420×210). 표지 검증 잡 옵션은 그대로다. 내지 쪽수 규칙은 이 배포에서 바뀌지 않았다(아래 「편집 완료 내지 쪽 단위 배포」).
+- 2a — api: 템플릿셋 복사(`POST /template-sets/:id/copy`)가 편집 설정 컬럼(편집 모드·메뉴·면지·표지 설정·출력 모드·색상·도련·재단선·허용 오차·가격·설명·상품 사양 등)과 라이브러리 분류를 함께 복사한다. 사본의 활성 여부는 원본을 따른다. 템플릿셋 조회에서 참조한 템플릿이 없으면 `[template-sets] 참조 템플릿 누락` warn 을 남긴다(응답은 그대로).
+- 2a — admin: 표지 유형이 `hardcover_wrap` 인 템플릿셋에 케이스 제본(`caseBind`) 입력이 있으면 저장 전에 확인 창을 띄운다(기본 선택은 취소, 저장 자체는 막지 않음).
+
+**순서: 1단계 = 이미지 태그 보존 → master push(editor·admin 자동 배포) → worker → api(+ nginx 재시작) → 스모크. 2a = api 이미지 태그 보존 → master push → api(+ nginx 재시작) → 스모크(worker 변경 없음).**
+
+```bash
+# 1단계 — 0) 직전 이미지 보존
+docker tag storige-api:latest storige-api:rollback-pre-wave8
+docker tag storige-worker:latest storige-worker:rollback-pre-wave8
+cd ~/storige && git pull origin master
+
+# 1) worker 먼저 — sharp 를 포함해 다시 빌드한다
+docker compose build worker && docker compose up -d worker
+docker exec -w /app/apps/worker storige-worker node -e "const s=require('sharp');console.log(s.versions.sharp,s.versions.vips,process.arch)"   # 0.35.5 8.18.7 x64
+
+# 2) 그다음 api — recreate 뒤 nginx 재시작 필수
+docker compose up -d --build api && docker compose restart nginx
+docker logs storige-api 2>&1 | grep "\[FLAGS\]" | tail -2      # 배포 전과 같아야 한다
+
+# 2a — api 만
+docker tag storige-api:latest storige-api:rollback-pre-wave8-2
+cd ~/storige && git pull origin master
+docker compose up -d --build api && docker compose restart nginx
+docker logs storige-api 2>&1 | grep "\[template-sets\] 참조 템플릿 누락"   # 평소에는 줄이 없다
+```
+
+**롤백 (Wave 8 1단계·2a)**
+
+1. api: 2a 만 되돌릴 때는 `rollback-pre-wave8-2`, 1단계까지 되돌릴 때는 `rollback-pre-wave8` 이미지를 `latest` 로 다시 지정하고 빌드 없이 올린 뒤 nginx 를 재시작한다.
+2. worker(1단계까지 되돌릴 때): 합성 큐의 재시도 대기(delayed)·처리 중(active)이 0 인지 확인한 뒤 `rollback-pre-wave8` 을 `latest` 로 다시 지정하고 `docker compose up -d --no-build worker`.
+3. editor·admin: Vercel 에서 배포 직전 운영 배포를 다시 승격한다.
+
+- DB 마이그레이션이 없으므로 스키마 되돌리기는 없다.
+
+### 편집 완료 내지 쪽 단위 배포 (2026-10-06, N-API-3b)
+
+> api 만 바꾸는 배포다. worker·editor·admin·DB 는 바뀌지 않는다. 계약 서술은 `docs/CONTRACT_FREEZE.md` v1.15 를 따른다.
+
+**변경 내용**
+
+- 편집 완료(`PATCH /edit-sessions/:id/complete`) 때 만드는 내지 검증 잡에 편집기가 적용한 쪽 단위를 PDF 쪽 단위 `pageMultiple` 로 싣는다. 쪽 단위는 세션에 기록된 호스트 `pageStep` → 템플릿셋 `page_step` 순서로 정하고, 내지 펼침면 세트는 PDF 1쪽이 2쪽이므로 그만큼 나눈다. 중철은 4의 배수·64쪽 상한(호스트 `pageCountMax` 기록이 있으면 그 값)을 유지한다. 쪽 단위가 없는 낱장 세트는 종전 판정이다.
+- api `[FLAGS]` 줄에 `EDITOR_CONTENT_PAGE_RULES` 키가 더해진다(기본 `true`). 끄는 방법은 위 「`EDITOR_CONTENT_PAGE_RULES` 비상 차단」이다. 이 env 차단은 compose 매핑이 들어간 2026-10-08 부터 쓸 수 있고(아래 「2026-10-08 운영 정비」), 그 전에는 이미지 롤백만 가능했다.
+
+```bash
+# 0) 직전 이미지 보존
+docker tag storige-api:latest storige-api:rollback-pre-n-api-3b
+
+cd ~/storige && git pull origin master
+docker compose up -d --build api && docker compose restart nginx
+docker logs storige-api 2>&1 | grep "\[FLAGS\]" | tail -2      # api 줄에 EDITOR_CONTENT_PAGE_RULES=true 가 더해진다
+```
+
+**확인 로그 — 편집 완료 내지 쪽 규칙 (api)**
+
+```bash
+docker logs storige-api 2>&1 | grep "내지 쪽 규칙"
+#   [validation-jobs] session <id> 내지 쪽 규칙: S=<물리 쪽 단위|-> k=<PDF 1쪽의 쪽 수> pageMultiple=<값> max=<상한|-> source=<출처>
+#   [validation-jobs] session <id> 내지 쪽 규칙 생략(기존 옵션 유지): <사유>
+```
+
+- `source` 는 `host`(호스트 `pageStep`)·`host-none`(호스트가 단위 없음 1 을 보냄)·`template`(템플릿셋 `page_step`)·`legacy-2up`(단위 없는 펼침면 세트 — 종전 규칙을 물리 단위로 환산)·`saddle-floor`(중철) 이다.
+- 쪽 단위 근거가 없는 낱장 세트는 줄이 없다. 생략 줄은 규칙을 계산하지 못해 종전 옵션으로 검증 잡을 만들었다는 뜻이다(편집 완료는 계속).
+
+**롤백**
+
+1. 2026-10-08 이후에는 먼저 env 비상 차단(위)으로 끈다.
+2. 코드까지 되돌릴 때는 `rollback-pre-n-api-3b` 이미지를 `latest` 로 다시 지정하고 빌드 없이 올린 뒤 nginx 를 재시작한다. 계약 문서(`docs/CONTRACT_FREEZE.md` v1.15)를 되돌리는 커밋을 올리고 파트너에게 통지한다.
+
+### 재편집 템플릿셋 결정 배포 (2026-10-07, Wave 8 2b)
+
+> editor 와 SDK(`packages/sdk`)만 바꾸는 배포다. api·worker·admin·DB·compose 는 바뀌지 않아 VPS 작업이 없다. editor 는 master push 로 Vercel 이 배포하고, 그 배포의 Ready 시각이 적용 시점이다. `/embed/` IIFE 번들은 다시 만들지 않았다. 계약 서술은 `docs/CONTRACT_FREEZE.md` v1.16 을 따른다.
+
+**변경 내용**
+
+- `/embed` 재편집은 세션에 기록된 템플릿셋(세션 세트)으로 연다. URL·props `templateSetId` 는 세션 세트가 없을 때 쓰고, 세션 세트와 다르면 세션 세트 조회가 HTTP `404` 일 때만 그 세트로 한 번 다시 시도한다.
+- `editor.ready` 의 `templateSetId` 는 편집기가 실제로 연 세트다. 두 값이 다르면 `editor.ready`·`editor.complete` 에 `templateSetMismatch` 가 붙는다. `editor.complete` 에는 `templateSetId` 가 붙는다.
+- 편집 중인 디자인(`sessionId` 재편집, `orderSeqno` 진입으로 연 회원 세션)에서는 편집기 AI 패널로 템플릿셋을 바꾸지 않고 '새로 편집' 안내를 표시한다.
+- 세션 세트와 URL·props 세트가 다르면 편집기가 세션마다 한 번 Sentry 에 경고 메시지 `[template-set-mismatch]` 를 보낸다(`apps/editor/src/embed.tsx`).
+
+**확인**: Vercel 배포 state(위 「Vercel 배포 파이프라인」)와 운영 `/embed` 응답 200 을 본다. 배포 뒤 Sentry editor 프로젝트에서 `[template-set-mismatch]` 이벤트 수를 본다.
+
+**롤백**
+
+1. editor: Vercel 에서 배포 직전 운영 배포를 다시 승격한다. 재편집이 URL·props 값 우선으로 돌아가고 추가 키가 빠진다(호스트 동작은 깨지지 않는다).
+2. 계약 문서(`docs/CONTRACT_FREEZE.md` v1.16 개정)를 되돌리는 커밋을 올리고 파트너에게 통지한다.
+
+### 2026-10-08 운영 정비 (킬스위치 매핑 · 플래그 전환 절차 · 편집기 AI 패널 · CI 러너 고정)
+
+> `docker-compose.yml`·editor 빌드 변수·CI 설정을 바꾼 커밋 하나를 배포하고, 같은 창에서 api `.env` 값을 전환했다. api·worker 이미지는 다시 빌드하지 않았다. DB 변경은 없다. 어느 플래그를 어떤 값으로 바꿨는지와 현재 운영 값은 이 문서에 적지 않는다 — `.cursor/plans/` 의 최신 RESUME 「현재 라이브 상태」 절을 따른다.
+
+**변경 내용**
+
+- compose — api `environment` 에 `EDITOR_CONTENT_PAGE_RULES=${EDITOR_CONTENT_PAGE_RULES:-on}` 매핑을 더했다. 이때부터 `.env` 로 끌 수 있다(위 「`EDITOR_CONTENT_PAGE_RULES` 비상 차단」). 기본값이 코드 기본값과 같아 `.env` 에 키가 없으면 동작은 그대로다.
+- editor — `apps/editor/.env.production` 에 `VITE_ENABLE_AI_PANEL=false` 를 두어 편집기 도구 막대에 AI 탭을 표시하지 않는다. 빌드 시점 변수라 값을 바꾸면 master push(Vercel 재빌드) 뒤에 반영된다.
+- CI — `.github/workflows/ci.yml`·`gitleaks.yml` 의 러너를 `ubuntu-latest` 대신 `ubuntu-24.04` 로 고정했다. `ubuntu-latest` 는 2026-10-19 부터 차례로 Ubuntu 26.04 로 바뀐다.
+- api 잡 생성 확인 플래그(위 「잡 생성 확인 · 잡 산출물 세션 조회 플래그」)의 값 전환을 아래 절차로 했다.
+
+**api 플래그 전환 절차 (재빌드 없음)**
+
+전환은 오너 결정과 파트너 사전 안내 뒤에 한다. api 코드가 바뀌지 않는 전환이면 이미지를 다시 빌드하지 않는다. 전환 전에 배포 셸에 같은 이름이 export 돼 있지 않은지 확인한다(위 「파일 정리 · 스프레드 검증 키 compose 매핑」의 export 확인 명령과 같은 방식).
+
+```bash
+cd ~/storige
+# 0) 되돌릴 기준점 — .env 백업과 직전 api 이미지 태그
+cp .env ".env.bak-pre-<이름>-$(date -u +%Y%m%dT%H%M%SZ)"
+docker tag storige-api:latest storige-api:rollback-pre-<이름>
+# 1) .env 에서 해당 키의 줄을 바꾼다(값은 오너 결정)
+# 2) api 재생성(재빌드 없음) + nginx 재시작
+docker compose up -d --no-deps api && docker compose restart nginx
+# 3) [FLAGS] api 줄에서 바꾼 키의 값을 확인한다
+docker logs storige-api 2>&1 | grep "\[FLAGS\]" | tail -2
+```
+
+- 2026-10-08 에는 0) 뒤에 compose 매핑 커밋을 받으려고 `git pull origin master` 를 했고, 백업 파일은 `.env.bak-pre-waveb-<UTC 시각>`, 태그는 `storige-api:rollback-pre-wave-b` 였다.
+- 되돌리기: `.env` 에서 그 줄을 지우거나 백업 파일의 값으로 되돌린 뒤 2)·3) 을 다시 한다. compose 기본값이 `false` 라 줄을 지우면 기본 상태가 된다.
+- api 를 다시 만들면 `docker logs` 가 비워진다. 재생성 전 로그는 Loki 로 본다(위 「VPS 셸에서 Loki API 로 건수 세기」).
 
 ---
 
