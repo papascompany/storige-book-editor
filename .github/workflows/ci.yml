@@ -229,6 +229,11 @@ jobs:
       - name: PDF 골든 비교 엔진 self-test
         run: node --test scripts/pdf-golden/compare.test.mjs
 
+      - name: Vercel 빌드 생략 판정 self-test (editor·admin vercel.json ignoreCommand)
+        # depth 10 얕은 clone 을 실제 git 으로 재현해 판정을 고정한다 — 이전 배포 커밋 보충, 감시 경로
+        # 변경·lockfile 변경 시 빌드, 보충 실패·경로 오타 시 빌드(생략하지 않음). 네트워크는 쓰지 않는다.
+        run: node --test scripts/vercel-ignore-build.test.mjs
+
       - name: 소스맵 제거 게이트 self-test (editor/admin postbuild 판정 로직)
         # 판정 로직(decide/expectHiddenFromEnv)의 분기별 회귀 가드다. 바로 아래 빌드 스텝이
         # 실제 산출물에 postbuild 게이트를 태우지만, CI 의 실제 빌드는 keep-public(editor·admin,
