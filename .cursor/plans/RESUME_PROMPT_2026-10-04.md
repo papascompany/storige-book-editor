@@ -24,9 +24,7 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
 
 2) 파트너 채널 확인
    - ListAgents 로 찾습니다. 파트너 세션이 실행 중이 아니면 목록에 안 나옵니다. 그때는 mcp__ccd_session_mgmt__list_sessions 로 local_ id 를 찾아 SendMessage(to="local_…") 로 보냅니다.
-   - bookmoa = local_bf71565d-e946-487b-a8e4-27962fe7626a (표시명 「20260930 북모아 관리자 수정 시작」, cwd ~/Developer/claude/bookmoa-mobile). 같은 계열 이름의 Remote Control 세션(오프라인)과 혼동하지 않습니다.
-   - printy = local_6494a1a2-072f-498a-a070-e6133b50c706 (「20260930 Printy CTO 개발 계속」, cwd ~/Developer/claude/printy). printcard-studio-* 세션은 printy 가 아닙니다.
-   - 100p Books = local_69303599-8e93-4355-9e02-20fbe03d6d8d (「20260930 100p_books 서브에이전트 진행」, cwd ~/Developer/claude/100p_books) — 기술 통지 창구.
+   - 창구(세션 id·표시명·주소)의 정본은 비공개 메모 `../_private_notes/wave10/RESUME_OPS_PRIVATE.md` 「창구」 절입니다. 앱을 재시작하면 ListAgents ref 가 바뀌므로 보낼 때마다 다시 확인합니다.
    - 파트너도 새 세션으로 교대했을 수 있습니다. 이름만 믿지 말고 cwd 로 확증합니다(from 이 uds:/tmp/cc-socks/<PID>.sock 이면 lsof -a -p <PID> -d cwd -Fn).
    - 받은 메시지에 회신할 때는 from 값을 그대로 to 로 씁니다. 발신 성공은 도달이 아니므로 중요한 통지는 ACK 를 요청합니다.
    - 시작 통지: bookmoa·printy 에 "Storige 새 세션 시작 + 이 세션 이름 + 통지 창구 확인" 을 한 줄로 보내고 ACK 를 요청합니다. 창구가 바뀌면 RESUME §3 을 갱신합니다.
@@ -80,33 +78,25 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
 | admin | Vercel `4yuolx9r0`(release `b76e927`, Ready 10-12 15:41Z — Sentry 전송 전처리) | `naur32cp4`(release `c009ceb`, = `c6c38ef` 코드) → `kolxzkmiv` → `luw3mayxr` → … promote |
 
 - VPS 체크아웃 = `b76e927`(10-12). api·worker 이미지 = `b76e927`. SQL·마이그레이션 없음(Wave 1 이후). 계약 정본 **CONTRACT_FREEZE v1.17**(v1 도서 확정 실패 errorDetail 고정 형식 MODIFY-TARGET — 적용 10-12 15:43Z 완료 통지 시각, editor.ready orientationMismatch 사후 등재·SDK TemplateSetMismatch 이름 export ADDITIVE).
-- 플래그(운영 기동 로그 `[FLAGS]` 확인값):
-
-| 플래그 | 운영 값 | 비고 |
-|---|---|---|
-| `JOB_LINK_STRICT` | **true(10-08 14:37:16Z, 오너 결정)** | Wave B — 관측 7일(Loki) 실 호출 0 확인 후 전환. 3사(bookmoa·printy·100p) 사전 안내·완료 통지. 집계는 Loki `[job-link] denied … caller=none` |
-| `JOB_FILE_SITE_STRICT` | false(기본) | **관측 연장(10-08 오너 결정)** — 켜려면 FREEZE 등재(403 FILE_SITE_MISMATCH, MODIFY-TARGET)·사전 통지·ACK·소급 확인 선행. 100p 요청(10-09): 켜기 전 사전 안내 — 90MB 이하 multipart 파일·P4 이전 파일의 사이트 귀속을 100p 가 확인 |
-| `SESSION_JOB_OUTPUT_LOOKUP` | false(기본) | 오너 결정 대기(§5) — 연결 행·운영 EXPLAIN 선행 |
-| `EDITOR_CONTENT_PAGE_RULES` | true(compose `:-on`, 10-08 매핑 추가) | N-API-3b 킬스위치. 끌 때는 `.env` 에 off 후 api 재생성 + nginx 재시작 |
-| `EDITOR_SPREAD_VALIDATION_MAPPING` | true(compose `:-on`, 10-12 [FLAGS] 편입) | 편집기 스프레드 검증 옵션 연결. 정확히 `off` 일 때만 해제 |
-| `FLAGS_EXPECTED_API`·`FLAGS_EXPECTED_WORKER` | 운영 .env 에 설정(10-12, 값은 비공개 메모 `../_private_notes/wave9/CTO_DECISIONS_W9.md`) | 기동 시 `[FLAGS-CHECK] <svc> ok n=13/9` 이 정상. 플래그를 바꿀 때 같은 편집에서 프로필도 갱신(안 하면 mismatch 경고 — 동작에는 영향 없음) |
-| `WORKER_TRIMBOX_SIZE_CHECK` | true(compose `:-true`) | X1 TrimBox 판형 판정·합성 contentTrim. 끌 때는 `.env` 에 false 후 worker 재생성 |
+- 플래그: 운영 값과 기대값 프로필은 비공개 메모 `../_private_notes/wave10/RESUME_OPS_PRIVATE.md` 「플래그」 절이 정본이다. 확인은 기동 로그 `[FLAGS]` 와 `[FLAGS-CHECK] <svc> ok n=…`(api 13·worker 9) 로 한다. 플래그를 바꿀 때는 운영 `.env` 의 기대값 프로필을 같은 편집에서 갱신한다(안 하면 mismatch 경고 — 동작에는 영향 없음). 킬스위치·비상 차단 절차는 `docs/DEPLOYMENT.md`.
 
 - 그 밖의 worker `.env`(09-30 04:47Z, 불리언만): CUTOUT·LIGHTWEIGHT_VALIDATION·LIGHTWEIGHT_SYNTHESIS·CROP_MARK_VALIDATION·WIRED_FIXABLE_GATING = true / PRINT_NORMALIZE·FLATTEN·FILE_ORPHAN_* 미설정(코드 기본값).
 - 운영 사이트 편집데이터 보관기간: **전 사이트 미설정(NULL)** — 양사 요청으로 유지, 설정할 때는 사전 통지.
 - 로컬 백업 브랜치 `backup/wave1-pre-regroup-2026-09-30`(push 안 함, 09-30 커밋 재구성 전 상태 — 필요 없으면 오너 확인 뒤 삭제).
 - 개요 시각화: `docs/WAVE1_TRIMBOX_OVERVIEW_2026-09-30.html` — Wave 3 반영 갱신은 10-04 세션 정리 작업에서 진행했다(커밋 여부는 `git log -- docs/WAVE1_TRIMBOX_OVERVIEW_2026-09-30.html` 로 확인).
 
-### 검증 기준선 (이보다 낮으면 회귀)
+### 검증 기준선 (Wave 9 이후 — 이보다 낮으면 회귀)
 
 | 대상 | 기준 |
 |---|---|
-| api jest | 130 스위트 / 2605 · tsc 0 (Wave 4 통합 트리 10-05. lint 오류 2건 — `shop-session-order-scope.spec.ts:24,71` no-loss-of-precision. **정정(10-06): 기존 오류가 아니라 `558c293`(10-01 Wave A)이 들여온 회귀이며, 이 때문에 master CI 가 10-01 08:53Z(`e384d60`) 이후 계속 실패 — api lint 뒤 단계(worker·canvas-core·editor·admin·golden 등)는 전부 skipped**) |
-| worker jest | 33 스위트 / 1239 · tsc 0 (Wave 4. 로컬 gs 10.08.0·qpdf 12.3.2 설치 시; gs 부재 시 GS 블록 skip) |
-| editor vitest | 104 파일 / 1468 · tsc 0 · build · build:embed / Playwright `tests/embed-mode` 33건(`PW_CHROMIUM_CHANNEL=chrome`, 로컬 전용·CI 미편입) |
-| sdk | 12 / 359 · tsc 0 |
-| admin vitest | 16 파일 / 209 · tsc·eslint 0 · build (컴포넌트 테스트는 `.test.tsx` + happy-dom docblock) |
-| canvas-core | 55 / 630 |
+| api jest | 134 스위트 / 2912 · lint 0 err(경고 44) · nest build · contract-freeze 94 |
+| worker jest | 34 스위트 / 1268 · lint 0 err(경고 17) · nest build |
+| editor vitest | 107 파일 / 1601(Node 24·26) · tsc · lint 0 err(경고 76) · build · build:embed |
+| embed-e2e(Playwright `tests/embed-mode`) | 39 — CI 편입(번들 chromium) |
+| sdk | 12 / 369 · tsc |
+| admin vitest | 21 파일 / 261 · lint 0·0 · build |
+| canvas-core | 57 / 658 |
+| api test:e2e | 기존 실패 5 스위트 / 95 — CI 밖, 실패 이름 96개 고정(Wave 10 정비 후보) |
 
 - worker `crop-mark-validation.spec` 파리티 1건은 API 스위트와 동시에 돌릴 때만 간헐 실패한다(부하성). 단독 실행하면 통과한다.
 
@@ -122,12 +112,12 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
 
 | 파트너 | 창구(시작 시 재확인) | cwd | 운영 상태(마지막 ACK) |
 |---|---|---|---|
-| bookmoa | 「20261010 북모아 Printable 개발 계속」 **[c51b38]**(10-12 07:35Z 착수 통지, 회신 불요. 메시지 주소 `bridge:session_012WDJgHTuv2iBQRVLobHGh8`). 자칭 「북모아 Printable 개발 계속」 → 이름이 같은 오프라인 Remote Control [d6e18b] 과 혼동 금지, 보낼 때 ListAgents 로 ref 재확인(앱 재시작 시 ref 변경). 직전 창구 `local_52a7d62c`(10-09~10-12, 「북모아 Printable 개발 계속」 [0637b8]) 는 10-12 07:3xZ 종료(컨텍스트 소진) — 대기 항목(9e768d01 첫 세션 관찰·복원 가드 설계 후보·e2e 로그 동시 관찰·A4 싸바리 세트 계획)과 주문 연결 세션 사전·사후 통지는 새 창구가 승계. 옛 `local_37592b91`·`local_c092a5a6`·`local_bc4b2915`·`local_bf71565d` 는 창구 아님 | `~/Developer/claude/bookmoa-mobile` | 운영 R-234 `ah9w77nfs`(10-12 — R-225~R-234 관리자 수동 검토 메일·고객 화면·토스 결제 웹훅·승인 정합, Storige 계약·편집기·워커 영향 없음). JOB_LINK_STRICT 완료 통지(14:37Z) 원장 기록. Wave 8 1단계·2a·N-API-3b(v1.15)·2b(v1.16) 원장 기록·ACK 완료. 동화책 207c458f 유지(전환 = e2e + 인쇄팀 확인 뒤), 미연결 13세트 연결 계획 없음. e2e 최소 묶음 실행 시각 = bookmoa 오너 결정 대기(정해지면 통지) |
-| printy | `local_95653ac4-95c6-44a1-bc56-9a7f20b02196` 「20261010 Printy 개발 계속」 **[020dd2]**(10-12 08:15Z 인수 통지, 회신 불요). 통지·질의는 이 세션으로. 인수 시 상태(printy 회신): main `a5bf1cf` clean · 실 e2e 보류 · printy 앞 미처리 통지 없음. 직전 `local_4983bdcd`「20261008 Printy 개발 계속」(10-12 종료 — 결제·주문대기·메일 변경, printy 자체 DB `order_intents.payment_key` 1건, Storige 연동 코드 변경 0, `skipFileValidation=true` 유지)·`local_f788c035`·`local_86991aae`·`local_6494a1a2` 는 창구 아님. ※ 앱 재시작 시 ref 가 바뀌므로 보낼 때 ListAgents 로 재확인, 없으면 `local_` id | `~/Developer/claude/printy` | 운영 printy `f7a574d`(printy 저장소) 이후 변경 없음(10-03). 실 e2e 재개 **미정**(오너 보류) |
-| 100p Books | `local_3789edd3-1568-4609-8438-4ef9308bad8a` **[ab23d3]**(10-09 교대 통지 — 이름 안내만, 동의·회신 없음). 이름 「20261008 100p_books CTO 세션 인수인계」(10-09 100p 정정 통지로 확정 — 첫 통지의 「100p_books CTO 세션 인수인계」는 앞부분 누락). 보낼 때 ref `[ab23d3]` 를 붙인다. 옛 `local_69303599`[2eb3d6] 「20260930 100p_books 서브에이전트 진행」은 종료 예정·창구 아님(그 이름으로 보낸 통지는 새 세션에 도착하지 않음). 100p 는 받은 통지(Wave 2·4·5·6·8 1단계, JOB_LINK_STRICT 사전·완료)를 자기 STATUS §0-17 에 기록, 영향 모두 없음 | `~/Developer/claude/100p_books` | 유형 1(upload·validate·download external). 편집 세션·합성 계획 없음 |
+| bookmoa | 비공개 메모 「창구」(10-13: 미확보 — 오너가 세션 재개) | `~/Developer/claude/bookmoa-mobile` | 운영 R-234 `ah9w77nfs`(10-12 — R-225~R-234 관리자 수동 검토 메일·고객 화면·토스 결제 웹훅·승인 정합, Storige 계약·편집기·워커 영향 없음). Wave B 완료 통지(10-08) 원장 기록. Wave 8 1단계·2a·N-API-3b(v1.15)·2b(v1.16) 원장 기록·ACK 완료. 동화책 207c458f 유지(전환 = e2e + 인쇄팀 확인 뒤), 미연결 13세트 연결 계획 없음. e2e 최소 묶음 실행 시각 = bookmoa 오너 결정 대기(정해지면 통지) |
+| printy | 비공개 메모 「창구」(10-13: 확인됨) | `~/Developer/claude/printy` | 운영 printy `f7a574d`(printy 저장소) 이후 변경 없음(10-03). 실 e2e 재개 **미정**(오너 보류) |
+| 100p Books | 비공개 메모 「창구」(10-13: 확인됨) | `~/Developer/claude/100p_books` | 유형 1(upload·validate·download external). 편집 세션·합성 계획 없음 |
 | ShareSnap·북모아 메인(PHP)·MD2Books | 연락 채널 없음(오너 확인 필요) | — | — |
 
-- 현재 Storige 세션: [0e5333] 「Storige 편집기·워커 개발」→ 표시명 「20261004 Storige 템플릿 변환관리 시작」(10-05 시작, 양사 ACK 03:1xZ). 직전 Storige 세션: `local_20f149cd-…` 「20260930 Storige 편집기·워커 개발」(10-04 종료, 목록에 idle 로 남아 있음 — 파트너가 옛 창구로 보내지 않도록 새 이름 통지 완료).
+- 현재 Storige 세션 이름·ref 도 비공개 메모 「창구」 절에 둔다(앱 재시작 시 ref 변경).
 - 최근 ACK(괄호 안은 **파트너 저장소** 커밋):
   - Wave 2(10-03): 사전 통지 ACK bookmoa(`a6810f7`)·printy(`f7a574d`)·100p(`b0f5d3a`) — 모두 코드 변경 불필요. bookmoa 원장 기록(`4ee4261`). 완료 통지 3사 발신.
   - Wave 3(10-03~04): 사전 통지 ACK printy(`f7a574d`)·bookmoa(`1272b42`), 100p 영향 없음. 완료 통지 양사 발신(10-04 00:43Z 이후).
@@ -189,7 +179,7 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
 
 - **제본 최소 쪽수 vs 호스트 쪽수 범위**(10-05 발견, 양사 공통): 양사는 신규 편집에 항상 `bindingType=perfect` 를 보내고(spinePolicy 미설정 — 10-05 발견 시점. 이후 bookmoa 동화책은 R-217 로 hardcover 전송, §3), 편집기는 무선제본 최소 32쪽을 삭제 하한·설정 패널 한도에 적용한다 → 범위 최소 16 인 상품(bookmoa·printy 편집기 상품 4종 모두)에서 쪽을 늘리면 범위 최소로 되돌릴 수 없다(완료는 막지 않음). 오너 결정(10-05): bookmoa 에 사실 공유·검토 요청 → **bookmoa 오너 결정 '둘 다'**: ① Storige 에 '호스트 pageCountMin·Max 가 있으면 제본 최소·최대 대신 범위 적용' 요청(**Storige 오너 결정 10-05: Wave 5 로 착수 — 설계안 오너 보고 후 구현, 배포 별도 승인**, printy 도 이 안이면 코드 변경 0) ② bookmoa 는 양장 선택·하드커버 상품에 hardcover 전송 검토 — Storige 사실 회신 발신(207c458f 표지 flat-spread 라 책등 무변, f0335fda 는 책등 자동 계산형이라 hardcover 면 책등 약 +1.5mm(운영 margin perfect 0.5·hardcover 2.0), hardcover 는 서버 표지 크기 검증 미적용).
 
-- **Wave B 플래그 전환 — 결정·적용 완료(10-08)**: `JOB_LINK_STRICT=true`(14:37:16Z), `JOB_FILE_SITE_STRICT` 는 관측 연장. 근거·절차는 비공개 메모(`../_private_notes/wave2/`, `../_private_notes/wave8/NEXT_ISSUES_2026-10-08.md` §1).
+- **Wave B 플래그 판단 — 완료(10-08)**: 값과 절차는 비공개 메모. 근거·절차는 비공개 메모(`../_private_notes/wave2/`, `../_private_notes/wave8/NEXT_ISSUES_2026-10-08.md` §1).
 - `SESSION_JOB_OUTPUT_LOOKUP`(기본 false) 전환: 전제·확인 절차는 비공개 메모(`../_private_notes/wave3/`).
 - IIFE 번들 재빌드(VPS `build:embed:prod`, 파트너 미사용).
 - Sentry 과거 이벤트 정리 · admin 편집기 호출 방식·admin Sentry 전처리(상세 비공개).
@@ -204,15 +194,15 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
 **Wave 8 2b 배포 완료(10-07, 오너 승인 B′·D4 차단·권고안·구현부터 배포 연속)**: 재편집은 세션 세트 우선(세션 세트 404 + URL 세트 다를 때만 1회 폴백, 그 밖 fatal), editor.ready/storige:ready templateSetId = 실제로 연 세트 + `templateSetMismatch?`, editor.complete·storige:completed `templateSetId?`·`templateSetMismatch?`, Sentry `[template-set-mismatch]` 세션당 1회, AI 패널 세트 전환은 세션이 연결된 편집에서 차단·새로 편집 안내(운영 AI API 부재로 현재 실영향 0), SDK complete templateSetId·spineWidthMm·mismatch 판독. IIFE 번들 재빌드 없음(D7). 커밋 `c8d7df5`(코드·테스트·FREEZE v1.16·가이드·공지 `PARTNER_NOTICE_REEDIT_TEMPLATESET_2026-10-06.md` 단일 커밋) → CI green(37640477950) → editor `diqgayglo` Ready 14:53:59Z(번들 반영 확인). 양사 사전 ACK(코드 변경 없이 호환 — 재편집 URL templateSetId 0건, payload.templateSetId 1순위)·완료 통지. 롤백: Vercel `gmboy5bm1` promote. 후속: SDK `TemplateSetMismatch` 공개 export, isMounted·Sentry throw·reinit 단독 테스트, orderSeqno 세트·mode 필터, NULL 세트 세션 무이벤트 경로, handleLoadSession NULL, AI 세트 전환을 새 세션으로 처리(AI API 활성 시), GUIDE editor.ready orientationMismatch 표기.
 **남은 Wave 8**: 없음(1단계·2a·2b·N-API-3b 완료). 이전 문구 — 2b 재편집 템플릿셋 가드(N-ED-1·editor.complete templateSetId·SDK spineWidthMm) — 오너 결정·운영 읽기·파트너 확인·양사 ACK 선행. 후속: N-API-3b, tar·http-cache-semantics·fabric 메이저, editor 경로 의존성(분리분), IIFE 재빌드.
 - **추천 Wave 8 = 게이트 복구 + 동화책 전환 사전 정비**(2단계): 1단계 CI·보안 패치·/embed CI 편입·문서/주석 스테일 정정 → 2단계 결합 세트 내지 기대 크기(`resolveInnerSpreadContentSizeMm` 첫 spread 만 봄 → 표지 먼저인 동화책 세트는 판형 한 면 폴백)·템플릿셋 `copy()` 필드 유실·admin caseBind 잔류 가드·누락 템플릿 탐지·싸바리 회귀 E2E·운영 템플릿셋 정합 인벤토리·관찰 런북·재편집 templateSetId 가드(오너 설계 결정).
-- 오너 결정 대기: Wave 8 안 선택, 플래그 전환, 재편집 가드 방식(ADDITIVE vs MODIFY-TARGET), 운영 DB 읽기(인벤토리·실측), branch ruleset, compose 기본값, fabric 7 승격 시점, Dependabot, 신규 파트너 연락 채널, 관리자 화면 E2E 시간.
+- (10-06 당시) 오너 결정 대기: Wave 8 안 선택, 플래그 전환, 재편집 가드 방식(ADDITIVE vs MODIFY-TARGET), 운영 DB 읽기(인벤토리·실측), branch ruleset, compose 기본값, fabric 7 승격 시점, Dependabot, 신규 파트너 연락 채널, 관리자 화면 E2E 시간.
 
 ### 5.2.2 다음 개발 이슈 정리 (2026-10-08, 오너 보고 — Wave B 판단·Wave 9 구성 결정 대기)
 
 - 정본 비공개 `../_private_notes/wave8/NEXT_ISSUES_2026-10-08.md`(10-06 목록 110건 상태 대조 + 신규 27건, 4관점 수집·반박 검증, 코디네이터 실측 반영).
 - 10-06 대비: done 15 · partial 10 · obsolete 1(N-TD-4 동화책 13세트 — 연결 계획 없음).
-- **P0**: ① Wave B 플래그 판단(10-08 09:51Z 이후, 오너) — Loki 7일 실측 결과 관측 로그 0·worker-jobs/edit-sessions 요청 27건 전부 배포 스모크(실 호출 0). 권고 JOB_LINK_STRICT 켜기·JOB_FILE_SITE_STRICT 관측 연장 ② `EDITOR_CONTENT_PAGE_RULES` 가 docker-compose api environment 에 매핑돼 있지 않음 → env 킬스위치 롤백 불가(현재 롤백 = 이미지 태그 `rollback-pre-n-api-3b`) — compose 1줄 + api 재생성 ③ 운영 편집기 AI 탭이 빈 패널(`VITE_ENABLE_AI_PANEL` 미설정 → 탭 노출, `VITE_AI_ENABLED=false` → 패널 미포함, 운영 번들 확인) ④ CI `ubuntu-latest` 가 2026-10-19 부터 Ubuntu 26 → `ubuntu-24.04` 고정.
+- **P0**: ① Wave B 플래그 판단(10-08 09:51Z 이후, 오너) — Loki 7일 실측 결과 관측 로그 0·worker-jobs/edit-sessions 요청 27건 전부 배포 스모크(실 호출 0). 플래그별 권고(비공개 메모) ② `EDITOR_CONTENT_PAGE_RULES` 가 docker-compose api environment 에 매핑돼 있지 않음 → env 킬스위치 롤백 불가(현재 롤백 = 이미지 태그 `rollback-pre-n-api-3b`) — compose 1줄 + api 재생성 ③ 운영 편집기 AI 탭이 빈 패널(`VITE_ENABLE_AI_PANEL` 미설정 → 탭 노출, `VITE_AI_ENABLED=false` → 패널 미포함, 운영 번들 확인) ④ CI `ubuntu-latest` 가 2026-10-19 부터 Ubuntu 26 → `ubuntu-24.04` 고정.
 - 권고 Wave 9 = 안 1(운영 안전·CI 게이트·서버 보안 마이너: N-OPS-5·N-OPS-4·CI nest build/lint·N-NEW-1 서버 런타임 마이너·N-API-14a·N-OPS-10a·런북 갱신·동화책 전환 SQL 팩·FILE_SITE 계약 초안·DEPLOYMENT/RESUME 스테일). 안 2(편집기·임베드 후속 + editor 보안 마이너)는 bookmoa e2e 뒤.
-- **오너 결정(10-08)**: Wave B = JOB_LINK 만 켜기 · P0 3건 진행 · **Wave 9 보류**. **배포 완료(10-08)**: 커밋 `5ef27c0`(compose 킬스위치 매핑·editor `VITE_ENABLE_AI_PANEL=false`·CI/gitleaks `runs-on: ubuntu-24.04`) push 14:17:41Z → CI 37791275517 green(test 1회 간헐 실패 `apps/worker/src/utils/synthesis-input.spec.ts:330` qpdf 1ms 시간 초과 경합 → 재실행 통과, 러너 이미지 ubuntu-24.04 동일) · Vercel editor `8taztq201` → VPS .env 백업·`rollback-pre-wave-b` 태그·pull `5ef27c0` → .env `JOB_LINK_STRICT=true` → api 재생성 14:37:16Z(재빌드 없음) + nginx 14:37:25Z → 스모크 정상([FLAGS] JOB_LINK_STRICT=true·JOB_FILE_SITE_STRICT=false·EDITOR_CONTENT_PAGE_RULES=true, health 200, 무인증 401, with-templates 3세트 200 구조 불변, 경고·오류 0, nginx 5xx 0). 3사 사전 안내·완료 통지(bookmoa 영향 없음 회신). 후속: qpdf 시간 초과 테스트 간헐 실패 안정화, Node 20 대상 액션 메이저 bump, ubuntu 26.04 사전 검증.
+- **오너 결정(10-08)**: Wave B 플래그 판단(비공개 메모) · P0 3건 진행 · **Wave 9 보류**. **배포 완료(10-08)**: 커밋 `5ef27c0`(compose 킬스위치 매핑·editor `VITE_ENABLE_AI_PANEL=false`·CI/gitleaks `runs-on: ubuntu-24.04`) push 14:17:41Z → CI 37791275517 green(test 1회 간헐 실패 `apps/worker/src/utils/synthesis-input.spec.ts:330` qpdf 1ms 시간 초과 경합 → 재실행 통과, 러너 이미지 ubuntu-24.04 동일) · Vercel editor `8taztq201` → VPS .env 백업·`rollback-pre-wave-b` 태그·pull `5ef27c0` → .env 플래그 1줄 → api 재생성 14:37:16Z(재빌드 없음) + nginx 14:37:25Z → 스모크 정상([FLAGS] 기대값과 일치·EDITOR_CONTENT_PAGE_RULES=true, health 200, 무인증 401, with-templates 3세트 200 구조 불변, 경고·오류 0, nginx 5xx 0). 3사 사전 안내·완료 통지(bookmoa 영향 없음 회신). 후속: qpdf 시간 초과 테스트 간헐 실패 안정화, Node 20 대상 액션 메이저 bump, ubuntu 26.04 사전 검증.
 
 ### 5.2.3 Wave 9 안 1 (2026-10-12 설계·결정·구현·배포 완료)
 
