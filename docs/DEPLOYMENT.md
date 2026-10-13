@@ -832,6 +832,12 @@ lc 'sum(count_over_time({service="nginx"} |~ "\" 5[0-9][0-9] " [1h]))'          
 - 결과가 없으면 `0` 을 출력한다. 쿼리가 틀렸을 때도 `0` 이 나오므로, 새 쿼리는 줄이 확실히 있는 구간(예: 배포 시각 앞뒤의 nginx `/api/health` 줄)으로 먼저 양성 대조한다.
 - 출력은 숫자뿐이다. 줄 내용을 보려면 Grafana Explore 를 쓴다(로그 원문을 셸 화면이나 파일로 옮기지 않는다).
 
+**Loki 규칙 상태** — `docker/loki/rules/storige-signals.yml` 을 읽기 전용으로 마운트하고, 5분마다 24시간 창의 건수를 평가한다(알림은 보내지 않는다). 규칙 파일에 오류가 하나라도 있으면 Loki 는 정상 기동하지만 그 파일의 규칙이 모두 조용히 빠지므로, 파일을 바꾸거나 loki 를 다시 만든 뒤에는 6줄이 나오고 health 가 모두 `ok` 인지 본다(첫 평가 전 최대 5분은 `unknown`).
+
+```bash
+curl -s "http://$LOKI:3100/prometheus/api/v1/rules" | jq -r '.data.groups[] | .name as $g | .rules[] | [$g, .name, .health, .state] | @tsv'
+```
+
 ### 🐳 Docker 로그 직접 확인 (디버깅용)
 
 ```bash

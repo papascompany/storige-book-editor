@@ -45,15 +45,18 @@ compactor:
   delete_request_store: filesystem
 
 ruler:
+  # 규칙 파일은 저장소의 docker/loki/rules 를 읽기 전용으로 마운트한다(테넌트 디렉터리 fake = auth_enabled false).
   storage:
     type: local
     local:
-      directory: /loki/rules
+      directory: /etc/loki/rules
   rule_path: /loki/rules-temp
+  evaluation_interval: 1m
   ring:
     kvstore:
       store: inmemory
   enable_api: true
+  # 알림 수단은 정하지 않았다. 정하면 alertmanager_url 한 줄을 더한다.
 
 analytics:
   reporting_enabled: false

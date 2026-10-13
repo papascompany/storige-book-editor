@@ -481,6 +481,8 @@ services:
     command: -config.file=/etc/loki/local-config.yml
     volumes:
       - ./docker/loki/loki-config.yml:/etc/loki/local-config.yml:ro
+      # ruler 규칙(읽기 전용). 단일 테넌트 디렉터리 이름은 fake 다.
+      - ./docker/loki/rules:/etc/loki/rules/fake:ro
       - loki_data:/loki
     networks:
       - storige-network

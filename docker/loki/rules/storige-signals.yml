@@ -1,0 +1,104 @@
+# Loki ruler 규칙(단일 테넌트). 마운트 위치: /etc/loki/rules/fake/
+# 값은 경로 요약·건수만 쓴다. 원문 경로·쿼리스트링·식별자는 라벨로 만들지 않는다.
+# 창(24h)은 '하루 한 번 확인'에 맞췄다. 알림 수단이 생기면 창을 줄인다.
+groups:
+  - name: storige-partner-traffic
+    interval: 5m
+    rules:
+      # 파트너 경로 2xx. 배포 스모크·수동 확인(curl)과 관리자 화면 호출은 뺀다. refhost = Referer 의 호스트만('-' = 서버 호출)
+      # keep 으로 합산 전 라벨을 method·route·refhost 만 남긴다(경로 원문·UA·Referer 원문별 시계열을 만들지 않는다).
+      - alert: PartnerRouteTraffic
+        expr: |
+          sum by (method, route, refhost) (
+            count_over_time(
+              {service="nginx"}
+                | pattern `<_> - <_> [<_>] "<method> <path> <_>" <status> <_> "<ref>" "<ua>"`
+                | status =~ "2.."
+                | ua !~ "curl/.*"
+                | ref !~ "https?://admin[.]papascompany[.]co[.]kr.*"
+                | label_format route=`{{ regexReplaceAll "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}" (regexReplaceAll "[?].*" .path "") ":id" }}`, refhost=`{{ regexReplaceAll "^https?://([^/:?#]+).*$" .ref "${1}" }}`
+                | route =~ "/api/(auth/shop-session|edit-sessions/(guest/:id|external)|partner/.*|files/(presigned-upload-public|multipart/(init|complete)|:id/complete|upload/external)|worker-jobs/((validate|synthesize|split-synthesize|fix-pagecount|check-mergeable)/external|compose-mixed|render-pages|validate|external/:id))"
+                | keep method, route, refhost
+              [24h]
+            )
+          ) > 0
+        for: 0m
+        labels:
+          signal: realtraffic
+        annotations:
+          summary: "파트너 경로 2xx {{ $labels.method }} {{ $labels.route }} ({{ $labels.refhost }}) {{ $value }}건(24h)"
+
+      # worker 가 큐에서 잡을 꺼내 처리 시작. 합성 모드 접두(compose-mixed·split·duplex-split·spread)는 kind=synthesis 로 합친다
+      - alert: WorkerJobProcessed
+        expr: |
+          sum by (kind) (
+            count_over_time(
+              {service="worker"} |~ "Processing ([a-z-]+ )?(validation|synthesis|conversion|render-pages|cutout) job"
+                | regexp `Processing (?:[a-z-]+ )?(?P<kind>validation|synthesis|conversion|render-pages|cutout) job`
+              [24h]
+            )
+          ) > 0
+        for: 0m
+        labels:
+          signal: realtraffic
+        annotations:
+          summary: "worker {{ $labels.kind }} 잡 처리 {{ $value }}건(24h)"
+
+  - name: storige-ops-health
+    interval: 5m
+    rules:
+      # 기동 시 기대값 대조가 ok 가 아님
+      - alert: FlagsCheckAbnormal
+        expr: |
+          sum by (service) (
+            count_over_time({service=~"api|worker"} |= "[FLAGS-CHECK]" |~ "mismatch|missing|invalid|실패" [24h])
+          ) > 0
+        for: 0m
+        labels:
+          signal: ops
+        annotations:
+          summary: "{{ $labels.service }} [FLAGS-CHECK] 비정상 {{ $value }}건(24h)"
+
+      # pino level 50(error)·60(fatal). level 라벨은 promtail 이 붙인다(docker/promtail/promtail-config.yml)
+      - alert: ErrorLevelLogs
+        expr: |
+          sum by (service) (
+            count_over_time({service=~"api|worker", level=~"error|fatal"} [24h])
+          ) > 0
+        for: 0m
+        labels:
+          signal: ops
+        annotations:
+          summary: "{{ $labels.service }} error 이상 로그 {{ $value }}건(24h)"
+
+      # 세션 연결 확인에서 404 로 끝난 잡 요청 중 호출자 유형이 none 인 줄
+      - alert: JobSessionLink404NoCaller
+        expr: |
+          sum by (route) (
+            count_over_time(
+              {service="api"} |= "[job-link] denied" |= "caller=none "
+                | regexp `route=(?P<route>[a-z0-9/:-]+)`
+              [24h]
+            )
+          ) > 0
+        for: 0m
+        labels:
+          signal: ops
+        annotations:
+          summary: "api 세션 연결 확인 404(호출자 none) {{ $labels.route }} {{ $value }}건(24h)"
+
+      # 잡 입력 파일의 사이트가 호출 사이트와 다른 채로 잡을 만든 줄(사이트·파일 식별자는 라벨로 만들지 않는다)
+      - alert: JobInputFileOtherSite
+        expr: |
+          sum by (route, caller) (
+            count_over_time(
+              {service="api"} |= "[job-file] cross-site"
+                | regexp `route=(?P<route>[a-z0-9/:-]+) caller=(?P<caller>[A-Za-z]+)`
+              [24h]
+            )
+          ) > 0
+        for: 0m
+        labels:
+          signal: ops
+        annotations:
+          summary: "api 잡 입력 파일 사이트가 호출 사이트와 다름 {{ $labels.route }} ({{ $labels.caller }}) {{ $value }}건(24h)"
