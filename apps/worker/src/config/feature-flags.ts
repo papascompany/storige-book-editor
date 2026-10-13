@@ -3,9 +3,9 @@
  *
  * 부팅 시 각 플래그의 **유효 불리언**을 한 줄 로그로 남긴다. 값은 소비 코드가 쓰는 것을
  * 그대로 읽는다 — VALIDATION_CONFIG 상수, print-normalize 공개 함수는 재사용한다.
- * CUTOUT_ENABLED 는 CutoutProcessor 의 필드가 비공개라, 같은 술어(isFlagOn)·같은 소스
- * (process.env)로 평가한다. SPREAD_SNAPSHOT_HARD_FAIL 은 synthesis.processor 의 호출 시점
- * 식(`process.env.SPREAD_SNAPSHOT_HARD_FAIL === 'true'`)과 같은 식으로 평가한다.
+ * CUTOUT_ENABLED(isCutoutEnabled)·SPREAD_SNAPSHOT_HARD_FAIL(isSpreadSnapshotHardFail)은 이 모듈의
+ * 함수를 소비 코드와 스냅샷이 같이 쓴다. 읽는 시점은 소비 코드 그대로다 — CutoutProcessor 는
+ * 생성 시점 필드, synthesis.processor 는 호출 시점.
  *
  * 파싱 규칙은 플래그마다 다르다(통일하지 않음 — 동작 변경이므로 테스트로 현행을 고정):
  *  - CUTOUT_ENABLED: 앞뒤 공백 제거 + 대소문자 무시, 'true' 또는 '1' 이면 ON.
@@ -33,6 +33,21 @@ export function isFlagOn(raw: string | undefined): boolean {
   return v === 'true' || v === '1';
 }
 
+/** CUTOUT_ENABLED 유효값(기본 false). CutoutProcessor 생성 시점 필드와 스냅샷이 이 함수를 쓴다. */
+export function isCutoutEnabled(env: Record<string, string | undefined> = process.env): boolean {
+  return isFlagOn(env.CUTOUT_ENABLED);
+}
+
+/** SPREAD_SNAPSHOT_HARD_FAIL 진리값 술어 — 정확히 'true'(대소문자 구분)일 때만 HARD(api 와 같은 술어). */
+export function isSpreadSnapshotHardFailRaw(raw: unknown): boolean {
+  return raw === 'true';
+}
+
+/** 스프레드 스냅샷 HARD 차단 여부. 호출 시점마다 env 를 읽는다(synthesis.processor 와 스냅샷). */
+export function isSpreadSnapshotHardFail(env: Record<string, string | undefined> = process.env): boolean {
+  return isSpreadSnapshotHardFailRaw(env.SPREAD_SNAPSHOT_HARD_FAIL);
+}
+
 export const WORKER_FEATURE_FLAG_KEYS = [
   'CUTOUT_ENABLED',
   'WORKER_LIGHTWEIGHT_VALIDATION',
@@ -51,15 +66,15 @@ export type WorkerFeatureFlagSnapshot = Readonly<Record<WorkerFeatureFlagKey, bo
 /** 소비 코드가 쓰는 값 그대로(재파싱 금지). 동적 키로 process.env 를 읽지 않는다. */
 export function buildWorkerFeatureFlagSnapshot(): WorkerFeatureFlagSnapshot {
   return {
-    CUTOUT_ENABLED: isFlagOn(process.env.CUTOUT_ENABLED),
+    CUTOUT_ENABLED: isCutoutEnabled(),
     WORKER_LIGHTWEIGHT_VALIDATION: VALIDATION_CONFIG.LIGHTWEIGHT_VALIDATION,
     WORKER_LIGHTWEIGHT_SYNTHESIS: VALIDATION_CONFIG.LIGHTWEIGHT_SYNTHESIS,
     WORKER_CROP_MARK_VALIDATION: VALIDATION_CONFIG.CROP_MARK_VALIDATION,
     WORKER_WIRED_FIXABLE_GATING: VALIDATION_CONFIG.WIRED_FIXABLE_GATING,
     PRINT_NORMALIZE: isPrintNormalizeEnabled(),
     PRINT_NORMALIZE_FLATTEN: printNormalizeFlatten(),
-    // synthesis.processor.ts 와 같은 식(호출 시점 판독)
-    SPREAD_SNAPSHOT_HARD_FAIL: process.env.SPREAD_SNAPSHOT_HARD_FAIL === 'true',
+    // synthesis.processor.ts 와 같은 함수(호출 시점 판독)
+    SPREAD_SNAPSHOT_HARD_FAIL: isSpreadSnapshotHardFail(),
     WORKER_TRIMBOX_SIZE_CHECK: VALIDATION_CONFIG.TRIMBOX_SIZE_CHECK,
   };
 }

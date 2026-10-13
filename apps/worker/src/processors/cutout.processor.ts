@@ -21,7 +21,7 @@ import { assertSafeDownloadUrl } from '../utils/url-safety';
 import { captureJobException } from '../sentry/sentry.init';
 import { reportStalledLimitFailure } from './stalled-job-failure';
 import { DomainError, ErrorCodes } from '../common/errors';
-import { isFlagOn } from '../config/feature-flags';
+import { isCutoutEnabled } from '../config/feature-flags';
 
 /**
  * 배경제거(컷아웃) 서버 오프로드 프로세서 (2026-08-05, D-6a=B·D-6b②·D-12a=C).
@@ -72,7 +72,7 @@ export class CutoutProcessor {
   private readonly storagePath = process.env.STORAGE_PATH || '/app/storage';
   private readonly cutoutsDir = 'cutouts';
   /** 기본 false — 미설정/오타는 전부 '꺼짐'으로 해석한다(API 와 동일 술어) */
-  private readonly enabled = isFlagOn(process.env.CUTOUT_ENABLED);
+  private readonly enabled = isCutoutEnabled();
   private readonly maxInputBytes =
     Number(process.env.CUTOUT_MAX_INPUT_BYTES) || DEFAULT_MAX_INPUT_BYTES;
   private readonly maxInputPixels =

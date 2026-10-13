@@ -76,6 +76,41 @@ describe('worker feature-flags', () => {
     });
   });
 
+  describe('소비 코드와 스냅샷이 같이 쓰는 함수(env 인자)', () => {
+    const { isCutoutEnabled, isSpreadSnapshotHardFail, isSpreadSnapshotHardFailRaw } = loadIsolated().flags;
+
+    it.each([
+      [undefined, false],
+      ['1', true],
+      [' TRUE ', true],
+      ['yes', false],
+    ])('isCutoutEnabled(CUTOUT_ENABLED=%j) → %s', (raw, expected) => {
+      expect(isCutoutEnabled(raw === undefined ? {} : { CUTOUT_ENABLED: raw })).toBe(expected);
+    });
+
+    it.each([
+      [undefined, false],
+      ['true', true],
+      ['TRUE', false],
+      ['1', false],
+      [' true', false],
+    ])('isSpreadSnapshotHardFail(SPREAD_SNAPSHOT_HARD_FAIL=%j) → %s', (raw, expected) => {
+      expect(isSpreadSnapshotHardFail(raw === undefined ? {} : { SPREAD_SNAPSHOT_HARD_FAIL: raw })).toBe(expected);
+      expect(isSpreadSnapshotHardFailRaw(raw)).toBe(expected);
+    });
+
+    it('인자를 생략하면 호출 시점의 process.env 를 읽는다', () => {
+      process.env.SPREAD_SNAPSHOT_HARD_FAIL = 'true';
+      process.env.CUTOUT_ENABLED = '1';
+      expect(isSpreadSnapshotHardFail()).toBe(true);
+      expect(isCutoutEnabled()).toBe(true);
+      delete process.env.SPREAD_SNAPSHOT_HARD_FAIL;
+      delete process.env.CUTOUT_ENABLED;
+      expect(isSpreadSnapshotHardFail()).toBe(false);
+      expect(isCutoutEnabled()).toBe(false);
+    });
+  });
+
   it('대상 env 가 모두 미설정이면 기본 OFF 플래그는 전부 false, 기본 ON 플래그만 true', () => {
     const snap = loadIsolated().flags.buildWorkerFeatureFlagSnapshot();
     for (const k of FLAG_ENV_KEYS) {
@@ -167,6 +202,8 @@ describe('worker feature-flags', () => {
     expect(snap.PRINT_NORMALIZE).toBe(printNormalize.isPrintNormalizeEnabled());
     expect(snap.PRINT_NORMALIZE_FLATTEN).toBe(printNormalize.printNormalizeFlatten());
     expect(snap.CUTOUT_ENABLED).toBe(flags.isFlagOn(process.env.CUTOUT_ENABLED));
+    expect(snap.CUTOUT_ENABLED).toBe(flags.isCutoutEnabled());
+    expect(snap.SPREAD_SNAPSHOT_HARD_FAIL).toBe(flags.isSpreadSnapshotHardFail());
     expect(snap.WORKER_TRIMBOX_SIZE_CHECK).toBe(cfg.TRIMBOX_SIZE_CHECK);
   });
 

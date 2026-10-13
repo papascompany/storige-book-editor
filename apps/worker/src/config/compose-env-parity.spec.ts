@@ -273,6 +273,68 @@ describe('docker-compose worker environment ↔ worker 플래그 모듈 정합',
     expect(unlistedBooleanKeys(env)).toEqual(['NEW_TOGGLE', 'OTHER_TOGGLE']);
   });
 
+  describe('⑥ 소스에서 플래그 키를 process.env 로 직접 읽는 곳', () => {
+    const SRC_ROOT = resolve(__dirname, '..');
+    const ALLOWED_FILE = 'config/feature-flags.ts';
+    const CONSTANT_REASON = '모듈 로드 시점 상수(VALIDATION_CONFIG)에서 읽고, 스냅샷은 그 상수를 쓴다';
+    const FUNCTION_REASON = '호출 시점 함수에서 읽고, 스냅샷은 같은 함수를 호출한다';
+    const DIRECT_READ_ALLOWLIST: ReadonlyArray<{ file: string; key: WorkerFeatureFlagKey; reason: string }> = [
+      { file: 'config/validation.config.ts', key: 'WORKER_LIGHTWEIGHT_VALIDATION', reason: CONSTANT_REASON },
+      { file: 'config/validation.config.ts', key: 'WORKER_LIGHTWEIGHT_SYNTHESIS', reason: CONSTANT_REASON },
+      { file: 'config/validation.config.ts', key: 'WORKER_WIRED_FIXABLE_GATING', reason: CONSTANT_REASON },
+      { file: 'config/validation.config.ts', key: 'WORKER_CROP_MARK_VALIDATION', reason: CONSTANT_REASON },
+      { file: 'utils/print-normalize.ts', key: 'PRINT_NORMALIZE', reason: FUNCTION_REASON },
+      { file: 'utils/print-normalize.ts', key: 'PRINT_NORMALIZE_FLATTEN', reason: FUNCTION_REASON },
+    ];
+
+    function listSourceFiles(dir: string): string[] {
+      const out: string[] = [];
+      for (const ent of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, ent.name);
+        if (ent.isDirectory()) out.push(...listSourceFiles(full));
+        else if (ent.name.endsWith('.ts') && !ent.name.endsWith('.spec.ts')) out.push(full);
+      }
+      return out;
+    }
+
+    function directReads(): Array<{ file: string; line: number; key: WorkerFeatureFlagKey }> {
+      const patterns = WORKER_FEATURE_FLAG_KEYS.map(
+        (key) => [key, new RegExp(`process\\.env(?:\\.${key}\\b|\\[\\s*['"\`]${key}['"\`]\\s*\\])`)] as const,
+      );
+      const hits: Array<{ file: string; line: number; key: WorkerFeatureFlagKey }> = [];
+      for (const full of listSourceFiles(SRC_ROOT)) {
+        const file = relative(SRC_ROOT, full).split(sep).join('/');
+        const lines = readFileSync(full, 'utf8').split('\n');
+        lines.forEach((text, idx) => {
+          const t = text.trim();
+          if (t.startsWith('//') || t.startsWith('*') || t.startsWith('/*')) return;
+          for (const [key, re] of patterns) {
+            if (re.test(text)) hits.push({ file, line: idx + 1, key });
+          }
+        });
+      }
+      return hits;
+    }
+
+    const hits = directReads();
+
+    it('config/feature-flags.ts 와 허용 목록 밖에는 없다', () => {
+      const outside = hits
+        .filter((h) => h.file !== ALLOWED_FILE)
+        .filter((h) => !DIRECT_READ_ALLOWLIST.some((a) => a.file === h.file && a.key === h.key))
+        .map((h) => `${h.file}:${h.line} ${h.key}`);
+      expect(outside).toEqual([]);
+    });
+
+    it.each(DIRECT_READ_ALLOWLIST.map((a) => [`${a.file} ${a.key}`, a]))(
+      '허용 목록 %s 는 아직 쓰이고 사유가 있다',
+      (_label, a) => {
+        expect(a.reason.length).toBeGreaterThan(0);
+        expect(hits.some((h) => h.file === a.file && h.key === a.key)).toBe(true);
+      },
+    );
+  });
+
   describe('⑦ 소스가 읽는 env 키는 compose worker environment 에 매핑돼 있거나 미매핑 목록에 있다', () => {
     const SRC_ROOT = resolve(__dirname, '..');
     const REPO_ROOT = resolve(__dirname, '../../../..');

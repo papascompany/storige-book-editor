@@ -23,6 +23,7 @@ import {
   SynthRetryOutcome,
 } from './synthesis-retry';
 import { VALIDATION_CONFIG } from '../config/validation.config';
+import { isSpreadSnapshotHardFail } from '../config/feature-flags';
 import { downloadToTempFile } from '../utils/stream-download';
 import { extractPdfMetadataQpdf } from '../utils/pdf-metadata-qpdf';
 // X1 (2026-09-30): compose-mixed 내지 입력 재단선 영역 크롭 정규화(원본 불변·임시 사본).
@@ -1022,7 +1023,7 @@ export class SynthesisProcessor {
     expectedHeightMm: number,
     dpi?: number,
   ): Record<string, unknown> {
-    const hardFail = process.env.SPREAD_SNAPSHOT_HARD_FAIL === 'true';
+    const hardFail = isSpreadSnapshotHardFail();
     const useDpi = dpi || 300;
     const toleranceMm = Math.max(0.2, (1 / useDpi) * 25.4);
     const mismatches: string[] = [];
