@@ -216,6 +216,11 @@ export interface EditorPricingChangePayload {
   pricing?: EditorPricingMeta;
   /** 커버 종류 코드(고정 enum 아님 — 확장 가능한 string) */
   coverType?: string;
+  /**
+   * 발신 시점에 적용된 책등 폭(mm, 스프레드 책만). 표지 총폭이 아니다. 책등 재계산이 늦게 끝나면
+   * 같은 형태로 1회 더 오며, 마지막 값이 최종값이다(편집기 R-195·S9 — 종전에도 실려 왔으나 타입 미등재).
+   */
+  spineWidthMm?: number;
 }
 
 /**

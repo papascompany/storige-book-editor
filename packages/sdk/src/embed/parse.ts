@@ -30,8 +30,13 @@ import {
   EDITOR_MESSAGE_SOURCE,
   EMBED_MESSAGE_VERSION,
   type CompleteAction,
+  type EditorCancelPayload,
   type EditorCompletePayload,
   type EditorEnvelope,
+  type EditorErrorPayload,
+  type EditorPricingChangePayload,
+  type EditorReadyPayload,
+  type EditorSavePayload,
   type EditorState,
   type TemplateSetMismatch,
 } from './protocol';
@@ -332,4 +337,104 @@ export function readRequestId(payload: unknown): string | null {
   const p = asRecord(payload);
   if (p === null) return null;
   return readString(p.requestId) ?? null;
+}
+
+// ── 알림 이벤트 판독(ready·save·cancel·error·pricingChange) ───────────────
+//
+// `mountEditor` 가 핸들러에 넘기기 전에 거친다. 수신 게이트(①~④)는 "누가 보냈나"만 보장하고
+// payload 형태는 보장하지 않는다 — 편집기 버전 차이·버그로 형태가 틀린 값이 그대로 호스트 코드에
+// 닿지 않게, 타입에 적힌 키만 형식이 맞을 때 싣는다(complete·state 판독과 같은 규칙).
+// 편집기에 키를 additive 로 늘리면 여기와 protocol.ts 타입에 함께 등재해야 호스트에 전달된다.
+
+function readBoolean(value: unknown): boolean | undefined {
+  return typeof value === 'boolean' ? value : undefined;
+}
+
+/** `editor.ready` — payload 가 객체가 아니어도 빈 객체로 판독한다(whenReady 는 ready 수신 자체로 풀린다). */
+export function readReadyPayload(payload: unknown): EditorReadyPayload {
+  const p = asRecord(payload) ?? {};
+  const sessionId = readString(p.sessionId);
+  const templateSetId = readString(p.templateSetId);
+  const version = readString(p.version);
+  const fallback = readBoolean(p.fallback);
+  const effectiveTemplateSetId = readString(p.effectiveTemplateSetId);
+  // 형태를 SDK 가 좁히지 않는 불투명 값(protocol.ts `unknown`) — 객체일 때만 통과시킨다.
+  const orientationMismatch = asRecord(p.orientationMismatch);
+  const templateSetMismatch = readTemplateSetMismatch(p.templateSetMismatch);
+  return {
+    ...(sessionId !== undefined ? { sessionId } : {}),
+    ...(templateSetId !== undefined ? { templateSetId } : {}),
+    ...(version !== undefined ? { version } : {}),
+    ...(fallback !== undefined ? { fallback } : {}),
+    ...(effectiveTemplateSetId !== undefined ? { effectiveTemplateSetId } : {}),
+    ...(orientationMismatch !== null ? { orientationMismatch } : {}),
+    ...(templateSetMismatch !== undefined ? { templateSetMismatch } : {}),
+  };
+}
+
+/** `editor.save` */
+export function readSavePayload(payload: unknown): EditorSavePayload {
+  const p = asRecord(payload) ?? {};
+  const sessionId = readString(p.sessionId);
+  const savedAt = readString(p.savedAt);
+  const thumbnail = readString(p.thumbnail);
+  return {
+    ...(sessionId !== undefined ? { sessionId } : {}),
+    ...(savedAt !== undefined ? { savedAt } : {}),
+    ...(thumbnail !== undefined ? { thumbnail } : {}),
+  };
+}
+
+/** `editor.cancel` */
+export function readCancelPayload(payload: unknown): EditorCancelPayload {
+  const p = asRecord(payload) ?? {};
+  const sessionId = readString(p.sessionId);
+  const reason = readString(p.reason);
+  return {
+    ...(sessionId !== undefined ? { sessionId } : {}),
+    ...(reason !== undefined ? { reason } : {}),
+  };
+}
+
+/**
+ * `editor.error` — 오류 통지는 버리지 않는다. `code` 가 비어 있거나 문자열이 아니면 `'UNKNOWN'`,
+ * `message` 가 문자열이 아니면 빈 문자열로 채운다(호스트는 계약상 미지 code 를 이미 관용한다).
+ */
+export function readErrorPayload(payload: unknown): EditorErrorPayload {
+  const p = asRecord(payload) ?? {};
+  const templateSetId = readString(p.templateSetId);
+  const fatal = readBoolean(p.fatal);
+  const sessionId = readString(p.sessionId);
+  const reason = readString(p.reason);
+  return {
+    code: readString(p.code) ?? 'UNKNOWN',
+    message: typeof p.message === 'string' ? p.message : '',
+    ...(templateSetId !== undefined ? { templateSetId } : {}),
+    ...(fatal !== undefined ? { fatal } : {}),
+    ...(sessionId !== undefined ? { sessionId } : {}),
+    ...(reason !== undefined ? { reason } : {}),
+  };
+}
+
+/**
+ * `editor.pricingChange` — 가격 계산의 입력이므로 `pageCount`(1 이상 정수)가 틀리면 `null`
+ * (핸들러를 부르지 않는다). `pricing` 은 불투명 통과값(객체일 때만), `spineWidthMm` 은 0 이상 유한수.
+ */
+export function readPricingChangePayload(
+  payload: unknown,
+): EditorPricingChangePayload | null {
+  const p = asRecord(payload);
+  if (p === null) return null;
+  const pageCount = readPositiveInt(p.pageCount);
+  if (pageCount === undefined) return null;
+  const pricing = asRecord(p.pricing);
+  const coverType = readString(p.coverType);
+  const spineWidthMm = readNonNegativeNumber(p.spineWidthMm);
+  return {
+    sessionId: readString(p.sessionId) ?? null,
+    pageCount,
+    ...(pricing !== null ? { pricing } : {}),
+    ...(coverType !== undefined ? { coverType } : {}),
+    ...(spineWidthMm !== undefined ? { spineWidthMm } : {}),
+  };
 }

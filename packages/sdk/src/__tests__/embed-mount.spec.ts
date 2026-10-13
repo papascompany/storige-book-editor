@@ -701,3 +701,127 @@ describe('destroy', () => {
     await expect(promise).rejects.toBeInstanceOf(EditorDetachedError);
   });
 });
+
+// ── 알림 이벤트 payload 판독 ────────────────────────────────────────────
+// 수신 게이트를 통과한 메시지라도 payload 형태는 편집기 버전·버그에 따라 틀릴 수 있다.
+// 핸들러에는 타입에 적힌 키만, 형식이 맞을 때만 실린다(complete·state 판독과 같은 규칙).
+
+describe('알림 이벤트 payload 판독', () => {
+  it('ready: 편집기가 실제로 보내는 형태는 그대로 실린다(whenReady 도 같은 값)', async () => {
+    const ready = vi.fn();
+    const h = setup({}, { ready });
+    const promise = h.handle.whenReady();
+    const payload = {
+      sessionId: 'sess-1',
+      templateSetId: 'TS_8x8',
+      version: '1.0.0',
+      fallback: true,
+      effectiveTemplateSetId: 'TS_SAMPLE',
+      orientationMismatch: {
+        requested: 'portrait',
+        template: 'landscape',
+        requestedSize: { width: 210, height: 297 },
+        templateSize: { width: 297, height: 210 },
+      },
+      templateSetMismatch: {
+        requested: 'TS_NEW',
+        session: 'TS_8x8',
+        resolution: 'requested',
+        reason: 'SESSION_SET_UNAVAILABLE',
+      },
+    };
+    h.fromEditor('editor.ready', payload);
+    expect(ready).toHaveBeenCalledWith(payload);
+    await expect(promise).resolves.toEqual(payload);
+  });
+
+  it('ready: 형식이 틀린 키와 모르는 키는 빠지고, payload 가 객체가 아니어도 ready 는 확정된다', async () => {
+    const ready = vi.fn();
+    const h = setup({}, { ready });
+    const promise = h.handle.whenReady();
+    h.fromEditor('editor.ready', {
+      sessionId: 123,
+      templateSetId: '',
+      version: 1,
+      fallback: 'yes',
+      orientationMismatch: 'landscape',
+      templateSetMismatch: { requested: 'A', resolution: 'session' },
+      injected: '<img src=x>',
+    });
+    expect(ready).toHaveBeenLastCalledWith({});
+    await expect(promise).resolves.toEqual({});
+
+    const h2 = setup({}, { ready });
+    const promise2 = h2.handle.whenReady();
+    h2.fromEditor('editor.ready', 'not-an-object');
+    expect(ready).toHaveBeenLastCalledWith({});
+    await expect(promise2).resolves.toEqual({});
+  });
+
+  it('save·cancel: 문자열 키만 싣는다', () => {
+    const save = vi.fn();
+    const cancel = vi.fn();
+    const h = setup({}, { save, cancel });
+    h.fromEditor('editor.save', { sessionId: 's', savedAt: 5, thumbnail: null, extra: 1 });
+    h.fromEditor('editor.cancel', { sessionId: 's', reason: 'session_not_found' });
+    h.fromEditor('editor.cancel', { reason: 7 });
+    expect(save).toHaveBeenCalledWith({ sessionId: 's' });
+    expect(cancel).toHaveBeenNthCalledWith(1, { sessionId: 's', reason: 'session_not_found' });
+    expect(cancel).toHaveBeenNthCalledWith(2, {});
+  });
+
+  it('error: 오류 통지는 버리지 않는다 — code·message 를 채우고 선택 키는 형식이 맞을 때만', () => {
+    const error = vi.fn();
+    const h = setup({}, { error });
+    const full = {
+      code: 'SESSION_NOT_FOUND',
+      message: '세션을 찾을 수 없습니다',
+      sessionId: 'sess-x',
+      reason: 'guest_token_required',
+      fatal: true,
+    };
+    h.fromEditor('editor.error', full);
+    h.fromEditor('editor.error', null);
+    h.fromEditor('editor.error', { code: 42, message: { text: 'x' }, fatal: 'true', templateSetId: 'TS' });
+    expect(error).toHaveBeenNthCalledWith(1, full);
+    expect(error).toHaveBeenNthCalledWith(2, { code: 'UNKNOWN', message: '' });
+    expect(error).toHaveBeenNthCalledWith(3, { code: 'UNKNOWN', message: '', templateSetId: 'TS' });
+  });
+
+  it('pricingChange: pageCount 가 1 이상 정수가 아니면 핸들러를 부르지 않는다', () => {
+    const pricingChange = vi.fn();
+    const h = setup({}, { pricingChange });
+    for (const pageCount of [0, -2, 1.5, '30', Number.NaN, undefined]) {
+      h.fromEditor('editor.pricingChange', { sessionId: 's', pageCount });
+    }
+    h.fromEditor('editor.pricingChange', 'not-an-object');
+    expect(pricingChange).not.toHaveBeenCalled();
+  });
+
+  it('pricingChange: spineWidthMm(0 이상)·pricing(객체)·coverType 은 보존하고 틀린 값은 뺀다', () => {
+    const pricingChange = vi.fn();
+    const h = setup({}, { pricingChange });
+    const pricing = { basePrice: 12000, perPage: 300 };
+    h.fromEditor('editor.pricingChange', {
+      sessionId: 's',
+      pageCount: 24,
+      pricing,
+      coverType: 'hardcover_wrap',
+      spineWidthMm: 8,
+    });
+    h.fromEditor('editor.pricingChange', {
+      pageCount: 24,
+      pricing: 'cheap',
+      coverType: 3,
+      spineWidthMm: -1,
+    });
+    expect(pricingChange).toHaveBeenNthCalledWith(1, {
+      sessionId: 's',
+      pageCount: 24,
+      pricing,
+      coverType: 'hardcover_wrap',
+      spineWidthMm: 8,
+    });
+    expect(pricingChange).toHaveBeenNthCalledWith(2, { sessionId: null, pageCount: 24 });
+  });
+});

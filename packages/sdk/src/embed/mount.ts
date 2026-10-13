@@ -33,8 +33,13 @@ import {
 import {
   extractGuestToken,
   parseEditorMessage,
+  readCancelPayload,
   readCompletePayload,
+  readErrorPayload,
+  readPricingChangePayload,
+  readReadyPayload,
   readRequestId,
+  readSavePayload,
   readStatePayload,
   type EditorMessageLike,
 } from './parse';
@@ -452,12 +457,15 @@ export function mountEditor(options: MountEditorOptions): EditorHandle {
 
   function dispatch(envelope: EditorEnvelope): void {
     switch (envelope.event) {
-      case 'editor.ready':
-        settleReady((envelope.payload ?? {}) as EditorReadyPayload);
-        on.ready?.((envelope.payload ?? {}) as EditorReadyPayload);
+      // 알림 이벤트 payload 는 parse.ts 판독을 거친다 — 타입에 적힌 키만, 형식이 맞을 때만 싣는다.
+      case 'editor.ready': {
+        const ready = readReadyPayload(envelope.payload);
+        settleReady(ready);
+        on.ready?.(ready);
         return;
+      }
       case 'editor.save':
-        on.save?.((envelope.payload ?? {}) as EditorSavePayload);
+        on.save?.(readSavePayload(envelope.payload));
         return;
       case 'editor.complete': {
         const token = extractGuestToken(envelope.payload);
@@ -471,10 +479,10 @@ export function mountEditor(options: MountEditorOptions): EditorHandle {
         return;
       }
       case 'editor.cancel':
-        on.cancel?.((envelope.payload ?? {}) as EditorCancelPayload);
+        on.cancel?.(readCancelPayload(envelope.payload));
         return;
       case 'editor.error':
-        on.error?.((envelope.payload ?? {}) as EditorErrorPayload);
+        on.error?.(readErrorPayload(envelope.payload));
         return;
       case 'editor.needAuth': {
         const token = extractGuestToken(envelope.payload);
@@ -490,9 +498,12 @@ export function mountEditor(options: MountEditorOptions): EditorHandle {
         notifyGuestAuthRequired('editor.needAuth', null, token);
         return;
       }
-      case 'editor.pricingChange':
-        on.pricingChange?.((envelope.payload ?? {}) as EditorPricingChangePayload);
+      case 'editor.pricingChange': {
+        // pageCount 가 1 이상 정수가 아니면 가격 입력으로 쓸 수 없어 핸들러를 부르지 않는다.
+        const change = readPricingChangePayload(envelope.payload);
+        if (change !== null) on.pricingChange?.(change);
         return;
+      }
       case 'editor.state':
         handleResponse(envelope, 'editor.state');
         return;
