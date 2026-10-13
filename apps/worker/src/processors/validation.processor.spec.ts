@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ValidationProcessor } from './validation.processor';
+import { Logger } from '@nestjs/common';
+import { ValidationProcessor, validationCodeSummary } from './validation.processor';
 import { PdfValidatorService } from '../services/pdf-validator.service';
 import { Job } from 'bull';
 import axios from 'axios';
@@ -338,6 +339,77 @@ describe('ValidationProcessor', () => {
       // Should not throw even if status update fails
       const result = await processor.handleValidation(job);
       expect(result).toEqual(validResult);
+    });
+  });
+
+  describe('결과 로그의 코드 요약', () => {
+    const meta = {
+      pageCount: 4,
+      pageSize: { width: 210, height: 297 },
+      hasBleed: true,
+      colorMode: 'RGB' as const,
+      resolution: 300,
+    };
+    const data = {
+      jobId: 'test-uuid-456',
+      fileUrl: 'storage/uploads/original-name.pdf',
+      fileType: 'cover' as const,
+      orderOptions: { size: { width: 210, height: 297 }, pages: 4, binding: 'perfect' as const, bleed: 3 },
+    };
+
+    it('FAILED 줄에 fileType·errorCodes·warningCodes(중복 제거·정렬), 문구·경로는 없음', async () => {
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      try {
+        mockValidatorService.validate.mockResolvedValue({
+          isValid: false,
+          errors: [{ code: ErrorCode.SPINE_SIZE_MISMATCH, message: '책등 문구', details: { w: 1 }, autoFixable: false }],
+          warnings: [
+            { code: WarningCode.TRANSPARENCY_DETECTED, message: 'a', details: {}, autoFixable: false },
+            { code: WarningCode.RESOLUTION_LOW, message: 'b', details: {}, autoFixable: false },
+            { code: WarningCode.RESOLUTION_LOW, message: 'c', details: {}, autoFixable: false },
+          ],
+          metadata: meta,
+        } as ValidationResultDto);
+        await processor.handleValidation(createMockJob(data));
+        const line = warn.mock.calls.map((c) => String(c[0])).find((m) => m.startsWith('Validation job '));
+        expect(line).toBe(
+          'Validation job test-uuid-456 FAILED: 1 errors, 3 warnings fileType=cover errorCodes=SPINE_SIZE_MISMATCH warningCodes=RESOLUTION_LOW,TRANSPARENCY_DETECTED',
+        );
+        expect(line).not.toContain('책등 문구');
+        expect(line).not.toContain('original-name');
+      } finally {
+        warn.mockRestore();
+      }
+    });
+
+    it('COMPLETED 줄은 기존 문구를 앞에 그대로 두고 코드만 덧붙인다', async () => {
+      const log = jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+      try {
+        mockValidatorService.validate.mockResolvedValue({
+          isValid: true,
+          errors: [],
+          warnings: [{ code: WarningCode.BLEED_MISSING, message: 'x', details: {}, autoFixable: false }],
+          metadata: meta,
+        } as ValidationResultDto);
+        await processor.handleValidation(createMockJob({ ...data, fileType: 'content' }));
+        const line = log.mock.calls.map((c) => String(c[0])).find((m) => m.includes('completed successfully'));
+        expect(line).toBe(
+          'Validation job test-uuid-456 completed successfully fileType=content errorCodes=- warningCodes=BLEED_MISSING',
+        );
+      } finally {
+        log.mockRestore();
+      }
+    });
+
+    it('코드 형식이 아닌 값은 OTHER, 10종 초과는 +n, 알 수 없는 fileType 은 other', () => {
+      const many = Array.from({ length: 12 }, (_, i) => ({ code: `CODE_${String(i).padStart(2, '0')}` }));
+      const s = validationCodeSummary('x', {
+        errors: [{ code: 'bad code; rm' }, { code: undefined }] as never,
+        warnings: many as never,
+      });
+      expect(s).toBe(
+        'fileType=other errorCodes=OTHER warningCodes=CODE_00,CODE_01,CODE_02,CODE_03,CODE_04,CODE_05,CODE_06,CODE_07,CODE_08,CODE_09,+2',
+      );
     });
   });
 });

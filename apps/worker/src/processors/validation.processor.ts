@@ -77,6 +77,31 @@ interface ValidationJobData {
   };
 }
 
+const LOG_CODE_PATTERN = /^[A-Z][A-Z0-9_]{0,63}$/;
+const LOG_CODE_MAX = 10;
+
+/** 로그용 코드 목록 — 중복 제거·정렬, 코드 형식이 아니면 OTHER, 10종 초과는 +n. 비면 '-'. */
+function codeList(items: ReadonlyArray<{ code?: unknown }> | undefined): string {
+  const codes = new Set<string>();
+  for (const it of items ?? []) {
+    const c = typeof it?.code === 'string' && LOG_CODE_PATTERN.test(it.code) ? it.code : 'OTHER';
+    codes.add(c);
+  }
+  if (codes.size === 0) return '-';
+  const sorted = [...codes].sort();
+  const head = sorted.slice(0, LOG_CODE_MAX).join(',');
+  return sorted.length > LOG_CODE_MAX ? `${head},+${sorted.length - LOG_CODE_MAX}` : head;
+}
+
+/** 검증 결과 로그 꼬리 — 파일 종류와 오류·경고 코드만(문구·경로·값은 넣지 않는다). */
+export function validationCodeSummary(
+  fileType: unknown,
+  result: Pick<ValidationResultDto, 'errors' | 'warnings'>,
+): string {
+  const ft = fileType === 'cover' || fileType === 'content' ? fileType : 'other';
+  return `fileType=${ft} errorCodes=${codeList(result.errors)} warningCodes=${codeList(result.warnings)}`;
+}
+
 @Processor('pdf-validation')
 export class ValidationProcessor {
   private readonly logger = new Logger(ValidationProcessor.name);
@@ -121,7 +146,9 @@ export class ValidationProcessor {
         await this.updateJobStatus(job.data.jobId, 'COMPLETED', {
           result,
         });
-        this.logger.log(`Validation job ${job.data.jobId} completed successfully`);
+        this.logger.log(
+          `Validation job ${job.data.jobId} completed successfully ${validationCodeSummary(job.data.fileType, result)}`,
+        );
       } else {
         // 에러가 있지만 모두 자동 수정 가능한 경우
         const allErrorsFixable = result.errors.every(e => e.autoFixable);
@@ -134,7 +161,8 @@ export class ValidationProcessor {
           this.formatErrorMessage(result),
         );
         this.logger.warn(
-          `Validation job ${job.data.jobId} ${status}: ${result.errors.length} errors, ${result.warnings.length} warnings`,
+          `Validation job ${job.data.jobId} ${status}: ${result.errors.length} errors, ${result.warnings.length} warnings ` +
+            validationCodeSummary(job.data.fileType, result),
         );
       }
 

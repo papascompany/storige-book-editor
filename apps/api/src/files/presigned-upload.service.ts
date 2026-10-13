@@ -74,6 +74,18 @@ export function siteIdLogHint(siteId: string): string {
   return `len=${siteId.length} prefix=${siteId.slice(0, 4).replace(/[^0-9a-fA-F-]/g, '')}`;
 }
 
+/** complete 첫 확정 로그의 귀속 근거 표지 */
+export type PresignedStampBasis = 'site-key' | 'token' | 'preset' | 'none';
+
+export function presignedStampBasis(
+  stamped: boolean,
+  presetSite: boolean,
+  role: string | undefined,
+): PresignedStampBasis {
+  if (stamped) return role === 'site-key' ? 'site-key' : 'token';
+  return presetSite ? 'preset' : 'none';
+}
+
 @Injectable()
 export class PresignedUploadService {
   private readonly logger = new Logger(PresignedUploadService.name);
@@ -437,6 +449,7 @@ export class PresignedUploadService {
     const firstFinalize = file.status !== 'ready';
     file.fileSize = actualSize;
     file.status = 'ready';
+    const presetSite = !!file.siteId;
     let stamped = false;
     if (firstFinalize && !file.siteId && caller?.siteId && caller.role !== 'worker') {
       file.siteId = caller.siteId;
@@ -451,12 +464,12 @@ export class PresignedUploadService {
         ? new Date(Date.now() + retentionDays * 24 * 60 * 60 * 1000)
         : null;
     const saved = await this.fileRepository.save(file);
-    // v1.9: 사이트 키 근거로 귀속한 파일만 1줄 남긴다(토큰 근거 귀속의 로그는 종전과 같다).
-    // file id 는 귀속 목록 추출용, 사이트 id 는 축약해서 남긴다.
-    if (stamped && caller?.role === 'site-key' && saved.siteId) {
-      this.logger.log(
-        `[presigned-stamp] file=${saved.id} basis=site-key site(${siteIdLogHint(saved.siteId)})`,
-      );
+    // 첫 확정(pending→ready)마다 귀속 근거 1줄. file id 는 귀속 목록 추출용, 사이트 id 는 축약한다.
+    // basis: site-key·token = 이번 complete 로 귀속 / preset = 발급 때 이미 귀속 / none = 귀속 없음.
+    if (firstFinalize) {
+      const basis = presignedStampBasis(stamped, presetSite, caller?.role);
+      const site = saved.siteId ? `site(${siteIdLogHint(saved.siteId)})` : 'site=-';
+      this.logger.log(`[presigned-stamp] file=${saved.id} basis=${basis} ${site}`);
     }
     return saved;
   }

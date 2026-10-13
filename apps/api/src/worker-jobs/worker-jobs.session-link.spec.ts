@@ -340,6 +340,8 @@ describe('WorkerJobsService.assertEditSessionLink', () => {
   describe('observeJobInputFileSites', () => {
     const fileLogs = (): string[] =>
       logSpy.mock.calls.map((c: unknown[]) => String(c[0])).filter((m: string) => m.startsWith('[job-file]'));
+    const checkLogs = (): string[] =>
+      logSpy.mock.calls.map((c: unknown[]) => String(c[0])).filter((m: string) => m.startsWith('[job-file-check]'));
 
     beforeEach(() => {
       const files: Record<string, { id: string; siteId: string | null }> = {
@@ -474,6 +476,44 @@ describe('WorkerJobsService.assertEditSessionLink', () => {
       expect(r.body).toMatchObject({ code: 'FILE_SITE_MISMATCH', details: { fileId: FILE_B } });
       expect(fileLogs()).toEqual([
         `[job-file] denied route=compose-mixed caller=siteKey site=${SITE_A} fileSite=${SITE_B} ref=url`,
+      ]);
+      expect(checkLogs()).toEqual([]);
+    });
+
+    it('F10: 집계 1줄 — 같은 사이트·사이트 미지정·없는 파일·다른 사이트를 건수로 구분(파일 id 미기록)', async () => {
+      await service.observeJobInputFileSites('validate/external', { kind: 'siteKey', siteId: SITE_A }, [
+        FILE_A,
+        FILE_NULL,
+        MISSING,
+        FILE_B,
+        undefined,
+        '',
+      ]);
+      expect(checkLogs()).toEqual([
+        `[job-file-check] route=validate/external caller=siteKey site=${SITE_A} refs=4 same=1 nosite=1 cross=1 missing=1 err=0`,
+      ]);
+      const all = JSON.stringify(logSpy.mock.calls);
+      for (const id of [FILE_A, FILE_NULL, MISSING, FILE_B]) expect(all).not.toContain(id);
+    });
+
+    it('F11: 확인 대상이 없으면 집계 줄 없음 / 관측 모드 조회 오류는 err 로 센다', async () => {
+      await service.observeJobInputFileSites('synthesize/external', { kind: 'siteKey', siteId: SITE_A }, [undefined, ''], {
+        urls: ['https://example.com/a.pdf'],
+      });
+      expect(checkLogs()).toEqual([]);
+      filesService.findById.mockRejectedValueOnce(new Error('db down'));
+      await service.observeJobInputFileSites('validate', { kind: 'shop', siteId: SITE_A }, [FILE_A]);
+      expect(checkLogs()).toEqual([
+        `[job-file-check] route=validate caller=shop site=${SITE_A} refs=1 same=0 nosite=0 cross=0 missing=0 err=1`,
+      ]);
+    });
+
+    it('F12: strict 통과(같은 사이트·미지정)도 집계 1줄', async () => {
+      await service.observeJobInputFileSites('validate', { kind: 'shop', siteId: SITE_A }, [FILE_A, FILE_NULL], {
+        strict: true,
+      });
+      expect(checkLogs()).toEqual([
+        `[job-file-check] route=validate caller=shop site=${SITE_A} refs=2 same=1 nosite=1 cross=0 missing=0 err=0`,
       ]);
     });
   });

@@ -756,6 +756,7 @@ export class WorkerJobsService implements OnModuleInit {
    *  - opts.strict(JOB_FILE_SITE_STRICT): `[job-file] denied` 1줄 후 403 FILE_SITE_MISMATCH(잡 미생성).
    * 사이트 미지정 파일·같은 사이트 파일은 통과한다. 파일 부재는 잡 생성 경로의 기존 판정(FILE_NOT_FOUND 등)이 처리한다.
    * 조회 오류는 관측이면 무시하고, strict 면 NotFound 를 뺀 오류를 전파한다.
+   * 확인 대상이 1개 이상이고 거부하지 않았으면 끝에 집계 1줄 `[job-file-check]`(건수만, 파일 id 미기록)을 남긴다.
    */
   async observeJobInputFileSites(
     route: string,
@@ -774,16 +775,36 @@ export class WorkerJobsService implements OnModuleInit {
       const id = apiFileRefIdOf(url);
       if (id && !refs.has(id)) refs.set(id, { presented: id, fromUrl: true });
     }
+    const tally = { same: 0, nosite: 0, cross: 0, missing: 0, err: 0 };
     for (const [id, ref] of refs) {
       let fileSiteId: string | null | undefined;
       try {
         const file = await this.filesService.findById(id);
-        fileSiteId = file?.siteId;
+        if (!file) {
+          tally.missing += 1;
+          continue;
+        }
+        fileSiteId = file.siteId;
       } catch (err) {
-        if (!strict || err instanceof NotFoundException) continue;
+        if (err instanceof NotFoundException) {
+          tally.missing += 1;
+          continue;
+        }
+        if (!strict) {
+          tally.err += 1;
+          continue;
+        }
         throw err;
       }
-      if (!fileSiteId || fileSiteId === caller.siteId) continue;
+      if (!fileSiteId) {
+        tally.nosite += 1;
+        continue;
+      }
+      if (fileSiteId === caller.siteId) {
+        tally.same += 1;
+        continue;
+      }
+      tally.cross += 1;
       const suffix = ref.fromUrl ? ' ref=url' : '';
       if (strict) {
         this.logger.log(
@@ -797,6 +818,12 @@ export class WorkerJobsService implements OnModuleInit {
       }
       this.logger.log(
         `[job-file] cross-site route=${route} caller=${caller.kind} site=${caller.siteId} fileSite=${fileSiteId}${suffix}`,
+      );
+    }
+    if (refs.size > 0) {
+      this.logger.log(
+        `[job-file-check] route=${route} caller=${caller.kind} site=${caller.siteId} refs=${refs.size} ` +
+          `same=${tally.same} nosite=${tally.nosite} cross=${tally.cross} missing=${tally.missing} err=${tally.err}`,
       );
     }
   }

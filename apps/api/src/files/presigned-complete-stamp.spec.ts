@@ -6,7 +6,7 @@
  *  - 토큰 없음/위조/비-shop → **종전대로 NULL**(무중단 — 100p 키없는 경로·게스트 불변).
  *  - 이미 귀속된 파일 + 타 site caller → requirePending 기존 대조가 404(회귀 가드).
  *  - @Public + ApiKeyGuard 불추가 → contract-freeze.spec 무변경(동결 저촉 없음).
- *  - v1.9: 토큰 근거가 없으면 검증된 활성 사이트 키(X-API-Key)의 사이트로 귀속(K1–K17).
+ *  - v1.9: 토큰 근거가 없으면 검증된 활성 사이트 키(X-API-Key)의 사이트로 귀속(K1–K18).
  *    토큰 사이트가 우선이고 둘이 다르면 귀속하지 않는다. 귀속은 최초 확정 1회, 보관기간은 영구.
  *
  * 구성: 실 FilesController + 실 PresignedUploadService + 실 OptionalShopJwtGuard
@@ -351,7 +351,7 @@ describe('presigned complete — 옵션형 site 스탬프 (S3-A안)', () => {
     }
   });
 
-  it('K17 토큰 근거 귀속·귀속 없음은 [presigned-stamp] 로그를 남기지 않는다', async () => {
+  it('K17 토큰 근거 귀속·귀속 없음도 첫 확정마다 [presigned-stamp] 1줄(basis=token|none, 사이트 id 는 축약)', async () => {
     const spy = jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
     try {
       const f = seed();
@@ -359,7 +359,26 @@ describe('presigned complete — 옵션형 site 스탬프 (S3-A안)', () => {
       expect(store.get(f.id)!.siteId).toBe(SITE_A);
       const g = seed();
       await complete(g.id).expect(201);
-      expect(stampLogLines(spy)).toHaveLength(0);
+      const lines = stampLogLines(spy);
+      expect(lines).toEqual([
+        `[presigned-stamp] file=${f.id} basis=token site(len=36 prefix=aaaa)`,
+        `[presigned-stamp] file=${g.id} basis=none site=-`,
+      ]);
+      expect(lines.join('\n')).not.toContain(SITE_A);
+      expect(lines.join('\n')).not.toContain(TOKEN);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('K18 발급 때 귀속된 파일은 basis=preset, ready 재호출은 줄을 남기지 않는다', async () => {
+    const spy = jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+    try {
+      const f = seed({ siteId: SITE_B });
+      await complete(f.id, { 'X-API-Key': KEY_B }).expect(201);
+      await complete(f.id, { 'X-API-Key': KEY_B }).expect(201);
+      expect(store.get(f.id)!.siteId).toBe(SITE_B);
+      expect(stampLogLines(spy)).toEqual([`[presigned-stamp] file=${f.id} basis=preset site(len=36 prefix=bbbb)`]);
     } finally {
       spy.mockRestore();
     }
