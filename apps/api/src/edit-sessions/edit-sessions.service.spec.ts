@@ -353,7 +353,7 @@ describe('EditSessionsService', () => {
         .replace('t.output_file_url AS outputFileUrl', 't.output_file_url AS outputFileUrl, t.id AS jobId')
         .replace('SELECT job.edit_session_id,', 'SELECT job.id, job.edit_session_id,');
 
-      const lite = new DataSource({ type: 'sqlite', database: ':memory:' });
+      const lite = new DataSource({ type: 'better-sqlite3', driver: require('better-sqlite3'), database: ':memory:' });
       await lite.initialize();
       try {
         await lite.query('CREATE TABLE file_edit_sessions (id TEXT, site_id TEXT)');

@@ -224,7 +224,7 @@ describe('FilesService.findExpired — 미완결 주문 보호절(무소속 세�
     expect(captured).toBeDefined();
     const [sql, params] = captured!;
 
-    const lite = new DataSource({ type: 'sqlite', database: ':memory:' });
+    const lite = new DataSource({ type: 'better-sqlite3', driver: require('better-sqlite3'), database: ':memory:' });
     await lite.initialize();
     try {
       const cols = repo.metadata.columns.map((c) => `\`${c.databaseName}\``).join(', ');
@@ -248,7 +248,9 @@ describe('FilesService.findExpired — 미완결 주문 보호절(무소속 세�
           ref === 'contentPdf' ? FILE_ID : null,
         ],
       );
-      const rows = (await lite.query(sql, params)) as unknown[];
+      // better-sqlite3 는 Date 를 바인딩하지 않는다 — 종전 sqlite3 드라이버처럼 epoch 밀리초 숫자로 넘긴다.
+      const liteParams = params.map((p) => (p instanceof Date ? p.getTime() : p));
+      const rows = (await lite.query(sql, liteParams)) as unknown[];
       // 보호 = 만료 후보에서 빠짐
       expect(rows.length === 0).toBe(isProtected);
     } finally {

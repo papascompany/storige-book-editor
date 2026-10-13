@@ -94,7 +94,9 @@ describe('WorkerJobsService 생성 저장 — sqlite 실저장(edit_session_id)'
 
   beforeEach(async () => {
     lite = new DataSource({
-      type: 'sqlite',
+      type: 'better-sqlite3',
+      // 드라이버는 테스트가 직접 넘긴다(typeorm optional peer 연결에 기대지 않음 — .pnpmfile.cjs).
+      driver: require('better-sqlite3'),
       database: ':memory:',
       entities: [WorkerJob, EditSessionEntity, FileEntity],
     });
