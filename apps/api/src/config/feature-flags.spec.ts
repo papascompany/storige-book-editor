@@ -24,6 +24,7 @@ import {
   isEditorSpreadValidationMappingOn,
   isEditorSpreadValidationMappingOnRaw,
   isFlagOn,
+  isPartnerJobViewOn,
   isSessionJobOutputLookupOn,
   isSpreadSnapshotHardFail,
   isSpreadSnapshotHardFailRaw,
@@ -48,6 +49,7 @@ const BASE_INPUTS: ApiFeatureFlagInputs = {
   sessionJobOutputLookupRaw: undefined,
   editorContentPageRulesRaw: undefined,
   editorSpreadValidationMappingRaw: undefined,
+  partnerJobViewRaw: undefined,
 };
 
 describe('api feature-flags', () => {
@@ -94,6 +96,7 @@ describe('api feature-flags', () => {
         SESSION_JOB_OUTPUT_LOOKUP: false,
         EDITOR_CONTENT_PAGE_RULES: true,
         EDITOR_SPREAD_VALIDATION_MAPPING: true,
+        PARTNER_JOB_VIEW: false,
       });
     });
 
@@ -215,6 +218,17 @@ describe('api feature-flags', () => {
       expect(snap.JOB_FILE_SITE_STRICT).toBe(expected);
       expect(snap.JOB_LINK_STRICT).toBe(false);
     });
+
+    it.each(STRICT_TABLE)(
+      'partnerJobViewRaw=%j → PARTNER_JOB_VIEW=%s (isFlagOn, 컨트롤러 술어 isPartnerJobViewOn 과 같은 값)',
+      (raw, expected) => {
+        const snap = buildApiFeatureFlagSnapshot({ ...BASE_INPUTS, partnerJobViewRaw: raw });
+        expect(snap.PARTNER_JOB_VIEW).toBe(expected);
+        expect(isPartnerJobViewOn(raw)).toBe(expected);
+        expect(isFlagOn(raw)).toBe(expected);
+        expect(snap.JOB_LINK_STRICT).toBe(false);
+      },
+    );
 
     it.each(STRICT_TABLE)(
       'sessionJobOutputLookupRaw=%j → SESSION_JOB_OUTPUT_LOOKUP=%s (isFlagOn, 소비 함수와 같은 값)',
@@ -353,9 +367,11 @@ describe('api feature-flags', () => {
           sessionJobOutputLookupRaw: 'sk-sentinel',
           editorContentPageRulesRaw: 'sk-sentinel',
           editorSpreadValidationMappingRaw: 'sk-sentinel',
+          partnerJobViewRaw: 'sk-sentinel',
         }),
       );
       expect(line).not.toContain('sentinel');
+      expect(line).toContain('PARTNER_JOB_VIEW=false');
       expect(line).toContain('EDITOR_SPREAD_VALIDATION_MAPPING=true');
       expect(line).toContain('CUTOUT_ENABLED=false');
       expect(line).toContain('JOB_LINK_STRICT=false');
@@ -509,6 +525,7 @@ describe('api feature-flags', () => {
       'SESSION_JOB_OUTPUT_LOOKUP',
       'EDITOR_CONTENT_PAGE_RULES',
       'EDITOR_SPREAD_VALIDATION_MAPPING',
+      'PARTNER_JOB_VIEW',
     ] as const;
     const backup: Record<string, string | undefined> = {};
     const sources = {
@@ -545,6 +562,7 @@ describe('api feature-flags', () => {
       sessionJobOutputLookupRaw: process.env.SESSION_JOB_OUTPUT_LOOKUP,
       editorContentPageRulesRaw: process.env.EDITOR_CONTENT_PAGE_RULES,
       editorSpreadValidationMappingRaw: process.env.EDITOR_SPREAD_VALIDATION_MAPPING,
+      partnerJobViewRaw: config.get<string>('PARTNER_JOB_VIEW'),
     });
 
     const getterOf = (config: ConfigService): ApiConfigGetter => (key, defaultValue) =>
@@ -610,13 +628,13 @@ describe('api 기대값 프로필 대조 — [FLAGS-CHECK]', () => {
 
   it('[FLAGS] 줄 토큰과 같은 프로필 → ok n=키 수', () => {
     expect(lineOf(PROFILE)).toBe(`[FLAGS-CHECK] api ok n=${API_FEATURE_FLAG_KEYS.length}`);
-    expect(API_FEATURE_FLAG_KEYS.length).toBe(13);
+    expect(API_FEATURE_FLAG_KEYS.length).toBe(14);
   });
 
   it('쉼표·여러 공백·줄바꿈 구분도 같다', () => {
     const tokens = PROFILE.split(' ');
-    expect(lineOf(tokens.join(','))).toMatch(/ ok n=13$/);
-    expect(lineOf(`  ${tokens.join(' ,\n  ')}  `)).toMatch(/ ok n=13$/);
+    expect(lineOf(tokens.join(','))).toMatch(/ ok n=14$/);
+    expect(lineOf(`  ${tokens.join(' ,\n  ')}  `)).toMatch(/ ok n=14$/);
   });
 
   it('값이 다른 키는 mismatch 에 유효값·기대값으로 나온다(KEYS 순서)', () => {

@@ -222,7 +222,7 @@ describe('잡 사이트 기록 · 사이트 웹훅 마커', () => {
 
     it('다른 사이트 파일의 render-pages 잡은 다른 사이트 토큰 조회에 404', async () => {
       const created = await controller.createRenderPages({ fileId: FILE_B } as never);
-      expect(created.siteId).toBe(SITE_B);
+      expect(created).toHaveProperty('siteId', SITE_B);
       let status = 0;
       try {
         await controller.findOne(getTenantScope(shopUser(SITE_A)), created.id, shopSite(SITE_A));

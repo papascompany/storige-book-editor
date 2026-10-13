@@ -390,10 +390,10 @@ describe('잡 생성 확인 플래그 JOB_LINK_STRICT·JOB_FILE_SITE_STRICT', ()
 
   it('플래그는 요청마다 ConfigService 에서 JOB_LINK_STRICT·JOB_FILE_SITE_STRICT 키로 읽는다', async () => {
     await controller.createRenderPages({ fileId: FILE_A, editSessionId: GUEST_A } as never, GUEST_TOKEN);
-    expect(requestedKeys).toEqual(['JOB_LINK_STRICT']);
+    expect(requestedKeys).toEqual(['JOB_LINK_STRICT', 'PARTNER_JOB_VIEW']);
     requestedKeys.length = 0;
     await controller.createValidationJobExternal({ fileId: FILE_A } as never, site(SITE_A));
-    expect(requestedKeys).toEqual(['JOB_FILE_SITE_STRICT']);
+    expect(requestedKeys).toEqual(['JOB_FILE_SITE_STRICT', 'PARTNER_JOB_VIEW']);
     requestedKeys.length = 0;
     flags.JOB_FILE_SITE_STRICT = 'true';
     const r = await httpError(controller.createValidationJobExternal({ fileId: FILE_B } as never, site(SITE_A)));

@@ -23,6 +23,8 @@
  *    같은 소스(process.env)·같은 술어(isEditorContentPageRulesOnRaw — 미설정 ON, 'off' 만 OFF).
  *  - EDITOR_SPREAD_VALIDATION_MAPPING: edit-sessions.service 가 호출 시점에 쓰는
  *    isEditorSpreadValidationMappingOn 과 같은 소스(process.env)·같은 술어(정확히 'off' 만 OFF).
+ *  - PARTNER_JOB_VIEW: worker-jobs.controller 와 같은 소스(ConfigService)·같은 술어(isPartnerJobViewOn).
+ *    컨트롤러가 요청 시점마다 평가하므로 기동 스냅샷은 그 시점의 표본이다.
  *
  * 파싱 규칙은 플래그마다 다르다(통일하지 않음 — 동작 변경이므로 테스트로 현행을 고정).
  * 스냅샷 입력은 collectApiFeatureFlagInputs 한 곳에서 모은다(main.ts·compose 정합 spec 공용).
@@ -57,6 +59,7 @@ export const API_FEATURE_FLAG_KEYS = [
   'SESSION_JOB_OUTPUT_LOOKUP',
   'EDITOR_CONTENT_PAGE_RULES',
   'EDITOR_SPREAD_VALIDATION_MAPPING',
+  'PARTNER_JOB_VIEW',
 ] as const;
 
 export type ApiFeatureFlagKey = (typeof API_FEATURE_FLAG_KEYS)[number];
@@ -87,6 +90,8 @@ export interface ApiFeatureFlagInputs {
   editorContentPageRulesRaw: unknown;
   /** process.env.EDITOR_SPREAD_VALIDATION_MAPPING — edit-sessions.service 와 같은 소스·같은 술어 */
   editorSpreadValidationMappingRaw: unknown;
+  /** configService.get('PARTNER_JOB_VIEW') 원값 — worker-jobs.controller 와 같은 소스·같은 술어 */
+  partnerJobViewRaw: unknown;
 }
 
 export function buildApiFeatureFlagSnapshot(i: ApiFeatureFlagInputs): ApiFeatureFlagSnapshot {
@@ -114,6 +119,8 @@ export function buildApiFeatureFlagSnapshot(i: ApiFeatureFlagInputs): ApiFeature
     EDITOR_SPREAD_VALIDATION_MAPPING: isEditorSpreadValidationMappingOnRaw(
       i.editorSpreadValidationMappingRaw,
     ),
+    // worker-jobs.controller partnerView: isPartnerJobViewOn(configService.get('PARTNER_JOB_VIEW'))
+    PARTNER_JOB_VIEW: isPartnerJobViewOn(i.partnerJobViewRaw),
   };
 }
 
@@ -148,7 +155,17 @@ export function collectApiFeatureFlagInputs(
     sessionJobOutputLookupRaw: env.SESSION_JOB_OUTPUT_LOOKUP,
     editorContentPageRulesRaw: env.EDITOR_CONTENT_PAGE_RULES,
     editorSpreadValidationMappingRaw: env.EDITOR_SPREAD_VALIDATION_MAPPING,
+    partnerJobViewRaw: get('PARTNER_JOB_VIEW'),
   };
+}
+
+/**
+ * PARTNER_JOB_VIEW 진리값 술어 — 기본 false. isFlagOn 과 같다('true'·'1', 앞뒤 공백 제거·대소문자 무시).
+ * 켜지면 파트너 잡 라우트(조회·생성) 응답이 정해진 키만 싣는 형태가 된다(worker-jobs/partner-job-view.ts).
+ * 컨트롤러와 [FLAGS] 스냅샷이 이 함수를 같이 쓴다.
+ */
+export function isPartnerJobViewOn(raw: unknown): boolean {
+  return isFlagOn(raw);
 }
 
 /**

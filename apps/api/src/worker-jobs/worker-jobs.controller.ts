@@ -39,8 +39,9 @@ import { CreateRenderPagesJobDto } from './dto/create-render-pages-job.dto';
 import { CreateBleedFixJobDto } from './dto/create-bleed-fix-job.dto';
 import { CreateAttachPagePadJobDto } from './dto/create-attach-page-pad-job.dto';
 import { WorkerJob } from './entities/worker-job.entity';
+import { toPartnerJobView, type PartnerJobView } from './partner-job-view';
 import { streamJobOutput } from './job-output-stream';
-import { isFlagOn } from '../config/feature-flags';
+import { isFlagOn, isPartnerJobViewOn } from '../config/feature-flags';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
 // P3b 멀티테넌시 — 사이트 운영자 조회 라우트(목록/상세/통계) 테넌트 스코핑.
@@ -160,6 +161,16 @@ export class WorkerJobsController {
     return isFlagOn(this.configService.get<string>(key));
   }
 
+  /**
+   * 파트너 잡 응답 형태 플래그 — `PARTNER_JOB_VIEW`(**기본 false**, 미설정=꺼짐), 요청 시점에 평가한다.
+   * 켜져 있으면 정해진 키만 싣는 형태(partner-job-view.ts)로, 꺼져 있으면 서비스 반환 객체를 그대로 돌려준다.
+   * 파트너 잡 라우트 9개(GET external/:id, validate·fix-pagecount·synthesize·split-synthesize external,
+   * compose-mixed, render-pages, fix-bleed, fix-pagecount/attach)의 모든 반환에 쓴다.
+   */
+  private partnerView(job: WorkerJob): WorkerJob | PartnerJobView {
+    return isPartnerJobViewOn(this.configService.get<string>('PARTNER_JOB_VIEW')) ? toPartnerJobView(job) : job;
+  }
+
   // ============================================================================
   // Create Jobs (Queue Operations)
   // ============================================================================
@@ -272,7 +283,7 @@ export class WorkerJobsController {
   async createValidationJobExternal(
     @Body() createValidationJobDto: CreateValidationJobDto,
     @CurrentSite() site?: CurrentSitePayload,
-  ): Promise<WorkerJob> {
+  ): Promise<WorkerJob | PartnerJobView> {
     if (createValidationJobDto.editSessionId) {
       await this.workerJobsService.assertEditSessionLink(
         createValidationJobDto.editSessionId,
@@ -293,13 +304,15 @@ export class WorkerJobsController {
         },
       );
     }
-    return await this.workerJobsService.createValidationJob({
-      ...createValidationJobDto,
-      siteId: site?.siteId, // Phase C — 자동 사이트 식별
-      // [S2-5] 인증 컨텍스트 env 전파 훅 — 공용 ApiKeyGuard(sites 키)는 항상 live 라
-      // 현 경로 no-op. test 는 Stage 3 v1 잡 생성 표면에서만 도달(선행 인프라).
-      partnerEnv: site?.env,
-    });
+    return this.partnerView(
+      await this.workerJobsService.createValidationJob({
+        ...createValidationJobDto,
+        siteId: site?.siteId, // Phase C — 자동 사이트 식별
+        // [S2-5] 인증 컨텍스트 env 전파 훅 — 공용 ApiKeyGuard(sites 키)는 항상 live 라
+        // 현 경로 no-op. test 는 Stage 3 v1 잡 생성 표면에서만 도달(선행 인프라).
+        partnerEnv: site?.env,
+      }),
+    );
   }
 
   @Post('convert')
@@ -343,17 +356,19 @@ export class WorkerJobsController {
   async createPageCountFixJobExternal(
     @Body() dto: CreatePageCountFixJobDto,
     @CurrentSite() site?: CurrentSitePayload,
-  ): Promise<WorkerJob> {
+  ): Promise<WorkerJob | PartnerJobView> {
     const fileCaller = siteKeyFileCaller(site);
     if (fileCaller) {
       await this.workerJobsService.observeJobInputFileSites('fix-pagecount/external', fileCaller, [dto.fileId], {
         strict: this.strictFlag('JOB_FILE_SITE_STRICT'),
       });
     }
-    return await this.workerJobsService.createPageCountFixJob({
-      ...dto,
-      siteId: site?.siteId, // Phase C — 자동 사이트 식별
-    });
+    return this.partnerView(
+      await this.workerJobsService.createPageCountFixJob({
+        ...dto,
+        siteId: site?.siteId, // Phase C — 자동 사이트 식별
+      }),
+    );
   }
 
   /**
@@ -369,8 +384,8 @@ export class WorkerJobsController {
   @ApiResponse({ status: 404, description: '파일 미존재' })
   async createAttachPagePadJob(
     @Body() dto: CreateAttachPagePadJobDto,
-  ): Promise<WorkerJob> {
-    return await this.workerJobsService.createAttachPagePadJob(dto);
+  ): Promise<WorkerJob | PartnerJobView> {
+    return this.partnerView(await this.workerJobsService.createAttachPagePadJob(dto));
   }
 
   @Post('synthesize')
@@ -400,7 +415,7 @@ export class WorkerJobsController {
   async createSynthesisJobExternal(
     @Body() createSynthesisJobDto: CreateSynthesisJobDto,
     @CurrentSite() site?: CurrentSitePayload,
-  ): Promise<WorkerJob> {
+  ): Promise<WorkerJob | PartnerJobView> {
     if (createSynthesisJobDto.editSessionId) {
       await this.workerJobsService.assertEditSessionLink(
         createSynthesisJobDto.editSessionId,
@@ -425,11 +440,13 @@ export class WorkerJobsController {
         },
       );
     }
-    return await this.workerJobsService.createSynthesisJob({
-      ...createSynthesisJobDto,
-      siteId: site?.siteId, // Phase C — 자동 사이트 식별
-      partnerEnv: site?.env, // [S2-5] env 전파 훅 — validate/external 주석 참조(현 경로 live=no-op)
-    });
+    return this.partnerView(
+      await this.workerJobsService.createSynthesisJob({
+        ...createSynthesisJobDto,
+        siteId: site?.siteId, // Phase C — 자동 사이트 식별
+        partnerEnv: site?.env, // [S2-5] env 전파 훅 — validate/external 주석 참조(현 경로 live=no-op)
+      }),
+    );
   }
 
   // ============================================================================
@@ -514,7 +531,7 @@ export class WorkerJobsController {
     @ApiKeySite() apiKeySite?: ApiKeySitePayload,
     // 자동조립 소유 판정 — 게스트 세션은 이 헤더의 게스트 토큰이 세션 토큰과 일치해야 한다.
     @Headers('x-guest-token') guestTokenHeader?: string,
-  ): Promise<WorkerJob> {
+  ): Promise<WorkerJob | PartnerJobView> {
     // 검증된 shop-session 이 있을 때만 테넌트 컨텍스트로 넘긴다(cutout 라우트와 동일 규약).
     // 없으면 undefined → 자동조립 요청은 서비스에서 404(SESSION_NOT_FOUND) 로 fail-closed.
     // allowedOrderSeqnos 는 배열일 때만 전달 — 없으면 호환 모드(주문 검사 생략, 형제 라우트 동일).
@@ -566,17 +583,21 @@ export class WorkerJobsController {
         )) !== false;
     }
     if (!sessionLinkVerified) {
-      return await this.workerJobsService.createComposeMixedJob(dto, caller, apiKeySite, undefined, undefined, {
-        storeSessionLink: false,
-      });
+      return this.partnerView(
+        await this.workerJobsService.createComposeMixedJob(dto, caller, apiKeySite, undefined, undefined, {
+          storeSessionLink: false,
+        }),
+      );
     }
     // 수동 경로 + 검증된 호출자 사이트(shop-session·사이트 키)가 있을 때만 입력 URL(api://)의 파일 사이트를 확인한다.
     if (dto.assembleFromSession !== true && (caller?.siteId || apiKeySite?.siteId)) {
-      return await this.workerJobsService.createComposeMixedJob(dto, caller, apiKeySite, undefined, {
-        strict: this.strictFlag('JOB_FILE_SITE_STRICT'),
-      });
+      return this.partnerView(
+        await this.workerJobsService.createComposeMixedJob(dto, caller, apiKeySite, undefined, {
+          strict: this.strictFlag('JOB_FILE_SITE_STRICT'),
+        }),
+      );
     }
-    return await this.workerJobsService.createComposeMixedJob(dto, caller, apiKeySite);
+    return this.partnerView(await this.workerJobsService.createComposeMixedJob(dto, caller, apiKeySite));
   }
 
   /**
@@ -593,7 +614,7 @@ export class WorkerJobsController {
     @Body() dto: CreateRenderPagesJobDto,
     // 세션 연결 확인 — 비회원 세션은 이 헤더의 게스트 토큰으로 연결을 증명한다.
     @Headers('x-guest-token') guestTokenHeader?: string,
-  ): Promise<WorkerJob> {
+  ): Promise<WorkerJob | PartnerJobView> {
     // 인증 컨텍스트가 없는 라우트 — 호출자는 none(JOB_LINK_STRICT 미설정 시 관측 로그만, 잡 생성은 그대로).
     // 연결을 확인하지 못하고 진행하면(X-Guest-Token 미증명) 잡에 세션 연결 컬럼을 저장하지 않는다.
     if (dto.editSessionId) {
@@ -605,10 +626,10 @@ export class WorkerJobsController {
         { strictUnverified: this.strictFlag('JOB_LINK_STRICT') },
       );
       if (verified === false) {
-        return await this.workerJobsService.createRenderPagesJob(dto, { storeSessionLink: false });
+        return this.partnerView(await this.workerJobsService.createRenderPagesJob(dto, { storeSessionLink: false }));
       }
     }
-    return await this.workerJobsService.createRenderPagesJob(dto);
+    return this.partnerView(await this.workerJobsService.createRenderPagesJob(dto));
   }
 
   /**
@@ -627,8 +648,8 @@ export class WorkerJobsController {
   @ApiResponse({ status: 404, description: '파일 미존재' })
   async createBleedFixJob(
     @Body() dto: CreateBleedFixJobDto,
-  ): Promise<WorkerJob> {
-    return await this.workerJobsService.createBleedFixJob(dto);
+  ): Promise<WorkerJob | PartnerJobView> {
+    return this.partnerView(await this.workerJobsService.createBleedFixJob(dto));
   }
 
   // ============================================================================
@@ -745,7 +766,7 @@ export class WorkerJobsController {
   async createSplitSynthesisJobExternal(
     @Body() dto: CreateSplitSynthesisJobDto,
     @CurrentSite() site?: CurrentSitePayload,
-  ): Promise<WorkerJob> {
+  ): Promise<WorkerJob | PartnerJobView> {
     if (dto.sessionId) {
       await this.workerJobsService.assertEditSessionLink(
         dto.sessionId,
@@ -760,11 +781,13 @@ export class WorkerJobsController {
         strict: this.strictFlag('JOB_FILE_SITE_STRICT'),
       });
     }
-    return await this.workerJobsService.createSplitSynthesisJob({
-      ...dto,
-      siteId: site?.siteId, // Phase C — 자동 사이트 식별 (Stage 0 비대칭 봉합, validate/external 준용)
-      partnerEnv: site?.env, // [S2-5] env 전파 훅 — validate/external 주석 참조(현 경로 live=no-op)
-    });
+    return this.partnerView(
+      await this.workerJobsService.createSplitSynthesisJob({
+        ...dto,
+        siteId: site?.siteId, // Phase C — 자동 사이트 식별 (Stage 0 비대칭 봉합, validate/external 준용)
+        partnerEnv: site?.env, // [S2-5] env 전파 훅 — validate/external 주석 참조(현 경로 live=no-op)
+      }),
+    );
   }
 
   // ============================================================================
@@ -908,9 +931,9 @@ export class WorkerJobsController {
   async findOneExternal(
     @Param('id') id: string,
     @CurrentSite() site?: CurrentSitePayload,
-  ): Promise<WorkerJob> {
+  ): Promise<WorkerJob | PartnerJobView> {
     // P2c S-3: editor 키(테넌트)는 자기 site/NULL 잡만, worker 키(내부)는 바이패스.
-    return await this.workerJobsService.findOne(id, site);
+    return this.partnerView(await this.workerJobsService.findOne(id, site));
   }
 
   /**
