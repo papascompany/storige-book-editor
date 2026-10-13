@@ -221,9 +221,10 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
 - **첫 실 파트너 흐름 관측(Loki)**: 10-10 12:52Z·10-12 06:32Z 에 업로드(presigned → complete) → 검증(validate/external) → 결과 조회 2회. 검증 결과 PASS 1·FAIL 1. 10-13 운영 읽기로 판정 완료(bookmoa PASS·경고 4, printy FAILED SPINE_SIZE_MISMATCH — 상세는 비공개 메모), printy 회신 발송, bookmoa 는 창구 확보 후.
 - P0: 첫 실 흐름 판정·회신, bookmoa 창구 재확인(10-12 통지 전달 미확인), 운영 메모 보관처 정리, 이 문서의 시작 프롬프트·창구 정정. 권고 Wave 10 = 안 1(실 트래픽 대응·관측·서버 공급망).
 
-### 5.2.5 Wave 10 안 1 설계 (2026-10-13, 오너 보고 — 결정 대기)
+### 5.2.5 Wave 10 안 1 설계 (2026-10-13 — 오너 결정 완료: 권고안 일괄, 구현 착수 대기)
 
 - 정본 비공개 `../_private_notes/wave10/DESIGN_W10.md`(작업 단위 28: 포함 21·선택 6·보류 1, 오너 결정 D1~D12), 결정 기록 `../_private_notes/wave10/CTO_DECISIONS_W10.md`. 검토 2관점 GO_WITH_FIXES → 반영.
+- 다음 행동·승인 범위는 비공개 `CTO_DECISIONS_W10.md` 「다음 행동」 절이 정본이다(S0 읽기 → 런북 동기화 → 구현 워크플로 → 검증 → push 마다 승인).
 - 요지: 파트너 잡 조회 응답 필드 축소(플래그로 싣고 ACK 뒤 전환), 실 트래픽 판정 로그 보강·Loki 감지 규칙, env 정합 spec 확장, 서버 이미지 공급망 정리(bcrypt 6·미사용 의존 제거·필터 설치·설치 스크립트 차단), api e2e 복구·CI 편입, Vercel 설치·ignoreCommand 정비(조건부).
 
 ### 5.3 다음 후보 (착수 약속 없음 — 새 세션이 재점검 후 우선순위 제안)
