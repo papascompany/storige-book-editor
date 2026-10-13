@@ -5,10 +5,12 @@
  * 장부는 합성 큐 client 자리에 넣은 Map 기반 가짜 Redis 다.
  * 인스턴스 생성 패턴은 worker-jobs.callback-gate.spec.ts 선례.
  */
-import { Logger } from '@nestjs/common';
+import { Logger, NotFoundException } from '@nestjs/common';
 import { FindOperator, In, IsNull } from 'typeorm';
 import { WorkerJobStatus, WorkerJobType } from '@storige/types';
 import { WorkerJobsService } from './worker-jobs.service';
+import { WorkerJobsController } from './worker-jobs.controller';
+import type { CurrentSitePayload } from '../auth/decorators/current-site.decorator';
 import type { UpdateJobStatusDto } from './dto/worker-job.dto';
 import type { WebhookSendReceipt } from '../webhook/webhook.service';
 
@@ -841,6 +843,86 @@ describe('WorkerJobsService.updateJobStatus — 상태 전이 가드·발신 장
       expect(sessions.update).not.toHaveBeenCalled();
       expect(filesService.softDelete).toHaveBeenCalledTimes(1);
       expect(filesService.softDelete).toHaveBeenCalledWith('file-new');
+    });
+  });
+
+  describe('상태 보고 라우트 — 내부 워커 키 전용(PATCH external/:id/status·:id/status)', () => {
+    const ROUTES = [
+      ['external/:id/status', 'updateJobStatusExternal'],
+      [':id/status', 'updateJobStatus'],
+    ] as const;
+    const editorSite: CurrentSitePayload = { siteId: 'site-a', siteName: 'A', role: 'editor', apiKey: 'site-a-key' };
+    const workerSite: CurrentSitePayload = { siteId: 'site-worker', siteName: 'Default', role: 'worker', apiKey: 'worker-key' };
+
+    const controllerOf = (service: WorkerJobsService) => {
+      const controller = new WorkerJobsController(service, { get: jest.fn(() => undefined) } as never);
+      const spy = jest
+        .spyOn((controller as unknown as { logger: Logger }).logger, 'log')
+        .mockImplementation(() => undefined);
+      return { controller, routeLogs: (): string[] => spy.mock.calls.map((c) => String(c[0])) };
+    };
+
+    const report = (
+      controller: WorkerJobsController,
+      method: (typeof ROUTES)[number][1],
+      site: CurrentSitePayload | undefined,
+      id = 'job-1',
+    ) => controller[method](id, { status: COMPLETED, outputFileUrl: '/storage/outputs/a.pdf' }, site);
+
+    it.each(ROUTES)('editor 역할 키의 상태 보고(%s)는 404 이고 잡·웹훅이 그대로다', async (route, method) => {
+      const service = build(makeRow()); // 호출 사이트(site-a)의 진행 중 잡
+      const serviceCall = jest.spyOn(service, 'updateJobStatus');
+      const { controller, routeLogs } = controllerOf(service);
+
+      const err = await report(controller, method, editorSite).catch((e: unknown) => e);
+
+      expect(err).toBeInstanceOf(NotFoundException);
+      expect((err as NotFoundException).getStatus()).toBe(404);
+      expect(serviceCall).not.toHaveBeenCalled();
+      expect(repo.findOne).not.toHaveBeenCalled();
+      expect(repo.update).not.toHaveBeenCalled();
+      expect(webhookService.sendCallback).not.toHaveBeenCalled();
+      expect(row.status).toBe(PROCESSING);
+      expect(routeLogs()).toEqual([`[job-status] denied role=editor route=${route} site=site-a`]);
+    });
+
+    it('editor 역할 키의 404 응답은 없는 잡의 404 응답과 같다', async () => {
+      const service = build(makeRow());
+      const { controller } = controllerOf(service);
+      const denied = (await report(controller, 'updateJobStatusExternal', editorSite).catch((e: unknown) => e)) as NotFoundException;
+
+      repo.findOne.mockResolvedValueOnce(null);
+      const missing = (await report(controller, 'updateJobStatusExternal', workerSite).catch((e: unknown) => e)) as NotFoundException;
+
+      expect(missing).toBeInstanceOf(NotFoundException);
+      expect(denied.getResponse()).toEqual(missing.getResponse());
+    });
+
+    it('사이트 정보가 없는 호출도 404 다', async () => {
+      const service = build(makeRow());
+      const { controller, routeLogs } = controllerOf(service);
+      const err = await report(controller, 'updateJobStatusExternal', undefined).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(NotFoundException);
+      expect(repo.update).not.toHaveBeenCalled();
+      expect(routeLogs()).toEqual(['[job-status] denied role=none route=external/:id/status site=-']);
+    });
+
+    it.each(ROUTES)('워커 키의 상태 보고(%s)는 종전과 같다', async (_route, method) => {
+      const service = build(makeRow());
+      const serviceCall = jest.spyOn(service, 'updateJobStatus');
+      const { controller, routeLogs } = controllerOf(service);
+
+      const res = await report(controller, method, workerSite);
+
+      expect(serviceCall).toHaveBeenCalledWith(
+        'job-1',
+        { status: COMPLETED, outputFileUrl: '/storage/outputs/a.pdf' },
+        workerSite,
+      );
+      expect(res.status).toBe(COMPLETED);
+      expect(repo.update).toHaveBeenCalledTimes(1);
+      expect(events()).toEqual(['synthesis.completed']);
+      expect(routeLogs()).toEqual([]);
     });
   });
 });

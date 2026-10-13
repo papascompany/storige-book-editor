@@ -171,6 +171,18 @@ export class WorkerJobsController {
     return isPartnerJobViewOn(this.configService.get<string>('PARTNER_JOB_VIEW')) ? toPartnerJobView(job) : job;
   }
 
+  /**
+   * 잡 상태 보고 라우트(PATCH external/:id/status·:id/status)는 내부 워커 전용이다.
+   * 내부 워커 판별은 ApiKeyGuard 가 정한 role 이다(resolveApiKeyRole — 요청 키가 WORKER_API_KEY 와 같을 때만
+   * 'worker'). 호출 경로(프록시 경유 여부)와 무관하다. 그 밖의 키는 잡이 없을 때와 같은 404 로 응답하고
+   * 로그 1줄을 남긴다.
+   */
+  private assertInternalWorkerCaller(id: string, route: string, site?: CurrentSitePayload): void {
+    if (site?.role === 'worker') return;
+    this.logger.log(`[job-status] denied role=${site?.role ?? 'none'} route=${route} site=${site?.siteId ?? '-'}`);
+    throw new NotFoundException(`Worker job with ID ${id} not found`);
+  }
+
   // ============================================================================
   // Create Jobs (Queue Operations)
   // ============================================================================
@@ -982,14 +994,14 @@ export class WorkerJobsController {
   }
 
   /**
-   * 외부 연동용 작업 상태 업데이트 (API Key 인증)
+   * 작업 상태 업데이트 — 내부 워커 전용(내부 워커 키, assertInternalWorkerCaller).
    * Worker 서비스에서 서버 간 통신으로 호출
    */
   @Patch('external/:id/status')
   @Public()
   @UseGuards(ApiKeyGuard)
   @ApiSecurity('api-key')
-  @ApiOperation({ summary: 'Update job status (external API key auth)' })
+  @ApiOperation({ summary: 'Update job status — 내부 처리 전용' })
   @ApiResponse({ status: 200, description: 'Job status updated', type: WorkerJob })
   @ApiResponse({ status: 404, description: 'Job not found' })
   @ApiResponse({ status: 401, description: 'Invalid API key' })
@@ -998,12 +1010,13 @@ export class WorkerJobsController {
     @Body() updateJobStatusDto: UpdateJobStatusDto,
     @CurrentSite() site?: CurrentSitePayload,
   ): Promise<WorkerJob> {
-    // P2c S-3: worker 키(내부 콜백)는 바이패스, editor 키(테넌트)는 자기 site 잡만 업데이트.
+    // 내부 워커 키만 통과한다(그 밖의 키는 404). 서비스는 worker 역할의 사이트 검사를 건너뛴다(P2c S-3).
+    this.assertInternalWorkerCaller(id, 'external/:id/status', site);
     return await this.workerJobsService.updateJobStatus(id, updateJobStatusDto, site);
   }
 
   /**
-   * 작업 상태 업데이트(내부 호환 별칭) — API Key 인증 필수 (P0-3, 2026-06-22).
+   * 작업 상태 업데이트(내부 호환 별칭) — API Key 인증 필수 (P0-3, 2026-06-22), 내부 워커 전용(external 변형과 같다).
    *
    * ⚠️ 과거 이 라우트는 가드 없이 전역 JwtAuthGuard 만 적용돼, 유효한 고객 JWT 면 누구나
    * 임의 잡 상태를 조작할 수 있었다(소유권/역할 검사 없음). 워커 콜백은 전부
@@ -1014,7 +1027,7 @@ export class WorkerJobsController {
   @Public()
   @UseGuards(ApiKeyGuard)
   @ApiSecurity('api-key')
-  @ApiOperation({ summary: 'Update job status (API key auth; alias of external/:id/status)' })
+  @ApiOperation({ summary: 'Update job status (alias of external/:id/status) — 내부 처리 전용' })
   @ApiResponse({ status: 200, description: 'Job status updated', type: WorkerJob })
   @ApiResponse({ status: 401, description: 'Invalid API key' })
   @ApiResponse({ status: 404, description: 'Job not found' })
@@ -1023,7 +1036,8 @@ export class WorkerJobsController {
     @Body() updateJobStatusDto: UpdateJobStatusDto,
     @CurrentSite() site?: CurrentSitePayload,
   ): Promise<WorkerJob> {
-    // external 변형과 동일: worker 키는 바이패스, editor 키는 자기 site 잡만 갱신.
+    // external 변형과 동일: 내부 워커 키만 통과한다(그 밖의 키는 404).
+    this.assertInternalWorkerCaller(id, ':id/status', site);
     return await this.workerJobsService.updateJobStatus(id, updateJobStatusDto, site);
   }
 }
