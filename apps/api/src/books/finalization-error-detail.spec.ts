@@ -61,6 +61,7 @@ describe('finalization-error-detail', () => {
     expect(detail).toEqual({
       stage: 'validate',
       jobStatus: 'FAILED',
+      jobErrorCode: null,
       result: {
         errors: [
           { code: 'FILE_CORRUPTED', message: FILE_CORRUPTED_MESSAGE, autoFixable: false },
@@ -96,6 +97,7 @@ describe('finalization-error-detail', () => {
       expect(jobFailureDetail('validate', { status: WorkerJobStatus.FAILED, result })).toEqual({
         stage: 'validate',
         jobStatus: 'FAILED',
+        jobErrorCode: null,
         result: null,
       });
     }
@@ -107,7 +109,7 @@ describe('finalization-error-detail', () => {
   it('합성 잡 실패는 결과와 관계없이 result null로 돌려준다', () => {
     expect(
       jobFailureDetail('compose', { status: WorkerJobStatus.FAILED, result: { errors: [{ code: 'X' }] } }),
-    ).toEqual({ stage: 'compose', jobStatus: 'FAILED', result: null });
+    ).toEqual({ stage: 'compose', jobStatus: 'FAILED', jobErrorCode: null, result: null });
   });
 
   it('같은 입력을 두 번 투영해도 결과가 같다', () => {
@@ -149,6 +151,7 @@ describe('finalization-error-detail', () => {
     expect(toPublicErrorDetail({ jobStatus: 'FAILED', result: null }, 'compose')).toEqual({
       stage: 'compose',
       jobStatus: 'FAILED',
+      jobErrorCode: null,
       result: null,
     });
   });
@@ -157,5 +160,83 @@ describe('finalization-error-detail', () => {
     expect(toPublicErrorDetail({ code: 'OUTPUT_URL_MISSING', reason: 'changed text' })).toEqual(
       internalFailureDetail('OUTPUT_URL_MISSING'),
     );
+  });
+
+  describe('jobErrorCode — 잡의 errorCode', () => {
+    it('합성 잡 PDF_LOAD_FAILED 실패는 그 코드를 싣는다', () => {
+      expect(
+        jobFailureDetail('compose', { status: WorkerJobStatus.FAILED, result: null, errorCode: 'PDF_LOAD_FAILED' }),
+      ).toEqual({ stage: 'compose', jobStatus: 'FAILED', jobErrorCode: 'PDF_LOAD_FAILED', result: null });
+    });
+
+    it('오류 코드가 없는 검증 FIXABLE 은 null 이다', () => {
+      const detail = jobFailureDetail('validate', {
+        status: WorkerJobStatus.FIXABLE,
+        result: validationJobResult(),
+        errorCode: null,
+      });
+      expect(detail.jobErrorCode).toBeNull();
+      expect(detail.result?.errors).toHaveLength(2);
+    });
+
+    it('JOB_STALLED 로 끝난 잡은 그 코드를 싣는다(두 단계 공통)', () => {
+      for (const stage of ['validate', 'compose'] as const) {
+        expect(
+          jobFailureDetail(stage, { status: WorkerJobStatus.FAILED, result: null, errorCode: 'JOB_STALLED' }).jobErrorCode,
+        ).toBe('JOB_STALLED');
+      }
+    });
+
+    it.each<[string, unknown]>([
+      ['소문자', 'pdf_load_failed'],
+      ['공백 포함', 'PDF LOAD'],
+      ['숫자 시작', '1ERROR'],
+      ['한 글자', 'E'],
+      ['51자', `E${'X'.repeat(50)}`],
+      ['빈 문자열', ''],
+      ['문자열이 아님', 42],
+    ])('형식이 다른 값(%s)은 null 이다', (_label, errorCode) => {
+      expect(
+        jobFailureDetail('compose', {
+          status: WorkerJobStatus.FAILED,
+          result: null,
+          errorCode: errorCode as string,
+        }).jobErrorCode,
+      ).toBeNull();
+      expect(
+        toPublicErrorDetail({ stage: 'compose', jobStatus: 'FAILED', jobErrorCode: errorCode, result: null }),
+      ).toEqual({ stage: 'compose', jobStatus: 'FAILED', jobErrorCode: null, result: null });
+    });
+
+    it('50자 코드는 싣는다', () => {
+      const code = `E${'X'.repeat(49)}`;
+      expect(jobFailureDetail('compose', { status: WorkerJobStatus.FAILED, errorCode: code }).jobErrorCode).toBe(code);
+    });
+
+    it('jobErrorCode 가 없던 때 저장된 행은 null 로 읽힌다', () => {
+      expect(toPublicErrorDetail({ stage: 'compose', jobStatus: 'FAILED', result: null })).toEqual({
+        stage: 'compose',
+        jobStatus: 'FAILED',
+        jobErrorCode: null,
+        result: null,
+      });
+      expect(toPublicErrorDetail({ jobStatus: 'FAILED', result: null }, 'compose')).toEqual({
+        stage: 'compose',
+        jobStatus: 'FAILED',
+        jobErrorCode: null,
+        result: null,
+      });
+    });
+
+    it('코드를 실은 진단을 두 번 투영해도 같다', () => {
+      const stored = jobFailureDetail('validate', {
+        status: WorkerJobStatus.FAILED,
+        result: validationJobResult(),
+        errorCode: 'JOB_STALLED',
+      });
+      const once = toPublicErrorDetail(stored);
+      expect(once).toEqual(stored);
+      expect(toPublicErrorDetail(once)).toEqual(once);
+    });
   });
 });

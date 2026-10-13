@@ -2,8 +2,10 @@
  * 최종화 실패 진단(`errorDetail`) 형식 — 저장할 값과 응답할 값을 만드는 순수 함수.
  *
  * 형식
- *  - 검증·합성 잡 실패: `{ stage, jobStatus, result }`
+ *  - 검증·합성 잡 실패: `{ stage, jobStatus, jobErrorCode, result }`
  *    - `stage`: `'validate'`(검증 잡) · `'compose'`(합성 잡)
+ *    - `jobErrorCode`: 잡의 `errorCode`(예: `PDF_LOAD_FAILED`·`JOB_STALLED`). 대문자·숫자·밑줄 코드
+ *      형식(JOB_ERROR_CODE_PATTERN)이 아니거나 없으면 `null`. 이 키가 없던 때 저장된 행도 `null` 로 읽힌다.
  *    - `result`: 검증 잡이면 `{ errors, warnings }` — 각 항목은 `code`·`message`·`autoFixable`·
  *      `fixMethod` 키만 남긴다. 합성 잡이거나 잡 결과가 없으면 `null`.
  *  - 최종화 내부 처리 실패: `{ code, reason }` — `code` 는 FINALIZATION_INTERNAL_REASON 의 키,
@@ -41,6 +43,7 @@ export type FinalizationJobResult = {
 export type FinalizationJobFailureDetail = {
   stage: FinalizationJobStage;
   jobStatus: WorkerJobStatus | null;
+  jobErrorCode: string | null;
   result: FinalizationJobResult | null;
 };
 
@@ -57,7 +60,11 @@ export type FinalizationErrorDetail =
 export type SettledJobSnapshot = {
   status: string;
   result?: unknown;
+  errorCode?: string | null;
 };
+
+/** `jobErrorCode` 로 싣는 잡 오류 코드 형식. */
+export const JOB_ERROR_CODE_PATTERN = /^[A-Z][A-Z0-9_]{1,49}$/;
 
 /** `FILE_CORRUPTED` 항목의 message 고정 문구(워커 검증의 같은 코드 기본 문구). */
 export const FILE_CORRUPTED_MESSAGE = '파일이 손상되었습니다. 다시 업로드해주세요.';
@@ -85,6 +92,10 @@ function isJobStage(v: unknown): v is FinalizationJobStage {
 
 function toJobStatus(v: unknown): WorkerJobStatus | null {
   return typeof v === 'string' && JOB_STATUSES.has(v) ? (v as WorkerJobStatus) : null;
+}
+
+function toJobErrorCode(v: unknown): string | null {
+  return typeof v === 'string' && JOB_ERROR_CODE_PATTERN.test(v) ? v : null;
 }
 
 /** 내부 처리 실패 진단 — 사유 코드와 고정 문구. */
@@ -126,10 +137,12 @@ function buildJobFailureDetail(
   stage: FinalizationJobStage,
   jobStatus: unknown,
   result: unknown,
+  jobErrorCode: unknown,
 ): FinalizationJobFailureDetail {
   return {
     stage,
     jobStatus: toJobStatus(jobStatus),
+    jobErrorCode: toJobErrorCode(jobErrorCode),
     result: stage === 'validate' ? projectValidationResult(result) : null,
   };
 }
@@ -139,7 +152,7 @@ export function jobFailureDetail(
   stage: FinalizationJobStage,
   job: SettledJobSnapshot,
 ): FinalizationJobFailureDetail {
-  return buildJobFailureDetail(stage, job.status, job.result ?? null);
+  return buildJobFailureDetail(stage, job.status, job.result ?? null, job.errorCode ?? null);
 }
 
 function legacyReasonCode(reason: string): FinalizationInternalReasonCode {
@@ -154,8 +167,8 @@ function legacyReasonCode(reason: string): FinalizationInternalReasonCode {
  *
  * - `{ code, reason }`(사유 코드): 코드의 고정 문구로 바꾼다.
  * - 예전 `{ reason }`: 접두어로 사유 코드를 정하고(알 수 없으면 TRANSITION_FAILED) 고정 문구로 바꾼다.
- * - `{ stage, jobStatus, result }`: 같은 규칙으로 다시 투영한다.
- * - 예전 `{ jobStatus, result }`: `stage` 를 `legacyStage` 로 채워 투영한다.
+ * - `{ stage, jobStatus, jobErrorCode, result }`: 같은 규칙으로 다시 투영한다(`jobErrorCode` 가 없던 행은 null).
+ * - 예전 `{ jobStatus, result }`: `stage` 를 `legacyStage` 로 채워 투영한다(`jobErrorCode` 는 null).
  * - 그 밖의 값과 null: null.
  */
 export function toPublicErrorDetail(
@@ -165,13 +178,13 @@ export function toPublicErrorDetail(
   if (!isRecord(stored)) return null;
   if (isInternalReasonCode(stored.code)) return internalFailureDetail(stored.code);
   if (isJobStage(stored.stage)) {
-    return buildJobFailureDetail(stored.stage, stored.jobStatus, stored.result ?? null);
+    return buildJobFailureDetail(stored.stage, stored.jobStatus, stored.result ?? null, stored.jobErrorCode);
   }
   if (typeof stored.reason === 'string') {
     return internalFailureDetail(legacyReasonCode(stored.reason));
   }
   if ('jobStatus' in stored) {
-    return buildJobFailureDetail(legacyStage, stored.jobStatus, stored.result ?? null);
+    return buildJobFailureDetail(legacyStage, stored.jobStatus, stored.result ?? null, null);
   }
   return null;
 }

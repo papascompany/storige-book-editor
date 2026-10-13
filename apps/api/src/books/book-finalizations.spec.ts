@@ -259,6 +259,7 @@ describe('BookFinalizationsService — 상태머신(W3) + 콜백 역참조(#4) +
     expect(finPatch.errorDetail).toEqual({
       stage: 'validate',
       jobStatus: 'FAILED',
+      jobErrorCode: null,
       result: { errors: [], warnings: [] },
     });
     expect(bookRepo.update).not.toHaveBeenCalled(); // book DRAFT 유지
@@ -289,6 +290,7 @@ describe('BookFinalizationsService — 상태머신(W3) + 콜백 역참조(#4) +
     expect(finPatch.errorDetail).toEqual({
       stage: 'validate',
       jobStatus: 'FIXABLE',
+      jobErrorCode: null,
       result: {
         errors: [
           { code: 'BLEED_MISSING', message: '재단 여백이 없습니다', autoFixable: true, fixMethod: 'extendBleed' },
@@ -300,15 +302,62 @@ describe('BookFinalizationsService — 상태머신(W3) + 콜백 역참조(#4) +
     expect(JSON.stringify(finPatch.errorDetail)).not.toContain('/app/storage/uploads/x.pdf');
   });
 
-  it('합성 잡 실패 진단은 stage compose·result null로 저장한다', async () => {
+  it('합성 잡 실패 진단은 stage compose·잡 오류 코드·result null로 저장한다', async () => {
     finRepo.findOne.mockResolvedValue({ id: 'fin-1', uid: 'fin_1', bookId: 'book-1', attempt: 1, status: 'COMPOSING', composeJobId: 'sjob-1' });
     bookRepo.findOne.mockResolvedValue(makeBook());
-    const job = { id: 'sjob-1', status: WorkerJobStatus.FAILED, options: { finalizationId: 'fin-1' }, result: null };
+    const job = { id: 'sjob-1', status: WorkerJobStatus.FAILED, options: { finalizationId: 'fin-1' }, result: null, errorCode: 'PDF_LOAD_FAILED' };
     await svc.onWorkerJobSettled(job as never);
     const [finWhere, finPatch] = finRepo.update.mock.calls.at(-1);
     expect(finWhere).toEqual({ id: 'fin-1', status: 'COMPOSING' });
     expect(finPatch.errorCode).toBe(ErrV1.ERR_PDF_VALIDATION_FAILED);
-    expect(finPatch.errorDetail).toEqual({ stage: 'compose', jobStatus: 'FAILED', result: null });
+    expect(finPatch.errorDetail).toEqual({ stage: 'compose', jobStatus: 'FAILED', jobErrorCode: 'PDF_LOAD_FAILED', result: null });
+    expect(webhookService.sendCallback.mock.calls.at(-1)[1].event).toBe('book.finalization.failed');
+  });
+
+  it('검증 잡이 JOB_STALLED 로 끝나면 진단에 그 코드를 저장하고 확정 errorCode 는 그대로다', async () => {
+    finRepo.findOne.mockResolvedValue({ id: 'fin-1', uid: 'fin_1', bookId: 'book-1', attempt: 1, status: 'VALIDATING', validateJobId: 'vjob-1' });
+    bookRepo.findOne.mockResolvedValue(makeBook());
+    const job = { id: 'vjob-1', status: WorkerJobStatus.FAILED, options: { finalizationId: 'fin-1' }, result: null, errorCode: 'JOB_STALLED' };
+    await svc.onWorkerJobSettled(job as never);
+    const [, finPatch] = finRepo.update.mock.calls.at(-1);
+    expect(finPatch.errorCode).toBe(ErrV1.ERR_PDF_VALIDATION_FAILED);
+    expect(finPatch.errorDetail).toEqual({ stage: 'validate', jobStatus: 'FAILED', jobErrorCode: 'JOB_STALLED', result: null });
+  });
+
+  it('조회는 저장된 잡 오류 코드를 돌려주고 형식이 다른 값은 null 이다', async () => {
+    const failedRow = (o: AnyRec): AnyRec => ({
+      id: 'fin-1', uid: 'fin_1', bookId: 'book-1', attempt: 1, status: 'FAILED',
+      pageCount: null, outputFileId: null, validateJobId: null, composeJobId: null,
+      createdAt: new Date('2026-01-01T00:00:00Z'), startedAt: null, completedAt: new Date('2026-01-01T01:00:00Z'),
+      ...o,
+    });
+    finRepo.findOne.mockResolvedValue(
+      failedRow({
+        errorCode: ErrV1.ERR_PDF_VALIDATION_FAILED,
+        composeJobId: 'sjob-1',
+        errorDetail: { stage: 'compose', jobStatus: 'FAILED', jobErrorCode: 'PDF_LOAD_FAILED', result: null },
+      }),
+    );
+    expect((await svc.getFinalization(SITE, 'bk_0001')).errorDetail).toEqual({
+      stage: 'compose',
+      jobStatus: 'FAILED',
+      jobErrorCode: 'PDF_LOAD_FAILED',
+      result: null,
+    });
+
+    finRepo.findOne.mockResolvedValue(
+      failedRow({
+        errorCode: ErrV1.ERR_PDF_VALIDATION_FAILED,
+        composeJobId: 'sjob-1',
+        errorDetail: { stage: 'compose', jobStatus: 'FAILED', jobErrorCode: 'load failed: /tmp/x', result: null },
+      }),
+    );
+    expect((await svc.getFinalization(SITE, 'bk_0001')).errorDetail).toEqual({
+      stage: 'compose',
+      jobStatus: 'FAILED',
+      jobErrorCode: null,
+      result: null,
+    });
   });
 
   it('합성 완료 보고에 산출 URL이 없으면 OUTPUT_URL_MISSING으로 실패하고 warn 로그를 남긴다', async () => {
@@ -375,13 +424,14 @@ describe('BookFinalizationsService — 상태머신(W3) + 콜백 역참조(#4) +
     expect((await svc.getFinalization(SITE, 'bk_0001')).errorDetail).toEqual({
       stage: 'validate',
       jobStatus: 'FAILED',
+      jobErrorCode: null,
       result: { errors: [{ code: 'FILE_CORRUPTED', message: FILE_CORRUPTED_MESSAGE, autoFixable: false }], warnings: [] },
     });
 
     finRepo.findOne.mockResolvedValue(
       failedRow({ errorCode: ErrV1.ERR_PDF_VALIDATION_FAILED, composeJobId: 'sjob-1', errorDetail: { jobStatus: 'FAILED', result: null } }),
     );
-    expect((await svc.getFinalization(SITE, 'bk_0001')).errorDetail).toEqual({ stage: 'compose', jobStatus: 'FAILED', result: null });
+    expect((await svc.getFinalization(SITE, 'bk_0001')).errorDetail).toEqual({ stage: 'compose', jobStatus: 'FAILED', jobErrorCode: null, result: null });
   });
 
   it('⑩ 멱등: 이미 COMPLETED 인 finalization 콜백 재유입 → no-op', async () => {

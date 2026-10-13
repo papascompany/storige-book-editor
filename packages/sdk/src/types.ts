@@ -204,7 +204,8 @@ export interface BookFinalizationView {
   errorCode: string | null;
   /**
    * FAILED 진단 — 분기는 errorCode 로 하고 이 값은 진단용이다.
-   *  - 검증·합성 잡 실패: `{ stage: 'validate'|'compose', jobStatus, result }`. result 는 검증 잡이면
+   *  - 검증·합성 잡 실패: `{ stage: 'validate'|'compose', jobStatus, jobErrorCode, result }`. jobErrorCode 는
+   *    잡의 오류 코드(예: `PDF_LOAD_FAILED`·`JOB_STALLED`, 없으면 null). result 는 검증 잡이면
    *    `{ errors, warnings }`(각 항목 `code`·`message`·`autoFixable`·`fixMethod`), 그 밖에는 null.
    *  - 내부 처리 실패: `{ code, reason }` — code 는 `TRANSITION_FAILED`·`OUTPUT_URL_MISSING`·
    *    `OUTPUT_REGISTER_FAILED`, reason 은 코드별 고정 문구.
