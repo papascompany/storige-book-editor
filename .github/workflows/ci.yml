@@ -127,7 +127,7 @@ jobs:
       - name: api lint
         run: pnpm --filter @storige/api lint
 
-      # 운영 이미지와 같은 빌드. docker/api/Dockerfile:26 이 `pnpm --filter
+      # 운영 이미지와 같은 빌드. docker/api/Dockerfile:33 이 `pnpm --filter
       # @storige/api build`(= nest build, tsconfig.json 의 src/**/* 전체 tsc)로 이미지를 만든다. jest(ts-jest)는
       # spec 이 import 하는 파일만 타입 검사하고 @storige/types 를 src 로 매핑하므로, 이 스텝이 없으면
       # 'CI green 인데 이미지 빌드 실패'가 배포 시점에야 드러난다. types dist 는 선행 빌드 스텝이 만든다.
@@ -160,7 +160,7 @@ jobs:
         #    위험은 낮지만, 재발 시 이 스펙만 --maxWorkers 조정 대상이다.
         run: pnpm --filter @storige/worker test
 
-      # docker/worker/Dockerfile:38 과 같은 빌드 + worker lint(경고 17·오류 0 기준선,
+      # docker/worker/Dockerfile:33 과 같은 빌드 + worker lint(경고 17·오류 0 기준선,
       # 실패는 error 에서만 난다 — api·canvas-core lint 스텝과 같은 규칙).
       - name: worker 운영 빌드 (nest build) + lint
         run: |

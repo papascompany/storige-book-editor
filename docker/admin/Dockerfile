@@ -7,7 +7,8 @@ WORKDIR /app
 RUN npm install -g pnpm@9.15.0
 
 # Copy workspace files
-COPY pnpm-workspace.yaml package.json pnpm-lock.yaml* ./
+# .pnpmfile.cjs 는 lockfile 의 pnpmfileChecksum 과 맞아야 --frozen-lockfile 설치가 통과한다.
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml* .pnpmfile.cjs ./
 COPY turbo.json ./
 
 # Copy packages
