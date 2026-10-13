@@ -225,6 +225,12 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
 - 비공개 준비물: `../_private_notes/wave9/OBSERVATION_RUNBOOK_W9.md`(Loki 기준), `SB_TRANSITION_PACK.md`(+sb_00~05), `FILE_SITE_CONTRACT_DRAFT.md`(+fs_retro_r0_r3.sql).
 - 후속: CI 액션 SHA 고정·persist-credentials·dependabot(오너 결정), RESUME 의 운영 플래그 값·창구 id 를 비공개로 옮길지(오너 확인), hostPageLimits.test 부하 시간 초과, 로컬 embed-e2e 종료 지연, ShareSnap compose-mixed 수동 본문 400, api e2e 기존 실패 원인, editor·canvas-core 보안 권고(안 2), 설치 시점 체인 권고(Wave 10).
 
+### 5.2.4 다음 개발 이슈 정리 (2026-10-13, 오너 보고 — 결정 대기)
+
+- 정본 비공개 `../_private_notes/wave9/NEXT_ISSUES_2026-10-13.md`(10-08 목록 122건 대조 + 신규 25건, 4관점 수집·반박 검증).
+- **첫 실 파트너 흐름 관측(Loki)**: 10-10 12:52Z·10-12 06:32Z 에 업로드(presigned → complete) → 검증(validate/external) → 결과 조회 2회. 검증 결과 PASS 1·FAIL 1. 파트너 식별·FAIL 원인 판정은 운영 읽기 승인 대기(Loki 보존 기준 10-24 전).
+- P0: 첫 실 흐름 판정·회신, bookmoa 창구 재확인(10-12 통지 전달 미확인), 운영 메모 보관처 정리, 이 문서의 시작 프롬프트·창구 정정. 권고 Wave 10 = 안 1(실 트래픽 대응·관측·서버 공급망).
+
 ### 5.3 다음 후보 (착수 약속 없음 — 새 세션이 재점검 후 우선순위 제안)
 
 | 후보 | 출처·메모 |
