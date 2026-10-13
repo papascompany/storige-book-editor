@@ -74,7 +74,7 @@ const FROZEN_ROUTES: FrozenRoute[] = [
   // ADDITIVE 2026-09-28 — 첨부 내지 PDF 빈 페이지 배수 채움. 배수는 서버가 templateSet(padToPageStep·pageStep)
   // 에서 권위 산출(body={fileId,templateSetId} 뿐). 게스트 편집기 첨부 모달 소비.
   { contract: 'POST /worker-jobs/fix-pagecount/attach (@Public 게스트 — 2026-09-28 신설)', controller: WorkerJobsController, handler: 'createAttachPagePadJob', method: RequestMethod.POST, path: 'fix-pagecount/attach', auth: 'public' },
-  { contract: 'GET /worker-jobs/external/:id (X-API-Key — 100p 폴링 의존)', controller: WorkerJobsController, handler: 'findOneExternal', method: RequestMethod.GET, path: 'external/:id', auth: 'api-key' },
+  { contract: 'GET /worker-jobs/external/:id (X-API-Key — 파트너 폴링 의존(bookmoa·printy·100p·MD2Books))', controller: WorkerJobsController, handler: 'findOneExternal', method: RequestMethod.GET, path: 'external/:id', auth: 'api-key' },
   // S4 2단계(2026-08-28, D3·D4) — 합성 산출물 서명 URL 재발급. ADDITIVE→FROZEN:
   // 파트너가 "URL 박제" 대신 jobId 저장으로 전환하는 정식 회수 경로라, 등재 시점부터
   // 경로·인증(X-API-Key) 시맨틱을 동결한다. ApiKeyGuard 이탈 시 서명 발급이 무인증
