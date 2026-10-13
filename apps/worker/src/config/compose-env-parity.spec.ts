@@ -344,7 +344,6 @@ describe('docker-compose worker environment ↔ worker 플래그 모듈 정합',
     /** compose 에 있지만 소스가 읽지 않는 키. */
     const RUNTIME_ONLY: ReadonlyArray<{ key: string; reason: string }> = [
       { key: 'NODE_OPTIONS', reason: 'Node 런타임이 읽는다' },
-      { key: 'MAX_RETRY_ATTEMPTS', reason: '읽는 코드 없음(매핑 정리 예정)' },
     ];
 
     const hits = scanEnvReads(SRC_ROOT);

@@ -177,7 +177,6 @@ services:
       - STORAGE_PATH=/app/storage
       - WORKER_STORAGE_PATH=/app
       - GHOSTSCRIPT_PATH=/usr/bin/gs
-      - MAX_RETRY_ATTEMPTS=3
       - API_BASE_URL=http://api:4000/api
       - WORKER_API_KEY=${WORKER_API_KEY}
       # 워커 검증 최대 파일 크기(바이트). 기본 1GB — presigned 대용량 업로드 검증 통과용

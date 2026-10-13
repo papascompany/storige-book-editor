@@ -354,11 +354,11 @@ REDIS_PORT=6379
 
 # JWT
 JWT_SECRET=<random-secure-string>
-JWT_EXPIRES_IN=7d
+JWT_EXPIRES_IN=7d  # (미매핑, 코드 기본값)
 
 # Storage
 STORAGE_PATH=/app/storage
-STORAGE_MAX_FILE_SIZE=52428800
+STORAGE_MAX_FILE_SIZE=52428800  # (미매핑, 코드 기본값)
 
 # 저장계층 백엔드 (2026-06-15). 기본 local. R2 사용 시 admin [저장소 설정] 권장(DB>env 우선).
 #   STORAGE_DRIVER=s3
@@ -391,7 +391,6 @@ STORAGE_PATH=/app/storage
 MAX_FILE_SIZE=52428800
 
 # Processing
-MAX_RETRY_ATTEMPTS=3
 GHOSTSCRIPT_PATH=/usr/bin/gs
 ```
 

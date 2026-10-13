@@ -66,7 +66,7 @@ cd ~/storige && git pull origin master && docker compose up -d --build api && do
 2. 엔드포인트(`https://<acct>.r2.cloudflarestorage.com`)·버킷·Access Key ID·Secret 입력
 3. 저장 → **즉시 반영**(다음 업로드부터 R2). 기존 로컬 파일은 그대로 읽힘(혼재 보장).
 
-> env(`STORAGE_DRIVER=s3`, `S3_*`)로도 설정 가능하지만, **DB(admin) 값이 env 보다 우선**. admin 미설정 시 env fallback.
+> 컨테이너 배포는 관리자 저장소 설정만 쓴다. env(`STORAGE_DRIVER`, `S3_*`)는 compose 에 매핑돼 있지 않아 컨테이너에 전달되지 않는다(로컬 실행에서만 admin 미설정 시 env fallback).
 
 ### 3.2 스모크
 - `POST /files/upload/external`(X-API-Key) → 응답 `storageBackend='s3'` 확인
