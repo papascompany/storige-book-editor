@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import axios from 'axios';
+import { lookup } from 'dns/promises';
 import {
   WebhookService,
   SessionWebhookPayload,
@@ -11,11 +12,25 @@ import {
 jest.mock('axios');
 const mockedAxios = axios as jest.Mocked<typeof axios>;
 
+// 발신 시점 콜백 호스트 확인(2선)은 콜백 호스트를 DNS 로 해석한다. 실 네트워크를 쓰지 않도록 공인 주소로
+// 고정한다(단위 spec 과 같은 방식). 사설 대역 판정 자체는 단위 spec 이 지킨다.
+jest.mock('dns/promises', () => ({ lookup: jest.fn() }));
+const mockedLookup = lookup as jest.MockedFunction<typeof lookup>;
+const PUBLIC_TEST_ADDRESS = '93.184.215.14';
+
+// 콜백 allowlist(1선)는 서비스 생성 시점에 WEBHOOK_ALLOWED_HOSTS 를 읽는다. 이 spec 이 쓰는 두 호스트만
+// 허용한다 — 기본 목록에는 example.com 이 없어 그 케이스가 발신 전에 false 로 끝났다.
+const E2E_WEBHOOK_HOSTS = 'bookmoa.com,example.com';
+
 describe('WebhookService (e2e)', () => {
   let app: INestApplication;
   let webhookService: WebhookService;
+  let prevAllowedHosts: string | undefined;
 
   beforeAll(async () => {
+    prevAllowedHosts = process.env.WEBHOOK_ALLOWED_HOSTS;
+    process.env.WEBHOOK_ALLOWED_HOSTS = E2E_WEBHOOK_HOSTS;
+
     const moduleFixture: TestingModule = await Test.createTestingModule({
       providers: [WebhookService],
     }).compile();
@@ -28,10 +43,17 @@ describe('WebhookService (e2e)', () => {
 
   afterAll(async () => {
     await app.close();
+    if (prevAllowedHosts === undefined) delete process.env.WEBHOOK_ALLOWED_HOSTS;
+    else process.env.WEBHOOK_ALLOWED_HOSTS = prevAllowedHosts;
   });
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    // mockReset: 앞 케이스가 소비하지 않은 mockResolvedValueOnce 큐가 다음 케이스로 새지 않게 한다.
+    mockedAxios.post.mockReset();
+    mockedLookup.mockReset();
+    mockedLookup.mockResolvedValue([
+      { address: PUBLIC_TEST_ADDRESS, family: 4 },
+    ] as never);
   });
 
   // ============================================================================

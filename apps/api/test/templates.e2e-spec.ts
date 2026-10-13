@@ -3,14 +3,17 @@ import { INestApplication, ValidationPipe, CanActivate } from '@nestjs/common';
 import request from 'supertest';
 import { TypeOrmModule, getRepositoryToken } from '@nestjs/typeorm';
 import { ConfigModule } from '@nestjs/config';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 
 import { TemplatesModule } from '../src/templates/templates.module';
 import { Template } from '../src/templates/entities/template.entity';
 import { Category } from '../src/templates/entities/category.entity';
 import { TemplateSet, TemplateSetItem } from '../src/templates/entities/template-set.entity';
 import { User } from '../src/auth/entities/user.entity';
+import { UserSiteRole } from '../src/auth/entities/user-site-role.entity';
 import { RolesGuard } from '../src/auth/guards/roles.guard';
+import { SitesServiceStubModule } from './support/sites-service.stub';
+import { asGlobalAdmin, seedGlobalAdminRow } from './support/e2e-principal';
 import { TemplateType, TemplateSetType, CanvasData } from '@storige/types';
 
 // Mock RolesGuard to always allow access
@@ -36,11 +39,15 @@ describe('TemplatesController (e2e)', () => {
         }),
         TypeOrmModule.forRoot({
           type: 'better-sqlite3',
+          driver: require('better-sqlite3'),
           database: ':memory:',
-          entities: [Template, Category, TemplateSet, TemplateSetItem, User],
+          // User.siteRoleAssignments 관계 대상까지 등록해야 메타데이터가 완성된다.
+          entities: [Template, Category, TemplateSet, TemplateSetItem, User, UserSiteRole],
           synchronize: true,
           dropSchema: true,
         }),
+        // 운영의 @Global SitesModule 자리 — TemplatesModule 의 ApiKeyGuard 가 SitesService 를 주입받는다.
+        SitesServiceStubModule,
         TemplatesModule,
       ],
     })
@@ -49,6 +56,8 @@ describe('TemplatesController (e2e)', () => {
       .compile();
 
     app = moduleFixture.createNestApplication();
+    // 쓰기 라우트는 RolesGuard 뒤에 TenantGuard 가 req.user 를 요구한다 — 전역 관리자 주체를 둔다.
+    app.use(asGlobalAdmin);
     app.useGlobalPipes(
       new ValidationPipe({
         whitelist: true,
@@ -57,6 +66,7 @@ describe('TemplatesController (e2e)', () => {
     );
     await app.init();
 
+    await seedGlobalAdminRow(moduleFixture.get(DataSource));
     templateRepository = moduleFixture.get<Repository<Template>>(getRepositoryToken(Template));
     categoryRepository = moduleFixture.get<Repository<Category>>(getRepositoryToken(Category));
   });

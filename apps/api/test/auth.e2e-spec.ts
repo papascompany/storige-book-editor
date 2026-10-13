@@ -25,13 +25,17 @@ import cookieParser from 'cookie-parser';
 import { AuthController } from '../src/auth/auth.controller';
 import { AuthService } from '../src/auth/auth.service';
 import { User } from '../src/auth/entities/user.entity';
+import { UserSiteRole } from '../src/auth/entities/user-site-role.entity';
 import { JwtStrategy } from '../src/auth/strategies/jwt.strategy';
 import { ApiKeyStrategy } from '../src/auth/strategies/api-key.strategy';
 import { JwtAuthGuard } from '../src/auth/guards/jwt-auth.guard';
+import { PartnerOperatorGrantService } from '../src/auth/partner-operator/partner-operator-grant.service';
 import { APP_GUARD } from '@nestjs/core';
+import { E2E_SITE_API_KEY, SitesServiceStubModule } from './support/sites-service.stub';
 
 // 테스트용 상수
-const TEST_API_KEY = 'test-api-key-for-testing';
+// X-API-Key 는 sites 조회로 판정한다(ApiKeyGuard → SitesService). 대역이 이 키만 사이트로 인정한다.
+const TEST_API_KEY = E2E_SITE_API_KEY;
 const TEST_JWT_SECRET = 'test-jwt-secret-for-e2e-testing';
 const TEST_MEMBER = {
   memberSeqno: 99999,
@@ -45,8 +49,6 @@ describe('AuthController (e2e)', () => {
   let userRepository: Repository<User>;
 
   beforeAll(async () => {
-    // 환경 변수 설정 (ApiKeyStrategy에서 ConfigService로 읽음)
-    process.env.API_KEYS = TEST_API_KEY;
     process.env.JWT_SECRET = TEST_JWT_SECRET;
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -58,12 +60,15 @@ describe('AuthController (e2e)', () => {
         }),
         TypeOrmModule.forRoot({
           type: 'better-sqlite3',
+          driver: require('better-sqlite3'),
           database: ':memory:',
-          entities: [User],
+          // User.siteRoleAssignments 관계 대상까지 등록해야 메타데이터가 완성된다.
+          entities: [User, UserSiteRole],
           synchronize: true,
           dropSchema: true,
         }),
         TypeOrmModule.forFeature([User]),
+        SitesServiceStubModule,
         PassportModule,
         JwtModule.register({
           secret: TEST_JWT_SECRET,
@@ -75,6 +80,16 @@ describe('AuthController (e2e)', () => {
         AuthService,
         JwtStrategy,
         ApiKeyStrategy,
+        // 운영자 대리 편집 분기 전용(AuthService·AuthController 생성자 3·2번째 인자).
+        // 이 spec 은 운영자 토큰을 만들지 않으므로 호출되면 실패하게 둔다.
+        {
+          provide: PartnerOperatorGrantService,
+          useValue: {
+            refresh: jest.fn(async () => {
+              throw new Error('partner operator path is out of scope in auth e2e');
+            }),
+          },
+        },
         {
           provide: APP_GUARD,
           useClass: JwtAuthGuard,

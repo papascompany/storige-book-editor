@@ -26,6 +26,7 @@ import {
 import { WorkerJobsService } from '../src/worker-jobs/worker-jobs.service';
 import { JwtAuthGuard } from '../src/auth/guards/jwt-auth.guard';
 import { APP_GUARD } from '@nestjs/core';
+import { SitesServiceStubModule } from './support/sites-service.stub';
 
 // 테스트용 상수
 const TEST_JWT_SECRET = 'test-jwt-secret-for-e2e-testing';
@@ -72,9 +73,16 @@ class TestEditSessionsService {
     private workerJobsService: WorkerJobsService,
   ) {}
 
+  // 테넌트 판정은 실 서비스의 순수 규칙을 그대로 쓴다(저장소·외부 의존 없음). 상세 조회가
+  // 소유자 판정 전에 assertTenantScope 를 부른다(edit-sessions.controller.ts findOne).
+  isInTenantScope = EditSessionsService.prototype.isInTenantScope;
+  isPartnerOperatorInScope = EditSessionsService.prototype.isPartnerOperatorInScope;
+  assertTenantScope = EditSessionsService.prototype.assertTenantScope;
+
   async create(dto: any): Promise<TestEditSessionEntity> {
     const session = this.sessionRepository.create({
-      orderSeqno: dto.orderSeqno,
+      // 실 서비스와 같은 규칙 — orderSeqno 미전송은 0(Phase 4, edit-sessions.service.ts create).
+      orderSeqno: dto.orderSeqno ?? 0,
       memberSeqno: dto.memberSeqno,
       mode: dto.mode,
       status: TestSessionStatus.DRAFT,
@@ -242,12 +250,15 @@ describe('EditSessionsController (e2e)', () => {
         ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true }),
         TypeOrmModule.forRoot({
           type: 'better-sqlite3',
+          driver: require('better-sqlite3'),
           database: ':memory:',
           entities: [TestEditSessionEntity],
           synchronize: true,
           dropSchema: true,
         }),
         TypeOrmModule.forFeature([TestEditSessionEntity]),
+        // 운영의 @Global SitesModule 자리 — 외부 라우트의 ApiKeyGuard 가 SitesService 를 주입받는다.
+        SitesServiceStubModule,
         PassportModule,
         JwtModule.register({
           secret: TEST_JWT_SECRET,
@@ -339,12 +350,17 @@ describe('EditSessionsController (e2e)', () => {
     });
 
     describe('TC-SESSION-002: 잘못된 입력으로 세션 생성 실패', () => {
-      it('orderSeqno 누락', async () => {
-        await request(app.getHttpServer())
+      // Phase 4 이후 orderSeqno 는 선택이다(CreateEditSessionDto @IsOptional). 회원 토큰으로
+      // 빠뜨리면 400 이 아니라 orderSeqno 0 세션이 만들어진다 — 현행 계약을 고정한다.
+      it('orderSeqno 누락 → 400 이 아니라 0 으로 생성', async () => {
+        const response = await request(app.getHttpServer())
           .post('/edit-sessions')
           .set('Authorization', `Bearer ${validToken}`)
           .send({ mode: 'cover' })
-          .expect(400);
+          .expect(201);
+
+        expect(response.body.orderSeqno).toBe(0);
+        expect(response.body.memberSeqno).toBe(TEST_MEMBER.memberSeqno);
       });
 
       it('mode 누락', async () => {

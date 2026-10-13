@@ -484,6 +484,7 @@ describe('WorkerJobsController (e2e)', () => {
         }),
         TypeOrmModule.forRoot({
           type: 'better-sqlite3',
+          driver: require('better-sqlite3'),
           database: ':memory:',
           entities: [TestWorkerJobEntity, TestEditSessionEntity],
           synchronize: true,

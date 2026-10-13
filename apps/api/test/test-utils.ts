@@ -33,6 +33,7 @@ export async function createTestingModule(modules: any[] = []): Promise<TestingM
       }),
       TypeOrmModule.forRoot({
         type: 'better-sqlite3',
+        driver: require('better-sqlite3'),
         database: ':memory:',
         entities: [
           Template,

@@ -23,6 +23,7 @@ describe('SpineController (e2e)', () => {
         }),
         TypeOrmModule.forRoot({
           type: 'better-sqlite3',
+          driver: require('better-sqlite3'),
           database: ':memory:',
           entities: [PaperTypeEntity, BindingTypeEntity],
           synchronize: true,

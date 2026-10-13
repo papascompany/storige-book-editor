@@ -3,16 +3,22 @@ import { INestApplication, ValidationPipe, CanActivate } from '@nestjs/common';
 import request from 'supertest';
 import { TypeOrmModule, getRepositoryToken } from '@nestjs/typeorm';
 import { ConfigModule } from '@nestjs/config';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 
 import { TemplatesModule } from '../src/templates/templates.module';
 import { Template } from '../src/templates/entities/template.entity';
 import { Category } from '../src/templates/entities/category.entity';
 import { TemplateSet, TemplateSetItem } from '../src/templates/entities/template-set.entity';
+import { TemplateSetLibraryCategory } from '../src/templates/entities/template-set-library-category.entity';
+// 삭제 경로가 raw SQL 로 edit_sessions(레거시 editor 엔티티 테이블)의 활성 세션 수를 센다.
+import { EditSession } from '../src/editor/entities/edit-session.entity';
 import { Product } from '../src/products/entities/product.entity';
 import { ProductSize } from '../src/products/entities/product-size.entity';
 import { User } from '../src/auth/entities/user.entity';
+import { UserSiteRole } from '../src/auth/entities/user-site-role.entity';
 import { RolesGuard } from '../src/auth/guards/roles.guard';
+import { SitesServiceStubModule } from './support/sites-service.stub';
+import { asGlobalAdmin, seedGlobalAdminRow } from './support/e2e-principal';
 import { ProductsModule } from '../src/products/products.module';
 import { TemplateType, TemplateSetType, CanvasData } from '@storige/types';
 
@@ -40,11 +46,18 @@ describe('TemplateSetsController (e2e)', () => {
         }),
         TypeOrmModule.forRoot({
           type: 'better-sqlite3',
+          driver: require('better-sqlite3'),
           database: ':memory:',
-          entities: [Template, Category, TemplateSet, TemplateSetItem, Product, ProductSize, User],
+          // User.siteRoleAssignments 관계 대상까지 등록해야 메타데이터가 완성된다.
+          entities: [
+            Template, Category, TemplateSet, TemplateSetItem, TemplateSetLibraryCategory,
+            Product, ProductSize, User, UserSiteRole, EditSession,
+          ],
           synchronize: true,
           dropSchema: true,
         }),
+        // 운영의 @Global SitesModule 자리 — TemplatesModule 의 ApiKeyGuard 가 SitesService 를 주입받는다.
+        SitesServiceStubModule,
         TemplatesModule,
         ProductsModule,
       ],
@@ -54,6 +67,8 @@ describe('TemplateSetsController (e2e)', () => {
       .compile();
 
     app = moduleFixture.createNestApplication();
+    // 쓰기 라우트는 RolesGuard 뒤에 TenantGuard 가 req.user 를 요구한다 — 전역 관리자 주체를 둔다.
+    app.use(asGlobalAdmin);
     app.useGlobalPipes(
       new ValidationPipe({
         whitelist: true,
@@ -62,6 +77,7 @@ describe('TemplateSetsController (e2e)', () => {
     );
     await app.init();
 
+    await seedGlobalAdminRow(moduleFixture.get(DataSource));
     templateSetRepository = moduleFixture.get<Repository<TemplateSet>>(getRepositoryToken(TemplateSet));
     templateRepository = moduleFixture.get<Repository<Template>>(getRepositoryToken(Template));
     productRepository = moduleFixture.get<Repository<Product>>(getRepositoryToken(Product));

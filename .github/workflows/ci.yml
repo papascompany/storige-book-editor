@@ -22,6 +22,8 @@ name: ci
 #      editor·admin 다섯 곳이 게이트다(각 스크립트의 --max-warnings 가 그대로 적용된다)
 #   8) [별도 job embed-e2e] apps/editor 임베드 모드 Playwright E2E(chromium,
 #      tests/embed-mode) — test job 과 병렬(needs 없음). 리포트는 아티팩트로 남긴다
+#   9) [별도 job api-e2e] apps/api test:e2e(test/*.e2e-spec.ts — Nest 테스트 모듈 + in-memory
+#      sqlite, 외부 DB·네트워크 없음) — test job 과 병렬(needs 없음)
 #
 # ⚠️ 루트 `turbo run test` 는 CI 가 호출하지 않는다 — per-package 명시 필터만 쓴다.
 #    새 패키지를 추가하면 **여기에 스텝을 추가해야** 게이트에 연결된다. 안 그러면
@@ -396,3 +398,42 @@ jobs:
             apps/editor/test-results
           retention-days: 7
           if-no-files-found: warn
+
+  api-e2e:
+    # apps/api e2e(test/*.e2e-spec.ts). Nest 테스트 모듈 + better-sqlite3 :memory: 라 외부 DB·네트워크가
+    # 없다(webhook spec 은 axios·DNS 를 mock). test job 과 독립(needs 없음)이라 병렬로 돌고, 실패해도
+    # test job 의 contract-freeze·worker 결과를 가리지 않는다. 종전에는 CI 밖이라 DI·엔티티 목록이
+    # 소스 변경을 따라가지 못한 채 5 suites 가 실패해 있었다 — 이 잡이 그 재발을 막는다.
+    # jest-e2e.config.js 의 moduleNameMapper 는 실행 시점만 @storige/types 를 src 로 매핑한다. ts-jest 타입 검사는
+    # 패키지의 dist d.ts 를 읽으므로 types 선행 빌드가 필요하다(없으면 TS2307 로 suite 가 시작되지 않는다).
+    runs-on: ${{ inputs.runner || 'ubuntu-24.04' }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # 이 잡은 checkout 뒤 git 자격증명을 쓰지 않는다
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v5
+        # 버전은 package.json packageManager 에서 자동 해석(v6 을 쓰지 않는 이유는 test 잡 주석)
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: pnpm 버전 확인 (package.json packageManager 와 일치해야 한다)
+        run: |
+          want="$(node -p "require('./package.json').packageManager.split('@')[1].split('+')[0]")"
+          have="$(pnpm --version)"
+          echo "pnpm want=$want have=$have"
+          [ "$have" = "$want" ] || { echo "::error::pnpm $have 가 설치됐다 — packageManager 는 pnpm@$want"; exit 1; }
+
+      - name: 의존성 설치
+        run: pnpm install --frozen-lockfile
+
+      - name: types 선행 빌드 (e2e 타입 검사가 dist 를 읽는다)
+        run: pnpm --filter @storige/types build
+
+      - name: api e2e (auth·edit-sessions·templates·template-sets·webhook·worker-jobs·spine)
+        run: pnpm --filter @storige/api test:e2e
