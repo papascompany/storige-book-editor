@@ -9,9 +9,12 @@
  * 같은 파서가 apps/api/src/config/compose-env-parity.spec.ts 에도 있다(패키지 경계를 넘지 않음).
  * VALIDATION_CONFIG 는 모듈 로드 시점에 env 를 읽으므로 feature-flags.spec 과 같이
  * jest.isolateModules 로 새 레지스트리에서 다시 require 한다.
+ *
+ * ⑦ 은 플래그에 한정하지 않고, 소스가 읽는 env 키가 모두 compose 에 매핑돼 있거나 사유가 붙은
+ * 미매핑 목록(UNMAPPED_ALLOWLIST)에 있는지 본다. 같은 스캐너가 api spec ⑨ 에도 있다.
  */
-import { readFileSync } from 'fs';
-import { resolve } from 'path';
+import { readdirSync, readFileSync } from 'fs';
+import { join, relative, resolve, sep } from 'path';
 import { WORKER_FEATURE_FLAG_KEYS, WorkerFeatureFlagKey, WorkerFeatureFlagSnapshot } from './feature-flags';
 
 type FeatureFlagsModule = typeof import('./feature-flags');
@@ -119,6 +122,113 @@ function snapshotUnderEnv(
   }
 }
 
+// ---------------------------------------------------------------------------
+// ⑦ 스캐너 — 같은 코드가 api spec ⑨ 에 있다(패키지 경계를 넘지 않음).
+// 주석은 api spec ⑦ 과 같은 규칙(줄 첫머리 //·*·/*)으로만 비운다. 블록 주석을 정규식으로 지우면
+// 문자열 안의 '//' 뒤에 오는 읽기를 놓친다.
+// ---------------------------------------------------------------------------
+
+/** 코드가 읽지만 compose 에 매핑하지 않는 키. kind 는 분류, reason 은 짧은 사유. */
+type UnmappedKind =
+  | 'code-default'
+  | 'admin-setting'
+  | 'optional-off'
+  | 'bootstrap'
+  | 'cli'
+  | 'no-effect'
+  | 'hold';
+const WORKER_UNMAPPED_ALLOWLIST: ReadonlyArray<{ key: string; kind: UnmappedKind; reason: string }> = [
+  { key: 'CONTENT_PDF_GUIDE_DPI', kind: 'code-default', reason: '코드 기본값으로 운영' },
+  { key: 'CONTENT_PDF_GUIDE_MAX_PAGES', kind: 'code-default', reason: '코드 기본값으로 운영' },
+  { key: 'LOG_LEVEL', kind: 'code-default', reason: '코드 기본값으로 운영' },
+  { key: 'OUTPUTS_PATH', kind: 'code-default', reason: '코드 기본값으로 운영' },
+  { key: 'PDFFONTS_PATH', kind: 'code-default', reason: '코드 기본값으로 운영' },
+  { key: 'PDFIMAGES_PATH', kind: 'code-default', reason: '코드 기본값으로 운영' },
+  { key: 'PDFINFO_PATH', kind: 'code-default', reason: '코드 기본값으로 운영' },
+  { key: 'POPPLER_TIMEOUT_MS', kind: 'code-default', reason: '코드 기본값으로 운영' },
+  { key: 'PORT', kind: 'code-default', reason: '코드 기본값으로 운영' },
+  { key: 'QPDF_MERGE_TIMEOUT_MS', kind: 'code-default', reason: '코드 기본값으로 운영' },
+  { key: 'QPDF_PATH', kind: 'code-default', reason: '코드 기본값으로 운영' },
+  { key: 'QPDF_TIMEOUT_MS', kind: 'code-default', reason: '코드 기본값으로 운영' },
+  { key: 'TAC_WARN_PERCENT', kind: 'code-default', reason: '코드 기본값으로 운영' },
+  { key: 'WORKER_DOWNLOAD_ALLOWED_HOSTS', kind: 'code-default', reason: '코드 기본값으로 운영' },
+  { key: 'WORKER_DOWNLOAD_TIMEOUT_MS', kind: 'code-default', reason: '코드 기본값으로 운영' },
+];
+
+const ENV_KEY = String.raw`([A-Z][A-Z0-9_]*)`;
+const QUOTE = String.raw`['"\x60]`;
+const ENV_GETTERS = ['get', 'getOrThrow', 'env', 'strictFlag', 'positiveIntFromEnv', 'resolveFileEnvNumber'];
+/** process.env.K · process.env['K'] · getter('K')(여러 줄·첫 인자 config 포함) · env.K */
+const READ_PATTERNS: readonly RegExp[] = [
+  new RegExp(String.raw`process\.env\.${ENV_KEY}\b`, 'g'),
+  new RegExp(String.raw`process\.env\[\s*${QUOTE}${ENV_KEY}${QUOTE}\s*\]`, 'g'),
+  new RegExp(
+    String.raw`\b(?:${ENV_GETTERS.join('|')})\s*(?:<[^>()]*>)?\s*\(\s*(?:[A-Za-z_][\w.]*\s*,\s*)?${QUOTE}${ENV_KEY}${QUOTE}`,
+    'g',
+  ),
+  new RegExp(String.raw`(?<![\w.])env\.${ENV_KEY}\b`, 'g'),
+];
+/** 키를 변수로 읽는 호출(process.env[변수], config.get(변수)) */
+const DYNAMIC_PATTERNS: readonly RegExp[] = [
+  /process\.env\[(?!\s*['"`])/g,
+  /\b(?:config|configService|this\.config|this\.configService)\.(?:get|getOrThrow)\s*(?:<[^>()]*>)?\s*\(\s*(?=[^\s'"`])/g,
+];
+
+function scanEnvText(text: string): { keys: Array<{ key: string; line: number }>; dynamicLines: number[] } {
+  const t = text
+    .split('\n')
+    .map((l) => (/^\s*(\/\/|\*|\/\*)/.test(l) ? '' : l))
+    .join('\n');
+  const lineOf = (i: number): number => t.slice(0, i).split('\n').length;
+  const keys: Array<{ key: string; line: number }> = [];
+  const dynamicLines: number[] = [];
+  for (const re of READ_PATTERNS) {
+    for (const m of t.matchAll(re)) keys.push({ key: m[1], line: lineOf(m.index ?? 0) });
+  }
+  for (const re of DYNAMIC_PATTERNS) {
+    for (const m of t.matchAll(re)) dynamicLines.push(lineOf(m.index ?? 0));
+  }
+  return { keys, dynamicLines: [...new Set(dynamicLines)].sort((a, b) => a - b) };
+}
+
+function scanEnvReads(srcRoot: string): {
+  keys: Array<{ file: string; line: number; key: string }>;
+  dynamicFiles: string[];
+} {
+  const walk = (dir: string): string[] =>
+    readdirSync(dir, { withFileTypes: true }).flatMap((ent) => {
+      const full = join(dir, ent.name);
+      if (ent.isDirectory()) return walk(full);
+      return ent.name.endsWith('.ts') && !/\.(spec|d)\.ts$/.test(ent.name) ? [full] : [];
+    });
+  const keys: Array<{ file: string; line: number; key: string }> = [];
+  const dynamicFiles: string[] = [];
+  for (const full of walk(srcRoot)) {
+    const file = relative(srcRoot, full).split(sep).join('/');
+    const r = scanEnvText(readFileSync(full, 'utf8'));
+    for (const k of r.keys) keys.push({ file, ...k });
+    if (r.dynamicLines.length > 0) dynamicFiles.push(file);
+  }
+  return { keys, dynamicFiles: dynamicFiles.sort() };
+}
+
+/** ⑦-f 픽스처(줄 번호를 단언하므로 순서를 바꾸지 않는다) */
+const SCANNER_FIXTURE = [
+  'const a = process.env.ALPHA_KEY;',
+  "const b = process.env['BRAVO_KEY'];",
+  "this.configService.get<number>(\n  'CHARLIE_KEY',\n  100,\n);",
+  "config.getOrThrow('DELTA_KEY');",
+  "env('ECHO_KEY', 'x');",
+  "positiveIntFromEnv(\n  config,\n  'FOXTROT_KEY',\n  300,\n);",
+  'function f(env: NodeJS.ProcessEnv) { return env.GOLF_KEY; }',
+  '// process.env.HOTEL_COMMENTED',
+  "/* config.get('INDIA_BLOCK') */",
+  "const url = 'http://x//y'; const c = process.env.JULIET_AFTER_URL;",
+  'for (const k of KEYS) process.env[k];',
+  'this.configService.get(key);',
+  "this.configService.get<string>(\n 'KILO_KEY');",
+].join('\n');
+
 describe('docker-compose worker environment ↔ worker 플래그 모듈 정합', () => {
   it('① 파서 자기검증 — worker 항목 30개 이상·NODE_ENV=production, api 항목 40개 이상', () => {
     expect(WORKER_ENV.size).toBeGreaterThanOrEqual(30);
@@ -161,5 +271,83 @@ describe('docker-compose worker environment ↔ worker 플래그 모듈 정합',
     const env = composeEnv('worker', PARSER_FIXTURE);
     expect([...env.keys()]).toEqual(['NODE_ENV', 'NEW_TOGGLE', 'OTHER_TOGGLE']);
     expect(unlistedBooleanKeys(env)).toEqual(['NEW_TOGGLE', 'OTHER_TOGGLE']);
+  });
+
+  describe('⑦ 소스가 읽는 env 키는 compose worker environment 에 매핑돼 있거나 미매핑 목록에 있다', () => {
+    const SRC_ROOT = resolve(__dirname, '..');
+    const REPO_ROOT = resolve(__dirname, '../../../..');
+
+    /** 키를 변수로 읽는 파일(키 이름은 같은 파일의 상수 목록에 있다). 바뀌면 검토 후 갱신한다. */
+    const DYNAMIC_READ_FILES: readonly string[] = ['main.ts'];
+    /** compose 에 있지만 소스가 읽지 않는 키. */
+    const RUNTIME_ONLY: ReadonlyArray<{ key: string; reason: string }> = [
+      { key: 'NODE_OPTIONS', reason: 'Node 런타임이 읽는다' },
+      { key: 'MAX_RETRY_ATTEMPTS', reason: '읽는 코드 없음(매핑 정리 예정)' },
+    ];
+
+    const hits = scanEnvReads(SRC_ROOT);
+
+    it('⑦-a 매핑도 미매핑 목록도 없는 키가 없다(file:line KEY)', () => {
+      const allow = new Set(WORKER_UNMAPPED_ALLOWLIST.map((a) => a.key));
+      const missing = hits.keys
+        .filter((h) => !WORKER_ENV.has(h.key) && !allow.has(h.key))
+        .map((h) => `${h.file}:${h.line} ${h.key}`);
+      expect(missing).toEqual([]);
+    });
+
+    it('⑦-b 미매핑 목록은 중복이 없고, 아직 읽히며, compose 에 없고, 사유가 있다', () => {
+      const read = new Set(hits.keys.map((h) => h.key));
+      const problems: string[] = [];
+      const seen = new Set<string>();
+      for (const a of WORKER_UNMAPPED_ALLOWLIST) {
+        if (seen.has(a.key)) problems.push(`${a.key} 중복`);
+        seen.add(a.key);
+        if (!read.has(a.key)) problems.push(`${a.key} 읽는 곳 없음`);
+        if (WORKER_ENV.has(a.key)) problems.push(`${a.key} compose 매핑 있음`);
+        if (a.reason.length === 0) problems.push(`${a.key} 사유 없음`);
+      }
+      expect(problems).toEqual([]);
+    });
+
+    it('⑦-c 키를 변수로 읽는 파일은 정해진 목록과 같다', () => {
+      expect(hits.dynamicFiles).toEqual([...DYNAMIC_READ_FILES].sort());
+    });
+
+    it('⑦-d 스캐너 감도 — compose worker 키는 모두 스캔 결과나 런타임 전용 목록에 있다', () => {
+      const read = new Set(hits.keys.map((h) => h.key));
+      const runtime = new Set(RUNTIME_ONLY.map((r) => r.key));
+      expect([...WORKER_ENV.keys()].filter((k) => !read.has(k) && !runtime.has(k))).toEqual([]);
+      for (const r of RUNTIME_ONLY) {
+        expect({ key: r.key, mapped: WORKER_ENV.has(r.key), read: read.has(r.key) }).toEqual({
+          key: r.key,
+          mapped: true,
+          read: false,
+        });
+        expect(r.reason.length).toBeGreaterThan(0);
+      }
+    });
+
+    it('⑦-e 전제 — compose 에 env_file 이 없고 worker Dockerfile 에 ENV 지시가 없다', () => {
+      expect(COMPOSE.split('\n').filter((l) => /^\s*env_file\s*:/.test(l))).toEqual([]);
+      const dockerfile = readFileSync(join(REPO_ROOT, 'docker/worker/Dockerfile'), 'utf8');
+      expect(dockerfile.split('\n').filter((l) => /^ENV\s/.test(l))).toEqual([]);
+    });
+
+    it('⑦-f 스캐너 픽스처 — 여러 줄 호출·헬퍼·env 인자는 잡고 주석 줄은 건너뛴다', () => {
+      const r = scanEnvText(SCANNER_FIXTURE);
+      expect([...new Set(r.keys.map((k) => k.key))].sort()).toEqual([
+        'ALPHA_KEY',
+        'BRAVO_KEY',
+        'CHARLIE_KEY',
+        'DELTA_KEY',
+        'ECHO_KEY',
+        'FOXTROT_KEY',
+        'GOLF_KEY',
+        'JULIET_AFTER_URL',
+        'KILO_KEY',
+      ]);
+      expect(r.keys.find((k) => k.key === 'CHARLIE_KEY')?.line).toBe(3);
+      expect(r.dynamicLines).toEqual([18, 19]);
+    });
   });
 });
