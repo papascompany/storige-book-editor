@@ -382,12 +382,12 @@ docker compose logs -f
 
 | 파일 | 런타임 | 특징 & 위험 |
 | --- | --- | --- |
-| `docker/api/Dockerfile` | Node 20 Alpine 멀티스테이지 | 워크스페이스 전체 복사 후 `@storige/types` 빌드. **`:23`에 `pnpm --filter @storige/types build \|\| true` 있음 → 빌드 실패 마스킹 위험** |
-| `docker/editor/Dockerfile` | nginx:alpine 정적 | `types` + `canvas-core` 선빌드. **`:23`, `:24` 각각 `\|\| true` 사용(총 2개)**, api와 동일 위험 |
+| `docker/api/Dockerfile` | Node 20 Alpine 멀티스테이지 | 앱 단위 필터 설치 후 `@storige/types` 빌드. `\|\| true` 없음(2026-10-13 커밋 `e28a8cc` 에서 제거됨) |
+| `docker/editor/Dockerfile` | nginx:alpine 정적 | `types` + `canvas-core` 선빌드. **`:33`, `:34` 각각 `\|\| true` 사용(총 2개)** → 빌드 실패 마스킹 위험 |
 | `docker/admin/Dockerfile` | nginx:alpine 정적 | — (`\|\| true` 없음) |
-| `docker/worker/Dockerfile` | Node + 런타임에 ghostscript/imagemagick/cairo/pango | **가장 배포 실패 가능성 높음**. canvas 네이티브 빌드 필수. **`:35`에 `\|\| true` 1개 사용** |
+| `docker/worker/Dockerfile` | Node + 런타임에 ghostscript/imagemagick/cairo/pango | **가장 배포 실패 가능성 높음**. canvas 네이티브 빌드 필수. `\|\| true` 없음(`e28a8cc` 에서 제거됨) |
 
-> **`\|\| true` 전체 위치 (2026-04-16 스캔)**: `docker/api/Dockerfile:23`, `docker/worker/Dockerfile:35`, `docker/editor/Dockerfile:23`, `docker/editor/Dockerfile:24` — **3개 파일 · 총 4군데**. P0-B 정비 시 전부 함께 제거하거나 정당성 주석을 붙이세요.
+> **`\|\| true` 전체 위치 (2026-10-14 재확인)**: `docker/editor/Dockerfile:33`, `docker/editor/Dockerfile:34` — **1개 파일 · 총 2군데**. api·worker 의 3군데(2026-04-16 스캔 기준)는 `e28a8cc` 에서 제거됐습니다. 남은 2군데는 제거하거나 정당성 주석을 붙이세요.
 
 ### 9.3 옵션 B: PM2 (`ecosystem.config.js`)
 - `apps/{api,worker,editor,admin}`를 각각 `dist/` 또는 `serve dist`로 가동.
