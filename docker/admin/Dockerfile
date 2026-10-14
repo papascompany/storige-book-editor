@@ -17,8 +17,14 @@ COPY packages ./packages
 # Copy Admin app
 COPY apps/admin ./apps/admin
 
+# Copy build gate scripts — apps/admin 의 postbuild 가 ../../scripts/*.mjs 를 호출한다.
+COPY scripts ./scripts
+
 # Install dependencies
 RUN pnpm install --frozen-lockfile
+
+# Build packages first (types -> admin). admin 의 tsc 가 @storige/types 의 dist 타입을 읽는다.
+RUN pnpm --filter @storige/types build
 
 # Build Admin
 RUN pnpm --filter @storige/admin build
