@@ -8,7 +8,7 @@
 >
 > 🔄 **갱신**: 2026-10-12 — 「업데이트 및 배포」에 Wave 8(2026-10-06·07)과 2026-10-08 운영 정비 절 추가, `EDITOR_CONTENT_PAGE_RULES` compose 매핑·비상 차단 절차, 「로그 검색」에 Loki API 로 건수 세기.
 >
-> 🔄 **갱신**: 2026-10-14 — 「배포 후 점검」 키 나열·「잡 생성 확인 · 잡 산출물 세션 조회 플래그」 compose 매핑 나열에 `PARTNER_JOB_VIEW` 추가, 「Vercel 배포 파이프라인(ignoreCommand) 주의」를 빌드 생략 판정 스크립트(`scripts/vercel-ignore-build.mjs`) 기준으로 갱신.
+> 🔄 **갱신**: 2026-10-14 — 「배포 후 점검」 키 나열·「잡 생성 확인 · 잡 산출물 세션 조회 플래그」 compose 매핑 나열에 `PARTNER_JOB_VIEW` 추가, 「Vercel 배포 파이프라인(ignoreCommand) 주의」를 빌드 생략 판정 스크립트(`scripts/vercel-ignore-build.mjs`) 기준으로 갱신, API env 예시의 업로드 크기 상한 줄을 코드 상수 기준으로 정리.
 
 > ### ⚠️ 스키마 마이그레이션 (synchronize=false → 수동, API 재배포 **전** 실행)
 > 프로덕션은 TypeORM `synchronize=false` 이므로 엔티티 변경 시 `apps/api/migrations/*.sql` 을 수동 실행 후 API 재배포한다(순서 중요 — 신규 코드가 컬럼/테이블 존재를 전제).
@@ -360,7 +360,7 @@ JWT_EXPIRES_IN=7d  # (미매핑, 코드 기본값)
 
 # Storage
 STORAGE_PATH=/app/storage
-STORAGE_MAX_FILE_SIZE=52428800  # (미매핑, 코드 기본값)
+# 업로드 크기 상한은 env 가 아니라 코드 상수다(storage 업로드 50MB = `STORAGE_UPLOAD_MAX_BYTES`, files 업로드 100MB = `FILE_UPLOAD_MAX_BYTES` — 경로별 multer 상한과 같음). STORAGE_MAX_FILE_SIZE 는 읽지 않는다.
 
 # 저장계층 백엔드 (2026-06-15). 기본 local. R2 사용 시 admin [저장소 설정] 권장(DB>env 우선).
 #   STORAGE_DRIVER=s3
