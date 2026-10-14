@@ -67,42 +67,42 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
 
 ---
 
-## 2. 현재 라이브 상태 (2026-10-12 15:43Z — Wave 9 안 1 배포 후)
+## 2. 현재 라이브 상태 (2026-10-14 06:31Z — Wave 10 안 1 배포·파트너 잡 응답 키 전환 후)
 
 | 구성 | 현재 운영 | 롤백 |
 |---|---|---|
 | DB | 09-30 Wave 1 ~ 10-04 Wave 3 **마이그레이션 없음**. 마지막 스키마 변경은 09-29 `20260929`·`20260930`(ADDITIVE) | 백업 `~/backup-sites-pre-staff-edit-20260929.sql`·`~/backup-template_sets-pre-padstep-20260928.sql`. 추가 컬럼·테이블은 남겨도 무해 |
-| api | `b76e927`(이미지 de68a7201718, 10-12 15:39:57Z — Wave 9: 파일 정리 env 범위·플래그 모듈·[FLAGS-CHECK] 기대값 프로필 대조·books errorDetail 고정 형식(FREEZE v1.17)·typeorm 0.3.31·express 4.22.3·body-parser 1.20.8) + nginx 15:40:06Z | 태그 `storige-api:rollback-pre-wave9`(= e8f5bd686b27, 10-08 Wave B 컨테이너 이미지 `1c9b120`) → `rollback-pre-wave-b`(같은 이미지) → `rollback-pre-n-api-3b`(=`c6c38ef`, e19adc5f69de) → `rollback-pre-wave8-2` → `rollback-pre-wave8`. 롤백: `docker tag <태그> storige-api:latest && docker compose up -d --no-deps --no-build api && docker compose restart nginx` · 킬스위치 = .env `EDITOR_CONTENT_PAGE_RULES=off`(기대값 프로필도 같이 갱신) |
-| worker | `b76e927`(이미지 376052e8f43d, 10-12 15:37:33Z — Wave 9: [FLAGS-CHECK]·의존성 마이너, sharp 0.35.5 x64 점검 통과) | `storige-worker:rollback-pre-wave9`(= c73b2827a13e, `776ac0e` Wave 8 1단계) → `rollback-pre-wave8`(=`d3e3587`, 3be1bd99732e) → … (큐 4종 0 확인 후 태그 원복 + `up -d --no-deps --no-build worker`) |
-| editor | Vercel `50n1lwavx`(release `b76e927`, Ready 10-12 15:41Z — 앱 코드 변경 없음: 고정 release 빌드 55 파일 동일, AI 탭 0) | `55d6gq227`(release `5b48aee`, 내용 동일) → `8taztq201`(`5ef27c0`) → `diqgayglo`(`c8d7df5`, Wave 8 2b) → `gmboy5bm1` … promote |
-| admin | Vercel `4yuolx9r0`(release `b76e927`, Ready 10-12 15:41Z — Sentry 전송 전처리) | `naur32cp4`(release `c009ceb`, = `c6c38ef` 코드) → `kolxzkmiv` → `luw3mayxr` → … promote |
+| api | `78b5c5a`(이미지 9f880c3ec267, 10-14 05:47:13Z — Wave 10: 파트너 잡 응답 키 한정(FREEZE v1.20, 06:30Z 설정 전환 후 재생성)·잡 상태 보고 라우트 내부 워커 전용·최종화 errorDetail.jobErrorCode(v1.19)·업로드 확정·잡 입력 확인 로그·bcrypt 6·AI 의존 제거·필터 설치 이미지(베이스 digest 고정·설치 스크립트 차단)) + nginx 05:47Z·06:30Z | 태그 `storige-api:rollback-pre-wave10`(= de68a7201718, `b76e927`) → `rollback-pre-wave9`(= e8f5bd686b27) → `rollback-pre-wave-b`(같은 이미지) → `rollback-pre-n-api-3b` → … 롤백: `docker tag <태그> storige-api:latest && docker compose up -d --no-deps --no-build api && docker compose restart nginx`(기대값 프로필의 새 토큰도 같은 편집에서 정리 — DEPLOYMENT 플래그 표) · 잡 응답 키 한정만 되돌리기 = 설정 원복 후 api 재생성(이미지 그대로) · 킬스위치 = .env `EDITOR_CONTENT_PAGE_RULES=off` |
+| worker | `78b5c5a`(이미지 67212683568c, 10-14 05:45:13Z — Wave 10: 플래그 판독 모듈화·검증 결과 코드 로그·필터 설치 이미지(베이스 digest 고정), PDF 도구 버전 불변(게이트 비교)) | `storige-worker:rollback-pre-wave10`(= 376052e8f43d, `b76e927`) → `rollback-pre-wave9`(= c73b2827a13e) → `rollback-pre-wave8` → … (큐 4종 0 확인 후 태그 원복 + `up -d --no-deps --no-build worker`) |
+| editor | Vercel `nnvd2mwaw`(release `78b5c5a`, Ready 10-14 05:37Z — lockfile·frozen 설치·빌드 생략 판정 스크립트. 앱 번들 변화는 release 문자열뿐: release 없는 청크 이름이 직전 운영과 동일) | `50n1lwavx`(release `b76e927`) → `55d6gq227` → `8taztq201` → `diqgayglo` … promote |
+| admin | Vercel `iuaj8g2oj`(release `78b5c5a`, Ready 10-14 05:37Z — 같은 이유, 앱 코드 변경 없음) | `4yuolx9r0`(release `b76e927`) → `naur32cp4` → `kolxzkmiv` → … promote |
 
-- VPS 체크아웃 = `b76e927`(10-12). api·worker 이미지 = `b76e927`. SQL·마이그레이션 없음(Wave 1 이후). 계약 정본 **CONTRACT_FREEZE v1.17**(v1 도서 확정 실패 errorDetail 고정 형식 MODIFY-TARGET — 적용 10-12 15:43Z 완료 통지 시각, editor.ready orientationMismatch 사후 등재·SDK TemplateSetMismatch 이름 export ADDITIVE).
-- 플래그: 운영 값과 기대값 프로필은 비공개 메모 `../_private_notes/wave10/RESUME_OPS_PRIVATE.md` 「플래그」 절이 정본이다. 확인은 기동 로그 `[FLAGS]` 와 `[FLAGS-CHECK] <svc> ok n=…`(api 13·worker 9) 로 한다. 플래그를 바꿀 때는 운영 `.env` 의 기대값 프로필을 같은 편집에서 갱신한다(안 하면 mismatch 경고 — 동작에는 영향 없음). 킬스위치·비상 차단 절차는 `docs/DEPLOYMENT.md`.
+- VPS 체크아웃 = `78b5c5a`(10-14). api·worker 이미지 = `78b5c5a`. SQL·마이그레이션 없음(Wave 1 이후). 계약 정본 **CONTRACT_FREEZE v1.20** — v1.18(SDK 알림 이벤트 payload 판독·소비처 원장 정정, P1) · v1.19(잡 상태 보고 라우트 내부 워커 전용·최종화 errorDetail.jobErrorCode — 적용 10-14 P2 완료 통지 시각) · v1.20(파트너 잡 응답 키 14개 — 적용 10-14 06:31Z 전환 완료 통지 시각, 7일 관찰 ~10-21).
+- 플래그: 운영 값과 기대값 프로필은 비공개 메모 `../_private_notes/wave10/RESUME_OPS_PRIVATE.md` 「플래그」 절이 정본이다. 확인은 기동 로그 `[FLAGS]` 와 `[FLAGS-CHECK] <svc> ok n=…`(api 14·worker 9) 로 한다. 플래그를 바꿀 때는 운영 `.env` 의 기대값 프로필을 같은 편집에서 갱신한다(안 하면 mismatch 경고 — 동작에는 영향 없음). 킬스위치·비상 차단 절차는 `docs/DEPLOYMENT.md`.
 
 - 그 밖의 worker `.env`(09-30 04:47Z, 불리언만): CUTOUT·LIGHTWEIGHT_VALIDATION·LIGHTWEIGHT_SYNTHESIS·CROP_MARK_VALIDATION·WIRED_FIXABLE_GATING = true / PRINT_NORMALIZE·FLATTEN·FILE_ORPHAN_* 미설정(코드 기본값).
 - 운영 사이트 편집데이터 보관기간: **전 사이트 미설정(NULL)** — 양사 요청으로 유지, 설정할 때는 사전 통지.
 - 로컬 백업 브랜치 `backup/wave1-pre-regroup-2026-09-30`(push 안 함, 09-30 커밋 재구성 전 상태 — 필요 없으면 오너 확인 뒤 삭제).
 - 개요 시각화: `docs/WAVE1_TRIMBOX_OVERVIEW_2026-09-30.html` — Wave 3 반영 갱신은 10-04 세션 정리 작업에서 진행했다(커밋 여부는 `git log -- docs/WAVE1_TRIMBOX_OVERVIEW_2026-09-30.html` 로 확인).
 
-### 검증 기준선 (Wave 9 이후 — 이보다 낮으면 회귀)
+### 검증 기준선 (Wave 10 이후 — 이보다 낮으면 회귀)
 
 | 대상 | 기준 |
 |---|---|
-| api jest | 134 스위트 / 2912 · lint 0 err(경고 44) · nest build · contract-freeze 94 |
-| worker jest | 34 스위트 / 1268 · lint 0 err(경고 17) · nest build |
+| api jest | 136 스위트 / 3081 · lint 0 err(경고 44) · nest build · contract-freeze 94 |
+| worker jest | 34 스위트 / 1294 · lint 0 err(경고 16) · nest build |
 | editor vitest | 107 파일 / 1601(Node 24·26) · tsc · lint 0 err(경고 76) · build · build:embed |
 | embed-e2e(Playwright `tests/embed-mode`) | 39 — CI 편입(번들 chromium) |
-| sdk | 12 / 369 · tsc |
+| sdk | 12 / 375 · tsc |
 | admin vitest | 21 파일 / 261 · lint 0·0 · build |
 | canvas-core | 57 / 658 |
-| api test:e2e | 기존 실패 5 스위트 / 95 — CI 밖, 실패 이름 96개 고정(Wave 10 정비 후보) |
+| api test:e2e | 7 스위트 / 175 — CI 별도 잡 `api-e2e`(Wave 10 편입) |
 
 - worker `crop-mark-validation.spec` 파리티 1건은 API 스위트와 동시에 돌릴 때만 간헐 실패한다(부하성). 단독 실행하면 통과한다.
 
 ### 배포 방식 메모
 
-- editor·admin: master push 가 곧 배포다(**push 전 오너 승인**). 문서만 바꾼 push 는 Vercel 빌드가 Canceled 되고 기존 Ready 가 유지된다(정상). Vercel 대기 루프는 **새 배포 id** 를 매칭한다.
+- editor·admin: master push 가 곧 배포다(**push 전 오너 승인**). Wave 10 부터 빌드 생략 판정은 `scripts/vercel-ignore-build.mjs` 다 — 직전 운영 배포 커밋이 얕은 clone 밖이면 공개 URL 로 받아 와 판정하므로 문서 전용 push 가 쌓여도 재배포되지 않는다(10-14 preview·운영 실측). 설치는 frozen-lockfile. 문서만 바꾼 push 는 Vercel 빌드가 Canceled 되고 기존 Ready 가 유지된다(정상). Vercel 대기 루프는 **새 배포 id** 를 매칭한다.
 - api·worker: VPS 수동 배포(`CLAUDE.local.md` §6). 순서: 직전 이미지 태그 `rollback-pre-<이름>` 보존 → `git pull` → build → **worker 먼저** `up -d` → api `up -d` → **nginx 재시작** → 기동 로그 `[FLAGS]` 확인 → 스모크(health 200, 무인증 경로 401, guest 토큰 없음 403, api·worker 오류·5xx 0, 대기열 0).
 - DB 변경이 있으면 prod 는 `synchronize=false` 이므로 `apps/api/migrations/` SQL 을 먼저 수동 적용하고 백업을 남긴다.
 
@@ -207,7 +207,7 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
 ### 5.2.3 Wave 9 안 1 (2026-10-12 설계·결정·구현·배포 완료)
 
 - 정본 비공개 `../_private_notes/wave9/DESIGN_W9.md`(작업 단위 T9.1~T9.18 + 선택 T9.19~T9.22, 오너 결정 D1~D11), 결정 기록 `../_private_notes/wave9/CTO_DECISIONS_W9.md`.
-- **문서 push 주의(10-12 확인)**: Vercel ignoreCommand 는 직전 운영 배포 SHA 가 depth 10 clone 밖이면 무조건 빌드한다 → 문서 전용 커밋도 거리 10 이상이면 editor·admin 운영 재배포. push 전 `git rev-list --count <운영 release sha>..HEAD` 확인(운영 release 는 공개 번들의 `storige-editor@…`·`storige-admin@…` 문자열).
+- **문서 push 주의(10-12 확인 → 10-14 Wave 10 C14 로 해소, 5.2.5)**: Vercel ignoreCommand 는 직전 운영 배포 SHA 가 depth 10 clone 밖이면 무조건 빌드한다 → 문서 전용 커밋도 거리 10 이상이면 editor·admin 운영 재배포. push 전 `git rev-list --count <운영 release sha>..HEAD` 확인(운영 release 는 공개 번들의 `storige-editor@…`·`storige-admin@…` 문자열).
 
 - **오너 결정(10-12)**: 범위 18건 + 선택 4건, D2 = B2 기대값 경고, D3 = 권고안 A(typeorm 0.3.31·express/body-parser 범위 override), D4~D7·D9~D11 권고안, push 마다 개별 승인.
 - **배포 완료(10-12)**: P1 `6f4a32e..cfcab50`(CI 게이트·액션 v7/v5·qpdf spec·러너 probe·DEPLOYMENT Wave 8 절·예제) push 15:08:22Z → CI 38268035509 green, Vercel 빌드 skip. P2 `cfcab50..b76e927`(14커밋) push 15:25:37Z → CI 38270147876 green → VPS 태그 `rollback-pre-wave9`(실행 중 이미지 기준)·.env 백업·`FLAGS_EXPECTED_*` 2줄 → worker 빌드·sharp x64 OK·재생성 15:37:33Z(`[FLAGS-CHECK] worker ok n=9`) → api 빌드·sharp OK·재생성 15:39:57Z(`[FLAGS]` 토큰 1개 추가, `[FLAGS-CHECK] api ok n=13`) + nginx 15:40:06Z → Vercel editor `50n1lwavx`·admin `4yuolx9r0` Ready 15:41Z(push 후 약 15분 지연) → 스모크 정상(health 200, 무인증 401, with-templates 3세트 200, 잘못된 JSON 400 동일, Loki 오류·5xx·[env]·JOB_STALLED 0). 3사 사전 고지·완료 통지 15:43Z(= FREEZE v1.17 적용 시점), 100p 에는 FILE_SITE 중간 회신 동봉. **bookmoa 는 bridge 주소로 보냈으나 전달 미확인** — 새 bookmoa 창구 이름을 받으면 완료 통지 재발송.
@@ -221,11 +221,14 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
 - **첫 실 파트너 흐름 관측(Loki)**: 10-10 12:52Z·10-12 06:32Z 에 업로드(presigned → complete) → 검증(validate/external) → 결과 조회 2회. 검증 결과 PASS 1·FAIL 1. 10-13 운영 읽기로 판정 완료(bookmoa PASS·경고 4, printy FAILED SPINE_SIZE_MISMATCH — 상세는 비공개 메모), printy 회신 발송, bookmoa 는 창구 확보 후.
 - P0: 첫 실 흐름 판정·회신, bookmoa 창구 재확인(10-12 통지 전달 미확인), 운영 메모 보관처 정리, 이 문서의 시작 프롬프트·창구 정정. 권고 Wave 10 = 안 1(실 트래픽 대응·관측·서버 공급망).
 
-### 5.2.5 Wave 10 안 1 설계 (2026-10-13 — 오너 결정 완료: 권고안 일괄, 구현 착수 대기)
+### 5.2.5 Wave 10 안 1 (2026-10-13 설계·결정 → 10-14 구현·배포·파트너 잡 응답 키 전환 완료)
 
-- 정본 비공개 `../_private_notes/wave10/DESIGN_W10.md`(작업 단위 28: 포함 21·선택 6·보류 1, 오너 결정 D1~D12), 결정 기록 `../_private_notes/wave10/CTO_DECISIONS_W10.md`. 검토 2관점 GO_WITH_FIXES → 반영.
-- 다음 행동·승인 범위는 비공개 `CTO_DECISIONS_W10.md` 「다음 행동」 절이 정본이다(S0 읽기 → 런북 동기화 → 구현 워크플로 → 검증 → push 마다 승인).
-- 요지: 파트너 잡 조회 응답 필드 축소(플래그로 싣고 ACK 뒤 전환), 실 트래픽 판정 로그 보강·Loki 감지 규칙, env 정합 spec 확장, 서버 이미지 공급망 정리(bcrypt 6·미사용 의존 제거·필터 설치·설치 스크립트 차단), api e2e 복구·CI 편입, Vercel 설치·ignoreCommand 정비(조건부).
+- 정본 비공개 `../_private_notes/wave10/DESIGN_W10.md`(작업 단위 28: 포함 21·선택 6·보류 1, 오너 결정 D1~D12), 결정·배포 기록 `../_private_notes/wave10/CTO_DECISIONS_W10.md`. 구현 = 3레인 병렬 → 통합 → 2관점 검토(GO_WITH_FIXES, major 4 반영) → 수정.
+- **P1(10-14)**: `f1af9e6..bf5291a`(api e2e 복구·CI `api-e2e` 잡, SDK 알림 payload 판독, compose 정합 spec 소스 키 포함 검사, FREEZE v1.18 정정) push 03:54Z → CI 38508663086 green(api-e2e 7/175), Vercel 생략(거리 9).
+- **Vercel preview 실측(10-14)**: 실측 브랜치 첫 push 빌드 → 빈 커밋 11 개 뒤 직전 배포 커밋 보충·생략 → editor 커밋에서 editor 빌드·admin 생략 → 실측 브랜치 삭제. 성공 → C14(빌드 생략 판정 스크립트·frozen 설치)를 P2 에 동승.
+- **P2(10-14)**: `bf5291a..78b5c5a`(13커밋 — 의존성·이미지 필터 설치·digest·설치 스크립트 차단, worker 플래그 모듈, 관측 로그, env 매핑 정리, 파트너 잡 응답 키(설정 OFF 로 배포), books jobErrorCode, 잡 상태 보고 내부 전용, Loki 규칙, admin Dockerfile, FREEZE v1.19, Vercel C14) push 05:36:50Z(직전 2h 파트너 요청 0 확인 뒤) → Vercel editor `nnvd2mwaw`·admin `iuaj8g2oj` Ready → CI 38517575208 green → VPS 태그 `rollback-pre-wave10`·.env 백업 → worker 05:45:13Z(게이트 sharp·app.module·도구 버전 동일, `[FLAGS-CHECK] worker ok n=9`) → api 05:47:13Z(게이트 sharp·app.module·bcrypt, 기대값 프로필 토큰 1개 추가, `[FLAGS-CHECK] api ok n=14`) + nginx → 스모크 정상(공개 API 응답 배포 전과 동일, Loki 오류·5xx·[env]·JOB_STALLED 0) → loki 재생성 05:48:29Z(규칙 6개 health ok). 3사 사전 고지·완료 통지.
+- **파트너 잡 응답 키 전환(10-14)**: 3사 서면 회신(10-13) → 사전 통지 06:0xZ(오너 결정으로 당일 전환, 이의 없음) → 06:30Z 설정 전환·api 재생성 → 응답 키 14·result.result 유지 확인, 스모크 정상 → 완료 통지 06:31Z(= FREEZE v1.20 적용). 7일 관찰(~10-21), 문제 시 설정 원복 후 통지·C15 되돌림.
+- 후속: CI 에 Loki 규칙 검사, 실제 컨트롤러 HTTP 수준 spec(잡 응답 키·상태 보고 404), editor Dockerfile 빌드 실패 숨김 제거·editor·admin 베이스 digest, GUIDE 옛 'outputFileUrl 직접 GET' 서술 2곳·DEPLOYMENT 플래그 나열 보강, 배포 사후 자산 비교 방법 정정(운영 env 반영), VPS 오래된 롤백 태그·빌드 캐시 정리(디스크 85%), wave9 브랜치·worktree 정리, ubuntu-26.04 probe 1회차(10-19~25).
 
 ### 5.3 다음 후보 (착수 약속 없음 — 새 세션이 재점검 후 우선순위 제안)
 
