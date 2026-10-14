@@ -326,5 +326,47 @@ describe('FilesService (Phase 0 safety net)', () => {
       });
       expect(objectStorage.put).not.toHaveBeenCalled();
     });
+
+    it('STORAGE_MAX_FILE_SIZE env 값은 무시하고 상수 상한으로 검증한다', async () => {
+      const put = jest.fn().mockResolvedValue({ backend: 'local' });
+      const create = jest.fn((e: Partial<FileEntity>) => e as FileEntity);
+      const save = jest.fn((e: FileEntity) => Promise.resolve(e));
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [
+          FilesService,
+          {
+            provide: getRepositoryToken(FileEntity),
+            useValue: { create, save },
+          },
+          {
+            provide: ConfigService,
+            useValue: {
+              get: jest.fn((key: string, defaultValue?: unknown) =>
+                key === 'STORAGE_MAX_FILE_SIZE' ? '1' : defaultValue,
+              ),
+            },
+          },
+          {
+            provide: ObjectStorageService,
+            useValue: { get: jest.fn(), put, delete: jest.fn() },
+          },
+        ],
+      }).compile();
+      const envService = module.get<FilesService>(FilesService);
+      const file = {
+        fieldname: 'file',
+        originalname: 'x.pdf',
+        encoding: '7bit',
+        mimetype: 'application/pdf',
+        size: FILE_UPLOAD_MAX_BYTES,
+        buffer: Buffer.alloc(0),
+      } as Express.Multer.File;
+
+      const saved = await envService.uploadFile(file, FileType.OTHER);
+
+      expect(put).toHaveBeenCalledTimes(1);
+      expect(save).toHaveBeenCalledTimes(1);
+      expect(saved.fileSize).toBe(FILE_UPLOAD_MAX_BYTES);
+    });
   });
 });
