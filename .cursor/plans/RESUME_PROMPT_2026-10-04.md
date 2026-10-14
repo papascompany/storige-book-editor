@@ -70,6 +70,8 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
 
 ## 2. 현재 라이브 상태 (2026-10-14 06:31Z — Wave 10 안 1 배포·파트너 잡 응답 키 전환 후)
 
+> **10-14 09:34Z 갱신:** master = `ea4ae789`(Wave 11 — 테스트·OpenAPI 스키마 코드·Loki 규칙 CI·문서 정정·업로드 상한 상수화, 동작 불변, §5.2.7). **운영 반영 없음** — 아래 표의 VPS 이미지·Vercel 배포는 그대로다(editor·admin 빌드 생략 판정). api 재빌드(OpenAPI 스키마 동승)는 잡 응답 키 전환 관찰 종료(~10-21) 뒤 별도 승인.
+
 | 구성 | 현재 운영 | 롤백 |
 |---|---|---|
 | DB | 09-30 Wave 1 ~ 10-04 Wave 3 **마이그레이션 없음**. 마지막 스키마 변경은 09-29 `20260929`·`20260930`(ADDITIVE) | 백업 `~/backup-sites-pre-staff-edit-20260929.sql`·`~/backup-template_sets-pre-padstep-20260928.sql`. 추가 컬럼·테이블은 남겨도 무해 |
@@ -83,14 +85,15 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
 
 - 그 밖의 worker `.env`(09-30 04:47Z, 불리언만): CUTOUT·LIGHTWEIGHT_VALIDATION·LIGHTWEIGHT_SYNTHESIS·CROP_MARK_VALIDATION·WIRED_FIXABLE_GATING = true / PRINT_NORMALIZE·FLATTEN·FILE_ORPHAN_* 미설정(코드 기본값).
 - 운영 사이트 편집데이터 보관기간: **전 사이트 미설정(NULL)** — 양사 요청으로 유지, 설정할 때는 사전 통지.
-- 로컬 백업 브랜치 `backup/wave1-pre-regroup-2026-09-30`(push 안 함, 09-30 커밋 재구성 전 상태 — 필요 없으면 오너 확인 뒤 삭제).
+- 로컬 백업 브랜치 `backup/*` 4개(`backup/wave1-pre-regroup-2026-09-30` 포함)는 10-14 오너 요청으로 삭제했다(bundle 보관 위치는 비공개 메모, 복원 절차 검증됨). 로컬 브랜치는 `master` 와 다른 세션 worktree 브랜치만 남는다.
 - 개요 시각화: `docs/WAVE1_TRIMBOX_OVERVIEW_2026-09-30.html` — Wave 3 반영 갱신은 10-04 세션 정리 작업에서 진행했다(커밋 여부는 `git log -- docs/WAVE1_TRIMBOX_OVERVIEW_2026-09-30.html` 로 확인).
 
-### 검증 기준선 (Wave 10 이후 — 이보다 낮으면 회귀)
+### 검증 기준선 (Wave 11 이후 — 이보다 낮으면 회귀)
 
 | 대상 | 기준 |
 |---|---|
-| api jest | 136 스위트 / 3081 · lint 0 err(경고 44) · nest build · contract-freeze 94 |
+| api jest | 138 스위트 / 3116(Wave 11, 10-14) · lint 0 err(경고 44) · nest build · contract-freeze 94 |
+| CI loki-rules | `.github/workflows/loki-rules.yml` — docker/loki·compose 변경 시 규칙 구조(그룹 2·규칙 6)·alertmanager_url 빈 값·Loki 3.2.1 실기동 로드 확인 |
 | worker jest | 34 스위트 / 1294 · lint 0 err(경고 16) · nest build |
 | editor vitest | 107 파일 / 1601(Node 24·26) · tsc · lint 0 err(경고 76) · build · build:embed |
 | embed-e2e(Playwright `tests/embed-mode`) | 39 — CI 편입(번들 chromium) |
@@ -236,8 +239,17 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
 
 - 정본 비공개 `../_private_notes/wave10/NEXT_ISSUES_2026-10-14.md`, 새 세션 시작 절차 `../_private_notes/wave10/NEW_SESSION_PROMPT_2026-10-14.md`.
 - 진행 중: 파트너 잡 응답 키 전환 7일 관찰(~10-21, 일일 Loki 집계), CI 러너 probe 1회차(10-19~25), 운영 메모 보관처 이전(오너).
+- (10-14 갱신) 아래 Wave 11 후보 중 Dockerfile 정비를 뺀 항목은 §5.2.7 에서 처리 — OpenAPI 는 코드만(배포 대기), audit 5건은 수용.
 - Wave 11 후보(작음·검증 보강): 컨트롤러 HTTP 수준 테스트(잡 응답 키·상태 보고 404), CI 에 Loki 규칙 검사, GUIDE·DEPLOYMENT 옛 서술 정리, OpenAPI 잡 응답 스키마 게시, editor·admin Dockerfile 정비(빌드 실패 숨김 제거·베이스 digest), 배포 사후 자산 확인 방법 정정(운영 env 반영), 의존성 audit 잔여 5건, 미사용 테스트 유틸 삭제.
 - 별도 트랙·오너 결정: 파일 사이트 귀속 엄격 전환, 세션 출력 조회 플래그(근거 대기), 고객 번들 변경 묶음·Playwright 승격(bookmoa e2e 뒤), 알림 수단 확장, CI 액션 고정.
+
+### 5.2.7 Wave 11 (2026-10-14 재점검·설계·구현·push — 운영 반영은 관찰 종료 뒤)
+
+- 정본 비공개 `../_private_notes/wave11/W11_SCOPE_DRAFT_2026-10-14.md`(재점검 판정·오너 결정 4건), 레인 계약 `contract-l1~l5.json`, 기록 `../_private_notes/wave10/CTO_DECISIONS_W10.md` 끝. 진행 = 재점검(5그룹 + 반박 검토) → 오너 결정 → 설계(레인 5 + 2관점 검토, 지적 18 반영) → 레인 병렬 구현 → 통합 → 2관점 검토 → 수정.
+- 오너 결정: 범위 L1~L5(Docker 정비 제외) · OpenAPI 잡 응답 스키마 = 조회 + 공개 생성 6라우트, 관찰 종료 뒤 첫 api 재빌드에 동승 · storige-editor 컨테이너(소비자 0)는 이번엔 기록만 · 의존성 audit 잔여 5건은 도달 경로 없음 근거로 수용.
+- **push(10-14): `21398b5..ea4ae789` 09:34:44Z(13커밋)** → CI ci·loki-rules·gitleaks green, Vercel editor·admin 생략(운영 유지). 내용: 실제 WorkerJobsController HTTP spec(상태 보고 두 경로·잡 응답 형태), 미사용 test-utils 삭제, `PartnerJobViewDto`·7라우트 응답 스키마(공개 `/api/docs` 는 api 재빌드 뒤 반영 — 파트너 포털 export 불변), Loki 규칙 CI, GUIDE compose-mixed 회수 안내를 output-url 재발급으로 정정·DEPLOYMENT 플래그 나열·빌드 생략 판정·업로드 상한 서술, 업로드 상한 경로별 상수(storage 50MB·files 100MB, env 읽기 제거 — 운영 env 에 키 없음 확인). 3사 GUIDE 정정 FYI(동작 변경 없음).
+- 사실 정정: apps/docs 와 연결된 Vercel 프로젝트는 없다 — `docs/`·`apps/api/src` push 로 문서 포털이 배포되지 않는다.
+- 다음: 관찰 종료 기록(~10-21) → api 재빌드(OpenAPI 스키마 동승 — 잡 응답 키 설정이 켜진 상태에서만, 되돌릴 때는 스키마 커밋도 함께 되돌림) → GUIDE changelog 에 `/api/docs` 스키마 추가 기록. 후속: 컨트롤러 옛 주석 정리, fix-bleed·첨부 페이지 채움 응답 스키마, storige-editor 컨테이너 제거 여부, CI 액션 SHA 고정, ubuntu-26.04 probe(10-19~25).
 
 ### 5.3 다음 후보 (착수 약속 없음 — 새 세션이 재점검 후 우선순위 제안)
 
