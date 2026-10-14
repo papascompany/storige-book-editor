@@ -40,6 +40,7 @@ import { CreateBleedFixJobDto } from './dto/create-bleed-fix-job.dto';
 import { CreateAttachPagePadJobDto } from './dto/create-attach-page-pad-job.dto';
 import { WorkerJob } from './entities/worker-job.entity';
 import { toPartnerJobView, type PartnerJobView } from './partner-job-view';
+import { PartnerJobViewDto } from './dto/partner-job-view.dto';
 import { streamJobOutput } from './job-output-stream';
 import { isFlagOn, isPartnerJobViewOn } from '../config/feature-flags';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -289,7 +290,7 @@ export class WorkerJobsController {
   @UseGuards(ApiKeyGuard)
   @ApiSecurity('api-key')
   @ApiOperation({ summary: 'Create a PDF validation job (external API key auth)' })
-  @ApiResponse({ status: 201, description: 'Validation job created and queued', type: WorkerJob })
+  @ApiResponse({ status: 201, description: 'Validation job created and queued', type: PartnerJobViewDto })
   @ApiResponse({ status: 400, description: 'Invalid input' })
   @ApiResponse({ status: 401, description: 'Invalid API key' })
   async createValidationJobExternal(
@@ -363,7 +364,7 @@ export class WorkerJobsController {
   @UseGuards(ApiKeyGuard)
   @ApiSecurity('api-key')
   @ApiOperation({ summary: 'Create a page-count fix job (external API key auth)' })
-  @ApiResponse({ status: 201, description: 'Fix job created and queued', type: WorkerJob })
+  @ApiResponse({ status: 201, description: 'Fix job created and queued', type: PartnerJobViewDto })
   @ApiResponse({ status: 401, description: 'Invalid API key' })
   async createPageCountFixJobExternal(
     @Body() dto: CreatePageCountFixJobDto,
@@ -421,7 +422,7 @@ export class WorkerJobsController {
   @UseGuards(ApiKeyGuard)
   @ApiSecurity('api-key')
   @ApiOperation({ summary: 'Create a PDF synthesis job (external API key auth)' })
-  @ApiResponse({ status: 201, description: 'Synthesis job created and queued', type: WorkerJob })
+  @ApiResponse({ status: 201, description: 'Synthesis job created and queued', type: PartnerJobViewDto })
   @ApiResponse({ status: 400, description: 'Invalid input' })
   @ApiResponse({ status: 401, description: 'Invalid API key' })
   async createSynthesisJobExternal(
@@ -524,7 +525,7 @@ export class WorkerJobsController {
   //    바꾸면 게스트가 401 로 파손되고 동결 계약도 깨진다.
   @UseGuards(OptionalShopJwtGuard, OptionalApiKeySiteGuard)
   @ApiOperation({ summary: 'Compose-mixed 잡 생성 (Phase 5)' })
-  @ApiResponse({ status: 201, description: '잡 생성 성공', type: WorkerJob })
+  @ApiResponse({ status: 201, description: '잡 생성 성공', type: PartnerJobViewDto })
   @ApiResponse({ status: 400, description: '빈 입력(EMPTY_COMPOSE_INPUT) / 자동조립 불완전(SESSION_ASSEMBLY_INCOMPLETE)' })
   @ApiResponse({ status: 404, description: '자동조립 대상 세션 미존재·타 테넌트(SESSION_NOT_FOUND)' })
   async createComposeMixed(
@@ -621,7 +622,7 @@ export class WorkerJobsController {
   @Post('render-pages')
   @Public()
   @ApiOperation({ summary: '내지 PDF 표시전용 가이드 래스터화 잡 생성' })
-  @ApiResponse({ status: 201, description: '잡 생성 성공', type: WorkerJob })
+  @ApiResponse({ status: 201, description: '잡 생성 성공', type: PartnerJobViewDto })
   async createRenderPages(
     @Body() dto: CreateRenderPagesJobDto,
     // 세션 연결 확인 — 비회원 세션은 이 헤더의 게스트 토큰으로 연결을 증명한다.
@@ -770,7 +771,7 @@ export class WorkerJobsController {
   @UseGuards(ApiKeyGuard)
   @ApiSecurity('api-key')
   @ApiOperation({ summary: 'Create a PDF split-synthesis job (external API key auth)' })
-  @ApiResponse({ status: 201, description: 'Split synthesis job created and queued', type: WorkerJob })
+  @ApiResponse({ status: 201, description: 'Split synthesis job created and queued', type: PartnerJobViewDto })
   @ApiResponse({ status: 400, description: 'Invalid input or option combination' })
   @ApiResponse({ status: 401, description: 'Invalid API key' })
   @ApiResponse({ status: 404, description: 'Session or file not found' })
@@ -846,7 +847,7 @@ export class WorkerJobsController {
     //        폴링 가능. 타 테넌트 스탬프 잡은 assertJobSiteAccess 가 404
     //      · GET /worker-jobs/external/:id: assertJobSiteAccess 가 NULL 잡을 통과시킴
     //        → jobId 를 아는 **어느 테넌트 키로도** 상태·outputFileUrl 조회 가능
-    //    (산출물 경로 자체가 무인증 공개라 실질 노출 = 오너 결정 대기.)
+    //    (산출물 바이트는 2026-09-11 부터 `GET external/:id/output-url` 서명 URL 로만 회수된다 — 정책 결정 대상은 그대로.)
     return await this.workerJobsService.checkMergeable(checkMergeableDto, site);
   }
 
@@ -911,7 +912,7 @@ export class WorkerJobsController {
    * secure_link 가 검증하는 /storage-signed/… (TTL 기본 300s, 만료 시 재호출).
    * 파트너는 "산출물 URL 박제" 대신 **jobId 저장 → 필요 시 재발급** 으로 전환한다
    * (bookmoa grandfathering 요구의 해소 경로 — 설계안 §3-B 방식 B).
-   * 기존 무인증 /storage/outputs/ 는 유예(D4)로 병행 서빙 — cutover 는 D5 별도.
+   * 종전 /storage/outputs/ 직접 경로는 2026-09-11 cutover 로 410 — 이 라우트가 산출물 회수 경로다.
    */
   @Get('external/:id/output-url')
   @Public()
@@ -937,7 +938,7 @@ export class WorkerJobsController {
   @UseGuards(ApiKeyGuard)
   @ApiSecurity('api-key')
   @ApiOperation({ summary: 'Get a worker job by ID (external API key auth)' })
-  @ApiResponse({ status: 200, description: 'Worker job details', type: WorkerJob })
+  @ApiResponse({ status: 200, description: 'Worker job details', type: PartnerJobViewDto })
   @ApiResponse({ status: 404, description: 'Job not found' })
   @ApiResponse({ status: 401, description: 'Invalid API key' })
   async findOneExternal(
