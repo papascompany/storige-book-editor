@@ -1,0 +1,185 @@
+name: loki-rules
+
+# Loki 설정과 ruler 규칙 파일 검증. docker/loki 나 compose 의 loki 서비스가 바뀔 때만 돈다.
+# 규칙의 LogQL 오류는 -verify-config 와 Loki 기동을 막지 않고, 그 규칙 파일 전체가 로드되지 않는다.
+# 그래서 기동 성공이 아니라 실제로 로드된 규칙의 개수와 이름으로 확인한다.
+# YAML·JSON 해석은 러너의 python3(PyYAML)로 한다. run 블록에는 GitHub 표현식을 쓰지 않는다.
+# 저장소 루트에서 각 run 블록을 bash 로 그대로 돌려 로컬 docker 로 같은 검사를 할 수 있다.
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'docker/loki/**'
+      - 'docker-compose.yml'
+      - '.github/workflows/loki-rules.yml'
+  pull_request:
+    paths:
+      - 'docker/loki/**'
+      - 'docker-compose.yml'
+      - '.github/workflows/loki-rules.yml'
+
+permissions:
+  contents: read   # 코드 체크아웃만
+
+# 같은 ref 의 중복 실행은 취소
+concurrency:
+  group: loki-rules-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: verify loki config and rules
+    # 러너 이미지 고정 이유는 ci.yml test 잡 주석과 같다
+    runs-on: ubuntu-24.04
+    # 이미지 받기와 Loki 기동 대기(ready 최대 120s, 규칙 로드 최대 60s)
+    timeout-minutes: 5
+    env:
+      # 저장소 루트 기준 상대 경로. 로컬 대조 실험에서 저장소 안의 사본 디렉터리로 바꿔 돌릴 수 있게 둔다
+      LOKI_DIR: docker/loki
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # 이 잡은 checkout 뒤 git 자격증명을 쓰지 않는다
+          persist-credentials: false
+
+      - name: PyYAML 확인
+        run: |
+          set -euo pipefail
+          python3 -c "import yaml" || { echo "::error::python3 에서 yaml 모듈(PyYAML)을 불러올 수 없다"; exit 1; }
+          python3 -c "import sys, yaml; print('python', sys.version.split()[0], 'PyYAML', yaml.__version__)"
+
+      - name: 규칙 파일 구조 확인
+        run: |
+          set -euo pipefail
+          python3 - "$LOKI_DIR/rules/storige-signals.yml" <<'PY'
+          import sys, yaml
+          # 그룹이나 규칙을 더하거나 빼면 이 두 값과 마지막 스텝의 기대값을 함께 고친다
+          want_groups, want_rules = 2, 6
+          doc = yaml.safe_load(open(sys.argv[1], encoding="utf-8")) or {}
+          groups = doc.get("groups") or []
+          rules = [r for g in groups for r in (g.get("rules") or [])]
+          def blank(v):
+              return v is None or str(v).strip() == ""
+          no_name = sum(1 for r in rules if blank(r.get("alert") or r.get("record")))
+          no_expr = sum(1 for r in rules if blank(r.get("expr")))
+          no_signal = sum(1 for r in rules if blank((r.get("labels") or {}).get("signal")))
+          print(f"groups={len(groups)} rules={len(rules)} no_name={no_name} no_expr={no_expr} no_signal={no_signal}")
+          errs = []
+          if len(groups) != want_groups: errs.append(f"그룹 {len(groups)} 개(기대 {want_groups})")
+          if len(rules) != want_rules: errs.append(f"규칙 {len(rules)} 개(기대 {want_rules})")
+          if no_name: errs.append(f"이름(alert)이 없는 규칙 {no_name} 개")
+          if no_expr: errs.append(f"expr 이 빈 규칙 {no_expr} 개")
+          if no_signal: errs.append(f"labels.signal 이 없는 규칙 {no_signal} 개")
+          for e in errs: print(f"::error::{e}")
+          sys.exit(1 if errs else 0)
+          PY
+
+      - name: 알림 수신처 미설정 확인
+        run: |
+          set -euo pipefail
+          # 알림 수단을 정해 alertmanager_url 을 넣을 때 이 단언을 함께 고친다. 값은 로그에 찍지 않는다.
+          python3 - "$LOKI_DIR/loki-config.yml" <<'PY'
+          import sys, yaml
+          cfg = yaml.safe_load(open(sys.argv[1], encoding="utf-8")) or {}
+          v = (cfg.get("ruler") or {}).get("alertmanager_url")
+          if v is not None and str(v).strip() != "":
+              print("::error::ruler.alertmanager_url 이 설정돼 있다")
+              sys.exit(1)
+          print("ruler.alertmanager_url 미설정")
+          PY
+
+      - name: compose 와 같은 이미지·마운트로 설정 검증
+        run: |
+          set -euo pipefail
+          d="$(cd "$LOKI_DIR" && pwd)"
+          # 아래 docker run 은 compose 의 command·마운트를 그대로 따른다. 테넌트 디렉터리 이름 fake 를 바꾸면 규칙이 로드되지 않는다.
+          python3 - <<'PY'
+          import re, sys, yaml
+          # 이미지 태그는 compose 의 loki 서비스에서만 읽는다(promtail 은 별도 서비스라 섞이지 않는다)
+          svc = ((yaml.safe_load(open("docker-compose.yml", encoding="utf-8")) or {}).get("services") or {}).get("loki") or {}
+          errs = []
+          if not re.fullmatch(r"grafana/loki:\S+", str(svc.get("image") or "")):
+              errs.append("services.loki.image 가 grafana/loki:<tag> 형식이 아니다")
+          if svc.get("command") != "-config.file=/etc/loki/local-config.yml":
+              errs.append("compose loki command 가 바뀌었다 — 이 워크플로의 docker run 을 함께 고친다")
+          for m in ("./docker/loki/loki-config.yml:/etc/loki/local-config.yml:ro", "./docker/loki/rules:/etc/loki/rules/fake:ro"):
+              if m not in (svc.get("volumes") or []):
+                  errs.append(f"compose loki 마운트에 {m} 이 없다 — 이 워크플로의 docker run 을 함께 고친다")
+          for e in errs: print(f"::error::{e}")
+          sys.exit(1 if errs else 0)
+          PY
+          image="$(python3 -c 'import yaml; print(yaml.safe_load(open("docker-compose.yml", encoding="utf-8"))["services"]["loki"]["image"])')"
+          echo "image=$image"
+          # 이미지가 없으면 docker run 이 받는다
+          docker run --rm \
+            -v "$d/loki-config.yml:/etc/loki/local-config.yml:ro" \
+            -v "$d/rules:/etc/loki/rules/fake:ro" \
+            "$image" -config.file=/etc/loki/local-config.yml -verify-config
+
+      - name: Loki 기동 뒤 규칙 로드 확인
+        run: |
+          set -euo pipefail
+          d="$(cd "$LOKI_DIR" && pwd)"
+          image="$(python3 -c 'import yaml; print(yaml.safe_load(open("docker-compose.yml", encoding="utf-8"))["services"]["loki"]["image"])')"
+          name=loki-rules-ci
+          vol=loki-rules-ci-data
+          tmp=""
+          cleanup() {
+            docker rm -f "$name" >/dev/null 2>&1 || true
+            docker volume rm "$vol" >/dev/null 2>&1 || true
+            [ -z "$tmp" ] || rm -rf "$tmp"
+          }
+          trap cleanup EXIT
+          cleanup
+          tmp="$(mktemp -d)"
+          # /loki 는 compose 처럼 이름 있는 볼륨으로 둔다. 포트는 루프백의 임의 포트에만 연다.
+          docker run -d --name "$name" -p 127.0.0.1::3100 \
+            -v "$d/loki-config.yml:/etc/loki/local-config.yml:ro" \
+            -v "$d/rules:/etc/loki/rules/fake:ro" \
+            -v "$vol:/loki" \
+            "$image" -config.file=/etc/loki/local-config.yml >/dev/null
+          port="$(docker port "$name" 3100/tcp | head -n1 | sed 's/.*://')"
+          base="http://127.0.0.1:$port"
+          ready=0
+          for _ in $(seq 1 60); do
+            if curl -fsS "$base/ready" >/dev/null 2>&1; then ready=1; break; fi
+            sleep 2
+          done
+          [ "$ready" = 1 ] || { echo "::error::Loki 가 120s 안에 ready 가 되지 않았다"; docker logs --tail 80 "$name" 2>&1; exit 1; }
+          # 인자: 규칙 파일, rules API 응답, 모드(quiet = 일치 여부만 rc 로, report = 집계 출력)
+          cat > "$tmp/compare.py" <<'PY'
+          import json, sys, yaml
+          rules_file, body_file, mode = sys.argv[1:4]
+          doc = yaml.safe_load(open(rules_file, encoding="utf-8")) or {}
+          want = sorted(r.get("alert") or r.get("record") or "" for g in doc.get("groups") or [] for r in g.get("rules") or [])
+          try:
+              groups = json.load(open(body_file, encoding="utf-8"))["data"]["groups"]
+          except Exception:
+              if mode == "report":
+                  print("::error::rules API 응답이 JSON 이 아니거나 data.groups 가 없다")
+              sys.exit(2)
+          loaded = [r for g in groups for r in g.get("rules") or []]
+          got = sorted(r.get("name") or "" for r in loaded)
+          errs = sum(1 for r in loaded if (r.get("lastError") or "") != "")
+          ok = len(groups) == 2 and len(loaded) == 6 and got == want and errs == 0
+          if mode == "report":
+              print(f"loaded groups={len(groups)} rules={len(loaded)} lastError={errs}")
+              print("want=" + ",".join(want))
+              print("got =" + ",".join(got))
+          sys.exit(0 if ok else 1)
+          PY
+          for _ in $(seq 1 30); do
+            curl -fsS -o "$tmp/rules.json" "$base/prometheus/api/v1/rules" 2>/dev/null || : > "$tmp/rules.json"
+            python3 "$tmp/compare.py" "$d/rules/storige-signals.yml" "$tmp/rules.json" quiet && break
+            sleep 2
+          done
+          rc=0
+          python3 "$tmp/compare.py" "$d/rules/storige-signals.yml" "$tmp/rules.json" report || rc=$?
+          logerr="$(docker logs "$name" 2>&1 | grep -Eci 'unable to list rules|failed to load rule|could not parse|parse error' || true)"
+          echo "rule-log-errors=$logerr"
+          if [ "$rc" != 0 ] || [ "$logerr" != 0 ]; then
+            [ "$rc" = 2 ] || echo "::error::로드된 규칙이 규칙 파일과 다르다"
+            docker logs --tail 80 "$name" 2>&1
+            exit 1
+          fi
