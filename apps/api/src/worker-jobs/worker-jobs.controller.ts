@@ -849,7 +849,7 @@ export class WorkerJobsController {
     //        폴링 가능. 타 테넌트 스탬프 잡은 assertJobSiteAccess 가 404
     //      · GET /worker-jobs/external/:id: assertJobSiteAccess 가 NULL 잡을 통과시킴
     //        → jobId 를 아는 **어느 테넌트 키로도** 상태·outputFileUrl 조회 가능
-    //    (산출물 바이트는 2026-09-11 부터 `GET external/:id/output-url` 서명 URL 로만 회수된다 — 정책 결정 대상은 그대로.)
+    //    (산출물 바이트는 2026-09-11 부터 `GET external/:id/output-url` 서명 URL 로만 회수된다.)
     return await this.workerJobsService.checkMergeable(checkMergeableDto, site);
   }
 
