@@ -18,6 +18,7 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
 1) 시작 절차
    - CLAUDE.local.md 는 운영 규칙과 참조 위치만 확인합니다. 키·비밀번호는 출력·복사하지 않습니다.
    - .cursor/plans/RESUME_PROMPT_2026-10-04.md(정본)를 먼저 읽습니다. 경위가 필요할 때만 RESUME_PROMPT_2026-09-30.md 와 비공개 메모(../_private_notes/wave2·wave3, 저장소 밖)를 봅니다.
+   - 상세 시작 절차(CTO·서브에이전트·워크플로, 첫 작업, 운영 규칙, 셸 함정)는 비공개 `../_private_notes/wave10/NEW_SESSION_PROMPT_2026-10-14.md` 가 정본입니다. 이 블록보다 먼저 읽고 그 순서를 따릅니다(다음 이슈 정본 `NEXT_ISSUES_2026-10-14.md`).
    - git log --oneline -15 와 git status -sb 를 확인합니다. untracked 타 세션 파일(docs/SHOPIFY_*, docs/SITE_CATALOG_*, .tmp-verify-combos/ 등)은 건드리지 않고, git add 는 명시 경로 목록으로만 합니다.
    - SSH 가 필요하면 ssh-add -l 을 먼저 확인합니다(비어 있으면 ssh-add ~/.ssh/id_ed25519). 접속 대상은 CLAUDE.local.md §1.1 의 deploy@ 하나뿐이고, 다른 사용자명은 시도하지 않습니다.
    - 런타임: export PATH="/opt/homebrew/opt/node@24/bin:$PATH"
@@ -230,6 +231,13 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
 - **파트너 잡 응답 키 전환(10-14)**: 3사 서면 회신(10-13) → 사전 통지 06:0xZ(오너 결정으로 당일 전환, 이의 없음) → 06:30Z 설정 전환·api 재생성 → 응답 키 14·result.result 유지 확인, 스모크 정상 → 완료 통지 06:31Z(= FREEZE v1.20 적용). 7일 관찰(~10-21), 문제 시 설정 원복 후 통지·C15 되돌림.
 - 후속: CI 에 Loki 규칙 검사, 실제 컨트롤러 HTTP 수준 spec(잡 응답 키·상태 보고 404), editor Dockerfile 빌드 실패 숨김 제거·editor·admin 베이스 digest, GUIDE 옛 'outputFileUrl 직접 GET' 서술 2곳·DEPLOYMENT 플래그 나열 보강, 배포 사후 자산 비교 방법 정정(운영 env 반영), ubuntu-26.04 probe 1회차(10-19~25).
 - **정리(10-14)**: VPS storige-api·worker 옛 이미지 태그 45개·24h 넘은 빌드 캐시·md2books 옛 컨테이너 2·이미지 3 정리 → 디스크 85% → 24%(롤백 태그 wave10·wave9, md2books 실행·직전 이미지는 보존). 로컬 wave9·wave10 브랜치·worktree 정리(원격 브랜치는 이미 없음, 백업은 비공개 메모).
+
+### 5.2.6 다음 개발 이슈 정리 (2026-10-14 — Wave 10 직후, 세션 교대)
+
+- 정본 비공개 `../_private_notes/wave10/NEXT_ISSUES_2026-10-14.md`, 새 세션 시작 절차 `../_private_notes/wave10/NEW_SESSION_PROMPT_2026-10-14.md`.
+- 진행 중: 파트너 잡 응답 키 전환 7일 관찰(~10-21, 일일 Loki 집계), CI 러너 probe 1회차(10-19~25), 운영 메모 보관처 이전(오너).
+- Wave 11 후보(작음·검증 보강): 컨트롤러 HTTP 수준 테스트(잡 응답 키·상태 보고 404), CI 에 Loki 규칙 검사, GUIDE·DEPLOYMENT 옛 서술 정리, OpenAPI 잡 응답 스키마 게시, editor·admin Dockerfile 정비(빌드 실패 숨김 제거·베이스 digest), 배포 사후 자산 확인 방법 정정(운영 env 반영), 의존성 audit 잔여 5건, 미사용 테스트 유틸 삭제.
+- 별도 트랙·오너 결정: 파일 사이트 귀속 엄격 전환, 세션 출력 조회 플래그(근거 대기), 고객 번들 변경 묶음·Playwright 승격(bookmoa e2e 뒤), 알림 수단 확장, CI 액션 고정.
 
 ### 5.3 다음 후보 (착수 약속 없음 — 새 세션이 재점검 후 우선순위 제안)
 
