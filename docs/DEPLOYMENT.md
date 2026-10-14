@@ -7,6 +7,8 @@
 > 🔄 **갱신**: 2026-06-17 — 멀티테넌시 P1+P2a. **신규 DB 마이그레이션 2건 프로덕션 적용완료**(`20260617_add_user_site_roles.sql`·`20260617_b_add_site_id_data_scoping.sql`, 아래 "스키마 마이그레이션") + Vercel `ignoreCommand` 견고화(아래 "Vercel 배포 파이프라인" — admin 배포 ERROR 고착 트랩 해소).
 >
 > 🔄 **갱신**: 2026-10-12 — 「업데이트 및 배포」에 Wave 8(2026-10-06·07)과 2026-10-08 운영 정비 절 추가, `EDITOR_CONTENT_PAGE_RULES` compose 매핑·비상 차단 절차, 「로그 검색」에 Loki API 로 건수 세기.
+>
+> 🔄 **갱신**: 2026-10-14 — 「배포 후 점검」 키 나열·「잡 생성 확인 · 잡 산출물 세션 조회 플래그」 compose 매핑 나열에 `PARTNER_JOB_VIEW` 추가, 「Vercel 배포 파이프라인(ignoreCommand) 주의」를 빌드 생략 판정 스크립트(`scripts/vercel-ignore-build.mjs`) 기준으로 갱신.
 
 > ### ⚠️ 스키마 마이그레이션 (synchronize=false → 수동, API 재배포 **전** 실행)
 > 프로덕션은 TypeORM `synchronize=false` 이므로 엔티티 변경 시 `apps/api/migrations/*.sql` 을 수동 실행 후 API 재배포한다(순서 중요 — 신규 코드가 컬럼/테이블 존재를 전제).
@@ -280,7 +282,7 @@ docker logs storige-worker 2>&1 | grep "\[FLAGS\]"
 - 확인 대상은 각 플래그의 유효값(`true`/`false`)뿐입니다.
 - api 스냅샷 줄의 `FILE_RETENTION_*`·`FILE_ORPHAN_*` 값은 **env 계층 값**입니다. 관리자 저장소 설정(보존정책)이 함께 적용되므로 이 값만으로 실제 동작 모드를 판단하지 마십시오.
 - 보존정책의 실제 모드(삭제 여부·dry-run)는 `[FLAGS] api retention-effective` 줄 또는 관리자 저장소 설정 화면으로 확인합니다. 이 줄은 기동 시점 값이며, 관리자 화면에서 저장하면 런타임에 바뀝니다.
-- api 줄의 `JOB_LINK_STRICT`·`JOB_FILE_SITE_STRICT`·`SESSION_JOB_OUTPUT_LOOKUP`·`EDITOR_CONTENT_PAGE_RULES`·`EDITOR_SPREAD_VALIDATION_MAPPING` 은 줄 안의 위치가 아니라 키 이름으로 찾아 값을 확인합니다. 키 순서는 `apps/api/src/config/feature-flags.ts` 의 `API_FEATURE_FLAG_KEYS` 배열 순서이고, 키가 추가되면 줄 끝에 붙습니다. 코드 기본값은 앞의 세 키가 `false`, 뒤의 두 키가 `true` 입니다. 운영 값은 이 문서에 적지 않고 운영 기록을 기준으로 합니다(키 설명은 아래 환경 변수 설정의 「잡 생성 확인 · 잡 산출물 세션 조회 플래그」·「파일 정리 · 스프레드 검증 키 compose 매핑」).
+- api 줄의 `JOB_LINK_STRICT`·`JOB_FILE_SITE_STRICT`·`SESSION_JOB_OUTPUT_LOOKUP`·`EDITOR_CONTENT_PAGE_RULES`·`EDITOR_SPREAD_VALIDATION_MAPPING`·`PARTNER_JOB_VIEW` 은 줄 안의 위치가 아니라 키 이름으로 찾아 값을 확인합니다. 키 순서는 `apps/api/src/config/feature-flags.ts` 의 `API_FEATURE_FLAG_KEYS` 배열 순서이고, 키가 추가되면 줄 끝에 붙습니다. 코드 기본값은 앞의 세 키가 `false`, 그다음 두 키가 `true`, `PARTNER_JOB_VIEW` 가 `false` 입니다. 운영 값은 이 문서에 적지 않고 운영 기록을 기준으로 합니다(키 설명은 아래 환경 변수 설정의 「잡 생성 확인 · 잡 산출물 세션 조회 플래그」·「파일 정리 · 스프레드 검증 키 compose 매핑」).
 - `FILE_ORPHAN_*`·`FILE_RETENTION_*`·`THUMBNAIL_CLEANUP_DRY_RUN`·`SPREAD_SNAPSHOT_HARD_FAIL` 은 `docker-compose.yml` 매핑으로 컨테이너에 전달되며, 기본값은 코드 기본값과 같습니다(2026-10-05, 아래 「파일 정리 · 스프레드 검증 키 compose 매핑」). `SPREAD_SNAPSHOT_HARD_FAIL` 은 api·worker 두 줄에 모두 있으며 두 값이 같아야 합니다.
 
 **기대값 프로필 대조 — `[FLAGS-CHECK]`**
@@ -404,7 +406,7 @@ GHOSTSCRIPT_PATH=/usr/bin/gs
 | `PARTNER_JOB_VIEW` | api | `false` | 켜면 파트너 잡 라우트 9개(`GET /worker-jobs/external/:id` 와 파트너 잡 생성)의 응답을 정해진 키로 한정한다(`apps/api/src/worker-jobs/partner-job-view.ts`, FREEZE v1.20). 요청 시점에 평가한다. compose 매핑 `PARTNER_JOB_VIEW=${PARTNER_JOB_VIEW:-false}`. 되돌림은 `false` 로 두고 api 를 다시 만든다(nginx 재시작) |
 
 - api 전용이다. worker 에는 넣지 않는다.
-- `docker-compose.yml` api `environment` 의 매핑(`JOB_LINK_STRICT=${JOB_LINK_STRICT:-false}`, `JOB_FILE_SITE_STRICT=${JOB_FILE_SITE_STRICT:-false}`, `SESSION_JOB_OUTPUT_LOOKUP=${SESSION_JOB_OUTPUT_LOOKUP:-false}`)이 있어야 적용된다. `.env` 에만 넣고 매핑이 없으면 적용되지 않는다.
+- `docker-compose.yml` api `environment` 의 매핑(`JOB_LINK_STRICT=${JOB_LINK_STRICT:-false}`, `JOB_FILE_SITE_STRICT=${JOB_FILE_SITE_STRICT:-false}`, `SESSION_JOB_OUTPUT_LOOKUP=${SESSION_JOB_OUTPUT_LOOKUP:-false}`, `PARTNER_JOB_VIEW=${PARTNER_JOB_VIEW:-false}`)이 있어야 적용된다. `.env` 에만 넣고 매핑이 없으면 적용되지 않는다.
 - 현재 값은 api 기동 로그 `[FLAGS] api` 줄로 확인한다(위 「배포 후 점검」).
 
 ### 파일 정리 · 스프레드 검증 키 compose 매핑 (api·worker, 2026-10-05)
@@ -989,13 +991,17 @@ docker-compose build worker
 docker-compose up -d worker
 ```
 
-### Vercel 배포 파이프라인(ignoreCommand) 주의 (2026-06-17)
+### Vercel 배포 파이프라인(ignoreCommand) 주의 (2026-06-17, 2026-10-13 갱신)
 
-> admin/editor 는 Vercel 자동 배포(master push)지만, `apps/admin/vercel.json`·`apps/editor/vercel.json` 의 `ignoreCommand` 가 변경 감지에 `git diff $VERCEL_GIT_PREVIOUS_SHA HEAD` 를 사용한다.
+> admin/editor 는 Vercel 자동 배포(master push)이고, `apps/admin/vercel.json`·`apps/editor/vercel.json` 의 `ignoreCommand` 는 `node ../../scripts/vercel-ignore-build.mjs <감시 경로...>` 로 빌드 생략 여부를 판정한다(2026-10-13). 문서 포털 `apps/docs/vercel.json` 만 종전 한 줄 방식(`VERCEL_GIT_PREVIOUS_SHA` 가 비었거나 clone 에 없으면 `exit 1`, 있으면 `git diff --quiet`)을 쓴다.
 
 **트랩**: `PREVIOUS_SHA`(직전 성공 배포 SHA)가 Vercel 의 얕은(shallow) 클론에 없으면 `git diff` 가 `fatal: bad object` 로 비정상 종료(exit 128) → 배포가 **ERROR** 로 떨어지고, 라이브가 옛 빌드에 **고착**된다(자기영속: 다음 커밋들도 계속 ERROR). 실제로 admin 이 한동안 옛 빌드에 묶여 axios 로그인 핫픽스·프로필/비번변경 UI 가 라이브에 안 나타났다.
 
-**해소(커밋 `640e3e6`)**: `PREVIOUS_SHA` 가 비었거나 클론에 없으면 `exit 1`(빌드 강제) 폴백 후 diff 하도록 admin·editor 양쪽 `ignoreCommand` 견고화. → admin 재배포 READY(라이브 복구).
+**1차 해소(커밋 `640e3e6`)**: `PREVIOUS_SHA` 가 비었거나 클론에 없으면 `exit 1`(빌드 강제) 폴백 후 diff 하도록 admin·editor 양쪽 `ignoreCommand` 견고화. → admin 재배포 READY(라이브 복구).
+
+**현재 판정(`scripts/vercel-ignore-build.mjs`, 2026-10-13)**: `VERCEL_GIT_PREVIOUS_SHA` 는 그 브랜치의 마지막 성공 배포 커밋이라, 빌드를 생략한 push 가 이어지면 Vercel 의 얕은 clone(depth 10) 밖으로 밀려나고, 1차 해소의 한 줄 명령은 그때 무조건 빌드했다(문서만 바꾼 push 로도 재배포). 스크립트는 그 커밋 하나만 `--depth=1` 로 가져와(origin, 실패하면 공개 GitHub URL) 감시 경로를 `git diff --quiet` 로 판정한다. 종료 코드는 0 = 생략, 1 = 빌드이고, 감시 경로 인자가 없거나 경로가 없을 때·SHA 가 비었거나 형식이 아닐 때·커밋을 가져오지 못했을 때·`git diff` 오류일 때는 항상 빌드한다. 판정 결과는 빌드 로그의 `[ignore-build] 생략 — …` 또는 `[ignore-build] 빌드 — …` 한 줄로 확인한다.
+
+**감시 경로**: admin = 앱 디렉터리·`packages/types`·`packages/ui`·`packages/indesign-import`·`scripts`·`pnpm-lock.yaml`, editor = 앱 디렉터리·`packages/types`·`packages/canvas-core`·`packages/ui`·`scripts`·`pnpm-lock.yaml`. 문서 포털(`apps/docs`)은 앱 디렉터리·`docs`·`apps/api/src`·`packages/types`·`scripts`·`pnpm-lock.yaml` 을 감시한다. 그래서 `docs/` 만 바꾼 push 는 admin·editor 빌드를 생략하고, `docs/` 나 `apps/api/src` 를 바꾼 push 는 문서 포털을 다시 빌드한다.
 
 **운영 규칙**: UI 변경(admin/editor)이 master push 후에도 라이브에 보이지 않으면, 코드를 의심하기 전에 **Vercel 배포 state(READY/ERROR)부터 확인**한다.
 ```bash
