@@ -726,7 +726,7 @@ createCanvas --> editorReady[EditorReady]
 4. Worker 콜백 경로/인증 방식 혼재.
 5. Webhook 서명이 사실상 비-암호학적.
 6. `.env.example` 3곳 분산 + worker 쪽 누락 항목 존재.
-7. `docker/api/Dockerfile`, `docker/worker/Dockerfile`, `docker/editor/Dockerfile`의 `|| true`(3개 파일·4군데)가 빌드 실패 은폐. §9.2 확장판 참고.
+7. `docker/editor/Dockerfile`의 `|| true`(2군데, :33·:34)가 빌드 실패 은폐. api·worker 는 2026-10-13 커밋 `e28a8cc` 에서 제거됨. §9.2 확장판 참고.
 8. `editor` TS strict=false로 타입 회귀 취약.
 9. `README.md`가 `packages/ai` 누락 + 깨진 링크 보유.
 10. TypeORM `synchronize`는 dev 전용 → **프로덕션 마이그레이션 전략 부재**. DB 변경은 수동 SQL(`docker/mysql/init.sql`) 관리에 의존.
@@ -1231,7 +1231,7 @@ async synthesizeToLocal(...) { ... }
 [ ] Webhook 수신측(test-php/webhook.php)에서 서명 검증 코드 동작
 [ ] Storage 응답이 동일 URL 포맷, `resolveStorageUrl` 유틸 단일 소스
 [ ] `init.sql`의 기본 admin 비밀번호 해시 교체 (`$2b$10$YourHashedPasswordHere` 자리)
-[ ] `docker/api/Dockerfile:23`, `docker/worker/Dockerfile:35`, `docker/editor/Dockerfile:23,24`의 `|| true`(총 4군데)가 제거되었거나 정당화되어 있음
+[ ] `docker/editor/Dockerfile:33,34`의 `|| true`(총 2군데)가 제거되었거나 정당화되어 있음 (api·worker 는 `e28a8cc` 에서 제거됨)
 ```
 
 ---

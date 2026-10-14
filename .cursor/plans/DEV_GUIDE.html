@@ -403,11 +403,9 @@
           </div>
           <div>
             <h4>P0-B · <code>|| true</code> 빌드 실패 은폐</h4>
-            <p class="small">Dockerfile <b>3개 파일 4군데</b>에서 빌드 실패를 삼킴:</p>
+            <p class="small"><b>editor Dockerfile 2군데</b>(api·worker 는 <code>e28a8cc</code> 에서 제거됨)에서 빌드 실패를 삼킴:</p>
             <ul class="small">
-              <li><code>docker/api/Dockerfile:23</code></li>
-              <li><code>docker/worker/Dockerfile:35</code></li>
-              <li><code>docker/editor/Dockerfile:23, :24</code></li>
+              <li><code>docker/editor/Dockerfile:33, :34</code></li>
             </ul>
             <p class="small"><b>참조</b>: <code>HANDOFF_GUIDE.md</code> §9.2</p>
           </div>
@@ -537,7 +535,7 @@ pnpm --filter @storige/admin dev     # :3001</code></pre>
             <div class="tl-day">Day 3 · P0-B, P0-C, P0-D</div>
             <h4>Docker · Worker callback · .env 정비</h4>
             <ul class="check-list" data-group="d3">
-              <li><input type="checkbox" id="d3a"><label for="d3a">3개 Dockerfile의 <code>|| true</code> 4군데 제거 → 로컬 빌드 테스트 (<code>docker-compose build</code>)</label></li>
+              <li><input type="checkbox" id="d3a"><label for="d3a">editor Dockerfile 의 <code>|| true</code> 2군데(:33·:34) 제거 → 로컬 빌드 테스트 (<code>docker-compose build</code>) — api·worker 는 <code>e28a8cc</code> 에서 제거됨</label></li>
               <li><input type="checkbox" id="d3b"><label for="d3b">Worker conversion/synthesis processor가 <code>/worker-jobs/external/:id/status</code>를 호출하도록 URL 교체</label></li>
               <li><input type="checkbox" id="d3c"><label for="d3c"><code>apps/worker/.env.example</code>에 <code>WORKER_API_KEY</code>, <code>API_BASE_URL</code> 두 줄 추가</label></li>
               <li><input type="checkbox" id="d3d"><label for="d3d"><code>apps/worker/.env</code>에도 같은 두 값 실제로 추가, API의 <code>API_KEYS</code>에 동일 값 포함 확인</label></li>
@@ -622,12 +620,10 @@ pnpm --filter @storige/admin dev     # :3001</code></pre>
       <details>
         <summary><span class="badge b-danger">P0-B</span> Dockerfile <code>|| true</code> 제거</summary>
         <div class="details-body">
-          <p><b>3개 파일, 4군데</b>에서 빌드 실패를 삼키는 <code>|| true</code>를 제거합니다. 빌드가 실제로 깨져도 오류 없이 성공처럼 보이는 상태.</p>
+          <p><b>editor Dockerfile 2군데</b>(api·worker 는 <code>e28a8cc</code> 에서 제거됨)에서 빌드 실패를 삼키는 <code>|| true</code>를 제거합니다. 빌드가 실제로 깨져도 오류 없이 성공처럼 보이는 상태.</p>
           <pre><code># 위치
-docker/api/Dockerfile:23
-docker/worker/Dockerfile:35
-docker/editor/Dockerfile:23
-docker/editor/Dockerfile:24
+docker/editor/Dockerfile:33
+docker/editor/Dockerfile:34
 
 # 수정 전
 RUN pnpm --filter @storige/types build || true
@@ -636,10 +632,10 @@ RUN pnpm --filter @storige/types build || true
 RUN pnpm --filter @storige/types build</code></pre>
           <p><b>검증</b>: <code>docker-compose build --no-cache</code> 로 전체 재빌드. 각 앱이 문제없이 빌드되어야 함. 실패하면 진짜 버그가 있던 것 — 수정 후 재시도.</p>
           <ul class="check-list" data-group="p0b">
-            <li><input type="checkbox" id="p0b1"><label for="p0b1">api Dockerfile :23 제거</label></li>
-            <li><input type="checkbox" id="p0b2"><label for="p0b2">worker Dockerfile :35 제거</label></li>
-            <li><input type="checkbox" id="p0b3"><label for="p0b3">editor Dockerfile :23 제거</label></li>
-            <li><input type="checkbox" id="p0b4"><label for="p0b4">editor Dockerfile :24 제거</label></li>
+            <li><input type="checkbox" id="p0b1"><label for="p0b1">api Dockerfile — 제거됨(e28a8cc)</label></li>
+            <li><input type="checkbox" id="p0b2"><label for="p0b2">worker Dockerfile — 제거됨(e28a8cc)</label></li>
+            <li><input type="checkbox" id="p0b3"><label for="p0b3">editor Dockerfile :33 제거</label></li>
+            <li><input type="checkbox" id="p0b4"><label for="p0b4">editor Dockerfile :34 제거</label></li>
             <li><input type="checkbox" id="p0b5"><label for="p0b5"><code>docker-compose build --no-cache</code> 성공</label></li>
           </ul>
         </div>

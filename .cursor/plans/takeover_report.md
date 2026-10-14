@@ -105,7 +105,7 @@
 ### 1.5 즉시 보이는 기술 부채
 - 문서와 실제 구조가 불일치한다. `README.md`에는 `packages/ai`가 빠져 있고, 존재하지 않는 `.claude/plans/...` 링크가 남아 있다.
 - 타입 엄격도가 앱마다 다르다. `admin`은 엄격하지만 `editor`는 `strict: false`라 편집기 쪽 회귀 위험이 더 크다.
-- Dockerfile에서 `pnpm --filter @storige/types build || true`가 사용된다. 빌드 실패가 가려질 수 있어 CI/이미지 빌드의 신뢰도를 낮춘다.
+- Dockerfile에서 `pnpm --filter @storige/types build || true`가 사용된다. 빌드 실패가 가려질 수 있어 CI/이미지 빌드의 신뢰도를 낮춘다. (2026-10-13 현재: api·worker 는 `e28a8cc` 에서 제거, `docker/editor/Dockerfile:33·:34` 만 남음)
 - `apps/editor/vite.config.ts`에는 선택 의존성 `@pf/color-runtime`이 없을 때 `throw new Error('not available')`를 던지는 스텁이 들어 있다. CMYK/색공간 기능이 이 경로를 타면 런타임에서 기능이 빠질 수 있다.
 
 ---
