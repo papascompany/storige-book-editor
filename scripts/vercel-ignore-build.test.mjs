@@ -6,7 +6,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -183,4 +183,21 @@ test('감시 경로가 없으면(오타·이동) 생략하지 않고 빌드(1)',
   });
   assert.equal(r.status, 1);
   assert.match(r.stdout, /감시 경로가 없다: \.\.\/\.\.\/packages\/typo/);
+});
+
+test('심볼릭 링크 경로로 실행해도 판정한다 — PREVIOUS_SHA 가 없으면 빌드(1)', (t) => {
+  const { root, clone } = setup((o) => {
+    base(o);
+    return {};
+  });
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const link = path.join(root, 'scripts-link');
+  symlinkSync(path.dirname(SCRIPT), link, 'dir');
+  const r = spawnSync(process.execPath, [path.join(link, path.basename(SCRIPT)), ...EDITOR_PATHS], {
+    cwd: path.join(clone, 'apps/editor'),
+    env: { ...GIT_ENV, VERCEL_GIT_PROVIDER: '', VERCEL_GIT_PREVIOUS_SHA: '' },
+    encoding: 'utf8',
+  });
+  assert.equal(r.status, 1, r.stdout);
+  assert.match(r.stdout, /\[ignore-build\] 빌드 — VERCEL_GIT_PREVIOUS_SHA 없음/);
 });

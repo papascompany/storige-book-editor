@@ -15,8 +15,8 @@
  *   가져오지 못하면 종전과 같이 빌드한다.
  */
 import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
-import { pathToFileURL } from 'node:url';
+import { existsSync, realpathSync } from 'node:fs';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const FETCH_TIMEOUT_MS = 60_000;
 
@@ -73,7 +73,21 @@ export function decide(env, paths) {
   return { code: 1, reason: `git diff 오류(status=${d.status ?? d.signal})` };
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
+/**
+ * 직접 실행인지 — 실행 경로에 심볼릭 링크가 끼어도 실제 경로로 비교한다.
+ * import.meta.url 은 실제 경로이므로 문자열 비교만 하면 링크 경로 실행이 판정 없이 0(생략)으로 끝난다.
+ */
+function invokedDirectly() {
+  const arg = process.argv[1];
+  if (!arg) return false;
+  try {
+    return realpathSync(arg) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return pathToFileURL(arg).href === import.meta.url;
+  }
+}
+
+if (invokedDirectly()) {
   const { code, reason } = decide(process.env, process.argv.slice(2));
   console.log(`[ignore-build] ${code === 0 ? '생략' : '빌드'} — ${reason}`);
   process.exit(code);
