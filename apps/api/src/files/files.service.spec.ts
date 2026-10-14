@@ -6,6 +6,7 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { FilesService } from './files.service';
 import { FileEntity, FileType } from './entities/file.entity';
 import { ObjectStorageService } from '../storage/object-storage.service';
+import { FILE_UPLOAD_MAX_BYTES } from './files.constants';
 
 /**
  * Phase 0 안전판 회귀 스펙 (2026-07-03) — files 모듈 첫 스펙.
@@ -18,6 +19,7 @@ import { ObjectStorageService } from '../storage/object-storage.service';
 describe('FilesService (Phase 0 safety net)', () => {
   let service: FilesService;
   let fileRepository: jest.Mocked<Repository<FileEntity>>;
+  let objectStorage: jest.Mocked<ObjectStorageService>;
 
   // 비-PDF 파일: assertSiteAccess 를 통과하면 mimeType 검사에서 BadRequestException 이 난다.
   // → NotFoundException(격리 차단) 과 BadRequestException(격리 통과) 로 결과를 구분할 수 있다.
@@ -65,6 +67,7 @@ describe('FilesService (Phase 0 safety net)', () => {
 
     service = module.get<FilesService>(FilesService);
     fileRepository = module.get(getRepositoryToken(FileEntity));
+    objectStorage = module.get(ObjectStorageService);
     jest.clearAllMocks();
   });
 
@@ -296,6 +299,32 @@ describe('FilesService (Phase 0 safety net)', () => {
         details: { fileId: FILE_ID },
       });
       expect(fileRepository.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('uploadFile 크기 상한', () => {
+    it('상한(100MB)을 1바이트 넘으면 FILE_TOO_LARGE(maxSize 숫자)로 거부하고 저장하지 않는다', async () => {
+      const size = FILE_UPLOAD_MAX_BYTES + 1;
+      const file = {
+        fieldname: 'file',
+        originalname: 'x.pdf',
+        encoding: '7bit',
+        mimetype: 'application/pdf',
+        size,
+        buffer: Buffer.alloc(0),
+      } as Express.Multer.File;
+
+      const error: unknown = await service
+        .uploadFile(file, FileType.OTHER)
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(BadRequestException);
+      expect((error as BadRequestException).getResponse()).toEqual({
+        code: 'FILE_TOO_LARGE',
+        message: '파일 크기가 100MB를 초과합니다.',
+        details: { size, maxSize: 104857600 },
+      });
+      expect(objectStorage.put).not.toHaveBeenCalled();
     });
   });
 });

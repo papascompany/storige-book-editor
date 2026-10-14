@@ -31,6 +31,7 @@ import {
 import { Throttle } from '@nestjs/throttler';
 import { Response } from 'express';
 import { FilesService } from './files.service';
+import { FILE_UPLOAD_MAX_BYTES } from './files.constants';
 import {
   PresignedUploadService,
   type PresignedCompleteCaller,
@@ -446,7 +447,7 @@ export class FilesController {
   @ApiResponse({ status: 400, description: '잘못된 파일 형식 또는 크기 초과' })
   @UseInterceptors(
     FileInterceptor('file', {
-      limits: { fileSize: 100 * 1024 * 1024 }, // 100MB
+      limits: { fileSize: FILE_UPLOAD_MAX_BYTES },
       fileFilter: (req, file, cb) => {
         if (file.mimetype !== 'application/pdf') {
           cb(
@@ -530,7 +531,7 @@ export class FilesController {
   @ApiResponse({ status: 401, description: 'Invalid API key' })
   @UseInterceptors(
     FileInterceptor('file', {
-      limits: { fileSize: 100 * 1024 * 1024 }, // 100MB
+      limits: { fileSize: FILE_UPLOAD_MAX_BYTES },
       fileFilter: (req, file, cb) => {
         if (file.mimetype !== 'application/pdf') {
           cb(

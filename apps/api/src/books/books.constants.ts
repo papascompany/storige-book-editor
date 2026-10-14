@@ -14,7 +14,7 @@ export const BOOK_FINALIZATION_UID_PREFIX = 'fin_';
  * ⚠️ 설계서 "90/100MB" 표기 정정: 코드상 90MB 임계는 부재 → 100MB 단일 임계로
  *    확정한다. 초과분은 presigned/multipart 동결 표면(≤2GB)으로 업로드 후
  *    fileId 참조 투입 경로를 쓴다(§1.4). 100MB 는 기존 files 업로드 라우트
- *    (files.controller upload/external)·STORAGE_MAX_FILE_SIZE 기본과 정합.
+ *    (files.controller upload/external)·FILE_UPLOAD_MAX_BYTES 와 정합.
  */
 export const BOOK_ASSET_DIRECT_UPLOAD_MAX_BYTES = 100 * 1024 * 1024;
 

@@ -19,6 +19,7 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiConsumes, ApiBody
 import { Request, Response } from 'express';
 import { memoryStorage } from 'multer';
 import { StorageService } from './storage.service';
+import { STORAGE_UPLOAD_MAX_BYTES } from './storage.constants';
 import { FilesService } from '../files/files.service';
 import { FileType } from '../files/entities/file.entity';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -32,7 +33,7 @@ import * as fs from 'fs';
 const multerOptions = {
   storage: memoryStorage(),
   limits: {
-    fileSize: 50 * 1024 * 1024, // 50MB
+    fileSize: STORAGE_UPLOAD_MAX_BYTES,
   },
 };
 
@@ -51,7 +52,7 @@ const PUBLIC_UPLOAD_ALLOWED_MIME = new Set<string>([
 const multerOptionsPublic = {
   storage: memoryStorage(),
   limits: {
-    fileSize: 50 * 1024 * 1024, // 50MB
+    fileSize: STORAGE_UPLOAD_MAX_BYTES,
   },
   fileFilter: (
     _req: Request,

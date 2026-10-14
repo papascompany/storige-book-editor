@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { BadRequestException } from '@nestjs/common';
 import * as path from 'path';
 import { StorageService } from './storage.service';
+import { STORAGE_UPLOAD_MAX_BYTES } from './storage.constants';
 
 /**
  * SEC-5 — getFilePathFromUrl path traversal 격리 검증.
@@ -107,6 +108,52 @@ describe('StorageService', () => {
       await expect(
         service.deleteFileByUrl('/storage/../../etc/passwd'),
       ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('업로드 크기 상한 — 상수 고정', () => {
+    const fakeFile = (size: number): Express.Multer.File =>
+      ({
+        fieldname: 'file',
+        originalname: 'x.png',
+        encoding: '7bit',
+        mimetype: 'image/png',
+        size,
+        buffer: Buffer.alloc(0),
+      }) as Express.Multer.File;
+
+    it('상한(50MB)을 1바이트 넘으면 50MB 메시지의 BadRequestException 으로 거부한다', async () => {
+      await expect(
+        service.saveFile(fakeFile(STORAGE_UPLOAD_MAX_BYTES + 1)),
+      ).rejects.toThrow(
+        new BadRequestException('File size exceeds maximum allowed size of 50MB'),
+      );
+    });
+
+    it('STORAGE_MAX_FILE_SIZE env 값은 무시하고 상수 상한으로 검증한다', async () => {
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [
+          StorageService,
+          {
+            provide: ConfigService,
+            useValue: {
+              get: jest.fn((key: string, defaultValue?: unknown) => {
+                if (key === 'STORAGE_PATH') return storagePath;
+                if (key === 'STORAGE_MAX_FILE_SIZE') return '1';
+                return defaultValue;
+              }),
+            },
+          },
+        ],
+      }).compile();
+      const envService = module.get<StorageService>(StorageService);
+      const validator = envService as unknown as {
+        validateFile(f: Express.Multer.File): void;
+      };
+
+      expect(() =>
+        validator.validateFile(fakeFile(STORAGE_UPLOAD_MAX_BYTES)),
+      ).not.toThrow();
     });
   });
 });

@@ -177,7 +177,6 @@ const API_UNMAPPED_ALLOWLIST: ReadonlyArray<{ key: string; kind: UnmappedKind; r
   { key: 'S3_SECRET_ACCESS_KEY', kind: 'admin-setting', reason: '관리자 설정 행 우선' },
   { key: 'STORAGE_BASE_URL', kind: 'hold', reason: '운영 확인 후 결정' },
   { key: 'STORAGE_DRIVER', kind: 'admin-setting', reason: '관리자 설정 행 우선' },
-  { key: 'STORAGE_MAX_FILE_SIZE', kind: 'no-effect', reason: '코드 기본값으로 운영' },
   { key: 'THUMBNAIL_PATH', kind: 'code-default', reason: '코드 기본값으로 운영' },
   { key: 'UPLOAD_PATH', kind: 'code-default', reason: '코드 기본값으로 운영' },
 ];

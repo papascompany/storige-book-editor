@@ -4,6 +4,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import sharp from 'sharp';
+import { STORAGE_UPLOAD_MAX_BYTES } from './storage.constants';
 
 export interface UploadedFile {
   id: string;
@@ -35,7 +36,7 @@ export class StorageService {
     this.storagePath = path.isAbsolute(configuredPath)
       ? configuredPath
       : path.resolve(process.cwd(), configuredPath);
-    this.maxFileSize = this.configService.get<number>('STORAGE_MAX_FILE_SIZE', 52428800); // 50MB
+    this.maxFileSize = STORAGE_UPLOAD_MAX_BYTES;
     this.allowedMimeTypes = [
       // Images
       'image/jpeg',

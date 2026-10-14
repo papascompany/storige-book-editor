@@ -21,6 +21,7 @@ import sharp from 'sharp';
 import { FileEntity, FileType } from './entities/file.entity';
 import { FileResponseDto } from './dto/file-response.dto';
 import { ObjectStorageService } from '../storage/object-storage.service';
+import { FILE_UPLOAD_MAX_BYTES } from './files.constants';
 import {
   EditRetentionCutoff,
   buildEditRetentionCutoffs,
@@ -63,10 +64,7 @@ export class FilesService {
       'THUMBNAIL_PATH',
       './storage/thumbnails',
     );
-    this.maxFileSize = this.configService.get<number>(
-      'STORAGE_MAX_FILE_SIZE',
-      100 * 1024 * 1024, // 100MB
-    );
+    this.maxFileSize = FILE_UPLOAD_MAX_BYTES;
     this.ghostscriptPath = this.configService.get<string>(
       'GHOSTSCRIPT_PATH',
       'gs',
