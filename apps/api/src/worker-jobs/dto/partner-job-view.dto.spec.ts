@@ -124,6 +124,10 @@ describe('PartnerJobViewDto (파트너 잡 응답 OpenAPI 스키마)', () => {
     expect(responseRef(document, 'post', '/api/worker-jobs/fix-pagecount/attach', '201')).toBe(
       '#/components/schemas/WorkerJob',
     );
+    for (const path of ['/api/worker-jobs/fix-bleed', '/api/worker-jobs/fix-pagecount/attach']) {
+      const op = child(child(asNode(document.paths, 'paths'), path), 'post');
+      expect(child(child(op, 'responses'), '201').description).toContain('PartnerJobViewDto');
+    }
   });
 
   it('production 필터 뒤에도 7라우트와 스키마가 남는다', () => {
