@@ -1,7 +1,7 @@
 # Storige 플랫폼 연동 가이드 (외부 파트너용)
 
 > **작성일:** 2026-06-20
-> **최종 갱신:** 2026-10-13 — v1 최종화 실패 응답 `errorDetail` 의 검증·합성 작업 실패 진단에 작업 오류 코드 `jobErrorCode` 추가(1.7) · 작업 상태 보고 라우트(`PATCH /api/worker-jobs/external/:id/status`·`/:id/status`)는 내부 워커 전용, 사이트 키 호출은 `404`(5.1) — 둘 다 api 배포 완료 통지 시각부터 · [이전 2026-10-12] v1 최종화 실패 응답 `errorDetail` 형식: 검증·합성 작업 실패 `{stage, jobStatus, result}`(항목은 `code`·`message`·`autoFixable`·`fixMethod`), 내부 처리 실패 `{code, reason}`(고정 사유 코드 3종)(1.7, api 배포 완료 통지 시각부터) · `editor.ready` `orientationMismatch` 표기(보낸 `width`·`height` 와 템플릿셋 판형의 방향 불일치 안내, 2026-07-09 부터 발신 — 3.2·3.1, 동작 변경 없음) · [이전 2026-10-06] 재편집(`sessionId`)은 세션에 기록된 템플릿셋으로 열림(URL `templateSetId` 는 생략 권장, 세션 세트 조회가 404 일 때만 보낸 세트로 1회 시도)·`editor.ready`/`storige:ready` `templateSetId` = 실제로 연 세트 + `templateSetMismatch` 추가·`editor.complete`/`storige:completed` `templateSetId`·`templateSetMismatch` 추가·편집 중인 디자인의 AI 패널 템플릿셋 전환 차단(3.1 재편집과 템플릿셋·3.2, 편집기 배포 완료 통지 시각부터) · [이전 2026-10-06] 편집 완료 내지 검증의 쪽수 판정이 편집기 쪽 단위(호스트 `pageStep` → 템플릿셋 쪽 단위)를 따름: 내지 펼침면 세트·2쪽 단위 상품의 쪽수 오탐 해소, 펼침면 세트의 `details.pageMultiple` 은 펼침 단위(5.3.1·2.6) · [이전 2026-10-06] 양장 싸바리 템플릿셋 표지: 표지 PDF 싸바리 전개 크기·`metadata.coverOutput` 키 추가·편집 완료 표지 검증 싸바리 전개 검사, 첫 세트 동화책 210×210 `9e768d01-f2f7-4a1e-a1f6-f1ff45cb2fcb`(3.1·5.3.1, 호스트가 상품 매핑을 그 세트로 바꾼 시각부터) · [이전 2026-10-05] 호스트 책등 규칙의 표지 모드 판정 기준을 표지 템플릿(내지펼침면 `regionScope:'inner'` 제외)으로 표기 정정(3.1, 동작 변경 없음) · 템플릿 작성 규약: 상품별 표지 책등 방식(표지펼침면/표지3분할)은 호스트가 정하고 Storige 는 그 방식대로 등록, 양장 표지 템플릿 크기 기준 = 업로드 검증 규격(싸바리 전개), 쪽 추가 단위는 호스트 상품등록 값과 템플릿셋 `pageStep` 일치(3.1·5.3.1) · 보낸 쪽수 범위(`pageCountMin`·`pageCountMax`)가 제본별 최소·최대 쪽수를 대신(3.1 상품별 쪽수 범위, 편집기 배포 완료 통지 시각부터) · 합성 입력 오류(`PDF_LOAD_FAILED`·`FILE_NOT_FOUND`·`INPUT_URL_REJECTED`) 즉시 `FAILED`·합성 실패 응답 `errorCode`·안내 문구 `errorMessage`·`errorDetail`(2.2 단계 5a) · 회원 세션 생성 서버 오류 시 같은 주문 세션으로 열기(3.3) · [이전 2026-10-03] 합성 작업 자동 재시도·작업 상태 고정·종결 웹훅 중복 생략·작업 응답 `editSessionId`(2.2 단계 5a·5b·1.7·5.2) · `session.*` 현재 미발신(5.2·3.3.3) · `editor.state` `pageCount`·`currentPage`·IIFE `getState()` 쪽수(3.2) · `sessionId` 단독 재오픈 실패 화면·편집기 '불러오기' 실패 `message` 고정 문구(3.1·3.2) · presigned `complete` 의 사이트 키(`X-API-Key`) 귀속(2.2·1.7) · 합성 산출 크기(2.3) · 작업 실패 코드 `JOB_STALLED`·`JOB_TIMEOUT_SWEPT`(2.2 단계 5a)·반복 중단 시 v1 최종화 실패(1.7) · 편집기 초기화 실패 code·고정 한국어 `message`(3.1·3.2) · `orderSeqno` 진입 실패 처리(3.3) · 첨부 채움본 크기(3.2) · 운영자 요청 감사 기록 범위(3.3.2) · 그 사이 변경은 각 절의 날짜 표기 참조 · [이전 2026-08-24] `editor.saved` 가 `ok:false, error:'EDITOR_BUSY'` 를 응답할 수 있음(3.2 표 하단) · 세션 API 테넌트 격리 확장: 회원 세션 상세/수정/완료/삭제/버전/목록/보관함 전부 JWT `siteId` ↔ 세션 `siteId` 대조(1.5) · [이전 2026-08-13] `compose-mixed` 빈 입력 `400 EMPTY_COMPOSE_INPUT` 승격(3.4) · 세션 자동조립 `assembleFromSession` 신설(3.4.1) · `compose-mixed` body `siteId` 하드닝(3.4)
+> **최종 갱신:** 2026-10-14 — 작업 조회·생성 응답은 정해진 14개 키만 싣고 검증 작업 판정 결과는 `result.result` 에 담김(2.2 단계 5a 「작업 응답 키」) — 전환 완료 통지 시각부터 · 5.1 `GET /api/worker-jobs/:id/output` 행의 산출물 회수 안내를 `output-url` 재발급으로 정정 · [이전 2026-10-13] v1 최종화 실패 응답 `errorDetail` 의 검증·합성 작업 실패 진단에 작업 오류 코드 `jobErrorCode` 추가(1.7) · 작업 상태 보고 라우트(`PATCH /api/worker-jobs/external/:id/status`·`/:id/status`)는 내부 워커 전용, 사이트 키 호출은 `404`(5.1) — 둘 다 api 배포 완료 통지 시각부터 · [이전 2026-10-12] v1 최종화 실패 응답 `errorDetail` 형식: 검증·합성 작업 실패 `{stage, jobStatus, result}`(항목은 `code`·`message`·`autoFixable`·`fixMethod`), 내부 처리 실패 `{code, reason}`(고정 사유 코드 3종)(1.7, api 배포 완료 통지 시각부터) · `editor.ready` `orientationMismatch` 표기(보낸 `width`·`height` 와 템플릿셋 판형의 방향 불일치 안내, 2026-07-09 부터 발신 — 3.2·3.1, 동작 변경 없음) · [이전 2026-10-06] 재편집(`sessionId`)은 세션에 기록된 템플릿셋으로 열림(URL `templateSetId` 는 생략 권장, 세션 세트 조회가 404 일 때만 보낸 세트로 1회 시도)·`editor.ready`/`storige:ready` `templateSetId` = 실제로 연 세트 + `templateSetMismatch` 추가·`editor.complete`/`storige:completed` `templateSetId`·`templateSetMismatch` 추가·편집 중인 디자인의 AI 패널 템플릿셋 전환 차단(3.1 재편집과 템플릿셋·3.2, 편집기 배포 완료 통지 시각부터) · [이전 2026-10-06] 편집 완료 내지 검증의 쪽수 판정이 편집기 쪽 단위(호스트 `pageStep` → 템플릿셋 쪽 단위)를 따름: 내지 펼침면 세트·2쪽 단위 상품의 쪽수 오탐 해소, 펼침면 세트의 `details.pageMultiple` 은 펼침 단위(5.3.1·2.6) · [이전 2026-10-06] 양장 싸바리 템플릿셋 표지: 표지 PDF 싸바리 전개 크기·`metadata.coverOutput` 키 추가·편집 완료 표지 검증 싸바리 전개 검사, 첫 세트 동화책 210×210 `9e768d01-f2f7-4a1e-a1f6-f1ff45cb2fcb`(3.1·5.3.1, 호스트가 상품 매핑을 그 세트로 바꾼 시각부터) · [이전 2026-10-05] 호스트 책등 규칙의 표지 모드 판정 기준을 표지 템플릿(내지펼침면 `regionScope:'inner'` 제외)으로 표기 정정(3.1, 동작 변경 없음) · 템플릿 작성 규약: 상품별 표지 책등 방식(표지펼침면/표지3분할)은 호스트가 정하고 Storige 는 그 방식대로 등록, 양장 표지 템플릿 크기 기준 = 업로드 검증 규격(싸바리 전개), 쪽 추가 단위는 호스트 상품등록 값과 템플릿셋 `pageStep` 일치(3.1·5.3.1) · 보낸 쪽수 범위(`pageCountMin`·`pageCountMax`)가 제본별 최소·최대 쪽수를 대신(3.1 상품별 쪽수 범위, 편집기 배포 완료 통지 시각부터) · 합성 입력 오류(`PDF_LOAD_FAILED`·`FILE_NOT_FOUND`·`INPUT_URL_REJECTED`) 즉시 `FAILED`·합성 실패 응답 `errorCode`·안내 문구 `errorMessage`·`errorDetail`(2.2 단계 5a) · 회원 세션 생성 서버 오류 시 같은 주문 세션으로 열기(3.3) · [이전 2026-10-03] 합성 작업 자동 재시도·작업 상태 고정·종결 웹훅 중복 생략·작업 응답 `editSessionId`(2.2 단계 5a·5b·1.7·5.2) · `session.*` 현재 미발신(5.2·3.3.3) · `editor.state` `pageCount`·`currentPage`·IIFE `getState()` 쪽수(3.2) · `sessionId` 단독 재오픈 실패 화면·편집기 '불러오기' 실패 `message` 고정 문구(3.1·3.2) · presigned `complete` 의 사이트 키(`X-API-Key`) 귀속(2.2·1.7) · 합성 산출 크기(2.3) · 작업 실패 코드 `JOB_STALLED`·`JOB_TIMEOUT_SWEPT`(2.2 단계 5a)·반복 중단 시 v1 최종화 실패(1.7) · 편집기 초기화 실패 code·고정 한국어 `message`(3.1·3.2) · `orderSeqno` 진입 실패 처리(3.3) · 첨부 채움본 크기(3.2) · 운영자 요청 감사 기록 범위(3.3.2) · 그 사이 변경은 각 절의 날짜 표기 참조 · [이전 2026-08-24] `editor.saved` 가 `ok:false, error:'EDITOR_BUSY'` 를 응답할 수 있음(3.2 표 하단) · 세션 API 테넌트 격리 확장: 회원 세션 상세/수정/완료/삭제/버전/목록/보관함 전부 JWT `siteId` ↔ 세션 `siteId` 대조(1.5) · [이전 2026-08-13] `compose-mixed` 빈 입력 `400 EMPTY_COMPOSE_INPUT` 승격(3.4) · 세션 자동조립 `assembleFromSession` 신설(3.4.1) · `compose-mixed` body `siteId` 하드닝(3.4)
 > **대상:** 외부 파트너 개발자
 > **상태:** 배포용 정본
 
@@ -549,9 +549,12 @@ curl -X POST "https://api.papascompany.co.kr/api/worker-jobs/validate/external" 
     "callbackUrl": "https://api.example.com/storige/webhook"
   }'
 ```
-응답 (⚠️ **전체 `WorkerJob` 엔티티가 반환되며 아래는 핵심 필드 발췌** — `type`·`options`·`createdAt`·`siteId` 등 다수 필드 포함):
+응답 (작업 응답 키 14개 — 아래 단계 5a 「작업 응답 키」. 생성 직후 예시):
 ```json
-{ "id": "<jobId>", "status": "PENDING" }
+{ "id": "<jobId>", "jobType": "VALIDATE", "status": "PENDING", "editSessionId": null, "sessionId": null,
+  "outputFileId": null, "outputFileUrl": null, "options": null, "result": null,
+  "errorCode": null, "errorMessage": null, "errorDetail": null,
+  "createdAt": "2026-10-14T01:23:45.000Z", "completedAt": null }
 ```
 > `orderOptions` 는 프런트가 직접 실어 보냅니다 (서버가 주문에서 자동 도출하지 않음). `spineWidthMm`/`wingWidthMm` 미전달 시 fallback이 적용되며 날개상품 오검출이 잔존할 수 있습니다. **응답은 버전에 따라 필드가 추가될 수 있으니 `status`·`result` 만 의존하세요.**
 
@@ -568,11 +571,23 @@ curl -X POST "https://api.papascompany.co.kr/api/worker-jobs/validate/external" 
 curl "https://api.papascompany.co.kr/api/worker-jobs/external/<jobId>" \
   -H "X-API-Key: <YOUR_SITE_API_KEY>"
 ```
-응답 (⚠️ 핵심 필드 발췌 — 전체 `WorkerJob` 엔티티):
+응답 (검증 작업 예시 — `errors`·`warnings` 항목과 `metadata` 내용은 생략):
 ```json
-{ "id": "<jobId>", "status": "COMPLETED", "result": { "errors": [], "warnings": [], "metadata": {} } }
+{ "id": "<jobId>", "jobType": "VALIDATE", "status": "COMPLETED", "editSessionId": null, "sessionId": null,
+  "outputFileId": null, "outputFileUrl": null, "options": null,
+  "result": { "result": { "isValid": true, "errors": [], "warnings": [], "metadata": {} } },
+  "errorCode": null, "errorMessage": null, "errorDetail": null,
+  "createdAt": "2026-10-14T01:23:45.000Z", "completedAt": "2026-10-14T01:23:50.000Z" }
 ```
-status: `PENDING | PROCESSING | COMPLETED | FIXABLE | FAILED`. 판정 결과(`errors`/`warnings`/`metadata`)는 `result` 객체 안에 담깁니다.
+status: `PENDING | PROCESSING | COMPLETED | FIXABLE | FAILED`. 검증 작업의 판정 결과(`isValid`/`errors`/`warnings`/`metadata`)는 `result.result` 객체 안에 담깁니다(`result` 가 한 번 더 감쌉니다).
+
+> **작업 응답 키 (2026-10-14):** 작업 조회(`GET /api/worker-jobs/external/:id`)와 작업 생성(`POST /api/worker-jobs/validate/external`·`fix-pagecount/external`·`fix-pagecount/attach`·`synthesize/external`·`split-synthesize/external`·`compose-mixed`·`render-pages`·`fix-bleed`) 응답은 다음 14개 키만 싣습니다. Storige 가 전환 완료를 통지한 시각부터 적용됩니다.
+> - `id`·`jobType`·`status`·`editSessionId`·`sessionId`·`outputFileId`·`outputFileUrl`·`errorCode`·`createdAt`·`completedAt` — 기록된 값(없으면 `null`).
+> - `options` — `contentTrim`·`siteWebhook`·`editSessionId` 키만 싣고, 셋 다 없으면 `null` 입니다.
+> - `result` — 검증 작업은 위 `result.result` 형식이고(감싸지 않은 형식으로 기록된 작업은 그 형식), 본문은 `isValid`·`errors`·`warnings`·`metadata` 입니다. `errors`·`warnings` 항목은 `code`·`message`·`details`·`autoFixable`·`fixMethod` 만 싣습니다. `code` 가 `FILE_CORRUPTED` 인 항목의 `message` 는 `파일이 손상되었습니다. 다시 업로드해주세요.` 이고 `details` 는 없습니다. 그 밖의 작업(합성·페이지수 보정 등)의 `result` 는 기록된 값 그대로입니다.
+> - `errorMessage` — 사람용 안내 문구입니다. 검증 작업은 `errors` 항목의 `message` 를 `; ` 로 이은 값이고, 그 밖에는 `errorCode` 에 대응하는 안내 문구 또는 작업 유형별 고정 문구입니다. 분기는 `status`·`errorCode` 로 하세요.
+> - `errorDetail` — 문자열·수·불리언·`null` 값의 키만 싣고, 남는 키가 없으면 `null` 입니다.
+> - 이 밖의 키(`editSession` 등)는 없습니다. 키 이름·타입, `status`·`errorCode` 값, 웹훅 본문은 바뀌지 않습니다.
 
 > **작업 실패 코드 (2026-10-03):** 처리 중 워커가 반복해서 중단되어 작업이 실패로 기록되면 `status:'FAILED'`, `errorCode:'JOB_STALLED'` 입니다(검증·합성·변환·페이지수 보정 작업 공통). 생성 후 2시간이 지나도 끝나지 않은 작업은 10분 주기 정리 때 `status:'FAILED'`, `errorCode:'JOB_TIMEOUT_SWEPT'` 로 기록됩니다. 두 경우 모두 같은 요청으로 새 작업을 만들면 됩니다. `synthesis.failed`·`validation.failed` 웹훅 본문에는 `errorCode` 가 없고 `errorMessage` 만 있으므로, 코드가 필요하면 이 폴링 라우트로 잡을 조회하세요.
 
@@ -1662,9 +1677,9 @@ curl -X POST "https://api.papascompany.co.kr/api/worker-jobs/compose-mixed" \
 | POST | `/api/worker-jobs/fix-pagecount` | 내부 RolesGuard | **(LIVE)** 페이지수 보정 — 내부 전용 변형 |
 | POST | `/api/worker-jobs/fix-pagecount/attach` | `@Public` (게스트 편집기) | **(LIVE 2026-09-28)** 첨부 내지 PDF 빈 페이지 배수 채움 — 편집기 첨부 모달 전용. Body `{fileId, templateSetId}`, 배수는 서버가 템플릿셋 `pageStep`(`padToPageStep`=true 일 때만)으로 산출, 미설정 400 `PAGE_PAD_NOT_ENABLED`. 폴링 `GET /api/worker-jobs/:id` → `outputFileId`(원본 보존). 파트너 직접 호출 불요 — 3.3 첨부 이벤트 |
 | POST | `/api/worker-jobs/compose-mixed` | **@Public** (`X-API-Key` 선택 — 파트너 백엔드는 사이트 키와 함께 호출) — `assembleFromSession:true` 경로는 shop-session Bearer 필요(실패 시 `404`) | 합성 트리거 — 기본은 **파일 참조를 호출자가 공급**(`coverUrl`/`contentPdfUrl`/면지 배열)하고 `editSessionId` 는 스프레드 기대치 조회·잡 추적용. **`assembleFromSession:true` 를 명시하면 서버가 세션에서 표지·내지·면지·판형을 도출**(빈 필드만, dto 우선 — 3.4.1). 표지·내지·면지 자산이 **0건이면 `400 EMPTY_COMPOSE_INPUT`**, 한쪽만 빠지면 종전대로 부분 백지가 `COMPLETED`(3.4). 산출물은 `files` 미등록 → `outputFileId` 없음 → 결과 바이트는 `outputFileUrl`/`result.outputFiles[].url`(스토리지 경로)을 그대로 GET. 기본 경로의 `editSessionId` 는 세션 연결 확인(사이트 키 = 같은 사이트 세션 또는 사이트 미지정 회원 세션, shop-session = 같은 회원·주문권한 세션·비회원 세션은 `X-Guest-Token`) — 아니면 `404 SESSION_NOT_FOUND`, 잡 미생성(3.4). 세션ID 비밀유지·브라우저 노출 최소화 |
-| GET | `/api/worker-jobs/external/:id` | X-API-Key | 잡 상태 폴링 |
+| GET | `/api/worker-jobs/external/:id` | X-API-Key | 잡 상태 폴링. 응답 키는 14개(2.2 단계 5a 「작업 응답 키」 — 파트너 작업 생성 응답도 같음) |
 | GET | `/api/worker-jobs/external/:id/output-url` | **X-API-Key** (자기 사이트 잡만 — 타 테넌트 잡은 `404`) | **산출물 서명 URL 재발급(2026-08-28 신설, 권장 회수 경로)** — 잡의 모든 산출물(`separate` 는 cover·content 2건)에 대해 단명(기본 300초) 서명 URL 을 반환. `files[].url` 을 그대로 GET(만료 `410` → 재호출). **URL 박제 대신 `jobId` 저장**이 정식 패턴. 무인증 `/storage/outputs/` 직접 GET 은 2026-09-11 cutover 로 폐쇄됐고, 이 라우트가 **유일한 회수 경로**다(3.4) |
-| GET | `/api/worker-jobs/:id/output` | **JWT (전역 가드, @Public 아님 — `@Roles` 없음)** | 잡 결과 PDF 스트리밍(`result.outputFileUrl` 1개). **admin 미리보기 전용 — 파트너 사용 불가.** `ApiKeyGuard` 미적용이라 유효한 사이트 API 키로도 `401`(2026-08-13 실측). 파트너는 `outputFileUrl` 을 직접 GET 하세요(3.4). `@CurrentSite` 격리 적용(타 테넌트 잡은 404) |
+| GET | `/api/worker-jobs/:id/output` | **JWT (전역 가드, @Public 아님 — `@Roles` 없음)** | 잡 결과 PDF 스트리밍(`result.outputFileUrl` 1개). **admin 미리보기 전용 — 파트너 사용 불가.** `ApiKeyGuard` 미적용이라 유효한 사이트 API 키로도 `401`(2026-08-13 실측). 파트너는 `GET /api/worker-jobs/external/:id/output-url` 로 서명 URL 을 재발급받아 그 URL 로 받으세요(3.4). `@CurrentSite` 격리 적용(타 테넌트 잡은 404) |
 | PATCH | `/api/worker-jobs/external/:id/status` | **X-API-Key (@Public+ApiKeyGuard) — 내부 워커 키만** | **내부 워커 전용** — 워커가 잡 처리 상태를 보고하는 라우트. 사이트 키로 호출하면 `404`(2026-10-13 — api 배포 완료 통지 시각부터) |
 | PATCH | `/api/worker-jobs/:id/status` | X-API-Key (@Public+ApiKeyGuard) — 내부 워커 키만 | **내부 워커 전용** — `external/:id/status` 와 같은 동작의 별칭 |
 | GET | `/api/edit-sessions/external` | @Public + X-API-Key | 주문별 편집세션 조회 (`?orderSeqno=`) |

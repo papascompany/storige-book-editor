@@ -401,6 +401,7 @@ GHOSTSCRIPT_PATH=/usr/bin/gs
 | `JOB_LINK_STRICT` | api | `false` | 잡 생성 확인 플래그. 전환은 오너 결정 뒤 별도 절차로 한다 |
 | `JOB_FILE_SITE_STRICT` | api | `false` | 잡 생성 확인 플래그. 전환은 오너 결정 뒤 별도 절차로 한다 |
 | `SESSION_JOB_OUTPUT_LOOKUP` | api | `false` | 잡 산출물 세션 조회 플래그. 전환은 오너 결정 뒤 별도 절차로 한다 |
+| `PARTNER_JOB_VIEW` | api | `false` | 켜면 파트너 잡 라우트 9개(`GET /worker-jobs/external/:id` 와 파트너 잡 생성)의 응답을 정해진 키로 한정한다(`apps/api/src/worker-jobs/partner-job-view.ts`, FREEZE v1.20). 요청 시점에 평가한다. compose 매핑 `PARTNER_JOB_VIEW=${PARTNER_JOB_VIEW:-false}`. 되돌림은 `false` 로 두고 api 를 다시 만든다(nginx 재시작) |
 
 - api 전용이다. worker 에는 넣지 않는다.
 - `docker-compose.yml` api `environment` 의 매핑(`JOB_LINK_STRICT=${JOB_LINK_STRICT:-false}`, `JOB_FILE_SITE_STRICT=${JOB_FILE_SITE_STRICT:-false}`, `SESSION_JOB_OUTPUT_LOOKUP=${SESSION_JOB_OUTPUT_LOOKUP:-false}`)이 있어야 적용된다. `.env` 에만 넣고 매핑이 없으면 적용되지 않는다.
