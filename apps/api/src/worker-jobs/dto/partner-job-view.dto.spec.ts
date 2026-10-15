@@ -1,6 +1,6 @@
 /**
  * 파트너 잡 응답 OpenAPI 스키마 — DTO 속성 집합 == PARTNER_JOB_VIEW_KEYS,
- * 공개 7라우트 응답이 이 스키마를 참조하고 production 필터 뒤에도 남는다.
+ * partnerView 를 거치는 9라우트 응답이 모두 이 스키마를 참조하고, 공개 7라우트는 production 필터 뒤에도 남는다.
  *
  * WorkerJobsController 만 올린 테스트 모듈로 문서를 만들어(전역 prefix 'api' 는 main.ts 와 같다) 확인한다.
  */
@@ -55,6 +55,12 @@ const PUBLIC_ROUTES: ReadonlyArray<[string, string, string]> = [
   ['post', '/api/worker-jobs/split-synthesize/external', '201'],
   ['post', '/api/worker-jobs/compose-mixed', '201'],
   ['post', '/api/worker-jobs/render-pages', '201'],
+];
+
+/** partnerView 를 거치지만 production 문서 allowlist 에는 없는 라우트. */
+const NON_PUBLIC_PARTNER_VIEW_ROUTES: ReadonlyArray<[string, string, string]> = [
+  ['post', '/api/worker-jobs/fix-bleed', '201'],
+  ['post', '/api/worker-jobs/fix-pagecount/attach', '201'],
 ];
 
 describe('PartnerJobViewDto (파트너 잡 응답 OpenAPI 스키마)', () => {
@@ -119,16 +125,13 @@ describe('PartnerJobViewDto (파트너 잡 응답 OpenAPI 스키마)', () => {
     expect(SWAGGER_PARTNER_ROUTES.has(`${method.toUpperCase()} ${path}`)).toBe(true);
   });
 
-  it('범위 밖 라우트(fix-bleed·fix-pagecount/attach)는 종전 스키마', () => {
-    expect(responseRef(document, 'post', '/api/worker-jobs/fix-bleed', '201')).toBe('#/components/schemas/WorkerJob');
-    expect(responseRef(document, 'post', '/api/worker-jobs/fix-pagecount/attach', '201')).toBe(
-      '#/components/schemas/WorkerJob',
-    );
-    for (const path of ['/api/worker-jobs/fix-bleed', '/api/worker-jobs/fix-pagecount/attach']) {
-      const op = child(child(asNode(document.paths, 'paths'), path), 'post');
-      expect(child(child(op, 'responses'), '201').description).toContain('PartnerJobViewDto');
-    }
-  });
+  it.each(NON_PUBLIC_PARTNER_VIEW_ROUTES)(
+    '비공개 라우트 %s %s %s 응답도 PartnerJobViewDto 를 참조(production allowlist 밖)',
+    (method, path, status) => {
+      expect(responseRef(document, method, path, status)).toBe('#/components/schemas/PartnerJobViewDto');
+      expect(SWAGGER_PARTNER_ROUTES.has(`${method.toUpperCase()} ${path}`)).toBe(false);
+    },
+  );
 
   it('production 필터 뒤에도 7라우트와 스키마가 남는다', () => {
     const filtered = filterToPartnerRoutes(document);
@@ -136,6 +139,9 @@ describe('PartnerJobViewDto (파트너 잡 응답 OpenAPI 스키마)', () => {
       expect(responseRef(filtered, method, path, status)).toBe('#/components/schemas/PartnerJobViewDto');
     }
     expect(schemasOf(filtered).PartnerJobViewDto).toBeDefined();
+    for (const [, path] of NON_PUBLIC_PARTNER_VIEW_ROUTES) {
+      expect(asNode(filtered.paths, 'paths')[path]).toBeUndefined();
+    }
   });
 
   it('공개 스키마 서술에 운영 플래그 맥락·내부 경로 없음', () => {

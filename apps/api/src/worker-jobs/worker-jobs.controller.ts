@@ -167,8 +167,7 @@ export class WorkerJobsController {
    * 켜져 있으면 정해진 키만 싣는 형태(partner-job-view.ts)로, 꺼져 있으면 서비스 반환 객체를 그대로 돌려준다.
    * 파트너 잡 라우트 9개(GET external/:id, validate·fix-pagecount·synthesize·split-synthesize external,
    * compose-mixed, render-pages, fix-bleed, fix-pagecount/attach)의 모든 반환에 쓴다.
-   * OpenAPI 응답 스키마가 PartnerJobViewDto 인 것은 공개 문서에 오르는 앞의 7개뿐이다. fix-bleed·
-   * fix-pagecount/attach 는 문서 스키마를 WorkerJob 으로 두고 description 에 형태가 달라질 수 있음을 적는다.
+   * 9개 라우트 모두 OpenAPI 응답 스키마는 PartnerJobViewDto 다.
    */
   private partnerView(job: WorkerJob): WorkerJob | PartnerJobView {
     return isPartnerJobViewOn(this.configService.get<string>('PARTNER_JOB_VIEW')) ? toPartnerJobView(job) : job;
@@ -394,7 +393,7 @@ export class WorkerJobsController {
   @Post('fix-pagecount/attach')
   @Public()
   @ApiOperation({ summary: '첨부 내지 PDF 를 pageStep 배수로 빈 페이지 채움 (템플릿셋 opt-in)' })
-  @ApiResponse({ status: 201, description: '잡 생성 성공. 응답 형태는 서버 설정에 따라 PartnerJobViewDto 일 수 있다(문서 스키마는 종전 유지)', type: WorkerJob })
+  @ApiResponse({ status: 201, description: '잡 생성 성공', type: PartnerJobViewDto })
   @ApiResponse({ status: 400, description: '템플릿셋 미존재 / 채움 미설정 / 비PDF' })
   @ApiResponse({ status: 404, description: '파일 미존재' })
   async createAttachPagePadJob(
@@ -658,7 +657,7 @@ export class WorkerJobsController {
   @Post('fix-bleed')
   @Public()
   @ApiOperation({ summary: '도련 자동 삽입 잡 생성 (재단→작업 사이즈, 무스케일 중앙 배치)' })
-  @ApiResponse({ status: 201, description: '잡 생성 성공. 응답 형태는 서버 설정에 따라 PartnerJobViewDto 일 수 있다(문서 스키마는 종전 유지)', type: WorkerJob })
+  @ApiResponse({ status: 201, description: '잡 생성 성공', type: PartnerJobViewDto })
   @ApiResponse({ status: 400, description: 'templateSet 미존재 / 비PDF / 작업 사이즈 무효' })
   @ApiResponse({ status: 404, description: '파일 미존재' })
   async createBleedFixJob(
