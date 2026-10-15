@@ -316,8 +316,7 @@ flowchart TD
 | Health | `/api/health*` | 공개 | — |
 
 **보안 재검토 항목(운영 전 필수)**
-- `PATCH /api/worker-jobs/:id/status` — 컨트롤러 `worker-jobs.controller.ts:252~261`에 `@Public()`/`ApiKeyGuard`가 **명시적으로 없습니다**. `auth.module.ts:42` 의 전역 `JwtAuthGuard`가 붙으므로 JWT 필요. 반면 Worker 측 Conversion/Synthesis는 여기로 `X-API-Key`를 보냅니다 → §8.2 참고. **불일치 확정**, 양쪽 중 한쪽 수정 필수.
-- `PATCH /api/worker-jobs/external/:id/status`(컨트롤러 `:237~244`)는 `@Public()+ApiKeyGuard+@ApiSecurity('api-key')`로 올바르게 외부 인증 체계.
+- (2026-10-15 갱신) `PATCH /api/worker-jobs/:id/status`·`PATCH /api/worker-jobs/external/:id/status` 는 둘 다 `@Public()+ApiKeyGuard` 이며 내부 워커 키 호출만 처리한다(그 밖의 키는 404). 아래 §8.2 의 불일치 서술은 해소된 이력이다.
 - `template-sets/admin/update-thumbnails` — `@Public()`이면 관리자 권한 체크가 없습니다.
 - Swagger 태그가 완비되지 않은 컨트롤러가 있어, 신뢰의 출처는 **Swagger가 아니라 컨트롤러 소스**입니다.
 

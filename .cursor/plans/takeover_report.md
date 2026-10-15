@@ -425,7 +425,7 @@ bookmoaDb --> cate[cate]
 - 현재 `apps/api/src`에는 별도의 `review` REST API가 없다. `review`는 주로 `editor` 도메인의 세션 상태 값으로 등장한다.
 - 외부 시스템 관점에서 가장 중요한 표면은 `auth`, `edit-sessions`, `worker-jobs`, `storage/files`, `product-template-sets`, `editor`, `products/spine`이다.
 - `template-sets/admin/update-thumbnails`는 `@Public()`이므로 운영 보안 정책상 의도 여부를 반드시 재검토해야 한다.
-- `PATCH /api/worker-jobs/:id/status`는 컨트롤러 설명상 worker용이지만 `@Public()`이나 `ApiKeyGuard`가 없다. 현재 코드만 기준으로 보면 JWT 보호 경로로 해석되므로, 실제 운영 호출 경로를 반드시 확인해야 한다.
+- (2026-10-15 갱신) `PATCH /api/worker-jobs/:id/status`는 `@Public()+ApiKeyGuard` 이며 내부 워커 키 호출만 처리한다(그 밖의 키는 404).
 - 일부 컨트롤러는 Swagger 태그가 충분히 정리되지 않아, 문서 신뢰도보다 컨트롤러 코드를 직접 보는 편이 정확하다.
 
 ### 3.6 Worker / Webhook 비동기 파이프라인

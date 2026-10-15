@@ -18,7 +18,7 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
 1) 시작 절차
    - CLAUDE.local.md 는 운영 규칙과 참조 위치만 확인합니다. 키·비밀번호는 출력·복사하지 않습니다.
    - .cursor/plans/RESUME_PROMPT_2026-10-04.md(정본)를 먼저 읽습니다. 경위가 필요할 때만 RESUME_PROMPT_2026-09-30.md 와 비공개 메모(../_private_notes/wave2·wave3, 저장소 밖)를 봅니다.
-   - 상세 시작 절차(CTO·서브에이전트·워크플로, 첫 작업, 운영 규칙, 셸 함정)는 비공개 `../_private_notes/wave10/NEW_SESSION_PROMPT_2026-10-14.md` 가 정본입니다. 이 블록보다 먼저 읽고 그 순서를 따릅니다(다음 이슈 정본 `NEXT_ISSUES_2026-10-14.md`).
+   - 상세 시작 절차(CTO·서브에이전트·워크플로, 첫 작업, 운영 규칙, 셸 함정)는 비공개 `../_private_notes/wave12/NEW_SESSION_PROMPT_2026-10-15.md` 가 정본(10-15 갱신 — 이전판 `wave10/NEW_SESSION_PROMPT_2026-10-14.md`)입니다. 이 블록보다 먼저 읽고 그 순서를 따릅니다(다음 이슈 정본 `NEXT_ISSUES_2026-10-14.md`).
    - git log --oneline -15 와 git status -sb 를 확인합니다. untracked 타 세션 파일(docs/SHOPIFY_*, docs/SITE_CATALOG_*, .tmp-verify-combos/ 등)은 건드리지 않고, git add 는 명시 경로 목록으로만 합니다.
    - SSH 가 필요하면 ssh-add -l 을 먼저 확인합니다(비어 있으면 ssh-add ~/.ssh/id_ed25519). 접속 대상은 CLAUDE.local.md §1.1 의 deploy@ 하나뿐이고, 다른 사용자명은 시도하지 않습니다.
    - 런타임: export PATH="/opt/homebrew/opt/node@24/bin:$PATH"
@@ -70,6 +70,7 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
 
 ## 2. 현재 라이브 상태 (2026-10-14 06:31Z — Wave 10 안 1 배포·파트너 잡 응답 키 전환 후)
 
+> **10-15 08:27Z 갱신:** master = `ddd96482`(Wave 11 + 정리 4커밋 — 컨트롤러 주석을 동작 사실만으로 정리, fix-bleed·첨부 페이지 채움 응답 스키마 통일, 스키마 참조 범위 고정 테스트). 운영 반영 없음(아래 표 그대로). api 재빌드는 관찰 종료(~10-21) 뒤 별도 승인.
 > **10-14 09:34Z 갱신:** master = `ea4ae789`(Wave 11 — 테스트·OpenAPI 스키마 코드·Loki 규칙 CI·문서 정정·업로드 상한 상수화, 동작 불변, §5.2.7). **운영 반영 없음** — 아래 표의 VPS 이미지·Vercel 배포는 그대로다(editor·admin 빌드 생략 판정). api 재빌드(OpenAPI 스키마 동승)는 잡 응답 키 전환 관찰 종료(~10-21) 뒤 별도 승인.
 
 | 구성 | 현재 운영 | 롤백 |
@@ -92,7 +93,7 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
 
 | 대상 | 기준 |
 |---|---|
-| api jest | 138 스위트 / 3116(Wave 11, 10-14) · lint 0 err(경고 44) · nest build · contract-freeze 94 |
+| api jest | 138 스위트 / 3118(10-15) · lint 0 err(경고 44) · nest build · contract-freeze 94 |
 | CI loki-rules | `.github/workflows/loki-rules.yml` — docker/loki·compose 변경 시 규칙 구조(그룹 2·규칙 6)·alertmanager_url 빈 값·Loki 3.2.1 실기동 로드 확인 |
 | worker jest | 34 스위트 / 1294 · lint 0 err(경고 16) · nest build |
 | editor vitest | 107 파일 / 1601(Node 24·26) · tsc · lint 0 err(경고 76) · build · build:embed |
@@ -249,6 +250,10 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
 - 오너 결정: 범위 L1~L5(Docker 정비 제외) · OpenAPI 잡 응답 스키마 = 조회 + 공개 생성 6라우트, 관찰 종료 뒤 첫 api 재빌드에 동승 · storige-editor 컨테이너(소비자 0)는 이번엔 기록만 · 의존성 audit 잔여 5건은 도달 경로 없음 근거로 수용.
 - **push(10-14): `21398b5..ea4ae789` 09:34:44Z(13커밋)** → CI ci·loki-rules·gitleaks green, Vercel editor·admin 생략(운영 유지). 내용: 실제 WorkerJobsController HTTP spec(상태 보고 두 경로·잡 응답 형태), 미사용 test-utils 삭제, `PartnerJobViewDto`·7라우트 응답 스키마(공개 `/api/docs` 는 api 재빌드 뒤 반영 — 파트너 포털 export 불변), Loki 규칙 CI, GUIDE compose-mixed 회수 안내를 output-url 재발급으로 정정·DEPLOYMENT 플래그 나열·빌드 생략 판정·업로드 상한 서술, 업로드 상한 경로별 상수(storage 50MB·files 100MB, env 읽기 제거 — 운영 env 에 키 없음 확인). 3사 GUIDE 정정 FYI(동작 변경 없음).
 - 사실 정정: apps/docs 와 연결된 Vercel 프로젝트는 없다 — `docs/`·`apps/api/src` push 로 문서 포털이 배포되지 않는다.
+- **정리 push(10-15): `ceaf97ef..ddd96482` 08:27Z(4커밋)** → CI ci·gitleaks green. 컨트롤러·서비스 주석에서 결정 경위·파트너명·내부 번호를 빼고 동작 사실만 남김(원문은 비공개 메모), fix-bleed·`fix-pagecount/attach` 201 스키마도 `PartnerJobViewDto`(공개 `/api/docs`·포털 export 불변), 스키마 참조 operation 9개 고정 spec. `CONTRACT_FREEZE.md` 본문은 오너 결정으로 그대로 둔다.
+- **운영(10-15):** 운영 메모의 비밀값을 저장소 밖으로 이전 완료 — 에이전트도 메인 체크아웃에서 작업 가능(비밀값 보관 위치는 열지 않음). 알림은 오너 결정으로 '매일 아침 자동 점검(읽기 전용 Loki 집계 → 오너 휴대폰 알림)' — 서버 알림 장치(Alertmanager)는 분 단위 대응이 필요해질 때 재검토. 관리자 계정 비밀번호 교체는 서비스 오픈 전후로 연기.
+- 관찰 1·2일차(10-14·10-15): 이상 없음, 전환 뒤 파트너 잡 조회 0건.
+- 다음 이슈 정본(10-15): 비공개 `../_private_notes/wave12/NEXT_ISSUES_2026-10-15.md`, 새 세션 시작 절차 `../_private_notes/wave12/NEW_SESSION_PROMPT_2026-10-15.md`. 세션 교대(10-15): bookmoa·printy 에 교대 예고, 새 세션이 이름 통지(100p 포함).
 - 다음: 관찰 종료 기록(~10-21) → api 재빌드(OpenAPI 스키마 동승 — 잡 응답 키 설정이 켜진 상태에서만, 되돌릴 때는 스키마 커밋도 함께 되돌림) → GUIDE changelog 에 `/api/docs` 스키마 추가 기록. 후속: 컨트롤러 옛 주석 정리, fix-bleed·첨부 페이지 채움 응답 스키마, storige-editor 컨테이너 제거 여부, CI 액션 SHA 고정, ubuntu-26.04 probe(10-19~25).
 
 ### 5.3 다음 후보 (착수 약속 없음 — 새 세션이 재점검 후 우선순위 제안)
