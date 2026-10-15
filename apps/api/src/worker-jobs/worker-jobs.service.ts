@@ -68,7 +68,7 @@ import {
   planJobStatusTransition,
 } from './job-status-transition';
 import { CallbackLedgerRedis, JobCallbackLedger } from './job-callback-ledger';
-// P3b 멀티테넌시 — 사이트 운영자 조회 스코핑(목록/통계 applySiteScope, 상세 assertSiteInScope).
+// 멀티테넌시 — 사이트 운영자 조회 스코핑(목록/통계 applySiteScope, 상세 assertSiteInScope).
 import {
   applySiteScope,
   assertSiteInScope,
@@ -81,7 +81,7 @@ import { TemplateSetsService } from '../templates/template-sets.service';
 import type { TemplateSet } from '../templates/entities/template-set.entity';
 // [자동조립 opt-in] spreadConfig(regionScope/innerSpec)는 templates 행에 있다(타입 전용 참조).
 import type { Template } from '../templates/entities/template.entity';
-// [X1 contentTrim] 템플릿셋 경량 조회(필요 컬럼만) — 엔티티 값 참조.
+// contentTrim: 템플릿셋 경량 조회(필요 컬럼만) — 엔티티 값 참조.
 import { TemplateSet as TemplateSetEntity } from '../templates/entities/template-set.entity';
 import { Template as TemplateEntity } from '../templates/entities/template.entity';
 import {
@@ -96,12 +96,12 @@ import {
   PARTNER_ENV_TEST,
   PartnerEnv,
 } from '../partner-api/partner-api.constants';
-// [Stage 3 W3, #4] 최종화 콜백 역참조 — forwardRef 로 순환(books ⇄ worker-jobs) 차단.
+// 최종화 콜백 역참조 — forwardRef 로 순환(books ⇄ worker-jobs) 차단.
 import { BookFinalizationsService } from '../books/book-finalizations.service';
-// R-44 — 표지 검증 잡 서버 spine 재계산(fail-closed 주입)
+// 표지 검증 잡 서버 spine 재계산(fail-closed 주입)
 import { SpineService } from '../products/spine.service';
 
-/** 관리자 합성 잡 마커(2026-09-29) — job.options.staffInitiated */
+/** 관리자 합성 잡 마커 — job.options.staffInitiated */
 export interface StaffInitiatedMarker {
   actorUserId: string;
   notifyPartner: boolean;
@@ -394,9 +394,9 @@ export class WorkerJobsService implements OnModuleInit {
     private filesService: FilesService,
     private webhookService: WebhookService,
     private sitesService: SitesService,
-    // fix-bleed(2026-07-13) — templateSet 권위 editSize 산출용.
+    // fix-bleed — templateSet 권위 editSize 산출용.
     private templateSetsService: TemplateSetsService,
-    // [Stage 3 W3, #4] 최종화 콜백 역참조 — @Optional + forwardRef(순환 모듈 books ⇄ worker-jobs).
+    // 최종화 콜백 역참조 — @Optional + forwardRef(순환 모듈 books ⇄ worker-jobs).
     //   updateJobStatus 가 options.finalizationId 마커 잡의 종결(COMPLETED/FIXABLE/FAILED) 시
     //   book_finalizations 상태머신을 전진시킨다(기존 edit_session 갱신과 병렬 additive 분기).
     //   ⚠️ 반드시 최후미 @Optional — 기존 9-인자 유닛스펙(callback-gate 등 7건)이 미주입
@@ -404,12 +404,12 @@ export class WorkerJobsService implements OnModuleInit {
     @Optional()
     @Inject(forwardRef(() => BookFinalizationsService))
     private readonly bookFinalizationsService?: BookFinalizationsService,
-    // R-44(2026-07-21) — 표지 검증 잡 서버 spine 재계산(injectServerSpine).
+    // 표지 검증 잡 서버 spine 재계산(injectServerSpine).
     // ⚠️ 반드시 최후미 @Optional — 기존 positional 유닛스펙(9~10인자) 미주입 시
     // spine 주입만 no-op(클라 값 유지 = 기존 동작)로 격리. 미주입은 onModuleInit warn.
     @Optional()
     private readonly spineService?: SpineService,
-    // 컷아웃 큐(2026-08-05 S-P2A-B) — WorkerJobsModule 이 등록하므로 런타임엔 항상 주입된다.
+    // 컷아웃 큐 — WorkerJobsModule 이 등록하므로 런타임엔 항상 주입된다.
     // ⚠️ 반드시 최후미 @Optional — 기존 positional 유닛스펙 8건이 9~10인자로 `new
     //    WorkerJobsService(...)` 하고, DI 스펙들도 큐 토큰 3종만 제공한다. 필수 주입으로 두면
     //    그 전부가 즉시 red 가 된다. 미주입 시 createCutoutJob 만 503 으로 fail-closed.
@@ -419,7 +419,7 @@ export class WorkerJobsService implements OnModuleInit {
   ) {}
 
   /**
-   * [P1-1] 배선 실패 관측 — books ⇄ worker-jobs forwardRef 가 깨지면 @Optional 이
+   * 배선 실패 관측 — books ⇄ worker-jobs forwardRef 가 깨지면 @Optional 이
    * bookFinalizationsService 를 undefined 로 침묵 실체화해 finalization 마커 잡 콜백
    * (onWorkerJobSettled)이 영원히 no-op → finalization 이 VALIDATING/COMPOSING 에서 교착한다.
    * API 프로세스에선 반드시 주입돼야 하므로 미주입을 warn 으로 관측 가능하게 남긴다(침묵 마스킹
@@ -442,15 +442,15 @@ export class WorkerJobsService implements OnModuleInit {
   }
 
   /**
-   * [S2-5, 2026-07-16] test env 잡 마커 스탬프 — 잡 생성 옵션에 isTest:true 를
+   * test env 잡 마커 스탬프 — 잡 생성 옵션에 isTest:true 를
    * 조건부로 얹는다. env 는 컨트롤러가 @CurrentSite().env(=resolvePartnerEnv 해석값)로
    * 주입한 dto.partnerEnv — 미전달(내부/게스트/레거시)·'live' 는 그대로(키 자체가 없음
    * = 기존 잡 options 바이트 불변).
    *
    * ⚠️ 현 구조에서 잡 생성 external 라우트는 공용 ApiKeyGuard(sites 키=항상 live) 전용
-   * 이라 v1 test 키(partner_api_keys)로는 인증 불가 — 이 스탬프는 **선행 인프라(no-op 훅)**
-   * 이며 실발화는 Stage 3(v1 books 잡 생성 표면)이다. external 라우트에 v1 키 인증을
-   * 추가하는 배선은 AD-1 위반으로 금지(로드맵 §6 Stage 2 작업 1).
+   * 이라 v1 test 키(partner_api_keys)로는 인증 불가 — 이 경로에서 스탬프는 no-op 이고,
+   * test env 가 실제로 들어오는 곳은 v1 books 잡 생성 표면이다. 잡 생성 external 라우트에는
+   * v1 키 인증을 붙이지 않는다(sites 키 전용).
    */
   private stampTestEnv<T extends Record<string, any>>(
     options: T,
@@ -463,7 +463,7 @@ export class WorkerJobsService implements OnModuleInit {
   }
 
   /**
-   * [S2-5] 잡 완료 웹훅 발신 컨텍스트용 env 해석 — isTest 잡만 'test', 그 외 undefined.
+   * 잡 완료 웹훅 발신 컨텍스트용 env 해석 — isTest 잡만 'test', 그 외 undefined.
    * undefined 는 WebhookService.sendCallback 이 live 로 폴백(기존 발신 바이트 불변,
    * webhook-v1-invariance.spec 게이트).
    */
@@ -472,7 +472,7 @@ export class WorkerJobsService implements OnModuleInit {
   }
 
   /**
-   * [S2-5] hasV2Config 게이트의 env-aware 래퍼 — isTest 잡만 test env config 로
+   * hasV2Config 게이트의 env-aware 래퍼 — isTest 잡만 test env config 로
    * 판정하고, 그 외(기존 전원)는 **기존과 동일한 단일 인자 호출**을 유지한다
    * (worker-jobs.callback-gate.spec 의 호출 계약 고정 — live 경로 완전 불변).
    */
@@ -503,7 +503,7 @@ export class WorkerJobsService implements OnModuleInit {
   }
 
   /**
-   * Phase B-2 — site 조회 + 잡 옵션 default 머지.
+   * site 조회 + 잡 옵션 default 머지.
    * 호출자 옵션이 명시되어 있으면 우선, 누락된 항목만 site default로 채움.
    */
   private async mergeSiteWorkerDefaults(
@@ -512,7 +512,7 @@ export class WorkerJobsService implements OnModuleInit {
   ): Promise<Record<string, any>> {
     const opts = { ...(options || {}) };
 
-    // ⚠️ bleedMm/sizeToleranceMm 전역 기본값은 여기서 주입하지 않는다(2026-06-10 제거).
+    // ⚠️ bleedMm/sizeToleranceMm 전역 기본값은 여기서 주입하지 않는다.
     //   큐 페이로드는 raw DTO 라 워커에 전달되지도 않았고(DB job.options 만 오염),
     //   워커 validatePageSize 의 '?? 1' 폴백을 무력화해 검증 허용오차가 전 상품
     //   1mm→0.2mm 로 좁아지는 회귀의 원인이 될 수 있다. 주입은 edit-sessions 가
@@ -645,7 +645,7 @@ export class WorkerJobsService implements OnModuleInit {
 
   /**
    * 파일 접근 가능 여부 확인.
-   * WH-002: 원격 URL 분기에 SSRF 가드 추가 — http/https 만 허용(file://·dict://·gopher:// 차단),
+   * 원격 URL 분기 SSRF 가드 — http/https 만 허용(file://·dict://·gopher:// 차단),
    * DNS 해석 후 사설/링크로컬/루프백 IP(169.254 메타데이터 포함) 차단, maxRedirects:0 으로
    * 리다이렉트 우회 차단. 정당 흐름은 fileId→로컬경로(아래 fs.access 분기)라 원격 분기 미진입.
    */
@@ -860,14 +860,14 @@ export class WorkerJobsService implements OnModuleInit {
       fileUrl = this.toWorkerInputUrl(file); // s3 백엔드면 api://<id> 마커, local 은 filePath
     }
 
-    // Phase B-2 — site default 머지 (호출자 명시값 보존)
+    // site default 머지 (호출자 명시값 보존)
     //   skipSiteWorkerDefaults 면 siteId 없이 호출 → 얕은 복사만(스탬프 도입 전과 동일 결과).
     const orderOptions = await this.mergeSiteWorkerDefaults(
       internal?.skipSiteWorkerDefaults ? undefined : createValidationJobDto.siteId,
       createValidationJobDto.orderOptions,
     );
 
-    // R-44 — 표지 잡은 서버가 spine 을 재계산해 덮어씀(fail-closed, B-2 원칙).
+    // 표지 잡은 서버가 spine 을 재계산해 덮어씀(fail-closed).
     await this.injectServerSpine(createValidationJobDto.fileType, orderOptions);
 
     // Create job record in database
@@ -878,16 +878,16 @@ export class WorkerJobsService implements OnModuleInit {
         internal?.storeSessionLink === false ? null : createValidationJobDto.editSessionId || null,
       fileId,
       inputFileUrl: fileUrl,
-      siteId: createValidationJobDto.siteId || null, // Phase C
-      // [S2-5] test env 컨텍스트면 isTest:true 스탬프(live/미전달=키 없음, 기존 불변).
+      siteId: createValidationJobDto.siteId || null, // 잡 소유 사이트
+      // test env 컨텍스트면 isTest:true 스탬프(live/미전달=키 없음, 기존 불변).
       // 검증 잡은 실검증을 그대로 수행(읽기 전용·경량) — isTest 는 완료 웹훅 v2 발신의
-      // env 판정(페이로드 isTest)에만 쓰인다. 더미 분기는 합성 잡 전용(로드맵 §6).
+      // env 판정(페이로드 isTest)에만 쓰인다. 더미 분기는 합성 잡 전용.
       options: this.stampTestEnv(
         {
           fileType: createValidationJobDto.fileType,
           orderOptions,
           callbackUrl: createValidationJobDto.callbackUrl || undefined,
-          // [Stage 3 W3] finalization 역참조 마커(#4) — 부재=기존 옵션 바이트 불변(conditional spread)
+          // finalization 역참조 마커 — 부재=기존 옵션 바이트 불변(conditional spread)
           ...(createValidationJobDto.finalizationId
             ? { finalizationId: createValidationJobDto.finalizationId }
             : {}),
@@ -901,9 +901,8 @@ export class WorkerJobsService implements OnModuleInit {
     const savedJob = await this.saveNewJob(job, 'validate');
 
     // Add to Bull queue
-    // R-44(2026-07-21): raw DTO 가 아니라 **머지본**을 싣는다 — 종전엔 site default
-    // 머지(B-2)와 서버 spine 주입이 DB job.options 에만 남고 워커에는 raw 가 가서
-    // silent 미적용이었다(백로그 "검증 잡 큐 site-default 머지 미적용 의심" 실확정).
+    // raw DTO 가 아니라 **머지본**을 싣는다 — site default 머지와 서버 spine 주입이
+    // DB job.options 뿐 아니라 워커 큐 페이로드에도 반영돼야 한다.
     await this.validationQueue.add('validate-pdf', {
       jobId: savedJob.id,
       fileId,
@@ -916,7 +915,7 @@ export class WorkerJobsService implements OnModuleInit {
   }
 
   /**
-   * R-44 — 표지(cover) 검증 잡의 서버 spine 재계산 주입.
+   * 표지(cover) 검증 잡의 서버 spine 재계산 주입.
    *
    * 클라(spineWidthMm)를 신뢰하지 않고 pageCount/paperType/binding 으로 서버가
    * 재산출해 덮어쓴다(가격 recompute 와 동일한 fail-closed 철학). 원본 클라 값은
@@ -954,7 +953,7 @@ export class WorkerJobsService implements OnModuleInit {
         bindingType: binding,
       });
       if (r.formulaVersion !== 'v2') {
-        // v1 폴백(legacy 8코드 등)은 bookmoa 골든과 다른 값 — 클라 값을 덮지 않는다.
+        // v1 폴백(legacy 8코드 등)은 호스트 기준(골든) 값과 다른 값 — 클라 값을 덮지 않는다.
         this.logger.warn(
           `[spine-inject] 지종 '${paperType}' v2 두께 미보유(v1 폴백) — 클라 spineWidthMm 유지`,
         );
@@ -1009,7 +1008,7 @@ export class WorkerJobsService implements OnModuleInit {
       fileUrl = this.toWorkerInputUrl(file); // s3 백엔드면 api://<id> 마커, local 은 filePath
     }
 
-    // Phase B-2 — site default 머지
+    // site default 머지
     const convertOptions = await this.mergeSiteWorkerDefaults(
       createConversionJobDto.siteId,
       createConversionJobDto.convertOptions,
@@ -1018,11 +1017,11 @@ export class WorkerJobsService implements OnModuleInit {
     const job = this.workerJobRepository.create({
       jobType: WorkerJobType.CONVERT,
       status: WorkerJobStatus.PENDING,
-      // P4 — 임포지션 결과 콜백이 세션을 역참조하도록 edit_session_id 세팅. 미지정이면 null.
+      // 임포지션 결과 콜백이 세션을 역참조하도록 edit_session_id 세팅. 미지정이면 null.
       editSessionId: createConversionJobDto.editSessionId || null,
       fileId,
       inputFileUrl: fileUrl,
-      siteId: createConversionJobDto.siteId || null, // Phase C
+      siteId: createConversionJobDto.siteId || null, // 잡 소유 사이트
       options: convertOptions,
     });
 
@@ -1033,7 +1032,7 @@ export class WorkerJobsService implements OnModuleInit {
       fileId,
       fileUrl,
       // 큐 페이로드는 raw DTO convertOptions 그대로(현행 동작 보존 — admin 자동수정 경로 무변경).
-      // P4 임포지션은 호출부가 editSize/sizeToleranceMm 를 명시 전달하므로 raw 로 충분.
+      // 임포지션은 호출부가 editSize/sizeToleranceMm 를 명시 전달하므로 raw 로 충분.
       // (DB job.options 는 merged 저장 — 기존과 동일.)
       convertOptions: createConversionJobDto.convertOptions,
     });
@@ -1042,7 +1041,7 @@ export class WorkerJobsService implements OnModuleInit {
   }
 
   /**
-   * 페이지수 배수 보정 잡 (fix-pagecount, 2026-06-25) — 데이터 주도 검증 d1 빈페이지 추가 실행기.
+   * 페이지수 배수 보정 잡 (fix-pagecount) — 데이터 주도 검증 d1 빈페이지 추가 실행기.
    * pdf-conversion(addPages) 재사용: convertOptions.padToMultiple 로 현재 페이지수를 배수까지 백지 보정.
    * 비동기 — 반환 WorkerJob(jobId) 폴링 → COMPLETED 시 updateJobStatus 가 결과를 새 fileId 로 등록
    * (options.kind='pagecount-fix' 게이트, 원본 site/order 승계). 원본 fileId 는 보존(되돌리기 가능).
@@ -1080,7 +1079,7 @@ export class WorkerJobsService implements OnModuleInit {
         sourceFileId: dto.fileId,
         targetMultiple,
         callbackUrl: dto.callbackUrl || undefined,
-        // [X1] 내지 기대 재단(추적용) — 부재=기존 옵션 불변(conditional spread)
+        // 내지 기대 재단(추적용) — 부재=기존 옵션 불변(conditional spread)
         ...(internal?.contentTrim ? { contentTrim: internal.contentTrim } : {}),
       },
     });
@@ -1096,7 +1095,7 @@ export class WorkerJobsService implements OnModuleInit {
         targetPages: 0,
         bleed: 0,
         padToMultiple: targetMultiple, // 현재 페이지수 → 다음 배수까지 백지 보정(addPages 재사용)
-        // [X1] 내지 기대 재단 — 첨부 채움만, 값이 있을 때만(키 부재 = 종전 convertOptions)
+        // 내지 기대 재단 — 첨부 채움만, 값이 있을 때만(키 부재 = 종전 convertOptions)
         ...(internal?.contentTrim ? { contentTrim: internal.contentTrim } : {}),
       },
     });
@@ -1105,7 +1104,7 @@ export class WorkerJobsService implements OnModuleInit {
   }
 
   /**
-   * 첨부 내지 PDF 빈 페이지 배수 채움 잡 (2026-09-28) — 편집기 첨부 모달 호출(@Public).
+   * 첨부 내지 PDF 빈 페이지 배수 채움 잡 — 편집기 첨부 모달 호출(@Public).
    *
    * underlay 첨부 PDF 는 최종 인쇄 내지 그 자체이고, 파트너는 첨부 이벤트의 contentPdfFileId 를
    * 보관해 합성에 직접 넘긴다(PLATFORM_INTEGRATION_GUIDE §3.3 첨부 이벤트). 그래서 채움은 완료 시가
@@ -1146,7 +1145,7 @@ export class WorkerJobsService implements OnModuleInit {
       });
     }
 
-    // [X1] 내지 기대 재단 — 위에서 읽은 템플릿셋 재사용, 템플릿 spreadConfig 만 추가 조회(fail-open)
+    // 내지 기대 재단 — 위에서 읽은 템플릿셋 재사용, 템플릿 spreadConfig 만 추가 조회(fail-open)
     const contentTrim = await deriveContentTrimFailOpen('attach-page-pad', this.logger, async () =>
       buildContentTrimFromTemplateSet(
         templateSet,
@@ -1165,7 +1164,7 @@ export class WorkerJobsService implements OnModuleInit {
   }
 
   /**
-   * 도련 자동 삽입 잡 (fix-bleed, 2026-07-13) — BLEED_MISSING(extendBleed) 실행기.
+   * 도련 자동 삽입 잡 (fix-bleed) — BLEED_MISSING(extendBleed) 실행기.
    * 고객이 재단 사이즈(=templateSet 판형, 예 297×210)로 업로드한 PDF 를 작업 사이즈
    * (판형 + 사방 bleedMm×2, 예 303×216)로 변환한 **새 파일**을 만든다.
    *
@@ -1195,9 +1194,8 @@ export class WorkerJobsService implements OnModuleInit {
         height: templateSet.height + bleedMm * 2,
       };
     } catch (err) {
-      // P2-4(2026-07-13 리뷰): NotFoundException(미존재)만 400 TEMPLATE_SET_NOT_FOUND 로
-      // 매핑. 종전 catch-all 은 DB 단절 등 인프라 예외까지 '클라이언트 입력 오류(400)'로
-      // 뭉개 원인 은폐 — 그 외 예외는 rethrow(전역 필터가 5xx 로 처리).
+      // NotFoundException(미존재)만 400 TEMPLATE_SET_NOT_FOUND 로 매핑한다. DB 단절 등 그 외
+      // 예외는 rethrow(전역 필터가 5xx 로 처리) — 인프라 장애를 '클라이언트 입력 오류(400)'로 가리지 않는다.
       if (err instanceof NotFoundException) {
         throw new BadRequestException({
           code: 'TEMPLATE_SET_NOT_FOUND',
@@ -1257,7 +1255,7 @@ export class WorkerJobsService implements OnModuleInit {
   }
 
   // ============================================================================
-  // Render Pages Jobs — 내지 PDF 표시전용 가이드 (2026-06-07)
+  // Render Pages Jobs — 내지 PDF 표시전용 가이드
   // ============================================================================
 
   /**
@@ -1314,7 +1312,7 @@ export class WorkerJobsService implements OnModuleInit {
   }
 
   // ============================================================================
-  // Cutout Jobs — 배경제거 서버 오프로드 (S-P2A-B, 2026-08-05)
+  // Cutout Jobs — 배경제거 서버 오프로드
   // ============================================================================
 
   /**
@@ -1328,9 +1326,9 @@ export class WorkerJobsService implements OnModuleInit {
   ];
 
   /**
-   * 배경제거 모델 키(rembg 내장 세션명) 화이트리스트 — 확장은 D-12b(라이선스) 결정 사안.
+   * 배경제거 모델 키(rembg 내장 세션명) 화이트리스트 — 확장은 라이선스 검토 사안.
    *  - `u2net_human_seg`       : 사이드카 기본(compose `REMBG_MODEL` 기본값)과 동일.
-   *                              **인물 전용** — D-12b 재결정(2026-08-06). 같은 사진 실측에서
+   *                              **인물 전용**. 같은 사진 실측에서
    *                              반투명 픽셀 24.2%→2.7% 로 떨어져 몸통이 지워지던 문제가 해소됐다.
    *                              ⚠️ 사람이 아닌 피사체(상품·캐릭터·반려동물)는 오히려 열위일 수 있다.
    *  - `isnet-general-use`     : **범용** 대안(실측 반투명 18.0%, 4.5s). 피사체가 사람이 아닐 때
@@ -1589,7 +1587,7 @@ export class WorkerJobsService implements OnModuleInit {
   }
 
   // ============================================================================
-  // X1 contentTrim 도출(content-trim.ts) — 호출부는 deriveContentTrimFailOpen 으로 감싼다.
+  // contentTrim 도출(content-trim.ts) — 호출부는 deriveContentTrimFailOpen 으로 감싼다.
   // ============================================================================
 
   /** 템플릿 행의 spreadConfig 만 조회(canvas_data 미조회). 템플릿 참조가 없으면 조회하지 않는다. */
@@ -1671,7 +1669,7 @@ export class WorkerJobsService implements OnModuleInit {
 
     const outputFormat = createSynthesisJobDto.outputFormat || 'merged';
 
-    // [X1] 내지 기대 재단 — 내부 호출(books 확정, bookSpec 출처)은 dto.contentTrim, editSessionId 가 있으면
+    // 내지 기대 재단 — 내부 호출(books 확정, bookSpec 출처)은 dto.contentTrim, editSessionId 가 있으면
     // 세션 템플릿셋에서 도출한다(fail-open). 둘 다 없으면 조회하지 않고 키도 붙이지 않는다.
     const contentTrim: ContentTrim | undefined =
       createSynthesisJobDto.contentTrim !== undefined
@@ -1688,8 +1686,8 @@ export class WorkerJobsService implements OnModuleInit {
       editSessionId: createSynthesisJobDto.editSessionId || null,
       fileId: coverFileId, // 대표 파일로 표지 사용
       inputFileUrl: coverUrl,
-      siteId: createSynthesisJobDto.siteId || null, // Phase C
-      // [S2-5] test env 컨텍스트면 isTest:true 스탬프 — 워커가 실합성 대신 TEST
+      siteId: createSynthesisJobDto.siteId || null, // 잡 소유 사이트
+      // test env 컨텍스트면 isTest:true 스탬프 — 워커가 실합성 대신 TEST
       // 워터마크 더미 산출 + outputs 24h retention 대상. live/미전달=키 없음(기존 불변).
       options: this.stampTestEnv(
         {
@@ -1701,11 +1699,11 @@ export class WorkerJobsService implements OnModuleInit {
           orderId: createSynthesisJobDto.orderId,
           callbackUrl: createSynthesisJobDto.callbackUrl,
           outputFormat, // 출력 형식 저장
-          // [Stage 3 W3] finalization 역참조 마커(#4) — 부재=기존 옵션 바이트 불변(conditional spread)
+          // finalization 역참조 마커 — 부재=기존 옵션 바이트 불변(conditional spread)
           ...(createSynthesisJobDto.finalizationId
             ? { finalizationId: createSynthesisJobDto.finalizationId }
             : {}),
-          // [X1] 내지 기대 재단(추적용, 큐 페이로드와 같은 값) — 부재=기존 옵션 바이트 불변(conditional spread)
+          // 내지 기대 재단(추적용, 큐 페이로드와 같은 값) — 부재=기존 옵션 바이트 불변(conditional spread)
           ...(contentTrim ? { contentTrim } : {}),
         },
         createSynthesisJobDto.partnerEnv,
@@ -1737,9 +1735,9 @@ export class WorkerJobsService implements OnModuleInit {
         callbackUrl: createSynthesisJobDto.callbackUrl,
         outputFormat, // 출력 형식 전달
         bindingType: createSynthesisJobDto.bindingType, // 제본 방식 (saddle 등) — synthesizer가 분기 처리
-        // [X1] 내지 기대 재단 — 값이 있을 때만(키 부재 = 종전 페이로드)
+        // 내지 기대 재단 — 값이 있을 때만(키 부재 = 종전 페이로드)
         ...(contentTrim ? { contentTrim } : {}),
-        // [S2-5] 큐 페이로드는 명시 구성이라 isTest 직렬화 등재 필요 — isTest 잡에만
+        // 큐 페이로드는 명시 구성이라 isTest 직렬화 등재 필요 — isTest 잡에만
         // conditional spread(live 잡 페이로드 키 집합 불변, external-site-stamp spec 계약 준용).
         ...(createSynthesisJobDto.partnerEnv === PARTNER_ENV_TEST
           ? { isTest: true as const }
@@ -1756,7 +1754,7 @@ export class WorkerJobsService implements OnModuleInit {
   }
 
   // ============================================================================
-  // Compose-mixed Jobs — 인쇄 워크플로우 v1 Phase 5 (2026-05-19)
+  // Compose-mixed Jobs — 인쇄 워크플로우 v1
   // ============================================================================
 
   /**
@@ -1770,7 +1768,7 @@ export class WorkerJobsService implements OnModuleInit {
    *  - 면지: 배열의 **non-null 원소**만 자산. null 원소는 빈 페이지 생성 지시다(:478-481).
    *
    * 셋 다 0건이면 워커는 A4 백지 1p 를 COMPLETED 로 내보낸다(고객에겐 성공으로 보이는 백지
-   * 주문). 오너 결정(2026-08-13)으로 자동조립 여부와 무관하게 400 으로 승격한다.
+   * 주문). 그래서 자동조립 여부와 무관하게 400 으로 막는다.
    */
   private assertComposeMixedInputNotEmpty(dto: ComposeMixedJobInput): void {
     const hasCover = dto.coverEditable !== false && !!dto.coverUrl;
@@ -1791,7 +1789,7 @@ export class WorkerJobsService implements OnModuleInit {
   }
 
   /**
-   * [자동조립 opt-in, 2026-08-13] 편집 세션에서 compose-mixed 입력을 도출한다.
+   * [자동조립 opt-in] 편집 세션에서 compose-mixed 입력을 도출한다.
    *
    * ⚠️ **빈 자리만** 채운다 — dto 에 명시값이 있으면 언제나 dto 가 이긴다(per-field 우선순위).
    * ⚠️ 워커는 무변경 — 도출값은 기존 큐 키(composeCoverUrl·composeContentPdfUrl·
@@ -1808,7 +1806,7 @@ export class WorkerJobsService implements OnModuleInit {
    *  - 워커 입력 URL 변환 ← toWorkerInputUrl (worker-jobs.service.ts:186-188, s3=api://<id>)
    *  - 판형(mm)   ← templateSet.width/height     (template-set.entity.ts:88-98)
    *  - 표지 판형  ← metadata.spread 의 outputWidthMm/HeightMm(우선) · totalWidthMm/HeightMm(폴백)
-   *                 — createComposeMixedJob 본문 P0-3·D-4 블록과 동일 출처. 펼침면 책의 빈 표지
+   *                 — createComposeMixedJob 본문의 스프레드·출력 사이즈 블록과 동일 출처. 펼침면 책의 빈 표지
    *                 치수이며, 둘 다 없으면 templateSet 판형.
    *  - 면지 매수  ← templateSet.endpaperConfig.frontCount/backCount (template-set.entity.ts:147-154)
    *      · null 원소 = 빈 면지 페이지(create-compose-mixed-job.dto.ts:51-58 계약).
@@ -1825,7 +1823,7 @@ export class WorkerJobsService implements OnModuleInit {
    * books.service.ts:160-168 의 정답 패턴을 따르며, `session.siteId &&` 형태의 약한 검사
    * (edit-sessions.service.ts:386-394)는 의도적으로 복사하지 않는다(NULL-site 통과 구멍).
    * 추가로 토큰에 주문 스코프가 있으면 session.orderSeqno 도 대조한다(같은 테넌트 내
-   * 타 고객 세션 조립 차단 — 아래 게이트 주석의 형제 라우트 근거 참조).
+   * 다른 주문 세션 조립 차단 — 아래 게이트 주석 참조).
    */
   private async assembleComposeInputFromSession(
     dto: ComposeMixedJobInput,
@@ -1862,16 +1860,14 @@ export class WorkerJobsService implements OnModuleInit {
       throw notFound();
     }
 
-    // 🔒 주문 스코프(2026-08-13) — siteId 일치만으로는 **같은 테넌트의 타 고객 세션**을
-    //    조립해 그 표지/내지를 합본으로 뽑아낼 수 있다(세션 UUID 는 편집기 URL·
-    //    /embed?sessionId= 등에 노출되는 값이라 파일 UUID 보다 확보가 쉽다).
-    //    형제 라우트가 이미 닫은 취약점 클래스와 동일하므로 같은 근거 필드로 가드한다
-    //    (edit-sessions.controller.ts:91-101 Patch D, :163-180 F-5 — 후자는 결과를
-    //     "타 고객 주문에 남의 PDF 가 붙는다"로 명시).
-    //    ⚠️ 형제 라우트는 403 ORDER_NOT_ALLOWED 지만 여기서는 존재 은닉을 우선해 동일 404 로
+    // 🔒 주문 스코프 — siteId 일치만으로는 **같은 테넌트의 타 고객 세션**을 조립해 그 표지/내지를
+    //    합본으로 뽑아낼 수 있다(세션 UUID 는 편집기 URL·/embed?sessionId= 등에 노출되는 값이라
+    //    파일 UUID 보다 확보가 쉽다). 편집 세션 라우트(edit-sessions.controller.ts)와 같은 근거
+    //    필드 allowedOrderSeqnos 로 세션 orderSeqno 를 대조한다.
+    //    ⚠️ 편집 세션 라우트는 403 ORDER_NOT_ALLOWED 지만 여기서는 존재 은닉을 우선해 동일 404 로
     //       던진다(허용 여부가 곧 "그 세션이 존재한다"는 오라클이 되지 않도록).
-    //    ⚠️ allowedOrderSeqnos 가 없는 토큰은 기존대로 통과 — Patch D/F-5 호환 모드와 동일해
-    //       현행 파트너 배선(주문 스코프 미발급 토큰)에 영향 0.
+    //    ⚠️ allowedOrderSeqnos 가 없는 토큰은 주문 검사 없이 통과한다 — 편집 세션 라우트의 호환
+    //       모드와 같아 주문 스코프를 발급하지 않는 토큰에 영향이 없다.
     const allowedOrderSeqnos = caller?.allowedOrderSeqnos;
     if (
       Array.isArray(allowedOrderSeqnos) &&
@@ -1929,7 +1925,7 @@ export class WorkerJobsService implements OnModuleInit {
     const spreadConfigs = templateDetails
       .map((t) => t?.spreadConfig)
       .filter((c): c is NonNullable<Template['spreadConfig']> => !!c);
-    // 내지 전용 펼침면 세트(2026-08-03 개통)는 표지 자체가 없고 편집기가 cover PDF 를
+    // 내지 전용 펼침면 세트는 표지 자체가 없고 편집기가 cover PDF 를
     // 생성·업로드조차 하지 않는다(apps/editor/src/embed.tsx:1736 isInnerOnlySpread, :1760).
     // cover_editable 은 NOT NULL DEFAULT 1 이라 이 조합을 '표지 결손'으로 오판하면
     // 이 상품군 전체가 자동조립 불가가 된다.
@@ -1990,7 +1986,7 @@ export class WorkerJobsService implements OnModuleInit {
     const contentHeightMm =
       dto.contentHeightMm ??
       (innerTrimHeightMm !== undefined ? innerTrimHeightMm + bleedPad : undefined);
-    // 펼침면 책의 빈 표지는 펼침 전체 폭이어야 한다(출력 wrap 포함 사이즈 우선 — D-4 규약).
+    // 펼침면 책의 빈 표지는 펼침 전체 폭이어야 한다(출력 wrap 포함 사이즈 우선).
     const coverWidthMm =
       dto.coverWidthMm ??
       positive(spread?.outputWidthMm) ??
@@ -2011,8 +2007,7 @@ export class WorkerJobsService implements OnModuleInit {
 
     // ⚠️ 편집가능 면지: 고객이 편집한 면지 산출물을 가리키는 참조가 스키마 어디에도 없다
     //    (edit_sessions 는 cover/content 두 파일만 보유 — entity:60-72). 빈 면지로 대체하면
-    //    고객 편집물이 조용히 사라지므로 fail-closed 로 막는다. (프로덕션 실측 2026-08-13:
-    //    template_sets.endpaper_config 23행 전부 NULL → 현재 도달 0건)
+    //    고객 편집물이 조용히 사라지므로 fail-closed 로 막는다.
     if (endpaper?.frontEditable === true && (endpaper?.frontCount ?? 0) > 0 && !dto.frontEndpaperUrls) {
       missing.push('frontEndpaperUrls(편집가능 면지 산출물 참조 없음)');
     }
@@ -2027,10 +2022,10 @@ export class WorkerJobsService implements OnModuleInit {
     //  · 기성커버(coverEditable=false)는 표지 PDF 가 없는 것이 정상 상태다.
     //
     // ⚠️ dto.outputMode 원본으로 판정하면 안 되는 경우가 하나 있다 — 스프레드 책은
-    //    본문의 P0-3 블록이 'content-only'|'single' 을 'separate' 로 **강제**하므로
+    //    본문의 스프레드 블록이 'content-only'|'single' 을 'separate' 로 **강제**하므로
     //    (createComposeMixedJob 내 effectiveOutputMode, 아래 :1452-1458 상당),
     //    판정과 실행 모드가 어긋나면 워커가 coverUrl 없이 빈 cover.pdf 1p 를 만들고
-    //    COMPLETED 로 끝낸다(synthesis.processor.ts:518-531) = 이 트랙이 막으려던 백지 산출.
+    //    COMPLETED 로 끝낸다(synthesis.processor.ts:518-531) = 위 빈 입력 차단이 막는 백지 산출.
     //    강제 조건과 동일하게 metadata.spread 스냅샷 유무로 선판정한다.
     const spreadForcesSeparate =
       dto.coverEditable !== false && !!spread?.totalWidthMm && !!spread?.totalHeightMm;
@@ -2110,7 +2105,7 @@ export class WorkerJobsService implements OnModuleInit {
         `callbackUrl=${callbackUrlSource}`,
     );
 
-    // [X1] 이미 읽은 템플릿셋·템플릿 상세를 contentTrim 도출에 재사용한다(추가 조회 없음).
+    // 이미 읽은 템플릿셋·템플릿 상세를 contentTrim 도출에 재사용한다(추가 조회 없음).
     return { input: assembled, trimSource: { templateSet, templateDetails } };
   }
 
@@ -2122,13 +2117,12 @@ export class WorkerJobsService implements OnModuleInit {
   }
 
   /**
-   * [테넌트 스탬프 위조 차단, 2026-08-13] compose-mixed 잡의 `siteId` 결정.
+   * [테넌트 스탬프 위조 차단] compose-mixed 잡의 `siteId` 결정.
    *
    * `POST /worker-jobs/compose-mixed` 는 `@Public` 이라(worker-jobs.controller.ts:276-278)
-   * body 의 `siteId` 는 **무인증 호출자가 고른 값**이다. 종전에는 그 값이 그대로
-   * `job.siteId` 로 기록됐고(이 함수 도입 전 `siteId: dto.siteId || null`),
-   * 다른 라우트들이 `@CurrentSite()` 로 서버 도출한 값을 넣는 것과 달리
-   * (worker-jobs.controller.ts:139·190·224·461) 검증 주체가 없었다.
+   * body 의 `siteId` 는 **무인증 호출자가 고른 값**이다. 다른 라우트들은 `@CurrentSite()` 로
+   * 서버가 도출한 값을 넣지만(worker-jobs.controller.ts:139·190·224·461), 이 라우트에서
+   * body 값을 그대로 `job.siteId` 로 기록하면 검증 주체가 없다.
    *
    * 그래서 임의 테넌트 UUID 를 실으면:
    *  ① 잡이 그 사이트 소유로 귀속되고(assertJobSiteAccess:2310-2318 이 그 테넌트에만 개방),
@@ -2145,8 +2139,8 @@ export class WorkerJobsService implements OnModuleInit {
    *  - 수동 경로: 검증된 shop-session(OptionalShopJwtGuard) 의 caller.siteId 와
    *    **일치할 때만** 채택. 불일치·caller 부재면 **무시하고 NULL 스탬프**.
    *
-   * ⚠️ 400 을 던지지 않는다(무중단 최우선 — 프로덕션 compose-mixed 호출 이력 0건이지만
-   *    조용한 하향이 안전). NULL 스탬프는 이 라우트가 도입될 때의 기본값이자
+   * ⚠️ 400 을 던지지 않는다(무중단 최우선 — 조용한 하향이 안전).
+   *    NULL 스탬프는 이 라우트가 도입될 때의 기본값이자
    *    `siteId` 미전달 호출자와 동일한 상태이므로 회귀가 아니다.
    * ⚠️ NULL 잡은 assertJobSiteAccess 상 전 테넌트에 열린다(:2306 '공유/레거시'). 그러나
    *    위조 잡의 내용은 이미 위조자 본인이 만든 것이고, 반대로 위조 스탬프는 피해 사이트로
@@ -2162,10 +2156,8 @@ export class WorkerJobsService implements OnModuleInit {
    *    tryDispatchForSite(v2: 사이트별 HMAC + X-Storige-Delivery + 재시도 스토어)로
    *    먼저 배달하고 반환한다(webhook.service.ts:143-159). siteId 가 NULL 이 되면
    *    이 분기를 건너뛰고 **v1 레거시 경로**(전역 시크릿 서명)로 같은 URL 에 배달된다.
-   *    → body.siteId + callbackUrl 을 함께 보내던 파트너가 v2 config 를 켜 두었다면
-   *      수신 서명이 v1 로 바뀐다. 프로덕션 compose-mixed 호출 이력 0건(2026-08-13 실측)
-   *      이라 실피해자는 없으나, 문서(§3.4 3번)에 '수동 경로 잡은 v2 배달 대상 아님'을
-   *      명시해 두었다.
+   *    → body.siteId + callbackUrl 을 함께 보내는 호출자가 v2 config 를 켜 두었어도
+   *      수신 서명은 v1 이다. 연동 가이드에 '수동 경로 잡은 v2 배달 대상 아님'을 명시한다.
    * ⚠️ 로그에 값 자체를 남기지 않는다(테넌트 UUID = 타 사이트 식별자). 길이 + 앞 4자만,
    *    로그 인젝션 방지를 위해 UUID 문자셋 밖 문자는 제거한다.
    */
@@ -2189,11 +2181,11 @@ export class WorkerJobsService implements OnModuleInit {
     // ── ② 검증된 shop-session JWT 와 일치. [무변경]
     if (requested && caller?.siteId && caller.siteId === requested) return requested;
 
-    // ── ③ [D6-ⓐ 2026-09-12] 검증된 사이트 키 = 그 사이트 본인.
+    // ── ③ 검증된 사이트 키 = 그 사이트 본인.
     //    `body.siteId` 주장을 믿는 게 아니다 — 비밀 자격증명을 DB 에서 조회해 **서버가
     //    도출한** 값이므로 위조에 키 탈취가 필요하다(종전보다 한 겹 두껍다).
     //    이 블록이 없으면 파트너 정규 경로(키 + body.siteId 미전송)가 전건 NULL 스탬프로
-    //    남아 D6 NULL-파괴 게이트에서 404 가 된다(RESUME §8-1).
+    //    남아, NULL 잡 산출물 접근을 막는 설정을 켜면 그 산출물 다운로드가 404 가 된다.
     const keySiteId = apiKeyCaller?.siteId || null;
     if (keySiteId) {
       // ③-a 호출자가 body.siteId 를 실었다면 키 소유 사이트와 일치해야 한다.
@@ -2249,7 +2241,7 @@ export class WorkerJobsService implements OnModuleInit {
    * 기존 synthesis / split / spread 흐름과 분리된 별도 mode.
    * PHP 기존 호출 경로 회귀 보호 (mode='compose-mixed' 만 신규 worker handler 사용).
    *
-   * ── 자동조립 opt-in (2026-08-13) ──────────────────────────────────────────
+   * ── 자동조립 opt-in ───────────────────────────────────────────────────────
    * `rawDto.assembleFromSession === true` 일 때만 세션에서 파일·판형을 도출해
    * **빈 자리만** 채운다(per-field 우선순위: dto 명시값 > 도출값). 미전달이면
    * 아래 본문은 rawDto 를 그대로 받아 **기존과 한 줄도 다르지 않게** 동작한다.
@@ -2257,13 +2249,13 @@ export class WorkerJobsService implements OnModuleInit {
    * ⚠️ 인가는 자동조립 경로에만 적용된다(assembleComposeInputFromSession).
    *    기존 URL 직접 공급 경로에는 검사를 추가하지 않는다 — 무중단 최우선.
    *
-   * ── 빈 입력 400 승격 (오너 결정 2026-08-13) ───────────────────────────────
+   * ── 빈 입력 400 ─────────────────────────────────────────────────────
    * 자동조립 여부와 무관하게 표지·내지 자산이 0건이면 400(EMPTY_COMPOSE_INPUT).
-   * 종전엔 워커가 A4 백지 1p 를 COMPLETED 로 산출했다
+   * 막지 않으면 워커가 A4 백지 1p 를 COMPLETED 로 산출한다
    * (apps/worker/src/processors/synthesis.processor.ts:441-450·589-590·602·617-618).
    *
-   * ── 테넌트 스탬프 위조 차단 (2026-08-13) ─────────────────────────────────
-   * `job.siteId` 는 더 이상 body 값을 그대로 받지 않는다 — 자동조립은 세션 권위,
+   * ── 테넌트 스탬프 위조 차단 ──────────────────────────────────────────────
+   * `job.siteId` 는 body 값을 그대로 받지 않는다 — 자동조립은 세션 권위,
    * 수동 경로는 검증된 shop-session 과 일치할 때만 채택, 그 외 NULL 스탬프.
    * 판정·근거는 resolveComposeMixedSiteId 참조(400 없음 = 무중단).
    */
@@ -2271,18 +2263,18 @@ export class WorkerJobsService implements OnModuleInit {
     rawDto: ComposeMixedJobInput,
     caller?: ComposeAssembleCaller,
     /**
-     * [D6-ⓐ] 검증된 사이트 키 컨텍스트(OptionalApiKeySiteGuard). `caller` 와 **합치지 말 것** —
+     * 검증된 사이트 키 컨텍스트(OptionalApiKeySiteGuard). `caller` 와 **합치지 말 것** —
      * 분리가 자동조립 인가 게이트의 권한 상승을 막는 장치다(가드 불변식 2).
      * 여기서는 `resolveComposeMixedSiteId` 의 스탬프 근거로만 쓰인다.
      */
     apiKeyCaller?: { siteId: string },
     /**
-     * 관리자 합성(2026-09-29, createStaffComposeFromSession 전용). 있으면 job.options.staffInitiated 를 싣는다.
+     * 관리자 합성(createStaffComposeFromSession 전용). 있으면 job.options.staffInitiated 를 싣는다.
      * 없으면 options 바이트는 종전과 같다(conditional spread).
      */
     staffOpts?: {
       staffInitiated: StaffInitiatedMarker;
-      /** [X1] 관리자 합성이 세션 템플릿셋에서 도출한 내지 기대 재단. 없으면 키를 붙이지 않는다. */
+      /** 관리자 합성이 세션 템플릿셋에서 도출한 내지 기대 재단. 없으면 키를 붙이지 않는다. */
       contentTrim?: ContentTrim;
     },
     /**
@@ -2304,7 +2296,7 @@ export class WorkerJobsService implements OnModuleInit {
     // 빈 입력 차단(전 경로 공통) — 백지 COMPLETED 산출 방지.
     this.assertComposeMixedInputNotEmpty(dto);
 
-    // P0-3: 스프레드 책 무결성 — 세션의 출력재현 단일소스(metadata.spread)를 조회해
+    // 스프레드 책 무결성 — 세션의 출력재현 단일소스(metadata.spread)를 조회해
     //  ① 워커 cover MediaBox 검증용 기대치(totalWidthMm/HeightMm/dpi)를 큐로 push,
     //  ② 확정 비즈니스 규칙(스프레드 책 = cover.pdf + content.pdf "분리 2파일")에 맞춰
     //     outputMode 를 'separate' 로 강제(편집기 펼침면 cover 가 출력에서 누락되지 않도록).
@@ -2312,14 +2304,14 @@ export class WorkerJobsService implements OnModuleInit {
     let composeSpreadTotalWidthMm: number | undefined;
     let composeSpreadTotalHeightMm: number | undefined;
     let composeSpreadDpi: number | undefined;
-    // D-4 (2026-07-06, C-4 Track 3): 하드커버 싸바리 등 '출력(wrap 포함) 사이즈'가 화면 trim 과
-    // 다른 상품의 cover 검증 기대치. 세션 metadata.spread.outputWidthMm/outputHeightMm(mm, Track 1
-    // 합의 인터페이스)를 내부 큐 metadata 로만 additive push — 워커 external DTO 표면 불변.
+    // 출력 사이즈: 하드커버 싸바리 등 '출력(wrap 포함) 사이즈'가 화면 trim 과
+    // 다른 상품의 cover 검증 기대치. 세션 metadata.spread.outputWidthMm/outputHeightMm(mm)를
+    // 내부 큐 metadata 로만 additive push — 워커 external DTO 표면 불변.
     // 부재 시 기존 totalWidthMm 검증과 100% 동일(output 우선·total 폴백).
     let composeSpreadOutputWidthMm: number | undefined;
     let composeSpreadOutputHeightMm: number | undefined;
     let effectiveOutputMode = dto.outputMode;
-    // [D6-ⓐ] 세션 소유 테넌트 — 아래 조회를 **재사용**한다(추가 쿼리 없음).
+    // 세션 소유 테넌트 — 아래 조회를 **재사용**한다(추가 쿼리 없음).
     //  undefined = 미조회·세션부재·조회실패 / null = 세션이 무소유.
     //  🚨 이 변수는 resolveComposeMixedSiteId 호출(아래 repository.create)보다 **먼저**
     //     채워져야 한다. 조회 블록을 create 뒤로 옮기거나 조기 return 을 앞에 끼우면
@@ -2344,7 +2336,7 @@ export class WorkerJobsService implements OnModuleInit {
             effectiveOutputMode = 'separate';
           }
         }
-        // D-4: output 사이즈는 total 게이트와 독립적으로 읽는다(배포 순서 무관 안전).
+        // output 사이즈는 total 게이트와 독립적으로 읽는다(배포 순서 무관 안전).
         //  둘 다 양수 number 일 때만 유효 — 한쪽만 있으면 무시(기존 동작 유지).
         if (
           typeof sp?.outputWidthMm === 'number' && sp.outputWidthMm > 0 &&
@@ -2393,7 +2385,7 @@ export class WorkerJobsService implements OnModuleInit {
       }
     }
 
-    // [X1] 내지 기대 재단 — 자동조립은 이미 읽은 템플릿셋에서 도출(fail-open), 관리자 합성은
+    // 내지 기대 재단 — 자동조립은 이미 읽은 템플릿셋에서 도출(fail-open), 관리자 합성은
     // staffOpts.contentTrim. 수동 경로는 도출하지 않는다(템플릿셋 미조회).
     const contentTrim: ContentTrim | undefined = assembled
       ? await deriveContentTrimFailOpen('compose-mixed', this.logger, () =>
@@ -2407,10 +2399,10 @@ export class WorkerJobsService implements OnModuleInit {
       // 세션 연결 컬럼 — 연결을 확인하지 못한 수동 경로(linkOpts.storeSessionLink=false)는 비워 두고 options 표지만 싣는다.
       editSessionId: linkOpts?.storeSessionLink === false ? null : dto.editSessionId || null,
       inputFileUrl: dto.coverUrl || dto.contentPdfUrl || null,
-      // [테넌트 스탬프 위조 차단 2026-08-13] `dto.siteId || null` 직접 대입 금지 —
+      // [테넌트 스탬프 위조 차단] `dto.siteId || null` 직접 대입 금지 —
       // 이 라우트는 @Public 이라 body.siteId 가 무검증 입력이다(resolveComposeMixedSiteId 주석).
       siteId: jobSiteId,
-      // [S2-5] test env 컨텍스트면 isTest:true 스탬프 — 워커가 실합성(compose-mixed) 대신
+      // test env 컨텍스트면 isTest:true 스탬프 — 워커가 실합성(compose-mixed) 대신
       // TEST 워터마크 더미(handleTestSynthesis compose-mixed 분기) 산출 + outputs 24h retention.
       // live/미전달(external sites 키)=키 없음 → 기존 옵션 바이트 불변(compose-mixed.spec 계약).
       options: this.stampTestEnv(
@@ -2432,12 +2424,12 @@ export class WorkerJobsService implements OnModuleInit {
           spreadTotalWidthMm: composeSpreadTotalWidthMm,
           spreadTotalHeightMm: composeSpreadTotalHeightMm,
           spreadDpi: composeSpreadDpi,
-          // D-4: 출력(wrap 포함) 사이즈 기대치 — additive, 부재=기존 total 검증
+          // 출력(wrap 포함) 사이즈 기대치 — additive, 부재=기존 total 검증
           spreadOutputWidthMm: composeSpreadOutputWidthMm,
           spreadOutputHeightMm: composeSpreadOutputHeightMm,
-          // [Stage 3 W3] finalization 역참조 마커(#4) — 부재=기존 옵션 바이트 불변(conditional spread)
+          // finalization 역참조 마커 — 부재=기존 옵션 바이트 불변(conditional spread)
           ...(dto.finalizationId ? { finalizationId: dto.finalizationId } : {}),
-          // 관리자 합성 마커(2026-09-29) — 부재=기존 옵션 바이트 불변(conditional spread)
+          // 관리자 합성 마커 — 부재=기존 옵션 바이트 불변(conditional spread)
           ...(staffOpts?.staffInitiated
             ? {
                 staffInitiated: {
@@ -2446,7 +2438,7 @@ export class WorkerJobsService implements OnModuleInit {
                 },
               }
             : {}),
-          // [X1] 내지 기대 재단(추적용, 큐 페이로드와 같은 값) — 부재=기존 옵션 바이트 불변(conditional spread)
+          // 내지 기대 재단(추적용, 큐 페이로드와 같은 값) — 부재=기존 옵션 바이트 불변(conditional spread)
           ...(contentTrim ? { contentTrim } : {}),
         },
         dto.partnerEnv,
@@ -2469,17 +2461,17 @@ export class WorkerJobsService implements OnModuleInit {
         composeContentWidthMm: dto.contentWidthMm,
         composeContentHeightMm: dto.contentHeightMm,
         composeOutputMode: effectiveOutputMode,
-        // P0-3: 스프레드 cover MediaBox 검증 기대치(세션 metadata.spread). 부재=비스프레드 → 워커 검증 skip.
+        // 스프레드 cover MediaBox 검증 기대치(세션 metadata.spread). 부재=비스프레드 → 워커 검증 skip.
         composeSpreadTotalWidthMm,
         composeSpreadTotalHeightMm,
         composeSpreadDpi,
-        // D-4: 출력(싸바리 wrap 포함) 사이즈 기대치 — output 우선·total 폴백(additive, 내부 큐 전용)
+        // 출력(싸바리 wrap 포함) 사이즈 기대치 — output 우선·total 폴백(additive, 내부 큐 전용)
         composeSpreadOutputWidthMm,
         composeSpreadOutputHeightMm,
         callbackUrl: dto.callbackUrl,
-        // [X1] 내지 기대 재단 — 값이 있을 때만(키 부재 = 종전 페이로드)
+        // 내지 기대 재단 — 값이 있을 때만(키 부재 = 종전 페이로드)
         ...(contentTrim ? { contentTrim } : {}),
-        // [S2-5] isTest 잡에만 conditional spread — live 잡 페이로드 키 집합 불변
+        // isTest 잡에만 conditional spread — live 잡 페이로드 키 집합 불변
         // (createSynthesisJob/createSplitSynthesisJob 큐 페이로드 계약 준용). 워커
         // handleSynthesis 가 job.data.isTest===true → handleTestSynthesis(compose-mixed 분기).
         ...(dto.partnerEnv === PARTNER_ENV_TEST ? { isTest: true as const } : {}),
@@ -2495,7 +2487,7 @@ export class WorkerJobsService implements OnModuleInit {
   }
 
   /**
-   * 관리자 합성/재합성(2026-09-29, ADDITIVE) — StaffEditDataService 전용.
+   * 관리자 합성/재합성(ADDITIVE) — StaffEditDataService 전용.
    *
    * 호출부가 관리자 범위·보관기간·감사를 이미 확인했다. siteId 는 서버가 읽은 session.siteId 다.
    *  1) 세션 자산으로 입력을 조립(assembleComposeInputFromSession, caller=세션 사이트)
@@ -2519,7 +2511,7 @@ export class WorkerJobsService implements OnModuleInit {
     if (!opts.notifyPartner) delete assembled.callbackUrl;
     assembled.assembleFromSession = false;
     assembled.siteId = siteId;
-    // [X1] 내지 기대 재단 — 조립에서 읽은 템플릿셋으로 도출(fail-open)
+    // 내지 기대 재단 — 조립에서 읽은 템플릿셋으로 도출(fail-open)
     const contentTrim = await deriveContentTrimFailOpen('compose-mixed', this.logger, () =>
       this.contentTrimFromAssembled(trimSource),
     );
@@ -2669,8 +2661,8 @@ export class WorkerJobsService implements OnModuleInit {
       sessionId: dto.sessionId,
       pdfFileId: dto.pdfFileId,
       requestId: dto.requestId,
-      siteId: dto.siteId || null, // Phase C — Stage 0 비대칭 봉합(validate/external 준용). 미전달=NULL(기존 동작 불변)
-      // [S2-5] test env 컨텍스트면 isTest:true 스탬프 — createSynthesisJob 주석 참조.
+      siteId: dto.siteId || null, // 잡 소유 사이트(validate/external 과 같다). 미전달=NULL
+      // test env 컨텍스트면 isTest:true 스탬프 — createSynthesisJob 주석 참조.
       options: this.stampTestEnv(
         {
           mode: 'split',
@@ -2729,7 +2721,7 @@ export class WorkerJobsService implements OnModuleInit {
         outputFormat,
         alsoGenerateMerged,
         callbackUrl: dto.callbackUrl,
-        // [S2-5] isTest 잡에만 conditional spread — live 잡 페이로드 키 집합 불변
+        // isTest 잡에만 conditional spread — live 잡 페이로드 키 집합 불변
         // (external-site-stamp spec "큐 페이로드 불변" 계약 준용).
         ...(dto.partnerEnv === PARTNER_ENV_TEST ? { isTest: true as const } : {}),
       },
@@ -2745,7 +2737,7 @@ export class WorkerJobsService implements OnModuleInit {
   }
 
   /**
-   * Duplex-split 합성 작업 생성 — 2026-06-09 (TemplateSet.pdfOutputMode='duplex-split').
+   * Duplex-split 합성 작업 생성 (TemplateSet.pdfOutputMode='duplex-split').
    *
    * 단일/낱장 양면 상품의 편집기 산출 단일 PDF(앞,뒤,앞,뒤… 순서)를
    * 앞/뒤 한 세트(각 2페이지)씩 잘라 개별 PDF n개로 분리한다.
@@ -2967,9 +2959,8 @@ export class WorkerJobsService implements OnModuleInit {
     }
 
     // 3. 내지 PDF 파일들 조회 + 검증
-    // DB-003: 루프 내 findById(N+1)를 In() 배치 1회로 치환. 미존재 시 findById 와 동일한
-    // NotFoundException(FILE_NOT_FOUND, details.fileId)을 던져 기존 reachable 동작 보존
-    // (기존 코드의 per-file 메시지 블록은 findById 가 먼저 throw 해 도달 불가했음).
+    // 루프 내 findById(N+1) 대신 In() 배치 1회로 조회한다. 미존재 시 findById 와 동일한
+    // NotFoundException(FILE_NOT_FOUND, details.fileId)을 던진다.
     const _contentFiles = await this.filesService.findManyByIds(dto.contentPdfFileIds);
     for (const fileId of dto.contentPdfFileIds) {
       const contentFile = _contentFiles.get(fileId);
@@ -3112,13 +3103,13 @@ export class WorkerJobsService implements OnModuleInit {
   async findAll(
     status?: WorkerJobStatus,
     jobType?: WorkerJobType,
-    siteId?: string, // Phase C-3
-    limit?: number, // DB-016: 무제한 getMany OOM 방지
-    scope?: TenantScope, // P3b: 사이트 운영자 = 자기 site 잡만(명시 siteId 와 AND 교집합)
+    siteId?: string, // 사이트 필터
+    limit?: number, // 반환 상한 — 무제한 getMany OOM 방지
+    scope?: TenantScope, // 사이트 운영자 = 자기 site 잡만(명시 siteId 와 AND 교집합)
   ): Promise<WorkerJob[]> {
     const query = this.workerJobRepository.createQueryBuilder('job');
 
-    // P3b — 잡=소유 리소스: includeNull=false(시스템 NULL 잡은 사이트 운영자에게 비노출).
+    // 잡=소유 리소스: includeNull=false(시스템 NULL 잡은 사이트 운영자에게 비노출).
     if (scope) applySiteScope(query, 'job', scope);
 
     if (status) {
@@ -3133,14 +3124,14 @@ export class WorkerJobsService implements OnModuleInit {
       query.andWhere('job.siteId = :siteId', { siteId });
     }
 
-    // DB-016: 잡이 수만 건 누적되면 단일 요청으로 전체를 메모리 적재 → OOM/타임아웃.
+    // 잡이 수만 건 누적되면 단일 요청으로 전체를 메모리 적재 → OOM/타임아웃.
     // 최신순 정렬 후 상한(기본 200, 1~1000 클램프)으로 자른다. 배열 반환형 불변(admin Table 호환).
     const take = Math.min(Math.max(Number(limit) || 200, 1), 1000);
     return await query.orderBy('job.createdAt', 'DESC').take(take).getMany();
   }
 
   /**
-   * P2c S-3 테넌트 격리 — 외부(API Key) 호출자의 잡 접근 검증.
+   * 테넌트 격리 — 외부(API Key) 호출자의 잡 접근 검증.
    * - worker 역할(내부/사이트 워커): 잡 처리·상태콜백 위해 바이패스(잡 site 무관, 내부 WORKER_API_KEY=Default Site).
    * - editor 역할(테넌트): 잡 site 가 NULL(공유/레거시) 또는 자기 site 일 때만 허용.
    * - 불일치는 not-found 와 **동일한 404** 로 던져 존재 오라클을 차단.
@@ -3157,19 +3148,17 @@ export class WorkerJobsService implements OnModuleInit {
   }
 
   /**
-   * S4 2단계(2026-08-28, D3·D4) — 합성 산출물 **서명 URL 재발급**.
+   * 합성 산출물 **서명 URL 재발급**.
    *
-   * compose-mixed 등 SYNTHESIZE 산출물의 유일한 문서화 회수 경로가 무인증 공개
-   * URL 이었다(가이드 §3.4 — "URL 을 비밀로 취급"). 이 메서드가 인증(X-API-Key)
-   * 경로를 신설한다. 반환 URL 은 nginx secure_link 가 검증하는 `/storage-signed/…`.
+   * compose-mixed 등 SYNTHESIZE 산출물의 인증(X-API-Key) 회수 경로.
+   * 반환 URL 은 nginx secure_link 가 검증하는 `/storage-signed/…`.
    *
-   * 테넌트 판정(D3):
+   * 테넌트 판정:
    *  - 스탬프 잡: caller.siteId 일치 필요 — 불일치는 404(존재 은닉).
    *  - NULL 잡: env OUTPUT_URL_NULL_JOB_SITE_ALLOWLIST(콤마 site id) 설정 시 그
-   *    목록의 site 만, **미설정 시 유효 키 전부 허용** — 현행 read 표면
-   *    (GET external/:id 의 NULL-pass)과 동일 시맨틱으로 시작해 additive 무중단을
-   *    지키고, 조임은 운영 설정으로 승격한다(관측 후 — 설계안 D6 트랙과 연동).
-   *  ⚠️ findCutoutJob 의 교훈: caller 부재를 '면제'로 해석하지 않는다 — 이 경로는
+   *    목록의 site 만, **미설정 시 유효 키 전부 허용** — GET external/:id 의 NULL 잡
+   *    허용과 같은 시맨틱이다. 범위를 좁히려면 이 env 를 설정한다.
+   *  ⚠️ caller 부재를 '면제'로 해석하지 않는다 — 이 경로는
    *     ApiKeyGuard 뒤라 caller 가 항상 있지만, 방어적으로 부재 시 404.
    *
    * 시크릿 미설정(OUTPUT_SIGN_SECRET) → 503 SIGNED_URL_NOT_CONFIGURED(fail-closed).
@@ -3248,11 +3237,11 @@ export class WorkerJobsService implements OnModuleInit {
     }
 
     this.assertJobSiteAccess(job, caller);
-    // P3b — admin JWT 사이트 운영자: 자기 site 잡만.
+    // admin JWT 사이트 운영자: 자기 site 잡만.
     // ⚠️ GET 은 읽기. validate/render-pages 는 @Public 생성이라 siteId=NULL 인 경우가
     //    정상이다. shop-session JWT(고객 임베드)가 그 잡을 폴링할 때 allowNull 없으면
     //    403 "시스템 공유 리소스는 사이트 운영자가 수정할 수 없습니다" 가 난다
-    //    (2026-08-13 실기: ContentPdfAttachModal 업로드+검증). UUID 를 아는 호출만
+    //    (예: ContentPdfAttachModal 업로드 후 검증 잡 폴링). UUID 를 아는 호출만
     //    도달한다(assertJobSiteAccess 가 타 테넌트 스탬프 잡은 404).
     if (scope) assertSiteInScope(scope, job.siteId, { allowNull: true });
 
@@ -3260,7 +3249,7 @@ export class WorkerJobsService implements OnModuleInit {
   }
 
   /**
-   * 세션의 잡 목록(관리자 조회, 2026-09-29) — 명시 컬럼, 최신순.
+   * 세션의 잡 목록(관리자 조회) — 명시 컬럼, 최신순.
    * edit_session_id 컬럼 일치 + (siteId 가 있으면) 같은 사이트 잡 중 options.editSessionId 일치(compose-mixed 는
    * 옵션 마커로만 세션을 가리킬 수 있다 — relinkImposedInnerPdf 의 폴백 선례).
    */
@@ -3349,7 +3338,7 @@ export class WorkerJobsService implements OnModuleInit {
 
     const savedJob = job;
 
-    // 관리자 합성(2026-09-29): 알림을 켜지 않은 관리자 잡은 파트너에게 보이는 부수효과가 없다 —
+    // 관리자 합성: 알림을 켜지 않은 관리자 잡은 파트너에게 보이는 부수효과가 없다 —
     //   세션 workerStatus/workerError·session.* 웹훅·synthesis.*/validation.* 콜백(v1·v2) 모두 생략.
     //   마커 부재=기존 잡(불변).
     const staffSilent = isStaffSilentJob(job);
@@ -3392,7 +3381,7 @@ export class WorkerJobsService implements OnModuleInit {
     status: string | undefined,
     opts: { relinkMode: 'applied' | 'repeat' },
   ): Promise<void> {
-    // P4 (2026-06-10) — 내지 임포지션 결과를 세션에 되연결 (best-effort, 마커 게이트).
+    // 내지 임포지션 결과를 세션에 되연결 (best-effort, 마커 게이트).
     //   조건: CONVERT 잡 && options.purpose==='inner-imposition' && COMPLETED && outputFileUrl 존재.
     //   마커가 없는 일반 convert(admin 자동수정 등)는 절대 개입하지 않음 → 기존 동작 무영향.
     if (
@@ -3403,7 +3392,7 @@ export class WorkerJobsService implements OnModuleInit {
       await this.relinkImposedInnerPdf(job, opts.relinkMode);
     }
 
-    // fix-pagecount(2026-06-25) — 배수 보정 결과(converted PDF)를 새 fileId 로 등록(세션 무관).
+    // fix-pagecount — 배수 보정 결과(converted PDF)를 새 fileId 로 등록(세션 무관).
     //   조건: CONVERT && options.kind==='pagecount-fix' && COMPLETED. 마커 없는 일반 convert 무영향.
     //   호출측(파트너)은 GET /worker-jobs/:id 폴링 → outputFileId 로 보정본을 사용한다.
     if (
@@ -3414,7 +3403,7 @@ export class WorkerJobsService implements OnModuleInit {
       await this.registerPageCountFixOutput(job);
     }
 
-    // fix-bleed(2026-07-13) — 도련 삽입 결과(converted PDF)를 새 fileId 로 등록(세션 무관).
+    // fix-bleed — 도련 삽입 결과(converted PDF)를 새 fileId 로 등록(세션 무관).
     //   조건: CONVERT && options.kind==='bleed-fix' && COMPLETED. 마커 없는 일반 convert 무영향.
     //   호출측(편집기 모달)은 GET /worker-jobs/:id 폴링 → outputFileId 로 보정본을 사용한다.
     if (
@@ -3425,7 +3414,7 @@ export class WorkerJobsService implements OnModuleInit {
       await this.registerBleedFixOutput(job);
     }
 
-    // [Stage 3 W3, #4] books finalization 역참조 — options.finalizationId 마커 잡 종결 시
+    // books finalization 역참조 — options.finalizationId 마커 잡 종결 시
     //   book_finalizations 상태머신 전진(VALIDATING→COMPOSING→COMPLETED / FAILED). 이중 게이트:
     //   @Optional 서비스 미주입(기존 9-인자 유닛스펙 7건)·마커 부재(기존 파트너/세션 잡)면 no-op —
     //   기존 edit_session 갱신 경로와 병렬 additive(기존 경로 완전 불변).
@@ -3436,7 +3425,7 @@ export class WorkerJobsService implements OnModuleInit {
         status === WorkerJobStatus.FIXABLE ||
         status === WorkerJobStatus.FAILED)
     ) {
-      // [렌즈2 P2-4] 콜백 예외 격리 — onWorkerJobSettled 가 throw 해도 워커 PATCH 는 성공
+      // 콜백 예외 격리 — onWorkerJobSettled 가 throw 해도 워커 PATCH 는 성공
       //   반환한다(기존 edit_session 갱신·발신 경로 불변). 미격리 시 워커가 500 → 잡 재시도
       //   폭주 + compose 중복. finalization 자체 FAILED 전이는 onWorkerJobSettled 내부에서
       //   시도되므로(이중 방어) 여기선 로깅만 하고 삼킨다.
@@ -3543,11 +3532,11 @@ export class WorkerJobsService implements OnModuleInit {
 
   /**
    * synthesis.* 발신 대상인가 — SYNTHESIZE 잡의 COMPLETED·FAILED.
-   *  - [Stage 2 P1-1] 게이트 = "callbackUrl 존재 OR v2 config(opt-in) 존재". hasV2Config 는 callbackUrl 이
+   *  - 게이트 = "callbackUrl 존재 OR v2 config(opt-in) 존재". hasV2Config 는 callbackUrl 이
    *    없을 때만 평가한다(|| 단락). v2 비활성(WEBHOOK_CONFIG_ENC_KEY 미설정)이면 DB 조회 없이 false.
-   *  - [Stage 3 W3] finalization 내부 잡(options.finalizationId)은 book.finalization.* 만 발신한다.
+   *  - finalization 내부 잡(options.finalizationId)은 book.finalization.* 만 발신한다.
    *  - 알림 없는 관리자 잡(isStaffSilentJob)은 발신하지 않는다.
-   *  - [S2-5] isTest 잡만 test env config 로 게이트 판정(기존 잡은 기존 호출 그대로).
+   *  - isTest 잡만 test env config 로 게이트 판정(기존 잡은 기존 호출 그대로).
    */
   private async synthesisCallbackDue(job: WorkerJob): Promise<boolean> {
     return (
@@ -3637,7 +3626,7 @@ export class WorkerJobsService implements OnModuleInit {
   }
 
   /**
-   * 페이지수 보정(fix-pagecount) 완료 결과를 새 File 로 등록하고 job.outputFileId 에 기록 (2026-06-25).
+   * 페이지수 보정(fix-pagecount) 완료 결과를 새 File 로 등록하고 job.outputFileId 에 기록.
    * inner-imposition 의 relinkImposedInnerPdf 와 동일 패턴이되 **세션 되연결 없이** 등록만 — 직접 업로드
    * 파일은 세션이 없기 때문. 원본 fileId(sourceFileId) 의 order/member/site 를 승계. best-effort(throw 금지).
    */
@@ -3692,7 +3681,7 @@ export class WorkerJobsService implements OnModuleInit {
   }
 
   /**
-   * 도련 삽입(fix-bleed) 완료 결과를 새 File 로 등록하고 job.outputFileId 에 기록 (2026-07-13).
+   * 도련 삽입(fix-bleed) 완료 결과를 새 File 로 등록하고 job.outputFileId 에 기록.
    * registerPageCountFixOutput 동형 — **세션 되연결 없이** 등록만(잡에 editSessionId 자체가 없음).
    * 원본 fileId(sourceFileId) 의 order/member 승계 + 잡 site 승계. 원본 파일은 보존(되돌리기 가능).
    * best-effort(throw 금지) — status 업데이트(이미 저장됨)를 되돌리지 않는다.
@@ -3749,7 +3738,7 @@ export class WorkerJobsService implements OnModuleInit {
   }
 
   /**
-   * P4 — 임포지션 완료 결과(converted PDF)를 세션 contentPdfFileId 로 되연결 (2026-06-10).
+   * 임포지션 완료 결과(converted PDF)를 세션 contentPdfFileId 로 되연결.
    *
    * 동작:
    *  1) 워커 산출 outputFileUrl 을 File 레코드로 등록(이미 outputFileId 가 세팅돼 있으면 재사용).
@@ -3830,7 +3819,7 @@ export class WorkerJobsService implements OnModuleInit {
         const registered = await this.filesService.registerExternalFile(outputFileUrl, {
           orderSeqno,
           memberSeqno,
-          siteId: job.siteId, // P2c S-3: 워커 출력 파일에 잡 site 승계(외부 라우트 격리 적용)
+          siteId: job.siteId, // 워커 출력 파일에 잡 site 승계(외부 라우트 격리 적용)
           metadata: {
             generatedBy: 'worker-imposition',
             editSessionId: sessionId,
@@ -3846,7 +3835,7 @@ export class WorkerJobsService implements OnModuleInit {
 
       // 2) 세션 contentPdfFileId 재포인팅 + metadata 결과 스냅샷
       //
-      // ⚠️ 동시쓰기 lost update 방지 (2026-06-10) — 전체 save() 금지, 컬럼 한정 원자 update().
+      // ⚠️ 동시쓰기 lost update 방지 — 전체 save() 금지, 컬럼 한정 원자 update().
       //    검증 잡 콜백(updateEditSessionWorkerStatus)과 본 콜백은 설계상 병렬 완료될 수 있다.
       //    TypeORM save(entity) 는 전 컬럼을 기록하므로 stale 엔티티 save 가 상대 변경을
       //    덮어쓴다(최악: 검증 콜백의 stale save 가 contentPdfFileId 를 원본으로 되돌려
@@ -3907,7 +3896,7 @@ export class WorkerJobsService implements OnModuleInit {
    */
   private async sendSynthesisCallback(job: WorkerJob): Promise<boolean> {
     const callbackUrl = job.options?.callbackUrl;
-    // [Stage 2 P1-1] 발신 여부 게이트("callbackUrl 존재 OR v2 config 존재")는
+    // 발신 여부 게이트("callbackUrl 존재 OR v2 config 존재")는
     // 호출측(updateJobStatus)이 판정한다 — 여기서 hasV2Config 를 재조회하지
     // 않는다(동일 판정 이중 조회 방지). callbackUrl 없이 도달한 경우
     // sendCallback 이 v2 경로(tryDispatchForSite)로 발신하고, 그 사이 config
@@ -3922,7 +3911,7 @@ export class WorkerJobsService implements OnModuleInit {
         jobId: job.id, // domain ID (worker_jobs.id)
         sessionId: job.editSessionId || undefined, // additive (계약 보강)
         orderId: job.options?.orderId,
-        orderSeqno: job.options?.orderOptions?.orderSeqno, // WH-005: bookmoa orderOptions.orderSeqno echo-back
+        orderSeqno: job.options?.orderOptions?.orderSeqno, // 호스트가 보낸 orderOptions.orderSeqno echo-back
         status: isCompleted ? 'completed' : 'failed',
 
         // 하위호환: 항상 merged URL (failed면 '')
@@ -3944,8 +3933,8 @@ export class WorkerJobsService implements OnModuleInit {
       const success = await this.webhookService.sendCallback(
         callbackUrl ?? '',
         payload,
-        // [Stage 2] v2 opt-in 판정용 — config 없으면 기존 경로 그대로.
-        // [S2-5] env = 잡 생성 시 스탬프된 options.isTest 로 해석(jobWebhookEnv):
+        // v2 opt-in 판정용 — config 없으면 기존 경로 그대로.
+        // env = 잡 생성 시 스탬프된 options.isTest 로 해석(jobWebhookEnv):
         // isTest 잡만 'test'(v2 발신 페이로드 isTest:true), 그 외 undefined→live 폴백
         // (기존 발신 바이트 불변 — webhook-v1-invariance.spec 게이트).
         { siteId: this.webhookSiteIdOf(job), env: this.jobWebhookEnv(job) },
@@ -3970,12 +3959,12 @@ export class WorkerJobsService implements OnModuleInit {
 
   /**
    * Validation 작업 완료/수정필요/실패 시 직접 콜백 전송
-   * editSessionId 없이 callbackUrl만 있는 경우 사용 (bookmoa 서버 간 통신)
+   * editSessionId 없이 callbackUrl만 있는 경우 사용 (호스트 서버 간 통신)
    * 반환: 발신 성공(또는 v2 재시도 체인 접수) 여부 — 발신 장부(dispatchJobCallback)가 쓴다.
    */
   private async sendValidationCallback(job: WorkerJob): Promise<boolean> {
     const callbackUrl = job.options?.callbackUrl;
-    // [Stage 2 P1-1] 발신 여부 게이트는 호출측(updateJobStatus)이 판정 —
+    // 발신 여부 게이트는 호출측(updateJobStatus)이 판정 —
     // sendSynthesisCallback 의 동일 주석 참조(이중 조회 방지).
 
     try {
@@ -3996,9 +3985,9 @@ export class WorkerJobsService implements OnModuleInit {
       const payload: ValidationWebhookPayload = {
         event,
         jobId: job.id,
-        sessionId: job.editSessionId || undefined, // WH-005
+        sessionId: job.editSessionId || undefined, // additive (계약 보강)
         fileType: job.options?.fileType ?? 'cover',
-        orderSeqno: job.options?.orderOptions?.orderSeqno, // WH-005: bookmoa orderOptions.orderSeqno echo-back
+        orderSeqno: job.options?.orderOptions?.orderSeqno, // 호스트가 보낸 orderOptions.orderSeqno echo-back
         status,
         result: job.result,
         errorMessage: job.errorMessage || undefined,
@@ -4009,8 +3998,8 @@ export class WorkerJobsService implements OnModuleInit {
       const success = await this.webhookService.sendCallback(
         callbackUrl ?? '',
         payload,
-        // [Stage 2] v2 opt-in 판정용 — config 없으면 기존 경로 그대로.
-        // [S2-5] env = options.isTest 해석(jobWebhookEnv) — sendSynthesisCallback 주석 참조.
+        // v2 opt-in 판정용 — config 없으면 기존 경로 그대로.
+        // env = options.isTest 해석(jobWebhookEnv) — sendSynthesisCallback 주석 참조.
         { siteId: this.webhookSiteIdOf(job), env: this.jobWebhookEnv(job) },
         receipt,
       );
@@ -4060,7 +4049,7 @@ export class WorkerJobsService implements OnModuleInit {
     } else if (
       updateDto.status === WorkerJobStatus.COMPLETED ||
       updateDto.status === WorkerJobStatus.FIXABLE ||
-      // C+ G2(2026-07-11): 세션(생성 PDF) 경로 한정 FIXABLE 동등 처리.
+      // 세션(생성 PDF) 경로 한정 FIXABLE 동등 처리.
       // 워커 게이팅(WORKER_WIRED_FIXABLE_GATING) ON 시 실행기 없는 fixMethod
       // (SIZE/SPINE)의 autoFixable 이 false 가 되어 잡 status 가 FIXABLE→FAILED 로
       // 내려오지만, 세션의 종전 의미(자동수정급 이슈=VALIDATED 로 주문 진행,
@@ -4084,7 +4073,7 @@ export class WorkerJobsService implements OnModuleInit {
 
     if (newWorkerStatus) {
       session.workerStatus = newWorkerStatus;
-      // ⚠️ 동시쓰기 lost update 방지 (2026-06-10) — 전체 save() 금지, 컬럼 한정 원자 update().
+      // ⚠️ 동시쓰기 lost update 방지 — 전체 save() 금지, 컬럼 한정 원자 update().
       //    임포지션 콜백(relinkImposedInnerPdf)이 병렬로 contentPdfFileId/metadata 를 갱신할
       //    수 있는데, 여기서 stale 엔티티를 전체 save 하면 그 결과를 원본으로 되돌린다.
       //    본 메서드가 실제로 기록하는 컬럼은 workerStatus(+FAILED 시 workerError)뿐이므로
@@ -4093,7 +4082,7 @@ export class WorkerJobsService implements OnModuleInit {
       //    payload 일관성을 위해 유지.
       await this.editSessionRepository.update(session.id, {
         workerStatus: newWorkerStatus,
-        // C+ G2 리뷰 반영: 조건을 잡 status 가 아니라 '분기 결과(newWorkerStatus)'로 판정.
+        // 조건을 잡 status 가 아니라 '분기 결과(newWorkerStatus)'로 판정.
         // fixable-동등 FAILED(→VALIDATED) 잡이 updateDto.status===FAILED 기준에 걸려
         // findOne 시점의 stale workerError 를 재기록하는 것을 차단(컬럼 한정 기록 계약 유지,
         // 병렬 FAILED 콜백의 workerError lost-update 방지). 종전 FIXABLE 경로와 SQL 동일.
@@ -4114,7 +4103,7 @@ export class WorkerJobsService implements OnModuleInit {
   }
 
   /**
-   * C+ G2: '게이팅 전 FIXABLE 이었을 FAILED' 판정 — 세션 상태 전이 한정 동등 처리용.
+   * '게이팅 전 FIXABLE 이었을 FAILED' 판정 — 세션 상태 전이 한정 동등 처리용.
    *
    * 검증 잡의 result 는 프로세서가 { result } 로 감싸 PATCH 하므로 이중 중첩
    * (updateDto.result.result = ValidationResultDto)이며, 방어적으로 단일 중첩도 지원한다.
@@ -4155,7 +4144,7 @@ export class WorkerJobsService implements OnModuleInit {
             j.options?.purpose === 'inner-imposition'
           ),
       )
-      // 알림을 켜지 않은 관리자 합성 잡(2026-09-29)은 세션 완료 판정 대상이 아니다
+      // 알림을 켜지 않은 관리자 합성 잡은 세션 완료 판정 대상이 아니다
       //   (대기 중인 관리자 잡이 파트너 세션을 PROCESSING 에 묶지 않도록).
       .filter((j) => !isStaffSilentJob(j))
       .every(
@@ -4174,8 +4163,8 @@ export class WorkerJobsService implements OnModuleInit {
     job: WorkerJob,
     workerStatus: WorkerStatus,
   ): Promise<void> {
-    // [Stage 2] callbackUrl 이 없어도 v2 config(opt-in) 사이트면 발송 진행
-    // [S2-5] isTest 잡은 test env config 로 판정(기본 live — 기존 호출 SQL 동일)
+    // callbackUrl 이 없어도 v2 config(opt-in) 사이트면 발송 진행
+    // isTest 잡은 test env config 로 판정(기본 live — 기존 호출 SQL 동일)
     const webhookSiteId = session.siteId ?? this.webhookSiteIdOf(job);
     if (
       !session.callbackUrl &&
@@ -4202,8 +4191,8 @@ export class WorkerJobsService implements OnModuleInit {
       const success = await this.webhookService.sendCallback(
         session.callbackUrl ?? '',
         payload,
-        // [Stage 2] v2 opt-in 판정용 — config 없으면 기존 경로 그대로.
-        // [S2-5] env = options.isTest 해석(jobWebhookEnv) — sendSynthesisCallback 주석 참조.
+        // v2 opt-in 판정용 — config 없으면 기존 경로 그대로.
+        // env = options.isTest 해석(jobWebhookEnv) — sendSynthesisCallback 주석 참조.
         { siteId: webhookSiteId, env: this.jobWebhookEnv(job) },
       );
 
@@ -4224,7 +4213,7 @@ export class WorkerJobsService implements OnModuleInit {
       .addSelect('job.jobType', 'jobType')
       .addSelect('COUNT(*)', 'count');
 
-    // P3b — 사이트 운영자는 자기 site 잡 통계만.
+    // 사이트 운영자는 자기 site 잡 통계만.
     if (scope) applySiteScope(query, 'job', scope);
 
     const stats = await query

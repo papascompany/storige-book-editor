@@ -45,14 +45,14 @@ import { streamJobOutput } from './job-output-stream';
 import { isFlagOn, isPartnerJobViewOn } from '../config/feature-flags';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
-// P3b 멀티테넌시 — 사이트 운영자 조회 라우트(목록/상세/통계) 테넌트 스코핑.
+// 멀티테넌시 — 사이트 운영자 조회 라우트(목록/상세/통계) 테넌트 스코핑.
 import { TenantGuard } from '../auth/guards/tenant.guard';
 import { CurrentScope } from '../auth/decorators/tenant-scope.decorator';
 import { TenantScope } from '../common/helpers/tenant-scope.helper';
 import { ApiKeyGuard } from '../auth/guards/api-key.guard';
 // 컷아웃 @Public 라우트의 테넌트 복원(서명 검증된 shop-session JWT 한정).
 import { OptionalShopJwtGuard } from '../auth/guards/optional-shop-jwt.guard';
-// D6-ⓐ(2026-09-12) — @Public compose-mixed 의 선택적 사이트 키 복원(throw 없음).
+// @Public compose-mixed 의 선택적 사이트 키 복원(throw 없음).
 import { OptionalApiKeySiteGuard, ApiKeySitePayload } from '../auth/guards/optional-api-key-site.guard';
 import { ApiKeySite } from '../auth/decorators/api-key-site.decorator';
 import { CurrentSite, CurrentSitePayload } from '../auth/decorators/current-site.decorator';
@@ -63,7 +63,7 @@ import { UserRole, WorkerJobStatus, WorkerJobType, CutoutJobResult } from '@stor
 
 /**
  * @Public 라우트의 테넌트 근거가 되는 검증된 토큰 출처 — shop-session 또는 운영자 대리 편집 액세스 토큰
- * (OptionalShopJwtGuard 가 서명 검증 후 복원, 2026-09-29). 컷아웃 라우트 전용 — compose-mixed 는 shop-session 만 인정한다(아래).
+ * (OptionalShopJwtGuard 가 서명 검증 후 복원). 컷아웃 라우트 전용 — compose-mixed 는 shop-session 만 인정한다(아래).
  */
 function isVerifiedTenantSource(source: unknown): boolean {
   return source === 'shop' || source === 'partner_operator';
@@ -102,7 +102,7 @@ interface ValidateRouteUser {
 }
 
 /**
- * 컷아웃 실패 사유의 사용자 표시 문구 (2026-08-05).
+ * 컷아웃 실패 사유의 사용자 표시 문구.
  *
  * 워커 원문 errorMessage 는 시스템 예외 문자열이라 내부 IP·절대경로가 실린다.
  * `GET /worker-jobs/:id/cutout-status` 는 무인증 라우트이므로 원문을 그대로 내보내지 않고
@@ -200,7 +200,7 @@ export class WorkerJobsController {
     // 세션 연결 확인 — 비회원 세션은 이 헤더의 게스트 토큰으로 연결을 증명한다.
     @Headers('x-guest-token') guestTokenHeader?: string,
   ): Promise<WorkerJob> {
-    // 운영자 대리 편집 토큰(2026-09-29): 최소 권한 — 사이트는 권한의 사이트로 고정하고,
+    // 운영자 대리 편집 토큰: 최소 권한 — 사이트는 권한의 사이트로 고정하고,
     // 세션 연결(editSessionId)은 권한 범위 세션만 허용한다(범위 밖은 존재 비누설 404).
     if (user?.source === 'partner_operator' && user.partnerOperator) {
       const grant = user.partnerOperator;
@@ -321,9 +321,9 @@ export class WorkerJobsController {
     return this.partnerView(
       await this.workerJobsService.createValidationJob({
         ...createValidationJobDto,
-        siteId: site?.siteId, // Phase C — 자동 사이트 식별
-        // [S2-5] 인증 컨텍스트 env 전파 훅 — 공용 ApiKeyGuard(sites 키)는 항상 live 라
-        // 현 경로 no-op. test 는 Stage 3 v1 잡 생성 표면에서만 도달(선행 인프라).
+        siteId: site?.siteId, // 자동 사이트 식별
+        // 인증 컨텍스트 env 전파 훅 — 공용 ApiKeyGuard(sites 키)는 항상 live 라
+        // 이 경로에서는 no-op. test env 는 v1 잡 생성 표면에서만 들어온다.
         partnerEnv: site?.env,
       }),
     );
@@ -380,13 +380,13 @@ export class WorkerJobsController {
     return this.partnerView(
       await this.workerJobsService.createPageCountFixJob({
         ...dto,
-        siteId: site?.siteId, // Phase C — 자동 사이트 식별
+        siteId: site?.siteId, // 자동 사이트 식별
       }),
     );
   }
 
   /**
-   * 첨부 내지 PDF 빈 페이지 배수 채움 (2026-09-28) — 편집기 첨부 모달(게스트 포함) 호출.
+   * 첨부 내지 PDF 빈 페이지 배수 채움 — 편집기 첨부 모달(게스트 포함) 호출.
    * 배수는 서버가 templateSet(padToPageStep·pageStep)으로 권위 산출 — fix-bleed 와 같은 @Public 계약.
    * 폴링: GET /worker-jobs/:id → COMPLETED 시 outputFileId(채움본 새 fileId). 원본 보존.
    */
@@ -457,8 +457,8 @@ export class WorkerJobsController {
     return this.partnerView(
       await this.workerJobsService.createSynthesisJob({
         ...createSynthesisJobDto,
-        siteId: site?.siteId, // Phase C — 자동 사이트 식별
-        partnerEnv: site?.env, // [S2-5] env 전파 훅 — validate/external 주석 참조(현 경로 live=no-op)
+        siteId: site?.siteId, // 자동 사이트 식별
+        partnerEnv: site?.env, // env 전파 훅 — validate/external 주석 참조(이 경로는 live 라 no-op)
       }),
     );
   }
@@ -486,7 +486,7 @@ export class WorkerJobsController {
   }
 
   // ============================================================================
-  // Compose-mixed (인쇄 워크플로우 v1 Phase 5, 2026-05-19)
+  // Compose-mixed (인쇄 워크플로우 v1)
   // ============================================================================
 
   /**
@@ -495,7 +495,7 @@ export class WorkerJobsController {
    * 게스트도 호출 가능 (@Public). 향후 X-Guest-Token 또는 ApiKey 분기 추가 가능.
    * 기존 PHP synthesize/external 경로와 완전 분리 — 회귀 보호.
    *
-   * ── 자동조립 opt-in (2026-08-13) ──────────────────────────────────────────
+   * ── 자동조립 opt-in ───────────────────────────────────────────────────────
    * body.assembleFromSession=true 일 때만 서버가 세션에서 표지/내지/면지/판형을 도출한다.
    * 그 경로에만 인가가 걸리므로 `@Public` 은 **유지**하고(CONTRACT_FREEZE §2 동결 계약,
    * contract-freeze.spec.ts:65 auth:'public'), 컷아웃 라우트 선례와 동일하게
@@ -504,17 +504,15 @@ export class WorkerJobsController {
    * 수동 경로(URL 직접 공급)는 본문에 editSessionId 가 있을 때만 세션 연결 확인
    * (WorkerJobsService.assertEditSessionLink)을 거친다. editSessionId 가 없는 호출은 확인 없이 처리한다.
    *
-   * 🔒 주문 스코프(2026-08-13 적대검증 MAJOR): siteId 일치만으로는 **동일 테넌트 내
-   *    타 고객 세션**을 조립해 그 표지/내지를 합본으로 뽑아낼 수 있다(세션 UUID 는
-   *    편집기 URL·/embed?sessionId= 등으로 노출되는 값이다). 형제 라우트가 이미 닫은
-   *    취약점 클래스이므로(edit-sessions.controller.ts:91-101 Patch D, :163-180 F-5)
-   *    같은 근거 필드 `allowedOrderSeqnos` 를 서비스로 넘겨 세션 orderSeqno 를 가드한다.
-   *    가드가 이미 서명 검증된 JWT 에서 복원해 준다(optional-shop-jwt.guard.ts:70-75).
+   * 🔒 주문 스코프: 토큰에 `allowedOrderSeqnos` 가 있으면 자동조립 대상 세션의 orderSeqno 가
+   *    그 목록에 있어야 한다(같은 사이트의 다른 주문 세션 조립 차단, 불일치는 404). 목록이 없는
+   *    토큰은 주문 검사 없이 통과한다. 값은 가드가 서명 검증된 JWT 에서 복원해 준다
+   *    (optional-shop-jwt.guard.ts:70-75).
    *
    * 🔒 세션 소유: shop 호출자의 자동조립은 게스트 세션이면 X-Guest-Token 헤더 일치, 회원 세션이면
    *    양의 회원 번호 일치 또는 주문권한 일치를 요구한다(실패는 같은 404 SESSION_NOT_FOUND).
    *
-   * 🔒 테넌트 스탬프(2026-08-13): 이 라우트가 `@Public` 인 이상 **body.siteId 는 인가 주체가
+   * 🔒 테넌트 스탬프: 이 라우트가 `@Public` 인 이상 **body.siteId 는 인가 주체가
    *    아니다**. 여기서 복원한 caller 가 잡 스탬프의 유일한 검증 근거이며, 서비스가
    *    `resolveComposeMixedSiteId` 로 대조해 불일치·부재면 NULL 스탬프한다(400 없음).
    *    다른 라우트(:139·190·224·461)는 `@CurrentSite()` 서버 도출값이라 이 문제가 없다.
@@ -525,7 +523,7 @@ export class WorkerJobsController {
   //    통과해야 `auth:'public'` 동결(contract-freeze.spec.ts:136)이 유지된다. ApiKeyGuard 로
   //    바꾸면 게스트가 401 로 파손되고 동결 계약도 깨진다.
   @UseGuards(OptionalShopJwtGuard, OptionalApiKeySiteGuard)
-  @ApiOperation({ summary: 'Compose-mixed 잡 생성 (Phase 5)' })
+  @ApiOperation({ summary: 'Compose-mixed 잡 생성' })
   @ApiResponse({ status: 201, description: '잡 생성 성공', type: PartnerJobViewDto })
   @ApiResponse({ status: 400, description: '빈 입력(EMPTY_COMPOSE_INPUT) / 자동조립 불완전(SESSION_ASSEMBLY_INCOMPLETE)' })
   @ApiResponse({ status: 404, description: '자동조립 대상 세션 미존재·타 테넌트(SESSION_NOT_FOUND)' })
@@ -539,7 +537,7 @@ export class WorkerJobsController {
       source?: string;
       allowedOrderSeqnos?: unknown;
     },
-    // [D6-ⓐ] 검증된 사이트 키 컨텍스트. `caller` 와 **별도 인자**로 넘긴다 — 한 객체로 합치면
+    // 검증된 사이트 키 컨텍스트. `caller` 와 **별도 인자**로 넘긴다 — 한 객체로 합치면
     // 자동조립 경로의 인가 게이트가 API 키로 통과돼 권한 상승이 된다
     // (optional-api-key-site.guard.ts 불변식 2).
     @ApiKeySite() apiKeySite?: ApiKeySitePayload,
@@ -549,7 +547,7 @@ export class WorkerJobsController {
     // 검증된 shop-session 이 있을 때만 테넌트 컨텍스트로 넘긴다(cutout 라우트와 동일 규약).
     // 없으면 undefined → 자동조립 요청은 서비스에서 404(SESSION_NOT_FOUND) 로 fail-closed.
     // allowedOrderSeqnos 는 배열일 때만 전달 — 없으면 호환 모드(주문 검사 생략, 형제 라우트 동일).
-    // 운영자 대리 편집 토큰은 인정하지 않는다(2026-09-29): 운영자 권한은 지정 세션에 한정되는데,
+    // 운영자 대리 편집 토큰은 인정하지 않는다: 운영자 권한은 지정 세션에 한정되는데,
     // 이 경로의 자동조립은 주문 스코프 없이 사이트 범위로 동작하므로 운영자에게 열면 범위가 넓어진다.
     // 합성은 파트너 서버가 사이트 키로 트리거한다.
     // owner: shop 호출자의 세션 소유 판정 근거(회원 번호 — 양의 정수만, 그 밖 NaN · 게스트 토큰 헤더).
@@ -615,7 +613,7 @@ export class WorkerJobsController {
   }
 
   /**
-   * 내지 PDF 표시전용 가이드 래스터화 잡 생성 (2026-06-07).
+   * 내지 PDF 표시전용 가이드 래스터화 잡 생성.
    *
    * 첨부 내지 PDF 각 페이지를 이미지로 변환 → 편집기 underlay 잠금 가이드.
    * 게스트도 호출 가능(@Public). ⚠️ 표시 전용 — 최종 인쇄엔 미반영.
@@ -647,7 +645,7 @@ export class WorkerJobsController {
   }
 
   /**
-   * 도련 자동 삽입(fix-bleed) 잡 생성 (2026-07-13) — BLEED_MISSING(extendBleed) 실행기.
+   * 도련 자동 삽입(fix-bleed) 잡 생성 — BLEED_MISSING(extendBleed) 실행기.
    *
    * 재단 사이즈(=templateSet 판형) 업로드 PDF → 작업 사이즈(판형+bleedMm×2)로 변환
    * (콘텐츠 무스케일 중앙 배치). editSize 는 서버가 templateSetId 로 권위 산출 —
@@ -667,7 +665,7 @@ export class WorkerJobsController {
   }
 
   // ============================================================================
-  // Cutout (배경제거 서버 오프로드) — S-P2A-B, 2026-08-05
+  // Cutout (배경제거 서버 오프로드)
   // ============================================================================
 
   /**
@@ -798,8 +796,8 @@ export class WorkerJobsController {
     return this.partnerView(
       await this.workerJobsService.createSplitSynthesisJob({
         ...dto,
-        siteId: site?.siteId, // Phase C — 자동 사이트 식별 (Stage 0 비대칭 봉합, validate/external 준용)
-        partnerEnv: site?.env, // [S2-5] env 전파 훅 — validate/external 주석 참조(현 경로 live=no-op)
+        siteId: site?.siteId, // 자동 사이트 식별 (validate/external 과 같다)
+        partnerEnv: site?.env, // env 전파 훅 — validate/external 주석 참조(이 경로는 live 라 no-op)
       }),
     );
   }
@@ -846,7 +844,7 @@ export class WorkerJobsController {
 
   @Get()
   @UseGuards(RolesGuard, TenantGuard)
-  // P3b — 사이트 운영자 조회 허용(자기 site 잡만 — 서비스 applySiteScope 강제)
+  // 사이트 운영자 조회 허용(자기 site 잡만 — 서비스 applySiteScope 강제)
   @Roles(
     UserRole.ADMIN,
     UserRole.MANAGER,
@@ -856,15 +854,15 @@ export class WorkerJobsController {
   @ApiOperation({ summary: 'Get all worker jobs with optional filters' })
   @ApiQuery({ name: 'status', required: false, enum: WorkerJobStatus })
   @ApiQuery({ name: 'jobType', required: false, enum: WorkerJobType })
-  @ApiQuery({ name: 'siteId', required: false, description: '사이트 ID (Phase C-3)' })
-  @ApiQuery({ name: 'limit', required: false, description: '최대 반환 수 (기본 200, 최대 1000) — DB-016' })
+  @ApiQuery({ name: 'siteId', required: false, description: '사이트 ID' })
+  @ApiQuery({ name: 'limit', required: false, description: '최대 반환 수 (기본 200, 최대 1000)' })
   @ApiResponse({ status: 200, description: 'List of worker jobs', type: [WorkerJob] })
   async findAll(
     @CurrentScope() scope: TenantScope,
     @Query('status') status?: WorkerJobStatus,
     @Query('jobType') jobType?: WorkerJobType,
-    @Query('siteId') siteId?: string, // Phase C-3
-    @Query('limit') limit?: string, // DB-016
+    @Query('siteId') siteId?: string, // 사이트 필터
+    @Query('limit') limit?: string, // 최대 반환 수(서비스에서 1~1000 클램프)
   ): Promise<WorkerJob[]> {
     return await this.workerJobsService.findAll(
       status,
@@ -877,7 +875,7 @@ export class WorkerJobsController {
 
   @Get('stats')
   @UseGuards(RolesGuard, TenantGuard)
-  // P3b — 사이트 운영자는 자기 site 잡 통계만(서비스 applySiteScope 강제)
+  // 사이트 운영자는 자기 site 잡 통계만(서비스 applySiteScope 강제)
   @Roles(
     UserRole.ADMIN,
     UserRole.MANAGER,
@@ -933,7 +931,7 @@ export class WorkerJobsController {
     @Param('id') id: string,
     @CurrentSite() site?: CurrentSitePayload,
   ): Promise<WorkerJob | PartnerJobView> {
-    // P2c S-3: editor 키(테넌트)는 자기 site/NULL 잡만, worker 키(내부)는 바이패스.
+    // editor 키(테넌트)는 자기 site/NULL 잡만, worker 키(내부)는 사이트 검사를 건너뛴다.
     return this.partnerView(await this.workerJobsService.findOne(id, site));
   }
 
@@ -978,8 +976,8 @@ export class WorkerJobsController {
     @Param('id') id: string,
     @CurrentSite() site?: CurrentSitePayload,
   ): Promise<WorkerJob> {
-    // SEC-002: site/소유권 격리(external/:id 와 동일). 타 테넌트 잡 조회 차단.
-    // P3b: 사이트 운영자(admin JWT)도 자기 site 잡만 — scope 로 서비스에서 단정.
+    // site/소유권 격리(external/:id 와 동일). 타 테넌트 잡 조회 차단.
+    // 사이트 운영자(admin JWT)도 자기 site 잡만 — scope 로 서비스에서 단정.
     return await this.workerJobsService.findOne(id, site, scope);
   }
 
@@ -1000,18 +998,16 @@ export class WorkerJobsController {
     @Body() updateJobStatusDto: UpdateJobStatusDto,
     @CurrentSite() site?: CurrentSitePayload,
   ): Promise<WorkerJob> {
-    // 내부 워커 키만 통과한다(그 밖의 키는 404). 서비스는 worker 역할의 사이트 검사를 건너뛴다(P2c S-3).
+    // 내부 워커 키만 통과한다(그 밖의 키는 404). 서비스는 worker 역할의 사이트 검사를 건너뛴다.
     this.assertInternalWorkerCaller(id, 'external/:id/status', site);
     return await this.workerJobsService.updateJobStatus(id, updateJobStatusDto, site);
   }
 
   /**
-   * 작업 상태 업데이트(내부 호환 별칭) — API Key 인증 필수 (P0-3, 2026-06-22), 내부 워커 전용(external 변형과 같다).
+   * 작업 상태 업데이트(내부 호환 별칭) — API Key 인증 필수, 내부 워커 전용(external 변형과 같다).
    *
-   * ⚠️ 과거 이 라우트는 가드 없이 전역 JwtAuthGuard 만 적용돼, 유효한 고객 JWT 면 누구나
-   * 임의 잡 상태를 조작할 수 있었다(소유권/역할 검사 없음). 워커 콜백은 전부
-   * `external/:id/status`(X-API-Key) 를 쓰므로 이 라우트엔 코드 콜러가 없으나,
-   * 혹시 모를 인증된 외부 콜러 보호를 위해 삭제 대신 external 변형과 동일하게 잠근다.
+   * ⚠️ 워커 콜백은 전부 `external/:id/status`(X-API-Key) 를 쓰므로 이 라우트엔 코드 콜러가 없다.
+   * 인증된 외부 콜러 호환을 위해 삭제하지 않고 external 변형과 같은 가드로 잠근다.
    */
   @Patch(':id/status')
   @Public()
