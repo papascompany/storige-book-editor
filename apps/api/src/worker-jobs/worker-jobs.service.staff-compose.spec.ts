@@ -448,15 +448,16 @@ describe('streamJobOutput — GET /worker-jobs/:id/output 동작 동일(헬퍼 �
 
   it('컨트롤러 downloadOutput 은 잡 조회(사이트 범위) 후 헬퍼에 위임 — 오류 코드 동일', async () => {
     const svc = { findOne: jest.fn(async () => ({ status: WorkerJobStatus.PROCESSING, result: null })) };
+    const SCOPE = { isGlobal: false, siteIds: [SITE] };
     const controller = new WorkerJobsController(svc as never, {} as never);
     const res = new FakeRes();
     let caught: unknown;
     try {
-      await controller.downloadOutput('job-1', res as unknown as Response, { siteId: SITE } as never);
+      await controller.downloadOutput(SCOPE, 'job-1', res as unknown as Response, { siteId: SITE } as never);
     } catch (e) {
       caught = e;
     }
-    expect(svc.findOne).toHaveBeenCalledWith('job-1', { siteId: SITE });
+    expect(svc.findOne).toHaveBeenCalledWith('job-1', { siteId: SITE }, SCOPE);
     expect(caught).toBeInstanceOf(BadRequestException);
     expect(((caught as HttpException).getResponse() as Record<string, unknown>).code).toBe('JOB_NOT_COMPLETED');
   });

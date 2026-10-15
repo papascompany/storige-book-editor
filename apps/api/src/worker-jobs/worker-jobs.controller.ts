@@ -949,13 +949,14 @@ export class WorkerJobsController {
   @ApiResponse({ status: 404, description: 'Job not found or no output file' })
   @ApiResponse({ status: 400, description: 'Job not completed or no output' })
   async downloadOutput(
+    @CurrentScope() scope: TenantScope,
     @Param('id') id: string,
     @Res() res: Response,
     @CurrentSite() site?: CurrentSitePayload,
   ): Promise<void> {
-    // SEC-002: site/소유권 격리(external/:id 와 동일). NULL-site 잡·undefined-caller 는 통과,
-    // 타 테넌트 잡은 404 → IDOR 차단. assertJobSiteAccess(service) 재사용.
-    const job = await this.workerJobsService.findOne(id, site);
+    // 조회 격리는 GET :id 와 같다: API 키·shop 호출자는 잡 site 일치(불일치 404),
+    // 사이트 운영자 JWT 는 scope 의 site 잡(또는 site 가 비어 있는 잡)만.
+    const job = await this.workerJobsService.findOne(id, site, scope);
     if (!job) {
       throw new NotFoundException({
         code: 'JOB_NOT_FOUND',
