@@ -124,6 +124,7 @@ jobs:
 
       # 2026-08-04 게이트 신설 — 종전 CI 에 api lint 부재(NodeJS no-undef 1err 가
       # honor system 상태였다). 기준선 결함 3건 해소와 함께 등재.
+      # lint 스크립트는 --max-warnings 44 다(기준선 경고 44·오류 0) — 경고가 늘어도 실패한다.
       - name: api lint
         run: pnpm --filter @storige/api lint
 
@@ -160,8 +161,8 @@ jobs:
         #    위험은 낮지만, 재발 시 이 스펙만 --maxWorkers 조정 대상이다.
         run: pnpm --filter @storige/worker test
 
-      # docker/worker/Dockerfile:33 과 같은 빌드 + worker lint(경고 17·오류 0 기준선,
-      # 실패는 error 에서만 난다 — api·canvas-core lint 스텝과 같은 규칙).
+      # docker/worker/Dockerfile:33 과 같은 빌드 + worker lint(--max-warnings 16 — 기준선 경고 16·오류 0,
+      # 경고가 늘거나 error 가 생기면 실패한다).
       - name: worker 운영 빌드 (nest build) + lint
         run: |
           pnpm --filter @storige/worker build
@@ -186,7 +187,7 @@ jobs:
       # ⚠️ lint 스크립트는 `eslint .` 다 — `eslint src` 가 아니다. 해소한 28건 중 20건이
       #    types/fabric.d.ts 에 있었는데 src 범위로는 그 파일이 게이트 밖에 남는다.
       #    (dist/node_modules/*.js 는 eslint.config.js 의 ignores 가 제외한다.)
-      #    경고 48건은 기존치라 게이트 대상이 아니다 — 실패는 error 에서만 난다.
+      #    lint 스크립트는 --max-warnings 48 이다(기준선 경고 48·오류 0) — 경고가 늘어도 실패한다.
       - name: canvas-core lint
         run: pnpm --filter @storige/canvas-core lint
 
@@ -205,8 +206,8 @@ jobs:
           pnpm --filter @storige/editor typecheck
           pnpm --filter @storige/editor test
 
-      # editor lint 스크립트는 --max-warnings 100 이다(기준선 경고 76·오류 0).
-      # 경고가 100 을 넘거나 error 가 생기면 실패한다.
+      # editor lint 스크립트는 --max-warnings 76 이다(기준선 경고 76·오류 0).
+      # 경고가 늘거나 error 가 생기면 실패한다.
       - name: editor lint
         run: pnpm --filter @storige/editor lint
 

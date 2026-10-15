@@ -8,7 +8,7 @@
     "dev": "nest start --watch",
     "start": "node dist/main",
     "start:prod": "node dist/main",
-    "lint": "eslint \"{src,test,scripts}/**/*.ts\"",
+    "lint": "eslint \"{src,test,scripts}/**/*.ts\" --max-warnings 44",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
