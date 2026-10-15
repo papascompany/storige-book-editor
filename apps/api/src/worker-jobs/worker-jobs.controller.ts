@@ -285,7 +285,7 @@ export class WorkerJobsController {
 
   /**
    * 외부 연동용 검증 작업 생성 (API Key 인증)
-   * bookmoa 등 외부 시스템에서 서버 간 통신으로 호출
+   * 외부 시스템이 서버 간 통신으로 호출한다.
    */
   @Post('validate/external')
   @Public()
@@ -417,7 +417,7 @@ export class WorkerJobsController {
 
   /**
    * 외부 연동용 병합 작업 생성 (API Key 인증)
-   * 북모아 주문 시점에 호출
+   * 외부 시스템이 주문 시점에 서버 간 통신으로 호출한다.
    */
   @Post('synthesize/external')
   @Public()
@@ -836,20 +836,8 @@ export class WorkerJobsController {
     @Body() checkMergeableDto: CheckMergeableDto,
     @CurrentSite() site?: CurrentSitePayload,
   ): Promise<CheckMergeableResponseDto> {
-    // Stage 0 비대칭 봉합 — 사이트 컨텍스트를 감사 로깅/후속 스코핑용으로만 전달.
-    // check-mergeable 은 worker_job 행을 만들지 않는 dry-run 조회라 스탬프 대상이 없고,
-    // 접근 차단/스코핑 강제는 NULL-siteId 정책(오너 결정 잔여 사안) 확정 전 도입하지 않는다.
-    //
-    // ⚠️ NULL-siteId 정책 미결 항목 (2026-08-13 추가) — `POST /worker-jobs/compose-mixed`.
-    //    수동 경로가 body.siteId 를 무시하고 NULL 을 스탬프하도록 하드닝되면서
-    //    (worker-jobs.service.ts resolveComposeMixedSiteId) **write 위조는 막았지만
-    //    read 표면은 넓어졌다** — 이 트레이드오프가 정책 결정 대상이다:
-    //      · findAll: applySiteScope(includeNull 기본 false) → 사이트 운영자 목록에서 사라짐
-    //      · findOne: 읽기라 allowNull — shop JWT 가 @Public validate/render-pages
-    //        폴링 가능. 타 테넌트 스탬프 잡은 assertJobSiteAccess 가 404
-    //      · GET /worker-jobs/external/:id: assertJobSiteAccess 가 NULL 잡을 통과시킴
-    //        → jobId 를 아는 **어느 테넌트 키로도** 상태·outputFileUrl 조회 가능
-    //    (산출물 바이트는 2026-09-11 부터 `GET external/:id/output-url` 서명 URL 로만 회수된다.)
+    // 사이트 컨텍스트는 감사 로깅용으로만 서비스에 넘긴다. check-mergeable 은 worker_job 행을
+    // 만들지 않는 dry-run 조회라 스탬프 대상이 없고, 사이트 기준 접근 차단도 하지 않는다.
     return await this.workerJobsService.checkMergeable(checkMergeableDto, site);
   }
 
@@ -904,17 +892,12 @@ export class WorkerJobsController {
   }
 
   /**
-   * 외부 연동용 작업 상태 조회 (API Key 인증)
-   * bookmoa 등 외부 시스템에서 서버 간 통신으로 호출
-   */
-  /**
-   * S4 2단계(2026-08-28, D3·D4) — 합성 산출물 서명 URL 재발급 (X-API-Key).
+   * 합성 산출물 서명 URL 재발급 (X-API-Key).
    *
    * compose-mixed 등 SYNTHESIZE 산출물의 인증 회수 경로. 반환 URL 은 nginx
    * secure_link 가 검증하는 /storage-signed/… (TTL 기본 300s, 만료 시 재호출).
-   * 파트너는 "산출물 URL 박제" 대신 **jobId 저장 → 필요 시 재발급** 으로 전환한다
-   * (bookmoa grandfathering 요구의 해소 경로 — 설계안 §3-B 방식 B).
-   * 종전 /storage/outputs/ 직접 경로는 2026-09-11 cutover 로 410 — 이 라우트가 산출물 회수 경로다.
+   * 호출자는 산출물 URL 을 저장하지 않고 jobId 를 저장해 필요할 때 재발급받는다.
+   * 종전 /storage/outputs/ 직접 경로는 410 을 반환한다 — 이 라우트가 산출물 회수 경로다.
    */
   @Get('external/:id/output-url')
   @Public()
@@ -935,6 +918,10 @@ export class WorkerJobsController {
     });
   }
 
+  /**
+   * 외부 연동용 작업 상태 조회 (API Key 인증)
+   * 외부 시스템이 서버 간 통신으로 호출한다.
+   */
   @Get('external/:id')
   @Public()
   @UseGuards(ApiKeyGuard)
