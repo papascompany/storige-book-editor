@@ -133,6 +133,24 @@ describe('PartnerJobViewDto (파트너 잡 응답 OpenAPI 스키마)', () => {
     },
   );
 
+  it('문서 전체에서 PartnerJobViewDto 를 응답으로 참조하는 operation 은 정확히 9라우트', () => {
+    const ref = '#/components/schemas/PartnerJobViewDto';
+    const found: string[] = [];
+    for (const [path, item] of Object.entries(asNode(document.paths, 'paths'))) {
+      for (const [method, op] of Object.entries(asNode(item, path))) {
+        const responses = asNode(op, `${method} ${path}`).responses;
+        if (typeof responses !== 'object' || responses === null) continue;
+        for (const [status, res] of Object.entries(responses as Node)) {
+          if (JSON.stringify(res).includes(`"${ref}"`)) found.push(`${method} ${path} ${status}`);
+        }
+      }
+    }
+    const expected = [...PUBLIC_ROUTES, ...NON_PUBLIC_PARTNER_VIEW_ROUTES].map(
+      ([method, path, status]) => `${method} ${path} ${status}`,
+    );
+    expect(found.sort()).toEqual(expected.sort());
+  });
+
   it('production 필터 뒤에도 7라우트와 스키마가 남는다', () => {
     const filtered = filterToPartnerRoutes(document);
     for (const [method, path, status] of PUBLIC_ROUTES) {
