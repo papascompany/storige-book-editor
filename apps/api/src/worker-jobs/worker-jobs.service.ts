@@ -545,18 +545,16 @@ export class WorkerJobsService implements OnModuleInit {
    * 병합 가능 여부 체크 (dry-run)
    * 실제 파일 생성 없이 병합 가능 여부만 확인
    *
-   * @param site 호출 사이트 컨텍스트(X-API-Key 경유 시 컨트롤러가 주입) — Stage 0
-   *   비대칭 봉합(2026-07-15). 현재는 감사 로깅·후속 스코핑용 전달만이며 **동작 불변**:
-   *   worker_job 행을 만들지 않는 순수 조회라 스탬프 대상이 없고, 접근 차단/스코핑
-   *   강제는 NULL-siteId 이원 정책(오너 결정 잔여 사안, CONTRACT_FREEZE §4.3) 확정
-   *   전에는 도입하지 않는다(보수 기본값 — 기존 파트너 호출 응답 동일).
+   * @param site 호출 사이트 컨텍스트(X-API-Key 경유 시 컨트롤러가 주입). 감사 로깅에만 쓴다:
+   *   worker_job 행을 만들지 않는 순수 조회라 스탬프 대상이 없고, 사이트 기준 접근 차단도
+   *   하지 않는다(사이트 컨텍스트 유무와 관계없이 응답이 같다).
    */
   async checkMergeable(
     dto: CheckMergeableDto,
     site?: { siteId?: string; role?: string },
   ): Promise<CheckMergeableResponseDto> {
     if (site?.siteId) {
-      // 감사 로깅(Stage 0) — 후속 스코핑 도입 시 근거 데이터
+      // 감사 로깅 — 호출 사이트만 남기고 응답에는 영향이 없다.
       this.logger.log(
         `checkMergeable called by site=${site.siteId} (editSessionId=${dto.editSessionId ? 'present' : '-'})`,
       );

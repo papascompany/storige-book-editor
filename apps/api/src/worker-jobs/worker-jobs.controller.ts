@@ -896,7 +896,7 @@ export class WorkerJobsController {
    * compose-mixed 등 SYNTHESIZE 산출물의 인증 회수 경로. 반환 URL 은 nginx
    * secure_link 가 검증하는 /storage-signed/… (TTL 기본 300s, 만료 시 재호출).
    * 호출자는 산출물 URL 을 저장하지 않고 jobId 를 저장해 필요할 때 재발급받는다.
-   * 종전 /storage/outputs/ 직접 경로는 410 을 반환한다 — 이 라우트가 산출물 회수 경로다.
+   * 종전 /storage/outputs/ 직접 경로는 nginx 에서 410 을 반환한다 — 이 라우트가 산출물 회수 경로다.
    */
   @Get('external/:id/output-url')
   @Public()
