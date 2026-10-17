@@ -24,7 +24,7 @@
 >   < ~/storige/apps/api/migrations/20260617_add_user_site_roles.sql
 > docker exec -i storige-mariadb mariadb -ustorige -p"$DATABASE_PASSWORD" storige \
 >   < ~/storige/apps/api/migrations/20260617_b_add_site_id_data_scoping.sql
-> # P1 캘린더 (2026-10-17) — template_sets.product_profile JSON NULL additive, IF NOT EXISTS 멱등
+> # P1 캘린더 (2026-10-17) — template_sets.product_profile JSON NULL additive, IF NOT EXISTS 멱등 (2026-10-18 프로덕션 적용완료)
 > docker exec -i storige-mariadb mariadb -ustorige -p"$DATABASE_PASSWORD" storige \
 >   < ~/storige/apps/api/migrations/20261017_add_template_set_product_profile.sql
 > # 그 후 API 재배포 + nginx 재시작
@@ -1506,7 +1506,7 @@ docker logs storige-api 2>&1 | grep "낱장 분류 규칙"
 1. 규칙만 끄기: `.env` 에 `EDITOR_SHEET_VALIDATION_RULES=off` → `docker compose up -d api` → `docker compose restart nginx`(`FLAGS_EXPECTED_API` 토큰도 `false` 로 맞추면 `[FLAGS-CHECK]` ok 유지).
 2. 코드까지: `docker tag storige-api:rollback-pre-sheet-20261017 storige-api:latest`(worker 동일) → `docker compose up -d api worker` → nginx 재시작. editor 는 Vercel 직전 Production(`miptnimpy`, release `78b5c5a`) promote. 이 경우 Wave 11 도 함께 되돌아간다.
 
-### P1 캘린더 운영 반영 절차 (2026-10-17 준비 — 미실행, 오너 승인 후)
+### P1 캘린더 운영 반영 절차 (2026-10-17 준비 → 2026-10-18 00:46~00:48 KST 반영 완료)
 
 > 브랜치 `p1-calendar-2026-10-17`(master `a98d0219` 분기)을 master 에 병합한 뒤 적용한다. api·worker·editor·admin 을 함께 바꾸는 배포이며 **DB 마이그레이션 1건**(additive·`IF NOT EXISTS` 멱등)이 선행한다. 설계·결정 근거는 `docs/CALENDAR_MODE_DEVELOPMENT_PLAN_2026-10-17.md`, `docs/CONTRACT_FREEZE.md` v1.22 와 비공개 노트(`../_private_notes/wave12/P1_CALENDAR_DECISIONS_2026-10-17.md`).
 
@@ -1560,7 +1560,27 @@ STORIGE_API_URL=https://<api 호스트>/api node scripts/register-calendar-sampl
 1. 코드: `docker tag storige-api:rollback-pre-calendar-20261017 storige-api:latest`(worker 동일) → `docker compose up -d api worker` → nginx 재시작. editor·admin 은 Vercel 직전 Production promote.
 2. 컬럼은 NULL additive 라 남겨도 종전 코드에 영향이 없다(DROP 불필요). 등록한 샘플 세트는 admin 에서 비활성/삭제한다.
 
-**통지**: CONTRACT_FREEZE v1.22 ADDITIVE 3건(소비처 0건) — 가이드 반영으로 갈음, 적용 시점 = 이 배포 확인 시각.
+**통지**: CONTRACT_FREEZE v1.22 ADDITIVE 3건(소비처 0건) — 가이드 반영으로 갈음, 적용 시점 = 2026-10-18 00:48 KST(이 배포 확인 시각).
+
+**반영 기록 (2026-10-18 00:40~00:48 KST, 오너 지시 "병합 후 나머지 작업도 진행")**
+
+- master: `a98d0219` → `af900212`(브랜치 `p1-calendar-2026-10-17` fast-forward, 5커밋 — `1a0d80e3` P1 구현 · `638b7288` RESUME · `0c670adc` 자동저장 누락 수정 · `52563190` dev 부팅 복구 · `af900212` 경고 0·도련 정책 A·임시공휴일 선택).
+- VPS: 롤백 태그 `storige-api:rollback-pre-calendar-20261018`(= `a2a83d46b891`)·`storige-worker:rollback-pre-calendar-20261018`(= `4f294db9c738`) → 마이그레이션 `20261017_add_template_set_product_profile.sql` 적용(`SHOW COLUMNS` → `product_profile longtext NULL`, 비NULL 행 0) → `git pull --ff-only`(체크아웃 `af900212`) → `docker compose build worker api`(약 1분 20초) → `up -d worker api` → `restart nginx`.
+- 확인: api 이미지 `1f175ce9a99b`, worker `df1f28f153ac`, `[FLAGS-CHECK] api ok n=15`(키 수 불변), `GET /api/health` 200(내부·공개), worker `/health` ok(validation completed 189 · failed 0), 기동 후 오류 로그 0.
+- Vercel(master push 자동): editor `dpl_8gfs7QNFq8ef6RqHNruTH3X44xDa` Ready(41초, `editor.papascompany.co.kr`), admin `dpl_59TBLsedBioQcrZ8Lr9kXBYWEjn8` Ready(33초, `admin.papascompany.co.kr`) — 둘 다 새 배포 id·커밋 `af900212` 확인, 두 사이트 200.
+- **샘플 세트 등록은 미실행** — 운영 `.env` 에 `ADMIN_EMAIL`/`ADMIN_PASSWORD` 가 없고 운영 관리자 자격증명은 오너만 보유. 오너가 자신의 터미널에서 두 변수를 export 한 뒤 아래를 순서대로 실행한다(원격 API 라 `--allow-remote` 필수, `--with-site` 금지):
+
+```bash
+STORIGE_API_URL=https://api.papascompany.co.kr/api node scripts/register-calendar-samples.mjs --dry-run
+```
+
+```bash
+STORIGE_API_URL=https://api.papascompany.co.kr/api node scripts/register-calendar-samples.mjs --allow-remote
+```
+
+- 등록 뒤 확인: admin 템플릿셋 목록에 `[캘린더 샘플]` 7종(`cropMarkEnabled true`·`bleedMm 3`·프로파일 JSON), 운영 폰트 라이브러리에 `본고딕(Noto Sans) Regular` 존재 여부(없으면 완료 PDF 텍스트가 래스터 폴백 → TRANSPARENCY_DETECTED).
+- 롤백: `docker tag storige-api:rollback-pre-calendar-20261018 storige-api:latest`(worker 동일) → `docker compose up -d api worker` → nginx 재시작. editor·admin 은 Vercel 직전 Production promote. 컬럼은 NULL additive 라 유지.
+
 
 ## 문제 해결
 
