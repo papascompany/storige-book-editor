@@ -257,6 +257,13 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
 - 다음 이슈 정본(10-15): 비공개 `../_private_notes/wave12/NEXT_ISSUES_2026-10-15.md`, 새 세션 시작 절차 `../_private_notes/wave12/NEW_SESSION_PROMPT_2026-10-15.md`. 세션 교대(10-15): bookmoa·printy 에 교대 예고, 새 세션이 이름 통지(100p 포함).
 - 다음: 관찰 종료 기록(~10-21) → api 재빌드(OpenAPI 스키마 동승 — 잡 응답 키 설정이 켜진 상태에서만, 되돌릴 때는 스키마 커밋도 함께 되돌림) → GUIDE changelog 에 `/api/docs` 스키마 추가 기록. 후속: 컨트롤러 옛 주석 정리, fix-bleed·첨부 페이지 채움 응답 스키마, storige-editor 컨테이너 제거 여부, CI 액션 SHA 고정, ubuntu-26.04 probe(10-19~25).
 
+### 5.2.8 캘린더 편집 모드 트랙 (2026-10-16 설계 → 10-17 P0·(가) 구현·배포 완료 → P1 대기)
+
+- 목표: 상품별 편집 모드(캘린더 탁상·벽걸이, 사진인화, 낱장 분류)와 외부 연동(100p·JumboCard·insta_print·FrameShop·bookmoa). 정본 설계 `docs/PRODUCT_MODE_ARCHITECTURE_DESIGN_2026-10-16.md`(3안 경쟁·3인 심사 종합), 캘린더 세부 `docs/CALENDAR_EDIT_MODE_DESIGN_2026-10-16.md`.
+- 완료(10-17, master `19f1ce7c` 운영 배포): P0 — 낱장 N장 PDF(`selectSingleModePdfCanvases`)·IIFE 배열 저장(`collectCanvasData`)·duplex-split 쪽수 원천(`resolveSessionPageCount`); (가) 낱장 분류 검증 — worker `productKind='sheet'` 정확 쪽수(+`pageStep`)·`postProcessColorRule`, api `deriveSheetValidationRules`(single 세트·spine/wing/spread 없음·표지 전용 제외), 킬스위치 `EDITOR_SHEET_VALIDATION_RULES`(15번째 FLAGS 키). 운영 실측: single 세트 세션 90일 0·duplex-split 0·post_process 0.
+- 다음(P1, 새 세션): 계획 `docs/CALENDAR_MODE_DEVELOPMENT_PLAN_2026-10-17.md`, 시작 프롬프트 `.cursor/plans/CALENDAR_MODE_SESSION_START_PROMPT_2026-10-17.md`. 착수 전 오너 결정: 탁상 물리 사양·첫 출시 상품·날짜 데이터 출처·샘플 템플릿 담당.
+- 미반영 문서: CONTRACT_FREEZE v1.21(MODIFY-TARGET 2·ADDITIVE 1)·PLATFORM_INTEGRATION_GUIDE·PDF_VALIDATION_GUIDE — 초안은 `../_private_notes/wave12/P0_SINGLE_MODE_DEFECTS_2026-10-16.md`(docs dirty 해소 후 반영). 별도 결정: 낱장 cover 슬롯 판형·도련 검증 게이트 우회 여부.
+
 ### 5.3 다음 후보 (착수 약속 없음 — 새 세션이 재점검 후 우선순위 제안)
 
 | 후보 | 출처·메모 |
