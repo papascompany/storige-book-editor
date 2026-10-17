@@ -1043,15 +1043,18 @@ export namespace core {
    * 크래시한다(저장 무한로딩). 로드 직후/직렬화 직전에 빈 객체로 보정한다.
    */
   export function ensureTextStyles(canvas: fabric.StaticCanvas): void {
-    for (const obj of canvas.getObjects()) {
-      const t = obj as fabric.Object & { styles?: unknown; type?: string }
+    // 그룹 자식(캘린더 그리드·사용자 그룹)의 텍스트도 Group.toObject 가 자식 toObject 를 부르므로 같은 보정이 필요하다.
+    const visit = (obj: fabric.Object): void => {
+      const t = obj as fabric.Object & { styles?: unknown; type?: string; _objects?: fabric.Object[] }
       if (
         (t.type === 'textbox' || t.type === 'text' || t.type === 'i-text') &&
         (t.styles === undefined || t.styles === null)
       ) {
         ;(t as any).styles = {}
       }
+      if (Array.isArray(t._objects)) t._objects.forEach(visit)
     }
+    canvas.getObjects().forEach(visit)
   }
 
   /**

@@ -464,6 +464,9 @@ class ServicePlugin extends PluginBase {
         const onLoaded = () => {
           if (postLoadDone) return
           postLoadDone = true
+          // styles 가 없는 텍스트(외부 변환기·스크립트 생성 템플릿)는 이후 toJSON 이 예외를 내 자동저장이 실패한다 —
+          // core.loadFromJSON 과 같은 보정을 템플릿 로드 경로에도 적용(2026-10-17, 26캔버스 세트 24장 저장 실사고).
+          core.ensureTextStyles(this._canvas)
           // 모든 객체의 좌표 및 상태 강제 업데이트
           const renderType = (this._canvas as any)?.renderType || (this._options as any)?.renderType
           const isEnvelope = renderType === 'envelope'

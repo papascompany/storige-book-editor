@@ -111,13 +111,27 @@ export function useEmbedAutoSave(config: AutoSaveConfig) {
    */
   const collectCanvasData = useCallback(() => {
     if (allCanvas.length >= 2) {
-      return allCanvas.map((cvs) => {
-        try { return cvs.toJSON(core.extendFabricOption) } catch { return null }
-      }).filter(Boolean)
+      // 캔버스 하나라도 직렬화에 실패하면 그 저장을 통째로 실패시킨다(예외 전파 → 호출부 catch → 더티 유지·재시도).
+      // 종전에는 실패 캔버스를 조용히 빼고 짧은 배열을 저장해 쪽 순서가 밀린 세션이 서버에 남았다
+      // (2026-10-17 실측: 26캔버스 세트가 styles 없는 텍스트 2장 때문에 24장으로 저장).
+      return allCanvas.map((cvs, index) => {
+        try {
+          return cvs.toJSON(core.extendFabricOption)
+        } catch (error) {
+          console.error(`[EmbedAutoSave] 캔버스 ${index + 1}/${allCanvas.length} 직렬화 실패 — 이번 저장 중단:`, describeError(error))
+          try {
+            Sentry.captureMessage('[embed-autosave] canvas toJSON failed — save aborted', {
+              level: 'error',
+              extra: { sessionId, canvasIndex: index, canvasCount: allCanvas.length, error: describeError(error) },
+            })
+          } catch { /* Sentry 미초기화 등 — 저장 흐름에 영향 금지 */ }
+          throw new Error(`CANVAS_SERIALIZE_FAILED:${index}`)
+        }
+      })
     }
     if (!canvas) return null
     return canvas.toJSON(core.extendFabricOption)
-  }, [canvas, allCanvas])
+  }, [canvas, allCanvas, sessionId])
 
   /**
    * R2 가드 기준선 시드 — 세션 로드 응답의 canvasData 배열 길이(최초 1회만).
