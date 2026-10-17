@@ -218,6 +218,14 @@ pnpm dev
 - **Editor**: http://localhost:3000
 - **Admin**: http://localhost:3001
 
+#### 5. 로컬 기동 시 알아둘 점 (2026-10-17)
+
+- **compose 서비스 이름은 `mariadb`** 다(`docker compose up -d mariadb redis`). 위 `mysql` 표기는 옛 이름이며 `scripts/dev-start.sh` 도 같은 이름을 쓴다(후속 정리 대상). Redis 는 Homebrew 서비스(`brew services start redis`)로 대신할 수 있다.
+- **개발 모드 로그**: api·worker 는 `pino-pretty` 가 설치돼 있을 때만 pretty 로 출력하고, 없으면 JSON 으로 **그대로 기동**한다(`apps/*/src/config/dev-log-transport.ts`). pretty 가 필요하면 설치 대신 `pnpm --filter @storige/api dev | npx pino-pretty` 로 파이프한다. `LOG_PRETTY=false` 면 개발 모드에서도 JSON.
+- **worker 환경 파일**: `apps/worker/.env.development.example` 을 `.env.development` 로 복사한다(gitignored). `STORAGE_PATH` 는 api 의 storage 디렉터리 절대 경로, `WORKER_API_KEY` 는 api 의 `WORKER_API_KEY` 와 같고 sites 테이블의 어느 사이트 `worker_auth_code` 와도 일치해야 잡 상태 보고가 401 로 떨어지지 않는다.
+- **Bookmoa 연동 끄기**: api `.env.development` 에 `BOOKMOA_DB_PASSWORD` 가 있으면 원격 bookmoa DB 에 접속을 시도해 부팅이 멈출 수 있다. 로컬에서는 `BOOKMOA_DB_PASSWORD= pnpm --filter @storige/api dev` 처럼 빈 값으로 덮어 끈다.
+- **Node 버전과 네이티브 모듈**: `engines.node >= 24` 이지만 로컬 빌드된 네이티브 모듈 ABI 가 다를 수 있다 — `better-sqlite3`(api jest 일부 스위트)는 빌드된 Node 로, `canvas`(canvas-core vitest, fabric node 엔트리)는 Node 24 로 실행한다. Node 26 에서는 canvas-core 테스트가 수집 단계에서 실패한다(`packages/canvas-core/vitest.setup.ts` 처방 참조).
+
 ---
 
 ## 프로덕션 배포

@@ -28,6 +28,7 @@ import { PortalModule } from './portal/portal.module';
 import { StaffEditDataModule } from './staff-edit-data/staff-edit-data.module';
 import { PayloadTooLargeFilter } from './common/filters/payload-too-large.filter';
 import { redactUrlTokens } from './common/helpers/url-redact.helper';
+import { resolveDevLogTransport } from './config/dev-log-transport';
 
 // Bookmoa 모듈 조건부 로드 (BOOKMOA_DB_PASSWORD가 설정된 경우에만)
 const conditionalModules: DynamicModule[] = [];
@@ -56,13 +57,8 @@ if (process.env.BOOKMOA_DB_PASSWORD) {
     LoggerModule.forRoot({
       pinoHttp: {
         // production: JSON 한 줄, development: pretty
-        transport:
-          process.env.NODE_ENV === 'production'
-            ? undefined
-            : {
-                target: 'pino-pretty',
-                options: { singleLine: true, translateTime: 'SYS:HH:MM:ss' },
-              },
+        // development: pino-pretty 가 설치돼 있을 때만 pretty, 없으면 JSON 으로 기동(config/dev-log-transport.ts)
+        transport: resolveDevLogTransport({ nodeEnv: process.env.NODE_ENV, logPretty: process.env.LOG_PRETTY }),
         level: process.env.LOG_LEVEL || (process.env.NODE_ENV === 'production' ? 'info' : 'debug'),
         // 헬스체크 / 메트릭 / static 요청 로그 제외 (소음 감소)
         autoLogging: {

@@ -161,6 +161,7 @@ const API_UNMAPPED_ALLOWLIST: ReadonlyArray<{ key: string; kind: UnmappedKind; r
   { key: 'FONT_PROXY_ALLOWED_HOSTS', kind: 'hold', reason: '운영 확인 후 결정' },
   { key: 'JWT_EXPIRES_IN', kind: 'code-default', reason: '코드 기본값으로 운영' },
   { key: 'LOG_LEVEL', kind: 'code-default', reason: '코드 기본값으로 운영' },
+  { key: 'LOG_PRETTY', kind: 'no-effect', reason: '개발 전용 로그 pretty 스위치, production 은 항상 JSON' },
   { key: 'MAX_BODY_SIZE', kind: 'code-default', reason: '코드 기본값으로 운영' },
   { key: 'METRICS_REFRESH_INTERVAL_MS', kind: 'code-default', reason: '코드 기본값으로 운영' },
   { key: 'OPENAPI_PARTNER_OUT', kind: 'cli', reason: 'CLI 전용' },

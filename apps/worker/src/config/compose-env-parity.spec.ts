@@ -141,6 +141,7 @@ const WORKER_UNMAPPED_ALLOWLIST: ReadonlyArray<{ key: string; kind: UnmappedKind
   { key: 'CONTENT_PDF_GUIDE_DPI', kind: 'code-default', reason: '코드 기본값으로 운영' },
   { key: 'CONTENT_PDF_GUIDE_MAX_PAGES', kind: 'code-default', reason: '코드 기본값으로 운영' },
   { key: 'LOG_LEVEL', kind: 'code-default', reason: '코드 기본값으로 운영' },
+  { key: 'LOG_PRETTY', kind: 'no-effect', reason: '개발 전용 로그 pretty 스위치, production 은 항상 JSON' },
   { key: 'OUTPUTS_PATH', kind: 'code-default', reason: '코드 기본값으로 운영' },
   { key: 'PDFFONTS_PATH', kind: 'code-default', reason: '코드 기본값으로 운영' },
   { key: 'PDFIMAGES_PATH', kind: 'code-default', reason: '코드 기본값으로 운영' },

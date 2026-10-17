@@ -21,6 +21,7 @@ import { CutoutProcessor } from './processors/cutout.processor';
 
 // Controllers
 import { HealthController } from './health/health.controller';
+import { resolveDevLogTransport } from './config/dev-log-transport';
 
 @Module({
   imports: [
@@ -38,13 +39,8 @@ import { HealthController } from './health/health.controller';
     LoggerModule.forRoot({
       pinoHttp: {
         autoLogging: false,
-        transport:
-          process.env.NODE_ENV === 'production'
-            ? undefined
-            : {
-                target: 'pino-pretty',
-                options: { singleLine: true, translateTime: 'SYS:HH:MM:ss' },
-              },
+        // development: pino-pretty 가 설치돼 있을 때만 pretty, 없으면 JSON 으로 기동(config/dev-log-transport.ts)
+        transport: resolveDevLogTransport({ nodeEnv: process.env.NODE_ENV, logPretty: process.env.LOG_PRETTY }),
         level: process.env.LOG_LEVEL || (process.env.NODE_ENV === 'production' ? 'info' : 'debug'),
         base: { app: 'storige-worker', env: process.env.NODE_ENV || 'development' },
       },
