@@ -12,6 +12,7 @@ import { useEditorStore, useCurrentPage } from '@/stores/useEditorStore'
 import { useSettingsStore, type LinkedPrintTemplate } from '@/stores/useSettingsStore'
 import { sessionsApi } from '@/api/sessions'
 import { applyCoverMaterialLock } from '@/utils/objectPermissions'
+import { rehydrateCalendarGrids } from '@/utils/calendarRehydrate'
 import { resolveAssetUrl } from '@/utils/resolveAssetUrl'
 import { TemplateReplaceModal } from '@/components/TemplatePanel/TemplateReplaceModal'
 
@@ -104,6 +105,12 @@ export default function AppTemplateSwap() {
                   useSettingsStore.getState().coverMaterialLocked,
                   useSettingsStore.getState().currentSettings.editMode,
                 )
+              }
+              // P1 캘린더: 템플릿 교체 뒤 calendar-grid 재합성(프로파일 null 이면 즉시 0, no-op).
+              if (canvas) {
+                const { allCanvas, allEditors } = useAppStore.getState()
+                const idx = Math.max(0, allCanvas.indexOf(canvas))
+                void rehydrateCalendarGrids(allEditors[idx], canvas, idx)
               }
             } finally {
               resolve()

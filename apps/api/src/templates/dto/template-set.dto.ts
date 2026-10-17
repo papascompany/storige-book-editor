@@ -16,6 +16,7 @@ import {
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { TemplateSetType, TemplateRef, EditorMode, EditorMenuKey, ALL_EDITOR_MENU_KEYS, PdfOutputMode, ColorOutputMode } from '@storige/types';
+import { ProductProfileDto } from './product-profile.dto';
 
 /**
  * 면지 구성 DTO — 인쇄 워크플로우 v1 Phase 3 (2026-05-19).
@@ -305,6 +306,17 @@ export class CreateTemplateSetDto {
   @Type(() => CoverConfigDto)
   coverConfig?: CoverConfigDto | null;
 
+  // ── 상품별 편집 모드 프로파일 (P1 캘린더, 2026-10-17) — additive nullable, null=기존 동작 ──
+  @ApiPropertyOptional({
+    type: ProductProfileDto,
+    nullable: true,
+    description: '상품별 편집 모드 프로파일(version 1, kind sheet|calendar). null=기존 동작(legacy). 교차 필드 규칙은 validateProductProfile 단일 출처',
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ProductProfileDto)
+  productProfile?: ProductProfileDto | null;
+
   @ApiPropertyOptional({ example: true, description: '내지 PDF 첨부 파일 편집 가능 여부 (기본 true, false=가이드만·편집차단)' })
   @IsOptional()
   @IsBoolean()
@@ -487,6 +499,13 @@ export class UpdateTemplateSetDto {
   @ValidateNested()
   @Type(() => CoverConfigDto)
   coverConfig?: CoverConfigDto | null;
+
+  // ── 상품별 편집 모드 프로파일 (P1 캘린더, 2026-10-17) — 수정 시에도 영속. null=기존 동작 ──
+  @ApiPropertyOptional({ type: ProductProfileDto, nullable: true })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ProductProfileDto)
+  productProfile?: ProductProfileDto | null;
 
   @ApiPropertyOptional({ example: true, description: '내지 PDF 첨부 파일 편집 가능 여부 (기본 true)' })
   @IsOptional()

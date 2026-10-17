@@ -1,5 +1,8 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { useAppStore } from '@/stores/useAppStore'
+import { useCalendarStore } from '@/stores/useCalendarStore'
+import { useCalendarGridDblClick } from '@/components/calendar/useCalendarGridDblClick'
+import { CalendarDays } from 'lucide-react'
 import {
   useUiPrefStore,
   SIDEBAR_WIDTH_MIN,
@@ -24,6 +27,7 @@ import AppTemplateSwap from '@/tools/AppTemplateSwap'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import AppFrame from '@/tools/AppFrame'
 import SmartCodes from '@/tools/SmartCodes'
+import CalendarPanel from '@/components/calendar/CalendarPanel'
 import { LazyAiPanel } from '@/components/AiPanel'
 
 // Conditionally import image processing tools (requires OpenCV)
@@ -107,6 +111,24 @@ export default function FeatureSidebar({
   const currentMenu = useAppStore((state) => state.currentMenu)
   const tapMenu = useAppStore((state) => state.tapMenu)
   const activeSelection = useAppStore((state) => state.activeSelection)
+  // P1 캘린더(2026-10-17): 날짜칸 더블클릭 → 달력 패널 + 기념일 폼. 그리드를 클릭하면 선택 패널로 바뀌어
+  // CalendarPanel 이 언마운트되므로 항상 마운트되는 이 컴포넌트가 구독한다(날짜는 store.pendingDate 로 전달).
+  const isCalendarProduct = useSettingsStore((s) => s.productProfile?.kind === 'calendar')
+  useCalendarGridDblClick(
+    useCallback(
+      (date: string) => {
+        useCalendarStore.getState().setPendingDate(date)
+        const cvs = useAppStore.getState().canvas
+        cvs?.discardActiveObject()
+        cvs?.requestRenderAll()
+        if (useAppStore.getState().currentMenu?.type !== 'CALENDAR') {
+          tapMenu({ type: 'CALENDAR', label: '달력', icon: CalendarDays })
+        }
+      },
+      [tapMenu],
+    ),
+    isCalendarProduct,
+  )
 
   const sidebarWidth = useUiPrefStore((s) => s.sidebarWidth)
   const setSidebarWidth = useUiPrefStore((s) => s.setSidebarWidth)
@@ -268,6 +290,9 @@ export default function FeatureSidebar({
         ) : null
       case 'SMART_CODE':
         return <SmartCodes />
+      case 'CALENDAR':
+        // P1 캘린더 (2026-10-17): ToolBar 가 productProfile kind=calendar 세트에서만 메뉴를 노출
+        return <CalendarPanel />
       case 'EDIT':
         return ENABLE_IMAGE_PROCESSING ? (
           <Suspense fallback={<LazyLoading />}>

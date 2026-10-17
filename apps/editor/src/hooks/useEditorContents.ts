@@ -5,6 +5,8 @@ import { useAppStore } from '@/stores/useAppStore'
 import { useEditorStore } from '@/stores/useEditorStore'
 import { useImageStore } from '@/stores/useImageStore'
 import { rebindFrameInteractivity } from '@/utils/frameInteractive'
+import { rehydrateCalendarGrids } from '@/utils/calendarRehydrate'
+import { applyTemplateSetProductProfile, resolveFixedCanvasCount } from '@/utils/productProfile'
 import { applyObjectPermissions, applyCoverMaterialLock, isCoverPageCanvas } from '@/utils/objectPermissions'
 import {
   resolveCoverFinishing,
@@ -506,6 +508,8 @@ export function useEditorContents(): UseEditorContentsReturn {
                 // 저장 JSON 에는 hover/click 핸들러가 직렬화되지 않으므로 복원 후 다시 부여.
                 // embed·useEmbedAutoSave 복원 경로와 공유하는 헬퍼로 일원화(재발 방지).
                 rebindFrameInteractivity(ed, cvs)
+                // P1 캘린더 (2026-10-17): 캘린더 세트면 calendar-grid 재합성(프로파일 null 이면 즉시 0, no-op).
+                void rehydrateCalendarGrids(ed, cvs, index)
 
                 // Part B: 고객(비 editMode) 진입 시 객체별 이동/변형 잠금 적용
                 // (관리자가 movable=false 로 지정한 객체를 lockMovement/Scaling/Rotation 으로 강제).
@@ -988,6 +992,8 @@ export function useEditorContents(): UseEditorContentsReturn {
       setCoverFinishing(false, [])
       setLinkedPrintTemplates([])
       setHasCoverSlot(true)
+      // P1 캘린더: 빈 편집기는 상품 프로파일 없음(legacy) — 이전 세트의 프로파일 잔류 방지
+      applyTemplateSetProductProfile(null)
 
       await setupEmptyEditorStore(config)
       await initWorkspace()
@@ -1068,6 +1074,12 @@ export function useEditorContents(): UseEditorContentsReturn {
       // 배경 메뉴는 표지 페이지에서만 ToolBar 가 감산한다. 내지 배경은 유지.
       setEnabledMenus(menus)
 
+      // 1-B. P1 캘린더 (2026-10-17): 템플릿셋 productProfile → settings.productProfile + calendar store.
+      // null/검증 실패 = legacy(아래 fixed 분기 전부 단락 → 기존 경로 바이트 동일).
+      const productProfile = applyTemplateSetProductProfile(templateSet)
+      const fixedCanvasCount = resolveFixedCanvasCount(productProfile)
+      const fixedProfile = fixedCanvasCount !== null
+
       // P3 (2026-06-10): 작업사이즈(재단+블리드)/재단마커 PDF 출력 설정 운반.
       // templateSet 의 bleedMm/cropMarkEnabled 컬럼(API JSON)을 settings store 로 옮겨둔다.
       // PDF 저장 시 게이트(cropMarkEnabled && bleedMm>0)에서만 작업사이즈 경로 활성.
@@ -1136,7 +1148,11 @@ export function useEditorContents(): UseEditorContentsReturn {
         originalTemplateDetails.length -
         originalTemplateDetails.filter((t) => (t as { type?: string }).type === 'page').length
 
-      if (requestedPageCount !== undefined) {
+      if (requestedPageCount !== undefined && fixedProfile) {
+        // P1 캘린더: 고정 캔버스 수 상품은 호스트 pageCount 로 내지를 증설하지 않는다(세트 구성이 정답).
+        console.warn(`[EditorContents] productProfile pages.kind=fixed(${fixedCanvasCount}) — 호스트 pageCount ${requestedPageCount} 무시`)
+      }
+      if (requestedPageCount !== undefined && !fixedProfile) {
         // 내지(page) 템플릿만 필터링 (API는 type 필드 사용)
         const pageTemplates = templateDetails.filter(t => (t as any).type === 'page')
         const currentPageCount = pageTemplates.length
@@ -1202,7 +1218,17 @@ export function useEditorContents(): UseEditorContentsReturn {
 
       // R-196 host page limits (2026-09-29): SidePanel '페이지' 섹션 한도(전체 캔버스 수 단위)를
       // 병합 범위로 설정. updateSettings 는 page 를 통째로 교체하므로 기존 page 를 펼쳐 병합한다.
-      if (hostLimitsActive) {
+      if (fixedProfile) {
+        // P1 캘린더: 고정 캔버스 수 → settings.page min=max=count (SidePanel 추가/삭제 게이트 + 프로파일 가드).
+        // 호스트 한도보다 프로파일이 우선한다(상품 구성이 단일 소스).
+        if (templateDetails.length !== fixedCanvasCount) {
+          console.warn(`[EditorContents] productProfile fixed ${fixedCanvasCount} ≠ 템플릿셋 캔버스 ${templateDetails.length} — 세트 구성 확인 필요(진입은 계속)`)
+        }
+        const page = useSettingsStore.getState().currentSettings.page
+        await useSettingsStore.getState().updateSettings({
+          page: { ...page, min: fixedCanvasCount as number, max: fixedCanvasCount as number },
+        })
+      } else if (hostLimitsActive) {
         const merged = mergePageCountRange(templateRange, config)
         if (merged) {
           const page = useSettingsStore.getState().currentSettings.page
@@ -1473,6 +1499,8 @@ export function useEditorContents(): UseEditorContentsReturn {
                   // #2: workspace = trim + cutSize(양변 합) — 게이트 OFF 면 +0 = 현행 동일
                   const cvs = latestAllCanvas[newPageIndex]
                   if (cvs) {
+                    // P1 캘린더: 캘린더 세트면 calendar-grid 재합성(프로파일 null 이면 즉시 0, no-op).
+                    void rehydrateCalendarGrids(targetEditor, cvs, newPageIndex)
                     const totalWidth = mmToPxDisplay(capturedWidth + screenCutSizeMm)
                     const totalHeight = mmToPxDisplay(capturedHeight + screenCutSizeMm)
 

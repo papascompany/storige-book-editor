@@ -13,7 +13,7 @@ import {
 import { v4 as uuidv4 } from 'uuid';
 import { Category } from './category.entity';
 import { Template } from './template.entity';
-import type { ProductSpecs, TemplateSetType, TemplateRef, EditorMode, EditorMenuKey, PdfOutputMode, ColorOutputMode, PhotobookPricing } from '@storige/types';
+import type { ProductSpecs, TemplateSetType, TemplateRef, EditorMode, EditorMenuKey, PdfOutputMode, ColorOutputMode, PhotobookPricing, ProductProfile } from '@storige/types';
 
 /**
  * D-4 커버 3종 시드 코드 (2026-07-06, C-4 Track 3).
@@ -271,6 +271,16 @@ export class TemplateSet {
    */
   @Column({ name: 'cover_config', type: 'json', nullable: true })
   coverConfig: TemplateSetCoverConfig | null;
+
+  /**
+   * 상품별 편집 모드 프로파일 JSON (P1 캘린더, 2026-10-17, additive nullable=비파괴).
+   * 마이그레이션: apps/api/migrations/20261017_add_template_set_product_profile.sql
+   * shape: packages/types/src/product-profile.ts `ProductProfile`(version 1, kind 'sheet'|'calendar').
+   * NULL=기존 동작(legacy). 값이 있을 때만 편집기·API 가 `resolveProductProfile()` 결과로 분기한다.
+   * EditorMode·type·pdfOutputMode 등 기존 컬럼은 그대로 둔다.
+   */
+  @Column({ name: 'product_profile', type: 'json', nullable: true })
+  productProfile: ProductProfile | null;
 
   // ─────────────────────────────────────────────────────
   // 방향(orientation) 페어링 (2026-07-14, 오너 승인 설계)

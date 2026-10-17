@@ -58,10 +58,14 @@ import {
 import { shouldReemitPricing, type PricingEmitState } from './utils/pricingChangeReemit'
 import { computeEmbedPageState, type EmbedPageState } from './utils/embedPageState'
 import { collectCanvasData } from './utils/collectCanvasData'
+import { resolveProfilePdfRequestSize } from './utils/productProfile'
 import { selectSingleModePdfCanvases } from './utils/singleModePdfCanvases'
 import { templatesApi, editSessionsApi, filesApi, apiClient, type EditSessionResponse, type TemplateSet } from './api'
 import { core, ServicePlugin } from '@storige/canvas-core'
-import type { PhotobookPricing, TemplateSetCoverMeta } from '@storige/types'
+import { summarizeProductProfile, type PhotobookPricing, type ProductCompleteSummary, type TemplateSetCoverMeta } from '@storige/types'
+// P1 캘린더 (2026-10-17): 세션 메타 저장/복원·그리드 재합성 (프로파일 null 이면 전부 no-op)
+import { rehydrateCalendarGrids } from './utils/calendarRehydrate'
+import { calendarSessionMetadataFields, restoreCalendarSessionMeta } from './utils/calendarRehydrateAll'
 import type { ApiError } from './api/client'
 // './api' 가 아닌 './api/client' 에서 직접 가져온다 — 테스트 하네스가 './api' 를 통째로 mock 한다.
 import { parseApiError } from './api/client'
@@ -463,6 +467,11 @@ export interface EditorResult {
   templateSetId?: string
   /** W8-2b (additive): 재편집 템플릿셋 불일치 — editor.ready 와 같은 값. 불일치가 없으면 생략 */
   templateSetMismatch?: TemplateSetMismatch
+  /**
+   * ADDITIVE 2026-10-17 P1 캘린더: 템플릿셋 productProfile 이 있는 세트의 상품 요약
+   * (`summarizeProductProfile`). NULL 프로파일(legacy) 세트·게스트 완료 경로에는 생략한다.
+   */
+  product?: ProductCompleteSummary
   files: {
     coverFileId?: string
     contentFileId?: string
@@ -711,6 +720,16 @@ function templateSetResultFields(
     ...(loadedTemplateSetId ? { templateSetId: loadedTemplateSetId } : {}),
     ...(mismatch ? { templateSetMismatch: mismatch } : {}),
   }
+}
+
+/**
+ * ADDITIVE 2026-10-17 P1 캘린더: editor.complete 에 싣는 `product` 키 — settings.productProfile 이
+ * 있을 때만(`summarizeProductProfile`). NULL 프로파일이면 `{}` 라 기존 result 키 집합이 바뀌지 않는다.
+ * `pageCount`·`files`·`pages` 산식과는 독립이다.
+ */
+function productResultFields(canvasCount: number): Pick<EditorResult, 'product'> {
+  const profile = useSettingsStore.getState().productProfile
+  return profile ? { product: summarizeProductProfile(profile, canvasCount) } : {}
 }
 
 function EmbeddedEditor({
@@ -1306,6 +1325,8 @@ function EmbeddedEditor({
                 ...(orderOptionsEntries.length > 0
                   ? { orderOptions: Object.fromEntries(orderOptionsEntries) }
                   : {}),
+                // P1 캘린더: 프로파일 스냅샷 + 캘린더 메타(이 시점엔 보통 템플릿셋 미로드라 {} — 이후 PATCH 가 채운다)
+                ...(calendarSessionMetadataFields().metadata ?? {}),
               },
             }
             try {
@@ -1756,6 +1777,12 @@ function EmbeddedEditor({
           setLoadingMessage('저장된 작업을 복원하는 중...')
           loadProfile.mark('workspace:seeded', { canvases: useAppStore.getState().allCanvas.length })
           const saved = editSession.canvasData
+          // P1 캘린더 (2026-10-17): 세션 metadata.calendar(시작연월·표기·기념일)를 캔버스 복원 **전**에
+          // 스토어로 되돌린다 — 아래 rehydrateCalendarGrids 가 저장값으로 그리드를 다시 그린다.
+          // 메타가 없거나 무효면 P1-b 의 setFromProfile 기본값 유지. 프로파일 null 이면 no-op.
+          if (restoreCalendarSessionMeta(editSession.metadata)) {
+            console.log('[EmbeddedEditor] 캘린더 세션 메타 복원:', editSession.id)
+          }
 
           // R2-절단 금지 (2026-08-18): 시드 결과 캔버스 수가 저장본보다 적으면 부족분을 증설한다.
           // 종전에는 아래 복원 루프가 min(saved.length, canvases.length)로 무음 절단하고, 이후
@@ -1819,6 +1846,8 @@ function EmbeddedEditor({
               if (saved[i]) await core.loadFromJSON(canvases[i], saved[i])
               // 복원 직후 사진틀 인터랙션 재바인딩 (핸들러는 직렬화 안 됨 → 미재바인딩 시 채우기 불능).
               rebindFrameInteractivity(allEditors[i], canvases[i])
+              // P1 캘린더: 캘린더 세트면 calendar-grid 재합성(프로파일 null 이면 즉시 0, no-op).
+              void rehydrateCalendarGrids(allEditors[i], canvases[i], i)
               // Part B: 고객 임베드 세션 복원 시 객체별 이동/변형 잠금 적용(movable=false).
               applyObjectPermissions(canvases[i], useSettingsStore.getState().currentSettings.editMode)
               applyCoverMaterialLock(
@@ -1841,6 +1870,8 @@ function EmbeddedEditor({
             await core.loadFromJSON(fabricCanvas, saved)
             const singleIdx = Math.max(0, canvases.indexOf(fabricCanvas))
             rebindFrameInteractivity(allEditors[singleIdx], fabricCanvas)
+            // P1 캘린더: 캘린더 세트면 calendar-grid 재합성(프로파일 null 이면 즉시 0, no-op).
+            void rehydrateCalendarGrids(allEditors[singleIdx], fabricCanvas, singleIdx)
             applyObjectPermissions(fabricCanvas, useSettingsStore.getState().currentSettings.editMode)
             applyCoverMaterialLock(
               fabricCanvas,
@@ -2355,10 +2386,12 @@ function EmbeddedEditor({
           const canvasData = collectCanvasData(useAppStore.getState().allCanvas, canvas)
 
           // Update edit session with canvas data (게스트 세션이면 guestToken 동봉)
+          // P1 캘린더: 캘린더 세트면 metadata.calendar 동봉(얕은 병합), 아니면 {} (payload 키 집합 불변)
           const guestToken = currentSession?.guestToken
+          const calendarFields = calendarSessionMetadataFields()
           const updatedSession = guestToken
-            ? await editSessionsApi.updateGuest(currentSessionId, guestToken, { canvasData, status: 'editing' })
-            : await editSessionsApi.update(currentSessionId, { canvasData, status: 'editing' })
+            ? await editSessionsApi.updateGuest(currentSessionId, guestToken, { canvasData, status: 'editing', ...calendarFields })
+            : await editSessionsApi.update(currentSessionId, { canvasData, status: 'editing', ...calendarFields })
 
           setCurrentSession(updatedSession)
 
@@ -2422,7 +2455,7 @@ function EmbeddedEditor({
           // 게스트 세션: 회원 전용 complete 불가 → 저장만 하고 로그인 유도
           const guestToken = currentSession?.guestToken
           if (guestToken) {
-            await editSessionsApi.updateGuest(currentSessionId, guestToken, { canvasData })
+            await editSessionsApi.updateGuest(currentSessionId, guestToken, { canvasData, ...calendarSessionMetadataFields() })
             // STALE-CLOSURE-001: editor.complete에 needsAuth/guestToken 인라인 포함
             // bookmoa finishComplete가 editor.complete.needsAuth 로 분기하므로 이 이벤트를 먼저 emit
             const guestResult: EditorResult = {
@@ -2449,6 +2482,8 @@ function EmbeddedEditor({
 
           await editSessionsApi.update(currentSessionId, {
             canvasData,
+            // P1 캘린더: 캘린더 세트면 metadata.calendar 동봉(얕은 병합), 아니면 {} (payload 키 집합 불변)
+            ...calendarSessionMetadataFields(),
           })
 
           // Then mark as completed
@@ -2505,6 +2540,8 @@ function EmbeddedEditor({
             ...(appliedSpineWidthMm !== undefined ? { spineWidthMm: appliedSpineWidthMm } : {}),
             // W8-2b (additive): 이번 편집을 앉힌 템플릿셋·재편집 불일치(샘플 폴백이면 생략)
             ...templateSetResultFields(loadedTemplateSetIdRef.current, templateSetMismatchRef.current),
+            // ADDITIVE 2026-10-17 P1 캘린더: 상품 요약(프로파일 있는 세트만)
+            ...productResultFields(appStateAtComplete.allCanvas.length),
             files: {
               coverFileId: completedSession.coverFileId || undefined,
               contentFileId: completedSession.contentFileId || undefined,
@@ -2596,7 +2633,7 @@ function EmbeddedEditor({
       // 게스트 세션: PDF 생성/회원 complete 불가 → 저장만 하고 로그인 유도
       const guestToken = currentSession?.guestToken
       if (guestToken) {
-        await editSessionsApi.updateGuest(currentSessionId, guestToken, { canvasData })
+        await editSessionsApi.updateGuest(currentSessionId, guestToken, { canvasData, ...calendarSessionMetadataFields() })
         // R4 (2026-08-18): 서버 저장 성공 — 자동저장 훅과 동일 북키핑(clean 마킹 + 로컬 백업
         // 삭제). 종전엔 이 경로가 dirty/백업을 그대로 둬 unmount 백업이 늘 재작성되고
         // backup.savedAt > session.updatedAt 이 상시 성립 → 재진입마다 복원 배너가 떴다.
@@ -2628,7 +2665,8 @@ function EmbeddedEditor({
 
       // Update edit session with canvas data (멀티페이지면 배열 전체)
       await finishMark('canvasData:save:start', { pages: Array.isArray(canvasData) ? canvasData.length : 1 })
-      await editSessionsApi.update(currentSessionId, { canvasData })
+      // P1 캘린더: 캘린더 세트면 metadata.calendar 동봉(얕은 병합), 아니면 {} (payload 키 집합 불변)
+      await editSessionsApi.update(currentSessionId, { canvasData, ...calendarSessionMetadataFields() })
       await finishMark('canvasData:save:done')
       // R4 (2026-08-18): canvasData 서버 저장 성공 **직후에만** clean 마킹 + 로컬 백업 삭제
       // (이후 PDF/complete 단계 실패와 무관 — 서버 canvasData 는 이미 최신). 종전엔 편집완료가
@@ -2810,7 +2848,12 @@ function EmbeddedEditor({
             // G-E (2026-07-14): 페이지 치수 — 전달값이 templateSet 판형과 정확히 W↔H 스왑이면
             // templateSet 방향으로 정규화(PDF 생성 로컬 치수만 — 세션 metadata·editor.complete
             // payload 의 size 는 전달값 원본 보존). 일치/무관 불일치/정사각/size 미전달은 현행 그대로.
-            const singlePdfSize = resolveSingleModePdfSizeMm(options?.size, templateSetSizeRef.current)
+            // P1 캘린더 (2026-10-17): 프로파일 세트는 템플릿셋 판형이 상품 정답이다 — 호스트가 size 를
+            // 보내지 않으면 A4 폴백 대신 템플릿셋 판형으로 생성한다(프로파일 NULL 세트는 종전 그대로 A4 폴백).
+            const singlePdfSize = resolveSingleModePdfSizeMm(
+              resolveProfilePdfRequestSize(options?.size, useSettingsStore.getState().productProfile, templateSetSizeRef.current),
+              templateSetSizeRef.current,
+            )
             if (singlePdfSize.swapped) {
               console.warn(
                 '[EmbeddedEditor] G-E: 단일모드 PDF 치수 방향 정규화 — 전달값이 templateSet 판형의 W↔H 스왑이라 templateSet 방향으로 생성합니다.',
@@ -2930,6 +2973,8 @@ function EmbeddedEditor({
         ...(appliedSpineWidthMm2 !== undefined ? { spineWidthMm: appliedSpineWidthMm2 } : {}),
         // W8-2b (additive): 이번 편집을 앉힌 템플릿셋·재편집 불일치(샘플 폴백이면 생략)
         ...templateSetResultFields(loadedTemplateSetIdRef.current, templateSetMismatchRef.current),
+        // ADDITIVE 2026-10-17 P1 캘린더: 상품 요약(프로파일 있는 세트만)
+        ...productResultFields(appStateAtFinish.allCanvas.length),
         files: {
           coverFileId: completedSession.coverFileId || undefined,
           contentFileId: completedSession.contentFileId || undefined,

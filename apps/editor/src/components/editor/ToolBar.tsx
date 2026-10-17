@@ -16,6 +16,7 @@ import {
   Pencil,
   Scissors,
   Sparkles,
+  CalendarDays,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { AppMenu } from '@/types/menu'
@@ -32,6 +33,8 @@ const ENABLE_FRAME_MENU = import.meta.env.VITE_ENABLE_FRAME_MENU !== 'false'
 const ENABLE_SMART_CODE_MENU = import.meta.env.VITE_ENABLE_SMART_CODE_MENU !== 'false'
 // Feature flag for AI panel (recommend + generate)
 const ENABLE_AI_PANEL = import.meta.env.VITE_ENABLE_AI_PANEL !== 'false'
+// Feature flag for calendar panel (P1 캘린더 2026-10-17) — 기본 on. 런타임 게이트는 productProfile kind=calendar.
+const ENABLE_CALENDAR = import.meta.env.VITE_ENABLE_CALENDAR !== 'false'
 
 // Tool definitions - CLIPPING requires ImageProcessingPlugin (OpenCV)
 const ALL_MENUS: AppMenu[] = [
@@ -48,6 +51,8 @@ const ALL_MENUS: AppMenu[] = [
   ...(ENABLE_IMAGE_PROCESSING ? [{ type: 'EDIT' as const, label: '편집도구', icon: Pencil }] : []),
   // AI 패널 (추천 + 생성) — 다른 메뉴 끝에 배치
   ...(ENABLE_AI_PANEL ? [{ type: 'AI' as const, label: 'AI', icon: Sparkles }] : []),
+  // P1 캘린더: 캘린더 세트(productProfile kind=calendar)에서만 노출 — 아래 필터의 런타임 게이트
+  ...(ENABLE_CALENDAR ? [{ type: 'CALENDAR' as const, label: '달력', icon: CalendarDays }] : []),
 ]
 
 interface ToolBarProps {
@@ -67,6 +72,8 @@ export default function ToolBar({ horizontal = false }: ToolBarProps) {
   // - 배열: 그 키만 노출 (빈 배열 → 모든 도구 메뉴 숨김)
   // useEditorContents.loadTemplateSetEditor 가 templateSet.enabledMenus 를 store 에 저장.
   const enabledMenus = useSettingsStore((state) => state.enabledMenus)
+  // P1 캘린더: CALENDAR 메뉴는 productProfile kind=calendar 세트에서만(legacy null 세트는 enabledMenus 와 무관하게 숨김)
+  const isCalendarProduct = useSettingsStore((state) => state.productProfile?.kind === 'calendar')
   const coverMaterialLocked = useSettingsStore((state) => state.coverMaterialLocked)
   const hasCoverSlot = useSettingsStore((state) => state.hasCoverSlot)
   const allCanvas = useAppStore((state) => state.allCanvas)
@@ -131,9 +138,13 @@ export default function ToolBar({ horizontal = false }: ToolBarProps) {
     // edit mode (admin 편집 미리보기) 에서는 화이트리스트 무시하고 전체 노출.
     // 일반 사용자에게는 enabledMenus 적용.
     // 페브릭 표지(소재 잠금)는 표지 페이지에서만 배경 메뉴를 숨긴다.
+    // CALENDAR 는 editMode(관리자 템플릿 제작 — 그리드 배치 도구) 또는 캘린더 세트에서만 노출(P1-d 2026-10-17).
+    // legacy 고객 세트(프로파일 null·비 editMode)에는 여전히 숨긴다.
+    // 캘린더 세트에서는 enabledMenus 화이트리스트를 존중한다(배열에 'CALENDAR' 없으면 숨김, null 이면 노출).
     const availableMenus = editMode
-      ? ALL_MENUS
+      ? ALL_MENUS // 관리자 editMode 는 전부 노출 — CALENDAR 도 포함(템플릿에 날짜 그리드를 배치하는 저작 도구, P1 캘린더 의도된 예외)
       : ALL_MENUS.filter((m) => {
+          if (m.type === 'CALENDAR' && !isCalendarProduct) return false
           if (!isAllowed(m.type)) return false
           if (coverMaterialLocked && isCoverPage && m.type === 'BACKGROUND') return false
           // book/스프레드 상품에서는 모양컷 숨김 — 파괴적 캔버스 재구성 도구라 비호환.
@@ -148,7 +159,7 @@ export default function ToolBar({ horizontal = false }: ToolBarProps) {
     const showUpload = ENABLE_UPLOAD_MENU && (editMode || isAllowed('UPLOAD'))
 
     return [...(showUpload ? [uploadMenu] : []), ...availableMenus]
-  }, [editMode, enabledMenus, ready, canvas, getPlugin, upload, uploadSimple, coverMaterialLocked, isCoverPage, isSpreadProduct])
+  }, [editMode, enabledMenus, isCalendarProduct, ready, canvas, getPlugin, upload, uploadSimple, coverMaterialLocked, isCoverPage, isSpreadProduct])
 
   const handleMenuClick = (menu: AppMenu) => {
     if (menu.onTap) {

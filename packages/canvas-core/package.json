@@ -19,7 +19,8 @@
     "lint": "eslint . --max-warnings 48",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "gen:calendar-data": "node scripts/gen-calendar-data.mjs"
   },
   "files": [
     "dist"

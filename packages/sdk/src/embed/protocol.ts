@@ -291,6 +291,24 @@ export interface EditorCompletePayload {
   spineWidthMm?: number;
   /** 재편집 시 요청 세트와 세션 세트가 달랐을 때만 (2026-10 additive) */
   templateSetMismatch?: TemplateSetMismatch;
+  /**
+   * ADDITIVE 2026-10-17 P1 캘린더 — 템플릿셋에 상품 프로파일(`productProfile`)이 있는 세트의 상품 요약.
+   * 프로파일이 없는 기존 세트에서는 키 자체가 없다. `files`·`pages`·`pageCount` 산식과 독립이다.
+   */
+  product?: EditorCompleteProduct;
+}
+
+/**
+ * ADDITIVE 2026-10-17 P1 캘린더 — `editor.complete.product`.
+ * `sheetCount` 는 faces=2 면 ceil(canvasCount/2), faces=1 이면 canvasCount (캘린더 26캔버스 → 13장 양면).
+ */
+export interface EditorCompleteProduct {
+  kind: 'sheet' | 'calendar';
+  /** 운영 식별용 자유 코드(예: 'calendar_desk_large') — 분기 근거로 쓰지 않는다 */
+  editorType: string;
+  canvasCount: number;
+  sheetCount: number;
+  faces: 1 | 2;
 }
 
 /**

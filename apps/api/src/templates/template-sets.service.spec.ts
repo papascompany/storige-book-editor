@@ -240,6 +240,48 @@ describe('TemplateSetsService', () => {
         expect.objectContaining({ coverType: null, coverConfig: null }),
       );
     });
+
+    // P1 캘린더 (2026-10-17): productProfile create 매핑 — 전달값 그대로, 미전달은 null(기존 세트 비파괴)
+    it('productProfile 을 생성 시 영속 매핑한다 (P1 캘린더)', async () => {
+      const productProfile = {
+        version: 1,
+        kind: 'calendar',
+        editorType: 'calendar_desk_large',
+        pages: { kind: 'fixed', count: 26, step: 2, protectedIndices: [0, 25], labelRule: 'month' },
+        sheet: { faces: 2, canvasLayout: 'canvas-pair', binding: 'top-ring', pairing: 'offset-next', backRotation: 0, duplexFlip: 'short-edge' },
+        calendar: {
+          layout: 'desk', monthCount: 12, coverCanvases: 1, canvasesPerMonth: 2, epilogueCanvases: 1,
+          allowedRange: { from: '2026-01', to: '2027-12' }, weekStart: 0,
+          show: { holidays: true, lunar: true, solarTerms: true }, dataVersion: 'kr-2025-2035-v1',
+        },
+        output: { mode: 'single-pdf' },
+      };
+
+      await service.create({
+        name: '탁상형 라지달력',
+        type: TemplateSetType.LEAFLET,
+        width: 265,
+        height: 190,
+        productProfile,
+      } as any);
+
+      expect(templateSetRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({ productProfile }),
+      );
+    });
+
+    it('productProfile 미지정(기존 페이로드)은 null 로 저장 — 기존 셋 동작 비파괴 (P1)', async () => {
+      await service.create({
+        name: 'Legacy Set',
+        type: TemplateSetType.BOOK,
+        width: 210,
+        height: 297,
+      });
+
+      expect(templateSetRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({ productProfile: null }),
+      );
+    });
   });
 
   describe('pageStep (S8 내지 증감 단위)', () => {
@@ -504,6 +546,7 @@ describe('TemplateSetsService', () => {
       pricing: { includedPages: 16, minPages: 8, pageStep: 2, perPageUnit: 1000 },
       coverType: 'hardcover_wrap',
       coverConfig: { caseBind: { boardThicknessMm: 2, turnInMm: 15, wrapMarginMm: 3 } },
+      productProfile: null,
       description: '싸바리 하드커버',
       categoryId: 'cat-1',
       productSpecs: null,
@@ -543,6 +586,7 @@ describe('TemplateSetsService', () => {
         pricing: { includedPages: 16, minPages: 8, pageStep: 2, perPageUnit: 1000 },
         coverType: 'hardcover_wrap',
         coverConfig: { caseBind: { boardThicknessMm: 2, turnInMm: 15, wrapMarginMm: 3 } },
+        productProfile: null,
         description: '싸바리 하드커버',
         categoryId: 'cat-1',
         productSpecs: null,
@@ -551,6 +595,33 @@ describe('TemplateSetsService', () => {
         isDeleted: false,
         isActive: false,
       });
+    });
+
+    // P1 캘린더 (2026-10-17): 프로파일이 있는 세트의 사본도 같은 프로파일을 승계한다.
+    it('productProfile 이 있는 원본의 사본은 프로파일을 보존한다 (P1 캘린더)', async () => {
+      const productProfile = {
+        version: 1 as const,
+        kind: 'calendar' as const,
+        editorType: 'calendar_desk_large',
+        pages: { kind: 'fixed' as const, count: 26, step: 2 as const, protectedIndices: [0, 25], labelRule: 'month' as const },
+        sheet: {
+          faces: 2 as const, canvasLayout: 'canvas-pair' as const, binding: 'top-ring' as const,
+          pairing: 'offset-next' as const, backRotation: 0 as const, duplexFlip: 'short-edge' as const,
+        },
+        calendar: {
+          layout: 'desk' as const, monthCount: 12 as const, coverCanvases: 1, canvasesPerMonth: 2 as const, epilogueCanvases: 1,
+          allowedRange: { from: '2026-01', to: '2027-12' }, weekStart: 0 as const,
+          show: { holidays: true, lunar: true, solarTerms: true }, dataVersion: 'kr-2025-2035-v1',
+        },
+        output: { mode: 'single-pdf' as const },
+      };
+      (templateSetRepository.findOne as jest.Mock).mockResolvedValueOnce({ ...hardcoverWrapOriginal, productProfile });
+
+      await service.copy('orig-hardcover');
+
+      expect(templateSetRepository.create).toHaveBeenLastCalledWith(
+        expect.objectContaining({ productProfile }),
+      );
     });
 
     it('N-TD-1: 활성 원본의 사본은 활성이다', async () => {

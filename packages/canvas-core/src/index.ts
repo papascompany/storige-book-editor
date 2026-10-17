@@ -29,6 +29,19 @@ export { default as PointerShiftGuardPlugin } from './plugins/PointerShiftGuardP
 export { default as FrameInteractionPlugin } from './plugins/FrameInteractionPlugin'
 // E1 §5-1 — 객체 간 정렬 가이드/스냅 + 회전 각도 스냅
 export { default as SmartGuidesPlugin, type SmartGuidesOptions } from './plugins/SmartGuidesPlugin'
+export {
+  default as CalendarPlugin,
+  CALENDAR_GRID_EXTENSION_TYPE,
+  type CalendarGridExtension,
+  type CalendarGridStyle,
+  type CalendarGridVariant,
+  type CalendarRenderContext,
+  type CalendarGridBox,
+  type CalendarPluginOptions,
+} from './plugins/CalendarPlugin';
+export * from './calendar/types';
+export * from './calendar/core';
+export * from './calendar/data';
 // E1 §5-2 — 변형 중 실시간 치수/각도/좌표 피드백 (DOM 오버레이)
 export {
   default as TransformFeedbackPlugin,

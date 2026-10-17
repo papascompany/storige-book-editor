@@ -26,7 +26,10 @@ class TemplatePlugin extends PluginBase {
     'guideline',
     'overlay',
     'outline',
-    'background'
+    'background',
+    // P1 캘린더(2026-10-17): 날짜 그리드는 템플릿이 배치하는 요소 — 템플릿 교체 시 함께 교체되고
+    // isUserAdded=false 로 재오픈 시 유지된다(CalendarPlugin.rehydrate 가 내용만 다시 그림).
+    'calendar-grid'
   ]
 
   // 템플릿 요소 ID 패턴
@@ -39,7 +42,10 @@ class TemplatePlugin extends PluginBase {
     'safe-zone-border',
     'cutline-template',
     'center-guideline-h',
-    'center-guideline-v'
+    'center-guideline-v',
+    // P1 캘린더 오버레이 규약(2026-10-17): 링 바인딩·재단 가이드 PNG 는 화면 전용(printExclude/excludeFromExport)
+    'ring-overlay',
+    'cut-guide'
   ]
 
   constructor(canvas: fabric.Canvas, editor: Editor, options: PluginOption) {

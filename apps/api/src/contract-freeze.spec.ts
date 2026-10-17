@@ -96,6 +96,8 @@ const FROZEN_ROUTES: FrozenRoute[] = [
   //    라우트 3개(findAll/compatible/findOne)는 전부 @CurrentScope 를 받는데 이것만 받지
   //    않는다 — 인증 이전 단계(편집기 부트스트랩)에서 호출되기 때문. 스코프를 넣는 변경은
   //    파트너 4종 전체에 영향이 있으므로 CONTRACT_FREEZE §4 절차를 거친다.
+  // ADDITIVE 2026-10-17 — 응답 `templateSet.productProfile`(P1 캘린더 프로파일 JSON, NULL 기본,
+  //    기존 키 불변). 라우트 메타(@Public 무인증)는 그대로 — 아래 행은 변경하지 않는다.
   { contract: 'GET /template-sets/:id/with-templates (@Public 무인증 — 편집기 부트스트랩, 4종 혼용)', controller: TemplateSetsController, handler: 'findOneWithTemplates', method: RequestMethod.GET, path: ':id/with-templates', auth: 'public' },
   // by-product 는 @Public + ApiKeyGuard 조합이다(무인증 아님). ApiKeyGuard 가 떨어지면
   // 조용히 완전 공개가 되는 비대칭 위험이 있어 함께 동결한다.

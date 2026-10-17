@@ -8,7 +8,7 @@ import {
   pxToMmDisplay,
 } from '@storige/canvas-core'
 import type { EditorTemplate } from '@/generated/graphql'
-import type { SpreadConfig, EditorMenuKey, CoverFinishingKind } from '@storige/types'
+import type { SpreadConfig, EditorMenuKey, CoverFinishingKind, ProductProfile } from '@storige/types'
 import type { HardcoverWrapMode } from '@/utils/hardcoverWrap'
 
 export interface LinkedPrintTemplate {
@@ -297,6 +297,13 @@ interface SettingsState {
    */
   enabledMenus: EditorMenuKey[] | null
   /**
+   * P1 캘린더 (2026-10-17): 템플릿셋 `productProfile` 판정 결과(`resolveProductProfile`).
+   * - null: legacy 세트(기존 동작 그대로)
+   * - 값: 페이지 정책(fixed 캔버스 수)·라벨·CALENDAR 메뉴 게이트의 단일 소스.
+   * loadTemplateSetEditor 가 applyTemplateSetProductProfile 로 채운다.
+   */
+  productProfile: ProductProfile | null
+  /**
    * 페브릭·기성 표지 (coverEditable=false): 소재 배경 잠금 + 후가공 허용 목록.
    * loadTemplateSetEditor 가 templateSet 에서 채운다.
    */
@@ -397,6 +404,8 @@ interface SettingsActions {
 
   // 도구 메뉴 화이트리스트 관리 (템플릿셋이 지정)
   setEnabledMenus: (menus: EditorMenuKey[] | null) => void
+  // P1 캘린더: 상품 프로파일(null = legacy)
+  setProductProfile: (profile: ProductProfile | null) => void
   setCoverFinishing: (locked: boolean, allowed: CoverFinishingKind[]) => void
   setLinkedPrintTemplates: (templates: LinkedPrintTemplate[]) => void
   setHasCoverSlot: (hasCover: boolean) => void
@@ -434,6 +443,7 @@ const initialState: SettingsState = {
   },
   spreadConfig: null,
   enabledMenus: null,
+  productProfile: null,
   coverMaterialLocked: false,
   coverFinishingAllowed: [],
   linkedPrintTemplates: [],
@@ -871,6 +881,11 @@ export const useSettingsStore = create<SettingsState & SettingsActions>()((set, 
   // null = 모두 노출 (기본). loadTemplateSetEditor 가 호출.
   setEnabledMenus: (menus) => {
     set({ enabledMenus: menus ?? null })
+  },
+
+  // P1 캘린더: 상품 프로파일 설정. null = legacy. applyTemplateSetProductProfile 이 호출.
+  setProductProfile: (profile) => {
+    set({ productProfile: profile ?? null })
   },
 
   setCoverFinishing: (locked, allowed) => {

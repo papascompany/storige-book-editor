@@ -100,6 +100,13 @@ const COVER_TYPES_WITHOUT_CASEBIND = ['softcover_variable_spine', 'ready_made'];
 
 import { matchesSpreadCandidate } from './spreadCandidate';
 import { detectCaseBindOnHardcoverWrap } from './caseBindGuard';
+// P1 캘린더 (2026-10-17) — 상품 프로파일 JSON 섹션 + 캘린더 프리셋 7종
+import { parseProductProfileJson, stringifyProductProfile } from './productProfileJson';
+import {
+  CALENDAR_PROFILE_PRESETS,
+  calendarPresetFormValues,
+  findCalendarProfilePreset,
+} from './calendarProfilePresets';
 
 const templateTypeLabels: Record<TemplateType, string> = {
   [TemplateType.WING]: '날개',
@@ -268,6 +275,8 @@ export const TemplateSetForm = () => {
   const [form] = Form.useForm();
   const [templates, setTemplates] = useState<(TemplateRef & { template?: Template })[]>([]);
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
+  // P1 캘린더 프리셋 셀렉트(적용 버튼을 눌러야 폼 필드에 반영)
+  const [calendarPresetKey, setCalendarPresetKey] = useState<string | undefined>(undefined);
 
   const isEditing = !!id;
 
@@ -412,6 +421,8 @@ export const TemplateSetForm = () => {
         pricingMinPages: templateSet.pricing?.minPages ?? 16,
         pricingPageStep: templateSet.pricing?.pageStep ?? 2,
         pricingPerPageUnit: templateSet.pricing?.perPageUnit ?? 0,
+        // P1 캘린더 (2026-10-17) — 상품 프로파일 JSON. null/미설정=빈 textarea(기존 동작)
+        productProfileJson: stringifyProductProfile(templateSet.productProfile ?? null),
       });
 
       // Load template refs with template details
@@ -532,6 +543,21 @@ export const TemplateSetForm = () => {
           }
         : null;
 
+    // P1 캘린더 (2026-10-17) — 상품 프로파일 JSON. 빈 textarea=null(기존 동작). 폼 rule 이 먼저 막지만
+    // 제출 경로에서도 한 번 더 확인한다(서버 DTO 와 같은 validateProductProfile 단일 출처).
+    const parsedProfile = parseProductProfileJson(values.productProfileJson);
+    if (parsedProfile.errors.length > 0) {
+      message.error(`상품 프로파일 JSON 오류 — ${parsedProfile.errors[0]}`);
+      return;
+    }
+    const productProfile = parsedProfile.value;
+    // 고정 캔버스 수 프로파일(캘린더 26장 등)은 내지 추가 불가여도 pageCountRange=[count,count]·pageStep=null 을
+    // 보낸다. 프로파일이 없는 세트는 아래 기존 분기 그대로(불변).
+    const fixedProfileCount =
+      productProfile && productProfile.pages.kind === 'fixed' && typeof productProfile.pages.count === 'number'
+        ? productProfile.pages.count
+        : null;
+
     const data = {
       name: values.name,
       type: values.type,
@@ -541,13 +567,17 @@ export const TemplateSetForm = () => {
       canAddPage: values.canAddPage,
       pageCountRange: values.canAddPage
         ? [values.pageCountMin, values.pageCountMax]
-        : undefined,
+        : fixedProfileCount !== null
+          ? [fixedProfileCount, fixedProfileCount]
+          : undefined,
       // S8 내지 증감 단위 — 비우면 null(제약 없음). 내지 추가 불가 셋은 미전송(기존 값 유지).
       pageStep: values.canAddPage
         ? values.pageStep != null && values.pageStep !== ''
           ? Math.max(1, Math.floor(Number(values.pageStep)))
           : null
-        : undefined,
+        : fixedProfileCount !== null
+          ? null
+          : undefined,
       // 첨부 내지 PDF 빈 페이지 배수 채움 — 내지 추가 불가 셋은 미전송(기존 값 유지).
       padToPageStep: values.canAddPage ? values.padToPageStep === true : undefined,
       templates: templates.map(({ templateId, required }) => ({
@@ -571,6 +601,8 @@ export const TemplateSetForm = () => {
       sizeToleranceMm: values.sizeToleranceMm ?? 0.2,
       // 포토북 페이지 가변 가격 메타 (2026-06-24) — PHOTOBOOK 만 사용, 그 외 null
       pricing,
+      // P1 캘린더 (2026-10-17) — 상품 프로파일. null=기존 동작(additive)
+      productProfile,
     };
 
     const commit = () => {
@@ -753,6 +785,27 @@ export const TemplateSetForm = () => {
     (a) => a.status === 'mismatch',
   ).length;
 
+  // P1 캘린더 (2026-10-17) — 프로파일 고정 캔버스 수와 연결 템플릿 수 비교(저장은 막지 않고 경고만)
+  const productProfileJsonWatch: string | undefined = Form.useWatch('productProfileJson', form);
+  const profileTemplateCountWarning = useMemo((): string | null => {
+    const { value } = parseProductProfileJson(productProfileJsonWatch);
+    if (!value || value.pages.kind !== 'fixed' || typeof value.pages.count !== 'number') return null;
+    if (templates.length === value.pages.count) return null;
+    return `템플릿 ${value.pages.count}개 연결 필요, 현재 ${templates.length}개`;
+  }, [productProfileJsonWatch, templates.length]);
+
+  const handleApplyCalendarPreset = () => {
+    const preset = findCalendarProfilePreset(calendarPresetKey);
+    if (!preset) {
+      message.warning('적용할 캘린더 프리셋을 선택하세요.');
+      return;
+    }
+    form.setFieldsValue(calendarPresetFormValues(preset));
+    // 프리셋 JSON 은 항상 유효하지만, 거부 Promise 가 unhandled 로 남지 않게 한다.
+    form.validateFields(['productProfileJson']).catch(() => undefined);
+    message.success(`${preset.label} 프리셋을 적용했습니다. 판형·단일 모드·양면 원파일·내지 추가 불가로 설정됩니다.`);
+  };
+
   if (isEditing && isLoadingSet) {
     return (
       <div style={{ textAlign: 'center', padding: 100 }}>
@@ -798,7 +851,7 @@ export const TemplateSetForm = () => {
           }}
         >
           <Collapse
-            defaultActiveKey={['basic', 'orientation', 'page', 'template']}
+            defaultActiveKey={['basic', 'orientation', 'page', 'profile', 'template']}
             items={[
               {
                 key: 'basic',
@@ -1434,6 +1487,66 @@ export const TemplateSetForm = () => {
                           </Form.Item>
                         );
                       }}
+                    </Form.Item>
+                  </>
+                ),
+              },
+              // P1 캘린더 (2026-10-17) — 상품 프로파일 JSON. 비우면 null=기존 동작(additive).
+              {
+                key: 'profile',
+                label: '상품 프로파일 (P1 캘린더)',
+                forceRender: true,
+                children: (
+                  <>
+                    <Space align="start" wrap style={{ marginBottom: 12 }}>
+                      <Select
+                        placeholder="캘린더 프리셋 선택"
+                        style={{ width: 300 }}
+                        allowClear
+                        value={calendarPresetKey}
+                        onChange={(value: string | undefined) => setCalendarPresetKey(value)}
+                        options={CALENDAR_PROFILE_PRESETS.map((p) => ({ value: p.key, label: p.label }))}
+                      />
+                      <Button onClick={handleApplyCalendarPreset} disabled={!calendarPresetKey}>
+                        캘린더 프리셋 적용
+                      </Button>
+                    </Space>
+                    <Text type="secondary" style={{ display: 'block', fontSize: 12, marginBottom: 12 }}>
+                      프리셋을 적용하면 판형(가로·세로)·에디터 모드(단일)·PDF 생성 방식(양면 원파일)·내지 추가 불가·
+                      페이지 수 26 이 함께 설정되고 아래 JSON 이 채워집니다. 비워 두면 프로파일 없음(기존 동작)입니다.
+                    </Text>
+
+                    {profileTemplateCountWarning && (
+                      <Alert
+                        type="warning"
+                        showIcon
+                        message={profileTemplateCountWarning}
+                        description="프로파일의 고정 캔버스 수와 연결된 템플릿 수가 다릅니다. 저장은 가능하지만 편집기가 캔버스를 모두 채우지 못합니다."
+                        style={{ marginBottom: 12 }}
+                      />
+                    )}
+
+                    <Form.Item
+                      name="productProfileJson"
+                      label="상품 프로파일(JSON)"
+                      extra="version 1, kind sheet|calendar. 교차 필드 규칙(캔버스 수 정합·시작연월 범위 등)은 서버와 같은 검증을 씁니다."
+                      rules={[
+                        {
+                          validator: async (_rule, value: string | undefined) => {
+                            const { errors } = parseProductProfileJson(value);
+                            if (errors.length > 0) {
+                              throw new Error(errors.join('\n'));
+                            }
+                          },
+                        },
+                      ]}
+                    >
+                      <Input.TextArea
+                        rows={14}
+                        spellCheck={false}
+                        style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 12 }}
+                        placeholder='비워 두면 프로파일 없음(기존 동작). 예: { "version": 1, "kind": "calendar", ... }'
+                      />
                     </Form.Item>
                   </>
                 ),

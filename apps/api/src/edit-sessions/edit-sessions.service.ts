@@ -2079,19 +2079,25 @@ export class EditSessionsService {
       // 판정 근거는 sheet-validation-rules.ts 머리말. 워커는 sheet 분기에서 actualPages === pages 정확 비교
       // 뒤 바로 return 하므로, 위 N-API-3b 가 content 잡에 pageMultiple 을 실어도 공존해 무해하다(무접촉).
       // null = 레거시(키 미주입 = 현행 byte-identical). 비상 차단: EDITOR_SHEET_VALIDATION_RULES=off.
+      // 2026-10-17 P1-e: 상품 프로파일(세션 스냅샷 > templateSet.productProfile)이 고정 캔버스 수를 주면
+      // 두 잡의 `pages` 를 그 값으로 바꾼다(캘린더 26). expectedPages 는 orderOptions 키로 보내지 않는다.
       if (sheetRulesOn) {
         const sheetRules = deriveSheetValidationRules({
           session,
           templateSet,
           templateTypes,
           innerLayoutKind: innerLayout.kind,
+          warn: (message) => this.logger.warn(`[validation-jobs] session ${session.id} ${message}`),
         });
         if (sheetRules) {
-          coverOrderOptions = { ...coverOrderOptions, ...sheetRules };
-          contentOrderOptions = { ...contentOrderOptions, ...sheetRules };
+          const { expectedPages, ...sheetOptions } = sheetRules;
+          const pagesOverride = expectedPages !== undefined ? { pages: expectedPages } : {};
+          coverOrderOptions = { ...coverOrderOptions, ...sheetOptions, ...pagesOverride };
+          contentOrderOptions = { ...contentOrderOptions, ...sheetOptions, ...pagesOverride };
           this.logger.log(
             `[validation-jobs] session ${session.id} 낱장 분류 규칙: productKind=sheet ` +
-              `pageStep=${sheetRules.pageStep ?? '-'} pages=${coverOrderOptions.pages}`,
+              `pageStep=${sheetRules.pageStep ?? '-'} pages=${coverOrderOptions.pages}` +
+              (expectedPages !== undefined ? ' (pages 출처: productProfile pages.count)' : ''),
           );
         }
       }

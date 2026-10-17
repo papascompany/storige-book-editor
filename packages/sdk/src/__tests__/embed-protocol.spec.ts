@@ -23,6 +23,7 @@ import {
   readCompletePayload,
   SKIP_SOURCE_CHECK,
   type EditorCompletePayload,
+  type EditorCompleteProduct,
   type EditorMessageLike,
   type EditorReadyPayload,
   type ParseEditorMessageOptions,
@@ -439,6 +440,73 @@ describe('readCompletePayload — templateSetId·spineWidthMm·templateSetMismat
     const done = readCompletePayload({ ...base, templateSetMismatch: mismatch });
     expectTypeOf(done?.templateSetMismatch).toEqualTypeOf<TemplateSetMismatch | undefined>();
     expect(done?.templateSetMismatch).toEqual(mismatch);
+  });
+});
+
+// ADDITIVE 2026-10-17 P1 캘린더
+describe('readCompletePayload — product (additive, P1 캘린더)', () => {
+  const base = {
+    sessionId: 'sess-20',
+    files: { contentFileId: 'f-content' },
+  };
+  const product: EditorCompleteProduct = {
+    kind: 'calendar',
+    editorType: 'calendar_desk',
+    canvasCount: 26,
+    sheetCount: 13,
+    faces: 2,
+  };
+
+  it('product 가 없으면 결과에 키 자체가 없다(기존 형태 불변)', () => {
+    const done = readCompletePayload(base);
+    expect(done).not.toHaveProperty('product');
+    expect(done).toEqual({
+      needsAuth: false,
+      action: 'promote',
+      hasGuestToken: false,
+      sessionId: 'sess-20',
+      files: { contentFileId: 'f-content' },
+    });
+  });
+
+  it('정상 product 는 알려진 키만 그대로 통과(미지 키는 버린다)', () => {
+    const done = readCompletePayload({ ...base, product: { ...product, extra: 'drop-me' } });
+    expect(done?.product).toEqual(product);
+    expectTypeOf(done?.product).toEqualTypeOf<EditorCompleteProduct | undefined>();
+  });
+
+  it('sheet 상품(faces=1)도 통과하고 canvasCount=sheetCount 를 보존한다', () => {
+    const sheet = { kind: 'sheet', editorType: 'sheet_single', canvasCount: 3, sheetCount: 3, faces: 1 };
+    expect(readCompletePayload({ ...base, product: sheet })?.product).toEqual(sheet);
+  });
+
+  it('형태 불량(미지 kind·faces 3·음수·비정수·editorType 누락·비객체)이면 생략', () => {
+    for (const bad of [
+      null,
+      'calendar',
+      {},
+      { ...product, kind: 'photo' },
+      { ...product, faces: 3 },
+      { ...product, canvasCount: -1 },
+      { ...product, sheetCount: 1.5 },
+      { ...product, editorType: '' },
+      { ...product, canvasCount: '26' },
+    ]) {
+      expect(readCompletePayload({ ...base, product: bad })).not.toHaveProperty('product');
+    }
+  });
+
+  it('게스트 완료에 product 가 실려도 guestToken 값은 노출되지 않는다', () => {
+    const done = readCompletePayload({
+      sessionId: 'sess-21',
+      needsAuth: true,
+      guestToken: 'super-secret-guest-token',
+      files: {},
+      product,
+    });
+    expect(done?.action).toBe('require-login');
+    expect(done?.product).toEqual(product);
+    expect(JSON.stringify(done)).not.toContain('super-secret-guest-token');
   });
 });
 

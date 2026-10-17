@@ -123,6 +123,8 @@ export class TemplateSetsService {
       // D-4 커버 3종 메타 (2026-07-06, C-4 Track 3) — 생성 시에도 영속(additive nullable)
       coverType: dto.coverType ?? null,
       coverConfig: dto.coverConfig ?? null,
+      // 상품별 편집 모드 프로파일 (P1 캘린더, 2026-10-17) — 미지정=null(기존 동작, additive nullable)
+      productProfile: dto.productProfile ?? null,
       contentPdfEditable: dto.contentPdfEditable ?? true,
       pdfOutputMode: dto.pdfOutputMode ?? 'duplex-merged',
       colorMode: dto.colorMode ?? 'rgb',
@@ -420,6 +422,7 @@ export class TemplateSetsService {
       pricing: original.pricing,
       coverType: original.coverType,
       coverConfig: original.coverConfig,
+      productProfile: original.productProfile,
       description: original.description,
       categoryId: original.categoryId,
       productSpecs: original.productSpecs,
@@ -978,6 +981,7 @@ export class TemplateSetsService {
         pricing: original.pricing,
         coverType: original.coverType,
         coverConfig: original.coverConfig,
+        productProfile: original.productProfile,
         description: original.description,
         categoryId: original.categoryId,
         productSpecs: original.productSpecs,

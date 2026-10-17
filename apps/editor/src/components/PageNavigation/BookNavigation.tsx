@@ -3,6 +3,9 @@ import { useSearchParams } from 'react-router-dom'
 import { ChevronLeft as CaretLeft, ChevronRight as CaretRight, ChevronUp as CaretUp, ChevronDown as CaretDown } from 'lucide-react'
 import { useEditorStore } from '@/stores/useEditorStore'
 import { useAppStore } from '@/stores/useAppStore'
+import { useSettingsStore } from '@/stores/useSettingsStore'
+import { useCalendarStore } from '@/stores/useCalendarStore'
+import { makeCalendarLabelResolver } from '@/utils/productProfile'
 import { useResolvedPageNavPosition } from '@/hooks/useResolvedPageNavPosition'
 import { templateSetsApi } from '@/api'
 import { TemplateType } from '@storige/types'
@@ -122,6 +125,11 @@ export interface BuildPageMetaOptions {
    * 모든 SPREAD 가 내지 펼침면(표지 없는 내지 전용 세트).
    */
   hasCoverSlot?: boolean
+  /**
+   * P1 캘린더 (2026-10-17): 인덱스별 라벨 치환(additive). 문자열을 돌려주면 그 라벨을 쓰고
+   * undefined 면 기존 규칙(n쪽/펼침면/표지 위치)을 유지한다. isCover 판정은 바꾸지 않는다.
+   */
+  labelResolver?: (index: number, type?: string) => string | undefined
 }
 
 export function buildPageMeta(
@@ -151,7 +159,15 @@ export function buildPageMeta(
   let pageCounter = 0
   let spreadCounter = 0
   let coverCounter = 0
-  return details.map((t, i) => {
+  const resolver = options.labelResolver
+  const withResolved = (meta: PageMeta): PageMeta => {
+    if (!resolver) return meta
+    const label = resolver(meta.index, details[meta.index]?.type)
+    return typeof label === 'string' && label.length > 0 ? { ...meta, label } : meta
+  }
+  return details.map((t, i) => withResolved(buildOne(t, i)))
+
+  function buildOne(t: { id: string; type?: string }, i: number): PageMeta {
     const type = (t.type as TemplateType) || TemplateType.PAGE
 
     if (type === TemplateType.PAGE) {
@@ -180,7 +196,7 @@ export function buildPageMeta(
     // unknown type — 안전한 fallback
     pageCounter += 1
     return { index: i, label: `${pageCounter}쪽`, isCover: false, id: `${t.id}-${i}` }
-  })
+  }
 }
 
 interface BookNavigationProps {
@@ -215,15 +231,23 @@ export const BookNavigation = memo(function BookNavigation({
     return () => { cancelled = true }
   }, [templateSetId, editorStorePages.length])
 
+  // P1 캘린더: 캘린더 세트면 "표지 / 2027년 1월 앞면 / … / 에필로그" 라벨 resolver(legacy 세트는 undefined → 기존 라벨).
+  const productProfile = useSettingsStore((s) => s.productProfile)
+  const calendarMeta = useCalendarStore((s) => s.meta)
+  const labelResolver = useMemo(
+    () => (productProfile?.kind === 'calendar' ? makeCalendarLabelResolver(productProfile, calendarMeta) : undefined),
+    [productProfile, calendarMeta],
+  )
+
   const meta = useMemo<PageMeta[]>(() => {
     if (editorStorePages.length > 0) {
-      return buildPageMeta(editorStorePages.map((p) => ({ id: p.id, type: p.templateType })))
+      return buildPageMeta(editorStorePages.map((p) => ({ id: p.id, type: p.templateType })), { labelResolver })
     }
     if (fetched && fetched.length > 0) {
-      return buildPageMeta(fetched)
+      return buildPageMeta(fetched, { labelResolver })
     }
     return []
-  }, [editorStorePages, fetched])
+  }, [editorStorePages, fetched, labelResolver])
 
   const allCanvas = useAppStore((s) => s.allCanvas)
   const allCanvasLength = allCanvas.length

@@ -101,6 +101,9 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
   const requestDeleteSelection = useAppStore((state) => state.requestDeleteSelection)
 
   const pageInfo = useSettingsStore((state) => state.currentSettings.page)
+  // P1 캘린더 (2026-10-17): 고정 캔버스 수 상품(productProfile pages.kind=fixed)은 페이지 추가/삭제 UI 를 숨긴다.
+  // legacy(null) 세트는 false → 기존 min/max 게이트 그대로.
+  const fixedPageCount = useSettingsStore((state) => state.productProfile?.pages.kind === 'fixed')
   // B0-② (2026-07-04): 잠금 해제 권한 게이트용 — 관리자 위치고정은 비-editMode 에서 해제 불가
   const editMode = useSettingsStore((state) => state.currentSettings.editMode)
 
@@ -486,6 +489,7 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
   )
 
   const handleAddPage = useCallback(async () => {
+    if (fixedPageCount) return // P1 캘린더: 고정 캔버스 수 — 버튼 미렌더의 2차 방어
     const maxPages = pageInfo?.max || 100
     const unit = pageStepUnit('add')
     if (allCanvas.length + unit > maxPages) {
@@ -502,12 +506,13 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
     } catch (error) {
       console.error('페이지 추가 오류:', error)
     }
-  }, [pageInfo, allCanvas.length, addPage, pageStepUnit, pageStep])
+  }, [pageInfo, allCanvas.length, addPage, pageStepUnit, pageStep, fixedPageCount])
 
   const handleDeletePage = useCallback((e: React.MouseEvent, canvasId: string) => {
     e.preventDefault()
     e.stopPropagation()
 
+    if (fixedPageCount) return // P1 캘린더: 고정 캔버스 수 — 버튼 미렌더의 2차 방어
     const minPages = pageInfo?.min || 1
     const unit = pageStepUnit('delete')
     if (allCanvas.length - unit < minPages) {
@@ -538,7 +543,7 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
     } catch (error) {
       console.error('페이지 삭제 오류:', error)
     }
-  }, [pageInfo, allCanvas, deletePage, pageStepUnit, pageStep])
+  }, [pageInfo, allCanvas, deletePage, pageStepUnit, pageStep, fixedPageCount])
 
   const handleSetPage = useCallback((index: number) => {
     if (currentIndex !== index) {
@@ -1113,7 +1118,7 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
               페이지
             </button>
             {/* 접힘 중 페이지 추가는 결과가 안 보여 오조작 — 펼친 상태에서만 노출 */}
-            {pagesExpanded && (
+            {pagesExpanded && !fixedPageCount && (
               <Button variant="ghost" size="icon" onClick={handleAddPage} aria-label="페이지 추가">
                 <Plus className="h-4 w-4" />
               </Button>
@@ -1146,7 +1151,7 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
                         c.id === canvas.id ? 'border-editor-accent/60' : 'border-editor-border/10'
                       )}
                     >
-                      {(pageInfo.min || 1) < allCanvas.length && (
+                      {!fixedPageCount && (pageInfo.min || 1) < allCanvas.length && (
                         <Button
                           variant="ghost"
                           size="icon"

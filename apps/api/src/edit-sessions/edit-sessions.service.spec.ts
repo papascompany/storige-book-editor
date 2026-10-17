@@ -1659,6 +1659,50 @@ describe('EditSessionsService', () => {
       expect(cover).not.toHaveProperty('productKind');
       expect(mockTemplateSetsService.findOneWithTemplates).not.toHaveBeenCalled();
     });
+
+    // ── 2026-10-17 P1-e: 캘린더 프로파일 세트 — 프로파일 고정 캔버스 수(26)·양면(faces 2) → pages 26·pageStep 2 ──
+    it('⑧ 캘린더 프로파일 세트 완료 → cover·content 잡 pages 26·pageStep 2·productKind sheet, expectedPages 키 없음', async () => {
+      const calendarProfile = {
+        version: 1,
+        kind: 'calendar',
+        editorType: 'calendar_desk',
+        pages: { kind: 'fixed', count: 26, labelRule: 'month' },
+        sheet: {
+          faces: 2, canvasLayout: 'canvas-pair', binding: 'top-ring', pairing: 'same-sheet',
+          backRotation: 0, duplexFlip: 'short-edge',
+        },
+        calendar: {
+          layout: 'desk', monthCount: 12, coverCanvases: 1, canvasesPerMonth: 2, epilogueCanvases: 1,
+          allowedRange: { from: '2026-01', to: '2030-12' }, weekStart: 0,
+          show: { holidays: true, lunar: true, solarTerms: true }, dataVersion: 'kr-2025-2035-v1',
+        },
+        output: { mode: 'single-pdf' },
+      };
+      mockTemplateSetsService.findOne = jest.fn().mockResolvedValue({
+        width: 150, height: 100, cropMarkEnabled: false, editorMode: 'single', pageStep: null,
+        productProfile: calendarProfile,
+      });
+      mockTemplateSetsService.findOneWithTemplates = jest.fn().mockResolvedValue({
+        templateDetails: Array.from({ length: 26 }, () => ({ type: 'page', spreadConfig: null })),
+      });
+      const logSpy = jest.spyOn(
+        (service as unknown as { logger: { log(message: string): void } }).logger,
+        'log',
+      );
+      // 세션 기록 쪽수(metadata.pages 2, canvasData 없음)와 달라도 프로파일 고정 수 26 이 기대 쪽수다.
+      const { off, on } = await callOffThenOn(mkSession({ pages: 2 }, { canvasData: null }));
+      expect(off.cover).toMatchObject({ pages: 2 });
+      expect(off.cover).not.toHaveProperty('productKind');
+      expect(on.cover).toEqual({ ...off.cover, productKind: 'sheet', pageStep: 2, pages: 26 });
+      expect(on.content).toEqual({ ...off.content, productKind: 'sheet', pageStep: 2, pages: 26 });
+      expect(on.cover).not.toHaveProperty('expectedPages');
+      expect(on.content).not.toHaveProperty('expectedPages');
+      const sheetLogs = logSpy.mock.calls.map((c) => String(c[0])).filter((m) => m.includes('낱장 분류 규칙'));
+      expect(sheetLogs).toEqual([
+        '[validation-jobs] session session-sheet 낱장 분류 규칙: productKind=sheet pageStep=2 pages=26 (pages 출처: productProfile pages.count)',
+      ]);
+      logSpy.mockRestore();
+    });
   });
 
   describe('createValidationJobs 방향 정합 — size 스왑 정규화 + expectedOrientation (2026-07-14)', () => {

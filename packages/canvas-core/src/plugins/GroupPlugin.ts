@@ -56,6 +56,8 @@ class GroupPlugin extends PluginBase {
   unGroup() {
     const activeObject = this._canvas.getActiveObject() as fabric.Group
     if (!activeObject || activeObject.type !== 'group') return
+    // P1 캘린더(2026-10-17): 날짜 그리드는 단일 객체로만 다룬다 — 해제하면 재합성(rehydrate) 대상에서 빠진다.
+    if ((activeObject as fabric.Group & { extensionType?: string }).extensionType === 'calendar-grid') return
 
     try {
       this._canvas.offHistory()

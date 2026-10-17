@@ -167,6 +167,8 @@ CREATE TABLE IF NOT EXISTS template_sets (
   page_step        INT NULL,
   -- 첨부 내지 PDF 빈 페이지 배수 채움 (2026-09-28) — migrations/20260928_add_template_set_pad_to_page_step.sql 동기
   pad_to_page_step BOOLEAN NOT NULL DEFAULT FALSE,
+  -- 상품별 편집 모드 프로파일 (2026-10-17, P1 캘린더) — migrations/20261017_add_template_set_product_profile.sql 동기
+  product_profile  JSON NULL,
   templates        JSON NOT NULL,
   editor_mode      VARCHAR(20) NOT NULL DEFAULT 'single',
   content_pdf_editable BOOLEAN NOT NULL DEFAULT TRUE,

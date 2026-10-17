@@ -32,6 +32,7 @@ import {
   type CompleteAction,
   type EditorCancelPayload,
   type EditorCompletePayload,
+  type EditorCompleteProduct,
   type EditorEnvelope,
   type EditorErrorPayload,
   type EditorPricingChangePayload,
@@ -211,6 +212,37 @@ function readTemplateSetMismatch(
   };
 }
 
+const PRODUCT_KINDS: ReadonlyArray<EditorCompleteProduct['kind']> = ['sheet', 'calendar'];
+
+/**
+ * ADDITIVE 2026-10-17 P1 캘린더 — `product` 판독. `kind` 가 알려진 값이고 `editorType` 이 문자열,
+ * `canvasCount`·`sheetCount` 가 0 이상 정수, `faces` 가 1|2 일 때만 통과. 불량이면 `undefined`(키 생략).
+ */
+function readCompleteProduct(value: unknown): EditorCompleteProduct | undefined {
+  const r = asRecord(value);
+  if (r === null) return undefined;
+  const kind = PRODUCT_KINDS.find((k) => k === r.kind);
+  const editorType = readString(r.editorType);
+  const canvasCount = readNonNegativeInt(r.canvasCount);
+  const sheetCount = readNonNegativeInt(r.sheetCount);
+  const faces = r.faces === 1 || r.faces === 2 ? r.faces : undefined;
+  if (
+    kind === undefined ||
+    editorType === undefined ||
+    canvasCount === undefined ||
+    sheetCount === undefined ||
+    faces === undefined
+  ) {
+    return undefined;
+  }
+  return { kind, editorType, canvasCount, sheetCount, faces };
+}
+
+/** 0 이상의 안전한 정수만 통과(그 밖은 undefined) */
+function readNonNegativeInt(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
+}
+
 /**
  * `editor.complete` payload 판독 — **`guestToken` 값은 결과에 담지 않는다**.
  *
@@ -260,6 +292,7 @@ export function readCompletePayload(
   const templateSetId = readString(p.templateSetId);
   const spineWidthMm = readNonNegativeNumber(p.spineWidthMm);
   const templateSetMismatch = readTemplateSetMismatch(p.templateSetMismatch);
+  const product = readCompleteProduct(p.product);
 
   return {
     needsAuth,
@@ -281,6 +314,8 @@ export function readCompletePayload(
     ...(templateSetId !== undefined ? { templateSetId } : {}),
     ...(spineWidthMm !== undefined ? { spineWidthMm } : {}),
     ...(templateSetMismatch !== undefined ? { templateSetMismatch } : {}),
+    // ADDITIVE 2026-10-17 P1 캘린더
+    ...(product !== undefined ? { product } : {}),
   };
 }
 

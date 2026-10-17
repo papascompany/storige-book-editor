@@ -1,6 +1,7 @@
 import Editor, {
   AccessoryPlugin,
   AlignPlugin,
+  CalendarPlugin,
   type CanvasSettings,
   ControlsPlugin,
   CopyPlugin,
@@ -46,6 +47,10 @@ const ENABLE_IMAGE_DPI_WARNING = import.meta.env.VITE_ENABLE_IMAGE_DPI_WARNING !
 const ENABLE_ALT_DRAG_CLONE = import.meta.env.VITE_ENABLE_ALT_DRAG_CLONE !== 'false'
 // Feature flag for touch long-press context menu (모바일 롱프레스 컨텍스트 메뉴, C6/E2) — 기본 on
 const ENABLE_TOUCH_CONTEXT_MENU = import.meta.env.VITE_ENABLE_TOUCH_CONTEXT_MENU !== 'false'
+// Feature flag for calendar grid plugin (P1 캘린더 2026-10-17, 캘린더 날짜 그리드 재합성) — 기본 on.
+// 프로파일과 무관하게 플래그만으로 모든 캔버스에 등록한다: 첫 캔버스는 템플릿셋 로드 전에 만들어지고,
+// 플러그인은 이벤트·핫키가 없어 calendar-grid 객체가 없는 캔버스에서는 무동작이다.
+const ENABLE_CALENDAR = import.meta.env.VITE_ENABLE_CALENDAR !== 'false'
 import { useAppStore } from '@/stores/useAppStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { innerSpecToPlaceholderSpec } from '@/utils/photobookSpread'
@@ -394,6 +399,14 @@ export function registerCanvasPlugins(
     DEFAULT_FONT_FAMILY,
     apiClient.getBaseUrl()
   )
+  // CalendarPlugin 은 VITE_ENABLE_CALENDAR 환경변수로 제어 (기본 on) — FontPlugin **뒤** 생성(폰트 사전 로드 위임).
+  // 캘린더 세트(productProfile kind=calendar)에서만 utils/calendarRehydrate 가 rehydrate(ctx) 를 호출한다.
+  const calendar = ENABLE_CALENDAR
+    ? new CalendarPlugin(canvas, editor, {
+        ensureFont: (fontFamily) => font.ensureFontLoaded(fontFamily),
+        defaultFontFamily: DEFAULT_FONT_FAMILY,
+      })
+    : null
 
   // TransformFeedbackPlugin은 VITE_ENABLE_TRANSFORM_FEEDBACK 환경변수로 제어 (기본 on)
   // — DOM 오버레이(wrapperEl 내)라 직렬화/PDF/히스토리 원천 무관
@@ -460,6 +473,10 @@ export function registerCanvasPlugins(
   editor.use(drag)
   editor.use(pointerShiftGuard)
   editor.use(font)
+  // CalendarPlugin 은 VITE_ENABLE_CALENDAR 환경변수로 제어 (기본 on) — font 다음 등록
+  if (calendar) {
+    editor.use(calendar)
+  }
   editor.use(filter)
   editor.use(effect)
   editor.use(smartCode)

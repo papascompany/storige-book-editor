@@ -1,5 +1,6 @@
 import { deriveSheetValidationRules, SheetValidationRulesInput } from './sheet-validation-rules';
 import { SessionMode } from './entities/edit-session.entity';
+import type { ProductProfile } from '@storige/types';
 
 /**
  * 2026-10-17(낱장 분류 검증) — 편집 완료 낱장 세션의 검증 잡 분류(순수 함수).
@@ -102,6 +103,172 @@ describe('deriveSheetValidationRules', () => {
     it("숫자 문자열 '2' 도 단위로 해석(편집기 normalizePageStep 과 동일)", () => {
       const input = base({ session: withHost('2') });
       expect(deriveSheetValidationRules(input)).toEqual({ productKind: 'sheet', pageStep: 2 });
+    });
+  });
+  // ── 2026-10-17 P1-e: 상품 프로파일(캘린더) — 고정 캔버스 수 → expectedPages, 양면 → pageStep 2 ──
+  describe('상품 프로파일(productProfile)', () => {
+    /** 오너 확정 탁상 캘린더: 표지 1 + 12개월×2 + 에필로그 1 = 26 캔버스(13장 양면) */
+    const calendarProfile = (over: Partial<ProductProfile> = {}): ProductProfile => ({
+      version: 1,
+      kind: 'calendar',
+      editorType: 'calendar_desk',
+      pages: { kind: 'fixed', count: 26, labelRule: 'month' },
+      sheet: {
+        faces: 2,
+        canvasLayout: 'canvas-pair',
+        binding: 'top-ring',
+        pairing: 'same-sheet',
+        backRotation: 0,
+        duplexFlip: 'short-edge',
+      },
+      calendar: {
+        layout: 'desk',
+        monthCount: 12,
+        coverCanvases: 1,
+        canvasesPerMonth: 2,
+        epilogueCanvases: 1,
+        allowedRange: { from: '2026-01', to: '2030-12' },
+        weekStart: 0,
+        show: { holidays: true, lunar: true, solarTerms: true },
+        dataVersion: 'kr-2025-2035-v1',
+      },
+      output: { mode: 'single-pdf' },
+      ...over,
+    });
+
+    /** 단면 낱장 범위 프로파일(step 4) */
+    const sheetRangeProfile = (step?: 1 | 2 | 4): ProductProfile => ({
+      version: 1,
+      kind: 'sheet',
+      editorType: 'sheet_single',
+      pages: { kind: 'range', min: 1, max: 20, labelRule: 'sheet', ...(step !== undefined ? { step } : {}) },
+      sheet: { faces: 1, canvasLayout: 'canvas-per-sheet', binding: 'none', backRotation: 0, duplexFlip: 'short-edge' },
+      output: { mode: 'single-pdf' },
+    });
+
+    const withProfile = (
+      templateProfile: ProductProfile | null,
+      over: Partial<SheetValidationRulesInput> = {},
+    ): SheetValidationRulesInput =>
+      base({ templateSet: { editorMode: 'single', pageStep: null, productProfile: templateProfile }, ...over });
+
+    it('(a) 캘린더 프로파일 fixed 26·faces 2 → expectedPages 26, pageStep 2', () => {
+      expect(deriveSheetValidationRules(withProfile(calendarProfile()))).toEqual({
+        productKind: 'sheet',
+        pageStep: 2,
+        expectedPages: 26,
+      });
+    });
+
+    it('(a-2) 호스트 orderOptions.pageStep 4 가 있어도 양면(faces 2) 프로파일은 pageStep 2', () => {
+      const session = {
+        mode: SessionMode.BOTH,
+        metadata: { orderOptions: { pageStep: 4 } },
+      } as unknown as SheetValidationRulesInput['session'];
+      expect(deriveSheetValidationRules(withProfile(calendarProfile(), { session }))).toEqual({
+        productKind: 'sheet',
+        pageStep: 2,
+        expectedPages: 26,
+      });
+    });
+
+    it('(b) templateSet 프로파일이 세션 metadata.productProfile 스냅샷보다 우선(권위) — 스냅샷 28 이어도 26, editorType 불일치 warn 1줄', () => {
+      const { calendar: baseCalendar } = calendarProfile();
+      const snapshot = calendarProfile({
+        editorType: 'calendar_desk_28',
+        pages: { kind: 'fixed', count: 28, labelRule: 'month' },
+        calendar: { ...(baseCalendar as NonNullable<typeof baseCalendar>), coverCanvases: 2, epilogueCanvases: 2 },
+      });
+      const warn = jest.fn();
+      const session = {
+        mode: SessionMode.BOTH,
+        metadata: { productProfile: snapshot },
+      } as unknown as SheetValidationRulesInput['session'];
+      expect(deriveSheetValidationRules(withProfile(calendarProfile(), { session, warn }))).toEqual({
+        productKind: 'sheet',
+        pageStep: 2,
+        expectedPages: 26,
+      });
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0][0]).toContain('calendar_desk_28');
+    });
+
+    it('(b-2) templateSet 프로파일이 없을 때만 세션 스냅샷을 쓴다(세트 변경·삭제 뒤 재합성)', () => {
+      const session = {
+        mode: SessionMode.BOTH,
+        metadata: { productProfile: calendarProfile() },
+      } as unknown as SheetValidationRulesInput['session'];
+      expect(deriveSheetValidationRules(withProfile(null, { session }))).toEqual({
+        productKind: 'sheet',
+        pageStep: 2,
+        expectedPages: 26,
+      });
+    });
+
+    it('(c) 프로파일 검증 실패(version 2) → 종전 결과(expectedPages 없음) + warn 1줄', () => {
+      const warn = jest.fn();
+      const bad = { ...calendarProfile(), version: 2 } as unknown as ProductProfile;
+      expect(deriveSheetValidationRules(withProfile(bad, { warn }))).toEqual({ productKind: 'sheet' });
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0][0]).toContain('[product-profile]');
+    });
+
+    it('(c-2) templateSet 프로파일 없음 + 스냅샷 무효 → 종전 결과(expectedPages 없음)', () => {
+      const session = {
+        mode: SessionMode.BOTH,
+        metadata: { productProfile: { version: 1, kind: 'calendar' } },
+      } as unknown as SheetValidationRulesInput['session'];
+      expect(deriveSheetValidationRules(withProfile(null, { session }))).toEqual({ productKind: 'sheet' });
+    });
+
+    it('(c-2b) 클라이언트가 스냅샷을 무효(version 99)로 바꿔도 templateSet 프로파일의 26 이 유지된다', () => {
+      const session = {
+        mode: SessionMode.BOTH,
+        metadata: { productProfile: { version: 99 } },
+      } as unknown as SheetValidationRulesInput['session'];
+      expect(deriveSheetValidationRules(withProfile(calendarProfile(), { session }))).toEqual({
+        productKind: 'sheet',
+        pageStep: 2,
+        expectedPages: 26,
+      });
+    });
+
+    it('(c-3) warn 미지정이면 검증 실패여도 예외 없이 종전 결과', () => {
+      const bad = { ...calendarProfile(), version: 2 } as unknown as ProductProfile;
+      expect(deriveSheetValidationRules(withProfile(bad))).toEqual({ productKind: 'sheet' });
+    });
+
+    it('(d) 캘린더 프로파일인데 낱장 판정 탈락(templateTypes null) → null + warn 1줄(동작 변경 없음)', () => {
+      const warn = jest.fn();
+      expect(deriveSheetValidationRules(withProfile(calendarProfile(), { templateTypes: null, warn }))).toBeNull();
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0][0]).toContain('calendar 프로파일');
+    });
+
+    it('(d-2) sheet 프로파일의 낱장 판정 탈락은 warn 없이 null', () => {
+      const warn = jest.fn();
+      expect(deriveSheetValidationRules(withProfile(sheetRangeProfile(4), { templateTypes: ['spread'], warn }))).toBeNull();
+      expect(warn).not.toHaveBeenCalled();
+    });
+
+    it('(e) 단면 range 프로파일 step 4 → pageStep 4, expectedPages 없음', () => {
+      expect(deriveSheetValidationRules(withProfile(sheetRangeProfile(4)))).toEqual({ productKind: 'sheet', pageStep: 4 });
+    });
+
+    it('(e-2) 단면 range 프로파일 step 없음 → 종전 산출(templateSet pageStep 4)', () => {
+      const input = withProfile(sheetRangeProfile(), {
+        templateSet: { editorMode: 'single', pageStep: 4, productProfile: sheetRangeProfile() },
+      });
+      expect(deriveSheetValidationRules(input)).toEqual({ productKind: 'sheet', pageStep: 4 });
+    });
+
+    it('(e-3) 단면 range 프로파일 step 1 → 종전 산출(미설정이면 키 없음)', () => {
+      expect(deriveSheetValidationRules(withProfile(sheetRangeProfile(1)))).toEqual({ productKind: 'sheet' });
+    });
+
+    it('(NULL) templateSet.productProfile null·undefined → 종전 결과와 동일', () => {
+      expect(deriveSheetValidationRules(withProfile(null))).toEqual(deriveSheetValidationRules(base()));
+      expect(deriveSheetValidationRules(base())).toEqual({ productKind: 'sheet' });
     });
   });
 });

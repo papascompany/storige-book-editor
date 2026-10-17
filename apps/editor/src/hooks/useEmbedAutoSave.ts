@@ -5,6 +5,8 @@ import { useSaveStore } from '@/stores/useSaveStore'
 import { editSessionsApi, type EditSessionResponse } from '@/api/edit-sessions'
 import { core } from '@storige/canvas-core'
 import { rebindFrameInteractivity } from '@/utils/frameInteractive'
+import { rehydrateCalendarGrids } from '@/utils/calendarRehydrate'
+import { calendarSessionMetadataFields } from '@/utils/calendarRehydrateAll'
 import { applyObjectPermissions, applyCoverMaterialLock } from '@/utils/objectPermissions'
 import { trackRequiredEdits } from '@/utils/requiredEditGate'
 import { isAutosaveSuspended, deferUntilAutosaveResumed } from '@/utils/autosaveSuspend'
@@ -259,6 +261,8 @@ export function useEmbedAutoSave(config: AutoSaveConfig) {
           }
           // 복원 직후 사진틀 인터랙션 재바인딩 (핸들러 미직렬화 → 미재바인딩 시 채우기 불능).
           rebindFrameInteractivity(editors[i], canvases[i])
+          // P1 캘린더: 캘린더 세트면 calendar-grid 재합성(프로파일 null 이면 즉시 0, no-op).
+          void rehydrateCalendarGrids(editors[i], canvases[i], i)
           // Part B: 로컬 백업 복원 시에도 객체별 이동/변형 잠금 적용.
           applyObjectPermissions(canvases[i], editMode())
           applyCoverMaterialLock(
@@ -304,6 +308,8 @@ export function useEmbedAutoSave(config: AutoSaveConfig) {
         const canvases = useAppStore.getState().allCanvas
         const editors = useAppStore.getState().allEditors || []
         rebindFrameInteractivity(editors[Math.max(0, canvases.indexOf(canvas))], canvas)
+        // P1 캘린더: 캘린더 세트면 calendar-grid 재합성(프로파일 null 이면 즉시 0, no-op).
+        void rehydrateCalendarGrids(editors[Math.max(0, canvases.indexOf(canvas))], canvas, Math.max(0, canvases.indexOf(canvas)))
         applyObjectPermissions(canvas, editMode())
         applyCoverMaterialLock(canvas, useSettingsStore.getState().coverMaterialLocked, editMode())
         trackRequiredEdits(canvas) // L7(멱등)
@@ -385,10 +391,12 @@ export function useEmbedAutoSave(config: AutoSaveConfig) {
       }
 
       // 게스트 세션이면 guestToken 동봉(updateGuest), 아니면 회원 update
+      // P1 캘린더: 캘린더 세트면 metadata.calendar 동봉(API 얕은 병합), 아니면 {} (payload 키 집합 불변)
       const guestToken = currentSession?.guestToken
+      const calendarFields = calendarSessionMetadataFields()
       const updatedSession = guestToken
-        ? await editSessionsApi.updateGuest(sessionId, guestToken, { canvasData, status: 'editing' })
-        : await editSessionsApi.update(sessionId, { canvasData, status: 'editing' })
+        ? await editSessionsApi.updateGuest(sessionId, guestToken, { canvasData, status: 'editing', ...calendarFields })
+        : await editSessionsApi.update(sessionId, { canvasData, status: 'editing', ...calendarFields })
 
       // 성공 시 상태 업데이트
       setSaved()

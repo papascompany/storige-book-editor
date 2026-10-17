@@ -14,24 +14,44 @@
  * 레거시 보존: 조건이 하나라도 불명(templateTypes 조회 실패 = null)하거나 어긋나면 null → 호출부는
  * orderOptions 에 아무 키도 더하지 않는다(현행 byte-identical). 템플릿이 없거나 전부 'cover' 인 세트
  * (표지 전용 = 책 표지 편집)도 낱장이 아니므로 null.
+ *
+ * 2026-10-17 P1-e(상품 프로파일): 위 낱장 판정이 선 세트에 한해 `productProfile`(세션 스냅샷
+ * metadata.productProfile 우선, 없으면 templateSet.productProfile)로 기대 쪽수·증감 단위를 보강한다.
+ *   - pages.kind='fixed' → expectedPages = pages.count (캘린더 26 = 표지 1 + 12개월×2 + 에필로그 1)
+ *   - sheet.faces=2 → pageStep 2, 아니면 pages.step(>1) → 그 값, 아니면 종전 산출(호스트·템플릿셋)
+ * 프로파일이 NULL·버전 불일치·검증 실패(resolveProductProfile → null)면 종전 결과 그대로다.
+ * 낱장 판정 자체는 프로파일과 무관하게 유지한다 — kind='calendar' 인데 판정이 null 이면 warn 1줄 + null.
  */
+import { resolveProductProfile } from '@storige/types';
+import type { ProductProfile } from '@storige/types';
 import { SessionMode } from './entities/edit-session.entity';
 import type { EditSessionEntity } from './entities/edit-session.entity';
 
 export interface SheetValidationRulesInput {
   session: Pick<EditSessionEntity, 'mode' | 'metadata'>;
-  /** TemplateSetsService.findOne 결과(조회 실패 시 null) */
-  templateSet: { editorMode?: string | null; pageStep?: number | null } | null;
+  /** TemplateSetsService.findOne 결과(조회 실패 시 null). productProfile 은 P1 additive(NULL = 종전) */
+  templateSet: {
+    editorMode?: string | null;
+    pageStep?: number | null;
+    productProfile?: ProductProfile | null;
+  } | null;
   /** findOneWithTemplates().templateDetails[].type 목록. 조회 실패 = null → 레거시 */
   templateTypes: string[] | null;
   /** resolveInnerSpreadContentSizeMm().kind — 'none' 일 때만 낱장 후보 */
   innerLayoutKind: string;
+  /** 프로파일 검증 실패·calendar 세트의 낱장 판정 탈락 경고 싱크(미지정 = 경고 없음) */
+  warn?: (message: string) => void;
 }
 
 export interface SheetValidationRules {
   productKind: 'sheet';
   /** 낱장 증감 단위(정수 >1 일 때만). 1 이하·미설정 = 키 없음(워커 배수 검사 없음) */
   pageStep?: number;
+  /**
+   * 프로파일 pages.kind='fixed' 의 고정 캔버스 수. 호출부가 잡 `pages` 로 쓴다 —
+   * orderOptions 키로 보내지 않는다(워커 DTO 불변). 프로파일 없음·range = 키 없음.
+   */
+  expectedPages?: number;
 }
 
 /** 낱장 PDF 로 묶을 수 없는 템플릿 타입 — 편집기 MIXED_SIZE_TYPES(spine/wing) + 스프레드(책) */
@@ -43,7 +63,63 @@ function stepOver1(raw: unknown): number | undefined {
   return typeof n === 'number' && Number.isInteger(n) && n > 1 ? n : undefined;
 }
 
+/**
+ * 템플릿셋 프로파일이 권위다(관리자가 선언한 상품 구성). 세션 스냅샷(metadata.productProfile)은 클라이언트가 쓰는
+ * 자유형 metadata 라 기대 쪽수·pageStep 의 근거로 쓰지 않는다 — 템플릿셋에 프로파일이 없을 때만(세트 변경·삭제 뒤
+ * 재합성) 스냅샷을 쓴다. 둘 다 있고 editorType 이 다르면 경고만 남기고 템플릿셋 값을 쓴다.
+ */
+function resolveSessionProductProfile(input: SheetValidationRulesInput): ProductProfile | null {
+  const warn = input.warn ?? (() => undefined);
+  const fromTemplateSet = resolveProductProfile(input.templateSet ?? null, warn);
+  const snapshot: unknown = input.session.metadata?.productProfile;
+  if (fromTemplateSet) {
+    if (snapshot !== undefined && snapshot !== null) {
+      const snapType = typeof snapshot === 'object' ? (snapshot as { editorType?: unknown }).editorType : undefined;
+      if (snapType !== fromTemplateSet.editorType) {
+        warn(
+          `[sheet-validation-rules] 세션 스냅샷 editorType=${String(snapType)} ≠ 템플릿셋 ${fromTemplateSet.editorType} — 템플릿셋 프로파일 적용`,
+        );
+      }
+    }
+    return fromTemplateSet;
+  }
+  if (snapshot !== undefined && snapshot !== null) {
+    return resolveProductProfile({ productProfile: snapshot as ProductProfile }, warn);
+  }
+  return null;
+}
+
 export function deriveSheetValidationRules(input: SheetValidationRulesInput): SheetValidationRules | null {
+  const legacy = deriveLegacySheetRules(input);
+  const profile = resolveSessionProductProfile(input);
+  if (legacy === null) {
+    if (profile?.kind === 'calendar') {
+      input.warn?.(
+        `[sheet-validation-rules] calendar 프로파일(editorType=${profile.editorType}) 세트가 낱장 판정을 통과하지 못해 종전 규칙 유지`,
+      );
+    }
+    return null;
+  }
+  if (profile === null) return legacy;
+
+  const expectedPages =
+    profile.pages.kind === 'fixed' && typeof profile.pages.count === 'number' ? profile.pages.count : undefined;
+  const pageStep =
+    profile.sheet.faces === 2
+      ? 2
+      : profile.pages.step !== undefined && profile.pages.step > 1
+        ? profile.pages.step
+        : legacy.pageStep;
+
+  return {
+    productKind: 'sheet',
+    ...(pageStep !== undefined ? { pageStep } : {}),
+    ...(expectedPages !== undefined ? { expectedPages } : {}),
+  };
+}
+
+/** 2026-10-17 (가) 낱장 판정 + 종전 pageStep 산출(프로파일 무관) */
+function deriveLegacySheetRules(input: SheetValidationRulesInput): SheetValidationRules | null {
   const { session, templateSet, templateTypes, innerLayoutKind } = input;
 
   // 이 경로(createValidationJobs)는 이미 비스프레드지만, 분류 근거를 함수 안에서 닫는다.

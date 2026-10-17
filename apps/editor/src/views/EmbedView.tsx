@@ -327,6 +327,8 @@ export default function EmbedView() {
             //   자격증명이 아니므로 와일드카드 송신에도 싣는다(D24·D25 불변식 범위 밖).
             ...(r.templateSetId ? { templateSetId: r.templateSetId } : {}),
             ...(r.templateSetMismatch ? { templateSetMismatch: r.templateSetMismatch } : {}),
+            // P1 캘린더 (2026-10-17): 상품 프로파일 요약 — 정식 envelope 와 같은 additive 키(프로파일 없는 세트는 키 없음)
+            ...(r.product ? { product: r.product } : {}),
             files: {
               coverFileId: r.files.coverFileId ?? null,
               contentFileId: r.files.contentFileId ?? null,

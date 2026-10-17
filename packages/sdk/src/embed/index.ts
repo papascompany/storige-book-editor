@@ -42,6 +42,7 @@ export type {
   EditorCompleteFiles,
   EditorCompletePages,
   EditorCompletePayload,
+  EditorCompleteProduct,
   EditorCompleteSize,
   EditorEnvelope,
   EditorErrorCode,

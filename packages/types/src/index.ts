@@ -6,6 +6,9 @@
 // 책등(세네카) 계산 순수 엔진 (R-44) — API·워커·표지 파생 공용 단일 산식
 export * from './spine-calc';
 export * from './print-template';
+// 상품별 편집 모드 프로파일 (P1 캘린더, 2026-10-17) — 템플릿셋 product_profile 판정·검증·캔버스 매핑
+export * from './product-profile';
+import type { ProductProfile } from './product-profile';
 
 // ============================================================================
 // User & Authentication
@@ -356,6 +359,12 @@ export interface TemplateSet {
    */
   endpaperConfig?: EndpaperConfig | null;
   /**
+   * 상품별 편집 모드 프로파일 — P1 캘린더 (2026-10-17).
+   * null/undefined: 기존 동작(legacy). 값이 있으면 편집기·API 가 `resolveProductProfile()` 결과로
+   * 페이지 정책(고정 캔버스 수·라벨)·플러그인 활성·검증 기대 쪽수를 정한다. `EditorMode`·`type` 은 그대로.
+   */
+  productProfile?: ProductProfile | null;
+  /**
    * 표지 편집 가능 여부 — Phase 2 (2026-05-19), 2026-08-13 재정의.
    * - true (기본): 일반 책 표지 — 편집기에서 디자인 가능
    * - false: 페브릭·기성 — 표지 템플릿 캔버스를 그대로 보여 주고 소재 배경만 잠금.
@@ -445,6 +454,8 @@ export interface CreateTemplateSetInput {
   enabledMenus?: EditorMenuKey[] | null;
   /** 인쇄 워크플로우 v1 Phase 3 (2026-05-19) — 면지/표지/레더커버 */
   endpaperConfig?: EndpaperConfig | null;
+  /** 상품별 편집 모드 프로파일 (P1, null/미지정=legacy) */
+  productProfile?: ProductProfile | null;
   coverEditable?: boolean;
   coverPreviewImage?: string | null;
   /** 내지 PDF 첨부 파일 편집 가능 여부 (2026-06-08, 기본 true) */
@@ -479,6 +490,8 @@ export interface UpdateTemplateSetInput {
   enabledMenus?: EditorMenuKey[] | null;
   /** 인쇄 워크플로우 v1 Phase 3 (2026-05-19) — 면지/표지/레더커버 */
   endpaperConfig?: EndpaperConfig | null;
+  /** 상품별 편집 모드 프로파일 (P1, null/미지정=legacy) */
+  productProfile?: ProductProfile | null;
   coverEditable?: boolean;
   coverPreviewImage?: string | null;
   /** 내지 PDF 첨부 파일 편집 가능 여부 (2026-06-08, 기본 true) */
@@ -1876,7 +1889,8 @@ export type EditorMenuKey =
   | 'FRAME'
   | 'SMART_CODE'
   | 'EDIT'
-  | 'AI';
+  | 'AI'
+  | 'CALENDAR';
 
 /**
  * 메뉴 메타정보. admin 의 토글 UI 에서 그대로 사용.
@@ -1891,7 +1905,7 @@ export interface EditorMenuDef {
   label: string;
   description: string;
   defaultEnabled: boolean;
-  requiresFlag?: 'IMAGE_PROCESSING' | 'TEMPLATE' | 'FRAME' | 'SMART_CODE' | 'AI' | 'UPLOAD';
+  requiresFlag?: 'IMAGE_PROCESSING' | 'TEMPLATE' | 'FRAME' | 'SMART_CODE' | 'AI' | 'UPLOAD' | 'CALENDAR';
 }
 
 /**
@@ -1910,6 +1924,8 @@ export const EDITOR_MENU_DEFS: EditorMenuDef[] = [
   { key: 'SMART_CODE', label: 'QR/바코드', description: 'QR 코드 / 바코드 생성', defaultEnabled: true, requiresFlag: 'SMART_CODE' },
   { key: 'EDIT', label: '편집도구', description: '이미지 편집 (배경 제거 등 OpenCV)', defaultEnabled: true, requiresFlag: 'IMAGE_PROCESSING' },
   { key: 'AI', label: 'AI', description: 'AI 추천 / 생성 패널', defaultEnabled: true, requiresFlag: 'AI' },
+  // P1 캘린더 (2026-10-17): 편집기는 productProfile.kind==='calendar' 세트에서만 런타임 게이트로 노출한다.
+  { key: 'CALENDAR', label: '달력', description: '캘린더 시작연월·표기 옵션·기념일 (productProfile kind=calendar 세트에서만 노출)', defaultEnabled: false, requiresFlag: 'CALENDAR' },
 ];
 
 /**

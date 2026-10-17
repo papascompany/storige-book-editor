@@ -24,6 +24,9 @@
 >   < ~/storige/apps/api/migrations/20260617_add_user_site_roles.sql
 > docker exec -i storige-mariadb mariadb -ustorige -p"$DATABASE_PASSWORD" storige \
 >   < ~/storige/apps/api/migrations/20260617_b_add_site_id_data_scoping.sql
+> # P1 캘린더 (2026-10-17) — template_sets.product_profile JSON NULL additive, IF NOT EXISTS 멱등
+> docker exec -i storige-mariadb mariadb -ustorige -p"$DATABASE_PASSWORD" storige \
+>   < ~/storige/apps/api/migrations/20261017_add_template_set_product_profile.sql
 > # 그 후 API 재배포 + nginx 재시작
 > docker compose up -d --build api && docker compose restart nginx
 > ```
@@ -395,6 +398,12 @@ MAX_FILE_SIZE=52428800
 # Processing
 GHOSTSCRIPT_PATH=/usr/bin/gs
 ```
+
+### 편집기 빌드 변수 (editor, Vercel — 빌드 시점 `VITE_*`)
+
+| 변수 | 대상 | 기본값 | 설명 |
+|---|---|---|---|
+| `VITE_ENABLE_CALENDAR` | editor 빌드 | on(미설정·`'false'` 외 모든 값) | P1 캘린더(2026-10-17). 정확히 `'false'` 로 두면 CalendarPlugin 등록과 도구 막대 달력 메뉴를 비활성한다(프로파일 NULL 세트는 값과 무관하게 현행). 빌드 시점 변수라 값을 바꾸면 master push(Vercel 재빌드) 뒤에 반영된다(`apps/editor/.env.example`) |
 
 ### 잡 생성 확인 · 잡 산출물 세션 조회 플래그 (api, 2026-10-03)
 

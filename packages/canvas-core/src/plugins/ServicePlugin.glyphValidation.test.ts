@@ -35,6 +35,14 @@ function makeObj(init: MockObjectInit): fabric.Object {
 }
 
 describe('ServicePlugin.collectGlyphValidationTargets (R6)', () => {
+  it('calendar-grid 그룹(P1 캘린더)의 내부 날짜 텍스트는 인쇄 대상이라 재귀 수집된다', () => {
+    const day = makeObj({ type: 'text', text: '15', fontFamily: 'Pretendard' })
+    const holiday = makeObj({ type: 'text', text: '신정', fontFamily: 'Pretendard' })
+    const grid = makeObj({ type: 'group', _objects: [makeObj({ type: 'rect' }), day, holiday] })
+    ;(grid as unknown as { extensionType: string }).extensionType = 'calendar-grid'
+    expect(ServicePlugin.collectGlyphValidationTargets(grid)).toEqual([day, holiday])
+  })
+
   it('사용자 텍스트(text/i-text/textbox)는 수집된다', () => {
     for (const type of ['text', 'i-text', 'textbox']) {
       const obj = makeObj({ type, text: '안녕', fontFamily: 'Pretendard' })
