@@ -1504,6 +1504,163 @@ describe('EditSessionsService', () => {
     });
   });
 
+  // ── 2026-10-17(낱장 분류 검증): 낱장(single 세트, spine/wing/spread 없음) → 두 잡 모두 productKind='sheet' ──
+  // 기준선은 같은 세션을 EDITOR_SHEET_VALIDATION_RULES=off 로 다시 만든 잡 옵션(= 이번 변경 이전 동작).
+  describe('createValidationJobs — 낱장 분류 규칙(productKind sheet)', () => {
+    const ORIGINAL_SHEET = process.env.EDITOR_SHEET_VALIDATION_RULES;
+    let savedFindOne: typeof mockTemplateSetsService.findOne;
+    let savedFindOneWithTemplates: typeof mockTemplateSetsService.findOneWithTemplates;
+
+    beforeAll(() => {
+      savedFindOne = mockTemplateSetsService.findOne;
+      savedFindOneWithTemplates = mockTemplateSetsService.findOneWithTemplates;
+    });
+
+    beforeEach(() => {
+      mockWorkerJobsService.createValidationJob.mockReset();
+      mockWorkerJobsService.createValidationJob.mockResolvedValue({ id: 'job-sheet' } as any);
+      delete process.env.EDITOR_SHEET_VALIDATION_RULES;
+    });
+
+    afterEach(() => {
+      if (ORIGINAL_SHEET === undefined) delete process.env.EDITOR_SHEET_VALIDATION_RULES;
+      else process.env.EDITOR_SHEET_VALIDATION_RULES = ORIGINAL_SHEET;
+    });
+
+    afterAll(() => {
+      mockTemplateSetsService.findOne = savedFindOne;
+      mockTemplateSetsService.findOneWithTemplates = savedFindOneWithTemplates;
+    });
+
+    const withSet = (
+      editorMode: 'single' | 'book',
+      pageStep: number | null,
+      types: string[],
+    ): void => {
+      mockTemplateSetsService.findOne = jest
+        .fn()
+        .mockResolvedValue({ width: 100, height: 150, cropMarkEnabled: false, editorMode, pageStep });
+      mockTemplateSetsService.findOneWithTemplates = jest.fn().mockResolvedValue({
+        templateDetails: types.map((type) => ({ type, spreadConfig: null })),
+      });
+    };
+
+    const mkSession = (
+      metadata: Record<string, unknown> | null,
+      over: Partial<EditSessionEntity> = {},
+    ): EditSessionEntity =>
+      ({
+        id: 'session-sheet',
+        mode: SessionMode.BOTH,
+        coverFileId: 'file-cover-sheet',
+        contentFileId: 'file-content-sheet',
+        templateSetId: 'ts-sheet',
+        canvasData: [{ objects: [] }, { objects: [] }],
+        metadata,
+        ...over,
+      }) as unknown as EditSessionEntity;
+
+    type JobOptions = Record<string, unknown>;
+    const optsFor = (fileType: 'cover' | 'content'): JobOptions =>
+      mockWorkerJobsService.createValidationJob.mock.calls.find(
+        (c: any[]) => c[0]?.fileType === fileType,
+      )?.[0]?.orderOptions;
+
+    const call = async (session: EditSessionEntity): Promise<{ cover: JobOptions; content: JobOptions }> => {
+      mockWorkerJobsService.createValidationJob.mockClear();
+      await (service as unknown as { createValidationJobs(s: EditSessionEntity): Promise<void> })
+        .createValidationJobs(session);
+      return { cover: optsFor('cover'), content: optsFor('content') };
+    };
+
+    const callOffThenOn = async (session: EditSessionEntity) => {
+      process.env.EDITOR_SHEET_VALIDATION_RULES = 'off';
+      const off = await call(session);
+      delete process.env.EDITOR_SHEET_VALIDATION_RULES;
+      const on = await call(session);
+      return { off, on };
+    };
+
+    it('① 양면 낱장 single 세트(캔버스 2) → cover·content 모두 productKind sheet + pages 2, 그 밖은 이전과 deep-equal', async () => {
+      // 2026-10-17 보완: 낱장은 page 템플릿(앞/뒤). 전부 cover 인 세트는 표지 전용(책)이라 sheet 가 아니다.
+      withSet('single', null, ['page', 'page']);
+      const logSpy = jest.spyOn(
+        (service as unknown as { logger: { log(message: string): void } }).logger,
+        'log',
+      );
+      const { off, on } = await callOffThenOn(mkSession({ pages: 2 }));
+      expect(on.cover).toEqual({ ...off.cover, productKind: 'sheet' });
+      expect(on.content).toEqual({ ...off.content, productKind: 'sheet' });
+      expect(on.cover).toMatchObject({ pages: 2, size: { width: 100, height: 150 } });
+      expect(on.cover).not.toHaveProperty('pageStep');
+      expect(off.cover).not.toHaveProperty('productKind');
+      const sheetLogs = logSpy.mock.calls.map((c) => String(c[0])).filter((m) => m.includes('낱장 분류 규칙'));
+      expect(sheetLogs).toEqual([
+        '[validation-jobs] session session-sheet 낱장 분류 규칙: productKind=sheet pageStep=- pages=2',
+      ]);
+      logSpy.mockRestore();
+    });
+
+    it('② 템플릿셋 pageStep 2 → pageStep 2 동반, 호스트 orderOptions.pageStep 4 가 우선', async () => {
+      withSet('single', 2, ['page']);
+      const tpl = await call(mkSession({ pages: 2 }));
+      expect(tpl.cover).toMatchObject({ productKind: 'sheet', pageStep: 2 });
+      expect(tpl.content).toMatchObject({ productKind: 'sheet', pageStep: 2 });
+      const host = await call(mkSession({ pages: 4, orderOptions: { pageStep: 4 } }, { canvasData: null }));
+      expect(host.cover).toMatchObject({ productKind: 'sheet', pageStep: 4, pages: 4 });
+    });
+
+    it('③ 책(spread 메타, editorMode book) → productKind 없음(이전과 deep-equal)', async () => {
+      withSet('book', 4, ['spread', 'page']);
+      const { off, on } = await callOffThenOn(
+        mkSession({ spread: { spec: { coverWidthMm: 100, coverHeightMm: 150, spineWidthMm: 2 } } }, { canvasData: null }),
+      );
+      expect(on.cover).toEqual(off.cover);
+      expect(on.content).toEqual(off.content);
+      expect(on.cover).not.toHaveProperty('productKind');
+    });
+
+    it('④ single 세트라도 spine/wing 템플릿(낱장 표지 분할 세트) → productKind 없음', async () => {
+      withSet('single', null, ['wing', 'cover', 'spine', 'cover', 'wing']);
+      const { off, on } = await callOffThenOn(mkSession({ pages: 1 }, { canvasData: null }));
+      expect(on.cover).toEqual(off.cover);
+      expect(on.cover).not.toHaveProperty('productKind');
+    });
+
+    it('⑤ findOneWithTemplates 예외 → 레거시(productKind 없음), 잡 2건은 그대로 생성 + warn', async () => {
+      withSet('single', null, ['page']);
+      mockTemplateSetsService.findOneWithTemplates = jest.fn().mockRejectedValue(new Error('boom'));
+      const warnSpy = jest.spyOn(
+        (service as unknown as { logger: { warn(message: string): void } }).logger,
+        'warn',
+      );
+      const { cover, content } = await call(mkSession({ pages: 2 }));
+      expect(cover).not.toHaveProperty('productKind');
+      expect(content).not.toHaveProperty('productKind');
+      expect(mockWorkerJobsService.createValidationJob).toHaveBeenCalledTimes(2);
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('템플릿 타입 조회 실패'));
+      warnSpy.mockRestore();
+    });
+
+    it('⑥ EDITOR_SHEET_VALIDATION_RULES=off → 템플릿 타입 추가 조회 없음(내지 펼침면 해석 1회만)', async () => {
+      withSet('single', null, ['page']);
+      process.env.EDITOR_SHEET_VALIDATION_RULES = ' OFF ';
+      const { cover } = await call(mkSession({ pages: 2 }));
+      expect(cover).not.toHaveProperty('productKind');
+      expect(mockTemplateSetsService.findOneWithTemplates).toHaveBeenCalledTimes(1);
+      delete process.env.EDITOR_SHEET_VALIDATION_RULES;
+      await call(mkSession({ pages: 2 }));
+      expect(mockTemplateSetsService.findOneWithTemplates).toHaveBeenCalledTimes(3);
+    });
+
+    it('⑦ templateSetId 없는 세션 → 레거시(productKind 없음)', async () => {
+      withSet('single', null, ['page']);
+      const { cover } = await call(mkSession({ pages: 2 }, { templateSetId: null }));
+      expect(cover).not.toHaveProperty('productKind');
+      expect(mockTemplateSetsService.findOneWithTemplates).not.toHaveBeenCalled();
+    });
+  });
+
   describe('createValidationJobs 방향 정합 — size 스왑 정규화 + expectedOrientation (2026-07-14)', () => {
     beforeEach(() => {
       mockWorkerJobsService.createValidationJob.mockResolvedValue({ id: 'job-orient' } as any);

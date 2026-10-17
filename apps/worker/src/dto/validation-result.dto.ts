@@ -315,6 +315,24 @@ export interface ValidationOptions {
     pageCountMax?: number;
     /** 제본별 페이지수 하한(예 무선 32). 제공 시 `actual < min` → PAGE_COUNT_BELOW_MIN(경고·비차단, 고객 선택). 미제공 시 미검사. */
     pageCountMin?: number;
+    /**
+     * 2026-10-17(낱장 분류 검증): 상품 분류(additive). 'sheet'=낱장 계열(단면 1·양면 2·N장 낱장) →
+     * validatePageCount 가 파일 슬롯(cover/content)과 무관하게 `actual === pages` 를 정확 비교하고
+     * 불일치 시 PAGE_COUNT_INVALID(autoFixable=false — 낱장은 빈 쪽 추가가 정답이 아님).
+     * cover 1·2·4 규칙·content 제본 규칙·PAGE_COUNT_MISMATCH 경고는 건너뜀. 미제공=레거시(현행) 경로.
+     */
+    productKind?: 'sheet' | 'book';
+    /**
+     * 2026-10-17(낱장 분류 검증): 낱장 증감 단위(상품/템플릿셋 설정값, productKind='sheet' 에서만 사용).
+     * `pageStep > 1 && actual % pageStep !== 0` → PAGE_COUNT_INVALID(autoFixable=false). 1 이하·미제공=배수 검사 없음.
+     */
+    pageStep?: number;
+    /**
+     * 2026-10-17(낱장 분류 검증): 후가공 파일(fileType 'post_process') 색 규칙(additive).
+     * 'spot-only'=CMYK 사용 시 POST_PROCESS_CMYK 오류(종전 동작). 미제공·'any'=오류·경고 없음
+     * (후가공 파일은 선·라운드·면적·투명 객체가 정상 입력).
+     */
+    postProcessColorRule?: 'any' | 'spot-only';
   };
   /** 최대 허용 파일 크기 (bytes) */
   maxFileSize?: number;

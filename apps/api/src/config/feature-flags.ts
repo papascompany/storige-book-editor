@@ -60,6 +60,8 @@ export const API_FEATURE_FLAG_KEYS = [
   'EDITOR_CONTENT_PAGE_RULES',
   'EDITOR_SPREAD_VALIDATION_MAPPING',
   'PARTNER_JOB_VIEW',
+  // 2026-10-17(낱장 분류 검증) 킬스위치 — 줄 끝에 붙는다(운영 FLAGS_EXPECTED_API 프로필에도 추가).
+  'EDITOR_SHEET_VALIDATION_RULES',
 ] as const;
 
 export type ApiFeatureFlagKey = (typeof API_FEATURE_FLAG_KEYS)[number];
@@ -92,6 +94,8 @@ export interface ApiFeatureFlagInputs {
   editorSpreadValidationMappingRaw: unknown;
   /** configService.get('PARTNER_JOB_VIEW') 원값 — worker-jobs.controller 와 같은 소스·같은 술어 */
   partnerJobViewRaw: unknown;
+  /** process.env.EDITOR_SHEET_VALIDATION_RULES — edit-sessions.service 와 같은 소스·같은 술어(2026-10-17) */
+  editorSheetValidationRulesRaw: unknown;
 }
 
 export function buildApiFeatureFlagSnapshot(i: ApiFeatureFlagInputs): ApiFeatureFlagSnapshot {
@@ -119,6 +123,8 @@ export function buildApiFeatureFlagSnapshot(i: ApiFeatureFlagInputs): ApiFeature
     EDITOR_SPREAD_VALIDATION_MAPPING: isEditorSpreadValidationMappingOnRaw(
       i.editorSpreadValidationMappingRaw,
     ),
+    // edit-sessions.service: isEditorSheetValidationRulesOn() = isEditorSheetValidationRulesOnRaw(process.env.EDITOR_SHEET_VALIDATION_RULES)
+    EDITOR_SHEET_VALIDATION_RULES: isEditorSheetValidationRulesOnRaw(i.editorSheetValidationRulesRaw),
     // worker-jobs.controller partnerView: isPartnerJobViewOn(configService.get('PARTNER_JOB_VIEW'))
     PARTNER_JOB_VIEW: isPartnerJobViewOn(i.partnerJobViewRaw),
   };
@@ -156,6 +162,7 @@ export function collectApiFeatureFlagInputs(
     editorContentPageRulesRaw: env.EDITOR_CONTENT_PAGE_RULES,
     editorSpreadValidationMappingRaw: env.EDITOR_SPREAD_VALIDATION_MAPPING,
     partnerJobViewRaw: get('PARTNER_JOB_VIEW'),
+    editorSheetValidationRulesRaw: env.EDITOR_SHEET_VALIDATION_RULES,
   };
 }
 
@@ -216,6 +223,24 @@ export function isEditorContentPageRulesOnRaw(raw: unknown): boolean {
  */
 export function isEditorContentPageRulesOn(env: NodeJS.ProcessEnv = process.env): boolean {
   return isEditorContentPageRulesOnRaw(env.EDITOR_CONTENT_PAGE_RULES);
+}
+
+/**
+ * EDITOR_SHEET_VALIDATION_RULES 진리값 술어(2026-10-17(낱장 분류 검증) 킬스위치) — 기본 ON.
+ * EDITOR_CONTENT_PAGE_RULES 와 같은 해석(앞뒤 공백 제거 + 대소문자 무시, 'off' 일 때만 OFF).
+ */
+export function isEditorSheetValidationRulesOnRaw(raw: unknown): boolean {
+  return String(raw ?? '').trim().toLowerCase() !== 'off';
+}
+
+/**
+ * 편집 완료 낱장(single 세트, spine/wing/spread 없음) 세션의 검증 잡에 productKind='sheet'(+pageStep)을
+ * 싣는가(2026-10-17(낱장 분류 검증)). 기본 true. 호출 시점마다 env 를 읽는다.
+ * 롤백 = .env 에 EDITOR_SHEET_VALIDATION_RULES=off → api 재생성 → nginx 재시작. [FLAGS] api 줄 끝 키로 확인한다
+ * (API_FEATURE_FLAG_KEYS 등록 + docker-compose api environment 매핑, 2026-10-17).
+ */
+export function isEditorSheetValidationRulesOn(env: NodeJS.ProcessEnv = process.env): boolean {
+  return isEditorSheetValidationRulesOnRaw(env.EDITOR_SHEET_VALIDATION_RULES);
 }
 
 /** 한 줄, `KEY=true|false` 토큰만. 값은 boolean 으로 강제(env 원문 출력 불가). */

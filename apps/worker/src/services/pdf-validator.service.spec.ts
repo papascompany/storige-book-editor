@@ -4,7 +4,7 @@ import { PDFDocument } from 'pdf-lib';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import axios from 'axios';
-import { ValidationOptions, ErrorCode, WarningCode } from '../dto/validation-result.dto';
+import { ValidationOptions, ValidationError, ErrorCode, WarningCode } from '../dto/validation-result.dto';
 import { VALIDATION_CONFIG } from '../config/validation.config';
 import { assertSafeDownloadUrl } from '../utils/url-safety';
 
@@ -297,6 +297,249 @@ describe('PdfValidatorService', () => {
       mockedFs.readFile.mockResolvedValue(Buffer.from(await createMockPdf(34, 210, 297)));
       const result = await service.validate('./legacy.pdf', ddOptions({ binding: 'perfect', pages: 34 }));
       expect(result.errors.find(e => e.code === ErrorCode.PAGE_COUNT_INVALID)).toBeDefined();
+    });
+
+    // ── 2026-10-17(낱장 분류 검증): productKind='sheet' / pageStep / postProcessColorRule ──
+    // 슬롯(cover/content)이 아니라 상품 분류로 쪽수를 판정한다(단면 1·양면 2·N장 낱장).
+    // 세 필드 모두 미전송이면 위 레거시 경로가 byte-identical 로 유지돼야 한다.
+    describe('낱장 분류 검증 (productKind=sheet, 2026-10-17)', () => {
+      const sheetOptions = (
+        pageCount: number,
+        orderOverrides: Record<string, unknown>,
+        fileType: ValidationOptions['fileType'] = 'content',
+      ): ValidationOptions => ({
+        ...defaultOptions,
+        fileType,
+        orderOptions: {
+          ...defaultOptions.orderOptions,
+          pages: pageCount,
+          productKind: 'sheet',
+          ...orderOverrides,
+        } as any,
+      });
+      const pageCountErrors = (errors: ValidationError[]) =>
+        errors.filter((e) => e.code === ErrorCode.PAGE_COUNT_INVALID);
+
+      it('sheet: 양면 expected 2 · actual 2 → 쪽수 오류 0', async () => {
+        mockedFs.readFile.mockResolvedValue(Buffer.from(await createMockPdf(2, 210, 297)));
+        const result = await service.validate('./sheet.pdf', sheetOptions(2, {}));
+        expect(pageCountErrors(result.errors)).toHaveLength(0);
+      });
+
+      it('sheet: 양면 expected 2 · actual 1 → PAGE_COUNT_INVALID(autoFixable=false, details.productKind=sheet)', async () => {
+        mockedFs.readFile.mockResolvedValue(Buffer.from(await createMockPdf(1, 210, 297)));
+        const result = await service.validate('./sheet.pdf', sheetOptions(2, {}));
+        const errs = pageCountErrors(result.errors);
+        expect(errs).toHaveLength(1);
+        expect(errs[0].autoFixable).toBe(false);
+        expect(errs[0].fixMethod).toBeUndefined();
+        expect(errs[0].details?.expected).toBe(2);
+        expect(errs[0].details?.actual).toBe(1);
+        expect(errs[0].details?.productKind).toBe('sheet');
+        expect(errs[0].message).toContain('정확히 2쪽');
+      });
+
+      it('sheet: 단면 expected 1 · actual 2 → PAGE_COUNT_INVALID(초과도 오류)', async () => {
+        mockedFs.readFile.mockResolvedValue(Buffer.from(await createMockPdf(2, 210, 297)));
+        const result = await service.validate('./sheet.pdf', sheetOptions(1, {}));
+        const errs = pageCountErrors(result.errors);
+        expect(errs).toHaveLength(1);
+        expect(errs[0].autoFixable).toBe(false);
+        expect(errs[0].details?.expected).toBe(1);
+        expect(errs[0].details?.actual).toBe(2);
+      });
+
+      it('sheet: pageStep 2 · expected 4 · actual 3 → 정확 비교 오류 + 배수 오류(expected=올림 배수 4, autoFixable=false)', async () => {
+        mockedFs.readFile.mockResolvedValue(Buffer.from(await createMockPdf(3, 210, 297)));
+        const result = await service.validate('./sheet.pdf', sheetOptions(4, { pageStep: 2 }));
+        const errs = pageCountErrors(result.errors);
+        expect(errs).toHaveLength(2);
+        const stepErr = errs.find((e) => e.details?.pageStep === 2);
+        expect(stepErr).toBeDefined();
+        expect(stepErr?.autoFixable).toBe(false);
+        expect(stepErr?.details?.expected).toBe(4);
+        expect(stepErr?.details?.actual).toBe(3);
+        expect(stepErr?.message).toContain('2의 배수');
+      });
+
+      it('sheet: pageStep 1 이하는 배수 검사 없음(expected 3 · actual 3 · pageStep 1 → 오류 0)', async () => {
+        mockedFs.readFile.mockResolvedValue(Buffer.from(await createMockPdf(3, 210, 297)));
+        const result = await service.validate('./sheet.pdf', sheetOptions(3, { pageStep: 1 }));
+        expect(pageCountErrors(result.errors)).toHaveLength(0);
+      });
+
+      it('sheet: fileType cover 라도 3쪽 expected 3 → 오류 0 (cover 1·2·4 규칙 미적용)', async () => {
+        mockedFs.readFile.mockResolvedValue(Buffer.from(await createMockPdf(3, 210, 297)));
+        const result = await service.validate(
+          './sheet-cover.pdf',
+          sheetOptions(3, { binding: 'spring' }, 'cover'),
+        );
+        expect(pageCountErrors(result.errors)).toHaveLength(0);
+      });
+
+      it('sheet: content perfect 6쪽 expected 6 → 레거시 4의 배수 규칙 미적용(오류 0)', async () => {
+        mockedFs.readFile.mockResolvedValue(Buffer.from(await createMockPdf(6, 210, 297)));
+        const result = await service.validate('./sheet.pdf', sheetOptions(6, { binding: 'perfect' }));
+        expect(pageCountErrors(result.errors)).toHaveLength(0);
+      });
+
+      it('sheet: 불일치 시 PAGE_COUNT_MISMATCH 경고는 내지 않음(정확 비교 오류로 대체)', async () => {
+        mockedFs.readFile.mockResolvedValue(Buffer.from(await createMockPdf(1, 210, 297)));
+        const result = await service.validate('./sheet.pdf', sheetOptions(2, {}));
+        expect(pageCountErrors(result.errors)).toHaveLength(1);
+        expect(
+          result.warnings.find((w) => w.code === WarningCode.PAGE_COUNT_MISMATCH),
+        ).toBeUndefined();
+      });
+
+      it('sheet: maxPages 초과 검사는 그대로 선행(PAGE_COUNT_EXCEEDED, sheet 정확 비교 미실행)', async () => {
+        mockedFs.readFile.mockResolvedValue(Buffer.from(await createMockPdf(5, 210, 297)));
+        const result = await service.validate('./sheet.pdf', {
+          ...sheetOptions(2, {}),
+          maxPages: 4,
+        });
+        expect(result.errors.find((e) => e.code === ErrorCode.PAGE_COUNT_EXCEEDED)).toBeDefined();
+        expect(pageCountErrors(result.errors)).toHaveLength(0);
+      });
+
+      // ── 레거시 불변: productKind 미전송이면 종전 cover/content 규칙 그대로 ──
+      it('레거시 불변: productKind 없음 + cover 3쪽 → 종전 PAGE_COUNT_INVALID(1, 2 또는 4페이지 메시지)', async () => {
+        mockedFs.readFile.mockResolvedValue(Buffer.from(await createMockPdf(3, 210, 297)));
+        const result = await service.validate('./legacy-cover.pdf', {
+          ...defaultOptions,
+          fileType: 'cover',
+          orderOptions: { ...defaultOptions.orderOptions, binding: 'spring', pages: 3 },
+        });
+        const errs = pageCountErrors(result.errors);
+        expect(errs).toHaveLength(1);
+        expect(errs[0].message).toContain('1, 2 또는 4페이지');
+        expect(errs[0].details?.expected).toEqual([1, 2, 4]);
+      });
+
+      it('레거시 불변: productKind 없음 + cover 2쪽 → 쪽수 오류 없음', async () => {
+        mockedFs.readFile.mockResolvedValue(Buffer.from(await createMockPdf(2, 210, 297)));
+        const result = await service.validate('./legacy-cover.pdf', {
+          ...defaultOptions,
+          fileType: 'cover',
+          orderOptions: { ...defaultOptions.orderOptions, binding: 'spring', pages: 2 },
+        });
+        expect(pageCountErrors(result.errors)).toHaveLength(0);
+      });
+
+      it('레거시 불변: productKind 없음 + content perfect 6쪽(pageMultiple 없음) → 종전 4의 배수 오류(자동수정)', async () => {
+        mockedFs.readFile.mockResolvedValue(Buffer.from(await createMockPdf(6, 210, 297)));
+        const result = await service.validate('./legacy.pdf', ddOptions({ binding: 'perfect', pages: 6 }));
+        const errs = pageCountErrors(result.errors);
+        expect(errs).toHaveLength(1);
+        expect(errs[0].message).toContain('4의 배수');
+        expect(errs[0].autoFixable).toBe(true);
+        expect(errs[0].fixMethod).toBe('addBlankPages');
+        expect(errs[0].details?.expected).toBe(8);
+      });
+
+      it('레거시 불변: productKind=book 은 sheet 분기를 타지 않음(cover 3쪽 → 종전 오류)', async () => {
+        mockedFs.readFile.mockResolvedValue(Buffer.from(await createMockPdf(3, 210, 297)));
+        const result = await service.validate('./book-cover.pdf', {
+          ...defaultOptions,
+          fileType: 'cover',
+          orderOptions: {
+            ...defaultOptions.orderOptions,
+            binding: 'spring',
+            pages: 3,
+            productKind: 'book',
+          },
+        });
+        expect(pageCountErrors(result.errors)).toHaveLength(1);
+        expect(pageCountErrors(result.errors)[0].message).toContain('1, 2 또는 4페이지');
+      });
+    });
+
+    // ── 2026-10-17(낱장 분류 검증): 후가공 파일 색 규칙 postProcessColorRule ──
+    // 'spot-only' 일 때만 CMYK → POST_PROCESS_CMYK 오류. 미제공·'any' 면 오류도 경고도 없음.
+    describe('후가공 색 규칙 (postProcessColorRule, 2026-10-17)', () => {
+      const postProcessOptions = (
+        orderOverrides: Record<string, unknown> = {},
+      ): ValidationOptions => ({
+        ...defaultOptions,
+        fileType: 'post_process',
+        orderOptions: {
+          ...defaultOptions.orderOptions,
+          pages: 1,
+          ...orderOverrides,
+        } as any,
+      });
+      /** detectColorMode 를 스파이해 CMYK 판정을 주입 — GS 게이트 내부와 무관하게 규칙 가드만 검증 */
+      const spyCmyk = () =>
+        jest.spyOn(service, 'detectColorMode').mockResolvedValue({
+          colorMode: 'CMYK',
+          confidence: 'high',
+          cmykStructure: { hasCmykSignature: true, suspectedCmyk: true, signatures: ['DeviceCMYK'] },
+          warnings: [],
+        } as any);
+
+      beforeEach(async () => {
+        mockedFs.readFile.mockResolvedValue(Buffer.from(await createMockPdf(1, 210, 297)));
+      });
+
+      it('규칙 없음 + CMYK → POST_PROCESS_CMYK 오류 0, CMYK_STRUCTURE_DETECTED 경고 0', async () => {
+        spyCmyk();
+        const result = await service.validate('./pp.pdf', postProcessOptions());
+        expect(result.errors.find((e) => e.code === ErrorCode.POST_PROCESS_CMYK)).toBeUndefined();
+        expect(
+          result.warnings.find((w) => w.code === WarningCode.CMYK_STRUCTURE_DETECTED),
+        ).toBeUndefined();
+        expect(result.metadata.colorMode).toBe('CMYK');
+      });
+
+      it("'spot-only' + CMYK → 종전 POST_PROCESS_CMYK 오류(autoFixable=false)", async () => {
+        spyCmyk();
+        const result = await service.validate(
+          './pp.pdf',
+          postProcessOptions({ postProcessColorRule: 'spot-only' }),
+        );
+        const err = result.errors.find((e) => e.code === ErrorCode.POST_PROCESS_CMYK);
+        expect(err).toBeDefined();
+        expect(err?.autoFixable).toBe(false);
+        expect(err?.details?.colorMode).toBe('CMYK');
+        expect(err?.details?.signatures).toEqual(['DeviceCMYK']);
+        expect(result.isValid).toBe(false);
+      });
+
+      it("'any' + CMYK → 오류 0, 경고 0", async () => {
+        spyCmyk();
+        const result = await service.validate(
+          './pp.pdf',
+          postProcessOptions({ postProcessColorRule: 'any' }),
+        );
+        expect(result.errors.find((e) => e.code === ErrorCode.POST_PROCESS_CMYK)).toBeUndefined();
+        expect(
+          result.warnings.find((w) => w.code === WarningCode.CMYK_STRUCTURE_DETECTED),
+        ).toBeUndefined();
+      });
+
+      it('일반 인쇄 파일(content) + CMYK → 규칙과 무관하게 종전 CMYK_STRUCTURE_DETECTED 경고 유지', async () => {
+        spyCmyk();
+        const result = await service.validate('./content.pdf', {
+          ...defaultOptions,
+          orderOptions: { ...defaultOptions.orderOptions, pages: 1, binding: 'spring' },
+        });
+        expect(result.errors.find((e) => e.code === ErrorCode.POST_PROCESS_CMYK)).toBeUndefined();
+        expect(
+          result.warnings.find((w) => w.code === WarningCode.CMYK_STRUCTURE_DETECTED),
+        ).toBeDefined();
+      });
+
+      it('validate() 는 detectColorMode 에 orderOptions.postProcessColorRule 을 전달한다', async () => {
+        const spy = spyCmyk();
+        await service.validate('./pp.pdf', postProcessOptions({ postProcessColorRule: 'spot-only' }));
+        expect(spy).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.any(String),
+          'post_process',
+          undefined,
+          'spot-only',
+        );
+      });
     });
 
     it('should return warning for missing bleed', async () => {

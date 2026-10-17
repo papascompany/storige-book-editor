@@ -75,6 +75,7 @@ import {
   TenantScope,
 } from '../common/helpers/tenant-scope.helper';
 import { EditSessionEntity, WorkerStatus } from '../edit-sessions/entities/edit-session.entity';
+import { resolveSessionPageCount } from '../edit-sessions/session-page-count';
 import { SitesService } from '../sites/sites.service';
 import { TemplateSetsService } from '../templates/template-sets.service';
 // [자동조립 opt-in] 판형·면지·표지 편집여부 도출 대상 엔티티(타입 전용 참조).
@@ -2805,10 +2806,13 @@ export class WorkerJobsService implements OnModuleInit {
       });
     }
 
-    // 3. 페이지 수(=세트 수×2) 산출. metadata.pages → canvasData.pages 순으로 조회.
-    //    실제 PDF 페이지 수 검증은 워커(handleDuplexSplitSynthesis)에서 최종 수행한다.
-    const pages = session.metadata?.pages || session.canvasData?.pages || [];
-    const totalExpectedPages = pages.length;
+    // 3. 페이지 수(=세트 수×2) 산출(2026-10-16 수정). 종전 `metadata.pages.length` 는 편집기가
+    //    metadata.pages 를 숫자로 보내 항상 undefined → ODD_PAGE_COUNT/EMPTY_SESSION_PAGES 였다.
+    //    resolveSessionPageCount 우선순위: 배열 canvasData 길이 → metadata.pages 숫자 →
+    //    metadata.pages 배열 길이 → legacy canvasData.pages 길이 → 단일 fabric JSON=1 → 0.
+    //    API 는 기대치만 산출한다 — 실제 PDF 페이지 수와의 일치는 워커
+    //    (handleDuplexSplitSynthesis, PAGE_COUNT_MISMATCH)가 다시 검증한다.
+    const totalExpectedPages = resolveSessionPageCount(session);
     if (totalExpectedPages === 0) {
       throw new UnprocessableEntityException({
         code: 'EMPTY_SESSION_PAGES',

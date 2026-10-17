@@ -74,6 +74,15 @@ interface ValidationJobData {
     pageCountMax?: number;
     /** 제본별 페이지수 하한(무선 32 등). 미제공 시 미검사. 위반=경고(비차단). */
     pageCountMin?: number;
+    /**
+     * 2026-10-17(낱장 분류 검증): 상품 분류. 'sheet'=낱장 계열(단면 1·양면 2·N장 낱장) →
+     * 슬롯과 무관하게 actualPages === pages 정확 비교. 미제공=레거시(현행 cover/content 규칙).
+     */
+    productKind?: 'sheet' | 'book';
+    /** 2026-10-17(낱장 분류 검증): 낱장 증감 단위(상품/템플릿셋 설정값). 1 이하·미제공=배수 검사 없음. */
+    pageStep?: number;
+    /** 2026-10-17(낱장 분류 검증): 후가공 파일 색 규칙. 'spot-only'=CMYK 사용 시 오류. 미제공='any'(오류·경고 없음). */
+    postProcessColorRule?: 'any' | 'spot-only';
   };
 }
 

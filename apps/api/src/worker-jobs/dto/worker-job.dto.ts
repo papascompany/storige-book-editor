@@ -93,6 +93,23 @@ export class CreateValidationJobDto {
     pageCountMin?: number;
     /** bookmoa 주문 번호 — 검증/합성 완료 웹훅 echo-back용 (WH-005). bookmoa order.id와 1:1 매핑. */
     orderSeqno?: number;
+    /**
+     * 2026-10-17(낱장 분류 검증): 상품 분류(additive). 'sheet' = 낱장 계열(단면 1·양면 2·N장 낱장) —
+     * 워커가 파일 슬롯(cover/content)과 무관하게 actualPages === pages 를 검사(불일치 = PAGE_COUNT_INVALID,
+     * autoFixable false)하고 cover 1·2·4 규칙·content 제본 규칙·PAGE_COUNT_MISMATCH 경고는 건너뛴다.
+     * 미전송 = 레거시(현행 동작). 편집기 완료 세션은 서버가 파생(sheet-validation-rules.ts).
+     */
+    productKind?: 'sheet' | 'book';
+    /**
+     * 2026-10-17(낱장 분류 검증): 낱장 증감 단위(상품/템플릿셋 설정값). productKind='sheet' 에서 >1 이면
+     * pages 가 이 값의 배수가 아닐 때도 PAGE_COUNT_INVALID. 1 이하·미전송 = 배수 검사 없음.
+     */
+    pageStep?: number;
+    /**
+     * 2026-10-17(낱장 분류 검증): 후가공 파일(fileType 'post_process') 색 규칙. 'spot-only' 일 때만
+     * CMYK 사용을 오류로 본다. 미전송 = 'any'(오류·경고 없음 — 후가공 파일은 선·면적·투명 객체가 정상 입력).
+     */
+    postProcessColorRule?: 'any' | 'spot-only';
   };
 
   @ApiPropertyOptional({

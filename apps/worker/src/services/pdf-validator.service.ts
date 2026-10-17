@@ -322,7 +322,13 @@ export class PdfValidatorService {
         geometryResult,
         whiteOverprintResult,
       ] = await Promise.all([
-        this.detectColorMode(pdfBytes, inputPath, options.fileType),
+        this.detectColorMode(
+          pdfBytes,
+          inputPath,
+          options.fileType,
+          undefined,
+          options.orderOptions.postProcessColorRule,
+        ),
         detectSpotColors('', pdfBytes),
         detectTransparencyAndOverprint('', pdfBytes),
         // R2: poppler(pdfimages -list — CTM 반영 실배치 DPI) 우선. null(미설치/실패) 이면
@@ -422,16 +428,21 @@ export class PdfValidatorService {
     metadata.colorMode = colorModeResult.colorMode;
 
     // 후가공 파일 + CMYK 사용 = 에러 (별색만 허용)
+    // 2026-10-17(낱장 분류 검증): 이 오류는 orderOptions.postProcessColorRule==='spot-only' 일 때만 발행.
+    // 미제공·'any' 면 후가공 파일의 CMYK 는 오류도 경고도 없음(선·라운드·면적·투명 객체가 정상 입력).
+    // 일반 인쇄 파일(비 post_process)의 CMYK_STRUCTURE_DETECTED 경고 경로는 무접촉.
     if (options.fileType === 'post_process' && colorModeResult.colorMode === 'CMYK') {
-      errors.push({
-        code: ErrorCode.POST_PROCESS_CMYK,
-        message: '후가공 파일에 CMYK 색상이 사용되었습니다. 별색(Spot Color)만 허용됩니다.',
-        details: {
-          colorMode: colorModeResult.colorMode,
-          signatures: colorModeResult.cmykStructure?.signatures,
-        },
-        autoFixable: false,
-      });
+      if (options.orderOptions.postProcessColorRule === 'spot-only') {
+        errors.push({
+          code: ErrorCode.POST_PROCESS_CMYK,
+          message: '후가공 파일에 CMYK 색상이 사용되었습니다. 별색(Spot Color)만 허용됩니다.',
+          details: {
+            colorMode: colorModeResult.colorMode,
+            signatures: colorModeResult.cmykStructure?.signatures,
+          },
+          autoFixable: false,
+        });
+      }
     } else if (colorModeResult.colorMode === 'CMYK') {
       // 일반 인쇄 파일의 CMYK는 경고만
       warnings.push({
@@ -905,6 +916,7 @@ export class PdfValidatorService {
         dl.path,
         options.fileType,
         { cmykStructure: scan.cmyk as CmykStructureResult, fileSize: dl.size },
+        options.orderOptions.postProcessColorRule,
       );
       const spotColorResult = scan.spot;
       const transparencyResult = scan.transparency;
@@ -1016,6 +1028,41 @@ export class PdfValidatorService {
         },
         autoFixable: false,
       });
+      return;
+    }
+
+    // 2026-10-17(낱장 분류 검증): 슬롯이 아니라 상품 분류로 판정 — 단면 1·양면 2·N장 낱장,
+    // 설계안 docs/PRODUCT_MODE_ARCHITECTURE_DESIGN_2026-10-16.md §6.2.
+    // productKind='sheet' 면 cover/content 슬롯과 무관하게 주문 쪽수와 정확 비교하고(불일치=오류,
+    // 낱장은 빈 쪽 추가가 정답이 아니므로 autoFixable=false), pageStep>1 이면 배수 위반도 오류.
+    // 그 뒤 return — cover 1·2·4 규칙·content 제본 규칙·PAGE_COUNT_MISMATCH 경고는 실행하지 않는다.
+    // productKind 미제공(레거시)이면 이 블록은 건너뛰어 아래 현행 경로가 byte-identical 로 유지된다.
+    if (options.orderOptions.productKind === 'sheet') {
+      if (expectedPages > 0 && actualPages !== expectedPages) {
+        errors.push({
+          code: ErrorCode.PAGE_COUNT_INVALID,
+          message: `낱장 상품은 정확히 ${expectedPages}쪽이어야 합니다. (현재: ${actualPages}페이지)`,
+          details: {
+            expected: expectedPages,
+            actual: actualPages,
+            productKind: 'sheet',
+          },
+          autoFixable: false,
+        });
+      }
+      const pageStep = options.orderOptions.pageStep;
+      if (pageStep != null && pageStep > 1 && actualPages % pageStep !== 0) {
+        errors.push({
+          code: ErrorCode.PAGE_COUNT_INVALID,
+          message: `낱장 상품의 페이지 수는 ${pageStep}의 배수여야 합니다. (현재: ${actualPages}페이지)`,
+          details: {
+            expected: Math.ceil(actualPages / pageStep) * pageStep,
+            actual: actualPages,
+            pageStep,
+          },
+          autoFixable: false,
+        });
+      }
       return;
     }
 
@@ -2188,6 +2235,9 @@ export class PdfValidatorService {
     // 주입해 pdfBytes 전체버퍼 의존(detectCmykStructure·pdfBytes.length)을 우회한다.
     // 미전달(OFF 경로) 시 동작은 기존과 완전히 동일하다.
     precomputed?: { cmykStructure: CmykStructureResult; fileSize: number },
+    // 2026-10-17(낱장 분류 검증): 후가공 색 규칙(additive). 'spot-only' 일 때만 아래 inkcov
+    // CMYK 경고를 남긴다. 미전달·'any' 면 후가공 CMYK 경고 없음.
+    postProcessColorRule?: 'any' | 'spot-only',
   ): Promise<ColorModeResult> {
     const warnings: string[] = [];
 
@@ -2241,7 +2291,12 @@ export class PdfValidatorService {
       ]);
 
       // 후가공 파일 + CMYK 사용 = 오류 (별도 처리 필요시 여기서 throw)
-      if (fileType === 'post_process' && inkCoverage.totalCmykUsage) {
+      // 2026-10-17(낱장 분류 검증): postProcessColorRule==='spot-only' 일 때만 적용.
+      if (
+        fileType === 'post_process' &&
+        postProcessColorRule === 'spot-only' &&
+        inkCoverage.totalCmykUsage
+      ) {
         this.logger.warn('Post-process file contains CMYK colors');
         // 에러는 호출자에서 처리하도록 결과에 포함
         warnings.push(

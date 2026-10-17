@@ -55,8 +55,11 @@ import type { PartnerOperatorGrant } from '../auth/partner-operator/partner-oper
 import type { PartnerOperatorAuditDetail } from '../auth/entities/partner-operator-audit-log.entity';
 import { computeEditRetention, editRetentionExpired } from '../staff-edit-data/edit-retention';
 import { staffAuditUnavailable, staffDeleteNotAllowed } from '../staff-edit-data/staff-actor';
+import { resolveSessionPageCount } from './session-page-count';
+import { deriveSheetValidationRules } from './sheet-validation-rules';
 import {
   isEditorContentPageRulesOn,
+  isEditorSheetValidationRulesOn,
   isEditorSpreadValidationMappingOn,
   isSessionJobOutputLookupOn,
   isSpreadSnapshotHardFail,
@@ -1868,6 +1871,23 @@ export class EditSessionsService {
         }
       }
 
+      // 2026-10-17(낱장 분류 검증): 낱장 판정(spine/wing/spread 템플릿 유무)용 템플릿 타입 1회 조회.
+      // 킬스위치 off·템플릿셋 미연결·조회 실패는 null → 레거시(sheet 키 미주입). 완료는 계속.
+      const sheetRulesOn = isEditorSheetValidationRulesOn();
+      let templateTypes: string[] | null = null;
+      if (sheetRulesOn && session.templateSetId) {
+        try {
+          const { templateDetails } = await this.templateSetsService.findOneWithTemplates(
+            session.templateSetId,
+          );
+          templateTypes = templateDetails.map((t) => String(t.type));
+        } catch (error) {
+          this.logger.warn(
+            `[validation-jobs] templateSet ${session.templateSetId} 템플릿 타입 조회 실패(낱장 분류 생략, 완료는 계속): ${(error as Error).message}`,
+          );
+        }
+      }
+
       // 내지 펼침면 세트 여부/크기 해석 (내지 spread 가 없는 세트는 kind 'none' → 기존 폴백).
       // 결과는 아래 R-195 블록 뒤에서 content 잡 옵션에만 적용한다.
       const innerLayout = await this.resolveInnerSpreadContentSizeMm(session);
@@ -1890,7 +1910,16 @@ export class EditSessionsService {
           (templateSet
             ? { width: templateSet.width, height: templateSet.height }
             : { width: 210, height: 297 }),
-        pages: session.metadata?.pages || 1,
+        // 2026-10-16(낱장 N장): 편집기 다캔버스 낱장 세션(canvasData 배열)만 실제 캔버스 수를
+        // 기대 쪽수로 쓴다 — 편집기가 캔버스당 1페이지 PDF 를 내므로 PAGE_COUNT_MISMATCH 기대치와 정합.
+        // 제외: 편집기 책 세션(metadata.spread — 배열은 [표지,...내지]라 내지 PDF 쪽수가 아님)과
+        // 내지 펼침면 세트(PDF 1쪽=펼침면). 그 외(단일 객체·미저장)는 종전 식 그대로.
+        pages:
+          Array.isArray(session.canvasData) &&
+          !session.metadata?.spread &&
+          innerLayout.kind !== 'inner-spread'
+            ? resolveSessionPageCount(session)
+            : session.metadata?.pages || 1,
         binding: session.metadata?.binding || 'perfect',
         // ?? (|| 아님): 도련無(bleed=0) 상품의 명시적 0 을 보존한다.
         // || 사용 시 0 이 3 으로 덮여 작업사이즈가 trim+6mm 로 오산정→정상 PDF 가 SIZE_MISMATCH 로 오검증(R2).
@@ -2042,6 +2071,27 @@ export class EditSessionsService {
         } catch (e) {
           this.logger.warn(
             `[validation-jobs] session ${session.id} 내지 쪽 규칙 생략(기존 옵션 유지): ${(e as Error).message}`,
+          );
+        }
+      }
+
+      // ── 2026-10-17(낱장 분류 검증): 낱장(single 세트, spine/wing/spread 없음) → 두 잡 모두 productKind='sheet' ──
+      // 판정 근거는 sheet-validation-rules.ts 머리말. 워커는 sheet 분기에서 actualPages === pages 정확 비교
+      // 뒤 바로 return 하므로, 위 N-API-3b 가 content 잡에 pageMultiple 을 실어도 공존해 무해하다(무접촉).
+      // null = 레거시(키 미주입 = 현행 byte-identical). 비상 차단: EDITOR_SHEET_VALIDATION_RULES=off.
+      if (sheetRulesOn) {
+        const sheetRules = deriveSheetValidationRules({
+          session,
+          templateSet,
+          templateTypes,
+          innerLayoutKind: innerLayout.kind,
+        });
+        if (sheetRules) {
+          coverOrderOptions = { ...coverOrderOptions, ...sheetRules };
+          contentOrderOptions = { ...contentOrderOptions, ...sheetRules };
+          this.logger.log(
+            `[validation-jobs] session ${session.id} 낱장 분류 규칙: productKind=sheet ` +
+              `pageStep=${sheetRules.pageStep ?? '-'} pages=${coverOrderOptions.pages}`,
           );
         }
       }

@@ -57,6 +57,8 @@ import {
 } from './utils/photobookSpread'
 import { shouldReemitPricing, type PricingEmitState } from './utils/pricingChangeReemit'
 import { computeEmbedPageState, type EmbedPageState } from './utils/embedPageState'
+import { collectCanvasData } from './utils/collectCanvasData'
+import { selectSingleModePdfCanvases } from './utils/singleModePdfCanvases'
 import { templatesApi, editSessionsApi, filesApi, apiClient, type EditSessionResponse, type TemplateSet } from './api'
 import { core, ServicePlugin } from '@storige/canvas-core'
 import type { PhotobookPricing, TemplateSetCoverMeta } from '@storige/types'
@@ -2348,8 +2350,9 @@ function EmbeddedEditor({
         }
 
         try {
-          // Get canvas data
-          const canvasData = canvas?.toJSON(core.extendFabricOption) || null
+          // Get canvas data — P0 (2026-10-16): 멀티페이지면 전 캔버스 배열(단일 캔버스로 덮어쓰기 방지).
+          // allCanvas 0·1장이면 종전과 같은 단일 객체/null.
+          const canvasData = collectCanvasData(useAppStore.getState().allCanvas, canvas)
 
           // Update edit session with canvas data (게스트 세션이면 guestToken 동봉)
           const guestToken = currentSession?.guestToken
@@ -2413,8 +2416,8 @@ function EmbeddedEditor({
         }
 
         try {
-          // First save current state
-          const canvasData = canvas?.toJSON(core.extendFabricOption) || null
+          // First save current state — P0 (2026-10-16): handleFinish 와 같은 직렬화(멀티페이지면 배열).
+          const canvasData = collectCanvasData(useAppStore.getState().allCanvas, canvas)
 
           // 게스트 세션: 회원 전용 complete 불가 → 저장만 하고 로그인 유도
           const guestToken = currentSession?.guestToken
@@ -2588,9 +2591,7 @@ function EmbeddedEditor({
         isSpreadMode &&
         !!spreadCfg &&
         (spreadCfg.regionScope === 'inner' ? allCanvas.length >= 1 : allCanvas.length > 1)
-      const canvasData = allCanvas.length > 1
-        ? allCanvas.map((c) => c.toJSON(core.extendFabricOption))
-        : (canvas?.toJSON(core.extendFabricOption) || null)
+      const canvasData = collectCanvasData(allCanvas, canvas)
 
       // 게스트 세션: PDF 생성/회원 complete 불가 → 저장만 하고 로그인 유도
       const guestToken = currentSession?.guestToken
@@ -2820,17 +2821,28 @@ function EmbeddedEditor({
                 },
               )
             }
+            // P0 (2026-10-16): 낱장 N장 세트(같은 판형 캔버스 N개)는 전 캔버스를 한 PDF 로 생성.
+            // 1캔버스·spine/wing 혼재(크기 상이)·길이 불일치는 종전과 같은 [canvas],[editor] 로 폴백.
+            const pdfSel = selectSingleModePdfCanvases({
+              canvas, editor, allCanvas, allEditors,
+              pages: useEditorStore.getState().pages,
+            })
+            if (pdfSel.reason === 'fallback-mixed-types' || pdfSel.reason === 'fallback-length-mismatch') {
+              console.warn('[EmbeddedEditor] 단일모드 PDF: 현재 캔버스 1장으로 폴백 —', pdfSel.reason, { canvasCount: allCanvas.length })
+            }
             await finishMark('single:gen:start', {
               mode: effectiveMode,
               ...(singlePdfSize.swapped ? { sizeSwapNormalized: true } : {}),
+              canvasSelection: pdfSel.reason,
+              canvasCount: pdfSel.canvases.length,
             })
             const pdfBlob = await withWatchdog(
               runWithAutosaveSuspended(() => servicePlugin.saveMultiPagePDFAsBlob(
-                [canvas], [editor], `session-${currentSessionId}`,
+                pdfSel.canvases, pdfSel.editors, `session-${currentSessionId}`,
                 { width: singlePdfSize.width, height: singlePdfSize.height, cutSize: bleed, ...markOpt },
                 undefined, 300,
               )),
-              120000, 'single-gen',
+              Math.max(120000, 15000 * pdfSel.canvases.length), 'single-gen',
             )
             await finishMark('single:gen:done', { bytes: pdfBlob?.size })
             if (pdfBlob) {
