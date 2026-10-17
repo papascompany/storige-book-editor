@@ -50,7 +50,7 @@ describe('CALENDAR_PROFILE_PRESETS — 오너 확정 7종', () => {
 });
 
 describe('calendarPresetFormValues — 프리셋 적용 폼 값', () => {
-  it('단일 모드·양면 원파일·내지 추가 불가·[26,26]·pageStep 없음·JSON textarea', () => {
+  it('단일 모드·양면 원파일·내지 추가 불가·[26,26]·pageStep 없음·재단선 마커+도련 3mm·JSON textarea', () => {
     const values = calendarPresetFormValues(CALENDAR_PROFILE_PRESETS[0]);
     expect(values).toMatchObject({
       width: 265,
@@ -61,6 +61,8 @@ describe('calendarPresetFormValues — 프리셋 적용 폼 값', () => {
       pageCountMin: 26,
       pageCountMax: 26,
       pageStep: undefined,
+      cropMarkEnabled: true,
+      bleedMm: 3,
     });
     expect(values.productProfileJson).toContain('"editorType": "calendar_desk_large"');
     expect(JSON.parse(values.productProfileJson)).toEqual(CALENDAR_PROFILE_PRESETS[0].profile);

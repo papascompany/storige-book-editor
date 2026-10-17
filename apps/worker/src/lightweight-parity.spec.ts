@@ -186,6 +186,10 @@ runOrSkip('S6 coverLayout=separate — 경량(ON) 경로', () => {
     fileType: 'cover',
     orderOptions: { size: { width: 210, height: 297 }, pages: 8, binding: 'saddle', bleed: 3 },
   });
+  const noSpineOpts = (): ValidationOptions => ({
+    fileType: 'cover',
+    orderOptions: { size: { width: 210, height: 297 }, pages: 1, binding: 'perfect', bleed: 3, coverSpine: 'none' },
+  });
   const parityCases: { name: string; sizes: [number, number][]; opts: () => ValidationOptions }[] = [
     { name: 'separate 앞·뒤 정규격', sizes: [[216, 303], [216, 303]], opts: sepOpts },
     { name: 'separate 뒤표지만 불일치', sizes: [[216, 303], [200, 280]], opts: sepOpts },
@@ -193,6 +197,8 @@ runOrSkip('S6 coverLayout=separate — 경량(ON) 경로', () => {
     { name: 'separate 앞·뒤 모두 불일치', sizes: [[430, 303], [430, 303]], opts: sepOpts },
     { name: 'separate 1쪽 불일치', sizes: [[430, 303]], opts: sepOpts },
     { name: '비 separate(사철 표지) 뒤쪽 불일치 — 2쪽 미검사', sizes: [[216, 303], [200, 280]], opts: saddleOpts },
+    // 2026-10-17 P1-e: 프로파일 세트 cover 슬롯(coverSpine='none') — 무선이어도 단일 판형 경로(두 경로 동일)
+    { name: "무선 표지 coverSpine='none' 정규격 1쪽", sizes: [[216, 303]], opts: noSpineOpts },
   ];
   for (const c of parityCases) {
     it(`파리티 OFF==ON: ${c.name}`, async () => {

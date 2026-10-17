@@ -52,7 +52,7 @@ export interface CalendarGridExtension {
   /** 캔버스 월 기준 상대 이동(mini 전월 -1 / 익월 +1). 기본 0 */
   monthDelta?: number;
   weekStart?: 0 | 1;
-  show?: { holidays?: boolean; lunar?: boolean; solarTerms?: boolean };
+  show?: { holidays?: boolean; lunar?: boolean; solarTerms?: boolean; temporaryHolidays?: boolean };
   style?: CalendarGridStyle;
 }
 
@@ -63,7 +63,8 @@ export interface CalendarRenderContext {
   /** 이 캔버스의 상대 월(0~11). 표지·에필로그 캔버스면 null */
   canvasMonthOffset: number | null;
   weekStart: 0 | 1;
-  show: { holidays: boolean; lunar: boolean; solarTerms: boolean };
+  /** `temporaryHolidays`(임시공휴일·선거일 표시)는 생략 시 false — 법정 공휴일만 휴일로 칠한다 */
+  show: { holidays: boolean; lunar: boolean; solarTerms: boolean; temporaryHolidays?: boolean };
   anniversaries: AnniversaryInput[];
   data: CalendarData;
 }
@@ -317,11 +318,14 @@ class CalendarPlugin extends PluginBase {
       holidays: ext.show?.holidays ?? ctx.show.holidays,
       lunar: ext.show?.lunar ?? ctx.show.lunar,
       solarTerms: ext.show?.solarTerms ?? ctx.show.solarTerms,
+      temporaryHolidays: ext.show?.temporaryHolidays ?? ctx.show.temporaryHolidays ?? false,
     };
     const matrix = buildMonthMatrix(ym.year, ym.month, {
       weekStart,
       data: ctx.data,
       anniversaries: ctx.anniversaries,
+      // 임시공휴일·선거일은 옵션을 켠 경우만 휴일(색·라벨)로 취급 — 기본은 법정 공휴일만(2026-10-17)
+      includeTemporaryHolidays: show.temporaryHolidays,
     });
 
     const children: fabric.Object[] = [];
@@ -331,10 +335,13 @@ class CalendarPlugin extends PluginBase {
     const showLines = style.showLines ?? !isMini;
     const rows = (style.rows ?? 'fixed6') === 'used' ? Math.max(4, matrix.usedRows) : 6;
 
-    // 경계 사각형(투명) — 그룹 크기를 박스에 고정한다
+    // 경계 사각형(투명) — 그룹 크기를 박스에 고정한다.
+    // fill 은 'transparent' 가 아니라 ''(none): 'transparent' 는 fabric toSVG 가 `fill: rgb(0,0,0); fill-opacity: 0`
+    // 으로 내보내 svg2pdf 가 `/ca 0` ExtGState 를 만들고 워커가 TRANSPARENCY_DETECTED 로 경고한다(2026-10-17).
+    // '' 는 `fill: none` 으로 나가 ExtGState 없이 그리기만 생략된다. 화면·크기·rehydrate(width/height 읽기)는 동일.
     children.push(new fabric.Rect({
       left: 0, top: 0, width, height,
-      fill: 'transparent', stroke: undefined, strokeWidth: 0,
+      fill: '', stroke: undefined, strokeWidth: 0,
       selectable: false, evented: false, id: `${id}-bounds`,
     } as fabric.IRectOptions));
 

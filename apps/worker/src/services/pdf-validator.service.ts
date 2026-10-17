@@ -197,9 +197,12 @@ export class PdfValidatorService {
       // 표지·내지는 현행 그대로. validatePageSize 본문은 무접촉(48케이스 계약).
       // S6: coverLayout='separate'(앞/뒤 낱장 2쪽 표지)는 스프레드가 아니므로 제본·spine
       // 해석과 무관하게 단일 판형 검증(W×H+도련)으로 돌리고 validateSpine 을 건너뛴다.
+      // P1-e(2026-10-17): coverSpine='none'(프로파일 세트 cover 슬롯 — 책등 없음)도 동일하게
+      // 게이트 false. 키 미전송·무효값이면 기존 식과 동치.
       const coverSpineAuthoritative =
         options.fileType === 'cover' &&
         !this.isCoverSeparateLayout(options) &&
+        !this.isCoverSpineNone(options) &&
         (this.isCoverSpreadBinding(options) || this.hasSpineExpectation(options.orderOptions));
       if (!coverSpineAuthoritative) {
         const frontSizeErrStart = errors.length;
@@ -245,7 +248,12 @@ export class PdfValidatorService {
       // 8. 책등 크기 검증 (표지인 경우) — R-44: 높이 축 포함(위 6 대체 시 공백 방지)
       // R-53: 미해석 스프레드 표지는 SPINE_PARAMS_UNRESOLVED 경고(warnings) 발행
       // S6: separate 표지는 스프레드 기대치 자체가 없음 — 책등 검증·미해석 고지 모두 생략
-      if (options.fileType === 'cover' && !this.isCoverSeparateLayout(options)) {
+      // P1-e: coverSpine='none' 도 책등 없음 — 생략(SPINE_* 경고·오류·metadata.spineSize 없음)
+      if (
+        options.fileType === 'cover' &&
+        !this.isCoverSeparateLayout(options) &&
+        !this.isCoverSpineNone(options)
+      ) {
         this.validateSpine(widthMm, heightMm, options, errors, warnings, metadata);
       }
 
@@ -822,9 +830,11 @@ export class PdfValidatorService {
       this.validatePageCount(pageCount, options, errors, warnings);
       // R-44/R-53: OFF 경로와 동일 분기 — 스프레드 표지는 스킵(해석 시 SPINE 대체,
       // 미해석 시 SPINE_PARAMS_UNRESOLVED 비차단 고지). S6: separate 표지는 단일 판형.
+      // P1-e: coverSpine='none' 도 단일 판형(OFF 경로와 동일 게이트).
       const coverSpineAuthoritative =
         options.fileType === 'cover' &&
         !this.isCoverSeparateLayout(options) &&
+        !this.isCoverSpineNone(options) &&
         (this.isCoverSpreadBinding(options) || this.hasSpineExpectation(options.orderOptions));
       if (!coverSpineAuthoritative) {
         const frontSizeErrStart = errors.length;
@@ -865,8 +875,12 @@ export class PdfValidatorService {
       if (!coverSpineAuthoritative) {
         this.validateBleed(widthMm, heightMm, options, warnings, metadata);
       }
-      // S6: OFF 경로와 동일 — separate 표지는 책등 검증 생략
-      if (options.fileType === 'cover' && !this.isCoverSeparateLayout(options)) {
+      // S6: OFF 경로와 동일 — separate 표지는 책등 검증 생략. P1-e: coverSpine='none' 도 생략
+      if (
+        options.fileType === 'cover' &&
+        !this.isCoverSeparateLayout(options) &&
+        !this.isCoverSpineNone(options)
+      ) {
         this.validateSpine(widthMm, heightMm, options, errors, warnings, metadata);
       }
       this.validatePageOrientation(
@@ -1713,6 +1727,16 @@ export class PdfValidatorService {
   private isCoverSpreadBinding(options: ValidationOptions): boolean {
     const binding = options.orderOptions.binding;
     return options.fileType === 'cover' && (binding === 'perfect' || binding === 'hardcover');
+  }
+
+  /**
+   * P1-e(2026-10-17): 표지에 책등이 없는가 — orderOptions.coverSpine === 'none' 일 때만 true
+   * (프로파일 세트의 cover 슬롯: 캘린더 단일 PDF 등). 미전송·그 외 값은 false(현행 binding 기준 경로
+   * byte-identical). true 면 콜사이트가 binding 과 무관하게 단일 판형 validatePageSize/validateBleed 를
+   * 수행하고 validateSpine 을 생략한다. 내지(content)에 실려와도 무영향.
+   */
+  private isCoverSpineNone(options: ValidationOptions): boolean {
+    return options.fileType === 'cover' && options.orderOptions.coverSpine === 'none';
   }
 
   /**

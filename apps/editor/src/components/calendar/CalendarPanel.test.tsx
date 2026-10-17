@@ -15,7 +15,7 @@ vi.mock('@storige/canvas-core', async (importOriginal) => {
 })
 
 import { resolveAnniversarySolarDate, CALENDAR_DATA_KR_2025_2035_V1 } from '@storige/canvas-core'
-import CalendarPanel, { DUPLICATE_DATE_MESSAGE, LUNAR_DATA_PENDING_MESSAGE, OUT_OF_RANGE_BADGE, START_MONTH_CONFIRM_MESSAGE } from './CalendarPanel'
+import CalendarPanel, { DUPLICATE_DATE_MESSAGE, LUNAR_DATA_PENDING_MESSAGE, OUT_OF_RANGE_BADGE, START_MONTH_CONFIRM_MESSAGE, TEMPORARY_HOLIDAYS_LABEL } from './CalendarPanel'
 import { useAppStore } from '@/stores/useAppStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useCalendarStore } from '@/stores/useCalendarStore'
@@ -163,6 +163,24 @@ describe('CalendarPanel — 표기 옵션', () => {
     })
     expect(useCalendarStore.getState().meta?.show).toEqual({ holidays: true, lunar: true, solarTerms: false })
     expect(rehydrateAll).toHaveBeenCalledTimes(1)
+  })
+
+  it('임시공휴일·선거일 체크박스: 기본 해제(키 없음 = false), 토글 → show.temporaryHolidays + rehydrateAll (2026-10-17)', async () => {
+    wireCalendar()
+    const box = screen.getByLabelText(TEMPORARY_HOLIDAYS_LABEL) as HTMLInputElement
+    expect(box.checked).toBe(false)
+    expect(useCalendarStore.getState().meta?.show).not.toHaveProperty('temporaryHolidays')
+    await act(async () => {
+      fireEvent.click(box)
+    })
+    expect(useCalendarStore.getState().meta?.show).toEqual({ holidays: true, lunar: false, solarTerms: false, temporaryHolidays: true })
+    expect((screen.getByLabelText(TEMPORARY_HOLIDAYS_LABEL) as HTMLInputElement).checked).toBe(true)
+    expect(rehydrateAll).toHaveBeenCalledTimes(1)
+    await act(async () => {
+      fireEvent.click(screen.getByLabelText(TEMPORARY_HOLIDAYS_LABEL))
+    })
+    expect(useCalendarStore.getState().meta?.show).toEqual({ holidays: true, lunar: false, solarTerms: false, temporaryHolidays: false })
+    expect(rehydrateAll).toHaveBeenCalledTimes(2)
   })
 })
 

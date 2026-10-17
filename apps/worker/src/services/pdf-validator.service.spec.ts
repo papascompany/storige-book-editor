@@ -1140,6 +1140,89 @@ describe('PdfValidatorService', () => {
         expect(withLayout).toEqual(base);
       });
 
+      // ── 2026-10-17 P1-e(상품 프로파일): coverSpine='none' — 프로파일 세트 cover 슬롯(캘린더 단일 PDF)은
+      //    책등이 없으므로 binding perfect 여도 spine 게이트를 건너뛰고 단일 판형·도련 검증으로 간다 ──
+      describe("coverSpine='none' (프로파일 세트 cover 슬롯)", () => {
+        const noSpine = (over: Record<string, unknown> = {}) => coverOpts({ coverSpine: 'none', ...over });
+
+        it('무선 + coverSpine none + 정규격(216×303) → SIZE 통과·도련 인정·SPINE_PARAMS_UNRESOLVED 미발행·spineSize 없음', async () => {
+          const pdfBytes = await createMockPdf(1, 216, 303);
+          mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
+          const result = await service.validate('./nospine-ok.pdf', noSpine({ pages: 1 }));
+          expect(sizeErr(result)).toBeUndefined();
+          expect(spineErr(result)).toBeUndefined();
+          expect(hasUnresolved(result)).toBe(false);
+          expect(hasBleedMissing(result)).toBe(false);
+          expect(result.metadata.hasBleed).toBe(true);
+          expect(result.metadata.spineSize).toBeUndefined();
+          expect(result.isValid).toBe(true);
+        });
+
+        it('무선 + coverSpine none + 규격 불일치(426×303, 전개폭) → SIZE_MISMATCH(단일 판형 검사 수행)', async () => {
+          const pdfBytes = await createMockPdf(1, 426, 303);
+          mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
+          const result = await service.validate('./nospine-bad.pdf', noSpine({ pages: 1 }));
+          expect(sizeErr(result)).toBeDefined();
+          expect(spineErr(result)).toBeUndefined();
+          expect(hasUnresolved(result)).toBe(false);
+        });
+
+        it('무선 + coverSpine none + 도련 없는 재단 규격(210×297) → BLEED_MISSING(validateBleed 수행)', async () => {
+          const pdfBytes = await createMockPdf(1, 210, 297);
+          mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
+          const result = await service.validate('./nospine-nobleed.pdf', noSpine({ pages: 1 }));
+          expect(hasBleedMissing(result)).toBe(true);
+          expect(hasUnresolved(result)).toBe(false);
+        });
+
+        it('coverSpine none + spineWidthMm 동봉(해석 가능) → validateSpine 자체 생략(SPINE_SIZE_MISMATCH·spineSize 없음)', async () => {
+          const pdfBytes = await createMockPdf(1, 216, 303);
+          mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
+          const result = await service.validate('./nospine-spinew.pdf', noSpine({ pages: 1, spineWidthMm: 10 }));
+          expect(spineErr(result)).toBeUndefined();
+          expect(sizeErr(result)).toBeUndefined();
+          expect(result.metadata.spineSize).toBeUndefined();
+        });
+
+        it('양장 + coverSpine none → 무선과 동일하게 단일 판형 경로', async () => {
+          const pdfBytes = await createMockPdf(1, 216, 303);
+          mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
+          const result = await service.validate('./nospine-hc.pdf', noSpine({ pages: 1, binding: 'hardcover' }));
+          expect(sizeErr(result)).toBeUndefined();
+          expect(hasUnresolved(result)).toBe(false);
+          expect(result.metadata.hasBleed).toBe(true);
+        });
+
+        it('내지(content)에 coverSpine 이 실려와도 무영향', async () => {
+          const pdfBytes = await createMockPdf(4, 216, 303);
+          mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
+          const base = await service.validate('./content.pdf', {
+            fileType: 'content',
+            orderOptions: { size: { width: 210, height: 297 }, pages: 4, binding: 'perfect', bleed: 3 },
+          } as ValidationOptions);
+          const withKey = await service.validate('./content.pdf', {
+            fileType: 'content',
+            orderOptions: {
+              size: { width: 210, height: 297 }, pages: 4, binding: 'perfect', bleed: 3,
+              coverSpine: 'none',
+            },
+          } as ValidationOptions);
+          expect(withKey).toEqual(base);
+        });
+
+        it("불변: coverSpine 미전송·무효값은 현행 스프레드 판정과 결과 동일(미해석 → SPINE_PARAMS_UNRESOLVED)", async () => {
+          const pdfBytes = await createMockPdf(1, 216, 303);
+          mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
+          const base = await service.validate('./spread.pdf', coverOpts({ pages: 1 }));
+          expect(hasUnresolved(base)).toBe(true);
+          expect(sizeErr(base)).toBeUndefined();
+          for (const v of ['spread', 'NONE', 'foo', null]) {
+            const r = await service.validate('./spread.pdf', coverOpts({ pages: 1, coverSpine: v }));
+            expect(r).toEqual(base);
+          }
+        });
+      });
+
       // ── S6 후속(2026-09-29): 2쪽(뒤표지)도 1쪽과 동일 규칙으로 판형 검증 ──
       describe('뒤표지(2쪽) 판형 검증', () => {
         const createPdfPages = async (sizes: [number, number][]) => {

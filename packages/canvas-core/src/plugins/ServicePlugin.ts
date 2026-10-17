@@ -8,6 +8,31 @@ import { convertFabricObjectToSVGString, core, mmToPx, pxToMm } from '../utils'
 import { dlog } from '../utils/debugLog'
 import { computePdfPageGeometry } from './pdfPageGeometry'
 
+/**
+ * P1 캘린더 (2026-10-17): 상품 프로파일 세트 전용 PDF export 옵션(additive).
+ * 모든 필드 미전달/false 면 종전 코드 경로·바이트와 동일하다(프로파일 NULL 세트 불변).
+ * 워커 preflight 경고(FONT_NOT_EMBEDDED / TRANSPARENCY_DETECTED)의 편집기 측 원인을 제거한다.
+ */
+export interface PdfExportOptions {
+  /**
+   * jsPDF `putOnlyUsedFonts: true` — 기본 생성자가 선언하는 표준 14 폰트(미임베드·미사용)를
+   * 폰트 딕셔너리에 싣지 않는다(pdffonts `emb=no` 판정 원인). 텍스트는 벡터화되어 폰트를 쓰지 않는다.
+   */
+  omitUnusedFonts?: boolean
+  /**
+   * 워크스페이스 rect 를 `fill:'transparent'`(fabric → `fill-opacity: 0` → svg2pdf `/ca 0` ExtGState)
+   * 대신 `excludeFromExport` 로 SVG 에서 통째로 제외한다. canvas.clipPath 로서의 역할은 유지된다
+   * (fabric createSVGClipPathMarkup 은 excludeFromExport 를 보지 않는다).
+   */
+  excludeWorkspaceFromExport?: boolean
+  /**
+   * toSVG 동안 캔버스 객체(그룹 하위 포함)의 `fill`/`stroke === 'transparent'` 를 `''`(SVG `none`)로
+   * 치환했다가 원복한다. 'transparent' 는 fabric 이 `rgb(0,0,0); *-opacity: 0` 으로 내보내
+   * svg2pdf 가 `/ca`·`/CA 0` ExtGState 를 만들지만, `none` 은 ExtGState 없이 그리기만 생략한다.
+   */
+  neutralizeTransparentFills?: boolean
+}
+
 class ServicePlugin extends PluginBase {
   name = 'ServicePlugin'
   events = []
@@ -34,6 +59,43 @@ class ServicePlugin extends PluginBase {
       ServicePlugin._pdfDeps = p
     }
     return ServicePlugin._pdfDeps
+  }
+
+  /** fabric 색 값이 'transparent' 키워드인지 — SVG 로 `rgb(0,0,0); *-opacity: 0` 이 되어 ExtGState 를 유발하는 값 */
+  static isTransparentColor(value: unknown): boolean {
+    return typeof value === 'string' && value.trim().toLowerCase() === 'transparent'
+  }
+
+  /**
+   * P1 캘린더 (2026-10-17): 캔버스 객체(그룹 하위 재귀, excludeFromExport 제외)의 fill/stroke 'transparent' 를
+   * ''(fabric getSvgStyles → `fill: none`) 로 치환하고, 원래 값으로 되돌리는 함수를 반환한다.
+   * svg2pdf 는 `none` 을 fill=null 로 읽어 ExtGState(`/ca`·`/CA`) 없이 그리기만 생략한다(fillOrStroke → discardPath).
+   * 치환 대상은 'transparent' 문자열만 — rgba(…,0)·opacity<1 등 사용자 지정 투명도는 건드리지 않는다.
+   */
+  static neutralizeTransparentFills(canvas: fabric.Canvas): () => void {
+    const restores: Array<() => void> = []
+    const visit = (obj: fabric.Object): void => {
+      if (obj.excludeFromExport) return
+      if (ServicePlugin.isTransparentColor(obj.fill)) {
+        const original = obj.fill
+        obj.set('fill', '')
+        restores.push(() => obj.set('fill', original))
+      }
+      if (ServicePlugin.isTransparentColor(obj.stroke)) {
+        const original = obj.stroke
+        obj.set('stroke', '')
+        restores.push(() => obj.set('stroke', original))
+      }
+      if (obj.type === 'group') {
+        const children = (obj as fabric.Group)._objects
+        if (Array.isArray(children)) children.forEach(visit)
+      }
+    }
+    canvas.getObjects().forEach(visit)
+    return () => {
+      // 역순 원복(같은 객체의 fill/stroke 순서 무관하지만 push 순서의 역으로 안전하게)
+      for (let i = restores.length - 1; i >= 0; i -= 1) restores[i]()
+    }
   }
 
   /**
@@ -274,7 +336,9 @@ class ServicePlugin extends PluginBase {
     cutLine?: fabric.Object,
     dpi: number = 72,
     /** 페이지 진행 콜백(다페이지 생성 UX/진단용) — 페이지 시작 시 (1-based page, total) 호출 */
-    onProgress?: (page: number, total: number) => void
+    onProgress?: (page: number, total: number) => void,
+    /** 프로파일 세트 전용 export 옵션(additive). 미전달 = 종전 경로·바이트 동일 (PdfExportOptions 참조) */
+    exportOptions?: PdfExportOptions
   ): Promise<Blob> {
     const result = await this._createMultiPagePDF(
       canvases,
@@ -284,7 +348,8 @@ class ServicePlugin extends PluginBase {
       cutLine,
       true,
       dpi,
-      onProgress
+      onProgress,
+      exportOptions
     )
     return result as Blob
   }
@@ -646,6 +711,8 @@ class ServicePlugin extends PluginBase {
     dpi: number = 150,
     /** 페이지 진행 콜백 — 페이지 시작 시 (1-based page, total) 호출(다페이지 UX/진단용) */
     onProgress?: (page: number, total: number) => void,
+    /** 프로파일 세트 전용 export 옵션(additive) — 미전달/false 는 종전 경로 그대로 */
+    exportOptions?: PdfExportOptions,
   ): Promise<Blob | void> {
     return new Promise((resolve, reject) => {
       // 봉투 타입인 경우 칼선의 원본 상태를 저장 (모든 캔버스에 대해)
@@ -820,7 +887,18 @@ class ServicePlugin extends PluginBase {
           // jspdf 4.x 는 임베드 이미지를 기본 무압축(raw RGB) 저장 → 래스터 폴백/이미지 多 PDF 가
           // 크게 비대해짐(2.x 는 Flate). 박스주입(getCurrentPageInfo().pageContext)·시각 출력은 불변
           // (골든파리티: 픽셀 diff 0 · Trim/Bleed/Media/Art pt 동일 · 파일 41KB→7KB, 2026-06-23 검증).
-          const pdf: jsPDF = new jsPDF(orientation, 'mm', [pageWidth, pageHeight], true)
+          // omitUnusedFonts(프로파일 세트, 2026-10-17): 옵션 객체형 생성자 + putOnlyUsedFonts 로 미사용 표준
+          // 14 폰트 선언을 생략한다(워커 pdffonts emb=no → FONT_NOT_EMBEDDED 원인). 미전달 시 위 positional
+          // 호출을 그대로 유지해 프로파일 NULL 세트의 바이트를 바꾸지 않는다.
+          const pdf: jsPDF = exportOptions?.omitUnusedFonts
+            ? new jsPDF({
+                orientation,
+                unit: 'mm',
+                format: [pageWidth, pageHeight],
+                compress: true,
+                putOnlyUsedFonts: true,
+              })
+            : new jsPDF(orientation, 'mm', [pageWidth, pageHeight], true)
 
           // 봉투 타입인 경우 칼선을 PDF 생성 시에만 표시
           if (isEnvelope) {
@@ -889,6 +967,9 @@ class ServicePlugin extends PluginBase {
             // PDF 페이지 준비 및 생성
             await new Promise<void>((resolvePrep, rejectPrep) => {
               this._prepareSaveOperation('', canvas, editor, async (preparedData) => {
+                // 프로파일 세트 export 옵션의 in-place 변경(워크스페이스 제외·transparent 치환) 원복자.
+                // 성공 경로(아래 상태 복원 블록)와 오류 경로(catch) 양쪽에서 호출한다.
+                let revertExportTweaks: (() => void) | null = null
                 try {
                   const { addedObjects, workspace } = preparedData
 
@@ -927,7 +1008,33 @@ class ServicePlugin extends PluginBase {
                   const workspaceObj = canvas.getObjects().find((obj) => obj.id === 'workspace')
                   const originalWorkspaceFill = workspaceObj?.fill
                   if (workspaceObj) {
-                    workspaceObj.set({ fill: 'transparent' })
+                    if (exportOptions?.excludeWorkspaceFromExport) {
+                      // 프로파일 세트(2026-10-17): fill:'transparent' 는 fabric 이 `fill-opacity: 0` 으로
+                      // 내보내 svg2pdf 가 `/ca 0` ExtGState 를 만든다(워커 TRANSPARENCY_DETECTED).
+                      // 워크스페이스는 SVG 에서 통째로 제외한다 — canvas.clipPath 역할은 유지된다
+                      // (createSVGClipPathMarkup 은 excludeFromExport 를 보지 않음). 원복은
+                      // revertExportTweaks(성공/오류) + originalState loadFromJSON(최종) 이중.
+                      const originalWorkspaceExclude = workspaceObj.excludeFromExport
+                      workspaceObj.excludeFromExport = true
+                      const prevRevert = revertExportTweaks
+                      revertExportTweaks = () => {
+                        prevRevert?.()
+                        workspaceObj.excludeFromExport = originalWorkspaceExclude
+                      }
+                    } else {
+                      workspaceObj.set({ fill: 'transparent' })
+                    }
+                  }
+
+                  // neutralizeTransparentFills(프로파일 세트, 2026-10-17): 캔버스 객체(그룹 하위 포함)의
+                  // fill/stroke 'transparent' 를 toSVG 동안 ''(SVG none) 로 치환 — ExtGState 없이 그리기만 생략.
+                  if (exportOptions?.neutralizeTransparentFills) {
+                    const restoreTransparent = ServicePlugin.neutralizeTransparentFills(canvas)
+                    const prevRevert = revertExportTweaks
+                    revertExportTweaks = () => {
+                      prevRevert?.()
+                      restoreTransparent()
+                    }
                   }
 
                   // 원본 clipPath 저장
@@ -1163,7 +1270,11 @@ class ServicePlugin extends PluginBase {
 
                   // 원본 상태 복원
                   canvas.backgroundColor = originalBg
-                  if (workspaceObj) {
+                  if (revertExportTweaks) {
+                    revertExportTweaks()
+                    revertExportTweaks = null
+                  }
+                  if (workspaceObj && !exportOptions?.excludeWorkspaceFromExport) {
                     workspaceObj.set({ fill: originalWorkspaceFill })
                   }
                   // clipPath 복원
@@ -1175,6 +1286,11 @@ class ServicePlugin extends PluginBase {
                   resolvePrep()
                 } catch (error) {
                   console.error('PDF 페이지 생성 중 오류:', error)
+                  try {
+                    revertExportTweaks?.()
+                  } catch (revertError) {
+                    console.warn('export 옵션 원복 중 오류(originalState 복원으로 대체):', revertError)
+                  }
                   rejectPrep(error)
                 }
               })

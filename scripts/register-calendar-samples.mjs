@@ -124,7 +124,7 @@ function calendarGrid(box, ext) {
     originX: 'center', originY: 'center', subTargetCheck: false,
     selectable: true, hasControls: false, lockMovementX: true, lockMovementY: true, lockRotation: true, lockScalingX: true, lockScalingY: true,
     movable: false, deleteable: false, contentEditable: false, isUserAdded: false, name: '날짜 그리드',
-    objects: [rect({ id: `${id}-bounds`, left: -box.width / 2, top: -box.height / 2, width: box.width, height: box.height, fill: 'transparent', selectable: false, evented: false })],
+    objects: [rect({ id: `${id}-bounds`, left: -box.width / 2, top: -box.height / 2, width: box.width, height: box.height, fill: '', selectable: false, evented: false })],
   };
 }
 function canvasData(W, H, objects) {
@@ -241,6 +241,9 @@ async function main() {
       name: setName, type: 'leaflet', editorMode: 'single', width: p.width, height: p.height,
       canAddPage: false, pageCountRange: [26, 26], pageStep: null, templates: buildRefs(ids),
       productProfile: profileFor(p), pdfOutputMode: 'duplex-merged', colorMode: 'rgb', enabledMenus: null,
+      // 도련 정책(오너 결정 A, 2026-10-17): 판형은 재단 그대로, 세트에 cropMarkEnabled·bleedMm 3 — 편집기 PDF 는 재단+6mm 에
+      // TrimBox·코너 마커를 넣고(책자와 같은 게이트), 워커는 workSize 매칭·hasBleed=true 로 BLEED_MISSING 없이 통과한다.
+      cropMarkEnabled: true, bleedMm: 3,
     };
     let setId;
     const foundSet = byName(existingSets, setName);

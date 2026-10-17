@@ -279,6 +279,41 @@ describe('WorkerJobsService — R-44 spine 서버 재계산 주입(createValidat
     expect(payload.orderOptions.spineWidthMm).toBeUndefined();
   });
 
+  // ── P1-e (2026-10-17): 프로파일 세트 cover 슬롯(coverSpine='none', 책등 없음)은 spine 주입 비대상 ──
+  it("P1-e coverSpine='none' → 재계산·덮어쓰기 없음, coverSpine·binding 그대로 워커 전달 + 위조 스탬프 선소독", async () => {
+    await makeService().createValidationJob(
+      coverDto({
+        paperType: '미색모조80',
+        spineWidthMm: 12.3,
+        coverSpine: 'none',
+        spineSource: 'server',
+        clientSpineWidthMm: 99,
+        spineUnresolvedReason: 'UNMAPPED_PAPER',
+      }) as any,
+    );
+    expect(spineService.calculate).not.toHaveBeenCalled();
+    const [, payload] = validationQueue.add.mock.calls[0];
+    expect(payload.orderOptions.coverSpine).toBe('none');
+    expect(payload.orderOptions.binding).toBe('perfect');
+    expect(payload.orderOptions.spineWidthMm).toBe(12.3);
+    expect(payload.orderOptions.spineSource).toBeUndefined();
+    expect(payload.orderOptions.clientSpineWidthMm).toBeUndefined();
+    expect(payload.orderOptions.spineUnresolvedReason).toBeUndefined();
+    const created = workerJobRepository.create.mock.calls[0][0];
+    expect(created.options.orderOptions.coverSpine).toBe('none');
+  });
+
+  it("P1-e 불변: coverSpine 미전송·무효값('NONE'·'foo')은 현행 주입 경로(서버 덮어쓰기)", async () => {
+    for (const coverSpine of [undefined, 'NONE', 'foo']) {
+      validationQueue.add.mockClear();
+      await makeService().createValidationJob(
+        coverDto({ paperType: '미색모조80', spineWidthMm: 12.3, ...(coverSpine !== undefined ? { coverSpine } : {}) }) as any,
+      );
+      const [, payload] = validationQueue.add.mock.calls[0];
+      expect(payload.orderOptions).toMatchObject({ spineWidthMm: 9.6, spineSource: 'server', clientSpineWidthMm: 12.3 });
+    }
+  });
+
   it("S6 불변: coverLayout 'spread'·무효값은 현행 주입 경로(서버 덮어쓰기)", async () => {
     for (const coverLayout of ['spread', 'SEPARATE', 'foo']) {
       validationQueue.add.mockClear();

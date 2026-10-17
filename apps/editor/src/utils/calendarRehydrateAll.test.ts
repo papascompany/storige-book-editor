@@ -142,6 +142,18 @@ describe('readCalendarSessionMeta', () => {
       dataVersion: 'kr-2025-2035-v1',
     })
   })
+
+  it('show.temporaryHolidays: 저장분 boolean 은 그대로, 없으면 fallback 값, 둘 다 없으면 키 생략(= false) (2026-10-17)', () => {
+    const base = { startYear: 2027, startMonth: 4, anniversaries: [] }
+    expect(readCalendarSessionMeta({ calendar: { ...base, show: { holidays: true, lunar: false, solarTerms: false, temporaryHolidays: true } } }, fallback)?.show)
+      .toEqual({ holidays: true, lunar: false, solarTerms: false, temporaryHolidays: true })
+    expect(readCalendarSessionMeta({ calendar: { ...base, show: { holidays: true, lunar: false, solarTerms: false, temporaryHolidays: 'yes' } } }, fallback)?.show)
+      .not.toHaveProperty('temporaryHolidays')
+    expect(readCalendarSessionMeta({ calendar: { ...base, show: { holidays: true, lunar: false, solarTerms: false } } }, fallback)?.show)
+      .not.toHaveProperty('temporaryHolidays')
+    expect(readCalendarSessionMeta({ calendar: { ...base } }, { ...fallback, show: { ...fallback.show, temporaryHolidays: true } })?.show)
+      .toEqual({ holidays: true, lunar: false, solarTerms: false, temporaryHolidays: true })
+  })
 })
 
 describe('restoreCalendarSessionMeta / calendarSessionMetadataFields', () => {
@@ -158,6 +170,15 @@ describe('restoreCalendarSessionMeta / calendarSessionMetadataFields', () => {
     expect(restoreCalendarSessionMeta({ calendar: savedMeta })).toBe(true)
     expect(useCalendarStore.getState().meta).toEqual(savedMeta)
     expect(calendarSessionMetadataFields()).toEqual({ metadata: { productProfile: profile, calendar: savedMeta } })
+  })
+
+  it('캘린더 세트: setShow({ temporaryHolidays }) 가 저장 payload metadata.calendar.show 에 실린다 (2026-10-17)', () => {
+    const profile = calendarProfile()
+    useSettingsStore.getState().setProductProfile(profile)
+    useCalendarStore.getState().setFromProfile(profile)
+    expect(calendarSessionMetadataFields().metadata?.calendar.show).toEqual({ holidays: true, lunar: false, solarTerms: false })
+    useCalendarStore.getState().setShow({ temporaryHolidays: true })
+    expect(calendarSessionMetadataFields().metadata?.calendar.show).toEqual({ holidays: true, lunar: false, solarTerms: false, temporaryHolidays: true })
   })
 
   it('캘린더 세트: 메타 없음/무효면 setFromProfile 기본값 유지', () => {

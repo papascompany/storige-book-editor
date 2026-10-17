@@ -106,6 +106,13 @@ export class CreateValidationJobDto {
      */
     pageStep?: number;
     /**
+     * 2026-10-17 P1-e(상품 프로파일): 표지 책등 없음(additive). 'none' = cover 슬롯 파일이 책등 없는 단일 판형
+     * (캘린더 단일 PDF 등 프로파일 세트) — 워커가 binding 과 무관하게 스프레드 표지 게이트를 건너뛰고
+     * validatePageSize/validateBleed 를 수행하며 validateSpine(SPINE_* 경고·오류)을 생략, 서버 spine 주입도 하지 않음.
+     * 미전송·무효값 = 현행(binding 기준) 동작. 편집기 완료 세션은 서버가 파생(sheet-validation-rules.ts).
+     */
+    coverSpine?: 'none';
+    /**
      * 2026-10-17(낱장 분류 검증): 후가공 파일(fileType 'post_process') 색 규칙. 'spot-only' 일 때만
      * CMYK 사용을 오류로 본다. 미전송 = 'any'(오류·경고 없음 — 후가공 파일은 선·면적·투명 객체가 정상 입력).
      */

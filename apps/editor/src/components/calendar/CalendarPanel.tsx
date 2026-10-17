@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState, useEffect } from 'react'
 import { getCalendarData, type CalendarData } from '@storige/canvas-core'
-import { DEFAULT_CALENDAR_DATA_VERSION, type CalendarAnniversary, type YearMonth } from '@storige/types'
+import { DEFAULT_CALENDAR_DATA_VERSION, type CalendarAnniversary, type CalendarDisplayOptions, type YearMonth } from '@storige/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -37,6 +37,8 @@ export const START_MONTH_CONFIRM_MESSAGE =
 export const DUPLICATE_DATE_MESSAGE = '이미 등록된 날짜입니다'
 export const LUNAR_DATA_PENDING_MESSAGE = '음력 환산 데이터 준비 중'
 export const OUT_OF_RANGE_BADGE = '범위 밖 — 수정 또는 삭제'
+/** 임시공휴일·선거일 체크박스 라벨 — 기본 해제(키 없음 = false = 법정 공휴일만, 2026-10-17 오너 결정) */
+export const TEMPORARY_HOLIDAYS_LABEL = '임시공휴일·선거일 표시(공표분)'
 
 const SELECT_CLASS =
   'h-9 rounded-md border border-editor-border bg-editor-panel px-2 text-sm text-editor-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-editor-accent disabled:cursor-not-allowed disabled:opacity-50'
@@ -209,13 +211,16 @@ function StartMonthSection({ start }: { start: YearMonth }) {
 
 // ─── 표기 옵션 ─────────────────────────────────────────────────────────────
 
-function DisplayOptionsSection({ show }: { show: { holidays: boolean; lunar: boolean; solarTerms: boolean } }) {
-  const toggle = async (key: 'holidays' | 'lunar' | 'solarTerms', value: boolean) => {
+type DisplayOptionKey = keyof CalendarDisplayOptions
+
+function DisplayOptionsSection({ show }: { show: CalendarDisplayOptions }) {
+  const toggle = async (key: DisplayOptionKey, value: boolean) => {
     useCalendarStore.getState().setShow({ [key]: value })
     await rehydrateAllCalendarGrids()
   }
-  const items: Array<{ key: 'holidays' | 'lunar' | 'solarTerms'; label: string }> = [
+  const items: Array<{ key: DisplayOptionKey; label: string }> = [
     { key: 'holidays', label: '공휴일' },
+    { key: 'temporaryHolidays', label: TEMPORARY_HOLIDAYS_LABEL },
     { key: 'lunar', label: '음력' },
     { key: 'solarTerms', label: '24절기' },
   ]
@@ -228,7 +233,7 @@ function DisplayOptionsSection({ show }: { show: { holidays: boolean; lunar: boo
             <input
               type="checkbox"
               className="h-4 w-4 accent-editor-accent"
-              checked={show[key]}
+              checked={show[key] ?? false}
               onChange={(e) => void toggle(key, e.target.checked)}
             />
             {label}

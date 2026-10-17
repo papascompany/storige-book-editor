@@ -328,6 +328,13 @@ export interface ValidationOptions {
      */
     pageStep?: number;
     /**
+     * 2026-10-17 P1-e(상품 프로파일): 표지 책등 없음(additive). 'none' = cover 슬롯이 책등 없는 단일 판형(캘린더
+     * 단일 PDF 등) → coverSpineAuthoritative 게이트 false(binding 무관)로 validatePageSize/validateBleed 수행,
+     * validateSpine 생략(SPINE_SIZE_MISMATCH·SPINE_PARAMS_UNRESOLVED·metadata.spineSize 없음).
+     * 미제공·무효값 = 현행(binding 기준 스프레드 표지) 경로 byte-identical.
+     */
+    coverSpine?: 'none';
+    /**
      * 2026-10-17(낱장 분류 검증): 후가공 파일(fileType 'post_process') 색 규칙(additive).
      * 'spot-only'=CMYK 사용 시 POST_PROCESS_CMYK 오류(종전 동작). 미제공·'any'=오류·경고 없음
      * (후가공 파일은 선·라운드·면적·투명 객체가 정상 입력).

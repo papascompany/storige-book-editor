@@ -81,6 +81,8 @@ interface ValidationJobData {
     productKind?: 'sheet' | 'book';
     /** 2026-10-17(낱장 분류 검증): 낱장 증감 단위(상품/템플릿셋 설정값). 1 이하·미제공=배수 검사 없음. */
     pageStep?: number;
+    /** 2026-10-17 P1-e: 표지 책등 없음. 'none'=cover 슬롯 단일 판형 검증(spine 게이트 우회). 미제공=현행. */
+    coverSpine?: 'none';
     /** 2026-10-17(낱장 분류 검증): 후가공 파일 색 규칙. 'spot-only'=CMYK 사용 시 오류. 미제공='any'(오류·경고 없음). */
     postProcessColorRule?: 'any' | 'spot-only';
   };

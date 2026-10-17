@@ -83,6 +83,11 @@ export interface CalendarDisplayOptions {
   holidays: boolean;
   lunar: boolean;
   solarTerms: boolean;
+  /**
+   * 임시공휴일·선거일(데이터 `temporary: true`, 공표분) 표시 여부(2026-10-17 오너 결정).
+   * 기본 false = 법정 공휴일(규정상 공휴일 + 대체공휴일)만 휴일로 표시. 키 없음(기존 저장분)은 false 와 같다.
+   */
+  temporaryHolidays?: boolean;
 }
 
 export interface CalendarMonthRange {
@@ -341,6 +346,8 @@ export function validateProductProfile(input: unknown): string[] {
       const show = cal.show;
       if (!isRecord(show) || !isBool(show.holidays) || !isBool(show.lunar) || !isBool(show.solarTerms)) {
         errors.push('calendar.show.holidays/lunar/solarTerms 는 boolean 이어야 합니다');
+      } else if (show.temporaryHolidays !== undefined && !isBool(show.temporaryHolidays)) {
+        errors.push('calendar.show.temporaryHolidays 는 생략하거나 boolean 이어야 합니다');
       }
       if (typeof cal.dataVersion !== 'string' || !CALENDAR_DATA_VERSIONS[cal.dataVersion]) {
         errors.push(`calendar.dataVersion 은 ${Object.keys(CALENDAR_DATA_VERSIONS).join('|')} 중 하나여야 합니다`);

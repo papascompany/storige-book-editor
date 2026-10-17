@@ -18,8 +18,12 @@ import CalendarPlugin, { CALENDAR_GRID_EXTENSION_TYPE, type CalendarRenderContex
 import type Editor from '../Editor'
 import type { CalendarData, MonthCell, MonthMatrix } from '../calendar/types'
 
+const { buildCalls } = vi.hoisted(() => ({ buildCalls: [] as Array<{ year: number; month: number; includeTemporaryHolidays?: boolean }> }))
 vi.mock('../calendar/core', () => ({
-  buildMonthMatrix: (year: number, month: number, opts: { weekStart: 0 | 1 }) => synthMatrix(year, month, opts.weekStart),
+  buildMonthMatrix: (year: number, month: number, opts: { weekStart: 0 | 1; includeTemporaryHolidays?: boolean }) => {
+    buildCalls.push({ year, month, includeTemporaryHolidays: opts.includeTemporaryHolidays })
+    return synthMatrix(year, month, opts.weekStart)
+  },
 }))
 
 /** 날짜 데이터 없이 Date 산술로만 만드는 6×7 행렬(1일은 '테스트휴일') */
@@ -133,6 +137,21 @@ describe('CalendarPlugin.createGrid', () => {
     expect(gg.isUserAdded).toBe(false)
     expect(g.lockMovementX).toBe(true)
     expect(g.lockScalingY).toBe(true)
+  })
+
+  it('(1b) 경계 사각형 fill 은 none — 그룹 toSVG 에 fill-opacity: 0 이 없다(워커 TRANSPARENCY_DETECTED 방지, 2026-10-17)', async () => {
+    const canvas = makeCanvas()
+    const plugin = makePlugin(canvas)
+    const g = await plugin.createGrid({ variant: 'month' }, ctx(), { left: 100, top: 50, width: 600, height: 400 })
+    const bounds = g.getObjects().find((o) => (o as fabric.Object & { id?: string }).id === `${(g as fabric.Object & { id?: string }).id}-bounds`)
+    expect(bounds).toBeDefined()
+    expect(bounds!.fill).toBe('')
+    expect(bounds!.width).toBeCloseTo(600, 3)
+    expect(bounds!.height).toBeCloseTo(400, 3)
+    const svg = g.toSVG()
+    expect(svg).toMatch(/fill: none;/)
+    expect(svg).not.toMatch(/fill-opacity: 0/)
+    expect(svg).not.toMatch(/stroke-opacity: 0/)
   })
 
   it('(2) weekStart=1 이면 요일 헤더가 MON 부터, headerLang ko 면 한글', async () => {
@@ -262,5 +281,34 @@ describe('CalendarPlugin.hitTestDate', () => {
     expect(plugin.hitTestDate(g, p15)).toBe('2027-01-15')
     expect(plugin.hitTestDate(g, { x: 50, y: 20 })).toBeNull()
     expect(plugin.hitTestDate(g, { x: 50, y: cellTop + cellH / 2 })).toBeNull() // 1행 일요일 = 전월(빈 칸)
+  })
+})
+
+describe('CalendarPlugin — 임시공휴일·선거일 옵션(show.temporaryHolidays, 2026-10-17)', () => {
+  // 휴일 판정은 buildMonthMatrix(core.test.ts 가 데이터 검증) — 플러그인은 옵션을 includeTemporaryHolidays 로 넘기는지 고정
+  it('ctx.show 에 키가 없으면 false(법정 공휴일만), true 면 true, extension.show 가 ctx 보다 우선', async () => {
+    const plugin = makePlugin(makeCanvas())
+    const box = { left: 0, top: 0, width: 600, height: 400 }
+    buildCalls.length = 0
+    await plugin.createGrid({ variant: 'month' }, ctx(), box)
+    expect(buildCalls.at(-1)).toEqual({ year: 2027, month: 1, includeTemporaryHolidays: false })
+
+    await plugin.createGrid({ variant: 'month' }, ctx({ show: { holidays: true, lunar: true, solarTerms: true, temporaryHolidays: true } }), box)
+    expect(buildCalls.at(-1)?.includeTemporaryHolidays).toBe(true)
+
+    await plugin.createGrid({ variant: 'month', show: { temporaryHolidays: false } }, ctx({ show: { holidays: true, lunar: true, solarTerms: true, temporaryHolidays: true } }), box)
+    expect(buildCalls.at(-1)?.includeTemporaryHolidays).toBe(false)
+  })
+
+  it('rehydrate 는 새 ctx 의 temporaryHolidays 로 모든 그리드를 다시 그린다', async () => {
+    const canvas = makeCanvas()
+    const plugin = makePlugin(canvas)
+    canvas.add(await plugin.createGrid({ variant: 'month' }, ctx(), { left: 0, top: 0, width: 600, height: 400 }))
+    buildCalls.length = 0
+    expect(await plugin.rehydrate(ctx({ show: { holidays: true, lunar: false, solarTerms: false, temporaryHolidays: true } }))).toBe(1)
+    expect(buildCalls).toEqual([{ year: 2027, month: 1, includeTemporaryHolidays: true }])
+    buildCalls.length = 0
+    expect(await plugin.rehydrate(ctx())).toBe(1)
+    expect(buildCalls).toEqual([{ year: 2027, month: 1, includeTemporaryHolidays: false }])
   })
 })

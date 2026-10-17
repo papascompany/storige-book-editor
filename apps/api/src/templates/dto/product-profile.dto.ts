@@ -195,6 +195,12 @@ export class CalendarDisplayOptionsDto implements CalendarDisplayOptions {
   @ApiProperty({ example: true, description: '24절기 표기' })
   @IsBoolean()
   solarTerms: boolean;
+
+  /** 2026-10-17 오너 결정: 임시공휴일·선거일(데이터 temporary)은 기본 미표시, 고객 선택. 생략 = false. */
+  @ApiPropertyOptional({ example: false, description: '임시공휴일·선거일(공표분) 표기 — 생략/false 는 법정 공휴일만' })
+  @IsOptional()
+  @IsBoolean()
+  temporaryHolidays?: boolean;
 }
 
 export class CalendarProfileDto implements CalendarProfile {

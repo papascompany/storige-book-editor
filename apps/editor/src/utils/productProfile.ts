@@ -10,6 +10,7 @@ import {
   type ProductProfileSource,
   type YearMonth,
 } from '@storige/types'
+import type { PdfExportOptions } from '@storige/canvas-core'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useCalendarStore } from '@/stores/useCalendarStore'
 
@@ -93,4 +94,16 @@ export function resolveProfilePdfRequestSize(
   if (requested) return requested
   if (profile && templateSetSize) return templateSetSize
   return undefined
+}
+
+/**
+ * 단일모드 완료 PDF 의 프로파일 세트 전용 export 옵션(P1 캘린더, 2026-10-17).
+ * 프로파일이 있으면 워커 preflight 경고(FONT_NOT_EMBEDDED / TRANSPARENCY_DETECTED)의 편집기 측 원인을 끄는
+ * 세 옵션을 모두 켠다. 프로파일 NULL 세트는 undefined → ServicePlugin 종전 경로·바이트 그대로.
+ */
+export function resolveProfilePdfExportOptions(
+  profile: ProductProfile | null | undefined,
+): PdfExportOptions | undefined {
+  if (!profile) return undefined
+  return { omitUnusedFonts: true, excludeWorkspaceFromExport: true, neutralizeTransparentFills: true }
 }

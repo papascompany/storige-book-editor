@@ -108,3 +108,51 @@ describe('jspdf 4.x 박스주입 private API 카나리 (ServicePlugin._drawCropM
     expect(Buffer.from(buf).toString('latin1').slice(0, 5)).toBe('%PDF-')
   })
 })
+
+describe('PdfExportOptions.omitUnusedFonts — jsPDF 옵션 객체형 생성(프로파일 세트 전용, 2026-10-17)', () => {
+  // ServicePlugin 의 두 생성 분기를 그대로 미러한다:
+  //   옵션 미전달 → new jsPDF(orientation,'mm',[w,h], true)           (프로파일 NULL 세트, 종전 그대로)
+  //   omitUnusedFonts → new jsPDF({ orientation, unit, format, compress, putOnlyUsedFonts: true })
+  const injectBoxes = (pdf: jsPDF) => {
+    const internal: any = (pdf as any).internal
+    const sf: number = internal?.scaleFactor ?? 1
+    const ctx = internal?.getCurrentPageInfo?.()?.pageContext
+    expect(ctx).toBeTruthy()
+    const sx = (mm: number) => mm * sf
+    ctx.bleedBox = { bottomLeftX: 0, bottomLeftY: 0, topRightX: sx(216), topRightY: sx(303) }
+    ctx.trimBox = { bottomLeftX: sx(3), bottomLeftY: sx(3), topRightX: sx(213), topRightY: sx(300) }
+    if (ctx.mediaBox) {
+      ctx.mediaBox.bottomLeftX = 0; ctx.mediaBox.bottomLeftY = 0
+      ctx.mediaBox.topRightX = sx(216); ctx.mediaBox.topRightY = sx(303)
+    }
+    return sf
+  }
+
+  it('옵션 미전달(positional 호출)은 종전대로 표준 14 폰트를 선언한다 — NULL 세트 바이트 불변 카나리', () => {
+    const pdf = new jsPDF('p', 'mm', [216, 303], true)
+    pdf.setFillColor(0, 0, 0)
+    pdf.rect(20, 20, 100, 100, 'F')
+    const pdfStr = Buffer.from(pdf.output('arraybuffer')).toString('latin1')
+    // 미사용인데도 선언됨 → pdffonts emb=no → 워커 FONT_NOT_EMBEDDED 의 원인(옵션 OFF 경로는 그대로 둔다)
+    expect((pdfStr.match(/\/BaseFont/g) ?? []).length).toBe(14)
+    expect(pdfStr).toMatch(/\/BaseFont\s*\/Helvetica/)
+  })
+
+  it('omitUnusedFonts(putOnlyUsedFonts) 는 미사용 폰트 선언을 0 으로 만들고 compress·박스주입 private API 를 보존한다', () => {
+    const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: [216, 303], compress: true, putOnlyUsedFonts: true })
+    pdf.setFillColor(0, 0, 0)
+    pdf.rect(20, 20, 100, 100, 'F')
+    const sf = injectBoxes(pdf)
+    expect(sf).toBeCloseTo(72 / 25.4, 3)
+    const pdfStr = Buffer.from(pdf.output('arraybuffer')).toString('latin1')
+    expect(pdfStr.slice(0, 5)).toBe('%PDF-')
+    // 텍스트를 그리지 않았으므로 폰트 딕셔너리가 하나도 없다(=pdffonts 결과 비어 있음)
+    expect(pdfStr).not.toMatch(/\/BaseFont/)
+    expect(pdfStr).not.toMatch(/\/Type\s*\/Font\b/)
+    // compress 유지 + 박스 주입 생존(옵션 객체형이어도 private 구조 동일)
+    expect(pdfStr).toMatch(/\/FlateDecode/)
+    expect(pdfStr).toMatch(/\/TrimBox\s*\[\s*8\.\d+\s+8\.\d+/)
+    expect(pdfStr).toMatch(/\/BleedBox/)
+    expect(pdfStr).toMatch(/\/MediaBox\s*\[\s*0\s+0\s+612/)
+  })
+})

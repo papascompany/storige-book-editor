@@ -2081,6 +2081,7 @@ export class EditSessionsService {
       // null = 레거시(키 미주입 = 현행 byte-identical). 비상 차단: EDITOR_SHEET_VALIDATION_RULES=off.
       // 2026-10-17 P1-e: 상품 프로파일(세션 스냅샷 > templateSet.productProfile)이 고정 캔버스 수를 주면
       // 두 잡의 `pages` 를 그 값으로 바꾼다(캘린더 26). expectedPages 는 orderOptions 키로 보내지 않는다.
+      // 프로파일 세트는 coverSpine='none' 도 함께 실린다(sheetOptions 스프레드) — 워커 cover 슬롯 spine 게이트 우회.
       if (sheetRulesOn) {
         const sheetRules = deriveSheetValidationRules({
           session,

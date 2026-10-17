@@ -1,4 +1,4 @@
-import type { CalendarAnniversary, CalendarSessionMeta, ProductProfile } from '@storige/types'
+import type { CalendarAnniversary, CalendarDisplayOptions, CalendarSessionMeta, ProductProfile } from '@storige/types'
 import { useAppStore } from '@/stores/useAppStore'
 import { useSaveStore } from '@/stores/useSaveStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
@@ -86,15 +86,19 @@ export function readCalendarSessionMeta(
   if (!Array.isArray(anniversaries)) return null
 
   const show = isRecord(cal.show) ? cal.show : {}
-  const fallbackShow = fallback?.show ?? { holidays: true, lunar: false, solarTerms: false }
+  const fallbackShow: CalendarDisplayOptions = fallback?.show ?? { holidays: true, lunar: false, solarTerms: false }
+  const restoredShow: CalendarDisplayOptions = {
+    holidays: typeof show.holidays === 'boolean' ? show.holidays : fallbackShow.holidays,
+    lunar: typeof show.lunar === 'boolean' ? show.lunar : fallbackShow.lunar,
+    solarTerms: typeof show.solarTerms === 'boolean' ? show.solarTerms : fallbackShow.solarTerms,
+  }
+  // 임시공휴일·선거일 표시(2026-10-17): 저장분 boolean 이면 그 값, 없으면 fallback 값, 둘 다 없으면 키 생략(= false)
+  if (typeof show.temporaryHolidays === 'boolean') restoredShow.temporaryHolidays = show.temporaryHolidays
+  else if (typeof fallbackShow.temporaryHolidays === 'boolean') restoredShow.temporaryHolidays = fallbackShow.temporaryHolidays
   return {
     startYear: startYear as number,
     startMonth: startMonth as number,
-    show: {
-      holidays: typeof show.holidays === 'boolean' ? show.holidays : fallbackShow.holidays,
-      lunar: typeof show.lunar === 'boolean' ? show.lunar : fallbackShow.lunar,
-      solarTerms: typeof show.solarTerms === 'boolean' ? show.solarTerms : fallbackShow.solarTerms,
-    },
+    show: restoredShow,
     anniversaries: anniversaries.slice(0, ANNIVERSARY_MAX_COUNT).map(readAnniversary).filter((a): a is CalendarAnniversary => a !== null),
     dataVersion:
       typeof cal.dataVersion === 'string' && cal.dataVersion !== ''

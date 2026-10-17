@@ -157,6 +157,7 @@ describe('deriveSheetValidationRules', () => {
         productKind: 'sheet',
         pageStep: 2,
         expectedPages: 26,
+        coverSpine: 'none',
       });
     });
 
@@ -169,6 +170,7 @@ describe('deriveSheetValidationRules', () => {
         productKind: 'sheet',
         pageStep: 2,
         expectedPages: 26,
+        coverSpine: 'none',
       });
     });
 
@@ -188,6 +190,7 @@ describe('deriveSheetValidationRules', () => {
         productKind: 'sheet',
         pageStep: 2,
         expectedPages: 26,
+        coverSpine: 'none',
       });
       expect(warn).toHaveBeenCalledTimes(1);
       expect(warn.mock.calls[0][0]).toContain('calendar_desk_28');
@@ -202,6 +205,7 @@ describe('deriveSheetValidationRules', () => {
         productKind: 'sheet',
         pageStep: 2,
         expectedPages: 26,
+        coverSpine: 'none',
       });
     });
 
@@ -230,6 +234,7 @@ describe('deriveSheetValidationRules', () => {
         productKind: 'sheet',
         pageStep: 2,
         expectedPages: 26,
+        coverSpine: 'none',
       });
     });
 
@@ -252,23 +257,32 @@ describe('deriveSheetValidationRules', () => {
     });
 
     it('(e) 단면 range 프로파일 step 4 → pageStep 4, expectedPages 없음', () => {
-      expect(deriveSheetValidationRules(withProfile(sheetRangeProfile(4)))).toEqual({ productKind: 'sheet', pageStep: 4 });
+      expect(deriveSheetValidationRules(withProfile(sheetRangeProfile(4)))).toEqual({ productKind: 'sheet', pageStep: 4, coverSpine: 'none' });
     });
 
     it('(e-2) 단면 range 프로파일 step 없음 → 종전 산출(templateSet pageStep 4)', () => {
       const input = withProfile(sheetRangeProfile(), {
         templateSet: { editorMode: 'single', pageStep: 4, productProfile: sheetRangeProfile() },
       });
-      expect(deriveSheetValidationRules(input)).toEqual({ productKind: 'sheet', pageStep: 4 });
+      expect(deriveSheetValidationRules(input)).toEqual({ productKind: 'sheet', pageStep: 4, coverSpine: 'none' });
     });
 
     it('(e-3) 단면 range 프로파일 step 1 → 종전 산출(미설정이면 키 없음)', () => {
-      expect(deriveSheetValidationRules(withProfile(sheetRangeProfile(1)))).toEqual({ productKind: 'sheet' });
+      expect(deriveSheetValidationRules(withProfile(sheetRangeProfile(1)))).toEqual({ productKind: 'sheet', coverSpine: 'none' });
     });
 
-    it('(NULL) templateSet.productProfile null·undefined → 종전 결과와 동일', () => {
+    it('(NULL) templateSet.productProfile null·undefined → 종전 결과와 동일(coverSpine 키 없음)', () => {
       expect(deriveSheetValidationRules(withProfile(null))).toEqual(deriveSheetValidationRules(base()));
       expect(deriveSheetValidationRules(base())).toEqual({ productKind: 'sheet' });
+      expect(deriveSheetValidationRules(withProfile(null))).not.toHaveProperty('coverSpine');
+      expect(deriveSheetValidationRules(base())).not.toHaveProperty('coverSpine');
+    });
+
+    // 2026-10-17 P1-e 후속: 프로파일 세트의 cover 슬롯은 책등이 없다 — 워커 spine 게이트 우회 키.
+    it('(f) 프로파일이 있으면 coverSpine none 포함, 검증 실패(c)·스냅샷 무효(c-2)·NULL 은 키 없음', () => {
+      expect(deriveSheetValidationRules(withProfile(calendarProfile()))).toMatchObject({ coverSpine: 'none' });
+      const bad = { ...calendarProfile(), version: 2 } as unknown as ProductProfile;
+      expect(deriveSheetValidationRules(withProfile(bad))).not.toHaveProperty('coverSpine');
     });
   });
 });

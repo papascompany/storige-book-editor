@@ -179,8 +179,8 @@ pnpm install
 #### 2. 인프라 서비스 시작
 
 ```bash
-# MySQL + Redis만 시작
-docker-compose up -d mysql redis
+# MariaDB + Redis만 시작
+docker-compose up -d mariadb redis
 
 # 서비스 상태 확인
 docker-compose ps
@@ -220,7 +220,7 @@ pnpm dev
 
 #### 5. 로컬 기동 시 알아둘 점 (2026-10-17)
 
-- **compose 서비스 이름은 `mariadb`** 다(`docker compose up -d mariadb redis`). 위 `mysql` 표기는 옛 이름이며 `scripts/dev-start.sh` 도 같은 이름을 쓴다(후속 정리 대상). Redis 는 Homebrew 서비스(`brew services start redis`)로 대신할 수 있다.
+- **compose 서비스 이름은 `mariadb`** 다(`docker compose up -d mariadb redis`, 컨테이너 `storige-mariadb`). `mariadb:11.2` 이미지에는 `mysql`·`mysqladmin`·`mysqldump` 심볼릭 링크가 없으므로 클라이언트는 `mariadb`·`mariadb-admin`·`mariadb-dump` 를 쓴다(`scripts/dev-start.sh` 2026-10-17 정리). Redis 는 Homebrew 서비스(`brew services start redis`)로 대신할 수 있다.
 - **개발 모드 로그**: api·worker 는 `pino-pretty` 가 설치돼 있을 때만 pretty 로 출력하고, 없으면 JSON 으로 **그대로 기동**한다(`apps/*/src/config/dev-log-transport.ts`). pretty 가 필요하면 설치 대신 `pnpm --filter @storige/api dev | npx pino-pretty` 로 파이프한다. `LOG_PRETTY=false` 면 개발 모드에서도 JSON.
 - **worker 환경 파일**: `apps/worker/.env.development.example` 을 `.env.development` 로 복사한다(gitignored). `STORAGE_PATH` 는 api 의 storage 디렉터리 절대 경로, `WORKER_API_KEY` 는 api 의 `WORKER_API_KEY` 와 같고 sites 테이블의 어느 사이트 `worker_auth_code` 와도 일치해야 잡 상태 보고가 401 로 떨어지지 않는다.
 - **Bookmoa 연동 끄기**: api `.env.development` 에 `BOOKMOA_DB_PASSWORD` 가 있으면 원격 bookmoa DB 에 접속을 시도해 부팅이 멈출 수 있다. 로컬에서는 `BOOKMOA_DB_PASSWORD= pnpm --filter @storige/api dev` 처럼 빈 값으로 덮어 끈다.
@@ -355,7 +355,7 @@ PORT=4000
 CORS_ORIGIN=https://yourdomain.com
 
 # Database
-DATABASE_HOST=mysql
+DATABASE_HOST=mariadb
 DATABASE_PORT=3306
 DATABASE_USER=storige
 DATABASE_PASSWORD=<secure-password>
@@ -386,7 +386,7 @@ NODE_ENV=production
 PORT=4001
 
 # Database (같은 MySQL 사용)
-DATABASE_HOST=mysql
+DATABASE_HOST=mariadb
 DATABASE_PORT=3306
 DATABASE_USER=storige
 DATABASE_PASSWORD=<secure-password>
@@ -912,25 +912,25 @@ QUEUE_MONITOR_COOLDOWN_MS=300000
 ### 백업
 
 ```bash
-# MySQL 백업
-docker-compose exec mysql mysqldump -u root -p storige > backup_$(date +%Y%m%d).sql
+# MariaDB 백업
+docker-compose exec mariadb mariadb-dump -u root -p storige > backup_$(date +%Y%m%d).sql
 
 # 또는 Docker 볼륨 백업
 docker run --rm \
-  --volumes-from storige-mysql \
+  --volumes-from storige-mariadb \
   -v $(pwd):/backup \
-  ubuntu tar cvf /backup/mysql_backup.tar /var/lib/mysql
+  ubuntu tar cvf /backup/mariadb_backup.tar /var/lib/mysql
 ```
 
 ### 복원
 
 ```bash
 # SQL 파일에서 복원
-docker-compose exec -T mysql mysql -u root -p storige < backup_20231201.sql
+docker-compose exec -T mariadb mariadb -u root -p storige < backup_20231201.sql
 
 # 볼륨 복원
 docker run --rm \
-  --volumes-from storige-mysql \
+  --volumes-from storige-mariadb \
   -v $(pwd):/backup \
   ubuntu bash -c "cd /var/lib/mysql && tar xvf /backup/mysql_backup.tar --strip 1"
 ```
@@ -1506,6 +1506,62 @@ docker logs storige-api 2>&1 | grep "낱장 분류 규칙"
 1. 규칙만 끄기: `.env` 에 `EDITOR_SHEET_VALIDATION_RULES=off` → `docker compose up -d api` → `docker compose restart nginx`(`FLAGS_EXPECTED_API` 토큰도 `false` 로 맞추면 `[FLAGS-CHECK]` ok 유지).
 2. 코드까지: `docker tag storige-api:rollback-pre-sheet-20261017 storige-api:latest`(worker 동일) → `docker compose up -d api worker` → nginx 재시작. editor 는 Vercel 직전 Production(`miptnimpy`, release `78b5c5a`) promote. 이 경우 Wave 11 도 함께 되돌아간다.
 
+### P1 캘린더 운영 반영 절차 (2026-10-17 준비 — 미실행, 오너 승인 후)
+
+> 브랜치 `p1-calendar-2026-10-17`(master `a98d0219` 분기)을 master 에 병합한 뒤 적용한다. api·worker·editor·admin 을 함께 바꾸는 배포이며 **DB 마이그레이션 1건**(additive·`IF NOT EXISTS` 멱등)이 선행한다. 설계·결정 근거는 `docs/CALENDAR_MODE_DEVELOPMENT_PLAN_2026-10-17.md`, `docs/CONTRACT_FREEZE.md` v1.22 와 비공개 노트(`../_private_notes/wave12/P1_CALENDAR_DECISIONS_2026-10-17.md`).
+
+**변경 내용(요약)**
+
+- types/api: 템플릿셋 `product_profile` JSON 컬럼(NULL = 기존 동작)과 DTO 검증. 편집 완료 검증 잡의 기대 쪽수는 템플릿셋 프로파일이 권위(`expectedPages`), 프로파일 NULL 세트는 종전 규칙 그대로.
+- editor: 프로파일 세트에서 고정 26캔버스(표지 1 + 12개월×2면 + 에필로그 1)·달력 메뉴/패널·세션 `metadata.calendar`·완료 payload `product` 키·단일 PDF 판형 = 템플릿셋 판형. 빌드 변수 `VITE_ENABLE_CALENDAR`(위 표).
+- canvas-core: `CalendarPlugin`(날짜 그리드)·정적 날짜 데이터 `kr-2025-2035-v1`(2025~2027 KASI 대조 완료).
+- admin: 템플릿셋 폼 상품 프로파일 JSON 섹션·캘린더 프리셋 7종.
+- worker: 프로파일 세트 cover 슬롯 전용 additive 규칙 `orderOptions.coverSpine='none'`(api 서버 파생) — binding 과 무관하게 단일 판형 검사(`validatePageSize`/`validateBleed`)로 가고 `validateSpine` 을 생략한다(CONTRACT_FREEZE v1.22 보강). 키 미전송(프로파일 NULL 세트) = 종전 판정 그대로. 그 외 dev 로거 폴백.
+
+**순서**
+
+```bash
+# 0) 직전 이미지 보존
+docker tag storige-api:latest storige-api:rollback-pre-calendar-20261017
+docker tag storige-worker:latest storige-worker:rollback-pre-calendar-20261017
+# 1) 마이그레이션(additive, 멱등) — 문서 상단 "스키마 마이그레이션" 블록과 같은 명령
+cd ~/storige && source .env
+docker exec -i storige-mariadb mariadb -ustorige -p"$DATABASE_PASSWORD" storige \
+  < ~/storige/apps/api/migrations/20261017_add_template_set_product_profile.sql
+docker exec -i storige-mariadb mariadb -ustorige -p"$DATABASE_PASSWORD" storige \
+  -e "SHOW COLUMNS FROM template_sets LIKE 'product_profile';"
+# 2) 코드 반영 — worker → api → nginx
+git pull --ff-only origin master
+docker compose build worker api && docker compose up -d worker api && docker compose restart nginx
+docker logs storige-api 2>&1 | grep -E "\[FLAGS\] api |\[FLAGS-CHECK\]" | tail -2   # 키 수 불변(n=15)
+# 3) editor·admin 은 master push 로 Vercel 자동 배포 — "새 배포 id" 가 Ready 인지 확인(이전 Ready 행을 잡지 않는다)
+```
+
+**확인**
+
+- `GET /api/health` 200, worker `/health` ok, 기동 후 10분 오류 로그 0.
+- 기존 세트 무영향: `GET /api/template-sets/<기존 id>` 응답 `productProfile: null`. 샘플 등록 전 `SELECT COUNT(*) FROM template_sets WHERE product_profile IS NOT NULL` = 0.
+- editor: 프로파일 NULL 세트 임베드를 1건 열어 종전 UI(달력 메뉴 없음)인지 확인.
+- 캘린더 샘플 세트 완료 1건(샘플 등록 뒤): 워커 검증 `isValid: true`·경고 0, PDF 26쪽·재단+6mm(탁상 라지 271×196 = 768.19×555.59pt)·TrimBox 3mm 안쪽, `pdffonts` 빈 목록, 투명도 없음 — 로컬 실측(2026-10-17) 동일 기대. 폰트 라이브러리에 템플릿 폰트(`본고딕(Noto Sans) Regular`)가 있어야 텍스트가 벡터화된다(없으면 래스터 폴백 → TRANSPARENCY_DETECTED).
+
+**샘플 세트 등록(별도 승인)**
+
+```bash
+# 생성 계획만 출력(쓰기 없음): 7종 템플릿셋·템플릿 이름/판형
+STORIGE_API_URL=https://<api 호스트>/api node scripts/register-calendar-samples.mjs --dry-run
+# 승인 뒤 실제 등록 — 원격 API 는 --allow-remote 필수, --with-site 는 로컬 전용
+STORIGE_API_URL=https://<api 호스트>/api node scripts/register-calendar-samples.mjs --allow-remote
+```
+
+`ADMIN_EMAIL`/`ADMIN_PASSWORD` 는 환경변수로 넘기고(스크립트는 값을 출력하지 않음) 결과 파일은 임시 디렉터리(0600)에 남는다. 같은 이름의 세트·템플릿은 갱신(멱등). 세트에는 도련 정책(오너 결정 A, 2026-10-17)대로 `cropMarkEnabled=true`·`bleedMm=3` 이 함께 들어간다 — 판형은 재단 그대로, 완료 PDF 는 재단+6mm 에 TrimBox·코너 마커(책자와 같은 게이트). 샘플은 e2e 용 최소 디자인(사진틀 1·그리드 1·링 오버레이)이라 운영 노출 전 디자인 교체는 별도이며, 실제 디자인은 사진·배경을 재단선 바깥 3mm 까지 채운다.
+
+**롤백**
+
+1. 코드: `docker tag storige-api:rollback-pre-calendar-20261017 storige-api:latest`(worker 동일) → `docker compose up -d api worker` → nginx 재시작. editor·admin 은 Vercel 직전 Production promote.
+2. 컬럼은 NULL additive 라 남겨도 종전 코드에 영향이 없다(DROP 불필요). 등록한 샘플 세트는 admin 에서 비활성/삭제한다.
+
+**통지**: CONTRACT_FREEZE v1.22 ADDITIVE 3건(소비처 0건) — 가이드 반영으로 갈음, 적용 시점 = 이 배포 확인 시각.
+
 ## 문제 해결
 
 ### 1. 컨테이너가 시작되지 않음
@@ -1525,13 +1581,13 @@ docker-compose up -d --force-recreate <service-name>
 
 ```bash
 # MySQL 컨테이너 상태 확인
-docker-compose exec mysql mysqladmin ping -h localhost
+docker-compose exec mariadb mariadb-admin ping -h localhost
 
 # 데이터베이스 존재 확인
-docker-compose exec mysql mysql -u root -p -e "SHOW DATABASES;"
+docker-compose exec mariadb mariadb -u root -p -e "SHOW DATABASES;"
 
 # 사용자 권한 확인
-docker-compose exec mysql mysql -u root -p -e "SHOW GRANTS FOR 'storige'@'%';"
+docker-compose exec mariadb mariadb -u root -p -e "SHOW GRANTS FOR 'storige'@'%';"
 ```
 
 ### 3. Redis 연결 실패

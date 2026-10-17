@@ -58,7 +58,7 @@ import {
 import { shouldReemitPricing, type PricingEmitState } from './utils/pricingChangeReemit'
 import { computeEmbedPageState, type EmbedPageState } from './utils/embedPageState'
 import { collectCanvasData } from './utils/collectCanvasData'
-import { resolveProfilePdfRequestSize } from './utils/productProfile'
+import { resolveProfilePdfExportOptions, resolveProfilePdfRequestSize } from './utils/productProfile'
 import { selectSingleModePdfCanvases } from './utils/singleModePdfCanvases'
 import { templatesApi, editSessionsApi, filesApi, apiClient, type EditSessionResponse, type TemplateSet } from './api'
 import { core, ServicePlugin } from '@storige/canvas-core'
@@ -2879,11 +2879,14 @@ function EmbeddedEditor({
               canvasSelection: pdfSel.reason,
               canvasCount: pdfSel.canvases.length,
             })
+            // P1 캘린더 (2026-10-17): 프로파일 세트만 export 옵션(미사용 폰트 생략·워크스페이스 제외·transparent 치환)을
+            // 전달한다. 프로파일 NULL 세트는 undefined 로 종전 인자 그대로(옵션 미전달 = 바이트 동일).
+            const profilePdfExportOptions = resolveProfilePdfExportOptions(useSettingsStore.getState().productProfile)
             const pdfBlob = await withWatchdog(
               runWithAutosaveSuspended(() => servicePlugin.saveMultiPagePDFAsBlob(
                 pdfSel.canvases, pdfSel.editors, `session-${currentSessionId}`,
                 { width: singlePdfSize.width, height: singlePdfSize.height, cutSize: bleed, ...markOpt },
-                undefined, 300,
+                undefined, 300, undefined, profilePdfExportOptions,
               )),
               Math.max(120000, 15000 * pdfSel.canvases.length), 'single-gen',
             )

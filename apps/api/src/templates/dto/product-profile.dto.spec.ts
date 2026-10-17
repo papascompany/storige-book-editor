@@ -120,6 +120,20 @@ describe('ProductProfileDto (P1 캘린더 프로파일 파이프)', () => {
     expect(messages.join('\n')).toContain('kind');
   });
 
+  it('calendar.show.temporaryHolidays — 생략·boolean 통과, 비불리언 400 (2026-10-17 임시공휴일 고객 선택)', async () => {
+    const withFlag = {
+      ...base,
+      productProfile: { ...deskLargeProfile, calendar: { ...deskLargeProfile.calendar, show: { ...deskLargeProfile.calendar.show, temporaryHolidays: true } } },
+    };
+    const out = await pipe.transform(withFlag, { type: 'body', metatype: CreateTemplateSetDto });
+    expect(out.productProfile.calendar.show.temporaryHolidays).toBe(true);
+    const msgs = await expect400({
+      ...base,
+      productProfile: { ...deskLargeProfile, calendar: { ...deskLargeProfile.calendar, show: { ...deskLargeProfile.calendar.show, temporaryHolidays: 'yes' } } },
+    });
+    expect(msgs.join(' ')).toMatch(/temporaryHolidays/);
+  });
+
   it('faceLabels 1개 → 400', async () => {
     const messages = await expect400({
       ...base,

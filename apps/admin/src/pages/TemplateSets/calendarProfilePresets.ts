@@ -80,6 +80,9 @@ export interface CalendarPresetFormValues {
   pageCountMax: number;
   pageStep: undefined;
   productProfileJson: string;
+  /** 도련 정책(오너 결정 A, 2026-10-17): 재단선 마커 켬 + 도련 3mm */
+  cropMarkEnabled: true;
+  bleedMm: number;
 }
 
 export function calendarPresetFormValues(preset: CalendarProfilePreset): CalendarPresetFormValues {
@@ -94,6 +97,9 @@ export function calendarPresetFormValues(preset: CalendarProfilePreset): Calenda
     pageCountMax: count,
     pageStep: undefined,
     productProfileJson: JSON.stringify(preset.profile, null, 2),
+    // 도련 정책(오너 결정 A, 2026-10-17): 판형은 재단 그대로, 재단선 마커 켬 + 도련 3mm — 편집기 PDF 는 재단+6mm·TrimBox, 워커는 작업사이즈 판정.
+    cropMarkEnabled: true,
+    bleedMm: 3,
   };
 }
 

@@ -6,7 +6,7 @@ import {
   applyTemplateSetProductProfile,
   makeCalendarLabelResolver,
   resolveCanvasMonthOffset,
-  resolveFixedCanvasCount, resolveProfilePdfRequestSize } from './productProfile'
+  resolveFixedCanvasCount, resolveProfilePdfExportOptions, resolveProfilePdfRequestSize } from './productProfile'
 
 /**
  * P1 캘린더 (2026-10-17): 템플릿셋 productProfile → 스토어 배선·캔버스 월 매핑·라벨 resolver.
@@ -143,5 +143,20 @@ describe('resolveProfilePdfRequestSize — 단일모드 PDF 요청 치수', () =
   })
   it('프로파일 세트라도 템플릿셋 판형이 없으면 undefined', () => {
     expect(resolveProfilePdfRequestSize(undefined, profile, null)).toBeUndefined()
+  })
+})
+
+describe('resolveProfilePdfExportOptions — 프로파일 세트 전용 PDF export 옵션', () => {
+  const profile = { kind: 'calendar' } as unknown as import('@storige/types').ProductProfile
+  it('프로파일 세트 → 세 옵션 모두 true(미사용 폰트 생략·워크스페이스 제외·transparent 치환)', () => {
+    expect(resolveProfilePdfExportOptions(profile)).toEqual({
+      omitUnusedFonts: true,
+      excludeWorkspaceFromExport: true,
+      neutralizeTransparentFills: true,
+    })
+  })
+  it('프로파일 NULL 세트 → undefined(ServicePlugin 종전 경로·바이트 그대로)', () => {
+    expect(resolveProfilePdfExportOptions(null)).toBeUndefined()
+    expect(resolveProfilePdfExportOptions(undefined)).toBeUndefined()
   })
 })

@@ -942,6 +942,9 @@ export class WorkerJobsService implements OnModuleInit {
     // S6: 앞/뒤 낱장 표지는 스프레드가 아니라 책등 폭이 검증에 쓰이지 않는다 — 주입·덮어쓰기
     // 없이 종료(스탬프 소독은 위에서 이미 수행). 무효값은 미전송 취급(현행 주입 경로).
     if (orderOptions.coverLayout === 'separate') return;
+    // P1-e(2026-10-17): 프로파일 세트 cover 슬롯(책등 없음)도 spine 주입 대상이 아니다 — 워커가
+    // validateSpine 을 생략하므로 spineWidthMm 을 덮어쓰지 않는다(스탬프 소독은 위에서 수행).
+    if (orderOptions.coverSpine === 'none') return;
     const binding = orderOptions.binding as string;
     if (binding !== 'perfect' && binding !== 'hardcover') return;
     const { paperType, pages } = orderOptions;

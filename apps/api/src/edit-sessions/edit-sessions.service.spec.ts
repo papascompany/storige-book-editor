@@ -1591,6 +1591,7 @@ describe('EditSessionsService', () => {
       const { off, on } = await callOffThenOn(mkSession({ pages: 2 }));
       expect(on.cover).toEqual({ ...off.cover, productKind: 'sheet' });
       expect(on.content).toEqual({ ...off.content, productKind: 'sheet' });
+      expect(on.cover).not.toHaveProperty('coverSpine');
       expect(on.cover).toMatchObject({ pages: 2, size: { width: 100, height: 150 } });
       expect(on.cover).not.toHaveProperty('pageStep');
       expect(off.cover).not.toHaveProperty('productKind');
@@ -1693,8 +1694,10 @@ describe('EditSessionsService', () => {
       const { off, on } = await callOffThenOn(mkSession({ pages: 2 }, { canvasData: null }));
       expect(off.cover).toMatchObject({ pages: 2 });
       expect(off.cover).not.toHaveProperty('productKind');
-      expect(on.cover).toEqual({ ...off.cover, productKind: 'sheet', pageStep: 2, pages: 26 });
-      expect(on.content).toEqual({ ...off.content, productKind: 'sheet', pageStep: 2, pages: 26 });
+      // P1-e 후속: 프로파일 세트는 cover 슬롯 책등 없음 → coverSpine none(워커 spine 게이트 우회). 두 잡 공통 키.
+      expect(on.cover).toEqual({ ...off.cover, productKind: 'sheet', pageStep: 2, pages: 26, coverSpine: 'none' });
+      expect(on.content).toEqual({ ...off.content, productKind: 'sheet', pageStep: 2, pages: 26, coverSpine: 'none' });
+      expect(off.cover).not.toHaveProperty('coverSpine');
       expect(on.cover).not.toHaveProperty('expectedPages');
       expect(on.content).not.toHaveProperty('expectedPages');
       const sheetLogs = logSpy.mock.calls.map((c) => String(c[0])).filter((m) => m.includes('낱장 분류 규칙'));

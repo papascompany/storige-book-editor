@@ -56,23 +56,23 @@ pnpm install
 print_success "Dependencies installed"
 echo ""
 
-# Start infrastructure (MySQL + Redis)
-print_info "Starting infrastructure services (MySQL + Redis)..."
-docker-compose up -d mysql redis
+# Start infrastructure (MariaDB + Redis)
+print_info "Starting infrastructure services (MariaDB + Redis)..."
+docker-compose up -d mariadb redis
 print_success "Infrastructure services started"
 echo ""
 
-# Wait for MySQL to be ready
-print_info "Waiting for MySQL to be ready..."
+# Wait for MariaDB to be ready
+print_info "Waiting for MariaDB to be ready..."
 for i in {1..30}; do
-    if docker-compose exec -T mysql mysqladmin ping -h localhost > /dev/null 2>&1; then
+    if docker-compose exec -T mariadb mariadb-admin ping -h localhost > /dev/null 2>&1; then
         break
     fi
     sleep 1
     echo -n "."
 done
 echo ""
-print_success "MySQL is ready"
+print_success "MariaDB is ready"
 echo ""
 
 # Wait for Redis to be ready
@@ -109,6 +109,6 @@ echo "   - API:     http://localhost:4000"
 echo "   - Worker:  http://localhost:4001"
 echo "   - Editor:  http://localhost:3000"
 echo "   - Admin:   http://localhost:3001"
-echo "   - MySQL:   localhost:3306"
+echo "   - MariaDB: localhost:3306"
 echo "   - Redis:   localhost:6379"
 echo ""

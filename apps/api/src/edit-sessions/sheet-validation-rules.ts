@@ -52,6 +52,12 @@ export interface SheetValidationRules {
    * orderOptions 키로 보내지 않는다(워커 DTO 불변). 프로파일 없음·range = 키 없음.
    */
   expectedPages?: number;
+  /**
+   * 2026-10-17 P1-e 후속: 프로파일 세트(캘린더 등)의 cover 슬롯 파일은 책등이 없다 — 워커가 binding
+   * perfect/hardcover 기본값으로 스프레드 표지 게이트(validatePageSize/validateBleed 스킵 + validateSpine →
+   * SPINE_PARAMS_UNRESOLVED)를 타지 않도록 'none' 을 싣는다. 프로파일 non-null 일 때만 키 존재(NULL = 종전).
+   */
+  coverSpine?: 'none';
 }
 
 /** 낱장 PDF 로 묶을 수 없는 템플릿 타입 — 편집기 MIXED_SIZE_TYPES(spine/wing) + 스프레드(책) */
@@ -115,6 +121,8 @@ export function deriveSheetValidationRules(input: SheetValidationRulesInput): Sh
     productKind: 'sheet',
     ...(pageStep !== undefined ? { pageStep } : {}),
     ...(expectedPages !== undefined ? { expectedPages } : {}),
+    // 프로파일 세트의 cover 슬롯은 책등 없음 → 워커 spine 게이트 우회(단일 판형·도련 검증으로)
+    coverSpine: 'none',
   };
 }
 

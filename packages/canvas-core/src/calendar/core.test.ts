@@ -254,6 +254,36 @@ describe('calendar/core — buildMonthMatrix', () => {
     expect(cells.find((c) => c.date === '2036-01-01')!.lunar).toEqual({ year: 2035, month: 12, day: 4, isLeapMonth: false });
     expect(solarToLunar('2036-02-01', data)).toBeNull();
   });
+
+  it('임시공휴일·선거일(temporary)은 기본 미표시, includeTemporaryHolidays=true 면 휴일(2026-06-03 지방선거일, 2026-10-17 오너 결정)', () => {
+    // 데이터 파일의 temporary 항목 3건이 전제(2025-01-27 임시공휴일, 2025-06-03 대통령선거일, 2026-06-03 지방선거일)
+    const temporaryDates = Object.values(data.holidays).flat().filter((h) => h.temporary === true).map((h) => h.date);
+    expect(temporaryDates).toEqual(['2025-01-27', '2025-06-03', '2026-06-03']);
+
+    const byDate = (m: ReturnType<typeof buildMonthMatrix>, d: string) => m.rows.flat().find((c) => c.date === d)!;
+    // 기본(옵션 없음) = 법정 공휴일만 — 선거일 칸은 평일
+    const jun = buildMonthMatrix(2026, 6, { weekStart: 0, data });
+    expect(byDate(jun, '2026-06-03')).toMatchObject({ isHoliday: false, holidayNames: [] });
+    expect(byDate(jun, '2026-06-06')).toMatchObject({ isHoliday: true, holidayNames: ['현충일'] });
+    expect(buildMonthMatrix(2026, 6, { weekStart: 0, data, includeTemporaryHolidays: false }).rows.flat().find((c) => c.date === '2026-06-03')!.isHoliday).toBe(false);
+
+    // 옵션 true — 선거일이 휴일(색·라벨 입력)로 들어간다
+    const junOn = buildMonthMatrix(2026, 6, { weekStart: 0, data, includeTemporaryHolidays: true });
+    expect(byDate(junOn, '2026-06-03')).toMatchObject({ isHoliday: true, holidayNames: ['지방선거일'] });
+    expect(byDate(junOn, '2026-06-06')).toMatchObject({ isHoliday: true, holidayNames: ['현충일'] });
+
+    // 2025-01-27 임시공휴일: 기본 미표시여도 법정(설 연휴 01-28~30)·대체공휴일(substitute, 03-03 대체공휴일(삼일절))은 그대로
+    const jan = buildMonthMatrix(2025, 1, { weekStart: 0, data });
+    expect(byDate(jan, '2025-01-27')).toMatchObject({ isHoliday: false, holidayNames: [] });
+    expect(byDate(jan, '2025-01-28').isHoliday).toBe(true);
+    expect(byDate(jan, '2025-01-30')).toMatchObject({ isHoliday: true, holidayNames: ['설날'] });
+    expect(byDate(buildMonthMatrix(2025, 3, { weekStart: 0, data }), '2025-03-03')).toMatchObject({ isHoliday: true, holidayNames: ['대체공휴일(삼일절)'] });
+    expect(byDate(buildMonthMatrix(2025, 1, { weekStart: 0, data, includeTemporaryHolidays: true }), '2025-01-27').holidayNames).toEqual(['임시공휴일']);
+    // 전월·익월 채움 칸에도 같은 규칙(2025-05 그리드의 06-03 칸)
+    const may = buildMonthMatrix(2025, 5, { weekStart: 0, data });
+    expect(byDate(may, '2025-06-03')).toMatchObject({ inMonth: false, isHoliday: false });
+    expect(byDate(buildMonthMatrix(2025, 5, { weekStart: 0, data, includeTemporaryHolidays: true }), '2025-06-03')).toMatchObject({ inMonth: false, isHoliday: true, holidayNames: ['대통령선거일'] });
+  });
 });
 
 describe('calendar/data — 레지스트리', () => {

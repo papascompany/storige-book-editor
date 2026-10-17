@@ -204,15 +204,24 @@ export interface BuildMonthMatrixOptions {
   weekStart: 0 | 1;
   data: CalendarData;
   anniversaries?: AnniversaryInput[];
+  /**
+   * 임시공휴일·선거일(`CalendarHoliday.temporary === true`)을 휴일로 칠지. 기본 false(2026-10-17 오너 결정):
+   * 법정 공휴일(규정상 공휴일 + `substitute` 대체공휴일)만 `isHoliday`/`holidayNames` 에 들어간다.
+   */
+  includeTemporaryHolidays?: boolean;
 }
 
 const ROWS = 6;
 const COLS = 7;
 
-/** 항상 6행×7열. 전월·익월 채움 칸은 inMonth=false. 공휴일·음력·절기·기념일을 칸에 채운다. */
+/**
+ * 항상 6행×7열. 전월·익월 채움 칸은 inMonth=false. 공휴일·음력·절기·기념일을 칸에 채운다.
+ * `temporary` 휴일은 `includeTemporaryHolidays` 가 true 일 때만 휴일로 취급한다.
+ */
 export function buildMonthMatrix(year: number, month: number, opts: BuildMonthMatrixOptions): MonthMatrix {
   const weekStart: 0 | 1 = opts.weekStart === 1 ? 1 : 0;
   const data = opts.data;
+  const includeTemporary = opts.includeTemporaryHolidays === true;
   const weekdayOrder = weekStart === 1 ? [1, 2, 3, 4, 5, 6, 0] : [0, 1, 2, 3, 4, 5, 6];
 
   const firstDay = Math.round(Date.UTC(year, month - 1, 1) / MS_PER_DAY);
@@ -227,6 +236,7 @@ export function buildMonthMatrix(year: number, month: number, opts: BuildMonthMa
   const termMap = new Map<DateKey, string>();
   for (const y of [year - 1, year, year + 1]) {
     for (const h of data.holidays[String(y)] ?? []) {
+      if (h.temporary === true && !includeTemporary) continue;
       const names = holidayMap.get(h.date);
       if (names) names.push(h.name);
       else holidayMap.set(h.date, [h.name]);

@@ -287,6 +287,13 @@ describe('EmbeddedEditor — editor.complete product (P1-d 캘린더)', () => {
       canvasData: canvasDataOf(26),
       metadata: { productProfile: calendarProfile, calendar: expectedCalendarMeta },
     })
+    // 프로파일 세트 전용 PDF export 옵션(2026-10-17): 8번째 인자로 세 옵션 true, 7번째(onProgress) 는 종전대로 미전달
+    expect(saveMultiPagePDFAsBlob).toHaveBeenCalledTimes(1)
+    const pdfArgs = saveMultiPagePDFAsBlob.mock.calls[0] as unknown[]
+    expect(pdfArgs[4]).toBeUndefined()
+    expect(pdfArgs[5]).toBe(300)
+    expect(pdfArgs[6]).toBeUndefined()
+    expect(pdfArgs[7]).toEqual({ omitUnusedFonts: true, excludeWorkspaceFromExport: true, neutralizeTransparentFills: true })
   })
 
   it('NULL 프로파일(legacy) 편집완료: product 키 없음, payload 키 집합 종전과 동일, update payload { canvasData } 그대로', async () => {
@@ -294,6 +301,11 @@ describe('EmbeddedEditor — editor.complete product (P1-d 캘린더)', () => {
     renderEmbed({ sessionId: 'sess-1' })
 
     expect(await finish()).toBe('completed')
+    // 프로파일 NULL 세트는 export 옵션 미전달(undefined) — ServicePlugin 종전 경로·바이트 그대로
+    expect(saveMultiPagePDFAsBlob).toHaveBeenCalledTimes(1)
+    const pdfArgs = saveMultiPagePDFAsBlob.mock.calls[0] as unknown[]
+    expect(pdfArgs[5]).toBe(300)
+    expect(pdfArgs[7]).toBeUndefined()
     const payload = completePayload()
     expect(payload).not.toHaveProperty('product')
     expect(Object.keys(payload).sort()).toEqual(LEGACY_COMPLETE_KEYS)
