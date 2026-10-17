@@ -70,6 +70,7 @@ Storige 편집기·워커 개발을 이어서 진행합니다. 이 세션은 CTO
 
 ## 2. 현재 라이브 상태 (2026-10-14 06:31Z — Wave 10 안 1 배포·파트너 잡 응답 키 전환 후)
 
+> **10-17 04:30Z 갱신:** master = `19f1ce7c`(낱장 N장 PDF·duplex-split 쪽수 원천·낱장 분류 검증 `productKind=sheet`·킬스위치 `EDITOR_SHEET_VALIDATION_RULES`, P0+(가)). **운영 반영 완료** — VPS 체크아웃·api(`a2a83d46b891`)·worker(`4f294db9c738`) = `19f1ce7c`, editor Vercel `6rjlodvpe` Ready, admin 생략. 이 배포로 §5.2.7 Wave 11(`ea4ae789`~`044a04ca`, 관찰 종료 뒤 별도 승인 예정이던 분)도 함께 운영에 들어갔다. 롤백 태그 `rollback-pre-sheet-20261017`(= `78b5c5a` 이미지), `.env` 백업 `.env.bak-20261017-sheet`, `FLAGS_EXPECTED_API` 15키. 상세: `docs/DEPLOYMENT.md` 「낱장 N장 PDF · duplex-split 쪽수 원천 · 낱장 분류 검증 배포 (2026-10-17)」, 노트 `../_private_notes/wave12/P0_SINGLE_MODE_DEFECTS_2026-10-16.md`. 다음: CONTRACT_FREEZE v1.21 등재·파트너 통지(초안은 노트), 낱장 cover 슬롯 판형·도련 검증 공백은 별도 결정.
 > **10-15 08:27Z 갱신:** master = `ddd96482`(Wave 11 + 정리 4커밋 — 컨트롤러 주석을 동작 사실만으로 정리, fix-bleed·첨부 페이지 채움 응답 스키마 통일, 스키마 참조 범위 고정 테스트). 운영 반영 없음(아래 표 그대로). api 재빌드는 관찰 종료(~10-21) 뒤 별도 승인.
 > **10-14 09:34Z 갱신:** master = `ea4ae789`(Wave 11 — 테스트·OpenAPI 스키마 코드·Loki 규칙 CI·문서 정정·업로드 상한 상수화, 동작 불변, §5.2.7). **운영 반영 없음** — 아래 표의 VPS 이미지·Vercel 배포는 그대로다(editor·admin 빌드 생략 판정). api 재빌드(OpenAPI 스키마 동승)는 잡 응답 키 전환 관찰 종료(~10-21) 뒤 별도 승인.
 

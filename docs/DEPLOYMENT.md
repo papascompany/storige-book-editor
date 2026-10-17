@@ -1450,6 +1450,45 @@ docker logs storige-api 2>&1 | grep "\[FLAGS-CHECK\]" | tail -1
 
 ---
 
+### 낱장 N장 PDF · duplex-split 쪽수 원천 · 낱장 분류 검증 배포 (2026-10-17)
+
+> editor(Vercel)·api·worker 를 함께 바꾸는 배포다. DB 마이그레이션 없음. 설계·실측 근거는 `docs/PRODUCT_MODE_ARCHITECTURE_DESIGN_2026-10-16.md` §6.2·§10 과 비공개 노트(`../_private_notes/wave12/P0_SINGLE_MODE_DEFECTS_2026-10-16.md`).
+> **주의**: VPS 체크아웃을 `78b5c5a` → `19f1ce7c` 로 올리면서 그 사이 master 커밋(Wave 11, `ea4ae789`~`044a04ca` — 파트너 잡 응답 OpenAPI 스키마, 잡 산출물 다운로드 라우트 테넌트 scope `2477e9c8`, 업로드 상한 상수화 `7eba076d`, 테스트·문서)도 함께 운영에 반영됐다. RESUME §2 의 "관찰 종료 뒤 별도 승인" 항목은 이 배포로 소진됐다.
+
+**변경 내용**
+
+- editor: 비스프레드 완료 때 같은 판형 낱장 N장을 한 PDF 로 생성한다(spine/wing 혼재·1장은 종전과 같은 `[canvas],[editor]`). IIFE `save/complete` 도 멀티페이지 canvasData 를 배열로 저장한다.
+- api: duplex-split 잡 기대 쪽수 산출 수정(`resolveSessionPageCount` — 종전에는 편집기 세션에서 항상 실패). 낱장(single 세트, spine/wing/spread 템플릿 없음, 표지 전용 세트 제외) 완료 검증 잡에 `productKind='sheet'`(+`pageStep`)을 싣는다. 검증 DTO `orderOptions` 에 `productKind`·`pageStep`·`postProcessColorRule` 선택 필드. `[FLAGS] api` 줄에 `EDITOR_SHEET_VALIDATION_RULES` 키(15번째, 기본 `true`).
+- worker: `productKind='sheet'` 면 파일 슬롯과 무관하게 정확 쪽수 검사(`PAGE_COUNT_INVALID`, 자동 수정 없음; `pageStep` 배수). `post_process` 파일의 CMYK 오류는 `postProcessColorRule='spot-only'` 일 때만.
+
+```bash
+# 0) 직전 이미지 보존 (= 78b5c5a)
+docker tag storige-api:latest storige-api:rollback-pre-sheet-20261017        # 9f880c3ec267
+docker tag storige-worker:latest storige-worker:rollback-pre-sheet-20261017  # 67212683568c
+# 1) 기대값 프로필에 키 추가 (.env 백업 .env.bak-20261017-sheet, chmod 600)
+#    FLAGS_EXPECTED_API='… PARTNER_JOB_VIEW=true EDITOR_SHEET_VALIDATION_RULES=true'
+cd ~/storige && git pull --ff-only origin master            # 19f1ce7c
+docker compose build api worker && docker compose up -d api worker && docker compose restart nginx
+docker logs storige-api 2>&1 | grep -E "\[FLAGS\] api |\[FLAGS-CHECK\]" | tail -2
+#   … EDITOR_SHEET_VALIDATION_RULES=true  /  [FLAGS-CHECK] api ok n=15
+```
+
+**확인 (2026-10-17 04:30Z)**: api 이미지 `a2a83d46b891`, worker `4f294db9c738`, `[FLAGS-CHECK] api ok n=15`, `GET /api/health` 200, worker `/health` ok(validation completed 189 · failed 0), 기동 후 10분 오류 로그 0. editor Vercel `6rjlodvpe` Ready(Production, 52s). admin 은 감시 경로 밖이라 빌드 생략. 배포 직전 운영 실측: single 세트 세션 90일 0건·duplex-split 세트 0·post_process 잡 0(영향 세션 없음).
+
+**확인 로그 — 낱장 분류 규칙 (api)**
+
+```bash
+docker logs storige-api 2>&1 | grep "낱장 분류 규칙"
+#   [validation-jobs] session <id> 낱장 분류 규칙: productKind=sheet pageStep=<값|-> pages=<기대 쪽수>
+```
+
+낱장 세트가 아니면 줄이 없다(종전 cover/content 규칙).
+
+**롤백**
+
+1. 규칙만 끄기: `.env` 에 `EDITOR_SHEET_VALIDATION_RULES=off` → `docker compose up -d api` → `docker compose restart nginx`(`FLAGS_EXPECTED_API` 토큰도 `false` 로 맞추면 `[FLAGS-CHECK]` ok 유지).
+2. 코드까지: `docker tag storige-api:rollback-pre-sheet-20261017 storige-api:latest`(worker 동일) → `docker compose up -d api worker` → nginx 재시작. editor 는 Vercel 직전 Production(`miptnimpy`, release `78b5c5a`) promote. 이 경우 Wave 11 도 함께 되돌아간다.
+
 ## 문제 해결
 
 ### 1. 컨테이너가 시작되지 않음
