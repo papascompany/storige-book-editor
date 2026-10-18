@@ -36,6 +36,7 @@ import { CreateValidationJobDto } from '../worker-jobs/dto/worker-job.dto';
 import {
   TemplateType,
   WorkerJobStatus,
+  type SheetSpec,
   type SpreadValidationResult,
   validateSpreadAgainstAuthority,
 } from '@storige/types';
@@ -56,12 +57,14 @@ import type { PartnerOperatorAuditDetail } from '../auth/entities/partner-operat
 import { computeEditRetention, editRetentionExpired } from '../staff-edit-data/edit-retention';
 import { staffAuditUnavailable, staffDeleteNotAllowed } from '../staff-edit-data/staff-actor';
 import { resolveSessionPageCount } from './session-page-count';
-import { deriveSheetValidationRules } from './sheet-validation-rules';
+import { deriveSheetValidationRules, resolveSessionProductProfile } from './sheet-validation-rules';
+import { buildSheetMap } from './sheet-map';
 import {
   isEditorContentPageRulesOn,
   isEditorSheetValidationRulesOn,
   isEditorSpreadValidationMappingOn,
   isSessionJobOutputLookupOn,
+  isSheetMapOutputEnabled,
   isSpreadSnapshotHardFail,
 } from '../config/feature-flags';
 
@@ -146,6 +149,15 @@ export function duplexSplitRevisionRequestId(revision: number): string {
 }
 
 /**
+ * P2-c(2026-10-18) sheet-map 잡의 request_id — `sheet-map-r{revision}`(36자 이내). duplex-split 과 같은 회차 카운터
+ * (metadata.revision)를 쓰되 접두사가 달라 같은 회차의 두 모드 잡이 (session_id, pdf_file_id, request_id) 멱등 인덱스에서
+ * 충돌하지 않는다. 편집 완료 자동 잡·파트너 v1 synthesize 재합성이 같은 형식을 쓴다.
+ */
+export function sheetMapRevisionRequestId(revision: number): string {
+  return `sheet-map-r${revision}`;
+}
+
+/**
  * P2-b 보안 리뷰(2026-10-18) — 세션 `metadata` 는 클라이언트 자유형(얕은 병합)이지만 아래 키는 서버가 소유한다:
  *  - `launch`   : 파트너 v1 런처 스탬프(via/env/requestId/launchedAt) — deliverables/synthesize 의 사이트·env 판정 근거
  *  - `revision` : 산출 회차(complete·재합성마다 서버가 +1) — 재합성 requestId 멱등 키
@@ -171,6 +183,11 @@ export interface PartnerVisibleSynthJobRow {
   outputFileUrl: string | null;
   createdAt: Date;
   completedAt: Date | null;
+  /**
+   * P2-c(2026-10-18, additive) worker_jobs.options — 파트너 v1 deliverables 가 `mode==='sheet-map'` 잡의 `sheets`
+   * (API 가 발행 시 저장한 SheetSpec[])를 그대로 싣는 데 쓴다. 파싱 실패·NULL 은 null.
+   */
+  options?: { mode?: string; sheets?: SheetSpec[]; [key: string]: unknown } | null;
 }
 
 @Injectable()
@@ -1767,8 +1784,9 @@ export class EditSessionsService {
       if (!session.templateSetId) return; // 템플릿셋 미연결 → 기본(duplex-merged) 동작 유지
 
       let pdfOutputMode: string;
+      let templateSet: Awaited<ReturnType<TemplateSetsService['findOne']>>;
       try {
-        const templateSet = await this.templateSetsService.findOne(
+        templateSet = await this.templateSetsService.findOne(
           session.templateSetId,
         );
         pdfOutputMode = templateSet.pdfOutputMode ?? 'duplex-merged';
@@ -1790,6 +1808,45 @@ export class EditSessionsService {
         this.logger.warn(
           `[pdfOutputMode] metadata 스냅샷 저장 실패(무중단): ${(e as Error).message}`,
         );
+      }
+
+      // P2-c(2026-10-18): 상품 프로파일 output.mode='sheet-map' 이 pdfOutputMode 보다 우선한다(설계 §6.2 — 시트 매핑이
+      // 이기면 duplex-split 잡은 만들지 않는다). 프로파일 원천은 sheet-validation-rules 와 같다(템플릿셋 우선, 없으면
+      // 세션 스냅샷). 매핑 실패(SheetMapError)·잡 생성 실패는 바깥 catch 가 흡수해 완료는 유지된다.
+      // 킬스위치 SHEET_MAP_OUTPUT_ENABLED=off 면 프로파일을 보지 않고 종전 pdfOutputMode 경로로 떨어진다.
+      if (isSheetMapOutputEnabled()) {
+        const profile = resolveSessionProductProfile({
+          session,
+          templateSet,
+          warn: (m) => this.logger.warn(`[pdfOutputMode] session ${session.id}: ${m}`),
+        });
+        if (profile?.output.mode === 'sheet-map') {
+          if (!session.coverFileId) {
+            this.logger.warn(
+              `[pdfOutputMode] session ${session.id}: sheet-map 이나 coverFileId 부재 → 시트 매핑 잡 스킵`,
+            );
+            return;
+          }
+          const revision = sessionRevisionOf(session.metadata);
+          const sheets = buildSheetMap(profile, resolveSessionPageCount(session));
+          const job = await this.workerJobsService.createSheetMapJob({
+            sessionId: session.id,
+            pdfFileId: session.coverFileId,
+            sheets,
+            output: profile.output.sheetFiles ?? 'per-sheet',
+            duplexFlip: profile.sheet.duplexFlip,
+            // duplex-split 과 같은 회차 카운터·다른 접두사(sheet-map-r<revision>, ≤36자) — 재완료 = 새 회차 잡.
+            requestId: sheetMapRevisionRequestId(revision),
+            callbackUrl: session.callbackUrl ?? undefined,
+            siteId: session.siteId ?? null,
+            revision,
+          });
+          this.logger.log(
+            `[pdfOutputMode] Created sheet-map job ${job.id} for session ${session.id} ` +
+              `(cover=${session.coverFileId}, sheets=${sheets.length}, output=${profile.output.sheetFiles ?? 'per-sheet'}, pdfOutputMode='${pdfOutputMode}' 무시)`,
+          );
+          return;
+        }
       }
 
       // single / duplex-merged 는 편집기 산출 PDF 그대로가 최종 → 추가 잡 없음.
@@ -1845,11 +1902,12 @@ export class EditSessionsService {
       id: string;
       status: string;
       result: unknown;
+      options?: unknown;
       outputFileUrl: string | null;
       createdAt: Date | string;
       completedAt: Date | string | null;
     }> = await this.sessionRepository.manager.query(
-      `SELECT job.id AS id, job.status AS status, job.result AS result,
+      `SELECT job.id AS id, job.status AS status, job.result AS result, job.options AS options,
               job.output_file_url AS outputFileUrl, job.created_at AS createdAt, job.completed_at AS completedAt
          FROM worker_jobs job
          JOIN file_edit_sessions sess ON sess.id = job.edit_session_id
@@ -1862,18 +1920,21 @@ export class EditSessionsService {
     );
     const row = rows[0];
     if (!row) return null;
-    let result: unknown = row.result;
-    if (typeof result === 'string') {
+    const parseJson = (raw: unknown): unknown => {
+      if (typeof raw !== 'string') return raw;
       try {
-        result = JSON.parse(result);
+        return JSON.parse(raw);
       } catch {
-        result = null;
+        return null;
       }
-    }
+    };
+    const result = parseJson(row.result);
+    const options = parseJson(row.options);
     return {
       id: row.id,
       status: row.status,
       result: (result ?? null) as PartnerVisibleSynthJobRow['result'],
+      options: (options !== null && typeof options === 'object' ? options : null) as PartnerVisibleSynthJobRow['options'],
       outputFileUrl: row.outputFileUrl ?? null,
       createdAt: row.createdAt instanceof Date ? row.createdAt : new Date(row.createdAt),
       completedAt:
@@ -1899,6 +1960,87 @@ export class EditSessionsService {
     sessionId: string,
     caller: { siteId: string; env: string },
   ): Promise<{ jobId: string; revision: number }> {
+    const { session, revision } = await this.prepareResynthesis(sessionId, caller);
+
+    const job = await this.workerJobsService.createDuplexSplitJob({
+      sessionId: session.id,
+      pdfFileId: session.coverFileId,
+      requestId: duplexSplitRevisionRequestId(revision),
+      callbackUrl: session.callbackUrl ?? undefined,
+      siteId: session.siteId,
+      revision,
+    });
+    this.logger.log(
+      `[partner-v1] duplex-split resynthesis job ${job.id} for session ${session.id} (revision=${revision})`,
+    );
+    return { jobId: job.id, revision };
+  }
+
+  /**
+   * P2-c 파트너 v1 synthesize — 프로파일 `output.mode='sheet-map'` 세션의 시트 매핑 재합성(2026-10-18).
+   *
+   * 스코프·완료 검사·회차 +1 은 duplex-split 재합성과 같은 prepareResynthesis 를 쓴다. 프로파일 원천은 편집 완료
+   * 자동 잡(applyPdfOutputMode)과 같다(템플릿셋 우선, 없으면 세션 스냅샷; 템플릿셋 조회 실패 = 스냅샷만).
+   * 프로파일이 없거나 sheet-map 이 아니면 400 OUTPUT_MODE_UNSUPPORTED(호출측 게이트가 먼저 걸러 보통 도달하지 않음).
+   * buildSheetMap 의 SheetMapError 는 그대로 올린다 — 호출측(PartnerSessionsService)이 v1 코드로 바꾼다.
+   * 잡 requestId `sheet-map-r{revision}` 은 duplex-split 과 같은 카운터·다른 접두사라 회차 간·모드 간 충돌이 없다.
+   */
+  async requestSheetMapResynthesis(
+    sessionId: string,
+    caller: { siteId: string; env: string },
+  ): Promise<{ jobId: string; revision: number }> {
+    const { session, revision } = await this.prepareResynthesis(sessionId, caller);
+
+    let templateSet: Awaited<ReturnType<TemplateSetsService['findOne']>> | null = null;
+    if (session.templateSetId) {
+      try {
+        templateSet = await this.templateSetsService.findOne(session.templateSetId);
+      } catch (e) {
+        this.logger.warn(
+          `[partner-v1] session ${session.id}: TemplateSet ${session.templateSetId} 조회 실패 → 세션 스냅샷 프로파일만 사용: ${(e as Error).message}`,
+        );
+      }
+    }
+    const profile = resolveSessionProductProfile({
+      session,
+      templateSet,
+      warn: (m) => this.logger.warn(`[partner-v1] session ${session.id}: ${m}`),
+    });
+    if (profile?.output.mode !== 'sheet-map') {
+      throw new BadRequestException({
+        code: 'OUTPUT_MODE_UNSUPPORTED',
+        message: "상품 프로파일 output.mode 가 'sheet-map' 인 세션만 시트 매핑 재합성을 요청할 수 있습니다.",
+        details: { sessionId, outputMode: profile?.output.mode ?? null },
+      });
+    }
+
+    const sheets = buildSheetMap(profile, resolveSessionPageCount(session));
+    const job = await this.workerJobsService.createSheetMapJob({
+      sessionId: session.id,
+      pdfFileId: session.coverFileId,
+      sheets,
+      output: profile.output.sheetFiles ?? 'per-sheet',
+      duplexFlip: profile.sheet.duplexFlip,
+      requestId: sheetMapRevisionRequestId(revision),
+      callbackUrl: session.callbackUrl ?? undefined,
+      siteId: session.siteId,
+      revision,
+    });
+    this.logger.log(
+      `[partner-v1] sheet-map resynthesis job ${job.id} for session ${session.id} (revision=${revision}, sheets=${sheets.length})`,
+    );
+    return { jobId: job.id, revision };
+  }
+
+  /**
+   * 재합성 공통 전처리(P2-c 에서 추출, 동작 불변): 세션 재조회 → 사이트·launch.env 스코프(불일치 = 404 SESSION_NOT_FOUND,
+   * 존재 은닉) → 완료·coverFileId 게이트(400 SESSION_NOT_COMPLETE) → `metadata.revision` +1 저장.
+   * 반환 세션의 coverFileId 는 게이트를 지나 non-null 이다. 잡 생성이 실패해도 revision 은 올라가 있다(잡 없는 회차 허용).
+   */
+  private async prepareResynthesis(
+    sessionId: string,
+    caller: { siteId: string; env: string },
+  ): Promise<{ session: EditSessionEntity & { coverFileId: string; siteId: string }; revision: number }> {
     const session = await this.findById(sessionId);
     const launchEnv = (session.metadata as { launch?: { env?: unknown } } | null)?.launch?.env;
     if (!session.siteId || session.siteId !== caller.siteId || launchEnv !== caller.env) {
@@ -1919,19 +2061,7 @@ export class EditSessionsService {
     const revision = nextSessionRevision(session.metadata);
     session.metadata = { ...(session.metadata ?? {}), revision };
     await this.sessionRepository.save(session);
-
-    const job = await this.workerJobsService.createDuplexSplitJob({
-      sessionId: session.id,
-      pdfFileId: session.coverFileId,
-      requestId: duplexSplitRevisionRequestId(revision),
-      callbackUrl: session.callbackUrl ?? undefined,
-      siteId: session.siteId,
-      revision,
-    });
-    this.logger.log(
-      `[partner-v1] duplex-split resynthesis job ${job.id} for session ${session.id} (revision=${revision})`,
-    );
-    return { jobId: job.id, revision };
+    return { session: session as EditSessionEntity & { coverFileId: string; siteId: string }, revision };
   }
 
   /**

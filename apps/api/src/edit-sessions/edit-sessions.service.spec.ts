@@ -65,6 +65,9 @@ describe('EditSessionsService', () => {
 
   const mockWorkerJobsService = {
     createValidationJob: jest.fn(),
+    // P2-c: applyPdfOutputMode 가 프로파일/pdfOutputMode 에 따라 둘 중 하나만 발행한다.
+    createDuplexSplitJob: jest.fn(),
+    createSheetMapJob: jest.fn(),
   };
 
   const mockTemplateSetsService = {
@@ -1944,6 +1947,183 @@ describe('EditSessionsService', () => {
       expect(mockVersionRepository.findOne).toHaveBeenCalledWith({
         where: { id: 'ver-x', session: { id: 'sess-1' } },
       });
+    });
+  });
+  describe('applyPdfOutputMode — P2-c 프로파일 output.mode=sheet-map 잡 발행(2026-10-18)', () => {
+    const SESSION_ID = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+    const COVER_FILE_ID = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+    const envBackup = process.env.SHEET_MAP_OUTPUT_ENABLED;
+
+    /** 검증 통과(validateProductProfile)하는 sheet-map 프로파일 — 4쪽 same-sheet, 뒷면 180° */
+    const sheetMapProfile = (o: Record<string, unknown> = {}) => ({
+      version: 1,
+      kind: 'sheet',
+      editorType: 'card',
+      pages: { kind: 'fixed', count: 4, labelRule: 'default' },
+      sheet: {
+        faces: 2,
+        canvasLayout: 'canvas-pair',
+        binding: 'none',
+        pairing: 'same-sheet',
+        backRotation: 180,
+        duplexFlip: 'long-edge',
+      },
+      output: { mode: 'sheet-map', sheetFiles: 'per-sheet' },
+      ...o,
+    });
+
+    const makeSession = (o: Record<string, unknown> = {}) =>
+      ({
+        id: SESSION_ID,
+        siteId: 'site-a',
+        templateSetId: 'ts-1',
+        coverFileId: COVER_FILE_ID,
+        callbackUrl: 'https://partner.example.com/cb',
+        canvasData: [{ objects: [] }, { objects: [] }, { objects: [] }, { objects: [] }],
+        metadata: { revision: 2 },
+        ...o,
+      }) as unknown as EditSessionEntity;
+
+    const run = (session: EditSessionEntity) =>
+      (service as unknown as { applyPdfOutputMode(s: EditSessionEntity): Promise<void> }).applyPdfOutputMode(session);
+
+    beforeEach(() => {
+      delete process.env.SHEET_MAP_OUTPUT_ENABLED;
+      mockSessionRepository.save.mockImplementation(async (x: unknown) => x);
+      mockWorkerJobsService.createDuplexSplitJob.mockResolvedValue({ id: 'job-ds' });
+      mockWorkerJobsService.createSheetMapJob.mockResolvedValue({ id: 'job-sm' });
+    });
+
+    afterAll(() => {
+      if (envBackup === undefined) delete process.env.SHEET_MAP_OUTPUT_ENABLED;
+      else process.env.SHEET_MAP_OUTPUT_ENABLED = envBackup;
+    });
+
+    it('① 템플릿셋 프로파일 sheet-map(pdfOutputMode duplex-split 이어도) → sheet-map 잡만, duplex-split 잡 없음, 스냅샷은 pdfOutputMode 기록', async () => {
+      mockTemplateSetsService.findOne.mockResolvedValue({
+        id: 'ts-1',
+        pdfOutputMode: 'duplex-split',
+        productProfile: sheetMapProfile(),
+      });
+      const session = makeSession();
+
+      await run(session);
+
+      expect(mockWorkerJobsService.createSheetMapJob).toHaveBeenCalledTimes(1);
+      expect(mockWorkerJobsService.createSheetMapJob).toHaveBeenCalledWith({
+        sessionId: SESSION_ID,
+        pdfFileId: COVER_FILE_ID,
+        sheets: [
+          { index: 0, front: { page: 0 }, back: { page: 1, rotate: 180 } },
+          { index: 1, front: { page: 2 }, back: { page: 3, rotate: 180 } },
+        ],
+        output: 'per-sheet',
+        duplexFlip: 'long-edge',
+        requestId: 'sheet-map-r2',
+        callbackUrl: 'https://partner.example.com/cb',
+        siteId: 'site-a',
+        revision: 2,
+      });
+      expect(mockWorkerJobsService.createDuplexSplitJob).not.toHaveBeenCalled();
+      expect(session.metadata).toMatchObject({ pdfOutputMode: 'duplex-split', revision: 2 });
+      expect(mockSessionRepository.save).toHaveBeenCalledWith(session);
+    });
+
+    it('①-b 템플릿셋 프로파일 없음 → 세션 스냅샷(metadata.productProfile) 프로파일로 sheet-map; sheetFiles 생략 = per-sheet', async () => {
+      mockTemplateSetsService.findOne.mockResolvedValue({ id: 'ts-1', pdfOutputMode: 'single', productProfile: null });
+      const session = makeSession({
+        metadata: { revision: 1, productProfile: sheetMapProfile({ output: { mode: 'sheet-map' } }) },
+      });
+
+      await run(session);
+
+      expect(mockWorkerJobsService.createSheetMapJob).toHaveBeenCalledWith(
+        expect.objectContaining({ output: 'per-sheet', requestId: 'sheet-map-r1', revision: 1 }),
+      );
+      expect(mockWorkerJobsService.createDuplexSplitJob).not.toHaveBeenCalled();
+    });
+
+    it('①-c 프로파일이 single-pdf 면 종전 경로 — duplex-split 세트는 duplex-split 잡', async () => {
+      mockTemplateSetsService.findOne.mockResolvedValue({
+        id: 'ts-1',
+        pdfOutputMode: 'duplex-split',
+        productProfile: sheetMapProfile({ output: { mode: 'single-pdf' } }),
+      });
+
+      await run(makeSession());
+
+      expect(mockWorkerJobsService.createSheetMapJob).not.toHaveBeenCalled();
+      expect(mockWorkerJobsService.createDuplexSplitJob).toHaveBeenCalledWith(
+        expect.objectContaining({ sessionId: SESSION_ID, pdfFileId: COVER_FILE_ID, requestId: 'duplex-split-r2' }),
+      );
+    });
+
+    it('② 킬스위치 SHEET_MAP_OUTPUT_ENABLED=off → 프로파일 무시, duplex-split 세트면 duplex-split 잡', async () => {
+      process.env.SHEET_MAP_OUTPUT_ENABLED = 'off';
+      mockTemplateSetsService.findOne.mockResolvedValue({
+        id: 'ts-1',
+        pdfOutputMode: 'duplex-split',
+        productProfile: sheetMapProfile(),
+      });
+
+      await run(makeSession());
+
+      expect(mockWorkerJobsService.createSheetMapJob).not.toHaveBeenCalled();
+      expect(mockWorkerJobsService.createDuplexSplitJob).toHaveBeenCalledTimes(1);
+      expect(mockWorkerJobsService.createDuplexSplitJob).toHaveBeenCalledWith(
+        expect.objectContaining({ requestId: 'duplex-split-r2', siteId: 'site-a' }),
+      );
+    });
+
+    it('②-b 킬스위치 off + single 세트 → 잡 없음(종전과 동일)', async () => {
+      process.env.SHEET_MAP_OUTPUT_ENABLED = 'off';
+      mockTemplateSetsService.findOne.mockResolvedValue({
+        id: 'ts-1',
+        pdfOutputMode: 'single',
+        productProfile: sheetMapProfile(),
+      });
+
+      await run(makeSession());
+
+      expect(mockWorkerJobsService.createSheetMapJob).not.toHaveBeenCalled();
+      expect(mockWorkerJobsService.createDuplexSplitJob).not.toHaveBeenCalled();
+    });
+
+    it('③ SheetMapError(페이지 수 ≠ pages.count) → 완료 유지(throw 없음), 어떤 잡도 발행하지 않음', async () => {
+      mockTemplateSetsService.findOne.mockResolvedValue({
+        id: 'ts-1',
+        pdfOutputMode: 'duplex-split',
+        productProfile: sheetMapProfile(),
+      });
+      // 캔버스 6장 ≠ pages.count 4 → buildSheetMap PAGE_COUNT_MISMATCH
+      const session = makeSession({ canvasData: Array.from({ length: 6 }, () => ({ objects: [] })) });
+
+      await expect(run(session)).resolves.toBeUndefined();
+
+      expect(mockWorkerJobsService.createSheetMapJob).not.toHaveBeenCalled();
+      expect(mockWorkerJobsService.createDuplexSplitJob).not.toHaveBeenCalled();
+      expect(session.metadata).toMatchObject({ pdfOutputMode: 'duplex-split' });
+    });
+
+    it('③-b createSheetMapJob 거부도 완료 유지', async () => {
+      mockTemplateSetsService.findOne.mockResolvedValue({ id: 'ts-1', pdfOutputMode: 'single', productProfile: sheetMapProfile() });
+      mockWorkerJobsService.createSheetMapJob.mockRejectedValue(new Error('queue down'));
+
+      await expect(run(makeSession())).resolves.toBeUndefined();
+      expect(mockWorkerJobsService.createDuplexSplitJob).not.toHaveBeenCalled();
+    });
+
+    it('④ sheet-map 프로파일인데 coverFileId 없음 → 경고만, 잡 없음(duplex-split 로도 떨어지지 않음)', async () => {
+      mockTemplateSetsService.findOne.mockResolvedValue({
+        id: 'ts-1',
+        pdfOutputMode: 'duplex-split',
+        productProfile: sheetMapProfile(),
+      });
+
+      await run(makeSession({ coverFileId: null }));
+
+      expect(mockWorkerJobsService.createSheetMapJob).not.toHaveBeenCalled();
+      expect(mockWorkerJobsService.createDuplexSplitJob).not.toHaveBeenCalled();
     });
   });
 });

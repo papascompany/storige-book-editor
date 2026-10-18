@@ -22,6 +22,7 @@ import {
 import { SessionMode, SessionStatus } from '../edit-sessions/entities/edit-session.entity';
 import { PartnerApiException } from '../partner-api/http/partner-api.exceptions';
 import * as ssrf from '../common/helpers/ssrf.helper';
+import { SheetMapError } from '../edit-sessions/sheet-map';
 import {
   PartnerSessionsService,
   buildCalendarView,
@@ -71,6 +72,19 @@ const sheetProfile = () => ({
   output: { mode: 'single-pdf' },
 });
 
+/** P2-c: 검증 통과(resolveProductProfile)하는 sheet-map 프로파일 — 4쪽 same-sheet, 뒷면 180° */
+const sheetMapProfile = (o: Record<string, unknown> = {}) => ({
+  ...sheetProfile(),
+  sheet: { ...sheetProfile().sheet, pairing: 'same-sheet' },
+  output: { mode: 'sheet-map', sheetFiles: 'per-sheet' },
+  ...o,
+});
+
+const SHEETS_4P = [
+  { index: 0, front: { page: 0 }, back: { page: 1, rotate: 180 }, copies: 2, label: 'A' },
+  { index: 1, front: { page: 2 }, back: { page: 3, rotate: 180 } },
+];
+
 const makeTemplateSet = (o: Record<string, unknown> = {}) => ({
   id: TS_ID,
   siteId: null,
@@ -86,6 +100,7 @@ describe('PartnerSessionsService (P2-b 1-call 런처)', () => {
   const create = jest.fn();
   const findLatestPartnerVisibleSynthJob = jest.fn();
   const requestDuplexSplitResynthesis = jest.fn();
+  const requestSheetMapResynthesis = jest.fn();
   const tsFindOne = jest.fn();
   const createShopSession = jest.fn();
   const issueOutputUrls = jest.fn();
@@ -95,7 +110,13 @@ describe('PartnerSessionsService (P2-b 1-call 런처)', () => {
     jest.clearAllMocks();
     delete process.env.PARTNER_SESSION_LAUNCH_ENABLED;
     service = new PartnerSessionsService(
-      { findById, create, findLatestPartnerVisibleSynthJob, requestDuplexSplitResynthesis } as never,
+      {
+        findById,
+        create,
+        findLatestPartnerVisibleSynthJob,
+        requestDuplexSplitResynthesis,
+        requestSheetMapResynthesis,
+      } as never,
       { findOne: tsFindOne } as never,
       { createShopSession } as never,
       { issueOutputUrls } as never,
@@ -227,6 +248,77 @@ describe('PartnerSessionsService (P2-b 1-call 런처)', () => {
       expect(view.files.some((f) => f.url.includes('cover.pdf'))).toBe(false);
       // 편집기 원본은 그대로 앞에 남는다
       expect(view.files[0]).toMatchObject({ role: 'single', auth: 'api-key' });
+    });
+
+    it('P2-c 완료 sheet-map 잡 — sheets(options.sheets) 싣고 sheet 파일에 copies/label 전달; duplex-split 잡은 sheets 키 없음', async () => {
+      const completedAt = new Date('2026-10-18T01:00:00.000Z');
+      const job = (options: Record<string, unknown>) => ({
+        id: 'job-sm',
+        status: WorkerJobStatus.COMPLETED,
+        result: {
+          outputFiles: [
+            { type: 'set', url: '/storage/outputs/job-sm/set-0.pdf', pageCount: 2, setIndex: 0 },
+            { type: 'set', url: '/storage/outputs/job-sm/set-1.pdf', pageCount: 2, setIndex: 1 },
+          ],
+        },
+        options,
+        outputFileUrl: null,
+        createdAt: T0,
+        completedAt,
+      });
+      issueOutputUrls.mockResolvedValue({
+        jobId: 'job-sm',
+        expiresInSec: 300,
+        files: [
+          { name: 'set-0.pdf', url: '/storage-signed/outputs/job-sm/set-0.pdf?md5=a&expires=1800000000', expires: 1800000000 },
+          { name: 'set-1.pdf', url: '/storage-signed/outputs/job-sm/set-1.pdf?md5=b&expires=1800000000', expires: 1800000000 },
+        ],
+      });
+
+      findLatestPartnerVisibleSynthJob.mockResolvedValue(
+        job({ mode: 'sheet-map', totalExpectedPages: 4, sheets: SHEETS_4P, output: 'per-sheet', duplexFlip: 'long-edge' }),
+      );
+      const view = await service.getDeliverables(siteA(), SESSION_ID);
+      expect(view.status).toBe('ready');
+      expect(view.sheets).toEqual(SHEETS_4P);
+      const sheetFiles = view.files.filter((f) => f.role === 'sheet');
+      expect(sheetFiles).toEqual([
+        expect.objectContaining({ sheetIndex: 0, pageCount: 2, copies: 2, label: 'A', auth: 'signed' }),
+        expect.objectContaining({ sheetIndex: 1, pageCount: 2 }),
+      ]);
+      expect(sheetFiles[1]).not.toHaveProperty('copies');
+      expect(sheetFiles[1]).not.toHaveProperty('label');
+      // 편집기 원본(api-key)은 영향 없음
+      expect(view.files[0]).toMatchObject({ role: 'single', auth: 'api-key' });
+      expect(view.files[0]).not.toHaveProperty('copies');
+
+      findLatestPartnerVisibleSynthJob.mockResolvedValue(job({ mode: 'duplex-split', totalExpectedPages: 4 }));
+      const dup = await service.getDeliverables(siteA(), SESSION_ID);
+      expect(dup).not.toHaveProperty('sheets');
+      expect(dup.files.filter((f) => f.role === 'sheet')).toHaveLength(2);
+      expect(dup.files.filter((f) => f.role === 'sheet')[0]).not.toHaveProperty('copies');
+
+      // options 없음(종전 행)·sheets 가 배열이 아님 → sheets 키 없음
+      findLatestPartnerVisibleSynthJob.mockResolvedValue(job({ mode: 'sheet-map', sheets: 'nope' }));
+      expect(await service.getDeliverables(siteA(), SESSION_ID)).not.toHaveProperty('sheets');
+      findLatestPartnerVisibleSynthJob.mockResolvedValue({ ...job({}), options: null });
+      expect(await service.getDeliverables(siteA(), SESSION_ID)).not.toHaveProperty('sheets');
+    });
+
+    it('P2-c 진행 중 sheet-map 잡 — status synthesizing 이어도 sheets 는 싣는다(파일은 없음)', async () => {
+      findLatestPartnerVisibleSynthJob.mockResolvedValue({
+        id: 'job-sm',
+        status: 'PROCESSING',
+        result: null,
+        options: { mode: 'sheet-map', sheets: SHEETS_4P },
+        outputFileUrl: null,
+        createdAt: T0,
+        completedAt: null,
+      });
+      const view = await service.getDeliverables(siteA(), SESSION_ID);
+      expect(view.status).toBe('synthesizing');
+      expect(view.sheets).toEqual(SHEETS_4P);
+      expect(issueOutputUrls).not.toHaveBeenCalled();
     });
 
     it('진행 중 잡 — synthesizing, 서명 URL 미발급', async () => {
@@ -384,6 +476,98 @@ describe('PartnerSessionsService (P2-b 1-call 런처)', () => {
       requestDuplexSplitResynthesis.mockResolvedValue({ jobId: 'job-6', revision: 2 });
       await expect(service.synthesize(siteA(), SESSION_ID)).resolves.toEqual({ jobId: 'job-6', revision: 2 });
       expect(requestDuplexSplitResynthesis).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // ── ④-b synthesize — P2-c sheet-map ───────────────────────────────────
+  describe('④-b synthesize — 프로파일 output.mode=sheet-map (P2-c)', () => {
+    const flagBackup = process.env.SHEET_MAP_OUTPUT_ENABLED;
+    beforeEach(() => {
+      delete process.env.SHEET_MAP_OUTPUT_ENABLED;
+      requestSheetMapResynthesis.mockResolvedValue({ jobId: 'job-sm', revision: 2 });
+    });
+    afterAll(() => {
+      if (flagBackup === undefined) delete process.env.SHEET_MAP_OUTPUT_ENABLED;
+      else process.env.SHEET_MAP_OUTPUT_ENABLED = flagBackup;
+    });
+
+    it("템플릿셋 프로파일 sheet-map + pdfOutputMode≠'duplex-split' → 422 해제, requestSheetMapResynthesis 호출", async () => {
+      tsFindOne.mockResolvedValue(makeTemplateSet({ pdfOutputMode: 'single', productProfile: sheetMapProfile() }));
+      await expect(service.synthesize(siteA(), SESSION_ID)).resolves.toEqual({ jobId: 'job-sm', revision: 2 });
+      expect(requestSheetMapResynthesis).toHaveBeenCalledWith(SESSION_ID, { siteId: SITE_A, env: 'live' });
+      expect(requestDuplexSplitResynthesis).not.toHaveBeenCalled();
+    });
+
+    it("sheet-map 프로파일이 pdfOutputMode='duplex-split' 보다 우선한다", async () => {
+      tsFindOne.mockResolvedValue(makeTemplateSet({ pdfOutputMode: 'duplex-split', productProfile: sheetMapProfile() }));
+      await service.synthesize(siteA(), SESSION_ID);
+      expect(requestSheetMapResynthesis).toHaveBeenCalledTimes(1);
+      expect(requestDuplexSplitResynthesis).not.toHaveBeenCalled();
+    });
+
+    it('템플릿셋 프로파일 없음 → 세션 스냅샷(metadata.productProfile) sheet-map 으로 판정', async () => {
+      tsFindOne.mockResolvedValue(makeTemplateSet({ pdfOutputMode: 'single', productProfile: null }));
+      findById.mockResolvedValue(
+        makeSession({ metadata: { launch: { via: 'partner-v1', env: 'live' }, revision: 1, productProfile: sheetMapProfile() } }),
+      );
+      await expect(service.synthesize(siteA(), SESSION_ID)).resolves.toEqual({ jobId: 'job-sm', revision: 2 });
+      expect(requestSheetMapResynthesis).toHaveBeenCalledTimes(1);
+    });
+
+    it('템플릿셋 미연결/타 site 셋이어도 스냅샷이 sheet-map 이면 재합성(스냅샷 = 세트 변경·삭제 뒤 폴백)', async () => {
+      findById.mockResolvedValue(
+        makeSession({
+          templateSetId: null,
+          metadata: { launch: { via: 'partner-v1', env: 'live' }, revision: 1, productProfile: sheetMapProfile() },
+        }),
+      );
+      await expect(service.synthesize(siteA(), SESSION_ID)).resolves.toEqual({ jobId: 'job-sm', revision: 2 });
+    });
+
+    it('검증 실패 프로파일(canvas-pair 인데 pairing 없음)은 sheet-map 으로 보지 않는다 → duplex-split 세트면 종전 경로', async () => {
+      tsFindOne.mockResolvedValue(
+        makeTemplateSet({ pdfOutputMode: 'duplex-split', productProfile: { ...sheetProfile(), output: { mode: 'sheet-map' } } }),
+      );
+      requestDuplexSplitResynthesis.mockResolvedValue({ jobId: 'job-ds', revision: 2 });
+      await expect(service.synthesize(siteA(), SESSION_ID)).resolves.toEqual({ jobId: 'job-ds', revision: 2 });
+      expect(requestSheetMapResynthesis).not.toHaveBeenCalled();
+    });
+
+    it("킬스위치 SHEET_MAP_OUTPUT_ENABLED=off → 프로파일 무시: duplex-split 세트는 종전 경로, 아니면 422", async () => {
+      process.env.SHEET_MAP_OUTPUT_ENABLED = 'off';
+      tsFindOne.mockResolvedValue(makeTemplateSet({ pdfOutputMode: 'single', productProfile: sheetMapProfile() }));
+      await expectV1(service.synthesize(siteA(), SESSION_ID), ErrV1.ERR_OUTPUT_MODE_UNSUPPORTED, 422);
+      expect(requestSheetMapResynthesis).not.toHaveBeenCalled();
+
+      tsFindOne.mockResolvedValue(makeTemplateSet({ pdfOutputMode: 'duplex-split', productProfile: sheetMapProfile() }));
+      requestDuplexSplitResynthesis.mockResolvedValue({ jobId: 'job-ds', revision: 2 });
+      await expect(service.synthesize(siteA(), SESSION_ID)).resolves.toEqual({ jobId: 'job-ds', revision: 2 });
+      expect(requestSheetMapResynthesis).not.toHaveBeenCalled();
+    });
+
+    it('미완료 409 / coverFileId 없음 409 는 sheet-map 에서도 같다', async () => {
+      tsFindOne.mockResolvedValue(makeTemplateSet({ pdfOutputMode: 'single', productProfile: sheetMapProfile() }));
+      findById.mockResolvedValue(makeSession({ status: SessionStatus.EDITING }));
+      await expectV1(service.synthesize(siteA(), SESSION_ID), ErrV1.ERR_SESSION_NOT_COMPLETE, 409);
+      findById.mockResolvedValue(makeSession({ coverFileId: null, coverFile: null }));
+      await expectV1(service.synthesize(siteA(), SESSION_ID), ErrV1.ERR_SESSION_NOT_COMPLETE, 409);
+      expect(requestSheetMapResynthesis).not.toHaveBeenCalled();
+    });
+
+    it('진행 중 잡(PENDING/PROCESSING)이 있으면 새 잡 없이 그 jobId·현재 revision 재사용', async () => {
+      tsFindOne.mockResolvedValue(makeTemplateSet({ pdfOutputMode: 'single', productProfile: sheetMapProfile() }));
+      findById.mockResolvedValue(makeSession({ metadata: { launch: { via: 'partner-v1', env: 'live' }, revision: 3 } }));
+      findLatestPartnerVisibleSynthJob.mockResolvedValue({ id: 'job-inflight', status: 'PENDING' });
+      await expect(service.synthesize(siteA(), SESSION_ID)).resolves.toEqual({ jobId: 'job-inflight', revision: 3 });
+      expect(requestSheetMapResynthesis).not.toHaveBeenCalled();
+    });
+
+    it('SheetMapError(매핑 불가) → 422 ERR_OUTPUT_MODE_UNSUPPORTED(500 아님); 그 밖 오류는 그대로', async () => {
+      tsFindOne.mockResolvedValue(makeTemplateSet({ pdfOutputMode: 'single', productProfile: sheetMapProfile() }));
+      requestSheetMapResynthesis.mockRejectedValueOnce(new SheetMapError('PAGE_COUNT_MISMATCH', '시트가 참조한 페이지 수 2 ≠ pageCount 4'));
+      await expectV1(service.synthesize(siteA(), SESSION_ID), ErrV1.ERR_OUTPUT_MODE_UNSUPPORTED, 422);
+      requestSheetMapResynthesis.mockRejectedValueOnce(new Error('boom'));
+      await expect(service.synthesize(siteA(), SESSION_ID)).rejects.toThrow('boom');
     });
   });
 
@@ -581,6 +765,119 @@ describe('EditSessionsService.requestDuplexSplitResynthesis (P2-b)', () => {
       service.requestDuplexSplitResynthesis(SESSION_ID, { siteId: SITE_A, env: 'live' }),
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(sessionRepo.save).not.toHaveBeenCalled();
+  });
+});
+
+// ── ⑦-b EditSessionsService.requestSheetMapResynthesis (P2-c) ────────────
+describe('EditSessionsService.requestSheetMapResynthesis (P2-c)', () => {
+  const sessionRepo = {
+    findOne: jest.fn(),
+    save: jest.fn(async (x: Record<string, unknown>) => x),
+    manager: { query: jest.fn() },
+  };
+  const createDuplexSplitJob = jest.fn();
+  const createSheetMapJob = jest.fn();
+  const tsFindOneRaw = jest.fn();
+  let service: EditSessionsService;
+
+  const session = (o: Record<string, unknown> = {}) => ({
+    id: SESSION_ID,
+    siteId: SITE_A,
+    status: SessionStatus.COMPLETE,
+    templateSetId: TS_ID,
+    coverFileId: COVER_FILE_ID,
+    coverFile: { id: COVER_FILE_ID },
+    contentFile: null,
+    callbackUrl: 'https://partner.example.com/cb',
+    canvasData: [{ objects: [] }, { objects: [] }, { objects: [] }, { objects: [] }],
+    metadata: { launch: { via: 'partner-v1', env: 'live' }, revision: 1 },
+    ...o,
+  });
+
+  const EXPECTED_SHEETS = [
+    { index: 0, front: { page: 0 }, back: { page: 1, rotate: 180 } },
+    { index: 1, front: { page: 2 }, back: { page: 3, rotate: 180 } },
+  ];
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    service = new EditSessionsService(
+      sessionRepo as never,
+      {} as never,
+      { createDuplexSplitJob, createSheetMapJob } as never,
+      { findOne: tsFindOneRaw } as never,
+    );
+    sessionRepo.findOne.mockResolvedValue(session());
+    tsFindOneRaw.mockResolvedValue(makeTemplateSet({ pdfOutputMode: 'single', productProfile: sheetMapProfile() }));
+    createSheetMapJob.mockResolvedValue({ id: 'job-8' });
+  });
+
+  it('정상 — revision 1→2 저장 후 sheet-map 잡(requestId sheet-map-r2 · sheets · output · duplexFlip · siteId · revision · callbackUrl)', async () => {
+    const out = await service.requestSheetMapResynthesis(SESSION_ID, { siteId: SITE_A, env: 'live' });
+
+    expect(out).toEqual({ jobId: 'job-8', revision: 2 });
+    expect(sessionRepo.save).toHaveBeenCalledTimes(1);
+    expect(sessionRepo.save.mock.calls[0][0].metadata).toMatchObject({ revision: 2, launch: { env: 'live' } });
+    expect(createSheetMapJob).toHaveBeenCalledWith({
+      sessionId: SESSION_ID,
+      pdfFileId: COVER_FILE_ID,
+      sheets: EXPECTED_SHEETS,
+      output: 'per-sheet',
+      duplexFlip: 'long-edge',
+      requestId: 'sheet-map-r2',
+      callbackUrl: 'https://partner.example.com/cb',
+      siteId: SITE_A,
+      revision: 2,
+    });
+    expect(createDuplexSplitJob).not.toHaveBeenCalled();
+  });
+
+  it('템플릿셋 조회 실패·프로파일 없음 → 세션 스냅샷 프로파일(sheetFiles merged-duplex 전달)', async () => {
+    tsFindOneRaw.mockRejectedValue(new Error('db down'));
+    sessionRepo.findOne.mockResolvedValue(
+      session({
+        metadata: {
+          launch: { via: 'partner-v1', env: 'live' },
+          revision: 4,
+          productProfile: sheetMapProfile({ output: { mode: 'sheet-map', sheetFiles: 'merged-duplex' } }),
+        },
+      }),
+    );
+    await expect(service.requestSheetMapResynthesis(SESSION_ID, { siteId: SITE_A, env: 'live' })).resolves.toEqual({
+      jobId: 'job-8',
+      revision: 5,
+    });
+    expect(createSheetMapJob).toHaveBeenCalledWith(expect.objectContaining({ output: 'merged-duplex', requestId: 'sheet-map-r5' }));
+  });
+
+  it('프로파일이 sheet-map 이 아니면 400 OUTPUT_MODE_UNSUPPORTED — revision 은 이미 올라가 있고 잡 없음', async () => {
+    tsFindOneRaw.mockResolvedValue(makeTemplateSet({ productProfile: sheetProfile() }));
+    await expect(service.requestSheetMapResynthesis(SESSION_ID, { siteId: SITE_A, env: 'live' })).rejects.toMatchObject({
+      response: { code: 'OUTPUT_MODE_UNSUPPORTED' },
+    });
+    expect(sessionRepo.save).toHaveBeenCalledTimes(1);
+    expect(createSheetMapJob).not.toHaveBeenCalled();
+  });
+
+  it('페이지 수 ≠ pages.count → SheetMapError 그대로(호출측이 422 로 변환), 잡 없음', async () => {
+    sessionRepo.findOne.mockResolvedValue(session({ canvasData: [{ objects: [] }, { objects: [] }] }));
+    await expect(service.requestSheetMapResynthesis(SESSION_ID, { siteId: SITE_A, env: 'live' })).rejects.toBeInstanceOf(
+      SheetMapError,
+    );
+    expect(createSheetMapJob).not.toHaveBeenCalled();
+  });
+
+  it('방어적 스코프·완료 게이트는 duplex-split 과 같다(404 SESSION_NOT_FOUND / 400 SESSION_NOT_COMPLETE)', async () => {
+    sessionRepo.findOne.mockResolvedValue(session({ siteId: SITE_B }));
+    await expect(service.requestSheetMapResynthesis(SESSION_ID, { siteId: SITE_A, env: 'live' })).rejects.toMatchObject({
+      response: { code: 'SESSION_NOT_FOUND' },
+    });
+    sessionRepo.findOne.mockResolvedValue(session({ status: SessionStatus.EDITING }));
+    await expect(service.requestSheetMapResynthesis(SESSION_ID, { siteId: SITE_A, env: 'live' })).rejects.toMatchObject({
+      response: { code: 'SESSION_NOT_COMPLETE' },
+    });
+    expect(sessionRepo.save).not.toHaveBeenCalled();
+    expect(createSheetMapJob).not.toHaveBeenCalled();
   });
 });
 

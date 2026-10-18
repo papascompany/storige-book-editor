@@ -1,7 +1,7 @@
 import { Processor, Process, OnQueueFailed } from '@nestjs/bull';
 import { Logger } from '@nestjs/common';
 import { Job } from 'bull';
-import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import { PDFDocument, StandardFonts, rgb, degrees } from 'pdf-lib';
 import { PdfSynthesizerService } from '../services/pdf-synthesizer.service';
 import {
   JobStatusService,
@@ -38,8 +38,12 @@ import { maybeNormalizeForPrint } from '../utils/print-normalize';
 import {
   assemblePdf as qpdfAssemble,
   extractPages as qpdfExtractPages,
+  rotatePages as qpdfRotatePages,
   createBlankPdf,
+  MergePart,
 } from '../utils/pdf-merge-qpdf';
+// P2-c (2026-10-18): 합성 mode 'sheet-map' 입력 검증(다운로드 전·비재시도).
+import { assertSheetMapJobInput, sheetFaces } from './sheet-map-input';
 // A3 (2026-10): 합성 입력 오류(열 수 없는 PDF·저장소의 없는 파일·쓸 수 없는 입력 주소) 타입화.
 import {
   fetchInput,
@@ -54,6 +58,7 @@ import {
   OutputFile,
   SplitSynthesisJobData,
   DuplexSplitSynthesisJobData,
+  SheetMapSynthesisJobData,
   SpreadSynthesisJobData,
   PageTypes,
   SplitResult,
@@ -62,7 +67,7 @@ import {
 
 interface SynthesisJobData {
   jobId: string; // domain ID (worker_jobs.id)
-  mode?: 'split' | 'duplex-split' | 'spread' | 'compose-mixed'; // ★ 모드 분기 기준 (2026-06-09: duplex-split 추가)
+  mode?: 'split' | 'duplex-split' | 'spread' | 'compose-mixed' | 'sheet-map'; // ★ 모드 분기 기준 (2026-06-09: duplex-split 추가, 2026-10-18: sheet-map 추가)
   coverUrl?: string;
   contentUrl?: string;
   spineWidth?: number;
@@ -188,6 +193,10 @@ export class SynthesisProcessor {
       return this.handleDuplexSplitSynthesis(
         job as Job<DuplexSplitSynthesisJobData>,
       );
+    }
+    if (mode === 'sheet-map') {
+      // P2-c (2026-10-18) — 시트 맵(앞/뒤 면 참조·뒷면 회전) 기반 시트별/양면 합본 산출
+      return this.handleSheetMapSynthesis(job as Job<SheetMapSynthesisJobData>);
     }
     if (mode === 'spread') {
       return this.handleSpreadSynthesis(job as Job<SpreadSynthesisJobData>);
@@ -1786,6 +1795,298 @@ export class SynthesisProcessor {
           errorDetail: domainError.detail,
         },
         { mode: 'duplex-split', capture: false },
+      );
+
+      throw error;
+    } finally {
+      if (lwCleanup) await lwCleanup().catch(() => {});
+      await this.cleanupJobTempDir(jobTempDir);
+    }
+  }
+
+  // ============================================================================
+  // Sheet-map Synthesis (시트 맵: 앞/뒤 면 참조 + 뒷면 회전 → 시트별 PDF 또는 양면 합본) - 2026-10-18 P2-c
+  // ============================================================================
+
+  /**
+   * Sheet-map 처리 (1개 PDF + api 가 계산한 SheetSpec[] → set_<index>.pdf … 또는 sheets_duplex.pdf).
+   *
+   * duplex-split(2쪽씩 자르기)과 달리 표지 단면·offset-next(표지 뒤 = 다음 달 상단)·뒷면 회전을
+   * api 의 시트 맵이 표현하고 워커는 그 매핑을 그대로 따른다(매핑 권위 = api, 워커는 불변식만 재검증).
+   * - 면 회전: rotate=180 면은 추출본 페이지의 /Rotate 에 +180 을 더한다(ON qpdf --rotate=+180, OFF setRotation).
+   * - output 'per-sheet': 시트마다 set_<index>.pdf(1~2p, OutputFile type 'set').
+   * - output 'merged-duplex': 인쇄 시트(role 없음)를 [front, back(없으면 front 와 같은 MediaBox 의 빈 면)] 순으로
+   *   한 파일 sheets_duplex.pdf(type 'pages'). role 'post-process' 시트는 출력 모드와 무관하게 별도 set 파일.
+   * - result.sheetMap = { output, duplexFlip, sheets } echo(매니페스트·잡 result 전용, 웹훅 outputFiles 불변).
+   *
+   * 공통 머신(상태 전이·temp·파일 조회·ON/OFF 다운로드·페이지 수 검증·실패 정리)은 duplex-split 과 동일.
+   */
+  private async handleSheetMapSynthesis(job: Job<SheetMapSynthesisJobData>) {
+    const { jobId, sessionId, pdfFileId, totalExpectedPages, sheets, output, duplexFlip } = job.data;
+    const queueJobId = job.id;
+
+    const jobTempDir = path.join(this.storagePath, `temp_${jobId}`);
+
+    // ON 경로의 스트림 입력 임시파일 정리 핸들.
+    let lwCleanup: (() => Promise<void>) | null = null;
+
+    this.logger.log(
+      `Processing sheet-map synthesis job ${jobId} (queue: ${queueJobId}), ` +
+        `expectedPages=${totalExpectedPages}, sheets=${Array.isArray(sheets) ? sheets.length : '-'}, output=${output}`,
+    );
+
+    try {
+      await this.updateJobStatusWithRetry(jobId, { status: 'PROCESSING' });
+
+      // 0. 임시 디렉토리 클린 시작 (재처리/리플레이 안전)
+      await fs.rm(jobTempDir, { recursive: true, force: true });
+      await fs.mkdir(jobTempDir, { recursive: true });
+
+      // 1. 시트 맵 입력 검증 — 다운로드 전. 입력 오류는 비재시도(즉시 FAILED).
+      assertSheetMapJobInput({ sheets, output, duplexFlip, totalExpectedPages });
+
+      // 2. 파일 조회 + 이중 검증 (duplex-split 과 동일 계약: 편집기 산출물 + 세션 일치)
+      const file = await this.getFileById(pdfFileId);
+      if (!file) {
+        throw new DomainError(ErrorCodes.FILE_NOT_FOUND, '파일을 찾을 수 없습니다');
+      }
+      if (file.metadata?.generatedBy !== 'editor') {
+        throw new DomainError(
+          ErrorCodes.PDF_NOT_FROM_EDITOR,
+          '편집기 산출물이 아닙니다',
+        );
+      }
+      if (file.metadata?.editSessionId !== sessionId) {
+        throw new DomainError(ErrorCodes.SESSION_FILE_MISMATCH, '세션-파일 불일치');
+      }
+
+      // 3. PDF 다운로드 + 로드(페이지수 확보) — ON: 스트림→임시파일+qpdf 메타, OFF: 전체버퍼+pdf-lib.
+      const lightweight = VALIDATION_CONFIG.LIGHTWEIGHT_SYNTHESIS;
+      let pdfDoc: PDFDocument | null = null;
+      let lwInputPath: string | null = null;
+      let lwPageSizes: { widthPt: number; heightPt: number }[] = [];
+      let totalPages: number;
+
+      const sourceUrl = `api://${file.id}`;
+      if (lightweight) {
+        let dl;
+        try {
+          dl = await downloadToTempFile(sourceUrl);
+        } catch (error: any) {
+          throw new DomainError(
+            ErrorCodes.FILE_DOWNLOAD_FAILED,
+            '파일 다운로드 실패',
+            { url: sourceUrl, cause: error.message },
+          );
+        }
+        lwInputPath = dl.path;
+        lwCleanup = dl.cleanup;
+        const meta = await extractPdfMetadataQpdf(dl.path);
+        if (meta.corrupted || meta.pageCount <= 0) {
+          throw new DomainError(
+            ErrorCodes.PDF_LOAD_FAILED,
+            'PDF 로드 실패 (암호화/손상/지원불가)',
+            { cause: 'qpdf metadata corrupted/unreadable' },
+          );
+        }
+        totalPages = meta.pageCount;
+        lwPageSizes = meta.pages;
+      } else {
+        let pdfBytes: Uint8Array;
+        try {
+          pdfBytes = await this.synthesizerService.downloadFile(sourceUrl);
+        } catch (error: any) {
+          throw new DomainError(
+            ErrorCodes.FILE_DOWNLOAD_FAILED,
+            '파일 다운로드 실패',
+            { url: sourceUrl, cause: error.message },
+          );
+        }
+        try {
+          pdfDoc = await PDFDocument.load(pdfBytes);
+        } catch (error: any) {
+          throw new DomainError(
+            ErrorCodes.PDF_LOAD_FAILED,
+            'PDF 로드 실패 (암호화/손상/지원불가)',
+            { cause: error.message },
+          );
+        }
+        totalPages = pdfDoc.getPageCount();
+      }
+
+      // 4. 페이지 수 검증 (API 기대치 = 시트가 참조하는 페이지 합)
+      if (totalPages !== totalExpectedPages) {
+        throw new DomainError(ErrorCodes.PAGE_COUNT_MISMATCH, '페이지 수 불일치', {
+          expected: totalExpectedPages,
+          got: totalPages,
+        });
+      }
+
+      // 5. 시트 루프 — 면 추출·회전 → 시트별 파일 또는 합본 파트
+      const storageKeyBase = `outputs/${jobId}`;
+      const outputDir = path.join(this.outputsPath, jobId);
+      await fs.mkdir(outputDir, { recursive: true });
+
+      const merged = output === 'merged-duplex';
+      const outputFiles: OutputFile[] = [];
+      const mergedParts: MergePart[] = []; // ON 합본 파트(시트 추출본 + 빈 면)
+      const mergedDoc = merged && !lightweight ? await PDFDocument.create() : null; // OFF 합본
+      let printSheetCount = 0;
+
+      for (const sheet of sheets) {
+        const faces = sheetFaces(sheet);
+        const faceIndices = faces.map((f) => f.page);
+        const expectedFaces = faces.length;
+        const separate = !merged || sheet.role === 'post-process';
+        const setFilename = `set_${sheet.index}.pdf`;
+        const setOutPath = separate
+          ? path.join(outputDir, setFilename)
+          : path.join(jobTempDir, `sheet_${sheet.index}.pdf`);
+
+        let setPageCount: number;
+        if (lightweight) {
+          // ON: qpdf 로 [앞(,뒤)] 추출(순서 보존·치수/인쇄속성 무손실) → rotate=180 면에 +180.
+          const rotatedPages = faces
+            .map((f, i) => (f.rotate === 180 ? String(i + 1) : null))
+            .filter((v): v is string => v !== null);
+          if (rotatedPages.length === 0) {
+            await qpdfExtractPages(lwInputPath!, this.toQpdfRange(faceIndices), setOutPath);
+          } else {
+            const rawPath = path.join(jobTempDir, `sheet_${sheet.index}_raw.pdf`);
+            await qpdfExtractPages(lwInputPath!, this.toQpdfRange(faceIndices), rawPath);
+            await qpdfRotatePages(rawPath, { angle: '+180', range: rotatedPages.join(',') }, setOutPath);
+          }
+          setPageCount = (await extractPdfMetadataQpdf(setOutPath)).pageCount;
+        } else {
+          const setDoc = await PDFDocument.create();
+          const copied = await setDoc.copyPages(pdfDoc!, faceIndices);
+          copied.forEach((page, i) => {
+            if (faces[i].rotate === 180) {
+              page.setRotation(degrees((page.getRotation().angle + 180) % 360));
+            }
+            setDoc.addPage(page);
+          });
+          setPageCount = setDoc.getPageCount();
+          if (separate) {
+            await fs.writeFile(setOutPath, await setDoc.save());
+          } else {
+            // 합본: 시트 페이지(회전 포함) 복사 → 뒷면 없으면 앞면 MediaBox 치수의 빈 면.
+            const pages = await mergedDoc!.copyPages(setDoc, copied.map((_, i) => i));
+            pages.forEach((p) => mergedDoc!.addPage(p));
+            if (!sheet.back) {
+              const { width, height } = copied[0].getSize();
+              mergedDoc!.addPage([width, height]);
+            }
+          }
+        }
+
+        // 무결성: 시트당 면 수(단면 1 / 양면 2)와 일치해야 함
+        if (setPageCount !== expectedFaces) {
+          throw new DomainError(
+            ErrorCodes.SPLIT_VERIFICATION_FAILED,
+            'sheet-map 시트 페이지 수 불일치',
+            { setIndex: sheet.index, expected: expectedFaces, got: setPageCount },
+          );
+        }
+
+        if (separate) {
+          outputFiles.push({
+            type: 'set',
+            url: `/storage/${storageKeyBase}/${setFilename}`,
+            pageCount: setPageCount,
+            setIndex: sheet.index,
+          });
+          continue;
+        }
+
+        printSheetCount++;
+        if (lightweight) {
+          mergedParts.push({ file: setOutPath });
+          if (!sheet.back) {
+            const size = lwPageSizes[sheet.front.page];
+            if (!size) {
+              throw new DomainError(
+                ErrorCodes.SPLIT_VERIFICATION_FAILED,
+                'sheet-map 빈 뒷면 치수 확보 실패',
+                { setIndex: sheet.index, page: sheet.front.page },
+              );
+            }
+            const blankPath = path.join(jobTempDir, `blank_${sheet.index}.pdf`);
+            await createBlankPdf(size.widthPt, size.heightPt, blankPath);
+            mergedParts.push({ file: blankPath });
+          }
+        }
+      }
+
+      // 6. 합본 산출(merged-duplex, 인쇄 시트가 1장 이상일 때) — 인쇄 시트 수 × 2 페이지
+      let outputFileUrl = outputFiles[0]?.url;
+      if (merged && printSheetCount > 0) {
+        const mergedFilename = 'sheets_duplex.pdf';
+        const mergedOutPath = path.join(outputDir, mergedFilename);
+        let mergedPageCount: number;
+        if (lightweight) {
+          await qpdfAssemble(mergedParts, mergedOutPath);
+          mergedPageCount = (await extractPdfMetadataQpdf(mergedOutPath)).pageCount;
+        } else {
+          await fs.writeFile(mergedOutPath, await mergedDoc!.save());
+          mergedPageCount = mergedDoc!.getPageCount();
+        }
+        if (mergedPageCount !== printSheetCount * 2) {
+          throw new DomainError(
+            ErrorCodes.SPLIT_VERIFICATION_FAILED,
+            'sheet-map 양면 합본 페이지 수 불일치',
+            { expected: printSheetCount * 2, got: mergedPageCount },
+          );
+        }
+        const mergedUrl = `/storage/${storageKeyBase}/${mergedFilename}`;
+        outputFiles.unshift({ type: 'pages', url: mergedUrl, pageCount: mergedPageCount });
+        outputFileUrl = mergedUrl;
+      }
+
+      // 7. 완료 처리 (★ 재시도 정책). sheetMap echo 는 매니페스트·잡 result 전용.
+      const result: SynthesisResult = {
+        success: true,
+        outputFileUrl,
+        outputFiles,
+        totalPages,
+        sheetMap: { output, duplexFlip, sheets },
+      };
+
+      await this.updateJobStatusWithRetry(jobId, {
+        status: 'COMPLETED',
+        result,
+        outputFileUrl: result.outputFileUrl,
+        outputFiles,
+        queueJobId,
+      });
+
+      this.logger.log(
+        `Sheet-map job ${jobId} completed: ${sheets.length} sheets, output=${output} (${totalPages} pages → ${outputFiles.length} files)`,
+      );
+
+      return result;
+    } catch (error: any) {
+      const domainError =
+        error instanceof DomainError
+          ? error
+          : new DomainError(ErrorCodes.INTERNAL_ERROR, error.message);
+
+      this.logger.error(
+        `Sheet-map job ${jobId} failed: ${domainError.code} - ${domainError.message}`,
+        error.stack,
+      );
+
+      await this.settleFailedAttempt(
+        job,
+        jobId,
+        error,
+        {
+          status: 'FAILED',
+          errorCode: domainError.code,
+          errorMessage: domainError.message,
+          errorDetail: domainError.detail,
+        },
+        { mode: 'sheet-map', capture: false },
       );
 
       throw error;

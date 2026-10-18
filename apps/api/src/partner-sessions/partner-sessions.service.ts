@@ -1,10 +1,10 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { ErrV1, WorkerJobStatus, summarizeProductProfile } from '@storige/types';
-import type { ProductProfile } from '@storige/types';
+import { ErrV1, WorkerJobStatus, resolveProductProfile, summarizeProductProfile } from '@storige/types';
+import type { ProductProfile, SheetSpec } from '@storige/types';
 import { CurrentSitePayload } from '../auth/decorators/current-site.decorator';
 import { AuthService } from '../auth/auth.service';
 import { isRemoteUrlPublic } from '../common/helpers/ssrf.helper';
-import { isPartnerSessionLaunchEnabled } from '../config/feature-flags';
+import { isPartnerSessionLaunchEnabled, isSheetMapOutputEnabled } from '../config/feature-flags';
 import {
   EditSessionsService,
   PartnerVisibleSynthJobRow,
@@ -12,6 +12,7 @@ import {
 } from '../edit-sessions/edit-sessions.service';
 import { EditSessionEntity, SessionMode, SessionStatus } from '../edit-sessions/entities/edit-session.entity';
 import { resolveSessionPageCount } from '../edit-sessions/session-page-count';
+import { SheetMapError } from '../edit-sessions/sheet-map';
 import { PartnerApiException } from '../partner-api/http/partner-api.exceptions';
 import { PartnerEnv } from '../partner-api/partner-api.constants';
 import { TemplateSet } from '../templates/entities/template-set.entity';
@@ -254,9 +255,10 @@ export class PartnerSessionsService {
       : null;
     const job = await this.editSessionsService.findLatestPartnerVisibleSynthJob(session.id);
 
+    const sheets = sheetMapSheetsOf(job);
     const files: PartnerSessionFileView[] = this.buildEditorFiles(session);
     if (job && job.status === WorkerJobStatus.COMPLETED) {
-      files.push(...(await this.buildJobFiles(site, job)));
+      files.push(...(await this.buildJobFiles(site, job, sheets)));
     }
 
     const view: PartnerSessionDeliverablesView = {
@@ -268,6 +270,7 @@ export class PartnerSessionsService {
       calendar: buildCalendarView(metadata),
       files,
     };
+    if (sheets) view.sheets = sheets;
     if (metadata.production !== undefined) view.production = metadata.production;
     return view;
   }
@@ -304,10 +307,12 @@ export class PartnerSessionsService {
    * outputFiles[].type 'set' → role 'sheet'(sheetIndex=setIndex), 'pages' → role 'single'. 서명 대상 밖
    * (/storage/outputs/ 아님) 산출물은 싣지 않는다. 산출물 없는 완료 잡(JOB_OUTPUT_NOT_READY/NOT_SIGNABLE)은 빈 목록.
    * 서명 시크릿 미설정(503 SIGNED_URL_NOT_CONFIGURED)은 그대로 올린다(fail-closed → ERR_SERVICE_UNAVAILABLE).
+   * P2-c: sheet-map 잡(`sheets` 전달)은 role 'sheet' 항목에 `sheets[setIndex]` 의 copies/label 을 더한다(additive).
    */
   private async buildJobFiles(
     site: CurrentSitePayload,
     job: PartnerVisibleSynthJobRow,
+    sheets: SheetSpec[] | null = null,
   ): Promise<PartnerSessionFileView[]> {
     let signed: Array<{ name: string; url: string; expires: number }>;
     try {
@@ -328,6 +333,7 @@ export class PartnerSessionsService {
       if (!role) continue;
       const entry = signedByName.get(basenameOf(out.url));
       if (!entry) continue;
+      const sheet = role === 'sheet' && typeof out.setIndex === 'number' ? (sheets?.[out.setIndex] ?? null) : null;
       files.push({
         role,
         jobId: job.id,
@@ -335,6 +341,8 @@ export class PartnerSessionsService {
         auth: 'signed',
         ...(role === 'sheet' && typeof out.setIndex === 'number' ? { sheetIndex: out.setIndex } : {}),
         ...(typeof out.pageCount === 'number' ? { pageCount: out.pageCount } : {}),
+        ...(typeof sheet?.copies === 'number' ? { copies: sheet.copies } : {}),
+        ...(typeof sheet?.label === 'string' ? { label: sheet.label } : {}),
         ...(generatedAt ? { generatedAt } : {}),
         expiresAt: new Date(entry.expires * 1000).toISOString(),
       });
@@ -396,11 +404,17 @@ export class PartnerSessionsService {
     const templateSet = session.templateSetId
       ? await this.findTemplateSetForSite(site, session.templateSetId)
       : null;
-    if (!templateSet || templateSet.pdfOutputMode !== 'duplex-split') {
+    // P2-c(2026-10-18): ① 상품 프로파일(템플릿셋 우선, 없으면 세션 스냅샷 — buildProductView 와 같은 우선순위)
+    // output.mode='sheet-map' → 시트 매핑 재합성(킬스위치 SHEET_MAP_OUTPUT_ENABLED 가 켜진 경우만)
+    // ② 아니면 템플릿셋 pdfOutputMode='duplex-split' → 종전 duplex-split 재합성 ③ 아니면 422.
+    const sheetMapTarget =
+      isSheetMapOutputEnabled() &&
+      this.resolveSynthesizeProfile(templateSet, this.metadataOf(session))?.output.mode === 'sheet-map';
+    if (!sheetMapTarget && (!templateSet || templateSet.pdfOutputMode !== 'duplex-split')) {
       throw new PartnerApiException(
         ErrV1.ERR_OUTPUT_MODE_UNSUPPORTED,
         422,
-        "템플릿셋 pdfOutputMode 가 'duplex-split' 인 세션만 재합성할 수 있습니다",
+        "상품 프로파일 output.mode 가 'sheet-map' 이거나 템플릿셋 pdfOutputMode 가 'duplex-split' 인 세션만 재합성할 수 있습니다",
       );
     }
 
@@ -419,11 +433,39 @@ export class PartnerSessionsService {
       return { jobId: inFlight.id, revision: sessionRevisionOf(session.metadata) };
     }
 
-    return this.editSessionsService.requestDuplexSplitResynthesis(session.id, {
-      siteId: site.siteId,
-      env: this.resolveEnv(site),
-    });
+    const caller = { siteId: site.siteId, env: this.resolveEnv(site) };
+    if (sheetMapTarget) {
+      try {
+        return await this.editSessionsService.requestSheetMapResynthesis(session.id, caller);
+      } catch (e) {
+        // 시트 매핑 불가(프로파일·페이지 수 불일치 등)는 파트너가 고칠 수 없는 상품 구성 문제 — 422 로 알린다(500 아님).
+        if (e instanceof SheetMapError) {
+          throw new PartnerApiException(ErrV1.ERR_OUTPUT_MODE_UNSUPPORTED, 422, e.message);
+        }
+        throw e;
+      }
+    }
+    return this.editSessionsService.requestDuplexSplitResynthesis(session.id, caller);
   }
+
+  /**
+   * synthesize 게이트용 프로파일 — buildProductView 와 같은 우선순위(템플릿셋 productProfile → 세션 스냅샷)이되
+   * 검증된 프로파일만 인정한다(resolveProductProfile: version·validateProductProfile 통과). 둘 다 없거나 무효면 null.
+   */
+  private resolveSynthesizeProfile(templateSet: TemplateSet | null, metadata: SessionMetadata): ProductProfile | null {
+    const warn = (m: string): void => this.logger.warn(`[partner-v1 synthesize] ${m}`);
+    const fromTemplateSet = resolveProductProfile(templateSet, warn);
+    if (fromTemplateSet) return fromTemplateSet;
+    if (metadata.productProfile === undefined || metadata.productProfile === null) return null;
+    return resolveProductProfile({ productProfile: metadata.productProfile as ProductProfile }, warn);
+  }
+}
+
+/** 최신 파트너 가시 합성 잡이 sheet-map 잡이면 발행 시 저장한 `options.sheets`(배열) — 그 밖은 null */
+export function sheetMapSheetsOf(job: PartnerVisibleSynthJobRow | null): SheetSpec[] | null {
+  const options = job?.options;
+  if (!options || options.mode !== 'sheet-map' || !Array.isArray(options.sheets)) return null;
+  return options.sheets;
 }
 
 // ── 순수 헬퍼(spec 에서 직접 단언) ─────────────────────────────────────

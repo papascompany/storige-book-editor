@@ -52,6 +52,7 @@ const BASE_INPUTS: ApiFeatureFlagInputs = {
   editorSpreadValidationMappingRaw: undefined,
   partnerJobViewRaw: undefined,
   partnerSessionLaunchEnabledRaw: undefined,
+  sheetMapOutputEnabledRaw: undefined,
 };
 
 describe('api feature-flags', () => {
@@ -101,6 +102,7 @@ describe('api feature-flags', () => {
         PARTNER_JOB_VIEW: false,
         EDITOR_SHEET_VALIDATION_RULES: true,
         PARTNER_SESSION_LAUNCH_ENABLED: true,
+        SHEET_MAP_OUTPUT_ENABLED: true,
       });
     });
 
@@ -532,6 +534,7 @@ describe('api feature-flags', () => {
       'PARTNER_JOB_VIEW',
       'EDITOR_SHEET_VALIDATION_RULES',
       'PARTNER_SESSION_LAUNCH_ENABLED',
+      'SHEET_MAP_OUTPUT_ENABLED',
     ] as const;
     const backup: Record<string, string | undefined> = {};
     const sources = {
@@ -571,6 +574,7 @@ describe('api feature-flags', () => {
       editorSpreadValidationMappingRaw: process.env.EDITOR_SPREAD_VALIDATION_MAPPING,
       partnerJobViewRaw: config.get<string>('PARTNER_JOB_VIEW'),
       partnerSessionLaunchEnabledRaw: process.env.PARTNER_SESSION_LAUNCH_ENABLED,
+      sheetMapOutputEnabledRaw: process.env.SHEET_MAP_OUTPUT_ENABLED,
     });
 
     const getterOf = (config: ConfigService): ApiConfigGetter => (key, defaultValue) =>
@@ -636,14 +640,15 @@ describe('api 기대값 프로필 대조 — [FLAGS-CHECK]', () => {
 
   it('[FLAGS] 줄 토큰과 같은 프로필 → ok n=키 수', () => {
     expect(lineOf(PROFILE)).toBe(`[FLAGS-CHECK] api ok n=${API_FEATURE_FLAG_KEYS.length}`);
-    // 2026-10-17: EDITOR_SHEET_VALIDATION_RULES 추가로 14 → 15, 2026-10-18: PARTNER_SESSION_LAUNCH_ENABLED 추가로 15 → 16
-    expect(API_FEATURE_FLAG_KEYS.length).toBe(16);
+    // 2026-10-17: EDITOR_SHEET_VALIDATION_RULES 추가로 14 → 15, 2026-10-18: PARTNER_SESSION_LAUNCH_ENABLED 추가로 15 → 16,
+    // 2026-10-18 P2-c: SHEET_MAP_OUTPUT_ENABLED 추가로 16 → 17
+    expect(API_FEATURE_FLAG_KEYS.length).toBe(17);
   });
 
   it('쉼표·여러 공백·줄바꿈 구분도 같다', () => {
     const tokens = PROFILE.split(' ');
-    expect(lineOf(tokens.join(','))).toMatch(/ ok n=16$/);
-    expect(lineOf(`  ${tokens.join(' ,\n  ')}  `)).toMatch(/ ok n=16$/);
+    expect(lineOf(tokens.join(','))).toMatch(/ ok n=17$/);
+    expect(lineOf(`  ${tokens.join(' ,\n  ')}  `)).toMatch(/ ok n=17$/);
   });
 
   it('값이 다른 키는 mismatch 에 유효값·기대값으로 나온다(KEYS 순서)', () => {

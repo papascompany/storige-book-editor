@@ -144,6 +144,10 @@ services:
       #   (2026-10-18 P2-b, api 전용). 앞뒤 공백·대소문자를 무시하고 `off` 일 때만 해제(세 라우트 503 ERR_SERVICE_UNAVAILABLE).
       #   롤백 = .env 에 PARTNER_SESSION_LAUNCH_ENABLED=off → api 재생성 → nginx 재시작. [FLAGS] 줄 끝 키로 확인한다.
       - PARTNER_SESSION_LAUNCH_ENABLED=${PARTNER_SESSION_LAUNCH_ENABLED:-on}
+      # 편집 완료 시 프로파일 output.mode='sheet-map' 세션에 워커 sheet-map 잡 발행 + 파트너 v1 synthesize sheet-map 재합성
+      #   (2026-10-18 P2-c, api 전용). 앞뒤 공백·대소문자를 무시하고 `off` 일 때만 해제(종전 pdfOutputMode 경로만).
+      #   롤백 = .env 에 SHEET_MAP_OUTPUT_ENABLED=off → api 재생성 → nginx 재시작. [FLAGS] 줄 끝 키로 확인한다.
+      - SHEET_MAP_OUTPUT_ENABLED=${SHEET_MAP_OUTPUT_ENABLED:-on}
       # 기동 시 플래그 기대값 대조(api·worker 공통 형식, production 에서만). [FLAGS] api 줄과 같은
       #   `KEY=true|false` 토큰을 공백·쉼표로 나열한 프로필이다. .env 에서는 FLAGS_EXPECTED_API='…' 처럼
       #   작은따옴표로 감싼다. 결과는 기동 로그 `[FLAGS-CHECK] api ok|mismatch|missing|invalid` 한 줄(부팅은 막지 않음).

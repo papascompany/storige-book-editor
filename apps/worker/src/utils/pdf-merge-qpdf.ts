@@ -58,6 +58,27 @@ export async function extractPages(
   await assemblePdf([{ file: input, range }], output);
 }
 
+/** 회전 지시 — angle 은 qpdf 표기(상대 '+180'/'-90', 절대 '180'), range 는 1-based 페이지범위("2","1,3"). */
+export interface RotateSpec {
+  angle: string;
+  /** 미지정 시 전체 페이지. */
+  range?: string;
+}
+
+/**
+ * P2-c(2026-10-18) sheet-map 뒷면 회전 — input 의 range 페이지에 /Rotate 를 적용해 output 으로 저장.
+ * (qpdf --rotate=<angle>[:<range>] in out) 페이지 내용은 재해석하지 않고 /Rotate 속성만 바뀐다.
+ * 상대 표기('+180')는 기존 /Rotate 에 더해지므로 OFF 경로(getRotation()+180)와 같은 결과를 낸다.
+ */
+export async function rotatePages(
+  input: string,
+  spec: RotateSpec,
+  output: string,
+): Promise<void> {
+  const rotate = spec.range ? `${spec.angle}:${spec.range}` : spec.angle;
+  await runQpdf([`--rotate=${rotate}`, input, output], `rotate(${rotate} ${input} → ${output})`);
+}
+
 /** runQpdf 실패 정보 — qpdf 종료 코드(숫자가 아니면 null)와 시간 초과·시그널 종료 여부. */
 export interface QpdfFailure {
   exitCode: number | null;

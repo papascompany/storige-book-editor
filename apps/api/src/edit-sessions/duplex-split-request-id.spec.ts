@@ -7,7 +7,11 @@
 import 'reflect-metadata';
 import { getMetadataArgsStorage } from 'typeorm';
 import { WorkerJob } from '../worker-jobs/entities/worker-job.entity';
-import { DUPLEX_SPLIT_AUTO_REQUEST_ID, duplexSplitRevisionRequestId } from './edit-sessions.service';
+import {
+  DUPLEX_SPLIT_AUTO_REQUEST_ID,
+  duplexSplitRevisionRequestId,
+  sheetMapRevisionRequestId,
+} from './edit-sessions.service';
 
 function requestIdColumnLength(): number {
   const col = getMetadataArgsStorage().columns.find(
@@ -33,5 +37,12 @@ describe('duplex-split request_id ≤ worker_jobs.request_id VARCHAR 길이', ()
     const id = duplexSplitRevisionRequestId(rev);
     expect(id).toBe(`duplex-split-r${rev}`);
     expect(id.length).toBeLessThanOrEqual(requestIdColumnLength());
+  });
+
+  it.each([0, 1, 9999, 999999999])('sheetMapRevisionRequestId(%d) — P2-c, duplex-split 과 접두사가 다르다', (rev) => {
+    const id = sheetMapRevisionRequestId(rev);
+    expect(id).toBe(`sheet-map-r${rev}`);
+    expect(id.length).toBeLessThanOrEqual(requestIdColumnLength());
+    expect(id).not.toBe(duplexSplitRevisionRequestId(rev));
   });
 });

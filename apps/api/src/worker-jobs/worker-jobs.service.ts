@@ -31,6 +31,8 @@ import {
   CUTOUT_JOB_NAME,
   CUTOUT_MAX_LONG_EDGE,
   CutoutJobData,
+  type SheetMapSynthesisJobData,
+  type SheetSpec,
 } from '@storige/types';
 import {
   CreateValidationJobDto,
@@ -76,6 +78,7 @@ import {
 } from '../common/helpers/tenant-scope.helper';
 import { EditSessionEntity, WorkerStatus } from '../edit-sessions/entities/edit-session.entity';
 import { resolveSessionPageCount } from '../edit-sessions/session-page-count';
+import { assertSheetMapCoversPages } from '../edit-sessions/sheet-map';
 import { SitesService } from '../sites/sites.service';
 import { TemplateSetsService } from '../templates/template-sets.service';
 // [자동조립 opt-in] 판형·면지·표지 편집여부 도출 대상 엔티티(타입 전용 참조).
@@ -2902,6 +2905,162 @@ export class WorkerJobsService implements OnModuleInit {
     this.logger.log(
       `Duplex-split job created: ${savedJob.id}, sessionId=${dto.sessionId}, ` +
         `pages=${totalExpectedPages} (${totalExpectedPages / 2} sets), priority=${dto.priority || 'normal'}`,
+    );
+
+    return savedJob;
+  }
+
+  /**
+   * Sheet-map 합성 작업 생성 (P2-c, 2026-10-18 — ProductProfile output.mode='sheet-map').
+   *
+   * 편집기 산출 단일 PDF(캔버스 순서)를 API 가 미리 계산한 시트 앞/뒤 매핑(`sheets`, buildSheetMap 결과)대로
+   * 워커가 per-sheet n파일 또는 merged-duplex 1파일로 만든다. duplex-split(2쪽씩 자르기)과 달리 표지 단면·
+   * offset-next·뒷면 회전을 표현하므로 짝수 검사는 없고, 대신 `sheets` 가 세션 페이지 수를 정확히 1회씩 덮는지
+   * (assertSheetMapCoversPages, SheetMapError PAGE_COUNT_MISMATCH)를 검사한다. 실제 PDF 쪽수와의 일치는 워커가
+   * 다시 검증한다. 멱등 lookup·파일 검증·race 처리·큐 옵션은 createDuplexSplitJob 과 같다.
+   *
+   * - sheets/output/duplexFlip: 호출측(edit-sessions.service)이 프로파일로 산출 — 세션 metadata 값은 쓰지 않는다.
+   * - requestId: `sheet-map-r<revision>`(36자 이내)
+   * - siteId/revision: duplex-split 과 같은 의미(additive, 미전달이면 options 에 revision 키 없음).
+   */
+  async createSheetMapJob(dto: {
+    sessionId: string;
+    pdfFileId: string;
+    sheets: SheetSpec[];
+    output: 'per-sheet' | 'merged-duplex';
+    duplexFlip: 'short-edge' | 'long-edge';
+    requestId: string;
+    callbackUrl?: string;
+    priority?: 'high' | 'normal' | 'low';
+    siteId?: string | null;
+    revision?: number;
+  }): Promise<WorkerJob> {
+    // 0. 멱등성 체크 (duplex-split/split/spread 와 동일 unique 인덱스 사용)
+    const existingJob = await this.workerJobRepository.findOne({
+      where: {
+        sessionId: dto.sessionId,
+        pdfFileId: dto.pdfFileId,
+        requestId: dto.requestId,
+      },
+    });
+    if (existingJob) {
+      this.logger.log(
+        `Idempotent hit: returning existing sheet-map job ${existingJob.id} for requestId=${dto.requestId}`,
+      );
+      return existingJob;
+    }
+
+    // 1. EditSession 조회
+    const session = await this.editSessionRepository.findOne({
+      where: { id: dto.sessionId },
+    });
+    if (!session) {
+      throw new NotFoundException({
+        code: 'SESSION_NOT_FOUND',
+        message: 'EditSession을 찾을 수 없습니다.',
+      });
+    }
+
+    // 2. PDF 파일 조회 + 편집기 산출물 / 세션 일치 검증 (duplex-split 과 동일 계약)
+    const file = await this.filesService.findById(dto.pdfFileId);
+    if (!file) {
+      throw new NotFoundException({
+        code: 'FILE_NOT_FOUND',
+        message: '파일을 찾을 수 없습니다.',
+      });
+    }
+    if (file.metadata?.generatedBy !== 'editor') {
+      throw new BadRequestException({
+        code: 'PDF_NOT_FROM_EDITOR',
+        message: '편집기에서 생성된 PDF만 지원합니다.',
+      });
+    }
+    if (file.metadata?.editSessionId !== dto.sessionId) {
+      throw new BadRequestException({
+        code: 'SESSION_FILE_MISMATCH',
+        message: '세션과 파일이 일치하지 않습니다.',
+      });
+    }
+
+    // 3. 기대 페이지 수(duplex-split 과 같은 원천) — sheets 가 0..n-1 을 정확히 1회씩 덮어야 한다.
+    const totalExpectedPages = resolveSessionPageCount(session);
+    if (totalExpectedPages === 0) {
+      throw new UnprocessableEntityException({
+        code: 'EMPTY_SESSION_PAGES',
+        message: '세션에 페이지가 없습니다.',
+      });
+    }
+    assertSheetMapCoversPages(dto.sheets, totalExpectedPages);
+
+    // 4. WorkerJob 생성
+    const job = this.workerJobRepository.create({
+      jobType: WorkerJobType.SYNTHESIZE,
+      status: WorkerJobStatus.PENDING,
+      editSessionId: dto.sessionId,
+      sessionId: dto.sessionId,
+      pdfFileId: dto.pdfFileId,
+      requestId: dto.requestId,
+      siteId: dto.siteId ?? null,
+      options: {
+        mode: 'sheet-map',
+        totalExpectedPages,
+        sheets: dto.sheets,
+        output: dto.output,
+        duplexFlip: dto.duplexFlip,
+        callbackUrl: dto.callbackUrl,
+        ...(typeof dto.revision === 'number' ? { revision: dto.revision } : {}),
+      },
+    });
+
+    // Race condition 방어 (duplex-split 과 동일)
+    let savedJob: WorkerJob;
+    try {
+      savedJob = await this.saveNewJob(job, 'sheet-map');
+    } catch (error: any) {
+      if (this.isUniqueViolation(error)) {
+        const existing = await this.workerJobRepository.findOne({
+          where: {
+            sessionId: dto.sessionId,
+            pdfFileId: dto.pdfFileId,
+            requestId: dto.requestId,
+          },
+        });
+        if (existing) {
+          this.logger.log(
+            `Race condition resolved: returning existing sheet-map job ${existing.id}`,
+          );
+          return existing;
+        }
+      }
+      throw error;
+    }
+
+    // 5. Bull Queue에 추가 (mode: 'sheet-map' 필수 — 워커 handleSynthesis 분기 기준)
+    const jobOptions: { priority?: number } = {};
+    if (dto.priority === 'high') {
+      jobOptions.priority = 1;
+    } else if (dto.priority === 'low') {
+      jobOptions.priority = 10;
+    } else {
+      jobOptions.priority = 5;
+    }
+
+    const payload: SheetMapSynthesisJobData = {
+      jobId: savedJob.id,
+      mode: 'sheet-map',
+      sessionId: dto.sessionId,
+      pdfFileId: dto.pdfFileId,
+      totalExpectedPages,
+      sheets: dto.sheets,
+      output: dto.output,
+      duplexFlip: dto.duplexFlip,
+      callbackUrl: dto.callbackUrl,
+    };
+    await this.synthesisQueue.add('synthesize-pdf', payload, { ...jobOptions, ...SYNTHESIS_QUEUE_RETRY_OPTS });
+
+    this.logger.log(
+      `Sheet-map job created: ${savedJob.id}, sessionId=${dto.sessionId}, ` +
+        `pages=${totalExpectedPages}, sheets=${dto.sheets.length}, output=${dto.output}, priority=${dto.priority || 'normal'}`,
     );
 
     return savedJob;

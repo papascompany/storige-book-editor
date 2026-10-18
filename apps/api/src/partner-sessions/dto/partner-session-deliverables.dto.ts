@@ -1,4 +1,4 @@
-import type { ProductCompleteSummary, ProductBackRotation, ProductDuplexFlip } from '@storige/types';
+import type { ProductCompleteSummary, ProductBackRotation, ProductDuplexFlip, SheetSpec } from '@storige/types';
 
 /**
  * Partner API v1 — 1-call 런처(P2-b, 2026-10-18) 산출물 조회·재합성 응답 shape.
@@ -30,9 +30,13 @@ export interface PartnerSessionFileView {
   fileId?: string;
   /** 잡 산출물(signed)만 — 산출 잡 id */
   jobId?: string;
-  /** role='sheet' — 세트 순번(0-base, 편집기 페이지 순서) */
+  /** role='sheet' — 세트 순번(0-base, 편집기 페이지 순서). sheet-map 잡은 SheetSpec.index 와 같다 */
   sheetIndex?: number;
   pageCount?: number;
+  /** P2-c(additive) role='sheet' + sheet-map 잡만 — 해당 시트 SheetSpec.copies(명시된 경우) */
+  copies?: number;
+  /** P2-c(additive) role='sheet' + sheet-map 잡만 — 해당 시트 SheetSpec.label(명시된 경우) */
+  label?: string;
   /** ISO 8601 */
   generatedAt?: string;
   /** signed 만 — 서명 만료(ISO 8601) */
@@ -61,6 +65,11 @@ export interface PartnerSessionDeliverablesView {
   product: PartnerSessionProductView | null;
   calendar: PartnerSessionCalendarView | null;
   files: PartnerSessionFileView[];
+  /**
+   * P2-c(2026-10-18, additive) 최신 파트너 가시 합성 잡이 `options.mode==='sheet-map'` 일 때만 — API 가 잡 발행 시
+   * 저장한 시트 앞/뒤 매핑(SheetSpec[], 0-base 페이지·회전·단면 null). duplex-split·잡 없음이면 키 없음.
+   */
+  sheets?: SheetSpec[];
   /** 세션 metadata.production 그대로(없으면 키 없음) */
   production?: unknown;
 }

@@ -74,7 +74,9 @@ function stepOver1(raw: unknown): number | undefined {
  * 자유형 metadata 라 기대 쪽수·pageStep 의 근거로 쓰지 않는다 — 템플릿셋에 프로파일이 없을 때만(세트 변경·삭제 뒤
  * 재합성) 스냅샷을 쓴다. 둘 다 있고 editorType 이 다르면 경고만 남기고 템플릿셋 값을 쓴다.
  */
-function resolveSessionProductProfile(input: SheetValidationRulesInput): ProductProfile | null {
+export function resolveSessionProductProfile(
+  input: Pick<SheetValidationRulesInput, 'session' | 'templateSet' | 'warn'>,
+): ProductProfile | null {
   const warn = input.warn ?? (() => undefined);
   const fromTemplateSet = resolveProductProfile(input.templateSet ?? null, warn);
   const snapshot: unknown = input.session.metadata?.productProfile;

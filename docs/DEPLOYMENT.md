@@ -1619,6 +1619,34 @@ docker logs storige-api 2>&1 | grep -E "\[FLAGS\] api |\[FLAGS-CHECK\]" | tail -
 **롤백**: `PARTNER_SESSION_LAUNCH_ENABLED=off`(3라우트 503) → 필요 시 이미지 롤백 태그로 `docker compose up -d api worker` + nginx 재시작. editor 는 Vercel 직전 Production promote.
 
 
+### P2-c 시트 맵 출력(worker `sheet-map` 모드) 배포 절차 (2026-10-18 준비 — 미실행, 오너 승인 후)
+
+> worker·api 를 바꾸는 배포. DB 마이그레이션 없음(잡 `options`·`result` JSON 만). 계약 `docs/CONTRACT_FREEZE.md` v1.24, 계획 `docs/P2_PRODUCT_MODE_PLAN_2026-10-18.md` §1 P2-c. **순서는 worker 먼저** — 미배포 워커가 `sheet-map` 잡을 받으면 알 수 없는 mode 로 병합 경로에 떨어진다.
+
+**변경 내용(요약)**
+
+- worker: 합성 mode `sheet-map`(per-sheet `set_<i>.pdf` / merged-duplex `sheets_duplex.pdf`, 뒷면 `rotate` 상대 +180, 빈 면 삽입, post-process 시트 별도 파일, 매니페스트 `result.sheetMap`).
+- api: 편집 완료 시 템플릿셋 프로파일 `output.mode==='sheet-map'` → `buildSheetMap` → `createSheetMapJob`(duplex-split 대신). 킬스위치 `SHEET_MAP_OUTPUT_ENABLED`(미설정 ON, **FLAGS 17번째 키**). 파트너 v1 synthesize 가 sheet-map 세트도 재합성, deliverables `sheets`·`files[].copies/label`.
+
+```bash
+# 0) 직전 이미지 보존
+docker tag storige-worker:latest storige-worker:rollback-pre-sheetmap-20261018
+docker tag storige-api:latest storige-api:rollback-pre-sheetmap-20261018
+# 1) 기대값 프로필에 키 추가 (.env 백업 chmod 600)
+#    FLAGS_EXPECTED_API='… PARTNER_SESSION_LAUNCH_ENABLED=true SHEET_MAP_OUTPUT_ENABLED=true'
+# 2) worker → api → nginx
+cd ~/storige && git pull --ff-only origin master
+docker compose build worker && docker compose up -d worker
+docker compose build api && docker compose up -d api && docker compose restart nginx
+docker logs storige-api 2>&1 | grep -E "\[FLAGS-CHECK\]" | tail -1   # ok n=17
+```
+
+**확인**: health 200·오류 로그 0; 프로파일 `output.mode='sheet-map'` 세트 1건으로 런처 launch → 완료 → `[pdfOutputMode] Created sheet-map job` 로그 → deliverables `ready`·`sheets` N·`files` role sheet N(signed) → synthesize 201. duplex-merged·duplex-split·NULL 세트는 종전 그대로(잡 options 불변).
+
+**롤백**: `.env` `SHEET_MAP_OUTPUT_ENABLED=off` → `docker compose up -d api` → nginx 재시작(발행 중지, duplex-split 폴스루) → 큐 `bull:pdf-synthesis:wait` 0 확인 뒤 worker 롤백 태그.
+
+로컬 실측(2026-10-19 00:03 KST, 탁상 베이직 프로파일 `output.mode='sheet-map'`): 완료 → `[pdfOutputMode] Created sheet-map job … sheets=13, output=per-sheet, pdfOutputMode='duplex-split' 무시` → 워커 `Processing sheet-map synthesis job … sheets=13` → 13 `set_<i>.pdf`(각 2쪽 216×156mm) → deliverables `ready`·`sheets` 13 → synthesize 201(r2) → `sheetFiles='merged-duplex'` 재합성 201(r3) → `sheets_duplex.pdf` 26쪽. 운영 템플릿셋에는 아직 sheet-map 프로파일 세트가 없다(배포 직후 동작 변화 0).
+
 ## 문제 해결
 
 ### 1. 컨테이너가 시작되지 않음

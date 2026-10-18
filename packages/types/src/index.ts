@@ -1274,6 +1274,16 @@ export interface SynthesisResult {
   totalPages?: number; // merged PDF 기준 총 페이지 수
   /** [S2-5] test env 더미 산출물 마커 — isTest 잡 결과에만 true (additive, live 결과 불변) */
   isTest?: boolean;
+  /**
+   * P2-c(2026-10-18) worker mode 'sheet-map' 결과 echo(additive) — 매니페스트(.synthesis-complete.json)·잡 result 에만 실리고
+   * 웹훅 본문(outputFiles)은 불변. output: per-sheet 는 outputFiles type 'set'(setIndex = sheet.index, 1~2p),
+   * merged-duplex 는 type 'pages' 1파일(인쇄 시트 front, back(없으면 빈 면) 순). role 'post-process' 시트는 항상 별도 set 파일.
+   */
+  sheetMap?: {
+    output: 'per-sheet' | 'merged-duplex';
+    duplexFlip: 'short-edge' | 'long-edge';
+    sheets: SheetSpec[];
+  };
 }
 
 /**

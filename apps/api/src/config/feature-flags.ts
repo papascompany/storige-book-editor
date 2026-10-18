@@ -64,6 +64,8 @@ export const API_FEATURE_FLAG_KEYS = [
   'EDITOR_SHEET_VALIDATION_RULES',
   // 2026-10-18(P2-b 1-call 런처 /api/v1/sessions/*) 킬스위치 — 줄 끝에 붙는다(운영 FLAGS_EXPECTED_API 프로필에도 추가).
   'PARTNER_SESSION_LAUNCH_ENABLED',
+  // 2026-10-18(P2-c sheet-map 출력) 킬스위치 — 줄 끝에 붙는다(운영 FLAGS_EXPECTED_API 프로필에도 추가).
+  'SHEET_MAP_OUTPUT_ENABLED',
 ] as const;
 
 export type ApiFeatureFlagKey = (typeof API_FEATURE_FLAG_KEYS)[number];
@@ -100,6 +102,8 @@ export interface ApiFeatureFlagInputs {
   editorSheetValidationRulesRaw: unknown;
   /** process.env.PARTNER_SESSION_LAUNCH_ENABLED — partner-sessions.service 와 같은 소스·같은 술어(2026-10-18) */
   partnerSessionLaunchEnabledRaw: unknown;
+  /** process.env.SHEET_MAP_OUTPUT_ENABLED — edit-sessions.service 와 같은 소스·같은 술어(2026-10-18 P2-c) */
+  sheetMapOutputEnabledRaw: unknown;
 }
 
 export function buildApiFeatureFlagSnapshot(i: ApiFeatureFlagInputs): ApiFeatureFlagSnapshot {
@@ -131,6 +135,8 @@ export function buildApiFeatureFlagSnapshot(i: ApiFeatureFlagInputs): ApiFeature
     EDITOR_SHEET_VALIDATION_RULES: isEditorSheetValidationRulesOnRaw(i.editorSheetValidationRulesRaw),
     // partner-sessions.service: isPartnerSessionLaunchEnabled() = isPartnerSessionLaunchEnabledRaw(process.env.PARTNER_SESSION_LAUNCH_ENABLED)
     PARTNER_SESSION_LAUNCH_ENABLED: isPartnerSessionLaunchEnabledRaw(i.partnerSessionLaunchEnabledRaw),
+    // edit-sessions.service: isSheetMapOutputEnabled() = isSheetMapOutputEnabledRaw(process.env.SHEET_MAP_OUTPUT_ENABLED)
+    SHEET_MAP_OUTPUT_ENABLED: isSheetMapOutputEnabledRaw(i.sheetMapOutputEnabledRaw),
     // worker-jobs.controller partnerView: isPartnerJobViewOn(configService.get('PARTNER_JOB_VIEW'))
     PARTNER_JOB_VIEW: isPartnerJobViewOn(i.partnerJobViewRaw),
   };
@@ -170,6 +176,7 @@ export function collectApiFeatureFlagInputs(
     partnerJobViewRaw: get('PARTNER_JOB_VIEW'),
     editorSheetValidationRulesRaw: env.EDITOR_SHEET_VALIDATION_RULES,
     partnerSessionLaunchEnabledRaw: env.PARTNER_SESSION_LAUNCH_ENABLED,
+    sheetMapOutputEnabledRaw: env.SHEET_MAP_OUTPUT_ENABLED,
   };
 }
 
@@ -265,6 +272,24 @@ export function isPartnerSessionLaunchEnabledRaw(raw: unknown): boolean {
  */
 export function isPartnerSessionLaunchEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   return isPartnerSessionLaunchEnabledRaw(env.PARTNER_SESSION_LAUNCH_ENABLED);
+}
+
+/**
+ * SHEET_MAP_OUTPUT_ENABLED 진리값 술어(2026-10-18 P2-c sheet-map 출력 킬스위치) — 기본 ON.
+ * PARTNER_SESSION_LAUNCH_ENABLED 와 같은 해석(앞뒤 공백 제거 + 대소문자 무시, 'off' 일 때만 OFF).
+ */
+export function isSheetMapOutputEnabledRaw(raw: unknown): boolean {
+  return String(raw ?? '').trim().toLowerCase() !== 'off';
+}
+
+/**
+ * 편집 완료 시 프로파일 `output.mode='sheet-map'` 세션에 워커 sheet-map 잡을 발행하는가. 기본 true.
+ * 호출 시점마다 env 를 읽는다. off 면 프로파일을 보지 않고 종전 pdfOutputMode(duplex-split 등) 경로로 떨어진다.
+ * 파트너 v1 synthesize 의 sheet-map 재합성 게이트도 같은 플래그를 본다.
+ * 롤백 = .env 에 SHEET_MAP_OUTPUT_ENABLED=off → api 재생성 → nginx 재시작. [FLAGS] api 줄 끝 키로 확인한다.
+ */
+export function isSheetMapOutputEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return isSheetMapOutputEnabledRaw(env.SHEET_MAP_OUTPUT_ENABLED);
 }
 
 /** 한 줄, `KEY=true|false` 토큰만. 값은 boolean 으로 강제(env 원문 출력 불가). */
