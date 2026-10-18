@@ -62,6 +62,8 @@ export const API_FEATURE_FLAG_KEYS = [
   'PARTNER_JOB_VIEW',
   // 2026-10-17(낱장 분류 검증) 킬스위치 — 줄 끝에 붙는다(운영 FLAGS_EXPECTED_API 프로필에도 추가).
   'EDITOR_SHEET_VALIDATION_RULES',
+  // 2026-10-18(P2-b 1-call 런처 /api/v1/sessions/*) 킬스위치 — 줄 끝에 붙는다(운영 FLAGS_EXPECTED_API 프로필에도 추가).
+  'PARTNER_SESSION_LAUNCH_ENABLED',
 ] as const;
 
 export type ApiFeatureFlagKey = (typeof API_FEATURE_FLAG_KEYS)[number];
@@ -96,6 +98,8 @@ export interface ApiFeatureFlagInputs {
   partnerJobViewRaw: unknown;
   /** process.env.EDITOR_SHEET_VALIDATION_RULES — edit-sessions.service 와 같은 소스·같은 술어(2026-10-17) */
   editorSheetValidationRulesRaw: unknown;
+  /** process.env.PARTNER_SESSION_LAUNCH_ENABLED — partner-sessions.service 와 같은 소스·같은 술어(2026-10-18) */
+  partnerSessionLaunchEnabledRaw: unknown;
 }
 
 export function buildApiFeatureFlagSnapshot(i: ApiFeatureFlagInputs): ApiFeatureFlagSnapshot {
@@ -125,6 +129,8 @@ export function buildApiFeatureFlagSnapshot(i: ApiFeatureFlagInputs): ApiFeature
     ),
     // edit-sessions.service: isEditorSheetValidationRulesOn() = isEditorSheetValidationRulesOnRaw(process.env.EDITOR_SHEET_VALIDATION_RULES)
     EDITOR_SHEET_VALIDATION_RULES: isEditorSheetValidationRulesOnRaw(i.editorSheetValidationRulesRaw),
+    // partner-sessions.service: isPartnerSessionLaunchEnabled() = isPartnerSessionLaunchEnabledRaw(process.env.PARTNER_SESSION_LAUNCH_ENABLED)
+    PARTNER_SESSION_LAUNCH_ENABLED: isPartnerSessionLaunchEnabledRaw(i.partnerSessionLaunchEnabledRaw),
     // worker-jobs.controller partnerView: isPartnerJobViewOn(configService.get('PARTNER_JOB_VIEW'))
     PARTNER_JOB_VIEW: isPartnerJobViewOn(i.partnerJobViewRaw),
   };
@@ -163,6 +169,7 @@ export function collectApiFeatureFlagInputs(
     editorSpreadValidationMappingRaw: env.EDITOR_SPREAD_VALIDATION_MAPPING,
     partnerJobViewRaw: get('PARTNER_JOB_VIEW'),
     editorSheetValidationRulesRaw: env.EDITOR_SHEET_VALIDATION_RULES,
+    partnerSessionLaunchEnabledRaw: env.PARTNER_SESSION_LAUNCH_ENABLED,
   };
 }
 
@@ -241,6 +248,23 @@ export function isEditorSheetValidationRulesOnRaw(raw: unknown): boolean {
  */
 export function isEditorSheetValidationRulesOn(env: NodeJS.ProcessEnv = process.env): boolean {
   return isEditorSheetValidationRulesOnRaw(env.EDITOR_SHEET_VALIDATION_RULES);
+}
+
+/**
+ * PARTNER_SESSION_LAUNCH_ENABLED 진리값 술어(2026-10-18 P2-b 1-call 런처 킬스위치) — 기본 ON.
+ * EDITOR_SHEET_VALIDATION_RULES 와 같은 해석(앞뒤 공백 제거 + 대소문자 무시, 'off' 일 때만 OFF).
+ */
+export function isPartnerSessionLaunchEnabledRaw(raw: unknown): boolean {
+  return String(raw ?? '').trim().toLowerCase() !== 'off';
+}
+
+/**
+ * 파트너 v1 세션 런처 3라우트(POST /api/v1/sessions/launch · GET :id/deliverables · POST :id/synthesize)를
+ * 받는가. 기본 true. 호출 시점마다 env 를 읽는다. off 면 세 라우트가 503 ERR_SERVICE_UNAVAILABLE.
+ * 롤백 = .env 에 PARTNER_SESSION_LAUNCH_ENABLED=off → api 재생성 → nginx 재시작. [FLAGS] api 줄 끝 키로 확인한다.
+ */
+export function isPartnerSessionLaunchEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return isPartnerSessionLaunchEnabledRaw(env.PARTNER_SESSION_LAUNCH_ENABLED);
 }
 
 /** 한 줄, `KEY=true|false` 토큰만. 값은 boolean 으로 강제(env 원문 출력 불가). */

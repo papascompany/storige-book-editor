@@ -104,11 +104,12 @@ describe('Partner API v1 — OpenAPI export 커버리지 계약', () => {
   });
 
   describe('스냅샷 — 현 v1 표면 규모', () => {
-    it('Stage 3 기준 v1 라우트 22개 / 경로 16개 (증감 시 의도 확인 후 갱신)', () => {
+    it('Stage 3 + P2-b sessions 런처 기준 v1 라우트 25개 / 경로 19개 (증감 시 의도 확인 후 갱신)', () => {
+      // 2026-10-18 P2-b: PartnerSessionsController 3라우트(launch·deliverables·synthesize) 추가로 22/16 → 25/19
       const paths = new Set(discoveredRoutes.map((r) => r.path));
       expect({ routes: discoveredRoutes.length, paths: paths.size }).toEqual({
-        routes: 22,
-        paths: 16,
+        routes: 25,
+        paths: 19,
       });
     });
 

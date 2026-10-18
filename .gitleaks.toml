@@ -86,4 +86,8 @@ regexes = [
   #     실제 완전한 JWT(점 2개 + 서명 전체)는 면제되지 않으므로 진짜 유출은 계속 탐지.
   '''eyJ[A-Za-z0-9_-]+\.\.\.''',
   '''eyJ[A-Za-z0-9_-]+…''',
+  # (d) 파트너 v1 `Idempotency-Key` 예시값(README·spec 픽스처, 2026-10-18) — 주문 단위 임의 문자열이라 비밀이 아님.
+  #     README/spec 의 두 형식만 면제(실키 형식 sk-…·JWT 는 계속 탐지).
+  '''(?i)^idem-launch-\d+$''',
+  '''(?i)^order-\d+-launch$''',
 ]

@@ -199,11 +199,11 @@ describe('validateProductProfile', () => {
     expect(errs).toContain('calendar.monthCount 는 12 여야 합니다');
   });
 
-  it('output.mode 는 single-pdf 만 (P1)', () => {
+  it('output.mode 는 single-pdf 또는 sheet-map 만 (P2-a 에서 sheet-map 허용)', () => {
     expect(validateProductProfile(withPatch(deskLarge, (p) => { p.output.mode = 'per-sheet'; })))
-      .toContain("output.mode 는 'single-pdf' 여야 합니다(P1)");
+      .toContain("output.mode 는 'single-pdf' 또는 'sheet-map' 여야 합니다");
     expect(validateProductProfile(withPatch(deskLarge, (p) => { delete p.output; })))
-      .toContain("output.mode 는 'single-pdf' 여야 합니다(P1)");
+      .toContain("output.mode 는 'single-pdf' 또는 'sheet-map' 여야 합니다");
   });
 
   it('postProcess 형식', () => {

@@ -1183,6 +1183,53 @@ export interface DuplexSplitSynthesisJobData {
 }
 
 /**
+ * Sheet-map Synthesis (P2, 2026-10-18 — 설계 docs/PRODUCT_MODE_ARCHITECTURE_DESIGN_2026-10-16.md §6.3~6.4).
+ *
+ * ProductProfile `output.mode='sheet-map'` 상품의 편집기 산출 단일 PDF(캔버스 순서)를
+ * API 가 `buildSheetMap(profile, pageCount)`(apps/api/src/edit-sessions/sheet-map.ts, 순수 함수)로
+ * 시트 앞/뒤 매핑으로 바꿔 worker 에 넘긴다. 매핑은 API 단독 권위이며 편집기가 보낸 값은 쓰지 않는다.
+ * DuplexSplit(2쪽씩 자르기)과 달리 표지 단면·offset-next(표지 뒤 = 다음 달 상단)·뒷면 회전을 표현한다.
+ */
+
+/** 시트 한 면 = 원본 PDF 페이지(0-base) + 회전(180 = 뒷면 거꾸로 인쇄, 0/생략 = 그대로) */
+export interface SheetFaceRef {
+  page: number;
+  rotate?: 0 | 180;
+}
+
+export interface SheetSpec {
+  /** 시트 순번(0-base, 결과 배열 순서) */
+  index: number;
+  front: SheetFaceRef;
+  /** null = 단면 시트(표지·에필로그·단면 상품) */
+  back: SheetFaceRef | null;
+  /** 매니페스트용 시트 크기(미지정 = 템플릿셋 width/height) */
+  sizeMm?: { width: number; height: number };
+  /** 매니페스트용 매수(미지정 = 1) */
+  copies?: number;
+  label?: string;
+  /**
+   * 'post-process' = 업로드 결합 PDF 의 후가공면(§6.3 "role:'post-process' 산출로 분리").
+   * 앞/뒤 짝에서 제외된 단면 시트이며 인쇄 시트가 아니다. 생략 = 인쇄 시트.
+   */
+  role?: 'post-process';
+}
+
+export interface SheetMapSynthesisJobData {
+  jobId: string;
+  mode: 'sheet-map';           // ★ 필수: handleSynthesis() 분기 기준
+  sessionId: string;
+  pdfFileId: string;           // ★ 편집기 산출 단일 PDF (Worker가 fileId로 조회)
+  totalExpectedPages: number;  // ★ 원본 PDF 기대 페이지 수(= sheets 가 참조하는 페이지 합)
+  sheets: SheetSpec[];
+  /** = ProductOutputPolicy.sheetFiles(기본 per-sheet) */
+  output: 'per-sheet' | 'merged-duplex';
+  /** 결과 매니페스트 echo 전용(산출 무영향) */
+  duplexFlip: 'short-edge' | 'long-edge';
+  callbackUrl?: string;
+}
+
+/**
  * PDF Synthesizer 내부 결과 (로컬 파일 경로)
  * Synthesizer → Processor 전달용
  */
@@ -1260,6 +1307,8 @@ export interface SynthesisWebhookPayload {
   orderId?: string;
   /** bookmoa orderOptions.orderSeqno echo-back — orders 테이블 원자 갱신용 (WH-005) */
   orderSeqno?: number;
+  /** P2-b 런처 synthesize(재합성) 로 만든 잡에만 존재 — 세션 metadata.revision 값(additive, 2026-10-18). 그 외 잡은 키 없음 */
+  revision?: number;
   status: 'completed' | 'failed';
 
   // 하위호환 필수
@@ -2439,6 +2488,10 @@ export enum ErrV1 {
   // [오너 게이트] Orders/Credits (2) — Stage 6
   ERR_ORDER_NOT_CANCELLABLE = 'ERR_ORDER_NOT_CANCELLABLE', // 409
   ERR_INSUFFICIENT_CREDIT = 'ERR_INSUFFICIENT_CREDIT', // 402
+
+  // Sessions/런처 (2) — P2-b 1-call 런처(2026-10-18, 설계안 §8.1)
+  ERR_SESSION_NOT_COMPLETE = 'ERR_SESSION_NOT_COMPLETE', // 409 — 편집 완료 전 synthesize
+  ERR_OUTPUT_MODE_UNSUPPORTED = 'ERR_OUTPUT_MODE_UNSUPPORTED', // 422 — 템플릿셋 pdfOutputMode 가 재합성 대상 아님
 }
 
 /** v1 목록 응답 pagination 메타 (설계서 §5.1) */

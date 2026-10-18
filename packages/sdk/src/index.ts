@@ -10,7 +10,7 @@
  * ## 계약 타입을 자체 재선언하는 이유
  * 서버는 @storige/types 를 공유하지만 그 패키지는 private:true 이고 2207줄 중
  * v1 계약은 75줄뿐이다. 통째로 배포하면 내부 도메인 모델 전량이 파트너에게
- * 노출된다. 따라서 SDK 는 v1 계약(ErrV1 29종·봉투·페이지네이션)만 자체 재선언하고,
+ * 노출된다. 따라서 SDK 는 v1 계약(ErrV1 31종·봉투·페이지네이션)만 자체 재선언하고,
  * 드리프트는 types-parity.spec.ts 가 구조 등가성으로 감시한다(@storige/types 는
  * devDependency — 런타임 번들 유입 없음).
  *
@@ -76,7 +76,7 @@ export {
 } from './constants';
 
 // ── 도메인 타입 ─────────────────────────────────────────────────────────
-export { TERMINAL_FINALIZATION_STATUSES } from './types';
+export { TERMINAL_DELIVERABLE_STATUSES, TERMINAL_FINALIZATION_STATUSES } from './types';
 export type {
   BookAssetStatus,
   BookAssetType,
@@ -91,9 +91,19 @@ export type {
   BookView,
   CalculatedSizeView,
   CreateBookInput,
+  DeliverableFile,
+  DeliverableFileAuth,
+  DeliverableFileRole,
   PartnerEnv,
   PingView,
   PutWebhookConfigInput,
+  SessionDeliverableStatus,
+  SessionDeliverables,
+  SessionDeliverablesProduct,
+  SessionLaunchInput,
+  SessionLaunchMode,
+  SessionLaunchResult,
+  SessionSynthesizeResult,
   WebhookConfigStatus,
   WebhookConfigView,
   WebhookDeliveryListQuery,

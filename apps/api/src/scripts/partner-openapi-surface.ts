@@ -30,18 +30,21 @@ import { FilesService } from '../files/files.service';
 import { PartnerWebhooksController } from '../webhook/v2/partner-webhooks.controller';
 import { WebhookConfigService } from '../webhook/v2/webhook-config.service';
 import { WebhookDeliveryService } from '../webhook/v2/webhook-delivery.service';
+import { PartnerSessionsController } from '../partner-sessions/partner-sessions.controller';
+import { PartnerSessionsService } from '../partner-sessions/partner-sessions.service';
 
 export const PARTNER_V1_TAG = 'partner-v1';
 
 /**
  * 스펙에 실릴 v1 컨트롤러 — v1 표면 전량. FS 전수 스캔 집합과 정확히 일치해야 한다.
- * (Stage 1 ping·book-specs / Stage 2 webhooks / Stage 3 books)
+ * (Stage 1 ping·book-specs / Stage 2 webhooks / Stage 3 books / P2-b sessions 런처)
  */
 export const PARTNER_V1_EXPORT_CONTROLLERS: Type<unknown>[] = [
   PartnerPingController,
   BookSpecsController,
   BooksController,
   PartnerWebhooksController,
+  PartnerSessionsController,
 ];
 
 /**
@@ -55,6 +58,7 @@ export const PARTNER_V1_EXPORT_PROVIDERS: Provider[] = [
   { provide: FilesService, useValue: {} },
   { provide: WebhookConfigService, useValue: {} },
   { provide: WebhookDeliveryService, useValue: {} },
+  { provide: PartnerSessionsService, useValue: {} },
 ];
 
 /** v1 계약상 반드시 문서에 존재해야 하는 경로 (글로벌 prefix 'api' 포함) */
@@ -78,6 +82,10 @@ export const REQUIRED_PATHS: string[] = [
   '/api/v1/books/{uid}/photos',
   '/api/v1/books/{uid}/finalization',
   '/api/v1/books/{uid}/pdf',
+  // P2-b — 1-call 런처(2026-10-18, 설계안 §8.1)
+  '/api/v1/sessions/launch',
+  '/api/v1/sessions/{id}/deliverables',
+  '/api/v1/sessions/{id}/synthesize',
 ];
 
 const HTTP_METHODS = [

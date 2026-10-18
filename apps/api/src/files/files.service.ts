@@ -241,6 +241,20 @@ export class FilesService {
   }
 
   /**
+   * 외부(API Key) 메타 조회용 — findById + 호출자 site 대조(getFileStream 과 같은 assertSiteAccess 규칙).
+   * worker 역할·caller 미지정은 바이패스, file.siteId NULL(레거시/공유)은 허용, 타 사이트는 404.
+   * soft-deleted 는 findById 가 자동 제외(404). status(pending/failed) 는 GET /files/:id 와 같이 필터하지 않는다.
+   */
+  async findByIdForCaller(
+    id: string,
+    caller?: { siteId?: string; role?: string },
+  ): Promise<FileEntity> {
+    const file = await this.findById(id);
+    this.assertSiteAccess(file, caller);
+    return file;
+  }
+
+  /**
    * 여러 파일을 In() 1회 배치 조회해 id→entity Map 반환 (DB-003 N+1 제거용).
    * 미존재 id 는 Map 에 없음 — 호출측이 findById 와 동일한 NotFoundException 을 던져 동작 보존.
    */

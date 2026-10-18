@@ -1,5 +1,7 @@
 # 캘린더 편집 모드(P1) 개발 계획 (2026-10-17)
 
+> **상태(2026-10-18)**: P1 구현·운영 반영 완료 — master `af900212`(마이그레이션·api·worker·Vercel editor/admin), 완료 PDF 워커 경고 0(도련 정책 A: 세트 `cropMarkEnabled`+`bleedMm 3`). 운영 샘플 7종 등록은 오너 보류. 기록: `docs/DEPLOYMENT.md` 「P1 캘린더 운영 반영 절차」, RESUME §5.2.8.
+
 > 정본 설계: [`PRODUCT_MODE_ARCHITECTURE_DESIGN_2026-10-16.md`](./PRODUCT_MODE_ARCHITECTURE_DESIGN_2026-10-16.md)(이하 "설계안"). 캘린더 세부·참조 편집기 관찰: [`CALENDAR_EDIT_MODE_DESIGN_2026-10-16.md`](./CALENDAR_EDIT_MODE_DESIGN_2026-10-16.md). 새 세션 시작 프롬프트: `.cursor/plans/CALENDAR_MODE_SESSION_START_PROMPT_2026-10-17.md`.
 > 이 문서는 "무엇을, 어떤 순서로, 어디까지"를 정한다. 코드 인용은 설계안의 `file:line`을 따른다.
 

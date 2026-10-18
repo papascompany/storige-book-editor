@@ -134,6 +134,64 @@ describe('ProductProfileDto (P1 캘린더 프로파일 파이프)', () => {
     expect(msgs.join(' ')).toMatch(/temporaryHolidays/);
   });
 
+  describe("output.mode 'sheet-map' (P2-a, 2026-10-18)", () => {
+    /** 낱장 양면 same-sheet(인쇄 ①~③ shape) */
+    const pairSheetProfile = {
+      version: 1,
+      kind: 'sheet',
+      editorType: 'photo_digital_items',
+      pages: { kind: 'range', min: 2, max: 60, step: 2, labelRule: 'default' },
+      sheet: { faces: 2, canvasLayout: 'canvas-pair', binding: 'top-ring', pairing: 'same-sheet', backRotation: 0, duplexFlip: 'short-edge' },
+      output: { mode: 'sheet-map' },
+    };
+
+    it("output: { mode: 'sheet-map' } → 통과, sheetFiles 생략 보존", async () => {
+      const out = await pipe.transform({ ...base, productProfile: pairSheetProfile }, { type: 'body', metatype: CreateTemplateSetDto });
+      expect(out.productProfile?.output).toEqual({ mode: 'sheet-map' });
+    });
+
+    it("sheetFiles 'per-sheet' | 'merged-duplex' → 통과", async () => {
+      for (const sheetFiles of ['per-sheet', 'merged-duplex']) {
+        const out = await pipe.transform(
+          { ...base, productProfile: { ...pairSheetProfile, output: { mode: 'sheet-map', sheetFiles } } },
+          { type: 'body', metatype: CreateTemplateSetDto },
+        );
+        expect(out.productProfile?.output?.sheetFiles).toBe(sheetFiles);
+      }
+    });
+
+    it('캘린더 프리셋 + sheet-map(벽걸이 (나) 설계) → 통과', async () => {
+      const out = await pipe.transform(
+        { ...base, productProfile: { ...deskLargeProfile, output: { mode: 'sheet-map', sheetFiles: 'per-sheet' } } },
+        { type: 'body', metatype: CreateTemplateSetDto },
+      );
+      expect(out.productProfile?.output).toEqual({ mode: 'sheet-map', sheetFiles: 'per-sheet' });
+    });
+
+    it("output.mode 미등재('per-sheet') → 400", async () => {
+      const messages = await expect400({ ...base, productProfile: { ...pairSheetProfile, output: { mode: 'per-sheet' } } });
+      expect(messages.join('\n')).toContain('mode');
+    });
+
+    it("sheetFiles 미등재('zip') → 400", async () => {
+      const messages = await expect400({ ...base, productProfile: { ...pairSheetProfile, output: { mode: 'sheet-map', sheetFiles: 'zip' } } });
+      expect(messages.join('\n')).toContain('sheetFiles');
+    });
+
+    it('single-pdf 에 sheetFiles 지정 → 400 (types 결합 규칙 문구)', async () => {
+      const messages = await expect400({ ...base, productProfile: { ...pairSheetProfile, output: { mode: 'single-pdf', sheetFiles: 'per-sheet' } } });
+      expect(messages.join('\n')).toContain("output.sheetFiles 는 output.mode='sheet-map' 에서만 지정합니다");
+    });
+
+    it('center-punch + offset-next + sheet-map → 400 (pairing 결합 규칙)', async () => {
+      const messages = await expect400({
+        ...base,
+        productProfile: { ...pairSheetProfile, sheet: { ...pairSheetProfile.sheet, binding: 'center-punch', pairing: 'offset-next' } },
+      });
+      expect(messages.join('\n')).toContain("sheet.binding='center-punch' 는 pairing 'same-sheet' 만 허용합니다");
+    });
+  });
+
   it('faceLabels 1개 → 400', async () => {
     const messages = await expect400({
       ...base,

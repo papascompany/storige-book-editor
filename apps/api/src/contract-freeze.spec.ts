@@ -59,6 +59,9 @@ const FROZEN_ROUTES: FrozenRoute[] = [
 
   // ── 다운로드/서빙 표면 (§3) ──
   { contract: 'GET /files/:id/download/external (X-API-Key, 무소유검증 특성 동결)', controller: FilesController, handler: 'downloadFileExternal', method: RequestMethod.GET, path: ':id/download/external', auth: 'api-key' },
+  // ADDITIVE 2026-10-18 — 워커 합성(split·duplex-split·spread) 파일 메타 조회. 종전 워커는 JWT 전용
+  // GET /files/:id 를 X-API-Key 로 호출해 401 → 잡 FAILED. 사이트 대조·DTO 는 download/external·GET /files/:id 와 동일.
+  { contract: 'GET /files/:id/external (X-API-Key — 워커 메타 조회, ADDITIVE 2026-10-18)', controller: FilesController, handler: 'getFileExternal', method: RequestMethod.GET, path: ':id/external', auth: 'api-key' },
   { contract: 'GET /files/:id/raw (@Public 이미지 전용 + Throttle)', controller: FilesController, handler: 'getRawFile', method: RequestMethod.GET, path: ':id/raw', auth: 'public', throttled: true },
   { contract: 'DELETE /files/:id/external (X-API-Key, 404=성공)', controller: FilesController, handler: 'deleteFileExternal', method: RequestMethod.DELETE, path: ':id/external', auth: 'api-key' },
   { contract: 'POST /files/:id/expiry/external (X-API-Key)', controller: FilesController, handler: 'setFileExpiryExternal', method: RequestMethod.POST, path: ':id/expiry/external', auth: 'api-key' },

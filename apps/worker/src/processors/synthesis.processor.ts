@@ -127,9 +127,12 @@ interface SynthesisJobData {
 }
 
 // FilesService 인터페이스 (Worker에서 DB 조회용)
+/**
+ * GET /files/:id/external 응답 중 워커가 읽는 필드. filePath 는 SEC-008 로 DTO 에 없다 —
+ * 바이트는 항상 `api://<id>`(GET /files/:id/download/external, local/s3 라우팅은 API 가 담당)로 받는다.
+ */
 interface FileRecord {
   id: string;
-  filePath: string;
   metadata?: {
     generatedBy?: string;
     editSessionId?: string;
@@ -1331,15 +1334,17 @@ export class SynthesisProcessor {
       let lwInputPath: string | null = null; // ON 경로 전용(분리 입력)
       let totalPages: number;
 
+      // SEC-008: DTO 에 filePath 없음 → backend 무관하게 API 다운로드 라우트(api://)로 받는다.
+      const sourceUrl = `api://${file.id}`;
       if (lightweight) {
         let dl;
         try {
-          dl = await downloadToTempFile(file.filePath);
+          dl = await downloadToTempFile(sourceUrl);
         } catch (error: any) {
           throw new DomainError(
             ErrorCodes.FILE_DOWNLOAD_FAILED,
             '파일 다운로드 실패',
-            { url: file.filePath, cause: error.message },
+            { url: sourceUrl, cause: error.message },
           );
         }
         lwInputPath = dl.path;
@@ -1357,12 +1362,12 @@ export class SynthesisProcessor {
       } else {
         let pdfBytes: Uint8Array;
         try {
-          pdfBytes = await this.synthesizerService.downloadFile(file.filePath);
+          pdfBytes = await this.synthesizerService.downloadFile(sourceUrl);
         } catch (error: any) {
           throw new DomainError(
             ErrorCodes.FILE_DOWNLOAD_FAILED,
             '파일 다운로드 실패',
-            { url: file.filePath, cause: error.message },
+            { url: sourceUrl, cause: error.message },
           );
         }
         try {
@@ -1625,15 +1630,17 @@ export class SynthesisProcessor {
       let lwInputPath: string | null = null;
       let totalPages: number;
 
+      // SEC-008: DTO 에 filePath 없음 → backend 무관하게 API 다운로드 라우트(api://)로 받는다.
+      const sourceUrl = `api://${file.id}`;
       if (lightweight) {
         let dl;
         try {
-          dl = await downloadToTempFile(file.filePath);
+          dl = await downloadToTempFile(sourceUrl);
         } catch (error: any) {
           throw new DomainError(
             ErrorCodes.FILE_DOWNLOAD_FAILED,
             '파일 다운로드 실패',
-            { url: file.filePath, cause: error.message },
+            { url: sourceUrl, cause: error.message },
           );
         }
         lwInputPath = dl.path;
@@ -1650,12 +1657,12 @@ export class SynthesisProcessor {
       } else {
         let pdfBytes: Uint8Array;
         try {
-          pdfBytes = await this.synthesizerService.downloadFile(file.filePath);
+          pdfBytes = await this.synthesizerService.downloadFile(sourceUrl);
         } catch (error: any) {
           throw new DomainError(
             ErrorCodes.FILE_DOWNLOAD_FAILED,
             '파일 다운로드 실패',
-            { url: file.filePath, cause: error.message },
+            { url: sourceUrl, cause: error.message },
           );
         }
         try {
@@ -1904,7 +1911,7 @@ export class SynthesisProcessor {
   private async getFileById(fileId: string): Promise<FileRecord | null> {
     try {
       const response = await axios.get(
-        `${this.apiBaseUrl}/files/${fileId}`,
+        `${this.apiBaseUrl}/files/${fileId}/external`,
         {
           headers: { 'X-API-Key': process.env.WORKER_API_KEY },
           timeout: 30000, // EH-005: API 무응답 시 split/duplex 잡 무한대기 방지

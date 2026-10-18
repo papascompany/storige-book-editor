@@ -27,7 +27,13 @@ export type ProductSheetBinding = 'none' | 'top-ring' | 'center-punch';
 export type ProductSheetPairing = 'same-sheet' | 'offset-next';
 export type ProductBackRotation = 0 | 180;
 export type ProductDuplexFlip = 'short-edge' | 'long-edge';
-export type ProductOutputMode = 'single-pdf';
+/**
+ * 출력 모드 — 'single-pdf'(P1, 편집기 산출 그대로) | 'sheet-map'(P2, API 가 `buildSheetMap` 으로
+ * 시트 앞/뒤 매핑을 만들어 worker `sheet-map` 잡으로 분리·회전, 설계 §6.2~6.4).
+ */
+export type ProductOutputMode = 'single-pdf' | 'sheet-map';
+/** sheet-map 산출 파일 구성 — per-sheet(시트당 PDF 1개) | merged-duplex(앞·뒤 교대 1파일) */
+export type ProductOutputSheetFiles = 'per-sheet' | 'merged-duplex';
 export type ProductPostProcessColorRule = 'any' | 'spot-only';
 export type CalendarLayout = 'desk' | 'wall-1' | 'wall-2';
 export type CalendarWeekStart = 0 | 1;
@@ -38,6 +44,8 @@ export const PRODUCT_CANVAS_LAYOUTS: readonly ProductCanvasLayout[] = ['canvas-p
 export const PRODUCT_SHEET_BINDINGS: readonly ProductSheetBinding[] = ['none', 'top-ring', 'center-punch'];
 export const PRODUCT_SHEET_PAIRINGS: readonly ProductSheetPairing[] = ['same-sheet', 'offset-next'];
 export const PRODUCT_DUPLEX_FLIPS: readonly ProductDuplexFlip[] = ['short-edge', 'long-edge'];
+export const PRODUCT_OUTPUT_MODES: readonly ProductOutputMode[] = ['single-pdf', 'sheet-map'];
+export const PRODUCT_OUTPUT_SHEET_FILES: readonly ProductOutputSheetFiles[] = ['per-sheet', 'merged-duplex'];
 export const CALENDAR_LAYOUTS: readonly CalendarLayout[] = ['desk', 'wall-1', 'wall-2'];
 
 // ─── 프로파일 구조 ─────────────────────────────────────────────────────────
@@ -119,6 +127,8 @@ export interface CalendarProfile {
 
 export interface ProductOutputPolicy {
   mode: ProductOutputMode;
+  /** mode='sheet-map' 전용. 생략 = 'per-sheet'. single-pdf 에서는 지정 금지. */
+  sheetFiles?: ProductOutputSheetFiles;
 }
 
 export interface ProductProfile {
@@ -373,7 +383,27 @@ export function validateProductProfile(input: unknown): string[] {
 
   // output
   const out = p.output;
-  if (!isRecord(out) || out.mode !== 'single-pdf') errors.push("output.mode 는 'single-pdf' 여야 합니다(P1)");
+  if (!isRecord(out) || !oneOf(out.mode, PRODUCT_OUTPUT_MODES)) {
+    // 문구는 P1 계약(테스트 고정) 유지. 허용값은 PRODUCT_OUTPUT_MODES('single-pdf' | 'sheet-map').
+    errors.push("output.mode 는 'single-pdf' 또는 'sheet-map' 여야 합니다");
+  } else {
+    if (out.sheetFiles !== undefined) {
+      if (!oneOf(out.sheetFiles, PRODUCT_OUTPUT_SHEET_FILES)) {
+        errors.push(`output.sheetFiles 는 ${PRODUCT_OUTPUT_SHEET_FILES.join('|')} 중 하나여야 합니다`);
+      } else if (out.mode !== 'sheet-map') {
+        errors.push("output.sheetFiles 는 output.mode='sheet-map' 에서만 지정합니다");
+      }
+    }
+    // sheet-map 결합 규칙(설계 §6.3): canvas-per-sheet 또는 faces=2 + canvas-pair 만 시트 매핑이 정의된다.
+    // center-punch ↔ same-sheet 제한은 위 sheet 절에서 출력 모드와 무관하게 검사한다. calendar kind 는 허용(벽걸이 (나)).
+    if (out.mode === 'sheet-map' && isRecord(sheet)) {
+      const perSheet = sheet.canvasLayout === 'canvas-per-sheet';
+      const pair = sheet.faces === 2 && sheet.canvasLayout === 'canvas-pair';
+      if (!perSheet && !pair) {
+        errors.push("output.mode='sheet-map' 은 sheet.canvasLayout 'canvas-per-sheet' 또는 faces=2 + 'canvas-pair' 에서만 허용합니다");
+      }
+    }
+  }
 
   return errors;
 }

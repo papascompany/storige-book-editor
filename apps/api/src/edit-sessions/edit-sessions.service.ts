@@ -124,6 +124,55 @@ export function memberSeqnoOf(userId: unknown): number {
   return /^[1-9][0-9]*$/.test(raw) ? Number(raw) : Number.NaN;
 }
 
+/**
+ * P2-b(2026-10-18) 세션 산출 회차. `metadata.revision` 이 0 이상의 정수가 아니면 0 으로 본다.
+ * 완료(complete)마다, 그리고 파트너 v1 synthesize 재합성마다 1 올린다.
+ */
+export function sessionRevisionOf(metadata: Record<string, any> | null | undefined): number {
+  const raw: unknown = metadata?.revision;
+  return typeof raw === 'number' && Number.isInteger(raw) && raw >= 0 ? raw : 0;
+}
+
+export function nextSessionRevision(metadata: Record<string, any> | null | undefined): number {
+  return sessionRevisionOf(metadata) + 1;
+}
+
+/** 파트너 v1 synthesize 가 만드는 duplex-split 잡의 requestId — `duplex-split-r{revision}`(36자 이내). */
+/** 편집 완료 자동 duplex-split 잡의 request_id(고정 태그, ≤36자 — 유일성은 session_id+pdf_file_id 와의 복합 유니크) */
+export const DUPLEX_SPLIT_AUTO_REQUEST_ID = 'duplex-split';
+
+export function duplexSplitRevisionRequestId(revision: number): string {
+  return `duplex-split-r${revision}`;
+}
+
+/**
+ * P2-b 보안 리뷰(2026-10-18) — 세션 `metadata` 는 클라이언트 자유형(얕은 병합)이지만 아래 키는 서버가 소유한다:
+ *  - `launch`   : 파트너 v1 런처 스탬프(via/env/requestId/launchedAt) — deliverables/synthesize 의 사이트·env 판정 근거
+ *  - `revision` : 산출 회차(complete·재합성마다 서버가 +1) — 재합성 requestId 멱등 키
+ *  - `production` : 운영자 제작 메모(P2-e, 서버/운영 콘솔만)
+ * 편집기·호스트의 PATCH 가 이 키를 보내도 무시하고 기존 값을 유지한다(test 세션의 live 위장·revision 위조 방지).
+ */
+export const SESSION_METADATA_SERVER_OWNED_KEYS = ['launch', 'revision', 'production'] as const;
+
+export function mergeSessionMetadata(
+  existing: Record<string, any> | null | undefined,
+  incoming: Record<string, any> | null | undefined,
+): Record<string, any> {
+  const safe: Record<string, any> = { ...(incoming ?? {}) };
+  for (const key of SESSION_METADATA_SERVER_OWNED_KEYS) delete safe[key];
+  return { ...(existing ?? {}), ...safe };
+}
+
+/** findLatestPartnerVisibleSynthJob 반환 행 — worker_jobs 의 파트너 가시 최신 SYNTHESIZE 잡. */
+export interface PartnerVisibleSynthJobRow {
+  id: string;
+  status: string;
+  result: { outputFileUrl?: string; outputFiles?: Array<{ type?: string; url?: string; pageCount?: number; setIndex?: number }> } | null;
+  outputFileUrl: string | null;
+  createdAt: Date;
+  completedAt: Date | null;
+}
+
 @Injectable()
 export class EditSessionsService {
   private readonly logger = new Logger(EditSessionsService.name);
@@ -835,9 +884,9 @@ export class EditSessionsService {
       session.canvasData = dto.canvasData;
     }
 
-    // 메타데이터 병합
+    // 메타데이터 병합 — 서버 소유 키(launch·revision·production)는 클라이언트 값 무시(mergeSessionMetadata)
     if (dto.metadata !== undefined) {
-      session.metadata = { ...session.metadata, ...dto.metadata };
+      session.metadata = mergeSessionMetadata(session.metadata, dto.metadata);
     }
 
     // 상태 업데이트
@@ -1525,6 +1574,9 @@ export class EditSessionsService {
 
     session.status = SessionStatus.COMPLETE;
     session.completedAt = new Date();
+    // P2-b(2026-10-18) 산출 회차 — 완료할 때마다 1 증가(런처 세션은 launch 시 0 으로 시작). 파트너 v1
+    // deliverables.revision · synthesize 재합성 회차의 단일 원천. 그 밖의 소비처 없음(additive).
+    session.metadata = { ...(session.metadata ?? {}), revision: nextSessionRevision(session.metadata) };
 
     const completed = await this.sessionRepository.save(session);
     this.logger.log(`Completed edit session ${id}${isGuest ? ' (guest)' : ''}`);
@@ -1760,8 +1812,16 @@ export class EditSessionsService {
         sessionId: session.id,
         pdfFileId: session.coverFileId,
         // 멱등성 키: 세션+파일에 고정(완료당 1회). 재완료 시 동일 키 → 멱등 히트.
-        requestId: `duplex-split-${session.id}-${session.coverFileId}`,
+        // 2026-10-18(P2-b 런처 e2e 실측): 종전 키 `duplex-split-<세션uuid>-<파일uuid>`(86자)는 `worker_jobs.request_id VARCHAR(36)`
+        // 에 들어가지 못해 strict 모드에서 "Data too long" 으로 잡 생성이 조용히 실패했다(분리 잡이 만들어진 적 없음).
+        // 멱등 유일성은 UNIQUE (session_id, pdf_file_id, request_id). 보안 리뷰(2026-10-18 #6): 고정 태그는 FAILED 잡에도
+        // 멱등 히트해 재완료로 복구가 불가하므로, complete() 가 올린 회차로 `duplex-split-r<revision>` 을 쓴다(재완료 = 새 회차 잡).
+        // 런처 재합성(requestDuplexSplitResynthesis)도 같은 형식·같은 카운터라 회차 간 충돌이 없다.
+        requestId: duplexSplitRevisionRequestId(sessionRevisionOf(session.metadata)),
         callbackUrl: session.callbackUrl ?? undefined,
+        // 잡 소유 사이트 = 세션 사이트(검증 잡과 같은 규칙, 2026-10-18). 파트너 v1 deliverables 가
+        // `job.site_id <=> sess.site_id` 로 이 잡을 찾고 서명 URL 테넌트 판정도 같은 값을 쓴다.
+        siteId: session.siteId ?? null,
       });
       this.logger.log(
         `[pdfOutputMode] Created duplex-split job ${job.id} for session ${session.id} (cover=${session.coverFileId})`,
@@ -1772,6 +1832,106 @@ export class EditSessionsService {
         `[pdfOutputMode] session ${session.id} 적용 실패(완료는 유지): ${(error as Error).message}`,
       );
     }
+  }
+
+  /**
+   * 세션의 파트너 가시 최신 SYNTHESIZE 잡 1건(created_at DESC) — P2-b 파트너 v1 deliverables 용(2026-10-18).
+   * findByOrderExternal 의 윈도우함수 배치 쿼리와 같은 조건(잡 사이트 = 세션 사이트(NULL 끼리 포함),
+   * partnerVisibleSynthJobSql)을 단일 세션으로 좁힌 것. SESSION_JOB_OUTPUT_LOOKUP 게이트는 적용하지 않는다
+   * (그 플래그는 기존 external 조회·책 승격의 파일 치환 여부만 다룬다). 조회 전용 — 상태 변경 없음.
+   */
+  async findLatestPartnerVisibleSynthJob(sessionId: string): Promise<PartnerVisibleSynthJobRow | null> {
+    const rows: Array<{
+      id: string;
+      status: string;
+      result: unknown;
+      outputFileUrl: string | null;
+      createdAt: Date | string;
+      completedAt: Date | string | null;
+    }> = await this.sessionRepository.manager.query(
+      `SELECT job.id AS id, job.status AS status, job.result AS result,
+              job.output_file_url AS outputFileUrl, job.created_at AS createdAt, job.completed_at AS completedAt
+         FROM worker_jobs job
+         JOIN file_edit_sessions sess ON sess.id = job.edit_session_id
+        WHERE job.edit_session_id = ? AND job.job_type = 'SYNTHESIZE'
+          AND job.site_id <=> sess.site_id
+          AND ${partnerVisibleSynthJobSql('job')}
+        ORDER BY job.created_at DESC
+        LIMIT 1`,
+      [sessionId],
+    );
+    const row = rows[0];
+    if (!row) return null;
+    let result: unknown = row.result;
+    if (typeof result === 'string') {
+      try {
+        result = JSON.parse(result);
+      } catch {
+        result = null;
+      }
+    }
+    return {
+      id: row.id,
+      status: row.status,
+      result: (result ?? null) as PartnerVisibleSynthJobRow['result'],
+      outputFileUrl: row.outputFileUrl ?? null,
+      createdAt: row.createdAt instanceof Date ? row.createdAt : new Date(row.createdAt),
+      completedAt:
+        row.completedAt === null || row.completedAt === undefined
+          ? null
+          : row.completedAt instanceof Date
+            ? row.completedAt
+            : new Date(row.completedAt),
+    };
+  }
+
+  /**
+   * P2-b 파트너 v1 `POST /api/v1/sessions/:id/synthesize` — duplex-split 재합성(2026-10-18).
+   *
+   * 완료 상태·템플릿셋 pdfOutputMode·coverFileId 게이트(v1 에러 코드)는 호출측(PartnerSessionsService)이
+   * 끝낸 뒤 부른다. 여기서는 세션을 다시 읽어 사이트·launch.env 스코프를 방어적으로 재확인하고
+   * (불일치 = 404 SESSION_NOT_FOUND, 존재 은닉), `metadata.revision` 을 1 올려 저장한 뒤 그 회차로
+   * duplex-split 잡을 만든다. requestId `duplex-split-r{revision}` 은 (session_id, pdf_file_id, request_id)
+   * 멱등 인덱스 안에서 회차마다 새 잡이 되고 36자(worker_jobs.request_id VARCHAR(36)) 안이다.
+   * 잡 생성이 실패하면 revision 은 이미 올라가 있다(다음 호출은 그 다음 회차) — 잡 없는 회차는 허용.
+   */
+  async requestDuplexSplitResynthesis(
+    sessionId: string,
+    caller: { siteId: string; env: string },
+  ): Promise<{ jobId: string; revision: number }> {
+    const session = await this.findById(sessionId);
+    const launchEnv = (session.metadata as { launch?: { env?: unknown } } | null)?.launch?.env;
+    if (!session.siteId || session.siteId !== caller.siteId || launchEnv !== caller.env) {
+      throw new NotFoundException({
+        code: 'SESSION_NOT_FOUND',
+        message: '편집 세션을 찾을 수 없습니다.',
+        details: { sessionId },
+      });
+    }
+    if (session.status !== SessionStatus.COMPLETE || !session.coverFileId) {
+      throw new BadRequestException({
+        code: 'SESSION_NOT_COMPLETE',
+        message: '편집이 완료된 세션에만 재합성을 요청할 수 있습니다.',
+        details: { sessionId, status: session.status },
+      });
+    }
+
+    const revision = nextSessionRevision(session.metadata);
+    session.metadata = { ...(session.metadata ?? {}), revision };
+    await this.sessionRepository.save(session);
+
+    const job = await this.workerJobsService.createDuplexSplitJob({
+      sessionId: session.id,
+      pdfFileId: session.coverFileId,
+      requestId: duplexSplitRevisionRequestId(revision),
+      callbackUrl: session.callbackUrl ?? undefined,
+      siteId: session.siteId,
+      revision,
+    });
+    this.logger.log(
+      `[partner-v1] duplex-split resynthesis job ${job.id} for session ${session.id} (revision=${revision})`,
+    );
+    return { jobId: job.id, revision };
   }
 
   /**

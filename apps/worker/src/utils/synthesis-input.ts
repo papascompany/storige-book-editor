@@ -218,11 +218,19 @@ async function isMissingStorageFile(err: unknown, ref: string, storageRoot: stri
   }
 }
 
+/** `api://<fileId>` 참조의 HTTP 404 — API 가 파일 행 없음·저장소 객체 없음(NoSuchKey/ENOENT)을 404 로 돌려준다. */
+function isMissingApiFile(err: unknown, ref: string): boolean {
+  if (!ref.startsWith('api://')) return false;
+  const response = readProp(err, 'response');
+  return readProp(response, 'status') === 404;
+}
+
 /**
  * 입력 확보 오류를 분류한다.
  * - UnsafeDownloadUrlError → INPUT_URL_REJECTED
  * - 로컬 참조의 ENOENT 이고 경로가 저장소 루트 하위(루트 바로 아래 제외)이며 상위 디렉터리가 있음 → FILE_NOT_FOUND
- * - 그 밖(이름 확인 실패·HTTP 오류·EACCES·원격 입력의 임시파일 오류 등) → 원래 오류 그대로
+ * - `api://` 참조의 HTTP 404(download/external: 행 없음·저장소 객체 없음) → FILE_NOT_FOUND
+ * - 그 밖(이름 확인 실패·그 밖의 HTTP 오류·EACCES·원격 입력의 임시파일 오류 등) → 원래 오류 그대로
  */
 export async function toInputFetchError(
   err: unknown,
@@ -234,6 +242,9 @@ export async function toInputFetchError(
     return wrapInputError(ErrorCodes.INPUT_URL_REJECTED, input, err);
   }
   if (await isMissingStorageFile(err, ref, storageRoot)) {
+    return wrapInputError(ErrorCodes.FILE_NOT_FOUND, input, err);
+  }
+  if (isMissingApiFile(err, ref)) {
     return wrapInputError(ErrorCodes.FILE_NOT_FOUND, input, err);
   }
   return err;

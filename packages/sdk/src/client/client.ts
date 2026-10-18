@@ -5,6 +5,7 @@
 import type { PingView } from '../types';
 import { BookSpecsResource } from './book-specs';
 import { BooksResource } from './books';
+import { SessionsResource } from './sessions';
 import { WebhooksResource } from './webhooks';
 import { HttpClient, type HttpClientOptions, type RequestOptions } from './http';
 
@@ -43,11 +44,15 @@ export class StorigeClient {
   /** 웹훅 관리(§1.5) — 7라우트. 수신 서명 검증은 `@storige/sdk/webhook` */
   readonly webhooks: WebhooksResource;
 
+  /** 편집 세션 런처(CONTRACT_FREEZE v1.23) — launch/deliverables/synthesize 3라우트 */
+  readonly sessions: SessionsResource;
+
   constructor(options: StorigeClientOptions) {
     this.http = new HttpClient(options);
     this.bookSpecs = new BookSpecsResource(this.http);
     this.books = new BooksResource(this.http);
     this.webhooks = new WebhooksResource(this.http);
+    this.sessions = new SessionsResource(this.http);
   }
 
   /**

@@ -2,12 +2,12 @@
  * v1 에러 코드 카탈로그 + SDK 에러 타입.
  *
  * 서버 정본: apps/api/src/partner-api/http/error-envelope.ts +
- * @storige/types ErrV1(29종). 여기서 재선언하는 이유는 src/index.ts 상단 참조.
+ * @storige/types ErrV1(31종). 여기서 재선언하는 이유는 src/index.ts 상단 참조.
  * 드리프트는 types-parity.spec.ts 가 키집합 대조로 감시한다.
  */
 
 /**
- * Partner API v1 에러 코드 29종.
+ * Partner API v1 에러 코드 31종.
  *
  * TS enum 대신 const object + union 으로 선언한다 — enum 은 런타임 객체를
  * 방출해 트리셰이킹을 막고, isolatedModules/erasableSyntaxOnly 환경(번들러·
@@ -95,13 +95,19 @@ export const ErrorCode = {
   ERR_ORDER_NOT_CANCELLABLE: 'ERR_ORDER_NOT_CANCELLABLE',
   /** 402 */
   ERR_INSUFFICIENT_CREDIT: 'ERR_INSUFFICIENT_CREDIT',
+
+  // Sessions/런처 (2) — 2026-10-18 ADDITIVE (CONTRACT_FREEZE v1.23)
+  /** 409 — 편집 완료 전 synthesize */
+  ERR_SESSION_NOT_COMPLETE: 'ERR_SESSION_NOT_COMPLETE',
+  /** 422 — 템플릿셋 pdfOutputMode 가 'duplex-split' 이 아니라 재합성 대상 아님 */
+  ERR_OUTPUT_MODE_UNSUPPORTED: 'ERR_OUTPUT_MODE_UNSUPPORTED',
 } as const;
 
 /** 알려진 v1 에러 코드 union */
 export type KnownErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
 
 /**
- * 에러 코드 — 알려진 29종 + 미지 코드(additive 성장 수용).
+ * 에러 코드 — 알려진 31종 + 미지 코드(additive 성장 수용).
  *
  * `string & {}` 은 union 이 `string` 으로 넓어지는 것을 막아 알려진 코드의
  * 자동완성을 유지하면서도 신규 서버 코드를 타입 에러 없이 받는다.

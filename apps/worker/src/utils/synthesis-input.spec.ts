@@ -260,6 +260,20 @@ describe('synthesis-input', () => {
       expect(await toInputFetchError(original, target(), 'content', storageRoot)).toBe(original);
     });
 
+    it('api:// 참조의 HTTP 404(download/external: 행 없음·저장소 객체 없음) → FILE_NOT_FOUND', async () => {
+      const original = Object.assign(new Error('Request failed with status code 404'), { response: { status: 404 } });
+      const err = await toInputFetchError(original, 'api://file-1', 'content', storageRoot);
+      expectInputError(err, ErrorCodes.FILE_NOT_FOUND, 'content');
+    });
+
+    it.each([
+      ['api:// 참조의 HTTP 503', 'api://file-1', 503],
+      ['http(s) 참조의 HTTP 404', 'https://files.example.com/a.pdf', 404],
+    ])('%s → 원래 오류', async (_t, ref, status) => {
+      const original = Object.assign(new Error(`Request failed with status code ${status}`), { response: { status } });
+      expect(await toInputFetchError(original, ref, 'content', storageRoot)).toBe(original);
+    });
+
     it.each(['https://files.example.com/a.pdf', 'api://file-1'])(
       '원격 참조(%s)의 ENOENT → 원래 오류',
       async (ref) => {

@@ -1582,6 +1582,43 @@ STORIGE_API_URL=https://api.papascompany.co.kr/api node scripts/register-calenda
 - 롤백: `docker tag storige-api:rollback-pre-calendar-20261018 storige-api:latest`(worker 동일) → `docker compose up -d api worker` → nginx 재시작. editor·admin 은 Vercel 직전 Production promote. 컬럼은 NULL additive 라 유지.
 
 
+### P2-b 런처(파트너 v1 `sessions`)·합성 파일 메타 조회 배포 절차 (2026-10-18 준비 — 미실행, 오너 승인 후)
+
+> api·worker·editor 를 함께 바꾸는 배포다. DB 마이그레이션 없음(세션 `metadata`·잡 `options` JSON 만 사용). 계약: `docs/CONTRACT_FREEZE.md` v1.23(§1-D 런처 3라우트·웹훅 `revision`, §1-B `GET /files/:id/external`). 계획·결함 기록: `docs/P2_PRODUCT_MODE_PLAN_2026-10-18.md` §1·§7.
+
+**변경 내용(요약)**
+
+- api: `POST /api/v1/sessions/launch`·`GET /api/v1/sessions/:id/deliverables`·`POST /api/v1/sessions/:id/synthesize`(기존 파트너 v1 스택 — 사이트 editor 키, 멱등·레이트리밋·봉투 승계). 킬스위치 `PARTNER_SESSION_LAUNCH_ENABLED`(미설정 ON, **FLAGS 16번째 키**). `GET /files/:id/external`(ApiKey+site, 파일 메타). 편집 완료 자동 duplex-split 잡 request_id 를 36자 이내 고정 태그로(종전 86자 → "Data too long" 으로 잡 생성 실패하던 결함). duplex-split 잡 `siteId` 승계·`options.revision`·웹훅 `revision`.
+- worker: 합성(split·duplex-split·spread) 파일 메타 조회를 `GET /files/:id/external` 로, 다운로드를 `api://<fileId>`(download/external 스트리밍) 로 통일.
+- editor: 파트너가 선생성한 세션(canvasData 없음)도 `metadata.calendar`(시작연월 등)를 복원.
+- sdk: `client.sessions.{launch, deliverables, synthesize, waitForDeliverables}`, 웹훅 payload `revision?`.
+
+**순서**
+
+```bash
+# 0) 직전 이미지 보존
+docker tag storige-api:latest storige-api:rollback-pre-launcher-20261018
+docker tag storige-worker:latest storige-worker:rollback-pre-launcher-20261018
+# 1) 기대값 프로필에 키 추가 (.env 백업 .env.bak-20261018-launcher, chmod 600)
+#    FLAGS_EXPECTED_API='… EDITOR_SHEET_VALIDATION_RULES=true PARTNER_SESSION_LAUNCH_ENABLED=true'
+#    OUTPUT_SIGN_SECRET 이 설정돼 있어야 완료 잡 deliverables 가 서명 URL 을 낸다(미설정 = 503).
+# 2) 코드 반영 — worker → api → nginx
+cd ~/storige && git pull --ff-only origin master
+docker compose build worker api && docker compose up -d worker api && docker compose restart nginx
+docker logs storige-api 2>&1 | grep -E "\[FLAGS\] api |\[FLAGS-CHECK\]" | tail -2   # [FLAGS-CHECK] api ok n=16
+# 3) editor 는 master push 로 Vercel 자동 배포 — 새 배포 id Ready 확인
+```
+
+**확인**
+
+- `GET /api/health` 200, worker `/health` ok, 기동 후 10분 오류 로그 0.
+- 사이트 editor 키로 `POST /api/v1/sessions/launch`(test 세트) → 201·`embed` 키 → `/embed?sessionId&token&refreshToken&parentOrigin` 진입 → 완료 → `GET deliverables` `complete`(single, api-key) → duplex-split 세트면 `ready` + `sheet`(signed, 300초). 워커 키 403(`ERR_FORBIDDEN`), 타 사이트 세션 404.
+- 기존 경로 무영향: `/auth/shop-session`·`/edit-sessions`·`/embed` 파라미터 불변, 프로파일 NULL 세트 잡 options 불변(런처 세션·재합성 잡에만 `revision`).
+- 배포 전 실측(2026-10-18 03:40 KST, 읽기 전용): 운영 템플릿셋 `pdf_output_mode` 는 duplex-merged 50건뿐(duplex-split 0, 세션 0) → 자동 분리 잡 request_id 변경·워커 메타 조회 경로 변경으로 새로 발생하는 잡·웹훅 없음. duplex-split 세트를 만들기 시작하면 완료마다 `synthesis.*` 웹훅이 처음 나간다는 점을 파트너에 알린다.
+
+**롤백**: `PARTNER_SESSION_LAUNCH_ENABLED=off`(3라우트 503) → 필요 시 이미지 롤백 태그로 `docker compose up -d api worker` + nginx 재시작. editor 는 Vercel 직전 Production promote.
+
+
 ## 문제 해결
 
 ### 1. 컨테이너가 시작되지 않음

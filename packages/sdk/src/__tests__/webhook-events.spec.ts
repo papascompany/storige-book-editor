@@ -106,6 +106,30 @@ describe('페이로드 구조 등가성 (@storige/types 드리프트 감시)', (
     expect(sdk.outputFiles?.[0]?.type).toBe('cover');
   });
 
+  it('SynthesisWebhookPayload.revision? ↔ 서버 정본 (런처 synthesize 잡 전용, v1.23 additive)', () => {
+    const server: ServerSynthesisPayload = {
+      event: 'synthesis.completed',
+      jobId: 'job-3',
+      sessionId: 'sess-1',
+      orderSeqno: 12,
+      revision: 2,
+      status: 'completed',
+      outputFileUrl: '/storage/outputs/set.pdf',
+      timestamp: '2026-10-18T00:00:00.000Z',
+    };
+    const sdk: SynthesisWebhookPayload = server;
+    expect(sdk.revision).toBe(2);
+    // 런처 외 잡은 키 자체가 없다 — 선택 키라 없는 payload 도 그대로 수용된다
+    const withoutRevision: SynthesisWebhookPayload = {
+      event: 'synthesis.failed',
+      jobId: 'job-4',
+      status: 'failed',
+      outputFileUrl: '',
+      timestamp: '2026-10-18T00:00:00.000Z',
+    };
+    expect('revision' in withoutRevision).toBe(false);
+  });
+
   it('BookFinalizationWebhookPayload ↔ 서버 정본 (validationSkipped 포함)', () => {
     const server: ServerBookFinalizationPayload = {
       event: 'book.finalization.completed',

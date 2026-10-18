@@ -8,7 +8,7 @@
  * 드리프트를 잡는다. @storige/types 는 devDependency 이므로 번들에 유입되지 않는다.
  *
  * ## 무엇을 대조하는가
- *  1) ErrV1 키집합·값 1:1 (29종 additive 성장도 여기서 감지)
+ *  1) ErrV1 키집합·값 1:1 (31종 additive 성장도 여기서 감지)
  *  2) 봉투/페이지네이션 필드 집합 — 타입 레벨(컴파일 타임) 상호 할당 가능성
  *
  * 타입은 런타임에 지워지므로 (2)는 `expectAssignable` 스타일의 컴파일 타임
@@ -45,9 +45,14 @@ describe('@storige/types 구조 등가성 (드리프트 감시)', () => {
       expect(sdkEntries).toEqual(serverEntries);
     });
 
-    it('카탈로그는 설계서 §3.3 의 29종이다', () => {
-      expect(Object.keys(ErrorCode)).toHaveLength(29);
-      expect(Object.keys(ErrV1)).toHaveLength(29);
+    it('카탈로그는 설계서 §3.3 의 29종 + 런처 2종(v1.23) = 31종이다', () => {
+      expect(Object.keys(ErrorCode)).toHaveLength(31);
+      expect(Object.keys(ErrV1)).toHaveLength(31);
+    });
+
+    it('런처 2종(2026-10-18 additive)은 서버 ErrV1 과 값이 같다', () => {
+      expect(ErrorCode.ERR_SESSION_NOT_COMPLETE).toBe(ErrV1.ERR_SESSION_NOT_COMPLETE);
+      expect(ErrorCode.ERR_OUTPUT_MODE_UNSUPPORTED).toBe(ErrV1.ERR_OUTPUT_MODE_UNSUPPORTED);
     });
 
     it('모든 SDK 코드는 자기 이름과 같은 문자열 값을 가진다(키=값 규약)', () => {

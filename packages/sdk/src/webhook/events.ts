@@ -102,6 +102,12 @@ export interface SynthesisWebhookPayload extends WebhookPayloadBase {
   sessionId?: string;
   orderId?: string;
   orderSeqno?: number;
+  /**
+   * 런처 `POST /api/v1/sessions/{id}/synthesize` 로 만든 잡에만 존재 — 그 호출이 올린
+   * 합성 세대(응답 `revision`·deliverables `revision` 과 같다). 그 밖의 잡은 키 없음
+   * (additive 2026-10-18, CONTRACT_FREEZE v1.23).
+   */
+  revision?: number;
   status: 'completed' | 'failed';
   /** 항상 merged URL — failed 면 빈 문자열 */
   outputFileUrl: string;

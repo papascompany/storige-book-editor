@@ -2753,7 +2753,10 @@ export class WorkerJobsService implements OnModuleInit {
    *
    * - pdfFileId: 편집기가 업로드한 단일 PDF(보통 session.coverFileId)
    * - sessionId: EditSession ID (편집기 산출물 + 세션 일치 이중 검증용)
-   * - requestId: 멱등성 키
+   * - requestId: 멱등성 키(worker_jobs.request_id VARCHAR(36) — 36자 이내)
+   * - siteId: 잡 소유 사이트(additive, 2026-10-18). 세션 siteId 를 승계 — 미전달=NULL(종전과 같다).
+   * - revision: P2-b 런처 synthesize 재합성 회차(additive, 2026-10-18). options.revision 에 저장하고
+   *   완료 웹훅 payload 에 그대로 실린다. 미전달이면 options 에 키를 만들지 않는다(기존 잡 바이트 불변).
    */
   async createDuplexSplitJob(dto: {
     sessionId: string;
@@ -2761,6 +2764,8 @@ export class WorkerJobsService implements OnModuleInit {
     requestId: string;
     callbackUrl?: string;
     priority?: 'high' | 'normal' | 'low';
+    siteId?: string | null;
+    revision?: number;
   }): Promise<WorkerJob> {
     // 0. 멱등성 체크 (split/spread 와 동일 unique 인덱스 사용)
     const existingJob = await this.workerJobRepository.findOne({
@@ -2838,10 +2843,13 @@ export class WorkerJobsService implements OnModuleInit {
       sessionId: dto.sessionId,
       pdfFileId: dto.pdfFileId,
       requestId: dto.requestId,
+      siteId: dto.siteId ?? null, // 잡 소유 사이트(세션 siteId 승계). 미전달=NULL(종전과 같다)
       options: {
         mode: 'duplex-split',
         totalExpectedPages,
         callbackUrl: dto.callbackUrl,
+        // P2-b 재합성 회차 — 전달된 경우에만 키를 만든다(기존 잡 options 바이트 불변).
+        ...(typeof dto.revision === 'number' ? { revision: dto.revision } : {}),
       },
     });
 
@@ -3919,6 +3927,9 @@ export class WorkerJobsService implements OnModuleInit {
         sessionId: job.editSessionId || undefined, // additive (계약 보강)
         orderId: job.options?.orderId,
         orderSeqno: job.options?.orderOptions?.orderSeqno, // 호스트가 보낸 orderOptions.orderSeqno echo-back
+        // P2-b 런처 synthesize 재합성 잡에만 존재(options.revision). 그 외 잡은 키 자체를 싣지 않는다
+        // (기존 발신 바이트 불변 — webhook-v1-invariance.spec 게이트).
+        ...(typeof job.options?.revision === 'number' ? { revision: job.options.revision } : {}),
         status: isCompleted ? 'completed' : 'failed',
 
         // 하위호환: 항상 merged URL (failed면 '')

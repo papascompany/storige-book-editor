@@ -9,6 +9,7 @@
  * spread 는 세션·파일 조회를 axios 목으로 성공시키고 펼침면 파일·내지 파일 입력을 확인한다.
  */
 import { execFileSync } from 'child_process';
+import { createReadStream } from 'fs';
 import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
@@ -328,10 +329,25 @@ describe('SynthesisProcessor — 합성 입력 오류(실파일)', () => {
     });
 
     describe('spread', () => {
+      /**
+       * 메타는 GET /files/:id/external, 바이트는 api:// → GET /files/:id/download/external 로 받는다
+       * (SEC-008: DTO 에 filePath 없음). 다운로드 mock 은 로컬 fixture 를 스트림/버퍼로 흘리고,
+       * 없는 파일은 API 와 같이 HTTP 404 로 거절한다.
+       */
       function mockLookups(spreadFile: string, contentFile: string): void {
         const widthMm = SPREAD_PT.width * PT_TO_MM;
         const heightMm = SPREAD_PT.height * PT_TO_MM;
-        mockedAxios.get.mockImplementation(async (url: string) => {
+        const bytesOf: Record<string, string> = { 'spread-1': spreadFile, 'content-1': contentFile };
+        mockedAxios.get.mockImplementation(async (url: string, opts?: { responseType?: string }) => {
+          const download = /\/files\/([^/]+)\/download\/external$/.exec(url);
+          if (download) {
+            const target = bytesOf[download[1]];
+            if (!target || !(await fs.stat(target).catch(() => null))) {
+              throw Object.assign(new Error('Request failed with status code 404'), { response: { status: 404 } });
+            }
+            if (opts?.responseType === 'stream') return { data: createReadStream(target) };
+            return { data: await fs.readFile(target) };
+          }
           if (url.includes('/edit-sessions/')) {
             return {
               data: {
@@ -349,11 +365,11 @@ describe('SynthesisProcessor — 합성 입력 오류(실파일)', () => {
               },
             };
           }
-          if (url.endsWith('/files/spread-1')) {
-            return { data: { id: 'spread-1', filePath: spreadFile, storageBackend: 'local' } };
+          if (url.endsWith('/files/spread-1/external')) {
+            return { data: { id: 'spread-1', storageBackend: 'local' } };
           }
-          if (url.endsWith('/files/content-1')) {
-            return { data: { id: 'content-1', filePath: contentFile, storageBackend: 'local' } };
+          if (url.endsWith('/files/content-1/external')) {
+            return { data: { id: 'content-1', storageBackend: 'local' } };
           }
           throw Object.assign(new Error('not found'), { response: { status: 404 } });
         });

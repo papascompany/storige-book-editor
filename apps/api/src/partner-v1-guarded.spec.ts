@@ -28,6 +28,7 @@ import { PartnerPingController } from './partner-api/ping.controller';
 import { BookSpecsController } from './book-specs/book-specs.controller';
 import { BooksController } from './books/books.controller';
 import { PartnerWebhooksController } from './webhook/v2/partner-webhooks.controller';
+import { PartnerSessionsController } from './partner-sessions/partner-sessions.controller';
 import { Ctor, discoverV1Controllers } from './testing/v1-controller-scan';
 
 /**
@@ -42,6 +43,8 @@ const V1_CONTROLLERS: Array<{ name: string; controller: Ctor }> = [
     name: 'PartnerWebhooksController (v1/webhooks)',
     controller: PartnerWebhooksController,
   },
+  // P2-b 1-call 런처(2026-10-18) — /api/v1/sessions/*
+  { name: 'PartnerSessionsController (v1/sessions)', controller: PartnerSessionsController },
 ];
 
 describe('Partner API v1 — 가드 계약 (무인증 라우트 0 원칙)', () => {

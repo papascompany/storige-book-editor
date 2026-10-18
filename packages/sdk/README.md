@@ -8,7 +8,7 @@ Storige Partner API v1 공식 SDK. **npm 런타임 의존성 0** (표준 런타�
 
 | 서브패스 | 내용 | 런타임 |
 |---|---|---|
-| `@storige/sdk` | 계약 타입·에러(29종)·봉투·상수 | 무관(트리셰이킹 가능) |
+| `@storige/sdk` | 계약 타입·에러(31종)·봉투·상수 | 무관(트리셰이킹 가능) |
 | `@storige/sdk/client` | HTTP 클라이언트(`StorigeClient`) | fetch 있는 곳 어디나 |
 | `@storige/sdk/webhook` | 웹훅 **수신** — 서명 검증·멱등·어댑터 | **Node 전용**(node:crypto) |
 | `@storige/sdk/embed` | 임베드 편집기 마운트 + postMessage 계약 | **브라우저 전용**(DOM) |
@@ -230,6 +230,38 @@ book.finalization.completed | book.finalization.failed
   (멱등키는 그래야 길이 검증·멀티파트 내용 주소화를 거친다). 추적 헤더
   (`X-Request-Id`·`traceparent`) 등은 자유롭게 쓸 수 있다.
 
+## `@storige/sdk/client` — 편집 세션 런처 `client.sessions` (additive 2026-10-18)
+
+서버 간 2회 호출로 편집기를 띄우고 산출물을 받는다(CONTRACT_FREEZE v1.23).
+사이트 **editor 키** 전용(워커 키 403). 기존 22라우트·`/embed` 파라미터는 그대로다.
+
+```ts
+// ① 세션 선생성 — 응답 embed 를 그대로 mountEditor({ params }) 에 넘긴다
+const launched = await client.sessions.launch(
+  { member: { seqno: 7, id: 'member-7', name: '홍길동' }, templateSetId: 'ts_calendar', orderSeqno: 12345 },
+  { idempotencyKey: `order-12345-launch` }, // 생략 시 UUID 자동 부여
+);
+// 브라우저: mountEditor({ editorOrigin, parentOrigin, container, params: launched.embed })
+
+// ② 편집 완료 뒤 산출물 — 웹훅(synthesis.*) 수신이 정본, 폴링은 백스톱
+const d = await client.sessions.waitForDeliverables(launched.sessionId, { until: 'ready' });
+for (const f of d.files) {
+  // f.auth === 'api-key' → 같은 X-API-Key 로 GET · 'signed' → 서명 URL(300초, 만료 시 재조회)
+}
+```
+
+- `synthesize(id)` 는 템플릿셋 `pdfOutputMode='duplex-split'` 의 재합성 전용이다 — 다른 세트는
+  `422 ERR_OUTPUT_MODE_UNSUPPORTED`, 편집 완료 전이면 `409 ERR_SESSION_NOT_COMPLETE`.
+  응답 `revision` 은 `synthesis.*` 웹훅 payload 의 `revision?`·deliverables `revision` 과 같은 값이다.
+- `waitForDeliverables` 의 `until:'complete'` 는 편집 종료(`complete`·`synthesizing`·`ready`·`failed`)에서
+  반환한다 — 합성 대상이 아닌 세트는 `ready` 가 오지 않을 수 있으므로 이쪽을 쓴다. `failed` 는 예외가
+  아니라 값이다.
+- `accessToken`/`refreshToken` 은 **세션 토큰**(shop-session 과 동일 종류)이다. 파트너 API 키가
+  아니며 iframe 으로만 흘려보낸다.
+- 런처 킬스위치(`PARTNER_SESSION_LAUNCH_ENABLED=off`)가 켜지면 `503 ERR_SERVICE_UNAVAILABLE`.
+
+---
+
 ## `@storige/sdk/embed` — 임베드 편집기
 
 계약 정본: `docs/CONTRACT_FREEZE.md` §1-D · **§1-D-1**(호스트→편집기 수신 명령 v1) /
@@ -358,3 +390,5 @@ private 내부 도메인 모델이라 통째 배포 불가). 드리프트 감시
 
 웹훅 서명 페어와이즈의 서버측 대칭 파일은 `apps/api/src/webhook/webhook-signature-pairwise.spec.ts`
 다 — 한쪽은 발신부를, 다른 쪽은 수신부를 스냅샷 레플리카로 박제해 서로를 대조한다.
+
+> **런처 산출물 URL 주의(2026-10-18)**: `deliverables.files[].auth === 'api-key'` 인 URL(`/api/files/:id/download/external` 등)은 **사이트 editor 키**(`X-API-Key`)로만 열립니다. v1 발급 키(`partner_api_keys`)는 레거시 external 표면을 지원하지 않습니다(후속). `auth === 'signed'` URL 은 키 없이 300초 유효합니다.

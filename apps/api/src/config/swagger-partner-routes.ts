@@ -27,6 +27,7 @@ export const SWAGGER_PARTNER_ROUTES: ReadonlySet<string> = new Set<string>([
   // 파일 — 서버간 업로드/다운로드/정리 + 게스트/임베드 presigned 멀티파트
   'POST /api/files/upload/external',
   'GET /api/files/{id}/download/external',
+  'GET /api/files/{id}/external',
   'DELETE /api/files/{id}/external',
   'POST /api/files/{id}/expiry/external',
   'GET /api/files/{id}/raw',

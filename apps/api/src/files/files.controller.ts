@@ -758,6 +758,29 @@ export class FilesController {
   }
 
   /**
+   * 외부 연동용 파일 메타 조회 (API Key 인증) — 2026-10-18 신설.
+   * 워커 합성(split·duplex-split·spread)이 파일 메타(metadata.generatedBy·editSessionId 등)를
+   * 읽는 경로. 종전 워커는 JWT 전용 `GET /files/:id` 를 X-API-Key 로 호출해 항상 401 이었다.
+   * 사이트 대조는 `download/external` 과 동일(worker 역할 바이패스·NULL=레거시 허용·타 사이트 404),
+   * 응답은 `GET /files/:id` 와 같은 FileResponseDto. soft-deleted·미완 업로드 처리도 `GET /files/:id` 와 동일.
+   */
+  @Get(':id/external')
+  @Public()
+  @UseGuards(ApiKeyGuard)
+  @ApiSecurity('api-key')
+  @ApiOperation({ summary: '파일 정보 조회 (외부 API Key 인증)' })
+  @ApiResponse({ status: 200, description: '파일 정보', type: FileResponseDto })
+  @ApiResponse({ status: 401, description: 'Invalid API key' })
+  @ApiResponse({ status: 404, description: '파일을 찾을 수 없음' })
+  async getFileExternal(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentSite() site?: CurrentSitePayload,
+  ): Promise<FileResponseDto> {
+    const file = await this.filesService.findByIdForCaller(id, site);
+    return this.filesService.toResponseDto(file);
+  }
+
+  /**
    * R2/local **이미지 자산** 브라우저 공개 스트리밍 — 트랙 B-(c) 권장안 A. ⭐
    *
    * 편집기가 >50MB 내부 '이미지'를 R2 에 presigned 업로드한 뒤, 이 엔드포인트로 표시(display)한다.

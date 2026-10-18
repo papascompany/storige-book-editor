@@ -31,6 +31,8 @@ import {
   PRODUCT_CANVAS_LAYOUTS,
   PRODUCT_DUPLEX_FLIPS,
   PRODUCT_KINDS,
+  PRODUCT_OUTPUT_MODES,
+  PRODUCT_OUTPUT_SHEET_FILES,
   PRODUCT_PAGE_LABEL_RULES,
   PRODUCT_PROFILE_VERSION,
   PRODUCT_SHEET_BINDINGS,
@@ -49,6 +51,7 @@ import type {
   ProductKind,
   ProductOutputMode,
   ProductOutputPolicy,
+  ProductOutputSheetFiles,
   ProductPageLabelRule,
   ProductPagesKind,
   ProductPagesPolicy,
@@ -255,9 +258,14 @@ export class CalendarProfileDto implements CalendarProfile {
 }
 
 export class ProductOutputPolicyDto implements ProductOutputPolicy {
-  @ApiProperty({ enum: ['single-pdf'], example: 'single-pdf', description: 'P1 은 single-pdf 만' })
-  @IsIn(['single-pdf'])
+  @ApiProperty({ enum: PRODUCT_OUTPUT_MODES, example: 'single-pdf', description: "single-pdf(P1, 편집기 산출 그대로) | sheet-map(P2, API buildSheetMap → worker 'sheet-map')" })
+  @IsIn(PRODUCT_OUTPUT_MODES)
   mode: ProductOutputMode;
+
+  @ApiPropertyOptional({ enum: PRODUCT_OUTPUT_SHEET_FILES, example: 'per-sheet', description: "mode='sheet-map' 전용. 생략 = per-sheet" })
+  @IsOptional()
+  @IsIn(PRODUCT_OUTPUT_SHEET_FILES)
+  sheetFiles?: ProductOutputSheetFiles;
 }
 
 export class ProductProfileDto implements ProductProfile {

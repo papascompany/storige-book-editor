@@ -877,8 +877,8 @@ export class PdfSynthesizerService {
     const lightweight = VALIDATION_CONFIG.LIGHTWEIGHT_SYNTHESIS;
 
     const spreadPdfPath = path.join(jobTempDir, `spread_${spreadPdfFileId}.pdf`);
-    const spreadSourceUrl =
-      spreadFile.storageBackend === 's3' ? `api://${spreadFile.id}` : spreadFile.filePath;
+    // SEC-008: /files/:id/external DTO 에 filePath 없음 → backend 무관하게 api://(API 가 local/s3 라우팅).
+    const spreadSourceUrl = `api://${spreadFile.id}`;
     // 트랙 B-(f): ON 이면 스트림 다운로드(상수메모리), OFF 면 기존 전체버퍼. 산출 파일 동일.
     await this.downloadToPath(spreadSourceUrl, spreadPdfPath, 'spread');
 
@@ -950,8 +950,7 @@ export class PdfSynthesizerService {
       }
 
       const contentPdfPath = path.join(jobTempDir, `content_${fileId}.pdf`);
-      const contentSourceUrl =
-        contentFile.storageBackend === 's3' ? `api://${contentFile.id}` : contentFile.filePath;
+      const contentSourceUrl = `api://${contentFile.id}`;
       // 트랙 B-(f): ON 이면 스트림 다운로드(상수메모리), OFF 면 기존 전체버퍼. 산출 파일 동일.
       await this.downloadToPath(contentSourceUrl, contentPdfPath, 'content');
       // X1: 내지 입력(jobTempDir 사본) 재단선 영역 크롭 정규화 — 스프레드 표지 제외.
@@ -1107,7 +1106,7 @@ export class PdfSynthesizerService {
   private async getFileById(fileId: string): Promise<any> {
     const apiBaseUrl = process.env.API_BASE_URL || 'http://localhost:4000/api';
     try {
-      const response = await axios.get(`${apiBaseUrl}/files/${fileId}`, {
+      const response = await axios.get(`${apiBaseUrl}/files/${fileId}/external`, {
         headers: { 'X-API-Key': process.env.WORKER_API_KEY },
         timeout: 30000, // processor getFileById(EH-005)와 같은 값
       });

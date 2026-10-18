@@ -65,7 +65,7 @@ import { core, ServicePlugin } from '@storige/canvas-core'
 import { summarizeProductProfile, type PhotobookPricing, type ProductCompleteSummary, type TemplateSetCoverMeta } from '@storige/types'
 // P1 캘린더 (2026-10-17): 세션 메타 저장/복원·그리드 재합성 (프로파일 null 이면 전부 no-op)
 import { rehydrateCalendarGrids } from './utils/calendarRehydrate'
-import { calendarSessionMetadataFields, restoreCalendarSessionMeta } from './utils/calendarRehydrateAll'
+import { calendarSessionMetadataFields, rehydrateAllCalendarGrids, restoreCalendarSessionMeta } from './utils/calendarRehydrateAll'
 import type { ApiError } from './api/client'
 // './api' 가 아닌 './api/client' 에서 직접 가져온다 — 테스트 하네스가 './api' 를 통째로 mock 한다.
 import { parseApiError } from './api/client'
@@ -1884,6 +1884,12 @@ function EmbeddedEditor({
             loadProfile.mark('restore:done', { pages: 1 })
             console.log('[EmbeddedEditor] Single canvasData restored:', editSession.id)
           }
+        } else if (restoreCalendarSessionMeta(editSession?.metadata)) {
+          // P2-b 런처 (2026-10-18): 파트너 서버가 선생성한 세션은 canvasData 없이 metadata.calendar(시작연월 등)만
+          // 갖고 열린다 — 재오픈 분기와 같은 복원을 한 뒤 템플릿 로드로 이미 그려진 그리드를 저장 메타로 다시 그린다.
+          // metadata.calendar 가 없거나 무효면 restore 가 false 라 종전 경로 그대로(프로파일 기본 시작연월).
+          console.log('[EmbeddedEditor] 캘린더 세션 메타 복원(신규 세션, canvasData 없음):', editSession?.id)
+          await rehydrateAllCalendarGrids()
         }
 
         if (!isMounted) return

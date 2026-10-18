@@ -1,11 +1,12 @@
 /**
- * v1 표면 22라우트 전수 — method·path·query 직렬화 대조.
+ * v1 표면 25라우트 전수 — method·path·query 직렬화 대조.
  *
  * 서버 라우트 정본:
  *  - ping 1        apps/api/src/partner-api/ping.controller.ts
  *  - book-specs 3  apps/api/src/book-specs/book-specs.controller.ts
  *  - books 11      apps/api/src/books/books.controller.ts
  *  - webhooks 7    apps/api/src/webhook/v2/partner-webhooks.controller.ts
+ *  - sessions 3    런처 3라우트(CONTRACT_FREEZE v1.23, 2026-10-18 ADDITIVE)
  */
 
 import { describe, expect, it } from 'vitest';
@@ -30,8 +31,8 @@ async function capture(
   return { method: req.method, url: req.url };
 }
 
-describe('v1 표면 22라우트 — method·path 대조', () => {
-  it('[1/22] GET /ping', async () => {
+describe('v1 표면 25라우트 — method·path 대조', () => {
+  it('[1/25] GET /ping', async () => {
     expect(await capture((c) => c.ping(), ok({ pong: true, serverTime: 'T' }))).toEqual({
       method: 'GET',
       url: `${PREFIX}/ping`,
@@ -39,21 +40,21 @@ describe('v1 표면 22라우트 — method·path 대조', () => {
   });
 
   // ── book-specs 3 ────────────────────────────────────────────────────
-  it('[2/22] GET /book-specs', async () => {
+  it('[2/25] GET /book-specs', async () => {
     expect(await capture((c) => c.bookSpecs.list(), ok([]))).toEqual({
       method: 'GET',
       url: `${PREFIX}/book-specs`,
     });
   });
 
-  it('[3/22] GET /book-specs/{uid}', async () => {
+  it('[3/25] GET /book-specs/{uid}', async () => {
     expect(await capture((c) => c.bookSpecs.get('bs_1'))).toEqual({
       method: 'GET',
       url: `${PREFIX}/book-specs/bs_1`,
     });
   });
 
-  it('[4/22] GET /book-specs/{uid}/calculated-size', async () => {
+  it('[4/25] GET /book-specs/{uid}/calculated-size', async () => {
     expect(await capture((c) => c.bookSpecs.calculatedSize('bs_1', 100))).toEqual({
       method: 'GET',
       url: `${PREFIX}/book-specs/bs_1/calculated-size?pageCount=100`,
@@ -61,77 +62,77 @@ describe('v1 표면 22라우트 — method·path 대조', () => {
   });
 
   // ── books 11 ────────────────────────────────────────────────────────
-  it('[5/22] POST /books', async () => {
+  it('[5/25] POST /books', async () => {
     expect(await capture((c) => c.books.create({ creationType: 'PDF_UPLOAD' }))).toEqual({
       method: 'POST',
       url: `${PREFIX}/books`,
     });
   });
 
-  it('[6/22] GET /books', async () => {
+  it('[6/25] GET /books', async () => {
     expect(await capture((c) => c.books.list(), ok([]))).toEqual({
       method: 'GET',
       url: `${PREFIX}/books`,
     });
   });
 
-  it('[7/22] POST /books/{uid}/pdf-cover', async () => {
+  it('[7/25] POST /books/{uid}/pdf-cover', async () => {
     expect(await capture((c) => c.books.uploadPdfCover('bk_1', { fileId: 'f1' }))).toEqual({
       method: 'POST',
       url: `${PREFIX}/books/bk_1/pdf-cover`,
     });
   });
 
-  it('[8/22] PUT /books/{uid}/pdf-cover', async () => {
+  it('[8/25] PUT /books/{uid}/pdf-cover', async () => {
     expect(await capture((c) => c.books.replacePdfCover('bk_1', { fileId: 'f1' }))).toEqual({
       method: 'PUT',
       url: `${PREFIX}/books/bk_1/pdf-cover`,
     });
   });
 
-  it('[9/22] POST /books/{uid}/pdf-contents', async () => {
+  it('[9/25] POST /books/{uid}/pdf-contents', async () => {
     expect(await capture((c) => c.books.uploadPdfContents('bk_1', { fileId: 'f1' }))).toEqual({
       method: 'POST',
       url: `${PREFIX}/books/bk_1/pdf-contents`,
     });
   });
 
-  it('[10/22] PUT /books/{uid}/pdf-contents', async () => {
+  it('[10/25] PUT /books/{uid}/pdf-contents', async () => {
     expect(await capture((c) => c.books.replacePdfContents('bk_1', { fileId: 'f1' }))).toEqual({
       method: 'PUT',
       url: `${PREFIX}/books/bk_1/pdf-contents`,
     });
   });
 
-  it('[11/22] POST /books/{uid}/photos', async () => {
+  it('[11/25] POST /books/{uid}/photos', async () => {
     expect(await capture((c) => c.books.addPhoto('bk_1', { fileId: 'f1' }))).toEqual({
       method: 'POST',
       url: `${PREFIX}/books/bk_1/photos`,
     });
   });
 
-  it('[12/22] POST /books/{uid}/finalization', async () => {
+  it('[12/25] POST /books/{uid}/finalization', async () => {
     expect(await capture((c) => c.books.startFinalization('bk_1'))).toEqual({
       method: 'POST',
       url: `${PREFIX}/books/bk_1/finalization`,
     });
   });
 
-  it('[13/22] GET /books/{uid}/finalization', async () => {
+  it('[13/25] GET /books/{uid}/finalization', async () => {
     expect(await capture((c) => c.books.getFinalization('bk_1'))).toEqual({
       method: 'GET',
       url: `${PREFIX}/books/bk_1/finalization`,
     });
   });
 
-  it('[14/22] GET /books/{uid}/pdf — 스트림(별도 spec 에서 상세 검증)', async () => {
+  it('[14/25] GET /books/{uid}/pdf — 스트림(별도 spec 에서 상세 검증)', async () => {
     const m = mockFetch([{ raw: '%PDF-1.7', headers: { 'content-type': 'application/pdf' } }]);
     await client(m.fetch).books.downloadPdf('bk_1');
     expect(m.calls[0]!.method).toBe('GET');
     expect(m.calls[0]!.url).toBe(`${PREFIX}/books/bk_1/pdf`);
   });
 
-  it('[15/22] GET /books/{uid}', async () => {
+  it('[15/25] GET /books/{uid}', async () => {
     expect(await capture((c) => c.books.get('bk_1'))).toEqual({
       method: 'GET',
       url: `${PREFIX}/books/bk_1`,
@@ -139,52 +140,78 @@ describe('v1 표면 22라우트 — method·path 대조', () => {
   });
 
   // ── webhooks 7 ──────────────────────────────────────────────────────
-  it('[16/22] PUT /webhooks/config', async () => {
+  it('[16/25] PUT /webhooks/config', async () => {
     expect(await capture((c) => c.webhooks.putConfig({ url: 'https://p.example/hook' }))).toEqual({
       method: 'PUT',
       url: `${PREFIX}/webhooks/config`,
     });
   });
 
-  it('[17/22] GET /webhooks/config', async () => {
+  it('[17/25] GET /webhooks/config', async () => {
     expect(await capture((c) => c.webhooks.getConfig())).toEqual({
       method: 'GET',
       url: `${PREFIX}/webhooks/config`,
     });
   });
 
-  it('[18/22] DELETE /webhooks/config', async () => {
+  it('[18/25] DELETE /webhooks/config', async () => {
     expect(await capture((c) => c.webhooks.deleteConfig())).toEqual({
       method: 'DELETE',
       url: `${PREFIX}/webhooks/config`,
     });
   });
 
-  it('[19/22] POST /webhooks/test', async () => {
+  it('[19/25] POST /webhooks/test', async () => {
     expect(await capture((c) => c.webhooks.sendTest())).toEqual({
       method: 'POST',
       url: `${PREFIX}/webhooks/test`,
     });
   });
 
-  it('[20/22] GET /webhooks/deliveries', async () => {
+  it('[20/25] GET /webhooks/deliveries', async () => {
     expect(await capture((c) => c.webhooks.listDeliveries(), ok([]))).toEqual({
       method: 'GET',
       url: `${PREFIX}/webhooks/deliveries`,
     });
   });
 
-  it('[21/22] GET /webhooks/deliveries/{uid}', async () => {
+  it('[21/25] GET /webhooks/deliveries/{uid}', async () => {
     expect(await capture((c) => c.webhooks.getDelivery('wd_1'))).toEqual({
       method: 'GET',
       url: `${PREFIX}/webhooks/deliveries/wd_1`,
     });
   });
 
-  it('[22/22] POST /webhooks/deliveries/{uid}/retry', async () => {
+  it('[22/25] POST /webhooks/deliveries/{uid}/retry', async () => {
     expect(await capture((c) => c.webhooks.retryDelivery('wd_1'))).toEqual({
       method: 'POST',
       url: `${PREFIX}/webhooks/deliveries/wd_1/retry`,
+    });
+  });
+
+  // ── sessions 3 (런처, v1.23) ────────────────────────────────────────
+  it('[23/25] POST /sessions/launch', async () => {
+    expect(
+      await capture((c) =>
+        c.sessions.launch({ member: { seqno: 1, id: 'u', name: 'n' }, templateSetId: 'ts_1' }),
+      ),
+    ).toEqual({
+      method: 'POST',
+      url: `${PREFIX}/sessions/launch`,
+    });
+  });
+
+  it('[24/25] GET /sessions/{id}/deliverables', async () => {
+    expect(await capture((c) => c.sessions.deliverables('sess_1'))).toEqual({
+      method: 'GET',
+      url: `${PREFIX}/sessions/sess_1/deliverables`,
+    });
+  });
+
+  it('[25/25] POST /sessions/{id}/synthesize', async () => {
+    expect(await capture((c) => c.sessions.synthesize('sess_1'))).toEqual({
+      method: 'POST',
+      url: `${PREFIX}/sessions/sess_1/synthesize`,
     });
   });
 });
