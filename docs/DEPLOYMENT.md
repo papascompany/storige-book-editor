@@ -225,6 +225,7 @@ pnpm dev
 - **worker 환경 파일**: `apps/worker/.env.development.example` 을 `.env.development` 로 복사한다(gitignored). `STORAGE_PATH` 는 api 의 storage 디렉터리 절대 경로, `WORKER_API_KEY` 는 api 의 `WORKER_API_KEY` 와 같고 sites 테이블의 어느 사이트 `worker_auth_code` 와도 일치해야 잡 상태 보고가 401 로 떨어지지 않는다.
 - **Bookmoa 연동 끄기**: api `.env.development` 에 `BOOKMOA_DB_PASSWORD` 가 있으면 원격 bookmoa DB 에 접속을 시도해 부팅이 멈출 수 있다. 로컬에서는 `BOOKMOA_DB_PASSWORD= pnpm --filter @storige/api dev` 처럼 빈 값으로 덮어 끈다.
 - **Node 버전과 네이티브 모듈**: `engines.node >= 24` 이지만 로컬 빌드된 네이티브 모듈 ABI 가 다를 수 있다 — `better-sqlite3`(api jest 일부 스위트)는 빌드된 Node 로, `canvas`(canvas-core vitest, fabric node 엔트리)는 Node 24 로 실행한다. Node 26 에서는 canvas-core 테스트가 수집 단계에서 실패한다(`packages/canvas-core/vitest.setup.ts` 처방 참조).
+- **사진인화 로컬 e2e (2026-10-19, P2-d — 브랜치 `p1-calendar-2026-10-17` 전용·미커밋)**: 샘플 세트·테스트 사이트는 `STORIGE_API_URL=http://localhost:4000/api node scripts/register-photo-print-samples.mjs --with-site` 로 만든다 — `--with-site` 는 로컬 API 전용으로 사이트 `'사진인화 로컬 테스트'` 와 shop-session 토큰을 임시 디렉터리 결과 파일(0600)에 기록하며, 원격 호스트에서는 `--allow-remote` 없이 거부된다. 스크립트는 프로파일 검증에 `packages/types/dist/cjs` 를 읽으므로 먼저 `pnpm --filter @storige/types build`(없으면 검증 생략 경고만 내고 계속). 촬영일 오버레이는 `exifr` 가 읽는 `DateTimeOriginal`(`apps/editor/src/utils/photoAutofill.ts`, 채움 시 `extension.takenAt`) — 테스트 사진은 Exif 서브 IFD(0x8769)에 `DateTimeOriginal` 이 있어야 하고 IFD0 에만 넣은 가공 파일은 인식되지 않는다(2026-10-19 실측, 테스트 데이터 이슈). 편집 완료 뒤 편집기 탭을 열어 두면 자동저장 PATCH 가 `status: 'editing'` 을 보내 세션이 editing 으로 돌아간다(`apps/editor/src/hooks/useEmbedAutoSave.ts`, 기존 동작) — 완료 상태·deliverables 를 볼 때는 탭을 먼저 닫는다. 편집기 콘솔의 404 `template-sets/sample-8x8-book-24p/with-templates` 는 기존 기본값 폴백 요청으로 P2-d 와 무관.
 
 ---
 
@@ -412,6 +413,7 @@ GHOSTSCRIPT_PATH=/usr/bin/gs
 | 변수 | 대상 | 기본값 | 설명 |
 |---|---|---|---|
 | `VITE_ENABLE_CALENDAR` | editor 빌드 | on(미설정·`'false'` 외 모든 값) | P1 캘린더(2026-10-17). 정확히 `'false'` 로 두면 CalendarPlugin 등록과 도구 막대 달력 메뉴를 비활성한다(프로파일 NULL 세트는 값과 무관하게 현행). 빌드 시점 변수라 값을 바꾸면 master push(Vercel 재빌드) 뒤에 반영된다(`apps/editor/.env.example`) |
+| `VITE_ENABLE_PHOTO_PRINT` | editor 빌드 | on(미설정·`'false'` 외 모든 값) | P2-d 사진인화(2026-10-19 — 브랜치 `p1-calendar-2026-10-17` 전용·미커밋·운영 미반영). 정확히 `'false'` 로 두면 `PhotoPrintPlugin` 등록(`apps/editor/src/utils/createCanvas.ts`)과 도구 막대 사진인화 메뉴(`apps/editor/src/components/editor/ToolBar.tsx`)를 비활성한다. 켜져 있어도 메뉴·패널은 `productProfile.kind === 'photo-print'` 세트에서만 보이므로 프로파일 NULL 세트는 값과 무관하게 현행. 직렬화 속성 `fitMode`·`frameInsetMm` 등재는 플래그와 무관(`packages/canvas-core/src/utils/canvas.ts`)이라 꺼도 저장본은 보존된다. 빌드 시점 변수 — master push(Vercel 재빌드) 뒤 반영(`apps/editor/.env.example` 에 추가) |
 
 ### 잡 생성 확인 · 잡 산출물 세션 조회 플래그 (api, 2026-10-03)
 
@@ -1646,6 +1648,68 @@ docker logs storige-api 2>&1 | grep -E "\[FLAGS-CHECK\]" | tail -1   # ok n=17
 **롤백**: `.env` `SHEET_MAP_OUTPUT_ENABLED=off` → `docker compose up -d api` → nginx 재시작(발행 중지, duplex-split 폴스루) → 큐 `bull:pdf-synthesis:wait` 0 확인 뒤 worker 롤백 태그.
 
 로컬 실측(2026-10-19 00:03 KST, 탁상 베이직 프로파일 `output.mode='sheet-map'`): 완료 → `[pdfOutputMode] Created sheet-map job … sheets=13, output=per-sheet, pdfOutputMode='duplex-split' 무시` → 워커 `Processing sheet-map synthesis job … sheets=13` → 13 `set_<i>.pdf`(각 2쪽 216×156mm) → deliverables `ready`·`sheets` 13 → synthesize 201(r2) → `sheetFiles='merged-duplex'` 재합성 201(r3) → `sheets_duplex.pdf` 26쪽. 운영 템플릿셋에는 아직 sheet-map 프로파일 세트가 없다(배포 직후 동작 변화 0).
+
+
+### P2-d 사진인화 배포 절차 (2026-10-20 준비 — 미실행, 오너 승인 후)
+
+> 브랜치 `p1-calendar-2026-10-17` 전용 — HEAD `9be4c37c`(P2-c) 위 **미커밋** 작업 트리이며 master 미병합·운영 미반영. P2-b·P2-c 와 같은 브랜치라 이 절은 위 두 절(킬스위치 키 2개 추가, worker 먼저)이 같은 배포에서 먼저 적용된 상태를 전제한다. api·editor·admin 과 `packages/types`·`packages/canvas-core`·`packages/sdk` 를 바꾸고 **worker 코드 변경은 없다**(`apps/worker` 무변경 — `@storige/types` 가 바뀌므로 이미지는 P2-c 절차대로 worker 도 함께 빌드한다). 계약 `docs/CONTRACT_FREEZE.md` v1.25(§1-D ADDITIVE 4건 + 보정 2건). 전체 테스트(2026-10-20 13:51 KST(04:51Z, 로그 기준)): api jest 154 suites/3470 · worker 36/1353 · editor vitest 133 파일/1810 · canvas-core(node 24) 63/754 · admin 24/302 · sdk 13/416 · tsc 7패키지 ok — 기준선(P2-c `9be4c37c`) 대비 회귀 0. 적대 리뷰 36건·로컬 e2e 결함 9건(D1~D9) 수정 반영.
+
+**변경 내용(요약)**
+
+- types(`packages/types/src/product-profile.ts`): `ProductKind` 에 `'photo-print'`, `photoPrint` 블록(`PhotoPrintProfile` — process chemical|digital, composition, sizes 1개, options, copies, backTemplateId?, upload{maxPhotos,maxMb}), `pages.labelRule 'photo'`, 세션 항목 `PhotoItem`·`readPhotoItems` 등 순수 함수. 결합 규칙은 `validateProductProfile` — photo-print 는 `pages.kind 'range'` 만·`protectedIndices` 금지, chemical ⇒ faces 1, digital ⇒ faces 2·step 2.
+- api: `PhotoPrintProfileDto`(`apps/api/src/templates/dto/product-profile.dto.ts`), 신규 `apps/api/src/edit-sessions/photo-items.ts`(`readSessionPhotoItems`·`applyPhotoItemsToSheets` — `metadata.items` 의 매수를 sheet-map 시트 `copies`/`label('사진 N')` 로 주입, 항목 상한 = min(`upload.maxPhotos`, 캔버스 기준 사진 수)), 편집 완료 sheet-map 잡 생성 직전에 주입(`edit-sessions.service.ts` `applyPhotoItemsToSheets(buildSheetMap(...), readSessionPhotoItems(...))`). `metadata.productProfile` 은 **서버 소유 키**(`SESSION_METADATA_SERVER_OWNED_KEYS`, `stampProductProfileSnapshot` — create/update(metadata 동봉 시)/complete 에서 템플릿셋 프로파일로 기록, 세트 NULL 이면 제거, 조회 실패 시 기존 유지). 시트 맵 산출 실패는 `metadata.production.sheetMap{error,message,at}` 기록 + deliverables `status 'failed'`·`errorCode/errorDetail`. 검증 잡 `orderOptions.bleed` 기본값 `resolveDefaultBleedMm`(템플릿셋 없음 3 · `cropMarkEnabled true && bleedMm≠0` → 3 · 그 외 프로파일 세트 0 · `metadata.bleed` 명시값 우선). 파트너 deliverables `items`(photo-print 세트만). **DB 마이그레이션 없음** — `template_sets.product_profile` JSON 컬럼(P1, `apps/api/src/templates/entities/template-set.entity.ts`) 재사용, `apps/api/migrations/` 신규 파일 없음. **새 api/worker 환경변수·FLAGS 키 없음** — `apps/api/src/config/feature-flags.ts` `API_FEATURE_FLAG_KEYS` 는 P2-c 의 17개 그대로(끝 키 `SHEET_MAP_OUTPUT_ENABLED`), `docker-compose.yml` 무변경.
+- canvas-core: 신규 `packages/canvas-core/src/plugins/PhotoPrintPlugin.ts`(사진틀 fitMode cover/contain · 유테 `frameInsetMm` — 창은 재단 상자 기준 · 촬영일 오버레이 `'YYYY.MM.DD'`(브라우저 로컬) · 흑백 필터), `FrameInteractionPlugin` 창 연동, 직렬화 속성 `fitMode`·`frameInsetMm` 등재(`packages/canvas-core/src/utils/canvas.ts`).
+- editor: 도구 막대 `PHOTO_PRINT` 메뉴·사진인화 패널(`apps/editor/src/components/photoPrint/`)·`usePhotoPrintStore`(세션 `metadata.items`)·업로드 한도(`photoPrintUpload.ts`)·사진 단위 페이지 추가/삭제·순서 변경 비활성·완료 payload `product.kind 'photo-print'` + `items`(`apps/editor/src/embed.tsx` `productResultFields`, 회원 완료 두 경로; 레거시 `storige:completed` 는 `EmbedView.tsx`). 빌드 변수 **`VITE_ENABLE_PHOTO_PRINT`**(위 「편집기 빌드 변수」 표 — `apps/editor/.env.example` 추가, 기본 on).
+- admin: 템플릿셋 폼 사진인화 프리셋 4종 Select/적용 버튼(`apps/admin/src/pages/TemplateSets/photoPrintProfilePresets.ts` — `photo_chem`·`photo_digital_items`·`photo_digital_fixedback`·`photo_digital_sheet`, 전부 "오너 확정 전 기본값" 주석), 섹션 라벨 '상품 프로파일'. 샘플 등록 스크립트 신규 `scripts/register-photo-print-samples.mjs`.
+- sdk: `EditorCompleteProduct.kind` + `'photo-print'`, `EditorCompletePayload.items?`, `SessionDeliverables.items?` 등 타입·판독. `private` 패키지이고 소비 앱이 없어 **배포 단계 없음**.
+
+**빌드 순서** — `@storige/types`·`@storige/canvas-core` 는 dist(gitignored)를 통해 소비되므로 types → canvas-core → 앱 순서가 필요하다. api·worker 이미지는 Dockerfile 이 `pnpm --filter @storige/types build` 를 앱 빌드보다 먼저 실행하므로(`docker/api/Dockerfile`·`docker/worker/Dockerfile`) 별도 단계가 없다. editor 는 Vercel `buildCommand` 가 `types → canvas-core → editor`(`apps/editor/vercel.json`), admin 은 `types → admin`(`apps/admin/vercel.json`) 순이며 두 `ignoreCommand` 가 `packages/types`(editor 는 `packages/canvas-core` 도) 변경을 빌드 대상으로 본다. 로컬에서 스크립트·테스트를 돌릴 때만 `pnpm --filter @storige/types build && pnpm --filter @storige/canvas-core build` 를 손으로 실행한다.
+
+**순서**
+
+```bash
+# 0) 직전 이미지 보존(P2-c 태그와 별도)
+docker tag storige-api:latest storige-api:rollback-pre-photoprint-20261020
+docker tag storige-worker:latest storige-worker:rollback-pre-photoprint-20261020
+# 1) 기대값 프로필 변경 없음 — P2-c 까지 반영된 FLAGS_EXPECTED_API(17키) 그대로. 새 .env 키 없음
+# 2) worker → api → nginx (P2-c 절차와 동일; worker 는 types dist 재빌드만 포함되고 동작 변화 없음)
+cd ~/storige && git pull --ff-only origin master
+docker compose build worker && docker compose up -d worker
+docker compose build api && docker compose up -d api && docker compose restart nginx
+docker logs storige-api 2>&1 | grep -E "\[FLAGS\] api |\[FLAGS-CHECK\]" | tail -2   # [FLAGS-CHECK] api ok n=17 (키 수 불변)
+# 3) editor·admin 은 master push 로 Vercel 자동 배포 — 새 배포 id Ready 확인. editor 환경변수 VITE_ENABLE_PHOTO_PRINT 는 미설정 = on(끄려면 정확히 false)
+```
+
+**확인**
+
+- `GET /api/health` 200, worker `/health` ok, 기동 후 10분 오류 로그 0, `[FLAGS-CHECK] api ok n=17`.
+- 기존 세트 무영향: 샘플 등록 전 `SELECT COUNT(*) FROM template_sets WHERE JSON_VALUE(product_profile, '$.kind') = 'photo-print'` = 0. 프로파일 NULL 세트 임베드 1건 — 도구 막대에 사진인화 메뉴 없음(`ToolBar.tsx` 의 kind 게이트), 완료 payload 에 `product`·`items` 키 없음.
+- 세션 저장 경로 변화: metadata 를 동봉한 PATCH(편집기 자동저장 포함)마다 템플릿셋 조회 1건이 추가된다(`stampProductProfileSnapshot` — NULL 세트도 조회해 `productProfile` 키 제거 여부를 판단). 배포 뒤 api 로그에 `[productProfile] … 조회 실패 → 기존 스냅샷 유지` warn 이 없는지 본다.
+- 검증 잡 `orderOptions.bleed`: cropMark 세트(캘린더 포함)·프로파일 NULL 세트는 종전 3 그대로. 0 이 되는 것은 cropMark off(또는 bleedMm 0)인 **프로파일 세트**뿐이며 운영에는 샘플 등록 전까지 그런 세트가 없다.
+- 사진인화 샘플 세트 완료(샘플 등록 뒤): chemical(`photo_chem`) 완료 → 검증 `isValid true`·오류 0·`orderOptions {productKind 'sheet', coverSpine 'none', bleed 0, pageStep 없음}`·`metadata.items` N건·deliverables `items`. digital(`photo_digital_items`) 완료 → `[pdfOutputMode] Created sheet-map job … sheets=N` → deliverables `ready`·`files[].copies/label('사진 N')`. 로컬 1차 실측(2026-10-19, 결함 수정 전)은 chemical 완료 검증 오류 0·`items` 3건·sheet-map 세트 `metadata.items` 직렬화까지 통과했고 `BLEED_MISSING` 경고(D9)는 `resolveDefaultBleedMm` 으로 수정됨 — 수정 뒤 로컬 e2e 재실측(2026-10-20 13:50~14:05 KST, 샘플 세트 재등록 뒤): 인쇄 ① 런처 세션 — `items` 2건 → 캔버스 4 증설, cover/유테 창 기하 정상, reload 복원 4, 완료 검증 `warnings: []`, 자동 `sheet-map-r1`(copies 5/2·label), deliverables `ready`·`items`, synthesize r2 통과. 추가 결함 D10(증설 페이지 사진틀 클릭 바인딩) 즉시 수정. ②·③ 완료 e2e·25캔버스 실측은 미실행.
+
+**샘플 세트 등록(별도 승인)**
+
+```bash
+# 프로파일 검증용 types dist 가 필요하다(없으면 검증 생략 경고만 내고 계속)
+pnpm --filter @storige/types build
+# 생성 계획만 출력(쓰기 없음): 4종 템플릿셋·템플릿 이름/판형·사진틀 도련 확장량(digital 3mm / chemical 0)·stroke 없음
+STORIGE_API_URL=https://api.papascompany.co.kr/api node scripts/register-photo-print-samples.mjs --dry-run
+# 승인 뒤 실제 등록 — --with-site 금지(로컬 전용: 사이트 '사진인화 로컬 테스트'·shop-session 토큰 생성).
+#   --allow-remote 는 --with-site 의 원격 가드에만 적용되므로 운영 등록에는 불필요하다(캘린더 스크립트와 같은 구조)
+STORIGE_API_URL=https://api.papascompany.co.kr/api node scripts/register-photo-print-samples.mjs
+```
+
+`ADMIN_EMAIL`/`ADMIN_PASSWORD` 는 오너 터미널에서 export 한다 — 미지정이면 `apps/api/.env.development` 의 로컬 값으로 로그인을 시도하므로 운영에서는 반드시 export(스크립트는 값을 출력하지 않음). 결과 파일은 임시 디렉터리 `storige-photo-print-samples.json`(0600, `STORIGE_SAMPLES_OUT` 로 변경 가능). 같은 이름(`[사진인화 샘플] …`)의 세트·템플릿은 갱신(멱등). 세트 4종의 판형(4x6 102×152·카드 90×54)·업로드 한도(200/400장·25MB)·유테 2mm·매수 1~99·도련(digital `cropMarkEnabled true`·`bleedMm 3` / chemical false·0)은 전부 **오너 확정 전 기본값**(`photoPrintProfilePresets.ts` 주석) — 등록 전 오너 결정 대기: 판형, chemical 도련 0 유지 여부, 유테 2mm, 업로드 한도, 촬영일 `'YYYY.MM.DD'`, 고정 뒷면 refs[1]=`backTemplateId` 규약, chemical 매수는 deliverables `items` 로만 전달, `brightnessFix` 는 통과만. 샘플 템플릿은 e2e 용 최소 디자인이라 운영 노출 전 디자인 교체는 별도.
+
+**롤백** (1~3 은 코드 롤백 없이 가능)
+
+1. 세트 단위: admin 템플릿셋 폼에서 상품 프로파일을 비운다(NULL) → 새 세션은 즉시, 진행 중 세션은 다음 저장(metadata 동봉)·완료 시 서버가 `metadata.productProfile` 을 제거해 현행 동작으로 복귀. 롤백 뒤 한 번도 저장·완료되지 않은 **이미 완료된** 세션의 스냅샷만 남아 deliverables 가 폴백으로 쓴다(재완료·재합성 전까지). 등록한 샘플 세트는 admin 에서 비활성/삭제한다.
+2. 편집기 전체: Vercel editor 환경변수 `VITE_ENABLE_PHOTO_PRINT=false` → master push(재빌드) 또는 직전 Production promote. 메뉴·플러그인만 꺼지고 저장본 속성(`fitMode`·`frameInsetMm`·`extension.takenAt`)은 등재돼 보존된다.
+3. sheet-map 발행 중지: `.env` `SHEET_MAP_OUTPUT_ENABLED=off` → `docker compose up -d api` → nginx 재시작(P2-c 절차) — 사진인화 digital 세트의 완료는 유지되고 시트 매핑 잡·`copies/label` 주입만 멈춘다(종전 pdfOutputMode 경로).
+4. 이미지: `docker tag storige-api:rollback-pre-photoprint-20261020 storige-api:latest`(worker 동일) → `docker compose up -d api worker` → nginx 재시작. 스키마 변경이 없어 DB 되돌림 없음.
+
+**통지**: CONTRACT_FREEZE v1.25 ADDITIVE 4건(소비처 0건) + 보정 2건 — 가이드 반영으로 갈음, 적용 시점 = 이 배포 확인 시각(미정).
 
 ## 문제 해결
 

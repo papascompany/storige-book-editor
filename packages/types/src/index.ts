@@ -1949,7 +1949,8 @@ export type EditorMenuKey =
   | 'SMART_CODE'
   | 'EDIT'
   | 'AI'
-  | 'CALENDAR';
+  | 'CALENDAR'
+  | 'PHOTO_PRINT';
 
 /**
  * 메뉴 메타정보. admin 의 토글 UI 에서 그대로 사용.
@@ -1964,7 +1965,7 @@ export interface EditorMenuDef {
   label: string;
   description: string;
   defaultEnabled: boolean;
-  requiresFlag?: 'IMAGE_PROCESSING' | 'TEMPLATE' | 'FRAME' | 'SMART_CODE' | 'AI' | 'UPLOAD' | 'CALENDAR';
+  requiresFlag?: 'IMAGE_PROCESSING' | 'TEMPLATE' | 'FRAME' | 'SMART_CODE' | 'AI' | 'UPLOAD' | 'CALENDAR' | 'PHOTO_PRINT';
 }
 
 /**
@@ -1985,6 +1986,8 @@ export const EDITOR_MENU_DEFS: EditorMenuDef[] = [
   { key: 'AI', label: 'AI', description: 'AI 추천 / 생성 패널', defaultEnabled: true, requiresFlag: 'AI' },
   // P1 캘린더 (2026-10-17): 편집기는 productProfile.kind==='calendar' 세트에서만 런타임 게이트로 노출한다.
   { key: 'CALENDAR', label: '달력', description: '캘린더 시작연월·표기 옵션·기념일 (productProfile kind=calendar 세트에서만 노출)', defaultEnabled: false, requiresFlag: 'CALENDAR' },
+  // P2-d 사진인화 (2026-10-19): productProfile.kind==='photo-print' 세트에서만 런타임 게이트로 노출한다.
+  { key: 'PHOTO_PRINT', label: '사진인화', description: '사진별 매수·테두리·맞춤·마감·촬영일·흑백 옵션 (productProfile kind=photo-print 세트에서만 노출)', defaultEnabled: false, requiresFlag: 'PHOTO_PRINT' },
 ];
 
 /**

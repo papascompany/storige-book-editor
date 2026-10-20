@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ErrV1, WorkerJobStatus, resolveProductProfile, summarizeProductProfile } from '@storige/types';
-import type { ProductProfile, SheetSpec } from '@storige/types';
+import type { PhotoItem, ProductProfile, SheetSpec } from '@storige/types';
 import { CurrentSitePayload } from '../auth/decorators/current-site.decorator';
 import { AuthService } from '../auth/auth.service';
 import { isRemoteUrlPublic } from '../common/helpers/ssrf.helper';
@@ -8,9 +8,12 @@ import { isPartnerSessionLaunchEnabled, isSheetMapOutputEnabled } from '../confi
 import {
   EditSessionsService,
   PartnerVisibleSynthJobRow,
+  type SheetMapFailureRecord,
   sessionRevisionOf,
+  sheetMapFailureOf,
 } from '../edit-sessions/edit-sessions.service';
 import { EditSessionEntity, SessionMode, SessionStatus } from '../edit-sessions/entities/edit-session.entity';
+import { readSessionPhotoItems } from '../edit-sessions/photo-items';
 import { resolveSessionPageCount } from '../edit-sessions/session-page-count';
 import { SheetMapError } from '../edit-sessions/sheet-map';
 import { PartnerApiException } from '../partner-api/http/partner-api.exceptions';
@@ -53,6 +56,8 @@ type SessionMetadata = Record<string, unknown> & {
   launch?: Partial<PartnerSessionLaunchStamp>;
   calendar?: { startYear?: unknown; startMonth?: unknown; dataVersion?: unknown };
   productProfile?: unknown;
+  /** 사진인화 항목(편집기 기록 PhotoItem[] 또는 런처 PhotoItemInput[] — 자유형, 읽을 때 readPhotoItems 로 정제) */
+  items?: unknown;
   production?: unknown;
 };
 
@@ -197,7 +202,8 @@ export class PartnerSessionsService {
     if (dto.items !== undefined) metadata.items = dto.items;
     if (dto.calendar !== undefined) metadata.calendar = normalizeLaunchCalendar(dto.calendar);
     if (dto.externalPhotos !== undefined) metadata.externalPhotos = dto.externalPhotos;
-    // 템플릿셋 프로파일 스냅샷 — 검증 권위는 템플릿셋(세션 PATCH 는 얕은 병합이라 스냅샷 선기록이 안전).
+    // 템플릿셋 프로파일 스냅샷 — 검증 권위는 템플릿셋. security-2(2026-10-19): productProfile 은 서버 소유 키라
+    // EditSessionsService.create/update/complete 가 템플릿셋 현재값으로 다시 기록하고 클라이언트 PATCH 는 무시된다.
     if (templateSet.productProfile) metadata.productProfile = templateSet.productProfile;
 
     const session = await this.editSessionsService.create({
@@ -254,6 +260,11 @@ export class PartnerSessionsService {
       ? await this.findTemplateSetForSite(site, session.templateSetId)
       : null;
     const job = await this.editSessionsService.findLatestPartnerVisibleSynthJob(session.id);
+    // contract-6(2026-10-19): product 요약과 items 판정은 같은 검증 프로파일(템플릿셋 → 세션 스냅샷, resolveProductProfile 통과)
+    // 을 쓴다 — 무효 프로파일이면 둘 다 생략(product null·items 키 없음).
+    const profile = this.resolveValidatedProfile(templateSet, metadata, 'deliverables');
+    // api-sheetmap-3: 완료 시 sheet-map 발행 실패 기록(production.sheetMap)이 최신 합성 잡보다 새로우면 'failed'
+    const sheetMapFailure = resolveSheetMapFailure(session.status, metadata, job);
 
     const sheets = sheetMapSheetsOf(job);
     const files: PartnerSessionFileView[] = this.buildEditorFiles(session);
@@ -263,15 +274,21 @@ export class PartnerSessionsService {
 
     const view: PartnerSessionDeliverablesView = {
       sessionId: session.id,
-      status: resolveDeliverableStatus(session.status, job?.status ?? null),
+      status: sheetMapFailure ? 'failed' : resolveDeliverableStatus(session.status, job?.status ?? null),
       revision: sessionRevisionOf(session.metadata),
       orderSeqno: Number(session.orderSeqno) || 0,
-      product: this.buildProductView(session, templateSet, metadata),
+      product: this.buildProductView(session, profile),
       calendar: buildCalendarView(metadata),
       files,
     };
     if (sheets) view.sheets = sheets;
+    const items = this.buildItemsView(session, profile, metadata);
+    if (items) view.items = items;
     if (metadata.production !== undefined) view.production = metadata.production;
+    if (sheetMapFailure) {
+      view.errorCode = sheetMapFailure.error;
+      view.errorDetail = sheetMapFailure.message;
+    }
     return view;
   }
 
@@ -365,22 +382,28 @@ export class PartnerSessionsService {
     return files;
   }
 
-  /** 템플릿셋 productProfile 우선, 없으면 세션 스냅샷. 둘 다 없으면(NULL 세트) null */
-  private buildProductView(
-    session: EditSessionEntity,
-    templateSet: TemplateSet | null,
-    metadata: SessionMetadata,
-  ): PartnerSessionProductView | null {
-    const candidate = (templateSet?.productProfile ?? metadata.productProfile ?? null) as
-      | Partial<ProductProfile>
-      | null;
-    if (!candidate || typeof candidate !== 'object' || !candidate.sheet || !candidate.kind) return null;
-    const profile = candidate as ProductProfile;
+  /** 검증 프로파일(resolveValidatedProfile: 템플릿셋 우선, 없으면 세션 스냅샷) 요약. 없거나 무효(NULL 세트 포함)면 null */
+  private buildProductView(session: EditSessionEntity, profile: ProductProfile | null): PartnerSessionProductView | null {
+    if (!profile) return null;
     return {
       ...summarizeProductProfile(profile, resolveSessionPageCount(session)),
       duplexFlip: profile.sheet.duplexFlip,
       backRotation: profile.sheet.backRotation,
     };
+  }
+
+  /**
+   * P2-d(2026-10-19): kind='photo-print' 세트(검증된 프로파일 — buildProductView 와 같은 값)만 세션 `metadata.items` 를
+   * `readPhotoItems(…, profile.photoPrint)` 로 정제해 싣는다. 그 외 세트·프로파일 무효는 null(응답에 키 없음).
+   * 항목 수는 세션 캔버스 수(사진 수)·upload.maxPhotos 를 넘지 않는다(security-1).
+   */
+  private buildItemsView(
+    session: EditSessionEntity,
+    profile: ProductProfile | null,
+    metadata: SessionMetadata,
+  ): PhotoItem[] | null {
+    if (profile?.kind !== 'photo-print') return null;
+    return readSessionPhotoItems(profile, metadata, resolveSessionPageCount(session));
   }
 
   // ── synthesize ───────────────────────────────────────────────────────
@@ -409,7 +432,7 @@ export class PartnerSessionsService {
     // ② 아니면 템플릿셋 pdfOutputMode='duplex-split' → 종전 duplex-split 재합성 ③ 아니면 422.
     const sheetMapTarget =
       isSheetMapOutputEnabled() &&
-      this.resolveSynthesizeProfile(templateSet, this.metadataOf(session))?.output.mode === 'sheet-map';
+      this.resolveValidatedProfile(templateSet, this.metadataOf(session), 'synthesize')?.output.mode === 'sheet-map';
     if (!sheetMapTarget && (!templateSet || templateSet.pdfOutputMode !== 'duplex-split')) {
       throw new PartnerApiException(
         ErrV1.ERR_OUTPUT_MODE_UNSUPPORTED,
@@ -449,16 +472,42 @@ export class PartnerSessionsService {
   }
 
   /**
-   * synthesize 게이트용 프로파일 — buildProductView 와 같은 우선순위(템플릿셋 productProfile → 세션 스냅샷)이되
+   * synthesize 게이트·deliverables items 용 프로파일 — buildProductView 와 같은 우선순위(템플릿셋 productProfile → 세션 스냅샷)이되
    * 검증된 프로파일만 인정한다(resolveProductProfile: version·validateProductProfile 통과). 둘 다 없거나 무효면 null.
+   * `scope` 는 경고 로그 접두사([partner-v1 synthesize] / [partner-v1 deliverables])에만 쓴다.
    */
-  private resolveSynthesizeProfile(templateSet: TemplateSet | null, metadata: SessionMetadata): ProductProfile | null {
-    const warn = (m: string): void => this.logger.warn(`[partner-v1 synthesize] ${m}`);
+  private resolveValidatedProfile(
+    templateSet: TemplateSet | null,
+    metadata: SessionMetadata,
+    scope: 'synthesize' | 'deliverables',
+  ): ProductProfile | null {
+    const warn = (m: string): void => this.logger.warn(`[partner-v1 ${scope}] ${m}`);
     const fromTemplateSet = resolveProductProfile(templateSet, warn);
     if (fromTemplateSet) return fromTemplateSet;
     if (metadata.productProfile === undefined || metadata.productProfile === null) return null;
     return resolveProductProfile({ productProfile: metadata.productProfile as ProductProfile }, warn);
   }
+}
+
+/**
+ * api-sheetmap-3(2026-10-19): 완료 세션의 `metadata.production.sheetMap`(서버 기록 sheet-map 발행 실패) 이 유효하고,
+ * 그보다 뒤(createdAt ≥ at)에 만들어진 파트너 가시 합성 잡이 없으면 그 기록 — deliverables 는 status 'failed' +
+ * errorCode/errorDetail 로 노출한다. 미완료 세션(editing)·기록 없음·더 새 잡 있음 → null(종전 status 산출).
+ */
+export function resolveSheetMapFailure(
+  sessionStatus: SessionStatus | string,
+  metadata: Record<string, unknown> | null | undefined,
+  job: Pick<PartnerVisibleSynthJobRow, 'createdAt'> | null,
+): SheetMapFailureRecord | null {
+  if (sessionStatus !== SessionStatus.COMPLETE) return null;
+  const failure = sheetMapFailureOf(metadata);
+  if (!failure) return null;
+  if (job) {
+    const jobAt = new Date(job.createdAt).getTime();
+    const failedAt = new Date(failure.at).getTime();
+    if (Number.isFinite(jobAt) && Number.isFinite(failedAt) && jobAt >= failedAt) return null;
+  }
+  return failure;
 }
 
 /** 최신 파트너 가시 합성 잡이 sheet-map 잡이면 발행 시 저장한 `options.sheets`(배열) — 그 밖은 null */

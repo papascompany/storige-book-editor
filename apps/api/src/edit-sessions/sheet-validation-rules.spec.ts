@@ -284,5 +284,84 @@ describe('deriveSheetValidationRules', () => {
       const bad = { ...calendarProfile(), version: 2 } as unknown as ProductProfile;
       expect(deriveSheetValidationRules(withProfile(bad))).not.toHaveProperty('coverSpine');
     });
+
+    // ── 2026-10-19 P2-d 사진인화: 현행 로직이 chemical/digital 을 이미 만족한다는 계약을 고정 ──
+    describe('사진인화 프로파일(photo-print, P2-d)', () => {
+      const photoPrintBlock = {
+        process: 'chemical' as const,
+        composition: 'per-photo-free-back' as const,
+        sizes: [{ code: '4x6', widthMm: 102, heightMm: 152, minDpi: 200 }],
+        options: { border: ['none', 'white'] as ('none' | 'white')[], fit: ['paper-full', 'image-full'] as ('paper-full' | 'image-full')[], finish: ['matte', 'glossy'] as ('matte' | 'glossy')[], brightnessFix: true, dateOverlay: true, grayscale: true },
+        copies: { min: 1, max: 99 },
+        upload: { maxPhotos: 200, maxMb: 25 },
+      };
+
+      /** 인화(chemical): 단면·range·step 1·단일 PDF */
+      const photoChemProfile = (): ProductProfile => ({
+        version: 1,
+        kind: 'photo-print',
+        editorType: 'photo_chem',
+        pages: { kind: 'range', min: 1, max: 200, step: 1, labelRule: 'photo' },
+        sheet: { faces: 1, canvasLayout: 'canvas-per-sheet', binding: 'none', backRotation: 0, duplexFlip: 'short-edge' },
+        photoPrint: photoPrintBlock,
+        output: { mode: 'single-pdf' },
+      });
+
+      /** 인쇄 ①(digital): 양면 same-sheet·range·step 2·sheet-map */
+      const photoDigitalProfile = (): ProductProfile => ({
+        version: 1,
+        kind: 'photo-print',
+        editorType: 'photo_digital_items',
+        pages: { kind: 'range', min: 2, max: 400, step: 2, labelRule: 'photo' },
+        sheet: { faces: 2, canvasLayout: 'canvas-pair', binding: 'none', pairing: 'same-sheet', backRotation: 0, duplexFlip: 'short-edge' },
+        photoPrint: { ...photoPrintBlock, process: 'digital' },
+        output: { mode: 'sheet-map', sheetFiles: 'per-sheet' },
+      });
+
+      it('(g) chemical(faces 1, range, step 1) → pageStep 키 없음·expectedPages 없음·coverSpine none (쪽수 = 세션 기록)', () => {
+        const warn = jest.fn();
+        const rules = deriveSheetValidationRules(withProfile(photoChemProfile(), { warn }));
+        expect(rules).toEqual({ productKind: 'sheet', coverSpine: 'none' });
+        expect(rules).not.toHaveProperty('pageStep');
+        expect(rules).not.toHaveProperty('expectedPages');
+        expect(warn).not.toHaveBeenCalled();
+      });
+
+      it('(g-2) chemical + 호스트 orderOptions.pageStep 2 → 종전 산출대로 pageStep 2(프로파일이 덮지 않음)', () => {
+        const session = {
+          mode: SessionMode.BOTH,
+          metadata: { orderOptions: { pageStep: 2 } },
+        } as unknown as SheetValidationRulesInput['session'];
+        expect(deriveSheetValidationRules(withProfile(photoChemProfile(), { session }))).toEqual({
+          productKind: 'sheet',
+          pageStep: 2,
+          coverSpine: 'none',
+        });
+      });
+
+      it('(h) digital(faces 2, range step 2) → pageStep 2·expectedPages 없음·coverSpine none', () => {
+        const rules = deriveSheetValidationRules(withProfile(photoDigitalProfile()));
+        expect(rules).toEqual({ productKind: 'sheet', pageStep: 2, coverSpine: 'none' });
+        expect(rules).not.toHaveProperty('expectedPages');
+      });
+
+      it('(h-2) digital 은 호스트 orderOptions.pageStep 4 가 있어도 양면이라 pageStep 2', () => {
+        const session = {
+          mode: SessionMode.BOTH,
+          metadata: { orderOptions: { pageStep: 4 }, items: [{ copies: 3 }] },
+        } as unknown as SheetValidationRulesInput['session'];
+        expect(deriveSheetValidationRules(withProfile(photoDigitalProfile(), { session }))).toEqual({
+          productKind: 'sheet',
+          pageStep: 2,
+          coverSpine: 'none',
+        });
+      });
+
+      it('(i) photo-print 프로파일의 낱장 판정 탈락(templateTypes null)은 warn 없이 null', () => {
+        const warn = jest.fn();
+        expect(deriveSheetValidationRules(withProfile(photoChemProfile(), { templateTypes: null, warn }))).toBeNull();
+        expect(warn).not.toHaveBeenCalled();
+      });
+    });
   });
 });

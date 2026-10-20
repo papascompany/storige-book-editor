@@ -43,6 +43,27 @@ export {
 export * from './calendar/types';
 export * from './calendar/core';
 export * from './calendar/data';
+// P2-d 사진인화 — 사진틀 fitMode/유테·촬영일·흑백 적용 플러그인 + 순수 헬퍼
+export {
+  default as PhotoPrintPlugin,
+  DATE_OVERLAY_EXTENSION_TYPE,
+  PHOTO_PRINT_EFFECT_TYPE,
+  FRAME_INSET_PX_RUNTIME_KEY,
+  FRAME_WINDOW_RUNTIME_KEY,
+  PHOTO_PRINT_BLEED_PX_RUNTIME_KEY,
+  frameInsetScale,
+  resolveFillScale,
+  resolveFrameWindow,
+  frameWindowTransform,
+  resolveFrameWindowFor,
+  formatTakenAt,
+  type PhotoFitMode,
+  type PhotoPrintCanvasOptions,
+  type FrameBox,
+  type FrameWindow,
+  type FillImageExtension,
+  type DateOverlayExtension,
+} from './plugins/PhotoPrintPlugin';
 // E1 §5-2 — 변형 중 실시간 치수/각도/좌표 피드백 (DOM 오버레이)
 export {
   default as TransformFeedbackPlugin,

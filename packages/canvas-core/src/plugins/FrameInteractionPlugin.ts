@@ -2,6 +2,13 @@ import { fabric } from 'fabric'
 import Editor from '../Editor'
 import { PluginBase, PluginOption } from '../plugin'
 import CanvasHotkey from '../models/CanvasHotkey'
+import { mmToPxDisplay } from '../utils/math'
+import {
+  resolveFrameWindowFor,
+  FRAME_INSET_PX_RUNTIME_KEY,
+  FRAME_WINDOW_RUNTIME_KEY,
+  PHOTO_PRINT_BLEED_PX_RUNTIME_KEY,
+} from './PhotoPrintPlugin'
 
 type AnyObj = fabric.Object & { [k: string]: any }
 
@@ -156,15 +163,44 @@ class FrameInteractionPlugin extends PluginBase {
     const cp = (fore as AnyObj).clipPath as fabric.Object | undefined
     if (cp) {
       const fc = frame.getCenterPoint()
-      cp.set({
-        left: fc.x,
-        top: fc.y,
-        scaleX: frame.scaleX,
-        scaleY: frame.scaleY,
-        angle: frame.angle,
-        flipX: frame.flipX,
-        flipY: frame.flipY,
-      })
+      // P2-d 사진인화(2026-10-19): 유테(frameInsetMm)는 마스크 창(window)만 축소한다 — 창은 (프레임 ∩ 재단 상자) 기준이라
+      // 도련 세트의 풀블리드 틀에서도 흰 띠가 재단 안에 남는다. inset px 는 PhotoPrintPlugin 이 둔 런타임 키를 쓰고, 틀 인스턴스가
+      // undo 로 재생성돼 런타임 키가 없으면 직렬화된 frameInsetMm(mmToPxDisplay) + 캔버스 런타임 bleed 로 다시 계산한다.
+      // 둘 다 없거나 0 이면 종전 1:1(scale = frame.scaleX/Y, 중심 = 프레임 중심) 그대로.
+      const runtimeInset = (frame as AnyObj)[FRAME_INSET_PX_RUNTIME_KEY] as number | undefined
+      const insetMm = (frame as AnyObj).frameInsetMm as number | undefined
+      const insetPx =
+        typeof runtimeInset === 'number' && Number.isFinite(runtimeInset)
+          ? runtimeInset
+          : typeof insetMm === 'number' && Number.isFinite(insetMm) && insetMm > 0
+            ? mmToPxDisplay(insetMm)
+            : 0
+      if (insetPx > 0) {
+        const bleed = (this._canvas as unknown as Record<string, unknown>)[PHOTO_PRINT_BLEED_PX_RUNTIME_KEY] as
+          | number
+          | undefined
+        const win = resolveFrameWindowFor(frame, this._canvas, insetPx, typeof bleed === 'number' ? bleed : 0)
+        ;(frame as AnyObj)[FRAME_WINDOW_RUNTIME_KEY] = win
+        cp.set({
+          left: win.cx,
+          top: win.cy,
+          scaleX: win.sx === 1 ? frame.scaleX : (frame.scaleX ?? 1) * win.sx,
+          scaleY: win.sy === 1 ? frame.scaleY : (frame.scaleY ?? 1) * win.sy,
+          angle: frame.angle,
+          flipX: frame.flipX,
+          flipY: frame.flipY,
+        })
+      } else {
+        cp.set({
+          left: fc.x,
+          top: fc.y,
+          scaleX: frame.scaleX,
+          scaleY: frame.scaleY,
+          angle: frame.angle,
+          flipX: frame.flipX,
+          flipY: frame.flipY,
+        })
+      }
       cp.setCoords()
     }
 

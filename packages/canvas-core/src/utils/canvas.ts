@@ -174,7 +174,12 @@ export namespace core {
     'meta',
     // D1 외부 사진 주입 (2026-06-12): 공유방 사진 탭에서 추가된 이미지의 출처 URL.
     // 저장→재편집 라운드트립에서 '사용됨' 뱃지를 복원하기 위해 보존.
-    'externalPhotoUrl'
+    'externalPhotoUrl',
+    // P2-d 사진인화 (2026-10-19): 사진틀(extensionType 'frame') 채움 규칙 — fitMode('cover'|'contain')·
+    // frameInsetMm(유테: 마스크 창 사방 축소 mm). PhotoPrintPlugin.apply 가 기록하고 복원 뒤 rehydrate 가 읽는다.
+    // 촬영일은 fillImage 의 기존 'extension' 키({ takenAt }) 재사용. 미등재 시 저장 1회 왕복에 침묵 소실.
+    'fitMode',
+    'frameInsetMm'
   ]
 
   export function getWorkspace(canvas: fabric.Canvas): fabric.Object | undefined {

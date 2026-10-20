@@ -1,4 +1,4 @@
-import type { ProductCompleteSummary, ProductBackRotation, ProductDuplexFlip, SheetSpec } from '@storige/types';
+import type { PhotoItem, ProductCompleteSummary, ProductBackRotation, ProductDuplexFlip, SheetSpec } from '@storige/types';
 
 /**
  * Partner API v1 — 1-call 런처(P2-b, 2026-10-18) 산출물 조회·재합성 응답 shape.
@@ -8,7 +8,11 @@ import type { ProductCompleteSummary, ProductBackRotation, ProductDuplexFlip, Sh
  * siteId·memberSeqno 는 비노출.
  */
 
-/** 세션 산출 상태 — 세션 status + 파트너 가시 최신 SYNTHESIZE 잡 status 로 5단계 요약 */
+/**
+ * 세션 산출 상태 — 세션 status + 파트너 가시 최신 SYNTHESIZE 잡 status 로 5단계 요약.
+ * 'failed' 는 합성 잡 FAILED 외에 완료 시 sheet-map 발행 실패(metadata.production.sheetMap, api-sheetmap-3)도 포함 —
+ * 그때는 errorCode/errorDetail 이 함께 실린다.
+ */
 export type PartnerSessionDeliverableStatus =
   | 'editing'
   | 'complete'
@@ -70,8 +74,21 @@ export interface PartnerSessionDeliverablesView {
    * 저장한 시트 앞/뒤 매핑(SheetSpec[], 0-base 페이지·회전·단면 null). duplex-split·잡 없음이면 키 없음.
    */
   sheets?: SheetSpec[];
+  /**
+   * P2-d(2026-10-19, additive) kind='photo-print' 세트(검증된 프로파일)만 — 세션 `metadata.items` 를 `readPhotoItems` 로
+   * 정제한 사진 항목(copies 는 프로파일 범위로 클램프, sizeCode 는 sizes[0].code). sheet-map 세트의 `files[].copies/label`
+   * 원천이기도 하다. NULL 세트·캘린더·낱장 세트는 키 없음(응답 바이트 동일).
+   */
+  items?: PhotoItem[];
   /** 세션 metadata.production 그대로(없으면 키 없음) */
   production?: unknown;
+  /**
+   * api-sheetmap-3(2026-10-19, additive) status 'failed' 가 완료 시 sheet-map 발행 실패에서 온 경우만 — SheetMapError.code
+   * (예: PAGE_COUNT_MISMATCH) 또는 'SHEET_MAP_JOB_FAILED'. 잡 FAILED·그 밖의 상태에서는 키 없음.
+   */
+  errorCode?: string;
+  /** errorCode 와 함께 — 실패 메시지(서버 기록 그대로) */
+  errorDetail?: string;
 }
 
 /** POST /api/v1/sessions/:id/synthesize 응답 data */

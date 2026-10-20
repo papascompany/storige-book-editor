@@ -112,12 +112,132 @@ describe('ProductProfileDto (P1 캘린더 프로파일 파이프)', () => {
     expect(joined).toContain('sheet.faces=2 이면 pages.count 는 짝수여야 합니다');
   });
 
-  it("kind:'photo-print' (P1 미지원) → 400", async () => {
+  it("kind 미등재('poster') → 400 (kind 문구)", async () => {
     const messages = await expect400({
       ...base,
-      productProfile: { ...deskLargeProfile, kind: 'photo-print' },
+      productProfile: { ...deskLargeProfile, kind: 'poster' },
     });
     expect(messages.join('\n')).toContain('kind');
+  });
+
+  // ── P2-d 사진인화(2026-10-19): kind 'photo-print' + photoPrint 블록 ───────────────────────────
+  describe("kind 'photo-print' + photoPrint (P2-d, 2026-10-19)", () => {
+    const photoPrintBlock = {
+      process: 'chemical',
+      composition: 'per-photo-free-back',
+      sizes: [{ code: '4x6', widthMm: 102, heightMm: 152, minDpi: 200 }],
+      options: { border: ['none', 'white'], fit: ['paper-full', 'image-full'], finish: ['matte', 'glossy'], brightnessFix: true, dateOverlay: true, grayscale: true },
+      copies: { min: 1, max: 99 },
+      upload: { maxPhotos: 200, maxMb: 25 },
+    };
+
+    /** 인화(chemical, 단면 미니랩) */
+    const photoChemProfile = {
+      version: 1,
+      kind: 'photo-print',
+      editorType: 'photo_chem',
+      pages: { kind: 'range', min: 1, max: 200, step: 1, labelRule: 'photo' },
+      sheet: { faces: 1, canvasLayout: 'canvas-per-sheet', binding: 'none', backRotation: 0, duplexFlip: 'short-edge' },
+      photoPrint: photoPrintBlock,
+      output: { mode: 'single-pdf' },
+    };
+
+    /** 인쇄 ②(digital, 사진별 고정 뒷면 + sheet-map) */
+    const photoDigitalFixedBackProfile = {
+      version: 1,
+      kind: 'photo-print',
+      editorType: 'photo_digital_fixedback',
+      pages: { kind: 'range', min: 2, max: 400, step: 2, labelRule: 'photo' },
+      sheet: { faces: 2, canvasLayout: 'canvas-pair', binding: 'none', pairing: 'same-sheet', backRotation: 0, duplexFlip: 'short-edge' },
+      photoPrint: {
+        ...photoPrintBlock,
+        process: 'digital',
+        composition: 'per-photo-fixed-back',
+        backTemplateId: 'ffffffff-ffff-4fff-8fff-ffffffffffff',
+        options: { ...photoPrintBlock.options, borderInsetMm: 3 },
+      },
+      output: { mode: 'sheet-map', sheetFiles: 'per-sheet' },
+    };
+
+    it('인화(chemical) 프로파일 → Create 통과, 중첩 값(sizes/options/copies/upload) 보존', async () => {
+      const out = await pipe.transform({ ...base, productProfile: photoChemProfile }, { type: 'body', metatype: CreateTemplateSetDto });
+      expect(JSON.parse(JSON.stringify(out.productProfile))).toEqual(photoChemProfile);
+    });
+
+    it('인쇄 ②(digital, fixed-back, backTemplateId, borderInsetMm, sheet-map) → Update 통과, 값 보존', async () => {
+      const out = await pipe.transform({ productProfile: photoDigitalFixedBackProfile }, { type: 'body', metatype: UpdateTemplateSetDto });
+      expect(JSON.parse(JSON.stringify(out.productProfile))).toEqual(photoDigitalFixedBackProfile);
+    });
+
+    it("kind 'photo-print' 인데 photoPrint 블록 없음 → 400 (types 문구)", async () => {
+      const messages = await expect400({ ...base, productProfile: { ...deskLargeProfile, kind: 'photo-print' } });
+      expect(messages.join('\n')).toContain("kind='photo-print' 는 photoPrint 프로파일이 필요합니다");
+    });
+
+    it("calendar 세트에 photoPrint 블록 → 400 (kind='photo-print' 에서만)", async () => {
+      const messages = await expect400({ ...base, productProfile: { ...deskLargeProfile, photoPrint: photoPrintBlock } });
+      expect(messages.join('\n')).toContain("photoPrint 프로파일은 kind='photo-print' 에서만 지정합니다");
+    });
+
+    it('미등재 키(photoPrint.sizes[0].raster, options.foo) → 400 (forbidNonWhitelisted)', async () => {
+      const m1 = await expect400({
+        ...base,
+        productProfile: { ...photoChemProfile, photoPrint: { ...photoPrintBlock, sizes: [{ ...photoPrintBlock.sizes[0], raster: 'png' }] } },
+      });
+      expect(m1.join('\n')).toContain('raster');
+      const m2 = await expect400({
+        ...base,
+        productProfile: { ...photoChemProfile, photoPrint: { ...photoPrintBlock, options: { ...photoPrintBlock.options, foo: 1 } } },
+      });
+      expect(m2.join('\n')).toContain('foo');
+    });
+
+    it('결합 규칙 위반 — chemical 에 faces 2 → 400 (types 문구)', async () => {
+      const messages = await expect400({
+        ...base,
+        productProfile: {
+          ...photoChemProfile,
+          sheet: { faces: 2, canvasLayout: 'canvas-pair', binding: 'none', pairing: 'same-sheet', backRotation: 0, duplexFlip: 'short-edge' },
+        },
+      });
+      expect(messages.join('\n')).toContain("photoPrint.process='chemical' 은 sheet.faces=1(canvas-per-sheet) 이어야 합니다");
+    });
+
+    it('결합 규칙 위반 — digital 에 pages.step 1 / fixed-back 에 backTemplateId 없음 → 400', async () => {
+      const m1 = await expect400({
+        ...base,
+        productProfile: { ...photoDigitalFixedBackProfile, pages: { ...photoDigitalFixedBackProfile.pages, step: 1 } },
+      });
+      expect(m1.join('\n')).toContain("photoPrint.process='digital' 은 pages.step=2 여야 합니다");
+      const { backTemplateId: _omit, ...noBack } = photoDigitalFixedBackProfile.photoPrint;
+      const m2 = await expect400({ ...base, productProfile: { ...photoDigitalFixedBackProfile, photoPrint: noBack } });
+      expect(m2.join('\n')).toContain("photoPrint.composition='per-photo-fixed-back' 은 backTemplateId 가 필요합니다");
+    });
+
+    it("어휘 미등재(process 'inkjet', options.border 'black') / sizes 2개 → 400", async () => {
+      const m1 = await expect400({
+        ...base,
+        productProfile: { ...photoChemProfile, photoPrint: { ...photoPrintBlock, process: 'inkjet' } },
+      });
+      expect(m1.join('\n')).toContain('process');
+      const m2 = await expect400({
+        ...base,
+        productProfile: { ...photoChemProfile, photoPrint: { ...photoPrintBlock, options: { ...photoPrintBlock.options, border: ['black'] } } },
+      });
+      expect(m2.join('\n')).toContain('border');
+      const m3 = await expect400({
+        ...base,
+        productProfile: { ...photoChemProfile, photoPrint: { ...photoPrintBlock, sizes: [photoPrintBlock.sizes[0], { ...photoPrintBlock.sizes[0], code: '5x7' }] } },
+      });
+      expect(m3.join('\n')).toContain('sizes');
+    });
+
+    it('기존 sheet/calendar 프로파일은 photoPrint 없이 그대로 통과(직렬화 바이트 동일 — photoPrint 키 없음)', async () => {
+      const out = await pipe.transform({ ...base, productProfile: deskLargeProfile }, { type: 'body', metatype: CreateTemplateSetDto });
+      const serialized = JSON.parse(JSON.stringify(out.productProfile));
+      expect(serialized).toEqual(deskLargeProfile);
+      expect(Object.keys(serialized)).not.toContain('photoPrint');
+    });
   });
 
   it('calendar.show.temporaryHolidays — 생략·boolean 통과, 비불리언 400 (2026-10-17 임시공휴일 고객 선택)', async () => {

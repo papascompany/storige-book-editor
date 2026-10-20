@@ -1,7 +1,8 @@
 import { useCallback, useState, useMemo, useEffect } from 'react'
 import { Upload as UploadSimple, HelpCircle as Question } from 'lucide-react'
 import { useAppStore } from '@/stores/useAppStore'
-import { useImageStore, checkMobileFileSize } from '@/stores/useImageStore'
+import { useImageStore, checkMobileFileSize, currentPhotoPrintPhotoCount } from '@/stores/useImageStore'
+import { checkPhotoPrintUploadLimit } from '@/utils/photoPrintUpload'
 import { showToast } from '@/stores/useToastStore'
 import { useUiPrefStore } from '@/stores/useUiPrefStore'
 import { CUTOUT_SUBJECT_MODELS, type CutoutSubject } from '@/api/cutout'
@@ -293,6 +294,8 @@ export default function AppClipping() {
 
       const file = files[0]
 
+      // P2-d 사진인화(security-3): 프로파일 업로드 한도(maxPhotos/maxMb) — 프로파일 NULL 세트는 no-op
+      if (!checkPhotoPrintUploadLimit(files, currentPhotoPrintPhotoCount())) return
       // D-6b② (2026-08-05): 모양컷 업로드 가드 — 이 경로만 모바일 4MB 가드가 없어
       // 대용량 원본이 배경제거 파이프(추론 픽셀 캡 이전 단계)에 직행했다(Wave0 §3).
       if (!checkMobileFileSize(file)) return

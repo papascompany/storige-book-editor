@@ -31,6 +31,7 @@ import {
   EMBED_MESSAGE_VERSION,
   type CompleteAction,
   type EditorCancelPayload,
+  type EditorCompleteItem,
   type EditorCompletePayload,
   type EditorCompleteProduct,
   type EditorEnvelope,
@@ -212,7 +213,8 @@ function readTemplateSetMismatch(
   };
 }
 
-const PRODUCT_KINDS: ReadonlyArray<EditorCompleteProduct['kind']> = ['sheet', 'calendar'];
+// 'photo-print' 는 2026-10-19 P2-d additive — 여기 빠지면 그 세트의 `product` 키가 통째로 탈락한다.
+const PRODUCT_KINDS: ReadonlyArray<EditorCompleteProduct['kind']> = ['sheet', 'calendar', 'photo-print'];
 
 /**
  * ADDITIVE 2026-10-17 P1 캘린더 — `product` 판독. `kind` 가 알려진 값이고 `editorType` 이 문자열,
@@ -241,6 +243,76 @@ function readCompleteProduct(value: unknown): EditorCompleteProduct | undefined 
 /** 0 이상의 안전한 정수만 통과(그 밖은 undefined) */
 function readNonNegativeInt(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
+}
+
+const ITEM_BORDERS: ReadonlyArray<EditorCompleteItem['border']> = ['none', 'white'];
+const ITEM_FITS: ReadonlyArray<EditorCompleteItem['fit']> = ['paper-full', 'image-full'];
+const ITEM_FINISHES: ReadonlyArray<EditorCompleteItem['finish']> = ['matte', 'glossy'];
+
+/**
+ * ADDITIVE 2026-10-19 P2-d 사진인화 — `items[]` 원소 1건 판독. 알려진 키만, 형식이 맞을 때만 통과:
+ * `index`·`canvasIndex` 0 이상 정수, `sizeCode` 비어 있지 않은 문자열, `copies` 1 이상 정수,
+ * 어휘 3종은 알려진 값, 플래그 4종은 boolean. 하나라도 틀리면 `undefined`(항목 생략).
+ * `sourcePhotoId` 는 비어 있지 않은 문자열일 때만 키를 남긴다.
+ */
+function readCompleteItem(value: unknown): EditorCompleteItem | undefined {
+  const r = asRecord(value);
+  if (r === null) return undefined;
+  const index = readNonNegativeInt(r.index);
+  const canvasIndex = readNonNegativeInt(r.canvasIndex);
+  const sizeCode = readString(r.sizeCode);
+  const copies = readPositiveInt(r.copies);
+  const border = ITEM_BORDERS.find((v) => v === r.border);
+  const fit = ITEM_FITS.find((v) => v === r.fit);
+  const finish = ITEM_FINISHES.find((v) => v === r.finish);
+  const brightnessFix = readBoolean(r.brightnessFix);
+  const dateOverlay = readBoolean(r.dateOverlay);
+  const grayscale = readBoolean(r.grayscale);
+  const lowRes = readBoolean(r.lowRes);
+  if (
+    index === undefined ||
+    canvasIndex === undefined ||
+    sizeCode === undefined ||
+    copies === undefined ||
+    border === undefined ||
+    fit === undefined ||
+    finish === undefined ||
+    brightnessFix === undefined ||
+    dateOverlay === undefined ||
+    grayscale === undefined ||
+    lowRes === undefined
+  ) {
+    return undefined;
+  }
+  const sourcePhotoId = readString(r.sourcePhotoId);
+  return {
+    index,
+    canvasIndex,
+    ...(sourcePhotoId !== undefined ? { sourcePhotoId } : {}),
+    sizeCode,
+    copies,
+    border,
+    fit,
+    finish,
+    brightnessFix,
+    dateOverlay,
+    grayscale,
+    lowRes,
+  };
+}
+
+/**
+ * ADDITIVE 2026-10-19 P2-d 사진인화 — `items` 판독. 배열이 아니면 `undefined`(키 생략 — 기존 payload 판독
+ * 결과 불변). 배열이면 형태가 불량한 원소만 생략하고 정상 원소를 순서대로 싣는다(빈 배열은 빈 배열).
+ */
+function readCompleteItems(value: unknown): EditorCompleteItem[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const items: EditorCompleteItem[] = [];
+  for (const raw of value) {
+    const item = readCompleteItem(raw);
+    if (item !== undefined) items.push(item);
+  }
+  return items;
 }
 
 /**
@@ -293,6 +365,7 @@ export function readCompletePayload(
   const spineWidthMm = readNonNegativeNumber(p.spineWidthMm);
   const templateSetMismatch = readTemplateSetMismatch(p.templateSetMismatch);
   const product = readCompleteProduct(p.product);
+  const items = readCompleteItems(p.items);
 
   return {
     needsAuth,
@@ -316,6 +389,8 @@ export function readCompletePayload(
     ...(templateSetMismatch !== undefined ? { templateSetMismatch } : {}),
     // ADDITIVE 2026-10-17 P1 캘린더
     ...(product !== undefined ? { product } : {}),
+    // ADDITIVE 2026-10-19 P2-d 사진인화
+    ...(items !== undefined ? { items } : {}),
   };
 }
 

@@ -70,9 +70,10 @@ function stepOver1(raw: unknown): number | undefined {
 }
 
 /**
- * 템플릿셋 프로파일이 권위다(관리자가 선언한 상품 구성). 세션 스냅샷(metadata.productProfile)은 클라이언트가 쓰는
- * 자유형 metadata 라 기대 쪽수·pageStep 의 근거로 쓰지 않는다 — 템플릿셋에 프로파일이 없을 때만(세트 변경·삭제 뒤
- * 재합성) 스냅샷을 쓴다. 둘 다 있고 editorType 이 다르면 경고만 남기고 템플릿셋 값을 쓴다.
+ * 템플릿셋 프로파일이 권위다(관리자가 선언한 상품 구성). 세션 스냅샷(metadata.productProfile)은 서버 소유 키
+ * (security-2, 2026-10-19: EditSessionsService 가 생성·PATCH·완료 때 템플릿셋 현재값으로 재기록, 클라이언트 값은 무시)라
+ * 서버 기록값만 남지만, 템플릿셋에 프로파일이 없을 때만(세트 삭제·조회 실패 뒤 재합성) 폴백으로 쓴다.
+ * 둘 다 있고 editorType 이 다르면 경고만 남기고 템플릿셋 값을 쓴다.
  */
 export function resolveSessionProductProfile(
   input: Pick<SheetValidationRulesInput, 'session' | 'templateSet' | 'warn'>,

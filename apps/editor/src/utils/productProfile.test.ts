@@ -5,8 +5,13 @@ import { useCalendarStore } from '@/stores/useCalendarStore'
 import {
   applyTemplateSetProductProfile,
   makeCalendarLabelResolver,
+  photoPrintCanvasStride,
   resolveCanvasMonthOffset,
-  resolveFixedCanvasCount, resolveProfilePdfExportOptions, resolveProfilePdfRequestSize } from './productProfile'
+  resolveFixedCanvasCount, resolveProfilePdfExportOptions, resolveProfilePdfRequestSize,
+  resolvePhotoPrintPageStep,
+  resolvePhotoPrintSeedCount,
+  type PhotoPrintProductProfile,
+} from './productProfile'
 
 /**
  * P1 캘린더 (2026-10-17): 템플릿셋 productProfile → 스토어 배선·캔버스 월 매핑·라벨 resolver.
@@ -158,5 +163,92 @@ describe('resolveProfilePdfExportOptions — 프로파일 세트 전용 PDF expo
   it('프로파일 NULL 세트 → undefined(ServicePlugin 종전 경로·바이트 그대로)', () => {
     expect(resolveProfilePdfExportOptions(null)).toBeUndefined()
     expect(resolveProfilePdfExportOptions(undefined)).toBeUndefined()
+  })
+})
+
+// ─── P2-d 사진인화 시드·단위 보정 (D1/D2/api-sheetmap-3, null-set-1/contract-7) ─────────────────────────────
+
+function photoProfile(process: 'digital' | 'chemical', over: Partial<ProductProfile['pages']> = {}): PhotoPrintProductProfile {
+  const digital = process === 'digital'
+  return {
+    version: 1,
+    kind: 'photo-print',
+    editorType: digital ? 'photo_digital_free' : 'photo_chem',
+    pages: digital
+      ? { kind: 'range', min: 2, max: 40, step: 2, labelRule: 'photo', ...over }
+      : { kind: 'range', min: 1, max: 200, labelRule: 'photo', ...over },
+    sheet: digital
+      ? { faces: 2, canvasLayout: 'canvas-pair', binding: 'none', pairing: 'same-sheet', backRotation: 0, duplexFlip: 'short-edge' }
+      : { faces: 1, canvasLayout: 'canvas-per-sheet', binding: 'none', backRotation: 0, duplexFlip: 'short-edge' },
+    photoPrint: {
+      process,
+      composition: 'per-photo-free-back',
+      sizes: [{ code: '4x6', widthMm: 102, heightMm: 152, minDpi: 200 }],
+      options: { border: ['none'], fit: ['paper-full'], finish: ['matte'], brightnessFix: false, dateOverlay: false, grayscale: false },
+      copies: { min: 1, max: 99 },
+      upload: { maxPhotos: 20, maxMb: 25 },
+    },
+    output: digital ? { mode: 'sheet-map', sheetFiles: 'per-sheet' } : { mode: 'single-pdf' },
+  } as PhotoPrintProductProfile
+}
+
+describe('resolvePhotoPrintSeedCount — range 세트 시드 캔버스 수', () => {
+  it('D1 재오픈: 저장 canvasData 4장(restoredCanvasCount 4) → 4 (요청 pageCount 가 적어도·없어도 저장본이 하한, 호스트 한도 무관)', () => {
+    const p = photoProfile('digital')
+    expect(resolvePhotoPrintSeedCount(p, { restoredCanvasCount: 4, templateCanvasCount: 2 })).toEqual({ count: 4, truncated: 0 })
+    expect(resolvePhotoPrintSeedCount(p, { requested: 3, restoredCanvasCount: 4, templateCanvasCount: 2 })).toEqual({ count: 4, truncated: 0 })
+    expect(resolvePhotoPrintSeedCount(p, { requested: 6, restoredCanvasCount: 4, templateCanvasCount: 2 })).toEqual({ count: 6, truncated: 0 })
+    // chemical 3장 저장 → 3
+    expect(resolvePhotoPrintSeedCount(photoProfile('chemical'), { restoredCanvasCount: 3, templateCanvasCount: 1 })).toEqual({ count: 3, truncated: 0 })
+  })
+
+  it('D2 신규 세션 + 런처 items N건: digital N×2 / chemical N×1, 재오픈이면 items 는 무시(저장본 우선)', () => {
+    expect(resolvePhotoPrintSeedCount(photoProfile('digital'), { itemCount: 2, templateCanvasCount: 2 })).toEqual({ count: 4, truncated: 0 })
+    expect(resolvePhotoPrintSeedCount(photoProfile('digital'), { itemCount: 5, templateCanvasCount: 2 })).toEqual({ count: 10, truncated: 0 })
+    expect(resolvePhotoPrintSeedCount(photoProfile('chemical'), { itemCount: 3, templateCanvasCount: 1 })).toEqual({ count: 3, truncated: 0 })
+    expect(resolvePhotoPrintSeedCount(photoProfile('digital'), { itemCount: 5, restoredCanvasCount: 4, templateCanvasCount: 2 })).toEqual({ count: 4, truncated: 0 })
+  })
+
+  it('pages.max 클램프(초과분 truncated), refs 수 하한, 셋 다 없으면 null(종전 흐름)', () => {
+    expect(resolvePhotoPrintSeedCount(photoProfile('digital', { max: 6 }), { itemCount: 5, templateCanvasCount: 2 })).toEqual({ count: 6, truncated: 4 })
+    expect(resolvePhotoPrintSeedCount(photoProfile('digital', { max: 6 }), { restoredCanvasCount: 8, templateCanvasCount: 2 })).toEqual({ count: 6, truncated: 2 })
+    expect(resolvePhotoPrintSeedCount(photoProfile('digital'), { requested: 1, templateCanvasCount: 2 })).toEqual({ count: 2, truncated: 0 })
+    expect(resolvePhotoPrintSeedCount(photoProfile('digital'), { templateCanvasCount: 2 })).toBeNull()
+    expect(resolvePhotoPrintSeedCount(photoProfile('digital'), { requested: 0, restoredCanvasCount: Number.NaN, itemCount: -1, templateCanvasCount: 2 })).toBeNull()
+  })
+
+  it('photoPrintCanvasStride: digital 2 / chemical 1', () => {
+    expect(photoPrintCanvasStride(photoProfile('digital'))).toBe(2)
+    expect(photoPrintCanvasStride(photoProfile('chemical'))).toBe(1)
+  })
+})
+
+describe('resolvePhotoPrintPageStep — 프로파일 pages.step 우선, 호스트 pageStep 무시(api-sheetmap-3)', () => {
+  it('사진인화 digital: 프로파일 step 2 가 템플릿셋 값보다 우선, 호스트 pageStep 4 는 warn 1회 뒤 무시', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(resolvePhotoPrintPageStep(photoProfile('digital'), 1, 4)).toEqual({ pageStep: 2, ignoreHostPageStep: true })
+    expect(warn).toHaveBeenCalledTimes(1)
+    expect(String(warn.mock.calls[0][0])).toContain('호스트 pageStep 4 무시')
+    // 호스트가 같은 값을 보내면 경고 없이 무시 플래그만
+    warn.mockClear()
+    expect(resolvePhotoPrintPageStep(photoProfile('digital'), undefined, 2)).toEqual({ pageStep: 2, ignoreHostPageStep: true })
+    expect(warn).not.toHaveBeenCalled()
+    // 호스트 pageStep 없음 → 무시할 것도 없음
+    expect(resolvePhotoPrintPageStep(photoProfile('digital'), undefined, undefined)).toEqual({ pageStep: 2, ignoreHostPageStep: false })
+  })
+
+  it('사진인화 chemical(pages.step 없음): 템플릿셋 pageStep 폴백(null 이면 null)', () => {
+    expect(resolvePhotoPrintPageStep(photoProfile('chemical'), null, undefined)).toEqual({ pageStep: null, ignoreHostPageStep: false })
+    expect(resolvePhotoPrintPageStep(photoProfile('chemical'), 1, undefined)).toEqual({ pageStep: 1, ignoreHostPageStep: false })
+  })
+
+  it('null-set-1/contract-7: 캘린더·NULL 프로파일은 템플릿셋 값 그대로(null 유지)·호스트 무시 없음 — 프로파일 pages.step 폴백 없음', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const calendar: ProductProfile = { ...calendarProfile(), pages: { kind: 'fixed', count: 26, step: 2, labelRule: 'month' } }
+    expect(resolvePhotoPrintPageStep(calendar, null, 4)).toEqual({ pageStep: null, ignoreHostPageStep: false })
+    expect(resolvePhotoPrintPageStep(calendar, undefined, undefined)).toEqual({ pageStep: undefined, ignoreHostPageStep: false })
+    expect(resolvePhotoPrintPageStep(null, null, 2)).toEqual({ pageStep: null, ignoreHostPageStep: false })
+    expect(resolvePhotoPrintPageStep(undefined, 2, 4)).toEqual({ pageStep: 2, ignoreHostPageStep: false })
+    expect(warn).not.toHaveBeenCalled()
   })
 })

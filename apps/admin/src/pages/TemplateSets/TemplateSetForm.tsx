@@ -107,6 +107,14 @@ import {
   calendarPresetFormValues,
   findCalendarProfilePreset,
 } from './calendarProfilePresets';
+// P2-d 사진인화 (2026-10-19) — 사진인화 프리셋 4종(인화·인쇄 ①②③)
+import {
+  PHOTO_PRINT_PROFILE_PRESETS,
+  findPhotoPrintProfilePreset,
+  photoPrintPresetApplyHint,
+  photoPrintPresetFormValues,
+  productProfileSectionHint,
+} from './photoPrintProfilePresets';
 
 const templateTypeLabels: Record<TemplateType, string> = {
   [TemplateType.WING]: '날개',
@@ -277,6 +285,8 @@ export const TemplateSetForm = () => {
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
   // P1 캘린더 프리셋 셀렉트(적용 버튼을 눌러야 폼 필드에 반영)
   const [calendarPresetKey, setCalendarPresetKey] = useState<string | undefined>(undefined);
+  // P2-d 사진인화 프리셋 셀렉트(적용 버튼을 눌러야 폼 필드에 반영)
+  const [photoPrintPresetKey, setPhotoPrintPresetKey] = useState<string | undefined>(undefined);
 
   const isEditing = !!id;
 
@@ -804,6 +814,20 @@ export const TemplateSetForm = () => {
     // 프리셋 JSON 은 항상 유효하지만, 거부 Promise 가 unhandled 로 남지 않게 한다.
     form.validateFields(['productProfileJson']).catch(() => undefined);
     message.success(`${preset.label} 프리셋을 적용했습니다. 판형·단일 모드·양면 원파일·내지 추가 불가로 설정됩니다.`);
+  };
+
+  const handleApplyPhotoPrintPreset = () => {
+    const preset = findPhotoPrintProfilePreset(photoPrintPresetKey);
+    if (!preset) {
+      message.warning('적용할 사진인화 프리셋을 선택하세요.');
+      return;
+    }
+    form.setFieldsValue(photoPrintPresetFormValues(preset));
+    // 프리셋 JSON 은 항상 유효하지만, 거부 Promise 가 unhandled 로 남지 않게 한다.
+    form.validateFields(['productProfileJson']).catch(() => undefined);
+    message.success(`${preset.label} 프리셋을 적용했습니다. 판형·단일 모드·양면 원파일·내지 추가 가능·페이지 범위·증감 단위로 설정됩니다.`);
+    const hint = photoPrintPresetApplyHint(preset);
+    if (hint) message.info(hint, 8);
   };
 
   if (isEditing && isLoadingSet) {
@@ -1491,10 +1515,10 @@ export const TemplateSetForm = () => {
                   </>
                 ),
               },
-              // P1 캘린더 (2026-10-17) — 상품 프로파일 JSON. 비우면 null=기존 동작(additive).
+              // P1 캘린더 (2026-10-17) — 상품 프로파일 JSON. 비우면 null=기존 동작(additive). P2-d 사진인화 프리셋 추가 후 라벨·안내는 kind 중립(D7).
               {
                 key: 'profile',
-                label: '상품 프로파일 (P1 캘린더)',
+                label: '상품 프로파일',
                 forceRender: true,
                 children: (
                   <>
@@ -1510,10 +1534,20 @@ export const TemplateSetForm = () => {
                       <Button onClick={handleApplyCalendarPreset} disabled={!calendarPresetKey}>
                         캘린더 프리셋 적용
                       </Button>
+                      <Select
+                        placeholder="사진인화 프리셋 선택"
+                        style={{ width: 300 }}
+                        allowClear
+                        value={photoPrintPresetKey}
+                        onChange={(value: string | undefined) => setPhotoPrintPresetKey(value)}
+                        options={PHOTO_PRINT_PROFILE_PRESETS.map((p) => ({ value: p.key, label: p.label }))}
+                      />
+                      <Button onClick={handleApplyPhotoPrintPreset} disabled={!photoPrintPresetKey}>
+                        사진인화 프리셋 적용
+                      </Button>
                     </Space>
                     <Text type="secondary" style={{ display: 'block', fontSize: 12, marginBottom: 12 }}>
-                      프리셋을 적용하면 판형(가로·세로)·에디터 모드(단일)·PDF 생성 방식(양면 원파일)·내지 추가 불가·
-                      페이지 수 26 이 함께 설정되고 아래 JSON 이 채워집니다. 비워 두면 프로파일 없음(기존 동작)입니다.
+                      {productProfileSectionHint({ calendar: !!calendarPresetKey, photoPrint: !!photoPrintPresetKey })}
                     </Text>
 
                     {profileTemplateCountWarning && (
@@ -1529,7 +1563,7 @@ export const TemplateSetForm = () => {
                     <Form.Item
                       name="productProfileJson"
                       label="상품 프로파일(JSON)"
-                      extra="version 1, kind sheet|calendar. 교차 필드 규칙(캔버스 수 정합·시작연월 범위 등)은 서버와 같은 검증을 씁니다."
+                      extra="version 1, kind sheet|calendar|photo-print. 교차 필드 규칙(캔버스 수 정합·시작연월 범위 등)은 서버와 같은 검증을 씁니다."
                       rules={[
                         {
                           validator: async (_rule, value: string | undefined) => {
@@ -1545,7 +1579,7 @@ export const TemplateSetForm = () => {
                         rows={14}
                         spellCheck={false}
                         style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 12 }}
-                        placeholder='비워 두면 프로파일 없음(기존 동작). 예: { "version": 1, "kind": "calendar", ... }'
+                        placeholder='비워 두면 프로파일 없음(기존 동작). 예: { "version": 1, "kind": "calendar" | "photo-print", ... }'
                       />
                     </Form.Item>
                   </>

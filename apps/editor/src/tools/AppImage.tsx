@@ -11,6 +11,8 @@ import type { ExternalPhoto, PhotoSortMode } from '@storige/types'
 import { enrichPhotosWithExif } from '@/utils/photoAutofill'
 import { autofillPhotosIntoFrames, hasEmptyFrame, mergeAutofillPhotoInputs } from '@/utils/photoPlacement'
 import { showToast } from '@/stores/useToastStore'
+import { applyAllPhotoPrint } from '@/utils/photoPrintRehydrateAll'
+import { checkPhotoPrintPhotoCount } from '@/utils/photoPrintUpload'
 
 // 자동편집 정렬 모드 옵션 (PhotoSortMode 와 동기)
 const AUTOFILL_SORT_OPTIONS: { value: PhotoSortMode; label: string }[] = [
@@ -266,6 +268,8 @@ export default function AppImage() {
       showToast('자동편집할 사진이 없습니다.', 'info')
       return
     }
+    // P2-d 사진인화(security-3): 외부 주입 ∪ 내 업로드 사진 수가 프로파일 maxPhotos 를 넘으면 자동배치 차단(프로파일 NULL 은 no-op)
+    if (!checkPhotoPrintPhotoCount(autofillPhotos.length)) return
 
     setAutofilling(true)
     try {
@@ -290,6 +294,9 @@ export default function AppImage() {
           cv.setActiveObject?.(frame)
         },
       })
+
+      // P2-d 사진인화(editor-flow-5/tests-5): 채움 뒤 항목 옵션(흑백·촬영일·유테 창) 재적용 — 프로파일 NULL 이면 즉시 0.
+      if (result.filledCount > 0) await applyAllPhotoPrint()
 
       // '사용됨' 뱃지 재계산
       bumpUsage()

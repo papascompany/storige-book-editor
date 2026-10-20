@@ -15,16 +15,25 @@
  * 단언으로 검사한다 — tsc(typecheck)·vitest 둘 다에서 red 가 된다.
  */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, expectTypeOf, it } from 'vitest';
 import {
   ErrV1,
+  PHOTO_BORDERS,
+  PHOTO_FINISHES,
+  PHOTO_FITS,
+  PRODUCT_KINDS,
   type PartnerV1ErrorEnvelope,
   type PartnerV1ErrorItem,
   type PartnerV1Pagination,
   type PartnerV1SuccessEnvelope,
+  type PhotoItem,
+  type ProductKind,
 } from '@storige/types';
 import { ErrorCode, type ErrorItem, type KnownErrorCode } from '../errors';
 import type { Pagination, SuccessEnvelope } from '../envelope';
+// 공개 배럴(`@storige/sdk/embed`·`@storige/sdk`)에서 가져온다 — 배럴 등재 누락이면 여기서 tsc red.
+import type { EditorCompleteItem, EditorCompletePayload, EditorCompleteProduct } from '../embed';
+import type { SessionDeliverables, SessionDeliverablesItem } from '../index';
 
 describe('@storige/types 구조 등가성 (드리프트 감시)', () => {
   describe('ErrV1 카탈로그', () => {
@@ -143,6 +152,76 @@ describe('@storige/types 구조 등가성 (드리프트 감시)', () => {
       };
       const sdk: import('../envelope').ErrorEnvelope = streamErrorBody;
       expect(sdk.requestId).toBeNull();
+    });
+  });
+
+  // ADDITIVE 2026-10-19 P2-d 사진인화(v1.25)
+  describe('사진인화 항목(PhotoItem) ↔ SDK 재선언 (컴파일 타임 상호 할당)', () => {
+    const server: PhotoItem = {
+      index: 0,
+      canvasIndex: 0,
+      sourcePhotoId: 'upload-1',
+      sizeCode: '4x6',
+      copies: 2,
+      border: 'white',
+      fit: 'paper-full',
+      finish: 'glossy',
+      brightnessFix: false,
+      dateOverlay: true,
+      grayscale: false,
+      lowRes: false,
+    };
+
+    it('EditorCompleteItem(embed) ↔ PhotoItem', () => {
+      const sdk: EditorCompleteItem = server;
+      const roundTrip: PhotoItem = sdk;
+      expect(roundTrip).toEqual(server);
+      expect(Object.keys(sdk).sort()).toEqual([
+        'border',
+        'brightnessFix',
+        'canvasIndex',
+        'copies',
+        'dateOverlay',
+        'finish',
+        'fit',
+        'grayscale',
+        'index',
+        'lowRes',
+        'sizeCode',
+        'sourcePhotoId',
+      ]);
+    });
+
+    it('SessionDeliverablesItem(client) ↔ PhotoItem', () => {
+      const sdk: SessionDeliverablesItem = server;
+      const roundTrip: PhotoItem = sdk;
+      expect(roundTrip).toEqual(server);
+    });
+
+    it('어휘 3종은 서버 상수 배열과 1:1 — 서버가 값을 늘리면 SDK 판독이 그 값을 생략하므로 여기서 red', () => {
+      const borders: ReadonlyArray<EditorCompleteItem['border']> = PHOTO_BORDERS;
+      const fits: ReadonlyArray<EditorCompleteItem['fit']> = PHOTO_FITS;
+      const finishes: ReadonlyArray<EditorCompleteItem['finish']> = PHOTO_FINISHES;
+      expect(borders).toEqual(['none', 'white']);
+      expect(fits).toEqual(['paper-full', 'image-full']);
+      expect(finishes).toEqual(['matte', 'glossy']);
+    });
+
+    it("EditorCompleteProduct['kind'] ↔ 서버 ProductKind(PRODUCT_KINDS 3종)", () => {
+      const sdkKinds: ReadonlyArray<EditorCompleteProduct['kind']> = PRODUCT_KINDS;
+      const serverKinds: ReadonlyArray<ProductKind> = sdkKinds;
+      expect(serverKinds).toEqual(['sheet', 'calendar', 'photo-print']);
+    });
+
+    it('항목 타입은 공개 배럴에 등재돼 있고 payload/deliverables 의 items 원소와 같은 타입이다', () => {
+      // 호스트는 `import type { EditorCompleteItem } from '@storige/sdk/embed'` /
+      // `import type { SessionDeliverablesItem } from '@storige/sdk'` 로 가져온다 —
+      // 배럴에서 빠지면 위 import 가 tsc red(TS2724). 우회(`NonNullable<...['items']>[number]`)와 등가인지도 고정.
+      const embedItem: NonNullable<EditorCompletePayload['items']>[number] = server;
+      const deliverablesItem: NonNullable<SessionDeliverables['items']>[number] = server;
+      expectTypeOf(embedItem).toEqualTypeOf<EditorCompleteItem>();
+      expectTypeOf(deliverablesItem).toEqualTypeOf<SessionDeliverablesItem>();
+      expect(embedItem).toEqual(deliverablesItem);
     });
   });
 });

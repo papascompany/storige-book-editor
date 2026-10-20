@@ -28,6 +28,7 @@ import { useSettingsStore } from '@/stores/useSettingsStore'
 import AppFrame from '@/tools/AppFrame'
 import SmartCodes from '@/tools/SmartCodes'
 import CalendarPanel from '@/components/calendar/CalendarPanel'
+import PhotoPrintPanel from '@/components/photoPrint/PhotoPrintPanel'
 import { LazyAiPanel } from '@/components/AiPanel'
 
 // Conditionally import image processing tools (requires OpenCV)
@@ -293,6 +294,9 @@ export default function FeatureSidebar({
       case 'CALENDAR':
         // P1 캘린더 (2026-10-17): ToolBar 가 productProfile kind=calendar 세트에서만 메뉴를 노출
         return <CalendarPanel />
+      case 'PHOTO_PRINT':
+        // P2-d 사진인화 (2026-10-19): ToolBar 가 productProfile kind=photo-print 세트에서만 메뉴를 노출
+        return <PhotoPrintPanel />
       case 'EDIT':
         return ENABLE_IMAGE_PROCESSING ? (
           <Suspense fallback={<LazyLoading />}>

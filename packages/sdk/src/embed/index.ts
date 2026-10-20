@@ -40,6 +40,7 @@ export type {
   EditorAdditiveEvent,
   EditorCancelPayload,
   EditorCompleteFiles,
+  EditorCompleteItem,
   EditorCompletePages,
   EditorCompletePayload,
   EditorCompleteProduct,

@@ -17,6 +17,7 @@ import {
   Scissors,
   Sparkles,
   CalendarDays,
+  Printer,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { AppMenu } from '@/types/menu'
@@ -35,6 +36,8 @@ const ENABLE_SMART_CODE_MENU = import.meta.env.VITE_ENABLE_SMART_CODE_MENU !== '
 const ENABLE_AI_PANEL = import.meta.env.VITE_ENABLE_AI_PANEL !== 'false'
 // Feature flag for calendar panel (P1 캘린더 2026-10-17) — 기본 on. 런타임 게이트는 productProfile kind=calendar.
 const ENABLE_CALENDAR = import.meta.env.VITE_ENABLE_CALENDAR !== 'false'
+// Feature flag for photo print panel (P2-d 사진인화 2026-10-19) — 기본 on. 런타임 게이트는 productProfile kind=photo-print.
+const ENABLE_PHOTO_PRINT = import.meta.env.VITE_ENABLE_PHOTO_PRINT !== 'false'
 
 // Tool definitions - CLIPPING requires ImageProcessingPlugin (OpenCV)
 const ALL_MENUS: AppMenu[] = [
@@ -53,6 +56,8 @@ const ALL_MENUS: AppMenu[] = [
   ...(ENABLE_AI_PANEL ? [{ type: 'AI' as const, label: 'AI', icon: Sparkles }] : []),
   // P1 캘린더: 캘린더 세트(productProfile kind=calendar)에서만 노출 — 아래 필터의 런타임 게이트
   ...(ENABLE_CALENDAR ? [{ type: 'CALENDAR' as const, label: '달력', icon: CalendarDays }] : []),
+  // P2-d 사진인화: 사진인화 세트(productProfile kind=photo-print)에서만 노출 — 아래 필터의 런타임 게이트
+  ...(ENABLE_PHOTO_PRINT ? [{ type: 'PHOTO_PRINT' as const, label: '사진인화', icon: Printer }] : []),
 ]
 
 interface ToolBarProps {
@@ -74,6 +79,8 @@ export default function ToolBar({ horizontal = false }: ToolBarProps) {
   const enabledMenus = useSettingsStore((state) => state.enabledMenus)
   // P1 캘린더: CALENDAR 메뉴는 productProfile kind=calendar 세트에서만(legacy null 세트는 enabledMenus 와 무관하게 숨김)
   const isCalendarProduct = useSettingsStore((state) => state.productProfile?.kind === 'calendar')
+  // P2-d 사진인화: PHOTO_PRINT 메뉴는 productProfile kind=photo-print 세트에서만(legacy null 세트는 enabledMenus 와 무관하게 숨김)
+  const isPhotoPrintProduct = useSettingsStore((state) => state.productProfile?.kind === 'photo-print')
   const coverMaterialLocked = useSettingsStore((state) => state.coverMaterialLocked)
   const hasCoverSlot = useSettingsStore((state) => state.hasCoverSlot)
   const allCanvas = useAppStore((state) => state.allCanvas)
@@ -145,6 +152,8 @@ export default function ToolBar({ horizontal = false }: ToolBarProps) {
       ? ALL_MENUS // 관리자 editMode 는 전부 노출 — CALENDAR 도 포함(템플릿에 날짜 그리드를 배치하는 저작 도구, P1 캘린더 의도된 예외)
       : ALL_MENUS.filter((m) => {
           if (m.type === 'CALENDAR' && !isCalendarProduct) return false
+          // P2-d 사진인화: 사진인화 세트에서만, enabledMenus 화이트리스트는 아래 isAllowed 가 그대로 존중
+          if (m.type === 'PHOTO_PRINT' && !isPhotoPrintProduct) return false
           if (!isAllowed(m.type)) return false
           if (coverMaterialLocked && isCoverPage && m.type === 'BACKGROUND') return false
           // book/스프레드 상품에서는 모양컷 숨김 — 파괴적 캔버스 재구성 도구라 비호환.
@@ -159,7 +168,7 @@ export default function ToolBar({ horizontal = false }: ToolBarProps) {
     const showUpload = ENABLE_UPLOAD_MENU && (editMode || isAllowed('UPLOAD'))
 
     return [...(showUpload ? [uploadMenu] : []), ...availableMenus]
-  }, [editMode, enabledMenus, isCalendarProduct, ready, canvas, getPlugin, upload, uploadSimple, coverMaterialLocked, isCoverPage, isSpreadProduct])
+  }, [editMode, enabledMenus, isCalendarProduct, isPhotoPrintProduct, ready, canvas, getPlugin, upload, uploadSimple, coverMaterialLocked, isCoverPage, isSpreadProduct])
 
   const handleMenuClick = (menu: AppMenu) => {
     if (menu.onTap) {

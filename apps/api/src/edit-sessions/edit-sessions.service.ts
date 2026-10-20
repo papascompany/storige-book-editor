@@ -36,6 +36,7 @@ import { CreateValidationJobDto } from '../worker-jobs/dto/worker-job.dto';
 import {
   TemplateType,
   WorkerJobStatus,
+  type ProductProfile,
   type SheetSpec,
   type SpreadValidationResult,
   validateSpreadAgainstAuthority,
@@ -58,7 +59,8 @@ import { computeEditRetention, editRetentionExpired } from '../staff-edit-data/e
 import { staffAuditUnavailable, staffDeleteNotAllowed } from '../staff-edit-data/staff-actor';
 import { resolveSessionPageCount } from './session-page-count';
 import { deriveSheetValidationRules, resolveSessionProductProfile } from './sheet-validation-rules';
-import { buildSheetMap } from './sheet-map';
+import { SheetMapError, buildSheetMap } from './sheet-map';
+import { applyPhotoItemsToSheets, readSessionPhotoItems } from './photo-items';
 import {
   isEditorContentPageRulesOn,
   isEditorSheetValidationRulesOn,
@@ -140,6 +142,20 @@ export function nextSessionRevision(metadata: Record<string, any> | null | undef
   return sessionRevisionOf(metadata) + 1;
 }
 
+/**
+ * D9(2026-10-19): 검증 잡 orderOptions.bleed 의 기본값(세션 metadata.bleed 가 없을 때).
+ * 상품 프로파일(템플릿셋 → 세션 스냅샷) 이 있는 세트에서 템플릿셋 cropMarkEnabled 가 true 가 아니거나 bleedMm 이 0 이면 0,
+ * 그 밖(프로파일 NULL·템플릿셋 없음·도련 세트)은 종전 기본 3. 프로파일 검증 경고는 여기서 내지 않는다(deriveSheetValidationRules 가 냄).
+ */
+export function resolveDefaultBleedMm(
+  session: Pick<EditSessionEntity, 'mode' | 'metadata'>,
+  templateSet: { cropMarkEnabled?: boolean | null; bleedMm?: number | null; productProfile?: ProductProfile | null } | null,
+): number {
+  if (!templateSet) return 3;
+  if (templateSet.cropMarkEnabled === true && templateSet.bleedMm !== 0) return 3;
+  return resolveSessionProductProfile({ session, templateSet }) !== null ? 0 : 3;
+}
+
 /** 파트너 v1 synthesize 가 만드는 duplex-split 잡의 requestId — `duplex-split-r{revision}`(36자 이내). */
 /** 편집 완료 자동 duplex-split 잡의 request_id(고정 태그, ≤36자 — 유일성은 session_id+pdf_file_id 와의 복합 유니크) */
 export const DUPLEX_SPLIT_AUTO_REQUEST_ID = 'duplex-split';
@@ -161,10 +177,14 @@ export function sheetMapRevisionRequestId(revision: number): string {
  * P2-b 보안 리뷰(2026-10-18) — 세션 `metadata` 는 클라이언트 자유형(얕은 병합)이지만 아래 키는 서버가 소유한다:
  *  - `launch`   : 파트너 v1 런처 스탬프(via/env/requestId/launchedAt) — deliverables/synthesize 의 사이트·env 판정 근거
  *  - `revision` : 산출 회차(complete·재합성마다 서버가 +1) — 재합성 requestId 멱등 키
- *  - `production` : 운영자 제작 메모(P2-e, 서버/운영 콘솔만)
+ *  - `production` : 운영자 제작 메모(P2-e, 서버/운영 콘솔만) + `production.sheetMap`(완료 시 sheet-map 발행 실패 기록, 아래)
+ *  - `productProfile` : 템플릿셋 상품 프로파일 스냅샷 — 보안 리뷰 security-2(2026-10-19): 클라이언트가 쓰면 NULL 세트에서
+ *    copies 상한·sheet-map 모드를 스스로 정의할 수 있어 서버가 소유한다. 세션 생성·metadata PATCH·완료 때 서버가 템플릿셋
+ *    현재 프로파일로 (재)기록하고, 세트 프로파일이 NULL 이면 키를 제거한다(stampProductProfileSnapshot). 템플릿셋 조회
+ *    실패 시에만 기존(서버 기록) 값을 유지한다 — resolveSessionProductProfile 의 스냅샷 폴백은 그 값만 본다.
  * 편집기·호스트의 PATCH 가 이 키를 보내도 무시하고 기존 값을 유지한다(test 세션의 live 위장·revision 위조 방지).
  */
-export const SESSION_METADATA_SERVER_OWNED_KEYS = ['launch', 'revision', 'production'] as const;
+export const SESSION_METADATA_SERVER_OWNED_KEYS = ['launch', 'revision', 'production', 'productProfile'] as const;
 
 export function mergeSessionMetadata(
   existing: Record<string, any> | null | undefined,
@@ -173,6 +193,51 @@ export function mergeSessionMetadata(
   const safe: Record<string, any> = { ...(incoming ?? {}) };
   for (const key of SESSION_METADATA_SERVER_OWNED_KEYS) delete safe[key];
   return { ...(existing ?? {}), ...safe };
+}
+
+/**
+ * 완료 시 sheet-map 발행 실패 기록(api-sheetmap-3, 2026-10-19) — 서버 소유 키 `metadata.production.sheetMap`.
+ * 종전에는 buildSheetMap(SheetMapError: PAGE_COUNT_MISMATCH 등)·createSheetMapJob 실패를 로그만 남기고 삼켜 파트너
+ * deliverables 가 'complete'·시트 없음으로 보였다. 이제 실패를 기록하고(완료는 유지) deliverables 가 'failed' +
+ * errorCode/errorDetail 로 노출한다. 다음 발행(재완료·재합성)이 성공하면 키를 지운다. 그 밖의 production 키는 건드리지 않는다.
+ */
+export const SHEET_MAP_FAILURE_METADATA_KEY = 'sheetMap';
+
+export interface SheetMapFailureRecord {
+  /** SheetMapError.code 또는 'SHEET_MAP_JOB_FAILED'(잡 생성 실패) */
+  error: string;
+  message: string;
+  /** ISO 8601 — 이 시각보다 뒤에 만들어진 합성 잡이 있으면 기록은 지난 회차로 본다(deliverables) */
+  at: string;
+}
+
+export function sheetMapFailureOf(metadata: Record<string, any> | null | undefined): SheetMapFailureRecord | null {
+  const production: unknown = metadata?.production;
+  if (!production || typeof production !== 'object') return null;
+  const raw: unknown = (production as Record<string, unknown>)[SHEET_MAP_FAILURE_METADATA_KEY];
+  if (!raw || typeof raw !== 'object') return null;
+  const { error, message, at } = raw as { error?: unknown; message?: unknown; at?: unknown };
+  if (typeof error !== 'string' || error === '' || typeof at !== 'string') return null;
+  return { error, message: typeof message === 'string' ? message : '', at };
+}
+
+/** production.sheetMap 을 기록(failure) 또는 제거(null). 제거 뒤 production 이 비면 production 키도 지운다. */
+export function withSheetMapFailure(
+  metadata: Record<string, any> | null | undefined,
+  failure: SheetMapFailureRecord | null,
+): Record<string, any> {
+  const base: Record<string, any> = { ...(metadata ?? {}) };
+  const production: Record<string, any> =
+    base.production && typeof base.production === 'object' ? { ...base.production } : {};
+  if (failure) {
+    production[SHEET_MAP_FAILURE_METADATA_KEY] = failure;
+    base.production = production;
+    return base;
+  }
+  delete production[SHEET_MAP_FAILURE_METADATA_KEY];
+  if (Object.keys(production).length === 0) delete base.production;
+  else base.production = production;
+  return base;
 }
 
 /** findLatestPartnerVisibleSynthJob 반환 행 — worker_jobs 의 파트너 가시 최신 SYNTHESIZE 잡. */
@@ -210,6 +275,70 @@ export class EditSessionsService {
     @Optional()
     private partnerOperatorAudit?: PartnerOperatorAuditWriter,
   ) {}
+
+  /**
+   * security-2(2026-10-19): `metadata.productProfile` 을 템플릿셋 현재 프로파일로 (재)기록한다.
+   *  - templateSetId 없음 → 키 제거(클라이언트가 보낸 값은 버린다).
+   *  - 템플릿셋 프로파일 있음 → 그 값으로 덮어쓴다(기존 키 위치 유지).
+   *  - 템플릿셋 프로파일 NULL → 키 제거(세트를 NULL 로 되돌리면 진행 중 세션도 현행 동작으로 복귀 — 롤백 약속).
+   *  - 템플릿셋 조회 실패 → 기존(서버 기록) 값 유지 + warn(완료·저장은 계속).
+   * 바꿀 것이 없으면 입력 객체를 그대로(참조 동일) 돌려준다 — NULL 세트·키 없음 경로는 바이트 동일.
+   */
+  private async stampProductProfileSnapshot(
+    metadata: Record<string, any> | null | undefined,
+    templateSetId: string | null | undefined,
+    context: string,
+  ): Promise<Record<string, any> | null | undefined> {
+    const hasKey = !!metadata && Object.prototype.hasOwnProperty.call(metadata, 'productProfile');
+    const dropKey = (): Record<string, any> | null | undefined => {
+      if (!hasKey || !metadata) return metadata;
+      const rest: Record<string, any> = { ...metadata };
+      delete rest.productProfile;
+      return rest;
+    };
+    if (!templateSetId) return dropKey();
+
+    let profile: ProductProfile | null;
+    try {
+      const templateSet = await this.templateSetsService.findOne(templateSetId);
+      profile = templateSet?.productProfile ?? null;
+    } catch (e) {
+      this.logger.warn(
+        `[productProfile] ${context}: TemplateSet ${templateSetId} 조회 실패 → 기존 스냅샷 유지: ${(e as Error).message}`,
+      );
+      return metadata;
+    }
+    if (!profile) return dropKey();
+    return { ...(metadata ?? {}), productProfile: profile };
+  }
+
+  /**
+   * api-sheetmap-3: sheet-map 발행 실패를 `metadata.production.sheetMap` 에 기록(로그 error). 저장 실패는 warn(무중단).
+   */
+  private async recordSheetMapFailure(session: EditSessionEntity, error: unknown, scope: string): Promise<void> {
+    const code = error instanceof SheetMapError ? error.code : 'SHEET_MAP_JOB_FAILED';
+    const message = error instanceof Error ? error.message : String(error);
+    this.logger.error(
+      `[${scope}] session ${session.id}: sheet-map 발행 실패(완료는 유지, production.sheetMap=${code} 기록): ${message}`,
+    );
+    session.metadata = withSheetMapFailure(session.metadata, { error: code, message, at: new Date().toISOString() });
+    try {
+      await this.sessionRepository.save(session);
+    } catch (e) {
+      this.logger.warn(`[${scope}] session ${session.id}: production.sheetMap 기록 저장 실패: ${(e as Error).message}`);
+    }
+  }
+
+  /** 발행 성공 뒤 지난 실패 기록(production.sheetMap)이 남아 있으면 지운다. 기록이 없으면 저장하지 않는다(바이트 동일). */
+  private async clearSheetMapFailure(session: EditSessionEntity, scope: string): Promise<void> {
+    if (!sheetMapFailureOf(session.metadata)) return;
+    session.metadata = withSheetMapFailure(session.metadata, null);
+    try {
+      await this.sessionRepository.save(session);
+    } catch (e) {
+      this.logger.warn(`[${scope}] session ${session.id}: production.sheetMap 제거 저장 실패: ${(e as Error).message}`);
+    }
+  }
 
   /**
    * B49: 세션의 출력재현 스냅샷(metadata.spread.spec)을 템플릿 권위 스펙(spreadConfig.spec)과 대조.
@@ -301,6 +430,9 @@ export class EditSessionsService {
     const guestToken = isGuest ? randomUUID() : null;
     const guestExpiresAt = isGuest ? new Date(Date.now() + 24 * 60 * 60 * 1000) : null;
 
+    // security-2: metadata.productProfile 은 서버 소유 — 클라이언트 값 대신 템플릿셋 현재 프로파일을 기록(NULL 세트는 키 없음).
+    const metadata = await this.stampProductProfileSnapshot(dto.metadata, dto.templateSetId, 'create');
+
     // coverFileId/contentFileId는 @RelationId(read-only). ManyToOne relation을 통해 set.
     const session = this.sessionRepository.create({
       orderSeqno: dto.orderSeqno ?? 0,
@@ -310,7 +442,7 @@ export class EditSessionsService {
       contentFile: dto.contentFileId ? ({ id: dto.contentFileId } as any) : null,
       templateSetId: dto.templateSetId,
       canvasData: dto.canvasData,
-      metadata: dto.metadata,
+      metadata,
       callbackUrl: dto.callbackUrl,
       siteId: (dto as any).siteId || null, // Phase C-2 — JWT siteId 자동 주입
       guestToken,
@@ -901,9 +1033,13 @@ export class EditSessionsService {
       session.canvasData = dto.canvasData;
     }
 
-    // 메타데이터 병합 — 서버 소유 키(launch·revision·production)는 클라이언트 값 무시(mergeSessionMetadata)
+    // 메타데이터 병합 — 서버 소유 키(launch·revision·production·productProfile)는 클라이언트 값 무시(mergeSessionMetadata)
     if (dto.metadata !== undefined) {
       session.metadata = mergeSessionMetadata(session.metadata, dto.metadata);
+      // security-2: productProfile 스냅샷은 서버가 템플릿셋 현재값으로 재기록(NULL 세트 = 키 제거)
+      session.metadata =
+        (await this.stampProductProfileSnapshot(session.metadata, session.templateSetId, `update ${id}`)) ??
+        session.metadata;
     }
 
     // 상태 업데이트
@@ -1594,6 +1730,11 @@ export class EditSessionsService {
     // P2-b(2026-10-18) 산출 회차 — 완료할 때마다 1 증가(런처 세션은 launch 시 0 으로 시작). 파트너 v1
     // deliverables.revision · synthesize 재합성 회차의 단일 원천. 그 밖의 소비처 없음(additive).
     session.metadata = { ...(session.metadata ?? {}), revision: nextSessionRevision(session.metadata) };
+    // security-2: 완료 시에도 productProfile 스냅샷을 템플릿셋 현재값으로 재기록(NULL 세트 = 키 제거) — 검증 잡·sheet-map
+    // 발행·파트너 deliverables 가 모두 서버 기록값만 보게 한다.
+    session.metadata =
+      (await this.stampProductProfileSnapshot(session.metadata, session.templateSetId, `complete ${id}`)) ??
+      session.metadata;
 
     const completed = await this.sessionRepository.save(session);
     this.logger.log(`Completed edit session ${id}${isGuest ? ' (guest)' : ''}`);
@@ -1812,7 +1953,7 @@ export class EditSessionsService {
 
       // P2-c(2026-10-18): 상품 프로파일 output.mode='sheet-map' 이 pdfOutputMode 보다 우선한다(설계 §6.2 — 시트 매핑이
       // 이기면 duplex-split 잡은 만들지 않는다). 프로파일 원천은 sheet-validation-rules 와 같다(템플릿셋 우선, 없으면
-      // 세션 스냅샷). 매핑 실패(SheetMapError)·잡 생성 실패는 바깥 catch 가 흡수해 완료는 유지된다.
+      // 세션 스냅샷). 매핑 실패(SheetMapError)·잡 생성 실패는 완료를 막지 않되 production.sheetMap 에 기록한다(api-sheetmap-3).
       // 킬스위치 SHEET_MAP_OUTPUT_ENABLED=off 면 프로파일을 보지 않고 종전 pdfOutputMode 경로로 떨어진다.
       if (isSheetMapOutputEnabled()) {
         const profile = resolveSessionProductProfile({
@@ -1828,23 +1969,35 @@ export class EditSessionsService {
             return;
           }
           const revision = sessionRevisionOf(session.metadata);
-          const sheets = buildSheetMap(profile, resolveSessionPageCount(session));
-          const job = await this.workerJobsService.createSheetMapJob({
-            sessionId: session.id,
-            pdfFileId: session.coverFileId,
-            sheets,
-            output: profile.output.sheetFiles ?? 'per-sheet',
-            duplexFlip: profile.sheet.duplexFlip,
-            // duplex-split 과 같은 회차 카운터·다른 접두사(sheet-map-r<revision>, ≤36자) — 재완료 = 새 회차 잡.
-            requestId: sheetMapRevisionRequestId(revision),
-            callbackUrl: session.callbackUrl ?? undefined,
-            siteId: session.siteId ?? null,
-            revision,
-          });
-          this.logger.log(
-            `[pdfOutputMode] Created sheet-map job ${job.id} for session ${session.id} ` +
-              `(cover=${session.coverFileId}, sheets=${sheets.length}, output=${profile.output.sheetFiles ?? 'per-sheet'}, pdfOutputMode='${pdfOutputMode}' 무시)`,
-          );
+          const pageCount = resolveSessionPageCount(session);
+          try {
+            // P2-d: 사진인화 세트는 metadata.items 의 매수를 시트 copies/label 로 주입(그 외 세트는 무변경).
+            // items 는 캔버스 수·upload.maxPhotos 상한으로 자른다(security-1).
+            const sheets = applyPhotoItemsToSheets(
+              buildSheetMap(profile, pageCount),
+              readSessionPhotoItems(profile, session.metadata, pageCount),
+            );
+            const job = await this.workerJobsService.createSheetMapJob({
+              sessionId: session.id,
+              pdfFileId: session.coverFileId,
+              sheets,
+              output: profile.output.sheetFiles ?? 'per-sheet',
+              duplexFlip: profile.sheet.duplexFlip,
+              // duplex-split 과 같은 회차 카운터·다른 접두사(sheet-map-r<revision>, ≤36자) — 재완료 = 새 회차 잡.
+              requestId: sheetMapRevisionRequestId(revision),
+              callbackUrl: session.callbackUrl ?? undefined,
+              siteId: session.siteId ?? null,
+              revision,
+            });
+            this.logger.log(
+              `[pdfOutputMode] Created sheet-map job ${job.id} for session ${session.id} ` +
+                `(cover=${session.coverFileId}, sheets=${sheets.length}, output=${profile.output.sheetFiles ?? 'per-sheet'}, pdfOutputMode='${pdfOutputMode}' 무시)`,
+            );
+            await this.clearSheetMapFailure(session, 'pdfOutputMode');
+          } catch (e) {
+            // api-sheetmap-3: 삼키지 않고 기록 — 파트너 deliverables 가 'failed' + errorCode/errorDetail 로 노출한다.
+            await this.recordSheetMapFailure(session, e, 'pdfOutputMode');
+          }
           return;
         }
       }
@@ -2014,22 +2167,34 @@ export class EditSessionsService {
       });
     }
 
-    const sheets = buildSheetMap(profile, resolveSessionPageCount(session));
-    const job = await this.workerJobsService.createSheetMapJob({
-      sessionId: session.id,
-      pdfFileId: session.coverFileId,
-      sheets,
-      output: profile.output.sheetFiles ?? 'per-sheet',
-      duplexFlip: profile.sheet.duplexFlip,
-      requestId: sheetMapRevisionRequestId(revision),
-      callbackUrl: session.callbackUrl ?? undefined,
-      siteId: session.siteId,
-      revision,
-    });
-    this.logger.log(
-      `[partner-v1] sheet-map resynthesis job ${job.id} for session ${session.id} (revision=${revision}, sheets=${sheets.length})`,
-    );
-    return { jobId: job.id, revision };
+    const pageCount = resolveSessionPageCount(session);
+    try {
+      // P2-d: 사진인화 세트는 metadata.items 의 매수를 시트 copies/label 로 주입(그 외 세트는 무변경). items 상한은 security-1.
+      const sheets = applyPhotoItemsToSheets(
+        buildSheetMap(profile, pageCount),
+        readSessionPhotoItems(profile, session.metadata, pageCount),
+      );
+      const job = await this.workerJobsService.createSheetMapJob({
+        sessionId: session.id,
+        pdfFileId: session.coverFileId,
+        sheets,
+        output: profile.output.sheetFiles ?? 'per-sheet',
+        duplexFlip: profile.sheet.duplexFlip,
+        requestId: sheetMapRevisionRequestId(revision),
+        callbackUrl: session.callbackUrl ?? undefined,
+        siteId: session.siteId,
+        revision,
+      });
+      this.logger.log(
+        `[partner-v1] sheet-map resynthesis job ${job.id} for session ${session.id} (revision=${revision}, sheets=${sheets.length})`,
+      );
+      await this.clearSheetMapFailure(session, 'partner-v1');
+      return { jobId: job.id, revision };
+    } catch (e) {
+      // api-sheetmap-3: 재합성 실패도 같은 키에 기록한 뒤 그대로 올린다(호출측이 v1 코드로 변환).
+      await this.recordSheetMapFailure(session, e, 'partner-v1');
+      throw e;
+    }
   }
 
   /**
@@ -2213,7 +2378,10 @@ export class EditSessionsService {
         binding: session.metadata?.binding || 'perfect',
         // ?? (|| 아님): 도련無(bleed=0) 상품의 명시적 0 을 보존한다.
         // || 사용 시 0 이 3 으로 덮여 작업사이즈가 trim+6mm 로 오산정→정상 PDF 가 SIZE_MISMATCH 로 오검증(R2).
-        bleed: session.metadata?.bleed ?? 3,
+        // D9(2026-10-19): metadata.bleed 미기재 시 기본 3 은 종전대로이되, 상품 프로파일 세트(사진인화 chemical 등)에서
+        // 템플릿셋이 재단선 없음(cropMarkEnabled≠true) 또는 bleedMm 0 이면 0 — 도련 없는 세트의 완료 PDF 가 BLEED_MISSING
+        // (expected 3, actual 0) 경고를 받지 않도록. 프로파일 NULL 세트는 종전(3) 그대로.
+        bleed: session.metadata?.bleed ?? resolveDefaultBleedMm(session, templateSet),
         paperThickness: session.metadata?.paperThickness,
       };
 

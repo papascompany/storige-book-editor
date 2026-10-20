@@ -1,8 +1,9 @@
 import { useCallback, useState, useEffect, useRef } from 'react'
 import { Crop, Trash2 as Trash } from 'lucide-react'
 import { useAppStore } from '@/stores/useAppStore'
-import { useImageStore } from '@/stores/useImageStore'
+import { useImageStore, currentPhotoPrintPhotoCount } from '@/stores/useImageStore'
 import { useRenderType } from '@/stores/useSettingsStore'
+import { checkPhotoPrintUploadLimit } from '@/utils/photoPrintUpload'
 import { Button } from '@/components/ui/button'
 import {
   core,
@@ -284,6 +285,8 @@ export default function AppEdit() {
     if (!files || files.length === 0) return
 
     const file = files[0]
+    // P2-d 사진인화(security-3): 프로파일 업로드 한도(maxPhotos/maxMb) — 프로파일 NULL 세트는 no-op
+    if (!checkPhotoPrintUploadLimit(files, currentPhotoPrintPhotoCount())) return
      
     const item = await core.fileToImage(canvas, file, imagePlugin as any)
 

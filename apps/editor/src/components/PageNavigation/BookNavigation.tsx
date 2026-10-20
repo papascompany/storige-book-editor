@@ -5,7 +5,7 @@ import { useEditorStore } from '@/stores/useEditorStore'
 import { useAppStore } from '@/stores/useAppStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useCalendarStore } from '@/stores/useCalendarStore'
-import { makeCalendarLabelResolver } from '@/utils/productProfile'
+import { makeCalendarLabelResolver, makePhotoLabelResolver } from '@/utils/productProfile'
 import { useResolvedPageNavPosition } from '@/hooks/useResolvedPageNavPosition'
 import { templateSetsApi } from '@/api'
 import { TemplateType } from '@storige/types'
@@ -232,12 +232,14 @@ export const BookNavigation = memo(function BookNavigation({
   }, [templateSetId, editorStorePages.length])
 
   // P1 캘린더: 캘린더 세트면 "표지 / 2027년 1월 앞면 / … / 에필로그" 라벨 resolver(legacy 세트는 undefined → 기존 라벨).
+  // P2-d 사진인화: "사진 3 앞/뒤"(digital) · "사진 3"(chemical) 라벨 resolver.
   const productProfile = useSettingsStore((s) => s.productProfile)
   const calendarMeta = useCalendarStore((s) => s.meta)
-  const labelResolver = useMemo(
-    () => (productProfile?.kind === 'calendar' ? makeCalendarLabelResolver(productProfile, calendarMeta) : undefined),
-    [productProfile, calendarMeta],
-  )
+  const labelResolver = useMemo(() => {
+    if (productProfile?.kind === 'calendar') return makeCalendarLabelResolver(productProfile, calendarMeta)
+    if (productProfile?.kind === 'photo-print') return makePhotoLabelResolver(productProfile)
+    return undefined
+  }, [productProfile, calendarMeta])
 
   const meta = useMemo<PageMeta[]>(() => {
     if (editorStorePages.length > 0) {
@@ -283,8 +285,14 @@ export const BookNavigation = memo(function BookNavigation({
 
   // 드래그 가능 조건 — 모바일/터치 + 스프레드 모드 + 메타 미동기화 시 비활성
   // (items.length !== allCanvasLength면 reorderByIndex가 length mismatch로 거절하므로 사전 차단)
+  // P2-d 사진인화(editor-flow-1): 항목(metadata.items)이 캔버스 위치(index×stride)에 묶여 있고 digital 은 2i/2i+1 앞·뒤 쌍이라
+  // 1장 단위 재정렬이 옵션·매수·sheet-map 짝을 깨뜨린다 → kind 'photo-print' 세트는 순서 변경을 비활성화한다.
   const dragEnabled =
-    !TOUCH_ENV && !isSpreadMode && allCanvasLength > 1 && pageCount === allCanvasLength
+    !TOUCH_ENV &&
+    !isSpreadMode &&
+    allCanvasLength > 1 &&
+    pageCount === allCanvasLength &&
+    productProfile?.kind !== 'photo-print'
 
   if (pageCount === 0) return null
 

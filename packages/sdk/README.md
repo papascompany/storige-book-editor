@@ -259,6 +259,11 @@ for (const f of d.files) {
 - `accessToken`/`refreshToken` 은 **세션 토큰**(shop-session 과 동일 종류)이다. 파트너 API 키가
   아니며 iframe 으로만 흘려보낸다.
 - 런처 킬스위치(`PARTNER_SESSION_LAUNCH_ENABLED=off`)가 켜지면 `503 ERR_SERVICE_UNAVAILABLE`.
+- **`SessionDeliverables.items`**(additive 2026-10-19, 사진인화 v1.25) — `product.kind === 'photo-print'` 세트에서만
+  실리고 그 밖의 세트에는 **키 자체가 없다**. 값은 세션 `metadata.items` 를 서버가 템플릿셋 프로파일로 정제한
+  것(`readPhotoItems` — 불량 항목 생략·`copies` 범위 클램프·`sizeCode` 세션 사이즈 고정)이라 launch 때 넘긴
+  `items` 가 그대로 echo 되지 않는다. 원소 타입은 `SessionDeliverablesItem`(`@storige/sdk`), 같은 세트의
+  `files[].copies`·`label('사진 N')` 의 원천이다.
 
 ---
 
@@ -299,6 +304,27 @@ editor.setBackGuard(false);                  // fire-and-forget — void 다
 `undefined` 다. `pageCount` 는 회원 세션의 `editor.complete`·`editor.pricingChange` 와
 같은 산식의 물리 쪽수이고, `currentPage` 는 1부터 센 현재 편집 화면 순번이다(펼침면 세트는 펼침면 단위,
 표지+내지 세트는 1 = 표지). 두 값은 단위가 다르다. 가격 기준은 `editor.pricingChange`·`editor.complete` 이다.
+
+### 사진인화 세트 — `complete` payload 의 `product.kind 'photo-print'`·`items` (additive 2026-10-19)
+
+- `payload.product.kind` 에 `'photo-print'` 가 추가됐다(`'sheet' | 'calendar' | 'photo-print'`). `product` 는
+  템플릿셋에 상품 프로파일이 있는 세트에서만 실리며 `sheetCount` 산식은 그대로다(chemical N / digital ceil(N/2)).
+- `payload.items`(`EditorCompleteItem[]`, `@storige/sdk/embed`)는 **`product.kind === 'photo-print'` 세트에서만**
+  실린다 — 그 밖의 세트·게스트 완료에는 키 자체가 없으므로 `payload.items` 유무로 분기하지 말고 `product.kind` 로 분기한다.
+  항목 1건 = 사진 1장 = 주문 항목 1건이며, 형태가 불량한 항목은 `readCompletePayload` 가 판독에서 생략한다
+  (길이가 편집기 발신과 다를 수 있다 — 수량·가격 확정은 호스트 책임). `lowRes` 는 **편집기가 계산**한
+  프로파일 `minDpi` 미달 경고이고 완료를 막지 않는다 — 고객 안내·주문 차단 여부는 호스트가 정한다.
+
+```ts
+complete(payload) {
+  if (payload.needsAuth) return;
+  if (payload.product?.kind === 'photo-print') {
+    for (const item of payload.items ?? []) {
+      // item.canvasIndex · item.copies · item.border/fit/finish · item.lowRes
+    }
+  }
+}
+```
 
 ### 게스트(비회원) 세션 재오픈 — `guestToken` 옵션 (additive)
 

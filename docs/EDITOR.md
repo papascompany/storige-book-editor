@@ -1,6 +1,8 @@
 # Storige 에디터 기획서
 
-> **갱신**: 2026-05-10 — §7~§11 (편집기 UX 사이클) 추가 · 2026-10-05 §4 책등 편집 기능에 현재 산식·템플릿 작성 규약 포인터
+> **Shopify 추가 개발 (2026-10-15, 계획)**: [Editor·PDF Worker × Shopify 개발 정본](./SHOPIFY_ORCHESTRATION_DEVELOPMENT_GUIDE_2026-10-15.md)의 전용 launch/runtime/strict commit을 사용합니다. 기존 `editor.complete` 이벤트와 저장·재오픈 계약은 유지하며, Shopify 상품 주문용 확정은 별도 서버 artifact gate에서 판정합니다. 아직 Shopify 앱 구현·출시가 완료된 상태는 아닙니다.
+
+> **갱신**: 2026-05-10 — §7~§11 (편집기 UX 사이클) 추가 · 2026-10-05 §4 책등 편집 기능에 현재 산식·템플릿 작성 규약 포인터 · **2026-10-19 — §21 상품 프로파일 모드·캘린더 P1(운영 반영 2026-10-18)·런처 진입 P2-b·시트 맵 P2-c(브랜치만) 추가, §2·§7·§14.1 포인터** · **2026-10-20 — §21.8 사진인화 P2-d(브랜치 작업 트리, 미커밋) 추가, §7 `PHOTO_PRINT`**
 >
 > §1~§6 은 데이터 모델·비즈니스 룰 · 권한 명세 (변경 없음)
 > **§7 부터** 가 2026-05-09 ~ 05-10 사이 도입된 신기능. 운영 화면 검증 시 우선 참조.
@@ -69,6 +71,8 @@ interface TemplateRef {
   required: boolean         // 필수 페이지 여부
 }
 ```
+
+> **additive (2026-10-17, P1 캘린더 — 운영 반영 2026-10-18)**: 템플릿셋 응답에 `productProfile: ProductProfile | null`(`packages/types/src/product-profile.ts`, 컬럼 `template_sets.product_profile` JSON, NULL 기본)이 추가됐다. 값이 있으면 편집 모드(고정 캔버스 수·페이지 라벨·달력 메뉴·완료 PDF 판형/옵션)를 이 프로파일이 정한다 — §21.1. 기존 세트 전부 NULL = 이 절의 동작 그대로(CONTRACT_FREEZE v1.22).
 
 ### 템플릿 (Template)
 
@@ -251,7 +255,7 @@ interface Template {
 | `[]` 빈 배열 | 모든 도구 메뉴 숨김 |
 
 **도구 키** (`EditorMenuKey`, `packages/types/src/index.ts`):
-`UPLOAD`, `CLIPPING`, `TEMPLATE`, `IMAGE`, `TEXT`, `SHAPE`, `BACKGROUND`, `FRAME`, `SMART_CODE`, `EDIT`, `AI`
+`UPLOAD`, `CLIPPING`, `TEMPLATE`, `IMAGE`, `TEXT`, `SHAPE`, `BACKGROUND`, `FRAME`, `SMART_CODE`, `EDIT`, `AI`, `CALENDAR`(2026-10-17 추가 — `defaultEnabled:false`, 관리자 editMode 또는 `productProfile.kind==='calendar'` 세트에서만 노출, §21.1), `PHOTO_PRINT`(2026-10-19 추가, 브랜치·미커밋 — 라벨 '사진인화', `defaultEnabled:false`, `requiresFlag:'PHOTO_PRINT'`(`packages/types/src/index.ts:1990`), 빌드 플래그 `VITE_ENABLE_PHOTO_PRINT` 가 정확히 `'false'` 일 때만 off(`ToolBar.tsx:40`), 관리자 editMode 또는 `productProfile.kind==='photo-print'` 세트에서만 노출(`ToolBar.tsx:152-156`), §21.8)
 
 **Admin 설정**: 템플릿셋 "설정" 화면 → "도구 메뉴 노출 직접 설정" 토글 → 체크박스 그룹
 
@@ -575,6 +579,7 @@ postMessage·**sessionId 재편집**을 재사용한다.
 - 파라미터는 camelCase/snake_case 양쪽 허용(`getParamCompat`).
 - **postMessage dual-emit**: 정식 엔벨로프(`editor.ready/save/complete/cancel/error/needAuth`) + 레거시(`storige:completed/saved/...`). 기존 호스트 하위호환 + 추후 정식 엔벨로프 이전.
 - 라우트: `App.tsx` 에 `/embed`. SPA fallback rewrite가 자동 처리(vercel.json 불변).
+- **런처 선생성 세션 진입 (P2-b, 2026-10-18 — 브랜치 `p1-calendar-2026-10-17` 만, master 미병합·운영 미반영)**: 파트너 서버가 `POST /api/v1/sessions/launch` 로 세션을 먼저 만들고 응답 `embed{sessionId, token, refreshToken}` 를 위 **재편집 형식 그대로** `/embed?sessionId&token&refreshToken&parentOrigin` 에 넣는다. 신규 URL 파라미터는 없다 — §21.4.
 
 ### 14.2 텍스트 리치 스타일 강화 (TextAttributes / ObjectFill)
 
@@ -851,3 +856,222 @@ per-character `styles`(이탤릭·부분색)는 직렬화 리스트(`packages/ca
 - **D3 자동배치(사진+코멘트 자동편집)**: 표준 계약 밖. 템플릿셋 등록 시 '편집 모드' 설정 방식으로 오너 기획 후 논의·결정 (착수 보류).
 - **표지 모델**: ShareSnap 상품 = 하드커버 포토북 픽스 + 표지 스프레드(뒤+책등+앞 단일 캔버스) 수용 방향 — D3 기획과 함께 오너가 정리 예정.
 - **브라우저 PDF 생성 타임아웃 리스크**: 24p/180초 실측 이력 → sharesnap 포토북 템플릿셋 `pageCountRange` 상한(≤24~32p) 정책으로 단기 대응. 워커 서버렌더 이관은 별도 대형 프로젝트.
+
+---
+
+## §21 상품 프로파일 모드 — 캘린더 P1(운영 반영) · 런처 진입 P2-b · 시트 맵 P2-c · 사진인화 P2-d (2026-10-17~20)
+
+> 정본: 계약 [`CONTRACT_FREEZE.md`](./CONTRACT_FREEZE.md) v1.21~v1.25 헤더 노트와 §1-B·§1-D 행 · 운영 반영/배포 절차 [`DEPLOYMENT.md`](./DEPLOYMENT.md) 「P1 캘린더 운영 반영 절차」「P2-b 런처(파트너 v1 `sessions`)…배포 절차(준비)」「P2-c 시트 맵 출력…배포 절차(준비)」 · 설계 [`PRODUCT_MODE_ARCHITECTURE_DESIGN_2026-10-16.md`](./PRODUCT_MODE_ARCHITECTURE_DESIGN_2026-10-16.md) · P2 계획 [`P2_PRODUCT_MODE_PLAN_2026-10-18.md`](./P2_PRODUCT_MODE_PLAN_2026-10-18.md) · 템플릿셋 등록 [`템플릿등록 매뉴얼.md`](./템플릿등록%20매뉴얼.md) 부록 D.
+> 비즈니스 로직(면 순서·옵션 어휘 등)은 오너 결정이 정본이며 여기서는 현재 코드가 하는 일만 적는다.
+
+### 21.0 반영 상태 (2026-10-20 기준)
+
+> 행 번호 주의: §21.1~§21.6 의 `file:line` 은 커밋 `9be4c37c`(2026-10-19 작성) 기준이고 §21.8 은 P2-d 작업 트리 기준이다 — P2-d 편집으로 `utils/productProfile.ts`·`embed.tsx`·`hooks/useEditorContents.ts`·`stores/useImageStore.ts` 등의 행이 이동했다(예: `applyTemplateSetProductProfile()` :42 → :64, `resolveFixedCanvasCount()` :30 → :52).
+
+| 항목 | 커밋 | 상태 |
+|---|---|---|
+| **P1 캘린더** — 프로파일 모드·CalendarPlugin·패널·세션 `metadata.calendar`·완료 PDF 옵션·도련 정책 A·임시공휴일 고객 선택 | `1a0d80e3` → `0c670adc` → `52563190` → `af900212` | **운영 반영 완료 2026-10-18 00:48 KST** — master `af900212`(이후 문서 커밋 `49587f4e`), VPS api `1f175ce9a99b`·worker `df1f28f153ac`, `[FLAGS-CHECK] api ok n=15`, Vercel editor/admin Ready. 운영 샘플 세트 7종 등록은 오너 보류 |
+| **P2-a 시트 맵 기반 + P2-b 편집 세션 런처**(api·sdk, 편집기는 신규 세션 메타 복원 1건) | `f43cb99e` | 브랜치 `p1-calendar-2026-10-17` 만 — **master 미병합·운영 미반영**(로컬 e2e 통과) |
+| **P2-c 시트 맵 출력**(worker `sheet-map` 모드·완료 시 자동 발행) | `9be4c37c` | 브랜치만 — master 미병합·운영 미반영. **편집기 코드 변경 없음** |
+| **P2-d 사진인화**(types·canvas-core `PhotoPrintPlugin`·편집기 메뉴/패널/스토어·세션 `metadata.items`·완료 `items`·api 시트 주입/deliverables·SDK·admin 프리셋 4종) | **미커밋** — 브랜치 `p1-calendar-2026-10-17` HEAD `9be4c37c` 위 작업 트리 | 브랜치 작업 트리만 — **master 미병합·운영 미반영**. 적대 리뷰 36건·로컬 e2e 결함 D1~D9 수정 반영, 전체 테스트 통과(2026-10-20). 운영 샘플 세트 등록은 오너 보류 — §21.8 |
+
+프로파일 NULL 세트(현행 전 세트)에서는 이 절 전체가 no-op 다 — 템플릿셋 응답·세션 metadata·완료 payload·검증 잡 옵션·PDF 바이트가 종전과 같다(CONTRACT_FREEZE v1.22 "미전송/NULL = 현행 동작").
+
+### 21.1 상품 프로파일 모드 — `productProfile` 이 편집 모드를 정한다
+
+템플릿셋 `productProfile`(JSON, `@storige/types` `ProductProfile` version 1, kind `'sheet'|'calendar'|'photo-print'` — `'photo-print'` 는 P2-d 브랜치·미커밋, §21.8)이 편집 모드의 단일 소스다. `TemplateSetType`·`EditorMode`·`PdfOutputMode` enum 은 바뀌지 않았다. 편집기 치환 지점은 전부 `if (profile)` 가드다.
+
+| 지점 | 파일 | 동작 |
+|---|---|---|
+| 판정 → 스토어 | `apps/editor/src/utils/productProfile.ts` `applyTemplateSetProductProfile()`(:64) → `stores/useSettingsStore.ts` `productProfile`(:305, `setProductProfile` :887) + `stores/useCalendarStore.ts` `setFromProfile()` | `resolveProductProfile()` 결과가 null(NULL·검증 실패)이면 두 스토어 모두 reset → 기존 경로 |
+| 로드 배선 | `hooks/useEditorContents.ts:1079-1081` | `loadTemplateSetEditor` 1-B 단계에서 적용. `resolveFixedCanvasCount()`(`productProfile.ts:30`)가 `pages.kind==='fixed'` 면 고정 캔버스 수 |
+| fixed 캔버스 가드 | `useEditorContents.ts:1151-1154`, `:1221-1231` | 호스트 `pageCount` 는 경고 후 **무시**(세트 구성이 정답). `settings.page.min=max=count` 로 SidePanel 추가/삭제 게이트(호스트 한도보다 프로파일 우선). 연결 템플릿 수 ≠ count 면 경고만 하고 진입은 계속 |
+| 그리드 rehydrate | `useEditorContents.ts:511`, `:1503` → `utils/calendarRehydrate.ts` `rehydrateCalendarGrids(editor, canvas, index)` | 캔버스 로드·페이지 전환마다 호출. 프로파일 null 이면 즉시 0(no-op) |
+| 페이지 라벨 | `productProfile.ts` `makeCalendarLabelResolver()`(:74) → `components/PageNavigation/BookNavigation.tsx:237-238`(`buildPageMeta` 의 `labelResolver` 옵션 :132) | kind=calendar 면 표지·N월 앞면/뒷면(2단 벽걸이 상단/하단)·에필로그 라벨. resolver 없으면 기존 라벨 불변(`buildPageMeta.test.ts`) |
+| ToolBar 달력 메뉴 | `components/editor/ToolBar.tsx:55`(`ALL_MENUS` CALENDAR), `:76`(`isCalendarProduct`), `:141-147` · `packages/types/src/index.ts:1987`(`EDITOR_MENU_DEFS` CALENDAR `defaultEnabled:false`, `requiresFlag:'CALENDAR'`) | 관리자 editMode 는 항상 노출(템플릿에 그리드를 배치하는 저작 도구). 고객은 `productProfile.kind==='calendar'` 세트에서만 + `enabledMenus` 화이트리스트 존중(배열에 CALENDAR 없으면 숨김, null 이면 노출). legacy 세트는 화이트리스트와 무관하게 숨김 |
+| 완료 PDF 판형·옵션 | `productProfile.ts` `resolveProfilePdfRequestSize()`(:89-97) · `resolveProfilePdfExportOptions()`(:104-109) | §21.3 |
+| 완료 payload `product` | `embed.tsx:732` `productResultFields()` → `summarizeProductProfile()`(`packages/types/src/product-profile.ts:532-541`) | `editor.complete`·레거시 `storige:completed` 에 `product{kind, editorType, canvasCount, sheetCount, faces}` — `sheetCount` 는 faces 2 면 `ceil(canvasCount/2)`. NULL 세트는 키 없음(payload 바이트 동일). 게스트 완료(`needsAuth`) 경로는 싣지 않음(CONTRACT v1.22 행) |
+| 서버 검증 기대치 | `apps/api/src/edit-sessions/sheet-validation-rules.ts:20-21`, `:60` | 기대 쪽수 = **템플릿셋 프로파일** `pages.count`(관리자 선언이 권위), `sheet.faces===2` → `pageStep 2`, cover 슬롯 `coverSpine:'none'`. 세션 `metadata.productProfile` 스냅샷은 세트에 프로파일이 없을 때만 참조(클라이언트 metadata 는 권위가 아님) |
+
+### 21.2 캘린더 모드 (P1 — 운영 반영 2026-10-18)
+
+- **캔버스 구성**: 26캔버스 고정 = 표지 1 + 12개월×2면(앞면/뒷면, 2단 벽걸이는 상단/하단) + 에필로그 1. 캔버스 순서 = PDF 쪽 순서(홀수 = 시트 앞면, 짝수 = 뒷면, `pairing:'offset-next'` — 시트1 = (표지, 1월 앞) … 시트13 = (12월 뒤, 에필로그)). 상품 7종·판형·프로파일 필드·템플릿 4개로 26 참조 구성은 템플릿등록 매뉴얼 부록 D-1~D-3.
+- **CalendarPlugin** (`packages/canvas-core/src/plugins/CalendarPlugin.ts`): 날짜 그리드 객체 `extensionType:'calendar-grid'`(:85)를 그룹 1개로 생성(`createGrid` :181)하고, `rehydrate(ctx)`(:210)가 캔버스의 모든 그리드를 **제자리에서 다시 그린다**(id·위치·크기·각도·잠금·z-order 유지, 사진·텍스트 보존). 월은 `extension.monthOffset`(시작연월 기준 0~11) 또는 캔버스 위치 + `monthDelta`(:141-143, 미니 달력 -1/+1). lifecycle 훅에 의존하지 않고 편집기가 명시 호출한다(:15). 등록은 `apps/editor/src/utils/createCanvas.ts:402-408`·`:476-478`(FontPlugin **뒤**, `VITE_ENABLE_CALENDAR !== 'false'` 일 때만). `hitTestDate`(:252) 로 날짜칸 더블클릭 → 기념일 추가(`components/calendar/useCalendarGridDblClick.ts`). 관리자 그리드 배치 도구는 `components/calendar/CalendarGridTools.tsx`(editMode 전용 — 「날짜 그리드 추가(월)」「미니 달력 추가(전월·익월)」).
+- **패널** (`components/calendar/CalendarPanel.tsx`, FeatureSidebar 의 CALENDAR 메뉴):
+  1. 시작연월(`StartMonthSection` :170) — 프로파일 `allowedRange` 밖이면 `useCalendarStore.setStartMonth` 가 false 를 돌려주고 상태를 바꾸지 않는다.
+  2. 표기 옵션(`DisplayOptionsSection` :216-245) — 체크박스 4종 **공휴일 · 임시공휴일·선거일 표시(공표분)(`TEMPORARY_HOLIDAYS_LABEL` :41) · 음력 · 24절기**, 렌더는 `checked={show[key] ?? false}`. 초기값은 프로파일 `calendar.show`(`useCalendarStore.setFromProfile` :61-80 — admin 캘린더 프리셋 7종은 `holidays·lunar·solarTerms: true`, `apps/admin/src/pages/TemplateSets/calendarProfilePresets.ts:47`). `temporaryHolidays` 는 프로파일·저장분에 키가 없으면 **해제(false)** 가 기본이다.
+  3. 기념일(`AnniversarySection` :259) — 양력/음력(윤달, 음력 데이터가 있을 때만 활성), 문구 최대 40자·세션당 400개(`utils/calendarRehydrateAll.ts` `ANNIVERSARY_TEXT_MAX`/`ANNIVERSARY_MAX_COUNT`).
+  값이 바뀔 때마다 `rehydrateAllCalendarGrids()` 가 전 캔버스를 순서대로 다시 그리고 1개 이상 그렸으면 `useSaveStore.markDirty()`(자동저장 트리거).
+- **날짜 데이터 `kr-2025-2035-v1`** (`packages/canvas-core/src/calendar/data/kr-2025-2035-v1.ts`, 버전 등록 `@storige/types` `CALENDAR_DATA_VERSIONS`·`DEFAULT_CALENDAR_DATA_VERSION` `product-profile.ts:158-165`): 기본은 **법정 공휴일(규정상 공휴일 + 대체공휴일)만** 휴일로 칠한다. 임시공휴일·선거일(데이터 `temporary:true`)은 `includeTemporaryHolidays` 가 true 일 때만 휴일(`calendar/core.ts:208-211`, `:239` — 오너 결정 2026-10-17, 고객이 패널에서 선택). 세션은 `dataVersion` 을 고정 저장하므로 데이터 갱신이 기존 세션을 바꾸지 않는다(갱신 절차 부록 D-8, 2028년 이후는 KASI 공표 전 산출값).
+- **세션 `metadata.calendar` 저장·복원** (`utils/calendarRehydrateAll.ts`): `calendarSessionMetadataFields()` 가 자동저장·save·complete 의 세션 PATCH 에 `{ metadata: { productProfile, calendar{startYear, startMonth, show, anniversaries, dataVersion} } }` 를 동봉한다(API 얕은 병합, 캘린더 세트가 아니면 `{}` 라 payload 키 집합 불변). 재오픈은 `restoreCalendarSessionMeta()`(`readCalendarSessionMeta()` 판독 — `startYear/startMonth` 정수·월 1~12·`anniversaries` 배열일 때만 유효, `show`·`dataVersion` 누락은 프로파일 기본값으로 보충)를 **캔버스 복원 전**에 호출한다(`embed.tsx:1783`). **신규 세션(canvasData 없음)도 복원**한다 — `embed.tsx:1887-1893` "캘린더 세션 메타 복원(신규 세션, canvasData 없음)" 분기: 복원 뒤 `rehydrateAllCalendarGrids()` 로 템플릿 로드 시 그려진 그리드를 저장 메타로 다시 그린다(P2-b, 런처가 `calendar.startYm` 으로 선생성한 세션용 — **브랜치만**, §21.4). 메타가 없거나 무효면 false 라 종전 경로(프로파일 기본 시작연월).
+- **자동저장 수집기** (`hooks/useEmbedAutoSave.ts:113-131` `collectCanvasData`): 캔버스 하나라도 `toJSON` 에 실패하면 `CANVAS_SERIALIZE_FAILED:<index>` 를 던져 **그 저장을 통째로 중단**(dirty 유지·재시도, Sentry `[embed-autosave] canvas toJSON failed`). 종전에는 실패 캔버스를 조용히 빼고 짧은 배열을 저장해 쪽 순서가 밀린 세션이 서버에 남았다(2026-10-17 실측: 26캔버스가 24장으로 저장). 커밋 `0c670adc`.
+- **템플릿 로드 시 텍스트 `styles` 보정** (`packages/canvas-core/src/utils/canvas.ts:1045` `core.ensureTextStyles`): fabric 5.5 `fromObject` 가 `styles` 를 undefined 로 전파해 이후 `toObject`(저장·PDF·썸네일)가 크래시하던 것을 로드 직후(`loadFromJSON` :1154)와 직렬화 직전(`toJSON` :1168, `ServicePlugin.ts:370`·`:534`)에 빈 객체로 보정한다. 그룹 자식(캘린더 그리드·사용자 그룹) 텍스트도 같은 보정. 같은 커밋 `0c670adc`.
+
+### 21.3 완료 PDF (프로파일 세트)
+
+단일 모드 완료 경로(`apps/editor/src/embed.tsx:2850-2921`)가 프로파일 세트에서 아래처럼 동작한다. 스프레드 책(`isSpreadBook`)과 프로파일 NULL 세트는 종전 그대로.
+
+| 항목 | 동작 | 근거 |
+|---|---|---|
+| 산출 | 전 캔버스를 **N쪽 단일 PDF**(쪽 순서 = 캔버스 순서)로 생성해 **cover 슬롯**(`coverFileId`)으로 업로드(`mode==='content'` 만 `contentFileId`). 1캔버스·spine/wing 혼재(크기 상이)·길이 불일치면 현재 캔버스 1장으로 폴백 | `selectSingleModePdfCanvases` :2866-2871, 업로드 :2905-2921 |
+| 판형 | 호스트가 `size` 를 보내지 않으면 A4 폴백 대신 **템플릿셋 판형**(프로파일 세트만). 보낸 `size` 는 종전 G-E 규칙(W↔H 스왑 정규화)대로 | `resolveProfilePdfRequestSize()` :2860, `productProfile.ts:89-97` |
+| 도련 | 템플릿셋 `cropMarkEnabled && bleedMm>0`(`settings.printMarkConfig`, `useEditorContents.ts:1089`) 게이트가 켜지면 작업사이즈 = 재단 + bleedMm×2(캘린더 샘플 `bleedMm 3` → 재단+6mm)·코너 마커·**TrimBox = 재단**, BleedBox/MediaBox = 작업사이즈. 게이트 OFF 면 재단 크기 그대로(책자와 같은 게이트, 오너 도련 정책 A) | `embed.tsx:2688-2697`, `ServicePlugin.ts:834`·`:1228-1233`·`:1419-1426` |
+| export 옵션 3종 | `omitUnusedFonts`(jsPDF `putOnlyUsedFonts` — 미사용 표준 14폰트를 폰트 딕셔너리에 싣지 않음) · `excludeWorkspaceFromExport`(워크스페이스 rect 를 SVG 에서 제외, clipPath 역할 유지) · `neutralizeTransparentFills`(`'transparent'` fill/stroke → SVG `none`, `/ca 0` ExtGState 생성 방지). **프로파일 세트에만** 전달하고 NULL 세트는 undefined = 종전 바이트 동일 | `PdfExportOptions` `packages/canvas-core/src/plugins/ServicePlugin.ts:16-34`, `saveMultiPagePDFAsBlob(…, exportOptions)` :340-353, `resolveProfilePdfExportOptions()` `embed.tsx:2890` |
+| DPI·워치독 | 300dpi, 워치독 `max(120s, 15s × 캔버스 수)`, 자동저장 일시정지(`runWithAutosaveSuspended`) | `embed.tsx:2891-2898` |
+| 텍스트 | 폰트 라이브러리에 템플릿 폰트(샘플: `본고딕(Noto Sans) Regular`)가 있어야 **벡터화**된다. 없으면 래스터 폴백 → 워커 `TRANSPARENCY_DETECTED` | DEPLOYMENT 「P1 캘린더 운영 반영 절차」 확인 항목 |
+| 서버 검증 잡 | cover 잡 `orderOptions.coverSpine='none'`(binding 무관 단일 판형 검사 `validatePageSize`/`validateBleed`, `validateSpine` 생략)·기대 쪽수 = 프로파일 `pages.count`(26)·`pageStep 2`·`productKind='sheet'` — 모두 서버 파생, 호스트 설정 불요. 킬스위치 `EDITOR_SHEET_VALIDATION_RULES` | CONTRACT_FREEZE v1.21·v1.22 보강 §1-B 행, `sheet-validation-rules.ts` |
+| 후속 합성(서버) | 편집기 산출은 그대로 두고 서버가 세트별로 분기한다. 템플릿셋 `pdfOutputMode='duplex-split'` → 13세트 분리(현행 worker). 프로파일 `output.mode==='sheet-map'` → worker `sheet-map` 잡(`per-sheet` = 시트별 `set` 파일 / `merged-duplex` = 1파일, 킬스위치 `SHEET_MAP_OUTPUT_ENABLED`) — **P2-c, 브랜치만**. 편집기 코드 변경 없음 | CONTRACT_FREEZE v1.24 §1-B 행, DEPLOYMENT 「P2-c …」 |
+
+로컬 실측(2026-10-17, DEPLOYMENT 기록): 캘린더 샘플 완료 1건 → 워커 `isValid: true`·경고 0, PDF 26쪽, 탁상 라지 271×196mm(재단 265×190 + 6), TrimBox 3mm 안쪽, `pdffonts` 빈 목록, 투명도 없음.
+
+### 21.4 임베드 진입 방식 2가지
+
+| 경로 | 호스트 쪽 | 편집기 진입 | 상태 |
+|---|---|---|---|
+| ① 기존 shop-session | `/auth/shop-session` 토큰 + `templateSetId`(+`orderSeqno`·`mode` — 세션 생성 조건. 캘린더 세트는 `pageCount` 를 보내도 무시) | §14.1 `/embed?templateSetId&token&orderSeqno&…&parentOrigin` → 편집기가 `POST /edit-sessions` 로 세션을 만든다 | 운영 |
+| ② 파트너 v1 런처(P2-b) | 사이트 **editor 키**로 `POST /api/v1/sessions/launch`(body `member{seqno,id,name}`·`templateSetId`·`orderSeqno?`·`mode?`·`callbackUrl?`·`orderOptions?`·`items?`·`calendar?{startYm:'YYYY-MM'}`·`externalPhotos?`) → 201 `embed{sessionId, token, refreshToken, orderSeqno?}`. 세션을 **선생성**하고 shop-session 과 같은 세션 토큰(access 3600초 + refresh)을 돌려준다 | FROZEN 파라미터 그대로 `/embed?sessionId&token&refreshToken&parentOrigin` — **신규 URL 파라미터 0**. 편집기는 canvasData 없는 세션을 열고 `metadata.calendar`(launch `calendar.startYm` 을 api 가 `startYear/startMonth`(+`anniversaries:[]`)로 풀어 기록 — `apps/api/src/partner-sessions/partner-sessions.service.ts:198`·`:516-519`)를 복원해 그리드를 다시 그린다(`embed.tsx:1887-1893`) | 브랜치 `p1-calendar-2026-10-17`(`f43cb99e`)만 — **master 미병합·운영 미반영**. 운영 반영 전에는 3라우트 404 |
+
+- 산출물은 `GET /api/v1/sessions/:id/deliverables`(`status: editing → complete → synthesizing → ready | failed`, `product`·`calendar{startYm,dataVersion}`·`files[{role, url, auth:'api-key'|'signed'(300초)}]`), 재합성은 `POST /api/v1/sessions/:id/synthesize`(`revision` +1; `duplex-split` 세트, v1.24 부터 `sheet-map` 세트도) — 계약·오류 코드(`ERR_SESSION_NOT_COMPLETE` 409·`ERR_OUTPUT_MODE_UNSUPPORTED` 422)는 CONTRACT_FREEZE v1.23/v1.24 §1-D 행, 배포 절차·킬스위치 `PARTNER_SESSION_LAUNCH_ENABLED`(FLAGS 16번째 키)는 DEPLOYMENT 「P2-b …」. 호스트용 가이드 절은 PLATFORM_INTEGRATION_GUIDE 반영 대기(초안은 비공개 노트).
+- 두 경로 모두 `editor.complete`(+`product` 키)·자동저장·`metadata.calendar` 동봉·완료 PDF 경로(§21.3)는 같다. 런처를 쓰지 않는 호스트는 아무것도 바꾸지 않는다.
+
+### 21.5 로컬 개발 메모
+
+- `VITE_ENABLE_CALENDAR`(editor 빌드 변수, `apps/editor/.env.example:13`): 미설정·`'false'` 외 모든 값 = **on**. 정확히 `'false'` 면 CalendarPlugin 등록(`utils/createCanvas.ts:53`)과 도구 막대 달력 메뉴(`ToolBar.tsx:37`)를 끈다(프로파일 NULL 세트는 값과 무관하게 현행). 빌드 시점 변수라 값을 바꾸면 master push(Vercel 재빌드) 뒤 반영(DEPLOYMENT 환경 변수 표).
+- canvas-core vitest(`canvas` 네이티브 모듈, fabric node 엔트리)는 **Node 24** 로 실행한다. Node 26 에서는 수집 단계에서 실패한다(`packages/canvas-core/vitest.setup.ts` 처방). api jest 일부 스위트(`better-sqlite3`)는 빌드된 Node 로.
+- compose 서비스 이름 `mariadb`(클라이언트 `mariadb`·`mariadb-admin`·`mariadb-dump`), dev 로그 pino-pretty 미설치 시 JSON 폴백, worker `.env.development.example`, `BOOKMOA_DB_PASSWORD=` 로 bookmoa 연동 끄기 등 자세한 것은 [`DEPLOYMENT.md`](./DEPLOYMENT.md) **「5. 로컬 기동 시 알아둘 점 (2026-10-17)」**.
+- 런처 로컬 e2e 전제(로컬 사이트 editor 코드를 worker 코드와 분리하지 않으면 런처 403, worker-local `WORKER_API_KEY`·`OUTPUTS_PATH`, `OUTPUT_SIGN_SECRET` 없으면 완료 잡 deliverables 503)는 P2 계획 §7.
+
+### 21.6 핵심 파일 매핑
+
+| 영역 | 파일 |
+|---|---|
+| 프로파일 타입·검증·요약 | `packages/types/src/product-profile.ts` (`ProductProfile`, `CalendarProfile`, `CalendarSessionMeta`, `CalendarDisplayOptions`, `CALENDAR_DATA_VERSIONS`, `resolveProductProfile`, `summarizeProductProfile`) |
+| 편집기 프로파일 배선 | `apps/editor/src/utils/productProfile.ts` (`applyTemplateSetProductProfile`, `resolveFixedCanvasCount`, `resolveCanvasMonthOffset`, `makeCalendarLabelResolver`, `resolveProfilePdfRequestSize`, `resolveProfilePdfExportOptions`) |
+| 스토어 | `apps/editor/src/stores/useSettingsStore.ts` (`productProfile`), `stores/useCalendarStore.ts` (`meta`, `allowedRange`, `setFromProfile`, `restore`, `setStartMonth`, `setShow`, 기념일 CRUD) |
+| 템플릿셋 로드·fixed 가드·rehydrate 호출 | `apps/editor/src/hooks/useEditorContents.ts` (1-B 단계, `:1151`, `:1221`, `:511`, `:1503`) |
+| 그리드 재합성 | `apps/editor/src/utils/calendarRehydrate.ts` (캔버스 1개), `utils/calendarRehydrateAll.ts` (전체 + 세션 메타 판독/복원/동봉) |
+| CalendarPlugin·날짜 계산·데이터 | `packages/canvas-core/src/plugins/CalendarPlugin.ts`, `src/calendar/core.ts` (`buildMonthMatrix`), `src/calendar/types.ts`, `src/calendar/data/kr-2025-2035-v1.ts` (생성물 — `packages/canvas-core/scripts/calendar-overrides.json` → `gen:calendar-data`) |
+| 패널·그리드 도구 | `apps/editor/src/components/calendar/CalendarPanel.tsx`, `CalendarGridTools.tsx`(editMode), `useCalendarGridDblClick.ts`, `calendarPanelUtils.ts` |
+| 페이지 라벨 | `apps/editor/src/components/PageNavigation/BookNavigation.tsx` (`labelResolver`), `buildPageMeta.test.ts` |
+| 도구 메뉴 | `apps/editor/src/components/editor/ToolBar.tsx` (CALENDAR 게이트), `packages/types/src/index.ts` (`EDITOR_MENU_DEFS`) |
+| 플러그인 등록·빌드 플래그 | `apps/editor/src/utils/createCanvas.ts` (`VITE_ENABLE_CALENDAR`), `apps/editor/.env.example` |
+| 완료 PDF·세션 메타 복원·`product` payload | `apps/editor/src/embed.tsx` (`:732`, `:1783`, `:1887-1893`, `:2850-2921`) |
+| 자동저장 수집기 | `apps/editor/src/hooks/useEmbedAutoSave.ts` (`collectCanvasData`, `CANVAS_SERIALIZE_FAILED`) |
+| PDF export 옵션·도련 게이트 | `packages/canvas-core/src/plugins/ServicePlugin.ts` (`PdfExportOptions`, `_drawCropMarksAndBoxes`), `src/utils/canvas.ts` (`ensureTextStyles`) |
+| 서버 검증 규칙 | `apps/api/src/edit-sessions/sheet-validation-rules.ts` (`expectedPages`, `pageStep`, `coverSpine`) |
+| 템플릿셋 컬럼·admin 폼 | `apps/api/migrations/20261017_add_template_set_product_profile.sql`, `apps/admin/src/pages/TemplateSets/TemplateSetForm.tsx`(「상품 프로파일(JSON)」 섹션), `calendarProfilePresets.ts`(프리셋 7종) |
+| 샘플 세트 등록 | `scripts/register-calendar-samples.mjs` (로컬 `--with-site`, 원격 `--allow-remote` — 운영 실행은 오너 승인) |
+| 런처(브랜치만) | `apps/api/src/partner-sessions/` (`launch`·`deliverables`·`synthesize`), `packages/sdk/src/client/sessions.ts` |
+| 시트 맵(브랜치만, 편집기 무변경) | `apps/api/src/edit-sessions/sheet-map.ts` (`buildSheetMap`), `apps/worker/src/processors/synthesis.processor.ts` (`handleSheetMapSynthesis`) |
+
+### 21.7 변경 이력 (2026-10-17 ~ 20)
+
+| 날짜 | 커밋 | 내용 | 반영 |
+|---|---|---|---|
+| 2026-10-17 | `1a0d80e3` | 캘린더 편집 모드 P1 — 템플릿셋 상품 프로파일·날짜 그리드(CalendarPlugin)·26캔버스 양면 달력·패널·세션 `metadata.calendar`·완료 payload `product`·admin 프리셋 | master → **운영 2026-10-18 00:48 KST** |
+| 2026-10-17 | `0c670adc` | 자동저장이 직렬화 실패 캔버스를 누락 저장하지 않도록(`CANVAS_SERIALIZE_FAILED`) + 템플릿 로드 `ensureTextStyles` 보정 | 〃 |
+| 2026-10-17 | `52563190` | dev 모드 api·worker 부팅 복구(pino-pretty 미설치 JSON 폴백, worker env 예시) | 〃 |
+| 2026-10-17 | `af900212` | 완료 PDF 워커 경고 0 — `coverSpine:'none'` 규칙·export 옵션 3종·도련 정책 A(`cropMarkEnabled`+`bleedMm 3`)·임시공휴일·선거일 고객 선택 | 〃 (VPS 체크아웃 커밋) |
+| 2026-10-18 | `49587f4e` | DEPLOYMENT·계획 문서 — P1 운영 반영 기록 | master |
+| 2026-10-18 | `f43cb99e` | P2-a 시트 맵 기반 + P2-b 편집 세션 런처(`POST /api/v1/sessions/launch`·`GET …/deliverables`·`POST …/synthesize`, SDK `client.sessions`, 웹훅 `revision?`) · 편집기 신규 세션 `metadata.calendar` 복원 · 합성 파일 메타 `GET /files/:id/external`·duplex-split 자동 잡 request_id 결함 수정 | 브랜치 `p1-calendar-2026-10-17` 만 — master 미병합·운영 미반영 |
+| 2026-10-19 | `9be4c37c` | P2-c 시트 맵 출력 — worker `sheet-map` 모드, 완료 시 자동 발행(`SHEET_MAP_OUTPUT_ENABLED`), 파트너 v1 재합성·deliverables `sheets` — **편집기 변경 없음** | 브랜치만 — master 미병합·운영 미반영 |
+| 2026-10-19 | (미커밋) | P2-d 사진인화 구현 — `ProductKind 'photo-print'`·`photoPrint` 블록·`PhotoItem`(types), `PhotoPrintPlugin`(fitMode/유테/촬영일/흑백), `PHOTO_PRINT` 메뉴·`PhotoPrintPanel`·`usePhotoPrintStore`·세션 `metadata.items`·완료 `items`, api `photo-items.ts`(sheet-map `copies`/`label` 주입)·deliverables `items`·`metadata.productProfile` 서버 소유, SDK `EditorCompleteItem`·`SessionDeliverablesItem`, admin 프리셋 4종·`register-photo-print-samples.mjs`, CONTRACT_FREEZE v1.25 | 브랜치 `p1-calendar-2026-10-17` 작업 트리(HEAD `9be4c37c` 위) — **미커밋·master 미병합·운영 미반영** |
+| 2026-10-19~20 | (미커밋) | P2-d 적대 리뷰 36건·로컬 e2e 결함 D1~D9 수정 — 재오픈 캔버스 유실(D1)·런처 `items` 탈락(D2)·유테 창 재단 기준 `bleedPx`(D3)·촬영일 로컬 날짜(D4)·undo/삭제 뒤 `apply` 재호출(D5)·editMode 잠금 해제(D6)·SDK export(D7)·cover 창 기준 max(D8)·chemical 검증 `bleed 0`(D9), 업로드 한도 경로 보강·`items` 상한·`metadata.productProfile` 서버 소유·시트 맵 실패 노출 | 〃 — 전체 테스트 통과(2026-10-20 13:51 KST(04:51Z, 로그 기준)), 수정 후 로컬 e2e 재실측 통과(2026-10-20 14:05 KST — 21.8 '재실측 결과') |
+
+다음(P2-e 운영자 콘솔)은 미착수 — P2 계획 §1. P2-d 사진인화는 §21.8(브랜치 작업 트리, 미커밋).
+
+### 21.8 사진인화 모드 (P2-d — 브랜치, 미커밋)
+
+> 상태(2026-10-20): 브랜치 `p1-calendar-2026-10-17` HEAD `9be4c37c` 위 **미커밋 작업 트리** — master 미병합·운영 미반영. 운영 샘플 세트 등록·배포는 오너 승인 후. 계약 정본은 [`CONTRACT_FREEZE.md`](./CONTRACT_FREEZE.md) **v1.25** 개정 노트(§1-D ADDITIVE 4건 — `templateSet.productProfile.kind 'photo-print'`+`photoPrint` 블록 / `editor.complete`·`storige:completed` `items?`+`product.kind` / 세션 `metadata.items` / 런처 deliverables `items?`·`files[].copies/label` 원천·`errorCode/errorDetail`, 검증 잡 `orderOptions.bleed 0` + 보정 2건 — `metadata.productProfile` 서버 소유, duplex-split 회차 키·웹훅 `revision?` 자동 sheet-map 잡 포함). 옵션 어휘(페이퍼풀/이미지풀/유테)·판형·도련·업로드 한도 등 비즈니스 값은 오너 결정이 정본이며(설계 §13 항목 3 = "§13-3", `PRODUCT_MODE_ARCHITECTURE_DESIGN_2026-10-16.md:376`(타입 주석)·`:414`(§13 항목 3)), 여기서는 현재 코드가 하는 일만 적는다.
+> 프로파일 NULL 세트·캘린더 세트는 이 절 전체가 no-op 다(메뉴·플러그인 옵션·세션 metadata·완료 payload·검증 잡 옵션 바이트 동일 — v1.25 노트).
+
+#### 21.8.1 프로파일 `photoPrint` 블록 · 옵션 매핑(§13-3) · 항목 모델
+
+- **타입 정본** `packages/types/src/product-profile.ts`: `ProductKind` 에 `'photo-print'`(:21), `ProductPageLabelRule` 에 `'photo'`(:24), 어휘 `PhotoPrintProcess 'chemical'|'digital'`·`PhotoPrintComposition 'per-photo-free-back'|'per-photo-fixed-back'|'sheet-cards'`·`PhotoBorder 'none'|'white'`·`PhotoFit 'paper-full'|'image-full'`·`PhotoFinish 'matte'|'glossy'`(:55-62), 상수 `DEFAULT_PHOTO_BORDER_INSET_MM = 2`(:70)·`PHOTO_PRINT_SIZES_PER_PROFILE = 1`(:72). `PhotoPrintProfile { process, composition, sizes: PhotoPrintSize[](P2 는 정확히 1개), options { border[], fit[], finish[], brightnessFix, dateOverlay, grayscale, borderInsetMm? }, copies { min, max }, backTemplateId?, upload { maxPhotos, maxMb } }`(:189-198), `ProductProfile.photoPrint?`(:217).
+- **옵션 소비 경계**(:186 주석, `PhotoPrintPanel.tsx:18`): 편집기가 캔버스에 적용하는 것은 `border`·`fit`·`dateOverlay`·`grayscale` 뿐이고 `finish`·`brightnessFix`·`copies` 는 **통과만**(세션 `metadata.items` → 완료 `items` → deliverables `items`; 밝기보정 미리보기 없음).
+- **검증 결합**(`validateProductProfile` :512-523 → `validatePhotoPrintBlock` :545-658, 기존 kind 의 메시지 순서를 바꾸지 않도록 마지막에 검사): `kind='photo-print'` ⇒ `photoPrint` 필수(그 밖의 kind 에서는 금지, `labelRule 'photo'` 도 photo-print 전용 :520-523) · `sizes` 정확히 1개(:562) · `options` 어휘는 중복 없는 비어 있지 않은 배열(:584-597) · `copies.min/max` 1 이상 정수·min≤max(:601-603) · `composition='per-photo-fixed-back'` ⇒ `backTemplateId` 필수(:606-609) · `upload.maxPhotos` 1 이상 정수·`maxMb` 양수(:612-614) · `pages.kind='range'` 만·`protectedIndices` 금지(:621-624) · **chemical** ⇒ `sheet.faces 1`(canvas-per-sheet)·`composition 'per-photo-free-back'`·`output.mode 'single-pdf'`(:631-637) · **digital** ⇒ `faces 2`(canvas-pair)·`pairing 'same-sheet'`·`pages.step 2`·`min/max` 짝수(:642-650). `backRotation` 은 강제하지 않는다(오너 결정 0).
+- **항목 모델** `PhotoItem`(:278-295, 12필드) = `{ index, canvasIndex, sourcePhotoId?, sizeCode, copies, border, fit, finish, brightnessFix, dateOverlay, grayscale, lowRes }`, 런처 입력은 부분형 `PhotoItemInput`(:299). 순수 함수: `resolvePhotoItemCanvasIndex`(:788, chemical i→i / digital i→2i 앞면), `resolvePhotoItemCount`(:794, ceil(캔버스 수/stride)), `formatPhotoPageLabel`(:800, chemical `'사진 N'` / digital `'사진 N 앞'`·`'사진 N 뒤'`), `resolvePhotoFitMode`(:809), `resolvePhotoFrameInsetMm`(:814), `readPhotoItems(input, profile?, { maxItems? })`(:861-897) — 불량 항목 생략, `copies` 는 1 이상 정수 또는 정수형 문자열만 인정하고 그 밖은 `copies.min`, `[min,max]` 클램프, `sizeCode = sizes[0].code`, `canvasIndex` 재계산, 상한 = `opts.maxItems` → `upload.maxPhotos` → `DEFAULT_PHOTO_ITEMS_LIMIT` 1000(:831).
+- **§13-3 매핑**(항목 → `PhotoPrintPlugin` 옵션, `apps/editor/src/utils/photoPrintRehydrate.ts:55-63` `resolvePhotoPrintCanvasOptions`):
+
+| 프로파일 옵션 | 항목 값 | 플러그인 옵션 | 근거 |
+|---|---|---|---|
+| `fit` | `'paper-full'`(페이퍼풀) / `'image-full'`(이미지풀) | `fitMode 'cover'`(창 기준 `Math.max`) / `'contain'`(`Math.min`) | `resolvePhotoFitMode` `product-profile.ts:809`, `resolveFillScale` `PhotoPrintPlugin.ts:156-160` |
+| `border` | `'white'`(유테) / `'none'` | `frameInsetMm = options.borderInsetMm ?? 2` / `0`(창 = 프레임, 종전 바이트 동일) | `resolvePhotoFrameInsetMm` `product-profile.ts:814-818` |
+| `dateOverlay` | boolean | `dateOverlay` — 템플릿의 `date-overlay` 텍스트 갱신 | §21.8.2 |
+| `grayscale` | boolean | `grayscale` — `Grayscale` 필터 멱등 토글 | §21.8.2 |
+| `finish` · `brightnessFix` · `copies` | — | 캔버스 미적용(통과만) | `PhotoPrintPanel.tsx:18` |
+
+- **도구 메뉴** `EditorMenuKey 'PHOTO_PRINT'`(`packages/types/src/index.ts:1953`), `requiresFlag 'PHOTO_PRINT'`(:1968), `EDITOR_MENU_DEFS { key:'PHOTO_PRINT', label:'사진인화', defaultEnabled:false, requiresFlag:'PHOTO_PRINT' }`(:1990) — §7.
+
+#### 21.8.2 `PhotoPrintPlugin` (`packages/canvas-core/src/plugins/PhotoPrintPlugin.ts`)
+
+- **등록** `apps/editor/src/utils/createCanvas.ts:58`(`ENABLE_PHOTO_PRINT = VITE_ENABLE_PHOTO_PRINT !== 'false'`)·`:416` 생성·`:463-465` `editor.use`(FrameInteractionPlugin **뒤**). CalendarPlugin 과 같은 계약 — lifecycle 훅에 의존하지 않고 편집기가 `apply`/`rehydrate` 를 명시 호출한다(:16-17 주석). `events`·`hotkeys` 빈 배열(:296-298).
+- **`apply(opts)`**(:341-380) / **`rehydrate(opts)`**(:383-385, `apply` 와 동일) — `opts { fitMode:'cover'|'contain', frameInsetMm, dateOverlay, grayscale, mmToPx, bleedPx? }`(:33-49). 순서: ⓪ 캔버스 런타임 키 `__photoPrintBleedPx` 기록(:350-351) → ① 모든 사진틀(`extensionType 'frame'`)에 `fitMode`/`frameInsetMm` 기록 + 런타임 `__frameInsetPx`·`__frameWindow` 산출(:352-358), 값이 바뀐 틀은 채워진 사진(`fillImage`, `parentLayerId === frame.id`)의 scale·중심을 창에 다시 맞추고(`syncFill` :390-398) 같으면 clip 복제본만 창에 다시 맞춘다(`syncClip` :401-414 — 사용자 adjust 보존, 어긋난 마스크 자가 복구) + 같은 루프에서 그 틀의 Grayscale 토글(:363-367, try/catch 로 틀 단위 격리) → ② 루프가 끝난 뒤 date-overlay 갱신(:371). undo 스택에 기록하지 않는다(`historyProcessing` :343-344·:372-376). 반환값 = 처리한 사진틀 수.
+- **직렬화**: 프레임 속성 `fitMode`·`frameInsetMm` 는 `packages/canvas-core/src/utils/canvas.ts:181-182` `extendFabricOption` 에 등재(미등재 = 저장 1회 왕복에 침묵 유실). 런타임 키 `__frameInsetPx`(:72)·`__frameWindow { sx, sy, cx, cy }`(:74)·캔버스 `__photoPrintBleedPx`(:76)는 **비직렬화** — 복원 뒤 `rehydrate` 가 다시 채운다.
+- **유테 창 = 재단 기준**(D3, :18-24 주석): `resolveFrameWindow(frame, trim, insetPx)`(:167-185) — `insetPx ≤ 0` 이면 프레임 그대로(종전 동작·바이트 동일); 아니면 (프레임 ∩ trim) 을 각 변 `insetPx` 만큼 축소. trim = `workspace`(id `'workspace'`) bbox 를 `bleedPx` 만큼 안쪽으로 줄인 상자(`resolveFrameWindowFor` :209-224, workspace 없으면 null = 프레임 기준). 교집합이 비거나 inset 이 창의 짧은 변 절반 이상이면 프레임 그대로(`frameInsetScale` {1,1} 규칙 :145-150). `frameWindowTransform`(:188-192) → `{ sx, sy, cx, cy }`. `FrameInteractionPlugin._syncFromFrame`(`FrameInteractionPlugin.ts:166-195`)은 같은 규약으로 드래그 중 clip 복제본을 창에 맞추고, 런타임 키가 없으면(undo 로 틀 재생성) 직렬화된 `frameInsetMm` + 캔버스 bleed 로 창을 다시 계산한다. `bleedPx` 는 편집기가 `resolvePhotoPrintBleedPx(settings.printMarkConfig)`(`photoPrintRehydrate.ts:42-49` — `cropMarkEnabled && bleedMm>0` 이면 `mmToPxDisplay(bleedMm)`, 아니면 0)로 모든 `apply`/`rehydrate` 에 전달한다(:89-93).
+- **흑백**(`toggleGrayscale` :438-483): `fabric.Image.filters.Grayscale({ effectType:'photo-print' })` 태그(:454, 상수 `PHOTO_PRINT_EFFECT_TYPE` :70)로 멱등 토글. fabric 은 필터의 커스텀 태그를 직렬화하지 않으므로 `fillImage.extension.grayscale` 에 소유 여부를 함께 기록하고(:462-464, off 면 키 제거 :468-472), 복원 뒤 태그 없는 `Grayscale` 1개를 다시 입양한다(:443-448). undo(`fabric-history _loadHistory`)로 plain 객체가 된 필터는 `fromObject` 로 되살리고 되살릴 수 없는 항목은 경고 후 제외(`reviveFilters` :267-293); `applyFilters` 는 try/catch(:476-481).
+- **촬영일**(`updateDateOverlays` :416-436): 템플릿 저작 텍스트 `extensionType:'date-overlay'`(`DATE_OVERLAY_EXTENSION_TYPE` :68)를 `extension.frameId` 로 특정 사진틀에 묶는다(없으면 캔버스의 첫 채워진 틀, :113-115·:423-426). 텍스트 = `formatTakenAt(fillImage.extension.takenAt)`, 사진이 없거나 `dateOverlay` off 면 `''`(:428-429). `formatTakenAt`(:240-254) — ISO 일시(`YYYY-MM-DDTHH:mm…`, 오프셋/Z 무관)는 `new Date(iso)` 의 **브라우저 로컬** 연·월·일을 `'YYYY.MM.DD'` 로(D4: exifr 가 EXIF 로컬시각을 브라우저 TZ Date 로 만들어 UTC ISO 로 저장하므로 UTC 날짜 부분을 읽으면 자정 전후 촬영이 전날로 밀렸다), TZ 없는 `YYYY-MM-DD`·EXIF 원문 `YYYY:MM:DD …` 는 날짜 부분 그대로, 해석 불가면 null.
+- **순수 export**(`packages/canvas-core/src/index.ts:47-66`): `PhotoPrintPlugin`, `DATE_OVERLAY_EXTENSION_TYPE`, `PHOTO_PRINT_EFFECT_TYPE`, `FRAME_INSET_PX_RUNTIME_KEY`, `FRAME_WINDOW_RUNTIME_KEY`, `PHOTO_PRINT_BLEED_PX_RUNTIME_KEY`, `frameInsetScale`, `resolveFillScale`, `resolveFrameWindow`, `frameWindowTransform`, `resolveFrameWindowFor`, `formatTakenAt` + 타입 `PhotoFitMode`·`PhotoPrintCanvasOptions`·`FrameBox`·`FrameWindow`·`FillImageExtension`·`DateOverlayExtension`.
+
+#### 21.8.3 편집기 흐름 (`apps/editor`)
+
+| 지점 | 파일 | 동작 |
+|---|---|---|
+| 판정 → 스토어 | `utils/productProfile.ts` `isPhotoPrintProfile()`(:35) · `applyTemplateSetProductProfile()`(:64-73) → `stores/usePhotoPrintStore.ts` `setFromProfile`(:85-93) | kind 가 `'photo-print'` 가 아니면 스토어 reset(캘린더 스토어와 같은 규약). 스토어 = `profile`(photoPrint 블록)·`mapping`·`items: PhotoItem[]`; `restore(input)`(:94-101, `readPhotoItems`), `syncWithCanvasCount`(:103-114, 캔버스 수 ÷ stride 만큼 늘리거나 자름 — 새 항목은 프로파일 기본값), `setItemOption`(:116-120), `removeItem(photoIndex)`(:126-131, 뒤 항목 index/canvasIndex 재부여), `setItemMeta`(:133-150, `lowRes`·`sourcePhotoId`), `applyAll`(:152-156) |
+| 도구 메뉴·패널 | `components/editor/ToolBar.tsx:40`·`:60`·`:83`·`:152-156` · `components/editor/FeatureSidebar.tsx:31`·`:297-299` | `VITE_ENABLE_PHOTO_PRINT` 가 정확히 `'false'` 일 때만 메뉴 off. 관리자 editMode 는 항상 노출, 고객은 `productProfile.kind==='photo-print'` 세트에서만 + `enabledMenus` 화이트리스트 존중(CALENDAR 와 동일 규칙). 패널 = `components/photoPrint/PhotoPrintPanel.tsx` |
+| 패널 기능 | `PhotoPrintPanel.tsx` | 항목(사진 N)별 매수 ±(:172-191, `copies.min/max` 에서 버튼 비활성)·유테/맞춤/마감 select(어휘가 1개면 생략, 플래그 정책 false 면 체크박스 생략 :16-17)·촬영일/흑백/밝기보정 토글(:239-267)·`저해상도` 배지(`LOW_RES_BADGE_LABEL` :27, `item.lowRes` :162)·**전체 적용**(:86-110, 현재 캔버스 항목의 옵션을 모든 항목에 복사 — `copies` 제외 :32). 변경마다 `setItemOption` + `markDirty` + `applyPhotoPrintItem(index)`(:126-130, digital 은 앞·뒤 2캔버스 `photoPrintRehydrate.ts:135-147`). 패널이 열릴 때 캔버스 수와 항목 수 동기화(:51-55) |
+| 세션 metadata 동봉 | `utils/photoPrintRehydrateAll.ts` `photoPrintSessionMetadataFields()`(:71-75) | 자동저장·save·complete 의 세션 PATCH 에 `{ metadata: { productProfile, items } }`(사진인화 세트가 아니면 `{}` — payload 키 집합 불변). 호출: `embed.tsx:1355`(세션 생성)·`:2461-2464`·`:2528`·`:2558`·`:2708`·`:2742`, `hooks/useEmbedAutoSave.ts:418-421`. `items` 는 `syncWithCanvasCount` 로 캔버스 수와 동기화한 완전형. **`metadata.productProfile` 은 v1.25 부터 서버 소유 키** — 서버가 템플릿셋 프로파일로 (재)기록·제거하므로 편집기가 보낸 값은 무시된다(`apps/api/src/edit-sessions/edit-sessions.service.ts:187`·`:287-313`) |
+| 복원 | `restorePhotoPrintSessionItems()`(`photoPrintRehydrateAll.ts:56-61`) → `embed.tsx:1821`(재오픈, **캔버스 복원 전**)·`:1951-1955`(신규/런처 선생성 세션 — restore 뒤 `applyAllPhotoPrint({ markDirty: 복원 여부 })`, items 가 없으면 프로파일 기본값만 적용하고 dirty 로 만들지 않음) · `rehydratePhotoPrint(editor, canvas, i)`(`photoPrintRehydrate.ts:108-114`) | 캔버스 복원마다 저장된 `fitMode`/`frameInsetMm` 로 런타임 창·필터 태그를 되살린다 — 호출 지점 `embed.tsx:1902`(다페이지)·`:1928`(단일), `useEmbedAutoSave.ts:283`(로컬 백업)·`:332`, `hooks/useEditorContents.ts:528`(템플릿 로드)·`:1569`(페이지 추가). 프로파일 null 이면 즉시 0(no-op) |
+| 시드 캔버스 수(D1·D2) | `useEditorContents.ts:1179-1200` `resolvePhotoPrintSeedCount()`(`productProfile.ts:178-205`) · `embed.tsx:1664-1669`(`photoItemCount`) | **재오픈** = 저장 `canvasData.length` 그대로(호스트 `pageCount`·한도 무관 — 종전 `length−1` [표지,…내지] 시맨틱으로 마지막 캔버스가 유실되던 결함 D1), **신규/런처 세션** = `metadata.items` 건수 × stride(digital 2 / chemical 1)를 하한으로(D2), 템플릿셋 refs 수 이상·`pages.max` 이하(초과분은 잘라내고 warn). 증설 시드는 `innerRepeat 'cycle'`(refs[k % len], :1251-1256 — `'last'` 는 뒷면만 복제). 심층방어: 단일 모드 range 세트도 저장본보다 적게 시드됐으면 `addPage` 로 증설 뒤 전량 복원(`embed.tsx:1855-1866`) |
+| 페이지 범위·단위 | `useEditorContents.ts:1098-1106`·`:1295-1302` · `resolvePhotoPrintPageStep()`(`productProfile.ts:208-224`) | `settings.page.min/max` = 프로파일 `pages.min/max`(캔버스 수 단위, 호스트 한도가 오면 R-196 규칙 우선). 증감 단위는 **프로파일 `pages.step`** 이 템플릿셋·호스트 `pageStep` 보다 우선 — 호스트 값이 다르면 `console.warn` 1회 뒤 무시. 캘린더·sheet·NULL 세트는 종전 값 그대로 |
+| 페이지 추가/삭제 = 사진 단위 | `components/editor/SidePanel.tsx:498-521`(추가)·`:523-552`(삭제) · `utils/photoPrintSeed.ts` `seedPhotoPrintCanvas(k)`(:65-121) | 추가: 단위(digital 2)만큼 `addPage` 뒤 새 캔버스 k 를 템플릿셋 `refs[k % refs.length]` 로 시드(workspace 치수 보정·`rebindFrameInteractivity`·`applyObjectPermissions(canvas, editMode)`(:110, editMode 는 잠그지 않음 D6)·`trackRequiredEdits`·`rehydratePhotoPrint`), `composition 'per-photo-fixed-back'` 의 뒷면(홀수 캔버스)은 로드 객체 전부에 `movable/deleteable/contentEditable=false` 강제(`lockSeededObjects` :51-58·:86-87·:107) — 잠금은 **편집기 객체 플래그로만** 강제되며 서버·워커는 검증하지 않는다. 삭제: 선택 캔버스가 속한 사진 p 의 캔버스 `[p·stride .. p·stride+stride−1]` 을 함께 지우고 `usePhotoPrintStore.removeItem(p)`(끝 잘림 금지 — 매수·옵션이 다른 사진으로 밀리지 않음), 최소 미만이면 토스트 거부. 두 경로 모두 `syncPhotoPrintItemsWithCanvases()` |
+| 순서 변경 비활성·라벨 | `components/PageNavigation/BookNavigation.tsx:289-295`·`:240` | `dragEnabled` 에 `productProfile?.kind !== 'photo-print'` — 항목이 캔버스 위치(index×stride)에 묶여 있고 digital 은 앞·뒤 쌍이라 1장 재정렬이 옵션·매수·sheet-map 짝을 깨뜨린다. 라벨은 `makePhotoLabelResolver()`(`productProfile.ts:112-118`, `formatPhotoPageLabel` 재사용) |
+| 업로드 한도 | `utils/photoPrintUpload.ts` `checkPhotoPrintUploadLimit(files, current)`(:44-66)·`checkPhotoPrintPhotoCount(n)`(:28-36) | `upload.maxPhotos`(현재 사진 수 = 내 업로드 ∪ 외부 주입, `useImageStore.ts:74-82`) · `upload.maxMb` 초과 시 토스트 + 거부. 호출: `stores/useImageStore.ts:519`(`upload`)·`:601`(`uploadSimple`)·`:691`(드래그드롭)·`:848`(틀 mousedown 채움)·`:1163`(틀 클릭 채움 — 교체는 1장 빼고 판정), `tools/AppClipping.tsx:298`, `tools/AppEdit.tsx:289`, 자동배치 `tools/AppImage.tsx:272` |
+| 채움 시 항목 메타 | `useImageStore.ts` `writeFillTakenAt`(:265-268, 호출 :995·:1175·:1249) · `recordPhotoFillMeta`(:211-236, 호출 :1025·:1277) · `resolveFillDpi`(:175-180) · `resolveFillSourcePhotoId`(:183-205) | `extension.takenAt` = EXIF `DateTimeOriginal ?? CreateDate`(`utils/photoAutofill.ts:30-41` `parsePhotoExif`, `exifr` 동적 import — Exif 서브 IFD 의 `DateTimeOriginal` 이어야 읽힌다; 외부 주입·내 업로드 메타의 `takenAt` 도 원천 :242-261). `sourcePhotoId` = 업로드 `files` 레코드 id(`uploadedPhotoIdByUrl` :297) 또는 외부 사진 id, 없으면 키 제거. `lowRes` = 창 크기(mm) × 원본 px 로 구한 dpi `< sizes[0].minDpi`(같은 캔버스의 다른 채움이 저해상이면 true 유지) → `setItemMeta`. 사진인화 세트가 아니면 전부 no-op(legacy 직렬화 불변) |
+| 채움 기하(D8) | `useImageStore.ts` `readFrameFill`(:121-162)·`resolveFillScaleFor`(:165-168) | `fitMode` 미설정(legacy·NULL 세트)은 종전 폭 기준·프레임 중심 그대로(바이트 동일). `'cover'` 는 **창 기준** `max`(가로·세로 모두 덮고 창 중심 정렬), `'contain'` 은 `min`. 창 = 플러그인이 둔 `__frameWindow`(없으면 `resolveFrameWindowFor` 폴백, 캔버스를 모르면 `frameInsetScale`). image(PNG, inverted clipPath) 타입 틀은 유테 미지원 — inset 0 으로 채우고 `console.warn` 1회(:136-140) |
+| `apply` 재호출 | `useImageStore.ts:860`·`:1190`(채움/교체)·`:1310`(틀 삭제) · `tools/AppImage.tsx:299`(자동배치 뒤 `applyAllPhotoPrint`) · `photoPrintRehydrateAll.ts` `bindPhotoPrintCanvasEvents()`(:96-137) ← `embed.tsx:874-879` | 채움·교체·삭제·자동편집 뒤 date-overlay·흑백·clip 창이 새 사진 기준으로 갱신된다. `history:undo`/`history:redo`·`fillImage` `object:removed` 는 캔버스별 `setTimeout 0` 으로 합쳐 `applyPhotoPrintForCanvas`(D5, `historyProcessing` 중 무시) — **photo-print 세트에서만** 리스너를 붙인다. standalone `EditorView` 에는 바인딩하지 않았다(사진인화는 embed 전제) |
+| 완료 payload | `embed.tsx:744-748` `productResultFields()` → `photoPrintResultFields()`(`photoPrintRehydrateAll.ts:78-82`) · `EditorResult.items?`(`embed.tsx:484-488`) | 회원 완료 두 경로(`:2616`·`:3053`)의 `editor.complete` 에 `product { kind:'photo-print', editorType, canvasCount, sheetCount(chemical N / digital ceil(N/2)), faces }` + `items: PhotoItem[]`(캔버스 수와 동기화한 완전형). 레거시 `storige:completed` 에도 같은 키(`views/EmbedView.tsx:332-334`, 와일드카드 송신에도 동봉). 게스트 완료(`needsAuth`) 경로(`embed.tsx:2529-2549`·`:2715-2734`)는 `productResultFields` 를 호출하지 않아 `product`·`items` 미동봉 |
+| 빌드 플래그 | `apps/editor/.env.example:15` `VITE_ENABLE_PHOTO_PRINT=true` | `VITE_ENABLE_CALENDAR` 와 같은 규칙 — 미설정·`'false'` 외 모든 값 = on. `'false'` 면 플러그인 등록(`createCanvas.ts:58`)과 메뉴(`ToolBar.tsx:40`)를 끈다(저장 속성 `fitMode`/`frameInsetMm` 는 등재돼 보존). 빌드 시점 변수 |
+
+#### 21.8.4 서버·SDK·admin (편집기 관점 요약)
+
+- **api** `apps/api/src/edit-sessions/photo-items.ts`: `readSessionPhotoItems(profile, metadata, canvasCount)`(:46-56, photo-print 세트만; 상한 `resolvePhotoItemLimit` = min(`upload.maxPhotos`, `resolvePhotoItemCount`) :27-37) · `applyPhotoItemsToSheets(sheets, items)`(:67-79 — `front.page === item.canvasIndex` 인 시트에만 `copies`·`label '사진 N'` 주입, `role 'post-process'` 시트 스킵). 주입 지점: 완료 시 자동 sheet-map 잡(`edit-sessions.service.ts:1976-1979`)·재합성(`:2173-2176`) → 기존 `buildJobFiles` 가 `files[].copies/label` 로 노출(v1.24 규약 재사용, 워커·`SheetSpec` 무변경). deliverables `items`(`partner-sessions.service.ts:285-286`·`:401-407` — `product` 와 같은 검증된 프로파일 기준 :263-265, 무효면 둘 다 생략). 시트 맵 산출 실패(완료·재합성)는 `metadata.production.sheetMap { error, message, at }`(`edit-sessions.service.ts:199-235`)에 기록되고 deliverables `status 'failed'` + `errorCode/errorDetail`(`partner-sessions.service.ts:268`·`:277`·`:288-291`; 더 새로운 합성 잡이 있으면 잡 상태 우선 `:497`). `metadata.productProfile` 서버 소유(`SESSION_METADATA_SERVER_OWNED_KEYS` :187, `stampProductProfileSnapshot` :287-313 — create `:434`/update `:1041`(metadata 동봉 시)/complete `:1736` 에서 템플릿셋 프로파일로 기록, NULL 이면 키 제거, 조회 실패면 기존 유지). 검증 잡 `orderOptions.bleed` = `resolveDefaultBleedMm`(:150-158, 호출 `:2384`) — 템플릿셋 없음 3 · `cropMarkEnabled && bleedMm≠0` → 3 · 그 밖의 프로파일 non-null 세트 0 · `metadata.bleed` 명시값 우선(D9: chemical 세트 `BLEED_MISSING` 경고 제거). 검증 규칙은 현행(`sheet-validation-rules.ts:116-128` — cover 슬롯 `productKind 'sheet'`·`coverSpine 'none'`, chemical `pageStep` 없음·digital 2). DTO `PhotoPrintProfileDto`(+`PhotoPrintSizeDto`·`PhotoPrintOptionsPolicyDto`·`PhotoPrintCopiesDto`·`PhotoPrintUploadDto`, `templates/dto/product-profile.dto.ts:279-360`·`:451`). **마이그레이션·새 env·FLAGS 키 없음.**
+- **SDK** `packages/sdk`: `embed/protocol.ts` `EditorCompleteProduct.kind` + `'photo-print'`(:313)·`EditorCompletePayload.items?: EditorCompleteItem[]`(:304)·`EditorCompleteItem`(:328) · `embed/parse.ts` `PRODUCT_KINDS` 에 `'photo-print'`(:217 — 빠지면 그 세트의 `product` 키가 통째로 탈락)·`readCompleteItem(s)`(:258-315, 불량 항목 생략) · 배럴 export `embed/index.ts:43`·`src/index.ts:102` · `client` `SessionDeliverables.items?: SessionDeliverablesItem[]`(`types.ts:417`·`:455`) · README 「사진인화 세트 — `complete` payload」(`README.md:308-322`)·`SessionDeliverables.items`(`:262-265`).
+- **admin** `apps/admin/src/pages/TemplateSets/photoPrintProfilePresets.ts` 프리셋 4종(:97-126, 전부 **'오너 확정 전 기본값'** :4): `photo_chem`(:58-68 — chemical·faces 1·range 1~200 step 1·`single-pdf`·`upload { 200, 25 }`·cropMark off·bleed 0) / `photo_digital_items`(:82-93 — digital·free-back·range 2~400 step 2·`sheet-map per-sheet`·`upload { 400, 25 }`·cropMark on·bleed 3) / `photo_digital_fixedback`(+`backTemplateId` 자리표시 `REPLACE_WITH_BACK_TEMPLATE_ID` :35 — 적용 뒤 뒷면 템플릿 id 로 치환 :208) / `photo_digital_sheet`(sheet-cards 90×54). 사이즈 `4x6`(102×152mm, minDpi 200 :38)·`card-90x54`(minDpi 300 :39), `options border [none, white] fit [paper-full, image-full] finish [matte, glossy] brightnessFix/dateOverlay/grayscale true borderInsetMm 2`(:41-49), `copies 1~99`(:51), 도련 digital 3mm·chemical 0(:168-170). `TemplateSetForm.tsx` 섹션 라벨 「상품 프로파일」(:1521)·사진인화 프리셋 Select/적용 버튼(:1538-1546)·안내 `productProfileSectionHint`(:1550). 샘플 등록 `scripts/register-photo-print-samples.mjs`(`--dry-run`/`--with-site`(로컬 API 전용, 원격은 `--allow-remote`)/`--only` :13-16·:42-45) — 운영 실행은 오너 승인.
+
+#### 21.8.5 템플릿 저작 규약 (샘플 스크립트 `scripts/register-photo-print-samples.mjs` 기준)
+
+- **사진틀**은 `rect`(또는 `path`) 객체 `extensionType:'frame'`, `fill ''`, **`stroke ''`·`strokeWidth 0`**(:163-167) — 저작 stroke 는 `printExclude` 없이 PDF 에 인쇄되고, `strokeWidth 0` 이라야 bbox/중심이 재단(또는 재단+도련) 상자와 일치한다(:26-27). image(PNG) 타입 틀은 유테 미지원(§21.8.3 채움 기하).
+- **도련 세트 앞면 틀은 재단 밖 도련(bleedMm, 사방)까지 확장**(`frontCanvas` :197-209 — `left/top −b`, `width W+2b`) — 페이퍼풀이 도련까지 덮어야 재단 후 흰 가장자리가 없다. 유테·이미지풀 창을 재단 기준으로 줄이는 것은 플러그인 몫(`bleedPx`)이며 저작 기하는 바꾸지 않는다.
+- **촬영일 텍스트** `extensionType:'date-overlay'`, `extension.frameId` 로 틀에 바인딩, `deleteable/contentEditable/editable false`(:170-176) — 편집기가 `text` 를 `'YYYY.MM.DD'` 로 갱신한다(폰트는 템플릿 저작값).
+- **뒷면**: ① 자유 뒷면 = 안내 텍스트 1개(삭제·편집 가능 :211-216) / ② 고정 뒷면 = 로고 자리 사각형·텍스트에 `movable/deleteable/contentEditable=false`(:181·:218-226) + `productProfile.photoPrint.backTemplateId` = 뒷면 템플릿 id(**refs[1] 과 같은 id** :30·:302) / ③ 카드형(90×54) 뒷면 = 자유 텍스트(:228-233).
+- **세트 refs** = chemical `[앞]`, digital `[앞, 뒤]` — 편집기는 캔버스 k 를 `refs[k % refs.length]` 로 시드한다(:251, `photoPrintSeed.ts:78`).
+- 유테 띠·이미지풀 여백은 **캔버스 배경(흰색)이 보이는 방식**(:20, `PhotoPrintPlugin.ts:13`) — 배경이 흰색이 아닌 템플릿은 띠 색이 달라진다.
+
+#### 21.8.6 로컬 e2e(2026-10-19) · 테스트
+
+- **1차 e2e(수정 전, 인쇄 ① `photo_digital_items`·인화 `photo_chem`)** 통과: 런처 `items` 기록·임베드 진입(2캔버스 '사진 1 앞/뒤' 라벨·메뉴·패널), 사진틀 채움, 패널 옵션(유테 `frameInsetMm 2`·이미지풀 `contain`·흑백 `Grayscale:photo-print`+`extension.grayscale`·촬영일 텍스트), 교체 뒤 옵션 유지, 페이지 추가 2캔버스 증설, 자동저장 canvasData 에 `fitMode/frameInsetMm/extension.takenAt/grayscale` 직렬화, chemical 완료(검증 잡 `isValid true`·errors 0·`items` 3건 완전형), ② 뒷면 잠금, ③ 90×54 라벨. 결함 **D1~D9**(재오픈 마지막 캔버스 유실·런처 items 탈락·유테가 도련 안에 묻힘·촬영일 UTC·undo 뒤 date-overlay 잔존·editMode 잠금·SDK export 누락·cover 폭 기준·chemical `BLEED_MISSING`)는 전부 수정됐다(21.7). **수정 후 e2e 재실측(2026-10-20 13:50~14:05 KST) 통과**: 런처 ① 세션 `items` 2건 → 진입 즉시 캔버스 4 증설·시드(D2), 가로 사진 cover scale 0.7776(=933.08/1200, D8), 유테 창 (0.9074, 0.9367) = (98/108, 148/158) 재단 기준(D3), reload 뒤 캔버스 4·콘솔 오류 0(D1), 완료 → 검증 `warnings: []` → 자동 `sheet-map-r1`(copies 5/2·label '사진 1/2') → deliverables `ready`·`items`(lowRes 계산 193dpi<200 → true) → synthesize r2. 재실측 중 발견한 **D10**(런처 증설('cycle') 페이지의 사진틀에 클릭 채움 바인딩 누락 — 틀만 선택됨)은 `hooks/useEditorContents.ts` 추가 페이지 `loadJSON` 콜백에 `if (photoPrintProfile) rebindFrameInteractivity(targetEditor, cvs)` 한 줄로 수정·재검증(새 세션 캔버스 2 bound true, editor vitest 133/1810). 미실행: ②·③ 완료 e2e, 25캔버스 실측.
+- **전체 테스트(2026-10-20 13:51 KST(04:51Z, 로그 기준), 기준선 P2-c `9be4c37c` 대비 회귀 0)**: api jest 154 suites/3470 tests · worker jest 36/1353 · editor vitest 133 files/1810 · canvas-core vitest(Node 24) 63/754 · admin vitest 24/302 · sdk vitest 13/416 · tsc 7패키지 ok. worker jest 는 api jest 와 **동시 실행하지 않는다**(PDF 처리 테스트가 5s timeout 에 민감 — 동시 실행 1차에서 timeout 12건, 단독 재실행 전부 통과).
+
+#### 21.8.7 핵심 파일 매핑 (P2-d)
+
+| 영역 | 파일 |
+|---|---|
+| 프로파일 타입·검증·항목 모델 | `packages/types/src/product-profile.ts` (`PhotoPrintProfile`, `PhotoItem`, `PhotoItemInput`, `validatePhotoPrintBlock`, `readPhotoItems`, `resolvePhotoItemCanvasIndex`, `resolvePhotoItemCount`, `formatPhotoPageLabel`, `resolvePhotoFitMode`, `resolvePhotoFrameInsetMm`), `packages/types/src/index.ts` (`EditorMenuKey 'PHOTO_PRINT'`, `EDITOR_MENU_DEFS`) |
+| 플러그인·창 기하·흑백·촬영일 | `packages/canvas-core/src/plugins/PhotoPrintPlugin.ts`, `FrameInteractionPlugin.ts`(`_syncFromFrame` 창 동기화), `src/utils/canvas.ts`(`fitMode`·`frameInsetMm` 등재), `src/index.ts`(export) |
+| 편집기 프로파일 배선 | `apps/editor/src/utils/productProfile.ts` (`isPhotoPrintProfile`, `makePhotoLabelResolver`, `photoPrintCanvasStride`, `resolvePhotoPrintSeedCount`, `resolvePhotoPrintPageStep`) |
+| 스토어 | `apps/editor/src/stores/usePhotoPrintStore.ts` |
+| 옵션 적용·복원·세션 메타·이벤트 | `apps/editor/src/utils/photoPrintRehydrate.ts` (`resolvePhotoPrintCanvasOptions`, `resolvePhotoPrintBleedPx`, `rehydratePhotoPrint`, `applyPhotoPrintCanvas/ForCanvas/Item`), `utils/photoPrintRehydrateAll.ts` (`applyAllPhotoPrint`, `syncPhotoPrintItemsWithCanvases`, `restorePhotoPrintSessionItems`, `photoPrintSessionMetadataFields`, `photoPrintResultFields`, `bindPhotoPrintCanvasEvents`) |
+| 페이지 시드·업로드 한도 | `apps/editor/src/utils/photoPrintSeed.ts` (`seedPhotoPrintCanvas`, `lockSeededObjects`), `utils/photoPrintUpload.ts` (`checkPhotoPrintUploadLimit`, `checkPhotoPrintPhotoCount`) |
+| 채움 기하·EXIF·항목 메타 | `apps/editor/src/stores/useImageStore.ts` (`readFrameFill`, `resolveFillDpi`, `recordPhotoFillMeta`, `writeFillTakenAt`, `uploadedPhotoIdByUrl`), `utils/photoAutofill.ts` (`parsePhotoExif`) |
+| 메뉴·패널·페이지 UI | `apps/editor/src/components/editor/ToolBar.tsx`, `FeatureSidebar.tsx`, `components/photoPrint/PhotoPrintPanel.tsx`, `components/editor/SidePanel.tsx`(사진 단위 추가/삭제), `components/PageNavigation/BookNavigation.tsx`(라벨·순서 변경 비활성) |
+| 임베드 진입·복원·완료 | `apps/editor/src/embed.tsx` (`:744-748`, `:874-879`, `:1355`, `:1664-1669`, `:1821`, `:1855-1866`, `:1951-1955`, `:2616`, `:3053`), `views/EmbedView.tsx`(`:332-334`), `hooks/useEditorContents.ts` (`:528`, `:1098-1106`, `:1179-1200`, `:1251-1256`, `:1295-1302`, `:1569`), `hooks/useEmbedAutoSave.ts` (`:283`, `:332`, `:418-421`) |
+| 업로드 진입점 | `apps/editor/src/tools/AppImage.tsx`(자동배치), `AppClipping.tsx`, `AppEdit.tsx` |
+| 플러그인 등록·빌드 플래그 | `apps/editor/src/utils/createCanvas.ts` (`VITE_ENABLE_PHOTO_PRINT`), `apps/editor/.env.example` |
+| api 시트 주입·deliverables·검증 | `apps/api/src/edit-sessions/photo-items.ts`, `edit-sessions.service.ts` (`resolveDefaultBleedMm`, `SESSION_METADATA_SERVER_OWNED_KEYS`, `stampProductProfileSnapshot`, `production.sheetMap`), `partner-sessions/partner-sessions.service.ts` (`buildItemsView`, `resolveSheetMapFailure`), `templates/dto/product-profile.dto.ts` (`PhotoPrintProfileDto`) |
+| SDK | `packages/sdk/src/embed/protocol.ts`, `embed/parse.ts`, `src/types.ts` (`SessionDeliverablesItem`), `README.md` |
+| admin 프리셋·폼·샘플 등록 | `apps/admin/src/pages/TemplateSets/photoPrintProfilePresets.ts`, `TemplateSetForm.tsx`, `scripts/register-photo-print-samples.mjs` |
+
+#### 21.8.8 오너 결정 대기 (프로파일 값 — 코드 무변경으로 교체 가능)
+
+판형 `4x6`(102×152mm)·카드 `90×54` · chemical 도련 0 유지 여부(정책 A 준용 vs 미니랩 풀블리드) · 유테 폭 `borderInsetMm 2` · 업로드 한도 200/400장·25MB · 촬영일 표기 `'YYYY.MM.DD'` · ② 뒷면 `refs[1] = backTemplateId` 규약 · chemical 세션의 매수는 단일 PDF 라 `files[].copies` 가 없고 deliverables `items` 로만 전달(P3 면별 JPEG 전까지 충분한지) · `brightnessFix` 는 통과만(미리보기 미적용). 운영 샘플 세트 등록·배포는 오너 승인 후.

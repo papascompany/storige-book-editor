@@ -1,8 +1,23 @@
 import { create } from 'zustand'
 import { v4 as uuid } from 'uuid'
-import { core, ImageProcessingPlugin, selectFiles, SelectionType } from '@storige/canvas-core'
+import {
+  core,
+  ImageProcessingPlugin,
+  selectFiles,
+  SelectionType,
+  frameInsetScale,
+  mmToPxDisplay,
+  pxToMmDisplay,
+  resolveFrameWindowFor,
+  FRAME_INSET_PX_RUNTIME_KEY,
+  FRAME_WINDOW_RUNTIME_KEY,
+  PHOTO_PRINT_BLEED_PX_RUNTIME_KEY,
+  type FrameWindow,
+} from '@storige/canvas-core'
+import type { fabric } from 'fabric'
 import { useAppStore } from '@/stores/useAppStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
+import { useExternalPhotosStore } from '@/stores/useExternalPhotosStore'
 import { storageApi } from '@/api'
 import { requestCutout } from '@/api/cutout'
 import { CUTTING_LINE_CONFIG } from '@/constants/cutting'
@@ -10,6 +25,10 @@ import { showToast } from '@/stores/useToastStore'
 import { parsePhotoExif } from '@/utils/photoAutofill'
 import { resolveAssetUrl } from '@/utils/resolveAssetUrl'
 import type { UploadedPhotoMeta } from '@/utils/photoPlacement'
+import { isPhotoPrintProfile } from '@/utils/productProfile'
+import { checkPhotoPrintUploadLimit } from '@/utils/photoPrintUpload'
+import { applyPhotoPrintForCanvas, resolvePhotoItemIndexForCanvas } from '@/utils/photoPrintRehydrate'
+import { usePhotoPrintStore } from '@/stores/usePhotoPrintStore'
 
 // Feature flag for image processing (OpenCV) features
 const ENABLE_IMAGE_PROCESSING = import.meta.env.VITE_ENABLE_IMAGE_PROCESSING !== 'false'
@@ -44,6 +63,211 @@ export function checkMobileFileSize(file: File): boolean {
   return false
 }
 
+// ─── P2-d 사진인화 (2026-10-19) 보조 — 프로파일 NULL 세트에서는 전부 no-op/바이트 동일 ───────────────
+
+/** 사진인화 세트인지(업로드 한도·촬영일 기록·옵션 재적용 게이트) */
+function isPhotoPrintSession(): boolean {
+  return isPhotoPrintProfile(useSettingsStore.getState().productProfile)
+}
+
+/** 업로드 한도 판정용 현재 사진 수 — 내 업로드(객체·메타 중 큰 값) + 외부 주입 사진 */
+function currentPhotoCountForLimit(uploaded: unknown[], uploadedPhotoMeta: UploadedPhotoMeta[]): number {
+  return Math.max(uploaded.length, uploadedPhotoMeta.length) + useExternalPhotosStore.getState().photos.length
+}
+
+/** 업로드 한도 판정용 현재 사진 수 — 다른 업로드 진입점(AppClipping 모양컷·AppEdit 배경·자동배치)이 쓴다 */
+export function currentPhotoPrintPhotoCount(): number {
+  const s = useImageStore.getState()
+  return currentPhotoCountForLimit(s.uploaded, s.uploadedPhotoMeta)
+}
+
+/** 사진틀 채움 기하 — 마스크 창(window)의 프레임 대비 비율·중심과 fit 모드 */
+export interface FrameFillGeometry {
+  /** fitMode 미설정(legacy·프로파일 NULL 세트): 종전 산식(벡터 틀 폭 기준 / image 틀 max 비율)·프레임 중심 그대로 */
+  legacy: boolean
+  contain: boolean
+  sx: number
+  sy: number
+  cx: number
+  cy: number
+  /** 창 크기(px) = 프레임 × (sx, sy) */
+  winW: number
+  winH: number
+}
+
+function isFrameWindow(v: unknown): v is FrameWindow {
+  if (typeof v !== 'object' || v === null) return false
+  const w = v as Record<string, unknown>
+  return ['sx', 'sy', 'cx', 'cy'].every((k) => typeof w[k] === 'number' && Number.isFinite(w[k] as number))
+}
+
+/** 런타임 유테 px(`__frameInsetPx`, PhotoPrintPlugin.apply 가 세팅) — 없으면 직렬화된 frameInsetMm(>0) 환산, 둘 다 없으면 0 */
+function readFrameInsetPx(frame: Record<string, unknown>): number {
+  const runtime = frame[FRAME_INSET_PX_RUNTIME_KEY]
+  if (typeof runtime === 'number' && Number.isFinite(runtime)) return runtime
+  const mm = frame.frameInsetMm
+  return typeof mm === 'number' && Number.isFinite(mm) && mm > 0 ? mmToPxDisplay(mm) : 0
+}
+
+let warnedImageFrameInset = false
+
+/**
+ * 사진틀의 fitMode('cover' | 'contain' | 미설정=legacy)와 마스크 창을 읽는다(D8/serialization-1, tests-3).
+ * - 창: inset 0 이면 {1,1,프레임 중심}(종전과 바이트 동일). inset>0 이면 플러그인이 둔 `__frameWindow` 를 쓰고, 없으면
+ *   FrameInteractionPlugin 과 같은 폴백(`resolveFrameWindowFor(frame, canvas, insetPx, canvas.__photoPrintBleedPx ?? 0)`),
+ *   캔버스를 모르면(테스트 더미) frameInsetScale 비율·프레임 중심.
+ * - image(PNG, inverted clipPath) 틀은 유테를 지원하지 않는다 — `ignoreInset` 로 inset 을 0 으로 취급(console.warn 1회).
+ */
+function readFrameFill(
+  frame: Record<string, unknown>,
+  canvas: Record<string, unknown> | null | undefined,
+  frameW: number,
+  frameH: number,
+  ignoreInset = false,
+): FrameFillGeometry {
+  const center = (frame.getCenterPoint as () => { x: number; y: number }).call(frame)
+  const fit = frame.fitMode
+  const legacy = fit !== 'cover' && fit !== 'contain'
+  const contain = fit === 'contain'
+  const insetPx = readFrameInsetPx(frame)
+  let sx = 1
+  let sy = 1
+  let cx = center.x
+  let cy = center.y
+  if (insetPx > 0 && ignoreInset) {
+    if (!warnedImageFrameInset) {
+      warnedImageFrameInset = true
+      console.warn('[useImageStore] image(PNG) 타입 사진틀은 유테(frameInsetMm)를 지원하지 않아 inset 0 으로 채웁니다 — 사진인화 템플릿은 rect/path 틀 규약')
+    }
+  } else if (insetPx > 0) {
+    const win = frame[FRAME_WINDOW_RUNTIME_KEY]
+    if (isFrameWindow(win)) {
+      ;({ sx, sy, cx, cy } = win)
+    } else if (canvas && typeof canvas.getObjects === 'function') {
+      const bleed = canvas[PHOTO_PRINT_BLEED_PX_RUNTIME_KEY]
+      const w = resolveFrameWindowFor(
+        frame as unknown as fabric.Object,
+        canvas as unknown as fabric.Canvas,
+        insetPx,
+        typeof bleed === 'number' && Number.isFinite(bleed) ? bleed : 0,
+      )
+      ;({ sx, sy, cx, cy } = w)
+    } else {
+      const ratio = frameInsetScale(frameW, frameH, insetPx)
+      sx = ratio.sx
+      sy = ratio.sy
+    }
+  }
+  return { legacy, contain, sx, sy, cx, cy, winW: frameW * sx, winH: frameH * sy }
+}
+
+/** 채움 스케일 — legacy 는 호출자별 종전 산식, cover = max, contain = min (PhotoPrintPlugin.resolveFillScale 과 같은 규칙) */
+function resolveFillScaleFor(g: FrameFillGeometry, imgW: number, imgH: number, legacyScale: number): number {
+  if (g.legacy) return legacyScale
+  return (g.contain ? Math.min : Math.max)(g.winW / imgW, g.winH / imgH)
+}
+
+const MM_PER_INCH = 25.4
+
+/**
+ * 채움 실효 dpi — 창 크기(mm, 화면 px → mm)와 원본 px: min(imgW/(wMm/25.4), imgH/(hMm/25.4)). 비유한이면 Infinity(저해상 아님).
+ */
+export function resolveFillDpi(imgW: number, imgH: number, winWpx: number, winHpx: number): number {
+  const wMm = pxToMmDisplay(winWpx)
+  const hMm = pxToMmDisplay(winHpx)
+  if (!(wMm > 0) || !(hMm > 0) || !(imgW > 0) || !(imgH > 0)) return Infinity
+  return Math.min(imgW / (wMm / MM_PER_INCH), imgH / (hMm / MM_PER_INCH))
+}
+
+/** 채움 사진의 원본 식별자 — 내 업로드(files 레코드 id, url 키) 또는 외부 주입 사진의 id(호스트가 준 경우). 없으면 undefined */
+function resolveFillSourcePhotoId(fore: Record<string, unknown>, uploadedPhotoIdByUrl: Record<string, string>): string | undefined {
+  const keys: string[] = []
+  for (const k of [fore.storagePhotoUrl, fore.externalPhotoUrl, fore.src]) {
+    if (typeof k === 'string' && k) keys.push(k)
+  }
+  const getSrc = fore.getSrc
+  if (typeof getSrc === 'function') {
+    try {
+      const src = (getSrc as () => unknown).call(fore)
+      if (typeof src === 'string' && src) keys.push(src)
+    } catch { /* 이미지 미로드 등 — 무시 */ }
+  }
+  for (const k of keys) {
+    const id = uploadedPhotoIdByUrl[k]
+    if (typeof id === 'string' && id) return id
+  }
+  const external = useExternalPhotosStore.getState().photos.find((p) => keys.includes(p.url)) as
+    | (Record<string, unknown> & { url: string })
+    | undefined
+  const extId = external?.id
+  return typeof extId === 'string' && extId ? extId : undefined
+}
+
+/**
+ * 채움/교체 뒤 항목 메타 기록(contract-1/contract-2) — 사진인화 세트에서만, 캔버스가 allCanvas 에 있을 때만.
+ * lowRes = 이 채움의 dpi < sizes[0].minDpi, 또는 같은 캔버스의 다른 채움(런타임 `__lowRes`)이 저해상인 경우.
+ * sourcePhotoId 는 원본 식별자가 있으면 기록, 없으면 키 제거(런처 입력 echo 금지).
+ */
+function recordPhotoFillMeta(canvas: Record<string, unknown> | null | undefined, fore: Record<string, unknown>, g: FrameFillGeometry): void {
+  const profile = useSettingsStore.getState().productProfile
+  if (!isPhotoPrintProfile(profile) || !canvas) return
+  const { allCanvas } = useAppStore.getState()
+  const idx = allCanvas.indexOf(canvas)
+  if (idx < 0) return
+  const itemIndex = resolvePhotoItemIndexForCanvas(profile.photoPrint, idx)
+  if (itemIndex < 0) return
+  const minDpi = profile.photoPrint.sizes[0]?.minDpi
+  const imgW = typeof fore.width === 'number' ? fore.width : 0
+  const imgH = typeof fore.height === 'number' ? fore.height : 0
+  const lowRes = typeof minDpi === 'number' && minDpi > 0 && resolveFillDpi(imgW, imgH, g.winW, g.winH) < minDpi
+  fore.__lowRes = lowRes
+  let anyLow = lowRes
+  if (typeof canvas.getObjects === 'function') {
+    for (const obj of (canvas.getObjects as () => Record<string, unknown>[]).call(canvas)) {
+      if (obj !== fore && obj.extensionType === 'fillImage' && obj.__lowRes === true) anyLow = true
+    }
+  }
+  const store = usePhotoPrintStore.getState()
+  store.syncWithCanvasCount(allCanvas.length)
+  store.setItemMeta(itemIndex, {
+    lowRes: anyLow,
+    sourcePhotoId: resolveFillSourcePhotoId(fore, useImageStore.getState().uploadedPhotoIdByUrl) ?? null,
+  })
+}
+
+/**
+ * 채움 시점의 촬영일 — 이미 extension.takenAt 이 있으면 그 값, 없으면 사진 원천(외부 주입 사진·내 업로드 메타)의
+ * takenAt 을 src/externalPhotoUrl/storagePhotoUrl 로 찾는다. 사진인화 세트에서만 기록한다(legacy 직렬화 불변).
+ */
+function resolveFillTakenAt(fore: Record<string, unknown>, uploadedPhotoMeta: UploadedPhotoMeta[]): string | undefined {
+  const ext = fore.extension
+  const existing = typeof ext === 'object' && ext !== null ? (ext as { takenAt?: unknown }).takenAt : undefined
+  if (typeof existing === 'string' && existing) return existing
+  const keys = new Set<string>()
+  for (const k of [fore.externalPhotoUrl, fore.storagePhotoUrl, fore.src]) {
+    if (typeof k === 'string' && k) keys.add(k)
+  }
+  const getSrc = fore.getSrc
+  if (typeof getSrc === 'function') {
+    try {
+      const src = (getSrc as () => unknown).call(fore)
+      if (typeof src === 'string' && src) keys.add(src)
+    } catch { /* 이미지 미로드 등 — 무시 */ }
+  }
+  if (keys.size === 0) return undefined
+  const external = useExternalPhotosStore.getState().photos.find((p) => keys.has(p.url))
+  if (external?.takenAt) return external.takenAt
+  const meta = uploadedPhotoMeta.find((m) => keys.has(m.url))
+  return meta?.takenAt
+}
+
+/** fillImage 의 extension 에 takenAt 을 spread 병합으로 기록(플러그인이 같은 extension 에 grayscale 를 덧붙인다) */
+function writeFillTakenAt(fore: Record<string, unknown>, takenAt: string | undefined): void {
+  if (!takenAt) return
+  const ext = typeof fore.extension === 'object' && fore.extension !== null ? (fore.extension as Record<string, unknown>) : {}
+  fore.extension = { ...ext, takenAt }
+}
+
 // Fabric.js 타입 (실제 fabric 타입은 런타임에 로드됨)
 // canvas-core API를 통해 fabric 객체를 다루므로 타입만 정의
  
@@ -70,6 +294,8 @@ interface ImageState {
    * (호스트 업로드시각)과 시맨틱이 다름. photoPlacement.UploadedPhotoMeta 주석 참조.
    */
   uploadedPhotoMeta: UploadedPhotoMeta[]
+  /** P2-d 사진인화: storage 업로드 URL → files 레코드 id(sourcePhotoId 원천). 등록 실패분은 없음 */
+  uploadedPhotoIdByUrl: Record<string, string>
 }
 
 interface ImageActions {
@@ -172,6 +398,7 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
   uploading: false,
   uploaded: [],
   uploadedPhotoMeta: [],
+  uploadedPhotoIdByUrl: {},
 
   // Track 2 (D-2): '내 업로드' → 자동편집 입력 메타 등록.
   // 순서 제약(SKILL.md §자동편집 EXIF): EXIF 는 **원본 File** 에서 즉시 파싱한다 —
@@ -206,11 +433,11 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
         gps: exif.gps,
         exifParsed: true,
       }
-      set((s) =>
-        s.uploadedPhotoMeta.some((m) => m.url === meta.url)
-          ? {}
-          : { uploadedPhotoMeta: [...s.uploadedPhotoMeta, meta] }
-      )
+      const fileId = typeof result?.id === 'string' && result.id ? result.id : undefined
+      set((s) => ({
+        ...(s.uploadedPhotoMeta.some((m) => m.url === meta.url) ? {} : { uploadedPhotoMeta: [...s.uploadedPhotoMeta, meta] }),
+        ...(fileId ? { uploadedPhotoIdByUrl: { ...s.uploadedPhotoIdByUrl, [url]: fileId } } : {}),
+      }))
       return meta
     } catch (e) {
       console.warn('[useImageStore.registerUploadedPhoto] 등록 실패 — 자동편집 대상 제외:', e)
@@ -287,6 +514,9 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
       }
 
       const file = files[0]
+
+      // P2-d 사진인화: 프로파일 업로드 한도(maxPhotos/maxMb) — 프로파일 NULL 세트는 no-op
+      if (!checkPhotoPrintUploadLimit(files, currentPhotoCountForLimit(uploaded, get().uploadedPhotoMeta))) return undefined
 
       // 벡터 파일은 지원하지 않음 (ImageProcessingPlugin 필요)
       const fileExtension = file.name.split('.').pop()?.toLowerCase()
@@ -367,6 +597,8 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
       set({ uploading: true })
       const workspace = canvas.getObjects().find((obj: FabricObject) => obj.id === 'workspace')
       if (!workspace) return undefined
+      // P2-d 사진인화: 드래그드롭(EditorView) 등 File 직접 경로도 프로파일 업로드 한도 — 프로파일 NULL 세트는 no-op
+      if (!checkPhotoPrintUploadLimit([file], currentPhotoCountForLimit(uploaded, get().uploadedPhotoMeta))) return undefined
 
       // 벡터 파일은 지원 안 함 (uploadSimple과 동일)
       const ext = file.name.split('.').pop()?.toLowerCase()
@@ -454,6 +686,9 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
       }
 
       const file = files[0]
+
+      // P2-d 사진인화: 프로파일 업로드 한도(maxPhotos/maxMb) — 프로파일 NULL 세트는 no-op
+      if (!checkPhotoPrintUploadLimit(files, currentPhotoCountForLimit(uploaded, get().uploadedPhotoMeta))) return undefined
 
       // 모바일 메모리 가드 — 4MB 초과 차단 (P0-2 사용자 보고: iOS Safari 크래시)
       if (!checkMobileFileSize(file)) return undefined
@@ -609,6 +844,8 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
               return null
             }
             const selectedFile = selectedFiles[0]
+            // P2-d 사진인화: 프로파일 업로드 한도(maxPhotos/maxMb) — 프로파일 NULL 세트는 no-op
+            if (!checkPhotoPrintUploadLimit(selectedFiles, currentPhotoCountForLimit(get().uploaded, get().uploadedPhotoMeta))) return
             const fabricImage = await core.fileToImage(canvas, selectedFile, imagePlugin)
             if (!fabricImage) {
               console.log('no image selected')
@@ -619,6 +856,8 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
             canvas.add(fore)
             canvas.setActiveObject(fore)
             canvas.renderAll()
+            // P2-d 사진인화: 채움 뒤 항목 옵션 재적용(흑백·촬영일). 프로파일 NULL 이면 즉시 0.
+            if (isPhotoPrintSession()) void applyPhotoPrintForCanvas(canvas)
           })
         } else if (type === SelectionType.background) {
           item = addBackground(item, canvas)
@@ -693,12 +932,17 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
 
   // 이미지 채우기
   fillImage: async (
-    _canvas: FabricCanvas,
+    canvas: FabricCanvas,
     fore: FabricObject,
     rear: FabricObject,
     imagePlugin: ImageProcessingPlugin
   ): Promise<FabricObject> => {
-    const centerOf = rear.getCenterPoint()
+    // P2-d 사진인화(D8): 창(window) 기하 — fitMode 'cover' 는 창을 가로·세로 모두 덮는 max 비율, 'contain' 은 min, 미설정(legacy)은
+    // 종전 폭 기준·프레임 중심 그대로(바이트 동일). 유테 창은 `__frameWindow`(없으면 resolveFrameWindowFor 폴백) 기준.
+    const rearW = rear.width! * rear.scaleX!
+    const rearH = rear.height! * rear.scaleY!
+    const g = readFrameFill(rear, canvas, rearW, rearH)
+    const centerOf = { x: g.cx, y: g.cy }
 
     let rearClip: FabricObject
 
@@ -742,6 +986,14 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
     // 등 비-frame 채우기는 기존 동작(사진 직접 선택)을 유지해 회귀를 막는다.
     const asFrame = rear.extensionType === 'frame'
 
+    // 사진 스케일: legacy = 종전 폭 기준(rearW/imgW), cover = max(창 비율), contain = min. clip 복제본은 창 비율·중심으로.
+    const { sx, sy } = g
+    const fillScale = resolveFillScaleFor(g, fore.width!, fore.height!, (rearW * sx) / fore.width!)
+    if (sx !== 1 || sy !== 1) {
+      rearClip.set({ scaleX: (rearClip.scaleX ?? 1) * sx, scaleY: (rearClip.scaleY ?? 1) * sy })
+    }
+    if (asFrame && isPhotoPrintSession()) writeFillTakenAt(fore, resolveFillTakenAt(fore, get().uploadedPhotoMeta))
+
     fore.set({
       extensionType: 'fillImage',
       left: centerOf.x,
@@ -752,8 +1004,8 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
       // 프레임 채우기: 비선택(프레임=선택단위). 모양틀: 선택 가능(기존 동작).
       selectable: !asFrame,
       evented: !asFrame,
-      scaleX: (rear.width! * rear.scaleX!) / fore.width!,
-      scaleY: (rear.width! * rear.scaleX!) / fore.width!,
+      scaleX: fillScale,
+      scaleY: fillScale,
       id: rear.id + '_fillImage',
       // 프레임↔사진 링크 (vector/SVG 프레임 경로). frameRef = makeFrameInteractive.isFilled()
       // 중복채움 가드, parentLayerId = ObjectPlugin 삭제 동반제거·z-order 동기화 키.
@@ -769,6 +1021,8 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
     // z-order 보정: SVG 프레임도 image 경로(fillImageIntoFrame)와 통일해 프레임을 위로.
     // (모양틀은 기존 스택 유지를 위해 건드리지 않음)
     if (asFrame) rear.bringToFront()
+    // P2-d 사진인화: 항목 lowRes·sourcePhotoId 기록(프로파일 NULL·allCanvas 밖 캔버스면 no-op)
+    if (asFrame) recordPhotoFillMeta(canvas, fore, g)
 
     return fore
   },
@@ -900,12 +1154,25 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
       const selectedFiles = await selectFiles({ accept: 'image/*', multiple: false })
       if (!selectedFiles || selectedFiles.length === 0) return
       const selectedFile = selectedFiles[0]
+      // P2-d 사진인화: 프로파일 업로드 한도(maxPhotos/maxMb) — 프로파일 NULL 세트는 no-op.
+      // 교체(이미 채워진 틀)는 사진 수가 늘지 않으므로 수량 한도에서 1장 빼고 판정한다.
+      const photoPrint = isPhotoPrintSession()
+      if (photoPrint) {
+        const replacing = !!findFilledImage()
+        const count = currentPhotoCountForLimit(get().uploaded, get().uploadedPhotoMeta) - (replacing ? 1 : 0)
+        if (!checkPhotoPrintUploadLimit(selectedFiles, count)) return
+      }
       if (!checkMobileFileSize(selectedFile)) return
 
       const fabricImage = await core.fileToImage(canvas, selectedFile, imagePlugin)
       if (!fabricImage) {
         console.log('no image selected')
         return
+      }
+      // P2-d 사진인화: 촬영일(EXIF DateTimeOriginal)을 원본 File 에서 읽어 채움 시 extension.takenAt 으로 기록(사진인화 세트만)
+      if (photoPrint) {
+        const exif = await parsePhotoExif(selectedFile)
+        writeFillTakenAt(fabricImage as Record<string, unknown>, exif.takenAt)
       }
 
       // 새 이미지 로드 성공 후에만 기존 사진을 치운다(로드 실패 시 기존 채움 유지).
@@ -919,6 +1186,8 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
       // 사진 위치 조정은 프레임 더블클릭(FrameInteractionPlugin adjust 모드)으로.
       canvas.setActiveObject(frame)
       canvas.requestRenderAll()
+      // P2-d 사진인화: 채움/교체 뒤 항목 옵션 재적용(date-overlay·흑백이 새 사진 기준으로 갱신). 프로파일 NULL 이면 즉시 0.
+      if (photoPrint) void applyPhotoPrintForCanvas(canvas)
     })
   },
 
@@ -938,12 +1207,19 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
       return get().fillImage(canvas, fore, frame, imagePlugin)
     }
 
-    const centerOf = frame.getCenterPoint()
+    // P2-d 사진인화: 사진틀 fitMode(cover 기본 | contain) — 미설정(legacy)이면 max 비율·프레임 중심으로 종전과 바이트 동일.
+    // image(PNG) 틀은 유테(inset)를 지원하지 않는다(tests-3): inset 을 0 으로 취급해 사진이 창 전체를 덮게 한다(console.warn 1회).
+    const frameW = frame.width! * frame.scaleX!
+    const frameH = frame.height! * frame.scaleY!
+    const g = readFrameFill(frame, canvas, frameW, frameH, true)
+    const { sx, sy } = g
+    const centerOf = { x: g.cx, y: g.cy }
 
     // 프레임 이미지를 복제해 alpha 마스크로 사용.
     // inverted:true → 프레임이 "투명한" 곳에서 사진이 보이고, "불투명한" 곳에서 가려진다.
     // absolutePositioned:true → clipPath 가 사진의 로컬 좌표가 아니라 캔버스 절대좌표에 고정,
     //   화면상의 프레임과 정확히 같은 위치/크기/각도로 마스킹된다.
+    // 유테(frameInsetMm)는 clip 복제본 scale 에 축별 비율만 곱한다(FrameInteractionPlugin._syncFromFrame 과 동일 규약).
     const frameClip: FabricObject = await new Promise<FabricObject>((resolve) => {
       frame.clone((cloned: FabricObject) => {
         cloned.set({
@@ -952,8 +1228,8 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
           originY: 'center',
           left: centerOf.x,
           top: centerOf.y,
-          scaleX: frame.scaleX,
-          scaleY: frame.scaleY,
+          scaleX: sx === 1 ? frame.scaleX : frame.scaleX * sx,
+          scaleY: sy === 1 ? frame.scaleY : frame.scaleY * sy,
           angle: frame.angle,
           flipX: frame.flipX,
           flipY: frame.flipY,
@@ -967,9 +1243,10 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
     })
 
     // 사진이 프레임 창 전체를 덮도록 스케일링 (가로/세로 중 큰 비율로 cover)
-    const frameW = frame.width! * frame.scaleX!
-    const frameH = frame.height! * frame.scaleY!
-    const coverScale = Math.max(frameW / fore.width!, frameH / fore.height!)
+    // P2-d 사진인화: fitMode 'contain'(이미지풀)이면 작은 비율.
+    const coverScale = resolveFillScaleFor(g, fore.width!, fore.height!, Math.max(frameW / fore.width!, frameH / fore.height!))
+    // 촬영일: 사진인화 세트에서만 채움 시점에 extension.takenAt 기록(외부 주입·내 업로드 메타의 EXIF 원천)
+    if (isPhotoPrintSession()) writeFillTakenAt(fore, resolveFillTakenAt(fore, get().uploadedPhotoMeta))
 
     fore.set({
       extensionType: 'fillImage',
@@ -996,6 +1273,8 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
     // 프레임을 사진 위로 올려 프레임 테두리/장식이 사진을 덮도록 z-order 보정.
     // (사진은 위 add 호출 직후 맨 위에 놓이므로 프레임을 다시 최상단으로)
     frame.bringToFront()
+    // P2-d 사진인화: 항목 lowRes·sourcePhotoId 기록(프로파일 NULL·allCanvas 밖 캔버스면 no-op)
+    recordPhotoFillMeta(canvas, fore, g)
 
     return fore
   },
@@ -1027,6 +1306,8 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
     frame.clipPath = undefined
     canvas.remove(frame)
     canvas.requestRenderAll()
+    // P2-d 사진인화: 틀 삭제 뒤 항목 옵션 재적용(date-overlay 가 남은 첫 채워진 틀 기준으로 갱신). 프로파일 NULL 이면 즉시 0.
+    if (isPhotoPrintSession()) void applyPhotoPrintForCanvas(canvas)
     return true
   },
 

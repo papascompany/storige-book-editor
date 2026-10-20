@@ -296,19 +296,53 @@ export interface EditorCompletePayload {
    * 프로파일이 없는 기존 세트에서는 키 자체가 없다. `files`·`pages`·`pageCount` 산식과 독립이다.
    */
   product?: EditorCompleteProduct;
+  /**
+   * ADDITIVE 2026-10-19 P2-d 사진인화(v1.25) — `product.kind === 'photo-print'` 세트에서만 실리는
+   * 사진 항목 목록(항목 1건 = 사진 1장 = 주문 항목 1건). 그 밖의 세트·게스트 완료에서는 키 자체가 없다.
+   * 형태가 불량한 항목은 판독에서 생략되므로 길이가 편집기 발신과 다를 수 있다 — 수량·가격 확정은 호스트 책임이다.
+   */
+  items?: EditorCompleteItem[];
 }
 
 /**
  * ADDITIVE 2026-10-17 P1 캘린더 — `editor.complete.product`.
  * `sheetCount` 는 faces=2 면 ceil(canvasCount/2), faces=1 이면 canvasCount (캘린더 26캔버스 → 13장 양면).
+ * `kind` 'photo-print' 는 2026-10-19 P2-d(v1.25) additive — shape 은 불변(chemical N / digital ceil(N/2)).
  */
 export interface EditorCompleteProduct {
-  kind: 'sheet' | 'calendar';
+  kind: 'sheet' | 'calendar' | 'photo-print';
   /** 운영 식별용 자유 코드(예: 'calendar_desk_large') — 분기 근거로 쓰지 않는다 */
   editorType: string;
   canvasCount: number;
   sheetCount: number;
   faces: 1 | 2;
+}
+
+/**
+ * ADDITIVE 2026-10-19 P2-d 사진인화(v1.25) — `editor.complete.items[]` 원소.
+ *
+ * 서버 정본은 `@storige/types` 의 `PhotoItem` 이며 SDK 는 동형으로 재선언한다(드리프트는
+ * types-parity.spec 이 감시). 편집기가 저장·완료 시 템플릿셋 프로파일로 정제한 **완전형**이다 —
+ * `sizeCode` 는 세션 사이즈(P2: 프로파일 `sizes[0].code`) 고정, `copies` 는 프로파일 범위로 클램프된 값.
+ */
+export interface EditorCompleteItem {
+  /** 항목 순번(0부터) */
+  index: number;
+  /** 앞면 캔버스 인덱스 — chemical i, digital 2i */
+  canvasIndex: number;
+  /** 업로드 레코드·외부 사진 id(있을 때만 키 존재) */
+  sourcePhotoId?: string;
+  sizeCode: string;
+  /** 1 이상 정수 */
+  copies: number;
+  border: 'none' | 'white';
+  fit: 'paper-full' | 'image-full';
+  finish: 'matte' | 'glossy';
+  brightnessFix: boolean;
+  dateOverlay: boolean;
+  grayscale: boolean;
+  /** 프로파일 minDpi 미달 경고(완료 차단 없음 — 호스트 판단) */
+  lowRes: boolean;
 }
 
 /**

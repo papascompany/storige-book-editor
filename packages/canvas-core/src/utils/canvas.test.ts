@@ -101,3 +101,14 @@ describe('Canvas lock state serialization configuration', () => {
     })
   })
 })
+// P2-d 사진인화 (2026-10-19): 실 core.extendFabricOption 등재 검사 — 미등재 시 저장 1회 왕복에 침묵 소실.
+import { core } from './canvas'
+
+describe('P2-d photo-print serialization keys in real core.extendFabricOption', () => {
+  it('registers fitMode and frameInsetMm exactly once, and keeps extension (takenAt carrier) registered', () => {
+    const list = core.extendFabricOption as string[]
+    for (const key of ['fitMode', 'frameInsetMm', 'extension', 'filters', 'parentLayerId', 'frameRef']) {
+      expect(list.filter((p) => p === key).length, `Property ${key} should appear exactly once`).toBe(1)
+    }
+  })
+})

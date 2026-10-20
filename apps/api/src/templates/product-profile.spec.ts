@@ -5,13 +5,20 @@
 import {
   addMonths,
   formatCalendarPageLabel,
+  formatPhotoPageLabel,
   isStartMonthAllowed,
+  readPhotoItems,
   resolveCalendarCanvasCount,
   resolveCalendarCanvasSlot,
+  resolvePhotoFitMode,
+  resolvePhotoFrameInsetMm,
+  resolvePhotoItemCanvasIndex,
+  resolvePhotoItemCount,
   resolveProductProfile,
   summarizeProductProfile,
   validateProductProfile,
   type CalendarProfile,
+  type PhotoPrintProfile,
   type ProductProfile,
 } from '@storige/types';
 
@@ -49,6 +56,63 @@ const sheetProfile: ProductProfile = {
   pages: { kind: 'range', min: 1, max: 10, labelRule: 'default' },
   sheet: { faces: 1, canvasLayout: 'canvas-per-sheet', binding: 'none', backRotation: 0, duplexFlip: 'short-edge' },
   output: { mode: 'single-pdf' },
+};
+
+// ── P2-d 사진인화 프로파일 4종(admin 프리셋과 같은 shape) ─────────────────────────────────────
+
+const photoPrintBlock: PhotoPrintProfile = {
+  process: 'chemical',
+  composition: 'per-photo-free-back',
+  sizes: [{ code: '4x6', widthMm: 102, heightMm: 152, minDpi: 200 }],
+  options: { border: ['none', 'white'], fit: ['paper-full', 'image-full'], finish: ['matte', 'glossy'], brightnessFix: true, dateOverlay: true, grayscale: true },
+  copies: { min: 1, max: 99 },
+  upload: { maxPhotos: 200, maxMb: 25 },
+};
+
+/** 인화(chemical) — 단면 미니랩, 단일 PDF */
+const photoChem: ProductProfile = {
+  version: 1,
+  kind: 'photo-print',
+  editorType: 'photo_chem',
+  pages: { kind: 'range', min: 1, max: 200, step: 1, labelRule: 'photo' },
+  sheet: { faces: 1, canvasLayout: 'canvas-per-sheet', binding: 'none', backRotation: 0, duplexFlip: 'short-edge' },
+  photoPrint: photoPrintBlock,
+  output: { mode: 'single-pdf' },
+};
+
+const digitalBase: Omit<ProductProfile, 'editorType' | 'photoPrint'> = {
+  version: 1,
+  kind: 'photo-print',
+  pages: { kind: 'range', min: 2, max: 400, step: 2, labelRule: 'photo' },
+  sheet: { faces: 2, canvasLayout: 'canvas-pair', binding: 'none', pairing: 'same-sheet', backRotation: 0, duplexFlip: 'short-edge' },
+  output: { mode: 'sheet-map', sheetFiles: 'per-sheet' },
+};
+
+/** 인쇄 ① — 사진별 자유 뒷면 */
+const photoDigitalItems: ProductProfile = {
+  ...digitalBase,
+  editorType: 'photo_digital_items',
+  photoPrint: { ...photoPrintBlock, process: 'digital' },
+};
+
+/** 인쇄 ② — 사진별 고정 뒷면(backTemplateId) */
+const photoDigitalFixedBack: ProductProfile = {
+  ...digitalBase,
+  editorType: 'photo_digital_fixedback',
+  photoPrint: { ...photoPrintBlock, process: 'digital', composition: 'per-photo-fixed-back', backTemplateId: 'tpl-back-1' },
+};
+
+/** 인쇄 ③ — 카드형(앞/뒤 한 쌍) */
+const photoDigitalSheet: ProductProfile = {
+  ...digitalBase,
+  editorType: 'photo_digital_sheet',
+  photoPrint: {
+    ...photoPrintBlock,
+    process: 'digital',
+    composition: 'sheet-cards',
+    sizes: [{ code: 'card-90x54', widthMm: 90, heightMm: 54, minDpi: 300 }],
+    options: { ...photoPrintBlock.options, borderInsetMm: 3 },
+  },
 };
 
 /** 깊은 복제 후 경로 수정 — 테스트 가독성용 */
@@ -105,9 +169,15 @@ describe('validateProductProfile', () => {
   });
 
   it('kind 오류·editorType 형식', () => {
-    const errs = validateProductProfile(withPatch(deskLarge, (p) => { p.kind = 'photo-print'; p.editorType = 'Bad-Code'; }));
-    expect(errs.some((e) => e.startsWith('kind 는'))).toBe(true);
+    const errs = validateProductProfile(withPatch(deskLarge, (p) => { p.kind = 'poster'; p.editorType = 'Bad-Code'; }));
+    expect(errs).toContain('kind 는 sheet|calendar|photo-print 중 하나여야 합니다');
     expect(errs.some((e) => e.startsWith('editorType'))).toBe(true);
+  });
+
+  it("kind 'photo-print' 는 P2-d 부터 어휘로 통과 — photoPrint 블록이 없으면 그 문구만", () => {
+    const errs = validateProductProfile(withPatch(deskLarge, (p) => { p.kind = 'photo-print'; delete p.calendar; p.pages.labelRule = 'default'; }));
+    expect(errs.some((e) => e.startsWith('kind 는'))).toBe(false);
+    expect(errs).toContain("kind='photo-print' 는 photoPrint 프로파일이 필요합니다");
   });
 
   it('pages fixed 는 count ≥1, range 는 min<=max', () => {
@@ -211,6 +281,182 @@ describe('validateProductProfile', () => {
       .toEqual([]);
     const errs = validateProductProfile(withPatch(sheetProfile, (p) => { p.postProcess = { pages: 0, source: 'editor', colorRule: 'cmyk', allowTransparency: 'no' }; }));
     expect(errs).toHaveLength(4);
+  });
+});
+
+// ── P2-d 사진인화 — 검증 결합 규칙 ───────────────────────────────────────────────────────────
+describe('validateProductProfile — photo-print (P2-d, 2026-10-19)', () => {
+  it('사진인화 프로파일 4종(인화·인쇄 ①②③)은 오류 0, resolveProductProfile 은 같은 참조', () => {
+    const warn = jest.fn();
+    for (const profile of [photoChem, photoDigitalItems, photoDigitalFixedBack, photoDigitalSheet]) {
+      expect(validateProductProfile(profile)).toEqual([]);
+      expect(resolveProductProfile({ productProfile: profile }, warn)).toBe(profile);
+    }
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('chemical 에 faces 2(canvas-pair) → 결합 오류', () => {
+    const errs = validateProductProfile(withPatch(photoChem, (p) => {
+      p.sheet = { faces: 2, canvasLayout: 'canvas-pair', binding: 'none', pairing: 'same-sheet', backRotation: 0, duplexFlip: 'short-edge' };
+    }));
+    expect(errs).toEqual(["photoPrint.process='chemical' 은 sheet.faces=1(canvas-per-sheet) 이어야 합니다"]);
+  });
+
+  it('chemical 에 composition fixed-back / output sheet-map → 결합 오류', () => {
+    expect(validateProductProfile(withPatch(photoChem, (p) => { p.photoPrint.composition = 'per-photo-fixed-back'; p.photoPrint.backTemplateId = 'x'; })))
+      .toEqual(["photoPrint.process='chemical' 은 composition 'per-photo-free-back' 만 허용합니다"]);
+    expect(validateProductProfile(withPatch(photoChem, (p) => { p.output = { mode: 'sheet-map' }; })))
+      .toEqual(["photoPrint.process='chemical' 은 output.mode='single-pdf' 여야 합니다"]);
+  });
+
+  it('digital 에 pages.step 1 → 결합 오류', () => {
+    expect(validateProductProfile(withPatch(photoDigitalItems, (p) => { p.pages.step = 1; })))
+      .toEqual(["photoPrint.process='digital' 은 pages.step=2 여야 합니다"]);
+  });
+
+  it('digital 에 faces 1 / pairing offset-next / min 홀수 → 결합 오류', () => {
+    expect(validateProductProfile(withPatch(photoDigitalItems, (p) => {
+      p.sheet = { faces: 1, canvasLayout: 'canvas-per-sheet', binding: 'none', backRotation: 0, duplexFlip: 'short-edge' };
+    }))).toEqual(["photoPrint.process='digital' 은 sheet.faces=2(canvas-pair) 이어야 합니다"]);
+    expect(validateProductProfile(withPatch(photoDigitalItems, (p) => { p.sheet.pairing = 'offset-next'; })))
+      .toEqual(["photoPrint.process='digital' 은 sheet.pairing 'same-sheet' 만 허용합니다"]);
+    expect(validateProductProfile(withPatch(photoDigitalItems, (p) => { p.pages.min = 3; })))
+      .toEqual(["photoPrint.process='digital' 은 pages.min/max 가 짝수여야 합니다"]);
+  });
+
+  it("fixed-back 에 backTemplateId 없음 → 결합 오류; 빈 문자열은 형식 오류", () => {
+    expect(validateProductProfile(withPatch(photoDigitalFixedBack, (p) => { delete p.photoPrint.backTemplateId; })))
+      .toEqual(["photoPrint.composition='per-photo-fixed-back' 은 backTemplateId 가 필요합니다"]);
+    expect(validateProductProfile(withPatch(photoDigitalFixedBack, (p) => { p.photoPrint.backTemplateId = ' '; })))
+      .toEqual(['photoPrint.backTemplateId 는 생략하거나 비어 있지 않은 문자열이어야 합니다']);
+  });
+
+  it("photo-print 는 pages.kind 'range' 만 — fixed 는 결합 오류", () => {
+    expect(validateProductProfile(withPatch(photoChem, (p) => { p.pages = { kind: 'fixed', count: 10, labelRule: 'photo' }; })))
+      .toEqual(["photo-print 프로파일은 pages.kind='range' 여야 합니다"]);
+  });
+
+  it("labelRule 'photo' 는 photo-print 전용 — calendar/sheet 에 쓰면 오류; photoPrint 블록도 photo-print 전용", () => {
+    expect(validateProductProfile(withPatch(sheetProfile, (p) => { p.pages.labelRule = 'photo'; })))
+      .toEqual(["pages.labelRule='photo' 는 kind='photo-print' 에서만 쓸 수 있습니다"]);
+    const calErrs = validateProductProfile(withPatch(deskLarge, (p) => { p.pages.labelRule = 'photo'; }));
+    expect(calErrs).toContain("calendar 프로파일은 pages.labelRule='month' 여야 합니다");
+    expect(validateProductProfile(withPatch(sheetProfile, (p) => { p.photoPrint = photoPrintBlock; })))
+      .toEqual(["photoPrint 프로파일은 kind='photo-print' 에서만 지정합니다"]);
+    expect(validateProductProfile(withPatch(deskLarge, (p) => { p.photoPrint = photoPrintBlock; })))
+      .toEqual(["photoPrint 프로파일은 kind='photo-print' 에서만 지정합니다"]);
+  });
+
+  it('photoPrint 블록 형식 — sizes 2개·code 형식·어휘 중복·copies 역전·upload', () => {
+    const errs = validateProductProfile(withPatch(photoChem, (p) => {
+      p.photoPrint.sizes = [{ code: '4x6', widthMm: 102, heightMm: 152, minDpi: 200 }, { code: '5x7', widthMm: 127, heightMm: 178, minDpi: 200 }];
+      p.photoPrint.options.border = ['none', 'none'];
+      p.photoPrint.copies = { min: 5, max: 1 };
+      p.photoPrint.upload = { maxPhotos: 0, maxMb: 25 };
+    }));
+    expect(errs).toContain('photoPrint.sizes 는 정확히 1개여야 합니다(P2: 1세션 1사이즈)');
+    expect(errs).toContain('photoPrint.options.border 는 none|white 의 중복 없는 비어 있지 않은 배열이어야 합니다');
+    expect(errs).toContain('photoPrint.copies.min/max 는 1 이상 정수이고 min<=max 여야 합니다');
+    expect(errs).toContain('photoPrint.upload.maxPhotos 는 1 이상 정수, maxMb 는 0보다 큰 숫자여야 합니다');
+    expect(validateProductProfile(withPatch(photoChem, (p) => { p.photoPrint.sizes[0].code = '4 x 6'; })))
+      .toEqual(["photoPrint.sizes[0].code 는 영숫자·'_'·'-' 1~32자여야 합니다"]);
+  });
+
+  it('기존 캘린더·낱장 프로파일 결과는 불변(오류 0)', () => {
+    expect(validateProductProfile(deskLarge)).toEqual([]);
+    expect(validateProductProfile(sheetProfile)).toEqual([]);
+  });
+});
+
+// ── P2-d 사진인화 — 항목 매핑·정제(순수 함수) ─────────────────────────────────────────────
+describe('사진인화 항목 매핑(순수 함수)', () => {
+  it('resolvePhotoItemCanvasIndex: chemical i→i, digital(①②③) i→2i, 비정수·음수 → -1', () => {
+    expect(resolvePhotoItemCanvasIndex(photoChem, 0)).toBe(0);
+    expect(resolvePhotoItemCanvasIndex(photoChem, 7)).toBe(7);
+    expect(resolvePhotoItemCanvasIndex(photoDigitalItems, 0)).toBe(0);
+    expect(resolvePhotoItemCanvasIndex(photoDigitalItems, 3)).toBe(6);
+    expect(resolvePhotoItemCanvasIndex(photoDigitalFixedBack, 3)).toBe(6);
+    expect(resolvePhotoItemCanvasIndex(photoDigitalSheet, 3)).toBe(6);
+    expect(resolvePhotoItemCanvasIndex(photoChem, -1)).toBe(-1);
+    expect(resolvePhotoItemCanvasIndex(photoDigitalItems, 1.5)).toBe(-1);
+  });
+
+  it('resolvePhotoItemCount: chemical N / digital ceil(N/2), 0 이하 → 0', () => {
+    expect(resolvePhotoItemCount(photoChem, 5)).toBe(5);
+    expect(resolvePhotoItemCount(photoDigitalItems, 6)).toBe(3);
+    expect(resolvePhotoItemCount(photoDigitalItems, 5)).toBe(3);
+    expect(resolvePhotoItemCount(photoChem, 0)).toBe(0);
+  });
+
+  it("formatPhotoPageLabel: chemical '사진 3', digital '사진 3 앞/뒤', photoPrint 없음·음수 → null", () => {
+    expect(formatPhotoPageLabel(photoChem, 2)).toBe('사진 3');
+    expect(formatPhotoPageLabel(photoDigitalItems, 4)).toBe('사진 3 앞');
+    expect(formatPhotoPageLabel(photoDigitalItems, 5)).toBe('사진 3 뒤');
+    expect(formatPhotoPageLabel(sheetProfile, 0)).toBeNull();
+    expect(formatPhotoPageLabel(photoChem, -1)).toBeNull();
+  });
+
+  it('resolvePhotoFitMode / resolvePhotoFrameInsetMm (§13-3 매핑)', () => {
+    expect(resolvePhotoFitMode('paper-full')).toBe('cover');
+    expect(resolvePhotoFitMode('image-full')).toBe('contain');
+    expect(resolvePhotoFrameInsetMm(photoPrintBlock, 'none')).toBe(0);
+    expect(resolvePhotoFrameInsetMm(photoPrintBlock, 'white')).toBe(2);
+    expect(resolvePhotoFrameInsetMm(photoDigitalSheet.photoPrint as PhotoPrintProfile, 'white')).toBe(3);
+  });
+
+  describe('readPhotoItems', () => {
+    it('배열 아님 → []', () => {
+      expect(readPhotoItems(undefined, photoPrintBlock)).toEqual([]);
+      expect(readPhotoItems(null)).toEqual([]);
+      expect(readPhotoItems({ 0: {} })).toEqual([]);
+      expect(readPhotoItems('[]')).toEqual([]);
+    });
+
+    it('프로파일 정제 — 불량(객체 아님) 생략, index/canvasIndex 재부여, sizeCode 고정, copies 클램프, 어휘·플래그 정책', () => {
+      const digital = photoDigitalItems.photoPrint as PhotoPrintProfile;
+      const items = readPhotoItems(
+        [
+          { index: 9, canvasIndex: 9, sizeCode: '5x7', copies: 5, border: 'white', fit: 'image-full', finish: 'glossy', dateOverlay: true, grayscale: true, sourcePhotoId: 'p1' },
+          'junk',
+          null,
+          { copies: 500, border: 'black', fit: 'x', finish: 1, brightnessFix: 'yes', lowRes: true, sourcePhotoId: '' },
+          { copies: 0 },
+        ],
+        digital,
+      );
+      expect(items).toEqual([
+        { index: 0, canvasIndex: 0, sourcePhotoId: 'p1', sizeCode: '4x6', copies: 5, border: 'white', fit: 'image-full', finish: 'glossy', brightnessFix: false, dateOverlay: true, grayscale: true, lowRes: false },
+        { index: 1, canvasIndex: 2, sizeCode: '4x6', copies: 99, border: 'none', fit: 'paper-full', finish: 'matte', brightnessFix: false, dateOverlay: false, grayscale: false, lowRes: true },
+        { index: 2, canvasIndex: 4, sizeCode: '4x6', copies: 1, border: 'none', fit: 'paper-full', finish: 'matte', brightnessFix: false, dateOverlay: false, grayscale: false, lowRes: false },
+      ]);
+      expect(items[1]).not.toHaveProperty('sourcePhotoId');
+      // chemical 은 canvasIndex = 순번
+      expect(readPhotoItems([{}, {}, {}], photoPrintBlock).map((i) => i.canvasIndex)).toEqual([0, 1, 2]);
+    });
+
+    it('프로파일 정책 — 허용 목록 밖 어휘는 첫 허용값, 정책 false 플래그는 false 고정, copies.min 으로 하한', () => {
+      const restricted: PhotoPrintProfile = {
+        ...photoPrintBlock,
+        options: { border: ['white'], fit: ['image-full'], finish: ['glossy'], brightnessFix: false, dateOverlay: false, grayscale: false },
+        copies: { min: 2, max: 4 },
+      };
+      expect(readPhotoItems([{ border: 'none', fit: 'paper-full', finish: 'matte', brightnessFix: true, dateOverlay: true, grayscale: true, copies: 1 }], restricted))
+        .toEqual([{ index: 0, canvasIndex: 0, sizeCode: '4x6', copies: 2, border: 'white', fit: 'image-full', finish: 'glossy', brightnessFix: false, dateOverlay: false, grayscale: false, lowRes: false }]);
+      expect(readPhotoItems([{ copies: 10 }], restricted)[0].copies).toBe(4);
+    });
+
+    it("프로파일 없음 — 형식만 정제: canvasIndex 입력값(0 이상 정수) 또는 순번, sizeCode 문자열 아니면 '', copies 1 이상 정수(정수형 문자열 '2' 포함) 아니면 1", () => {
+      expect(readPhotoItems([{ canvasIndex: 4, sizeCode: '5x7', copies: 3, fit: 'image-full' }, { canvasIndex: -1, sizeCode: 7, copies: '2' }, { copies: 'abc' }])).toEqual([
+        { index: 0, canvasIndex: 4, sizeCode: '5x7', copies: 3, border: 'none', fit: 'image-full', finish: 'matte', brightnessFix: false, dateOverlay: false, grayscale: false, lowRes: false },
+        { index: 1, canvasIndex: 1, sizeCode: '', copies: 2, border: 'none', fit: 'paper-full', finish: 'matte', brightnessFix: false, dateOverlay: false, grayscale: false, lowRes: false },
+        { index: 2, canvasIndex: 2, sizeCode: '', copies: 1, border: 'none', fit: 'paper-full', finish: 'matte', brightnessFix: false, dateOverlay: false, grayscale: false, lowRes: false },
+      ]);
+    });
+  });
+
+  it('summarizeProductProfile: photo-print 도 같은 산식(chemical N / digital ceil(N/2))', () => {
+    expect(summarizeProductProfile(photoChem, 3)).toEqual({ kind: 'photo-print', editorType: 'photo_chem', canvasCount: 3, sheetCount: 3, faces: 1 });
+    expect(summarizeProductProfile(photoDigitalItems, 6)).toEqual({ kind: 'photo-print', editorType: 'photo_digital_items', canvasCount: 6, sheetCount: 3, faces: 2 });
   });
 });
 

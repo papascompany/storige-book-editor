@@ -99,6 +99,7 @@ export type {
   PutWebhookConfigInput,
   SessionDeliverableStatus,
   SessionDeliverables,
+  SessionDeliverablesItem,
   SessionDeliverablesProduct,
   SessionLaunchInput,
   SessionLaunchMode,

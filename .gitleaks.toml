@@ -90,4 +90,5 @@ regexes = [
   #     README/spec 의 두 형식만 면제(실키 형식 sk-…·JWT 는 계속 탐지).
   '''(?i)^idem-launch-\d+$''',
   '''(?i)^order-\d+-launch$''',
+  '''(?i)^order-\d+-resynth-\d+$''',
 ]

@@ -1,7 +1,9 @@
 # Storige 플랫폼 연동 가이드 (외부 파트너용)
 
+> **Shopify 구현 계획 (2026-10-15)**: Shopify 신규 앱 개발은 [Editor·PDF Worker 개발 정본](./SHOPIFY_ORCHESTRATION_DEVELOPMENT_GUIDE_2026-10-15.md)과 [시각화](./SHOPIFY_ORCHESTRATION_DEVELOPMENT_GUIDE_2026-10-15.html)를 따릅니다. 이 문서의 현행 파트너 API·임베드 계약은 그대로 적용되며, 아래 Shopify 유형 3은 아직 운영 계약이 아닙니다. 새 정본은 Shopify 설치·몰별 release/binding·편집/PDF 검증·checkout·order handoff의 추가 개발 범위를 정의합니다.
+
 > **작성일:** 2026-06-20
-> **최종 갱신:** 2026-10-14 — 작업 조회·생성 응답은 정해진 14개 키만 싣고 검증 작업 판정 결과는 `result.result` 에 담김(2.2 단계 5a 「작업 응답 키」) — 전환 완료 통지 시각부터 · 5.1 `GET /api/worker-jobs/:id/output` 행의 산출물 회수 안내를 `output-url` 재발급으로 정정 · 2.2 단계 6·4.1 흐름도·5.1 `compose-mixed` 행의 compose-mixed 산출물 회수 안내를 `output-url` 서명 URL 재발급으로 정정, 4.1 흐름도의 compose-mixed 인증 표기를 4.2 와 맞춤(동작 변경 없음) · [이전 2026-10-13] v1 최종화 실패 응답 `errorDetail` 의 검증·합성 작업 실패 진단에 작업 오류 코드 `jobErrorCode` 추가(1.7) · 작업 상태 보고 라우트(`PATCH /api/worker-jobs/external/:id/status`·`/:id/status`)는 내부 워커 전용, 사이트 키 호출은 `404`(5.1) — 둘 다 api 배포 완료 통지 시각부터 · [이전 2026-10-12] v1 최종화 실패 응답 `errorDetail` 형식: 검증·합성 작업 실패 `{stage, jobStatus, result}`(항목은 `code`·`message`·`autoFixable`·`fixMethod`), 내부 처리 실패 `{code, reason}`(고정 사유 코드 3종)(1.7, api 배포 완료 통지 시각부터) · `editor.ready` `orientationMismatch` 표기(보낸 `width`·`height` 와 템플릿셋 판형의 방향 불일치 안내, 2026-07-09 부터 발신 — 3.2·3.1, 동작 변경 없음) · [이전 2026-10-06] 재편집(`sessionId`)은 세션에 기록된 템플릿셋으로 열림(URL `templateSetId` 는 생략 권장, 세션 세트 조회가 404 일 때만 보낸 세트로 1회 시도)·`editor.ready`/`storige:ready` `templateSetId` = 실제로 연 세트 + `templateSetMismatch` 추가·`editor.complete`/`storige:completed` `templateSetId`·`templateSetMismatch` 추가·편집 중인 디자인의 AI 패널 템플릿셋 전환 차단(3.1 재편집과 템플릿셋·3.2, 편집기 배포 완료 통지 시각부터) · [이전 2026-10-06] 편집 완료 내지 검증의 쪽수 판정이 편집기 쪽 단위(호스트 `pageStep` → 템플릿셋 쪽 단위)를 따름: 내지 펼침면 세트·2쪽 단위 상품의 쪽수 오탐 해소, 펼침면 세트의 `details.pageMultiple` 은 펼침 단위(5.3.1·2.6) · [이전 2026-10-06] 양장 싸바리 템플릿셋 표지: 표지 PDF 싸바리 전개 크기·`metadata.coverOutput` 키 추가·편집 완료 표지 검증 싸바리 전개 검사, 첫 세트 동화책 210×210 `9e768d01-f2f7-4a1e-a1f6-f1ff45cb2fcb`(3.1·5.3.1, 호스트가 상품 매핑을 그 세트로 바꾼 시각부터) · [이전 2026-10-05] 호스트 책등 규칙의 표지 모드 판정 기준을 표지 템플릿(내지펼침면 `regionScope:'inner'` 제외)으로 표기 정정(3.1, 동작 변경 없음) · 템플릿 작성 규약: 상품별 표지 책등 방식(표지펼침면/표지3분할)은 호스트가 정하고 Storige 는 그 방식대로 등록, 양장 표지 템플릿 크기 기준 = 업로드 검증 규격(싸바리 전개), 쪽 추가 단위는 호스트 상품등록 값과 템플릿셋 `pageStep` 일치(3.1·5.3.1) · 보낸 쪽수 범위(`pageCountMin`·`pageCountMax`)가 제본별 최소·최대 쪽수를 대신(3.1 상품별 쪽수 범위, 편집기 배포 완료 통지 시각부터) · 합성 입력 오류(`PDF_LOAD_FAILED`·`FILE_NOT_FOUND`·`INPUT_URL_REJECTED`) 즉시 `FAILED`·합성 실패 응답 `errorCode`·안내 문구 `errorMessage`·`errorDetail`(2.2 단계 5a) · 회원 세션 생성 서버 오류 시 같은 주문 세션으로 열기(3.3) · [이전 2026-10-03] 합성 작업 자동 재시도·작업 상태 고정·종결 웹훅 중복 생략·작업 응답 `editSessionId`(2.2 단계 5a·5b·1.7·5.2) · `session.*` 현재 미발신(5.2·3.3.3) · `editor.state` `pageCount`·`currentPage`·IIFE `getState()` 쪽수(3.2) · `sessionId` 단독 재오픈 실패 화면·편집기 '불러오기' 실패 `message` 고정 문구(3.1·3.2) · presigned `complete` 의 사이트 키(`X-API-Key`) 귀속(2.2·1.7) · 합성 산출 크기(2.3) · 작업 실패 코드 `JOB_STALLED`·`JOB_TIMEOUT_SWEPT`(2.2 단계 5a)·반복 중단 시 v1 최종화 실패(1.7) · 편집기 초기화 실패 code·고정 한국어 `message`(3.1·3.2) · `orderSeqno` 진입 실패 처리(3.3) · 첨부 채움본 크기(3.2) · 운영자 요청 감사 기록 범위(3.3.2) · 그 사이 변경은 각 절의 날짜 표기 참조 · [이전 2026-08-24] `editor.saved` 가 `ok:false, error:'EDITOR_BUSY'` 를 응답할 수 있음(3.2 표 하단) · 세션 API 테넌트 격리 확장: 회원 세션 상세/수정/완료/삭제/버전/목록/보관함 전부 JWT `siteId` ↔ 세션 `siteId` 대조(1.5) · [이전 2026-08-13] `compose-mixed` 빈 입력 `400 EMPTY_COMPOSE_INPUT` 승격(3.4) · 세션 자동조립 `assembleFromSession` 신설(3.4.1) · `compose-mixed` body `siteId` 하드닝(3.4)
+> **최종 갱신:** 2026-10-20 — 사진인화 상품 프로파일(CONTRACT_FREEZE v1.25 ADDITIVE 4건 — 템플릿셋 `productProfile.kind 'photo-print'`+`photoPrint` 블록 · `editor.complete`/레거시 `storige:completed` 선택 키 `items?`+`product.kind 'photo-print'`(3.2) · 세션 `metadata.items`(3.3) · 런처 `launch` `items` 입력 규칙과 deliverables `items?`·`files[].copies`/`label` 원천·`errorCode?`/`errorDetail?`·`status 'failed'` 새 원인(3.7) · 완료 검증 잡 `orderOptions.bleed` 0(5.3.1)) + 보정 2건(세션 `metadata.productProfile` 서버 소유 키 전환 — 3.3·3.7.3, 웹훅 `synthesis.*` `revision?` 는 편집 완료 자동 sheet-map 잡에도 실림 — 5.2·3.7.8) — **브랜치 `p1-calendar-2026-10-17`(`9be4c37c` 위 미커밋 작업 트리) 전용·master 미병합·운영 미반영, 적용 시점 = 배포 통지 시각** · [이전 2026-10-19] 상품 프로파일·캘린더 편집 모드(CONTRACT_FREEZE v1.22 ADDITIVE 3건 — 템플릿셋 조회 응답 `productProfile`(기본 `null`)·`editor.complete`/레거시 `storige:completed` 선택 키 `product`·세션 `metadata.productProfile`/`calendar`, 캘린더 세트 완료 PDF = 26쪽 단일 PDF — 3.1·3.2·3.3·3.4·5.3.1) — **2026-10-18 00:48 KST 운영 반영**(master `af900212`) · 낱장 정확 쪽수 판정·검증 잡 `orderOptions` 선택 필드 `productKind`·`pageStep`·`postProcessColorRule`·`duplex-split` 세트 편집 완료 자동 분리 잡 기대 쪽수 입력(v1.21 — 2.2 단계 4·2.4·3.4·5.1·5.3.1) — **2026-10-17 운영 반영** · 편집 세션 런처 `POST /api/v1/sessions/launch`·`GET /api/v1/sessions/:id/deliverables`·`POST /api/v1/sessions/:id/synthesize`·웹훅 `synthesis.*` `revision?`(v1.23)·시트 맵 출력 `sheet-map`(v1.24) — 새 절 3.7·1.7·3.3·5.1·5.2, **브랜치 `p1-calendar-2026-10-17`(`9be4c37c`) 에만 있고 master 미병합·운영 미반영, 적용 시점 = 배포 통지 시각** · 기존 동결 표면(`/embed` 파라미터 12종·postMessage 엔벨로프·`editor.complete` `files`/`pages` 중첩 구조·v1 22 오퍼레이션·웹훅 서명식) 불변 · [이전 2026-10-14] 작업 조회·생성 응답은 정해진 14개 키만 싣고 검증 작업 판정 결과는 `result.result` 에 담김(2.2 단계 5a 「작업 응답 키」) — 전환 완료 통지 시각부터 · 5.1 `GET /api/worker-jobs/:id/output` 행의 산출물 회수 안내를 `output-url` 재발급으로 정정 · 2.2 단계 6·4.1 흐름도·5.1 `compose-mixed` 행의 compose-mixed 산출물 회수 안내를 `output-url` 서명 URL 재발급으로 정정, 4.1 흐름도의 compose-mixed 인증 표기를 4.2 와 맞춤(동작 변경 없음) · [이전 2026-10-13] v1 최종화 실패 응답 `errorDetail` 의 검증·합성 작업 실패 진단에 작업 오류 코드 `jobErrorCode` 추가(1.7) · 작업 상태 보고 라우트(`PATCH /api/worker-jobs/external/:id/status`·`/:id/status`)는 내부 워커 전용, 사이트 키 호출은 `404`(5.1) — 둘 다 api 배포 완료 통지 시각부터 · [이전 2026-10-12] v1 최종화 실패 응답 `errorDetail` 형식: 검증·합성 작업 실패 `{stage, jobStatus, result}`(항목은 `code`·`message`·`autoFixable`·`fixMethod`), 내부 처리 실패 `{code, reason}`(고정 사유 코드 3종)(1.7, api 배포 완료 통지 시각부터) · `editor.ready` `orientationMismatch` 표기(보낸 `width`·`height` 와 템플릿셋 판형의 방향 불일치 안내, 2026-07-09 부터 발신 — 3.2·3.1, 동작 변경 없음) · [이전 2026-10-06] 재편집(`sessionId`)은 세션에 기록된 템플릿셋으로 열림(URL `templateSetId` 는 생략 권장, 세션 세트 조회가 404 일 때만 보낸 세트로 1회 시도)·`editor.ready`/`storige:ready` `templateSetId` = 실제로 연 세트 + `templateSetMismatch` 추가·`editor.complete`/`storige:completed` `templateSetId`·`templateSetMismatch` 추가·편집 중인 디자인의 AI 패널 템플릿셋 전환 차단(3.1 재편집과 템플릿셋·3.2, 편집기 배포 완료 통지 시각부터) · [이전 2026-10-06] 편집 완료 내지 검증의 쪽수 판정이 편집기 쪽 단위(호스트 `pageStep` → 템플릿셋 쪽 단위)를 따름: 내지 펼침면 세트·2쪽 단위 상품의 쪽수 오탐 해소, 펼침면 세트의 `details.pageMultiple` 은 펼침 단위(5.3.1·2.6) · [이전 2026-10-06] 양장 싸바리 템플릿셋 표지: 표지 PDF 싸바리 전개 크기·`metadata.coverOutput` 키 추가·편집 완료 표지 검증 싸바리 전개 검사, 첫 세트 동화책 210×210 `9e768d01-f2f7-4a1e-a1f6-f1ff45cb2fcb`(3.1·5.3.1, 호스트가 상품 매핑을 그 세트로 바꾼 시각부터) · [이전 2026-10-05] 호스트 책등 규칙의 표지 모드 판정 기준을 표지 템플릿(내지펼침면 `regionScope:'inner'` 제외)으로 표기 정정(3.1, 동작 변경 없음) · 템플릿 작성 규약: 상품별 표지 책등 방식(표지펼침면/표지3분할)은 호스트가 정하고 Storige 는 그 방식대로 등록, 양장 표지 템플릿 크기 기준 = 업로드 검증 규격(싸바리 전개), 쪽 추가 단위는 호스트 상품등록 값과 템플릿셋 `pageStep` 일치(3.1·5.3.1) · 보낸 쪽수 범위(`pageCountMin`·`pageCountMax`)가 제본별 최소·최대 쪽수를 대신(3.1 상품별 쪽수 범위, 편집기 배포 완료 통지 시각부터) · 합성 입력 오류(`PDF_LOAD_FAILED`·`FILE_NOT_FOUND`·`INPUT_URL_REJECTED`) 즉시 `FAILED`·합성 실패 응답 `errorCode`·안내 문구 `errorMessage`·`errorDetail`(2.2 단계 5a) · 회원 세션 생성 서버 오류 시 같은 주문 세션으로 열기(3.3) · [이전 2026-10-03] 합성 작업 자동 재시도·작업 상태 고정·종결 웹훅 중복 생략·작업 응답 `editSessionId`(2.2 단계 5a·5b·1.7·5.2) · `session.*` 현재 미발신(5.2·3.3.3) · `editor.state` `pageCount`·`currentPage`·IIFE `getState()` 쪽수(3.2) · `sessionId` 단독 재오픈 실패 화면·편집기 '불러오기' 실패 `message` 고정 문구(3.1·3.2) · presigned `complete` 의 사이트 키(`X-API-Key`) 귀속(2.2·1.7) · 합성 산출 크기(2.3) · 작업 실패 코드 `JOB_STALLED`·`JOB_TIMEOUT_SWEPT`(2.2 단계 5a)·반복 중단 시 v1 최종화 실패(1.7) · 편집기 초기화 실패 code·고정 한국어 `message`(3.1·3.2) · `orderSeqno` 진입 실패 처리(3.3) · 첨부 채움본 크기(3.2) · 운영자 요청 감사 기록 범위(3.3.2) · 그 사이 변경은 각 절의 날짜 표기 참조 · [이전 2026-08-24] `editor.saved` 가 `ok:false, error:'EDITOR_BUSY'` 를 응답할 수 있음(3.2 표 하단) · 세션 API 테넌트 격리 확장: 회원 세션 상세/수정/완료/삭제/버전/목록/보관함 전부 JWT `siteId` ↔ 세션 `siteId` 대조(1.5) · [이전 2026-08-13] `compose-mixed` 빈 입력 `400 EMPTY_COMPOSE_INPUT` 승격(3.4) · 세션 자동조립 `assembleFromSession` 신설(3.4.1) · `compose-mixed` body `siteId` 하드닝(3.4)
 > **대상:** 외부 파트너 개발자
 > **상태:** 배포용 정본
 
@@ -218,6 +220,8 @@ image/gif
 > **신규 연동은 이 표면으로 시작하세요.** §5.1 의 레거시 외부 표면(`/api/files/*` · `/api/worker-jobs/*`)은 기존 파트너 호환을 위해 유지되지만, 경로·에러 봉투·멱등·리밋이 서로 다른 **별개 계약**입니다. 두 표면을 한 요청 흐름에 섞지 마세요.
 
 **표면 규모:** 16 경로 / 22 오퍼레이션 — `ping` 1 · `book-specs` 3 · `books` 11 · `webhooks` 7 (전량 목록은 5.1). 전부 파트너 키가 필요합니다.
+
+> **편집 세션 런처 3라우트 — 준비 중(브랜치 `p1-calendar-2026-10-17`, 운영 미반영, 2026-10-18):** `POST /api/v1/sessions/launch`·`GET /api/v1/sessions/:id/deliverables`·`POST /api/v1/sessions/:id/synthesize` 가 같은 v1 스택(파트너 키 가드·레이트리밋·멱등·봉투)에 추가될 예정입니다(상세 3.7). **적용 시점은 api 배포 통지 시각**이며 그 전에는 세 경로가 `404` 입니다. 추가 뒤에도 기존 16 경로/22 오퍼레이션·성공/에러 봉투·페이지네이션·멱등 규칙은 바뀌지 않습니다. 에러 코드 카탈로그에는 `ERR_SESSION_NOT_COMPLETE`(409)·`ERR_OUTPUT_MODE_UNSUPPORTED`(422) 2종이 additive 로 더해집니다(모르는 코드는 기본 분기로 — 아래 규칙 그대로).
 
 **Base URL:** `https://api.papascompany.co.kr` + `/api/v1` (예: `https://api.papascompany.co.kr/api/v1/ping`).
 
@@ -528,7 +532,7 @@ curl -X POST "https://api.papascompany.co.kr/api/files/upload/external" \
 | `fileId` | `fileId`/`fileUrl` 중 택1 (fileId 권장) | UUID |
 | `fileUrl` | `fileId` 없을 때 필수(`@ValidateIf(!fileId)` + `@IsNotEmpty`) | URL |
 | `fileType` | **필수** (`@IsNotEmpty`) | enum: `cover` \| `content` \| `post_process` (그 외 값 → `400`) |
-| `orderOptions` | **필수** (`@IsObject` + `@IsNotEmpty`) | `size`·`pages`·`binding`(canonical 4종 — 2.5)·`bleed` 등. **선택 필드** `pageMultiple`·`pageCountMax`·`pageCountMin`(데이터 주도 페이지수 검증 — 2.4) |
+| `orderOptions` | **필수** (`@IsObject` + `@IsNotEmpty`) | `size`·`pages`·`binding`(canonical 4종 — 2.5)·`bleed` 등. **선택 필드** `pageMultiple`·`pageCountMax`·`pageCountMin`(데이터 주도 페이지수 검증 — 2.4) · **선택 필드(2026-10-17 운영 반영)** `productKind`·`pageStep`·`postProcessColorRule`(낱장 정확 쪽수 판정·후가공 색 규칙 — 2.4) |
 | `callbackUrl` | 선택 | 웹훅 수신 시 |
 | `spineWidthMm`, `wingEnabled`, `wingWidthMm` | 선택 | 미전달 시 fallback |
 
@@ -666,6 +670,17 @@ PDF 검증 규칙 요약은 5장 표 참조 (15단계).
 > 배수 위반은 `autoFixable=true` 이므로 잡 status 가 `FIXABLE` 로 떨어집니다. `details.expected`(올림된 목표 페이지수)와 `fixMethod='addBlankPages'` 를 받아 파트너는 자동수정 흐름(2.6 fix-pagecount)으로 이어갈 수 있습니다.
 
 > **글로벌 안전상한은 별개로 유지:** `options.maxPages = 1000p` 는 위 데이터 주도 검증과 **무관하게 항상 적용**되는 절대 상한입니다. 파일크기 상한 역시 별개로 적용됩니다(현재 2 GB — §1.4).
+
+> **낱장 정확 쪽수 판정·후가공 색 규칙 (2026-10-17 — 운영 반영 2026-10-17, CONTRACT v1.21):** 검증 잡 `orderOptions` 에 선택 필드 3개가 추가되었습니다(`POST /api/worker-jobs/validate/external`. 편집 완료 세션의 자동 검증 잡도 같은 규칙을 씁니다).
+>
+> | 필드 | 값 | 동작 |
+> |---|---|---|
+> | `productKind` | `'sheet'` \| `'book'` | `'sheet'` 를 보내면 워커가 파일 슬롯(`fileType` cover/content)과 무관하게 PDF 쪽수가 `orderOptions.pages` 와 **정확히 같은지** 검사합니다. 불일치 = `PAGE_COUNT_INVALID`(`autoFixable:false` — 빈 쪽 추가로 고칠 수 없는 `FAILED`). 이 분기에서는 표지 1·2·4쪽 규칙·제본 규칙·`PAGE_COUNT_MISMATCH` 검사를 실행하지 않습니다(절대 상한 `maxPages` 검사는 그 앞에서 그대로 적용). `'book'`·미전송 = 종전 규칙 |
+> | `pageStep` | 정수 | `productKind='sheet'` 이고 1 보다 크면 쪽수가 그 배수인지도 검사합니다(위반 = 같은 `PAGE_COUNT_INVALID`, autoFixable false). 1 이하·미전송 = 배수 검사 없음 |
+> | `postProcessColorRule` | `'any'` \| `'spot-only'` | `fileType 'post_process'` 파일은 **기본적으로 색 사용(CMYK) 오류를 내지 않습니다**(2026-10-17 변경 — 종전에는 오류였고, 운영 실측 후가공 검증 잡 0건). 별색만 허용하려면 `'spot-only'` 를 보내세요 |
+>
+> - 모든 필드는 생략 가능하며, 생략하면 종전 동작(위 `pageMultiple` 등 데이터 주도 규칙·binding 폴백)과 같습니다. 요청·응답 shape·웹훅 본문은 바뀌지 않았습니다(FROZEN 표면 불변).
+> - **편집기 임베드(유형 2) 완료 세션은 서버가 자동으로 넣습니다** — 낱장 세트(단일 편집 모드 세트이고 책등·날개·펼침면 템플릿이 없는 세트, 표지 전용 세트 제외)로 판정되면 표지·내지 검증 잡에 `productKind='sheet'`(+`pageStep` = 호스트가 보낸 `pageStep` → 템플릿셋 `pageStep`)을 넣으므로 파트너 설정이 필요 없습니다. 기대 쪽수는 세션 기록 쪽수(편집기 저장 캔버스 수 → 세션 생성 때 보낸 `pages`)이고, 상품 프로파일 세트(3.1)는 프로파일의 고정 캔버스 수(캘린더 26)입니다. 종전 통과하던 잘못된 쪽수(단면 상품에 2쪽 등)는 이제 `PAGE_COUNT_INVALID` 로 세션 검증이 `FAILED` 가 됩니다(2026-10-17 운영 실측 — 영향 세션 0건). 책 세트(펼침면·책등)는 종전과 같습니다.
 
 **파트너 액션:** 제본 종류별로 위 값을 채워 전송하세요. 값 매핑은 2.5(canonical binding) 참조.
 
@@ -913,6 +928,15 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 > - **AI 패널**: 편집기에 AI 패널이 표시되는 경우, 편집 중인 디자인(`sessionId` 로 연 재편집, `orderSeqno` 진입으로 주문의 회원 세션을 열거나 새로 만든 편집)에서는 AI 패널에서 다른 템플릿셋을 고르거나 생성해도 세트를 바꾸지 않고 '편집 중인 디자인은 다른 템플릿셋으로 바꿀 수 없습니다. 새로 편집해 주세요.' 안내를 표시합니다. `sessionId` 없이 `templateSetId` 로 연 편집 등 그 밖의 신규 편집은 지금처럼 고른 세트로 다시 엽니다.
 > - IIFE 번들(`window.StorigeEditor`)은 이 변경이 들어간 번들로 다시 빌드·배포되는 시점부터 같은 규칙을 따릅니다(배포 시 별도 안내). 그때부터 `onReady` 콜백에 선택 인자 `{templateSetId, templateSetMismatch?}` 가, `onComplete` 결과에 `templateSetId`·`templateSetMismatch` 가 실립니다.
 
+> **상품 프로파일·캘린더 편집 모드 (2026-10-17 ADDITIVE — 운영 반영 2026-10-18 00:48 KST, CONTRACT v1.22):**
+> - **템플릿셋 조회 응답에 `productProfile` 이 추가되었습니다**(`GET /api/template-sets/:id`, `/with-templates`, 목록 — JSON, 기본 `null`). 운영의 기존 세트는 전부 `null` 이며, 값이 있는 세트는 편집기가 상품별 편집 모드로 엽니다 — 현재 `kind:'calendar'`(탁상·벽걸이 26면 양면 달력: 표지 1 + 12개월×2면 + 에필로그 1 = 고정 26캔버스, 추가·삭제 없음, 달력 메뉴·패널에서 시작 연월·표기 옵션·기념일 선택)와 `kind:'sheet'`(낱장). 프로파일 JSON(`version`·`kind`·`editorType`·`pages`·`sheet`·`output` 등)은 Storige 관리자가 세트에 선언하는 값이며 호스트가 바꾸는 값이 아닙니다.
+> - **`editor.complete`(레거시 `storige:completed`)에 선택 키 `product {kind:'sheet'|'calendar', editorType, canvasCount, sheetCount, faces:1|2}` 가 실립니다** — 프로파일이 있는 세트의 회원 완료에만(게스트 완료 `needsAuth:true` 에는 없음). `sheetCount` 는 `faces` 가 2 면 `ceil(canvasCount/2)`(캘린더 26캔버스 → 13장), 1 이면 `canvasCount`. `editorType` 은 운영 식별용 자유 코드(예: `calendar_desk_large`)라 분기 근거로 쓰지 마세요. `files`·`pages`·`pageCount` 산식과 독립이며, 3.2 의 다른 키·이벤트명·발신 순서·`files`/`pages` 중첩 구조는 바뀌지 않습니다. IIFE 번들 `onComplete` 결과(`EditorResult.product?`)도 같은 개정에 들어 있습니다.
+> - **세션 `metadata`** 에는 편집기가 `productProfile`(세션 생성 시 프로파일 스냅샷)·`calendar {startYear, startMonth, show, anniversaries, dataVersion}` 를 기록합니다(3.3). 완료 검증 잡의 기대 쪽수·증감 단위(양면 2)는 **템플릿셋 프로파일**로 산출하며 세션 스냅샷은 템플릿셋에 프로파일이 없을 때만 씁니다. 프로파일 세트의 표지 슬롯 검증은 책등 없는 단일 판형 검사(`coverSpine:'none'` 서버 파생 — 5.3.1)입니다.
+> - **캘린더 세트의 완료 PDF 는 26쪽 단일 PDF** 입니다 — 쪽 순서 = 캔버스 순서 = 시트 순서([표지, 1월 앞, 1월 뒤, …, 12월 뒤, 에필로그]), 홀수 쪽 = 앞면·짝수 쪽 = 뒷면, 시트 k = 쪽 (2k−1, 2k). 판형은 템플릿셋 판형 그대로이고 도련·재단 마커는 세트 설정(`cropMarkEnabled`·`bleedMm`)을 따릅니다. 시트별 분리는 기존 템플릿셋 `pdfOutputMode='duplex-split'` 로 서버가 13세트로 나눕니다(3.4 양면 분리 출력) — 워커 계약 변경 없음.
+> - **프로파일이 `null` 인 기존 세트는 응답·이벤트·세션 metadata·검증 잡 옵션이 종전과 바이트 동일**하며, 호스트가 새 키를 무시해도 동작이 바뀌지 않습니다. 운영 템플릿셋에는 아직 프로파일이 있는 세트가 등록되지 않았으므로(샘플 세트 등록은 별도 승인), 등록 전까지 호스트가 받는 응답·이벤트는 종전과 같습니다.
+> - **SDK** `@storige/sdk` `./embed` 는 `EditorCompletePayload.product?`(`EditorCompleteProduct` export)를 노출하고, `readCompletePayload` 는 `kind`(`'sheet'|'calendar'`)·`editorType`(문자열)·`canvasCount`·`sheetCount`(0 이상 정수)·`faces`(1|2) 형식이 맞지 않으면 키를 생략합니다.
+> - 바뀌지 않는 것: 동결 `/embed` 파라미터 12종(CONTRACT_FREEZE §1-D)·postMessage 엔벨로프·`editor.*` 이벤트명·shop-session 발급. 신규 URL 파라미터는 없습니다. 시작 연월을 서버 간으로 미리 지정하는 경로는 3.7 런처의 `calendar.startYm`(운영 미반영)뿐입니다.
+
 ### 3.2 postMessage 프로토콜
 
 **표준 엔벨로프 (편집기 → 부모):**
@@ -926,7 +950,7 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 |---|---|---|---|
 | 편집기→부모 | `editor.ready` | `{sessionId, templateSetId, version, (폴백시) fallback, effectiveTemplateSetId, orientationMismatch?, templateSetMismatch?}` | 초기화 완료. `templateSetId` = 편집기가 실제로 연 템플릿셋(재편집은 세션 세트). `templateSetMismatch {requested, session, resolution:'session'\|'requested', reason?:'SESSION_SET_UNAVAILABLE'}` = 보낸 `templateSetId` 와 세션 세트가 다를 때만(2026-10-06 additive, 3.1 재편집과 템플릿셋). `orientationMismatch {requested, template, requestedSize:{width,height}, templateSize:{width,height}}` = 보낸 `width`·`height`(3.1) 의 방향과 연 템플릿셋 판형의 방향(`'portrait'`\|`'landscape'`)이 다를 때만 — 두 변 차이 1mm 이하(정사각)·값 누락이면 판정하지 않고, 샘플 폴백으로 연 편집에는 없습니다. 비차단 안내이며 레거시 `storige:ready`·IIFE `onReady` 인자에는 없습니다(2026-07-09 additive, 2026-10-12 등재) |
 | 편집기→부모 | `editor.save` | `{sessionId, savedAt, thumbnail}` | 자동/수동 저장 |
-| 편집기→부모 | `editor.complete` | `{sessionId, orderSeqno, editCode, pages:{initial,final}, pageCount?, pricing?, size?:{width,height,unit:'mm'}, spineWidthMm?, templateSetId?, templateSetMismatch?, files:{coverFileId,contentFileId,thumbnailUrl}, savedAt}` | 편집완료 + 합성. `spineWidthMm` = 완료 시 표지에 적용된 책등 mm(스프레드 책만, 2026-09-28 additive). `templateSetId` = 이번 편집을 앉힌 템플릿셋(재편집은 세션 세트), `templateSetMismatch` = `editor.ready` 와 같은 값(2026-10-06 additive — 게스트 완료에도 실림, DEV 샘플 폴백으로 연 편집은 둘 다 없음) |
+| 편집기→부모 | `editor.complete` | `{sessionId, orderSeqno, editCode, pages:{initial,final}, pageCount?, pricing?, size?:{width,height,unit:'mm'}, spineWidthMm?, templateSetId?, templateSetMismatch?, product?, items?, files:{coverFileId,contentFileId,thumbnailUrl}, savedAt}` | 편집완료 + 합성. `spineWidthMm` = 완료 시 표지에 적용된 책등 mm(스프레드 책만, 2026-09-28 additive). `templateSetId` = 이번 편집을 앉힌 템플릿셋(재편집은 세션 세트), `templateSetMismatch` = `editor.ready` 와 같은 값(2026-10-06 additive — 게스트 완료에도 실림, DEV 샘플 폴백으로 연 편집은 둘 다 없음). `product {kind:'sheet'\|'calendar', editorType, canvasCount, sheetCount, faces:1\|2}` = 템플릿셋에 상품 프로파일이 있는 세트의 회원 완료에만(2026-10-17 additive, 운영 반영 2026-10-18 — 3.1 상품 프로파일. 게스트 완료·프로파일 `null` 세트에는 키 없음). `product.kind` 에 `'photo-print'` 가 더해지고 `items?: PhotoItem[]` 이 실립니다 — 사진인화 세트(`productProfile.kind 'photo-print'`)의 회원 완료에만(2026-10-19 additive, CONTRACT v1.25 — **준비 중: 브랜치, 운영 미반영**, 아래 사진인화 단락) |
 | 편집기→부모 | `editor.cancel` | `{sessionId, reason?}` | 취소. `reason:'session_not_found'` = 세션을 열 수 없다는 중단 화면에서 고객이 '돌아가기'를 누름(2026-09-29 additive) |
 | 편집기→부모 | `editor.error` | `{code, message, fatal?, templateSetId?, sessionId?, reason?}` | 오류. `templateSetId` 는 `TEMPLATE_SET_NOT_FOUND` 일 때, `sessionId`·`reason`(`not_found`/`forbidden`/`invalid_id`/`guest_token_required`)은 `SESSION_NOT_FOUND` 일 때만 실립니다. `guest_token_required` 는 2026-10-01 additive(3.3 비회원 세션 재오픈). `fatal` 은 2026-09-29 additive(아래 표) |
 | 편집기→부모 | `editor.needAuth` | `{guestToken, reason:'complete_save', ts}` | 게스트 폴백만 |
@@ -947,7 +971,7 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 > - 두 값은 단위가 다르므로 `currentPage / pageCount` 로 진행률을 계산하지 마세요. 키가 없을 수 있는 선택 필드로 처리하세요. 가격·주문 기준값은 `editor.pricingChange`·`editor.complete` 입니다.
 > - 기존 4개 필드, 명령명, 요청-응답 유형은 같습니다. IIFE 번들(3.1) 인스턴스의 `getState()` 는 `{ready, modified, currentPage, totalPages}` 를 돌려주며, 이 변경이 들어간 번들에서는 `totalPages` 가 위 `pageCount` 와 같은 값, `currentPage` 가 위와 같은 순번입니다. 초기화가 끝나기 전(변경 이력 복원 중 포함)에는 둘 다 0 이고, 편집 대상 화면을 알 수 없으면 `currentPage` 만 0 입니다.
 
-> **`editor.complete` 페이로드 구조 주의:** `coverFileId`·`contentFileId`·`thumbnailUrl` 은 최상위가 아니라 **`files` 객체 안에 중첩**되고, `pages` 는 **`{initial, final}` 객체**입니다. 이 shape 은 **동결 계약**이라 평탄화되지 않습니다 — `payload.coverFileId` 를 읽는 파서는 항상 `undefined` 를 얻고, `pages` 를 숫자로 가정하면 그대로 깨집니다.
+> **`editor.complete` 페이로드 구조 주의:** `coverFileId`·`contentFileId`·`thumbnailUrl` 은 최상위가 아니라 **`files` 객체 안에 중첩**되고, `pages` 는 **`{initial, final}` 객체**입니다. 이 shape 은 **동결 계약**이라 평탄화되지 않습니다 — `payload.coverFileId` 를 읽는 파서는 항상 `undefined` 를 얻고, `pages` 를 숫자로 가정하면 그대로 깨집니다. `product`(2026-10-17 additive, 3.1)·`items`(2026-10-19 additive — 사진인화 세트, 준비 중)는 최상위 **선택** 키이며 이 중첩 구조·`files`·`pages` 는 바뀌지 않습니다.
 > **페이지/규격 정합 (2026-07-04 additive):** `pages.final`·`pageCount` = 편집 완료 시점 실측 페이지 수(포토북 내지 펼침면은 ×2 물리페이지). **2026-09-28 정정:** 표지+내지펼침면 세트도 표지를 뺀 내지 펼침면 1장 = 2쪽으로 셉니다(예: 표지 + 펼침면 8장 = 16). 종전에는 이 세트에서 1장 = 1쪽으로 절반이 집계됐고, 해당 세트의 완료 세션은 0건이었습니다(운영 실측 10:54Z). `editor.pricingChange` 와 쪽수 단위(`pageStep`) 판정도 같은 기준입니다. `size` = 완료 시점 캔버스 규격(mm, 감사/정합 검증용 — 규격의 권위는 상품 옵션이며 embed 편집기에서는 규격 변경 UI 가 잠겨 있음). **파트너 장바구니는 `pageCount` 가 주문 옵션 페이지수와 다르면 가격을 재계산하고 고객에게 고지해야 합니다** — 결제 시점 서버 재계산에서도 동일 정합 검증 권장.
 > `pageCount`/`size`/`pricing` 은 legacy `storige:completed` 형식에도 동일하게 동봉됩니다. 단 **게스트(needsAuth=true) 완료 이벤트에는 미포함**(실제 완료가 아닌 로그인 유도 신호) — optional 처리 필수. `templateSetId`·`templateSetMismatch`(2026-10-06)는 게스트 완료에도 실립니다.
 >
@@ -973,6 +997,15 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 > 방어적으로는 **`guestToken` 이 있는데 `needsAuth` 가 없는 형태도 게스트로 취급**하세요(fail-closed). 로그인 이후 처리는 3.3 의 "게스트 → 회원 전환" 을 따르세요.
 > **`editCode` 형식:** `EDIT-XXXXXXXX` = 접두 `EDIT-` + 세션ID 앞 8자 대문자(`EDIT-${id.substring(0,8).toUpperCase()}`). 순수 8자리 숫자가 아닙니다.
 > **`editor.pricingChange` (D-3, 2026-07-06 additive):** 편집 중 페이지 추가/삭제로 총 페이지 수가 바뀌면 ~300ms 디바운스로 발신됩니다. 가격 계산 주체는 **호스트**(storige 는 가격을 계산하지 않음) — `pageCount`(물리 페이지, 포토북 내지 펼침면 ×2)와 `pricing` 메타로 장바구니 표시가를 갱신하세요. **발신 조건(보수 기본):** 템플릿셋에 `pricing` 이 설정된 경우 + 회원 세션만(게스트 미발신) + 에디터 초기화/세션 복원 완료 후. `spineWidthMm`(2026-09-28 additive): 쪽수 변경 뒤 책등 재계산이 끝나 값이 바뀌면 **같은 형태의 `editor.pricingChange` 가 한 번 더**(약 300ms 뒤) 발신되어 확정값을 싣습니다 — 같은 `pageCount` 로 두 번 연속 올 수 있으니 **가장 최근 이벤트를 권위값**으로 쓰세요(페이지 변경당 추가 발신은 최대 1회, 값이 같으면 미발신). 주문에 기록할 최종값은 여전히 `editor.complete` 의 `spineWidthMm` 입니다. `coverType` 은 템플릿셋에 커버 종류 코드(string, 확장 가능 — `hardcover_wrap`/`softcover_variable_spine`/`ready_made` 시드)가 설정된 경우에만 동봉. 미지 이벤트를 무시하는 기존 수신부는 영향 없음(additive).
+
+> **사진인화 세트의 `product.kind 'photo-print'`·`items` (2026-10-19 ADDITIVE, CONTRACT_FREEZE v1.25 — 준비 중: 브랜치 `p1-calendar-2026-10-17` 위 미커밋 작업 트리, master 미병합·운영 미반영, 적용 시점 = 편집기·api 배포 통지 시각):**
+> - 템플릿셋 `productProfile.kind` 에 `'photo-print'`(사진인화 — `photoPrint {process:'chemical'|'digital', composition, sizes[1], options, copies{min,max}, backTemplateId?, upload{maxPhotos,maxMb}}` 블록 동반)가 추가됩니다. 운영 템플릿셋에는 아직 이 세트가 없습니다(샘플 세트 등록은 별도 승인).
+> - `product` 의 shape 은 그대로이고 `kind` 값만 늘어납니다 — `sheetCount` 는 chemical(단면, `faces 1`) = `canvasCount`, digital(양면, `faces 2`) = `ceil(canvasCount/2)`.
+> - **`items?: PhotoItem[]`** — `product.kind 'photo-print'` 세트의 **회원 완료에만** 실립니다(게스트 완료 `needsAuth:true` 미동봉, 캘린더·프로파일 `null` 세트는 키 없음 = 종전 payload 바이트 동일). 항목 1건 = 사진 1장 = 주문 항목 1건: `{index, canvasIndex, sourcePhotoId?, sizeCode, copies, border, fit, finish, brightnessFix, dateOverlay, grayscale, lowRes}`. `index` 는 0부터인 순번, `canvasIndex` 는 그 사진의 앞면 캔버스 번호(chemical `i`, digital `2i` — 뒷면은 `2i+1`), `sizeCode` 는 프로파일 `sizes[0].code` 고정, `copies` 는 고객이 패널에서 고른 매수를 프로파일 `copies {min,max}` 로 클램프한 1 이상 정수, `border` `'none'|'white'`·`fit` `'paper-full'|'image-full'`·`finish` `'matte'|'glossy'` 는 프로파일 허용 목록 안의 값, `brightnessFix`·`dateOverlay`·`grayscale` 는 불리언(프로파일이 끈 옵션은 항상 `false`), `sourcePhotoId` 는 편집기가 채운 사진의 업로드 파일 id(있을 때만 키 존재).
+> - **`lowRes`** 는 편집기가 그 사진틀의 창 크기(mm)와 원본 픽셀로 산출한 dpi 가 프로파일 `sizes[0].minDpi` 미만일 때 `true` 인 **경고 플래그**입니다(같은 캔버스의 다른 채움이 저해상이어도 `true`). 완료를 막지 않으므로 재업로드 안내·주문 허용 여부는 호스트가 판단합니다.
+> - 가격·수량은 호스트가 계산합니다 — `copies`·`finish`·`brightnessFix` 는 편집기가 통과만 시키는 값이며, `pageCount`·`files`·`pages` 산식과 독립입니다. 제작용 매수는 3.7 런처 deliverables 의 `items`·`files[].copies`(서버 정제본)로 다시 받을 수 있습니다.
+> - 레거시 `storige:completed` 에도 같은 값으로 실립니다(아래 레거시 단락). **SDK** `@storige/sdk/embed` 는 `EditorCompletePayload.items?`·`EditorCompleteItem`·`EditorCompleteProduct.kind 'photo-print'` 를 노출하고, `readCompletePayload` 는 형식이 불량한 항목을 생략하므로 길이가 편집기 발신과 다를 수 있습니다 — `payload.items` 유무가 아니라 `product.kind === 'photo-print'` 로 분기하세요.
+> - 바뀌지 않는 것: 이벤트명·발신 순서·엔벨로프·`files`/`pages` 중첩 구조·동결 `/embed` 파라미터 12종. 신규 URL 파라미터는 없습니다.
 
 > **내지 PDF 첨부 + `editor.contentPdfAttached` (2026-08-13 additive):** 고객이 직접 만든 내지 PDF 를
 > 편집기 안에서 첨부하면(우측 상단 "📎 내지 PDF 첨부"), 검증·도련 자동변환을 거쳐 **각 내지 페이지에
@@ -1027,7 +1060,7 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 
 **레거시 dual-emit (EmbedView 라우트 한정, 하위호환):** `storige:ready`, `storige:saved`, `storige:completed`, `storige:cancel`, `storige:error`.
 
-> **`templateSetId`·`templateSetMismatch` (2026-10-06).** `storige:ready` 는 `{templateSetId, sessionId, templateSetMismatch?}` 이며 `templateSetId` 는 `editor.ready` 와 같은 값(편집기가 실제로 연 템플릿셋)입니다. `storige:completed` 에는 `editor.complete` 와 같은 값의 `templateSetId`·`templateSetMismatch` 가 실립니다(값이 있을 때만, 게스트 완료 포함). 레거시가 정식 이벤트보다 먼저 오므로 완료 저장에 템플릿셋을 쓰면 이 값을 읽으세요.
+> **`templateSetId`·`templateSetMismatch` (2026-10-06).** `storige:ready` 는 `{templateSetId, sessionId, templateSetMismatch?}` 이며 `templateSetId` 는 `editor.ready` 와 같은 값(편집기가 실제로 연 템플릿셋)입니다. `storige:completed` 에는 `editor.complete` 와 같은 값의 `templateSetId`·`templateSetMismatch` 가 실립니다(값이 있을 때만, 게스트 완료 포함). 레거시가 정식 이벤트보다 먼저 오므로 완료 저장에 템플릿셋을 쓰면 이 값을 읽으세요. `product`(2026-10-17 additive, 3.1 상품 프로파일)도 `editor.complete` 와 같은 값으로 `storige:completed` 에 실립니다(프로파일 세트의 회원 완료에만 — 값이 없으면 키 없음). `items`(2026-10-19 additive, v1.25 — 준비 중: 브랜치, 운영 미반영)도 같은 규칙으로 `editor.complete` 와 같은 값이 실립니다(사진인화 세트의 회원 완료에만, `product.kind 'photo-print'` 동반 — 값이 없으면 키 없음. 자격증명이 아니므로 `parentOrigin` 미지정 와일드카드 송신에도 실립니다).
 
 > 🔴 **레거시 `storige:completed` 의 `status` 를 신뢰하지 마세요 (2026-09-21).** 이 값은 **하드코딩 리터럴 `'completed'`** 이며,
 > **게스트(비회원) 완료에도 `'completed'` 로 옵니다.** 게스트 완료는 실제 완료가 아니라 로그인 유도 신호이고 서버 세션은 `draft` 로 남습니다.
@@ -1051,6 +1084,10 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 - 완료 시 `sessionId` 를 파트너가 저장 → 재편집 키로 `/embed?sessionId=<id>&token=&refreshToken=&parentOrigin=` 재진입.
 - 재편집은 `sessionId` 만으로 `templateSetId`·`mode`·`orderSeqno`·spine 옵션을 세션 metadata에서 도출하여 멀티페이지 canvasData를 복원합니다. 템플릿셋은 세션에 기록된 세트로 엽니다 — URL `templateSetId` 보다 우선합니다(예외·`templateSetMismatch` 는 3.1 재편집과 템플릿셋, 2026-10-06).
 - 30초 주기 자동저장 (`PATCH /api/edit-sessions/:id`, 게스트면 `updateGuest`).
+- 상품 프로파일 세트(3.1)의 세션 `metadata` 에는 편집기가 `productProfile`(세션 생성 시 프로파일 스냅샷)·`calendar {startYear, startMonth, show, anniversaries, dataVersion}` 를 기록하고 재편집 때 복원합니다(2026-10-17 additive, 운영 반영 2026-10-18). `metadata` 는 종전부터 자유형이며 호스트는 두 키를 무시해도 됩니다. 완료 검증 잡의 기대 쪽수는 세션 스냅샷이 아니라 **템플릿셋 프로파일**이 권위입니다.
+- (준비 중 — 브랜치, 운영 미반영) 3.7 런처로 만든 세션의 `metadata.launch`·`revision`·`production` 은 서버 소유 키라 `PATCH /api/edit-sessions/:id` 로 보낸 값은 무시됩니다. 기존 shop-session 경로의 세션 응답은 바뀌지 않습니다.
+- (준비 중 — 브랜치, 운영 미반영, v1.25 보정 2026-10-20) **`metadata.productProfile` 은 서버 소유 키가 됩니다**: 세션 생성·`PATCH`(metadata 를 동봉한 저장)·완료 때 서버가 템플릿셋의 현재 프로파일로 (재)기록하고, 세트 프로파일이 `null` 이면 키를 제거합니다(템플릿셋 조회 실패 시에만 기존 서버 기록값 유지). 편집기·호스트가 `PATCH /api/edit-sessions/:id` 로 보낸 `productProfile` 은 `launch`·`revision`·`production` 과 같이 무시됩니다. 위 항목의 '편집기가 기록하는 스냅샷' 은 운영 현행(v1.22)이고 배포 뒤에는 이 규칙이 대신하며 호스트 쪽 변경은 없습니다(세트 프로파일을 `null` 로 되돌리면 새 세션은 즉시, 진행 중 세션은 다음 저장·완료 때 스냅샷이 제거돼 현행 동작으로 돌아갑니다).
+- (준비 중 — 브랜치, 운영 미반영, v1.25) **사진인화 세트(`productProfile.kind 'photo-print'`)의 `metadata.items`** — 편집기가 자동저장·완료(게스트 저장 포함) 때 사진별 항목 `PhotoItem[]`(3.2 사진인화 단락의 형식)을 기록하고 재편집 때 복원합니다. 3.7 런처가 보낸 `items`(부분형)는 기록만 되고 편집기가 진입·저장 시 정제한 완전형으로 덮어씁니다. 서버는 읽을 때마다 템플릿셋 프로파일로 정제(`copies` 범위 클램프·`sizeCode` 고정·상한 = min(세션 캔버스 수 기준 사진 수, `upload.maxPhotos`))하므로 `PATCH` 로 넣은 값이 그대로 산출물에 실리지 않습니다. 사진인화 세트가 아니면 편집기는 이 키를 보내지 않습니다(종전 payload 바이트 동일).
 
 **비회원(게스트) 세션 재오픈 (2026-10-01 additive)**
 
@@ -1289,6 +1326,9 @@ curl -X POST "https://api.papascompany.co.kr/api/partner/edit-sessions/owners" \
 
 1. 사용자 편집완료(`handleFinish`) → 전체 페이지 canvasData 저장 → `ServicePlugin` PDF 생성 → `filesApi.upload` → `editSessionsApi.complete` → `editor.complete` 발신.
    > 편집완료 산출 PDF 는 편집기 토큰의 사이트로 귀속되며 같은 사이트 키로 조회·다운로드합니다(다른 사이트 키는 404). 2026-09-30 이후 업로드분에 적용됩니다.
+   > **양면 분리 출력(`duplex-split`) 적용 시작 (2026-10-16 — 운영 반영 2026-10-17, CONTRACT v1.21):** 템플릿셋 PDF 출력 모드가 `duplex-split` 인 낱장 상품은 편집 완료 때 서버가 편집기 산출 단일 PDF 를 앞/뒤 2쪽 세트별 PDF 로 나누는 분리 합성 잡(worker mode `duplex-split`)을 자동으로 만듭니다. 기대 쪽수는 편집기가 저장한 캔버스 수(없으면 세션 생성 때 보낸 `pages`)이며, 홀수면 잡을 만들지 않고 완료는 유지됩니다. 실제 PDF 쪽수가 기대치와 다르면 잡은 `PAGE_COUNT_MISMATCH` 로 `FAILED` 가 됩니다. 종전에는 이 모드에서 잡이 만들어지지 않았으므로, 이 세트를 쓰는 호스트는 `callbackUrl`·웹훅 v2 설정에 따라 `synthesis.*` 이벤트를 새로 받게 됩니다. 캘린더 프로파일 세트(3.1)의 26쪽 단일 PDF 도 같은 경로로 13세트(시트 k = 쪽 2k−1·2k)로 나뉩니다. 세트 파일은 작업 조회(`GET /api/worker-jobs/external/:id`)의 `result.outputFiles[]`(type `set`)로 확인하고 아래 4번의 서명 URL 재발급으로 회수합니다. `split-synthesize/external` 의 요청·응답 계약·`FAILED` 값·웹훅 본문은 바뀌지 않았습니다(FROZEN 표면 불변).
+   > ⚠️ **운영 주의(2026-10-18 실측):** 운영 템플릿셋에 `duplex-split` 세트는 아직 0건(세션 0건)입니다. 2026-10-18 로컬 e2e 에서 드러난 결함 2건 — 자동 분리 잡의 `request_id` 가 DB 컬럼 길이(36자)를 넘어 strict 모드에서 잡 생성이 조용히 실패하던 것, 워커의 파일 메타 조회가 401 로 떨어져 분리(split·duplex-split·spread) 합성 잡이 `INTERNAL_ERROR` 로 실패하던 것 — 의 수정과 자동 분리 잡의 사이트 귀속(`siteId` 승계)은 브랜치 `p1-calendar-2026-10-17` 에만 있고 **운영 미반영**입니다. `duplex-split` 세트를 운영에 등록하기 전에 이 수정이 먼저 배포되며(적용 시점 = 배포 통지 시각), 그때부터 완료마다 `synthesis.*` 웹훅이 처음 나갑니다.
+   > ℹ️ **준비 중(브랜치, 운영 미반영):** 상품 프로파일 `output.mode='sheet-map'` 세트는 완료 시 `duplex-split` 대신 시트 맵 합성 잡(worker mode `sheet-map`)을 발행합니다 — 3.7.5.
 2. 파트너 백엔드: 주문확정 시 `POST /api/worker-jobs/compose-mixed` 로 **호출자가 파일 참조를 공급하는** 합성 트리거 (호스트가 명시적 호출, 자동발행 아님).
    > 🚩 **기본값에서 `editSessionId` 는 합성 입력이 아닙니다.** 서버는 이 세션에서 `metadata.spread`(펼침면 기대치) 하나만 읽어 스프레드 판정·표지 치수 검증에 쓰고, 잡에 `editSessionId` 를 기록(추적)합니다. **세션을 열어 편집 결과 PDF 를 자동으로 찾아 붙이는 일은 하지 않습니다** — 합성에 들어갈 파일은 호출자가 `coverUrl`·`frontEndpaperUrls`·`contentPdfUrl`·`backEndpaperUrls` 로 **직접** 지정해야 합니다.
    > ✅ **예외 — `assembleFromSession: true` (2026-08-13 추가).** 이 플래그를 **명시적으로 켠 요청에 한해** 서버가 세션에서 표지·내지·면지·판형을 도출해 **비어 있는 필드만** 채웁니다. 인증(shop-session JWT)이 필요하며, 미전달 시 위 기본 동작이 그대로 유지됩니다. 상세는 **3.4.1** 참조.
@@ -1587,6 +1627,194 @@ curl -X POST "https://api.papascompany.co.kr/api/worker-jobs/compose-mixed" \
 - [ ] 신규 연동은 iframe `/embed` 사용 (IIFE 번들은 업로드·템플릿·프레임 등 기능이 빠진 레거시 — 3.1)
 - [ ] (프로덕션) `allowedOrigins` 수정(`PUT /api/sites/:id`) + 임베드 도메인 `frameAncestors` 등록(`PUT /api/sites/:id`) — 편집기 재배포 불필요, `frameAncestors` 반영은 캐시 2단으로 최대 약 2분(1.5)
 
+### 3.7 편집 세션 런처 — 서버 간 2회 호출 연동 (준비 중 — 브랜치, 운영 미반영)
+
+> **상태(2026-10-19):** 브랜치 `p1-calendar-2026-10-17`(`9be4c37c`) 에 구현·로컬 e2e 완료, **master 미병합·운영 미반영**입니다. 계약은 CONTRACT_FREEZE v1.23(런처 3라우트·웹훅 `revision`)·v1.24(시트 맵 출력) ADDITIVE. **적용 시점 = api 배포 통지 시각** — 그 전에는 아래 3라우트가 `404` 이고 웹훅 `revision` 키도 없습니다. 이 절은 현재 구현 기준의 사전 안내이며, 배포 통지에 달라진 점이 있으면 함께 알립니다. **2026-10-20 추가(v1.25 사진인화):** `launch` `items` 입력 규칙(3.7.3)·deliverables `items`·`errorCode`/`errorDetail`·`files[].copies`/`label` 원천(3.7.4·3.7.5)·웹훅 `revision` 보정(3.7.8)은 같은 브랜치 위 **미커밋 작업 트리**(HEAD `9be4c37c` 이후) 구현이며 적용 시점도 같은 배포 통지 시각입니다.
+
+기존 연동(shop-session → `/embed` → `editor.complete` 수신 → 파일 처리)은 그대로 쓸 수 있습니다. 런처는 **파트너 서버가 세션을 먼저 만들고, 산출물을 서버 간 API 로 받는** 대안 경로입니다. 브라우저 쪽은 바뀌지 않습니다 — `/embed` 는 기존 동결 파라미터(`sessionId`·`token`·`refreshToken`·`parentOrigin`)로 진입하고 신규 URL 파라미터는 없습니다.
+
+#### 3.7.1 전제
+
+| 항목 | 값 |
+|---|---|
+| 인증 | `X-API-Key: <사이트 editor 키>` 만. 워커 키는 `403 ERR_FORBIDDEN`. env(test/live)는 키에 내재 — test 키로 만든 세션은 test 키로만 조회·재합성됩니다 |
+| 봉투 | 파트너 v1 공통 `{success, message, data, pagination:null}` / 오류 `{success:false, errorCode, message, errors, fieldErrors, requestId}`(1.7) |
+| 버킷 | `launch`·`synthesize` = heavy(100/min), `deliverables` = general(300/min)(1.6) |
+| 멱등 | `launch` 는 `Idempotency-Key` 권장(주문 단위 고정 키 — 같은 키·같은 본문 재호출은 같은 세션·같은 토큰을 재전달, 24시간). `synthesize` 도 POST 멱등 대상이며, 키가 없어도 **최신 합성 잡이 진행 중(PENDING/PROCESSING)이면 새 잡을 만들지 않고 그 `jobId`·현재 `revision` 을 돌려줍니다** |
+| 본문 상한 | `launch` 본문 직렬화 **256 KB**(`orderOptions`·`items`·`calendar`·`externalPhotos` 포함) 초과 = `400 ERR_VALIDATION_FAILED` |
+| 킬스위치 | 운영 `PARTNER_SESSION_LAUNCH_ENABLED=off` → 3라우트 `503 ERR_SERVICE_UNAVAILABLE`(`deliverables` 는 서명 URL 시크릿 미설정 시에도 503) |
+
+#### 3.7.2 시퀀스
+
+```
+파트너 서버                     Storige API                      브라우저(iframe)
+   │  ① POST /api/v1/sessions/launch  │                              │
+   │ ────────────────────────────────▶│ 세션 선생성 + 세션 토큰 발급  │
+   │ ◀──────────────────────────────── │ 201 {sessionId, embed{…}}    │
+   │  embed 파라미터를 페이지에 전달 ─────────────────────────────────▶│
+   │                                  │ ◀── /embed?sessionId&token&refreshToken (+parentOrigin)
+   │                                  │ ─── editor.complete(기존 이벤트, 변경 없음) ──▶ 호스트
+   │                                  │ (duplex-split·sheet-map 세트: 자동 합성 → synthesis.* 웹훅)
+   │  ② GET /api/v1/sessions/:id/deliverables                        │
+   │ ────────────────────────────────▶│                              │
+   │ ◀──────────────────────────────── │ 200 {status, revision, files[]}
+   │  (선택) POST /api/v1/sessions/:id/synthesize → 201 {jobId, revision}  → synthesis.* 웹훅(revision 포함)
+```
+
+#### 3.7.3 ① 세션 런치 — `POST /api/v1/sessions/launch`
+
+```bash
+curl -X POST https://api.papascompany.co.kr/api/v1/sessions/launch \
+  -H "X-API-Key: $STORIGE_API_KEY" \
+  -H "Content-Type: application/json" \
+  -H "Idempotency-Key: order-12345-launch" \
+  -d '{
+    "member": { "seqno": 7, "id": "member-7", "name": "홍길동" },
+    "templateSetId": "<TEMPLATE_SET_UUID>",
+    "orderSeqno": 12345,
+    "mode": "both",
+    "callbackUrl": "https://partner.example/storige/callback",
+    "orderOptions": { "quantity": 2 },
+    "calendar": { "startYm": "2027-01" }
+  }'
+```
+
+요청 필드
+
+| 필드 | 필수 | 규칙 |
+|---|---|---|
+| `member.seqno` | O | 정수 ≥ 1(회원 식별 규칙 — 1.5). 세션 소유자·편집기 토큰 subject |
+| `member.id`·`member.name` | O | 문자열(각 255자 이하) |
+| `templateSetId` | O | UUID. 자기 사이트 세트 또는 사이트 미지정(공유) 세트, 활성만. 타 사이트·비활성·없음은 `404 ERR_NOT_FOUND` |
+| `orderSeqno` | — | 정수 ≥ 1. 있으면 세션·`embed.orderSeqno`·deliverables 에 echo-back |
+| `mode` | — | `both`(기본)·`cover`·`content`. `template`·`spread` 는 `400` |
+| `callbackUrl` | — | `https` 공개 호스트만 — `https` 가 아니면 `400 ERR_VALIDATION_FAILED`, 사설·링크로컬·루프백 호스트면 `422 ERR_WEBHOOK_URL_FORBIDDEN`. 세션 `callbackUrl` 로 기록 |
+| `orderOptions` | — | 자유형 객체 → 세션 `metadata.orderOptions` |
+| `items`·`externalPhotos` | — | 각 500 항목 이하(초과 `400`), 서버는 형식 검증 없이 `metadata.items`·`metadata.externalPhotos` 에 기록만 합니다. **`items` 는 사진인화 세트에서 편집기가 읽는 `PhotoItemInput[]`(v1.25, 준비 중 — 아래 「사진인화 세트의 `items` 입력」)**이고 그 밖의 세트에서는 쓰이지 않습니다. `externalPhotos` 는 아직 기록만(자동 채움 없음) |
+| `calendar` | — | `{startYm:'YYYY-MM'}`(또는 `{startYear, startMonth}`) → 서버가 `metadata.calendar {startYear, startMonth, anniversaries:[]}` 로 풀어 기록하고 편집기가 그 시작 연월로 엽니다(캘린더 프로파일 세트). 형식이 맞지 않는 `startYm` 은 변환하지 않고 그대로 기록되며 편집기가 쓰지 않습니다 |
+
+응답(201)
+
+```json
+{
+  "success": true, "message": "Success", "pagination": null,
+  "data": {
+    "sessionId": "<session-uuid>", "accessToken": "<JWT_1H>", "refreshToken": "<REFRESH>", "expiresIn": 3600,
+    "embed": { "sessionId": "<session-uuid>", "token": "<JWT_1H>", "refreshToken": "<REFRESH>", "orderSeqno": 12345 }
+  }
+}
+```
+
+- `embed` 를 그대로 페이지로 내려 기존 방식대로 `/embed` 에 넣습니다(`sessionId`+`token`+`refreshToken`+`parentOrigin` — 3.1 표). SDK: `mountEditor({ params: data.embed, parentOrigin, … })`.
+- `accessToken`/`refreshToken` 은 shop-session 과 같은 **세션 토큰**(access 3600초 + refresh)입니다. 파트너 API 키가 아니며 브라우저로만 흘려보내고 서버 로그·DB 에 남기지 않습니다. 멱등 스냅샷(24시간)에는 이 토큰이 보존되어 같은 키·같은 사이트에만 재전달됩니다.
+- 서버는 세션을 **선생성**합니다(`metadata.launch {via:'partner-v1', env, requestId, launchedAt}`·`revision: 0`·템플릿셋 프로파일 스냅샷 `productProfile`). 편집기는 이 세션을 `sessionId` 재편집 경로로 열며(저장된 캔버스가 없으면 템플릿셋으로 초기화, `metadata.calendar` 복원), 완료 이벤트·저장 규칙은 3.2·3.3 그대로입니다.
+- `metadata` 의 `launch`·`revision`·`production` 은 서버 소유 키라 `PATCH /api/edit-sessions/:id` 로 보낸 값은 무시됩니다. v1.25 부터는 `productProfile` 도 서버 소유 키입니다(3.3 — 서버가 템플릿셋 프로파일로 기록·갱신·제거).
+- test 키로 만든 세션의 합성 잡도 실제 산출물을 만듭니다(테스트 표시 없음).
+
+> **사진인화 세트의 `items` 입력 (v1.25, 준비 중 — 미커밋 작업 트리):** 템플릿셋 `productProfile.kind 'photo-print'` 세트에서만 편집기가 읽습니다.
+> - 항목은 `PhotoItemInput` **부분형** = 3.2 `PhotoItem` 에서 `index`·`canvasIndex`·`lowRes` 를 뺀 `{sourcePhotoId?, sizeCode?, copies?, border?, fit?, finish?, brightnessFix?, dateOverlay?, grayscale?}` — 전부 선택이며 보통 `copies`(+옵션)만 보냅니다. 예: `"items": [{ "copies": 5 }, { "copies": "2", "border": "white", "fit": "image-full", "grayscale": true }]`.
+> - `copies` 는 **1 이상 정수 또는 정수형 문자열(`"3"`)** 만 숫자로 받고, 그 밖의 값(0·소수·`"abc"`·누락)은 오류 없이 프로파일 하한 `copies.min` 으로, 범위 밖은 `[copies.min, copies.max]` 로 클램프됩니다. 어휘(`border`·`fit`·`finish`)가 프로파일 허용 목록 밖이면 첫 허용값, 플래그는 `true` 일 때만 켜지고 프로파일이 끈 옵션은 항상 `false` 입니다. `sizeCode` 는 P2 에서 프로파일 `sizes[0].code` 로 고정되어 보낸 값을 쓰지 않고, `sourcePhotoId` 는 편집기가 채움·교체 시점에 업로드 파일 id 로 덮어쓰거나(식별자가 없으면 키 제거) 하며, 아직 사진을 채우지 않은 항목에는 보낸 값이 남을 수 있습니다.
+> - 서버는 기록만 하고(형식 검증 없음, 500 항목 초과만 `400`), **편집기가 신규 세션(저장 캔버스 없음) 진입 시 항목 수 × 사진당 캔버스 수(chemical 1 / digital 2)로 캔버스를 증설**해(프로파일 `pages.max` 이내 — 초과분은 시드하지 않음) 항목 옵션을 시드한 뒤, 정제한 완전형 `PhotoItem[]` 로 `metadata.items` 를 덮어씁니다. 재오픈(저장본 있음)은 저장본 캔버스 수가 우선이라 항목 수로 캔버스를 늘리지 않습니다. 고객은 편집기 패널에서 매수·옵션을 바꾸고 사진 단위로 페이지를 추가·삭제할 수 있으므로, **최종 수량의 권위는 `editor.complete.items`·deliverables `items`** 입니다.
+> - 서버는 읽을 때마다 템플릿셋 프로파일로 다시 정제합니다(상한 = min(세션 캔버스 수 기준 사진 수, `upload.maxPhotos`)) — `metadata.items` 를 `PATCH` 로 직접 고쳐도 deliverables·시트 맵에 그대로 실리지 않습니다.
+
+#### 3.7.4 ② 산출물 조회 — `GET /api/v1/sessions/:id/deliverables`
+
+```bash
+curl https://api.papascompany.co.kr/api/v1/sessions/<session-uuid>/deliverables \
+  -H "X-API-Key: $STORIGE_API_KEY"
+```
+
+```json
+{
+  "success": true, "message": "Success", "pagination": null,
+  "data": {
+    "sessionId": "<session-uuid>", "orderSeqno": 12345, "revision": 1, "status": "ready",
+    "product": { "kind": "calendar", "editorType": "calendar_desk_basic", "canvasCount": 26, "sheetCount": 13, "faces": 2, "duplexFlip": "short-edge", "backRotation": 0 },
+    "calendar": { "startYm": "2027-01", "dataVersion": "kr-2025-2035-v1" },
+    "files": [
+      { "role": "single", "fileId": "<file-uuid>", "url": "/api/files/<file-uuid>/download/external", "auth": "api-key", "pageCount": 26, "generatedAt": "2026-10-18T03:00:00.000Z" },
+      { "role": "thumbnail", "fileId": "<file-uuid>", "url": "/api/files/<file-uuid>/thumbnail", "auth": "api-key" },
+      { "role": "sheet", "jobId": "<job-uuid>", "sheetIndex": 0, "url": "/storage-signed/outputs/<job-uuid>/set_<i>.pdf?md5=…&expires=…", "auth": "signed", "pageCount": 2, "expiresAt": "2026-10-18T03:05:00.000Z" }
+    ]
+  }
+}
+```
+
+| 키 | 의미 |
+|---|---|
+| `status` | `editing` → `complete` → (`synthesizing` → `ready` \| `failed`). 세션 완료 여부 + 파트너 가시 최신 합성 잡 상태의 요약. 합성 대상이 아닌 세트는 `complete` 에서 끝납니다. **v1.25(준비 중):** `failed` 는 합성 잡 `FAILED` 외에 편집 완료·재합성 때의 **시트 맵 산출 실패**도 뜻하며 그때만 `errorCode`·`errorDetail` 이 함께 실립니다(status 어휘 자체는 그대로 — 아래 행) |
+| `revision` | 합성 세대(런처 세션은 0 에서 시작, 완료·`synthesize` 마다 +1). 웹훅 `synthesis.*` 의 `revision` 과 대조 |
+| `orderSeqno` | launch 값(없으면 0) |
+| `product` | 템플릿셋 `productProfile`(없으면 세션 스냅샷) 요약 — `editor.complete` 의 `product` 와 같은 키 + `duplexFlip`·`backRotation`. 프로파일 없는 세트는 `null` |
+| `calendar` | `{startYm:'YYYY-MM', dataVersion}`(세션 캘린더 메타가 있을 때) 또는 `null` |
+| `files[].role` | `single` = 편집기 산출 단일 PDF(`auth:'api-key'`, `url` = `/api/files/<fileId>/download/external`, `pageCount`) · `thumbnail`(`auth:'api-key'`, `/api/files/<fileId>/thumbnail`) · `sheet` = 합성 잡 산출 세트 파일(`auth:'signed'`, `jobId`·`sheetIndex`(0-base)·`expiresAt`). 합성 잡이 1파일(`pages`)을 산출하면 그 파일은 `role:'single'`+`auth:'signed'` 입니다. `cover`·`content`·`face` 는 예약(현재 발행 안 함). `url` 은 API origin 에 붙이는 상대 경로입니다 |
+| `files[].auth` | `api-key`: 같은 사이트 editor 키(`X-API-Key`)로 GET — **v1 전용 발급 키(1.2(C))로는 열리지 않습니다**(후속) · `signed`: 서명 URL **300초** — 만료되면 이 라우트를 다시 불러 새 URL 을 받습니다 |
+| `sheets?` | 최신 합성 잡이 시트 맵(`sheet-map`) 잡일 때만 — 3.7.5 |
+| `files[].copies?`·`label?` | 시트 맵 잡의 `sheet` 파일에만(해당 시트 `SheetSpec` 값이 있을 때). **사진인화 세트(v1.25, 준비 중)의 원천은 세션 `metadata.items`** — 시트 앞면 페이지가 항목 `canvasIndex` 와 같은 시트에 `copies` = 그 항목의 매수, `label` = `'사진 N'`(N = 항목 순번+1)을 넣습니다(후가공 시트 제외, 시트 맵 발행·재합성 시점의 서버 정제본 기준) |
+| `production?` | 제작 단계 메모(`metadata.production`, 있을 때만). v1.25 부터 시트 맵 산출 실패 기록 `production.sheetMap {error, message, at}` 도 여기 보입니다 |
+| `items?` | **사진인화 세트만(v1.25, 준비 중)** — `product.kind 'photo-print'` 인(검증된 템플릿셋 프로파일) 세션의 `metadata.items` 를 서버가 프로파일로 정제한 `PhotoItem[]`(항목 형식·`lowRes` 의미는 3.2 사진인화 단락과 같음. 상한 = min(세션 캔버스 수 기준 사진 수, `upload.maxPhotos`)). 런처가 보낸 `items` 가 그대로 echo 되지 않습니다. 그 밖의 세트·프로파일 무효는 키 없음(`product` 와 같은 판정 — 무효면 `product` 는 `null`, `items` 는 키 없음) |
+| `errorCode?`·`errorDetail?` | **v1.25(준비 중)** — `status:'failed'` 가 편집 완료·재합성 때의 시트 맵 산출 실패(`metadata.production.sheetMap`)에서 온 경우에만. `errorCode` = 매핑 오류 코드(예: digital 세트 홀수 캔버스 `PAGE_COUNT_MISMATCH`) 또는 잡 생성 실패 `SHEET_MAP_JOB_FAILED`, `errorDetail` = 서버가 기록한 메시지. 그 기록보다 뒤에 만들어진 합성 잡이 있으면 잡 상태가 우선이라 키가 없고, 합성 잡 `FAILED` 로 인한 `failed` 에도 키가 없습니다(그 잡의 실패 사유는 종전처럼 `synthesis.failed` 본문·잡 조회로) |
+
+- 타 사이트·타 env·런처로 만들지 않은 세션·없는 세션은 모두 `404 ERR_NOT_FOUND` 입니다(존재 은닉).
+- 서명 URL 을 DB 에 저장하지 마세요 — 저장할 값은 `sessionId`·`revision`·`fileId`·`jobId` 입니다.
+
+#### 3.7.5 시트 맵 세트(프로파일 `output.mode='sheet-map'`)의 산출물 — CONTRACT v1.24, 준비 중
+
+상품 프로파일 `output.mode` 가 `sheet-map` 인 세트는 편집 완료 때 서버가 프로파일로 시트 앞/뒤 매핑(`SheetSpec[]` — `index`(0-base)·`front {page, rotate?}`·`back {page, rotate?} | null`(단면)·`sizeMm?`·`copies?`·`label?`·`role?:'post-process'`)을 만들어 `duplex-split` 대신 worker `sheet-map` 합성 잡을 발행합니다(운영 킬스위치 `SHEET_MAP_OUTPUT_ENABLED=off` 면 종전 `duplex-split` 분기). 산출은 프로파일 `output.sheetFiles` 에 따라 다릅니다 — `per-sheet`(기본): 시트마다 PDF 1개(1~2쪽, 뒷면 없는 시트는 1쪽) → deliverables `files[]` 에 `role:'sheet'`·`sheetIndex` = 시트 `index`·`auth:'signed'` 로 시트 수만큼; `merged-duplex`: 앞·뒤 교대 1파일(뒷면 없는 시트에는 빈 면 삽입, 양면 정렬 유지) → `role:'single'`·`auth:'signed'` 1건. `role:'post-process'` 시트는 항상 별도 세트 파일입니다. 뒷면 회전은 `SheetFaceRef.rotate`(운영 기본 0). deliverables 에는 발행 시 저장한 `sheets` 와 `files[].copies`/`label` 이 함께 실리고, 3.7.6 `synthesize` 는 이 세트도 재합성합니다. 매핑을 만들 수 없는 상품 구성(쪽수 불일치 등)은 `422 ERR_OUTPUT_MODE_UNSUPPORTED`, 워커 입력 오류는 기존 코드 `INVALID_OUTPUT_OPTIONS`·`PAGE_COUNT_MISMATCH` 입니다. 웹훅 본문(`outputFiles`)·`OutputFile.type` 값·기존 합성 mode 5종(split·duplex-split·spread·compose-mixed·merge)은 바뀌지 않습니다. 로컬 실측(2026-10-19): 탁상 베이직 26쪽 → 13시트 `per-sheet` 13파일(각 2쪽) → 재합성 `merged-duplex` 26쪽 1파일. 운영 템플릿셋에는 아직 sheet-map 프로파일 세트가 없습니다. **v1.25(2026-10-19~20, 준비 중) 보강:** 사진인화 세트(`kind 'photo-print'` 이고 프로파일 `output.mode 'sheet-map'` 인 digital 구성)도 같은 경로로 발행되며 시트 `copies`/`label` 의 원천은 세션 `metadata.items` 입니다(3.7.4). 편집 완료 때의 자동 발행이 실패하면(매핑 불가·잡 생성 실패) 세션 완료는 유지되고 서버가 `metadata.production.sheetMap {error, message, at}` 에 기록해 deliverables 가 `status:'failed'` + `errorCode`/`errorDetail` 로 노출합니다(종전 브랜치 구현은 로그만 남기고 `complete`·시트 없음으로 보였음). 다음 발행(재완료·3.7.6 재합성)이 성공하면 그 기록을 지웁니다.
+
+#### 3.7.6 (선택) 재합성 — `POST /api/v1/sessions/:id/synthesize`
+
+```bash
+curl -X POST https://api.papascompany.co.kr/api/v1/sessions/<session-uuid>/synthesize \
+  -H "X-API-Key: $STORIGE_API_KEY" \
+  -H "Idempotency-Key: order-12345-resynth-2"
+```
+
+→ `201 { "jobId": "<job-uuid>", "revision": 2 }`(본문 없음). 대상은 템플릿셋 `pdfOutputMode='duplex-split'` 세트(`duplex-split-r<revision>`) 또는 프로파일 `output.mode='sheet-map'` 세트(`sheet-map-r<revision>`)이며 그 밖은 `422 ERR_OUTPUT_MODE_UNSUPPORTED`, 편집 완료 전이거나 편집기 산출 PDF 가 없으면 `409 ERR_SESSION_NOT_COMPLETE` 입니다. 최신 합성 잡이 진행 중이면 새 잡 없이 그 `jobId`·현재 `revision` 을 돌려줍니다. 완료는 `synthesis.completed`/`synthesis.failed` 웹훅(payload `revision`)이나 deliverables 폴링으로 받습니다.
+
+#### 3.7.7 오류 코드
+
+| HTTP | `errorCode` | 언제 | 대응 |
+|---|---|---|---|
+| 400 | `ERR_VALIDATION_FAILED` | `member.seqno < 1`, `templateSetId` 누락·UUID 아님, 허용 외 `mode`, `callbackUrl` 이 `https` 아님, `items`/`externalPhotos` 500 초과, 본문 256 KB 초과 | 입력 수정(`fieldErrors` 참고) |
+| 401 | `ERR_UNAUTHORIZED` | 키 없음/무효 | 키 확인 |
+| 403 | `ERR_FORBIDDEN` | 사이트 editor 키가 아님(워커 키 등) | 키 종류 확인 |
+| 404 | `ERR_NOT_FOUND` | 세션 없음·타 사이트·타 env·런처 세션 아님 / 템플릿셋 타 사이트·비활성·없음 | id·env 확인 |
+| 409 | `ERR_SESSION_NOT_COMPLETE` | 편집 완료 전 `synthesize`, 또는 완료됐지만 편집기 산출 PDF 없음 | `editor.complete`(또는 `status != 'editing'`) 뒤 재호출 |
+| 409 | `ERR_IDEMPOTENCY_IN_PROGRESS` | 같은 키 처리 중 | 짧은 백오프 후 재시도 |
+| 422 | `ERR_IDEMPOTENCY_KEY_MISMATCH` | 같은 키 + 다른 본문 | 키를 바꾼다 |
+| 422 | `ERR_WEBHOOK_URL_FORBIDDEN` | `callbackUrl` 이 공개 `https` 호스트가 아님(사설·링크로컬·루프백) | URL 수정 |
+| 422 | `ERR_OUTPUT_MODE_UNSUPPORTED` | 재합성 대상 아님(`duplex-split`·`sheet-map` 세트가 아님) / 시트 매핑 불가 | deliverables 만 쓴다 |
+| 429 | `ERR_RATE_LIMITED` | 버킷 초과 | `Retry-After` 준수 |
+| 503 | `ERR_SERVICE_UNAVAILABLE` | 런처 킬스위치 off, `deliverables` 는 서명 시크릿 미설정 포함 | 통지 후 재시도 |
+
+분기는 `errorCode` 로만 합니다(`message` 는 예고 없이 바뀝니다). 모르는 코드는 일반 실패로 처리하세요(카탈로그는 additive 로만 자랍니다 — 1.7).
+
+#### 3.7.8 완료 알림 — 웹훅(정본) + 폴링(백스톱)
+
+- 웹훅 config(`PUT /api/v1/webhooks/config`)에 `synthesis.completed`·`synthesis.failed` 를 구독합니다. 런처 `synthesize` 로 만든 잡과 편집 완료 때 서버가 자동 발행하는 `sheet-map` 잡(3.7.5)의 payload 에는 `revision` 이 있습니다(편집 완료 자동 `duplex-split` 잡 등 그 밖의 합성 잡에는 키 자체가 없음 — 5.2, v1.25 보정 2026-10-20). 서명식·기존 키는 그대로입니다.
+- 웹훅 본문 값으로 부수효과를 만들지 말고, `sessionId` 로 `deliverables` 를 재조회해 서버 값으로 확정하세요(5.2 "서명은 본문을 덮지 않습니다").
+- 폴링은 `deliverables` 를 2초에서 시작해 최대 15초까지 지수 간격으로, 상한 10분(SDK `client.sessions.waitForDeliverables(id, { until: 'ready' | 'complete' })` 기본값). `failed` 는 예외가 아니라 값입니다.
+- 편집 완료만 기다릴 때(합성 대상이 아닌 세트, 또는 완료 직후 `synthesize` 를 호출할 때)는 `until: 'complete'`.
+
+#### 3.7.9 SDK 요약 (레포 `packages/sdk` — npm 미배포, 1.7)
+
+```ts
+import { StorigeClient } from '@storige/sdk/client';
+const client = new StorigeClient({ apiKey: process.env.STORIGE_API_KEY!, baseUrl: 'https://api.papascompany.co.kr' });
+
+const launched = await client.sessions.launch(input, { idempotencyKey: `order-${orderSeqno}-launch` });
+// … 브라우저: mountEditor({ editorOrigin, parentOrigin, container, params: launched.embed })
+const d = await client.sessions.waitForDeliverables(launched.sessionId, { until: 'ready' });
+const { jobId, revision } = await client.sessions.synthesize(launched.sessionId); // duplex-split·sheet-map 세트만
+```
+
+타입: `SessionLaunchInput`·`SessionLaunchResult`·`SessionDeliverables`·`DeliverableFile`·`SessionSynthesizeResult`, 에러 코드 `ErrorCode.ERR_SESSION_NOT_COMPLETE`·`ERR_OUTPUT_MODE_UNSUPPORTED`, 웹훅 `SynthesisWebhookPayload.revision?`. v1.25(준비 중): `SessionDeliverables.items?: SessionDeliverablesItem[]`(배럴 export), 임베드 쪽 `@storige/sdk/embed` `EditorCompletePayload.items?`·`EditorCompleteItem`·`EditorCompleteProduct.kind 'photo-print'`(`packages/sdk/README.md` 사진인화 절).
+
+#### 3.7.10 바뀌지 않는 것
+
+기존 v1 16 경로/22 오퍼레이션·봉투·페이지네이션·동결 `/embed` 파라미터 12종·shop-session·`editor.*` postMessage 이벤트(엔벨로프·`editor.complete` `files`/`pages` 중첩 구조 포함)·웹훅 서명식. 런처를 쓰지 않는 파트너는 아무것도 바꾸지 않아도 됩니다.
+
 ---
 
 ## 4. 유형 3 상세 (제안 / 미구현) — 임베드 편집 + 외부가 합성 결과만 수신
@@ -1661,6 +1889,7 @@ curl -X POST "https://api.papascompany.co.kr/api/worker-jobs/compose-mixed" \
 | POST | `/api/files/upload/external` | X-API-Key | 서버간 PDF 업로드 (≤100MB) |
 | GET | `/api/files/:id/download` | JWT + 소유자/staff | 내부 다운로드 |
 | GET | `/api/files/:id/download/external` | X-API-Key + site 대조 | 외부 결과 PDF 다운로드 |
+| GET | `/api/files/:id/external` | X-API-Key + site 대조 | **(준비 중 — 브랜치, 운영 미반영, 2026-10-18)** 파일 메타 조회(`GET /api/files/:id` 와 같은 응답). 사이트 대조는 `download/external` 과 같음. 주 용도는 내부 워커의 합성 파일 메타 조회이며 사이트 키 호출은 선택. 적용 시점 = api 배포 통지 시각 |
 | GET | `/api/files/:id/raw` | @Public (이미지 전용) | 이미지 인라인 공개 표시 (PDF 거부) |
 | GET | `/api/files/:id/thumbnail` | X-API-Key + site 대조 | PDF 썸네일 PNG (`?page=`, `?width=`) — 2026-07-03 인증 전환(구 @Public) |
 | DELETE | `/api/files/:id/external` | X-API-Key + site 대조 | 외부 테넌트 하드삭제 |
@@ -1669,7 +1898,7 @@ curl -X POST "https://api.papascompany.co.kr/api/worker-jobs/compose-mixed" \
 | GET | `/api/files` | JWT (Bearer) | 파일 목록 (본인/admin) |
 | DELETE | `/api/files/:id` | JWT (Bearer) | 소프트 삭제 (48h 복구창) |
 | POST | `/api/files/:id/restore` | JWT (Bearer) | 소프트삭제 복구 |
-| POST | `/api/worker-jobs/validate/external` | X-API-Key | 인쇄 PDF 검증 잡. `editSessionId` 를 보내면 같은 사이트 세션(또는 사이트 미지정 회원 세션)이어야 함 — 아니면 `404 SESSION_NOT_FOUND`, 잡 미생성(3.4 세션 연결 확인) |
+| POST | `/api/worker-jobs/validate/external` | X-API-Key | 인쇄 PDF 검증 잡. `orderOptions` 선택 필드 `productKind`·`pageStep`·`postProcessColorRule`(2026-10-17 운영 반영 — 2.4)·`coverSpine:'none'`(5.3.1). `editSessionId` 를 보내면 같은 사이트 세션(또는 사이트 미지정 회원 세션)이어야 함 — 아니면 `404 SESSION_NOT_FOUND`, 잡 미생성(3.4 세션 연결 확인) |
 | POST | `/api/worker-jobs/synthesize/external` | X-API-Key | 표지+내지 합성 잡. `editSessionId` 세션 연결 확인은 `validate/external` 과 같음. `editSessionId` 를 보내면 그 세션 템플릿셋의 재단·도련으로 재단선 포함 내지의 산출 크기를 맞춤(재단 + 도련×2, 2026-10-03 — 2.3 합성 산출 크기). 잡 `options` 에 `contentTrim` 이 추가될 수 있음 |
 | POST | `/api/worker-jobs/split-synthesize/external` | X-API-Key | 분할 합성 잡. `sessionId` 세션 연결 확인은 `validate/external` 과 같음 |
 | POST | `/api/worker-jobs/check-mergeable/external` | X-API-Key | 합성 가능 dry-run |
@@ -1695,7 +1924,7 @@ curl -X POST "https://api.papascompany.co.kr/api/worker-jobs/compose-mixed" \
 
 > **참고:** `/external` 이 붙지 않은 `synthesize`/`convert`/`split-synthesize` 등은 JWT + ADMIN/MANAGER 전용이며 파트너 대상이 아닙니다. 파트너는 반드시 `/external` 변형을 사용하세요. 또한 워커 출력 되연결(`registerExternalFile`)은 HTTP 엔드포인트가 아니라 내부 서비스 메서드입니다 — 외부에서 직접 등록하는 엔드포인트는 없습니다.
 
-**Partner API v1 (`/api/v1/*`) — 16 경로 / 22 오퍼레이션**
+**Partner API v1 (`/api/v1/*`) — 16 경로 / 22 오퍼레이션** (+ 준비 중 `sessions` 3 — 브랜치, 운영 미반영, 아래 표 끝)
 
 전 라우트가 파트너 키 필수(`Authorization: Bearer` 또는 `X-API-Key` — 1.2(C)). 리밋 버킷은 general 300/min · heavy 100/min (1.6). `Idempotency-Key` 는 **POST 에 헤더가 있을 때만** 적용됩니다 (1.7).
 
@@ -1723,6 +1952,9 @@ curl -X POST "https://api.papascompany.co.kr/api/worker-jobs/compose-mixed" \
 | GET | `/api/v1/webhooks/deliveries` | general | 발송 이력 목록 (`event`/`status`/`since` 필터) |
 | GET | `/api/v1/webhooks/deliveries/{uid}` | general | 발송 이력 상세 (상태코드·실패사유코드·attempts·다음 재시도 시각) |
 | POST | `/api/v1/webhooks/deliveries/{uid}/retry` | general | 수동 재발송 (소진됐거나 10분 이상 정체된 배달) |
+| POST | `/api/v1/sessions/launch` | **heavy** | **(준비 중 — 브랜치, 운영 미반영)** 편집 세션 선생성 + 임베드 파라미터·세션 토큰 발급. 사이트 editor 키만(워커 키 403), `Idempotency-Key` 권장, 본문 256 KB 상한. 적용 시점 = api 배포 통지 시각 (3.7.3) |
+| GET | `/api/v1/sessions/{id}/deliverables` | general | **(준비 중)** 산출물 조회 — `status`·`revision`·`product`·`calendar`·`files[]`(`auth:'api-key'\|'signed'`)·`sheets?` (3.7.4·3.7.5) |
+| POST | `/api/v1/sessions/{id}/synthesize` | **heavy** | **(준비 중)** 재합성(`duplex-split`·`sheet-map` 세트) — `201 {jobId, revision}`, 미완료 `409 ERR_SESSION_NOT_COMPLETE`, 대상 아님 `422 ERR_OUTPUT_MODE_UNSUPPORTED`, 진행 중 잡 재사용 (3.7.6) |
 
 > 파라미터·요청 스키마·선언된 응답 코드는 서버 스펙에서 생성된 API 레퍼런스를 보세요. **응답 `data` 스키마는 서버에 선언돼 있지 않아 문서로 제공되지 않습니다** — 필드 구조는 실제 응답으로 확인하고, 분기는 `status`·`errorCode` 등 계약이 명시된 값으로만 하세요.
 
@@ -1774,6 +2006,10 @@ book.finalization.completed | book.finalization.failed
 > 위 9종 중 앞의 **7종은 레거시 동결 계약**이고, `book.finalization.*` 2종은 Partner API v1 의 도서 최종화와 함께 **추가된 이벤트**입니다. 카탈로그는 **additive 로만** 자랍니다 — **모르는 이벤트에서 던지지 마세요.** 던지면 5xx 로 응답되어 서버가 재시도를 반복하고 결국 소진 상태로 남습니다. 조용히 무시하는 것이 계약입니다.
 
 > **`session.validated`·`session.failed` 는 카탈로그에 남아 있지만 현재 발신하지 않습니다(2026-10-03 기준).** 편집 세션에 연결된 작업의 결과는 작업 단위 `validation.*`·`synthesis.*`(세션이 연결된 작업은 본문에 `sessionId`) 또는 작업 조회(2.2 단계 5a)로 받으세요.
+
+> **`duplex-split` 세트의 편집 완료 자동 분리 잡 (2026-10-17 운영 반영, v1.21):** 템플릿셋 `pdfOutputMode='duplex-split'` 세트는 편집 완료 때 분리 합성 잡이 만들어지므로 그 잡의 `synthesis.completed`/`synthesis.failed` 를 `callbackUrl`·v2 설정에 따라 새로 받게 됩니다(3.4 양면 분리 출력 — 운영 세트 0건, 결함 수정 배포 전까지 실제 발신 없음). 본문·서명식은 종전 `synthesis.*` 와 같습니다.
+
+> **`synthesis.completed`·`synthesis.failed` 의 `revision?` (준비 중 — 브랜치, 운영 미반영, v1.23 · v1.25 보정 2026-10-20):** 3.7 런처 `POST /api/v1/sessions/:id/synthesize` 로 만든 합성 잡과 **편집 완료 때 서버가 자동 발행하는 `sheet-map` 잡**(3.7.5 — v1.25 보정, 종전 '런처 잡에만' 문구 정정)의 본문(v1·v2)에 `revision`(number) 이 실리며, 그 호출 응답(자동 잡은 완료 회차)과 deliverables 의 `revision` 과 같은 값입니다. 그 밖의 합성 잡(`synthesize/external`·`split-synthesize(/external)`·`compose-mixed`·편집 완료 자동 `duplex-split` 합성·도서 최종화 합성) 본문에는 키가 없습니다(`null` 이 아니라 미포함). 서명식(`t.identifier:event:timestamp`)·기존 키·이벤트명·`outputFileUrl`/`outputFiles` 규약은 바뀌지 않으며 수신부가 무시해도 무해합니다. 적용 시점 = api 배포 통지 시각.
 
 > **편집 세션 완료 검증 잡의 사이트 기록(2026-09-29):** 편집 완료 시 서버가 만드는 표지·내지 검증 잡에 세션의 사이트가 기록됩니다(검증 옵션·결과는 종전과 같음). 그래서 v2 웹훅을 구독한 사이트는 이 잡들의 `validation.*` 도 받습니다(세션당 최대 2건, 편집 세션 이벤트 `session.validated`/`session.failed` 는 보내지 않음). 잡 조회(`GET /api/worker-jobs/external/:id`)는 세션을 만든 사이트의 키로만 됩니다 — 종전에는 사이트 미기록 잡이라 어느 키로든 조회됐습니다.
 
@@ -1864,6 +2100,9 @@ book.finalization.completed | book.finalization.failed
 - **합성 `spineWidth`** 는 결과에 기록만 되고 판형 계산에 쓰이지 않습니다(0 허용).
 - **편집기 산출 표지 (2026-09-28)**: 편집 세션 완료 검증 잡은 스프레드 책이면 주문 제본(`orderOptions.bindingType`)·실제 내지 쪽수를 쓰고, 표지는 편집기가 기록한 실제 출력 규격(`metadata.coverOutput`)이 위 펼침 기대식과 일치할 때만 적용 책등(`metadata.spread.spec`)으로 펼침 검사합니다. 호스트가 고정한 책등은 `paperType` 을 싣지 않아 서버가 덮지 않습니다. **양장 편집기 표지는 양장 싸바리 템플릿셋으로 편집해 편집기가 싸바리 전개 표지(`metadata.coverOutput.layout:'hardcover-wrap'`)를 기록했을 때만 위 양장 싸바리 전개식으로 검사합니다**(2026-10-06, 3.1 양장 싸바리 템플릿셋 표지 — 기록 판형이 세션 템플릿셋 판형과 같고 출력 크기가 전개식과 맞을 때, 주문 제본이 `hardcover` 이거나 미전달일 때). 그 밖의 양장 편집기 표지는 현행(크기 검사 생략)입니다.
 - **편집 완료 내지 쪽수 판정 (2026-10-06)**: 편집기에서 만든 내지의 완료 검증 잡은 편집기 완료 검사와 같은 쪽 단위로 쪽수를 판정합니다(세션 생성 때 보낸 `pageStep` → 템플릿셋 쪽 단위). 내지 펼침면 세트는 PDF 1쪽이 펼침면(2쪽)이므로 펼침 단위로 환산해 판정합니다(예: 4쪽 단위 → 펼침 2의 배수 — 20·28쪽 정상). 2쪽 단위 상품은 18·22쪽 등이 정상입니다. 중철은 4의 배수·64쪽 상한(보낸 `pageCountMax` 우선)을 유지합니다. 쪽 단위가 없는 낱장 세트는 종전 판정입니다. 위반 시 `PAGE_COUNT_INVALID` 의 문구는 'N의 배수'이고 `details.pageMultiple` 이 붙습니다 — 펼침면 세트에서는 숫자가 펼침 단위이므로, 보정할 때는 2.6 `targetMultiple` 에 상품 쪽 단위가 아니라 `details.pageMultiple` 을 쓰세요.
+- **낱장 세션 정확 쪽수 판정 (2026-10-17, 운영 반영 2026-10-17)**: 낱장 세트(단일 편집 모드, 책등·날개·펼침면 템플릿 없음, 표지 전용 세트 제외)의 완료 검증 잡은 서버가 `orderOptions.productKind='sheet'`(+`pageStep`)을 넣어 표지·내지 슬롯과 무관하게 '정확히 세션 기록 쪽수' 검사를 합니다 — 불일치는 `PAGE_COUNT_INVALID`(autoFixable false, 빈 쪽 추가로 고칠 수 없음). 상세와 업로드형 파트너의 직접 전송은 2.4.
+- **상품 프로파일 세트의 표지 슬롯 (2026-10-17, 운영 반영 2026-10-18)**: 템플릿셋에 `productProfile` 이 있는 세트(캘린더 26쪽 단일 PDF 등)의 완료 검증 잡은 서버가 `orderOptions.coverSpine='none'` 을 넣어 제본과 무관하게 **단일 판형 검사**(판형·도련)를 하고 책등 검사(`SPINE_SIZE_MISMATCH`·`SPINE_PARAMS_UNRESOLVED`)·서버 책등 주입을 생략합니다. 기대 쪽수는 프로파일의 고정 캔버스 수입니다. 직접 전송(`validate/external`)에서도 `coverSpine:'none'` 을 보낼 수 있으며 미전송·무효값 = 종전 binding 기준 그대로입니다.
+- **사진인화 세트의 완료 검증 잡 (2026-10-19, 준비 중 — 브랜치, 운영 미반영, CONTRACT v1.25)**: `productProfile.kind 'photo-print'` 세트도 위 상품 프로파일 규칙을 그대로 따릅니다 — cover 슬롯에 `productKind 'sheet'`·`coverSpine 'none'`(단일 판형·도련 검사, 책등 검사·주입 생략). 쪽 단위는 프로파일에서 옵니다: digital(양면, `faces 2`)은 `pageStep 2`, chemical(단면)은 프로파일이 단위를 더하지 않아 종전 산출(세션 `orderOptions.pageStep` → 템플릿셋 `pageStep`, 1 이하면 키 없음)입니다. 기대 쪽수는 `pages.kind 'range'` 세트라 프로파일 고정값이 아니라 세션 기록 캔버스 수(사진 N장 = chemical N쪽 / digital 2N쪽)입니다. **도련:** 세션 `metadata.bleed` 가 없을 때 검증 잡 `orderOptions.bleed` 기본값은 종전 3 이지만, 프로파일 세트이면서 템플릿셋이 재단선 없음(`cropMarkEnabled` 가 true 가 아니거나 `bleedMm` 0)이면 `0` 입니다(재단선 세트·프로파일 `null` 세트는 3 그대로 — 도련 없는 chemical 세트의 완료 PDF 가 `BLEED_MISSING` 경고를 받지 않도록). 직접 전송(`validate/external`)의 규칙은 바뀌지 않습니다.
 
 ### 5.4 유형별 온보딩 체크리스트
 
@@ -1883,6 +2122,8 @@ book.finalization.completed | book.finalization.failed
 - [ ] 임베드 도메인 `frameAncestors` 등록 = `PUT /api/sites/:id` (CSP frame-ancestors — 편집기 재배포 불필요, 반영 최대 약 2분)
 - [ ] `uploadCallbackUrl` 수정 = `PUT /api/sites/:id` (웹훅 SSRF allowlist)
 - [ ] `/embed` 라우트 + `parentOrigin` 사용
+- [ ] (상품 프로파일 세트 사용 시) 템플릿셋 `productProfile`·`editor.complete.product` 는 선택 키로 처리, 캘린더 세트는 26쪽 단일 PDF + `duplex-split` 분리 산출(`synthesis.*` 수신) 설계 (3.1·3.4)
+- [ ] (준비 중, 운영 미반영) 서버 간 런처 경로를 택하면 `Idempotency-Key`·`revision` 대조·서명 URL 미저장 규칙 적용 (3.7)
 
 **유형 3 추가 (미구현)**
 - [ ] 4.2 갭 표의 항목(웹훅 HMAC, compose-mixed 무인증 보강, Shopify Site, frame-ancestors, 외부 어댑터) 충족 확인

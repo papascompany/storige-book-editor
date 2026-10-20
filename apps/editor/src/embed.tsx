@@ -58,14 +58,23 @@ import {
 import { shouldReemitPricing, type PricingEmitState } from './utils/pricingChangeReemit'
 import { computeEmbedPageState, type EmbedPageState } from './utils/embedPageState'
 import { collectCanvasData } from './utils/collectCanvasData'
-import { resolveProfilePdfExportOptions, resolveProfilePdfRequestSize } from './utils/productProfile'
+import { isPhotoPrintProfile, resolveProfilePdfExportOptions, resolveProfilePdfRequestSize } from './utils/productProfile'
 import { selectSingleModePdfCanvases } from './utils/singleModePdfCanvases'
 import { templatesApi, editSessionsApi, filesApi, apiClient, type EditSessionResponse, type TemplateSet } from './api'
 import { core, ServicePlugin } from '@storige/canvas-core'
-import { summarizeProductProfile, type PhotobookPricing, type ProductCompleteSummary, type TemplateSetCoverMeta } from '@storige/types'
+import { summarizeProductProfile, type PhotobookPricing, type PhotoItem, type ProductCompleteSummary, type TemplateSetCoverMeta } from '@storige/types'
 // P1 캘린더 (2026-10-17): 세션 메타 저장/복원·그리드 재합성 (프로파일 null 이면 전부 no-op)
 import { rehydrateCalendarGrids } from './utils/calendarRehydrate'
 import { calendarSessionMetadataFields, rehydrateAllCalendarGrids, restoreCalendarSessionMeta } from './utils/calendarRehydrateAll'
+// P2-d 사진인화 (2026-10-19): 세션 metadata.items 저장/복원·사진틀 옵션 재적용 (프로파일 null 이면 전부 no-op)
+import { rehydratePhotoPrint } from './utils/photoPrintRehydrate'
+import {
+  applyAllPhotoPrint,
+  bindPhotoPrintCanvasEvents,
+  photoPrintResultFields,
+  photoPrintSessionMetadataFields,
+  restorePhotoPrintSessionItems,
+} from './utils/photoPrintRehydrateAll'
 import type { ApiError } from './api/client'
 // './api' 가 아닌 './api/client' 에서 직접 가져온다 — 테스트 하네스가 './api' 를 통째로 mock 한다.
 import { parseApiError } from './api/client'
@@ -472,6 +481,11 @@ export interface EditorResult {
    * (`summarizeProductProfile`). NULL 프로파일(legacy) 세트·게스트 완료 경로에는 생략한다.
    */
   product?: ProductCompleteSummary
+  /**
+   * ADDITIVE 2026-10-19 P2-d 사진인화: kind 'photo-print' 세트에서만 사진별 항목(매수·테두리·맞춤·마감·촬영일·흑백,
+   * 캔버스 수와 동기화한 완전형 `PhotoItem[]`). 그 밖의 세트·게스트 완료 경로에는 생략한다.
+   */
+  items?: PhotoItem[]
   files: {
     coverFileId?: string
     contentFileId?: string
@@ -727,9 +741,11 @@ function templateSetResultFields(
  * 있을 때만(`summarizeProductProfile`). NULL 프로파일이면 `{}` 라 기존 result 키 집합이 바뀌지 않는다.
  * `pageCount`·`files`·`pages` 산식과는 독립이다.
  */
-function productResultFields(canvasCount: number): Pick<EditorResult, 'product'> {
+function productResultFields(canvasCount: number): Pick<EditorResult, 'product' | 'items'> {
   const profile = useSettingsStore.getState().productProfile
-  return profile ? { product: summarizeProductProfile(profile, canvasCount) } : {}
+  if (!profile) return {}
+  // P2-d 사진인화: kind 'photo-print' 면 `items` 동봉(그 밖의 프로파일은 photoPrintResultFields 가 {} — 키 집합 불변)
+  return { product: summarizeProductProfile(profile, canvasCount), ...photoPrintResultFields(canvasCount) }
 }
 
 function EmbeddedEditor({
@@ -853,6 +869,14 @@ function EmbeddedEditor({
   // 저장/출력 무영향, 훅 가드는 ready/editor 뿐이라 embed 에서 그대로 성립.
   useObjectOutOfTrimToast(ready)
   useSafeZoneWarningToast(ready)
+  // P2-d 사진인화 (D5/serialization-6): undo/redo 완료·채운 사진 삭제 뒤 PhotoPrintPlugin.apply 재호출(date-overlay·흑백·clip 창
+  // 자가 복구) — kind 'photo-print' 세트에서만 캔버스 이벤트를 바인딩한다(그 밖의 세트는 리스너 자체를 붙이지 않는다).
+  const photoPrintCanvases = useAppStore((s) => s.allCanvas)
+  const isPhotoPrintSet = useSettingsStore((s) => s.productProfile?.kind === 'photo-print')
+  useEffect(() => {
+    if (!isPhotoPrintSet || photoPrintCanvases.length === 0) return undefined
+    return bindPhotoPrintCanvasEvents(photoPrintCanvases)
+  }, [isPhotoPrintSet, photoPrintCanvases])
   // R8: 배치 이미지 유효 DPI(<150) 경고 toast — EditorView 와 대칭 배선 (embed 누락=F4 사고 전례)
   useImageLowDpiToast(ready)
 
@@ -1327,6 +1351,8 @@ function EmbeddedEditor({
                   : {}),
                 // P1 캘린더: 프로파일 스냅샷 + 캘린더 메타(이 시점엔 보통 템플릿셋 미로드라 {} — 이후 PATCH 가 채운다)
                 ...(calendarSessionMetadataFields().metadata ?? {}),
+                // P2-d 사진인화: 프로파일 스냅샷 + items(같은 규칙 — 사진인화 세트가 아니면 {})
+                ...(photoPrintSessionMetadataFields().metadata ?? {}),
               },
             }
             try {
@@ -1635,6 +1661,12 @@ function EmbeddedEditor({
         const restoredInnerPageCount = Array.isArray(editSession?.canvasData)
           ? asPositiveNumber(editSession.canvasData.length - 1)
           : undefined
+        // P2-d 사진인화 (D2, 2026-10-19): 신규(canvasData 없음)·런처 선생성 세션의 metadata.items 건수 — 로더가 kind 'photo-print'
+        // 세트에서만 건수 × stride 로 캔버스를 시드한다(그 밖의 세트는 무시). 재오픈(canvasData 있음)은 저장본 수가 우선.
+        const photoItemCount =
+          editSession && !editSession.canvasData && Array.isArray(sessionMeta.items) && sessionMeta.items.length > 0
+            ? (sessionMeta.items as unknown[]).length
+            : undefined
         const effectivePageCount =
           asPositiveNumber(options?.pageCount) ??
           restoredInnerPageCount ??
@@ -1701,6 +1733,7 @@ function EmbeddedEditor({
             ...(restoredInnerPageCount != null
               ? { restoredInnerCanvasCount: restoredInnerPageCount }
               : {}),
+            ...(photoItemCount != null ? { photoItemCount } : {}),
           })
         } catch (loadErr) {
           // 프로덕션 기본: 무음 샘플 폴백 금지 — 명확히 실패 표시 후 중단 (2026-06-11)
@@ -1783,6 +1816,11 @@ function EmbeddedEditor({
           if (restoreCalendarSessionMeta(editSession.metadata)) {
             console.log('[EmbeddedEditor] 캘린더 세션 메타 복원:', editSession.id)
           }
+          // P2-d 사진인화 (2026-10-19): 세션 metadata.items(런처 PhotoItemInput 부분형 가능)를 캔버스 복원 **전**에
+          // 정제·시드한다 — 아래 rehydratePhotoPrint 가 저장값으로 사진틀 옵션을 되살린다. 프로파일 null 이면 no-op.
+          if (restorePhotoPrintSessionItems(editSession.metadata)) {
+            console.log('[EmbeddedEditor] 사진인화 세션 항목 복원:', editSession.id)
+          }
 
           // R2-절단 금지 (2026-08-18): 시드 결과 캔버스 수가 저장본보다 적으면 부족분을 증설한다.
           // 종전에는 아래 복원 루프가 min(saved.length, canvases.length)로 무음 절단하고, 이후
@@ -1813,6 +1851,18 @@ function EmbeddedEditor({
                 }
               })
               // addInnerPage 는 새 페이지로 전환하므로 첫 페이지(표지/첫 펼침면)로 복귀.
+              useAppStore.getState().setPage(0)
+            } else if (deficit > 0 && isPhotoPrintProfile(useSettingsStore.getState().productProfile)) {
+              // P2-d 사진인화 (D1 심층방어): 단일 모드 range 세트도 저장본보다 적게 시드됐으면 addPage 로 증설한다 —
+              // 아래 복원 루프가 saved[k] 를 그대로 앉히므로 템플릿 시드는 생략. 로더 시드가 맞으면 deficit 0 으로 미작동.
+              console.warn(`[EmbeddedEditor] 사진인화 복원 캔버스 부족 ${deficit}장 — 페이지 증설 후 전량 복원`)
+              await useAppStore.getState().runBulkPageOps(async () => {
+                for (let k = 0; k < deficit; k++) {
+                  const lapEnd = loadProfile.lapStart('restore:grow')
+                  await useAppStore.getState().addPage()
+                  lapEnd()
+                }
+              })
               useAppStore.getState().setPage(0)
             }
             const grownCount = useAppStore.getState().allCanvas.length
@@ -1848,6 +1898,8 @@ function EmbeddedEditor({
               rebindFrameInteractivity(allEditors[i], canvases[i])
               // P1 캘린더: 캘린더 세트면 calendar-grid 재합성(프로파일 null 이면 즉시 0, no-op).
               void rehydrateCalendarGrids(allEditors[i], canvases[i], i)
+              // P2-d 사진인화: 사진인화 세트면 fitMode/유테/흑백 런타임 복구(프로파일 null 이면 즉시 0, no-op).
+              void rehydratePhotoPrint(allEditors[i], canvases[i], i)
               // Part B: 고객 임베드 세션 복원 시 객체별 이동/변형 잠금 적용(movable=false).
               applyObjectPermissions(canvases[i], useSettingsStore.getState().currentSettings.editMode)
               applyCoverMaterialLock(
@@ -1872,6 +1924,8 @@ function EmbeddedEditor({
             rebindFrameInteractivity(allEditors[singleIdx], fabricCanvas)
             // P1 캘린더: 캘린더 세트면 calendar-grid 재합성(프로파일 null 이면 즉시 0, no-op).
             void rehydrateCalendarGrids(allEditors[singleIdx], fabricCanvas, singleIdx)
+            // P2-d 사진인화: 사진인화 세트면 fitMode/유테/흑백 런타임 복구(프로파일 null 이면 즉시 0, no-op).
+            void rehydratePhotoPrint(allEditors[singleIdx], fabricCanvas, singleIdx)
             applyObjectPermissions(fabricCanvas, useSettingsStore.getState().currentSettings.editMode)
             applyCoverMaterialLock(
               fabricCanvas,
@@ -1890,6 +1944,14 @@ function EmbeddedEditor({
           // metadata.calendar 가 없거나 무효면 restore 가 false 라 종전 경로 그대로(프로파일 기본 시작연월).
           console.log('[EmbeddedEditor] 캘린더 세션 메타 복원(신규 세션, canvasData 없음):', editSession?.id)
           await rehydrateAllCalendarGrids()
+        }
+        // P2-d 사진인화 (2026-10-19): 신규/런처 선생성 세션(canvasData 없음)은 metadata.items(PhotoItemInput 부분형)를 정제·시드한 뒤
+        // 템플릿 로드로 이미 앉힌 캔버스에 항목 옵션을 적용한다. items 가 없으면 프로파일 기본값(허용 어휘 첫째)만 적용하고
+        // dirty 로 만들지 않는다(무편집 세션 유지). 사진인화 세트가 아니면 통째로 건너뛴다(종전 경로 바이트 동일).
+        if (editSession && !editSession.canvasData && isPhotoPrintProfile(useSettingsStore.getState().productProfile)) {
+          const restoredItems = restorePhotoPrintSessionItems(editSession.metadata)
+          if (restoredItems) console.log('[EmbeddedEditor] 사진인화 세션 항목 복원(신규 세션, canvasData 없음):', editSession.id)
+          await applyAllPhotoPrint({ markDirty: restoredItems })
         }
 
         if (!isMounted) return
@@ -2393,11 +2455,13 @@ function EmbeddedEditor({
 
           // Update edit session with canvas data (게스트 세션이면 guestToken 동봉)
           // P1 캘린더: 캘린더 세트면 metadata.calendar 동봉(얕은 병합), 아니면 {} (payload 키 집합 불변)
+          // P2-d 사진인화: 사진인화 세트면 metadata.items 동봉(같은 규칙 — 아니면 {})
           const guestToken = currentSession?.guestToken
           const calendarFields = calendarSessionMetadataFields()
+          const photoPrintFields = photoPrintSessionMetadataFields()
           const updatedSession = guestToken
-            ? await editSessionsApi.updateGuest(currentSessionId, guestToken, { canvasData, status: 'editing', ...calendarFields })
-            : await editSessionsApi.update(currentSessionId, { canvasData, status: 'editing', ...calendarFields })
+            ? await editSessionsApi.updateGuest(currentSessionId, guestToken, { canvasData, status: 'editing', ...calendarFields, ...photoPrintFields })
+            : await editSessionsApi.update(currentSessionId, { canvasData, status: 'editing', ...calendarFields, ...photoPrintFields })
 
           setCurrentSession(updatedSession)
 
@@ -2461,7 +2525,7 @@ function EmbeddedEditor({
           // 게스트 세션: 회원 전용 complete 불가 → 저장만 하고 로그인 유도
           const guestToken = currentSession?.guestToken
           if (guestToken) {
-            await editSessionsApi.updateGuest(currentSessionId, guestToken, { canvasData, ...calendarSessionMetadataFields() })
+            await editSessionsApi.updateGuest(currentSessionId, guestToken, { canvasData, ...calendarSessionMetadataFields(), ...photoPrintSessionMetadataFields() })
             // STALE-CLOSURE-001: editor.complete에 needsAuth/guestToken 인라인 포함
             // bookmoa finishComplete가 editor.complete.needsAuth 로 분기하므로 이 이벤트를 먼저 emit
             const guestResult: EditorResult = {
@@ -2490,6 +2554,8 @@ function EmbeddedEditor({
             canvasData,
             // P1 캘린더: 캘린더 세트면 metadata.calendar 동봉(얕은 병합), 아니면 {} (payload 키 집합 불변)
             ...calendarSessionMetadataFields(),
+            // P2-d 사진인화: 사진인화 세트면 metadata.items 동봉(같은 규칙)
+            ...photoPrintSessionMetadataFields(),
           })
 
           // Then mark as completed
@@ -2639,7 +2705,7 @@ function EmbeddedEditor({
       // 게스트 세션: PDF 생성/회원 complete 불가 → 저장만 하고 로그인 유도
       const guestToken = currentSession?.guestToken
       if (guestToken) {
-        await editSessionsApi.updateGuest(currentSessionId, guestToken, { canvasData, ...calendarSessionMetadataFields() })
+        await editSessionsApi.updateGuest(currentSessionId, guestToken, { canvasData, ...calendarSessionMetadataFields(), ...photoPrintSessionMetadataFields() })
         // R4 (2026-08-18): 서버 저장 성공 — 자동저장 훅과 동일 북키핑(clean 마킹 + 로컬 백업
         // 삭제). 종전엔 이 경로가 dirty/백업을 그대로 둬 unmount 백업이 늘 재작성되고
         // backup.savedAt > session.updatedAt 이 상시 성립 → 재진입마다 복원 배너가 떴다.
@@ -2672,7 +2738,8 @@ function EmbeddedEditor({
       // Update edit session with canvas data (멀티페이지면 배열 전체)
       await finishMark('canvasData:save:start', { pages: Array.isArray(canvasData) ? canvasData.length : 1 })
       // P1 캘린더: 캘린더 세트면 metadata.calendar 동봉(얕은 병합), 아니면 {} (payload 키 집합 불변)
-      await editSessionsApi.update(currentSessionId, { canvasData, ...calendarSessionMetadataFields() })
+      // P2-d 사진인화: 사진인화 세트면 metadata.items 동봉(같은 규칙)
+      await editSessionsApi.update(currentSessionId, { canvasData, ...calendarSessionMetadataFields(), ...photoPrintSessionMetadataFields() })
       await finishMark('canvasData:save:done')
       // R4 (2026-08-18): canvasData 서버 저장 성공 **직후에만** clean 마킹 + 로컬 백업 삭제
       // (이후 PDF/complete 단계 실패와 무관 — 서버 canvasData 는 이미 최신). 종전엔 편집완료가

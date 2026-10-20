@@ -16,6 +16,7 @@ import Editor, {
   ImageProcessingPlugin,
   LockPlugin,
   ObjectPlugin,
+  PhotoPrintPlugin,
   PointerShiftGuardPlugin,
   PreviewPlugin,
   RulerPlugin,
@@ -51,6 +52,10 @@ const ENABLE_TOUCH_CONTEXT_MENU = import.meta.env.VITE_ENABLE_TOUCH_CONTEXT_MENU
 // 프로파일과 무관하게 플래그만으로 모든 캔버스에 등록한다: 첫 캔버스는 템플릿셋 로드 전에 만들어지고,
 // 플러그인은 이벤트·핫키가 없어 calendar-grid 객체가 없는 캔버스에서는 무동작이다.
 const ENABLE_CALENDAR = import.meta.env.VITE_ENABLE_CALENDAR !== 'false'
+// Feature flag for photo print plugin (P2-d 사진인화 2026-10-19, 사진틀 fitMode/유테/촬영일/흑백) — 기본 on.
+// 플러그인은 이벤트·핫키가 없어 사진인화 세트(productProfile kind=photo-print)에서 utils/photoPrintRehydrate 가
+// apply/rehydrate 를 호출할 때만 동작한다(legacy 세트 무동작).
+const ENABLE_PHOTO_PRINT = import.meta.env.VITE_ENABLE_PHOTO_PRINT !== 'false'
 import { useAppStore } from '@/stores/useAppStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { innerSpecToPlaceholderSpec } from '@/utils/photobookSpread'
@@ -407,6 +412,8 @@ export function registerCanvasPlugins(
         defaultFontFamily: DEFAULT_FONT_FAMILY,
       })
     : null
+  // PhotoPrintPlugin 은 VITE_ENABLE_PHOTO_PRINT 환경변수로 제어 (기본 on) — 옵션 없음, FrameInteractionPlugin 뒤 등록
+  const photoPrint = ENABLE_PHOTO_PRINT ? new PhotoPrintPlugin(canvas, editor) : null
 
   // TransformFeedbackPlugin은 VITE_ENABLE_TRANSFORM_FEEDBACK 환경변수로 제어 (기본 on)
   // — DOM 오버레이(wrapperEl 내)라 직렬화/PDF/히스토리 원천 무관
@@ -452,6 +459,10 @@ export function registerCanvasPlugins(
     editor.use(smartGuides)
   }
   editor.use(frameInteraction)
+  // PhotoPrintPlugin 은 VITE_ENABLE_PHOTO_PRINT 환경변수로 제어 (기본 on) — frameInteraction 다음 등록
+  if (photoPrint) {
+    editor.use(photoPrint)
+  }
   // RulerPlugin은 VITE_ENABLE_RULER 환경변수로 제어
   if (ruler) {
     editor.use(ruler)

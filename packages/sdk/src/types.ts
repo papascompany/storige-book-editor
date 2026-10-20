@@ -407,6 +407,33 @@ export interface SessionDeliverablesProduct {
   backRotation: 0 | 180;
 }
 
+/**
+ * 사진인화 세트의 사진 항목 1건(= 주문 항목 1건) — ADDITIVE 2026-10-19 P2-d(v1.25).
+ * 서버 정본 `@storige/types` `PhotoItem` 과 동형(드리프트는 types-parity.spec 이 감시).
+ * 편집 세션 `metadata.items` 를 서버가 템플릿셋 프로파일로 정제한 완전형이다 — `sizeCode` 는
+ * 세션 사이즈(P2: `sizes[0].code`) 고정, `copies` 는 프로파일 범위로 클램프된 값.
+ * sheet-map 세트의 `files[].copies`/`label('사진 N')` 의 원천도 이 항목이다.
+ */
+export interface SessionDeliverablesItem {
+  /** 항목 순번(0부터) */
+  index: number;
+  /** 앞면 캔버스 인덱스 — chemical i, digital 2i */
+  canvasIndex: number;
+  /** 업로드 레코드·외부 사진 id(있을 때만 키 존재) */
+  sourcePhotoId?: string;
+  sizeCode: string;
+  /** 1 이상 정수 */
+  copies: number;
+  border: 'none' | 'white';
+  fit: 'paper-full' | 'image-full';
+  finish: 'matte' | 'glossy';
+  brightnessFix: boolean;
+  dateOverlay: boolean;
+  grayscale: boolean;
+  /** 프로파일 minDpi 미달 경고(완료 차단 없음 — 호스트 판단) */
+  lowRes: boolean;
+}
+
 /** GET /api/v1/sessions/{id}/deliverables 응답 */
 export interface SessionDeliverables {
   sessionId: string;
@@ -421,8 +448,11 @@ export interface SessionDeliverables {
     startYm: string;
     dataVersion: string | null;
   } | null;
-  /** launch `items` echo(프로파일 세트) */
-  items?: unknown[];
+  /**
+   * 사진인화(`product.kind 'photo-print'`) 세트에서만 — 세션 `metadata.items` 의 서버 정제본(v1.25).
+   * 그 밖의 세트에서는 키 없음. launch `items` 는 기록만 되고 그대로 echo 되지 않는다.
+   */
+  items?: SessionDeliverablesItem[];
   /** 낱장 세트 — 시트 단위 메타(서버가 shape 을 고정하지 않는다) */
   sheets?: unknown[];
   files: DeliverableFile[];

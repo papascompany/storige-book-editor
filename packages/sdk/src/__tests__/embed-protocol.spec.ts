@@ -22,6 +22,7 @@ import {
   parseEditorMessage,
   readCompletePayload,
   SKIP_SOURCE_CHECK,
+  type EditorCompleteItem,
   type EditorCompletePayload,
   type EditorCompleteProduct,
   type EditorMessageLike,
@@ -506,6 +507,145 @@ describe('readCompletePayload — product (additive, P1 캘린더)', () => {
     });
     expect(done?.action).toBe('require-login');
     expect(done?.product).toEqual(product);
+    expect(JSON.stringify(done)).not.toContain('super-secret-guest-token');
+  });
+
+  // ADDITIVE 2026-10-19 P2-d 사진인화
+  it("kind 'photo-print' 도 통과한다(chemical faces=1·digital faces=2 — shape 불변)", () => {
+    const chemical = { kind: 'photo-print', editorType: 'photo_chem_4x6', canvasCount: 12, sheetCount: 12, faces: 1 };
+    const digital = { kind: 'photo-print', editorType: 'photo_digital_4x6', canvasCount: 24, sheetCount: 12, faces: 2 };
+    expect(readCompletePayload({ ...base, product: chemical })?.product).toEqual(chemical);
+    expect(readCompletePayload({ ...base, product: digital })?.product).toEqual(digital);
+    const kind: EditorCompleteProduct['kind'] = 'photo-print';
+    expect(PRODUCT_KIND_VALUES).toContain(kind);
+  });
+});
+
+/** `EditorCompleteProduct['kind']` 어휘 — 타입에 값이 늘면 여기도 늘어야 컴파일된다 */
+const PRODUCT_KIND_VALUES: ReadonlyArray<EditorCompleteProduct['kind']> = ['sheet', 'calendar', 'photo-print'];
+
+// ADDITIVE 2026-10-19 P2-d 사진인화
+describe('readCompletePayload — items (additive, P2-d 사진인화)', () => {
+  const base = {
+    sessionId: 'sess-30',
+    files: { contentFileId: 'f-content' },
+    product: { kind: 'photo-print', editorType: 'photo_chem_4x6', canvasCount: 2, sheetCount: 2, faces: 1 },
+  };
+  const item0: EditorCompleteItem = {
+    index: 0,
+    canvasIndex: 0,
+    sourcePhotoId: 'upload-1',
+    sizeCode: '4x6',
+    copies: 2,
+    border: 'white',
+    fit: 'paper-full',
+    finish: 'glossy',
+    brightnessFix: false,
+    dateOverlay: true,
+    grayscale: false,
+    lowRes: false,
+  };
+  const item1: EditorCompleteItem = {
+    index: 1,
+    canvasIndex: 1,
+    sizeCode: '4x6',
+    copies: 1,
+    border: 'none',
+    fit: 'image-full',
+    finish: 'matte',
+    brightnessFix: true,
+    dateOverlay: false,
+    grayscale: true,
+    lowRes: true,
+  };
+
+  it('items 가 없으면 결과에 키 자체가 없다(기존 payload 판독 결과 불변)', () => {
+    const legacy = { sessionId: 'sess-31', files: { contentFileId: 'f-content' }, pageCount: 4 };
+    const done = readCompletePayload(legacy);
+    expect(done).not.toHaveProperty('items');
+    expect(done).toEqual({
+      needsAuth: false,
+      action: 'promote',
+      hasGuestToken: false,
+      sessionId: 'sess-31',
+      files: { contentFileId: 'f-content' },
+      pageCount: 4,
+    });
+    // product 만 있는 P1 캘린더 payload 도 items 키가 생기지 않는다
+    expect(readCompletePayload(base)).not.toHaveProperty('items');
+  });
+
+  it('정상 items 는 알려진 키만 순서대로 통과(미지 키는 버리고 sourcePhotoId 는 있을 때만 키 존재)', () => {
+    const done = readCompletePayload({
+      ...base,
+      items: [{ ...item0, extra: 'drop-me' }, { ...item1, sourcePhotoId: '' }],
+    });
+    expect(done?.items).toEqual([item0, item1]);
+    expect(done?.items?.[1]).not.toHaveProperty('sourcePhotoId');
+    expect(Object.keys(done?.items?.[0] ?? {})).toEqual([
+      'index',
+      'canvasIndex',
+      'sourcePhotoId',
+      'sizeCode',
+      'copies',
+      'border',
+      'fit',
+      'finish',
+      'brightnessFix',
+      'dateOverlay',
+      'grayscale',
+      'lowRes',
+    ]);
+    expectTypeOf(done?.items).toEqualTypeOf<EditorCompleteItem[] | undefined>();
+  });
+
+  it('형태 불량 항목(비객체·어휘 밖·copies 0·음수 index·비정수·sizeCode 빈 문자열·플래그 누락)은 생략하고 정상 항목만 싣는다', () => {
+    const done = readCompletePayload({
+      ...base,
+      items: [
+        null,
+        'item',
+        42,
+        { ...item0, border: 'black' },
+        { ...item0, fit: 'cover' },
+        { ...item0, finish: 'silk' },
+        { ...item0, copies: 0 },
+        { ...item0, copies: 1.5 },
+        { ...item0, index: -1 },
+        { ...item0, canvasIndex: '0' },
+        { ...item0, sizeCode: '' },
+        { ...item0, dateOverlay: 'yes' },
+        { index: 5, canvasIndex: 5 },
+        item1,
+        item0,
+      ],
+    });
+    expect(done?.items).toEqual([item1, item0]);
+  });
+
+  it('items 가 배열이 아니면 키 생략, 빈 배열·전부 불량이면 빈 배열', () => {
+    for (const notArray of [null, 'items', {}, 3, { length: 1, 0: item0 }]) {
+      expect(readCompletePayload({ ...base, items: notArray })).not.toHaveProperty('items');
+    }
+    expect(readCompletePayload({ ...base, items: [] })?.items).toEqual([]);
+    expect(readCompletePayload({ ...base, items: [null, {}] })?.items).toEqual([]);
+  });
+
+  it('items 판독은 product 와 독립이다(product 가 없거나 불량이어도 items 는 실린다)', () => {
+    const done = readCompletePayload({ sessionId: 'sess-32', files: {}, items: [item0] });
+    expect(done).not.toHaveProperty('product');
+    expect(done?.items).toEqual([item0]);
+  });
+
+  it('게스트 완료에 items 가 실려도 guestToken 값은 노출되지 않는다', () => {
+    const done = readCompletePayload({
+      ...base,
+      needsAuth: true,
+      guestToken: 'super-secret-guest-token',
+      items: [item0],
+    });
+    expect(done?.action).toBe('require-login');
+    expect(done?.items).toEqual([item0]);
     expect(JSON.stringify(done)).not.toContain('super-secret-guest-token');
   });
 });

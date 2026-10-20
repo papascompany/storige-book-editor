@@ -7,6 +7,7 @@
  * `PdfOutputMode` 등 기존 enum 은 건드리지 않는다(설계: docs/PRODUCT_MODE_ARCHITECTURE_DESIGN_2026-10-16.md §2).
  *
  * P1 범위: kind 'sheet' | 'calendar', output 'single-pdf'. photo-print·sheet-map 은 P2 에서 additive 로 확장.
+ * P2-d(2026-10-19): kind 'photo-print' + `photoPrint` 블록(설계 §2.2) + 세션 `metadata.items`(PhotoItem, §3) 추가.
  *
  * 캘린더 상품(오너 확정 2026-10-17): 탁상 4종·벽걸이 1단·2단 모두
  *   캔버스 = 표지(coverCanvases) + 12개월 × canvasesPerMonth + 에필로그(epilogueCanvases)
@@ -17,10 +18,10 @@
 
 export const PRODUCT_PROFILE_VERSION = 1 as const;
 
-export type ProductKind = 'sheet' | 'calendar';
+export type ProductKind = 'sheet' | 'calendar' | 'photo-print';
 export type ProductPagesKind = 'fixed' | 'range';
 export type ProductPageStep = 1 | 2 | 4;
-export type ProductPageLabelRule = 'default' | 'month' | 'sheet';
+export type ProductPageLabelRule = 'default' | 'month' | 'sheet' | 'photo';
 export type ProductSheetFaces = 1 | 2;
 export type ProductCanvasLayout = 'canvas-per-sheet' | 'canvas-pair';
 export type ProductSheetBinding = 'none' | 'top-ring' | 'center-punch';
@@ -38,8 +39,8 @@ export type ProductPostProcessColorRule = 'any' | 'spot-only';
 export type CalendarLayout = 'desk' | 'wall-1' | 'wall-2';
 export type CalendarWeekStart = 0 | 1;
 
-export const PRODUCT_KINDS: readonly ProductKind[] = ['sheet', 'calendar'];
-export const PRODUCT_PAGE_LABEL_RULES: readonly ProductPageLabelRule[] = ['default', 'month', 'sheet'];
+export const PRODUCT_KINDS: readonly ProductKind[] = ['sheet', 'calendar', 'photo-print'];
+export const PRODUCT_PAGE_LABEL_RULES: readonly ProductPageLabelRule[] = ['default', 'month', 'sheet', 'photo'];
 export const PRODUCT_CANVAS_LAYOUTS: readonly ProductCanvasLayout[] = ['canvas-per-sheet', 'canvas-pair'];
 export const PRODUCT_SHEET_BINDINGS: readonly ProductSheetBinding[] = ['none', 'top-ring', 'center-punch'];
 export const PRODUCT_SHEET_PAIRINGS: readonly ProductSheetPairing[] = ['same-sheet', 'offset-next'];
@@ -47,6 +48,28 @@ export const PRODUCT_DUPLEX_FLIPS: readonly ProductDuplexFlip[] = ['short-edge',
 export const PRODUCT_OUTPUT_MODES: readonly ProductOutputMode[] = ['single-pdf', 'sheet-map'];
 export const PRODUCT_OUTPUT_SHEET_FILES: readonly ProductOutputSheetFiles[] = ['per-sheet', 'merged-duplex'];
 export const CALENDAR_LAYOUTS: readonly CalendarLayout[] = ['desk', 'wall-1', 'wall-2'];
+
+// ─── 사진인화 어휘(P2-d, 설계 §2.2) ─────────────────────────────────────────
+
+/** 인화(chemical, 미니랩 단면) | 인쇄(digital, 양면 디지털 인쇄) */
+export type PhotoPrintProcess = 'chemical' | 'digital';
+/** 구성 — ① 사진별 자유 뒷면 | ② 사진별 고정 뒷면(backTemplateId) | ③ 카드형(앞/뒤 한 쌍) */
+export type PhotoPrintComposition = 'per-photo-free-back' | 'per-photo-fixed-back' | 'sheet-cards';
+/** 무테 | 유테(사진틀 창을 borderInsetMm 만큼 축소 — 용지 여백 아님, §13-3) */
+export type PhotoBorder = 'none' | 'white';
+/** 페이퍼풀(용지 가득, cover·잘림) | 이미지풀(사진 전체, contain·여백) — §13-3 */
+export type PhotoFit = 'paper-full' | 'image-full';
+export type PhotoFinish = 'matte' | 'glossy';
+
+export const PHOTO_PRINT_PROCESSES: readonly PhotoPrintProcess[] = ['chemical', 'digital'];
+export const PHOTO_PRINT_COMPOSITIONS: readonly PhotoPrintComposition[] = ['per-photo-free-back', 'per-photo-fixed-back', 'sheet-cards'];
+export const PHOTO_BORDERS: readonly PhotoBorder[] = ['none', 'white'];
+export const PHOTO_FITS: readonly PhotoFit[] = ['paper-full', 'image-full'];
+export const PHOTO_FINISHES: readonly PhotoFinish[] = ['matte', 'glossy'];
+/** 유테 시 사진틀 창 축소 기본값(mm). 프로파일 `options.borderInsetMm` 로 덮어쓴다. */
+export const DEFAULT_PHOTO_BORDER_INSET_MM = 2;
+/** P2 는 1세션 1사이즈(§13-6) — sizes 배열 길이 고정 */
+export const PHOTO_PRINT_SIZES_PER_PROFILE = 1;
 
 // ─── 프로파일 구조 ─────────────────────────────────────────────────────────
 
@@ -125,6 +148,56 @@ export interface CalendarProfile {
   dataVersion: string;
 }
 
+export interface PhotoPrintSize {
+  /** 사이즈 코드(호스트·매니페스트 식별용, 예: '4x6'). 영숫자·'_'·'-' 1~32자 */
+  code: string;
+  widthMm: number;
+  heightMm: number;
+  /** 저해상 경고 기준(ImageDpiWarningPlugin) — 미달 시 items[].lowRes=true, 완료 차단 없음 */
+  minDpi: number;
+}
+
+/** 옵션 허용 어휘. 배열은 비어 있지 않아야 하며 첫 원소가 세션 기본값이다. */
+export interface PhotoPrintOptionsPolicy {
+  border: PhotoBorder[];
+  fit: PhotoFit[];
+  finish: PhotoFinish[];
+  /** 밝기 보정 제공 여부(통과만 — 편집기 미리보기 미적용) */
+  brightnessFix: boolean;
+  /** 촬영일 표기 제공 여부(편집기 소비 — 'date-overlay' 텍스트) */
+  dateOverlay: boolean;
+  /** 흑백 제공 여부(편집기 소비 — Grayscale 필터) */
+  grayscale: boolean;
+  /** 유테 시 사진틀 창 축소 mm(기본 DEFAULT_PHOTO_BORDER_INSET_MM=2) */
+  borderInsetMm?: number;
+}
+
+export interface PhotoPrintCopiesPolicy {
+  min: number;
+  max: number;
+}
+
+export interface PhotoPrintUploadPolicy {
+  maxPhotos: number;
+  maxMb: number;
+}
+
+/**
+ * 사진인화 프로파일(kind='photo-print' 전용). 옵션 소비 경계(§2.2 고정): 편집기 소비 = border·fit·dateOverlay·grayscale,
+ * 통과만 = finish·brightnessFix·copies(세션 metadata.items — 가격·제작은 호스트/인쇄 책임).
+ */
+export interface PhotoPrintProfile {
+  process: PhotoPrintProcess;
+  composition: PhotoPrintComposition;
+  /** P2 는 정확히 1개(§13-6). items[].sizeCode 는 sizes[0].code 로 고정. */
+  sizes: PhotoPrintSize[];
+  options: PhotoPrintOptionsPolicy;
+  copies: PhotoPrintCopiesPolicy;
+  /** composition='per-photo-fixed-back' 필수 — 뒷면 고정 템플릿 id */
+  backTemplateId?: string;
+  upload: PhotoPrintUploadPolicy;
+}
+
 export interface ProductOutputPolicy {
   mode: ProductOutputMode;
   /** mode='sheet-map' 전용. 생략 = 'per-sheet'. single-pdf 에서는 지정 금지. */
@@ -140,6 +213,8 @@ export interface ProductProfile {
   sheet: ProductSheetPolicy;
   postProcess?: ProductPostProcessPolicy;
   calendar?: CalendarProfile;
+  /** kind='photo-print' 전용(P2-d) */
+  photoPrint?: PhotoPrintProfile;
   output: ProductOutputPolicy;
 }
 
@@ -193,6 +268,35 @@ export interface CalendarSessionMeta {
   anniversaries: CalendarAnniversary[];
   dataVersion: string;
 }
+
+// ─── 세션 메타(edit_sessions.metadata.items) — 사진인화 항목 ─────────────────
+
+/**
+ * 사진 1장(= 주문 항목 1건)의 선택값. 편집기가 저장·완료 시 완전형으로 기록하고,
+ * `editor.complete`/deliverables `items` 와 sheet-map `sheets[].copies` 의 원천이 된다(§3, 계약 v1.25).
+ */
+export interface PhotoItem {
+  /** 항목 순번(0부터) */
+  index: number;
+  /** 앞면 캔버스 인덱스 — resolvePhotoItemCanvasIndex 와 같은 값 */
+  canvasIndex: number;
+  /** 업로드 레코드·외부 사진 id(있으면) */
+  sourcePhotoId?: string;
+  /** sizes[0].code 고정(P2) */
+  sizeCode: string;
+  copies: number;
+  border: PhotoBorder;
+  fit: PhotoFit;
+  finish: PhotoFinish;
+  brightnessFix: boolean;
+  dateOverlay: boolean;
+  grayscale: boolean;
+  /** minDpi 미달 경고(완료 차단 없음 — 호스트 판단) */
+  lowRes: boolean;
+}
+
+/** 런처 `items` 입력(부분형). 편집기가 readPhotoItems 로 정제해 완전형으로 덮어쓴다. */
+export type PhotoItemInput = Partial<Omit<PhotoItem, 'index' | 'canvasIndex' | 'lowRes'>>;
 
 /** `editor.complete` additive `product` 키 */
 export interface ProductCompleteSummary {
@@ -405,7 +509,148 @@ export function validateProductProfile(input: unknown): string[] {
     }
   }
 
+  // photoPrint (P2-d) — 기존 kind 의 메시지 순서를 바꾸지 않도록 마지막에 검사한다.
+  const photo = p.photoPrint;
+  if (p.kind === 'photo-print') {
+    if (!isRecord(photo)) {
+      errors.push("kind='photo-print' 는 photoPrint 프로파일이 필요합니다");
+    } else {
+      validatePhotoPrintBlock(photo, pages, sheet, out, errors);
+    }
+  } else if (photo !== undefined) {
+    errors.push("photoPrint 프로파일은 kind='photo-print' 에서만 지정합니다");
+  } else if (isRecord(pages) && pages.labelRule === 'photo') {
+    errors.push("pages.labelRule='photo' 는 kind='photo-print' 에서만 쓸 수 있습니다");
+  }
+
   return errors;
+}
+
+const PHOTO_SIZE_CODE_RE = /^[A-Za-z0-9_-]{1,32}$/;
+
+function isFiniteNumber(v: unknown, min = Number.NEGATIVE_INFINITY): v is number {
+  return typeof v === 'number' && Number.isFinite(v) && v >= min;
+}
+
+function isVocabList<T>(v: unknown, vocab: readonly T[]): v is T[] {
+  return Array.isArray(v) && v.length > 0 && v.every((x) => oneOf(x, vocab)) && new Set(v).size === v.length;
+}
+
+/**
+ * photoPrint 블록 + 결합 규칙(계약 결정 3):
+ *   chemical ⇒ sheet.faces 1(+canvas-per-sheet) + composition 'per-photo-free-back' + output 'single-pdf'
+ *   digital  ⇒ sheet.faces 2(+canvas-pair) + pairing 'same-sheet' + pages.step 2 + pages.min/max 짝수
+ *   'per-photo-fixed-back' ⇒ backTemplateId 필수 · pages.kind 는 'range' 만. backRotation 은 강제하지 않는다(오너 결정 0).
+ */
+function validatePhotoPrintBlock(
+  photo: Record<string, unknown>,
+  pages: unknown,
+  sheet: unknown,
+  out: unknown,
+  errors: string[],
+): void {
+  const process = photo.process;
+  if (!oneOf(process, PHOTO_PRINT_PROCESSES)) {
+    errors.push(`photoPrint.process 는 ${PHOTO_PRINT_PROCESSES.join('|')} 중 하나여야 합니다`);
+  }
+  const composition = photo.composition;
+  if (!oneOf(composition, PHOTO_PRINT_COMPOSITIONS)) {
+    errors.push(`photoPrint.composition 은 ${PHOTO_PRINT_COMPOSITIONS.join('|')} 중 하나여야 합니다`);
+  }
+
+  const sizes = photo.sizes;
+  if (!Array.isArray(sizes) || sizes.length !== PHOTO_PRINT_SIZES_PER_PROFILE) {
+    errors.push(`photoPrint.sizes 는 정확히 ${PHOTO_PRINT_SIZES_PER_PROFILE}개여야 합니다(P2: 1세션 1사이즈)`);
+  } else {
+    sizes.forEach((size, i) => {
+      if (!isRecord(size)) {
+        errors.push(`photoPrint.sizes[${i}] 는 객체여야 합니다`);
+        return;
+      }
+      if (typeof size.code !== 'string' || !PHOTO_SIZE_CODE_RE.test(size.code)) {
+        errors.push(`photoPrint.sizes[${i}].code 는 영숫자·'_'·'-' 1~32자여야 합니다`);
+      }
+      if (!isFiniteNumber(size.widthMm) || size.widthMm <= 0 || !isFiniteNumber(size.heightMm) || size.heightMm <= 0) {
+        errors.push(`photoPrint.sizes[${i}].widthMm/heightMm 는 0보다 큰 숫자여야 합니다`);
+      }
+      if (!isInt(size.minDpi, 1)) errors.push(`photoPrint.sizes[${i}].minDpi 는 1 이상 정수여야 합니다`);
+    });
+  }
+
+  const options = photo.options;
+  if (!isRecord(options)) {
+    errors.push('photoPrint.options 가 필요합니다');
+  } else {
+    if (!isVocabList(options.border, PHOTO_BORDERS)) {
+      errors.push(`photoPrint.options.border 는 ${PHOTO_BORDERS.join('|')} 의 중복 없는 비어 있지 않은 배열이어야 합니다`);
+    }
+    if (!isVocabList(options.fit, PHOTO_FITS)) {
+      errors.push(`photoPrint.options.fit 은 ${PHOTO_FITS.join('|')} 의 중복 없는 비어 있지 않은 배열이어야 합니다`);
+    }
+    if (!isVocabList(options.finish, PHOTO_FINISHES)) {
+      errors.push(`photoPrint.options.finish 는 ${PHOTO_FINISHES.join('|')} 의 중복 없는 비어 있지 않은 배열이어야 합니다`);
+    }
+    if (!isBool(options.brightnessFix) || !isBool(options.dateOverlay) || !isBool(options.grayscale)) {
+      errors.push('photoPrint.options.brightnessFix/dateOverlay/grayscale 는 boolean 이어야 합니다');
+    }
+    if (options.borderInsetMm !== undefined && !isFiniteNumber(options.borderInsetMm, 0)) {
+      errors.push('photoPrint.options.borderInsetMm 는 생략하거나 0 이상 숫자여야 합니다');
+    }
+  }
+
+  const copies = photo.copies;
+  if (!isRecord(copies) || !isInt(copies.min, 1) || !isInt(copies.max, 1) || copies.min > copies.max) {
+    errors.push('photoPrint.copies.min/max 는 1 이상 정수이고 min<=max 여야 합니다');
+  }
+
+  if (photo.backTemplateId !== undefined && (typeof photo.backTemplateId !== 'string' || photo.backTemplateId.trim().length === 0)) {
+    errors.push('photoPrint.backTemplateId 는 생략하거나 비어 있지 않은 문자열이어야 합니다');
+  } else if (composition === 'per-photo-fixed-back' && photo.backTemplateId === undefined) {
+    errors.push("photoPrint.composition='per-photo-fixed-back' 은 backTemplateId 가 필요합니다");
+  }
+
+  const upload = photo.upload;
+  if (!isRecord(upload) || !isInt(upload.maxPhotos, 1) || !isFiniteNumber(upload.maxMb) || upload.maxMb <= 0) {
+    errors.push('photoPrint.upload.maxPhotos 는 1 이상 정수, maxMb 는 0보다 큰 숫자여야 합니다');
+  }
+
+  // pages 결합: range 만(사진 수는 사용자가 정한다). protectedIndices 는 금지 — 선행 보호 캔버스가 있으면
+  // same-sheet 매핑(digital)이 앞·뒤 짝을 어긋나게 하고(PAGE_COUNT_MISMATCH 또는 조용한 단면 분리) 사진 번호 체계와도 어긋난다.
+  if (isRecord(pages)) {
+    if (pages.kind !== 'range') {
+      errors.push("photo-print 프로파일은 pages.kind='range' 여야 합니다");
+    }
+    if (Array.isArray(pages.protectedIndices) && pages.protectedIndices.length > 0) {
+      errors.push('photo-print 프로파일은 pages.protectedIndices 를 지정할 수 없습니다');
+    }
+  }
+
+  // process 결합(faces 가 올바를 때만 — canvasLayout 정합은 sheet 절이 이미 검사한다)
+  if (process === 'chemical') {
+    if (isRecord(sheet) && oneOf(sheet.faces, [1, 2] as const) && sheet.faces !== 1) {
+      errors.push("photoPrint.process='chemical' 은 sheet.faces=1(canvas-per-sheet) 이어야 합니다");
+    }
+    if (oneOf(composition, PHOTO_PRINT_COMPOSITIONS) && composition !== 'per-photo-free-back') {
+      errors.push("photoPrint.process='chemical' 은 composition 'per-photo-free-back' 만 허용합니다");
+    }
+    if (isRecord(out) && oneOf(out.mode, PRODUCT_OUTPUT_MODES) && out.mode !== 'single-pdf') {
+      errors.push("photoPrint.process='chemical' 은 output.mode='single-pdf' 여야 합니다");
+    }
+  } else if (process === 'digital') {
+    if (isRecord(sheet)) {
+      if (oneOf(sheet.faces, [1, 2] as const) && sheet.faces !== 2) {
+        errors.push("photoPrint.process='digital' 은 sheet.faces=2(canvas-pair) 이어야 합니다");
+      } else if (sheet.canvasLayout === 'canvas-pair' && oneOf(sheet.pairing, PRODUCT_SHEET_PAIRINGS) && sheet.pairing !== 'same-sheet') {
+        errors.push("photoPrint.process='digital' 은 sheet.pairing 'same-sheet' 만 허용합니다");
+      }
+    }
+    if (isRecord(pages) && pages.kind === 'range') {
+      if (pages.step !== 2) errors.push("photoPrint.process='digital' 은 pages.step=2 여야 합니다");
+      if ((isInt(pages.min, 1) && pages.min % 2 !== 0) || (isInt(pages.max, 1) && pages.max % 2 !== 0)) {
+        errors.push("photoPrint.process='digital' 은 pages.min/max 가 짝수여야 합니다");
+      }
+    }
+  }
 }
 
 /**
@@ -526,6 +771,128 @@ export function formatCalendarPageLabel(
 export function isStartMonthAllowed(cal: Pick<CalendarProfile, 'allowedRange'>, start: YearMonth): boolean {
   const key = formatMonthKey(start);
   return compareMonth(key, cal.allowedRange.from) >= 0 && compareMonth(key, cal.allowedRange.to) <= 0;
+}
+
+// ─── 사진인화 항목 매핑(순수 함수, P2-d) ─────────────────────────────────────
+
+/** 항목 1건이 차지하는 캔버스 수 — chemical 1(앞면만) / digital 2([앞, 뒤]) */
+function photoCanvasStride(profile: Pick<ProductProfile, 'sheet' | 'photoPrint'>): 1 | 2 {
+  if (profile.photoPrint) return profile.photoPrint.process === 'digital' ? 2 : 1;
+  return profile.sheet.canvasLayout === 'canvas-pair' ? 2 : 1;
+}
+
+/**
+ * 항목 순번 → 앞면 캔버스 인덱스(계약 결정 4): chemical i→i, digital(①②③ 공통) i→2i(뒷면은 2i+1).
+ * itemIndex 가 0 이상 정수가 아니면 -1.
+ */
+export function resolvePhotoItemCanvasIndex(profile: Pick<ProductProfile, 'sheet' | 'photoPrint'>, itemIndex: number): number {
+  if (!isInt(itemIndex, 0)) return -1;
+  return itemIndex * photoCanvasStride(profile);
+}
+
+/** 캔버스 수 → 항목 수: chemical N / digital ceil(N/2) (summarizeProductProfile 의 sheetCount 와 같은 산식) */
+export function resolvePhotoItemCount(profile: Pick<ProductProfile, 'sheet' | 'photoPrint'>, canvasCount: number): number {
+  if (!isInt(canvasCount, 1)) return 0;
+  return Math.ceil(canvasCount / photoCanvasStride(profile));
+}
+
+/** 페이지 라벨: chemical '사진 3' / digital '사진 3 앞'·'사진 3 뒤'. photoPrint 가 없거나 인덱스가 범위 밖이면 null. */
+export function formatPhotoPageLabel(profile: Pick<ProductProfile, 'sheet' | 'photoPrint'>, canvasIndex: number): string | null {
+  if (!profile.photoPrint || !isInt(canvasIndex, 0)) return null;
+  const stride = photoCanvasStride(profile);
+  const ordinal = Math.floor(canvasIndex / stride) + 1;
+  if (stride === 1) return `사진 ${ordinal}`;
+  return `사진 ${ordinal} ${canvasIndex % 2 === 0 ? '앞' : '뒤'}`;
+}
+
+/** fit 어휘 → 프레임 fitMode(§13-3): 페이퍼풀 cover / 이미지풀 contain */
+export function resolvePhotoFitMode(fit: PhotoFit): 'cover' | 'contain' {
+  return fit === 'image-full' ? 'contain' : 'cover';
+}
+
+/** border 어휘 → 프레임 frameInsetMm(§13-3): 유테 = options.borderInsetMm(기본 2) / 무테 = 0 */
+export function resolvePhotoFrameInsetMm(photo: Pick<PhotoPrintProfile, 'options'>, border: PhotoBorder): number {
+  if (border !== 'white') return 0;
+  const inset = photo.options.borderInsetMm;
+  return typeof inset === 'number' && Number.isFinite(inset) && inset >= 0 ? inset : DEFAULT_PHOTO_BORDER_INSET_MM;
+}
+
+function pickPhotoVocab<T extends string>(value: unknown, vocab: readonly T[], allowed: readonly T[] | undefined): T {
+  const pool = allowed && allowed.length > 0 ? allowed : vocab;
+  return oneOf(value, vocab) && pool.includes(value) ? value : pool[0];
+}
+
+function pickPhotoFlag(value: unknown, enabled: boolean | undefined): boolean {
+  if (enabled === false) return false;
+  return value === true;
+}
+
+/** `readPhotoItems` 가 profile·opts 모두 없을 때 받아들이는 항목 수 상한 */
+export const DEFAULT_PHOTO_ITEMS_LIMIT = 1000;
+
+export interface ReadPhotoItemsOptions {
+  /** 받아들일 항목 수 상한(0 이상 정수). 생략 시 profile.upload.maxPhotos, 그것도 없으면 DEFAULT_PHOTO_ITEMS_LIMIT. */
+  maxItems?: number;
+}
+
+const COPIES_INT_STRING_RE = /^\d+$/;
+
+/** copies 입력 → 1 이상 정수(숫자 또는 정수형 문자열 "3"), 그 밖의 불량은 null */
+function readCopiesInput(raw: unknown): number | null {
+  if (isInt(raw, 1)) return raw;
+  if (typeof raw === 'string' && COPIES_INT_STRING_RE.test(raw)) {
+    const n = Number(raw);
+    if (Number.isSafeInteger(n) && n >= 1) return n;
+  }
+  return null;
+}
+
+/**
+ * 세션 `metadata.items`(자유형) / 런처 `items`(PhotoItemInput) → 정제된 PhotoItem[].
+ * - 배열이 아니면 []. 객체가 아닌 원소는 생략(불량 항목). `index` 는 출력 순번(0부터)으로 재부여한다.
+ * - 항목 수 상한: `opts.maxItems`(0 이상 정수) → 없으면 `profile.upload.maxPhotos` → 없으면 DEFAULT_PHOTO_ITEMS_LIMIT.
+ *   상한을 넘는 입력은 조용히 버린다(불량 항목은 세지 않는다).
+ * - `copies` 는 1 이상 정수 또는 정수형 문자열("3")을 숫자로 받아들이고, 그 밖의 불량(0·소수·"abc")은 조용히 하한(copies.min / 1)으로 둔다.
+ * - profile 이 있으면 권위 있는 정제: `canvasIndex` 는 resolvePhotoItemCanvasIndex 로 재계산, `sizeCode` 는 sizes[0].code,
+ *   `copies` 는 [copies.min, copies.max] 로 클램프, 어휘는 허용 목록 안이 아니면 첫 허용값, 미제공 옵션 플래그는 false 로 고정.
+ * - profile 이 없으면 형식만 정제: canvasIndex 는 입력값(0 이상 정수) 또는 순번, sizeCode 는 문자열(없으면 ''), copies 는 1 이상 정수(없으면 1).
+ * - `sourcePhotoId` 는 비어 있지 않은 문자열일 때만 키를 남긴다(직렬화 안정).
+ */
+export function readPhotoItems(input: unknown, profile?: PhotoPrintProfile, opts?: ReadPhotoItemsOptions): PhotoItem[] {
+  if (!Array.isArray(input)) return [];
+  const stride: 1 | 2 = profile?.process === 'digital' ? 2 : 1;
+  const copiesMin = profile ? profile.copies.min : 1;
+  const copiesMax = profile ? profile.copies.max : Number.MAX_SAFE_INTEGER;
+  const fixedSizeCode = profile?.sizes[0]?.code;
+  const limit = isInt(opts?.maxItems, 0)
+    ? opts.maxItems
+    : (isInt(profile?.upload.maxPhotos, 0) ? profile.upload.maxPhotos : DEFAULT_PHOTO_ITEMS_LIMIT);
+  const items: PhotoItem[] = [];
+  for (const raw of input) {
+    if (items.length >= limit) break;
+    if (!isRecord(raw)) continue;
+    const index = items.length;
+    const canvasIndex = profile ? index * stride : (isInt(raw.canvasIndex, 0) ? raw.canvasIndex : index);
+    const sizeCode = fixedSizeCode !== undefined ? fixedSizeCode : (typeof raw.sizeCode === 'string' ? raw.sizeCode : '');
+    const requested = readCopiesInput(raw.copies) ?? copiesMin;
+    const copies = Math.min(copiesMax, Math.max(copiesMin, requested));
+    const item: PhotoItem = {
+      index,
+      canvasIndex,
+      sizeCode,
+      copies,
+      border: pickPhotoVocab(raw.border, PHOTO_BORDERS, profile?.options.border),
+      fit: pickPhotoVocab(raw.fit, PHOTO_FITS, profile?.options.fit),
+      finish: pickPhotoVocab(raw.finish, PHOTO_FINISHES, profile?.options.finish),
+      brightnessFix: pickPhotoFlag(raw.brightnessFix, profile?.options.brightnessFix),
+      dateOverlay: pickPhotoFlag(raw.dateOverlay, profile?.options.dateOverlay),
+      grayscale: pickPhotoFlag(raw.grayscale, profile?.options.grayscale),
+      lowRes: raw.lowRes === true,
+    };
+    if (typeof raw.sourcePhotoId === 'string' && raw.sourcePhotoId.length > 0) item.sourcePhotoId = raw.sourcePhotoId;
+    items.push(item);
+  }
+  return items;
 }
 
 /** `editor.complete` `product` 키 */

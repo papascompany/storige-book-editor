@@ -6,7 +6,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { StorigeClient } from '../client/client';
 import { ErrorCode, StorigeApiError, StorigeUsageError } from '../errors';
-import type { SessionDeliverables, SessionLaunchInput } from '../types';
+import type { SessionDeliverables, SessionDeliverablesItem, SessionLaunchInput } from '../types';
 import { NO_DELAY_RETRY, err, mockFetch, ok } from './helpers';
 
 const BASE = 'https://api.example.test';
@@ -105,6 +105,28 @@ describe('GET /sessions/{id}/deliverables', () => {
 
     expect(result).toEqual(view);
     expect(result.files.map((f) => f.auth)).toEqual(['api-key', 'signed']);
+  });
+
+  // ADDITIVE 2026-10-19 P2-d 사진인화(v1.25)
+  it("사진인화 세트의 product.kind 'photo-print' 와 items(정제본)·files[].copies 를 그대로 돌려준다", async () => {
+    const items: SessionDeliverablesItem[] = [
+      { index: 0, canvasIndex: 0, sourcePhotoId: 'upload-1', sizeCode: '4x6', copies: 2, border: 'white', fit: 'paper-full', finish: 'glossy', brightnessFix: false, dateOverlay: true, grayscale: false, lowRes: false },
+      { index: 1, canvasIndex: 2, sizeCode: '4x6', copies: 1, border: 'none', fit: 'image-full', finish: 'matte', brightnessFix: false, dateOverlay: false, grayscale: true, lowRes: true },
+    ];
+    const view = deliverables('ready', {
+      product: { kind: 'photo-print', editorType: 'photo_digital_4x6', canvasCount: 4, sheetCount: 2, faces: 2, duplexFlip: 'short-edge', backRotation: 0 },
+      items,
+      files: [
+        { role: 'sheet', fileId: 'f1', jobId: 'j1', url: `${BASE}/api/v1/files/f1`, auth: 'api-key', pageCount: 2, sheetIndex: 0, copies: 2, generatedAt: 'T' },
+        { role: 'sheet', fileId: 'f2', jobId: 'j1', url: `${BASE}/api/v1/files/f2`, auth: 'api-key', pageCount: 2, sheetIndex: 1, copies: 1, generatedAt: 'T' },
+      ],
+    });
+    const m = mockFetch([{ json: ok(view) }]);
+    const result = await client(m.fetch).sessions.deliverables('sess_1');
+
+    expect(result).toEqual(view);
+    expect(result.items?.map((i) => i.copies)).toEqual([2, 1]);
+    expect(result.files.map((f) => f.copies)).toEqual([2, 1]);
   });
 
   it('404 ERR_NOT_FOUND(타 사이트·타 env·없음 — 존재 은닉)', async () => {

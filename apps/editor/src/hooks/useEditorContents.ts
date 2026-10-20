@@ -6,7 +6,15 @@ import { useEditorStore } from '@/stores/useEditorStore'
 import { useImageStore } from '@/stores/useImageStore'
 import { rebindFrameInteractivity } from '@/utils/frameInteractive'
 import { rehydrateCalendarGrids } from '@/utils/calendarRehydrate'
-import { applyTemplateSetProductProfile, resolveFixedCanvasCount } from '@/utils/productProfile'
+import { rehydratePhotoPrint } from '@/utils/photoPrintRehydrate'
+import {
+  applyTemplateSetProductProfile,
+  isPhotoPrintProfile,
+  resolveFixedCanvasCount,
+  resolvePhotoPrintPageStep,
+  resolvePhotoPrintSeedCount,
+  resolveRangeCanvasBounds,
+} from '@/utils/productProfile'
 import { applyObjectPermissions, applyCoverMaterialLock, isCoverPageCanvas } from '@/utils/objectPermissions'
 import {
   resolveCoverFinishing,
@@ -119,6 +127,12 @@ export interface TemplateSetBasedSetupConfig {
    * 낱장(non-spread) 세트 경로에서는 미사용 — 기존 동작 불변.
    */
   restoredInnerCanvasCount?: number
+  /**
+   * P2-d 사진인화 (2026-10-19, D2): 신규(canvasData 없음)·런처 선생성 세션의 `metadata.items` 건수.
+   * kind 'photo-print' 세트에서만 소비 — 시드 캔버스 수 하한 = 건수 × stride(digital 2 / chemical 1), pages.max 클램프.
+   * 그 밖의 세트는 무시(기존 동작 불변).
+   */
+  photoItemCount?: number
   /**
    * R-196 host page limits (2026-09-29): 호스트(상품) 최소 내지 쪽수(물리 페이지, 1~500).
    * embed 가 resolveHostPageLimits 로 검증·해석한 값만 전달한다. 템플릿셋 pageCountRange 최소보다 우선.
@@ -510,6 +524,8 @@ export function useEditorContents(): UseEditorContentsReturn {
                 rebindFrameInteractivity(ed, cvs)
                 // P1 캘린더 (2026-10-17): 캘린더 세트면 calendar-grid 재합성(프로파일 null 이면 즉시 0, no-op).
                 void rehydrateCalendarGrids(ed, cvs, index)
+                // P2-d 사진인화 (D7): 사진인화 세트면 fitMode/유테/흑백 런타임 복구(프로파일 null 이면 즉시 0, no-op).
+                void rehydratePhotoPrint(ed, cvs, index)
 
                 // Part B: 고객(비 editMode) 진입 시 객체별 이동/변형 잠금 적용
                 // (관리자가 movable=false 로 지정한 객체를 lockMovement/Scaling/Rotation 으로 강제).
@@ -1079,6 +1095,15 @@ export function useEditorContents(): UseEditorContentsReturn {
       const productProfile = applyTemplateSetProductProfile(templateSet)
       const fixedCanvasCount = resolveFixedCanvasCount(productProfile)
       const fixedProfile = fixedCanvasCount !== null
+      // P2-d 사진인화: kind 'photo-print' 세트에서만 range 범위·프로파일 단위를 적용한다(null-set-1/2, contract-7 —
+      // 캘린더·sheet·NULL 세트는 종전 값 그대로: 스토어 pageStep·settings.page 바이트 동일).
+      const photoPrintProfile = isPhotoPrintProfile(productProfile) ? productProfile : null
+      const rangeCanvasBounds = photoPrintProfile ? resolveRangeCanvasBounds(photoPrintProfile) : null
+      // 증감 단위: 사진인화 세트는 프로파일 pages.step 이 템플릿셋·호스트 pageStep 보다 우선(api-sheetmap-3 — 호스트 값은 warn 1회 뒤 무시).
+      // 그 밖의 세트는 템플릿셋 pageStep 그대로(종전 동작).
+      const resolvedPageStep = resolvePhotoPrintPageStep(productProfile, (templateSet as { pageStep?: unknown }).pageStep, config.pageStep)
+      const templateSetPageStep: unknown = resolvedPageStep.pageStep
+      const singleModeLimits = resolvedPageStep.ignoreHostPageStep ? { ...config, pageStep: undefined } : config
 
       // P3 (2026-06-10): 작업사이즈(재단+블리드)/재단마커 PDF 출력 설정 운반.
       // templateSet 의 bleedMm/cropMarkEnabled 컬럼(API JSON)을 settings store 로 옮겨둔다.
@@ -1140,13 +1165,42 @@ export function useEditorContents(): UseEditorContentsReturn {
 
       // 3. 페이지수 조정 (pageCount 파라미터가 있는 경우)
       let templateDetails = [...originalTemplateDetails]
-      const requestedPageCount = config.pageCount
+      let requestedPageCount = config.pageCount
       // R-196 host page limits (2026-09-29): 호스트 쪽수 한도(min/max) 적용 여부와 비내지 캔버스 수.
       const templateRange = (templateSet as { pageCountRange?: number[] }).pageCountRange
       const hostLimitsActive = hasHostPageCountLimit(config)
       const nonInnerCanvasCount =
         originalTemplateDetails.length -
         originalTemplateDetails.filter((t) => (t as { type?: string }).type === 'page').length
+
+      // P2-d 사진인화 (D1/D2, 2026-10-19): range 세트의 시드 캔버스 수 — 재오픈은 저장 canvasData 수(호스트 한도와 무관,
+      // 종전 restoredInnerPageCount = length−1 [표지,...내지] 시맨틱으로 1장 적게 시드되던 결함), 신규 세션은 런처 items 건수 × stride.
+      // pages.max 초과분은 잘라내고 warn. 아래 증설은 refs[k % refs.length]('cycle') 로 시드한다.
+      if (photoPrintProfile) {
+        const restoredCanvasCount =
+          typeof config.restoredInnerCanvasCount === 'number' && config.restoredInnerCanvasCount > 0
+            ? config.restoredInnerCanvasCount + 1 - nonInnerCanvasCount
+            : undefined
+        const seed = resolvePhotoPrintSeedCount(photoPrintProfile, {
+          requested: requestedPageCount,
+          restoredCanvasCount,
+          itemCount: config.photoItemCount,
+          templateCanvasCount: originalTemplateDetails.length - nonInnerCanvasCount,
+        })
+        if (seed) {
+          if (seed.truncated > 0) {
+            console.warn(
+              `[EditorContents] 사진인화 시드 ${seed.count + seed.truncated}장 > pages.max ${seed.count} — 초과 ${seed.truncated}장은 시드하지 않음`,
+            )
+          }
+          if (seed.count !== requestedPageCount) {
+            console.log(
+              `[EditorContents] 사진인화 시드 캔버스 수 ${seed.count} (요청 ${requestedPageCount ?? '없음'}, 복원 ${restoredCanvasCount ?? '없음'}, 항목 ${config.photoItemCount ?? '없음'})`,
+            )
+          }
+          requestedPageCount = seed.count
+        }
+      }
 
       if (requestedPageCount !== undefined && fixedProfile) {
         // P1 캘린더: 고정 캔버스 수 상품은 호스트 pageCount 로 내지를 증설하지 않는다(세트 구성이 정답).
@@ -1192,9 +1246,11 @@ export function useEditorContents(): UseEditorContentsReturn {
         }
 
         // 페이지수가 더 많으면 시드 반복 (G9 last|cycle). page id 는 아래 setPages 에서 idx 로 구분.
+        // P2-d 사진인화: 증설 캔버스 k 는 refs[k % refs.length](digital [앞, 뒤] 교대) — 'last' 는 뒷면만 복제한다.
         if (effectivePageCount > currentPageCount && pageTemplates.length > 0) {
-          const innerRepeat: InnerRepeatMode =
-            (templateSet as { coverConfig?: { innerRepeat?: string } }).coverConfig?.innerRepeat === 'cycle'
+          const innerRepeat: InnerRepeatMode = photoPrintProfile
+            ? 'cycle'
+            : (templateSet as { coverConfig?: { innerRepeat?: string } }).coverConfig?.innerRepeat === 'cycle'
               ? 'cycle'
               : 'last'
           const extra = expandPrintSeeds(pageTemplates, effectivePageCount, innerRepeat).slice(currentPageCount)
@@ -1236,6 +1292,14 @@ export function useEditorContents(): UseEditorContentsReturn {
             page: { ...page, ...settingsPageBounds({ range: merged, per: 1, anchorCanvases: nonInnerCanvasCount }) },
           })
         }
+      } else if (rangeCanvasBounds) {
+        // P2-d 사진인화 (2026-10-19): kind 'photo-print' + pages.kind=range → settings.page min/max = 프로파일 캔버스 수 범위
+        // (전체 캔버스 수 단위, fixed 분기와 같은 단위). 호스트 한도가 오면 위 hostLimitsActive 가 우선(R-196 규칙 유지).
+        // 2장 단위(digital)는 pageStep(프로파일 pages.step) 경로가 담당한다. sheet range 세트는 rangeCanvasBounds 가 null(종전 그대로).
+        const page = useSettingsStore.getState().currentSettings.page
+        await useSettingsStore.getState().updateSettings({
+          page: { ...page, ...settingsPageBounds({ range: [rangeCanvasBounds.min, rangeCanvasBounds.max], per: 1, anchorCanvases: 0 }) },
+        })
       }
 
       // 3. 템플릿 메타데이터를 설정 스토어에 저장 (페이지 이름 표시용)
@@ -1501,6 +1565,12 @@ export function useEditorContents(): UseEditorContentsReturn {
                   if (cvs) {
                     // P1 캘린더: 캘린더 세트면 calendar-grid 재합성(프로파일 null 이면 즉시 0, no-op).
                     void rehydrateCalendarGrids(targetEditor, cvs, newPageIndex)
+                    // P2-d 사진인화 (D7): 사진인화 세트면 fitMode/유테/흑백 런타임 복구(프로파일 null 이면 즉시 0, no-op).
+                    void rehydratePhotoPrint(targetEditor, cvs, newPageIndex)
+                    // P2-d 사진인화 (2026-10-20 e2e): 런처 items 증설('cycle')로 템플릿에서 시드된 페이지의 사진틀도
+                    // 클릭 채움(hover/click 핸들러)이 걸리도록 재바인딩 — 복원 경로(:524)·SidePanel 시드와 동일 헬퍼(멱등).
+                    // 사진인화 세트에만 적용해 NULL·캘린더 세트의 현행 동작은 그대로 둔다.
+                    if (photoPrintProfile) rebindFrameInteractivity(targetEditor, cvs)
                     const totalWidth = mmToPxDisplay(capturedWidth + screenCutSizeMm)
                     const totalHeight = mmToPxDisplay(capturedHeight + screenCutSizeMm)
 
@@ -1590,17 +1660,18 @@ export function useEditorContents(): UseEditorContentsReturn {
       //   캔버스 수라 비내지 캔버스(표지 등)가 있으면 호스트 단위를 무시하고 템플릿 단위를 쓴다.
       //   단일 모드는 pageCountRange 를 스토어에 넣지 않는다(종전 동작 유지 — 한도는 settings.page).
       // pageStep 1(배수 제약 없음)은 캔버스 산정 기준과 무관해 그대로 적용되므로 경고하지 않는다.
-      if (nonInnerCanvasCount > 0 && config.pageStep !== undefined && config.pageStep !== 1) {
+      if (nonInnerCanvasCount > 0 && singleModeLimits.pageStep !== undefined && singleModeLimits.pageStep !== 1) {
         console.warn(
-          `[hostPageLimits] 단일 모드 템플릿에 내지가 아닌 캔버스 ${nonInnerCanvasCount}개 — 호스트 pageStep ${config.pageStep} 무시(템플릿셋 단위 적용)`,
+          `[hostPageLimits] 단일 모드 템플릿에 내지가 아닌 캔버스 ${nonInnerCanvasCount}개 — 호스트 pageStep ${singleModeLimits.pageStep} 무시(템플릿셋 단위 적용)`,
         )
       }
-      warnPageStepMismatch((templateSet as { pageStep?: unknown }).pageStep, config, { ignoreHostStep: nonInnerCanvasCount > 0 })
+      // P2-d 사진인화: singleModeLimits 는 호스트 pageStep 을 뺀 한도(프로파일 pages.step 우선) — 그 밖의 세트는 config 그대로.
+      warnPageStepMismatch(templateSetPageStep, singleModeLimits, { ignoreHostStep: nonInnerCanvasCount > 0 })
       const singleStoreLimits = resolveStorePageLimits({
         templateRange,
-        templatePageStep: (templateSet as { pageStep?: unknown }).pageStep,
+        templatePageStep: templateSetPageStep,
         templatePadToPageStep: (templateSet as { padToPageStep?: unknown }).padToPageStep,
-        limits: config,
+        limits: singleModeLimits,
         ignoreHostStep: nonInnerCanvasCount > 0,
       })
       useEditorStore.setState({

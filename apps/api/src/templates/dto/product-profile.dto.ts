@@ -1,5 +1,5 @@
 /**
- * ProductProfileDto — 템플릿셋 `productProfile`(P1 캘린더, 2026-10-17) 검증 DTO.
+ * ProductProfileDto — 템플릿셋 `productProfile`(P1 캘린더, 2026-10-17 / P2-d 사진인화 `photoPrint`, 2026-10-19) 검증 DTO.
  *
  * 전역 ValidationPipe 가 `whitelist + forbidNonWhitelisted` 라서 ProductProfile 의 모든 중첩 객체를
  * class 로 등재해야 admin 저장이 400 이 되지 않는다. 필드별 형식은 class-validator 데코레이터로,
@@ -15,6 +15,7 @@ import {
   IsBoolean,
   IsIn,
   IsInt,
+  IsNumber,
   IsOptional,
   IsString,
   MaxLength,
@@ -28,6 +29,12 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   CALENDAR_LAYOUTS,
+  PHOTO_BORDERS,
+  PHOTO_FINISHES,
+  PHOTO_FITS,
+  PHOTO_PRINT_COMPOSITIONS,
+  PHOTO_PRINT_PROCESSES,
+  PHOTO_PRINT_SIZES_PER_PROFILE,
   PRODUCT_CANVAS_LAYOUTS,
   PRODUCT_DUPLEX_FLIPS,
   PRODUCT_KINDS,
@@ -45,6 +52,16 @@ import type {
   CalendarMonthRange,
   CalendarProfile,
   CalendarWeekStart,
+  PhotoBorder,
+  PhotoFinish,
+  PhotoFit,
+  PhotoPrintComposition,
+  PhotoPrintCopiesPolicy,
+  PhotoPrintOptionsPolicy,
+  PhotoPrintProcess,
+  PhotoPrintProfile,
+  PhotoPrintSize,
+  PhotoPrintUploadPolicy,
   ProductBackRotation,
   ProductCanvasLayout,
   ProductDuplexFlip,
@@ -123,7 +140,7 @@ export class ProductPagesPolicyDto implements ProductPagesPolicy {
   @Min(0, { each: true })
   protectedIndices?: number[];
 
-  @ApiProperty({ enum: PRODUCT_PAGE_LABEL_RULES, example: 'month', description: "페이지 라벨 규칙 — 'month' 는 calendar 전용" })
+  @ApiProperty({ enum: PRODUCT_PAGE_LABEL_RULES, example: 'month', description: "페이지 라벨 규칙 — 'month' 는 calendar, 'photo' 는 photo-print 전용" })
   @IsIn(PRODUCT_PAGE_LABEL_RULES)
   labelRule: ProductPageLabelRule;
 }
@@ -257,6 +274,128 @@ export class CalendarProfileDto implements CalendarProfile {
   dataVersion: string;
 }
 
+// ─── 사진인화(P2-d) ──────────────────────────────────────────────────────────
+
+export class PhotoPrintSizeDto implements PhotoPrintSize {
+  @ApiProperty({ example: '4x6', description: "사이즈 코드(호스트·매니페스트 식별용). 영숫자·'_'·'-' 1~32자" })
+  @IsString()
+  @MaxLength(32)
+  code: string;
+
+  @ApiProperty({ example: 102, description: '가로(mm)' })
+  @IsNumber()
+  widthMm: number;
+
+  @ApiProperty({ example: 152, description: '세로(mm)' })
+  @IsNumber()
+  heightMm: number;
+
+  @ApiProperty({ example: 200, description: '저해상 경고 기준 DPI(미달 시 items[].lowRes, 완료 차단 없음)' })
+  @IsInt()
+  @Min(1)
+  minDpi: number;
+}
+
+export class PhotoPrintOptionsPolicyDto implements PhotoPrintOptionsPolicy {
+  @ApiProperty({ enum: PHOTO_BORDERS, isArray: true, example: ['none', 'white'], description: '허용 테두리(첫 원소 = 기본값)' })
+  @IsArray()
+  @ArrayMinSize(1)
+  @IsIn(PHOTO_BORDERS, { each: true })
+  border: PhotoBorder[];
+
+  @ApiProperty({ enum: PHOTO_FITS, isArray: true, example: ['paper-full', 'image-full'], description: '허용 맞춤(페이퍼풀 cover / 이미지풀 contain, 첫 원소 = 기본값)' })
+  @IsArray()
+  @ArrayMinSize(1)
+  @IsIn(PHOTO_FITS, { each: true })
+  fit: PhotoFit[];
+
+  @ApiProperty({ enum: PHOTO_FINISHES, isArray: true, example: ['matte', 'glossy'], description: '허용 마감(통과만, 첫 원소 = 기본값)' })
+  @IsArray()
+  @ArrayMinSize(1)
+  @IsIn(PHOTO_FINISHES, { each: true })
+  finish: PhotoFinish[];
+
+  @ApiProperty({ example: true, description: '밝기 보정 제공 여부(통과만)' })
+  @IsBoolean()
+  brightnessFix: boolean;
+
+  @ApiProperty({ example: true, description: '촬영일 표기 제공 여부(편집기 소비)' })
+  @IsBoolean()
+  dateOverlay: boolean;
+
+  @ApiProperty({ example: true, description: '흑백 제공 여부(편집기 소비)' })
+  @IsBoolean()
+  grayscale: boolean;
+
+  @ApiPropertyOptional({ example: 2, description: '유테 시 사진틀 창 축소 mm(생략 = 2)' })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  borderInsetMm?: number;
+}
+
+export class PhotoPrintCopiesDto implements PhotoPrintCopiesPolicy {
+  @ApiProperty({ example: 1, description: '항목당 최소 매수' })
+  @IsInt()
+  @Min(1)
+  min: number;
+
+  @ApiProperty({ example: 99, description: '항목당 최대 매수' })
+  @IsInt()
+  @Min(1)
+  max: number;
+}
+
+export class PhotoPrintUploadDto implements PhotoPrintUploadPolicy {
+  @ApiProperty({ example: 200, description: '세션당 업로드 사진 수 상한' })
+  @IsInt()
+  @Min(1)
+  maxPhotos: number;
+
+  @ApiProperty({ example: 25, description: '사진 1장 크기 상한(MB)' })
+  @IsNumber()
+  maxMb: number;
+}
+
+export class PhotoPrintProfileDto implements PhotoPrintProfile {
+  @ApiProperty({ enum: PHOTO_PRINT_PROCESSES, example: 'chemical', description: '인화(chemical, 단면) | 인쇄(digital, 양면)' })
+  @IsIn(PHOTO_PRINT_PROCESSES)
+  process: PhotoPrintProcess;
+
+  @ApiProperty({ enum: PHOTO_PRINT_COMPOSITIONS, example: 'per-photo-free-back', description: '① 사진별 자유 뒷면 | ② 사진별 고정 뒷면(backTemplateId) | ③ 카드형' })
+  @IsIn(PHOTO_PRINT_COMPOSITIONS)
+  composition: PhotoPrintComposition;
+
+  @ApiProperty({ type: [PhotoPrintSizeDto], description: `P2 는 정확히 ${PHOTO_PRINT_SIZES_PER_PROFILE}개(1세션 1사이즈)` })
+  @IsArray()
+  @ArrayMinSize(PHOTO_PRINT_SIZES_PER_PROFILE)
+  @ArrayMaxSize(PHOTO_PRINT_SIZES_PER_PROFILE)
+  @ValidateNested({ each: true })
+  @Type(() => PhotoPrintSizeDto)
+  sizes: PhotoPrintSizeDto[];
+
+  @ApiProperty({ type: PhotoPrintOptionsPolicyDto })
+  @ValidateNested()
+  @Type(() => PhotoPrintOptionsPolicyDto)
+  options: PhotoPrintOptionsPolicyDto;
+
+  @ApiProperty({ type: PhotoPrintCopiesDto })
+  @ValidateNested()
+  @Type(() => PhotoPrintCopiesDto)
+  copies: PhotoPrintCopiesDto;
+
+  @ApiPropertyOptional({ example: 'ffffffff-ffff-4fff-8fff-ffffffffffff', description: "composition='per-photo-fixed-back' 필수 — 뒷면 고정 템플릿 id" })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  backTemplateId?: string;
+
+  @ApiProperty({ type: PhotoPrintUploadDto })
+  @ValidateNested()
+  @Type(() => PhotoPrintUploadDto)
+  upload: PhotoPrintUploadDto;
+}
+
 export class ProductOutputPolicyDto implements ProductOutputPolicy {
   @ApiProperty({ enum: PRODUCT_OUTPUT_MODES, example: 'single-pdf', description: "single-pdf(P1, 편집기 산출 그대로) | sheet-map(P2, API buildSheetMap → worker 'sheet-map')" })
   @IsIn(PRODUCT_OUTPUT_MODES)
@@ -304,6 +443,12 @@ export class ProductProfileDto implements ProductProfile {
   @ValidateNested()
   @Type(() => CalendarProfileDto)
   calendar?: CalendarProfileDto;
+
+  @ApiPropertyOptional({ type: PhotoPrintProfileDto, description: "kind='photo-print' 필수, 그 외 금지(P2-d)" })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => PhotoPrintProfileDto)
+  photoPrint?: PhotoPrintProfileDto;
 
   @ApiProperty({ type: ProductOutputPolicyDto })
   @ValidateNested()

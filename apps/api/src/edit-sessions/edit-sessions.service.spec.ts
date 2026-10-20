@@ -1972,6 +1972,24 @@ describe('EditSessionsService', () => {
       ...o,
     });
 
+    /** P2-d 인쇄 ①(digital, same-sheet, sheet-map, step 2) — 짝수 캔버스만 매핑 가능 */
+    const photoDigitalProfile = () => ({
+      version: 1,
+      kind: 'photo-print',
+      editorType: 'photo_digital_items',
+      pages: { kind: 'range', min: 2, max: 400, step: 2, labelRule: 'photo' },
+      sheet: { faces: 2, canvasLayout: 'canvas-pair', binding: 'none', pairing: 'same-sheet', backRotation: 0, duplexFlip: 'short-edge' },
+      photoPrint: {
+        process: 'digital',
+        composition: 'per-photo-free-back',
+        sizes: [{ code: '4x6', widthMm: 102, heightMm: 152, minDpi: 200 }],
+        options: { border: ['none', 'white'], fit: ['paper-full', 'image-full'], finish: ['matte', 'glossy'], brightnessFix: true, dateOverlay: true, grayscale: true },
+        copies: { min: 1, max: 99 },
+        upload: { maxPhotos: 400, maxMb: 25 },
+      },
+      output: { mode: 'sheet-map', sheetFiles: 'per-sheet' },
+    });
+
     const makeSession = (o: Record<string, unknown> = {}) =>
       ({
         id: SESSION_ID,
@@ -2089,7 +2107,7 @@ describe('EditSessionsService', () => {
       expect(mockWorkerJobsService.createDuplexSplitJob).not.toHaveBeenCalled();
     });
 
-    it('③ SheetMapError(페이지 수 ≠ pages.count) → 완료 유지(throw 없음), 어떤 잡도 발행하지 않음', async () => {
+    it('③ SheetMapError(페이지 수 ≠ pages.count) → 완료 유지(throw 없음), 어떤 잡도 발행하지 않음 + production.sheetMap 기록(api-sheetmap-3)', async () => {
       mockTemplateSetsService.findOne.mockResolvedValue({
         id: 'ts-1',
         pdfOutputMode: 'duplex-split',
@@ -2097,20 +2115,67 @@ describe('EditSessionsService', () => {
       });
       // 캔버스 6장 ≠ pages.count 4 → buildSheetMap PAGE_COUNT_MISMATCH
       const session = makeSession({ canvasData: Array.from({ length: 6 }, () => ({ objects: [] })) });
+      const errorSpy = jest.spyOn((service as unknown as { logger: { error(m: string): void } }).logger, 'error');
 
       await expect(run(session)).resolves.toBeUndefined();
 
       expect(mockWorkerJobsService.createSheetMapJob).not.toHaveBeenCalled();
       expect(mockWorkerJobsService.createDuplexSplitJob).not.toHaveBeenCalled();
       expect(session.metadata).toMatchObject({ pdfOutputMode: 'duplex-split' });
+      // 삼키지 않는다: 로그 error + 서버 소유 키 production.sheetMap = { error, message, at } 저장
+      expect(session.metadata?.production).toEqual({
+        sheetMap: { error: 'PAGE_COUNT_MISMATCH', message: expect.stringContaining('PAGE_COUNT_MISMATCH'), at: expect.any(String) },
+      });
+      expect(Number.isFinite(Date.parse(session.metadata?.production.sheetMap.at))).toBe(true);
+      expect(mockSessionRepository.save).toHaveBeenLastCalledWith(session);
+      expect(errorSpy.mock.calls.map((c) => String(c[0]))).toEqual([
+        expect.stringContaining(`session ${SESSION_ID}: sheet-map 발행 실패(완료는 유지, production.sheetMap=PAGE_COUNT_MISMATCH 기록)`),
+      ]);
+      errorSpy.mockRestore();
     });
 
-    it('③-b createSheetMapJob 거부도 완료 유지', async () => {
+    it('③-a 홀수 캔버스 digital 사진인화 세트(호스트 pageStep=1 로 3캔버스 완료) → PAGE_COUNT_MISMATCH 기록, 다른 production 키 보존', async () => {
+      mockTemplateSetsService.findOne.mockResolvedValue({ id: 'ts-1', pdfOutputMode: 'single', productProfile: photoDigitalProfile() });
+      const session = makeSession({
+        canvasData: [{ objects: [] }, { objects: [] }, { objects: [] }],
+        metadata: { revision: 1, production: { lot: 'L1' }, items: [{ copies: 2 }, { copies: 1 }] },
+      });
+
+      await run(session);
+
+      expect(mockWorkerJobsService.createSheetMapJob).not.toHaveBeenCalled();
+      expect(session.metadata?.production).toEqual({
+        lot: 'L1',
+        sheetMap: { error: 'PAGE_COUNT_MISMATCH', message: expect.any(String), at: expect.any(String) },
+      });
+    });
+
+    it('③-b createSheetMapJob 거부도 완료 유지 — production.sheetMap.error SHEET_MAP_JOB_FAILED', async () => {
       mockTemplateSetsService.findOne.mockResolvedValue({ id: 'ts-1', pdfOutputMode: 'single', productProfile: sheetMapProfile() });
       mockWorkerJobsService.createSheetMapJob.mockRejectedValue(new Error('queue down'));
+      const session = makeSession();
 
-      await expect(run(makeSession())).resolves.toBeUndefined();
+      await expect(run(session)).resolves.toBeUndefined();
       expect(mockWorkerJobsService.createDuplexSplitJob).not.toHaveBeenCalled();
+      expect(session.metadata?.production).toEqual({ sheetMap: { error: 'SHEET_MAP_JOB_FAILED', message: 'queue down', at: expect.any(String) } });
+    });
+
+    it('③-c 지난 실패 기록이 있는 세션의 발행 성공 → production.sheetMap 제거(비면 production 키도 제거); 성공 경로에 기록 없으면 production 키 없음', async () => {
+      mockTemplateSetsService.findOne.mockResolvedValue({ id: 'ts-1', pdfOutputMode: 'single', productProfile: sheetMapProfile() });
+      const stale = { revision: 3, production: { sheetMap: { error: 'PAGE_COUNT_MISMATCH', message: 'old', at: '2026-10-19T00:00:00.000Z' } } };
+      const session = makeSession({ metadata: stale });
+      await run(session);
+      expect(mockWorkerJobsService.createSheetMapJob).toHaveBeenCalledTimes(1);
+      expect(session.metadata).toEqual({ revision: 3, pdfOutputMode: 'single' });
+
+      const other = makeSession({ metadata: { revision: 3, production: { lot: 'L1', sheetMap: { error: 'X', message: 'old', at: '2026-10-19T00:00:00.000Z' } } } });
+      await run(other);
+      expect(other.metadata?.production).toEqual({ lot: 'L1' });
+
+      const clean = makeSession();
+      await run(clean);
+      expect(clean.metadata).toEqual({ revision: 2, pdfOutputMode: 'single' });
+      expect(clean.metadata).not.toHaveProperty('production');
     });
 
     it('④ sheet-map 프로파일인데 coverFileId 없음 → 경고만, 잡 없음(duplex-split 로도 떨어지지 않음)', async () => {
@@ -2124,6 +2189,227 @@ describe('EditSessionsService', () => {
 
       expect(mockWorkerJobsService.createSheetMapJob).not.toHaveBeenCalled();
       expect(mockWorkerJobsService.createDuplexSplitJob).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── security-2(2026-10-19): metadata.productProfile 서버 소유 — 생성·PATCH·완료 시 템플릿셋 프로파일로 (재)기록 ──
+  describe('productProfile 스냅샷 서버 소유(security-2)', () => {
+    const injected = {
+      version: 1,
+      kind: 'photo-print',
+      editorType: 'x',
+      pages: { kind: 'range', min: 2, max: 400, step: 2, labelRule: 'photo' },
+      sheet: { faces: 2, canvasLayout: 'canvas-pair', binding: 'none', pairing: 'same-sheet', backRotation: 0, duplexFlip: 'short-edge' },
+      photoPrint: {
+        process: 'digital',
+        composition: 'per-photo-free-back',
+        sizes: [{ code: '4x6', widthMm: 102, heightMm: 152, minDpi: 200 }],
+        options: { border: ['none'], fit: ['paper-full'], finish: ['matte'], brightnessFix: false, dateOverlay: false, grayscale: false },
+        copies: { min: 1, max: 1000000000 },
+        upload: { maxPhotos: 1, maxMb: 1 },
+      },
+      output: { mode: 'sheet-map' },
+    };
+    const setProfile = { version: 1, kind: 'sheet', editorType: 'card', pages: { kind: 'fixed', count: 2, labelRule: 'default' }, sheet: { faces: 1, canvasLayout: 'canvas-per-sheet', binding: 'none', backRotation: 0, duplexFlip: 'short-edge' }, output: { mode: 'single-pdf' } };
+
+    const mkSession = (extra: Partial<EditSessionEntity> = {}): EditSessionEntity =>
+      ({
+        id: 'sess-pp',
+        memberSeqno: 7,
+        guestToken: null,
+        status: SessionStatus.EDITING,
+        mode: SessionMode.BOTH,
+        templateSetId: 'ts-null',
+        coverFileId: null,
+        contentFileId: null,
+        canvasData: null,
+        metadata: { revision: 0 },
+        ...extra,
+      }) as EditSessionEntity;
+
+    beforeEach(() => {
+      mockSessionRepository.save.mockImplementation(async (s: any) => s);
+      mockSessionRepository.create.mockImplementation((s: any) => s);
+      mockWorkerJobsService.createValidationJob.mockResolvedValue({ id: 'job-pp' } as any);
+      mockTemplateSetsService.findOne.mockResolvedValue({ id: 'ts-null', width: 100, height: 150, cropMarkEnabled: false, productProfile: null });
+      mockTemplateSetsService.findOneWithTemplates.mockResolvedValue({ templateDetails: [] });
+    });
+
+    it('update: NULL 세트 세션에 클라이언트가 productProfile(copies 999999999·sheet-map)·items 를 넣어도 productProfile 은 저장되지 않는다', async () => {
+      mockSessionRepository.findOne.mockResolvedValue(mkSession());
+      const updated = await service.update(
+        'sess-pp',
+        { metadata: { productProfile: injected, items: [{ copies: 999999999 }] } } as any,
+        7,
+      );
+      expect(updated.metadata).toEqual({ revision: 0, items: [{ copies: 999999999 }] });
+      expect(updated.metadata).not.toHaveProperty('productProfile');
+    });
+
+    it('update: 세트 프로파일이 있으면 클라이언트 값 대신 템플릿셋 현재 프로파일을 기록(기존 키 위치 유지)', async () => {
+      mockTemplateSetsService.findOne.mockResolvedValue({ id: 'ts-set', productProfile: setProfile });
+      mockSessionRepository.findOne.mockResolvedValue(
+        mkSession({ templateSetId: 'ts-set', metadata: { productProfile: { version: 1, kind: 'sheet', stale: true }, revision: 0 } }),
+      );
+      const updated = await service.update('sess-pp', { metadata: { productProfile: injected, calendar: { startYear: 2027 } } } as any, 7);
+      expect(updated.metadata).toEqual({ productProfile: setProfile, revision: 0, calendar: { startYear: 2027 } });
+      expect(Object.keys(updated.metadata!)).toEqual(['productProfile', 'revision', 'calendar']);
+    });
+
+    it('update: 기존(서버 기록) 스냅샷이 있는데 세트 프로파일이 NULL 로 바뀌면 키 제거(롤백 약속) — 템플릿셋 조회 실패면 유지', async () => {
+      mockSessionRepository.findOne.mockResolvedValue(mkSession({ metadata: { productProfile: setProfile, revision: 0 } }));
+      const updated = await service.update('sess-pp', { metadata: { calendar: { startYear: 2027 } } } as any, 7);
+      expect(updated.metadata).toEqual({ revision: 0, calendar: { startYear: 2027 } });
+
+      mockTemplateSetsService.findOne.mockRejectedValue(new Error('db down'));
+      mockSessionRepository.findOne.mockResolvedValue(mkSession({ metadata: { productProfile: setProfile, revision: 0 } }));
+      const kept = await service.update('sess-pp', { metadata: { calendar: { startYear: 2028 } } } as any, 7);
+      expect(kept.metadata).toEqual({ productProfile: setProfile, revision: 0, calendar: { startYear: 2028 } });
+    });
+
+    it('update: metadata 를 보내지 않으면 템플릿셋을 조회하지 않고 metadata 참조도 그대로(바이트 동일)', async () => {
+      const before = { revision: 0, calendar: { startYear: 2027 } };
+      mockSessionRepository.findOne.mockResolvedValue(mkSession({ metadata: before }));
+      const updated = await service.update('sess-pp', { canvasData: [{ v: 1 }] } as any, 7);
+      expect(updated.metadata).toBe(before);
+      expect(mockTemplateSetsService.findOne).not.toHaveBeenCalled();
+    });
+
+    it('create: 클라이언트 metadata.productProfile 은 버리고 템플릿셋 프로파일로 기록; NULL 세트·templateSetId 없음은 키 없음', async () => {
+      mockTemplateSetsService.findOne.mockResolvedValue({ id: 'ts-set', productProfile: setProfile });
+      const a = await service.create({ mode: SessionMode.BOTH, orderSeqno: 1, memberSeqno: 7, templateSetId: 'ts-set', metadata: { productProfile: injected, pages: 2 } } as any);
+      expect(a.metadata).toEqual({ productProfile: setProfile, pages: 2 });
+
+      mockTemplateSetsService.findOne.mockResolvedValue({ id: 'ts-null', productProfile: null });
+      const b = await service.create({ mode: SessionMode.BOTH, orderSeqno: 1, memberSeqno: 7, templateSetId: 'ts-null', metadata: { productProfile: injected, pages: 2 } } as any);
+      expect(b.metadata).toEqual({ pages: 2 });
+
+      const c = await service.create({ mode: SessionMode.BOTH, orderSeqno: 1, memberSeqno: 7, metadata: { productProfile: injected } } as any);
+      expect(c.metadata).toEqual({});
+
+      const plain = { pages: 2 };
+      const d = await service.create({ mode: SessionMode.BOTH, orderSeqno: 1, memberSeqno: 7, templateSetId: 'ts-null', metadata: plain } as any);
+      expect(d.metadata).toBe(plain);
+      const e = await service.create({ mode: SessionMode.BOTH, orderSeqno: 1, memberSeqno: 7 } as any);
+      expect(e.metadata).toBeUndefined();
+    });
+
+    it('complete: 완료 시에도 재기록 — NULL 세트면 클라이언트가 심어 둔 스냅샷을 제거하고 revision 만 올린다', async () => {
+      mockSessionRepository.findOne.mockResolvedValue(mkSession({ metadata: { revision: 0, productProfile: injected, items: [{ copies: 5 }] } }));
+      const completed = await service.complete('sess-pp', 7);
+      expect(completed.status).toBe(SessionStatus.COMPLETE);
+      expect(completed.metadata).toMatchObject({ revision: 1, items: [{ copies: 5 }] });
+      expect(completed.metadata).not.toHaveProperty('productProfile');
+
+      mockTemplateSetsService.findOne.mockResolvedValue({ id: 'ts-set', pdfOutputMode: 'single', productProfile: setProfile });
+      mockSessionRepository.findOne.mockResolvedValue(mkSession({ templateSetId: 'ts-set', metadata: { revision: 0, productProfile: injected } }));
+      const stamped = await service.complete('sess-pp', 7);
+      expect(stamped.metadata).toMatchObject({ revision: 1, productProfile: setProfile });
+    });
+  });
+
+  // ── D9(2026-10-19): 검증 잡 orderOptions.bleed 기본값 — 프로파일 세트의 도련 없는 템플릿셋은 0 ──
+  describe('createValidationJobs — D9 도련 기본값(orderOptions.bleed)', () => {
+    let savedFindOne: typeof mockTemplateSetsService.findOne;
+    let savedFindOneWithTemplates: typeof mockTemplateSetsService.findOneWithTemplates;
+    beforeAll(() => {
+      savedFindOne = mockTemplateSetsService.findOne;
+      savedFindOneWithTemplates = mockTemplateSetsService.findOneWithTemplates;
+    });
+    afterAll(() => {
+      mockTemplateSetsService.findOne = savedFindOne;
+      mockTemplateSetsService.findOneWithTemplates = savedFindOneWithTemplates;
+    });
+    beforeEach(() => {
+      mockWorkerJobsService.createValidationJob.mockReset();
+      mockWorkerJobsService.createValidationJob.mockResolvedValue({ id: 'job-d9' } as any);
+      mockTemplateSetsService.findOneWithTemplates = jest.fn().mockResolvedValue({
+        templateDetails: [{ type: 'page', spreadConfig: null }],
+      });
+    });
+
+    const photoPrintBlock = {
+      process: 'chemical',
+      composition: 'per-photo-free-back',
+      sizes: [{ code: '4x6', widthMm: 102, heightMm: 152, minDpi: 200 }],
+      options: { border: ['none', 'white'], fit: ['paper-full', 'image-full'], finish: ['matte', 'glossy'], brightnessFix: true, dateOverlay: true, grayscale: true },
+      copies: { min: 1, max: 99 },
+      upload: { maxPhotos: 200, maxMb: 25 },
+    };
+    const photoChemProfile = {
+      version: 1,
+      kind: 'photo-print',
+      editorType: 'photo_chem',
+      pages: { kind: 'range', min: 1, max: 200, step: 1, labelRule: 'photo' },
+      sheet: { faces: 1, canvasLayout: 'canvas-per-sheet', binding: 'none', backRotation: 0, duplexFlip: 'short-edge' },
+      photoPrint: photoPrintBlock,
+      output: { mode: 'single-pdf' },
+    };
+    const photoDigitalProfile = {
+      ...photoChemProfile,
+      editorType: 'photo_digital_items',
+      pages: { kind: 'range', min: 2, max: 400, step: 2, labelRule: 'photo' },
+      sheet: { faces: 2, canvasLayout: 'canvas-pair', binding: 'none', pairing: 'same-sheet', backRotation: 0, duplexFlip: 'short-edge' },
+      photoPrint: { ...photoPrintBlock, process: 'digital', upload: { maxPhotos: 400, maxMb: 25 } },
+      output: { mode: 'sheet-map', sheetFiles: 'per-sheet' },
+    };
+
+    const withSet = (set: Record<string, unknown>): void => {
+      mockTemplateSetsService.findOne = jest.fn().mockResolvedValue({ width: 102, height: 152, editorMode: 'single', pageStep: null, ...set });
+    };
+    const mkSession = (metadata: Record<string, unknown> | null, canvases = 3): EditSessionEntity =>
+      ({
+        id: 'session-d9',
+        mode: SessionMode.BOTH,
+        coverFileId: 'file-cover-d9',
+        contentFileId: null,
+        templateSetId: 'ts-d9',
+        canvasData: Array.from({ length: canvases }, () => ({ objects: [] })),
+        metadata,
+      }) as unknown as EditSessionEntity;
+    const bleedOf = async (session: EditSessionEntity): Promise<unknown> => {
+      mockWorkerJobsService.createValidationJob.mockClear();
+      await (service as unknown as { createValidationJobs(s: EditSessionEntity): Promise<void> }).createValidationJobs(session);
+      expect(mockWorkerJobsService.createValidationJob).toHaveBeenCalledTimes(1);
+      return mockWorkerJobsService.createValidationJob.mock.calls[0][0].orderOptions.bleed;
+    };
+
+    it('chemical 세트(cropMarkEnabled false·bleedMm 0, 프로파일 non-null) + metadata.bleed 없음 → bleed 0 (BLEED_MISSING 회귀)', async () => {
+      withSet({ cropMarkEnabled: false, bleedMm: 0, productProfile: photoChemProfile });
+      await expect(bleedOf(mkSession({ pages: 3 }))).resolves.toBe(0);
+      // 종전과 같이 productKind sheet·coverSpine none 은 유지, bleedMm/trim/work 주입은 없음(cropMark 게이트)
+      const opts = mockWorkerJobsService.createValidationJob.mock.calls[0][0].orderOptions;
+      expect(opts).toMatchObject({ productKind: 'sheet', coverSpine: 'none', pages: 3, bleed: 0 });
+      expect(opts).not.toHaveProperty('bleedMm');
+    });
+
+    it('cropMarkEnabled true 인데 bleedMm 0 인 프로파일 세트도 0; 세션 metadata.bleed 명시값(2)은 그대로 우선', async () => {
+      withSet({ cropMarkEnabled: true, bleedMm: 0, productProfile: photoChemProfile });
+      await expect(bleedOf(mkSession({}))).resolves.toBe(0);
+      withSet({ cropMarkEnabled: false, bleedMm: 0, productProfile: photoChemProfile });
+      await expect(bleedOf(mkSession({ bleed: 2 }))).resolves.toBe(2);
+      await expect(bleedOf(mkSession({ bleed: 0 }))).resolves.toBe(0);
+    });
+
+    it('digital 세트(정책 A: cropMarkEnabled true·bleedMm 3) → 종전대로 3', async () => {
+      withSet({ cropMarkEnabled: true, bleedMm: 3, productProfile: photoDigitalProfile });
+      await expect(bleedOf(mkSession({}, 4))).resolves.toBe(3);
+      expect(mockWorkerJobsService.createValidationJob.mock.calls[0][0].orderOptions).toMatchObject({ bleed: 3, bleedMm: 3, cropMarkEnabled: true });
+    });
+
+    it('프로파일 NULL 세트(cropMarkEnabled false·bleedMm 0)·템플릿셋 없음·조회 실패 → 종전 기본 3', async () => {
+      withSet({ cropMarkEnabled: false, bleedMm: 0, productProfile: null });
+      await expect(bleedOf(mkSession({}))).resolves.toBe(3);
+      withSet({ cropMarkEnabled: false, bleedMm: 0 });
+      await expect(bleedOf(mkSession({}))).resolves.toBe(3);
+      await expect(bleedOf({ ...mkSession({}), templateSetId: null } as EditSessionEntity)).resolves.toBe(3);
+      mockTemplateSetsService.findOne = jest.fn().mockRejectedValue(new Error('db down'));
+      await expect(bleedOf(mkSession({}))).resolves.toBe(3);
+    });
+
+    it('검증 실패 프로파일(version 99) 세트는 프로파일 NULL 과 같이 3', async () => {
+      withSet({ cropMarkEnabled: false, bleedMm: 0, productProfile: { ...photoChemProfile, version: 99 } });
+      await expect(bleedOf(mkSession({}))).resolves.toBe(3);
     });
   });
 });

@@ -27,6 +27,7 @@ import {
   PartnerSessionsService,
   buildCalendarView,
   resolveDeliverableStatus,
+  resolveSheetMapFailure,
 } from './partner-sessions.service';
 
 const SITE_A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -63,19 +64,45 @@ const makeSession = (o: Record<string, unknown> = {}) => ({
   ...o,
 });
 
+/** 검증 통과하는 낱장 양면 single-pdf 프로파일 — contract-6(2026-10-19): deliverables product 도 검증 프로파일만 요약하므로 유효해야 한다 */
 const sheetProfile = () => ({
   version: 1,
   kind: 'sheet',
   editorType: 'card',
   pages: { kind: 'fixed', count: 4, labelRule: 'default' },
-  sheet: { faces: 2, canvasLayout: 'canvas-pair', binding: 'none', backRotation: 180, duplexFlip: 'long-edge' },
+  sheet: { faces: 2, canvasLayout: 'canvas-pair', binding: 'none', pairing: 'same-sheet', backRotation: 180, duplexFlip: 'long-edge' },
   output: { mode: 'single-pdf' },
 });
+
+/** 검증 실패(canvas-pair 인데 pairing 없음) 프로파일 */
+const invalidSheetProfile = () => {
+  const { pairing: _omit, ...sheet } = sheetProfile().sheet;
+  return { ...sheetProfile(), sheet };
+};
 
 /** P2-c: 검증 통과(resolveProductProfile)하는 sheet-map 프로파일 — 4쪽 same-sheet, 뒷면 180° */
 const sheetMapProfile = (o: Record<string, unknown> = {}) => ({
   ...sheetProfile(),
   sheet: { ...sheetProfile().sheet, pairing: 'same-sheet' },
+  output: { mode: 'sheet-map', sheetFiles: 'per-sheet' },
+  ...o,
+});
+
+/** P2-d: 검증 통과하는 사진인화 인쇄 ①(digital, same-sheet, sheet-map) 프로파일 — 4캔버스 = 사진 2장(앞/뒤), 뒷면 회전 0 */
+const photoDigitalProfile = (o: Record<string, unknown> = {}) => ({
+  version: 1,
+  kind: 'photo-print',
+  editorType: 'photo_digital_items',
+  pages: { kind: 'range', min: 2, max: 400, step: 2, labelRule: 'photo' },
+  sheet: { faces: 2, canvasLayout: 'canvas-pair', binding: 'none', pairing: 'same-sheet', backRotation: 0, duplexFlip: 'short-edge' },
+  photoPrint: {
+    process: 'digital',
+    composition: 'per-photo-free-back',
+    sizes: [{ code: '4x6', widthMm: 102, heightMm: 152, minDpi: 200 }],
+    options: { border: ['none', 'white'], fit: ['paper-full', 'image-full'], finish: ['matte', 'glossy'], brightnessFix: true, dateOverlay: true, grayscale: true },
+    copies: { min: 1, max: 99 },
+    upload: { maxPhotos: 400, maxMb: 25 },
+  },
   output: { mode: 'sheet-map', sheetFiles: 'per-sheet' },
   ...o,
 });
@@ -385,6 +412,223 @@ describe('PartnerSessionsService (P2-b 1-call 런처)', () => {
       expect(view.files).toEqual([]);
     });
 
+    // ── api-sheetmap-3(2026-10-19): 완료 시 sheet-map 발행 실패 기록 → failed + errorCode/errorDetail ──
+    describe('api-sheetmap-3 — production.sheetMap 실패 기록 노출', () => {
+      const failure = { error: 'PAGE_COUNT_MISMATCH', message: '[sheet-map] PAGE_COUNT_MISMATCH: same-sheet 짝 대상 3쪽', at: '2026-10-19T10:00:00.000Z' };
+      const failedMeta = { launch: { via: 'partner-v1', env: 'live' }, revision: 1, items: [{ copies: 2 }, { copies: 1 }], production: { sheetMap: failure } };
+
+      it('홀수 캔버스 digital 세트 완료(잡 없음) → status failed + errorCode/errorDetail, 단일 PDF·items 는 그대로', async () => {
+        tsFindOne.mockResolvedValue(makeTemplateSet({ pdfOutputMode: 'single', productProfile: photoDigitalProfile() }));
+        findById.mockResolvedValue(makeSession({ canvasData: [{ objects: [] }, { objects: [] }, { objects: [] }], metadata: failedMeta }));
+        const view = await service.getDeliverables(siteA(), SESSION_ID);
+        expect(view.status).toBe('failed');
+        expect(view.errorCode).toBe('PAGE_COUNT_MISMATCH');
+        expect(view.errorDetail).toBe(failure.message);
+        expect(view).not.toHaveProperty('sheets');
+        expect(view.files.map((f) => f.role)).toEqual(['single', 'thumbnail']);
+        expect(view.items).toHaveLength(2);
+        expect(view.production).toEqual({ sheetMap: failure });
+        expect(Object.keys(view)).toEqual(['sessionId', 'status', 'revision', 'orderSeqno', 'product', 'calendar', 'files', 'items', 'production', 'errorCode', 'errorDetail']);
+      });
+
+      it('실패 기록보다 새 합성 잡이 있으면 잡 상태가 이긴다(ready/synthesizing, errorCode 없음); 더 오래된 잡이면 failed', async () => {
+        tsFindOne.mockResolvedValue(makeTemplateSet({ pdfOutputMode: 'single', productProfile: photoDigitalProfile() }));
+        findById.mockResolvedValue(makeSession({ metadata: failedMeta }));
+        const job = (createdAt: string, status: string) => ({
+          id: 'job-x', status, result: null, outputFileUrl: null, options: null, createdAt: new Date(createdAt), completedAt: null,
+        });
+        findLatestPartnerVisibleSynthJob.mockResolvedValue(job('2026-10-19T11:00:00.000Z', WorkerJobStatus.PENDING));
+        let view = await service.getDeliverables(siteA(), SESSION_ID);
+        expect(view.status).toBe('synthesizing');
+        expect(view).not.toHaveProperty('errorCode');
+        expect(view).not.toHaveProperty('errorDetail');
+
+        findLatestPartnerVisibleSynthJob.mockResolvedValue(job('2026-10-19T09:00:00.000Z', WorkerJobStatus.COMPLETED));
+        view = await service.getDeliverables(siteA(), SESSION_ID);
+        expect(view.status).toBe('failed');
+        expect(view.errorCode).toBe('PAGE_COUNT_MISMATCH');
+      });
+
+      it('미완료 세션은 기록이 있어도 editing; 기록 없는 완료 세션은 종전 complete(키 없음)', async () => {
+        findById.mockResolvedValue(makeSession({ status: SessionStatus.EDITING, metadata: failedMeta }));
+        let view = await service.getDeliverables(siteA(), SESSION_ID);
+        expect(view.status).toBe('editing');
+        expect(view).not.toHaveProperty('errorCode');
+
+        findById.mockResolvedValue(makeSession({ metadata: { launch: { via: 'partner-v1', env: 'live' }, revision: 1, production: { lot: 'L1' } } }));
+        view = await service.getDeliverables(siteA(), SESSION_ID);
+        expect(view.status).toBe('complete');
+        expect(view).not.toHaveProperty('errorCode');
+        expect(view.production).toEqual({ lot: 'L1' });
+      });
+
+      it('resolveSheetMapFailure — 형식 불충분(error 없음·at 없음·production 비객체)은 null', () => {
+        const ok = { production: { sheetMap: failure } };
+        expect(resolveSheetMapFailure(SessionStatus.COMPLETE, ok, null)).toEqual(failure);
+        expect(resolveSheetMapFailure(SessionStatus.COMPLETE, ok, { createdAt: new Date('2026-10-19T10:00:00.000Z') })).toBeNull();
+        expect(resolveSheetMapFailure(SessionStatus.COMPLETE, ok, { createdAt: new Date('2026-10-19T09:59:59.000Z') })).toEqual(failure);
+        expect(resolveSheetMapFailure(SessionStatus.EDITING, ok, null)).toBeNull();
+        expect(resolveSheetMapFailure(SessionStatus.COMPLETE, { production: { sheetMap: { message: 'x', at: failure.at } } }, null)).toBeNull();
+        expect(resolveSheetMapFailure(SessionStatus.COMPLETE, { production: { sheetMap: { error: 'X' } } }, null)).toBeNull();
+        expect(resolveSheetMapFailure(SessionStatus.COMPLETE, { production: 'memo' }, null)).toBeNull();
+        expect(resolveSheetMapFailure(SessionStatus.COMPLETE, { production: { sheetMap: { error: 'X', at: failure.at } } }, null)).toEqual({ error: 'X', message: '', at: failure.at });
+        expect(resolveSheetMapFailure(SessionStatus.COMPLETE, null, null)).toBeNull();
+      });
+    });
+
+    // ── P2-d(2026-10-19) deliverables items — photo-print 세트만 ───────────────────────────
+    describe('P2-d items (photo-print 세트만)', () => {
+      const launchMeta = { launch: { via: 'partner-v1', env: 'live' }, revision: 1 };
+
+      it('photo-print 템플릿셋 + metadata.items → readPhotoItems 정제본(index/canvasIndex 재부여·sizeCode 고정·copies 클램프·불량 생략)', async () => {
+        tsFindOne.mockResolvedValue(makeTemplateSet({ pdfOutputMode: 'single', productProfile: photoDigitalProfile() }));
+        findById.mockResolvedValue(
+          makeSession({
+            metadata: {
+              ...launchMeta,
+              items: [
+                { index: 7, canvasIndex: 7, sizeCode: '5x7', copies: 5, border: 'white', fit: 'image-full', sourcePhotoId: 'p1' },
+                'junk',
+                { copies: 500, finish: 'glossy', grayscale: true, lowRes: true },
+              ],
+            },
+          }),
+        );
+        const view = await service.getDeliverables(siteA(), SESSION_ID);
+        expect(view.product).toMatchObject({ kind: 'photo-print', canvasCount: 4, sheetCount: 2, faces: 2 });
+        expect(view.items).toEqual([
+          { index: 0, canvasIndex: 0, sourcePhotoId: 'p1', sizeCode: '4x6', copies: 5, border: 'white', fit: 'image-full', finish: 'matte', brightnessFix: false, dateOverlay: false, grayscale: false, lowRes: false },
+          { index: 1, canvasIndex: 2, sizeCode: '4x6', copies: 99, border: 'none', fit: 'paper-full', finish: 'glossy', brightnessFix: false, dateOverlay: false, grayscale: true, lowRes: true },
+        ]);
+      });
+
+      it('photo-print 세트인데 metadata.items 없음 → items [] (키는 있음)', async () => {
+        tsFindOne.mockResolvedValue(makeTemplateSet({ pdfOutputMode: 'single', productProfile: photoDigitalProfile() }));
+        findById.mockResolvedValue(makeSession({ metadata: launchMeta }));
+        const view = await service.getDeliverables(siteA(), SESSION_ID);
+        expect(view.items).toEqual([]);
+      });
+
+      it('템플릿셋 프로파일 없음 → 세션 스냅샷 photo-print 프로파일로 items 정제', async () => {
+        tsFindOne.mockResolvedValue(makeTemplateSet({ productProfile: null }));
+        findById.mockResolvedValue(
+          makeSession({ metadata: { ...launchMeta, productProfile: photoDigitalProfile(), items: [{ copies: 3 }] } }),
+        );
+        const view = await service.getDeliverables(siteA(), SESSION_ID);
+        expect(view.items).toEqual([expect.objectContaining({ index: 0, canvasIndex: 0, copies: 3, sizeCode: '4x6' })]);
+      });
+
+      it('NULL 세트·낱장(sheet) 세트·캘린더 세트는 metadata.items 가 있어도 items 키 없음(응답 바이트 동일)', async () => {
+        const withItems = makeSession({ metadata: { ...launchMeta, items: [{ copies: 3 }] } });
+        tsFindOne.mockResolvedValue(makeTemplateSet({ productProfile: null }));
+        findById.mockResolvedValue(withItems);
+        expect(await service.getDeliverables(siteA(), SESSION_ID)).not.toHaveProperty('items');
+
+        tsFindOne.mockResolvedValue(makeTemplateSet());
+        expect(await service.getDeliverables(siteA(), SESSION_ID)).not.toHaveProperty('items');
+
+        tsFindOne.mockResolvedValue(makeTemplateSet({ productProfile: sheetMapProfile() }));
+        expect(await service.getDeliverables(siteA(), SESSION_ID)).not.toHaveProperty('items');
+
+        const calendarProfile = {
+          version: 1,
+          kind: 'calendar',
+          editorType: 'calendar_desk',
+          pages: { kind: 'fixed', count: 26, labelRule: 'month' },
+          sheet: { faces: 2, canvasLayout: 'canvas-pair', binding: 'top-ring', pairing: 'same-sheet', backRotation: 0, duplexFlip: 'short-edge' },
+          calendar: {
+            layout: 'desk', monthCount: 12, coverCanvases: 1, canvasesPerMonth: 2, epilogueCanvases: 1,
+            allowedRange: { from: '2026-01', to: '2030-12' }, weekStart: 0,
+            show: { holidays: true, lunar: true, solarTerms: true }, dataVersion: 'kr-2025-2035-v1',
+          },
+          output: { mode: 'single-pdf' },
+        };
+        tsFindOne.mockResolvedValue(makeTemplateSet({ productProfile: calendarProfile }));
+        expect(await service.getDeliverables(siteA(), SESSION_ID)).not.toHaveProperty('items');
+      });
+
+      it('검증 실패 photo-print 프로파일(photoPrint 블록 없음)은 items 키 없음 + product 도 null(contract-6: 같은 검증 프로파일)', async () => {
+        const { photoPrint: _omit, ...invalid } = photoDigitalProfile();
+        tsFindOne.mockResolvedValue(makeTemplateSet({ productProfile: invalid }));
+        findById.mockResolvedValue(makeSession({ metadata: { ...launchMeta, items: [{ copies: 3 }] } }));
+        const view = await service.getDeliverables(siteA(), SESSION_ID);
+        expect(view).not.toHaveProperty('items');
+        expect(view.product).toBeNull();
+      });
+
+      it('contract-6: 템플릿셋 프로파일이 무효면 product·items 모두 세션 스냅샷(유효) 기준 — 출처가 갈리지 않는다', async () => {
+        const { photoPrint: _omit, ...invalid } = photoDigitalProfile();
+        tsFindOne.mockResolvedValue(makeTemplateSet({ productProfile: invalid }));
+        findById.mockResolvedValue(
+          makeSession({ metadata: { ...launchMeta, productProfile: { ...photoDigitalProfile(), editorType: 'snap' }, items: [{ copies: 3 }] } }),
+        );
+        const view = await service.getDeliverables(siteA(), SESSION_ID);
+        expect(view.product).toMatchObject({ kind: 'photo-print', editorType: 'snap' });
+        expect(view.items?.map((i) => i.copies)).toEqual([3]);
+      });
+
+      it('security-1: items 10만 건을 넣어도 응답 items 는 사진 수(4캔버스 digital = 2) 이하', async () => {
+        tsFindOne.mockResolvedValue(makeTemplateSet({ pdfOutputMode: 'single', productProfile: photoDigitalProfile() }));
+        findById.mockResolvedValue(
+          makeSession({
+            metadata: { ...launchMeta, items: Array.from({ length: 100_000 }, () => ({ copies: 99, sourcePhotoId: 'x'.repeat(100) })) },
+          }),
+        );
+        const view = await service.getDeliverables(siteA(), SESSION_ID);
+        expect(view.items).toHaveLength(2);
+        expect(view.items?.map((i) => i.canvasIndex)).toEqual([0, 2]);
+        expect(JSON.stringify(view).length).toBeLessThan(4_000);
+      });
+
+      it('security-1: 캔버스 수를 모르는 세션(canvasData 없음·pages 없음)은 upload.maxPhotos(400) 까지만', async () => {
+        tsFindOne.mockResolvedValue(makeTemplateSet({ pdfOutputMode: 'single', productProfile: photoDigitalProfile() }));
+        findById.mockResolvedValue(
+          makeSession({ canvasData: null, metadata: { ...launchMeta, items: Array.from({ length: 1_000 }, () => ({ copies: 1 })) } }),
+        );
+        const view = await service.getDeliverables(siteA(), SESSION_ID);
+        expect(view.items).toHaveLength(400);
+      });
+
+      it('완료 sheet-map 잡의 sheets 에 API 가 주입한 copies/label 이 files[].copies/label 로 노출된다(v1.24 규약 재사용)', async () => {
+        tsFindOne.mockResolvedValue(makeTemplateSet({ pdfOutputMode: 'single', productProfile: photoDigitalProfile() }));
+        findById.mockResolvedValue(makeSession({ metadata: { ...launchMeta, items: [{ copies: 5 }, { copies: 2 }] } }));
+        const sheets = [
+          { index: 0, front: { page: 0 }, back: { page: 1, rotate: 0 }, copies: 5, label: '사진 1' },
+          { index: 1, front: { page: 2 }, back: { page: 3, rotate: 0 }, copies: 2, label: '사진 2' },
+        ];
+        findLatestPartnerVisibleSynthJob.mockResolvedValue({
+          id: 'job-pp',
+          status: WorkerJobStatus.COMPLETED,
+          result: {
+            outputFiles: [
+              { type: 'set', url: '/storage/outputs/job-pp/set-0.pdf', pageCount: 2, setIndex: 0 },
+              { type: 'set', url: '/storage/outputs/job-pp/set-1.pdf', pageCount: 2, setIndex: 1 },
+            ],
+          },
+          options: { mode: 'sheet-map', totalExpectedPages: 4, sheets, output: 'per-sheet', duplexFlip: 'short-edge' },
+          outputFileUrl: null,
+          createdAt: T0,
+          completedAt: T0,
+        });
+        issueOutputUrls.mockResolvedValue({
+          jobId: 'job-pp',
+          expiresInSec: 300,
+          files: [
+            { name: 'set-0.pdf', url: '/storage-signed/outputs/job-pp/set-0.pdf?md5=a&expires=1800000000', expires: 1800000000 },
+            { name: 'set-1.pdf', url: '/storage-signed/outputs/job-pp/set-1.pdf?md5=b&expires=1800000000', expires: 1800000000 },
+          ],
+        });
+        const view = await service.getDeliverables(siteA(), SESSION_ID);
+        expect(view.status).toBe('ready');
+        expect(view.sheets).toEqual(sheets);
+        expect(view.items?.map((i) => i.copies)).toEqual([5, 2]);
+        expect(view.files.filter((f) => f.role === 'sheet')).toEqual([
+          expect.objectContaining({ sheetIndex: 0, copies: 5, label: '사진 1' }),
+          expect.objectContaining({ sheetIndex: 1, copies: 2, label: '사진 2' }),
+        ]);
+      });
+    });
+
     it('buildCalendarView — 월 범위·정수 검사, 형식 불충분이면 null', () => {
       expect(buildCalendarView({})).toBeNull();
       expect(buildCalendarView({ calendar: { startYear: 2027, startMonth: 13 } })).toBeNull();
@@ -526,7 +770,7 @@ describe('PartnerSessionsService (P2-b 1-call 런처)', () => {
 
     it('검증 실패 프로파일(canvas-pair 인데 pairing 없음)은 sheet-map 으로 보지 않는다 → duplex-split 세트면 종전 경로', async () => {
       tsFindOne.mockResolvedValue(
-        makeTemplateSet({ pdfOutputMode: 'duplex-split', productProfile: { ...sheetProfile(), output: { mode: 'sheet-map' } } }),
+        makeTemplateSet({ pdfOutputMode: 'duplex-split', productProfile: { ...invalidSheetProfile(), output: { mode: 'sheet-map' } } }),
       );
       requestDuplexSplitResynthesis.mockResolvedValue({ jobId: 'job-ds', revision: 2 });
       await expect(service.synthesize(siteA(), SESSION_ID)).resolves.toEqual({ jobId: 'job-ds', revision: 2 });
@@ -859,12 +1103,93 @@ describe('EditSessionsService.requestSheetMapResynthesis (P2-c)', () => {
     expect(createSheetMapJob).not.toHaveBeenCalled();
   });
 
+  it('api-sheetmap-3: 재합성의 SheetMapError 도 production.sheetMap 에 기록(저장)한 뒤 그대로 올린다; 다음 성공 발행이 기록을 지운다', async () => {
+    sessionRepo.findOne.mockResolvedValue(
+      session({ canvasData: Array.from({ length: 6 }, () => ({ objects: [] })), metadata: { launch: { via: 'partner-v1', env: 'live' }, revision: 1, production: { lot: 'L1' } } }),
+    );
+    await expect(service.requestSheetMapResynthesis(SESSION_ID, { siteId: SITE_A, env: 'live' })).rejects.toBeInstanceOf(SheetMapError);
+    const saved = sessionRepo.save.mock.calls.at(-1)?.[0] as { metadata: Record<string, unknown> };
+    expect(saved.metadata).toMatchObject({
+      revision: 2,
+      production: { lot: 'L1', sheetMap: { error: 'PAGE_COUNT_MISMATCH', message: expect.stringContaining('PAGE_COUNT_MISMATCH'), at: expect.any(String) } },
+    });
+    expect(createSheetMapJob).not.toHaveBeenCalled();
+
+    sessionRepo.findOne.mockResolvedValue(session({ metadata: saved.metadata }));
+    await expect(service.requestSheetMapResynthesis(SESSION_ID, { siteId: SITE_A, env: 'live' })).resolves.toEqual({ jobId: 'job-8', revision: 3 });
+    const cleared = sessionRepo.save.mock.calls.at(-1)?.[0] as { metadata: Record<string, unknown> };
+    expect(cleared.metadata).toEqual({ launch: { via: 'partner-v1', env: 'live' }, revision: 3, production: { lot: 'L1' } });
+  });
+
   it('페이지 수 ≠ pages.count → SheetMapError 그대로(호출측이 422 로 변환), 잡 없음', async () => {
     sessionRepo.findOne.mockResolvedValue(session({ canvasData: [{ objects: [] }, { objects: [] }] }));
     await expect(service.requestSheetMapResynthesis(SESSION_ID, { siteId: SITE_A, env: 'live' })).rejects.toBeInstanceOf(
       SheetMapError,
     );
     expect(createSheetMapJob).not.toHaveBeenCalled();
+  });
+
+  // ── P2-d(2026-10-19): photo-print 세트는 metadata.items 의 매수를 시트 copies/label 로 주입 ──
+  describe('P2-d photo-print copies/label 주입(applyPhotoItemsToSheets)', () => {
+    const PHOTO_SHEETS = [
+      { index: 0, front: { page: 0 }, back: { page: 1, rotate: 0 }, copies: 3, label: '사진 1' },
+      { index: 1, front: { page: 2 }, back: { page: 3, rotate: 0 }, copies: 1, label: '사진 2' },
+    ];
+
+    it('requestSheetMapResynthesis — items 2건(copies 3 / 0→copies.min 1) → sheets[].copies/label(사진 1·2)', async () => {
+      tsFindOneRaw.mockResolvedValue(makeTemplateSet({ pdfOutputMode: 'single', productProfile: photoDigitalProfile() }));
+      sessionRepo.findOne.mockResolvedValue(
+        session({ metadata: { launch: { via: 'partner-v1', env: 'live' }, revision: 1, items: [{ copies: 3 }, { copies: 0 }] } }),
+      );
+      await expect(service.requestSheetMapResynthesis(SESSION_ID, { siteId: SITE_A, env: 'live' })).resolves.toEqual({ jobId: 'job-8', revision: 2 });
+      expect(createSheetMapJob).toHaveBeenCalledWith(expect.objectContaining({ sheets: PHOTO_SHEETS, requestId: 'sheet-map-r2' }));
+    });
+
+    it('requestSheetMapResynthesis — items 1건이면 둘째 시트는 copies/label 없음; items 없으면 종전 sheets 그대로', async () => {
+      tsFindOneRaw.mockResolvedValue(makeTemplateSet({ pdfOutputMode: 'single', productProfile: photoDigitalProfile() }));
+      sessionRepo.findOne.mockResolvedValue(
+        session({ metadata: { launch: { via: 'partner-v1', env: 'live' }, revision: 1, items: [{ copies: 4 }] } }),
+      );
+      await service.requestSheetMapResynthesis(SESSION_ID, { siteId: SITE_A, env: 'live' });
+      expect(createSheetMapJob.mock.calls[0][0].sheets).toEqual([
+        { index: 0, front: { page: 0 }, back: { page: 1, rotate: 0 }, copies: 4, label: '사진 1' },
+        { index: 1, front: { page: 2 }, back: { page: 3, rotate: 0 } },
+      ]);
+
+      createSheetMapJob.mockClear();
+      sessionRepo.findOne.mockResolvedValue(session({ metadata: { launch: { via: 'partner-v1', env: 'live' }, revision: 1 } }));
+      await service.requestSheetMapResynthesis(SESSION_ID, { siteId: SITE_A, env: 'live' });
+      expect(createSheetMapJob.mock.calls[0][0].sheets).toEqual([
+        { index: 0, front: { page: 0 }, back: { page: 1, rotate: 0 } },
+        { index: 1, front: { page: 2 }, back: { page: 3, rotate: 0 } },
+      ]);
+    });
+
+    it('낱장(sheet) sheet-map 세트는 metadata.items 가 있어도 sheets 무변경(기존 EXPECTED_SHEETS 바이트 동일)', async () => {
+      sessionRepo.findOne.mockResolvedValue(
+        session({ metadata: { launch: { via: 'partner-v1', env: 'live' }, revision: 1, items: [{ copies: 3 }, { copies: 2 }] } }),
+      );
+      await service.requestSheetMapResynthesis(SESSION_ID, { siteId: SITE_A, env: 'live' });
+      expect(createSheetMapJob).toHaveBeenCalledWith(expect.objectContaining({ sheets: EXPECTED_SHEETS }));
+    });
+
+    it('완료 시 자동 발행(applyPdfOutputMode) 도 같은 주입 — photo-print 세트 sheets[].copies/label, duplex-split 잡 없음', async () => {
+      const envBackup = process.env.SHEET_MAP_OUTPUT_ENABLED;
+      delete process.env.SHEET_MAP_OUTPUT_ENABLED;
+      try {
+        tsFindOneRaw.mockResolvedValue(makeTemplateSet({ pdfOutputMode: 'duplex-split', productProfile: photoDigitalProfile() }));
+        const s = session({ metadata: { revision: 2, items: [{ copies: 3 }, { copies: 1 }] } });
+        await (service as unknown as { applyPdfOutputMode(x: unknown): Promise<void> }).applyPdfOutputMode(s);
+        expect(createSheetMapJob).toHaveBeenCalledTimes(1);
+        expect(createSheetMapJob).toHaveBeenCalledWith(
+          expect.objectContaining({ sheets: PHOTO_SHEETS, requestId: 'sheet-map-r2', output: 'per-sheet', duplexFlip: 'short-edge' }),
+        );
+        expect(createDuplexSplitJob).not.toHaveBeenCalled();
+      } finally {
+        if (envBackup === undefined) delete process.env.SHEET_MAP_OUTPUT_ENABLED;
+        else process.env.SHEET_MAP_OUTPUT_ENABLED = envBackup;
+      }
+    });
   });
 
   it('방어적 스코프·완료 게이트는 duplex-split 과 같다(404 SESSION_NOT_FOUND / 400 SESSION_NOT_COMPLETE)', async () => {

@@ -7,6 +7,8 @@ import { core } from '@storige/canvas-core'
 import { rebindFrameInteractivity } from '@/utils/frameInteractive'
 import { rehydrateCalendarGrids } from '@/utils/calendarRehydrate'
 import { calendarSessionMetadataFields } from '@/utils/calendarRehydrateAll'
+import { rehydratePhotoPrint } from '@/utils/photoPrintRehydrate'
+import { photoPrintSessionMetadataFields } from '@/utils/photoPrintRehydrateAll'
 import { applyObjectPermissions, applyCoverMaterialLock } from '@/utils/objectPermissions'
 import { trackRequiredEdits } from '@/utils/requiredEditGate'
 import { isAutosaveSuspended, deferUntilAutosaveResumed } from '@/utils/autosaveSuspend'
@@ -277,6 +279,8 @@ export function useEmbedAutoSave(config: AutoSaveConfig) {
           rebindFrameInteractivity(editors[i], canvases[i])
           // P1 캘린더: 캘린더 세트면 calendar-grid 재합성(프로파일 null 이면 즉시 0, no-op).
           void rehydrateCalendarGrids(editors[i], canvases[i], i)
+          // P2-d 사진인화: 사진인화 세트면 fitMode/유테/흑백 런타임 복구(프로파일 null 이면 즉시 0, no-op).
+          void rehydratePhotoPrint(editors[i], canvases[i], i)
           // Part B: 로컬 백업 복원 시에도 객체별 이동/변형 잠금 적용.
           applyObjectPermissions(canvases[i], editMode())
           applyCoverMaterialLock(
@@ -324,6 +328,8 @@ export function useEmbedAutoSave(config: AutoSaveConfig) {
         rebindFrameInteractivity(editors[Math.max(0, canvases.indexOf(canvas))], canvas)
         // P1 캘린더: 캘린더 세트면 calendar-grid 재합성(프로파일 null 이면 즉시 0, no-op).
         void rehydrateCalendarGrids(editors[Math.max(0, canvases.indexOf(canvas))], canvas, Math.max(0, canvases.indexOf(canvas)))
+        // P2-d 사진인화: 사진인화 세트면 fitMode/유테/흑백 런타임 복구(프로파일 null 이면 즉시 0, no-op).
+        void rehydratePhotoPrint(editors[Math.max(0, canvases.indexOf(canvas))], canvas, Math.max(0, canvases.indexOf(canvas)))
         applyObjectPermissions(canvas, editMode())
         applyCoverMaterialLock(canvas, useSettingsStore.getState().coverMaterialLocked, editMode())
         trackRequiredEdits(canvas) // L7(멱등)
@@ -406,11 +412,13 @@ export function useEmbedAutoSave(config: AutoSaveConfig) {
 
       // 게스트 세션이면 guestToken 동봉(updateGuest), 아니면 회원 update
       // P1 캘린더: 캘린더 세트면 metadata.calendar 동봉(API 얕은 병합), 아니면 {} (payload 키 집합 불변)
+      // P2-d 사진인화: 사진인화 세트면 metadata.items 동봉(같은 규칙 — 아니면 {})
       const guestToken = currentSession?.guestToken
       const calendarFields = calendarSessionMetadataFields()
+      const photoPrintFields = photoPrintSessionMetadataFields()
       const updatedSession = guestToken
-        ? await editSessionsApi.updateGuest(sessionId, guestToken, { canvasData, status: 'editing', ...calendarFields })
-        : await editSessionsApi.update(sessionId, { canvasData, status: 'editing', ...calendarFields })
+        ? await editSessionsApi.updateGuest(sessionId, guestToken, { canvasData, status: 'editing', ...calendarFields, ...photoPrintFields })
+        : await editSessionsApi.update(sessionId, { canvasData, status: 'editing', ...calendarFields, ...photoPrintFields })
 
       // 성공 시 상태 업데이트
       setSaved()
