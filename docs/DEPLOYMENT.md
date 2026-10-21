@@ -1584,7 +1584,7 @@ STORIGE_API_URL=https://api.papascompany.co.kr/api node scripts/register-calenda
 - 롤백: `docker tag storige-api:rollback-pre-calendar-20261018 storige-api:latest`(worker 동일) → `docker compose up -d api worker` → nginx 재시작. editor·admin 은 Vercel 직전 Production promote. 컬럼은 NULL additive 라 유지.
 
 
-### P2-b 런처(파트너 v1 `sessions`)·합성 파일 메타 조회 배포 절차 (2026-10-18 준비 — 미실행, 오너 승인 후)
+### P2-b 런처(파트너 v1 `sessions`)·합성 파일 메타 조회 배포 절차 (2026-10-18 준비 → 2026-10-21 15:55~16:00 KST 반영 완료 — P2-a~d 일괄, 기록은 「P2-d」 절 끝 「반영 기록」)
 
 > api·worker·editor 를 함께 바꾸는 배포다. DB 마이그레이션 없음(세션 `metadata`·잡 `options` JSON 만 사용). 계약: `docs/CONTRACT_FREEZE.md` v1.23(§1-D 런처 3라우트·웹훅 `revision`, §1-B `GET /files/:id/external`). 계획·결함 기록: `docs/P2_PRODUCT_MODE_PLAN_2026-10-18.md` §1·§7.
 
@@ -1621,7 +1621,7 @@ docker logs storige-api 2>&1 | grep -E "\[FLAGS\] api |\[FLAGS-CHECK\]" | tail -
 **롤백**: `PARTNER_SESSION_LAUNCH_ENABLED=off`(3라우트 503) → 필요 시 이미지 롤백 태그로 `docker compose up -d api worker` + nginx 재시작. editor 는 Vercel 직전 Production promote.
 
 
-### P2-c 시트 맵 출력(worker `sheet-map` 모드) 배포 절차 (2026-10-18 준비 — 미실행, 오너 승인 후)
+### P2-c 시트 맵 출력(worker `sheet-map` 모드) 배포 절차 (2026-10-18 준비 → 2026-10-21 15:55~16:00 KST 반영 완료 — 기록은 「P2-d」 절 끝)
 
 > worker·api 를 바꾸는 배포. DB 마이그레이션 없음(잡 `options`·`result` JSON 만). 계약 `docs/CONTRACT_FREEZE.md` v1.24, 계획 `docs/P2_PRODUCT_MODE_PLAN_2026-10-18.md` §1 P2-c. **순서는 worker 먼저** — 미배포 워커가 `sheet-map` 잡을 받으면 알 수 없는 mode 로 병합 경로에 떨어진다.
 
@@ -1650,9 +1650,9 @@ docker logs storige-api 2>&1 | grep -E "\[FLAGS-CHECK\]" | tail -1   # ok n=17
 로컬 실측(2026-10-19 00:03 KST, 탁상 베이직 프로파일 `output.mode='sheet-map'`): 완료 → `[pdfOutputMode] Created sheet-map job … sheets=13, output=per-sheet, pdfOutputMode='duplex-split' 무시` → 워커 `Processing sheet-map synthesis job … sheets=13` → 13 `set_<i>.pdf`(각 2쪽 216×156mm) → deliverables `ready`·`sheets` 13 → synthesize 201(r2) → `sheetFiles='merged-duplex'` 재합성 201(r3) → `sheets_duplex.pdf` 26쪽. 운영 템플릿셋에는 아직 sheet-map 프로파일 세트가 없다(배포 직후 동작 변화 0).
 
 
-### P2-d 사진인화 배포 절차 (2026-10-20 준비 — 미실행, 오너 승인 후)
+### P2-d 사진인화 배포 절차 (2026-10-20 준비 → 2026-10-21 15:55~16:00 KST 반영 완료)
 
-> 브랜치 `p1-calendar-2026-10-17` 전용 — 커밋 `237e6b91`(P2-d, 2026-10-20, P2-c `9be4c37c` 위) + `2952aa09`(2차 실측 기록) + D11~D13 수정 커밋(2026-10-21)이며 master 미병합·운영 미반영. P2-b·P2-c 와 같은 브랜치라 이 절은 위 두 절(킬스위치 키 2개 추가, worker 먼저)이 같은 배포에서 먼저 적용된 상태를 전제한다. api·editor·admin 과 `packages/types`·`packages/canvas-core`·`packages/sdk` 를 바꾸고, **worker 는 D13(2026-10-21)으로 코드가 바뀐다**(`apps/worker/src/utils/pdf-prune-xobjects.ts` 신설 + `synthesis.processor.ts` sheet-map·duplex-split pdf-lib 분리본 정리 — 237e6b91 시점엔 worker 무변경이었다). 계약 `docs/CONTRACT_FREEZE.md` v1.25(§1-D ADDITIVE 4건 + 보정 2건). 전체 테스트(2026-10-20 13:51 KST(04:51Z, 로그 기준)): api jest 154 suites/3470 · worker 36/1353 · editor vitest 133 파일/1810 · canvas-core(node 24) 63/754 · admin 24/302 · sdk 13/416 · tsc 7패키지 ok — 기준선(P2-c `9be4c37c`) 대비 회귀 0. 적대 리뷰 36건·로컬 e2e 결함 9건(D1~D9) 수정 반영.
+> 브랜치 `p1-calendar-2026-10-17` 전용 — 커밋 `237e6b91`(P2-d, 2026-10-20, P2-c `9be4c37c` 위) + `2952aa09`(2차 실측 기록) + `11383962`(D11~D13 수정)이며 **2026-10-21 master ff 병합(`af900212`→`11383962`)·운영 반영 완료**(절 끝 「반영 기록」). P2-b·P2-c 와 같은 브랜치라 이 절은 위 두 절(킬스위치 키 2개 추가, worker 먼저)이 같은 배포에서 먼저 적용된 상태를 전제한다. api·editor·admin 과 `packages/types`·`packages/canvas-core`·`packages/sdk` 를 바꾸고, **worker 는 D13(2026-10-21)으로 코드가 바뀐다**(`apps/worker/src/utils/pdf-prune-xobjects.ts` 신설 + `synthesis.processor.ts` sheet-map·duplex-split pdf-lib 분리본 정리 — 237e6b91 시점엔 worker 무변경이었다). 계약 `docs/CONTRACT_FREEZE.md` v1.25(§1-D ADDITIVE 4건 + 보정 2건). 전체 테스트(2026-10-20 13:51 KST(04:51Z, 로그 기준)): api jest 154 suites/3470 · worker 36/1353 · editor vitest 133 파일/1810 · canvas-core(node 24) 63/754 · admin 24/302 · sdk 13/416 · tsc 7패키지 ok — 기준선(P2-c `9be4c37c`) 대비 회귀 0. 적대 리뷰 36건·로컬 e2e 결함 9건(D1~D9) 수정 반영.
 
 **변경 내용(요약)**
 
@@ -1723,7 +1723,17 @@ STORIGE_API_URL=https://api.papascompany.co.kr/api node scripts/register-photo-p
 3. sheet-map 발행 중지: `.env` `SHEET_MAP_OUTPUT_ENABLED=off` → `docker compose up -d api` → nginx 재시작(P2-c 절차) — 사진인화 digital 세트의 완료는 유지되고 시트 매핑 잡·`copies/label` 주입만 멈춘다(종전 pdfOutputMode 경로). **로컬 리허설(2026-10-20 2차) 통과**: api 를 `SHEET_MAP_OUTPUT_ENABLED=off` 로 기동(`[FLAGS] api … SHEET_MAP_OUTPUT_ENABLED=false`) → ① 런처 세션 `eb84b6a5` 완료 → 로그 `[pdfOutputMode] session …: 'duplex-merged' — 편집기 산출 PDF 그대로 사용(분리 없음)`, 잡은 검증 `8b9ddb57`(warnings []) 1건뿐·sheet-map 미발행, deliverables status `complete`(`ready` 아님)·files single 1건·sheets null·items 2(copies/border 유지) — 파트너는 단일 PDF + `items` 로 처리하면 된다.
 4. 이미지: `docker tag storige-api:rollback-pre-photoprint-20261020 storige-api:latest`(worker 동일) → `docker compose up -d api worker` → nginx 재시작. 스키마 변경이 없어 DB 되돌림 없음.
 
-**통지**: CONTRACT_FREEZE v1.25 ADDITIVE 4건(소비처 0건) + 보정 2건 — 가이드 반영으로 갈음, 적용 시점 = 이 배포 확인 시각(미정).
+**통지**: CONTRACT_FREEZE v1.23·v1.24·v1.25 ADDITIVE(소비처 0건) — 가이드 반영으로 갈음, 적용 시점 = 2026-10-21 16:00 KST(아래 반영 기록).
+
+**반영 기록 (2026-10-21 15:55~16:00 KST — P2-a·b·c·d + 2차 실측·D11~D13 일괄)**
+
+- master ff 병합 `af900212` → `11383962`(브랜치 `p1-calendar-2026-10-17` 5커밋: `f43cb99e` P2-a/b · `9be4c37c` P2-c · `237e6b91` P2-d · `2952aa09` 2차 실측 기록 · `11383962` D11~D13), 15:53 push → Vercel 자동 배포.
+- VPS 준비: `.env` 백업 `.env.bak-20261021-p2`(0600), `FLAGS_EXPECTED_API` 에 `PARTNER_SESSION_LAUNCH_ENABLED=true SHEET_MAP_OUTPUT_ENABLED=true` 추가(15 → 17 토큰; 두 킬스위치 키 자체는 `.env` 에 두지 않음 = 미설정 ON), `OUTPUT_SIGN_SECRET` 설정 확인, 롤백 태그 `storige-api:rollback-pre-p2abcd-20261021`·`storige-worker:rollback-pre-p2abcd-20261021`(위 세 절의 태그 이름 대신 하나로).
+- 반영: `git pull --ff-only` HEAD `11383962` → worker 빌드 15:56~15:57·재기동(이미지 `4f73a4c4efb4`, `/health` 200, `[FLAGS-CHECK] worker ok n=9`) → api 빌드 15:57~15:59·재기동(이미지 `fcad1293f0e6`) → nginx 재시작 → `/api/health` 200, `[FLAGS-CHECK] api ok n=17`(`EDITOR_SHEET_VALIDATION_RULES`·`PARTNER_SESSION_LAUNCH_ENABLED`·`SHEET_MAP_OUTPUT_ENABLED` 모두 true).
+- 확인(16:01 KST): 외부 `https://api.papascompany.co.kr/api/health` ok(큐 waiting/active/failed 0), api·worker 기동 후 level 50/40 로그 0, `[productProfile] … 조회 실패` warn 0, nginx 5xx 0, `bull:pdf-validation`·`pdf-synthesis` wait/failed 0, 운영 `template_sets` 중 `product_profile.kind='photo-print'` 0건(동작 변화 없음), `GET /api/v1/ping` 키 없이 401(라우트 살아 있음). Vercel Production: editor `storige-editor-p8y6krgna` Ready(51s)·admin `storige-admin-fsssz1ktb` Ready(36s), `https://editor.papascompany.co.kr/`·`https://admin.papascompany.co.kr/` 200. 마이그레이션 없음(스키마 변경 없음).
+- 운영 플래그 메모: worker 는 `WORKER_LIGHTWEIGHT_SYNTHESIS=true`(qpdf 경로)라 sheet-map/duplex-split 분리본은 qpdf `--pages` 가 미참조 리소스를 정리한다 — D13 의 pdf-lib 정리 코드는 OFF 경로 전용이라 운영에서는 대기 코드다.
+- 미실행(오너 결정): 운영 샘플 세트 등록(아래 「샘플 세트 등록(별도 승인)」), mariadb `--max-allowed-packet` 상향(위 「권장 방어선」), 파트너 통지(소비처 0건이라 가이드 반영으로 갈음).
+- 롤백: 위 「롤백」 1~3(코드 롤백 없음) 또는 `docker tag storige-api:rollback-pre-p2abcd-20261021 storige-api:latest`(worker 동일) → `docker compose up -d api worker` → nginx 재시작 + `.env.bak-20261021-p2` 복원(프로필 15키). editor/admin 은 Vercel 직전 Production promote.
 
 ## 문제 해결
 
