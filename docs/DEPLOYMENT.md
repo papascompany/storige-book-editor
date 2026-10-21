@@ -1652,7 +1652,7 @@ docker logs storige-api 2>&1 | grep -E "\[FLAGS-CHECK\]" | tail -1   # ok n=17
 
 ### P2-d 사진인화 배포 절차 (2026-10-20 준비 — 미실행, 오너 승인 후)
 
-> 브랜치 `p1-calendar-2026-10-17` 전용 — HEAD `9be4c37c`(P2-c) 위 **미커밋** 작업 트리이며 master 미병합·운영 미반영. P2-b·P2-c 와 같은 브랜치라 이 절은 위 두 절(킬스위치 키 2개 추가, worker 먼저)이 같은 배포에서 먼저 적용된 상태를 전제한다. api·editor·admin 과 `packages/types`·`packages/canvas-core`·`packages/sdk` 를 바꾸고 **worker 코드 변경은 없다**(`apps/worker` 무변경 — `@storige/types` 가 바뀌므로 이미지는 P2-c 절차대로 worker 도 함께 빌드한다). 계약 `docs/CONTRACT_FREEZE.md` v1.25(§1-D ADDITIVE 4건 + 보정 2건). 전체 테스트(2026-10-20 13:51 KST(04:51Z, 로그 기준)): api jest 154 suites/3470 · worker 36/1353 · editor vitest 133 파일/1810 · canvas-core(node 24) 63/754 · admin 24/302 · sdk 13/416 · tsc 7패키지 ok — 기준선(P2-c `9be4c37c`) 대비 회귀 0. 적대 리뷰 36건·로컬 e2e 결함 9건(D1~D9) 수정 반영.
+> 브랜치 `p1-calendar-2026-10-17` 전용 — 커밋 `237e6b91`(P2-d, 2026-10-20, P2-c `9be4c37c` 위)이며 master 미병합·운영 미반영. P2-b·P2-c 와 같은 브랜치라 이 절은 위 두 절(킬스위치 키 2개 추가, worker 먼저)이 같은 배포에서 먼저 적용된 상태를 전제한다. api·editor·admin 과 `packages/types`·`packages/canvas-core`·`packages/sdk` 를 바꾸고 **worker 코드 변경은 없다**(`apps/worker` 무변경 — `@storige/types` 가 바뀌므로 이미지는 P2-c 절차대로 worker 도 함께 빌드한다). 계약 `docs/CONTRACT_FREEZE.md` v1.25(§1-D ADDITIVE 4건 + 보정 2건). 전체 테스트(2026-10-20 13:51 KST(04:51Z, 로그 기준)): api jest 154 suites/3470 · worker 36/1353 · editor vitest 133 파일/1810 · canvas-core(node 24) 63/754 · admin 24/302 · sdk 13/416 · tsc 7패키지 ok — 기준선(P2-c `9be4c37c`) 대비 회귀 0. 적대 리뷰 36건·로컬 e2e 결함 9건(D1~D9) 수정 반영.
 
 **변경 내용(요약)**
 
@@ -1686,7 +1686,20 @@ docker logs storige-api 2>&1 | grep -E "\[FLAGS\] api |\[FLAGS-CHECK\]" | tail -
 - 기존 세트 무영향: 샘플 등록 전 `SELECT COUNT(*) FROM template_sets WHERE JSON_VALUE(product_profile, '$.kind') = 'photo-print'` = 0. 프로파일 NULL 세트 임베드 1건 — 도구 막대에 사진인화 메뉴 없음(`ToolBar.tsx` 의 kind 게이트), 완료 payload 에 `product`·`items` 키 없음.
 - 세션 저장 경로 변화: metadata 를 동봉한 PATCH(편집기 자동저장 포함)마다 템플릿셋 조회 1건이 추가된다(`stampProductProfileSnapshot` — NULL 세트도 조회해 `productProfile` 키 제거 여부를 판단). 배포 뒤 api 로그에 `[productProfile] … 조회 실패 → 기존 스냅샷 유지` warn 이 없는지 본다.
 - 검증 잡 `orderOptions.bleed`: cropMark 세트(캘린더 포함)·프로파일 NULL 세트는 종전 3 그대로. 0 이 되는 것은 cropMark off(또는 bleedMm 0)인 **프로파일 세트**뿐이며 운영에는 샘플 등록 전까지 그런 세트가 없다.
-- 사진인화 샘플 세트 완료(샘플 등록 뒤): chemical(`photo_chem`) 완료 → 검증 `isValid true`·오류 0·`orderOptions {productKind 'sheet', coverSpine 'none', bleed 0, pageStep 없음}`·`metadata.items` N건·deliverables `items`. digital(`photo_digital_items`) 완료 → `[pdfOutputMode] Created sheet-map job … sheets=N` → deliverables `ready`·`files[].copies/label('사진 N')`. 로컬 1차 실측(2026-10-19, 결함 수정 전)은 chemical 완료 검증 오류 0·`items` 3건·sheet-map 세트 `metadata.items` 직렬화까지 통과했고 `BLEED_MISSING` 경고(D9)는 `resolveDefaultBleedMm` 으로 수정됨 — 수정 뒤 로컬 e2e 재실측(2026-10-20 13:50~14:05 KST, 샘플 세트 재등록 뒤): 인쇄 ① 런처 세션 — `items` 2건 → 캔버스 4 증설, cover/유테 창 기하 정상, reload 복원 4, 완료 검증 `warnings: []`, 자동 `sheet-map-r1`(copies 5/2·label), deliverables `ready`·`items`, synthesize r2 통과. 추가 결함 D10(증설 페이지 사진틀 클릭 바인딩) 즉시 수정. ②·③ 완료 e2e·25캔버스 실측은 미실행.
+- 사진인화 샘플 세트 완료(샘플 등록 뒤): chemical(`photo_chem`) 완료 → 검증 `isValid true`·오류 0·`orderOptions {productKind 'sheet', coverSpine 'none', bleed 0, pageStep 없음}`·`metadata.items` N건·deliverables `items`. digital(`photo_digital_items`) 완료 → `[pdfOutputMode] Created sheet-map job … sheets=N` → deliverables `ready`·`files[].copies/label('사진 N')`. 로컬 1차 실측(2026-10-19, 결함 수정 전)은 chemical 완료 검증 오류 0·`items` 3건·sheet-map 세트 `metadata.items` 직렬화까지 통과했고 `BLEED_MISSING` 경고(D9)는 `resolveDefaultBleedMm` 으로 수정됨 — 수정 뒤 로컬 e2e 재실측(2026-10-20 13:50~14:05 KST, 샘플 세트 재등록 뒤): 인쇄 ① 런처 세션 — `items` 2건 → 캔버스 4 증설, cover/유테 창 기하 정상, reload 복원 4, 완료 검증 `warnings: []`, 자동 `sheet-map-r1`(copies 5/2·label), deliverables `ready`·`items`, synthesize r2 통과. 추가 결함 D10(증설 페이지 사진틀 클릭 바인딩) 즉시 수정. **2차 재실측(2026-10-20 15:03~15:30 KST, 커밋 `237e6b91`, `docs/P2_PRODUCT_MODE_PLAN_2026-10-18.md` §7.1 '재실측 결과 2차')**: ② 고정 뒷면 — shop-session 세션 `71311c40`(검증 `cf2a2883` warnings []·sheet-map `d6507a6f` 2시트 copies 2/3) + 런처 세션 `f1636125`(deliverables `ready`·sheet 1·items 1) 통과, 초기 뒷면 textbox 잠금 일부 누락은 D11(low); ③ 카드형 — 런처 세션 `d5b9f640`(2장 단위 추가·'사진 N 앞/뒤'·검증 `f20e01d8` warnings []·sheet-map `cc5fc7a4` 2시트·deliverables `ready`·items 2) 통과; 26캔버스(사진 13장, 300dpi) — 저장+PDF 생성 7.6s·완료 9.9s·PDF 9.3MB 26쪽·JS heap 피크 341MB(워치독 390s 의 2%), 검증 warnings []·sheet-map 13시트 COMPLETED — 단 이 저장은 아래 **배포 전제조건(D12)** 을 먼저 적용해야 통과한다(로컬은 `max_allowed_packet` 64MB 임시 상향). 킬스위치 리허설 결과는 아래 「롤백」 2·3 항.
+- **sheet-map per-sheet 파일 크기(D13, 수정 전 운영 주의)**: 분리본마다 원본의 이미지 전부가 복사돼 파일 크기가 원본과 같다(26쪽 9.3MB → 13파일 × 9.26MB = 120MB, 4쪽 1.45MB → 2파일 × 1.44MB). 사진 N장 주문의 outputs 디스크 사용량이 N×원본이므로 `outputs` 보존 정책·디스크 여유를 보고 샘플 세트를 등록한다. 수정안(워커 미참조 XObject 제거)은 오너 승인 후.
+
+**배포 전제조건 — MariaDB `max_allowed_packet` (2026-10-20 2차 실측 D12, 미적용·오너 승인 후)**
+
+사진인화 틀 채움은 사진을 base64 data URL 로 캔버스에 넣으므로 세션 `canvasData` 가 사진당 ≈1.8MB(1.36MB JPEG 기준) 커진다. 13장(26캔버스)에서 22.6MB 가 되어 `PATCH /api/edit-sessions/:id`(자동저장·편집완료)가 MariaDB 기본 `max_allowed_packet` 16MB 에 걸려 500(`Got a packet bigger than 'max_allowed_packet' bytes`)이 나고 세션은 draft 로 남는다 — 로컬 실측. 운영 `docker-compose.yml` 의 mariadb 는 `command: --event-scheduler=ON` 뿐이라 기본 16MB 이므로 약 8~9장부터 같은 실패(프로파일 `upload.maxPhotos` 400). 샘플 세트 등록·고객 노출 전에 둘 중 하나(병행 권장)를 적용한다.
+
+```bash
+# ⓐ 운영 DB 한도 상향 — docker-compose.yml mariadb.command 를 '--event-scheduler=ON --max-allowed-packet=256M' 로 바꾼 뒤 재생성
+docker compose up -d mariadb && docker compose exec mariadb mariadb -u root -p -e "SHOW GLOBAL VARIABLES LIKE 'max_allowed_packet'"   # 268435456
+# api 의 MAX_BODY_SIZE(기본 100mb)는 그대로 충분. 재생성 없이 임시로는 SET GLOBAL max_allowed_packet=268435456 (재시작 시 소멸, 기존 커넥션 미적용 → api 재생성)
+```
+
+ⓑ 코드 수정(별도 승인): 사진인화 틀 채움을 이미지 패널과 같은 `storageApi.uploadFile` 통로로 올리고 `src` 를 URL 로 두면 canvasData·자동저장 페이로드·PDF 생성 메모리가 함께 줄어든다(`docs/P2_PRODUCT_MODE_PLAN_2026-10-18.md` §7.1 D12).
 
 **샘플 세트 등록(별도 승인)**
 
@@ -1705,8 +1718,8 @@ STORIGE_API_URL=https://api.papascompany.co.kr/api node scripts/register-photo-p
 **롤백** (1~3 은 코드 롤백 없이 가능)
 
 1. 세트 단위: admin 템플릿셋 폼에서 상품 프로파일을 비운다(NULL) → 새 세션은 즉시, 진행 중 세션은 다음 저장(metadata 동봉)·완료 시 서버가 `metadata.productProfile` 을 제거해 현행 동작으로 복귀. 롤백 뒤 한 번도 저장·완료되지 않은 **이미 완료된** 세션의 스냅샷만 남아 deliverables 가 폴백으로 쓴다(재완료·재합성 전까지). 등록한 샘플 세트는 admin 에서 비활성/삭제한다.
-2. 편집기 전체: Vercel editor 환경변수 `VITE_ENABLE_PHOTO_PRINT=false` → master push(재빌드) 또는 직전 Production promote. 메뉴·플러그인만 꺼지고 저장본 속성(`fitMode`·`frameInsetMm`·`extension.takenAt`)은 등재돼 보존된다.
-3. sheet-map 발행 중지: `.env` `SHEET_MAP_OUTPUT_ENABLED=off` → `docker compose up -d api` → nginx 재시작(P2-c 절차) — 사진인화 digital 세트의 완료는 유지되고 시트 매핑 잡·`copies/label` 주입만 멈춘다(종전 pdfOutputMode 경로).
+2. 편집기 전체: Vercel editor 환경변수 `VITE_ENABLE_PHOTO_PRINT=false` → master push(재빌드) 또는 직전 Production promote. 메뉴·플러그인만 꺼지고 저장본 속성(`fitMode`·`frameInsetMm`·`extension.takenAt`)은 등재돼 보존된다. **로컬 리허설(2026-10-20 2차) 통과**: `VITE_ENABLE_PHOTO_PRINT=false` 편집기(port 3099)로 완료 세션 `71311c40` 재오픈 — 도구 막대 사진인화 버튼 없음·`PhotoPrintPlugin` 미등록(FrameInteraction/Service 등록 유지)·4캔버스 복원·`fitMode cover`/`frameInsetMm 2`/clip (0.9074, 0.9367)/`extension.takenAt`/촬영일 텍스트 유지, 자동저장 1회 뒤 서버 canvasData·`metadata.items` 동일.
+3. sheet-map 발행 중지: `.env` `SHEET_MAP_OUTPUT_ENABLED=off` → `docker compose up -d api` → nginx 재시작(P2-c 절차) — 사진인화 digital 세트의 완료는 유지되고 시트 매핑 잡·`copies/label` 주입만 멈춘다(종전 pdfOutputMode 경로). **로컬 리허설(2026-10-20 2차) 통과**: api 를 `SHEET_MAP_OUTPUT_ENABLED=off` 로 기동(`[FLAGS] api … SHEET_MAP_OUTPUT_ENABLED=false`) → ① 런처 세션 `eb84b6a5` 완료 → 로그 `[pdfOutputMode] session …: 'duplex-merged' — 편집기 산출 PDF 그대로 사용(분리 없음)`, 잡은 검증 `8b9ddb57`(warnings []) 1건뿐·sheet-map 미발행, deliverables status `complete`(`ready` 아님)·files single 1건·sheets null·items 2(copies/border 유지) — 파트너는 단일 PDF + `items` 로 처리하면 된다.
 4. 이미지: `docker tag storige-api:rollback-pre-photoprint-20261020 storige-api:latest`(worker 동일) → `docker compose up -d api worker` → nginx 재시작. 스키마 변경이 없어 DB 되돌림 없음.
 
 **통지**: CONTRACT_FREEZE v1.25 ADDITIVE 4건(소비처 0건) + 보정 2건 — 가이드 반영으로 갈음, 적용 시점 = 이 배포 확인 시각(미정).
