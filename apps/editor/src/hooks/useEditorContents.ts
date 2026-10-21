@@ -7,6 +7,7 @@ import { useImageStore } from '@/stores/useImageStore'
 import { rebindFrameInteractivity } from '@/utils/frameInteractive'
 import { rehydrateCalendarGrids } from '@/utils/calendarRehydrate'
 import { rehydratePhotoPrint } from '@/utils/photoPrintRehydrate'
+import { initPhotoPrintSeededCanvas } from '@/utils/photoPrintSeed'
 import {
   applyTemplateSetProductProfile,
   isPhotoPrintProfile,
@@ -1567,10 +1568,13 @@ export function useEditorContents(): UseEditorContentsReturn {
                     void rehydrateCalendarGrids(targetEditor, cvs, newPageIndex)
                     // P2-d 사진인화 (D7): 사진인화 세트면 fitMode/유테/흑백 런타임 복구(프로파일 null 이면 즉시 0, no-op).
                     void rehydratePhotoPrint(targetEditor, cvs, newPageIndex)
-                    // P2-d 사진인화 (2026-10-20 e2e): 런처 items 증설('cycle')로 템플릿에서 시드된 페이지의 사진틀도
-                    // 클릭 채움(hover/click 핸들러)이 걸리도록 재바인딩 — 복원 경로(:524)·SidePanel 시드와 동일 헬퍼(멱등).
-                    // 사진인화 세트에만 적용해 NULL·캘린더 세트의 현행 동작은 그대로 둔다.
-                    if (photoPrintProfile) rebindFrameInteractivity(targetEditor, cvs)
+                    // P2-d 사진인화 (2026-10-20 e2e D10 → 2026-10-21 D11): 런처 items 증설('cycle')로 템플릿에서 시드된
+                    // 페이지도 SidePanel 시드(seedPhotoPrintCanvas)와 같은 초기화 — ② 고정 뒷면 잠금(홀수 캔버스) → 사진틀
+                    // 클릭 채움 재바인딩 → applyObjectPermissions(editMode) → trackRequiredEdits. 이 경로는 첫 페이지
+                    // (loadCanvasData:532 applyCustomerLocks)와 달리 권한 적용이 없어 TemplatePlugin.afterLoad 가 되살린
+                    // 텍스트 hasControls/lockScaling 이 그대로 남았다(D11). 사진인화 세트에만 적용해 NULL·캘린더 세트의
+                    // 현행 동작은 그대로 둔다.
+                    if (photoPrintProfile) initPhotoPrintSeededCanvas(targetEditor, cvs, newPageIndex, photoPrintProfile)
                     const totalWidth = mmToPxDisplay(capturedWidth + screenCutSizeMm)
                     const totalHeight = mmToPxDisplay(capturedHeight + screenCutSizeMm)
 

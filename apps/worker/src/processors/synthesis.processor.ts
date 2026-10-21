@@ -44,6 +44,9 @@ import {
 } from '../utils/pdf-merge-qpdf';
 // P2-c (2026-10-18): 합성 mode 'sheet-map' 입력 검증(다운로드 전·비재시도).
 import { assertSheetMapJobInput, sheetFaces } from './sheet-map-input';
+// P2-d D13 (2026-10-21): pdf-lib(OFF) 분리본의 미참조 XObject 정리 — jsPDF 가 전체 이미지를 매 페이지 리소스에 올려
+// copyPages 분리본이 원본 크기였다. qpdf(ON) 경로는 --pages 기본값이 이미 정리한다.
+import { compactPdfDocument } from '../utils/pdf-prune-xobjects';
 // A3 (2026-10): 합성 입력 오류(열 수 없는 PDF·저장소의 없는 파일·쓸 수 없는 입력 주소) 타입화.
 import {
   fetchInput,
@@ -942,6 +945,26 @@ export class SynthesisProcessor {
    * compose-mixed OFF 입력 1건 확보 + pdf-lib 적재. 입력 주소 거부·저장소의 없는 파일·열 수 없는 PDF 는
    * 입력 오류(INPUT_URL_REJECTED·FILE_NOT_FOUND·PDF_LOAD_FAILED)로 throw 한다(synthesis-input).
    */
+  /**
+   * P2-d D13: 분리본(setDoc)의 미참조 XObject 를 지우고 새 문서로 복사해 크기를 줄인다. 정리 실패는 로그만 남기고
+   * 원본 분리본을 돌려준다(산출 파일 수·페이지 수는 불변 — 호출측 무결성 검사 그대로).
+   */
+  private async compactSetDoc(setDoc: PDFDocument, jobId: string, label: string): Promise<PDFDocument> {
+    try {
+      const { doc, pruned } = await compactPdfDocument(setDoc);
+      if (pruned.removed > 0 || pruned.skippedPages > 0) {
+        this.logger.debug(
+          `[D13] ${label} (job ${jobId}): XObject removed=${pruned.removed} kept=${pruned.kept} ` +
+            `skippedPages=${pruned.skippedPages}/${pruned.pages}`,
+        );
+      }
+      return doc;
+    } catch (error: any) {
+      this.logger.warn(`[D13] ${label} (job ${jobId}): XObject 정리 실패 — 분리본 원본 유지: ${error?.message ?? error}`);
+      return setDoc;
+    }
+  }
+
   private async loadComposeInputPdf(url: string, input: SynthesisInputRole): Promise<PDFDocument> {
     const bytes = await fetchInput(url, input, this.storagePath, () =>
       this.synthesizerService.downloadFile(url),
@@ -1724,13 +1747,15 @@ export class SynthesisProcessor {
           );
           setPageCount = (await extractPdfMetadataQpdf(setOutPath)).pageCount;
         } else {
-          const setDoc = await PDFDocument.create();
-          const [frontPage, backPage] = await setDoc.copyPages(pdfDoc!, [
+          const rawSetDoc = await PDFDocument.create();
+          const [frontPage, backPage] = await rawSetDoc.copyPages(pdfDoc!, [
             frontIdx,
             backIdx,
           ]);
-          setDoc.addPage(frontPage);
-          setDoc.addPage(backPage);
+          rawSetDoc.addPage(frontPage);
+          rawSetDoc.addPage(backPage);
+          // D13: 미참조 XObject 정리(실패 시 원본 분리본 그대로 — 산출은 막지 않는다)
+          const setDoc = await this.compactSetDoc(rawSetDoc, jobId, `duplex-split set ${setIndex}`);
           await fs.writeFile(setOutPath, await setDoc.save());
           setPageCount = setDoc.getPageCount();
         }
@@ -1958,14 +1983,16 @@ export class SynthesisProcessor {
           }
           setPageCount = (await extractPdfMetadataQpdf(setOutPath)).pageCount;
         } else {
-          const setDoc = await PDFDocument.create();
-          const copied = await setDoc.copyPages(pdfDoc!, faceIndices);
+          const rawSetDoc = await PDFDocument.create();
+          const copied = await rawSetDoc.copyPages(pdfDoc!, faceIndices);
           copied.forEach((page, i) => {
             if (faces[i].rotate === 180) {
               page.setRotation(degrees((page.getRotation().angle + 180) % 360));
             }
-            setDoc.addPage(page);
+            rawSetDoc.addPage(page);
           });
+          // D13: 미참조 XObject 정리(실패 시 원본 분리본 그대로). 회전(/Rotate)은 copyPages 가 보존한다.
+          const setDoc = await this.compactSetDoc(rawSetDoc, jobId, `sheet-map sheet ${sheet.index}`);
           setPageCount = setDoc.getPageCount();
           if (separate) {
             await fs.writeFile(setOutPath, await setDoc.save());

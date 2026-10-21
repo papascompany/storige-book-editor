@@ -16,7 +16,7 @@ vi.mock('@/utils/photoPrintRehydrate', async (importOriginal) => {
 import { mmToPxDisplay } from '@storige/canvas-core'
 import { useAppStore } from '@/stores/useAppStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
-import { lockSeededObjects, seedPhotoPrintCanvas } from './photoPrintSeed'
+import { initPhotoPrintSeededCanvas, lockSeededObjects, seedPhotoPrintCanvas } from './photoPrintSeed'
 
 /**
  * P2-d 사진인화 (2026-10-19): 페이지 추가 시 캔버스 k 를 refs[k % refs.length] 로 시드(digital [앞, 뒤]) +
@@ -190,5 +190,56 @@ describe('lockSeededObjects', () => {
     expect(lockSeededObjects(canvas as never)).toBe(2)
     expect(objects[0].props).toEqual({})
     expect(objects[1].props).toEqual({ movable: false, deleteable: false, contentEditable: false })
+  })
+})
+
+describe('initPhotoPrintSeededCanvas (D11, 2026-10-21)', () => {
+  // 템플릿셋 초기 로드(useEditorContents 2번째 이후 페이지)와 페이지 추가 시드가 공유하는 초기화 —
+  // 초기 뒷면 textbox 가 TemplatePlugin.afterLoad 뒤 hasControls true·editable true 로 남던 결함의 수정 지점.
+  const editor = { getPlugin: () => undefined } as never
+  function canvasWith(objects: FakeObj[]) {
+    return { id: 'cv', getObjects: () => objects, requestRenderAll: vi.fn() }
+  }
+
+  it("② 고정 뒷면(digital 홀수 캔버스): 잠금 플래그 강제 + 재바인딩 + applyObjectPermissions(canvas, editMode) + trackRequiredEdits", () => {
+    const objects = [obj('workspace'), obj('logo'), obj('text-1', { type: 'textbox' })]
+    const canvas = canvasWith(objects)
+    const r = initPhotoPrintSeededCanvas(editor, canvas as never, 1, profile('per-photo-fixed-back') as never)
+    expect(r).toEqual({ lockedBack: true })
+    expect(objects[0].props).toEqual({})
+    expect(objects[1].props).toEqual({ movable: false, deleteable: false, contentEditable: false })
+    expect(objects[2].props).toEqual({ movable: false, deleteable: false, contentEditable: false })
+    expect(rebindFrameInteractivity).toHaveBeenCalledWith(editor, canvas)
+    expect(applyObjectPermissions).toHaveBeenCalledWith(canvas, false)
+    expect(trackRequiredEdits).toHaveBeenCalledWith(canvas)
+  })
+
+  it('앞면(짝수)·자유 뒷면·chemical(stride 1)은 잠금 플래그 없이 보호·추적만', () => {
+    const cases: Array<[ReturnType<typeof profile>, number]> = [
+      [profile('per-photo-fixed-back'), 0],
+      [profile('per-photo-fixed-back'), 2],
+      [profile('per-photo-free-back'), 1],
+    ]
+    for (const [p, idx] of cases) {
+      const objects = [obj('workspace'), obj('text-1', { type: 'textbox' })]
+      const canvas = canvasWith(objects)
+      expect(initPhotoPrintSeededCanvas(editor, canvas as never, idx, p as never)).toEqual({ lockedBack: false })
+      expect(objects[1].props).toEqual({})
+      expect(applyObjectPermissions).toHaveBeenCalledWith(canvas, false)
+      expect(trackRequiredEdits).toHaveBeenCalledWith(canvas)
+    }
+    const chem = { ...profile('per-photo-fixed-back'), photoPrint: { ...profile('per-photo-fixed-back').photoPrint, process: 'chemical' as const } }
+    const objects = [obj('workspace'), obj('text-1', { type: 'textbox' })]
+    expect(initPhotoPrintSeededCanvas(editor, canvasWith(objects) as never, 1, chem as never)).toEqual({ lockedBack: false })
+    expect(objects[1].props).toEqual({})
+  })
+
+  it('editMode(관리자) 는 플래그는 기록하되 applyObjectPermissions(canvas, true) 로 잠그지 않는다', () => {
+    useSettingsStore.setState((s) => ({ currentSettings: { ...s.currentSettings, editMode: true } }))
+    const objects = [obj('workspace'), obj('logo')]
+    const canvas = canvasWith(objects)
+    initPhotoPrintSeededCanvas(editor, canvas as never, 3, profile('per-photo-fixed-back') as never)
+    expect(objects[1].props).toMatchObject({ movable: false })
+    expect(applyObjectPermissions).toHaveBeenCalledWith(canvas, true)
   })
 })

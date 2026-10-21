@@ -261,6 +261,13 @@ function resolveFillTakenAt(fore: Record<string, unknown>, uploadedPhotoMeta: Up
   return meta?.takenAt
 }
 
+/** 틀 채움 원본 — image 는 캔버스에 넣을 fabric 이미지, takenAt 은 EXIF(사진인화 세트만), uploaded 는 storage URL src 여부 */
+export interface FrameFillSource {
+  image: FabricObject
+  takenAt?: string
+  uploaded: boolean
+}
+
 /** fillImage 의 extension 에 takenAt 을 spread 병합으로 기록(플러그인이 같은 extension 에 grayscale 를 덧붙인다) */
 function writeFillTakenAt(fore: Record<string, unknown>, takenAt: string | undefined): void {
   if (!takenAt) return
@@ -333,6 +340,13 @@ interface ImageActions {
     rear: FabricObject,
     imagePlugin: ImageProcessingPlugin
   ) => Promise<FabricObject>
+
+  // P2-d D12 (2026-10-21): 틀 채움 원본 이미지 — 사진인화 세트는 storage 업로드(URL src), 프로파일 NULL 세트는 종전 core.fileToImage(data URL)
+  resolveFrameFillImage: (
+    canvas: FabricCanvas,
+    file: File,
+    imagePlugin: ImageProcessingPlugin
+  ) => Promise<FrameFillSource | undefined>
 
   // 사진틀(프레임)을 인터랙티브하게 만들기: hover "이미지 채우기" 오버레이 + 클릭 시 파일 선택
   makeFrameInteractive: (
@@ -846,7 +860,8 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
             const selectedFile = selectedFiles[0]
             // P2-d 사진인화: 프로파일 업로드 한도(maxPhotos/maxMb) — 프로파일 NULL 세트는 no-op
             if (!checkPhotoPrintUploadLimit(selectedFiles, currentPhotoCountForLimit(get().uploaded, get().uploadedPhotoMeta))) return
-            const fabricImage = await core.fileToImage(canvas, selectedFile, imagePlugin)
+            // D12: 사진인화 세트는 storage 업로드 URL, NULL 세트는 종전 data URL
+            const fabricImage = (await get().resolveFrameFillImage(canvas, selectedFile, imagePlugin))?.image
             if (!fabricImage) {
               console.log('no image selected')
               return
@@ -931,6 +946,38 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
   },
 
   // 이미지 채우기
+  // P2-d D12 (2026-10-21): 사진인화 틀 채움은 사진을 base64 data URL 로 캔버스에 넣지 않는다 —
+  // 사진당 ≈1.8MB 씩 canvasData 가 커져 13장(26캔버스)에서 22.6MB 가 되고 PATCH /edit-sessions 가 MariaDB
+  // max_allowed_packet(기본 16MB)에 걸려 500 이 났다(2026-10-20 2차 e2e). '내 업로드'·자동편집과 같은 통로
+  // (registerUploadedPhoto → storage 업로드 URL, EXIF 는 원본 File 에서)로 올리고 URL 로 로드한다(crossOrigin anonymous —
+  // PDF 생성 toDataURL taint 방지, AppImage 자동편집과 동일). 업로드·URL 로드 실패는 종전 data URL 경로로 폴백해 편집을 막지 않는다.
+  // 프로파일 NULL 세트는 종전 core.fileToImage 그대로(바이트 동일).
+  resolveFrameFillImage: async (
+    canvas: FabricCanvas,
+    file: File,
+    imagePlugin: ImageProcessingPlugin
+  ): Promise<FrameFillSource | undefined> => {
+    if (!isPhotoPrintSession()) {
+      const image = await core.fileToImage(canvas, file, imagePlugin)
+      return image ? { image: image as unknown as FabricObject, uploaded: false } : undefined
+    }
+    const meta = await get().registerUploadedPhoto(file)
+    if (meta?.url) {
+      try {
+        const image = await core.imageFromURL(meta.url, { crossOrigin: 'anonymous' })
+        return { image: image as unknown as FabricObject, takenAt: meta.takenAt, uploaded: true }
+      } catch (e) {
+        console.warn('[useImageStore.resolveFrameFillImage] 업로드 URL 이미지 로드 실패 — data URL 폴백:', file.name, e)
+      }
+    } else {
+      console.warn('[useImageStore.resolveFrameFillImage] 사진 업로드 실패 — data URL 폴백:', file.name)
+    }
+    const image = await core.fileToImage(canvas, file, imagePlugin)
+    if (!image) return undefined
+    const exif = await parsePhotoExif(file)
+    return { image: image as unknown as FabricObject, takenAt: exif.takenAt, uploaded: false }
+  },
+
   fillImage: async (
     canvas: FabricCanvas,
     fore: FabricObject,
@@ -1164,16 +1211,15 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
       }
       if (!checkMobileFileSize(selectedFile)) return
 
-      const fabricImage = await core.fileToImage(canvas, selectedFile, imagePlugin)
+      // D12: 사진인화 세트는 storage 업로드 URL 로 로드(canvasData 에 base64 미포함), NULL 세트는 종전 data URL
+      const source = await get().resolveFrameFillImage(canvas, selectedFile, imagePlugin)
+      const fabricImage = source?.image
       if (!fabricImage) {
         console.log('no image selected')
         return
       }
       // P2-d 사진인화: 촬영일(EXIF DateTimeOriginal)을 원본 File 에서 읽어 채움 시 extension.takenAt 으로 기록(사진인화 세트만)
-      if (photoPrint) {
-        const exif = await parsePhotoExif(selectedFile)
-        writeFillTakenAt(fabricImage as Record<string, unknown>, exif.takenAt)
-      }
+      if (photoPrint) writeFillTakenAt(fabricImage as Record<string, unknown>, source.takenAt)
 
       // 새 이미지 로드 성공 후에만 기존 사진을 치운다(로드 실패 시 기존 채움 유지).
       const existing = findFilledImage()

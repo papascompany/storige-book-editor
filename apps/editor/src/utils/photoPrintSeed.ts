@@ -5,7 +5,7 @@ import { useSettingsStore, type LinkedPrintTemplate } from '@/stores/useSettings
 import { applyObjectPermissions } from '@/utils/objectPermissions'
 import { trackRequiredEdits } from '@/utils/requiredEditGate'
 import { rebindFrameInteractivity } from '@/utils/frameInteractive'
-import { isPhotoPrintProfile } from '@/utils/productProfile'
+import { isPhotoPrintProfile, type PhotoPrintProductProfile } from '@/utils/productProfile'
 import { photoPrintStride, rehydratePhotoPrint } from '@/utils/photoPrintRehydrate'
 
 /**
@@ -59,6 +59,31 @@ export function lockSeededObjects(canvas: fabric.Canvas): number {
 }
 
 /**
+ * 시드/초기 캔버스 공통 초기화 (D11, 2026-10-21): ② 고정 뒷면(digital 홀수 캔버스) 잠금 → 사진틀 재바인딩 →
+ * applyObjectPermissions(canvas, editMode) → trackRequiredEdits. loadJSON 콜백 안(= canvas-core TemplatePlugin.afterLoad 가
+ * 텍스트의 hasControls/lockScaling 을 되살린 **뒤**)에서 불러야 잠금이 유지된다. 페이지 추가(seedPhotoPrintCanvas)와
+ * 템플릿셋 초기 로드(useEditorContents 2번째 이후 페이지)가 같은 함수를 쓴다 — 초기 페이지만 applyCustomerLocks 를
+ * 건너뛰어 고정 뒷면 textbox 가 hasControls true·lockScaling false·editable true 로 남던 결함(D11)의 수정.
+ * 사진인화 세트 전용(호출측 게이트) — 프로파일 NULL 세트의 로더 동작은 바꾸지 않는다.
+ */
+export function initPhotoPrintSeededCanvas(
+  editor: Parameters<typeof rebindFrameInteractivity>[0],
+  canvas: fabric.Canvas,
+  canvasIndex: number,
+  profile: PhotoPrintProductProfile,
+): { lockedBack: boolean } {
+  const stride = photoPrintStride(profile.photoPrint)
+  const isBackFace = stride === 2 && canvasIndex % 2 === 1
+  const lockedBack = isBackFace && profile.photoPrint.composition === 'per-photo-fixed-back'
+  if (lockedBack) lockSeededObjects(canvas)
+  rebindFrameInteractivity(editor, canvas)
+  // 초기 페이지(useEditorContents 세트 로드·embed 복원)와 같은 보호·필수편집 추적 — editMode 면 잠그지 않는다.
+  applyObjectPermissions(canvas, useSettingsStore.getState().currentSettings.editMode)
+  trackRequiredEdits(canvas)
+  return { lockedBack }
+}
+
+/**
  * 캔버스 k 를 템플릿셋 refs[k % refs.length] 로 시드한다.
  * @returns 시드했으면 true(프로파일 없음·템플릿 없음·캔버스 없음이면 false)
  */
@@ -82,10 +107,6 @@ export async function seedPhotoPrintCanvas(canvasIndex: number): Promise<boolean
     return false
   }
 
-  const stride = photoPrintStride(profile.photoPrint)
-  const isBackFace = stride === 2 && canvasIndex % 2 === 1
-  const lockBack = isBackFace && profile.photoPrint.composition === 'per-photo-fixed-back'
-
   await new Promise<void>((resolve) => {
     servicePlugin.loadJSON(data, () => {
       try {
@@ -104,11 +125,7 @@ export async function seedPhotoPrintCanvas(canvasIndex: number): Promise<boolean
           obj.setCoords()
           obj.dirty = true
         }
-        if (lockBack) lockSeededObjects(canvas)
-        rebindFrameInteractivity(editor, canvas)
-        // 초기 페이지(useEditorContents 세트 로드·embed 복원)와 같은 보호·필수편집 추적 — editMode 면 잠그지 않는다.
-        applyObjectPermissions(canvas, useSettingsStore.getState().currentSettings.editMode)
-        trackRequiredEdits(canvas)
+        initPhotoPrintSeededCanvas(editor, canvas, canvasIndex, profile)
         canvas.requestRenderAll()
       } finally {
         resolve()
