@@ -88,7 +88,7 @@ CalendarContext (작업 단위 1개, 작업 JSON 루트 메타에 저장)
 CalendarGrid (canvas 객체, extensionType:'calendar-grid')
   extension: {
     monthOffset: 0..monthCount-1  // 컨텍스트 시작월 기준 상대 월 → 시작년월 변경 시 자동 재계산
-    variant: 'month' | 'mini' | 'year'      // C3 본 그리드 / 미니 달력 / 연달력(C8)
+    variant: 'month' | 'mini' | 'year'      // C3 본 그리드 / 미니 달력 / 연달력(C8) — 2026-10-22 현재 코드는 'month'|'mini' 만(`CalendarPlugin.ts:21`), 'year' 는 후속 계획 B3(`CALENDAR_EDITOR_FEATURE_PLAN_2026-10-21.md`)
     style: { font, size, colors{weekday,sunday,saturday,holiday}, cell{w,h,padding}, headerLang:'en'|'ko' }
   }
 ```

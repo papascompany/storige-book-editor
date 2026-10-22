@@ -23,7 +23,7 @@
 
 **P1 범위(첫 출시: 탁상 월1면 + 벽걸이 (가) — 오너 확정 전 권고)**
 1. `template_sets.product_profile`(JSON NULL) + `ProductProfile` 타입·`resolveProductProfile`/`validateProductProfile`(packages/types) + API DTO/매핑 3곳 + admin JSON 섹션(스키마 검증).
-2. 편집기 페이지 정책: `pages.kind='fixed'`(13)·`protectedIndices=[0]`·`labelRule='month'`(SidePanel 추가/삭제 숨김, 라벨 "2027년 1월").
+2. 편집기 페이지 정책: `pages.kind='fixed'`(13)·`protectedIndices=[0]`·`labelRule='month'`(SidePanel 추가/삭제 숨김, 라벨 "2027년 1월"). *(정정 2026-10-22: P1 오너 결정으로 전 상품 26캔버스·`protectedIndices [0,25]`·라벨 "YYYY년 M월 앞면/뒷면(또는 상단/하단)" 으로 구현됨 — 코드 `packages/types/src/product-profile.ts`, 후속 계획 `CALENDAR_EDITOR_FEATURE_PLAN_2026-10-21.md` §1 #9)*
 3. `CalendarPlugin`(canvas-core) + `calendar-core`(순수 함수) + 정적 날짜 데이터 v1(공휴일·대체공휴일·24절기·음력 환산표, `dataVersion`) + `CALENDAR` 메뉴 키(EditorMenuKey·EDITOR_MENU_DEFS·ToolBar.ALL_MENUS 세 곳).
 4. 캘린더 패널: 시작연월(허용 범위 밖 거부)·표기 옵션(공휴일/음력/절기)·기념일 관리(목록·추가·수정·삭제, 시작연월 변경 시 범위 밖 기념일 "초기화됨" 표시 + 수정 UI).
 5. 오버레이 규약: 재단선·링 바인딩 PNG = `extensionType:'overlay'` + `excludeFromExport` 또는 `printExclude:true`, `selectable/deleteable=false`, `alwaysTop`, TemplatePlugin 어휘 `ring-overlay`·`cut-guide`(화면 전용, PDF에는 하부 데이터 정상 포함).
