@@ -1,6 +1,6 @@
 # 캘린더 편집기 기능 확장 계획 (2026-10-21, CTO — 서브에이전트 병렬 트랙)
 
-> **상태(2026-10-22 v2)**: P1 캘린더(master `af900212`, 2026-10-18)와 P2-a~d·D11~D13(master `11383962`, 2026-10-21 15:55~16:00 KST)이 운영에 반영된 뒤, **캘린더 편집기 기능**을 중심으로 이어갈 개발 계획이다. 설계 정본은 [`PRODUCT_MODE_ARCHITECTURE_DESIGN_2026-10-16.md`](./PRODUCT_MODE_ARCHITECTURE_DESIGN_2026-10-16.md)(§11 로드맵·§13 결정), 캘린더 세부는 [`CALENDAR_EDIT_MODE_DESIGN_2026-10-16.md`](./CALENDAR_EDIT_MODE_DESIGN_2026-10-16.md)(C1~C12), P1 결과는 [`CALENDAR_MODE_DEVELOPMENT_PLAN_2026-10-17.md`](./CALENDAR_MODE_DEVELOPMENT_PLAN_2026-10-17.md), P2 결과는 [`P2_PRODUCT_MODE_PLAN_2026-10-18.md`](./P2_PRODUCT_MODE_PLAN_2026-10-18.md). 운영 반영 기록은 [`DEPLOYMENT.md`](./DEPLOYMENT.md) 「P1 캘린더 운영 반영 절차」·「P2-d」 절 끝 「반영 기록」. 라이브 상태 SSOT 는 `.cursor/plans/RESUME_PROMPT_2026-10-04.md` §2·§5.2.8.
+> **상태(2026-10-22 v2 · W1 진행 중 — T1a 완료 §8.1, T2 worktree 진행 중, T3a 는 D2 대기)**: P1 캘린더(master `af900212`, 2026-10-18)와 P2-a~d·D11~D13(master `11383962`, 2026-10-21 15:55~16:00 KST)이 운영에 반영된 뒤, **캘린더 편집기 기능**을 중심으로 이어갈 개발 계획이다. 설계 정본은 [`PRODUCT_MODE_ARCHITECTURE_DESIGN_2026-10-16.md`](./PRODUCT_MODE_ARCHITECTURE_DESIGN_2026-10-16.md)(§11 로드맵·§13 결정), 캘린더 세부는 [`CALENDAR_EDIT_MODE_DESIGN_2026-10-16.md`](./CALENDAR_EDIT_MODE_DESIGN_2026-10-16.md)(C1~C12), P1 결과는 [`CALENDAR_MODE_DEVELOPMENT_PLAN_2026-10-17.md`](./CALENDAR_MODE_DEVELOPMENT_PLAN_2026-10-17.md), P2 결과는 [`P2_PRODUCT_MODE_PLAN_2026-10-18.md`](./P2_PRODUCT_MODE_PLAN_2026-10-18.md). 운영 반영 기록은 [`DEPLOYMENT.md`](./DEPLOYMENT.md) 「P1 캘린더 운영 반영 절차」·「P2-d」 절 끝 「반영 기록」. 라이브 상태 SSOT 는 `.cursor/plans/RESUME_PROMPT_2026-10-04.md` §2·§5.2.8.
 > 작성 근거: 상위 세션 노트(`side-session-notes/…/p1-calendar-decisions-2026-10-17.md`·`p2d-e2e-findings.md`·`p2d-e2e-round2-2026-10-20.md`)·설계/계획/배포 문서를 독립 리더 에이전트가 읽은 인벤토리 → 코드 확인 에이전트가 미확인 10항목을 `file:line` 으로 확정 → 기획 2안·심사·합성 → 회의론자 검증(반박 2건 반영: W1 실행 환경 분리, W3 `TemplatePlugin.ts` 단일 소유). 코드가 문서보다 권위다.
 
 ---
@@ -18,6 +18,8 @@
 | 10-21 | `11383962` | **D11~D13 수정** — 초기 고정 뒷면 잠금(`initPhotoPrintSeededCanvas`), 틀 채움 storage 업로드 URL(`resolveFrameFillImage`, canvasData base64 제거 — MariaDB 16MB 패킷 초과 결함 해소), 워커 sheet 분리본 미참조 XObject 정리(`pdf-prune-xobjects.ts`) | **10-21 15:55~16:00 KST 반영**(master ff `af900212`→`11383962`, api `fcad1293f0e6`·worker `4f73a4c4efb4`, `[FLAGS-CHECK] api ok n=17`·`worker ok n=9`, Vercel editor/admin Ready, 롤백 태그 `rollback-pre-p2abcd-20261021`, `.env.bak-20261021-p2`) |
 | 10-21 | `e9725838` | 운영 반영 기록(DEPLOYMENT·P2 plan·CONTRACT 적용 시점). VPS 체크아웃 = 이 커밋 | — |
 | 10-22 | `e756d726` | 문서 상태 정정(EDITOR·INDEX·RESUME·DEV_PLAN) + 이 계획 v1 | docs 전용 |
+| 10-22 | `f422afed` | 이 계획 v2(코드 확정·반박 검증) + 설계 문서 드리프트 정정 메모 | docs 전용 |
+| 10-22 | (이 커밋) | **W1 T1a 완료** — 캘린더 프리셋 3종 + 사진 13장 완료 PDF 실측·킬스위치 리허설 2종(§8.1), 발견 C1(낱장 검증 킬스위치가 프로파일 세트 검증을 깨뜨림)·C2(완료 중 이탈 시 draft 잔존), 결정 D10·D11 신설, DEPLOYMENT (가)·P1 롤백 절 경고 | docs 전용. T2 는 worktree 세션 진행 중 |
 
 **운영 현재(2026-10-22 읽기 전용 확인)**: `template_sets.product_profile IS NOT NULL` 0건(캘린더·사진인화 세트 없음), 프로파일 스냅샷을 가진 세션 0건 → 운영 고객 영향은 아직 없다. 운영 worker 는 `WORKER_LIGHTWEIGHT_SYNTHESIS=true`(qpdf 경로). **오너가 아직 안 한 것**: 캘린더 샘플 세트 7종·사진인화 샘플 세트 4종 등록(운영 관리자 자격증명 — `--dry-run` → `--allow-remote`), mariadb `--max-allowed-packet` 상향(권장 방어선), 운영 폰트 라이브러리에 템플릿 폰트('본고딕(Noto Sans) Regular') 존재 확인.
 
@@ -47,11 +49,11 @@
 | 16 | 정적 날짜 데이터 2025~2035 v1(`dataVersion`, 외부 API 없음) | ✅ | 2029~2035 음력·절기는 공표 전 알고리즘 산출 → KASI 공표 후 대조·릴리스 승인 필요; `gen-calendar-data.mjs` 는 CLI 옵션 없이 `OUT_PATH` 로 무조건 쓰고 `generatedAt` 이 들어가 재실행 diff 가 생김 → B4 |
 | 17 | 날짜 그리드 스타일(폰트·크기·색·헤더 언어·셀) 편집 UI | ❌ | `CalendarGridStyle`(`CalendarPlugin.ts:23-45`)은 템플릿 JSON `extension.style` 로만 주입 — 유일한 설정처가 `scripts/register-calendar-samples.mjs:154`. 고객·관리자 모두 입력 UI 없음 → B7(관리자 최소 입력) |
 | 18 | 탁상 4종(라지·베이직·티니·미니, 삼각 스탠드 비편집, 26면) | ✅ | 운영 반영; 샘플 등록 오너 보류; 로컬 e2e 는 탁상 라지·베이직만 |
-| 19 | 벽걸이 (가) 1단 원피스 A3(layout `wall-1`) | 🟡 | 코드·프리셋 있음, **완료 PDF 실측 없음** → T1a |
-| 20 | 벽걸이 (나)(다) 2단 A4/A3(layout `wall-2`) | 🟡 | 판형 = 전체 높이/2 는 inferred; 시트 짝 규칙(설계 §13-1 기본 same-sheet vs P1 구현 offset-next)·타공 위치(center-punch 는 same-sheet 만 허용 `sheet-map.ts:157-158`) 오너 미결 → D3·T5 |
+| 19 | 벽걸이 (가) 1단 원피스 A3(layout `wall-1`) | ✅ | 2026-10-22 T1a 실측 통과(§8.1: 완료 14.5s, 26쪽 434KB, 검증 warnings []) |
+| 20 | 벽걸이 (나)(다) 2단 A4/A3(layout `wall-2`) | 🟡 | 편집·완료 PDF 는 2026-10-22 T1a 실측 통과(§8.1 wall2_a4: 상단/하단 라벨, 26쪽 landscape, warnings []); 판형 = 전체 높이/2 는 inferred, 시트 짝 규칙(설계 §13-1 기본 same-sheet vs P1 구현 offset-next)·타공 위치(center-punch 는 same-sheet 만 허용 `sheet-map.ts:157-158`) 오너 미결 → D3·T5 |
 | 21 | 양면 시트 출력 경로 — single-pdf / duplex-split 13세트 / sheet-map per-sheet·merged-duplex·재합성 | 🟡 | **운영 프리셋 7종·샘플 스크립트 모두 `output.mode='single-pdf'` + `pdfOutputMode='duplex-merged'`**(`calendarProfilePresets.ts:50·:94`, `register-calendar-samples.mjs:50·:243`) → 편집기 26쪽 단일 PDF 가 최종이고 sheet-map 잡은 발행되지 않는다(`edit-sessions.service.ts:1958-2003`). 노트의 sheet-map 13시트 e2e 는 로컬 프로파일 전환 세션 → 인쇄소 사양 결정 D8 |
 | 22 | 완료 PDF 검증(프로파일 쪽수·coverSpine none·도련 정책 A·경고 0)·글리프 검증 | ✅ | 워커 잡 실측 `warnings []`(탁상) |
-| 23 | 사진 배치(사진틀 + 그리드)·자동편집(photoAutofill) | 🟡 | 캘린더 전용 분기 없음 — `photoPlacement.ts:232·:248·:360` frame+contentEditable 게이트, photo-print 가드는 `isPhotoPrintProfile` 아니면 no-op(구조 확인). **사진 포함 26캔버스 완료 PDF 시간·heap 실측 없음**(사진 없음 벡터화 25~35s; watchdog `max(120000, 15000×N)`=390s, `embed.tsx:2942-2965` 사진인화와 공용) → T1a |
+| 23 | 사진 배치(사진틀 + 그리드)·자동편집(photoAutofill) | ✅ | 캘린더 전용 분기 없음(`photoPlacement.ts:232·:248·:360` frame+contentEditable 게이트). 2026-10-22 T1a 실측(§8.1 desk_large): '내 업로드' 13장 → 자동편집 13/26 틀(storage URL src) → 완료 31.4s(PDF 생성 30.7s)·PDF 18.7MB·heap 피크 487MB·검증 warnings []·imageCount 13. 단, **사진틀 클릭 채움**은 캘린더 세트에서 종전 data URL 경로(D12 수정은 사진인화 세트 전용)라 사진 수가 많으면 canvasData 가 커진다 — 자동편집·내 업로드 경로 권장(B2/B11 후보) |
 | 24 | 세션 `metadata.calendar` 저장/복원·`metadata.productProfile`(서버 소유)·완료 `product` | ✅ | CONTRACT v1.22·v1.25 |
 | 25 | admin 캘린더 프로파일 JSON·프리셋 7종·`scripts/register-calendar-samples.mjs` | ✅ | `calendarProfilePresets.test.ts` = 7 it + `it.each`×7(=14 케이스); 운영 등록은 오너 |
 | 26 | 테스트 | — | 'calendar' 언급 테스트 34파일(canvas-core 5·editor 13·api 10·admin 3·sdk 3; types 0·worker 0), 파일명에 calendar 가 든 핵심 11파일(canvas-core 53 it·editor 56 it·admin 8 it) |
@@ -69,7 +71,8 @@
 | 7 | B7 | **관리자(editMode) 그리드 스타일 입력** — `CalendarGridTools` 에 `CalendarGridStyle` 최소 4종(fontFamily·headerLang·showTitle·showLines); 고객용 스타일 UI 는 미제공 유지; 기념일 문구 스타일(C5)은 D1 범위만 | 스타일 설정처가 샘플 스크립트뿐이라 관리자가 편집기에서 템플릿을 만들 때 스타일을 정할 수 없다(B9 디자인 교체의 선행 조건) | T3b 에 포함(같은 editor calendar 컴포넌트 소유). canvas-core 변경 없음 | D1 |
 | 8 | B8 | 가변 달 수·고정날짜 달력(C9) | 상품 요구 미확정 — `monthCount` 리터럴·pages fixed 26·faces 2 짝수 규칙 전제를 바꾸는 큰 변경 | 보류(설계 메모만) | D6 |
 | 9 | B9 | 샘플 템플릿 실제 디자인 교체(재단선 밖 채움)·운영 샘플 7종 등록·운영 폰트 확인·`max_allowed_packet` 상향 | 고객 노출 전 필수지만 코드가 아니라 콘텐츠·운영 작업. 현재 샘플은 재단 안쪽만 채워 도련 3mm 가 흰 여백 | 에이전트 트랙 외(오너·디자인) | D7 |
-| 10 | B10 | 완료 PDF 생성 진행 표시 UX(단계·캔버스 수) — T1a 실측이 30s 초과일 때만 | watchdog 390s 대비 여유는 있으나 벡터화 25~35s 체감 대기가 길다. 생성 로직·watchdog 식은 무변경 | `embed.tsx` 완료 흐름 진행 표시만 | D9 |
+| 10 | B10 | 완료 PDF 생성 진행 표시 UX(단계·캔버스 수) + 완료 중 이탈 경고(beforeunload) — **T1a 실측 30.7s(사진 13장)·25.9s(desk_mini)로 임계 도달** | 벡터화 13~31s 체감 대기가 길고, 생성 중 탭 이탈 시 세션이 draft 로 남는다(§8.1 C2). 생성 로직·watchdog 식은 무변경 | `embed.tsx` 완료 흐름 진행 표시·이탈 경고만 | D9 |
+| 11 | B11 | 캘린더 세트 사진틀 클릭 채움을 storage 업로드 URL 로(D12 `resolveFrameFillImage` 의 사진인화 전용 게이트를 프로파일 세트 전체로 확장) | 캘린더 세트에서 틀 클릭 채움은 아직 base64 data URL — 사진 9장 이상이면 canvasData 가 MariaDB 16MB 패킷을 넘길 수 있다(D12 와 같은 결함 표면). 자동편집 경로는 이미 URL | `apps/editor/src/stores/useImageStore.ts` `resolveFrameFillImage` 게이트 1곳 + 테스트(NULL 세트 무변경) | D11(게이트 범위: 프로파일 세트 전체 vs 캘린더만) |
 
 ## 3. 병렬 트랙 (서브에이전트 분담 — 동시 3개·한 작업 총 6개·배타적 파일 소유권)
 
@@ -77,7 +80,7 @@
 
 | 트랙 | 목표 | 역할 | 파일 소유권(배타) | 의존 | 완료 기준·검증 |
 |---|---|---|---|---|---|
-| **T1a 실측 — 기본 경로** | B1 — 로컬 샘플 7종 등록 상태에서 wall1_a3·wall2_a4·desk_large(+사진 13장 자동편집)를 런처 세션으로 열어 저장·재오픈·완료; 프리셋 기본 경로(single-pdf+duplex-merged); 킬스위치 2종 리허설; single-gen 시간·PDF 바이트·heap·pdffonts 기록 | `o5-frontend-qa` | 코드 변경 금지 — 결과는 이 문서 §8 실측표 + §1 #19·#20·#23 상태(메인이 반영) | 없음 | 세트 3종 완료 통과 또는 결함 재현 절차; 워커 잡 `isValid true`·`warnings []`, pdfinfo 26쪽·TrimBox 3mm, 사진 포함 시간·heap 수치 |
+| **T1a 실측 — 기본 경로** ✅ 2026-10-22 완료(§8.1, 발견 C1·C2) | B1 — 로컬 샘플 7종 등록 상태에서 wall1_a3·wall2_a4·desk_large(+사진 13장 자동편집)를 런처 세션으로 열어 저장·재오픈·완료; 프리셋 기본 경로(single-pdf+duplex-merged); 킬스위치 2종 리허설; single-gen 시간·PDF 바이트·heap·pdffonts 기록 | `o5-frontend-qa` | 코드 변경 금지 — 결과는 이 문서 §8 실측표 + §1 #19·#20·#23 상태(메인이 반영) | 없음 | 세트 3종 완료 통과 또는 결함 재현 절차; 워커 잡 `isValid true`·`warnings []`, pdfinfo 26쪽·TrimBox 3mm, 사진 포함 시간·heap 수치 |
 | **T1b 실측 — 전환 경로** | B1 — 같은 세트 3종을 로컬 세트 JSON 만 `output.mode='sheet-map'`(13시트 per-sheet)·`pdfOutputMode='duplex-split'`(13세트)로 바꿔 완료 → 잡 결과·산출 파일·deliverables `sheets`/`files[].copies`·wall-2 짝 매핑 표; 실측 후 원복 | `o5-test-build`(T1a 종료 후 순차, 같은 로컬 환경) | 코드 변경 금지 — §8 실측표 열 추가 | T1a, D8(범위) | 전환 경로 2종 × 세트 3종 통과 또는 결함 재현 절차; `result.sheetMap` echo·파일 수·쪽수 일치 |
 | **T2 그리드·기념일 안전성** | B2 | `o5-implementer` | `packages/canvas-core/src/plugins/GroupPlugin.ts`(+`GroupPlugin.test.ts` 신규), `apps/editor/src/components/editor/ControlBar.tsx`(그룹해제 버튼 게이트만, +`ControlBar.calendarGrid.test.tsx` 신규), `apps/editor/src/stores/useCalendarStore.ts`(+test), `apps/editor/src/utils/calendarRehydrateAll.ts`(+test), `apps/editor/src/components/calendar/calendarPanelUtils.ts`(시그니처 보강만). **`CalendarPanel.tsx`·`CalendarGridTools.tsx` 금지** | 없음 | vitest 신규 ≥6(unGroup 가드 no-op·일반 그룹 해제 회귀·hideContext 핫키 숨김·버튼 비노출·store add/update 중복 거부·복원 중복 유지), 기존 calendar 테스트 통과 |
 | **T3a 연달력 코어·계약** | B3 — o5-architect 가 1장 계약(additive 키 이름·기본값 undefined, variant `'year'` extension 형태·monthOffset 규칙, 구 번들 호환 = rehydrate 미지 variant skip 유지) → 구현 | `o5-architect` → `o5-implementer`(같은 트랙 순차) | `packages/types/src/product-profile.ts`(additive optional 만), `apps/api/src/templates/dto/product-profile.dto.ts`(+spec), `apps/api/src/templates/product-profile.spec.ts`, `packages/canvas-core/src/calendar/core.ts`(+test), `calendar/types.ts`(MonthMatrix 계열만 — `CalendarData` 는 T4), `plugins/CalendarPlugin.ts`(+test), `packages/canvas-core/src/index.ts`, `docs/CONTRACT_FREEZE.md`(v1.26 ADDITIVE 행, 같은 커밋) | D2 | core 단위 테스트(연 매트릭스·윤년·weekStart), 플러그인 직렬화 왕복, '미지 variant skip·크래시 없음' 테스트, 프리셋 7종·샘플 프로파일 픽스처 diff 0, sdk `types-parity` 통과 |
@@ -94,7 +97,7 @@
 | wave | 실행(동시 ≤3, 총 ≤6) | 게이트 |
 |---|---|---|
 | **W0 결정·준비(메인 에이전트)** | 오너 질의 D1~D9 1회; 기준선 1회 재실행해 실패 목록 고정(§7); 로컬 샘플 7종 등록 확인; 코드 트랙용 worktree 준비 | T1a·T2 는 결정 없이 즉시 시작. D2→T3a, D1→T3b, D3→T5, D4→T4, D5→T6, D8→T1b 범위, D9→B10 |
-| **W1 실측·안전성·코어** | T1a(메인 체크아웃) ∥ T2(worktree) ∥ T3a(worktree, architect→implementer) | T1a 실측표·결함 보고(수정 금지); T2·T3a 테스트·tsc·eslint; 픽스처 diff 0; CONTRACT v1.26 등재; R GO |
+| **W1 실측·안전성·코어** — 진행 중(T1a ✅ 10-22, T2 진행 중, T3a 는 D2 대기) | T1a(메인 체크아웃) ∥ T2(worktree) ∥ T3a(worktree, architect→implementer) | T1a 실측표·결함 보고(수정 금지); T2·T3a 테스트·tsc·eslint; 픽스처 diff 0; CONTRACT v1.26 등재; R GO |
 | **W2 전환 경로·UI·데이터·설계** | T1b(W2 초입, T3b 시작 전 종료) → T3b ∥ T4 ∥ T6(문서) | T3b e2e(T1a 절차) 통과; T4 `--check` diff 0·잡절 대조·DEPLOYMENT 절; T6 계약 오너 승인; R GO. T3b 와 T4 는 editor 파일을 동시에 만지지 않음(T4 의 editor 몫은 T4r 로 분리) |
 | **W3 확정 반영·조건부 구현·운영 준비** | T4r ∥ T5 ∥ T7a(T6 승인 시) → T7b(T4r·T5 종료 후); (오너·디자인) B9 | 전체 테스트 기준선 대비 신규 실패 0; `VITE_ENABLE_CALENDAR='false'` 리허설; DEPLOYMENT 새 절(롤백 이미지 태그·FLAGS 키 수 무변경); 샘플 디자인 교체 → T1a 재실측 → 오너 승인 후 master ff·반영 → 첫 캘린더 완료 세션 워커 결과 관찰 |
 
@@ -112,14 +115,19 @@
 | D6 | 가변 달 수·고정날짜 달력(C9) 상품 존재 여부 | 상품 확정 전 보류 | B8 |
 | D7 | 운영 샘플 7종 등록 시점·샘플 디자인 교체 담당·운영 폰트 확인·`max_allowed_packet` 상향 시점 | 디자인 교체(재단선 밖 채움) → T1a 재실측 → 등록(흰 여백 3mm 샘플 노출 금지); 등록 전 운영 폰트 존재 확인; packet 상향은 다음 배포 창에 동반 | W3 운영 등록 |
 | D8 | 운영 캘린더 세트 최종 산출 형태 — 현 프리셋(single-pdf + duplex-merged = 편집기 26쪽 단일 PDF, 추가 잡 없음) 유지 vs duplex-split 13세트 vs sheet-map(per-sheet/merged-duplex) — 인쇄소 요구 사양 | 인쇄소 확인 전 프리셋 유지; T1a·T1b 가 3경로 실측해 근거 제공. 변경은 프리셋·세트 값만(코드 무변경) | T1b 범위·T5 |
-| D9 | 완료 PDF 허용 대기 시간 — 사진 없음 벡터화 25~35s, 사진 포함 미측정, watchdog 390s — 진행 표시 UX 를 별도 트랙으로 둘지 | T1a 실측 후 결정; 30s 초과 시 embed 완료 흐름에 진행 표시만 추가(생성 로직·watchdog 식 무변경) | B10 |
+| D9 | 완료 PDF 허용 대기 시간 — T1a 실측: 사진 없음 13.4~25.9s(미니 달력 포함 세트가 느림), 사진 13장 30.7s, watchdog 390s — 진행 표시·이탈 경고 트랙(B10)을 둘지 | **권고: 둔다**(30s 임계 도달; 생성 로직·watchdog 식 무변경, 진행 표시 + beforeunload 경고만) | B10 |
+| D10 | 낱장 검증 킬스위치 `EDITOR_SHEET_VALIDATION_RULES=off` 가 캘린더·사진인화 세트 완료 검증을 깨뜨리는 결합(§8.1 C1) — 운영 문서 경고만 둘지, 프로파일 세트 규칙을 플래그와 분리(코드)할지 | 프로파일 세트가 운영에 생기기 전까지는 문서 경고(이번 커밋)로 충분; 샘플 등록 전에 분리 코드(api `sheet-validation-rules.ts` 프로파일 분기, 테스트)를 T3a 와 같은 wave 에 추가 권고 | T5·B9(등록 전제) |
+| D11 | B11 게이트 범위 — 캘린더 세트만 vs 프로파일 세트 전체(사진인화 포함 유지) | 프로파일 세트 전체(NULL 세트만 종전 data URL 유지) | B11 |
 
 ## 6. 위험과 대응
 
 | 위험 | 대응 |
 |---|---|
-| 벽걸이 1단·2단·사진 포함 캘린더의 완료 PDF 실측이 없는 채 운영 반영됨(운영 세트 0건이라 고객 영향 아직 없음) | W1 T1a 최우선, 결함은 코드 수정 전 보고·승인; 운영 샘플 등록(B9)은 T1a 통과 뒤 |
-| 사진 포함 26캔버스 벡터화 PDF 시간·메모리 미실측(사진 없음 25~35s, watchdog 390s) | T1a 에서 single-gen 시간·PDF 바이트·heap 기록 → 30s 초과 시 D9·B10 |
+| ~~벽걸이 1단·2단·사진 포함 캘린더의 완료 PDF 실측이 없는 채 운영 반영됨~~ → **해소(2026-10-22 T1a, §8.1)**: wall1_a3·wall2_a4·desk_large+사진 13장 모두 완료·검증 통과(warnings []) | 운영 샘플 등록(B9)은 C1 대응(문서 경고 반영 완료, 코드 분리는 D10) 뒤 |
+| ~~사진 포함 26캔버스 벡터화 PDF 시간·메모리 미실측~~ → **실측 완료(§8.1)**: 사진 없음 13.4~25.9s, 사진 13장 30.7s(PDF 18.7MB, heap 피크 487MB), watchdog 390s 의 8% | 30s 임계 도달 → D9 권고 '둔다'(B10 진행 표시 + 이탈 경고). PDF 18.7MB 는 jsPDF 공유 XObject 참조(13장)라 바이트 중복이 아님 |
+| **C1** 낱장 분류 검증 킬스위치 `EDITOR_SHEET_VALIDATION_RULES=off` 가 프로파일 세트(캘린더·사진인화) 완료 검증을 `PAGE_COUNT_INVALID` 로 깨뜨림 — 운영에 프로파일 세트가 생기면 낱장 문제의 롤백 수단으로도 쓸 수 없음 | DEPLOYMENT (가)·P1 롤백 절에 경고 기재(완료). 코드 분리(api `sheet-validation-rules.ts` 프로파일 분기 + 테스트)는 D10 — B9 샘플 등록 전에 T3a 와 같은 wave 권고 |
+| **C2** 완료 진행 중(13~31s) 탭 이탈 시 PDF 생성이 중단되고 세션이 draft 로 남음(기존 동작) | B10(D9)에 beforeunload 경고 포함 |
+| 캘린더 세트 사진틀 **클릭** 채움은 아직 base64 data URL(D12 수정은 사진인화 게이트) — 사진 9장 이상이면 canvasData 가 MariaDB 16MB 패킷을 넘길 수 있음(미실측, 자동편집 경로는 URL) | B11(D11) 게이트 확장; 그 전까지 샘플·안내는 '내 업로드 + 자동편집' 경로 |
 | 프로파일 필드 추가 시 types 만 바꾸면 api DTO(whitelist+forbidNonWhitelisted)가 admin 저장을 400 으로 거부하고 CONTRACT 등재가 빠짐 | T3a·T4 는 types+DTO(+spec)+CONTRACT 행을 한 커밋·한 에이전트 소유로; 완료 기준에 프리셋 7종·샘플 프로파일 통과·sdk `types-parity` 포함 |
 | 저장소에 스냅샷 테스트가 없어 '바이트 동일' 주장이 근거 없이 남음 | 명시 픽스처(프리셋 7종·샘플 프로파일·샘플 템플릿 JSON)의 `toJSON`/`validateProductProfile` diff 0 테스트로 고정 |
 | T2 복원 경로에서 중복 기념일을 제거하면 기존 세션·런처 입력(미검증 보존)의 고객 데이터가 조용히 사라짐 | 복원은 비파괴(유지+console.warn), 거부는 store add/update 만; 복원 테스트에 '중복 입력 유지' 케이스 |
@@ -132,19 +140,34 @@
 | 운영 산출 형태 불일치 — 프리셋은 duplex-merged(단일 PDF)인데 노트·설계 문서는 duplex-split/sheet-map 전제로 서술 | D8 로 인쇄소 요구 확정; T1a·T1b 3경로 실측; 설계 문서의 산출 서술 정정(§13-1 등) |
 | dirty worktree(사용자 Shopify 문서·미추적 산출물)에서 쓰기 에이전트가 무관 파일을 stage | 소유 파일만 `git add <path>`; 사용자 수정 문서(EDITOR.md·INDEX.md·SHOPIFY_*·`PLATFORM_INTEGRATION_GUIDE.backup-*`)는 메인만 접촉 |
 | 사용한도 도달로 서브에이전트·메인 세션 중단 | 트랙당 1~2 커밋, 공유 노트 폴더에 진행·결정 기록, 재개 시 `git status`·노트·워크플로 캐시(앞부분만 유효 — 완료 결과는 파일/args 로 전달)로 이어받기 |
-| 운영 후속 미실행(`max_allowed_packet` 상향·운영 폰트 본고딕 확인) — 캘린더 완료 시 래스터 폴백·폰트 미임베드 경고 가능 | D7 등록 전 체크리스트(DEPLOYMENT 「권장 방어선」·샘플 등록 절), T1a 에서 pdffonts 확인 |
+| 운영 후속 미실행(`max_allowed_packet` 상향·운영 폰트 본고딕 확인) — 캘린더 완료 시 래스터 폴백·폰트 미임베드 경고 가능 | D7 등록 전 체크리스트(DEPLOYMENT 「권장 방어선」·샘플 등록 절). T1a 로컬 실측에서는 3세트 모두 워커 검증 fonts 0(텍스트 벡터화)·warnings [] — 운영 폰트 경로는 운영 샘플 등록 후 재확인 |
 
 ## 7. 검증 기준선 (2026-10-21, master `11383962`)
 
 - editor vitest 134 파일/1818 — 전체 동시 실행 시 2파일·3건 실패(`useCanvasContainerSizeSync.test` ×2·`hostPageLimits.test` ×1, 5초 타임아웃·부하)는 단독 재실행 통과 → **알려진 기준선 실패(부하)**. worker jest 37 스위트/1358 — `lightweight-parity`·`synthesis.processor.sheet-map` 11건 타임아웃은 단독 재실행 216/216 통과 → 단독 재실행 규칙. api jest 154/3470 · canvas-core 63/754 · admin 24/302 · sdk 13/416 · tsc 7패키지 · eslint 0 error(P2 계획 §4·§7.1).
 - 각 트랙의 완료 조건은 **이 기준선 대비 신규 실패 0**. W0 에서 기준선을 1회 재실행해 실패 목록을 고정한다.
 
-## 8. 실측표 (T1a·T1b 결과 — 작성 예정)
+## 8. 실측표
 
-| 세트 | 경로 | 완료 시간(저장/생성/업로드) | PDF 쪽수·바이트 | heap 피크 | 워커 검증 | 산출(잡·파일) | 비고 |
+### 8.1 T1a — 프리셋 기본 경로(single-pdf + duplex-merged) + 킬스위치 리허설 (2026-10-22 12:45~13:05 KST, master `f422afed` = 코드 `11383962`, 로컬 api-local·worker-local·editor, 샘플 7종 `--with-site` 재등록, 런처 `POST /api/v1/sessions/launch` + `calendar.startYm '2027-01'`)
+
+| 세트(세트 id / 세션 / 주문) | 진입 | 완료 시간(저장 → PDF 생성 → 업로드·complete) | PDF | JS heap | 워커 검증 잡 | 산출·deliverables | 비고 |
 |---|---|---|---|---|---|---|---|
-| wall1_a3 | single-pdf+duplex-merged | | | | | | |
-| wall2_a4 | single-pdf+duplex-merged | | | | | | |
-| desk_large + 사진 13장 | single-pdf+duplex-merged | | | | | | |
-| (각 세트) | sheet-map per-sheet | | | | | | T1b |
-| (각 세트) | duplex-split | | | | | | T1b |
+| wall1_a3 `5b762d44` / `308342ee` / 900301 | 15.8s(load-profile, seat 15.4s), 26캔버스, 라벨 '표지·2027년 N월 앞면/뒷면·에필로그', 월 앞면 grid 62객체 | 클릭 → gen:done **13.9s** → complete:done 14.5s | 26쪽 · 434,090 B(벡터 그리드, 사진 없음) | 48 → **368MB**(+7.0s) → 90MB | COMPLETED isValid true · errors [] · **warnings []** · pageSize 303×421 · fonts 0(벡터화) · transparency false · orderOptions {pages 26, bleed 3, productKind sheet, coverSpine none, pageStep 2} | 검증 잡 1건(sheet-map·duplex-split 잡 없음 — 프리셋 duplex-merged) · deliverables product {calendar_wall1_a3, canvasCount 26, sheetCount 13} · calendar {2027-01, kr-2025-2035-v1} · files single 26p · status `editing`(탭을 열어 둔 자동저장, 기존 동작) | canvasData 872KB |
+| wall2_a4 `e21b82bd` / `927ddb0c` / 900302 | 4.0s, 26캔버스, 라벨 '2027년 N월 상단/하단', 상단=사진틀·하단=grid | 재오픈(26캔버스·grid 복원) 뒤 클릭 → gen:done **13.4s** → complete:done 13.9s | 26쪽 · 433,988 B | 50 → **387MB**(+9.3s) | COMPLETED warnings [] · pageSize 300×216 landscape · orderOptions 동일(size 294×210) | deliverables status `complete` r1 · files single 26p | canvasData 843KB. 1차 완료 시도는 클릭 10초 뒤 탭을 옮겨 중단 → 세션 draft(coverFileId null)로 남음 — **완료 진행 중 페이지 이탈 시 PDF 생성이 중단되고 재시도해야 하는 기존 동작**(1차 heap 피크 629MB@+6s) |
+| desk_large `4ffefa96` / `072e71ac` / 900303 + 사진 13장(1205×1795·1795×1205, 1.36MB) | 26캔버스, 사진틀 26(캔버스당 1) | `registerUploadedPhoto` 13장(`/storage/upload-public`, EXIF takenAt) 0.26s → '사진 자동편집' 13/26 틀 채움(storage URL src, ≤20s) → 저장 0.28s(canvasData **1.96MB**) → gen:done **30.7s** → 업로드 0.3s → complete:done 31.4s | 26쪽 · **18,676,963 B**(qpdf 페이지 이미지 참조 338 = 13 × 26 — jsPDF 공유 XObject, 바이트 중복 아님) | 71 → **487MB**(+12.5s, total 533MB) → 134MB | COMPLETED warnings [] · imageCount 13 · resolution 180 · orderOptions 동일(265×190) | deliverables status `editing` r1 · files single 26p | watchdog max(120000, 15000×26)=390s 의 **7.9%**. 생성 30.7s 는 D9 기준(30s) 초과 → B10 진행 표시 검토 권고 |
+| desk_mini `2b84fbf8` / `24936cca` / 900304 — **api `EDITOR_SHEET_VALIDATION_RULES=off`**(킬스위치 ②, launch 구성 `api-local-sheetrules-off`, `[FLAGS] … EDITOR_SHEET_VALIDATION_RULES=false`) | 26캔버스 | gen:done **25.9s**(월 뒷면 미니 달력 2개 벡터화) → complete:done 26.9s | 26쪽 · 916,790 B | 440MB(+14.8s) | **FAILED** isValid false · errors [`PAGE_COUNT_INVALID`] · warnings [`SPINE_PARAMS_UNRESOLVED`] · orderOptions 에 productKind/coverSpine/pageStep **없음**(cover 규칙 폴백, pages 26) | deliverables status `editing` · files single 26p(검증 실패와 무관하게 편집기 PDF 는 남음) | **발견 C1**(아래) |
+| 킬스위치 ① `VITE_ENABLE_CALENDAR=false`(launch 구성 `editor-nocal-3099`, CORS 허용 포트) | desk_large 완료 세션 재오픈: 달력 메뉴 없음 · CalendarPlugin 미등록(FrameInteraction·PhotoPrint 등록 유지) · 26캔버스 · 그리드 36(month 12 + mini 24, 그룹 62객체) · 사진 13 · 라벨 '2027년 N월 앞면/뒷면' 유지 | 표지 텍스트 1px 이동 → 자동저장 → 서버 canvasData 그리드 36(`extension.variant` month/mini)·fills 13·`metadata.calendar{2027,1,kr-2025-2035-v1}` 보존 | — | — | — | — | **통과** — 플러그인이 꺼져도 저장본·메타 보존 |
+
+**T1a 발견**
+- **C1 (설계/운영, high)**: 낱장 분류 검증 킬스위치 `EDITOR_SHEET_VALIDATION_RULES=off` 는 캘린더(프로파일) 세트의 완료 검증을 깨뜨린다 — `deriveSheetValidationRules` 가 꺼지면 검증 잡 orderOptions 에 `productKind 'sheet'`·`coverSpine 'none'`·`pageStep` 이 실리지 않아 워커가 cover 규칙(1·2·4쪽)으로 26쪽 PDF 를 `PAGE_COUNT_INVALID` 로 실패시킨다(§8.1 desk_mini). 운영에 캘린더·사진인화 세트가 생기면 이 플래그는 더 이상 안전한 롤백 수단이 아니다. 대응: DEPLOYMENT 의 (가) 롤백 절·P1 절에 경고 기재(이번 커밋), 코드 대응(프로파일 세트의 기대 쪽수 규칙을 플래그와 분리)은 오너 결정 D10.
+- **C2 (기존 동작, medium)**: 완료 진행 중(PDF 생성 13~31초) 고객이 탭을 닫거나 이동하면 생성이 중단되고 세션은 draft 로 남아 재시도가 필요하다(§8.1 wall2 1차). 진행 표시(B10)와 함께 '완료 중 이탈 경고(beforeunload)' 검토 — D9.
+- 관찰: 완료 중 편집기 콘솔 로그가 10초에 8천~1만 줄 쏟아진다(개발 빌드 디버그 로그, 운영 빌드는 제거됨 — `vite.config.ts` 주석). 실측 로그는 console.log 훅으로 받았다.
+- 미실측(T1b 로 이월): sheet-map per-sheet·duplex-split 전환 경로.
+
+### 8.2 T1b — 전환 경로(sheet-map per-sheet · duplex-split) — 작성 예정
+
+| 세트 | 경로 | 잡·산출 파일 | 쪽수 일치 | deliverables sheets/copies | 비고 |
+|---|---|---|---|---|---|
+| (각 세트) | sheet-map per-sheet | | | | |
+| (각 세트) | duplex-split | | | | |

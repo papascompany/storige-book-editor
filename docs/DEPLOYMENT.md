@@ -1506,6 +1506,7 @@ docker logs storige-api 2>&1 | grep "낱장 분류 규칙"
 **롤백**
 
 1. 규칙만 끄기: `.env` 에 `EDITOR_SHEET_VALIDATION_RULES=off` → `docker compose up -d api` → `docker compose restart nginx`(`FLAGS_EXPECTED_API` 토큰도 `false` 로 맞추면 `[FLAGS-CHECK]` ok 유지).
+   > ⚠ **2026-10-22 로컬 리허설(캘린더 계획 §8.1 C1)**: 이 플래그를 끄면 **프로파일 세트(캘린더·사진인화)의 완료 검증도 깨진다** — 검증 잡 orderOptions 에 `productKind`/`pageStep`/`coverSpine` 이 실리지 않아 워커가 cover 규칙으로 26쪽 캘린더 PDF 를 `PAGE_COUNT_INVALID`(+`SPINE_PARAMS_UNRESOLVED`) 로 실패시킨다. 운영에 프로파일 세트가 등록된 뒤에는 낱장 세트 문제라도 이 항목 대신 2(코드 롤백)를 쓰고, 캘린더·사진인화 문제의 롤백 수단으로는 절대 쓰지 않는다(P1·P2-d 절의 수단 사용). 코드 분리 여부는 오너 결정 D10.
 2. 코드까지: `docker tag storige-api:rollback-pre-sheet-20261017 storige-api:latest`(worker 동일) → `docker compose up -d api worker` → nginx 재시작. editor 는 Vercel 직전 Production(`miptnimpy`, release `78b5c5a`) promote. 이 경우 Wave 11 도 함께 되돌아간다.
 
 ### P1 캘린더 운영 반영 절차 (2026-10-17 준비 → 2026-10-18 00:46~00:48 KST 반영 완료)
@@ -1561,6 +1562,7 @@ STORIGE_API_URL=https://<api 호스트>/api node scripts/register-calendar-sampl
 
 1. 코드: `docker tag storige-api:rollback-pre-calendar-20261017 storige-api:latest`(worker 동일) → `docker compose up -d api worker` → nginx 재시작. editor·admin 은 Vercel 직전 Production promote.
 2. 컬럼은 NULL additive 라 남겨도 종전 코드에 영향이 없다(DROP 불필요). 등록한 샘플 세트는 admin 에서 비활성/삭제한다.
+3. **쓰면 안 되는 수단**: (가) 절의 `EDITOR_SHEET_VALIDATION_RULES=off` 는 캘린더 세트의 완료 검증을 `PAGE_COUNT_INVALID` 로 깨뜨린다(2026-10-22 로컬 리허설, 캘린더 계획 §8.1 C1). 편집기 쪽만 끄려면 Vercel editor 환경변수 `VITE_ENABLE_CALENDAR=false` 재배포(정확히 `'false'` 만 off; 2026-10-22 로컬 리허설 — 플러그인이 꺼져도 기존 세션의 그리드 36·사진·`metadata.calendar` 는 저장본에 보존되고 자동저장도 손상 없음, 캘린더 계획 §8.1 킬스위치 ①).
 
 **통지**: CONTRACT_FREEZE v1.22 ADDITIVE 3건(소비처 0건) — 가이드 반영으로 갈음, 적용 시점 = 2026-10-18 00:48 KST(이 배포 확인 시각).
 
