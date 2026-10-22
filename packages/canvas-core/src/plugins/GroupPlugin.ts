@@ -4,6 +4,16 @@ import { fabric } from 'fabric'
 import CanvasHotkey from '../models/CanvasHotkey'
 import { PluginBase } from '../plugin'
 
+/**
+ * P1 캘린더 날짜 그리드(`CalendarPlugin.CALENDAR_GRID_EXTENSION_TYPE`) — 단일 객체로만 다루며 그룹 해제 대상이 아니다.
+ * 리터럴을 여기 두는 이유: GroupPlugin 이 CalendarPlugin 모듈(날짜 데이터·core)을 끌어오지 않게 한다.
+ */
+const CALENDAR_GRID_EXTENSION_TYPE = 'calendar-grid'
+
+function isCalendarGrid(obj: fabric.Object): boolean {
+  return (obj as fabric.Object & { extensionType?: string }).extensionType === CALENDAR_GRID_EXTENSION_TYPE
+}
+
 class GroupPlugin extends PluginBase {
   name = 'GroupPlugin'
   hotkeys: CanvasHotkey[] = [
@@ -30,7 +40,8 @@ class GroupPlugin extends PluginBase {
       callback: () => this.unGroup(),
       hideContext: () => {
         const activeObject = this._canvas.getActiveObject()
-        return !activeObject || activeObject.type !== 'group'
+        // T2 그리드 안전성(2026-10-22): calendar-grid 는 unGroup 이 no-op 이라 컨텍스트 메뉴에서도 숨긴다(눌러도 무동작인 항목 제거).
+        return !activeObject || activeObject.type !== 'group' || isCalendarGrid(activeObject)
       }
     }
   ]
@@ -57,7 +68,7 @@ class GroupPlugin extends PluginBase {
     const activeObject = this._canvas.getActiveObject() as fabric.Group
     if (!activeObject || activeObject.type !== 'group') return
     // P1 캘린더(2026-10-17): 날짜 그리드는 단일 객체로만 다룬다 — 해제하면 재합성(rehydrate) 대상에서 빠진다.
-    if ((activeObject as fabric.Group & { extensionType?: string }).extensionType === 'calendar-grid') return
+    if (isCalendarGrid(activeObject)) return
 
     try {
       this._canvas.offHistory()
