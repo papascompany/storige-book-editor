@@ -1737,6 +1737,19 @@ STORIGE_API_URL=https://api.papascompany.co.kr/api node scripts/register-photo-p
 - 미실행(오너 결정): 운영 샘플 세트 등록(아래 「샘플 세트 등록(별도 승인)」), mariadb `--max-allowed-packet` 상향(위 「권장 방어선」), 파트너 통지(소비처 0건이라 가이드 반영으로 갈음).
 - 롤백: 위 「롤백」 1~3(코드 롤백 없음) 또는 `docker tag storige-api:rollback-pre-p2abcd-20261021 storige-api:latest`(worker 동일) → `docker compose up -d api worker` → nginx 재시작 + `.env.bak-20261021-p2` 복원(프로필 15키). editor/admin 은 Vercel 직전 Production promote.
 
+### W1 T2 캘린더 그리드·기념일 안전성 운영 반영 (2026-10-22 23:48 KST, editor·canvas-core 전용)
+
+> 캘린더 편집기 기능 계획 §3 T2([`CALENDAR_EDITOR_FEATURE_PLAN_2026-10-21.md`](./CALENDAR_EDITOR_FEATURE_PLAN_2026-10-21.md)) — worktree 브랜치 `worktree-t2-grid-anniversary-2026-10-22` 3커밋을 R 통합 검토(GO) 뒤 오너 승인으로 `p1-calendar-2026-10-17` 에 cherry-pick(`a087316c`·`680c8322`·`c040b68e`) → master ff. **api·worker 무변경**(VPS 재배포 없음 — VPS 체크아웃 `e9725838` 의 api/worker 소스와 동일). DB·`.env`·FLAGS 무변경.
+
+**변경**: canvas-core `GroupPlugin` — calendar-grid 그룹에서 '그룹 해제' 핫키 컨텍스트 은폐(`hideContext`), `unGroup` 조기 return 유지 + 회귀 테스트 8; editor `ControlBar` '그룹해제' 버튼 calendar-grid 비노출; `useCalendarStore.addAnniversary/updateAnniversary` 같은 날짜(양력 환산) 거부; 세션 복원 비파괴(중복 유지 + `console.warn` 1회). `metadata.calendar` 형태 무변경(CONTRACT 등재 없음).
+
+**반영 기록**
+- 23:48:18 KST master ff `5dbe2f79`→`c040b68e` → Vercel editor `dpl_HB9xHCKnVSJ5Aq18j5XRdymQjAa4`(commit `c040b68e`, 빌드 36초, alias `editor.papascompany.co.kr`) Ready 23:48:58 KST. admin 은 변경 없음(ignore 스크립트).
+- 운영 스모크(23:50 KST, `editor.papascompany.co.kr/` 루트 뷰 — 서버 세션 없는 로컬 상태, API 호출 0건, 새 번들 `index-Bl5B2l65.js`): `fabric.Group` 에 `extensionType='calendar-grid'` 를 주고 선택 → '그룹해제' 버튼 0 · '그룹 해제' 핫키 `hideContext()` true · `unGroup()` no-op(객체 수 불변); 같은 그룹을 일반 그룹으로 바꿔 선택 → 버튼 1 · `hideContext()` false · `unGroup()` 으로 자식 2개 복귀(회귀 정상). 콘솔 오류 0. 스모크 객체는 페이지 새로고침으로 폐기.
+- 사전 검증: worktree 전체 editor 135파일/1831·canvas-core 64/762 통과(T2 세션), 메인 체크아웃 cherry-pick 뒤 표적 canvas-core 19·editor 58 passed·tsc 0(cherry-pick 트리 = merge-tree 예측과 동일).
+
+**롤백**: 편집기만 — Vercel `storige-editor` 직전 Ready Production 배포 promote, 또는 `git revert c040b68e 680c8322 a087316c` → master push. api/worker 무관.
+
 ## 문제 해결
 
 ### 1. 컨테이너가 시작되지 않음
