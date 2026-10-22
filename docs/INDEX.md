@@ -19,14 +19,15 @@
 >
 > | 문서 | 무엇 | 운영 반영 / 브랜치 |
 > |---|---|---|
-> | [`PRODUCT_MODE_ARCHITECTURE_DESIGN_2026-10-16.md`](./PRODUCT_MODE_ARCHITECTURE_DESIGN_2026-10-16.md) | **상품별 편집 모드·외부 연동 아키텍처 설계안 v2(정본)** — `template_sets.product_profile` 1개로 모드 선언(enum 무변경), 시트/면 모델·worker `sheet-map`(§6), 파트너 서버 2회 호출 런처(§8.1), 운영 콘솔(§9), 로드맵(§11), 오너 결정(§13) | master 수록(머리말 2026-10-17: P0 완료·배포 `19f1ce7c`) · §11 P1 "완료·운영 반영" 표기와 §13 상태 줄(2026-10-18) 갱신분은 브랜치 전용 |
-> | [`CALENDAR_MODE_DEVELOPMENT_PLAN_2026-10-17.md`](./CALENDAR_MODE_DEVELOPMENT_PLAN_2026-10-17.md) | 캘린더 P1 개발 계획 — 출발점·범위·서브웨이브·완료 기준·위험·검증 기준선 | **P1 완료·운영 반영 2026-10-18**(master `af900212`) · 상태 머리말(2026-10-18)은 브랜치 전용 · 운영 샘플 7종 등록은 오너 보류 |
-> | [`P2_PRODUCT_MODE_PLAN_2026-10-18.md`](./P2_PRODUCT_MODE_PLAN_2026-10-18.md) | **P2 개발 계획·상태** — P2-a 시트 맵 기반 · P2-b 런처 · P2-c `sheet-map` 워커 모드(구현 완료·로컬 e2e 통과) · P2-d 사진인화 · P2-e 운영자 콘솔(미착수) · §7 e2e 에서 드러난 기존 결함 | **브랜치 `p1-calendar-2026-10-17` 전용**(P2-a·P2-b 커밋 `f43cb99e`, P2-c 커밋 `9be4c37c`) — master 미병합 · 운영 미반영 |
-> | [`CONTRACT_FREEZE.md`](./CONTRACT_FREEZE.md) | 동결 계약 **v1.24** — v1.21 낱장 검증·duplex-split 쪽수 원천 · v1.22 P1 캘린더 `productProfile`·`product`·`metadata.calendar` · v1.23 P2-b 런처 3라우트·웹훅 `revision`·`GET /files/:id/external` · v1.24 P2-c `sheet-map` 모드 | v1.21 운영 2026-10-17 · v1.22 운영 2026-10-18 · **master 는 v1.22** · v1.23~v1.24 는 브랜치 전용(적용 시점 = 배포 통지 시각, 미정) |
-> | [`DEPLOYMENT.md`](./DEPLOYMENT.md) | 「P1 캘린더 운영 반영 절차」(2026-10-18 00:46~00:48 KST 반영 기록) · 「P2-b 런처(파트너 v1 `sessions`)·합성 파일 메타 조회 배포 절차」 · 「P2-c 시트 맵 출력(worker `sheet-map` 모드) 배포 절차」 · 「5. 로컬 기동 시 알아둘 점(2026-10-17)」 | P1 절은 master · P2-b/P2-c 절은 브랜치 전용(**2026-10-18 준비 — 미실행, 오너 승인 후**) |
+> | [`PRODUCT_MODE_ARCHITECTURE_DESIGN_2026-10-16.md`](./PRODUCT_MODE_ARCHITECTURE_DESIGN_2026-10-16.md) | **상품별 편집 모드·외부 연동 아키텍처 설계안 v2(정본)** — `template_sets.product_profile` 1개로 모드 선언(enum 무변경), 시트/면 모델·worker `sheet-map`(§6), 파트너 서버 2회 호출 런처(§8.1), 운영 콘솔(§9), 로드맵(§11), 오너 결정(§13) | master 수록(머리말 2026-10-17: P0 완료·배포 `19f1ce7c`) · §11 P1 완료 표기·§13 상태 줄 포함 master 수록(2026-10-21 병합) |
+> | [`CALENDAR_MODE_DEVELOPMENT_PLAN_2026-10-17.md`](./CALENDAR_MODE_DEVELOPMENT_PLAN_2026-10-17.md) | 캘린더 P1 개발 계획 — 출발점·범위·서브웨이브·완료 기준·위험·검증 기준선 | **P1 완료·운영 반영 2026-10-18**(master `af900212`) · 상태 머리말 master 수록(2026-10-21 병합) · 운영 샘플 7종 등록은 오너 보류 · 후속 기능 계획 `CALENDAR_EDITOR_FEATURE_PLAN_2026-10-21.md` |
+> | [`CALENDAR_EDITOR_FEATURE_PLAN_2026-10-21.md`](./CALENDAR_EDITOR_FEATURE_PLAN_2026-10-21.md) | **캘린더 편집기 기능 확장 계획(CTO, 2026-10-22 작성)** — §0 10-16~10-21 현황 통합(P0·P1·P2-a~d·D11~D13 커밋/운영 반영) · §1 캘린더 기능 인벤토리(설계 C1~C12 대비 ✅/🟡/❌/❔) · §2 백로그 B1~B8 · §3 서브에이전트 병렬 트랙 T1~T6(배타적 파일 소유권·역할·완료 기준) · §4 wave · §5 오너 결정 D1~D7 · §6 위험 · §7 검증 기준선 | master · 오너 결정 D1~D7 대기 |
+> | [`P2_PRODUCT_MODE_PLAN_2026-10-18.md`](./P2_PRODUCT_MODE_PLAN_2026-10-18.md) | **P2 개발 계획·상태** — P2-a 시트 맵 기반 · P2-b 런처 · P2-c `sheet-map` 워커 모드(구현 완료·로컬 e2e 통과) · P2-d 사진인화 · P2-e 운영자 콘솔(미착수) · §7 e2e 에서 드러난 기존 결함 | **P2-a~d 운영 반영 2026-10-21**(master `11383962` = `f43cb99e`·`9be4c37c`·`237e6b91`·`11383962`) · P2-e 미착수 · §7.1 결함 D1~D13 수정 |
+> | [`CONTRACT_FREEZE.md`](./CONTRACT_FREEZE.md) | 동결 계약 **v1.25** — v1.21 낱장 검증·duplex-split 쪽수 원천 · v1.22 P1 캘린더 `productProfile`·`product`·`metadata.calendar` · v1.23 P2-b 런처 3라우트·웹훅 `revision`·`GET /files/:id/external` · v1.24 P2-c `sheet-map` 모드 · v1.25 P2-d 사진인화(`photo-print` 프로파일·`items`) | v1.21 운영 2026-10-17 · v1.22 운영 2026-10-18 · **v1.23~v1.25 운영 2026-10-21**(master `11383962`) |
+> | [`DEPLOYMENT.md`](./DEPLOYMENT.md) | 「P1 캘린더 운영 반영 절차」(2026-10-18 00:46~00:48 KST 반영 기록) · 「P2-b 런처(파트너 v1 `sessions`)·합성 파일 메타 조회 배포 절차」 · 「P2-c 시트 맵 출력(worker `sheet-map` 모드) 배포 절차」 · 「P2-d 사진인화 배포 절차」(절 끝 「반영 기록」) · 「5. 로컬 기동 시 알아둘 점(2026-10-17)」 | 전부 master — **P2-a~d 2026-10-21 15:55~16:00 KST 반영 완료**(롤백 태그 `rollback-pre-p2abcd-20261021`, `.env.bak-20261021-p2`) |
 > | [`템플릿등록 매뉴얼.md`](./템플릿등록%20매뉴얼.md) 부록 D | 캘린더 상품 템플릿셋 등록(P1) — 상품 7종 `editorType`·26캔버스·프로파일 JSON·날짜 그리드·화면 전용 오버레이·호스트 연동 요점·샘플 일괄 등록 스크립트 | master 수록 · 운영 샘플 세트 등록은 미실행(오너 보류) |
 >
-> 런처(§8.1) 파트너 가이드 절은 아직 [`PLATFORM_INTEGRATION_GUIDE.md`](./PLATFORM_INTEGRATION_GUIDE.md)에 없다 — 초안은 저장소 밖 비공개 노트(`_private_notes/wave12/P1_CALENDAR_DECISIONS_2026-10-17.md` 「가이드 초안 — 런처(§8.1) 절」, 미추적)에 있고 오너 dirty 해소 후 반영 예정. 라이브 상태 SSOT 는 `.cursor/plans/RESUME_PROMPT_2026-10-04.md` §2·§5.2.8(로컬·미커밋).
+> 런처(§8.1) 파트너 가이드 절은 아직 [`PLATFORM_INTEGRATION_GUIDE.md`](./PLATFORM_INTEGRATION_GUIDE.md)에 없다 — 초안은 저장소 밖 비공개 노트(`_private_notes/wave12/P1_CALENDAR_DECISIONS_2026-10-17.md` 「가이드 초안 — 런처(§8.1) 절」, 미추적)에 있고 오너 dirty 해소 후 반영 예정. 라이브 상태 SSOT 는 `.cursor/plans/RESUME_PROMPT_2026-10-04.md` §2·§5.2.8.
 
 > **갱신**: 2026-10-19 · 색인 누락 문서 등재(상품별 편집 모드 트랙 · `partner-notices/` 17건 · 런북·설계안·핸드오프 · 템플릿 등록 매뉴얼) + 주요 항목에 "운영 반영 / 브랜치" 상태 표기. 기존 항목은 유지(갱신만).
 > **갱신**: 2026-06-17 · 멀티테넌시 P1(인증/테넌트 기반)+P2a(site_id 12테이블) 프로덕션 게이트 실행완료·LIVE / admin 비밀번호 변경 기능 / Vercel 배포 파이프라인 복구 (격리는 아직 비활성 = 동작 불변·비파괴)
@@ -34,7 +35,7 @@
 
 📊 **시작점**: [`MASTER_STATUS_2026-06-17.md`](./MASTER_STATUS_2026-06-17.md) (최신)
 🏗 **시각 가이드**: [`Storige_개발가이드.html`](./Storige_개발가이드.html) (사이드바 네비, 에디터 UX 사이클 반영)
-🗓️ **최근 트랙(상품별 편집 모드) 시작점**: [`P2_PRODUCT_MODE_PLAN_2026-10-18.md`](./P2_PRODUCT_MODE_PLAN_2026-10-18.md) (브랜치 전용) → 설계 정본 [`PRODUCT_MODE_ARCHITECTURE_DESIGN_2026-10-16.md`](./PRODUCT_MODE_ARCHITECTURE_DESIGN_2026-10-16.md) → 운영 반영 기록 [`DEPLOYMENT.md`](./DEPLOYMENT.md) 「P1 캘린더 운영 반영 절차」
+🗓️ **최근 트랙(상품별 편집 모드) 시작점**: [`P2_PRODUCT_MODE_PLAN_2026-10-18.md`](./P2_PRODUCT_MODE_PLAN_2026-10-18.md) (master, 2026-10-21 운영 반영) → 캘린더 후속 [`CALENDAR_EDITOR_FEATURE_PLAN_2026-10-21.md`](./CALENDAR_EDITOR_FEATURE_PLAN_2026-10-21.md) → 설계 정본 [`PRODUCT_MODE_ARCHITECTURE_DESIGN_2026-10-16.md`](./PRODUCT_MODE_ARCHITECTURE_DESIGN_2026-10-16.md) → 운영 반영 기록 [`DEPLOYMENT.md`](./DEPLOYMENT.md) 「P1 캘린더 운영 반영 절차」·「P2-d 사진인화 배포 절차」 절 끝 「반영 기록」
 
 ---
 
@@ -43,7 +44,7 @@
 | 문서 | 형식 | 설명 |
 |------|------|------|
 | [`MASTER_STATUS_2026-06-17.md`](./MASTER_STATUS_2026-06-17.md) | MD | **최신** — 멀티테넌시 P1+P2a 프로덕션 게이트 실행완료(LIVE·격리 비활성)·admin 비밀번호 변경 기능·Vercel 배포 파이프라인 복구 |
-| [`P2_PRODUCT_MODE_PLAN_2026-10-18.md`](./P2_PRODUCT_MODE_PLAN_2026-10-18.md) | MD | **최신 활성 계획(2026-10-18~19)** — 상품별 편집 모드 P2 서브웨이브 상태표(P2-a/b/c 구현 완료·로컬 e2e 통과, P2-d 사진인화·P2-e 운영자 콘솔 미착수, §8.3 어댑터 순서 jumbocard → insta_print → Frameshop → 100p)·완료 기준·검증 기준선·위험·§7 결함 기록 — **브랜치 `p1-calendar-2026-10-17` 전용, master 미병합·운영 미반영** |
+| [`P2_PRODUCT_MODE_PLAN_2026-10-18.md`](./P2_PRODUCT_MODE_PLAN_2026-10-18.md) | MD | **최신 활성 계획(2026-10-18~21)** — 상품별 편집 모드 P2 서브웨이브 상태표(P2-a/b/c/d 구현·로컬 e2e 통과·2026-10-21 운영 반영, P2-e 운영자 콘솔 미착수, §8.3 어댑터 순서 jumbocard → insta_print → Frameshop → 100p)·완료 기준·검증 기준선·위험·§7 결함 기록(D1~D13) — **master 수록·운영 반영 2026-10-21(master `11383962`)** |
 | [`NEXT_ISSUES_2026-06-17.md`](./NEXT_ISSUES_2026-06-17.md) | MD | 다음 개발 이슈 — P2b 조회격리(회귀주의)·P3 admin UI·P4 편집기 런타임·P5 워커 공정성·P6 운영·오너 대기(키 cutover/히스토리 정화/DB 회전)·PDF 업로드 검증 Tier0 |
 | [`NEXT_ISSUES_2026-06-23.md`](./NEXT_ISSUES_2026-06-23.md) | MD | 2026-06-23 잔여 게이트 배치(ⓐ~ⓕ) 처리 후 미완·게이트·후속 항목 — 머리말 기준 배포 완료분(ⓐ compress·ⓓ WH-001·ⓕ SEC-005·ⓔ 합성멱등·ⓑ AUTH stage1) LIVE |
 | [`MASTER_STATUS_2026-05-10.md`](./MASTER_STATUS_2026-05-10.md) | MD | 편집기 UX·관리자 모드 분리 (7건 커밋) |
@@ -60,7 +61,7 @@
 | 문서 | 형식 | 설명 |
 |------|------|------|
 | [`PLATFORM_INTEGRATION_GUIDE.md`](./PLATFORM_INTEGRATION_GUIDE.md) | MD | **외부 파트너 연동 정본(운영)** — §0 연동 유형 3종 결정 매트릭스 · §1 공통 기반(인증·Base URL·파일 한도·보안·에러/레이트리밋·§1.7 Partner API v1 공통 계약) · §2 유형 1(자체 편집기+오프로드) · §3 유형 2(편집기 임베드) · §4 유형 3(제안/미구현) · §5 레퍼런스 · 최종 갱신 2026-10-14(작업 응답 14개 키, 산출물 회수 `output-url` 재발급) · **P2-b 런처(`/api/v1/sessions/*`) 절은 미반영**(초안은 비공개 노트, 오너 dirty 해소 후) |
-| [`CONTRACT_FREEZE.md`](./CONTRACT_FREEZE.md) | MD | 파트너 대면 표면의 **동결 계약** — 변경 시 파트너 파손을 유발하는 항목. 현재 **v1.24**(브랜치) / master **v1.22**: v1.21 낱장 검증·duplex-split 쪽수 원천(운영 배포 2026-10-17, 사후 등재) · v1.22 P1 캘린더 §1-D ADDITIVE 3건 + 보강 `orderOptions.coverSpine='none'`(운영 2026-10-18) · v1.23 P2-b 런처 3라우트·웹훅 `revision?`·`GET /files/:id/external`·킬스위치 `PARTNER_SESSION_LAUNCH_ENABLED` · v1.24 P2-c worker mode `sheet-map`·`SHEET_MAP_OUTPUT_ENABLED` — **v1.23·v1.24 는 운영 미반영**(적용 시점 = 배포 통지 시각) |
+| [`CONTRACT_FREEZE.md`](./CONTRACT_FREEZE.md) | MD | 파트너 대면 표면의 **동결 계약** — 변경 시 파트너 파손을 유발하는 항목. 현재 **v1.25**(master): v1.21 낱장 검증·duplex-split 쪽수 원천(운영 배포 2026-10-17, 사후 등재) · v1.22 P1 캘린더 §1-D ADDITIVE 3건 + 보강 `orderOptions.coverSpine='none'`(운영 2026-10-18) · v1.23 P2-b 런처 3라우트·웹훅 `revision?`·`GET /files/:id/external`·킬스위치 `PARTNER_SESSION_LAUNCH_ENABLED` · v1.24 P2-c worker mode `sheet-map`·`SHEET_MAP_OUTPUT_ENABLED` · v1.25 P2-d 사진인화(`photo-print` 프로파일·완료 `items`·deliverables `items`·`metadata.productProfile` 서버 소유) — **v1.23~v1.25 운영 반영 2026-10-21 16:00 KST** |
 | [`PARTNER_PLATFORM_API_V1_DESIGN_2026-07-07.md`](./PARTNER_PLATFORM_API_V1_DESIGN_2026-07-07.md) | MD | Partner Platform API v1(`/api/v1/*`) 설계서 — Stage 0 산출(작성 2026-07-15, 오너 D-2 승인 2026-07-14), Stage 1~6 구현의 명세 정본 |
 | [`WEBHOOK_SIGNATURE_MATRIX_2026-07-03.md`](./WEBHOOK_SIGNATURE_MATRIX_2026-07-03.md) | MD | 웹훅 서명 3종 대조표(Phase 0 정본, file:line 실증) — 실행형 정본은 `apps/api/src/webhook/webhook-signature-pairwise.spec.ts` |
 | [`PARTNER_NOTICE_2026-08-13_compose_mixed.md`](./PARTNER_NOTICE_2026-08-13_compose_mixed.md) | MD | 합성 API(compose-mixed) 계약 변경 안내(2026-08-13) — 발송 시점 프로덕션 호출 이력 0건, 즉시 조치 없음 |
@@ -136,7 +137,7 @@
 
 | 문서 | 설명 |
 |------|------|
-| [`DEPLOYMENT.md`](./DEPLOYMENT.md) | **배포 가이드(운영 정본)** — Docker 컨테이너 11+1·env·배포 후 플래그 기동 스냅샷(`[FLAGS]`/`[FLAGS-CHECK]`)·킬스위치 compose 매핑·rembg 사이드카·Wave 2~8 배포 기록(2026-10-03~10-08)·낱장 N장 PDF 배포(2026-10-17)·**「P1 캘린더 운영 반영 절차」(2026-10-18 00:46~00:48 KST 반영 완료, master `af900212`, 롤백 태그 `rollback-pre-calendar-20261018`)**·**「P2-b 런처…배포 절차」·「P2-c 시트 맵 출력…배포 절차」(2026-10-18 준비 — 미실행, 오너 승인 후; 브랜치 전용; FLAGS 16·17번째 키 `PARTNER_SESSION_LAUNCH_ENABLED`·`SHEET_MAP_OUTPUT_ENABLED`)**·「5. 로컬 기동 시 알아둘 점(2026-10-17)」(compose 서비스 `mariadb`·pino-pretty 폴백·worker env·bookmoa 연동 끄기·Node 버전) |
+| [`DEPLOYMENT.md`](./DEPLOYMENT.md) | **배포 가이드(운영 정본)** — Docker 컨테이너 11+1·env·배포 후 플래그 기동 스냅샷(`[FLAGS]`/`[FLAGS-CHECK]`)·킬스위치 compose 매핑·rembg 사이드카·Wave 2~8 배포 기록(2026-10-03~10-08)·낱장 N장 PDF 배포(2026-10-17)·**「P1 캘린더 운영 반영 절차」(2026-10-18 00:46~00:48 KST 반영 완료, master `af900212`, 롤백 태그 `rollback-pre-calendar-20261018`)**·**「P2-b 런처…배포 절차」·「P2-c 시트 맵 출력…배포 절차」·「P2-d 사진인화 배포 절차」(2026-10-21 15:55~16:00 KST 반영 완료 — master `11383962`, FLAGS 16·17번째 키 `PARTNER_SESSION_LAUNCH_ENABLED`·`SHEET_MAP_OUTPUT_ENABLED`, 롤백 태그 `rollback-pre-p2abcd-20261021`, 「P2-d」 절 끝 「반영 기록」)**·「5. 로컬 기동 시 알아둘 점(2026-10-17)」(compose 서비스 `mariadb`·pino-pretty 폴백·worker env·bookmoa 연동 끄기·Node 버전) |
 | [`OPERATIONS.md`](./OPERATIONS.md) | 운영 매뉴얼 |
 | [`P0_OPERATIONS_CHECKLIST.md`](./P0_OPERATIONS_CHECKLIST.md) | P0 운영 체크리스트 |
 | [`SENTRY_SETUP.md`](./SENTRY_SETUP.md) | Sentry 초기 설정 |
@@ -166,18 +167,19 @@
 
 ## 📊 6. 사이클 보고서 (시간역순)
 
-### 🆕 2026-10-16 ~ 10-19 — 상품별 편집 모드: 캘린더 P1 운영 반영(master `af900212`) · P2-a/b/c 브랜치 구현(`9be4c37c`, master 미병합)
+### 🆕 2026-10-16 ~ 10-21 — 상품별 편집 모드: 캘린더 P1 운영 반영(master `af900212`) · P2-a/b/c/d + D11~D13 운영 반영(master `11383962`, 2026-10-21)
 | 문서 | 설명 | 운영 반영 / 브랜치 |
 |------|------|------|
 | [`PRODUCT_MODE_ARCHITECTURE_DESIGN_2026-10-16.md`](./PRODUCT_MODE_ARCHITECTURE_DESIGN_2026-10-16.md) | **사이클 정본 설계** — §0 결론(프로파일 1개·enum 무변경·N페이지 단일 PDF 기본·`sheet-map` 1 mode·파트너 2회 호출·콘솔 1개 역할 2개) · §2 ProductProfile 모델 · §3 상품별 매핑 · §6 시트/면 모델·worker · §8 외부 연동(런처·SDK·서비스별) · §9 운영자 워크스페이스 · §10 P0 결함 · §11 로드맵 · §13 오너 결정 | master 수록(머리말 2026-10-17: P0 완료·배포 `19f1ce7c`) · §11 P1 "완료·운영 반영" 표기·§13 상태 줄(2026-10-18) 갱신분은 브랜치 전용 |
 | [`CALENDAR_EDIT_MODE_DESIGN_2026-10-16.md`](./CALENDAR_EDIT_MODE_DESIGN_2026-10-16.md) | 1차 캘린더 단일 범위 설계안(참조 편집기 관찰 + REA 정적 분석) — 같은 날 v2 설계안으로 대체, §1 관찰 기록·§3 CalendarPlugin 세부만 유효 | master 수록 · 설계 제안(코드 변경 없음) |
 | [`CALENDAR_MODE_DEVELOPMENT_PLAN_2026-10-17.md`](./CALENDAR_MODE_DEVELOPMENT_PLAN_2026-10-17.md) | P1 개발 계획 — 출발점(P0 운영 배포 `19f1ce7c`) · 범위(프로파일·페이지 정책·CalendarPlugin·캘린더 패널·오버레이 규약·세션 스냅샷·검증 연동·샘플 세트) · 서브웨이브·완료 기준 · 결정 · 위험 · 검증 기준선 | **P1 완료·운영 반영 2026-10-18**(master `af900212`: 마이그레이션 `20261017_add_template_set_product_profile.sql`·api·worker·Vercel editor/admin, 완료 PDF 워커 경고 0 — 도련 정책 A) · 상태 머리말(2026-10-18)은 브랜치 전용 · 운영 샘플 7종 등록 오너 보류 |
-| [`P2_PRODUCT_MODE_PLAN_2026-10-18.md`](./P2_PRODUCT_MODE_PLAN_2026-10-18.md) | **P2 계획·상태** — §0 출발점(P2 순서 런처 → sheet-map → 사진인화) · §1 서브웨이브: P2-a 시트 맵 기반(`buildSheetMap`·골든 16) / P2-b 런처(`POST /api/v1/sessions/launch`·`GET …/deliverables`·`POST …/synthesize`, SDK `client.sessions`) / P2-c worker `mode:'sheet-map'`(per-sheet·merged-duplex, 13시트 골든, 킬스위치 `SHEET_MAP_OUTPUT_ENABLED`) / P2-d 사진인화·P2-e 운영자 콘솔(미착수) · §3 완료 기준 · §4 검증 기준선 · §5 위험 · §7 e2e 에서 드러난 기존 결함(duplex-split `request_id` 86자, 워커 파일 메타 401) | **브랜치 `p1-calendar-2026-10-17` 전용** — P2-a·P2-b 커밋 `f43cb99e`, P2-c 커밋 `9be4c37c`(로컬 e2e 통과 2026-10-19) · master 미병합 · 운영 미반영 |
+| [`CALENDAR_EDITOR_FEATURE_PLAN_2026-10-21.md`](./CALENDAR_EDITOR_FEATURE_PLAN_2026-10-21.md) | **캘린더 편집기 기능 확장 계획**(2026-10-22) — 현황 통합·기능 인벤토리·백로그·서브에이전트 병렬 트랙·오너 결정 | master · 오너 결정 대기 |
+| [`P2_PRODUCT_MODE_PLAN_2026-10-18.md`](./P2_PRODUCT_MODE_PLAN_2026-10-18.md) | **P2 계획·상태** — §0 출발점(P2 순서 런처 → sheet-map → 사진인화) · §1 서브웨이브: P2-a 시트 맵 기반(`buildSheetMap`·골든 16) / P2-b 런처(`POST /api/v1/sessions/launch`·`GET …/deliverables`·`POST …/synthesize`, SDK `client.sessions`) / P2-c worker `mode:'sheet-map'`(per-sheet·merged-duplex, 13시트 골든, 킬스위치 `SHEET_MAP_OUTPUT_ENABLED`) / P2-d 사진인화·P2-e 운영자 콘솔(미착수) · §3 완료 기준 · §4 검증 기준선 · §5 위험 · §7 e2e 에서 드러난 기존 결함(duplex-split `request_id` 86자, 워커 파일 메타 401) | **P2-a~d 운영 반영 2026-10-21**(master `11383962` — `f43cb99e`·`9be4c37c`·`237e6b91`·`11383962`) · P2-e 미착수 · §7.1 로컬 e2e 결함 D1~D13 수정 |
 | [`CONTRACT_FREEZE.md`](./CONTRACT_FREEZE.md) v1.21~v1.24 | v1.21(2026-10-16~17) §1-B MODIFY-TARGET 3건(duplex-split 기대 쪽수 원천·낱장 세션 `productKind='sheet'`·post_process CMYK 규칙 기본 해제) + ADDITIVE `orderOptions.productKind/pageStep/postProcessColorRule` · v1.22(2026-10-17) §1-D ADDITIVE 3건(`templateSet.productProfile`·`editor.complete` `product`·세션 `metadata.productProfile/calendar`) + 보강 `orderOptions.coverSpine='none'` · v1.23(2026-10-18) §1-D 런처 3라우트·웹훅 `revision?`·§1-B `GET /files/:id/external`·ErrV1 29→31·`PARTNER_SESSION_LAUNCH_ENABLED` · v1.24(2026-10-18) §1-B worker mode `sheet-map`·§1-D synthesize sheet-map 재합성·deliverables `sheets?` | v1.21 운영 배포 2026-10-17(사후 등재) · v1.22 운영 2026-10-18 · **master 는 v1.22** · v1.23·v1.24 브랜치 전용(적용 시점 = 배포 통지 시각, 미정) |
 | [`DEPLOYMENT.md`](./DEPLOYMENT.md) | 「P1 캘린더 운영 반영 절차」 — 변경 요약·순서·**반영 기록**(2026-10-18 00:40~00:48 KST: master `a98d0219` → `af900212` fast-forward 5커밋, 마이그레이션 적용, api `1f175ce9a99b`·worker `df1f28f153ac`, `[FLAGS-CHECK] api ok n=15`, Vercel editor/admin Ready, 롤백 태그 `rollback-pre-calendar-20261018`, 샘플 세트 등록 미실행) · 「P2-b 런처(파트너 v1 `sessions`)·합성 파일 메타 조회 배포 절차」(FLAGS 16번째 키 `PARTNER_SESSION_LAUNCH_ENABLED`) · 「P2-c 시트 맵 출력(worker `sheet-map` 모드) 배포 절차」(worker 먼저, FLAGS 17번째 키 `SHEET_MAP_OUTPUT_ENABLED`, 로컬 실측 2026-10-19) · 「5. 로컬 기동 시 알아둘 점(2026-10-17)」 | P1 절 master · P2-b/P2-c 절 브랜치 전용 — **2026-10-18 준비, 미실행(오너 승인 후)** |
 | [`템플릿등록 매뉴얼.md`](./템플릿등록%20매뉴얼.md) 부록 D | 캘린더 상품 템플릿셋 등록(P1, 2026-10-17) — D-1 상품 7종(`calendar_desk_large/basic/tiny/mini`·`calendar_wall1_a3`·`calendar_wall2_a4/a3`, 26캔버스) · D-2 프로파일 JSON 섹션(프리셋·`cropMarkEnabled`·`bleedMm 3` 도련 정책) · D-3 템플릿 4개로 26캔버스 · D-4 날짜 그리드(`extensionType:'calendar-grid'`) · D-5 화면 전용 오버레이 · D-6 호스트 연동 요점 · D-7 샘플 일괄 등록 `scripts/register-calendar-samples.mjs` · D-8 날짜 데이터 갱신 | master 수록 · 운영 샘플 등록 미실행(오너 보류) |
 | [`../.cursor/plans/CALENDAR_MODE_SESSION_START_PROMPT_2026-10-17.md`](../.cursor/plans/CALENDAR_MODE_SESSION_START_PROMPT_2026-10-17.md) | P1 새 세션 시작 프롬프트 | 로컬·미커밋 |
-| [`../.cursor/plans/RESUME_PROMPT_2026-10-04.md`](../.cursor/plans/RESUME_PROMPT_2026-10-04.md) | 라이브 상태 SSOT(§2·§5.2.8) | 로컬·미커밋 |
+| [`../.cursor/plans/RESUME_PROMPT_2026-10-04.md`](../.cursor/plans/RESUME_PROMPT_2026-10-04.md) | 라이브 상태 SSOT(§2·§5.2.8) | master 추적(2026-10-21 갱신) |
 | `_private_notes/wave12/P1_CALENDAR_DECISIONS_2026-10-17.md` | 오너 결정·정찰·로컬 e2e 실측·운영 반영 기록·P2 착수·**런처(§8.1) 파트너 가이드 초안** — 저장소 상위 폴더 | 비공개·미추적(읽기 전용) |
 
 ### 2026-09-24 ~ 09-30 — 파일↔주문 결속 API 설계 · Wave 1~5 개요 · 첨부 PDF 빈 페이지 채움
@@ -366,7 +368,7 @@
 | [`PRODUCT_MODE_ARCHITECTURE_DESIGN_2026-10-16.md`](./PRODUCT_MODE_ARCHITECTURE_DESIGN_2026-10-16.md) | **정본 설계안 v2** — `product_profile` 프로파일 모델(§2)·상품별 매핑(§3)·시트/면 모델·worker `sheet-map`(§6)·데이터·API·admin(§7)·외부 연동 런처·SDK(§8)·운영자 워크스페이스(§9)·로드맵(§11)·오너 결정(§13) | master 수록 · §11/§13 2026-10-18 갱신분은 브랜치 |
 | [`CALENDAR_EDIT_MODE_DESIGN_2026-10-16.md`](./CALENDAR_EDIT_MODE_DESIGN_2026-10-16.md) | 1차 캘린더 설계안(v2 로 대체) — 참조 편집기 관찰(§1)·CalendarPlugin 세부(§3)만 유효 | master 수록 · 설계 제안 |
 | [`CALENDAR_MODE_DEVELOPMENT_PLAN_2026-10-17.md`](./CALENDAR_MODE_DEVELOPMENT_PLAN_2026-10-17.md) | P1 개발 계획(범위·서브웨이브·완료 기준·위험) | **P1 운영 반영 완료 2026-10-18**(master `af900212`) |
-| [`P2_PRODUCT_MODE_PLAN_2026-10-18.md`](./P2_PRODUCT_MODE_PLAN_2026-10-18.md) | P2 계획·상태(P2-a 시트 맵 기반 · P2-b 런처 · P2-c `sheet-map` 워커 모드 · P2-d 사진인화 · P2-e 운영자 콘솔) | **브랜치 `p1-calendar-2026-10-17` 전용(`9be4c37c`)** · master 미병합 · 운영 미반영 |
+| [`P2_PRODUCT_MODE_PLAN_2026-10-18.md`](./P2_PRODUCT_MODE_PLAN_2026-10-18.md) | P2 계획·상태(P2-a 시트 맵 기반 · P2-b 런처 · P2-c `sheet-map` 워커 모드 · P2-d 사진인화 · P2-e 운영자 콘솔) | **운영 반영 2026-10-21**(master `11383962`) · P2-e 미착수 |
 | [`템플릿등록 매뉴얼.md`](./템플릿등록%20매뉴얼.md) 부록 D | 캘린더 상품 템플릿셋 등록 절차(상품 7종·26캔버스·프로파일 JSON·날짜 그리드·오버레이·호스트 연동·샘플 스크립트) | master 수록 · 운영 샘플 등록 미실행 |
 | [`CONTRACT_FREEZE.md`](./CONTRACT_FREEZE.md) v1.21~v1.24 | 계약 정본 행(§1-B·§1-D) — 낱장 검증·프로파일·런처·`sheet-map` | v1.21·v1.22 운영 · v1.23·v1.24 브랜치 전용 |
 | [`DEPLOYMENT.md`](./DEPLOYMENT.md) | P1 반영 기록 · P2-b/P2-c 배포 절차(준비) | P1 반영 완료 · P2-b/P2-c 미실행(오너 승인 후) |

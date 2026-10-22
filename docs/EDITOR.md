@@ -2,7 +2,7 @@
 
 > **Shopify 추가 개발 (2026-10-15, 계획)**: [Editor·PDF Worker × Shopify 개발 정본](./SHOPIFY_ORCHESTRATION_DEVELOPMENT_GUIDE_2026-10-15.md)의 전용 launch/runtime/strict commit을 사용합니다. 기존 `editor.complete` 이벤트와 저장·재오픈 계약은 유지하며, Shopify 상품 주문용 확정은 별도 서버 artifact gate에서 판정합니다. 아직 Shopify 앱 구현·출시가 완료된 상태는 아닙니다.
 
-> **갱신**: 2026-05-10 — §7~§11 (편집기 UX 사이클) 추가 · 2026-10-05 §4 책등 편집 기능에 현재 산식·템플릿 작성 규약 포인터 · **2026-10-19 — §21 상품 프로파일 모드·캘린더 P1(운영 반영 2026-10-18)·런처 진입 P2-b·시트 맵 P2-c(브랜치만) 추가, §2·§7·§14.1 포인터** · **2026-10-20 — §21.8 사진인화 P2-d(브랜치 작업 트리, 미커밋) 추가, §7 `PHOTO_PRINT`**
+> **갱신**: 2026-05-10 — §7~§11 (편집기 UX 사이클) 추가 · 2026-10-05 §4 책등 편집 기능에 현재 산식·템플릿 작성 규약 포인터 · **2026-10-19 — §21 상품 프로파일 모드·캘린더 P1(운영 반영 2026-10-18)·런처 진입 P2-b·시트 맵 P2-c(브랜치만) 추가, §2·§7·§14.1 포인터** · **2026-10-20 — §21.8 사진인화 P2-d 추가, §7 `PHOTO_PRINT`** · **2026-10-21 — P2-a~d·D11~D13 master 병합·운영 반영(§21 상태 줄 갱신)**
 >
 > §1~§6 은 데이터 모델·비즈니스 룰 · 권한 명세 (변경 없음)
 > **§7 부터** 가 2026-05-09 ~ 05-10 사이 도입된 신기능. 운영 화면 검증 시 우선 참조.
@@ -255,7 +255,7 @@ interface Template {
 | `[]` 빈 배열 | 모든 도구 메뉴 숨김 |
 
 **도구 키** (`EditorMenuKey`, `packages/types/src/index.ts`):
-`UPLOAD`, `CLIPPING`, `TEMPLATE`, `IMAGE`, `TEXT`, `SHAPE`, `BACKGROUND`, `FRAME`, `SMART_CODE`, `EDIT`, `AI`, `CALENDAR`(2026-10-17 추가 — `defaultEnabled:false`, 관리자 editMode 또는 `productProfile.kind==='calendar'` 세트에서만 노출, §21.1), `PHOTO_PRINT`(2026-10-19 추가, 브랜치·미커밋 — 라벨 '사진인화', `defaultEnabled:false`, `requiresFlag:'PHOTO_PRINT'`(`packages/types/src/index.ts:1990`), 빌드 플래그 `VITE_ENABLE_PHOTO_PRINT` 가 정확히 `'false'` 일 때만 off(`ToolBar.tsx:40`), 관리자 editMode 또는 `productProfile.kind==='photo-print'` 세트에서만 노출(`ToolBar.tsx:152-156`), §21.8)
+`UPLOAD`, `CLIPPING`, `TEMPLATE`, `IMAGE`, `TEXT`, `SHAPE`, `BACKGROUND`, `FRAME`, `SMART_CODE`, `EDIT`, `AI`, `CALENDAR`(2026-10-17 추가 — `defaultEnabled:false`, 관리자 editMode 또는 `productProfile.kind==='calendar'` 세트에서만 노출, §21.1), `PHOTO_PRINT`(2026-10-19 추가, 2026-10-21 운영 반영 — 라벨 '사진인화', `defaultEnabled:false`, `requiresFlag:'PHOTO_PRINT'`(`packages/types/src/index.ts:1990`), 빌드 플래그 `VITE_ENABLE_PHOTO_PRINT` 가 정확히 `'false'` 일 때만 off(`ToolBar.tsx:40`), 관리자 editMode 또는 `productProfile.kind==='photo-print'` 세트에서만 노출(`ToolBar.tsx:152-156`), §21.8)
 
 **Admin 설정**: 템플릿셋 "설정" 화면 → "도구 메뉴 노출 직접 설정" 토글 → 체크박스 그룹
 
@@ -579,7 +579,7 @@ postMessage·**sessionId 재편집**을 재사용한다.
 - 파라미터는 camelCase/snake_case 양쪽 허용(`getParamCompat`).
 - **postMessage dual-emit**: 정식 엔벨로프(`editor.ready/save/complete/cancel/error/needAuth`) + 레거시(`storige:completed/saved/...`). 기존 호스트 하위호환 + 추후 정식 엔벨로프 이전.
 - 라우트: `App.tsx` 에 `/embed`. SPA fallback rewrite가 자동 처리(vercel.json 불변).
-- **런처 선생성 세션 진입 (P2-b, 2026-10-18 — 브랜치 `p1-calendar-2026-10-17` 만, master 미병합·운영 미반영)**: 파트너 서버가 `POST /api/v1/sessions/launch` 로 세션을 먼저 만들고 응답 `embed{sessionId, token, refreshToken}` 를 위 **재편집 형식 그대로** `/embed?sessionId&token&refreshToken&parentOrigin` 에 넣는다. 신규 URL 파라미터는 없다 — §21.4.
+- **런처 선생성 세션 진입 (P2-b, 2026-10-18 — 2026-10-21 master `11383962` 운영 반영)**: 파트너 서버가 `POST /api/v1/sessions/launch` 로 세션을 먼저 만들고 응답 `embed{sessionId, token, refreshToken}` 를 위 **재편집 형식 그대로** `/embed?sessionId&token&refreshToken&parentOrigin` 에 넣는다. 신규 URL 파라미터는 없다 — §21.4.
 
 ### 14.2 텍스트 리치 스타일 강화 (TextAttributes / ObjectFill)
 
@@ -871,15 +871,15 @@ per-character `styles`(이탤릭·부분색)는 직렬화 리스트(`packages/ca
 | 항목 | 커밋 | 상태 |
 |---|---|---|
 | **P1 캘린더** — 프로파일 모드·CalendarPlugin·패널·세션 `metadata.calendar`·완료 PDF 옵션·도련 정책 A·임시공휴일 고객 선택 | `1a0d80e3` → `0c670adc` → `52563190` → `af900212` | **운영 반영 완료 2026-10-18 00:48 KST** — master `af900212`(이후 문서 커밋 `49587f4e`), VPS api `1f175ce9a99b`·worker `df1f28f153ac`, `[FLAGS-CHECK] api ok n=15`, Vercel editor/admin Ready. 운영 샘플 세트 7종 등록은 오너 보류 |
-| **P2-a 시트 맵 기반 + P2-b 편집 세션 런처**(api·sdk, 편집기는 신규 세션 메타 복원 1건) | `f43cb99e` | 브랜치 `p1-calendar-2026-10-17` 만 — **master 미병합·운영 미반영**(로컬 e2e 통과) |
-| **P2-c 시트 맵 출력**(worker `sheet-map` 모드·완료 시 자동 발행) | `9be4c37c` | 브랜치만 — master 미병합·운영 미반영. **편집기 코드 변경 없음** |
-| **P2-d 사진인화**(types·canvas-core `PhotoPrintPlugin`·편집기 메뉴/패널/스토어·세션 `metadata.items`·완료 `items`·api 시트 주입/deliverables·SDK·admin 프리셋 4종) | **미커밋** — 브랜치 `p1-calendar-2026-10-17` HEAD `9be4c37c` 위 작업 트리 | 브랜치 작업 트리만 — **master 미병합·운영 미반영**. 적대 리뷰 36건·로컬 e2e 결함 D1~D9 수정 반영, 전체 테스트 통과(2026-10-20). 운영 샘플 세트 등록은 오너 보류 — §21.8 |
+| **P2-a 시트 맵 기반 + P2-b 편집 세션 런처**(api·sdk, 편집기는 신규 세션 메타 복원 1건) | `f43cb99e` | **2026-10-21 master 병합·운영 반영**(master `11383962`, DEPLOYMENT 「P2-d」 절 끝 「반영 기록」) |
+| **P2-c 시트 맵 출력**(worker `sheet-map` 모드·완료 시 자동 발행) | `9be4c37c` | **2026-10-21 운영 반영**. **편집기 코드 변경 없음** |
+| **P2-d 사진인화**(types·canvas-core `PhotoPrintPlugin`·편집기 메뉴/패널/스토어·세션 `metadata.items`·완료 `items`·api 시트 주입/deliverables·SDK·admin 프리셋 4종) | `237e6b91` + `11383962`(D11~D13) | **2026-10-21 master 병합·운영 반영**. 적대 리뷰 36건·로컬 e2e 결함 D1~D13 수정 반영(D11 초기 고정 뒷면 textbox 잠금 · D12 틀 채움 storage 업로드 URL · D13 sheet 분리본 미참조 XObject 정리). 운영 샘플 세트 등록은 오너 보류 — §21.8 |
 
 프로파일 NULL 세트(현행 전 세트)에서는 이 절 전체가 no-op 다 — 템플릿셋 응답·세션 metadata·완료 payload·검증 잡 옵션·PDF 바이트가 종전과 같다(CONTRACT_FREEZE v1.22 "미전송/NULL = 현행 동작").
 
 ### 21.1 상품 프로파일 모드 — `productProfile` 이 편집 모드를 정한다
 
-템플릿셋 `productProfile`(JSON, `@storige/types` `ProductProfile` version 1, kind `'sheet'|'calendar'|'photo-print'` — `'photo-print'` 는 P2-d 브랜치·미커밋, §21.8)이 편집 모드의 단일 소스다. `TemplateSetType`·`EditorMode`·`PdfOutputMode` enum 은 바뀌지 않았다. 편집기 치환 지점은 전부 `if (profile)` 가드다.
+템플릿셋 `productProfile`(JSON, `@storige/types` `ProductProfile` version 1, kind `'sheet'|'calendar'|'photo-print'` — `'photo-print'` 는 P2-d(2026-10-21 운영 반영), §21.8)이 편집 모드의 단일 소스다. `TemplateSetType`·`EditorMode`·`PdfOutputMode` enum 은 바뀌지 않았다. 편집기 치환 지점은 전부 `if (profile)` 가드다.
 
 | 지점 | 파일 | 동작 |
 |---|---|---|
@@ -929,7 +929,7 @@ per-character `styles`(이탤릭·부분색)는 직렬화 리스트(`packages/ca
 | 경로 | 호스트 쪽 | 편집기 진입 | 상태 |
 |---|---|---|---|
 | ① 기존 shop-session | `/auth/shop-session` 토큰 + `templateSetId`(+`orderSeqno`·`mode` — 세션 생성 조건. 캘린더 세트는 `pageCount` 를 보내도 무시) | §14.1 `/embed?templateSetId&token&orderSeqno&…&parentOrigin` → 편집기가 `POST /edit-sessions` 로 세션을 만든다 | 운영 |
-| ② 파트너 v1 런처(P2-b) | 사이트 **editor 키**로 `POST /api/v1/sessions/launch`(body `member{seqno,id,name}`·`templateSetId`·`orderSeqno?`·`mode?`·`callbackUrl?`·`orderOptions?`·`items?`·`calendar?{startYm:'YYYY-MM'}`·`externalPhotos?`) → 201 `embed{sessionId, token, refreshToken, orderSeqno?}`. 세션을 **선생성**하고 shop-session 과 같은 세션 토큰(access 3600초 + refresh)을 돌려준다 | FROZEN 파라미터 그대로 `/embed?sessionId&token&refreshToken&parentOrigin` — **신규 URL 파라미터 0**. 편집기는 canvasData 없는 세션을 열고 `metadata.calendar`(launch `calendar.startYm` 을 api 가 `startYear/startMonth`(+`anniversaries:[]`)로 풀어 기록 — `apps/api/src/partner-sessions/partner-sessions.service.ts:198`·`:516-519`)를 복원해 그리드를 다시 그린다(`embed.tsx:1887-1893`) | 브랜치 `p1-calendar-2026-10-17`(`f43cb99e`)만 — **master 미병합·운영 미반영**. 운영 반영 전에는 3라우트 404 |
+| ② 파트너 v1 런처(P2-b) | 사이트 **editor 키**로 `POST /api/v1/sessions/launch`(body `member{seqno,id,name}`·`templateSetId`·`orderSeqno?`·`mode?`·`callbackUrl?`·`orderOptions?`·`items?`·`calendar?{startYm:'YYYY-MM'}`·`externalPhotos?`) → 201 `embed{sessionId, token, refreshToken, orderSeqno?}`. 세션을 **선생성**하고 shop-session 과 같은 세션 토큰(access 3600초 + refresh)을 돌려준다 | FROZEN 파라미터 그대로 `/embed?sessionId&token&refreshToken&parentOrigin` — **신규 URL 파라미터 0**. 편집기는 canvasData 없는 세션을 열고 `metadata.calendar`(launch `calendar.startYm` 을 api 가 `startYear/startMonth`(+`anniversaries:[]`)로 풀어 기록 — `apps/api/src/partner-sessions/partner-sessions.service.ts:198`·`:516-519`)를 복원해 그리드를 다시 그린다(`embed.tsx:1887-1893`) | **2026-10-21 운영 반영**(master `11383962`) — 3라우트 활성(킬스위치 `PARTNER_SESSION_LAUNCH_ENABLED`) |
 
 - 산출물은 `GET /api/v1/sessions/:id/deliverables`(`status: editing → complete → synthesizing → ready | failed`, `product`·`calendar{startYm,dataVersion}`·`files[{role, url, auth:'api-key'|'signed'(300초)}]`), 재합성은 `POST /api/v1/sessions/:id/synthesize`(`revision` +1; `duplex-split` 세트, v1.24 부터 `sheet-map` 세트도) — 계약·오류 코드(`ERR_SESSION_NOT_COMPLETE` 409·`ERR_OUTPUT_MODE_UNSUPPORTED` 422)는 CONTRACT_FREEZE v1.23/v1.24 §1-D 행, 배포 절차·킬스위치 `PARTNER_SESSION_LAUNCH_ENABLED`(FLAGS 16번째 키)는 DEPLOYMENT 「P2-b …」. 호스트용 가이드 절은 PLATFORM_INTEGRATION_GUIDE 반영 대기(초안은 비공개 노트).
 - 두 경로 모두 `editor.complete`(+`product` 키)·자동저장·`metadata.calendar` 동봉·완료 PDF 경로(§21.3)는 같다. 런처를 쓰지 않는 호스트는 아무것도 바꾸지 않는다.
@@ -973,16 +973,17 @@ per-character `styles`(이탤릭·부분색)는 직렬화 리스트(`packages/ca
 | 2026-10-17 | `52563190` | dev 모드 api·worker 부팅 복구(pino-pretty 미설치 JSON 폴백, worker env 예시) | 〃 |
 | 2026-10-17 | `af900212` | 완료 PDF 워커 경고 0 — `coverSpine:'none'` 규칙·export 옵션 3종·도련 정책 A(`cropMarkEnabled`+`bleedMm 3`)·임시공휴일·선거일 고객 선택 | 〃 (VPS 체크아웃 커밋) |
 | 2026-10-18 | `49587f4e` | DEPLOYMENT·계획 문서 — P1 운영 반영 기록 | master |
-| 2026-10-18 | `f43cb99e` | P2-a 시트 맵 기반 + P2-b 편집 세션 런처(`POST /api/v1/sessions/launch`·`GET …/deliverables`·`POST …/synthesize`, SDK `client.sessions`, 웹훅 `revision?`) · 편집기 신규 세션 `metadata.calendar` 복원 · 합성 파일 메타 `GET /files/:id/external`·duplex-split 자동 잡 request_id 결함 수정 | 브랜치 `p1-calendar-2026-10-17` 만 — master 미병합·운영 미반영 |
-| 2026-10-19 | `9be4c37c` | P2-c 시트 맵 출력 — worker `sheet-map` 모드, 완료 시 자동 발행(`SHEET_MAP_OUTPUT_ENABLED`), 파트너 v1 재합성·deliverables `sheets` — **편집기 변경 없음** | 브랜치만 — master 미병합·운영 미반영 |
-| 2026-10-19 | (미커밋) | P2-d 사진인화 구현 — `ProductKind 'photo-print'`·`photoPrint` 블록·`PhotoItem`(types), `PhotoPrintPlugin`(fitMode/유테/촬영일/흑백), `PHOTO_PRINT` 메뉴·`PhotoPrintPanel`·`usePhotoPrintStore`·세션 `metadata.items`·완료 `items`, api `photo-items.ts`(sheet-map `copies`/`label` 주입)·deliverables `items`·`metadata.productProfile` 서버 소유, SDK `EditorCompleteItem`·`SessionDeliverablesItem`, admin 프리셋 4종·`register-photo-print-samples.mjs`, CONTRACT_FREEZE v1.25 | 브랜치 `p1-calendar-2026-10-17` 작업 트리(HEAD `9be4c37c` 위) — **미커밋·master 미병합·운영 미반영** |
-| 2026-10-19~20 | (미커밋) | P2-d 적대 리뷰 36건·로컬 e2e 결함 D1~D9 수정 — 재오픈 캔버스 유실(D1)·런처 `items` 탈락(D2)·유테 창 재단 기준 `bleedPx`(D3)·촬영일 로컬 날짜(D4)·undo/삭제 뒤 `apply` 재호출(D5)·editMode 잠금 해제(D6)·SDK export(D7)·cover 창 기준 max(D8)·chemical 검증 `bleed 0`(D9), 업로드 한도 경로 보강·`items` 상한·`metadata.productProfile` 서버 소유·시트 맵 실패 노출 | 〃 — 전체 테스트 통과(2026-10-20 13:51 KST(04:51Z, 로그 기준)), 수정 후 로컬 e2e 재실측 통과(2026-10-20 14:05 KST — 21.8 '재실측 결과') |
+| 2026-10-18 | `f43cb99e` | P2-a 시트 맵 기반 + P2-b 편집 세션 런처(`POST /api/v1/sessions/launch`·`GET …/deliverables`·`POST …/synthesize`, SDK `client.sessions`, 웹훅 `revision?`) · 편집기 신규 세션 `metadata.calendar` 복원 · 합성 파일 메타 `GET /files/:id/external`·duplex-split 자동 잡 request_id 결함 수정 | 2026-10-21 운영 반영(master `11383962`) |
+| 2026-10-19 | `9be4c37c` | P2-c 시트 맵 출력 — worker `sheet-map` 모드, 완료 시 자동 발행(`SHEET_MAP_OUTPUT_ENABLED`), 파트너 v1 재합성·deliverables `sheets` — **편집기 변경 없음** | 2026-10-21 운영 반영(master `11383962`) |
+| 2026-10-19 | `237e6b91` | P2-d 사진인화 구현 — `ProductKind 'photo-print'`·`photoPrint` 블록·`PhotoItem`(types), `PhotoPrintPlugin`(fitMode/유테/촬영일/흑백), `PHOTO_PRINT` 메뉴·`PhotoPrintPanel`·`usePhotoPrintStore`·세션 `metadata.items`·완료 `items`, api `photo-items.ts`(sheet-map `copies`/`label` 주입)·deliverables `items`·`metadata.productProfile` 서버 소유, SDK `EditorCompleteItem`·`SessionDeliverablesItem`, admin 프리셋 4종·`register-photo-print-samples.mjs`, CONTRACT_FREEZE v1.25 | 2026-10-20 커밋 `237e6b91` → 2026-10-21 master 병합·운영 반영 |
+| 2026-10-19~20 | `237e6b91` | P2-d 적대 리뷰 36건·로컬 e2e 결함 D1~D9 수정 — 재오픈 캔버스 유실(D1)·런처 `items` 탈락(D2)·유테 창 재단 기준 `bleedPx`(D3)·촬영일 로컬 날짜(D4)·undo/삭제 뒤 `apply` 재호출(D5)·editMode 잠금 해제(D6)·SDK export(D7)·cover 창 기준 max(D8)·chemical 검증 `bleed 0`(D9), 업로드 한도 경로 보강·`items` 상한·`metadata.productProfile` 서버 소유·시트 맵 실패 노출 | 〃 — 전체 테스트 통과(2026-10-20 13:51 KST(04:51Z, 로그 기준)), 수정 후 로컬 e2e 재실측 통과(2026-10-20 14:05 KST — 21.8 '재실측 결과') |
+| 2026-10-20~21 | `11383962` | P2-d 2차 로컬 e2e(② 고정 뒷면·③ 카드형 완료, 26캔버스 PDF 실측, 킬스위치 리허설)에서 드러난 D11~D13 수정 — 초기 고정 뒷면 textbox 잠금(`utils/photoPrintSeed.ts` `initPhotoPrintSeededCanvas`, 템플릿셋 2번째 이후 페이지 로더 공유)·틀 채움을 storage 업로드 URL 로(`stores/useImageStore.ts` `resolveFrameFillImage`, canvasData base64 제거·NULL 세트 무변경)·워커 sheet-map/duplex-split pdf-lib 분리본 미참조 XObject 정리 | 2026-10-21 15:55~16:00 KST master 병합·운영 반영(DEPLOYMENT 「P2-d」 절 끝 「반영 기록」) |
 
-다음(P2-e 운영자 콘솔)은 미착수 — P2 계획 §1. P2-d 사진인화는 §21.8(브랜치 작업 트리, 미커밋).
+다음(P2-e 운영자 콘솔)은 미착수 — P2 계획 §1. P2-d 사진인화는 §21.8(2026-10-21 운영 반영).
 
-### 21.8 사진인화 모드 (P2-d — 브랜치, 미커밋)
+### 21.8 사진인화 모드 (P2-d — 2026-10-21 운영 반영)
 
-> 상태(2026-10-20): 브랜치 `p1-calendar-2026-10-17` HEAD `9be4c37c` 위 **미커밋 작업 트리** — master 미병합·운영 미반영. 운영 샘플 세트 등록·배포는 오너 승인 후. 계약 정본은 [`CONTRACT_FREEZE.md`](./CONTRACT_FREEZE.md) **v1.25** 개정 노트(§1-D ADDITIVE 4건 — `templateSet.productProfile.kind 'photo-print'`+`photoPrint` 블록 / `editor.complete`·`storige:completed` `items?`+`product.kind` / 세션 `metadata.items` / 런처 deliverables `items?`·`files[].copies/label` 원천·`errorCode/errorDetail`, 검증 잡 `orderOptions.bleed 0` + 보정 2건 — `metadata.productProfile` 서버 소유, duplex-split 회차 키·웹훅 `revision?` 자동 sheet-map 잡 포함). 옵션 어휘(페이퍼풀/이미지풀/유테)·판형·도련·업로드 한도 등 비즈니스 값은 오너 결정이 정본이며(설계 §13 항목 3 = "§13-3", `PRODUCT_MODE_ARCHITECTURE_DESIGN_2026-10-16.md:376`(타입 주석)·`:414`(§13 항목 3)), 여기서는 현재 코드가 하는 일만 적는다.
+> 상태(2026-10-21): 커밋 `237e6b91` + `11383962`(D11~D13) — **master 병합·운영 반영 완료(2026-10-21 15:55~16:00 KST, DEPLOYMENT 「P2-d」 절 끝 「반영 기록」)**. 운영 샘플 세트 등록은 오너 승인 후. D12 부터 사진인화 세트의 틀 채움은 `/storage/upload-public` 업로드 URL 로 로드한다(canvasData 에 base64 미포함, 실패 시 data URL 폴백). 계약 정본은 [`CONTRACT_FREEZE.md`](./CONTRACT_FREEZE.md) **v1.25** 개정 노트(§1-D ADDITIVE 4건 — `templateSet.productProfile.kind 'photo-print'`+`photoPrint` 블록 / `editor.complete`·`storige:completed` `items?`+`product.kind` / 세션 `metadata.items` / 런처 deliverables `items?`·`files[].copies/label` 원천·`errorCode/errorDetail`, 검증 잡 `orderOptions.bleed 0` + 보정 2건 — `metadata.productProfile` 서버 소유, duplex-split 회차 키·웹훅 `revision?` 자동 sheet-map 잡 포함). 옵션 어휘(페이퍼풀/이미지풀/유테)·판형·도련·업로드 한도 등 비즈니스 값은 오너 결정이 정본이며(설계 §13 항목 3 = "§13-3", `PRODUCT_MODE_ARCHITECTURE_DESIGN_2026-10-16.md:376`(타입 주석)·`:414`(§13 항목 3)), 여기서는 현재 코드가 하는 일만 적는다.
 > 프로파일 NULL 세트·캘린더 세트는 이 절 전체가 no-op 다(메뉴·플러그인 옵션·세션 metadata·완료 payload·검증 잡 옵션 바이트 동일 — v1.25 노트).
 
 #### 21.8.1 프로파일 `photoPrint` 블록 · 옵션 매핑(§13-3) · 항목 모델
