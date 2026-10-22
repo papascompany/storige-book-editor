@@ -12,6 +12,7 @@ import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useCalendarStore } from '@/stores/useCalendarStore'
 import {
   calendarSessionMetadataFields,
+  countDuplicateAnniversaries,
   readCalendarSessionMeta,
   rehydrateAllCalendarGrids,
   restoreCalendarSessionMeta,
@@ -188,5 +189,55 @@ describe('restoreCalendarSessionMeta / calendarSessionMetadataFields', () => {
     expect(restoreCalendarSessionMeta(null)).toBe(false)
     expect(restoreCalendarSessionMeta({ calendar: { startYear: 2027 } })).toBe(false)
     expect(useCalendarStore.getState().meta).toMatchObject({ startYear: 2027, startMonth: 1, anniversaries: [] })
+  })
+})
+
+/**
+ * T2 그리드·기념일 안전성 (2026-10-22): 복원은 **비파괴** — 같은 날짜 기념일(저장분·런처 입력)을 삭제하지 않고
+ * 그대로 복원하고 console.warn 1회만 남긴다. 거부는 store add/update(편집 시점)에서만.
+ */
+describe('restoreCalendarSessionMeta — 같은 날짜 기념일 비파괴 복원', () => {
+  const dupAnniversaries = [
+    { id: 'a1', date: '2027-05-05', lunar: false, text: '어린이날' },
+    { id: 'a2', date: '2027-05-05', lunar: false, text: '생일' },
+    { id: 'a3', date: '2027-01-05', lunar: false, text: '양력' },
+    // kr-2025-2035-v1: 음력 2026-11-28 = 양력 2027-01-05 (calendar/core.test 픽스처) → a3 와 중복
+    { id: 'a4', date: '2026-11-28', lunar: true, text: '음력 생일' },
+    { id: 'a5', date: '2027-03-01', lunar: false, text: '삼일절' },
+  ]
+
+  it('중복 입력 유지 + warn 1회: 같은 날짜 2쌍이 섞인 저장분을 모두(순서 그대로) 복원하고 console.warn 은 1번만 호출한다', () => {
+    const profile = calendarProfile()
+    useSettingsStore.getState().setProductProfile(profile)
+    useCalendarStore.getState().setFromProfile(profile)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    expect(restoreCalendarSessionMeta({ calendar: { ...savedMeta, anniversaries: dupAnniversaries } })).toBe(true)
+
+    expect(useCalendarStore.getState().meta?.anniversaries).toEqual(dupAnniversaries)
+    expect(warn).toHaveBeenCalledTimes(1)
+    expect(String(warn.mock.calls[0][0])).toContain('2건')
+    // 복원된 중복은 저장 payload 에도 그대로 실린다(데이터 유실 없음)
+    expect(calendarSessionMetadataFields().metadata?.calendar.anniversaries).toEqual(dupAnniversaries)
+    warn.mockRestore()
+  })
+
+  it('중복이 없으면 warn 을 남기지 않는다', () => {
+    const profile = calendarProfile()
+    useSettingsStore.getState().setProductProfile(profile)
+    useCalendarStore.getState().setFromProfile(profile)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(restoreCalendarSessionMeta({ calendar: savedMeta })).toBe(true)
+    expect(useCalendarStore.getState().meta?.anniversaries).toEqual(savedMeta.anniversaries)
+    expect(warn).not.toHaveBeenCalled()
+    warn.mockRestore()
+  })
+
+  it('countDuplicateAnniversaries: 양력 환산 기준으로 앞선 항목과 겹치는 수, 데이터 없는 버전은 원문 동일만 센다', () => {
+    expect(countDuplicateAnniversaries(dupAnniversaries, 'kr-2025-2035-v1')).toBe(2)
+    expect(countDuplicateAnniversaries(savedMeta.anniversaries, 'kr-2025-2035-v1')).toBe(0)
+    expect(countDuplicateAnniversaries([], 'kr-2025-2035-v1')).toBe(0)
+    // 미지 버전: a4(음력) 는 환산 불가 → a3 와 겹치지 않음, a1/a2 만 1건
+    expect(countDuplicateAnniversaries(dupAnniversaries, 'kr-unknown-v0')).toBe(1)
   })
 })
