@@ -1,6 +1,6 @@
 # 캘린더 편집기 기능 확장 계획 (2026-10-21, CTO — 서브에이전트 병렬 트랙)
 
-> **상태(2026-10-22 v2 · W1 진행 중 — T1a 완료 §8.1, T2 worktree 진행 중, T3a 는 D2 대기)**: P1 캘린더(master `af900212`, 2026-10-18)와 P2-a~d·D11~D13(master `11383962`, 2026-10-21 15:55~16:00 KST)이 운영에 반영된 뒤, **캘린더 편집기 기능**을 중심으로 이어갈 개발 계획이다. 설계 정본은 [`PRODUCT_MODE_ARCHITECTURE_DESIGN_2026-10-16.md`](./PRODUCT_MODE_ARCHITECTURE_DESIGN_2026-10-16.md)(§11 로드맵·§13 결정), 캘린더 세부는 [`CALENDAR_EDIT_MODE_DESIGN_2026-10-16.md`](./CALENDAR_EDIT_MODE_DESIGN_2026-10-16.md)(C1~C12), P1 결과는 [`CALENDAR_MODE_DEVELOPMENT_PLAN_2026-10-17.md`](./CALENDAR_MODE_DEVELOPMENT_PLAN_2026-10-17.md), P2 결과는 [`P2_PRODUCT_MODE_PLAN_2026-10-18.md`](./P2_PRODUCT_MODE_PLAN_2026-10-18.md). 운영 반영 기록은 [`DEPLOYMENT.md`](./DEPLOYMENT.md) 「P1 캘린더 운영 반영 절차」·「P2-d」 절 끝 「반영 기록」. 라이브 상태 SSOT 는 `.cursor/plans/RESUME_PROMPT_2026-10-04.md` §2·§5.2.8.
+> **상태(2026-10-22 v2 · W1 진행 중 — T1a 완료 §8.1, T2 R 조건부 GO·병합 승인 대기, T3a 는 D2 대기)**: P1 캘린더(master `af900212`, 2026-10-18)와 P2-a~d·D11~D13(master `11383962`, 2026-10-21 15:55~16:00 KST)이 운영에 반영된 뒤, **캘린더 편집기 기능**을 중심으로 이어갈 개발 계획이다. 설계 정본은 [`PRODUCT_MODE_ARCHITECTURE_DESIGN_2026-10-16.md`](./PRODUCT_MODE_ARCHITECTURE_DESIGN_2026-10-16.md)(§11 로드맵·§13 결정), 캘린더 세부는 [`CALENDAR_EDIT_MODE_DESIGN_2026-10-16.md`](./CALENDAR_EDIT_MODE_DESIGN_2026-10-16.md)(C1~C12), P1 결과는 [`CALENDAR_MODE_DEVELOPMENT_PLAN_2026-10-17.md`](./CALENDAR_MODE_DEVELOPMENT_PLAN_2026-10-17.md), P2 결과는 [`P2_PRODUCT_MODE_PLAN_2026-10-18.md`](./P2_PRODUCT_MODE_PLAN_2026-10-18.md). 운영 반영 기록은 [`DEPLOYMENT.md`](./DEPLOYMENT.md) 「P1 캘린더 운영 반영 절차」·「P2-d」 절 끝 「반영 기록」. 라이브 상태 SSOT 는 `.cursor/plans/RESUME_PROMPT_2026-10-04.md` §2·§5.2.8.
 > 작성 근거: 상위 세션 노트(`side-session-notes/…/p1-calendar-decisions-2026-10-17.md`·`p2d-e2e-findings.md`·`p2d-e2e-round2-2026-10-20.md`)·설계/계획/배포 문서를 독립 리더 에이전트가 읽은 인벤토리 → 코드 확인 에이전트가 미확인 10항목을 `file:line` 으로 확정 → 기획 2안·심사·합성 → 회의론자 검증(반박 2건 반영: W1 실행 환경 분리, W3 `TemplatePlugin.ts` 단일 소유). 코드가 문서보다 권위다.
 
 ---
@@ -19,7 +19,8 @@
 | 10-21 | `e9725838` | 운영 반영 기록(DEPLOYMENT·P2 plan·CONTRACT 적용 시점). VPS 체크아웃 = 이 커밋 | — |
 | 10-22 | `e756d726` | 문서 상태 정정(EDITOR·INDEX·RESUME·DEV_PLAN) + 이 계획 v1 | docs 전용 |
 | 10-22 | `f422afed` | 이 계획 v2(코드 확정·반박 검증) + 설계 문서 드리프트 정정 메모 | docs 전용 |
-| 10-22 | (이 커밋) | **W1 T1a 완료** — 캘린더 프리셋 3종 + 사진 13장 완료 PDF 실측·킬스위치 리허설 2종(§8.1), 발견 C1(낱장 검증 킬스위치가 프로파일 세트 검증을 깨뜨림)·C2(완료 중 이탈 시 draft 잔존), 결정 D10·D11 신설, DEPLOYMENT (가)·P1 롤백 절 경고 | docs 전용. T2 는 worktree 세션 진행 중 |
+| 10-22 | `2f3c0c25`·`49e1d71d`(브랜치 `worktree-t2-grid-anniversary-2026-10-22`, **미병합**) | **W1 T2** 그리드·기념일 안전성 — calendar-grid '그룹 해제' 핫키 컨텍스트 은폐 + ControlBar 버튼 게이트 + GroupPlugin 회귀 테스트 8; store add/update 같은 날짜(양력 환산) 거부, 세션 복원 비파괴(중복 유지 + warn 1회); 테스트 +21, 변경 9파일 | **R 조건부 GO**(상위 세션 독립 재검증: canvas-core 19·editor 표적 58 passed, tsc·eslint 0; 소유권·CONTRACT 이상 없음; `as any` 1건 교체 요청) → 오너 승인 뒤 `p1-calendar-2026-10-17` 에 cherry-pick·master ff. api/worker 무변경 |
+| 10-22 | `0defad51`·`7faf4db6` | **W1 T1a 완료** — 캘린더 프리셋 3종 + 사진 13장 완료 PDF 실측·킬스위치 리허설 2종(§8.1), 발견 C1(낱장 검증 킬스위치가 프로파일 세트 검증을 깨뜨림)·C2(완료 중 이탈 시 draft 잔존), 결정 D10·D11 신설, DEPLOYMENT (가)·P1 롤백 절 경고 | docs 전용. T2 는 worktree 세션 진행 중 |
 
 **운영 현재(2026-10-22 읽기 전용 확인)**: `template_sets.product_profile IS NOT NULL` 0건(캘린더·사진인화 세트 없음), 프로파일 스냅샷을 가진 세션 0건 → 운영 고객 영향은 아직 없다. 운영 worker 는 `WORKER_LIGHTWEIGHT_SYNTHESIS=true`(qpdf 경로). **오너가 아직 안 한 것**: 캘린더 샘플 세트 7종·사진인화 샘플 세트 4종 등록(운영 관리자 자격증명 — `--dry-run` → `--allow-remote`), mariadb `--max-allowed-packet` 상향(권장 방어선), 운영 폰트 라이브러리에 템플릿 폰트('본고딕(Noto Sans) Regular') 존재 확인.
 
@@ -97,7 +98,7 @@
 | wave | 실행(동시 ≤3, 총 ≤6) | 게이트 |
 |---|---|---|
 | **W0 결정·준비(메인 에이전트)** | 오너 질의 D1~D9 1회; 기준선 1회 재실행해 실패 목록 고정(§7); 로컬 샘플 7종 등록 확인; 코드 트랙용 worktree 준비 | T1a·T2 는 결정 없이 즉시 시작. D2→T3a, D1→T3b, D3→T5, D4→T4, D5→T6, D8→T1b 범위, D9→B10 |
-| **W1 실측·안전성·코어** — 진행 중(T1a ✅ 10-22, T2 진행 중, T3a 는 D2 대기) | T1a(메인 체크아웃) ∥ T2(worktree) ∥ T3a(worktree, architect→implementer) | T1a 실측표·결함 보고(수정 금지); T2·T3a 테스트·tsc·eslint; 픽스처 diff 0; CONTRACT v1.26 등재; R GO |
+| **W1 실측·안전성·코어** — 진행 중(T1a ✅ 10-22; T2 ✅ 구현·R 조건부 GO 10-22 — 브랜치 `worktree-t2-grid-anniversary-2026-10-22`, `as any` 1건 교체 반영 확인 뒤 GO, master 병합 = Vercel editor 자동 배포라 오너 승인 뒤; T3a 는 D2 대기) | T1a(메인 체크아웃) ∥ T2(worktree) ∥ T3a(worktree, architect→implementer) | T1a 실측표·결함 보고(수정 금지); T2·T3a 테스트·tsc·eslint; 픽스처 diff 0; CONTRACT v1.26 등재; R GO |
 | **W2 전환 경로·UI·데이터·설계** | T1b(W2 초입, T3b 시작 전 종료) → T3b ∥ T4 ∥ T6(문서) | T3b e2e(T1a 절차) 통과; T4 `--check` diff 0·잡절 대조·DEPLOYMENT 절; T6 계약 오너 승인; R GO. T3b 와 T4 는 editor 파일을 동시에 만지지 않음(T4 의 editor 몫은 T4r 로 분리) |
 | **W3 확정 반영·조건부 구현·운영 준비** | T4r ∥ T5 ∥ T7a(T6 승인 시) → T7b(T4r·T5 종료 후); (오너·디자인) B9 | 전체 테스트 기준선 대비 신규 실패 0; `VITE_ENABLE_CALENDAR='false'` 리허설; DEPLOYMENT 새 절(롤백 이미지 태그·FLAGS 키 수 무변경); 샘플 디자인 교체 → T1a 재실측 → 오너 승인 후 master ff·반영 → 첫 캘린더 완료 세션 워커 결과 관찰 |
 
