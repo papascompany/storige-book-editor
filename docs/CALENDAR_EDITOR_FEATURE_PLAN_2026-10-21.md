@@ -149,7 +149,7 @@
 
 ## 8. 실측표
 
-### 8.1 T1a — 프리셋 기본 경로(single-pdf + duplex-merged) + 킬스위치 리허설 (2026-10-22 12:45~13:05 KST, master `f422afed` = 코드 `11383962`, 로컬 api-local·worker-local·editor, 샘플 7종 `--with-site` 재등록, 런처 `POST /api/v1/sessions/launch` + `calendar.startYm '2027-01'`)
+### 8.1 T1a — 프리셋 기본 경로(single-pdf + duplex-merged) + 킬스위치 리허설 (2026-10-22 21:45~22:05 KST = 12:45~13:05Z, master `f422afed` = 코드 `11383962`, 로컬 api-local·worker-local·editor, 샘플 7종 `--with-site` 재등록, 런처 `POST /api/v1/sessions/launch` + `calendar.startYm '2027-01'`)
 
 | 세트(세트 id / 세션 / 주문) | 진입 | 완료 시간(저장 → PDF 생성 → 업로드·complete) | PDF | JS heap | 워커 검증 잡 | 산출·deliverables | 비고 |
 |---|---|---|---|---|---|---|---|
