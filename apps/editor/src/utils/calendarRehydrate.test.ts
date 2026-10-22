@@ -5,7 +5,10 @@ import type { CalendarRenderContext } from '@storige/canvas-core'
 import type { fabric } from 'fabric'
 
 const getCalendarDataMock = vi.fn<(version: string) => unknown>(() => null)
-vi.mock('@storige/canvas-core', () => ({
+// getCalendarData 만 목 — 나머지(resolveAnniversarySolarDate 등)는 실물. T2(2026-10-22) 이후 useCalendarStore.addAnniversary 가
+// 같은 날짜 거부 판정에 음력 환산을 쓰므로 전체 치환 목이면 아래 '정상' 케이스의 음력 기념일 추가가 터진다.
+vi.mock('@storige/canvas-core', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@storige/canvas-core')>()),
   getCalendarData: (v: string) => getCalendarDataMock(v),
 }))
 

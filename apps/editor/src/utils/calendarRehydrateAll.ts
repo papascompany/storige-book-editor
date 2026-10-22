@@ -1,4 +1,6 @@
 import type { CalendarAnniversary, CalendarDisplayOptions, CalendarSessionMeta, ProductProfile } from '@storige/types'
+import { getCalendarData } from '@storige/canvas-core'
+import { findDuplicateAnniversary } from '@/components/calendar/calendarPanelUtils'
 import { useAppStore } from '@/stores/useAppStore'
 import { useSaveStore } from '@/stores/useSaveStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
@@ -15,6 +17,9 @@ import { rehydrateCalendarGrids } from '@/utils/calendarRehydrate'
  * 3. `calendarSessionMetadataFields()` — 세션 PATCH 에 동봉할 `{ metadata: { productProfile, calendar } }`.
  *
  * 모든 함수는 profile 이 null/legacy 면 no-op(`{}`·0·null)이라 기존 세트의 payload 키 집합이 바뀌지 않는다.
+ *
+ * T2 그리드·기념일 안전성(2026-10-22): 복원은 **비파괴** — 저장분·런처 입력에 같은 날짜 기념일이 섞여 있어도
+ * 삭제하지 않고 그대로 복원하고 `console.warn` 1회만 남긴다. 거부는 `useCalendarStore.addAnniversary/updateAnniversary`(편집 시점)에서만.
  */
 
 /**
@@ -108,8 +113,22 @@ export function readCalendarSessionMeta(
 }
 
 /**
+ * 같은 날짜(양력 환산 기준 — CalendarPanel·store 의 `findDuplicateAnniversary` 와 같은 판정)로 앞선 항목과 겹치는
+ * 기념일 수. 데이터 버전을 모르면 음력은 환산 불가라 원문(date·lunar·윤달) 동일만 센다. 복원 경로는 비파괴라 경고에만 쓴다.
+ */
+export function countDuplicateAnniversaries(list: CalendarAnniversary[], dataVersion: string): number {
+  const data = getCalendarData(dataVersion)
+  let count = 0
+  for (let i = 1; i < list.length; i += 1) {
+    if (findDuplicateAnniversary(list.slice(0, i), list[i], data)) count += 1
+  }
+  return count
+}
+
+/**
  * 재오픈 시 세션 metadata.calendar 를 스토어에 복원(캔버스 복원 **전**에 호출해야 rehydrate 가 저장값을 쓴다).
  * profile 이 캘린더가 아니거나 메타가 무효면 아무것도 하지 않는다.
+ * 같은 날짜 기념일은 삭제하지 않고 유지한다(비파괴) — console.warn 1회만.
  * @returns 복원했으면 true
  */
 export function restoreCalendarSessionMeta(metadata: unknown): boolean {
@@ -118,6 +137,10 @@ export function restoreCalendarSessionMeta(metadata: unknown): boolean {
   const store = useCalendarStore.getState()
   const meta = readCalendarSessionMeta(metadata, store.meta)
   if (!meta) return false
+  const duplicates = countDuplicateAnniversaries(meta.anniversaries, meta.dataVersion)
+  if (duplicates > 0) {
+    console.warn(`[calendar] 복원한 기념일 중 같은 날짜 ${duplicates}건 — 삭제하지 않고 유지(편집 시 추가·수정만 거부)`)
+  }
   store.restore(meta)
   return true
 }
