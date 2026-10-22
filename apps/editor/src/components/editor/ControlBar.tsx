@@ -177,7 +177,7 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
   // no-op 이라 '그룹해제' 버튼을 내지 않는다(다른 그룹은 그대로). 핫키 컨텍스트 메뉴는 GroupPlugin.hideContext 가 같은 판정.
   const isCalendarGridSelection = useMemo(() => {
     if (!activeSelection || activeSelection.length !== 1) return false
-    return (activeSelection[0] as any)?.extensionType === 'calendar-grid'
+    return activeSelection[0]?.extensionType === 'calendar-grid'
   }, [activeSelection])
 
   // Check if all items are locked
